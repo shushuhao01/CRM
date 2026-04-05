@@ -7,6 +7,7 @@ import { v4 as uuidv4 } from 'uuid';
 import crypto from 'crypto';
 import { getTenantRepo } from '../utils/tenantRepo';
 
+import { log } from '../config/logger';
 // 业绩报表类型定义
 export const REPORT_TYPES = [
   // 主要指标（始终显示）
@@ -31,7 +32,7 @@ export class PerformanceReportController {
     try {
       const dataSource = getDataSource();
       if (!dataSource) {
-        console.log('[业绩报表] 数据库未连接，返回空列表');
+        log.info('[业绩报表] 数据库未连接，返回空列表');
         res.json({ success: true, data: [] });
         return;
       }
@@ -42,7 +43,7 @@ export class PerformanceReportController {
           order: { createdAt: 'DESC' }
         });
 
-        console.log(`[业绩报表] 查询到 ${configs.length} 个配置`);
+        log.info(`[业绩报表] 查询到 ${configs.length} 个配置`);
 
         res.json({
           success: true,
@@ -74,14 +75,14 @@ export class PerformanceReportController {
       } catch (dbError: any) {
         // 如果是表不存在的错误，返回空列表
         if (dbError.code === 'ER_NO_SUCH_TABLE' || dbError.message?.includes('doesn\'t exist')) {
-          console.log('[业绩报表] 表不存在，返回空列表');
+          log.info('[业绩报表] 表不存在，返回空列表');
           res.json({ success: true, data: [] });
           return;
         }
         throw dbError;
       }
     } catch (error) {
-      console.error('获取业绩报表配置失败:', error);
+      log.error('获取业绩报表配置失败:', error);
       res.status(500).json({ success: false, message: '获取业绩报表配置失败' });
     }
   }
@@ -135,7 +136,7 @@ export class PerformanceReportController {
 
       await configRepo.save(config);
 
-      console.log(`[业绩报表] ✅ 创建配置成功: ${name}`);
+      log.info(`[业绩报表] ✅ 创建配置成功: ${name}`);
 
       res.json({
         success: true,
@@ -143,7 +144,7 @@ export class PerformanceReportController {
         data: config
       });
     } catch (error) {
-      console.error('创建业绩报表配置失败:', error);
+      log.error('创建业绩报表配置失败:', error);
       res.status(500).json({ success: false, message: '创建业绩报表配置失败' });
     }
   }
@@ -200,7 +201,7 @@ export class PerformanceReportController {
         data: config
       });
     } catch (error) {
-      console.error('更新业绩报表配置失败:', error);
+      log.error('更新业绩报表配置失败:', error);
       res.status(500).json({ success: false, message: '更新配置失败' });
     }
   }
@@ -228,7 +229,7 @@ export class PerformanceReportController {
 
       res.json({ success: true, message: '配置删除成功' });
     } catch (error) {
-      console.error('删除业绩报表配置失败:', error);
+      log.error('删除业绩报表配置失败:', error);
       res.status(500).json({ success: false, message: '删除配置失败' });
     }
   }
@@ -261,7 +262,7 @@ export class PerformanceReportController {
         data: reportData
       });
     } catch (error) {
-      console.error('预览业绩数据失败:', error);
+      log.error('预览业绩数据失败:', error);
       res.status(500).json({ success: false, message: '预览失败' });
     }
   }
@@ -319,7 +320,7 @@ export class PerformanceReportController {
 
       res.json(result);
     } catch (error) {
-      console.error('测试发送失败:', error);
+      log.error('测试发送失败:', error);
       res.status(500).json({ success: false, message: '测试发送失败' });
     }
   }
@@ -353,7 +354,7 @@ export class PerformanceReportController {
     // 本月第一天（北京时间）
     const monthStartStr = `${beijingYear}-${String(beijingMonth + 1).padStart(2, '0')}-01`;
 
-    console.log(`[业绩报表] 📅 统计日期: 昨日=${yesterdayStr}, 本月开始=${monthStartStr}`);
+    log.info(`[业绩报表] 📅 统计日期: 昨日=${yesterdayStr}, 本月开始=${monthStartStr}`);
 
     const orderRepo = getTenantRepo(Order);
 
@@ -746,7 +747,7 @@ export class PerformanceReportController {
    */
   private async sendWechatWorkMessage(webhook: string, message: string, useMarkdown: boolean = false): Promise<{ success: boolean; message: string; details?: any }> {
     try {
-      console.log(`[业绩报表] 发送企业微信消息...`);
+      log.info(`[业绩报表] 发送企业微信消息...`);
 
       // 根据消息格式选择不同的消息类型
       const body = useMarkdown ? {
@@ -765,7 +766,7 @@ export class PerformanceReportController {
 
       const result = await response.json() as { errcode: number; errmsg: string };
 
-      console.log(`[业绩报表] 企业微信响应:`, result);
+      log.info(`[业绩报表] 企业微信响应:`, result);
 
       if (result.errcode === 0) {
         return { success: true, message: '企业微信消息发送成功', details: result };

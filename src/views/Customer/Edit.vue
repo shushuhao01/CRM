@@ -353,7 +353,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { InfoFilled } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
 import { useCustomerStore } from '@/stores/customer'
-import { getProvinces, getCitiesByProvince, getDistrictsByCity, getStreetsByDistrict } from '@/utils/addressData'
+import { getProvinces, getCitiesByProvince, getDistrictsByCity, getStreetsByDistrict, loadAddressData } from '@/utils/addressData'
 import { displaySensitiveInfo as displaySensitiveInfoNew } from '@/utils/sensitiveInfo'
 import { SensitiveInfoType } from '@/services/permission'
 import { customerTagApi, type CustomerTag } from '@/api/customerTags'
@@ -664,14 +664,15 @@ const loadCustomerDetail = async () => {
 }
 
 // 初始化地址数据
-const initAddressData = () => {
+const initAddressData = async () => {
+  await loadAddressData()
   provinces.value = getProvinces()
 }
 
 // 生命周期
-onMounted(() => {
+onMounted(async () => {
   initForm()
-  initAddressData()
+  await initAddressData()
   loadTags()
   loadCustomerDetail()
 })

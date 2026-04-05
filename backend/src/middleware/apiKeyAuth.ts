@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { ApiConfigService } from '../services/ApiConfigService';
 
+import { log } from '../config/logger';
 const apiConfigService = new ApiConfigService();
 
 /**
@@ -57,7 +58,7 @@ export const apiKeyAuth = async (req: Request, res: Response, next: NextFunction
 
     next();
   } catch (error: any) {
-    console.error('API密钥认证失败:', error);
+    log.error('API密钥认证失败:', error);
     res.status(500).json({
       code: 500,
       message: 'API密钥认证失败',

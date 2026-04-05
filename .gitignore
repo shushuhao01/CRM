@@ -48,19 +48,41 @@ backend/.env.development
 .cache/
 .temp/
 
+# 一次性调试/诊断输出文件
+**/diag-*.txt
+**/temp_*.txt
+**/test-out.txt
+**/fix-report.txt
+**/tsc-errors.txt
+**/*-result.txt
+**/*-result*.json
+*.b64
+
+# 构建产物
+tsconfig.tsbuildinfo
+backend/tsconfig.tsbuildinfo
+
 # 测试覆盖率
 coverage/
 .nyc_output/
 
 # 操作系统文件
 Thumbs.db
-.DS_Store
 desktop.ini
 
 # 备份文件
 *.bak
 *.backup
+*.backup-*
 *.old
+*~
+
+# 临时测试文件
+test123.*
+tpl_test.txt
+test-*.html
+test-api-result.json
+build-result*.txt
 
 # 数据库文件
 *.sql
@@ -94,3 +116,13 @@ crmAPP/
 
 # Kiro AI 临时笔记（不需要版本控制）
 docs/kiro-session-notes/
+
+# 后端日志目录
+backend/logs/
+
+# SaaS 平台许可签发脚本（含 RSA 私钥，绝不可上传到公开仓库或交付客户）
+backend/scripts/generate-saas-license.js
+
+# 运营方机密文档（含安全机制详细说明，绝不可交付客户）
+docs/重要文件/部署模式许可证管理-运营方完整操作手册（机密）.md
+

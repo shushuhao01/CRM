@@ -363,14 +363,10 @@ docker-compose up -d</pre>
       <h2><el-icon><User /></el-icon> 初始账号</h2>
       <div class="account-cards">
         <div class="account-card primary">
-          <h4>超级管理员</h4>
-          <p>用户名：<code>superadmin</code></p>
-          <p>密码：<code>super123456</code></p>
-        </div>
-        <div class="account-card">
-          <h4>管理员</h4>
-          <p>用户名：<code>admin</code></p>
-          <p>密码：<code>admin123</code></p>
+          <h4>默认管理员（私有部署）</h4>
+          <p>用户名：<code>注册官网时的手机号</code></p>
+          <p>密码：<code>Aa123456</code></p>
+          <p style="font-size:12px;color:#909399;">授权码激活后自动创建</p>
         </div>
         <div class="account-card">
           <h4>部门经理</h4>

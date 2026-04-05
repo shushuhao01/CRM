@@ -1,3 +1,4 @@
+import { log } from '../config/logger';
 /**
  * 验证码服务
  * 用于存储和验证手机验证码
@@ -41,7 +42,7 @@ class VerificationCodeService {
       this.codeStore.delete(phone)
     }, this.CODE_EXPIRY)
 
-    console.log(`[VerificationCode] 验证码已保存: ${phone} (有效期5分钟)`)
+    log.info(`[VerificationCode] 验证码已保存: ${phone} (有效期5分钟)`)
   }
 
   /**
@@ -80,7 +81,7 @@ class VerificationCodeService {
     // 验证成功，删除验证码（防止重复使用）
     this.codeStore.delete(phone)
 
-    console.log(`[VerificationCode] 验证成功: ${phone}`)
+    log.info(`[VerificationCode] 验证成功: ${phone}`)
     return {
       valid: true
     }
@@ -129,7 +130,7 @@ class VerificationCodeService {
     }
 
     if (cleanedCount > 0) {
-      console.log(`[VerificationCode] 清理了 ${cleanedCount} 个过期验证码`)
+      log.info(`[VerificationCode] 清理了 ${cleanedCount} 个过期验证码`)
     }
   }
 

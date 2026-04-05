@@ -17,7 +17,9 @@ import { deployConfig } from '../config/deploy'
 import { AppDataSource } from '../config/database'
 import { Tenant } from '../entities/Tenant'
 import { User } from '../entities/User'
+import licenseService from '../services/LicenseService'
 
+import { log } from '../config/logger';
 /**
  * 检查租户用户数限制
  * 在创建用户前调用
@@ -28,8 +30,21 @@ export const checkUserLimit = async (
   next: NextFunction
 ) => {
   try {
-    // 只在SaaS模式下检查
+    // 私有部署模式：通过 LicenseService 检查用户数限制
     if (!deployConfig.isSaaS()) {
+      const result = await licenseService.canCreateUser()
+      if (!result.canCreate) {
+        return res.status(403).json({
+          success: false,
+          message: result.message || `用户数已达上限（${result.currentUsers}/${result.maxUsers}）`,
+          code: 'USER_LIMIT_EXCEEDED',
+          data: {
+            currentCount: result.currentUsers,
+            maxUsers: result.maxUsers,
+            usagePercent: result.maxUsers > 0 ? Math.round((result.currentUsers / result.maxUsers) * 100) : 0
+          }
+        })
+      }
       next()
       return
     }
@@ -79,7 +94,7 @@ export const checkUserLimit = async (
     // 检查是否接近限制（90%以上）
     const usagePercent = (currentUserCount / tenant.maxUsers) * 100
     if (usagePercent >= 90) {
-      console.warn(`[租户资源警告] 租户 ${tenant.name}(${tenantId}) 用户数接近上限: ${currentUserCount}/${tenant.maxUsers}`)
+      log.warn(`[租户资源警告] 租户 ${tenant.name}(${tenantId}) 用户数接近上限: ${currentUserCount}/${tenant.maxUsers}`)
     }
 
     // 将当前用户数注入到请求对象，供后续使用
@@ -90,7 +105,7 @@ export const checkUserLimit = async (
 
     next()
   } catch (error) {
-    console.error('检查租户用户数限制失败:', error)
+    log.error('检查租户用户数限制失败:', error)
     return res.status(500).json({
       success: false,
       message: '检查用户数限制失败'
@@ -187,7 +202,7 @@ export const checkStorageLimit = async (
     const newUsedStorageMb = usedStorageMb + fileSizeMb
     const usagePercent = (newUsedStorageMb / maxStorageMb) * 100
     if (usagePercent >= 90) {
-      console.warn(`[租户资源警告] 租户 ${tenant.name}(${tenantId}) 存储空间接近上限: ${newUsedStorageMb.toFixed(2)}MB/${maxStorageMb}MB`)
+      log.warn(`[租户资源警告] 租户 ${tenant.name}(${tenantId}) 存储空间接近上限: ${newUsedStorageMb.toFixed(2)}MB/${maxStorageMb}MB`)
     }
 
     // 将文件大小注入到请求对象，供后续更新使用
@@ -198,7 +213,7 @@ export const checkStorageLimit = async (
 
     next()
   } catch (error) {
-    console.error('检查租户存储空间限制失败:', error)
+    log.error('检查租户存储空间限制失败:', error)
     return res.status(500).json({
       success: false,
       message: '检查存储空间限制失败'
@@ -223,10 +238,10 @@ export const updateTenantUserCount = async (
     if (tenant) {
       tenant.userCount = (tenant.userCount || 0) + increment
       await tenantRepository.save(tenant)
-      console.log(`[租户资源] 更新租户 ${tenant.name}(${tenantId}) 用户数: ${tenant.userCount}`)
+      log.info(`[租户资源] 更新租户 ${tenant.name}(${tenantId}) 用户数: ${tenant.userCount}`)
     }
   } catch (error) {
-    console.error('更新租户用户数失败:', error)
+    log.error('更新租户用户数失败:', error)
   }
 }
 
@@ -247,10 +262,10 @@ export const updateTenantStorage = async (
     if (tenant) {
       tenant.usedStorageMb = Number(tenant.usedStorageMb || 0) + fileSizeMb
       await tenantRepository.save(tenant)
-      console.log(`[租户资源] 更新租户 ${tenant.name}(${tenantId}) 存储空间: ${Number(tenant.usedStorageMb).toFixed(2)}MB`)
+      log.info(`[租户资源] 更新租户 ${tenant.name}(${tenantId}) 存储空间: ${Number(tenant.usedStorageMb).toFixed(2)}MB`)
     }
   } catch (error) {
-    console.error('更新租户存储空间失败:', error)
+    log.error('更新租户存储空间失败:', error)
   }
 }
 
@@ -271,10 +286,10 @@ export const decrementTenantUserCount = async (
     if (tenant) {
       tenant.userCount = Math.max(0, (tenant.userCount || 0) - decrement)
       await tenantRepository.save(tenant)
-      console.log(`[租户资源] 更新租户 ${tenant.name}(${tenantId}) 用户数: ${tenant.userCount}`)
+      log.info(`[租户资源] 更新租户 ${tenant.name}(${tenantId}) 用户数: ${tenant.userCount}`)
     }
   } catch (error) {
-    console.error('减少租户用户数失败:', error)
+    log.error('减少租户用户数失败:', error)
   }
 }
 
@@ -295,10 +310,10 @@ export const decrementTenantStorage = async (
     if (tenant) {
       tenant.usedStorageMb = Math.max(0, Number(tenant.usedStorageMb || 0) - fileSizeMb)
       await tenantRepository.save(tenant)
-      console.log(`[租户资源] 更新租户 ${tenant.name}(${tenantId}) 存储空间: ${Number(tenant.usedStorageMb).toFixed(2)}MB`)
+      log.info(`[租户资源] 更新租户 ${tenant.name}(${tenantId}) 存储空间: ${Number(tenant.usedStorageMb).toFixed(2)}MB`)
     }
   } catch (error) {
-    console.error('减少租户存储空间失败:', error)
+    log.error('减少租户存储空间失败:', error)
   }
 }
 
@@ -372,7 +387,7 @@ export const getTenantResourceUsage = async (tenantId: string) => {
       }
     }
   } catch (error) {
-    console.error('获取租户资源使用情况失败:', error)
+    log.error('获取租户资源使用情况失败:', error)
     return null
   }
 }

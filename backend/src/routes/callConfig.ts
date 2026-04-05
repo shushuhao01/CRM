@@ -14,6 +14,7 @@ import { mobileWebSocketService } from '../services/MobileWebSocketService';
 import QRCode from 'qrcode';
 import { tenantRawSQL, getCurrentTenantIdSafe } from '../utils/tenantHelpers';
 
+import { log as logger } from '../config/logger';
 const router = Router();
 
 // 统一成功响应格式
@@ -110,7 +111,7 @@ router.post('/work-phones/bind', async (req: Request, res: Response) => {
       phoneId: result.insertId
     }));
   } catch (error) {
-    console.error('绑定工作手机失败:', error);
+    logger.error('绑定工作手机失败:', error);
     res.status(500).json(errorResponse('绑定失败'));
   }
 });
@@ -155,7 +156,7 @@ router.get('/global', async (req: Request, res: Response) => {
 
     res.json(successResponse(configObj));
   } catch (error) {
-    console.error('获取全局配置失败:', error);
+    logger.error('获取全局配置失败:', error);
     res.status(500).json(errorResponse('获取配置失败'));
   }
 });
@@ -201,7 +202,7 @@ router.put('/global', async (req: Request, res: Response) => {
 
     res.json(successResponse(null, '配置已保存'));
   } catch (error) {
-    console.error('更新全局配置失败:', error);
+    logger.error('更新全局配置失败:', error);
     res.status(500).json(errorResponse('保存配置失败'));
   }
 });
@@ -264,7 +265,7 @@ router.get('/lines', async (req: Request, res: Response) => {
       };
     })));
   } catch (error) {
-    console.error('获取线路列表失败:', error);
+    logger.error('获取线路列表失败:', error);
     res.status(500).json(errorResponse('获取线路列表失败'));
   }
 });
@@ -295,7 +296,7 @@ router.post('/lines', async (req: Request, res: Response) => {
 
     res.status(201).json(successResponse({ id: result.insertId }, '线路创建成功'));
   } catch (error) {
-    console.error('创建线路失败:', error);
+    logger.error('创建线路失败:', error);
     res.status(500).json(errorResponse('创建线路失败'));
   }
 });
@@ -336,7 +337,7 @@ router.put('/lines/:id', async (req: Request, res: Response) => {
 
     res.json(successResponse(null, '线路更新成功'));
   } catch (error) {
-    console.error('更新线路失败:', error);
+    logger.error('更新线路失败:', error);
     res.status(500).json(errorResponse('更新线路失败'));
   }
 });
@@ -369,7 +370,7 @@ router.delete('/lines/:id', async (req: Request, res: Response) => {
 
     res.json(successResponse(null, '线路删除成功'));
   } catch (error) {
-    console.error('删除线路失败:', error);
+    logger.error('删除线路失败:', error);
     res.status(500).json(errorResponse('删除线路失败'));
   }
 });
@@ -423,7 +424,7 @@ router.get('/assignments', async (req: Request, res: Response) => {
       createdAt: a.created_at
     }))));
   } catch (error) {
-    console.error('获取线路分配失败:', error);
+    logger.error('获取线路分配失败:', error);
     res.status(500).json(errorResponse('获取线路分配失败'));
   }
 });
@@ -463,7 +464,7 @@ router.post('/assignments', async (req: Request, res: Response) => {
 
     res.json(successResponse(null, '线路分配成功'));
   } catch (error) {
-    console.error('分配线路失败:', error);
+    logger.error('分配线路失败:', error);
     res.status(500).json(errorResponse('分配线路失败'));
   }
 });
@@ -486,7 +487,7 @@ router.delete('/assignments/:id', async (req: Request, res: Response) => {
 
     res.json(successResponse(null, '分配已取消'));
   } catch (error) {
-    console.error('取消分配失败:', error);
+    logger.error('取消分配失败:', error);
     res.status(500).json(errorResponse('取消分配失败'));
   }
 });
@@ -503,7 +504,7 @@ router.get('/my-lines', async (req: Request, res: Response) => {
     // 确保 userId 是字符串类型，与数据库中的 varchar 类型匹配
     const userIdStr = String(userId);
 
-    console.log('[my-lines] userId:', userIdStr);
+    logger.info('[my-lines] userId:', userIdStr);
 
     const t = tenantRawSQL('a.');
     const assignments = await AppDataSource.query(
@@ -515,18 +516,18 @@ router.get('/my-lines', async (req: Request, res: Response) => {
       [userIdStr, ...t.params]
     );
 
-    console.log('[my-lines] assignments:', assignments.length);
+    logger.info('[my-lines] assignments:', assignments.length);
 
     const t2 = tenantRawSQL();
     const workPhones = await AppDataSource.query(
       `SELECT * FROM work_phones WHERE user_id = ? AND status IN ('active', 'online')${t2.sql}`,
       [userIdStr, ...t2.params]
     );
-    console.log('[my-lines] workPhones:', workPhones.length, workPhones.map((p: any) => ({ id: p.id, status: p.status, device_id: p.device_id })));
+    logger.info('[my-lines] workPhones:', workPhones.length, workPhones.map((p: any) => ({ id: p.id, status: p.status, device_id: p.device_id })));
 
     // 🔥 调试：打印完整的工作手机数据
     workPhones.forEach((p: any, index: number) => {
-      console.log(`[my-lines] workPhone ${index} 完整数据:`, JSON.stringify(p));
+      logger.info(`[my-lines] workPhone ${index} 完整数据:`, JSON.stringify(p));
     });
 
     res.json(successResponse({
@@ -550,13 +551,13 @@ router.get('/my-lines', async (req: Request, res: Response) => {
           isPrimary: p.is_primary === 1,
           lastActiveAt: p.last_active_at
         };
-        console.log('[my-lines] 映射后的 workPhone:', JSON.stringify(mapped));
+        logger.info('[my-lines] 映射后的 workPhone:', JSON.stringify(mapped));
         return mapped;
       }),
       hasAvailableMethod: assignments.length > 0 || workPhones.length > 0
     }));
   } catch (error) {
-    console.error('获取可用线路失败:', error);
+    logger.error('获取可用线路失败:', error);
     res.status(500).json(errorResponse('获取可用线路失败'));
   }
 });
@@ -585,7 +586,7 @@ router.get('/preference', async (req: Request, res: Response) => {
       defaultLineId: config.default_line_id
     }));
   } catch (error) {
-    console.error('获取用户偏好失败:', error);
+    logger.error('获取用户偏好失败:', error);
     res.status(500).json(errorResponse('获取偏好失败'));
   }
 });
@@ -610,7 +611,7 @@ router.put('/preference', async (req: Request, res: Response) => {
 
     res.json(successResponse(null, '偏好设置已保存'));
   } catch (error) {
-    console.error('更新用户偏好失败:', error);
+    logger.error('更新用户偏好失败:', error);
     res.status(500).json(errorResponse('保存偏好失败'));
   }
 });
@@ -626,7 +627,7 @@ router.get('/work-phones', async (req: Request, res: Response) => {
     const userId = currentUser?.userId || currentUser?.id;
     const userIdStr = String(userId);
 
-    console.log('[work-phones] 获取工作手机列表, userId:', userIdStr);
+    logger.info('[work-phones] 获取工作手机列表, userId:', userIdStr);
 
     const t = tenantRawSQL();
     // 先查询所有记录（不带 status 条件）看看数据库里有什么
@@ -634,7 +635,7 @@ router.get('/work-phones', async (req: Request, res: Response) => {
       `SELECT id, user_id, phone_number, device_id, status, online_status FROM work_phones WHERE user_id = ?${t.sql}`,
       [userIdStr, ...t.params]
     );
-    console.log('[work-phones] 所有记录(不带status条件):', JSON.stringify(allPhones));
+    logger.info('[work-phones] 所有记录(不带status条件):', JSON.stringify(allPhones));
 
     // 查询 active 或 online 状态的记录
     const phones = await AppDataSource.query(
@@ -642,11 +643,11 @@ router.get('/work-phones', async (req: Request, res: Response) => {
       [userIdStr, ...t.params]
     );
 
-    console.log('[work-phones] 查询结果(status in active/online):', phones.length, '条记录');
-    console.log('[work-phones] 详细数据:', JSON.stringify(phones));
+    logger.info('[work-phones] 查询结果(status in active/online):', phones.length, '条记录');
+    logger.info('[work-phones] 详细数据:', JSON.stringify(phones));
 
     const result = phones.map((p: any) => {
-      console.log('[work-phones] 原始记录 p.id:', p.id, 'typeof:', typeof p.id);
+      logger.info('[work-phones] 原始记录 p.id:', p.id, 'typeof:', typeof p.id);
       const item = {
         id: p.id,  // 确保返回数据库的自增 ID
         phoneNumber: p.phone_number,
@@ -657,15 +658,15 @@ router.get('/work-phones', async (req: Request, res: Response) => {
         lastActiveAt: p.last_active_at,
         createdAt: p.created_at
       };
-      console.log('[work-phones] 映射后的数据项:', JSON.stringify(item));
+      logger.info('[work-phones] 映射后的数据项:', JSON.stringify(item));
       return item;
     });
 
-    console.log('[work-phones] 最终返回数据:', JSON.stringify(result));
+    logger.info('[work-phones] 最终返回数据:', JSON.stringify(result));
 
     res.json(successResponse(result));
   } catch (error) {
-    console.error('获取工作手机失败:', error);
+    logger.error('获取工作手机失败:', error);
     res.status(500).json(errorResponse('获取工作手机失败'));
   }
 });
@@ -709,7 +710,7 @@ router.post('/work-phones/qrcode', async (req: Request, res: Response) => {
 
     res.json(successResponse({ qrCodeUrl, connectionId, expiresAt: expiresAt.toISOString() }));
   } catch (error) {
-    console.error('生成绑定二维码失败:', error);
+    logger.error('生成绑定二维码失败:', error);
     res.status(500).json(errorResponse('生成二维码失败'));
   }
 });
@@ -753,7 +754,7 @@ router.get('/work-phones/bind-status/:connectionId', async (req: Request, res: R
 
     res.json(successResponse({ status: log.status }));
   } catch (error) {
-    console.error('检查绑定状态失败:', error);
+    logger.error('检查绑定状态失败:', error);
     res.status(500).json(errorResponse('检查状态失败'));
   }
 });
@@ -768,9 +769,9 @@ router.delete('/work-phones/:id', async (req: Request, res: Response) => {
     const userIdStr = String(userId);
     const { id } = req.params;
 
-    console.log('[解绑工作手机] ========== 开始解绑 ==========');
-    console.log('[解绑工作手机] 请求参数 id:', id, '类型:', typeof id);
-    console.log('[解绑工作手机] 当前用户 userId:', userIdStr);
+    logger.info('[解绑工作手机] ========== 开始解绑 ==========');
+    logger.info('[解绑工作手机] 请求参数 id:', id, '类型:', typeof id);
+    logger.info('[解绑工作手机] 当前用户 userId:', userIdStr);
 
     // 先查询所有该用户的手机记录
     const t = tenantRawSQL();
@@ -778,11 +779,11 @@ router.delete('/work-phones/:id', async (req: Request, res: Response) => {
       `SELECT id, user_id, device_id, phone_number, status FROM work_phones WHERE user_id = ?${t.sql}`,
       [userIdStr, ...t.params]
     );
-    console.log('[解绑工作手机] 该用户所有手机记录:', JSON.stringify(allUserPhones));
+    logger.info('[解绑工作手机] 该用户所有手机记录:', JSON.stringify(allUserPhones));
 
     // 查询指定 ID 的记录（不带 user_id 条件）
     const phoneById = await AppDataSource.query(`SELECT id, user_id, device_id, phone_number, status FROM work_phones WHERE id = ?${t.sql}`, [id, ...t.params]);
-    console.log('[解绑工作手机] 按 ID 查询结果(不带user_id):', JSON.stringify(phoneById));
+    logger.info('[解绑工作手机] 按 ID 查询结果(不带user_id):', JSON.stringify(phoneById));
 
     // 🔥 修复：先只按 ID 查询，不限制 user_id（因为管理员可能需要解绑任何手机）
     // 同时支持 active 和 online 状态
@@ -790,10 +791,10 @@ router.delete('/work-phones/:id', async (req: Request, res: Response) => {
       `SELECT * FROM work_phones WHERE id = ? AND status IN ('active', 'online')${t.sql}`,
       [id, ...t.params]
     );
-    console.log('[解绑工作手机] 按 ID+status 查询结果:', JSON.stringify(phones));
+    logger.info('[解绑工作手机] 按 ID+status 查询结果:', JSON.stringify(phones));
 
     if (phones.length === 0) {
-      console.log('[解绑工作手机] 未找到匹配记录，返回 404');
+      logger.info('[解绑工作手机] 未找到匹配记录，返回 404');
       return res.status(404).json(errorResponse('手机不存在', 404));
     }
 
@@ -803,17 +804,17 @@ router.delete('/work-phones/:id', async (req: Request, res: Response) => {
     const isAdminUser = ['super_admin', 'admin'].includes(currentUser?.role);
 
     if (!isOwner && !isAdminUser) {
-      console.log('[解绑工作手机] 无权操作，user_id不匹配且非管理员');
+      logger.info('[解绑工作手机] 无权操作，user_id不匹配且非管理员');
       return res.status(403).json(errorResponse('无权操作此手机', 403));
     }
 
     // 🔥 修复：使用 UPDATE 而不是 DELETE，与 APP 端保持一致
-    console.log('[解绑工作手机] 找到记录，更新状态为 inactive...');
+    logger.info('[解绑工作手机] 找到记录，更新状态为 inactive...');
     await AppDataSource.query(
       `UPDATE work_phones SET status = 'inactive', online_status = 'offline', updated_at = NOW() WHERE id = ?${t.sql}`,
       [id, ...t.params]
     );
-    console.log('[解绑工作手机] 状态更新成功');
+    logger.info('[解绑工作手机] 状态更新成功');
 
     // 记录解绑日志
     const tenantId = getCurrentTenantIdSafe() || null;
@@ -826,12 +827,12 @@ router.delete('/work-phones/:id', async (req: Request, res: Response) => {
     // 🔥 通知 APP 设备已解绑 - 使用 mobileWebSocketService
     if (phone.device_id) {
       mobileWebSocketService.sendDeviceUnbind(phone.device_id);
-      console.log('[解绑工作手机] 已通知APP设备解绑');
+      logger.info('[解绑工作手机] 已通知APP设备解绑');
     }
 
     res.json(successResponse(null, '解绑成功'));
   } catch (error) {
-    console.error('解绑工作手机失败:', error);
+    logger.error('解绑工作手机失败:', error);
     res.status(500).json(errorResponse('解绑失败'));
   }
 });
@@ -858,7 +859,7 @@ router.put('/work-phones/:id/primary', async (req: Request, res: Response) => {
 
     res.json(successResponse(null, '已设为主要手机'));
   } catch (error) {
-    console.error('设置主要手机失败:', error);
+    logger.error('设置主要手机失败:', error);
     res.status(500).json(errorResponse('设置失败'));
   }
 });
@@ -877,7 +878,7 @@ router.post('/work-phones/call', async (req: Request, res: Response) => {
     const userName = currentUser?.name || currentUser?.username || '未知用户';
     const { workPhoneId, targetPhone, customerId, customerName, notes } = req.body;
 
-    console.log('[work-phones/call] 发起呼叫请求:', { workPhoneId, targetPhone, customerId, customerName, userId: userIdStr });
+    logger.info('[work-phones/call] 发起呼叫请求:', { workPhoneId, targetPhone, customerId, customerName, userId: userIdStr });
 
     if (!workPhoneId || !targetPhone) {
       return res.status(400).json(errorResponse('缺少必要参数', 400));
@@ -890,7 +891,7 @@ router.post('/work-phones/call', async (req: Request, res: Response) => {
       [workPhoneId, userIdStr, ...t.params]
     );
 
-    console.log('[work-phones/call] 查询工作手机结果:', phones.length, '条');
+    logger.info('[work-phones/call] 查询工作手机结果:', phones.length, '条');
 
     if (phones.length === 0) {
       return res.status(404).json(errorResponse('工作手机不存在或无权使用', 404));
@@ -909,11 +910,11 @@ router.post('/work-phones/call', async (req: Request, res: Response) => {
       [callId, customerId || null, customerName || '未知客户', targetPhone, userIdStr, userName, String(workPhoneId), notes || null, tenantId]
     );
 
-    console.log('[work-phones/call] 通话记录已创建:', callId);
+    logger.info('[work-phones/call] 通话记录已创建:', callId);
 
     // 通过WebSocket通知APP发起呼叫
     const deviceId = phone.device_id;
-    console.log('[work-phones/call] 工作手机信息:', {
+    logger.info('[work-phones/call] 工作手机信息:', {
       phoneId: phone.id,
       phoneNumber: phone.phone_number,
       deviceId: deviceId,
@@ -923,7 +924,7 @@ router.post('/work-phones/call', async (req: Request, res: Response) => {
     if (deviceId) {
       // 检查设备是否在线
       const isOnline = mobileWebSocketService.isDeviceOnline(deviceId);
-      console.log('[work-phones/call] 设备在线状态:', isOnline);
+      logger.info('[work-phones/call] 设备在线状态:', isOnline);
 
       const sent = mobileWebSocketService.sendDialCommand(deviceId, {
         callId,
@@ -932,14 +933,14 @@ router.post('/work-phones/call', async (req: Request, res: Response) => {
         customerId: customerId || undefined,
         source: 'pc_crm'
       });
-      console.log('[work-phones/call] WebSocket通知发送结果:', sent ? '成功' : '失败', 'deviceId:', deviceId);
+      logger.info('[work-phones/call] WebSocket通知发送结果:', sent ? '成功' : '失败', 'deviceId:', deviceId);
 
       if (!sent) {
         // 设备不在线，但通话记录已创建
-        console.log('[work-phones/call] 设备不在线，无法发送拨号指令');
+        logger.info('[work-phones/call] 设备不在线，无法发送拨号指令');
       }
     } else {
-      console.log('[work-phones/call] 工作手机没有 device_id，无法发送拨号指令');
+      logger.info('[work-phones/call] 工作手机没有 device_id，无法发送拨号指令');
     }
 
     res.json(successResponse({
@@ -949,7 +950,7 @@ router.post('/work-phones/call', async (req: Request, res: Response) => {
       message: `正在通过工作手机 ${phone.phone_number} 发起呼叫`
     }));
   } catch (error) {
-    console.error('发起工作手机呼叫失败:', error);
+    logger.error('发起工作手机呼叫失败:', error);
     res.status(500).json(errorResponse('发起呼叫失败'));
   }
 });
@@ -1007,7 +1008,7 @@ router.post('/lines/call', async (req: Request, res: Response) => {
       message: `正在通过线路 ${assignment.line_name} 发起呼叫`
     }));
   } catch (error) {
-    console.error('发起网络电话呼叫失败:', error);
+    logger.error('发起网络电话呼叫失败:', error);
     res.status(500).json(errorResponse('发起呼叫失败'));
   }
 });
@@ -1023,7 +1024,7 @@ router.post('/calls/:callId/end', async (req: Request, res: Response) => {
     const { callId } = req.params;
     const { notes, duration } = req.body;
 
-    console.log(`[CallConfig] 结束通话: callId=${callId}, userId=${userId}`);
+    logger.info(`[CallConfig] 结束通话: callId=${callId}, userId=${userId}`);
 
     // 查找通话记录 - 使用 id 字段
     const t = tenantRawSQL();
@@ -1053,15 +1054,15 @@ router.post('/calls/:callId/end', async (req: Request, res: Response) => {
       const { mobileWebSocketService } = await import('../services/MobileWebSocketService');
       if (mobileWebSocketService && mobileWebSocketService.isInitialized()) {
         const sent = mobileWebSocketService.sendEndCallToUser(Number(userId), callId, 'crm_end');
-        console.log(`[CallConfig] 已通知 ${sent} 个设备结束通话`);
+        logger.info(`[CallConfig] 已通知 ${sent} 个设备结束通话`);
       }
     } catch (wsError) {
-      console.error('[CallConfig] 通知APP结束通话失败:', wsError);
+      logger.error('[CallConfig] 通知APP结束通话失败:', wsError);
     }
 
     res.json(successResponse(null, '通话已结束'));
   } catch (error) {
-    console.error('结束通话失败:', error);
+    logger.error('结束通话失败:', error);
     res.status(500).json(errorResponse('结束通话失败'));
   }
 });

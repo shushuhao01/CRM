@@ -9,6 +9,7 @@ import { deployConfig } from '../config/deploy'
 import { AppDataSource } from '../config/database'
 import { TenantContextManager } from '../utils/tenantContext'
 
+import { log } from '../config/logger';
 /**
  * 扩展Request接口，添加租户信息
  */
@@ -83,7 +84,7 @@ export const tenantAuth = async (
         req.tenantInfo = tenant
       } catch (dbErr) {
         // 数据库查询失败时放行（容错，避免数据库抖动导致全部用户掉线）
-        console.error('[TenantAuth] 查询租户状态失败（已放行）:', dbErr)
+        log.error('[TenantAuth] 查询租户状态失败（已放行）:', dbErr)
       }
 
       // 更新 TenantContext（关键！让 BaseRepository 能获取到 tenantId）
@@ -203,7 +204,7 @@ export const checkTenantLimits = async (
 
     next()
   } catch (error) {
-    console.error('检查租户资源限制失败:', error)
+    log.error('检查租户资源限制失败:', error)
     next()
   }
 }

@@ -12,6 +12,7 @@ import { TenantExportService } from '../../services/TenantExportService';
 import * as fs from 'fs';
 import * as path from 'path';
 
+import { log } from '../../config/logger';
 const router = Router();
 
 /**
@@ -41,7 +42,7 @@ router.post('/:id/export', async (req: Request, res: Response) => {
       }
     });
   } catch (error: any) {
-    console.error('创建导出任务失败:', error);
+    log.error('创建导出任务失败:', error);
     res.status(500).json({
       success: false,
       message: '创建导出任务失败',
@@ -81,7 +82,7 @@ router.get('/:id/export/:jobId', (req: Request, res: Response) => {
       }
     });
   } catch (error: any) {
-    console.error('查询导出进度失败:', error);
+    log.error('查询导出进度失败:', error);
     res.status(500).json({
       success: false,
       message: '查询导出进度失败',
@@ -136,7 +137,7 @@ router.get('/:id/export/:jobId/download', (req: Request, res: Response) => {
     res.sendFile(filePath);
 
   } catch (error: any) {
-    console.error('下载导出文件失败:', error);
+    log.error('下载导出文件失败:', error);
     res.status(500).json({
       success: false,
       message: '下载导出文件失败',

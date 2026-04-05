@@ -6,6 +6,7 @@ import { Repository } from 'typeorm';
 import { v4 as uuidv4 } from 'uuid';
 import { notificationTemplateService } from './NotificationTemplateService';
 
+import { log } from '../config/logger';
 export class VersionService {
   private versionRepository: Repository<Version>;
   private changelogRepository: Repository<Changelog>;
@@ -200,7 +201,7 @@ export class VersionService {
 
     // 异步通知所有活跃租户（不阻塞发布流程）
     this.notifyTenantsOfNewVersion(saved).catch(err => {
-      console.error('[VersionService] 发送版本发布通知失败:', err);
+      log.error('[VersionService] 发送版本发布通知失败:', err);
     });
 
     return saved;
@@ -218,7 +219,7 @@ export class VersionService {
       });
 
       if (activeTenants.length === 0) {
-        console.log('[VersionService] 没有活跃租户需要通知');
+        log.info('[VersionService] 没有活跃租户需要通知');
         return;
       }
 
@@ -241,7 +242,7 @@ export class VersionService {
         try {
           const recipient = tenant.email || tenant.phone;
           if (!recipient) {
-            console.log(`[VersionService] 租户 ${tenant.name} 没有联系方式，跳过通知`);
+            log.info(`[VersionService] 租户 ${tenant.name} 没有联系方式，跳过通知`);
             continue;
           }
 
@@ -261,13 +262,13 @@ export class VersionService {
           successCount++;
         } catch (err) {
           failCount++;
-          console.error(`[VersionService] 通知租户 ${tenant.name} 失败:`, err);
+          log.error(`[VersionService] 通知租户 ${tenant.name} 失败:`, err);
         }
       }
 
-      console.log(`[VersionService] 版本 v${version.version} 发布通知完成: 成功 ${successCount}, 失败 ${failCount}, 共 ${activeTenants.length} 个活跃租户`);
+      log.info(`[VersionService] 版本 v${version.version} 发布通知完成: 成功 ${successCount}, 失败 ${failCount}, 共 ${activeTenants.length} 个活跃租户`);
     } catch (error) {
-      console.error('[VersionService] 批量发送版本通知失败:', error);
+      log.error('[VersionService] 批量发送版本通知失败:', error);
     }
   }
 

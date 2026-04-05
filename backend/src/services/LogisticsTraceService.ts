@@ -9,6 +9,7 @@ import { LogisticsApiConfig } from '../entities/LogisticsApiConfig';
 import { ExpressAPIService } from './ExpressAPIService';
 import { getTenantRepo } from '../utils/tenantRepo';
 
+import { log } from '../config/logger';
 // 快递100公司代码映射（我们的代码 -> 快递100代码）
 const KUAIDI100_COMPANY_MAP: Record<string, string> = {
   'SF': 'shunfeng',
@@ -103,19 +104,19 @@ class LogisticsTraceService {
    * @param phone 收件人/寄件人手机号（可选，用于顺丰等需要验证的快递）
    */
   async queryTrace(trackingNo: string, companyCode?: string, phone?: string): Promise<LogisticsTrackResult> {
-    console.log(`[物流查询] 开始查询: 单号=${trackingNo}, 公司代码=${companyCode || '自动识别'}, 手机号=${phone ? phone.slice(-4) + '****' : '未提供'}`);
+    log.info(`[物流查询] 开始查询: 单号=${trackingNo}, 公司代码=${companyCode || '自动识别'}, 手机号=${phone ? phone.slice(-4) + '****' : '未提供'}`);
 
     // 🔥 修复：如果传入的是中文公司名称，转换为代码
     if (companyCode && COMPANY_NAME_TO_CODE[companyCode]) {
       const originalCode = companyCode;
       companyCode = COMPANY_NAME_TO_CODE[companyCode];
-      console.log(`[物流查询] 公司名称转换: ${originalCode} -> ${companyCode}`);
+      log.info(`[物流查询] 公司名称转换: ${originalCode} -> ${companyCode}`);
     }
 
     // 如果没有指定快递公司，尝试自动识别
     if (!companyCode || companyCode === 'auto') {
       companyCode = this.detectCompanyCode(trackingNo);
-      console.log(`[物流查询] 自动识别快递公司: ${companyCode || '未识别'}`);
+      log.info(`[物流查询] 自动识别快递公司: ${companyCode || '未识别'}`);
     }
 
     // 标准化公司代码（转大写）
@@ -141,7 +142,7 @@ class LogisticsTraceService {
 
     // 获取API配置
     const config = await this.getApiConfig(companyCode);
-    console.log(`[物流查询] API配置: ${config ? `已找到(enabled=${config.enabled})` : '未找到'}`);
+    log.info(`[物流查询] API配置: ${config ? `已找到(enabled=${config.enabled})` : '未找到'}`);
 
     if (!config) {
       return {
@@ -182,7 +183,7 @@ class LogisticsTraceService {
 
     // 根据快递公司调用对应的API
     try {
-      console.log(`[物流查询] 调用${companyCode}的API...`);
+      log.info(`[物流查询] 调用${companyCode}的API...`);
       let result: LogisticsTrackResult;
 
       switch (companyCode) {
@@ -233,24 +234,24 @@ class LogisticsTraceService {
 
         if (configStatus.kuaidi100) {
           // 快递100已配置，尝试使用快递100查询
-          console.log(`[物流查询] 官方API查询失败或无轨迹，尝试快递100...`);
+          log.info(`[物流查询] 官方API查询失败或无轨迹，尝试快递100...`);
           const fallbackResult = await this.queryByKuaidi100(trackingNo, companyCode);
           if (fallbackResult.success && fallbackResult.traces.length > 0) {
-            console.log(`[物流查询] 快递100查询成功，返回${fallbackResult.traces.length}条轨迹`);
+            log.info(`[物流查询] 快递100查询成功，返回${fallbackResult.traces.length}条轨迹`);
             return fallbackResult;
           }
-          console.log(`[物流查询] 快递100也查询失败，返回原始结果`);
+          log.info(`[物流查询] 快递100也查询失败，返回原始结果`);
         } else {
           // 快递100未配置
           if (companyCode === 'SF') {
             if (!phone) {
               // 没有提供手机号
-              console.log(`[物流查询] 快递100未配置，顺丰需要手机号验证`);
+              log.info(`[物流查询] 快递100未配置，顺丰需要手机号验证`);
               result.statusText = '需要手机号验证';
               result.status = 'need_phone_verify';
             } else {
               // 提供了手机号但仍然查询不到，可能是手机号不正确
-              console.log(`[物流查询] 已提供手机号但查询失败，可能手机号不正确`);
+              log.info(`[物流查询] 已提供手机号但查询失败，可能手机号不正确`);
               if (result.statusText.includes('routes为空') || result.statusText.includes('未查询到')) {
                 result.statusText = '查询失败。可能原因：1.手机号后4位不正确 2.运单刚发出，建议12-24小时后再查询 3.运单号不存在';
                 result.status = 'need_phone_verify'; // 让用户可以重新输入手机号
@@ -262,7 +263,7 @@ class LogisticsTraceService {
 
       return result;
     } catch (error: any) {
-      console.error(`[物流查询] ${companyCode} 查询失败:`, error.message);
+      log.error(`[物流查询] ${companyCode} 查询失败:`, error.message);
 
       // 检查快递100是否配置
       const expressService = ExpressAPIService.getInstance();
@@ -270,7 +271,7 @@ class LogisticsTraceService {
 
       if (configStatus.kuaidi100) {
         // 🔥 官方API异常时，尝试快递100
-        console.log(`[物流查询] 官方API异常，尝试快递100...`);
+        log.info(`[物流查询] 官方API异常，尝试快递100...`);
         const fallbackResult = await this.queryByKuaidi100(trackingNo, companyCode);
         if (fallbackResult.success) {
           return fallbackResult;
@@ -310,7 +311,7 @@ class LogisticsTraceService {
       // 检查快递100是否配置
       const configStatus = expressService.getConfigStatus();
       if (!configStatus.kuaidi100) {
-        console.log('[物流查询] 快递100未配置，跳过');
+        log.info('[物流查询] 快递100未配置，跳过');
         return {
           success: false,
           trackingNo,
@@ -324,7 +325,7 @@ class LogisticsTraceService {
 
       // 转换公司代码
       const kuaidi100Code = KUAIDI100_COMPANY_MAP[companyCode] || companyCode.toLowerCase();
-      console.log(`[物流查询] 调用快递100 API: 单号=${trackingNo}, 公司代码=${kuaidi100Code}`);
+      log.info(`[物流查询] 调用快递100 API: 单号=${trackingNo}, 公司代码=${kuaidi100Code}`);
 
       const result = await expressService.queryExpress(trackingNo, kuaidi100Code);
 
@@ -362,7 +363,7 @@ class LogisticsTraceService {
         traces: []
       };
     } catch (error: any) {
-      console.error('[物流查询] 快递100查询异常:', error.message);
+      log.error('[物流查询] 快递100查询异常:', error.message);
       return {
         success: false,
         trackingNo,
@@ -399,7 +400,7 @@ class LogisticsTraceService {
 
       // 🔥 详细日志：输出配置内容
       if (config) {
-        console.log(`[物流查询] 找到API配置:`, {
+        log.info(`[物流查询] 找到API配置:`, {
           companyCode: config.companyCode,
           companyName: config.companyName,
           appId: config.appId ? `${config.appId.substring(0, 4)}***` : '(空)',
@@ -408,12 +409,12 @@ class LogisticsTraceService {
           apiEnvironment: config.apiEnvironment
         });
       } else {
-        console.log(`[物流查询] 未找到API配置: companyCode=${companyCode}`);
+        log.info(`[物流查询] 未找到API配置: companyCode=${companyCode}`);
       }
 
       return config;
     } catch (error) {
-      console.error('[物流查询] 获取API配置失败:', error);
+      log.error('[物流查询] 获取API配置失败:', error);
       return null;
     }
   }
@@ -486,12 +487,12 @@ class LogisticsTraceService {
       const phoneDigits = phone.replace(/\D/g, ''); // 移除非数字字符
       if (phoneDigits.length >= 4) {
         msgDataObj.checkPhoneNo = phoneDigits.slice(-4); // 取手机号后四位
-        console.log(`[顺丰开放平台API] 单号: ${trackingNo}, 使用手机号后4位: ${msgDataObj.checkPhoneNo}`);
+        log.info(`[顺丰开放平台API] 单号: ${trackingNo}, 使用手机号后4位: ${msgDataObj.checkPhoneNo}`);
       } else {
-        console.log(`[顺丰开放平台API] 单号: ${trackingNo}, 手机号格式不正确: ${phone}`);
+        log.info(`[顺丰开放平台API] 单号: ${trackingNo}, 手机号格式不正确: ${phone}`);
       }
     } else {
-      console.log(`[顺丰开放平台API] 单号: ${trackingNo}, 未提供手机号，可能无法查询非自己发出的运单`);
+      log.info(`[顺丰开放平台API] 单号: ${trackingNo}, 未提供手机号，可能无法查询非自己发出的运单`);
     }
 
     const msgData = JSON.stringify(msgDataObj);
@@ -508,14 +509,14 @@ class LogisticsTraceService {
       ? 'https://sfapi.sf-express.com/std/service'
       : 'https://sfapi-sbox.sf-express.com/std/service';
 
-    console.log('[顺丰开放平台API] ========== 请求参数 ==========');
-    console.log('[顺丰开放平台API] 请求URL:', apiUrl);
-    console.log('[顺丰开放平台API] partnerID:', partnerID);
-    console.log('[顺丰开放平台API] serviceCode:', serviceCode);
-    console.log('[顺丰开放平台API] timestamp:', timestamp);
-    console.log('[顺丰开放平台API] msgData(原始):', msgData);
-    console.log('[顺丰开放平台API] 是否包含手机号验证:', msgDataObj.checkPhoneNo ? `是(${msgDataObj.checkPhoneNo})` : '否');
-    console.log('[顺丰开放平台API] apiEnvironment:', config.apiEnvironment);
+    log.info('[顺丰开放平台API] ========== 请求参数 ==========');
+    log.info('[顺丰开放平台API] 请求URL:', apiUrl);
+    log.info('[顺丰开放平台API] partnerID:', partnerID);
+    log.info('[顺丰开放平台API] serviceCode:', serviceCode);
+    log.info('[顺丰开放平台API] timestamp:', timestamp);
+    log.info('[顺丰开放平台API] msgData(原始):', msgData);
+    log.info('[顺丰开放平台API] 是否包含手机号验证:', msgDataObj.checkPhoneNo ? `是(${msgDataObj.checkPhoneNo})` : '否');
+    log.info('[顺丰开放平台API] apiEnvironment:', config.apiEnvironment);
 
     // 🔥 手动构建请求体，避免URLSearchParams的二次编码问题
     const requestBody = `partnerID=${encodeURIComponent(partnerID)}&requestID=${encodeURIComponent(requestID)}&serviceCode=${encodeURIComponent(serviceCode)}&timestamp=${timestamp}&msgDigest=${encodeURIComponent(msgDigest)}&msgData=${encodedMsgData}`;
@@ -528,10 +529,10 @@ class LogisticsTraceService {
         }
       });
 
-      console.log(`[顺丰开放平台API] 单号: ${trackingNo}, 响应:`, JSON.stringify(response.data));
+      log.info(`[顺丰开放平台API] 单号: ${trackingNo}, 响应:`, JSON.stringify(response.data));
       return this.parseSFJsonResponse(trackingNo, response.data);
     } catch (error: any) {
-      console.error(`[顺丰开放平台API] 单号: ${trackingNo}, 请求失败:`, error.message);
+      log.error(`[顺丰开放平台API] 单号: ${trackingNo}, 请求失败:`, error.message);
       return {
         success: false,
         trackingNo,
@@ -560,13 +561,13 @@ class LogisticsTraceService {
     };
 
     try {
-      console.log('[顺丰开放平台API] ========== 解析响应 ==========');
-      console.log('[顺丰开放平台API] 完整响应:', JSON.stringify(data, null, 2));
+      log.info('[顺丰开放平台API] ========== 解析响应 ==========');
+      log.info('[顺丰开放平台API] 完整响应:', JSON.stringify(data, null, 2));
 
       // 检查API响应状态
       if (data.apiResultCode !== 'A1000') {
         result.statusText = `API错误: ${data.apiErrorMsg || data.apiResultCode}`;
-        console.error('[顺丰开放平台API] 错误:', result.statusText);
+        log.error('[顺丰开放平台API] 错误:', result.statusText);
         return result;
       }
 
@@ -576,7 +577,7 @@ class LogisticsTraceService {
         try {
           resultData = JSON.parse(data.apiResultData);
         } catch (e) {
-          console.error('[顺丰开放平台API] 解析apiResultData失败:', e);
+          log.error('[顺丰开放平台API] 解析apiResultData失败:', e);
           result.statusText = '解析响应数据失败';
           return result;
         }
@@ -584,8 +585,8 @@ class LogisticsTraceService {
         resultData = data.apiResultData;
       }
 
-      console.log('[顺丰开放平台API] resultData:', JSON.stringify(resultData, null, 2));
-      console.log('[顺丰开放平台API] resultData所有键:', Object.keys(resultData || {}));
+      log.info('[顺丰开放平台API] resultData:', JSON.stringify(resultData, null, 2));
+      log.info('[顺丰开放平台API] resultData所有键:', Object.keys(resultData || {}));
 
       if (!resultData.success) {
         const errorCode = resultData.errorCode || '';
@@ -614,14 +615,14 @@ class LogisticsTraceService {
         }
 
         result.statusText = friendlyMsg;
-        console.error('[顺丰开放平台API] 业务错误:', { errorCode, errorMsg, friendlyMsg });
+        log.error('[顺丰开放平台API] 业务错误:', { errorCode, errorMsg, friendlyMsg });
         return result;
       }
 
       // 🔥 解析路由信息 - 支持多种可能的数据结构
       const msgData = resultData.msgData || resultData;
-      console.log('[顺丰开放平台API] msgData键:', Object.keys(msgData || {}));
-      console.log('[顺丰开放平台API] msgData完整内容:', JSON.stringify(msgData, null, 2));
+      log.info('[顺丰开放平台API] msgData键:', Object.keys(msgData || {}));
+      log.info('[顺丰开放平台API] msgData完整内容:', JSON.stringify(msgData, null, 2));
 
       // 尝试多种可能的路由数据路径
       let routeResps = msgData?.routeResps || msgData?.routeResp || [];
@@ -629,7 +630,7 @@ class LogisticsTraceService {
         routeResps = [routeResps];
       }
 
-      console.log('[顺丰开放平台API] routeResps数量:', routeResps.length);
+      log.info('[顺丰开放平台API] routeResps数量:', routeResps.length);
 
       if (routeResps.length === 0) {
         // 🔥 尝试其他可能的数据结构
@@ -646,12 +647,12 @@ class LogisticsTraceService {
         routeResp = routeResps[0];
       }
 
-      console.log('[顺丰开放平台API] routeResp:', JSON.stringify(routeResp, null, 2));
+      log.info('[顺丰开放平台API] routeResp:', JSON.stringify(routeResp, null, 2));
 
       if (routeResp) {
         // 🔥 尝试多种可能的路由字段名
         const routes = routeResp.routes || routeResp.routeList || routeResp.route || [];
-        console.log('[顺丰开放平台API] routes数量:', routes.length);
+        log.info('[顺丰开放平台API] routes数量:', routes.length);
 
         if (routes.length > 0) {
           result.success = true;
@@ -662,9 +663,9 @@ class LogisticsTraceService {
             location: r.acceptAddress || r.location || r.city || ''
           }));
 
-          console.log('[顺丰开放平台API] 解析到轨迹数量:', result.traces.length);
+          log.info('[顺丰开放平台API] 解析到轨迹数量:', result.traces.length);
           if (result.traces.length > 0) {
-            console.log('[顺丰开放平台API] 第一条轨迹:', result.traces[0]);
+            log.info('[顺丰开放平台API] 第一条轨迹:', result.traces[0]);
           }
 
           // 设置最新状态 (路由按时间倒序，第一条是最新的)
@@ -673,23 +674,23 @@ class LogisticsTraceService {
             const statusInfo = this.mapSFStatus(latestOpcode);
             result.status = statusInfo.status;
             result.statusText = statusInfo.text;
-            console.log('[顺丰开放平台API] 最新状态:', result.status, result.statusText);
+            log.info('[顺丰开放平台API] 最新状态:', result.status, result.statusText);
 
             // 🔥 计算预计送达时间（顺丰）
             result.estimatedDeliveryTime = this.calculateEstimatedDeliveryTime(result.status, result.traces, 'SF');
           }
         } else {
-          console.log('[顺丰开放平台API] routes为空');
+          log.info('[顺丰开放平台API] routes为空');
           // 🔥 改进提示：告知用户可能的原因
           result.statusText = '未查询到物流轨迹。可能原因：1.运单刚发出，建议12-24小时后再查询 2.需要配置快递100作为备选查询渠道';
         }
       } else {
-        console.log('[顺丰开放平台API] 未找到routeResp');
+        log.info('[顺丰开放平台API] 未找到routeResp');
         result.statusText = '未查询到物流轨迹（无routeResp）';
       }
     } catch (error: any) {
-      console.error('[顺丰开放平台API] 解析响应失败:', error.message);
-      console.error('[顺丰开放平台API] 错误堆栈:', error.stack);
+      log.error('[顺丰开放平台API] 解析响应失败:', error.message);
+      log.error('[顺丰开放平台API] 错误堆栈:', error.stack);
       result.statusText = '解析响应失败: ' + error.message;
     }
 
@@ -932,8 +933,8 @@ class LogisticsTraceService {
     const envFlag = config.apiEnvironment === 'production' ? 'PROD' : 'TEST';
     const apiUrl = `${baseUrl}/${config.appId}/${envFlag}`;
 
-    console.log('[圆通API] 请求URL:', apiUrl);
-    console.log('[圆通API] 请求数据:', dataStr);
+    log.info('[圆通API] 请求URL:', apiUrl);
+    log.info('[圆通API] 请求数据:', dataStr);
 
     const response = await axios.post(apiUrl, {
       data: dataStr,
@@ -949,7 +950,7 @@ class LogisticsTraceService {
       timeout: 10000
     });
 
-    console.log('[圆通API] 响应:', JSON.stringify(response.data));
+    log.info('[圆通API] 响应:', JSON.stringify(response.data));
     return this.parseYTOResponse(trackingNo, response.data);
   }
 

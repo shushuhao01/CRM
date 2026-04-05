@@ -32,7 +32,7 @@
               <li><router-link to="/docs/customer/add">添加客户</router-link></li>
               <li><router-link to="/docs/customer/follow">客户跟进</router-link></li>
               <li><router-link to="/docs/customer/assign">客户分配</router-link></li>
-              <li><router-link to="/docs/customer/pool">公海池管理</router-link></li>
+              <li><router-link to="/docs/customer/pool">分组与标签</router-link></li>
             </ul>
           </div>
 
@@ -54,7 +54,7 @@
               <li><router-link to="/docs/report/performance">业绩统计</router-link></li>
               <li><router-link to="/docs/report/ranking">团队排名</router-link></li>
               <li><router-link to="/docs/report/export">数据导出</router-link></li>
-              <li><router-link to="/docs/report/custom">自定义报表</router-link></li>
+              <li><router-link to="/docs/report/custom">数据看板</router-link></li>
             </ul>
           </div>
 
@@ -85,20 +85,20 @@
           <h2>还需要帮助？</h2>
           <p>如果文档没有解决您的问题，请联系我们的技术支持团队</p>
           <div class="help-actions">
-            <a :href="wechatServiceUrl" target="_blank" class="help-card">
+            <a :href="serviceUrl" target="_blank" class="help-card">
               <span class="help-icon">💬</span>
               <span class="help-title">在线客服</span>
               <span class="help-desc">工作日 9:00-18:00</span>
             </a>
-            <a href="mailto:xianhuquwang@163.com" class="help-card">
+            <a :href="'mailto:' + contactEmail" class="help-card">
               <span class="help-icon">📧</span>
               <span class="help-title">提交工单</span>
               <span class="help-desc">24小时内响应</span>
             </a>
-            <a href="tel:13570727364" class="help-card">
+            <a :href="'tel:' + servicePhone" class="help-card">
               <span class="help-icon">📞</span>
               <span class="help-title">电话支持</span>
-              <span class="help-desc">135-7072-7364</span>
+              <span class="help-desc">{{ servicePhone }}</span>
             </a>
           </div>
         </div>
@@ -108,10 +108,18 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed, onMounted } from 'vue'
+import { getWebsiteConfig, type WebsiteConfig } from '@/api/website-config'
 
 const searchQuery = ref('')
-const wechatServiceUrl = 'https://work.weixin.qq.com/kfid/kfc461ca9f5b45c8d25'
+const config = ref<Partial<WebsiteConfig>>({})
+const serviceUrl = computed(() => config.value.customerServiceUrl || 'https://work.weixin.qq.com/kfid/kfc461ca9f5b45c8d25')
+const contactEmail = computed(() => config.value.serviceEmail || config.value.contactEmail || 'xianhuquwang@163.com')
+const servicePhone = computed(() => config.value.servicePhone || '13570727364')
+
+onMounted(async () => {
+  config.value = await getWebsiteConfig()
+})
 </script>
 
 <style lang="scss" scoped>

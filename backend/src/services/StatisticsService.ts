@@ -7,6 +7,7 @@ import { License } from '../entities/License';
 import { PrivateCustomer } from '../entities/PrivateCustomer';
 import { cacheService } from './CacheService';
 
+import { log } from '../config/logger';
 export class StatisticsService {
   /**
    * 获取仪表盘统计数据（带缓存）
@@ -188,7 +189,7 @@ export class StatisticsService {
         byPackage
       };
     } catch (error) {
-      console.error('[StatisticsService] Fetch tenant stats failed:', error);
+      log.error('[StatisticsService] Fetch tenant stats failed:', error);
       // 返回默认值
       return {
         total: 0,
@@ -272,7 +273,7 @@ export class StatisticsService {
         maxUsers: Number(result.maxUsers)
       };
     } catch (error) {
-      console.error('[StatisticsService] Get user stats failed:', error);
+      log.error('[StatisticsService] Get user stats failed:', error);
       // 返回默认值
       return {
         totalUsers: 0,

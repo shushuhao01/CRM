@@ -5,8 +5,10 @@ import { Router, Request, Response } from 'express';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
+import crypto from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
 
+import { log } from '../../config/logger';
 const router = Router();
 
 // 确保上传目录存在
@@ -52,7 +54,16 @@ const fileFilter = (req: Request, file: Express.Multer.File, cb: multer.FileFilt
     if (allowedExts.includes(ext)) {
       cb(null, true);
     } else {
-      cb(new Error('仅支�?pem、crt、key、p12、pfx 格式证书文件'));
+      cb(new Error('仅支持 pem、crt、key、p12、pfx 格式证书文件'));
+    }
+  } else if (category === 'version') {
+    // 版本更新包
+    const allowedExts = ['.zip', '.gz', '.tgz', '.tar'];
+    const ext = path.extname(file.originalname).toLowerCase();
+    if (allowedExts.includes(ext)) {
+      cb(null, true);
+    } else {
+      cb(new Error('仅支持 zip、tar.gz、tgz 格式压缩包'));
     }
   } else {
     // 通用类型
@@ -64,7 +75,50 @@ const upload = multer({
   storage,
   fileFilter,
   limits: {
-    fileSize: 10 * 1024 * 1024 // 10MB
+    fileSize: 10 * 1024 * 1024 // 10MB (默认)
+  }
+});
+
+// 版本包上传（支持更大文件）
+const versionUpload = multer({
+  storage,
+  fileFilter,
+  limits: {
+    fileSize: 200 * 1024 * 1024 // 200MB
+  }
+});
+
+// 版本包上传（专用路由，支持大文件）
+router.post('/version-package', versionUpload.single('file'), async (req: Request, res: Response) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: '请选择要上传的版本包文件' });
+    }
+
+    const relativePath = `/uploads/admin/version/${req.file.filename}`;
+    const absolutePath = path.join(uploadBaseDir, 'version', req.file.filename);
+
+    // 计算文件 hash
+    const fileBuffer = fs.readFileSync(absolutePath);
+    const hashSum = crypto.createHash('sha256');
+    hashSum.update(fileBuffer);
+    const fileHash = hashSum.digest('hex');
+
+    res.json({
+      success: true,
+      message: '版本包上传成功',
+      data: {
+        url: relativePath,
+        packagePath: absolutePath,
+        filename: req.file.filename,
+        originalname: req.file.originalname,
+        size: req.file.size,
+        fileHash
+      }
+    });
+  } catch (error: any) {
+    log.error('[Admin Upload] Version package upload failed:', error);
+    res.status(500).json({ success: false, message: error.message || '版本包上传失败' });
   }
 });
 
@@ -90,7 +144,7 @@ router.post('/', upload.single('file'), async (req: Request, res: Response) => {
       }
     });
   } catch (error: any) {
-    console.error('[Admin Upload] Upload failed:', error);
+    log.error('[Admin Upload] Upload failed:', error);
     res.status(500).json({ success: false, message: error.message || '上传失败' });
   }
 });
@@ -118,7 +172,7 @@ router.post('/multiple', upload.array('files', 10), async (req: Request, res: Re
       data: results
     });
   } catch (error: any) {
-    console.error('[Admin Upload] Multiple upload failed:', error);
+    log.error('[Admin Upload] Multiple upload failed:', error);
     res.status(500).json({ success: false, message: error.message || '上传失败' });
   }
 });

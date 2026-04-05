@@ -4,11 +4,13 @@
  */
 import crypto from 'crypto';
 import axios from 'axios';
+import bcrypt from 'bcryptjs';
 import { AppDataSource } from '../config/database';
 import { paymentService } from './PaymentService';
 import { notificationTemplateService } from './NotificationTemplateService';
 import { SITE_CONFIG } from '../config/sites';
 
+import { log } from '../config/logger';
 export class AlipayService {
   /**
    * 解密配置数据
@@ -108,19 +110,19 @@ export class AlipayService {
             }
           }
         } catch (apiError: any) {
-          console.error('[Alipay] API调用失败:', apiError.response?.data || apiError.message);
+          log.error('[Alipay] API调用失败:', apiError.response?.data || apiError.message);
           // API调用失败，返回模拟数据
         }
       }
 
       // 返回模拟数据（开发/测试环境）
-      console.log('[Alipay] 使用模拟支付二维码');
+      log.info('[Alipay] 使用模拟支付二维码');
       return {
         qrCode: `MOCK_ALIPAY_${params.orderNo}`,
         payUrl: `https://qr.alipay.com/mock_${params.orderNo}`
       };
     } catch (error: any) {
-      console.error('[Alipay] Create QR pay failed:', error);
+      log.error('[Alipay] Create QR pay failed:', error);
       throw new Error(`创建支付宝支付失败: ${error.message}`);
     }
   }
@@ -145,7 +147,7 @@ export class AlipayService {
 
       return verify.verify(config.alipayPublicKey, sign, 'base64');
     } catch (error) {
-      console.error('[Alipay] Verify signature failed:', error);
+      log.error('[Alipay] Verify signature failed:', error);
       return false;
     }
   }
@@ -160,7 +162,7 @@ export class AlipayService {
       // 验证签名
       const isValid = await this.verifySignature(params, sign);
       if (!isValid) {
-        console.error('[Alipay] 签名验证失败');
+        log.error('[Alipay] 签名验证失败');
         // 在开发环境可以跳过签名验证
         if (process.env.NODE_ENV === 'production') {
           throw new Error('签名验证失败');
@@ -210,7 +212,7 @@ export class AlipayService {
 
       return 'success';
     } catch (error: any) {
-      console.error('[Alipay] Handle callback failed:', error);
+      log.error('[Alipay] Handle callback failed:', error);
 
       // 记录错误日志
       await paymentService.logPayment({
@@ -322,9 +324,9 @@ export class AlipayService {
         email: tenant.email
       });
 
-      console.log(`[Alipay] 租户 ${tenantId} 已激活，授权码: ${licenseKey}`);
+      log.info(`[Alipay] 租户 ${tenantId} 已激活，授权码: ${licenseKey}`);
     } catch (error: any) {
-      console.error('[Alipay] 激活租户失败:', error);
+      log.error('[Alipay] 激活租户失败:', error);
       throw error;
     }
   }
@@ -341,31 +343,31 @@ export class AlipayService {
       );
 
       if (existingAdmins.length > 0) {
-        console.log(`[Alipay] 租户 ${tenantCode} 已存在管理员账号，跳过创建`);
+        log.info(`[Alipay] 租户 ${tenantCode} 已存在管理员账号，跳过创建`);
         return;
       }
 
       const userId = crypto.randomUUID();
       const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
 
-      // 密码：admin123
-      const salt = crypto.randomBytes(16).toString('hex');
-      const hash = crypto.pbkdf2Sync('admin123', salt, 1000, 64, 'sha512').toString('hex');
+      // 密码：admin123 — 统一使用 bcryptjs 加密（与系统登录验证一致）
+      const saltRounds = 12;
+      const hash = await bcrypt.hash('admin123', saltRounds);
 
       await AppDataSource.query(
         `INSERT INTO users (
-          id, tenant_id, username, password, salt, real_name, role,
+          id, tenant_id, username, password, real_name, role,
           status, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
-          userId, tenantId, 'admin', hash, salt, '系统管理员', 'admin',
+          userId, tenantId, 'admin', hash, '系统管理员', 'admin',
           'active', now, now
         ]
       );
 
-      console.log(`[Alipay] 已为租户 ${tenantCode} 创建默认管理员账号 (admin/admin123)`);
+      log.info(`[Alipay] 已为租户 ${tenantCode} 创建默认管理员账号 (admin/admin123)`);
     } catch (error: any) {
-      console.error('[Alipay] 创建默认管理员失败:', error);
+      log.error('[Alipay] 创建默认管理员失败:', error);
       // 不抛出错误，避免影响激活流程
     }
   }
@@ -422,9 +424,9 @@ export class AlipayService {
         priority: 'high'
       });
 
-      console.log(`[Alipay] 已发送支付成功通知给租户 ${params.tenantName}`);
+      log.info(`[Alipay] 已发送支付成功通知给租户 ${params.tenantName}`);
     } catch (error) {
-      console.error('[Alipay] 发送支付通知失败:', error);
+      log.error('[Alipay] 发送支付通知失败:', error);
       // 不抛出错误，避免影响激活流程
     }
   }
@@ -456,7 +458,7 @@ export class AlipayService {
         }
       };
     } catch (error: any) {
-      console.error('[Alipay] Query order failed:', error);
+      log.error('[Alipay] Query order failed:', error);
       throw new Error('查询订单失败');
     }
   }

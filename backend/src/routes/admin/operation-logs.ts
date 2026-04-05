@@ -4,6 +4,7 @@
 import { Router, Request, Response } from 'express';
 import { AppDataSource } from '../../config/database';
 
+import { log } from '../../config/logger';
 const router = Router();
 
 // 获取操作日志列表
@@ -81,7 +82,7 @@ router.get('/', async (req: Request, res: Response) => {
       }
     });
   } catch (error: any) {
-    console.error('[OperationLogs] Query failed:', error);
+    log.error('[OperationLogs] Query failed:', error);
     res.status(500).json({ success: false, message: '查询操作日志失败' });
   }
 });
@@ -112,7 +113,7 @@ router.get('/statistics', async (req: Request, res: Response) => {
       }
     });
   } catch (error: any) {
-    console.error('[OperationLogs] Statistics failed:', error);
+    log.error('[OperationLogs] Statistics failed:', error);
     res.status(500).json({ success: false, message: '获取统计失败' });
   }
 });
@@ -138,7 +139,7 @@ router.post('/fix-history', async (req: Request, res: Response) => {
       message: `修复完成：${fixed1} 条模块分类已修正，${fixed2} 条IP地址已修正`
     });
   } catch (error: any) {
-    console.error('[OperationLogs] Fix history failed:', error);
+    log.error('[OperationLogs] Fix history failed:', error);
     res.status(500).json({ success: false, message: '修复失败: ' + error.message });
   }
 });
@@ -182,7 +183,7 @@ export async function logOperation(params: {
       ]
     );
   } catch (error) {
-    console.error('[OperationLogs] Failed to log operation:', error);
+    log.error('[OperationLogs] Failed to log operation:', error);
   }
 }
 

@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia'
+import { setEncryptedStorage, getEncryptedStorage } from '@/utils/crypto'
 
 export interface UserInfo {
   id: string
@@ -46,16 +47,17 @@ export const useUserStore = defineStore('user', {
       this.userInfo = data.user
       this.isLoggedIn = true
 
-      // 持久化存储
-      uni.setStorageSync('token', data.token)
-      uni.setStorageSync('userInfo', JSON.stringify(data.user))
+      // 🔒 加密持久化存储（替代明文存储）
+      setEncryptedStorage('token', data.token)
+      setEncryptedStorage('userInfo', JSON.stringify(data.user))
     },
 
     // 设置WebSocket信息
     setWsInfo(wsToken: string, wsUrl: string) {
       this.wsToken = wsToken
       this.wsUrl = wsUrl
-      uni.setStorageSync('wsToken', wsToken)
+      setEncryptedStorage('wsToken', wsToken)
+      // wsUrl 不需加密（非敏感数据）
       uni.setStorageSync('wsUrl', wsUrl)
     },
 
@@ -63,6 +65,7 @@ export const useUserStore = defineStore('user', {
     setDeviceInfo(deviceInfo: DeviceInfo) {
       this.deviceInfo = deviceInfo
       this.isBound = true
+      // 设备信息非敏感，无需加密
       uni.setStorageSync('deviceInfo', JSON.stringify(deviceInfo))
     },
 
@@ -94,12 +97,13 @@ export const useUserStore = defineStore('user', {
       uni.removeStorageSync('deviceInfo')
     },
 
-    // 从本地存储恢复
+    // 从本地存储恢复（兼容旧版明文数据 + 新版加密数据）
     restore() {
       try {
-        const token = uni.getStorageSync('token')
-        const userInfo = uni.getStorageSync('userInfo')
-        const wsToken = uni.getStorageSync('wsToken')
+        // 🔒 使用加密读取（自动兼容旧版明文数据）
+        const token = getEncryptedStorage('token')
+        const userInfo = getEncryptedStorage('userInfo')
+        const wsToken = getEncryptedStorage('wsToken')
         const wsUrl = uni.getStorageSync('wsUrl')
         const deviceInfo = uni.getStorageSync('deviceInfo')
 

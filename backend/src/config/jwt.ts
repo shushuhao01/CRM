@@ -1,3 +1,4 @@
+import { log } from './logger';
 import jwt, { SignOptions } from 'jsonwebtoken';
 
 export interface JwtPayload {
@@ -29,7 +30,7 @@ export class JwtConfig {
 
     // 仅开发环境输出日志
     if (process.env.NODE_ENV === 'development') {
-      console.log('[JWT] 生成访问令牌，有效期:', expiresIn);
+      log.info('[JWT] 生成访问令牌，有效期:', expiresIn);
     }
 
     return jwt.sign(payload, this.ACCESS_TOKEN_SECRET, {
@@ -77,7 +78,7 @@ export class JwtConfig {
     } catch (error) {
       // 仅在开发环境输出错误详情
       if (process.env.NODE_ENV === 'development') {
-        console.error('[JWT] Token验证失败:', error instanceof Error ? error.message : '未知错误');
+        log.error('[JWT] Token验证失败:', error instanceof Error ? error.message : '未知错误');
       }
       throw new Error('Invalid access token');
     }

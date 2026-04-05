@@ -13,6 +13,11 @@ export interface Package {
   yearly_discount_rate: number
   yearly_bonus_months: number
   yearly_price: number | null
+  subscription_enabled: boolean
+  subscription_channels: 'wechat' | 'alipay' | 'all'
+  subscription_billing_cycle: 'monthly' | 'yearly' | 'both'
+  subscription_discount_rate: number
+  subscription_price?: number
   duration_days: number
   max_users: number
   max_storage_gb: number

@@ -23,6 +23,27 @@ export class Version {
   @Column({ name: 'download_url', type: 'varchar', length: 500, nullable: true })
   downloadUrl?: string;
 
+  @Column({ name: 'source_type', type: 'varchar', length: 20, default: 'url' })
+  sourceType?: string;
+
+  @Column({ name: 'git_repo_url', type: 'varchar', length: 500, nullable: true })
+  gitRepoUrl?: string;
+
+  @Column({ name: 'git_branch', type: 'varchar', length: 100, nullable: true, default: 'main' })
+  gitBranch?: string;
+
+  @Column({ name: 'git_tag', type: 'varchar', length: 100, nullable: true })
+  gitTag?: string;
+
+  @Column({ name: 'package_path', type: 'varchar', length: 500, nullable: true })
+  packagePath?: string;
+
+  @Column({ name: 'target_audience', type: 'varchar', length: 20, default: 'all' })
+  targetAudience?: string;
+
+  @Column({ name: 'release_notes_html', type: 'text', nullable: true })
+  releaseNotesHtml?: string;
+
   @Column({ name: 'file_size', type: 'varchar', length: 20, nullable: true })
   fileSize?: string;
 

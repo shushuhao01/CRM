@@ -13,6 +13,7 @@ import { getTenantRepo } from '../utils/tenantRepo';
 import { TenantContextManager } from '../utils/tenantContext';
 import { deployConfig } from '../config/deploy';
 
+import { log } from '../config/logger';
 const router = Router();
 
 router.use(authenticateToken);
@@ -110,7 +111,7 @@ router.get('/performance-data/statistics', async (req: Request, res: Response) =
       }
     });
   } catch (error: any) {
-    console.error('[Finance] Get statistics failed:', error);
+    log.error('[Finance] Get statistics failed:', error);
     res.status(500).json({ success: false, message: 'Failed to get statistics' });
   }
 });
@@ -268,7 +269,7 @@ router.get('/performance-data', async (req: Request, res: Response) => {
 
     res.json({ success: true, data: { list, total, page: pageNum, pageSize: pageSizeNum } });
   } catch (error: any) {
-    console.error('[Finance] Get performance data failed:', error);
+    log.error('[Finance] Get performance data failed:', error);
     res.status(500).json({ success: false, message: 'Failed to get data' });
   }
 });
@@ -326,14 +327,14 @@ router.get('/performance-manage/statistics', async (req: Request, res: Response)
         .getRawOne()
     ]);
 
-    console.log(`[Finance] 绩效管理统计: 待处理=${pendingCount}, 已处理=${processedCount}, 有效=${validCount}, 无效=${invalidCount}, 全部=${totalCount}, 系数合计=${coefficientSum?.total || 0}`);
+    log.info(`[Finance] 绩效管理统计: 待处理=${pendingCount}, 已处理=${processedCount}, 有效=${validCount}, 无效=${invalidCount}, 全部=${totalCount}, 系数合计=${coefficientSum?.total || 0}`);
 
     res.json({
       success: true,
       data: { pendingCount, processedCount, validCount, invalidCount, totalCount, coefficientSum: parseFloat(coefficientSum?.total || '0') }
     });
   } catch (error: any) {
-    console.error('[Finance] Get manage statistics failed:', error);
+    log.error('[Finance] Get manage statistics failed:', error);
     res.status(500).json({ success: false, message: 'Failed to get statistics' });
   }
 });
@@ -461,7 +462,7 @@ router.get('/performance-manage', async (req: Request, res: Response) => {
 
     res.json({ success: true, data: { list, total, page: pageNum, pageSize: pageSizeNum } });
   } catch (error: any) {
-    console.error('[Finance] Get performance manage failed:', error);
+    log.error('[Finance] Get performance manage failed:', error);
     res.status(500).json({ success: false, message: 'Failed to get data' });
   }
 });
@@ -512,7 +513,7 @@ router.put('/performance/batch', async (req: Request, res: Response) => {
 
     res.json({ success: true, message: `Updated ${updateCount} orders`, data: { updateCount } });
   } catch (error: any) {
-    console.error('[Finance] Batch update failed:', error);
+    log.error('[Finance] Batch update failed:', error);
     res.status(500).json({ success: false, message: 'Batch update failed' });
   }
 });
@@ -525,19 +526,19 @@ router.put('/performance/:orderId', async (req: Request, res: Response) => {
     const user = (req as any).user;
     const userId = user?.userId || user?.id || '';
 
-    console.log('[绩效更新] ========== 开始更新 ==========');
-    console.log('[绩效更新] 订单ID:', orderId);
-    console.log('[绩效更新] 请求参数:', { performanceStatus, performanceCoefficient, performanceRemark, startDate, endDate });
+    log.info('[绩效更新] ========== 开始更新 ==========');
+    log.info('[绩效更新] 订单ID:', orderId);
+    log.info('[绩效更新] 请求参数:', { performanceStatus, performanceCoefficient, performanceRemark, startDate, endDate });
 
     const orderRepo = getTenantRepo(Order);
     const order = await orderRepo.findOne({ where: { id: orderId } });
 
     if (!order) {
-      console.log('[绩效更新] 订单不存在');
+      log.info('[绩效更新] 订单不存在');
       return res.status(404).json({ success: false, message: 'Order not found' });
     }
 
-    console.log('[绩效更新] 订单信息:', {
+    log.info('[绩效更新] 订单信息:', {
       orderNumber: order.orderNumber,
       status: order.status,
       totalAmount: order.totalAmount,
@@ -553,15 +554,15 @@ router.put('/performance/:orderId', async (req: Request, res: Response) => {
     order.performanceUpdatedAt = new Date();
     order.performanceUpdatedBy = userId;
 
-    console.log('[绩效更新] 更新后状态:', order.performanceStatus, '系数:', order.performanceCoefficient);
+    log.info('[绩效更新] 更新后状态:', order.performanceStatus, '系数:', order.performanceCoefficient);
 
     // 🔥 修复：待处理状态也应该计算预估佣金
     // 只有无效状态或系数为0时，佣金才设为0
     if (order.performanceStatus === 'invalid' || order.performanceCoefficient === 0) {
-      console.log('[绩效更新] 状态为无效或系数为0，佣金设为0');
+      log.info('[绩效更新] 状态为无效或系数为0，佣金设为0');
       order.estimatedCommission = 0;
     } else {
-      console.log('[绩效更新] 开始计算佣金...');
+      log.info('[绩效更新] 开始计算佣金...');
       // 根据订单所属部门和创建人计算佣金
       const commission = await calculateCommission(
         order.totalAmount,
@@ -571,13 +572,13 @@ router.put('/performance/:orderId', async (req: Request, res: Response) => {
         startDate as string,
         endDate as string
       );
-      console.log('[绩效更新] 计算完成，佣金:', commission);
+      log.info('[绩效更新] 计算完成，佣金:', commission);
       order.estimatedCommission = commission;
     }
 
     await orderRepo.save(order);
-    console.log('[绩效更新] 保存成功，最终佣金:', order.estimatedCommission);
-    console.log('[绩效更新] ========== 更新完成 ==========');
+    log.info('[绩效更新] 保存成功，最终佣金:', order.estimatedCommission);
+    log.info('[绩效更新] ========== 更新完成 ==========');
 
     res.json({
       success: true,
@@ -585,7 +586,7 @@ router.put('/performance/:orderId', async (req: Request, res: Response) => {
       data: { performanceStatus: order.performanceStatus, performanceCoefficient: order.performanceCoefficient, performanceRemark: order.performanceRemark, estimatedCommission: order.estimatedCommission }
     });
   } catch (error: any) {
-    console.error('[Finance] Update performance failed:', error);
+    log.error('[Finance] Update performance failed:', error);
     res.status(500).json({ success: false, message: 'Update failed' });
   }
 });
@@ -605,16 +606,16 @@ async function calculateCommission(
   endDate?: string
 ): Promise<number> {
   try {
-    console.log('[佣金计算] ========== 开始计算 ==========');
-    console.log('[佣金计算] 订单金额:', orderAmount);
-    console.log('[佣金计算] 系数:', coefficient);
-    console.log('[佣金计算] 部门ID:', departmentId);
-    console.log('[佣金计算] 用户ID:', userId);
-    console.log('[佣金计算] 时间范围:', startDate, '至', endDate);
+    log.info('[佣金计算] ========== 开始计算 ==========');
+    log.info('[佣金计算] 订单金额:', orderAmount);
+    log.info('[佣金计算] 系数:', coefficient);
+    log.info('[佣金计算] 部门ID:', departmentId);
+    log.info('[佣金计算] 用户ID:', userId);
+    log.info('[佣金计算] 时间范围:', startDate, '至', endDate);
 
     // 系数为0时，佣金为0
     if (coefficient === 0) {
-      console.log('[佣金计算] 系数为0，返回佣金0');
+      log.info('[佣金计算] 系数为0，返回佣金0');
       return 0;
     }
 
@@ -629,7 +630,7 @@ async function calculateCommission(
         where: { departmentId: departmentId, isActive: 1 },
         order: { sortOrder: 'ASC' }
       });
-      console.log('[佣金计算] 查找部门阶梯配置:', departmentId, '找到', ladders.length, '个');
+      log.info('[佣金计算] 查找部门阶梯配置:', departmentId, '找到', ladders.length, '个');
     }
 
     // 如果该部门没有配置，查找全局配置
@@ -640,18 +641,18 @@ async function calculateCommission(
         .andWhere('(l.departmentId IS NULL OR l.departmentId = :empty)', { empty: '' })
         .orderBy('l.sortOrder', 'ASC')
         .getMany();
-      console.log('[佣金计算] 查找全局阶梯配置，找到', ladders.length, '个');
+      log.info('[佣金计算] 查找全局阶梯配置，找到', ladders.length, '个');
     }
 
     if (ladders.length === 0) {
-      console.log('[佣金计算] 没有找到阶梯配置，返回佣金0');
+      log.info('[佣金计算] 没有找到阶梯配置，返回佣金0');
       return 0;
     }
 
     const firstLadder = ladders[0];
     const commissionType = firstLadder.commissionType;
-    console.log('[佣金计算] 计提类型:', commissionType);
-    console.log('[佣金计算] 阶梯配置:', ladders.map(l => ({
+    log.info('[佣金计算] 计提类型:', commissionType);
+    log.info('[佣金计算] 阶梯配置:', ladders.map(l => ({
       min: l.minValue,
       max: l.maxValue,
       rate: l.commissionRate,
@@ -681,7 +682,7 @@ async function calculateCommission(
 
         const result = await query.getRawOne();
         totalAmount = parseFloat(result?.total || '0');
-        console.log('[佣金计算] 统计签收业绩总金额（只统计有效订单）:', totalAmount);
+        log.info('[佣金计算] 统计签收业绩总金额（只统计有效订单）:', totalAmount);
       }
 
       // 根据总业绩匹配阶梯
@@ -689,18 +690,18 @@ async function calculateCommission(
       for (const ladder of ladders) {
         const min = parseFloat(ladder.minValue?.toString() || '0');
         const max = ladder.maxValue ? parseFloat(ladder.maxValue.toString()) : Infinity;
-        console.log('[佣金计算] 检查阶梯:', min, '-', max, '当前业绩:', totalAmount);
+        log.info('[佣金计算] 检查阶梯:', min, '-', max, '当前业绩:', totalAmount);
         if (totalAmount >= min && totalAmount < max) {
           rate = parseFloat(ladder.commissionRate?.toString() || '0');
-          console.log('[佣金计算] ✓ 匹配阶梯，比例:', rate);
+          log.info('[佣金计算] ✓ 匹配阶梯，比例:', rate);
           break;
         }
       }
 
       // 计算单个订单佣金
       const commission = orderAmount * coefficient * rate;
-      console.log('[佣金计算] 最终佣金 =', orderAmount, '×', coefficient, '×', rate, '=', commission);
-      console.log('[佣金计算] ========== 计算结束 ==========');
+      log.info('[佣金计算] 最终佣金 =', orderAmount, '×', coefficient, '×', rate, '=', commission);
+      log.info('[佣金计算] ========== 计算结束 ==========');
       return commission;
     }
 
@@ -724,7 +725,7 @@ async function calculateCommission(
 
         const result = await query.getRawOne();
         totalCount = parseFloat(result?.total || '0');
-        console.log('[佣金计算] 统计签收订单数量（系数合计，只统计有效订单）:', totalCount);
+        log.info('[佣金计算] 统计签收订单数量（系数合计，只统计有效订单）:', totalCount);
       }
 
       // 根据总单数匹配阶梯
@@ -732,25 +733,25 @@ async function calculateCommission(
       for (const ladder of ladders) {
         const min = parseFloat(ladder.minValue?.toString() || '0');
         const max = ladder.maxValue ? parseFloat(ladder.maxValue.toString()) : Infinity;
-        console.log('[佣金计算] 检查阶梯:', min, '-', max, '当前单数:', totalCount);
+        log.info('[佣金计算] 检查阶梯:', min, '-', max, '当前单数:', totalCount);
         if (totalCount >= min && totalCount < max) {
           perUnit = parseFloat(ladder.commissionPerUnit?.toString() || '0');
-          console.log('[佣金计算] ✓ 匹配阶梯，单价:', perUnit);
+          log.info('[佣金计算] ✓ 匹配阶梯，单价:', perUnit);
           break;
         }
       }
 
       // 计算单个订单佣金
       const commission = coefficient * perUnit;
-      console.log('[佣金计算] 最终佣金 =', coefficient, '×', perUnit, '=', commission);
-      console.log('[佣金计算] ========== 计算结束 ==========');
+      log.info('[佣金计算] 最终佣金 =', coefficient, '×', perUnit, '=', commission);
+      log.info('[佣金计算] ========== 计算结束 ==========');
       return commission;
     }
 
-    console.log('[佣金计算] 未知的计提类型:', commissionType);
+    log.info('[佣金计算] 未知的计提类型:', commissionType);
     return 0;
   } catch (error) {
-    console.error('[Finance] Calculate commission failed:', error);
+    log.error('[Finance] Calculate commission failed:', error);
     return 0;
   }
 }
@@ -777,7 +778,7 @@ router.get('/config', async (_req: Request, res: Response) => {
 
     res.json({ success: true, data: { statusConfigs, coefficientConfigs, remarkConfigs, amountLadders, countLadders, settings: settingsObj } });
   } catch (error: any) {
-    console.error('[Finance] Get config failed:', error);
+    log.error('[Finance] Get config failed:', error);
     res.status(500).json({ success: false, message: 'Failed to get config' });
   }
 });
@@ -798,7 +799,7 @@ router.post('/config', async (req: Request, res: Response) => {
 
     res.json({ success: true, message: 'Added successfully', data: config });
   } catch (error: any) {
-    console.error('[Finance] Add config failed:', error);
+    log.error('[Finance] Add config failed:', error);
     res.status(500).json({ success: false, message: 'Add failed' });
   }
 });
@@ -824,7 +825,7 @@ router.put('/config/:id', async (req: Request, res: Response) => {
     await configRepo.save(config);
     res.json({ success: true, message: 'Updated successfully', data: config });
   } catch (error: any) {
-    console.error('[Finance] Update config failed:', error);
+    log.error('[Finance] Update config failed:', error);
     res.status(500).json({ success: false, message: 'Update failed' });
   }
 });
@@ -837,7 +838,7 @@ router.delete('/config/:id', async (req: Request, res: Response) => {
     await configRepo.delete({ id: parseInt(id) });
     res.json({ success: true, message: 'Deleted successfully' });
   } catch (error: any) {
-    console.error('[Finance] Delete config failed:', error);
+    log.error('[Finance] Delete config failed:', error);
     res.status(500).json({ success: false, message: 'Delete failed' });
   }
 });
@@ -868,7 +869,7 @@ router.post('/ladder', async (req: Request, res: Response) => {
 
     res.json({ success: true, message: 'Added successfully', data: ladder });
   } catch (error: any) {
-    console.error('[Finance] Add ladder failed:', error);
+    log.error('[Finance] Add ladder failed:', error);
     res.status(500).json({ success: false, message: 'Add failed' });
   }
 });
@@ -898,7 +899,7 @@ router.put('/ladder/:id', async (req: Request, res: Response) => {
     await ladderRepo.save(ladder);
     res.json({ success: true, message: 'Updated successfully', data: ladder });
   } catch (error: any) {
-    console.error('[Finance] Update ladder failed:', error);
+    log.error('[Finance] Update ladder failed:', error);
     res.status(500).json({ success: false, message: 'Update failed' });
   }
 });
@@ -911,7 +912,7 @@ router.delete('/ladder/:id', async (req: Request, res: Response) => {
     await ladderRepo.delete({ id: parseInt(id) });
     res.json({ success: true, message: 'Deleted successfully' });
   } catch (error: any) {
-    console.error('[Finance] Delete ladder failed:', error);
+    log.error('[Finance] Delete ladder failed:', error);
     res.status(500).json({ success: false, message: 'Delete failed' });
   }
 });
@@ -936,7 +937,7 @@ router.put('/setting', async (req: Request, res: Response) => {
     await settingRepo.save(setting);
     res.json({ success: true, message: 'Updated successfully', data: setting });
   } catch (error: any) {
-    console.error('[Finance] Update setting failed:', error);
+    log.error('[Finance] Update setting failed:', error);
     res.status(500).json({ success: false, message: 'Update failed' });
   }
 });

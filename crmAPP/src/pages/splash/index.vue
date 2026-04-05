@@ -13,7 +13,7 @@
       <text class="loading-text">{{ loadingText }}</text>
     </view>
 
-    <text class="version">v1.0.0</text>
+    <text class="version">v{{ appVersion }}</text>
   </view>
 </template>
 
@@ -21,10 +21,12 @@
 import { ref, onMounted } from 'vue'
 import { useServerStore } from '@/stores/server'
 import { useUserStore } from '@/stores/user'
+import { APP_VERSION } from '@/config/app'
 
 const loadingText = ref('正在启动...')
 const serverStore = useServerStore()
 const userStore = useUserStore()
+const appVersion = APP_VERSION
 
 onMounted(async () => {
   // 延迟一下显示启动页

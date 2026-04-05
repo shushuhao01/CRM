@@ -131,12 +131,12 @@
       <view class="setting-group">
         <view class="setting-item clickable" @tap="goToServerConfig">
           <text class="label">🌐 服务器设置</text>
-          <text class="value">{{ serverStore.displayUrl }}</text>
+          <text class="value">{{ serverStore.maskedDisplayUrl }}</text>
           <text class="arrow">›</text>
         </view>
         <view class="setting-item clickable" @tap="goToAbout">
           <text class="label">ℹ️ 关于</text>
-          <text class="value">v1.0.0</text>
+          <text class="value">v{{ appVersion }}</text>
           <text class="arrow">›</text>
         </view>
       </view>
@@ -271,9 +271,11 @@ import { useServerStore } from '@/stores/server'
 import { unbindDevice } from '@/api/auth'
 import { wsService } from '@/services/websocket'
 import { recordingService } from '@/services/recordingService'
+import { APP_VERSION } from '@/config/app'
 
 const userStore = useUserStore()
 const serverStore = useServerStore()
+const appVersion = APP_VERSION
 
 // 录音状态
 const recordingEnabled = ref(false)

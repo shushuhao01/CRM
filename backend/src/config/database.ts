@@ -2,22 +2,9 @@ import { DataSource } from 'typeorm';
 import dotenv from 'dotenv';
 import * as path from 'path';
 import * as fs from 'fs';
+
+// ==================== 实体导入 ====================
 import { User } from '../entities/User';
-
-// 根据NODE_ENV环境变量加载对应配置文件
-// 生产环境(production): 加载 .env
-// 开发环境(development): 优先加载 .env.local，如果不存在则加载 .env
-const isProduction = process.env.NODE_ENV === 'production';
-let envFile = '.env';
-if (!isProduction) {
-  const localEnvPath = path.join(__dirname, '../../', '.env.local');
-  if (fs.existsSync(localEnvPath)) {
-    envFile = '.env.local';
-  }
-}
-const envPath = path.join(__dirname, '../../', envFile);
-dotenv.config({ path: envPath });
-
 import { Customer } from '../entities/Customer';
 import { Order } from '../entities/Order';
 import { Product } from '../entities/Product';
@@ -66,6 +53,7 @@ import { PerformanceConfig } from '../entities/PerformanceConfig';
 import { CommissionSetting } from '../entities/CommissionSetting';
 import { CommissionLadder } from '../entities/CommissionLadder';
 import { AdminUser } from '../entities/AdminUser';
+import { AdminRole } from '../entities/AdminRole';
 import { License } from '../entities/License';
 import { Version } from '../entities/Version';
 import { LicenseLog } from '../entities/LicenseLog';
@@ -84,86 +72,53 @@ import { ValueAddedStatusConfig } from '../entities/ValueAddedStatusConfig';
 import { Module } from '../entities/Module';
 import { ModuleConfig } from '../entities/ModuleConfig';
 import { NotificationTemplate } from '../entities/NotificationTemplate';
+import { UpdateTask } from '../entities/UpdateTask';
+import { MigrationHistory } from '../entities/MigrationHistory';
+import { ApiConfig } from '../entities/ApiConfig';
+import { ApiCallLog } from '../entities/ApiCallLog';
+import { Tenant } from '../entities/Tenant';
+import { log } from './logger';
 
-// 🔥 统一使用 MySQL 数据库（开发环境和生产环境）
-// 数据库类型：默认使用 MySQL，除非明确指定其他类型
-const dbType = process.env.DB_TYPE || 'mysql';
+// ==================== 环境配置智能加载 ====================
+// 根据 NODE_ENV 环境变量智能加载对应的配置文件：
+//   生产环境(production): 加载 .env → 连接生产数据库（如 abc789）
+//   开发环境(development/其他): 优先加载 .env.local → 连接本地数据库（crm_local）
+//                              如果 .env.local 不存在则回退到 .env
+const isProduction = process.env.NODE_ENV === 'production';
+let envFile = '.env';
+if (!isProduction) {
+  const localEnvPath = path.join(__dirname, '../../', '.env.local');
+  if (fs.existsSync(localEnvPath)) {
+    envFile = '.env.local';
+  }
+}
+const envPath = path.join(__dirname, '../../', envFile);
+dotenv.config({ path: envPath });
 
-// 实体列表（统一管理）
+// ==================== 实体列表（统一管理）====================
 const entities = [
-  User,
-  Customer,
-  Order,
-  Product,
-  Department,
-  Role,
-  Permission,
-  CustomerGroup,
-  CustomerTag,
-  LogisticsStatus,
-  RejectionReason,
-  ImprovementGoal,
-  Call,
-  Message,
-  PerformanceMetric,
-  Notification,
-  ServiceRecord,
-  SmsTemplate,
-  SmsRecord,
-  Log,
-  OperationLog,
-  LogisticsTrace,
-  LogisticsTracking,
-  LogisticsCompany,
-  MessageSubscription,
-  OrderItem,
-  OrderStatusHistory,
-  ProductCategory,
-  SystemConfig,
-  UserPermission,
-  CustomerShare,
-  PaymentMethodOption,
-  DepartmentOrderLimit,
-  FollowUp,
-  AfterSalesService,
-  ServiceFollowUp,
-  ServiceOperationLog,
-  NotificationChannel,
-  NotificationLog,
-  Announcement,
-  AnnouncementRead,
-  SystemMessage,
-  MessageReadStatus,
-  PerformanceReportConfig,
-  PerformanceReportLog,
-  LogisticsApiConfig,
-  CustomerServicePermission,
-  SensitiveInfoPermission,
-  PerformanceConfig,
-  CommissionSetting,
-  CommissionLadder,
-  AdminUser,
-  License,
-  Version,
-  LicenseLog,
-  WecomConfig,
-  WecomUserBinding,
-  WecomCustomer,
-  WecomAcquisitionLink,
-  WecomServiceAccount,
-  WecomChatRecord,
-  WecomPaymentRecord,
-  CodCancelApplication,
-  ValueAddedOrder,
-  ValueAddedPriceConfig,
-  OutsourceCompany,
-  ValueAddedStatusConfig,
-  Module,
-  ModuleConfig,
-  NotificationTemplate
+  User, Customer, Order, Product, Department, Role, Permission,
+  CustomerGroup, CustomerTag, LogisticsStatus, RejectionReason, ImprovementGoal,
+  Call, Message, PerformanceMetric, Notification, ServiceRecord,
+  SmsTemplate, SmsRecord, Log, OperationLog,
+  LogisticsTrace, LogisticsTracking, LogisticsCompany,
+  MessageSubscription, OrderItem, OrderStatusHistory, ProductCategory,
+  SystemConfig, UserPermission, CustomerShare, PaymentMethodOption,
+  DepartmentOrderLimit, FollowUp, AfterSalesService, ServiceFollowUp, ServiceOperationLog,
+  NotificationChannel, NotificationLog, Announcement, AnnouncementRead,
+  SystemMessage, MessageReadStatus, PerformanceReportConfig, PerformanceReportLog,
+  LogisticsApiConfig, CustomerServicePermission, SensitiveInfoPermission,
+  PerformanceConfig, CommissionSetting, CommissionLadder,
+  AdminUser, AdminRole, License, Version, LicenseLog,
+  WecomConfig, WecomUserBinding, WecomCustomer, WecomAcquisitionLink,
+  WecomServiceAccount, WecomChatRecord, WecomPaymentRecord,
+  CodCancelApplication, ValueAddedOrder, ValueAddedPriceConfig,
+  OutsourceCompany, ValueAddedStatusConfig, Module, ModuleConfig, NotificationTemplate,
+  UpdateTask, MigrationHistory, ApiConfig, ApiCallLog, Tenant
 ];
 
-// MySQL 数据库配置（开发环境和生产环境统一使用）
+// ==================== MySQL 数据库配置 ====================
+// 开发环境和生产环境统一使用 MySQL，通过 .env / .env.local 区分连接的数据库
 const AppDataSource = new DataSource({
   type: 'mysql',
   host: process.env.DB_HOST || 'localhost',
@@ -171,24 +126,18 @@ const AppDataSource = new DataSource({
   username: process.env.DB_USERNAME || process.env.DB_USER || 'root',
   password: process.env.DB_PASSWORD || '',
   database: process.env.DB_DATABASE || process.env.DB_NAME || 'crm',
-  // 🔥 开发环境不自动同步，避免数据丢失
+  // 不自动同步表结构，避免数据丢失（变更请用 database-migrations 脚本）
   synchronize: false,
-  // 🔥 开发环境启用日志，生产环境关闭
+  // 开发环境启用 SQL 日志，生产环境关闭
   logging: process.env.NODE_ENV === 'development',
-  // 🔥 统一使用北京时间
+  // 统一使用北京时间
   timezone: '+08:00',
-  // 🔥 字符集配置
+  // 字符集配置
   charset: process.env.DB_CHARSET || 'utf8mb4',
-  // 连接池配置（🔥 优化：多租户场景需要更大的连接池）
+  // 连接池配置（多租户场景需要更大的连接池）
   extra: {
     connectionLimit: parseInt(process.env.DB_CONNECTION_LIMIT || '50'),
-    // 连接超时时间（毫秒）
     connectTimeout: 60000,
-    // 查询超时时间（毫秒）
-    acquireTimeout: 60000,
-    // 空闲连接超时时间（毫秒）
-    timeout: 60000,
-    // 🔥 新增：连接池优化配置
     waitForConnections: true,
     queueLimit: 0,
     enableKeepAlive: true,
@@ -199,7 +148,7 @@ const AppDataSource = new DataSource({
   subscribers: []
 });
 
-// 导出 AppDataSource
+// ==================== 导出 ====================
 export { AppDataSource };
 
 // 获取数据源实例
@@ -218,45 +167,47 @@ export const initializeDatabase = async (): Promise<void> => {
       env: process.env.NODE_ENV || 'development'
     };
 
-    console.log('📡 正在连接 MySQL 数据库...');
-    console.log(`   环境: ${dbInfo.env}`);
-    console.log(`   数据库: ${dbInfo.database}`);
-    console.log(`   地址: ${dbInfo.host}:${dbInfo.port}`);
-    console.log(`   用户: ${dbInfo.user}`);
+    log.info('📡 正在连接 MySQL 数据库...');
+    log.info(`   环境: ${dbInfo.env}`);
+    log.info(`   配置: ${envFile}`);
+    log.info(`   数据库: ${dbInfo.database}`);
+    log.info(`   地址: ${dbInfo.host}:${dbInfo.port}`);
+    log.info(`   用户: ${dbInfo.user}`);
 
     await AppDataSource.initialize();
-    console.log('✅ 数据库连接成功');
+    log.info('✅ 数据库连接成功');
 
     // 自动修复：订单设置相关表结构和预设数据
     try {
       const { initOrderSettingsSchema } = await import('../scripts/initOrderSettings');
       await initOrderSettingsSchema();
     } catch (err) {
-      console.warn('⚠️ 订单设置自动修复跳过:', (err as Error).message);
+      log.warn('⚠️ 订单设置自动修复跳过:', (err as Error).message);
     }
 
-    // 自动修复：敏感信息权限表结构（添加tenant_id列、修复唯一索引）
+    // 自动修复：敏感信息权限表结构（添加 tenant_id 列、修复唯一索引）
     try {
       const { initSensitiveInfoPermissionsSchema } = await import('../scripts/initSensitiveInfoPermissions');
       await initSensitiveInfoPermissionsSchema();
     } catch (err) {
-      console.warn('⚠️ 敏感信息权限自动修复跳过:', (err as Error).message);
+      log.warn('⚠️ 敏感信息权限自动修复跳过:', (err as Error).message);
     }
 
     // 提示：数据库结构变更需要手动执行迁移脚本
     if (process.env.NODE_ENV === 'development') {
-      console.log('ℹ️  开发环境：数据库结构变更请执行 database-migrations 目录下的迁移脚本');
+      log.info('ℹ️  开发环境：数据库结构变更请执行 database-migrations 目录下的迁移脚本');
     }
 
     // 角色权限初始化已禁用 - 数据库中已有预设数据，无需自动初始化
-    console.log('ℹ️  角色权限使用数据库预设数据（不自动初始化）');
+    log.info('ℹ️  角色权限使用数据库预设数据（不自动初始化）');
   } catch (error) {
-    console.error('❌ 数据库连接失败', error);
-    console.error('   请检查以下配置：');
-    console.error(`   - DB_HOST: ${process.env.DB_HOST || 'localhost'}`);
-    console.error(`   - DB_PORT: ${process.env.DB_PORT || '3306'}`);
-    console.error(`   - DB_DATABASE: ${process.env.DB_DATABASE || 'crm'}`);
-    console.error(`   - DB_USERNAME: ${process.env.DB_USERNAME || process.env.DB_USER || 'root'}`);
+    log.error('❌ 数据库连接失败', error);
+    log.error('   请检查以下配置：');
+    log.error(`   - 配置文件: ${envFile}`);
+    log.error(`   - DB_HOST: ${process.env.DB_HOST || 'localhost'}`);
+    log.error(`   - DB_PORT: ${process.env.DB_PORT || '3306'}`);
+    log.error(`   - DB_DATABASE: ${process.env.DB_DATABASE || 'crm'}`);
+    log.error(`   - DB_USERNAME: ${process.env.DB_USERNAME || process.env.DB_USER || 'root'}`);
     throw error;
   }
 };
@@ -266,10 +217,10 @@ export const closeDatabase = async (): Promise<void> => {
   try {
     if (AppDataSource?.isInitialized) {
       await AppDataSource.destroy();
-      console.log('✅ 数据库连接已关闭');
+      log.info('✅ 数据库连接已关闭');
     }
   } catch (error) {
-    console.error('❌ 关闭数据库连接失败', error);
+    log.error('❌ 关闭数据库连接失败', error);
     throw error;
   }
 };

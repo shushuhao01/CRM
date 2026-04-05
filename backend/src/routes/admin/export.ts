@@ -6,6 +6,7 @@ import { Router, Request, Response } from 'express';
 import { AppDataSource } from '../../config/database';
 import ExcelJS from 'exceljs';
 
+import { log } from '../../config/logger';
 const router = Router();
 
 // ===== 通用工具 =====
@@ -178,7 +179,7 @@ router.get('/licenses', async (req: Request, res: Response) => {
       await sendExcel(res, `私有客户列表_${dateStr}.xlsx`, '私有客户', columns, formatted);
     }
   } catch (error: any) {
-    console.error('[Export] Licenses export failed:', error);
+    log.error('[Export] Licenses export failed:', error);
     res.status(500).json({ success: false, message: '导出失败' });
   }
 });
@@ -207,7 +208,7 @@ router.get('/tenants', async (req: Request, res: Response) => {
     );
 
     const statusMap: Record<string, string> = { active: '正常', expired: '已过期', disabled: '已禁用', suspended: '已暂停', inactive: '已禁用' };
-    const licStatusMap: Record<string, string> = { active: '已激活', pending: '待激活', expired: '已过期', suspended: '已暂停' };
+    const licStatusMap: Record<string, string> = { active: '已激活', pending: '待激活', paid: '已付款待激活', expired: '已过期', suspended: '已暂停' };
 
     const formatted = rows.map((r: any) => ({
       ...r,
@@ -239,7 +240,7 @@ router.get('/tenants', async (req: Request, res: Response) => {
       await sendExcel(res, `租户客户列表_${dateStr}.xlsx`, '租户客户', columns, formatted);
     }
   } catch (error: any) {
-    console.error('[Export] Tenants export failed:', error);
+    log.error('[Export] Tenants export failed:', error);
     res.status(500).json({ success: false, message: '导出失败' });
   }
 });
@@ -295,7 +296,7 @@ router.get('/payments', async (req: Request, res: Response) => {
       await sendExcel(res, `支付订单列表_${dateStr}.xlsx`, '支付订单', columns, formatted);
     }
   } catch (error: any) {
-    console.error('[Export] Payments export failed:', error);
+    log.error('[Export] Payments export failed:', error);
     res.status(500).json({ success: false, message: '导出失败' });
   }
 });
@@ -340,7 +341,7 @@ router.get('/operation-logs', async (req: Request, res: Response) => {
       await sendExcel(res, `操作日志_${dateStr}.xlsx`, '操作日志', columns, formatted);
     }
   } catch (error: any) {
-    console.error('[Export] Operation logs export failed:', error);
+    log.error('[Export] Operation logs export failed:', error);
     res.status(500).json({ success: false, message: '导出失败' });
   }
 });

@@ -15,6 +15,7 @@ import { Order } from '../entities/Order';
 import { Product } from '../entities/Product';
 import * as fs from 'fs';
 
+import { log } from '../config/logger';
 export interface ImportOptions {
   tenantId: string;
   filePath: string;
@@ -62,7 +63,7 @@ export class TenantImportService {
 
     // 异步执行导入
     this.executeImport(jobId, options).catch(error => {
-      console.error(`导入任务失败 [${jobId}]:`, error);
+      log.error(`导入任务失败 [${jobId}]:`, error);
       const failedJob = importJobs.get(jobId);
       if (failedJob) {
         failedJob.status = 'failed';
@@ -134,11 +135,11 @@ export class TenantImportService {
       job.progress = 100;
       job.completedAt = new Date();
 
-      console.log(`✅ 导入任务完成 [${jobId}]`);
-      console.log(`  - 总记录数: ${job.totalRecords}`);
-      console.log(`  - 已处理: ${job.processedRecords}`);
-      console.log(`  - 已跳过: ${job.skippedRecords}`);
-      console.log(`  - 错误: ${job.errorRecords}`);
+      log.info(`✅ 导入任务完成 [${jobId}]`);
+      log.info(`  - 总记录数: ${job.totalRecords}`);
+      log.info(`  - 已处理: ${job.processedRecords}`);
+      log.info(`  - 已跳过: ${job.skippedRecords}`);
+      log.info(`  - 错误: ${job.errorRecords}`);
 
     } catch (error: any) {
       job.status = 'failed';
@@ -193,7 +194,7 @@ export class TenantImportService {
         entityClass = Product;
         break;
       default:
-        console.warn(`未知的表名: ${tableName}`);
+        log.warn(`未知的表名: ${tableName}`);
         return;
     }
 
@@ -233,7 +234,7 @@ export class TenantImportService {
       } catch (error: any) {
         job.errorRecords++;
         job.errors.push(`${tableName}[${record.id}]: ${error.message}`);
-        console.error(`导入记录失败 [${tableName}]:`, error);
+        log.error(`导入记录失败 [${tableName}]:`, error);
       }
     }
   }
@@ -249,7 +250,7 @@ export class TenantImportService {
       const age = now.getTime() - job.createdAt.getTime();
       if (age > maxAge) {
         importJobs.delete(jobId);
-        console.log(`🗑️  清理过期导入任务: ${jobId}`);
+        log.info(`🗑️  清理过期导入任务: ${jobId}`);
       }
     }
   }

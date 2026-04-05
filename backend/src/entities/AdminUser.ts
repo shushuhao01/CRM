@@ -19,7 +19,7 @@ export class AdminUser {
   @Column({ type: 'varchar', length: 255 })
   password!: string;
 
-  @Column({ type: 'varchar', length: 50, nullable: true })
+  @Column({ name: 'name', type: 'varchar', length: 50, nullable: true })
   name?: string;
 
   @Column({ type: 'varchar', length: 100, nullable: true })
@@ -31,7 +31,10 @@ export class AdminUser {
   @Column({ type: 'enum', enum: ['super_admin', 'admin', 'operator'], default: 'operator' })
   role!: string;
 
-  @Column({ type: 'enum', enum: ['active', 'disabled'], default: 'active' })
+  @Column({ name: 'role_id', type: 'varchar', length: 36, nullable: true, comment: '关联角色ID(admin_roles表)' })
+  roleId?: string;
+
+  @Column({ type: 'enum', enum: ['active', 'inactive'], default: 'active' })
   status!: string;
 
   @Column({ name: 'last_login_at', type: 'datetime', nullable: true })

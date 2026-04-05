@@ -667,6 +667,7 @@ import { useCustomerStore } from '@/stores/customer'
 import { useNotificationStore } from '@/stores/notification'
 import { orderApi } from '@/api/order'
 import { orderDetailApi } from '@/api/orderDetail'
+import { customerApi } from '@/api/customer'
 import { useServiceStore } from '@/stores/service'
 import { displaySensitiveInfo as displaySensitiveInfoNew } from '@/utils/sensitiveInfo'
 import { SensitiveInfoType } from '@/services/permission'
@@ -2012,10 +2013,6 @@ const loadOrderDetail = async () => {
   try {
     loading.value = true
 
-    // 确保客户数据已加载
-    if (customerStore.customers.length === 0) {
-      await customerStore.loadCustomers()
-    }
 
     // 🔥 先尝试从API获取订单详情
     let order = null
@@ -2041,8 +2038,16 @@ const loadOrderDetail = async () => {
       return
     }
 
-    // 获取客户信息
-    const customer = customerStore.getCustomerById(order.customerId)
+    // 按需获取客户信息（优先store缓存，否则API加载单个客户）
+    let customer = customerStore.getCustomerById(order.customerId)
+    if (!customer && order.customerId) {
+      try {
+        const res = await customerApi.getDetail(order.customerId)
+        if (res.data) customer = res.data
+      } catch (_e) {
+        console.warn('[订单详情] 加载客户详情失败，使用订单中的客户基本信息')
+      }
+    }
 
     // 更新订单详情数据
     Object.assign(orderDetail, {

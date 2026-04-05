@@ -2767,47 +2767,50 @@ watch([filterStatus, filterDateRange], () => {
   text-align: center;
 }
 
-/* 操作按钮样式 - text 模式精致风格 */
+/* 操作按钮样式 - 简约淡色风格 */
 .action-buttons {
   display: flex;
-  gap: 4px;
+  gap: 6px;
   justify-content: center;
   align-items: center;
 }
 
 .action-buttons :deep(.el-button) {
-  padding: 5px 10px;
+  padding: 5px 12px;
   font-size: 12px;
-  font-weight: 500;
-  border-radius: 4px;
-  transition: all 0.25s ease;
+  font-weight: 400;
+  border-radius: 6px;
+  transition: all 0.3s ease;
 }
 
-/* 详情按钮 - 蓝色 text */
+/* 详情按钮 - 淡蓝色背景，深色文字 */
 .action-buttons :deep(.el-button--primary.is-text) {
-  color: #409eff;
+  color: #606266;
+  background-color: #f0f7ff;
 }
 .action-buttons :deep(.el-button--primary.is-text:hover) {
-  color: #337ecc;
-  background-color: #ecf5ff;
+  color: #303133;
+  background-color: #e3f0ff;
 }
 
-/* 编辑按钮 - 橙色 text */
+/* 编辑按钮 - 淡橙色背景，深色文字 */
 .action-buttons :deep(.el-button--warning.is-text) {
-  color: #e6a23c;
+  color: #606266;
+  background-color: #fff8f0;
 }
 .action-buttons :deep(.el-button--warning.is-text:hover) {
-  color: #cf8a2e;
-  background-color: #fdf6ec;
+  color: #303133;
+  background-color: #fff0e0;
 }
 
-/* 取消按钮 - 红色 text */
+/* 取消按钮 - 淡红色背景，深色文字 */
 .action-buttons :deep(.el-button--danger.is-text) {
-  color: #f56c6c;
+  color: #606266;
+  background-color: #fff5f5;
 }
 .action-buttons :deep(.el-button--danger.is-text:hover) {
-  color: #d9534f;
-  background-color: #fef0f0;
+  color: #303133;
+  background-color: #ffebeb;
 }
 
 /* 响应式设计 */

@@ -6,6 +6,7 @@ import { Repository, TreeRepository } from 'typeorm';
 import { getTenantRepo } from '../utils/tenantRepo';
 import { tenantRawSQL, getCurrentTenantIdSafe } from '../utils/tenantHelpers';
 
+import { log } from '../config/logger';
 export class RoleController {
   private get roleRepository(): Repository<Role> {
     return getTenantRepo(Role);
@@ -79,7 +80,7 @@ export class RoleController {
             );
             userCount = parseInt(result[0]?.count || '0', 10);
           } catch (err) {
-            console.warn(`查询角色 ${role.code} 用户数量失败:`, err);
+            log.warn(`查询角色 ${role.code} 用户数量失败:`, err);
           }
 
           // 解析permissions JSON字段
@@ -115,7 +116,7 @@ export class RoleController {
         }
       });
     } catch (error) {
-      console.error('获取角色列表失败:', error);
+      log.error('获取角色列表失败:', error);
       res.status(500).json({
         success: false,
         message: '获取角色列表失败'
@@ -158,7 +159,7 @@ export class RoleController {
         );
         userCount = parseInt(result[0]?.count || '0', 10);
       } catch (err) {
-        console.warn(`查询角色 ${role.code} 用户数量失败:`, err);
+        log.warn(`查询角色 ${role.code} 用户数量失败:`, err);
       }
 
       // 解析permissions
@@ -181,7 +182,7 @@ export class RoleController {
         }
       });
     } catch (error) {
-      console.error('获取角色详情失败:', error);
+      log.error('获取角色详情失败:', error);
       res.status(500).json({
         success: false,
         message: '获取角色详情失败'
@@ -230,7 +231,7 @@ export class RoleController {
         message: '角色创建成功'
       });
     } catch (error) {
-      console.error('创建角色失败:', error);
+      log.error('创建角色失败:', error);
       res.status(500).json({
         success: false,
         message: '创建角色失败'
@@ -299,7 +300,7 @@ export class RoleController {
         message: '角色更新成功'
       });
     } catch (error) {
-      console.error('更新角色失败:', error);
+      log.error('更新角色失败:', error);
       res.status(500).json({
         success: false,
         message: '更新角色失败'
@@ -353,7 +354,7 @@ export class RoleController {
         message: '角色删除成功'
       });
     } catch (error) {
-      console.error('删除角色失败:', error);
+      log.error('删除角色失败:', error);
       res.status(500).json({
         success: false,
         message: '删除角色失败'
@@ -383,7 +384,7 @@ export class RoleController {
         }
       });
     } catch (error) {
-      console.error('获取角色统计失败:', error);
+      log.error('获取角色统计失败:', error);
       res.status(500).json({
         success: false,
         message: '获取角色统计失败'
@@ -438,7 +439,7 @@ export class RoleController {
         message: `角色已${status === 'active' ? '启用' : '禁用'}`
       });
     } catch (error) {
-      console.error('更新角色状态失败:', error);
+      log.error('更新角色状态失败:', error);
       res.status(500).json({
         success: false,
         message: '更新角色状态失败'
@@ -492,7 +493,7 @@ export class RoleController {
         }
       });
     } catch (error) {
-      console.error('获取角色权限失败:', error);
+      log.error('获取角色权限失败:', error);
       res.json({
         success: true,
         data: {
@@ -540,7 +541,7 @@ export class RoleController {
         message: '权限更新成功'
       });
     } catch (error) {
-      console.error('更新角色权限失败:', error);
+      log.error('更新角色权限失败:', error);
       res.status(500).json({
         success: false,
         message: '更新角色权限失败'

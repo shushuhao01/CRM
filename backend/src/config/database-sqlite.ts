@@ -3,6 +3,7 @@ import { open, Database } from 'sqlite';
 import path from 'path';
 import fs from 'fs';
 
+import { log } from './logger';
 // 数据库配置
 export interface DatabaseConfig {
   filename: string;
@@ -55,7 +56,7 @@ export async function getDatabase(): Promise<Database> {
     await db.exec('PRAGMA cache_size = 1000');
     await db.exec('PRAGMA temp_store = MEMORY');
     
-    console.log('SQLite数据库连接成功:', dbConfig.filename);
+    log.info('SQLite数据库连接成功:', dbConfig.filename);
   }
   
   return db;
@@ -66,7 +67,7 @@ export async function closeDatabase(): Promise<void> {
   if (db) {
     await db.close();
     db = null;
-    console.log('数据库连接已关闭');
+    log.info('数据库连接已关闭');
   }
 }
 
@@ -197,10 +198,10 @@ export async function initializeDatabase(): Promise<void> {
       VALUES (?, ?, ?, ?, ?)
     `, ['admin', hashedPassword, 'admin@crm.com', 'admin', 'active']);
     
-    console.log('默认管理员账户已创建: admin/admin123');
+    log.info('默认管理员账户已创建: admin/admin123');
   }
 
-  console.log('数据库表结构初始化完成');
+  log.info('数据库表结构初始化完成');
 }
 
 // 数据库备份
@@ -214,7 +215,7 @@ export async function backupDatabase(backupPath: string): Promise<void> {
   // 执行备份 - 使用文件复制
   const sourcePath = getDatabasePath();
   fs.copyFileSync(sourcePath, backupPath);
-  console.log('数据库备份完成:', backupPath);
+  log.info('数据库备份完成:', backupPath);
 }
 
 // 数据库恢复
@@ -231,5 +232,5 @@ export async function restoreDatabase(backupPath: string): Promise<void> {
   
   // 重新连接数据库
   await getDatabase();
-  console.log('数据库恢复完成');
+  log.info('数据库恢复完成');
 }

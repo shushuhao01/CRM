@@ -6,6 +6,7 @@ import { Router, Request, Response } from 'express';
 import { AppDataSource } from '../../config/database';
 import { v4 as uuidv4 } from 'uuid';
 
+import { log } from '../../config/logger';
 const router = Router();
 
 /**
@@ -85,7 +86,7 @@ router.post('/verify', async (req: Request, res: Response) => {
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
       [logData.id, logData.license_id, logData.license_key, logData.action, logData.result, logData.message, logData.ip_address, logData.user_agent, logData.machine_id]
     ).catch((err) => {
-      console.error('[LicenseQuery] 记录日志失败:', err);
+      log.error('[LicenseQuery] 记录日志失败:', err);
     });
 
     if (!lic) {
@@ -140,7 +141,7 @@ router.post('/verify', async (req: Request, res: Response) => {
       }
     });
   } catch (error: any) {
-    console.error('[LicenseQuery] 查询失败:', error);
+    log.error('[LicenseQuery] 查询失败:', error);
     res.status(500).json({
       success: false,
       message: '查询失败，请稍后重试'
@@ -218,7 +219,7 @@ router.post('/batch', async (req: Request, res: Response) => {
       data: results
     });
   } catch (error: any) {
-    console.error('[LicenseQuery] 批量查询失败:', error);
+    log.error('[LicenseQuery] 批量查询失败:', error);
     res.status(500).json({
       success: false,
       message: '查询失败，请稍后重试'

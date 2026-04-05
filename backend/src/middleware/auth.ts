@@ -4,6 +4,10 @@ import { getDataSource } from '../config/database';
 import { User } from '../entities/User';
 import { logger } from '../config/logger';
 import { TenantContextManager } from '../utils/tenantContext';
+import { cacheService } from '../services/CacheService';
+
+// 🔥 用户认证缓存 TTL（秒）— 短TTL保证安全性，用户禁用最多延迟2分钟生效
+const AUTH_USER_CACHE_TTL = 120;
 
 // 扩展Request接口
 declare global {
@@ -14,6 +18,15 @@ declare global {
     }
   }
 }
+
+/**
+ * 🔥 清除指定用户的认证缓存
+ * 在用户状态变更（禁用/启用/修改密码/删除）时调用
+ */
+export const clearUserAuthCache = (userId: string): void => {
+  const cacheKey = `auth:user:${userId}`;
+  cacheService.delete(cacheKey);
+};
 
 /**
  * JWT认证中间件
@@ -36,19 +49,30 @@ export const authenticateToken = async (req: Request, res: Response, next: NextF
     const payload = JwtConfig.verifyAccessToken(token);
     req.user = payload;
 
-    // 获取用户详细信息
-    const dataSource = getDataSource();
-    if (!dataSource) {
-      return res.status(500).json({
-        success: false,
-        message: '数据库连接未初始化',
-        code: 'DATABASE_NOT_INITIALIZED'
+    // 🔥 性能优化：优先从缓存获取用户信息，避免每次API请求都查数据库
+    const cacheKey = `auth:user:${payload.userId}`;
+    let user: User | null = cacheService.get(cacheKey);
+
+    if (!user) {
+      // 缓存未命中，从数据库查询
+      const dataSource = getDataSource();
+      if (!dataSource) {
+        return res.status(500).json({
+          success: false,
+          message: '数据库连接未初始化',
+          code: 'DATABASE_NOT_INITIALIZED'
+        });
+      }
+      const userRepository = dataSource.getRepository(User);
+      user = await userRepository.findOne({
+        where: { id: payload.userId }
       });
+
+      // 查到后写入缓存（TTL 2分钟）
+      if (user) {
+        cacheService.set(cacheKey, user, AUTH_USER_CACHE_TTL);
+      }
     }
-    const userRepository = dataSource.getRepository(User);
-    const user = await userRepository.findOne({
-      where: { id: payload.userId }
-    });
 
     if (!user) {
       return res.status(401).json({
@@ -59,6 +83,8 @@ export const authenticateToken = async (req: Request, res: Response, next: NextF
     }
 
     if (user.status !== 'active') {
+      // 用户已被禁用，同时清除缓存确保后续请求也被拒绝
+      cacheService.delete(cacheKey);
       return res.status(401).json({
         success: false,
         message: '用户账户已被禁用',
@@ -168,16 +194,23 @@ export const optionalAuth = async (req: Request, res: Response, next: NextFuncti
       const payload = JwtConfig.verifyAccessToken(token);
       req.user = payload;
 
-      // 获取用户详细信息
-      const dataSource = getDataSource();
-      if (!dataSource) {
-        // 可选认证，数据库未初始化时继续执行
-        return next();
+      // 🔥 性能优化：复用认证缓存
+      const cacheKey = `auth:user:${payload.userId}`;
+      let user: User | null = cacheService.get(cacheKey);
+
+      if (!user) {
+        const dataSource = getDataSource();
+        if (!dataSource) {
+          return next();
+        }
+        const userRepository = dataSource.getRepository(User);
+        user = await userRepository.findOne({
+          where: { id: payload.userId }
+        });
+        if (user) {
+          cacheService.set(cacheKey, user, AUTH_USER_CACHE_TTL);
+        }
       }
-      const userRepository = dataSource.getRepository(User);
-      const user = await userRepository.findOne({
-        where: { id: payload.userId }
-      });
 
       if (user && user.status === 'active') {
         req.currentUser = user;

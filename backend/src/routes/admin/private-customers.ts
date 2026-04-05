@@ -3,6 +3,7 @@ import { privateCustomerController } from '../../controllers/admin/PrivateCustom
 import { AppDataSource } from '../../config/database';
 import { v4 as uuidv4 } from 'uuid';
 
+import { log } from '../../config/logger';
 const router = Router();
 
 // 获取私有客户列表
@@ -80,7 +81,7 @@ router.post('/:id/unlock-admin', async (req: Request, res: Response) => {
           [hashedPassword, user.id]
         );
         fixedPasswordCount++;
-        console.log(`[Admin Private Customers] Fixed password format for user: ${user.username}`);
+        log.info(`[Admin Private Customers] Fixed password format for user: ${user.username}`);
       }
     }
 
@@ -123,8 +124,88 @@ router.post('/:id/unlock-admin', async (req: Request, res: Response) => {
       }
     });
   } catch (error: any) {
-    console.error('[Admin Private Customers] Unlock admin failed:', error);
+    log.error('[Admin Private Customers] Unlock admin failed:', error);
     res.status(500).json({ success: false, message: '解锁失败' });
+  }
+});
+
+// 重置私有客户管理员密码
+router.post('/:id/reset-admin-password', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const adminUser = (req as any).adminUser;
+    const bcrypt = require('bcryptjs');
+    const crypto = require('crypto');
+
+    // 查找私有客户的授权记录
+    const licenses = await AppDataSource.query(
+      'SELECT id, license_key, customer_phone, customer_name FROM licenses WHERE private_customer_id = ?',
+      [id]
+    );
+
+    if (licenses.length === 0) {
+      return res.status(404).json({ success: false, message: '未找到该客户的授权记录' });
+    }
+
+    const customerPhone = licenses[0].customer_phone;
+    const customerName = licenses[0].customer_name;
+    if (!customerPhone) {
+      return res.status(400).json({ success: false, message: '该客户没有关联的手机号（管理员账号）' });
+    }
+
+    // 查找该客户的管理员账号（私有部署 tenant_id IS NULL）
+    const adminUsers = await AppDataSource.query(
+      `SELECT id, username, name, real_name FROM users
+       WHERE username = ? AND role = 'admin' AND tenant_id IS NULL`,
+      [customerPhone]
+    );
+
+    if (adminUsers.length === 0) {
+      return res.status(404).json({ success: false, message: `未找到账号为 ${customerPhone} 的管理员用户` });
+    }
+
+    // 生成安全的随机临时密码：大写+小写+数字，8位
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+    let tempPassword = '';
+    const randomBytes = crypto.randomBytes(8);
+    for (let i = 0; i < 8; i++) {
+      tempPassword += chars[randomBytes[i] % chars.length];
+    }
+    // 确保包含大写、小写、数字
+    tempPassword = 'A' + tempPassword.slice(1, 7) + '3';
+
+    // 更新密码
+    const hashedPassword = await bcrypt.hash(tempPassword, 12);
+    for (const user of adminUsers) {
+      await AppDataSource.query(
+        `UPDATE users SET password = ?, status = 'active', login_fail_count = 0, locked_at = NULL WHERE id = ?`,
+        [hashedPassword, user.id]
+      );
+    }
+
+    // 记录日志
+    await AppDataSource.query(
+      `INSERT INTO license_logs (id, license_id, license_key, action, message, ip_address, result, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`,
+      [uuidv4(), licenses[0].id, licenses[0].license_key, 'reset_password',
+       `管理员重置密码: ${customerPhone}`, req.ip, 'success']
+    );
+
+    log.info(`[Admin Private Customers] Reset password for user: ${customerPhone}, by admin: ${adminUser?.username}`);
+
+    res.json({
+      success: true,
+      message: '密码重置成功',
+      data: {
+        username: customerPhone,
+        customerName: customerName || '',
+        tempPassword,
+        resetCount: adminUsers.length
+      }
+    });
+  } catch (error: any) {
+    log.error('[Admin Private Customers] Reset admin password failed:', error);
+    res.status(500).json({ success: false, message: '重置密码失败' });
   }
 });
 

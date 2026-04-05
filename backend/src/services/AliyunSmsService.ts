@@ -3,6 +3,7 @@
  */
 import crypto from 'crypto'
 
+import { log } from '../config/logger';
 interface SmsConfig {
   accessKeyId: string
   accessKeySecret: string
@@ -21,6 +22,15 @@ interface SmsConfig {
     REFUND_SUCCESS?: string           // 退款成功通知
     EXPIRE_REMIND?: string            // 账号到期提醒
     EXPIRED_NOTICE?: string           // 账号过期通知
+    ADMIN_NOTIFICATION?: string       // 管理员通知（通用）
+    SUBSCRIPTION_DEDUCT_SUCCESS?: string  // 订阅扣款成功通知（发给客户）
+    SUBSCRIPTION_DEDUCT_FAILED?: string   // 订阅扣款失败通知（发给客户）
+    SUBSCRIPTION_ACTIVATED?: string       // 订阅开通通知（发给客户）
+    SUBSCRIPTION_CANCELLED?: string       // 订阅取消通知（发给客户）
+    SUBSCRIPTION_EXPIRED?: string         // 订阅过期通知（发给客户）
+    PASSWORD_RESET?: string               // 密码重置通知
+    CAPACITY_SUCCESS?: string             // 扩容成功通知（发给客户）
+    CAPACITY_REFUND?: string              // 扩容退款通知（发给客户）
   }
 }
 
@@ -65,7 +75,7 @@ class AliyunSmsService {
       }
       return false
     } catch (error) {
-      console.error('[SMS] 从数据库加载配置失败:', error)
+      log.error('[SMS] 从数据库加载配置失败:', error)
       return false
     }
   }
@@ -77,10 +87,10 @@ class AliyunSmsService {
 
   // 发送短信通用方法
   async sendSms(phone: string, templateType: string, params: Record<string, string>): Promise<{ success: boolean; message?: string }> {
-    console.log(`[SMS] 准备发送短信: ${phone}, 类型: ${templateType}, 配置状态: ${this.config?.accessKeyId ? '已配置' : '未配置'}`)
+    log.info(`[SMS] 准备发送短信: ${phone}, 类型: ${templateType}, 配置状态: ${this.config?.accessKeyId ? '已配置' : '未配置'}`)
 
     if (!this.config?.accessKeyId) {
-      console.log(`[SMS] 未配置阿里云短信，模拟发送: ${phone} -> ${JSON.stringify(params)}`)
+      log.info(`[SMS] 未配置阿里云短信，模拟发送: ${phone} -> ${JSON.stringify(params)}`)
       return { success: true, message: '开发模式，短信内容已打印到控制台' }
     }
 
@@ -91,32 +101,32 @@ class AliyunSmsService {
     }
 
     if (!templateCode) {
-      console.error(`[SMS] 未配置模板: ${templateType}`)
+      log.error(`[SMS] 未配置模板: ${templateType}`)
       return { success: false, message: `未配置${templateType}模板CODE` }
     }
 
     try {
-      console.log(`[SMS] 使用配置: 签名=${this.config.signName}, 模板=${templateCode}`)
+      log.info(`[SMS] 使用配置: 签名=${this.config.signName}, 模板=${templateCode}`)
       const smsParams = this.buildParams(phone, templateCode, params)
       const signature = this.sign(smsParams)
       smsParams['Signature'] = signature
 
       const url = 'https://dysmsapi.aliyuncs.com/?' + new URLSearchParams(smsParams).toString()
-      console.log(`[SMS] 发送请求...`)
+      log.info(`[SMS] 发送请求...`)
       const response = await fetch(url)
       const result = await response.json() as { Code?: string; Message?: string; RequestId?: string }
-      console.log(`[SMS] 阿里云返回:`, JSON.stringify(result))
+      log.info(`[SMS] 阿里云返回:`, JSON.stringify(result))
 
       if (result.Code === 'OK') {
-        console.log(`[SMS] 发送成功: ${phone}`)
+        log.info(`[SMS] 发送成功: ${phone}`)
         return { success: true, message: '发送成功' }
       } else {
         const errorMsg = this.getErrorMessage(result.Code, result.Message)
-        console.error(`[SMS] 发送失败: ${errorMsg}`)
+        log.error(`[SMS] 发送失败: ${errorMsg}`)
         return { success: false, message: errorMsg }
       }
     } catch (error) {
-      console.error('[SMS] 发送异常:', error)
+      log.error('[SMS] 发送异常:', error)
       return { success: false, message: '网络请求失败' }
     }
   }

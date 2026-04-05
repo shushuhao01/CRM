@@ -6,6 +6,7 @@ import { paymentService } from '../../services/PaymentService'
 import { AppDataSource } from '../../config/database'
 import { adminNotificationService } from '../../services/AdminNotificationService'
 
+import { log } from '../../config/logger';
 const router = Router()
 
 // 创建支付订单
@@ -43,7 +44,7 @@ router.post('/create', async (req: Request, res: Response) => {
           bonusMonths = Number(pkgRows[0].yearly_bonus_months) || 0
         }
       } catch (e) {
-        console.warn('[Payment] 查询套餐赠送月数失败:', e)
+        log.warn('[Payment] 查询套餐赠送月数失败:', e)
       }
     }
 
@@ -100,7 +101,7 @@ router.post('/create', async (req: Request, res: Response) => {
             }
           }
         } catch (e) {
-          console.error('[Payment] 获取银行配置失败:', e)
+          log.error('[Payment] 获取银行配置失败:', e)
         }
       }
 
@@ -113,12 +114,12 @@ router.post('/create', async (req: Request, res: Response) => {
         relatedId: result.orderId,
         relatedType: 'payment_order',
         extraData: { orderNo: result.orderNo, amount, payType, contactName, contactPhone }
-      }).catch(err => console.error('[Payment] 发送管理员通知失败:', err.message))
+      }).catch(err => log.error('[Payment] 发送管理员通知失败:', err.message))
     } else {
       res.status(500).json({ code: 500, message: result.message })
     }
   } catch (error: any) {
-    console.error('[Payment] 创建订单失败:', error)
+    log.error('[Payment] 创建订单失败:', error)
     res.status(500).json({ code: 500, message: '创建订单失败' })
   }
 })
@@ -160,7 +161,7 @@ router.get('/query/:orderNo', async (req: Request, res: Response) => {
       }
     })
   } catch (error) {
-    console.error('[Payment] 查询订单失败:', error)
+    log.error('[Payment] 查询订单失败:', error)
     res.status(500).json({ code: 500, message: '查询失败' })
   }
 })
@@ -171,7 +172,7 @@ router.post('/wechat/notify', async (req: Request, res: Response) => {
     let xmlData = ''
     req.on('data', chunk => { xmlData += chunk })
     req.on('end', async () => {
-      console.log('[Payment] 微信回调:', xmlData)
+      log.info('[Payment] 微信回调:', xmlData)
       const result = await paymentService.handleWechatNotify(xmlData)
 
       if (result.success) {
@@ -183,7 +184,7 @@ router.post('/wechat/notify', async (req: Request, res: Response) => {
       }
     })
   } catch (error) {
-    console.error('[Payment] 微信回调处理失败:', error)
+    log.error('[Payment] 微信回调处理失败:', error)
     res.set('Content-Type', 'application/xml')
     res.send('<xml><return_code><![CDATA[FAIL]]></return_code><return_msg><![CDATA[系统错误]]></return_msg></xml>')
   }
@@ -192,7 +193,7 @@ router.post('/wechat/notify', async (req: Request, res: Response) => {
 // 支付宝回调
 router.post('/alipay/notify', async (req: Request, res: Response) => {
   try {
-    console.log('[Payment] 支付宝回调:', req.body)
+    log.info('[Payment] 支付宝回调:', req.body)
     const result = await paymentService.handleAlipayNotify(req.body)
 
     if (result.success) {
@@ -201,8 +202,66 @@ router.post('/alipay/notify', async (req: Request, res: Response) => {
       res.send('fail')
     }
   } catch (error) {
-    console.error('[Payment] 支付宝回调处理失败:', error)
+    log.error('[Payment] 支付宝回调处理失败:', error)
     res.send('fail')
+  }
+})
+
+// 为已有待支付订单重新生成二维码（不创建新订单）
+router.post('/repay/:orderNo', async (req: Request, res: Response) => {
+  try {
+    const { orderNo } = req.params
+    const { payType } = req.body
+
+    // 查询原订单
+    const order = await paymentService.queryOrder(orderNo)
+    if (!order) {
+      return res.status(404).json({ code: 404, message: '订单不存在' })
+    }
+    if (order.status !== 'pending') {
+      return res.status(400).json({ code: 400, message: '订单非待支付状态' })
+    }
+
+    const actualPayType = payType || order.pay_type || 'wechat'
+
+    // 如果支付方式没变且已有有效二维码，直接返回
+    if (actualPayType === order.pay_type && order.qr_code) {
+      return res.json({
+        code: 0,
+        data: {
+          orderNo: order.order_no,
+          qrCode: order.qr_code,
+          payUrl: order.pay_url
+        }
+      })
+    }
+
+    // 重新生成二维码
+    let qrCode = ''
+    let payUrl = ''
+    if (actualPayType === 'wechat') {
+      const result = await paymentService.createWechatOrderForExisting(orderNo, Number(order.amount), order.package_name || '套餐支付')
+      qrCode = result.qrCode || ''
+      payUrl = result.payUrl || ''
+    } else if (actualPayType === 'alipay') {
+      const result = await paymentService.createAlipayOrderForExisting(orderNo, Number(order.amount), order.package_name || '套餐支付')
+      payUrl = result.payUrl || ''
+      qrCode = result.qrCode || ''
+    }
+
+    // 更新订单的二维码和支付方式
+    await AppDataSource.query(
+      'UPDATE payment_orders SET qr_code = ?, pay_url = ?, pay_type = ? WHERE order_no = ?',
+      [qrCode, payUrl, actualPayType, orderNo]
+    )
+
+    res.json({
+      code: 0,
+      data: { orderNo: order.order_no, qrCode, payUrl }
+    })
+  } catch (error: any) {
+    log.error('[Payment] 重新生成二维码失败:', error)
+    res.status(500).json({ code: 500, message: '重新生成二维码失败' })
   }
 })
 
@@ -224,7 +283,7 @@ router.post('/close/:orderNo', async (req: Request, res: Response) => {
         relatedId: orderNo,
         relatedType: 'payment_order',
         extraData: { orderNo, amount: order.amount }
-      }).catch(err => console.error('[Payment] 发送取消通知失败:', err.message))
+      }).catch(err => log.error('[Payment] 发送取消通知失败:', err.message))
     }
   } catch (_error) {
     res.status(500).json({ code: 500, message: '关闭失败' })
@@ -278,7 +337,7 @@ router.post('/mock-pay/:orderNo', async (req: Request, res: Response) => {
       }
     })
   } catch (_error: any) {
-    console.error('[Payment] 模拟支付失败:', _error)
+    log.error('[Payment] 模拟支付失败:', _error)
     res.status(500).json({ code: 500, message: '模拟支付失败' })
   }
 })

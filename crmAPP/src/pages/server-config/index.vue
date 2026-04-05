@@ -25,7 +25,7 @@
           :disabled="isLoading"
         />
       </view>
-      <text class="hint">支持格式：abc789.cn、192.168.1.100:3000</text>
+      <text class="hint">支持格式：crm.yourcompany.com、192.168.1.100:3000</text>
     </view>
 
     <!-- 操作按钮 -->

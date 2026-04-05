@@ -6,7 +6,7 @@ import { OperationLog } from '../entities/OperationLog';
 import { CustomerServicePermission } from '../entities/CustomerServicePermission';
 import { JwtConfig } from '../config/jwt';
 import { catchAsync, BusinessError, NotFoundError, ValidationError } from '../middleware/errorHandler';
-import { logger, operationLogger } from '../config/logger';
+import { logger, log, operationLogger } from '../config/logger';
 import bcrypt from 'bcryptjs';
 import { getTenantRepo } from '../utils/tenantRepo';
 import { deployConfig } from '../config/deploy';
@@ -238,11 +238,11 @@ export class UserController {
           rolePermissions = typeof roleData.permissions === 'string'
             ? JSON.parse(roleData.permissions)
             : roleData.permissions;
-          console.log(`[Login] 从数据库加载角色权限: ${roleCode}, ${rolePermissions.length}个权限`);
+          log.info(`[Login] 从数据库加载角色权限: ${roleCode}, ${rolePermissions.length}个权限`);
         }
       }
     } catch (permError) {
-      console.warn('[Login] 获取角色权限失败:', permError);
+      log.warn('[Login] 获取角色权限失败:', permError);
     }
 
     // 🔥 SaaS模式：获取租户授权的模块列表，供前端菜单过滤
@@ -288,7 +288,7 @@ export class UserController {
           }
         }
       } catch (tenantModErr) {
-        console.warn('[Login] 获取租户模块失败:', tenantModErr);
+        log.warn('[Login] 获取租户模块失败:', tenantModErr);
       }
     }
 
@@ -928,7 +928,7 @@ export class UserController {
           const department = await this.departmentRepository.findOne({ where: { id: departmentId } });
           if (department) user.departmentName = department.name;
         } catch (error) {
-          console.warn('[UserController] 获取部门名称失败:', error);
+          log.warn('[UserController] 获取部门名称失败:', error);
         }
       } else {
         user.departmentName = null;

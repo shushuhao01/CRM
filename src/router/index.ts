@@ -432,7 +432,7 @@ const router = createRouter({
     {
       path: '/system/roles',
       name: 'SystemRoles',
-      component: () => import('../views/System/Role.vue'),
+      component: () => import('../views/System/Role/index.vue'),
       meta: { title: '角色权限', requiresAuth: true, requiresAdmin: true }
     },
     {
@@ -462,7 +462,7 @@ const router = createRouter({
     {
       path: '/system/settings',
       name: 'SystemSettings',
-      component: () => import('../views/System/Settings.vue'),
+      component: () => import('../views/System/Settings/index.vue'),
       meta: { title: '系统设置', requiresAuth: true }
     },
     {

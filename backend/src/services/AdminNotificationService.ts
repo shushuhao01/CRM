@@ -7,6 +7,7 @@ import { v4 as uuidv4 } from 'uuid'
 import crypto from 'crypto'
 import nodemailer from 'nodemailer'
 
+import { log } from '../config/logger';
 // 事件类型定义
 export const EVENT_TYPES = {
   tenant_registered: { label: '新租户注册', level: 'info' as const, category: '用户动态' },
@@ -19,11 +20,19 @@ export const EVENT_TYPES = {
   license_expired: { label: '授权已过期', level: 'error' as const, category: '授权动态' },
   tenant_login: { label: '租户首次登录', level: 'info' as const, category: '用户动态' },
   system_error: { label: '系统异常', level: 'error' as const, category: '系统告警' },
+  subscription_created: { label: '新订阅签约', level: 'info' as const, category: '订阅动态' },
+  subscription_activated: { label: '订阅已激活', level: 'success' as const, category: '订阅动态' },
+  subscription_cancelled: { label: '订阅已取消', level: 'warning' as const, category: '订阅动态' },
+  subscription_paused: { label: '订阅已暂停', level: 'warning' as const, category: '订阅动态' },
+  subscription_expired: { label: '订阅已过期', level: 'error' as const, category: '订阅动态' },
+  subscription_deduct_failed: { label: '订阅扣款失败', level: 'error' as const, category: '订阅动态' },
+  subscription_deduct_success: { label: '订阅扣款成功', level: 'success' as const, category: '订阅动态' },
+  subscription_platform_cancelled: { label: '平台侧取消订阅', level: 'error' as const, category: '订阅动态' },
 } as const
 
 export type EventType = keyof typeof EVENT_TYPES
 
-export const CHANNEL_TYPES = ['system', 'dingtalk', 'wecom', 'wechat_mp', 'email'] as const
+export const CHANNEL_TYPES = ['system', 'dingtalk', 'wecom', 'wechat_mp', 'email', 'sms'] as const
 export type ChannelType = typeof CHANNEL_TYPES[number]
 
 interface NotifyPayload {
@@ -45,7 +54,7 @@ class AdminNotificationService {
     try {
       const eventMeta = EVENT_TYPES[eventType]
       if (!eventMeta) {
-        console.warn(`[AdminNotification] 未知事件类型: ${eventType}`)
+        log.warn(`[AdminNotification] 未知事件类型: ${eventType}`)
         return
       }
 
@@ -79,10 +88,10 @@ class AdminNotificationService {
       for (const rule of rules) {
         if (rule.channel_type === 'system') continue // 系统消息已通过上面的INSERT实现
         this.dispatchToChannel(rule.channel_type, rule.config_data, { title, content, level, eventType })
-          .catch(err => console.error(`[AdminNotification] 渠道 ${rule.channel_type} 推送失败:`, err.message))
+          .catch(err => log.error(`[AdminNotification] 渠道 ${rule.channel_type} 推送失败:`, err.message))
       }
     } catch (error: any) {
-      console.error('[AdminNotification] 通知发送失败:', error.message)
+      log.error('[AdminNotification] 通知发送失败:', error.message)
     }
   }
 
@@ -111,6 +120,9 @@ class AdminNotificationService {
         break
       case 'wechat_mp':
         await this.sendWechatMp(config, notification)
+        break
+      case 'sms':
+        await this.sendSms(config, notification)
         break
     }
   }
@@ -174,19 +186,61 @@ class AdminNotificationService {
   }
 
   /**
-   * 邮件通知
+   * 从基础配置(system_config表)获取全局邮件SMTP设置作为fallback
+   */
+  private async getGlobalEmailConfig(): Promise<{
+    smtp_host: string; smtp_port: number; username: string; password: string; from_name: string
+  } | null> {
+    try {
+      const result = await AppDataSource.query(
+        `SELECT config_value FROM system_config WHERE config_key = 'email_settings' LIMIT 1`
+      ).catch(() => [])
+      if (result && result.length > 0) {
+        const data = JSON.parse(result[0].config_value || '{}')
+        if (data.enabled && data.smtpHost && data.senderEmail && data.emailPassword) {
+          return {
+            smtp_host: data.smtpHost,
+            smtp_port: data.smtpPort || 465,
+            username: data.senderEmail,
+            password: data.emailPassword,
+            from_name: data.senderName || 'CRM管理后台'
+          }
+        }
+      }
+      return null
+    } catch {
+      return null
+    }
+  }
+
+  /**
+   * 邮件通知（支持渠道配置 + 基础配置 fallback）
    */
   private async sendEmail(
     config: { smtp_host: string; smtp_port: number; username: string; password: string; from_name: string; to_emails: string[] },
     notification: { title: string; content: string; level: string }
   ): Promise<void> {
-    if (!config.smtp_host || !config.username || !config.to_emails?.length) return
+    // 如果渠道配置不完整，尝试使用基础邮件配置中的SMTP设置
+    let smtpConfig = config
+    if (!config.smtp_host || !config.username || !config.password) {
+      const globalConfig = await this.getGlobalEmailConfig()
+      if (globalConfig) {
+        smtpConfig = {
+          ...globalConfig,
+          to_emails: config.to_emails || [],
+          from_name: config.from_name || globalConfig.from_name
+        }
+        log.info('[AdminNotification] 邮件渠道SMTP不完整，已切换使用基础邮件配置')
+      }
+    }
+
+    if (!smtpConfig.smtp_host || !smtpConfig.username || !smtpConfig.to_emails?.length) return
 
     const transporter = nodemailer.createTransport({
-      host: config.smtp_host,
-      port: config.smtp_port || 465,
-      secure: (config.smtp_port || 465) === 465,
-      auth: { user: config.username, pass: config.password }
+      host: smtpConfig.smtp_host,
+      port: smtpConfig.smtp_port || 465,
+      secure: (smtpConfig.smtp_port || 465) === 465,
+      auth: { user: smtpConfig.username, pass: smtpConfig.password }
     })
 
     const levelColor: Record<string, string> = { info: '#409EFF', warning: '#E6A23C', success: '#67C23A', error: '#F56C6C' }
@@ -204,8 +258,8 @@ class AdminNotificationService {
     `
 
     await transporter.sendMail({
-      from: `"${config.from_name || 'CRM管理后台'}" <${config.username}>`,
-      to: config.to_emails.join(','),
+      from: `"${smtpConfig.from_name || 'CRM管理后台'}" <${smtpConfig.username}>`,
+      to: smtpConfig.to_emails.join(','),
       subject: `[CRM通知] ${notification.title}`,
       html
     })
@@ -244,6 +298,53 @@ class AdminNotificationService {
           }
         })
       })
+    }
+  }
+
+  /**
+   * 短信通知（通过阿里云短信服务发送给管理员手机号）
+   */
+  private async sendSms(
+    config: { phone_numbers?: string[]; sign_name?: string; template_code?: string },
+    notification: { title: string; content: string; level: string }
+  ): Promise<void> {
+    if (!config.phone_numbers?.length) return
+
+    try {
+      const { aliyunSmsService } = await import('./AliyunSmsService')
+      const loaded = await aliyunSmsService.loadFromDatabase()
+
+      if (!loaded) {
+        // 尝试从基础配置中读取短信设置
+        const smsResult = await AppDataSource.query(
+          `SELECT config_value FROM system_config WHERE config_key = 'sms_config' LIMIT 1`
+        ).catch(() => [])
+        if (!smsResult || smsResult.length === 0) {
+          log.warn('[AdminNotification] 短信配置未启用，无法发送管理员短信通知')
+          return
+        }
+      }
+
+      // 精简内容（短信有字数限制）
+      const smsContent = `${notification.title}。${notification.content}`.substring(0, 200)
+
+      for (const phone of config.phone_numbers) {
+        if (!phone || !/^1\d{10}$/.test(phone)) continue
+
+        try {
+          // 优先使用渠道配置的模板CODE，否则使用通用通知模板
+          const templateType = config.template_code || 'ADMIN_NOTIFICATION'
+          await aliyunSmsService.sendSms(phone, templateType, {
+            title: notification.title.substring(0, 20),
+            content: smsContent
+          })
+          log.info(`[AdminNotification] 管理员短信通知已发送: ${phone}`)
+        } catch (smsErr: any) {
+          log.error(`[AdminNotification] 管理员短信发送失败(${phone}):`, smsErr.message)
+        }
+      }
+    } catch (error: any) {
+      log.error('[AdminNotification] 短信通知服务异常:', error.message)
     }
   }
 
@@ -319,7 +420,7 @@ class AdminNotificationService {
 
   async getChannels() {
     return await AppDataSource.query(
-      'SELECT id, channel_type, name, is_enabled, config_data, created_at, updated_at FROM admin_notification_channels ORDER BY FIELD(channel_type, "system", "dingtalk", "wecom", "wechat_mp", "email")'
+      'SELECT id, channel_type, name, is_enabled, config_data, created_at, updated_at FROM admin_notification_channels ORDER BY FIELD(channel_type, "system", "dingtalk", "wecom", "wechat_mp", "email", "sms")'
     )
   }
 
@@ -367,9 +468,16 @@ class AdminNotificationService {
           return { success: true, message: '企业微信消息发送成功，请检查群消息' }
         }
         case 'email': {
-          if (!config.smtp_host || !config.username) return { success: false, message: '请填写SMTP配置' }
-          if (!config.to_emails?.length) return { success: false, message: '请添加收件人邮箱' }
-          await this.sendEmail(config, { title: '🔔 测试通知', content: '这是一条来自CRM管理后台的测试消息，如果您收到了此邮件说明邮件通知配置正确。', level: 'info' })
+          let testConfig = config
+          if (!config.smtp_host || !config.username) {
+            const globalConfig = await this.getGlobalEmailConfig()
+            if (globalConfig) {
+              testConfig = { ...globalConfig, to_emails: config.to_emails || [] }
+            }
+          }
+          if (!testConfig.smtp_host || !testConfig.username) return { success: false, message: '请填写SMTP配置，或在基础配置-邮件设置中配置全局SMTP' }
+          if (!testConfig.to_emails?.length) return { success: false, message: '请添加收件人邮箱' }
+          await this.sendEmail(testConfig, { title: '🔔 测试通知', content: '这是一条来自CRM管理后台的测试消息，如果您收到了此邮件说明邮件通知配置正确。', level: 'info' })
           return { success: true, message: '邮件发送成功，请检查收件箱' }
         }
         case 'wechat_mp': {
@@ -387,6 +495,14 @@ class AdminNotificationService {
         }
         case 'system': {
           return { success: true, message: '系统消息渠道始终可用' }
+        }
+        case 'sms': {
+          if (!config.phone_numbers?.length) return { success: false, message: '请添加接收手机号' }
+          // 验证手机号格式
+          const invalidPhones = config.phone_numbers.filter((p: string) => !/^1\d{10}$/.test(p))
+          if (invalidPhones.length > 0) return { success: false, message: `手机号格式不正确: ${invalidPhones.join(', ')}` }
+          await this.sendSms(config, { title: '🔔 测试通知', content: '这是一条来自CRM管理后台的测试短信，如果您收到说明短信通知配置正确。', level: 'info' })
+          return { success: true, message: '短信发送成功，请检查手机' }
         }
         default:
           return { success: false, message: `未知渠道类型: ${channelType}` }

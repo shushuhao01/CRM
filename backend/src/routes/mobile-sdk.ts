@@ -2,6 +2,7 @@ import { Router } from 'express';
 import path from 'path';
 import fs from 'fs';
 
+import { log } from '../config/logger';
 const router = Router();
 
 // 下载Android APK
@@ -23,7 +24,7 @@ router.get('/download/android', (req, res) => {
   // 发送文件
   return res.sendFile(apkPath, (err) => {
     if (err) {
-      console.error('发送APK文件失败:', err);
+      log.error('发送APK文件失败:', err);
       if (!res.headersSent) {
         res.status(500).json({
           success: false,
@@ -53,7 +54,7 @@ router.get('/download/ios', (req, res) => {
   // 发送文件
   return res.sendFile(ipaPath, (err) => {
     if (err) {
-      console.error('发送IPA文件失败:', err);
+      log.error('发送IPA文件失败:', err);
       if (!res.headersSent) {
         res.status(500).json({
           success: false,

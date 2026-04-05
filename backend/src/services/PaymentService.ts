@@ -6,6 +6,7 @@ import { v4 as uuidv4 } from 'uuid'
 import { AppDataSource } from '../config/database'
 import { adminNotificationService } from './AdminNotificationService'
 
+import { log } from '../config/logger';
 // 解密密钥（与admin/payment.ts保持一致）
 const ENCRYPT_KEY = process.env.PAYMENT_ENCRYPT_KEY || 'crm-payment-secret-key-2024'
 
@@ -79,12 +80,12 @@ class PaymentService {
               this.config.alipay = data
             }
           } catch {
-            console.warn(`[Payment] 解析${row.pay_type}配置失败`)
+            log.warn(`[Payment] 解析${row.pay_type}配置失败`)
           }
         }
       }
     } catch (error) {
-      console.error('[Payment] 加载配置失败:', error)
+      log.error('[Payment] 加载配置失败:', error)
     }
   }
 
@@ -174,10 +175,22 @@ class PaymentService {
 
       return { success: true, orderId, orderNo, qrCode, payUrl }
     } catch (error: any) {
-      console.error('[Payment] 创建订单失败:', error)
+      log.error('[Payment] 创建订单失败:', error)
       await this._logPayment(orderId, orderNo, 'create', params.payType, params, null, 'fail', error.message)
       return { success: false, message: error.message || '创建订单失败' }
     }
+  }
+
+  // 为已有订单重新生成微信支付二维码（公开方法）
+  async createWechatOrderForExisting(orderNo: string, amount: number, description: string) {
+    await this.loadConfig()
+    return this.createWechatOrder(orderNo, amount, description)
+  }
+
+  // 为已有订单重新生成支付宝二维码（公开方法）
+  async createAlipayOrderForExisting(orderNo: string, amount: number, description: string) {
+    await this.loadConfig()
+    return this.createAlipayOrder(orderNo, amount, description)
   }
 
   // 创建微信支付订单 (Native支付)
@@ -187,7 +200,7 @@ class PaymentService {
   }> {
     if (!this.config.wechat) {
       // 开发模式：返回模拟二维码
-      console.log('[Payment] 微信支付未配置，使用模拟模式')
+      log.info('[Payment] 微信支付未配置，使用模拟模式')
       return {
         qrCode: this.generateMockQRCode(`weixin://wxpay/bizpayurl?pr=${orderNo}`),
         payUrl: `weixin://wxpay/bizpayurl?pr=${orderNo}`
@@ -243,7 +256,7 @@ class PaymentService {
   }> {
     if (!this.config.alipay) {
       // 开发模式：返回模拟二维码
-      console.log('[Payment] 支付宝未配置，使用模拟模式')
+      log.info('[Payment] 支付宝未配置，使用模拟模式')
       return {
         qrCode: this.generateMockQRCode(`https://qr.alipay.com/${orderNo}`),
         payUrl: `https://qr.alipay.com/${orderNo}`
@@ -382,17 +395,79 @@ class PaymentService {
     let licenseKey: string | null = null
 
     if (status === 'paid') {
-      await AppDataSource.query(
+      // 🔑 先检查订单当前状态，只有 pending 状态才能变为 paid
+      const currentOrders = await AppDataSource.query(
+        'SELECT status FROM payment_orders WHERE order_no = ?', [orderNo]
+      )
+      if (currentOrders.length === 0) {
+        log.warn(`[Payment] 订单不存在: ${orderNo}`)
+        return null
+      }
+      if (currentOrders[0].status !== 'pending') {
+        log.warn(`[Payment] 订单 ${orderNo} 当前状态为 ${currentOrders[0].status}，无法变更为 paid`)
+        return null
+      }
+
+      const updateResult = await AppDataSource.query(
         'UPDATE payment_orders SET status = ?, trade_no = ?, paid_at = ? WHERE order_no = ? AND status = ?',
         [status, tradeNo, now, orderNo, 'pending']
       )
 
-      // 获取订单信息，激活租户并生成授权码
+      // 确认确实更新了行（防止并发竞态）
+      if (!updateResult?.affectedRows || updateResult.affectedRows === 0) {
+        log.warn(`[Payment] 订单 ${orderNo} 更新为 paid 失败（可能已被其他操作修改）`)
+        return null
+      }
+
+      // 获取订单信息，激活/升级租户并生成授权码
       const orders = await AppDataSource.query(
-        'SELECT tenant_id, package_id FROM payment_orders WHERE order_no = ?', [orderNo]
+        'SELECT tenant_id, package_id, billing_cycle, bonus_months FROM payment_orders WHERE order_no = ?', [orderNo]
       )
       if (orders.length > 0 && orders[0].tenant_id) {
-        licenseKey = await this.activateTenant(orders[0].tenant_id, orders[0].package_id)
+        // 🔑 判断是否为扩容订单（CAP开头）
+        const isCapacityOrder = orderNo.startsWith('CAP')
+
+        if (isCapacityOrder) {
+          // 扩容订单：调用 CapacityService 激活扩容额度
+          try {
+            const { capacityService } = await import('./CapacityService')
+            const capResult = await capacityService.activateCapacity(orderNo)
+            if (capResult.success) {
+              log.info(`[Payment] 扩容订单支付成功并已激活: ${orderNo}`)
+            } else {
+              log.error(`[Payment] 扩容订单激活失败: ${orderNo}, ${capResult.message}`)
+            }
+          } catch (capErr: any) {
+            log.error('[Payment] 扩容订单激活异常:', capErr.message)
+          }
+        } else {
+          // 套餐订单：激活/升级租户
+          licenseKey = await this.activateTenant(
+            orders[0].tenant_id,
+            orders[0].package_id,
+            orders[0].billing_cycle || 'monthly',
+            Number(orders[0].bonus_months) || 0
+          )
+        }
+
+        // 🔑 自动关闭同租户的其他待支付订单（防止重复支付）
+        // 套餐订单支付后：关闭同租户其他待支付的套餐订单（一个租户同时只需一个套餐）
+        // 扩容订单支付后：不关闭其他扩容订单（用户数和存储空间是独立购买的）
+        try {
+          if (!isCapacityOrder) {
+            // 套餐订单：关闭同租户其他待支付的非扩容订单
+            const closedResult = await AppDataSource.query(
+              `UPDATE payment_orders SET status = 'closed' WHERE tenant_id = ? AND status = 'pending' AND order_no != ? AND order_no NOT LIKE 'CAP%'`,
+              [orders[0].tenant_id, orderNo]
+            )
+            if (closedResult?.affectedRows > 0) {
+              log.info(`[Payment] 已自动关闭同租户 ${orders[0].tenant_id} 的 ${closedResult.affectedRows} 笔待支付套餐订单`)
+            }
+          }
+          // 扩容订单不自动关闭其他扩容订单（用户可能同时购买用户数和存储空间）
+        } catch (closeErr: any) {
+          log.warn('[Payment] 自动关闭待支付订单失败:', closeErr.message)
+        }
       }
     } else {
       await AppDataSource.query(
@@ -419,55 +494,100 @@ class PaymentService {
         relatedId: orderNo,
         relatedType: 'payment_order',
         extraData: { orderNo, amount: info.amount, payType: info.pay_type, licenseKey }
-      }).catch(err => console.error('[Payment] 发送支付成功通知失败:', err.message))
+      }).catch(err => log.error('[Payment] 发送支付成功通知失败:', err.message))
     }
 
     return licenseKey
   }
 
-  // 激活租户（支付成功后调用）
-  private async activateTenant(tenantId: string, packageId: string): Promise<string | null> {
+  // 激活/升级租户（支付成功后调用，支持新开通、续费、升级三种场景）
+  private async activateTenant(tenantId: string, packageId: string, billingCycle?: string, bonusMonths?: number): Promise<string | null> {
     try {
-      // 获取租户信息
+      // 获取租户信息（包括当前套餐和过期日期，用于判断续费/升级场景）
       const tenants = await AppDataSource.query(
-        'SELECT code, name, phone, contact FROM tenants WHERE id = ?', [tenantId]
+        'SELECT code, name, phone, contact, expire_date, package_id as current_package_id, license_status FROM tenants WHERE id = ?', [tenantId]
       )
 
       if (tenants.length === 0) {
-        console.error('[Payment] 租户不存在:', tenantId)
+        log.error('[Payment] 租户不存在:', tenantId)
         return null
       }
 
       const tenant = tenants[0]
+      const isRenewal = tenant.current_package_id === packageId  // 续费：同套餐
+      const isUpgrade = tenant.current_package_id && tenant.current_package_id !== packageId  // 升级：换套餐
 
-      // 获取套餐信息
+      // 获取套餐完整信息
       const packages = await AppDataSource.query(
-        'SELECT name, duration_days, max_users FROM tenant_packages WHERE id = ?', [packageId]
+        `SELECT id, name, code, type, duration_days, max_users, max_storage_gb, features, modules
+         FROM tenant_packages WHERE id = ?`, [packageId]
       )
 
       if (packages.length > 0) {
         const pkg = packages[0]
-        const expireDate = new Date()
-        expireDate.setDate(expireDate.getDate() + pkg.duration_days)
+
+        // ━━━ 根据计费周期计算服务时长 ━━━
+        let durationDays = pkg.duration_days || 30
+        if (billingCycle === 'yearly' || billingCycle === 'annual') {
+          // 年付：365天 + 赠送月数 * 30天
+          durationDays = 365 + ((bonusMonths || 0) * 30)
+        } else if (billingCycle === 'perpetual') {
+          // 永久授权：100年
+          durationDays = 36500
+        }
+        // monthly 使用套餐默认的 duration_days
+
+        // ━━━ 续费场景：从当前到期日延长（如果尚未过期） ━━━
+        let baseDate = new Date()
+        if (isRenewal && tenant.expire_date) {
+          const currentExpire = new Date(tenant.expire_date)
+          if (currentExpire > baseDate) {
+            baseDate = currentExpire  // 未过期：从到期日顺延
+            log.info(`[Payment] 续费模式：从当前到期日 ${tenant.expire_date} 延长 ${durationDays} 天`)
+          }
+        }
+
+        const expireDate = new Date(baseDate)
+        expireDate.setDate(expireDate.getDate() + durationDays)
         const expireDateStr = expireDate.toISOString().slice(0, 10)
 
-        // 生成授权码
+        // 生成新授权码
         const licenseKey = this.generateLicenseKey()
 
-        // 更新租户状态
+        // 解析套餐 features（用于同步到租户）
+        let featuresStr: string | null = null
+        if (pkg.features) {
+          featuresStr = typeof pkg.features === 'string' ? pkg.features : JSON.stringify(pkg.features)
+        }
+
+        // ━━━ 🔑 更新租户状态（完整同步套餐信息） ━━━
+        // license_status 设为 'paid'（已付款待激活），真正激活需客户使用授权码在CRM登录
+        // 🔑 续费/升级时保留扩容额度：max_users = 套餐基础 + 扩容数，max_storage_gb 同理
         await AppDataSource.query(
           `UPDATE tenants SET
+            package_id = ?,
             license_key = ?,
-            license_status = 'active',
+            license_status = 'paid',
             status = 'active',
             expire_date = ?,
-            max_users = ?,
+            max_users = ? + COALESCE(extra_users, 0),
+            max_storage_gb = ? + COALESCE(extra_storage_gb, 0),
+            features = COALESCE(?, features),
             updated_at = NOW()
           WHERE id = ?`,
-          [licenseKey, expireDateStr, pkg.max_users, tenantId]
+          [packageId, licenseKey, expireDateStr, pkg.max_users || 3,
+           pkg.max_storage_gb || 10, featuresStr, tenantId]
         )
 
-        // 创建默认管理员账号
+        if (isUpgrade) {
+          log.info(`[Payment] 套餐升级：租户 ${tenantId} 从套餐 ${tenant.current_package_id} → ${packageId}（${pkg.name}）`)
+        } else if (isRenewal) {
+          log.info(`[Payment] 套餐续费：租户 ${tenantId} 套餐 ${pkg.name}，新到期日 ${expireDateStr}`)
+        } else {
+          log.info(`[Payment] 新开通：租户 ${tenantId} 开通套餐 ${pkg.name}`)
+        }
+
+        // 创建默认管理员账号（内部会检查是否已存在，存在则跳过）
         const { createDefaultAdmin } = await import('../utils/adminAccountHelper')
         const adminAccount = await createDefaultAdmin({
           tenantId: tenantId,
@@ -476,14 +596,20 @@ class PaymentService {
           email: undefined
         })
 
-        console.log(`✓ 已为租户 ${tenant.code} 创建默认管理员账号: ${adminAccount.username}`)
+        log.info(`✓ 已为租户 ${tenant.code} 创建默认管理员账号: ${adminAccount.username}`)
 
-        // 记录授权日志
+        // 记录授权日志（区分新开通/续费/升级）
         const { v4: uuidv4 } = await import('uuid')
+        const logAction = isUpgrade ? 'upgrade' : isRenewal ? 'renew' : 'activate'
+        const logMessage = isUpgrade
+          ? `套餐升级至${pkg.name}，有效期至${expireDateStr}`
+          : isRenewal
+            ? `套餐续费${pkg.name}，有效期至${expireDateStr}`
+            : `支付成功激活${pkg.name}`
         await AppDataSource.query(
           `INSERT INTO tenant_license_logs (id, tenant_id, license_key, action, result, message)
-           VALUES (?, ?, ?, 'activate', 'success', '支付成功激活')`,
-          [uuidv4(), tenantId, licenseKey]
+           VALUES (?, ?, ?, ?, 'success', ?)`,
+          [uuidv4(), tenantId, licenseKey, logAction, logMessage]
         )
 
         // 发送支付成功账号开通通知（包含完整账号信息）
@@ -495,12 +621,12 @@ class PaymentService {
           expireDate: expireDateStr
         })
 
-        console.log(`[Payment] 租户激活成功: ${tenantId}, 授权码: ${licenseKey}`)
+        log.info(`[Payment] 租户激活成功: ${tenantId}, 授权码: ${licenseKey}`)
         return licenseKey
       }
       return null
     } catch (error) {
-      console.error('[Payment] 激活租户失败:', error)
+      log.error('[Payment] 激活租户失败:', error)
       return null
     }
   }
@@ -553,18 +679,119 @@ class PaymentService {
             expireDate: accountInfo.expireDate
           })
 
-          console.log(`[Payment] 支付成功账号开通通知已发送至: ${tenant.phone}`)
+          log.info(`[Payment] 支付成功账号开通通知已发送至: ${tenant.phone}`)
         } catch (smsError) {
-          console.error('[Payment] 发送短信失败:', smsError)
+          log.error('[Payment] 发送短信失败:', smsError)
         }
       }
 
-      // TODO: 发送邮件通知
-      // if (tenant.email) {
-      //   await emailService.sendLicenseNotification(tenant.email, licenseKey, tenant.name)
-      // }
+      // 发送邮件通知（如果客户注册时填了邮箱）
+      if (tenant.email && accountInfo) {
+        try {
+          // 获取订单信息
+          const emailOrders = await AppDataSource.query(
+            'SELECT order_no, amount, pay_type FROM payment_orders WHERE tenant_id = ? ORDER BY created_at DESC LIMIT 1',
+            [tenantId]
+          )
+          const emailOrderInfo = emailOrders.length > 0 ? emailOrders[0] : null
+
+          // 从 system_config 读取邮件 SMTP 配置
+          const emailConfigRows = await AppDataSource.query(
+            `SELECT config_value FROM system_config WHERE config_key = 'email_settings' LIMIT 1`
+          ).catch(() => [])
+
+          let emailSettings: any = null
+          if (emailConfigRows && emailConfigRows.length > 0) {
+            const parsed = JSON.parse(emailConfigRows[0].config_value || '{}')
+            if (parsed.enabled && parsed.smtpHost && parsed.senderEmail && parsed.emailPassword) {
+              emailSettings = parsed
+            }
+          }
+
+          if (emailSettings) {
+            const nodemailer = await import('nodemailer')
+            const { SITE_CONFIG } = await import('../config/sites')
+
+            const transporter = nodemailer.createTransport({
+              host: emailSettings.smtpHost,
+              port: emailSettings.smtpPort || 465,
+              secure: emailSettings.enableSsl !== false,
+              auth: {
+                user: emailSettings.senderEmail,
+                pass: emailSettings.emailPassword
+              }
+            })
+
+            const payTypeLabel = emailOrderInfo?.pay_type === 'wechat' ? '微信支付' : emailOrderInfo?.pay_type === 'alipay' ? '支付宝' : '对公转账'
+
+            const emailHtml = `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+<body style="margin:0;padding:0;background:#f4f5f7;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,'PingFang SC','Microsoft YaHei',sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f5f7;padding:24px 0;">
+    <tr><td align="center">
+      <table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,0.08);">
+        <tr>
+          <td style="background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);padding:28px 32px;">
+            <h2 style="margin:0;color:#fff;font-size:20px;font-weight:600;">🎉 支付成功 - 账号已开通</h2>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:28px 32px;">
+            <p style="font-size:15px;line-height:1.8;color:#333;margin:0 0 16px;">
+              尊敬的 <strong>${accountInfo.tenantName}</strong>，您好！
+            </p>
+            <p style="font-size:14px;line-height:1.8;color:#333;margin:0 0 20px;">
+              您的订单已支付成功，CRM系统账号已开通。以下是您的账号信息，请妥善保管：
+            </p>
+            <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8f9fa;border-radius:8px;padding:20px;margin-bottom:20px;">
+              <tr><td style="padding:8px 16px;font-size:14px;color:#606266;">订单编号</td><td style="padding:8px 16px;font-size:14px;color:#303133;font-weight:500;">${emailOrderInfo?.order_no || 'N/A'}</td></tr>
+              <tr><td style="padding:8px 16px;font-size:14px;color:#606266;">支付金额</td><td style="padding:8px 16px;font-size:14px;color:#303133;font-weight:500;">¥${emailOrderInfo?.amount || '0'}</td></tr>
+              <tr><td style="padding:8px 16px;font-size:14px;color:#606266;">支付方式</td><td style="padding:8px 16px;font-size:14px;color:#303133;font-weight:500;">${payTypeLabel}</td></tr>
+              <tr><td style="padding:8px 16px;font-size:14px;color:#606266;">套餐名称</td><td style="padding:8px 16px;font-size:14px;color:#303133;font-weight:500;">${accountInfo.packageName}</td></tr>
+              <tr><td style="padding:8px 16px;font-size:14px;color:#606266;">有效期至</td><td style="padding:8px 16px;font-size:14px;color:#303133;font-weight:500;">${accountInfo.expireDate}</td></tr>
+              <tr><td colspan="2" style="padding:4px 16px;"><hr style="border:none;border-top:1px solid #e4e7ed;"></td></tr>
+              <tr><td style="padding:8px 16px;font-size:14px;color:#606266;">租户编码</td><td style="padding:8px 16px;font-size:14px;color:#e6a23c;font-weight:600;">${accountInfo.tenantCode}</td></tr>
+              <tr><td style="padding:8px 16px;font-size:14px;color:#606266;">授权码</td><td style="padding:8px 16px;font-size:14px;color:#e6a23c;font-weight:600;">${licenseKey}</td></tr>
+              <tr><td style="padding:8px 16px;font-size:14px;color:#606266;">管理员密码</td><td style="padding:8px 16px;font-size:14px;color:#e6a23c;font-weight:600;">${accountInfo.adminPassword}</td></tr>
+            </table>
+            <div style="text-align:center;margin:24px 0;">
+              <a href="${SITE_CONFIG.CRM_URL}" style="display:inline-block;padding:12px 32px;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:#fff;text-decoration:none;border-radius:6px;font-size:15px;font-weight:500;">立即登录 CRM 系统</a>
+            </div>
+            <p style="font-size:13px;line-height:1.8;color:#909399;margin:16px 0 0;">
+              ⚠️ 首次登录请使用租户编码和管理员密码登录，登录后请及时修改密码。如有疑问请联系客服。
+            </p>
+          </td>
+        </tr>
+        <tr>
+          <td style="background:#f8f9fa;padding:16px 32px;text-align:center;border-top:1px solid #eee;">
+            <p style="margin:0;color:#999;font-size:12px;line-height:1.6;">此邮件由云客CRM系统自动发送，请勿直接回复</p>
+          </td>
+        </tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`
+
+            await transporter.sendMail({
+              from: `"${emailSettings.senderName || '云客CRM'}" <${emailSettings.senderEmail}>`,
+              to: tenant.email,
+              subject: `【云客CRM】支付成功 - 您的账号已开通（${accountInfo.packageName}）`,
+              html: emailHtml
+            })
+
+            log.info(`[Payment] 支付成功邮件通知已发送至: ${tenant.email}`)
+          } else {
+            log.warn('[Payment] 邮件配置未启用，跳过支付成功邮件通知')
+          }
+        } catch (emailError) {
+          log.error('[Payment] 发送激活邮件失败:', emailError)
+        }
+      }
     } catch (error) {
-      console.error('[Payment] 发送激活通知失败:', error)
+      log.error('[Payment] 发送激活通知失败:', error)
     }
   }
 
@@ -591,6 +818,17 @@ class PaymentService {
       `UPDATE payment_orders SET status = 'closed' WHERE order_no = ? AND status = 'pending'`,
       [orderNo]
     )
+    // 🔑 扩容订单同步关闭 capacity_orders
+    if (orderNo.startsWith('CAP')) {
+      try {
+        await AppDataSource.query(
+          `UPDATE capacity_orders SET status = 'closed' WHERE order_no = ? AND status = 'pending'`,
+          [orderNo]
+        )
+      } catch (err: any) {
+        log.warn('[Payment] 同步关闭扩容订单失败:', err.message)
+      }
+    }
     return true
   }
 
@@ -616,7 +854,7 @@ class PaymentService {
          JSON.stringify(requestData), JSON.stringify(responseData), result, errorMsg]
       )
     } catch (e) {
-      console.error('[Payment] 记录日志失败:', e)
+      log.error('[Payment] 记录日志失败:', e)
     }
   }
 

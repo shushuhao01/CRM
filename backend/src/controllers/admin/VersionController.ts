@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { VersionService } from '../../services/VersionService';
 
+import { log } from '../../config/logger';
 export class VersionController {
   private versionService: VersionService;
 
@@ -74,7 +75,7 @@ export class VersionController {
         }
       });
     } catch (error: any) {
-      console.error('获取版本列表失败:', error);
+      log.error('获取版本列表失败:', error);
       res.status(500).json({
         success: false,
         message: error.message || '获取版本列表失败'
@@ -96,7 +97,7 @@ export class VersionController {
         data: version
       });
     } catch (error: any) {
-      console.error('获取版本详情失败:', error);
+      log.error('获取版本详情失败:', error);
       res.status(404).json({
         success: false,
         message: error.message || '版本不存在'
@@ -118,7 +119,7 @@ export class VersionController {
         data: version
       });
     } catch (error: any) {
-      console.error('获取最新版本失败:', error);
+      log.error('获取最新版本失败:', error);
       res.status(500).json({
         success: false,
         message: error.message || '获取最新版本失败'
@@ -165,7 +166,7 @@ export class VersionController {
         message: '创建成功'
       });
     } catch (error: any) {
-      console.error('创建版本失败:', error);
+      log.error('创建版本失败:', error);
       res.status(400).json({
         success: false,
         message: error.message || '创建版本失败'
@@ -190,7 +191,7 @@ export class VersionController {
         message: '更新成功'
       });
     } catch (error: any) {
-      console.error('更新版本失败:', error);
+      log.error('更新版本失败:', error);
       res.status(400).json({
         success: false,
         message: error.message || '更新版本失败'
@@ -213,7 +214,7 @@ export class VersionController {
         message: '发布成功'
       });
     } catch (error: any) {
-      console.error('发布版本失败:', error);
+      log.error('发布版本失败:', error);
       res.status(400).json({
         success: false,
         message: error.message || '发布版本失败'
@@ -236,7 +237,7 @@ export class VersionController {
         message: '已废弃'
       });
     } catch (error: any) {
-      console.error('废弃版本失败:', error);
+      log.error('废弃版本失败:', error);
       res.status(400).json({
         success: false,
         message: error.message || '废弃版本失败'
@@ -258,7 +259,7 @@ export class VersionController {
         message: result.message
       });
     } catch (error: any) {
-      console.error('删除版本失败:', error);
+      log.error('删除版本失败:', error);
       res.status(400).json({
         success: false,
         message: error.message || '删除版本失败'
@@ -280,7 +281,7 @@ export class VersionController {
         message: '下载次数已更新'
       });
     } catch (error: any) {
-      console.error('更新下载次数失败:', error);
+      log.error('更新下载次数失败:', error);
       res.status(400).json({
         success: false,
         message: error.message || '更新下载次数失败'
@@ -304,7 +305,7 @@ export class VersionController {
         data: changelogs
       });
     } catch (error: any) {
-      console.error('获取更新日志失败:', error);
+      log.error('获取更新日志失败:', error);
       res.status(500).json({
         success: false,
         message: error.message || '获取更新日志失败'
@@ -339,7 +340,7 @@ export class VersionController {
         message: '添加成功'
       });
     } catch (error: any) {
-      console.error('添加更新日志失败:', error);
+      log.error('添加更新日志失败:', error);
       res.status(400).json({
         success: false,
         message: error.message || '添加更新日志失败'
@@ -371,7 +372,7 @@ export class VersionController {
         message: '批量添加成功'
       });
     } catch (error: any) {
-      console.error('批量添加更新日志失败:', error);
+      log.error('批量添加更新日志失败:', error);
       res.status(400).json({
         success: false,
         message: error.message || '批量添加更新日志失败'
@@ -396,7 +397,7 @@ export class VersionController {
         message: '更新成功'
       });
     } catch (error: any) {
-      console.error('更新更新日志失败:', error);
+      log.error('更新更新日志失败:', error);
       res.status(400).json({
         success: false,
         message: error.message || '更新更新日志失败'
@@ -418,7 +419,7 @@ export class VersionController {
         message: result.message
       });
     } catch (error: any) {
-      console.error('删除更新日志失败:', error);
+      log.error('删除更新日志失败:', error);
       res.status(400).json({
         success: false,
         message: error.message || '删除更新日志失败'
@@ -440,7 +441,7 @@ export class VersionController {
         message: result.message
       });
     } catch (error: any) {
-      console.error('删除所有更新日志失败:', error);
+      log.error('删除所有更新日志失败:', error);
       res.status(400).json({
         success: false,
         message: error.message || '删除所有更新日志失败'
@@ -489,7 +490,7 @@ export class VersionController {
         }
       });
     } catch (error: any) {
-      console.error('获取更新日志列表失败:', error);
+      log.error('获取更新日志列表失败:', error);
       res.status(500).json({
         success: false,
         message: error.message || '获取更新日志列表失败'
@@ -511,7 +512,7 @@ export class VersionController {
         data: changelog
       });
     } catch (error: any) {
-      console.error('获取更新日志失败:', error);
+      log.error('获取更新日志失败:', error);
       res.status(404).json({
         success: false,
         message: error.message || '更新日志不存在'
@@ -546,7 +547,7 @@ export class VersionController {
         message: '创建成功'
       });
     } catch (error: any) {
-      console.error('创建更新日志失败:', error);
+      log.error('创建更新日志失败:', error);
       res.status(400).json({
         success: false,
         message: error.message || '创建更新日志失败'
@@ -577,7 +578,7 @@ export class VersionController {
         message: '批量创建成功'
       });
     } catch (error: any) {
-      console.error('批量创建更新日志失败:', error);
+      log.error('批量创建更新日志失败:', error);
       res.status(400).json({
         success: false,
         message: error.message || '批量创建更新日志失败'
@@ -606,7 +607,7 @@ export class VersionController {
         message: '更新成功'
       });
     } catch (error: any) {
-      console.error('更新更新日志失败:', error);
+      log.error('更新更新日志失败:', error);
       res.status(400).json({
         success: false,
         message: error.message || '更新更新日志失败'
@@ -628,7 +629,7 @@ export class VersionController {
         message: result.message
       });
     } catch (error: any) {
-      console.error('删除更新日志失败:', error);
+      log.error('删除更新日志失败:', error);
       res.status(400).json({
         success: false,
         message: error.message || '删除更新日志失败'

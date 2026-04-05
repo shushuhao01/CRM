@@ -11,6 +11,7 @@ import { getTenantRepo } from '../utils/tenantRepo';
 import { TenantContextManager } from '../utils/tenantContext';
 import { checkStorageLimit } from '../middleware/checkTenantLimits';
 
+import { log } from '../config/logger';
 const router = Router();
 
 // 获取用户仓库
@@ -83,7 +84,7 @@ const simpleAuth = (req: any, res: any, next: any) => {
   } catch (error) {
     // 仅开发环境输出错误详情
     if (process.env.NODE_ENV === 'development') {
-      console.error('[Profile Auth] JWT认证失败:', error);
+      log.error('[Profile Auth] JWT认证失败:', error);
     }
     return res.status(401).json({
       success: false,
@@ -135,7 +136,7 @@ router.get('/', simpleAuth, async (req, res) => {
         });
         departmentName = department?.name || '';
       } catch (e) {
-        console.warn('获取部门信息失败:', e);
+        log.warn('获取部门信息失败:', e);
       }
     }
 
@@ -178,7 +179,7 @@ router.get('/', simpleAuth, async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('获取用户资料失败:', error);
+    log.error('获取用户资料失败:', error);
     return res.status(500).json({
       success: false,
       message: '获取用户资料失败',
@@ -242,7 +243,7 @@ router.put('/', simpleAuth, async (req, res) => {
         });
         departmentName = department?.name || '';
       } catch (e) {
-        console.warn('获取部门信息失败:', e);
+        log.warn('获取部门信息失败:', e);
       }
     }
 
@@ -256,7 +257,7 @@ router.put('/', simpleAuth, async (req, res) => {
     };
     const roleName = roleNameMap[updatedUser.role] || updatedUser.role;
 
-    console.log(`[Profile] 用户 ${updatedUser.username} 资料更新成功`);
+    log.info(`[Profile] 用户 ${updatedUser.username} 资料更新成功`);
 
     return res.json({
       success: true,
@@ -283,7 +284,7 @@ router.put('/', simpleAuth, async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('更新用户资料失败:', error);
+    log.error('更新用户资料失败:', error);
     return res.status(500).json({
       success: false,
       message: '更新用户资料失败',
@@ -365,7 +366,7 @@ router.post('/avatar', simpleAuth, checkStorageLimit, upload.single('avatar'), a
     if (user) {
       user.avatar = avatarUrl;
       await userRepository.save(user);
-      console.log(`[Profile] 用户 ${user.username} 头像已更新: ${avatarUrl}`);
+      log.info(`[Profile] 用户 ${user.username} 头像已更新: ${avatarUrl}`);
     }
 
     return res.json({
@@ -378,7 +379,7 @@ router.post('/avatar', simpleAuth, checkStorageLimit, upload.single('avatar'), a
       }
     });
   } catch (error) {
-    console.error('头像上传失败:', error);
+    log.error('头像上传失败:', error);
     return res.status(500).json({
       success: false,
       message: '头像上传失败',
@@ -476,7 +477,7 @@ router.put('/password', simpleAuth, async (req, res) => {
     user.password = hashedPassword;
     await userRepository.save(user);
 
-    console.log(`[Profile] 用户 ${user.username} 密码修改成功`);
+    log.info(`[Profile] 用户 ${user.username} 密码修改成功`);
 
     return res.json({
       success: true,
@@ -486,7 +487,7 @@ router.put('/password', simpleAuth, async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('密码修改失败:', error);
+    log.error('密码修改失败:', error);
     return res.status(500).json({
       success: false,
       message: '密码修改失败',

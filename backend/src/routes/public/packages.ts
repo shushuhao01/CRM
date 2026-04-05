@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express'
 import { AppDataSource } from '../../config/database'
 
+import { log } from '../../config/logger';
 const router = Router()
 
 // 确保私有套餐有年度授权价（首次请求时检查）
@@ -25,10 +26,10 @@ async function ensurePrivateAnnualPrice(): Promise<void> {
        AND (yearly_price IS NULL OR yearly_price = 0)`
     )
     if (result.affectedRows > 0) {
-      console.log(`[public/packages] ✅ 已为 ${result.affectedRows} 个私有套餐初始化年度授权价`)
+      log.info(`[public/packages] ✅ 已为 ${result.affectedRows} 个私有套餐初始化年度授权价`)
     }
     privateAnnualPriceChecked = true
-  } catch (e) {
+  } catch (_e) {
     privateAnnualPriceChecked = true // 避免重复报错
   }
 }
@@ -57,16 +58,28 @@ router.get('/', async (req: Request, res: Response) => {
 
     const packages = await AppDataSource.query(sql, params)
 
-    // 解析 features JSON，安全处理年付字段（字段可能不存在）
-    const result = packages.map((pkg: any) => ({
-      ...pkg,
-      features: typeof pkg.features === 'string' ? JSON.parse(pkg.features) : (pkg.features || []),
-      is_trial: Boolean(pkg.is_trial),
-      is_recommended: Boolean(pkg.is_recommended),
-      yearly_discount_rate: Number(pkg.yearly_discount_rate) || 0,
-      yearly_bonus_months: Number(pkg.yearly_bonus_months) || 0,
-      yearly_price: pkg.yearly_price ? Number(pkg.yearly_price) : null
-    }))
+    const result = packages.map((pkg: any) => {
+      const mapped: any = {
+        ...pkg,
+        features: typeof pkg.features === 'string' ? JSON.parse(pkg.features) : (pkg.features || []),
+        is_trial: Boolean(pkg.is_trial),
+        is_recommended: Boolean(pkg.is_recommended),
+        yearly_discount_rate: Number(pkg.yearly_discount_rate) || 0,
+        yearly_bonus_months: Number(pkg.yearly_bonus_months) || 0,
+        yearly_price: pkg.yearly_price ? Number(pkg.yearly_price) : null,
+        subscription_enabled: Boolean(pkg.subscription_enabled),
+        subscription_channels: pkg.subscription_channels || 'all',
+        subscription_billing_cycle: pkg.subscription_billing_cycle || 'monthly',
+        subscription_discount_rate: Number(pkg.subscription_discount_rate) || 0
+      }
+      // 计算订阅价格（仅当启用订阅时）
+      if (mapped.subscription_enabled && mapped.subscription_discount_rate > 0) {
+        mapped.subscription_price = Number((mapped.price * (1 - mapped.subscription_discount_rate / 100)).toFixed(2))
+      } else if (mapped.subscription_enabled) {
+        mapped.subscription_price = Number(mapped.price)
+      }
+      return mapped
+    })
 
     res.json({
       code: 0,
@@ -74,7 +87,7 @@ router.get('/', async (req: Request, res: Response) => {
       message: 'success'
     })
   } catch (error) {
-    console.error('获取套餐列表失败:', error)
+    log.error('获取套餐列表失败:', error)
     res.status(500).json({
       code: 500,
       message: '获取套餐列表失败'
@@ -112,7 +125,7 @@ router.get('/:code', async (req: Request, res: Response) => {
       message: 'success'
     })
   } catch (error) {
-    console.error('获取套餐详情失败:', error)
+    log.error('获取套餐详情失败:', error)
     res.status(500).json({
       code: 500,
       message: '获取套餐详情失败'

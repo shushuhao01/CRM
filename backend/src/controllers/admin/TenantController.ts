@@ -18,6 +18,7 @@ import { Like } from 'typeorm';
 import { TenantLogService } from '../../services/TenantLogService';
 import bcrypt from 'bcryptjs';
 
+import { log } from '../../config/logger';
 /**
  * 获取租户列表（分页、搜索、筛选）
  */
@@ -110,7 +111,7 @@ export const getTenantList = async (req: Request, res: Response): Promise<void> 
       }
     });
   } catch (error) {
-    console.error('获取租户列表失败:', error);
+    log.error('获取租户列表失败:', error);
     res.status(500).json({
       success: false,
       message: '获取租户列表失败'
@@ -182,7 +183,7 @@ export const getTenantDetail = async (req: Request, res: Response): Promise<void
       }
     });
   } catch (error) {
-    console.error('获取租户详情失败:', error);
+    log.error('获取租户详情失败:', error);
     res.status(500).json({
       success: false,
       message: '获取租户详情失败'
@@ -282,9 +283,9 @@ export const createTenant = async (req: Request, res: Response): Promise<void> =
         email: email || undefined
       });
 
-      console.log(`✅ 已为租户 ${tenant.code} (${tenant.name}) 创建系统管理部和默认管理员账号 (${adminAccount.username}/${adminAccount.password})`);
+      log.info(`✅ 已为租户 ${tenant.code} (${tenant.name}) 创建系统管理部和默认管理员账号 (${adminAccount.username}/${adminAccount.password})`);
     } catch (err: any) {
-      console.error(`创建租户系统管理部和默认管理员失败:`, err.message);
+      log.error(`创建租户系统管理部和默认管理员失败:`, err.message);
       // 不影响租户创建流程
     }
 
@@ -305,7 +306,7 @@ export const createTenant = async (req: Request, res: Response): Promise<void> =
       }
     });
   } catch (error) {
-    console.error('创建租户失败:', error);
+    log.error('创建租户失败:', error);
     res.status(500).json({
       success: false,
       message: '创建租户失败'
@@ -386,7 +387,7 @@ export const updateTenant = async (req: Request, res: Response): Promise<void> =
       data: tenant
     });
   } catch (error) {
-    console.error('更新租户失败:', error);
+    log.error('更新租户失败:', error);
     res.status(500).json({
       success: false,
       message: '更新租户失败'
@@ -424,7 +425,7 @@ export const deleteTenant = async (req: Request, res: Response): Promise<void> =
       message: '租户删除成功'
     });
   } catch (error) {
-    console.error('删除租户失败:', error);
+    log.error('删除租户失败:', error);
     res.status(500).json({
       success: false,
       message: '删除租户失败'
@@ -474,7 +475,7 @@ export const regenerateLicense = async (req: Request, res: Response): Promise<vo
       }
     });
   } catch (error) {
-    console.error('重新生成授权码失败:', error);
+    log.error('重新生成授权码失败:', error);
     res.status(500).json({
       success: false,
       message: '重新生成授权码失败'
@@ -521,7 +522,7 @@ export const updateTenantStatus = async (req: Request, res: Response): Promise<v
       data: tenant
     });
   } catch (error) {
-    console.error('更新租户状态失败:', error);
+    log.error('更新租户状态失败:', error);
     res.status(500).json({
       success: false,
       message: '更新租户状态失败'
@@ -577,7 +578,7 @@ export const suspendTenant = async (req: Request, res: Response): Promise<void> 
       newStatus: 'suspended'
     });
 
-    console.log(`[租户管理] 租户授权已暂停: ${tenant.name} (${tenant.id})`);
+    log.info(`[租户管理] 租户授权已暂停: ${tenant.name} (${tenant.id})`);
 
     res.json({
       success: true,
@@ -585,7 +586,7 @@ export const suspendTenant = async (req: Request, res: Response): Promise<void> 
       data: tenant
     });
   } catch (error) {
-    console.error('暂停租户授权失败:', error);
+    log.error('暂停租户授权失败:', error);
     res.status(500).json({
       success: false,
       message: '暂停租户授权失败'
@@ -654,7 +655,7 @@ export const resumeTenant = async (req: Request, res: Response): Promise<void> =
       newStatus: 'active'
     });
 
-    console.log(`[租户管理] 租户授权已恢复: ${tenant.name} (${tenant.id})`);
+    log.info(`[租户管理] 租户授权已恢复: ${tenant.name} (${tenant.id})`);
 
     res.json({
       success: true,
@@ -662,7 +663,7 @@ export const resumeTenant = async (req: Request, res: Response): Promise<void> =
       data: tenant
     });
   } catch (error) {
-    console.error('恢复租户授权失败:', error);
+    log.error('恢复租户授权失败:', error);
     res.status(500).json({
       success: false,
       message: '恢复租户授权失败'
@@ -708,7 +709,7 @@ export const enableTenant = async (req: Request, res: Response): Promise<void> =
       newStatus: 'active'
     });
 
-    console.log(`[租户管理] 租户已启用: ${tenant.name} (${tenant.id})`);
+    log.info(`[租户管理] 租户已启用: ${tenant.name} (${tenant.id})`);
 
     res.json({
       success: true,
@@ -716,7 +717,7 @@ export const enableTenant = async (req: Request, res: Response): Promise<void> =
       data: tenant
     });
   } catch (error) {
-    console.error('启用租户失败:', error);
+    log.error('启用租户失败:', error);
     res.status(500).json({
       success: false,
       message: '启用租户失败'
@@ -762,7 +763,7 @@ export const disableTenant = async (req: Request, res: Response): Promise<void> 
       newStatus: 'inactive'
     });
 
-    console.log(`[租户管理] 租户已禁用: ${tenant.name} (${tenant.id})`);
+    log.info(`[租户管理] 租户已禁用: ${tenant.name} (${tenant.id})`);
 
     res.json({
       success: true,
@@ -770,7 +771,7 @@ export const disableTenant = async (req: Request, res: Response): Promise<void> 
       data: tenant
     });
   } catch (error) {
-    console.error('禁用租户失败:', error);
+    log.error('禁用租户失败:', error);
     res.status(500).json({
       success: false,
       message: '禁用租户失败'
@@ -822,7 +823,7 @@ export const renewTenant = async (req: Request, res: Response): Promise<void> =>
       newExpireDate: newExpireDate.toISOString()
     });
 
-    console.log(`[租户管理] 租户已续期: ${tenant.name} (${tenant.id}), 新过期时间: ${newExpireDate.toISOString()}`);
+    log.info(`[租户管理] 租户已续期: ${tenant.name} (${tenant.id}), 新过期时间: ${newExpireDate.toISOString()}`);
 
     res.json({
       success: true,
@@ -833,7 +834,7 @@ export const renewTenant = async (req: Request, res: Response): Promise<void> =>
       }
     });
   } catch (error) {
-    console.error('续期租户失败:', error);
+    log.error('续期租户失败:', error);
     res.status(500).json({
       success: false,
       message: '续期租户失败'
@@ -890,7 +891,7 @@ export const getTenantStats = async (req: Request, res: Response): Promise<void>
       }
     });
   } catch (error) {
-    console.error('获取租户统计数据失败:', error);
+    log.error('获取租户统计数据失败:', error);
     res.status(500).json({
       success: false,
       message: '获取租户统计数据失败'
@@ -961,7 +962,7 @@ export const getTenantUsers = async (req: Request, res: Response): Promise<void>
       }
     });
   } catch (error) {
-    console.error('获取租户用户列表失败:', error);
+    log.error('获取租户用户列表失败:', error);
     res.status(500).json({
       success: false,
       message: '获取租户用户列表失败'

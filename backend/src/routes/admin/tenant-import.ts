@@ -12,6 +12,7 @@ import multer from 'multer';
 import * as path from 'path';
 import * as fs from 'fs';
 
+import { log } from '../../config/logger';
 const router = Router();
 
 // 配置文件上传
@@ -86,7 +87,7 @@ router.post('/:id/import', upload.single('file'), async (req: Request, res: Resp
       }
     });
   } catch (error: any) {
-    console.error('创建导入任务失败:', error);
+    log.error('创建导入任务失败:', error);
     res.status(500).json({
       success: false,
       message: '创建导入任务失败',
@@ -128,7 +129,7 @@ router.get('/:id/import/:jobId', (req: Request, res: Response) => {
       }
     });
   } catch (error: any) {
-    console.error('查询导入进度失败:', error);
+    log.error('查询导入进度失败:', error);
     res.status(500).json({
       success: false,
       message: '查询导入进度失败',

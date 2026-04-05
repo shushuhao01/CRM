@@ -72,7 +72,7 @@
     <!-- 底部服务器信息 -->
     <view class="server-info">
       <text class="server-label">服务器: </text>
-      <text class="server-url">{{ serverStore.displayUrl }}</text>
+      <text class="server-url">{{ serverStore.maskedDisplayUrl }}</text>
       <text class="server-switch" @tap="goToServerConfig">切换</text>
     </view>
   </view>
@@ -83,6 +83,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useServerStore } from '@/stores/server'
 import { useUserStore } from '@/stores/user'
 import { login } from '@/api/auth'
+import { APP_VERSION } from '@/config/app'
 
 const serverStore = useServerStore()
 const userStore = useUserStore()
@@ -159,7 +160,7 @@ const handleLogin = async () => {
         deviceModel: systemInfo.deviceModel || '',
         osType: systemInfo.platform === 'ios' ? 'ios' : 'android',
         osVersion: systemInfo.system || '',
-        appVersion: '1.0.0'
+        appVersion: APP_VERSION
       }
     })
 

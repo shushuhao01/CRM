@@ -17,9 +17,9 @@ async function createAdminUser() {
 
     const userRepo = AppDataSource.getRepository(User);
 
-    // 检查是否已存在admin账号
+    // 检查是否已存在admin账号（仅查找无租户的admin用户）
     const existingAdmin = await userRepo.findOne({
-      where: { username: 'admin' }
+      where: { username: 'admin', tenantId: null }
     });
 
     if (existingAdmin) {

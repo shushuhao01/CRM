@@ -6,6 +6,7 @@ import { tenantSQL } from '../utils/tenantRepo';
 import { TenantContextManager } from '../utils/tenantContext';
 import { deployConfig } from '../config/deploy';
 
+import { log } from '../config/logger';
 const router = Router();
 
 router.use(authenticateToken);
@@ -83,7 +84,7 @@ router.get('/shares', async (req: Request, res: Response) => {
       }
     });
   } catch (error) {
-    console.error('获取业绩分享列表失败:', error);
+    log.error('获取业绩分享列表失败:', error);
     res.status(500).json({ success: false, code: 500, message: '获取业绩分享列表失败' });
   }
 });
@@ -120,7 +121,7 @@ router.get('/shares/:id', async (req: Request, res: Response) => {
       data: { ...share, shareMembers: members }
     });
   } catch (error) {
-    console.error('获取业绩分享详情失败:', error);
+    log.error('获取业绩分享详情失败:', error);
     res.status(500).json({ success: false, code: 500, message: '获取业绩分享详情失败' });
   }
 });
@@ -202,9 +203,9 @@ router.post('/shares', async (req: Request, res: Response) => {
             createdBy: currentUser?.userId,
             createdByName: creatorName
           });
-          console.log(`[业绩分享] ✅ 已发送通知给 ${member.userName} (${member.userId})`);
+          log.info(`[业绩分享] ✅ 已发送通知给 ${member.userName} (${member.userId})`);
         } catch (notifyError) {
-          console.error(`[业绩分享] ❌ 发送通知失败:`, notifyError);
+          log.error(`[业绩分享] ❌ 发送通知失败:`, notifyError);
         }
       }
     }
@@ -216,7 +217,7 @@ router.post('/shares', async (req: Request, res: Response) => {
       data: { id: shareId, shareNumber }
     });
   } catch (error) {
-    console.error('创建业绩分享失败:', error);
+    log.error('创建业绩分享失败:', error);
     res.status(500).json({ success: false, code: 500, message: '创建业绩分享失败' });
   }
 });
@@ -259,7 +260,7 @@ router.delete('/shares/:id', async (req: Request, res: Response) => {
 
     res.json({ success: true, code: 200, message: '业绩分享已取消' });
   } catch (error) {
-    console.error('取消业绩分享失败:', error);
+    log.error('取消业绩分享失败:', error);
     res.status(500).json({ success: false, code: 500, message: '取消业绩分享失败' });
   }
 });
@@ -299,7 +300,7 @@ router.patch('/shares/:id/cancel', async (req: Request, res: Response) => {
 
     res.json({ success: true, code: 200, message: '业绩分享已取消' });
   } catch (error) {
-    console.error('取消业绩分享失败:', error);
+    log.error('取消业绩分享失败:', error);
     res.status(500).json({ success: false, code: 500, message: '取消业绩分享失败' });
   }
 });
@@ -339,7 +340,7 @@ router.post('/shares/:id/confirm', async (req: Request, res: Response) => {
 
     res.json({ success: true, code: 200, message: '业绩分享确认成功' });
   } catch (error) {
-    console.error('确认业绩分享失败:', error);
+    log.error('确认业绩分享失败:', error);
     res.status(500).json({ success: false, code: 500, message: '确认业绩分享失败' });
   }
 });
@@ -395,7 +396,7 @@ router.get('/stats', async (req: Request, res: Response) => {
       }
     });
   } catch (error) {
-    console.error('获取业绩分享统计失败:', error);
+    log.error('获取业绩分享统计失败:', error);
     res.status(500).json({ success: false, code: 500, message: '获取业绩分享统计失败' });
   }
 });
@@ -440,7 +441,7 @@ router.get('/personal', async (req: Request, res: Response) => {
     if (startDate && endDate) {
       dateCondition = ' AND created_at >= ? AND created_at <= ?';
       orderParams.push(startDate + ' 00:00:00', endDate + ' 23:59:59');
-      console.log(`[业绩统计] 查询日期范围: ${startDate} 00:00:00 ~ ${endDate} 23:59:59`);
+      log.info(`[业绩统计] 查询日期范围: ${startDate} 00:00:00 ~ ${endDate} 23:59:59`);
     }
 
     // 获取所有订单用于业绩计算
@@ -655,7 +656,7 @@ router.get('/personal', async (req: Request, res: Response) => {
       }
     });
   } catch (error) {
-    console.error('获取个人业绩失败:', error);
+    log.error('获取个人业绩失败:', error);
     res.status(500).json({ success: false, code: 500, message: '获取个人业绩失败' });
   }
 });
@@ -678,7 +679,7 @@ router.get('/team', async (req: Request, res: Response) => {
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 50;
 
-    console.log(`[团队业绩API] 🚀 请求参数: departmentId=${departmentIdParam}, 实际使用=${departmentId || '全部部门'}`);
+    log.info(`[团队业绩API] 🚀 请求参数: departmentId=${departmentIdParam}, 实际使用=${departmentId || '全部部门'}`);
 
     // 🔥 数据库已配置为北京时区，直接使用北京时间
     let dateCondition = '';
@@ -706,8 +707,8 @@ router.get('/team', async (req: Request, res: Response) => {
       [...tUser.params]
     );
 
-    console.log(`[团队业绩] 查询到用户数: ${users.length}`);
-    console.log(`[团队业绩] 用户列表:`, users.map((u: any) => ({ id: u.id, username: u.username, realName: u.realName })));
+    log.info(`[团队业绩] 查询到用户数: ${users.length}`);
+    log.info(`[团队业绩] 用户列表:`, users.map((u: any) => ({ id: u.id, username: u.username, realName: u.realName })));
 
     // 获取每个成员的订单数据
     const memberStats: any[] = [];
@@ -965,7 +966,7 @@ router.get('/team', async (req: Request, res: Response) => {
     const avgPerformance = memberStats.length > 0 ? totalOrderAmount / memberStats.length : 0;
     const totalSignRate = totalOrderCount > 0 ? parseFloat(((totalSignCount / totalOrderCount) * 100).toFixed(1)) : 0;
 
-    console.log(`[团队业绩] 汇总统计: 总订单数=${totalOrderCount}, 总金额=${totalOrderAmount}, 成员数=${memberStats.length}`);
+    log.info(`[团队业绩] 汇总统计: 总订单数=${totalOrderCount}, 总金额=${totalOrderAmount}, 成员数=${memberStats.length}`);
 
     // 分页
     const total = memberStats.length;
@@ -994,7 +995,7 @@ router.get('/team', async (req: Request, res: Response) => {
       }
     });
   } catch (error) {
-    console.error('获取团队业绩失败:', error);
+    log.error('获取团队业绩失败:', error);
     res.status(500).json({ success: false, code: 500, message: '获取团队业绩失败' });
   }
 });
@@ -1050,7 +1051,7 @@ router.get('/analysis', async (req: Request, res: Response) => {
       }
     });
   } catch (error) {
-    console.error('获取业绩分析失败:', error);
+    log.error('获取业绩分析失败:', error);
     res.status(500).json({ success: false, code: 500, message: '获取业绩分析失败' });
   }
 });
@@ -1112,7 +1113,7 @@ router.get('/analysis/personal', async (req: Request, res: Response) => {
       }
     });
   } catch (error) {
-    console.error('获取个人业绩分析失败:', error);
+    log.error('获取个人业绩分析失败:', error);
     res.status(500).json({ success: false, code: 500, message: '获取个人业绩分析失败' });
   }
 });
@@ -1163,7 +1164,7 @@ router.get('/analysis/department', async (req: Request, res: Response) => {
       }
     });
   } catch (error) {
-    console.error('获取部门业绩分析失败:', error);
+    log.error('获取部门业绩分析失败:', error);
     res.status(500).json({ success: false, code: 500, message: '获取部门业绩分析失败' });
   }
 });
@@ -1207,7 +1208,7 @@ router.get('/analysis/company', async (_req: Request, res: Response) => {
       }
     });
   } catch (error) {
-    console.error('获取公司业绩分析失败:', error);
+    log.error('获取公司业绩分析失败:', error);
     res.status(500).json({ success: false, code: 500, message: '获取公司业绩分析失败' });
   }
 });
@@ -1310,7 +1311,7 @@ router.get('/analysis/metrics', async (req: Request, res: Response) => {
       }
     });
   } catch (error) {
-    console.error('获取业绩统计指标失败:', error);
+    log.error('获取业绩统计指标失败:', error);
     res.status(500).json({ success: false, code: 500, message: '获取业绩统计指标失败' });
   }
 });
@@ -1338,7 +1339,7 @@ router.get('/analysis/trend', async (req: Request, res: Response) => {
 
     res.json({ success: true, code: 200, message: '获取业绩趋势成功', data: trendData });
   } catch (error) {
-    console.error('获取业绩趋势失败:', error);
+    log.error('获取业绩趋势失败:', error);
     res.status(500).json({ success: false, code: 500, message: '获取业绩趋势失败' });
   }
 });
@@ -1359,7 +1360,7 @@ router.get('/analysis/chart-data', async (req: Request, res: Response) => {
     const { startDate, endDate, departmentId, granularity } = req.query;
     const _currentUser = (req as any).user;
 
-    console.log(`[业绩图表API] 请求参数: startDate=${startDate}, endDate=${endDate}, departmentId=${departmentId}, granularity=${granularity}`);
+    log.info(`[业绩图表API] 请求参数: startDate=${startDate}, endDate=${endDate}, departmentId=${departmentId}, granularity=${granularity}`);
 
     // 🔥 构建基础查询条件
     const conditions: string[] = [];
@@ -1452,14 +1453,14 @@ router.get('/analysis/chart-data', async (req: Request, res: Response) => {
       ORDER BY period ASC
     `;
 
-    console.log(`[业绩图表API] 趋势SQL: ${trendSql}`);
-    console.log(`[业绩图表API] 参数: ${JSON.stringify(params)}`);
+    log.info(`[业绩图表API] 趋势SQL: ${trendSql}`);
+    log.info(`[业绩图表API] 参数: ${JSON.stringify(params)}`);
 
     const trendData = await AppDataSource.query(trendSql, params);
 
-    console.log(`[业绩图表API] 趋势数据条数: ${trendData.length}`);
+    log.info(`[业绩图表API] 趋势数据条数: ${trendData.length}`);
     if (trendData.length > 0) {
-      console.log(`[业绩图表API] 趋势数据示例:`, trendData.slice(0, 3));
+      log.info(`[业绩图表API] 趋势数据示例:`, trendData.slice(0, 3));
     }
 
     // 🔥 2. 获取订单状态分布
@@ -1557,7 +1558,7 @@ router.get('/analysis/chart-data', async (req: Request, res: Response) => {
       }
     });
   } catch (error) {
-    console.error('获取业绩图表数据失败:', error);
+    log.error('获取业绩图表数据失败:', error);
     res.status(500).json({ success: false, code: 500, message: '获取业绩图表数据失败' });
   }
 });

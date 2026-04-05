@@ -579,7 +579,7 @@ import { customerApi } from '@/api/customer'
 import { customerTagApi, type CustomerTag } from '@/api/customerTags'
 import { formRules as validationRules } from '@/utils/validation'
 import { useResponsive } from '@/utils/responsive'
-import { getProvinces, getCitiesByProvince, getDistrictsByCity, getStreetsByDistrict } from '@/utils/addressData'
+import { getProvinces, getCitiesByProvince, getDistrictsByCity, getStreetsByDistrict, loadAddressData } from '@/utils/addressData'
 import ImprovementGoalsManager from '@/components/ImprovementGoalsManager.vue'
 import { createSafeNavigator } from '@/utils/navigation'
 
@@ -1741,7 +1741,8 @@ const loadCustomerDetail = async () => {
 }
 
 // 初始化地址数据
-const initAddressData = () => {
+const initAddressData = async () => {
+  await loadAddressData()
   provinces.value = getProvinces()
 }
 
@@ -1768,9 +1769,9 @@ watch(() => customerForm.phone, (newPhone, oldPhone) => {
 })
 
 // 生命周期钩子
-onMounted(() => {
+onMounted(async () => {
   initForm()
-  initAddressData()
+  await initAddressData()
   loadTags()
   loadCustomerDetail()
 })

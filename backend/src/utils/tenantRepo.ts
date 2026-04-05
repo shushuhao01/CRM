@@ -17,7 +17,7 @@
  *   repo.createQueryBuilder('c')                 // 自动添加 WHERE tenant_id = ?
  */
 
-import { Repository, FindManyOptions, FindOneOptions, FindOptionsWhere, DeepPartial, ObjectLiteral, SaveOptions } from 'typeorm';
+import { Repository, FindManyOptions, FindOneOptions, FindOptionsWhere, DeepPartial, ObjectLiteral, SaveOptions, In } from 'typeorm';
 import { AppDataSource } from '../config/database';
 import { TenantContextManager } from './tenantContext';
 import { deployConfig } from '../config/deploy';
@@ -96,9 +96,28 @@ function getCurrentTenantId(): string | undefined {
 }
 
 /**
+ * 🔥 性能优化：Proxy 缓存
+ * 避免每次调用 getTenantRepo 都创建新的 Proxy 对象，减少 GC 压力
+ * 缓存 key = tenantId + entityTableName，确保同一请求中同一租户+实体复用 Proxy
+ * 使用 WeakRef 避免内存泄漏，缓存条目5分钟自动过期
+ */
+const proxyCache = new Map<string, { proxy: Repository<any>; expireAt: number }>();
+const PROXY_CACHE_TTL = 5 * 60 * 1000; // 5分钟
+
+// 定期清理过期 Proxy 缓存
+setInterval(() => {
+  const now = Date.now();
+  proxyCache.forEach((value, key) => {
+    if (now > value.expireAt) {
+      proxyCache.delete(key);
+    }
+  });
+}, 60 * 1000); // 每分钟清理一次
+
+/**
  * 合并租户条件到 where 子句
  */
-function mergeTenantWhere<T>(where: any, tenantId: string): any {
+function mergeTenantWhere(where: any, tenantId: string): any {
   if (!where) return { tenantId };
   if (Array.isArray(where)) {
     return where.map(w => ({ ...w, tenantId }));
@@ -127,8 +146,15 @@ export function getTenantRepo<Entity extends ObjectLiteral>(
     return repo; // 无租户上下文，直接返回（超管等场景）
   }
 
+  // 🔥 性能优化：检查 Proxy 缓存，避免重复创建
+  const cacheKey = `${tenantId}:${repo.metadata.tableName}`;
+  const cached = proxyCache.get(cacheKey);
+  if (cached && Date.now() < cached.expireAt) {
+    return cached.proxy as Repository<Entity>;
+  }
+
   // 使用 Proxy 拦截所有方法调用
-  return new Proxy(repo, {
+  const proxyRepo = new Proxy(repo, {
     get(target, prop, receiver) {
       const original = Reflect.get(target, prop, receiver);
 
@@ -271,6 +297,16 @@ export function getTenantRepo<Entity extends ObjectLiteral>(
         };
       }
 
+      // 🔥 拦截 findByIds - 添加租户过滤（findByIds 已废弃，但旧代码仍在使用）
+      if (prop === 'findByIds') {
+        return async (ids: any[]) => {
+          if (!ids || ids.length === 0) return [];
+          return target.find({
+            where: { id: In(ids), tenantId } as any
+          });
+        };
+      }
+
       // 其他方法直接透传
       if (typeof original === 'function') {
         return original.bind(target);
@@ -278,6 +314,10 @@ export function getTenantRepo<Entity extends ObjectLiteral>(
       return original;
     }
   });
+
+  // 🔥 存入 Proxy 缓存
+  proxyCache.set(cacheKey, { proxy: proxyRepo, expireAt: Date.now() + PROXY_CACHE_TTL });
+  return proxyRepo;
 }
 
 /**

@@ -7,6 +7,7 @@ import { ServiceOperationLog } from '../entities/ServiceOperationLog';
 import { authenticateToken } from '../middleware/auth';
 import { orderNotificationService } from '../services/OrderNotificationService';
 import { getTenantRepo } from '../utils/tenantRepo';
+import { log as logger } from '../config/logger';
 // import { Like, In } from 'typeorm'; // 暂时未使用
 
 const router = Router();
@@ -59,7 +60,7 @@ const logOperation = async (
     });
     await logRepository.save(log);
   } catch (error) {
-    console.error('[Services] 记录操作日志失败:', error);
+    logger.error('[Services] 记录操作日志失败:', error);
   }
 };
 
@@ -180,7 +181,7 @@ router.get('/', authenticateToken, async (req: Request, res: Response) => {
       }
     });
   } catch (error) {
-    console.error('[Services] 获取售后服务列表失败:', error);
+    logger.error('[Services] 获取售后服务列表失败:', error);
     res.status(500).json({
       success: false,
       message: '获取售后服务列表失败',
@@ -243,7 +244,7 @@ router.get('/:id', authenticateToken, async (req: Request, res: Response) => {
       }
     });
   } catch (error) {
-    console.error('[Services] 获取售后服务详情失败:', error);
+    logger.error('[Services] 获取售后服务详情失败:', error);
     res.status(500).json({
       success: false,
       message: '获取售后服务详情失败',
@@ -323,7 +324,7 @@ router.post('/', authenticateToken, async (req: Request, res: Response) => {
 
     const savedService = await serviceRepository.save(service);
 
-    console.log('[Services] 创建售后服务成功:', savedService.serviceNumber);
+    logger.info('[Services] 创建售后服务成功:', savedService.serviceNumber);
 
     // 🔥 发送售后创建通知给创建者和管理员
     orderNotificationService.notifyAfterSalesCreated({
@@ -335,7 +336,7 @@ router.post('/', authenticateToken, async (req: Request, res: Response) => {
       serviceType: savedService.serviceType,
       createdBy: savedService.createdById || undefined,
       createdByName: savedService.createdBy || undefined
-    }).catch(err => console.error('[Services] 发送售后创建通知失败:', err));
+    }).catch(err => logger.error('[Services] 发送售后创建通知失败:', err));
 
     res.status(201).json({
       success: true,
@@ -348,7 +349,7 @@ router.post('/', authenticateToken, async (req: Request, res: Response) => {
       }
     });
   } catch (error) {
-    console.error('[Services] 创建售后服务失败:', error);
+    logger.error('[Services] 创建售后服务失败:', error);
     res.status(500).json({
       success: false,
       message: '创建售后服务失败',
@@ -398,7 +399,7 @@ router.put('/:id', authenticateToken, async (req: Request, res: Response) => {
 
     const updatedService = await serviceRepository.save(service);
 
-    console.log('[Services] 更新售后服务成功:', updatedService.serviceNumber);
+    logger.info('[Services] 更新售后服务成功:', updatedService.serviceNumber);
 
     // 🔥 如果状态发生变更，发送通知
     if (data.status !== undefined && data.status !== previousStatus) {
@@ -416,20 +417,20 @@ router.put('/:id', authenticateToken, async (req: Request, res: Response) => {
       switch (data.status) {
         case 'processing':
           orderNotificationService.notifyAfterSalesProcessing(afterSalesInfo, operatorName)
-            .catch(err => console.error('[Services] 发送处理中通知失败:', err));
+            .catch(err => logger.error('[Services] 发送处理中通知失败:', err));
           break;
         case 'resolved':
         case 'closed':
           orderNotificationService.notifyAfterSalesCompleted(afterSalesInfo, operatorName)
-            .catch(err => console.error('[Services] 发送完成通知失败:', err));
+            .catch(err => logger.error('[Services] 发送完成通知失败:', err));
           break;
         case 'rejected':
           orderNotificationService.notifyAfterSalesRejected(afterSalesInfo, operatorName, data.remark)
-            .catch(err => console.error('[Services] 发送拒绝通知失败:', err));
+            .catch(err => logger.error('[Services] 发送拒绝通知失败:', err));
           break;
         case 'cancelled':
           orderNotificationService.notifyAfterSalesCancelled(afterSalesInfo, operatorName)
-            .catch(err => console.error('[Services] 发送取消通知失败:', err));
+            .catch(err => logger.error('[Services] 发送取消通知失败:', err));
           break;
       }
     }
@@ -445,7 +446,7 @@ router.put('/:id', authenticateToken, async (req: Request, res: Response) => {
       }
     });
   } catch (error) {
-    console.error('[Services] 更新售后服务失败:', error);
+    logger.error('[Services] 更新售后服务失败:', error);
     res.status(500).json({
       success: false,
       message: '更新售后服务失败',
@@ -509,20 +510,20 @@ router.patch('/:id/status', authenticateToken, async (req: Request, res: Respons
       switch (status) {
         case 'processing':
           orderNotificationService.notifyAfterSalesProcessing(afterSalesInfo, operatorName)
-            .catch(err => console.error('[Services] 发送处理中通知失败:', err));
+            .catch(err => logger.error('[Services] 发送处理中通知失败:', err));
           break;
         case 'resolved':
         case 'closed':
           orderNotificationService.notifyAfterSalesCompleted(afterSalesInfo, operatorName)
-            .catch(err => console.error('[Services] 发送完成通知失败:', err));
+            .catch(err => logger.error('[Services] 发送完成通知失败:', err));
           break;
         case 'rejected':
           orderNotificationService.notifyAfterSalesRejected(afterSalesInfo, operatorName, remark)
-            .catch(err => console.error('[Services] 发送拒绝通知失败:', err));
+            .catch(err => logger.error('[Services] 发送拒绝通知失败:', err));
           break;
         case 'cancelled':
           orderNotificationService.notifyAfterSalesCancelled(afterSalesInfo, operatorName)
-            .catch(err => console.error('[Services] 发送取消通知失败:', err));
+            .catch(err => logger.error('[Services] 发送取消通知失败:', err));
           break;
       }
     }
@@ -536,7 +537,7 @@ router.patch('/:id/status', authenticateToken, async (req: Request, res: Respons
       }
     });
   } catch (error) {
-    console.error('[Services] 更新售后服务状态失败:', error);
+    logger.error('[Services] 更新售后服务状态失败:', error);
     res.status(500).json({
       success: false,
       message: '更新状态失败',
@@ -594,7 +595,7 @@ router.patch('/:id/assign', authenticateToken, async (req: Request, res: Respons
         currentUser?.name || currentUser?.username
       );
     } catch (notifyError) {
-      console.error('[Services] 发送分配通知失败:', notifyError);
+      logger.error('[Services] 发送分配通知失败:', notifyError);
       // 通知失败不影响主流程
     }
 
@@ -608,7 +609,7 @@ router.patch('/:id/assign', authenticateToken, async (req: Request, res: Respons
       }
     });
   } catch (error) {
-    console.error('[Services] 分配处理人失败:', error);
+    logger.error('[Services] 分配处理人失败:', error);
     res.status(500).json({
       success: false,
       message: '分配失败',
@@ -657,7 +658,7 @@ router.patch('/:id/priority', authenticateToken, async (req: Request, res: Respo
       }
     });
   } catch (error) {
-    console.error('[Services] 设置优先级失败:', error);
+    logger.error('[Services] 设置优先级失败:', error);
     res.status(500).json({
       success: false,
       message: '设置优先级失败',
@@ -687,14 +688,14 @@ router.delete('/:id', authenticateToken, async (req: Request, res: Response) => 
     // 🔥 使用 delete 而非 remove：delete 被租户 Proxy 拦截，自动添加 tenant_id 条件，提供纵深防御
     await serviceRepository.delete(id);
 
-    console.log('[Services] 删除售后服务成功:', service.serviceNumber);
+    logger.info('[Services] 删除售后服务成功:', service.serviceNumber);
 
     res.json({
       success: true,
       message: '删除成功'
     });
   } catch (error) {
-    console.error('[Services] 删除售后服务失败:', error);
+    logger.error('[Services] 删除售后服务失败:', error);
     res.status(500).json({
       success: false,
       message: '删除失败',
@@ -761,7 +762,7 @@ router.get('/stats/summary', authenticateToken, async (req: Request, res: Respon
       }
     });
   } catch (error) {
-    console.error('[Services] 获取统计失败:', error);
+    logger.error('[Services] 获取统计失败:', error);
     res.status(500).json({
       success: false,
       message: '获取统计失败',
@@ -800,7 +801,7 @@ router.get('/:id/follow-ups', authenticateToken, async (req: Request, res: Respo
       data: formattedFollowUps
     });
   } catch (error) {
-    console.error('[Services] 获取跟进记录失败:', error);
+    logger.error('[Services] 获取跟进记录失败:', error);
     res.status(500).json({
       success: false,
       message: '获取跟进记录失败',
@@ -864,7 +865,7 @@ router.post('/:id/follow-ups', authenticateToken, async (req: Request, res: Resp
       }
     });
   } catch (error) {
-    console.error('[Services] 添加跟进记录失败:', error);
+    logger.error('[Services] 添加跟进记录失败:', error);
     res.status(500).json({
       success: false,
       message: '添加跟进记录失败',
@@ -906,10 +907,158 @@ router.get('/:id/operation-logs', authenticateToken, async (req: Request, res: R
       data: formattedLogs
     });
   } catch (error) {
-    console.error('[Services] 获取操作记录失败:', error);
+    logger.error('[Services] 获取操作记录失败:', error);
     res.status(500).json({
       success: false,
       message: '获取操作记录失败',
+      error: error instanceof Error ? error.message : '未知错误'
+    });
+  }
+});
+
+/**
+ * 售后统计报表（增强版）
+ * GET /api/v1/services/stats
+ * 查询参数：startDate, endDate（可选，默认最近30天）
+ * 返回：总量、状态分布、类型分布、处理人排行、日趋势、处理时长分布、环比增长
+ */
+router.get('/stats', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const serviceRepo = getServiceRepository();
+    const { startDate, endDate } = req.query;
+
+    // 默认最近30天
+    const end = endDate ? new Date(endDate as string) : new Date();
+    const start = startDate ? new Date(startDate as string) : new Date(end.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+    // 计算上一周期（用于环比）
+    const periodMs = end.getTime() - start.getTime();
+    const prevEnd = new Date(start.getTime());
+    const prevStart = new Date(start.getTime() - periodMs);
+
+    // 1. 总工单数
+    const totalCount = await serviceRepo.count();
+
+    // 2. 按状态分组统计
+    const statusStats = await serviceRepo.createQueryBuilder('s')
+      .select('s.status', 'status')
+      .addSelect('COUNT(*)', 'count')
+      .where('s.createdAt BETWEEN :start AND :end', { start, end })
+      .groupBy('s.status')
+      .getRawMany();
+
+    // 3. 按类型分组统计
+    const typeStats = await serviceRepo.createQueryBuilder('s')
+      .select('s.serviceType', 'serviceType')
+      .addSelect('COUNT(*)', 'count')
+      .where('s.createdAt BETWEEN :start AND :end', { start, end })
+      .groupBy('s.serviceType')
+      .getRawMany();
+
+    // 4. 时间范围内工单数量
+    const periodCount = await serviceRepo.createQueryBuilder('s')
+      .where('s.createdAt BETWEEN :start AND :end', { start, end })
+      .getCount();
+
+    // 5. 按处理人统计
+    const handlerStats = await serviceRepo.createQueryBuilder('s')
+      .select('s.handlerName', 'handlerName')
+      .addSelect('COUNT(*)', 'count')
+      .where('s.createdAt BETWEEN :start AND :end', { start, end })
+      .andWhere('s.handlerName IS NOT NULL')
+      .groupBy('s.handlerName')
+      .orderBy('count', 'DESC')
+      .limit(10)
+      .getRawMany();
+
+    // 6. 已完成/已关闭的工单数
+    const completedCount = statusStats
+      .filter((s: any) => ['completed', 'closed', 'resolved'].includes(s.status))
+      .reduce((sum: number, s: any) => sum + parseInt(s.count), 0);
+
+    // 7. 按天统计趋势数据
+    const dailyTrend = await serviceRepo.createQueryBuilder('s')
+      .select('DATE(s.createdAt)', 'date')
+      .addSelect('COUNT(*)', 'count')
+      .where('s.createdAt BETWEEN :start AND :end', { start, end })
+      .groupBy('DATE(s.createdAt)')
+      .orderBy('date', 'ASC')
+      .getRawMany();
+
+    // 8. 处理时长分布（已完成/已关闭的工单）
+    const completedServices = await serviceRepo.createQueryBuilder('s')
+      .select(['s.createdAt', 's.resolvedTime', 's.updatedAt'])
+      .where('s.createdAt BETWEEN :start AND :end', { start, end })
+      .andWhere('s.status IN (:...statuses)', { statuses: ['resolved', 'closed', 'completed'] })
+      .getRawMany();
+
+    // 按时长区间统计：<1h, 1-4h, 4-12h, 12-24h, 1-3d, >3d
+    const durationBuckets = [0, 0, 0, 0, 0, 0];
+    completedServices.forEach((s: any) => {
+      const created = new Date(s.s_createdAt || s.createdAt);
+      const resolved = new Date(s.s_resolvedTime || s.s_updatedAt || s.resolvedTime || s.updatedAt);
+      const diffHours = (resolved.getTime() - created.getTime()) / (1000 * 60 * 60);
+      if (diffHours < 1) durationBuckets[0]++;
+      else if (diffHours < 4) durationBuckets[1]++;
+      else if (diffHours < 12) durationBuckets[2]++;
+      else if (diffHours < 24) durationBuckets[3]++;
+      else if (diffHours < 72) durationBuckets[4]++;
+      else durationBuckets[5]++;
+    });
+
+    // 9. 上一周期数据（用于环比计算）
+    const prevPeriodCount = await serviceRepo.createQueryBuilder('s')
+      .where('s.createdAt BETWEEN :start AND :end', { start: prevStart, end: prevEnd })
+      .getCount();
+
+    const prevCompletedCount = await serviceRepo.createQueryBuilder('s')
+      .where('s.createdAt BETWEEN :start AND :end', { start: prevStart, end: prevEnd })
+      .andWhere('s.status IN (:...statuses)', { statuses: ['resolved', 'closed', 'completed'] })
+      .getCount();
+
+    // 计算环比增长率
+    const calcGrowth = (current: number, previous: number): number => {
+      if (previous === 0) return current > 0 ? 100 : 0;
+      return Math.round((current - previous) / previous * 100 * 10) / 10;
+    };
+
+    res.json({
+      success: true,
+      data: {
+        totalCount,
+        periodCount,
+        completedCount,
+        completionRate: periodCount > 0 ? Math.round(completedCount / periodCount * 100) : 0,
+        statusDistribution: statusStats.map((s: any) => ({ status: s.status, count: parseInt(s.count) })),
+        typeDistribution: typeStats.map((s: any) => ({ type: s.serviceType, count: parseInt(s.count) })),
+        handlerRanking: handlerStats.map((s: any) => ({ name: s.handlerName, count: parseInt(s.count) })),
+        // 新增：日趋势数据
+        dailyTrend: dailyTrend.map((d: any) => ({
+          date: d.date,
+          count: parseInt(d.count)
+        })),
+        // 新增：处理时长分布
+        durationDistribution: [
+          { label: '<1小时', count: durationBuckets[0] },
+          { label: '1-4小时', count: durationBuckets[1] },
+          { label: '4-12小时', count: durationBuckets[2] },
+          { label: '12-24小时', count: durationBuckets[3] },
+          { label: '1-3天', count: durationBuckets[4] },
+          { label: '>3天', count: durationBuckets[5] }
+        ],
+        // 新增：环比增长率
+        growth: {
+          ordersTrend: calcGrowth(periodCount, prevPeriodCount),
+          completedTrend: calcGrowth(completedCount, prevCompletedCount)
+        },
+        dateRange: { start: start.toISOString(), end: end.toISOString() }
+      }
+    });
+  } catch (error) {
+    logger.error('[Services] 获取售后统计失败:', error);
+    res.status(500).json({
+      success: false,
+      message: '获取售后统计失败',
       error: error instanceof Error ? error.message : '未知错误'
     });
   }

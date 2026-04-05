@@ -26,6 +26,12 @@ import exportRouter from './export';
 import notificationsRouter from './notifications';
 import announcementsRouter from './announcements';
 import privateCustomersRouter from './private-customers';
+import recycleBinRouter from './recycle-bin';
+import updateTasksRouter from './update-tasks';
+import customerManagementRouter from './customer-management';
+import adminRolesRouter from './roles';
+import capacityRouter from './capacity';
+import { log } from '../../config/logger';
 // import schedulerRouter from './scheduler'; // 暂时禁用
 
 const router = Router();
@@ -122,7 +128,7 @@ router.get('/public/system-config', async (_req: Request, res: Response) => {
       })
     }
   } catch (error) {
-    console.error('获取公开系统配置失败:', error)
+    log.error('获取公开系统配置失败:', error)
     res.json({
       success: true,
       data: {
@@ -155,6 +161,11 @@ router.use('/export', exportRouter);
 router.use('/notifications', notificationsRouter);
 router.use('/announcements', announcementsRouter);
 router.use('/private-customers', privateCustomersRouter);
+router.use('/recycle-bin', recycleBinRouter);
+router.use('/update-tasks', updateTasksRouter);
+router.use('/customer-management', customerManagementRouter);
+router.use('/roles', adminRolesRouter);
+router.use('/capacity', capacityRouter);
 router.use('/system-settings', systemSettingsRouter);
 // router.use('/scheduler', schedulerRouter); // 暂时禁用
 // 需要认证的系统配置路由

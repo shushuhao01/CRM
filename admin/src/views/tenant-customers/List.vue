@@ -10,6 +10,10 @@
         <div class="stat-value">{{ stats.active }}</div>
         <div class="stat-label">正常运行</div>
       </el-card>
+      <el-card shadow="never" class="stat-card unpaid" @click="filterByLicenseStatus('pending')" style="cursor: pointer">
+        <div class="stat-value">{{ stats.unpaid }}</div>
+        <div class="stat-label">未支付</div>
+      </el-card>
       <el-card shadow="never" class="stat-card warning">
         <div class="stat-value">{{ stats.expiringSoon }}</div>
         <div class="stat-label">即将到期(30天内)</div>
@@ -41,6 +45,15 @@
             <el-option label="已禁用" value="disabled" />
           </el-select>
         </el-form-item>
+        <el-form-item label="授权">
+          <el-select v-model="searchForm.licenseStatus" placeholder="全部" clearable style="width: 110px">
+            <el-option label="已激活" value="active" />
+            <el-option label="未支付" value="pending" />
+            <el-option label="已付款待激活" value="paid" />
+            <el-option label="已过期" value="expired" />
+            <el-option label="已暂停" value="suspended" />
+          </el-select>
+        </el-form-item>
         <el-form-item>
           <el-button type="primary" @click="handleSearch"><el-icon><Search /></el-icon>搜索</el-button>
           <el-button @click="handleReset">重置</el-button>
@@ -60,7 +73,15 @@
       </template>
 
       <el-table :data="tableData" v-loading="loading" stripe :border="false" table-layout="fixed">
-        <el-table-column prop="name" label="客户名称" min-width="160" show-overflow-tooltip />
+        <el-table-column prop="name" label="客户名称" min-width="160" show-overflow-tooltip>
+          <template #default="{ row }">
+            <span>{{ row.name }}</span>
+            <el-tag v-if="row.subscription_status === 'active'" type="success" size="small" effect="light" style="margin-left: 6px;">订阅</el-tag>
+            <el-tag v-else-if="row.subscription_status === 'signing'" type="warning" size="small" effect="light" style="margin-left: 6px;">签约中</el-tag>
+            <el-tag v-else-if="row.subscription_status === 'paused'" type="danger" size="small" effect="light" style="margin-left: 6px;">订阅暂停</el-tag>
+            <el-tag v-else size="small" effect="light" style="margin-left: 6px;" color="#ecf5ff">自付</el-tag>
+          </template>
+        </el-table-column>
         <el-table-column label="租户编码" min-width="120" show-overflow-tooltip>
           <template #default="{ row }">
             <el-tag size="small" type="info">{{ row.code || '-' }}</el-tag>
@@ -146,6 +167,9 @@
                   <el-dropdown-menu>
                     <el-dropdown-item command="unlock">
                       <el-icon><Unlock /></el-icon>解锁账号
+                    </el-dropdown-item>
+                    <el-dropdown-item command="resetPassword">
+                      <el-icon><Key /></el-icon>重置密码
                     </el-dropdown-item>
                     <el-dropdown-item command="renew">
                       <el-icon><Clock /></el-icon>续期
@@ -297,6 +321,49 @@
         <el-button type="primary" @click="showLicenseDialog = false" size="large">我知道了</el-button>
       </template>
     </el-dialog>
+
+    <!-- 重置密码成功对话框 -->
+    <el-dialog v-model="showResetPwdDialog" title="密码重置成功" width="520px">
+      <el-result icon="success" title="管理员密码已重置">
+        <template #sub-title>
+          <div class="license-result">
+            <p class="result-desc">请将新密码发送给客户管理员，首次登录后请立即修改密码</p>
+            <div class="info-box-group">
+              <div class="info-box">
+                <div class="info-label">🏢 租户名称</div>
+                <div class="info-value">{{ resetPwdInfo.tenantName }}</div>
+              </div>
+              <div class="info-box">
+                <div class="info-label">👤 管理员账号</div>
+                <div class="info-value code">{{ resetPwdInfo.usernames }}</div>
+              </div>
+              <div class="info-box">
+                <div class="info-label">🔐 新密码（临时）</div>
+                <div class="info-value code" style="color: #e6a23c; font-size: 16px; font-weight: 700;">{{ resetPwdInfo.tempPassword }}</div>
+              </div>
+            </div>
+            <div class="copy-actions">
+              <el-button type="primary" @click="copyResetPwdInfo" size="large">
+                <el-icon><CopyDocument /></el-icon>
+                一键复制账号密码
+              </el-button>
+            </div>
+            <div class="tips-box">
+              <p class="tip">⚠️ 安全提示：</p>
+              <ul>
+                <li>此密码为临时密码，请通知客户登录后立即修改</li>
+                <li>重置密码后原密码立即失效</li>
+                <li>如账号被锁定，重置密码会同时解锁账号</li>
+              </ul>
+            </div>
+          </div>
+        </template>
+      </el-result>
+      <template #footer>
+        <el-button @click="showResetPwdDialog = false">关闭</el-button>
+        <el-button type="primary" @click="copyResetPwdInfo">复制并关闭</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -305,16 +372,18 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   Search, Plus, ArrowDown, Download, View, Hide,
-  CopyDocument, Clock, RefreshRight, Delete, Unlock
+  CopyDocument, Clock, RefreshRight, Delete, Unlock, Key
 } from '@element-plus/icons-vue'
 import type { FormInstance, FormRules } from 'element-plus'
 import request from '@/api/request'
+import { adminApi } from '@/api/admin'
 
 const loading = ref(false)
 const submitting = ref(false)
 const showDialog = ref(false)
 const showRenewDialog = ref(false)
 const showLicenseDialog = ref(false)
+const showResetPwdDialog = ref(false)
 const editingId = ref<string | null>(null)
 const formRef = ref<FormInstance>()
 const page = ref(1)
@@ -334,9 +403,16 @@ const loginInfo = reactive({
   password: ''
 })
 
-const stats = reactive({ total: 0, active: 0, expired: 0, disabled: 0, expiringSoon: 0 })
+// 重置密码信息对象
+const resetPwdInfo = reactive({
+  tenantName: '',
+  usernames: '',
+  tempPassword: ''
+})
 
-const searchForm = reactive({ keyword: '', packageId: '', status: '' })
+const stats = reactive({ total: 0, active: 0, expired: 0, disabled: 0, expiringSoon: 0, unpaid: 0 })
+
+const searchForm = reactive({ keyword: '', packageId: '', status: '', licenseStatus: '' })
 const form = reactive({
   name: '', code: '', contact: '', phone: '', email: '',
   packageId: '', maxUsers: 10, maxStorageGb: 5, expireDate: null as Date | null, features: [] as string[], remark: ''
@@ -394,11 +470,11 @@ const getPackageType = (p: string): string => {
 }
 
 const getLicenseStatusType = (s: string): string => {
-  const map: Record<string, string> = { active: 'success', pending: 'warning', expired: 'info', suspended: 'danger' }
+  const map: Record<string, string> = { active: 'success', pending: 'warning', paid: 'warning', expired: 'info', suspended: 'danger' }
   return map[s] || 'info'
 }
 const getLicenseStatusText = (s: string): string => {
-  const map: Record<string, string> = { active: '已激活', pending: '待激活', expired: '已过期', suspended: '已暂停' }
+  const map: Record<string, string> = { active: '已激活', pending: '未支付', paid: '已付款待激活', expired: '已过期', suspended: '已暂停' }
   return map[s] || s
 }
 
@@ -417,7 +493,13 @@ const computedExpireDate = computed(() => {
 // === 搜索 ===
 
 const handleSearch = () => { page.value = 1; fetchData() }
-const handleReset = () => { Object.assign(searchForm, { keyword: '', packageId: '', status: '' }); handleSearch() }
+const handleReset = () => { Object.assign(searchForm, { keyword: '', packageId: '', status: '', licenseStatus: '' }); handleSearch() }
+
+// 点击统计卡片快速筛选
+const filterByLicenseStatus = (ls: string) => {
+  searchForm.licenseStatus = ls
+  handleSearch()
+}
 
 // === 新增/编辑 ===
 
@@ -573,6 +655,26 @@ const copyCredentials = async () => {
   }
 }
 
+// 复制重置密码信息
+const copyResetPwdInfo = async () => {
+  const text = `【云客CRM - 密码重置通知】
+
+租户名称：${resetPwdInfo.tenantName}
+管理员账号：${resetPwdInfo.usernames}
+新密码（临时）：${resetPwdInfo.tempPassword}
+
+⚠️ 请登录后立即修改密码！
+如有问题请联系技术支持。`
+
+  try {
+    await navigator.clipboard.writeText(text)
+    ElMessage.success('已复制密码重置信息到剪贴板')
+    showResetPwdDialog.value = false
+  } catch {
+    ElMessage.error('复制失败，请手动复制')
+  }
+}
+
 // === 启用/禁用状态 ===
 
 const handleToggleStatus = async (row: any) => {
@@ -644,6 +746,26 @@ const handleCommand = async (cmd: string, row: any) => {
         if (e !== 'cancel') ElMessage.error(e.message || '解锁失败')
       }
       break
+    case 'resetPassword':
+      try {
+        await ElMessageBox.confirm(
+          `确定要重置 "${row.name}" 的管理员密码吗？\n\n重置后将生成新的临时密码，原密码立即失效。如账号被锁定，也会同时解锁。`,
+          '重置管理员密码',
+          { type: 'warning', confirmButtonText: '确定重置', cancelButtonText: '取消' }
+        )
+        const res = await adminApi.resetTenantCustomerPassword(row.id)
+        if (res.success && res.data) {
+          Object.assign(resetPwdInfo, {
+            tenantName: res.data.tenantName || row.name || '',
+            usernames: res.data.usernames || '',
+            tempPassword: res.data.tempPassword || ''
+          })
+          showResetPwdDialog.value = true
+        }
+      } catch (e: any) {
+        if (e !== 'cancel') ElMessage.error(e.message || '重置密码失败')
+      }
+      break
     case 'regenerate':
       ElMessageBox.confirm('重新生成授权码后，原授权码将失效，客户需要使用新授权码登录。确定继续？', '重新生成授权码', { type: 'warning' })
         .then(async () => {
@@ -662,10 +784,13 @@ const handleCommand = async (cmd: string, row: any) => {
       showRenewDialog.value = true
       break
     case 'delete':
-      ElMessageBox.confirm('删除客户将同时删除所有相关数据，此操作不可恢复！', '删除客户', { type: 'error' })
+      ElMessageBox.confirm(
+        `确定要删除租户 "${row.name}" 吗？删除后将移入回收站，可在系统设置的回收站中恢复。`,
+        '删除客户', { type: 'warning', confirmButtonText: '确定删除', confirmButtonClass: 'el-button--danger' }
+      )
         .then(async () => {
           const res = await request.delete(`/tenants/${row.id}`)
-          if (res.success) { ElMessage.success('已删除'); fetchData() }
+          if (res.success) { ElMessage.success('已移入回收站'); fetchData(); fetchStats() }
         })
       break
   }
@@ -750,12 +875,14 @@ const fetchStats = async () => {
     if (res.success) stats.total = res.data.total || 0
 
     // 分别统计各状态
-    const [activeRes, disabledRes] = await Promise.all([
+    const [activeRes, disabledRes, unpaidRes] = await Promise.all([
       request.get('/tenants', { params: { page: 1, pageSize: 1, status: 'active' } }),
-      request.get('/tenants', { params: { page: 1, pageSize: 1, status: 'disabled' } })
+      request.get('/tenants', { params: { page: 1, pageSize: 1, status: 'disabled' } }),
+      request.get('/tenants', { params: { page: 1, pageSize: 1, licenseStatus: 'pending' } })
     ])
     stats.active = activeRes.success ? (activeRes.data.total || 0) : 0
     stats.disabled = disabledRes.success ? (disabledRes.data.total || 0) : 0
+    stats.unpaid = unpaidRes.success ? (unpaidRes.data.total || 0) : 0
     stats.expired = Math.max(0, stats.total - stats.active - stats.disabled)
 
     // 即将到期统计（30天内）：从列表数据判断
@@ -810,7 +937,7 @@ const handleExport = () => {
 
 .stats-row {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(6, 1fr);
   gap: 12px;
 
   .stat-card {
@@ -832,6 +959,7 @@ const handleExport = () => {
     }
 
     &.active .stat-value { color: #67c23a; }
+    &.unpaid .stat-value { color: #f59e0b; }
     &.warning .stat-value { color: #e6a23c; }
     &.danger .stat-value { color: #f56c6c; }
     &.info .stat-value { color: #909399; }

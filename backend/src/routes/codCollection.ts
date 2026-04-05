@@ -10,6 +10,7 @@ import { Department } from '../entities/Department';
 import { Between, In } from 'typeorm';
 import { getTenantRepo } from '../utils/tenantRepo';
 
+import { log } from '../config/logger';
 const router = Router();
 
 // 有效订单状态（计入代收统计的订单）- 只统计已发货且有效的订单
@@ -191,7 +192,7 @@ router.get('/stats', authenticateToken, async (req: Request, res: Response) => {
       }
     });
   } catch (error: any) {
-    console.error('[CodCollection] Get stats error:', error);
+    log.error('[CodCollection] Get stats error:', error);
     res.status(500).json({ success: false, message: '获取统计数据失败' });
   }
 });
@@ -223,13 +224,13 @@ router.get('/list', authenticateToken, async (req: Request, res: Response) => {
     // 标签页筛选
     if (tab === 'pending') {
       queryBuilder.andWhere('o.cod_status = :codStatus', { codStatus: 'pending' });
-      console.log('[CodCollection] 查询待处理订单，条件: cod_status = pending');
+      log.info('[CodCollection] 查询待处理订单，条件: cod_status = pending');
     } else if (tab === 'returned') {
       queryBuilder.andWhere('o.cod_status = :codStatus', { codStatus: 'returned' });
-      console.log('[CodCollection] 查询已返款订单，条件: cod_status = returned');
+      log.info('[CodCollection] 查询已返款订单，条件: cod_status = returned');
     } else if (tab === 'cancelled') {
       queryBuilder.andWhere('o.cod_status = :codStatus', { codStatus: 'cancelled' });
-      console.log('[CodCollection] 查询已改代收订单，条件: cod_status = cancelled');
+      log.info('[CodCollection] 查询已改代收订单，条件: cod_status = cancelled');
     }
 
     // 日期筛选（订单下单时间）
@@ -291,7 +292,7 @@ router.get('/list', authenticateToken, async (req: Request, res: Response) => {
     const orders = await queryBuilder.getMany();
 
     // 🔥 调试日志：打印查询到的订单状态
-    console.log('[CodCollection] 查询结果:', {
+    log.info('[CodCollection] 查询结果:', {
       tab,
       total,
       ordersCount: orders.length,
@@ -322,7 +323,7 @@ router.get('/list', authenticateToken, async (req: Request, res: Response) => {
           return map;
         }, {} as Record<string, any>);
       } catch (customerErr: any) {
-        console.error('[CodCollection] Query customers error:', customerErr);
+        log.error('[CodCollection] Query customers error:', customerErr);
         // 如果查询客户失败，继续返回订单数据，只是客户编码使用customerId
       }
     }
@@ -379,7 +380,7 @@ router.get('/list', authenticateToken, async (req: Request, res: Response) => {
       }
     });
   } catch (error: any) {
-    console.error('[CodCollection] Get list error:', error);
+    log.error('[CodCollection] Get list error:', error);
     res.status(500).json({ success: false, message: '获取代收列表失败' });
   }
 });
@@ -444,7 +445,7 @@ router.get('/detail/:id', authenticateToken, async (req: Request, res: Response)
       }
     });
   } catch (error: any) {
-    console.error('[CodCollection] Get detail error:', error);
+    log.error('[CodCollection] Get detail error:', error);
     res.status(500).json({ success: false, message: '获取订单详情失败' });
   }
 });
@@ -517,7 +518,7 @@ router.put('/update-cod/:id', authenticateToken, async (req: Request, res: Respo
 
     res.json({ success: true, message: '代收金额更新成功' });
   } catch (error: any) {
-    console.error('[CodCollection] Update cod error:', error);
+    log.error('[CodCollection] Update cod error:', error);
     res.status(500).json({ success: false, message: '更新代收金额失败' });
   }
 });
@@ -575,7 +576,7 @@ router.put('/mark-returned/:id', authenticateToken, async (req: Request, res: Re
 
     res.json({ success: true, message: '返款标记成功' });
   } catch (error: any) {
-    console.error('[CodCollection] Mark returned error:', error);
+    log.error('[CodCollection] Mark returned error:', error);
     res.status(500).json({ success: false, message: '标记返款失败' });
   }
 });
@@ -613,7 +614,7 @@ router.put('/cancel-cod/:id', authenticateToken, async (req: Request, res: Respo
 
     res.json({ success: true, message: '取消代收成功' });
   } catch (error: any) {
-    console.error('[CodCollection] Cancel cod error:', error);
+    log.error('[CodCollection] Cancel cod error:', error);
     res.status(500).json({ success: false, message: '取消代收失败' });
   }
 });
@@ -646,7 +647,7 @@ router.put('/batch-update-cod', authenticateToken, async (req: Request, res: Res
 
     res.json({ success: true, message: `批量更新 ${orderIds.length} 个订单的代收金额成功` });
   } catch (error: any) {
-    console.error('[CodCollection] Batch update cod error:', error);
+    log.error('[CodCollection] Batch update cod error:', error);
     res.status(500).json({ success: false, message: '批量更新代收金额失败' });
   }
 });
@@ -688,7 +689,7 @@ router.put('/batch-mark-returned', authenticateToken, async (req: Request, res: 
 
     res.json({ success: true, message: `批量标记 ${orderIds.length} 个订单返款成功` });
   } catch (error: any) {
-    console.error('[CodCollection] Batch mark returned error:', error);
+    log.error('[CodCollection] Batch mark returned error:', error);
     res.status(500).json({ success: false, message: '批量标记返款失败' });
   }
 });
@@ -702,7 +703,7 @@ router.get('/departments', authenticateToken, async (_req: Request, res: Respons
     const departments = await deptRepo.find({ order: { name: 'ASC' } });
     res.json({ success: true, data: departments });
   } catch (error: any) {
-    console.error('[CodCollection] Get departments error:', error);
+    log.error('[CodCollection] Get departments error:', error);
     res.status(500).json({ success: false, message: '获取部门列表失败' });
   }
 });
@@ -728,7 +729,7 @@ router.get('/sales-users', authenticateToken, async (req: Request, res: Response
 
     res.json({ success: true, data: users });
   } catch (error: any) {
-    console.error('[CodCollection] Get sales users error:', error);
+    log.error('[CodCollection] Get sales users error:', error);
     res.status(500).json({ success: false, message: '获取销售人员列表失败' });
   }
 });

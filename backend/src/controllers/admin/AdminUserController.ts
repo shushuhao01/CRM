@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { adminUserService } from '../../services/AdminUserService';
 
+import { log } from '../../config/logger';
 export class AdminUserController {
   /**
    * 记录操作日志的辅助方法
@@ -20,7 +21,7 @@ export class AdminUserController {
       });
     } catch (error) {
       // 日志记录失败不影响主流程
-      console.error('记录操作日志失败:', error);
+      log.error('记录操作日志失败:', error);
     }
   }
 

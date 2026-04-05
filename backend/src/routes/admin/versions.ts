@@ -6,6 +6,7 @@ import { AppDataSource } from '../../config/database';
 import { Version } from '../../entities/Version';
 import { v4 as uuidv4 } from 'uuid';
 
+import { log } from '../../config/logger';
 const router = Router();
 
 // 解析版本号为数字 (1.2.3 -> 10203)
@@ -43,7 +44,7 @@ router.get('/', async (req: Request, res: Response) => {
       data: { list, total, page: pageNum, pageSize: pageSizeNum }
     });
   } catch (error: any) {
-    console.error('[Admin Versions] Get list failed:', error);
+    log.error('[Admin Versions] Get list failed:', error);
     res.status(500).json({ success: false, message: '获取版本列表失败' });
   }
 });
@@ -75,7 +76,7 @@ router.get('/latest', async (req: Request, res: Response) => {
       }
     });
   } catch (error: any) {
-    console.error('[Admin Versions] Get latest failed:', error);
+    log.error('[Admin Versions] Get latest failed:', error);
     res.status(500).json({ success: false, message: '获取最新版本失败' });
   }
 });
@@ -93,7 +94,7 @@ router.get('/:id', async (req: Request, res: Response) => {
 
     res.json({ success: true, data: version });
   } catch (error: any) {
-    console.error('[Admin Versions] Get detail failed:', error);
+    log.error('[Admin Versions] Get detail failed:', error);
     res.status(500).json({ success: false, message: '获取版本详情失败' });
   }
 });
@@ -110,7 +111,14 @@ router.post('/', async (req: Request, res: Response) => {
       fileSize,
       fileHash,
       minVersion,
-      isForceUpdate
+      isForceUpdate,
+      sourceType,
+      gitRepoUrl,
+      gitBranch,
+      gitTag,
+      packagePath,
+      targetAudience,
+      releaseNotesHtml
     } = req.body;
 
     if (!version) {
@@ -138,12 +146,19 @@ router.post('/', async (req: Request, res: Response) => {
     newVersion.isForceUpdate = isForceUpdate ? 1 : 0;
     newVersion.status = 'draft';
     newVersion.createdBy = adminUser?.adminId;
+    if (sourceType) newVersion.sourceType = sourceType;
+    if (gitRepoUrl) newVersion.gitRepoUrl = gitRepoUrl;
+    if (gitBranch) newVersion.gitBranch = gitBranch;
+    if (gitTag) newVersion.gitTag = gitTag;
+    if (packagePath) newVersion.packagePath = packagePath;
+    if (targetAudience) newVersion.targetAudience = targetAudience;
+    if (releaseNotesHtml) newVersion.releaseNotesHtml = releaseNotesHtml;
 
     await versionRepo.save(newVersion);
 
     res.json({ success: true, data: newVersion, message: '版本创建成功' });
   } catch (error: any) {
-    console.error('[Admin Versions] Create failed:', error);
+    log.error('[Admin Versions] Create failed:', error);
     res.status(500).json({ success: false, message: '创建版本失败' });
   }
 });
@@ -160,7 +175,14 @@ router.put('/:id', async (req: Request, res: Response) => {
       fileSize,
       fileHash,
       minVersion,
-      isForceUpdate
+      isForceUpdate,
+      sourceType,
+      gitRepoUrl,
+      gitBranch,
+      gitTag,
+      packagePath,
+      targetAudience,
+      releaseNotesHtml
     } = req.body;
 
     const versionRepo = AppDataSource.getRepository(Version);
@@ -186,12 +208,19 @@ router.put('/:id', async (req: Request, res: Response) => {
     if (fileHash !== undefined) versionEntity.fileHash = fileHash;
     if (minVersion !== undefined) versionEntity.minVersion = minVersion;
     if (isForceUpdate !== undefined) versionEntity.isForceUpdate = isForceUpdate ? 1 : 0;
+    if (sourceType !== undefined) versionEntity.sourceType = sourceType;
+    if (gitRepoUrl !== undefined) versionEntity.gitRepoUrl = gitRepoUrl;
+    if (gitBranch !== undefined) versionEntity.gitBranch = gitBranch;
+    if (gitTag !== undefined) versionEntity.gitTag = gitTag;
+    if (packagePath !== undefined) versionEntity.packagePath = packagePath;
+    if (targetAudience !== undefined) versionEntity.targetAudience = targetAudience;
+    if (releaseNotesHtml !== undefined) versionEntity.releaseNotesHtml = releaseNotesHtml;
 
     await versionRepo.save(versionEntity);
 
     res.json({ success: true, data: versionEntity, message: '版本更新成功' });
   } catch (error: any) {
-    console.error('[Admin Versions] Update failed:', error);
+    log.error('[Admin Versions] Update failed:', error);
     res.status(500).json({ success: false, message: '更新版本失败' });
   }
 });
@@ -207,8 +236,16 @@ router.post('/:id/publish', async (req: Request, res: Response) => {
       return res.status(404).json({ success: false, message: '版本不存在' });
     }
 
-    if (!version.downloadUrl) {
+    // 根据更新源类型检查必要字段
+    const sourceType = version.sourceType || 'url';
+    if (sourceType === 'url' && !version.downloadUrl) {
       return res.status(400).json({ success: false, message: '请先设置下载地址' });
+    }
+    if (sourceType === 'git' && !version.gitRepoUrl) {
+      return res.status(400).json({ success: false, message: '请先设置 Git 仓库地址' });
+    }
+    if (sourceType === 'upload' && !version.packagePath && !version.downloadUrl) {
+      return res.status(400).json({ success: false, message: '请先上传版本包' });
     }
 
     version.status = 'published';
@@ -217,7 +254,7 @@ router.post('/:id/publish', async (req: Request, res: Response) => {
 
     res.json({ success: true, data: version, message: '版本发布成功' });
   } catch (error: any) {
-    console.error('[Admin Versions] Publish failed:', error);
+    log.error('[Admin Versions] Publish failed:', error);
     res.status(500).json({ success: false, message: '发布版本失败' });
   }
 });
@@ -238,7 +275,7 @@ router.post('/:id/deprecate', async (req: Request, res: Response) => {
 
     res.json({ success: true, data: version, message: '版本已废弃' });
   } catch (error: any) {
-    console.error('[Admin Versions] Deprecate failed:', error);
+    log.error('[Admin Versions] Deprecate failed:', error);
     res.status(500).json({ success: false, message: '废弃版本失败' });
   }
 });
@@ -262,7 +299,7 @@ router.delete('/:id', async (req: Request, res: Response) => {
 
     res.json({ success: true, message: '版本已删除' });
   } catch (error: any) {
-    console.error('[Admin Versions] Delete failed:', error);
+    log.error('[Admin Versions] Delete failed:', error);
     res.status(500).json({ success: false, message: '删除版本失败' });
   }
 });

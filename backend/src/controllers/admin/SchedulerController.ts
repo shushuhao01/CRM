@@ -4,6 +4,7 @@
 import { Request, Response } from 'express';
 import { schedulerService } from '../../services/SchedulerService';
 
+import { log } from '../../config/logger';
 export class SchedulerController {
   /**
    * 获取所有任务状态
@@ -17,7 +18,7 @@ export class SchedulerController {
         data: tasks
       });
     } catch (error: any) {
-      console.error('[SchedulerController] 获取任务状态失败:', error);
+      log.error('[SchedulerController] 获取任务状态失败:', error);
       res.status(500).json({
         success: false,
         message: error.message || '获取任务状态失败'
@@ -53,7 +54,7 @@ export class SchedulerController {
         });
       }
     } catch (error: any) {
-      console.error('[SchedulerController] 触发任务失败:', error);
+      log.error('[SchedulerController] 触发任务失败:', error);
       res.status(500).json({
         success: false,
         message: error.message || '触发任务失败'
@@ -77,7 +78,7 @@ export class SchedulerController {
         message: '功能开发中'
       });
     } catch (error: any) {
-      console.error('[SchedulerController] 获取任务历史失败:', error);
+      log.error('[SchedulerController] 获取任务历史失败:', error);
       res.status(500).json({
         success: false,
         message: error.message || '获取任务历史失败'

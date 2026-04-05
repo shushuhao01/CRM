@@ -4,6 +4,7 @@
  */
 import { licenseService } from './LicenseService';
 
+import { log } from '../config/logger';
 class LicenseSyncScheduler {
   private intervalId: NodeJS.Timeout | null = null;
   private syncInterval: number = 30 * 60 * 1000; // 默认30分钟同步一次
@@ -14,7 +15,7 @@ class LicenseSyncScheduler {
    */
   start(intervalMinutes: number = 30) {
     if (this.intervalId) {
-      console.log('[LicenseSyncScheduler] 已在运行中');
+      log.info('[LicenseSyncScheduler] 已在运行中');
       return;
     }
 
@@ -28,7 +29,7 @@ class LicenseSyncScheduler {
       this.sync();
     }, this.syncInterval);
 
-    console.log(`[LicenseSyncScheduler] 已启动，同步间隔: ${intervalMinutes} 分钟`);
+    log.info(`[LicenseSyncScheduler] 已启动，同步间隔: ${intervalMinutes} 分钟`);
   }
 
   /**
@@ -38,7 +39,7 @@ class LicenseSyncScheduler {
     if (this.intervalId) {
       clearInterval(this.intervalId);
       this.intervalId = null;
-      console.log('[LicenseSyncScheduler] 已停止');
+      log.info('[LicenseSyncScheduler] 已停止');
     }
   }
 
@@ -47,19 +48,19 @@ class LicenseSyncScheduler {
    */
   async sync() {
     try {
-      console.log('[LicenseSyncScheduler] 开始同步授权信息...');
+      log.info('[LicenseSyncScheduler] 开始同步授权信息...');
 
       const result = await licenseService.verifyOnline();
 
       if (result.valid) {
-        console.log(`[LicenseSyncScheduler] 同步成功，maxUsers: ${result.maxUsers}`);
+        log.info(`[LicenseSyncScheduler] 同步成功，maxUsers: ${result.maxUsers}`);
       } else {
-        console.warn(`[LicenseSyncScheduler] 同步失败: ${result.message}`);
+        log.warn(`[LicenseSyncScheduler] 同步失败: ${result.message}`);
       }
 
       return result;
     } catch (error) {
-      console.error('[LicenseSyncScheduler] 同步出错:', error);
+      log.error('[LicenseSyncScheduler] 同步出错:', error);
       return { valid: false, message: '同步出错' };
     }
   }

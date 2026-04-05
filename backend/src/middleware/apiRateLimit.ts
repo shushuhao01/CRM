@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { ApiConfig } from '../entities/ApiConfig';
 
+import { log } from '../config/logger';
 // 存储API调用计数的内存缓存
 // 格式: { apiKey: { count: number, resetTime: number } }
 const rateLimitCache = new Map<string, { count: number; resetTime: number }>();
@@ -58,7 +59,7 @@ export const apiRateLimit = (req: Request, res: Response, next: NextFunction): v
 
     next();
   } catch (error: any) {
-    console.error('API速率限制检查失败:', error);
+    log.error('API速率限制检查失败:', error);
     res.status(500).json({
       code: 500,
       message: 'API速率限制检查失败',

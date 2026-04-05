@@ -3,6 +3,7 @@ import { Product } from '../entities/Product'
 import { ProductCategory } from '../entities/ProductCategory'
 import { getTenantRepo } from '../utils/tenantRepo'
 
+import { log } from '../config/logger';
 // 获取Repository（🔥 使用租户感知仓储，自动添加tenant_id过滤）
 const getProductRepository = () => getTenantRepo(Product)
 const getCategoryRepository = () => getTenantRepo(ProductCategory)
@@ -63,7 +64,7 @@ export class ProductController {
         message: '获取分类列表成功'
       })
     } catch (error) {
-      console.error('获取分类列表失败:', error)
+      log.error('获取分类列表失败:', error)
       res.status(500).json({
         success: false,
         message: '获取分类列表失败',
@@ -90,7 +91,7 @@ export class ProductController {
         message: '获取分类树成功'
       })
     } catch (error) {
-      console.error('获取分类树失败:', error)
+      log.error('获取分类树失败:', error)
       res.status(500).json({
         success: false,
         message: '获取分类树失败',
@@ -122,7 +123,7 @@ export class ProductController {
         message: '获取分类详情成功'
       })
     } catch (error) {
-      console.error('获取分类详情失败:', error)
+      log.error('获取分类详情失败:', error)
       res.status(500).json({
         success: false,
         message: '获取分类详情失败',
@@ -162,7 +163,7 @@ export class ProductController {
       })
 
       await categoryRepo.save(newCategory)
-      console.log('[ProductController] 创建分类成功:', newCategory.name, 'ID:', newCategory.id)
+      log.info('[ProductController] 创建分类成功:', newCategory.name, 'ID:', newCategory.id)
 
       res.status(201).json({
         success: true,
@@ -170,7 +171,7 @@ export class ProductController {
         message: '创建分类成功'
       })
     } catch (error) {
-      console.error('创建分类失败:', error)
+      log.error('创建分类失败:', error)
       res.status(500).json({
         success: false,
         message: '创建分类失败',
@@ -212,7 +213,7 @@ export class ProductController {
         message: '更新分类成功'
       })
     } catch (error) {
-      console.error('更新分类失败:', error)
+      log.error('更新分类失败:', error)
       res.status(500).json({
         success: false,
         message: '更新分类失败',
@@ -266,7 +267,7 @@ export class ProductController {
         message: '删除分类成功'
       })
     } catch (error) {
-      console.error('删除分类失败:', error)
+      log.error('删除分类失败:', error)
       res.status(500).json({
         success: false,
         message: '删除分类失败',
@@ -364,14 +365,14 @@ export class ProductController {
                 }
               } catch (_parseError) {
                 // JSON解析失败，跳过该订单
-                console.warn('[商品列表] 解析订单商品JSON失败:', order.id)
+                log.warn('[商品列表] 解析订单商品JSON失败:', order.id)
               }
             }
           })
 
-          console.log('[商品列表] 销量统计:', salesCountMap)
+          log.info('[商品列表] 销量统计:', salesCountMap)
         } catch (salesError) {
-          console.error('[商品列表] 统计销量失败:', salesError)
+          log.error('[商品列表] 统计销量失败:', salesError)
           // 销量统计失败不影响商品列表返回
         }
       }
@@ -416,7 +417,7 @@ export class ProductController {
         }
       })
     } catch (error) {
-      console.error('获取产品列表失败:', error)
+      log.error('获取产品列表失败:', error)
       res.status(500).json({
         success: false,
         message: '获取产品列表失败',
@@ -469,7 +470,7 @@ export class ProductController {
         }
       })
     } catch (error) {
-      console.error('获取产品详情失败:', error)
+      log.error('获取产品详情失败:', error)
       res.status(500).json({
         success: false,
         message: '获取产品详情失败',
@@ -541,7 +542,7 @@ export class ProductController {
       })
 
       await productRepo.save(newProduct)
-      console.log('[ProductController] 创建产品成功:', newProduct.name, 'ID:', newProduct.id)
+      log.info('[ProductController] 创建产品成功:', newProduct.name, 'ID:', newProduct.id)
 
       res.status(201).json({
         success: true,
@@ -568,7 +569,7 @@ export class ProductController {
         message: '创建产品成功'
       })
     } catch (error) {
-      console.error('创建产品失败:', error)
+      log.error('创建产品失败:', error)
       res.status(500).json({
         success: false,
         message: '创建产品失败',
@@ -613,7 +614,7 @@ export class ProductController {
       }
 
       await productRepo.save(product)
-      console.log('[ProductController] 更新产品成功:', product.name, 'ID:', id)
+      log.info('[ProductController] 更新产品成功:', product.name, 'ID:', id)
 
       res.json({
         success: true,
@@ -640,7 +641,7 @@ export class ProductController {
         message: '更新产品成功'
       })
     } catch (error) {
-      console.error('更新产品失败:', error)
+      log.error('更新产品失败:', error)
       res.status(500).json({
         success: false,
         message: '更新产品失败',
@@ -667,14 +668,14 @@ export class ProductController {
       }
 
       await productRepo.remove(product)
-      console.log('[ProductController] 删除产品成功:', product.name, 'ID:', id)
+      log.info('[ProductController] 删除产品成功:', product.name, 'ID:', id)
 
       res.json({
         success: true,
         message: '删除产品成功'
       })
     } catch (error) {
-      console.error('删除产品失败:', error)
+      log.error('删除产品失败:', error)
       res.status(500).json({
         success: false,
         message: '删除产品失败',
@@ -748,7 +749,7 @@ export class ProductController {
         message: '库存调整成功'
       })
     } catch (error) {
-      console.error('库存调整失败:', error)
+      log.error('库存调整失败:', error)
       res.status(500).json({
         success: false,
         message: '库存调整失败'
@@ -823,7 +824,7 @@ export class ProductController {
         message: `批量导入完成，成功 ${results.success} 个，失败 ${results.failed} 个`
       })
     } catch (error) {
-      console.error('批量导入产品失败:', error)
+      log.error('批量导入产品失败:', error)
       res.status(500).json({ success: false, message: '批量导入产品失败' })
     }
   }
@@ -858,7 +859,7 @@ export class ProductController {
         exportTime: new Date().toISOString()
       })
     } catch (error) {
-      console.error('导出产品数据失败:', error)
+      log.error('导出产品数据失败:', error)
       res.status(500).json({ success: false, message: '导出产品数据失败' })
     }
   }
@@ -895,10 +896,11 @@ export class ProductController {
       const { Order } = await import('../entities/Order')
       const orderRepository = getTenantRepo(Order)
       let queryBuilder = orderRepository.createQueryBuilder('order')
-        .leftJoinAndSelect('order.items', 'items')
-        .where('items.productId = :productId', { productId: id })
+        .leftJoinAndSelect('order.orderItems', 'orderItems')
+        .where('orderItems.productId = :productId', { productId: id })
 
       // 根据用户角色应用数据范围过滤
+      // 🔥 修复：使用 Order 实体中实际存在的列名（createdBy / createdByDepartmentId）
       const userRole = currentUser?.role || ''
       const userId = currentUser?.id
       const departmentId = currentUser?.departmentId
@@ -909,22 +911,16 @@ export class ProductController {
         // 部门经理：查看本部门数据
         if (departmentId) {
           queryBuilder = queryBuilder.andWhere(
-            '(order.salesPersonDepartmentId = :departmentId OR order.customerServiceDepartmentId = :departmentId)',
+            'order.createdByDepartmentId = :departmentId',
             { departmentId }
           )
         }
-      } else if (userRole === 'sales_staff') {
-        // 销售员：只看自己的订单
-        queryBuilder = queryBuilder.andWhere('order.salesPersonId = :userId', { userId })
-      } else if (userRole === 'customer_service') {
-        // 客服：只看自己负责的订单
-        queryBuilder = queryBuilder.andWhere('order.customerServiceId = :userId', { userId })
+      } else if (userRole === 'sales_staff' || userRole === 'customer_service') {
+        // 销售员/客服：只看自己创建的订单
+        queryBuilder = queryBuilder.andWhere('order.createdBy = :userId', { userId })
       } else {
         // 其他角色：只看自己相关的订单
-        queryBuilder = queryBuilder.andWhere(
-          '(order.salesPersonId = :userId OR order.customerServiceId = :userId)',
-          { userId }
-        )
+        queryBuilder = queryBuilder.andWhere('order.createdBy = :userId', { userId })
       }
 
       // 由于订单表结构可能不同，这里使用模拟数据
@@ -934,7 +930,7 @@ export class ProductController {
         orders = await queryBuilder.getMany()
       } catch (error) {
         // 如果查询失败（可能是表结构不匹配），使用空数组
-        console.log('订单查询失败，使用模拟数据:', error)
+        log.info('订单查询失败，使用模拟数据:', error)
         orders = []
       }
 
@@ -955,7 +951,7 @@ export class ProductController {
                orderDate.getFullYear() === currentYear &&
                ['shipped', 'delivered', 'completed'].includes(order.status)
       }).reduce((sum, order) => {
-        const item = order.items?.find((i: any) => i.productId === id)
+        const item = order.orderItems?.find((i: any) => i.productId === id)
         return sum + (item?.quantity || 1)
       }, 0)
 
@@ -995,7 +991,7 @@ export class ProductController {
         message: '获取商品统计数据成功'
       })
     } catch (error) {
-      console.error('获取商品统计数据失败:', error)
+      log.error('获取商品统计数据失败:', error)
       res.status(500).json({
         success: false,
         message: '获取商品统计数据失败',
@@ -1023,7 +1019,7 @@ export class ProductController {
         data: { totalProducts, totalStock, totalValue, lowStockCount, outOfStockCount }
       })
     } catch (error) {
-      console.error('获取库存统计信息失败:', error)
+      log.error('获取库存统计信息失败:', error)
       res.status(500).json({ success: false, message: '获取库存统计信息失败' })
     }
   }

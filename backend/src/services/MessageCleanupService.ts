@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid'
 import { TenantContextManager } from '../utils/tenantContext'
 import { deployConfig } from '../config/deploy'
 
+import { log } from '../config/logger';
 const CONFIG_KEY = 'message_cleanup_config'
 
 interface CleanupConfig {
@@ -21,7 +22,7 @@ class MessageCleanupService {
    * 启动清理服务
    */
   async start() {
-    console.log('[MessageCleanupService] 启动消息清理服务...')
+    log.info('[MessageCleanupService] 启动消息清理服务...')
 
     // 每分钟检查一次是否需要执行清理
     this.timer = setInterval(() => {
@@ -40,7 +41,7 @@ class MessageCleanupService {
       clearInterval(this.timer)
       this.timer = null
     }
-    console.log('[MessageCleanupService] 消息清理服务已停止')
+    log.info('[MessageCleanupService] 消息清理服务已停止')
   }
 
   /**
@@ -63,7 +64,7 @@ class MessageCleanupService {
         }
       }
     } catch (error) {
-      console.error('[MessageCleanupService] 检查清理任务失败:', error)
+      log.error('[MessageCleanupService] 检查清理任务失败:', error)
     }
   }
 
@@ -97,11 +98,11 @@ class MessageCleanupService {
             }
           }
         } catch (e) {
-          console.error(`[MessageCleanupService] 租户 ${tenantId} 清理失败:`, e)
+          log.error(`[MessageCleanupService] 租户 ${tenantId} 清理失败:`, e)
         }
       }
     } catch (error) {
-      console.error('[MessageCleanupService] 遍历租户清理失败:', error)
+      log.error('[MessageCleanupService] 遍历租户清理失败:', error)
     }
   }
 
@@ -129,7 +130,7 @@ class MessageCleanupService {
       }
       return null
     } catch (error) {
-      console.error('[MessageCleanupService] 获取配置失败:', error)
+      log.error('[MessageCleanupService] 获取配置失败:', error)
       return null
     }
   }
@@ -175,7 +176,7 @@ class MessageCleanupService {
   private async executeCleanup(config: CleanupConfig, tenantId: string | null) {
     this.isRunning = true
     const label = tenantId ? `租户${tenantId}` : '全局'
-    console.log(`[MessageCleanupService] 开始执行${label}自动清理，保留 ${config.retentionDays} 天...`)
+    log.info(`[MessageCleanupService] 开始执行${label}自动清理，保留 ${config.retentionDays} 天...`)
 
     try {
       let result
@@ -192,7 +193,7 @@ class MessageCleanupService {
       }
 
       const deletedCount = result.affectedRows || 0
-      console.log(`[MessageCleanupService] ${label}自动清理完成，删除 ${deletedCount} 条记录`)
+      log.info(`[MessageCleanupService] ${label}自动清理完成，删除 ${deletedCount} 条记录`)
 
       // 记录清理历史（带租户ID）
       await AppDataSource.query(
@@ -201,7 +202,7 @@ class MessageCleanupService {
         [uuidv4(), 'auto', deletedCount, '系统', `自动清理 ${config.retentionDays} 天前的记录`, tenantId]
       )
     } catch (error) {
-      console.error(`[MessageCleanupService] ${label}执行清理失败:`, error)
+      log.error(`[MessageCleanupService] ${label}执行清理失败:`, error)
     } finally {
       this.isRunning = false
     }
@@ -239,7 +240,7 @@ class MessageCleanupService {
 
       return deletedCount
     } catch (error) {
-      console.error('[MessageCleanupService] 手动清理失败:', error)
+      log.error('[MessageCleanupService] 手动清理失败:', error)
       throw error
     }
   }

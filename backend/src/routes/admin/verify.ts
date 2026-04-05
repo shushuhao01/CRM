@@ -8,6 +8,7 @@ import { License } from '../../entities/License';
 import { LicenseLog } from '../../entities/LicenseLog';
 import { v4 as uuidv4 } from 'uuid';
 
+import { log as logger } from '../../config/logger';
 const router = Router();
 
 // 🔥 正确获取客户端IP
@@ -86,7 +87,8 @@ router.post('/license', async (req: Request, res: Response) => {
           maxUsers: license.maxUsers,
           features: license.features,
           expiresAt: license.expiresAt,
-          customerName: license.customerName
+          customerName: license.customerName,
+          customerPhone: license.customerPhone || null
         },
         message: '授权激活成功'
       });
@@ -129,11 +131,12 @@ router.post('/license', async (req: Request, res: Response) => {
         maxUsers: license.maxUsers,
         features: license.features,
         expiresAt: license.expiresAt,
-        customerName: license.customerName
+        customerName: license.customerName,
+        customerPhone: license.customerPhone || null
       }
     });
   } catch (error: any) {
-    console.error('[License Verify] Failed:', error);
+    logger.error('[License Verify] Failed:', error);
     res.status(500).json({ success: false, message: '验证失败' });
   }
 });
@@ -168,7 +171,7 @@ router.get('/version', async (req: Request, res: Response) => {
       }
     });
   } catch (error: any) {
-    console.error('[Version Check] Failed:', error);
+    logger.error('[Version Check] Failed:', error);
     res.status(500).json({ success: false, message: '获取版本信息失败' });
   }
 });

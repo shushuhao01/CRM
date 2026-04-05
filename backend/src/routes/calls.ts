@@ -12,6 +12,7 @@ import { getTenantRepo, tenantSQL } from '../utils/tenantRepo';
 import { getCurrentTenantIdSafe } from '../utils/tenantHelpers';
 import { JwtConfig } from '../config/jwt';
 
+import { log } from '../config/logger';
 const router = Router();
 
 // 配置multer用于录音文件上传
@@ -96,7 +97,7 @@ router.get('/recordings/stream/*', async (req: Request, res: Response) => {
       res.send(result.stream);
     }
   } catch (error) {
-    console.error('播放录音失败:', error);
+    log.error('播放录音失败:', error);
     res.status(500).json({ success: false, message: '播放录音失败' });
   }
 });
@@ -227,7 +228,7 @@ router.get('/statistics', async (req: Request, res: Response) => {
       }
     });
   } catch (error) {
-    console.error('获取通话统计数据失败:', error);
+    log.error('获取通话统计数据失败:', error);
     res.status(500).json({
       success: false,
       message: '获取通话统计数据失败'
@@ -346,7 +347,7 @@ router.get('/records', async (req: Request, res: Response) => {
       }
     });
   } catch (error) {
-    console.error('获取通话记录列表失败:', error);
+    log.error('获取通话记录列表失败:', error);
     res.status(500).json({
       success: false,
       message: '获取通话记录列表失败'
@@ -374,7 +375,7 @@ router.get('/records/:id', async (req: Request, res: Response) => {
       data: record
     });
   } catch (error) {
-    console.error('获取通话记录失败:', error);
+    log.error('获取通话记录失败:', error);
     res.status(500).json({
       success: false,
       message: '获取通话记录失败'
@@ -425,7 +426,7 @@ router.post('/records', async (req: Request, res: Response) => {
       data: savedCall
     });
   } catch (error) {
-    console.error('创建通话记录失败:', error);
+    log.error('创建通话记录失败:', error);
     res.status(500).json({
       success: false,
       message: '创建通话记录失败'
@@ -459,7 +460,7 @@ router.put('/records/:id', async (req: Request, res: Response) => {
       data: savedRecord
     });
   } catch (error) {
-    console.error('更新通话记录失败:', error);
+    log.error('更新通话记录失败:', error);
     res.status(500).json({
       success: false,
       message: '更新通话记录失败'
@@ -497,7 +498,7 @@ router.put('/records/:id/end', async (req: Request, res: Response) => {
       data: savedRecord
     });
   } catch (error) {
-    console.error('结束通话失败:', error);
+    log.error('结束通话失败:', error);
     res.status(500).json({
       success: false,
       message: '结束通话失败'
@@ -512,7 +513,7 @@ router.put('/:id/notes', async (req: Request, res: Response) => {
     const { notes } = req.body;
     const callRepository = getTenantRepo(Call);
 
-    console.log('[Calls] 更新通话备注:', { callId: id, notes });
+    log.info('[Calls] 更新通话备注:', { callId: id, notes });
 
     const record = await callRepository.findOne({ where: { id } });
 
@@ -528,7 +529,7 @@ router.put('/:id/notes', async (req: Request, res: Response) => {
 
     const savedRecord = await callRepository.save(record);
 
-    console.log('[Calls] 通话备注更新成功:', savedRecord.id);
+    log.info('[Calls] 通话备注更新成功:', savedRecord.id);
 
     res.json({
       success: true,
@@ -536,7 +537,7 @@ router.put('/:id/notes', async (req: Request, res: Response) => {
       data: savedRecord
     });
   } catch (error) {
-    console.error('更新通话备注失败:', error);
+    log.error('更新通话备注失败:', error);
     res.status(500).json({
       success: false,
       message: '更新备注失败'
@@ -564,7 +565,7 @@ router.delete('/records/:id', async (req: Request, res: Response) => {
       message: '通话记录删除成功'
     });
   } catch (error) {
-    console.error('删除通话记录失败:', error);
+    log.error('删除通话记录失败:', error);
     res.status(500).json({
       success: false,
       message: '删除通话记录失败'
@@ -616,7 +617,7 @@ router.post('/outbound', async (req: Request, res: Response) => {
       }
     });
   } catch (error) {
-    console.error('发起外呼失败:', error);
+    log.error('发起外呼失败:', error);
     res.status(500).json({
       success: false,
       message: '发起外呼失败'
@@ -690,7 +691,7 @@ router.get('/followups', async (req: Request, res: Response) => {
       }
     });
   } catch (error) {
-    console.error('获取跟进记录列表失败:', error);
+    log.error('获取跟进记录列表失败:', error);
     res.status(500).json({
       success: false,
       message: '获取跟进记录列表失败'
@@ -716,7 +717,7 @@ router.post('/followups', async (req: Request, res: Response) => {
       status = 'pending'
     } = req.body;
 
-    console.log('[Calls] 创建跟进记录请求:', {
+    log.info('[Calls] 创建跟进记录请求:', {
       callId,
       customerId,
       customerName,
@@ -733,7 +734,7 @@ router.post('/followups', async (req: Request, res: Response) => {
 
     // 验证必要字段
     if (!customerId) {
-      console.error('[Calls] 创建跟进记录失败: customerId 为空');
+      log.error('[Calls] 创建跟进记录失败: customerId 为空');
       return res.status(400).json({
         success: false,
         message: '客户ID不能为空'
@@ -741,7 +742,7 @@ router.post('/followups', async (req: Request, res: Response) => {
     }
 
     if (!content) {
-      console.error('[Calls] 创建跟进记录失败: content 为空');
+      log.error('[Calls] 创建跟进记录失败: content 为空');
       return res.status(400).json({
         success: false,
         message: '跟进内容不能为空'
@@ -768,11 +769,11 @@ router.post('/followups', async (req: Request, res: Response) => {
       createdByName: userName
     });
 
-    console.log('[Calls] 准备保存的跟进记录:', JSON.stringify(followUp, null, 2));
+    log.info('[Calls] 准备保存的跟进记录:', JSON.stringify(followUp, null, 2));
 
     const savedFollowUp = await followUpRepository.save(followUp);
 
-    console.log('[Calls] 跟进记录保存成功:', savedFollowUp.id);
+    log.info('[Calls] 跟进记录保存成功:', savedFollowUp.id);
 
     // 验证保存结果
     const tVerify = tenantSQL('');
@@ -780,7 +781,7 @@ router.post('/followups', async (req: Request, res: Response) => {
       `SELECT * FROM follow_up_records WHERE id = ?${tVerify.sql}`,
       [savedFollowUp.id, ...tVerify.params]
     );
-    console.log('[Calls] 验证保存的记录:', verifyRecord);
+    log.info('[Calls] 验证保存的记录:', verifyRecord);
 
     res.status(201).json({
       success: true,
@@ -788,7 +789,7 @@ router.post('/followups', async (req: Request, res: Response) => {
       data: savedFollowUp
     });
   } catch (error) {
-    console.error('创建跟进记录失败:', error);
+    log.error('创建跟进记录失败:', error);
     res.status(500).json({
       success: false,
       message: '创建跟进记录失败'
@@ -826,7 +827,7 @@ router.put('/followups/:id', async (req: Request, res: Response) => {
       data: savedRecord
     });
   } catch (error) {
-    console.error('更新跟进记录失败:', error);
+    log.error('更新跟进记录失败:', error);
     res.status(500).json({
       success: false,
       message: '更新跟进记录失败'
@@ -854,7 +855,7 @@ router.delete('/followups/:id', async (req: Request, res: Response) => {
       message: '跟进记录删除成功'
     });
   } catch (error) {
-    console.error('删除跟进记录失败:', error);
+    log.error('删除跟进记录失败:', error);
     res.status(500).json({
       success: false,
       message: '删除跟进记录失败'
@@ -909,7 +910,7 @@ router.post('/recordings/upload', recordingUpload.single('file'), async (req: Re
       data: recordingInfo
     });
   } catch (error) {
-    console.error('上传录音失败:', error);
+    log.error('上传录音失败:', error);
     res.status(500).json({
       success: false,
       message: '上传录音失败'
@@ -1038,7 +1039,7 @@ router.get('/recordings', async (req: Request, res: Response) => {
       }
     });
   } catch (error) {
-    console.error('获取录音列表失败:', error);
+    log.error('获取录音列表失败:', error);
     res.status(500).json({
       success: false,
       message: '获取录音列表失败'
@@ -1106,7 +1107,7 @@ router.get('/recordings/:id/download', async (req: Request, res: Response) => {
       message: '录音文件不存在'
     });
   } catch (error) {
-    console.error('下载录音失败:', error);
+    log.error('下载录音失败:', error);
     res.status(500).json({
       success: false,
       message: '下载录音失败'
@@ -1141,7 +1142,7 @@ router.delete('/recordings/:id', async (req: Request, res: Response) => {
       message: '录音删除成功'
     });
   } catch (error) {
-    console.error('删除录音失败:', error);
+    log.error('删除录音失败:', error);
     res.status(500).json({
       success: false,
       message: '删除录音失败'
@@ -1159,7 +1160,7 @@ router.get('/recordings/stats', async (req: Request, res: Response) => {
       data: stats
     });
   } catch (error) {
-    console.error('获取录音统计失败:', error);
+    log.error('获取录音统计失败:', error);
     res.status(500).json({
       success: false,
       message: '获取录音统计失败'
@@ -1295,7 +1296,7 @@ router.get('/config', async (req: Request, res: Response) => {
       data: config
     });
   } catch (error) {
-    console.error('获取电话配置失败:', error);
+    log.error('获取电话配置失败:', error);
     res.status(500).json({
       success: false,
       message: '获取电话配置失败'
@@ -1441,7 +1442,7 @@ router.put('/config', async (req: Request, res: Response) => {
       data: updatedConfig
     });
   } catch (error) {
-    console.error('更新电话配置失败:', error);
+    log.error('更新电话配置失败:', error);
     res.status(500).json({
       success: false,
       message: '更新电话配置失败'
@@ -1464,7 +1465,7 @@ router.post('/test-connection', async (req: Request, res: Response) => {
       }
     });
   } catch (error) {
-    console.error('测试连接失败:', error);
+    log.error('测试连接失败:', error);
     res.status(500).json({
       success: false,
       message: '测试连接失败'
@@ -1488,7 +1489,7 @@ router.get('/export', async (req: Request, res: Response) => {
       }
     });
   } catch (error) {
-    console.error('导出通话记录失败:', error);
+    log.error('导出通话记录失败:', error);
     res.status(500).json({
       success: false,
       message: '导出通话记录失败'
@@ -1551,7 +1552,7 @@ router.get('/', async (req: Request, res: Response) => {
       }
     });
   } catch (error) {
-    console.error('获取通话记录列表失败:', error);
+    log.error('获取通话记录列表失败:', error);
     res.status(500).json({
       success: false,
       message: '获取通话记录列表失败'
@@ -1619,7 +1620,7 @@ router.get('/outbound-tasks', async (req: Request, res: Response) => {
       }
     });
   } catch (error) {
-    console.error('获取外呼任务列表失败:', error);
+    log.error('获取外呼任务列表失败:', error);
     res.status(500).json({
       success: false,
       message: '获取外呼任务列表失败'
@@ -1666,7 +1667,7 @@ router.post('/outbound-tasks', async (req: Request, res: Response) => {
       data: { id: taskId }
     });
   } catch (error) {
-    console.error('创建外呼任务失败:', error);
+    log.error('创建外呼任务失败:', error);
     res.status(500).json({
       success: false,
       message: '创建外呼任务失败'
@@ -1715,7 +1716,7 @@ router.put('/outbound-tasks/:id', async (req: Request, res: Response) => {
       message: '外呼任务更新成功'
     });
   } catch (error) {
-    console.error('更新外呼任务失败:', error);
+    log.error('更新外呼任务失败:', error);
     res.status(500).json({
       success: false,
       message: '更新外呼任务失败'
@@ -1736,7 +1737,7 @@ router.delete('/outbound-tasks/:id', async (req: Request, res: Response) => {
       message: '外呼任务删除成功'
     });
   } catch (error) {
-    console.error('删除外呼任务失败:', error);
+    log.error('删除外呼任务失败:', error);
     res.status(500).json({
       success: false,
       message: '删除外呼任务失败'
@@ -1778,7 +1779,7 @@ router.get('/lines', async (req: Request, res: Response) => {
       }))
     });
   } catch (error) {
-    console.error('获取外呼线路列表失败:', error);
+    log.error('获取外呼线路列表失败:', error);
     res.status(500).json({
       success: false,
       message: '获取外呼线路列表失败'
@@ -1836,7 +1837,7 @@ router.post('/lines', async (req: Request, res: Response) => {
       data: { id: lineId }
     });
   } catch (error) {
-    console.error('创建外呼线路失败:', error);
+    log.error('创建外呼线路失败:', error);
     res.status(500).json({
       success: false,
       message: '创建外呼线路失败'
@@ -1913,7 +1914,7 @@ router.put('/lines/:id', async (req: Request, res: Response) => {
       message: '线路更新成功'
     });
   } catch (error) {
-    console.error('更新外呼线路失败:', error);
+    log.error('更新外呼线路失败:', error);
     res.status(500).json({
       success: false,
       message: '更新外呼线路失败'
@@ -1934,7 +1935,7 @@ router.delete('/lines/:id', async (req: Request, res: Response) => {
       message: '线路删除成功'
     });
   } catch (error) {
-    console.error('删除外呼线路失败:', error);
+    log.error('删除外呼线路失败:', error);
     res.status(500).json({
       success: false,
       message: '删除外呼线路失败'
@@ -2008,7 +2009,7 @@ router.post('/lines/:id/test', async (req: Request, res: Response) => {
       }
     });
   } catch (error) {
-    console.error('测试外呼线路失败:', error);
+    log.error('测试外呼线路失败:', error);
     res.status(500).json({
       success: false,
       message: '测试外呼线路失败'

@@ -7,6 +7,15 @@
       </div>
       <div class="header-actions">
         <el-button
+          v-if="userStore.isAdmin"
+          @click="goToSystemEntry"
+          type="warning"
+          plain
+          :icon="Promotion"
+        >
+          系统入口
+        </el-button>
+        <el-button
           v-if="canAddUser"
           @click="handleAdd"
           type="primary"
@@ -1017,11 +1026,41 @@
         </div>
       </template>
     </el-dialog>
+
+    <!-- 🔥 新建用户成功后 - 登录指引弹窗 -->
+    <el-dialog
+      v-model="loginGuideVisible"
+      title="✅ 用户创建成功 — 登录指引"
+      width="560px"
+      :close-on-click-modal="false"
+    >
+      <div class="login-guide-content">
+        <el-alert
+          title="以下信息仅显示一次，请及时复制发送给成员"
+          type="warning"
+          :closable="false"
+          show-icon
+          style="margin-bottom: 16px;"
+        />
+        <div class="guide-card">
+          <pre class="guide-text">{{ createdUserGuideText }}</pre>
+        </div>
+      </div>
+      <template #footer>
+        <div class="login-guide-footer">
+          <el-button @click="loginGuideVisible = false">关闭</el-button>
+          <el-button type="primary" @click="copyCreatedUserGuide">
+            <el-icon><CopyDocument /></el-icon> 一键复制登录指引
+          </el-button>
+        </div>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, onMounted, computed, nextTick } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useUserStore } from '@/stores/user'
 import { useDepartmentStore } from '@/stores/department'
@@ -1038,6 +1077,7 @@ import * as XLSX from 'xlsx'
 import DynamicTable from '@/components/DynamicTable.vue'
 import { formatDateTime } from '@/utils/dateFormat'
 import { getRoleTagType, getRoleDisplayName } from '@/utils/roleUtils'
+import { getDeployMode, getLocalTenantInfo } from '@/api/tenantLicense'
 import {
   Plus,
   Download,
@@ -1057,7 +1097,9 @@ import {
   QuestionFilled,
   CircleCheck,
   CircleClose,
-  CircleCheckFilled
+  CircleCheckFilled,
+  Promotion,
+  CopyDocument
 } from '@element-plus/icons-vue'
 
 // 接口定义
@@ -1121,6 +1163,12 @@ interface ColumnSettings {
 const userStore = useUserStore()
 // 部门store
 const departmentStore = useDepartmentStore()
+// 路由
+const router = useRouter()
+
+// 🔥 新建用户成功后的登录指引弹窗
+const loginGuideVisible = ref(false)
+const createdUserInfo = ref({ username: '', password: '' })
 
 // 响应式数据
 const tableLoading = ref(false)
@@ -1544,6 +1592,83 @@ const getRoleColor = (roleId: string) => {
   // 使用角色code获取对应的标签颜色
   const roleCode = role?.code || roleId
   return getRoleTagType(roleCode)
+}
+
+/**
+ * 🔥 跳转到系统设置 - 系统入口选项卡
+ */
+const goToSystemEntry = () => {
+  userDialogVisible.value = false
+  router.push({ path: '/system/settings', query: { tab: 'entry' } })
+}
+
+/**
+ * 🔥 新建用户成功后 - 登录指引文本（含账号密码）
+ */
+const createdUserGuideText = computed(() => {
+  const loginUrl = `${window.location.origin}/login`
+  const deployModeVal = getDeployMode()
+  const tenantInfoVal = getLocalTenantInfo()
+  const tenantCode = tenantInfoVal?.tenantCode || ''
+  const companyName = tenantInfoVal?.tenantName || ''
+  const isSaaS = deployModeVal === 'saas'
+
+  let text = `📋 云客CRM — 登录指引\n`
+  text += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`
+
+  if (isSaaS) {
+    text += `☁ 部署模式：SaaS 云端版\n`
+  } else {
+    text += `🖥️ 部署模式：私有部署版\n`
+  }
+
+  if (companyName) {
+    text += `🏢 企业名称：${companyName}\n`
+  }
+
+  text += `\n🔗 系统登录地址：${loginUrl}\n\n`
+
+  text += `🚀 登录步骤：\n`
+  text += `  1. 打开上方登录地址\n`
+
+  if (isSaaS && tenantCode) {
+    text += `  2. 输入租户编码：${tenantCode}\n`
+    text += `  3. 输入以下账号密码\n`
+    text += `  4. 勾选协议后点击登录\n`
+  } else {
+    text += `  2. 输入以下账号密码\n`
+    text += `  3. 勾选协议后点击登录\n`
+  }
+
+  text += `\n👤 账号信息：\n`
+  text += `  用户名：${createdUserInfo.value.username}\n`
+  text += `  密　码：${createdUserInfo.value.password}\n`
+
+  text += `\n💡 建议使用 Chrome / Edge 浏览器访问\n`
+  text += `🔒 首次登录请立即修改密码`
+
+  return text
+})
+
+/**
+ * 🔥 一键复制创建用户后的登录指引
+ */
+const copyCreatedUserGuide = async () => {
+  try {
+    await navigator.clipboard.writeText(createdUserGuideText.value)
+    ElMessage.success('登录指引已复制到剪贴板，可直接发送给成员')
+  } catch {
+    // Fallback: 使用传统方式复制
+    const textarea = document.createElement('textarea')
+    textarea.value = createdUserGuideText.value
+    textarea.style.position = 'fixed'
+    textarea.style.opacity = '0'
+    document.body.appendChild(textarea)
+    textarea.select()
+    document.execCommand('copy')
+    document.body.removeChild(textarea)
+    ElMessage.success('登录指引已复制到剪贴板')
+  }
 }
 
 /**
@@ -2630,17 +2755,27 @@ const confirmUser = async () => {
         console.log('[User] 用户创建API调用成功')
         ElMessage.success('用户创建成功')
 
+        // 🔥 保存创建的用户名和密码，用于登录指引弹窗
+        createdUserInfo.value = {
+          username: userForm.username,
+          password: userForm.password
+        }
+
         // 【新增】更新部门成员数
         if (userForm.departmentId) {
           await updateDepartmentMemberCount(userForm.departmentId)
         }
       } catch (error) {
         console.error('[User] 创建用户失败:', error)
-        ElMessage.error('创建用户失败，请检查输入信息')
+        const errMsg = error instanceof Error ? error.message : '未知错误'
+        ElMessage.error(`创建用户失败：${errMsg}`)
         userLoading.value = false
         return
       }
     }
+
+    // 判断是否是新建用户（非编辑模式）
+    const isNewUser = !isEdit.value
 
     // 【批次210修复】先刷新列表,确保新用户立即显示
     await loadUserList()
@@ -2648,6 +2783,13 @@ const confirmUser = async () => {
 
     // 然后关闭对话框
     handleDialogClose()
+
+    // 🔥 新建用户成功后，弹出登录指引弹窗
+    if (isNewUser) {
+      nextTick(() => {
+        loginGuideVisible.value = true
+      })
+    }
   } catch (error) {
     console.error('表单验证失败:', error)
   } finally {
@@ -3845,5 +3987,39 @@ onMounted(async () => {
 
 .text-gray-400 {
   color: #9ca3af;
+}
+
+/* 🔥 新建用户成功后 - 登录指引弹窗样式 */
+.login-guide-content {
+  padding: 0;
+}
+
+.login-guide-content .guide-card {
+  background: #fafafa;
+  border: 1px solid #ebeef5;
+  border-radius: 12px;
+  padding: 16px;
+}
+
+.login-guide-content .guide-text {
+  margin: 0;
+  padding: 16px;
+  background: #fff;
+  border: 1px solid #ebeef5;
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.8;
+  color: #303133;
+  white-space: pre-wrap;
+  word-break: break-all;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.login-guide-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
 }
 </style>

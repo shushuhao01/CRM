@@ -1,14 +1,23 @@
+import { log } from './logger';
 /**
  * 部署模式配置
  * 支持私有部署和SaaS两种模式
+ *
+ * ⚠️ 安全机制：SaaS 模式需要经过 SaaSGuardService 的 RSA 签名验证
+ *   即使 DEPLOY_MODE=saas，若无有效的 SAAS_LICENSE_TOKEN，
+ *   isSaaS() 将返回 false，系统自动降级为私有部署模式
  */
 
 export type DeployMode = 'private' | 'saas'
 
 export interface DeployConfig {
   mode: DeployMode
+  /** 实际生效的模式（经过 SaaS 许可验证后的结果） */
+  effectiveMode: DeployMode
   isPrivate: () => boolean
   isSaaS: () => boolean
+  /** 强制设置生效模式（由 SaaSGuardService 调用） */
+  setEffectiveMode: (mode: DeployMode) => void
   private: {
     licenseKey?: string
     licenseServer?: string
@@ -26,11 +35,19 @@ export const deployConfig: DeployConfig = {
   // 从环境变量读取部署模式，默认为私有部署
   mode: (process.env.DEPLOY_MODE as DeployMode) || 'private',
 
-  // 判断是否为私有部署模式
-  isPrivate: () => deployConfig.mode === 'private',
+  // 实际生效模式（初始与 mode 相同，SaaS 验证失败后会被降级为 private）
+  effectiveMode: (process.env.DEPLOY_MODE as DeployMode) || 'private',
 
-  // 判断是否为SaaS模式
-  isSaaS: () => deployConfig.mode === 'saas',
+  // 判断是否为私有部署模式（基于实际生效模式）
+  isPrivate: () => deployConfig.effectiveMode === 'private',
+
+  // 判断是否为SaaS模式（基于实际生效模式，需通过 SaaS 许可验证）
+  isSaaS: () => deployConfig.effectiveMode === 'saas',
+
+  // 强制设置生效模式
+  setEffectiveMode: (mode: DeployMode) => {
+    deployConfig.effectiveMode = mode
+  },
 
   // 私有部署配置
   private: {
@@ -70,22 +87,26 @@ export const isSaaSMode = (): boolean => {
  * 打印部署配置信息
  */
 export const printDeployConfig = (): void => {
-  console.log('='.repeat(50))
-  console.log('CRM系统部署配置')
-  console.log('='.repeat(50))
-  console.log(`部署模式: ${deployConfig.mode}`)
-  console.log(`是否私有部署: ${deployConfig.isPrivate()}`)
-  console.log(`是否SaaS模式: ${deployConfig.isSaaS()}`)
+  log.info('='.repeat(50))
+  log.info('CRM系统部署配置')
+  log.info('='.repeat(50))
+  log.info(`配置的部署模式: ${deployConfig.mode}`)
+  log.info(`实际生效模式: ${deployConfig.effectiveMode}`)
+  if (deployConfig.mode === 'saas' && deployConfig.effectiveMode === 'private') {
+    log.warn(`⚠️ SaaS 许可验证未通过，已自动降级为私有部署模式`)
+  }
+  log.info(`是否私有部署: ${deployConfig.isPrivate()}`)
+  log.info(`是否SaaS模式: ${deployConfig.isSaaS()}`)
 
   if (deployConfig.isPrivate()) {
-    console.log('\n私有部署配置:')
-    console.log(`  授权码: ${deployConfig.private.licenseKey ? '已配置' : '未配置'}`)
-    console.log(`  授权服务器: ${deployConfig.private.licenseServer}`)
+    log.info('\n私有部署配置:')
+    log.info(`  授权码: ${deployConfig.private.licenseKey ? '已配置' : '未配置'}`)
+    log.info(`  授权服务器: ${deployConfig.private.licenseServer}`)
   } else {
-    console.log('\nSaaS配置:')
-    console.log(`  租户ID: ${deployConfig.saas.tenantId || '未配置'}`)
-    console.log(`  租户授权码: ${deployConfig.saas.tenantLicenseKey ? '已配置' : '未配置'}`)
+    log.info('\nSaaS配置:')
+    log.info(`  租户ID: ${deployConfig.saas.tenantId || '未配置'}`)
+    log.info(`  租户授权码: ${deployConfig.saas.tenantLicenseKey ? '已配置' : '未配置'}`)
   }
 
-  console.log('='.repeat(50))
+  log.info('='.repeat(50))
 }

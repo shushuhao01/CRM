@@ -6,6 +6,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { AppDataSource } from '../config/database';
 import { SystemMessage } from '../entities/SystemMessage';
 
+import { log } from '../config/logger';
 export interface SendMessageOptions {
   type: string;
   title: string;
@@ -55,12 +56,12 @@ export async function sendSystemMessage(options: SendMessageOptions): Promise<vo
         relatedType: message.relatedType,
         actionUrl: message.actionUrl
       }, { userId: options.targetUserId });
-      console.log(`[消息服务] 🔌 WebSocket推送: ${options.title} -> 用户 ${options.targetUserId}`);
+      log.info(`[消息服务] 🔌 WebSocket推送: ${options.title} -> 用户 ${options.targetUserId}`);
     }
 
-    console.log(`[消息服务] ✅ 发送成功: ${options.title} -> 用户 ${options.targetUserId}`);
+    log.info(`[消息服务] ✅ 发送成功: ${options.title} -> 用户 ${options.targetUserId}`);
   } catch (error) {
-    console.error('[消息服务] 发送失败:', error);
+    log.error('[消息服务] 发送失败:', error);
     throw error;
   }
 }
@@ -105,9 +106,9 @@ export async function sendBatchSystemMessages(messages: SendMessageOptions[]): P
       });
     }
 
-    console.log(`[消息服务] ✅ 批量发送成功: ${messageEntities.length} 条消息`);
+    log.info(`[消息服务] ✅ 批量发送成功: ${messageEntities.length} 条消息`);
   } catch (error) {
-    console.error('[消息服务] 批量发送失败:', error);
+    log.error('[消息服务] 批量发送失败:', error);
     throw error;
   }
 }

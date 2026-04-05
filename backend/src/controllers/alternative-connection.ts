@@ -1,6 +1,7 @@
 import { Request, Response } from 'express'
 import { v4 as uuidv4 } from 'uuid'
 
+import { log } from '../config/logger';
 interface ConnectedDevice {
   id: string
   deviceId: string
@@ -49,7 +50,7 @@ export class AlternativeConnectionController {
         }
       })
     } catch (error) {
-      console.error('启动蓝牙服务失败:', error)
+      log.error('启动蓝牙服务失败:', error)
       return res.status(500).json({
         success: false,
         message: '启动蓝牙服务失败'
@@ -74,7 +75,7 @@ export class AlternativeConnectionController {
         message: '蓝牙服务已停止'
       })
     } catch (error) {
-      console.error('停止蓝牙服务失败:', error)
+      log.error('停止蓝牙服务失败:', error)
       return res.status(500).json({
         success: false,
         message: '停止蓝牙服务失败'
@@ -89,7 +90,7 @@ export class AlternativeConnectionController {
         data: this.bluetoothService
       })
     } catch (error) {
-      console.error('获取蓝牙状态失败:', error)
+      log.error('获取蓝牙状态失败:', error)
       return res.status(500).json({
         success: false,
         message: '获取蓝牙状态失败'
@@ -136,7 +137,7 @@ export class AlternativeConnectionController {
         data: device
       })
     } catch (error) {
-      console.error('蓝牙设备配对失败:', error)
+      log.error('蓝牙设备配对失败:', error)
       return res.status(500).json({
         success: false,
         message: '蓝牙设备配对失败'
@@ -164,7 +165,7 @@ export class AlternativeConnectionController {
         }
       })
     } catch (error) {
-      console.error('启动网络发现失败:', error)
+      log.error('启动网络发现失败:', error)
       return res.status(500).json({
         success: false,
         message: '启动网络发现失败'
@@ -189,7 +190,7 @@ export class AlternativeConnectionController {
         message: '网络发现已停止'
       })
     } catch (error) {
-      console.error('停止网络发现失败:', error)
+      log.error('停止网络发现失败:', error)
       return res.status(500).json({
         success: false,
         message: '停止网络发现失败'
@@ -204,7 +205,7 @@ export class AlternativeConnectionController {
         data: this.networkService
       })
     } catch (error) {
-      console.error('获取网络状态失败:', error)
+      log.error('获取网络状态失败:', error)
       return res.status(500).json({
         success: false,
         message: '获取网络状态失败'
@@ -244,7 +245,7 @@ export class AlternativeConnectionController {
         data: device
       })
     } catch (error) {
-      console.error('网络设备连接失败:', error)
+      log.error('网络设备连接失败:', error)
       return res.status(500).json({
         success: false,
         message: '网络设备连接失败'
@@ -272,7 +273,7 @@ export class AlternativeConnectionController {
         }
       })
     } catch (error) {
-      console.error('启动数字配对失败:', error)
+      log.error('启动数字配对失败:', error)
       return res.status(500).json({
         success: false,
         message: '启动数字配对失败'
@@ -289,7 +290,7 @@ export class AlternativeConnectionController {
         message: '数字配对已停止'
       })
     } catch (error) {
-      console.error('停止数字配对失败:', error)
+      log.error('停止数字配对失败:', error)
       return res.status(500).json({
         success: false,
         message: '停止数字配对失败'
@@ -304,7 +305,7 @@ export class AlternativeConnectionController {
         data: this.digitalPairingService
       })
     } catch (error) {
-      console.error('获取数字配对状态失败:', error)
+      log.error('获取数字配对状态失败:', error)
       return res.status(500).json({
         success: false,
         message: '获取数字配对状态失败'
@@ -351,7 +352,7 @@ export class AlternativeConnectionController {
         data: device
       })
     } catch (error) {
-      console.error('数字配对失败:', error)
+      log.error('数字配对失败:', error)
       return res.status(500).json({
         success: false,
         message: '数字配对失败'
@@ -378,7 +379,7 @@ export class AlternativeConnectionController {
         }
       })
     } catch (error) {
-      console.error('生成配对码失败:', error)
+      log.error('生成配对码失败:', error)
       return res.status(500).json({
         success: false,
         message: '生成配对码失败'
@@ -397,7 +398,7 @@ export class AlternativeConnectionController {
         data: devices
       })
     } catch (error) {
-      console.error('获取连接设备列表失败:', error)
+      log.error('获取连接设备列表失败:', error)
       return res.status(500).json({
         success: false,
         message: '获取连接设备列表失败'
@@ -425,7 +426,7 @@ export class AlternativeConnectionController {
         message: '设备已断开连接'
       })
     } catch (error) {
-      console.error('断开设备连接失败:', error)
+      log.error('断开设备连接失败:', error)
       return res.status(500).json({
         success: false,
         message: '断开设备连接失败'
@@ -456,7 +457,7 @@ export class AlternativeConnectionController {
         data: stats
       })
     } catch (error) {
-      console.error('获取连接统计失败:', error)
+      log.error('获取连接统计失败:', error)
       return res.status(500).json({
         success: false,
         message: '获取连接统计失败'

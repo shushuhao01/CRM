@@ -10,7 +10,9 @@
 import { AppDataSource } from '../config/database';
 import { notificationTemplateService } from './NotificationTemplateService';
 import { adminNotificationService } from './AdminNotificationService';
+import { SITE_CONFIG } from '../config/sites';
 
+import { log } from '../config/logger';
 export class LicenseExpirationReminderService {
   /**
    * 检查并发送授权到期提醒
@@ -22,7 +24,7 @@ export class LicenseExpirationReminderService {
     failed: number;
   }> {
     try {
-      console.log('[LicenseReminder] 开始检查授权到期情况...');
+      log.info('[LicenseReminder] 开始检查授权到期情况...');
 
       const result = {
         success: true,
@@ -48,11 +50,11 @@ export class LicenseExpirationReminderService {
         }
       }
 
-      console.log(`[LicenseReminder] 检查完成: 检查${result.checked}个, 发送${result.sent}个, 失败${result.failed}个`);
+      log.info(`[LicenseReminder] 检查完成: 检查${result.checked}个, 发送${result.sent}个, 失败${result.failed}个`);
 
       return result;
     } catch (error: any) {
-      console.error('[LicenseReminder] 检查失败:', error);
+      log.error('[LicenseReminder] 检查失败:', error);
       return {
         success: false,
         checked: 0,
@@ -88,11 +90,11 @@ export class LicenseExpirationReminderService {
           AND t.license_status = 'active'
       `, [targetDateStr]);
 
-      console.log(`[LicenseReminder] 发现${tenants.length}个租户将在${days}天后到期`);
+      log.info(`[LicenseReminder] 发现${tenants.length}个租户将在${days}天后到期`);
 
       return tenants;
     } catch (error: any) {
-      console.error(`[LicenseReminder] 查询${days}天后到期的授权失败:`, error);
+      log.error(`[LicenseReminder] 查询${days}天后到期的授权失败:`, error);
       return [];
     }
   }
@@ -112,7 +114,7 @@ export class LicenseExpirationReminderService {
       `, [tenant.id, today]);
 
       if (logs.length > 0) {
-        console.log(`[LicenseReminder] 租户${tenant.name}今天已发送过提醒,跳过`);
+        log.info(`[LicenseReminder] 租户${tenant.name}今天已发送过提醒,跳过`);
         return false;
       }
 
@@ -125,11 +127,12 @@ export class LicenseExpirationReminderService {
       }, {
         to: tenant.email || tenant.phone,
         priority: 'high',
+        actionUrl: SITE_CONFIG.RENEW_URL,
         relatedId: tenant.id,
         relatedType: 'tenant'
       });
 
-      console.log(`[LicenseReminder] 已发送到期提醒给租户${tenant.name}(剩余${remainDays}天)`);
+      log.info(`[LicenseReminder] 已发送到期提醒给租户${tenant.name}(剩余${remainDays}天)`);
 
       // 通知管理员
       adminNotificationService.notify('license_expiring', {
@@ -138,11 +141,11 @@ export class LicenseExpirationReminderService {
         relatedId: tenant.id,
         relatedType: 'tenant',
         extraData: { tenantName: tenant.name, tenantCode: tenant.code, remainDays, expireDate: tenant.expire_date }
-      }).catch(err => console.error('[LicenseReminder] 发送管理员通知失败:', err.message));
+      }).catch(err => log.error('[LicenseReminder] 发送管理员通知失败:', err.message));
 
       return true;
     } catch (error: any) {
-      console.error(`[LicenseReminder] 发送提醒失败(租户${tenant.name}):`, error);
+      log.error(`[LicenseReminder] 发送提醒失败(租户${tenant.name}):`, error);
       return false;
     }
   }
@@ -157,7 +160,7 @@ export class LicenseExpirationReminderService {
     notified: number;
   }> {
     try {
-      console.log('[LicenseReminder] 开始检查已到期的授权...');
+      log.info('[LicenseReminder] 开始检查已到期的授权...');
 
       // 查询已到期但状态仍为active的租户
       const expiredTenants = await AppDataSource.query(`
@@ -176,7 +179,7 @@ export class LicenseExpirationReminderService {
           AND t.license_status = 'active'
       `);
 
-      console.log(`[LicenseReminder] 发现${expiredTenants.length}个已到期的租户`);
+      log.info(`[LicenseReminder] 发现${expiredTenants.length}个已到期的租户`);
 
       let notified = 0;
 
@@ -199,12 +202,13 @@ export class LicenseExpirationReminderService {
           }, {
             to: tenant.email || tenant.phone,
             priority: 'urgent',
+            actionUrl: SITE_CONFIG.RENEW_URL,
             relatedId: tenant.id,
             relatedType: 'tenant'
           });
 
           notified++;
-          console.log(`[LicenseReminder] 已发送到期通知给租户${tenant.name}`);
+          log.info(`[LicenseReminder] 已发送到期通知给租户${tenant.name}`);
 
           // 通知管理员
           adminNotificationService.notify('license_expired', {
@@ -213,9 +217,9 @@ export class LicenseExpirationReminderService {
             relatedId: tenant.id,
             relatedType: 'tenant',
             extraData: { tenantName: tenant.name, tenantCode: tenant.code, expireDate: tenant.expire_date }
-          }).catch(err => console.error('[LicenseReminder] 发送管理员通知失败:', err.message));
+          }).catch(err => log.error('[LicenseReminder] 发送管理员通知失败:', err.message));
         } catch (error) {
-          console.error(`[LicenseReminder] 发送到期通知失败(租户${tenant.name}):`, error);
+          log.error(`[LicenseReminder] 发送到期通知失败(租户${tenant.name}):`, error);
         }
       }
 
@@ -226,7 +230,7 @@ export class LicenseExpirationReminderService {
         notified
       };
     } catch (error: any) {
-      console.error('[LicenseReminder] 检查已到期授权失败:', error);
+      log.error('[LicenseReminder] 检查已到期授权失败:', error);
       return {
         success: false,
         checked: 0,
@@ -240,22 +244,22 @@ export class LicenseExpirationReminderService {
    * 执行完整的检查流程
    */
   async runFullCheck(): Promise<void> {
-    console.log('\n========================================');
-    console.log('授权到期检查任务开始');
-    console.log('时间:', new Date().toLocaleString('zh-CN'));
-    console.log('========================================\n');
+    log.info('\n========================================');
+    log.info('授权到期检查任务开始');
+    log.info('时间:', new Date().toLocaleString('zh-CN'));
+    log.info('========================================\n');
 
     // 1. 检查并发送即将到期提醒
     const reminderResult = await this.checkAndSendReminders();
-    console.log('\n即将到期提醒结果:', reminderResult);
+    log.info('\n即将到期提醒结果:', reminderResult);
 
     // 2. 检查并处理已到期授权
     const expiredResult = await this.checkAndHandleExpiredLicenses();
-    console.log('\n已到期授权处理结果:', expiredResult);
+    log.info('\n已到期授权处理结果:', expiredResult);
 
-    console.log('\n========================================');
-    console.log('授权到期检查任务完成');
-    console.log('========================================\n');
+    log.info('\n========================================');
+    log.info('授权到期检查任务完成');
+    log.info('========================================\n');
   }
 }
 

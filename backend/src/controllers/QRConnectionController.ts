@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import * as crypto from 'crypto';
 
+import { log } from '../config/logger';
 interface ConnectionSession {
   id: string;
   token: string;
@@ -84,7 +85,7 @@ export class QRConnectionController {
        });
 
     } catch (error) {
-      console.error('生成二维码失败:', error);
+      log.error('生成二维码失败:', error);
       return res.status(500).json({
         success: false,
         message: '生成二维码失败',
@@ -169,7 +170,7 @@ export class QRConnectionController {
        });
 
     } catch (error) {
-      console.error('设备连接失败:', error);
+      log.error('设备连接失败:', error);
       return res.status(500).json({
         success: false,
         message: '设备连接失败',
@@ -203,7 +204,7 @@ export class QRConnectionController {
        });
 
     } catch (error) {
-      console.error('获取连接状态失败:', error);
+      log.error('获取连接状态失败:', error);
       return res.status(500).json({
         success: false,
         message: '获取连接状态失败',
@@ -236,7 +237,7 @@ export class QRConnectionController {
        });
 
     } catch (error) {
-      console.error('断开设备连接失败:', error);
+      log.error('断开设备连接失败:', error);
       return res.status(500).json({
         success: false,
         message: '断开设备连接失败',
@@ -268,7 +269,7 @@ export class QRConnectionController {
          }))
        });
     } catch (error) {
-      console.error('获取设备列表失败:', error);
+      log.error('获取设备列表失败:', error);
       return res.status(500).json({
         success: false,
         message: '获取设备列表失败'
@@ -319,7 +320,7 @@ export class QRConnectionController {
          message: '设备重连成功'
        });
     } catch (error) {
-      console.error('设备重连失败:', error);
+      log.error('设备重连失败:', error);
       return res.status(500).json({
         success: false,
         message: '设备重连失败'

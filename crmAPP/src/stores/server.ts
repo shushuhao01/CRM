@@ -41,11 +41,34 @@ export const useServerStore = defineStore('server', {
       return `${wsProtocol}://${host}${portStr}`
     },
 
-    // 显示用的服务器地址
+    // 显示用的服务器地址（完整地址，仅用于服务器配置页）
     displayUrl(): string {
       if (!this.currentServer) return '未配置'
       const { host, port } = this.currentServer
       return port ? `${host}:${port}` : host
+    },
+
+    // 脱敏显示的服务器地址（用于登录页、设置页等对外展示场景）
+    maskedDisplayUrl(): string {
+      if (!this.currentServer) return '未配置'
+      const { host, port } = this.currentServer
+      // IP地址脱敏：192.168.1.100 → 192.***.***.100
+      const ipMatch = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/)
+      if (ipMatch) {
+        const masked = `${ipMatch[1]}.***.***.${ipMatch[4]}`
+        return port ? `${masked}:${port}` : masked
+      }
+      // 域名脱敏：abc789.cn → ab****.cn  /  sub.example.com → su***.com
+      const dotIndex = host.lastIndexOf('.')
+      if (dotIndex > 0) {
+        const namePart = host.substring(0, dotIndex)
+        const tldPart = host.substring(dotIndex) // 包含点号
+        const prefix = namePart.length > 2 ? namePart.substring(0, 2) : namePart.charAt(0)
+        const masked = `${prefix}****${tldPart}`
+        return port ? `${masked}:${port}` : masked
+      }
+      // 其他情况返回通用文案
+      return '已配置'
     }
   },
 

@@ -217,7 +217,20 @@
                 <img :src="product.image || '/default-product.png'" :alt="product.name" />
               </div>
               <div class="product-info">
-                <div class="product-name">{{ product.name }}</div>
+                <div class="product-name-with-tags">
+                  <span class="product-name">{{ product.name }}</span>
+                  <div class="product-badges">
+                    <el-tag v-if="product.isRecommended" type="warning" size="small" effect="plain">
+                      推荐
+                    </el-tag>
+                    <el-tag v-if="product.isNew" type="success" size="small" effect="plain">
+                      新品
+                    </el-tag>
+                    <el-tag v-if="product.isHot" type="danger" size="small" effect="plain">
+                      热销
+                    </el-tag>
+                  </div>
+                </div>
                 <div class="product-price">¥{{ product.price }}</div>
                 <div class="product-stock">库存: {{ product.stock }}</div>
               </div>
@@ -249,7 +262,24 @@
         <div class="selected-products" v-if="orderForm.products.length > 0">
           <h4>已选商品</h4>
           <el-table :data="orderForm.products" style="width: 100%">
-            <el-table-column prop="productName" label="商品名称" />
+            <el-table-column prop="productName" label="商品名称" min-width="200">
+              <template #default="{ row }">
+                <div class="selected-product-name">
+                  <span>{{ row.productName }}</span>
+                  <div class="selected-product-tags">
+                    <el-tag v-if="row.isRecommended" type="warning" size="small" effect="plain">
+                      推荐
+                    </el-tag>
+                    <el-tag v-if="row.isNew" type="success" size="small" effect="plain">
+                      新品
+                    </el-tag>
+                    <el-tag v-if="row.isHot" type="danger" size="small" effect="plain">
+                      热销
+                    </el-tag>
+                  </div>
+                </div>
+              </template>
+            </el-table-column>
             <el-table-column prop="price" label="单价" width="100">
               <template #default="{ row }">
                 ¥{{ row.price }}
@@ -1854,9 +1884,16 @@ const handleConfirmDialogClose = () => {
   margin-bottom: 6px;
 }
 
+.product-name-with-tags {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
 .product-name {
   font-weight: 600;
-  margin-bottom: 4px;
   color: #303133;
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -1864,7 +1901,23 @@ const handleConfirmDialogClose = () => {
   overflow: hidden;
   text-overflow: ellipsis;
   line-height: 1.4;
-  height: 2.8em; /* 2行的高度 */
+  max-height: 2.8em; /* 2行的高度 */
+  text-align: center;
+}
+
+.product-badges {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.product-badges .el-tag {
+  font-size: 11px;
+  height: 20px;
+  line-height: 18px;
+  padding: 0 6px;
+  border-radius: 3px;
 }
 
 .product-price {
@@ -1903,6 +1956,26 @@ const handleConfirmDialogClose = () => {
   font-weight: 600;
   margin: 0 0 16px 0;
   padding: 0;
+}
+
+.selected-product-name {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.selected-product-tags {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.selected-product-tags .el-tag {
+  font-size: 11px;
+  height: 20px;
+  line-height: 18px;
+  padding: 0 6px;
+  border-radius: 3px;
 }
 
 /* 金额汇总样式 */

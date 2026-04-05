@@ -4,6 +4,7 @@ import { authenticateToken } from '../middleware/auth'
 import { v4 as uuidv4 } from 'uuid'
 import { tenantRawSQL, getCurrentTenantIdSafe } from '../utils/tenantHelpers'
 
+import { log } from '../config/logger';
 const router = Router()
 
 // 消息清理配置表名
@@ -92,7 +93,7 @@ router.get('/stats', authenticateToken, async (_req: Request, res: Response) => 
       }
     })
   } catch (error: any) {
-    console.error('获取清理统计失败:', error)
+    log.error('获取清理统计失败:', error)
     // 静默返回默认值
     res.json({
       success: true,
@@ -134,7 +135,7 @@ router.get('/config', authenticateToken, async (_req: Request, res: Response) =>
       data: configData
     })
   } catch (error: any) {
-    console.error('获取清理配置失败:', error)
+    log.error('获取清理配置失败:', error)
     // 静默返回默认配置
     res.json({
       success: true,
@@ -180,7 +181,7 @@ router.post('/config', authenticateToken, async (req: Request, res: Response) =>
 
     res.json({ success: true, code: 200, message: '配置保存成功', data: null })
   } catch (error: any) {
-    console.error('保存清理配置失败:', error)
+    log.error('保存清理配置失败:', error)
     res.status(500).json({ success: false, code: 500, message: '保存配置失败: ' + (error.message || '未知错误'), data: null })
   }
 })
@@ -230,13 +231,13 @@ router.post('/execute', authenticateToken, async (req: Request, res: Response) =
         [uuidv4(), 'manual', deletedCount, user?.name || user?.username || '系统', user?.id, remark, tenantId]
       )
     } catch (historyError) {
-      console.error('记录清理历史失败:', historyError)
+      log.error('记录清理历史失败:', historyError)
       // 不影响主流程
     }
 
     res.json({ success: true, code: 200, message: `成功清理 ${deletedCount} 条记录`, data: { deletedCount } })
   } catch (error: any) {
-    console.error('执行清理失败:', error)
+    log.error('执行清理失败:', error)
     res.status(500).json({ success: false, code: 500, message: '清理失败: ' + (error.message || '未知错误'), data: null })
   }
 })
@@ -262,7 +263,7 @@ router.get('/history', authenticateToken, async (_req: Request, res: Response) =
 
     res.json({ success: true, code: 200, message: 'success', data: result })
   } catch (error: any) {
-    console.error('获取清理历史失败:', error)
+    log.error('获取清理历史失败:', error)
     // 静默返回空数组
     res.json({ success: true, code: 200, message: 'success', data: [] })
   }

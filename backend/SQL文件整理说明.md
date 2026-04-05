@@ -141,6 +141,19 @@ mysql -u root -p crm_local < backend/sql-backups/database-create-after-sales.sql
 
 ## 表结构变更记录
 
+### 2026-04-03（schema.sql v2.0.0 全面审查）
+- ✅ 新增 `cod_cancel_applications` 表 - 代收取消申请表
+- ✅ 新增 `changelogs` 表 - 版本更新日志表（关联versions表）
+- ✅ 新增 `private_customers` 表 - 私有部署客户表
+- ✅ 新增 `tenant_logs` 表 - 租户操作日志表
+- ✅ 新增 `tenant_settings` 表 - 租户配置表
+- ✅ 删除5处重复表定义（system_messages/global_call_config/user_line_assignments/device_bindlogs/payment_configs）
+- ✅ 修复孤立ON DUPLICATE KEY UPDATE语句
+- ✅ 清理多余的SET FOREIGN_KEY_CHECKS语句
+- ✅ 实体覆盖率达到100%（80个实体 → 80张表全部有CREATE TABLE）
+- ✅ 总表数：126张
+- 📋 详细记录：`docs/任务记录文档/数据库Schema注册表审查与完善-2026-04-03.md`
+
 ### 2026-02-25
 - ✅ 添加 `cod_cancel_applications` 表 - 代收取消申请功能
 - ✅ 添加 `after_sales_services` 表 - 售后服务功能

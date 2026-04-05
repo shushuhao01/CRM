@@ -2,19 +2,19 @@
   <div class="notification-templates">
     <el-card>
       <!-- 顶部操作栏 -->
-      <el-row :gutter="20" class="toolbar">
-        <el-col :span="6">
-          <el-select v-model="filterCategory" placeholder="选择分类" @change="loadTemplates" clearable>
+      <el-row :gutter="16" class="toolbar" align="middle">
+        <el-col :span="5">
+          <el-select v-model="filterCategory" placeholder="全部分类" @change="loadTemplates" clearable size="default">
             <el-option label="全部分类" value="" />
-            <el-option label="租户注册" value="tenant" />
+            <el-option label="账号管理" value="account" />
             <el-option label="支付相关" value="payment" />
-            <el-option label="授权码" value="license" />
+            <el-option label="授权/套餐" value="license" />
           </el-select>
         </el-col>
-        <el-col :span="12">
+        <el-col :span="10">
           <el-input
             v-model="searchKeyword"
-            placeholder="搜索模板名称或代码"
+            placeholder="搜索模板名称或代码..."
             clearable
             @input="handleSearch"
           >
@@ -23,390 +23,464 @@
             </template>
           </el-input>
         </el-col>
-        <el-col :span="6" style="text-align: right;">
+        <el-col :span="9" style="text-align: right;">
           <el-button type="primary" @click="handleCreate">
-            <el-icon><Plus /></el-icon>
-            新建模板
+            <el-icon><Plus /></el-icon> 新建模板
           </el-button>
         </el-col>
       </el-row>
 
       <!-- 模板列表 -->
-      <el-table
-        :data="filteredTemplates"
-        border
-        style="margin-top: 20px;"
-        v-loading="loading"
-      >
-        <el-table-column prop="templateCode" label="模板代码" width="180" />
-        <el-table-column prop="templateName" label="模板名称" width="200" />
-        <el-table-column prop="category" label="分类" width="120">
+      <el-table :data="filteredTemplates" border style="margin-top: 16px;" v-loading="loading" stripe>
+        <el-table-column prop="templateCode" label="模板代码" width="200">
           <template #default="{ row }">
-            <el-tag>{{ getCategoryName(row.category) }}</el-tag>
+            <span style="font-family: monospace; font-size: 13px;">{{ row.templateCode }}</span>
           </template>
         </el-table-column>
-        <el-table-column prop="templateType" label="类型" width="120">
+        <el-table-column prop="templateName" label="模板名称" width="180" />
+        <el-table-column prop="category" label="分类" width="110" align="center">
           <template #default="{ row }">
-            <el-tag v-if="row.templateType === 'email'" type="info">邮件</el-tag>
-            <el-tag v-else-if="row.templateType === 'sms'" type="warning">短信</el-tag>
-            <el-tag v-else type="success">邮件+短信</el-tag>
+            <el-tag :type="getCategoryTagType(row.category)" size="small">{{ getCategoryName(row.category) }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="scene" label="使用场景" min-width="150" show-overflow-tooltip />
-        <el-table-column prop="isEnabled" label="状态" width="100">
+        <el-table-column prop="templateType" label="通知类型" width="110" align="center">
           <template #default="{ row }">
-            <el-switch
-              v-model="row.isEnabled"
-              :active-value="1"
-              :inactive-value="0"
-              @change="handleToggleStatus(row)"
-            />
+            <el-tag v-if="row.templateType === 'email'" type="info" size="small">仅邮件</el-tag>
+            <el-tag v-else-if="row.templateType === 'sms'" type="warning" size="small">仅短信</el-tag>
+            <el-tag v-else type="success" size="small">邮件+短信</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="280" fixed="right">
+        <el-table-column prop="scene" label="使用场景" min-width="200" show-overflow-tooltip />
+        <el-table-column prop="isEnabled" label="状态" width="80" align="center">
           <template #default="{ row }">
-            <el-button size="small" @click="handleEdit(row)">编辑</el-button>
-            <el-button size="small" type="success" @click="handleTest(row)">测试</el-button>
-            <el-button
-              size="small"
-              type="danger"
-              @click="handleDelete(row)"
-              :disabled="row.isSystem === 1"
-            >
-              删除
+            <el-switch v-model="row.isEnabled" :active-value="1" :inactive-value="0" @change="handleToggleStatus(row)" />
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="240" fixed="right" align="center">
+          <template #default="{ row }">
+            <el-button size="small" type="primary" plain @click="handleEdit(row)">
+              <el-icon><Edit /></el-icon> 编辑
+            </el-button>
+            <el-button size="small" type="success" plain @click="handleTest(row)">
+              <el-icon><Position /></el-icon> 测试
+            </el-button>
+            <el-button size="small" type="danger" plain @click="handleDelete(row)" :disabled="row.isSystem === 1">
+              <el-icon><Delete /></el-icon>
             </el-button>
           </template>
         </el-table-column>
       </el-table>
     </el-card>
 
-    <!-- 编辑/新建对话框 -->
+    <!-- ================== 编辑/新建对话框 ================== -->
     <el-dialog
       v-model="dialogVisible"
-      :title="isEdit ? '编辑模板' : '新建模板'"
-      width="80%"
+      :title="isEdit ? '编辑通知模板' : '新建通知模板'"
+      width="900px"
       :close-on-click-modal="false"
       top="3vh"
+      destroy-on-close
     >
-      <el-form :model="formData" label-width="120px" :rules="formRules" ref="formRef">
-        <!-- 快捷选择场景（仅新建时显示） -->
-        <el-form-item v-if="!isEdit" label="快捷场景">
+      <el-form :model="formData" label-width="110px" :rules="formRules" ref="formRef" size="default">
+        <!-- 快捷场景选择（仅新建时显示） -->
+        <el-alert v-if="!isEdit" type="success" :closable="false" style="margin-bottom: 16px;">
+          <template #title>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <el-icon><MagicStick /></el-icon>
+              <span>快捷创建：选择预设场景可自动填充模板内容（与阿里云短信模板一一对应）</span>
+            </div>
+          </template>
+        </el-alert>
+        <el-form-item v-if="!isEdit" label="预设场景">
           <el-select
             v-model="selectedPreset"
-            placeholder="选择预设场景自动填充模板"
+            placeholder="选择预设场景自动填充..."
             @change="applyPreset"
             style="width: 100%;"
             clearable
+            filterable
           >
             <el-option-group v-for="group in presetGroups" :key="group.label" :label="group.label">
-              <el-option
-                v-for="preset in group.options"
-                :key="preset.code"
-                :label="preset.name"
-                :value="preset.code"
-              >
-                <span>{{ preset.name }}</span>
-                <span style="color: #999; font-size: 12px; margin-left: 8px;">{{ preset.code }}</span>
+              <el-option v-for="preset in group.options" :key="preset.code" :label="preset.name" :value="preset.code">
+                <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+                  <span>{{ preset.name }}</span>
+                  <el-tag size="small" type="info" style="margin-left: 12px;">{{ preset.code }}</el-tag>
+                </div>
               </el-option>
             </el-option-group>
           </el-select>
         </el-form-item>
 
-        <el-form-item label="模板代码" prop="templateCode">
-          <el-input
-            v-model="formData.templateCode"
-            :disabled="formData.isSystem === 1 || isEdit"
-            placeholder="如: tenant_register_success"
-          />
-        </el-form-item>
+        <el-tabs v-model="editActiveTab" type="border-card" style="margin-bottom: 0;">
+          <!-- Tab 1: 基本信息 -->
+          <el-tab-pane label="基本信息" name="basic">
+            <el-row :gutter="16">
+              <el-col :span="12">
+                <el-form-item label="模板代码" prop="templateCode">
+                  <el-input
+                    v-model="formData.templateCode"
+                    :disabled="formData.isSystem === 1 || isEdit"
+                    placeholder="如: ACCOUNT_ACTIVATION"
+                  />
+                </el-form-item>
+              </el-col>
+              <el-col :span="12">
+                <el-form-item label="模板名称" prop="templateName">
+                  <el-input v-model="formData.templateName" placeholder="如: 账号开通通知" />
+                </el-form-item>
+              </el-col>
+            </el-row>
 
-        <el-form-item label="模板名称" prop="templateName">
-          <el-input v-model="formData.templateName" placeholder="如: 租户注册成功" />
-        </el-form-item>
+            <el-row :gutter="16">
+              <el-col :span="8">
+                <el-form-item label="通知类型" prop="templateType">
+                  <el-select v-model="formData.templateType" style="width: 100%;">
+                    <el-option label="仅邮件" value="email" />
+                    <el-option label="仅短信" value="sms" />
+                    <el-option label="邮件+短信" value="both" />
+                  </el-select>
+                </el-form-item>
+              </el-col>
+              <el-col :span="8">
+                <el-form-item label="业务分类" prop="category">
+                  <el-select v-model="formData.category" style="width: 100%;" @change="onCategoryChange">
+                    <el-option label="账号管理" value="account" />
+                    <el-option label="支付相关" value="payment" />
+                    <el-option label="授权/套餐" value="license" />
+                  </el-select>
+                </el-form-item>
+              </el-col>
+              <el-col :span="8">
+                <el-form-item label="优先级" prop="priority">
+                  <el-select v-model="formData.priority" style="width: 100%;">
+                    <el-option label="低" value="low" />
+                    <el-option label="普通" value="normal" />
+                    <el-option label="高" value="high" />
+                    <el-option label="紧急" value="urgent" />
+                  </el-select>
+                </el-form-item>
+              </el-col>
+            </el-row>
 
-        <el-row :gutter="20">
-          <el-col :span="8">
-            <el-form-item label="模板类型" prop="templateType">
-              <el-select v-model="formData.templateType" style="width: 100%;">
-                <el-option label="仅邮件" value="email" />
-                <el-option label="仅短信" value="sms" />
-                <el-option label="邮件+短信" value="both" />
-              </el-select>
+            <el-form-item label="使用场景" prop="scene">
+              <el-input v-model="formData.scene" placeholder="描述该模板的触发场景，如: 免费试用注册成功后发送" />
             </el-form-item>
-          </el-col>
-          <el-col :span="8">
-            <el-form-item label="业务分类" prop="category">
-              <el-select v-model="formData.category" style="width: 100%;" @change="onCategoryChange">
-                <el-option label="租户注册" value="tenant" />
-                <el-option label="支付相关" value="payment" />
-                <el-option label="授权码" value="license" />
-              </el-select>
-            </el-form-item>
-          </el-col>
-          <el-col :span="8">
-            <el-form-item label="优先级" prop="priority">
-              <el-select v-model="formData.priority" style="width: 100%;">
-                <el-option label="低" value="low" />
-                <el-option label="普通" value="normal" />
-                <el-option label="高" value="high" />
-                <el-option label="紧急" value="urgent" />
-              </el-select>
-            </el-form-item>
-          </el-col>
-        </el-row>
 
-        <el-form-item label="使用场景" prop="scene">
-          <el-input v-model="formData.scene" placeholder="如: 租户注册成功后发送欢迎邮件和短信" />
-        </el-form-item>
-
-        <!-- 可用变量管理 -->
-        <el-divider content-position="left">可用变量</el-divider>
-
-        <el-form-item label="选择变量">
-          <div class="variable-selector">
-            <el-tag
-              v-for="(desc, key) in availableVariables"
-              :key="key"
-              :type="isVariableSelected(key as string) ? 'success' : 'info'"
-              :effect="isVariableSelected(key as string) ? 'dark' : 'plain'"
-              class="variable-tag"
-              @click="toggleVariable(key as string, desc as string)"
-              style="cursor: pointer;"
-            >
-              <el-icon v-if="isVariableSelected(key as string)"><Check /></el-icon>
-              {{ key }}: {{ desc }}
-            </el-tag>
-          </div>
-          <div class="form-tip" style="margin-top: 8px;">点击标签选择/取消变量，在内容中使用 <code v-pre>{{变量名}}</code> 引用</div>
-        </el-form-item>
-
-        <el-form-item label="已选变量">
-          <div v-if="formData.variables && Object.keys(formData.variables).length > 0" class="variables-display">
-            <el-tag
-              v-for="(desc, key) in formData.variables"
-              :key="key"
-              closable
-              @close="removeVariable(key as string)"
-              style="margin: 4px;"
-              type="success"
-            >
-              <span @click="insertVariable(key as string)" style="cursor: pointer;" title="点击复制变量">
-                <span v-text="'\u007B\u007B' + key + '\u007D\u007D'"></span> - {{ desc }}
-              </span>
-            </el-tag>
-          </div>
-          <el-text v-else type="info">请从上方选择变量</el-text>
-        </el-form-item>
-
-        <!-- 邮件配置 -->
-        <el-divider content-position="left" v-if="formData.templateType !== 'sms'">邮件配置</el-divider>
-
-        <template v-if="formData.templateType !== 'sms'">
-          <el-form-item label="邮件主题">
-            <el-input v-model="formData.emailSubject" placeholder="支持变量: {{变量名}}">
-              <template #append>
-                <el-dropdown trigger="click" @command="(cmd: string) => insertToField('emailSubject', cmd)">
-                  <el-button>插入变量</el-button>
-                  <template #dropdown>
-                    <el-dropdown-menu>
-                      <el-dropdown-item
-                        v-for="(desc, key) in formData.variables"
-                        :key="key"
-                        :command="key as string"
-                      >{{ key }} - {{ desc }}</el-dropdown-item>
-                      <el-dropdown-item v-if="!formData.variables || Object.keys(formData.variables).length === 0" disabled>
-                        请先选择变量
-                      </el-dropdown-item>
-                    </el-dropdown-menu>
-                  </template>
-                </el-dropdown>
+            <!-- 阿里云短信KEY提示 -->
+            <el-alert v-if="formData.templateCode && getSmsKeyMapping(formData.templateCode)" type="info" :closable="false" style="margin-bottom: 12px;">
+              <template #title>
+                <span>对应基础配置短信模板KEY：<code style="background: #ecf5ff; padding: 2px 8px; border-radius: 3px; font-weight: bold;">{{ getSmsKeyMapping(formData.templateCode) }}</code>
+                  （请确保已在「基础配置 → 短信配置」中填写对应的阿里云模板CODE）
+                </span>
               </template>
-            </el-input>
-          </el-form-item>
+            </el-alert>
 
-          <el-form-item label="邮件内容">
-            <div style="width: 100%;">
-              <div style="margin-bottom: 8px;">
-                <el-dropdown trigger="click" @command="(cmd: string) => insertToField('emailContent', cmd)">
-                  <el-button size="small">插入变量</el-button>
-                  <template #dropdown>
-                    <el-dropdown-menu>
-                      <el-dropdown-item
-                        v-for="(desc, key) in formData.variables"
-                        :key="key"
-                        :command="key as string"
-                      >{{ key }} - {{ desc }}</el-dropdown-item>
-                      <el-dropdown-item v-if="!formData.variables || Object.keys(formData.variables).length === 0" disabled>
-                        请先选择变量
-                      </el-dropdown-item>
-                    </el-dropdown-menu>
-                  </template>
-                </el-dropdown>
+            <!-- 变量管理 -->
+            <el-divider content-position="left">
+              <el-icon><Connection /></el-icon> 模板变量
+            </el-divider>
+
+            <el-form-item label="可选变量">
+              <div class="variable-selector">
+                <el-check-tag
+                  v-for="(desc, key) in availableVariables"
+                  :key="key"
+                  :checked="isVariableSelected(String(key))"
+                  @change="toggleVariable(String(key), desc as string)"
+                  class="variable-check-tag"
+                >
+                  <code>{{ key }}</code>
+                  <span class="var-desc">{{ desc }}</span>
+                </el-check-tag>
               </div>
-              <el-input
-                v-model="formData.emailContent"
-                type="textarea"
-                :rows="10"
-                placeholder="支持HTML和变量: {{变量名}}"
-              />
-            </div>
-          </el-form-item>
-        </template>
+            </el-form-item>
 
-        <!-- 短信配置 -->
-        <el-divider content-position="left" v-if="formData.templateType !== 'email'">短信配置</el-divider>
-
-        <template v-if="formData.templateType !== 'email'">
-          <el-form-item label="短信内容">
-            <div style="width: 100%;">
-              <div style="margin-bottom: 8px;">
-                <el-dropdown trigger="click" @command="(cmd: string) => insertToField('smsContent', cmd)">
-                  <el-button size="small">插入变量</el-button>
-                  <template #dropdown>
-                    <el-dropdown-menu>
-                      <el-dropdown-item
-                        v-for="(desc, key) in formData.variables"
-                        :key="key"
-                        :command="key as string"
-                      >{{ key }} - {{ desc }}</el-dropdown-item>
-                      <el-dropdown-item v-if="!formData.variables || Object.keys(formData.variables).length === 0" disabled>
-                        请先选择变量
-                      </el-dropdown-item>
-                    </el-dropdown-menu>
-                  </template>
-                </el-dropdown>
+            <el-form-item label="已选变量">
+              <div v-if="formData.variables && Object.keys(formData.variables).length > 0" class="selected-variables">
+                <el-tag
+                  v-for="(desc, key) in formData.variables"
+                  :key="key"
+                  closable
+                  @close="removeVariable(String(key))"
+                  type="success"
+                  effect="light"
+                  class="selected-var-tag"
+                >
+                  <span @click="copyVariable(String(key))" style="cursor: pointer;" :title="`点击复制 {{${key}}}`">
+                    <code v-text="'{{' + key + '}}'"></code> {{ desc }}
+                  </span>
+                </el-tag>
               </div>
-              <el-input
-                v-model="formData.smsContent"
-                type="textarea"
-                :rows="3"
-                maxlength="500"
-                show-word-limit
-                placeholder="支持变量: {{变量名}}，建议70字以内"
-              />
+              <el-text v-else type="info" size="small">请从上方点击选择需要的变量</el-text>
+            </el-form-item>
+          </el-tab-pane>
+
+          <!-- Tab 2: 邮件内容 -->
+          <el-tab-pane label="邮件内容" name="email" :disabled="formData.templateType === 'sms'">
+            <div class="content-editor-section">
+              <el-form-item label="邮件主题">
+                <el-input v-model="formData.emailSubject" placeholder="支持变量: {{变量名}}">
+                  <template #append>
+                    <el-dropdown trigger="click" @command="(cmd: string) => insertToField('emailSubject', cmd)">
+                      <el-button :icon="CirclePlus">插入变量</el-button>
+                      <template #dropdown>
+                        <el-dropdown-menu>
+                          <el-dropdown-item v-for="(desc, key) in formData.variables" :key="key" :command="String(key)">
+                            <code>{{ key }}</code> - {{ desc }}
+                          </el-dropdown-item>
+                          <el-dropdown-item v-if="!formData.variables || Object.keys(formData.variables).length === 0" disabled>
+                            请先在「基本信息」中选择变量
+                          </el-dropdown-item>
+                        </el-dropdown-menu>
+                      </template>
+                    </el-dropdown>
+                  </template>
+                </el-input>
+              </el-form-item>
+
+              <el-form-item label="邮件正文">
+                <div style="width: 100%;">
+                  <div class="editor-toolbar">
+                    <el-dropdown trigger="click" @command="(cmd: string) => insertToField('emailContent', cmd)">
+                      <el-button size="small" :icon="CirclePlus">插入变量</el-button>
+                      <template #dropdown>
+                        <el-dropdown-menu>
+                          <el-dropdown-item v-for="(desc, key) in formData.variables" :key="key" :command="String(key)">
+                            <code>{{ key }}</code> - {{ desc }}
+                          </el-dropdown-item>
+                          <el-dropdown-item v-if="!formData.variables || Object.keys(formData.variables).length === 0" disabled>
+                            请先选择变量
+                          </el-dropdown-item>
+                        </el-dropdown-menu>
+                      </template>
+                    </el-dropdown>
+                    <el-text type="info" size="small" style="margin-left: 8px;">支持HTML格式</el-text>
+                  </div>
+                  <el-input v-model="formData.emailContent" type="textarea" :rows="12" placeholder="邮件HTML内容，使用 {{变量名}} 引用变量" />
+                </div>
+              </el-form-item>
             </div>
-          </el-form-item>
-        </template>
+          </el-tab-pane>
+
+          <!-- Tab 3: 短信内容 -->
+          <el-tab-pane label="短信内容" name="sms" :disabled="formData.templateType === 'email'">
+            <div class="content-editor-section">
+              <el-alert type="warning" :closable="false" style="margin-bottom: 16px;">
+                <template #title>
+                  <div>
+                    <strong>重要提示：</strong>短信实际通过阿里云模板CODE发送，此处内容仅用于<strong>预览参考</strong>。
+                    请确保变量与阿里云申请的模板一致。阿里云变量格式为 <code>${变量名}</code>，系统内使用 <code v-pre>{{变量名}}</code>。
+                  </div>
+                </template>
+              </el-alert>
+
+              <!-- 阿里云模板变量对照 -->
+              <div v-if="currentAliyunTemplateInfo" class="aliyun-template-info">
+                <div class="info-header">
+                  <el-icon><InfoFilled /></el-icon>
+                  <span>阿里云短信模板变量参考</span>
+                </div>
+                <div class="info-content">
+                  {{ currentAliyunTemplateInfo }}
+                </div>
+              </div>
+
+              <el-form-item label="短信内容">
+                <div style="width: 100%;">
+                  <div class="editor-toolbar">
+                    <el-dropdown trigger="click" @command="(cmd: string) => insertToField('smsContent', cmd)">
+                      <el-button size="small" :icon="CirclePlus">插入变量</el-button>
+                      <template #dropdown>
+                        <el-dropdown-menu>
+                          <el-dropdown-item v-for="(desc, key) in formData.variables" :key="key" :command="String(key)">
+                            <code>{{ key }}</code> - {{ desc }}
+                          </el-dropdown-item>
+                          <el-dropdown-item v-if="!formData.variables || Object.keys(formData.variables).length === 0" disabled>
+                            请先选择变量
+                          </el-dropdown-item>
+                        </el-dropdown-menu>
+                      </template>
+                    </el-dropdown>
+                    <el-text type="info" size="small" style="margin-left: 8px;">
+                      字数：{{ (formData.smsContent || '').length }} / 500
+                    </el-text>
+                  </div>
+                  <el-input
+                    v-model="formData.smsContent"
+                    type="textarea"
+                    :rows="5"
+                    maxlength="500"
+                    show-word-limit
+                    placeholder="短信内容预览，使用 {{变量名}} 引用"
+                  />
+                </div>
+              </el-form-item>
+            </div>
+          </el-tab-pane>
+        </el-tabs>
       </el-form>
 
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="handleSave" :loading="saving">保存</el-button>
+        <el-button type="primary" @click="handleSave" :loading="saving">
+          <el-icon><Check /></el-icon> 保存
+        </el-button>
       </template>
     </el-dialog>
 
-    <!-- 测试对话框 - 优化版 -->
+    <!-- ================== 测试对话框 - 全新设计 ================== -->
     <el-dialog
       v-model="testDialogVisible"
       title="测试通知模板"
-      width="75%"
+      width="1000px"
       :close-on-click-modal="false"
       top="3vh"
+      destroy-on-close
     >
-      <!-- 模板基本信息 -->
-      <el-descriptions :column="3" border size="small" style="margin-bottom: 20px;">
-        <el-descriptions-item label="模板代码">{{ currentTemplate.templateCode }}</el-descriptions-item>
-        <el-descriptions-item label="模板名称">{{ currentTemplate.templateName }}</el-descriptions-item>
-        <el-descriptions-item label="模板类型">
-          <el-tag v-if="currentTemplate.templateType === 'email'" type="info" size="small">邮件</el-tag>
-          <el-tag v-else-if="currentTemplate.templateType === 'sms'" type="warning" size="small">短信</el-tag>
-          <el-tag v-else type="success" size="small">邮件+短信</el-tag>
-        </el-descriptions-item>
-      </el-descriptions>
-
-      <el-form :model="testForm" label-width="140px" :rules="testFormRules" ref="testFormRef">
-        <!-- 收件人信息 -->
-        <el-divider content-position="left">
-          <el-icon><Message /></el-icon> 收件人信息
-        </el-divider>
-
-        <el-form-item
-          v-if="currentTemplate.templateType !== 'sms'"
-          label="收件邮箱"
-          prop="recipientEmail"
-        >
-          <el-input
-            v-model="testForm.recipientEmail"
-            placeholder="请输入测试收件邮箱，如 test@example.com"
-          />
-        </el-form-item>
-
-        <el-form-item
-          v-if="currentTemplate.templateType !== 'email'"
-          label="收件手机号"
-          prop="recipientPhone"
-        >
-          <el-input
-            v-model="testForm.recipientPhone"
-            placeholder="请输入测试手机号，如 13800138000"
-            maxlength="11"
-          />
-        </el-form-item>
-
-        <!-- 模板变量 -->
-        <el-divider content-position="left">
-          <el-icon><EditPen /></el-icon> 模板变量
-        </el-divider>
-
-        <template v-if="currentTemplate.variables && Object.keys(currentTemplate.variables).length > 0">
-          <el-form-item
-            v-for="(desc, key) in currentTemplate.variables"
-            :key="key"
-            :label="String(desc)"
-          >
-            <el-input
-              v-model="testForm.variables[key as string]"
-              :placeholder="getVariablePlaceholder(key as string)"
-            >
-              <template #append>
-                <el-button @click="fillSampleValue(key as string)" title="填充示例值">示例</el-button>
-              </template>
-            </el-input>
-          </el-form-item>
-          <el-form-item>
-            <el-button type="info" plain size="small" @click="fillAllSampleValues">
-              <el-icon><MagicStick /></el-icon> 一键填充示例值
-            </el-button>
-          </el-form-item>
-        </template>
-        <el-alert v-else type="info" :closable="false" style="margin-bottom: 16px;">
-          该模板没有定义变量，将直接使用原始模板内容
-        </el-alert>
-      </el-form>
-
-      <!-- 预览效果 -->
-      <el-divider content-position="left">
-        <el-icon><View /></el-icon> 预览效果
-      </el-divider>
-
-      <div v-if="previewResult.emailSubject || previewResult.smsContent" class="preview-result">
-        <div v-if="previewResult.emailSubject" class="email-preview">
-          <h4><el-icon><Message /></el-icon> 邮件主题</h4>
-          <div class="preview-box">{{ previewResult.emailSubject }}</div>
-
-          <h4><el-icon><Document /></el-icon> 邮件内容</h4>
-          <div class="preview-box email-content" v-html="previewResult.emailContent"></div>
+      <!-- 模板信息卡片 -->
+      <div class="test-template-header">
+        <div class="header-left">
+          <el-tag type="primary" effect="dark" size="large">{{ currentTemplate.templateCode }}</el-tag>
+          <span class="template-title">{{ currentTemplate.templateName }}</span>
         </div>
-
-        <div v-if="previewResult.smsContent" class="sms-preview">
-          <h4><el-icon><ChatDotRound /></el-icon> 短信内容</h4>
-          <div class="preview-box sms-box">
-            {{ previewResult.smsContent }}
-            <div class="sms-count">{{ previewResult.smsContent?.length || 0 }} / 500 字</div>
-          </div>
+        <div class="header-right">
+          <el-tag v-if="currentTemplate.templateType === 'email'" type="info">邮件</el-tag>
+          <el-tag v-else-if="currentTemplate.templateType === 'sms'" type="warning">短信</el-tag>
+          <el-tag v-else type="success">邮件+短信</el-tag>
         </div>
       </div>
-      <el-empty v-else description="点击「预览」按钮查看渲染效果" :image-size="60" />
+
+      <!-- 左右分栏布局 -->
+      <el-row :gutter="20" class="test-content">
+        <!-- 左侧：输入区域 -->
+        <el-col :span="12">
+          <div class="test-input-panel">
+            <!-- 收件人 -->
+            <div class="panel-section">
+              <div class="section-label">
+                <el-icon><User /></el-icon> 收件人
+              </div>
+              <el-form :model="testForm" label-width="90px" size="default">
+                <el-form-item v-if="currentTemplate.templateType !== 'sms'" label="邮箱">
+                  <el-input v-model="testForm.recipientEmail" placeholder="test@example.com" />
+                </el-form-item>
+                <el-form-item v-if="currentTemplate.templateType !== 'email'" label="手机号">
+                  <el-input v-model="testForm.recipientPhone" placeholder="13800138000" maxlength="11" />
+                </el-form-item>
+              </el-form>
+            </div>
+
+            <!-- 模板变量 -->
+            <div class="panel-section">
+              <div class="section-label" style="display: flex; justify-content: space-between; align-items: center;">
+                <span><el-icon><EditPen /></el-icon> 模板变量</span>
+                <el-button
+                  v-if="currentTemplate.variables && Object.keys(currentTemplate.variables).length > 0"
+                  type="primary"
+                  size="small"
+                  plain
+                  @click="fillAllSampleValues"
+                >
+                  <el-icon><MagicStick /></el-icon> 一键填充
+                </el-button>
+              </div>
+
+              <template v-if="currentTemplate.variables && Object.keys(currentTemplate.variables).length > 0">
+                <div class="variable-input-list">
+                  <div v-for="(desc, key) in currentTemplate.variables" :key="key" class="variable-input-item">
+                    <div class="var-label">
+                      <code>{{ key }}</code>
+                      <span class="var-label-desc">{{ desc }}</span>
+                      <el-icon
+                        v-if="!testForm.variables[String(key)]"
+                        class="var-status-empty"
+                        title="未填写"
+                      ><WarningFilled /></el-icon>
+                      <el-icon
+                        v-else
+                        class="var-status-filled"
+                        title="已填写"
+                      ><CircleCheckFilled /></el-icon>
+                    </div>
+                    <el-input
+                      v-model="testForm.variables[String(key)]"
+                      :placeholder="getVariablePlaceholder(String(key))"
+                      size="small"
+                      @input="autoPreview"
+                    >
+                      <template #append>
+                        <el-button size="small" @click="fillSampleValue(String(key))" title="填充示例值">
+                          <el-icon><MagicStick /></el-icon>
+                        </el-button>
+                      </template>
+                    </el-input>
+                  </div>
+                </div>
+              </template>
+              <el-empty v-else description="该模板无需变量" :image-size="40" />
+            </div>
+          </div>
+        </el-col>
+
+        <!-- 右侧：预览区域 -->
+        <el-col :span="12">
+          <div class="test-preview-panel">
+            <div class="panel-section">
+              <div class="section-label">
+                <el-icon><View /></el-icon> 实时预览
+              </div>
+
+              <!-- 短信预览 - 手机模拟 -->
+              <div v-if="currentTemplate.templateType !== 'email'" class="sms-phone-mockup">
+                <div class="phone-header">
+                  <span>短信预览</span>
+                </div>
+                <div class="phone-body">
+                  <div class="sms-bubble" v-if="previewResult.smsContent">
+                    {{ previewResult.smsContent }}
+                  </div>
+                  <div class="sms-bubble sms-placeholder" v-else>
+                    {{ renderSmsPreview() || '填写变量后自动预览...' }}
+                  </div>
+                  <div class="sms-meta">
+                    {{ (previewResult.smsContent || renderSmsPreview() || '').length }} / 500 字
+                  </div>
+                </div>
+              </div>
+
+              <!-- 邮件预览 -->
+              <div v-if="currentTemplate.templateType !== 'sms'" class="email-preview-card">
+                <div class="email-header-bar">
+                  <el-icon><Message /></el-icon>
+                  <span>邮件预览</span>
+                </div>
+                <div v-if="previewResult.emailSubject" class="email-subject-preview">
+                  <strong>主题：</strong>{{ previewResult.emailSubject }}
+                </div>
+                <div
+                  v-if="previewResult.emailContent"
+                  class="email-body-preview"
+                  v-html="previewResult.emailContent"
+                ></div>
+                <div v-else class="email-body-preview email-placeholder">
+                  填写变量后点击「预览渲染」查看邮件效果...
+                </div>
+              </div>
+            </div>
+          </div>
+        </el-col>
+      </el-row>
 
       <template #footer>
-        <div style="display: flex; justify-content: space-between; align-items: center;">
-          <div>
-            <el-text type="info" size="small">预览仅渲染模板变量，发送测试将实际发送邮件/短信</el-text>
-          </div>
-          <div>
+        <div class="test-dialog-footer">
+          <el-text type="info" size="small">
+            <el-icon><InfoFilled /></el-icon>
+            预览仅渲染变量，发送测试将实际发送邮件/短信
+          </el-text>
+          <div class="footer-actions">
             <el-button @click="testDialogVisible = false">关闭</el-button>
-            <el-button type="primary" @click="handlePreview" :loading="previewing">
-              <el-icon><View /></el-icon> 预览
+            <el-button type="primary" plain @click="handlePreview" :loading="previewing">
+              <el-icon><View /></el-icon> 预览渲染
             </el-button>
             <el-button type="success" @click="handleSendTest" :loading="sending">
               <el-icon><Promotion /></el-icon> 发送测试
@@ -423,83 +497,116 @@ import { ref, computed, onMounted } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import {
   Search, Plus, Check, Message, EditPen, View, Promotion,
-  Document, ChatDotRound, MagicStick
+  MagicStick, Edit, Position, Delete, Connection, CirclePlus,
+  InfoFilled, WarningFilled, CircleCheckFilled, User
 } from '@element-plus/icons-vue';
 import request from '@/api/request';
 
-// ==================== 预设场景定义 ====================
+// ==================== 分类变量定义（与阿里云短信模板完全一致） ====================
 
-// 按分类预设的变量集合
 const CATEGORY_VARIABLES: Record<string, Record<string, string>> = {
-  tenant: {
+  account: {
+    code: '验证码',
     tenantName: '租户名称',
-    contactPerson: '联系人',
-    contactEmail: '联系邮箱',
-    contactPhone: '联系电话',
-    companyName: '公司名称',
+    tenantCode: '租户编码',
+    licenseKey: '授权码',
+    adminPassword: '初始密码',
     packageName: '套餐名称',
-    expiryDate: '到期日期',
-    loginUrl: '登录地址',
-    accountId: '账号ID',
-    crmUrl: 'CRM系统地址',
-    websiteUrl: '官网地址',
+    expireDate: '到期日期',
+    reason: '原因说明',
+    servicePhone: '客服电话',
+    retentionDays: '数据保留天数',
+    loginUrl: '登录链接（自动）',
   },
   payment: {
     tenantName: '租户名称',
-    contactPerson: '联系人',
-    contactEmail: '联系邮箱',
-    orderNo: '订单编号',
-    packageName: '套餐名称',
+    tenantCode: '租户编码',
+    licenseKey: '授权码',
+    adminPassword: '初始密码',
+    orderNo: '订单号',
     amount: '支付金额',
-    paymentMethod: '支付方式',
-    paymentTime: '支付时间',
-    expiryDate: '到期日期',
+    packageName: '套餐名称',
+    expireDate: '到期日期',
+    months: '续费月数',
     refundAmount: '退款金额',
-    refundReason: '退款原因',
-    renewalPeriod: '续费周期',
-    websiteUrl: '官网地址',
+    refundDays: '退款到账天数',
+    servicePhone: '客服电话',
+    loginUrl: '登录链接（自动）',
+    renewUrl: '续费链接（自动）',
   },
   license: {
     tenantName: '租户名称',
-    contactPerson: '联系人',
-    contactEmail: '联系邮箱',
-    licenseKey: '授权码',
-    licenseType: '授权类型',
-    expiryDate: '到期日期',
-    remainingDays: '剩余天数',
-    maxUsers: '最大用户数',
+    newPackageName: '新套餐名称',
     packageName: '套餐名称',
-    websiteUrl: '官网地址',
-  }
+    maxUsers: '最大用户数',
+    maxStorageGb: '存储空间(GB)',
+    expireDate: '到期日期',
+    remainDays: '剩余天数',
+    servicePhone: '客服电话',
+    renewUrl: '续费链接（自动）',
+    loginUrl: '登录链接（自动）',
+  },
 };
 
-// 变量示例值
+// 变量示例值（与阿里云短信模板变量完全对应）
 const VARIABLE_SAMPLES: Record<string, string> = {
-  tenantName: '测试企业科技有限公司',
-  contactPerson: '张三',
-  contactEmail: 'zhangsan@example.com',
-  contactPhone: '13800138000',
-  companyName: '测试企业科技有限公司',
+  code: '123456',
+  tenantName: '测试科技有限公司',
+  tenantCode: 'ABC123',
+  licenseKey: 'TENANT-A1B2-C3D4-E5F6',
+  adminPassword: 'Abc12345',
   packageName: '专业版',
-  expiryDate: '2026-12-31',
-  loginUrl: 'https://crm.example.com/login',
-  accountId: 'T20260319001',
-  crmUrl: 'https://crm.example.com',
-  websiteUrl: 'https://www.example.com',
-  orderNo: 'ORD20260319001',
-  amount: '¥2,999.00',
-  paymentMethod: '微信支付',
-  paymentTime: '2026-03-19 14:30:00',
-  refundAmount: '¥2,999.00',
-  refundReason: '客户申请退款',
-  renewalPeriod: '1年',
-  licenseKey: 'XXXX-XXXX-XXXX-XXXX',
-  licenseType: '企业版',
-  remainingDays: '7',
+  expireDate: '2027-03-28',
+  orderNo: 'PAY20260328120000ABC123',
+  amount: '299',
+  months: '12',
+  newPackageName: '企业版',
   maxUsers: '50',
+  maxStorageGb: '100',
+  reason: '账号欠费',
+  servicePhone: '4001234567',
+  retentionDays: '30',
+  refundAmount: '299',
+  refundDays: '3',
+  remainDays: '7',
+  loginUrl: 'https://crm.yunkes.com',
+  renewUrl: 'https://yunkes.com/pricing',
 };
 
-// 预设场景模板
+// 阿里云短信模板内容参考（用于编辑时展示）
+const ALIYUN_SMS_CONTENT: Record<string, string> = {
+  VERIFY_CODE: '变量: ${code} → 6位数字验证码',
+  ACCOUNT_ACTIVATION: '变量: ${tenantName}, ${tenantCode}, ${licenseKey}, ${adminPassword}, ${packageName}, ${expireDate}',
+  PAYMENT_ACTIVATION: '变量: ${tenantName}, ${orderNo}, ${amount}, ${tenantCode}, ${licenseKey}, ${adminPassword}, ${packageName}, ${expireDate}',
+  RENEW_SUCCESS: '变量: ${tenantName}, ${months}, ${expireDate}',
+  PACKAGE_CHANGE: '变量: ${tenantName}, ${newPackageName}, ${maxUsers}, ${maxStorageGb}',
+  QUOTA_CHANGE: '变量: ${tenantName}, ${maxUsers}, ${maxStorageGb}',
+  ACCOUNT_SUSPEND: '变量: ${tenantName}, ${reason}, ${servicePhone}',
+  ACCOUNT_RESUME: '变量: ${tenantName}, ${expireDate}',
+  ACCOUNT_CANCEL: '变量: ${tenantName}, ${retentionDays}, ${servicePhone}',
+  REFUND_SUCCESS: '变量: ${tenantName}, ${refundAmount}, ${refundDays}, ${servicePhone}',
+  EXPIRE_REMIND: '变量: ${tenantName}, ${expireDate}, ${remainDays}, ${servicePhone}',
+  EXPIRED_NOTICE: '变量: ${tenantName}, ${expireDate}, ${servicePhone}',
+};
+
+// 模板CODE与短信配置KEY的映射
+const SMS_KEY_MAPPING: Record<string, string> = {
+  VERIFY_CODE: 'VERIFY_CODE',
+  ACCOUNT_ACTIVATION: 'ACCOUNT_ACTIVATION',
+  PAYMENT_ACTIVATION: 'PAYMENT_ACTIVATION',
+  RENEW_SUCCESS: 'RENEW_SUCCESS',
+  PACKAGE_CHANGE: 'PACKAGE_CHANGE',
+  QUOTA_CHANGE: 'QUOTA_CHANGE',
+  ACCOUNT_SUSPEND: 'ACCOUNT_SUSPEND',
+  ACCOUNT_RESUME: 'ACCOUNT_RESUME',
+  ACCOUNT_CANCEL: 'ACCOUNT_CANCEL',
+  REFUND_SUCCESS: 'REFUND_SUCCESS',
+  EXPIRE_REMIND: 'EXPIRE_REMIND',
+  EXPIRED_NOTICE: 'EXPIRED_NOTICE',
+};
+
+// ==================== 预设场景模板（与阿里云12个短信模板一一对应） ====================
+
 interface PresetTemplate {
   code: string;
   name: string;
@@ -514,169 +621,170 @@ interface PresetTemplate {
 }
 
 const PRESET_TEMPLATES: PresetTemplate[] = [
+  // ===== 账号管理类 =====
   {
-    code: 'tenant_register_success',
-    name: '租户注册成功',
-    category: 'tenant',
-    templateType: 'both',
-    scene: '租户注册成功后发送欢迎邮件和短信',
-    priority: 'high',
-    variables: { tenantName: '租户名称', contactPerson: '联系人', contactEmail: '联系邮箱', packageName: '套餐名称', loginUrl: '登录地址' },
-    emailSubject: '欢迎注册 - {{tenantName}}',
-    emailContent: '<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">\n  <h2 style="color: #409eff;">欢迎使用CRM系统</h2>\n  <p>尊敬的 {{contactPerson}}，您好！</p>\n  <p>恭喜您的企业 <strong>{{tenantName}}</strong> 已成功注册CRM系统。</p>\n  <div style="background: #f5f7fa; padding: 16px; border-radius: 8px; margin: 16px 0;">\n    <p><strong>套餐信息：</strong>{{packageName}}</p>\n    <p><strong>登录地址：</strong><a href="{{loginUrl}}">{{loginUrl}}</a></p>\n    <p><strong>账号邮箱：</strong>{{contactEmail}}</p>\n  </div>\n  <p>如有任何问题，请联系我们的客服团队。</p>\n  <p style="color: #999; font-size: 12px;">此邮件由系统自动发送，请勿回复。</p>\n</div>',
-    smsContent: '【CRM系统】尊敬的{{contactPerson}}，您的企业{{tenantName}}已成功注册，套餐：{{packageName}}，请登录系统开始使用。',
-  },
-  {
-    code: 'tenant_activated',
-    name: '账号激活成功',
-    category: 'tenant',
-    templateType: 'both',
-    scene: '账号激活成功后通知',
-    priority: 'normal',
-    variables: { tenantName: '租户名称', contactPerson: '联系人', packageName: '套餐名称', loginUrl: '登录地址' },
-    emailSubject: '账号已激活 - {{tenantName}}',
-    emailContent: '<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">\n  <h2 style="color: #67c23a;">账号激活成功</h2>\n  <p>尊敬的 {{contactPerson}}，您好！</p>\n  <p>您的企业 <strong>{{tenantName}}</strong> 账号已成功激活。</p>\n  <p>当前套餐：<strong>{{packageName}}</strong></p>\n  <p>登录地址：<a href="{{loginUrl}}">{{loginUrl}}</a></p>\n  <p style="color: #999; font-size: 12px;">此邮件由系统自动发送，请勿回复。</p>\n</div>',
-    smsContent: '【CRM系统】尊敬的{{contactPerson}}，您的企业{{tenantName}}账号已激活，套餐：{{packageName}}。',
-  },
-  {
-    code: 'tenant_suspended',
-    name: '账号已暂停',
-    category: 'tenant',
-    templateType: 'both',
-    scene: '账号暂停通知',
-    priority: 'high',
-    variables: { tenantName: '租户名称', contactPerson: '联系人', contactEmail: '联系邮箱', websiteUrl: '官网地址' },
-    emailSubject: '账号暂停通知 - {{tenantName}}',
-    emailContent: '<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">\n  <h2 style="color: #e6a23c;">账号暂停通知</h2>\n  <p>尊敬的 {{contactPerson}}，您好！</p>\n  <p>您的企业 <strong>{{tenantName}}</strong> 账号已被暂停使用。</p>\n  <p>如有疑问，请联系客服或访问 <a href="{{websiteUrl}}">官网</a> 了解详情。</p>\n  <p style="color: #999; font-size: 12px;">此邮件由系统自动发送，请勿回复。</p>\n</div>',
-    smsContent: '【CRM系统】尊敬的{{contactPerson}}，您的企业{{tenantName}}账号已暂停，如有疑问请联系客服。',
-  },
-  {
-    code: 'tenant_resumed',
-    name: '账号已恢复',
-    category: 'tenant',
-    templateType: 'both',
-    scene: '账号恢复通知',
-    priority: 'normal',
-    variables: { tenantName: '租户名称', contactPerson: '联系人', loginUrl: '登录地址' },
-    emailSubject: '账号恢复通知 - {{tenantName}}',
-    emailContent: '<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">\n  <h2 style="color: #67c23a;">账号已恢复</h2>\n  <p>尊敬的 {{contactPerson}}，您好！</p>\n  <p>您的企业 <strong>{{tenantName}}</strong> 账号已恢复正常使用。</p>\n  <p>登录地址：<a href="{{loginUrl}}">{{loginUrl}}</a></p>\n  <p style="color: #999; font-size: 12px;">此邮件由系统自动发送，请勿回复。</p>\n</div>',
-    smsContent: '【CRM系统】尊敬的{{contactPerson}}，您的企业{{tenantName}}账号已恢复，请登录使用。',
-  },
-  {
-    code: 'package_upgraded',
-    name: '套餐升级成功',
-    category: 'tenant',
-    templateType: 'both',
-    scene: '套餐升级成功通知',
-    priority: 'normal',
-    variables: { tenantName: '租户名称', contactPerson: '联系人', packageName: '套餐名称', expiryDate: '到期日期' },
-    emailSubject: '套餐升级成功 - {{tenantName}}',
-    emailContent: '<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">\n  <h2 style="color: #409eff;">套餐升级成功</h2>\n  <p>尊敬的 {{contactPerson}}，您好！</p>\n  <p>您的企业 <strong>{{tenantName}}</strong> 已成功升级到 <strong>{{packageName}}</strong>。</p>\n  <p>有效期至：{{expiryDate}}</p>\n  <p style="color: #999; font-size: 12px;">此邮件由系统自动发送，请勿回复。</p>\n</div>',
-    smsContent: '【CRM系统】尊敬的{{contactPerson}}，您的企业{{tenantName}}已升级到{{packageName}}，有效期至{{expiryDate}}。',
-  },
-  {
-    code: 'capacity_expanded',
-    name: '容量扩容成功',
-    category: 'tenant',
-    templateType: 'email',
-    scene: '容量扩容成功通知',
-    priority: 'normal',
-    variables: { tenantName: '租户名称', contactPerson: '联系人', maxUsers: '最大用户数' },
-    emailSubject: '容量扩容成功 - {{tenantName}}',
-    emailContent: '<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">\n  <h2 style="color: #409eff;">容量扩容成功</h2>\n  <p>尊敬的 {{contactPerson}}，您好！</p>\n  <p>您的企业 <strong>{{tenantName}}</strong> 容量扩容已完成。</p>\n  <p>当前最大用户数：<strong>{{maxUsers}}</strong></p>\n  <p style="color: #999; font-size: 12px;">此邮件由系统自动发送，请勿回复。</p>\n</div>',
-    smsContent: '',
-  },
-  {
-    code: 'payment_success',
-    name: '支付成功通知',
-    category: 'payment',
-    templateType: 'both',
-    scene: '支付成功后通知',
-    priority: 'high',
-    variables: { tenantName: '租户名称', contactPerson: '联系人', orderNo: '订单编号', packageName: '套餐名称', amount: '支付金额', paymentMethod: '支付方式', paymentTime: '支付时间' },
-    emailSubject: '支付成功 - 订单 {{orderNo}}',
-    emailContent: '<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">\n  <h2 style="color: #67c23a;">支付成功</h2>\n  <p>尊敬的 {{contactPerson}}，您好！</p>\n  <p>您的订单已支付成功，详情如下：</p>\n  <div style="background: #f5f7fa; padding: 16px; border-radius: 8px; margin: 16px 0;">\n    <p><strong>订单编号：</strong>{{orderNo}}</p>\n    <p><strong>套餐名称：</strong>{{packageName}}</p>\n    <p><strong>支付金额：</strong>{{amount}}</p>\n    <p><strong>支付方式：</strong>{{paymentMethod}}</p>\n    <p><strong>支付时间：</strong>{{paymentTime}}</p>\n  </div>\n  <p>感谢您的购买！</p>\n  <p style="color: #999; font-size: 12px;">此邮件由系统自动发送，请勿回复。</p>\n</div>',
-    smsContent: '【CRM系统】尊敬的{{contactPerson}}，订单{{orderNo}}已支付成功，金额{{amount}}，套餐{{packageName}}。',
-  },
-  {
-    code: 'payment_pending',
-    name: '待支付提醒',
-    category: 'payment',
-    templateType: 'both',
-    scene: '订单创建后待支付提醒',
-    priority: 'normal',
-    variables: { tenantName: '租户名称', contactPerson: '联系人', orderNo: '订单编号', packageName: '套餐名称', amount: '支付金额', websiteUrl: '官网地址' },
-    emailSubject: '待支付提醒 - 订单 {{orderNo}}',
-    emailContent: '<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">\n  <h2 style="color: #e6a23c;">订单待支付</h2>\n  <p>尊敬的 {{contactPerson}}，您好！</p>\n  <p>您有一笔待支付的订单：</p>\n  <div style="background: #f5f7fa; padding: 16px; border-radius: 8px; margin: 16px 0;">\n    <p><strong>订单编号：</strong>{{orderNo}}</p>\n    <p><strong>套餐名称：</strong>{{packageName}}</p>\n    <p><strong>应付金额：</strong>{{amount}}</p>\n  </div>\n  <p>请尽快完成支付，如需帮助请访问 <a href="{{websiteUrl}}">官网</a>。</p>\n  <p style="color: #999; font-size: 12px;">此邮件由系统自动发送，请勿回复。</p>\n</div>',
-    smsContent: '【CRM系统】尊敬的{{contactPerson}}，您有待支付订单{{orderNo}}，金额{{amount}}，请尽快完成支付。',
-  },
-  {
-    code: 'payment_refund',
-    name: '退款成功通知',
-    category: 'payment',
-    templateType: 'both',
-    scene: '退款成功通知',
-    priority: 'high',
-    variables: { tenantName: '租户名称', contactPerson: '联系人', orderNo: '订单编号', refundAmount: '退款金额', refundReason: '退款原因' },
-    emailSubject: '退款成功 - 订单 {{orderNo}}',
-    emailContent: '<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">\n  <h2 style="color: #409eff;">退款成功</h2>\n  <p>尊敬的 {{contactPerson}}，您好！</p>\n  <p>您的退款申请已处理完成：</p>\n  <div style="background: #f5f7fa; padding: 16px; border-radius: 8px; margin: 16px 0;">\n    <p><strong>订单编号：</strong>{{orderNo}}</p>\n    <p><strong>退款金额：</strong>{{refundAmount}}</p>\n    <p><strong>退款原因：</strong>{{refundReason}}</p>\n  </div>\n  <p>退款将在1-3个工作日内原路退回，请注意查收。</p>\n  <p style="color: #999; font-size: 12px;">此邮件由系统自动发送，请勿回复。</p>\n</div>',
-    smsContent: '【CRM系统】尊敬的{{contactPerson}}，订单{{orderNo}}退款{{refundAmount}}已处理，将在1-3个工作日内退回。',
-  },
-  {
-    code: 'renew_success',
-    name: '续费成功通知',
-    category: 'payment',
-    templateType: 'both',
-    scene: '续费成功通知',
-    priority: 'normal',
-    variables: { tenantName: '租户名称', contactPerson: '联系人', packageName: '套餐名称', renewalPeriod: '续费周期', expiryDate: '到期日期', amount: '支付金额' },
-    emailSubject: '续费成功 - {{tenantName}}',
-    emailContent: '<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">\n  <h2 style="color: #67c23a;">续费成功</h2>\n  <p>尊敬的 {{contactPerson}}，您好！</p>\n  <p>您的企业 <strong>{{tenantName}}</strong> 已成功续费：</p>\n  <div style="background: #f5f7fa; padding: 16px; border-radius: 8px; margin: 16px 0;">\n    <p><strong>套餐名称：</strong>{{packageName}}</p>\n    <p><strong>续费周期：</strong>{{renewalPeriod}}</p>\n    <p><strong>支付金额：</strong>{{amount}}</p>\n    <p><strong>有效期至：</strong>{{expiryDate}}</p>\n  </div>\n  <p>感谢您的持续信赖！</p>\n  <p style="color: #999; font-size: 12px;">此邮件由系统自动发送，请勿回复。</p>\n</div>',
-    smsContent: '【CRM系统】尊敬的{{contactPerson}}，{{tenantName}}续费成功，套餐{{packageName}}，有效期至{{expiryDate}}。',
-  },
-  {
-    code: 'license_generated',
-    name: '授权码生成通知',
-    category: 'license',
-    templateType: 'email',
-    scene: '授权码生成后发送',
-    priority: 'high',
-    variables: { tenantName: '租户名称', contactPerson: '联系人', licenseKey: '授权码', licenseType: '授权类型', expiryDate: '到期日期', maxUsers: '最大用户数' },
-    emailSubject: '授权码已生成 - {{tenantName}}',
-    emailContent: '<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">\n  <h2 style="color: #409eff;">授权码已生成</h2>\n  <p>尊敬的 {{contactPerson}}，您好！</p>\n  <p>您的企业 <strong>{{tenantName}}</strong> 的授权码已生成：</p>\n  <div style="background: #f0f9eb; padding: 16px; border-radius: 8px; margin: 16px 0; border: 1px solid #e1f3d8;">\n    <p style="font-size: 18px; font-weight: bold; letter-spacing: 2px; color: #67c23a; text-align: center;">{{licenseKey}}</p>\n  </div>\n  <div style="background: #f5f7fa; padding: 16px; border-radius: 8px; margin: 16px 0;">\n    <p><strong>授权类型：</strong>{{licenseType}}</p>\n    <p><strong>有效期至：</strong>{{expiryDate}}</p>\n    <p><strong>最大用户数：</strong>{{maxUsers}}</p>\n  </div>\n  <p style="color: #e6a23c;">请妥善保管授权码，勿泄露给他人。</p>\n  <p style="color: #999; font-size: 12px;">此邮件由系统自动发送，请勿回复。</p>\n</div>',
-    smsContent: '',
-  },
-  {
-    code: 'license_expire_soon',
-    name: '授权即将到期提醒',
-    category: 'license',
-    templateType: 'both',
-    scene: '授权到期前7天提醒',
-    priority: 'high',
-    variables: { tenantName: '租户名称', contactPerson: '联系人', expiryDate: '到期日期', remainingDays: '剩余天数', packageName: '套餐名称', websiteUrl: '官网地址' },
-    emailSubject: '授权即将到期提醒 - {{tenantName}}',
-    emailContent: '<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">\n  <h2 style="color: #e6a23c;">授权即将到期</h2>\n  <p>尊敬的 {{contactPerson}}，您好！</p>\n  <p>您的企业 <strong>{{tenantName}}</strong> 的授权将在 <strong style="color: #f56c6c;">{{remainingDays}}</strong> 天后到期。</p>\n  <div style="background: #fdf6ec; padding: 16px; border-radius: 8px; margin: 16px 0; border: 1px solid #faecd8;">\n    <p><strong>当前套餐：</strong>{{packageName}}</p>\n    <p><strong>到期日期：</strong>{{expiryDate}}</p>\n  </div>\n  <p>为避免服务中断，请尽快续费。<a href="{{websiteUrl}}">点击续费</a></p>\n  <p style="color: #999; font-size: 12px;">此邮件由系统自动发送，请勿回复。</p>\n</div>',
-    smsContent: '【CRM系统】尊敬的{{contactPerson}}，您的企业{{tenantName}}授权将于{{remainingDays}}天后到期（{{expiryDate}}），请尽快续费。',
-  },
-  {
-    code: 'license_expired',
-    name: '授权已到期通知',
-    category: 'license',
-    templateType: 'both',
-    scene: '授权到期后通知',
+    code: 'VERIFY_CODE',
+    name: '① 注册验证码',
+    category: 'account',
+    templateType: 'sms',
+    scene: '官网注册时发送手机验证码，验证用户手机号真实性',
     priority: 'urgent',
-    variables: { tenantName: '租户名称', contactPerson: '联系人', expiryDate: '到期日期', packageName: '套餐名称', websiteUrl: '官网地址' },
+    variables: { code: '验证码' },
+    emailSubject: '',
+    emailContent: '',
+    smsContent: '您的注册验证码是：{{code}}，5分钟内有效，请勿泄露给他人。',
+  },
+  {
+    code: 'ACCOUNT_ACTIVATION',
+    name: '② 账号开通通知（免费试用）',
+    category: 'account',
+    templateType: 'both',
+    scene: '用户选择免费试用套餐完成注册后立即发送，包含登录所需全部信息',
+    priority: 'high',
+    variables: {
+      tenantName: '租户名称', tenantCode: '租户编码', licenseKey: '授权码',
+      adminPassword: '初始密码', packageName: '套餐名称', expireDate: '到期日期',
+      loginUrl: '登录链接'
+    },
+    emailSubject: '云客CRM账号已开通 - {{tenantName}}',
+    emailContent: '<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">\n  <h2 style="color: #409eff;">🎉 云客CRM账号已开通</h2>\n  <p>尊敬的 <strong>{{tenantName}}</strong>，您好！</p>\n  <p>您的云客CRM账号已成功开通，以下是您的账号信息：</p>\n  <div style="background: #f0f9eb; padding: 16px; border-radius: 8px; margin: 16px 0; border: 1px solid #e1f3d8;">\n    <p style="margin: 8px 0;"><strong>租户编码：</strong>{{tenantCode}}</p>\n    <p style="margin: 8px 0;"><strong>授权码：</strong><code style="font-size: 16px; color: #67c23a;">{{licenseKey}}</code></p>\n    <p style="margin: 8px 0;"><strong>管理员账号：</strong>您的注册手机号</p>\n    <p style="margin: 8px 0;"><strong>初始密码：</strong><code>{{adminPassword}}</code></p>\n    <p style="margin: 8px 0;"><strong>套餐：</strong>{{packageName}}</p>\n    <p style="margin: 8px 0;"><strong>到期日期：</strong>{{expireDate}}</p>\n  </div>\n  <div style="text-align: center; margin: 24px 0;">\n    <a href="{{loginUrl}}" style="display: inline-block; padding: 12px 40px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #fff; text-decoration: none; border-radius: 6px; font-size: 15px; font-weight: 500;">立即登录系统</a>\n  </div>\n  <p style="color: #e6a23c;">⚠️ 请妥善保管以上信息，登录后请立即修改密码。</p>\n  <p style="color: #999; font-size: 12px;">此邮件由系统自动发送，请勿回复。</p>\n</div>',
+    smsContent: '尊敬的{{tenantName}}，您的云客CRM账号已开通！授权码：{{licenseKey}}，管理员账号为您的手机号，初始密码：{{adminPassword}}，套餐：{{packageName}}，到期日期：{{expireDate}}。请妥善保管，登录后请修改密码。',
+  },
+  {
+    code: 'ACCOUNT_SUSPEND',
+    name: '③ 账号暂停通知',
+    category: 'account',
+    templateType: 'both',
+    scene: '管理员在后台暂停租户授权时发送（欠费、违规等）',
+    priority: 'high',
+    variables: { tenantName: '租户名称', reason: '暂停原因', servicePhone: '客服电话' },
+    emailSubject: '账号暂停通知 - {{tenantName}}',
+    emailContent: '<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">\n  <h2 style="color: #e6a23c;">⚠️ 账号暂停通知</h2>\n  <p>尊敬的 <strong>{{tenantName}}</strong>，您好！</p>\n  <p>您的云客CRM账号已被暂停使用。</p>\n  <div style="background: #fdf6ec; padding: 16px; border-radius: 8px; margin: 16px 0; border: 1px solid #faecd8;">\n    <p><strong>暂停原因：</strong>{{reason}}</p>\n  </div>\n  <p>如需恢复使用，请联系客服：<strong>{{servicePhone}}</strong></p>\n  <p style="color: #999; font-size: 12px;">此邮件由系统自动发送，请勿回复。</p>\n</div>',
+    smsContent: '尊敬的{{tenantName}}，您的云客CRM账号已被暂停使用。暂停原因：{{reason}}。如需恢复使用，请联系客服：{{servicePhone}}。',
+  },
+  {
+    code: 'ACCOUNT_RESUME',
+    name: '④ 账号激活/解封通知',
+    category: 'account',
+    templateType: 'both',
+    scene: '管理员在后台恢复被暂停的租户时发送',
+    priority: 'normal',
+    variables: { tenantName: '租户名称', expireDate: '到期日期' },
+    emailSubject: '账号恢复通知 - {{tenantName}}',
+    emailContent: '<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">\n  <h2 style="color: #67c23a;">✅ 账号已恢复</h2>\n  <p>尊敬的 <strong>{{tenantName}}</strong>，您好！</p>\n  <p>您的云客CRM账号已恢复正常使用！</p>\n  <div style="background: #f0f9eb; padding: 16px; border-radius: 8px; margin: 16px 0; border: 1px solid #e1f3d8;">\n    <p><strong>到期日期：</strong>{{expireDate}}</p>\n  </div>\n  <p>感谢您的理解与支持！</p>\n  <p style="color: #999; font-size: 12px;">此邮件由系统自动发送，请勿回复。</p>\n</div>',
+    smsContent: '尊敬的{{tenantName}}，您的云客CRM账号已恢复正常使用！到期日期：{{expireDate}}。感谢您的理解与支持！',
+  },
+  {
+    code: 'ACCOUNT_CANCEL',
+    name: '⑤ 账号注销通知',
+    category: 'account',
+    templateType: 'both',
+    scene: '管理员在后台注销租户或租户主动申请注销时发送',
+    priority: 'normal',
+    variables: { tenantName: '租户名称', retentionDays: '数据保留天数', servicePhone: '客服电话' },
+    emailSubject: '账号注销通知 - {{tenantName}}',
+    emailContent: '<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">\n  <h2 style="color: #f56c6c;">账号注销通知</h2>\n  <p>尊敬的 <strong>{{tenantName}}</strong>，您好！</p>\n  <p>您的云客CRM账号已注销。</p>\n  <div style="background: #fef0f0; padding: 16px; border-radius: 8px; margin: 16px 0; border: 1px solid #fde2e2;">\n    <p>注销后数据将保留 <strong>{{retentionDays}}</strong> 天，期间可联系客服恢复。</p>\n  </div>\n  <p>如有疑问请联系：<strong>{{servicePhone}}</strong></p>\n  <p style="color: #999; font-size: 12px;">此邮件由系统自动发送，请勿回复。</p>\n</div>',
+    smsContent: '尊敬的{{tenantName}}，您的云客CRM账号已注销。注销后数据将保留{{retentionDays}}天，期间可联系客服恢复。如有疑问联系：{{servicePhone}}。',
+  },
+
+  // ===== 支付相关类 =====
+  {
+    code: 'PAYMENT_ACTIVATION',
+    name: '⑥ 支付成功账号开通通知',
+    category: 'payment',
+    templateType: 'both',
+    scene: '用户选择付费套餐，支付成功后发送（微信/支付宝/对公转账确认到账）',
+    priority: 'high',
+    variables: {
+      tenantName: '租户名称', orderNo: '订单号', amount: '支付金额',
+      tenantCode: '租户编码', licenseKey: '授权码', adminPassword: '初始密码',
+      packageName: '套餐名称', expireDate: '到期日期', loginUrl: '登录链接'
+    },
+    emailSubject: '支付成功 - 云客CRM账号已开通 - {{tenantName}}',
+    emailContent: '<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">\n  <h2 style="color: #67c23a;">🎉 支付成功，账号已开通</h2>\n  <p>尊敬的 <strong>{{tenantName}}</strong>，您好！</p>\n  <p>您的订单已支付成功，账号已开通：</p>\n  <div style="background: #f0f9eb; padding: 16px; border-radius: 8px; margin: 16px 0; border: 1px solid #e1f3d8;">\n    <p style="margin: 8px 0;"><strong>订单号：</strong>{{orderNo}}</p>\n    <p style="margin: 8px 0;"><strong>支付金额：</strong>{{amount}}元</p>\n    <p style="margin: 8px 0;"><strong>租户编码：</strong>{{tenantCode}}</p>\n    <p style="margin: 8px 0;"><strong>授权码：</strong><code style="font-size: 16px; color: #67c23a;">{{licenseKey}}</code></p>\n    <p style="margin: 8px 0;"><strong>管理员账号：</strong>您的注册手机号</p>\n    <p style="margin: 8px 0;"><strong>初始密码：</strong><code>{{adminPassword}}</code></p>\n    <p style="margin: 8px 0;"><strong>套餐：</strong>{{packageName}}</p>\n    <p style="margin: 8px 0;"><strong>到期日期：</strong>{{expireDate}}</p>\n  </div>\n  <div style="text-align: center; margin: 24px 0;">\n    <a href="{{loginUrl}}" style="display: inline-block; padding: 12px 40px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #fff; text-decoration: none; border-radius: 6px; font-size: 15px; font-weight: 500;">立即登录系统</a>\n  </div>\n  <p style="color: #e6a23c;">⚠️ 请妥善保管账号信息，登录后请立即修改密码。</p>\n  <p style="color: #999; font-size: 12px;">此邮件由系统自动发送，请勿回复。</p>\n</div>',
+    smsContent: '尊敬的{{tenantName}}，支付成功！订单号：{{orderNo}}，金额：{{amount}}元。授权码：{{licenseKey}}，管理员账号为您的手机号，初始密码：{{adminPassword}}，套餐：{{packageName}}，到期日期：{{expireDate}}。请登录后修改密码。',
+  },
+  {
+    code: 'RENEW_SUCCESS',
+    name: '⑦ 续期成功通知',
+    category: 'payment',
+    templateType: 'both',
+    scene: '管理员在后台为租户续期或租户自助续费成功后发送',
+    priority: 'normal',
+    variables: { tenantName: '租户名称', months: '续期月数', expireDate: '新到期日期' },
+    emailSubject: '续费成功 - {{tenantName}}',
+    emailContent: '<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">\n  <h2 style="color: #67c23a;">✅ 续费成功</h2>\n  <p>尊敬的 <strong>{{tenantName}}</strong>，您好！</p>\n  <p>您的账号已成功续期 <strong>{{months}}</strong> 个月！</p>\n  <div style="background: #f0f9eb; padding: 16px; border-radius: 8px; margin: 16px 0; border: 1px solid #e1f3d8;">\n    <p><strong>新的到期日期：</strong>{{expireDate}}</p>\n  </div>\n  <p>感谢您继续使用云客CRM，如有问题请联系客服。</p>\n  <p style="color: #999; font-size: 12px;">此邮件由系统自动发送，请勿回复。</p>\n</div>',
+    smsContent: '尊敬的{{tenantName}}，您的账号已成功续期{{months}}个月！新的到期日期为：{{expireDate}}。感谢您继续使用云客CRM，如有问题请联系客服。',
+  },
+  {
+    code: 'REFUND_SUCCESS',
+    name: '⑧ 退款成功通知',
+    category: 'payment',
+    templateType: 'both',
+    scene: '管理员处理退款申请或自动退款流程完成后发送',
+    priority: 'high',
+    variables: { tenantName: '租户名称', refundAmount: '退款金额', refundDays: '到账工作日', servicePhone: '客服电话' },
+    emailSubject: '退款成功通知 - {{tenantName}}',
+    emailContent: '<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">\n  <h2 style="color: #409eff;">退款已处理</h2>\n  <p>尊敬的 <strong>{{tenantName}}</strong>，您好！</p>\n  <p>您的退款申请已处理完成：</p>\n  <div style="background: #f5f7fa; padding: 16px; border-radius: 8px; margin: 16px 0;">\n    <p><strong>退款金额：</strong>{{refundAmount}}元</p>\n    <p><strong>预计到账：</strong>{{refundDays}}个工作日内</p>\n  </div>\n  <p>如有疑问请联系客服：<strong>{{servicePhone}}</strong></p>\n  <p style="color: #999; font-size: 12px;">此邮件由系统自动发送，请勿回复。</p>\n</div>',
+    smsContent: '尊敬的{{tenantName}}，您的退款申请已处理完成。退款金额：{{refundAmount}}元，预计{{refundDays}}个工作日内到账。如有疑问联系客服：{{servicePhone}}。',
+  },
+
+  // ===== 授权/套餐类 =====
+  {
+    code: 'PACKAGE_CHANGE',
+    name: '⑨ 套餐变更通知',
+    category: 'license',
+    templateType: 'both',
+    scene: '管理员在后台为租户变更套餐或租户自助升级/降级套餐后发送',
+    priority: 'normal',
+    variables: { tenantName: '租户名称', newPackageName: '新套餐名称', maxUsers: '最大用户数', maxStorageGb: '存储空间(GB)' },
+    emailSubject: '套餐变更通知 - {{tenantName}}',
+    emailContent: '<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">\n  <h2 style="color: #409eff;">套餐变更通知</h2>\n  <p>尊敬的 <strong>{{tenantName}}</strong>，您好！</p>\n  <p>您的套餐已变更，详情如下：</p>\n  <div style="background: #ecf5ff; padding: 16px; border-radius: 8px; margin: 16px 0; border: 1px solid #d9ecff;">\n    <p><strong>新套餐：</strong>{{newPackageName}}</p>\n    <p><strong>最大用户数：</strong>{{maxUsers}}人</p>\n    <p><strong>存储空间：</strong>{{maxStorageGb}}GB</p>\n  </div>\n  <p>变更立即生效，感谢您的支持！</p>\n  <p style="color: #999; font-size: 12px;">此邮件由系统自动发送，请勿回复。</p>\n</div>',
+    smsContent: '尊敬的{{tenantName}}，您的套餐已变更为：{{newPackageName}}，最大用户数：{{maxUsers}}人，存储空间：{{maxStorageGb}}GB。变更立即生效，感谢您的支持！',
+  },
+  {
+    code: 'QUOTA_CHANGE',
+    name: '⑩ 配额变更通知',
+    category: 'license',
+    templateType: 'both',
+    scene: '管理员单独调整租户的用户数或存储空间限制时发送',
+    priority: 'low',
+    variables: { tenantName: '租户名称', maxUsers: '最大用户数', maxStorageGb: '存储空间(GB)' },
+    emailSubject: '配额调整通知 - {{tenantName}}',
+    emailContent: '<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">\n  <h2 style="color: #409eff;">配额调整通知</h2>\n  <p>尊敬的 <strong>{{tenantName}}</strong>，您好！</p>\n  <p>您的账号配额已调整：</p>\n  <div style="background: #f5f7fa; padding: 16px; border-radius: 8px; margin: 16px 0;">\n    <p><strong>最大用户数：</strong>{{maxUsers}}人</p>\n    <p><strong>存储空间：</strong>{{maxStorageGb}}GB</p>\n  </div>\n  <p>调整立即生效，如有疑问请联系客服。</p>\n  <p style="color: #999; font-size: 12px;">此邮件由系统自动发送，请勿回复。</p>\n</div>',
+    smsContent: '尊敬的{{tenantName}}，您的账号配额已调整：最大用户数{{maxUsers}}人，存储空间{{maxStorageGb}}GB。调整立即生效，如有疑问请联系客服。',
+  },
+  {
+    code: 'EXPIRE_REMIND',
+    name: '⑪ 账号到期提醒',
+    category: 'license',
+    templateType: 'both',
+    scene: '到期前7天、3天、1天由定时任务自动发送提醒',
+    priority: 'high',
+    variables: { tenantName: '租户名称', expireDate: '到期日期', remainDays: '剩余天数', servicePhone: '客服电话', renewUrl: '续费链接' },
+    emailSubject: '授权即将到期提醒 - {{tenantName}}',
+    emailContent: '<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">\n  <h2 style="color: #e6a23c;">⏰ 授权即将到期</h2>\n  <p>尊敬的 <strong>{{tenantName}}</strong>，您好！</p>\n  <p>您的云客CRM账号将在 <strong style="color: #f56c6c;">{{remainDays}}</strong> 天后到期。</p>\n  <div style="background: #fdf6ec; padding: 16px; border-radius: 8px; margin: 16px 0; border: 1px solid #faecd8;">\n    <p style="margin: 8px 0;"><strong>到期日期：</strong>{{expireDate}}</p>\n    <p style="margin: 8px 0;"><strong>剩余天数：</strong>{{remainDays}}天</p>\n  </div>\n  <div style="text-align: center; margin: 24px 0;">\n    <a href="{{renewUrl}}" style="display: inline-block; padding: 12px 40px; background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: #fff; text-decoration: none; border-radius: 6px; font-size: 15px; font-weight: 500;">立即续费</a>\n  </div>\n  <p>为避免影响使用，请及时续费。续费咨询：<strong>{{servicePhone}}</strong></p>\n  <p style="color: #999; font-size: 12px;">此邮件由系统自动发送，请勿回复。</p>\n</div>',
+    smsContent: '尊敬的{{tenantName}}，您的云客CRM账号将于{{expireDate}}到期，剩余{{remainDays}}天。为避免影响使用，请及时续费。续费咨询：{{servicePhone}}。',
+  },
+  {
+    code: 'EXPIRED_NOTICE',
+    name: '⑫ 账号已过期通知',
+    category: 'license',
+    templateType: 'both',
+    scene: '账号过期当天由定时任务检测到过期后发送',
+    priority: 'urgent',
+    variables: { tenantName: '租户名称', expireDate: '过期日期', servicePhone: '客服电话', renewUrl: '续费链接' },
     emailSubject: '授权已到期 - {{tenantName}}',
-    emailContent: '<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">\n  <h2 style="color: #f56c6c;">授权已到期</h2>\n  <p>尊敬的 {{contactPerson}}，您好！</p>\n  <p>您的企业 <strong>{{tenantName}}</strong> 的授权已于 <strong>{{expiryDate}}</strong> 到期。</p>\n  <div style="background: #fef0f0; padding: 16px; border-radius: 8px; margin: 16px 0; border: 1px solid #fde2e2;">\n    <p><strong>到期套餐：</strong>{{packageName}}</p>\n    <p><strong>到期日期：</strong>{{expiryDate}}</p>\n    <p style="color: #f56c6c;">服务已受限，请尽快续费以恢复正常使用。</p>\n  </div>\n  <p><a href="{{websiteUrl}}" style="background: #409eff; color: #fff; padding: 10px 20px; border-radius: 4px; text-decoration: none; display: inline-block;">立即续费</a></p>\n  <p style="color: #999; font-size: 12px;">此邮件由系统自动发送，请勿回复。</p>\n</div>',
-    smsContent: '【CRM系统】尊敬的{{contactPerson}}，您的企业{{tenantName}}授权已于{{expiryDate}}到期，服务已受限，请尽快续费。',
+    emailContent: '<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">\n  <h2 style="color: #f56c6c;">❌ 授权已到期</h2>\n  <p>尊敬的 <strong>{{tenantName}}</strong>，您好！</p>\n  <p>您的云客CRM账号已于 <strong>{{expireDate}}</strong> 过期，系统已停止服务。</p>\n  <div style="background: #fef0f0; padding: 16px; border-radius: 8px; margin: 16px 0; border: 1px solid #fde2e2;">\n    <p style="color: #f56c6c; margin: 8px 0;">服务已停止，请尽快续费以恢复使用。</p>\n  </div>\n  <div style="text-align: center; margin: 24px 0;">\n    <a href="{{renewUrl}}" style="display: inline-block; padding: 12px 40px; background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: #fff; text-decoration: none; border-radius: 6px; font-size: 15px; font-weight: 500;">立即续费</a>\n  </div>\n  <p>如需继续使用，请联系客服续费：<strong>{{servicePhone}}</strong></p>\n  <p style="color: #999; font-size: 12px;">此邮件由系统自动发送，请勿回复。</p>\n</div>',
+    smsContent: '尊敬的{{tenantName}}，您的云客CRM账号已于{{expireDate}}过期，系统已停止服务。如需继续使用，请联系客服续费：{{servicePhone}}。',
   },
 ];
 
 // 预设场景分组
 const presetGroups = computed(() => [
-  { label: '租户注册', options: PRESET_TEMPLATES.filter(p => p.category === 'tenant') },
-  { label: '支付相关', options: PRESET_TEMPLATES.filter(p => p.category === 'payment') },
-  { label: '授权码', options: PRESET_TEMPLATES.filter(p => p.category === 'license') },
+  { label: '账号管理（5个）', options: PRESET_TEMPLATES.filter(p => p.category === 'account') },
+  { label: '支付相关（3个）', options: PRESET_TEMPLATES.filter(p => p.category === 'payment') },
+  { label: '授权/套餐（4个）', options: PRESET_TEMPLATES.filter(p => p.category === 'license') },
 ]);
 
 // ==================== 数据 ====================
@@ -691,12 +799,13 @@ const isEdit = ref(false);
 const saving = ref(false);
 const formRef = ref();
 const selectedPreset = ref('');
+const editActiveTab = ref('basic');
 
 const formData = ref<any>({
   templateCode: '',
   templateName: '',
   templateType: 'both',
-  category: 'tenant',
+  category: 'account',
   scene: '',
   emailSubject: '',
   emailContent: '',
@@ -707,13 +816,13 @@ const formData = ref<any>({
   isSystem: 0,
   priority: 'normal',
   sendEmail: 1,
-  sendSms: 0
+  sendSms: 1
 });
 
 const formRules = {
   templateCode: [{ required: true, message: '请输入模板代码', trigger: 'blur' }],
   templateName: [{ required: true, message: '请输入模板名称', trigger: 'blur' }],
-  templateType: [{ required: true, message: '请选择模板类型', trigger: 'change' }],
+  templateType: [{ required: true, message: '请选择通知类型', trigger: 'change' }],
   category: [{ required: true, message: '请选择业务分类', trigger: 'change' }],
   scene: [{ required: true, message: '请输入使用场景', trigger: 'blur' }]
 };
@@ -721,7 +830,6 @@ const formRules = {
 // 测试对话框
 const testDialogVisible = ref(false);
 const currentTemplate = ref<any>({});
-const testFormRef = ref();
 const testForm = ref<any>({
   recipientEmail: '',
   recipientPhone: '',
@@ -730,15 +838,7 @@ const testForm = ref<any>({
 const previewResult = ref<any>({});
 const previewing = ref(false);
 const sending = ref(false);
-
-const testFormRules = {
-  recipientEmail: [
-    { type: 'email', message: '请输入正确的邮箱地址', trigger: 'blur' }
-  ],
-  recipientPhone: [
-    { pattern: /^1[3-9]\d{9}$/, message: '请输入正确的手机号', trigger: 'blur' }
-  ]
-};
+let previewTimer: any = null;
 
 // ==================== 计算属性 ====================
 const filteredTemplates = computed(() => {
@@ -753,16 +853,29 @@ const filteredTemplates = computed(() => {
   return result;
 });
 
-// 当前分类下可选的变量
 const availableVariables = computed(() => {
   const category = formData.value.category;
   return CATEGORY_VARIABLES[category] || {};
 });
 
-// ==================== 方法 ====================
+const currentAliyunTemplateInfo = computed(() => {
+  const code = formData.value.templateCode;
+  return ALIYUN_SMS_CONTENT[code] || '';
+});
+
+// ==================== 工具方法 ====================
 const getCategoryName = (category: string) => {
-  const map: any = { tenant: '租户注册', payment: '支付相关', license: '授权码' };
+  const map: Record<string, string> = { account: '账号管理', payment: '支付相关', license: '授权/套餐' };
   return map[category] || category;
+};
+
+const getCategoryTagType = (category: string) => {
+  const map: Record<string, string> = { account: '', payment: 'warning', license: 'success' };
+  return map[category] || 'info';
+};
+
+const getSmsKeyMapping = (code: string): string => {
+  return SMS_KEY_MAPPING[code] || '';
 };
 
 const isVariableSelected = (key: string) => {
@@ -786,12 +899,12 @@ const removeVariable = (key: string) => {
   formData.value.variables = newVars;
 };
 
-const insertVariable = (key: string) => {
+const copyVariable = (key: string) => {
   const varStr = `{{${key}}}`;
   navigator.clipboard.writeText(varStr).then(() => {
-    ElMessage.success(`已复制 ${varStr} 到剪贴板，请粘贴到内容中`);
+    ElMessage.success(`已复制 ${varStr}`);
   }).catch(() => {
-    ElMessage.info(`请手动输入: ${varStr}`);
+    ElMessage.info(`请手动输入 ${varStr}`);
   });
 };
 
@@ -801,7 +914,6 @@ const insertToField = (field: string, key: string) => {
 };
 
 const onCategoryChange = () => {
-  // 切换分类时清空已选变量（仅新建时）
   if (!isEdit.value) {
     formData.value.variables = {};
   }
@@ -817,7 +929,7 @@ const applyPreset = (code: string) => {
   }
 
   formData.value.templateCode = preset.code;
-  formData.value.templateName = preset.name;
+  formData.value.templateName = preset.name.replace(/^[①②③④⑤⑥⑦⑧⑨⑩⑪⑫]\s*/, '');
   formData.value.category = preset.category;
   formData.value.templateType = preset.templateType;
   formData.value.scene = preset.scene;
@@ -829,7 +941,7 @@ const applyPreset = (code: string) => {
   formData.value.sendEmail = preset.templateType !== 'sms' ? 1 : 0;
   formData.value.sendSms = preset.templateType !== 'email' ? 1 : 0;
 
-  ElMessage.success(`已应用预设场景: ${preset.name}`);
+  ElMessage.success(`已应用预设: ${preset.name}`);
 };
 
 // 变量示例值相关
@@ -840,6 +952,7 @@ const getVariablePlaceholder = (key: string): string => {
 const fillSampleValue = (key: string) => {
   if (VARIABLE_SAMPLES[key]) {
     testForm.value.variables[key] = VARIABLE_SAMPLES[key];
+    autoPreview();
   }
 };
 
@@ -850,8 +963,32 @@ const fillAllSampleValues = () => {
       vars[key] = VARIABLE_SAMPLES[key] || `测试${key}`;
     }
     testForm.value.variables = vars;
+    autoPreview();
   }
   ElMessage.success('已填充所有示例值');
+};
+
+// 自动预览（客户端渲染）
+const renderSmsPreview = (): string => {
+  if (!currentTemplate.value.smsContent) return '';
+  let content = currentTemplate.value.smsContent;
+  const vars = testForm.value.variables || {};
+  Object.keys(vars).forEach(key => {
+    if (vars[key]) {
+      content = content.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), vars[key]);
+    }
+  });
+  return content;
+};
+
+const autoPreview = () => {
+  if (previewTimer) clearTimeout(previewTimer);
+  previewTimer = setTimeout(() => {
+    const sms = renderSmsPreview();
+    if (sms) {
+      previewResult.value = { ...previewResult.value, smsContent: sms };
+    }
+  }, 300);
 };
 
 // ==================== CRUD 操作 ====================
@@ -876,11 +1013,12 @@ const handleSearch = () => { /* 搜索由计算属性自动处理 */ };
 const handleCreate = () => {
   isEdit.value = false;
   selectedPreset.value = '';
+  editActiveTab.value = 'basic';
   formData.value = {
-    templateCode: '', templateName: '', templateType: 'both', category: 'tenant',
+    templateCode: '', templateName: '', templateType: 'both', category: 'account',
     scene: '', emailSubject: '', emailContent: '', smsContent: '',
     variables: {}, variableDescription: '', isEnabled: 1, isSystem: 0,
-    priority: 'normal', sendEmail: 1, sendSms: 0
+    priority: 'normal', sendEmail: 1, sendSms: 1
   };
   dialogVisible.value = true;
 };
@@ -888,6 +1026,7 @@ const handleCreate = () => {
 const handleEdit = (row: any) => {
   isEdit.value = true;
   selectedPreset.value = '';
+  editActiveTab.value = 'basic';
   formData.value = { ...row, variables: row.variables ? { ...row.variables } : {} };
   dialogVisible.value = true;
 };
@@ -897,11 +1036,9 @@ const handleSave = async () => {
     await formRef.value.validate();
     saving.value = true;
 
-    // 自动设置sendEmail/sendSms
     formData.value.sendEmail = formData.value.templateType !== 'sms' ? 1 : 0;
     formData.value.sendSms = formData.value.templateType !== 'email' ? 1 : 0;
 
-    // 自动生成变量说明
     if (formData.value.variables && Object.keys(formData.value.variables).length > 0) {
       formData.value.variableDescription = Object.entries(formData.value.variables)
         .map(([k, v]) => `{{${k}}} - ${v}`)
@@ -986,14 +1123,28 @@ const handleSendTest = async () => {
     return;
   }
 
+  // 检查是否填写了变量
+  if (currentTemplate.value.variables) {
+    const emptyVars = Object.keys(currentTemplate.value.variables).filter(k => !testForm.value.variables[k]);
+    if (emptyVars.length > 0) {
+      try {
+        await ElMessageBox.confirm(
+          `以下变量未填写：${emptyVars.join(', ')}，发送后这些位置将显示为空。确定继续发送吗？`,
+          '变量未完全填写',
+          { type: 'warning' }
+        );
+      } catch { return; }
+    }
+  }
+
   const confirmLines = [];
-  if (tplType !== 'sms') confirmLines.push(`邮件将发送至: ${testForm.value.recipientEmail}`);
-  if (tplType !== 'email') confirmLines.push(`短信将发送至: ${testForm.value.recipientPhone}`);
+  if (tplType !== 'sms') confirmLines.push(`📧 邮件 → ${testForm.value.recipientEmail}`);
+  if (tplType !== 'email') confirmLines.push(`📱 短信 → ${testForm.value.recipientPhone}`);
 
   try {
     await ElMessageBox.confirm(
-      `确定要发送测试通知吗？\n${confirmLines.join('\n')}`,
-      '发送测试',
+      `确定发送测试通知？\n${confirmLines.join('\n')}`,
+      '发送确认',
       { type: 'info' }
     );
 
@@ -1004,6 +1155,8 @@ const handleSendTest = async () => {
         variables: testForm.value.variables,
         options: {
           priority: 'normal',
+          emailTo: testForm.value.recipientEmail || undefined,
+          smsTo: testForm.value.recipientPhone || undefined,
           to: testForm.value.recipientEmail || testForm.value.recipientPhone
         }
       }
@@ -1016,7 +1169,7 @@ const handleSendTest = async () => {
     }
   } catch (error: any) {
     if (error !== 'cancel') {
-      ElMessage.error(error.response?.data?.message || '发送失败，请检查邮件/短信服务配置');
+      ElMessage.error(error.response?.data?.message || '发送失败，请检查服务配置');
     }
   } finally {
     sending.value = false;
@@ -1032,78 +1185,273 @@ onMounted(() => {
 <style scoped lang="scss">
 .notification-templates {
   .toolbar {
-    margin-bottom: 20px;
+    margin-bottom: 8px;
   }
 
+  // ===== 编辑弹窗样式 =====
   .variable-selector {
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
   }
 
-  .variable-tag {
+  .variable-check-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
     transition: all 0.2s;
+
+    code {
+      font-weight: 600;
+      font-size: 12px;
+    }
+
+    .var-desc {
+      color: #909399;
+      font-size: 12px;
+    }
+
     &:hover {
       transform: translateY(-1px);
-      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
     }
   }
 
-  .variables-display {
+  .selected-variables {
     display: flex;
     flex-wrap: wrap;
+    gap: 6px;
   }
 
-  .form-tip {
-    font-size: 12px;
-    color: #909399;
+  .selected-var-tag {
     code {
-      background: #f5f7fa;
-      padding: 2px 6px;
-      border-radius: 3px;
-      color: #409eff;
+      font-weight: 600;
+      margin-right: 4px;
     }
   }
 
-  .preview-result {
-    margin-top: 10px;
+  .content-editor-section {
+    padding: 8px 0;
+  }
 
-    h4 {
-      margin: 15px 0 10px 0;
-      color: #409eff;
+  .editor-toolbar {
+    display: flex;
+    align-items: center;
+    margin-bottom: 8px;
+  }
+
+  .aliyun-template-info {
+    background: #f0f9eb;
+    border: 1px solid #e1f3d8;
+    border-radius: 8px;
+    padding: 12px 16px;
+    margin-bottom: 16px;
+
+    .info-header {
+      font-weight: 600;
+      color: #67c23a;
       display: flex;
       align-items: center;
       gap: 6px;
+      margin-bottom: 6px;
+      font-size: 13px;
     }
 
-    .preview-box {
-      border: 1px solid #dcdfe6;
-      border-radius: 4px;
-      padding: 15px;
+    .info-content {
+      font-size: 13px;
+      color: #606266;
+      font-family: monospace;
+    }
+  }
+
+  // ===== 测试弹窗样式 =====
+  .test-template-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 16px;
+    background: #f5f7fa;
+    border-radius: 8px;
+    margin-bottom: 16px;
+
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .template-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: #303133;
+    }
+  }
+
+  .test-content {
+    min-height: 400px;
+  }
+
+  .test-input-panel,
+  .test-preview-panel {
+    height: 100%;
+  }
+
+  .panel-section {
+    margin-bottom: 16px;
+
+    .section-label {
+      font-weight: 600;
+      color: #303133;
+      margin-bottom: 12px;
+      font-size: 14px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid #ebeef5;
+    }
+  }
+
+  .variable-input-list {
+    max-height: 360px;
+    overflow-y: auto;
+    padding-right: 4px;
+  }
+
+  .variable-input-item {
+    margin-bottom: 10px;
+
+    .var-label {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 4px;
+      font-size: 12px;
+
+      code {
+        font-weight: 600;
+        color: #409eff;
+        background: #ecf5ff;
+        padding: 1px 6px;
+        border-radius: 3px;
+      }
+
+      .var-label-desc {
+        color: #909399;
+      }
+
+      .var-status-empty {
+        color: #e6a23c;
+        font-size: 14px;
+      }
+
+      .var-status-filled {
+        color: #67c23a;
+        font-size: 14px;
+      }
+    }
+  }
+
+  // 短信手机模拟
+  .sms-phone-mockup {
+    border: 2px solid #dcdfe6;
+    border-radius: 16px;
+    overflow: hidden;
+    margin-bottom: 16px;
+    background: #fff;
+
+    .phone-header {
+      background: linear-gradient(135deg, #409eff, #337ecc);
+      color: white;
+      padding: 10px 16px;
+      font-size: 14px;
+      font-weight: 600;
+      text-align: center;
+    }
+
+    .phone-body {
+      padding: 16px;
+      min-height: 120px;
       background: #f5f7fa;
-      min-height: 50px;
     }
 
-    .email-content {
-      max-height: 400px;
-      overflow-y: auto;
+    .sms-bubble {
+      background: white;
+      padding: 12px 16px;
+      border-radius: 0 12px 12px 12px;
+      font-size: 14px;
+      line-height: 1.6;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+      word-break: break-all;
     }
 
-    .sms-box {
-      position: relative;
-      padding-bottom: 30px;
+    .sms-placeholder {
+      color: #c0c4cc;
+      font-style: italic;
     }
 
-    .sms-count {
-      position: absolute;
-      bottom: 8px;
-      right: 12px;
+    .sms-meta {
+      text-align: right;
       font-size: 12px;
       color: #909399;
+      margin-top: 8px;
+    }
+  }
+
+  // 邮件预览卡片
+  .email-preview-card {
+    border: 1px solid #dcdfe6;
+    border-radius: 8px;
+    overflow: hidden;
+
+    .email-header-bar {
+      background: #f5f7fa;
+      padding: 10px 16px;
+      font-size: 14px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      color: #606266;
+      border-bottom: 1px solid #ebeef5;
     }
 
-    .email-preview {
-      margin-bottom: 20px;
+    .email-subject-preview {
+      padding: 10px 16px;
+      font-size: 13px;
+      border-bottom: 1px solid #ebeef5;
+      background: #fafafa;
+    }
+
+    .email-body-preview {
+      padding: 16px;
+      max-height: 300px;
+      overflow-y: auto;
+      font-size: 14px;
+      line-height: 1.6;
+    }
+
+    .email-placeholder {
+      color: #c0c4cc;
+      font-style: italic;
+      text-align: center;
+      padding: 40px 16px;
+    }
+  }
+
+  .test-dialog-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+
+    .footer-actions {
+      display: flex;
+      gap: 8px;
     }
   }
 }

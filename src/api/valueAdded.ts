@@ -102,6 +102,7 @@ export interface ValueAddedStats {
   invalid: { count: number; amount: number }
   unsettled: { count: number; amount: number }
   settled: { count: number; amount: number }
+  unsettledAll?: { count: number; amount: number }  // 新增：全部未结算（含无效和补单）
 }
 
 // 结算报表数据接口

@@ -6,6 +6,7 @@ import { AppDataSource } from '../config/database';
 import { v4 as uuidv4 } from 'uuid';
 import bcrypt from 'bcryptjs';
 
+import { log } from '../config/logger';
 /**
  * 系统管理部常量
  */
@@ -55,7 +56,7 @@ export const createSystemDepartment = async (tenantId: string | null): Promise<s
     }
 
     if (existing.length > 0) {
-      console.log(`[AdminAccountHelper] 系统管理部已存在 (租户ID: ${tenantId || '私有部署'})`);
+      log.info(`[AdminAccountHelper] 系统管理部已存在 (租户ID: ${tenantId || '私有部署'})`);
       return existing[0].id;
     }
 
@@ -75,10 +76,10 @@ export const createSystemDepartment = async (tenantId: string | null): Promise<s
       ]
     );
 
-    console.log(`[AdminAccountHelper] ✅ 已创建系统管理部: ${departmentId} (租户ID: ${tenantId || '私有部署'})`);
+    log.info(`[AdminAccountHelper] ✅ 已创建系统管理部: ${departmentId} (租户ID: ${tenantId || '私有部署'})`);
     return departmentId;
   } catch (error) {
-    console.error('[AdminAccountHelper] 创建系统管理部失败:', error);
+    log.error('[AdminAccountHelper] 创建系统管理部失败:', error);
     throw error;
   }
 };
@@ -114,7 +115,7 @@ export const createDefaultAdmin = async (params: {
   }
 
   if (existing.length > 0) {
-    console.warn(`[AdminAccountHelper] 用户名 ${phone} 已存在，跳过创建`);
+    log.warn(`[AdminAccountHelper] 用户名 ${phone} 已存在，跳过创建`);
     return { username: phone, password: generateDefaultPassword(), departmentId };
   }
 
@@ -133,7 +134,7 @@ export const createDefaultAdmin = async (params: {
      departmentId, SYSTEM_DEPARTMENT.NAME, now, now]
   );
 
-  console.log(`[AdminAccountHelper] ✅ 已创建管理员账号: ${phone} (租户ID: ${tenantId || '私有部署'}, 部门: ${SYSTEM_DEPARTMENT.NAME})`);
+  log.info(`[AdminAccountHelper] ✅ 已创建管理员账号: ${phone} (租户ID: ${tenantId || '私有部署'}, 部门: ${SYSTEM_DEPARTMENT.NAME})`);
   return { username: phone, password, departmentId };
 };
 

@@ -1,5 +1,12 @@
 # 私有部署 vs SaaS版本 - 统一开发方案
 
+> **文档版本更新记录**
+>
+> | 版本 | 日期 | 摘要 | 重要程度 |
+> |------|------|------|----------|
+> | v1.0 | 2026-03-02 | 初版，确定统一代码+配置区分方案 | - |
+> | v1.1 | 2026-04-02 | 补充SaaS守卫保护机制（RSA签名），deploy.ts effectiveMode改造 | ⭐⭐⭐ 极高 |
+
 ## 🎯 核心答案
 
 **不需要分开开发!** ⭐
@@ -480,5 +487,43 @@ if (deployConfig.isSaaS()) {
 
 **结论**: 不需要分开开发,使用同一套代码,通过配置区分! ⭐
 
+---
+
+## 🔐 SaaS 模式防篡改保护（2026-04-02 新增）
+
+### 问题
+仅靠环境变量 `DEPLOY_MODE=saas` 控制，私有客户修改一行即可解锁多租户功能。
+
+### 解决方案：RSA 签名守卫
+
+SaaS 模式需要额外的 `SAAS_LICENSE_TOKEN`（RS256 签名 JWT），由平台运营方用 RSA 私钥签发，后端用硬编码的公钥验证。客户没有私钥，无法伪造。
+
+```
+DEPLOY_MODE=saas + 有效SAAS_LICENSE_TOKEN → SaaS模式正常运行
+DEPLOY_MODE=saas + 无Token/伪造Token    → 自动降级为private模式
+DEPLOY_MODE=private                     → 直接私有模式（无需Token）
+```
+
+### deploy.ts 改造
+
+```typescript
+// 原来（不安全）
+isSaaS: () => deployConfig.mode === 'saas'
+
+// 现在（安全）—— 基于验证后的 effectiveMode
+isSaaS: () => deployConfig.effectiveMode === 'saas'
+// effectiveMode 由 SaaSGuardService 验证通过后才为 'saas'
+// 验证失败则被强制设为 'private'
+```
+
+### 相关文件
+- `backend/src/services/SaaSGuardService.ts` — RSA公钥验证逻辑
+- `backend/src/middleware/saasGuard.ts` — 路由级守卫中间件
+- `backend/scripts/generate-saas-license.js` — 许可签发工具（含私钥，**绝不交付客户**）
+- `docs/重要文件/部署模式许可证管理-运营方完整操作手册（机密）.md` — 完整操作手册
+
+---
+
 **文档创建时间**: 2026-03-02  
-**推荐方案**: 统一开发 + 配置区分
+**最后更新时间**: 2026-04-02  
+**推荐方案**: 统一开发 + 配置区分 + RSA签名守卫

@@ -4,7 +4,7 @@
       <template #header>
         <div class="card-header">
           <span>管理员账号</span>
-          <el-button type="primary" @click="handleAdd"><el-icon><Plus /></el-icon>新增管理员</el-button>
+          <el-button v-permission="'settings:admins:create'" type="primary" @click="handleAdd"><el-icon><Plus /></el-icon>新增管理员</el-button>
         </div>
       </template>
 
@@ -13,9 +13,10 @@
         <el-table-column prop="name" label="姓名" width="120" />
         <el-table-column prop="email" label="邮箱" min-width="180" />
         <el-table-column prop="phone" label="手机号" width="130" />
-        <el-table-column prop="role" label="角色" width="120">
+        <el-table-column prop="role" label="角色" width="160">
           <template #default="{ row }">
             <el-tag :type="getRoleType(row.role)" size="small">{{ getRoleText(row.role) }}</el-tag>
+            <div v-if="row.roleName" class="role-name-sub">{{ row.roleName }}</div>
           </template>
         </el-table-column>
         <el-table-column prop="status" label="状态" width="80">
@@ -30,9 +31,11 @@
         </el-table-column>
         <el-table-column label="操作" width="200" fixed="right">
           <template #default="{ row }">
-            <el-button link type="primary" @click="handleEdit(row)">编辑</el-button>
-            <el-button link type="warning" @click="handleResetPwd(row)">重置密码</el-button>
-            <el-button v-if="row.role !== 'super_admin' && row.id !== currentUserId" link
+            <el-button v-permission="'settings:admins:edit'" link type="primary" @click="handleEdit(row)">编辑</el-button>
+            <el-button v-permission="'settings:admins:edit'" link type="warning" @click="handleResetPwd(row)">重置密码</el-button>
+            <el-button v-if="row.role !== 'super_admin' && row.id !== currentUserId"
+              v-permission="'settings:admins:edit'"
+              link
               :type="row.status === 'active' ? 'danger' : 'success'" @click="handleToggle(row)">
               {{ row.status === 'active' ? '禁用' : '启用' }}
             </el-button>
@@ -58,11 +61,29 @@
         <el-form-item v-if="!editingId" label="密码" prop="password">
           <el-input v-model="form.password" type="password" show-password placeholder="请输入密码" />
         </el-form-item>
-        <el-form-item label="角色" prop="role">
-          <el-select v-model="form.role" style="width: 100%" placeholder="请选择角色">
-            <el-option label="管理员" value="admin" />
+        <el-form-item label="用户类型" prop="role">
+          <el-select v-model="form.role" style="width: 100%" placeholder="请选择用户类型" @change="onRoleTypeChange">
             <el-option label="超级管理员" value="super_admin" />
+            <el-option label="管理员" value="admin" />
+            <el-option label="操作员" value="operator" />
           </el-select>
+          <div class="form-tip">超级管理员拥有全部权限，管理员和操作员需分配角色来控制权限</div>
+        </el-form-item>
+        <el-form-item v-if="form.role !== 'super_admin'" label="分配角色" prop="roleId">
+          <el-select v-model="form.roleId" style="width: 100%" placeholder="请选择角色（决定可访问的菜单和功能）" clearable>
+            <el-option
+              v-for="role in availableRoles"
+              :key="role.id"
+              :label="role.name"
+              :value="role.id"
+            >
+              <div class="role-option">
+                <span>{{ role.name }}</span>
+                <span class="role-option-desc">{{ role.description || role.code }}</span>
+              </div>
+            </el-option>
+          </el-select>
+          <div class="form-tip">不分配角色时，该用户将没有任何菜单访问权限</div>
         </el-form-item>
       </el-form>
       <template #footer>
@@ -109,14 +130,31 @@ const resetPwdUserId = ref<string | null>(null)
 const formRef = ref<FormInstance>()
 const resetPwdFormRef = ref<FormInstance>()
 
-const form = reactive({ username: '', name: '', email: '', phone: '', password: '', role: 'admin' })
+// 角色列表（用于下拉选择）
+const allRoles = ref<any[]>([])
+
+// 可选角色（排除超级管理员角色）
+const availableRoles = computed(() => {
+  return allRoles.value.filter(r => r.code !== 'super_admin' && r.status === 'active')
+})
+
+const form = reactive({
+  username: '',
+  name: '',
+  email: '',
+  phone: '',
+  password: '',
+  role: 'operator',
+  roleId: '' as string | null
+})
+
 const resetPwdForm = reactive({ newPassword: '', confirmPassword: '' })
 
 const baseRules: FormRules = {
   username: [{ required: true, message: '请输入用户名', trigger: 'blur' }],
   name: [{ required: true, message: '请输入姓名', trigger: 'blur' }],
   email: [{ type: 'email', message: '邮箱格式不正确', trigger: 'blur' }],
-  role: [{ required: true, message: '请选择角色', trigger: 'change' }]
+  role: [{ required: true, message: '请选择用户类型', trigger: 'change' }]
 }
 
 const computedRules = computed<FormRules>(() => {
@@ -140,19 +178,33 @@ const resetPwdRules: FormRules = {
 
 const tableData = ref<any[]>([])
 
-const getRoleType = (role: string) => ({ super_admin: 'danger', admin: 'primary' }[role] || 'info')
-const getRoleText = (role: string) => ({ super_admin: '超级管理员', admin: '管理员' }[role] || role)
+const getRoleType = (role: string) => ({ super_admin: 'danger', admin: 'primary', operator: '' }[role] || 'info')
+const getRoleText = (role: string) => ({ super_admin: '超级管理员', admin: '管理员', operator: '操作员' }[role] || role)
 const formatDate = (date: string) => date ? new Date(date).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) : '-'
+
+const onRoleTypeChange = (val: string) => {
+  if (val === 'super_admin') {
+    form.roleId = null
+  }
+}
 
 const handleAdd = () => {
   editingId.value = null
-  Object.assign(form, { username: '', name: '', email: '', phone: '', password: '', role: 'admin' })
+  Object.assign(form, { username: '', name: '', email: '', phone: '', password: '', role: 'operator', roleId: null })
   showDialog.value = true
 }
 
 const handleEdit = (row: any) => {
   editingId.value = row.id
-  Object.assign(form, { username: row.username, name: row.name || '', email: row.email || '', phone: row.phone || '', password: '', role: row.role })
+  Object.assign(form, {
+    username: row.username,
+    name: row.name || '',
+    email: row.email || '',
+    phone: row.phone || '',
+    password: '',
+    role: row.role,
+    roleId: row.roleId || null
+  })
   showDialog.value = true
 }
 
@@ -195,11 +247,18 @@ const handleSubmit = async () => {
   try {
     if (editingId.value) {
       await adminApi.updateAdminUser(editingId.value, {
-        name: form.name, email: form.email, phone: form.phone, role: form.role
+        name: form.name,
+        email: form.email,
+        phone: form.phone,
+        role: form.role,
+        roleId: form.role === 'super_admin' ? null : (form.roleId || null)
       })
       ElMessage.success('更新成功')
     } else {
-      await adminApi.createAdminUser(form)
+      await adminApi.createAdminUser({
+        ...form,
+        roleId: form.role === 'super_admin' ? null : (form.roleId || null)
+      })
       ElMessage.success('创建成功')
     }
     showDialog.value = false
@@ -216,6 +275,13 @@ const resetForm = () => {
   editingId.value = null
 }
 
+// 获取角色名称
+const getRoleName = (roleId: string) => {
+  if (!roleId) return ''
+  const role = allRoles.value.find(r => r.id === roleId)
+  return role ? role.name : ''
+}
+
 const fetchData = async () => {
   loading.value = true
   try {
@@ -223,26 +289,69 @@ const fetchData = async () => {
     if (res.success) {
       // 处理分页响应格式 {list: [], total: 0} 或直接数组
       const userList = res.data?.list || res.data || []
-      tableData.value = userList
+      // 为每个用户附加角色名称
+      tableData.value = userList.map((u: any) => ({
+        ...u,
+        roleName: getRoleName(u.roleId)
+      }))
     }
   } catch (e) {
     console.error('获取管理员列表失败:', e)
     ElMessage.error('获取管理员列表失败')
-    // 使用模拟数据
-    tableData.value = [
-      { id: '1', username: 'admin', name: '超级管理员', email: 'admin@example.com', phone: '13800138000', role: 'super_admin', status: 'active', lastLoginAt: '2026-01-05 10:30:00' },
-      { id: '2', username: 'manager', name: '张三', email: 'zhangsan@example.com', phone: '13900139000', role: 'admin', status: 'active', lastLoginAt: '2026-01-04 15:20:00' }
-    ]
+    tableData.value = []
   } finally {
     loading.value = false
   }
 }
 
-onMounted(() => fetchData())
+const fetchRoles = async () => {
+  try {
+    const res = await adminApi.getRoles()
+    if (res.success) {
+      allRoles.value = res.data || []
+    }
+  } catch (e) {
+    console.error('获取角色列表失败:', e)
+  }
+}
+
+onMounted(async () => {
+  await fetchRoles()
+  fetchData()
+})
 </script>
 
 <style scoped lang="scss">
 .page-container { padding: 0; }
 .table-card { border-radius: 8px; border: none; }
 .card-header { display: flex; justify-content: space-between; align-items: center; }
+
+.role-name-sub {
+  font-size: 12px;
+  color: #909399;
+  margin-top: 2px;
+}
+
+.role-option {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+
+  .role-option-desc {
+    font-size: 12px;
+    color: #909399;
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+.form-tip {
+  font-size: 12px;
+  color: #909399;
+  margin-top: 4px;
+  line-height: 1.4;
+}
 </style>

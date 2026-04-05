@@ -1,12 +1,10 @@
 <template>
   <div class="notification-bell-container">
     <el-popover
-      :visible="visible"
+      :visible="popVisible"
       placement="bottom-end"
       :width="400"
-      trigger="click"
       popper-class="notification-popover"
-      @update:visible="val => visible = val"
     >
       <template #reference>
         <div class="bell-trigger" @click="onBellClick">
@@ -77,18 +75,66 @@
         </el-button>
       </div>
     </el-popover>
+
+    <!-- 消息详情弹窗 -->
+    <el-dialog
+      v-model="detailVisible"
+      title="消息详情"
+      width="520px"
+      :close-on-click-modal="true"
+      destroy-on-close
+      @closed="onDetailClosed"
+    >
+      <div v-if="detailItem" class="detail-content">
+        <div class="detail-header-row">
+          <div class="detail-level-icon" :class="`level-${detailItem.level}`">
+            <el-icon v-if="detailItem.level === 'success'" :size="20"><CircleCheck /></el-icon>
+            <el-icon v-else-if="detailItem.level === 'warning'" :size="20"><Warning /></el-icon>
+            <el-icon v-else-if="detailItem.level === 'error'" :size="20"><CircleClose /></el-icon>
+            <el-icon v-else :size="20"><InfoFilled /></el-icon>
+          </div>
+          <div class="detail-title-area">
+            <h3 class="detail-title">{{ detailItem.title }}</h3>
+            <div class="detail-tags">
+              <el-tag :type="getLevelTagType(detailItem.level)" size="small" effect="plain">{{ getLevelText(detailItem.level) }}</el-tag>
+              <el-tag size="small">{{ getEventLabel(detailItem.event_type) }}</el-tag>
+              <el-tag v-if="!detailItem.is_read" type="danger" size="small" effect="dark">未读</el-tag>
+              <el-tag v-else type="info" size="small">已读</el-tag>
+            </div>
+          </div>
+        </div>
+        <el-divider style="margin: 12px 0;" />
+        <div class="detail-body">
+          <p class="detail-text">{{ detailItem.content }}</p>
+        </div>
+        <div class="detail-footer-info">
+          <span class="detail-time">
+            <el-icon :size="14"><Clock /></el-icon>
+            {{ formatFullTime(detailItem.created_at) }}
+          </span>
+        </div>
+      </div>
+      <template #footer>
+        <div class="detail-dialog-footer">
+          <el-button v-if="detailItem && !detailItem.is_read" type="primary" @click="markDetailRead">
+            标为已读
+          </el-button>
+          <el-button @click="detailVisible = false">关闭</el-button>
+        </div>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, watch } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Bell, CircleCheck, Warning, CircleClose, InfoFilled, Delete, Setting } from '@element-plus/icons-vue'
+import { Bell, CircleCheck, Warning, CircleClose, InfoFilled, Delete, Setting, Clock } from '@element-plus/icons-vue'
 import request from '@/api/request'
 
 const router = useRouter()
-const visible = ref(false)
+const popVisible = ref(false)
 const loading = ref(false)
 const unreadCount = ref(0)
 const notifications = ref<any[]>([])
@@ -98,6 +144,9 @@ const pageSize = 15
 const total = ref(0)
 const hasMore = ref(false)
 let pollTimer: ReturnType<typeof setInterval> | null = null
+
+// 用于追踪弹窗打开前 popover 是否可见，以便弹窗关闭后恢复
+let popWasVisible = false
 
 const eventLabels: Record<string, string> = {
   tenant_registered: '新注册',
@@ -115,13 +164,20 @@ const getEventLabel = (type: string) => eventLabels[type] || type
 const formatTime = (time: string) => {
   if (!time) return ''
   const d = new Date(time)
+  if (isNaN(d.getTime())) return ''
   const now = new Date()
   const diff = now.getTime() - d.getTime()
   if (diff < 60000) return '刚刚'
   if (diff < 3600000) return `${Math.floor(diff / 60000)}分钟前`
   if (diff < 86400000) return `${Math.floor(diff / 3600000)}小时前`
   if (diff < 172800000) return '昨天'
-  return d.toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+  return d.toLocaleString('zh-CN', {
+    timeZone: 'Asia/Shanghai',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit'
+  })
 }
 
 const fetchUnreadCount = async () => {
@@ -131,9 +187,38 @@ const fetchUnreadCount = async () => {
   } catch {}
 }
 
+// ===== Popover 手动控制（解决点击通知项弹窗打开后 popover 消失的问题）=====
+let clickOutsideHandler: ((e: MouseEvent) => void) | null = null
+
 const onBellClick = () => {
-  visible.value = !visible.value
-  if (visible.value) loadNotifications()
+  popVisible.value = !popVisible.value
+  if (popVisible.value) {
+    loadNotifications()
+    // 延迟注册外部点击监听，避免当前点击事件触发关闭
+    setTimeout(() => {
+      clickOutsideHandler = (e: MouseEvent) => {
+        const target = e.target as HTMLElement
+        // 如果详情弹窗正在打开，不关闭 popover
+        if (detailVisible.value) return
+        // 如果点击在 popover 内部或铃铛按钮上，不关闭
+        const popoverEl = document.querySelector('.notification-popover')
+        const bellEl = document.querySelector('.bell-trigger')
+        if (popoverEl?.contains(target) || bellEl?.contains(target)) return
+        closePopover()
+      }
+      document.addEventListener('click', clickOutsideHandler, true)
+    }, 0)
+  } else {
+    closePopover()
+  }
+}
+
+const closePopover = () => {
+  popVisible.value = false
+  if (clickOutsideHandler) {
+    document.removeEventListener('click', clickOutsideHandler, true)
+    clickOutsideHandler = null
+  }
 }
 
 const loadNotifications = async () => {
@@ -166,7 +251,37 @@ const loadMore = async () => {
   } catch {}
 }
 
+// ===== 消息详情弹窗 =====
+const detailVisible = ref(false)
+const detailItem = ref<any>(null)
+
+const getLevelTagType = (level: string) => {
+  const map: Record<string, string> = { info: 'primary', success: 'success', warning: 'warning', error: 'danger' }
+  return map[level] || 'info'
+}
+
+const getLevelText = (level: string) => {
+  const map: Record<string, string> = { info: '信息', success: '成功', warning: '警告', error: '错误' }
+  return map[level] || '信息'
+}
+
+const formatFullTime = (time: string) => {
+  if (!time) return '-'
+  const d = new Date(time)
+  if (isNaN(d.getTime())) return '-'
+  return d.toLocaleString('zh-CN', {
+    timeZone: 'Asia/Shanghai',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit'
+  })
+}
+
 const handleItemClick = async (item: any) => {
+  // 标记已读
   if (!item.is_read) {
     try {
       await request.put(`/notifications/${item.id}/read`)
@@ -174,6 +289,27 @@ const handleItemClick = async (item: any) => {
       unreadCount.value = Math.max(0, unreadCount.value - 1)
     } catch {}
   }
+  // 记住 popover 状态，打开详情弹窗
+  popWasVisible = popVisible.value
+  detailItem.value = item
+  detailVisible.value = true
+}
+
+const onDetailClosed = () => {
+  // 详情弹窗关闭后恢复 popover 显示状态
+  if (popWasVisible) {
+    popVisible.value = true
+  }
+}
+
+const markDetailRead = async () => {
+  if (!detailItem.value || detailItem.value.is_read) return
+  try {
+    await request.put(`/notifications/${detailItem.value.id}/read`)
+    detailItem.value.is_read = 1
+    unreadCount.value = Math.max(0, unreadCount.value - 1)
+    ElMessage.success('已标记为已读')
+  } catch {}
 }
 
 const handleMarkAllRead = async () => {
@@ -208,7 +344,7 @@ const handleClearAll = async () => {
 }
 
 const goToSettings = () => {
-  visible.value = false
+  closePopover()
   router.push('/settings/notification-service')
 }
 
@@ -216,7 +352,12 @@ onMounted(() => {
   fetchUnreadCount()
   pollTimer = setInterval(fetchUnreadCount, 30000)
 })
-onUnmounted(() => { if (pollTimer) clearInterval(pollTimer) })
+onUnmounted(() => {
+  if (pollTimer) clearInterval(pollTimer)
+  if (clickOutsideHandler) {
+    document.removeEventListener('click', clickOutsideHandler, true)
+  }
+})
 </script>
 
 <style scoped>
@@ -303,6 +444,30 @@ onUnmounted(() => { if (pollTimer) clearInterval(pollTimer) })
   border-top: 1px solid #ebeef5;
   text-align: center;
 }
+
+/* 消息详情弹窗 */
+.detail-content { padding: 0 4px; }
+.detail-header-row { display: flex; align-items: flex-start; gap: 12px; }
+.detail-level-icon {
+  width: 40px; height: 40px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
+.detail-level-icon.level-info { background: #e6f4ff; color: #409eff; }
+.detail-level-icon.level-success { background: #e8f5e9; color: #67c23a; }
+.detail-level-icon.level-warning { background: #fff8e1; color: #e6a23c; }
+.detail-level-icon.level-error { background: #fde2e2; color: #f56c6c; }
+.detail-title-area { flex: 1; min-width: 0; }
+.detail-title { margin: 0 0 8px; font-size: 16px; font-weight: 600; color: #303133; word-break: break-word; }
+.detail-tags { display: flex; gap: 6px; flex-wrap: wrap; }
+.detail-body { padding: 8px 0; }
+.detail-text { font-size: 14px; line-height: 1.8; color: #606266; white-space: pre-wrap; word-break: break-word; margin: 0; }
+.detail-footer-info {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-top: 12px; padding-top: 10px; border-top: 1px solid #f0f2f5;
+  font-size: 12px; color: #909399;
+}
+.detail-time { display: flex; align-items: center; gap: 4px; }
+.detail-dialog-footer { text-align: right; }
 </style>
 
 <style>

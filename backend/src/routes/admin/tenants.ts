@@ -5,7 +5,10 @@ import { Router, Request, Response } from 'express';
 import { AppDataSource } from '../../config/database';
 import { v4 as uuidv4 } from 'uuid';
 import crypto from 'crypto';
+import fs from 'fs';
+import path from 'path';
 
+import { log } from '../../config/logger';
 const router = Router();
 
 // 🔥 正确获取客户端IP（支持代理/反向代理）
@@ -37,16 +40,53 @@ const generateTenantLicenseKey = (): string => {
 // 获取租户列表
 router.get('/', async (req: Request, res: Response) => {
   try {
-    const { page = 1, pageSize = 20, status, keyword, packageId } = req.query;
+    const { page = 1, pageSize = 20, status, keyword, packageId, licenseStatus } = req.query;
     const pageNum = parseInt(page as string) || 1;
     const pageSizeNum = Math.min(parseInt(pageSize as string) || 20, 100);
     const offset = (pageNum - 1) * pageSizeNum;
 
+    // 检查 subscriptions 表是否存在
+    let hasSubscriptionsTable = false;
+    try {
+      const tableCheck = await AppDataSource.query(
+        `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'subscriptions'`
+      );
+      hasSubscriptionsTable = tableCheck.length > 0;
+    } catch { /* ignore */ }
+
+    const subJoin = hasSubscriptionsTable
+      ? `LEFT JOIN (
+           SELECT tenant_id,
+                  SUBSTRING_INDEX(GROUP_CONCAT(status ORDER BY created_at DESC), ',', 1) as subscription_status,
+                  SUBSTRING_INDEX(GROUP_CONCAT(channel ORDER BY created_at DESC), ',', 1) as subscription_channel
+           FROM subscriptions
+           WHERE status IN ('active','signing','paused')
+           GROUP BY tenant_id
+         ) sub ON sub.tenant_id COLLATE utf8mb4_unicode_ci = t.id COLLATE utf8mb4_unicode_ci`
+      : '';
+    const subSelect = hasSubscriptionsTable
+      ? `, sub.subscription_status, sub.subscription_channel`
+      : '';
+
+    // 检查 used_storage_mb 列是否存在
+    let hasStorageCol = true;
+    try {
+      const storageCheck = await AppDataSource.query(
+        `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'tenants' AND COLUMN_NAME = 'used_storage_mb'`
+      );
+      hasStorageCol = storageCheck.length > 0;
+    } catch { /* ignore */ }
+
+    const storageSelect = hasStorageCol ? `, COALESCE(t.used_storage_mb, 0) as used_storage_mb` : '';
+
     let sql = `SELECT t.*, p.name as package_name,
-               (SELECT COUNT(*) FROM users u WHERE u.tenant_id = t.id) as real_user_count,
-               COALESCE(t.used_storage_mb, 0) as used_storage_mb
+               (SELECT COUNT(*) FROM users u WHERE u.tenant_id COLLATE utf8mb4_unicode_ci = t.id COLLATE utf8mb4_unicode_ci) as real_user_count
+               ${storageSelect}
+               ${subSelect}
                FROM tenants t
-               LEFT JOIN tenant_packages p ON t.package_id = p.id WHERE 1=1`;
+               LEFT JOIN tenant_packages p ON t.package_id COLLATE utf8mb4_unicode_ci = p.id COLLATE utf8mb4_unicode_ci
+               ${subJoin}
+               WHERE 1=1`;
     const params: any[] = [];
 
     if (status) {
@@ -61,10 +101,15 @@ router.get('/', async (req: Request, res: Response) => {
       sql += ` AND t.package_id = ?`;
       params.push(packageId);
     }
+    if (licenseStatus) {
+      sql += ` AND t.license_status = ?`;
+      params.push(licenseStatus);
+    }
 
     // 提取WHERE条件用于计数查询
     const whereConditions = (sql.split('WHERE 1=1')[1] || '');
-    const countSql = `SELECT COUNT(*) as total FROM tenants t LEFT JOIN tenant_packages p ON t.package_id = p.id WHERE 1=1` + whereConditions;
+    const countSql = `SELECT COUNT(*) as total FROM tenants t LEFT JOIN tenant_packages p ON t.package_id COLLATE utf8mb4_unicode_ci = p.id COLLATE utf8mb4_unicode_ci WHERE 1=1` + whereConditions;
+    // subscription子查询内部已经GROUP BY tenant_id去重，无需外层GROUP BY
     sql += ` ORDER BY t.created_at DESC LIMIT ? OFFSET ?`;
     params.push(pageSizeNum, offset);
 
@@ -78,7 +123,9 @@ router.get('/', async (req: Request, res: Response) => {
       user_count: Number(row.real_user_count ?? row.user_count ?? 0),
       used_storage_mb: Number(row.used_storage_mb ?? 0),
       max_users: Number(row.max_users ?? 0),
-      max_storage_gb: Number(row.max_storage_gb ?? 0)
+      max_storage_gb: Number(row.max_storage_gb ?? 0),
+      subscription_status: row.subscription_status || null,
+      subscription_channel: row.subscription_channel || null
     }));
 
     res.json({
@@ -86,7 +133,7 @@ router.get('/', async (req: Request, res: Response) => {
       data: { list: mappedList, total, page: pageNum, pageSize: pageSizeNum }
     });
   } catch (error: any) {
-    console.error('[Admin Tenants] Get list failed:', error);
+    log.error('[Admin Tenants] Get list failed:', error);
     res.status(500).json({ success: false, message: '获取租户列表失败' });
   }
 });
@@ -97,7 +144,7 @@ router.get('/:id', async (req: Request, res: Response) => {
     const { id } = req.params;
     const rows = await AppDataSource.query(
       `SELECT t.*, p.name as package_name, p.modules as package_modules FROM tenants t
-       LEFT JOIN tenant_packages p ON t.package_id = p.id WHERE t.id = ?`, [id]
+       LEFT JOIN tenant_packages p ON t.package_id COLLATE utf8mb4_unicode_ci = p.id COLLATE utf8mb4_unicode_ci WHERE t.id = ?`, [id]
     );
     const tenant = Array.isArray(rows) ? rows[0] : rows;
 
@@ -110,6 +157,23 @@ router.get('/:id', async (req: Request, res: Response) => {
       `SELECT COUNT(*) as cnt FROM users WHERE tenant_id = ?`, [id]
     );
     tenant.user_count = Number(userCountRows[0]?.cnt || 0);
+
+    // 🔥 查询该租户的订阅状态（优先返回活跃/签约中/暂停状态，其次返回最近的已取消/已过期）
+    try {
+      const subRows = await AppDataSource.query(
+        `SELECT status as subscription_status, channel as subscription_channel, amount as subscription_amount,
+                billing_cycle as subscription_billing_cycle, next_deduct_date, sign_date, cancel_date, cancel_reason
+         FROM subscriptions WHERE tenant_id = ?
+         ORDER BY FIELD(status, 'active', 'signing', 'paused', 'cancelled', 'expired') ASC, created_at DESC LIMIT 1`, [id]
+      );
+      if (subRows.length > 0) {
+        Object.assign(tenant, subRows[0]);
+      } else {
+        tenant.subscription_status = null;
+      }
+    } catch {
+      tenant.subscription_status = null;
+    }
 
     // 🔥 查询创建人信息（从首条生成日志获取）
     try {
@@ -200,7 +264,7 @@ router.get('/:id', async (req: Request, res: Response) => {
       tenantModules = ['dashboard', 'customer', 'order', 'system'];
       // 自动写入数据库，确保下次不再为空
       AppDataSource.query('UPDATE tenants SET features = ? WHERE id = ?', [JSON.stringify(tenantModules), id]).catch(() => {});
-      console.log(`[Admin Tenants] 租户 ${id} 模块为空，已填充默认核心模块: ${tenantModules.join(',')}`);
+      log.info(`[Admin Tenants] 租户 ${id} 模块为空，已填充默认核心模块: ${tenantModules.join(',')}`);
     }
 
     // 附加解析后的modules到返回数据
@@ -266,12 +330,12 @@ router.get('/:id', async (req: Request, res: Response) => {
       }
     } catch (storageErr) {
       // 存储计算失败不影响主流程，使用数据库中的值
-      console.log('[Admin Tenants] 存储空间动态计算跳过（表可能不存在）:', (storageErr as any).message?.substring(0, 60));
+      log.info('[Admin Tenants] 存储空间动态计算跳过（表可能不存在）:', (storageErr as any).message?.substring(0, 60));
     }
 
     res.json({ success: true, data: tenant });
   } catch (error: any) {
-    console.error('[Admin Tenants] Get detail failed:', error);
+    log.error('[Admin Tenants] Get detail failed:', error);
     res.status(500).json({ success: false, message: '获取租户详情失败' });
   }
 });
@@ -353,7 +417,7 @@ router.post('/', async (req: Request, res: Response) => {
           }
         }
       } catch (e) {
-        console.log('[Admin Tenants] 获取套餐模块信息失败，使用默认:', (e as any).message);
+        log.info('[Admin Tenants] 获取套餐模块信息失败，使用默认:', (e as any).message);
       }
     }
     // 如果套餐没有提供模块信息，使用前端传入的features（非空数组时）
@@ -388,7 +452,7 @@ router.post('/', async (req: Request, res: Response) => {
           }
         }
       } catch (e) {
-        console.log('[Admin Tenants] 获取套餐价格信息失败:', (e as any).message);
+        log.info('[Admin Tenants] 获取套餐价格信息失败:', (e as any).message);
       }
     }
 
@@ -416,7 +480,7 @@ router.post('/', async (req: Request, res: Response) => {
 
       adminAccount = { username: adminUsername, password: defaultPassword };
     } catch (adminErr) {
-      console.log('[Admin Tenants] 创建管理员账号失败（可能已存在）:', (adminErr as any).message?.substring(0, 80));
+      log.info('[Admin Tenants] 创建管理员账号失败（可能已存在）:', (adminErr as any).message?.substring(0, 80));
     }
 
     // 记录日志
@@ -438,7 +502,7 @@ router.post('/', async (req: Request, res: Response) => {
       message: '租户创建成功，授权码已生成'
     });
   } catch (error: any) {
-    console.error('[Admin Tenants] Create failed:', error);
+    log.error('[Admin Tenants] Create failed:', error);
     res.status(500).json({ success: false, message: '创建租户失败' });
   }
 });
@@ -489,7 +553,7 @@ router.put('/:id', async (req: Request, res: Response) => {
 
     res.json({ success: true, message: '租户更新成功' });
   } catch (error: any) {
-    console.error('[Admin Tenants] Update failed:', error);
+    log.error('[Admin Tenants] Update failed:', error);
     res.status(500).json({ success: false, message: '更新租户失败' });
   }
 });
@@ -523,7 +587,7 @@ router.post('/:id/regenerate-license', async (req: Request, res: Response) => {
 
     res.json({ success: true, data: { licenseKey: newLicenseKey }, message: '授权码已重新生成' });
   } catch (error: any) {
-    console.error('[Admin Tenants] Regenerate license failed:', error);
+    log.error('[Admin Tenants] Regenerate license failed:', error);
     res.status(500).json({ success: false, message: '重新生成授权码失败' });
   }
 });
@@ -547,7 +611,7 @@ router.post('/:id/suspend', async (req: Request, res: Response) => {
 
     res.json({ success: true, message: '租户授权已暂停' });
   } catch (error: any) {
-    console.error('[Admin Tenants] Suspend failed:', error);
+    log.error('[Admin Tenants] Suspend failed:', error);
     res.status(500).json({ success: false, message: '暂停授权失败' });
   }
 });
@@ -570,7 +634,7 @@ router.post('/:id/resume', async (req: Request, res: Response) => {
 
     res.json({ success: true, message: '租户授权已恢复' });
   } catch (error: any) {
-    console.error('[Admin Tenants] Resume failed:', error);
+    log.error('[Admin Tenants] Resume failed:', error);
     res.status(500).json({ success: false, message: '恢复授权失败' });
   }
 });
@@ -603,7 +667,7 @@ router.post('/:id/renew', async (req: Request, res: Response) => {
 
     res.json({ success: true, message: '租户续期成功' });
   } catch (error: any) {
-    console.error('[Admin Tenants] Renew failed:', error);
+    log.error('[Admin Tenants] Renew failed:', error);
     res.status(500).json({ success: false, message: '续期失败' });
   }
 });
@@ -635,24 +699,31 @@ router.get('/:id/logs', async (req: Request, res: Response) => {
       }
     });
   } catch (error: any) {
-    console.error('[Admin Tenants] Get logs failed:', error);
+    log.error('[Admin Tenants] Get logs failed:', error);
     res.status(500).json({ success: false, message: '获取日志失败' });
   }
 });
 
-// 删除租户
+// 删除租户（软删除，移入回收站）
 router.delete('/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
 
-    // 先删除日志
-    await AppDataSource.query('DELETE FROM tenant_license_logs WHERE tenant_id = ?', [id]);
-    // 再删除租户
-    await AppDataSource.query('DELETE FROM tenants WHERE id = ?', [id]);
+    // 检查租户是否存在
+    const rows = await AppDataSource.query('SELECT id FROM tenants WHERE id = ? AND deleted_at IS NULL', [id]);
+    if (!rows || rows.length === 0) {
+      return res.status(404).json({ success: false, message: '租户不存在' });
+    }
 
-    res.json({ success: true, message: '租户已删除' });
+    // 软删除：设置 deleted_at 时间戳
+    await AppDataSource.query(
+      `UPDATE tenants SET deleted_at = NOW(), deleted_by = ? WHERE id = ?`,
+      [(req as any).adminUser?.id || null, id]
+    );
+
+    res.json({ success: true, message: '已移入回收站' });
   } catch (error: any) {
-    console.error('[Admin Tenants] Delete failed:', error);
+    log.error('[Admin Tenants] Soft delete failed:', error);
     res.status(500).json({ success: false, message: '删除租户失败' });
   }
 });
@@ -687,8 +758,606 @@ router.get('/:id/bills', async (req: Request, res: Response) => {
       }
     });
   } catch (error: any) {
-    console.error('[Admin Tenants] Get bills failed:', error);
+    log.error('[Admin Tenants] Get bills failed:', error);
     res.status(500).json({ success: false, message: '获取账单记录失败' });
+  }
+});
+
+// 解锁租户管理员账号
+router.post('/:id/unlock-admin', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const adminUser = (req as any).adminUser;
+    const bcrypt = require('bcryptjs');
+
+    // 查找租户信息
+    const tenantRows = await AppDataSource.query(
+      'SELECT id, name, phone FROM tenants WHERE id = ?', [id]
+    );
+    if (!tenantRows || tenantRows.length === 0) {
+      return res.status(404).json({ success: false, message: '租户不存在' });
+    }
+    const tenant = tenantRows[0];
+
+    // 查找该租户下被锁定的管理员账号
+    const lockedUsers = await AppDataSource.query(
+      `SELECT id, username, password FROM users
+       WHERE tenant_id = ? AND status = 'locked' AND role = 'admin'`,
+      [id]
+    );
+
+    if (lockedUsers.length === 0) {
+      return res.json({
+        success: true,
+        message: `租户「${tenant.name}」下没有被锁定的管理员账号`,
+        data: { unlockedCount: 0 }
+      });
+    }
+
+    let fixedPasswordCount = 0;
+    const defaultPassword = 'Aa123456';
+
+    // 检查并修复密码格式
+    for (const user of lockedUsers) {
+      const isBcryptFormat = user.password && user.password.startsWith('$2') && user.password.length === 60;
+      if (!isBcryptFormat) {
+        const hashedPassword = await bcrypt.hash(defaultPassword, 12);
+        await AppDataSource.query(
+          `UPDATE users SET password = ? WHERE id = ?`,
+          [hashedPassword, user.id]
+        );
+        fixedPasswordCount++;
+        log.info(`[Admin Tenants] Fixed password format for tenant user: ${user.username}`);
+      }
+    }
+
+    // 解锁管理员账号
+    const result = await AppDataSource.query(
+      `UPDATE users
+       SET status = 'active', login_fail_count = 0, locked_at = NULL
+       WHERE tenant_id = ? AND status = 'locked' AND role = 'admin'`,
+      [id]
+    );
+
+    const affectedRows = result.affectedRows || 0;
+
+    // 记录日志
+    if (affectedRows > 0) {
+      const usernames = lockedUsers.map((u: any) => u.username).join(', ');
+      const logMessage = fixedPasswordCount > 0
+        ? `管理员解锁账号: ${usernames}，密码已重置为默认密码`
+        : `管理员解锁账号: ${usernames}`;
+
+      await AppDataSource.query(
+        `INSERT INTO tenant_license_logs (id, tenant_id, action, result, message, ip_address, operator_id, operator_name)
+         VALUES (?, ?, 'unlock_admin', 'success', ?, ?, ?, ?)`,
+        [uuidv4(), id, logMessage, getClientIp(req), adminUser?.adminId, adminUser?.username]
+      );
+    }
+
+    const usernames = lockedUsers.map((u: any) => u.username).join(', ');
+    const responseMessage = fixedPasswordCount > 0
+      ? `已解锁管理员账号 ${usernames}，密码已重置为 ${defaultPassword}`
+      : `已解锁管理员账号 ${usernames}`;
+
+    res.json({
+      success: true,
+      message: responseMessage,
+      data: {
+        unlockedCount: affectedRows,
+        usernames,
+        fixedPasswordCount,
+        defaultPassword: fixedPasswordCount > 0 ? defaultPassword : undefined
+      }
+    });
+  } catch (error: any) {
+    log.error('[Admin Tenants] Unlock admin failed:', error);
+    res.status(500).json({ success: false, message: '解锁失败' });
+  }
+});
+
+// 重置租户管理员密码
+router.post('/:id/reset-admin-password', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const adminUser = (req as any).adminUser;
+    const bcrypt = require('bcryptjs');
+    const cryptoLib = require('crypto');
+
+    // 查找租户信息
+    const tenantRows = await AppDataSource.query(
+      'SELECT id, name, contact, phone FROM tenants WHERE id = ?', [id]
+    );
+    if (!tenantRows || tenantRows.length === 0) {
+      return res.status(404).json({ success: false, message: '租户不存在' });
+    }
+    const tenant = tenantRows[0];
+
+    // 查找该租户下的管理员账号
+    const adminUsers = await AppDataSource.query(
+      `SELECT id, username, name, real_name FROM users
+       WHERE tenant_id = ? AND role = 'admin'`,
+      [id]
+    );
+
+    if (adminUsers.length === 0) {
+      return res.status(404).json({ success: false, message: '该租户下没有管理员账号' });
+    }
+
+    // 生成安全的随机临时密码：大写+小写+数字，8位
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+    let tempPassword = '';
+    const randomBytes = cryptoLib.randomBytes(8);
+    for (let i = 0; i < 8; i++) {
+      tempPassword += chars[randomBytes[i] % chars.length];
+    }
+    // 确保包含大写、小写、数字
+    tempPassword = 'A' + tempPassword.slice(1, 7) + '3';
+
+    // 更新所有管理员的密码
+    const hashedPassword = await bcrypt.hash(tempPassword, 12);
+    for (const user of adminUsers) {
+      await AppDataSource.query(
+        `UPDATE users SET password = ?, status = 'active', login_fail_count = 0, locked_at = NULL WHERE id = ?`,
+        [hashedPassword, user.id]
+      );
+    }
+
+    const usernames = adminUsers.map((u: any) => u.username).join(', ');
+
+    // 记录日志
+    await AppDataSource.query(
+      `INSERT INTO tenant_license_logs (id, tenant_id, action, result, message, ip_address, operator_id, operator_name)
+       VALUES (?, ?, 'reset_password', 'success', ?, ?, ?, ?)`,
+      [uuidv4(), id, `管理员重置密码: ${usernames}`, getClientIp(req), adminUser?.adminId, adminUser?.username]
+    );
+
+    log.info(`[Admin Tenants] Reset password for tenant ${tenant.name} admins: ${usernames}, by admin: ${adminUser?.username}`);
+
+    res.json({
+      success: true,
+      message: '密码重置成功',
+      data: {
+        tenantName: tenant.name || '',
+        usernames,
+        tempPassword,
+        resetCount: adminUsers.length
+      }
+    });
+  } catch (error: any) {
+    log.error('[Admin Tenants] Reset admin password failed:', error);
+    res.status(500).json({ success: false, message: '重置密码失败' });
+  }
+});
+
+// ============================================================
+// 🔥 自动初始化：确保 tenant_cleanup_logs 表存在
+// ============================================================
+const ensureCleanupLogsTable = async () => {
+  try {
+    await AppDataSource.query(`
+      CREATE TABLE IF NOT EXISTS tenant_cleanup_logs (
+        id VARCHAR(36) PRIMARY KEY,
+        tenant_id VARCHAR(36) NOT NULL,
+        tenant_name VARCHAR(200) DEFAULT NULL,
+        tenant_code VARCHAR(100) DEFAULT NULL,
+        cleaned_tables TEXT DEFAULT NULL COMMENT '清理的表名和行数JSON',
+        cleaned_files_count INT DEFAULT 0 COMMENT '清理的文件数',
+        cleaned_files_size_mb DECIMAL(12,2) DEFAULT 0 COMMENT '清理的文件总大小MB',
+        operator_id VARCHAR(36) DEFAULT NULL,
+        operator_name VARCHAR(100) DEFAULT NULL,
+        ip_address VARCHAR(50) DEFAULT NULL,
+        remark TEXT DEFAULT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_tenant_id (tenant_id),
+        INDEX idx_created_at (created_at)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='租户数据清理记录'
+    `);
+  } catch (e) {
+    log.info('[Admin Tenants] tenant_cleanup_logs 表初始化跳过:', (e as any).message?.substring(0, 60));
+  }
+};
+
+// 同时确保 tenants 表有 data_cleaned_at 字段
+const ensureCleanedAtColumn = async () => {
+  try {
+    const cols = await AppDataSource.query(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'tenants' AND COLUMN_NAME = 'data_cleaned_at'`
+    );
+    if (cols.length === 0) {
+      await AppDataSource.query(`ALTER TABLE tenants ADD COLUMN data_cleaned_at DATETIME DEFAULT NULL COMMENT '数据清理时间'`);
+      log.info('[Admin Tenants] 已添加 tenants.data_cleaned_at 字段');
+    }
+  } catch (e) {
+    log.info('[Admin Tenants] data_cleaned_at 字段检查跳过:', (e as any).message?.substring(0, 60));
+  }
+};
+
+// 延迟初始化（等数据库连接就绪）
+setTimeout(() => {
+  ensureCleanupLogsTable();
+  ensureCleanedAtColumn();
+}, 5000);
+
+// ============================================================
+// 清理不活跃过期租户数据
+// POST /tenants/:id/cleanup-data
+// ============================================================
+router.post('/:id/cleanup-data', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const adminUser = (req as any).adminUser;
+    const { confirmCode } = req.body; // 前端需传入租户编码作为二次确认
+
+    // ====== 1. 查询租户信息 ======
+    const tenantRows = await AppDataSource.query(
+      'SELECT id, name, code, status, expire_date, license_status, data_cleaned_at FROM tenants WHERE id = ?', [id]
+    );
+    if (!tenantRows || tenantRows.length === 0) {
+      return res.status(404).json({ success: false, message: '租户不存在' });
+    }
+    const tenant = tenantRows[0];
+
+    // ====== 2. 二次确认校验 ======
+    if (!confirmCode || confirmCode !== tenant.code) {
+      return res.status(400).json({
+        success: false,
+        message: '确认编码不匹配，请输入正确的租户编码以确认清理操作'
+      });
+    }
+
+    // ====== 3. 检查是否已经清理过 ======
+    if (tenant.data_cleaned_at) {
+      return res.status(400).json({
+        success: false,
+        message: `该租户数据已于 ${new Date(tenant.data_cleaned_at).toLocaleString('zh-CN')} 清理过，无需重复清理`
+      });
+    }
+
+    // ====== 4. 过期时间校验（核心安全逻辑）======
+    const expireDate = tenant.expire_date ? new Date(tenant.expire_date) : null;
+    const now = new Date();
+
+    if (!expireDate) {
+      // 永久有效客户不允许清理
+      return res.status(403).json({
+        success: false,
+        message: '该客户为永久有效期，不允许清理数据。如确需清理请先设置到期时间。'
+      });
+    }
+
+    if (expireDate > now) {
+      // 还在有效期内
+      const remainDays = Math.ceil((expireDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+      return res.status(403).json({
+        success: false,
+        message: `该客户仍在活跃有效期内（剩余 ${remainDays} 天，到期日 ${expireDate.toLocaleDateString('zh-CN')}），禁止清理数据！`
+      });
+    }
+
+    const expiredDays = Math.floor((now.getTime() - expireDate.getTime()) / (1000 * 60 * 60 * 24));
+    if (expiredDays < 30) {
+      const waitDays = 30 - expiredDays;
+      const canCleanDate = new Date(expireDate);
+      canCleanDate.setDate(canCleanDate.getDate() + 30);
+      return res.status(403).json({
+        success: false,
+        message: `该客户过期仅 ${expiredDays} 天，不足30天保护期。需等到 ${canCleanDate.toLocaleDateString('zh-CN')} 后才可清理（还需等待 ${waitDays} 天）。`
+      });
+    }
+
+    // ====== 5. 开始清理数据（事务内执行）======
+    log.info(`[Admin Tenants] 🧹 开始清理租户 ${tenant.name}(${tenant.code}) 的过期数据，操作人: ${adminUser?.username}`);
+
+    // 需要清理的表列表（按依赖顺序，子表先删除）
+    const tablesToClean = [
+      // 文件记录（先查询文件路径再删除记录）
+      'customer_files',
+      'order_attachments',
+      'after_sale_attachments',
+      // 操作日志
+      'operation_logs',
+      'service_operation_logs',
+      // 通知/消息
+      'announcements',
+      'notification_channels',
+      'message_read_status',
+      'message_subscriptions',
+      'notifications',
+      // 短信模板
+      'sms_templates',
+      // 增值服务
+      'value_added_orders',
+      'value_added_price_config',
+      'value_added_status_configs',
+      // 外包
+      'outsource_companies',
+      // 业绩/佣金
+      'commission_ladders',
+      'commission_settings',
+      'performance_configs',
+      'performance_metrics',
+      // 物流
+      'logistics_traces',
+      'logistics_tracking',
+      'logistics_companies',
+      'logistics_api_configs',
+      // 售后
+      'service_follow_ups',
+      'service_records',
+      'after_sales_services',
+      // 订单
+      'cod_cancel_applications',
+      'order_status_history',
+      'order_items',
+      'orders',
+      // 客户
+      'follow_up_records',
+      'customer_shares',
+      'customer_groups',
+      'customer_tags',
+      'customers',
+      // 商品
+      'products',
+      'product_categories',
+      // 组织架构
+      'department_order_limits',
+      'departments',
+      'users',
+      // 基础配置
+      'improvement_goals',
+      'rejection_reasons',
+      'payment_method_options',
+      'permissions',
+      'roles',
+      'system_configs',
+      // 支付/订阅
+      'payment_orders',
+      'subscriptions',
+      // 授权日志
+      'tenant_license_logs',
+    ];
+
+    // ====== 5a. 先收集要清理的文件路径 ======
+    const filesToDelete: string[] = [];
+    const fileQueryTables = [
+      { table: 'customer_files', pathCol: 'file_path' },
+      { table: 'order_attachments', pathCol: 'file_path' },
+      { table: 'after_sale_attachments', pathCol: 'file_path' },
+    ];
+
+    for (const ft of fileQueryTables) {
+      try {
+        const hasTenantCol = await AppDataSource.query(
+          `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = 'tenant_id'`,
+          [ft.table]
+        );
+        if (hasTenantCol.length === 0) continue;
+
+        const hasPathCol = await AppDataSource.query(
+          `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?`,
+          [ft.table, ft.pathCol]
+        );
+        if (hasPathCol.length === 0) continue;
+
+        const fileRows = await AppDataSource.query(
+          `SELECT ${ft.pathCol} as fpath FROM ${ft.table} WHERE tenant_id = ?`, [id]
+        );
+        for (const fr of fileRows) {
+          if (fr.fpath) filesToDelete.push(fr.fpath);
+        }
+      } catch {
+        // 表不存在等异常静默跳过
+      }
+    }
+
+    // ====== 5b. 在事务内删除数据库记录 ======
+    const queryRunner = AppDataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    const cleanResults: Record<string, number> = {};
+    let totalDeleted = 0;
+
+    try {
+      await queryRunner.query('SET FOREIGN_KEY_CHECKS = 0');
+
+      for (const tableName of tablesToClean) {
+        try {
+          // 检查表是否存在且有 tenant_id 列
+          const colCheck = await queryRunner.query(
+            `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = 'tenant_id'`,
+            [tableName]
+          );
+          if (colCheck.length === 0) {
+            continue; // 跳过没有 tenant_id 列的表
+          }
+
+          // 🔥 严格按 tenant_id 删除，绝不影响其他租户
+          const result = await queryRunner.query(
+            `DELETE FROM \`${tableName}\` WHERE tenant_id = ?`, [id]
+          );
+          const affected = result.affectedRows || 0;
+          if (affected > 0) {
+            cleanResults[tableName] = affected;
+            totalDeleted += affected;
+            log.info(`[Admin Tenants] 🧹 清理表 ${tableName}: 删除 ${affected} 条`);
+          }
+        } catch (tableErr) {
+          log.info(`[Admin Tenants] 清理表 ${tableName} 跳过: ${(tableErr as any).message?.substring(0, 60)}`);
+        }
+      }
+
+      await queryRunner.query('SET FOREIGN_KEY_CHECKS = 1');
+      await queryRunner.commitTransaction();
+      log.info(`[Admin Tenants] 🧹 数据库清理完成，共删除 ${totalDeleted} 条记录`);
+    } catch (txErr) {
+      await queryRunner.rollbackTransaction();
+      log.error('[Admin Tenants] 清理数据事务回滚:', txErr);
+      return res.status(500).json({ success: false, message: '清理数据失败，已回滚' });
+    } finally {
+      await queryRunner.release();
+    }
+
+    // ====== 5c. 清理物理文件 ======
+    let cleanedFilesCount = 0;
+    let cleanedFilesSizeMb = 0;
+    const uploadsBaseDir = path.resolve(process.cwd(), 'uploads');
+
+    for (const filePath of filesToDelete) {
+      try {
+        // 文件路径可能是相对路径或含 /uploads/ 前缀
+        let fullPath = filePath;
+        if (!path.isAbsolute(filePath)) {
+          // 去掉可能的 /uploads/ 前缀
+          const cleanPath = filePath.replace(/^\/?(uploads\/)?/, '');
+          fullPath = path.join(uploadsBaseDir, cleanPath);
+        }
+
+        if (fs.existsSync(fullPath)) {
+          const stats = fs.statSync(fullPath);
+          cleanedFilesSizeMb += stats.size / (1024 * 1024);
+          fs.unlinkSync(fullPath);
+          cleanedFilesCount++;
+        }
+      } catch {
+        // 文件删除失败静默跳过（可能已不存在）
+      }
+    }
+    log.info(`[Admin Tenants] 🧹 文件清理完成: ${cleanedFilesCount} 个文件, ${cleanedFilesSizeMb.toFixed(2)} MB`);
+
+    // ====== 6. 更新租户标记 ======
+    try {
+      await AppDataSource.query(
+        `UPDATE tenants SET data_cleaned_at = NOW(), used_storage_mb = 0 WHERE id = ?`, [id]
+      );
+    } catch {
+      // 字段可能不存在，静默跳过
+    }
+
+    // ====== 7. 写入清理记录 ======
+    try {
+      await ensureCleanupLogsTable();
+      await AppDataSource.query(
+        `INSERT INTO tenant_cleanup_logs (id, tenant_id, tenant_name, tenant_code, cleaned_tables, cleaned_files_count, cleaned_files_size_mb, operator_id, operator_name, ip_address, remark, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
+        [
+          uuidv4(), id, tenant.name, tenant.code,
+          JSON.stringify(cleanResults),
+          cleanedFilesCount,
+          Number(cleanedFilesSizeMb.toFixed(2)),
+          adminUser?.adminId || null,
+          adminUser?.username || null,
+          getClientIp(req),
+          `过期 ${expiredDays} 天后清理数据，共删除 ${totalDeleted} 条数据库记录和 ${cleanedFilesCount} 个文件`
+        ]
+      );
+    } catch (logErr) {
+      log.info('[Admin Tenants] 写入清理日志失败:', (logErr as any).message?.substring(0, 80));
+    }
+
+    // ====== 8. 同时写入租户授权日志 ======
+    try {
+      await AppDataSource.query(
+        `INSERT INTO tenant_license_logs (id, tenant_id, action, result, message, ip_address, operator_id, operator_name)
+         VALUES (?, ?, 'cleanup', 'success', ?, ?, ?, ?)`,
+        [
+          uuidv4(), id,
+          `清理过期数据：删除 ${totalDeleted} 条记录，${cleanedFilesCount} 个文件(${cleanedFilesSizeMb.toFixed(2)}MB)`,
+          getClientIp(req),
+          adminUser?.adminId || null,
+          adminUser?.username || null
+        ]
+      );
+    } catch {
+      // tenant_license_logs 可能已被清理，静默跳过
+    }
+
+    res.json({
+      success: true,
+      message: `租户「${tenant.name}」数据清理完成`,
+      data: {
+        tenantName: tenant.name,
+        tenantCode: tenant.code,
+        expiredDays,
+        totalDeletedRecords: totalDeleted,
+        cleanedTables: cleanResults,
+        cleanedFilesCount,
+        cleanedFilesSizeMb: Number(cleanedFilesSizeMb.toFixed(2)),
+        cleanedAt: new Date().toISOString()
+      }
+    });
+  } catch (error: any) {
+    log.error('[Admin Tenants] Cleanup data failed:', error);
+    res.status(500).json({ success: false, message: '清理数据失败：' + (error.message || '未知错误') });
+  }
+});
+
+// 获取租户清理状态
+// GET /tenants/:id/cleanup-status
+router.get('/:id/cleanup-status', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    const rows = await AppDataSource.query(
+      'SELECT id, name, code, expire_date, status, data_cleaned_at FROM tenants WHERE id = ?', [id]
+    );
+    if (!rows || rows.length === 0) {
+      return res.status(404).json({ success: false, message: '租户不存在' });
+    }
+    const tenant = rows[0];
+
+    const expireDate = tenant.expire_date ? new Date(tenant.expire_date) : null;
+    const now = new Date();
+    let canCleanup = false;
+    let reason = '';
+    let expiredDays = 0;
+
+    if (tenant.data_cleaned_at) {
+      reason = `数据已于 ${new Date(tenant.data_cleaned_at).toLocaleString('zh-CN')} 清理`;
+    } else if (!expireDate) {
+      reason = '永久有效客户，不允许清理';
+    } else if (expireDate > now) {
+      const remainDays = Math.ceil((expireDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+      reason = `活跃有效期内，剩余 ${remainDays} 天`;
+    } else {
+      expiredDays = Math.floor((now.getTime() - expireDate.getTime()) / (1000 * 60 * 60 * 24));
+      if (expiredDays < 30) {
+        const waitDays = 30 - expiredDays;
+        reason = `过期仅 ${expiredDays} 天，需满30天保护期（还需等 ${waitDays} 天）`;
+      } else {
+        canCleanup = true;
+        reason = `已过期 ${expiredDays} 天，可以清理`;
+      }
+    }
+
+    // 查询最近一次清理记录
+    let lastCleanup = null;
+    try {
+      const cleanupRows = await AppDataSource.query(
+        `SELECT * FROM tenant_cleanup_logs WHERE tenant_id = ? ORDER BY created_at DESC LIMIT 1`, [id]
+      );
+      if (cleanupRows.length > 0) {
+        lastCleanup = cleanupRows[0];
+      }
+    } catch {
+      // 表不存在忽略
+    }
+
+    res.json({
+      success: true,
+      data: {
+        canCleanup,
+        reason,
+        expiredDays,
+        dataCleaned: !!tenant.data_cleaned_at,
+        dataCleanedAt: tenant.data_cleaned_at,
+        lastCleanup
+      }
+    });
+  } catch (error: any) {
+    log.error('[Admin Tenants] Get cleanup status failed:', error);
+    res.status(500).json({ success: false, message: '获取清理状态失败' });
   }
 });
 

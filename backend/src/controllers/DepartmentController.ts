@@ -5,6 +5,7 @@ import { User } from '../entities/User';
 import { IsNull, Not } from 'typeorm';
 import { getTenantRepo } from '../utils/tenantRepo';
 
+import { log } from '../config/logger';
 export class DepartmentController {
   private get departmentRepository() {
     return getTenantRepo(Department);
@@ -61,7 +62,7 @@ export class DepartmentController {
         data: departmentsWithCount
       });
     } catch (error) {
-      console.error('获取部门列表失败:', error);
+      log.error('获取部门列表失败:', error);
       res.status(500).json({
         success: false,
         message: '获取部门列表失败'
@@ -123,7 +124,7 @@ export class DepartmentController {
         data: rootDepartments
       });
     } catch (error) {
-      console.error('获取部门树失败:', error);
+      log.error('获取部门树失败:', error);
       res.status(500).json({
         success: false,
         message: '获取部门树失败'
@@ -172,7 +173,7 @@ export class DepartmentController {
         data: result
       });
     } catch (error) {
-      console.error('获取部门详情失败:', error);
+      log.error('获取部门详情失败:', error);
       res.status(500).json({
         success: false,
         message: '获取部门详情失败'
@@ -187,7 +188,7 @@ export class DepartmentController {
     try {
       const { name, code, description, parentId, sortOrder = 0, status = 'active', level = 1, managerId } = req.body;
 
-      console.log('[创建部门] 接收到的数据:', { name, code, description, parentId, sortOrder, status, level, managerId });
+      log.info('[创建部门] 接收到的数据:', { name, code, description, parentId, sortOrder, status, level, managerId });
 
       // 验证必填字段
       if (!name || !code) {
@@ -254,11 +255,11 @@ export class DepartmentController {
         memberCount: 0
       });
 
-      console.log('[创建部门] 准备保存的部门对象:', department);
+      log.info('[创建部门] 准备保存的部门对象:', department);
 
       const savedDepartment = await this.departmentRepository.save(department);
 
-      console.log('[创建部门] 保存成功:', savedDepartment);
+      log.info('[创建部门] 保存成功:', savedDepartment);
 
       // 获取负责人姓名
       let managerName = null;
@@ -291,8 +292,8 @@ export class DepartmentController {
         message: '部门创建成功'
       });
     } catch (error: any) {
-      console.error('[创建部门] 失败:', error);
-      console.error('[创建部门] 错误堆栈:', error?.stack);
+      log.error('[创建部门] 失败:', error);
+      log.error('[创建部门] 错误堆栈:', error?.stack);
       res.status(500).json({
         success: false,
         message: `创建部门失败: ${error?.message || '未知错误'}`
@@ -308,7 +309,7 @@ export class DepartmentController {
       const { id } = req.params;
       const { name, code, description, parentId, sortOrder, status, managerId } = req.body;
 
-      console.log('[更新部门] 接收到的数据:', { id, name, code, description, parentId, sortOrder, status, managerId });
+      log.info('[更新部门] 接收到的数据:', { id, name, code, description, parentId, sortOrder, status, managerId });
 
       const department = await this.departmentRepository.findOne({
         where: { id }
@@ -400,11 +401,11 @@ export class DepartmentController {
       if (status !== undefined) department.status = status;
       if (managerId !== undefined) department.managerId = managerId || null;
 
-      console.log('[更新部门] 准备保存的部门对象:', department);
+      log.info('[更新部门] 准备保存的部门对象:', department);
 
       const savedDepartment = await this.departmentRepository.save(department);
 
-      console.log('[更新部门] 保存成功:', savedDepartment);
+      log.info('[更新部门] 保存成功:', savedDepartment);
 
       // 单独查询成员数量
       const memberCount = await this.userRepository.count({
@@ -441,7 +442,7 @@ export class DepartmentController {
         message: '部门更新成功'
       });
     } catch (error) {
-      console.error('更新部门失败:', error);
+      log.error('更新部门失败:', error);
       res.status(500).json({
         success: false,
         message: '更新部门失败'
@@ -511,7 +512,7 @@ export class DepartmentController {
         message: '部门删除成功'
       });
     } catch (error) {
-      console.error('删除部门失败:', error);
+      log.error('删除部门失败:', error);
       res.status(500).json({
         success: false,
         message: '删除部门失败'
@@ -584,7 +585,7 @@ export class DepartmentController {
         message: '部门状态更新成功'
       });
     } catch (error) {
-      console.error('更新部门状态失败:', error);
+      log.error('更新部门状态失败:', error);
       res.status(500).json({
         success: false,
         message: '更新部门状态失败'
@@ -598,14 +599,14 @@ export class DepartmentController {
   async getDepartmentMembers(req: Request, res: Response): Promise<void> {
     try {
       const { id } = req.params;
-      console.log('[部门成员] 查询部门ID:', id);
+      log.info('[部门成员] 查询部门ID:', id);
 
       // 获取部门信息
       const department = await this.departmentRepository.findOne({
         where: { id: id }
       });
       const departmentName = department?.name || '';
-      console.log('[部门成员] 部门名称:', departmentName);
+      log.info('[部门成员] 部门名称:', departmentName);
 
       // 🔥 租户隔离修复：使用括号包裹 OR 条件，避免 orWhere 绕过 tenant_id 过滤
       // 修复前: .where(departmentId=?).orWhere(departmentName=?)
@@ -617,7 +618,7 @@ export class DepartmentController {
         .where('(user.departmentId = :id OR user.departmentName = :name)', { id, name: departmentName })
         .getMany();
 
-      console.log('[部门成员] 查询到用户数:', users.length);
+      log.info('[部门成员] 查询到用户数:', users.length);
 
       const members = users.map((user: User) => ({
         id: user.id.toString(),
@@ -641,7 +642,7 @@ export class DepartmentController {
         data: members
       });
     } catch (error) {
-      console.error('获取部门成员失败:', error);
+      log.error('获取部门成员失败:', error);
       res.status(500).json({
         success: false,
         message: '获取部门成员失败'
@@ -713,7 +714,7 @@ export class DepartmentController {
         message: '添加部门成员成功'
       });
     } catch (error) {
-      console.error('添加部门成员失败:', error);
+      log.error('添加部门成员失败:', error);
       res.status(500).json({
         success: false,
         message: '添加部门成员失败'
@@ -754,7 +755,7 @@ export class DepartmentController {
         message: '移除部门成员成功'
       });
     } catch (error) {
-      console.error('移除部门成员失败:', error);
+      log.error('移除部门成员失败:', error);
       res.status(500).json({
         success: false,
         message: '移除部门成员失败'
@@ -794,7 +795,7 @@ export class DepartmentController {
         data: stats
       });
     } catch (error) {
-      console.error('获取部门统计失败:', error);
+      log.error('获取部门统计失败:', error);
       res.status(500).json({
         success: false,
         message: '获取部门统计失败'
@@ -851,7 +852,7 @@ export class DepartmentController {
         data: roles
       });
     } catch (error) {
-      console.error('获取部门角色失败:', error);
+      log.error('获取部门角色失败:', error);
       res.status(500).json({
         success: false,
         message: '获取部门角色失败'
@@ -891,7 +892,7 @@ export class DepartmentController {
         message: '部门权限更新成功'
       });
     } catch (error) {
-      console.error('更新部门权限失败:', error);
+      log.error('更新部门权限失败:', error);
       res.status(500).json({
         success: false,
         message: '更新部门权限失败'
@@ -960,7 +961,7 @@ export class DepartmentController {
         message: '部门移动成功'
       });
     } catch (error) {
-      console.error('移动部门失败:', error);
+      log.error('移动部门失败:', error);
       res.status(500).json({
         success: false,
         message: '移动部门失败'

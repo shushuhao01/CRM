@@ -10,6 +10,7 @@
 import { Router, Request, Response } from 'express';
 import { TenantLogService } from '../../services/TenantLogService';
 
+import { log } from '../../config/logger';
 // 租户特定日志路由（挂载在 /tenants 下）
 const tenantSpecificLogsRouter = Router();
 
@@ -65,7 +66,7 @@ tenantSpecificLogsRouter.get('/:id/logs', async (req: Request, res: Response) =>
       }
     });
   } catch (error: any) {
-    console.error('查询租户日志失败:', error);
+    log.error('查询租户日志失败:', error);
     res.status(500).json({
       success: false,
       message: '查询租户日志失败',
@@ -123,7 +124,7 @@ globalLogsRouter.get('/', async (req: Request, res: Response) => {
       }
     });
   } catch (error: any) {
-    console.error('查询操作日志失败:', error);
+    log.error('查询操作日志失败:', error);
     res.status(500).json({
       success: false,
       message: '查询操作日志失败',
@@ -147,7 +148,7 @@ globalLogsRouter.get('/stats', async (req: Request, res: Response) => {
       data: stats
     });
   } catch (error: any) {
-    console.error('获取操作统计失败:', error);
+    log.error('获取操作统计失败:', error);
     res.status(500).json({
       success: false,
       message: '获取操作统计失败',

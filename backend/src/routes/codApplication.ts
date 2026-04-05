@@ -14,6 +14,7 @@ import fs from 'fs';
 import { sendSystemMessage, sendBatchSystemMessages } from '../services/messageService';
 import { getTenantRepo } from '../utils/tenantRepo';
 
+import { log } from '../config/logger';
 const router = Router();
 
 // 配置文件上传
@@ -58,7 +59,7 @@ router.post('/upload-proof', authenticateToken, checkStorageLimit, upload.single
     const fileUrl = `/uploads/cod-proof/${req.file.filename}`;
     res.json({ success: true, data: { url: fileUrl } });
   } catch (error: any) {
-    console.error('[CodApplication] Upload proof error:', error);
+    log.error('[CodApplication] Upload proof error:', error);
     res.status(500).json({ success: false, message: error.message || '上传失败' });
   }
 });
@@ -68,13 +69,13 @@ router.post('/upload-proof', authenticateToken, checkStorageLimit, upload.single
  */
 router.post('/create', authenticateToken, async (req: Request, res: Response) => {
   try {
-    console.log('[CodApplication] 收到创建申请请求');
-    console.log('[CodApplication] 请求体:', JSON.stringify(req.body, null, 2));
+    log.info('[CodApplication] 收到创建申请请求');
+    log.info('[CodApplication] 请求体:', JSON.stringify(req.body, null, 2));
 
     const { orderId, modifiedCodAmount, cancelReason, paymentProof } = req.body;
     const user = (req as any).currentUser; // 使用 currentUser 而不是 user
 
-    console.log('[CodApplication] 用户信息:', {
+    log.info('[CodApplication] 用户信息:', {
       user: user ? {
         id: user.id,
         username: user.username,
@@ -85,7 +86,7 @@ router.post('/create', authenticateToken, async (req: Request, res: Response) =>
       } : null
     });
 
-    console.log('[CodApplication] 解析后的参数:', {
+    log.info('[CodApplication] 解析后的参数:', {
       orderId,
       modifiedCodAmount,
       cancelReason,
@@ -94,7 +95,7 @@ router.post('/create', authenticateToken, async (req: Request, res: Response) =>
     });
 
     if (!orderId || modifiedCodAmount === undefined || !cancelReason) {
-      console.log('[CodApplication] 参数验证失败');
+      log.info('[CodApplication] 参数验证失败');
       return res.status(400).json({ success: false, message: '请填写完整信息' });
     }
 
@@ -109,7 +110,7 @@ router.post('/create', authenticateToken, async (req: Request, res: Response) =>
 
     // 验证权限：成员只能申请自己创建的订单，管理员和超管不受限制
     const isAdmin = user.role === 'admin' || user.role === 'super_admin';
-    console.log('[CodApplication] 权限检查:', {
+    log.info('[CodApplication] 权限检查:', {
       userId: user.id,
       username: user.username,
       userRole: user.role,
@@ -211,18 +212,18 @@ router.post('/create', authenticateToken, async (req: Request, res: Response) =>
         }));
 
         await sendBatchSystemMessages(messages);
-        console.log(`[CodApplication] 已发送 ${messages.length} 条审核通知`);
+        log.info(`[CodApplication] 已发送 ${messages.length} 条审核通知`);
       }
     } catch (msgError) {
-      console.error('[CodApplication] 发送消息通知失败:', msgError);
+      log.error('[CodApplication] 发送消息通知失败:', msgError);
       // 消息发送失败不影响申请创建
     }
 
     res.json({ success: true, message: '申请提交成功，等待审核', data: { id: application.id } });
   } catch (error: any) {
-    console.error('[CodApplication] Create error:', error);
-    console.error('[CodApplication] Error stack:', error.stack);
-    console.error('[CodApplication] Error message:', error.message);
+    log.error('[CodApplication] Create error:', error);
+    log.error('[CodApplication] Error stack:', error.stack);
+    log.error('[CodApplication] Error message:', error.message);
     res.status(500).json({ success: false, message: '提交申请失败' });
   }
 });
@@ -299,7 +300,7 @@ router.put('/update/:id', authenticateToken, async (req: Request, res: Response)
 
     res.json({ success: true, message: '申请更新成功' });
   } catch (error: any) {
-    console.error('[CodApplication] Update error:', error);
+    log.error('[CodApplication] Update error:', error);
     res.status(500).json({ success: false, message: '更新申请失败' });
   }
 });
@@ -393,7 +394,7 @@ router.get('/my-list', authenticateToken, async (req: Request, res: Response) =>
       data: { list, total, page: pageNum, pageSize: size }
     });
   } catch (error: any) {
-    console.error('[CodApplication] Get my list error:', error);
+    log.error('[CodApplication] Get my list error:', error);
     res.status(500).json({ success: false, message: '获取申请列表失败' });
   }
 });
@@ -496,7 +497,7 @@ router.get('/review-list', authenticateToken, async (req: Request, res: Response
       data: { list, total, page: pageNum, pageSize: size }
     });
   } catch (error: any) {
-    console.error('[CodApplication] Get review list error:', error);
+    log.error('[CodApplication] Get review list error:', error);
     res.status(500).json({ success: false, message: '获取审核列表失败' });
   }
 });
@@ -530,7 +531,7 @@ router.get('/detail/:id', authenticateToken, async (req: Request, res: Response)
 
     res.json({ success: true, data: result });
   } catch (error: any) {
-    console.error('[CodApplication] Get detail error:', error);
+    log.error('[CodApplication] Get detail error:', error);
     res.status(500).json({ success: false, message: '获取申请详情失败' });
   }
 });
@@ -578,7 +579,7 @@ router.put('/review/:id', authenticateToken, async (req: Request, res: Response)
     if (approved) {
       const order = await orderRepo.findOne({ where: { id: application.orderId } });
       if (order) {
-        console.log('[CodApplication] 审核通过，更新订单代收信息 - 开始:', {
+        log.info('[CodApplication] 审核通过，更新订单代收信息 - 开始:', {
           orderId: order.id,
           orderNumber: order.orderNumber,
           oldCodStatus: order.codStatus,
@@ -594,17 +595,17 @@ router.put('/review/:id', authenticateToken, async (req: Request, res: Response)
           // 改为0元，标记为已改代收状态（不能再修改）
           order.codStatus = 'cancelled';
           order.codCancelledAt = new Date();
-          console.log('[CodApplication] 改为0元，设置状态为cancelled');
+          log.info('[CodApplication] 改为0元，设置状态为cancelled');
         } else {
           // 改为大于0的金额，保持待处理状态（可以继续修改或返款）
           order.codStatus = 'pending';
           order.codCancelledAt = null;
-          console.log('[CodApplication] 改为>0元，设置状态为pending');
+          log.info('[CodApplication] 改为>0元，设置状态为pending');
         }
 
         await orderRepo.save(order);
 
-        console.log('[CodApplication] 订单代收信息已更新 - 完成:', {
+        log.info('[CodApplication] 订单代收信息已更新 - 完成:', {
           orderId: order.id,
           orderNumber: order.orderNumber,
           newCodStatus: order.codStatus,
@@ -614,7 +615,7 @@ router.put('/review/:id', authenticateToken, async (req: Request, res: Response)
 
         // 🔥 验证数据库中的实际值
         const verifyOrder = await orderRepo.findOne({ where: { id: application.orderId } });
-        console.log('[CodApplication] 数据库验证 - 实际保存的值:', {
+        log.info('[CodApplication] 数据库验证 - 实际保存的值:', {
           orderId: verifyOrder?.id,
           orderNumber: verifyOrder?.orderNumber,
           codStatus: verifyOrder?.codStatus,
@@ -645,15 +646,15 @@ router.put('/review/:id', authenticateToken, async (req: Request, res: Response)
         createdBy: user.id
       });
 
-      console.log(`[CodApplication] 已发送审核结果通知给申请人 ${application.applicantName}`);
+      log.info(`[CodApplication] 已发送审核结果通知给申请人 ${application.applicantName}`);
     } catch (msgError) {
-      console.error('[CodApplication] 发送消息通知失败:', msgError);
+      log.error('[CodApplication] 发送消息通知失败:', msgError);
       // 消息发送失败不影响审核结果
     }
 
     res.json({ success: true, message: approved ? '审核通过' : '已驳回' });
   } catch (error: any) {
-    console.error('[CodApplication] Review error:', error);
+    log.error('[CodApplication] Review error:', error);
     res.status(500).json({ success: false, message: '审核失败' });
   }
 });
@@ -688,7 +689,7 @@ router.delete('/cancel/:id', authenticateToken, async (req: Request, res: Respon
 
     res.json({ success: true, message: '申请已撤销' });
   } catch (error: any) {
-    console.error('[CodApplication] Cancel error:', error);
+    log.error('[CodApplication] Cancel error:', error);
     res.status(500).json({ success: false, message: '撤销申请失败' });
   }
 });
@@ -720,7 +721,7 @@ router.get('/stats', authenticateToken, async (req: Request, res: Response) => {
       data: { pending, approved, rejected, total }
     });
   } catch (error: any) {
-    console.error('[CodApplication] Get stats error:', error);
+    log.error('[CodApplication] Get stats error:', error);
     res.status(500).json({ success: false, message: '获取统计数据失败' });
   }
 });

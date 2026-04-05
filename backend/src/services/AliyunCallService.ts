@@ -5,6 +5,7 @@
 
 import { AppDataSource } from '../config/database';
 
+import { log } from '../config/logger';
 // 阿里云配置接口
 interface AliyunConfig {
   accessKeyId: string;
@@ -89,7 +90,7 @@ class AliyunCallService {
         recordingBucket: config.recordingBucket
       };
     } catch (error) {
-      console.error('获取阿里云线路配置失败:', error);
+      log.error('获取阿里云线路配置失败:', error);
       return null;
     }
   }
@@ -187,7 +188,7 @@ class AliyunCallService {
         [providerCallId, callId]
       );
 
-      console.log(`[AliyunCallService] 发起外呼成功: ${callId} -> ${params.customerPhone}`);
+      log.info(`[AliyunCallService] 发起外呼成功: ${callId} -> ${params.customerPhone}`);
 
       return {
         success: true,
@@ -196,7 +197,7 @@ class AliyunCallService {
         message: '外呼已发起'
       };
     } catch (error: any) {
-      console.error('阿里云外呼失败:', error);
+      log.error('阿里云外呼失败:', error);
       return {
         success: false,
         message: error.message || '外呼失败'
@@ -245,7 +246,7 @@ class AliyunCallService {
 
       return { success: true, message: '通话已挂断' };
     } catch (error: any) {
-      console.error('挂断通话失败:', error);
+      log.error('挂断通话失败:', error);
       return { success: false, message: error.message || '挂断失败' };
     }
   }
@@ -324,7 +325,7 @@ class AliyunCallService {
         }
       }
     } catch (error) {
-      console.error('处理通话状态回调失败:', error);
+      log.error('处理通话状态回调失败:', error);
     }
   }
 
@@ -347,9 +348,9 @@ class AliyunCallService {
         [data.recordingUrl, data.recordingSize, data.callId]
       );
 
-      console.log(`[AliyunCallService] 录音已保存: ${data.callId}`);
+      log.info(`[AliyunCallService] 录音已保存: ${data.callId}`);
     } catch (error) {
-      console.error('处理录音回调失败:', error);
+      log.error('处理录音回调失败:', error);
     }
   }
 

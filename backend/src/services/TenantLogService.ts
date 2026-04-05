@@ -11,6 +11,7 @@ import { AppDataSource } from '../config/database';
 import { TenantLog } from '../entities/TenantLog';
 import { Request } from 'express';
 
+import { log as logger } from '../config/logger';
 export interface LogOptions {
   tenantId: string;
   action: string;
@@ -50,7 +51,7 @@ export class TenantLogService {
 
     await logRepo.save(log);
 
-    console.log(`📝 租户操作日志: [${options.action}] ${options.operator} -> ${options.tenantId}`);
+    logger.info(`📝 租户操作日志: [${options.action}] ${options.operator} -> ${options.tenantId}`);
 
     return log;
   }

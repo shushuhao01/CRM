@@ -1,6 +1,7 @@
 import axios from 'axios'
 import crypto from 'crypto'
 
+import { log } from '../config/logger';
 interface SFExpressConfig {
   appId: string
   checkWord: string
@@ -63,7 +64,7 @@ class SFExpressService {
    */
   enableMockMode() {
     this.mockMode = true
-    console.log('顺丰服务: Mock模式已启用')
+    log.info('顺丰服务: Mock模式已启用')
   }
 
   /**
@@ -71,7 +72,7 @@ class SFExpressService {
    */
   disableMockMode() {
     this.mockMode = false
-    console.log('顺丰服务: Mock模式已禁用')
+    log.info('顺丰服务: Mock模式已禁用')
   }
 
   /**
@@ -138,16 +139,16 @@ class SFExpressService {
       msgData: msgDataStr
     }
 
-    console.log('=== 顺丰API请求详情 ===')
-    console.log('URL:', cfg.apiUrl)
-    console.log('服务代码:', serviceCode)
-    console.log('客户编码:', cfg.appId)
-    console.log('请求ID:', requestData.requestID)
-    console.log('时间戳:', requestData.timestamp)
-    console.log('业务数据:', msgDataStr)
-    console.log('签名:', msgDigest)
-    console.log('签名原文:', msgDataStr + ' + ***checkWord***')
-    console.log('========================')
+    log.info('=== 顺丰API请求详情 ===')
+    log.info('URL:', cfg.apiUrl)
+    log.info('服务代码:', serviceCode)
+    log.info('客户编码:', cfg.appId)
+    log.info('请求ID:', requestData.requestID)
+    log.info('时间戳:', requestData.timestamp)
+    log.info('业务数据:', msgDataStr)
+    log.info('签名:', msgDigest)
+    log.info('签名原文:', msgDataStr + ' + ***checkWord***')
+    log.info('========================')
 
     try {
       // 使用 application/x-www-form-urlencoded 格式
@@ -165,29 +166,29 @@ class SFExpressService {
       })
       const endTime = Date.now()
 
-      console.log('=== 顺丰API响应详情 ===')
-      console.log('响应时间:', `${endTime - startTime}ms`)
-      console.log('响应状态:', response.status)
-      console.log('响应数据:', JSON.stringify(response.data, null, 2))
-      console.log('========================')
+      log.info('=== 顺丰API响应详情 ===')
+      log.info('响应时间:', `${endTime - startTime}ms`)
+      log.info('响应状态:', response.status)
+      log.info('响应数据:', JSON.stringify(response.data, null, 2))
+      log.info('========================')
 
       return response.data
     } catch (error: any) {
-      console.error('=== 顺丰API调用失败 ===')
-      console.error('错误类型:', error.code || 'UNKNOWN')
-      console.error('错误信息:', error.message)
+      log.error('=== 顺丰API调用失败 ===')
+      log.error('错误类型:', error.code || 'UNKNOWN')
+      log.error('错误信息:', error.message)
 
       if (error.response) {
-        console.error('HTTP状态:', error.response.status)
-        console.error('响应头:', error.response.headers)
-        console.error('响应数据:', error.response.data)
+        log.error('HTTP状态:', error.response.status)
+        log.error('响应头:', error.response.headers)
+        log.error('响应数据:', error.response.data)
       } else if (error.request) {
-        console.error('请求已发送但无响应')
-        console.error('请求详情:', error.request)
+        log.error('请求已发送但无响应')
+        log.error('请求详情:', error.request)
       } else {
-        console.error('请求配置错误:', error.config)
+        log.error('请求配置错误:', error.config)
       }
-      console.error('========================')
+      log.error('========================')
 
       throw error
     }
@@ -200,7 +201,7 @@ class SFExpressService {
   async testConnection(config: SFExpressConfig): Promise<{ success: boolean; message: string; data?: any }> {
     // Mock模式: 直接返回成功
     if (this.mockMode) {
-      console.log('Mock模式: 测试连接')
+      log.info('Mock模式: 测试连接')
       return {
         success: true,
         message: '连接成功 (Mock模式)',
@@ -224,7 +225,7 @@ class SFExpressService {
 
       const result = await this.request('EXP_RECE_SEARCH_ROUTES', msgData, config)
 
-      console.log('测试连接结果:', result)
+      log.info('测试连接结果:', result)
 
       // 检查响应格式
       if (result && typeof result === 'object') {
@@ -276,7 +277,7 @@ class SFExpressService {
       }
 
     } catch (error: any) {
-      console.error('测试连接错误:', error)
+      log.error('测试连接错误:', error)
 
       // 超时错误
       if (error?.code === 'ECONNABORTED' || error?.message?.includes('timeout')) {
@@ -307,7 +308,7 @@ class SFExpressService {
         const status = error.response.status
         const data = error.response.data
 
-        console.log('HTTP响应:', { status, data })
+        log.info('HTTP响应:', { status, data })
 
         // 404错误 - 路径不正确
         if (status === 404) {
@@ -379,7 +380,7 @@ class SFExpressService {
 
     // Mock模式: 返回模拟数据
     if (this.mockMode) {
-      console.log('Mock模式: 查询物流轨迹', params.trackingNumber)
+      log.info('Mock模式: 查询物流轨迹', params.trackingNumber)
       return {
         success: true,
         data: {

@@ -4,11 +4,13 @@
  */
 import crypto from 'crypto';
 import axios from 'axios';
+import bcrypt from 'bcryptjs';
 import { AppDataSource } from '../config/database';
 import { paymentService } from './PaymentService';
 import { notificationTemplateService } from './NotificationTemplateService';
 import { SITE_CONFIG } from '../config/sites';
 
+import { log } from '../config/logger';
 export class WechatPayService {
   /**
    * 解密配置数据
@@ -110,19 +112,19 @@ export class WechatPayService {
             };
           }
         } catch (apiError: any) {
-          console.error('[WechatPay] API调用失败:', apiError.response?.data || apiError.message);
+          log.error('[WechatPay] API调用失败:', apiError.response?.data || apiError.message);
           // API调用失败，返回模拟数据
         }
       }
 
       // 返回模拟数据（开发/测试环境）
-      console.log('[WechatPay] 使用模拟支付二维码');
+      log.info('[WechatPay] 使用模拟支付二维码');
       return {
         qrCode: `MOCK_WECHAT_${params.orderNo}`,
         payUrl: `weixin://wxpay/bizpayurl?pr=mock_${params.orderNo}`
       };
     } catch (error: any) {
-      console.error('[WechatPay] Create native pay failed:', error);
+      log.error('[WechatPay] Create native pay failed:', error);
       throw new Error(`创建微信支付失败: ${error.message}`);
     }
   }
@@ -172,7 +174,7 @@ export class WechatPayService {
 
       return true; // 临时返回true，实际需要验证
     } catch (error) {
-      console.error('[WechatPay] Verify signature failed:', error);
+      log.error('[WechatPay] Verify signature failed:', error);
       return false;
     }
   }
@@ -202,7 +204,7 @@ export class WechatPayService {
 
       return JSON.parse(decrypted);
     } catch (error) {
-      console.error('[WechatPay] Decrypt callback data failed:', error);
+      log.error('[WechatPay] Decrypt callback data failed:', error);
       throw new Error('解密回调数据失败');
     }
   }
@@ -231,7 +233,7 @@ export class WechatPayService {
           config.apiKeyV3 || config.apiKey
         );
       } catch (decryptError) {
-        console.error('[WechatPay] 解密回调数据失败:', decryptError);
+        log.error('[WechatPay] 解密回调数据失败:', decryptError);
         // 如果解密失败，尝试直接使用resource数据
         decryptedData = resource;
       }
@@ -282,7 +284,7 @@ export class WechatPayService {
 
       return { code: 'SUCCESS', message: '成功' };
     } catch (error: any) {
-      console.error('[WechatPay] Handle callback failed:', error);
+      log.error('[WechatPay] Handle callback failed:', error);
 
       // 记录错误日志
       await paymentService.logPayment({
@@ -394,9 +396,9 @@ export class WechatPayService {
         email: tenant.email
       });
 
-      console.log(`[WechatPay] 租户 ${tenantId} 已激活，授权码: ${licenseKey}`);
+      log.info(`[WechatPay] 租户 ${tenantId} 已激活，授权码: ${licenseKey}`);
     } catch (error: any) {
-      console.error('[WechatPay] 激活租户失败:', error);
+      log.error('[WechatPay] 激活租户失败:', error);
       throw error;
     }
   }
@@ -413,31 +415,31 @@ export class WechatPayService {
       );
 
       if (existingAdmins.length > 0) {
-        console.log(`[WechatPay] 租户 ${tenantCode} 已存在管理员账号，跳过创建`);
+        log.info(`[WechatPay] 租户 ${tenantCode} 已存在管理员账号，跳过创建`);
         return;
       }
 
       const userId = crypto.randomUUID();
       const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
 
-      // 密码：admin123
-      const salt = crypto.randomBytes(16).toString('hex');
-      const hash = crypto.pbkdf2Sync('admin123', salt, 1000, 64, 'sha512').toString('hex');
+      // 密码：admin123 — 统一使用 bcryptjs 加密（与系统登录验证一致）
+      const saltRounds = 12;
+      const hash = await bcrypt.hash('admin123', saltRounds);
 
       await AppDataSource.query(
         `INSERT INTO users (
-          id, tenant_id, username, password, salt, real_name, role,
+          id, tenant_id, username, password, real_name, role,
           status, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
-          userId, tenantId, 'admin', hash, salt, '系统管理员', 'admin',
+          userId, tenantId, 'admin', hash, '系统管理员', 'admin',
           'active', now, now
         ]
       );
 
-      console.log(`[WechatPay] 已为租户 ${tenantCode} 创建默认管理员账号 (admin/admin123)`);
+      log.info(`[WechatPay] 已为租户 ${tenantCode} 创建默认管理员账号 (admin/admin123)`);
     } catch (error: any) {
-      console.error('[WechatPay] 创建默认管理员失败:', error);
+      log.error('[WechatPay] 创建默认管理员失败:', error);
       // 不抛出错误，避免影响激活流程
     }
   }
@@ -494,9 +496,9 @@ export class WechatPayService {
         priority: 'high'
       });
 
-      console.log(`[WechatPay] 已发送支付成功通知给租户 ${params.tenantName}`);
+      log.info(`[WechatPay] 已发送支付成功通知给租户 ${params.tenantName}`);
     } catch (error) {
-      console.error('[WechatPay] 发送支付通知失败:', error);
+      log.error('[WechatPay] 发送支付通知失败:', error);
       // 不抛出错误，避免影响激活流程
     }
   }
@@ -524,7 +526,7 @@ export class WechatPayService {
         }
       };
     } catch (error: any) {
-      console.error('[WechatPay] Query order failed:', error);
+      log.error('[WechatPay] Query order failed:', error);
       throw new Error('查询订单失败');
     }
   }

@@ -1,6 +1,7 @@
 import express from 'express'
 import sfExpressService from '../services/sfExpressService'
 
+import { log } from '../config/logger';
 const router = express.Router()
 
 /**
@@ -25,7 +26,7 @@ router.post('/test-connection', async (req, res) => {
 
     return res.json(result)
   } catch (error: any) {
-    console.error('测试连接失败:', error)
+    log.error('测试连接失败:', error)
     return res.status(500).json({
       success: false,
       message: error.message || '测试连接失败'
@@ -58,7 +59,7 @@ router.post('/config', async (req, res) => {
       message: '配置保存成功'
     })
   } catch (error: any) {
-    console.error('保存配置失败:', error)
+    log.error('保存配置失败:', error)
     return res.status(500).json({
       success: false,
       message: error.message || '保存配置失败'
@@ -90,7 +91,7 @@ router.get('/config', async (req, res) => {
       }
     })
   } catch (error: any) {
-    console.error('获取配置失败:', error)
+    log.error('获取配置失败:', error)
     return res.status(500).json({
       success: false,
       message: error.message || '获取配置失败'
@@ -122,7 +123,7 @@ router.post('/track', async (req, res) => {
       data: result
     })
   } catch (error: any) {
-    console.error('查询物流轨迹失败:', error)
+    log.error('查询物流轨迹失败:', error)
     return res.status(500).json({
       success: false,
       message: error.message || '查询失败'
@@ -142,7 +143,7 @@ router.post('/filter-orders', async (req, res) => {
       data: result
     })
   } catch (error: any) {
-    console.error('订单筛选失败:', error)
+    log.error('订单筛选失败:', error)
     return res.status(500).json({
       success: false,
       message: error.message || '查询失败'
@@ -162,7 +163,7 @@ router.post('/create-order', async (req, res) => {
       data: result
     })
   } catch (error: any) {
-    console.error('创建订单失败:', error)
+    log.error('创建订单失败:', error)
     return res.status(500).json({
       success: false,
       message: error.message || '创建订单失败'

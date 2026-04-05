@@ -564,7 +564,7 @@
             <el-pagination
               v-model:current-page="pendingPagination.page"
               v-model:page-size="pendingPagination.pageSize"
-              :page-sizes="[10, 20, 50, 100]"
+              :page-sizes="[10, 20, 50, 100, 200, 500, 1000, 2000, 5000]"
               :total="pendingPagination.total"
               layout="sizes, prev, pager, next, jumper"
               @size-change="handlePendingPageSizeChange"
@@ -634,7 +634,7 @@
             <el-pagination
               v-model:current-page="auditedPagination.page"
               v-model:page-size="auditedPagination.pageSize"
-              :page-sizes="[10, 20, 50, 100]"
+              :page-sizes="[10, 20, 50, 100, 200, 500, 1000, 2000, 5000]"
               :total="auditedPagination.total"
               layout="sizes, prev, pager, next, jumper"
               @size-change="handleAuditedPageSizeChange"
@@ -659,6 +659,7 @@ defineOptions({
 
 import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
+import axios from 'axios'
 import { useOrderStore } from '@/stores/order'
 import { useUserStore } from '@/stores/user'
 import { useDepartmentStore } from '@/stores/department'
@@ -2165,10 +2166,14 @@ const loadCancelAuditOrders = async () => {
 const loadPendingCancelCount = async () => {
   try {
     const { orderApi } = await import('@/api/order')
-    const response = await orderApi.getPendingCancelCount()
+    // 🔥 使用 pending-cancel API 获取总数，只请求第一页1条数据即可
+    const response = await orderApi.getPendingCancelOrders({
+      page: 1,
+      pageSize: 1
+    })
 
-    if (response && response.data) {
-      pendingCancelCount.value = response.data.count || 0
+    if (response && response.pagination) {
+      pendingCancelCount.value = response.pagination.total || 0
     }
   } catch (error) {
     console.error('获取待审核取消订单数量失败:', error)
@@ -2576,6 +2581,11 @@ const loadOrderList = async (force = false) => {
 
     updateQuickFilterCounts()
   } catch (error) {
+    // 🔥 修复：忽略请求被取消的错误（由新请求替代旧请求时产生，属于正常行为）
+    if (axios.isCancel(error)) {
+      console.log('[订单列表] 请求已被取消（被新请求替代），忽略此错误')
+      return
+    }
     console.error('加载订单列表失败:', error)
     orderStore.orders = []
     pagination.total = 0

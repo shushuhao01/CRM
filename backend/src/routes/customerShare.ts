@@ -8,6 +8,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { LessThan, In } from 'typeorm';
 import { getTenantRepo } from '../utils/tenantRepo';
 
+import { log } from '../config/logger';
 const router = Router();
 
 // 所有客户分享路由都需要认证
@@ -50,7 +51,7 @@ router.get('/history', async (req: Request, res: Response) => {
       data: { list, total, page: Number(page), pageSize: Number(pageSize) }
     });
   } catch (error) {
-    console.error('获取分享历史失败:', error);
+    log.error('获取分享历史失败:', error);
     res.status(500).json({ success: false, code: 500, message: '获取分享历史失败' });
   }
 });
@@ -65,7 +66,7 @@ router.post('/share', async (req: Request, res: Response) => {
     const { customerId, sharedTo, timeLimit, remark } = req.body;
     const currentUser = (req as any).user;
 
-    console.log('[客户分享] 接收到的参数:', {
+    log.info('[客户分享] 接收到的参数:', {
       customerId,
       customerId_type: typeof customerId,
       customerId_length: customerId?.length,
@@ -75,7 +76,7 @@ router.post('/share', async (req: Request, res: Response) => {
     });
 
     if (!customerId || !sharedTo) {
-      console.log('[客户分享] 参数验证失败');
+      log.info('[客户分享] 参数验证失败');
       return res.status(400).json({ success: false, code: 400, message: '参数不完整' });
     }
 
@@ -84,14 +85,14 @@ router.post('/share', async (req: Request, res: Response) => {
     const shareRepository = getTenantRepo(CustomerShare);
 
     // 获取客户信息
-    console.log('[客户分享] 开始查询客户, ID:', customerId);
+    log.info('[客户分享] 开始查询客户, ID:', customerId);
     const customer = await customerRepository.findOne({ where: { id: customerId } });
-    console.log('[客户分享] 查询结果:', customer ? `找到客户: ${customer.name} (${customer.customerNo})` : '客户不存在');
+    log.info('[客户分享] 查询结果:', customer ? `找到客户: ${customer.name} (${customer.customerNo})` : '客户不存在');
 
     if (!customer) {
       // 额外调试：查看数据库中的客户ID格式
       const sampleCustomers = await customerRepository.find({ take: 3, order: { createdAt: 'DESC' } });
-      console.log('[客户分享] 数据库中最近3条客户:', sampleCustomers.map(c => ({
+      log.info('[客户分享] 数据库中最近3条客户:', sampleCustomers.map(c => ({
         id: c.id,
         id_length: c.id.length,
         name: c.name,
@@ -111,9 +112,9 @@ router.post('/share', async (req: Request, res: Response) => {
     }
 
     // 获取接收人信息
-    console.log('[客户分享] 查询接收人, ID:', sharedTo);
+    log.info('[客户分享] 查询接收人, ID:', sharedTo);
     const targetUser = await userRepository.findOne({ where: { id: sharedTo } });
-    console.log('[客户分享] 接收人查询结果:', targetUser ? `找到用户: ${targetUser.realName || targetUser.username}` : '用户不存在');
+    log.info('[客户分享] 接收人查询结果:', targetUser ? `找到用户: ${targetUser.realName || targetUser.username}` : '用户不存在');
 
     if (!targetUser) {
       return res.status(404).json({ success: false, code: 404, message: '接收人不存在' });
@@ -140,7 +141,7 @@ router.post('/share', async (req: Request, res: Response) => {
       share.expireTime = expireTime;
     }
 
-    console.log('[客户分享] 准备保存分享记录:', {
+    log.info('[客户分享] 准备保存分享记录:', {
       shareId: share.id,
       customerName: share.customerName,
       from: share.sharedByName,
@@ -149,7 +150,7 @@ router.post('/share', async (req: Request, res: Response) => {
     });
 
     await shareRepository.save(share);
-    console.log('[客户分享] 分享记录保存成功');
+    log.info('[客户分享] 分享记录保存成功');
 
     // 🔥 发送系统消息给被分享成员
     try {
@@ -165,9 +166,9 @@ router.post('/share', async (req: Request, res: Response) => {
         actionUrl: `/customer/detail/${share.customerId}`,
         createdBy: share.sharedBy
       });
-      console.log('[客户分享] 系统消息已发送给被分享成员');
+      log.info('[客户分享] 系统消息已发送给被分享成员');
     } catch (msgError) {
-      console.error('[客户分享] 发送系统消息失败:', msgError);
+      log.error('[客户分享] 发送系统消息失败:', msgError);
       // 消息发送失败不影响分享功能
     }
 
@@ -178,7 +179,7 @@ router.post('/share', async (req: Request, res: Response) => {
       data: share
     });
   } catch (error) {
-    console.error('[客户分享] 分享失败，错误详情:', error);
+    log.error('[客户分享] 分享失败，错误详情:', error);
     res.status(500).json({ success: false, code: 500, message: '分享客户失败' });
   }
 });
@@ -216,7 +217,7 @@ router.post('/recall', async (req: Request, res: Response) => {
 
     res.json({ success: true, code: 200, message: '客户回收成功' });
   } catch (error) {
-    console.error('回收客户失败:', error);
+    log.error('回收客户失败:', error);
     res.status(500).json({ success: false, code: 500, message: '回收客户失败' });
   }
 });
@@ -237,7 +238,7 @@ router.get('/my-shared', async (req: Request, res: Response) => {
 
     res.json({ success: true, code: 200, data: shares });
   } catch (error) {
-    console.error('获取我分享的客户失败:', error);
+    log.error('获取我分享的客户失败:', error);
     res.status(500).json({ success: false, code: 500, message: '获取失败' });
   }
 });
@@ -264,7 +265,7 @@ router.get('/shared-to-me', async (req: Request, res: Response) => {
 
     res.json({ success: true, code: 200, data: shares });
   } catch (error) {
-    console.error('获取分享给我的客户失败:', error);
+    log.error('获取分享给我的客户失败:', error);
     res.status(500).json({ success: false, code: 500, message: '获取失败' });
   }
 });
@@ -295,7 +296,7 @@ router.get('/shareable-users', async (req: Request, res: Response) => {
 
     res.json({ success: true, code: 200, data: shareableUsers });
   } catch (error) {
-    console.error('获取可分享用户失败:', error);
+    log.error('获取可分享用户失败:', error);
     res.status(500).json({ success: false, code: 500, message: '获取失败' });
   }
 });

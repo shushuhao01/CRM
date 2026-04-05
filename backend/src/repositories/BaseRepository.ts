@@ -36,9 +36,21 @@ export class BaseRepository<Entity extends ObjectLiteral> {
   protected repository: Repository<Entity>;
   protected entityClass: new () => Entity;
 
+  // 🔥 性能优化：缓存租户字段信息，避免每次调用都遍历 metadata.columns
+  private _hasTenantId: boolean;
+  private _tenantFieldName: string | null;
+
   constructor(entityClass: new () => Entity) {
     this.entityClass = entityClass;
     this.repository = AppDataSource.getRepository(entityClass);
+
+    // 🔥 在构造函数中一次性计算并缓存租户字段信息
+    const metadata = this.repository.metadata;
+    const tenantColumn = metadata.columns.find(column =>
+      column.propertyName === 'tenantId' || column.propertyName === 'tenant_id'
+    );
+    this._hasTenantId = !!tenantColumn;
+    this._tenantFieldName = tenantColumn ? tenantColumn.propertyName : null;
   }
 
   /**
@@ -49,26 +61,17 @@ export class BaseRepository<Entity extends ObjectLiteral> {
   }
 
   /**
-   * 判断实体是否有 tenant_id 字段
-   * 检查实体的属性名（可能是tenantId或tenant_id）
+   * 判断实体是否有 tenant_id 字段（使用缓存结果）
    */
   protected hasTenantIdField(): boolean {
-    const metadata = this.repository.metadata;
-    return metadata.columns.some(column =>
-      column.propertyName === 'tenantId' || column.propertyName === 'tenant_id'
-    );
+    return this._hasTenantId;
   }
 
   /**
-   * 获取租户字段的属性名
-   * 返回实体中实际使用的属性名（tenantId或tenant_id）
+   * 获取租户字段的属性名（使用缓存结果）
    */
   protected getTenantFieldName(): string | null {
-    const metadata = this.repository.metadata;
-    const tenantColumn = metadata.columns.find(column =>
-      column.propertyName === 'tenantId' || column.propertyName === 'tenant_id'
-    );
-    return tenantColumn ? tenantColumn.propertyName : null;
+    return this._tenantFieldName;
   }
 
   /**

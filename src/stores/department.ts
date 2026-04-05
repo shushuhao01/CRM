@@ -832,4 +832,8 @@ export const useDepartmentStore = createPersistentStore('department', () => {
     initData,
     initMockData
   }
+}, {
+  // 🔒 安全优化：排除部门列表数据不持久化到localStorage
+  // 部门数据从后端API加载，不需要本地持久化
+  exclude: ['departments']
 })

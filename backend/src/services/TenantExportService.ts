@@ -16,6 +16,7 @@ import { Product } from '../entities/Product';
 import * as fs from 'fs';
 import * as path from 'path';
 
+import { log } from '../config/logger';
 export interface ExportOptions {
   tenantId: string;
   tables?: string[];  // 要导出的表，不指定则导出全部
@@ -60,7 +61,7 @@ export class TenantExportService {
 
     // 异步执行导出
     this.executeExport(jobId, options).catch(error => {
-      console.error(`导出任务失败 [${jobId}]:`, error);
+      log.error(`导出任务失败 [${jobId}]:`, error);
       const failedJob = exportJobs.get(jobId);
       if (failedJob) {
         failedJob.status = 'failed';
@@ -143,7 +144,7 @@ export class TenantExportService {
       job.filePath = filePath;
       job.completedAt = new Date();
 
-      console.log(`✅ 导出任务完成 [${jobId}]: ${filePath}`);
+      log.info(`✅ 导出任务完成 [${jobId}]: ${filePath}`);
 
     } catch (error: any) {
       job.status = 'failed';
@@ -173,7 +174,7 @@ export class TenantExportService {
         entityClass = Product;
         break;
       default:
-        console.warn(`未知的表名: ${tableName}`);
+        log.warn(`未知的表名: ${tableName}`);
         return [];
     }
 
@@ -215,7 +216,7 @@ export class TenantExportService {
         }
         // 删除任务记录
         exportJobs.delete(jobId);
-        console.log(`🗑️  清理过期导出任务: ${jobId}`);
+        log.info(`🗑️  清理过期导出任务: ${jobId}`);
       }
     }
   }

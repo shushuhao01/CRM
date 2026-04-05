@@ -4,6 +4,7 @@ import { Permission } from '../entities/Permission';
 import { TreeRepository } from 'typeorm';
 import { getCurrentTenantIdSafe } from '../utils/tenantHelpers';
 
+import { log } from '../config/logger';
 export class PermissionController {
   private get permissionRepository(): TreeRepository<Permission> {
     const dataSource = getDataSource();
@@ -53,7 +54,7 @@ export class PermissionController {
         data: roots
       });
     } catch (error) {
-      console.error('获取权限树失败:', error);
+      log.error('获取权限树失败:', error);
       res.status(500).json({
         success: false,
         message: '获取权限树失败'
@@ -94,7 +95,7 @@ export class PermissionController {
         data: permissions
       });
     } catch (error) {
-      console.error('获取权限列表失败:', error);
+      log.error('获取权限列表失败:', error);
       res.status(500).json({
         success: false,
         message: '获取权限列表失败'
@@ -185,7 +186,7 @@ export class PermissionController {
         message: '权限创建成功'
       });
     } catch (error) {
-      console.error('创建权限失败:', error);
+      log.error('创建权限失败:', error);
       res.status(500).json({
         success: false,
         message: '创建权限失败'
@@ -271,7 +272,7 @@ export class PermissionController {
         message: '权限更新成功'
       });
     } catch (error) {
-      console.error('更新权限失败:', error);
+      log.error('更新权限失败:', error);
       res.status(500).json({
         success: false,
         message: '更新权限失败'
@@ -320,7 +321,7 @@ export class PermissionController {
         message: '权限删除成功'
       });
     } catch (error) {
-      console.error('删除权限失败:', error);
+      log.error('删除权限失败:', error);
       res.status(500).json({
         success: false,
         message: '删除权限失败'

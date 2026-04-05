@@ -260,6 +260,7 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted, onUnmounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
+import axios from 'axios'
 import { ElMessage } from 'element-plus'
 import { Search, Refresh, RefreshLeft, CopyDocument } from '@element-plus/icons-vue'
 import DynamicTable from '@/components/DynamicTable.vue'
@@ -397,7 +398,8 @@ const searchForm = reactive({
 // 分页
 const pagination = reactive({
   page: 1,
-  size: 20
+  size: 20,
+  total: 0
 })
 
 // 表格数据
@@ -776,6 +778,11 @@ const loadData = async () => {
     fetchLatestLogisticsUpdates()
 
   } catch (error) {
+    // 🔥 修复：忽略请求被取消的错误（由新请求替代旧请求时产生，属于正常行为）
+    if (axios.isCancel(error)) {
+      console.log('[物流列表] 请求已被取消（被新请求替代），忽略此错误')
+      return
+    }
     ElMessage.error('加载数据失败')
     console.error('Load data error:', error)
     tableData.value = []
