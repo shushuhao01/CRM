@@ -5,8 +5,10 @@
 import { Router, Request, Response } from 'express'
 import { AppDataSource } from '../config/database'
 import { v4 as uuidv4 } from 'uuid'
-import bcrypt from 'bcrypt'
+import bcrypt from 'bcryptjs'
+import { clearLicenseWriteCache } from '../middleware/checkLicenseWrite'
 
+import { log } from '../config/logger';
 const router = Router()
 
 // 检查系统激活状态（公开接口）
@@ -21,11 +23,22 @@ router.get('/status', async (_req: Request, res: Response) => {
       const license = result[0]
       const isExpired = license.expires_at && new Date(license.expires_at) < new Date()
 
+      // 计算距离过期的天数
+      let daysUntilExpiry: number | null = null
+      let nearExpiry = false
+      if (license.expires_at) {
+        const expireDate = new Date(license.expires_at)
+        daysUntilExpiry = Math.ceil((expireDate.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))
+        nearExpiry = !isExpired && daysUntilExpiry <= 30
+      }
+
       res.json({
         success: true,
         data: {
           activated: true,
           expired: isExpired,
+          nearExpiry,
+          daysUntilExpiry,
           licenseType: license.license_type,
           maxUsers: license.max_users,
           customerName: license.customer_name,
@@ -43,7 +56,7 @@ router.get('/status', async (_req: Request, res: Response) => {
       })
     }
   } catch (error) {
-    console.error('检查授权状态失败:', error)
+    log.error('检查授权状态失败:', error)
     res.json({
       success: true,
       data: { activated: false, expired: false }
@@ -77,7 +90,7 @@ router.post('/activate', async (req: Request, res: Response) => {
       verifyResult = await response.json()
     } catch (_fetchError) {
       // 如果无法连接平台，尝试本地验证（适用于离线部署）
-      console.log('无法连接平台管理后台，尝试本地验证')
+      log.info('无法连接平台管理后台，尝试本地验证')
       verifyResult = await localVerifyLicense(licenseKey, machineId)
     }
 
@@ -115,14 +128,21 @@ router.post('/activate', async (req: Request, res: Response) => {
     )
 
     // 检查是否需要创建默认管理员
+    // 清除授权过期检查的缓存，使续费/激活立即生效
+    clearLicenseWriteCache()
+
     const adminExists = await AppDataSource.query(
       `SELECT id FROM users WHERE role = 'super_admin' OR role_id IN (SELECT id FROM roles WHERE code = 'super_admin') LIMIT 1`
     ).catch(() => [])
 
     let defaultAdmin = null
     if (!adminExists || adminExists.length === 0) {
-      // 创建默认管理员账号
-      const hashedPassword = await bcrypt.hash('admin123', 10)
+      // 🔥 私有部署：使用购买时的管理员手机号作为默认账号，密码 Aa123456
+      // customerPhone 由管理后台公开API /verify/license 返回
+      const adminPhone = licenseData.customerPhone || null
+      const adminUsername = adminPhone || 'admin'  // 有手机号用手机号，没有降级为 admin
+      const defaultPassword = 'Aa123456'
+      const hashedPassword = await bcrypt.hash(defaultPassword, 10)
       const adminId = uuidv4()
 
       // 获取或创建超级管理员角色
@@ -143,12 +163,17 @@ router.post('/activate', async (req: Request, res: Response) => {
       }
 
       await AppDataSource.query(
-        `INSERT INTO users (id, username, password, name, role, role_id, status, created_at, updated_at)
-         VALUES (?, 'admin', ?, '系统管理员', 'super_admin', ?, 'active', ?, ?)`,
-        [adminId, hashedPassword, roleId, now, now]
+        `INSERT INTO users (id, username, password, name, phone, role, role_id, status, created_at, updated_at)
+         VALUES (?, ?, ?, '系统管理员', ?, 'super_admin', ?, 'active', ?, ?)`,
+        [adminId, adminUsername, hashedPassword, adminPhone, roleId, now, now]
       )
 
-      defaultAdmin = { username: 'admin', password: 'admin123' }
+      defaultAdmin = {
+        username: adminUsername,
+        password: defaultPassword,
+        isPhoneAccount: !!adminPhone,
+        phone: adminPhone
+      }
     }
 
     res.json({
@@ -163,7 +188,7 @@ router.post('/activate', async (req: Request, res: Response) => {
       }
     })
   } catch (error: any) {
-    console.error('系统激活失败:', error)
+    log.error('系统激活失败:', error)
     res.status(500).json({ success: false, message: '系统激活失败: ' + error.message })
   }
 })
@@ -178,9 +203,9 @@ router.get('/info', async (_req: Request, res: Response) => {
     if (result && result.length > 0) {
       const license = result[0]
 
-      // 获取当前用户数
+      // 获取当前用户数（私有部署只统计 tenant_id IS NULL 的用户）
       const userCountResult = await AppDataSource.query(
-        `SELECT COUNT(*) as count FROM users WHERE status = 'active'`
+        `SELECT COUNT(*) as count FROM users WHERE status = 'active' AND tenant_id IS NULL`
       ).catch(() => [{ count: 0 }])
       const currentUsers = userCountResult[0]?.count || 0
 
@@ -206,7 +231,7 @@ router.get('/info', async (_req: Request, res: Response) => {
       })
     }
   } catch (error) {
-    console.error('获取授权信息失败:', error)
+    log.error('获取授权信息失败:', error)
     res.status(500).json({ success: false, message: '获取授权信息失败' })
   }
 })
@@ -218,6 +243,9 @@ router.post('/sync', async (_req: Request, res: Response) => {
     const result = await licenseService.verifyOnline()
 
     if (result.valid) {
+      // 同步成功，清除授权过期检查的缓存
+      clearLicenseWriteCache()
+
       // 重新获取本地授权信息
       const licenseInfo = await licenseService.getLicenseInfo()
 
@@ -237,7 +265,7 @@ router.post('/sync', async (_req: Request, res: Response) => {
       })
     }
   } catch (error: any) {
-    console.error('同步授权信息失败:', error)
+    log.error('同步授权信息失败:', error)
     res.status(500).json({ success: false, message: '同步失败: ' + error.message })
   }
 })
@@ -282,7 +310,8 @@ async function localVerifyLicense(licenseKey: string, _machineId: string) {
       licenseType: 'perpetual',
       maxUsers: 50,
       features: { all: true },
-      customerName: '私有部署客户'
+      customerName: '私有部署客户',
+      customerPhone: null
     }
   }
 }

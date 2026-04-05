@@ -11,6 +11,7 @@ import { AppDataSource } from '../config/database';
 import { notificationTemplateService } from './NotificationTemplateService';
 import { adminNotificationService } from './AdminNotificationService';
 
+import { log } from '../config/logger';
 export class PaymentReminderService {
   /**
    * 检查并发送待支付提醒
@@ -22,7 +23,7 @@ export class PaymentReminderService {
     failed: number;
   }> {
     try {
-      console.log('[PaymentReminder] 开始检查待支付订单...');
+      log.info('[PaymentReminder] 开始检查待支付订单...');
 
       const result = {
         success: true,
@@ -44,11 +45,11 @@ export class PaymentReminderService {
         }
       }
 
-      console.log(`[PaymentReminder] 检查完成: 检查${result.checked}个, 发送${result.sent}个, 失败${result.failed}个`);
+      log.info(`[PaymentReminder] 检查完成: 检查${result.checked}个, 发送${result.sent}个, 失败${result.failed}个`);
 
       return result;
     } catch (error: any) {
-      console.error('[PaymentReminder] 检查失败:', error);
+      log.error('[PaymentReminder] 检查失败:', error);
       return {
         success: false,
         checked: 0,
@@ -84,11 +85,11 @@ export class PaymentReminderService {
           AND po.created_at BETWEEN DATE_SUB(NOW(), INTERVAL 25 HOUR) AND DATE_SUB(NOW(), INTERVAL 24 HOUR)
       `);
 
-      console.log(`[PaymentReminder] 发现${orders.length}个待支付订单`);
+      log.info(`[PaymentReminder] 发现${orders.length}个待支付订单`);
 
       return orders;
     } catch (error: any) {
-      console.error('[PaymentReminder] 查询待支付订单失败:', error);
+      log.error('[PaymentReminder] 查询待支付订单失败:', error);
       return [];
     }
   }
@@ -108,7 +109,7 @@ export class PaymentReminderService {
       `, [order.id, today]);
 
       if (logs.length > 0) {
-        console.log(`[PaymentReminder] 订单${order.order_no}今天已发送过提醒,跳过`);
+        log.info(`[PaymentReminder] 订单${order.order_no}今天已发送过提醒,跳过`);
         return false;
       }
 
@@ -129,7 +130,7 @@ export class PaymentReminderService {
         relatedType: 'payment_order'
       });
 
-      console.log(`[PaymentReminder] 已发送支付提醒给订单${order.order_no}`);
+      log.info(`[PaymentReminder] 已发送支付提醒给订单${order.order_no}`);
 
       // 通知管理员：待支付提醒
       adminNotificationService.notify('payment_pending', {
@@ -138,11 +139,11 @@ export class PaymentReminderService {
         relatedId: order.id,
         relatedType: 'payment_order',
         extraData: { orderNo: order.order_no, amount: order.amount, tenantName: order.tenant_name }
-      }).catch(err => console.error('[PaymentReminder] 发送管理员通知失败:', err.message));
+      }).catch(err => log.error('[PaymentReminder] 发送管理员通知失败:', err.message));
 
       return true;
     } catch (error: any) {
-      console.error(`[PaymentReminder] 发送提醒失败(订单${order.order_no}):`, error);
+      log.error(`[PaymentReminder] 发送提醒失败(订单${order.order_no}):`, error);
       return false;
     }
   }
@@ -156,7 +157,7 @@ export class PaymentReminderService {
     closed: number;
   }> {
     try {
-      console.log('[PaymentReminder] 开始检查超时订单...');
+      log.info('[PaymentReminder] 开始检查超时订单...');
 
       // 查询48小时前创建的待支付订单
       const expiredOrders = await AppDataSource.query(`
@@ -171,7 +172,7 @@ export class PaymentReminderService {
           AND po.created_at < DATE_SUB(NOW(), INTERVAL 48 HOUR)
       `);
 
-      console.log(`[PaymentReminder] 发现${expiredOrders.length}个超时订单`);
+      log.info(`[PaymentReminder] 发现${expiredOrders.length}个超时订单`);
 
       let closed = 0;
 
@@ -185,7 +186,7 @@ export class PaymentReminderService {
         `, [order.id]);
 
         closed++;
-        console.log(`[PaymentReminder] 已关闭超时订单${order.order_no}`);
+        log.info(`[PaymentReminder] 已关闭超时订单${order.order_no}`);
       }
 
       return {
@@ -194,7 +195,7 @@ export class PaymentReminderService {
         closed
       };
     } catch (error: any) {
-      console.error('[PaymentReminder] 检查超时订单失败:', error);
+      log.error('[PaymentReminder] 检查超时订单失败:', error);
       return {
         success: false,
         checked: 0,
@@ -207,22 +208,22 @@ export class PaymentReminderService {
    * 执行完整的检查流程
    */
   async runFullCheck(): Promise<void> {
-    console.log('\n========================================');
-    console.log('支付提醒检查任务开始');
-    console.log('时间:', new Date().toLocaleString('zh-CN'));
-    console.log('========================================\n');
+    log.info('\n========================================');
+    log.info('支付提醒检查任务开始');
+    log.info('时间:', new Date().toLocaleString('zh-CN'));
+    log.info('========================================\n');
 
     // 1. 检查并发送待支付提醒
     const reminderResult = await this.checkAndSendReminders();
-    console.log('\n待支付提醒结果:', reminderResult);
+    log.info('\n待支付提醒结果:', reminderResult);
 
     // 2. 检查并关闭超时订单
     const expiredResult = await this.checkAndCloseExpiredOrders();
-    console.log('\n超时订单处理结果:', expiredResult);
+    log.info('\n超时订单处理结果:', expiredResult);
 
-    console.log('\n========================================');
-    console.log('支付提醒检查任务完成');
-    console.log('========================================\n');
+    log.info('\n========================================');
+    log.info('支付提醒检查任务完成');
+    log.info('========================================\n');
   }
 }
 

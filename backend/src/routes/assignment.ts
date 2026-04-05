@@ -6,6 +6,7 @@ import { User } from '../entities/User';
 import { v4 as uuidv4 } from 'uuid';
 import { getTenantRepo, tenantSQL } from '../utils/tenantRepo';
 
+import { log } from '../config/logger';
 const router = Router();
 
 router.use(authenticateToken);
@@ -66,7 +67,7 @@ router.get('/history', async (req: Request, res: Response) => {
       }
     });
   } catch (error) {
-    console.error('获取分配历史失败:', error);
+    log.error('获取分配历史失败:', error);
     res.status(500).json({
       success: false,
       message: '获取分配历史失败'
@@ -138,7 +139,7 @@ router.post('/assign', async (req: Request, res: Response) => {
       data: { id: assignmentId }
     });
   } catch (error) {
-    console.error('分配客户失败:', error);
+    log.error('分配客户失败:', error);
     res.status(500).json({
       success: false,
       message: '分配客户失败'
@@ -194,7 +195,7 @@ router.post('/batch-assign', async (req: Request, res: Response) => {
           successCount++;
         }
       } catch (e) {
-        console.error('分配单个客户失败:', e);
+        log.error('分配单个客户失败:', e);
       }
     }
 
@@ -204,7 +205,7 @@ router.post('/batch-assign', async (req: Request, res: Response) => {
       data: { successCount, failCount: customerIds.length - successCount }
     });
   } catch (error) {
-    console.error('批量分配失败:', error);
+    log.error('批量分配失败:', error);
     res.status(500).json({ success: false, message: '批量分配失败' });
   }
 });
@@ -253,7 +254,7 @@ router.get('/stats', async (req: Request, res: Response) => {
       }
     });
   } catch (error) {
-    console.error('获取分配统计失败:', error);
+    log.error('获取分配统计失败:', error);
     res.status(500).json({ success: false, message: '获取分配统计失败' });
   }
 });

@@ -16,6 +16,7 @@ import fs from 'fs'
 import bcrypt from 'bcryptjs'
 import { tenantRawSQL, getCurrentTenantIdSafe } from '../utils/tenantHelpers'
 
+import { log } from '../config/logger';
 const router = Router()
 
 // 辅助函数：生成正确的WebSocket URL
@@ -135,7 +136,7 @@ async function logApiCall(data: {
       [data.success ? 1 : 0, data.success ? 0 : 1, data.responseTime, data.interfaceCode]
     )
   } catch (error) {
-    console.error('记录API调用日志失败:', error)
+    log.error('记录API调用日志失败:', error)
   }
 }
 
@@ -264,7 +265,7 @@ router.post('/login', async (req: Request, res: Response) => {
       }
     })
   } catch (error) {
-    console.error('APP登录失败:', error)
+    log.error('APP登录失败:', error)
     await logApiCall({
       interfaceCode: 'mobile_login',
       method: 'POST',
@@ -358,7 +359,7 @@ router.post('/bindQRCode', authenticateToken, async (req: Request, res: Response
       }
     })
   } catch (error) {
-    console.error('生成绑定二维码失败:', error)
+    log.error('生成绑定二维码失败:', error)
     res.status(500).json({
       success: false,
       message: '生成二维码失败',
@@ -376,7 +377,7 @@ router.post('/bind', async (req: Request, res: Response) => {
   try {
     const { bindToken, phoneNumber, deviceInfo } = req.body
 
-    console.log('收到绑定请求:', { bindToken, phoneNumber, deviceInfo })
+    log.info('收到绑定请求:', { bindToken, phoneNumber, deviceInfo })
 
     if (!bindToken) {
       return res.status(400).json({
@@ -390,33 +391,33 @@ router.post('/bind', async (req: Request, res: Response) => {
     let userId: string = ''
 
     // 从 device_bind_logs 表查找（connectionId）
-    console.log('查询 device_bind_logs 表, bindToken:', bindToken)
+    log.info('查询 device_bind_logs 表, bindToken:', bindToken)
     const bindLogs = await AppDataSource.query(
       `SELECT id, user_id, tenant_id FROM device_bind_logs
        WHERE connection_id = ? AND status = 'pending' AND expires_at > NOW()`,
       [bindToken]
     )
-    console.log('device_bind_logs 查询结果:', bindLogs)
+    log.info('device_bind_logs 查询结果:', bindLogs)
 
     if (bindLogs.length > 0) {
       const bindLog = bindLogs[0]
       userId = bindLog.user_id
       const logTenantId = bindLog.tenant_id // 从绑定记录继承租户ID
-      console.log('找到绑定记录, userId:', userId, 'tenantId:', logTenantId)
+      log.info('找到绑定记录, userId:', userId, 'tenantId:', logTenantId)
 
       // 检查用户是否已有 work_phones 记录
       const existingPhones = await AppDataSource.query(
         `SELECT id FROM work_phones WHERE user_id = ?${logTenantId ? ' AND tenant_id = ?' : ''}`,
         logTenantId ? [userId, logTenantId] : [userId]
       )
-      console.log('现有手机记录:', existingPhones)
+      log.info('现有手机记录:', existingPhones)
 
       if (existingPhones.length > 0) {
         record = existingPhones[0]
-        console.log('使用现有记录:', record)
+        log.info('使用现有记录:', record)
       } else {
         // 创建新的 work_phones 记录
-        console.log('创建新的work_phones记录...')
+        log.info('创建新的work_phones记录...')
         const tempPhoneNumber = `temp_${Date.now()}`
         try {
           const insertResult = await AppDataSource.query(
@@ -424,21 +425,21 @@ router.post('/bind', async (req: Request, res: Response) => {
              VALUES (?, ?, 'inactive', 'offline', NOW(), NOW(), ?)`,
             [userId, tempPhoneNumber, logTenantId || null]
           )
-          console.log('插入结果:', insertResult)
+          log.info('插入结果:', insertResult)
           record = { id: insertResult.insertId, user_id: userId }
         } catch (insertError) {
-          console.error('创建work_phones记录失败:', insertError)
+          log.error('创建work_phones记录失败:', insertError)
           throw insertError
         }
       }
 
       // 更新 device_bind_logs 状态
-      console.log('更新device_bind_logs状态...')
+      log.info('更新device_bind_logs状态...')
       await AppDataSource.query(
         `UPDATE device_bind_logs SET status = 'connected', phone_id = ? WHERE id = ?`,
         [record.id, bindLog.id]
       )
-      console.log('device_bind_logs状态更新成功')
+      log.info('device_bind_logs状态更新成功')
     }
 
     if (!record) {
@@ -465,7 +466,7 @@ router.post('/bind', async (req: Request, res: Response) => {
     const finalPhoneNumber = phoneNumber || deviceInfo?.phoneNumber || `device_${deviceId.substring(0, 8)}`
 
     // 更新设备信息 - 只使用基本字段
-    console.log('更新设备信息, record.id:', record.id)
+    log.info('更新设备信息, record.id:', record.id)
     try {
       await AppDataSource.query(
         `UPDATE work_phones SET
@@ -486,9 +487,9 @@ router.post('/bind', async (req: Request, res: Response) => {
           record.id
         ]
       )
-      console.log('设备信息更新成功，online_status 设置为 offline，等待 WebSocket 连接后更新为 online')
+      log.info('设备信息更新成功，online_status 设置为 offline，等待 WebSocket 连接后更新为 online')
     } catch (updateError) {
-      console.error('更新设备信息失败:', updateError)
+      log.error('更新设备信息失败:', updateError)
       throw updateError
     }
 
@@ -510,7 +511,7 @@ router.post('/bind', async (req: Request, res: Response) => {
       )
     } catch (logError) {
       // 忽略日志记录错误
-      console.warn('记录绑定日志失败:', logError)
+      log.warn('记录绑定日志失败:', logError)
     }
 
     // 生成WebSocket Token
@@ -522,7 +523,7 @@ router.post('/bind', async (req: Request, res: Response) => {
 
     // 使用辅助函数生成正确的WebSocket URL
     const wsUrl = generateWsUrl(req)
-    console.log('[Mobile Bind] 生成的 wsUrl:', wsUrl)
+    log.info('[Mobile Bind] 生成的 wsUrl:', wsUrl)
 
     await logApiCall({
       interfaceCode: 'mobile_binddevice',
@@ -557,10 +558,10 @@ router.post('/bind', async (req: Request, res: Response) => {
       }
     })
   } catch (error) {
-    console.error('设备绑定失败:', error)
+    log.error('设备绑定失败:', error)
     // 打印详细错误信息
     if (error instanceof Error) {
-      console.error('错误详情:', error.message, error.stack)
+      log.error('错误详情:', error.message, error.stack)
     }
     res.status(500).json({
       success: false,
@@ -648,10 +649,10 @@ router.delete('/unbind', authenticateToken, async (req: Request, res: Response) 
       message: '设备已解绑'
     })
   } catch (error) {
-    console.error('解绑设备失败:', error)
+    log.error('解绑设备失败:', error)
     // 打印详细错误信息
     if (error instanceof Error) {
-      console.error('错误详情:', error.message, error.stack)
+      log.error('错误详情:', error.message, error.stack)
     }
     res.status(500).json({
       success: false,
@@ -725,7 +726,7 @@ router.get('/device/status', authenticateToken, async (req: Request, res: Respon
       }
     })
   } catch (error) {
-    console.error('获取设备状态失败:', error)
+    log.error('获取设备状态失败:', error)
     res.status(500).json({
       success: false,
       message: '获取设备状态失败',
@@ -789,7 +790,7 @@ router.post('/call/status', authenticateToken, async (req: Request, res: Respons
 
     res.json({ success: true })
   } catch (error) {
-    console.error('上报通话状态失败:', error)
+    log.error('上报通话状态失败:', error)
     res.status(500).json({
       success: false,
       message: '上报失败',
@@ -860,10 +861,10 @@ router.post('/call/end', authenticateToken, async (req: Request, res: Response) 
           ...t.params
         ]
       )
-      console.log('[通话结束] 更新通话记录:', callId)
+      log.info('[通话结束] 更新通话记录:', callId)
     } else {
       // 记录不存在，创建新记录
-      console.log('[通话结束] 未找到现有记录，创建新记录')
+      log.info('[通话结束] 未找到现有记录，创建新记录')
 
       // 根据通话持续时间计算正确的开始时间
       let finalStartTime: Date
@@ -881,7 +882,7 @@ router.post('/call/end', authenticateToken, async (req: Request, res: Response) 
          VALUES (?, ?, ?, 'outbound', ?, ?, ?, ?, ?, NOW(), NOW(), ?)`,
         [callId, userId, phoneNumber || '', status || 'connected', callDuration, hasRecording ? 1 : 0, finalStartTime, callEndTime, tenantId]
       )
-      console.log('[通话结束] 创建新通话记录:', callId)
+      log.info('[通话结束] 创建新通话记录:', callId)
     }
 
     await logApiCall({
@@ -912,7 +913,7 @@ router.post('/call/end', authenticateToken, async (req: Request, res: Response) 
       }
     })
   } catch (error) {
-    console.error('上报通话结束失败:', error)
+    log.error('上报通话结束失败:', error)
     res.status(500).json({
       success: false,
       message: '上报失败',
@@ -973,7 +974,7 @@ router.post('/recording/upload', authenticateToken, checkStorageLimit, uploadRec
       }
     })
   } catch (error) {
-    console.error('上传录音失败:', error)
+    log.error('上传录音失败:', error)
     res.status(500).json({
       success: false,
       message: '上传失败',
@@ -1173,7 +1174,7 @@ router.post('/call/followup', authenticateToken, async (req: Request, res: Respo
       }
     })
   } catch (error) {
-    console.error('提交通话跟进失败:', error)
+    log.error('提交通话跟进失败:', error)
     await logApiCall({
       interfaceCode: 'mobile_call_followup',
       method: 'POST',
@@ -1200,7 +1201,7 @@ router.post('/call/followup', authenticateToken, async (req: Request, res: Respo
 router.get('/call/:callId', authenticateToken, async (req: Request, res: Response) => {
   try {
     const { callId } = req.params
-    console.log('[Mobile API] 获取通话详情, callId:', callId)
+    log.info('[Mobile API] 获取通话详情, callId:', callId)
 
     // 获取通话记录 - 简化查询，不依赖 customers 表
     const t = tenantRawSQL()
@@ -1227,7 +1228,7 @@ router.get('/call/:callId', authenticateToken, async (req: Request, res: Respons
         [callId, ...t.params]
       )
     } catch (_e) {
-      console.log('[Mobile API] 获取跟进记录失败，可能表不存在')
+      log.info('[Mobile API] 获取跟进记录失败，可能表不存在')
     }
 
     // 解析 call_tags
@@ -1272,7 +1273,7 @@ router.get('/call/:callId', authenticateToken, async (req: Request, res: Respons
       }
     })
   } catch (error: any) {
-    console.error('获取通话详情失败:', error.message, error.stack)
+    log.error('获取通话详情失败:', error.message, error.stack)
     res.status(500).json({
       success: false,
       message: '获取失败: ' + error.message,
@@ -1291,13 +1292,13 @@ router.get('/calls', authenticateToken, async (req: Request, res: Response) => {
     const userId = currentUser?.userId || currentUser?.id
     const { page = 1, pageSize = 20, callType, callStatus, startDate, endDate } = req.query
 
-    console.log('[Mobile API] 获取通话记录, userId:', userId, 'params:', { page, pageSize, callType, callStatus, startDate, endDate })
+    log.info('[Mobile API] 获取通话记录, userId:', userId, 'params:', { page, pageSize, callType, callStatus, startDate, endDate })
 
     // 先检查表是否存在
     try {
       await AppDataSource.query(`SELECT 1 FROM call_records LIMIT 1`)
     } catch (tableError: any) {
-      console.error('[Mobile API] call_records 表不存在或无法访问:', tableError.message)
+      log.error('[Mobile API] call_records 表不存在或无法访问:', tableError.message)
       // 返回空数据而不是错误
       return res.json({
         code: 200,
@@ -1347,7 +1348,7 @@ router.get('/calls', authenticateToken, async (req: Request, res: Response) => {
     params.push(Number(pageSize), offset)
 
     const records = await AppDataSource.query(query, params)
-    console.log('[Mobile API] 查询到通话记录:', records.length, '条')
+    log.info('[Mobile API] 查询到通话记录:', records.length, '条')
 
     res.json({
       code: 200,
@@ -1372,7 +1373,7 @@ router.get('/calls', authenticateToken, async (req: Request, res: Response) => {
       }
     })
   } catch (error: any) {
-    console.error('获取通话记录失败:', error.message, error.stack)
+    log.error('获取通话记录失败:', error.message, error.stack)
     res.status(500).json({
       success: false,
       message: '获取失败: ' + error.message,
@@ -1390,13 +1391,13 @@ router.get('/stats/today', authenticateToken, async (req: Request, res: Response
     const currentUser = (req as any).user
     const userId = currentUser?.userId || currentUser?.id
 
-    console.log('[Mobile API] 获取今日统计, userId:', userId)
+    log.info('[Mobile API] 获取今日统计, userId:', userId)
 
     // 先检查表是否存在
     try {
       await AppDataSource.query(`SELECT 1 FROM call_records LIMIT 1`)
     } catch (tableError: any) {
-      console.error('[Mobile API] call_records 表不存在:', tableError.message)
+      log.error('[Mobile API] call_records 表不存在:', tableError.message)
       // 返回空统计数据
       return res.json({
         code: 200,
@@ -1448,8 +1449,8 @@ router.get('/stats/today', authenticateToken, async (req: Request, res: Response
       }
     })
   } catch (error: any) {
-    console.error('获取今日统计失败:', error.message, error.stack)
-    console.error('获取今日统计失败:', error)
+    log.error('获取今日统计失败:', error.message, error.stack)
+    log.error('获取今日统计失败:', error)
     res.status(500).json({
       success: false,
       message: '获取失败',
@@ -1469,13 +1470,13 @@ router.get('/stats', authenticateToken, async (req: Request, res: Response) => {
     const userId = currentUser?.userId || currentUser?.id
     const { period = 'today' } = req.query
 
-    console.log('[Mobile API] 获取统计, userId:', userId, 'period:', period)
+    log.info('[Mobile API] 获取统计, userId:', userId, 'period:', period)
 
     // 先检查表是否存在
     try {
       await AppDataSource.query(`SELECT 1 FROM call_records LIMIT 1`)
     } catch (tableError: any) {
-      console.error('[Mobile API] call_records 表不存在:', tableError.message)
+      log.error('[Mobile API] call_records 表不存在:', tableError.message)
       return res.json({
         code: 200,
         success: true,
@@ -1536,7 +1537,7 @@ router.get('/stats', authenticateToken, async (req: Request, res: Response) => {
       }
     })
   } catch (error: any) {
-    console.error('获取统计失败:', error.message, error.stack)
+    log.error('获取统计失败:', error.message, error.stack)
     res.status(500).json({
       success: false,
       message: '获取失败: ' + error.message,
@@ -1593,7 +1594,7 @@ router.get('/interfaces', authenticateToken, async (req: Request, res: Response)
       }))
     })
   } catch (error) {
-    console.error('获取接口列表失败:', error)
+    log.error('获取接口列表失败:', error)
     res.status(500).json({
       success: false,
       message: '获取接口列表失败'
@@ -1645,7 +1646,7 @@ router.put('/interfaces/:id', authenticateToken, async (req: Request, res: Respo
       message: '更新成功'
     })
   } catch (error) {
-    console.error('更新接口状态失败:', error)
+    log.error('更新接口状态失败:', error)
     res.status(500).json({
       success: false,
       message: '更新失败'
@@ -1711,7 +1712,7 @@ router.get('/interfaces/logs', authenticateToken, async (req: Request, res: Resp
       }
     })
   } catch (error) {
-    console.error('获取调用日志失败:', error)
+    log.error('获取调用日志失败:', error)
     res.status(500).json({
       success: false,
       message: '获取日志失败'
@@ -1786,7 +1787,7 @@ router.get('/interfaces/stats', authenticateToken, async (req: Request, res: Res
       }
     })
   } catch (error) {
-    console.error('获取接口统计失败:', error)
+    log.error('获取接口统计失败:', error)
     res.status(500).json({
       success: false,
       message: '获取统计失败'
@@ -1820,7 +1821,7 @@ router.post('/interfaces/:id/reset', authenticateToken, async (req: Request, res
       message: '统计已重置'
     })
   } catch (error) {
-    console.error('重置统计失败:', error)
+    log.error('重置统计失败:', error)
     res.status(500).json({
       success: false,
       message: '重置失败'

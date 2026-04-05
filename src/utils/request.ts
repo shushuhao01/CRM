@@ -37,8 +37,15 @@ let requestCount = 0
 const pendingRequests = new Map<string, AbortController>()
 
 // 生成请求唯一标识
+// 🔥 修复：排除 _t 时间戳参数，避免请求拦截器和响应拦截器生成的key不一致
+// 请求拦截器在添加 _t 之前生成key，响应拦截器在添加 _t 之后生成key，导致 pendingRequests 永远无法清理
 const generateRequestKey = (config: AxiosRequestConfig): string => {
-  return `${config.method}_${config.url}_${JSON.stringify(config.params)}_${JSON.stringify(config.data)}`
+  let params = config.params
+  if (params && typeof params === 'object' && '_t' in params) {
+    const { _t: _timestamp, ...restParams } = params
+    params = restParams
+  }
+  return `${config.method}_${config.url}_${JSON.stringify(params)}_${JSON.stringify(config.data)}`
 }
 
 // 请求拦截器
@@ -159,6 +166,10 @@ service.interceptors.response.use(
           const respData = response.data as any
           if (respData?.code === 'USER_LIMIT_EXCEEDED' || respData?.code === 'STORAGE_LIMIT_EXCEEDED') {
             ElMessage.error({ message: errorMessage, duration: 5000 })
+          } else if (respData?.code === 'LICENSE_EXPIRED_WRITE_BLOCKED') {
+            import('./licenseDialog').then(({ showLicenseExpiredDialog }) => {
+              showLicenseExpiredDialog()
+            })
           } else {
             ElMessage.error('没有权限访问此资源')
           }
@@ -237,7 +248,7 @@ service.interceptors.response.use(
           console.log('[Request] ⚠️ 收到401错误，Token已过期')
           handleUnauthorized()
           return Promise.reject(error)
-        case 403:
+         case 403:
           // 🔥 租户资源配额超限的友好提示
           if (data?.code === 'USER_LIMIT_EXCEEDED') {
             errorMessage = data?.message || '用户数已达上限，请联系管理员扩容或删除现有用户后重试'
@@ -247,6 +258,14 @@ service.interceptors.response.use(
           if (data?.code === 'STORAGE_LIMIT_EXCEEDED') {
             errorMessage = data?.message || '存储空间不足，请联系管理员扩容后重试'
             ElMessage.error({ message: errorMessage, duration: 5000 })
+            return Promise.reject(error)
+          }
+          // 🔥 私有部署授权过期写入限制
+          if (data?.code === 'LICENSE_EXPIRED_WRITE_BLOCKED') {
+            errorMessage = data?.message || '系统授权已过期，无法执行此操作'
+            import('./licenseDialog').then(({ showLicenseExpiredDialog }) => {
+              showLicenseExpiredDialog()
+            })
             return Promise.reject(error)
           }
           errorMessage = data?.message || '没有权限访问此资源'

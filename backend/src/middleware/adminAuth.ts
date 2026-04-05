@@ -11,6 +11,11 @@ export const adminAuthMiddleware = (req: Request, res: Response, next: NextFunct
     return next();
   }
 
+  // 验证码接口不需要认证
+  if (req.path === '/auth/captcha' && req.method === 'GET') {
+    return next();
+  }
+
   // 公开接口：获取最新版本（供客户端检查更新）
   if (req.path === '/versions/latest' && req.method === 'GET') {
     return next();

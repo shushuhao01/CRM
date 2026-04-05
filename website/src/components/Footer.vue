@@ -20,17 +20,17 @@
                 </defs>
               </svg>
             </div>
-            <span>云客CRM</span>
+            <span>{{ config.companyName || '云客CRM' }}</span>
           </div>
-          <p class="brand-desc">智能销售管理系统，助力企业高效增长</p>
+          <p class="brand-desc">{{ config.brandSlogan || '智能销售管理系统，助力企业高效增长' }}</p>
           <div class="social-links">
             <a href="javascript:;" title="微信公众号" @click="showWechatQR = true" class="wechat-link">
               <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8.691 2.188C3.891 2.188 0 5.476 0 9.53c0 2.212 1.17 4.203 3.002 5.55a.59.59 0 0 1 .213.665l-.39 1.48c-.019.07-.048.141-.048.213 0 .163.13.295.29.295a.326.326 0 0 0 .167-.054l1.903-1.114a.864.864 0 0 1 .717-.098 10.16 10.16 0 0 0 2.837.403c.276 0 .543-.027.811-.05-.857-2.578.157-4.972 1.932-6.446 1.703-1.415 3.882-1.98 5.853-1.838-.576-3.583-4.196-6.348-8.596-6.348z"/></svg>
             </a>
-            <a :href="wechatServiceUrl" target="_blank" title="在线客服">
+            <a v-if="serviceUrl" :href="serviceUrl" target="_blank" title="在线客服">
               <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/></svg>
             </a>
-            <a href="tel:13570727364" title="电话咨询">
+            <a v-if="servicePhone" :href="'tel:' + servicePhone" :title="'电话咨询 ' + servicePhone">
               <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/></svg>
             </a>
           </div>
@@ -41,9 +41,9 @@
       <div v-if="showWechatQR" class="qr-modal" @click="showWechatQR = false">
         <div class="qr-content" @click.stop>
           <button class="close-btn" @click="showWechatQR = false">✕</button>
-          <h4>关注微信公众号</h4>
+          <h4>{{ config.contactQRCodeLabel || '关注微信公众号' }}</h4>
           <div class="qr-image">
-            <img src="/images/kefuQR.png" alt="微信公众号二维码" />
+            <img :src="qrCodeSrc" alt="微信公众号二维码" />
           </div>
           <p>扫码关注，获取最新资讯</p>
         </div>
@@ -64,7 +64,7 @@
             <router-link to="/docs">帮助文档</router-link>
             <router-link to="/docs/deploy/install">部署指南</router-link>
             <router-link to="/docs/deploy/faq">常见问题</router-link>
-            <a :href="wechatServiceUrl" target="_blank">在线客服</a>
+            <a v-if="serviceUrl" :href="serviceUrl" target="_blank">在线客服</a>
           </div>
           <div class="link-group">
             <h4>公司</h4>
@@ -84,11 +84,11 @@
 
       <!-- 底部版权 -->
       <div class="footer-bottom">
-        <p>© 2025 云客CRM. All rights reserved.</p>
-        <p>
-          <a href="#">ICP备案号</a>
-          <span>|</span>
-          <a href="#">公安备案</a>
+        <p>{{ copyrightText }}</p>
+        <p v-if="config.icpNumber || config.policeNumber">
+          <a v-if="config.icpNumber" href="https://beian.miit.gov.cn/" target="_blank">{{ config.icpNumber }}</a>
+          <span v-if="config.icpNumber && config.policeNumber">|</span>
+          <a v-if="config.policeNumber" href="http://www.beian.gov.cn/" target="_blank">🛡️ {{ config.policeNumber }}</a>
         </p>
       </div>
     </div>
@@ -96,10 +96,31 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed, onMounted } from 'vue'
+import { getWebsiteConfig, type WebsiteConfig } from '@/api/website-config'
 
-const wechatServiceUrl = 'https://work.weixin.qq.com/kfid/kfc461ca9f5b45c8d25'
 const showWechatQR = ref(false)
+const config = ref<Partial<WebsiteConfig>>({})
+
+// 客服链接（优先配置，降级默认）
+const serviceUrl = computed(() => config.value.customerServiceUrl || 'https://work.weixin.qq.com/kfid/kfc461ca9f5b45c8d25')
+
+// 客服电话（优先配置，降级默认）
+const servicePhone = computed(() => config.value.servicePhone || '13570727364')
+
+// 二维码图片（优先配置，降级本地图片）
+const qrCodeSrc = computed(() => config.value.serviceQRCode || '/images/kefuQR.png')
+
+// 版权文字
+const copyrightText = computed(() => {
+  if (config.value.copyrightText) return config.value.copyrightText
+  const name = config.value.companyName || '云客CRM'
+  return `© ${new Date().getFullYear()} ${name}. All rights reserved.`
+})
+
+onMounted(async () => {
+  config.value = await getWebsiteConfig()
+})
 </script>
 
 <style lang="scss" scoped>

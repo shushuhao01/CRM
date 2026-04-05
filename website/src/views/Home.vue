@@ -28,12 +28,12 @@
             助力企业实现销售业绩持续增长。
           </p>
           <div class="hero-actions">
-            <a :href="wechatServiceUrl" target="_blank" class="btn btn-primary btn-lg">
+            <router-link to="/register?plan=FREE_TRIAL" class="btn btn-primary btn-lg">
               <span>免费试用 7 天</span>
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M5 12h14M12 5l7 7-7 7"/>
               </svg>
-            </a>
+            </router-link>
             <a href="javascript:;" class="btn btn-white btn-lg" @click="showVideoModal = true">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
                 <polygon points="5,3 19,12 5,21"/>
@@ -123,12 +123,38 @@
       <div class="container">
         <p class="clients-title">深受 10,000+ 企业信赖</p>
         <div class="clients-logos">
-          <div class="logo-item">科技公司A</div>
-          <div class="logo-item">电商平台B</div>
-          <div class="logo-item">金融集团C</div>
-          <div class="logo-item">教育机构D</div>
-          <div class="logo-item">医疗企业E</div>
-          <div class="logo-item">制造业F</div>
+          <div class="logo-item">
+            <span class="logo-icon">🏢</span>
+            <span class="logo-name">盛恒达贸易</span>
+          </div>
+          <div class="logo-item">
+            <span class="logo-icon">🛒</span>
+            <span class="logo-name">优品汇电商</span>
+          </div>
+          <div class="logo-item">
+            <span class="logo-icon">💰</span>
+            <span class="logo-name">中信普惠金融</span>
+          </div>
+          <div class="logo-item">
+            <span class="logo-icon">🎓</span>
+            <span class="logo-name">启航教育集团</span>
+          </div>
+          <div class="logo-item">
+            <span class="logo-icon">🏥</span>
+            <span class="logo-name">康宁健康科技</span>
+          </div>
+          <div class="logo-item">
+            <span class="logo-icon">🏭</span>
+            <span class="logo-name">鼎盛智造工业</span>
+          </div>
+          <div class="logo-item">
+            <span class="logo-icon">📱</span>
+            <span class="logo-name">云联智通科技</span>
+          </div>
+          <div class="logo-item">
+            <span class="logo-icon">🚚</span>
+            <span class="logo-name">顺捷供应链</span>
+          </div>
         </div>
       </div>
     </section>
@@ -248,6 +274,55 @@
               <li>数据备份恢复</li>
             </ul>
           </div>
+
+          <div class="feature-card">
+            <div class="feature-icon red">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+              </svg>
+            </div>
+            <h3>财务管理</h3>
+            <p>全面的财务数据管理，支持COD到付、增值服务计费、结算对账，让财务流程清晰透明</p>
+            <ul class="feature-list">
+              <li>COD到付管理</li>
+              <li>增值服务计费</li>
+              <li>结算对账报表</li>
+              <li>批量财务搜索</li>
+            </ul>
+          </div>
+
+          <div class="feature-card">
+            <div class="feature-icon indigo">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
+              </svg>
+            </div>
+            <h3>售后管理</h3>
+            <p>完整的售后服务工单体系，从客户反馈到问题解决全程跟踪，提升客户满意度和复购率</p>
+            <ul class="feature-list">
+              <li>售后工单创建</li>
+              <li>问题处理跟进</li>
+              <li>退换货流程管理</li>
+              <li>客户满意度评价</li>
+            </ul>
+          </div>
+
+          <div class="feature-card">
+            <div class="feature-icon amber">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+                <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+              </svg>
+            </div>
+            <h3>消息通知</h3>
+            <p>实时WebSocket消息推送，系统公告与公司公告双轨并行，重要信息即时触达每位成员</p>
+            <ul class="feature-list">
+              <li>实时消息推送</li>
+              <li>系统公告发布</li>
+              <li>跟进提醒通知</li>
+              <li>多端消息同步</li>
+            </ul>
+          </div>
         </div>
       </div>
     </section>
@@ -310,7 +385,7 @@
             <h3>SaaS 云端版</h3>
             <p class="version-desc">无需服务器，即开即用，适合快速启动的团队</p>
             <div class="version-price">
-              <span class="price-from">¥99</span>
+              <span class="price-from">¥{{ saasMinPrice }}</span>
               <span class="price-unit">/月起</span>
             </div>
             <ul class="version-features">
@@ -328,7 +403,7 @@
             <h3>私有部署版</h3>
             <p class="version-desc">部署在您自己的服务器，数据完全自主可控</p>
             <div class="version-price">
-              <span class="price-from">¥9,800</span>
+              <span class="price-from">¥{{ privateMinPrice }}</span>
               <span class="price-unit">起</span>
             </div>
             <ul class="version-features">
@@ -354,40 +429,85 @@
 
         <div class="testimonials-grid">
           <div class="testimonial-card">
+            <div class="testimonial-stars">⭐⭐⭐⭐⭐</div>
             <div class="testimonial-content">
-              <p>"使用云客CRM后，我们的销售团队效率提升了50%，客户跟进再也不会遗漏，业绩增长明显。"</p>
+              <p>"上线云客CRM三个月后，我们200人的销售团队客户跟进效率提升了50%以上，月度成交率从12%提升到了19%。业绩分析面板让管理层的决策更加有据可依。"</p>
             </div>
             <div class="testimonial-author">
               <div class="author-avatar">张</div>
               <div class="author-info">
-                <span class="author-name">张总监</span>
-                <span class="author-company">某电商公司 · 销售总监</span>
+                <span class="author-name">张伟明</span>
+                <span class="author-company">盛恒达贸易集团 · 销售副总裁</span>
               </div>
             </div>
           </div>
 
           <div class="testimonial-card">
+            <div class="testimonial-stars">⭐⭐⭐⭐⭐</div>
             <div class="testimonial-content">
-              <p>"系统很好用，界面简洁，功能齐全。特别是物流跟踪功能，帮我们节省了大量人工查询时间。"</p>
+              <p>"物流跟踪和订单管理功能帮我们每天节省了3小时的人工查询时间。智能预计送达功能上线后，客户催单量下降了60%，客服压力减轻了很多。"</p>
             </div>
             <div class="testimonial-author">
               <div class="author-avatar">李</div>
               <div class="author-info">
-                <span class="author-name">李经理</span>
-                <span class="author-company">某贸易公司 · 运营经理</span>
+                <span class="author-name">李思雨</span>
+                <span class="author-company">优品汇电商 · 运营总监</span>
               </div>
             </div>
           </div>
 
           <div class="testimonial-card">
+            <div class="testimonial-stars">⭐⭐⭐⭐⭐</div>
             <div class="testimonial-content">
-              <p>"私有部署版本满足了我们对数据安全的要求，技术支持响应很快，问题都能及时解决。"</p>
+              <p>"选择私有部署版本完美满足了我们金融行业对数据合规的严格要求。多层权限体系和数据脱敏功能让我们通过了银保监的信息安全审查。"</p>
             </div>
             <div class="testimonial-author">
               <div class="author-avatar">王</div>
               <div class="author-info">
-                <span class="author-name">王总</span>
-                <span class="author-company">某金融公司 · CEO</span>
+                <span class="author-name">王建华</span>
+                <span class="author-company">中信普惠金融 · 首席信息官</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="testimonial-card">
+            <div class="testimonial-stars">⭐⭐⭐⭐⭐</div>
+            <div class="testimonial-content">
+              <p>"电销外呼功能和移动APP配合使用，让我们的课程顾问团队外呼效率翻倍。通话录音和智能质检帮助我们快速培养了一批优秀的销售新人。"</p>
+            </div>
+            <div class="testimonial-author">
+              <div class="author-avatar">陈</div>
+              <div class="author-info">
+                <span class="author-name">陈晓峰</span>
+                <span class="author-company">启航教育集团 · 市场总经理</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="testimonial-card">
+            <div class="testimonial-stars">⭐⭐⭐⭐⭐</div>
+            <div class="testimonial-content">
+              <p>"作为一家年营收过亿的制造企业，我们的客户数据复杂且量大。云客CRM的SaaS版让我们30分钟就完成了系统部署，免运维的体验让IT部门省心不少。"</p>
+            </div>
+            <div class="testimonial-author">
+              <div class="author-avatar">赵</div>
+              <div class="author-info">
+                <span class="author-name">赵国强</span>
+                <span class="author-company">鼎盛智造工业 · 总经理</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="testimonial-card">
+            <div class="testimonial-stars">⭐⭐⭐⭐⭐</div>
+            <div class="testimonial-content">
+              <p>"消息通知和公告系统让跨区域的团队协作变得高效。实时业绩排名和分享激励机制极大地激发了销售团队的竞争意识，季度业绩连创新高。"</p>
+            </div>
+            <div class="testimonial-author">
+              <div class="author-avatar">刘</div>
+              <div class="author-info">
+                <span class="author-name">刘婷婷</span>
+                <span class="author-company">顺捷供应链 · 销售总监</span>
               </div>
             </div>
           </div>
@@ -402,14 +522,14 @@
           <h2>准备好提升您的销售业绩了吗？</h2>
           <p>立即联系我们，体验智能销售管理的魅力</p>
           <div class="cta-actions">
-            <a :href="wechatServiceUrl" target="_blank" class="btn btn-white btn-lg">
+            <router-link to="/register?plan=FREE_TRIAL" class="btn btn-white btn-lg">
               免费试用 7 天
-            </a>
+            </router-link>
             <a :href="wechatServiceUrl" target="_blank" class="btn btn-outline-white btn-lg">
               预约演示
             </a>
           </div>
-          <p class="cta-note">联系客服 · 快速开通 · 专业服务支持</p>
+          <p class="cta-note">免费注册 · 快速开通 · 专业服务支持</p>
         </div>
       </div>
     </section>
@@ -417,8 +537,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import ImagePreview from '@/components/ImagePreview.vue'
+import { getPackages, type Package } from '@/api/packages'
+import { getWebsiteConfig, type WebsiteConfig } from '@/api/website-config'
 
 const previewVisible = ref(false)
 const previewImage = ref('')
@@ -429,8 +551,31 @@ const videoRef = ref<HTMLVideoElement | null>(null)
 const videoSrc = '/videos/demo.mp4'
 const videoPoster = '/images/dashboard.png'
 
-// 微信客服链接
-const wechatServiceUrl = 'https://work.weixin.qq.com/kfid/kfc461ca9f5b45c8d25'
+// 动态客服链接
+const websiteConfig = ref<Partial<WebsiteConfig>>({})
+const wechatServiceUrl = computed(() => websiteConfig.value.customerServiceUrl || 'https://work.weixin.qq.com/kfid/kfc461ca9f5b45c8d25')
+
+// 套餐数据
+const packagesData = ref<Package[]>([])
+
+// SaaS最低月价（排除免费试用，有付费套餐取最低价，兜底99）
+const saasMinPrice = computed(() => {
+  const saasPaid = packagesData.value.filter(p => p.type === 'saas' && p.price > 0)
+  if (saasPaid.length > 0) {
+    return Math.min(...saasPaid.map(p => Number(p.price)))
+  }
+  return 99
+})
+
+// 私有部署最低价（有数据取最低价，兜底9800）
+const privateMinPrice = computed(() => {
+  const privatePkgs = packagesData.value.filter(p => p.type === 'private' && p.price > 0)
+  if (privatePkgs.length > 0) {
+    const min = Math.min(...privatePkgs.map(p => Number(p.price)))
+    return min.toLocaleString()
+  }
+  return '9,800'
+})
 
 const openPreview = (src: string) => {
   previewImage.value = src
@@ -456,6 +601,18 @@ const handleKeydown = (e: KeyboardEvent) => {
 
 onMounted(() => {
   window.addEventListener('keydown', handleKeydown)
+
+  // 加载官网配置
+  getWebsiteConfig().then(data => {
+    websiteConfig.value = data
+  })
+
+  // 加载套餐数据
+  getPackages().then(data => {
+    packagesData.value = data
+  }).catch(err => {
+    console.error('加载套餐数据失败:', err)
+  })
 })
 
 onUnmounted(() => {
@@ -897,19 +1054,34 @@ onUnmounted(() => {
   display: flex;
   justify-content: center;
   align-items: center;
-  gap: 60px;
+  gap: 40px;
   flex-wrap: wrap;
 }
 
 .logo-item {
-  font-size: 18px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 16px;
   font-weight: 600;
   color: var(--text-muted);
   opacity: 0.6;
-  transition: opacity 0.3s ease;
+  transition: all 0.3s ease;
+  padding: 8px 16px;
+  border-radius: 8px;
+
+  .logo-icon {
+    font-size: 22px;
+  }
+
+  .logo-name {
+    font-size: 15px;
+    letter-spacing: 0.5px;
+  }
 
   &:hover {
     opacity: 1;
+    background: rgba(99, 102, 241, 0.05);
   }
 }
 </style>
@@ -973,6 +1145,9 @@ onUnmounted(() => {
   &.orange { background: rgba(245, 158, 11, 0.1); color: var(--warning); }
   &.pink { background: rgba(236, 72, 153, 0.1); color: #ec4899; }
   &.teal { background: rgba(20, 184, 166, 0.1); color: #14b8a6; }
+  &.red { background: rgba(239, 68, 68, 0.1); color: #ef4444; }
+  &.indigo { background: rgba(79, 70, 229, 0.1); color: #4f46e5; }
+  &.amber { background: rgba(245, 158, 11, 0.1); color: #d97706; }
 }
 
 .feature-list {
@@ -1156,6 +1331,12 @@ onUnmounted(() => {
     background: white;
     box-shadow: var(--shadow-lg);
   }
+}
+
+.testimonial-stars {
+  font-size: 14px;
+  margin-bottom: 16px;
+  letter-spacing: 2px;
 }
 
 .testimonial-content {

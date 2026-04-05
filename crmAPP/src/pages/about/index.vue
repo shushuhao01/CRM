@@ -4,7 +4,7 @@
     <view class="app-info">
       <image class="app-logo" src="/static/logo.png" mode="aspectFit" />
       <text class="app-name">CRM外呼助手</text>
-      <text class="app-version">版本 v1.0.0</text>
+      <text class="app-version">版本 v{{ appVersion }}</text>
       <text class="app-slogan">高效外呼 · 智能管理</text>
     </view>
 
@@ -41,6 +41,10 @@
 </template>
 
 <script setup lang="ts">
+import { APP_VERSION } from '@/config/app'
+
+const appVersion = APP_VERSION
+
 // 打开用户协议
 const openUserAgreement = () => {
   uni.navigateTo({ url: '/pages/agreement/user-agreement' })

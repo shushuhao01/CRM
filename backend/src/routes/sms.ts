@@ -5,6 +5,7 @@ import { SmsTemplate } from '../entities/SmsTemplate';
 import { SmsRecord } from '../entities/SmsRecord';
 import { getTenantRepo } from '../utils/tenantRepo';
 
+import { log } from '../config/logger';
 const router = Router();
 
 router.use(authenticateToken);
@@ -31,7 +32,7 @@ router.get('/templates', async (req: Request, res: Response) => {
 
     res.json({ success: true, code: 200, data: { templates } });
   } catch (error) {
-    console.error('获取模板失败:', error);
+    log.error('获取模板失败:', error);
     res.status(500).json({ success: false, code: 500, message: '获取模板失败' });
   }
 });
@@ -58,7 +59,7 @@ router.post('/templates', requireAdmin, async (req: Request, res: Response) => {
 
     res.status(201).json({ success: true, code: 200, data: savedTemplate });
   } catch (error) {
-    console.error('创建模板失败:', error);
+    log.error('创建模板失败:', error);
     res.status(500).json({ success: false, code: 500, message: '创建模板失败' });
   }
 });
@@ -89,7 +90,7 @@ router.post('/templates/:id/approve', requireAdmin, async (req: Request, res: Re
       data: { id, status: template.status }
     });
   } catch (error) {
-    console.error('审核失败:', error);
+    log.error('审核失败:', error);
     res.status(500).json({ success: false, code: 500, message: '审核失败' });
   }
 });
@@ -114,7 +115,7 @@ router.get('/records', async (req: Request, res: Response) => {
 
     res.json({ success: true, code: 200, data: { records, total } });
   } catch (error) {
-    console.error('获取记录失败:', error);
+    log.error('获取记录失败:', error);
     res.status(500).json({ success: false, code: 500, message: '获取记录失败' });
   }
 });
@@ -149,7 +150,7 @@ router.post('/send', async (req: Request, res: Response) => {
 
     res.json({ success: true, code: 200, data: savedRecord });
   } catch (error) {
-    console.error('发送失败:', error);
+    log.error('发送失败:', error);
     res.status(500).json({ success: false, code: 500, message: '发送失败' });
   }
 });
@@ -190,7 +191,7 @@ router.get('/statistics', async (req: Request, res: Response) => {
       }
     });
   } catch (error) {
-    console.error('获取统计失败:', error);
+    log.error('获取统计失败:', error);
     res.status(500).json({ success: false, code: 500, message: '获取统计失败' });
   }
 });

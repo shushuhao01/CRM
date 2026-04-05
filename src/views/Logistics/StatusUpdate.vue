@@ -385,6 +385,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, provide, onMounted, onUnmounted, watch } from 'vue'
+import axios from 'axios'
 import { useRouter } from 'vue-router'
 import { createSafeNavigator } from '@/utils/navigation'
 import LogisticsStatusPermission from '@/components/Permission/LogisticsStatusPermission.vue'
@@ -949,6 +950,11 @@ const loadData = async (showMessage = false) => {
       ElMessage.success('数据刷新成功')
     }
   } catch (error) {
+    // 🔥 修复：忽略请求被取消的错误
+    if (axios.isCancel(error) || (error as any)?.name === 'CanceledError') {
+      console.log('[状态更新] 列表数据请求被取消（已有新请求替代），忽略')
+      return
+    }
     console.error('订单列表加载失败:', error)
     orderList.value = []
     pagination.total = 0
@@ -1157,6 +1163,12 @@ const loadSummaryData = async (showAnimation = false) => {
       Object.assign(summaryData, newSummaryData)
     }
   } catch (error) {
+    // 🔥 修复：忽略请求被取消的错误（CanceledError）
+    // 请求被取消通常是因为重复请求自动去重机制，新请求会替代旧请求，不是真正的错误
+    if (axios.isCancel(error) || (error as any)?.name === 'CanceledError') {
+      console.log('[状态更新] 汇总数据请求被取消（已有新请求替代），忽略')
+      return
+    }
     console.error('汇总数据加载失败:', error)
     // 重置为0，显示真实的错误状态
     summaryData.pending = 0
@@ -1261,8 +1273,9 @@ onMounted(async () => {
   }
 
   // 🔥 优化：直接加载当前筛选条件的数据
+  // 注意：handleQuickFilter 会修改 dateRange，触发 watcher 自动调用 loadSummaryData
+  // 不需要再手动调用 loadSummaryData()，否则会产生重复请求被取消的问题
   handleQuickFilter('all')
-  await loadSummaryData()
 
   const loadTime = Date.now() - startTime
   console.log(`[状态更新] ✅ 页面初始化完成，耗时: ${loadTime}ms`)

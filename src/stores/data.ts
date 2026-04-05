@@ -1016,4 +1016,8 @@ export const useDataStore = createPersistentStore('data', () => {
     batchRoundRobinAssignDataWithHistory,
     batchCrossDepartmentAssignData
   }
+}, {
+  // 🔒 安全优化：排除大型业务数据不持久化到localStorage
+  // 数据列表/搜索结果/统计数据从后端API加载，不需要本地持久化
+  exclude: ['dataList', 'searchResults', 'statistics', 'assignmentHistory', 'assigneeOptions']
 })

@@ -65,6 +65,8 @@
         <el-table-column prop="customerName" label="客户名称" min-width="160" show-overflow-tooltip>
           <template #default="{ row }">
             <span class="name">{{ row.customerName }}</span>
+            <el-tag v-if="row.licenseType === 'perpetual'" size="small" effect="light" style="margin-left: 6px; background: #f0f9eb; color: #67c23a; border-color: #e1f3d8;">买断</el-tag>
+            <el-tag v-else-if="row.licenseType === 'annual'" type="warning" size="small" effect="light" style="margin-left: 6px;">年付</el-tag>
           </template>
         </el-table-column>
         <el-table-column prop="customerContact" label="联系人" width="100" show-overflow-tooltip>
@@ -130,6 +132,9 @@
                   <el-dropdown-menu>
                     <el-dropdown-item command="unlock">
                       <el-icon><Unlock /></el-icon>解锁账号
+                    </el-dropdown-item>
+                    <el-dropdown-item command="resetPassword">
+                      <el-icon><Key /></el-icon>重置密码
                     </el-dropdown-item>
                     <el-dropdown-item v-if="row.status === 'active' || row.status === 'expired'" command="renew">
                       <el-icon><Clock /></el-icon>续期
@@ -304,6 +309,49 @@
         <el-button type="primary" @click="showLicenseDialog = false" size="large">我知道了</el-button>
       </template>
     </el-dialog>
+
+    <!-- 重置密码成功对话框 -->
+    <el-dialog v-model="showResetPwdDialog" title="密码重置成功" width="520px">
+      <el-result icon="success" title="管理员密码已重置">
+        <template #sub-title>
+          <div class="license-result">
+            <p class="result-desc">请将新密码发送给客户管理员，首次登录后请立即修改密码</p>
+            <div class="info-box-group">
+              <div class="info-box">
+                <div class="info-label">🏢 客户名称</div>
+                <div class="info-value">{{ resetPwdInfo.customerName }}</div>
+              </div>
+              <div class="info-box">
+                <div class="info-label">👤 管理员账号</div>
+                <div class="info-value code">{{ resetPwdInfo.username }}</div>
+              </div>
+              <div class="info-box">
+                <div class="info-label">🔐 新密码（临时）</div>
+                <div class="info-value code" style="color: #e6a23c; font-size: 16px; font-weight: 700;">{{ resetPwdInfo.tempPassword }}</div>
+              </div>
+            </div>
+            <div class="copy-actions">
+              <el-button type="primary" @click="copyResetPwdInfo" size="large">
+                <el-icon><CopyDocument /></el-icon>
+                一键复制账号密码
+              </el-button>
+            </div>
+            <div class="tips-box">
+              <p class="tip">⚠️ 安全提示：</p>
+              <ul>
+                <li>此密码为临时密码，请通知客户登录后立即修改</li>
+                <li>重置密码后原密码立即失效</li>
+                <li>如账号被锁定，重置密码会同时解锁账号</li>
+              </ul>
+            </div>
+          </div>
+        </template>
+      </el-result>
+      <template #footer>
+        <el-button @click="showResetPwdDialog = false">关闭</el-button>
+        <el-button type="primary" @click="copyResetPwdInfo">复制并关闭</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -312,7 +360,7 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   Search, Plus, CopyDocument, ArrowDown, Download, View, Hide,
-  Clock, RefreshRight, Delete, CircleClose, CircleCheck, Unlock
+  Clock, RefreshRight, Delete, CircleClose, CircleCheck, Unlock, Key
 } from '@element-plus/icons-vue'
 import type { FormInstance, FormRules } from 'element-plus'
 import { adminApi } from '@/api/admin'
@@ -330,12 +378,20 @@ const renewMode = ref<'quick' | 'custom'>('quick')
 const renewMonths = ref<number>(12)
 const newLicenseKey = ref('')
 const licenseDialogTitle = ref('私有客户创建成功')
+const showResetPwdDialog = ref(false)
 
 // 登录信息对象
 const loginInfo = reactive({
   licenseKey: '',
   username: '',
   password: ''
+})
+
+// 重置密码信息对象
+const resetPwdInfo = reactive({
+  customerName: '',
+  username: '',
+  tempPassword: ''
 })
 
 const searchForm = reactive({ keyword: '', licenseType: '', status: '' })
@@ -523,6 +579,26 @@ const handleCommand = async (cmd: string, row: any) => {
         if (e !== 'cancel') ElMessage.error(e.message || '解锁失败')
       }
       break
+    case 'resetPassword':
+      try {
+        await ElMessageBox.confirm(
+          `确定要重置 "${row.customerName}" 的管理员密码吗？\n\n重置后将生成新的临时密码，原密码立即失效。如账号被锁定，也会同时解锁。`,
+          '重置管理员密码',
+          { type: 'warning', confirmButtonText: '确定重置', cancelButtonText: '取消' }
+        )
+        const res = await adminApi.resetPrivateCustomerPassword(row.id)
+        if (res.success && res.data) {
+          Object.assign(resetPwdInfo, {
+            customerName: res.data.customerName || row.customerName || '',
+            username: res.data.username || '',
+            tempPassword: res.data.tempPassword || ''
+          })
+          showResetPwdDialog.value = true
+        }
+      } catch (e: any) {
+        if (e !== 'cancel') ElMessage.error(e.message || '重置密码失败')
+      }
+      break
     case 'renew':
       renewingCustomer.value = row
       renewExpireDate.value = null
@@ -576,11 +652,14 @@ const handleCommand = async (cmd: string, row: any) => {
       break
     case 'delete':
       try {
-        await ElMessageBox.confirm('删除客户将同时删除所有授权数据，此操作不可恢复！', '删除客户', {
-          type: 'error', confirmButtonText: '确定删除', confirmButtonClass: 'el-button--danger'
-        })
+        await ElMessageBox.confirm(
+          `确定要删除客户 "${row.customerName}" 吗？删除后将移入回收站，可在系统设置的回收站中恢复。`,
+          '删除客户', {
+            type: 'warning', confirmButtonText: '确定删除', confirmButtonClass: 'el-button--danger'
+          }
+        )
         const res = await adminApi.deleteLicense(row.id)
-        if (res.success) { ElMessage.success('已删除'); fetchData(); fetchStats() }
+        if (res.success) { ElMessage.success('已移入回收站'); fetchData(); fetchStats() }
       } catch (e: any) {
         if (e !== 'cancel') ElMessage.error(e.message || '删除失败')
       }
@@ -687,6 +766,26 @@ const copyCredentials = async () => {
     ElMessage.success('已复制账号密码')
   } catch {
     ElMessage.error('复制失败')
+  }
+}
+
+// 复制重置密码信息
+const copyResetPwdInfo = async () => {
+  const text = `【云客CRM - 密码重置通知】
+
+客户名称：${resetPwdInfo.customerName}
+管理员账号：${resetPwdInfo.username}
+新密码（临时）：${resetPwdInfo.tempPassword}
+
+⚠️ 请登录后立即修改密码！
+如有问题请联系技术支持。`
+
+  try {
+    await navigator.clipboard.writeText(text)
+    ElMessage.success('已复制密码重置信息到剪贴板')
+    showResetPwdDialog.value = false
+  } catch {
+    ElMessage.error('复制失败，请手动复制')
   }
 }
 

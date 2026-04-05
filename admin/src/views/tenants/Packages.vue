@@ -44,9 +44,20 @@
             <div v-if="pkg.type === 'private' && pkg.yearly_price && Number(pkg.yearly_price) > 0" class="private-annual-info">
               <div class="private-annual-tag">
                 <span class="annual-label">年度授权</span>
-                <span class="annual-price">¥{{ Number(pkg.yearly_price).toLocaleString() }}/年</span>
+                <span class="annual-price">{{ Number(pkg.yearly_price).toLocaleString() }}/年</span>
               </div>
-              <span class="private-annual-saving">首年省 ¥{{ (Number(pkg.price) - Number(pkg.yearly_price)).toLocaleString() }}</span>
+              <span class="private-annual-saving">首年省 {{ (Number(pkg.price) - Number(pkg.yearly_price)).toLocaleString() }}</span>
+            </div>
+            <!-- 订阅模式标签 -->
+            <div v-if="pkg.subscription_enabled" class="subscription-info">
+              <el-tag type="success" size="small" effect="dark" round>
+                🔄 支持订阅{{ pkg.subscription_discount_rate > 0 ? `(${(10 - pkg.subscription_discount_rate / 10).toFixed(1)}折)` : '' }}
+              </el-tag>
+              <span class="subscription-channels-text">
+                {{ pkg.subscription_billing_cycle === 'monthly' ? '按月' : pkg.subscription_billing_cycle === 'yearly' ? '按年' : '按月/年' }}
+                ·
+                {{ pkg.subscription_channels === 'wechat' ? '微信代扣' : pkg.subscription_channels === 'alipay' ? '支付宝扣款' : '微信/支付宝' }}
+              </span>
             </div>
           </div>
 
@@ -231,6 +242,78 @@
           </el-form-item>
         </template>
 
+        <!-- ==================== 订阅付费配置（SaaS套餐始终显示） ==================== -->
+        <div v-if="form.type === 'saas'" class="subscription-section">
+          <el-divider content-position="left">🔄 订阅付费配置</el-divider>
+          <!-- 不满足条件时的提示 -->
+          <div v-if="form.is_trial || form.price <= 0" style="padding: 8px 12px;">
+            <el-alert
+              :title="form.is_trial ? '试用套餐不支持订阅模式' : '请先设置月付价格（大于0）后可开启订阅'"
+              type="info" :closable="false" show-icon />
+          </div>
+          <!-- 满足条件时的订阅配置 -->
+          <template v-else>
+            <el-form-item label="支持订阅">
+              <el-switch v-model="form.subscription_enabled" active-text="开启" inactive-text="关闭" />
+              <span style="margin-left: 12px; color: #909399; font-size: 12px;">开启后官网支付时默认推荐订阅模式</span>
+            </el-form-item>
+            <template v-if="form.subscription_enabled">
+              <el-form-item label="订阅周期">
+                <el-radio-group v-model="form.subscription_billing_cycle" size="small">
+                  <el-radio-button value="monthly">按月订阅</el-radio-button>
+                  <el-radio-button value="yearly">按年订阅</el-radio-button>
+                  <el-radio-button value="both">按月+按年</el-radio-button>
+                </el-radio-group>
+                <span style="margin-left: 8px; color: #909399; font-size: 12px;">用户可选的订阅计费周期</span>
+              </el-form-item>
+              <el-form-item label="订阅渠道">
+                <el-radio-group v-model="form.subscription_channels" size="small">
+                  <el-radio-button value="all">全部支持</el-radio-button>
+                  <el-radio-button value="wechat">仅微信代扣</el-radio-button>
+                  <el-radio-button value="alipay">仅支付宝扣款</el-radio-button>
+                </el-radio-group>
+              </el-form-item>
+              <el-form-item label="订阅优惠">
+                <el-input-number v-model="form.subscription_discount_rate" :min="0" :max="50" :precision="1" style="width: 140px" />
+                <span style="margin-left: 8px; color: #909399;">%（如10表示9折，0表示无优惠）</span>
+              </el-form-item>
+              <!-- 订阅价格预览 -->
+              <el-form-item label="价格预览">
+                <div class="price-preview">
+                  <div class="preview-row">
+                    <span class="label">正常月付价</span>
+                    <span>¥{{ form.price }}/月</span>
+                  </div>
+                  <div class="preview-row highlight">
+                    <span class="label">订阅月价</span>
+                    <strong>¥{{ computedSubscriptionPrice.toFixed(2) }}/月</strong>
+                    <span v-if="form.subscription_discount_rate > 0" class="saving">
+                      省 ¥{{ (form.price - computedSubscriptionPrice).toFixed(2) }}/月
+                    </span>
+                  </div>
+                  <div v-if="form.subscription_billing_cycle !== 'monthly'" class="preview-row highlight">
+                    <span class="label">订阅年价</span>
+                    <strong>¥{{ (computedSubscriptionPrice * 12).toFixed(2) }}/年</strong>
+                    <span v-if="form.subscription_discount_rate > 0" class="saving">
+                      年省 ¥{{ ((form.price - computedSubscriptionPrice) * 12).toFixed(2) }}
+                    </span>
+                  </div>
+                  <div class="preview-row">
+                    <span class="label">订阅周期</span>
+                    <span>{{ form.subscription_billing_cycle === 'monthly' ? '仅按月' : form.subscription_billing_cycle === 'yearly' ? '仅按年' : '按月 + 按年' }}</span>
+                  </div>
+                  <div class="preview-row tip">
+                    官网显示：推荐订阅付费，{{ form.subscription_discount_rate > 0 ? `享${(10 - form.subscription_discount_rate / 10).toFixed(1)}折优惠` : '自动续费省心省力' }}
+                  </div>
+                  <div class="preview-row tip">
+                    订阅渠道：{{ form.subscription_channels === 'wechat' ? '💚 微信委托代扣' : form.subscription_channels === 'alipay' ? '💙 支付宝周期扣款' : '💚 微信代扣 + 💙 支付宝扣款' }}
+                  </div>
+                </div>
+              </el-form-item>
+            </template>
+          </template>
+        </div>
+
         <!-- ==================== 通用配置 ==================== -->
         <el-divider content-position="left">📋 功能特性</el-divider>
         <el-form-item label="功能特性">
@@ -288,6 +371,10 @@ const form = reactive({
   yearly_discount_rate: 0,
   yearly_bonus_months: 0,
   yearly_price: 0 as number | null,
+  subscription_enabled: false,
+  subscription_channels: 'all' as 'wechat' | 'alipay' | 'all',
+  subscription_billing_cycle: 'monthly' as 'monthly' | 'yearly' | 'both',
+  subscription_discount_rate: 0,
   duration_days: 30,
   max_users: 10,
   max_storage_gb: 5,
@@ -368,6 +455,14 @@ const computedYearlyMonthly = computed(() => {
   return computedYearlyTotal.value / 12
 })
 
+// 订阅价格计算
+const computedSubscriptionPrice = computed(() => {
+  if (form.subscription_discount_rate > 0) {
+    return form.price * (1 - form.subscription_discount_rate / 100)
+  }
+  return form.price
+})
+
 // 卡片展示辅助方法
 const hasYearlyPromo = (pkg: Package) => {
   return (pkg.yearly_bonus_months > 0) || (pkg.yearly_discount_rate > 0) || (pkg.yearly_price && Number(pkg.yearly_price) > 0)
@@ -427,6 +522,7 @@ const resetForm = () => {
     name: '', code: '', type: activeTab.value, description: '',
     price: 0, billing_cycle: isPrivate ? 'once' : 'monthly',
     yearly_discount_rate: 0, yearly_bonus_months: 0, yearly_price: null,
+    subscription_enabled: false, subscription_channels: 'all', subscription_billing_cycle: 'monthly', subscription_discount_rate: 0,
     duration_days: isPrivate ? 36500 : 30,
     max_users: isPrivate ? 50 : 10, max_storage_gb: isPrivate ? 0 : 5,
     features: [''],
@@ -450,6 +546,10 @@ const handleEdit = (pkg: Package) => {
     yearly_discount_rate: Number(pkg.yearly_discount_rate) || 0,
     yearly_bonus_months: Number(pkg.yearly_bonus_months) || 0,
     yearly_price: pkg.yearly_price ? Number(pkg.yearly_price) : null,
+    subscription_enabled: Boolean(pkg.subscription_enabled),
+    subscription_channels: pkg.subscription_channels || 'all',
+    subscription_billing_cycle: pkg.subscription_billing_cycle || 'monthly',
+    subscription_discount_rate: Number(pkg.subscription_discount_rate) || 0,
     features: pkg.features?.length ? [...pkg.features] : ['']
   })
   // 回填不限用户
@@ -613,6 +713,29 @@ onMounted(() => {
   align-items: center;
   gap: 8px;
   margin-bottom: 8px;
+}
+.subscription-info {
+  margin-top: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.subscription-channels-text {
+  font-size: 12px;
+  color: #67c23a;
+  font-weight: 500;
+}
+.subscription-section {
+  background: #f0fdf4;
+  border-radius: 8px;
+  padding: 12px 8px 4px;
+  margin-bottom: 8px;
+}
+.subscription-section :deep(.el-divider__text) {
+  color: #16a34a;
+  font-weight: 600;
+  font-size: 13px;
 }
 </style>
 

@@ -1,6 +1,7 @@
 import crypto from 'crypto'
 import axios from 'axios'
 
+import { log } from '../config/logger';
 /**
  * 圆通快递服务
  */
@@ -51,7 +52,7 @@ export class YTOExpressService {
         sign
       }
 
-      console.log('圆通API测试请求参数:', requestParams)
+      log.info('圆通API测试请求参数:', requestParams)
 
       // 发送请求
       const response = await axios.post(apiUrl, null, {
@@ -62,7 +63,7 @@ export class YTOExpressService {
         timeout: 10000
       })
 
-      console.log('圆通API测试响应:', response.data)
+      log.info('圆通API测试响应:', response.data)
 
       // 检查响应
       if (response.data) {
@@ -88,7 +89,7 @@ export class YTOExpressService {
         message: '响应数据为空'
       }
     } catch (error: any) {
-      console.error('圆通API测试连接失败:', error)
+      log.error('圆通API测试连接失败:', error)
 
       // 解析错误信息
       let errorMessage = '连接失败'
@@ -145,7 +146,7 @@ export class YTOExpressService {
         sign
       }
 
-      console.log('圆通物流查询请求参数:', requestParams)
+      log.info('圆通物流查询请求参数:', requestParams)
 
       // 发送请求
       const response = await axios.post(apiUrl, null, {
@@ -156,7 +157,7 @@ export class YTOExpressService {
         timeout: 10000
       })
 
-      console.log('圆通物流查询响应:', response.data)
+      log.info('圆通物流查询响应:', response.data)
 
       // 检查响应
       if (response.data) {
@@ -194,7 +195,7 @@ export class YTOExpressService {
         message: '响应数据为空'
       }
     } catch (error: any) {
-      console.error('圆通物流查询失败:', error)
+      log.error('圆通物流查询失败:', error)
 
       let errorMessage = '查询失败'
 

@@ -71,22 +71,22 @@
           <div class="contact-card">
             <div class="contact-icon">📧</div>
             <h3>商务合作</h3>
-            <a href="mailto:xianhuquwang@163.com">xianhuquwang@163.com</a>
+            <a :href="'mailto:' + contactEmail">{{ contactEmail }}</a>
           </div>
           <div class="contact-card">
             <div class="contact-icon">🛠️</div>
             <h3>技术支持</h3>
-            <a href="mailto:xianhuquwang@163.com">xianhuquwang@163.com</a>
+            <a :href="'mailto:' + contactEmail">{{ contactEmail }}</a>
           </div>
           <div class="contact-card">
             <div class="contact-icon">📞</div>
             <h3>客服热线</h3>
-            <a href="tel:13570727364">135-7072-7364</a>
+            <a :href="'tel:' + servicePhone">{{ servicePhone }}</a>
           </div>
           <div class="contact-card">
             <div class="contact-icon">📍</div>
             <h3>公司地址</h3>
-            <p>广州市黄埔区南翔一路68号</p>
+            <p>{{ companyAddress }}</p>
           </div>
         </div>
       </div>
@@ -95,6 +95,17 @@
 </template>
 
 <script setup lang="ts">
+import { ref, computed, onMounted } from 'vue'
+import { getWebsiteConfig, type WebsiteConfig } from '@/api/website-config'
+
+const config = ref<Partial<WebsiteConfig>>({})
+const contactEmail = computed(() => config.value.serviceEmail || config.value.contactEmail || 'xianhuquwang@163.com')
+const servicePhone = computed(() => config.value.servicePhone || '13570727364')
+const companyAddress = computed(() => config.value.companyAddress || '广州市黄埔区南翔一路68号')
+
+onMounted(async () => {
+  config.value = await getWebsiteConfig()
+})
 </script>
 
 <style lang="scss" scoped>

@@ -2,7 +2,7 @@ import { AppDataSource } from '../config/database';
 import { AdminUser } from '../entities/AdminUser';
 import { AdminOperationLog } from '../entities/AdminOperationLog';
 import { v4 as uuidv4 } from 'uuid';
-import bcrypt from 'bcrypt';
+import bcrypt from 'bcryptjs';
 
 export class AdminUserService {
   private adminUserRepository = AppDataSource.getRepository(AdminUser);
@@ -83,13 +83,23 @@ export class AdminUserService {
       throw new Error('用户名已存在');
     }
 
+    if (!data.password) {
+      throw new Error('密码不能为空');
+    }
+
     // 加密密码
     const hashedPassword = await bcrypt.hash(data.password, 10);
 
     const user = this.adminUserRepository.create({
       id: uuidv4(),
-      ...data,
-      password: hashedPassword
+      username: data.username,
+      password: hashedPassword,
+      name: data.name || null,
+      email: data.email || null,
+      phone: data.phone || null,
+      role: data.role || 'operator',
+      roleId: data.roleId || null,
+      status: 'active'  // 🔥 必须显式设置，不能依赖数据库默认值
     });
 
     const savedUser = await this.adminUserRepository.save(user);

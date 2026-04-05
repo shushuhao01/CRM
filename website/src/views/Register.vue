@@ -40,7 +40,7 @@
       <div class="register-form-wrapper">
         <div class="form-header">
           <h2>创建账号</h2>
-          <p>已有账号？<a href="https://app.yunke-crm.com">立即登录</a></p>
+          <p>已有账号？<router-link to="/member/login">登录会员中心</router-link> 或 <a href="https://app.yunke-crm.com">登录CRM</a></p>
         </div>
 
         <!-- 步骤指示器 -->
@@ -57,7 +57,7 @@
           <div class="step-line" :class="{ active: step > 2 }"></div>
           <div class="step" :class="{ active: step >= 3 }">
             <span class="step-num">3</span>
-            <span class="step-text">{{ selectedPlan === 'FREE_TRIAL' ? '完成注册' : '完成支付' }}</span>
+            <span class="step-text">{{ selectedPlan === 'FREE_TRIAL' ? (form.autoRenew ? '签约授权' : '完成注册') : (subscriptionChecked && currentPkgSubscriptionEnabled ? '签约支付' : '完成支付') }}</span>
           </div>
         </div>
 
@@ -71,10 +71,22 @@
               <template v-if="billingCycle === 'yearly'">
                 <span class="save-tag">省¥{{ getSaveAmount(selectedPlan) }}</span>
               </template>
+              <template v-if="currentPkgSubscriptionEnabled && subscriptionChecked && selectedPlan !== 'FREE_TRIAL'">
+               <span class="sub-tag-banner"><svg class="sub-tag-banner-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg> 订阅¥{{ billingCycle === 'yearly' ? subscriptionYearlyPrice.toLocaleString() + '/年' : subscriptionPrice + '/月' }}</span>
+              </template>
+            </template>
+            <template v-else-if="selectedPlan !== 'FREE_TRIAL' && planType === 'private'">
+              （{{ privateBillingMode === 'annual' ? '年度授权' : '永久买断' }}）- ¥{{ getPlanPrice(selectedPlan) }}{{ privateBillingMode === 'annual' ? '/年' : '' }}
+              <template v-if="privateBillingMode === 'annual'">
+                <span class="save-tag">省¥{{ getPrivateAnnualSaving(selectedPlan).toLocaleString() }}</span>
+              </template>
             </template>
             <template v-else-if="selectedPlan !== 'FREE_TRIAL'"> - ¥{{ getPlanPrice(selectedPlan) }}</template>
+            <template v-if="selectedPlan === 'FREE_TRIAL' && form.autoRenew">
+              <span class="sub-tag-banner"><svg class="sub-tag-banner-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg> 到期自动续费</span>
+            </template>
           </span>
-          <button v-if="step > 1" class="change-btn" @click="step = 1">更换套餐</button>
+          <button v-if="step > 2" class="change-btn" @click="step = 1">更换套餐</button>
         </div>
 
         <!-- 步骤1：选择套餐 -->
@@ -142,22 +154,98 @@
               </div>
             </div>
 
-            <div v-else class="plans-grid">
+            <!-- 订阅自动续费选项（仅SaaS付费套餐支持订阅时显示） -->
+            <div v-if="planType === 'saas' && selectedPlan !== 'FREE_TRIAL' && currentPkgSubscriptionEnabled" class="subscription-auto-renew">
+              <label class="subscription-check-wrapper" :class="{ checked: subscriptionChecked }">
+                <input type="checkbox" v-model="subscriptionChecked" />
+                <span class="subscription-checkbox-indicator">
+                  <svg v-if="subscriptionChecked" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                </span>
+                <span class="subscription-check-body">
+                  <span class="subscription-check-header">
+                    <svg class="subscription-check-svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                    <span class="subscription-check-title">到期自动续费</span>
+                    <span class="subscription-rec">推荐</span>
+                  </span>
+                  <span class="subscription-check-detail">
+                    <template v-if="billingCycle === 'monthly'">
+                      <template v-if="currentPkgSubscriptionDiscountRate > 0">
+                        订阅价 <strong class="sub-hl-price">¥{{ subscriptionPrice }}/月</strong>
+                        <span class="sub-off-label">省{{ currentPkgSubscriptionDiscountRate }}%</span>
+                        <span class="sub-orig-price">原价 ¥{{ getMonthlyPrice(selectedPlan) }}/月</span>
+                      </template>
+                      <template v-else>
+                        ¥{{ getMonthlyPrice(selectedPlan) }}/月 · 到期按月自动扣款
+                      </template>
+                    </template>
+                    <template v-else>
+                      <template v-if="currentPkgSubscriptionDiscountRate > 0">
+                        订阅价 <strong class="sub-hl-price">¥{{ subscriptionYearlyPrice.toLocaleString() }}/年</strong>
+                        <span class="sub-off-label">再省{{ currentPkgSubscriptionDiscountRate }}%</span>
+                        <span class="sub-orig-price">年付价 ¥{{ getYearlyPrice(selectedPlan).toLocaleString() }}/年</span>
+                      </template>
+                      <template v-else>
+                        ¥{{ getYearlyPrice(selectedPlan).toLocaleString() }}/年 · 到期按年自动扣款
+                      </template>
+                    </template>
+                  </span>
+                  <span class="subscription-check-benefits" v-if="currentPkgSubscriptionDiscountRate > 0">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                    订阅自动续费再省 <strong>¥{{ subscriptionSaving }}</strong>{{ billingCycle === 'yearly' ? '/年' : '/月' }}，不间断服务 · 随时可取消
+                  </span>
+                  <span class="subscription-check-benefits" v-else>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                    不间断服务，避免忘记续费 · 随时可在会员中心取消
+                  </span>
+                </span>
+              </label>
+            </div>
+
+            <div v-if="planType === 'private'" class="plans-grid plans-grid-3">
               <div class="plan-card" :class="{ selected: selectedPlan === 'private-standard' }" @click="selectedPlan = 'private-standard'">
                 <h4>标准版</h4>
-                <p class="plan-price">¥9,800</p>
-                <p class="plan-desc">50用户 · 永久授权</p>
+                <p class="plan-price">¥{{ getPrivateDisplayPrice('private-standard') }}<span v-if="privateBillingMode === 'annual'">/年</span></p>
+                <p class="plan-desc">50用户 · {{ privateBillingMode === 'annual' ? '年度授权' : '永久授权' }}</p>
               </div>
               <div class="plan-card" :class="{ selected: selectedPlan === 'private-pro' }" @click="selectedPlan = 'private-pro'">
                 <div class="plan-badge">推荐</div>
                 <h4>专业版</h4>
-                <p class="plan-price">¥19,800</p>
-                <p class="plan-desc">200用户 · 永久授权</p>
+                <p class="plan-price">¥{{ getPrivateDisplayPrice('private-pro') }}<span v-if="privateBillingMode === 'annual'">/年</span></p>
+                <p class="plan-desc">200用户 · {{ privateBillingMode === 'annual' ? '年度授权' : '永久授权' }}</p>
               </div>
               <div class="plan-card" :class="{ selected: selectedPlan === 'private-enterprise' }" @click="selectedPlan = 'private-enterprise'">
                 <h4>企业版</h4>
-                <p class="plan-price">¥39,800</p>
-                <p class="plan-desc">不限用户 · 永久授权</p>
+                <p class="plan-price">¥{{ getPrivateDisplayPrice('private-enterprise') }}<span v-if="privateBillingMode === 'annual'">/年</span></p>
+                <p class="plan-desc">不限用户 · {{ privateBillingMode === 'annual' ? '年度授权' : '永久授权' }}</p>
+              </div>
+            </div>
+
+            <!-- 私有部署: 年度授权/永久买断切换 -->
+            <div v-if="planType === 'private' && hasPrivateAnnualPricing" class="billing-toggle">
+              <div class="billing-options">
+                <label class="billing-option" :class="{ active: privateBillingMode === 'annual' }">
+                  <input type="radio" v-model="privateBillingMode" value="annual" />
+                  <span class="option-content">
+                    <span class="option-title">
+                      📅 年度授权
+                      <span class="discount-badge">约{{ getPrivateAnnualDiscount(selectedPlan) }}折</span>
+                    </span>
+                    <span class="option-price">
+                      ¥{{ getPrivateAnnualPrice(selectedPlan).toLocaleString() }}/年
+                    </span>
+                    <span class="option-save">首年省 ¥{{ getPrivateAnnualSaving(selectedPlan).toLocaleString() }}，到期可续费</span>
+                  </span>
+                </label>
+                <label class="billing-option" :class="{ active: privateBillingMode === 'perpetual' }">
+                  <input type="radio" v-model="privateBillingMode" value="perpetual" />
+                  <span class="option-content">
+                    <span class="option-title">💎 永久买断</span>
+                    <span class="option-price">
+                      ¥{{ getPrivatePerpetualPrice(selectedPlan).toLocaleString() }}
+                    </span>
+                    <span class="option-save">一次付费，终身使用</span>
+                  </span>
+                </label>
               </div>
             </div>
           </div>
@@ -191,13 +279,50 @@
               </div>
             </div>
             <div class="form-group">
-              <label>邮箱</label>
-              <input type="email" v-model="form.email" placeholder="请输入邮箱（选填）" />
+              <label>邮箱 <span class="recommended">（推荐填写）</span></label>
+              <input type="email" v-model="form.email" placeholder="请输入邮箱地址" />
+              <p class="field-hint">📧 填写邮箱可接收账号开通通知、到期提醒等重要信息</p>
+            </div>
+            <div class="form-group">
+              <label>设置密码 <span class="recommended">（推荐）</span></label>
+              <input type="password" v-model="form.password" placeholder="设置密码可登录会员中心（至少6位）" minlength="6" />
+              <p class="field-hint">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#909399" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: -2px; margin-right: 2px;"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                设置密码后可登录会员中心管理订阅、查看账单和授权信息
+              </p>
+            </div>
+            <!-- 免费试用：到期自动续费选项 -->
+            <div v-if="selectedPlan === 'FREE_TRIAL'" class="auto-renew-section">
+              <label class="checkbox-label auto-renew-label">
+                <input type="checkbox" v-model="form.autoRenew" />
+                <span class="renew-text">
+                  <svg class="renew-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                  试用到期后自动续费
+                  <span class="renew-highlight">（推荐，试用期内可随时取消）</span>
+                </span>
+              </label>
+              <div v-if="form.autoRenew" class="auto-renew-options">
+                <p class="renew-desc">试用到期自动续费套餐：</p>
+                <div class="renew-plan-options">
+                  <label v-for="pkg in renewablePlans" :key="pkg.code"
+                    class="renew-plan-option" :class="{ selected: form.autoRenewPackage === pkg.code }">
+                    <input type="radio" v-model="form.autoRenewPackage" :value="pkg.code" />
+                    <span class="plan-name">{{ pkg.name }}</span>
+                    <span class="plan-price">
+                      {{ pkg.subscription_enabled && pkg.subscription_discount_rate > 0
+                        ? '¥' + (pkg.price * (1 - pkg.subscription_discount_rate / 100)).toFixed(0) + '/月'
+                        : '¥' + pkg.price + '/月' }}
+                    </span>
+                    <span v-if="pkg.subscription_enabled && pkg.subscription_discount_rate > 0" class="sub-tag">订阅优惠</span>
+                  </label>
+                </div>
+                <p class="renew-tip">⚠ 试用期内可在会员中心取消，不取消则到期自动扣费</p>
+              </div>
             </div>
             <div class="form-group">
               <label class="checkbox-label">
                 <input type="checkbox" v-model="form.agree" required />
-                <span>我已阅读并同意 <router-link to="/agreement?type=service">《服务协议》</router-link> 和 <router-link to="/agreement?type=privacy">《隐私政策》</router-link></span>
+                <span>我已阅读并同意 <router-link to="/agreement/service" target="_blank">《服务协议》</router-link> 和 <router-link to="/agreement/privacy" target="_blank">《隐私政策》</router-link></span>
               </label>
             </div>
             <div class="form-actions">
@@ -209,8 +334,323 @@
           </form>
         </div>
 
-        <!-- 步骤3：确认支付 -->
+        <!-- 步骤3：签约/支付 -->
         <div v-if="step === 3" class="form-step">
+
+          <!-- ===== 签约模式（免费试用+自动续费） ===== -->
+          <div v-if="signingMode" class="signing-section">
+            <!-- 注册成功提示 -->
+            <div class="register-success-banner">
+              <div class="success-icon">✅</div>
+              <div class="success-content">
+                <h3>账号已创建成功！</h3>
+                <div class="success-details">
+                  <div class="detail-item">
+                    <span class="detail-label">租户编码</span>
+                    <span class="detail-value">{{ registeredTenant?.tenantCode }}</span>
+                  </div>
+                  <div class="detail-item">
+                    <span class="detail-label">授权码</span>
+                    <span class="detail-value license-key">{{ registeredTenant?.licenseKey }}</span>
+                  </div>
+                  <div v-if="registeredTenant?.adminUsername" class="detail-item">
+                    <span class="detail-label">管理员账号</span>
+                    <span class="detail-value">{{ registeredTenant.adminUsername }}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 签约区域 -->
+            <div class="signing-area">
+              <div class="signing-header">
+                <h3>🔄 {{ isTrialSigning ? '设置自动续费签约' : '订阅签约' }}</h3>
+                <p v-if="isTrialSigning">完成签约后，7天试用到期将自动续费为「{{ signingTargetPkgName }}」套餐（¥{{ signingTargetPkgPrice }}/月）</p>
+                <p v-else>完成签约授权后，系统将自动为您开通「{{ signingTargetPkgName }}」套餐（¥{{ signingTargetPkgPrice }}/{{ billingCycle === 'yearly' ? '年' : '月' }}），首期立即扣款</p>
+              </div>
+
+              <!-- 未开始签约 - 选择渠道 -->
+              <div v-if="signingStatus === 'idle'">
+                <p class="channel-label">请选择签约渠道：</p>
+                <div class="payment-options">
+                  <label class="payment-option" :class="{ selected: signingChannel === 'wechat' }">
+                    <input type="radio" v-model="signingChannel" value="wechat" />
+                    <span class="payment-icon wechat">💚</span>
+                    <span>微信委托代扣</span>
+                  </label>
+                  <label class="payment-option" :class="{ selected: signingChannel === 'alipay' }">
+                    <input type="radio" v-model="signingChannel" value="alipay" />
+                    <span class="payment-icon alipay">💙</span>
+                    <span>支付宝周期扣款</span>
+                  </label>
+                </div>
+
+                <div class="signing-notice">
+                  <p>📋 签约说明：</p>
+                  <ul v-if="isTrialSigning">
+                    <li>签约后不会立即扣费，仅在7天试用期结束后自动扣款</li>
+                    <li>试用期内可随时在会员中心取消自动续费</li>
+                    <li>首次扣款金额：¥{{ signingTargetPkgPrice }}/月</li>
+                  </ul>
+                  <ul v-else>
+                    <li>签约后首期立即扣款，之后每{{ billingCycle === 'yearly' ? '年' : '月' }}自动续费</li>
+                    <li>可随时在会员中心取消自动续费</li>
+                    <li>每期扣款金额：¥{{ signingTargetPkgPrice }}/{{ billingCycle === 'yearly' ? '年' : '月' }}</li>
+                  </ul>
+                </div>
+
+                <div class="form-actions">
+                  <button type="button" class="btn btn-primary btn-block" @click="handleStartSigning" :disabled="signingLoading">
+                    {{ signingLoading ? '发起签约中...' : '开始签约' }}
+                  </button>
+                </div>
+                <p v-if="isTrialSigning" class="skip-signing-link" @click="skipTrialSigning">
+                  跳过签约，直接开始7天试用 →
+                </p>
+              </div>
+
+              <!-- 等待签约完成 - 显示二维码 -->
+              <div v-else-if="signingStatus === 'waiting'">
+                <div class="qr-header">
+                  <span class="pay-type-icon" :class="signingChannel">
+                    {{ signingChannel === 'wechat' ? '💚' : '💙' }}
+                  </span>
+                  <span>{{ signingChannel === 'wechat' ? '微信' : '支付宝' }}签约授权</span>
+                </div>
+
+                <div class="qr-code-wrapper">
+                  <div v-if="signingUrl && !signingUrl.startsWith('MOCK') && !signingUrl.includes('mock_sign')" class="qr-code">
+                    <img :src="generateQRCodeUrl(signingUrl)" alt="签约二维码" />
+                  </div>
+                  <div v-else class="qr-mock">
+                    <div class="mock-qr">
+                      <span>📱</span>
+                      <p>开发模式</p>
+                      <p class="mock-tip">实际部署后显示真实签约二维码</p>
+                    </div>
+                  </div>
+                  <p class="qr-tip">请使用{{ signingChannel === 'wechat' ? '微信' : '支付宝' }}扫描二维码完成签约授权</p>
+                </div>
+
+                <div class="payment-status">
+                  <span class="loading-spinner"></span>
+                  <span>正在等待签约结果...</span>
+                </div>
+
+                <div class="form-actions">
+                  <button v-if="!isTrialSigning" type="button" class="btn btn-outline" @click="cancelSigning">取消签约</button>
+                  <button v-if="isTrialSigning" type="button" class="btn btn-outline" @click="skipTrialSigning">跳过签约</button>
+                  <button type="button" class="btn btn-primary" @click="checkSigningManually">我已完成签约</button>
+                </div>
+              </div>
+
+              <!-- 签约成功 -->
+              <div v-else-if="signingStatus === 'success'">
+                <div class="signing-success-info">
+                  <div class="success-check">🎉</div>
+                  <h4>签约成功！</h4>
+                  <p v-if="isTrialSigning">自动续费已设置，7天试用期结束后将自动续费为「{{ signingTargetPkgName }}」套餐。</p>
+                  <p v-else>订阅已开通，「{{ signingTargetPkgName }}」套餐首期将自动扣款。</p>
+                  <p class="success-sub">可随时在会员中心取消自动续费。</p>
+                </div>
+
+                <div class="form-actions" style="justify-content: center;">
+                  <button type="button" class="btn btn-primary" @click="goToSuccess">🚀 开始使用</button>
+                </div>
+              </div>
+
+              <!-- 签约取消/失败 → 正常付费（仅付费套餐） -->
+              <div v-else-if="signingStatus === 'paying'">
+                <div class="signing-failed-notice">
+                  <span class="notice-icon">⚠️</span>
+                  <div class="notice-content">
+                    <h4>签约未完成</h4>
+                    <p>您取消了订阅签约，请通过以下方式完成套餐购买</p>
+                  </div>
+                </div>
+
+                <div class="order-summary compact">
+                  <div class="order-item">
+                    <span class="item-label">套餐</span>
+                    <span class="item-value">{{ signingTargetPkgName }}</span>
+                  </div>
+                  <div class="order-item">
+                    <span class="item-label">计费周期</span>
+                    <span class="item-value">{{ billingCycle === 'yearly' ? '年付' : '月付' }}</span>
+                  </div>
+                  <div class="order-item total">
+                    <span class="item-label">应付金额</span>
+                    <span class="item-value price">¥{{ getPlanPrice(selectedPlan) }}</span>
+                  </div>
+                </div>
+
+                <div class="payment-methods">
+                  <h4>选择支付方式</h4>
+                  <div class="payment-options">
+                    <label class="payment-option" :class="{ selected: paymentMethod === 'wechat' }">
+                      <input type="radio" v-model="paymentMethod" value="wechat" />
+                      <span class="payment-icon wechat">💚</span>
+                      <span>微信支付</span>
+                    </label>
+                    <label class="payment-option" :class="{ selected: paymentMethod === 'alipay' }">
+                      <input type="radio" v-model="paymentMethod" value="alipay" />
+                      <span class="payment-icon alipay">💙</span>
+                      <span>支付宝</span>
+                    </label>
+                    <label class="payment-option" :class="{ selected: paymentMethod === 'bank' }">
+                      <input type="radio" v-model="paymentMethod" value="bank" />
+                      <span class="payment-icon bank">🏦</span>
+                      <span>对公转账</span>
+                    </label>
+                  </div>
+                </div>
+
+                <div class="form-actions">
+                  <button type="button" class="btn btn-primary btn-block" @click="handleSkipSigningPayment" :disabled="creatingPayment">
+                    {{ creatingPayment ? '创建订单中...' : '确认支付' }}
+                  </button>
+                </div>
+              </div>
+
+              <!-- 签约取消后 → 等待付费结果 -->
+              <div v-else-if="signingStatus === 'pay-waiting'">
+                <!-- 对公转账 -->
+                <template v-if="paymentMethod === 'bank'">
+                  <div class="qr-header">
+                    <span class="pay-type-icon bank">🏦</span>
+                    <span>对公转账</span>
+                  </div>
+
+                  <div class="qr-amount">
+                    <span class="amount-label">转账金额</span>
+                    <span class="amount-value">¥{{ getPlanPrice(selectedPlan) }}</span>
+                  </div>
+
+                  <div class="bank-info">
+                    <div class="bank-info-item" v-if="bankConfig.bankName">
+                      <span class="bank-label">开户银行</span>
+                      <span class="bank-value">{{ bankConfig.bankName }}</span>
+                    </div>
+                    <div class="bank-info-item" v-if="bankConfig.accountName">
+                      <span class="bank-label">账户名称</span>
+                      <span class="bank-value">{{ bankConfig.accountName }}</span>
+                    </div>
+                    <div class="bank-info-item" v-if="bankConfig.accountNo">
+                      <span class="bank-label">银行账号</span>
+                      <span class="bank-value monospace">{{ bankConfig.accountNo }}</span>
+                    </div>
+                    <div class="bank-info-item" v-if="bankConfig.bankBranch">
+                      <span class="bank-label">开户支行</span>
+                      <span class="bank-value">{{ bankConfig.bankBranch }}</span>
+                    </div>
+                    <div class="bank-info-remark" v-if="bankConfig.remark">
+                      <p>📌 {{ bankConfig.remark }}</p>
+                    </div>
+                  </div>
+
+                  <div class="order-info" v-if="paymentOrder">
+                    <span>订单号：{{ paymentOrder.orderNo }}</span>
+                    <span class="bank-tip">转账时请在备注中填写此订单号</span>
+                  </div>
+
+                  <div class="bank-notice">
+                    <p>✅ 订单已创建成功，请按以上信息完成转账</p>
+                    <p>⏰ 转账后工作人员将在1-2个工作日内确认到账并激活您的账号</p>
+                    <p>📞 如有疑问请联系客服</p>
+                  </div>
+
+                  <div class="form-actions">
+                    <button type="button" class="btn btn-outline" @click="handleCancelSkipPayment">取消订单</button>
+                    <button type="button" class="btn btn-primary" @click="handleSkipSigningBankDone">我已完成转账</button>
+                  </div>
+                </template>
+
+                <!-- 微信/支付宝扫码支付 -->
+                <template v-else>
+                <div class="qr-header">
+                  <span class="pay-type-icon" :class="paymentMethod">
+                    {{ paymentMethod === 'wechat' ? '💚' : '💙' }}
+                  </span>
+                  <span>{{ paymentMethod === 'wechat' ? '微信' : '支付宝' }}扫码支付</span>
+                </div>
+
+                <div class="qr-amount">
+                  <span class="amount-label">支付金额</span>
+                  <span class="amount-value">¥{{ getPlanPrice(selectedPlan) }}</span>
+                </div>
+
+                <div class="qr-code-wrapper">
+                  <div v-if="paymentOrder && paymentOrder.qrCode && !paymentOrder.qrCode.startsWith('MOCK')" class="qr-code">
+                    <img :src="generateQRCodeUrl(paymentOrder.payUrl || paymentOrder.qrCode)" alt="支付二维码" />
+                  </div>
+                  <div v-else class="qr-mock">
+                    <div class="mock-qr">
+                      <span>📱</span>
+                      <p>开发模式</p>
+                      <p class="mock-tip">实际部署后显示真实二维码</p>
+                    </div>
+                  </div>
+                  <p class="qr-tip">请使用{{ paymentMethod === 'wechat' ? '微信' : '支付宝' }}扫描二维码完成支付</p>
+                </div>
+
+                <div class="order-info" v-if="paymentOrder">
+                  <span>订单号：{{ paymentOrder.orderNo }}</span>
+                  <span class="expire-tip" :class="{ urgent: expireCountdown <= 60 }">
+                    {{ expireCountdown > 0 ? `${Math.floor(expireCountdown / 60)}分${(expireCountdown % 60).toString().padStart(2, '0')}秒后自动跳转会员中心` : '即将跳转...' }}
+                  </span>
+                </div>
+
+                <div class="payment-status" v-if="checkingPayment">
+                  <span class="loading-spinner"></span>
+                  <span>正在等待支付结果...</span>
+                </div>
+
+                <div class="form-actions">
+                  <button type="button" class="btn btn-outline" @click="handleCancelSkipPayment">取消支付</button>
+                  <button type="button" class="btn btn-primary" @click="handleCheckSkipPayment">我已完成支付</button>
+                </div>
+                </template>
+              </div>
+
+              <!-- 签约取消后 → 付费成功 -->
+              <div v-else-if="signingStatus === 'pay-success'">
+                <div class="signing-success-info">
+                  <div class="success-check">🎉</div>
+                  <h4>支付成功！</h4>
+                  <p>您已成功购买「{{ signingTargetPkgName }}」套餐</p>
+                </div>
+
+                <div class="register-success-banner" style="margin-top: 12px;">
+                  <div class="success-icon">📋</div>
+                  <div class="success-content">
+                    <h3>您的授权信息</h3>
+                    <div class="success-details">
+                      <div class="detail-item">
+                        <span class="detail-label">租户编码</span>
+                        <span class="detail-value">{{ registeredTenant?.tenantCode }}</span>
+                      </div>
+                      <div class="detail-item">
+                        <span class="detail-label">授权码</span>
+                        <span class="detail-value license-key">{{ registeredTenant?.licenseKey }}</span>
+                      </div>
+                      <div v-if="registeredTenant?.adminUsername" class="detail-item">
+                        <span class="detail-label">管理员账号</span>
+                        <span class="detail-value">{{ registeredTenant.adminUsername }}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="form-actions" style="justify-content: center; gap: 12px; flex-wrap: wrap;">
+                  <button type="button" class="btn btn-primary" @click="goToSuccess">🚀 开始使用</button>
+                  <router-link to="/member/dashboard" class="btn btn-outline">👤 进入会员中心</router-link>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ===== 支付模式（付费套餐） ===== -->
+          <template v-else>
           <!-- 未创建支付订单时显示订单确认 -->
           <div v-if="!paymentOrder" class="order-summary">
             <h3>订单确认</h3>
@@ -225,6 +665,13 @@
                 <span v-if="billingCycle === 'yearly'" class="gift-tag">🎁 {{ getYearlyBadgeText(selectedPlan) }}</span>
               </span>
             </div>
+            <div v-if="planType === 'private'" class="order-item">
+              <span class="item-label">授权方式</span>
+              <span class="item-value">
+                {{ privateBillingMode === 'annual' ? '年度授权（1年）' : '永久买断' }}
+                <span v-if="privateBillingMode === 'annual'" class="gift-tag">🎉 约{{ getPrivateAnnualDiscount(selectedPlan) }}折</span>
+              </span>
+            </div>
             <div class="order-item">
               <span class="item-label">企业名称</span>
               <span class="item-value">{{ form.companyName }}</span>
@@ -237,14 +684,69 @@
               <span class="item-label">原价</span>
               <span class="item-value original">¥{{ getYearlyOriginalPrice(selectedPlan).toLocaleString() }}</span>
             </div>
+            <div v-if="privateBillingMode === 'annual' && planType === 'private'" class="order-item discount">
+              <span class="item-label">永久买断价</span>
+              <span class="item-value original">¥{{ getPrivatePerpetualPrice(selectedPlan).toLocaleString() }}</span>
+            </div>
             <div class="order-item total">
               <span class="item-label">应付金额</span>
-              <span class="item-value price">¥{{ getPlanPrice(selectedPlan) }}</span>
+              <span class="item-value price">
+                <template v-if="payMode === 'subscription' && currentPkgSubscriptionEnabled">
+                  ¥{{ billingCycle === 'yearly' ? subscriptionYearlyPrice.toLocaleString() + '/年' : subscriptionPrice + '/月' }}
+                </template>
+                <template v-else>
+                  ¥{{ getPlanPrice(selectedPlan) }}
+                </template>
+                <span v-if="payMode === 'subscription' && currentPkgSubscriptionDiscountRate > 0" class="sub-discount-tag">
+                  订阅{{ (10 - currentPkgSubscriptionDiscountRate / 10).toFixed(1) }}折
+                </span>
+              </span>
             </div>
 
             <div class="payment-methods">
+              <!-- 订阅/正常支付切换（仅当套餐支持订阅时显示） -->
+              <div v-if="currentPkgSubscriptionEnabled && planType === 'saas' && selectedPlan !== 'FREE_TRIAL'" class="pay-mode-toggle">
+                <h4>支付模式</h4>
+                <div class="pay-mode-options">
+                  <label class="pay-mode-option" :class="{ active: payMode === 'subscription' }">
+                    <input type="radio" v-model="payMode" value="subscription" />
+                    <span class="mode-content">
+                      <span class="mode-title">🔄 订阅付费 <span class="rec-tag">推荐</span></span>
+                      <span class="mode-price">¥{{ billingCycle === 'yearly' ? subscriptionYearlyPrice.toLocaleString() + '/年' : subscriptionPrice + '/月' }}</span>
+                      <span v-if="currentPkgSubscriptionDiscountRate > 0" class="mode-save">
+                        省{{ currentPkgSubscriptionDiscountRate }}% · 自动续费更省心
+                      </span>
+                      <span v-else class="mode-save">到期自动扣款，不用担心中断</span>
+                    </span>
+                  </label>
+                  <label class="pay-mode-option" :class="{ active: payMode === 'normal' }">
+                    <input type="radio" v-model="payMode" value="normal" />
+                    <span class="mode-content">
+                      <span class="mode-title">💳 正常支付</span>
+                      <span class="mode-price">¥{{ getPlanPrice(selectedPlan) }}</span>
+                      <span class="mode-desc">一次性支付，到期需手动续费</span>
+                    </span>
+                  </label>
+                </div>
+              </div>
+
               <h4>选择支付方式</h4>
               <div class="payment-options">
+                <!-- 订阅模式只显示支持的渠道 -->
+                <template v-if="payMode === 'subscription' && currentPkgSubscriptionEnabled">
+                  <label v-if="currentPkgSubscriptionChannels !== 'alipay'" class="payment-option" :class="{ selected: paymentMethod === 'wechat' }">
+                    <input type="radio" v-model="paymentMethod" value="wechat" />
+                    <span class="payment-icon wechat">💚</span>
+                    <span>微信委托代扣</span>
+                  </label>
+                  <label v-if="currentPkgSubscriptionChannels !== 'wechat'" class="payment-option" :class="{ selected: paymentMethod === 'alipay' }">
+                    <input type="radio" v-model="paymentMethod" value="alipay" />
+                    <span class="payment-icon alipay">💙</span>
+                    <span>支付宝周期扣款</span>
+                  </label>
+                </template>
+                <!-- 正常支付显示全部方式 -->
+                <template v-else>
                 <label class="payment-option" :class="{ selected: paymentMethod === 'wechat' }">
                   <input type="radio" v-model="paymentMethod" value="wechat" />
                   <span class="payment-icon wechat">💚</span>
@@ -260,15 +762,19 @@
                   <span class="payment-icon bank">🏦</span>
                   <span>对公转账</span>
                 </label>
+                </template>
               </div>
             </div>
 
             <div class="form-actions">
               <button type="button" class="btn btn-outline" @click="step = 2">上一步</button>
               <button type="button" class="btn btn-primary" @click="handleCreatePayment" :disabled="creatingPayment">
-                {{ creatingPayment ? '创建订单中...' : '确认支付' }}
+                {{ creatingPayment ? '创建订单中...' : (payMode === 'subscription' && currentPkgSubscriptionEnabled ? '确认签约并支付' : '确认支付') }}
               </button>
             </div>
+            <p class="skip-payment-link" @click="handlePayLater">
+              稍后支付，前往会员中心 →
+            </p>
           </div>
 
           <!-- 已创建支付订单，显示二维码或银行信息 -->
@@ -370,8 +876,12 @@
                 我已完成支付
               </button>
             </div>
+            <p class="skip-payment-link" @click="handlePayLater">
+              稍后支付，前往会员中心 →
+            </p>
             </template>
           </div>
+          </template>
         </div>
       </div>
     </div>
@@ -379,7 +889,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, onUnmounted } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { getPackages as fetchPackages, getYearlyPromoText, type Package } from '@/api/packages'
 
@@ -392,6 +902,9 @@ const planType = ref<'saas' | 'private'>('saas')
 const billingCycle = ref<'monthly' | 'yearly'>('monthly')
 const selectedPlan = ref('FREE_TRIAL')
 const paymentMethod = ref('wechat')
+const payMode = ref<'subscription' | 'normal'>('subscription')
+const subscriptionChecked = ref(true)
+const privateBillingMode = ref<'perpetual' | 'annual'>('perpetual')
 const countdown = ref(0)
 const _paying = ref(false)
 const submitting = ref(false)
@@ -419,6 +932,49 @@ const bankConfig = reactive({
 
 let paymentCheckTimer: any = null
 let expireTimer: any = null
+let signingCheckTimer: any = null
+
+// 签约模式状态（免费试用+自动续费）
+const signingMode = ref(false)
+const signingChannel = ref<'wechat' | 'alipay'>('wechat')
+const signingSubscription = ref<any>(null)
+const signingUrl = ref('')
+const signingLoading = ref(false)
+const signingStatus = ref<'idle' | 'waiting' | 'success' | 'paying' | 'pay-waiting' | 'pay-success'>('idle')
+
+// 签约模式下目标套餐是否免费试用
+const isTrialSigning = computed(() => selectedPlan.value === 'FREE_TRIAL')
+
+// 签约模式下目标套餐code
+const signingTargetPkgCode = computed(() => {
+  if (selectedPlan.value === 'FREE_TRIAL') return form.autoRenewPackage
+  return planCodeMap[selectedPlan.value] || selectedPlan.value
+})
+
+// 签约模式下目标套餐数据
+const signingTargetPkg = computed(() => {
+  return packagesData.value.find(p => p.code === signingTargetPkgCode.value)
+})
+
+// 签约模式下目标套餐名称
+const signingTargetPkgName = computed(() => signingTargetPkg.value?.name || '')
+
+// 签约模式下目标套餐价格（含订阅折扣）
+const signingTargetPkgPrice = computed(() => {
+  const pkg = signingTargetPkg.value
+  if (!pkg) return '—'
+  if (pkg.subscription_enabled && pkg.subscription_discount_rate > 0) {
+    return (Number(pkg.price) * (1 - Number(pkg.subscription_discount_rate) / 100)).toFixed(0)
+  }
+  return Number(pkg.price).toString()
+})
+
+// 签约模式下目标套餐原价（不含订阅折扣）
+const signingTargetPkgFullPrice = computed(() => {
+  const pkg = signingTargetPkg.value
+  if (!pkg) return '—'
+  return Number(pkg.price).toString()
+})
 
 const form = reactive({
   companyName: '',
@@ -426,6 +982,9 @@ const form = reactive({
   phone: '',
   code: '',
   email: '',
+  password: '',
+  autoRenew: true,
+  autoRenewPackage: 'SAAS_BASIC',
   agree: false
 })
 
@@ -469,11 +1028,20 @@ onMounted(async () => {
       }
     }
   }
+
+  // 读取计费方式参数（从Pricing页面传入）
+  const billing = route.query.billing as string
+  if (billing === 'annual') {
+    privateBillingMode.value = 'annual'
+  } else if (billing === 'perpetual') {
+    privateBillingMode.value = 'perpetual'
+  }
 })
 
 onUnmounted(() => {
   if (paymentCheckTimer) clearInterval(paymentCheckTimer)
   if (expireTimer) clearInterval(expireTimer)
+  if (signingCheckTimer) clearInterval(signingCheckTimer)
 })
 
 const sendCode = async () => {
@@ -532,6 +1100,100 @@ const getPackageByPlan = (plan: string): Package | undefined => {
   return packagesData.value.find(p => p.code === code)
 }
 
+// 是否有私有套餐配置了年度价格
+const hasPrivateAnnualPricing = computed(() => {
+  return packagesData.value.some(p => p.type === 'private' && p.yearly_price && Number(p.yearly_price) > 0)
+})
+
+// 获取私有套餐永久买断价（优先API数据，兜底硬编码）
+const getPrivatePerpetualPrice = (plan: string): number => {
+  const pkg = getPackageByPlan(plan)
+  if (pkg) return Number(pkg.price)
+  const fallback: Record<string, number> = {
+    'private-standard': 9800,
+    'private-pro': 19800,
+    'private-enterprise': 39800
+  }
+  return fallback[plan] || 0
+}
+
+// 获取私有套餐年度授权价
+const getPrivateAnnualPrice = (plan: string): number => {
+  const pkg = getPackageByPlan(plan)
+  if (pkg && pkg.yearly_price && Number(pkg.yearly_price) > 0) {
+    return Number(pkg.yearly_price)
+  }
+  return 0
+}
+
+// 获取私有套餐年度折扣（对比永久价格，例如"3.8"折）
+const getPrivateAnnualDiscount = (plan: string): string => {
+  const annual = getPrivateAnnualPrice(plan)
+  const perpetual = getPrivatePerpetualPrice(plan)
+  if (!annual || !perpetual) return '—'
+  return ((annual / perpetual) * 10).toFixed(1)
+}
+
+// 获取私有套餐年度节省金额
+const getPrivateAnnualSaving = (plan: string): number => {
+  return getPrivatePerpetualPrice(plan) - getPrivateAnnualPrice(plan)
+}
+
+// 获取私有套餐展示价格（根据计费模式）
+const getPrivateDisplayPrice = (plan: string): string => {
+  if (privateBillingMode.value === 'annual') {
+    const annual = getPrivateAnnualPrice(plan)
+    if (annual > 0) return annual.toLocaleString()
+  }
+  return getPrivatePerpetualPrice(plan).toLocaleString()
+}
+
+// 当前选中套餐的订阅信息
+const currentPkg = computed(() => getPackageByPlan(selectedPlan.value))
+const currentPkgSubscriptionEnabled = computed(() => Boolean(currentPkg.value?.subscription_enabled))
+const currentPkgSubscriptionChannels = computed(() => currentPkg.value?.subscription_channels || 'all')
+const currentPkgSubscriptionDiscountRate = computed(() => Number(currentPkg.value?.subscription_discount_rate) || 0)
+const subscriptionPrice = computed(() => {
+  const monthly = getMonthlyPrice(selectedPlan.value)
+  if (currentPkgSubscriptionDiscountRate.value > 0) {
+    return (monthly * (1 - currentPkgSubscriptionDiscountRate.value / 100)).toFixed(0)
+  }
+  return monthly.toString()
+})
+
+// 年付订阅价格（年付优惠 + 订阅折扣叠加）
+const subscriptionYearlyPrice = computed(() => {
+  const yearly = getYearlyPrice(selectedPlan.value)
+  if (currentPkgSubscriptionDiscountRate.value > 0) {
+    return Math.round(yearly * (1 - currentPkgSubscriptionDiscountRate.value / 100))
+  }
+  return yearly
+})
+
+// 订阅自动续费额外节省金额（相对于不订阅的价格）
+const subscriptionSaving = computed(() => {
+  if (billingCycle.value === 'yearly') {
+    return getYearlyPrice(selectedPlan.value) - subscriptionYearlyPrice.value
+  }
+  return getMonthlyPrice(selectedPlan.value) - Number(subscriptionPrice.value)
+})
+
+// 订阅勾选状态 → 同步支付模式
+watch(subscriptionChecked, (val) => {
+  payMode.value = val ? 'subscription' : 'normal'
+})
+
+// 套餐订阅支持状态变化时（切换套餐），自动重置订阅勾选
+watch(currentPkgSubscriptionEnabled, (enabled) => {
+  subscriptionChecked.value = enabled
+  payMode.value = enabled ? 'subscription' : 'normal'
+})
+
+// 免费试用到期可续费的套餐列表
+const renewablePlans = computed(() => {
+  return packagesData.value.filter(p => p.type === 'saas' && !p.is_trial && Number(p.price) > 0)
+})
+
 const getMonthlyPrice = (plan: string) => {
   const pkg = getPackageByPlan(plan)
   if (pkg) return Number(pkg.price)
@@ -579,13 +1241,14 @@ const getPlanPrice = (plan: string) => {
   // 免费试用
   if (plan === 'FREE_TRIAL') return '0'
 
-  // 私有部署版
-  const privatePrices: Record<string, string> = {
-    'private-standard': '9,800',
-    'private-pro': '19,800',
-    'private-enterprise': '39,800'
+  // 私有部署版 - 根据计费模式返回对应价格
+  if (plan.startsWith('private-')) {
+    if (privateBillingMode.value === 'annual') {
+      const annual = getPrivateAnnualPrice(plan)
+      if (annual > 0) return annual.toLocaleString()
+    }
+    return getPrivatePerpetualPrice(plan).toLocaleString()
   }
-  if (privatePrices[plan]) return privatePrices[plan]
 
   // SaaS套餐
   if (billingCycle.value === 'yearly') {
@@ -613,6 +1276,9 @@ const handleSubmitInfo = async () => {
         phone: form.phone,
         code: form.code,
         email: form.email,
+        password: form.password || undefined,
+        autoRenew: selectedPlan.value === 'FREE_TRIAL' ? form.autoRenew : undefined,
+        autoRenewPackage: selectedPlan.value === 'FREE_TRIAL' && form.autoRenew ? form.autoRenewPackage : undefined,
         packageCode
       })
     })
@@ -621,21 +1287,38 @@ const handleSubmitInfo = async () => {
     if (data.code === 0) {
       registeredTenant.value = data.data
 
-      // 免费套餐直接跳转成功页
+      // 注册成功后保存会员token（如果后端返回了），让未付费用户也能登录会员中心
+      if (data.data.memberToken) {
+        localStorage.setItem('member_token', data.data.memberToken)
+      }
+
+      // 免费套餐
       if (selectedPlan.value === 'FREE_TRIAL' || getPlanPrice(selectedPlan.value) === '0') {
-        router.push({
-          path: '/pay-success',
-          query: {
-            plan: selectedPlan.value,
-            type: planType.value,
-            tenantCode: data.data.tenantCode,
-            licenseKey: data.data.licenseKey,
-            adminUsername: data.data.adminUsername || '',
-            adminPassword: data.data.adminPassword || ''
-          }
-        })
+        // 勾选了自动续费 → 进入签约步骤（不可跳过）
+        if (form.autoRenew && form.autoRenewPackage) {
+          signingMode.value = true
+          signingStatus.value = 'idle'
+          step.value = 3
+        } else {
+          // 未勾选自动续费 → 直接跳转成功页
+          router.push({
+            path: '/pay-success',
+            query: {
+              plan: selectedPlan.value,
+              type: planType.value,
+              tenantCode: data.data.tenantCode,
+              licenseKey: data.data.licenseKey,
+              adminUsername: data.data.adminUsername || '',
+              adminPassword: data.data.adminPassword || ''
+            }
+          })
+        }
       } else {
-        // 付费套餐进入支付步骤
+        // 付费套餐：如果勾选了订阅，先走签约流程
+        if (subscriptionChecked.value && currentPkgSubscriptionEnabled.value && planType.value === 'saas') {
+          signingMode.value = true
+          signingStatus.value = 'idle'
+        }
         step.value = 3
       }
     } else {
@@ -650,6 +1333,13 @@ const handleSubmitInfo = async () => {
 
 // 创建支付订单
 const handleCreatePayment = async () => {
+  // 如果在步骤3切换到订阅模式但signingMode为false，重新进入签约流程
+  if (payMode.value === 'subscription' && currentPkgSubscriptionEnabled.value && !signingMode.value) {
+    signingMode.value = true
+    signingStatus.value = 'idle'
+    return
+  }
+
   creatingPayment.value = true
   try {
     const packageCode = planCodeMap[selectedPlan.value] || selectedPlan.value
@@ -663,7 +1353,7 @@ const handleCreatePayment = async () => {
         packageName: getPlanName(selectedPlan.value),
         amount,
         payType: paymentMethod.value,
-        billingCycle: planType.value === 'saas' ? billingCycle.value : 'once',
+        billingCycle: planType.value === 'saas' ? billingCycle.value : (privateBillingMode.value === 'annual' ? 'yearly' : 'once'),
         tenantId: registeredTenant.value?.tenantId,
         tenantName: form.companyName,
         contactName: form.contactName,
@@ -708,16 +1398,23 @@ const startPaymentCheck = () => {
         clearInterval(expireTimer)
         checkingPayment.value = false
 
-        // 支付成功，从API获取授权码，跳转成功页
-        router.push({
-          path: '/pay-success',
-          query: {
-            plan: selectedPlan.value,
-            type: planType.value,
-            tenantCode: data.data.tenantCode,
-            licenseKey: data.data.licenseKey
-          }
-        })
+        // 签约模式下跳过签约的付费 → 展示授权信息
+        if (signingMode.value) {
+          if (data.data.tenantCode) registeredTenant.value.tenantCode = data.data.tenantCode
+          if (data.data.licenseKey) registeredTenant.value.licenseKey = data.data.licenseKey
+          signingStatus.value = 'pay-success'
+        } else {
+          // 正常付费流程 → 跳转成功页
+          router.push({
+            path: '/pay-success',
+            query: {
+              plan: selectedPlan.value,
+              type: planType.value,
+              tenantCode: data.data.tenantCode,
+              licenseKey: data.data.licenseKey
+            }
+          })
+        }
       }
     } catch (error) {
       console.error('查询支付状态失败:', error)
@@ -727,15 +1424,22 @@ const startPaymentCheck = () => {
 
 // 开始过期倒计时
 const startExpireCountdown = () => {
-  expireCountdown.value = 30 * 60 // 30分钟
+  // 签约模式下取消签约后的正常付费：3分钟倒计时；其他场景：30分钟
+  expireCountdown.value = signingMode.value ? 3 * 60 : 30 * 60
   expireTimer = setInterval(() => {
     expireCountdown.value--
     if (expireCountdown.value <= 0) {
       clearInterval(expireTimer)
       clearInterval(paymentCheckTimer)
       checkingPayment.value = false
-      alert('订单已过期，请重新创建')
-      paymentOrder.value = null
+      if (signingMode.value) {
+        // 签约模式下超时 → 跳转会员中心（未付费状态）
+        paymentOrder.value = null
+        router.push('/member/dashboard')
+      } else {
+        alert('订单已过期，请重新创建')
+        paymentOrder.value = null
+      }
     }
   }, 1000)
 }
@@ -797,11 +1501,288 @@ const handleCancelPayment = () => {
   paymentOrder.value = null
 }
 
+// 稍后支付，跳转会员中心
+const handlePayLater = () => {
+  if (paymentCheckTimer) clearInterval(paymentCheckTimer)
+  if (expireTimer) clearInterval(expireTimer)
+  checkingPayment.value = false
+  paymentOrder.value = null
+  router.push('/member/dashboard')
+}
+
 // 生成二维码URL（使用第三方API）
 const generateQRCodeUrl = (content: string) => {
   // 使用 QR Server API 生成二维码
   return `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(content)}`
 }
+
+// ==================== 签约相关（免费试用+自动续费） ====================
+
+// 获取自动续费套餐名称
+const getAutoRenewPkgName = () => {
+  const pkg = packagesData.value.find(p => p.code === form.autoRenewPackage)
+  return pkg?.name || form.autoRenewPackage
+}
+
+// 获取自动续费套餐月价
+const getAutoRenewPkgPrice = () => {
+  const pkg = packagesData.value.find(p => p.code === form.autoRenewPackage)
+  if (!pkg) return '—'
+  if (pkg.subscription_enabled && pkg.subscription_discount_rate > 0) {
+    return (Number(pkg.price) * (1 - Number(pkg.subscription_discount_rate) / 100)).toFixed(0)
+  }
+  return Number(pkg.price).toString()
+}
+
+// 发起签约
+const handleStartSigning = async () => {
+  signingLoading.value = true
+  try {
+    const res = await fetch(`${API_BASE}/public/register/subscribe`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        tenantId: registeredTenant.value?.tenantId,
+        packageCode: signingTargetPkgCode.value,
+        channel: signingChannel.value,
+        billingCycle: isTrialSigning.value ? 'monthly' : billingCycle.value
+      })
+    })
+    const data = await res.json()
+    if (data.code === 0 && data.data) {
+      signingSubscription.value = data.data
+      signingUrl.value = data.data.signUrl || ''
+      signingStatus.value = 'waiting'
+
+      // 如果是redirect类型（支付宝），打开新窗口
+      if (data.data.signType === 'redirect' && signingUrl.value) {
+        window.open(signingUrl.value, '_blank')
+      }
+
+      startSigningCheck()
+    } else {
+      alert(data.message || '发起签约失败')
+    }
+  } catch {
+    alert('发起签约失败，请稍后重试')
+  } finally {
+    signingLoading.value = false
+  }
+}
+
+// 开始轮询签约状态
+const startSigningCheck = () => {
+  if (signingCheckTimer) clearInterval(signingCheckTimer)
+  signingCheckTimer = setInterval(async () => {
+    if (!signingSubscription.value?.subscriptionId) return
+    try {
+      const res = await fetch(`${API_BASE}/public/register/subscribe-status/${signingSubscription.value.subscriptionId}`)
+      const data = await res.json()
+      if (data.code === 0 && data.data?.status === 'active') {
+        clearInterval(signingCheckTimer)
+        signingStatus.value = 'success'
+      }
+    } catch {
+      // 忽略轮询错误
+    }
+  }, 3000)
+}
+
+// 手动检查签约状态
+const checkSigningManually = async () => {
+  if (!signingSubscription.value?.subscriptionId) return
+  try {
+    const res = await fetch(`${API_BASE}/public/register/subscribe-status/${signingSubscription.value.subscriptionId}`)
+    const data = await res.json()
+    if (data.code === 0 && data.data?.status === 'active') {
+      if (signingCheckTimer) clearInterval(signingCheckTimer)
+      signingStatus.value = 'success'
+    } else {
+      alert('暂未收到签约结果，请确认是否已完成签约授权')
+    }
+  } catch {
+    alert('查询签约状态失败，请稍后再试')
+  }
+}
+
+// 取消签约（仅付费套餐可用），转为正常付费流程
+const cancelSigning = () => {
+  if (signingCheckTimer) clearInterval(signingCheckTimer)
+  signingStatus.value = 'paying'
+  paymentMethod.value = 'wechat'
+}
+
+// 免费试用跳过签约，直接开始7天试用
+const skipTrialSigning = () => {
+  if (!confirm('确认跳过签约？\n\n跳过后将直接开始7天免费试用。\n⚠ 试用到期后如不续费，服务将自动停止。\n\n您可以之后在会员中心随时设置自动续费。')) {
+    return
+  }
+  if (signingCheckTimer) clearInterval(signingCheckTimer)
+  router.push({
+    path: '/pay-success',
+    query: {
+      plan: 'FREE_TRIAL',
+      type: 'saas',
+      tenantCode: registeredTenant.value?.tenantCode,
+      licenseKey: registeredTenant.value?.licenseKey,
+      adminUsername: registeredTenant.value?.adminUsername || '',
+      adminPassword: registeredTenant.value?.adminPassword || ''
+    }
+  })
+}
+
+// 获取自动续费套餐原价（不含订阅折扣）
+const getAutoRenewPkgFullPrice = () => {
+  const pkg = packagesData.value.find(p => p.code === form.autoRenewPackage)
+  if (!pkg) return '—'
+  return Number(pkg.price).toString()
+}
+
+// 签约取消后发起正常付费（付费套餐）
+const handleSkipSigningPayment = async () => {
+  creatingPayment.value = true
+  try {
+    const pkg = signingTargetPkg.value
+    if (!pkg) {
+      alert('套餐信息加载失败，请刷新重试')
+      return
+    }
+
+    // 计算实际支付金额（付费套餐根据计费周期）
+    let amount = Number(pkg.price)
+    let cycle = 'monthly'
+    if (!isTrialSigning.value && billingCycle.value === 'yearly') {
+      amount = getYearlyPrice(selectedPlan.value)
+      cycle = 'yearly'
+    }
+
+    const res = await fetch(`${API_BASE}/public/payment/create`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        packageId: signingTargetPkgCode.value,
+        packageName: pkg.name || signingTargetPkgName.value,
+        amount,
+        payType: paymentMethod.value,
+        billingCycle: cycle,
+        tenantId: registeredTenant.value?.tenantId,
+        tenantName: form.companyName,
+        contactName: form.contactName,
+        contactPhone: form.phone,
+        contactEmail: form.email
+      })
+    })
+    const data = await res.json()
+
+    if (data.code === 0) {
+      paymentOrder.value = data.data
+
+      // 填充银行信息（如有）
+      if (data.data.bankInfo) {
+        Object.assign(bankConfig, data.data.bankInfo)
+      }
+
+      signingStatus.value = 'pay-waiting'
+      // 对公转账不需要轮询和倒计时
+      if (paymentMethod.value !== 'bank') {
+        startPaymentCheck()
+        startExpireCountdown()
+      }
+    } else {
+      alert(data.message || '创建支付订单失败')
+    }
+  } catch {
+    alert('创建支付订单失败，请稍后重试')
+  } finally {
+    creatingPayment.value = false
+  }
+}
+
+// 取消签约取消后的付费
+const handleCancelSkipPayment = () => {
+  if (paymentCheckTimer) clearInterval(paymentCheckTimer)
+  if (expireTimer) clearInterval(expireTimer)
+  checkingPayment.value = false
+  paymentOrder.value = null
+  // 跳转会员中心（未付费状态）
+  router.push('/member/dashboard')
+}
+
+// 手动检查跳过签约付费状态
+const handleCheckSkipPayment = async () => {
+  if (!paymentOrder.value) return
+
+  try {
+    const res = await fetch(`${API_BASE}/public/payment/query/${paymentOrder.value.orderNo}`)
+    const data = await res.json()
+
+    if (data.code === 0) {
+      if (data.data.status === 'paid') {
+        if (paymentCheckTimer) clearInterval(paymentCheckTimer)
+        if (expireTimer) clearInterval(expireTimer)
+        checkingPayment.value = false
+
+        // 更新租户授权信息（后端可能在支付成功后升级套餐）
+        if (data.data.tenantCode) registeredTenant.value.tenantCode = data.data.tenantCode
+        if (data.data.licenseKey) registeredTenant.value.licenseKey = data.data.licenseKey
+
+        signingStatus.value = 'pay-success'
+      } else {
+        alert('暂未收到支付结果，请稍后再试或联系客服')
+      }
+    }
+  } catch {
+    alert('查询失败，请稍后再试')
+  }
+}
+
+// 签约取消后对公转账 - 已完成转账
+const handleSkipSigningBankDone = () => {
+  if (paymentCheckTimer) clearInterval(paymentCheckTimer)
+  if (expireTimer) clearInterval(expireTimer)
+  checkingPayment.value = false
+  router.push({
+    path: '/pay-success',
+    query: {
+      plan: selectedPlan.value,
+      type: planType.value,
+      payType: 'bank',
+      orderNo: paymentOrder.value?.orderNo || '',
+      tenantCode: registeredTenant.value?.tenantCode,
+      licenseKey: registeredTenant.value?.licenseKey
+    }
+  })
+}
+
+// 跳转成功页
+const goToSuccess = () => {
+  // 如果是付费成功（签约取消后付费），使用签约目标套餐的plan key
+  const planForSuccess = signingStatus.value === 'pay-success' && isTrialSigning.value
+    ? autoRenewPlanKey.value
+    : selectedPlan.value
+
+  router.push({
+    path: '/pay-success',
+    query: {
+      plan: planForSuccess,
+      type: planType.value,
+      tenantCode: registeredTenant.value?.tenantCode,
+      licenseKey: registeredTenant.value?.licenseKey,
+      adminUsername: registeredTenant.value?.adminUsername || '',
+      adminPassword: registeredTenant.value?.adminPassword || ''
+    }
+  })
+}
+
+// 自动续费套餐代码 → 前端plan key的映射
+const autoRenewPlanKey = computed(() => {
+  const reverseMap: Record<string, string> = {
+    'SAAS_BASIC': 'basic',
+    'SAAS_PRO': 'pro',
+    'SAAS_ENTERPRISE': 'enterprise'
+  }
+  return reverseMap[form.autoRenewPackage] || form.autoRenewPackage
+})
 </script>
 
 <style lang="scss" scoped>
@@ -1061,6 +2042,10 @@ const generateQRCodeUrl = (content: string) => {
   grid-template-columns: repeat(4, 1fr);
   gap: 10px;
   margin-bottom: 14px;
+
+  &.plans-grid-3 {
+    grid-template-columns: repeat(3, 1fr);
+  }
 }
 
 .billing-toggle {
@@ -1216,6 +2201,7 @@ const generateQRCodeUrl = (content: string) => {
     font-weight: 700;
     color: var(--primary);
     margin-bottom: 4px;
+    white-space: nowrap;
 
     &.free {
       color: var(--success);
@@ -1264,11 +2250,25 @@ const generateQRCodeUrl = (content: string) => {
     .required {
       color: var(--danger);
     }
+
+    .recommended {
+      color: #e6a23c;
+      font-weight: 400;
+      font-size: 12px;
+    }
+  }
+
+  .field-hint {
+    margin: 6px 0 0 0;
+    font-size: 12px;
+    color: #909399;
+    line-height: 1.4;
   }
 
   input[type='text'],
   input[type='tel'],
-  input[type='email'] {
+  input[type='email'],
+  input[type='password'] {
     width: 100%;
     padding: 11px 14px;
     border: 1px solid var(--border);
@@ -1619,6 +2619,10 @@ const generateQRCodeUrl = (content: string) => {
 @media (max-width: 768px) {
   .plans-grid {
     grid-template-columns: repeat(2, 1fr);
+
+    &.plans-grid-3 {
+      grid-template-columns: repeat(2, 1fr);
+    }
   }
 
   .billing-options {
@@ -1646,5 +2650,636 @@ const generateQRCodeUrl = (content: string) => {
   .payment-options {
     flex-direction: column;
   }
+}
+
+// 自动续费区块
+.auto-renew-section {
+  margin-top: 4px;
+  padding: 14px 16px;
+  background: #f0fdf4;
+  border-radius: 10px;
+  border: 1px solid #bbf7d0;
+}
+
+.auto-renew-label {
+  .renew-text {
+    font-size: 14px;
+    font-weight: 500;
+    display: inline-flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  .renew-icon {
+    color: #16a34a;
+    flex-shrink: 0;
+  }
+  .renew-highlight {
+    font-size: 12px;
+    color: #16a34a;
+    font-weight: 400;
+  }
+}
+
+.auto-renew-options {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #dcfce7;
+}
+
+.renew-desc {
+  font-size: 13px;
+  color: #475569;
+  margin: 0 0 8px;
+}
+
+.renew-plan-options {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.renew-plan-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  transition: all 0.2s;
+
+  input { display: none; }
+
+  &.selected {
+    border-color: #6366f1;
+    background: #f8f7ff;
+  }
+
+  .plan-name { flex: 1; font-weight: 500; color: #1e293b; }
+  .plan-price { color: #6366f1; font-weight: 600; }
+  .sub-tag {
+    font-size: 10px;
+    padding: 1px 6px;
+    background: #dcfce7;
+    color: #16a34a;
+    border-radius: 8px;
+  }
+}
+
+.renew-tip {
+  font-size: 12px;
+  color: #d97706;
+  margin: 10px 0 0;
+}
+
+.sub-tag-banner {
+  margin-left: 8px;
+  font-size: 11px;
+  padding: 2px 8px;
+  background: #dcfce7;
+  color: #16a34a;
+  border-radius: 10px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  vertical-align: middle;
+
+  .sub-tag-banner-icon {
+    flex-shrink: 0;
+  }
+}
+
+// 支付模式切换
+.pay-mode-toggle {
+  margin-bottom: 20px;
+
+  h4 {
+    font-size: 14px;
+    color: var(--text-primary);
+    margin: 0 0 10px;
+  }
+}
+
+.pay-mode-options {
+  display: flex;
+  gap: 12px;
+}
+
+.pay-mode-option {
+  flex: 1;
+  display: block;
+  padding: 14px;
+  border: 1.5px solid var(--border);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.2s;
+
+  input { display: none; }
+
+  &.active {
+    border-color: var(--primary);
+    background: rgba(99, 102, 241, 0.04);
+  }
+
+  .mode-content {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .mode-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+
+  .rec-tag {
+    font-size: 10px;
+    padding: 1px 6px;
+    background: #ef4444;
+    color: white;
+    border-radius: 8px;
+    font-weight: 400;
+  }
+
+  .mode-price {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--primary);
+  }
+
+  .mode-save {
+    font-size: 12px;
+    color: #16a34a;
+  }
+
+  .mode-desc {
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+}
+
+.sub-discount-tag {
+  font-size: 11px;
+  padding: 1px 8px;
+  background: #dcfce7;
+  color: #16a34a;
+  border-radius: 10px;
+  margin-left: 6px;
+  font-weight: 500;
+}
+
+// ==================== 订阅自动续费选项（步骤1） ====================
+.subscription-auto-renew {
+  margin-bottom: 16px;
+}
+
+.subscription-check-wrapper {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 16px;
+  background: #f8fafc;
+  border: 2px solid #e2e8f0;
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: all 0.3s ease;
+
+  input { display: none; }
+
+  &:hover {
+    border-color: #94a3b8;
+    background: #f1f5f9;
+  }
+
+  // 未勾选：灰色淡化
+  .subscription-check-body { opacity: 0.55; transition: opacity 0.3s ease; }
+  .subscription-check-title { color: #94a3b8; transition: color 0.3s ease; }
+  .subscription-check-svg { color: #94a3b8; transition: color 0.3s ease; }
+  .subscription-rec { opacity: 0.5; transition: opacity 0.3s ease; }
+  .subscription-check-detail { color: #94a3b8; }
+  .subscription-check-benefits { color: #94a3b8; }
+
+  // 勾选：鲜活绿色
+  &.checked {
+    border-color: #16a34a;
+    background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
+    box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.12);
+
+    &:hover {
+      border-color: #15803d;
+      background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%);
+    }
+
+    .subscription-check-body { opacity: 1; }
+    .subscription-check-title { color: var(--text-primary); }
+    .subscription-check-svg { color: #16a34a; }
+    .subscription-rec { opacity: 1; }
+    .subscription-check-detail { color: var(--text-secondary); }
+    .subscription-check-benefits { color: #16a34a; }
+  }
+}
+
+// 勾选框指示器
+.subscription-checkbox-indicator {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  border: 2px solid #cbd5e1;
+  background: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 1px;
+  transition: all 0.2s ease;
+
+  .checked & {
+    background: #16a34a;
+    border-color: #16a34a;
+  }
+}
+
+.subscription-check-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+}
+
+.subscription-check-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.subscription-check-svg {
+  flex-shrink: 0;
+}
+
+.subscription-check-title {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.subscription-rec {
+  font-size: 10px;
+  padding: 1px 6px;
+  background: #ef4444;
+  color: white;
+  border-radius: 8px;
+  font-weight: 500;
+}
+
+.subscription-check-detail {
+  font-size: 13px;
+
+  .sub-hl-price {
+    color: #16a34a;
+    font-weight: 700;
+    font-size: 15px;
+  }
+
+  .sub-off-label {
+    display: inline-block;
+    padding: 1px 6px;
+    background: #dcfce7;
+    color: #16a34a;
+    font-size: 11px;
+    font-weight: 600;
+    border-radius: 8px;
+    margin-left: 4px;
+  }
+
+  .sub-orig-price {
+    color: var(--text-muted);
+    text-decoration: line-through;
+    font-size: 12px;
+    margin-left: 4px;
+  }
+}
+
+.subscription-check-benefits {
+  font-size: 12px;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+
+  svg { flex-shrink: 0; }
+  strong { font-weight: 700; }
+}
+
+// ==================== 签约流程样式 ====================
+.signing-section {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.register-success-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 16px 20px;
+  background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
+  border: 1px solid #bbf7d0;
+  border-radius: 12px;
+
+  .success-icon {
+    font-size: 28px;
+    flex-shrink: 0;
+    line-height: 1;
+  }
+
+  .success-content {
+    flex: 1;
+
+    h3 {
+      font-size: 16px;
+      font-weight: 600;
+      color: #166534;
+      margin: 0 0 10px 0;
+    }
+  }
+
+  .success-details {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .detail-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+  }
+
+  .detail-label {
+    color: #6b7280;
+    min-width: 70px;
+  }
+
+  .detail-value {
+    color: #1e293b;
+    font-weight: 500;
+
+    &.license-key {
+      font-family: 'Consolas', 'Monaco', monospace;
+      color: #6366f1;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+    }
+  }
+}
+
+.signing-area {
+  background: var(--bg-light);
+  border-radius: 12px;
+  padding: 20px 24px;
+  border: 1px solid var(--border);
+}
+
+.signing-header {
+  margin-bottom: 16px;
+
+  h3 {
+    font-size: 16px;
+    font-weight: 600;
+    margin: 0 0 6px;
+  }
+
+  p {
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin: 0;
+  }
+}
+
+.channel-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  margin: 0 0 10px;
+}
+
+.signing-notice {
+  margin-top: 16px;
+  padding: 12px 16px;
+  background: rgba(99, 102, 241, 0.06);
+  border-radius: 8px;
+  border: 1px solid rgba(99, 102, 241, 0.12);
+
+  p {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 0 0 6px;
+  }
+
+  ul {
+    margin: 0;
+    padding-left: 18px;
+    font-size: 12px;
+    color: var(--text-secondary);
+    line-height: 1.8;
+  }
+}
+
+.signing-success-info {
+  text-align: center;
+  padding: 24px 16px;
+
+  .success-check {
+    font-size: 48px;
+    margin-bottom: 12px;
+  }
+
+  h4 {
+    font-size: 18px;
+    font-weight: 600;
+    color: #166534;
+    margin: 0 0 10px;
+  }
+
+  p {
+    font-size: 14px;
+    color: var(--text-secondary);
+    margin: 0 0 4px;
+  }
+
+  .success-sub {
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+}
+
+// 跳过签约正常付费 - 紧凑版订单摘要
+.signing-area .order-summary.compact {
+  background: white;
+  border-radius: 10px;
+  padding: 16px 20px;
+  margin-bottom: 16px;
+  border: 1px solid var(--border);
+}
+
+.signing-area .payment-methods {
+  margin-bottom: 16px;
+
+  h4 {
+    font-size: 14px;
+    font-weight: 600;
+    margin: 0 0 10px;
+    color: var(--text-primary);
+  }
+}
+
+// 跳过签约链接
+.skip-signing-link {
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-muted);
+  margin: 12px 0 0;
+  cursor: pointer;
+  transition: color 0.2s ease;
+
+  &:hover {
+    color: var(--primary);
+    text-decoration: underline;
+  }
+}
+
+.skip-payment-link {
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-muted);
+  margin: 12px 0 0;
+  cursor: pointer;
+  transition: color 0.2s ease;
+
+  &:hover {
+    color: var(--primary);
+    text-decoration: underline;
+  }
+}
+
+// 签约取消后对公转账银行信息
+.signing-area .bank-info {
+  background: white;
+  border-radius: 10px;
+  padding: 16px 20px;
+  margin-bottom: 16px;
+  border: 1px solid var(--border);
+}
+
+.signing-area .bank-info-item {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 0;
+  font-size: 14px;
+  border-bottom: 1px solid #f1f5f9;
+
+  &:last-child {
+    border-bottom: none;
+  }
+}
+
+.signing-area .bank-label {
+  color: var(--text-muted);
+  min-width: 70px;
+}
+
+.signing-area .bank-value {
+  color: var(--text-primary);
+  font-weight: 500;
+  text-align: right;
+
+  &.monospace {
+    font-family: 'Consolas', 'Monaco', monospace;
+    letter-spacing: 1px;
+  }
+}
+
+.signing-area .bank-info-remark {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #f1f5f9;
+
+  p {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin: 0;
+  }
+}
+
+.signing-area .bank-notice {
+  padding: 12px 16px;
+  background: #f0fdf4;
+  border-radius: 8px;
+  border: 1px solid #bbf7d0;
+  margin-bottom: 16px;
+
+  p {
+    font-size: 13px;
+    color: #166534;
+    margin: 0 0 4px;
+    &:last-child { margin-bottom: 0; }
+  }
+}
+
+.signing-area .bank-tip {
+  color: #d97706;
+  font-weight: 500;
+}
+
+// 签约未完成提示
+.signing-failed-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 18px;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-radius: 10px;
+  margin-bottom: 16px;
+
+  .notice-icon {
+    font-size: 24px;
+    flex-shrink: 0;
+    line-height: 1;
+  }
+
+  .notice-content {
+    flex: 1;
+
+    h4 {
+      font-size: 15px;
+      font-weight: 600;
+      color: #92400e;
+      margin: 0 0 4px;
+    }
+
+    p {
+      font-size: 13px;
+      color: #a16207;
+      margin: 0;
+    }
+  }
+}
+
+// 倒计时紧急样式
+.expire-tip.urgent {
+  color: #dc2626 !important;
+  font-weight: 600;
+  animation: pulse-urgent 1s ease-in-out infinite;
+}
+
+@keyframes pulse-urgent {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
 }
 </style>

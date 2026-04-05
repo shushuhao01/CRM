@@ -647,4 +647,8 @@ export const useProductStore = createPersistentStore('product', () => {
     getCategoryPath,
     getFlatCategories
   }
+}, {
+  // 🔒 安全优化：排除大型业务数据不持久化到localStorage
+  // 商品和分类数据从后端API加载，不需要本地持久化
+  exclude: ['products', 'categories']
 })

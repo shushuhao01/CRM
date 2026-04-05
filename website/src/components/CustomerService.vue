@@ -24,7 +24,7 @@
 
         <div class="panel-body">
           <div class="qr-wrapper">
-            <img src="/images/kefuQR.png" alt="微信客服二维码" />
+            <img :src="qrCodeSrc" alt="微信客服二维码" />
           </div>
           <p class="qr-tip">微信扫一扫，添加专属客服</p>
 
@@ -32,7 +32,7 @@
             <span>或</span>
           </div>
 
-          <a :href="wechatServiceUrl" target="_blank" class="chat-btn">
+          <a :href="serviceUrl" target="_blank" class="chat-btn">
             <svg viewBox="0 0 24 24" fill="currentColor">
               <path d="M8.5 11.5a1 1 0 1 0 0-2 1 1 0 0 0 0 2zm7 0a1 1 0 1 0 0-2 1 1 0 0 0 0 2z"/>
               <path d="M12 2C6.477 2 2 6.145 2 11.243c0 2.936 1.444 5.544 3.678 7.227V22l3.27-1.795c.87.24 1.79.37 2.752.37h.3c5.523 0 10-4.145 10-9.243S17.523 2 12 2zm0 16.486h-.25c-.82 0-1.62-.11-2.38-.32l-.48-.13-2.14 1.18.05-1.95-.4-.32C4.88 15.67 4 13.56 4 11.243 4 7.25 7.582 4 12 4s8 3.25 8 7.243-3.582 7.243-8 7.243z"/>
@@ -42,7 +42,7 @@
         </div>
 
         <div class="panel-footer">
-          <p>工作时间：周一至周五 9:00-18:00</p>
+          <p>工作时间：{{ workingHours }}</p>
         </div>
       </div>
     </Transition>
@@ -53,14 +53,23 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed, onMounted } from 'vue'
+import { getWebsiteConfig, type WebsiteConfig } from '@/api/website-config'
 
 const showPanel = ref(false)
-const wechatServiceUrl = 'https://work.weixin.qq.com/kfid/kfc461ca9f5b45c8d25'
+const config = ref<Partial<WebsiteConfig>>({})
+
+const serviceUrl = computed(() => config.value.customerServiceUrl || 'https://work.weixin.qq.com/kfid/kfc461ca9f5b45c8d25')
+const qrCodeSrc = computed(() => config.value.serviceQRCode || '/images/kefuQR.png')
+const workingHours = computed(() => config.value.workingHours || '周一至周五 9:00-18:00')
 
 const togglePanel = () => {
   showPanel.value = !showPanel.value
 }
+
+onMounted(async () => {
+  config.value = await getWebsiteConfig()
+})
 </script>
 
 <style lang="scss" scoped>

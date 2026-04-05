@@ -12,6 +12,7 @@ import { formatDateTime, formatDate } from '../utils/dateFormat';
 // 🔥 修复：已移除addTenantFilter等未使用的导入，getTenantRepo已自动处理租户隔离
 import { getTenantRepo, tenantSQL } from '../utils/tenantRepo';
 
+import { log } from '../config/logger';
 const router = Router();
 
 // 所有客户路由都需要认证
@@ -50,7 +51,7 @@ router.get('/', async (req: Request, res: Response) => {
     const userRole = currentUser?.role;
     const userDepartmentId = currentUser?.departmentId;
 
-    console.log('[客户列表] 当前用户信息:', {
+    log.info('[客户列表] 当前用户信息:', {
       userId,
       userRole,
       userDepartmentId,
@@ -63,7 +64,7 @@ router.get('/', async (req: Request, res: Response) => {
     // 🔥 租户数据隔离 - getTenantRepo已自动通过Proxy添加tenant_id过滤
     // 不再需要额外调用addTenantFilter（避免重复过滤）
 
-    console.log('[客户列表] 查询参数:', { page: pageNum, pageSize: pageSizeNum, keyword, name, phone, level, status, startDate, endDate, onlyMine });
+    log.info('[客户列表] 查询参数:', { page: pageNum, pageSize: pageSizeNum, keyword, name, phone, level, status, startDate, endDate, onlyMine });
 
     // 🔥 根据用户角色进行权限过滤
     // 管理员和超级管理员可以看到所有客户（除非指定onlyMine=true）
@@ -125,7 +126,7 @@ router.get('/', async (req: Request, res: Response) => {
         }
       } else {
         // 普通成员：只能看到自己创建的或分配给自己的客户
-        console.log('[客户列表] 普通成员权限过滤, userId:', userId, '角色:', userRole, '分享客户数:', sharedCustomerIds.length);
+        log.info('[客户列表] 普通成员权限过滤, userId:', userId, '角色:', userRole, '分享客户数:', sharedCustomerIds.length);
         if (sharedCustomerIds.length > 0) {
           queryBuilder.where(
             '(customer.createdBy = :userId OR customer.salesPersonId = :userId OR customer.id IN (:...sharedIds))',
@@ -193,11 +194,12 @@ router.get('/', async (req: Request, res: Response) => {
       .andWhere('DATE(customer.createdAt) = :today', { today: todayStr })
       .getCount();
 
-    // 🔥 性能优化：统计未下单客户数（使用子查询替代全量查询+JS差集）
+    // 🔥 性能优化：统计未下单客户数
+    // 修复1：使用 LEFT JOIN + IS NULL 替代 NOT IN 子查询（性能更优，尤其在大数据量场景）
+    // 修复2：添加租户隔离条件（o.tenant_id = customer.tenant_id），防止跨租户数据泄露
     const noOrderCustomers = await statsQueryBuilder.clone()
-      .andWhere(`customer.id NOT IN (
-        SELECT DISTINCT o.customer_id FROM orders o WHERE o.customer_id IS NOT NULL
-      )`)
+      .leftJoin('orders', 'o_stat', 'o_stat.customer_id = customer.id AND o_stat.tenant_id = customer.tenant_id')
+      .andWhere('o_stat.id IS NULL')
       .getCount();
 
     // 排序和分页
@@ -228,7 +230,7 @@ router.get('/', async (req: Request, res: Response) => {
           orderCountMap[item.customerId] = parseInt(item.count) || 0;
         });
       } catch (e) {
-        console.warn('批量统计订单数失败:', e);
+        log.warn('批量统计订单数失败:', e);
       }
     }
 
@@ -262,7 +264,7 @@ router.get('/', async (req: Request, res: Response) => {
           }
         });
       } catch (e) {
-        console.warn('批量查询分享状态失败:', e);
+        log.warn('批量查询分享状态失败:', e);
       }
     }
 
@@ -279,7 +281,7 @@ router.get('/', async (req: Request, res: Response) => {
           salesPersonMap[sp.id] = sp.realName || sp.name || '';
         });
       } catch (e) {
-        console.warn('批量获取销售人员信息失败:', e);
+        log.warn('批量获取销售人员信息失败:', e);
       }
     }
 
@@ -368,7 +370,7 @@ router.get('/', async (req: Request, res: Response) => {
       }
     });
   } catch (error) {
-    console.error('获取客户列表失败:', error);
+    log.error('获取客户列表失败:', error);
     res.status(500).json({
       success: false,
       code: 500,
@@ -423,7 +425,7 @@ router.get('/groups', async (req: Request, res: Response) => {
       data: { list, total, page: pageNum, pageSize: pageSizeNum }
     });
   } catch (error) {
-    console.error('获取分组列表失败:', error);
+    log.error('获取分组列表失败:', error);
     res.status(500).json({
       success: false,
       code: 500,
@@ -474,7 +476,7 @@ router.post('/groups', async (req: Request, res: Response) => {
       }
     });
   } catch (error) {
-    console.error('创建分组失败:', error);
+    log.error('创建分组失败:', error);
     res.status(500).json({
       success: false,
       code: 500,
@@ -519,7 +521,7 @@ router.get('/groups/:id', async (req: Request, res: Response) => {
       }
     });
   } catch (error) {
-    console.error('获取分组详情失败:', error);
+    log.error('获取分组详情失败:', error);
     res.status(500).json({
       success: false,
       code: 500,
@@ -570,7 +572,7 @@ router.put('/groups/:id', async (req: Request, res: Response) => {
       }
     });
   } catch (error) {
-    console.error('更新分组失败:', error);
+    log.error('更新分组失败:', error);
     res.status(500).json({
       success: false,
       code: 500,
@@ -608,7 +610,7 @@ router.delete('/groups/:id', async (req: Request, res: Response) => {
       message: '删除分组成功'
     });
   } catch (error) {
-    console.error('删除分组失败:', error);
+    log.error('删除分组失败:', error);
     res.status(500).json({
       success: false,
       code: 500,
@@ -663,7 +665,7 @@ router.get('/tags', async (req: Request, res: Response) => {
       data: { list, total, page: pageNum, pageSize: pageSizeNum }
     });
   } catch (error) {
-    console.error('获取标签列表失败:', error);
+    log.error('获取标签列表失败:', error);
     res.status(500).json({
       success: false,
       code: 500,
@@ -715,7 +717,7 @@ router.post('/tags', async (req: Request, res: Response) => {
       }
     });
   } catch (error) {
-    console.error('创建标签失败:', error);
+    log.error('创建标签失败:', error);
     res.status(500).json({
       success: false,
       code: 500,
@@ -760,7 +762,7 @@ router.get('/tags/:id', async (req: Request, res: Response) => {
       }
     });
   } catch (error) {
-    console.error('获取标签详情失败:', error);
+    log.error('获取标签详情失败:', error);
     res.status(500).json({
       success: false,
       code: 500,
@@ -812,7 +814,7 @@ router.put('/tags/:id', async (req: Request, res: Response) => {
       }
     });
   } catch (error) {
-    console.error('更新标签失败:', error);
+    log.error('更新标签失败:', error);
     res.status(500).json({
       success: false,
       code: 500,
@@ -850,7 +852,7 @@ router.delete('/tags/:id', async (req: Request, res: Response) => {
       message: '删除标签成功'
     });
   } catch (error) {
-    console.error('删除标签失败:', error);
+    log.error('删除标签失败:', error);
     res.status(500).json({
       success: false,
       code: 500,
@@ -880,7 +882,7 @@ router.get('/check-exists', async (req: Request, res: Response) => {
       });
     }
 
-    console.log('[检查客户存在] 查询手机号:', phone);
+    log.info('[检查客户存在] 查询手机号:', phone);
 
     // 🔥 修复：同时搜索主手机号和其他手机号（JSON数组），使用精确匹配
     const existingCustomer = await customerRepository
@@ -889,7 +891,7 @@ router.get('/check-exists', async (req: Request, res: Response) => {
       .getOne();
 
     if (existingCustomer) {
-      console.log('[检查客户存在] 找到客户:', existingCustomer.name);
+      log.info('[检查客户存在] 找到客户:', existingCustomer.name);
 
       // 查找归属人的真实姓名
       let ownerName = '';
@@ -903,7 +905,7 @@ router.get('/check-exists', async (req: Request, res: Response) => {
           });
           ownerName = owner?.name || ownerId;
         } catch (e) {
-          console.log('[检查客户存在] 查找归属人失败:', e);
+          log.info('[检查客户存在] 查找归属人失败:', e);
           ownerName = ownerId;
         }
       }
@@ -922,7 +924,7 @@ router.get('/check-exists', async (req: Request, res: Response) => {
       });
     }
 
-    console.log('[检查客户存在] 客户不存在，可以创建');
+    log.info('[检查客户存在] 客户不存在，可以创建');
     return res.json({
       success: true,
       code: 200,
@@ -930,13 +932,84 @@ router.get('/check-exists', async (req: Request, res: Response) => {
       data: null
     });
   } catch (error) {
-    console.error('检查客户存在失败:', error);
+    log.error('检查客户存在失败:', error);
     res.status(500).json({
       success: false,
       code: 500,
       message: '检查客户存在失败',
       error: error instanceof Error ? error.message : '未知错误',
       data: null
+    });
+  }
+});
+
+/**
+ * @route GET /api/v1/customers/stats
+ * @desc 获取客户列表统计数据（独立接口，支持30秒缓存）
+ * @access Private
+ * @note 此路由必须在 /:id 路由之前定义
+ */
+router.get('/stats', async (req: Request, res: Response) => {
+  try {
+    const tenantId = (req as any).user?.tenantId;
+
+    // 🔥 30秒缓存：避免频繁刷新列表时重复执行统计查询
+    const { cacheService } = await import('../services/CacheService');
+    const cacheKey = cacheService.tenantKey(tenantId, 'customers', 'list-stats');
+    const cached = cacheService.get(cacheKey);
+    if (cached) {
+      return res.json({ success: true, code: 200, message: '获取客户统计成功(缓存)', data: cached });
+    }
+
+    const customerRepository = getTenantRepo(Customer);
+    const orderRepository = getTenantRepo(Order);
+
+    // 获取今日日期和本月日期范围
+    const today = new Date();
+    const todayStr = today.toISOString().split('T')[0];
+    const currentMonthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+    const currentMonthStartStr = currentMonthStart.toISOString().split('T')[0];
+
+    // 基础查询（带租户隔离）
+    const baseQuery = customerRepository.createQueryBuilder('customer');
+
+    // 统计总客户数
+    const totalCustomers = await baseQuery.clone().getCount();
+
+    // 统计当月新增客户数
+    const monthCustomers = await baseQuery.clone()
+      .andWhere('customer.createdAt >= :monthStart', { monthStart: `${currentMonthStartStr} 00:00:00` })
+      .getCount();
+
+    // 统计今日新增客户数
+    const newCustomers = await baseQuery.clone()
+      .andWhere('DATE(customer.createdAt) = :today', { today: todayStr })
+      .getCount();
+
+    // 统计未下单客户数（LEFT JOIN + IS NULL 高性能方案）
+    const noOrderCustomers = await baseQuery.clone()
+      .leftJoin('orders', 'o_stat', 'o_stat.customer_id = customer.id AND o_stat.tenant_id = customer.tenant_id')
+      .andWhere('o_stat.id IS NULL')
+      .getCount();
+
+    const statistics = { totalCustomers, monthCustomers, newCustomers, noOrderCustomers };
+
+    // 写入30秒缓存
+    cacheService.set(cacheKey, statistics, 30);
+
+    res.json({
+      success: true,
+      code: 200,
+      message: '获取客户统计成功',
+      data: statistics
+    });
+  } catch (error) {
+    log.error('获取客户统计失败:', error);
+    res.status(500).json({
+      success: false,
+      code: 500,
+      message: '获取客户统计失败',
+      error: error instanceof Error ? error.message : '未知错误'
     });
   }
 });
@@ -960,7 +1033,7 @@ router.get('/search', async (req: Request, res: Response) => {
       });
     }
 
-    console.log('[客户搜索] 搜索关键词:', keyword);
+    log.info('[客户搜索] 搜索关键词:', keyword);
 
     // 搜索条件：姓名、手机号、客户编码、其他手机号
     const customers = await customerRepository
@@ -988,7 +1061,7 @@ router.get('/search', async (req: Request, res: Response) => {
       salesPersonId: customer.salesPersonId || ''
     }));
 
-    console.log('[客户搜索] 找到客户数:', list.length);
+    log.info('[客户搜索] 找到客户数:', list.length);
 
     res.json({
       success: true,
@@ -1000,7 +1073,7 @@ router.get('/search', async (req: Request, res: Response) => {
       }
     });
   } catch (error) {
-    console.error('搜索客户失败:', error);
+    log.error('搜索客户失败:', error);
     res.status(500).json({
       success: false,
       code: 500,
@@ -1096,7 +1169,7 @@ router.get('/:id', async (req: Request, res: Response) => {
       data
     });
   } catch (error) {
-    console.error('获取客户详情失败:', error);
+    log.error('获取客户详情失败:', error);
     res.status(500).json({
       success: false,
       code: 500,
@@ -1122,7 +1195,7 @@ router.post('/', async (req: Request, res: Response) => {
       status, salesPersonId, createdBy
     } = req.body;
 
-    console.log('[创建客户] 收到请求数据:', JSON.stringify(req.body));
+    log.info('[创建客户] 收到请求数据:', JSON.stringify(req.body));
 
     // 验证必填字段
     if (!name) {
@@ -1138,7 +1211,7 @@ router.post('/', async (req: Request, res: Response) => {
     const currentUserId = currentUser?.id || (req as any).user?.userId;
     const currentTenantId = (req as any).tenantId || currentUser?.tenantId || (req as any).user?.tenantId;
 
-    console.log('[创建客户] 当前用户信息:', {
+    log.info('[创建客户] 当前用户信息:', {
       id: currentUserId,
       name: currentUser?.name || currentUser?.realName,
       role: currentUser?.role,
@@ -1151,7 +1224,7 @@ router.post('/', async (req: Request, res: Response) => {
       try {
         const existingCustomer = await customerRepository.findOne({ where: { phone } });
         if (existingCustomer) {
-          console.log('[创建客户] 手机号已存在:', phone, '客户:', existingCustomer.name, 'ID:', existingCustomer.id);
+          log.info('[创建客户] 手机号已存在:', phone, '客户:', existingCustomer.name, 'ID:', existingCustomer.id);
           return res.status(400).json({
             success: false,
             code: 400,
@@ -1159,7 +1232,7 @@ router.post('/', async (req: Request, res: Response) => {
           });
         }
       } catch (checkErr: any) {
-        console.error('[创建客户] 检查手机号存在性失败:', checkErr.message);
+        log.error('[创建客户] 检查手机号存在性失败:', checkErr.message);
         // 检查失败不阻止创建，继续流程（容错）
       }
     }
@@ -1168,7 +1241,7 @@ router.post('/', async (req: Request, res: Response) => {
     const finalCreatedBy = currentUserId || createdBy || salesPersonId || 'admin';
     const finalSalesPersonId = salesPersonId || currentUserId || null;
 
-    console.log('[创建客户] 最终创建人ID:', finalCreatedBy, '销售人员ID:', finalSalesPersonId);
+    log.info('[创建客户] 最终创建人ID:', finalCreatedBy, '销售人员ID:', finalSalesPersonId);
 
     // 🔥 修复：先生成一个临时UUID用于客户编码，避免两步保存
     // 使用 crypto 或时间戳生成唯一编码前缀
@@ -1209,13 +1282,13 @@ router.post('/', async (req: Request, res: Response) => {
       totalAmount: 0
     });
 
-    console.log('[创建客户] 准备保存客户, 姓名:', customer.name, '手机:', customer.phone);
+    log.info('[创建客户] 准备保存客户, 姓名:', customer.name, '手机:', customer.phone);
 
     // 🔥 第一步保存：获取数据库分配的UUID
     const savedCustomer = await customerRepository.save(customer);
 
     if (!savedCustomer || !savedCustomer.id) {
-      console.error('[创建客户] ❌ 保存后未获得ID，可能写入失败');
+      log.error('[创建客户] ❌ 保存后未获得ID，可能写入失败');
       return res.status(500).json({
         success: false,
         code: 500,
@@ -1223,7 +1296,7 @@ router.post('/', async (req: Request, res: Response) => {
       });
     }
 
-    console.log('[创建客户] ✅ 第一步保存成功, ID:', savedCustomer.id, '租户:', (savedCustomer as any).tenantId);
+    log.info('[创建客户] ✅ 第一步保存成功, ID:', savedCustomer.id, '租户:', (savedCustomer as any).tenantId);
 
     // 🔥 修复：生成基于UUID的客户编号，然后做第二步更新
     // 使用try-catch包裹第二步，即使编号生成失败，客户数据也已写入
@@ -1231,25 +1304,25 @@ router.post('/', async (req: Request, res: Response) => {
     try {
       savedCustomer.customerNo = customerNo;
       await customerRepository.save(savedCustomer);
-      console.log('[创建客户] ✅ 客户编号已更新:', customerNo);
+      log.info('[创建客户] ✅ 客户编号已更新:', customerNo);
     } catch (codeErr: any) {
       // 🔥 关键修复：如果编号更新失败（如UNIQUE冲突），使用备用编号重试
-      console.warn('[创建客户] ⚠️ 客户编号更新失败（可能UNIQUE冲突），使用备用编号:', codeErr.message);
+      log.warn('[创建客户] ⚠️ 客户编号更新失败（可能UNIQUE冲突），使用备用编号:', codeErr.message);
       try {
         const fallbackNo = `C${savedCustomer.id.replace(/-/g, '').substring(0, 12).toUpperCase()}`;
         savedCustomer.customerNo = fallbackNo;
         await customerRepository.save(savedCustomer);
-        console.log('[创建客户] ✅ 备用客户编号已更新:', fallbackNo);
+        log.info('[创建客户] ✅ 备用客户编号已更新:', fallbackNo);
       } catch (fallbackErr: any) {
         // 编号更新完全失败，但客户数据已保存，不影响核心功能
-        console.error('[创建客户] ⚠️ 客户编号更新完全失败，客户数据已保存但无编号:', fallbackErr.message);
+        log.error('[创建客户] ⚠️ 客户编号更新完全失败，客户数据已保存但无编号:', fallbackErr.message);
       }
     }
 
     // 🔥 验证：确认客户已成功写入数据库
     const verifyCustomer = await customerRepository.findOne({ where: { id: savedCustomer.id } });
     if (!verifyCustomer) {
-      console.error('[创建客户] ❌ 严重错误：保存后无法查回客户, ID:', savedCustomer.id);
+      log.error('[创建客户] ❌ 严重错误：保存后无法查回客户, ID:', savedCustomer.id);
       return res.status(500).json({
         success: false,
         code: 500,
@@ -1257,7 +1330,7 @@ router.post('/', async (req: Request, res: Response) => {
       });
     }
 
-    console.log('[创建客户] ✅✅ 数据库验证通过，客户确认已写入, ID:', verifyCustomer.id, '姓名:', verifyCustomer.name, '手机:', verifyCustomer.phone);
+    log.info('[创建客户] ✅✅ 数据库验证通过，客户确认已写入, ID:', verifyCustomer.id, '姓名:', verifyCustomer.name, '手机:', verifyCustomer.phone);
 
     // 转换数据格式返回
     const data = {
@@ -1292,7 +1365,7 @@ router.post('/', async (req: Request, res: Response) => {
       otherGoals: verifyCustomer.otherGoals || ''
     };
 
-    console.log('[创建客户] ✅ 准备返回成功响应, ID:', data.id, '姓名:', data.name);
+    log.info('[创建客户] ✅ 准备返回成功响应, ID:', data.id, '姓名:', data.name);
 
     res.status(201).json({
       success: true,
@@ -1301,10 +1374,10 @@ router.post('/', async (req: Request, res: Response) => {
       data
     });
 
-    console.log('[创建客户] ✅ 响应已发送');
+    log.info('[创建客户] ✅ 响应已发送');
   } catch (error) {
-    console.error('[创建客户] ❌ 创建客户失败:', error);
-    console.error('[创建客户] ❌ 错误详情:', error instanceof Error ? error.stack : error);
+    log.error('[创建客户] ❌ 创建客户失败:', error);
+    log.error('[创建客户] ❌ 错误详情:', error instanceof Error ? error.stack : error);
 
     // 🔥 提供更详细的错误信息帮助前端诊断
     const errorMessage = error instanceof Error ? error.message : '未知错误';
@@ -1411,7 +1484,7 @@ router.put('/:id', async (req: Request, res: Response) => {
       data
     });
   } catch (error) {
-    console.error('更新客户失败:', error);
+    log.error('更新客户失败:', error);
     res.status(500).json({
       success: false,
       code: 500,
@@ -1449,7 +1522,7 @@ router.delete('/:id', async (req: Request, res: Response) => {
       message: '删除客户成功'
     });
   } catch (error) {
-    console.error('删除客户失败:', error);
+    log.error('删除客户失败:', error);
     res.status(500).json({
       success: false,
       code: 500,
@@ -1493,7 +1566,7 @@ router.get('/:id/orders', async (req: Request, res: Response) => {
       shippingAddress: order.shippingAddress
     }));
 
-    console.log(`[客户订单] 客户 ${customerId} 有 ${list.length} 条订单记录`);
+    log.info(`[客户订单] 客户 ${customerId} 有 ${list.length} 条订单记录`);
 
     res.json({
       success: true,
@@ -1501,7 +1574,7 @@ router.get('/:id/orders', async (req: Request, res: Response) => {
       data: list
     });
   } catch (error) {
-    console.error('获取客户订单失败:', error);
+    log.error('获取客户订单失败:', error);
     res.status(500).json({ success: false, code: 500, message: '获取客户订单失败' });
   }
 });
@@ -1539,11 +1612,11 @@ router.get('/:id/services', async (req: Request, res: Response) => {
       resolvedTime: service.resolvedTime?.toISOString() || ''
     }));
 
-    console.log(`[客户售后] 客户 ${customerId} 有 ${list.length} 条售后记录`);
+    log.info(`[客户售后] 客户 ${customerId} 有 ${list.length} 条售后记录`);
 
     res.json({ success: true, code: 200, data: list });
   } catch (error) {
-    console.error('获取客户售后记录失败:', error);
+    log.error('获取客户售后记录失败:', error);
     res.status(500).json({ success: false, code: 500, message: '获取客户售后记录失败' });
   }
 });
@@ -1598,11 +1671,11 @@ router.get('/:id/calls', async (req: Request, res: Response) => {
       };
     });
 
-    console.log(`[客户通话] 客户 ${customerId} 有 ${list.length} 条通话记录`);
+    log.info(`[客户通话] 客户 ${customerId} 有 ${list.length} 条通话记录`);
 
     res.json({ success: true, code: 200, data: list });
   } catch (error) {
-    console.error('获取客户通话记录失败:', error);
+    log.error('获取客户通话记录失败:', error);
     res.status(500).json({ success: false, code: 500, message: '获取客户通话记录失败' });
   }
 });
@@ -1616,7 +1689,7 @@ router.get('/:id/followups', async (req: Request, res: Response) => {
   try {
     const customerId = req.params.id;
 
-    console.log(`[客户跟进] 查询客户 ${customerId} 的跟进记录`);
+    log.info(`[客户跟进] 查询客户 ${customerId} 的跟进记录`);
 
     // 🔥 修复：使用原生SQL查询，避免实体字段不匹配问题
     // 🔥 租户数据隔离：添加 tenant_id 过滤
@@ -1643,9 +1716,9 @@ router.get('/:id/followups', async (req: Request, res: Response) => {
       ORDER BY created_at DESC
     `, [customerId, ...tFollowUp.params]);
 
-    console.log(`[客户跟进] 查询结果:`, followUps.length, '条记录');
+    log.info(`[客户跟进] 查询结果:`, followUps.length, '条记录');
     if (followUps.length > 0) {
-      console.log(`[客户跟进] 最新记录:`, followUps[0]);
+      log.info(`[客户跟进] 最新记录:`, followUps[0]);
     }
 
     const list = followUps.map((followUp: any) => {
@@ -1688,11 +1761,11 @@ router.get('/:id/followups', async (req: Request, res: Response) => {
       };
     });
 
-    console.log(`[客户跟进] 客户 ${customerId} 有 ${list.length} 条跟进记录`);
+    log.info(`[客户跟进] 客户 ${customerId} 有 ${list.length} 条跟进记录`);
 
     res.json({ success: true, code: 200, data: list });
   } catch (error) {
-    console.error('获取客户跟进记录失败:', error);
+    log.error('获取客户跟进记录失败:', error);
     // 🔥 返回空数组而不是500错误，避免前端显示错误
     res.json({ success: true, code: 200, data: [], message: '暂无跟进记录' });
   }
@@ -1735,7 +1808,7 @@ router.post('/:id/followups', async (req: Request, res: Response) => {
 
     const savedFollowUp = await followUpRepository.save(followUp);
 
-    console.log(`[添加跟进] 客户 ${customerId} 添加跟进记录成功`);
+    log.info(`[添加跟进] 客户 ${customerId} 添加跟进记录成功`);
 
     const title = savedFollowUp.type === 'call' ? '电话跟进' :
                   savedFollowUp.type === 'visit' ? '上门拜访' :
@@ -1759,7 +1832,7 @@ router.post('/:id/followups', async (req: Request, res: Response) => {
       }
     });
   } catch (error) {
-    console.error('添加跟进记录失败:', error);
+    log.error('添加跟进记录失败:', error);
     res.status(500).json({ success: false, code: 500, message: '添加跟进记录失败' });
   }
 });
@@ -1811,7 +1884,7 @@ router.put('/:id/followups/:followUpId', async (req: Request, res: Response) => 
       }
     });
   } catch (error) {
-    console.error('更新跟进记录失败:', error);
+    log.error('更新跟进记录失败:', error);
     res.status(500).json({ success: false, code: 500, message: '更新跟进记录失败' });
   }
 });
@@ -1837,7 +1910,7 @@ router.delete('/:id/followups/:followUpId', async (req: Request, res: Response) 
 
     res.json({ success: true, code: 200, message: '删除成功' });
   } catch (error) {
-    console.error('删除跟进记录失败:', error);
+    log.error('删除跟进记录失败:', error);
     res.status(500).json({ success: false, code: 500, message: '删除跟进记录失败' });
   }
 });
@@ -1853,7 +1926,7 @@ router.get('/:id/tags', async (req: Request, res: Response) => {
     const customer = await customerRepository.findOne({ where: { id: req.params.id } });
     res.json({ success: true, code: 200, data: customer?.tags || [] });
   } catch (error) {
-    console.error('获取客户标签失败:', error);
+    log.error('获取客户标签失败:', error);
     res.status(500).json({ success: false, code: 500, message: '获取客户标签失败' });
   }
 });
@@ -1876,7 +1949,7 @@ router.post('/:id/tags', async (req: Request, res: Response) => {
     await customerRepository.save(customer);
     res.status(201).json({ success: true, code: 200, data: newTag });
   } catch (error) {
-    console.error('添加客户标签失败:', error);
+    log.error('添加客户标签失败:', error);
     res.status(500).json({ success: false, code: 500, message: '添加客户标签失败' });
   }
 });
@@ -1898,7 +1971,7 @@ router.delete('/:id/tags/:tagId', async (req: Request, res: Response) => {
     await customerRepository.save(customer);
     res.json({ success: true, code: 200, message: '删除成功' });
   } catch (error) {
-    console.error('删除客户标签失败:', error);
+    log.error('删除客户标签失败:', error);
     res.status(500).json({ success: false, code: 500, message: '删除客户标签失败' });
   }
 });
@@ -1946,10 +2019,10 @@ router.get('/:id/medical-history', async (req: Request, res: Response) => {
       }
     }
 
-    console.log(`[客户疾病史] 客户 ${req.params.id} 有 ${medicalRecords.length} 条疾病史记录`);
+    log.info(`[客户疾病史] 客户 ${req.params.id} 有 ${medicalRecords.length} 条疾病史记录`);
     res.json({ success: true, code: 200, data: medicalRecords });
   } catch (error) {
-    console.error('获取客户疾病史失败:', error);
+    log.error('获取客户疾病史失败:', error);
     res.status(500).json({ success: false, code: 500, message: '获取客户疾病史失败' });
   }
 });
@@ -2000,7 +2073,7 @@ router.post('/:id/medical-history', async (req: Request, res: Response) => {
     // 添加新记录
     // 🔥 修复：优先使用 realName，其次 name，最后才是 '系统'
     const operatorName = currentUser?.realName || currentUser?.name || '系统';
-    console.log('[疾病史] 添加记录，操作人:', operatorName, '当前用户:', currentUser?.id, currentUser?.realName, currentUser?.name);
+    log.info('[疾病史] 添加记录，操作人:', operatorName, '当前用户:', currentUser?.id, currentUser?.realName, currentUser?.name);
 
     const newRecord = {
       id: Date.now(),
@@ -2016,10 +2089,10 @@ router.post('/:id/medical-history', async (req: Request, res: Response) => {
     customer.medicalHistory = JSON.stringify(medicalRecords);
     await customerRepository.save(customer);
 
-    console.log(`[添加疾病史] 客户 ${req.params.id} 添加疾病史成功`);
+    log.info(`[添加疾病史] 客户 ${req.params.id} 添加疾病史成功`);
     res.status(201).json({ success: true, code: 200, data: newRecord });
   } catch (error) {
-    console.error('添加客户疾病史失败:', error);
+    log.error('添加客户疾病史失败:', error);
     res.status(500).json({ success: false, code: 500, message: '添加客户疾病史失败' });
   }
 });
@@ -2052,7 +2125,7 @@ router.get('/:id/stats', async (req: Request, res: Response) => {
     const validStatuses = ['approved', 'pending_shipment', 'shipped', 'delivered', 'signed', 'completed', 'paid'];
     const validOrders = orders.filter(o => validStatuses.includes(o.status));
     const totalConsumption = validOrders.reduce((sum, order) => sum + (Number(order.totalAmount) || 0), 0);
-    console.log(`[客户统计] 客户 ${customerId}: 有效订单状态=${validStatuses.join(',')}, 有效订单数=${validOrders.length}`);
+    log.info(`[客户统计] 客户 ${customerId}: 有效订单状态=${validStatuses.join(',')}, 有效订单数=${validOrders.length}`);
 
     // 订单数量
     const orderCount = orders.length;
@@ -2067,7 +2140,7 @@ router.get('/:id/stats', async (req: Request, res: Response) => {
       ? new Date(lastOrder.createdAt).toLocaleDateString('zh-CN')
       : null;
 
-    console.log(`[客户统计] 客户 ${customerId}: 消费¥${totalConsumption}, 订单${orderCount}个, 退货${returnCount}次`);
+    log.info(`[客户统计] 客户 ${customerId}: 消费¥${totalConsumption}, 订单${orderCount}个, 退货${returnCount}次`);
 
     res.json({
       success: true,
@@ -2080,7 +2153,7 @@ router.get('/:id/stats', async (req: Request, res: Response) => {
       }
     });
   } catch (error) {
-    console.error('获取客户统计数据失败:', error);
+    log.error('获取客户统计数据失败:', error);
     res.status(500).json({ success: false, code: 500, message: '获取客户统计数据失败' });
   }
 });

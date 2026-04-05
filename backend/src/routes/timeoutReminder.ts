@@ -10,6 +10,7 @@ import { getDataSource } from '../config/database';
 import { SystemConfig } from '../entities/SystemConfig';
 import { getTenantRepo } from '../utils/tenantRepo';
 
+import { log } from '../config/logger';
 const router = Router();
 
 /**
@@ -40,7 +41,7 @@ router.get('/config', async (_req: Request, res: Response) => {
       }
     });
   } catch (error: any) {
-    console.error('获取超时配置失败:', error);
+    log.error('获取超时配置失败:', error);
     res.status(500).json({
       success: false,
       message: '获取超时配置失败: ' + error.message
@@ -109,7 +110,7 @@ router.put('/config', async (req: Request, res: Response) => {
       message: '超时配置更新成功'
     });
   } catch (error: any) {
-    console.error('更新超时配置失败:', error);
+    log.error('更新超时配置失败:', error);
     res.status(500).json({
       success: false,
       message: '更新超时配置失败: ' + error.message
@@ -123,7 +124,7 @@ router.put('/config', async (req: Request, res: Response) => {
  */
 router.post('/check', async (_req: Request, res: Response) => {
   try {
-    console.log('[TimeoutReminder API] 手动触发超时检测');
+    log.info('[TimeoutReminder API] 手动触发超时检测');
 
     const result = await timeoutReminderService.manualCheck();
 
@@ -140,7 +141,7 @@ router.post('/check', async (_req: Request, res: Response) => {
       }
     });
   } catch (error: any) {
-    console.error('手动触发超时检测失败:', error);
+    log.error('手动触发超时检测失败:', error);
     res.status(500).json({
       success: false,
       message: '超时检测失败: ' + error.message

@@ -11,6 +11,7 @@ import crypto from 'crypto';
 import { TenantContextManager } from '../utils/tenantContext';
 import { deployConfig } from '../config/deploy';
 
+import { log } from '../config/logger';
 // 内存存储订阅规则数据（模拟数据库）
 const subscriptionRulesStorage: any[] = [
   {
@@ -176,7 +177,7 @@ export class MessageController {
 
       res.json(result);
     } catch (error) {
-      console.error('获取订阅配置失败:', error);
+      log.error('获取订阅配置失败:', error);
       res.status(500).json({ error: '获取订阅配置失败' });
     }
   }
@@ -222,7 +223,7 @@ export class MessageController {
         message: '消息订阅配置更新成功'
       });
     } catch (error) {
-      console.error('更新消息订阅配置失败:', error);
+      log.error('更新消息订阅配置失败:', error);
       res.status(500).json({
         success: false,
         message: '更新消息订阅配置失败'
@@ -273,7 +274,7 @@ export class MessageController {
 
       res.json(configs);
     } catch (error) {
-      console.error('获取部门订阅配置失败:', error);
+      log.error('获取部门订阅配置失败:', error);
       res.status(500).json({ error: '获取部门订阅配置失败' });
     }
   }
@@ -327,7 +328,7 @@ export class MessageController {
 
       res.json(config);
     } catch (error) {
-      console.error('更新部门订阅配置失败:', error);
+      log.error('更新部门订阅配置失败:', error);
       res.status(500).json({ error: '更新部门订阅配置失败' });
     }
   }
@@ -385,7 +386,7 @@ export class MessageController {
         message: '批量更新部门订阅配置成功'
       });
     } catch (error) {
-      console.error('批量更新部门订阅配置失败:', error);
+      log.error('批量更新部门订阅配置失败:', error);
       res.status(500).json({
         success: false,
         message: '批量更新部门订阅配置失败'
@@ -458,7 +459,7 @@ export class MessageController {
         count: defaultSubscriptions.length
       });
     } catch (error) {
-      console.error('初始化默认订阅配置失败:', error);
+      log.error('初始化默认订阅配置失败:', error);
       res.status(500).json({ error: '初始化默认订阅配置失败' });
     }
   }
@@ -557,7 +558,7 @@ export class MessageController {
         }
       });
     } catch (error) {
-      console.error('获取公告列表失败:', error);
+      log.error('获取公告列表失败:', error);
       res.status(500).json({ success: false, message: '获取公告列表失败' });
     }
   }
@@ -606,7 +607,7 @@ export class MessageController {
 
       await announcementRepo.save(announcement);
 
-      console.log(`[公告] ✅ 创建成功: ${title}`);
+      log.info(`[公告] ✅ 创建成功: ${title}`);
 
       res.json({
         success: true,
@@ -614,8 +615,8 @@ export class MessageController {
         data: announcement
       });
     } catch (error: any) {
-      console.error('创建公告失败:', error);
-      console.error('错误详情:', error.message, error.stack);
+      log.error('创建公告失败:', error);
+      log.error('错误详情:', error.message, error.stack);
       res.status(500).json({
         success: false,
         message: '创建公告失败: ' + (error.message || '未知错误')
@@ -667,7 +668,7 @@ export class MessageController {
         data: announcement
       });
     } catch (error) {
-      console.error('更新公告失败:', error);
+      log.error('更新公告失败:', error);
       res.status(500).json({ success: false, message: '更新公告失败' });
     }
   }
@@ -705,7 +706,7 @@ export class MessageController {
         message: '公告删除成功'
       });
     } catch (error) {
-      console.error('删除公告失败:', error);
+      log.error('删除公告失败:', error);
       res.status(500).json({
         success: false,
         error: '删除公告失败'
@@ -792,7 +793,7 @@ export class MessageController {
 
       if (messages.length > 0) {
         await messageRepo.save(messages);
-        console.log(`[公告] ✅ 发布成功: ${announcement.title}，已发送给 ${messages.length} 个用户`);
+        log.info(`[公告] ✅ 发布成功: ${announcement.title}，已发送给 ${messages.length} 个用户`);
       }
 
       // 🔥 通过WebSocket实时推送公告通知给目标用户
@@ -816,11 +817,11 @@ export class MessageController {
           announcement.targetDepartments.forEach((deptId: string) => {
             (global.webSocketService as any).sendToDepartment(deptId, 'new_announcement', announcementPayload);
           });
-          console.log(`[公告] 🔌 WebSocket按部门推送: ${announcement.title} -> ${announcement.targetDepartments.join(',')}`);
+          log.info(`[公告] 🔌 WebSocket按部门推送: ${announcement.title} -> ${announcement.targetDepartments.join(',')}`);
         } else {
           // 全员广播
           (global.webSocketService as any).broadcast('new_announcement', announcementPayload);
-          console.log(`[公告] 🔌 WebSocket全员广播: ${announcement.title}`);
+          log.info(`[公告] 🔌 WebSocket全员广播: ${announcement.title}`);
         }
       }
 
@@ -833,7 +834,7 @@ export class MessageController {
         }
       });
     } catch (error) {
-      console.error('发布公告失败:', error);
+      log.error('发布公告失败:', error);
       res.status(500).json({ success: false, message: '发布公告失败' });
     }
   }
@@ -929,7 +930,7 @@ export class MessageController {
       // 获取用户的阅读记录
       const readRepo = dataSource.getRepository(AnnouncementRead);
       const userId = currentUser?.id;
-      console.log('[获取公告] 用户ID:', userId, ', 公司公告:', companyAnnouncements.length, ', 系统公告:', filteredSystemAnnouncements.length);
+      log.info('[获取公告] 用户ID:', userId, ', 公司公告:', companyAnnouncements.length, ', 系统公告:', filteredSystemAnnouncements.length);
 
       let readIds = new Set<string>();
       if (userId) {
@@ -957,7 +958,7 @@ export class MessageController {
         }))
       });
     } catch (error) {
-      console.error('获取已发布公告失败:', error);
+      log.error('获取已发布公告失败:', error);
       res.status(500).json({ success: false, message: '获取已发布公告失败' });
     }
   }
@@ -971,7 +972,7 @@ export class MessageController {
       const dataSource = getDataSource();
 
       if (!dataSource) {
-        console.error('[公告已读] ❌ 数据库未连接!');
+        log.error('[公告已读] ❌ 数据库未连接!');
         res.status(500).json({ success: false, message: '数据库未连接' });
         return;
       }
@@ -979,11 +980,11 @@ export class MessageController {
       const currentUser = (req as any).currentUser || (req as any).user;
       const userId = currentUser?.id; // userId 是字符串类型
 
-      console.log('[公告已读] 用户信息:', JSON.stringify(currentUser));
-      console.log('[公告已读] 用户ID:', userId, '(类型:', typeof userId, '), 公告ID:', id);
+      log.info('[公告已读] 用户信息:', JSON.stringify(currentUser));
+      log.info('[公告已读] 用户ID:', userId, '(类型:', typeof userId, '), 公告ID:', id);
 
       if (!userId) {
-        console.error('[公告已读] ❌ 用户未登录或无法获取用户ID');
+        log.error('[公告已读] ❌ 用户未登录或无法获取用户ID');
         res.status(401).json({ success: false, message: '未登录' });
         return;
       }
@@ -995,7 +996,7 @@ export class MessageController {
         where: { announcementId: id, userId: String(userId) }
       });
 
-      console.log('[公告已读] 已存在记录:', existing ? '是' : '否');
+      log.info('[公告已读] 已存在记录:', existing ? '是' : '否');
 
       if (!existing) {
         // 创建阅读记录
@@ -1005,18 +1006,18 @@ export class MessageController {
           userId: String(userId) // 确保是字符串类型
         });
         const savedRecord = await readRepo.save(readRecord);
-        console.log('[公告已读] ✅ 已创建阅读记录, ID:', savedRecord.id, ', userId:', savedRecord.userId);
+        log.info('[公告已读] ✅ 已创建阅读记录, ID:', savedRecord.id, ', userId:', savedRecord.userId);
 
         // 更新公告查看次数
         const announcementRepo = dataSource.getRepository(Announcement);
         await announcementRepo.increment({ id }, 'viewCount', 1);
       } else {
-        console.log('[公告已读] 记录已存在，无需重复创建');
+        log.info('[公告已读] 记录已存在，无需重复创建');
       }
 
       res.json({ success: true, message: '已标记为已读' });
     } catch (error) {
-      console.error('[公告已读] ❌ 标记公告已读失败:', error);
+      log.error('[公告已读] ❌ 标记公告已读失败:', error);
       res.status(500).json({ success: false, message: '标记公告已读失败' });
     }
   }
@@ -1062,7 +1063,7 @@ export class MessageController {
         pageSize
       });
     } catch (error) {
-      console.error('获取订阅规则失败:', error);
+      log.error('获取订阅规则失败:', error);
       res.status(500).json({ error: '获取订阅规则失败' });
     }
   }
@@ -1132,7 +1133,7 @@ export class MessageController {
         data: newRule
       });
     } catch (error) {
-      console.error('创建订阅规则失败:', error);
+      log.error('创建订阅规则失败:', error);
       res.status(500).json({
         success: false,
         error: '创建订阅规则失败'
@@ -1194,7 +1195,7 @@ export class MessageController {
         data: updatedRule
       });
     } catch (error) {
-      console.error('更新订阅规则失败:', error);
+      log.error('更新订阅规则失败:', error);
       res.status(500).json({
         success: false,
         error: '更新订阅规则失败'
@@ -1225,7 +1226,7 @@ export class MessageController {
         message: '订阅规则删除成功'
       });
     } catch (error) {
-      console.error('删除订阅规则失败:', error);
+      log.error('删除订阅规则失败:', error);
       res.status(500).json({
         success: false,
         error: '删除订阅规则失败'
@@ -1259,7 +1260,7 @@ export class MessageController {
         data: subscriptionRulesStorage[ruleIndex]
       });
     } catch (error) {
-      console.error('切换订阅规则状态失败:', error);
+      log.error('切换订阅规则状态失败:', error);
       res.status(500).json({
         success: false,
         error: '切换订阅规则状态失败'
@@ -1372,7 +1373,7 @@ export class MessageController {
       // TODO: 实现真实的数据库查询
       res.json({ data: [] });
     } catch (error) {
-      console.error('获取通知配置失败:', error);
+      log.error('获取通知配置失败:', error);
       res.status(500).json({ error: '获取通知配置失败' });
     }
   }
@@ -1400,7 +1401,7 @@ export class MessageController {
         data: { id, ...req.body }
       });
     } catch (error) {
-      console.error('更新通知配置失败:', error);
+      log.error('更新通知配置失败:', error);
       res.status(500).json({
         success: false,
         error: '更新通知配置失败'
@@ -1430,7 +1431,7 @@ export class MessageController {
         message: `${methodType}通知测试成功`
       });
     } catch (error) {
-      console.error('测试通知失败:', error);
+      log.error('测试通知失败:', error);
       res.status(500).json({
         success: false,
         error: '测试通知失败'
@@ -1556,7 +1557,7 @@ export class MessageController {
         messageTypes: []
       });
     } catch (error) {
-      console.error('获取部门和成员数据失败:', error);
+      log.error('获取部门和成员数据失败:', error);
       res.status(500).json({ error: '获取部门和成员数据失败' });
     }
   }
@@ -1677,7 +1678,7 @@ export class MessageController {
         }
       });
     } catch (error) {
-      console.error('获取系统消息失败:', error);
+      log.error('获取系统消息失败:', error);
       res.status(500).json({ success: false, message: '获取系统消息失败' });
     }
   }
@@ -1739,10 +1740,10 @@ export class MessageController {
           relatedType: message.relatedType,
           actionUrl: message.actionUrl
         }, { userId: targetUserId });
-        console.log(`[系统消息] 🔌 WebSocket推送: ${title} -> 用户 ${targetUserId}`);
+        log.info(`[系统消息] 🔌 WebSocket推送: ${title} -> 用户 ${targetUserId}`);
       }
 
-      console.log(`[系统消息] ✅ 发送成功: ${title} -> 用户 ${targetUserId}`);
+      log.info(`[系统消息] ✅ 发送成功: ${title} -> 用户 ${targetUserId}`);
 
       res.json({
         success: true,
@@ -1750,7 +1751,7 @@ export class MessageController {
         message: '消息发送成功'
       });
     } catch (error) {
-      console.error('发送系统消息失败:', error);
+      log.error('发送系统消息失败:', error);
       res.status(500).json({ success: false, message: '发送系统消息失败' });
     }
   }
@@ -1799,7 +1800,7 @@ export class MessageController {
 
       await messageRepo.save(messageEntities);
 
-      console.log(`[系统消息] ✅ 批量发送成功: ${messageEntities.length} 条消息`);
+      log.info(`[系统消息] ✅ 批量发送成功: ${messageEntities.length} 条消息`);
 
       res.json({
         success: true,
@@ -1807,7 +1808,7 @@ export class MessageController {
         message: `成功发送 ${messageEntities.length} 条消息`
       });
     } catch (error) {
-      console.error('批量发送系统消息失败:', error);
+      log.error('批量发送系统消息失败:', error);
       res.status(500).json({ success: false, message: '批量发送系统消息失败' });
     }
   }
@@ -1848,7 +1849,7 @@ export class MessageController {
           userId: String(userId)
         });
         await readStatusRepo.save(readStatus);
-        console.log(`[消息] ✅ 用户 ${userId} 标记消息 ${id} 为已读`);
+        log.info(`[消息] ✅ 用户 ${userId} 标记消息 ${id} 为已读`);
       }
 
       res.json({
@@ -1856,7 +1857,7 @@ export class MessageController {
         message: '消息已标记为已读'
       });
     } catch (error) {
-      console.error('标记消息为已读失败:', error);
+      log.error('标记消息为已读失败:', error);
       res.status(500).json({ success: false, message: '标记消息为已读失败' });
     }
   }
@@ -1913,7 +1914,7 @@ export class MessageController {
           userId: String(userId)
         }));
         await readStatusRepo.save(readStatuses);
-        console.log(`[消息] ✅ 用户 ${userId} 批量标记 ${readStatuses.length} 条消息为已读`);
+        log.info(`[消息] ✅ 用户 ${userId} 批量标记 ${readStatuses.length} 条消息为已读`);
       }
 
       res.json({
@@ -1921,7 +1922,7 @@ export class MessageController {
         message: `已标记 ${unreadMessages.length} 条消息为已读`
       });
     } catch (error) {
-      console.error('标记所有消息为已读失败:', error);
+      log.error('标记所有消息为已读失败:', error);
       res.status(500).json({ success: false, message: '标记所有消息为已读失败' });
     }
   }
@@ -1958,7 +1959,7 @@ export class MessageController {
         totalAnnouncements = await announcementRepo.count({ where: annWhere });
         publishedAnnouncements = await announcementRepo.count({ where: { ...annWhere, status: 'published' } });
       } catch (_e) {
-        console.log('[统计] 公告表可能不存在');
+        log.info('[统计] 公告表可能不存在');
       }
 
       // 普通通知配置统计
@@ -1976,7 +1977,7 @@ export class MessageController {
           .andWhere('log.created_at >= :today', { today })
           .getCount();
       } catch (_e) {
-        console.log('[统计] 通知渠道表可能不存在');
+        log.info('[统计] 通知渠道表可能不存在');
       }
 
       // 业绩消息配置统计
@@ -1997,7 +1998,7 @@ export class MessageController {
           c.lastSentAt && new Date(c.lastSentAt) >= today
         ).length;
       } catch (_e) {
-        console.log('[统计] 业绩报表配置表可能不存在');
+        log.info('[统计] 业绩报表配置表可能不存在');
       }
 
       // 系统消息统计
@@ -2015,7 +2016,7 @@ export class MessageController {
           totalMessages = await messageRepo.count({ where: statsCondition });
           unreadMessages = await messageRepo.count({ where: { ...statsCondition, isRead: 0 } });
         } catch (_e) {
-          console.log('[统计] 系统消息表可能不存在');
+          log.info('[统计] 系统消息表可能不存在');
         }
       }
 
@@ -2035,7 +2036,7 @@ export class MessageController {
         }
       });
     } catch (error) {
-      console.error('获取消息统计失败:', error);
+      log.error('获取消息统计失败:', error);
       res.json({ success: true, data: this.getEmptyStats() });
     }
   }
@@ -2087,7 +2088,7 @@ export class MessageController {
         message: result.affected ? '消息已删除' : '消息不存在'
       });
     } catch (error) {
-      console.error('删除消息失败:', error);
+      log.error('删除消息失败:', error);
       res.status(500).json({ success: false, message: '删除消息失败' });
     }
   }
@@ -2122,14 +2123,14 @@ export class MessageController {
 
       const result = await messageRepo.delete(deleteCondition);
 
-      console.log(`[系统消息] 用户 ${userId} 清空了 ${result.affected || 0} 条消息`);
+      log.info(`[系统消息] 用户 ${userId} 清空了 ${result.affected || 0} 条消息`);
 
       res.json({
         success: true,
         message: `已清空 ${result.affected || 0} 条消息`
       });
     } catch (error) {
-      console.error('清空消息失败:', error);
+      log.error('清空消息失败:', error);
       res.status(500).json({ success: false, message: '清空消息失败' });
     }
   }
@@ -2165,7 +2166,7 @@ export class MessageController {
 
       const result = await deleteBuilder.execute();
 
-      console.log(`[系统消息] 🧹 自动清理了 ${result.affected || 0} 条过期消息（超过30天）`);
+      log.info(`[系统消息] 🧹 自动清理了 ${result.affected || 0} 条过期消息（超过30天）`);
 
       res.json({
         success: true,
@@ -2173,7 +2174,7 @@ export class MessageController {
         data: { deleted: result.affected || 0 }
       });
     } catch (error) {
-      console.error('清理过期消息失败:', error);
+      log.error('清理过期消息失败:', error);
       res.status(500).json({ success: false, message: '清理过期消息失败' });
     }
   }
@@ -2189,12 +2190,20 @@ export class MessageController {
     try {
       const dataSource = getDataSource();
       if (!dataSource) {
-        console.log('[通知配置] 数据库未连接，返回空列表');
+        log.info('[通知配置] 数据库未连接，返回空列表');
         res.json({ success: true, data: [] });
         return;
       }
 
-      // 检查表是否存在
+      // 🔥 修复：先检查表是否存在，不存在则自动创建
+      try {
+        await this.ensureNotificationChannelsTable(dataSource);
+      } catch (createError) {
+        log.warn('[通知配置] 自动创建表失败，返回空列表:', createError);
+        res.json({ success: true, data: [] });
+        return;
+      }
+
       try {
         const channelRepo = dataSource.getRepository(NotificationChannel);
         // 🔥 租户数据隔离
@@ -2207,7 +2216,7 @@ export class MessageController {
         }
         const channels = await channelRepo.find(findOptions);
 
-        console.log(`[通知配置] 查询到 ${channels.length} 个配置`);
+        log.info(`[通知配置] 查询到 ${channels.length} 个配置`);
 
         res.json({
           success: true,
@@ -2229,17 +2238,136 @@ export class MessageController {
           }))
         });
       } catch (dbError: any) {
-        // 如果是表不存在的错误，返回空列表
-        if (dbError.code === 'ER_NO_SUCH_TABLE' || dbError.message?.includes('doesn\'t exist')) {
-          console.log('[通知配置] 表不存在，返回空列表');
+        // 🔥 修复：TypeORM 包装后的错误，MySQL 原始错误码在 driverError 上
+        const errCode = dbError.code || dbError.driverError?.code || '';
+        const errMsg = dbError.message || '';
+        if (
+          errCode === 'ER_NO_SUCH_TABLE' || errCode === 'ER_BAD_FIELD_ERROR' ||
+          errMsg.includes('doesn\'t exist') || errMsg.includes('no such table') ||
+          errMsg.includes('Unknown column')
+        ) {
+          log.info('[通知配置] 表不存在或字段缺失，返回空列表:', errMsg);
           res.json({ success: true, data: [] });
           return;
         }
         throw dbError;
       }
     } catch (error) {
-      console.error('获取通知配置失败:', error);
+      log.error('获取通知配置失败:', error);
       res.status(500).json({ success: false, message: '获取通知配置失败' });
+    }
+  }
+
+  /**
+   * 🔥 确保 notification_channels 表存在，不存在则自动创建；已存在则自动补齐缺失列
+   */
+  private async ensureNotificationChannelsTable(dataSource: any): Promise<void> {
+    try {
+      // 检查表是否已存在
+      const tables = await dataSource.query(
+        `SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'notification_channels'`
+      );
+      if (tables.length > 0) {
+        // 🔥 表已存在，检查并补齐缺失的列（兼容旧版本升级）
+        await this.migrateNotificationChannelsTable(dataSource);
+        return;
+      }
+
+      log.info('[通知配置] notification_channels 表不存在，自动创建...');
+      await dataSource.query(`
+        CREATE TABLE IF NOT EXISTS notification_channels (
+          id VARCHAR(36) NOT NULL PRIMARY KEY,
+          tenant_id VARCHAR(36) NULL COMMENT '租户ID',
+          name VARCHAR(100) NOT NULL COMMENT '配置名称',
+          channel_type VARCHAR(50) NOT NULL COMMENT '通知渠道类型',
+          is_enabled TINYINT DEFAULT 1 COMMENT '是否启用',
+          config JSON NOT NULL COMMENT '渠道配置参数',
+          message_types JSON NULL COMMENT '支持的消息类型列表',
+          target_type VARCHAR(20) DEFAULT 'all' COMMENT '通知对象类型',
+          target_departments JSON NULL COMMENT '目标部门列表',
+          target_users JSON NULL COMMENT '目标用户列表',
+          target_roles JSON NULL COMMENT '目标角色列表',
+          priority_filter VARCHAR(20) DEFAULT 'all' COMMENT '优先级过滤',
+          created_by VARCHAR(36) NULL COMMENT '创建者ID',
+          created_by_name VARCHAR(100) NULL COMMENT '创建者姓名',
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+          INDEX idx_channel_type (channel_type),
+          INDEX idx_is_enabled (is_enabled),
+          INDEX idx_created_at (created_at),
+          INDEX idx_tenant_id (tenant_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='通知渠道配置表'
+      `);
+      log.info('[通知配置] ✅ notification_channels 表创建成功');
+    } catch (error) {
+      log.warn('[通知配置] 检查/创建表时出错:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * 🔥 自动补齐 notification_channels 表缺失的列（旧版本升级兼容）
+   */
+  private async migrateNotificationChannelsTable(dataSource: any): Promise<void> {
+    try {
+      // 获取当前表的所有列名
+      const columns = await dataSource.query(
+        `SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'notification_channels'`
+      );
+      const existingColumns = new Set(columns.map((c: any) => c.COLUMN_NAME));
+
+      // 定义需要确保存在的列及其 ALTER TABLE 语句
+      const requiredColumns: Array<{ name: string; sql: string }> = [
+        { name: 'tenant_id', sql: `ADD COLUMN tenant_id VARCHAR(36) NULL COMMENT '租户ID' AFTER id` },
+        { name: 'name', sql: `ADD COLUMN name VARCHAR(100) NOT NULL DEFAULT '' COMMENT '配置名称' AFTER tenant_id` },
+        { name: 'channel_type', sql: `ADD COLUMN channel_type VARCHAR(50) NOT NULL DEFAULT '' COMMENT '通知渠道类型' AFTER name` },
+        { name: 'is_enabled', sql: `ADD COLUMN is_enabled TINYINT DEFAULT 1 COMMENT '是否启用'` },
+        { name: 'config', sql: `ADD COLUMN config JSON NULL COMMENT '渠道配置参数'` },
+        { name: 'message_types', sql: `ADD COLUMN message_types JSON NULL COMMENT '支持的消息类型列表'` },
+        { name: 'target_type', sql: `ADD COLUMN target_type VARCHAR(20) DEFAULT 'all' COMMENT '通知对象类型'` },
+        { name: 'target_departments', sql: `ADD COLUMN target_departments JSON NULL COMMENT '目标部门列表'` },
+        { name: 'target_users', sql: `ADD COLUMN target_users JSON NULL COMMENT '目标用户列表'` },
+        { name: 'target_roles', sql: `ADD COLUMN target_roles JSON NULL COMMENT '目标角色列表'` },
+        { name: 'priority_filter', sql: `ADD COLUMN priority_filter VARCHAR(20) DEFAULT 'all' COMMENT '优先级过滤'` },
+        { name: 'created_by', sql: `ADD COLUMN created_by VARCHAR(36) NULL COMMENT '创建者ID'` },
+        { name: 'created_by_name', sql: `ADD COLUMN created_by_name VARCHAR(100) NULL COMMENT '创建者姓名'` },
+        { name: 'created_at', sql: `ADD COLUMN created_at DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间'` },
+        { name: 'updated_at', sql: `ADD COLUMN updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间'` },
+      ];
+
+      const missingColumns = requiredColumns.filter(col => !existingColumns.has(col.name));
+      if (missingColumns.length === 0) {
+        return; // 所有列都已存在
+      }
+
+      log.info(`[通知配置] notification_channels 表缺少 ${missingColumns.length} 个列，自动补齐: ${missingColumns.map(c => c.name).join(', ')}`);
+
+      for (const col of missingColumns) {
+        try {
+          await dataSource.query(`ALTER TABLE notification_channels ${col.sql}`);
+          log.info(`[通知配置] ✅ 已添加列: ${col.name}`);
+        } catch (alterError: any) {
+          // 如果列已存在（并发情况），忽略错误
+          if (alterError.message?.includes('Duplicate column name')) {
+            log.info(`[通知配置] 列 ${col.name} 已存在，跳过`);
+          } else {
+            log.warn(`[通知配置] 添加列 ${col.name} 失败:`, alterError.message);
+          }
+        }
+      }
+
+      // 🔥 确保 tenant_id 上有索引
+      if (!existingColumns.has('tenant_id')) {
+        try {
+          await dataSource.query(`ALTER TABLE notification_channels ADD INDEX idx_tenant_id (tenant_id)`);
+          log.info('[通知配置] ✅ 已添加 tenant_id 索引');
+        } catch (_indexError: any) {
+          // 索引可能已存在，忽略
+        }
+      }
+    } catch (error) {
+      log.warn('[通知配置] 迁移表结构时出错:', error);
+      // 不抛出错误，允许后续查询尝试执行
     }
   }
 
@@ -2271,6 +2399,9 @@ export class MessageController {
         return;
       }
 
+      // 🔥 确保表结构完整
+      await this.ensureNotificationChannelsTable(dataSource);
+
       const currentUser = (req as any).currentUser || (req as any).user;
       const channelRepo = dataSource.getRepository(NotificationChannel);
 
@@ -2296,7 +2427,7 @@ export class MessageController {
 
       await channelRepo.save(channel);
 
-      console.log(`[通知配置] ✅ 创建成功: ${name} (${channelType})`);
+      log.info(`[通知配置] ✅ 创建成功: ${name} (${channelType})`);
 
       res.json({
         success: true,
@@ -2304,7 +2435,7 @@ export class MessageController {
         data: channel
       });
     } catch (error) {
-      console.error('创建通知配置失败:', error);
+      log.error('创建通知配置失败:', error);
       res.status(500).json({ success: false, message: '创建通知配置失败' });
     }
   }
@@ -2366,7 +2497,7 @@ export class MessageController {
         data: channel
       });
     } catch (error) {
-      console.error('更新通知配置失败:', error);
+      log.error('更新通知配置失败:', error);
       res.status(500).json({ success: false, message: '更新通知配置失败' });
     }
   }
@@ -2403,7 +2534,7 @@ export class MessageController {
         message: '通知配置删除成功'
       });
     } catch (error) {
-      console.error('删除通知配置失败:', error);
+      log.error('删除通知配置失败:', error);
       res.status(500).json({ success: false, message: '删除通知配置失败' });
     }
   }
@@ -2466,11 +2597,11 @@ export class MessageController {
           testResult = { success: false, message: `不支持的渠道类型: ${channel.channelType}` };
       }
 
-      console.log(`[通知测试] ${channel.name} (${channel.channelType}): ${testResult.success ? '成功' : '失败'} - ${testResult.message}`);
+      log.info(`[通知测试] ${channel.name} (${channel.channelType}): ${testResult.success ? '成功' : '失败'} - ${testResult.message}`);
 
       res.json(testResult);
     } catch (error) {
-      console.error('测试通知失败:', error);
+      log.error('测试通知失败:', error);
       res.status(500).json({ success: false, message: '测试通知失败' });
     }
   }
@@ -2529,7 +2660,7 @@ export class MessageController {
         return { success: false, message: '企业微信Webhook地址未配置' };
       }
 
-      console.log(`[企业微信] 正在发送消息到: ${webhook.substring(0, 60)}...`);
+      log.info(`[企业微信] 正在发送消息到: ${webhook.substring(0, 60)}...`);
 
       const response = await fetch(webhook, {
         method: 'POST',
@@ -2542,7 +2673,7 @@ export class MessageController {
 
       const result = await response.json() as { errcode: number; errmsg: string };
 
-      console.log(`[企业微信] 响应结果:`, result);
+      log.info(`[企业微信] 响应结果:`, result);
 
       if (result.errcode === 0) {
         return { success: true, message: '企业微信消息发送成功', details: result };
@@ -2550,7 +2681,7 @@ export class MessageController {
         return { success: false, message: `企业微信发送失败: ${result.errmsg} (错误码: ${result.errcode})`, details: result };
       }
     } catch (error: any) {
-      console.error(`[企业微信] 发送异常:`, error);
+      log.error(`[企业微信] 发送异常:`, error);
       return { success: false, message: `企业微信发送异常: ${error.message}` };
     }
   }
@@ -2672,7 +2803,7 @@ export class MessageController {
         }
       });
     } catch (error) {
-      console.error('获取通知记录失败:', error);
+      log.error('获取通知记录失败:', error);
       res.status(500).json({ success: false, message: '获取通知记录失败' });
     }
   }
@@ -2833,7 +2964,7 @@ export class MessageController {
         }
       });
     } catch (error) {
-      console.error('获取通知选项失败:', error);
+      log.error('获取通知选项失败:', error);
       res.status(500).json({ success: false, message: '获取通知选项失败' });
     }
   }

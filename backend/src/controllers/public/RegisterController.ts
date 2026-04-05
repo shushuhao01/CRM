@@ -10,6 +10,7 @@ import { verificationCodeService } from '../../services/VerificationCodeService'
 import { notificationTemplateService } from '../../services/NotificationTemplateService'
 import { SITE_CONFIG } from '../../config/sites'
 
+import { log } from '../../config/logger';
 export class PublicRegisterController {
   /**
    * 发送验证码
@@ -54,7 +55,7 @@ export class PublicRegisterController {
       const result = await aliyunSmsService.sendVerificationCode(phone, code)
 
       if (!result.success) {
-        console.error(`[Register] 发送验证码失败: ${result.message}`)
+        log.error(`[Register] 发送验证码失败: ${result.message}`)
         return res.status(500).json({
           code: 1,
           message: result.message || '发送失败，请稍后重试'
@@ -69,7 +70,7 @@ export class PublicRegisterController {
         message: '验证码发送成功'
       })
     } catch (error: any) {
-      console.error('发送验证码失败:', error)
+      log.error('发送验证码失败:', error)
       res.status(500).json({ code: 1, message: `发送失败: ${error.message}` })
     }
   }
@@ -195,7 +196,7 @@ export class PublicRegisterController {
         }
       })
     } catch (error: any) {
-      console.error('注册失败:', error)
+      log.error('注册失败:', error)
       res.status(500).json({ code: 1, message: `注册失败: ${error.message}` })
     }
   }
@@ -232,10 +233,10 @@ export class PublicRegisterController {
         email: undefined
       });
 
-      console.log(`✓ 已为租户 ${tenantCode} 创建默认管理员账号: ${adminAccount.username}`);
+      log.info(`✓ 已为租户 ${tenantCode} 创建默认管理员账号: ${adminAccount.username}`);
       return adminAccount;
     } catch (error) {
-      console.error('创建默认管理员失败:', error);
+      log.error('创建默认管理员失败:', error);
       // 不抛出错误，避免影响注册流程
       return { username: phone, password: 'Aa123456' };
     }
@@ -273,9 +274,9 @@ export class PublicRegisterController {
       //   await notificationTemplateService.sendByTemplate('account_activation', {...}, { to: params.email })
       // }
 
-      console.log(`✓ 已发送账号开通通知给租户 ${params.tenantCode}`)
+      log.info(`✓ 已发送账号开通通知给租户 ${params.tenantCode}`)
     } catch (error) {
-      console.error('发送账号开通通知失败:', error)
+      log.error('发送账号开通通知失败:', error)
       // 不抛出错误，避免影响注册流程
     }
   }

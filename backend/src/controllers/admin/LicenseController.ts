@@ -12,6 +12,7 @@
 import { Request, Response } from 'express';
 import { licenseService } from '../../services/LicenseService';
 
+import { log } from '../../config/logger';
 /**
  * 创建授权
  * POST /api/admin/licenses
@@ -69,7 +70,7 @@ export const createLicense = async (req: Request, res: Response): Promise<void> 
       data: license
     });
   } catch (error: any) {
-    console.error('创建授权失败:', error);
+    log.error('创建授权失败:', error);
     res.status(500).json({
       success: false,
       message: error.message || '创建授权失败'
@@ -113,7 +114,7 @@ export const getLicenseList = async (req: Request, res: Response): Promise<void>
       }
     });
   } catch (error: any) {
-    console.error('获取授权列表失败:', error);
+    log.error('获取授权列表失败:', error);
     res.status(500).json({
       success: false,
       message: error.message || '获取授权列表失败'
@@ -144,7 +145,7 @@ export const getLicenseDetail = async (req: Request, res: Response): Promise<voi
       data: license
     });
   } catch (error: any) {
-    console.error('获取授权详情失败:', error);
+    log.error('获取授权详情失败:', error);
     res.status(500).json({
       success: false,
       message: error.message || '获取授权详情失败'
@@ -180,7 +181,7 @@ export const updateLicense = async (req: Request, res: Response): Promise<void> 
       data: license
     });
   } catch (error: any) {
-    console.error('更新授权失败:', error);
+    log.error('更新授权失败:', error);
     res.status(500).json({
       success: false,
       message: error.message || '更新授权失败'
@@ -203,7 +204,7 @@ export const deleteLicense = async (req: Request, res: Response): Promise<void> 
       message: '授权删除成功'
     });
   } catch (error: any) {
-    console.error('删除授权失败:', error);
+    log.error('删除授权失败:', error);
     res.status(500).json({
       success: false,
       message: error.message || '删除授权失败'
@@ -228,7 +229,7 @@ export const activateLicense = async (req: Request, res: Response): Promise<void
       data: license
     });
   } catch (error: any) {
-    console.error('激活授权失败:', error);
+    log.error('激活授权失败:', error);
     res.status(500).json({
       success: false,
       message: error.message || '激活授权失败'
@@ -253,7 +254,7 @@ export const deactivateLicense = async (req: Request, res: Response): Promise<vo
       data: license
     });
   } catch (error: any) {
-    console.error('停用授权失败:', error);
+    log.error('停用授权失败:', error);
     res.status(500).json({
       success: false,
       message: error.message || '停用授权失败'
@@ -286,7 +287,7 @@ export const renewLicense = async (req: Request, res: Response): Promise<void> =
       data: license
     });
   } catch (error: any) {
-    console.error('续期授权失败:', error);
+    log.error('续期授权失败:', error);
     res.status(500).json({
       success: false,
       message: error.message || '续期授权失败'
@@ -318,7 +319,7 @@ export const verifyLicense = async (req: Request, res: Response): Promise<void> 
       data: result.license
     });
   } catch (error: any) {
-    console.error('验证授权失败:', error);
+    log.error('验证授权失败:', error);
     res.status(500).json({
       success: false,
       message: error.message || '验证授权失败'
@@ -350,7 +351,7 @@ export const getLicenseLogs = async (req: Request, res: Response): Promise<void>
       }
     });
   } catch (error: any) {
-    console.error('获取授权日志失败:', error);
+    log.error('获取授权日志失败:', error);
     res.status(500).json({
       success: false,
       message: error.message || '获取授权日志失败'
@@ -371,7 +372,7 @@ export const getLicenseStatistics = async (req: Request, res: Response): Promise
       data: statistics
     });
   } catch (error: any) {
-    console.error('获取授权统计失败:', error);
+    log.error('获取授权统计失败:', error);
     res.status(500).json({
       success: false,
       message: error.message || '获取授权统计失败'

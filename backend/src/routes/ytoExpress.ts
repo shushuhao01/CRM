@@ -1,6 +1,7 @@
 import express from 'express'
 import { ytoExpressService } from '../services/ytoExpressService'
 
+import { log } from '../config/logger';
 const router = express.Router()
 
 /**
@@ -23,7 +24,7 @@ router.post('/test-connection', async (req, res) => {
 
     res.json(result)
   } catch (error: unknown) {
-    console.error('圆通API测试连接错误:', error)
+    log.error('圆通API测试连接错误:', error)
     const errorMessage = error instanceof Error ? error.message : '服务器内部错误'
     res.status(500).json({
       success: false,
@@ -52,7 +53,7 @@ router.post('/query-tracking', async (req, res) => {
 
     res.json(result)
   } catch (error: unknown) {
-    console.error('圆通物流查询错误:', error)
+    log.error('圆通物流查询错误:', error)
     const errorMessage = error instanceof Error ? error.message : '服务器内部错误'
     res.status(500).json({
       success: false,

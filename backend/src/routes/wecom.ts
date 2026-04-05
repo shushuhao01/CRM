@@ -30,7 +30,7 @@ router.get('/callback', async (req: Request, res: Response) => {
       return res.status(400).send('Missing parameters');
     }
 
-    // 获取所有启用的配置，尝试验证
+    // 获取所有启用的配置，尝试验证（回调接口无认证上下文，需遍历全部配置）
     const configRepo = AppDataSource.getRepository(WecomConfig);
     const configs = await configRepo.find({ where: { isEnabled: true } });
 
@@ -102,7 +102,7 @@ router.post('/callback', async (req: Request, res: Response) => {
  */
 router.get('/configs', authenticateToken, requireAdmin, async (_req: Request, res: Response) => {
   try {
-    const configRepo = AppDataSource.getRepository(WecomConfig);
+    const configRepo = getTenantRepo(WecomConfig);
     console.log('[Wecom] Fetching configs...');
     const configs = await configRepo.find({ order: { createdAt: 'DESC' } });
     console.log('[Wecom] Found configs:', configs.length);
@@ -130,7 +130,7 @@ router.get('/configs', authenticateToken, requireAdmin, async (_req: Request, re
  */
 router.get('/configs/:id', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
   try {
-    const configRepo = AppDataSource.getRepository(WecomConfig);
+    const configRepo = getTenantRepo(WecomConfig);
     const config = await configRepo.findOne({ where: { id: parseInt(req.params.id) } });
 
     if (!config) {
@@ -167,7 +167,7 @@ router.post('/configs', authenticateToken, requireAdmin, async (req: Request, re
       return res.status(400).json({ success: false, message: '名称、企业ID和Secret为必填项' });
     }
 
-    const configRepo = AppDataSource.getRepository(WecomConfig);
+    const configRepo = getTenantRepo(WecomConfig);
 
     // 检查企业ID是否已存在
     const existing = await configRepo.findOne({ where: { corpId } });
@@ -208,7 +208,7 @@ router.post('/configs', authenticateToken, requireAdmin, async (req: Request, re
  */
 router.put('/configs/:id', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
   try {
-    const configRepo = AppDataSource.getRepository(WecomConfig);
+    const configRepo = getTenantRepo(WecomConfig);
     const config = await configRepo.findOne({ where: { id: parseInt(req.params.id) } });
 
     if (!config) {
@@ -245,7 +245,7 @@ router.put('/configs/:id', authenticateToken, requireAdmin, async (req: Request,
  */
 router.delete('/configs/:id', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
   try {
-    const configRepo = AppDataSource.getRepository(WecomConfig);
+    const configRepo = getTenantRepo(WecomConfig);
     const config = await configRepo.findOne({ where: { id: parseInt(req.params.id) } });
 
     if (!config) {
@@ -266,7 +266,7 @@ router.delete('/configs/:id', authenticateToken, requireAdmin, async (req: Reque
  */
 router.post('/configs/:id/test', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
   try {
-    const configRepo = AppDataSource.getRepository(WecomConfig);
+    const configRepo = getTenantRepo(WecomConfig);
     const config = await configRepo.findOne({ where: { id: parseInt(req.params.id) } });
 
     if (!config) {
@@ -325,7 +325,7 @@ router.get('/configs/:id/users', authenticateToken, async (req: Request, res: Re
     console.log('[Wecom] Getting users for config:', configId, 'department:', departmentId, 'fetchChild:', fetchChild);
 
     // 先检查配置是否存在
-    const configRepo = AppDataSource.getRepository(WecomConfig);
+    const configRepo = getTenantRepo(WecomConfig);
     const config = await configRepo.findOne({ where: { id: configId, isEnabled: true } });
 
     if (!config) {
@@ -368,7 +368,7 @@ router.get('/configs/:id/users', authenticateToken, async (req: Request, res: Re
 router.get('/bindings', authenticateToken, async (req: Request, res: Response) => {
   try {
     const { configId, crmUserId } = req.query;
-    const bindingRepo = AppDataSource.getRepository(WecomUserBinding);
+    const bindingRepo = getTenantRepo(WecomUserBinding);
 
     const where: any = {};
     if (configId) where.wecomConfigId = parseInt(configId as string);
@@ -395,13 +395,13 @@ router.post('/bindings', authenticateToken, requireAdmin, async (req: Request, r
       return res.status(400).json({ success: false, message: '参数不完整' });
     }
 
-    const configRepo = AppDataSource.getRepository(WecomConfig);
+    const configRepo = getTenantRepo(WecomConfig);
     const config = await configRepo.findOne({ where: { id: wecomConfigId } });
     if (!config) {
       return res.status(404).json({ success: false, message: '企微配置不存在' });
     }
 
-    const bindingRepo = AppDataSource.getRepository(WecomUserBinding);
+    const bindingRepo = getTenantRepo(WecomUserBinding);
 
     // 检查是否已绑定
     const existing = await bindingRepo.findOne({
@@ -438,7 +438,7 @@ router.post('/bindings', authenticateToken, requireAdmin, async (req: Request, r
  */
 router.delete('/bindings/:id', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
   try {
-    const bindingRepo = AppDataSource.getRepository(WecomUserBinding);
+    const bindingRepo = getTenantRepo(WecomUserBinding);
     const binding = await bindingRepo.findOne({ where: { id: parseInt(req.params.id) } });
 
     if (!binding) {
@@ -462,7 +462,7 @@ router.delete('/bindings/:id', authenticateToken, requireAdmin, async (req: Requ
 router.get('/customers/stats', authenticateToken, async (req: Request, res: Response) => {
   try {
     const { configId } = req.query;
-    const customerRepo = AppDataSource.getRepository(WecomCustomer);
+    const customerRepo = getTenantRepo(WecomCustomer);
 
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -509,7 +509,7 @@ router.get('/customers/stats', authenticateToken, async (req: Request, res: Resp
 router.get('/customers', authenticateToken, async (req: Request, res: Response) => {
   try {
     const { configId, status, followUserId, keyword, page = 1, pageSize = 20 } = req.query;
-    const customerRepo = AppDataSource.getRepository(WecomCustomer);
+    const customerRepo = getTenantRepo(WecomCustomer);
 
     const queryBuilder = customerRepo.createQueryBuilder('c');
 
@@ -552,7 +552,7 @@ router.post('/customers/sync', authenticateToken, requireAdmin, async (req: Requ
       return res.status(400).json({ success: false, message: '请选择企微配置' });
     }
 
-    const configRepo = AppDataSource.getRepository(WecomConfig);
+    const configRepo = getTenantRepo(WecomConfig);
     const config = await configRepo.findOne({ where: { id: configId, isEnabled: true } });
     if (!config) {
       console.log('[Wecom] Config not found or disabled');
@@ -560,7 +560,7 @@ router.post('/customers/sync', authenticateToken, requireAdmin, async (req: Requ
     }
 
     // 获取绑定的成员
-    const bindingRepo = AppDataSource.getRepository(WecomUserBinding);
+    const bindingRepo = getTenantRepo(WecomUserBinding);
     const bindings = await bindingRepo.find({ where: { wecomConfigId: configId, isEnabled: true } });
     console.log('[Wecom] Found bindings:', bindings.length);
 
@@ -572,7 +572,7 @@ router.post('/customers/sync', authenticateToken, requireAdmin, async (req: Requ
     const accessToken = await WecomApiService.getAccessTokenByConfigId(configId, 'external');
     console.log('[Wecom] Got access token for sync');
 
-    const customerRepo = AppDataSource.getRepository(WecomCustomer);
+    const customerRepo = getTenantRepo(WecomCustomer);
     let syncCount = 0;
 
     for (const binding of bindings) {
@@ -642,7 +642,7 @@ router.post('/customers/sync', authenticateToken, requireAdmin, async (req: Requ
 router.get('/acquisition-links', authenticateToken, async (req: Request, res: Response) => {
   try {
     const { configId } = req.query;
-    const linkRepo = AppDataSource.getRepository(WecomAcquisitionLink);
+    const linkRepo = getTenantRepo(WecomAcquisitionLink);
 
     const where: any = {};
     if (configId) where.wecomConfigId = parseInt(configId as string);
@@ -667,7 +667,7 @@ router.post('/acquisition-links', authenticateToken, requireAdmin, async (req: R
       return res.status(400).json({ success: false, message: '参数不完整' });
     }
 
-    const configRepo = AppDataSource.getRepository(WecomConfig);
+    const configRepo = getTenantRepo(WecomConfig);
     const config = await configRepo.findOne({ where: { id: wecomConfigId, isEnabled: true } });
     if (!config) {
       return res.status(404).json({ success: false, message: '企微配置不存在或已禁用' });
@@ -677,7 +677,7 @@ router.post('/acquisition-links', authenticateToken, requireAdmin, async (req: R
     const accessToken = await WecomApiService.getAccessTokenByConfigId(wecomConfigId, 'contact');
     const linkData = await WecomApiService.createAcquisitionLink(accessToken, linkName, userIds, { departmentIds });
 
-    const linkRepo = AppDataSource.getRepository(WecomAcquisitionLink);
+    const linkRepo = getTenantRepo(WecomAcquisitionLink);
     const currentUser = (req as any).currentUser;
 
     const link = linkRepo.create({
@@ -710,7 +710,7 @@ router.post('/acquisition-links', authenticateToken, requireAdmin, async (req: R
 router.get('/service-accounts', authenticateToken, async (req: Request, res: Response) => {
   try {
     const { configId } = req.query;
-    const accountRepo = AppDataSource.getRepository(WecomServiceAccount);
+    const accountRepo = getTenantRepo(WecomServiceAccount);
 
     const where: any = {};
     if (configId) where.wecomConfigId = parseInt(configId as string);
@@ -735,7 +735,7 @@ router.post('/service-accounts', authenticateToken, requireAdmin, async (req: Re
       return res.status(400).json({ success: false, message: '参数不完整' });
     }
 
-    const configRepo = AppDataSource.getRepository(WecomConfig);
+    const configRepo = getTenantRepo(WecomConfig);
     const config = await configRepo.findOne({ where: { id: wecomConfigId, isEnabled: true } });
     if (!config) {
       return res.status(404).json({ success: false, message: '企微配置不存在或已禁用' });
@@ -745,7 +745,7 @@ router.post('/service-accounts', authenticateToken, requireAdmin, async (req: Re
     const accessToken = await WecomApiService.getAccessTokenByConfigId(wecomConfigId);
     const openKfId = await WecomApiService.createKfAccount(accessToken, name);
 
-    const accountRepo = AppDataSource.getRepository(WecomServiceAccount);
+    const accountRepo = getTenantRepo(WecomServiceAccount);
     const currentUser = (req as any).currentUser;
 
     const account = accountRepo.create({
@@ -775,7 +775,7 @@ router.post('/service-accounts', authenticateToken, requireAdmin, async (req: Re
 router.get('/payments', authenticateToken, async (req: Request, res: Response) => {
   try {
     const { configId, userId, status, startDate, endDate, page = 1, pageSize = 20 } = req.query;
-    const paymentRepo = AppDataSource.getRepository(WecomPaymentRecord);
+    const paymentRepo = getTenantRepo(WecomPaymentRecord);
 
     const queryBuilder = paymentRepo.createQueryBuilder('p');
 

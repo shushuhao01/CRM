@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import QRCode from 'qrcode';
 
+import { log } from '../config/logger';
 interface QRConnectionData {
   connectionId: string;
   qrData: string;
@@ -95,7 +96,7 @@ export class QRConnectionController {
           }
         });
       } catch (qrError) {
-        console.warn('QRCode生成失败，使用在线服务:', qrError);
+        log.warn('QRCode生成失败，使用在线服务:', qrError);
         qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrData)}`;
       }
 
@@ -114,7 +115,7 @@ export class QRConnectionController {
        });
 
     } catch (error) {
-      console.error('生成二维码失败:', error);
+      log.error('生成二维码失败:', error);
       return res.status(500).json({
         success: false,
         message: '生成二维码失败',
@@ -159,7 +160,7 @@ export class QRConnectionController {
        });
 
     } catch (error) {
-      console.error('获取连接状态失败:', error);
+      log.error('获取连接状态失败:', error);
       return res.status(500).json({
         success: false,
         message: '获取连接状态失败',
@@ -200,7 +201,7 @@ export class QRConnectionController {
        });
 
     } catch (error) {
-      console.error('断开设备连接失败:', error);
+      log.error('断开设备连接失败:', error);
       return res.status(500).json({
         success: false,
         message: '断开设备连接失败',
@@ -231,7 +232,7 @@ export class QRConnectionController {
        });
 
     } catch (error) {
-      console.error('获取连接设备列表失败:', error);
+      log.error('获取连接设备列表失败:', error);
       return res.status(500).json({
         success: false,
         message: '获取连接设备列表失败',
@@ -287,7 +288,7 @@ export class QRConnectionController {
       });
 
     } catch (error) {
-      console.error('设备连接失败:', error);
+      log.error('设备连接失败:', error);
       return res.status(500).json({
         success: false,
         message: '设备连接失败',

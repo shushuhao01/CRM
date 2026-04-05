@@ -741,6 +741,7 @@ defineOptions({
 
 import { ref, reactive, onMounted, onUnmounted, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import axios from 'axios'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   Box, Money, Van, Warning, CreditCard, Coin,
@@ -1509,6 +1510,11 @@ const loadOrderList = async () => {
     // 更新概览数据（使用当前页数据，概览数据需要单独从API获取）
     updateOverviewData(orders)
   } catch (_error) {
+    // 🔥 修复：忽略请求被取消的错误（由新请求替代旧请求时产生，属于正常行为）
+    if (axios.isCancel(_error)) {
+      console.log('[发货列表] 请求已被取消（被新请求替代），忽略此错误')
+      return
+    }
     console.error('加载订单列表失败:', _error)
     ElMessage.error('加载订单列表失败')
     orderList.value = []

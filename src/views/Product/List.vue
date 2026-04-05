@@ -286,6 +286,24 @@
           </el-link>
         </template>
 
+        <!-- 商品名称列 - 添加推荐/新品/热销标识 -->
+        <template #column-name="{ row }">
+          <div class="product-name-cell">
+            <span class="product-name-text">{{ row.name }}</span>
+            <div class="product-tags">
+              <el-tag v-if="row.isRecommended" type="warning" size="small" effect="plain">
+                推荐
+              </el-tag>
+              <el-tag v-if="row.isNew" type="success" size="small" effect="plain">
+                新品
+              </el-tag>
+              <el-tag v-if="row.isHot" type="danger" size="small" effect="plain">
+                热销
+              </el-tag>
+            </div>
+          </div>
+        </template>
+
         <!-- 价格列 -->
         <template #column-price="{ row }">
           <span class="price">¥{{ row.price }}</span>
@@ -1023,7 +1041,8 @@ const tableColumns = computed(() => [
     minWidth: 200,
     visible: true,
     sortable: true,
-    showOverflowTooltip: true
+    showOverflowTooltip: false, // 改为false，因为我们要自定义显示
+    slotName: 'column-name' // 添加自定义插槽
   },
   {
     prop: 'categoryName',
@@ -2641,6 +2660,33 @@ onMounted(async () => {
 .price {
   color: #f56c6c;
   font-weight: 500;
+}
+
+/* 商品名称单元格样式 */
+.product-name-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.product-name-text {
+  color: #303133;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.product-tags {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.product-tags .el-tag {
+  font-size: 11px;
+  height: 20px;
+  line-height: 18px;
+  padding: 0 6px;
+  border-radius: 3px;
 }
 
 .stock-normal {

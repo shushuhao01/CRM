@@ -188,18 +188,11 @@ import { ElMessage } from 'element-plus'
 import {
   Search, User, RefreshLeft, UserFilled, DocumentRemove, Tickets, Van
 } from '@element-plus/icons-vue'
-import { useCustomerStore } from '@/stores/customer'
-import { useUserStore } from '@/stores/user'
-import { useOrderStore } from '@/stores/order'
 import { displaySensitiveInfoNew, SensitiveInfoType } from '@/utils/sensitiveInfo'
+import request from '@/utils/request'
 
 // 路由
 const route = useRoute()
-
-// 使用store
-const customerStore = useCustomerStore()
-const userStore = useUserStore()
-const orderStore = useOrderStore()
 
 // 响应式数据
 const searching = ref(false)
@@ -211,11 +204,8 @@ const searchForm = reactive({
   keyword: ''
 })
 
-// 搜索方法 - 支持多种搜索条件
+// 搜索方法 - 🔥 改为调用后端API搜索（不再加载全部数据到内存）
 const handleSearch = async () => {
-  console.log('[客户查询] ========== 开始搜索 ==========')
-  console.log('[客户查询] 搜索关键词:', searchForm.keyword)
-
   if (!searchForm.keyword.trim()) {
     ElMessage.warning('请输入搜索关键词')
     return
@@ -223,118 +213,46 @@ const handleSearch = async () => {
 
   hasSearched.value = true
   searching.value = true
-  const keyword = searchForm.keyword.trim().toLowerCase()
 
   try {
-    // 确保数据已加载
-    if (customerStore.customers.length === 0) {
-      await customerStore.loadCustomers()
-    }
-
-    // 获取所有数据
-    const customers = customerStore.customers
-    const users = userStore.users
-    const orders = orderStore.getOrders()
-
-    console.log('[客户查询] 从store获取数据:')
-    console.log('  - 客户数:', customers.length)
-    console.log('  - 用户数:', users.length)
-    console.log('  - 订单数:', orders.length)
+    // 🔥 方式1：通过后端模糊搜索（客户姓名、手机号、编码）
+    const customerSearchRes = await request.get('/data/search-customer', {
+      params: { keyword: searchForm.keyword.trim(), page: 1, pageSize: 50 }
+    }) as any
 
     const results: any[] = []
-    const matchedCustomerIds = new Set<string>()
 
-    // 1. 先从客户表搜索：姓名、手机号、客户编码
-    for (const customer of customers) {
-      let matched = false
-      let matchType = ''
-
-      if (customer.name?.toLowerCase().includes(keyword)) {
-        matched = true
-        matchType = '客户姓名'
-      } else if (customer.phone?.includes(keyword)) {
-        matched = true
-        matchType = '手机号'
-      } else if (customer.code?.toLowerCase().includes(keyword)) {
-        matched = true
-        matchType = '客户编码'
-      }
-
-      if (matched && !matchedCustomerIds.has(customer.id)) {
-        matchedCustomerIds.add(customer.id)
-        const owner = users.find((u: any) => u.id === customer.salesPersonId)
-
-        results.push({
-          customerName: customer.name || '未知',
-          phone: customer.phone || '',
-          customerCode: customer.code || '',
-          gender: customer.gender || '',
-          age: customer.age || 0,
-          level: customer.level || '',
-          address: customer.address || '',
-          createTime: customer.createTime || '',
-          orderCount: customer.orderCount || 0,
-          ownerName: owner?.name || '未分配',
-          ownerPhone: '',
-          ownerDepartment: owner?.department || '未知部门',
-          matchType
-        })
-      }
+    if (customerSearchRes?.success && customerSearchRes.data?.list) {
+      results.push(...customerSearchRes.data.list)
     }
 
-    // 2. 从订单表搜索：订单号、物流单号、售后单号
-    for (const order of orders) {
-      let matched = false
-      let matchType = ''
+    // 🔥 方式2：通过后端精确搜索（订单号、物流单号），如果模糊搜索无结果
+    if (results.length === 0) {
+      const exactSearchRes = await request.get('/data/search', {
+        params: { keyword: searchForm.keyword.trim() }
+      }) as any
 
-      // 订单号匹配
-      if (order.orderNumber?.toLowerCase().includes(keyword)) {
-        matched = true
-        matchType = '订单号'
-      }
-      // 物流单号匹配
-      else if (order.trackingNumber?.toLowerCase().includes(keyword)) {
-        matched = true
-        matchType = '物流单号'
-      }
-      // 售后单号匹配（如果有的话）
-      else if ((order as any).afterSaleNumber?.toLowerCase().includes(keyword)) {
-        matched = true
-        matchType = '售后单号'
-      }
-
-      if (matched) {
-        // 查找对应的客户
-        const customer = customers.find((c: any) => c.id === order.customerId)
-        if (customer && !matchedCustomerIds.has(customer.id)) {
-          matchedCustomerIds.add(customer.id)
-          const owner = users.find((u: any) => u.id === customer.salesPersonId)
-
-          results.push({
-            customerName: customer.name || '未知',
-            phone: customer.phone || '',
-            customerCode: customer.code || '',
-            gender: customer.gender || '',
-            age: customer.age || 0,
-            level: customer.level || '',
-            address: customer.address || '',
-            createTime: customer.createTime || '',
-            orderCount: customer.orderCount || 0,
-            ownerName: owner?.name || '未分配',
-            ownerPhone: '',
-            ownerDepartment: owner?.department || '未知部门',
-            matchType,
-            // 额外显示匹配的订单信息
-            matchedOrderNo: order.orderNumber,
-            matchedTrackingNo: order.trackingNumber
-          })
-        }
+      if (exactSearchRes?.success && exactSearchRes.data) {
+        const c = exactSearchRes.data
+        results.push({
+          customerName: c.name || '未知',
+          phone: c.phone || '',
+          customerCode: c.customerNo || '',
+          gender: c.gender || '',
+          age: c.age || 0,
+          level: c.level || '',
+          address: c.address || '',
+          createTime: c.createdAt || '',
+          orderCount: c.orderCount || 0,
+          ownerName: c.salesPersonInfo?.name || '未分配',
+          ownerDepartment: c.salesPersonInfo?.department || '',
+          matchType: '订单号/物流单号'
+        })
       }
     }
 
     searchResults.value = results
 
-    console.log('[客户查询] 搜索完成，结果数:', results.length)
 
     if (results.length > 0) {
       ElMessage.success(`找到 ${results.length} 条匹配记录`)

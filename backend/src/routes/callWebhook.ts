@@ -6,6 +6,7 @@
 import { Router, Request, Response } from 'express';
 import { aliyunCallService } from '../services/AliyunCallService';
 
+import { log } from '../config/logger';
 const router = Router();
 
 // ==================== 阿里云回调 ====================
@@ -30,7 +31,7 @@ router.post('/aliyun/status', async (req: Request, res: Response) => {
       tags
     } = req.body;
 
-    console.log('[Webhook] 阿里云通话状态回调:', { event, callId, duration });
+    log.info('[Webhook] 阿里云通话状态回调:', { event, callId, duration });
 
     // 解析自定义标签获取内部callId
     let internalCallId = callId;
@@ -41,7 +42,7 @@ router.post('/aliyun/status', async (req: Request, res: Response) => {
           internalCallId = tagData.callId;
         }
       } catch (e) {
-        console.warn('解析tags失败:', e);
+        log.warn('解析tags失败:', e);
       }
     }
 
@@ -67,7 +68,7 @@ router.post('/aliyun/status', async (req: Request, res: Response) => {
 
     res.json({ success: true });
   } catch (error) {
-    console.error('处理阿里云状态回调失败:', error);
+    log.error('处理阿里云状态回调失败:', error);
     res.status(500).json({ success: false, message: '处理回调失败' });
   }
 });
@@ -88,7 +89,7 @@ router.post('/aliyun/recording', async (req: Request, res: Response) => {
       tags
     } = req.body;
 
-    console.log('[Webhook] 阿里云录音回调:', { callId, recordingUrl });
+    log.info('[Webhook] 阿里云录音回调:', { callId, recordingUrl });
 
     // 解析自定义标签获取内部callId
     let internalCallId = callId;
@@ -99,7 +100,7 @@ router.post('/aliyun/recording', async (req: Request, res: Response) => {
           internalCallId = tagData.callId;
         }
       } catch (e) {
-        console.warn('解析tags失败:', e);
+        log.warn('解析tags失败:', e);
       }
     }
 
@@ -113,7 +114,7 @@ router.post('/aliyun/recording', async (req: Request, res: Response) => {
 
     res.json({ success: true });
   } catch (error) {
-    console.error('处理阿里云录音回调失败:', error);
+    log.error('处理阿里云录音回调失败:', error);
     res.status(500).json({ success: false, message: '处理回调失败' });
   }
 });
@@ -128,14 +129,14 @@ router.post('/tencent', async (req: Request, res: Response) => {
   try {
     const { EventType, Data } = req.body;
 
-    console.log('[Webhook] 腾讯云回调:', { EventType });
+    log.info('[Webhook] 腾讯云回调:', { EventType });
 
     // TODO: 实现腾讯云回调处理
     // 根据EventType处理不同事件
 
     res.json({ success: true });
   } catch (error) {
-    console.error('处理腾讯云回调失败:', error);
+    log.error('处理腾讯云回调失败:', error);
     res.status(500).json({ success: false, message: '处理回调失败' });
   }
 });
@@ -150,13 +151,13 @@ router.post('/ronglian', async (req: Request, res: Response) => {
   try {
     const { action, callSid, state, duration, recordUrl } = req.body;
 
-    console.log('[Webhook] 容联云回调:', { action, callSid, state });
+    log.info('[Webhook] 容联云回调:', { action, callSid, state });
 
     // TODO: 实现容联云回调处理
 
     res.json({ success: true });
   } catch (error) {
-    console.error('处理容联云回调失败:', error);
+    log.error('处理容联云回调失败:', error);
     res.status(500).json({ success: false, message: '处理回调失败' });
   }
 });
@@ -168,7 +169,7 @@ router.post('/ronglian', async (req: Request, res: Response) => {
  * POST /api/v1/calls/webhook/test
  */
 router.post('/test', async (req: Request, res: Response) => {
-  console.log('[Webhook] 测试回调:', req.body);
+  log.info('[Webhook] 测试回调:', req.body);
   res.json({
     success: true,
     message: '回调接收成功',

@@ -1,3 +1,92 @@
+      data: ['0-1天', '1-3天', '3-7天', '7-15天', '15天以上']
+    if (diffDays <= 1) {
+      durationData[0]++
+    } else if (diffDays <= 3) {
+      durationData[1]++
+    } else if (diffDays <= 7) {
+      durationData[2]++
+    } else if (diffDays <= 15) {
+      durationData[3]++
+    } else {
+      durationData[4]++
+    }
+  })
+  // 计算处理时长分布
+  const durationData = [0, 0, 0, 0, 0] // 对应 0-1天, 1-3天, 3-7天, 7-15天, 15天以上
+
+  completedServices.forEach(service => {
+    const createTime = new Date(service.createTime)
+    const updateTime = new Date(service.updateTime || service.createTime)
+    const diffDays = Math.ceil((updateTime - createTime) / (1000 * 60 * 60 * 24))
+  const services = getFilteredServicesByPermission()
+  const completedServices = services.filter(s => s.status === 'resolved' || s.status === 'closed')
+  // 根据日期筛选数据
+  const data = days.map(day => {
+    return services.filter(service => {
+      const serviceDate = service.createTime.slice(5, 10) // 提取MM-DD部分
+      return serviceDate === day
+    }).length
+  })
+  switch (trendPeriod.value) {
+    case '7days':
+      periodLength = 7
+      dateFormat = 'MM-DD'
+      days = Array.from({ length: periodLength }, (_, i) => {
+        const date = new Date()
+        date.setDate(date.getDate() - (periodLength - 1) + i)
+        return date.toISOString().slice(5, 10) // MM-DD格式
+      })
+      break
+    case '30days':
+      periodLength = 30
+      dateFormat = 'MM-DD'
+      days = Array.from({ length: periodLength }, (_, i) => {
+        const date = new Date()
+        date.setDate(date.getDate() - (periodLength - 1) + i)
+        return date.toISOString().slice(5, 10) // MM-DD格式
+      })
+      break
+    case '3months':
+      periodLength = 90
+      dateFormat = 'MM-DD'
+      days = Array.from({ length: periodLength }, (_, i) => {
+        const date = new Date()
+        date.setDate(date.getDate() - (periodLength - 1) + i)
+        return date.toISOString().slice(5, 10) // MM-DD格式
+      })
+      break
+    case '6months':
+      periodLength = 180
+      dateFormat = 'MM-DD'
+      days = Array.from({ length: periodLength }, (_, i) => {
+        const date = new Date()
+        date.setDate(date.getDate() - (periodLength - 1) + i)
+        return date.toISOString().slice(5, 10) // MM-DD格式
+      })
+      break
+    default:
+      periodLength = 7
+      days = Array.from({ length: periodLength }, (_, i) => {
+        const date = new Date()
+        date.setDate(date.getDate() - (periodLength - 1) + i)
+        return date.toISOString().slice(5, 10)
+      })
+  }
+  let dateFormat = ''
+  const services = getFilteredServicesByPermission()
+
+  // 根据选择的时间段生成对应的日期数组和数据
+    urgentTrend: Number(urgentTrend.toFixed(1))
+    pendingTrend: Number(pendingTrend.toFixed(1)),
+    todayTrend: Number(todayTrend.toFixed(1)),
+    refundTrend: Number(refundTrend.toFixed(1)),
+  // 模拟趋势计算（实际项目中应该与历史数据对比）
+  const ordersTrend = totalOrders > 0 ? Math.random() * 20 - 10 : 0
+  const todayTrend = todayOrders > 0 ? Math.random() * 30 - 15 : 0
+  const pendingTrend = pendingOrders > 0 ? Math.random() * 25 - 12.5 : 0
+  const urgentTrend = urgentOrders > 0 ? Math.random() * 40 - 20 : 0
+  const refundTrend = refundAmount > 0 ? Math.random() * 15 - 7.5 : 0
+// 核心指标数据 - 从serviceStore计算
 <template>
   <div class="service-data-container">
     <!-- 页面头部 -->
@@ -182,6 +271,8 @@
             <el-icon><Refresh /></el-icon>
             刷新
           </el-button>
+import { serviceApi } from '@/api/service'
+import type { ServiceStatsReport } from '@/api/service'
         </div>
       </div>
 
@@ -259,7 +350,10 @@ import { ref, reactive, onMounted, computed, nextTick, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import {
-  Download,
+// 后端统计报表数据
+const statsReport = ref<ServiceStatsReport | null>(null)
+
+// 核心指标数据 - 从serviceStore计算 + 后端环比数据
   Refresh,
   ShoppingCart,
   Money,
@@ -271,7 +365,6 @@ import {
   Search
 } from '@element-plus/icons-vue'
 import { createSafeNavigator } from '@/utils/navigation'
-import { useServiceStore } from '@/stores/service'
 import { useUserStore } from '@/stores/user'
 import { useOrderStore } from '@/stores/order'
 import * as echarts from 'echarts'
@@ -288,24 +381,22 @@ interface ServiceOrder {
   status: string
   priority: string
   createTime: string
-  updateTime: string
-}
-
-interface ServiceMetrics {
-  totalOrders: number
-  ordersTrend: number
+  // 使用后端环比数据（如果有），否则显示0
+  const growth = statsReport.value?.growth
+  const ordersTrend = growth?.ordersTrend ?? 0
+  const completedTrend = growth?.completedTrend ?? 0
   refundAmount: number
   refundTrend: number
   todayOrders: number
   todayTrend: number
   pendingOrders: number
-  pendingTrend: number
+    refundTrend: Number(completedTrend.toFixed(1)),
   urgentOrders: number
-  urgentTrend: number
+    todayTrend: 0,
 }
-
+    pendingTrend: 0,
 const router = useRouter()
-const safeNavigator = createSafeNavigator(router)
+    urgentTrend: 0
 const serviceStore = useServiceStore()
 const userStore = useUserStore()
 const orderStore = useOrderStore()
@@ -498,6 +589,16 @@ const filteredOrders = computed(() => {
   if (statusFilter.value) {
     result = result.filter(order => order.status === statusFilter.value)
   }
+    // 加载后端统计报表数据（日趋势/时长分布/环比增长）
+    try {
+      const [startDate, endDate] = dateRange.value || []
+      statsReport.value = await serviceApi.getStatsReport({
+        startDate: startDate || undefined,
+        endDate: endDate || undefined
+      })
+    } catch (e) {
+      console.warn('加载统计报表失败，使用本地计算:', e)
+    }
 
   totalOrders.value = result.length
   return result.slice((currentPage.value - 1) * pageSize.value, currentPage.value * pageSize.value)
@@ -614,66 +715,44 @@ const getServiceTypeText = (type: string) => {
     exchange: '换货',
     repair: '维修',
     refund: '退款'
-  }
-  return typeMap[type] || type
-}
 
-const getServiceTypeTag = (type: string) => {
+  let data: number[] = []
   const tagMap: Record<string, string> = {
     return: 'danger',
-    exchange: 'warning',
-    repair: 'info',
-    refund: 'success'
-  }
-  return tagMap[type] || 'info'
-}
-
-const getStatusText = (status: string) => {
-  const statusMap: Record<string, string> = {
-    pending: '待处理',
-    processing: '处理中',
-    resolved: '已解决',
-    closed: '已关闭'
-  }
-  return statusMap[status] || status
-}
-
-const getStatusTag = (status: string) => {
-  const tagMap: Record<string, string> = {
-    pending: 'warning',
-    processing: 'primary',
-    resolved: 'success',
-    closed: 'info'
-  }
-  return tagMap[status] || 'info'
-}
-
-const viewDetail = (row: ServiceOrder) => {
-  safeNavigator.push(`/service/detail/${row.id}`)
-}
-
-const viewOrder = (row: ServiceOrder) => {
-  // 根据原订单号查找订单ID
-  const order = orderStore.orders.find(o => o.orderNumber === row.originalOrderNo)
-  if (order) {
-    safeNavigator.push(`/order/detail/${order.id}`)
+  // 优先使用后端 dailyTrend 数据
+  if (statsReport.value?.dailyTrend && statsReport.value.dailyTrend.length > 0) {
+    const trendData = statsReport.value.dailyTrend
+    days = trendData.map(d => {
+      const dateStr = typeof d.date === 'string' ? d.date : new Date(d.date).toISOString().slice(0, 10)
+      return dateStr.slice(5, 10) // MM-DD格式
+    })
+    data = trendData.map(d => d.count)
+    periodLength = days.length
   } else {
-    ElMessage.warning('未找到对应的订单信息')
-  }
-}
+    // Fallback：本地计算
+    const services = getFilteredServicesByPermission()
 
-const viewCustomer = (row: ServiceOrder) => {
-  // 从serviceStore中获取完整的售后服务信息
-  const service = serviceStore.services.find(s => s.id === row.id)
-  if (service && service.customerId) {
+    switch (trendPeriod.value) {
+      case '7days': periodLength = 7; break
+      case '30days': periodLength = 30; break
+      case '3months': periodLength = 90; break
+      case '6months': periodLength = 180; break
+      default: periodLength = 7
+    }
+
+    days = Array.from({ length: periodLength }, (_, i) => {
+      const date = new Date()
+      date.setDate(date.getDate() - (periodLength - 1) + i)
+      return date.toISOString().slice(5, 10)
+    })
     safeNavigator.push(`/customer/detail/${service.customerId}`)
-  } else {
-    ElMessage.warning('未找到对应的客户信息')
+    data = days.map(day => {
+      return services.filter(service => {
+        const serviceDate = service.createTime.slice(5, 10)
+        return serviceDate === day
+      }).length
+    })
   }
-}
-
-const processOrder = async (row: ServiceOrder) => {
-  try {
     await serviceStore.updateServiceStatus(row.id, 'processing', '开始处理')
     ElMessage.success(`开始处理订单 ${row.orderNo}`)
     // 刷新数据
@@ -771,29 +850,33 @@ const initTrendChart = () => {
     xAxisData = days.map((day, index) => index % step === 0 ? day : '')
   }
 
-  const option = {
-    title: {
+  let labels: string[]
+  let durationData: number[]
+
+  // 优先使用后端 durationDistribution 数据
+  if (statsReport.value?.durationDistribution && statsReport.value.durationDistribution.length > 0) {
+    labels = statsReport.value.durationDistribution.map(d => d.label)
+    durationData = statsReport.value.durationDistribution.map(d => d.count)
+  } else {
+    // Fallback：本地计算
+    labels = ['0-1天', '1-3天', '3-7天', '7-15天', '15天以上']
+    durationData = [0, 0, 0, 0, 0]
+
+    const services = getFilteredServicesByPermission()
+    const completedServices = services.filter(s => s.status === 'resolved' || s.status === 'closed')
       text: '售后订单趋势',
-      left: 'center',
-      textStyle: { fontSize: 14 }
-    },
-    tooltip: {
-      trigger: 'axis',
-      formatter: (params: unknown) => {
-        const dataIndex = params[0].dataIndex
+    completedServices.forEach(service => {
+      const createTime = new Date(service.createTime)
+      const updateTime = new Date(service.updateTime || service.createTime)
+      const diffDays = Math.ceil((updateTime.getTime() - createTime.getTime()) / (1000 * 60 * 60 * 24))
         return `${days[dataIndex]}: ${params[0].value}个订单`
-      }
-    },
-    xAxis: {
-      type: 'category',
-      data: xAxisData,
-      axisLabel: {
-        rotate: periodLength > 30 ? 45 : 0 // 长时间段时旋转标签
-      }
-    },
-    yAxis: {
-      type: 'value'
-    },
+      if (diffDays <= 1) durationData[0]++
+      else if (diffDays <= 3) durationData[1]++
+      else if (diffDays <= 7) durationData[2]++
+      else if (diffDays <= 15) durationData[3]++
+      else durationData[4]++
+    })
+  }
     series: [{
       data: data,
       type: 'line',
@@ -807,7 +890,7 @@ const initTrendChart = () => {
 
 // 初始化类型分布图
 const initTypeChart = () => {
-  if (!typeChart.value) return
+      data: labels
 
   if (typeChartInstance) {
     typeChartInstance.dispose()

@@ -5,7 +5,7 @@ import { LogisticsTrace } from '../entities/LogisticsTrace';
 import { Order } from '../entities/Order';
 import { Like, In, Between } from 'typeorm';
 import { ExpressAPIService } from '../services/ExpressAPIService';
-import { logger } from '../config/logger';
+import { logger, log } from '../config/logger';
 import { getTenantRepo } from '../utils/tenantRepo';
 
 export class LogisticsController {
@@ -88,7 +88,7 @@ export class LogisticsController {
         }
       });
     } catch (error) {
-      console.error('获取物流列表失败:', error);
+      log.error('获取物流列表失败:', error);
       res.status(500).json({
         code: 500,
         message: '获取物流列表失败',
@@ -150,7 +150,7 @@ export class LogisticsController {
         data: savedTracking
       });
     } catch (error) {
-      console.error('创建物流跟踪失败:', error);
+      log.error('创建物流跟踪失败:', error);
       return res.status(500).json({
         code: 500,
         message: '创建物流跟踪失败',
@@ -211,7 +211,7 @@ export class LogisticsController {
         data: tracking
       });
     } catch (error) {
-      console.error('查询物流轨迹失败:', error);
+      log.error('查询物流轨迹失败:', error);
       return res.status(500).json({
         code: 500,
         message: '查询物流轨迹失败',
@@ -251,7 +251,7 @@ export class LogisticsController {
         data: results
       });
     } catch (error) {
-      console.error('批量同步物流状态失败:', error);
+      log.error('批量同步物流状态失败:', error);
       return res.status(500).json({
         code: 500,
         message: '批量同步物流状态失败',
@@ -289,7 +289,7 @@ export class LogisticsController {
         data: tracking
       });
     } catch (error) {
-      console.error('更新物流状态失败:', error);
+      log.error('更新物流状态失败:', error);
       return res.status(500).json({
         code: 500,
         message: '更新物流状态失败',
@@ -370,7 +370,7 @@ export class LogisticsController {
         }
       });
     } catch (error) {
-      console.error('获取支持的快递公司失败:', error);
+      log.error('获取支持的快递公司失败:', error);
       res.status(500).json({
         code: 500,
         message: '获取支持的快递公司失败',

@@ -1,63 +1,64 @@
 <template>
   <div class="dashboard">
     <!-- 统计卡片 -->
-    <el-row :gutter="20" class="stat-cards">
+    <el-row :gutter="16" class="stat-cards">
       <el-col :xs="24" :sm="12" :lg="6">
-        <div class="stat-card" style="--accent: #409eff" @click="router.push('/private-customers/list')">
+        <div class="stat-card" style="--accent: #409eff">
           <div class="stat-icon">
-            <el-icon :size="28"><Key /></el-icon>
+            <el-icon :size="26"><User /></el-icon>
           </div>
           <div class="stat-content">
-            <div class="stat-value">{{ stats.licenses?.total || 0 }}</div>
-            <div class="stat-label">总授权数</div>
-          </div>
-          <div class="stat-trend" :class="growthData.licenses >= 0 ? 'up' : 'down'">
-            <el-icon><TrendCharts /></el-icon>
-            <span>{{ growthData.licenses >= 0 ? '+' : '' }}{{ growthData.licenses }}%</span>
+            <div class="stat-value">{{ stats.totalCustomers?.total || 0 }}</div>
+            <div class="stat-label">总客户数</div>
+            <div class="stat-tags">
+              <span class="tag-private">私有 {{ stats.totalCustomers?.private || 0 }}</span>
+              <span class="tag-tenant">租户 {{ stats.totalCustomers?.tenant || 0 }}</span>
+            </div>
           </div>
         </div>
       </el-col>
       <el-col :xs="24" :sm="12" :lg="6">
-        <div class="stat-card" style="--accent: #67c23a" @click="router.push('/private-customers/list')">
+        <div class="stat-card" style="--accent: #67c23a">
           <div class="stat-icon">
-            <el-icon :size="28"><CircleCheck /></el-icon>
+            <el-icon :size="26"><TrendCharts /></el-icon>
           </div>
           <div class="stat-content">
-            <div class="stat-value">{{ stats.licenses?.active || 0 }}</div>
-            <div class="stat-label">有效授权</div>
-          </div>
-          <div class="stat-trend" :class="growthData.licenses >= 0 ? 'up' : 'down'">
-            <el-icon><TrendCharts /></el-icon>
-            <span>{{ activeRate }}%</span>
+            <div class="stat-value">{{ stats.monthlyNew?.total || 0 }}</div>
+            <div class="stat-label">本月新增</div>
+            <div class="stat-tags">
+              <span class="tag-private">私有 {{ stats.monthlyNew?.private || 0 }}</span>
+              <span class="tag-tenant">租户 {{ stats.monthlyNew?.tenant || 0 }}</span>
+            </div>
           </div>
         </div>
       </el-col>
       <el-col :xs="24" :sm="12" :lg="6">
-        <div class="stat-card" style="--accent: #e6a23c" @click="router.push('/tenant-customers/list')">
+        <div class="stat-card" style="--accent: #e6a23c">
           <div class="stat-icon">
-            <el-icon :size="28"><OfficeBuilding /></el-icon>
+            <el-icon :size="26"><CircleCheck /></el-icon>
           </div>
           <div class="stat-content">
-            <div class="stat-value">{{ stats.tenants?.total || 0 }}</div>
-            <div class="stat-label">租户总数</div>
-          </div>
-          <div class="stat-trend" :class="growthData.tenants >= 0 ? 'up' : 'down'">
-            <el-icon><TrendCharts /></el-icon>
-            <span>{{ growthData.tenants >= 0 ? '+' : '' }}{{ growthData.tenants }}%</span>
+            <div class="stat-value">{{ stats.activeCustomers?.total || 0 }}</div>
+            <div class="stat-label">活跃客户</div>
+            <div class="stat-tags">
+              <span class="tag-private">私有 {{ stats.activeCustomers?.private || 0 }}</span>
+              <span class="tag-tenant">租户 {{ stats.activeCustomers?.tenant || 0 }}</span>
+            </div>
           </div>
         </div>
       </el-col>
       <el-col :xs="24" :sm="12" :lg="6">
-        <div class="stat-card" style="--accent: #909399" @click="router.push('/versions/list')">
+        <div class="stat-card" style="--accent: #909399">
           <div class="stat-icon">
-            <el-icon :size="28"><Box /></el-icon>
+            <el-icon :size="26"><Warning /></el-icon>
           </div>
           <div class="stat-content">
-            <div class="stat-value">{{ stats.versions?.published || 0 }}</div>
-            <div class="stat-label">发布版本</div>
-          </div>
-          <div class="stat-trend">
-            <span>{{ stats.versions?.latest ? 'v' + stats.versions.latest : '暂无' }}</span>
+            <div class="stat-value">{{ stats.silentCustomers?.total || 0 }}</div>
+            <div class="stat-label">沉默客户</div>
+            <div class="stat-tags">
+              <span class="tag-private">私有 {{ stats.silentCustomers?.private || 0 }}</span>
+              <span class="tag-tenant">租户 {{ stats.silentCustomers?.tenant || 0 }}</span>
+            </div>
           </div>
         </div>
       </el-col>
@@ -70,40 +71,25 @@
           <template #header>
             <div class="card-header">
               <span class="title">授权类型分布</span>
-              <el-radio-group v-model="chartPeriod" size="small">
-                <el-radio-button value="week">本周</el-radio-button>
+              <el-radio-group v-model="chartPeriod" size="small" @change="fetchLicenseTypeStats">
                 <el-radio-button value="month">本月</el-radio-button>
+                <el-radio-button value="lastMonth">上月</el-radio-button>
+                <el-radio-button value="all">全部</el-radio-button>
               </el-radio-group>
             </div>
           </template>
-          <div class="chart-content">
-            <div class="pie-chart">
-              <div
-                v-for="(item, index) in licenseTypes"
-                :key="item.type"
-                class="pie-item"
-              >
-                <div class="pie-bar" :style="{ '--color': pieColors[index], '--percent': getPercent(item.count) + '%' }">
-                  <div class="bar-fill"></div>
-                </div>
-                <div class="pie-info">
-                  <span class="pie-label">{{ item.label }}</span>
-                  <span class="pie-value">{{ item.count }}</span>
-                  <span class="pie-percent">{{ getPercent(item.count) }}%</span>
-                </div>
-              </div>
-            </div>
-          </div>
+          <div ref="pieChartRef" class="pie-chart-container"></div>
         </el-card>
       </el-col>
       <el-col :xs="24" :lg="12">
         <el-card class="chart-card" shadow="never">
           <template #header>
             <div class="card-header">
-              <span class="title">近30天趋势</span>
-              <el-radio-group v-model="trendMetric" size="small">
-                <el-radio-button value="licenses">授权</el-radio-button>
-                <el-radio-button value="tenants">租户</el-radio-button>
+              <span class="title">趋势分析</span>
+              <el-radio-group v-model="trendPeriod" size="small" @change="fetchTrend">
+                <el-radio-button value="month">本月</el-radio-button>
+                <el-radio-button value="lastMonth">上月</el-radio-button>
+                <el-radio-button value="all">全部</el-radio-button>
               </el-radio-group>
             </div>
           </template>
@@ -112,37 +98,29 @@
       </el-col>
     </el-row>
 
-    <!-- 快捷操作 + 最近活动 -->
+    <!-- 日常操作 + 最近活动 -->
     <el-row :gutter="20" class="bottom-section">
       <el-col :xs="24" :lg="8">
         <el-card class="quick-card" shadow="never">
           <template #header>
-            <span class="title">快捷操作</span>
+            <div class="card-header">
+              <span class="title">日常操作</span>
+              <el-button type="primary" link size="small" @click="showQuickSettings = true">
+                <el-icon><Setting /></el-icon>设置
+              </el-button>
+            </div>
           </template>
           <div class="quick-actions">
-            <div class="quick-item" @click="router.push('/private-customers/list')">
-              <div class="quick-icon" style="background: #409eff"><el-icon :size="20"><Key /></el-icon></div>
-              <span>新建授权</span>
-            </div>
-            <div class="quick-item" @click="router.push('/tenant-customers/list')">
-              <div class="quick-icon" style="background: #67c23a"><el-icon :size="20"><CircleCheck /></el-icon></div>
-              <span>新建租户</span>
-            </div>
-            <div class="quick-item" @click="router.push('/versions/upload')">
-              <div class="quick-icon" style="background: #9c27b0"><el-icon :size="20"><Upload /></el-icon></div>
-              <span>发布版本</span>
-            </div>
-            <div class="quick-item" @click="router.push('/payment/reports')">
-              <div class="quick-icon" style="background: #e6a23c"><el-icon :size="20"><Document /></el-icon></div>
-              <span>支付报表</span>
-            </div>
-            <div class="quick-item" @click="router.push('/modules/list')">
-              <div class="quick-icon" style="background: #00bcd4"><el-icon :size="20"><Box /></el-icon></div>
-              <span>模块管理</span>
-            </div>
-            <div class="quick-item" @click="router.push('/settings/admins')">
-              <div class="quick-icon" style="background: #607d8b"><el-icon :size="20"><Warning /></el-icon></div>
-              <span>管理员</span>
+            <div
+              v-for="item in visibleQuickActions"
+              :key="item.key"
+              class="quick-item"
+              @click="router.push(item.path)"
+            >
+              <div class="quick-icon" :style="{ background: item.color }">
+                <el-icon :size="20"><component :is="item.icon" /></el-icon>
+              </div>
+              <span>{{ item.label }}</span>
             </div>
           </div>
         </el-card>
@@ -152,7 +130,10 @@
           <template #header>
             <div class="card-header">
               <span class="title">最近动态</span>
-              <el-button type="primary" link size="small" @click="fetchActivities">刷新</el-button>
+              <div class="header-actions">
+                <el-button type="primary" link size="small" @click="fetchActivities">刷新</el-button>
+                <el-button type="primary" link size="small" @click="router.push('/activities')">查看更多</el-button>
+              </div>
             </div>
           </template>
           <div v-if="activities.length > 0" class="activity-timeline">
@@ -174,20 +155,32 @@
       <template #header>
         <div class="card-header">
           <span class="title">最近验证日志</span>
-          <el-button type="primary" link @click="router.push('/settings/operation-logs')">
-            查看全部 <el-icon><ArrowRight /></el-icon>
-          </el-button>
+          <div class="log-header-right" v-if="recentLogs.length > 0">
+            <el-button type="primary" link size="small" @click="router.push('/settings/operation-logs')">查看全部</el-button>
+            <span class="log-total">共 {{ recentLogs.length }} 条</span>
+          </div>
         </div>
       </template>
-      <el-table :data="recentLogs" stripe style="width: 100%">
-        <el-table-column prop="licenseKey" label="授权码" width="200">
+      <el-table :data="pagedLogs" stripe style="width: 100%">
+        <el-table-column prop="customerType" label="类型" width="80" align="center">
+          <template #default="{ row }">
+            <el-tag v-if="row.customerType === 'tenant'" type="warning" size="small" effect="plain">租户</el-tag>
+            <el-tag v-else type="primary" size="small" effect="plain">私有</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="customerName" label="客户名称" width="130" show-overflow-tooltip>
+          <template #default="{ row }">
+            <span>{{ row.customerName || '-' }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="licenseKey" label="授权码" width="180">
           <template #default="{ row }">
             <el-tooltip :content="row.licenseKey" placement="top">
               <span class="license-key">{{ row.licenseKey ? row.licenseKey.slice(0, 16) + '...' : '-' }}</span>
             </el-tooltip>
           </template>
         </el-table-column>
-        <el-table-column prop="action" label="操作" width="100">
+        <el-table-column prop="action" label="操作" width="80">
           <template #default="{ row }">
             <el-tag :type="getActionType(row.action)" size="small">
               {{ getActionLabel(row.action) }}
@@ -202,8 +195,8 @@
           </template>
         </el-table-column>
         <el-table-column prop="ipAddress" label="IP地址" width="140" />
-        <el-table-column prop="message" label="消息" min-width="200" show-overflow-tooltip />
-        <el-table-column prop="createdAt" label="时间" width="180">
+        <el-table-column prop="message" label="消息" min-width="180" show-overflow-tooltip />
+        <el-table-column prop="createdAt" label="时间" width="170">
           <template #default="{ row }">
             {{ formatDate(row.createdAt) }}
           </template>
@@ -212,72 +205,149 @@
       <div v-if="recentLogs.length === 0" class="empty-state">
         <el-empty description="暂无验证日志" />
       </div>
+      <div v-else class="log-pagination">
+        <el-pagination
+          v-model:current-page="logPage"
+          :page-size="logPageSize"
+          :total="recentLogs.length"
+          :pager-count="5"
+          layout="prev, pager, next"
+          small
+          background
+        />
+      </div>
     </el-card>
+
+    <!-- 日常操作设置对话框 -->
+    <el-dialog v-model="showQuickSettings" title="自定义日常操作" width="480px" :close-on-click-modal="false">
+      <p style="color: #909399; font-size: 13px; margin-bottom: 16px;">选择要在仪表盘显示的快捷操作项（最多8个）</p>
+      <el-checkbox-group v-model="selectedQuickKeys">
+        <div class="quick-settings-grid">
+          <div v-for="item in allQuickActions" :key="item.key" class="quick-settings-item">
+            <el-checkbox :label="item.key" :disabled="!selectedQuickKeys.includes(item.key) && selectedQuickKeys.length >= 8">
+              <div class="quick-settings-label">
+                <div class="quick-settings-icon" :style="{ background: item.color }">
+                  <el-icon :size="14"><component :is="item.icon" /></el-icon>
+                </div>
+                <span>{{ item.label }}</span>
+              </div>
+            </el-checkbox>
+          </div>
+        </div>
+      </el-checkbox-group>
+      <template #footer>
+        <el-button @click="resetQuickActions">恢复默认</el-button>
+        <el-button type="primary" @click="saveQuickActions">确定</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick, markRaw } from 'vue'
 import { useRouter } from 'vue-router'
 import { adminApi } from '@/api/admin'
 import * as echarts from 'echarts/core'
-import { LineChart } from 'echarts/charts'
+import { LineChart, PieChart } from 'echarts/charts'
 import { GridComponent, TooltipComponent, LegendComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
 import {
-  Key, CircleCheck, Box, TrendCharts, ArrowRight,
-  Document, Checked, Warning, Upload, OfficeBuilding
+  Key, CircleCheck, Box, TrendCharts,
+  Document, Warning, Upload, OfficeBuilding, Setting,
+  User, Wallet, Connection, Menu as MenuIcon, GoodsFilled, DataAnalysis
 } from '@element-plus/icons-vue'
 
-echarts.use([LineChart, GridComponent, TooltipComponent, LegendComponent, CanvasRenderer])
+echarts.use([LineChart, PieChart, GridComponent, TooltipComponent, LegendComponent, CanvasRenderer])
 
 const router = useRouter()
 
+interface SubStat {
+  total: number
+  private: number
+  tenant: number
+}
+
 interface DashboardStats {
-  licenses?: {
-    total: number
-    active: number
-    expired: number
-    pending: number
-    byType?: { trial: number; perpetual: number; annual: number; monthly: number }
-  }
-  tenants?: { total: number; active: number }
-  versions?: { total: number; published: number; latest: string | null }
-  activity?: { recentVerifications: number }
+  totalCustomers?: SubStat
+  monthlyNew?: SubStat
+  activeCustomers?: SubStat
+  silentCustomers?: SubStat
 }
 
 const stats = ref<DashboardStats>({})
 const recentLogs = ref<any[]>([])
-const chartPeriod = ref('week')
-const trendMetric = ref('licenses')
-const pieColors = ['#409eff', '#67c23a', '#e6a23c', '#f56c6c']
-const growthData = ref({ licenses: 0, tenants: 0 })
-const trendChartRef = ref<HTMLDivElement>()
-let chartInstance: echarts.ECharts | null = null
-const trendRawData = ref<any[]>([])
-const activities = ref<any[]>([])
-
-// 有效授权率（有效/总数）
-const activeRate = computed(() => {
-  const total = stats.value.licenses?.total || 0
-  const active = stats.value.licenses?.active || 0
-  if (total === 0) return 0
-  return Math.round((active / total) * 100)
+const logPage = ref(1)
+const logPageSize = 10
+const pagedLogs = computed(() => {
+  const start = (logPage.value - 1) * logPageSize
+  return recentLogs.value.slice(start, start + logPageSize)
 })
 
-const licenseTypes = computed(() => [
-  { type: 'trial', label: '试用授权', count: stats.value.licenses?.byType?.trial || 0 },
-  { type: 'perpetual', label: '永久授权', count: stats.value.licenses?.byType?.perpetual || 0 },
-  { type: 'annual', label: '年度授权', count: stats.value.licenses?.byType?.annual || 0 },
-  { type: 'monthly', label: '月度授权', count: stats.value.licenses?.byType?.monthly || 0 }
-])
+const chartPeriod = ref('month')
+const trendPeriod = ref('month')
+const growthData = ref({ licenses: 0, tenants: 0 })
+const trendChartRef = ref<HTMLDivElement>()
+const pieChartRef = ref<HTMLDivElement>()
+let trendChartInstance: echarts.ECharts | null = null
+let pieChartInstance: echarts.ECharts | null = null
+const trendRawData = ref<any[]>([])
+const activities = ref<any[]>([])
+const licenseTypeData = ref<any>({ private: {}, tenant: {} })
 
-const totalLicenses = computed(() => stats.value.licenses?.total || 0)
+// 日常操作设置
+const showQuickSettings = ref(false)
+const QUICK_ACTIONS_STORAGE_KEY = 'dashboard_quick_actions'
+const DEFAULT_QUICK_KEYS = ['private-customers', 'tenant-customers', 'version-upload', 'payment-reports', 'modules', 'admins']
 
-const getPercent = (count: number) => {
-  if (totalLicenses.value === 0) return 0
-  return Math.round((count / totalLicenses.value) * 100)
+// 所有可选的快捷操作
+const allQuickActions = [
+  { key: 'private-customers', label: '私有客户', path: '/private-customers/list', icon: markRaw(Key), color: '#409eff' },
+  { key: 'tenant-customers', label: '租户客户', path: '/tenant-customers/list', icon: markRaw(CircleCheck), color: '#67c23a' },
+  { key: 'version-upload', label: '发布版本', path: '/versions/upload', icon: markRaw(Upload), color: '#9c27b0' },
+  { key: 'payment-reports', label: '支付报表', path: '/payment/reports', icon: markRaw(Document), color: '#e6a23c' },
+  { key: 'payment-list', label: '支付列表', path: '/payment/list', icon: markRaw(Wallet), color: '#ff9800' },
+  { key: 'payment-config', label: '支付配置', path: '/payment/config', icon: markRaw(Setting), color: '#795548' },
+  { key: 'modules', label: '模块管理', path: '/modules/list', icon: markRaw(MenuIcon), color: '#00bcd4' },
+  { key: 'admins', label: '管理员', path: '/settings/admins', icon: markRaw(User), color: '#607d8b' },
+  { key: 'versions', label: '版本列表', path: '/versions/list', icon: markRaw(Box), color: '#909399' },
+  { key: 'customer-all', label: '所有客户', path: '/customer-management/all', icon: markRaw(User), color: '#3f51b5' },
+  { key: 'renewal', label: '续费提醒', path: '/customer-management/renewal-reminders', icon: markRaw(Warning), color: '#f44336' },
+  { key: 'packages', label: '套餐管理', path: '/package-management/packages', icon: markRaw(GoodsFilled), color: '#4caf50' },
+  { key: 'api-list', label: '接口管理', path: '/api/list', icon: markRaw(Connection), color: '#673ab7' },
+  { key: 'operation-logs', label: '操作日志', path: '/settings/operation-logs', icon: markRaw(DataAnalysis), color: '#ff5722' },
+  { key: 'basic-settings', label: '基础配置', path: '/settings/basic', icon: markRaw(Setting), color: '#9e9e9e' }
+]
+
+const selectedQuickKeys = ref<string[]>([...DEFAULT_QUICK_KEYS])
+
+// Load from localStorage
+const loadQuickActions = () => {
+  try {
+    const stored = localStorage.getItem(QUICK_ACTIONS_STORAGE_KEY)
+    if (stored) {
+      const keys = JSON.parse(stored) as string[]
+      if (Array.isArray(keys) && keys.length > 0) {
+        selectedQuickKeys.value = keys
+      }
+    }
+  } catch { /* use default */ }
 }
+
+const visibleQuickActions = computed(() => {
+  return selectedQuickKeys.value
+    .map(key => allQuickActions.find(a => a.key === key))
+    .filter(Boolean) as typeof allQuickActions
+})
+
+const saveQuickActions = () => {
+  localStorage.setItem(QUICK_ACTIONS_STORAGE_KEY, JSON.stringify(selectedQuickKeys.value))
+  showQuickSettings.value = false
+}
+
+const resetQuickActions = () => {
+  selectedQuickKeys.value = [...DEFAULT_QUICK_KEYS]
+}
+
 
 const fetchStats = async () => {
   try {
@@ -288,55 +358,171 @@ const fetchStats = async () => {
   }
 }
 
+const fetchLicenseTypeStats = async () => {
+  try {
+    const res = await adminApi.getLicenseTypeStats(chartPeriod.value)
+    if (res.data) {
+      licenseTypeData.value = res.data
+      await nextTick()
+      renderPieChart()
+    }
+  } catch (error) {
+    console.error('获取授权类型统计失败', error)
+  }
+}
+
+const renderPieChart = () => {
+  if (!pieChartRef.value) return
+  if (!pieChartInstance) {
+    pieChartInstance = echarts.init(pieChartRef.value)
+  }
+
+  const priv = licenseTypeData.value?.private || {}
+  const tenant = licenseTypeData.value?.tenant || {}
+
+  // 构建饼图数据：私有 + 租户
+  const pieData = [
+    { name: '私有-试用', value: priv.trial || 0 },
+    { name: '私有-月付', value: priv.monthly || 0 },
+    { name: '私有-年付', value: priv.annual || 0 },
+    { name: '私有-买断', value: priv.perpetual || 0 },
+    { name: '租户-试用', value: tenant.trial || 0 },
+    { name: '租户-月付', value: tenant.monthly || 0 },
+    { name: '租户-年付', value: tenant.yearly || 0 },
+    { name: '租户-买断', value: tenant.once || 0 },
+    { name: '租户-其他', value: tenant.other || 0 }
+  ].filter(item => item.value > 0)
+
+  const total = pieData.reduce((sum, item) => sum + item.value, 0)
+
+  // 颜色：私有系列用蓝色调，租户系列用绿色调
+  const colorMap: Record<string, string> = {
+    '私有-试用': '#a0cfff',
+    '私有-月付': '#409eff',
+    '私有-年付': '#337ecc',
+    '私有-买断': '#1d5ba8',
+    '租户-试用': '#b3e19d',
+    '租户-月付': '#67c23a',
+    '租户-年付': '#529b2e',
+    '租户-买断': '#3e7c22',
+    '租户-其他': '#c0c4cc'
+  }
+
+  pieChartInstance.setOption({
+    tooltip: {
+      trigger: 'item',
+      formatter: (params: any) => {
+        return `${params.name}: ${params.value} (${params.percent}%)`
+      }
+    },
+    legend: {
+      orient: 'vertical',
+      right: '2%',
+      top: 'center',
+      textStyle: { fontSize: 12, color: '#606266' },
+      formatter: (name: string) => {
+        const item = pieData.find(d => d.name === name)
+        const percent = total > 0 ? Math.round(((item?.value || 0) / total) * 100) : 0
+        return `${name}  ${item?.value || 0}  ${percent}%`
+      }
+    },
+    series: [{
+      type: 'pie',
+      radius: ['40%', '65%'],
+      center: ['30%', '50%'],
+      avoidLabelOverlap: false,
+      itemStyle: {
+        borderRadius: 6,
+        borderColor: '#fff',
+        borderWidth: 2
+      },
+      label: {
+        show: true,
+        position: 'center',
+        formatter: () => total > 0 ? `{total|${total}}\n{label|总计}` : '{label|暂无数据}',
+        rich: {
+          total: { fontSize: 22, fontWeight: 'bold', color: '#303133', lineHeight: 32 },
+          label: { fontSize: 12, color: '#909399', lineHeight: 18 }
+        }
+      },
+      emphasis: {
+        label: { show: true, fontSize: 13 },
+        itemStyle: { shadowBlur: 10, shadowOffsetX: 0, shadowColor: 'rgba(0, 0, 0, 0.2)' }
+      },
+      data: pieData.length > 0
+        ? pieData.map(item => ({ ...item, itemStyle: { color: colorMap[item.name] || '#c0c4cc' } }))
+        : [{ name: '暂无数据', value: 1, itemStyle: { color: '#e8e8e8' } }]
+    }]
+  }, true)
+}
+
 const fetchTrend = async () => {
   try {
-    const res = await adminApi.getDashboardTrend(30)
+    const res = await adminApi.getDashboardTrend(undefined, trendPeriod.value)
     if (res.data) {
       trendRawData.value = res.data.trend || []
       growthData.value = res.data.growth || { licenses: 0, tenants: 0 }
       await nextTick()
-      renderChart()
+      renderTrendChart()
     }
   } catch (error) {
     console.error('获取趋势数据失败', error)
   }
 }
 
-const renderChart = () => {
+const renderTrendChart = () => {
   if (!trendChartRef.value) return
-  if (!chartInstance) {
-    chartInstance = echarts.init(trendChartRef.value)
+  if (!trendChartInstance) {
+    trendChartInstance = echarts.init(trendChartRef.value)
   }
   const data = trendRawData.value
   const dates = data.map((d: any) => d.date.slice(5)) // MM-DD
-  const field = trendMetric.value
-  const values = data.map((d: any) => d[field] || 0)
-  const colorMap: Record<string, string> = { licenses: '#409eff', tenants: '#67c23a' }
-  const labelMap: Record<string, string> = { licenses: '新增授权', tenants: '新增租户' }
+  const licensesValues = data.map((d: any) => d.licenses || 0)
+  const tenantsValues = data.map((d: any) => d.tenants || 0)
 
-  chartInstance.setOption({
-    tooltip: { trigger: 'axis', formatter: '{b}<br/>{a}: {c}' },
-    grid: { left: 40, right: 20, top: 20, bottom: 30 },
+  trendChartInstance.setOption({
+    tooltip: { trigger: 'axis' },
+    legend: {
+      data: ['新增私有授权', '新增租户授权'],
+      top: 0,
+      right: 0,
+      textStyle: { fontSize: 12, color: '#909399' }
+    },
+    grid: { left: 40, right: 20, top: 30, bottom: 30 },
     xAxis: { type: 'category', data: dates, axisLabel: { fontSize: 11, color: '#909399' }, axisLine: { lineStyle: { color: '#e4e7ed' } } },
     yAxis: { type: 'value', minInterval: 1, axisLabel: { fontSize: 11, color: '#909399' }, splitLine: { lineStyle: { color: '#f0f0f0' } } },
-    series: [{
-      name: labelMap[field] || field,
-      type: 'line',
-      data: values,
-      smooth: true,
-      symbol: 'circle',
-      symbolSize: 6,
-      lineStyle: { width: 2, color: colorMap[field] || '#409eff' },
-      areaStyle: { color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-        { offset: 0, color: (colorMap[field] || '#409eff') + '40' },
-        { offset: 1, color: (colorMap[field] || '#409eff') + '05' }
-      ]) },
-      itemStyle: { color: colorMap[field] || '#409eff' }
-    }]
+    series: [
+      {
+        name: '新增私有授权',
+        type: 'line',
+        data: licensesValues,
+        smooth: true,
+        symbol: 'circle',
+        symbolSize: 6,
+        lineStyle: { width: 2, color: '#409eff' },
+        areaStyle: { color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+          { offset: 0, color: '#409eff40' },
+          { offset: 1, color: '#409eff05' }
+        ]) },
+        itemStyle: { color: '#409eff' }
+      },
+      {
+        name: '新增租户授权',
+        type: 'line',
+        data: tenantsValues,
+        smooth: true,
+        symbol: 'circle',
+        symbolSize: 6,
+        lineStyle: { width: 2, color: '#67c23a' },
+        areaStyle: { color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+          { offset: 0, color: '#67c23a40' },
+          { offset: 1, color: '#67c23a05' }
+        ]) },
+        itemStyle: { color: '#67c23a' }
+      }
+    ]
   }, true)
 }
-
-watch(trendMetric, () => renderChart())
 
 const fetchRecentLogs = async () => {
   try {
@@ -349,7 +535,7 @@ const fetchRecentLogs = async () => {
 
 const fetchActivities = async () => {
   try {
-    const res = await adminApi.getDashboardActivities(10)
+    const res = await adminApi.getDashboardActivities(6)
     activities.value = res.data || []
   } catch (error) {
     console.error('获取活动动态失败', error)
@@ -357,19 +543,30 @@ const fetchActivities = async () => {
 }
 
 const handleResize = () => {
-  chartInstance?.resize()
+  trendChartInstance?.resize()
+  pieChartInstance?.resize()
 }
 
 const getActionLabel = (action: string) => {
   const map: Record<string, string> = {
-    verify: '验证', activate: '激活', renew: '续期', revoke: '撤销', expire: '过期'
+    verify: '验证', activate: '激活', renew: '续期', revoke: '撤销', expire: '过期',
+    generate: '生成', suspend: '暂停', resume: '恢复', register: '注册',
+    create: '创建', update: '更新', delete: '删除', login: '登录',
+    upgrade: '升级', reset_password: '重置密码', unlock_admin: '解锁管理员',
+    enable: '启用', disable: '禁用', publish: '发布', upload: '上传',
+    refund: '退款', close: '关闭', send: '发送', test: '测试'
   }
   return map[action] || action
 }
 
 const getActionType = (action: string) => {
   const map: Record<string, string> = {
-    verify: '', activate: 'success', renew: 'warning', revoke: 'danger', expire: 'info'
+    verify: '', activate: 'success', renew: 'warning', revoke: 'danger', expire: 'info',
+    generate: 'success', suspend: 'danger', resume: 'success', register: 'success',
+    create: 'success', update: 'warning', delete: 'danger', login: '',
+    upgrade: 'warning', reset_password: 'warning', unlock_admin: 'success',
+    enable: 'success', disable: 'danger', publish: '', upload: '',
+    refund: 'danger', close: 'info', send: '', test: 'info'
   }
   return map[action] || ''
 }
@@ -377,8 +574,10 @@ const getActionType = (action: string) => {
 const formatDate = (date: string) => new Date(date).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })
 
 onMounted(() => {
+  loadQuickActions()
   fetchStats()
   fetchTrend()
+  fetchLicenseTypeStats()
   fetchRecentLogs()
   fetchActivities()
   window.addEventListener('resize', handleResize)
@@ -386,7 +585,8 @@ onMounted(() => {
 
 onUnmounted(() => {
   window.removeEventListener('resize', handleResize)
-  chartInstance?.dispose()
+  trendChartInstance?.dispose()
+  pieChartInstance?.dispose()
 })
 </script>
 
@@ -406,60 +606,69 @@ onUnmounted(() => {
 .stat-card {
   background: #fff;
   border-radius: 12px;
-  padding: 24px;
+  padding: 20px;
   display: flex;
-  align-items: center;
-  gap: 16px;
+  align-items: flex-start;
+  gap: 14px;
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
   transition: all 0.3s;
-  cursor: pointer;
 
   &:hover {
-    transform: translateY(-4px);
+    transform: translateY(-3px);
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
   }
 
   .stat-icon {
-    width: 56px;
-    height: 56px;
+    width: 48px;
+    height: 48px;
     border-radius: 12px;
     background: linear-gradient(135deg, var(--accent) 0%, color-mix(in srgb, var(--accent) 70%, white) 100%);
     display: flex;
     align-items: center;
     justify-content: center;
     color: #fff;
+    flex-shrink: 0;
   }
 
   .stat-content {
     flex: 1;
+    min-width: 0;
 
     .stat-value {
-      font-size: 28px;
+      font-size: 26px;
       font-weight: 700;
       color: #303133;
       line-height: 1.2;
     }
 
     .stat-label {
-      font-size: 14px;
+      font-size: 13px;
       color: #909399;
-      margin-top: 4px;
-    }
-  }
-
-  .stat-trend {
-    font-size: 12px;
-    color: #909399;
-    display: flex;
-    align-items: center;
-    gap: 4px;
-
-    &.up {
-      color: #67c23a;
+      margin-top: 2px;
     }
 
-    &.down {
-      color: #f56c6c;
+    .stat-tags {
+      display: flex;
+      gap: 8px;
+      margin-top: 8px;
+      flex-wrap: wrap;
+
+      .tag-private, .tag-tenant {
+        font-size: 11px;
+        padding: 1px 8px;
+        border-radius: 10px;
+        white-space: nowrap;
+      }
+
+      .tag-private {
+        background: #ecf5ff;
+        color: #409eff;
+      }
+
+      .tag-tenant {
+        background: #f0f9eb;
+        color: #67c23a;
+      }
     }
   }
 }
@@ -496,115 +705,22 @@ onUnmounted(() => {
     font-weight: 600;
     color: #303133;
   }
-}
 
-.chart-content {
-  min-height: 200px;
-}
-
-.pie-chart {
-  .pie-item {
-    display: flex;
-    align-items: center;
-    gap: 16px;
-    margin-bottom: 20px;
-
-    &:last-child {
-      margin-bottom: 0;
-    }
-  }
-
-  .pie-bar {
-    flex: 1;
-    height: 24px;
-    background: #f5f7fa;
-    border-radius: 12px;
-    overflow: hidden;
-
-    .bar-fill {
-      height: 100%;
-      width: var(--percent);
-      background: linear-gradient(90deg, var(--color) 0%, color-mix(in srgb, var(--color) 70%, white) 100%);
-      border-radius: 12px;
-      transition: width 0.6s ease;
-    }
-  }
-
-  .pie-info {
-    width: 140px;
+  .header-actions {
     display: flex;
     align-items: center;
     gap: 8px;
-
-    .pie-label {
-      flex: 1;
-      font-size: 14px;
-      color: #606266;
-    }
-
-    .pie-value {
-      font-size: 16px;
-      font-weight: 600;
-      color: #303133;
-    }
-
-    .pie-percent {
-      font-size: 12px;
-      color: #909399;
-      width: 40px;
-      text-align: right;
-    }
   }
 }
 
-.overview-content {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 20px;
-}
-
-.trend-chart {
-  height: 260px;
+.pie-chart-container {
+  height: 300px;
   width: 100%;
 }
 
-.overview-item {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 16px;
-  background: #fafafa;
-  border-radius: 12px;
-  transition: all 0.3s;
-
-  &:hover {
-    background: #f5f7fa;
-  }
-
-  .overview-icon {
-    width: 48px;
-    height: 48px;
-    border-radius: 12px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: #fff;
-    font-size: 20px;
-  }
-
-  .overview-info {
-    .overview-label {
-      font-size: 13px;
-      color: #909399;
-    }
-
-    .overview-value {
-      font-size: 18px;
-      font-weight: 600;
-      color: #303133;
-      margin-top: 4px;
-    }
-  }
+.trend-chart {
+  height: 300px;
+  width: 100%;
 }
 
 .log-card {
@@ -629,6 +745,25 @@ onUnmounted(() => {
 
 .empty-state {
   padding: 40px 0;
+}
+
+.log-pagination {
+  display: flex;
+  justify-content: flex-end;
+  padding: 12px 16px;
+  border-top: 1px solid #f0f0f0;
+}
+
+.log-total {
+  font-size: 13px;
+  color: #909399;
+  font-weight: normal;
+}
+
+.log-header-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 
 .bottom-section {
@@ -752,38 +887,67 @@ onUnmounted(() => {
   }
 }
 
+/* Quick Actions Settings Dialog */
+.quick-settings-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+
+.quick-settings-item {
+  padding: 4px 0;
+}
+
+.quick-settings-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.quick-settings-icon {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  flex-shrink: 0;
+}
+
 /* ====== 响应式适配 ====== */
 @media screen and (max-width: 768px) {
   .stat-card {
-    padding: 16px;
+    padding: 14px;
 
     .stat-icon {
-      width: 44px;
-      height: 44px;
+      width: 40px;
+      height: 40px;
     }
 
     .stat-content .stat-value {
-      font-size: 22px;
+      font-size: 20px;
     }
-  }
 
-  .overview-content {
-    grid-template-columns: 1fr;
+    .stat-content .stat-tags {
+      gap: 4px;
+    }
   }
 
   .quick-actions {
     grid-template-columns: repeat(2, 1fr);
   }
 
-  .pie-chart .pie-info {
-    width: 110px;
-
-    .pie-value { font-size: 14px; }
-    .pie-percent { width: 32px; }
+  .pie-chart-container {
+    height: 260px;
   }
 
   .trend-chart {
-    height: 200px;
+    height: 260px;
+  }
+
+  .quick-settings-grid {
+    grid-template-columns: 1fr;
   }
 }
 
@@ -802,8 +966,9 @@ onUnmounted(() => {
     }
   }
 
-  .stat-card .stat-trend {
-    display: none;
+  .stat-card .stat-content .stat-tags {
+    flex-direction: column;
+    gap: 2px;
   }
 }
 </style>

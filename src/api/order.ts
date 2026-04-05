@@ -122,10 +122,6 @@ export const orderApi = {
   getPendingCancelOrders: (params?: { page?: number; pageSize?: number }) =>
     api.get<Order[]>(API_ENDPOINTS.ORDERS.PENDING_CANCEL, { params }),
 
-  // 获取待审核的取消订单数量
-  getPendingCancelCount: () =>
-    api.get<{ count: number }>(API_ENDPOINTS.ORDERS.PENDING_CANCEL_COUNT),
-
   // 审核取消订单申请
   cancelAudit: (id: string, params: OrderCancelAuditParams) =>
     api.post<{ success: boolean; message: string }>(API_ENDPOINTS.ORDERS.CANCEL_AUDIT(id), params),

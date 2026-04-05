@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { PackageService } from '../../services/PackageService';
 
+import { log } from '../../config/logger';
 export class PackageController {
   private packageService: PackageService;
 
@@ -28,7 +29,7 @@ export class PackageController {
         data: result
       });
     } catch (error: any) {
-      console.error('获取套餐列表失败:', error);
+      log.error('获取套餐列表失败:', error);
       res.status(500).json({
         success: false,
         message: error.message || '获取套餐列表失败'
@@ -50,7 +51,7 @@ export class PackageController {
         data: pkg
       });
     } catch (error: any) {
-      console.error('获取套餐详情失败:', error);
+      log.error('获取套餐详情失败:', error);
       res.status(404).json({
         success: false,
         message: error.message || '套餐不存在'
@@ -98,7 +99,7 @@ export class PackageController {
         message: '创建成功'
       });
     } catch (error: any) {
-      console.error('创建套餐失败:', error);
+      log.error('创建套餐失败:', error);
       res.status(400).json({
         success: false,
         message: error.message || '创建套餐失败'
@@ -139,7 +140,7 @@ export class PackageController {
         message: '更新成功'
       });
     } catch (error: any) {
-      console.error('更新套餐失败:', error);
+      log.error('更新套餐失败:', error);
       res.status(400).json({
         success: false,
         message: error.message || '更新套餐失败'
@@ -161,7 +162,7 @@ export class PackageController {
         message: result.message
       });
     } catch (error: any) {
-      console.error('删除套餐失败:', error);
+      log.error('删除套餐失败:', error);
       res.status(400).json({
         success: false,
         message: error.message || '删除套餐失败'
@@ -184,7 +185,7 @@ export class PackageController {
         message: pkg.status ? '已启用' : '已禁用'
       });
     } catch (error: any) {
-      console.error('切换套餐状态失败:', error);
+      log.error('切换套餐状态失败:', error);
       res.status(400).json({
         success: false,
         message: error.message || '操作失败'
@@ -208,7 +209,7 @@ export class PackageController {
         data: packages
       });
     } catch (error: any) {
-      console.error('获取推荐套餐失败:', error);
+      log.error('获取推荐套餐失败:', error);
       res.status(500).json({
         success: false,
         message: error.message || '获取推荐套餐失败'
@@ -232,7 +233,7 @@ export class PackageController {
         data: packages
       });
     } catch (error: any) {
-      console.error('获取可见套餐失败:', error);
+      log.error('获取可见套餐失败:', error);
       res.status(500).json({
         success: false,
         message: error.message || '获取可见套餐失败'

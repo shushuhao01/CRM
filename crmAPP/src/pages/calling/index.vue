@@ -234,18 +234,59 @@ const stopDurationTimer = () => {
   }
 }
 
-// 切换静音
+// 切换静音（调用系统 AudioManager）
 const toggleMute = () => {
-  isMuted.value = !isMuted.value
+  const newState = !isMuted.value
+
+  // #ifdef APP-PLUS
+  try {
+    plus.android.importClass('android.content.Context')
+    plus.android.importClass('android.media.AudioManager')
+    const activity: any = plus.android.runtimeMainActivity()
+    const audioManager: any = activity.getSystemService('audio')
+    audioManager.setMicrophoneMute(newState)
+    isMuted.value = newState
+    console.log('[Calling] 静音切换成功:', newState)
+  } catch (e) {
+    console.error('[Calling] 静音切换失败:', e)
+    // 即使原生调用失败，也更新UI状态以保证用户体验
+    isMuted.value = newState
+  }
+  // #endif
+
+  // #ifndef APP-PLUS
+  isMuted.value = newState
+  // #endif
+
   uni.showToast({
     title: isMuted.value ? '已静音' : '已取消静音',
     icon: 'none'
   })
 }
 
-// 切换扬声器/免提
+// 切换扬声器/免提（调用系统 AudioManager）
 const toggleSpeaker = () => {
-  isSpeaker.value = !isSpeaker.value
+  const newState = !isSpeaker.value
+
+  // #ifdef APP-PLUS
+  try {
+    plus.android.importClass('android.content.Context')
+    plus.android.importClass('android.media.AudioManager')
+    const activity: any = plus.android.runtimeMainActivity()
+    const audioManager: any = activity.getSystemService('audio')
+    audioManager.setSpeakerphoneOn(newState)
+    isSpeaker.value = newState
+    console.log('[Calling] 免提切换成功:', newState)
+  } catch (e) {
+    console.error('[Calling] 免提切换失败:', e)
+    isSpeaker.value = newState
+  }
+  // #endif
+
+  // #ifndef APP-PLUS
+  isSpeaker.value = newState
+  // #endif
+
   uni.showToast({
     title: isSpeaker.value ? '已开启免提' : '已关闭免提',
     icon: 'none'

@@ -197,11 +197,11 @@ const getPackageType = (p: string) => {
   return map[p] || 'info'
 }
 const getLicenseStatusType = (s: string) => {
-  const map: Record<string, string> = { active: 'success', pending: 'warning', expired: 'info', suspended: 'danger' }
+  const map: Record<string, string> = { active: 'success', pending: 'warning', paid: 'warning', expired: 'info', suspended: 'danger' }
   return map[s] || 'info'
 }
 const getLicenseStatusText = (s: string) => {
-  const map: Record<string, string> = { active: '已激活', pending: '待激活', expired: '已过期', suspended: '已暂停' }
+  const map: Record<string, string> = { active: '已激活', pending: '待激活', paid: '已付款待激活', expired: '已过期', suspended: '已暂停' }
   return map[s] || s
 }
 const getActionType = (a: string) => {

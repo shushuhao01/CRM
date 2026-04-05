@@ -61,4 +61,10 @@ export class License {
 
   @UpdateDateColumn({ name: 'updated_at' })
   updatedAt!: Date;
+
+  @Column({ name: 'deleted_at', type: 'datetime', nullable: true })
+  deletedAt?: Date | null;
+
+  @Column({ name: 'deleted_by', type: 'varchar', length: 36, nullable: true })
+  deletedBy?: string | null;
 }

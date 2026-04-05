@@ -8,6 +8,7 @@ import { LicenseLog } from '../../entities/LicenseLog';
 import { v4 as uuidv4 } from 'uuid';
 import crypto from 'crypto';
 
+import { log as logger } from '../../config/logger';
 const router = Router();
 
 // 生成授权码（私有部署）
@@ -34,7 +35,7 @@ router.get('/stats', async (req: Request, res: Response) => {
         SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending,
         SUM(CASE WHEN status = 'expired' THEN 1 ELSE 0 END) as expired,
         SUM(CASE WHEN status = 'revoked' THEN 1 ELSE 0 END) as revoked
-       FROM licenses`
+       FROM licenses WHERE deleted_at IS NULL`
     );
     const row = result[0] || {};
     res.json({
@@ -48,7 +49,7 @@ router.get('/stats', async (req: Request, res: Response) => {
       }
     });
   } catch (error: any) {
-    console.error('[Admin Licenses] Get stats failed:', error);
+    logger.error('[Admin Licenses] Get stats failed:', error);
     res.status(500).json({ success: false, message: '获取统计数据失败' });
   }
 });
@@ -63,6 +64,9 @@ router.get('/', async (req: Request, res: Response) => {
 
     const licenseRepo = AppDataSource.getRepository(License);
     const queryBuilder = licenseRepo.createQueryBuilder('license');
+
+    // 排除已软删除的记录
+    queryBuilder.andWhere('license.deletedAt IS NULL');
 
     if (status) {
       queryBuilder.andWhere('license.status = :status', { status });
@@ -104,7 +108,7 @@ router.get('/', async (req: Request, res: Response) => {
       data: { list: listWithUserCount, total, page: pageNum, pageSize: pageSizeNum }
     });
   } catch (error: any) {
-    console.error('[Admin Licenses] Get list failed:', error);
+    logger.error('[Admin Licenses] Get list failed:', error);
     res.status(500).json({ success: false, message: '获取授权列表失败' });
   }
 });
@@ -142,7 +146,7 @@ router.get('/:id', async (req: Request, res: Response) => {
           }
         }
       } catch (e) {
-        console.warn('[Admin Licenses] Query package info failed:', e);
+        logger.warn('[Admin Licenses] Query package info failed:', e);
       }
     }
 
@@ -212,7 +216,7 @@ router.get('/:id', async (req: Request, res: Response) => {
 
     res.json({ success: true, data: { ...license, features: resolvedFeatures, packageInfo, userCount, createdByName } });
   } catch (error: any) {
-    console.error('[Admin Licenses] Get detail failed:', error);
+    logger.error('[Admin Licenses] Get detail failed:', error);
     res.status(500).json({ success: false, message: '获取授权详情失败' });
   }
 });
@@ -264,7 +268,7 @@ router.post('/', async (req: Request, res: Response) => {
 
     res.json({ success: true, data: license, message: '授权创建成功' });
   } catch (error: any) {
-    console.error('[Admin Licenses] Create failed:', error);
+    logger.error('[Admin Licenses] Create failed:', error);
     res.status(500).json({ success: false, message: '创建授权失败' });
   }
 });
@@ -323,7 +327,7 @@ router.put('/:id', async (req: Request, res: Response) => {
 
     res.json({ success: true, data: license, message: regenerateKey ? '授权码已重新生成' : '授权更新成功' });
   } catch (error: any) {
-    console.error('[Admin Licenses] Update failed:', error);
+    logger.error('[Admin Licenses] Update failed:', error);
     res.status(500).json({ success: false, message: '更新授权失败' });
   }
 });
@@ -357,7 +361,7 @@ router.post('/:id/revoke', async (req: Request, res: Response) => {
 
     res.json({ success: true, message: '授权已吊销' });
   } catch (error: any) {
-    console.error('[Admin Licenses] Revoke failed:', error);
+    logger.error('[Admin Licenses] Revoke failed:', error);
     res.status(500).json({ success: false, message: '吊销授权失败' });
   }
 });
@@ -398,12 +402,12 @@ router.post('/:id/renew', async (req: Request, res: Response) => {
 
     res.json({ success: true, data: license, message: '授权续期成功' });
   } catch (error: any) {
-    console.error('[Admin Licenses] Renew failed:', error);
+    logger.error('[Admin Licenses] Renew failed:', error);
     res.status(500).json({ success: false, message: '续期授权失败' });
   }
 });
 
-// 删除授权
+// 删除授权（软删除，移入回收站）
 router.delete('/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
@@ -414,11 +418,15 @@ router.delete('/:id', async (req: Request, res: Response) => {
       return res.status(404).json({ success: false, message: '授权不存在' });
     }
 
-    await licenseRepo.remove(license);
+    // 软删除：设置 deleted_at 时间戳
+    await AppDataSource.query(
+      `UPDATE licenses SET deleted_at = NOW(), deleted_by = ? WHERE id = ?`,
+      [(req as any).adminUser?.id || null, id]
+    );
 
-    res.json({ success: true, message: '授权已删除' });
+    res.json({ success: true, message: '已移入回收站' });
   } catch (error: any) {
-    console.error('[Admin Licenses] Delete failed:', error);
+    logger.error('[Admin Licenses] Soft delete failed:', error);
     res.status(500).json({ success: false, message: '删除授权失败' });
   }
 });
@@ -453,7 +461,7 @@ router.get('/:id/logs', async (req: Request, res: Response) => {
       data: { list, total, page: pageNum, pageSize: pageSizeNum }
     });
   } catch (error: any) {
-    console.error('[Admin Licenses] Get logs failed:', error);
+    logger.error('[Admin Licenses] Get logs failed:', error);
     res.status(500).json({ success: false, message: '获取日志失败' });
   }
 });
@@ -481,7 +489,7 @@ router.delete('/:id/logs', async (req: Request, res: Response) => {
       message: `已清空 ${deletedCount} 条操作日志`
     });
   } catch (error: any) {
-    console.error('[Admin Licenses] Clear logs failed:', error);
+    logger.error('[Admin Licenses] Clear logs failed:', error);
     res.status(500).json({ success: false, message: '清空日志失败' });
   }
 });
@@ -513,7 +521,7 @@ router.get('/:id/bills', async (req: Request, res: Response) => {
       }
     });
   } catch (error: any) {
-    console.error('[Admin Licenses] Get bills failed:', error);
+    logger.error('[Admin Licenses] Get bills failed:', error);
     res.status(500).json({ success: false, message: '获取账单记录失败' });
   }
 });

@@ -40,6 +40,9 @@
             value-format="YYYY-MM-DD" style="width: 240px" />
         </el-form-item>
         <el-form-item>
+          <el-input v-model="searchForm.keyword" placeholder="搜索内容/操作人/企业/客户/类型" clearable style="width: 240px" />
+        </el-form-item>
+        <el-form-item>
           <el-button type="primary" @click="handleSearch"><el-icon><Search /></el-icon>搜索</el-button>
           <el-button @click="handleReset">重置</el-button>
           <el-button @click="handleExport"><el-icon><Download /></el-icon>导出</el-button>
@@ -135,7 +138,7 @@
           v-model:current-page="pagination.page"
           v-model:page-size="pagination.pageSize"
           :total="pagination.total"
-          :page-sizes="[20, 50, 100]"
+          :page-sizes="[10, 20, 50, 100]"
           layout="total, sizes, prev, pager, next"
           @size-change="fetchData"
           @current-change="fetchData"
@@ -160,12 +163,13 @@ const searchForm = reactive({
   adminName: '',
   module: '',
   action: '',
+  keyword: '',
   dateRange: null as string[] | null
 })
 
 const pagination = reactive({
   page: 1,
-  pageSize: 20,
+  pageSize: 10,
   total: 0
 })
 
@@ -278,6 +282,7 @@ const fetchData = async () => {
     if (searchForm.adminName) params.adminName = searchForm.adminName
     if (searchForm.module) params.module = searchForm.module
     if (searchForm.action) params.action = searchForm.action
+    if (searchForm.keyword) params.keyword = searchForm.keyword
     if (searchForm.dateRange?.[0]) params.startDate = searchForm.dateRange[0]
     if (searchForm.dateRange?.[1]) params.endDate = searchForm.dateRange[1]
 
@@ -313,6 +318,7 @@ const handleReset = () => {
   searchForm.adminName = ''
   searchForm.module = ''
   searchForm.action = ''
+  searchForm.keyword = ''
   searchForm.dateRange = null
   handleSearch()
 }

@@ -55,6 +55,9 @@
           <StorageModeSwitch />
           -->
 
+          <!-- 版本更新提醒 -->
+          <VersionUpdatePanel />
+
           <!-- 帮助中心 -->
           <HelpCenter />
 
@@ -312,6 +315,7 @@ import PersonalSettingsModal from '@/components/PersonalSettingsModal.vue'
 import StorageModeSwitch from '@/components/StorageModeSwitch.vue'
 import HelpCenter from '@/components/HelpCenter.vue'
 import MessageBell from '@/components/MessageBell.vue'
+import VersionUpdatePanel from '@/components/VersionUpdatePanel.vue'
 import AnnouncementCarousel from '@/components/AnnouncementCarousel.vue'
 import { useResponsive, debounce } from '@/utils/responsive'
 import { passwordService } from '@/services/passwordService'

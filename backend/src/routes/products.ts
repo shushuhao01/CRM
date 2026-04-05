@@ -3,6 +3,7 @@ import { authenticateToken } from '../middleware/auth';
 import { ProductController } from '../controllers/ProductController';
 import { getTenantRepo } from '../utils/tenantRepo';
 
+import { log } from '../config/logger';
 const router = Router();
 
 /**
@@ -237,7 +238,7 @@ router.get('/sales/statistics', async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('获取销售统计失败:', error);
+    log.error('获取销售统计失败:', error);
     res.status(500).json({
       success: false,
       message: '获取销售统计失败'
@@ -323,7 +324,7 @@ router.get('/sales/trend', async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('获取销售趋势失败:', error);
+    log.error('获取销售趋势失败:', error);
     res.status(500).json({
       success: false,
       message: '获取销售趋势失败'
@@ -411,7 +412,7 @@ router.get('/sales/category', async (req, res) => {
       data: result
     });
   } catch (error) {
-    console.error('获取分类销售数据失败:', error);
+    log.error('获取分类销售数据失败:', error);
     res.status(500).json({
       success: false,
       message: '获取分类销售数据失败'
@@ -503,7 +504,7 @@ router.get('/sales/top', async (req, res) => {
       data: result
     });
   } catch (error) {
-    console.error('获取热销产品排行失败:', error);
+    log.error('获取热销产品排行失败:', error);
     res.status(500).json({
       success: false,
       message: '获取热销产品排行失败'
@@ -562,7 +563,7 @@ router.get('/inventory/warning', async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('获取库存预警数据失败:', error);
+    log.error('获取库存预警数据失败:', error);
     res.status(500).json({
       success: false,
       message: '获取库存预警数据失败'

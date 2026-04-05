@@ -6,6 +6,7 @@
  */
 import { AppDataSource } from '../config/database';
 
+import { log } from '../config/logger';
 export interface TenantInfo {
   id: string;
   name: string;
@@ -70,7 +71,7 @@ class TenantService {
         features: tenant.features ? JSON.parse(tenant.features) : null
       };
     } catch (error) {
-      console.error('[TenantService] 获取租户信息失败:', error);
+      log.error('[TenantService] 获取租户信息失败:', error);
       return null;
     }
   }
@@ -137,7 +138,7 @@ class TenantService {
         max: tenant.maxUsers
       };
     } catch (error) {
-      console.error('[TenantService] 检查用户数限制失败:', error);
+      log.error('[TenantService] 检查用户数限制失败:', error);
       return {
         allowed: true, // 出错时默认允许
         current: 0,
@@ -182,7 +183,7 @@ class TenantService {
         max: maxStorageMb
       };
     } catch (error) {
-      console.error('[TenantService] 检查存储空间失败:', error);
+      log.error('[TenantService] 检查存储空间失败:', error);
       return {
         allowed: true,
         current: 0,
@@ -219,7 +220,7 @@ class TenantService {
 
       return Math.round(totalSizeMb * 100) / 100; // 保留2位小数
     } catch (error) {
-      console.error('[TenantService] 计算存储空间失败:', error);
+      log.error('[TenantService] 计算存储空间失败:', error);
       return 0;
     }
   }
@@ -235,7 +236,7 @@ class TenantService {
       );
       return true;
     } catch (error) {
-      console.error('[TenantService] 更新用户数限制失败:', error);
+      log.error('[TenantService] 更新用户数限制失败:', error);
       return false;
     }
   }
@@ -252,7 +253,7 @@ class TenantService {
       );
       return true;
     } catch (error) {
-      console.error('[TenantService] 更新存储空间限制失败:', error);
+      log.error('[TenantService] 更新存储空间限制失败:', error);
       return false;
     }
   }
@@ -320,7 +321,7 @@ class TenantService {
 
       return tenant.features.includes(featureCode);
     } catch (error) {
-      console.error('[TenantService] 检查功能模块失败:', error);
+      log.error('[TenantService] 检查功能模块失败:', error);
       return true;
     }
   }

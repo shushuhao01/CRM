@@ -334,6 +334,15 @@
       <template #footer>
         <div class="dialog-footer">
           <el-button @click="showEditDialog = false" round>取消</el-button>
+          <el-button
+            v-if="editingKey === 'storage' && storageForm.storageType === 'oss'"
+            type="warning"
+            :loading="testingOSS"
+            @click="handleTestOSSConnection"
+            round
+          >
+            <el-icon><Connection /></el-icon> 测试OSS连接
+          </el-button>
           <el-button type="primary" :loading="editSaving" @click="saveEditConfig" round>
             <el-icon><Check /></el-icon> 保存配置
           </el-button>
@@ -391,7 +400,7 @@ import { ref, reactive, computed, onMounted, type Component, markRaw } from 'vue
 import { ElMessage } from 'element-plus'
 import {
   Promotion, CircleCheck, Unlock, Refresh, InfoFilled, Lock, Document,
-  Edit, Check, Warning,
+  Edit, Check, Warning, Connection,
   Key, FolderOpened, Phone, Message, ChatDotRound
 } from '@element-plus/icons-vue'
 import request from '@/api/request'
@@ -417,6 +426,7 @@ const loading = ref(false)
 const syncing = ref(false)
 const submitting = ref(false)
 const editSaving = ref(false)
+const testingOSS = ref(false)
 const showEditDialog = ref(false)
 const showConfirmDialog = ref(false)
 const confirmAction = ref<'enable' | 'disable'>('enable')
@@ -537,6 +547,35 @@ const openEditDialog = (item: DistributeItem) => {
   editingItem.value = item
   editingKey.value = item.key
   showEditDialog.value = true
+}
+
+const handleTestOSSConnection = async () => {
+  const { accessKey, secretKey, bucketName, region } = storageForm
+  if (!accessKey || !secretKey || !bucketName || !region) {
+    ElMessage.warning('请先填写完整的OSS配置（AccessKey ID、AccessKey Secret、Bucket名称、地域）')
+    return
+  }
+  testingOSS.value = true
+  try {
+    const res = await request.post('/system-config/storage/test-oss', {
+      accessKey: storageForm.accessKey,
+      secretKey: storageForm.secretKey,
+      bucketName: storageForm.bucketName,
+      region: storageForm.region,
+      customDomain: storageForm.customDomain || ''
+    }) as any
+    if (res.success) {
+      ElMessage.success('OSS连接测试成功！Bucket可正常访问')
+    } else {
+      ElMessage.error(res.message || 'OSS连接测试失败')
+    }
+  } catch (error: any) {
+    const msg = error.response?.data?.message || error.message || 'OSS连接测试失败，请检查配置'
+    ElMessage.error(msg)
+    console.error('[配置下发] OSS连接测试失败:', error)
+  } finally {
+    testingOSS.value = false
+  }
 }
 
 const saveEditConfig = async () => {

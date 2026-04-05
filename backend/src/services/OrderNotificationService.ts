@@ -14,6 +14,7 @@ import { User } from '../entities/User';
 import { NotificationChannel, NotificationLog } from '../entities/NotificationChannel';
 import { v4 as uuidv4 } from 'uuid';
 
+import { log as logger } from '../config/logger';
 // 消息类型定义
 export const OrderMessageTypes = {
   // 订单生命周期
@@ -101,16 +102,16 @@ class OrderNotificationService {
     }
   ): Promise<boolean> {
     try {
-      console.log(`[OrderNotification] 📨 准备发送系统消息: type=${type}, targetUserId=${targetUserId}`);
+      logger.info(`[OrderNotification] 📨 准备发送系统消息: type=${type}, targetUserId=${targetUserId}`);
 
       if (!targetUserId) {
-        console.warn('[OrderNotification] ⚠️ 目标用户ID为空，跳过发送');
+        logger.warn('[OrderNotification] ⚠️ 目标用户ID为空，跳过发送');
         return false;
       }
 
       const dataSource = getDataSource();
       if (!dataSource) {
-        console.error('[OrderNotification] ❌ 数据库未连接');
+        logger.error('[OrderNotification] ❌ 数据库未连接');
         return false;
       }
 
@@ -133,7 +134,7 @@ class OrderNotificationService {
       });
 
       await messageRepo.save(message);
-      console.log(`[OrderNotification] ✅ 系统消息已保存: id=${messageId}, type=${type} -> ${targetUserId}`);
+      logger.info(`[OrderNotification] ✅ 系统消息已保存: id=${messageId}, type=${type} -> ${targetUserId}`);
 
       // 🔥 通过WebSocket实时推送
       if (global.webSocketService) {
@@ -149,20 +150,20 @@ class OrderNotificationService {
             relatedType: message.relatedType,
             actionUrl: message.actionUrl
           }, { userId: targetUserId });
-          console.log(`[OrderNotification] 🔌 WebSocket推送: ${title} -> 用户 ${targetUserId}`);
+          logger.info(`[OrderNotification] 🔌 WebSocket推送: ${title} -> 用户 ${targetUserId}`);
         } else {
-          console.warn(`[OrderNotification] ⚠️ 无效的用户ID: ${targetUserId}，跳过WebSocket推送`);
+          logger.warn(`[OrderNotification] ⚠️ 无效的用户ID: ${targetUserId}，跳过WebSocket推送`);
         }
       }
 
       // 🔥 同时发送到企业微信机器人
       this.sendToWechatRobot(type, title, content).catch(err => {
-        console.warn('[OrderNotification] 企业微信推送失败:', err.message);
+        logger.warn('[OrderNotification] 企业微信推送失败:', err.message);
       });
 
       return true;
     } catch (error) {
-      console.error('[OrderNotification] ❌ 发送消息失败:', error);
+      logger.error('[OrderNotification] ❌ 发送消息失败:', error);
       return false;
     }
   }
@@ -172,11 +173,11 @@ class OrderNotificationService {
    */
   private async sendToAllChannels(type: string, title: string, content: string): Promise<void> {
     try {
-      console.log(`[OrderNotification] 🔔 开始发送到外部渠道: type=${type}, title=${title}`);
+      logger.info(`[OrderNotification] 🔔 开始发送到外部渠道: type=${type}, title=${title}`);
 
       const dataSource = getDataSource();
       if (!dataSource) {
-        console.error('[OrderNotification] ❌ 数据库未连接，无法发送到外部渠道');
+        logger.error('[OrderNotification] ❌ 数据库未连接，无法发送到外部渠道');
         return;
       }
 
@@ -187,29 +188,29 @@ class OrderNotificationService {
         where: { isEnabled: 1 }
       });
 
-      console.log(`[OrderNotification] 📋 找到 ${channels.length} 个启用的通知渠道`);
+      logger.info(`[OrderNotification] 📋 找到 ${channels.length} 个启用的通知渠道`);
 
       if (channels.length === 0) {
-        console.log('[OrderNotification] ⚠️ 未配置任何通知渠道');
+        logger.info('[OrderNotification] ⚠️ 未配置任何通知渠道');
         return;
       }
 
       // 并行发送到所有渠道
       const sendPromises = channels.map(channel => {
-        console.log(`[OrderNotification] 📤 检查渠道: ${channel.name} (${channel.channelType}), messageTypes=${JSON.stringify(channel.messageTypes)}`);
+        logger.info(`[OrderNotification] 📤 检查渠道: ${channel.name} (${channel.channelType}), messageTypes=${JSON.stringify(channel.messageTypes)}`);
 
         // 检查消息类型是否在配置的类型列表中
         // 🔥 修复：如果 messageTypes 为空或未配置，默认发送所有类型
         if (channel.messageTypes && Array.isArray(channel.messageTypes) && channel.messageTypes.length > 0) {
           if (!channel.messageTypes.includes(type) && !channel.messageTypes.includes('all')) {
-            console.log(`[OrderNotification] ⏭️ 跳过渠道 ${channel.name}: 消息类型 ${type} 不在配置列表中 (配置: ${channel.messageTypes.join(', ')})`);
+            logger.info(`[OrderNotification] ⏭️ 跳过渠道 ${channel.name}: 消息类型 ${type} 不在配置列表中 (配置: ${channel.messageTypes.join(', ')})`);
             return Promise.resolve();
           }
         } else {
-          console.log(`[OrderNotification] 📤 渠道 ${channel.name} 未配置消息类型过滤，发送所有类型`);
+          logger.info(`[OrderNotification] 📤 渠道 ${channel.name} 未配置消息类型过滤，发送所有类型`);
         }
 
-        console.log(`[OrderNotification] ✅ 准备发送到渠道: ${channel.name} (${channel.channelType})`);
+        logger.info(`[OrderNotification] ✅ 准备发送到渠道: ${channel.name} (${channel.channelType})`);
 
         switch (channel.channelType) {
           case 'wechat_work':
@@ -223,15 +224,15 @@ class OrderNotificationService {
           case 'wechat_mp':
             return this.sendToWechatMP(channel, type, title, content);
           default:
-            console.warn(`[OrderNotification] ⚠️ 不支持的渠道类型: ${channel.channelType}`);
+            logger.warn(`[OrderNotification] ⚠️ 不支持的渠道类型: ${channel.channelType}`);
             return Promise.resolve();
         }
       });
 
       const results = await Promise.allSettled(sendPromises);
-      console.log(`[OrderNotification] 📊 外部渠道发送完成: ${results.filter(r => r.status === 'fulfilled').length}/${results.length} 成功`);
+      logger.info(`[OrderNotification] 📊 外部渠道发送完成: ${results.filter(r => r.status === 'fulfilled').length}/${results.length} 成功`);
     } catch (error) {
-      console.error('[OrderNotification] ❌ 发送到通知渠道失败:', error);
+      logger.error('[OrderNotification] ❌ 发送到通知渠道失败:', error);
     }
   }
 
@@ -243,7 +244,7 @@ class OrderNotificationService {
     const webhook = channel.config?.webhook;
 
     if (!webhook) {
-      console.warn(`[OrderNotification] 企业微信渠道 ${channel.name} 未配置webhook`);
+      logger.warn(`[OrderNotification] 企业微信渠道 ${channel.name} 未配置webhook`);
       return;
     }
 
@@ -279,12 +280,12 @@ class OrderNotificationService {
       }
 
       if (result.errcode === 0) {
-        console.log(`[OrderNotification] ✅ 企业微信推送成功: ${channel.name}`);
+        logger.info(`[OrderNotification] ✅ 企业微信推送成功: ${channel.name}`);
       } else {
-        console.warn(`[OrderNotification] ⚠️ 企业微信推送失败: ${result.errmsg}`);
+        logger.warn(`[OrderNotification] ⚠️ 企业微信推送失败: ${result.errmsg}`);
       }
     } catch (error: any) {
-      console.error(`[OrderNotification] ❌ 企业微信请求失败:`, error.message);
+      logger.error(`[OrderNotification] ❌ 企业微信请求失败:`, error.message);
     }
   }
 
@@ -297,7 +298,7 @@ class OrderNotificationService {
     const secret = channel.config?.secret;
 
     if (!webhook) {
-      console.warn(`[OrderNotification] 钉钉渠道 ${channel.name} 未配置webhook`);
+      logger.warn(`[OrderNotification] 钉钉渠道 ${channel.name} 未配置webhook`);
       return;
     }
 
@@ -345,12 +346,12 @@ class OrderNotificationService {
       }
 
       if (result.errcode === 0) {
-        console.log(`[OrderNotification] ✅ 钉钉推送成功: ${channel.name}`);
+        logger.info(`[OrderNotification] ✅ 钉钉推送成功: ${channel.name}`);
       } else {
-        console.warn(`[OrderNotification] ⚠️ 钉钉推送失败: ${result.errmsg}`);
+        logger.warn(`[OrderNotification] ⚠️ 钉钉推送失败: ${result.errmsg}`);
       }
     } catch (error: any) {
-      console.error(`[OrderNotification] ❌ 钉钉请求失败:`, error.message);
+      logger.error(`[OrderNotification] ❌ 钉钉请求失败:`, error.message);
     }
   }
 
@@ -362,7 +363,7 @@ class OrderNotificationService {
     const { host, port, user, pass, from, to } = channel.config || {};
 
     if (!host || !user || !pass || !to) {
-      console.warn(`[OrderNotification] 邮件渠道 ${channel.name} 配置不完整`);
+      logger.warn(`[OrderNotification] 邮件渠道 ${channel.name} 配置不完整`);
       return;
     }
 
@@ -400,9 +401,9 @@ class OrderNotificationService {
         await logRepo.save(log);
       }
 
-      console.log(`[OrderNotification] ✅ 邮件发送成功: ${channel.name}`);
+      logger.info(`[OrderNotification] ✅ 邮件发送成功: ${channel.name}`);
     } catch (error: any) {
-      console.error(`[OrderNotification] ❌ 邮件发送失败:`, error.message);
+      logger.error(`[OrderNotification] ❌ 邮件发送失败:`, error.message);
 
       if (logRepo) {
         const log = logRepo.create({
@@ -429,7 +430,7 @@ class OrderNotificationService {
     const { apiUrl, apiKey, phones, templateId } = channel.config || {};
 
     if (!apiUrl || !apiKey || !phones) {
-      console.warn(`[OrderNotification] 短信渠道 ${channel.name} 配置不完整`);
+      logger.warn(`[OrderNotification] 短信渠道 ${channel.name} 配置不完整`);
       return;
     }
 
@@ -465,9 +466,9 @@ class OrderNotificationService {
         await logRepo.save(log);
       }
 
-      console.log(`[OrderNotification] ✅ 短信发送成功: ${channel.name}`);
+      logger.info(`[OrderNotification] ✅ 短信发送成功: ${channel.name}`);
     } catch (error: any) {
-      console.error(`[OrderNotification] ❌ 短信发送失败:`, error.message);
+      logger.error(`[OrderNotification] ❌ 短信发送失败:`, error.message);
     }
   }
 
@@ -479,7 +480,7 @@ class OrderNotificationService {
     const { appId, appSecret, templateId, openIds } = channel.config || {};
 
     if (!appId || !appSecret || !templateId || !openIds) {
-      console.warn(`[OrderNotification] 微信公众号渠道 ${channel.name} 配置不完整`);
+      logger.warn(`[OrderNotification] 微信公众号渠道 ${channel.name} 配置不完整`);
       return;
     }
 
@@ -535,9 +536,9 @@ class OrderNotificationService {
         }
       }
 
-      console.log(`[OrderNotification] ✅ 微信公众号推送成功: ${channel.name}`);
+      logger.info(`[OrderNotification] ✅ 微信公众号推送成功: ${channel.name}`);
     } catch (error: any) {
-      console.error(`[OrderNotification] ❌ 微信公众号推送失败:`, error.message);
+      logger.error(`[OrderNotification] ❌ 微信公众号推送失败:`, error.message);
     }
   }
 
@@ -566,21 +567,21 @@ class OrderNotificationService {
     }
   ): Promise<number> {
     try {
-      console.log(`[OrderNotification] 📤 sendBatchMessages 被调用: type=${type}, targetUserIds=${targetUserIds.length}个`);
+      logger.info(`[OrderNotification] 📤 sendBatchMessages 被调用: type=${type}, targetUserIds=${targetUserIds.length}个`);
 
       // 🔥 如果没有目标用户，直接返回但仍然发送到外部渠道
       if (!targetUserIds || targetUserIds.length === 0) {
-        console.warn('[OrderNotification] ⚠️ 没有目标用户，跳过系统消息，但仍发送到外部渠道');
+        logger.warn('[OrderNotification] ⚠️ 没有目标用户，跳过系统消息，但仍发送到外部渠道');
         // 发送到外部渠道
         this.sendToAllChannels(type, title, content).catch(err => {
-          console.warn('[OrderNotification] 外部渠道推送失败:', err.message);
+          logger.warn('[OrderNotification] 外部渠道推送失败:', err.message);
         });
         return 0;
       }
 
       const dataSource = getDataSource();
       if (!dataSource) {
-        console.error('[OrderNotification] 数据库未连接');
+        logger.error('[OrderNotification] 数据库未连接');
         return 0;
       }
 
@@ -605,7 +606,7 @@ class OrderNotificationService {
       });
 
       await messageRepo.save(message);
-      console.log(`[OrderNotification] ✅ 创建1条系统消息: ${type}, 目标用户: ${targetUserIds.length}个`);
+      logger.info(`[OrderNotification] ✅ 创建1条系统消息: ${type}, 目标用户: ${targetUserIds.length}个`);
 
       // 🔥 通过WebSocket实时推送给所有目标用户
       if (global.webSocketService) {
@@ -623,20 +624,20 @@ class OrderNotificationService {
               actionUrl: message.actionUrl
             }, { userId: userId });
           } else {
-            console.warn(`[OrderNotification] ⚠️ 无效的用户ID: ${userId}，跳过WebSocket推送`);
+            logger.warn(`[OrderNotification] ⚠️ 无效的用户ID: ${userId}，跳过WebSocket推送`);
           }
         });
-        console.log(`[OrderNotification] 🔌 WebSocket推送给 ${targetUserIds.length} 个用户`);
+        logger.info(`[OrderNotification] 🔌 WebSocket推送给 ${targetUserIds.length} 个用户`);
       }
 
       // 🔥 同时发送到外部渠道（只发送一次，不重复）
       this.sendToAllChannels(type, title, content).catch(err => {
-        console.warn('[OrderNotification] 外部渠道推送失败:', err.message);
+        logger.warn('[OrderNotification] 外部渠道推送失败:', err.message);
       });
 
       return 1; // 返回1表示创建了1条消息
     } catch (error) {
-      console.error('[OrderNotification] ❌ 批量发送消息失败:', error);
+      logger.error('[OrderNotification] ❌ 批量发送消息失败:', error);
       return 0;
     }
   }
@@ -649,13 +650,13 @@ class OrderNotificationService {
     try {
       const dataSource = getDataSource();
       if (!dataSource) {
-        console.error('[OrderNotification] ❌ 数据库未连接 (getDataSource返回null)');
+        logger.error('[OrderNotification] ❌ 数据库未连接 (getDataSource返回null)');
         return [];
       }
 
       // 🔥 检查数据源是否已初始化
       if (!dataSource.isInitialized) {
-        console.error('[OrderNotification] ❌ 数据库未初始化 (isInitialized=false)');
+        logger.error('[OrderNotification] ❌ 数据库未初始化 (isInitialized=false)');
         return [];
       }
 
@@ -666,9 +667,9 @@ class OrderNotificationService {
         select: ['id', 'role', 'status', 'username', 'realName']
       });
 
-      console.log(`[OrderNotification] 📋 数据库中共有 ${allUsers.length} 个用户`);
-      console.log(`[OrderNotification] 📋 查找角色: ${roles.join(', ')}`);
-      console.log(`[OrderNotification] 📋 所有用户角色: ${allUsers.map(u => `${u.username || u.realName}(${u.role}, status=${u.status})`).join(', ')}`);
+      logger.info(`[OrderNotification] 📋 数据库中共有 ${allUsers.length} 个用户`);
+      logger.info(`[OrderNotification] 📋 查找角色: ${roles.join(', ')}`);
+      logger.info(`[OrderNotification] 📋 所有用户角色: ${allUsers.map(u => `${u.username || u.realName}(${u.role}, status=${u.status})`).join(', ')}`);
 
       // 🔥 过滤：角色匹配 且 状态为活跃（兼容 'active', 1, '1', true）
       const matchedUsers = allUsers.filter(u => {
@@ -678,18 +679,18 @@ class OrderNotificationService {
         const statusActive = status === 'active' || status === 1 || status === '1' || status === true;
 
         if (roleMatch) {
-          console.log(`[OrderNotification] 👤 用户 ${u.username || u.realName} (ID: ${u.id}): role=${u.role}, status=${u.status}, statusActive=${statusActive}`);
+          logger.info(`[OrderNotification] 👤 用户 ${u.username || u.realName} (ID: ${u.id}): role=${u.role}, status=${u.status}, statusActive=${statusActive}`);
         }
 
         return roleMatch && statusActive;
       });
 
       const userIds = matchedUsers.map(u => u.id);
-      console.log(`[OrderNotification] ✅ 匹配到 ${userIds.length} 个用户: ${userIds.join(', ')}`);
+      logger.info(`[OrderNotification] ✅ 匹配到 ${userIds.length} 个用户: ${userIds.join(', ')}`);
 
       return userIds;
     } catch (error) {
-      console.error('[OrderNotification] ❌ 获取用户列表失败:', error);
+      logger.error('[OrderNotification] ❌ 获取用户列表失败:', error);
       return [];
     }
   }
@@ -721,10 +722,10 @@ class OrderNotificationService {
    * 🔥 修复：不通知下单员（销售员），只通知审核相关人员
    */
   async notifyOrderPendingAudit(order: OrderInfo, _operatorName?: string): Promise<void> {
-    console.log(`[OrderNotification] 🔔 notifyOrderPendingAudit 被调用: orderNumber=${order.orderNumber}, createdBy=${order.createdBy}, createdByName=${order.createdByName}`);
+    logger.info(`[OrderNotification] 🔔 notifyOrderPendingAudit 被调用: orderNumber=${order.orderNumber}, createdBy=${order.createdBy}, createdByName=${order.createdByName}`);
 
     const adminUserIds = await this.getUserIdsByRoles(ADMIN_ROLES);
-    console.log(`[OrderNotification] 📋 获取到管理员用户: ${adminUserIds.length} 个, IDs: ${adminUserIds.join(', ')}`);
+    logger.info(`[OrderNotification] 📋 获取到管理员用户: ${adminUserIds.length} 个, IDs: ${adminUserIds.join(', ')}`);
 
     // 🔥 修复：只通知管理员、超管、客服，不通知下单员
     const allTargets = new Set<string>(adminUserIds);
@@ -734,7 +735,7 @@ class OrderNotificationService {
     //   allTargets.add(order.createdBy);
     // }
 
-    console.log(`[OrderNotification] 📤 待审核通知目标用户: ${Array.from(allTargets).join(', ')}`);
+    logger.info(`[OrderNotification] 📤 待审核通知目标用户: ${Array.from(allTargets).join(', ')}`);
 
     // 🔥 添加销售员名字
     const salesPersonInfo = order.createdByName ? `【销售员：${order.createdByName}】` : '';
@@ -752,7 +753,7 @@ class OrderNotificationService {
       }
     );
 
-    console.log(`[OrderNotification] ✅ 待审核通知发送完成: ${sentCount} 条消息`);
+    logger.info(`[OrderNotification] ✅ 待审核通知发送完成: ${sentCount} 条消息`);
   }
 
   /**
@@ -760,10 +761,10 @@ class OrderNotificationService {
    * 🔥 添加销售员名字
    */
   async notifyOrderAuditApproved(order: OrderInfo, auditorName: string): Promise<void> {
-    console.log(`[OrderNotification] 🔔 notifyOrderAuditApproved 被调用: orderNumber=${order.orderNumber}, createdBy=${order.createdBy}, auditorName=${auditorName}`);
+    logger.info(`[OrderNotification] 🔔 notifyOrderAuditApproved 被调用: orderNumber=${order.orderNumber}, createdBy=${order.createdBy}, auditorName=${auditorName}`);
 
     if (!order.createdBy) {
-      console.warn(`[OrderNotification] ⚠️ 订单 ${order.orderNumber} 没有 createdBy，跳过通知`);
+      logger.warn(`[OrderNotification] ⚠️ 订单 ${order.orderNumber} 没有 createdBy，跳过通知`);
       return;
     }
 
@@ -817,10 +818,10 @@ class OrderNotificationService {
    * 🔥 修复：审核通过后待发货状态也要通知管理员、超管、客服
    */
   async notifyOrderPendingShipment(order: OrderInfo): Promise<void> {
-    console.log(`[OrderNotification] 🔔 notifyOrderPendingShipment 被调用: orderNumber=${order.orderNumber}, createdBy=${order.createdBy}, createdByName=${order.createdByName}`);
+    logger.info(`[OrderNotification] 🔔 notifyOrderPendingShipment 被调用: orderNumber=${order.orderNumber}, createdBy=${order.createdBy}, createdByName=${order.createdByName}`);
 
     const adminUserIds = await this.getUserIdsByRoles(ADMIN_ROLES);
-    console.log(`[OrderNotification] 📋 获取到管理员用户: ${adminUserIds.length} 个, IDs: ${adminUserIds.join(', ')}`);
+    logger.info(`[OrderNotification] 📋 获取到管理员用户: ${adminUserIds.length} 个, IDs: ${adminUserIds.join(', ')}`);
 
     const allTargets = new Set<string>(adminUserIds);
 
@@ -829,7 +830,7 @@ class OrderNotificationService {
       allTargets.add(order.createdBy);
     }
 
-    console.log(`[OrderNotification] 📤 待发货通知目标用户: ${Array.from(allTargets).join(', ')}`);
+    logger.info(`[OrderNotification] 📤 待发货通知目标用户: ${Array.from(allTargets).join(', ')}`);
 
     // 🔥 添加销售员名字
     const salesPersonInfo = order.createdByName ? `【销售员：${order.createdByName}】` : '';
@@ -847,7 +848,7 @@ class OrderNotificationService {
       }
     );
 
-    console.log(`[OrderNotification] ✅ 待发货通知发送完成: ${sentCount} 条消息`);
+    logger.info(`[OrderNotification] ✅ 待发货通知发送完成: ${sentCount} 条消息`);
   }
 
   /**
@@ -1317,10 +1318,10 @@ class OrderNotificationService {
     createdBy?: string;
     createdByName?: string;
   }): Promise<void> {
-    console.log(`[OrderNotification] 🔔 notifyPerformanceShare 被调用: shareNumber=${shareInfo.shareNumber}, memberId=${shareInfo.memberId}`);
+    logger.info(`[OrderNotification] 🔔 notifyPerformanceShare 被调用: shareNumber=${shareInfo.shareNumber}, memberId=${shareInfo.memberId}`);
 
     if (!shareInfo.memberId) {
-      console.warn(`[OrderNotification] ⚠️ 业绩分享 ${shareInfo.shareNumber} 没有 memberId，跳过通知`);
+      logger.warn(`[OrderNotification] ⚠️ 业绩分享 ${shareInfo.shareNumber} 没有 memberId，跳过通知`);
       return;
     }
 

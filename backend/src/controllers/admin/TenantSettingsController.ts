@@ -13,6 +13,7 @@ import { Tenant } from '../../entities/Tenant';
 import { TenantSettings } from '../../entities/TenantSettings';
 import { v4 as uuidv4 } from 'uuid';
 
+import { log } from '../../config/logger';
 /**
  * 获取租户配置
  */
@@ -58,7 +59,7 @@ export const getTenantSettings = async (req: Request, res: Response): Promise<vo
       }
     });
   } catch (error) {
-    console.error('获取租户配置失败:', error);
+    log.error('获取租户配置失败:', error);
     res.status(500).json({
       success: false,
       message: '获取租户配置失败'
@@ -151,7 +152,7 @@ export const updateTenantSettings = async (req: Request, res: Response): Promise
       }
     });
   } catch (error) {
-    console.error('更新租户配置失败:', error);
+    log.error('更新租户配置失败:', error);
     res.status(500).json({
       success: false,
       message: '更新租户配置失败'
@@ -238,7 +239,7 @@ export const resetTenantSettings = async (req: Request, res: Response): Promise<
       }
     });
   } catch (error) {
-    console.error('重置租户配置失败:', error);
+    log.error('重置租户配置失败:', error);
     res.status(500).json({
       success: false,
       message: '重置租户配置失败'
@@ -293,7 +294,7 @@ export const getTenantSetting = async (req: Request, res: Response): Promise<voi
       }
     });
   } catch (error) {
-    console.error('获取配置项失败:', error);
+    log.error('获取配置项失败:', error);
     res.status(500).json({
       success: false,
       message: '获取配置项失败'
@@ -342,7 +343,7 @@ export const deleteTenantSetting = async (req: Request, res: Response): Promise<
       message: '配置项删除成功'
     });
   } catch (error) {
-    console.error('删除配置项失败:', error);
+    log.error('删除配置项失败:', error);
     res.status(500).json({
       success: false,
       message: '删除配置项失败'

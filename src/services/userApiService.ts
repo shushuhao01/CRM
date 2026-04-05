@@ -140,83 +140,13 @@ export class UserApiService {
   async createUser(userData: CreateUserRequest): Promise<User> {
     try {
       const response = await api.post<User>('/users', userData)
-      console.log(`[UserAPI] 创建用户成功: ${response.username}`)
-      return response
+      // api.post 返回 ApiResponse<User>，data字段才是真正数据
+      const user = (response as any)?.user || (response as any)?.data?.user || response
+      console.log(`[UserAPI] 创建用户成功: ${user?.username || '(unknown)'}`)
+      return user as User
     } catch (error) {
-      // 【生产环境修复】生产环境不降级到localStorage
-      if (import.meta.env.PROD) {
-        console.error('[UserAPI] 生产环境：API创建用户失败', error)
-        throw error
-      }
-
-      console.warn('[UserAPI] 开发环境：API创建失败，使用localStorage创建用户', error)
-
-      // 降级方案:直接操作localStorage（仅开发环境）
-      try {
-        const users = JSON.parse(localStorage.getItem('crm_mock_users') || '[]')
-
-        // 生成新ID
-        const maxId = users.reduce((max: number, user: any) => {
-          const id = parseInt(user.id)
-          return id > max ? id : max
-        }, 0)
-
-        const newUser: any = {
-          id: String(maxId + 1),
-          username: userData.username,
-          password: userData.password,
-          realName: userData.realName,
-          name: userData.realName,
-          email: userData.email || '',
-          phone: userData.phone || '',
-          role: userData.role,
-          roleId: userData.role,
-          departmentId: userData.departmentId,
-          department: userData.department || '',
-          position: userData.position || '',
-          employeeNumber: userData.employeeNumber || '',
-          status: userData.status || 'active',
-          employmentStatus: 'active',
-          avatar: userData.avatar || '',
-          remark: userData.remark || '',
-          createTime: new Date().toLocaleString('zh-CN'),
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-          isOnline: false,
-          lastLoginTime: null,
-          loginCount: 0
-        }
-
-        users.push(newUser)
-        localStorage.setItem('crm_mock_users', JSON.stringify(users))
-
-        // 【批次197修复】同步到所有用户数据源
-        try {
-          // 同步到userDatabase
-          const userDatabase = JSON.parse(localStorage.getItem('userDatabase') || '[]')
-          userDatabase.push(newUser)
-          localStorage.setItem('userDatabase', JSON.stringify(userDatabase))
-          console.log('[UserAPI] 已同步到 userDatabase')
-        } catch (dbError) {
-          console.warn('[UserAPI] 同步到userDatabase失败:', dbError)
-        }
-
-        // 【批次197修复】同步到crm_users（用户列表数据源）
-        try {
-          const crmUsers = JSON.parse(localStorage.getItem('crm_users') || '[]')
-          crmUsers.push(newUser)
-          localStorage.setItem('crm_users', JSON.stringify(crmUsers))
-          console.log('[UserAPI] 已同步到 crm_users')
-        } catch (crmError) {
-          console.warn('[UserAPI] 同步到crm_users失败:', crmError)
-        }
-
-        console.log('[UserAPI] localStorage创建用户成功:', newUser)
-        return newUser as User
-      } catch (localError) {
-        console.error('[UserAPI] localStorage创建用户也失败', localError)
-        throw localError
-      }
+      console.error('[UserAPI] 创建用户失败', error)
+      throw error
     }
   }
 

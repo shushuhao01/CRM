@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { ApiConfigService } from '../../services/ApiConfigService';
 import { AppDataSource } from '../../config/database';
 
+import { log } from '../../config/logger';
 const apiConfigService = new ApiConfigService();
 
 export class ApiConfigController {
@@ -10,6 +11,20 @@ export class ApiConfigController {
    */
   static async getApiConfigs(req: Request, res: Response): Promise<void> {
     try {
+      // 先检查 api_configs 表是否存在
+      try {
+        await AppDataSource.query('SELECT 1 FROM api_configs LIMIT 1');
+      } catch {
+        // 表不存在，返回空列表
+        res.json({
+          success: true,
+          message: '获取成功',
+          data: [],
+          total: 0
+        });
+        return;
+      }
+
       const result = await apiConfigService.getApiConfigs(req.query);
 
       res.json({
@@ -19,7 +34,7 @@ export class ApiConfigController {
         total: result.total
       });
     } catch (error: any) {
-      console.error('获取API配置列表失败:', error);
+      log.error('获取API配置列表失败:', error);
       res.status(500).json({
         success: false,
         message: '获取API配置列表失败',
@@ -33,6 +48,14 @@ export class ApiConfigController {
    */
   static async getApiConfigById(req: Request, res: Response): Promise<void> {
     try {
+      // 先检查表是否存在
+      try {
+        await AppDataSource.query('SELECT 1 FROM api_configs LIMIT 1');
+      } catch {
+        res.status(404).json({ success: false, message: 'API配置表尚未创建' });
+        return;
+      }
+
       const { id } = req.params;
       const apiConfig = await apiConfigService.getApiConfigById(id);
 
@@ -50,7 +73,7 @@ export class ApiConfigController {
         data: apiConfig
       });
     } catch (error: any) {
-      console.error('获取API配置详情失败:', error);
+      log.error('获取API配置详情失败:', error);
       res.status(500).json({
         success: false,
         message: '获取API配置详情失败',
@@ -72,7 +95,7 @@ export class ApiConfigController {
         data: apiConfig
       });
     } catch (error: any) {
-      console.error('创建API配置失败:', error);
+      log.error('创建API配置失败:', error);
       res.status(500).json({
         success: false,
         message: '创建API配置失败',
@@ -95,7 +118,7 @@ export class ApiConfigController {
         data: apiConfig
       });
     } catch (error: any) {
-      console.error('更新API配置失败:', error);
+      log.error('更新API配置失败:', error);
       res.status(500).json({
         success: false,
         message: '更新API配置失败',
@@ -117,7 +140,7 @@ export class ApiConfigController {
         message: 'API配置删除成功'
       });
     } catch (error: any) {
-      console.error('删除API配置失败:', error);
+      log.error('删除API配置失败:', error);
       res.status(500).json({
         success: false,
         message: '删除API配置失败',
@@ -140,7 +163,7 @@ export class ApiConfigController {
         data: apiConfig
       });
     } catch (error: any) {
-      console.error('重新生成API密钥失败:', error);
+      log.error('重新生成API密钥失败:', error);
       res.status(500).json({
         success: false,
         message: '重新生成API密钥失败',
@@ -154,6 +177,14 @@ export class ApiConfigController {
    */
   static async getApiCallLogs(req: Request, res: Response): Promise<void> {
     try {
+      // 先检查表是否存在
+      try {
+        await AppDataSource.query('SELECT 1 FROM api_call_logs LIMIT 1');
+      } catch {
+        res.json({ success: true, message: '获取成功', data: [], total: 0 });
+        return;
+      }
+
       const { id } = req.params;
       const query = { ...req.query, apiConfigId: id };
       const result = await apiConfigService.getApiCallLogs(query);
@@ -165,7 +196,7 @@ export class ApiConfigController {
         total: result.total
       });
     } catch (error: any) {
-      console.error('获取API调用日志失败:', error);
+      log.error('获取API调用日志失败:', error);
       res.status(500).json({
         success: false,
         message: '获取API调用日志失败',
@@ -179,6 +210,14 @@ export class ApiConfigController {
    */
   static async getAllApiCallLogs(req: Request, res: Response): Promise<void> {
     try {
+      // 先检查表是否存在
+      try {
+        await AppDataSource.query('SELECT 1 FROM api_call_logs LIMIT 1');
+      } catch {
+        res.json({ success: true, message: '获取成功', data: [], total: 0 });
+        return;
+      }
+
       const result = await apiConfigService.getApiCallLogs(req.query);
 
       res.json({
@@ -188,7 +227,7 @@ export class ApiConfigController {
         total: result.total
       });
     } catch (error: any) {
-      console.error('获取API调用日志失败:', error);
+      log.error('获取API调用日志失败:', error);
       res.status(500).json({
         success: false,
         message: '获取API调用日志失败',
@@ -201,7 +240,23 @@ export class ApiConfigController {
    * 获取API统计信息
    */
   static async getApiStatistics(req: Request, res: Response): Promise<void> {
+    const emptyStats = {
+      totalCalls: 0,
+      successCalls: 0,
+      successRate: 0,
+      avgTime: 0,
+      errorCount: 0
+    };
+
     try {
+      // 先检查表是否存在
+      try {
+        await AppDataSource.query('SELECT 1 FROM api_call_logs LIMIT 1');
+      } catch {
+        res.json({ success: true, message: '暂无统计数据', data: emptyStats });
+        return;
+      }
+
       const { id } = req.params;
       const statistics = await apiConfigService.getApiStatistics(id);
 
@@ -211,18 +266,12 @@ export class ApiConfigController {
         data: statistics
       });
     } catch (error: any) {
-      console.error('获取API统计信息失败:', error.message);
+      log.error('获取API统计信息失败:', error.message);
       // 返回空数据而非500错误，避免前端报错
       res.json({
         success: true,
         message: '暂无统计数据',
-        data: {
-          totalCalls: 0,
-          successCalls: 0,
-          successRate: 0,
-          avgTime: 0,
-          errorCount: 0
-        }
+        data: emptyStats
       });
     }
   }
@@ -296,7 +345,7 @@ export class ApiConfigController {
         }
       });
     } catch (error: any) {
-      console.error('获取全局API统计信息失败:', error);
+      log.error('获取全局API统计信息失败:', error);
       // 返回空数据而非500错误
       res.json({
         success: true,
@@ -365,7 +414,7 @@ export class ApiConfigController {
         data: trends
       });
     } catch (error: any) {
-      console.error('获取API趋势失败:', error);
+      log.error('获取API趋势失败:', error);
       res.json({ success: true, data: [] });
     }
   }

@@ -497,6 +497,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, onMounted, onUnmounted, computed, watch, onActivated, nextTick } from 'vue'
+import axios from 'axios'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Download, Refresh, User, UserFilled, Star, Search, Setting, Calendar, WarningFilled } from '@element-plus/icons-vue'
@@ -1626,6 +1627,12 @@ const loadCustomerList = async (forceReload = false) => {
     }
 
   } catch (error) {
+    // 🔥 修复：忽略请求被取消的错误（CanceledError）
+    // 请求被取消通常是因为重复请求自动去重机制，新请求会替代旧请求，不是真正的错误
+    if (axios.isCancel(error) || (error as any)?.name === 'CanceledError') {
+      console.log('[CustomerList] 请求被取消（已有新请求替代），忽略')
+      return
+    }
     console.error('loadCustomerList 错误:', error)
     appStore.showError('加载客户列表失败', error as Error)
     customerStore.customers = []
@@ -1635,7 +1642,25 @@ const loadCustomerList = async (forceReload = false) => {
   }
 }
 
-// 🔥 统计数据现在由后端API返回，不再需要前端计算
+// 🔥 统计数据独立加载（异步，不阻塞列表加载，30秒缓存）
+async function loadCustomerStats() {
+  try {
+    const { customerApi } = await import('@/api/customer')
+    const response = await customerApi.getStats()
+    if (response && response.data) {
+      const stats = response.data
+      summaryData.totalCustomers = stats.totalCustomers || 0
+      summaryData.monthCustomers = stats.monthCustomers || 0
+      summaryData.newCustomers = stats.newCustomers || 0
+      summaryData.noOrderCustomers = stats.noOrderCustomers || 0
+    }
+  } catch (e) {
+    // 统计加载失败不影响列表显示，静默处理
+    console.warn('[CustomerList] 统计数据加载失败:', e)
+  }
+}
+
+// 🔥 统计数据现在优先使用独立接口，列表接口中的statistics作为兜底
 // loadSummaryData函数已移除，统计数据在loadCustomerList中更新
 
 // 🔥 删除：不再需要监听totalCount，因为它现在直接使用pagination.total
@@ -1658,6 +1683,9 @@ watch(() => customerStore.customers, (newCustomers) => {
 // }, { immediate: true })
 
 // 监听路由变化，确保数据同步
+// 🔥 修复：移除 immediate: true，初始数据加载已由 onMounted 处理
+// immediate: true 会在 setup 阶段就触发一次 loadCustomerList，
+// 然后 onMounted 再次调用，导致重复请求被取消报错
 watch(() => route.path, async (newPath, oldPath) => {
   if (newPath === '/customer/list') {
     console.log('路由切换到客户列表页面，从:', oldPath, '到:', newPath)
@@ -1700,7 +1728,7 @@ watch(() => route.path, async (newPath, oldPath) => {
       await loadCustomerList(false) // 使用现有数据，不强制刷新
     }
   }
-}, { immediate: true })
+})
 
 // 🔥 防止双重加载的标志
 let isLoadingFromRouteChange = false
@@ -1771,10 +1799,11 @@ onMounted(async () => {
     await nextTick()
   }
 
-  // 并行加载客户数据和分享数据
+  // 并行加载客户数据、分享数据和统计数据
   await Promise.all([
     loadCustomerList(needsForceRefresh),
-    loadSharedToMeCustomers()
+    loadSharedToMeCustomers(),
+    loadCustomerStats()
   ])
 
   console.log('[客户列表] onMounted - 初始化完成，当前显示客户数量:', customerList.value.length)

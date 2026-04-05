@@ -7,7 +7,10 @@
 import * as cron from 'node-cron';
 import { licenseExpirationReminderService } from './LicenseExpirationReminderService';
 import { paymentReminderService } from './PaymentReminderService';
+import { dataCleanupService } from './DataCleanupService';
+import { subscriptionService } from './SubscriptionService';
 
+import { log } from '../config/logger';
 export class SchedulerService {
   private tasks: Map<string, cron.ScheduledTask> = new Map();
 
@@ -15,7 +18,7 @@ export class SchedulerService {
    * 启动所有定时任务
    */
   start(): void {
-    console.log('[Scheduler] 启动定时任务调度器...');
+    log.info('[Scheduler] 启动定时任务调度器...');
 
     // 授权到期检查任务 - 每天早上9点执行
     this.scheduleTask(
@@ -37,27 +40,59 @@ export class SchedulerService {
       '支付提醒检查'
     );
 
+    // 数据清理任务 - 每月1日凌晨3点执行
+    // 清理90天前的操作日志、系统日志和已读通知
+    this.scheduleTask(
+      'data-cleanup',
+      '0 3 1 * *', // 每月1日 03:00
+      async () => {
+        await dataCleanupService.runFullCleanup();
+      },
+      '过期数据清理（操作日志/系统日志/已读通知）'
+    );
+
+    // 订阅自动扣款 - 每天凌晨1点执行
+    this.scheduleTask(
+      'subscription-auto-deduct',
+      '0 1 * * *', // 每天 01:00
+      async () => {
+        await subscriptionService.runAutoDeduct();
+      },
+      '订阅自动扣款'
+    );
+
+    // 订阅扣款重试 - 每天下午2点执行
+    // 宽限期策略：3次重试 + 7天宽限期
+    this.scheduleTask(
+      'subscription-deduct-retry',
+      '0 14 * * *', // 每天 14:00
+      async () => {
+        await subscriptionService.runDeductRetry();
+      },
+      '订阅扣款重试（3次重试+7天宽限期）'
+    );
+
     // 如果是开发环境,可以设置更频繁的检查用于测试
     if (process.env.NODE_ENV !== 'production') {
-      console.log('[Scheduler] 开发环境: 可以手动触发任务测试');
+      log.info('[Scheduler] 开发环境: 可以手动触发任务测试');
     }
 
-    console.log(`[Scheduler] 已启动${this.tasks.size}个定时任务`);
+    log.info(`[Scheduler] 已启动${this.tasks.size}个定时任务`);
   }
 
   /**
    * 停止所有定时任务
    */
   stop(): void {
-    console.log('[Scheduler] 停止所有定时任务...');
+    log.info('[Scheduler] 停止所有定时任务...');
 
     this.tasks.forEach((task, name) => {
       task.stop();
-      console.log(`[Scheduler] 已停止任务: ${name}`);
+      log.info(`[Scheduler] 已停止任务: ${name}`);
     });
 
     this.tasks.clear();
-    console.log('[Scheduler] 所有定时任务已停止');
+    log.info('[Scheduler] 所有定时任务已停止');
   }
 
   /**
@@ -71,18 +106,18 @@ export class SchedulerService {
   ): void {
     try {
       const task = cron.schedule(cronExpression, async () => {
-        console.log(`[Scheduler] 执行任务: ${name}`);
+        log.info(`[Scheduler] 执行任务: ${name}`);
         try {
           await handler();
         } catch (error) {
-          console.error(`[Scheduler] 任务执行失败(${name}):`, error);
+          log.error(`[Scheduler] 任务执行失败(${name}):`, error);
         }
       });
 
       this.tasks.set(name, task);
-      console.log(`[Scheduler] 已调度任务: ${name} (${description || cronExpression})`);
+      log.info(`[Scheduler] 已调度任务: ${name} (${description || cronExpression})`);
     } catch (error) {
-      console.error(`[Scheduler] 调度任务失败(${name}):`, error);
+      log.error(`[Scheduler] 调度任务失败(${name}):`, error);
     }
   }
 
@@ -91,7 +126,7 @@ export class SchedulerService {
    */
   async triggerTask(name: string): Promise<boolean> {
     try {
-      console.log(`[Scheduler] 手动触发任务: ${name}`);
+      log.info(`[Scheduler] 手动触发任务: ${name}`);
 
       switch (name) {
         case 'license-expiration-check':
@@ -100,12 +135,21 @@ export class SchedulerService {
         case 'payment-reminder-check':
           await paymentReminderService.runFullCheck();
           return true;
+        case 'data-cleanup':
+          await dataCleanupService.runFullCleanup();
+          return true;
+        case 'subscription-auto-deduct':
+          await subscriptionService.runAutoDeduct();
+          return true;
+        case 'subscription-deduct-retry':
+          await subscriptionService.runDeductRetry();
+          return true;
         default:
-          console.error(`[Scheduler] 未知任务: ${name}`);
+          log.error(`[Scheduler] 未知任务: ${name}`);
           return false;
       }
     } catch (error) {
-      console.error(`[Scheduler] 手动触发任务失败(${name}):`, error);
+      log.error(`[Scheduler] 手动触发任务失败(${name}):`, error);
       return false;
     }
   }

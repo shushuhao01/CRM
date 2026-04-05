@@ -4,9 +4,10 @@ import { AppDataSource } from '../config/database';
 import { Customer } from '../entities/Customer';
 import { User } from '../entities/User';
 import { CustomerServicePermission } from '../entities/CustomerServicePermission';
-import { Not, IsNull } from 'typeorm';
+import { Not, IsNull, In } from 'typeorm';
 import { getTenantRepo, tenantSQL } from '../utils/tenantRepo';
 
+import { log } from '../config/logger';
 const router = Router();
 
 router.use(authenticateToken);
@@ -235,7 +236,7 @@ router.get('/list', async (req: Request, res: Response) => {
       summary
     });
   } catch (error) {
-    console.error('获取资料列表失败:', error);
+    log.error('获取资料列表失败:', error);
     res.status(500).json({ success: false, message: '获取资料列表失败' });
   }
 });
@@ -276,7 +277,7 @@ router.post('/batch-assign', async (req: Request, res: Response) => {
           successCount++;
         }
       } catch (e) {
-        console.error('分配单条客户资料失败:', e);
+        log.error('分配单条客户资料失败:', e);
       }
     }
 
@@ -294,7 +295,7 @@ router.post('/batch-assign', async (req: Request, res: Response) => {
           assignerName: currentUser?.realName || currentUser?.username
         });
       } catch (notifyError) {
-        console.error('[资料分配] 发送通知失败:', notifyError);
+        log.error('[资料分配] 发送通知失败:', notifyError);
       }
     }
 
@@ -304,7 +305,7 @@ router.post('/batch-assign', async (req: Request, res: Response) => {
       data: { successCount, failCount: dataIds.length - successCount }
     });
   } catch (error) {
-    console.error('批量分配失败:', error);
+    log.error('批量分配失败:', error);
     res.status(500).json({ success: false, message: '批量分配失败' });
   }
 });
@@ -333,7 +334,7 @@ router.post('/batch-archive', async (req: Request, res: Response) => {
           successCount++;
         }
       } catch (e) {
-        console.error('归档单条数据失败:', e);
+        log.error('归档单条数据失败:', e);
       }
     }
 
@@ -343,7 +344,7 @@ router.post('/batch-archive', async (req: Request, res: Response) => {
       data: { successCount, failCount: dataIds.length - successCount }
     });
   } catch (error) {
-    console.error('批量归档失败:', error);
+    log.error('批量归档失败:', error);
     res.status(500).json({ success: false, message: '批量归档失败' });
   }
 });
@@ -372,7 +373,7 @@ router.post('/recover', async (req: Request, res: Response) => {
           successCount++;
         }
       } catch (e) {
-        console.error('恢复单条数据失败:', e);
+        log.error('恢复单条数据失败:', e);
       }
     }
 
@@ -382,7 +383,7 @@ router.post('/recover', async (req: Request, res: Response) => {
       data: { successCount, failCount: dataIds.length - successCount }
     });
   } catch (error) {
-    console.error('恢复数据失败:', error);
+    log.error('恢复数据失败:', error);
     res.status(500).json({ success: false, message: '恢复数据失败' });
   }
 });
@@ -408,7 +409,7 @@ router.get('/assignee-options', async (req: Request, res: Response) => {
 
     res.json({ success: true, data: options });
   } catch (error) {
-    console.error('获取分配人选项失败:', error);
+    log.error('获取分配人选项失败:', error);
     res.status(500).json({ success: false, message: '获取分配人选项失败' });
   }
 });
@@ -427,7 +428,7 @@ router.get('/search', async (req: Request, res: Response) => {
       return res.json({ success: true, data: null });
     }
 
-    console.log('🔍 [客户搜索] 关键词:', keyword);
+    log.info('🔍 [客户搜索] 关键词:', keyword);
 
     // 1. 直接搜索客户信息（客户编码、手机号、姓名）
     // 🔥 修复：使用单个 .where() 包含所有 OR 条件，防止 .orWhere() 绕过租户隔离
@@ -438,7 +439,7 @@ router.get('/search', async (req: Request, res: Response) => {
 
     // 2. 如果没找到，通过订单号搜索
     if (!customer) {
-      console.log('🔍 [客户搜索] 尝试通过订单号查找');
+      log.info('🔍 [客户搜索] 尝试通过订单号查找');
       const tData = tenantSQL('o.');
       const tCustomer = tenantSQL('c.');
       const orderResult = await AppDataSource.query(
@@ -454,14 +455,14 @@ router.get('/search', async (req: Request, res: Response) => {
           where: { id: orderResult[0].id }
         }) || null;
         if (customer) {
-          console.log('✅ [客户搜索] 通过订单号找到客户:', customer.name);
+          log.info('✅ [客户搜索] 通过订单号找到客户:', customer.name);
         }
       }
     }
 
     // 3. 如果还没找到，通过物流单号搜索
     if (!customer) {
-      console.log('🔍 [客户搜索] 尝试通过物流单号查找');
+      log.info('🔍 [客户搜索] 尝试通过物流单号查找');
       const tLogistics = tenantSQL('o.');
       const tLogisticsC = tenantSQL('c.');
       const logisticsResult = await AppDataSource.query(
@@ -478,13 +479,13 @@ router.get('/search', async (req: Request, res: Response) => {
           where: { id: logisticsResult[0].id }
         }) || null;
         if (customer) {
-          console.log('✅ [客户搜索] 通过物流单号找到客户:', customer.name);
+          log.info('✅ [客户搜索] 通过物流单号找到客户:', customer.name);
         }
       }
     }
 
     if (!customer) {
-      console.log('❌ [客户搜索] 未找到匹配的客户');
+      log.info('❌ [客户搜索] 未找到匹配的客户');
       return res.json({ success: true, data: null, message: '未找到匹配的客户' });
     }
 
@@ -504,7 +505,7 @@ router.get('/search', async (req: Request, res: Response) => {
           department: salesPerson.department_name,
           position: salesPerson.position
         };
-        console.log('✅ [客户搜索] 获取到销售员信息:', salesPerson.real_name || salesPerson.username);
+        log.info('✅ [客户搜索] 获取到销售员信息:', salesPerson.real_name || salesPerson.username);
       }
     }
 
@@ -513,14 +514,15 @@ router.get('/search', async (req: Request, res: Response) => {
       data: customer
     });
   } catch (error) {
-    console.error('❌ [客户搜索] 失败:', error);
+    log.error('❌ [客户搜索] 失败:', error);
     res.status(500).json({ success: false, message: '搜索客户失败' });
   }
 });
 
 /**
  * @route GET /api/v1/data/search-customer
- * @desc 搜索客户（模糊搜索，返回列表）
+ * @desc 全局搜索客户（模糊搜索，返回列表，含归属信息和匹配类型）
+ * 支持：客户姓名、手机号、客户编码、订单号、物流单号
  */
 router.get('/search-customer', async (req: Request, res: Response) => {
   try {
@@ -531,24 +533,66 @@ router.get('/search-customer', async (req: Request, res: Response) => {
       return res.json({ success: true, data: { list: [], total: 0 } });
     }
 
+    const kw = String(keyword).trim();
+    const pageNum = Math.max(1, Number(page));
+    const pageSizeNum = Math.min(50, Math.max(1, Number(pageSize)));
+
+    // 1. 从客户表模糊搜索（姓名、手机号、编码）
     const queryBuilder = customerRepository.createQueryBuilder('customer');
     queryBuilder.where(
       '(customer.customerNo LIKE :keyword OR customer.name LIKE :keyword OR customer.phone LIKE :keyword)',
-      { keyword: `%${keyword}%` }
+      { keyword: `%${kw}%` }
     );
 
     queryBuilder.orderBy('customer.createdAt', 'DESC');
-    queryBuilder.skip((Number(page) - 1) * Number(pageSize));
-    queryBuilder.take(Number(pageSize));
+    queryBuilder.skip((pageNum - 1) * pageSizeNum);
+    queryBuilder.take(pageSizeNum);
 
-    const [list, total] = await queryBuilder.getManyAndCount();
+    const [customers, total] = await queryBuilder.getManyAndCount();
+
+    // 2. 批量获取销售员信息
+    const salesIds = [...new Set(customers.map((c: any) => c.salesPersonId).filter(Boolean))];
+    const salesMap: Record<string, any> = {};
+    if (salesIds.length > 0) {
+      const userRepo = getTenantRepo(User);
+      const salesPersons = await userRepo.find({
+        where: { id: In(salesIds) },
+        select: ['id', 'realName', 'name', 'departmentName']
+      });
+      salesPersons.forEach((sp: any) => {
+        salesMap[sp.id] = { name: sp.realName || sp.name || '', department: sp.departmentName || '' };
+      });
+    }
+
+    // 3. 构建结果（带匹配类型和归属信息）
+    const list = customers.map((c: any) => {
+      let matchType = '客户姓名';
+      if (c.phone?.includes(kw)) matchType = '手机号';
+      else if (c.customerNo?.toLowerCase().includes(kw.toLowerCase())) matchType = '客户编码';
+
+      const owner = c.salesPersonId ? salesMap[c.salesPersonId] : null;
+      return {
+        customerName: c.name || '未知',
+        phone: c.phone || '',
+        customerCode: c.customerNo || '',
+        gender: c.gender || '',
+        age: c.age || 0,
+        level: c.level || '',
+        address: c.address || '',
+        createTime: c.createdAt,
+        orderCount: c.orderCount || 0,
+        ownerName: owner?.name || '未分配',
+        ownerDepartment: owner?.department || '',
+        matchType
+      };
+    });
 
     res.json({
       success: true,
-      data: { list, total, page: Number(page), pageSize: Number(pageSize) }
+      data: { list, total, page: pageNum, pageSize: pageSizeNum }
     });
   } catch (error) {
-    console.error('搜索客户失败:', error);
+    log.error('搜索客户失败:', error);
     res.status(500).json({ success: false, message: '搜索客户失败' });
   }
 });
@@ -580,7 +624,7 @@ router.get('/statistics', async (req: Request, res: Response) => {
       }
     });
   } catch (error) {
-    console.error('获取数据统计失败:', error);
+    log.error('获取数据统计失败:', error);
     res.status(500).json({ success: false, message: '获取数据统计失败' });
   }
 });
@@ -661,7 +705,7 @@ router.get('/recycle', async (req: Request, res: Response) => {
       }
     });
   } catch (error) {
-    console.error('获取回收站列表失败:', error);
+    log.error('获取回收站列表失败:', error);
     res.status(500).json({ success: false, message: '获取回收站列表失败' });
   }
 });
@@ -690,7 +734,7 @@ router.post('/restore', async (req: Request, res: Response) => {
           successCount++;
         }
       } catch (e) {
-        console.error('恢复单条数据失败:', e);
+        log.error('恢复单条数据失败:', e);
       }
     }
 
@@ -700,7 +744,7 @@ router.post('/restore', async (req: Request, res: Response) => {
       data: { successCount, failCount: dataIds.length - successCount }
     });
   } catch (error) {
-    console.error('恢复数据失败:', error);
+    log.error('恢复数据失败:', error);
     res.status(500).json({ success: false, message: '恢复数据失败' });
   }
 });
@@ -725,7 +769,7 @@ router.post('/permanent-delete', async (req: Request, res: Response) => {
         await customerRepository.delete(id);
         successCount++;
       } catch (e) {
-        console.error('永久删除单条数据失败:', e);
+        log.error('永久删除单条数据失败:', e);
       }
     }
 
@@ -735,7 +779,7 @@ router.post('/permanent-delete', async (req: Request, res: Response) => {
       data: { successCount, failCount: dataIds.length - successCount }
     });
   } catch (error) {
-    console.error('永久删除失败:', error);
+    log.error('永久删除失败:', error);
     res.status(500).json({ success: false, message: '永久删除失败' });
   }
 });

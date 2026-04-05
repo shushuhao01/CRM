@@ -113,6 +113,29 @@
         <el-descriptions-item label="账号状态">
           <el-tag :type="getStatusType(detail.status)" size="small">{{ getStatusText(detail.status) }}</el-tag>
         </el-descriptions-item>
+        <el-descriptions-item label="付费方式">
+          <template v-if="detail.subscription_status === 'active'">
+            <el-tag type="success" size="small" effect="dark">订阅中</el-tag>
+            <span style="margin-left: 6px; font-size: 12px; color: #909399;">
+              {{ detail.subscription_channel === 'wechat' ? '微信代扣' : detail.subscription_channel === 'alipay' ? '支付宝扣款' : '' }}
+            </span>
+          </template>
+          <template v-else-if="detail.subscription_status === 'signing'">
+            <el-tag type="warning" size="small">签约中</el-tag>
+          </template>
+          <template v-else-if="detail.subscription_status === 'paused'">
+            <el-tag type="danger" size="small">订阅暂停</el-tag>
+          </template>
+          <template v-else-if="detail.subscription_status === 'cancelled'">
+            <el-tag type="info" size="small">已取消订阅</el-tag>
+          </template>
+          <template v-else-if="detail.subscription_status === 'expired'">
+            <el-tag type="danger" size="small" effect="dark">订阅已过期</el-tag>
+          </template>
+          <template v-else>
+            <el-tag size="small">一次性自付</el-tag>
+          </template>
+        </el-descriptions-item>
         <el-descriptions-item label="管理员账号">
           <div v-if="detail.adminUsers && detail.adminUsers.length > 0">
             <div v-for="admin in detail.adminUsers" :key="admin.id" style="margin-bottom: 4px;">
@@ -416,6 +439,107 @@
             <el-icon><Upload /></el-icon>导入用户数据
           </el-button>
         </el-upload>
+      </div>
+    </el-card>
+
+    <!-- 数据清理卡片 -->
+    <el-card shadow="never" class="info-card">
+      <template #header>
+        <div class="card-header">
+          <span>数据清理</span>
+          <el-button size="small" @click="fetchCleanupStatus" :loading="cleanupStatusLoading">刷新状态</el-button>
+        </div>
+      </template>
+
+      <div v-loading="cleanupStatusLoading">
+        <!-- 已清理过的标识 -->
+        <el-alert
+          v-if="cleanupStatus.dataCleaned"
+          type="success"
+          :closable="false"
+          show-icon
+          style="margin-bottom: 16px;"
+        >
+          <template #title>
+            <span>✅ 该租户数据已于 <strong>{{ formatDateTime(cleanupStatus.dataCleanedAt) }}</strong> 清理完毕，无需重复操作。</span>
+          </template>
+          <template v-if="cleanupStatus.lastCleanup" #default>
+            <div style="margin-top: 8px; font-size: 12px; color: #909399;">
+              清理详情：{{ cleanupStatus.lastCleanup.remark || '-' }}
+            </div>
+          </template>
+        </el-alert>
+
+        <!-- 不可清理的原因提示 -->
+        <el-alert
+          v-else-if="!cleanupStatus.canCleanup && cleanupStatus.reason"
+          type="warning"
+          :closable="false"
+          show-icon
+          style="margin-bottom: 16px;"
+        >
+          <template #title>
+            <span>⚠️ 当前不可清理：{{ cleanupStatus.reason }}</span>
+          </template>
+        </el-alert>
+
+        <!-- 可清理状态提示 -->
+        <el-alert
+          v-else-if="cleanupStatus.canCleanup"
+          type="error"
+          :closable="false"
+          show-icon
+          style="margin-bottom: 16px;"
+        >
+          <template #title>
+            <span>🗑️ {{ cleanupStatus.reason }}。清理后将删除该租户的所有数据库记录和物理文件（图片等），此操作不可恢复！</span>
+          </template>
+        </el-alert>
+
+        <!-- 清理操作区 -->
+        <div class="cleanup-actions">
+          <div class="cleanup-info">
+            <el-descriptions :column="2" size="small" border>
+              <el-descriptions-item label="清理状态">
+                <el-tag v-if="cleanupStatus.dataCleaned" type="success" size="small">已清理</el-tag>
+                <el-tag v-else-if="cleanupStatus.canCleanup" type="danger" size="small">可清理</el-tag>
+                <el-tag v-else type="info" size="small">不可清理</el-tag>
+              </el-descriptions-item>
+              <el-descriptions-item label="过期天数">
+                {{ cleanupStatus.expiredDays > 0 ? cleanupStatus.expiredDays + ' 天' : '未过期' }}
+              </el-descriptions-item>
+            </el-descriptions>
+          </div>
+          <div style="margin-top: 16px; display: flex; align-items: center; gap: 12px;">
+            <el-button
+              type="danger"
+              :disabled="!cleanupStatus.canCleanup"
+              :loading="cleanupExecuting"
+              @click="handleCleanupData"
+            >
+              <el-icon><Delete /></el-icon>清理过期数据
+            </el-button>
+            <span v-if="!cleanupStatus.canCleanup && !cleanupStatus.dataCleaned" style="font-size: 12px; color: #909399;">
+              需过期满30天后才可执行清理
+            </span>
+          </div>
+        </div>
+
+        <!-- 清理结果展示 -->
+        <div v-if="cleanupResult" class="cleanup-result">
+          <el-divider content-position="left">清理结果</el-divider>
+          <el-descriptions :column="2" size="small" border>
+            <el-descriptions-item label="租户名称">{{ cleanupResult.tenantName }}</el-descriptions-item>
+            <el-descriptions-item label="过期天数">{{ cleanupResult.expiredDays }} 天</el-descriptions-item>
+            <el-descriptions-item label="删除记录数">
+              <span style="color: #f56c6c; font-weight: 600;">{{ cleanupResult.totalDeletedRecords }} 条</span>
+            </el-descriptions-item>
+            <el-descriptions-item label="清理文件数">
+              <span style="color: #f56c6c; font-weight: 600;">{{ cleanupResult.cleanedFilesCount }} 个（{{ cleanupResult.cleanedFilesSizeMb }} MB）</span>
+            </el-descriptions-item>
+            <el-descriptions-item label="清理时间">{{ formatDateTime(cleanupResult.cleanedAt) }}</el-descriptions-item>
+          </el-descriptions>
+        </div>
       </div>
     </el-card>
 
@@ -1351,11 +1475,120 @@ const handleImportUsers = (file: any) => {
   reader.readAsText(rawFile)
 }
 
+// === 数据清理 ===
+
+const cleanupStatusLoading = ref(false)
+const cleanupExecuting = ref(false)
+const cleanupStatus = reactive({
+  canCleanup: false,
+  reason: '',
+  expiredDays: 0,
+  dataCleaned: false,
+  dataCleanedAt: '',
+  lastCleanup: null as any
+})
+const cleanupResult = ref<any>(null)
+
+const fetchCleanupStatus = async () => {
+  cleanupStatusLoading.value = true
+  try {
+    const res = await request.get(`/tenants/${route.params.id}/cleanup-status`)
+    if (res.success && res.data) {
+      const d = res.data
+      cleanupStatus.canCleanup = d.canCleanup
+      cleanupStatus.reason = d.reason || ''
+      cleanupStatus.expiredDays = d.expiredDays || 0
+      cleanupStatus.dataCleaned = !!d.dataCleaned
+      cleanupStatus.dataCleanedAt = d.dataCleanedAt || ''
+      cleanupStatus.lastCleanup = d.lastCleanup || null
+    }
+  } catch {
+    // 静默失败
+  } finally {
+    cleanupStatusLoading.value = false
+  }
+}
+
+const handleCleanupData = async () => {
+  if (!cleanupStatus.canCleanup) return
+
+  // 第一步：确认警告
+  try {
+    await ElMessageBox.confirm(
+      `即将清理租户「${detail.value.name}」(${detail.value.code}) 的全部数据，包括：\n\n` +
+      '• 所有数据库记录（客户、订单、用户、配置等）\n' +
+      '• 所有物理文件（上传的图片、附件等）\n\n' +
+      '⚠️ 此操作不可恢复！请确认该租户已过期且无需保留数据。',
+      '危险操作 - 清理过期数据',
+      {
+        type: 'error',
+        confirmButtonText: '下一步确认',
+        cancelButtonText: '取消',
+        confirmButtonClass: 'el-button--danger',
+        dangerouslyUseHTMLString: false
+      }
+    )
+  } catch {
+    return // 用户取消
+  }
+
+  // 第二步：输入租户编码二次确认
+  let inputCode = ''
+  try {
+    const result = await ElMessageBox.prompt(
+      `请输入该租户的编码「${detail.value.code}」以确认清理操作：`,
+      '二次确认 - 输入租户编码',
+      {
+        confirmButtonText: '确认清理',
+        cancelButtonText: '取消',
+        confirmButtonClass: 'el-button--danger',
+        inputPattern: /.+/,
+        inputErrorMessage: '请输入租户编码'
+      }
+    )
+    inputCode = result.value?.trim() || ''
+  } catch {
+    return // 用户取消
+  }
+
+  if (inputCode !== detail.value.code) {
+    ElMessage.error('租户编码不匹配，清理操作已取消')
+    return
+  }
+
+  // 第三步：执行清理
+  cleanupExecuting.value = true
+  cleanupResult.value = null
+  try {
+    const res = await request.post(`/tenants/${route.params.id}/cleanup-data`, {
+      confirmCode: inputCode
+    })
+    if (res.success) {
+      ElMessage.success(res.message || '数据清理完成')
+      cleanupResult.value = res.data
+      // 刷新清理状态
+      await fetchCleanupStatus()
+      // 刷新详情页数据
+      fetchDetail()
+      fetchUsers()
+      fetchLogs()
+      fetchBills()
+    } else {
+      ElMessage.error(res.message || '清理失败')
+    }
+  } catch (error: any) {
+    ElMessage.error(error?.message || '清理数据失败，请稍后重试')
+  } finally {
+    cleanupExecuting.value = false
+  }
+}
+
 onMounted(() => {
   fetchDetail()
   fetchUsers()
   fetchLogs()
   fetchBills()
+  fetchCleanupStatus()
 })
 </script>
 
@@ -1546,6 +1779,17 @@ onMounted(() => {
   .pkg-select-mark {
     position: absolute; bottom: 8px; right: 8px; color: #409eff;
   }
+}
+
+/* ====== 数据清理 ====== */
+.cleanup-actions {
+  .cleanup-info { margin-bottom: 8px; }
+}
+.cleanup-result {
+  margin-top: 16px;
+  padding: 12px;
+  background: #fafafa;
+  border-radius: 8px;
 }
 </style>
 

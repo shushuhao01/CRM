@@ -3040,7 +3040,7 @@ onMounted(async () => {
 
 .first-row,
 .second-row {
-  margin-bottom: 24px;
+  margin-bottom: 20px;
 }
 
 .customer-info-card,
@@ -3332,19 +3332,24 @@ onMounted(async () => {
 .stats-row {
   padding: 0;
   background: transparent;
-  margin-bottom: 32px;
+  margin-bottom: 0;
 }
 
 .stat-item {
   position: relative;
-  padding: 32px 24px;
+  padding: 20px 16px;
   background: white;
-  border-radius: 20px;
+  border-radius: 12px;
   border: 1px solid #f1f5f9;
-  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   overflow: hidden;
   text-align: center;
   cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 110px;
 }
 
 .stat-item::before {
@@ -3353,19 +3358,19 @@ onMounted(async () => {
   top: 0;
   left: 0;
   right: 0;
-  height: 4px;
+  height: 3px;
   background: var(--stat-color);
   transition: height 0.3s ease;
 }
 
 .stat-item:hover {
-  transform: translateY(-8px);
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+  transform: translateY(-4px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
   border-color: #e2e8f0;
 }
 
 .stat-item:hover::before {
-  height: 6px;
+  height: 4px;
 }
 
 .stat-item:nth-child(1) {
@@ -3385,31 +3390,34 @@ onMounted(async () => {
 }
 
 .stat-icon {
-  font-size: 40px;
-  margin-bottom: 16px;
+  font-size: 28px;
+  margin-bottom: 8px;
   display: block;
   color: var(--stat-color);
-  opacity: 0.9;
+  opacity: 0.85;
 }
 
 .stat-content {
   flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
 }
 
 .stat-value {
-  font-size: 36px;
-  font-weight: 800;
+  font-size: 26px;
+  font-weight: 700;
   color: #0f172a;
-  margin-bottom: 8px;
-  letter-spacing: -1px;
+  line-height: 1.2;
+  letter-spacing: -0.5px;
 }
 
 .stat-label {
-  font-size: 15px;
+  font-size: 13px;
   color: #64748b;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+  font-weight: 500;
+  letter-spacing: 0.3px;
 }
 
 

@@ -33,6 +33,15 @@ export interface CustomerListResponse {
   total: number
   page: number
   pageSize: number
+  statistics?: CustomerStatsResponse
+}
+
+// 客户列表统计响应接口
+export interface CustomerStatsResponse {
+  totalCustomers: number
+  monthCustomers: number
+  newCustomers: number
+  noOrderCustomers: number
 }
 
 // 客户API服务 - 🔥 所有方法直接调用真实API
@@ -118,5 +127,10 @@ export const customerApi = {
   search: async (params: CustomerSearchParams) => {
     console.log('[customerApi.search] 直接调用真实API')
     return api.get<CustomerListResponse>(API_ENDPOINTS.CUSTOMERS.SEARCH, { params: toRequestParams(params) })
+  },
+
+  // 获取客户列表统计数据 - 独立接口，30秒缓存
+  getStats: async () => {
+    return api.get<CustomerStatsResponse>('/customers/stats')
   }
 }

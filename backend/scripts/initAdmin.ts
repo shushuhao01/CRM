@@ -4,7 +4,7 @@
  */
 import 'reflect-metadata'
 import { DataSource } from 'typeorm'
-import bcrypt from 'bcrypt'
+import bcrypt from 'bcryptjs'
 import { v4 as uuidv4 } from 'uuid'
 import dotenv from 'dotenv'
 import path from 'path'

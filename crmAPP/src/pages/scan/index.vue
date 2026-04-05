@@ -42,6 +42,7 @@ import { onMounted } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { useUserStore } from '@/stores/user'
 import { bindDevice } from '@/api/auth'
+import { APP_VERSION } from '@/config/app'
 
 const userStore = useUserStore()
 
@@ -115,7 +116,7 @@ const processQRCode = async (content: string) => {
         deviceModel: systemInfo.deviceModel || '',
         osType: systemInfo.platform === 'ios' ? 'ios' : 'android',
         osVersion: systemInfo.system || '',
-        appVersion: '1.0.0'
+        appVersion: APP_VERSION
       }
     })
 
@@ -129,7 +130,7 @@ const processQRCode = async (content: string) => {
       deviceModel: systemInfo.deviceModel || '',
       osType: systemInfo.platform === 'ios' ? 'ios' : 'android',
       osVersion: systemInfo.system || '',
-      appVersion: '1.0.0'
+      appVersion: APP_VERSION
     })
 
     uni.showToast({ title: '绑定成功', icon: 'success' })

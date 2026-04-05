@@ -9,6 +9,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { AppDataSource } from '../config/database';
 import { getCurrentTenantIdSafe, tenantRawSQL } from '../utils/tenantHelpers';
 
+import { log } from '../config/logger';
 // 录音文件信息接口
 export interface RecordingFileInfo {
   id: string;
@@ -95,9 +96,9 @@ class RecordingStorageService {
       // 确保目录存在
       this.ensureDirectoryExists(this.localBasePath);
 
-      console.log('[RecordingStorageService] 初始化完成，存储类型:', this.config.type);
+      log.info('[RecordingStorageService] 初始化完成，存储类型:', this.config.type);
     } catch (error) {
-      console.error('[RecordingStorageService] 初始化失败:', error);
+      log.error('[RecordingStorageService] 初始化失败:', error);
     }
   }
 
@@ -107,7 +108,7 @@ class RecordingStorageService {
   private ensureDirectoryExists(dirPath: string): void {
     if (!fs.existsSync(dirPath)) {
       fs.mkdirSync(dirPath, { recursive: true });
-      console.log('[RecordingStorageService] 创建录音目录:', dirPath);
+      log.info('[RecordingStorageService] 创建录音目录:', dirPath);
     }
   }
 
@@ -254,7 +255,7 @@ class RecordingStorageService {
   ): Promise<{ path: string; url: string }> {
     // 检查OSS配置
     if (!this.config.ossAccessKeyId || !this.config.ossAccessKeySecret || !this.config.ossBucket) {
-      console.warn('[RecordingStorageService] OSS配置不完整，回退到本地存储');
+      log.warn('[RecordingStorageService] OSS配置不完整，回退到本地存储');
       const parts = objectKey.split('/');
       const fileName = parts.pop() || '';
       const subPath = parts.slice(1).join('/');
@@ -267,7 +268,7 @@ class RecordingStorageService {
       try {
         OSS = (await import('ali-oss')).default;
       } catch {
-        console.warn('[RecordingStorageService] ali-oss未安装，回退到本地存储');
+        log.warn('[RecordingStorageService] ali-oss未安装，回退到本地存储');
         const parts = objectKey.split('/');
         const fileName = parts.pop() || '';
         const subPath = parts.slice(1).join('/');
@@ -289,7 +290,7 @@ class RecordingStorageService {
         url: result.url
       };
     } catch (error) {
-      console.error('[RecordingStorageService] OSS上传失败:', error);
+      log.error('[RecordingStorageService] OSS上传失败:', error);
       // 回退到本地存储
       const parts = objectKey.split('/');
       const fileName = parts.pop() || '';
@@ -307,7 +308,7 @@ class RecordingStorageService {
   ): Promise<{ path: string; url: string }> {
     // 检查COS配置
     if (!this.config.cosSecretId || !this.config.cosSecretKey || !this.config.cosBucket) {
-      console.warn('[RecordingStorageService] COS配置不完整，回退到本地存储');
+      log.warn('[RecordingStorageService] COS配置不完整，回退到本地存储');
       const parts = objectKey.split('/');
       const fileName = parts.pop() || '';
       const subPath = parts.slice(1).join('/');
@@ -321,7 +322,7 @@ class RecordingStorageService {
         // @ts-expect-error - cos-nodejs-sdk-v5 may not be installed
         COS = (await import('cos-nodejs-sdk-v5')).default;
       } catch {
-        console.warn('[RecordingStorageService] cos-nodejs-sdk-v5未安装，回退到本地存储');
+        log.warn('[RecordingStorageService] cos-nodejs-sdk-v5未安装，回退到本地存储');
         const parts = objectKey.split('/');
         const fileName = parts.pop() || '';
         const subPath = parts.slice(1).join('/');
@@ -351,7 +352,7 @@ class RecordingStorageService {
         });
       });
     } catch (error) {
-      console.error('[RecordingStorageService] COS上传失败:', error);
+      log.error('[RecordingStorageService] COS上传失败:', error);
       // 回退到本地存储
       const parts = objectKey.split('/');
       const fileName = parts.pop() || '';
@@ -390,7 +391,7 @@ class RecordingStorageService {
         ]
       );
     } catch (error) {
-      console.error('[RecordingStorageService] 保存录音记录到数据库失败:', error);
+      log.error('[RecordingStorageService] 保存录音记录到数据库失败:', error);
       throw error;
     }
   }
@@ -411,7 +412,7 @@ class RecordingStorageService {
         [recordingUrl, recordingSize, callId, ...t.params]
       );
     } catch (error) {
-      console.error('[RecordingStorageService] 更新通话记录失败:', error);
+      log.error('[RecordingStorageService] 更新通话记录失败:', error);
     }
   }
 
@@ -432,7 +433,7 @@ class RecordingStorageService {
         const fullPath = path.join(this.localBasePath, decodedPath.replace('recordings/', ''));
 
         if (!fs.existsSync(fullPath)) {
-          console.error('[RecordingStorageService] 录音文件不存在:', fullPath);
+          log.error('[RecordingStorageService] 录音文件不存在:', fullPath);
           return null;
         }
 
@@ -480,7 +481,7 @@ class RecordingStorageService {
       // 这里简化处理，实际应该使用SDK获取
       return null;
     } catch (error) {
-      console.error('[RecordingStorageService] 获取录音流失败:', error);
+      log.error('[RecordingStorageService] 获取录音流失败:', error);
       return null;
     }
   }
@@ -525,7 +526,7 @@ class RecordingStorageService {
 
       return true;
     } catch (error) {
-      console.error('[RecordingStorageService] 删除录音失败:', error);
+      log.error('[RecordingStorageService] 删除录音失败:', error);
       return false;
     }
   }
@@ -549,10 +550,10 @@ class RecordingStorageService {
         if (success) deletedCount++;
       }
 
-      console.log(`[RecordingStorageService] 清理了 ${deletedCount} 个过期录音`);
+      log.info(`[RecordingStorageService] 清理了 ${deletedCount} 个过期录音`);
       return deletedCount;
     } catch (error) {
-      console.error('[RecordingStorageService] 清理过期录音失败:', error);
+      log.error('[RecordingStorageService] 清理过期录音失败:', error);
       return 0;
     }
   }
@@ -604,7 +605,7 @@ class RecordingStorageService {
         byStorageType
       };
     } catch (error) {
-      console.error('[RecordingStorageService] 获取存储统计失败:', error);
+      log.error('[RecordingStorageService] 获取存储统计失败:', error);
       return {
         totalRecordings: 0,
         totalSize: 0,

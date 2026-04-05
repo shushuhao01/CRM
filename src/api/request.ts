@@ -1,5 +1,10 @@
-// HTTP请求工具 - 生产环境版本（已移除Mock API逻辑）
-import { API_CONFIG } from './config'
+// HTTP请求工具 - 统一使用 axios 实现（已从 fetch 迁移）
+// 🔥 任务3.3：保持与原 fetch 版完全相同的导出接口（request函数 + api对象 + ApiResponse类型）
+// 底层委托给 utils/request.ts 的 axios 实例，统一 Token管理/错误处理/请求拦截
+import service from '@/utils/request'
+import type { AxiosRequestConfig } from 'axios'
+
+// ── 类型导出（保持原接口不变）────────────────────────────
 
 // 响应数据接口
 export interface ApiResponse<T = unknown> {
@@ -11,28 +16,6 @@ export interface ApiResponse<T = unknown> {
 
 // 请求参数类型 - 支持嵌套对象
 export type RequestParams = Record<string, string | number | boolean | undefined | null | Record<string, unknown>>
-
-// 扁平化参数用于URL查询字符串
-const flattenParams = (params: RequestParams): Record<string, string> => {
-  const result: Record<string, string> = {}
-  Object.keys(params).forEach(key => {
-    const value = params[key]
-    if (value !== undefined && value !== null) {
-      if (typeof value === 'object') {
-        // 对于对象类型的参数，将其属性展开
-        Object.keys(value).forEach(subKey => {
-          const subValue = (value as Record<string, unknown>)[subKey]
-          if (subValue !== undefined && subValue !== null) {
-            result[subKey] = String(subValue)
-          }
-        })
-      } else {
-        result[key] = String(value)
-      }
-    }
-  })
-  return result
-}
 
 // 请求数据类型
 export type RequestData = Record<string, unknown> | FormData | string | null
@@ -52,58 +35,13 @@ export interface RequestConfig {
   timeout?: number
 }
 
-// 获取认证token
-const getAuthToken = (): string | null => {
-  return localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token')
-}
+// ── 核心请求函数 ────────────────────────────────────────
 
-// 构建完整URL
-const buildUrl = (endpoint: string, params?: RequestParams): string => {
-  const base = API_CONFIG.BASE_URL.replace(/\/+$/, '')
-  const path = String(endpoint || '').replace(/^\/+/, '')
-
-  let urlString = `${base}/${path}`
-
-  // 添加查询参数
-  if (params && Object.keys(params).length > 0) {
-    const flatParams = flattenParams(params)
-    const searchParams = new URLSearchParams()
-    Object.keys(flatParams).forEach(key => {
-      searchParams.append(key, flatParams[key])
-    })
-    const queryString = searchParams.toString()
-    if (queryString) {
-      urlString += `?${queryString}`
-    }
-  }
-
-  return urlString
-}
-
-// 处理响应
-const handleResponse = async <T>(response: Response): Promise<ApiResponse<T>> => {
-  const contentType = response.headers.get('content-type')
-
-  let data: unknown
-  if (contentType && contentType.includes('application/json')) {
-    data = await response.json()
-  } else {
-    data = await response.text()
-  }
-
-  if (!response.ok) {
-    const error = new Error(
-      (data as { message?: string })?.message || `HTTP Error: ${response.status}`
-    ) as ApiError
-    error.status = response.status
-    error.data = data
-    throw error
-  }
-
-  return data as ApiResponse<T>
-}
-
-// 主要的请求函数 - 直接调用真实API
+/**
+ * 主请求函数 - 委托给 axios 实例
+ * axios 响应拦截器已自动解包 response.data.data（返回内层 data）
+ * 这里包装回 ApiResponse<T> 格式，保持原接口兼容
+ */
 export const request = async <T = unknown>(
   endpoint: string,
   config: RequestConfig = {}
@@ -113,49 +51,48 @@ export const request = async <T = unknown>(
     headers = {},
     params,
     data,
-    timeout = API_CONFIG.TIMEOUT
+    timeout
   } = config
 
-  console.log(`[API] ${method} ${endpoint}`)
-
-  // 构建请求头
-  const requestHeaders: Record<string, string> = {
-    ...API_CONFIG.HEADERS,
-    ...headers
+  const axiosConfig: AxiosRequestConfig = {
+    headers,
+    params,
+    timeout
   }
 
-  // 添加认证token
-  const token = getAuthToken()
-  if (token) {
-    requestHeaders.Authorization = `Bearer ${token}`
+  // axios 响应拦截器成功时返回 response.data.data（已解包的内层数据）
+  // 我们将其重新包装为 ApiResponse<T> 以兼容所有现有消费者
+  let result: T
+
+  switch (method) {
+    case 'POST':
+      result = await service.post(endpoint, data, axiosConfig)
+      break
+    case 'PUT':
+      result = await service.put(endpoint, data, axiosConfig)
+      break
+    case 'PATCH':
+      result = await service.patch(endpoint, data, axiosConfig)
+      break
+    case 'DELETE':
+      result = await service.delete(endpoint, axiosConfig)
+      break
+    case 'GET':
+    default:
+      result = await service.get(endpoint, axiosConfig)
+      break
   }
 
-  // 构建请求配置
-  const requestConfig: RequestInit = {
-    method,
-    headers: requestHeaders,
-    signal: AbortSignal.timeout(timeout)
-  }
-
-  // 添加请求体（对于POST、PUT、PATCH请求）
-  if (data && ['POST', 'PUT', 'PATCH'].includes(method)) {
-    requestConfig.body = JSON.stringify(data)
-  }
-
-  try {
-    const url = buildUrl(endpoint, params)
-    const response = await fetch(url, requestConfig)
-    return await handleResponse<T>(response)
-  } catch (error: unknown) {
-    // 处理网络错误或超时
-    if ((error as Error)?.name === 'AbortError') {
-      throw new Error('请求超时')
-    }
-    throw error
+  return {
+    code: 200,
+    message: 'success',
+    data: result,
+    success: true
   }
 }
 
-// 便捷方法
+// ── 便捷方法（保持原接口不变）────────────────────────────
+
 export const api = {
   get: <T = unknown>(endpoint: string, config?: { params?: RequestParams }) =>
     request<T>(endpoint, { method: 'GET', params: config?.params }),

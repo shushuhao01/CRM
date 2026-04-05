@@ -34,8 +34,40 @@
 
       <!-- 右侧按钮 -->
       <div class="nav-actions">
-        <a href="https://app.yunke-crm.com" target="_blank" class="btn-login">登录</a>
-        <a :href="wechatServiceUrl" target="_blank" class="btn btn-primary btn-sm">免费试用</a>
+        <!-- 已登录状态 -->
+        <template v-if="memberLoggedIn">
+          <div class="user-dropdown" ref="userDropdownRef">
+            <button class="btn-user" @click.stop="showDropdown = !showDropdown">
+              <span class="user-avatar">{{ memberName?.charAt(0) || '会' }}</span>
+              <span class="user-name">{{ memberName }}</span>
+              <span class="arrow" :class="{ open: showDropdown }">▾</span>
+            </button>
+            <transition name="dropdown-fade">
+              <div v-show="showDropdown" class="dropdown-menu">
+                <router-link to="/member/dashboard" class="dropdown-item" @click="showDropdown = false">📊 会员中心</router-link>
+                <router-link to="/member/subscription" class="dropdown-item" @click="showDropdown = false">🔄 订阅管理</router-link>
+                <router-link to="/member/bills" class="dropdown-item" @click="showDropdown = false">📋 账单记录</router-link>
+                <div class="dropdown-divider"></div>
+                <a href="https://app.yunke-crm.com" target="_blank" class="dropdown-item">💼 CRM工作台</a>
+                <div class="dropdown-divider"></div>
+                <button class="dropdown-item logout" @click="handleLogout">🚪 退出登录</button>
+              </div>
+            </transition>
+          </div>
+        </template>
+        <!-- 未登录状态 -->
+        <template v-else>
+          <div class="login-dropdown" ref="loginDropdownRef">
+            <button class="btn-login" @click.stop="showLoginMenu = !showLoginMenu">登录</button>
+            <transition name="dropdown-fade">
+              <div v-show="showLoginMenu" class="dropdown-menu">
+                <router-link to="/member/login" class="dropdown-item" @click="showLoginMenu = false">👤 会员中心</router-link>
+                <a href="https://app.yunke-crm.com" target="_blank" class="dropdown-item" @click="showLoginMenu = false">💼 CRM系统</a>
+              </div>
+            </transition>
+          </div>
+        </template>
+        <router-link to="/register?plan=FREE_TRIAL" class="btn btn-primary btn-sm">免费试用</router-link>
       </div>
 
       <!-- 移动端菜单按钮 -->
@@ -49,22 +81,64 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { useRouter } from 'vue-router'
+import { isMemberLoggedIn, getMemberTenant, memberLogout } from '@/api/member'
 
+const router = useRouter()
 const isScrolled = ref(false)
 const menuOpen = ref(false)
-const wechatServiceUrl = 'https://work.weixin.qq.com/kfid/kfc461ca9f5b45c8d25'
+const showDropdown = ref(false)
+const showLoginMenu = ref(false)
+const memberCheckKey = ref(0)
+const userDropdownRef = ref<HTMLElement | null>(null)
+const loginDropdownRef = ref<HTMLElement | null>(null)
+
+const memberLoggedIn = computed(() => {
+  void memberCheckKey.value
+  return isMemberLoggedIn()
+})
+
+const memberName = computed(() => {
+  const tenant = getMemberTenant()
+  return tenant?.name || '会员'
+})
+
+const handleLogout = () => {
+  memberLogout()
+  showDropdown.value = false
+  memberCheckKey.value++
+  router.push('/')
+}
 
 const handleScroll = () => {
   isScrolled.value = window.scrollY > 20
 }
 
+// 监听 storage 变化（其他标签页登录/登出）
+const handleStorage = () => { memberCheckKey.value++ }
+
+// 点击外部关闭下拉菜单
+const handleClickOutside = (e: MouseEvent) => {
+  const target = e.target as Node
+  if (userDropdownRef.value && !userDropdownRef.value.contains(target)) {
+    showDropdown.value = false
+  }
+  if (loginDropdownRef.value && !loginDropdownRef.value.contains(target)) {
+    showLoginMenu.value = false
+  }
+}
+
 onMounted(() => {
   window.addEventListener('scroll', handleScroll)
+  window.addEventListener('storage', handleStorage)
+  document.addEventListener('click', handleClickOutside)
 })
 
 onUnmounted(() => {
   window.removeEventListener('scroll', handleScroll)
+  window.removeEventListener('storage', handleStorage)
+  document.removeEventListener('click', handleClickOutside)
 })
 </script>
 
@@ -199,5 +273,124 @@ onUnmounted(() => {
   .menu-toggle {
     display: flex;
   }
+}
+
+.login-dropdown, .user-dropdown {
+  position: relative;
+}
+
+.btn-user {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 20px;
+  background: white;
+  cursor: pointer;
+  font-size: 13px;
+  color: #475569;
+  transition: all 0.2s;
+
+  &:hover {
+    border-color: #6366f1;
+    color: #6366f1;
+  }
+}
+
+.user-avatar {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.user-name {
+  max-width: 80px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.arrow {
+  font-size: 10px;
+  color: #94a3b8;
+  transition: transform 0.2s ease;
+
+  &.open {
+    transform: rotate(180deg);
+  }
+}
+
+.dropdown-menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  min-width: 160px;
+  background: white;
+  border-radius: 10px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
+  padding: 6px;
+  padding-top: 12px;
+  margin-top: 6px;
+  z-index: 1001;
+
+  // 透明桥接区域，防止鼠标移动到菜单过程中消失
+  &::before {
+    content: '';
+    position: absolute;
+    top: -8px;
+    left: 0;
+    right: 0;
+    height: 8px;
+  }
+}
+
+// 下拉菜单过渡动画
+.dropdown-fade-enter-active,
+.dropdown-fade-leave-active {
+  transition: all 0.2s ease;
+}
+.dropdown-fade-enter-from,
+.dropdown-fade-leave-to {
+  opacity: 0;
+  transform: translateY(-6px);
+}
+
+.dropdown-item {
+  display: block;
+  padding: 9px 14px;
+  font-size: 13px;
+  color: #475569;
+  text-decoration: none;
+  border-radius: 6px;
+  border: none;
+  background: none;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s;
+
+  &:hover {
+    background: #f1f5f9;
+    color: #6366f1;
+  }
+
+  &.logout {
+    color: #dc2626;
+    &:hover { background: #fef2f2; }
+  }
+}
+
+.dropdown-divider {
+  height: 1px;
+  background: #f1f5f9;
+  margin: 4px 8px;
 }
 </style>

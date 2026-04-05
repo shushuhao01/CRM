@@ -127,6 +127,9 @@
           <a href="https://app.yunke-crm.com" target="_blank" class="btn btn-primary btn-lg">
             立即登录系统
           </a>
+          <router-link to="/member/dashboard" class="btn btn-outline btn-lg">
+            👤 进入会员中心
+          </router-link>
           <router-link to="/docs" class="btn btn-outline btn-lg">
             查看使用文档
           </router-link>

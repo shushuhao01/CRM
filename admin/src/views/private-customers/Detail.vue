@@ -143,6 +143,11 @@
         <el-descriptions-item label="状态">
           <el-tag :type="getStatusType(detail.status)" size="small" effect="dark">{{ getStatusText(detail.status) }}</el-tag>
         </el-descriptions-item>
+        <el-descriptions-item label="付费方式">
+          <el-tag v-if="detail.licenseType === 'perpetual'" type="success" size="small" effect="dark">永久买断</el-tag>
+          <el-tag v-else-if="detail.licenseType === 'annual'" type="warning" size="small" effect="dark">按年付费</el-tag>
+          <el-tag v-else size="small">一次性付费</el-tag>
+        </el-descriptions-item>
         <el-descriptions-item label="当前套餐">
           <template v-if="detail.packageName || detail.packageInfo">
             <div class="package-info-cell">
@@ -342,6 +347,42 @@
       <div class="pagination-wrapper" v-if="billsTotal > 10">
         <el-pagination v-model:current-page="billsPage" :page-size="10" :total="billsTotal"
           layout="total, prev, pager, next" @current-change="fetchBills" small />
+      </div>
+    </el-card>
+
+    <!-- 数据清理说明 -->
+    <el-card shadow="never" class="info-card">
+      <template #header>
+        <div class="card-header">
+          <span><el-icon><Delete /></el-icon> 数据清理</span>
+        </div>
+      </template>
+      <el-alert
+        type="info"
+        :closable="false"
+        show-icon
+        style="margin-bottom: 12px;"
+      >
+        <template #title>
+          <span style="font-weight: 600;">私有部署客户 — 数据存储在客户自有服务器</span>
+        </template>
+        <template #default>
+          <div style="margin-top: 8px; line-height: 1.8; font-size: 13px;">
+            <p style="margin: 0;">私有部署客户的所有数据（数据库记录、上传文件等）均存储在客户自己的服务器和数据库中，管理后台无法远程访问或清理这些数据。</p>
+            <p style="margin: 8px 0 0 0;">如需清理客户本地数据，请参考以下方式：</p>
+            <ul style="margin: 4px 0 0 16px; padding: 0;">
+              <li>联系客户的运维人员，在其服务器上直接操作数据库</li>
+              <li>使用私有部署交付包中的维护工具（如有提供）</li>
+              <li>通过吊销授权码使客户系统停用，待客户确认后由其自行清理</li>
+            </ul>
+          </div>
+        </template>
+      </el-alert>
+      <div style="display: flex; align-items: center; gap: 12px;">
+        <el-button type="danger" disabled>
+          <el-icon><Delete /></el-icon>清理过期数据
+        </el-button>
+        <span style="font-size: 12px; color: #909399;">私有部署客户不支持远程清理数据</span>
       </div>
     </el-card>
 

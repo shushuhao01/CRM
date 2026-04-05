@@ -25,6 +25,7 @@
   "license": "MIT",
   "dependencies": {
     "@types/node-cron": "^3.0.11",
+    "ali-oss": "^6.23.0",
     "axios": "^1.12.2",
     "bcryptjs": "^2.4.3",
     "compression": "^1.7.4",
@@ -47,10 +48,14 @@
     "socket.io": "^4.8.1",
     "sqlite": "^5.1.1",
     "sqlite3": "^5.1.7",
+    "svg-captcha": "^1.4.0",
     "typeorm": "^0.3.17",
     "uuid": "^13.0.0",
     "winston": "^3.11.0",
     "ws": "^8.18.3"
+  },
+  "optionalDependencies": {
+    "ioredis": "^5.4.1"
   },
   "devDependencies": {
     "@swc/core": "^1.15.21",

@@ -9,6 +9,7 @@ import { Announcement, AnnouncementRead } from '../../entities/Announcement';
 import { SystemMessage } from '../../entities/SystemMessage';
 import { v4 as uuidv4 } from 'uuid';
 
+import { log } from '../../config/logger';
 const router = Router();
 
 /**
@@ -108,7 +109,7 @@ router.get('/', async (req: Request, res: Response) => {
       }
     });
   } catch (error) {
-    console.error('[Admin公告] 获取列表失败:', error);
+    log.error('[Admin公告] 获取列表失败:', error);
     res.status(500).json({ success: false, message: '获取公告列表失败' });
   }
 });
@@ -161,7 +162,7 @@ router.post('/', async (req: Request, res: Response) => {
 
     await announcementRepo.save(announcement);
 
-    console.log(`[Admin公告] ✅ 创建成功: ${title}`);
+    log.info(`[Admin公告] ✅ 创建成功: ${title}`);
 
     res.json({
       success: true,
@@ -169,7 +170,7 @@ router.post('/', async (req: Request, res: Response) => {
       data: announcement
     });
   } catch (error: any) {
-    console.error('[Admin公告] 创建失败:', error);
+    log.error('[Admin公告] 创建失败:', error);
     res.status(500).json({ success: false, message: '创建公告失败: ' + (error.message || '未知错误') });
   }
 });
@@ -222,7 +223,7 @@ router.put('/:id', async (req: Request, res: Response) => {
       data: announcement
     });
   } catch (error) {
-    console.error('[Admin公告] 更新失败:', error);
+    log.error('[Admin公告] 更新失败:', error);
     res.status(500).json({ success: false, message: '更新公告失败' });
   }
 });
@@ -248,7 +249,7 @@ router.delete('/:id', async (req: Request, res: Response) => {
 
     res.json({ success: true, message: '系统公告删除成功' });
   } catch (error) {
-    console.error('[Admin公告] 删除失败:', error);
+    log.error('[Admin公告] 删除失败:', error);
     res.status(500).json({ success: false, message: '删除公告失败' });
   }
 });
@@ -329,9 +330,9 @@ router.post('/:id/publish', async (req: Request, res: Response) => {
       }
 
       deliveredCount = targetUsers.length;
-      console.log(`[Admin公告] ✅ 发布成功: ${announcement.title}，已发送给 ${deliveredCount} 个用户`);
+      log.info(`[Admin公告] ✅ 发布成功: ${announcement.title}，已发送给 ${deliveredCount} 个用户`);
     } catch (deliverError) {
-      console.error('[Admin公告] ⚠️ 创建系统消息失败（公告已发布）:', deliverError);
+      log.error('[Admin公告] ⚠️ 创建系统消息失败（公告已发布）:', deliverError);
     }
 
     res.json({
@@ -347,7 +348,7 @@ router.post('/:id/publish', async (req: Request, res: Response) => {
       }
     });
   } catch (error) {
-    console.error('[Admin公告] 发布失败:', error);
+    log.error('[Admin公告] 发布失败:', error);
     res.status(500).json({ success: false, message: '发布公告失败' });
   }
 });
@@ -373,7 +374,7 @@ router.get('/tenants', async (_req: Request, res: Response) => {
       data: tenants
     });
   } catch (error) {
-    console.error('[Admin公告] 获取租户列表失败:', error);
+    log.error('[Admin公告] 获取租户列表失败:', error);
     res.json({ success: true, data: [] });
   }
 });

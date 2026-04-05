@@ -1,6 +1,7 @@
 import { Entity, PrimaryColumn, Column, CreateDateColumn, UpdateDateColumn, Index, ManyToOne, JoinColumn } from 'typeorm';
 import { Tenant } from './Tenant';
 
+import { log } from '../config/logger';
 /**
  * 租户配置实体
  * 用于存储租户的个性化配置信息
@@ -60,7 +61,7 @@ export class TenantSettings {
           return this.settingValue;
       }
     } catch (error) {
-      console.error(`解析配置值失败 [${this.settingKey}]:`, error);
+      log.error(`解析配置值失败 [${this.settingKey}]:`, error);
       return this.settingValue;
     }
   }
@@ -88,7 +89,7 @@ export class TenantSettings {
           break;
       }
     } catch (error) {
-      console.error(`序列化配置值失败 [${this.settingKey}]:`, error);
+      log.error(`序列化配置值失败 [${this.settingKey}]:`, error);
       this.settingValue = String(value);
     }
   }

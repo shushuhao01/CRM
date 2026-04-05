@@ -120,7 +120,11 @@
                 <template #title>
                   <div>
                     已为您创建默认管理员账号：<br>
-                    用户名：<strong>{{ activateResult.defaultAdmin.username }}</strong><br>
+                    用户名：<strong>{{ activateResult.defaultAdmin.username }}</strong>
+                    <template v-if="activateResult.defaultAdmin.isPhoneAccount">
+                      <br><span style="font-size:12px;color:#909399;">（即您注册官网时的手机号）</span>
+                    </template>
+                    <br>
                     密码：<strong>{{ activateResult.defaultAdmin.password }}</strong><br>
                     <span class="warning-text">请登录后立即修改密码！</span>
                   </div>

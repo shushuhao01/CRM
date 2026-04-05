@@ -5,6 +5,7 @@
 import { Request, Response } from 'express';
 import { notificationTemplateService } from '../../services/NotificationTemplateService';
 
+import { log } from '../../config/logger';
 export class NotificationTemplateController {
   /**
    * 获取所有模板
@@ -25,7 +26,7 @@ export class NotificationTemplateController {
         data: templates
       });
     } catch (error: any) {
-      console.error('[NotificationTemplate] 获取模板列表失败:', error);
+      log.error('[NotificationTemplate] 获取模板列表失败:', error);
       res.status(500).json({
         success: false,
         message: error.message
@@ -54,7 +55,7 @@ export class NotificationTemplateController {
         data: template
       });
     } catch (error: any) {
-      console.error('[NotificationTemplate] 获取模板失败:', error);
+      log.error('[NotificationTemplate] 获取模板失败:', error);
       res.status(500).json({
         success: false,
         message: error.message
@@ -75,7 +76,7 @@ export class NotificationTemplateController {
         data: template
       });
     } catch (error: any) {
-      console.error('[NotificationTemplate] 创建模板失败:', error);
+      log.error('[NotificationTemplate] 创建模板失败:', error);
       res.status(500).json({
         success: false,
         message: error.message
@@ -105,7 +106,7 @@ export class NotificationTemplateController {
         data: template
       });
     } catch (error: any) {
-      console.error('[NotificationTemplate] 更新模板失败:', error);
+      log.error('[NotificationTemplate] 更新模板失败:', error);
       res.status(500).json({
         success: false,
         message: error.message
@@ -134,7 +135,7 @@ export class NotificationTemplateController {
         message: '删除成功'
       });
     } catch (error: any) {
-      console.error('[NotificationTemplate] 删除模板失败:', error);
+      log.error('[NotificationTemplate] 删除模板失败:', error);
       res.status(500).json({
         success: false,
         message: error.message
@@ -157,7 +158,7 @@ export class NotificationTemplateController {
         data: result
       });
     } catch (error: any) {
-      console.error('[NotificationTemplate] 测试模板失败:', error);
+      log.error('[NotificationTemplate] 测试模板失败:', error);
       res.status(500).json({
         success: false,
         message: error.message
@@ -177,7 +178,7 @@ export class NotificationTemplateController {
 
       res.json(result);
     } catch (error: any) {
-      console.error('[NotificationTemplate] 发送通知失败:', error);
+      log.error('[NotificationTemplate] 发送通知失败:', error);
       res.status(500).json({
         success: false,
         message: error.message

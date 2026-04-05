@@ -12,6 +12,7 @@ import { LicenseLog } from '../entities/LicenseLog';
 import { v4 as uuidv4 } from 'uuid';
 import crypto from 'crypto';
 
+import { log } from '../config/logger';
 export interface LicenseInfo {
   activated: boolean;
   expired: boolean;
@@ -61,7 +62,7 @@ class LicenseService {
         features: license.features ? JSON.parse(license.features) : null
       };
     } catch (error) {
-      console.error('[LicenseService] 获取授权信息失败:', error);
+      log.error('[LicenseService] 获取授权信息失败:', error);
       return null;
     }
   }
@@ -96,14 +97,41 @@ class LicenseService {
         body: JSON.stringify({ licenseKey: license_key, machineId: machine_id })
       });
 
-      const result = await response.json() as { success?: boolean; data?: { valid?: boolean; maxUsers?: number }; message?: string };
+      const result = await response.json() as { success?: boolean; data?: { valid?: boolean; maxUsers?: number; expiresAt?: string; features?: any; licenseType?: string }; message?: string };
 
       if (result.success && result.data?.valid) {
-        // 更新本地授权信息（同步最新的 maxUsers）
+        // 更新本地授权信息（同步所有关键字段：maxUsers、expiresAt、features、licenseType）
+        const updates: string[] = ['updated_at = NOW()'];
+        const values: any[] = [];
+
+        if (result.data.maxUsers != null) {
+          updates.push('max_users = ?');
+          values.push(result.data.maxUsers);
+        }
+        if (result.data.expiresAt !== undefined) {
+          updates.push('expires_at = ?');
+          values.push(result.data.expiresAt);
+        }
+        if (result.data.features !== undefined) {
+          updates.push('features = ?');
+          values.push(typeof result.data.features === 'string' ? result.data.features : JSON.stringify(result.data.features));
+        }
+        if (result.data.licenseType) {
+          updates.push('license_type = ?');
+          values.push(result.data.licenseType);
+        }
+
+        values.push(license_key);
         await AppDataSource.query(
-          `UPDATE system_license SET max_users = ?, updated_at = NOW() WHERE license_key = ?`,
-          [result.data.maxUsers, license_key]
+          `UPDATE system_license SET ${updates.join(', ')} WHERE license_key = ?`,
+          values
         ).catch(() => {});
+
+        // 清除写入限制缓存，使续费/扩容立即生效
+        try {
+          const { clearLicenseWriteCache } = await import('../middleware/checkLicenseWrite');
+          clearLicenseWriteCache();
+        } catch {}
 
         const cacheData = { valid: true, maxUsers: result.data.maxUsers };
         onlineVerifyCache = { data: cacheData, timestamp: Date.now() };
@@ -115,7 +143,7 @@ class LicenseService {
       onlineVerifyCache = { data: cacheData, timestamp: Date.now() };
       return cacheData;
     } catch (error) {
-      console.error('[LicenseService] 在线验证失败:', error);
+      log.error('[LicenseService] 在线验证失败:', error);
       // 网络错误时，使用本地数据（离线模式）
       return { valid: true, message: '离线模式' };
     }
@@ -182,7 +210,7 @@ class LicenseService {
         maxUsers: licenseInfo.maxUsers
       };
     } catch (error) {
-      console.error('[LicenseService] 检查用户数限制失败:', error);
+      log.error('[LicenseService] 检查用户数限制失败:', error);
       // 出错时默认允许创建
       return {
         canCreate: true,
@@ -238,7 +266,7 @@ class LicenseService {
 
       return licenseInfo.features.includes(featureCode);
     } catch (error) {
-      console.error('[LicenseService] 检查功能模块失败:', error);
+      log.error('[LicenseService] 检查功能模块失败:', error);
       return true; // 出错时默认允许
     }
   }

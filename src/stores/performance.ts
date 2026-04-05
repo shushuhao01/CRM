@@ -1281,4 +1281,8 @@ export const usePerformanceStore = createPersistentStore('performance', () => {
     getCompanyAnalysisData,
     getAnalysisMetrics
   }
+}, {
+  // 🔒 安全优化：排除大型业务数据不持久化到localStorage
+  // 业绩数据从后端API加载，不需要本地持久化
+  exclude: ['teamMembers', 'productPerformance', 'performanceShares']
 })

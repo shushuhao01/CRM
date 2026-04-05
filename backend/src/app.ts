@@ -10,15 +10,15 @@ import dotenv from 'dotenv';
 import path from 'path';
 
 import { initializeDatabase, closeDatabase } from './config/database';
-import { logger } from './config/logger';
+import { logger, log } from './config/logger';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler';
 import { webSocketService } from './services/WebSocketService';
 import { mobileWebSocketService } from './services/MobileWebSocketService';
 import { tenantContextMiddleware } from './utils/tenantContext';
+import { checkLicenseWrite } from './middleware/checkLicenseWrite';
 
-// ·�ɵ���
+// ==================== 路由导入 ====================
 import authRoutes from './routes/auth';
-// import mockAuthRoutes from './routes/mockAuth'; // �ļ���ɾ��
 import userRoutes from './routes/users';
 import profileRoutes from './routes/profile';
 import customerRoutes from './routes/customers';
@@ -63,13 +63,14 @@ import adminRoutes from './routes/admin';
 import publicRoutes from './routes/public';
 import * as fs from 'fs';
 
-// ����NODE_ENV�����������ض�Ӧ�����ļ�
-// ��������(production): ���� .env
-// ��������(development): ���ȼ��� .env.local���������������� .env
+// ==================== 环境配置智能加载 ====================
+// 根据 NODE_ENV 环境变量智能加载对应的配置文件：
+//   生产环境(production): 加载 .env（生产数据库配置，如 abc789）
+//   开发环境(development/其他): 优先加载 .env.local（本地数据库 crm_local），不存在则回退到 .env
 const isProduction = process.env.NODE_ENV === 'production';
 let envFile = '.env';
 if (!isProduction) {
-  // ��������������ʹ�� .env.local
+  // 开发环境优先使用 .env.local
   const localEnvPath = path.join(__dirname, '../', '.env.local');
   if (fs.existsSync(localEnvPath)) {
     envFile = '.env.local';
@@ -77,17 +78,18 @@ if (!isProduction) {
 }
 const envPath = path.join(__dirname, '../', envFile);
 dotenv.config({ path: envPath });
-console.log(`? �Ѽ���${isProduction ? '����' : '����'}��������: ${envFile}`);
+log.info(`🔧 已加载${isProduction ? '生产' : '开发'}环境配置: ${envFile}`);
+log.info(`🔧 数据库目标: ${process.env.DB_DATABASE || 'crm'} @ ${process.env.DB_HOST || 'localhost'}:${process.env.DB_PORT || '3306'}`);
 
 const app = express();
 const httpServer = createServer(app);
 const PORT = process.env.PORT || 3000;
 const API_PREFIX = process.env.API_PREFIX || '/api/v1';
 
-// ���δ��������ڻ�ȡ��ʵIP��
+// 信任代理（用于获取真实IP）
 app.set('trust proxy', 1);
 
-// ��ȫ�м��
+// ==================== 安全中间件 ====================
 if (process.env.HELMET_ENABLED !== 'false') {
   const allowedOrigins = (process.env.CORS_ORIGIN?.split(',') || ['http://localhost:5173']).map(o => o.trim())
   const apiOrigin = `http://localhost:${process.env.PORT || 3000}`
@@ -99,14 +101,14 @@ if (process.env.HELMET_ENABLED !== 'false') {
         styleSrc: ["'self'", "'unsafe-inline'"],
         scriptSrc: ["'self'"],
         imgSrc: ["'self'", "data:", "https:"],
-        // ����ǰ�����˽������ӣ�XHR/Fetch/WebSocket�������� CSP ���µ� net::ERR_FAILED
+        // 允许前端与后端建立连接（XHR/Fetch/WebSocket），避免 CSP 导致 net::ERR_FAILED
         connectSrc: ["'self'", apiOrigin, ...allowedOrigins, "ws:", "wss:"],
       },
     },
   }))
 }
 
-// CORS����
+// CORS 配置
 app.use(cors({
   origin: process.env.CORS_ORIGIN?.split(',') || ['http://localhost:5173'],
   credentials: process.env.CORS_CREDENTIALS === 'true',
@@ -114,48 +116,48 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'X-Request-ID'],
 }));
 
-// ѹ���м��
+// 压缩中间件
 if (process.env.COMPRESSION_ENABLED !== 'false') {
   app.use(compression());
 }
 
-// ͨ�������м�� - ��������ʹ�ø����ɵ�����
+// 通用限流中间件 - 开发环境使用更宽松的限制
 const generalLimiter = rateLimit({
-  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '900000'), // 15����
-  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '10000'), // ?? ��ߵ�ÿ��IP 15���������10000������Լ667��/���ӣ�
+  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '900000'), // 15分钟
+  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '10000'), // 每个IP在15分钟内最多10000次请求（约667次/分钟）
   message: {
     success: false,
-    message: '�������Ƶ�������Ժ�����',
+    message: '请求过于频繁，请稍后再试',
     code: 'TOO_MANY_REQUESTS'
   },
   standardHeaders: true,
   legacyHeaders: false,
   skip: (req) => {
-    // �����������˵�
+    // 跳过健康检查端点
     return req.path === '/health' || req.path.includes('/health')
   }
 });
 
-// ��¼ר�������м�� - ���ϸ񵫺���������
+// 登录专用限流中间件 - 更严格但合理的限制
 const loginLimiter = rateLimit({
-  windowMs: parseInt(process.env.LOGIN_RATE_LIMIT_WINDOW_MS || '900000'), // 15����
-  max: parseInt(process.env.LOGIN_RATE_LIMIT_MAX_REQUESTS || '100'), // ?? ��ߵ�ÿ��IP 15���������100�ε�¼����
+  windowMs: parseInt(process.env.LOGIN_RATE_LIMIT_WINDOW_MS || '900000'), // 15分钟
+  max: parseInt(process.env.LOGIN_RATE_LIMIT_MAX_REQUESTS || '100'), // 每个IP在15分钟内最多100次登录尝试
   message: {
     success: false,
-    message: '��¼���Թ���Ƶ������15���Ӻ�����',
+    message: '登录尝试过于频繁，请15分钟后再试',
     code: 'TOO_MANY_LOGIN_ATTEMPTS'
   },
   standardHeaders: true,
   legacyHeaders: false,
   skip: (_req) => {
-    // ��������������¼����
+    // 开发环境跳过登录限流
     return process.env.NODE_ENV === 'development';
   }
 });
 
 app.use(generalLimiter);
 
-// ������־�м��
+// 请求日志中间件
 app.use(morgan('combined', {
   stream: {
     write: (message: string) => {
@@ -164,7 +166,7 @@ app.use(morgan('combined', {
   }
 }));
 
-// �����м��
+// 解析中间件
 app.use(express.json({
   limit: process.env.UPLOAD_MAX_SIZE || '10mb',
   type: ['application/json', 'text/plain']
@@ -173,25 +175,28 @@ app.use(express.urlencoded({
   extended: true,
   limit: process.env.UPLOAD_MAX_SIZE || '10mb'
 }));
-// ֧��XML��ʽ�������壨����Բͨ��������˾�Ļص���
+// 支持XML格式请求体（用于圆通等快递公司的回调）
 app.use(express.text({
   limit: process.env.UPLOAD_MAX_SIZE || '10mb',
   type: ['application/xml', 'text/xml']
 }));
 
-// ��̬�ļ�����
+// 静态文件服务
 app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
 app.use('/recordings', express.static(path.join(process.cwd(), 'recordings')));
 
-// �⻧�������м�� - ������·��֮ǰ����AsyncLocalStorage������
-// authenticateToken�м������JWT��֤��ͨ��TenantContextManager.setContext()����tenantId
+// 租户上下文中间件 - 在所有路由之前，基于 AsyncLocalStorage 工作
+// authenticateToken 中间件完成 JWT 验证后，通过 TenantContextManager.setContext() 设置 tenantId
 app.use(tenantContextMiddleware);
 
-// �������˵�
+// 私有部署授权过期写入限制 - 授权过期后允许登录和查看，但禁止写入（新增/修改/删除）
+app.use(checkLicenseWrite);
+
+// ==================== 健康检查端点 ====================
 app.get('/health', (req, res) => {
   res.json({
     success: true,
-    message: 'CRM API������������',
+    message: 'CRM API 服务运行正常',
     timestamp: new Date().toISOString(),
     version: process.env.npm_package_version || '1.0.0',
     environment: process.env.NODE_ENV || 'development',
@@ -199,22 +204,22 @@ app.get('/health', (req, res) => {
   });
 });
 
-// API�������˵�
+// API 前缀健康检查端点
 app.get(`${API_PREFIX}/health`, (req, res) => {
   res.json({
     success: true,
-    message: 'CRM API������������',
+    message: 'CRM API 服务运行正常',
     timestamp: new Date().toISOString(),
     version: process.env.npm_package_version || '1.0.0',
     environment: process.env.NODE_ENV || 'development'
   });
 });
 
-// ��·������ - ����API��Ϣ
+// 根路由 - 返回 API 信息
 app.get('/', (req, res) => {
   res.json({
     success: true,
-    message: 'CRM API����',
+    message: 'CRM API 服务',
     version: process.env.npm_package_version || '1.0.0',
     environment: process.env.NODE_ENV || 'development',
     apiPrefix: API_PREFIX,
@@ -232,14 +237,12 @@ app.get('/', (req, res) => {
   });
 });
 
-// ע��·��
-// ���������²�Ӧ�õ�¼������
+// ==================== 注册路由 ====================
+// 开发环境下不对登录接口应用限流
 if (process.env.NODE_ENV === 'development') {
   app.use(`${API_PREFIX}/auth`, authRoutes);
-  // app.use(`${API_PREFIX}/mock-auth`, mockAuthRoutes); // Mock·����ɾ��
 } else {
   app.use(`${API_PREFIX}/auth`, loginLimiter, authRoutes);
-  // app.use(`${API_PREFIX}/mock-auth`, loginLimiter, mockAuthRoutes); // Mock·����ɾ��
 }
 app.use(`${API_PREFIX}/users`, userRoutes);
 app.use(`${API_PREFIX}/profile`, profileRoutes);
@@ -284,59 +287,84 @@ app.use(`${API_PREFIX}/wecom`, wecomRoutes);
 app.use(`${API_PREFIX}/admin`, adminRoutes);
 app.use(`${API_PREFIX}/public`, publicRoutes);
 
-// 404����
+// 404 处理
 app.use(notFoundHandler);
 
-// ȫ�ִ�����
+// 全局错误处理
 app.use(errorHandler);
 
-// ����������
+// ==================== 启动服务器 ====================
 const startServer = async () => {
   try {
-    // ��ʼ�����ݿ�����
+    // 初始化数据库连接
     await initializeDatabase();
-    logger.info('? ���ݿ��ʼ�����');
+    logger.info('✅ 数据库初始化完成');
 
-    // ��ʼ��¼���洢����
+    // ==================== SaaS 模式守卫验证 ====================
+    // 如果配置了 DEPLOY_MODE=saas，必须通过 SaaS 平台许可验证
+    // 验证失败时自动降级为私有部署模式（系统正常运行，但多租户功能不可用）
+    const { SaaSGuardService } = await import('./services/SaaSGuardService');
+    const { deployConfig, printDeployConfig } = await import('./config/deploy');
+    const saasVerified = SaaSGuardService.initialize();
+    if (deployConfig.mode === 'saas' && !saasVerified) {
+      // SaaS 验证失败，强制降级为私有模式
+      deployConfig.setEffectiveMode('private');
+      logger.warn('⚠️ SaaS 平台许可验证未通过，已降级为私有部署模式');
+    }
+    printDeployConfig();
+    logger.info(`✅ 部署模式确认: ${deployConfig.effectiveMode}`);
+
+    // 初始化录音存储服务
     const { recordingStorageService } = await import('./services/RecordingStorageService');
     await recordingStorageService.initialize();
-    logger.info('? ¼���洢�����ʼ�����');
+    logger.info('✅ 录音存储服务初始化完成');
 
-    // ������ʱ���������
+    // 启动定时任务调度器
     const { schedulerService } = await import('./services/SchedulerService');
     schedulerService.start();
-    logger.info('? ��ʱ���������������');
+    logger.info('✅ 定时任务调度器已启动');
 
-    // ����HTTP��������ʹ��httpServer��֧��WebSocket��
+    // 🔑 私有部署模式：启动授权同步定时任务（每30分钟从管理后台同步最新授权信息）
+    if (!deployConfig.isSaaS()) {
+      try {
+        const { licenseSyncScheduler } = await import('./services/LicenseSyncScheduler');
+        licenseSyncScheduler.start(30); // 30分钟同步一次
+        logger.info('🔑 授权同步定时任务已启动（私有部署模式，每30分钟同步）');
+      } catch (err: any) {
+        logger.warn('授权同步定时任务启动失败:', err.message);
+      }
+    }
+
+    // 启动 HTTP 服务器（使用 httpServer 以支持 WebSocket）
     const server = httpServer.listen(PORT, () => {
-      logger.info(`?? CRM API����������`);
-      logger.info(`?? �����ַ: http://localhost:${PORT}`);
-      logger.info(`?? APIǰ׺: ${API_PREFIX}`);
-      logger.info(`?? ���л���: ${process.env.NODE_ENV || 'development'}`);
-      logger.info(`?? �������: http://localhost:${PORT}/health`);
+      logger.info(`🚀 CRM API 服务器已启动`);
+      logger.info(`🔗 监听地址: http://localhost:${PORT}`);
+      logger.info(`🔗 API前缀: ${API_PREFIX}`);
+      logger.info(`🔗 运行环境: ${process.env.NODE_ENV || 'development'}`);
+      logger.info(`🔗 健康检查: http://localhost:${PORT}/health`);
 
-      // ��ʼ��WebSocket�����첽��
+      // 初始化 WebSocket 服务（异步）
       webSocketService.initialize(httpServer).then(() => {
         global.webSocketService = webSocketService;
         if (webSocketService.isInitialized()) {
-          logger.info(`?? WebSocketʵʱ���ͷ���������`);
+          logger.info(`📡 WebSocket 实时推送服务已启动`);
         }
 
-        // Socket.IO ��ʼ����ɺ��ٳ�ʼ���ƶ��� WebSocket ����
-        // ��������ȷ�� Socket.IO ��ע�� upgrade ������
+        // Socket.IO 初始化完成后再初始化移动端 WebSocket 服务
+        // 这样可以确保 Socket.IO 先注册 upgrade 事件监听
         try {
           mobileWebSocketService.initialize(httpServer);
           (global as any).mobileWebSocketService = mobileWebSocketService;
-          logger.info(`?? �ƶ��� WebSocket ����������`);
+          logger.info(`📱 移动端 WebSocket 服务已启动`);
         } catch (err: any) {
-          logger.warn('�ƶ��� WebSocket ��������ʧ��:', err.message);
+          logger.warn('移动端 WebSocket 服务启动失败:', err.message);
         }
       }).catch(err => {
-        logger.warn('WebSocket��������ʧ��:', err.message);
+        logger.warn('WebSocket 服务启动失败:', err.message);
       });
     });
 
-    // ?? ������ʱ����ÿ���賿3������������Ϣ������30�죩
+    // 🔄 启动定时任务：每24小时清理过期消息（超过30天）
     const scheduleMessageCleanup = () => {
       const cleanupExpiredMessages = async () => {
         try {
@@ -358,29 +386,29 @@ const startServer = async () => {
             .execute();
 
           if (result.affected && result.affected > 0) {
-            logger.info(`?? [��ʱ����] ������ ${result.affected} ��������Ϣ������30�죩`);
+            logger.info(`🧹 [定时任务] 已清理 ${result.affected} 条过期消息（超过30天）`);
           }
         } catch (error) {
-          logger.error('[��ʱ����] ����������Ϣʧ��:', error);
+          logger.error('[定时任务] 清理过期消息失败:', error);
         }
       };
 
-      // ����ִ��һ������
+      // 启动时执行一次清理
       cleanupExpiredMessages();
 
-      // ÿ24Сʱִ��һ�Σ�86400000���룩
+      // 每24小时执行一次（86400000毫秒）
       setInterval(cleanupExpiredMessages, 24 * 60 * 60 * 1000);
-      logger.info('?? [��ʱ����] ��Ϣ�Զ�����������������ÿ24Сʱ��������30�����Ϣ��');
+      logger.info('🔄 [定时任务] 消息自动清理已启动（每24小时清理超过30天的消息）');
     };
 
     scheduleMessageCleanup();
 
-    // ?? ������ʱ���ѷ���
+    // ⏰ 启动超时提醒服务
     const startTimeoutReminderService = async () => {
       try {
         const { timeoutReminderService } = await import('./services/TimeoutReminderService');
 
-        // �����ݿ��ȡ���ã������Ƿ�����
+        // 从数据库获取配置，决定是否启动
         const { SystemConfig } = await import('./entities/SystemConfig');
         const { AppDataSource } = await import('./config/database');
 
@@ -399,94 +427,100 @@ const startServer = async () => {
 
           if (isEnabled) {
             timeoutReminderService.start(intervalMinutes);
-            logger.info(`? [��ʱ����] ��ʱ���ѷ������������������${intervalMinutes}���ӣ�`);
+            logger.info(`⏰ [定时任务] 超时提醒服务已启动（检查间隔：${intervalMinutes}分钟）`);
           } else {
-            logger.info('? [��ʱ����] ��ʱ���ѷ����ѽ���');
+            logger.info('⏰ [定时任务] 超时提醒服务已禁用');
           }
         } else {
-          // ���ݿ�δ��ʼ����ʹ��Ĭ����������
+          // 数据库未初始化，使用默认配置启动
           timeoutReminderService.start(30);
-          logger.info('? [��ʱ����] ��ʱ���ѷ�����������Ĭ�����ã�');
+          logger.info('⏰ [定时任务] 超时提醒服务已启动（默认配置）');
         }
       } catch (error) {
-        logger.error('[��ʱ����] ������ʱ���ѷ���ʧ��:', error);
+        logger.error('[定时任务] 启动超时提醒服务失败:', error);
       }
     };
 
     startTimeoutReminderService();
 
-    // ?? ����ҵ��������ʱ���ͷ���
+    // 📊 启动业绩报表定时发送服务
     const startPerformanceReportScheduler = async () => {
       try {
         const { performanceReportScheduler } = await import('./services/PerformanceReportScheduler');
         performanceReportScheduler.start();
-        logger.info('?? [��ʱ����] ҵ��������ʱ���ͷ���������');
+        logger.info('📊 [定时任务] 业绩报表定时发送服务已启动');
       } catch (error) {
-        logger.error('[��ʱ����] ����ҵ��������ʱ���ͷ���ʧ��:', error);
+        logger.error('[定时任务] 启动业绩报表定时发送服务失败:', error);
       }
     };
 
     startPerformanceReportScheduler();
 
-    // ?? ������Ϣ������ʱ����
+    // 🧹 启动消息清理定时任务
     const startMessageCleanupService = async () => {
       try {
         const { messageCleanupService } = await import('./services/MessageCleanupService');
         messageCleanupService.start();
-        logger.info('?? [��ʱ����] ��Ϣ��������������');
+        logger.info('🧹 [定时任务] 消息清理服务已启动');
       } catch (error) {
-        logger.error('[��ʱ����] ������Ϣ��������ʧ��:', error);
+        logger.error('[定时任务] 启动消息清理服务失败:', error);
       }
     };
 
     startMessageCleanupService();
 
-    // ���Źرմ���
+    // ==================== 优雅关闭处理 ====================
     const gracefulShutdown = async (signal: string) => {
-      logger.info(`�յ� ${signal} �źţ���ʼ���Źر�...`);
+      logger.info(`收到 ${signal} 信号，开始优雅关闭...`);
 
       server.close(async () => {
-        logger.info('HTTP�������ѹر�');
+        logger.info('HTTP 服务器已关闭');
 
         try {
           await closeDatabase();
-          logger.info('���ݿ������ѹر�');
+          logger.info('数据库连接已关闭');
           process.exit(0);
         } catch (error) {
-          logger.error('�ر����ݿ�����ʱ����:', error);
+          logger.error('关闭数据库连接时出错:', error);
           process.exit(1);
         }
       });
 
-      // ǿ�ƹرճ�ʱ
+      // 强制关闭超时（10秒）
       setTimeout(() => {
-        logger.error('ǿ�ƹرշ�����');
+        logger.error('强制关闭服务器');
         process.exit(1);
       }, 10000);
     };
 
-    // �����ر��ź�
+    // 监听关闭信号
     process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
     process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
-    // δ�����쳣����
+    // 未捕获异常处理
     process.on('uncaughtException', (error) => {
-      logger.error('δ������쳣:', error);
-      process.exit(1);
+      logger.error('未捕获的异常:', error);
+      // 生产环境退出进程，开发环境仅记录日志避免崩溃循环
+      if (process.env.NODE_ENV === 'production') {
+        process.exit(1);
+      }
     });
 
     process.on('unhandledRejection', (reason, promise) => {
-      logger.error('δ������Promise�ܾ�:', { reason, promise });
-      process.exit(1);
+      logger.error('未处理的 Promise 拒绝:', { reason, promise });
+      // 生产环境退出进程，开发环境仅记录日志避免崩溃循环
+      if (process.env.NODE_ENV === 'production') {
+        process.exit(1);
+      }
     });
 
   } catch (error) {
-    logger.error('����������ʧ��:', error);
+    logger.error('启动服务器失败:', error);
     process.exit(1);
   }
 };
 
-// ����Ӧ��
+// 启动应用
 if (require.main === module) {
   startServer();
 }

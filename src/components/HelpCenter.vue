@@ -42,17 +42,16 @@ const goToHelpCenter = () => {
   height: 32px;
   border-radius: 50%;
   background-color: transparent;
-  color: #606266;
+  color: #d3d4d6;
   cursor: pointer;
   transition: all 0.3s ease;
-  font-size: 18px;
-  opacity: 0.3;
+  font-size: 20px;
+  position: relative;
+  top: -1px;
 }
 
 .help-center-button:hover {
   background-color: #f5f7fa;
-  color: #409eff;
-  transform: scale(1.1);
   opacity: 1;
 }
 

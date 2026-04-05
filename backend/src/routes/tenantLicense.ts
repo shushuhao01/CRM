@@ -8,6 +8,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { adminNotificationService } from '../services/AdminNotificationService';
 import { getTenantResourceUsage } from '../middleware/checkTenantLimits';
 
+import { log } from '../config/logger';
 const router = Router();
 
 // 🔥 正确获取客户端IP（支持代理/反向代理）
@@ -50,7 +51,7 @@ router.get('/check-private', async (_req: Request, res: Response) => {
               p.name as package_name, p.features as package_features
        FROM tenants t
        LEFT JOIN tenant_packages p ON t.package_id = p.id
-       WHERE t.license_status = 'active' AND t.status != 'disabled'
+       WHERE t.license_status IN ('active', 'paid') AND t.status != 'disabled'
        ORDER BY t.activated_at DESC
        LIMIT 1`
     );
@@ -83,7 +84,7 @@ router.get('/check-private', async (_req: Request, res: Response) => {
       }
     });
   } catch (error: any) {
-    console.error('[Tenant License] Check private activation failed:', error);
+    log.error('[Tenant License] Check private activation failed:', error);
     res.json({ success: true, data: { activated: false } });
   }
 });
@@ -169,7 +170,7 @@ router.post('/verify', async (req: Request, res: Response) => {
         // 更新 licenses 表状态
         await AppDataSource.query(`UPDATE licenses SET status = 'active', activated_at = ? WHERE id = ?`, [now, lic.id]);
         tenant = { id: tenantId, name: lic.customer_name || '私有部署企业', code: tenantCode, license_status: 'active', expire_date: lic.expires_at };
-        console.log(`[TenantLicense] 私有授权码首次激活，创建本地租户: ${tenant.name} (${tenantCode})`);
+        log.info(`[TenantLicense] 私有授权码首次激活，创建本地租户: ${tenant.name} (${tenantCode})`);
 
         // 通知管理员
         adminNotificationService.notify('tenant_login', {
@@ -178,7 +179,7 @@ router.post('/verify', async (req: Request, res: Response) => {
           relatedId: tenant.id,
           relatedType: 'tenant',
           extraData: { tenantName: tenant.name, tenantCode, ip, deployType: 'private' }
-        }).catch((err: any) => console.error('[TenantLicense] 通知失败:', err.message));
+        }).catch((err: any) => log.error('[TenantLicense] 通知失败:', err.message));
       } else {
         // 已激活：更新验证时间
         await AppDataSource.query(`UPDATE tenants SET last_verify_at = NOW() WHERE id = ?`, [tenant.id]);
@@ -234,15 +235,16 @@ router.post('/verify', async (req: Request, res: Response) => {
       return res.status(403).json({ success: false, message: '授权已过期，请续费后使用', expireDate: tenant.expire_date });
     }
 
-    if (tenant.license_status === 'pending') {
+    if (tenant.license_status === 'pending' || tenant.license_status === 'paid') {
       await AppDataSource.query(`UPDATE tenants SET license_status = 'active', activated_at = NOW(), last_verify_at = NOW() WHERE id = ?`, [tenant.id]);
-      await logVerify(tenant.id, licenseKey, 'success', '首次激活成功', ip, userAgent);
+      const activateMsg = tenant.license_status === 'paid' ? '付款后首次激活成功' : '首次激活成功';
+      await logVerify(tenant.id, licenseKey, 'success', activateMsg, ip, userAgent);
       adminNotificationService.notify('tenant_login', {
         title: `租户首次激活：${tenant.name}`,
         content: `租户「${tenant.name}」（编码：${tenant.code}）首次激活，IP：${ip || '未知'}`,
         relatedId: tenant.id, relatedType: 'tenant',
         extraData: { tenantName: tenant.name, tenantCode: tenant.code, ip }
-      }).catch((err: any) => console.error('[TenantLicense] 通知失败:', err.message));
+      }).catch((err: any) => log.error('[TenantLicense] 通知失败:', err.message));
     } else {
       await AppDataSource.query(`UPDATE tenants SET last_verify_at = NOW() WHERE id = ?`, [tenant.id]);
       await logVerify(tenant.id, licenseKey, 'success', '验证成功', ip, userAgent);
@@ -264,7 +266,7 @@ router.post('/verify', async (req: Request, res: Response) => {
       message: '授权验证成功'
     });
   } catch (error: any) {
-    console.error('[Tenant License] Verify failed:', error);
+    log.error('[Tenant License] Verify failed:', error);
     res.status(500).json({ success: false, message: '验证失败，请稍后重试' });
   }
 });
@@ -303,6 +305,11 @@ router.post('/verify-code', async (req: Request, res: Response) => {
       });
     }
 
+    // paid状态（已付款未用授权码激活），允许通过编码登录并自动激活
+    if (tenant.license_status === 'paid') {
+      await AppDataSource.query(`UPDATE tenants SET license_status = 'active', activated_at = NOW(), last_verify_at = NOW() WHERE id = ?`, [tenant.id]);
+    }
+
     if (tenant.status === 'disabled') {
       return res.status(403).json({ success: false, message: '该租户已被禁用，请联系管理员' });
     }
@@ -334,7 +341,7 @@ router.post('/verify-code', async (req: Request, res: Response) => {
       message: '租户识别成功'
     });
   } catch (error: any) {
-    console.error('[Tenant License] Verify code failed:', error);
+    log.error('[Tenant License] Verify code failed:', error);
     res.status(500).json({ success: false, message: '验证失败，请稍后重试' });
   }
 });
@@ -383,7 +390,7 @@ router.get('/info', async (req: Request, res: Response) => {
       }
     });
   } catch (error: any) {
-    console.error('[Tenant License] Get info failed:', error);
+    log.error('[Tenant License] Get info failed:', error);
     res.status(500).json({ success: false, message: '获取租户信息失败' });
   }
 });
@@ -424,7 +431,7 @@ router.post('/heartbeat', async (req: Request, res: Response) => {
 
     res.json({ success: true, valid: true });
   } catch (error: any) {
-    console.error('[Tenant License] Heartbeat failed:', error);
+    log.error('[Tenant License] Heartbeat failed:', error);
     res.json({ success: true, valid: true });
   }
 });
@@ -447,7 +454,7 @@ router.get('/resource-usage', async (req: Request, res: Response) => {
 
     res.json({ success: true, data: usage });
   } catch (error: any) {
-    console.error('[Tenant License] Get resource usage failed:', error);
+    log.error('[Tenant License] Get resource usage failed:', error);
     res.json({ success: true, data: null });
   }
 });
@@ -461,7 +468,7 @@ async function logVerify(tenantId: string, licenseKey: string, result: string, m
       [uuidv4(), tenantId, licenseKey, result, message, ip, userAgent]
     );
   } catch (e) {
-    console.error('[Tenant License] Log failed:', e);
+    log.error('[Tenant License] Log failed:', e);
   }
 }
 

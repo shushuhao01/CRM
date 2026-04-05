@@ -164,7 +164,7 @@
         :show-selection="true"
         :show-actions="true"
         :total="pagination.total"
-        :page-sizes="[10, 20, 50, 100]"
+        :page-sizes="[10, 20, 50, 100, 200, 500, 1000, 2000, 5000]"
         :current-page="pagination.page"
         :page-size="pagination.size"
         @selection-change="handleSelectionChange"
@@ -909,6 +909,7 @@ import {
 import { useUserStore } from '@/stores/user'
 import { useOrderStore } from '@/stores/order'
 import { useRejectionReasonStore } from '@/stores/rejectionReason'
+import axios from 'axios'
 import { orderApi } from '@/api/order'
 import { displaySensitiveInfoNew } from '@/utils/sensitiveInfo'
 import { SensitiveInfoType } from '@/services/permission'
@@ -2193,6 +2194,11 @@ const loadOrderList = async () => {
     updateTabCounts()
 
   } catch (error) {
+    // 🔥 修复：忽略请求被取消的错误（由新请求替代旧请求时产生，属于正常行为）
+    if (axios.isCancel(error)) {
+      console.log('[订单审核] 请求已被取消（被新请求替代），忽略此错误')
+      return
+    }
     console.error('[订单审核] ❌ 加载订单列表失败:', error)
     ElMessage.error('加载订单列表失败')
 
@@ -2244,8 +2250,9 @@ onMounted(async () => {
   const loadTime = Date.now() - startTime
   console.log(`[订单审核] ✅ 数据加载完成，总耗时: ${loadTime}ms`)
 
-  // 设置默认显示全部订单
-  handleQuickFilter('all')
+  // 🔥 修复：只设置默认筛选标记，不触发重复的 loadOrderList 调用
+  // 之前 handleQuickFilter('all') 会调用 handleSearch() -> loadOrderList()，导致重复请求
+  activeQuickFilter.value = 'all'
 
   // 监听订单事件总线 - 实现订单状态同步
   eventBus.on(EventNames.ORDER_TRANSFERRED, handleOrderTransferredAudit)

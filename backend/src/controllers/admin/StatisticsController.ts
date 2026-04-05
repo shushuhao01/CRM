@@ -4,6 +4,7 @@
 import { Request, Response } from 'express';
 import { statisticsService } from '../../services/StatisticsService';
 
+import { log } from '../../config/logger';
 export class StatisticsController {
   /**
    * 获取仪表盘统计
@@ -13,7 +14,7 @@ export class StatisticsController {
       const stats = await statisticsService.getDashboardStats();
       res.json({ success: true, data: stats });
     } catch (error: any) {
-      console.error('[StatisticsController] Get dashboard failed:', error);
+      log.error('[StatisticsController] Get dashboard failed:', error);
       res.status(500).json({ success: false, message: '获取仪表盘数据失败' });
     }
   }
@@ -31,7 +32,7 @@ export class StatisticsController {
       });
       res.json({ success: true, data: stats });
     } catch (error: any) {
-      console.error('[StatisticsController] Get tenants failed:', error);
+      log.error('[StatisticsController] Get tenants failed:', error);
       res.status(500).json({ success: false, message: '获取租户统计失败' });
     }
   }
@@ -49,7 +50,7 @@ export class StatisticsController {
       });
       res.json({ success: true, data: stats });
     } catch (error: any) {
-      console.error('[StatisticsController] Get revenue failed:', error);
+      log.error('[StatisticsController] Get revenue failed:', error);
       res.status(500).json({ success: false, message: '获取收入统计失败' });
     }
   }
@@ -66,7 +67,7 @@ export class StatisticsController {
       });
       res.json({ success: true, data: stats });
     } catch (error: any) {
-      console.error('[StatisticsController] Get users failed:', error);
+      log.error('[StatisticsController] Get users failed:', error);
       res.status(500).json({ success: false, message: '获取用户统计失败' });
     }
   }
@@ -80,7 +81,7 @@ export class StatisticsController {
       const stats = await statisticsService.getTrendAnalysis(Number(days));
       res.json({ success: true, data: stats });
     } catch (error: any) {
-      console.error('[StatisticsController] Get trend failed:', error);
+      log.error('[StatisticsController] Get trend failed:', error);
       res.status(500).json({ success: false, message: '获取趋势分析失败' });
     }
   }

@@ -5,10 +5,13 @@ import { Router, Request, Response } from 'express'
 import { AppDataSource } from '../../config/database'
 import { v4 as uuidv4 } from 'uuid'
 import crypto from 'crypto'
+import bcrypt from 'bcryptjs'
 import { aliyunSmsService } from '../../services/AliyunSmsService'
 import { adminNotificationService } from '../../services/AdminNotificationService'
 import { createDefaultAdmin } from '../../utils/adminAccountHelper'
+import { generateMemberToken } from '../../middleware/memberAuth'
 
+import { log } from '../../config/logger';
 const router = Router()
 
 // 生成租户编码
@@ -58,16 +61,16 @@ router.post('/send-code', async (req: Request, res: Response) => {
     // 发送短信
     const result = await aliyunSmsService.sendVerificationCode(phone, code)
     if (!result.success) {
-      console.error(`[Register] 发送验证码失败: ${result.message}`)
+      log.error(`[Register] 发送验证码失败: ${result.message}`)
       return res.status(500).json({ code: 500, message: result.message || '发送失败，请稍后重试' })
     }
 
     verificationCodes.set(phone, { code, expires })
-    console.log(`[Register] 验证码已发送: ${phone}`)
+    log.info(`[Register] 验证码已发送: ${phone}`)
 
     res.json({ code: 0, message: '验证码已发送' })
   } catch (error) {
-    console.error('发送验证码失败:', error)
+    log.error('发送验证码失败:', error)
     res.status(500).json({ code: 500, message: '发送验证码失败' })
   }
 })
@@ -76,7 +79,7 @@ router.post('/send-code', async (req: Request, res: Response) => {
 // 注册租户（付费套餐：只创建记录，不生成授权码；免费套餐：直接生成授权码）
 router.post('/', async (req: Request, res: Response) => {
   try {
-    const { companyName, contactName, phone, code, email, packageCode } = req.body
+    const { companyName, contactName, phone, code, email, packageCode, password, autoRenew, autoRenewPackage } = req.body
 
     // 验证必填字段
     if (!companyName || !contactName || !phone || !code) {
@@ -138,6 +141,21 @@ router.post('/', async (req: Request, res: Response) => {
       [tenantId, companyName, tenantCode, licenseKey, licenseStatus, packageId, contactName, phone, email || null, maxUsers, expireDate]
     )
 
+    // 如果设置了密码，存储密码哈希（用于会员中心登录）
+    if (password && password.length >= 6) {
+      try {
+        const passwordHash = await bcrypt.hash(password, 10)
+        await AppDataSource.query('UPDATE tenants SET password_hash = ? WHERE id = ?', [passwordHash, tenantId])
+      } catch (pwdErr) {
+        log.warn('[Register] 存储密码失败（不影响注册）:', pwdErr)
+      }
+    }
+
+    // 如果免费试用勾选了"到期自动续费"，记录意向（实际签约在 /subscribe 端点完成）
+    if (isFree && autoRenew && autoRenewPackage) {
+      log.info(`[Register] 免费试用用户 ${tenantCode} 勾选到期自动续费 ${autoRenewPackage}，等待前端发起签约`)
+    }
+
     // 记录日志
     if (licenseKey) {
       await AppDataSource.query(
@@ -158,11 +176,14 @@ router.post('/', async (req: Request, res: Response) => {
           email: email || undefined
         })
         adminAccount = { username: result.username, password: result.password }
-        console.log(`[Register] ✅ 已为租户 ${tenantCode} 创建默认管理员: ${result.username}`)
+        log.info(`[Register] ✅ 已为租户 ${tenantCode} 创建默认管理员: ${result.username}`)
       } catch (adminErr: any) {
-        console.error('[Register] 创建默认管理员失败（不影响注册）:', adminErr.message?.substring(0, 100))
+        log.error('[Register] 创建默认管理员失败（不影响注册）:', adminErr.message?.substring(0, 100))
       }
     }
+
+    // 生成会员中心token，让注册用户（含未付费用户）可直接进入会员中心
+    const memberToken = generateMemberToken({ tenantId, tenantCode, phone })
 
     res.json({
       code: 0,
@@ -172,6 +193,7 @@ router.post('/', async (req: Request, res: Response) => {
         licenseKey: licenseKey || null, // 付费套餐返回null
         expireDate: expireDate ? expireDate.toISOString().split('T')[0] : null,
         needPay: !isFree,
+        memberToken,
         adminUsername: adminAccount?.username || null,
         adminPassword: adminAccount?.password || null
       },
@@ -185,10 +207,97 @@ router.post('/', async (req: Request, res: Response) => {
       relatedId: tenantId,
       relatedType: 'tenant',
       extraData: { companyName, contactName, phone, tenantCode, isFree }
-    }).catch(err => console.error('[Register] 发送管理员通知失败:', err.message))
+    }).catch(err => log.error('[Register] 发送管理员通知失败:', err.message))
   } catch (error) {
-    console.error('注册失败:', error)
+    log.error('注册失败:', error)
     res.status(500).json({ code: 500, message: '注册失败，请稍后重试' })
+  }
+})
+
+/**
+ * 免费试用用户发起自动续费签约
+ * POST /api/v1/public/register/subscribe
+ * 不需要 memberAuth，使用注册返回的 tenantId 标识
+ */
+router.post('/subscribe', async (req: Request, res: Response) => {
+  try {
+    const { tenantId, packageCode, channel } = req.body
+
+    if (!tenantId || !packageCode || !channel) {
+      return res.status(400).json({ code: 400, message: '参数不完整' })
+    }
+    if (!['wechat', 'alipay'].includes(channel)) {
+      return res.status(400).json({ code: 400, message: '不支持的签约渠道' })
+    }
+
+    // 校验租户存在且是免费试用（30分钟内创建）
+    const tenants = await AppDataSource.query(
+      `SELECT id, license_status, created_at FROM tenants WHERE id = ? AND license_status = 'active'`,
+      [tenantId]
+    )
+    if (tenants.length === 0) {
+      return res.status(400).json({ code: 400, message: '租户不存在或未激活' })
+    }
+    const createdAt = new Date(tenants[0].created_at).getTime()
+    if (Date.now() - createdAt > 30 * 60 * 1000) {
+      return res.status(400).json({ code: 400, message: '注册会话已过期，请在会员中心完成签约' })
+    }
+
+    // 查找套餐
+    const pkgs = await AppDataSource.query(
+      'SELECT id FROM tenant_packages WHERE code = ? AND status = 1',
+      [packageCode]
+    )
+    if (pkgs.length === 0) {
+      return res.status(400).json({ code: 400, message: '套餐不存在' })
+    }
+
+    // 清理该租户之前失败/未完成的 signing 记录，避免冲突
+    await AppDataSource.query(
+      "DELETE FROM subscriptions WHERE tenant_id = ? AND status = 'signing'",
+      [tenantId]
+    )
+
+    // 调用 SubscriptionService 创建真实的签约请求
+    const { subscriptionService } = await import('../../services/SubscriptionService')
+    const result = await subscriptionService.createSubscription({
+      tenantId,
+      packageId: pkgs[0].id,
+      channel: channel as 'wechat' | 'alipay',
+      billingCycle: 'monthly'
+    })
+
+    log.info(`[Register] 免费试用用户签约发起成功: tenant=${tenantId}, channel=${channel}, subscription=${result.subscriptionId}`)
+
+    res.json({
+      code: 0,
+      data: result,
+      message: '请完成签约授权'
+    })
+  } catch (error: any) {
+    log.error('[Register] 创建签约失败:', error.message)
+    res.status(400).json({ code: 400, message: error.message || '创建签约失败' })
+  }
+})
+
+/**
+ * 查询签约状态（前端轮询用）
+ * GET /api/v1/public/register/subscribe-status/:subscriptionId
+ */
+router.get('/subscribe-status/:subscriptionId', async (req: Request, res: Response) => {
+  try {
+    const { subscriptionId } = req.params
+    const subs = await AppDataSource.query(
+      'SELECT status FROM subscriptions WHERE id = ?',
+      [subscriptionId]
+    )
+    if (subs.length === 0) {
+      return res.json({ code: 1, message: '订阅记录不存在' })
+    }
+    res.json({ code: 0, data: { status: subs[0].status } })
+  } catch (error: any) {
+    log.error('[Register] 查询签约状态失败:', error.message)
+    res.status(500).json({ code: 1, message: '查询失败' })
   }
 })
 

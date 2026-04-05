@@ -3,7 +3,7 @@
     <el-card shadow="never" class="config-card">
       <template #header>
         <div class="card-header">
-          <span>基础配置</span>
+          <span>运营配置</span>
           <el-button type="primary" @click="handleSave" :loading="saving">
             <el-icon><Check /></el-icon>保存配置
           </el-button>
@@ -193,6 +193,57 @@
               <div class="form-tip">账号过期当天发送</div>
             </el-form-item>
 
+            <el-divider content-position="left" style="margin: 20px 0 16px;">
+              <span style="font-size: 13px; font-weight: 600; color: #909399;">订阅自动续费相关</span>
+            </el-divider>
+
+            <el-form-item label="订阅扣款成功通知">
+              <el-input v-model="smsForm.templates.SUBSCRIPTION_DEDUCT_SUCCESS" placeholder="SMS_345670001" />
+              <div class="form-tip">自动续费扣款成功后发送给客户（变量：tenantName, amount, nextDeductDate）</div>
+            </el-form-item>
+            <el-form-item label="订阅扣款失败通知">
+              <el-input v-model="smsForm.templates.SUBSCRIPTION_DEDUCT_FAILED" placeholder="SMS_345670002" />
+              <div class="form-tip">自动续费扣款失败后发送给客户（变量：tenantName, amount, retryInfo）</div>
+            </el-form-item>
+            <el-form-item label="订阅开通通知">
+              <el-input v-model="smsForm.templates.SUBSCRIPTION_ACTIVATED" placeholder="SMS_345670003" />
+              <div class="form-tip">用户订阅签约成功后发送（变量：tenantName, packageName, amount, billingCycle）</div>
+            </el-form-item>
+            <el-form-item label="订阅取消通知">
+              <el-input v-model="smsForm.templates.SUBSCRIPTION_CANCELLED" placeholder="SMS_345670004" />
+              <div class="form-tip">订阅取消后发送给客户（变量：tenantName, effectiveDate）</div>
+            </el-form-item>
+            <el-form-item label="订阅过期通知">
+              <el-input v-model="smsForm.templates.SUBSCRIPTION_EXPIRED" placeholder="SMS_345670005" />
+              <div class="form-tip">订阅因扣款失败过期时发送（变量：tenantName, servicePhone）</div>
+            </el-form-item>
+
+            <el-divider content-position="left" style="margin: 20px 0 16px;">
+              <span style="font-size: 13px; font-weight: 600; color: #909399;">管理员/系统通知</span>
+            </el-divider>
+
+            <el-form-item label="管理员通知模板">
+              <el-input v-model="smsForm.templates.ADMIN_NOTIFICATION" placeholder="SMS_456780001" />
+              <div class="form-tip">运营管理员通用通知（扣款动态、异常告警等，变量：title, content）</div>
+            </el-form-item>
+            <el-form-item label="密码重置通知">
+              <el-input v-model="smsForm.templates.PASSWORD_RESET" placeholder="SMS_456780002" />
+              <div class="form-tip">管理员为租户重置密码后发送（变量：tenantName, newPassword）</div>
+            </el-form-item>
+
+            <el-divider content-position="left" style="margin: 20px 0 16px;">
+              <span style="font-size: 13px; font-weight: 600; color: #909399;">扩容管理相关</span>
+            </el-divider>
+
+            <el-form-item label="扩容成功通知">
+              <el-input v-model="smsForm.templates.CAPACITY_SUCCESS" placeholder="SMS_567890001" />
+              <div class="form-tip">扩容订单支付成功后发送（变量：tenantName, type, quantity, amount）</div>
+            </el-form-item>
+            <el-form-item label="扩容退款通知">
+              <el-input v-model="smsForm.templates.CAPACITY_REFUND" placeholder="SMS_567890002" />
+              <div class="form-tip">扩容退款处理完成后发送（变量：tenantName, type, quantity, refundAmount）</div>
+            </el-form-item>
+
             <el-divider />
 
             <el-form-item>
@@ -238,9 +289,14 @@
             <el-form-item label="发件人名称">
               <el-input v-model="emailForm.senderName" placeholder="如：CRM系统" />
             </el-form-item>
-            <el-form-item label="邮箱密码">
-              <el-input v-model="emailForm.emailPassword" type="password" show-password placeholder="SMTP授权码或密码" />
-              <div class="form-tip">QQ邮箱需使用授权码，非登录密码</div>
+            <el-form-item label="邮箱密码/授权码">
+              <el-input v-model="emailForm.emailPassword" type="password" show-password placeholder="请填写SMTP授权码（非登录密码）" />
+              <div class="form-tip" style="line-height: 1.8;">
+                <div><strong>⚠️ 重要：</strong>大多数邮箱需要使用<strong style="color: #e6a23c;">授权码</strong>，而非登录密码！</div>
+                <div>• <strong>163/126邮箱：</strong>登录网页版 → 设置 → POP3/SMTP → 开启SMTP → 获取授权码</div>
+                <div>• <strong>QQ邮箱：</strong>设置 → 账户 → POP3/SMTP → 开启 → 生成授权码</div>
+                <div>• <strong>企业邮箱：</strong>通常可使用登录密码，请查阅对应邮箱文档</div>
+              </div>
             </el-form-item>
             <el-form-item label="启用SSL">
               <el-switch v-model="emailForm.enableSsl" />
@@ -254,14 +310,17 @@
               <el-input v-model="emailForm.testEmail" placeholder="用于测试的收件邮箱" />
             </el-form-item>
             <el-form-item>
-              <el-button type="primary" @click="handleTestEmail" :disabled="!emailForm.smtpHost || !emailForm.senderEmail || !emailForm.testEmail">
+              <el-button type="primary" @click="handleTestEmail" :loading="testingEmail" :disabled="!emailForm.smtpHost || !emailForm.senderEmail || !emailForm.testEmail">
                 发送测试邮件
               </el-button>
+              <el-button type="success" @click="handleSave" :loading="saving" :disabled="!emailForm.smtpHost || !emailForm.senderEmail">
+                保存配置
+              </el-button>
               <span v-if="!emailForm.smtpHost || !emailForm.senderEmail" class="form-tip" style="color: #e6a23c;">
-                请先完整填写并保存邮件配置
+                请先完整填写邮件配置
               </span>
               <span v-else-if="!emailForm.testEmail" class="form-tip" style="color: #e6a23c;">
-                请填写测试邮箱
+                请填写测试邮箱后再发送测试
               </span>
             </el-form-item>
           </el-form>
@@ -339,12 +398,22 @@ const smsForm = reactive({
     ACCOUNT_CANCEL: '',
     REFUND_SUCCESS: '',
     EXPIRE_REMIND: '',
-    EXPIRED_NOTICE: ''
+    EXPIRED_NOTICE: '',
+    ADMIN_NOTIFICATION: '',
+    SUBSCRIPTION_DEDUCT_SUCCESS: '',
+    SUBSCRIPTION_DEDUCT_FAILED: '',
+    SUBSCRIPTION_ACTIVATED: '',
+    SUBSCRIPTION_CANCELLED: '',
+    SUBSCRIPTION_EXPIRED: '',
+    PASSWORD_RESET: '',
+    CAPACITY_SUCCESS: '',
+    CAPACITY_REFUND: ''
   }
 })
 const emailForm = reactive({ enabled: false, smtpHost: '', smtpPort: 465, senderEmail: '', senderName: '', emailPassword: '', enableSsl: true, enableTls: false, testEmail: '' })
 const timeoutForm = reactive({ enabled: false, orderAuditTimeout: 24, orderShipmentTimeout: 48, afterSalesTimeout: 48, orderFollowupDays: 3, checkIntervalMinutes: 30 })
 const checking = ref(false)
+const testingEmail = ref(false)
 
 const pwdRules: FormRules = {
   oldPassword: [{ required: true, message: '请输入当前密码' }],
@@ -448,11 +517,14 @@ const handleTestEmail = async () => {
     ElMessage.warning('请先填写测试邮箱')
     return
   }
+  testingEmail.value = true
   try {
     await request.post('/system/email-settings/test', emailForm)
     ElMessage.success('测试邮件已发送,请查收')
   } catch (e: any) {
     ElMessage.error(e.response?.data?.message || '发送失败')
+  } finally {
+    testingEmail.value = false
   }
 }
 

@@ -68,7 +68,26 @@
       <div class="summary-card">
         <div class="card-icon unsettled"><el-icon><Clock /></el-icon></div>
         <div class="card-content">
-          <div class="card-label">未结算</div>
+          <div class="card-label">
+            未结算
+            <el-tooltip placement="top" effect="light">
+              <template #content>
+                <div style="line-height: 1.6;">
+                  <div style="font-weight: 600; margin-bottom: 8px; color: #303133;">未结算统计说明</div>
+                  <div style="color: #67c23a; margin-bottom: 4px;">✓ 仅显示有效和待处理的订单</div>
+                  <div style="color: #909399; margin-bottom: 8px; font-size: 12px;">（无效和补单状态已排除）</div>
+                  <div style="border-top: 1px solid #ebeef5; padding-top: 8px; margin-top: 8px;">
+                    <div style="color: #606266; font-size: 13px; margin-bottom: 4px;">全部未结算（含无效和补单）：</div>
+                    <div style="color: #e6a23c; font-weight: 600;">{{ summary.unsettledAll?.count || 0 }}单 / ¥{{ formatMoney(summary.unsettledAll?.amount || 0) }}</div>
+                    <div style="color: #909399; font-size: 12px; margin-top: 4px;">
+                      已排除 {{ (summary.unsettledAll?.count || 0) - summary.unsettled.count }}单 / ¥{{ formatMoney((summary.unsettledAll?.amount || 0) - summary.unsettled.amount) }}
+                    </div>
+                  </div>
+                </div>
+              </template>
+              <el-icon style="margin-left: 4px; cursor: help; color: #909399; font-size: 14px;"><QuestionFilled /></el-icon>
+            </el-tooltip>
+          </div>
           <div class="card-value">{{ summary.unsettled.count }}单</div>
           <div class="card-sub">¥{{ formatMoney(summary.unsettled.amount) }}</div>
         </div>
@@ -233,7 +252,7 @@
 <script setup lang="ts">
 import { ref, onMounted, computed, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Search, Refresh, Document, Money, TrendCharts, Select, Clock, CircleCheck, CircleClose, Warning, Download } from '@element-plus/icons-vue'
+import { Search, Refresh, Document, TrendCharts, Select, Clock, CircleCheck, CircleClose, Warning, Download, QuestionFilled } from '@element-plus/icons-vue'
 import * as echarts from 'echarts'
 import * as XLSX from 'xlsx'
 import { getSettlementReport, getOutsourceCompanies, type OutsourceCompany } from '@/api/valueAdded'
@@ -270,7 +289,8 @@ const summary = ref({
   unsettled: { count: 0, amount: 0 },
   valid: { count: 0, amount: 0 },
   invalid: { count: 0, amount: 0 },
-  pending: { count: 0, amount: 0 }
+  pending: { count: 0, amount: 0 },
+  unsettledAll: { count: 0, amount: 0 }  // 新增：全部未结算（含无效和补单）
 })
 
 const trendChartRef = ref<HTMLElement>()

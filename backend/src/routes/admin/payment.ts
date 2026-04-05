@@ -6,6 +6,7 @@ import { AppDataSource } from '../../config/database'
 import { v4 as uuidv4 } from 'uuid'
 import crypto from 'crypto'
 
+import { log } from '../../config/logger';
 const router = Router()
 
 // 自动迁移：确保 payment_orders 表有退款操作人字段
@@ -19,7 +20,7 @@ const ensureRefundColumns = async () => {
       await AppDataSource.query(
         `ALTER TABLE payment_orders ADD COLUMN refunded_by VARCHAR(100) DEFAULT NULL COMMENT '退款操作人'`
       )
-      console.log('[Payment] 已添加 refunded_by 字段')
+      log.info('[Payment] 已添加 refunded_by 字段')
     }
   } catch (_e) {
     // 忽略错误（如表不存在等）
@@ -97,7 +98,7 @@ router.get('/config', async (_req: Request, res: Response) => {
 
     res.json({ success: true, data: config })
   } catch (error) {
-    console.error('获取支付配置失败:', error)
+    log.error('获取支付配置失败:', error)
     res.status(500).json({ success: false, message: '获取配置失败' })
   }
 })
@@ -157,7 +158,7 @@ router.post('/config/wechat', async (req: Request, res: Response) => {
 
     res.json({ success: true, message: '微信支付配置已保存' })
   } catch (error) {
-    console.error('保存微信支付配置失败:', error)
+    log.error('保存微信支付配置失败:', error)
     res.status(500).json({ success: false, message: '保存失败' })
   }
 })
@@ -206,7 +207,7 @@ router.post('/config/alipay', async (req: Request, res: Response) => {
 
     res.json({ success: true, message: '支付宝配置已保存' })
   } catch (error) {
-    console.error('保存支付宝配置失败:', error)
+    log.error('保存支付宝配置失败:', error)
     res.status(500).json({ success: false, message: '保存失败' })
   }
 })
@@ -238,7 +239,7 @@ router.post('/config/bank', async (req: Request, res: Response) => {
 
     res.json({ success: true, message: '对公转账配置已保存' })
   } catch (error) {
-    console.error('保存对公转账配置失败:', error)
+    log.error('保存对公转账配置失败:', error)
     res.status(500).json({ success: false, message: '保存失败' })
   }
 })
@@ -367,7 +368,7 @@ router.post('/config/wechat/test', async (req: Request, res: Response) => {
       }
     })
   } catch (error: any) {
-    console.error('测试微信支付连接失败:', error)
+    log.error('测试微信支付连接失败:', error)
     res.status(500).json({ success: false, message: '测试失败: ' + (error.message || '未知错误') })
   }
 })
@@ -532,7 +533,7 @@ router.post('/config/alipay/test', async (req: Request, res: Response) => {
       }
     })
   } catch (error: any) {
-    console.error('测试支付宝连接失败:', error)
+    log.error('测试支付宝连接失败:', error)
     res.status(500).json({ success: false, message: '测试失败: ' + (error.message || '未知错误') })
   }
 })
@@ -540,48 +541,81 @@ router.post('/config/alipay/test', async (req: Request, res: Response) => {
 // 获取支付订单列表
 router.get('/orders', async (req: Request, res: Response) => {
   try {
-    const { page = 1, pageSize = 10, orderNo, payType, status, startDate, endDate } = req.query as any
+    // 检查 payment_orders 表是否存在
+    const tableCheck = await AppDataSource.query(
+      `SELECT COUNT(*) as cnt FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'payment_orders'`
+    )
+    if (!tableCheck[0]?.cnt) {
+      return res.json({ success: true, data: { list: [], total: 0, page: 1, pageSize: 10 } })
+    }
+
+    const { page = 1, pageSize = 10, orderNo, payType, status, startDate, endDate, billingType, orderType } = req.query as any
     const offset = (page - 1) * pageSize
 
     let where = '1=1'
     const params: any[] = []
 
     if (orderNo) {
-      where += ' AND order_no LIKE ?'
+      where += ' AND po.order_no LIKE ?'
       params.push(`%${orderNo}%`)
     }
     if (payType) {
-      where += ' AND pay_type = ?'
+      where += ' AND po.pay_type = ?'
       params.push(payType)
     }
     if (status) {
-      where += ' AND status = ?'
+      where += ' AND po.status = ?'
       params.push(status)
     }
     if (startDate) {
-      where += ' AND created_at >= ?'
+      where += ' AND po.created_at >= ?'
       params.push(startDate)
     }
     if (endDate) {
-      where += ' AND created_at <= ?'
+      where += ' AND po.created_at <= ?'
       params.push(endDate + ' 23:59:59')
+    }
+    if (billingType) {
+      if (billingType === 'subscription') {
+        where += " AND po.billing_cycle IN ('monthly', 'yearly')"
+      } else if (billingType === 'once') {
+        where += " AND (po.billing_cycle = 'once' OR po.billing_cycle IS NULL)"
+      }
+    }
+    if (orderType) {
+      if (orderType === 'capacity') {
+        where += " AND po.order_no LIKE 'CAP%'"
+      } else if (orderType === 'package') {
+        where += " AND po.order_no NOT LIKE 'CAP%'"
+      }
     }
 
     const countResult = await AppDataSource.query(
-      `SELECT COUNT(*) as total FROM payment_orders WHERE ${where}`, params
+      `SELECT COUNT(*) as total FROM payment_orders po WHERE ${where}`, params
     )
     const total = countResult[0].total
 
+    // 检查 billing_cycle 字段是否存在
+    const colCheck = await AppDataSource.query(
+      `SELECT COUNT(*) as cnt FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'payment_orders' AND COLUMN_NAME = 'billing_cycle'`
+    )
+    const hasBillingCycle = !!colCheck[0]?.cnt
+
+    // 直接返回 billing_cycle（月付/年付/买断），由前端展示对应文本
+    const billingCycleExpr = hasBillingCycle ? 'po.billing_cycle' : "NULL"
+
     const orders = await AppDataSource.query(
-      `SELECT id, order_no, tenant_name, package_name, amount, pay_type, status,
-              trade_no, contact_name, contact_phone, created_at, paid_at, refund_amount
-       FROM payment_orders WHERE ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`,
+      `SELECT po.id, po.order_no, po.tenant_name, po.package_name, po.amount, po.pay_type, po.status,
+              po.trade_no, po.contact_name, po.contact_phone, po.created_at, po.paid_at, po.refund_amount,
+              ${billingCycleExpr} as billing_cycle
+       FROM payment_orders po
+       WHERE ${where} ORDER BY po.created_at DESC LIMIT ? OFFSET ?`,
       [...params, Number(pageSize), offset]
     )
 
     res.json({ success: true, data: { list: orders, total, page: Number(page), pageSize: Number(pageSize) } })
   } catch (error) {
-    console.error('获取支付订单失败:', error)
+    log.error('获取支付订单失败:', error)
     res.status(500).json({ success: false, message: '获取失败' })
   }
 })
@@ -589,7 +623,15 @@ router.get('/orders', async (req: Request, res: Response) => {
 // 获取支付统计
 router.get('/stats', async (req: Request, res: Response) => {
   try {
-    const { startDate, endDate } = req.query as any
+    // 检查 payment_orders 表是否存在
+    const tableCheck = await AppDataSource.query(
+      `SELECT COUNT(*) as cnt FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'payment_orders'`
+    )
+    if (!tableCheck[0]?.cnt) {
+      return res.json({ success: true, data: { totalAmount: 0, totalCount: 0, refundAmount: 0, pendingCount: 0, maxAmount: 0 } })
+    }
+
+    const { startDate, endDate, payType, customerType, billingType } = req.query as any
 
     let dateWhere = ''
     const params: any[] = []
@@ -601,10 +643,28 @@ router.get('/stats', async (req: Request, res: Response) => {
       dateWhere += ' AND created_at <= ?'
       params.push(endDate + ' 23:59:59')
     }
+    if (payType) {
+      dateWhere += ' AND pay_type = ?'
+      params.push(payType)
+    }
+    if (customerType) {
+      if (customerType === 'tenant') {
+        dateWhere += " AND tenant_name IS NOT NULL AND tenant_name != ''"
+      } else if (customerType === 'private') {
+        dateWhere += " AND (tenant_name IS NULL OR tenant_name = '')"
+      }
+    }
+    if (billingType) {
+      if (billingType === 'subscription') {
+        dateWhere += " AND billing_cycle IN ('monthly', 'yearly')"
+      } else if (billingType === 'once') {
+        dateWhere += " AND (billing_cycle = 'once' OR billing_cycle IS NULL)"
+      }
+    }
 
-    // 总交易额和笔数
+    // 总交易额、笔数和最高单笔金额
     const totalResult = await AppDataSource.query(
-      `SELECT COALESCE(SUM(amount), 0) as totalAmount, COUNT(*) as totalCount
+      `SELECT COALESCE(SUM(amount), 0) as totalAmount, COUNT(*) as totalCount, COALESCE(MAX(amount), 0) as maxAmount
        FROM payment_orders WHERE status = 'paid' ${dateWhere}`, params
     )
 
@@ -625,11 +685,12 @@ router.get('/stats', async (req: Request, res: Response) => {
         totalAmount: Number(totalResult[0].totalAmount),
         totalCount: Number(totalResult[0].totalCount),
         refundAmount: Number(refundResult[0].refundAmount),
-        pendingCount: Number(pendingResult[0].pendingCount)
+        pendingCount: Number(pendingResult[0].pendingCount),
+        maxAmount: Number(totalResult[0].maxAmount)
       }
     })
   } catch (error) {
-    console.error('获取支付统计失败:', error)
+    log.error('获取支付统计失败:', error)
     res.status(500).json({ success: false, message: '获取失败' })
   }
 })
@@ -638,8 +699,9 @@ router.get('/stats', async (req: Request, res: Response) => {
 router.get('/orders/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params
+
     const orders = await AppDataSource.query(
-      'SELECT * FROM payment_orders WHERE id = ?', [id]
+      `SELECT * FROM payment_orders WHERE id = ?`, [id]
     )
     if (orders.length === 0) {
       return res.status(404).json({ success: false, message: '订单不存在' })
@@ -652,7 +714,7 @@ router.get('/orders/:id', async (req: Request, res: Response) => {
     )
 
     res.json({ success: true, data: { ...orders[0], logs } })
-  } catch (error) {
+  } catch (_error) {
     res.status(500).json({ success: false, message: '获取失败' })
   }
 })
@@ -681,7 +743,7 @@ router.post('/orders/:id/confirm', async (req: Request, res: Response) => {
 
     res.json({ success: true, message: '已确认到账' })
   } catch (error) {
-    console.error('确认到账失败:', error)
+    log.error('确认到账失败:', error)
     res.status(500).json({ success: false, message: '确认到账失败' })
   }
 })
@@ -721,8 +783,56 @@ router.post('/orders/:id/refund', async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, message: '退款失败，订单状态已变更' })
     }
 
-    // 3. 退款后暂停关联租户的授权
-    if (order.tenant_id) {
+    // 3. 退款后处理关联业务
+    const isCapacityOrder = order.order_no.startsWith('CAP')
+
+    if (isCapacityOrder && order.tenant_id) {
+      // 🔑 扩容订单退款：扣回扩容额度，不暂停租户授权
+      try {
+        const capOrders = await AppDataSource.query(
+          'SELECT type, quantity FROM capacity_orders WHERE order_no = ? AND status = ?',
+          [order.order_no, 'paid']
+        )
+        if (capOrders.length > 0) {
+          const capOrder = capOrders[0]
+          // 扣回扩容额度
+          if (capOrder.type === 'user') {
+            await AppDataSource.query(
+              'UPDATE tenants SET extra_users = GREATEST(COALESCE(extra_users, 0) - ?, 0) WHERE id = ?',
+              [capOrder.quantity, order.tenant_id]
+            )
+            // 同步更新 max_users
+            await AppDataSource.query(
+              `UPDATE tenants t LEFT JOIN tenant_packages tp ON t.package_id = tp.id
+               SET t.max_users = COALESCE(tp.max_users, t.max_users) + COALESCE(t.extra_users, 0)
+               WHERE t.id = ?`,
+              [order.tenant_id]
+            )
+          } else if (capOrder.type === 'storage') {
+            await AppDataSource.query(
+              'UPDATE tenants SET extra_storage_gb = GREATEST(COALESCE(extra_storage_gb, 0) - ?, 0) WHERE id = ?',
+              [capOrder.quantity, order.tenant_id]
+            )
+            // 同步更新 max_storage_gb
+            await AppDataSource.query(
+              `UPDATE tenants t LEFT JOIN tenant_packages tp ON t.package_id = tp.id
+               SET t.max_storage_gb = COALESCE(tp.max_storage_gb, t.max_storage_gb) + COALESCE(t.extra_storage_gb, 0)
+               WHERE t.id = ?`,
+              [order.tenant_id]
+            )
+          }
+          // 同步更新 capacity_orders 状态为已退款
+          await AppDataSource.query(
+            `UPDATE capacity_orders SET status = 'refunded' WHERE order_no = ?`,
+            [order.order_no]
+          )
+          log.info(`[Payment Refund] 扩容退款已扣回: tenant=${order.tenant_id}, type=${capOrder.type}, qty=${capOrder.quantity}`)
+        }
+      } catch (capRefundErr) {
+        log.error('[Payment Refund] 扩容退款扣回失败:', capRefundErr)
+      }
+    } else if (order.tenant_id) {
+      // 套餐订单退款：暂停关联租户的授权
       try {
         await AppDataSource.query(
           `UPDATE tenants SET license_status = 'suspended', status = 'suspended', updated_at = NOW()
@@ -738,9 +848,9 @@ router.post('/orders/:id/refund', async (req: Request, res: Response) => {
           [logUuidv4(), order.tenant_id, `退款导致授权暂停，订单号: ${order.order_no}，退款金额: ¥${order.amount}，原因: ${reason || '无'}`]
         ).catch(() => {})
 
-        console.log(`[Payment Refund] 已暂停租户授权: ${order.tenant_id}，订单号: ${order.order_no}`)
+        log.info(`[Payment Refund] 已暂停租户授权: ${order.tenant_id}，订单号: ${order.order_no}`)
       } catch (tenantErr) {
-        console.error('[Payment Refund] 暂停租户授权失败:', tenantErr)
+        log.error('[Payment Refund] 暂停租户授权失败:', tenantErr)
         // 不影响退款主流程
       }
     }
@@ -757,7 +867,7 @@ router.post('/orders/:id/refund', async (req: Request, res: Response) => {
         ]
       )
     } catch (logErr) {
-      console.error('[Payment Refund] 记录操作日志失败:', logErr)
+      log.error('[Payment Refund] 记录操作日志失败:', logErr)
     }
 
     // 5. 发送退款通知
@@ -771,12 +881,17 @@ router.post('/orders/:id/refund', async (req: Request, res: Response) => {
         extraData: { orderNo: order.order_no, amount: order.amount, reason, operator: adminUser?.username }
       })
     } catch (notifyErr) {
-      console.error('[Payment Refund] 发送退款通知失败:', notifyErr)
+      log.error('[Payment Refund] 发送退款通知失败:', notifyErr)
     }
 
-    res.json({ success: true, message: order.tenant_id ? '退款成功，已暂停关联租户授权' : '退款成功' })
+    res.json({
+      success: true,
+      message: isCapacityOrder
+        ? '退款成功，已扣回扩容额度'
+        : (order.tenant_id ? '退款成功，已暂停关联租户授权' : '退款成功')
+    })
   } catch (error) {
-    console.error('退款失败:', error)
+    log.error('退款失败:', error)
     res.status(500).json({ success: false, message: '退款失败' })
   }
 })
@@ -787,10 +902,23 @@ router.post('/orders/:id/close', async (req: Request, res: Response) => {
     const { id } = req.params
     const now = new Date().toISOString().slice(0, 19).replace('T', ' ')
 
+    // 获取订单号用于同步关闭 capacity_orders
+    const orders = await AppDataSource.query(
+      'SELECT order_no FROM payment_orders WHERE id = ? AND status = ?', [id, 'pending']
+    )
+
     await AppDataSource.query(
       `UPDATE payment_orders SET status = 'closed', updated_at = ? WHERE id = ? AND status = 'pending'`,
       [now, id]
     )
+
+    // 🔑 扩容订单同步关闭 capacity_orders
+    if (orders.length > 0 && orders[0].order_no?.startsWith('CAP')) {
+      await AppDataSource.query(
+        `UPDATE capacity_orders SET status = 'closed' WHERE order_no = ? AND status = 'pending'`,
+        [orders[0].order_no]
+      ).catch(() => {})
+    }
 
     res.json({ success: true, message: '订单已关闭' })
   } catch (error) {
@@ -801,7 +929,15 @@ router.post('/orders/:id/close', async (req: Request, res: Response) => {
 // 支付报表数据
 router.get('/reports', async (req: Request, res: Response) => {
   try {
-    const { startDate, endDate, groupBy = 'day', payType, customerType } = req.query as any
+    // 检查 payment_orders 表是否存在
+    const tableCheck = await AppDataSource.query(
+      `SELECT COUNT(*) as cnt FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'payment_orders'`
+    )
+    if (!tableCheck[0]?.cnt) {
+      return res.json({ success: true, data: { timeSeriesData: [], byPayType: [], byPackage: [], byCustomerType: [] } })
+    }
+
+    const { startDate, endDate, groupBy = 'day', payType, customerType, billingType } = req.query as any
 
     let dateWhere = "AND status = 'paid'"
     const params: any[] = []
@@ -818,17 +954,34 @@ router.get('/reports', async (req: Request, res: Response) => {
       dateWhere += ' AND pay_type = ?'
       params.push(payType)
     }
+    if (customerType) {
+      if (customerType === 'tenant') {
+        dateWhere += " AND tenant_name IS NOT NULL AND tenant_name != ''"
+      } else if (customerType === 'private') {
+        dateWhere += " AND (tenant_name IS NULL OR tenant_name = '')"
+      }
+    }
+    if (billingType) {
+      if (billingType === 'subscription') {
+        dateWhere += " AND billing_cycle IN ('monthly', 'yearly')"
+      } else if (billingType === 'once') {
+        dateWhere += " AND (billing_cycle = 'once' OR billing_cycle IS NULL)"
+      }
+    }
 
     // 时间格式化模板
     let dateFormat = '%Y-%m-%d'
     if (groupBy === 'month') dateFormat = '%Y-%m'
     else if (groupBy === 'year') dateFormat = '%Y'
 
-    // 时间序列数据
+    // 时间序列数据（含按支付方式拆分的金额）
     const timeSeriesData = await AppDataSource.query(
       `SELECT DATE_FORMAT(created_at, ?) as date,
               COALESCE(SUM(amount), 0) as amount,
-              COUNT(*) as count
+              COUNT(*) as count,
+              COALESCE(SUM(CASE WHEN pay_type = 'wechat' THEN amount ELSE 0 END), 0) as wechatAmount,
+              COALESCE(SUM(CASE WHEN pay_type = 'alipay' THEN amount ELSE 0 END), 0) as alipayAmount,
+              COALESCE(SUM(CASE WHEN pay_type = 'bank' THEN amount ELSE 0 END), 0) as bankAmount
        FROM payment_orders
        WHERE 1=1 ${dateWhere}
        GROUP BY date ORDER BY date ASC`,
@@ -879,7 +1032,7 @@ router.get('/reports', async (req: Request, res: Response) => {
       }
     })
   } catch (error) {
-    console.error('获取支付报表失败:', error)
+    log.error('获取支付报表失败:', error)
     res.status(500).json({ success: false, message: '获取报表失败' })
   }
 })
@@ -887,7 +1040,7 @@ router.get('/reports', async (req: Request, res: Response) => {
 // 导出支付报表CSV
 router.get('/export', async (req: Request, res: Response) => {
   try {
-    const { startDate, endDate, payType, customerType } = req.query as any
+    const { startDate, endDate, payType, customerType, billingType } = req.query as any
 
     let dateWhere = ''
     const params: any[] = []
@@ -904,6 +1057,13 @@ router.get('/export', async (req: Request, res: Response) => {
       dateWhere += ' AND pay_type = ?'
       params.push(payType)
     }
+    if (billingType) {
+      if (billingType === 'subscription') {
+        dateWhere += " AND billing_cycle IN ('monthly', 'yearly')"
+      } else if (billingType === 'once') {
+        dateWhere += " AND (billing_cycle = 'once' OR billing_cycle IS NULL)"
+      }
+    }
 
     const orders = await AppDataSource.query(
       `SELECT order_no, tenant_name, package_name, amount, pay_type, status,
@@ -913,12 +1073,13 @@ router.get('/export', async (req: Request, res: Response) => {
     )
 
     // 生成CSV
-    const header = '订单号,客户名称,套餐名称,金额,支付方式,状态,交易号,联系人,联系电话,创建时间,支付时间,退款金额'
+    const header = '订单号,订单类型,客户名称,套餐名称,金额,支付方式,状态,交易号,联系人,联系电话,创建时间,支付时间,退款金额'
     const payTypeMap: Record<string, string> = { wechat: '微信支付', alipay: '支付宝', bank: '对公转账' }
     const statusMap: Record<string, string> = { pending: '待支付', paid: '已支付', refunded: '已退款', closed: '已关闭' }
 
     const rows = orders.map((o: any) => [
       o.order_no || '',
+      (o.order_no || '').startsWith('CAP') ? '扩容订单' : '套餐订单',
       o.tenant_name || '',
       o.package_name || '',
       o.amount || 0,
@@ -938,7 +1099,7 @@ router.get('/export', async (req: Request, res: Response) => {
     res.setHeader('Content-Disposition', `attachment; filename=payment_report_${Date.now()}.csv`)
     res.send(csv)
   } catch (error) {
-    console.error('导出支付报表失败:', error)
+    log.error('导出支付报表失败:', error)
     res.status(500).json({ success: false, message: '导出失败' })
   }
 })

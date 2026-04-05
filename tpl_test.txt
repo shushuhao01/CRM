@@ -1,5 +1,0 @@
-        <el-tab-pane label="功能开关" name="features">
-          <div class="ff-header">
-            <div class="ff-header-text">
-              <h3>功能模块开关</h3>
-              <p>控制CRM系统中各功能模块的可见性。SaaS租户和私有部署可独立配置，关闭后对应功能入口将被隐藏。</p>

@@ -23,6 +23,7 @@ import { getTenantRepo } from '../utils/tenantRepo';
 import { TenantContextManager } from '../utils/tenantContext';
 import { deployConfig } from '../config/deploy';
 
+import { log } from '../config/logger';
 // 超时消息类型
 export const TimeoutMessageTypes = {
   ORDER_AUDIT_TIMEOUT: 'order_audit_timeout',           // 订单审核超时
@@ -58,14 +59,14 @@ class TimeoutReminderService {
    */
   start(intervalMinutes: number = 30): void {
     if (this.isRunning) {
-      console.log('[TimeoutReminder] ⚠️ 服务已在运行');
+      log.info('[TimeoutReminder] ⚠️ 服务已在运行');
       return;
     }
 
     this.isRunning = true;
     const intervalMs = intervalMinutes * 60 * 1000;
 
-    console.log(`[TimeoutReminder] 🚀 超时提醒服务已启动，检测间隔：${intervalMinutes}分钟`);
+    log.info(`[TimeoutReminder] 🚀 超时提醒服务已启动，检测间隔：${intervalMinutes}分钟`);
 
     // 立即执行一次检测
     this.runAllChecks();
@@ -85,7 +86,7 @@ class TimeoutReminderService {
       this.checkInterval = null;
     }
     this.isRunning = false;
-    console.log('[TimeoutReminder] 🛑 超时提醒服务已停止');
+    log.info('[TimeoutReminder] 🛑 超时提醒服务已停止');
   }
 
   /**
@@ -93,7 +94,7 @@ class TimeoutReminderService {
    * 🔥 租户隔离：SaaS模式下按租户独立执行
    */
   async runAllChecks(): Promise<void> {
-    console.log('[TimeoutReminder] 🔍 开始执行超时检测..');
+    log.info('[TimeoutReminder] 🔍 开始执行超时检测..');
     const startTime = Date.now();
 
     try {
@@ -109,9 +110,9 @@ class TimeoutReminderService {
       }
 
       const duration = Date.now() - startTime;
-      console.log(`[TimeoutReminder] 超时检测完成，耗时${duration}ms`);
+      log.info(`[TimeoutReminder] 超时检测完成，耗时${duration}ms`);
     } catch (error) {
-      console.error('[TimeoutReminder] 超时检测失败', error);
+      log.error('[TimeoutReminder] 超时检测失败', error);
     }
   }
 
@@ -134,11 +135,11 @@ class TimeoutReminderService {
             await this.runChecksOnce();
           });
         } catch (e) {
-          console.error(`[TimeoutReminder] 租户 ${tenant.id} 检测失败:`, e);
+          log.error(`[TimeoutReminder] 租户 ${tenant.id} 检测失败:`, e);
         }
       }
     } catch (error) {
-      console.error('[TimeoutReminder] 遍历租户检测失败:', error);
+      log.error('[TimeoutReminder] 遍历租户检测失败:', error);
     }
   }
 
@@ -161,7 +162,7 @@ class TimeoutReminderService {
     const successCount = results.filter(r => r.status === 'fulfilled').length;
     const tenantId = TenantContextManager.getTenantId();
     if (tenantId) {
-      console.log(`[TimeoutReminder] 租户 ${tenantId} 检测完成，成功${successCount}/5`);
+      log.info(`[TimeoutReminder] 租户 ${tenantId} 检测完成，成功${successCount}/5`);
     }
   }
 
@@ -206,7 +207,7 @@ class TimeoutReminderService {
 
       return result;
     } catch (error) {
-      console.warn('[TimeoutReminder] 读取配置失败，使用默认配置', error);
+      log.warn('[TimeoutReminder] 读取配置失败，使用默认配置', error);
       return DEFAULT_TIMEOUT_CONFIG;
     }
   }
@@ -226,7 +227,7 @@ class TimeoutReminderService {
     });
 
     if (cleanedCount > 0) {
-      console.log(`[TimeoutReminder] 🧹 清理了${cleanedCount}条过期的提醒缓存`);
+      log.info(`[TimeoutReminder] 🧹 清理了${cleanedCount}条过期的提醒缓存`);
     }
   }
 
@@ -255,13 +256,13 @@ class TimeoutReminderService {
         .getOne();
 
       if (recentMessage) {
-        console.log(`[TimeoutReminder] ⏭️ 跳过重复提醒: ${type}:${id} (已在 ${recentMessage.createdAt} 发送过)`);
+        log.info(`[TimeoutReminder] ⏭️ 跳过重复提醒: ${type}:${id} (已在 ${recentMessage.createdAt} 发送过)`);
         return true;
       }
 
       return false;
     } catch (error) {
-      console.error('[TimeoutReminder] 检查重复提醒失败', error);
+      log.error('[TimeoutReminder] 检查重复提醒失败', error);
       // 出错时使用内存缓存
       const key = `${type}:${id}`;
       const lastSent = sentTimeoutReminders.get(key);
@@ -284,7 +285,7 @@ class TimeoutReminderService {
     try {
       const dataSource = getDataSource();
       if (!dataSource) {
-        console.error('[TimeoutReminder] 数据库未连接');
+        log.error('[TimeoutReminder] 数据库未连接');
         return 0;
       }
 
@@ -300,7 +301,7 @@ class TimeoutReminderService {
         select: ['id', 'orderNumber', 'customerName', 'totalAmount', 'createdBy', 'createdByName', 'createdAt']
       });
 
-      console.log(`[TimeoutReminder] 📋 发现 ${timeoutOrders.length} 个审核超时订单`);
+      log.info(`[TimeoutReminder] 📋 发现 ${timeoutOrders.length} 个审核超时订单`);
 
       let sentCount = 0;
       for (const order of timeoutOrders) {
@@ -317,12 +318,12 @@ class TimeoutReminderService {
       }
 
       if (sentCount > 0) {
-        console.log(`[TimeoutReminder] 已发送了 ${sentCount} 条订单审核超时提醒`);
+        log.info(`[TimeoutReminder] 已发送了 ${sentCount} 条订单审核超时提醒`);
       }
 
       return sentCount;
     } catch (error) {
-      console.error('[TimeoutReminder] 检测订单审核超时失败', error);
+      log.error('[TimeoutReminder] 检测订单审核超时失败', error);
       return 0;
     }
   }
@@ -349,7 +350,7 @@ class TimeoutReminderService {
         select: ['id', 'orderNumber', 'customerName', 'totalAmount', 'createdBy', 'createdByName', 'updatedAt']
       });
 
-      console.log(`[TimeoutReminder] 📋 发现 ${timeoutOrders.length} 个发货超时订单`);
+      log.info(`[TimeoutReminder] 📋 发现 ${timeoutOrders.length} 个发货超时订单`);
 
       let sentCount = 0;
       for (const order of timeoutOrders) {
@@ -365,12 +366,12 @@ class TimeoutReminderService {
       }
 
       if (sentCount > 0) {
-        console.log(`[TimeoutReminder] 已发送了 ${sentCount} 条发货超时提醒`);
+        log.info(`[TimeoutReminder] 已发送了 ${sentCount} 条发货超时提醒`);
       }
 
       return sentCount;
     } catch (error) {
-      console.error('[TimeoutReminder] 检测发货超时失败', error);
+      log.error('[TimeoutReminder] 检测发货超时失败', error);
       return 0;
     }
   }
@@ -396,7 +397,7 @@ class TimeoutReminderService {
         }
       });
 
-      console.log(`[TimeoutReminder] 📋 发现 ${timeoutServices.length} 个售后处理超时`);
+      log.info(`[TimeoutReminder] 📋 发现 ${timeoutServices.length} 个售后处理超时`);
 
       let sentCount = 0;
       for (const service of timeoutServices) {
@@ -412,12 +413,12 @@ class TimeoutReminderService {
       }
 
       if (sentCount > 0) {
-        console.log(`[TimeoutReminder] 已发送了 ${sentCount} 条售后超时提醒`);
+        log.info(`[TimeoutReminder] 已发送了 ${sentCount} 条售后超时提醒`);
       }
 
       return sentCount;
     } catch (error) {
-      console.error('[TimeoutReminder] 检测售后超时失败', error);
+      log.error('[TimeoutReminder] 检测售后超时失败', error);
       return 0;
     }
   }
@@ -445,7 +446,7 @@ class TimeoutReminderService {
         .select(['order.id', 'order.orderNumber', 'order.customerName', 'order.createdBy', 'order.deliveredAt'])
         .getMany();
 
-      console.log(`[TimeoutReminder] 📋 发现 ${orders.length} 个需要跟进的订单`);
+      log.info(`[TimeoutReminder] 📋 发现 ${orders.length} 个需要跟进的订单`);
 
       let sentCount = 0;
       for (const order of orders) {
@@ -459,12 +460,12 @@ class TimeoutReminderService {
       }
 
       if (sentCount > 0) {
-        console.log(`[TimeoutReminder] 已发送了 ${sentCount} 条订单跟进提醒`);
+        log.info(`[TimeoutReminder] 已发送了 ${sentCount} 条订单跟进提醒`);
       }
 
       return sentCount;
     } catch (error) {
-      console.error('[TimeoutReminder] 检测订单跟进提醒失败', error);
+      log.error('[TimeoutReminder] 检测订单跟进提醒失败', error);
       return 0;
     }
   }
@@ -583,7 +584,7 @@ class TimeoutReminderService {
     try {
       const dataSource = getDataSource();
       if (!dataSource || !dataSource.isInitialized) {
-        console.log('[TimeoutReminder] ⚠️ 数据源未初始化，跳过客户跟进提醒检测');
+        log.info('[TimeoutReminder] ⚠️ 数据源未初始化，跳过客户跟进提醒检测');
         return 0;
       }
 
@@ -603,7 +604,7 @@ class TimeoutReminderService {
         ORDER BY next_follow_up_date ASC
       `, [now, now]);
 
-      console.log(`[TimeoutReminder] 📋 发现 ${followupRecords.length} 个到期的客户跟进记录`);
+      log.info(`[TimeoutReminder] 📋 发现 ${followupRecords.length} 个到期的客户跟进记录`);
 
       let sentCount = 0;
       for (const record of followupRecords) {
@@ -619,12 +620,12 @@ class TimeoutReminderService {
       }
 
       if (sentCount > 0) {
-        console.log(`[TimeoutReminder] 已发送了 ${sentCount} 条客户跟进提醒`);
+        log.info(`[TimeoutReminder] 已发送了 ${sentCount} 条客户跟进提醒`);
       }
 
       return sentCount;
     } catch (error) {
-      console.error('[TimeoutReminder] 检测客户跟进提醒失败', error);
+      log.error('[TimeoutReminder] 检测客户跟进提醒失败', error);
       return 0;
     }
   }
@@ -699,7 +700,7 @@ class TimeoutReminderService {
         .filter(u => roles.includes(u.role) && (u.status === 'active' || String(u.status) === '1'))
         .map(u => u.id);
     } catch (error) {
-      console.error('[TimeoutReminder] 获取用户列表失败:', error);
+      log.error('[TimeoutReminder] 获取用户列表失败:', error);
       return [];
     }
   }
@@ -759,7 +760,7 @@ class TimeoutReminderService {
 
       return true;
     } catch (error) {
-      console.error('[TimeoutReminder] 发送消息失败', error);
+      log.error('[TimeoutReminder] 发送消息失败', error);
       return false;
     }
   }
@@ -806,7 +807,7 @@ class TimeoutReminderService {
       });
 
       await messageRepo.save(message);
-      console.log(`[TimeoutReminder] 创建1条消息，目标用户: ${targetUserIds.length}个`);
+      log.info(`[TimeoutReminder] 创建1条消息，目标用户: ${targetUserIds.length}个`);
 
       // 🔥 通过WebSocket实时推送给所有目标用户
       if (global.webSocketService) {
@@ -826,7 +827,7 @@ class TimeoutReminderService {
 
       return 1; // 返回1表示创建了1条消息
     } catch (error) {
-      console.error('[TimeoutReminder] 批量发送消息失败', error);
+      log.error('[TimeoutReminder] 批量发送消息失败', error);
       return 0;
     }
   }

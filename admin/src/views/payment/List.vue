@@ -21,6 +21,18 @@
             <el-option label="已关闭" value="closed" />
           </el-select>
         </el-form-item>
+        <el-form-item label="计费类型">
+          <el-select v-model="searchForm.billingType" placeholder="全部" clearable style="width: 120px">
+            <el-option label="订阅(月/年付)" value="subscription" />
+            <el-option label="一次性买断" value="once" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="订单类型">
+          <el-select v-model="searchForm.orderType" placeholder="全部" clearable style="width: 120px">
+            <el-option label="套餐订单" value="package" />
+            <el-option label="扩容订单" value="capacity" />
+          </el-select>
+        </el-form-item>
         <el-form-item label="时间">
           <el-date-picker v-model="searchForm.dateRange" type="daterange"
             start-placeholder="开始" end-placeholder="结束"
@@ -95,10 +107,24 @@
         </div>
       </template>
 
+      <!-- 加载失败提示 -->
+      <el-alert v-if="loadFailed" title="获取订单数据失败" type="error" :closable="false" show-icon style="margin-bottom: 16px">
+        <template #default>
+          请检查后端服务是否正常运行，或
+          <el-button type="primary" link @click="handleSearch">重新加载</el-button>
+        </template>
+      </el-alert>
+
       <el-table :data="tableData" v-loading="loading" stripe>
         <el-table-column prop="order_no" label="订单号" min-width="180">
           <template #default="{ row }">
             <span class="order-no">{{ row.order_no }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="类型" width="90" align="center">
+          <template #default="{ row }">
+            <el-tag v-if="row.order_no?.startsWith('CAP')" type="warning" size="small" effect="plain">扩容</el-tag>
+            <el-tag v-else type="primary" size="small" effect="plain">套餐</el-tag>
           </template>
         </el-table-column>
         <el-table-column prop="tenant_name" label="租户/联系人" min-width="140">
@@ -110,7 +136,7 @@
         <el-table-column prop="package_name" label="套餐" width="120" />
         <el-table-column prop="amount" label="金额" width="100" align="right">
           <template #default="{ row }">
-            <span class="amount">¥{{ row.amount?.toFixed(2) }}</span>
+            <span class="amount">¥{{ Number(row.amount || 0).toFixed(2) }}</span>
           </template>
         </el-table-column>
         <el-table-column prop="pay_type" label="支付方式" width="100" align="center">
@@ -124,6 +150,13 @@
           <template #default="{ row }">
             <el-tag :type="getStatusType(row.status)" size="small">
               {{ getStatusText(row.status) }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="billing_cycle" label="计费周期" width="90" align="center">
+          <template #default="{ row }">
+            <el-tag :type="getBillingCycleType(row.billing_cycle)" size="small" effect="plain">
+              {{ getBillingCycleLabel(row.billing_cycle) }}
             </el-tag>
           </template>
         </el-table-column>
@@ -175,15 +208,24 @@
     <el-dialog v-model="detailVisible" title="订单详情" width="640px">
       <el-descriptions :column="2" border v-if="currentOrder">
         <el-descriptions-item label="订单号" :span="2">{{ currentOrder.order_no }}</el-descriptions-item>
+        <el-descriptions-item label="订单类型">
+          <el-tag v-if="currentOrder.order_no?.startsWith('CAP')" type="warning" size="small">扩容订单</el-tag>
+          <el-tag v-else type="primary" size="small">套餐订单</el-tag>
+        </el-descriptions-item>
         <el-descriptions-item label="租户名称">{{ currentOrder.tenant_name || '-' }}</el-descriptions-item>
         <el-descriptions-item label="套餐">{{ currentOrder.package_name }}</el-descriptions-item>
-        <el-descriptions-item label="金额">¥{{ currentOrder.amount?.toFixed(2) }}</el-descriptions-item>
+        <el-descriptions-item label="金额">¥{{ Number(currentOrder.amount || 0).toFixed(2) }}</el-descriptions-item>
         <el-descriptions-item label="支付方式">
           {{ getPayTypeText(currentOrder.pay_type) }}
         </el-descriptions-item>
         <el-descriptions-item label="状态">
           <el-tag :type="getStatusType(currentOrder.status)" size="small">
             {{ getStatusText(currentOrder.status) }}
+          </el-tag>
+        </el-descriptions-item>
+        <el-descriptions-item label="计费周期">
+          <el-tag :type="getBillingCycleType(currentOrder.billing_cycle)" size="small" effect="plain">
+            {{ getBillingCycleLabel(currentOrder.billing_cycle) }}
           </el-tag>
         </el-descriptions-item>
         <el-descriptions-item label="交易号">{{ currentOrder.trade_no || '-' }}</el-descriptions-item>
@@ -228,6 +270,7 @@ import { Search, Download, Money, Tickets, RefreshRight, Clock } from '@element-
 import request from '@/api/request'
 
 const loading = ref(false)
+const loadFailed = ref(false)
 const page = ref(1)
 const pageSize = ref(10)
 const total = ref(0)
@@ -238,6 +281,8 @@ const searchForm = reactive({
   orderNo: '',
   payType: '',
   status: '',
+  billingType: '',
+  orderType: '',
   dateRange: null as string[] | null
 })
 
@@ -284,15 +329,28 @@ const getPayTypeTagType = (payType: string) => {
   return map[payType] || 'info'
 }
 
+const getBillingCycleLabel = (cycle: string) => {
+  const map: Record<string, string> = { monthly: '月付', yearly: '年付', once: '买断' }
+  return map[cycle] || '一次性'
+}
+
+const getBillingCycleType = (cycle: string) => {
+  const map: Record<string, string> = { monthly: '', yearly: 'warning', once: 'success' }
+  return map[cycle] || 'info'
+}
+
 const fetchData = async () => {
   loading.value = true
+  loadFailed.value = false
   try {
     const params: any = {
       page: page.value,
       pageSize: pageSize.value,
       orderNo: searchForm.orderNo,
       payType: searchForm.payType,
-      status: searchForm.status
+      status: searchForm.status,
+      billingType: searchForm.billingType,
+      orderType: searchForm.orderType
     }
     if (searchForm.dateRange) {
       params.startDate = searchForm.dateRange[0]
@@ -301,11 +359,22 @@ const fetchData = async () => {
 
     const res = await request.get('/payment/orders', { params })
     if (res.success) {
-      tableData.value = res.data.list
-      total.value = res.data.total
+      tableData.value = res.data?.list || []
+      total.value = res.data?.total || 0
+    } else {
+      loadFailed.value = true
+      tableData.value = []
+      total.value = 0
     }
-  } catch (error) {
+  } catch (error: any) {
     console.error('获取订单失败:', error)
+    loadFailed.value = true
+    tableData.value = []
+    total.value = 0
+    // 仅在拦截器未弹出错误时手动提示（404 拦截器不弹，需要手动提示）
+    if (error?.response?.status === 404) {
+      ElMessage.error('支付订单接口不可用，请检查后端服务')
+    }
   } finally {
     loading.value = false
   }
@@ -319,11 +388,18 @@ const fetchStats = async () => {
       params.endDate = searchForm.dateRange[1]
     }
     const res = await request.get('/payment/stats', { params })
-    if (res.success) {
-      Object.assign(stats, res.data)
+    if (res.success && res.data) {
+      Object.assign(stats, {
+        totalAmount: Number(res.data.totalAmount) || 0,
+        totalCount: Number(res.data.totalCount) || 0,
+        refundAmount: Number(res.data.refundAmount) || 0,
+        pendingCount: Number(res.data.pendingCount) || 0
+      })
     }
-  } catch (error) {
+  } catch (error: any) {
     console.error('获取统计失败:', error)
+    // 统计失败不影响列表，仅重置为 0
+    Object.assign(stats, { totalAmount: 0, totalCount: 0, refundAmount: 0, pendingCount: 0 })
   }
 }
 
@@ -334,7 +410,7 @@ const handleSearch = () => {
 }
 
 const handleReset = () => {
-  Object.assign(searchForm, { orderNo: '', payType: '', status: '', dateRange: null })
+  Object.assign(searchForm, { orderNo: '', payType: '', status: '', billingType: '', orderType: '', dateRange: null })
   handleSearch()
 }
 
@@ -342,6 +418,7 @@ const handleExport = () => {
   const params = new URLSearchParams()
   if (searchForm.status) params.set('status', searchForm.status)
   if (searchForm.payType) params.set('payType', searchForm.payType)
+  if (searchForm.billingType) params.set('billingType', searchForm.billingType)
   if (searchForm.dateRange?.[0]) params.set('startDate', searchForm.dateRange[0])
   if (searchForm.dateRange?.[1]) params.set('endDate', searchForm.dateRange[1])
   const token = localStorage.getItem('admin_token')
@@ -373,8 +450,12 @@ const handleView = async (row: any) => {
 }
 
 const handleRefund = (row: any) => {
+  const isCapacity = row.order_no?.startsWith('CAP')
+  const warningText = isCapacity
+    ? '⚠️ 退款后将扣回对应的扩容额度\n'
+    : (row.tenant_name ? '关联租户：' + row.tenant_name + '\n⚠️ 退款后将自动暂停该租户授权\n' : '')
   ElMessageBox.prompt(
-    `订单号：${row.order_no}\n退款金额：¥${Number(row.amount || 0).toFixed(2)}\n${row.tenant_name ? '关联租户：' + row.tenant_name + '\n⚠️ 退款后将自动暂停该租户授权\n' : ''}\n请输入退款原因：`,
+    `订单号：${row.order_no}\n${isCapacity ? '类型：扩容订单\n' : ''}退款金额：¥${Number(row.amount || 0).toFixed(2)}\n${warningText}\n请输入退款原因：`,
     '确认退款',
     {
       confirmButtonText: '确认退款',

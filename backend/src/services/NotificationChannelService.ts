@@ -18,6 +18,7 @@ import crypto from 'crypto';
 import { webSocketService } from './WebSocketService';
 import { getTenantRepo } from '../utils/tenantRepo';
 
+import { log as logger } from '../config/logger';
 // 发送结果接口
 export interface SendResult {
   success: boolean;
@@ -60,7 +61,7 @@ class NotificationChannelService {
       const channels = await channelRepo.find({ where: { isEnabled: 1 } });
 
       if (channels.length === 0) {
-        console.log('[NotificationChannel] 没有启用的通知渠道');
+        logger.info('[NotificationChannel] 没有启用的通知渠道');
         return [];
       }
 
@@ -105,7 +106,7 @@ class NotificationChannelService {
       });
 
       const successCount = results.filter(r => r.success).length;
-      console.log(`[NotificationChannel] 发送完成: ${successCount}/${results.length} 成功`);
+      logger.info(`[NotificationChannel] 发送完成: ${successCount}/${results.length} 成功`);
 
       // 🔥 通过WebSocket推送通知发送状态给相关用户
       if (global.webSocketService) {
@@ -123,7 +124,7 @@ class NotificationChannelService {
       }
 
     } catch (error: any) {
-      console.error('[NotificationChannel] 发送失败:', error);
+      logger.error('[NotificationChannel] 发送失败:', error);
       results.push({ success: false, message: error.message });
     }
 
@@ -376,21 +377,24 @@ class NotificationChannelService {
 
       const recipients = Array.isArray(to_emails) ? to_emails.join(',') : to_emails;
 
-      // 构建HTML邮件内容
-      const htmlContent = `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-          <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 8px 8px 0 0;">
-            <h2 style="margin: 0;">${message.title}</h2>
-          </div>
-          <div style="background: #f9f9f9; padding: 20px; border: 1px solid #e0e0e0; border-top: none;">
-            <p style="white-space: pre-wrap; line-height: 1.6;">${message.content}</p>
-            ${message.actionUrl ? `<p><a href="${message.actionUrl}" style="color: #667eea;">点击查看详情</a></p>` : ''}
-          </div>
-          <div style="background: #f0f0f0; padding: 15px; border-radius: 0 0 8px 8px; text-align: center; color: #666; font-size: 12px;">
-            此邮件由CRM系统自动发送，请勿直接回复
-          </div>
-        </div>
-      `;
+      // 构建HTML邮件内容（自动适配HTML/纯文本）
+      const isHtml = /<(?:div|p|h[1-6]|table|ul|ol|br|span|a|strong|em)\b/i.test(message.content);
+      const contentBlock = isHtml
+        ? `<div style="line-height: 1.8; color: #333;">${message.content}</div>`
+        : `<div style="white-space: pre-wrap; line-height: 1.8; color: #333;">${message.content}</div>`;
+      const actionBlock = message.actionUrl
+        ? `<div style="text-align: center; margin-top: 24px;"><a href="${message.actionUrl}" style="display: inline-block; padding: 12px 32px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #fff; text-decoration: none; border-radius: 6px; font-size: 15px;">查看详情</a></div>`
+        : '';
+      const htmlContent = `<!DOCTYPE html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<style>body{margin:0;padding:0;background:#f4f5f7;}a{color:#667eea;}p{margin:0 0 12px 0;}</style></head>
+<body style="margin:0;padding:0;background:#f4f5f7;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,'PingFang SC','Microsoft YaHei',sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f5f7;padding:24px 0;"><tr><td align="center">
+<table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,0.08);">
+<tr><td style="background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);padding:28px 32px;"><h2 style="margin:0;color:#fff;font-size:20px;font-weight:600;">${message.title}</h2></td></tr>
+<tr><td style="padding:28px 32px;">${contentBlock}${actionBlock}</td></tr>
+<tr><td style="background:#f8f9fa;padding:16px 32px;text-align:center;border-top:1px solid #eee;"><p style="margin:0;color:#999;font-size:12px;">此邮件由云客CRM系统自动发送，请勿直接回复</p></td></tr>
+</table></td></tr></table></body></html>`;
 
       const info = await transporter.sendMail({
         from: `"${from_name || 'CRM系统'}" <${username}>`,
@@ -577,7 +581,7 @@ class NotificationChannelService {
 
       await logRepo.save(log);
     } catch (error) {
-      console.error('[NotificationChannel] 记录日志失败:', error);
+      logger.error('[NotificationChannel] 记录日志失败:', error);
     }
   }
 

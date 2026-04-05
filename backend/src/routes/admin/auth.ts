@@ -4,33 +4,105 @@
 import { Router, Request, Response } from 'express';
 import { AppDataSource } from '../../config/database';
 import { AdminUser } from '../../entities/AdminUser';
-import bcrypt from 'bcrypt';
+import { AdminRole } from '../../entities/AdminRole';
+import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import svgCaptcha from 'svg-captcha';
 
+import { log } from '../../config/logger';
 const router = Router();
+
+// ============ 验证码存储（内存缓存，生产环境可替换为Redis）============
+const captchaStore = new Map<string, { text: string; expiresAt: number }>();
+
+// 定期清理过期验证码（每5分钟）
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, value] of captchaStore.entries()) {
+    if (value.expiresAt < now) {
+      captchaStore.delete(key);
+    }
+  }
+}, 5 * 60 * 1000);
+
+// 生成验证码
+router.get('/captcha', (_req: Request, res: Response) => {
+  try {
+    const captcha = svgCaptcha.create({
+      size: 4,           // 4位验证码
+      ignoreChars: '0oO1ilI', // 排除易混淆字符
+      noise: 3,          // 干扰线数量
+      color: true,       // 彩色
+      background: '#f0f2f5',
+      fontSize: 50,
+      width: 120,
+      height: 40
+    });
+
+    // 生成唯一ID
+    const captchaId = Date.now().toString(36) + Math.random().toString(36).substring(2, 8);
+
+    // 存储验证码文本（2分钟有效）
+    captchaStore.set(captchaId, {
+      text: captcha.text.toLowerCase(),
+      expiresAt: Date.now() + 2 * 60 * 1000
+    });
+
+    res.json({
+      success: true,
+      data: {
+        captchaId,
+        svg: captcha.data
+      }
+    });
+  } catch (error: unknown) {
+    log.error('[Admin Auth] Generate captcha failed:', error);
+    res.status(500).json({ success: false, message: '生成验证码失败' });
+  }
+});
 
 // 管理员登录
 router.post('/login', async (req: Request, res: Response) => {
   try {
-    const { username, password } = req.body;
+    const { username, password, captchaId, captchaCode } = req.body;
 
     if (!username || !password) {
       return res.status(400).json({ success: false, message: '用户名和密码不能为空' });
+    }
+
+    // 🔒 验证码校验（安全加固 - 向下兼容：前端传了验证码才校验）
+    if (captchaId && captchaCode) {
+      const stored = captchaStore.get(captchaId);
+      if (!stored) {
+        return res.status(400).json({ success: false, message: '验证码已过期，请刷新重试' });
+      }
+      if (stored.expiresAt < Date.now()) {
+        captchaStore.delete(captchaId);
+        return res.status(400).json({ success: false, message: '验证码已过期，请刷新重试' });
+      }
+      if (stored.text !== captchaCode.toLowerCase()) {
+        captchaStore.delete(captchaId);
+        return res.status(400).json({ success: false, message: '验证码错误' });
+      }
+      captchaStore.delete(captchaId);
     }
 
     const adminRepo = AppDataSource.getRepository(AdminUser);
     const admin = await adminRepo.findOne({ where: { username } });
 
     if (!admin) {
+      log.warn(`[Admin Auth] Login failed: username '${username}' not found`);
       return res.status(401).json({ success: false, message: '用户名或密码错误' });
     }
 
     if (admin.status !== 'active') {
+      log.warn(`[Admin Auth] Login failed: user '${username}' status is '${admin.status}' (not active)`);
       return res.status(401).json({ success: false, message: '账号已被禁用' });
     }
 
     const isValidPassword = await bcrypt.compare(password, admin.password);
     if (!isValidPassword) {
+      log.warn(`[Admin Auth] Login failed: wrong password for user '${username}'`);
       return res.status(401).json({ success: false, message: '用户名或密码错误' });
     }
 
@@ -53,6 +125,22 @@ router.post('/login', async (req: Request, res: Response) => {
       { expiresIn: '24h' }
     );
 
+    // 获取用户权限列表
+    let permissions: string[] = [];
+    if (admin.role === 'super_admin') {
+      permissions = ['*'];
+    } else if (admin.roleId) {
+      try {
+        const roleRepo = AppDataSource.getRepository(AdminRole);
+        const userRole = await roleRepo.findOne({ where: { id: admin.roleId } });
+        if (userRole && userRole.status === 'active') {
+          permissions = JSON.parse(userRole.permissions || '[]');
+        }
+      } catch (e) {
+        log.warn('[Admin Auth] 获取角色权限失败:', e);
+      }
+    }
+
     res.json({
       success: true,
       data: {
@@ -61,12 +149,14 @@ router.post('/login', async (req: Request, res: Response) => {
           id: admin.id,
           username: admin.username,
           name: admin.name,
-          role: admin.role
+          role: admin.role,
+          roleId: admin.roleId || null,
+          permissions
         }
       }
     });
   } catch (error: any) {
-    console.error('[Admin Auth] Login failed:', error);
+    log.error('[Admin Auth] Login failed:', error);
     res.status(500).json({ success: false, message: '登录失败' });
   }
 });
@@ -86,6 +176,22 @@ router.get('/profile', async (req: Request, res: Response) => {
       return res.status(404).json({ success: false, message: '用户不存在' });
     }
 
+    // 获取用户权限列表
+    let permissions: string[] = [];
+    if (admin.role === 'super_admin') {
+      permissions = ['*'];
+    } else if (admin.roleId) {
+      try {
+        const roleRepo = AppDataSource.getRepository(AdminRole);
+        const userRole = await roleRepo.findOne({ where: { id: admin.roleId } });
+        if (userRole && userRole.status === 'active') {
+          permissions = JSON.parse(userRole.permissions || '[]');
+        }
+      } catch (e) {
+        log.warn('[Admin Auth] 获取角色权限失败:', e);
+      }
+    }
+
     res.json({
       success: true,
       data: {
@@ -95,11 +201,13 @@ router.get('/profile', async (req: Request, res: Response) => {
         email: admin.email,
         phone: admin.phone,
         role: admin.role,
+        roleId: admin.roleId || null,
+        permissions,
         lastLoginAt: admin.lastLoginAt
       }
     });
   } catch (error: any) {
-    console.error('[Admin Auth] Get profile failed:', error);
+    log.error('[Admin Auth] Get profile failed:', error);
     res.status(500).json({ success: false, message: '获取信息失败' });
   }
 });
@@ -134,7 +242,7 @@ router.put('/password', async (req: Request, res: Response) => {
 
     res.json({ success: true, message: '密码修改成功' });
   } catch (error: any) {
-    console.error('[Admin Auth] Change password failed:', error);
+    log.error('[Admin Auth] Change password failed:', error);
     res.status(500).json({ success: false, message: '修改密码失败' });
   }
 });
@@ -149,13 +257,13 @@ router.get('/users', async (req: Request, res: Response) => {
 
     const adminRepo = AppDataSource.getRepository(AdminUser);
     const users = await adminRepo.find({
-      select: ['id', 'username', 'name', 'email', 'phone', 'role', 'status', 'lastLoginAt', 'createdAt'],
+      select: ['id', 'username', 'name', 'email', 'phone', 'role', 'roleId', 'status', 'lastLoginAt', 'createdAt'],
       order: { createdAt: 'DESC' }
     });
 
     res.json({ success: true, data: users });
   } catch (error: any) {
-    console.error('[Admin Auth] Get users failed:', error);
+    log.error('[Admin Auth] Get users failed:', error);
     res.status(500).json({ success: false, message: '获取用户列表失败' });
   }
 });
@@ -185,8 +293,11 @@ router.post('/users', async (req: Request, res: Response) => {
     const newAdmin = adminRepo.create({
       username,
       password: hashedPassword,
+      name: req.body.name || null,
       email,
+      phone: req.body.phone || null,
       role: role || 'admin',
+      roleId: req.body.roleId || null,
       status: 'active'
     });
 
@@ -194,7 +305,7 @@ router.post('/users', async (req: Request, res: Response) => {
 
     res.json({ success: true, message: '创建成功', data: { id: newAdmin.id } });
   } catch (error: any) {
-    console.error('[Admin Auth] Create user failed:', error);
+    log.error('[Admin Auth] Create user failed:', error);
     res.status(500).json({ success: false, message: '创建用户失败' });
   }
 });
@@ -208,7 +319,7 @@ router.put('/users/:id', async (req: Request, res: Response) => {
     }
 
     const { id } = req.params;
-    const { status, role, email, phone, name, password } = req.body;
+    const { status, role, email, phone, name, password, roleId } = req.body;
 
     const adminRepo = AppDataSource.getRepository(AdminUser);
     const user = await adminRepo.findOne({ where: { id } });
@@ -228,6 +339,7 @@ router.put('/users/:id', async (req: Request, res: Response) => {
     if (email !== undefined) updateData.email = email;
     if (phone !== undefined) updateData.phone = phone;
     if (name !== undefined) updateData.name = name;
+    if (roleId !== undefined) updateData.roleId = roleId || null;
 
     // 重置密码
     if (password) {
@@ -238,7 +350,7 @@ router.put('/users/:id', async (req: Request, res: Response) => {
 
     res.json({ success: true, message: '更新成功' });
   } catch (error: any) {
-    console.error('[Admin Auth] Update user failed:', error);
+    log.error('[Admin Auth] Update user failed:', error);
     res.status(500).json({ success: false, message: '更新用户失败' });
   }
 });
@@ -274,7 +386,7 @@ router.delete('/users/:id', async (req: Request, res: Response) => {
 
     res.json({ success: true, message: '删除成功' });
   } catch (error: any) {
-    console.error('[Admin Auth] Delete user failed:', error);
+    log.error('[Admin Auth] Delete user failed:', error);
     res.status(500).json({ success: false, message: '删除用户失败' });
   }
 });

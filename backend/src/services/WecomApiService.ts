@@ -6,6 +6,7 @@ import axios from 'axios';
 import { AppDataSource } from '../config/database';
 import { WecomConfig } from '../entities/WecomConfig';
 
+import { log } from '../config/logger';
 const WECOM_API_BASE = 'https://qyapi.weixin.qq.com/cgi-bin';
 
 // Access Token 缓存
@@ -20,23 +21,23 @@ export class WecomApiService {
     const cached = tokenCache.get(cacheKey);
 
     if (cached && cached.expireTime > Date.now()) {
-      console.log('[WecomApi] Using cached token');
+      log.info('[WecomApi] Using cached token');
       return cached.token;
     }
 
     try {
-      console.log(`[WecomApi] Fetching new token for corpId: ${corpId}, secret: ${secret.substring(0, 10)}...`);
+      log.info(`[WecomApi] Fetching new token for corpId: ${corpId}, secret: ${secret.substring(0, 10)}...`);
       const response = await axios.get(`${WECOM_API_BASE}/gettoken`, {
         params: { corpid: corpId, corpsecret: secret }
       });
 
-      console.log('[WecomApi] Token response:', JSON.stringify(response.data));
+      log.info('[WecomApi] Token response:', JSON.stringify(response.data));
 
       if (response.data.errcode === 0) {
         const token = response.data.access_token;
         const expireTime = Date.now() + (response.data.expires_in - 300) * 1000; // 提前5分钟过期
         tokenCache.set(cacheKey, { token, expireTime });
-        console.log('[WecomApi] Token cached successfully');
+        log.info('[WecomApi] Token cached successfully');
         return token;
       } else {
         // 常见错误码说明
@@ -50,7 +51,7 @@ export class WecomApiService {
         throw new Error(`获取AccessToken失败: ${response.data.errmsg} (errcode: ${response.data.errcode})${hint ? ' - ' + hint : ''}`);
       }
     } catch (error: any) {
-      console.error('[WecomApi] getAccessToken error:', error.message);
+      log.error('[WecomApi] getAccessToken error:', error.message);
       throw error;
     }
   }
@@ -60,18 +61,18 @@ export class WecomApiService {
    * @param secretType - corp: 应用Secret, contact: 通讯录同步Secret, external: 客户联系Secret, chat: 会话存档Secret
    */
   static async getAccessTokenByConfigId(configId: number, secretType: 'corp' | 'contact' | 'external' | 'chat' = 'corp'): Promise<string> {
-    console.log(`[WecomApi] getAccessTokenByConfigId called, configId: ${configId}, secretType: ${secretType}`);
+    log.info(`[WecomApi] getAccessTokenByConfigId called, configId: ${configId}, secretType: ${secretType}`);
 
     const configRepo = AppDataSource.getRepository(WecomConfig);
     const config = await configRepo.findOne({ where: { id: configId, isEnabled: true } });
 
     if (!config) {
-      console.error('[WecomApi] Config not found or disabled');
+      log.error('[WecomApi] Config not found or disabled');
       throw new Error('企微配置不存在或已禁用');
     }
 
-    console.log(`[WecomApi] Found config: ${config.name}, corpId: ${config.corpId}`);
-    console.log(`[WecomApi] Has contactSecret: ${!!config.contactSecret}, Has externalContactSecret: ${!!(config as any).externalContactSecret}, Has corpSecret: ${!!config.corpSecret}`);
+    log.info(`[WecomApi] Found config: ${config.name}, corpId: ${config.corpId}`);
+    log.info(`[WecomApi] Has contactSecret: ${!!config.contactSecret}, Has externalContactSecret: ${!!(config as any).externalContactSecret}, Has corpSecret: ${!!config.corpSecret}`);
 
     let secret = config.corpSecret;
     let secretName = 'corp';
@@ -90,10 +91,10 @@ export class WecomApiService {
       secretName = 'chat';
     }
 
-    console.log(`[WecomApi] Using ${secretName} secret for ${secretType} API`);
+    log.info(`[WecomApi] Using ${secretName} secret for ${secretType} API`);
 
     if (!secret) {
-      console.error('[WecomApi] No secret available');
+      log.error('[WecomApi] No secret available');
       throw new Error('企微配置缺少必要的Secret');
     }
 
@@ -111,7 +112,7 @@ export class WecomApiService {
       }
       return { success: false, message: '获取Token失败' };
     } catch (error: any) {
-      console.error('[WecomApi] testConnection error:', error.message);
+      log.error('[WecomApi] testConnection error:', error.message);
       return { success: false, message: error.message || '连接失败' };
     }
   }
@@ -134,7 +135,7 @@ export class WecomApiService {
         throw new Error(`获取部门列表失败: ${response.data.errmsg}`);
       }
     } catch (error: any) {
-      console.error('[WecomApi] getDepartmentList error:', error.message);
+      log.error('[WecomApi] getDepartmentList error:', error.message);
       throw error;
     }
   }
@@ -144,8 +145,8 @@ export class WecomApiService {
    */
   static async getDepartmentUsers(accessToken: string, departmentId: number, fetchChild: boolean = false): Promise<any[]> {
     try {
-      console.log(`[WecomApi] getDepartmentUsers: departmentId=${departmentId}, fetchChild=${fetchChild}`);
-      console.log(`[WecomApi] Using access_token: ${accessToken.substring(0, 20)}...`);
+      log.info(`[WecomApi] getDepartmentUsers: departmentId=${departmentId}, fetchChild=${fetchChild}`);
+      log.info(`[WecomApi] Using access_token: ${accessToken.substring(0, 20)}...`);
 
       const response = await axios.get(`${WECOM_API_BASE}/user/list`, {
         params: {
@@ -155,11 +156,11 @@ export class WecomApiService {
         }
       });
 
-      console.log('[WecomApi] getDepartmentUsers full response:', JSON.stringify(response.data));
+      log.info('[WecomApi] getDepartmentUsers full response:', JSON.stringify(response.data));
 
       if (response.data.errcode === 0) {
         const users = response.data.userlist || [];
-        console.log(`[WecomApi] Got ${users.length} users`);
+        log.info(`[WecomApi] Got ${users.length} users`);
         return users;
       } else {
         // 常见错误码说明
@@ -175,7 +176,7 @@ export class WecomApiService {
         throw new Error(`获取成员列表失败: ${response.data.errmsg} (errcode: ${response.data.errcode})${hint ? ' - ' + hint : ''}`);
       }
     } catch (error: any) {
-      console.error('[WecomApi] getDepartmentUsers error:', error.message);
+      log.error('[WecomApi] getDepartmentUsers error:', error.message);
       throw error;
     }
   }
@@ -195,7 +196,7 @@ export class WecomApiService {
         throw new Error(`获取外部联系人列表失败: ${response.data.errmsg}`);
       }
     } catch (error: any) {
-      console.error('[WecomApi] getExternalContactList error:', error.message);
+      log.error('[WecomApi] getExternalContactList error:', error.message);
       throw error;
     }
   }
@@ -215,7 +216,7 @@ export class WecomApiService {
         throw new Error(`获取外部联系人详情失败: ${response.data.errmsg}`);
       }
     } catch (error: any) {
-      console.error('[WecomApi] getExternalContactDetail error:', error.message);
+      log.error('[WecomApi] getExternalContactDetail error:', error.message);
       throw error;
     }
   }
@@ -235,7 +236,7 @@ export class WecomApiService {
         throw new Error(`获取标签列表失败: ${response.data.errmsg}`);
       }
     } catch (error: any) {
-      console.error('[WecomApi] getCorpTagList error:', error.message);
+      log.error('[WecomApi] getCorpTagList error:', error.message);
       throw error;
     }
   }
@@ -260,7 +261,7 @@ export class WecomApiService {
         throw new Error(`创建获客链接失败: ${response.data.errmsg}`);
       }
     } catch (error: any) {
-      console.error('[WecomApi] createAcquisitionLink error:', error.message);
+      log.error('[WecomApi] createAcquisitionLink error:', error.message);
       throw error;
     }
   }
@@ -284,7 +285,7 @@ export class WecomApiService {
         throw new Error(`获取获客链接列表失败: ${response.data.errmsg}`);
       }
     } catch (error: any) {
-      console.error('[WecomApi] getAcquisitionLinkList error:', error.message);
+      log.error('[WecomApi] getAcquisitionLinkList error:', error.message);
       throw error;
     }
   }
@@ -307,7 +308,7 @@ export class WecomApiService {
         throw new Error(`创建客服账号失败: ${response.data.errmsg}`);
       }
     } catch (error: any) {
-      console.error('[WecomApi] createKfAccount error:', error.message);
+      log.error('[WecomApi] createKfAccount error:', error.message);
       throw error;
     }
   }
@@ -328,7 +329,7 @@ export class WecomApiService {
         throw new Error(`获取客服账号列表失败: ${response.data.errmsg}`);
       }
     } catch (error: any) {
-      console.error('[WecomApi] getKfAccountList error:', error.message);
+      log.error('[WecomApi] getKfAccountList error:', error.message);
       throw error;
     }
   }
@@ -353,7 +354,7 @@ export class WecomApiService {
         throw new Error(`获取收款记录失败: ${response.data.errmsg}`);
       }
     } catch (error: any) {
-      console.error('[WecomApi] getPaymentList error:', error.message);
+      log.error('[WecomApi] getPaymentList error:', error.message);
       throw error;
     }
   }

@@ -11,6 +11,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { AppDataSource } from '../config/database';
 
+import { log } from '../config/logger';
 // 路径到模块的映射（长路径优先匹配）
 const PATH_MODULE_MAP: [string, string][] = [
   ['/system-config/sms/test', 'system_settings'],
@@ -280,7 +281,7 @@ export function adminOperationLoggerMiddleware(req: Request, res: Response, next
           ip,
           userAgent
         }).catch(err => {
-          console.error('[OperationLogger] Failed to write log:', err.message);
+          log.error('[OperationLogger] Failed to write log:', err.message);
         });
       }
     }
@@ -324,6 +325,6 @@ async function writeOperationLog(params: {
       ]
     );
   } catch (error: any) {
-    console.error('[OperationLogger] DB write failed:', error.message);
+    log.error('[OperationLogger] DB write failed:', error.message);
   }
 }

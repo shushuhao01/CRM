@@ -37,6 +37,12 @@
             <el-option label="租户客户" value="tenant" />
           </el-select>
         </el-form-item>
+        <el-form-item label="计费类型">
+          <el-select v-model="filters.billingType" placeholder="全部" clearable style="width: 140px">
+            <el-option label="订阅(月/年付)" value="subscription" />
+            <el-option label="一次性买断" value="once" />
+          </el-select>
+        </el-form-item>
         <el-form-item>
           <el-button type="primary" @click="handleSearch">
             <el-icon><Search /></el-icon>查询
@@ -172,7 +178,7 @@
         <el-table-column prop="count" label="订单数" min-width="100" align="center" />
         <el-table-column prop="avgAmount" label="平均客单价" min-width="140" align="right">
           <template #default="{ row }">
-            ¥{{ formatMoney(row.amount / row.count) }}
+            ¥{{ formatMoney(row.count > 0 ? row.amount / row.count : 0) }}
           </template>
         </el-table-column>
         <el-table-column prop="wechatAmount" label="微信支付" min-width="140" align="right">
@@ -196,7 +202,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, nextTick } from 'vue'
+import { ref, reactive, onMounted, onUnmounted, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Download, Search, Money, Tickets, RefreshRight, TrendCharts, Top, Bottom } from '@element-plus/icons-vue'
 import request from '@/api/request'
@@ -209,7 +215,8 @@ const trendGroupBy = ref('day')
 const filters = reactive({
   dateRange: null as string[] | null,
   payType: '',
-  customerType: ''
+  customerType: '',
+  billingType: ''
 })
 
 const summary = reactive({
@@ -235,7 +242,8 @@ let packageChart: echarts.ECharts | null = null
 let customerTypeChart: echarts.ECharts | null = null
 
 const formatMoney = (val: number) => {
-  return val?.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'
+  if (val === null || val === undefined || isNaN(val)) return '0.00'
+  return val.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
 const formatTrend = (val: number) => {
@@ -284,19 +292,20 @@ const fetchReports = async () => {
     }
     if (filters.payType) params.payType = filters.payType
     if (filters.customerType) params.customerType = filters.customerType
+    if (filters.billingType) params.billingType = filters.billingType
 
     const res = await request.get('/payment/reports', { params })
     if (res.success) {
       const { timeSeriesData, byPayType, byPackage, byCustomerType } = res.data
 
-      // 更新表格数据
+      // 更新表格数据（映射后端返回的按支付方式拆分金额）
       tableData.value = timeSeriesData.map((item: any) => ({
         date: item.date,
-        amount: parseFloat(item.amount),
-        count: parseInt(item.count),
-        wechatAmount: 0,
-        alipayAmount: 0,
-        bankAmount: 0
+        amount: parseFloat(item.amount) || 0,
+        count: parseInt(item.count) || 0,
+        wechatAmount: parseFloat(item.wechatAmount) || 0,
+        alipayAmount: parseFloat(item.alipayAmount) || 0,
+        bankAmount: parseFloat(item.bankAmount) || 0
       }))
 
       // 更新图表
@@ -307,7 +316,11 @@ const fetchReports = async () => {
     }
   } catch (error) {
     console.error('获取报表失败:', error)
-    ElMessage.error('获取报表失败')
+    tableData.value = []
+    // 仅在非拦截器处理的错误时提示（如404）
+    if ((error as any)?.response?.status === 404) {
+      ElMessage.error('支付报表接口不可用，请检查后端服务')
+    }
   } finally {
     loading.value = false
   }
@@ -322,34 +335,43 @@ const fetchSummary = async () => {
     }
     if (filters.payType) params.payType = filters.payType
     if (filters.customerType) params.customerType = filters.customerType
+    if (filters.billingType) params.billingType = filters.billingType
 
     const res = await request.get('/payment/stats', { params })
-    if (res.success) {
+    if (res.success && res.data) {
       const data = res.data
+      const totalAmount = Number(data.totalAmount) || 0
+      const totalCount = Number(data.totalCount) || 0
+      const refundAmount = Number(data.refundAmount) || 0
 
-      // 计算退款率
-      const refundRate = data.totalAmount > 0
-        ? (data.refundAmount / data.totalAmount) * 100
+      // 计算退款率（安全除法）
+      const refundRate = totalAmount > 0
+        ? (refundAmount / totalAmount) * 100
         : 0
 
-      // 计算平均客单价
-      const avgAmount = data.totalCount > 0
-        ? data.totalAmount / data.totalCount
+      // 计算平均客单价（安全除法）
+      const avgAmount = totalCount > 0
+        ? totalAmount / totalCount
         : 0
 
       Object.assign(summary, {
-        totalAmount: data.totalAmount || 0,
-        successCount: data.totalCount || 0,
-        refundAmount: data.refundAmount || 0,
-        refundRate: refundRate,
-        avgAmount: avgAmount,
-        maxAmount: data.maxAmount || 0,
-        amountTrend: data.amountTrend || null,
-        countTrend: data.countTrend || null
+        totalAmount,
+        successCount: totalCount,
+        refundAmount,
+        refundRate,
+        avgAmount,
+        maxAmount: Number(data.maxAmount) || 0,
+        amountTrend: data.amountTrend ?? null,
+        countTrend: data.countTrend ?? null
       })
     }
   } catch (error) {
     console.error('获取统计失败:', error)
+    // 统计失败重置为默认值
+    Object.assign(summary, {
+      totalAmount: 0, successCount: 0, refundAmount: 0, refundRate: 0,
+      avgAmount: 0, maxAmount: 0, amountTrend: null, countTrend: null
+    })
   }
 }
 
@@ -513,7 +535,8 @@ const handleReset = () => {
   Object.assign(filters, {
     dateRange: null,
     payType: '',
-    customerType: ''
+    customerType: '',
+    billingType: ''
   })
   handleSearch()
 }
@@ -528,6 +551,7 @@ const handleExport = async () => {
     }
     if (filters.payType) params.payType = filters.payType
     if (filters.customerType) params.customerType = filters.customerType
+    if (filters.billingType) params.billingType = filters.billingType
 
     const response = await fetch(`/api/v1/admin/payment/export?${new URLSearchParams(params)}`, {
       headers: {
@@ -552,13 +576,18 @@ const handleExport = async () => {
   }
 }
 
-onMounted(async () => {
-  // 初始化日期为本月
-  setQuickDate('month')
+// 响应式调整处理函数（需要引用以便清理）
+const handleResize = () => {
+  trendChart?.resize()
+  payTypeChart?.resize()
+  packageChart?.resize()
+  customerTypeChart?.resize()
+}
 
+onMounted(async () => {
   await nextTick()
 
-  // 初始化图表
+  // 先初始化图表实例（确保 DOM 已就绪）
   if (trendChartRef.value) {
     trendChart = echarts.init(trendChartRef.value)
   }
@@ -573,12 +602,22 @@ onMounted(async () => {
   }
 
   // 响应式调整
-  window.addEventListener('resize', () => {
-    trendChart?.resize()
-    payTypeChart?.resize()
-    packageChart?.resize()
-    customerTypeChart?.resize()
-  })
+  window.addEventListener('resize', handleResize)
+
+  // 图表初始化完成后再请求数据（避免竞态条件：数据先于图表到达导致图表不渲染）
+  setQuickDate('month')
+})
+
+onUnmounted(() => {
+  window.removeEventListener('resize', handleResize)
+  trendChart?.dispose()
+  payTypeChart?.dispose()
+  packageChart?.dispose()
+  customerTypeChart?.dispose()
+  trendChart = null
+  payTypeChart = null
+  packageChart = null
+  customerTypeChart = null
 })
 </script>
 

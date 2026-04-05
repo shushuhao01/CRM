@@ -27,17 +27,73 @@
           </el-radio-group>
         </el-form-item>
 
-        <el-form-item label="下载地址" prop="downloadUrl">
+        <el-form-item label="更新源类型" prop="sourceType">
+          <el-radio-group v-model="form.sourceType">
+            <el-radio-button value="url">下载链接</el-radio-button>
+            <el-radio-button value="upload">上传压缩包</el-radio-button>
+            <el-radio-button value="git">Git 仓库</el-radio-button>
+          </el-radio-group>
+        </el-form-item>
+
+        <!-- URL 模式 -->
+        <el-form-item v-if="form.sourceType === 'url'" label="下载地址" prop="downloadUrl">
           <el-input v-model="form.downloadUrl" placeholder="请输入版本文件下载地址（URL）" />
           <div class="form-tip">请填写版本文件的下载链接，支持 OSS、CDN 等外部地址</div>
         </el-form-item>
 
-        <el-form-item label="文件大小">
+        <!-- 上传模式 -->
+        <el-form-item v-if="form.sourceType === 'upload'" label="上传版本包">
+          <el-upload
+            class="version-upload"
+            :action="uploadAction"
+            :headers="uploadHeaders"
+            :on-success="handleUploadSuccess"
+            :on-error="handleUploadError"
+            :before-upload="beforeUpload"
+            :show-file-list="true"
+            :limit="1"
+            accept=".zip,.tar.gz,.tgz"
+            drag
+          >
+            <el-icon class="el-icon--upload"><UploadFilled /></el-icon>
+            <div class="el-upload__text">拖拽文件到此处，或<em>点击上传</em></div>
+            <template #tip>
+              <div class="el-upload__tip">支持 .zip / .tar.gz 格式，最大 200MB</div>
+            </template>
+          </el-upload>
+          <div v-if="form.packagePath" class="form-tip" style="color: #67c23a;">
+            ✓ 已上传: {{ uploadedFileName }}（{{ formatFileSize(form.fileSize) }}）
+          </div>
+        </el-form-item>
+
+        <!-- Git 模式 -->
+        <template v-if="form.sourceType === 'git'">
+          <el-form-item label="仓库地址" prop="gitRepoUrl">
+            <el-input v-model="form.gitRepoUrl" placeholder="https://github.com/yourname/crm.git" />
+            <div class="form-tip">支持 HTTPS 地址，如有需要可在私有客户服务器配置凭证</div>
+          </el-form-item>
+          <el-form-item label="分支">
+            <el-input v-model="form.gitBranch" placeholder="main" style="width: 220px" />
+          </el-form-item>
+          <el-form-item label="标签 (Tag)">
+            <el-input v-model="form.gitTag" placeholder="如 v1.9.0（优先于分支）" style="width: 220px" />
+          </el-form-item>
+        </template>
+
+        <el-form-item label="目标受众">
+          <el-radio-group v-model="form.targetAudience">
+            <el-radio-button value="all">全部客户</el-radio-button>
+            <el-radio-button value="private">仅私有客户</el-radio-button>
+            <el-radio-button value="saas">仅SaaS租户</el-radio-button>
+          </el-radio-group>
+        </el-form-item>
+
+        <el-form-item v-if="form.sourceType === 'url'" label="文件大小">
           <el-input-number v-model="form.fileSize" :min="0" :step="1024" placeholder="文件大小（字节）" style="width: 220px" />
           <span class="form-tip" style="margin-left: 12px">{{ form.fileSize ? formatFileSize(form.fileSize) : '' }}</span>
         </el-form-item>
 
-        <el-form-item label="文件Hash">
+        <el-form-item v-if="form.sourceType === 'url'" label="文件Hash">
           <el-input v-model="form.fileHash" placeholder="文件校验值（MD5/SHA256），可选" />
         </el-form-item>
 
@@ -66,21 +122,28 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive } from 'vue'
+import { ref, reactive, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { Back, Check } from '@element-plus/icons-vue'
-import type { FormInstance, FormRules } from 'element-plus'
+import { Back, Check, UploadFilled } from '@element-plus/icons-vue'
+import type { FormInstance, FormRules, UploadProps } from 'element-plus'
 import { adminApi } from '@/api/admin'
 
 const router = useRouter()
 const formRef = ref<FormInstance>()
 const loading = ref(false)
+const uploadedFileName = ref('')
 
 const form = reactive({
   version: '',
   releaseType: 'minor',
+  sourceType: 'url',
   downloadUrl: '',
+  gitRepoUrl: '',
+  gitBranch: 'main',
+  gitTag: '',
+  packagePath: '',
+  targetAudience: 'all',
   fileSize: 0,
   fileHash: '',
   minVersion: '',
@@ -97,11 +160,51 @@ const rules: FormRules = {
   changelog: [{ required: true, message: '请输入更新说明', trigger: 'blur' }]
 }
 
+// 上传配置
+const uploadAction = computed(() => {
+  const base = import.meta.env.VITE_API_BASE_URL || '/api/v1/admin'
+  return `${base}/upload/version-package`
+})
+const uploadHeaders = computed(() => {
+  const token = localStorage.getItem('admin_token') || ''
+  return { Authorization: `Bearer ${token}` }
+})
+
 const formatFileSize = (bytes: number) => {
   if (!bytes) return ''
   if (bytes < 1024) return bytes + ' B'
   if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
   return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
+}
+
+const beforeUpload: UploadProps['beforeUpload'] = (file) => {
+  const isAllowed = /\.(zip|gz|tgz|tar)$/i.test(file.name)
+  if (!isAllowed) {
+    ElMessage.error('仅支持 .zip / .tar.gz / .tgz 格式文件')
+    return false
+  }
+  const maxSize = 200 * 1024 * 1024
+  if (file.size > maxSize) {
+    ElMessage.error('文件大小不能超过 200MB')
+    return false
+  }
+  return true
+}
+
+const handleUploadSuccess: UploadProps['onSuccess'] = (response: any) => {
+  if (response.success) {
+    form.packagePath = response.data.packagePath || response.data.url
+    form.fileSize = response.data.size || 0
+    form.fileHash = response.data.fileHash || ''
+    uploadedFileName.value = response.data.originalname || ''
+    ElMessage.success('版本包上传成功')
+  } else {
+    ElMessage.error(response.message || '上传失败')
+  }
+}
+
+const handleUploadError = () => {
+  ElMessage.error('文件上传失败，请重试')
 }
 
 const handleSubmit = async () => {
@@ -114,11 +217,29 @@ const handleSubmit = async () => {
       version: form.version,
       releaseType: form.releaseType,
       changelog: form.changelog,
-      isForceUpdate: form.isForceUpdate
+      isForceUpdate: form.isForceUpdate,
+      sourceType: form.sourceType,
+      targetAudience: form.targetAudience
     }
-    if (form.downloadUrl) data.downloadUrl = form.downloadUrl
-    if (form.fileSize) data.fileSize = form.fileSize
-    if (form.fileHash) data.fileHash = form.fileHash
+
+    if (form.sourceType === 'url') {
+      if (form.downloadUrl) data.downloadUrl = form.downloadUrl
+      if (form.fileSize) data.fileSize = form.fileSize
+      if (form.fileHash) data.fileHash = form.fileHash
+    } else if (form.sourceType === 'upload') {
+      data.packagePath = form.packagePath
+      data.fileSize = form.fileSize
+      data.fileHash = form.fileHash
+      // 设置 downloadUrl 为上传路径（兼容发布检查）
+      data.downloadUrl = form.packagePath
+    } else if (form.sourceType === 'git') {
+      data.gitRepoUrl = form.gitRepoUrl
+      data.gitBranch = form.gitBranch || 'main'
+      if (form.gitTag) data.gitTag = form.gitTag
+      // Git 模式不需要 downloadUrl，设一个占位值以通过发布检查
+      data.downloadUrl = form.gitRepoUrl
+    }
+
     if (form.minVersion) data.minVersion = form.minVersion
 
     await adminApi.createVersion(data)
@@ -137,6 +258,11 @@ const handleReset = () => {
   form.fileHash = ''
   form.minVersion = ''
   form.downloadUrl = ''
+  form.gitRepoUrl = ''
+  form.gitBranch = 'main'
+  form.gitTag = ''
+  form.packagePath = ''
+  uploadedFileName.value = ''
 }
 </script>
 
@@ -179,5 +305,9 @@ const handleReset = () => {
   font-size: 12px;
   color: #909399;
   margin-top: 4px;
+}
+
+.version-upload {
+  width: 100%;
 }
 </style>
