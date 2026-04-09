@@ -120,17 +120,55 @@ docs/kiro-session-notes/
 # 后端日志目录
 backend/logs/
 
+# ==================== 🔴 一级机密：密钥和敏感配置 ====================
 # SaaS 平台许可签发脚本（含 RSA 私钥，绝不可上传到公开仓库或交付客户）
 backend/scripts/generate-saas-license.js
 
+# 生产服务器环境配置（含真实数据库密码、JWT密钥等）
+backend/.env.production.server
+
+# 所有可能包含密钥的环境变量文件（补充）
+backend/.env.*.local
+.env.local
+.env.*.local
+
+# ==================== 🟠 二级机密：运营方内部文档 ====================
 # 运营方机密文档（含安全机制详细说明，绝不可交付客户）
 docs/重要文件/部署模式许可证管理-运营方完整操作手册（机密）.md
+
+# 机密文件管理清单（记录所有敏感文件，不可泄露）
+docs/机密文件管理清单.md
 
 # 商业合同模板（运营方内部使用，不交付客户）
 docs/商业合同/
 
 # 发布指南（运营方内部使用）
 docs/发布指南/
+
+# ==================== 🟡 三级敏感：部署和运维脚本 ====================
+# 部署脚本（含服务器信息和部署流程）
+deploy.ps1
+deploy.sh
+
+# 备份和同步脚本（含仓库地址等）
+backup-*.ps1
+sync-repos*.ps1
+push-website-admin.ps1
+setup-remotes.ps1
+create-release-package.ps1
+start-backend-dev.ps1
+
+# 配置备份（含真实服务器Nginx配置等）
+docs/配置备份/
+
+# ==================== 🟢 四级敏感：数据文件 ====================
+# 租户数据导出文件（客户真实数据）
+backend/exports/
+
+# 测试输出文件
+tsc-result*.txt
+backend/test-*.js
+tests/test-*-output.txt
 
 # Release 打包输出
 CRM-v*-release.zip
