@@ -731,6 +731,8 @@ export class UserController {
         'user.lastLoginAt',
         'user.lastLoginIp',
         'user.loginCount',
+        'user.loginFailCount',
+        'user.lockedAt',
         'user.createdAt',
         'user.updatedAt'
       ]);

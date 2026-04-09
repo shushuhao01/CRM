@@ -7,6 +7,7 @@ import { License } from '../../entities/License';
 import { LicenseLog } from '../../entities/LicenseLog';
 import { v4 as uuidv4 } from 'uuid';
 import crypto from 'crypto';
+import bcrypt from 'bcryptjs';
 
 import { log as logger } from '../../config/logger';
 const router = Router();
@@ -214,7 +215,41 @@ router.get('/:id', async (req: Request, res: Response) => {
       createdByName = '系统创建';
     }
 
-    res.json({ success: true, data: { ...license, features: resolvedFeatures, packageInfo, userCount, createdByName } });
+    // 🔥 查询CRM密码状态（私有客户的admin用户密码）
+    let crmPasswordStatus = 'not_set';
+    let crmPasswordDisplay = '';
+    // 🔥 查询会员中心密码状态（通过手机号匹配tenants表的password_hash）
+    let memberPasswordStatus = 'not_set';
+    let memberPasswordDisplay = '';
+    if (license.customerPhone) {
+      const DEFAULT_PWD = 'Aa123456';
+      // CRM系统密码
+      try {
+        const adminRow = await AppDataSource.query(
+          `SELECT password FROM users WHERE username = ? AND tenant_id IS NULL AND role = 'admin' LIMIT 1`,
+          [license.customerPhone]
+        );
+        if (adminRow.length > 0 && adminRow[0].password) {
+          const isDefault = await bcrypt.compare(DEFAULT_PWD, adminRow[0].password);
+          crmPasswordStatus = isDefault ? 'default' : 'custom';
+          crmPasswordDisplay = isDefault ? DEFAULT_PWD : '已修改（无法查看原始密码）';
+        }
+      } catch { /* ignore */ }
+      // 会员中心密码：通过手机号查找tenants表的password_hash
+      try {
+        const tenantRow = await AppDataSource.query(
+          `SELECT password_hash FROM tenants WHERE phone = ? LIMIT 1`,
+          [license.customerPhone]
+        );
+        if (tenantRow.length > 0 && tenantRow[0].password_hash) {
+          const memberIsDefault = await bcrypt.compare(DEFAULT_PWD, tenantRow[0].password_hash);
+          memberPasswordStatus = memberIsDefault ? 'default' : 'custom';
+          memberPasswordDisplay = memberIsDefault ? DEFAULT_PWD : '已修改（无法查看原始密码）';
+        }
+      } catch { /* ignore */ }
+    }
+
+    res.json({ success: true, data: { ...license, features: resolvedFeatures, packageInfo, userCount, createdByName, crmPasswordStatus, crmPasswordDisplay, memberPasswordStatus, memberPasswordDisplay } });
   } catch (error: any) {
     logger.error('[Admin Licenses] Get detail failed:', error);
     res.status(500).json({ success: false, message: '获取授权详情失败' });

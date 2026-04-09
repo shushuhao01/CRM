@@ -61,6 +61,7 @@ import tenantLicenseRoutes from './routes/tenantLicense';
 import wecomRoutes from './routes/wecom';
 import adminRoutes from './routes/admin';
 import publicRoutes from './routes/public';
+import tenantDataRoutes from './routes/tenantData';
 import * as fs from 'fs';
 
 // ==================== 环境配置智能加载 ====================
@@ -193,48 +194,61 @@ app.use(tenantContextMiddleware);
 app.use(checkLicenseWrite);
 
 // ==================== 健康检查端点 ====================
+const isDevEnv = process.env.NODE_ENV === 'development';
+
 app.get('/health', (req, res) => {
-  res.json({
+  // 🔒 生产环境仅返回状态，不泄露版本号/环境/用户数等信息
+  const response: any = {
     success: true,
     message: 'CRM API 服务运行正常',
     timestamp: new Date().toISOString(),
-    version: process.env.npm_package_version || '1.0.0',
-    environment: process.env.NODE_ENV || 'development',
-    onlineUsers: webSocketService.getOnlineUsersCount()
-  });
+  };
+  if (isDevEnv) {
+    response.version = process.env.npm_package_version || '1.0.0';
+    response.environment = process.env.NODE_ENV || 'development';
+    response.onlineUsers = webSocketService.getOnlineUsersCount();
+  }
+  res.json(response);
 });
 
 // API 前缀健康检查端点
 app.get(`${API_PREFIX}/health`, (req, res) => {
-  res.json({
+  const response: any = {
     success: true,
     message: 'CRM API 服务运行正常',
     timestamp: new Date().toISOString(),
-    version: process.env.npm_package_version || '1.0.0',
-    environment: process.env.NODE_ENV || 'development'
-  });
+  };
+  if (isDevEnv) {
+    response.version = process.env.npm_package_version || '1.0.0';
+    response.environment = process.env.NODE_ENV || 'development';
+  }
+  res.json(response);
 });
 
-// 根路由 - 返回 API 信息
+// 根路由 - 🔒 生产环境不暴露API端点列表
 app.get('/', (req, res) => {
-  res.json({
-    success: true,
-    message: 'CRM API 服务',
-    version: process.env.npm_package_version || '1.0.0',
-    environment: process.env.NODE_ENV || 'development',
-    apiPrefix: API_PREFIX,
-    endpoints: {
-      health: '/health',
-      apiHealth: `${API_PREFIX}/health`,
-      auth: `${API_PREFIX}/auth`,
-      users: `${API_PREFIX}/users`,
-      customers: `${API_PREFIX}/customers`,
-      products: `${API_PREFIX}/products`,
-      orders: `${API_PREFIX}/orders`,
-      dashboard: `${API_PREFIX}/dashboard`
-    },
-    timestamp: new Date().toISOString()
-  });
+  if (isDevEnv) {
+    res.json({
+      success: true,
+      message: 'CRM API 服务',
+      version: process.env.npm_package_version || '1.0.0',
+      environment: 'development',
+      apiPrefix: API_PREFIX,
+      endpoints: {
+        health: '/health',
+        apiHealth: `${API_PREFIX}/health`,
+        auth: `${API_PREFIX}/auth`,
+        users: `${API_PREFIX}/users`,
+        customers: `${API_PREFIX}/customers`,
+        products: `${API_PREFIX}/products`,
+        orders: `${API_PREFIX}/orders`,
+        dashboard: `${API_PREFIX}/dashboard`
+      },
+      timestamp: new Date().toISOString()
+    });
+  } else {
+    res.json({ success: true, message: 'CRM API Service' });
+  }
 });
 
 // ==================== 注册路由 ====================
@@ -284,6 +298,7 @@ app.use(`${API_PREFIX}/value-added`, valueAddedRoutes);
 app.use(`${API_PREFIX}/license`, licenseRoutes);
 app.use(`${API_PREFIX}/tenant-license`, tenantLicenseRoutes);
 app.use(`${API_PREFIX}/wecom`, wecomRoutes);
+app.use(`${API_PREFIX}/tenant-data`, tenantDataRoutes);
 app.use(`${API_PREFIX}/admin`, adminRoutes);
 app.use(`${API_PREFIX}/public`, publicRoutes);
 

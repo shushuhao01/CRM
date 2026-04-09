@@ -27,7 +27,7 @@
         </div>
         <el-menu
           default-active="project-overview"
-          :default-openeds="['project', 'business', 'deployment', 'modules', 'faq']"
+          :default-openeds="['project', 'business', 'deployment', 'modules', 'logistics-guides', 'faq']"
           @select="handleMenuSelect"
           class="help-menu"
         >
@@ -61,6 +61,19 @@
             <el-menu-item index="module-finance">财务管理</el-menu-item>
             <el-menu-item index="module-product">商品管理</el-menu-item>
             <el-menu-item index="module-system">系统管理</el-menu-item>
+          </el-sub-menu>
+
+          <!-- 物流配置指南 -->
+          <el-sub-menu index="logistics-guides">
+            <template #title>
+              <el-icon><Van /></el-icon>
+              <span>物流配置指南</span>
+            </template>
+            <el-menu-item index="logistics-api-guide">物流API配置</el-menu-item>
+            <el-menu-item index="logistics-printer-guide">打印机配置</el-menu-item>
+            <el-menu-item index="logistics-label-guide">面单模板配置</el-menu-item>
+            <el-menu-item index="logistics-sender-guide">寄件人配置</el-menu-item>
+            <el-menu-item index="logistics-shipping-guide">发货打单操作</el-menu-item>
           </el-sub-menu>
 
           <!-- 角色权限 -->
@@ -167,7 +180,8 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, defineAsyncComponent } from 'vue'
-import { Search, InfoFilled, Operation, Setting, Grid, QuestionFilled, UserFilled, Iphone } from '@element-plus/icons-vue'
+import { useRoute } from 'vue-router'
+import { Search, InfoFilled, Operation, Setting, Grid, QuestionFilled, UserFilled, Iphone, Van } from '@element-plus/icons-vue'
 
 // 动态导入帮助内容组件
 const helpContentComponents: Record<string, any> = {
@@ -185,6 +199,14 @@ const helpContentComponents: Record<string, any> = {
   'module-service-mgmt': defineAsyncComponent(() => import('@/components/HelpContent/ModuleServiceMgmt.vue')),
   'module-performance': defineAsyncComponent(() => import('@/components/HelpContent/ModulePerformance.vue')),
   'module-logistics': defineAsyncComponent(() => import('@/components/HelpContent/ModuleLogistics.vue')),
+
+  // 物流配置指南
+  'logistics-api-guide': defineAsyncComponent(() => import('@/components/HelpContent/LogisticsApiGuide.vue')),
+  'logistics-printer-guide': defineAsyncComponent(() => import('@/components/HelpContent/LogisticsPrinterGuide.vue')),
+  'logistics-label-guide': defineAsyncComponent(() => import('@/components/HelpContent/LogisticsLabelGuide.vue')),
+  'logistics-sender-guide': defineAsyncComponent(() => import('@/components/HelpContent/LogisticsSenderGuide.vue')),
+  'logistics-shipping-guide': defineAsyncComponent(() => import('@/components/HelpContent/LogisticsShippingGuide.vue')),
+
   'module-aftersale': defineAsyncComponent(() => import('@/components/HelpContent/ModuleAftersale.vue')),
   'module-data': defineAsyncComponent(() => import('@/components/HelpContent/ModuleData.vue')),
   'module-finance': defineAsyncComponent(() => import('@/components/HelpContent/ModuleFinance.vue')),
@@ -392,6 +414,43 @@ const mockSearchResults = [
     excerpt: '发货列表、物流列表、物流跟踪、状态更新、物流公司...',
     category: '功能模块',
     content: '物流管理 发货列表 物流列表 物流跟踪 状态更新 物流公司 快递单号 签收 拒收'
+  },
+
+  // 物流配置指南
+  {
+    id: 'logistics-api-guide',
+    title: '物流API配置指南',
+    excerpt: '快递100注册、各快递公司开放平台API申请、密钥配置、电子面单合同签订...',
+    category: '物流配置指南',
+    content: '物流API 快递100 顺丰 圆通 中通 韵达 极兔 AppKey AppSecret 月结编码 电子面单 开放平台 API配置'
+  },
+  {
+    id: 'logistics-printer-guide',
+    title: '打印机配置指南',
+    excerpt: '浏览器打印、LODOP控件、USB直连热敏打印机配置方法...',
+    category: '物流配置指南',
+    content: '打印机配置 浏览器打印 LODOP C-Lodop USB直连 热敏打印机 佳博 得力 斑马 面单打印'
+  },
+  {
+    id: 'logistics-label-guide',
+    title: '面单模板配置指南',
+    excerpt: '面单模板选择、自定义模板、隐私保护、纸张规格配置...',
+    category: '物流配置指南',
+    content: '面单模板 标签模板 纸张规格 100x180 100x150 隐私保护 脱敏 条码 二维码 自定义模板'
+  },
+  {
+    id: 'logistics-sender-guide',
+    title: '寄件人配置指南',
+    excerpt: '寄件人信息管理、退货地址管理、默认寄件人设置...',
+    category: '物流配置指南',
+    content: '寄件人 退货地址 默认寄件人 发件人 联系电话 发货地址 关联售后 退货 换货 维修'
+  },
+  {
+    id: 'logistics-shipping-guide',
+    title: '发货打单操作指南',
+    excerpt: '打印面单发货、手动发货、批量打印、批量发货、Excel导入发货...',
+    category: '物流配置指南',
+    content: '发货打单 打印面单 手动发货 批量打印面单 批量发货 导入发货 Excel 快递单号 发货流程'
   },
   {
     id: 'module-aftersale',
@@ -617,6 +676,12 @@ const handleKeydown = (event: KeyboardEvent) => {
 }
 
 onMounted(() => {
+  // 支持URL参数直接跳转到指定章节：/help-center?section=logistics-api-guide
+  const route = useRoute()
+  const section = route.query.section as string
+  if (section && helpContentComponents[section]) {
+    activeMenuItem.value = section
+  }
   // 添加键盘事件监听
   document.addEventListener('keydown', handleKeydown)
 })

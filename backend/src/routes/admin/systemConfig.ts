@@ -4,6 +4,7 @@
  */
 import { Router, Request, Response } from 'express'
 import { AppDataSource } from '../../config/database'
+import { formatDateTime } from '../../utils/dateFormat'
 
 import { log } from '../../config/logger';
 const router = Router()
@@ -45,7 +46,7 @@ router.post('/system-config', async (req: Request, res: Response) => {
   try {
     const configData = req.body
     const configValue = JSON.stringify(configData)
-    const now = new Date().toISOString().slice(0, 19).replace('T', ' ')
+    const now = formatDateTime(new Date())
 
     // 检查是否存在
     const existing = await AppDataSource.query(
@@ -144,7 +145,7 @@ router.get('/system-config/sms', async (_req: Request, res: Response) => {
 router.post('/system-config/sms', async (req: Request, res: Response) => {
   try {
     const { enabled, accessKeyId, accessKeySecret, signName, templateCode, templates } = req.body
-    const now = new Date().toISOString().slice(0, 19).replace('T', ' ')
+    const now = formatDateTime(new Date())
 
     // 获取现有配置
     const existing = await AppDataSource.query(
@@ -397,7 +398,7 @@ router.get('/system/email-settings', async (_req: Request, res: Response) => {
 router.put('/system/email-settings', async (req: Request, res: Response) => {
   try {
     const { enabled, smtpHost, smtpPort, senderEmail, senderName, emailPassword, enableSsl, enableTls, testEmail } = req.body
-    const now = new Date().toISOString().slice(0, 19).replace('T', ' ')
+    const now = formatDateTime(new Date())
 
     // 获取现有配置
     const existing = await AppDataSource.query(
@@ -584,7 +585,7 @@ router.put('/timeout-reminder/config', async (req: Request, res: Response) => {
   try {
     const configData = req.body
     const configValue = JSON.stringify(configData)
-    const now = new Date().toISOString().slice(0, 19).replace('T', ' ')
+    const now = formatDateTime(new Date())
 
     // 检查是否存在
     const existing = await AppDataSource.query(

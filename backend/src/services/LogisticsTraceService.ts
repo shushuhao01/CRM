@@ -8,6 +8,7 @@ import { AppDataSource } from '../config/database';
 import { LogisticsApiConfig } from '../entities/LogisticsApiConfig';
 import { ExpressAPIService } from './ExpressAPIService';
 import { getTenantRepo } from '../utils/tenantRepo';
+import { formatDateTime } from '../utils/dateFormat';
 
 import { log } from '../config/logger';
 // 快递100公司代码映射（我们的代码 -> 快递100代码）
@@ -144,158 +145,162 @@ class LogisticsTraceService {
     const config = await this.getApiConfig(companyCode);
     log.info(`[物流查询] API配置: ${config ? `已找到(enabled=${config.enabled})` : '未找到'}`);
 
-    if (!config) {
-      return {
-        success: false,
-        trackingNo,
-        companyCode,
-        companyName: COMPANY_NAMES[companyCode] || companyCode,
-        status: 'unknown',
-        statusText: `${COMPANY_NAMES[companyCode] || companyCode}的API未配置，请在物流公司管理中配置API`,
-        traces: []
-      };
-    }
+    // 判断官方API是否可用（配置存在 + 已启用 + 密钥完整）
+    const hasOfficialApi = !!(config && config.enabled && config.appId && config.appSecret);
 
-    if (!config.enabled) {
-      return {
-        success: false,
-        trackingNo,
-        companyCode,
-        companyName: COMPANY_NAMES[companyCode] || companyCode,
-        status: 'unknown',
-        statusText: `${COMPANY_NAMES[companyCode] || companyCode}的API已禁用，请在物流公司管理中启用`,
-        traces: []
-      };
-    }
+    // 判断快递100是否可用
+    const expressService = ExpressAPIService.getInstance();
+    const configStatus = expressService.getConfigStatus();
+    const hasKuaidi100 = configStatus.kuaidi100;
 
-    // 检查必要的API配置
-    if (!config.appId || !config.appSecret) {
-      return {
-        success: false,
-        trackingNo,
-        companyCode,
-        companyName: COMPANY_NAMES[companyCode] || companyCode,
-        status: 'unknown',
-        statusText: `${COMPANY_NAMES[companyCode] || companyCode}的API密钥未配置完整`,
-        traces: []
-      };
-    }
+    log.info(`[物流查询] 可用渠道: 官方API=${hasOfficialApi}, 快递100=${hasKuaidi100}`);
 
-    // 根据快递公司调用对应的API
-    try {
-      log.info(`[物流查询] 调用${companyCode}的API...`);
-      let result: LogisticsTrackResult;
-
-      switch (companyCode) {
-        case 'SF':
-          result = await this.querySFTrace(trackingNo, config, phone);
-          break;
-        case 'ZTO':
-          result = await this.queryZTOTrace(trackingNo, config);
-          break;
-        case 'YTO':
-          result = await this.queryYTOTrace(trackingNo, config);
-          break;
-        case 'STO':
-          result = await this.querySTOTrace(trackingNo, config);
-          break;
-        case 'YD':
-          result = await this.queryYDTrace(trackingNo, config);
-          break;
-        case 'JTSD':
-          result = await this.queryJTTrace(trackingNo, config);
-          break;
-        case 'EMS':
-          result = await this.queryEMSTrace(trackingNo, config);
-          break;
-        case 'JD':
-          result = await this.queryJDTrace(trackingNo, config);
-          break;
-        case 'DBL':
-          result = await this.queryDBLTrace(trackingNo, config);
-          break;
-        default:
-          result = {
-            success: false,
-            trackingNo,
-            companyCode,
-            companyName: COMPANY_NAMES[companyCode] || companyCode,
-            status: 'unknown',
-            statusText: '暂不支持该快递公司的API查询',
-            traces: []
-          };
+    // 如果两者都未配置，返回提示信息
+    if (!hasOfficialApi && !hasKuaidi100) {
+      let statusText = `${COMPANY_NAMES[companyCode] || companyCode}的API未配置`;
+      if (!config) {
+        statusText += '，请在物流公司管理中配置官方API或快递100';
+      } else if (!config.enabled) {
+        statusText += '（已禁用），且快递100未配置';
+      } else {
+        statusText += '（密钥不完整），且快递100未配置';
       }
+      return {
+        success: false,
+        trackingNo,
+        companyCode,
+        companyName: COMPANY_NAMES[companyCode] || companyCode,
+        status: 'unknown',
+        statusText,
+        traces: []
+      };
+    }
 
-      // 🔥 如果官方API查询失败或没有轨迹
-      if (!result.success || result.traces.length === 0) {
-        // 检查快递100是否配置
-        const expressService = ExpressAPIService.getInstance();
-        const configStatus = expressService.getConfigStatus();
+    // 🔥 优先级逻辑：官方API优先，快递100降级
+    if (hasOfficialApi) {
+      // 官方API可用，优先使用
+      try {
+        log.info(`[物流查询] 调用${companyCode}官方API...`);
+        let result: LogisticsTrackResult;
 
-        if (configStatus.kuaidi100) {
-          // 快递100已配置，尝试使用快递100查询
-          log.info(`[物流查询] 官方API查询失败或无轨迹，尝试快递100...`);
+        switch (companyCode) {
+          case 'SF':
+            result = await this.querySFTrace(trackingNo, config!, phone);
+            break;
+          case 'ZTO':
+            result = await this.queryZTOTrace(trackingNo, config!);
+            break;
+          case 'YTO':
+            result = await this.queryYTOTrace(trackingNo, config!);
+            break;
+          case 'STO':
+            result = await this.querySTOTrace(trackingNo, config!);
+            break;
+          case 'YD':
+            result = await this.queryYDTrace(trackingNo, config!);
+            break;
+          case 'JTSD':
+            result = await this.queryJTTrace(trackingNo, config!);
+            break;
+          case 'EMS':
+            result = await this.queryEMSTrace(trackingNo, config!);
+            break;
+          case 'JD':
+            result = await this.queryJDTrace(trackingNo, config!);
+            break;
+          case 'DBL':
+            result = await this.queryDBLTrace(trackingNo, config!);
+            break;
+          default:
+            result = {
+              success: false,
+              trackingNo,
+              companyCode,
+              companyName: COMPANY_NAMES[companyCode] || companyCode,
+              status: 'unknown',
+              statusText: '暂不支持该快递公司的官方API查询',
+              traces: []
+            };
+        }
+
+        // 🔥 官方API查询成功且有轨迹数据，直接返回
+        if (result.success && result.traces.length > 0) {
+          log.info(`[物流查询] 官方API查询成功，返回${result.traces.length}条轨迹`);
+          return result;
+        }
+
+        // 🔥 官方API查询失败或无轨迹，尝试快递100降级
+        if (hasKuaidi100) {
+          log.info(`[物流查询] 官方API查询失败或无轨迹，降级使用快递100...`);
           const fallbackResult = await this.queryByKuaidi100(trackingNo, companyCode);
           if (fallbackResult.success && fallbackResult.traces.length > 0) {
             log.info(`[物流查询] 快递100查询成功，返回${fallbackResult.traces.length}条轨迹`);
             return fallbackResult;
           }
-          log.info(`[物流查询] 快递100也查询失败，返回原始结果`);
+          log.info(`[物流查询] 快递100也查询失败，返回官方API原始结果`);
         } else {
-          // 快递100未配置
+          // 快递100未配置，特殊处理顺丰
           if (companyCode === 'SF') {
             if (!phone) {
-              // 没有提供手机号
               log.info(`[物流查询] 快递100未配置，顺丰需要手机号验证`);
               result.statusText = '需要手机号验证';
               result.status = 'need_phone_verify';
-            } else {
-              // 提供了手机号但仍然查询不到，可能是手机号不正确
-              log.info(`[物流查询] 已提供手机号但查询失败，可能手机号不正确`);
-              if (result.statusText.includes('routes为空') || result.statusText.includes('未查询到')) {
-                result.statusText = '查询失败。可能原因：1.手机号后4位不正确 2.运单刚发出，建议12-24小时后再查询 3.运单号不存在';
-                result.status = 'need_phone_verify'; // 让用户可以重新输入手机号
-              }
+            } else if (result.statusText.includes('routes为空') || result.statusText.includes('未查询到')) {
+              result.statusText = '查询失败。可能原因：1.手机号后4位不正确 2.运单刚发出，建议12-24小时后再查询 3.运单号不存在';
+              result.status = 'need_phone_verify';
             }
           }
         }
-      }
 
-      return result;
-    } catch (error: any) {
-      log.error(`[物流查询] ${companyCode} 查询失败:`, error.message);
+        return result;
+      } catch (error: any) {
+        log.error(`[物流查询] ${companyCode}官方API异常:`, error.message);
 
-      // 检查快递100是否配置
-      const expressService = ExpressAPIService.getInstance();
-      const configStatus = expressService.getConfigStatus();
-
-      if (configStatus.kuaidi100) {
-        // 🔥 官方API异常时，尝试快递100
-        log.info(`[物流查询] 官方API异常，尝试快递100...`);
-        const fallbackResult = await this.queryByKuaidi100(trackingNo, companyCode);
-        if (fallbackResult.success) {
-          return fallbackResult;
+        // 🔥 官方API异常时，尝试快递100降级
+        if (hasKuaidi100) {
+          log.info(`[物流查询] 官方API异常，降级使用快递100...`);
+          const fallbackResult = await this.queryByKuaidi100(trackingNo, companyCode);
+          if (fallbackResult.success) {
+            return fallbackResult;
+          }
+        } else if (companyCode === 'SF' && !phone) {
+          return {
+            success: false,
+            trackingNo,
+            companyCode,
+            companyName: COMPANY_NAMES[companyCode] || companyCode,
+            status: 'need_phone_verify',
+            statusText: '需要手机号验证',
+            traces: []
+          };
         }
-      } else if (companyCode === 'SF' && !phone) {
-        // 快递100未配置，顺丰需要手机号验证
+
         return {
           success: false,
           trackingNo,
           companyCode,
           companyName: COMPANY_NAMES[companyCode] || companyCode,
-          status: 'need_phone_verify',
-          statusText: '需要手机号验证',
+          status: 'error',
+          statusText: '查询失败: ' + error.message,
           traces: []
         };
       }
+    } else {
+      // 🔥 官方API不可用，直接使用快递100
+      log.info(`[物流查询] 官方API不可用，直接使用快递100查询...`);
+      const kuaidi100Result = await this.queryByKuaidi100(trackingNo, companyCode);
+      if (kuaidi100Result.success) {
+        return kuaidi100Result;
+      }
 
+      // 快递100也失败
       return {
         success: false,
         trackingNo,
         companyCode,
         companyName: COMPANY_NAMES[companyCode] || companyCode,
         status: 'error',
-        statusText: '查询失败: ' + error.message,
+        statusText: kuaidi100Result.statusText || '快递100查询失败',
         traces: []
       };
     }
@@ -840,12 +845,12 @@ class LogisticsTraceService {
     const timestamp = Date.now().toString();
     const data = JSON.stringify({ billCode: trackingNo });
 
-    const signStr = config.appKey + timestamp + data + config.appSecret;
-    const sign = crypto.createHash('md5').update(signStr).digest('hex').toUpperCase();
+    // 中通使用 HMAC-SHA256 + Base64 签名
+    const sign = crypto.createHmac('sha256', config.appSecret || '').update(data).digest('base64');
 
     const apiUrl = config.apiEnvironment === 'production'
-      ? 'https://japi.zto.com/zto.open.getTraceInfo'
-      : 'https://japi-test.zto.com/zto.open.getTraceInfo';
+      ? 'https://japi.zto.com/traceInterfaceNewTraces'
+      : 'https://japi-test.zto.com/traceInterfaceNewTraces';
 
     const response = await axios.post(apiUrl, data, {
       headers: {
@@ -910,38 +915,37 @@ class LogisticsTraceService {
   }
 
   // ========== 圆通速递 ==========
-  // 圆通开放平台API文档: https://open.yto.net.cn/interfaceDocument/menu251/submenu258
+  // 圆通开放平台API文档: https://open.yto.net.cn/
+  // 新字段映射: appId=AppKey, appSecret=SecretKey, customerId=客户编码(user_id)
   private async queryYTOTrace(trackingNo: string, config: LogisticsApiConfig): Promise<LogisticsTrackResult> {
-    const timestamp = Date.now().toString();
+    const timestamp = new Date().toISOString().replace('T', ' ').substring(0, 19);
 
-    // 请求体数据
-    const requestData = {
-      waybillNo: trackingNo
-    };
-    const dataStr = JSON.stringify(requestData);
+    // 请求参数
+    const param = JSON.stringify({
+      Number: trackingNo,
+      OrderType: ''
+    });
 
-    // 签名: MD5(data + appSecret)
-    const signStr = dataStr + config.appKey; // appKey存储的是AppSecret
+    // 签名: MD5(param + SecretKey).toUpperCase()
+    const signStr = param + config.appSecret;
     const sign = crypto.createHash('md5').update(signStr).digest('hex').toUpperCase();
 
-    // API地址根据环境选择
-    const baseUrl = config.apiEnvironment === 'production'
-      ? 'https://openapi.yto.net.cn/open/track_query_adapter/v1'
-      : 'https://openuat.yto56test.com:5443/open/track_query_adapter/v1';
-
-    // 完整URL: baseUrl/{appKey}/{环境标识}
-    const envFlag = config.apiEnvironment === 'production' ? 'PROD' : 'TEST';
-    const apiUrl = `${baseUrl}/${config.appId}/${envFlag}`;
+    // API地址
+    const apiUrl = config.apiEnvironment === 'production'
+      ? 'https://openapi.yto.net.cn/open/track_query/v1/query'
+      : 'https://openapi-test.yto.net.cn/open/track_query/v1/query';
 
     log.info('[圆通API] 请求URL:', apiUrl);
-    log.info('[圆通API] 请求数据:', dataStr);
+    log.info('[圆通API] 请求参数:', param);
 
     const response = await axios.post(apiUrl, {
-      data: dataStr,
+      param: param,
       sign: sign,
       timestamp: timestamp,
       format: 'JSON',
-      user_id: config.appSecret // appSecret存储的是UserId
+      appkey: config.appId,
+      user_id: config.customerId || '',
+      method: 'yto.Marketing.WaybillTrace'
     }, {
       headers: {
         'Content-Type': 'application/json',
@@ -1045,15 +1049,15 @@ class LogisticsTraceService {
 
   // ========== 韵达速递 ==========
   private async queryYDTrace(trackingNo: string, config: LogisticsApiConfig): Promise<LogisticsTrackResult> {
-    const timestamp = new Date().toISOString().replace('T', ' ').substring(0, 19);
+    const timestamp = formatDateTime(new Date());
     const data = JSON.stringify({ mailno: trackingNo });
 
     const signStr = data + config.appSecret + timestamp;
     const sign = crypto.createHash('md5').update(signStr).digest('hex');
 
     const apiUrl = config.apiEnvironment === 'production'
-      ? 'https://openapi.yundaex.com/openapi/outer/logictis/query'
-      : 'https://u-openapi.yundasys.com/openapi/outer/logictis/query';
+      ? 'https://openapi.yundaex.com/api/queryTraceInfo'
+      : 'https://u-openapi.yundasys.com/api/queryTraceInfo';
 
     const response = await axios.post(apiUrl, {
       appkey: config.appId,
@@ -1105,11 +1109,12 @@ class LogisticsTraceService {
     const timestamp = Date.now().toString();
     const data = JSON.stringify({ billCodes: trackingNo });
 
-    const sign = crypto.createHash('md5').update(data + config.appSecret).digest('hex');
+    // 极兔使用 Base64(MD5(data + privateKey)) 签名
+    const sign = crypto.createHash('md5').update(data + config.appSecret).digest('base64');
 
     const apiUrl = config.apiEnvironment === 'production'
       ? 'https://openapi.jtexpress.com.cn/webopenplatformapi/api/logistics/trace/queryTracesByBillCodes'
-      : 'https://openapi-test.jtexpress.com.cn/webopenplatformapi/api/logistics/trace/queryTracesByBillCodes';
+      : 'https://uat-openapi.jtexpress.com.cn/webopenplatformapi/api/logistics/trace/queryTracesByBillCodes';
 
     const response = await axios.post(apiUrl, {
       logistics_interface: data,
@@ -1158,7 +1163,7 @@ class LogisticsTraceService {
 
   // ========== 邮政EMS ==========
   private async queryEMSTrace(trackingNo: string, config: LogisticsApiConfig): Promise<LogisticsTrackResult> {
-    const timestamp = new Date().toISOString().replace('T', ' ').substring(0, 19);
+    const timestamp = formatDateTime(new Date());
     const data = JSON.stringify({ mailNo: trackingNo });
 
     const signStr = data + config.appSecret + timestamp;
@@ -1214,7 +1219,7 @@ class LogisticsTraceService {
 
   // ========== 京东物流 ==========
   private async queryJDTrace(trackingNo: string, config: LogisticsApiConfig): Promise<LogisticsTrackResult> {
-    const timestamp = new Date().toISOString().replace('T', ' ').substring(0, 19);
+    const timestamp = formatDateTime(new Date());
     const data = JSON.stringify({
       waybillCode: trackingNo,
       customerCode: config.customerId || ''
@@ -1294,7 +1299,8 @@ class LogisticsTraceService {
     });
 
     const signStr = config.appId + data + timestamp + config.appSecret;
-    const sign = crypto.createHash('md5').update(signStr).digest('hex').toUpperCase();
+    // 德邦使用 Base64(MD5(appKey + data + timestamp + appSecret)) 签名
+    const sign = crypto.createHash('md5').update(signStr).digest('base64');
 
     const apiUrl = config.apiEnvironment === 'production'
       ? 'https://dpapi.deppon.com/dop-interface-sync/standard-order/newTraceQuery.action'

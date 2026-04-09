@@ -33,6 +33,7 @@ export interface TagListResponse {
 const isProductionEnv = (): boolean => {
   const hostname = window.location.hostname
   return (
+    hostname.includes('yunkes.com') ||
     hostname.includes('abc789.cn') ||
     hostname.includes('vercel.app') ||
     hostname.includes('netlify.app') ||

@@ -157,6 +157,7 @@
           >
             <el-option label="启用" value="active" />
             <el-option label="禁用" value="inactive" />
+            <el-option label="锁定" value="locked" />
           </el-select>
         </el-form-item>
         <el-form-item label="创建时间">
@@ -329,6 +330,20 @@
           </el-tag>
         </template>
 
+        <!-- 账号状态插槽 -->
+        <template #column-accountStatus="{ row }">
+          <el-tag :type="getAccountStatusType(row.status)" size="small">
+            {{ getAccountStatusText(row.status) }}
+          </el-tag>
+          <el-tooltip v-if="row.status === 'locked' && row.lockedAt" placement="top">
+            <template #content>
+              <div>锁定时间：{{ formatDateTime(row.lockedAt) }}</div>
+              <div>登录失败次数：{{ row.loginFailCount || 0 }}</div>
+            </template>
+            <el-icon style="margin-left: 4px; color: #E6A23C; cursor: pointer;"><WarningFilled /></el-icon>
+          </el-tooltip>
+        </template>
+
         <!-- 操作插槽 -->
         <template #table-actions="{ row }">
           <el-button @click="handleView(row)" type="primary" size="small" link>
@@ -372,6 +387,21 @@
                   command="logs"
                 >
                   操作日志
+                </el-dropdown-item>
+                <el-dropdown-item
+                  v-if="canEditUser && row.status !== 'locked'"
+                  command="lock"
+                  divided
+                  :disabled="isNonDisableableUser(row)"
+                >
+                  <el-icon style="color: #E6A23C;"><Lock /></el-icon> 封禁账户
+                </el-dropdown-item>
+                <el-dropdown-item
+                  v-if="canEditUser && row.status === 'locked'"
+                  command="unlock"
+                  divided
+                >
+                  <el-icon style="color: #67C23A;"><Unlock /></el-icon> 解除封禁
                 </el-dropdown-item>
                 <el-tooltip
                   :content="isSystemPresetUser(row) ? '系统预设用户不可删除' : ''"
@@ -628,14 +658,20 @@
             </el-tag>
           </el-descriptions-item>
           <el-descriptions-item label="状态">
-            <el-tag :type="currentUser.status === 'active' ? 'success' : 'danger'">
-              {{ currentUser.status === 'active' ? '启用' : '禁用' }}
+            <el-tag :type="getAccountStatusType(currentUser.status)">
+              {{ getAccountStatusText(currentUser.status) }}
             </el-tag>
           </el-descriptions-item>
           <el-descriptions-item label="在线状态">
             <el-tag :type="currentUser.isOnline ? 'success' : 'info'">
               {{ currentUser.isOnline ? '在线' : '离线' }}
             </el-tag>
+          </el-descriptions-item>
+          <el-descriptions-item v-if="currentUser.status === 'locked'" label="锁定时间">
+            {{ formatDateTime(currentUser.lockedAt) }}
+          </el-descriptions-item>
+          <el-descriptions-item v-if="currentUser.status === 'locked'" label="登录失败次数">
+            <el-tag type="danger" size="small">{{ currentUser.loginFailCount || 0 }} 次</el-tag>
           </el-descriptions-item>
           <el-descriptions-item label="创建时间">
             {{ formatDateTime(currentUser.createTime) }}
@@ -665,8 +701,8 @@
             <el-descriptions-item label="用户">{{ currentUser.realName }}</el-descriptions-item>
             <el-descriptions-item label="角色">{{ getRoleName(currentUser.roleId) }}</el-descriptions-item>
             <el-descriptions-item label="状态">
-              <el-tag :type="currentUser.status === 'active' ? 'success' : 'danger'" size="small">
-                {{ currentUser.status === 'active' ? '启用' : '禁用' }}
+              <el-tag :type="getAccountStatusType(currentUser.status)" size="small">
+                {{ getAccountStatusText(currentUser.status) }}
               </el-tag>
             </el-descriptions-item>
           </el-descriptions>
@@ -1099,7 +1135,9 @@ import {
   CircleClose,
   CircleCheckFilled,
   Promotion,
-  CopyDocument
+  CopyDocument,
+  Lock,
+  Unlock
 } from '@element-plus/icons-vue'
 
 // 接口定义
@@ -1127,6 +1165,9 @@ interface UserData {
   roleName?: string
   isOnline?: boolean
   loginCount?: number
+  loginFailCount?: number  // 登录失败次数
+  lockedAt?: string  // 锁定时间
+  authorizedIps?: string[]  // 授权IP
 }
 
 interface UploadFile {
@@ -1508,6 +1549,14 @@ const tableColumns = computed(() => [
     slot: true
   },
   {
+    prop: 'accountStatus',
+    label: '账号状态',
+    width: 120,
+    visible: true,
+    slot: true,
+    align: 'center'
+  },
+  {
     prop: 'lastLoginTime',
     label: '最后登录',
     width: 160,
@@ -1772,9 +1821,128 @@ const handleDropdownCommand = (command: string, row: UserData) => {
     case 'logs':
       handleLogs(row)
       break
+    case 'lock':
+      handleLockAccount(row)
+      break
+    case 'unlock':
+      handleUnlockAccount(row)
+      break
     case 'delete':
       handleDelete(row)
       break
+  }
+}
+
+/**
+ * 获取账号状态标签类型
+ */
+const getAccountStatusType = (status: string) => {
+  switch (status) {
+    case 'active':
+      return 'success'
+    case 'inactive':
+      return 'info'
+    case 'locked':
+      return 'danger'
+    case 'resigned':
+      return 'warning'
+    default:
+      return 'info'
+  }
+}
+
+/**
+ * 获取账号状态显示文本
+ */
+const getAccountStatusText = (status: string) => {
+  switch (status) {
+    case 'active':
+      return '正常'
+    case 'inactive':
+      return '已禁用'
+    case 'locked':
+      return '已封禁'
+    case 'resigned':
+      return '已离职'
+    default:
+      return '未知'
+  }
+}
+
+/**
+ * 封禁账户
+ */
+const handleLockAccount = async (row: UserData) => {
+  // 检查是否为不可禁用的用户
+  if (isNonDisableableUser(row)) {
+    ElMessage.warning('系统预设用户不可封禁')
+    return
+  }
+
+  const userName = row.realName || row.username || '该用户'
+
+  try {
+    await ElMessageBox.confirm(
+      `确定要封禁用户"${userName}"的账户吗？封禁后该用户将无法登录系统。`,
+      '确认封禁',
+      {
+        confirmButtonText: '确定封禁',
+        cancelButtonText: '取消',
+        type: 'warning',
+        confirmButtonClass: 'el-button--danger'
+      }
+    )
+
+    console.log('[User] 开始封禁账户:', row.id, userName)
+
+    // 调用API更新用户状态为locked
+    await userApiService.updateUserStatus(row.id, 'locked')
+
+    ElMessage.success(`已成功封禁用户"${userName}"的账户`)
+
+    // 重新加载用户列表
+    await loadUserList()
+    console.log('[User] 用户列表已刷新')
+  } catch (error) {
+    if (error !== 'cancel') {
+      console.error('[User] 封禁账户失败:', error)
+      ElMessage.error('封禁账户失败: ' + (error instanceof Error ? error.message : '未知错误'))
+    }
+  }
+}
+
+/**
+ * 解除封禁
+ */
+const handleUnlockAccount = async (row: UserData) => {
+  const userName = row.realName || row.username || '该用户'
+
+  try {
+    await ElMessageBox.confirm(
+      `确定要解除用户"${userName}"的封禁状态吗？解除后该用户将恢复正常登录。`,
+      '确认解除封禁',
+      {
+        confirmButtonText: '确定解除',
+        cancelButtonText: '取消',
+        type: 'info'
+      }
+    )
+
+    console.log('[User] 开始解除封禁:', row.id, userName)
+
+    // 调用API解锁账户（使用专用的unlock接口，会同时重置登录失败次数）
+    await userApiService.unlockAccount(row.id)
+
+    ElMessage.success(`已成功解除用户"${userName}"的封禁状态`)
+
+    // 重新加载用户列表
+    await loadUserList()
+    console.log('[User] 用户列表已刷新')
+  } catch (error) {
+    if (error !== 'cancel') {
+      console.error('[User] 解除封禁失败:', error)
+      ElMessage.error('解除封禁失败: ' + (error instanceof Error ? error.message : '未知错误'))
+    }
   }
 }
 
@@ -2509,7 +2677,7 @@ const handleExport = async () => {
       '部门': user.departmentName || '未分配',
       '职位': user.position || '',
       '角色': user.roleName,
-      '账号状态': user.status === 'active' ? '启用' : '禁用',
+      '账号状态': user.status === 'active' ? '正常' : user.status === 'locked' ? '已封禁' : user.status === 'inactive' ? '已禁用' : '未知',
       '在职状态': (user.employmentStatus || 'active') === 'active' ? '在职' : '离职',
       '离职日期': user.resignedDate || '',
       '在线状态': user.isOnline ? '在线' : '离线',
@@ -2991,6 +3159,8 @@ const loadUserList = async () => {
         roleName: user.roleName || '',
         isOnline: user.isOnline || false,
         loginCount: user.loginCount || user.login_count || 0,
+        loginFailCount: user.loginFailCount || user.login_fail_count || 0,
+        lockedAt: user.lockedAt || user.locked_at || '',
         statusLoading: false,
         employmentStatusLoading: false
       }

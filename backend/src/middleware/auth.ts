@@ -22,10 +22,14 @@ declare global {
 /**
  * 🔥 清除指定用户的认证缓存
  * 在用户状态变更（禁用/启用/修改密码/删除）时调用
+ * 🔥 安全修复：支持按 tenantId 精确清除，兼容旧格式
  */
-export const clearUserAuthCache = (userId: string): void => {
-  const cacheKey = `auth:user:${userId}`;
-  cacheService.delete(cacheKey);
+export const clearUserAuthCache = (userId: string, tenantId?: string): void => {
+  if (tenantId) {
+    cacheService.delete(`auth:user:${tenantId}:${userId}`);
+  }
+  // 兼容：同时清除默认前缀的缓存
+  cacheService.delete(`auth:user:default:${userId}`);
 };
 
 /**
@@ -50,7 +54,9 @@ export const authenticateToken = async (req: Request, res: Response, next: NextF
     req.user = payload;
 
     // 🔥 性能优化：优先从缓存获取用户信息，避免每次API请求都查数据库
-    const cacheKey = `auth:user:${payload.userId}`;
+    // 🔥 安全修复：缓存key包含tenantId，防止跨租户缓存混淆
+    const tenantPrefix = payload.tenantId || 'default';
+    const cacheKey = `auth:user:${tenantPrefix}:${payload.userId}`;
     let user: User | null = cacheService.get(cacheKey);
 
     if (!user) {
@@ -64,9 +70,12 @@ export const authenticateToken = async (req: Request, res: Response, next: NextF
         });
       }
       const userRepository = dataSource.getRepository(User);
-      user = await userRepository.findOne({
-        where: { id: payload.userId }
-      });
+      // 🔥 安全修复：添加 tenantId 过滤，防止跨租户用户认证
+      const where: any = { id: payload.userId };
+      if (payload.tenantId) {
+        where.tenantId = payload.tenantId;
+      }
+      user = await userRepository.findOne({ where });
 
       // 查到后写入缓存（TTL 2分钟）
       if (user) {
@@ -194,8 +203,9 @@ export const optionalAuth = async (req: Request, res: Response, next: NextFuncti
       const payload = JwtConfig.verifyAccessToken(token);
       req.user = payload;
 
-      // 🔥 性能优化：复用认证缓存
-      const cacheKey = `auth:user:${payload.userId}`;
+      // 🔥 性能优化：复用认证缓存（包含tenantId前缀）
+      const tenantPrefix = payload.tenantId || 'default';
+      const cacheKey = `auth:user:${tenantPrefix}:${payload.userId}`;
       let user: User | null = cacheService.get(cacheKey);
 
       if (!user) {
@@ -204,9 +214,12 @@ export const optionalAuth = async (req: Request, res: Response, next: NextFuncti
           return next();
         }
         const userRepository = dataSource.getRepository(User);
-        user = await userRepository.findOne({
-          where: { id: payload.userId }
-        });
+        // 🔥 安全修复：添加 tenantId 过滤
+        const where: any = { id: payload.userId };
+        if (payload.tenantId) {
+          where.tenantId = payload.tenantId;
+        }
+        user = await userRepository.findOne({ where });
         if (user) {
           cacheService.set(cacheKey, user, AUTH_USER_CACHE_TTL);
         }

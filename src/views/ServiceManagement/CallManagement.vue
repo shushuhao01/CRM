@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="call-management">
     <!-- 页面头部 -->
     <div class="page-header">
@@ -33,129 +33,17 @@
     </div>
 
     <!-- 数据统计卡片 -->
-    <el-row :gutter="20" class="stats-row">
-      <el-col :span="6">
-        <el-card class="stat-card">
-          <div class="stat-item">
-            <div class="stat-icon">
-              <el-icon><Phone /></el-icon>
-            </div>
-            <div class="stat-content">
-              <div class="stat-value">{{ statistics.todayCalls }}</div>
-              <div class="stat-label">今日通话</div>
-            </div>
-          </div>
-        </el-card>
-      </el-col>
-      <el-col :span="6">
-        <el-card class="stat-card">
-          <div class="stat-item">
-            <div class="stat-icon">
-              <el-icon><Timer /></el-icon>
-            </div>
-            <div class="stat-content">
-              <div class="stat-value">{{ formatDuration(statistics.totalDuration) }}</div>
-              <div class="stat-label">通话时长</div>
-            </div>
-          </div>
-        </el-card>
-      </el-col>
-      <el-col :span="6">
-        <el-card class="stat-card">
-          <div class="stat-item">
-            <div class="stat-icon">
-              <el-icon><SuccessFilled /></el-icon>
-            </div>
-            <div class="stat-content">
-              <div class="stat-value">{{ statistics.connectionRate }}%</div>
-              <div class="stat-label">接通率</div>
-            </div>
-          </div>
-        </el-card>
-      </el-col>
-      <el-col :span="6">
-        <el-card class="stat-card">
-          <div class="stat-item">
-            <div class="stat-icon">
-              <el-icon><User /></el-icon>
-            </div>
-            <div class="stat-content">
-              <div class="stat-value">{{ statistics.activeUsers }}</div>
-              <div class="stat-label">活跃用户</div>
-            </div>
-          </div>
-        </el-card>
-      </el-col>
-    </el-row>
+    <CallStatsCards :statistics="statistics" />
 
     <!-- 筛选器和搜索栏 -->
-    <el-card class="filter-card">
-      <div class="filter-section">
-        <div class="filter-row">
-          <div class="filter-item">
-            <label>通话状态：</label>
-            <el-select v-model="filterForm.status" placeholder="请选择状态" clearable>
-              <el-option label="全部" value="" />
-              <el-option label="待外呼" value="pending" />
-              <el-option label="已接通" value="connected" />
-              <el-option label="未接听" value="no_answer" />
-              <el-option label="忙线" value="busy" />
-              <el-option label="失败" value="failed" />
-            </el-select>
-          </div>
-          <div class="filter-item">
-            <label>客户等级：</label>
-            <el-select v-model="filterForm.customerLevel" placeholder="请选择等级" clearable>
-              <el-option label="全部" value="" />
-              <el-option label="普通客户" value="normal" />
-              <el-option label="白银客户" value="silver" />
-              <el-option label="黄金客户" value="gold" />
-              <el-option label="钻石客户" value="diamond" />
-            </el-select>
-          </div>
-          <div class="filter-item">
-            <label>时间范围：</label>
-            <el-date-picker
-              v-model="filterForm.dateRange"
-              type="daterange"
-              range-separator="至"
-              start-placeholder="开始日期"
-              end-placeholder="结束日期"
-              format="YYYY-MM-DD"
-              value-format="YYYY-MM-DD"
-            />
-          </div>
-          <!-- 🔥 只有超管、管理员、部门经理可以看到负责人筛选 -->
-          <div class="filter-item" v-if="canViewSalesPersonFilter">
-            <label>负责人：</label>
-            <el-select v-model="filterForm.salesPerson" placeholder="请选择负责人" clearable filterable>
-              <el-option label="全部" value="" />
-              <el-option
-                v-for="user in salesPersonList"
-                :key="user.id"
-                :label="user.name"
-                :value="user.id"
-              />
-            </el-select>
-          </div>
-        </div>
-        <div class="search-row">
-          <el-input
-            v-model="searchKeyword"
-            placeholder="搜索客户姓名、电话号码、订单号"
-            clearable
-            style="width: 400px;"
-            @keyup.enter="handleSearch"
-          >
-            <template #prefix>
-              <el-icon><Search /></el-icon>
-            </template>
-          </el-input>
-          <el-button type="primary" :icon="Search" @click="handleSearch">搜索</el-button>
-          <el-button :icon="RefreshRight" @click="resetFilter">重置</el-button>
-        </div>
-      </div>
-    </el-card>
+    <CallFilterBar
+      v-model:filterForm="filterForm"
+      v-model:searchKeyword="searchKeyword"
+      :canViewSalesPersonFilter="canViewSalesPersonFilter"
+      :salesPersonList="salesPersonList"
+      @search="handleSearch"
+      @reset="resetFilter"
+    />
 
     <!-- 呼出列表表格 -->
     <el-card class="table-card">
@@ -247,957 +135,112 @@
       </div>
     </el-card>
 
-    <!-- 外呼对话框 -->
-    <el-dialog v-model="showOutboundDialog" title="发起外呼" width="650px" @open="initOutboundDialog">
-      <el-form :model="outboundForm" :rules="outboundRules" ref="outboundFormRef" label-width="100px">
-        <el-form-item label="外呼方式" prop="callMethod">
-          <el-select
-            v-model="outboundForm.callMethod"
-            placeholder="请选择外呼方式"
-            style="width: 100%"
-            @change="onOutboundMethodChange"
-          >
-            <el-option
-              v-if="workPhones.length > 0"
-              label="工作手机"
-              value="work_phone"
-            >
-              <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
-                <div style="flex: 1;">
-                  <div style="font-weight: 500;">工作手机</div>
-                  <div style="color: #8492a6; font-size: 12px;">使用绑定的工作手机拨打</div>
-                </div>
-                <el-tag size="small" type="success" style="margin-left: 12px;">推荐</el-tag>
-              </div>
-            </el-option>
-            <el-option
-              v-if="availableLines.length > 0"
-              label="网络电话"
-              value="network_phone"
-            >
-              <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
-                <div style="flex: 1;">
-                  <div style="font-weight: 500;">网络电话</div>
-                  <div style="color: #8492a6; font-size: 12px;">使用系统分配的外呼线路</div>
-                </div>
-                <el-tag size="small" type="info" style="margin-left: 12px;">录音</el-tag>
-              </div>
-            </el-option>
-          </el-select>
-          <div v-if="!workPhones.length && !availableLines.length" style="color: #f56c6c; font-size: 12px; margin-top: 4px;">
-            暂无可用的外呼方式，请先在"呼出配置"中绑定工作手机或联系管理员分配线路
-          </div>
-        </el-form-item>
 
-        <!-- 工作手机选择 -->
-        <el-form-item
-          v-if="outboundForm.callMethod === 'work_phone'"
-          label="选择手机"
-          prop="selectedWorkPhone"
-        >
-          <el-select
-            v-model="outboundForm.selectedWorkPhone"
-            placeholder="请选择工作手机"
-            style="width: 100%"
-            popper-class="outbound-select-popper"
-          >
-            <el-option
-              v-for="phone in workPhones"
-              :key="phone.id"
-              :label="`${phone.number} (${phone.status === 'online' || phone.status === '在线' ? '在线' : '离线'})`"
-              :value="phone.id"
-              :disabled="phone.status !== 'online' && phone.status !== '在线'"
-            >
-              <div class="select-option-row">
-                <div class="option-content">
-                  <div class="option-title">{{ phone.number }}</div>
-                  <div class="option-desc">{{ phone.name || '工作手机' }}</div>
-                </div>
-                <el-tag
-                  size="small"
-                  :type="phone.status === 'online' || phone.status === '在线' ? 'success' : 'danger'"
-                  class="option-tag"
-                >
-                  {{ phone.status === 'online' || phone.status === '在线' ? '在线' : '离线' }}
-                </el-tag>
-              </div>
-            </el-option>
-          </el-select>
-          <!-- 在线提示 -->
-          <div v-if="selectedWorkPhoneOnline" class="phone-online-tip">
-            <el-alert
-              type="success"
-              :closable="false"
-              show-icon
-            >
-              <template #title>
-                <span>已连接到手机，可拨打电话</span>
-                <el-button type="primary" size="small" link @click="handleRefreshDeviceStatus" style="margin-left: 12px;">
-                  刷新状态
-                </el-button>
-              </template>
-            </el-alert>
-          </div>
-          <!-- 离线提示和重新连接按钮 -->
-          <div v-if="selectedWorkPhoneOffline" class="phone-offline-tip">
-            <el-alert
-              type="warning"
-              :closable="false"
-              show-icon
-            >
-              <template #title>
-                <span>当前选择的手机已离线，请在手机APP上重新连接</span>
-                <el-button type="primary" size="small" link @click="handleRefreshDeviceStatus" style="margin-left: 12px;">
-                  刷新状态
-                </el-button>
-                <el-button type="primary" size="small" link @click="handleShowBindQRCode" style="margin-left: 8px;">
-                  重新扫码绑定
-                </el-button>
-              </template>
-            </el-alert>
-          </div>
-        </el-form-item>
+    <!-- 澶栧懠瀵硅瘽妗?+ 缁戝畾浜岀淮鐮佸脊绐?-->
+    <CallOutboundDialog
+      v-model:visible="showOutboundDialog"
+      v-model:bindQRDialogVisible="bindQRDialogVisible"
+      :outboundForm="outboundForm"
+      :outboundRules="outboundRules"
+      :outboundLoading="outboundLoading"
+      :workPhones="workPhones"
+      :availableLines="availableLines"
+      :customerOptions="customerOptions"
+      :phoneOptions="phoneOptions"
+      :isSearching="isSearching || customerStore.loading"
+      :canStartCall="canStartCall"
+      :getCannotCallReason="getCannotCallReason"
+      :selectedWorkPhoneOnline="selectedWorkPhoneOnline"
+      :selectedWorkPhoneOffline="selectedWorkPhoneOffline"
+      :bindQRCodeUrl="bindQRCodeUrl"
+      :bindStatus="bindStatus"
+      @init="initOutboundDialog"
+      @close="closeOutboundDialog"
+      @start-call="startOutboundCall"
+      @search-customers="debouncedSearchCustomers"
+      @customer-change="onCustomerChange"
+      @outbound-method-change="onOutboundMethodChange"
+      @refresh-device-status="handleRefreshDeviceStatus"
+      @show-bind-qr-code="handleShowBindQRCode"
+      @refresh-bind-qr-code="refreshBindQRCode"
+      @stop-bind-status-check="stopBindStatusCheck"
+    />
 
-        <!-- 网络电话线路选择 -->
-        <el-form-item
-          v-if="outboundForm.callMethod === 'network_phone'"
-          label="选择线路"
-          prop="selectedLine"
-        >
-          <el-select
-            v-model="outboundForm.selectedLine"
-            placeholder="请选择外呼线路"
-            style="width: 100%"
-            popper-class="outbound-select-popper"
-          >
-            <el-option
-              v-for="line in availableLines"
-              :key="line.id"
-              :label="`${line.name} (${line.status})`"
-              :value="line.id"
-            >
-              <div class="select-option-row">
-                <div class="option-content">
-                  <div class="option-title">{{ line.name }}</div>
-                  <div class="option-desc">{{ getProviderText(line.provider) }} · {{ line.callerNumber || '未设置主叫号码' }}</div>
-                </div>
-                <el-tag
-                  size="small"
-                  :type="line.status === '正常' ? 'success' : 'warning'"
-                  class="option-tag"
-                >
-                  {{ line.status }}
-                </el-tag>
-              </div>
-            </el-option>
-          </el-select>
-        </el-form-item>
+    <!-- 瀹㈡埛璇︽儏寮圭獥 -->
+    <CallCustomerDetailDialog
+      v-model:visible="showDetailDialog"
+      v-model:activeTab="activeTab"
+      :currentCustomer="currentCustomer"
+      :detailLoading="detailLoading"
+      :customerOrders="customerOrders"
+      :customerCalls="customerCalls"
+      :customerFollowups="customerFollowups"
+      :customerAftersales="customerAftersales"
+      :detailPagination="detailPagination"
+      :paginatedOrders="paginatedOrders"
+      :paginatedCalls="paginatedCalls"
+      :paginatedFollowups="paginatedFollowups"
+      :paginatedAftersales="paginatedAftersales"
+      @create-order="handleCreateOrder"
+      @create-aftersales="handleCreateAftersales"
+      @detail-outbound-call="handleDetailOutboundCall"
+      @open-followup-dialog="openFollowupDialog"
+      @view-order="viewOrder"
+      @view-aftersales="viewAftersales"
+      @view-call-detail="viewCallDetail"
+      @view-followup="viewFollowup"
+      @play-recording="playRecording"
+      @download-recording="downloadRecording"
+    />
 
-        <el-form-item label="选择客户" prop="selectedCustomer">
-          <el-select
-            v-model="outboundForm.selectedCustomer"
-            placeholder="请输入客户姓名、编号、电话或公司名称进行搜索"
-            filterable
-            remote
-            :remote-method="debouncedSearchCustomers"
-            :loading="isSearching || customerStore.loading"
-            style="width: 100%"
-            popper-class="outbound-select-popper"
-            @change="onCustomerChange"
-            @focus="() => { if (customerOptions.length === 0) searchCustomers() }"
-            clearable
-            no-data-text="暂无客户数据，请输入关键词搜索"
-            no-match-text="未找到匹配的客户"
-            loading-text="正在搜索客户..."
-            value-key="id"
-          >
-            <el-option
-              v-for="customer in customerOptions"
-              :key="customer.id"
-              :label="customer.name"
-              :value="customer"
-            >
-              <div class="select-option-row">
-                <div class="option-content">
-                  <div class="option-title">
-                    {{ customer.name }}
-                  </div>
-                  <div class="option-desc">
-                    <span v-if="customer.phone">{{ displaySensitiveInfoNew(customer.phone, SensitiveInfoType.PHONE) }}</span>
-                    <el-tag v-if="customer.phone && getPhoneCarrier(customer.phone)" size="small" type="info" style="margin-left: 6px; transform: scale(0.9);">{{ getPhoneCarrier(customer.phone) }}</el-tag>
-                  </div>
-                </div>
-                <el-tag size="small" type="primary" class="option-tag">
-                  {{ customer.code || '无编号' }}
-                </el-tag>
-              </div>
-            </el-option>
-          </el-select>
-        </el-form-item>
+    <!-- 閫氳瘽璁板綍寮圭獥 + 褰曢煶鎾斁 -->
+    <CallRecordsDialog
+      v-model:visible="callRecordsDialogVisible"
+      v-model:recordingPlayerVisible="recordingPlayerVisible"
+      :callRecordsLoading="callRecordsLoading"
+      :callRecordsList="callRecordsList"
+      :callRecordsFilter="callRecordsFilter"
+      :callRecordsPagination="callRecordsPagination"
+      :currentRecording="currentRecording"
+      @load-records="loadCallRecords"
+      @reset-filter="resetCallRecordsFilter"
+      @page-size-change="handleCallRecordsPageSizeChange"
+      @page-change="handleCallRecordsPageChange"
+      @play-recording="playRecording"
+      @download-recording="downloadRecording"
+      @close-records="handleCloseCallRecordsDialog"
+      @stop-recording="stopRecording"
+    />
 
-        <el-form-item label="选择号码" prop="customerPhone">
-          <el-select
-            v-model="outboundForm.customerPhone"
-            placeholder="请选择号码"
-            style="width: 100%"
-            popper-class="outbound-select-popper"
-            :disabled="!outboundForm.selectedCustomer"
-          >
-            <el-option
-              v-for="phone in phoneOptions"
-              :key="phone.phone"
-              :label="displaySensitiveInfoNew(phone.phone, SensitiveInfoType.PHONE)"
-              :value="phone.phone"
-            >
-              <div class="select-option-row">
-                <div class="option-content">
-                  <span>{{ displaySensitiveInfoNew(phone.phone, SensitiveInfoType.PHONE) }}</span>
-                  <el-tag v-if="getPhoneCarrier(phone.phone)" size="small" type="info" style="margin-left: 6px; transform: scale(0.9);">{{ getPhoneCarrier(phone.phone) }}</el-tag>
-                </div>
-                <el-tag size="small" type="info" class="option-tag">{{ phone.type }}</el-tag>
-              </div>
-            </el-option>
-          </el-select>
-        </el-form-item>
-
-        <el-form-item label="手动输入号码">
-          <el-input
-            v-model="outboundForm.manualPhone"
-            placeholder="或手动输入电话号码"
-          />
-          <div style="color: #909399; font-size: 12px; margin-top: 4px;">
-            手动输入号码将优先使用，不会同步客户信息
-          </div>
-        </el-form-item>
-
-        <el-form-item label="备注">
-          <el-input v-model="outboundForm.notes" type="textarea" :rows="3" placeholder="请输入通话备注" maxlength="200" show-word-limit />
-        </el-form-item>
-      </el-form>
-
-      <template #footer>
-        <div class="dialog-footer-buttons">
-          <el-button @click="closeOutboundDialog">取消</el-button>
-          <el-tooltip
-            :disabled="canStartCall"
-            :content="getCannotCallReason"
-            placement="top"
-          >
-            <span>
-              <el-button
-                type="primary"
-                @click="startOutboundCall"
-                :loading="outboundLoading"
-                :disabled="!canStartCall"
-              >
-                开始呼叫
-              </el-button>
-            </span>
-          </el-tooltip>
-        </div>
-      </template>
-    </el-dialog>
-
-    <!-- 绑定二维码弹窗 -->
-    <el-dialog v-model="bindQRDialogVisible" title="扫码绑定工作手机" width="400px" @close="stopBindStatusCheck">
-      <div class="qr-bind-content">
-        <div v-if="bindQRCodeUrl" class="qr-code-wrapper">
-          <img :src="bindQRCodeUrl" alt="绑定二维码" class="qr-code-img" />
-          <div class="qr-status">
-            <template v-if="bindStatus === 'pending'">
-              <el-icon class="is-loading"><Loading /></el-icon>
-              等待扫码...
-            </template>
-            <template v-else-if="bindStatus === 'connected'">
-              <el-icon style="color: #67c23a;"><CircleCheckFilled /></el-icon>
-              绑定成功！
-            </template>
-            <template v-else-if="bindStatus === 'expired'">
-              <el-icon style="color: #f56c6c;"><WarningFilled /></el-icon>
-              二维码已过期
-            </template>
-          </div>
-        </div>
-        <div v-else class="qr-loading">
-          <el-icon class="is-loading" size="32"><Loading /></el-icon>
-          <p>正在生成二维码...</p>
-        </div>
-        <div class="qr-tips">
-          <p>1. 在工作手机上打开"外呼助手"APP</p>
-          <p>2. 点击"扫码绑定"功能</p>
-          <p>3. 扫描上方二维码完成绑定</p>
-        </div>
-      </div>
-      <template #footer>
-        <el-button v-if="bindStatus === 'expired'" type="primary" @click="refreshBindQRCode">
-          重新生成
-        </el-button>
-        <el-button @click="bindQRDialogVisible = false">关闭</el-button>
-      </template>
-    </el-dialog>
-
-    <!-- 客户详情弹窗 -->
-    <el-dialog
-      v-model="showDetailDialog"
-      :title="`客户详情 - ${currentCustomer?.customerName}`"
-      width="900px"
-      top="5vh"
-      class="customer-detail-dialog"
-      :close-on-click-modal="false"
-    >
-      <div v-if="currentCustomer" class="customer-detail">
-        <!-- 客户基本信息卡片 -->
-        <div class="customer-header">
-          <div class="customer-main-info">
-            <div class="customer-avatar">
-              <el-avatar :size="48">{{ currentCustomer.customerName?.charAt(0) }}</el-avatar>
-            </div>
-            <div class="customer-basic">
-              <div class="customer-name">
-                {{ currentCustomer.customerName }}
-                <el-tag :type="getLevelType(currentCustomer.customerLevel)" size="small" style="margin-left: 8px;">
-                  {{ getLevelText(currentCustomer.customerLevel) }}
-                </el-tag>
-              </div>
-              <div class="customer-contact">
-                <span class="contact-item">
-                  <el-icon><Phone /></el-icon>
-                  {{ displaySensitiveInfoNew(currentCustomer.phone, SensitiveInfoType.PHONE) }}
-                </span>
-                <span class="contact-item">
-                  <el-icon><User /></el-icon>
-                  {{ currentCustomer.salesPerson || '未分配' }}
-                </span>
-              </div>
-            </div>
-          </div>
-          <div class="customer-stats">
-            <div class="stat-item">
-              <div class="stat-value">{{ detailPagination.orders.total }}</div>
-              <div class="stat-label">订单</div>
-            </div>
-            <div class="stat-item">
-              <div class="stat-value">{{ detailPagination.calls.total }}</div>
-              <div class="stat-label">通话</div>
-            </div>
-            <div class="stat-item">
-              <div class="stat-value">{{ detailPagination.followups.total }}</div>
-              <div class="stat-label">跟进</div>
-            </div>
-            <div class="stat-item">
-              <div class="stat-value last-call">{{ customerCalls.length > 0 ? customerCalls[0].startTime?.split(' ')[0] : '-' }}</div>
-              <div class="stat-label">最后通话</div>
-            </div>
-          </div>
-        </div>
-
-        <!-- 选项卡内容 -->
-        <div class="tabs-section">
-          <div class="tabs-header">
-            <el-tabs v-model="activeTab" class="detail-tabs">
-              <el-tab-pane label="订单记录" name="orders" />
-              <el-tab-pane label="售后记录" name="aftersales" />
-              <el-tab-pane label="通话记录" name="calls" />
-              <el-tab-pane label="跟进记录" name="followups" />
-            </el-tabs>
-            <div class="tabs-actions">
-              <el-button v-if="activeTab === 'orders'" type="primary" size="small" @click="handleCreateOrder">新建订单</el-button>
-              <el-button v-if="activeTab === 'aftersales'" type="primary" size="small" @click="handleCreateAftersales">新建售后</el-button>
-              <el-button v-if="activeTab === 'calls'" type="primary" size="small" @click="handleDetailOutboundCall">发起外呼</el-button>
-              <el-button v-if="activeTab === 'followups'" type="primary" size="small" @click="openFollowupDialog">新建跟进</el-button>
-            </div>
-          </div>
-
-          <!-- 订单记录表格 -->
-          <div v-show="activeTab === 'orders'" class="tab-content">
-            <el-table :data="paginatedOrders" v-loading="detailLoading" size="small" :header-cell-style="{ background: '#fafafa', color: '#606266' }">
-              <el-table-column prop="orderNo" label="订单号" min-width="160" />
-              <el-table-column prop="productName" label="商品名称" min-width="180" show-overflow-tooltip />
-              <el-table-column prop="amount" label="金额" width="100" align="right">
-                <template #default="{ row }">
-                  <span style="color: #f56c6c; font-weight: 500;">¥{{ row.amount }}</span>
-                </template>
-              </el-table-column>
-              <el-table-column prop="status" label="状态" width="100" align="center">
-                <template #default="{ row }">
-                  <el-tag :type="getOrderStatusTagType(row.status)" size="small">
-                    {{ getOrderStatusTextFromConfig(row.status) }}
-                  </el-tag>
-                </template>
-              </el-table-column>
-              <el-table-column prop="createTime" label="下单时间" width="150" />
-              <el-table-column label="操作" width="60" align="center">
-                <template #default="{ row }">
-                  <el-button link type="primary" size="small" @click="viewOrder(row)">查看</el-button>
-                </template>
-              </el-table-column>
-            </el-table>
-            <el-empty v-if="!detailLoading && customerOrders.length === 0" description="暂无订单记录" :image-size="60" />
-            <div v-if="detailPagination.orders.total > 0" class="tab-pagination">
-              <el-pagination
-                v-model:current-page="detailPagination.orders.page"
-                v-model:page-size="detailPagination.orders.pageSize"
-                :page-sizes="[10, 20, 50]"
-                :total="detailPagination.orders.total"
-                layout="total, sizes, prev, pager, next"
-                size="small"
-              />
-            </div>
-          </div>
-
-          <!-- 售后记录表格 -->
-          <div v-show="activeTab === 'aftersales'" class="tab-content">
-            <el-table :data="paginatedAftersales" v-loading="detailLoading" size="small" :header-cell-style="{ background: '#fafafa', color: '#606266' }">
-              <el-table-column prop="ticketNo" label="工单号" min-width="150" />
-              <el-table-column prop="type" label="类型" width="100" />
-              <el-table-column prop="description" label="问题描述" min-width="200" show-overflow-tooltip />
-              <el-table-column prop="status" label="状态" width="100" align="center">
-                <template #default="{ row }">
-                  <el-tag :type="getAftersalesStatusType(row.status)" size="small">
-                    {{ getAftersalesStatusText(row.status) }}
-                  </el-tag>
-                </template>
-              </el-table-column>
-              <el-table-column prop="createTime" label="创建时间" width="150" />
-              <el-table-column label="操作" width="60" align="center">
-                <template #default="{ row }">
-                  <el-button link type="primary" size="small" @click="viewAftersales(row)">查看</el-button>
-                </template>
-              </el-table-column>
-            </el-table>
-            <el-empty v-if="!detailLoading && customerAftersales.length === 0" description="暂无售后记录" :image-size="60" />
-            <div v-if="detailPagination.aftersales.total > 0" class="tab-pagination">
-              <el-pagination
-                v-model:current-page="detailPagination.aftersales.page"
-                v-model:page-size="detailPagination.aftersales.pageSize"
-                :page-sizes="[10, 20, 50]"
-                :total="detailPagination.aftersales.total"
-                layout="total, sizes, prev, pager, next"
-                size="small"
-              />
-            </div>
-          </div>
-
-          <!-- 通话记录表格 -->
-          <div v-show="activeTab === 'calls'" class="tab-content">
-            <el-table :data="paginatedCalls" v-loading="detailLoading" size="small" :header-cell-style="{ background: '#fafafa', color: '#606266' }">
-              <el-table-column prop="callType" label="类型" width="70" align="center">
-                <template #default="{ row }">
-                  <el-tag :type="row.callType === 'outbound' ? '' : 'success'" size="small">
-                    {{ row.callType === 'outbound' ? '外呼' : '来电' }}
-                  </el-tag>
-                </template>
-              </el-table-column>
-              <el-table-column prop="duration" label="时长" width="80" align="center" />
-              <el-table-column label="录音" width="120" align="center">
-                <template #default="{ row }">
-                  <template v-if="row.recordingUrl">
-                    <el-button link type="primary" size="small" @click="playRecording(row)">
-                      <el-icon><VideoPlay /></el-icon> 播放
-                    </el-button>
-                    <el-button link type="success" size="small" @click="downloadRecording(row)">
-                      <el-icon><Download /></el-icon>
-                    </el-button>
-                  </template>
-                  <span v-else style="color: #c0c4cc;">无录音</span>
-                </template>
-              </el-table-column>
-              <el-table-column prop="status" label="状态" width="100" align="center">
-                <template #default="{ row }">
-                  <el-tag :type="getCallStatusType(row.status)" size="small">
-                    {{ getCallStatusText(row.status) }}
-                  </el-tag>
-                </template>
-              </el-table-column>
-              <el-table-column prop="operator" label="操作人" width="90" />
-              <el-table-column prop="remark" label="备注" min-width="100" show-overflow-tooltip />
-              <el-table-column prop="startTime" label="开始时间" width="150" />
-              <el-table-column label="操作" width="60" align="center">
-                <template #default="{ row }">
-                  <el-button link type="primary" size="small" @click="viewCallDetail(row)">详情</el-button>
-                </template>
-              </el-table-column>
-            </el-table>
-            <el-empty v-if="!detailLoading && customerCalls.length === 0" description="暂无通话记录" :image-size="60" />
-            <div v-if="detailPagination.calls.total > 0" class="tab-pagination">
-              <el-pagination
-                v-model:current-page="detailPagination.calls.page"
-                v-model:page-size="detailPagination.calls.pageSize"
-                :page-sizes="[10, 20, 50]"
-                :total="detailPagination.calls.total"
-                layout="total, sizes, prev, pager, next"
-                size="small"
-              />
-            </div>
-          </div>
-
-          <!-- 跟进记录表格 -->
-          <div v-show="activeTab === 'followups'" class="tab-content">
-            <el-table :data="paginatedFollowups" v-loading="detailLoading" size="small" :header-cell-style="{ background: '#fafafa', color: '#606266' }">
-              <el-table-column prop="type" label="类型" width="90">
-                <template #default="{ row }">
-                  {{ getFollowUpTypeLabel(row.type) }}
-                </template>
-              </el-table-column>
-              <el-table-column prop="content" label="跟进内容" min-width="160" show-overflow-tooltip />
-              <el-table-column prop="customerIntent" label="意向" width="80" align="center">
-                <template #default="{ row }">
-                  <el-tag v-if="row.customerIntent" :type="getIntentType(row.customerIntent)" size="small">
-                    {{ getIntentLabel(row.customerIntent) }}
-                  </el-tag>
-                  <span v-else style="color: #c0c4cc;">-</span>
-                </template>
-              </el-table-column>
-              <el-table-column prop="callTags" label="标签" min-width="100">
-                <template #default="{ row }">
-                  <template v-if="row.callTags && row.callTags.length > 0">
-                    <el-tag v-for="tag in row.callTags.slice(0, 2)" :key="tag" size="small" type="info" style="margin-right: 2px;">
-                      {{ tag }}
-                    </el-tag>
-                    <span v-if="row.callTags.length > 2" style="color: #909399;">+{{ row.callTags.length - 2 }}</span>
-                  </template>
-                  <span v-else style="color: #c0c4cc;">-</span>
-                </template>
-              </el-table-column>
-              <el-table-column prop="nextPlan" label="下次计划" width="150" />
-              <el-table-column prop="operator" label="跟进人" width="80" />
-              <el-table-column prop="createTime" label="跟进时间" width="150" />
-              <el-table-column label="操作" width="60" align="center">
-                <template #default="{ row }">
-                  <el-button link type="primary" size="small" @click="viewFollowup(row)">查看</el-button>
-                </template>
-              </el-table-column>
-            </el-table>
-            <el-empty v-if="!detailLoading && customerFollowups.length === 0" description="暂无跟进记录" :image-size="60" />
-            <div v-if="detailPagination.followups.total > 0" class="tab-pagination">
-              <el-pagination
-                v-model:current-page="detailPagination.followups.page"
-                v-model:page-size="detailPagination.followups.pageSize"
-                :page-sizes="[10, 20, 50]"
-                :total="detailPagination.followups.total"
-                layout="total, sizes, prev, pager, next"
-                size="small"
-              />
-            </div>
-          </div>
-        </div>
-      </div>
-    </el-dialog>
-
-    <!-- 通话记录弹窗 -->
-    <el-dialog
-      v-model="callRecordsDialogVisible"
-      title="通话记录"
-      width="80%"
-      :before-close="handleCloseCallRecordsDialog"
-    >
-      <div class="call-records-dialog">
-        <!-- 筛选器 -->
-        <div class="dialog-filters">
-          <div class="filter-row">
-            <div class="filter-item">
-              <label>日期范围：</label>
-              <el-date-picker
-                v-model="callRecordsFilter.dateRange"
-                type="daterange"
-                range-separator="至"
-                start-placeholder="开始日期"
-                end-placeholder="结束日期"
-                format="YYYY-MM-DD"
-                value-format="YYYY-MM-DD"
-                @change="loadCallRecords"
-              />
-            </div>
-            <div class="filter-item">
-              <label>客户搜索：</label>
-              <el-input
-                v-model="callRecordsFilter.customerKeyword"
-                placeholder="搜索客户姓名或电话"
-                clearable
-                style="width: 200px;"
-                @input="loadCallRecords"
-              >
-                <template #prefix>
-                  <el-icon><Search /></el-icon>
-                </template>
-              </el-input>
-            </div>
-            <el-button type="primary" :icon="Search" @click="loadCallRecords">搜索</el-button>
-            <el-button :icon="RefreshRight" @click="resetCallRecordsFilter">重置</el-button>
-          </div>
-        </div>
-
-        <!-- 通话记录表格 -->
-        <el-table :data="callRecordsList" style="width: 100%" v-loading="callRecordsLoading" :header-cell-style="{ background: '#fafafa', color: '#606266' }">
-          <el-table-column prop="customerName" label="客户姓名" width="120" />
-          <el-table-column prop="customerPhone" label="客户电话" width="140">
-            <template #default="{ row }">
-              {{ displaySensitiveInfoNew(row.customerPhone, SensitiveInfoType.PHONE) }}
-            </template>
-          </el-table-column>
-          <el-table-column prop="callType" label="通话类型" width="100">
-            <template #default="{ row }">
-              <el-tag :type="row.callType === 'outbound' ? '' : 'success'" size="small">
-                {{ row.callType === 'outbound' ? '外呼' : '来电' }}
-              </el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column prop="duration" label="通话时长" width="100" align="center" />
-          <el-table-column prop="status" label="通话状态" width="100" align="center">
-            <template #default="{ row }">
-              <el-tag :type="getStatusType(row.status)" size="small">
-                {{ getStatusText(row.status) }}
-              </el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column prop="startTime" label="开始时间" width="160" />
-          <el-table-column prop="operator" label="操作人员" width="100" />
-          <el-table-column prop="remark" label="备注" min-width="150" show-overflow-tooltip />
-          <el-table-column label="录音" width="140" align="center">
-            <template #default="{ row }">
-              <template v-if="row.recordingUrl">
-                <el-button link type="primary" size="small" @click="playRecording(row)">播放</el-button>
-                <el-button link type="success" size="small" @click="downloadRecording(row)">下载</el-button>
-              </template>
-              <span v-else style="color: #c0c4cc;">无录音</span>
-            </template>
-          </el-table-column>
-        </el-table>
-
-        <!-- 分页 -->
-        <div class="dialog-pagination">
-          <el-pagination
-            v-model:current-page="callRecordsPagination.currentPage"
-            v-model:page-size="callRecordsPagination.pageSize"
-            :page-sizes="[10, 20, 50, 100]"
-            :total="callRecordsPagination.total"
-            layout="total, sizes, prev, pager, next, jumper"
-            @size-change="handleCallRecordsPageSizeChange"
-            @current-change="handleCallRecordsPageChange"
-          />
-        </div>
-      </div>
-    </el-dialog>
-
-    <!-- 录音播放器弹窗 -->
-    <el-dialog
-      v-model="recordingPlayerVisible"
-      title="录音播放"
-      width="500px"
-      :before-close="stopRecording"
-    >
-      <div class="recording-player">
-        <div class="recording-info">
-          <div class="info-row">
-            <span class="info-label">客户</span>
-            <span class="info-value">{{ currentRecording?.customerName || '-' }}</span>
-          </div>
-          <div class="info-row">
-            <span class="info-label">电话</span>
-            <span class="info-value">{{ displaySensitiveInfoNew(currentRecording?.customerPhone, SensitiveInfoType.PHONE) }}</span>
-          </div>
-          <div class="info-row">
-            <span class="info-label">时间</span>
-            <span class="info-value">{{ currentRecording?.startTime || '-' }}</span>
-          </div>
-          <div class="info-row">
-            <span class="info-label">时长</span>
-            <span class="info-value">{{ currentRecording?.duration || '-' }}</span>
-          </div>
-        </div>
-        <div class="audio-player">
-          <audio
-            ref="audioPlayer"
-            :src="currentRecording?.recordingUrl"
-            controls
-            style="width: 100%;"
-            @loadstart="onAudioLoadStart"
-            @canplay="onAudioCanPlay"
-            @error="onAudioError"
-          >
-            您的浏览器不支持音频播放
-          </audio>
-        </div>
-      </div>
-    </el-dialog>
-
-    <!-- 快捷跟进弹窗 -->
-    <el-dialog
-      v-model="quickFollowUpVisible"
-      title="快捷跟进"
-      width="600px"
-      @close="resetQuickFollowUpForm"
-    >
-      <div class="quick-followup">
-        <div class="customer-info">
-          <p><strong>客户：</strong>{{ currentCustomer?.name }}</p>
-          <p><strong>电话：</strong>{{ displaySensitiveInfoNew(currentCustomer?.phone, SensitiveInfoType.PHONE) }}</p>
-          <p><strong>收货地址：</strong>{{ getCustomerShippingAddress(currentCustomer) }}</p>
-        </div>
-
-        <el-form :model="quickFollowUpForm" :rules="quickFollowUpRules" ref="quickFollowUpFormRef" label-width="100px">
-          <el-form-item label="跟进类型" prop="type">
-            <el-select v-model="quickFollowUpForm.type" placeholder="请选择跟进类型" style="width: 100%">
-              <el-option label="电话跟进" value="call" />
-              <el-option label="上门拜访" value="visit" />
-              <el-option label="邮件跟进" value="email" />
-              <el-option label="短信跟进" value="message" />
-            </el-select>
-          </el-form-item>
-
-          <el-form-item label="跟进内容" prop="content">
-            <el-input
-              v-model="quickFollowUpForm.content"
-              type="textarea"
-              :rows="4"
-              placeholder="请输入跟进内容..."
-              maxlength="500"
-              show-word-limit
-            />
-          </el-form-item>
-
-          <el-form-item label="下次跟进" prop="nextFollowTime">
-            <el-date-picker
-              v-model="quickFollowUpForm.nextFollowTime"
-              type="datetime"
-              placeholder="选择下次跟进时间"
-              style="width: 100%"
-              format="YYYY-MM-DD HH:mm"
-              value-format="YYYY-MM-DD HH:mm:ss"
-              :disabled-date="disablePastDate"
-              :default-time="new Date()"
-            />
-          </el-form-item>
-
-          <el-form-item label="客户意向" prop="intention">
-            <el-select v-model="quickFollowUpForm.intention" placeholder="请选择客户意向" style="width: 100%">
-              <el-option label="很有意向" value="high" />
-              <el-option label="一般意向" value="medium" />
-              <el-option label="意向较低" value="low" />
-              <el-option label="暂无意向" value="none" />
-            </el-select>
-          </el-form-item>
-
-          <el-form-item label="通话标签">
-            <el-select
-              v-model="quickFollowUpForm.callTags"
-              multiple
-              placeholder="选择通话标签（可多选）"
-              style="width: 100%"
-              collapse-tags
-              collapse-tags-tooltip
-            >
-              <el-option
-                v-for="tag in callTagOptions"
-                :key="tag"
-                :label="tag"
-                :value="tag"
-              />
-            </el-select>
-          </el-form-item>
-
-          <el-form-item label="备注" prop="remark">
-            <el-input
-              v-model="quickFollowUpForm.remark"
-              type="textarea"
-              :rows="2"
-              placeholder="备注信息（可选）"
-              maxlength="200"
-              show-word-limit
-            />
-          </el-form-item>
-        </el-form>
-      </div>
-
-      <template #footer>
-        <div class="dialog-footer">
-          <el-button @click="quickFollowUpVisible = false">取消</el-button>
-          <el-button type="primary" @click="submitQuickFollowUp" :loading="quickFollowUpSubmitting">
-            保存跟进
-          </el-button>
-        </div>
-      </template>
-    </el-dialog>
-
-    <!-- 呼入弹窗 -->
-    <el-dialog
-      v-model="incomingCallVisible"
-      title="来电提醒"
-      width="500px"
-      :close-on-click-modal="false"
-      :close-on-press-escape="false"
-      :show-close="false"
-      center
-    >
-      <div class="incoming-call" v-if="incomingCallData">
-        <div class="caller-info">
-          <div class="caller-avatar">
-            <el-icon size="60"><User /></el-icon>
-          </div>
-          <div class="caller-details">
-            <h3>{{ incomingCallData.customerName || '未知客户' }}</h3>
-            <p class="phone-number">{{ displaySensitiveInfoNew(incomingCallData.phone, SensitiveInfoType.PHONE) }}</p>
-            <p class="customer-level" v-if="incomingCallData.customerLevel">
-              <el-tag :type="getLevelType(incomingCallData.customerLevel)">
-                {{ getLevelText(incomingCallData.customerLevel) }}
-              </el-tag>
-            </p>
-            <p class="last-call" v-if="incomingCallData.lastCallTime">
-              上次通话：{{ incomingCallData.lastCallTime }}
-            </p>
-          </div>
-        </div>
-
-        <div class="call-actions">
-          <el-button
-            type="success"
-            size="large"
-            :icon="Phone"
-            @click="answerCall"
-            class="answer-btn"
-          >
-            接听
-          </el-button>
-          <el-button
-            type="danger"
-            size="large"
-            :icon="TurnOff"
-            @click="rejectCall"
-            class="reject-btn"
-          >
-            挂断
-          </el-button>
-        </div>
-
-        <div class="quick-actions">
-          <el-button size="small" @click="viewCustomerDetail">查看详情</el-button>
-          <el-button size="small" @click="quickFollowUp">快速跟进</el-button>
-        </div>
-      </div>
-    </el-dialog>
-
-    <!-- 通话中浮动窗口（支持拖动和最小化） -->
-    <Teleport to="body">
-      <div
-        v-if="callInProgressVisible && currentCallData"
-        class="call-floating-window"
-        :class="{ 'is-minimized': isCallWindowMinimized }"
-        :style="callWindowStyle"
-        ref="callWindowRef"
-      >
-        <!-- 窗口标题栏（可拖动） -->
-        <div
-          class="call-window-header"
-          @mousedown="startDrag"
-        >
-          <div class="header-left">
-            <span class="status-dot" :class="{ 'is-connected': true }"></span>
-            <span class="header-title">{{ isCallWindowMinimized ? '通话中' : '正在通话' }}</span>
-          </div>
-          <div class="header-actions">
-            <el-tooltip :content="isCallWindowMinimized ? '展开' : '最小化'" placement="top">
-              <el-button
-                :icon="isCallWindowMinimized ? 'FullScreen' : 'Minus'"
-                size="small"
-                circle
-                @click.stop="toggleMinimize"
-              />
-            </el-tooltip>
-          </div>
-        </div>
-
-        <!-- 最小化状态显示 -->
-        <div v-if="isCallWindowMinimized" class="call-minimized-content">
-          <div class="mini-info">
-            <span class="mini-name">{{ currentCallData.customerName || '未知客户' }}</span>
-            <span class="mini-phone">{{ displaySensitiveInfoNew(currentCallData.phone, SensitiveInfoType.PHONE) }}</span>
-          </div>
-          <el-button
-            type="danger"
-            size="small"
-            :icon="TurnOff"
-            @click="handleEndCallClick"
-            circle
-          />
-        </div>
-
-        <!-- 展开状态显示 -->
-        <div v-else class="call-window-content">
-          <div class="call-timer">
-            <div class="timer-display">📞</div>
-            <div class="call-status">
-              <el-icon class="is-loading"><Loading /></el-icon>
-              正在通话中...
-            </div>
-          </div>
-
-          <div class="caller-info-mini">
-            <p class="caller-name">{{ currentCallData.customerName || '未知客户' }}</p>
-            <p class="caller-phone">
-              {{ displaySensitiveInfoNew(currentCallData.phone, SensitiveInfoType.PHONE) }}
-              <el-tag v-if="getPhoneCarrier(currentCallData.phone)" size="small" type="info" style="margin-left: 8px;">
-                {{ getPhoneCarrier(currentCallData.phone) }}
-              </el-tag>
-            </p>
-            <div class="call-method-info">
-              <el-tag v-if="currentCallData.callMethod === 'work_phone'" type="success" size="small">
-                <el-icon><Cellphone /></el-icon>
-                工作手机: {{ currentCallData.workPhoneName || '未知' }}
-              </el-tag>
-              <el-tag v-else-if="currentCallData.callMethod === 'network_phone'" type="primary" size="small">
-                <el-icon><Phone /></el-icon>
-                网络电话: {{ currentCallData.lineName || '未知线路' }}
-              </el-tag>
-            </div>
-          </div>
-
-          <div class="call-controls">
-            <el-button
-              type="danger"
-              size="large"
-              :icon="TurnOff"
-              @click="handleEndCallClick"
-              class="end-call-btn"
-            >
-              {{ currentCallData.callMethod === 'work_phone' ? '挂断提示' : '结束通话' }}
-            </el-button>
-          </div>
-
-          <div class="call-notes">
-            <div class="notes-header">
-              <span>通话备注</span>
-              <el-button
-                type="primary"
-                size="small"
-                @click="saveCallNotes(false)"
-                :loading="savingNotes"
-              >
-                保存备注
-              </el-button>
-            </div>
-            <el-input
-              v-model="callNotes"
-              type="textarea"
-              :rows="3"
-              placeholder="通话备注（可在通话中随时记录）..."
-              maxlength="500"
-              show-word-limit
-            />
-          </div>
-
-          <div class="call-quick-actions">
-            <el-button size="small" @click="openQuickFollowUpFromCall">
-              <el-icon><EditPen /></el-icon>
-              快速跟进
-            </el-button>
-            <el-button size="small" @click="viewCustomerDetailFromCall">
-              <el-icon><User /></el-icon>
-              查看客户
-            </el-button>
-          </div>
-        </div>
-      </div>
-    </Teleport>
+    <!-- 蹇嵎璺熻繘 + 鍛煎叆寮圭獥 + 閫氳瘽涓诞鍔ㄧ獥鍙?-->
+    <CallFloatingWindow
+      v-model:quickFollowUpVisible="quickFollowUpVisible"
+      v-model:incomingCallVisible="incomingCallVisible"
+      v-model:callNotes="callNotes"
+      :currentCustomer="currentCustomer"
+      :quickFollowUpForm="quickFollowUpForm"
+      :quickFollowUpRules="quickFollowUpRules"
+      :quickFollowUpSubmitting="quickFollowUpSubmitting"
+      :callTagOptions="callTagOptions"
+      :customerShippingAddress="getCustomerShippingAddress(currentCustomer)"
+      :incomingCallData="incomingCallData"
+      :callInProgressVisible="callInProgressVisible"
+      :currentCallData="currentCallData"
+      :isCallWindowMinimized="isCallWindowMinimized"
+      :callWindowStyle="callWindowStyle"
+      :savingNotes="savingNotes"
+      @reset-follow-up-form="resetQuickFollowUpForm"
+      @submit-follow-up="submitQuickFollowUp"
+      @answer-call="answerCall"
+      @reject-call="rejectCall"
+      @view-customer-detail="viewCustomerDetail"
+      @quick-follow-up="quickFollowUp"
+      @toggle-minimize="toggleMinimize"
+      @end-call-click="handleEndCallClick"
+      @save-call-notes="saveCallNotes(false)"
+      @open-quick-followup-from-call="openQuickFollowUpFromCall"
+      @view-customer-detail-from-call="viewCustomerDetailFromCall"
+    />
 
     <!-- 呼出配置弹窗 - 新组件 -->
     <CallConfigDialog v-model="showNewCallConfigDialog" />
@@ -1248,6 +291,13 @@ import { displaySensitiveInfoNew, SensitiveInfoType } from '@/utils/sensitiveInf
 import { formatDateTime } from '@/utils/dateFormat'
 import { customerDetailApi } from '@/api/customerDetail'
 import CallConfigDialog from '@/components/Call/CallConfigDialog.vue'
+// 已拆分的子组件（可逐步替换内联模板）
+import CallStatsCards from './CallManagement/CallStatsCards.vue'
+import CallFilterBar from './CallManagement/CallFilterBar.vue'
+import CallOutboundDialog from './CallManagement/CallOutboundDialog.vue'
+import CallCustomerDetailDialog from './CallManagement/CallCustomerDetailDialog.vue'
+import CallRecordsDialog from './CallManagement/CallRecordsDialog.vue'
+import CallFloatingWindow from './CallManagement/CallFloatingWindow.vue'
 import * as callConfigApi from '@/api/callConfig'
 import { getAddressLabel } from '@/utils/addressData'
 import { getOrderStatusText as getOrderStatusTextFromConfig, getOrderStatusTagType } from '@/utils/orderStatusConfig'
@@ -4000,6 +3050,7 @@ onUnmounted(() => {
     clearTimeout(searchTimer)
     searchTimer = null
   }
+
 
   // 清理拖动事件监听器
   document.removeEventListener('mousemove', onDrag)

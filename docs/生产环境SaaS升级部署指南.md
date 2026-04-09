@@ -122,9 +122,9 @@ SAAS_LICENSE_TOKEN=你的SaaS许可证Token
 
 # ===== 确认以下配置正确 =====
 NODE_ENV=production
-DB_DATABASE=abc789
-DB_USERNAME=abc789
-DB_PASSWORD=YtZWJPF2bpsCscHX
+DB_DATABASE=<你的数据库名>
+DB_USERNAME=<你的数据库用户名>
+DB_PASSWORD=<你的数据库密码>
 
 # ===== 前端也需要对应修改（如果前端配置中有）=====
 # 前端 .env.production 文件

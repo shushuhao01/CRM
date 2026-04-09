@@ -1,7 +1,6 @@
 import { Router } from 'express';
 import multer from 'multer';
 import path from 'path';
-import fs from 'fs';
 import bcrypt from 'bcryptjs';
 import { JwtConfig } from '../config/jwt';
 import { AppDataSource as _AppDataSource } from '../config/database';
@@ -10,6 +9,7 @@ import { Department } from '../entities/Department';
 import { getTenantRepo } from '../utils/tenantRepo';
 import { TenantContextManager } from '../utils/tenantContext';
 import { checkStorageLimit } from '../middleware/checkTenantLimits';
+import { createTenantDestination, getUploadUrl } from '../utils/tenantUploadHelper';
 
 import { log } from '../config/logger';
 const router = Router();
@@ -18,16 +18,9 @@ const router = Router();
 const getUserRepository = () => getTenantRepo(User);
 const getDepartmentRepository = () => getTenantRepo(Department);
 
-// 配置multer用于头像上传
+// 配置multer用于头像上传（🔥 已改造：SaaS模式按租户目录隔离）
 const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    const uploadDir = path.join(process.cwd(), 'uploads', 'avatars');
-    // 确保目录存在
-    if (!fs.existsSync(uploadDir)) {
-      fs.mkdirSync(uploadDir, { recursive: true });
-    }
-    cb(null, uploadDir);
-  },
+  destination: createTenantDestination('avatars'),
   filename: (req, file, cb) => {
     // 生成唯一文件名
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
@@ -354,8 +347,9 @@ router.post('/avatar', simpleAuth, checkStorageLimit, upload.single('avatar'), a
     }
     const userId = tokenUser.userId || tokenUser.id;
 
-    // 生成头像URL
-    const avatarUrl = `/uploads/avatars/${req.file.filename}`;
+    // 生成头像URL（🔥 SaaS模式下包含租户目录）
+    const tenantCode = (req as any).__tenantCode || null;
+    const avatarUrl = getUploadUrl(tenantCode, 'avatars', req.file.filename);
 
     // 更新数据库中的用户头像字段
     const userRepository = getUserRepository();

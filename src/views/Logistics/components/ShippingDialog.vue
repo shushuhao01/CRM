@@ -1,12 +1,21 @@
 <template>
   <el-dialog
     v-model="dialogVisible"
-    title="发货处理"
     width="600px"
     :before-close="handleClose"
     class="shipping-dialog"
     top="8vh"
   >
+    <template #header>
+      <div class="dialog-header-with-help">
+        <span class="el-dialog__title">发货处理</span>
+        <el-tooltip content="查看发货操作指南" placement="bottom">
+          <el-button link type="primary" class="help-icon-btn" @click="goToHelp">
+            <el-icon :size="18"><QuestionFilled /></el-icon>
+          </el-button>
+        </el-tooltip>
+      </div>
+    </template>
     <div v-if="order" class="shipping-content-compact">
       <!-- 订单信息（紧凑卡片） -->
       <div class="order-card">
@@ -45,26 +54,21 @@
           </el-form-item>
         </div>
         <el-form-item label="运单号" prop="trackingNumber">
-          <el-input v-model="shippingForm.trackingNumber" placeholder="输入或自动生成运单号" clearable>
-            <template #append>
-              <el-button @click="generateTrackingNumber" type="primary" size="small">生成</el-button>
-            </template>
-          </el-input>
+          <div class="tracking-input-row">
+            <el-input v-model="shippingForm.trackingNumber" placeholder="输入运单号或点击右侧按钮获取" clearable class="tracking-input-flex" />
+            <el-button
+              type="success"
+              @click="generateTrackingNumber"
+              :loading="generatingTrackingNo"
+              :disabled="!shippingForm.logisticsCompany"
+            >
+              <el-icon v-if="!generatingTrackingNo"><Download /></el-icon>
+              {{ generatingTrackingNo ? '获取中...' : '获取单号' }}
+            </el-button>
+          </div>
         </el-form-item>
-        <div class="form-row">
-          <el-form-item label="发货方式" prop="shippingMethod" class="form-item-half">
-            <el-radio-group v-model="shippingForm.shippingMethod" size="small">
-              <el-radio-button label="standard">标准</el-radio-button>
-              <el-radio-button label="express">加急</el-radio-button>
-              <el-radio-button label="economy">经济</el-radio-button>
-            </el-radio-group>
-          </el-form-item>
-          <el-form-item label="保价金额" prop="insuranceAmount" class="form-item-half">
-            <el-input-number v-model="shippingForm.insuranceAmount" :min="0" :max="order.totalAmount" :precision="2" controls-position="right" style="width: 100%" />
-          </el-form-item>
-        </div>
         <el-form-item label="备注" prop="remarks">
-          <el-input v-model="shippingForm.remarks" type="textarea" :rows="2" placeholder="发货备注（选填）" maxlength="200" show-word-limit />
+          <el-input v-model="shippingForm.remarks" type="textarea" :rows="2" placeholder="发货备注（选填）如：加急件、保价等特殊要求请备注说明" maxlength="200" show-word-limit />
         </el-form-item>
       </el-form>
 
@@ -78,7 +82,7 @@
     <template #footer>
       <div class="dialog-footer-compact">
         <el-button @click="handleClose">取消</el-button>
-        <el-button type="primary" @click="confirmShipping" :loading="loading">
+        <el-button type="primary" @click="confirmShipping" :loading="loading" :disabled="!canSubmit">
           <el-icon><Van /></el-icon>确认发货
         </el-button>
       </div>
@@ -87,12 +91,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, reactive, onMounted, watch } from 'vue'
+import { ref, computed, reactive, onMounted, watch, nextTick } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox, type FormInstance } from 'element-plus'
 import {
-  Box, Van, Refresh, InfoFilled, Document
+  Box, Van, Refresh, InfoFilled, Document, QuestionFilled, Download
 } from '@element-plus/icons-vue'
 import { displaySensitiveInfoNew } from '@/utils/sensitiveInfo'
+import { validateTrackingCompanyMatch } from '@/utils/printService'
 import type { Order } from '@/stores/order'
 import { useOrderStore } from '@/stores/order'
 import { useNotificationStore } from '@/stores/notification'
@@ -100,9 +106,7 @@ import { useNotificationStore } from '@/stores/notification'
 interface ShippingData {
   logisticsCompany: string
   trackingNumber: string
-  shippingMethod: string
   estimatedDelivery: string
-  insuranceAmount: number
   remarks: string
 }
 
@@ -118,11 +122,20 @@ interface Emits {
 
 const props = defineProps<Props>()
 const emit = defineEmits<Emits>()
+const router = useRouter()
 
 const dialogVisible = computed({
   get: () => props.visible,
   set: (value) => emit('update:visible', value)
 })
+
+const goToHelp = () => {
+  dialogVisible.value = false
+  nextTick(() => {
+    router.push('/help-center?section=logistics-shipping-guide')
+  })
+}
+
 
 const formRef = ref<FormInstance>()
 const loading = ref(false)
@@ -136,9 +149,7 @@ const shippingForm = reactive({
   logisticsCompany: '',
   trackingNumber: '',
   estimatedDelivery: '',
-  remarks: '',
-  shippingMethod: 'standard',
-  insuranceAmount: 0
+  remarks: ''
 })
 
 // 表单验证规则
@@ -219,16 +230,16 @@ const onLogisticsChange = (value: string) => {
   // 清空运单号，让用户重新输入或生成
   shippingForm.trackingNumber = ''
 
-  // 如果预计送达时间未设置，则设置为3天后（默认值）
-  // 如果已设置，则保持用户的选择
-  if (!shippingForm.estimatedDelivery) {
-    initEstimatedDelivery()
-  }
+  // 根据物流公司动态更新预计送达时间
+  const days = getDeliveryDays(value)
+  const today = new Date()
+  const deliveryDate = new Date(today.getTime() + days * 24 * 60 * 60 * 1000)
+  shippingForm.estimatedDelivery = deliveryDate.toISOString().split('T')[0]
 }
 
 // 获取预计送达天数
 const getDeliveryDays = (companyCode: string) => {
-  const deliveryMap = {
+  const deliveryMap: Record<string, number> = {
     'SF': 1, // 顺丰次日达
     'JD': 1, // 京东次日达
     'YTO': 2,
@@ -243,18 +254,57 @@ const getDeliveryDays = (companyCode: string) => {
   return deliveryMap[companyCode] || 3
 }
 
-// 生成运单号
-const generateTrackingNumber = () => {
+// 生成运单号 - 检查物流API是否支持下单生成
+const generatingTrackingNo = ref(false)
+
+const generateTrackingNumber = async () => {
   if (!shippingForm.logisticsCompany) {
     ElMessage.warning('请先选择物流公司')
     return
   }
 
-  const company = logisticsCompanies.value.find(c => c.code === shippingForm.logisticsCompany)
-  if (company) {
-    const timestamp = Date.now().toString()
-    const random = Math.random().toString(36).substring(2, 6).toUpperCase()
-    shippingForm.trackingNumber = `${company.prefix}${timestamp.slice(-8)}${random}`
+  generatingTrackingNo.value = true
+  try {
+    const { logisticsApi } = await import('@/api/logistics')
+
+    // 1. 检查该物流公司是否支持自动生成运单号
+    const checkResult = await logisticsApi.checkCreateOrderSupport(shippingForm.logisticsCompany)
+
+    if (!checkResult.supported) {
+      // 不支持自动生成 → 显示明确原因
+      ElMessage.warning({
+        message: checkResult.reason || `该物流公司不支持自动生成运单号，请手动输入`,
+        duration: 5000
+      })
+      return
+    }
+
+    // 2. 支持自动生成 → 调用物流API创建订单获取真实运单号
+    const orderData = {
+      orderNo: props.order.orderNo || '',
+      receiverName: props.order.customerName || '',
+      receiverPhone: props.order.phone || '',
+      receiverAddress: props.order.address || '',
+      remark: shippingForm.remarks || ''
+    }
+
+    const result = await logisticsApi.createOrder(shippingForm.logisticsCompany, orderData)
+
+    if (result.success && result.trackingNumber) {
+      shippingForm.trackingNumber = result.trackingNumber
+      ElMessage.success(`已从${checkResult.companyName}获取运单号: ${result.trackingNumber}`)
+    } else {
+      ElMessage.error(result.message || '获取运单号失败，请手动输入')
+    }
+  } catch (error: any) {
+    console.error('[发货] 获取运单号失败:', error)
+    const msg = error?.response?.data?.message || error?.message || '网络错误'
+    ElMessage.error({
+      message: `获取运单号失败: ${msg}，请手动输入运单号`,
+      duration: 5000,
+    })
+  } finally {
+    generatingTrackingNo.value = false
   }
 }
 
@@ -262,6 +312,11 @@ const generateTrackingNumber = () => {
 const disabledDate = (time: Date) => {
   return time.getTime() < Date.now() - 24 * 60 * 60 * 1000
 }
+
+// 🔥 提交前校验：物流公司和运单号必须匹配
+const canSubmit = computed(() => {
+  return !!shippingForm.logisticsCompany && !!shippingForm.trackingNumber
+})
 
 // 保存草稿
 const saveAsDraft = async () => {
@@ -281,6 +336,24 @@ const confirmShipping = async () => {
 
   try {
     await formRef.value.validate()
+
+    // 🔥 校验物流公司和运单号是否匹配
+    const matchResult = validateTrackingCompanyMatch(shippingForm.logisticsCompany, shippingForm.trackingNumber)
+    if (!matchResult.valid) {
+      try {
+        await ElMessageBox.confirm(
+          matchResult.warning + '\n\n是否仍然继续发货？',
+          '运单号匹配警告',
+          {
+            confirmButtonText: '仍然发货',
+            cancelButtonText: '返回修改',
+            type: 'warning'
+          }
+        )
+      } catch {
+        return // 用户选择返回修改
+      }
+    }
 
     await ElMessageBox.confirm(
       `确认发货订单 ${props.order.orderNo} 吗？发货后将无法撤销。`,
@@ -371,9 +444,7 @@ const handleClose = () => {
     logisticsCompany: '',
     trackingNumber: '',
     estimatedDelivery: '',
-    remarks: '',
-    shippingMethod: 'standard',
-    insuranceAmount: 0
+    remarks: ''
   })
 
   dialogVisible.value = false
@@ -393,10 +464,6 @@ watch(() => props.visible, async (newVal) => {
     if (logisticsCompanies.value.length === 0) {
       await loadLogisticsCompanies()
     }
-    // 设置默认保价金额为订单总金额的80%
-    if (props.order?.totalAmount) {
-      shippingForm.insuranceAmount = Math.round(props.order.totalAmount * 0.8)
-    }
     // 设置默认预计送达时间为3天后
     initEstimatedDelivery()
   }
@@ -405,16 +472,22 @@ watch(() => props.visible, async (newVal) => {
 onMounted(async () => {
   // 加载物流公司列表
   await loadLogisticsCompanies()
-  // 设置默认保价金额为订单总金额的80%
-  if (props.order?.totalAmount) {
-    shippingForm.insuranceAmount = Math.round(props.order.totalAmount * 0.8)
-  }
   // 设置默认预计送达时间为3天后
   initEstimatedDelivery()
 })
 </script>
 
 <style scoped>
+.dialog-header-with-help {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.help-icon-btn {
+  padding: 2px;
+  margin-left: 4px;
+}
+
 /* 紧凑对话框样式 */
 .shipping-dialog {
   :deep(.el-dialog__header) {
@@ -492,6 +565,14 @@ onMounted(async () => {
   border-radius: 8px;
   border: 1px solid #eee;
   margin-bottom: 16px;
+}
+.tracking-input-row {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+}
+.tracking-input-flex {
+  flex: 1;
 }
 .form-row {
   display: flex;

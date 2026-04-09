@@ -226,6 +226,51 @@ export class CapacityService {
   }
 
   /**
+   * 通过 licenseId 查找关联租户的扩容订单（私有客户）
+   */
+  async getOrdersByLicenseId(licenseId: string, page: number = 1, pageSize: number = 10): Promise<{ list: any[]; total: number }> {
+    try {
+      // 通过 licenses 表关联 tenant_id
+      const tenants = await AppDataSource.query(
+        `SELECT DISTINCT t.id FROM tenants t
+         INNER JOIN licenses l ON (l.customer_name = t.name OR l.id = ?)
+         WHERE l.id = ? LIMIT 1`,
+        [licenseId, licenseId]
+      );
+      if (tenants.length === 0) {
+        // 尝试直接用 licenseId 匹配 tenant_id
+        return this.getOrders(licenseId, page, pageSize);
+      }
+      return this.getOrders(tenants[0].id, page, pageSize);
+    } catch {
+      return { list: [], total: 0 };
+    }
+  }
+
+  /**
+   * 获取所有扩容订单（管理后台全局查看）
+   */
+  async getAllOrders(page: number = 1, pageSize: number = 10): Promise<{ list: any[]; total: number }> {
+    try {
+      const offset = (page - 1) * pageSize;
+      const [orders, countResult] = await Promise.all([
+        AppDataSource.query(
+          `SELECT co.*, t.name as tenant_name, t.code as tenant_code
+           FROM capacity_orders co
+           LEFT JOIN tenants t ON co.tenant_id = t.id
+           ORDER BY co.created_at DESC LIMIT ? OFFSET ?`,
+          [pageSize, offset]
+        ),
+        AppDataSource.query('SELECT COUNT(*) as total FROM capacity_orders')
+      ]);
+      return { list: orders, total: Number(countResult[0]?.total || 0) };
+    } catch (error) {
+      log.error('[CapacityService] 获取全部扩容订单失败:', error);
+      return { list: [], total: 0 };
+    }
+  }
+
+  /**
    * 扩容订单支付成功 — 更新租户限额
    */
   async activateCapacity(orderNo: string): Promise<{ success: boolean; message: string }> {

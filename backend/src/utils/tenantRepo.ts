@@ -67,6 +67,10 @@ const TENANT_ENTITIES = new Set([
   'message_cleanup_history',
   // 新增：物流API配置
   'logistics_api_configs',
+  // 新增：寄件人/退货地址
+  'sender_addresses',
+  // 新增：打印面单日志
+  'print_label_logs',
   // 新增：改善目标
   'improvement_goals',
   // 新增：业绩分享相关

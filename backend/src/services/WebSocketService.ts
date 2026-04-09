@@ -19,6 +19,7 @@ import { User } from '../entities/User';
 import { SystemMessage } from '../entities/SystemMessage';
 import { logger } from '../config/logger';
 import { getTenantRepo } from '../utils/tenantRepo';
+import { TenantContextManager } from '../utils/tenantContext';
 
 // 消息推送数据接口
 interface PushMessageData {
@@ -111,6 +112,8 @@ class WebSocketService {
         socket.username = user.username;
         socket.userRole = user.role;
         socket.departmentId = user.departmentId;
+        // 🔥 安全修复：保存租户ID到socket，用于房间隔离和上下文恢复
+        socket.tenantId = decoded.tenantId || user.tenantId || null;
 
         next();
       } catch (error: any) {
@@ -128,19 +131,35 @@ class WebSocketService {
 
     this.io.on('connection', (socket: any) => {
       const userId = socket.userId;
+      const tenantId = socket.tenantId;
 
-      logger.info(`👤 用户 ${socket.username}(${userId}) 已连接WebSocket`);
+      logger.info(`👤 用户 ${socket.username}(${userId}) 已连接WebSocket${tenantId ? ` [租户:${tenantId}]` : ''}`);
 
       this.addConnection(userId, socket.id);
 
       socket.join(`user_${userId}`);
 
+      // 🔥 安全修复：加入租户专属房间，确保跨租户消息隔离
+      if (tenantId) {
+        socket.join(`tenant_${tenantId}`);
+      }
+
       if (socket.userRole) {
-        socket.join(`role_${socket.userRole}`);
+        // 🔥 安全修复：角色房间包含租户前缀，防止不同租户相同角色收到彼此消息
+        if (tenantId) {
+          socket.join(`tenant_${tenantId}_role_${socket.userRole}`);
+        } else {
+          socket.join(`role_${socket.userRole}`);
+        }
       }
 
       if (socket.departmentId) {
-        socket.join(`department_${socket.departmentId}`);
+        // 🔥 安全修复：部门房间包含租户前缀，防止不同租户相同部门ID收到彼此消息
+        if (tenantId) {
+          socket.join(`tenant_${tenantId}_department_${socket.departmentId}`);
+        } else {
+          socket.join(`department_${socket.departmentId}`);
+        }
       }
 
       socket.emit('connected', {
@@ -152,15 +171,17 @@ class WebSocketService {
       this.sendUnreadCount(socket);
 
       socket.on('mark_read', async (data: { messageId: string }) => {
-        await this.handleMarkRead(socket, data.messageId);
+        // 🔥 安全修复：恢复租户上下文，确保数据操作受租户隔离保护
+        this.withTenantContext(socket, () => this.handleMarkRead(socket, data.messageId));
       });
 
       socket.on('mark_all_read', async () => {
-        await this.handleMarkAllRead(socket);
+        // 🔥 安全修复：恢复租户上下文
+        this.withTenantContext(socket, () => this.handleMarkAllRead(socket));
       });
 
       socket.on('get_unread_count', async () => {
-        await this.sendUnreadCount(socket);
+        this.withTenantContext(socket, () => this.sendUnreadCount(socket));
       });
 
       socket.on('ping', () => {
@@ -191,6 +212,24 @@ class WebSocketService {
       }
     }
     this.socketToUser.delete(socketId);
+  }
+
+  /**
+   * 🔥 安全修复：在WebSocket事件回调中恢复租户上下文
+   * WebSocket长连接的事件回调不在HTTP请求的AsyncLocalStorage上下文中，
+   * 因此需要手动设置TenantContext，确保getTenantRepo等工具能正确获取tenantId
+   */
+  private async withTenantContext(socket: any, fn: () => Promise<void>): Promise<void> {
+    const tenantId = socket.tenantId;
+    const userId = socket.userId;
+    if (tenantId) {
+      TenantContextManager.setContext({ tenantId, userId });
+    }
+    try {
+      await fn();
+    } catch (error) {
+      logger.error('[WebSocket] 事件处理异常:', error);
+    }
   }
 
   private async sendUnreadCount(socket: any): Promise<void> {
@@ -267,45 +306,61 @@ class WebSocketService {
     logger.debug(`📤 推送消息给用户 ${userIdStr}: ${event}`);
   }
 
-  sendToRole(roleName: string, event: string, data: any): void {
+  sendToRole(roleName: string, event: string, data: any, tenantId?: string): void {
     if (!this.io || !this.initialized) return;
 
-    this.io.to(`role_${roleName}`).emit(event, {
+    // 🔥 安全修复：优先使用带租户前缀的房间名，确保多租户隔离
+    const roomName = tenantId ? `tenant_${tenantId}_role_${roleName}` : `role_${roleName}`;
+    this.io.to(roomName).emit(event, {
       ...data,
       timestamp: new Date().toISOString()
     });
 
-    logger.debug(`📤 推送消息给角色 ${roleName}: ${event}`);
+    logger.debug(`📤 推送消息给角色 ${roleName}${tenantId ? ` [租户:${tenantId}]` : ''}: ${event}`);
   }
 
-  sendToDepartment(departmentId: string | number, event: string, data: any): void {
+  sendToDepartment(departmentId: string | number, event: string, data: any, tenantId?: string): void {
     if (!this.io || !this.initialized) return;
 
-    // 🔥 修复：支持字符串和数字类型的部门ID
+    // 🔥 安全修复：部门房间包含租户前缀
     const deptIdStr = String(departmentId);
-    this.io.to(`department_${deptIdStr}`).emit(event, {
+    const roomName = tenantId ? `tenant_${tenantId}_department_${deptIdStr}` : `department_${deptIdStr}`;
+    this.io.to(roomName).emit(event, {
       ...data,
       timestamp: new Date().toISOString()
     });
 
-    logger.debug(`📤 推送消息给部门 ${deptIdStr}: ${event}`);
+    logger.debug(`📤 推送消息给部门 ${deptIdStr}${tenantId ? ` [租户:${tenantId}]` : ''}: ${event}`);
   }
 
-  broadcast(event: string, data: any): void {
+  /**
+   * 🔥 安全修复：广播改为按租户范围广播
+   * 如果提供了 tenantId，则只广播给该租户的在线用户
+   * 如果未提供 tenantId（私有部署或全局广播），则向所有用户广播
+   */
+  broadcast(event: string, data: any, tenantId?: string): void {
     if (!this.io || !this.initialized) return;
 
-    this.io.emit(event, {
+    const payload = {
       ...data,
       timestamp: new Date().toISOString()
-    });
+    };
 
-    logger.debug(`📢 广播消息: ${event}`);
+    if (tenantId) {
+      // 🔥 仅向指定租户的用户广播
+      this.io.to(`tenant_${tenantId}`).emit(event, payload);
+      logger.debug(`📢 租户广播 [${tenantId}]: ${event}`);
+    } else {
+      this.io.emit(event, payload);
+      logger.debug(`📢 全局广播: ${event}`);
+    }
   }
 
   pushSystemMessage(message: PushMessageData, target?: {
     userId?: string | number;  // 🔥 修复：支持字符串类型的用户ID
     roleName?: string;
     departmentId?: string | number;  // 🔥 修复：支持字符串类型的部门ID
+    tenantId?: string;  // 🔥 安全修复：租户ID，用于范围推送
   }): void {
     if (!this.initialized) return;
 
@@ -334,11 +389,11 @@ class WebSocketService {
         logger.warn(`[WebSocket] ⚠️ 无效的用户ID: ${target.userId}，跳过推送`);
       }
     } else if (target?.roleName) {
-      this.sendToRole(target.roleName, event, payload);
+      this.sendToRole(target.roleName, event, payload, target?.tenantId);
     } else if (target?.departmentId) {
       const deptIdStr = String(target.departmentId);
       if (deptIdStr && deptIdStr !== 'undefined' && deptIdStr !== 'null' && deptIdStr !== 'NaN') {
-        this.sendToDepartment(deptIdStr, event, payload);
+        this.sendToDepartment(deptIdStr, event, payload, target?.tenantId);
       }
     } else {
       // 🔥 修复：如果没有有效目标，不广播，只记录警告

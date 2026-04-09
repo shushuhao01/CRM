@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { ApiConfigService } from '../../services/ApiConfigService';
 import { AppDataSource } from '../../config/database';
+import { formatDate } from '../../utils/dateFormat';
 
 import { log } from '../../config/logger';
 const apiConfigService = new ApiConfigService();
@@ -378,7 +379,7 @@ export class ApiConfigController {
       for (let i = 6; i >= 0; i--) {
         const d = new Date();
         d.setDate(d.getDate() - i);
-        const dateStr = d.toISOString().slice(0, 10);
+        const dateStr = formatDate(d);
         trends.push({ date: dateStr, count: 0, successCount: 0, errorCount: 0 });
       }
 
@@ -396,7 +397,7 @@ export class ApiConfigController {
           );
 
           for (const row of rows) {
-            const dateStr = new Date(row.call_date).toISOString().slice(0, 10);
+            const dateStr = formatDate(new Date(row.call_date));
             const trend = trends.find(t => t.date === dateStr);
             if (trend) {
               trend.count = Number(row.total) || 0;

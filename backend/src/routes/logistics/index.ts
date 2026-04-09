@@ -6,6 +6,7 @@ import { LogisticsController } from '../../controllers/LogisticsController';
 import { authenticateToken } from '../../middleware/auth';
 import { registerCompanyAndTraceRoutes } from './logisticsCompany';
 import { registerStatusAndConfigRoutes } from './logisticsStatus';
+import { registerSenderAddressRoutes } from './senderAddress';
 
 const router = Router();
 const logisticsController = new LogisticsController();
@@ -18,5 +19,8 @@ registerCompanyAndTraceRoutes(router, logisticsController);
 
 // 注册状态更新与配置路由
 registerStatusAndConfigRoutes(router);
+
+// 注册寄件人/退货地址路由
+registerSenderAddressRoutes(router);
 
 export default router;

@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CRM 导出数据查看器</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif;background:#f0f2f5;color:#333;line-height:1.6}
+.header{background:linear-gradient(135deg,#1890ff,#096dd9);color:#fff;padding:32px 40px;position:sticky;top:0;z-index:100;box-shadow:0 2px 8px rgba(0,0,0,.15)}
+.header h1{font-size:24px;font-weight:600;margin-bottom:8px}
+.header .meta{display:flex;flex-wrap:wrap;gap:24px;font-size:14px;opacity:.9}
+.header .meta span{display:flex;align-items:center;gap:4px}
+.container{max-width:1400px;margin:0 auto;padding:20px}
+.summary-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:16px;margin-bottom:24px}
+.card{background:#fff;border-radius:8px;padding:20px;box-shadow:0 1px 3px rgba(0,0,0,.1);text-align:center}
+.card .num{font-size:28px;font-weight:700;color:#1890ff}
+.card .label{font-size:13px;color:#8c8c8c;margin-top:4px}
+.toolbar{background:#fff;border-radius:8px;padding:16px 20px;margin-bottom:16px;box-shadow:0 1px 3px rgba(0,0,0,.1);display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.toolbar input,.toolbar select{border:1px solid #d9d9d9;border-radius:6px;padding:8px 12px;font-size:14px;outline:none;transition:border-color .3s}
+.toolbar input:focus,.toolbar select:focus{border-color:#1890ff;box-shadow:0 0 0 2px rgba(24,144,255,.2)}
+.toolbar input{flex:1;min-width:200px}
+.toolbar select{min-width:160px}
+.table-section{background:#fff;border-radius:8px;margin-bottom:16px;box-shadow:0 1px 3px rgba(0,0,0,.1);overflow:hidden}
+.table-header{padding:16px 20px;border-bottom:1px solid #f0f0f0;display:flex;justify-content:space-between;align-items:center;cursor:pointer;user-select:none;transition:background .2s}
+.table-header:hover{background:#fafafa}
+.table-header h3{font-size:16px;font-weight:600;display:flex;align-items:center;gap:8px}
+.table-header .badge{background:#e6f7ff;color:#1890ff;padding:2px 10px;border-radius:10px;font-size:12px;font-weight:500}
+.table-header .arrow{transition:transform .3s;font-size:12px;color:#8c8c8c}
+.table-header .arrow.open{transform:rotate(90deg)}
+.table-body{display:none;overflow-x:auto}
+.table-body.open{display:block}
+table{width:100%;border-collapse:collapse;font-size:13px}
+thead{background:#fafafa;position:sticky;top:0}
+th{padding:10px 12px;text-align:left;font-weight:600;color:#595959;border-bottom:2px solid #f0f0f0;white-space:nowrap}
+td{padding:8px 12px;border-bottom:1px solid #f5f5f5;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+tr:hover td{background:#e6f7ff}
+td.cell-id{font-family:'SF Mono',Monaco,Menlo,monospace;font-size:11px;color:#8c8c8c}
+td.cell-null{color:#d9d9d9;font-style:italic}
+.load-json{text-align:center;padding:80px 20px}
+.load-json h2{margin-bottom:16px;color:#595959}
+.load-json .drop-zone{border:2px dashed #d9d9d9;border-radius:12px;padding:60px 40px;cursor:pointer;transition:all .3s;margin:0 auto;max-width:600px}
+.load-json .drop-zone:hover,.load-json .drop-zone.dragover{border-color:#1890ff;background:#e6f7ff}
+.load-json .drop-zone p{color:#8c8c8c;margin-top:8px}
+.btn{padding:8px 16px;border-radius:6px;border:1px solid #d9d9d9;background:#fff;cursor:pointer;font-size:13px;transition:all .2s}
+.btn:hover{border-color:#1890ff;color:#1890ff}
+.footer{text-align:center;padding:24px;color:#bfbfbf;font-size:12px}
+.hidden{display:none}
+.pagination{display:flex;justify-content:space-between;align-items:center;padding:12px 20px;border-top:1px solid #f0f0f0;font-size:13px;color:#8c8c8c}
+.pagination .page-btns{display:flex;gap:4px}
+.pagination .page-btn{padding:4px 10px;border:1px solid #d9d9d9;border-radius:4px;cursor:pointer;background:#fff;font-size:12px}
+.pagination .page-btn:hover{border-color:#1890ff;color:#1890ff}
+.pagination .page-btn.active{background:#1890ff;color:#fff;border-color:#1890ff}
+.tip-box{background:#fffbe6;border:1px solid #ffe58f;border-radius:8px;padding:16px 20px;margin-bottom:20px;font-size:14px;color:#8c6d1f}
+@media(max-width:768px){.header{padding:20px}.container{padding:12px}.summary-cards{grid-template-columns:repeat(2,1fr)}.toolbar{flex-direction:column}.toolbar input{width:100%}}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1 id="mainTitle">📊 CRM 导出数据查看器</h1>
+  <div class="meta" id="headerMeta">
+    <span>请加载 JSON 导出文件来浏览数据</span>
+  </div>
+</div>
+
+<div class="container">
+  <!-- 加载区域 -->
+  <div class="load-json" id="loadJsonArea">
+    <h2>📂 加载 CRM 导出的 JSON 文件</h2>
+    <div class="drop-zone" id="dropZone" onclick="document.getElementById('fileInput').click()">
+      <p style="font-size:48px">📁</p>
+      <p style="font-size:16px;margin-top:12px"><b>点击选择</b> 或 <b>拖拽 JSON 文件到这里</b></p>
+      <p style="margin-top:8px">支持 CRM v1.0 / v2.0 / v3.0 格式的导出文件</p>
+      <p style="margin-top:4px">文件仅在本地浏览器中处理，不会上传到任何服务器</p>
+      <input type="file" id="fileInput" accept=".json" class="hidden" onchange="handleFileSelect(event)">
+    </div>
+    <div class="tip-box" style="margin-top:24px;max-width:600px;margin-left:auto;margin-right:auto">
+      💡 <b>提示：</b>导出的 JSON 文件通常保存在桌面或下载文件夹中，文件名类似 <code>tenant_xxx_170xxxxx.json</code>
+    </div>
+  </div>
+
+  <!-- 数据展示区域（初始隐藏） -->
+  <div id="dataArea" class="hidden">
+    <div class="summary-cards" id="summaryCards"></div>
+    <div class="toolbar">
+      <input type="text" id="searchInput" placeholder="🔍 搜索表名或数据内容..." oninput="filterTables()">
+      <select id="tableFilter" onchange="filterTables()"></select>
+      <button class="btn" onclick="expandAll()">全部展开</button>
+      <button class="btn" onclick="collapseAll()">全部折叠</button>
+      <button class="btn" onclick="location.reload()">重新加载文件</button>
+    </div>
+    <div id="tablesContainer"></div>
+  </div>
+</div>
+
+<div class="footer">
+  CRM 导出数据查看器 · 纯前端离线工具 · 数据不会上传
+</div>
+
+<script>
+const TABLE_NAMES = {
+  departments:'部门',users:'用户',roles:'角色',permissions:'权限',
+  role_permissions:'角色权限',product_categories:'产品分类',products:'产品',
+  customer_tags:'客户标签',customer_groups:'客户分组',customers:'客户',
+  customer_shares:'客户共享',customer_assignments:'客户分配',
+  follow_up_records:'跟进记录',customer_files:'客户文件',
+  orders:'订单',order_items:'订单项',order_status_history:'订单状态历史',
+  order_attachments:'订单附件',cod_cancel_applications:'COD取消申请',
+  after_sales_services:'售后服务',service_records:'服务记录',
+  service_follow_ups:'服务跟进',service_follow_up_records:'服务跟进记录',
+  service_operation_logs:'服务操作日志',after_sale_attachments:'售后附件',
+  logistics_companies:'物流公司',logistics_api_configs:'物流API配置',
+  logistics_tracking:'物流跟踪',logistics_traces:'物流轨迹',
+  call_records:'通话记录',call_recordings:'通话录音',
+  call_lines:'呼叫线路',user_line_assignments:'用户线路分配',
+  phone_configs:'电话配置',work_phones:'工作手机',
+  device_bind_logs:'设备绑定日志',global_call_config:'全局呼叫配置',
+  outbound_tasks:'外呼任务',phone_blacklist:'电话黑名单',
+  performance_configs:'业绩配置',performance_metrics:'业绩指标',
+  performance_report_configs:'业绩报表配置',performance_report_logs:'业绩报表日志',
+  performance_shares:'业绩分享',performance_share_members:'业绩分享成员',
+  commission_settings:'佣金设置',commission_ladders:'佣金阶梯',
+  department_order_limits:'部门订单限额',
+  value_added_orders:'增值服务订单',value_added_price_config:'增值定价配置',
+  value_added_status_configs:'增值状态配置',
+  payment_orders:'支付订单',payment_records:'支付记录',
+  system_configs:'系统配置',improvement_goals:'改善目标',
+  rejection_reasons:'驳回原因',remark_presets:'备注预设',
+  payment_method_options:'支付方式选项',
+  sms_templates:'短信模板',sms_records:'短信记录',
+  outsource_companies:'外包公司',
+  wecom_configs:'企微配置',wecom_user_bindings:'企微用户绑定',
+  wecom_customers:'企微客户',wecom_acquisition_links:'企微获客链接',
+  wecom_service_accounts:'企微服务账号',wecom_payment_records:'企微支付记录',
+  wecom_chat_records:'企微聊天记录',
+  announcements:'公告',announcement_reads:'公告已读',
+  notifications:'通知',notification_templates:'通知模板',
+  notification_channels:'通知渠道',notification_logs:'通知日志',
+  system_messages:'系统消息',message_subscriptions:'消息订阅',
+  department_subscription_configs:'部门订阅配置',
+  message_read_status:'消息已读状态',message_cleanup_history:'消息清理历史',
+  customer_service_permissions:'客服权限',sensitive_info_permissions:'敏感信息权限',
+  operation_logs:'操作日志',data_records:'数据记录'
+};
+
+const PAGE_SIZE = 50;
+let currentData = null;
+let tablePages = {};
+
+// 拖拽支持
+const dz = document.getElementById('dropZone');
+['dragenter','dragover'].forEach(e => dz.addEventListener(e, ev => { ev.preventDefault(); dz.classList.add('dragover'); }));
+['dragleave','drop'].forEach(e => dz.addEventListener(e, ev => { ev.preventDefault(); dz.classList.remove('dragover'); }));
+dz.addEventListener('drop', ev => {
+  const file = ev.dataTransfer.files[0];
+  if (file) loadFile(file);
+});
+
+function handleFileSelect(ev) {
+  const file = ev.target.files[0];
+  if (file) loadFile(file);
+}
+
+function loadFile(file) {
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const json = JSON.parse(e.target.result);
+      if (!json.data || typeof json.data !== 'object') throw new Error('无效的导出文件：缺少 data 字段');
+      currentData = json;
+
+      // 更新标题
+      const t = json.tenant || {};
+      document.getElementById('mainTitle').textContent = '📊 CRM 数据报告 - ' + (t.name || t.code || '未知租户');
+      document.title = 'CRM数据报告 - ' + (t.name || t.code || '未知');
+
+      const totalRecords = Object.values(json.data).reduce((s, arr) => s + (Array.isArray(arr) ? arr.length : 0), 0);
+      const tableCount = Object.keys(json.data).length;
+
+      document.getElementById('headerMeta').innerHTML =
+        '<span>🏢 租户: <b>' + esc(t.name||'') + '</b> (' + esc(t.code||t.id||'') + ')</span>' +
+        '<span>📅 导出时间: <b>' + (json.exportTime ? new Date(json.exportTime).toLocaleString('zh-CN') : '未知') + '</b></span>' +
+        '<span>📋 共 <b>' + tableCount + '</b> 张表</span>' +
+        '<span>📝 共 <b>' + totalRecords.toLocaleString() + '</b> 条记录</span>' +
+        '<span>🔖 版本: v' + (json.version||'?') + '</span>' +
+        '<span>📄 文件: ' + esc(file.name) + ' (' + formatSize(file.size) + ')</span>';
+
+      document.getElementById('loadJsonArea').classList.add('hidden');
+      document.getElementById('dataArea').classList.remove('hidden');
+      renderAll();
+    } catch(err) {
+      alert('❌ 文件解析失败: ' + err.message);
+    }
+  };
+  reader.readAsText(file);
+}
+
+function formatSize(bytes) {
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024*1024) return (bytes/1024).toFixed(1) + ' KB';
+  return (bytes/1024/1024).toFixed(1) + ' MB';
+}
+
+function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+function renderAll() {
+  if (!currentData) return;
+  renderSummaryCards();
+  renderTableFilter();
+  renderTables();
+}
+
+function renderSummaryCards() {
+  const data = currentData.data || {};
+  const totalRecords = Object.values(data).reduce((s, arr) => s + (Array.isArray(arr) ? arr.length : 0), 0);
+  const tableCount = Object.keys(data).length;
+
+  const cats = {
+    '👥 组织':['departments','users','roles','permissions','role_permissions'],
+    '📦 商品':['product_categories','products'],
+    '🧑‍💼 客户':['customer_tags','customer_groups','customers','customer_shares','customer_assignments','follow_up_records','customer_files'],
+    '📋 订单':['orders','order_items','order_status_history','order_attachments','cod_cancel_applications'],
+    '🔧 售后':['after_sales_services','service_records','service_follow_ups','service_follow_up_records','service_operation_logs','after_sale_attachments'],
+    '🚚 物流':['logistics_companies','logistics_api_configs','logistics_tracking','logistics_traces'],
+    '📞 通话':['call_records','call_recordings','call_lines','user_line_assignments','phone_configs','work_phones'],
+    '📈 业绩':['performance_configs','performance_metrics','performance_report_configs','performance_report_logs','performance_shares','performance_share_members','commission_settings','commission_ladders'],
+    '💳 支付':['payment_orders','payment_records','value_added_orders'],
+    '💬 企微':['wecom_configs','wecom_user_bindings','wecom_customers','wecom_acquisition_links','wecom_service_accounts','wecom_payment_records','wecom_chat_records'],
+    '🔔 通知':['announcements','notifications','notification_templates','system_messages','message_subscriptions'],
+    '⚙️ 配置':['system_configs','improvement_goals','rejection_reasons','remark_presets','payment_method_options','sms_templates'],
+  };
+
+  let html = '<div class="card"><div class="num">' + tableCount + '</div><div class="label">数据表</div></div>' +
+    '<div class="card"><div class="num">' + totalRecords.toLocaleString() + '</div><div class="label">总记录数</div></div>';
+  for (const [label, tables] of Object.entries(cats)) {
+    const cnt = tables.reduce((s,t) => s + ((data[t]&&data[t].length)||0), 0);
+    if (cnt > 0) html += '<div class="card"><div class="num">' + cnt.toLocaleString() + '</div><div class="label">' + label + '</div></div>';
+  }
+  document.getElementById('summaryCards').innerHTML = html;
+}
+
+function renderTableFilter() {
+  const sel = document.getElementById('tableFilter');
+  const tables = Object.keys(currentData.data);
+  sel.innerHTML = '<option value="">全部表 (' + tables.length + ')</option>';
+  tables.forEach(t => {
+    const cn = TABLE_NAMES[t] || t;
+    const cnt = Array.isArray(currentData.data[t]) ? currentData.data[t].length : 0;
+    sel.innerHTML += '<option value="' + t + '">' + cn + ' (' + cnt + ')</option>';
+  });
+}
+
+function renderTables() {
+  const container = document.getElementById('tablesContainer');
+  const data = currentData.data;
+  tablePages = {};
+  let html = '';
+  Object.keys(data).forEach(tableName => {
+    const records = data[tableName];
+    if (!Array.isArray(records) || records.length === 0) return;
+    tablePages[tableName] = 1;
+    const cn = TABLE_NAMES[tableName] || tableName;
+    html += '<div class="table-section" data-table="' + tableName + '">' +
+      '<div class="table-header" onclick="toggleTable(this)">' +
+        '<h3><span class="arrow">▶</span> ' + esc(cn) + ' <code style="color:#8c8c8c;font-size:12px;margin-left:4px">' + tableName + '</code> <span class="badge">' + records.length + ' 条</span></h3>' +
+      '</div>' +
+      '<div class="table-body" id="tbody_' + tableName + '">' +
+        renderTableContent(tableName, records, 1) +
+      '</div></div>';
+  });
+  if (!html) html = '<div style="text-align:center;padding:40px;color:#bfbfbf">没有数据</div>';
+  container.innerHTML = html;
+}
+
+function renderTableContent(tableName, records, page) {
+  if (!records || records.length === 0) return '';
+  const cols = Object.keys(records[0]);
+  const totalPages = Math.ceil(records.length / PAGE_SIZE);
+  const start = (page - 1) * PAGE_SIZE;
+  const end = Math.min(start + PAGE_SIZE, records.length);
+  const pageRecords = records.slice(start, end);
+
+  let html = '<table><thead><tr><th style="width:40px">#</th>';
+  cols.forEach(c => { html += '<th>' + esc(c) + '</th>'; });
+  html += '</tr></thead><tbody>';
+
+  pageRecords.forEach((row, idx) => {
+    html += '<tr><td class="cell-id">' + (start + idx + 1) + '</td>';
+    cols.forEach(c => {
+      const v = row[c];
+      if (v === null || v === undefined) {
+        html += '<td class="cell-null">NULL</td>';
+      } else if (c === 'id' || c.endsWith('_id') || c === 'tenantId' || c === 'tenant_id') {
+        html += '<td class="cell-id" title="' + esc(String(v)) + '">' + esc(String(v).substring(0,12)) + (String(v).length>12?'…':'') + '</td>';
+      } else if (c === 'password' || c === 'secret' || c === 'token') {
+        html += '<td style="color:#d9d9d9">●●●●●●</td>';
+      } else {
+        const sv = String(v);
+        html += '<td title="' + esc(sv) + '">' + esc(sv.length > 80 ? sv.substring(0,80) + '…' : sv) + '</td>';
+      }
+    });
+    html += '</tr>';
+  });
+  html += '</tbody></table>';
+
+  if (totalPages > 1) {
+    html += '<div class="pagination"><span>显示 ' + (start+1) + '-' + end + ' / 共 ' + records.length + ' 条</span><div class="page-btns">';
+    if (page > 1) html += '<span class="page-btn" onclick="goPage(\'' + tableName + '\',' + (page-1) + ')">上一页</span>';
+    const sp = Math.max(1, page - 3), ep = Math.min(totalPages, page + 3);
+    for (let i = sp; i <= ep; i++) {
+      html += '<span class="page-btn' + (i===page?' active':'') + '" onclick="goPage(\'' + tableName + '\',' + i + ')">' + i + '</span>';
+    }
+    if (page < totalPages) html += '<span class="page-btn" onclick="goPage(\'' + tableName + '\',' + (page+1) + ')">下一页</span>';
+    html += '</div></div>';
+  }
+  return html;
+}
+
+function goPage(tableName, page) {
+  tablePages[tableName] = page;
+  const records = currentData.data[tableName];
+  const tbody = document.getElementById('tbody_' + tableName);
+  if (tbody) {
+    tbody.innerHTML = renderTableContent(tableName, records, page);
+    tbody.classList.add('open');
+  }
+}
+
+function toggleTable(header) {
+  const arrow = header.querySelector('.arrow');
+  const body = header.nextElementSibling;
+  body.classList.toggle('open');
+  arrow.classList.toggle('open');
+}
+
+function expandAll() {
+  document.querySelectorAll('.table-body').forEach(b => b.classList.add('open'));
+  document.querySelectorAll('.arrow').forEach(a => a.classList.add('open'));
+}
+
+function collapseAll() {
+  document.querySelectorAll('.table-body').forEach(b => b.classList.remove('open'));
+  document.querySelectorAll('.arrow').forEach(a => a.classList.remove('open'));
+}
+
+function filterTables() {
+  const keyword = document.getElementById('searchInput').value.toLowerCase();
+  const tableFilter = document.getElementById('tableFilter').value;
+  document.querySelectorAll('.table-section').forEach(sec => {
+    const tName = sec.dataset.table;
+    const cn = TABLE_NAMES[tName] || '';
+    const matchTable = !tableFilter || tName === tableFilter;
+    let matchKeyword = !keyword || tName.includes(keyword) || cn.includes(keyword);
+    // 只在小数据量时搜索内容（避免大数据卡顿）
+    if (!matchKeyword && currentData.data[tName] && currentData.data[tName].length < 500) {
+      matchKeyword = JSON.stringify(currentData.data[tName]).toLowerCase().includes(keyword);
+    }
+    sec.style.display = (matchTable && matchKeyword) ? '' : 'none';
+  });
+}
+</script>
+</body>
+</html>
+

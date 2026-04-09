@@ -300,6 +300,23 @@ onMounted(loadCurrentDoc)
     margin: 16px 0;
   }
 
+  :deep(a) {
+    color: #6366f1;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    font-weight: 500;
+    transition: color 0.2s ease;
+
+    &:hover {
+      color: #4f46e5;
+      text-decoration-thickness: 2px;
+    }
+
+    &:visited {
+      color: #7c3aed;
+    }
+  }
+
   :deep(.tip) {
     background: #fef3c7;
     border-left: 4px solid #f59e0b;

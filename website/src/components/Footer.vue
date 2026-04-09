@@ -62,7 +62,7 @@
           <div class="link-group">
             <h4>支持</h4>
             <router-link to="/docs">帮助文档</router-link>
-            <router-link to="/docs/deploy/install">部署指南</router-link>
+            <router-link to="/docs/deploy/guide">部署指南</router-link>
             <router-link to="/docs/deploy/faq">常见问题</router-link>
             <a v-if="serviceUrl" :href="serviceUrl" target="_blank">在线客服</a>
           </div>

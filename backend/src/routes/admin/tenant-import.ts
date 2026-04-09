@@ -52,7 +52,7 @@ const upload = multer({
 router.post('/:id/import', upload.single('file'), async (req: Request, res: Response) => {
   try {
     const { id: tenantId } = req.params;
-    const { conflictStrategy = 'skip' } = req.body;
+    const { conflictStrategy = 'skip', clearBeforeImport = false } = req.body;
 
     if (!req.file) {
       return res.status(400).json({
@@ -73,7 +73,8 @@ router.post('/:id/import', upload.single('file'), async (req: Request, res: Resp
     const job = await TenantImportService.createImportJob({
       tenantId,
       filePath: req.file.path,
-      conflictStrategy
+      conflictStrategy,
+      clearBeforeImport: clearBeforeImport === 'true' || clearBeforeImport === true
     });
 
     res.json({
@@ -102,7 +103,7 @@ router.post('/:id/import', upload.single('file'), async (req: Request, res: Resp
  */
 router.get('/:id/import/:jobId', (req: Request, res: Response) => {
   try {
-    const { jobId } = req.params;
+    const { id: tenantId, jobId } = req.params;
 
     const job = TenantImportService.getImportJob(jobId);
 
@@ -110,6 +111,14 @@ router.get('/:id/import/:jobId', (req: Request, res: Response) => {
       return res.status(404).json({
         success: false,
         message: '导入任务不存在'
+      });
+    }
+
+    // 🔒 租户归属校验：确保不能查看其他租户的导入任务
+    if (job.tenantId !== tenantId) {
+      return res.status(403).json({
+        success: false,
+        message: '无权访问此导入任务'
       });
     }
 

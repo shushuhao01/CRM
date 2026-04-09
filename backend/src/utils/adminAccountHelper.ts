@@ -5,6 +5,7 @@
 import { AppDataSource } from '../config/database';
 import { v4 as uuidv4 } from 'uuid';
 import bcrypt from 'bcryptjs';
+import { formatDateTime } from './dateFormat';
 
 import { log } from '../config/logger';
 /**
@@ -62,7 +63,7 @@ export const createSystemDepartment = async (tenantId: string | null): Promise<s
 
     // 创建系统管理部
     const departmentId = `dept_sys_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
+    const now = formatDateTime(new Date());
 
     await AppDataSource.query(
       `INSERT INTO departments (
@@ -122,7 +123,7 @@ export const createDefaultAdmin = async (params: {
   const userId = uuidv4();
   const password = generateDefaultPassword();
   const hash = await hashPassword(password);
-  const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
+  const now = formatDateTime(new Date());
 
   // 🔥 第二步：创建管理员账号，归属到系统管理部
   await AppDataSource.query(

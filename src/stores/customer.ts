@@ -39,6 +39,7 @@ export interface Customer {
   height?: number  // 身高(cm)
   weight?: number  // 体重(kg)
   gender?: string  // 性别
+  birthday?: string  // 生日
   fanAcquisitionTime?: string  // 进粉时间
   medicalHistory?: string  // 疾病史
   disease?: string  // 疾病史（别名，兼容旧字段）

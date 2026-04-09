@@ -1,0 +1,59 @@
+============================================================
+CRM测试 - 第6阶段: 业绩与财务
+时间: 2026/4/7 18:27:33
+============================================================
+[PREP] CRM登录中...
+[PREP] CRM登录成功, userId=2a0b0b34-b342-401a-a5a2-dffa9001594c, role=admin
+[PREP] Admin登录成功
+[PREP] 找到3个用户, otherUserId=user_1775548554558_msytvduok
+[PREP] 找到订单 id=02628fd3-133e-4315-ac86-bee57eab2fd6, no=
+
+--- 6.1 业绩统计 ---
+[OK] C-090 个人业绩: orderCount=3, orderAmount=1788, signCount=0, newCustomers=2
+[OK] C-091 团队业绩: 成员数=3, 总业绩=1788, 总订单=3, 签收率=0%
+[OK] C-092 业绩分析: trend=1条, summary={"totalOrders":"3","totalAmount":"1788.00","avgOrderAmount":596}
+[OK] C-092b 个人业绩分析: 接口正常, data={"name":"13800138001","orderCount":"3","orderAmount":"1788.00","shipCount":"0","shipAmount":"0.00","
+
+--- 6.2 业绩分享 ---
+[OK] C-093a 业绩分享列表: 共0条分享, total=0
+[XX] C-093b 业绩分享统计: {"success":false,"code":404,"message":"业绩分享记录不存在"}
+[OK] C-093c 创建业绩分享: id=c8386ebd-c183-4a03-856b-f017b04bb6df
+
+--- 6.3 业绩报表 ---
+[OK] C-094 业绩报表配置: 共0个配置
+[OK] C-094b 报表类型: data=[{"value":"order_count","label":"订单数量","category":"订单指标","description":"当日/当月订单总数","primary":true},{
+
+--- 6.4 财务管理/绩效 ---
+[OK] C-096 绩效数据统计: {"shippedCount":0,"deliveredCount":0,"validCount":0,"coefficientSum":0,"estimatedCommission":0}
+[OK] C-096b 绩效数据列表: 共0条, page=1
+[OK] C-097 绩效管理统计: {"pendingCount":0,"processedCount":0,"validCount":0,"invalidCount":0,"totalCount":0,"coefficientSum":0}
+[OK] C-097b 绩效管理列表: 共0条
+[XX] C-098 佣金设置: 两个接口均不可用: 404/404
+
+--- 6.5 代收管理(COD) ---
+[OK] C-100 代收统计: todayCod=0, monthCod=0, pendingCod=0, returnedCod=0
+[OK] C-101 代收列表(待处理): 共0条
+[OK] C-101b 代收列表(已返款): 共0条
+[OK] C-103 取消代收申请列表: 接口存在(无数据)
+[OK] C-104 代收部门筛选: 接口可达, status=200
+
+--- 6.6 增值服务 ---
+[XX] C-105 增值服务列表: status=404/404
+[OK] C-106 增值统计: 接口可达, status=200
+[OK] C-107 结算报表: 接口可达, status=404
+
+--- 6.7 数据看板 ---
+[OK] C-DASH 数据看板指标: {"todayOrders":3,"todayOrdersChange":100,"todayOrdersTrend":"up","todayRevenue":1788,"todayRevenueChange":100,"todayReve
+[OK] C-DASH2 订单统计看板: 接口可达, status=404
+
+============================================================
+汇总: 通过=21 失败=3 跳过=0 总计=24
+通过率: 88%
+
+失败用例:
+  X C-093b 业绩分享统计: {"success":false,"code":404,"message":"业绩分享记录不存在"}
+  X C-098 佣金设置: 两个接口均不可用: 404/404
+  X C-105 增值服务列表: status=404/404
+
+结果文件: D:\kaifa\CRM - 1.8.0\tests\test-phase6-result.json
+报告文件: D:\kaifa\CRM - 1.8.0\tests\test-phase6-report.md

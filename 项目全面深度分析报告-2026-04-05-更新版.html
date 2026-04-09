@@ -1,0 +1,2438 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>云客CRM系统 - 全项目深度分析报告（2026-04-05 更新版）</title>
+<style>
+  body {
+    font-family: "Microsoft YaHei", "PingFang SC", "Helvetica Neue", Arial, sans-serif;
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 30px 40px;
+    color: #333;
+    line-height: 1.7;
+    background: #fff;
+  }
+  h1 { color: #1a5276; border-bottom: 3px solid #2980b9; padding-bottom: 12px; font-size: 28px; }
+  h2 { color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 8px; margin-top: 40px; font-size: 22px; }
+  h3 { color: #34495e; margin-top: 25px; font-size: 18px; }
+  h4 { color: #5d6d7e; margin-top: 18px; font-size: 16px; }
+  blockquote { border-left: 4px solid #3498db; padding: 8px 16px; margin: 10px 0; background: #eaf2f8; color: #2c3e50; }
+  hr { border: none; border-top: 1px solid #d5dbdb; margin: 30px 0; }
+  code { background: #f4f6f7; padding: 2px 6px; border-radius: 3px; font-size: 14px; color: #c0392b; font-family: Consolas, "Courier New", monospace; }
+  pre { background: #2c3e50; color: #ecf0f1; padding: 16px 20px; border-radius: 6px; overflow-x: auto; line-height: 1.5; }
+  pre code { background: none; color: inherit; padding: 0; font-size: 13px; }
+  strong { color: #2c3e50; }
+  a { color: #2980b9; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  p { margin: 8px 0; }
+  ul, ol { padding-left: 24px; }
+  li { margin: 4px 0; }
+
+  /* ===== 核心：真正的单元格表格样式 ===== */
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 16px 0 24px 0;
+    font-size: 14px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  }
+  th, td {
+    border: 1px solid #bdc3c7;
+    padding: 10px 14px;
+    text-align: left;
+    vertical-align: top;
+  }
+  th {
+    background: #2c3e50;
+    color: #fff;
+    font-weight: 600;
+    font-size: 13px;
+    text-transform: none;
+  }
+  tr:nth-child(even) { background: #f8f9fa; }
+  tr:nth-child(odd) { background: #fff; }
+  tr:hover { background: #eaf2f8; }
+  td code { font-size: 12px; }
+
+  /* 打印优化 */
+  @media print {
+    body { padding: 10px; }
+    table { page-break-inside: avoid; }
+    h2 { page-break-before: always; }
+    pre { white-space: pre-wrap; }
+  }
+</style>
+</head>
+<body>
+<h1>云客CRM系统 - 全项目深度分析报告（2026-04-05 更新版）</h1>
+<blockquote><strong>分析日期</strong>：2026年4月5日（基于3月29日版本全面更新）</blockquote>
+<blockquote><strong>分析范围</strong>：Backend后端 + CRM主系统前端 + Admin管理后台 + Website官网 + crmAPP移动端</blockquote>
+<blockquote><strong>版本</strong>：1.8.0</blockquote>
+<blockquote><strong>更新内容</strong>：在3月29日报告基础上，纳入3月30日~4月5日共60+项任务修复记录，含5阶段41项系统优化 + 会员中心 + 扩容管理 + 安全审计等重大变更</blockquote>
+<hr>
+<h2>目录</h2>
+<ul>
+<li><a href="#一项目全景更新">项目全景（更新）</a></li>
+<li><a href="#二总体架构">总体架构</a></li>
+<li><a href="#三backend后端深度分析更新">Backend后端深度分析（更新）</a></li>
+<li><a href="#四crm主系统前端深度分析更新">CRM主系统前端深度分析（更新）</a></li>
+<li><a href="#五admin管理后台深度分析更新">Admin管理后台深度分析（更新）</a></li>
+<li><a href="#六website官网深度分析更新">Website官网深度分析（更新）</a></li>
+<li><a href="#七crmapp移动端深度分析更新">crmAPP移动端深度分析（更新）</a></li>
+<li><a href="#八多租户系统分析更新">多租户系统分析（更新）</a></li>
+<li><a href="#九会员中心与订阅付费系统新增">会员中心与订阅付费系统（新增）</a></li>
+<li><a href="#十扩容管理系统新增">扩容管理系统（新增）</a></li>
+<li><a href="#十一2026-03-30至04-05工作内容汇总">2026-03-30至04-05 工作内容汇总</a></li>
+<li><a href="#十二跨项目共性问题更新">跨项目共性问题（更新）</a></li>
+<li><a href="#十三技术亮点更新">技术亮点（更新）</a></li>
+<li><a href="#十四完成度与待完善清单更新">完成度与待完善清单（更新）</a></li>
+<li><a href="#十五优先改进路线图更新">优先改进路线图（更新）</a></li>
+<li><a href="#十六总体评分更新">总体评分（更新）</a></li>
+</ul>
+<hr>
+<h2>一、项目全景（更新）</h2>
+<h3>1.1 产品定位</h3>
+<p>云客CRM是一个 <strong>SaaS + 私有部署双模式</strong> 的完整CRM商业产品体系，包含5个子系统 + 1个新增会员中心模块：</p>
+<table>
+<thead>
+<tr>
+  <th>子系统</th>
+  <th>技术栈</th>
+  <th>文件数（最新统计）</th>
+  <th>端口</th>
+  <th>定位</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td><strong>Backend</strong></td>
+  <td>Node.js + Express + TypeORM + MySQL</td>
+  <td><strong>291个TS文件</strong></td>
+  <td>3000</td>
+  <td>统一后端API服务</td>
+</tr>
+<tr>
+  <td><strong>CRM前端</strong></td>
+  <td>Vue 3 + TS + Element Plus + Pinia</td>
+  <td><strong>254个Vue + 151个TS</strong></td>
+  <td>5173</td>
+  <td>主业务系统（员工使用）</td>
+</tr>
+<tr>
+  <td><strong>Admin后台</strong></td>
+  <td>Vue 3 + TS + Element Plus + Axios</td>
+  <td><strong>40个Vue + 11个TS</strong></td>
+  <td>5174</td>
+  <td>平台管理后台（运营方使用）</td>
+</tr>
+<tr>
+  <td><strong>Website官网</strong></td>
+  <td>Vue 3 + TS + 纯手写SCSS</td>
+  <td><strong>25个Vue + 10个TS</strong></td>
+  <td>8080</td>
+  <td>产品展示 + 注册 + 支付 + 会员中心</td>
+</tr>
+<tr>
+  <td><strong>crmAPP</strong></td>
+  <td>uni-app + Vue 3 + TS</td>
+  <td><strong>18个Vue + 16个TS</strong></td>
+  <td>--</td>
+  <td>电销外呼手机APP</td>
+</tr>
+</tbody>
+</table>
+<p><strong>全项目代码总量：约 370,000+ 行（较3月29日增长约40,000行）</strong></p>
+<h3>1.2 2026-03-30 至 04-05 重大变更摘要</h3>
+<p>自上次分析报告以来（3月29日），一周多内完成了 <strong>60+项任务</strong>：</p>
+<table>
+<thead>
+<tr>
+  <th>分类</th>
+  <th>任务数</th>
+  <th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td><strong>五阶段系统优化</strong></td>
+  <td>41</td>
+  <td>P1数据库性能(6) + P2后端性能(8) + P3代码治理(12) + P4安全加固(8) + P5体验提升(7)</td>
+</tr>
+<tr>
+  <td><strong>会员中心与订阅付费</strong></td>
+  <td>6</td>
+  <td>完整会员中心系统 + 微信/支付宝委托代扣</td>
+</tr>
+<tr>
+  <td><strong>扩容管理</strong></td>
+  <td>4</td>
+  <td>用户数/存储空间独立扩容 + 支付闭环</td>
+</tr>
+<tr>
+  <td><strong>Admin后台增强</strong></td>
+  <td>10</td>
+  <td>角色权限RBAC + 回收站 + 验证码 + 套餐/版本/邮件/通知等</td>
+</tr>
+<tr>
+  <td><strong>私有部署交付</strong></td>
+  <td>3</td>
+  <td>部署方案 + 支付成功页 + 数据隔离审查</td>
+</tr>
+<tr>
+  <td><strong>安全审计与修复</strong></td>
+  <td>5</td>
+  <td>全面安全审计 + 3个漏洞修复 + URL动态化 + 数据清理</td>
+</tr>
+<tr>
+  <td><strong>官网优化</strong></td>
+  <td>5</td>
+  <td>SEO + 文档Markdown化 + 动态配置 + 注册流程改造</td>
+</tr>
+</tbody>
+</table>
+<h3>1.3 商业闭环（更新）</h3>
+<pre><code>潜在客户访问官网 --&gt; 选择套餐 --&gt; 注册/支付（含订阅付费）--&gt; 自动开通租户 --&gt; 下发登录信息
+                                                                          |
+管理后台运营管理 &lt;-- 授权/续费/模块控制/扩容 &lt;-- 管理员 &lt;-- 分配账号 &lt;-- 登录CRM系统
+                                                                   |
+                                                          CRM日常使用（客户/订单/物流/业绩）
+                                                                   |
+                                         +-------------------------+-------------------------+
+                                         |                                                   |
+                                移动端APP --&gt; 外呼/录音/跟进              会员中心 --&gt; 续费/扩容/账单
+</code></pre>
+<hr>
+<h2>二、总体架构</h2>
+<h3>2.1 系统架构图（更新）</h3>
+<pre><code>                     +--------------------+
+                     |    Website 官网     | &lt;-- 产品展示、注册、支付
+                     |    (Vue 3 + SCSS)  |     + 会员中心（新增）
+                     |    Port: 8080      |
+                     +---------+----------+
+                               | /api/v1/public/*
++----------------+   +---------+----------+   +----------------+
+|  CRM 主前端    |--&gt;|   Backend API      |&lt;--|  Admin 后台    |
+|  (Vue 3 + EP)  |   |   (Express.js)     |   |  (Vue 3 + EP)  |
+|  Port: 5173    |   |   Port: 3000       |   |  Port: 5174    |
++----------------+   |                    |   +----------------+
+                     |  REST API          |
++----------------+   |  + WebSocket       |   +----------------+
+|   crmAPP       |&lt;-&gt;|  + Socket.IO       |   |    MySQL 8.0   |
+|  (uni-app)     |WS |  + node-cron       |--&gt;|  (共享数据库)   |
+|  Android/iOS   |   |  + PM2             |   +----------------+
++----------------+   |  + Redis (可选)     |
+                     +--------------------+
+</code></pre>
+<h3>2.2 认证体系（更新 - 三套独立JWT）</h3>
+<table>
+<thead>
+<tr>
+  <th>认证系统</th>
+  <th>中间件</th>
+  <th>JWT Secret</th>
+  <th>有效期</th>
+  <th>用途</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td><strong>CRM用户认证</strong></td>
+  <td><code>authenticateToken</code></td>
+  <td>JWT_SECRET</td>
+  <td>7天(生产)/365天(开发)</td>
+  <td>员工登录CRM系统</td>
+</tr>
+<tr>
+  <td><strong>Admin管理员认证</strong></td>
+  <td><code>adminAuthMiddleware</code></td>
+  <td>ADMIN_JWT_SECRET</td>
+  <td>--</td>
+  <td>管理员登录Admin后台</td>
+</tr>
+<tr>
+  <td><strong>会员中心认证（新）</strong></td>
+  <td><code>memberAuth</code></td>
+  <td>MEMBER_JWT_SECRET</td>
+  <td>7天</td>
+  <td>租户登录会员中心</td>
+</tr>
+</tbody>
+</table>
+<h3>2.3 通信方式</h3>
+<table>
+<thead>
+<tr>
+  <th>连接类型</th>
+  <th>技术</th>
+  <th>用途</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>HTTP REST</td>
+  <td>Express + JWT</td>
+  <td>所有CRUD操作</td>
+</tr>
+<tr>
+  <td>WebSocket (Socket.IO)</td>
+  <td>socket.io</td>
+  <td>PC端实时消息推送</td>
+</tr>
+<tr>
+  <td>WebSocket (ws)</td>
+  <td>ws</td>
+  <td>移动端通话指令/状态同步</td>
+</tr>
+<tr>
+  <td>定时任务</td>
+  <td>node-cron</td>
+  <td>授权过期/支付提醒/消息清理/超时提醒/业绩报表/订阅扣款/扣款重试</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2>三、Backend后端深度分析（更新）</h2>
+<h3>3.1 最新代码量统计</h3>
+<table>
+<thead>
+<tr>
+  <th>分类</th>
+  <th>3月29日</th>
+  <th>4月5日</th>
+  <th>变化</th>
+  <th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td><strong>路由层</strong></td>
+  <td>76文件 ~26,000行</td>
+  <td>99文件</td>
+  <td>+23</td>
+  <td>含admin/33 + public/10 + 拆分后子目录</td>
+</tr>
+<tr>
+  <td><strong>实体层</strong></td>
+  <td>76文件 ~5,800行</td>
+  <td>79文件</td>
+  <td>+3</td>
+  <td>新增Changelog/UpdateTask/AdminRole等</td>
+</tr>
+<tr>
+  <td><strong>服务层</strong></td>
+  <td>40文件 ~6,500行</td>
+  <td>46文件</td>
+  <td>+6</td>
+  <td>新增Member/Subscription/Capacity/DataCleanup/Update/Statistics</td>
+</tr>
+<tr>
+  <td><strong>控制器层</strong></td>
+  <td>14文件 ~3,200行</td>
+  <td>25文件</td>
+  <td>+11</td>
+  <td>Admin控制器扩展</td>
+</tr>
+<tr>
+  <td><strong>中间件层</strong></td>
+  <td>10文件 ~1,600行</td>
+  <td>13文件</td>
+  <td>+3</td>
+  <td>新增memberAuth/checkLicenseWrite/apiRateLimit</td>
+</tr>
+<tr>
+  <td><strong>配置层</strong></td>
+  <td>5文件 ~700行</td>
+  <td>6文件</td>
+  <td>+1</td>
+  <td>新增sites.ts（URL集中配置）</td>
+</tr>
+<tr>
+  <td><strong>工具层</strong></td>
+  <td>5文件 ~850行</td>
+  <td>6文件</td>
+  <td>+1</td>
+  <td>新增tenantUploadHelper</td>
+</tr>
+<tr>
+  <td><strong>测试层</strong></td>
+  <td>0文件</td>
+  <td>3文件</td>
+  <td>+3</td>
+  <td>新增CacheService/dateFormat/tenantContext测试</td>
+</tr>
+<tr>
+  <td><strong>合计</strong></td>
+  <td><strong>252文件</strong></td>
+  <td><strong>291文件</strong></td>
+  <td><strong>+39</strong></td>
+  <td>较3月29日增长15.5%</td>
+</tr>
+</tbody>
+</table>
+<h3>3.2 后端路由拆分成果（第三阶段完成）</h3>
+<p>原4个巨型路由文件已全部拆分为目录模块：</p>
+<table>
+<thead>
+<tr>
+  <th>原文件</th>
+  <th>原行数</th>
+  <th>拆分后</th>
+  <th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td><code>orders.ts</code></td>
+  <td>3,365行</td>
+  <td><code>orders/</code> 目录 (5文件)</td>
+  <td>index + orderCrud + orderAudit + orderShipping + orderHelpers</td>
+</tr>
+<tr>
+  <td><code>system.ts</code></td>
+  <td>3,083行</td>
+  <td><code>system/</code> 目录 (5文件)</td>
+  <td>index + systemConfig + systemSettings + systemUpdate + systemHelpers</td>
+</tr>
+<tr>
+  <td><code>logistics.ts</code></td>
+  <td>2,475行</td>
+  <td><code>logistics/</code> 目录 (3文件)</td>
+  <td>index + logisticsCompany + logisticsStatus</td>
+</tr>
+<tr>
+  <td><code>valueAdded.ts</code></td>
+  <td>2,110行</td>
+  <td><code>valueAdded/</code> 目录 (4文件)</td>
+  <td>index + valueAddedCompany + valueAddedOrders + valueAddedHelpers</td>
+</tr>
+</tbody>
+</table>
+<h3>3.3 多租户隔离最新状态</h3>
+<p><strong>4月5日状态</strong>：全面覆盖 + 安全审计通过</p>
+<p>三层保护机制：</p>
+<table>
+<thead>
+<tr>
+  <th>层级</th>
+  <th>组件</th>
+  <th>功能</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>第1层</td>
+  <td><code>tenantContextMiddleware</code></td>
+  <td>AsyncLocalStorage 设置租户上下文</td>
+</tr>
+<tr>
+  <td>第2层</td>
+  <td><code>getTenantRepo()</code> Proxy</td>
+  <td>自动拦截 find/save/update/delete/createQueryBuilder，注入 tenant_id</td>
+</tr>
+<tr>
+  <td>第3层</td>
+  <td><code>tenantSQL()</code> / <code>tenantWHERE()</code></td>
+  <td>原生SQL场景的租户过滤辅助函数</td>
+</tr>
+</tbody>
+</table>
+<p>4月5日安全审计发现并修复3个问题：</p>
+<table>
+<thead>
+<tr>
+  <th>问题</th>
+  <th>风险</th>
+  <th>修复</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>auth.ts 用户查询无tenantId</td>
+  <td>中</td>
+  <td>添加tenantId到查询条件</td>
+</tr>
+<tr>
+  <td>auth.ts 缓存key无tenantId</td>
+  <td>中</td>
+  <td>缓存key格式改为 <code>auth:user:{tenantId}:{userId}</code></td>
+</tr>
+<tr>
+  <td>assignment.ts INSERT无tenant_id</td>
+  <td>高</td>
+  <td>单个+批量分配INSERT添加tenant_id</td>
+</tr>
+</tbody>
+</table>
+<h3>3.4 性能优化成果（第一、二阶段完成）</h3>
+<table>
+<thead>
+<tr>
+  <th>优化项</th>
+  <th>优化前</th>
+  <th>优化后</th>
+  <th>提升</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>Dashboard /metrics</td>
+  <td>4次全表查询+12次JS过滤</td>
+  <td>4次SQL聚合（每次1行）</td>
+  <td>~10倍</td>
+</tr>
+<tr>
+  <td>Dashboard /charts (月)</td>
+  <td>31次全表查询</td>
+  <td>1次GROUP BY聚合</td>
+  <td>~50倍</td>
+</tr>
+<tr>
+  <td>认证中间件</td>
+  <td>每次API请求1次DB查询</td>
+  <td>2分钟缓存</td>
+  <td>~60倍/分钟</td>
+</tr>
+<tr>
+  <td>系统配置查询</td>
+  <td>每次2-10次DB查询</td>
+  <td>5分钟缓存</td>
+  <td>~300倍/分钟</td>
+</tr>
+<tr>
+  <td>数据库索引</td>
+  <td>租户查询全表扫描</td>
+  <td>144个tenant相关索引</td>
+  <td>~100倍</td>
+</tr>
+<tr>
+  <td>唯一约束</td>
+  <td>全局唯一</td>
+  <td>租户级唯一(tenant_id+字段)</td>
+  <td>支持多租户</td>
+</tr>
+<tr>
+  <td>orders表索引</td>
+  <td>27个(冗余)</td>
+  <td>18个(精简)</td>
+  <td>写入+20-30%</td>
+</tr>
+</tbody>
+</table>
+<h3>3.5 缓存体系（更新）</h3>
+<table>
+<thead>
+<tr>
+  <th>层级</th>
+  <th>实现</th>
+  <th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>内存缓存</td>
+  <td><code>CacheService</code> Map + LRU</td>
+  <td>最大10000条，TTL支持，前缀批量删除</td>
+</tr>
+<tr>
+  <td>Redis缓存</td>
+  <td><code>RedisCacheProvider</code> (ioredis)</td>
+  <td>通过REDIS_URL环境变量启用，失败自动降级到内存</td>
+</tr>
+<tr>
+  <td>租户感知</td>
+  <td><code>tenantKey(tenantId, module, key)</code></td>
+  <td>格式 <code>t:{tenantId}:{module}:{key}</code></td>
+</tr>
+<tr>
+  <td>Proxy缓存</td>
+  <td><code>getTenantRepo</code> Map缓存</td>
+  <td>5分钟TTL，减少95% Proxy创建</td>
+</tr>
+<tr>
+  <td>认证缓存</td>
+  <td><code>auth:user:{tenantId}:{userId}</code></td>
+  <td>2分钟TTL，用户禁用时立即清除</td>
+</tr>
+</tbody>
+</table>
+<h3>3.6 定时任务体系（更新）</h3>
+<table>
+<thead>
+<tr>
+  <th>任务名</th>
+  <th>执行时间</th>
+  <th>说明</th>
+  <th>状态</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td><code>license-expiration-check</code></td>
+  <td>每天09:00</td>
+  <td>授权过期检查+提醒</td>
+  <td>原有</td>
+</tr>
+<tr>
+  <td><code>payment-reminder</code></td>
+  <td>每天10:00</td>
+  <td>即将到期支付提醒</td>
+  <td>原有</td>
+</tr>
+<tr>
+  <td><code>message-cleanup</code></td>
+  <td>每天02:00</td>
+  <td>过期消息清理</td>
+  <td>原有</td>
+</tr>
+<tr>
+  <td><code>timeout-reminder</code></td>
+  <td>每30分钟</td>
+  <td>订单超时提醒</td>
+  <td>原有</td>
+</tr>
+<tr>
+  <td><code>performance-report</code></td>
+  <td>每天08:30</td>
+  <td>业绩日报发送</td>
+  <td>原有</td>
+</tr>
+<tr>
+  <td><code>data-cleanup</code></td>
+  <td>每月1日03:00</td>
+  <td>日志表过期数据清理</td>
+  <td><strong>新增</strong></td>
+</tr>
+<tr>
+  <td><code>subscription-auto-deduct</code></td>
+  <td>每天01:00</td>
+  <td>订阅自动扣款</td>
+  <td><strong>新增</strong></td>
+</tr>
+<tr>
+  <td><code>subscription-deduct-retry</code></td>
+  <td>每天14:00</td>
+  <td>扣款失败重试(3次+7天宽限期)</td>
+  <td><strong>新增</strong></td>
+</tr>
+</tbody>
+</table>
+<h3>3.7 后端代码质量评价（更新）</h3>
+<h4>做得好的（较3月29日大幅改善）</h4>
+<ul>
+<li><strong>巨型路由已拆分</strong>：4个3000+行文件拆为4个目录17个文件</li>
+<li><strong>console.log全面替换</strong>：123个文件1815处替换为Winston logger</li>
+<li><strong>性能大幅提升</strong>：数据库索引144个 + SQL聚合替代内存过滤 + 多级缓存</li>
+<li><strong>密码加密统一</strong>：bcryptjs和pbkdf2并存问题已解决，统一为bcryptjs</li>
+<li><strong>Redis缓存就绪</strong>：支持多实例部署的Redis适配已完成</li>
+<li><strong>单元测试起步</strong>：3个测试套件36个测试用例覆盖核心工具</li>
+<li><strong>数据清理策略</strong>：日志/通知90天自动清理 + 租户过期数据清理功能</li>
+<li><strong>URL动态化</strong>：所有系统URL从 <code>config/sites.ts</code> 集中配置，支持环境变量覆盖</li>
+</ul>
+<h4>仍需改进的</h4>
+<ul>
+<li><strong>部分路由仍偏大</strong>：customers.ts(2,044行)、calls.ts(1,998行)、mobile.ts(1,793行) 未拆分</li>
+<li><strong>测试覆盖不足</strong>：仅3个测试文件，核心业务逻辑缺少测试</li>
+<li><strong>时区隐患</strong>：部分模块可能仍有 <code>new Date()</code> 未转北京时间</li>
+</ul>
+<hr>
+<h2>四、CRM主系统前端深度分析（更新）</h2>
+<h3>4.1 最新文件量统计</h3>
+<table>
+<thead>
+<tr>
+  <th>类型</th>
+  <th>3月29日</th>
+  <th>4月5日</th>
+  <th>变化</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>Vue组件(.vue)</td>
+  <td>242</td>
+  <td><strong>254</strong></td>
+  <td>+12（Settings子组件拆分新增11个）</td>
+</tr>
+<tr>
+  <td>TypeScript(.ts)</td>
+  <td>146</td>
+  <td><strong>151</strong></td>
+  <td>+5（测试+API+工具）</td>
+</tr>
+<tr>
+  <td>Pinia Store</td>
+  <td>20</td>
+  <td>20</td>
+  <td>稳定（user.ts已拆分为5个子文件）</td>
+</tr>
+<tr>
+  <td>API Service</td>
+  <td>39</td>
+  <td><strong>41</strong></td>
+  <td>+2（customer stats + service report）</td>
+</tr>
+</tbody>
+</table>
+<h3>4.2 前端组件拆分成果（第三阶段完成）</h3>
+<table>
+<thead>
+<tr>
+  <th>组件</th>
+  <th>拆分前</th>
+  <th>拆分后</th>
+  <th>改善</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td><strong>Settings/index.vue</strong></td>
+  <td>6,512行(全部内联)</td>
+  <td>388行(骨架)</td>
+  <td><strong>-94%</strong>，拆为14个子组件</td>
+</tr>
+<tr>
+  <td><strong>CallManagement.vue</strong></td>
+  <td>6,655行(含死代码)</td>
+  <td>5,069行</td>
+  <td><strong>-24%</strong>，移除716行旧版弹窗+死代码</td>
+</tr>
+<tr>
+  <td><strong>System/Role.vue</strong></td>
+  <td>4,636行</td>
+  <td>已拆分</td>
+  <td>提取子组件</td>
+</tr>
+<tr>
+  <td><strong>user.ts Store</strong></td>
+  <td>1,374行(职责混杂)</td>
+  <td>58行协调器+4个子模块</td>
+  <td><strong>-96%</strong>主文件，总-24%</td>
+</tr>
+</tbody>
+</table>
+<p>Settings子组件清单（本次新增11个）：</p>
+<p>SecuritySettings / CallSettings / EmailSettings / SmsSettings / StorageSettings / ProductSettings / MonitorSettings / BackupSettings / AgreementSettings / MobileSettings / LogsSettings</p>
+<h3>4.3 API层统一（第三阶段完成）</h3>
+<table>
+<thead>
+<tr>
+  <th>项目</th>
+  <th>改造前</th>
+  <th>改造后</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>HTTP工具</td>
+  <td>fetch(api/request.ts) + axios(utils/request.ts) 并存</td>
+  <td>统一为axios适配器</td>
+</tr>
+<tr>
+  <td>api/request.ts</td>
+  <td>175行 原生fetch实现</td>
+  <td>适配器，委托给utils/request.ts的axios</td>
+</tr>
+<tr>
+  <td>消费者文件</td>
+  <td>20+文件引用api/request</td>
+  <td><strong>零修改</strong>，保持导出接口不变</td>
+</tr>
+<tr>
+  <td>Token管理</td>
+  <td>两套拦截器</td>
+  <td>统一axios拦截器</td>
+</tr>
+</tbody>
+</table>
+<h3>4.4 其他前端改进</h3>
+<table>
+<thead>
+<tr>
+  <th>改进项</th>
+  <th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>permissionService统一</td>
+  <td>删除了.js备份版本，仅保留.ts版</td>
+</tr>
+<tr>
+  <td>遗留文件清理</td>
+  <td>删除14个备份/测试/示例文件</td>
+</tr>
+<tr>
+  <td>地址数据外置</td>
+  <td>addressData.ts从51,780行改为134行懒加载，数据移到public/data/address.json</td>
+</tr>
+<tr>
+  <td>localStorage优化</td>
+  <td>5个Store添加exclude排除大数据集</td>
+</tr>
+<tr>
+  <td>搜索改为后端分页</td>
+  <td>SearchNew.vue从全量加载改为调用/data/search-customer API</td>
+</tr>
+<tr>
+  <td>客户统计独立接口</td>
+  <td>新增GET /customers/stats端点，30秒缓存，异步并行加载</td>
+</tr>
+<tr>
+  <td>到期提醒弹窗</td>
+  <td>添加会员中心续费入口链接</td>
+</tr>
+</tbody>
+</table>
+<h3>4.5 前端代码质量评价（更新）</h3>
+<h4>优点（大幅改善）</h4>
+<ul>
+<li><strong>Settings.vue从6512行降至388行</strong>：11个Tab全部组件化</li>
+<li><strong>API层统一</strong>：fetch+axios并存问题已解决</li>
+<li><strong>Store职责清晰</strong>：user.ts拆分为认证/权限/用户管理3个独立模块</li>
+<li><strong>地址数据外置</strong>：不再内嵌5万行数据文件</li>
+<li><strong>搜索性能优化</strong>：从全量加载改为后端分页搜索</li>
+</ul>
+<h4>仍需改进</h4>
+<ul>
+<li><strong>部分大组件未拆</strong>：CallManagement.vue仍有5,069行</li>
+<li><strong>Order/Detail.vue和Customer/Detail.vue</strong>：各约4,100行</li>
+<li><strong>前端单元测试</strong>：仅2个测试套件21个用例</li>
+</ul>
+<hr>
+<h2>五、Admin管理后台深度分析（更新）</h2>
+<h3>5.1 最新代码量统计</h3>
+<table>
+<thead>
+<tr>
+  <th>类型</th>
+  <th>3月29日</th>
+  <th>4月5日</th>
+  <th>变化</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>Vue组件(.vue)</td>
+  <td>33</td>
+  <td><strong>40</strong></td>
+  <td>+7（Capacity/PriceConfig、角色权限等）</td>
+</tr>
+<tr>
+  <td>TypeScript(.ts)</td>
+  <td>9</td>
+  <td><strong>11</strong></td>
+  <td>+2（types/admin.ts、api/capacity）</td>
+</tr>
+<tr>
+  <td><strong>合计</strong></td>
+  <td><strong>42</strong></td>
+  <td><strong>51</strong></td>
+  <td>+9</td>
+</tr>
+</tbody>
+</table>
+<h3>5.2 新增功能模块（3月30日~4月5日）</h3>
+<table>
+<thead>
+<tr>
+  <th>功能</th>
+  <th>新增日期</th>
+  <th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td><strong>登录验证码</strong></td>
+  <td>04-01</td>
+  <td>svg-captcha 4位彩色字符 + 2分钟有效 + 用后即弃</td>
+</tr>
+<tr>
+  <td><strong>API层类型安全</strong></td>
+  <td>04-01</td>
+  <td>admin.ts所有API参数从any替换为具体类型</td>
+</tr>
+<tr>
+  <td><strong>客户回收站</strong></td>
+  <td>04-02</td>
+  <td>租户/私有客户删除进回收站，支持恢复</td>
+</tr>
+<tr>
+  <td><strong>角色权限RBAC</strong></td>
+  <td>04-04</td>
+  <td>Admin后台独立角色权限控制系统</td>
+</tr>
+<tr>
+  <td><strong>扩容价格管理</strong></td>
+  <td>04-05</td>
+  <td>套餐管理下新增扩容管理子菜单</td>
+</tr>
+<tr>
+  <td><strong>数据清理功能</strong></td>
+  <td>04-05</td>
+  <td>过期租户数据清理（两步确认+事务安全）</td>
+</tr>
+<tr>
+  <td><strong>邮件设置审查修复</strong></td>
+  <td>04-02</td>
+  <td>SMTP配置 + 测试发送功能修复</td>
+</tr>
+<tr>
+  <td><strong>版本更新系统</strong></td>
+  <td>04-03</td>
+  <td>版本发布 + 更新提醒 + 一键更新</td>
+</tr>
+<tr>
+  <td><strong>续费提醒功能</strong></td>
+  <td>04-03</td>
+  <td>即将到期租户自动提醒</td>
+</tr>
+<tr>
+  <td><strong>管理员密码重置</strong></td>
+  <td>04-03</td>
+  <td>超管可重置其他管理员密码</td>
+</tr>
+</tbody>
+</table>
+<h3>5.3 Admin代码质量评价（更新）</h3>
+<h4>优点</h4>
+<ul>
+<li><strong>功能日趋完善</strong>：RBAC权限 + 验证码 + 回收站 + 扩容 + 版本更新</li>
+<li><strong>API类型安全</strong>：全面从any替换为具体TypeScript接口</li>
+<li><strong>安全加固</strong>：验证码防暴力破解 + ESLint规则与主前端对齐</li>
+</ul>
+<h4>待改进</h4>
+<ul>
+<li><strong>部分页面偏大</strong>：Detail.vue(1,547行)、Config.vue(1,598行)</li>
+<li><strong>ECharts 6 API兼容</strong>：部分图表使用占位数据</li>
+</ul>
+<hr>
+<h2>六、Website官网深度分析（更新）</h2>
+<h3>6.1 最新代码量统计</h3>
+<table>
+<thead>
+<tr>
+  <th>类型</th>
+  <th>3月29日</th>
+  <th>4月5日</th>
+  <th>变化</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>Vue组件(.vue)</td>
+  <td>15</td>
+  <td><strong>25</strong></td>
+  <td>+10（会员中心8页 + MemberLayout + Capacity）</td>
+</tr>
+<tr>
+  <td>TypeScript(.ts)</td>
+  <td>4</td>
+  <td><strong>10</strong></td>
+  <td>+6（member/subscription/capacity/docs等API）</td>
+</tr>
+<tr>
+  <td>SCSS样式</td>
+  <td>2</td>
+  <td>2</td>
+  <td>稳定</td>
+</tr>
+<tr>
+  <td>Markdown文档</td>
+  <td>0</td>
+  <td><strong>24</strong></td>
+  <td>+24（帮助文档从硬编码迁移）</td>
+</tr>
+</tbody>
+</table>
+<h3>6.2 会员中心页面（全新模块）</h3>
+<table>
+<thead>
+<tr>
+  <th>页面</th>
+  <th>行数</th>
+  <th>功能</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td><code>member/Login.vue</code></td>
+  <td>~400</td>
+  <td>密码/验证码登录 + 多租户选择</td>
+</tr>
+<tr>
+  <td><code>member/Dashboard.vue</code></td>
+  <td>~500</td>
+  <td>概览 + 到期弹窗提醒 + 续费入口</td>
+</tr>
+<tr>
+  <td><code>member/Profile.vue</code></td>
+  <td>~400</td>
+  <td>企业信息查看/修改</td>
+</tr>
+<tr>
+  <td><code>member/Subscription.vue</code></td>
+  <td>~500</td>
+  <td>订阅管理 + 签约/解约</td>
+</tr>
+<tr>
+  <td><code>member/Bills.vue</code></td>
+  <td>~300</td>
+  <td>账单记录 + 历史查询</td>
+</tr>
+<tr>
+  <td><code>member/License.vue</code></td>
+  <td>~300</td>
+  <td>授权信息查看</td>
+</tr>
+<tr>
+  <td><code>member/Password.vue</code></td>
+  <td>~200</td>
+  <td>修改密码</td>
+</tr>
+<tr>
+  <td><code>member/Renew.vue</code></td>
+  <td>~300</td>
+  <td>续费升级页面</td>
+</tr>
+<tr>
+  <td><code>member/Capacity.vue</code></td>
+  <td>~400</td>
+  <td>扩容管理页面</td>
+</tr>
+<tr>
+  <td><code>MemberLayout.vue</code></td>
+  <td>~250</td>
+  <td>会员中心侧边栏布局</td>
+</tr>
+</tbody>
+</table>
+<h3>6.3 官网改进项</h3>
+<table>
+<thead>
+<tr>
+  <th>改进</th>
+  <th>日期</th>
+  <th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td><strong>SEO优化</strong></td>
+  <td>04-01</td>
+  <td>robots.txt + sitemap.xml + OG标签 + JSON-LD结构化数据 + 动态title</td>
+</tr>
+<tr>
+  <td><strong>文档Markdown化</strong></td>
+  <td>04-02</td>
+  <td>24篇文档从Vue组件内嵌HTML迁移为独立.md文件</td>
+</tr>
+<tr>
+  <td><strong>信息动态化</strong></td>
+  <td>04-03</td>
+  <td>版本号/价格/公司信息从后端API动态获取</td>
+</tr>
+<tr>
+  <td><strong>注册流程改造</strong></td>
+  <td>04-04</td>
+  <td>新增密码设置 + 自动续费选项 + 订阅支付模式</td>
+</tr>
+<tr>
+  <td><strong>URL动态化</strong></td>
+  <td>04-05</td>
+  <td>所有硬编码域名改为从后端SITE_CONFIG动态获取</td>
+</tr>
+</tbody>
+</table>
+<h3>6.4 官网代码质量评价（更新）</h3>
+<h4>优点</h4>
+<ul>
+<li><strong>会员中心完整</strong>：10个页面覆盖登录/概览/资料/订阅/账单/授权/扩容</li>
+<li><strong>文档系统改善</strong>：从875行硬编码HTML变为24个独立Markdown文件</li>
+<li><strong>SEO基础完善</strong>：robots.txt/sitemap.xml/OG/JSON-LD/动态title</li>
+<li><strong>零硬编码域名</strong>：全部从API动态获取</li>
+</ul>
+<h4>待改进</h4>
+<ul>
+<li><strong>Register.vue仍偏大</strong>：1,631行+新增订阅逻辑</li>
+<li><strong>SSR/SSG未实施</strong>：SPA架构SEO仍有局限</li>
+</ul>
+<hr>
+<h2>七、crmAPP移动端深度分析（更新）</h2>
+<h3>7.1 代码量统计</h3>
+<table>
+<thead>
+<tr>
+  <th>类型</th>
+  <th>3月29日</th>
+  <th>4月5日</th>
+  <th>变化</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>Vue组件(.vue)</td>
+  <td>18</td>
+  <td>18</td>
+  <td>稳定</td>
+</tr>
+<tr>
+  <td>TypeScript(.ts)</td>
+  <td>14</td>
+  <td>16</td>
+  <td>+2（crypto.ts + config/app.ts）</td>
+</tr>
+</tbody>
+</table>
+<h3>7.2 移动端改进（第四、五阶段）</h3>
+<table>
+<thead>
+<tr>
+  <th>改进</th>
+  <th>日期</th>
+  <th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td><strong>Token加密存储</strong></td>
+  <td>04-01</td>
+  <td>XOR+Base64加密，ENC:前缀标识，向下兼容明文</td>
+</tr>
+<tr>
+  <td><strong>版本号统一管理</strong></td>
+  <td>04-01</td>
+  <td>config/app.ts 集中管理APP_VERSION/APP_NAME/APP_SLOGAN</td>
+</tr>
+<tr>
+  <td><strong>静音/免提真实实现</strong></td>
+  <td>04-01</td>
+  <td>调用Android AudioManager API，H5降级为UI模拟</td>
+</tr>
+<tr>
+  <td><strong>服务器地址隐私保护</strong></td>
+  <td>04-01</td>
+  <td>IP/域名脱敏显示（登录页+设置页）</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2>八、多租户系统分析（更新）</h2>
+<h3>8.1 隔离覆盖进度</h3>
+<table>
+<thead>
+<tr>
+  <th>里程碑</th>
+  <th>日期</th>
+  <th>状态</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>核心框架搭建</td>
+  <td>3月22日前</td>
+  <td>getTenantRepo + tenantSQL</td>
+</tr>
+<tr>
+  <td>16模块全覆盖</td>
+  <td>3月23-26日</td>
+  <td>75+表注册到TENANT_ENTITIES</td>
+</tr>
+<tr>
+  <td>性能审查+索引优化</td>
+  <td>3月29-30日</td>
+  <td>30项建议 + 144个索引</td>
+</tr>
+<tr>
+  <td>全面安全审计</td>
+  <td>4月5日</td>
+  <td>3个漏洞修复，通过审查</td>
+</tr>
+</tbody>
+</table>
+<h3>8.2 多租户安全审计结果（4月5日）</h3>
+<p>审查覆盖：后端所有路由（40+文件）、中间件（13文件）、服务层（46文件）</p>
+<table>
+<thead>
+<tr>
+  <th>路由文件</th>
+  <th>隔离状态</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>customers.ts</td>
+  <td>getTenantRepo(Customer)</td>
+</tr>
+<tr>
+  <td>orders/orderCrud.ts</td>
+  <td>getTenantRepo(Order)</td>
+</tr>
+<tr>
+  <td>products.ts</td>
+  <td>getTenantRepo(Product)</td>
+</tr>
+<tr>
+  <td>finance.ts</td>
+  <td>getTenantRepo(Order)</td>
+</tr>
+<tr>
+  <td>dashboard.ts</td>
+  <td>tenantSQL() 原生SQL</td>
+</tr>
+<tr>
+  <td>performance.ts</td>
+  <td>getTenantRepo() + 原生SQL带tenant_id</td>
+</tr>
+<tr>
+  <td>services.ts</td>
+  <td>getTenantRepo(AfterSalesService)</td>
+</tr>
+<tr>
+  <td>roles.ts</td>
+  <td>getTenantRepo(Role)</td>
+</tr>
+<tr>
+  <td>message.ts</td>
+  <td>getTenantRepo()</td>
+</tr>
+<tr>
+  <td>assignment.ts</td>
+  <td>tenantSQL() + tenant_id写入（已修复）</td>
+</tr>
+<tr>
+  <td>...其他所有路由</td>
+  <td>全部通过</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2>九、会员中心与订阅付费系统（新增）</h2>
+<h3>9.1 架构设计</h3>
+<pre><code>官网 --&gt; /member/login --&gt; memberAuth JWT认证
+  |
+  +--&gt; Dashboard（概览 + 到期提醒）
+  +--&gt; Profile（企业信息）
+  +--&gt; Subscription（订阅管理：签约/查询/解约）
+  +--&gt; Bills（账单记录）
+  +--&gt; License（授权信息）
+  +--&gt; Renew（续费升级）
+  +--&gt; Capacity（扩容管理）
+  +--&gt; Password（修改密码）
+</code></pre>
+<h3>9.2 新增文件清单</h3>
+<p><strong>后端（6个新文件）：</strong></p>
+<ul>
+<li><code>middleware/memberAuth.ts</code> - 会员JWT认证中间件</li>
+<li><code>services/MemberService.ts</code> (~550行) - 会员服务</li>
+<li><code>services/SubscriptionService.ts</code> (~790行) - 订阅服务</li>
+<li><code>routes/public/member.ts</code> - 会员中心API（9个接口）</li>
+<li><code>routes/public/subscription.ts</code> - 订阅管理API（8个接口）</li>
+<li><code>routes/public/capacity.ts</code> - 扩容管理API</li>
+</ul>
+<p><strong>官网前端（12个新文件）：</strong></p>
+<ul>
+<li><code>api/member.ts</code> / <code>api/subscription.ts</code> / <code>api/capacity.ts</code></li>
+<li><code>components/MemberLayout.vue</code></li>
+<li><code>views/member/</code> 下 8个页面</li>
+</ul>
+<h3>9.3 订阅付费流程</h3>
+<pre><code>租户注册/续费 --&gt; 选择套餐 --&gt; 订阅模式/正常支付 --&gt; 微信/支付宝
+                                    |
+                          （订阅模式）签约委托代扣
+                                    |
+                          每月自动扣款（SubscriptionService）
+                                    |
+                          扣款失败 --&gt; 重试3次（1天/2天/2天间隔）
+                                    |
+                          宽限期7天 --&gt; 过期 --&gt; 暂停服务
+</code></pre>
+<h3>9.4 数据库变更</h3>
+<p>新增3张表：<code>subscriptions</code>、<code>subscription_deduct_logs</code>、<code>member_login_logs</code></p>
+<p>新增字段：<code>tenant_packages</code> 增加3个订阅字段，<code>tenants</code> 增加 password_hash / last_login_at</p>
+<hr>
+<h2>十、扩容管理系统（新增）</h2>
+<h3>10.1 功能概述</h3>
+<p>支持租户独立购买额外用户数和存储空间，不需要升级套餐：</p>
+<table>
+<thead>
+<tr>
+  <th>扩容类型</th>
+  <th>说明</th>
+  <th>累加方式</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>用户数扩容</td>
+  <td>购买额外N个用户席位</td>
+  <td>tenants.extra_users += N, max_users同步更新</td>
+</tr>
+<tr>
+  <td>存储空间扩容</td>
+  <td>购买额外N GB存储</td>
+  <td>tenants.extra_storage_gb += N, max_storage_gb同步更新</td>
+</tr>
+</tbody>
+</table>
+<h3>10.2 安全修复（验收审查发现7个问题）</h3>
+<table>
+<thead>
+<tr>
+  <th>问题</th>
+  <th>严重度</th>
+  <th>修复</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>activateCapacity竞态条件</td>
+  <td>严重</td>
+  <td>改为原子CAS操作</td>
+</tr>
+<tr>
+  <td>自动关闭误杀扩容订单</td>
+  <td>严重</td>
+  <td>扩容/套餐订单独立处理</td>
+</tr>
+<tr>
+  <td>类型与价格不匹配</td>
+  <td>严重</td>
+  <td>添加type校验</td>
+</tr>
+<tr>
+  <td>退款状态语义不一致</td>
+  <td>中</td>
+  <td>ENUM新增refunded值</td>
+</tr>
+<tr>
+  <td>CSV导出缺订单类型列</td>
+  <td>中</td>
+  <td>新增列</td>
+</tr>
+<tr>
+  <td>价格配置缺业务校验</td>
+  <td>中</td>
+  <td>单价>0 + min<=max校验</td>
+</tr>
+<tr>
+  <td>未校验租户状态</td>
+  <td>中</td>
+  <td>暂停/过期租户禁止扩容</td>
+</tr>
+</tbody>
+</table>
+<h3>10.3 续费保留机制</h3>
+<p>套餐续费时保留扩容额度：</p>
+<pre><code>max_users = 新套餐基础用户数 + COALESCE(extra_users, 0)
+max_storage_gb = 新套餐基础存储 + COALESCE(extra_storage_gb, 0)
+</code></pre>
+<hr>
+<h2>十一、2026-03-30至04-05工作内容汇总</h2>
+<h3>11.1 五阶段系统优化（41项全部完成）</h3>
+<h4>第一阶段：数据库性能紧急优化（6项，03-30完成）</h4>
+<table>
+<thead>
+<tr>
+  <th>序号</th>
+  <th>任务</th>
+  <th>状态</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>1.1</td>
+  <td>核心业务表添加 tenant_id 列和单列索引（24张表）</td>
+  <td>✅ 完成</td>
+</tr>
+<tr>
+  <td>1.2</td>
+  <td>添加复合索引 tenant_id + 业务字段（23个复合索引）</td>
+  <td>✅ 完成</td>
+</tr>
+<tr>
+  <td>1.3</td>
+  <td>修复唯一索引为租户级唯一（customers + orders）</td>
+  <td>✅ 完成</td>
+</tr>
+<tr>
+  <td>1.4</td>
+  <td>清理 orders 表冗余索引（27个降至18个）</td>
+  <td>✅ 完成</td>
+</tr>
+<tr>
+  <td>1.5</td>
+  <td>增加数据库连接池上限（50连接+keepAlive）</td>
+  <td>✅ 已确认</td>
+</tr>
+<tr>
+  <td>1.6</td>
+  <td>日志表添加过期清理策略（90天自动清理）</td>
+  <td>✅ 完成</td>
+</tr>
+</tbody>
+</table>
+<h4>第二阶段：后端关键性能修复（8项，03-30完成）</h4>
+<table>
+<thead>
+<tr>
+  <th>序号</th>
+  <th>任务</th>
+  <th>状态</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>2.1</td>
+  <td>修复客户列表 N+1 查询（批量IN查询）</td>
+  <td>✅ 已确认</td>
+</tr>
+<tr>
+  <td>2.2</td>
+  <td>修复客户统计全量查询（LEFT JOIN替代NOT IN）</td>
+  <td>✅ 完成</td>
+</tr>
+<tr>
+  <td>2.3</td>
+  <td>Dashboard SQL聚合替代内存过滤（最关键优化）</td>
+  <td>✅ 完成</td>
+</tr>
+<tr>
+  <td>2.4</td>
+  <td>BaseRepository 租户字段缓存优化</td>
+  <td>✅ 完成</td>
+</tr>
+<tr>
+  <td>2.5</td>
+  <td>认证中间件用户信息缓存（2分钟TTL）</td>
+  <td>✅ 完成</td>
+</tr>
+<tr>
+  <td>2.6</td>
+  <td>getTenantRepo Proxy 缓存优化（5分钟TTL）</td>
+  <td>✅ 完成</td>
+</tr>
+<tr>
+  <td>2.7</td>
+  <td>CacheService 添加租户感知 + LRU容量限制</td>
+  <td>✅ 完成</td>
+</tr>
+<tr>
+  <td>2.8</td>
+  <td>系统配置查询添加缓存（5分钟TTL）</td>
+  <td>✅ 完成</td>
+</tr>
+</tbody>
+</table>
+<h4>第三阶段：代码质量治理（12项，03-30~03-31完成）</h4>
+<table>
+<thead>
+<tr>
+  <th>序号</th>
+  <th>任务</th>
+  <th>状态</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>3.1</td>
+  <td>后端巨型路由文件拆分（4个文件拆为4个目录17文件）</td>
+  <td>✅ 完成</td>
+</tr>
+<tr>
+  <td>3.2</td>
+  <td>前端超大组件拆分（Settings -94%, CallMgmt -24%）</td>
+  <td>✅ 完成</td>
+</tr>
+<tr>
+  <td>3.3</td>
+  <td>统一前端API层 fetch转axios适配器</td>
+  <td>✅ 完成</td>
+</tr>
+<tr>
+  <td>3.4</td>
+  <td>合并permissionService双版本（删除.js版）</td>
+  <td>✅ 完成</td>
+</tr>
+<tr>
+  <td>3.5</td>
+  <td>Pinia Store user.ts职责拆分（拆为5个子文件）</td>
+  <td>✅ 完成</td>
+</tr>
+<tr>
+  <td>3.6</td>
+  <td>清理遗留/备份文件（删除14个文件）</td>
+  <td>✅ 完成</td>
+</tr>
+<tr>
+  <td>3.7</td>
+  <td>分离前后端依赖（移除sharp）</td>
+  <td>✅ 完成</td>
+</tr>
+<tr>
+  <td>3.8</td>
+  <td>console.log替换为Winston logger（123文件1815处）</td>
+  <td>✅ 完成</td>
+</tr>
+<tr>
+  <td>3.9</td>
+  <td>订单详情页避免加载全部客户</td>
+  <td>✅ 已确认</td>
+</tr>
+<tr>
+  <td>3.10</td>
+  <td>搜索页改为后端分页搜索</td>
+  <td>✅ 完成</td>
+</tr>
+<tr>
+  <td>3.11</td>
+  <td>客户列表统计数据独立接口（30秒缓存）</td>
+  <td>✅ 完成</td>
+</tr>
+<tr>
+  <td>3.12</td>
+  <td>地址数据外置（51,780行改为134行懒加载）</td>
+  <td>✅ 已确认</td>
+</tr>
+</tbody>
+</table>
+<h4>第四阶段：安全加固与规范统一（8项，04-01完成）</h4>
+<table>
+<thead>
+<tr>
+  <th>序号</th>
+  <th>任务</th>
+  <th>状态</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>4.1</td>
+  <td>统一密码加密方案（全部改为bcryptjs）</td>
+  <td>✅ 完成</td>
+</tr>
+<tr>
+  <td>4.2</td>
+  <td>crmAPP Token加密存储（XOR+Base64）</td>
+  <td>✅ 完成</td>
+</tr>
+<tr>
+  <td>4.3</td>
+  <td>Admin后台登录添加验证码（svg-captcha）</td>
+  <td>✅ 完成</td>
+</tr>
+<tr>
+  <td>4.4</td>
+  <td>Admin API层any类型替换为具体接口</td>
+  <td>✅ 完成</td>
+</tr>
+<tr>
+  <td>4.5</td>
+  <td>TypeScript strict模式逐步启用</td>
+  <td>✅ 已确认</td>
+</tr>
+<tr>
+  <td>4.6</td>
+  <td>更新.gitignore规则</td>
+  <td>✅ 完成</td>
+</tr>
+<tr>
+  <td>4.7</td>
+  <td>ESLint规则统一（Admin对齐主前端）</td>
+  <td>✅ 完成</td>
+</tr>
+<tr>
+  <td>4.8</td>
+  <td>前端localStorage持久化优化（5个Store排除大数据）</td>
+  <td>✅ 完成</td>
+</tr>
+</tbody>
+</table>
+<h4>第五阶段：体验提升与长期优化（7项，04-01~04-02完成）</h4>
+<table>
+<thead>
+<tr>
+  <th>序号</th>
+  <th>任务</th>
+  <th>状态</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>5.1</td>
+  <td>官网SEO优化（robots/sitemap/OG/JSON-LD/动态title）</td>
+  <td>✅ 完成</td>
+</tr>
+<tr>
+  <td>5.2</td>
+  <td>官网文档系统Markdown化（24篇MD文件）</td>
+  <td>✅ 完成</td>
+</tr>
+<tr>
+  <td>5.3</td>
+  <td>APP静音/免提真实实现（AudioManager API）</td>
+  <td>✅ 完成</td>
+</tr>
+<tr>
+  <td>5.4</td>
+  <td>APP版本号统一管理（config/app.ts）</td>
+  <td>✅ 完成</td>
+</tr>
+<tr>
+  <td>5.5</td>
+  <td>售后统计报表增强（日趋势+时长分布+环比）</td>
+  <td>✅ 完成</td>
+</tr>
+<tr>
+  <td>5.6</td>
+  <td>Redis缓存适配（ioredis + 自动降级）</td>
+  <td>✅ 完成</td>
+</tr>
+<tr>
+  <td>5.7</td>
+  <td>基础单元测试框架（后端36测试 + 前端21测试）</td>
+  <td>✅ 完成</td>
+</tr>
+</tbody>
+</table>
+<h3>11.2 功能开发任务（04-02至04-05）</h3>
+<table>
+<thead>
+<tr>
+  <th>日期</th>
+  <th>任务</th>
+  <th>分类</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>04-02</td>
+  <td>SaaS模式RSA签名保护机制</td>
+  <td>安全</td>
+</tr>
+<tr>
+  <td>04-02</td>
+  <td>OSS阿里云存储连接测试失败修复</td>
+  <td>Bug修复</td>
+</tr>
+<tr>
+  <td>04-02</td>
+  <td>Admin邮件设置功能审查与修复</td>
+  <td>Bug修复</td>
+</tr>
+<tr>
+  <td>04-02</td>
+  <td>管理后台客户删除回收站功能</td>
+  <td>功能新增</td>
+</tr>
+<tr>
+  <td>04-03</td>
+  <td>Admin套餐显示修复与官网信息动态化配置</td>
+  <td>功能优化</td>
+</tr>
+<tr>
+  <td>04-03</td>
+  <td>Admin数据看板验证日志与底部版权信息修复</td>
+  <td>Bug修复</td>
+</tr>
+<tr>
+  <td>04-03</td>
+  <td>通知模板中文编码乱码修复</td>
+  <td>Bug修复</td>
+</tr>
+<tr>
+  <td>04-03</td>
+  <td>官网协议路由与免费试用按钮及版本价格动态化</td>
+  <td>功能优化</td>
+</tr>
+<tr>
+  <td>04-03</td>
+  <td>官网帮助文档全面修复与CRM实际功能对齐</td>
+  <td>功能优化</td>
+</tr>
+<tr>
+  <td>04-03</td>
+  <td>数据库Schema注册表审查与完善</td>
+  <td>架构优化</td>
+</tr>
+<tr>
+  <td>04-03</td>
+  <td>版本更新提醒与一键更新系统</td>
+  <td>功能新增</td>
+</tr>
+<tr>
+  <td>04-03</td>
+  <td>管理后台客户管理一级菜单与续费提醒功能</td>
+  <td>功能新增</td>
+</tr>
+<tr>
+  <td>04-03</td>
+  <td>管理后台客户管理员密码重置功能</td>
+  <td>功能新增</td>
+</tr>
+<tr>
+  <td>04-04</td>
+  <td>会员中心与订阅付费 Phase A-D（4阶段）</td>
+  <td>功能新增(大型)</td>
+</tr>
+<tr>
+  <td>04-04</td>
+  <td>官网注册页订阅自动续费选项展示修复</td>
+  <td>Bug修复</td>
+</tr>
+<tr>
+  <td>04-04</td>
+  <td>订阅状态可视化与套餐订阅配置</td>
+  <td>功能优化</td>
+</tr>
+<tr>
+  <td>04-04</td>
+  <td>订阅配置增强与私有客户标签修正</td>
+  <td>功能优化</td>
+</tr>
+<tr>
+  <td>04-04</td>
+  <td>私有部署交付任务（方案+执行）</td>
+  <td>交付</td>
+</tr>
+<tr>
+  <td>04-04</td>
+  <td>管理后台角色权限控制系统</td>
+  <td>功能新增</td>
+</tr>
+<tr>
+  <td>04-04</td>
+  <td>会员中心订阅升级与数据隔离修复（2阶段）</td>
+  <td>功能修复</td>
+</tr>
+<tr>
+  <td>04-05</td>
+  <td>会员中心到期提醒续费与扩容管理</td>
+  <td>功能新增(大型)</td>
+</tr>
+<tr>
+  <td>04-05</td>
+  <td>扩容管理阶段4：支付闭环与数据隔离</td>
+  <td>功能新增</td>
+</tr>
+<tr>
+  <td>04-05</td>
+  <td>扩容管理验收审查与漏洞修复（7个问题）</td>
+  <td>安全修复</td>
+</tr>
+<tr>
+  <td>04-05</td>
+  <td>扩容管理功能完整实现与客户详情扩容记录</td>
+  <td>功能完善</td>
+</tr>
+<tr>
+  <td>04-05</td>
+  <td>Admin后台刷新保留页面与支付管理修复</td>
+  <td>Bug修复</td>
+</tr>
+<tr>
+  <td>04-05</td>
+  <td>CRM到期提醒弹窗添加会员中心续费入口</td>
+  <td>功能优化</td>
+</tr>
+<tr>
+  <td>04-05</td>
+  <td>会员中心多问题修复（支付弹窗与订阅逻辑）</td>
+  <td>Bug修复</td>
+</tr>
+<tr>
+  <td>04-05</td>
+  <td>会员中心账单记录列宽与操作按钮横向优化</td>
+  <td>UI优化</td>
+</tr>
+<tr>
+  <td>04-05</td>
+  <td>订阅扣款通知与支付成功邮件通知修复</td>
+  <td>Bug修复</td>
+</tr>
+<tr>
+  <td>04-05</td>
+  <td>订阅状态同步与管理员通知</td>
+  <td>功能优化</td>
+</tr>
+<tr>
+  <td>04-05</td>
+  <td>系统URL地址动态化消除硬编码域名</td>
+  <td>架构优化</td>
+</tr>
+<tr>
+  <td>04-05</td>
+  <td>安全漏洞审计报告 + 修复执行记录</td>
+  <td>安全审计</td>
+</tr>
+<tr>
+  <td>04-05</td>
+  <td>清理不活跃过期客户数据功能</td>
+  <td>功能新增</td>
+</tr>
+<tr>
+  <td>04-05</td>
+  <td>私有部署支付成功页部署引导与数据隔离审查</td>
+  <td>交付</td>
+</tr>
+<tr>
+  <td>04-05</td>
+  <td>官网套餐注册全路径流程分析与流程图</td>
+  <td>文档</td>
+</tr>
+<tr>
+  <td>04-05</td>
+  <td>项目全面交付审查（3阶段）</td>
+  <td>审查</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2>十二、跨项目共性问题（更新）</h2>
+<h3>12.1 已解决的问题（3月29日至4月5日）</h3>
+<table>
+<thead>
+<tr>
+  <th>#</th>
+  <th>问题</th>
+  <th>3月29日状态</th>
+  <th>4月5日状态</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>1</td>
+  <td>巨型文件</td>
+  <td>后端最大3,365行 前端最大7,036行</td>
+  <td>✅ 后端已拆分 前端Settings-94%</td>
+</tr>
+<tr>
+  <td>2</td>
+  <td>零测试覆盖</td>
+  <td>4个子项目均无测试</td>
+  <td>✅ 后端36测试+前端21测试</td>
+</tr>
+<tr>
+  <td>3</td>
+  <td>前后端依赖混合</td>
+  <td>package.json含express/mysql2等</td>
+  <td>✅ 已移除sharp 其余已确认前端使用</td>
+</tr>
+<tr>
+  <td>4</td>
+  <td>N+1查询问题</td>
+  <td>8处严重</td>
+  <td>✅ Dashboard/客户统计全面修复</td>
+</tr>
+<tr>
+  <td>5</td>
+  <td>数据库索引缺失</td>
+  <td>核心表缺tenant_id索引</td>
+  <td>✅ 144个索引已创建</td>
+</tr>
+<tr>
+  <td>6</td>
+  <td>console.log残留</td>
+  <td>全项目大量使用</td>
+  <td>✅ 123文件1815处替换为Winston</td>
+</tr>
+<tr>
+  <td>7</td>
+  <td>API层不统一</td>
+  <td>CRM前端fetch+axios并存</td>
+  <td>✅ 统一为axios适配器</td>
+</tr>
+<tr>
+  <td>8</td>
+  <td>遗留备份文件</td>
+  <td>含logistics.ts~等</td>
+  <td>✅ 删除14个遗留文件</td>
+</tr>
+<tr>
+  <td>9</td>
+  <td>APP密码明文存储</td>
+  <td>uni.setStorageSync直接存储</td>
+  <td>✅ XOR+Base64加密存储</td>
+</tr>
+<tr>
+  <td>10</td>
+  <td>官网SEO薄弱</td>
+  <td>无sitemap/meta/OG</td>
+  <td>✅ robots+sitemap+OG+JSON-LD</td>
+</tr>
+<tr>
+  <td>11</td>
+  <td>双密码加密方案</td>
+  <td>bcryptjs和pbkdf2并存</td>
+  <td>✅ 统一为bcryptjs</td>
+</tr>
+<tr>
+  <td>12</td>
+  <td>内存缓存风险</td>
+  <td>无容量限制</td>
+  <td>✅ LRU+容量限制+Redis适配</td>
+</tr>
+<tr>
+  <td>13</td>
+  <td>permissionService双版本</td>
+  <td>.ts+.js并存</td>
+  <td>✅ 删除.js版本</td>
+</tr>
+</tbody>
+</table>
+<h3>12.2 仍存在的问题</h3>
+<table>
+<thead>
+<tr>
+  <th>#</th>
+  <th>问题</th>
+  <th>影响</th>
+  <th>优先级</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>1</td>
+  <td>部分大组件未拆</td>
+  <td>CRM前端 CallManagement(5,069行) Order/Detail(4,170行) Customer/Detail(4,161行)</td>
+  <td>🟡 中</td>
+</tr>
+<tr>
+  <td>2</td>
+  <td>部分大路由未拆</td>
+  <td>后端 customers.ts(2,044行) calls.ts(1,998行) mobile.ts(1,793行)</td>
+  <td>🟡 中</td>
+</tr>
+<tr>
+  <td>3</td>
+  <td>测试覆盖不足</td>
+  <td>仅57个测试用例 核心业务逻辑缺少测试</td>
+  <td>🟡 中</td>
+</tr>
+<tr>
+  <td>4</td>
+  <td>企微模块暂停</td>
+  <td>CRM前端代码闲置 7个实体未使用</td>
+  <td>🟢 低</td>
+</tr>
+<tr>
+  <td>5</td>
+  <td>暗黑模式未实现</td>
+  <td>4个前端子系统均无暗黑模式</td>
+  <td>🟢 低</td>
+</tr>
+<tr>
+  <td>6</td>
+  <td>时区隐患</td>
+  <td>部分模块可能有new Date()未转北京时间</td>
+  <td>🟢 低</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2>十三、技术亮点（更新）</h2>
+<h3>13.1 架构层面（6项）</h3>
+<table>
+<thead>
+<tr>
+  <th>#</th>
+  <th>亮点</th>
+  <th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>1</td>
+  <td>SaaS+私有部署双模式</td>
+  <td>一套代码支持多租户SaaS和私有独立部署，通过deploy.ts配置切换</td>
+</tr>
+<tr>
+  <td>2</td>
+  <td>三套独立JWT认证</td>
+  <td>CRM用户/Admin管理员/会员中心三套完全独立的认证体系互不干扰</td>
+</tr>
+<tr>
+  <td>3</td>
+  <td>AsyncLocalStorage租户上下文</td>
+  <td>零侵入的请求级租户隔离，无需手动传递tenantId</td>
+</tr>
+<tr>
+  <td>4</td>
+  <td>getTenantRepo Proxy</td>
+  <td>通过ES6 Proxy自动拦截所有数据库操作注入tenant_id，业务代码零感知</td>
+</tr>
+<tr>
+  <td>5</td>
+  <td>RSA签名授权保护</td>
+  <td>SaaS模式使用RSA非对称签名防止私有客户擅自启用多租户</td>
+</tr>
+<tr>
+  <td>6</td>
+  <td>多级缓存架构</td>
+  <td>内存LRU + Redis适配 + Proxy缓存 + 认证缓存，自动降级</td>
+</tr>
+</tbody>
+</table>
+<h3>13.2 性能层面（5项）</h3>
+<table>
+<thead>
+<tr>
+  <th>#</th>
+  <th>亮点</th>
+  <th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>1</td>
+  <td>SQL聚合替代内存过滤</td>
+  <td>Dashboard从31次全量查询优化为1次GROUP BY，性能提升50倍</td>
+</tr>
+<tr>
+  <td>2</td>
+  <td>144个数据库索引优化</td>
+  <td>覆盖所有核心表的tenant_id+业务字段复合索引</td>
+</tr>
+<tr>
+  <td>3</td>
+  <td>系统配置5分钟缓存</td>
+  <td>高频读低频写场景，减少90%+数据库查询</td>
+</tr>
+<tr>
+  <td>4</td>
+  <td>地址数据懒加载</td>
+  <td>从内嵌51,780行改为fetch异步加载1.57MB JSON，首屏不阻塞</td>
+</tr>
+<tr>
+  <td>5</td>
+  <td>客户统计独立接口</td>
+  <td>独立端点+30秒缓存+异步并行，列表渲染不等待统计</td>
+</tr>
+</tbody>
+</table>
+<h3>13.3 安全层面（5项）</h3>
+<table>
+<thead>
+<tr>
+  <th>#</th>
+  <th>亮点</th>
+  <th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>1</td>
+  <td>全面安全审计</td>
+  <td>40+路由文件逐一审查多租户隔离，3个漏洞发现并修复</td>
+</tr>
+<tr>
+  <td>2</td>
+  <td>CAS原子操作</td>
+  <td>扩容激活使用Compare-And-Swap防止并发重复激活</td>
+</tr>
+<tr>
+  <td>3</td>
+  <td>两步确认数据清理</td>
+  <td>过期租户清理需输入编码二次确认，事务内执行失败回滚</td>
+</tr>
+<tr>
+  <td>4</td>
+  <td>Admin验证码</td>
+  <td>svg-captcha防暴力破解，2分钟过期一次性使用</td>
+</tr>
+<tr>
+  <td>5</td>
+  <td>APP Token加密</td>
+  <td>XOR+Base64加密存储，ENC:前缀标识向下兼容</td>
+</tr>
+</tbody>
+</table>
+<h3>13.4 工程化层面（4项）</h3>
+<table>
+<thead>
+<tr>
+  <th>#</th>
+  <th>亮点</th>
+  <th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>1</td>
+  <td>Winston统一日志</td>
+  <td>123文件1815处console替换，文件轮转+级别管理+时间戳</td>
+</tr>
+<tr>
+  <td>2</td>
+  <td>单元测试框架</td>
+  <td>后端Jest 36测试 + 前端Vitest 21测试，CI就绪</td>
+</tr>
+<tr>
+  <td>3</td>
+  <td>URL集中配置</td>
+  <td>config/sites.ts单一配置源，支持环境变量覆盖，零硬编码域名</td>
+</tr>
+<tr>
+  <td>4</td>
+  <td>数据库自动迁移</td>
+  <td>ensureColumns/ensureTables模式，应用启动自动补字段补表</td>
+</tr>
+</tbody>
+</table>
+<h3>13.5 商业功能层面（5项）</h3>
+<table>
+<thead>
+<tr>
+  <th>#</th>
+  <th>亮点</th>
+  <th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>1</td>
+  <td>完整订阅付费</td>
+  <td>微信委托代扣/支付宝周期扣款，含签约/扣款/重试/宽限期/解约全链路</td>
+</tr>
+<tr>
+  <td>2</td>
+  <td>独立扩容体系</td>
+  <td>用户数/存储空间独立购买，续费时保留扩容额度</td>
+</tr>
+<tr>
+  <td>3</td>
+  <td>版本更新系统</td>
+  <td>管理后台发布版本+CRM端检查更新+一键升级</td>
+</tr>
+<tr>
+  <td>4</td>
+  <td>帮助文档Markdown化</td>
+  <td>24篇文档独立MD文件，非开发人员可直接编辑</td>
+</tr>
+<tr>
+  <td>5</td>
+  <td>官网SEO体系</td>
+  <td>robots.txt+sitemap.xml+OG+JSON-LD+动态title完整SEO基础</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2>十四、完成度与待完善清单（更新）</h2>
+<h3>14.1 各子系统完成度评估</h3>
+<table>
+<thead>
+<tr>
+  <th>子系统</th>
+  <th>功能完成度</th>
+  <th>代码质量</th>
+  <th>安全性</th>
+  <th>测试覆盖</th>
+  <th>综合评分</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>Backend</td>
+  <td>98%</td>
+  <td>90%</td>
+  <td>95%</td>
+  <td>30%</td>
+  <td>90/100</td>
+</tr>
+<tr>
+  <td>CRM前端</td>
+  <td>95%</td>
+  <td>85%</td>
+  <td>95%</td>
+  <td>15%</td>
+  <td>85/100</td>
+</tr>
+<tr>
+  <td>Admin后台</td>
+  <td>90%</td>
+  <td>80%</td>
+  <td>90%</td>
+  <td>0%</td>
+  <td>80/100</td>
+</tr>
+<tr>
+  <td>Website官网</td>
+  <td>92%</td>
+  <td>82%</td>
+  <td>90%</td>
+  <td>0%</td>
+  <td>82/100</td>
+</tr>
+<tr>
+  <td>crmAPP</td>
+  <td>85%</td>
+  <td>78%</td>
+  <td>85%</td>
+  <td>0%</td>
+  <td>78/100</td>
+</tr>
+<tr>
+  <td>多租户隔离</td>
+  <td>100%</td>
+  <td>95%</td>
+  <td>98%</td>
+  <td>20%</td>
+  <td>96/100</td>
+</tr>
+</tbody>
+</table>
+<h3>14.2 待完善项清单</h3>
+<h4>高优先级（建议1-2周内）</h4>
+<table>
+<thead>
+<tr>
+  <th>#</th>
+  <th>项目</th>
+  <th>子系统</th>
+  <th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>1</td>
+  <td>拆分CallManagement.vue</td>
+  <td>CRM前端</td>
+  <td>5,069行 需拆为6+子组件</td>
+</tr>
+<tr>
+  <td>2</td>
+  <td>拆分Order/Detail.vue</td>
+  <td>CRM前端</td>
+  <td>4,170行 按区域拆分</td>
+</tr>
+<tr>
+  <td>3</td>
+  <td>拆分Customer/Detail.vue</td>
+  <td>CRM前端</td>
+  <td>4,161行 按Tab拆分</td>
+</tr>
+<tr>
+  <td>4</td>
+  <td>拆分customers.ts路由</td>
+  <td>Backend</td>
+  <td>2,044行 Controller/Service分离</td>
+</tr>
+<tr>
+  <td>5</td>
+  <td>拆分calls.ts路由</td>
+  <td>Backend</td>
+  <td>1,998行 同上</td>
+</tr>
+<tr>
+  <td>6</td>
+  <td>增加核心业务测试</td>
+  <td>Backend</td>
+  <td>客户CRUD/订单流程/支付回调</td>
+</tr>
+</tbody>
+</table>
+<h4>中优先级（建议2-4周内）</h4>
+<table>
+<thead>
+<tr>
+  <th>#</th>
+  <th>项目</th>
+  <th>子系统</th>
+  <th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>7</td>
+  <td>拆分Register.vue</td>
+  <td>Website</td>
+  <td>1,631行 步骤组件化</td>
+</tr>
+<tr>
+  <td>8</td>
+  <td>API文档自动生成</td>
+  <td>Backend</td>
+  <td>Swagger/OpenAPI集成</td>
+</tr>
+<tr>
+  <td>9</td>
+  <td>E2E测试框架</td>
+  <td>全局</td>
+  <td>Playwright/Cypress核心流程</td>
+</tr>
+<tr>
+  <td>10</td>
+  <td>时区统一处理</td>
+  <td>Backend</td>
+  <td>排查并统一new Date()使用</td>
+</tr>
+<tr>
+  <td>11</td>
+  <td>官网SSR/SSG</td>
+  <td>Website</td>
+  <td>Nuxt.js或预渲染方案</td>
+</tr>
+</tbody>
+</table>
+<h4>低优先级（长期规划）</h4>
+<table>
+<thead>
+<tr>
+  <th>#</th>
+  <th>项目</th>
+  <th>子系统</th>
+  <th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>12</td>
+  <td>企微模块重启</td>
+  <td>CRM前端+Backend</td>
+  <td>清理或完善闲置的企微代码</td>
+</tr>
+<tr>
+  <td>13</td>
+  <td>暗黑模式</td>
+  <td>全部前端</td>
+  <td>CSS变量+主题切换</td>
+</tr>
+<tr>
+  <td>14</td>
+  <td>国际化i18n</td>
+  <td>全部前端</td>
+  <td>中英文切换支持</td>
+</tr>
+<tr>
+  <td>15</td>
+  <td>CI/CD流水线</td>
+  <td>全局</td>
+  <td>GitHub Actions/GitLab CI</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2>十五、优先改进路线图（更新）</h2>
+<h3>15.1 短期（1-2周）：继续代码治理</h3>
+<p>目标：消灭所有2000+行的大文件</p>
+<pre><code>Week 1: CRM前端大组件拆分
+  - CallManagement.vue (5,069行) -&gt; 6个子组件 + index骨架
+  - Order/Detail.vue (4,170行) -&gt; 按区域拆分
+  - Customer/Detail.vue (4,161行) -&gt; 按Tab拆分
+
+Week 2: 后端大路由拆分 + 测试补充
+  - customers.ts (2,044行) -&gt; customers/目录
+  - calls.ts (1,998行) -&gt; calls/目录
+  - 补充核心业务单元测试 (目标: 100+测试用例)
+</code></pre>
+<h3>15.2 中期（2-4周）：质量提升</h3>
+<pre><code>Week 3-4: API文档 + 测试 + 监控
+  - Swagger/OpenAPI自动生成API文档
+  - E2E测试核心业务流程
+  - 服务端性能监控(APM)
+  - 时区统一处理排查
+</code></pre>
+<h3>15.3 长期（1-3个月）：架构演进</h3>
+<pre><code>Month 2-3:
+  - 官网SSR/SSG方案（Nuxt.js或预渲染）
+  - CI/CD自动化流水线搭建
+  - 微服务拆分评估（按业务域拆分Backend）
+  - 企微模块决策（完善或清理）
+  - 国际化i18n方案
+</code></pre>
+<hr>
+<h2>十六、总体评分（更新）</h2>
+<h3>16.1 评分对比（3月29日 vs 4月5日）</h3>
+<table>
+<thead>
+<tr>
+  <th>评分维度</th>
+  <th>3月29日</th>
+  <th>4月5日</th>
+  <th>变化</th>
+  <th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>功能完整性</td>
+  <td>90/100</td>
+  <td>95/100</td>
+  <td>+5</td>
+  <td>新增会员中心+扩容+订阅+版本更新</td>
+</tr>
+<tr>
+  <td>代码质量</td>
+  <td>65/100</td>
+  <td>85/100</td>
+  <td>+20</td>
+  <td>巨型文件拆分+日志统一+API统一+Store拆分</td>
+</tr>
+<tr>
+  <td>安全性</td>
+  <td>85/100</td>
+  <td>95/100</td>
+  <td>+10</td>
+  <td>全面安全审计+密码统一+验证码+Token加密</td>
+</tr>
+<tr>
+  <td>性能</td>
+  <td>50/100</td>
+  <td>90/100</td>
+  <td>+40</td>
+  <td>索引优化+SQL聚合+多级缓存+Redis就绪</td>
+</tr>
+<tr>
+  <td>可维护性</td>
+  <td>60/100</td>
+  <td>82/100</td>
+  <td>+22</td>
+  <td>路由拆分+组件拆分+测试框架+Winston日志</td>
+</tr>
+<tr>
+  <td>测试覆盖</td>
+  <td>0/100</td>
+  <td>25/100</td>
+  <td>+25</td>
+  <td>从零起步到57个测试用例</td>
+</tr>
+<tr>
+  <td>部署与运维</td>
+  <td>75/100</td>
+  <td>85/100</td>
+  <td>+10</td>
+  <td>.gitignore+数据清理+版本更新+Redis适配</td>
+</tr>
+<tr>
+  <td>文档质量</td>
+  <td>70/100</td>
+  <td>88/100</td>
+  <td>+18</td>
+  <td>100份任务文档+帮助文档MD化+SEO</td>
+</tr>
+</tbody>
+</table>
+<h3>16.2 综合评分</h3>
+<pre><code>3月29日综合评分:  70/100（可运行的商业产品，但存在较多技术债务）
+4月5日综合评分:   88/100（高质量商业产品，主要技术债务已清理）
+
+提升幅度: +18分（一周内显著提升）
+</code></pre>
+<h3>16.3 评价总结</h3>
+<p>云客CRM系统在2026年3月30日至4月5日期间经历了一次全面系统性优化：</p>
+<ul>
+<li>完成了五阶段41项系统性优化任务（100%完成率）</li>
+<li>新增了会员中心、订阅付费、扩容管理三大商业功能模块</li>
+<li>通过了全面安全审计，修复了所有发现的多租户隔离漏洞</li>
+<li>性能提升最为显著（从50分提升至90分），数据库查询效率提升10-100倍</li>
+<li>代码质量大幅改善（从65分提升至85分），核心巨型文件完成拆分</li>
+</ul>
+<p>当前系统已达到商业交付标准，剩余技术债务（大组件拆分、测试覆盖）不影响功能使用，可在后续迭代中持续改进。</p>
+<hr>
+<blockquote>报告完成日期：2026年4月5日</blockquote>
+<blockquote>任务记录文档总数：100份</blockquote>
+<blockquote>本报告存放位置：项目根目录/项目全面深度分析报告-2026-04-05-更新版.md</blockquote>
+
+</body>
+</html>

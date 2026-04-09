@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { logger } from '../config/logger';
 import { getDataSource } from '../config/database';
+import { formatDateTime } from '../utils/dateFormat';
 import { SystemConfig } from '../entities/SystemConfig';
 import { authenticateToken } from '../middleware/auth';
 import { getTenantRepo } from '../utils/tenantRepo';
@@ -138,7 +139,7 @@ router.get('/system', async (req, res) => {
                   else if (logData.service || logData.code || logData.error) {
                     allLogs.push({
                       id: `json_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
-                      timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
+                      timestamp: formatDateTime(new Date()),
                       level: logData.fatal ? 'ERROR' : 'INFO',
                       module: logData.service || '系统',
                       message: logData.error || logData.code || JSON.stringify(logData),

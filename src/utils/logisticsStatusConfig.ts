@@ -6,52 +6,76 @@
 // 物流状态枚举
 export const LOGISTICS_STATUS = {
   PENDING: 'pending',           // 待揽收
+  PENDING_SHIPMENT: 'pending_shipment', // 待发货
+  SHIPPED: 'shipped',           // 已发货
   PICKED_UP: 'picked_up',       // 已揽收
   IN_TRANSIT: 'in_transit',     // 运输中
   OUT_FOR_DELIVERY: 'out_for_delivery', // 派送中
+  DELIVERING: 'delivering',     // 派送中（别名）
   DELIVERED: 'delivered',       // 已签收
   EXCEPTION: 'exception',       // 派送异常
+  PACKAGE_EXCEPTION: 'package_exception', // 包裹异常
   REJECTED: 'rejected',         // 拒收
+  REJECTED_RETURNED: 'rejected_returned', // 拒收退回
   RETURNED: 'returned',         // 已退回
+  CANCELLED: 'cancelled',       // 已取消
   UNKNOWN: 'unknown'            // 未知
 } as const
 
 // 物流状态文本映射
 export const LOGISTICS_STATUS_TEXT: Record<string, string> = {
   [LOGISTICS_STATUS.PENDING]: '待揽收',
+  [LOGISTICS_STATUS.PENDING_SHIPMENT]: '待发货',
+  [LOGISTICS_STATUS.SHIPPED]: '已发货',
   [LOGISTICS_STATUS.PICKED_UP]: '已揽收',
   [LOGISTICS_STATUS.IN_TRANSIT]: '运输中',
   [LOGISTICS_STATUS.OUT_FOR_DELIVERY]: '派送中',
+  [LOGISTICS_STATUS.DELIVERING]: '派送中',
   [LOGISTICS_STATUS.DELIVERED]: '已签收',
   [LOGISTICS_STATUS.EXCEPTION]: '派送异常',
+  [LOGISTICS_STATUS.PACKAGE_EXCEPTION]: '包裹异常',
   [LOGISTICS_STATUS.REJECTED]: '拒收',
+  [LOGISTICS_STATUS.REJECTED_RETURNED]: '拒收退回',
   [LOGISTICS_STATUS.RETURNED]: '已退回',
+  [LOGISTICS_STATUS.CANCELLED]: '已取消',
   [LOGISTICS_STATUS.UNKNOWN]: '未知'
 }
 
 // 物流状态颜色类型映射（Element Plus Tag类型）
 export const LOGISTICS_STATUS_TYPE: Record<string, string> = {
   [LOGISTICS_STATUS.PENDING]: 'info',
+  [LOGISTICS_STATUS.PENDING_SHIPMENT]: 'info',
+  [LOGISTICS_STATUS.SHIPPED]: 'primary',
   [LOGISTICS_STATUS.PICKED_UP]: 'warning',
   [LOGISTICS_STATUS.IN_TRANSIT]: 'primary',
   [LOGISTICS_STATUS.OUT_FOR_DELIVERY]: 'warning',
+  [LOGISTICS_STATUS.DELIVERING]: 'warning',
   [LOGISTICS_STATUS.DELIVERED]: 'success',
   [LOGISTICS_STATUS.EXCEPTION]: 'danger',
+  [LOGISTICS_STATUS.PACKAGE_EXCEPTION]: 'danger',
   [LOGISTICS_STATUS.REJECTED]: 'danger',
+  [LOGISTICS_STATUS.REJECTED_RETURNED]: 'danger',
   [LOGISTICS_STATUS.RETURNED]: 'info',
+  [LOGISTICS_STATUS.CANCELLED]: 'info',
   [LOGISTICS_STATUS.UNKNOWN]: 'info'
 }
 
 // 物流状态颜色映射（用于自定义样式）
 export const LOGISTICS_STATUS_COLOR: Record<string, string> = {
   [LOGISTICS_STATUS.PENDING]: '#909399',
+  [LOGISTICS_STATUS.PENDING_SHIPMENT]: '#909399',
+  [LOGISTICS_STATUS.SHIPPED]: '#409EFF',
   [LOGISTICS_STATUS.PICKED_UP]: '#E6A23C',
   [LOGISTICS_STATUS.IN_TRANSIT]: '#409EFF',
   [LOGISTICS_STATUS.OUT_FOR_DELIVERY]: '#E6A23C',
+  [LOGISTICS_STATUS.DELIVERING]: '#E6A23C',
   [LOGISTICS_STATUS.DELIVERED]: '#67C23A',
   [LOGISTICS_STATUS.EXCEPTION]: '#F56C6C',
+  [LOGISTICS_STATUS.PACKAGE_EXCEPTION]: '#F56C6C',
   [LOGISTICS_STATUS.REJECTED]: '#F56C6C',
+  [LOGISTICS_STATUS.REJECTED_RETURNED]: '#F56C6C',
   [LOGISTICS_STATUS.RETURNED]: '#909399',
+  [LOGISTICS_STATUS.CANCELLED]: '#909399',
   [LOGISTICS_STATUS.UNKNOWN]: '#909399'
 }
 
@@ -140,6 +164,9 @@ export const detectLogisticsStatusFromDescription = (description: string): strin
     desc.includes('存放快递柜') || desc.includes('投放快递柜') || desc.includes('投入快递柜') ||
     desc.includes('已放置') || desc.includes('已存放') || desc.includes('已投放') ||
     desc.includes('放置于') || desc.includes('存放于') || desc.includes('投放于') ||
+    // 🔥 新增：货架/超市/代收点放置（经客户同意）
+    desc.includes('放货架') || desc.includes('放超市') || desc.includes('放小卖部') ||
+    desc.includes('放代收点') || desc.includes('经同意放') || desc.includes('经客户同意') ||
     // 🔥 新增：电话通知/短信通知取件（已投递到快递柜/驿站）
     desc.includes('请凭取件码') || desc.includes('取件码') || desc.includes('取货码') ||
     desc.includes('请及时取件') || desc.includes('请尽快取件') || desc.includes('请到') ||
@@ -152,6 +179,8 @@ export const detectLogisticsStatusFromDescription = (description: string): strin
     // 🔥 新增：自提点相关
     desc.includes('自提点') || desc.includes('自提成功') || desc.includes('提货成功') ||
     desc.includes('已取走') || desc.includes('取件成功') || desc.includes('领取成功') ||
+    // 🔥 新增：客户领取成功
+    desc.includes('客户领取成功') || desc.includes('亲属代收') ||
     // 🔥 新增：各快递公司特殊签收表述
     desc.includes('已妥投') || desc.includes('投妥') || desc.includes('配送完成') ||
     desc.includes('送达完成') || desc.includes('完成配送') || desc.includes('完成送达') ||
@@ -186,8 +215,7 @@ export const detectLogisticsStatusFromDescription = (description: string): strin
     desc.includes('不在家') || desc.includes('家中无人') || desc.includes('未能联系') ||
     desc.includes('未能送达') || desc.includes('无法到达') || desc.includes('无法送达') ||
     desc.includes('送达失败') || desc.includes('尝试派送') || desc.includes('再次派送') ||
-    desc.includes('改派') || desc.includes('转寄') || desc.includes('改地址') ||
-    // 🔥 新增：快递柜/驿站超时未取
+    // 🔥 快递柜/驿站超时未取
     desc.includes('超时未取') || desc.includes('逾期未取') || desc.includes('过期未取') ||
     desc.includes('长时间未取') || desc.includes('已超时') || desc.includes('已逾期') ||
     // 🔥 新增：其他异常场景
@@ -251,7 +279,9 @@ export const detectLogisticsStatusFromDescription = (description: string): strin
     desc.includes('已交航空') || desc.includes('航空运输') || desc.includes('陆运') ||
     desc.includes('铁路运输') || desc.includes('高铁运输') || desc.includes('城际运输') ||
     desc.includes('已封车') || desc.includes('正在出仓') || desc.includes('正在入仓') ||
-    desc.includes('等待装车') || desc.includes('等待发出')
+    desc.includes('等待装车') || desc.includes('等待发出') ||
+    // 🔥 转寄/改派/改地址 → 运输中（包裹被重新路由，不属于异常）
+    desc.includes('转寄') || desc.includes('改派') || desc.includes('改地址')
   ) {
     return LOGISTICS_STATUS.IN_TRANSIT
   }
@@ -367,7 +397,6 @@ export const detectLogisticsInfoColorType = (description: string): LogisticsInfo
     desc.includes('不在家') || desc.includes('家中无人') || desc.includes('未能联系') ||
     desc.includes('未能送达') || desc.includes('无法到达') || desc.includes('无法送达') ||
     desc.includes('送达失败') || desc.includes('尝试派送') || desc.includes('再次派送') ||
-    desc.includes('改派') || desc.includes('转寄') || desc.includes('改地址') ||
     // 🔥 新增：快递柜/驿站超时未取
     desc.includes('超时未取') || desc.includes('逾期未取') || desc.includes('过期未取') ||
     desc.includes('长时间未取') || desc.includes('已超时') || desc.includes('已逾期') ||
@@ -420,6 +449,9 @@ export const detectLogisticsInfoColorType = (description: string): LogisticsInfo
     desc.includes('存放快递柜') || desc.includes('投放快递柜') || desc.includes('投入快递柜') ||
     desc.includes('已放置') || desc.includes('已存放') || desc.includes('已投放') ||
     desc.includes('放置于') || desc.includes('存放于') || desc.includes('投放于') ||
+    // 🔥 新增：货架/超市/代收点放置（经客户同意）
+    desc.includes('放货架') || desc.includes('放超市') || desc.includes('放小卖部') ||
+    desc.includes('放代收点') || desc.includes('经同意放') || desc.includes('经客户同意') ||
     // 🔥 新增：取件码通知（已投递到快递柜/驿站）
     desc.includes('请凭取件码') || desc.includes('取件码') || desc.includes('取货码') ||
     desc.includes('请及时取件') || desc.includes('请尽快取件') || desc.includes('请到') ||
@@ -431,6 +463,8 @@ export const detectLogisticsInfoColorType = (description: string): LogisticsInfo
     desc.includes('传达室') || desc.includes('值班室') || desc.includes('收件箱') ||
     desc.includes('自提点') || desc.includes('自提成功') || desc.includes('提货成功') ||
     desc.includes('已取走') || desc.includes('取件成功') || desc.includes('领取成功') ||
+    // 🔥 新增：客户领取成功
+    desc.includes('客户领取成功') || desc.includes('亲属代收') ||
     // 🔥 新增：各快递公司特殊表述
     desc.includes('已妥投') || desc.includes('投妥') || desc.includes('配送完成') ||
     desc.includes('送达完成') || desc.includes('完成配送') || desc.includes('完成送达') ||

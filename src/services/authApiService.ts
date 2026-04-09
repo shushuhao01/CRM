@@ -729,44 +729,83 @@ export class AuthApiService {
 
   /**
    * 获取默认权限（当角色权限配置为空时使用）
+   * 🔥 与 src/config/defaultRolePermissions.ts 保持同步
    */
   private getDefaultPermissions(roleCode: string): string[] {
-    // 根据角色返回默认权限
+    // 与 defaultRolePermissions.ts 保持一致的权限配置
     const defaultPermissions: Record<string, string[]> = {
-      'super_admin': ['*'],  // 超级管理员拥有所有权限
-      'admin': ['*'],  // 管理员拥有所有权限
+      'super_admin': ['*'],
+      'admin': ['*'],
       'department_manager': [
-        'dashboard', 'dashboard:personal', 'dashboard:department',
-        'customer', 'customer:list', 'customer:view:personal', 'customer:view:department',
-        'customer:add', 'customer:edit', 'customer:import', 'customer:export',
-        'order', 'order:list', 'order:view:personal', 'order:view:department',
-        'order:add', 'order:edit', 'order:audit',
-        'performance', 'performance:personal', 'performance:team',
-        'logistics', 'logistics:list', 'logistics:view',
-        'data', 'data:customer', 'data:list'
+        'dashboard', 'dashboard.view', 'dashboard.export',
+        'customer', 'customer.list', 'customer.list.view', 'customer.list.edit', 'customer.list.export', 'customer.list.import',
+        'customer.add', 'customer.add.create',
+        'order', 'order.list', 'order.list.view', 'order.list.edit',
+        'order.add', 'order.add.create',
+        'communication', 'communication.call', 'communication.call.view', 'communication.call.make', 'communication.call.record',
+        'performance', 'performance.personal', 'performance.personal.view',
+        'performance.team', 'performance.team.view', 'performance.analysis', 'performance.analysis.view',
+        'performance.share', 'performance.share.view',
+        'logistics', 'logistics.list', 'logistics.list.view',
+        'logistics.track', 'logistics.track.view',
+        // 🔥 售后管理权限
+        'aftersale', 'aftersale.list', 'aftersale.list.view',
+        'aftersale.add', 'aftersale.add.create',
+        'aftersale.data', 'aftersale.data.view', 'aftersale.data.analysis',
+        'data', 'data.search', 'data.search.basic', 'data.search.advanced',
+        'finance', 'finance.performance_data', 'finance.performance_data.view',
+        'finance.cod_application', 'finance.cod_application.view', 'finance.cod_application.create'
       ],
-      'manager': [  // 兼容旧的manager角色
-        'dashboard', 'dashboard:personal', 'dashboard:department',
-        'customer', 'customer:list', 'customer:view:personal', 'customer:view:department',
-        'customer:add', 'customer:edit', 'customer:import', 'customer:export',
-        'order', 'order:list', 'order:view:personal', 'order:view:department',
-        'order:add', 'order:edit', 'order:audit',
-        'performance', 'performance:personal', 'performance:team',
-        'logistics', 'logistics:list', 'logistics:view',
-        'data', 'data:customer', 'data:list'
+      'manager': [  // 兼容旧的manager角色，与department_manager一致
+        'dashboard', 'dashboard.view', 'dashboard.export',
+        'customer', 'customer.list', 'customer.list.view', 'customer.list.edit', 'customer.list.export', 'customer.list.import',
+        'customer.add', 'customer.add.create',
+        'order', 'order.list', 'order.list.view', 'order.list.edit',
+        'order.add', 'order.add.create',
+        'communication', 'communication.call', 'communication.call.view', 'communication.call.make', 'communication.call.record',
+        'performance', 'performance.personal', 'performance.personal.view',
+        'performance.team', 'performance.team.view', 'performance.analysis', 'performance.analysis.view',
+        'performance.share', 'performance.share.view',
+        'logistics', 'logistics.list', 'logistics.list.view',
+        'logistics.track', 'logistics.track.view',
+        // 🔥 售后管理权限
+        'aftersale', 'aftersale.list', 'aftersale.list.view',
+        'aftersale.add', 'aftersale.add.create',
+        'aftersale.data', 'aftersale.data.view', 'aftersale.data.analysis',
+        'data', 'data.search', 'data.search.basic', 'data.search.advanced',
+        'finance', 'finance.performance_data', 'finance.performance_data.view',
+        'finance.cod_application', 'finance.cod_application.view', 'finance.cod_application.create'
       ],
       'sales_staff': [
-        'dashboard', 'dashboard:personal',
-        'customer', 'customer:list', 'customer:view:personal', 'customer:add',
-        'order', 'order:list', 'order:view:personal', 'order:add',
-        'performance', 'performance:personal',
-        'logistics', 'logistics:list', 'logistics:view',
-        'data', 'data:customer', 'data:list'
+        'dashboard', 'dashboard.view',
+        'customer', 'customer.list', 'customer.list.view',
+        'customer.add', 'customer.add.create',
+        'order', 'order.list', 'order.list.view', 'order.list.edit',
+        'order.add', 'order.add.create',
+        'communication', 'communication.call', 'communication.call.view', 'communication.call.make',
+        'performance', 'performance.personal', 'performance.personal.view',
+        'performance.team', 'performance.team.view',
+        'logistics', 'logistics.list', 'logistics.list.view',
+        'logistics.track', 'logistics.track.view',
+        // 🔥 售后管理权限
+        'aftersale', 'aftersale.list', 'aftersale.list.view',
+        'aftersale.add', 'aftersale.add.create',
+        'data', 'data.search', 'data.search.basic',
+        'finance', 'finance.performance_data', 'finance.performance_data.view',
+        'finance.cod_application', 'finance.cod_application.view', 'finance.cod_application.create'
       ],
       'customer_service': [
-        'customer', 'customer:list', 'customer:view:personal',
-        'service', 'service:call', 'service:sms',
-        'data', 'data:customer', 'data:list'
+        'dashboard', 'dashboard.view',
+        'order', 'order.audit', 'order.audit.view', 'order.audit.approve', 'order.audit.reject',
+        'logistics', 'logistics.list', 'logistics.list.view',
+        'logistics.shipping', 'logistics.shipping.view', 'logistics.shipping.create',
+        'logistics.track', 'logistics.track.view', 'logistics.track.update',
+        'logistics.status', 'logistics.status.view', 'logistics.status.update',
+        // 🔥 售后管理权限
+        'aftersale', 'aftersale.list', 'aftersale.list.view',
+        'aftersale.add', 'aftersale.add.create',
+        'aftersale.data', 'aftersale.data.view', 'aftersale.data.analysis',
+        'data', 'data.list', 'data.list.view', 'data.search', 'data.search.basic', 'data.search.advanced'
       ]
     }
 

@@ -5,6 +5,7 @@ import { Router, Request, Response } from 'express';
 import * as crypto from 'crypto';
 import { authenticateToken, requireAdmin } from '../middleware/auth';
 import { AppDataSource } from '../config/database';
+import { getTenantRepo } from '../utils/tenantRepo';
 import { WecomConfig } from '../entities/WecomConfig';
 import { WecomUserBinding } from '../entities/WecomUserBinding';
 import { WecomCustomer } from '../entities/WecomCustomer';
@@ -12,6 +13,7 @@ import { WecomAcquisitionLink } from '../entities/WecomAcquisitionLink';
 import { WecomServiceAccount } from '../entities/WecomServiceAccount';
 import { WecomPaymentRecord } from '../entities/WecomPaymentRecord';
 import WecomApiService from '../services/WecomApiService';
+import { log } from '../config/logger';
 
 const router = Router();
 
@@ -24,7 +26,7 @@ const router = Router();
 router.get('/callback', async (req: Request, res: Response) => {
   try {
     const { msg_signature, timestamp, nonce, echostr } = req.query;
-    console.log('[Wecom Callback] Verify request:', { msg_signature, timestamp, nonce, echostr: echostr?.toString().substring(0, 20) + '...' });
+    log.info('[Wecom Callback] Verify request:', { msg_signature, timestamp, nonce, echostr: echostr?.toString().substring(0, 20) + '...' });
 
     if (!msg_signature || !timestamp || !nonce || !echostr) {
       return res.status(400).send('Missing parameters');
@@ -59,18 +61,18 @@ router.get('/callback', async (req: Request, res: Response) => {
           const msgLen = decrypted.readUInt32BE(16);
           const msg = decrypted.slice(20, 20 + msgLen).toString('utf8');
 
-          console.log('[Wecom Callback] Verify success, echostr:', msg);
+          log.info('[Wecom Callback] Verify success, echostr:', msg);
           return res.send(msg);
         } catch (e) {
-          console.error('[Wecom Callback] Decrypt error:', e);
+          log.error('[Wecom Callback] Decrypt error:', e);
         }
       }
     }
 
-    console.log('[Wecom Callback] Verify failed - no matching config');
+    log.info('[Wecom Callback] Verify failed - no matching config');
     res.status(403).send('Verify failed');
   } catch (error: any) {
-    console.error('[Wecom Callback] Error:', error);
+    log.error('[Wecom Callback] Error:', error);
     res.status(500).send('Server error');
   }
 });
@@ -83,14 +85,14 @@ router.post('/callback', async (req: Request, res: Response) => {
   try {
     const { msg_signature, timestamp, nonce } = req.query;
     const _body = req.body;
-    console.log('[Wecom Callback] Message received:', { msg_signature, timestamp, nonce });
+    log.info('[Wecom Callback] Message received:', { msg_signature, timestamp, nonce });
 
     // TODO: 解密消息并处理各类事件
     // 目前先返回成功，后续可以根据需要处理具体事件
 
     res.send('success');
   } catch (error: any) {
-    console.error('[Wecom Callback] Error:', error);
+    log.error('[Wecom Callback] Error:', error);
     res.status(500).send('Server error');
   }
 });
@@ -103,9 +105,9 @@ router.post('/callback', async (req: Request, res: Response) => {
 router.get('/configs', authenticateToken, requireAdmin, async (_req: Request, res: Response) => {
   try {
     const configRepo = getTenantRepo(WecomConfig);
-    console.log('[Wecom] Fetching configs...');
+    log.info('[Wecom] Fetching configs...');
     const configs = await configRepo.find({ order: { createdAt: 'DESC' } });
-    console.log('[Wecom] Found configs:', configs.length);
+    log.info('[Wecom] Found configs:', configs.length);
 
     // 隐藏敏感信息
     const safeConfigs = configs.map(c => ({
@@ -120,7 +122,7 @@ router.get('/configs', authenticateToken, requireAdmin, async (_req: Request, re
 
     res.json({ success: true, data: safeConfigs });
   } catch (error: any) {
-    console.error('[Wecom] Get configs error:', error.message, error.stack);
+    log.error('[Wecom] Get configs error:', error.message, error.stack);
     res.status(500).json({ success: false, message: '获取配置列表失败' });
   }
 });
@@ -150,7 +152,7 @@ router.get('/configs/:id', authenticateToken, requireAdmin, async (req: Request,
 
     res.json({ success: true, data: safeConfig });
   } catch (error: any) {
-    console.error('[Wecom] Get config error:', error);
+    log.error('[Wecom] Get config error:', error);
     res.status(500).json({ success: false, message: '获取配置失败' });
   }
 });
@@ -198,7 +200,7 @@ router.post('/configs', authenticateToken, requireAdmin, async (req: Request, re
 
     res.json({ success: true, data: config, message: '创建成功' });
   } catch (error: any) {
-    console.error('[Wecom] Create config error:', error.message, error.stack);
+    log.error('[Wecom] Create config error:', error.message, error.stack);
     res.status(500).json({ success: false, message: error.message || '创建配置失败' });
   }
 });
@@ -235,7 +237,7 @@ router.put('/configs/:id', authenticateToken, requireAdmin, async (req: Request,
 
     res.json({ success: true, message: '更新成功' });
   } catch (error: any) {
-    console.error('[Wecom] Update config error:', error);
+    log.error('[Wecom] Update config error:', error);
     res.status(500).json({ success: false, message: '更新配置失败' });
   }
 });
@@ -256,7 +258,7 @@ router.delete('/configs/:id', authenticateToken, requireAdmin, async (req: Reque
 
     res.json({ success: true, message: '删除成功' });
   } catch (error: any) {
-    console.error('[Wecom] Delete config error:', error);
+    log.error('[Wecom] Delete config error:', error);
     res.status(500).json({ success: false, message: '删除配置失败' });
   }
 });
@@ -284,7 +286,7 @@ router.post('/configs/:id/test', authenticateToken, requireAdmin, async (req: Re
 
     res.json({ success: result.success, message: result.message, data: { connected: result.success } });
   } catch (error: any) {
-    console.error('[Wecom] Test connection error:', error);
+    log.error('[Wecom] Test connection error:', error);
     res.status(500).json({ success: false, message: '测试连接失败' });
   }
 });
@@ -297,18 +299,18 @@ router.post('/configs/:id/test', authenticateToken, requireAdmin, async (req: Re
 router.get('/configs/:id/departments', authenticateToken, async (req: Request, res: Response) => {
   try {
     const configId = parseInt(req.params.id);
-    console.log('[Wecom] Getting departments for config:', configId);
+    log.info('[Wecom] Getting departments for config:', configId);
 
     // 优先使用通讯录同步 Secret，如果没有则使用应用 Secret
     const accessToken = await WecomApiService.getAccessTokenByConfigId(configId, 'contact');
-    console.log('[Wecom] Got access token, fetching departments...');
+    log.info('[Wecom] Got access token, fetching departments...');
 
     const departments = await WecomApiService.getDepartmentList(accessToken);
-    console.log('[Wecom] Got departments:', departments.length);
+    log.info('[Wecom] Got departments:', departments.length);
 
     res.json({ success: true, data: departments });
   } catch (error: any) {
-    console.error('[Wecom] Get departments error:', error.message, error.stack);
+    log.error('[Wecom] Get departments error:', error.message, error.stack);
     res.status(500).json({ success: false, message: error.message || '获取部门列表失败，请确保已配置通讯录Secret' });
   }
 });
@@ -322,7 +324,7 @@ router.get('/configs/:id/users', authenticateToken, async (req: Request, res: Re
     const departmentId = parseInt(req.query.departmentId as string) || 1;
     const fetchChild = req.query.fetchChild === 'true';
 
-    console.log('[Wecom] Getting users for config:', configId, 'department:', departmentId, 'fetchChild:', fetchChild);
+    log.info('[Wecom] Getting users for config:', configId, 'department:', departmentId, 'fetchChild:', fetchChild);
 
     // 先检查配置是否存在
     const configRepo = getTenantRepo(WecomConfig);
@@ -341,14 +343,14 @@ router.get('/configs/:id/users', authenticateToken, async (req: Request, res: Re
 
     // 优先使用通讯录同步 Secret
     const accessToken = await WecomApiService.getAccessTokenByConfigId(configId, 'contact');
-    console.log('[Wecom] Got access token, fetching users...');
+    log.info('[Wecom] Got access token, fetching users...');
 
     const users = await WecomApiService.getDepartmentUsers(accessToken, departmentId, fetchChild);
-    console.log('[Wecom] Got users:', users.length);
+    log.info('[Wecom] Got users:', users.length);
 
     res.json({ success: true, data: users });
   } catch (error: any) {
-    console.error('[Wecom] Get users error:', error.message, error.stack);
+    log.error('[Wecom] Get users error:', error.message, error.stack);
 
     // 返回更详细的错误信息
     let message = error.message || '获取成员列表失败';
@@ -378,7 +380,7 @@ router.get('/bindings', authenticateToken, async (req: Request, res: Response) =
 
     res.json({ success: true, data: bindings });
   } catch (error: any) {
-    console.error('[Wecom] Get bindings error:', error);
+    log.error('[Wecom] Get bindings error:', error);
     res.status(500).json({ success: false, message: '获取绑定列表失败' });
   }
 });
@@ -428,7 +430,7 @@ router.post('/bindings', authenticateToken, requireAdmin, async (req: Request, r
 
     res.json({ success: true, data: binding, message: '绑定成功' });
   } catch (error: any) {
-    console.error('[Wecom] Create binding error:', error);
+    log.error('[Wecom] Create binding error:', error);
     res.status(500).json({ success: false, message: '创建绑定失败' });
   }
 });
@@ -449,7 +451,7 @@ router.delete('/bindings/:id', authenticateToken, requireAdmin, async (req: Requ
 
     res.json({ success: true, message: '解绑成功' });
   } catch (error: any) {
-    console.error('[Wecom] Delete binding error:', error);
+    log.error('[Wecom] Delete binding error:', error);
     res.status(500).json({ success: false, message: '解绑失败' });
   }
 });
@@ -498,7 +500,7 @@ router.get('/customers/stats', authenticateToken, async (req: Request, res: Resp
       data: { todayAdd, totalAdd, deleted, dealt }
     });
   } catch (error: any) {
-    console.error('[Wecom] Get customer stats error:', error);
+    log.error('[Wecom] Get customer stats error:', error);
     res.status(500).json({ success: false, message: '获取统计数据失败' });
   }
 });
@@ -535,7 +537,7 @@ router.get('/customers', authenticateToken, async (req: Request, res: Response) 
 
     res.json({ success: true, data: { list: customers, total, page: parseInt(page as string), pageSize: parseInt(pageSize as string) } });
   } catch (error: any) {
-    console.error('[Wecom] Get customers error:', error.message, error.stack);
+    log.error('[Wecom] Get customers error:', error.message, error.stack);
     res.status(500).json({ success: false, message: '获取客户列表失败' });
   }
 });
@@ -546,7 +548,7 @@ router.get('/customers', authenticateToken, async (req: Request, res: Response) 
 router.post('/customers/sync', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
   try {
     const { configId } = req.body;
-    console.log('[Wecom] Sync customers request, configId:', configId);
+    log.info('[Wecom] Sync customers request, configId:', configId);
 
     if (!configId) {
       return res.status(400).json({ success: false, message: '请选择企微配置' });
@@ -555,14 +557,14 @@ router.post('/customers/sync', authenticateToken, requireAdmin, async (req: Requ
     const configRepo = getTenantRepo(WecomConfig);
     const config = await configRepo.findOne({ where: { id: configId, isEnabled: true } });
     if (!config) {
-      console.log('[Wecom] Config not found or disabled');
+      log.info('[Wecom] Config not found or disabled');
       return res.status(404).json({ success: false, message: '企微配置不存在或已禁用' });
     }
 
     // 获取绑定的成员
     const bindingRepo = getTenantRepo(WecomUserBinding);
     const bindings = await bindingRepo.find({ where: { wecomConfigId: configId, isEnabled: true } });
-    console.log('[Wecom] Found bindings:', bindings.length);
+    log.info('[Wecom] Found bindings:', bindings.length);
 
     if (bindings.length === 0) {
       return res.status(400).json({ success: false, message: '没有绑定的成员，请先在企微联动中绑定成员' });
@@ -570,16 +572,16 @@ router.post('/customers/sync', authenticateToken, requireAdmin, async (req: Requ
 
     // 使用客户联系Secret获取外部联系人
     const accessToken = await WecomApiService.getAccessTokenByConfigId(configId, 'external');
-    console.log('[Wecom] Got access token for sync');
+    log.info('[Wecom] Got access token for sync');
 
     const customerRepo = getTenantRepo(WecomCustomer);
     let syncCount = 0;
 
     for (const binding of bindings) {
       try {
-        console.log('[Wecom] Syncing customers for user:', binding.wecomUserId);
+        log.info('[Wecom] Syncing customers for user:', binding.wecomUserId);
         const externalUserIds = await WecomApiService.getExternalContactList(accessToken, binding.wecomUserId);
-        console.log('[Wecom] Found external contacts:', externalUserIds.length);
+        log.info('[Wecom] Found external contacts:', externalUserIds.length);
 
         for (const externalUserId of externalUserIds) {
           try {
@@ -618,18 +620,18 @@ router.post('/customers/sync', authenticateToken, requireAdmin, async (req: Requ
             await customerRepo.save(customer);
             syncCount++;
           } catch (e: any) {
-            console.error(`[Wecom] Sync customer ${externalUserId} error:`, e.message);
+            log.error(`[Wecom] Sync customer ${externalUserId} error:`, e.message);
           }
         }
       } catch (e: any) {
-        console.error(`[Wecom] Sync user ${binding.wecomUserId} customers error:`, e.message);
+        log.error(`[Wecom] Sync user ${binding.wecomUserId} customers error:`, e.message);
       }
     }
 
-    console.log('[Wecom] Sync completed, count:', syncCount);
+    log.info('[Wecom] Sync completed, count:', syncCount);
     res.json({ success: true, message: `同步完成，共同步 ${syncCount} 个客户` });
   } catch (error: any) {
-    console.error('[Wecom] Sync customers error:', error.message, error.stack);
+    log.error('[Wecom] Sync customers error:', error.message, error.stack);
     res.status(500).json({ success: false, message: error.message || '同步客户失败' });
   }
 });
@@ -651,7 +653,7 @@ router.get('/acquisition-links', authenticateToken, async (req: Request, res: Re
 
     res.json({ success: true, data: links });
   } catch (error: any) {
-    console.error('[Wecom] Get acquisition links error:', error);
+    log.error('[Wecom] Get acquisition links error:', error);
     res.status(500).json({ success: false, message: '获取获客链接失败' });
   }
 });
@@ -697,7 +699,7 @@ router.post('/acquisition-links', authenticateToken, requireAdmin, async (req: R
 
     res.json({ success: true, data: link, message: '创建成功' });
   } catch (error: any) {
-    console.error('[Wecom] Create acquisition link error:', error);
+    log.error('[Wecom] Create acquisition link error:', error);
     res.status(500).json({ success: false, message: error.message || '创建获客链接失败' });
   }
 });
@@ -719,7 +721,7 @@ router.get('/service-accounts', authenticateToken, async (req: Request, res: Res
 
     res.json({ success: true, data: accounts });
   } catch (error: any) {
-    console.error('[Wecom] Get service accounts error:', error);
+    log.error('[Wecom] Get service accounts error:', error);
     res.status(500).json({ success: false, message: '获取客服账号失败' });
   }
 });
@@ -762,7 +764,7 @@ router.post('/service-accounts', authenticateToken, requireAdmin, async (req: Re
 
     res.json({ success: true, data: account, message: '创建成功' });
   } catch (error: any) {
-    console.error('[Wecom] Create service account error:', error);
+    log.error('[Wecom] Create service account error:', error);
     res.status(500).json({ success: false, message: error.message || '创建客服账号失败' });
   }
 });
@@ -804,7 +806,7 @@ router.get('/payments', authenticateToken, async (req: Request, res: Response) =
 
     res.json({ success: true, data: { list: payments, total, page: parseInt(page as string), pageSize: parseInt(pageSize as string) } });
   } catch (error: any) {
-    console.error('[Wecom] Get payments error:', error);
+    log.error('[Wecom] Get payments error:', error);
     res.status(500).json({ success: false, message: '获取收款记录失败' });
   }
 });

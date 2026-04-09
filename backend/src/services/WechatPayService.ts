@@ -8,7 +8,9 @@ import bcrypt from 'bcryptjs';
 import { AppDataSource } from '../config/database';
 import { paymentService } from './PaymentService';
 import { notificationTemplateService } from './NotificationTemplateService';
+import { formatDateTime, formatDate } from '../utils/dateFormat';
 import { SITE_CONFIG } from '../config/sites';
+import { decryptPaymentConfig } from '../utils/paymentCrypto';
 
 import { log } from '../config/logger';
 export class WechatPayService {
@@ -16,17 +18,7 @@ export class WechatPayService {
    * 解密配置数据
    */
   private decrypt(encrypted: string): string {
-    try {
-      const ENCRYPT_KEY = process.env.PAYMENT_ENCRYPT_KEY || 'crm-payment-secret-key-2024';
-      const decipher = crypto.createDecipheriv(
-        'aes-256-cbc',
-        crypto.scryptSync(ENCRYPT_KEY, 'salt', 32),
-        Buffer.alloc(16, 0)
-      );
-      return decipher.update(encrypted, 'hex', 'utf8') + decipher.final('utf8');
-    } catch {
-      return '';
-    }
+    return decryptPaymentConfig(encrypted);
   }
 
   /**
@@ -267,8 +259,6 @@ export class WechatPayService {
             return { code: 'SUCCESS', message: '订单已处理' };
           }
 
-          const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
-
           // 更新订单状态
           await paymentService.updateOrderStatus(order.id, 'paid', {
             tradeNo: transaction_id,
@@ -349,7 +339,7 @@ export class WechatPayService {
       const licenseKey = this.generateLicenseKey();
 
       // 更新租户状态
-      const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
+      const now = formatDateTime(new Date());
       await AppDataSource.query(
         `UPDATE tenants
          SET status = ?, license_key = ?, license_status = ?,
@@ -359,7 +349,7 @@ export class WechatPayService {
          WHERE id = ?`,
         [
           'active', licenseKey, 'active',
-          now, expireDate.toISOString().slice(0, 10),
+          now, formatDate(expireDate),
           order.max_users || 10, order.max_storage_gb || 5,
           now, tenantId
         ]
@@ -377,7 +367,7 @@ export class WechatPayService {
           order.billing_cycle === 'yearly' ? 'annual' : 'monthly',
           order.max_users || 10, order.max_storage_gb || 5,
           order.features || '[]',
-          'active', now, expireDate.toISOString().slice(0, 19).replace('T', ' '),
+          'active', now, formatDateTime(expireDate),
           now, now
         ]
       );
@@ -391,7 +381,7 @@ export class WechatPayService {
         tenantName: tenant.name,
         orderId,
         licenseKey,
-        expireDate: expireDate.toISOString().slice(0, 10),
+        expireDate: formatDate(expireDate),
         phone: tenant.phone,
         email: tenant.email
       });
@@ -420,7 +410,7 @@ export class WechatPayService {
       }
 
       const userId = crypto.randomUUID();
-      const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
+      const now = formatDateTime(new Date());
 
       // 密码：admin123 — 统一使用 bcryptjs 加密（与系统登录验证一致）
       const saltRounds = 12;

@@ -151,9 +151,25 @@ export class MessageController {
       }
 
       const subscriptions = await subscriptionRepo.find({ where: subWhere });
-      const departmentConfigs = await departmentConfigRepo.find({
-        relations: ['department']
-      });
+
+      let departmentConfigs: DepartmentSubscriptionConfig[] = [];
+      try {
+        // 🔥 安全修复：DepartmentSubscriptionConfig 没有 tenant_id 字段，
+        // 需要通过关联的 Department 实体进行租户过滤
+        if (tenantId) {
+          // SaaS模式：通过 department.tenantId 过滤，只获取本租户的部门配置
+          departmentConfigs = await departmentConfigRepo.find({
+            relations: ['department'],
+            where: { department: { tenantId } }
+          });
+        } else {
+          departmentConfigs = await departmentConfigRepo.find({
+            relations: ['department']
+          });
+        }
+      } catch (deptErr) {
+        log.warn('查询部门订阅配置失败（关联可能缺失）:', deptErr instanceof Error ? deptErr.message : deptErr);
+      }
 
       // 组织数据结构
       const result = subscriptions.map((subscription: MessageSubscription) => ({
@@ -168,17 +184,18 @@ export class MessageController {
           .filter((config: DepartmentSubscriptionConfig) => config.messageType === subscription.messageType)
           .map((config: DepartmentSubscriptionConfig) => ({
             id: config.id,
-            departmentId: config.department.id,
-            departmentName: config.department.name,
+            departmentId: config.department?.id,
+            departmentName: config.department?.name || '未知部门',
             isEnabled: config.isEnabled,
             notificationMethods: config.notificationMethods
           }))
       }));
 
-      res.json(result);
+      res.json({ success: true, data: result });
     } catch (error) {
       log.error('获取订阅配置失败:', error);
-      res.status(500).json({ error: '获取订阅配置失败' });
+      // 返回空数组而非500错误，避免前端崩溃
+      res.json({ success: true, data: [] });
     }
   }
 
@@ -267,8 +284,15 @@ export class MessageController {
 
       const departmentConfigRepo = dataSource.getRepository(DepartmentSubscriptionConfig);
 
+      // 🔥 安全修复：通过 department 关联进行租户过滤
+      const tenantId = this.getTenantId();
+      const findWhere: any = { department: { id: departmentId } };
+      if (tenantId) {
+        findWhere.department.tenantId = tenantId;
+      }
+
       const configs = await departmentConfigRepo.find({
-        where: { department: { id: departmentId } },
+        where: findWhere,
         relations: ['department']
       });
 
@@ -294,9 +318,14 @@ export class MessageController {
       const departmentConfigRepo = dataSource.getRepository(DepartmentSubscriptionConfig);
       const departmentRepo = dataSource.getRepository(Department);
 
-      // 检查部门是否存在
+      // 🔥 安全修复：检查部门是否存在时添加租户过滤
+      const tenantId = this.getTenantId();
+      const deptWhere: any = { id: departmentId };
+      if (tenantId) {
+        deptWhere.tenantId = tenantId;
+      }
       const department = await departmentRepo.findOne({
-        where: { id: departmentId }
+        where: deptWhere
       });
 
       if (!department) {
@@ -359,14 +388,22 @@ export class MessageController {
       const departmentConfigRepo = dataSource.getRepository(DepartmentSubscriptionConfig);
       const departmentRepo = dataSource.getRepository(Department);
 
+      // 🔥 安全修复：获取租户ID用于部门查询过滤
+      const tenantId = this.getTenantId();
+
       // 删除现有配置
       await departmentConfigRepo.delete({ messageType: messageType as MessageType });
 
       // 创建新配置
       const newConfigs = [];
       for (const config of configs) {
+        // 🔥 安全修复：部门查询添加租户过滤
+        const deptWhere: any = { id: config.departmentId };
+        if (tenantId) {
+          deptWhere.tenantId = tenantId;
+        }
         const department = await departmentRepo.findOne({
-          where: { id: config.departmentId }
+          where: deptWhere
         });
 
         if (department) {
@@ -813,15 +850,15 @@ export class MessageController {
 
         // 按目标范围推送
         if (announcement.targetDepartments && announcement.targetDepartments.length > 0) {
-          // 按部门推送
+          // 按部门推送 - 🔥 安全修复：传入tenantId确保只推送给本租户的部门
           announcement.targetDepartments.forEach((deptId: string) => {
-            (global.webSocketService as any).sendToDepartment(deptId, 'new_announcement', announcementPayload);
+            (global.webSocketService as any).sendToDepartment(deptId, 'new_announcement', announcementPayload, tenantId);
           });
-          log.info(`[公告] 🔌 WebSocket按部门推送: ${announcement.title} -> ${announcement.targetDepartments.join(',')}`);
+          log.info(`[公告] 🔌 WebSocket按部门推送: ${announcement.title} -> ${announcement.targetDepartments.join(',')}${tenantId ? ` [租户:${tenantId}]` : ''}`);
         } else {
-          // 全员广播
-          (global.webSocketService as any).broadcast('new_announcement', announcementPayload);
-          log.info(`[公告] 🔌 WebSocket全员广播: ${announcement.title}`);
+          // 🔥 安全修复：全员广播改为租户范围广播，传入tenantId防止跨租户推送
+          (global.webSocketService as any).broadcast('new_announcement', announcementPayload, tenantId);
+          log.info(`[公告] 🔌 WebSocket${tenantId ? '租户范围' : '全员'}广播: ${announcement.title}${tenantId ? ` [租户:${tenantId}]` : ''}`);
         }
       }
 

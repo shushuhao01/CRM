@@ -1,6 +1,7 @@
 import axios, { AxiosResponse } from 'axios';
 import crypto from 'crypto';
 import { logger } from '../config/logger';
+import { formatDateTime } from '../utils/dateFormat';
 
 export interface ExpressTraceItem {
   time: string;
@@ -64,7 +65,7 @@ export class ExpressAPIService {
 
   private constructor() {
     this.timeout = parseInt(process.env.EXPRESS_API_TIMEOUT || '10000');
-    
+
     this.kuaidi100Config = {
       customer: process.env.EXPRESS_API_CUSTOMER || '',
       key: process.env.EXPRESS_API_KEY || '',
@@ -153,25 +154,28 @@ export class ExpressAPIService {
         }
       );
 
-      if (response.data.returnCode === '200') {
-        const data = response.data.data;
+      const resData = response.data;
+
+      // 快递100成功响应: message='ok', data为轨迹数组, state为物流状态码
+      // 错误响应: returnCode='400/500/600', message为错误信息
+      if (resData.message === 'ok' || (resData.data && Array.isArray(resData.data))) {
         return {
           success: true,
           trackingNo,
           companyCode,
           companyName: this.getCompanyName(companyCode),
-          status: this.mapKuaidi100Status(data.state),
-          statusDescription: this.getStatusDescription(data.state),
-          currentLocation: data.data?.[0]?.context || '',
-          traces: data.data?.map((item: any) => ({
-            time: item.time,
-            location: item.context,
+          status: this.mapKuaidi100Status(resData.state),
+          statusDescription: this.getStatusDescription(resData.state),
+          currentLocation: resData.data?.[0]?.context || '',
+          traces: resData.data?.map((item: any) => ({
+            time: item.time || item.ftime,
+            location: item.areaName || '',
             description: item.context,
-            status: data.state,
+            status: item.status || resData.state,
             operator: '',
             phone: ''
           })) || [],
-          rawData: response.data
+          rawData: resData
         };
       } else {
         return {
@@ -182,7 +186,7 @@ export class ExpressAPIService {
           status: 'unknown',
           statusDescription: '查询失败',
           traces: [],
-          error: response.data.message || '快递100 API调用失败'
+          error: resData.message || `快递100返回错误(code:${resData.returnCode || 'unknown'})`
         };
       }
     } catch (error) {
@@ -288,7 +292,7 @@ export class ExpressAPIService {
     const now = new Date();
     const traces: ExpressTraceItem[] = [
       {
-        time: new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000).toISOString().replace('T', ' ').substring(0, 19),
+        time: formatDateTime(new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000)),
         location: '深圳市',
         description: '快件已在深圳分拣中心完成分拣，准备发往下一站',
         status: 'in_transit',
@@ -296,7 +300,7 @@ export class ExpressAPIService {
         phone: '13800138000'
       },
       {
-        time: new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000).toISOString().replace('T', ' ').substring(0, 19),
+        time: formatDateTime(new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000)),
         location: '广州市',
         description: '快件已到达广州转运中心',
         status: 'in_transit',
@@ -304,7 +308,7 @@ export class ExpressAPIService {
         phone: '13800138001'
       },
       {
-        time: new Date(now.getTime() - 1 * 24 * 60 * 60 * 1000).toISOString().replace('T', ' ').substring(0, 19),
+        time: formatDateTime(new Date(now.getTime() - 1 * 24 * 60 * 60 * 1000)),
         location: '北京市',
         description: '快件已到达北京分拣中心，正在派送中',
         status: 'out_for_delivery',

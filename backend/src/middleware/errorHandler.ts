@@ -113,6 +113,19 @@ export const errorHandler = (
     message = '数据验证失败';
   }
 
+  // 🔒 过滤敏感信息，防止日志泄露Token/密码
+  const safeHeaders = { ...req.headers };
+  if (safeHeaders.authorization) safeHeaders.authorization = '[REDACTED]';
+  if (safeHeaders.cookie) safeHeaders.cookie = '[REDACTED]';
+
+  const safeBody = req.body ? { ...req.body } : undefined;
+  if (safeBody) {
+    const sensitiveFields = ['password', 'newPassword', 'oldPassword', 'currentPassword', 'token', 'refreshToken', 'secret', 'captchaCode'];
+    for (const field of sensitiveFields) {
+      if (safeBody[field]) safeBody[field] = '[REDACTED]';
+    }
+  }
+
   // 记录错误日志
   const logData = {
     error: {
@@ -123,8 +136,8 @@ export const errorHandler = (
     request: {
       method: req.method,
       url: req.url,
-      headers: req.headers,
-      body: req.body,
+      headers: safeHeaders,
+      body: safeBody,
       params: req.params,
       query: req.query,
       ip: req.ip,

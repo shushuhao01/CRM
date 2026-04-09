@@ -35,6 +35,9 @@ export class LogisticsApiConfig {
   @Column({ name: 'extra_config', type: 'json', nullable: true })
   extraConfig?: Record<string, unknown>;
 
+  @Column({ name: 'support_create_order', type: 'tinyint', default: 0, comment: '是否支持下单生成运单号: 0=仅查询, 1=支持下单' })
+  supportCreateOrder!: number;
+
   @Column({ type: 'tinyint', default: 1 })
   enabled!: number;
 

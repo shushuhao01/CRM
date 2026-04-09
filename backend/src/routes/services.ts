@@ -7,6 +7,7 @@ import { ServiceOperationLog } from '../entities/ServiceOperationLog';
 import { authenticateToken } from '../middleware/auth';
 import { orderNotificationService } from '../services/OrderNotificationService';
 import { getTenantRepo } from '../utils/tenantRepo';
+import { formatDateTime } from '../utils/dateFormat';
 import { log as logger } from '../config/logger';
 // import { Like, In } from 'typeorm'; // 暂时未使用
 
@@ -164,10 +165,10 @@ router.get('/', authenticateToken, async (req: Request, res: Response) => {
       createdBy: service.createdBy,
       createdById: service.createdById,
       departmentId: service.departmentId,
-      createTime: service.createdAt?.toISOString().replace('T', ' ').substring(0, 19),
-      updateTime: service.updatedAt?.toISOString().replace('T', ' ').substring(0, 19),
-      expectedTime: service.expectedTime?.toISOString().replace('T', ' ').substring(0, 19),
-      resolvedTime: service.resolvedTime?.toISOString().replace('T', ' ').substring(0, 19)
+      createTime: formatDateTime(service.createdAt),
+      updateTime: formatDateTime(service.updatedAt),
+      expectedTime: formatDateTime(service.expectedTime),
+      resolvedTime: formatDateTime(service.resolvedTime)
     }));
 
     res.json({
@@ -237,10 +238,10 @@ router.get('/:id', authenticateToken, async (req: Request, res: Response) => {
         createdBy: service.createdBy,
         createdById: service.createdById,
         departmentId: service.departmentId,
-        createTime: service.createdAt?.toISOString().replace('T', ' ').substring(0, 19),
-        updateTime: service.updatedAt?.toISOString().replace('T', ' ').substring(0, 19),
-        expectedTime: service.expectedTime?.toISOString().replace('T', ' ').substring(0, 19),
-        resolvedTime: service.resolvedTime?.toISOString().replace('T', ' ').substring(0, 19)
+        createTime: formatDateTime(service.createdAt),
+        updateTime: formatDateTime(service.updatedAt),
+        expectedTime: formatDateTime(service.expectedTime),
+        resolvedTime: formatDateTime(service.resolvedTime)
       }
     });
   } catch (error) {
@@ -345,7 +346,7 @@ router.post('/', authenticateToken, async (req: Request, res: Response) => {
         id: savedService.id,
         serviceNumber: savedService.serviceNumber,
         status: savedService.status,
-        createTime: savedService.createdAt?.toISOString().replace('T', ' ').substring(0, 19)
+        createTime: formatDateTime(savedService.createdAt)
       }
     });
   } catch (error) {
@@ -442,7 +443,7 @@ router.put('/:id', authenticateToken, async (req: Request, res: Response) => {
         id: updatedService.id,
         serviceNumber: updatedService.serviceNumber,
         status: updatedService.status,
-        updateTime: updatedService.updatedAt?.toISOString().replace('T', ' ').substring(0, 19)
+        updateTime: formatDateTime(updatedService.updatedAt)
       }
     });
   } catch (error) {
@@ -789,11 +790,11 @@ router.get('/:id/follow-ups', authenticateToken, async (req: Request, res: Respo
       id: record.id,
       serviceId: record.serviceId,
       serviceNumber: record.serviceNumber,
-      followUpTime: record.followUpTime?.toISOString().replace('T', ' ').substring(0, 19),
+      followUpTime: formatDateTime(record.followUpTime),
       content: record.content,
       createdBy: record.createdBy,
       createdById: record.createdById,
-      createTime: record.createdAt?.toISOString().replace('T', ' ').substring(0, 19)
+      createTime: formatDateTime(record.createdAt)
     }));
 
     res.json({
@@ -858,10 +859,10 @@ router.post('/:id/follow-ups', authenticateToken, async (req: Request, res: Resp
       message: '添加跟进记录成功',
       data: {
         id: savedFollowUp.id,
-        followUpTime: savedFollowUp.followUpTime?.toISOString().replace('T', ' ').substring(0, 19),
+        followUpTime: formatDateTime(savedFollowUp.followUpTime),
         content: savedFollowUp.content,
         createdBy: savedFollowUp.createdBy,
-        createTime: savedFollowUp.createdAt?.toISOString().replace('T', ' ').substring(0, 19)
+        createTime: formatDateTime(savedFollowUp.createdAt)
       }
     });
   } catch (error) {
@@ -899,7 +900,7 @@ router.get('/:id/operation-logs', authenticateToken, async (req: Request, res: R
       operatorId: log.operatorId,
       operatorName: log.operatorName,
       remark: log.remark,
-      createTime: log.createdAt?.toISOString().replace('T', ' ').substring(0, 19)
+      createTime: formatDateTime(log.createdAt)
     }));
 
     res.json({

@@ -2,14 +2,15 @@
  * 创建管理后台通知服务所需的数据库表
  */
 const mysql = require('mysql2/promise');
+require('dotenv').config({ path: '.env.local' });
 
 async function run() {
   const conn = await mysql.createConnection({
-    host: 'localhost',
-    port: 3306,
-    user: 'abc789',
-    password: 'YtZWJPF2bpsCscHX',
-    database: 'crm_local'
+    host: process.env.DB_HOST || 'localhost',
+    port: parseInt(process.env.DB_PORT) || 3306,
+    user: process.env.DB_USERNAME || 'root',
+    password: process.env.DB_PASSWORD || '',
+    database: process.env.DB_DATABASE || 'crm_local'
   });
 
   console.log('已连接到数据库 crm_local');

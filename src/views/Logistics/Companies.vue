@@ -4,6 +4,12 @@
     <div class="page-header">
       <h2>物流公司管理</h2>
       <div class="header-actions">
+        <el-tooltip content="查看物流API配置指南" placement="bottom">
+          <el-button @click="router.push('/help-center?section=logistics-api-guide')" link type="primary" class="help-link-btn">
+            <el-icon><QuestionFilled /></el-icon>
+            配置指南
+          </el-button>
+        </el-tooltip>
         <el-button @click="handleKuaidi100Config" type="success" :icon="Setting">
           快递100配置
         </el-button>
@@ -323,7 +329,8 @@ import {
   Download,
   Search,
   Refresh,
-  Setting
+  Setting,
+  QuestionFilled
 } from '@element-plus/icons-vue'
 import LogisticsApiConfigDialog from '@/components/Logistics/LogisticsApiConfigDialog.vue'
 import { logisticsApi } from '@/api/logistics'
@@ -705,14 +712,248 @@ const handleDelete = async (row: LogisticsCompany) => {
  * 导入数据
  */
 const handleImport = () => {
-  ElMessage.info('导入功能开发中...')
+  // 创建隐藏的文件输入元素
+  const input = document.createElement('input')
+  input.type = 'file'
+  input.accept = '.xlsx,.xls,.json'
+  input.onchange = async (e: Event) => {
+    const file = (e.target as HTMLInputElement).files?.[0]
+    if (!file) return
+
+    const ext = file.name.split('.').pop()?.toLowerCase()
+
+    try {
+      loading.value = true
+
+      if (ext === 'json') {
+        // JSON 格式导入
+        const text = await file.text()
+        const importData = JSON.parse(text)
+        await doImport(importData)
+      } else if (ext === 'xlsx' || ext === 'xls') {
+        // Excel 格式导入
+        const XLSX = await import('xlsx')
+        const data = await file.arrayBuffer()
+        const workbook = XLSX.read(data, { type: 'array' })
+
+        // 解析物流公司 sheet
+        const companiesSheet = workbook.Sheets['物流公司']
+        if (!companiesSheet) {
+          ElMessage.error('Excel文件中未找到"物流公司"工作表')
+          return
+        }
+        const companiesData = XLSX.utils.sheet_to_json(companiesSheet) as any[]
+
+        // 映射 Excel 列名到字段名
+        const companies = companiesData.map((row: any) => ({
+          code: row['公司代码'] || row['code'] || '',
+          name: row['公司名称'] || row['name'] || '',
+          shortName: row['简称'] || row['shortName'] || '',
+          logo: row['Logo'] || row['logo'] || '',
+          website: row['官网'] || row['website'] || '',
+          trackingUrl: row['跟踪地址'] || row['trackingUrl'] || '',
+          apiUrl: row['API地址'] || row['apiUrl'] || '',
+          apiKey: row['API Key'] || row['apiKey'] || '',
+          apiSecret: row['API Secret'] || row['apiSecret'] || '',
+          contactPhone: row['联系电话'] || row['contactPhone'] || '',
+          contactEmail: row['联系邮箱'] || row['contactEmail'] || '',
+          serviceArea: row['服务区域'] || row['serviceArea'] || '',
+          status: row['状态'] === '启用' ? 'active' : (row['状态'] === '禁用' ? 'inactive' : (row['status'] || 'active')),
+          sortOrder: Number(row['排序'] || row['sortOrder'] || 0),
+          remark: row['备注'] || row['remark'] || ''
+        })).filter((c: any) => c.code && c.name)
+
+        // 解析 API配置 sheet
+        let apiConfigs: any[] = []
+        const apiConfigSheet = workbook.Sheets['API配置']
+        if (apiConfigSheet) {
+          const apiConfigData = XLSX.utils.sheet_to_json(apiConfigSheet) as any[]
+          apiConfigs = apiConfigData.map((row: any) => ({
+            companyCode: row['公司代码'] || row['companyCode'] || '',
+            companyName: row['公司名称'] || row['companyName'] || '',
+            appId: row['App ID'] || row['appId'] || '',
+            appKey: row['App Key'] || row['appKey'] || '',
+            appSecret: row['App Secret'] || row['appSecret'] || '',
+            customerId: row['Customer ID'] || row['customerId'] || '',
+            apiUrl: row['API地址'] || row['apiUrl'] || '',
+            apiEnvironment: row['环境'] === '生产' ? 'production' : (row['apiEnvironment'] || 'sandbox'),
+            supportCreateOrder: row['支持下单'] === '是' ? 1 : (Number(row['supportCreateOrder']) || 0),
+            enabled: row['启用'] === '是' ? 1 : (Number(row['enabled']) || 0)
+          })).filter((ac: any) => ac.companyCode)
+        }
+
+        // 解析快递100配置 sheet
+        let kuaidi100Config: any = null
+        const kuaidi100Sheet = workbook.Sheets['快递100配置']
+        if (kuaidi100Sheet) {
+          const kuaidi100Data = XLSX.utils.sheet_to_json(kuaidi100Sheet) as any[]
+          if (kuaidi100Data.length > 0) {
+            const row = kuaidi100Data[0] as any
+            kuaidi100Config = {
+              customer: row['Customer'] || row['customer'] || '',
+              key: row['Key'] || row['key'] || '',
+              url: row['API地址'] || row['url'] || 'https://poll.kuaidi100.com/poll/query.do',
+              enabled: row['启用'] === '是' ? true : (row['enabled'] !== false)
+            }
+          }
+        }
+
+        await doImport({ companies, apiConfigs, kuaidi100Config })
+      } else {
+        ElMessage.error('不支持的文件格式，请上传 .xlsx 或 .json 文件')
+      }
+    } catch (error: any) {
+      console.error('导入失败:', error)
+      ElMessage.error('导入失败: ' + (error.message || '文件解析错误'))
+    } finally {
+      loading.value = false
+    }
+  }
+  input.click()
+}
+
+/**
+ * 执行导入操作
+ */
+const doImport = async (importData: any) => {
+  const companies = importData.companies || []
+  const apiConfigs = importData.apiConfigs || []
+  const kuaidi100Config = importData.kuaidi100Config || null
+
+  if (companies.length === 0) {
+    ElMessage.warning('未找到有效的物流公司数据')
+    return
+  }
+
+  try {
+    await ElMessageBox.confirm(
+      `将导入 ${companies.length} 个物流公司${apiConfigs.length > 0 ? `、${apiConfigs.length} 个API配置` : ''}${kuaidi100Config ? '、快递100配置' : ''}，重复的将被覆盖。是否继续？`,
+      '确认导入',
+      {
+        confirmButtonText: '确认导入',
+        cancelButtonText: '取消',
+        type: 'warning'
+      }
+    )
+  } catch {
+    return // 用户取消
+  }
+
+  try {
+    const response = await logisticsApi.importCompanies({
+      companies,
+      apiConfigs,
+      kuaidi100Config
+    })
+    if (response.success) {
+      ElMessage.success(response.message || '导入成功')
+      loadData()
+    } else {
+      ElMessage.error(response.message || '导入失败')
+    }
+  } catch (error: any) {
+    ElMessage.error('导入失败: ' + (error.message || '未知错误'))
+  }
 }
 
 /**
  * 导出数据
  */
-const handleExport = () => {
-  ElMessage.info('导出功能开发中...')
+const handleExport = async () => {
+  try {
+    loading.value = true
+    ElMessage.info('正在导出数据...')
+
+    const response = await logisticsApi.exportCompanies()
+
+    if (!response.success || !response.data) {
+      ElMessage.error('导出失败：未获取到数据')
+      return
+    }
+
+    const exportData = response.data
+    const XLSX = await import('xlsx')
+    const workbook = XLSX.utils.book_new()
+
+    // Sheet 1: 物流公司信息
+    const companiesRows = (exportData.companies || []).map((c: any) => ({
+      '公司代码': c.code,
+      '公司名称': c.name,
+      '简称': c.shortName || '',
+      'Logo': c.logo || '',
+      '官网': c.website || '',
+      '跟踪地址': c.trackingUrl || '',
+      'API地址': c.apiUrl || '',
+      'API Key': c.apiKey || '',
+      'API Secret': c.apiSecret || '',
+      '联系电话': c.contactPhone || '',
+      '联系邮箱': c.contactEmail || '',
+      '服务区域': c.serviceArea || '',
+      '状态': c.status === 'active' ? '启用' : '禁用',
+      '排序': c.sortOrder || 0,
+      '备注': c.remark || '',
+      '创建时间': c.createdAt ? new Date(c.createdAt).toLocaleString('zh-CN') : '',
+      '更新时间': c.updatedAt ? new Date(c.updatedAt).toLocaleString('zh-CN') : ''
+    }))
+    const companiesSheet = XLSX.utils.json_to_sheet(companiesRows)
+    // 设置列宽
+    companiesSheet['!cols'] = [
+      { wch: 12 }, { wch: 16 }, { wch: 10 }, { wch: 30 }, { wch: 30 },
+      { wch: 50 }, { wch: 40 }, { wch: 30 }, { wch: 30 }, { wch: 15 },
+      { wch: 25 }, { wch: 20 }, { wch: 8 }, { wch: 6 }, { wch: 20 },
+      { wch: 20 }, { wch: 20 }
+    ]
+    XLSX.utils.book_append_sheet(workbook, companiesSheet, '物流公司')
+
+    // Sheet 2: API配置
+    if (exportData.apiConfigs && exportData.apiConfigs.length > 0) {
+      const apiConfigRows = exportData.apiConfigs.map((ac: any) => ({
+        '公司代码': ac.companyCode,
+        '公司名称': ac.companyName || '',
+        'App ID': ac.appId || '',
+        'App Key': ac.appKey || '',
+        'App Secret': ac.appSecret || '',
+        'Customer ID': ac.customerId || '',
+        'API地址': ac.apiUrl || '',
+        '环境': ac.apiEnvironment === 'production' ? '生产' : '沙箱',
+        '支持下单': ac.supportCreateOrder ? '是' : '否',
+        '启用': ac.enabled ? '是' : '否'
+      }))
+      const apiConfigSheet = XLSX.utils.json_to_sheet(apiConfigRows)
+      apiConfigSheet['!cols'] = [
+        { wch: 12 }, { wch: 16 }, { wch: 25 }, { wch: 30 }, { wch: 40 },
+        { wch: 25 }, { wch: 40 }, { wch: 8 }, { wch: 10 }, { wch: 8 }
+      ]
+      XLSX.utils.book_append_sheet(workbook, apiConfigSheet, 'API配置')
+    }
+
+    // Sheet 3: 快递100配置
+    if (exportData.kuaidi100Config) {
+      const k100 = exportData.kuaidi100Config
+      const kuaidi100Rows = [{
+        'Customer': k100.customer || '',
+        'Key': k100.key || '',
+        'API地址': k100.url || 'https://poll.kuaidi100.com/poll/query.do',
+        '启用': k100.enabled !== false ? '是' : '否'
+      }]
+      const kuaidi100Sheet = XLSX.utils.json_to_sheet(kuaidi100Rows)
+      kuaidi100Sheet['!cols'] = [
+        { wch: 30 }, { wch: 40 }, { wch: 50 }, { wch: 8 }
+      ]
+      XLSX.utils.book_append_sheet(workbook, kuaidi100Sheet, '快递100配置')
+    }
+
+    // 生成文件并下载
+    const fileName = `物流公司数据_${new Date().toISOString().slice(0, 10)}.xlsx`
+    XLSX.writeFile(workbook, fileName)
+
+    ElMessage.success(`导出成功：${companiesRows.length} 个物流公司`)
+  } catch (error: any) {
+    console.error('导出失败:', error)
+    ElMessage.error('导出失败: ' + (error.message || '未知错误'))
+  } finally {
+    loading.value = false
+  }
 }
 
 /**
@@ -877,6 +1118,11 @@ onBeforeUnmount(() => {
 .header-actions {
   display: flex;
   gap: 12px;
+  align-items: center;
+}
+
+.help-link-btn {
+  font-size: 13px;
 }
 
 .search-card,

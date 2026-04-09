@@ -107,7 +107,7 @@
 
       <!-- 激活成功信息 - 私有部署模式 -->
       <div v-if="activateResult && currentMode === 'private'" class="activate-result">
-        <el-result icon="success" title="系统激活成功">
+        <el-result icon="success" :title="activateResult.isFirstActivation ? '🎉 系统首次激活成功' : '系统激活成功'">
           <template #sub-title>
             <div class="result-info">
               <p>客户名称：{{ activateResult.customerName }}</p>
@@ -115,25 +115,58 @@
               <p>最大用户数：{{ activateResult.maxUsers }}</p>
               <p v-if="activateResult.expiresAt">有效期至：{{ formatDate(activateResult.expiresAt) }}</p>
             </div>
-            <div v-if="activateResult.defaultAdmin" class="default-admin-info">
-              <el-alert type="warning" :closable="false">
-                <template #title>
-                  <div>
-                    已为您创建默认管理员账号：<br>
-                    用户名：<strong>{{ activateResult.defaultAdmin.username }}</strong>
+
+            <!-- 🔒 首次激活：显示默认管理员信息（仅此一次） -->
+            <div v-if="activateResult.defaultAdmin" class="first-time-admin-section">
+              <div class="onetime-banner">
+                <div class="onetime-icon">⚠️</div>
+                <div class="onetime-text">
+                  <strong>以下信息仅展示一次，请立即保存！</strong>
+                  <span>关闭此窗口后将无法再次查看默认管理员密码</span>
+                </div>
+              </div>
+
+              <div class="admin-credentials-card">
+                <div class="credential-row">
+                  <span class="credential-label">管理员账号</span>
+                  <span class="credential-value">
+                    <strong>{{ activateResult.defaultAdmin.username }}</strong>
                     <template v-if="activateResult.defaultAdmin.isPhoneAccount">
-                      <br><span style="font-size:12px;color:#909399;">（即您注册官网时的手机号）</span>
+                      <span class="credential-hint">（即您注册官网时的手机号）</span>
                     </template>
-                    <br>
-                    密码：<strong>{{ activateResult.defaultAdmin.password }}</strong><br>
-                    <span class="warning-text">请登录后立即修改密码！</span>
-                  </div>
+                  </span>
+                </div>
+                <div class="credential-row">
+                  <span class="credential-label">初始密码</span>
+                  <span class="credential-value">
+                    <strong>{{ activateResult.defaultAdmin.password }}</strong>
+                  </span>
+                </div>
+              </div>
+
+              <el-button type="warning" plain class="copy-credentials-btn" @click="copyAdminCredentials">
+                📋 一键复制管理员账号密码
+              </el-button>
+
+              <div class="security-warning">
+                <el-icon><WarningFilled /></el-icon>
+                <span>请登录后 <strong>立即修改密码</strong>！此信息仅展示一次，后续输入授权码将不再显示。</span>
+              </div>
+            </div>
+
+            <!-- 非首次激活：不显示管理员信息 -->
+            <div v-if="!activateResult.defaultAdmin && !activateResult.isFirstActivation" class="reactivate-notice">
+              <el-alert type="info" :closable="false" show-icon>
+                <template #title>
+                  此授权码已成功重新激活。管理员账号信息仅在首次激活时展示，如忘记密码请联系管理员重置。
                 </template>
               </el-alert>
             </div>
           </template>
           <template #extra>
-            <el-button type="primary" @click="handleConfirm">去登录</el-button>
+            <el-button type="primary" @click="handleConfirm">
+              {{ activateResult.defaultAdmin ? '我已保存，去登录' : '去登录' }}
+            </el-button>
           </template>
         </el-result>
       </div>
@@ -151,7 +184,7 @@
 <script setup lang="ts">
 import { ref, reactive, watch, computed } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Key, Ticket, OfficeBuilding, Monitor } from '@element-plus/icons-vue'
+import { Key, Ticket, OfficeBuilding, Monitor, WarningFilled } from '@element-plus/icons-vue'
 import type { FormInstance, FormRules } from 'element-plus'
 
 const props = defineProps<{
@@ -264,6 +297,18 @@ const handleActivate = async () => {
 const handleClose = () => {
   if (!activating.value) {
     visible.value = false
+  }
+}
+
+const copyAdminCredentials = async () => {
+  if (!activateResult.value?.defaultAdmin) return
+  const admin = activateResult.value.defaultAdmin
+  const text = `【云客CRM - 管理员账号信息】\n管理员账号：${admin.username}\n初始密码：${admin.password}\n\n⚠️ 请登录后立即修改密码！`
+  try {
+    await navigator.clipboard.writeText(text)
+    ElMessage.success('管理员账号密码已复制到剪贴板，请妥善保存！')
+  } catch {
+    ElMessage.warning('复制失败，请手动记录账号密码')
   }
 }
 
@@ -458,5 +503,127 @@ const formatDate = (date: string) => {
     color: #e6a23c;
     font-weight: bold;
   }
+}
+
+// 首次激活 - 管理员凭据展示区
+.first-time-admin-section {
+  margin-top: 20px;
+  text-align: left;
+}
+
+.onetime-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 14px 16px;
+  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+  border: 2px solid #f59e0b;
+  border-radius: 10px;
+  margin-bottom: 16px;
+  animation: bannerPulse 2s ease-in-out infinite;
+
+  .onetime-icon {
+    font-size: 24px;
+    flex-shrink: 0;
+    line-height: 1;
+  }
+
+  .onetime-text {
+    strong {
+      display: block;
+      font-size: 15px;
+      color: #92400e;
+      margin-bottom: 2px;
+    }
+
+    span {
+      font-size: 12px;
+      color: #b45309;
+    }
+  }
+}
+
+@keyframes bannerPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.3); }
+  50% { box-shadow: 0 0 0 6px rgba(245, 158, 11, 0); }
+}
+
+.admin-credentials-card {
+  background: #1e293b;
+  border-radius: 10px;
+  padding: 16px 20px;
+  margin-bottom: 12px;
+
+  .credential-row {
+    display: flex;
+    align-items: center;
+    padding: 10px 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+
+    &:last-child {
+      border-bottom: none;
+    }
+  }
+
+  .credential-label {
+    min-width: 90px;
+    font-size: 13px;
+    color: #94a3b8;
+  }
+
+  .credential-value {
+    flex: 1;
+    font-size: 16px;
+    color: #f1f5f9;
+
+    strong {
+      font-family: 'Consolas', 'Monaco', monospace;
+      color: #fbbf24;
+      font-size: 18px;
+      letter-spacing: 1px;
+    }
+
+    .credential-hint {
+      display: inline-block;
+      margin-left: 8px;
+      font-size: 11px;
+      color: #64748b;
+    }
+  }
+}
+
+.copy-credentials-btn {
+  width: 100%;
+  margin-bottom: 12px;
+  font-weight: 600;
+  font-size: 14px;
+  height: 40px;
+}
+
+.security-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 10px 14px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  font-size: 12px;
+  color: #991b1b;
+  line-height: 1.6;
+
+  .el-icon {
+    color: #ef4444;
+    margin-top: 2px;
+    flex-shrink: 0;
+  }
+
+  strong {
+    color: #dc2626;
+  }
+}
+
+.reactivate-notice {
+  margin-top: 16px;
 }
 </style>

@@ -10,9 +10,10 @@ const router = Router();
 
 /**
  * GET /api/v1/public/capacity/prices
+ * GET /api/v1/public/capacity/price (别名)
  * 获取可用的扩容价格列表（公开，不需要认证）
  */
-router.get('/prices', async (_req: Request, res: Response) => {
+const pricesHandler = async (_req: Request, res: Response) => {
   try {
     const prices = await capacityService.getActivePrices();
     res.json({ code: 0, data: prices });
@@ -20,7 +21,9 @@ router.get('/prices', async (_req: Request, res: Response) => {
     log.error('获取扩容价格失败:', error);
     res.status(500).json({ code: 1, message: '获取失败' });
   }
-});
+};
+router.get('/prices', pricesHandler);
+router.get('/price', pricesHandler);
 
 /**
  * GET /api/v1/public/capacity/my

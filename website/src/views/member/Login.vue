@@ -117,7 +117,7 @@
 
           <div class="login-divider"><span>或</span></div>
 
-          <a href="https://app.yunke-crm.com" target="_blank" class="crm-entry-btn">
+          <a v-if="crmUrl" :href="crmUrl" target="_blank" class="crm-entry-btn">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
             登录CRM工作台
           </a>
@@ -176,16 +176,26 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive } from 'vue'
+import { ref, reactive, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { memberLogin, memberSendCode, memberSetPassword, isMemberLoggedIn, selectTenantLogin } from '@/api/member'
+import { getWebsiteConfig } from '@/api/website-config'
 
 const router = useRouter()
+const crmUrl = ref('')
 
 // 如果已登录，直接跳转
 if (isMemberLoggedIn()) {
   router.replace('/member/dashboard')
 }
+
+// 加载动态CRM地址
+onMounted(async () => {
+  try {
+    const config = await getWebsiteConfig()
+    if (config.crmUrl) crmUrl.value = config.crmUrl
+  } catch { /* 静默 */ }
+})
 
 const loginType = ref<'password' | 'sms_code'>('password')
 const loading = ref(false)

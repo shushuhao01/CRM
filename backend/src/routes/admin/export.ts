@@ -5,6 +5,7 @@
 import { Router, Request, Response } from 'express';
 import { AppDataSource } from '../../config/database';
 import ExcelJS from 'exceljs';
+import { formatDate } from '../../utils/dateFormat';
 
 import { log } from '../../config/logger';
 const router = Router();
@@ -172,7 +173,7 @@ router.get('/licenses', async (req: Request, res: Response) => {
       { key: 'notes', label: '备注', width: 30 }
     ];
 
-    const dateStr = new Date().toISOString().slice(0, 10);
+    const dateStr = formatDate(new Date());
     if (format === 'csv') {
       sendCSV(res, `私有客户列表_${dateStr}.csv`, toCSV(columns, formatted));
     } else {
@@ -233,7 +234,7 @@ router.get('/tenants', async (req: Request, res: Response) => {
       { key: 'created_at', label: '创建时间', width: 20 },
     ];
 
-    const dateStr = new Date().toISOString().slice(0, 10);
+    const dateStr = formatDate(new Date());
     if (format === 'csv') {
       sendCSV(res, `租户客户列表_${dateStr}.csv`, toCSV(columns, formatted));
     } else {
@@ -289,7 +290,7 @@ router.get('/payments', async (req: Request, res: Response) => {
       { key: 'created_at', label: '创建时间', width: 20 }
     ];
 
-    const dateStr = new Date().toISOString().slice(0, 10);
+    const dateStr = formatDate(new Date());
     if (format === 'csv') {
       sendCSV(res, `支付订单列表_${dateStr}.csv`, toCSV(columns, formatted));
     } else {
@@ -334,7 +335,7 @@ router.get('/operation-logs', async (req: Request, res: Response) => {
       { key: 'created_at', label: '操作时间', width: 20 }
     ];
 
-    const dateStr = new Date().toISOString().slice(0, 10);
+    const dateStr = formatDate(new Date());
     if (format === 'csv') {
       sendCSV(res, `操作日志_${dateStr}.csv`, toCSV(columns, formatted));
     } else {

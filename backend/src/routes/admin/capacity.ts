@@ -68,5 +68,35 @@ router.delete('/configs/:id', async (req: Request, res: Response) => {
   }
 });
 
+/**
+ * GET /api/v1/admin/capacity/orders
+ * 管理后台查询扩容订单（支持按 tenantId / licenseId 筛选）
+ */
+router.get('/orders', async (req: Request, res: Response) => {
+  try {
+    const { tenantId, licenseId, page = '1', pageSize = '10' } = req.query;
+    const p = Math.max(1, parseInt(page as string) || 1);
+    const ps = Math.min(100, Math.max(1, parseInt(pageSize as string) || 10));
+
+    if (tenantId) {
+      const result = await capacityService.getOrders(tenantId as string, p, ps);
+      return res.json({ success: true, data: result });
+    }
+
+    if (licenseId) {
+      // 私有客户：通过 licenseId 查找关联租户
+      const result = await capacityService.getOrdersByLicenseId(licenseId as string, p, ps);
+      return res.json({ success: true, data: result });
+    }
+
+    // 不带筛选条件则返回全部订单
+    const result = await capacityService.getAllOrders(p, ps);
+    res.json({ success: true, data: result });
+  } catch (error) {
+    log.error('查询扩容订单失败:', error);
+    res.status(500).json({ success: false, message: '查询失败' });
+  }
+});
+
 export default router;
 

@@ -56,7 +56,7 @@ export interface LogisticsQueryOptions {
 /**
  * 根据运单号前缀自动识别快递公司
  */
-const detectCompanyByTrackingNo = (trackingNo: string): string => {
+export const detectCompanyByTrackingNo = (trackingNo: string): string => {
   if (!trackingNo) return ''
   const upperNo = trackingNo.toUpperCase()
 
@@ -233,5 +233,6 @@ export default {
   getCompanyShortName,
   getTrackingUrl,
   getKuaidi100Url,
-  copyToClipboard
+  copyToClipboard,
+  detectCompanyByTrackingNo
 }

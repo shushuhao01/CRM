@@ -242,53 +242,60 @@ const companyConfigs: Record<string, {
     showAppKey: true,
     showCustomerId: true,
     fieldLabels: {
-      appId: '公司ID',
+      appId: '企业ID',
       appKey: 'AppKey',
       appSecret: 'AppSecret',
       customerId: '合作商ID'
     },
     fieldTips: {
-      appId: '中通开放平台分配的company_id',
-      appKey: '中通开放平台分配的app_key',
-      appSecret: '中通开放平台分配的app_secret',
+      appId: '中通开放平台分配的company_id（企业ID，放在请求头x-companyid）',
+      appKey: '中通开放平台分配的app_key（放在请求头x-appkey）',
+      appSecret: '中通开放平台分配的app_secret（用于HMAC-SHA256签名）',
       customerId: '合作商ID（可选）'
     },
     apiUrls: {
-      sandbox: 'https://japi-test.zto.com/zto.open.getTraceInfo',
-      production: 'https://japi.zto.com/zto.open.getTraceInfo'
-    }
+      sandbox: 'https://japi-test.zto.com/traceInterfaceNewTraces',
+      production: 'https://japi.zto.com/traceInterfaceNewTraces'
+    },
+    setupSteps: [
+      '1. 登录中通开放平台 (open.zto.com)，注册开发者账号',
+      '2. 进入"应用管理"，创建应用并获取企业ID、AppKey和AppSecret',
+      '3. 在"接口管理"中申请"实时轨迹查询"(traceInterfaceNewTraces)接口权限',
+      '4. 签名方式: Base64(HMAC-SHA256(请求体, AppSecret))，放在x-datadigest头',
+      '5. 在沙箱环境完成接口联调测试',
+      '6. 将获取的企业ID、AppKey和AppSecret填入下方配置'
+    ]
   },
   // 圆通速递 - 圆通开放平台 https://open.yto.net.cn/
   YTO: {
     name: '圆通速递',
     platformUrl: 'https://open.yto.net.cn/',
-    showAppKey: true,
+    showAppKey: false,
     showCustomerId: true,
     fieldLabels: {
       appId: 'AppKey',
-      appKey: 'AppSecret',
-      appSecret: 'UserId',
+      appKey: '',
+      appSecret: 'SecretKey',
       customerId: '客户编码'
     },
     fieldTips: {
-      appId: '圆通开放平台分配的AppKey（如：YTOxxxxxxxx）',
-      appKey: '圆通开放平台分配的AppSecret',
-      appSecret: '圆通开放平台分配的UserId',
-      customerId: '客户编码（如：open19341749）'
+      appId: '圆通开放平台分配的AppKey（应用密钥）',
+      appKey: '',
+      appSecret: '圆通开放平台分配的SecretKey（用于MD5签名）',
+      customerId: '圆通分配的客户编码(user_id)，如：open19341749'
     },
     apiUrls: {
-      sandbox: 'https://openuat.yto56test.com:5443/open/track_query_adapter/v1',
-      production: 'https://openapi.yto.net.cn/open/track_query_adapter/v1'
+      sandbox: 'https://openapi-test.yto.net.cn/open/track_query/v1/query',
+      production: 'https://openapi.yto.net.cn/open/track_query/v1/query'
     },
-    // 圆通需要先进行API在线调试，回调URL填写: {您的域名}/api/v1/logistics/yto-callback
     callbackUrl: '/api/v1/logistics/yto-callback',
     setupSteps: [
-      '1. 登录圆通速递开放平台',
-      '2. 进入"接口管理"，申请"物流轨迹推送服务"接口',
-      '3. 进入"API在线调试"页面',
-      '4. URL地址填写: {您的服务器域名}/api/v1/logistics/yto-callback',
-      '5. 点击"提交测试"，调试成功后获取客户编码和请求地址',
-      '6. 将获取的参数填入下方配置'
+      '1. 登录圆通开放平台 (open.yto.net.cn)，注册开发者账号',
+      '2. 进入"应用管理"，创建应用获取AppKey和SecretKey',
+      '3. 在"接口管理"中申请"物流轨迹查询"(yto.Marketing.WaybillTrace)接口',
+      '4. 获取客户编码(user_id)，如需轨迹推送可配置回调URL',
+      '5. 签名方式: MD5(param参数值 + SecretKey).toUpperCase()',
+      '6. 将AppKey、SecretKey和客户编码填入下方配置'
     ]
   },
   // 申通快递 - 申通开放平台 https://open.sto.cn/
@@ -304,15 +311,23 @@ const companyConfigs: Record<string, {
       customerId: '客户编码'
     },
     fieldTips: {
-      appId: '申通开放平台分配的appKey',
+      appId: '申通开放平台分配的appKey（from_appkey参数）',
       appKey: '',
-      appSecret: '申通开放平台分配的secretKey',
+      appSecret: '申通开放平台分配的secretKey（用于Base64(MD5())签名）',
       customerId: '客户编码（可选）'
     },
     apiUrls: {
       sandbox: 'http://cloudinter-linkgatewaytest.sto.cn/gateway/link.do',
       production: 'https://cloudinter-linkgateway.sto.cn/gateway/link.do'
-    }
+    },
+    setupSteps: [
+      '1. 登录申通开放平台 (open.sto.cn)，注册开发者账号',
+      '2. 进入"应用管理"，创建应用获取AppKey和SecretKey',
+      '3. 在"LinkGateway接口"中申请"STO_TRACE_QUERY_COMMON"轨迹查询接口',
+      '4. 签名方式: Base64(MD5(content + SecretKey))',
+      '5. 在测试环境完成接口调试（注意测试环境为HTTP协议）',
+      '6. 将AppKey和SecretKey填入下方配置'
+    ]
   },
   // 韵达速递 - 韵达开放平台 https://open.yundaex.com/
   YD: {
@@ -329,13 +344,21 @@ const companyConfigs: Record<string, {
     fieldTips: {
       appId: '韵达开放平台分配的appKey',
       appKey: '',
-      appSecret: '韵达开放平台分配的appSecret',
-      customerId: '合作伙伴ID（可选）'
+      appSecret: '韵达开放平台分配的appSecret（用于MD5签名）',
+      customerId: '合作伙伴ID（partner_id，可选）'
     },
     apiUrls: {
-      sandbox: 'https://u-openapi.yundasys.com/openapi/outer/logictis/query',
-      production: 'https://openapi.yundaex.com/openapi/outer/logictis/query'
-    }
+      sandbox: 'https://u-openapi.yundasys.com/api/queryTraceInfo',
+      production: 'https://openapi.yundaex.com/api/queryTraceInfo'
+    },
+    setupSteps: [
+      '1. 登录韵达开放平台 (open.yundaex.com)，注册开发者账号',
+      '2. 进入"应用管理"，创建应用获取AppKey和AppSecret',
+      '3. 在"接口管理"中申请"轨迹查询"接口权限',
+      '4. 签名方式: MD5(请求数据 + AppSecret + timestamp)',
+      '5. 在沙箱环境(yundasys.com)完成接口联调测试',
+      '6. 将AppKey、AppSecret和PartnerId填入下方配置'
+    ]
   },
   // 极兔速递 - 极兔开放平台 https://open.jtexpress.com.cn/
   JTSD: {
@@ -350,17 +373,25 @@ const companyConfigs: Record<string, {
       customerId: '客户编码'
     },
     fieldTips: {
-      appId: '极兔开放平台分配的apiAccount',
+      appId: '极兔开放平台分配的apiAccount（API账号）',
       appKey: '',
-      appSecret: '极兔开放平台分配的privateKey',
-      customerId: '客户编码（可选）'
+      appSecret: '极兔开放平台分配的privateKey（用于Base64(MD5())签名）',
+      customerId: '客户编码/公司编码（eccompanyid）'
     },
     apiUrls: {
-      sandbox: 'https://openapi-test.jtexpress.com.cn/webopenplatformapi/api',
+      sandbox: 'https://uat-openapi.jtexpress.com.cn/webopenplatformapi/api',
       production: 'https://openapi.jtexpress.com.cn/webopenplatformapi/api'
-    }
+    },
+    setupSteps: [
+      '1. 登录极兔开放平台 (open.jtexpress.com.cn)，注册企业账号',
+      '2. 进入"应用管理"，创建应用获取API账号(apiAccount)和私钥(privateKey)',
+      '3. 在"接口管理"中申请"轨迹查询"(TRACEQUERY)接口',
+      '4. 签名方式: Base64(MD5(logistics_interface + privateKey))',
+      '5. 在UAT环境(uat-openapi)完成接口联调测试',
+      '6. 将API账号、私钥和客户编码填入下方配置'
+    ]
   },
-  // 邮政EMS - 邮政开放平台
+  // 邮政EMS - 邮政EIS开放平台 https://eis.11183.com.cn/
   EMS: {
     name: '邮政EMS',
     platformUrl: 'https://eis.11183.com.cn/',
@@ -375,13 +406,21 @@ const companyConfigs: Record<string, {
     fieldTips: {
       appId: '邮政EMS开放平台分配的appKey',
       appKey: '',
-      appSecret: '邮政EMS开放平台分配的appSecret',
+      appSecret: '邮政EMS开放平台分配的appSecret（用于MD5签名）',
       customerId: '客户编码（可选）'
     },
     apiUrls: {
-      sandbox: 'https://eis.11183.com.cn/openapi/test',
-      production: 'https://eis.11183.com.cn/openapi'
-    }
+      sandbox: 'https://eis-test.11183.com.cn/openapi/mailTrack/query',
+      production: 'https://eis.11183.com.cn/openapi/mailTrack/query'
+    },
+    setupSteps: [
+      '1. 登录邮政EIS开放平台 (eis.11183.com.cn)，注册企业账号',
+      '2. 申请API接入，获取AppKey和AppSecret',
+      '3. 在"接口管理"中申请"邮件轨迹查询"(mailTrack/query)接口',
+      '4. 签名方式: MD5(data + AppSecret + timestamp).toUpperCase()',
+      '5. 在测试环境(eis-test.11183.com.cn)完成接口联调',
+      '6. 将AppKey和AppSecret填入下方配置'
+    ]
   },
   // 京东物流 - 京东物流开放平台 https://open.jdl.com/
   JD: {
@@ -396,15 +435,23 @@ const companyConfigs: Record<string, {
       customerId: '商家编码'
     },
     fieldTips: {
-      appId: '京东物流开放平台分配的appKey',
+      appId: '京东物流开放平台分配的AppKey（app_key）',
       appKey: '',
-      appSecret: '京东物流开放平台分配的appSecret',
-      customerId: '商家编码（可选）'
+      appSecret: '京东物流开放平台分配的AppSecret（用于MD5签名）',
+      customerId: '商家编码（customerCode，可选）'
     },
     apiUrls: {
       sandbox: 'https://uat-api.jdl.com',
       production: 'https://api.jdl.com'
-    }
+    },
+    setupSteps: [
+      '1. 登录京东物流开放平台 (open.jdl.com)，注册企业账号',
+      '2. 进入"应用管理"，创建应用获取AppKey和AppSecret',
+      '3. 在"API服务"中申请"运单轨迹查询"(ecap/trace/query)接口权限',
+      '4. 签名方式: MD5(AppSecret + timestamp + param_json + AppSecret).toUpperCase()',
+      '5. 在UAT环境(uat-api.jdl.com)完成接口联调测试',
+      '6. 将AppKey、AppSecret和商家编码填入下方配置'
+    ]
   },
   // 德邦快递 - 德邦开放平台 https://open.deppon.com/
   DBL: {
@@ -419,15 +466,23 @@ const companyConfigs: Record<string, {
       customerId: '公司编码'
     },
     fieldTips: {
-      appId: '德邦开放平台分配的appKey',
+      appId: '德邦开放平台分配的appKey（即companyCode）',
       appKey: '',
-      appSecret: '德邦开放平台分配的appSecret',
+      appSecret: '德邦开放平台分配的appSecret（用于Base64(MD5())签名）',
       customerId: '公司编码（可选）'
     },
     apiUrls: {
       sandbox: 'http://dpapi-test.deppon.com/dop-interface-sync/standard-order',
       production: 'https://dpapi.deppon.com/dop-interface-sync/standard-order'
-    }
+    },
+    setupSteps: [
+      '1. 登录德邦开放平台 (open.deppon.com)，注册企业账号',
+      '2. 申请API接入，获取AppKey(companyCode)和AppSecret',
+      '3. 在"接口管理"中申请"新轨迹查询"(newTraceQuery)接口',
+      '4. 签名方式: Base64(MD5(AppKey + params + timestamp + AppSecret))',
+      '5. 在测试环境(dpapi-test.deppon.com)完成接口调试',
+      '6. 将AppKey、AppSecret和公司编码填入下方配置'
+    ]
   }
 }
 

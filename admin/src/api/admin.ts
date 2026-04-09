@@ -120,6 +120,12 @@ export const adminApi = {
   getTenantBills: (id: string, params: BillListParams) =>
     request.get(`/tenants/${id}/bills`, { params }),
 
+  // 扩容记录
+  getCapacityOrdersByTenant: (tenantId: string, params?: { page?: number; pageSize?: number }) =>
+    request.get('/capacity/orders', { params: { tenantId, ...params } }),
+  getCapacityOrdersByLicense: (licenseId: string, params?: { page?: number; pageSize?: number }) =>
+    request.get('/capacity/orders', { params: { licenseId, ...params } }),
+
   // 套餐管理
   getPackages: (params?: PackageListParams) =>
     request.get('/packages', { params }),

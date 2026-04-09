@@ -12,6 +12,7 @@ import { SystemConfig } from '../../entities/SystemConfig';
 import crypto from 'crypto';
 import axios from 'axios';
 import { v4 as uuidv4 } from 'uuid';
+import { formatDate } from '../../utils/dateFormat';
 
 import { log } from '../../config/logger';
 export function registerStatusAndConfigRoutes(router: Router): void {
@@ -279,21 +280,18 @@ router.post('/order/status', async (req, res) => {
     // 更新物流状态字段
     order.logisticsStatus = newStatus;
 
-    // 🔥 修复：物流状态直接作为订单状态保存，不再映射成cancelled
-    // 这些状态都是有效的订单状态，应该保持原样
-    const validOrderStatuses = [
-      'delivered',           // 已签收
-      'rejected',            // 拒收
-      'rejected_returned',   // 拒收已退回
-      'refunded',            // 退货退款
-      'after_sales_created', // 已建售后
-      'abnormal',            // 状态异常
-      'package_exception'    // 包裹异常
-    ];
+    // 🔥 使用安全映射函数：物流状态 → 订单状态
+    const { mapLogisticsToOrderStatus } = await import('../../services/LogisticsAutoSyncService');
+    const targetOrderStatus = mapLogisticsToOrderStatus(newStatus, order.status);
 
-    if (validOrderStatuses.includes(newStatus)) {
-      order.status = newStatus as any;
-      log.info(`[物流状态] 订单状态同步更新为: ${newStatus}`);
+    if (targetOrderStatus) {
+      order.status = targetOrderStatus as any;
+      log.info(`[物流状态] 订单状态安全映射: ${order.status} → ${targetOrderStatus} (物流状态: ${newStatus})`);
+
+      // 签收时记录签收时间
+      if (targetOrderStatus === 'delivered') {
+        order.deliveredAt = new Date();
+      }
     }
 
     // 更新订单的更新时间
@@ -714,7 +712,7 @@ router.get('/export', async (req, res) => {
 
     const csvContent = BOM + [headers.join(','), ...rows.map(row => row.join(','))].join('\n');
 
-    const filename = `logistics_export_${new Date().toISOString().slice(0, 10)}.csv`;
+    const filename = `logistics_export_${formatDate(new Date())}.csv`;
 
     res.setHeader('Content-Type', 'text/csv;charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
@@ -729,6 +727,46 @@ router.get('/export', async (req, res) => {
 });
 
 // ========== 物流API配置管理 ==========
+
+/**
+ * 🔥 自动修复：检查并添加 logistics_api_configs 表缺失的字段
+ * 解决 "Unknown column 'support_create_order'" 等报错
+ */
+let _columnMigrationDone = false;
+async function ensureLogisticsApiConfigColumns(): Promise<void> {
+  if (_columnMigrationDone) return;
+  try {
+    const { AppDataSource } = await import('../../config/database');
+    const ds = AppDataSource;
+    if (!ds || !ds.isInitialized) return;
+
+    // 检查 support_create_order 字段是否存在
+    const [rows]: any = await ds.query(
+      `SELECT COUNT(*) AS cnt FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE()
+       AND TABLE_NAME = 'logistics_api_configs'
+       AND COLUMN_NAME = 'support_create_order'`
+    );
+    const cnt = rows?.cnt ?? rows?.['COUNT(*)'] ?? 0;
+    if (Number(cnt) === 0) {
+      log.info('[物流API配置] ⚡ 检测到 support_create_order 字段缺失，正在自动添加...');
+      await ds.query(
+        `ALTER TABLE \`logistics_api_configs\`
+         ADD COLUMN \`support_create_order\` TINYINT(1) NOT NULL DEFAULT 0
+         COMMENT '是否支持下单生成运单号: 0=仅查询, 1=支持下单'`
+      );
+      log.info('[物流API配置] ✅ support_create_order 字段已自动添加');
+    }
+    _columnMigrationDone = true;
+  } catch (migErr: any) {
+    // 如果是"列已存在"的错误，标记为已完成
+    if (migErr?.message?.includes('Duplicate column')) {
+      _columnMigrationDone = true;
+      return;
+    }
+    log.warn('[物流API配置] 自动添加字段失败（不影响运行）:', migErr?.message || migErr);
+  }
+}
 
 
 /**
@@ -752,6 +790,9 @@ const DEFAULT_API_CONFIGS = [
  */
 async function ensureDefaultApiConfigs(): Promise<void> {
   try {
+    // 🔥 先确保数据库字段完整，避免 Unknown column 错误
+    await ensureLogisticsApiConfigColumns();
+
     const repository = getTenantRepo(LogisticsApiConfig);
 
     // 获取当前租户已有的API配置公司代码
@@ -1107,11 +1148,43 @@ router.get('/api-configs', async (_req: Request, res: Response) => {
       success: true,
       data: configs
     });
-  } catch (error) {
+  } catch (error: any) {
     log.error('获取物流API配置列表失败:', error);
-    res.status(500).json({
+
+    // 🔥 如果是"Unknown column"错误，尝试自动修复后重试
+    if (error?.message?.includes('Unknown column')) {
+      log.info('[物流API配置] 检测到字段缺失，尝试自动修复...');
+      _columnMigrationDone = false; // 重置标志以便重新执行
+      try {
+        await ensureLogisticsApiConfigColumns();
+        const repository = getTenantRepo(LogisticsApiConfig);
+        const configs = await repository.find({ order: { companyCode: 'ASC' } });
+        return res.json({ success: true, data: configs });
+      } catch (retryErr: any) {
+        log.error('[物流API配置] 自动修复后重试仍然失败:', retryErr?.message);
+        return res.json({
+          success: false,
+          data: [],
+          message: '数据库字段需要更新，请联系管理员执行数据库迁移脚本'
+        });
+      }
+    }
+
+    const isTableError = error?.message?.includes('no such table') ||
+      error?.message?.includes('doesn\'t exist') ||
+      error?.code === 'ER_NO_SUCH_TABLE' ||
+      error?.code === 'SQLITE_ERROR';
+    if (isTableError) {
+      return res.json({
+        success: true,
+        data: [],
+        message: '物流API配置表尚未初始化'
+      });
+    }
+    res.json({
       success: false,
-      message: '获取配置列表失败'
+      data: [],
+      message: '获取配置列表失败: ' + (error?.message || '未知错误')
     });
   }
 });
@@ -1122,15 +1195,35 @@ router.get('/api-configs', async (_req: Request, res: Response) => {
 router.get('/api-configs/:companyCode', async (req: Request, res: Response) => {
   try {
     const { companyCode } = req.params;
-    const repository = getTenantRepo(LogisticsApiConfig);
+
+    // 🔥 确保当前租户有默认API配置数据（与列表接口保持一致）
+    try {
+      await ensureDefaultApiConfigs();
+    } catch (initErr) {
+      log.warn('[物流API配置] ensureDefaultApiConfigs 初始化异常（忽略）:', initErr instanceof Error ? initErr.message : initErr);
+    }
+
+    let repository: any;
+    try {
+      repository = getTenantRepo(LogisticsApiConfig);
+    } catch (repoErr) {
+      log.error('[物流API配置] getTenantRepo 失败:', repoErr);
+      return res.json({
+        success: false,
+        data: null,
+        message: '物流API配置服务暂不可用，请稍后再试'
+      });
+    }
+
     const config = await repository.findOne({
       where: { companyCode: companyCode.toUpperCase() }
     });
 
     if (!config) {
-      return res.status(404).json({
+      return res.json({
         success: false,
-        message: '配置不存在'
+        data: null,
+        message: `未找到 ${companyCode} 的物流API配置`
       });
     }
 
@@ -1138,11 +1231,50 @@ router.get('/api-configs/:companyCode', async (req: Request, res: Response) => {
       success: true,
       data: config
     });
-  } catch (error) {
+  } catch (error: any) {
     log.error('获取物流API配置失败:', error);
-    res.status(500).json({
+
+    // 🔥 如果是"Unknown column"错误（数据库字段缺失），尝试自动修复后重试
+    if (error?.message?.includes('Unknown column')) {
+      log.info(`[物流API配置] 检测到字段缺失(${req.params.companyCode})，尝试自动修复...`);
+      _columnMigrationDone = false;
+      try {
+        await ensureLogisticsApiConfigColumns();
+        const repository = getTenantRepo(LogisticsApiConfig);
+        const config = await repository.findOne({
+          where: { companyCode: req.params.companyCode.toUpperCase() }
+        });
+        if (!config) {
+          return res.json({ success: false, data: null, message: `未找到 ${req.params.companyCode} 的物流API配置` });
+        }
+        return res.json({ success: true, data: config });
+      } catch (retryErr: any) {
+        log.error('[物流API配置] 自动修复后重试仍然失败:', retryErr?.message);
+        return res.json({
+          success: false,
+          data: null,
+          message: '数据库字段需要更新，请联系管理员执行数据库迁移脚本'
+        });
+      }
+    }
+
+    // 🔥 所有错误都返回200+JSON（表不存在、数据库连接、或其他异常），避免前端收到500
+    const isTableError = error?.message?.includes('no such table') ||
+      error?.message?.includes('doesn\'t exist') ||
+      error?.code === 'ER_NO_SUCH_TABLE' ||
+      error?.code === 'SQLITE_ERROR';
+    if (isTableError) {
+      return res.json({
+        success: false,
+        data: null,
+        message: '物流API配置表尚未初始化，请先在系统设置中配置物流API'
+      });
+    }
+    // 🔥 其他错误也返回200+friendly JSON，不再返回500
+    return res.json({
       success: false,
-      message: '获取配置失败'
+      data: null,
+      message: `获取 ${req.params.companyCode} 配置失败: ${error?.message || '未知错误'}`
     });
   }
 });
@@ -1152,8 +1284,11 @@ router.get('/api-configs/:companyCode', async (req: Request, res: Response) => {
  */
 router.post('/api-configs/:companyCode', async (req: Request, res: Response) => {
   try {
+    // 🔥 确保字段完整，避免 Unknown column 错误
+    await ensureLogisticsApiConfigColumns();
+
     const { companyCode } = req.params;
-    const { appId, appKey, appSecret, customerId, apiUrl, apiEnvironment, extraConfig, enabled } = req.body;
+    const { appId, appKey, appSecret, customerId, apiUrl, apiEnvironment, extraConfig, enabled, supportCreateOrder } = req.body;
     const currentUser = (req as any).user;
 
     log.info(`[物流API配置] 保存配置请求: companyCode=${companyCode}`);
@@ -1195,6 +1330,10 @@ router.post('/api-configs/:companyCode', async (req: Request, res: Response) => 
     if (extraConfig !== undefined) config.extraConfig = extraConfig;
     // 🔥 关键：enabled 字段需要正确处理布尔值
     config.enabled = enabled === true || enabled === 1 || enabled === '1' ? 1 : 0;
+    // 🔥 新增：supportCreateOrder 字段 - 是否支持下单生成运单号
+    if (supportCreateOrder !== undefined) {
+      config.supportCreateOrder = supportCreateOrder === true || supportCreateOrder === 1 || supportCreateOrder === '1' ? 1 : 0;
+    }
     config.updatedBy = currentUser?.userId || currentUser?.id;
 
     log.info(`[物流API配置] 准备保存:`, {
@@ -1226,11 +1365,24 @@ router.post('/api-configs/:companyCode', async (req: Request, res: Response) => 
       message: '配置保存成功',
       data: savedConfig
     });
-  } catch (error) {
+  } catch (error: any) {
     log.error('[物流API配置] ❌ 保存失败:', error);
-    return res.status(500).json({
+
+    // 🔥 如果是"Unknown column"错误，尝试自动修复
+    if (error?.message?.includes('Unknown column')) {
+      _columnMigrationDone = false;
+      try {
+        await ensureLogisticsApiConfigColumns();
+        return res.json({
+          success: false,
+          message: '数据库字段已自动更新，请重新保存配置'
+        });
+      } catch { /* ignore */ }
+    }
+
+    return res.json({
       success: false,
-      message: '保存配置失败'
+      message: '保存配置失败: ' + (error?.message || '未知错误')
     });
   }
 });
@@ -1259,8 +1411,8 @@ router.post('/api-configs/:companyCode/test', async (req: Request, res: Response
         testResult = await testZTOExpressApi(appId, appKey, appSecret, apiUrl, testTrackingNo);
         break;
       case 'YTO':
-        // 圆通: appId=AppKey, appKey=AppSecret, appSecret=UserId
-        testResult = await testYTOExpressApi(appId, appKey, appSecret, apiUrl, testTrackingNo);
+        // 圆通: appId=AppKey, appSecret=SecretKey, customerId=客户编码(user_id)
+        testResult = await testYTOExpressApi(appId, appSecret, customerId, apiUrl, testTrackingNo);
         break;
       case 'STO':
         // 申通: appId=AppKey, appSecret=SecretKey
@@ -1441,11 +1593,11 @@ async function testZTOExpressApi(companyId: string, appKey: string, appSecret: s
       billCode: trackingNo || '75331234567890'
     });
 
-    // 生成签名: MD5(app_key + timestamp + data + app_secret)
-    const signStr = appKey + timestamp + data + appSecret;
-    const sign = crypto.createHash('md5').update(signStr).digest('hex').toUpperCase();
+    // 生成签名: Base64(HMAC-SHA256(requestBody, app_secret))
+    // 中通开放平台要求使用HMAC-SHA256签名，放在x-datadigest请求头
+    const sign = crypto.createHmac('sha256', appSecret).update(data).digest('base64');
 
-    const response = await axios.post(apiUrl || 'https://japi.zto.com/zto.open.getTraceInfo', data, {
+    const response = await axios.post(apiUrl || 'https://japi.zto.com/traceInterfaceNewTraces', data, {
       headers: {
         'Content-Type': 'application/json',
         'x-companyid': companyId,
@@ -1474,29 +1626,32 @@ async function testZTOExpressApi(companyId: string, appKey: string, appSecret: s
 /**
  * 圆通速递API测试 - 圆通开放平台
  * 文档: https://open.yto.net.cn/
+ * 签名方式: MD5(param值 + SecretKey).toUpperCase()
+ * 接口方法: yto.Marketing.WaybillTrace
  */
-async function testYTOExpressApi(appKey: string, appSecret: string, userId: string, apiUrl: string, trackingNo?: string): Promise<{ success: boolean; message: string }> {
+async function testYTOExpressApi(appKey: string, secretKey: string, userId: string, apiUrl: string, trackingNo?: string): Promise<{ success: boolean; message: string }> {
   try {
-    if (!appKey || !appSecret || !userId) {
-      return { success: false, message: '请填写AppKey、AppSecret和UserId' };
+    if (!appKey || !secretKey) {
+      return { success: false, message: '请填写AppKey和SecretKey' };
     }
 
     const timestamp = new Date().toISOString().replace('T', ' ').substring(0, 19);
-    const data = JSON.stringify({
-      waybillNo: trackingNo || 'YT1234567890123'
+    const param = JSON.stringify({
+      Number: trackingNo || 'YT1234567890123',
+      OrderType: ''
     });
 
-    // 生成签名
-    const signStr = data + appSecret;
+    // 生成签名: MD5(param + SecretKey).toUpperCase()
+    const signStr = param + secretKey;
     const sign = crypto.createHash('md5').update(signStr).digest('hex').toUpperCase();
 
     const response = await axios.post(apiUrl || 'https://openapi.yto.net.cn/open/track_query/v1/query', {
-      data: data,
+      param: param,
       sign: sign,
       timestamp: timestamp,
       format: 'JSON',
       appkey: appKey,
-      user_id: userId,
+      user_id: userId || '',
       method: 'yto.Marketing.WaybillTrace'
     }, {
       headers: { 'Content-Type': 'application/json' },
@@ -1578,7 +1733,7 @@ async function testYDExpressApi(appKey: string, appSecret: string, partnerId: st
     const signStr = data + appSecret + timestamp;
     const sign = crypto.createHash('md5').update(signStr).digest('hex');
 
-    const response = await axios.post(apiUrl || 'https://openapi.yundaex.com/openapi/outer/logictis/query', {
+    const response = await axios.post(apiUrl || 'https://openapi.yundaex.com/api/queryTraceInfo', {
       appkey: appKey,
       partner_id: partnerId || '',
       timestamp: timestamp,
@@ -1616,8 +1771,8 @@ async function testJTExpressApi(apiAccount: string, privateKey: string, customer
       billCodes: trackingNo || 'JT1234567890123'
     });
 
-    // 生成签名: MD5(data + privateKey)
-    const sign = crypto.createHash('md5').update(data + privateKey).digest('hex');
+    // 生成签名: Base64(MD5(data + privateKey))
+    const sign = crypto.createHash('md5').update(data + privateKey).digest('base64');
 
     const response = await axios.post((apiUrl || 'https://openapi.jtexpress.com.cn/webopenplatformapi/api') + '/logistics/trace/queryTracesByBillCodes', {
       logistics_interface: data,
@@ -1742,9 +1897,9 @@ async function testDBLExpressApi(appKey: string, appSecret: string, companyCode:
       companyCode: companyCode || ''
     });
 
-    // 生成签名: MD5(appKey + data + timestamp + appSecret)
+    // 生成签名: Base64(MD5(appKey + data + timestamp + appSecret))
     const signStr = appKey + data + timestamp + appSecret;
-    const sign = crypto.createHash('md5').update(signStr).digest('hex').toUpperCase();
+    const sign = crypto.createHash('md5').update(signStr).digest('base64');
 
     const response = await axios.post((apiUrl || 'https://dpapi.deppon.com/dop-interface-sync/standard-order') + '/newTraceQuery.action', {
       companyCode: appKey,
@@ -1768,5 +1923,221 @@ async function testDBLExpressApi(appKey: string, appSecret: string, companyCode:
   }
 }
 
+
+
+/**
+ * 创建物流订单 / 生成运单号
+ * 根据物流公司API配置，调用对应API生成真实运单号
+ */
+router.post('/create-order', async (req: Request, res: Response) => {
+  try {
+    const { companyCode, orderNo, receiverName, receiverPhone, receiverAddress, weight, remark } = req.body;
+
+    if (!companyCode) {
+      return res.status(400).json({
+        success: false,
+        message: '请指定物流公司代码'
+      });
+    }
+
+    // 1. 查询物流API配置
+    const repository = getTenantRepo(LogisticsApiConfig);
+    const config = await repository.findOne({
+      where: { companyCode: companyCode.toUpperCase() }
+    });
+
+    if (!config) {
+      return res.json({
+        success: false,
+        message: `未找到 ${companyCode} 的物流API配置，请先在系统设置中配置`
+      });
+    }
+
+    if (!config.enabled) {
+      return res.json({
+        success: false,
+        message: `${config.companyName || companyCode} 的物流API已禁用`
+      });
+    }
+
+    if (!config.supportCreateOrder) {
+      return res.json({
+        success: false,
+        message: `${config.companyName || companyCode} 的物流API仅支持物流查询，不支持自动生成运单号`
+      });
+    }
+
+    // 2. 根据物流公司调用对应的下单API
+    let trackingNumber = '';
+
+    switch (companyCode.toUpperCase()) {
+      case 'SF': {
+        // 顺丰下单API
+        try {
+          const sfServiceModule = await import('../../services/sfExpressService');
+          const sfService = sfServiceModule.default || new (sfServiceModule as any).SFExpressService();
+          const sfResult = await sfService.createOrder({
+            orderNo: orderNo || `ORD${Date.now()}`,
+            receiverName: receiverName || '',
+            receiverPhone: receiverPhone || '',
+            receiverAddress: receiverAddress || '',
+            weight: weight || 1,
+            remark: remark || ''
+          });
+
+          // 解析SF API响应 - 提取运单号
+          if (sfResult && sfResult.apiResultData) {
+            const resultData = typeof sfResult.apiResultData === 'string'
+              ? JSON.parse(sfResult.apiResultData)
+              : sfResult.apiResultData;
+
+            if (resultData.msgData?.waybillNoInfoList?.[0]?.waybillNo) {
+              trackingNumber = resultData.msgData.waybillNoInfoList[0].waybillNo;
+            } else if (resultData.waybillNo) {
+              trackingNumber = resultData.waybillNo;
+            }
+          } else if (sfResult?.trackingNumber) {
+            trackingNumber = sfResult.trackingNumber;
+          }
+
+          if (!trackingNumber) {
+            log.warn('[物流下单] 顺丰响应中未找到运单号:', JSON.stringify(sfResult));
+            return res.json({
+              success: false,
+              message: '顺丰API未返回运单号，请检查API配置和权限'
+            });
+          }
+        } catch (sfError: any) {
+          log.error('[物流下单] 顺丰下单失败:', sfError);
+          return res.json({
+            success: false,
+            message: '顺丰API调用失败: ' + (sfError?.message || '未知错误')
+          });
+        }
+        break;
+      }
+
+      default: {
+        // 其他物流公司暂未接入下单API
+        return res.json({
+          success: false,
+          message: `${config.companyName || companyCode} 的下单API暂未接入，请手动输入运单号`
+        });
+      }
+    }
+
+    log.info(`[物流下单] 成功: ${companyCode} -> ${trackingNumber}`);
+    return res.json({
+      success: true,
+      trackingNumber,
+      message: '运单号生成成功'
+    });
+
+  } catch (error: any) {
+    log.error('[物流下单] 创建订单失败:', error);
+    return res.status(500).json({
+      success: false,
+      message: '创建物流订单失败: ' + (error?.message || '未知错误')
+    });
+  }
+});
+
+// ==================== 物流状态自动同步 API ====================
+
+/**
+ * 手动触发物流状态自动同步
+ * POST /api/v1/logistics/status/auto-sync/trigger
+ */
+router.post('/auto-sync/trigger', async (req, res) => {
+  try {
+    const { logisticsAutoSyncService } = await import('../../services/LogisticsAutoSyncService');
+
+    const status = logisticsAutoSyncService.getStatus();
+    if (status.isRunning) {
+      return res.json({
+        success: false,
+        message: '自动同步正在执行中，请稍后再试'
+      });
+    }
+
+    // 获取租户ID
+    const user = (req as any).user;
+    const tenantId = user?.tenantId;
+
+    const result = await logisticsAutoSyncService.runAutoSync(tenantId);
+
+    return res.json({
+      success: true,
+      message: `同步完成: 处理${result.totalProcessed}个订单, 更新${result.statusUpdated}个订单状态, 更新${result.logisticsUpdated}个物流状态, 错误${result.errors}个`,
+      data: result
+    });
+  } catch (error: any) {
+    log.error('[物流自动同步] 手动触发失败:', error);
+    return res.status(500).json({
+      success: false,
+      message: '自动同步执行失败: ' + (error?.message || '未知错误')
+    });
+  }
+});
+
+/**
+ * 获取自动同步状态
+ * GET /api/v1/logistics/status/auto-sync/status
+ */
+router.get('/auto-sync/status', async (_req, res) => {
+  try {
+    const { logisticsAutoSyncService } = await import('../../services/LogisticsAutoSyncService');
+    const status = logisticsAutoSyncService.getStatus();
+
+    return res.json({
+      success: true,
+      data: {
+        ...status,
+        cronSchedule: '*/15 * * * *',
+        description: '每15分钟自动检查并同步物流状态到订单状态'
+      }
+    });
+  } catch (_error: any) {
+    return res.status(500).json({
+      success: false,
+      message: '获取状态失败'
+    });
+  }
+});
+
+/**
+ * 单个订单物流状态检测预览（不写入数据库，用于调试）
+ * POST /api/v1/logistics/status/auto-sync/preview
+ * body: { description: "物流动态文本", currentOrderStatus: "shipped" }
+ */
+router.post('/auto-sync/preview', async (req, res) => {
+  try {
+    const { description, currentOrderStatus } = req.body;
+    const { detectLogisticsStatus, mapLogisticsToOrderStatus } = await import('../../services/LogisticsAutoSyncService');
+
+    if (!description) {
+      return res.status(400).json({ success: false, message: '请提供物流动态描述' });
+    }
+
+    const logisticsStatus = detectLogisticsStatus(description);
+    const targetOrderStatus = mapLogisticsToOrderStatus(logisticsStatus, currentOrderStatus || 'shipped');
+
+    return res.json({
+      success: true,
+      data: {
+        inputDescription: description,
+        detectedLogisticsStatus: logisticsStatus,
+        currentOrderStatus: currentOrderStatus || 'shipped',
+        targetOrderStatus: targetOrderStatus,
+        willUpdateOrder: !!targetOrderStatus,
+        explanation: targetOrderStatus
+          ? `物流状态 "${logisticsStatus}" + 当前订单状态 "${currentOrderStatus || 'shipped'}" → 订单将更新为 "${targetOrderStatus}"`
+          : `物流状态 "${logisticsStatus}" 不会触发订单状态更新（当前: ${currentOrderStatus || 'shipped'}）`
+      }
+    });
+  } catch (_error: any) {
+    return res.status(500).json({ success: false, message: '预览失败' });
+  }
+});
 
 } // end registerStatusAndConfigRoutes

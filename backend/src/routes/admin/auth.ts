@@ -7,6 +7,7 @@ import { AdminUser } from '../../entities/AdminUser';
 import { AdminRole } from '../../entities/AdminRole';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import { JwtConfig, BCRYPT_ROUNDS } from '../../config/jwt';
 import svgCaptcha from 'svg-captcha';
 
 import { log } from '../../config/logger';
@@ -70,7 +71,14 @@ router.post('/login', async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, message: '用户名和密码不能为空' });
     }
 
-    // 🔒 验证码校验（安全加固 - 向下兼容：前端传了验证码才校验）
+    // 🔒 验证码校验 — 生产环境强制要求，开发环境可选（向下兼容）
+    const isProduction = process.env.NODE_ENV === 'production';
+    const captchaRequired = isProduction || process.env.ADMIN_CAPTCHA_REQUIRED === 'true';
+
+    if (captchaRequired && (!captchaId || !captchaCode)) {
+      return res.status(400).json({ success: false, message: '请输入验证码' });
+    }
+
     if (captchaId && captchaCode) {
       const stored = captchaStore.get(captchaId);
       if (!stored) {
@@ -121,7 +129,7 @@ router.post('/login', async (req: Request, res: Response) => {
         role: admin.role,
         isAdmin: true
       },
-      process.env.JWT_SECRET || 'admin-secret-key',
+      JwtConfig.getAccessTokenSecret(),
       { expiresIn: '24h' }
     );
 
@@ -237,7 +245,7 @@ router.put('/password', async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, message: '旧密码错误' });
     }
 
-    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    const hashedPassword = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
     await adminRepo.update(admin.id, { password: hashedPassword });
 
     res.json({ success: true, message: '密码修改成功' });
@@ -289,7 +297,7 @@ router.post('/users', async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, message: '用户名已存在' });
     }
 
-    const hashedPassword = await bcrypt.hash(password, 10);
+    const hashedPassword = await bcrypt.hash(password, BCRYPT_ROUNDS);
     const newAdmin = adminRepo.create({
       username,
       password: hashedPassword,
@@ -343,7 +351,7 @@ router.put('/users/:id', async (req: Request, res: Response) => {
 
     // 重置密码
     if (password) {
-      updateData.password = await bcrypt.hash(password, 10);
+      updateData.password = await bcrypt.hash(password, BCRYPT_ROUNDS);
     }
 
     await adminRepo.update(id, updateData);

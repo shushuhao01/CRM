@@ -1,4 +1,5 @@
 import { log } from './logger';
+import crypto from 'crypto';
 import jwt, { SignOptions } from 'jsonwebtoken';
 
 export interface JwtPayload {
@@ -14,11 +15,64 @@ export interface TokenPair {
   refreshToken: string;
 }
 
+// 🔒 已知的不安全默认密钥黑名单 — 禁止在生产环境中使用
+const INSECURE_SECRETS = [
+  'crm-secret-key',
+  'your-refresh-secret-key',
+  'your-secret-key',
+  'admin-secret-key',
+  'secret',
+  'your_jwt_secret_key_here_change_in_production',
+  'your_jwt_refresh_secret_key_here_change_in_production',
+  'your-super-secret-jwt-key-change-in-production',
+  'your-refresh-secret-key-change-in-production',
+  'member-center-secret-key-2026',
+];
+
+/**
+ * 🔒 获取安全的JWT密钥
+ * - 生产环境：必须从环境变量读取，且不能是已知弱密钥，否则自动生成随机密钥并发出严重警告
+ * - 开发环境：允许使用默认值但输出警告
+ */
+function getSecureSecret(envKey: string, label: string): string {
+  const envValue = process.env[envKey];
+  const isProduction = process.env.NODE_ENV === 'production';
+
+  // 环境变量已设置且不在弱密钥黑名单中 → 直接使用
+  if (envValue && !INSECURE_SECRETS.includes(envValue)) {
+    return envValue;
+  }
+
+  if (isProduction) {
+    // 🚨 生产环境：密钥不安全，自动生成随机密钥（每次重启不同，会导致旧Token失效）
+    const randomSecret = crypto.randomBytes(64).toString('hex');
+    log.error(`🚨🚨🚨 [安全严重警告] ${label} 未配置安全密钥！`);
+    log.error(`   环境变量 ${envKey} 未设置或使用了不安全的默认值。`);
+    log.error(`   已自动生成临时随机密钥（服务重启后所有用户需重新登录）。`);
+    log.error(`   请立即在 .env 文件中设置强密钥：`);
+    log.error(`   ${envKey}=${crypto.randomBytes(32).toString('hex')}`);
+    log.error(`🚨🚨🚨`);
+    return randomSecret;
+  }
+
+  // 开发环境：使用默认值但输出一次性警告
+  const fallback = envKey === 'JWT_SECRET' ? 'crm-dev-secret-do-not-use-in-prod' : 'crm-refresh-dev-secret-do-not-use-in-prod';
+  if (!envValue) {
+    log.warn(`⚠️ [JWT] 开发环境：${envKey} 未设置，使用内置开发密钥（禁止用于生产环境）`);
+  }
+  return envValue || fallback;
+}
+
 export class JwtConfig {
-  private static readonly ACCESS_TOKEN_SECRET: string = process.env.JWT_SECRET || 'crm-secret-key';
-  private static readonly REFRESH_TOKEN_SECRET: string = process.env.JWT_REFRESH_SECRET || 'your-refresh-secret-key';
+  private static readonly ACCESS_TOKEN_SECRET: string = getSecureSecret('JWT_SECRET', 'JWT访问令牌');
+  private static readonly REFRESH_TOKEN_SECRET: string = getSecureSecret('JWT_REFRESH_SECRET', 'JWT刷新令牌');
   private static readonly ACCESS_TOKEN_EXPIRES_IN: string = process.env.JWT_EXPIRES_IN || '7d';
   private static readonly REFRESH_TOKEN_EXPIRES_IN: string = process.env.JWT_REFRESH_EXPIRES_IN || '30d';
+
+  /** 获取当前使用的AccessToken密钥（供其他模块统一引用，避免各自硬编码默认值） */
+  static getAccessTokenSecret(): string {
+    return this.ACCESS_TOKEN_SECRET;
+  }
 
   /**
    * 生成访问令牌
@@ -127,3 +181,10 @@ export class JwtConfig {
     }
   }
 }
+
+/**
+ * 🔒 统一的bcrypt salt rounds配置
+ * 从环境变量 BCRYPT_ROUNDS 读取，默认12轮
+ * 所有密码哈希操作应使用此常量，避免各处硬编码不同的值
+ */
+export const BCRYPT_ROUNDS: number = parseInt(process.env.BCRYPT_ROUNDS || '12', 10);

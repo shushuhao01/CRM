@@ -1,6 +1,7 @@
 /**
  * 设备相关工具函数
  */
+import { APP_VERSION } from '@/config/app'
 
 // 获取设备信息
 export const getDeviceInfo = () => {
@@ -12,7 +13,7 @@ export const getDeviceInfo = () => {
     deviceModel: systemInfo.deviceModel || '',
     osType: (systemInfo.platform === 'ios' ? 'ios' : 'android') as 'ios' | 'android',
     osVersion: systemInfo.system || '',
-    appVersion: '1.0.0',
+    appVersion: APP_VERSION,
     screenWidth: systemInfo.screenWidth,
     screenHeight: systemInfo.screenHeight
   }

@@ -335,6 +335,29 @@ export function createAuthActions(deps: UserStoreDeps) {
         console.log(`[Auth] 使用映射后的角色获取权限: ${mappedRole}`, userPermissions)
       }
 
+      // 🔥 补全内置角色可能缺失的售后管理模块权限（防止数据库权限不完整导致菜单不显示）
+      const builtInRoles = ['department_manager', 'sales_staff', 'customer_service', 'manager', 'sales']
+      const resolvedRole = roleKey || userData.role
+      if (builtInRoles.includes(resolvedRole) && userPermissions.length > 0 && !userPermissions.includes('*')) {
+        const defaultPerms = getDefaultRolePermissions(
+          resolvedRole === 'manager' ? 'department_manager' :
+          resolvedRole === 'sales' ? 'sales_staff' :
+          resolvedRole
+        )
+        // 仅补全 aftersale 模块权限（售后管理），不覆盖其他权限
+        const aftersalePerms = defaultPerms.filter(p => p === 'aftersale' || p.startsWith('aftersale.'))
+        let supplemented = false
+        for (const p of aftersalePerms) {
+          if (!userPermissions.includes(p)) {
+            userPermissions.push(p)
+            supplemented = true
+          }
+        }
+        if (supplemented) {
+          console.log(`[Auth] 🔧 已补全 ${resolvedRole} 角色的售后管理权限`)
+        }
+      }
+
       // 设置权限到权限服务
       if (userData.role === 'admin' || userData.role === 'super_admin') {
         permissionService.setUserPermission({
@@ -672,6 +695,27 @@ export function createAuthActions(deps: UserStoreDeps) {
           }
         } catch (e) {
           console.warn('[Auth] 恢复客服自定义权限失败:', e)
+        }
+      }
+
+      // 🔥 补全内置角色可能缺失的售后管理模块权限（会话恢复时）
+      const builtInRolesForRestore = ['department_manager', 'sales_staff', 'customer_service', 'manager', 'sales']
+      if (builtInRolesForRestore.includes(userData.role) && userPerms.length > 0 && !userPerms.includes('*')) {
+        const defaultPermsForRestore = getDefaultRolePermissions(
+          userData.role === 'manager' ? 'department_manager' :
+          userData.role === 'sales' ? 'sales_staff' :
+          userData.role
+        )
+        const aftersalePermsForRestore = defaultPermsForRestore.filter(p => p === 'aftersale' || p.startsWith('aftersale.'))
+        let supplementedRestore = false
+        for (const p of aftersalePermsForRestore) {
+          if (!userPerms.includes(p)) {
+            userPerms.push(p)
+            supplementedRestore = true
+          }
+        }
+        if (supplementedRestore) {
+          console.log(`[Auth] 🔧 会话恢复：已补全 ${userData.role} 角色的售后管理权限`)
         }
       }
 

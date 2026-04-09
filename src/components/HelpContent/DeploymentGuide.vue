@@ -1,7 +1,7 @@
 <template>
   <div class="help-content">
     <h1>部署详细步骤</h1>
-    
+
     <section class="content-section">
       <h2>环境要求</h2>
       <div class="requirements-grid">
@@ -14,7 +14,7 @@
             <li>Vite 4.x</li>
           </ul>
         </div>
-        
+
         <div class="requirement-card">
           <h3>后端环境</h3>
           <ul>
@@ -24,7 +24,7 @@
             <li>Redis >= 6.0（可选）</li>
           </ul>
         </div>
-        
+
         <div class="requirement-card">
           <h3>服务器环境</h3>
           <ul>
@@ -39,19 +39,19 @@
 
     <section class="content-section">
       <h2>本地开发环境搭建</h2>
-      
+
       <div class="step-container">
         <div class="step-item">
           <div class="step-number">1</div>
           <div class="step-content">
             <h3>克隆项目代码</h3>
             <div class="code-block">
-              <pre><code>git clone https://github.com/your-repo/crm-system.git
+              <pre><code>git clone https://github.com/shushuhao01/crm-system.git
 cd crm-system</code></pre>
             </div>
           </div>
         </div>
-        
+
         <div class="step-item">
           <div class="step-number">2</div>
           <div class="step-content">
@@ -68,7 +68,7 @@ yarn install</code></pre>
             </div>
           </div>
         </div>
-        
+
         <div class="step-item">
           <div class="step-number">3</div>
           <div class="step-content">
@@ -82,7 +82,7 @@ npm install</code></pre>
             </div>
           </div>
         </div>
-        
+
         <div class="step-item">
           <div class="step-number">4</div>
           <div class="step-content">
@@ -99,7 +99,7 @@ mysql -u root -p crm_system < database/data.sql</code></pre>
             </div>
           </div>
         </div>
-        
+
         <div class="step-item">
           <div class="step-number">5</div>
           <div class="step-content">
@@ -123,7 +123,7 @@ PORT=3000</code></pre>
             </div>
           </div>
         </div>
-        
+
         <div class="step-item">
           <div class="step-number">6</div>
           <div class="step-content">
@@ -147,14 +147,14 @@ npm run dev</code></pre>
 
     <section class="content-section">
       <h2>生产环境部署</h2>
-      
+
       <div class="deployment-tabs">
         <div class="tab-header">
           <button class="tab-btn active" @click="activeTab = 'docker'">Docker 部署</button>
           <button class="tab-btn" @click="activeTab = 'manual'">手动部署</button>
           <button class="tab-btn" @click="activeTab = 'nginx'">Nginx 配置</button>
         </div>
-        
+
         <div class="tab-content">
           <div v-if="activeTab === 'docker'" class="tab-panel">
             <div class="deployment-section">
@@ -175,7 +175,7 @@ sudo chmod +x /usr/local/bin/docker-compose</code></pre>
                 <h4>2. 构建和运行</h4>
                 <div class="code-block">
                   <pre><code># 克隆项目
-git clone https://github.com/your-repo/crm-system.git
+git clone https://github.com/shushuhao01/crm-system.git
 cd crm-system
 
 # 构建并启动服务
@@ -367,7 +367,7 @@ server {
               </div>
             </div>
           </div>
-          
+
           <div v-if="activeTab === 'manual'" class="tab-panel">
             <h3>手动部署步骤</h3>
             <div class="step-item">
@@ -377,7 +377,7 @@ server {
 npm run build</code></pre>
               </div>
             </div>
-            
+
             <div class="step-item">
               <h4>2. 部署前端文件</h4>
               <div class="code-block">
@@ -385,7 +385,7 @@ npm run build</code></pre>
 scp -r dist/ user@server:/var/www/crm</code></pre>
               </div>
             </div>
-            
+
             <div class="step-item">
               <h4>3. 部署后端服务</h4>
               <div class="code-block">
@@ -399,21 +399,21 @@ pm2 start ecosystem.config.js</code></pre>
               </div>
             </div>
           </div>
-          
+
           <div v-if="activeTab === 'nginx'" class="tab-panel">
             <h3>Nginx 配置</h3>
             <div class="code-block">
               <pre><code>server {
     listen 80;
     server_name your-domain.com;
-    
+
     # 前端静态文件
     location / {
         root /var/www/crm;
         index index.html;
         try_files $uri $uri/ /index.html;
     }
-    
+
     # API 代理
     location /api {
         proxy_pass http://localhost:3001;
@@ -422,7 +422,7 @@ pm2 start ecosystem.config.js</code></pre>
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
     }
-    
+
     # 静态资源缓存
     location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg)$ {
         expires 1y;
@@ -442,17 +442,17 @@ pm2 start ecosystem.config.js</code></pre>
           <h3>Q: 前端构建失败怎么办？</h3>
           <p>A: 检查 Node.js 版本是否符合要求，清除 node_modules 重新安装依赖，确保网络连接正常。</p>
         </div>
-        
+
         <div class="faq-item">
           <h3>Q: 数据库连接失败？</h3>
           <p>A: 检查数据库服务是否启动，确认连接参数正确，检查防火墙设置。</p>
         </div>
-        
+
         <div class="faq-item">
           <h3>Q: 前端页面空白？</h3>
           <p>A: 检查 Nginx 配置是否正确，确认静态文件路径，查看浏览器控制台错误信息。</p>
         </div>
-        
+
         <div class="faq-item">
           <h3>Q: API 请求失败？</h3>
           <p>A: 检查后端服务是否正常运行，确认 API 代理配置，检查跨域设置。</p>
@@ -677,20 +677,20 @@ const activeTab = ref('docker')
   .step-item {
     flex-direction: column;
   }
-  
+
   .step-number {
     margin-bottom: 10px;
     margin-right: 0;
   }
-  
+
   .requirements-grid {
     grid-template-columns: 1fr;
   }
-  
+
   .tab-header {
     flex-direction: column;
   }
-  
+
   .tab-btn {
     text-align: left;
   }

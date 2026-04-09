@@ -15,9 +15,6 @@
         </div>
       </div>
       <div class="header-actions">
-        <el-button @click="handlePrint" :icon="Printer">
-          打印
-        </el-button>
         <el-button @click="handleEdit" type="primary" :icon="Edit">
           编辑
         </el-button>
@@ -372,10 +369,8 @@ import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   ArrowLeft,
-  Printer,
   Edit,
   Box,
-  Search,
   Phone,
   Link,
   Refresh,
@@ -437,15 +432,28 @@ const logisticsInfo = reactive({
 })
 
 // 商品列表
-const productList = ref([])
+const productList = ref<Array<{ productName: string; specification: string; quantity: number; weight: number; volume: number }>>([])
 
 // 物流轨迹
-const trackingHistory = ref([])
+interface TrackingHistoryItem {
+  time: string
+  status: string
+  description: string
+  location: string
+  operator: string
+  type: string
+}
+const trackingHistory = ref<TrackingHistoryItem[]>([])
 
 // 操作日志
-const operationLogs = ref([])
+interface OperationLogItem {
+  time: string
+  operator: string
+  action: string
+}
+const operationLogs = ref<OperationLogItem[]>([])
 
-// 物流公司列表
+// 物流公司列表 - 从API动态获取
 const logisticsCompanies = ref([
   { code: 'SF', name: '顺丰速运' },
   { code: 'YTO', name: '圆通速递' },
@@ -456,6 +464,22 @@ const logisticsCompanies = ref([
   { code: 'JD', name: '京东物流' },
   { code: 'EMS', name: '中国邮政' }
 ])
+
+// 🔥 从API加载物流公司列表
+const loadLogisticsCompanies = async () => {
+  try {
+    const { logisticsApi } = await import('@/api/logistics')
+    const response = await logisticsApi.getActiveCompanies()
+    if (response?.success && Array.isArray(response.data) && response.data.length > 0) {
+      logisticsCompanies.value = response.data.map((item: { code: string; name: string }) => ({
+        code: item.code,
+        name: item.name
+      }))
+    }
+  } catch (error) {
+    console.warn('[物流详情] 加载物流公司列表失败，使用默认列表')
+  }
+}
 
 // 发货表单
 const shipForm = reactive({
@@ -522,12 +546,6 @@ const goBack = () => {
   router.go(-1)
 }
 
-/**
- * 打印
- */
-const handlePrint = () => {
-  window.print()
-}
 
 /**
  * 编辑
@@ -696,24 +714,15 @@ const viewCustomer = () => {
 }
 
 /**
- * 刷新物流轨迹
+ * 刷新物流轨迹 - 调用真实API
  */
 const refreshTracking = async () => {
   if (isUnmounted.value) return
 
   try {
-    // 模拟API调用
-    await new Promise(resolve => {
-      const timeoutId = setTimeout(() => {
-        timeoutIds.delete(timeoutId)
-        resolve(undefined)
-      }, 1000)
-      timeoutIds.add(timeoutId)
-    })
-
+    await loadTrackingHistory()
     if (!isUnmounted.value) {
       ElMessage.success('轨迹已刷新')
-      loadTrackingHistory()
     }
   } catch (error) {
     if (!isUnmounted.value) {
@@ -723,22 +732,34 @@ const refreshTracking = async () => {
 }
 
 /**
- * 加载物流轨迹
+ * 加载物流轨迹 - 优先从真实API获取
  */
 const loadTrackingHistory = async (order?: any) => {
   if (isUnmounted.value) return
 
   try {
-    // 如果没有传入订单，从订单store获取
+    // 如果没有传入订单，从API或store获取
     if (!order) {
       const id = route.params.id
-      const allOrders = orderStore.getOrders()
-      order = allOrders.find(o =>
-        o.id === id ||
-        o.trackingNumber === id ||
-        o.expressNo === id ||
-        parseInt(o.id) === parseInt(id)
-      )
+      try {
+        const { apiService } = await import('@/services/apiService')
+        const response = await apiService.get(`/orders/${id}`)
+        if (response) {
+          order = response
+        }
+      } catch (_) {
+        // fallback to store
+      }
+      if (!order) {
+        const allOrders = orderStore.getOrders()
+        order = allOrders.find(o =>
+          o.id === id ||
+          o.id === String(id) ||
+          String(o.id) === String(id) ||
+          o.trackingNumber === id ||
+          o.expressNo === id
+        )
+      }
     }
 
     if (!order) {
@@ -746,7 +767,48 @@ const loadTrackingHistory = async (order?: any) => {
       return
     }
 
-    // 使用订单的物流历史数据
+    // 🔥 优先从真实物流API获取轨迹
+    const trackingNo = order.trackingNumber || order.expressNo
+    const companyCode = order.expressCompany
+    if (trackingNo && companyCode) {
+      try {
+        const { logisticsApi } = await import('@/api/logistics')
+        const phone = order.receiverPhone || order.customerPhone || undefined
+        const response = await logisticsApi.queryTrace(trackingNo, companyCode, phone)
+
+        if (response?.success && response.data?.success && response.data.traces?.length > 0) {
+          const sortedTraces = [...response.data.traces].sort((a: any, b: any) => {
+            const timeA = new Date(a.time).getTime()
+            const timeB = new Date(b.time).getTime()
+            return timeB - timeA
+          })
+
+          trackingHistory.value = sortedTraces.map((trace: any, index: number) => ({
+            time: trace.time || '',
+            status: detectStatusTextFromDesc(trace.description),
+            description: trace.description || '',
+            location: trace.location || '',
+            operator: trace.operator || '',
+            type: index === 0 ? 'success' : 'primary'
+          }))
+
+          // 🔥 同步更新物流状态
+          if (response.data.status && response.data.status !== 'error' && response.data.status !== 'need_phone_verify') {
+            logisticsInfo.status = response.data.status
+          }
+          if (response.data.estimatedDeliveryTime) {
+            logisticsInfo.estimatedTime = response.data.estimatedDeliveryTime
+          }
+
+          console.log('[物流详情] 从API获取到', trackingHistory.value.length, '条轨迹')
+          return
+        }
+      } catch (apiError) {
+        console.warn('[物流详情] 物流API查询失败，使用本地数据:', apiError)
+      }
+    }
+
+    // 🔥 API获取失败时使用本地数据
     if (order.logisticsHistory && Array.isArray(order.logisticsHistory) && order.logisticsHistory.length > 0) {
       trackingHistory.value = order.logisticsHistory.map((item: any) => ({
         time: item.time || '',
@@ -755,26 +817,23 @@ const loadTrackingHistory = async (order?: any) => {
         location: item.location || '',
         operator: item.operator || '',
         type: getTimelineTypeByStatus(item.status)
-      })).reverse() // 倒序显示，最新的在上面
-    } else {
-      // 如果没有物流历史，从状态历史中提取物流相关信息
-      if (order.statusHistory && Array.isArray(order.statusHistory)) {
-        const logisticsStatuses = ['shipped', 'delivered', 'in_transit', 'out_for_delivery']
-        const logisticsHistoryItems = order.statusHistory
-          .filter((h: any) => logisticsStatuses.includes(h.status))
-          .map((h: any) => ({
-            time: h.time || '',
-            status: getLogisticsStatusText(h.status),
-            description: h.description || h.remark || '',
-            location: '',
-            operator: h.operator || '',
-            type: getTimelineTypeByStatus(h.status)
-          }))
+      })).reverse()
+    } else if (order.statusHistory && Array.isArray(order.statusHistory)) {
+      const logisticsStatuses = ['shipped', 'delivered', 'in_transit', 'out_for_delivery', 'picked_up']
+      const logisticsHistoryItems = order.statusHistory
+        .filter((h: any) => logisticsStatuses.includes(h.status))
+        .map((h: any) => ({
+          time: h.time || '',
+          status: getLogisticsStatusText(h.status),
+          description: h.description || h.remark || '',
+          location: '',
+          operator: h.operator || '',
+          type: getTimelineTypeByStatus(h.status)
+        }))
 
-        trackingHistory.value = logisticsHistoryItems.reverse()
-      } else {
-        trackingHistory.value = []
-      }
+      trackingHistory.value = logisticsHistoryItems.reverse()
+    } else {
+      trackingHistory.value = []
     }
   } catch (error) {
     console.error('加载物流轨迹失败:', error)
@@ -783,19 +842,41 @@ const loadTrackingHistory = async (order?: any) => {
 }
 
 /**
+ * 根据轨迹描述检测状态文本
+ */
+const detectStatusTextFromDesc = (desc: string): string => {
+  if (!desc) return '物流动态'
+  const d = desc.toLowerCase()
+  if (d.includes('签收') || d.includes('已送达') || d.includes('代收')) return '已签收'
+  if (d.includes('派送') || d.includes('派件') || d.includes('投递') || d.includes('送货')) return '派送中'
+  if (d.includes('到达') || d.includes('运输') || d.includes('转运') || d.includes('发往') || d.includes('离开')) return '运输中'
+  if (d.includes('揽收') || d.includes('收件') || d.includes('已收取') || d.includes('快件已收')) return '已揽收'
+  if (d.includes('拒收') || d.includes('拒签')) return '拒收'
+  if (d.includes('退回') || d.includes('退件')) return '退回'
+  if (d.includes('异常') || d.includes('问题件')) return '异常'
+  return '物流动态'
+}
+
+/**
  * 获取物流状态文本
  */
 const getLogisticsStatusText = (status: string): string => {
   const textMap: Record<string, string> = {
     'pending': '待发货',
+    'pending_shipment': '待发货',
     'picked_up': '已揽收',
     'shipped': '已发货',
     'in_transit': '运输中',
     'out_for_delivery': '派送中',
+    'delivering': '派送中',
     'delivered': '已签收',
     'exception': '异常',
+    'package_exception': '包裹异常',
     'rejected': '拒收',
-    'returned': '已退回'
+    'rejected_returned': '拒收退回',
+    'returned': '已退回',
+    'cancelled': '已取消',
+    'unknown': '未知'
   }
   return textMap[status] || status
 }
@@ -838,7 +919,7 @@ const loadData = async () => {
         order = response
         console.log('[物流详情] 从API获取订单成功:', order.orderNumber)
       }
-    } catch (apiError) {
+    } catch (_apiError) {
       console.log('[物流详情] API获取失败，尝试从store查找')
     }
 
@@ -918,15 +999,38 @@ const loadData = async () => {
       productList.value = []
     }
 
-    // 使用真实操作日志
-    if (order.operationLogs && Array.isArray(order.operationLogs)) {
+    // 🔥 使用真实操作日志（优先operationLogs，其次statusHistory作为fallback）
+    if (order.operationLogs && Array.isArray(order.operationLogs) && order.operationLogs.length > 0) {
       operationLogs.value = order.operationLogs.map((log: any) => ({
-        time: log.time || '',
-        operator: log.operator || '',
-        action: log.action || ''
+        time: log.time || log.createdAt || '',
+        operator: log.operator || log.operatorName || log.createdBy || '',
+        action: log.action || log.description || log.remark || ''
       })).reverse() // 倒序显示，最新的在上面
+    } else if (order.statusHistory && Array.isArray(order.statusHistory) && order.statusHistory.length > 0) {
+      // 🔥 使用状态变更历史作为操作日志
+      operationLogs.value = order.statusHistory.map((h: any) => ({
+        time: h.time || h.createdAt || '',
+        operator: h.operator || h.operatorName || h.createdBy || '系统',
+        action: h.description || h.remark || `状态变更为: ${getLogisticsStatusText(h.status)}`
+      })).reverse()
     } else {
-      operationLogs.value = []
+      // 🔥 至少显示一条基本日志
+      const logs = []
+      if (order.shippingTime || order.shippedAt) {
+        logs.push({
+          time: order.shippingTime || order.shippedAt,
+          operator: order.createdByName || '操作员',
+          action: `已发货，快递公司：${getExpressCompanyName(order.expressCompany || '')}，单号：${order.trackingNumber || order.expressNo || ''}`
+        })
+      }
+      if (order.createTime) {
+        logs.push({
+          time: order.createTime,
+          operator: order.createdByName || '操作员',
+          action: '创建订单'
+        })
+      }
+      operationLogs.value = logs
     }
 
     // 加载物流轨迹
@@ -938,9 +1042,16 @@ const loadData = async () => {
 }
 
 /**
- * 获取物流公司名称
+ * 获取物流公司名称 - 优先从动态加载的列表中匹配
  */
 const getExpressCompanyName = (code: string) => {
+  if (!code) return '-'
+  // 优先从API加载的列表匹配
+  const dynamicCompany = logisticsCompanies.value.find(c =>
+    c.code === code || c.code.toUpperCase() === code.toUpperCase()
+  )
+  if (dynamicCompany) return dynamicCompany.name
+
   const companies: Record<string, string> = {
     'SF': '顺丰速运',
     'YTO': '圆通速递',
@@ -951,7 +1062,9 @@ const getExpressCompanyName = (code: string) => {
     'JD': '京东物流',
     'EMS': '中国邮政',
     'DBKD': '德邦快递',
-    'UC': '优速快递'
+    'UC': '优速快递',
+    'JTSD': '极兔速递',
+    'DBL': '德邦快递'
   }
   return companies[code] || code
 }
@@ -966,11 +1079,19 @@ const mapOrderStatusToLogisticsStatus = (orderStatus: string, logisticsStatus?: 
 
   const statusMap: Record<string, string> = {
     'pending_shipment': 'pending',
+    'pending': 'pending',
     'shipped': 'shipped',
     'delivered': 'delivered',
     'in_transit': 'in_transit',
-    'out_for_delivery': 'delivering',
-    'package_exception': 'exception'
+    'out_for_delivery': 'out_for_delivery',
+    'delivering': 'out_for_delivery',
+    'package_exception': 'exception',
+    'exception': 'exception',
+    'rejected': 'rejected',
+    'rejected_returned': 'returned',
+    'returned': 'returned',
+    'cancelled': 'cancelled',
+    'picked_up': 'picked_up'
   }
 
   return statusMap[orderStatus] || 'pending'
@@ -978,6 +1099,7 @@ const mapOrderStatusToLogisticsStatus = (orderStatus: string, logisticsStatus?: 
 
 // 生命周期钩子
 onMounted(() => {
+  loadLogisticsCompanies()
   loadData()
 })
 

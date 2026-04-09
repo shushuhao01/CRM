@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>CRM图标 圆角→直角 对比预览</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; background: #f3f4f6; padding: 30px; }
+    h1 { text-align: center; margin-bottom: 8px; }
+    .subtitle { text-align: center; color: #6b7280; margin-bottom: 30px; }
+    .section { background: white; border-radius: 12px; padding: 24px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    .section h2 { font-size: 18px; margin-bottom: 4px; }
+    .section p { color: #6b7280; font-size: 14px; margin-bottom: 16px; }
+    .row { display: flex; align-items: end; gap: 16px; flex-wrap: wrap; }
+    .item { text-align: center; }
+    .item img { display: block; margin: 0 auto 4px; border: 1px solid #e5e7eb; }
+    .item span { font-size: 11px; color: #9ca3af; }
+    .original { border: 2px dashed #FDE68A !important; }
+    .compare { display: flex; gap: 30px; align-items: center; margin-bottom: 20px; padding: 16px; background: #F9FAFB; border-radius: 8px; }
+    .compare .label { font-size: 13px; color: #6b7280; margin-bottom: 4px; }
+    .badge { background: #DBEAFE; color: #1E40AF; padding: 2px 8px; border-radius: 8px; font-size: 12px; }
+    .badge.rec { background: #DEF7EC; color: #065F46; }
+  </style>
+</head>
+<body>
+  <h1>🔲 CRM图标 圆角→直角 对比预览</h1>
+  <p class="subtitle">原始圆角图标 vs 3种直角处理方案</p>
+
+  <div class="section">
+    <h2>📎 原始圆角图标（对比参考）</h2>
+    <p>当前 public/icons/ 中的圆角版本</p>
+    <div class="row">
+      
+        <div class="item">
+          <img src="../icons/logo-64.png" width="64" height="64" class="original"/>
+          <span>64px (圆角)</span>
+        </div>
+      
+        <div class="item">
+          <img src="../icons/logo-128.png" width="128" height="128" class="original"/>
+          <span>128px (圆角)</span>
+        </div>
+      
+        <div class="item">
+          <img src="../icons/logo-256.png" width="128" height="128" class="original"/>
+          <span>256px (圆角)</span>
+        </div>
+      
+        <div class="item">
+          <img src="../icons/logo-512.png" width="128" height="128" class="original"/>
+          <span>512px (圆角)</span>
+        </div>
+      
+    </div>
+  </div>
+
+  
+  <div class="section">
+    <h2>方案1: 原图背景色填充 <span class="badge rec">⭐ 推荐</span></h2>
+    <p>用图标自身的背景色填充圆角透明区域，效果最自然</p>
+    <div class="compare">
+      <div>
+        <div class="label">圆角原图</div>
+        <img src="../icons/logo-128.png" width="128" height="128" style="border:1px solid #e5e7eb;"/>
+      </div>
+      <div style="font-size: 24px; color: #9ca3af;">→</div>
+      <div>
+        <div class="label">直角转换后</div>
+        <img src="original-fill/logo-128.png" width="128" height="128" style="border:1px solid #e5e7eb;"/>
+      </div>
+    </div>
+    <div class="row">
+      
+        <div class="item">
+          <img src="original-fill/logo-16.png" width="16" height="16"/>
+          <span>16px</span>
+        </div>
+      
+        <div class="item">
+          <img src="original-fill/logo-32.png" width="32" height="32"/>
+          <span>32px</span>
+        </div>
+      
+        <div class="item">
+          <img src="original-fill/logo-48.png" width="48" height="48"/>
+          <span>48px</span>
+        </div>
+      
+        <div class="item">
+          <img src="original-fill/logo-64.png" width="64" height="64"/>
+          <span>64px</span>
+        </div>
+      
+        <div class="item">
+          <img src="original-fill/logo-128.png" width="128" height="128"/>
+          <span>128px</span>
+        </div>
+      
+        <div class="item">
+          <img src="original-fill/logo-192.png" width="128" height="128"/>
+          <span>192px</span>
+        </div>
+      
+        <div class="item">
+          <img src="original-fill/logo-256.png" width="128" height="128"/>
+          <span>256px</span>
+        </div>
+      
+        <div class="item">
+          <img src="original-fill/logo-512.png" width="128" height="128"/>
+          <span>512px</span>
+        </div>
+      
+        <div class="item">
+          <img src="original-fill/logo-1024.png" width="128" height="128"/>
+          <span>1024px</span>
+        </div>
+      
+    </div>
+  </div>
+  
+  <div class="section">
+    <h2>方案2: 白色背景填充 </h2>
+    <p>白色填充圆角区域，适合浅色系界面</p>
+    <div class="compare">
+      <div>
+        <div class="label">圆角原图</div>
+        <img src="../icons/logo-128.png" width="128" height="128" style="border:1px solid #e5e7eb;"/>
+      </div>
+      <div style="font-size: 24px; color: #9ca3af;">→</div>
+      <div>
+        <div class="label">直角转换后</div>
+        <img src="white-fill/logo-128.png" width="128" height="128" style="border:1px solid #e5e7eb;"/>
+      </div>
+    </div>
+    <div class="row">
+      
+        <div class="item">
+          <img src="white-fill/logo-16.png" width="16" height="16"/>
+          <span>16px</span>
+        </div>
+      
+        <div class="item">
+          <img src="white-fill/logo-32.png" width="32" height="32"/>
+          <span>32px</span>
+        </div>
+      
+        <div class="item">
+          <img src="white-fill/logo-48.png" width="48" height="48"/>
+          <span>48px</span>
+        </div>
+      
+        <div class="item">
+          <img src="white-fill/logo-64.png" width="64" height="64"/>
+          <span>64px</span>
+        </div>
+      
+        <div class="item">
+          <img src="white-fill/logo-128.png" width="128" height="128"/>
+          <span>128px</span>
+        </div>
+      
+        <div class="item">
+          <img src="white-fill/logo-192.png" width="128" height="128"/>
+          <span>192px</span>
+        </div>
+      
+        <div class="item">
+          <img src="white-fill/logo-256.png" width="128" height="128"/>
+          <span>256px</span>
+        </div>
+      
+        <div class="item">
+          <img src="white-fill/logo-512.png" width="128" height="128"/>
+          <span>512px</span>
+        </div>
+      
+        <div class="item">
+          <img src="white-fill/logo-1024.png" width="128" height="128"/>
+          <span>1024px</span>
+        </div>
+      
+    </div>
+  </div>
+  
+  <div class="section">
+    <h2>方案3: 内容裁剪填满 </h2>
+    <p>裁掉多余留白，内容放大填满正方形</p>
+    <div class="compare">
+      <div>
+        <div class="label">圆角原图</div>
+        <img src="../icons/logo-128.png" width="128" height="128" style="border:1px solid #e5e7eb;"/>
+      </div>
+      <div style="font-size: 24px; color: #9ca3af;">→</div>
+      <div>
+        <div class="label">直角转换后</div>
+        <img src="content-fill/logo-128.png" width="128" height="128" style="border:1px solid #e5e7eb;"/>
+      </div>
+    </div>
+    <div class="row">
+      
+        <div class="item">
+          <img src="content-fill/logo-16.png" width="16" height="16"/>
+          <span>16px</span>
+        </div>
+      
+        <div class="item">
+          <img src="content-fill/logo-32.png" width="32" height="32"/>
+          <span>32px</span>
+        </div>
+      
+        <div class="item">
+          <img src="content-fill/logo-48.png" width="48" height="48"/>
+          <span>48px</span>
+        </div>
+      
+        <div class="item">
+          <img src="content-fill/logo-64.png" width="64" height="64"/>
+          <span>64px</span>
+        </div>
+      
+        <div class="item">
+          <img src="content-fill/logo-128.png" width="128" height="128"/>
+          <span>128px</span>
+        </div>
+      
+        <div class="item">
+          <img src="content-fill/logo-192.png" width="128" height="128"/>
+          <span>192px</span>
+        </div>
+      
+        <div class="item">
+          <img src="content-fill/logo-256.png" width="128" height="128"/>
+          <span>256px</span>
+        </div>
+      
+        <div class="item">
+          <img src="content-fill/logo-512.png" width="128" height="128"/>
+          <span>512px</span>
+        </div>
+      
+        <div class="item">
+          <img src="content-fill/logo-1024.png" width="128" height="128"/>
+          <span>1024px</span>
+        </div>
+      
+    </div>
+  </div>
+  
+</body>
+</html>

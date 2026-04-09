@@ -10,6 +10,7 @@ import { WebSocketServer, WebSocket } from 'ws';
 import jwt from 'jsonwebtoken';
 import { getDataSource } from '../config/database';
 import { logger } from '../config/logger';
+import { JwtConfig } from '../config/jwt';
 import { URL } from 'url';
 
 // 消息类型
@@ -190,8 +191,8 @@ class MobileWebSocketService {
    */
   private async verifyToken(token: string): Promise<{ userId: number; deviceId: string; username: string } | null> {
     try {
-      // 使用与生成 token 时相同的密钥
-      const jwtSecret = process.env.JWT_SECRET || 'crm-secret-key';
+      // 使用统一的JWT密钥管理（通过JwtConfig获取，避免硬编码默认值）
+      const jwtSecret = JwtConfig.getAccessTokenSecret();
       logger.info(`[MobileWS] 验证 token, JWT_SECRET 长度: ${jwtSecret.length}, 前缀: ${jwtSecret.substring(0, 8)}...`);
 
       const decoded = jwt.verify(token, jwtSecret) as any;

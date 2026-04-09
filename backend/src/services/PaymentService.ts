@@ -5,20 +5,13 @@ import crypto from 'crypto'
 import { v4 as uuidv4 } from 'uuid'
 import { AppDataSource } from '../config/database'
 import { adminNotificationService } from './AdminNotificationService'
+import { formatDateTime, formatDate } from '../utils/dateFormat'
+import { decryptPaymentConfig } from '../utils/paymentCrypto'
 
 import { log } from '../config/logger';
-// 解密密钥（与admin/payment.ts保持一致）
-const ENCRYPT_KEY = process.env.PAYMENT_ENCRYPT_KEY || 'crm-payment-secret-key-2024'
 
 const decryptConfig = (encrypted: string): string => {
-  try {
-    const decipher = crypto.createDecipheriv('aes-256-cbc',
-      crypto.scryptSync(ENCRYPT_KEY, 'salt', 32),
-      Buffer.alloc(16, 0))
-    return decipher.update(encrypted, 'hex', 'utf8') + decipher.final('utf8')
-  } catch {
-    return ''
-  }
+  return decryptPaymentConfig(encrypted)
 }
 
 interface WechatConfig {
@@ -92,14 +85,16 @@ class PaymentService {
   // 生成订单号
   generateOrderNo(): string {
     const date = new Date()
-    const dateStr = date.toISOString().slice(0, 10).replace(/-/g, '')
+    const dateStr = formatDate(date).replace(/-/g, '')
     const timeStr = date.toTimeString().slice(0, 8).replace(/:/g, '')
     const random = Math.random().toString(36).slice(2, 8).toUpperCase()
     return `PAY${dateStr}${timeStr}${random}`
   }
 
   // 确保 payment_orders 表有 billing_cycle 和 bonus_months 字段
+  private columnsChecked = false;
   private async ensurePaymentOrderColumns(): Promise<void> {
+    if (this.columnsChecked) return;
     try {
       const cols = await AppDataSource.query(
         `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'payment_orders'`
@@ -115,6 +110,7 @@ class PaymentService {
           `ALTER TABLE payment_orders ADD COLUMN bonus_months INT DEFAULT 0 COMMENT '赠送月数'`
         )
       }
+      this.columnsChecked = true;
     } catch (e) {
       // 忽略错误（如非MySQL、表不存在等）
     }
@@ -267,7 +263,7 @@ class PaymentService {
     const notifyUrl = process.env.PAYMENT_NOTIFY_URL_ALIPAY || 'https://api.example.com/api/v1/public/payment/alipay/notify'
     const returnUrl = process.env.PAYMENT_RETURN_URL || 'https://www.example.com/pay-success'
 
-    const timestamp = new Date().toISOString().slice(0, 19).replace('T', ' ')
+    const timestamp = formatDateTime(new Date())
 
     const bizContent = JSON.stringify({
       out_trade_no: orderNo,
@@ -391,7 +387,7 @@ class PaymentService {
   // 更新订单状态（支持 tradeNo 字符串 或 {tradeNo, paidAt} 对象两种调用方式）
   async updateOrderStatus(orderNo: string, status: string, tradeNoOrParams?: string | { tradeNo?: string; paidAt?: Date }): Promise<string | null> {
     const tradeNo = typeof tradeNoOrParams === 'string' ? tradeNoOrParams : tradeNoOrParams?.tradeNo
-    const now = new Date().toISOString().slice(0, 19).replace('T', ' ')
+    const now = formatDateTime(new Date())
     let licenseKey: string | null = null
 
     if (status === 'paid') {
@@ -549,7 +545,7 @@ class PaymentService {
 
         const expireDate = new Date(baseDate)
         expireDate.setDate(expireDate.getDate() + durationDays)
-        const expireDateStr = expireDate.toISOString().slice(0, 10)
+        const expireDateStr = formatDate(expireDate)
 
         // 生成新授权码
         const licenseKey = this.generateLicenseKey()

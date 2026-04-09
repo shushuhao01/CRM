@@ -9,6 +9,7 @@ import { aliyunSmsService } from '../../services/AliyunSmsService'
 import { verificationCodeService } from '../../services/VerificationCodeService'
 import { notificationTemplateService } from '../../services/NotificationTemplateService'
 import { SITE_CONFIG } from '../../config/sites'
+import { formatDateTime, formatDate } from '../../utils/dateFormat'
 
 import { log } from '../../config/logger';
 export class PublicRegisterController {
@@ -145,8 +146,8 @@ export class PublicRegisterController {
 
       // 创建租户
       const tenantId = uuidv4()
-      const nowStr = now.toISOString().slice(0, 19).replace('T', ' ')
-      const expireDateStr = expireDate.toISOString().slice(0, 10)
+      const nowStr = formatDateTime(now)
+      const expireDateStr = formatDate(expireDate)
 
       await AppDataSource.query(
         `INSERT INTO tenants (

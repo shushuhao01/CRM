@@ -66,9 +66,13 @@ export const docCategories: DocCategory[] = [
     key: 'deploy',
     title: '私有部署',
     items: [
+      { key: 'guide', title: '🧭 智能部署引导' },
       { key: 'require', title: '环境要求' },
-      { key: 'install', title: '安装指南' },
+      { key: 'local', title: '本地电脑部署' },
+      { key: 'bt', title: '宝塔面板部署' },
+      { key: 'linux', title: '纯Linux部署' },
       { key: 'configure', title: '配置说明' },
+      { key: 'activate', title: '激活与授权' },
       { key: 'faq', title: '常见问题' }
     ]
   }

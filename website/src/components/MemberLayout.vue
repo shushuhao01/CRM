@@ -45,7 +45,7 @@
           </router-link>
         </nav>
         <div class="sidebar-footer">
-          <a href="https://app.yunke-crm.com" target="_blank" class="crm-link">
+          <a v-if="crmUrl" :href="crmUrl" target="_blank" class="crm-link">
             💼 进入CRM系统
           </a>
         </div>
@@ -59,12 +59,21 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 import { getMemberTenant } from '@/api/member'
+import { getWebsiteConfig } from '@/api/website-config'
 
 const tenant = computed(() => getMemberTenant())
 const tenantName = computed(() => tenant.value?.name || '')
 const tenantCode = computed(() => tenant.value?.code || '')
+const crmUrl = ref('')
+
+onMounted(async () => {
+  try {
+    const config = await getWebsiteConfig()
+    if (config.crmUrl) crmUrl.value = config.crmUrl
+  } catch { /* 静默 */ }
+})
 </script>
 
 <style lang="scss" scoped>

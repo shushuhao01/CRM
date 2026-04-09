@@ -5,11 +5,14 @@ import { Router, Request, Response } from 'express';
 import { AppDataSource } from '../../config/database';
 import { v4 as uuidv4 } from 'uuid';
 import crypto from 'crypto';
+import bcrypt from 'bcryptjs';
 import fs from 'fs';
 import path from 'path';
 
 import { log } from '../../config/logger';
+import { SITE_CONFIG } from '../../config/sites';
 const router = Router();
+
 
 // 🔥 正确获取客户端IP（支持代理/反向代理）
 const getClientIp = (req: Request): string => {
@@ -27,6 +30,30 @@ const getClientIp = (req: Request): string => {
   const cleaned = ip.replace(/^::ffff:/, '');
   return (cleaned === '::1' || cleaned === '127.0.0.1') ? '127.0.0.1' : cleaned;
 };
+
+// 🔥 递归统计目录大小和文件数（用于清理时统计）
+function getDirSizeSync(dirPath: string): { sizeMb: number; fileCount: number } {
+  let totalSize = 0;
+  let fileCount = 0;
+  try {
+    const entries = fs.readdirSync(dirPath, { withFileTypes: true });
+    for (const entry of entries) {
+      const fullPath = path.join(dirPath, entry.name);
+      if (entry.isDirectory()) {
+        const sub = getDirSizeSync(fullPath);
+        totalSize += sub.sizeMb * 1024 * 1024; // 转回字节累加
+        fileCount += sub.fileCount;
+      } else if (entry.isFile()) {
+        try {
+          const stats = fs.statSync(fullPath);
+          totalSize += stats.size;
+          fileCount++;
+        } catch { /* 文件无法读取，跳过 */ }
+      }
+    }
+  } catch { /* 目录无法读取，跳过 */ }
+  return { sizeMb: totalSize / (1024 * 1024), fileCount };
+}
 
 // 生成租户授权码（格式：TENANT-XXXX-XXXX-XXXX-XXXX）
 const generateTenantLicenseKey = (): string => {
@@ -294,7 +321,7 @@ router.get('/:id', async (req: Request, res: Response) => {
 
     // 🔥 查询该租户的管理员账号状态
     const adminRows = await AppDataSource.query(
-      `SELECT id, username, status, login_fail_count, locked_at
+      `SELECT id, username, password, status, login_fail_count, locked_at
        FROM users
        WHERE tenant_id = ? AND role = 'admin'
        ORDER BY created_at ASC`,
@@ -302,8 +329,42 @@ router.get('/:id', async (req: Request, res: Response) => {
     );
     // 兼容 MySQL 不同驱动返回格式
     const adminUsers = Array.isArray(adminRows[0]) ? adminRows[0] : (Array.isArray(adminRows) ? adminRows : []);
-    tenant.adminUsers = adminUsers;
+    tenant.adminUsers = adminUsers.map((u: any) => ({
+      id: u.id, username: u.username, status: u.status,
+      login_fail_count: u.login_fail_count, locked_at: u.locked_at
+    }));
     tenant.hasLockedAdmin = adminUsers.some((u: any) => u.status === 'locked');
+
+    // 🔥 查询密码状态（会员中心密码 + CRM管理员密码）
+    try {
+      const DEFAULT_PWD = 'Aa123456';
+      // 会员中心密码状态：检查 tenants.password_hash
+      if (tenant.password_hash) {
+        const memberIsDefault = await bcrypt.compare(DEFAULT_PWD, tenant.password_hash);
+        tenant.memberPasswordStatus = memberIsDefault ? 'default' : 'custom';
+        tenant.memberPasswordDisplay = memberIsDefault ? DEFAULT_PWD : '已修改（无法查看原始密码）';
+      } else {
+        tenant.memberPasswordStatus = 'not_set';
+        tenant.memberPasswordDisplay = '';
+      }
+      // CRM管理员密码状态：检查第一个管理员的 users.password
+      if (adminUsers.length > 0 && adminUsers[0].password) {
+        const crmIsDefault = await bcrypt.compare(DEFAULT_PWD, adminUsers[0].password);
+        tenant.crmPasswordStatus = crmIsDefault ? 'default' : 'custom';
+        tenant.crmPasswordDisplay = crmIsDefault ? DEFAULT_PWD : '已修改（无法查看原始密码）';
+      } else {
+        tenant.crmPasswordStatus = 'not_set';
+        tenant.crmPasswordDisplay = '';
+      }
+    } catch (pwdErr) {
+      log.info('[Admin Tenants] 密码状态检测跳过:', (pwdErr as any).message?.substring(0, 60));
+      tenant.memberPasswordStatus = 'unknown';
+      tenant.memberPasswordDisplay = '';
+      tenant.crmPasswordStatus = 'unknown';
+      tenant.crmPasswordDisplay = '';
+    }
+    // 清理敏感字段（不返回哈希值）
+    delete tenant.password_hash;
 
     // 🔥 动态计算存储空间使用量（统计uploads目录下该租户的文件）
     try {
@@ -337,6 +398,60 @@ router.get('/:id', async (req: Request, res: Response) => {
   } catch (error: any) {
     log.error('[Admin Tenants] Get detail failed:', error);
     res.status(500).json({ success: false, message: '获取租户详情失败' });
+  }
+});
+
+/**
+ * 获取租户的用户列表
+ * GET /api/v1/admin/tenants/:id/users
+ */
+router.get('/:id/users', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    // 验证租户存在
+    const tenantCheck = await AppDataSource.query('SELECT id FROM tenants WHERE id = ?', [id]);
+    if (!tenantCheck || tenantCheck.length === 0) {
+      return res.status(404).json({ success: false, message: '租户不存在' });
+    }
+
+    // 查询租户下所有用户（包含部门名称）
+    const users = await AppDataSource.query(
+      `SELECT u.id, u.username, u.name, u.real_name, u.phone, u.email,
+              u.role, u.position, u.status, u.avatar,
+              u.last_login_at, u.login_count,
+              u.created_at, u.updated_at,
+              d.name as department_name
+       FROM users u
+       LEFT JOIN departments d ON u.department_id = d.id AND d.tenant_id = ?
+       WHERE u.tenant_id = ?
+       ORDER BY u.created_at ASC`,
+      [id, id]
+    );
+
+    // 格式化返回数据（驼峰命名）
+    const list = (Array.isArray(users) ? users : []).map((u: any) => ({
+      id: u.id,
+      username: u.username,
+      name: u.name,
+      realName: u.real_name || u.name,
+      phone: u.phone,
+      email: u.email,
+      role: u.role,
+      position: u.position,
+      status: u.status,
+      avatar: u.avatar,
+      departmentName: u.department_name,
+      lastLoginAt: u.last_login_at,
+      loginCount: Number(u.login_count || 0),
+      createdAt: u.created_at,
+      updatedAt: u.updated_at
+    }));
+
+    res.json({ success: true, data: { list, total: list.length } });
+  } catch (error: any) {
+    log.error('[Admin Tenants] Get users failed:', error);
+    res.status(500).json({ success: false, message: '获取租户用户列表失败' });
   }
 });
 
@@ -466,9 +581,8 @@ router.post('/', async (req: Request, res: Response) => {
     // 🔥 创建租户默认管理员账号
     let adminAccount: { username: string; password: string } | null = null;
     try {
-      const bcryptLib = require('bcryptjs');
       const defaultPassword = 'Aa123456';
-      const hashedPassword = await bcryptLib.hash(defaultPassword, 12);
+      const hashedPassword = await bcrypt.hash(defaultPassword, 12);
       const adminUsername = phone || `admin_${tenantCode}`;
       const adminId = uuidv4();
 
@@ -496,7 +610,7 @@ router.post('/', async (req: Request, res: Response) => {
         id,
         licenseKey,
         tenantCode: tenantCode,
-        loginUrl: 'https://app.yunke-crm.com',
+        loginUrl: SITE_CONFIG.CRM_URL,
         adminAccount
       },
       message: '租户创建成功，授权码已生成'
@@ -511,7 +625,7 @@ router.post('/', async (req: Request, res: Response) => {
 router.put('/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { name, packageId, contact, phone, email, maxUsers, maxStorageGb, expireDate, features, modules, status } = req.body;
+    const { name, packageId, contact, phone, email, maxUsers, maxStorageGb, expireDate, features, modules, status, remark } = req.body;
 
     const updates: string[] = [];
     const params: any[] = [];
@@ -521,6 +635,7 @@ router.put('/:id', async (req: Request, res: Response) => {
     if (contact !== undefined) { updates.push('contact = ?'); params.push(contact); }
     if (phone !== undefined) { updates.push('phone = ?'); params.push(phone); }
     if (email !== undefined) { updates.push('email = ?'); params.push(email); }
+    if (remark !== undefined) { updates.push('remark = ?'); params.push(remark || null); }
     if (maxUsers) { updates.push('max_users = ?'); params.push(maxUsers); }
     if (maxStorageGb) { updates.push('max_storage_gb = ?'); params.push(maxStorageGb); }
     if (expireDate) { updates.push('expire_date = ?'); params.push(expireDate); }
@@ -768,7 +883,6 @@ router.post('/:id/unlock-admin', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const adminUser = (req as any).adminUser;
-    const bcrypt = require('bcryptjs');
 
     // 查找租户信息
     const tenantRows = await AppDataSource.query(
@@ -861,8 +975,6 @@ router.post('/:id/reset-admin-password', async (req: Request, res: Response) => 
   try {
     const { id } = req.params;
     const adminUser = (req as any).adminUser;
-    const bcrypt = require('bcryptjs');
-    const cryptoLib = require('crypto');
 
     // 查找租户信息
     const tenantRows = await AppDataSource.query(
@@ -887,7 +999,7 @@ router.post('/:id/reset-admin-password', async (req: Request, res: Response) => 
     // 生成安全的随机临时密码：大写+小写+数字，8位
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
     let tempPassword = '';
-    const randomBytes = cryptoLib.randomBytes(8);
+    const randomBytes = crypto.randomBytes(8);
     for (let i = 0; i < 8; i++) {
       tempPassword += chars[randomBytes[i] % chars.length];
     }
@@ -1055,6 +1167,10 @@ router.post('/:id/cleanup-data', async (req: Request, res: Response) => {
       'customer_files',
       'order_attachments',
       'after_sale_attachments',
+      // 🔥 录音记录（含文件路径，需先收集再删除）
+      'call_recordings',
+      // 通话记录
+      'call_records',
       // 操作日志
       'operation_logs',
       'service_operation_logs',
@@ -1107,6 +1223,7 @@ router.post('/:id/cleanup-data', async (req: Request, res: Response) => {
       // 基础配置
       'improvement_goals',
       'rejection_reasons',
+      'remark_presets',
       'payment_method_options',
       'permissions',
       'roles',
@@ -1124,6 +1241,11 @@ router.post('/:id/cleanup-data', async (req: Request, res: Response) => {
       { table: 'customer_files', pathCol: 'file_path' },
       { table: 'order_attachments', pathCol: 'file_path' },
       { table: 'after_sale_attachments', pathCol: 'file_path' },
+      // 🔥 新增：录音文件路径
+      { table: 'call_recordings', pathCol: 'file_path' },
+      { table: 'call_recordings', pathCol: 'file_url' },
+      // 🔥 新增：用户头像
+      { table: 'users', pathCol: 'avatar' },
     ];
 
     for (const ft of fileQueryTables) {
@@ -1203,7 +1325,9 @@ router.post('/:id/cleanup-data', async (req: Request, res: Response) => {
     let cleanedFilesCount = 0;
     let cleanedFilesSizeMb = 0;
     const uploadsBaseDir = path.resolve(process.cwd(), 'uploads');
+    const recordingsBaseDir = path.resolve(process.cwd(), 'recordings');
 
+    // 5c-1. 逐个清理数据库记录中引用的文件（兼容旧文件不在租户目录的情况）
     for (const filePath of filesToDelete) {
       try {
         // 文件路径可能是相对路径或含 /uploads/ 前缀
@@ -1224,6 +1348,32 @@ router.post('/:id/cleanup-data', async (req: Request, res: Response) => {
         // 文件删除失败静默跳过（可能已不存在）
       }
     }
+
+    // 5c-2. 🔥 整体清理租户隔离目录（改造后的核心能力）
+    // 直接删除 uploads/{tenantCode}/ 和 recordings/{tenantCode}/ 目录
+    // 这样可以彻底清理该租户的所有文件，即使数据库中没有记录也不会遗漏
+    const tenantCode = tenant.code;
+    const tenantDirsToClean = [
+      path.join(uploadsBaseDir, tenantCode),     // uploads/T260303A1B2/
+      path.join(recordingsBaseDir, tenantCode),   // recordings/T260303A1B2/
+    ];
+
+    for (const tenantDir of tenantDirsToClean) {
+      try {
+        if (fs.existsSync(tenantDir)) {
+          // 递归统计目录大小
+          const dirStats = getDirSizeSync(tenantDir);
+          cleanedFilesSizeMb += dirStats.sizeMb;
+          cleanedFilesCount += dirStats.fileCount;
+          // 递归删除整个目录
+          fs.rmSync(tenantDir, { recursive: true, force: true });
+          log.info(`[Admin Tenants] 🧹 删除租户目录: ${tenantDir} (${dirStats.fileCount} 个文件, ${dirStats.sizeMb.toFixed(2)} MB)`);
+        }
+      } catch (dirErr) {
+        log.warn(`[Admin Tenants] 删除租户目录失败 ${tenantDir}:`, (dirErr as Error).message);
+      }
+    }
+
     log.info(`[Admin Tenants] 🧹 文件清理完成: ${cleanedFilesCount} 个文件, ${cleanedFilesSizeMb.toFixed(2)} MB`);
 
     // ====== 6. 更新租户标记 ======
@@ -1284,6 +1434,7 @@ router.post('/:id/cleanup-data', async (req: Request, res: Response) => {
         cleanedTables: cleanResults,
         cleanedFilesCount,
         cleanedFilesSizeMb: Number(cleanedFilesSizeMb.toFixed(2)),
+        cleanedTenantDirs: tenantDirsToClean.filter(d => !fs.existsSync(d)).length > 0,
         cleanedAt: new Date().toISOString()
       }
     });

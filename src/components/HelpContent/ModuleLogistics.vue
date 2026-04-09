@@ -218,6 +218,48 @@
         </el-collapse-item>
       </el-collapse>
     </section>
+
+    <section>
+      <h2>📚 详细配置指南</h2>
+      <p>以下指南提供更详细的配置和操作说明，点击帮助中心左侧"物流配置指南"目录查看：</p>
+      <div class="guide-list">
+        <div class="guide-item">
+          <div class="guide-icon">🔑</div>
+          <div class="guide-info">
+            <h4>物流API配置指南</h4>
+            <p>快递100注册申请、各快递公司开放平台对接、密钥配置、电子面单合同签订等完整流程</p>
+          </div>
+        </div>
+        <div class="guide-item">
+          <div class="guide-icon">🖨️</div>
+          <div class="guide-info">
+            <h4>打印机配置指南</h4>
+            <p>浏览器打印、LODOP控件安装、USB直连热敏打印机等三种打印方式的配置方法</p>
+          </div>
+        </div>
+        <div class="guide-item">
+          <div class="guide-icon">📄</div>
+          <div class="guide-info">
+            <h4>面单模板配置指南</h4>
+            <p>面单模板选择与自定义、纸张规格设置、隐私保护脱敏、显示内容配置等</p>
+          </div>
+        </div>
+        <div class="guide-item">
+          <div class="guide-icon">📮</div>
+          <div class="guide-info">
+            <h4>寄件人配置指南</h4>
+            <p>寄件人/退货地址管理、默认寄件人设置、关联售后类型等</p>
+          </div>
+        </div>
+        <div class="guide-item">
+          <div class="guide-icon">📦</div>
+          <div class="guide-info">
+            <h4>发货打单操作指南</h4>
+            <p>打印面单发货、手动发货、批量打印面单、批量发货、Excel导入发货等完整操作流程</p>
+          </div>
+        </div>
+      </div>
+    </section>
   </div>
 </template>
 
@@ -315,6 +357,45 @@ section {
   color: #c0c4cc;
   display: block;
   margin-bottom: 5px;
+}
+
+.guide-list {
+  display: grid;
+  gap: 12px;
+  margin-top: 15px;
+}
+
+.guide-item {
+  display: flex;
+  align-items: flex-start;
+  padding: 16px;
+  background: linear-gradient(135deg, #f0f9ff 0%, #f5f7fa 100%);
+  border-radius: 8px;
+  border: 1px solid #d9ecff;
+  transition: all 0.2s;
+}
+
+.guide-item:hover {
+  border-color: #409eff;
+  box-shadow: 0 2px 8px rgba(64, 158, 255, 0.15);
+}
+
+.guide-icon {
+  font-size: 28px;
+  margin-right: 15px;
+  flex-shrink: 0;
+}
+
+.guide-info h4 {
+  margin: 0 0 6px;
+  font-size: 15px;
+  color: #303133;
+}
+
+.guide-info p {
+  margin: 0;
+  font-size: 13px;
+  color: #909399;
 }
 
 :deep(.el-collapse-item__header) {

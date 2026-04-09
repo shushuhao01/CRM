@@ -758,7 +758,7 @@ async function calculateCommission(
 
 
 // Get all config
-router.get('/config', async (_req: Request, res: Response) => {
+const getConfigHandler = async (_req: Request, res: Response) => {
   try {
     const configRepo = getTenantRepo(PerformanceConfig);
     const ladderRepo = getTenantRepo(CommissionLadder);
@@ -781,7 +781,10 @@ router.get('/config', async (_req: Request, res: Response) => {
     log.error('[Finance] Get config failed:', error);
     res.status(500).json({ success: false, message: 'Failed to get config' });
   }
-});
+};
+router.get('/config', getConfigHandler);
+router.get('/commission-settings', getConfigHandler);
+router.get('/commission-ladders', getConfigHandler);
 
 // Add config
 router.post('/config', async (req: Request, res: Response) => {

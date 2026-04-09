@@ -84,6 +84,7 @@ import { useServerStore } from '@/stores/server'
 import { useUserStore } from '@/stores/user'
 import { login } from '@/api/auth'
 import { APP_VERSION } from '@/config/app'
+import { setEncryptedStorage, getEncryptedStorage } from '@/utils/crypto'
 
 const serverStore = useServerStore()
 const userStore = useUserStore()
@@ -99,9 +100,9 @@ const canLogin = computed(() => {
 })
 
 onMounted(() => {
-  // 恢复记住的用户名和密码
+  // 恢复记住的用户名和密码（使用加密存储）
   const savedUsername = uni.getStorageSync('savedUsername')
-  const savedPassword = uni.getStorageSync('savedPassword')
+  const savedPassword = getEncryptedStorage('savedPassword')
   const savedAgreement = uni.getStorageSync('agreedToTerms')
 
   if (savedUsername) {
@@ -170,10 +171,10 @@ const handleLogin = async () => {
     // 确保token已保存
     console.log('登录成功，token已保存:', userStore.token ? '有' : '无')
 
-    // 记住密码
+    // 记住密码（使用加密存储）
     if (rememberPassword.value) {
       uni.setStorageSync('savedUsername', username.value)
-      uni.setStorageSync('savedPassword', password.value)
+      setEncryptedStorage('savedPassword', password.value)
     } else {
       uni.removeStorageSync('savedUsername')
       uni.removeStorageSync('savedPassword')

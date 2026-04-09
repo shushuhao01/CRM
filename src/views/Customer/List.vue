@@ -820,6 +820,21 @@ const getLevelText = (level: string) => {
   return texts[level] || '铜牌客户'
 }
 
+// 获取客户状态文本
+const getStatusText = (status: string) => {
+  const texts: Record<string, string> = {
+    active: '正常',
+    inactive: '停用',
+    pending: '待审核',
+    blacklist: '黑名单',
+    '正常': '正常',
+    '停用': '停用',
+    '待审核': '待审核',
+    '黑名单': '黑名单'
+  }
+  return texts[status] || status || '正常'
+}
+
 // 获取客户来源类型
 const getCustomerSourceType = (customer: Customer): 'shared' | 'allocated' | 'self-created' => {
   // 1. 检查是否为分享客户
@@ -1161,7 +1176,26 @@ const handleBatchExport = async () => {
         position: customer.position,
         source: customer.allocationSource,
         tags: customer.tags,
-        remarks: customer.remarks
+        remarks: customer.remarks,
+        // 新增字段
+        gender: customer.gender,
+        birthday: customer.birthday,
+        height: customer.height,
+        weight: customer.weight,
+        medicalHistory: customer.medicalHistory || customer.disease,
+        fanAcquisitionTime: customer.fanAcquisitionTime,
+        improvementGoals: customer.improvementGoals,
+        serviceWechat: customer.serviceWechat || customer.wechat,
+        province: customer.province,
+        city: customer.city,
+        district: customer.district,
+        returnCount: customer.returnCount,
+        lastServiceDate: customer.lastServiceDate,
+        otherPhones: customer.otherPhones,
+        street: customer.street,
+        detailAddress: customer.detailAddress,
+        overseasAddress: customer.overseasAddress,
+        otherGoals: customer.otherGoals
       }))
 
       // 使用新的导出工具函数
@@ -1239,7 +1273,26 @@ const handleSelectedExport = async () => {
         position: customer.position,
         source: customer.allocationSource,
         tags: customer.tags,
-        remarks: customer.remarks
+        remarks: customer.remarks,
+        // 新增字段
+        gender: customer.gender,
+        birthday: customer.birthday,
+        height: customer.height,
+        weight: customer.weight,
+        medicalHistory: customer.medicalHistory || customer.disease,
+        fanAcquisitionTime: customer.fanAcquisitionTime,
+        improvementGoals: customer.improvementGoals,
+        serviceWechat: customer.serviceWechat || customer.wechat,
+        province: customer.province,
+        city: customer.city,
+        district: customer.district,
+        returnCount: customer.returnCount,
+        lastServiceDate: customer.lastServiceDate,
+        otherPhones: customer.otherPhones,
+        street: customer.street,
+        detailAddress: customer.detailAddress,
+        overseasAddress: customer.overseasAddress,
+        otherGoals: customer.otherGoals
       }))
 
       // 使用新的导出工具函数

@@ -25,6 +25,8 @@ module.exports = {
   },
   // 忽略 dist 和 node_modules
   testPathIgnorePatterns: ['/node_modules/', '/dist/'],
+  // 允许转换 uuid 等 ESM 包
+  transformIgnorePatterns: ['/node_modules/(?!uuid)'],
   // 收集覆盖率（可选）
   collectCoverageFrom: [
     'src/**/*.ts',
