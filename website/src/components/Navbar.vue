@@ -48,7 +48,7 @@
                 <router-link to="/member/subscription" class="dropdown-item" @click="showDropdown = false">🔄 订阅管理</router-link>
                 <router-link to="/member/bills" class="dropdown-item" @click="showDropdown = false">📋 账单记录</router-link>
                 <div class="dropdown-divider"></div>
-                <a href="https://app.yunke-crm.com" target="_blank" class="dropdown-item">💼 CRM工作台</a>
+                <a v-if="crmUrl" :href="crmUrl" target="_blank" class="dropdown-item">💼 CRM工作台</a>
                 <div class="dropdown-divider"></div>
                 <button class="dropdown-item logout" @click="handleLogout">🚪 退出登录</button>
               </div>
@@ -62,7 +62,7 @@
             <transition name="dropdown-fade">
               <div v-show="showLoginMenu" class="dropdown-menu">
                 <router-link to="/member/login" class="dropdown-item" @click="showLoginMenu = false">👤 会员中心</router-link>
-                <a href="https://app.yunke-crm.com" target="_blank" class="dropdown-item" @click="showLoginMenu = false">💼 CRM系统</a>
+                <a v-if="crmUrl" :href="crmUrl" target="_blank" class="dropdown-item" @click="showLoginMenu = false">💼 CRM系统</a>
               </div>
             </transition>
           </div>
@@ -84,12 +84,14 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { isMemberLoggedIn, getMemberTenant, memberLogout } from '@/api/member'
+import { getWebsiteConfig } from '@/api/website-config'
 
 const router = useRouter()
 const isScrolled = ref(false)
 const menuOpen = ref(false)
 const showDropdown = ref(false)
 const showLoginMenu = ref(false)
+const crmUrl = ref('') // 动态CRM系统地址
 const memberCheckKey = ref(0)
 const userDropdownRef = ref<HTMLElement | null>(null)
 const loginDropdownRef = ref<HTMLElement | null>(null)
@@ -129,10 +131,15 @@ const handleClickOutside = (e: MouseEvent) => {
   }
 }
 
-onMounted(() => {
+onMounted(async () => {
   window.addEventListener('scroll', handleScroll)
   window.addEventListener('storage', handleStorage)
   document.addEventListener('click', handleClickOutside)
+  // 动态加载CRM系统地址
+  try {
+    const config = await getWebsiteConfig()
+    if (config.crmUrl) crmUrl.value = config.crmUrl
+  } catch { /* 使用默认空值 */ }
 })
 
 onUnmounted(() => {

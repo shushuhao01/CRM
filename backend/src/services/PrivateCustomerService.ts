@@ -2,6 +2,7 @@ import { AppDataSource } from '../config/database';
 import { PrivateCustomer } from '../entities/PrivateCustomer';
 import { v4 as uuidv4 } from 'uuid';
 import { getTenantRepo } from '../utils/tenantRepo';
+import { formatDateTime } from '../utils/dateFormat';
 
 export class PrivateCustomerService {
   private get customerRepository() {
@@ -199,7 +200,7 @@ export class PrivateCustomerService {
     let expiresAtFormatted = null;
     if (data.expiresAt) {
       const date = new Date(data.expiresAt);
-      expiresAtFormatted = date.toISOString().slice(0, 19).replace('T', ' ');
+      expiresAtFormatted = formatDateTime(date);
     }
 
     // 创建授权记录
@@ -352,7 +353,7 @@ export class PrivateCustomerService {
     let expiresAtFormatted = null;
     if (data.expiresAt) {
       const date = new Date(data.expiresAt);
-      expiresAtFormatted = date.toISOString().slice(0, 19).replace('T', ' ');
+      expiresAtFormatted = formatDateTime(date);
     }
 
     await AppDataSource.query(

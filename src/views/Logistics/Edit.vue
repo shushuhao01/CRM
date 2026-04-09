@@ -94,6 +94,7 @@
                     :disabled="!canEditLogisticsStatus"
                   >
                     <!-- 🔥 物流编辑页面显示已发货之后的所有状态 -->
+                    <el-option label="已发货" value="shipped" />
                     <el-option label="已揽收" value="picked_up" />
                     <el-option label="运输中" value="in_transit" />
                     <el-option label="派送中" value="out_for_delivery" />
@@ -586,7 +587,7 @@ const getOrderStatusTextByStatus = (status: string) => {
   return statusMap[status] || status || '未知'
 }
 
-// 物流公司列表
+// 物流公司列表 - 从API动态获取
 const logisticsCompanies = ref([
   { code: 'SF', name: '顺丰速运' },
   { code: 'YTO', name: '圆通速递' },
@@ -597,6 +598,22 @@ const logisticsCompanies = ref([
   { code: 'JD', name: '京东物流' },
   { code: 'EMS', name: '中国邮政' }
 ])
+
+// 🔥 从API加载物流公司列表
+const loadLogisticsCompanies = async () => {
+  try {
+    const { logisticsApi } = await import('@/api/logistics')
+    const response = await logisticsApi.getActiveCompanies()
+    if (response?.success && Array.isArray(response.data) && response.data.length > 0) {
+      logisticsCompanies.value = response.data.map((item: { code: string; name: string }) => ({
+        code: item.code,
+        name: item.name
+      }))
+    }
+  } catch (error) {
+    console.warn('[物流编辑] 加载物流公司列表失败，使用默认列表')
+  }
+}
 
 // 商品表单
 const productForm = reactive({
@@ -1171,13 +1188,14 @@ const loadData = async () => {
       Object.assign(form, {
         orderNo: order.orderNumber,
         company: order.expressCompany || '',
-        trackingNo: order.trackingNumber || '',
-        status: order.logisticsStatus || 'pending',
+        trackingNo: order.trackingNumber || order.expressNo || '',
+        // 🔥 修复：正确映射物流状态，已发货订单默认为 picked_up
+        status: order.logisticsStatus || (order.status === 'shipped' ? 'picked_up' : order.status === 'delivered' ? 'delivered' : 'pending'),
         // 🔥 修复：优先使用shippingTime，其次shippedAt
         shipTime: order.shippingTime || order.shippedAt || '',
         estimatedTime: order.expectedDeliveryDate ? `${order.expectedDeliveryDate} 18:00:00` : '',
-        freight: 0,
-        insuranceFee: 0,
+        freight: order.freight || 0,
+        insuranceFee: order.insuranceFee || 0,
         remark: order.remark || ''
       })
 
@@ -1223,6 +1241,7 @@ const loadData = async () => {
 
 // 生命周期钩子
 onMounted(() => {
+  loadLogisticsCompanies()
   loadData()
 })
 

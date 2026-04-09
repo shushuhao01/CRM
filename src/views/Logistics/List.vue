@@ -934,13 +934,16 @@ const fetchLatestLogisticsUpdates = async () => {
               })
             }
           } else if (result?.status === 'need_phone_verify') {
-            order.latestLogisticsInfo = '需验证手机号，点击单号查询'
-          } else if (result?.statusText) {
-            if (result.statusText.includes('手机号') || result.statusText.includes('可能原因')) {
-              order.latestLogisticsInfo = '需验证手机号，点击单号查询'
-            } else {
+            // 🔥 修复：区分不同的查询失败原因，正确展示后端返回的详细信息
+            if (result.statusText && result.statusText !== '需要手机号验证') {
+              // 后端返回了详细的错误原因（包含"可能原因"），直接展示
               order.latestLogisticsInfo = result.statusText
+            } else {
+              order.latestLogisticsInfo = '查询失败。可能原因：1.手机号后4位不正确 2.运单刚发出，建议12-24小时后再查询 3.运单号不存在'
             }
+          } else if (result?.statusText) {
+            // 🔥 修复：直接展示后端返回的状态文本，不再统一替换
+            order.latestLogisticsInfo = result.statusText
           } else {
             order.latestLogisticsInfo = '暂无物流信息'
           }

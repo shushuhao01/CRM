@@ -13,6 +13,28 @@ const router = Router();
 router.use(authenticateToken);
 
 /**
+ * @route GET /api/v1/dashboard
+ * @desc 获取仪表板概览数据（返回简单摘要指标）
+ * @access Private
+ */
+router.get('/', async (req: Request, res: Response) => {
+  // 将根路由请求直接重定向到 /metrics 子路由的逻辑
+  // 通过 302 重定向实现（或直接返回简要信息）
+  try {
+    res.json({
+      success: true,
+      code: 200,
+      message: '请使用 /dashboard/metrics 获取详细指标',
+      data: {
+        availableEndpoints: ['/dashboard/metrics', '/dashboard/rankings', '/dashboard/charts', '/dashboard/todos', '/dashboard/quick-actions']
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: '获取仪表板数据失败' });
+  }
+});
+
+/**
  * 🔥 统一的业绩计算规则
  * 判断订单是否计入下单业绩
  * 排除的状态：取消申请、已取消、审核拒绝、物流部退回、物流部取消、已退款

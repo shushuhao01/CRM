@@ -21,6 +21,11 @@ export interface WebsiteConfig {
   workingHours: string
   brandSlogan: string
   contactQRCodeLabel: string
+  // 🔥 系统地址（动态从后端获取）
+  crmUrl: string
+  websiteUrl: string
+  adminUrl: string
+  renewUrl: string
 }
 
 // 内存缓存

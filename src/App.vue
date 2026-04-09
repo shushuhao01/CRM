@@ -293,6 +293,9 @@
         <el-button @click="contactDialogVisible = false">关闭</el-button>
       </template>
     </el-dialog>
+
+    <!-- 🔥 联系客服续费弹窗（由授权过期弹窗"联系客服续费"按钮触发） -->
+    <ContactServiceDialog v-model="contactServiceDialogVisible" />
   </div>
 </template>
 
@@ -317,6 +320,7 @@ import HelpCenter from '@/components/HelpCenter.vue'
 import MessageBell from '@/components/MessageBell.vue'
 import VersionUpdatePanel from '@/components/VersionUpdatePanel.vue'
 import AnnouncementCarousel from '@/components/AnnouncementCarousel.vue'
+import ContactServiceDialog from '@/components/ContactServiceDialog.vue'
 import { useResponsive, debounce } from '@/utils/responsive'
 import { passwordService } from '@/services/passwordService'
 import { passwordReminderService } from '@/services/passwordReminderService'
@@ -365,6 +369,9 @@ const showPersonalSettingsModal = ref(false)
 
 // 🔥 批次274新增：联系我们对话框
 const contactDialogVisible = ref(false)
+
+// 🔥 联系客服续费弹窗（由授权过期弹窗触发）
+const contactServiceDialogVisible = ref(false)
 
 // 🔥 租户资源配额预警
 const quotaWarningDismissed = ref(false)
@@ -453,6 +460,10 @@ const showContactDialog = () => {
   contactDialogVisible.value = true
 }
 
+// 🔥 联系客服续费弹窗事件处理
+const handleOpenContactServiceDialog = () => {
+  contactServiceDialogVisible.value = true
+}
 
 
 
@@ -953,6 +964,9 @@ onMounted(async () => {
   // 初始化侧边栏菜单滚轮事件
   initSidebarWheelScroll()
 
+  // 🔥 监听"联系客服续费"弹窗打开事件（由授权过期弹窗触发）
+  window.addEventListener('open-contact-service-dialog', handleOpenContactServiceDialog)
+
   // 检查密码状态（延迟执行，确保用户信息已加载）
   setTimeout(() => {
     if (userStore.user && !isLoginPage.value) {
@@ -1068,6 +1082,9 @@ onUnmounted(() => {
 
   // 🔥 清理配额检测定时器
   stopQuotaCheckTimer()
+
+  // 🔥 清理联系客服弹窗事件监听器
+  window.removeEventListener('open-contact-service-dialog', handleOpenContactServiceDialog)
 })
 
 

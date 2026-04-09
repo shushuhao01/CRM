@@ -29,6 +29,7 @@ export class Tenant {
   @Column('varchar', { length: 100, nullable: true })
   email: string | null;
 
+
   @Column('int', { default: 10, name: 'max_users' })
   maxUsers: number;
 

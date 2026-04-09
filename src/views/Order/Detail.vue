@@ -49,598 +49,41 @@
       </div>
     </div>
 
-    <!-- 第一行：客户信息铺满 -->
-    <div class="row-layout full-width">
-      <el-card class="customer-info-card modern-card">
-        <template #header>
-          <div class="card-header-modern">
-            <div class="header-left">
-              <el-icon class="header-icon"><User /></el-icon>
-              <span class="header-title">客户信息</span>
-            </div>
-            <div class="header-right">
-              <el-button
-                type="text"
-                size="small"
-                @click="goToCustomerDetail"
-                class="view-more-btn"
-              >
-                查看更多
-                <el-icon class="ml-1"><ArrowRight /></el-icon>
-              </el-button>
-            </div>
-          </div>
-        </template>
 
-        <div class="customer-info-modern">
-          <div class="customer-main">
-            <div class="customer-avatar-section">
-              <el-avatar :size="64" :src="orderDetail.customer.avatar" class="customer-avatar-modern">
-                {{ orderDetail.customer.name.charAt(0) }}
-              </el-avatar>
-              <el-tag
-                :type="getLevelType(orderDetail.customer.level)"
-                size="small"
-                class="customer-level-tag"
-                effect="light"
-              >
-                {{ getLevelText(orderDetail.customer.level) }}
-              </el-tag>
-            </div>
-            <div class="customer-details-modern">
-              <div class="customer-name-modern">
-                {{ orderDetail.customer.name }}
-              </div>
-              <div class="customer-contact-modern">
-                <div class="contact-item-modern phone-item-modern" @click="callCustomer()">
-                  <el-icon class="contact-icon"><Phone /></el-icon>
-                  <span class="contact-text">{{ displaySensitiveInfoNew(orderDetail.customer.phone, SensitiveInfoType.PHONE, userStore.currentUser?.id || '') }}</span>
-                  <el-icon class="call-icon"><Phone /></el-icon>
-                </div>
-                <div class="contact-item-modern">
-                  <el-icon class="contact-icon"><Message /></el-icon>
-                  <span class="contact-text">{{ orderDetail.customer.wechat ? displaySensitiveInfoNew(orderDetail.customer.wechat, SensitiveInfoType.WECHAT) : '未设置微信' }}</span>
-                </div>
-                <div class="contact-item-modern address-item">
-                  <el-icon class="contact-icon"><Location /></el-icon>
-                  <span class="contact-text">{{ orderDetail.customer.address ? displaySensitiveInfoNew(orderDetail.customer.address, SensitiveInfoType.ADDRESS) : '' }}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </el-card>
-    </div>
+    <!-- 客户+订单状态+收货+订单信息 -->
+    <OrderInfoCards
+      :orderDetail="orderDetail"
+      :showCountdown="showCountdown"
+      :countdownText="countdownText"
+      :canChangeToReserved="canChangeToReserved"
+      :hasShippedWithTracking="hasShippedWithTracking"
+      :customFields="orderFieldConfigStore.customFields"
+      :getCustomFieldValue="getCustomFieldValue"
+      :formatCustomFieldValue="formatCustomFieldValue"
+      :userId="userStore.currentUser?.id || ''"
+      @go-customer-detail="goToCustomerDetail"
+      @call-customer="callCustomer"
+      @track-express="trackExpress"
+    />
 
-    <!-- 第二行：订单状态铺满 -->
-    <div class="row-layout full-width">
-      <el-card class="modern-card order-status-modern order-status-horizontal">
-        <div class="status-header-horizontal">
-          <div class="status-title">
-            <el-icon class="status-icon"><Clock /></el-icon>
-            <span class="title-text">订单状态</span>
-          </div>
-          <div class="status-right-section">
-            <el-tag :style="getOrderStatusStyle(orderDetail.status)" class="status-tag-modern" effect="plain">
-              {{ getUnifiedStatusText(orderDetail.status) }}
-            </el-tag>
-            <!-- 3分钟倒计时和提示词 -->
-            <div v-if="showCountdown" class="countdown-section">
-              <div class="countdown-timer">
-                <el-icon class="countdown-icon"><Timer /></el-icon>
-                <span class="countdown-text">{{ countdownText }}</span>
-              </div>
-              <div class="countdown-tip">请在倒计时结束前完成审核</div>
-            </div>
-          </div>
-        </div>
+    <!-- 商品清单 -->
+    <OrderProductsCard
+      :orderDetail="orderDetail"
+      :calculatedSubtotal="calculatedSubtotal"
+      :depositScreenshotList="depositScreenshotList"
+      :canApplyCodCancel="canApplyCodCancel"
+      :codCancelDisabledReason="codCancelDisabledReason"
+      @apply-cod-cancel="handleApplyCodCancel"
+    />
 
-        <div class="status-timeline-horizontal">
-          <div class="timeline-item-horizontal">
-            <div class="timeline-dot"></div>
-            <div class="timeline-content">
-              <div class="timeline-label">创建时间</div>
-              <div class="timeline-value">{{ formatDateTime(orderDetail.createTime) }}</div>
-            </div>
-          </div>
-          <div class="timeline-item-horizontal">
-            <div class="timeline-dot"></div>
-            <div class="timeline-content">
-              <div class="timeline-label">更新时间</div>
-              <div class="timeline-value">{{ formatDateTime(orderDetail.updateTime) }}</div>
-            </div>
-          </div>
-          <!-- 倒计时显示 -->
-          <div v-if="showCountdown" class="timeline-item-horizontal countdown-timeline">
-            <div class="timeline-dot countdown-dot"></div>
-            <div class="timeline-content">
-              <div class="timeline-label">流转审核倒计时</div>
-              <div class="timeline-value countdown-value">
-                {{ countdownText }}
-                <el-tag type="warning" size="small" class="countdown-badge">
-                  <el-icon><Timer /></el-icon>
-                  自动流转中
-                </el-tag>
-              </div>
-            </div>
-          </div>
-          <!-- 可修改为预留单提示 -->
-          <div v-if="canChangeToReserved" class="status-tip-horizontal">
-            <el-icon class="tip-icon"><InfoFilled /></el-icon>
-            <span class="tip-text">流转前可修改为预留单，修改后将不会流转到审核</span>
-          </div>
-        </div>
-      </el-card>
-    </div>
-
-
-
-    <!-- 第三行：收货信息 -->
-    <div class="row-layout full-width">
-      <el-card class="modern-card delivery-info-card">
-        <template #header>
-          <div class="card-header-modern">
-            <div class="header-left">
-              <el-icon class="header-icon"><Van /></el-icon>
-              <span class="header-title">收货信息</span>
-            </div>
-          </div>
-        </template>
-
-        <div class="delivery-info-modern">
-          <div class="delivery-grid-modern">
-            <div class="delivery-field-modern">
-              <div class="field-label-modern">收货人</div>
-              <div class="field-value-modern">{{ orderDetail.receiverName }}</div>
-            </div>
-            <div class="delivery-field-modern">
-              <div class="field-label-modern">联系电话</div>
-              <div class="field-value-modern phone-clickable" @click="callCustomer(orderDetail.receiverPhone)">
-                {{ displaySensitiveInfoNew(orderDetail.receiverPhone, SensitiveInfoType.PHONE) }}
-              </div>
-            </div>
-            <div class="delivery-field-modern address-field-modern">
-              <div class="field-label-modern">收货地址</div>
-              <div class="field-value-modern address-value-modern">{{ orderDetail.receiverAddress ? displaySensitiveInfoNew(orderDetail.receiverAddress, SensitiveInfoType.ADDRESS) : '' }}</div>
-            </div>
-          </div>
-        </div>
-      </el-card>
-    </div>
-
-    <!-- 第三排：订单信息 -->
-    <div class="row-layout full-width">
-      <el-card class="order-info-card modern-card">
-        <template #header>
-          <div class="card-header-modern">
-            <div class="header-left">
-              <el-icon class="header-icon"><Document /></el-icon>
-              <span class="header-title">订单信息</span>
-            </div>
-          </div>
-        </template>
-
-        <div class="order-info-modern">
-          <!-- 基础订单信息 -->
-          <div class="order-basic-info">
-            <div class="info-grid">
-              <div class="info-item">
-                <div class="info-label">订单号</div>
-                <div class="info-value order-number-value">{{ orderDetail.orderNumber }}</div>
-              </div>
-              <div class="info-item">
-                <div class="info-label">指定快递</div>
-                <div class="info-value">{{ getExpressCompanyText(orderDetail.expressCompany) }}</div>
-              </div>
-              <div class="info-item">
-                <div class="info-label">下单时间</div>
-                <div class="info-value">{{ formatDateTime(orderDetail.createTime) }}</div>
-              </div>
-              <div class="info-item">
-                <div class="info-label">客服微信</div>
-                <div class="info-value">{{ orderDetail.serviceWechat }}</div>
-              </div>
-              <div class="info-item">
-                <div class="info-label">订单来源</div>
-                <div class="info-value">{{ getOrderSourceText(orderDetail.orderSource) }}</div>
-              </div>
-              <div class="info-item" v-if="orderDetail.paymentMethod">
-                <div class="info-label">支付方式</div>
-                <div class="info-value">{{ getPaymentMethodText(orderDetail.paymentMethod) }}{{ orderDetail.paymentMethodOther ? ` (${orderDetail.paymentMethodOther})` : '' }}</div>
-              </div>
-              <!-- 自定义字段显示 -->
-              <template v-for="field in orderFieldConfigStore.customFields" :key="field.fieldKey">
-                <div class="info-item" v-if="getCustomFieldValue(field.fieldKey)">
-                  <div class="info-label">{{ field.fieldName }}</div>
-                  <div class="info-value">{{ formatCustomFieldValue(field, getCustomFieldValue(field.fieldKey)) }}</div>
-                </div>
-              </template>
-            </div>
-          </div>
-
-          <!-- 物流信息区域 -->
-          <div class="logistics-section">
-            <div class="section-title">
-              <el-icon><Van /></el-icon>
-              <span>物流信息</span>
-              <el-tag
-                v-if="orderDetail.status === 'shipped'"
-                type="success"
-                size="small"
-                effect="light"
-                class="status-indicator"
-              >
-                已发货
-              </el-tag>
-              <el-tag
-                v-else-if="orderDetail.status === 'pending_shipment'"
-                type="warning"
-                size="small"
-                effect="light"
-                class="status-indicator"
-              >
-                待发货
-              </el-tag>
-              <el-tag
-                v-else
-                :style="getOrderStatusStyle(orderDetail.status)"
-                size="small"
-                effect="plain"
-                class="status-indicator"
-              >
-                {{ getUnifiedStatusText(orderDetail.status) }}
-              </el-tag>
-            </div>
-
-            <!-- 已发货/已签收状态的物流信息（包含物流单号） -->
-            <div v-if="hasShippedWithTracking" class="logistics-info-grid">
-              <div class="logistics-item highlight">
-                <div class="logistics-label">快递公司</div>
-                <div class="logistics-value">{{ getExpressCompanyText(orderDetail.expressCompany) }}</div>
-              </div>
-              <div class="logistics-item highlight">
-                <div class="logistics-label">物流单号</div>
-                <div class="logistics-value tracking-number-modern">
-                  {{ orderDetail.trackingNumber }}
-                  <el-button size="small" type="primary" text @click="trackExpress" class="track-btn">
-                    <el-icon><ZoomIn /></el-icon>
-                    查询
-                  </el-button>
-                </div>
-              </div>
-              <div class="logistics-item">
-                <div class="logistics-label">预计发货</div>
-                <div class="logistics-value">{{ formatDate(orderDetail.expectedShipDate) || '已发货' }}</div>
-              </div>
-              <div class="logistics-item">
-                <div class="logistics-label">预计到达</div>
-                <div class="logistics-value estimated-delivery">
-                  {{ orderDetail.status === 'delivered' ? '已签收' : (formatDate(orderDetail.expectedDeliveryDate) || '计算中...') }}
-                </div>
-              </div>
-            </div>
-
-            <!-- 待发货状态的物流信息 -->
-            <div v-else class="logistics-info-grid pending">
-              <div class="logistics-item">
-                <div class="logistics-label">预计发货</div>
-                <div class="logistics-value">{{ formatDate(orderDetail.expectedShipDate) || '待确定' }}</div>
-              </div>
-              <div class="logistics-item">
-                <div class="logistics-label">预计到达</div>
-                <div class="logistics-value">{{ formatDate(orderDetail.expectedDeliveryDate) || '待确定' }}</div>
-              </div>
-              <div class="logistics-item">
-                <div class="logistics-label">快递公司</div>
-                <div class="logistics-value">{{ getExpressCompanyText(orderDetail.expressCompany) || '待确定' }}</div>
-              </div>
-              <div class="logistics-item">
-                <div class="logistics-label">物流单号</div>
-                <div class="logistics-value pending-text">{{ orderDetail.trackingNumber || '待发货后生成' }}</div>
-              </div>
-            </div>
-          </div>
-
-          <!-- 订单备注 -->
-          <div v-if="orderDetail.remark" class="order-remark-modern">
-            <div class="remark-title">
-              <el-icon><Document /></el-icon>
-              <span>订单备注</span>
-            </div>
-            <div class="remark-content">{{ orderDetail.remark }}</div>
-          </div>
-        </div>
-      </el-card>
-    </div>
-
-    <!-- 第四排：产品清单 -->
-    <div class="row-layout full-width">
-      <el-card class="products-card">
-        <template #header>
-          <div class="card-header">
-            <el-icon><ShoppingBag /></el-icon>
-            <span>商品清单</span>
-          </div>
-        </template>
-
-        <div class="products-list">
-          <el-table :data="orderDetail.products" style="width: 100%">
-            <el-table-column label="商品信息" min-width="200">
-              <template #default="{ row }">
-                <div class="product-info">
-                  <div class="product-image">
-                    <img :src="row.image || '/default-product.png'" :alt="row.name" />
-                  </div>
-                  <div class="product-details">
-                    <div class="product-name">{{ row.name }}</div>
-                    <div class="product-sku">SKU: {{ row.sku || row.id }}</div>
-                  </div>
-                </div>
-              </template>
-            </el-table-column>
-            <el-table-column prop="price" label="单价" width="100">
-              <template #default="{ row }">
-                ¥{{ row.price.toFixed(2) }}
-              </template>
-            </el-table-column>
-            <el-table-column prop="quantity" label="数量" width="80" />
-            <el-table-column label="小计" width="120">
-              <template #default="{ row }">
-                ¥{{ (row.price * row.quantity).toFixed(2) }}
-              </template>
-            </el-table-column>
-          </el-table>
-
-          <!-- 金额信息横向显示 -->
-          <div class="amount-summary-modern">
-            <!-- 金额卡片 -->
-            <div class="amount-cards-modern">
-              <div class="amount-card-modern total-modern">
-                <div class="amount-icon-modern">
-                  <el-icon><Money /></el-icon>
-                </div>
-                <div class="amount-content-modern">
-                  <div class="amount-label-modern">订单总额</div>
-                  <div class="amount-value-modern">¥{{ (orderDetail.totalAmount || 0).toFixed(2) }}</div>
-                </div>
-              </div>
-              <div class="amount-card-modern deposit-modern" v-if="(orderDetail.depositAmount || 0) > 0">
-                <div class="amount-icon-modern">
-                  <el-icon><CreditCard /></el-icon>
-                </div>
-                <div class="amount-content-modern">
-                  <div class="amount-label-modern">定金</div>
-                  <div class="amount-value-modern">¥{{ (orderDetail.depositAmount || 0).toFixed(2) }}</div>
-                </div>
-              </div>
-              <div class="amount-card-modern collect-modern" v-if="(orderDetail.depositAmount || 0) > 0">
-                <div class="amount-icon-modern">
-                  <el-icon><Wallet /></el-icon>
-                </div>
-                <div class="amount-content-modern">
-                  <div class="amount-label-modern">代收</div>
-                  <div class="amount-value-modern">
-                    <div style="display: flex; align-items: center; flex-wrap: wrap; gap: 12px;">
-                      <span>¥{{ ((orderDetail.totalAmount || 0) - (orderDetail.depositAmount || 0)).toFixed(2) }}</span>
-                      <el-tooltip
-                        :content="codCancelDisabledReason"
-                        :disabled="canApplyCodCancel"
-                        placement="top"
-                      >
-                        <span>
-                          <el-button
-                            type="warning"
-                            size="small"
-                            :disabled="!canApplyCodCancel"
-                            @click="handleApplyCodCancel"
-                          >
-                            改代收
-                          </el-button>
-                        </span>
-                      </el-tooltip>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <!-- 第二行：商品总额和优惠 -->
-            <div class="amount-row-detail">
-              <div class="amount-detail-item subtotal-item">
-                <span class="detail-label">商品总额：</span>
-                <span class="detail-value subtotal">¥{{ calculatedSubtotal.toFixed(2) }}</span>
-              </div>
-              <div class="amount-detail-item discount-item" v-if="(orderDetail.discount || 0) > 0">
-                <span class="detail-label">优惠金额：</span>
-                <span class="detail-value discount">-¥{{ (orderDetail.discount || 0).toFixed(2) }}</span>
-              </div>
-              <!-- 【批次205新增】显示总优惠金额(商品总额-订单总额) -->
-              <div class="amount-detail-item discount-item" v-if="calculatedSubtotal > (orderDetail.totalAmount || 0)">
-                <span class="detail-label">已优惠：</span>
-                <span class="detail-value discount">-¥{{ (calculatedSubtotal - (orderDetail.totalAmount || 0)).toFixed(2) }}</span>
-              </div>
-              <!-- 支付方式 -->
-              <div class="amount-detail-item payment-item" v-if="orderDetail.paymentMethod">
-                <span class="detail-label">支付方式：</span>
-                <span class="detail-value payment">{{ getPaymentMethodText(orderDetail.paymentMethod) }}</span>
-              </div>
-            </div>
-
-            <!-- 定金截图 -->
-            <div v-if="depositScreenshotList.length > 0" class="deposit-screenshot-horizontal">
-              <span class="label">定金截图：</span>
-              <div class="screenshots-container">
-                <div
-                  v-for="(screenshot, index) in depositScreenshotList"
-                  :key="index"
-                  class="screenshot-container"
-                  @click="previewScreenshot(index)"
-                >
-                  <el-image
-                    :src="screenshot"
-                    fit="cover"
-                    style="width: 60px; height: 45px; border-radius: 4px; margin-left: 8px;"
-                  />
-                  <div class="screenshot-overlay">
-                    <el-icon class="zoom-icon"><ZoomIn /></el-icon>
-                  </div>
-                </div>
-                <div v-if="depositScreenshotList.length > 1" class="screenshot-count">
-                  共{{ depositScreenshotList.length }}张
-                </div>
-              </div>
-            </div>
-
-            <!-- 图片查看器 -->
-            <el-image-viewer
-              v-if="showImageViewer"
-              :url-list="depositScreenshotList"
-              :initial-index="currentImageIndex"
-              @close="showImageViewer = false"
-            />
-          </div>
-        </div>
-      </el-card>
-    </div>
-
-    <!-- 第五排：物流信息跟踪 -->
-    <div class="row-layout full-width">
-      <el-card class="logistics-card">
-        <template #header>
-          <div class="card-header">
-            <div class="card-header-left">
-              <el-icon><Van /></el-icon>
-              <span>物流信息跟踪</span>
-            </div>
-            <div class="card-header-right">
-              <el-button size="small" @click="refreshLogistics()" :loading="logisticsLoading">
-                {{ logisticsLoading ? '查询中...' : '刷新' }}
-              </el-button>
-              <el-button
-                size="small"
-                type="text"
-                @click="logisticsCollapsed = !logisticsCollapsed"
-                :icon="logisticsCollapsed ? ArrowDown : ArrowUp"
-              >
-                {{ logisticsCollapsed ? '展开' : '收起' }}
-              </el-button>
-            </div>
-          </div>
-        </template>
-
-        <el-collapse-transition>
-          <div v-show="!logisticsCollapsed" class="logistics-timeline" v-loading="logisticsLoading">
-            <!-- 有物流信息时显示时间线 -->
-            <el-timeline v-if="logisticsInfo.length > 0">
-              <el-timeline-item
-                v-for="(item, index) in logisticsInfo"
-                :key="index"
-                :timestamp="item.time"
-                :type="index === 0 ? 'primary' : 'info'"
-                :size="index === 0 ? 'large' : 'normal'"
-                placement="top"
-              >
-                <div class="logistics-trace-item" :class="{ 'logistics-trace-first': index === 0 }">
-                  <div class="trace-description">{{ item.description }}</div>
-                  <div class="trace-location" v-if="item.location">
-                    <el-icon><Location /></el-icon>
-                    <span>{{ item.location }}</span>
-                  </div>
-                </div>
-              </el-timeline-item>
-            </el-timeline>
-            <!-- 无物流信息时显示空状态 -->
-            <el-empty v-else description="物流信息请点击上方刷新按钮获取" />
-          </div>
-        </el-collapse-transition>
-      </el-card>
-    </div>
-
-    <!-- 第六排：订单状态和轨迹折叠 -->
-    <div class="row-layout full-width">
-      <el-card class="status-timeline-card">
-        <template #header>
-          <div class="card-header">
-            <div class="card-header-left">
-              <el-icon><Clock /></el-icon>
-              <span>订单状态和轨迹</span>
-            </div>
-            <div class="card-header-right">
-              <el-button
-                size="small"
-                type="text"
-                @click="statusTimelineCollapsed = !statusTimelineCollapsed"
-                :icon="statusTimelineCollapsed ? ArrowDown : ArrowUp"
-              >
-                {{ statusTimelineCollapsed ? '展开' : '收起' }}
-              </el-button>
-            </div>
-          </div>
-        </template>
-
-        <el-collapse-transition>
-          <div v-show="!statusTimelineCollapsed">
-            <el-timeline>
-              <el-timeline-item
-                v-for="(item, index) in orderTimeline"
-                :key="index"
-                :timestamp="formatDateTime(item.timestamp)"
-                :type="item.type"
-                :icon="item.icon"
-                :color="item.color"
-              >
-                <div class="timeline-content">
-                  <div class="timeline-title">{{ item.title }}</div>
-                  <div class="timeline-description">{{ item.description }}</div>
-                  <div v-if="item.operator" class="timeline-operator">操作人：{{ item.operator }}</div>
-                </div>
-              </el-timeline-item>
-            </el-timeline>
-          </div>
-        </el-collapse-transition>
-      </el-card>
-    </div>
-
-    <!-- 第八排：订单售后历史轨迹折叠 -->
-    <div class="row-layout full-width">
-      <el-card class="after-sales-card">
-        <template #header>
-          <div class="card-header">
-            <el-icon><Service /></el-icon>
-            <span>售后历史轨迹</span>
-            <el-button
-              size="small"
-              type="text"
-              @click="afterSalesCollapsed = !afterSalesCollapsed"
-              :icon="afterSalesCollapsed ? ArrowDown : ArrowUp"
-            >
-              {{ afterSalesCollapsed ? '展开' : '收起' }}
-            </el-button>
-          </div>
-        </template>
-
-        <el-collapse-transition>
-          <div v-show="!afterSalesCollapsed">
-            <el-timeline v-if="afterSalesHistory.length > 0">
-              <el-timeline-item
-                v-for="(item, index) in afterSalesHistory"
-                :key="index"
-                :timestamp="item.timestamp"
-                :type="getAfterSalesType(item.type)"
-              >
-                <div class="after-sales-content">
-                  <div class="after-sales-title">{{ item.title }}</div>
-                  <div class="after-sales-description">{{ item.description }}</div>
-                  <div v-if="item.operator" class="after-sales-operator">处理人：{{ item.operator }}</div>
-                  <div v-if="item.amount" class="after-sales-amount">金额：¥{{ item.amount.toFixed(2) }}</div>
-                </div>
-              </el-timeline-item>
-            </el-timeline>
-            <el-empty v-else description="暂无售后记录" />
-          </div>
-        </el-collapse-transition>
-      </el-card>
-    </div>
+    <!-- 物流跟踪+订单轨迹+售后历史 -->
+    <OrderTrackingSections
+      :logisticsInfo="logisticsInfo"
+      :logisticsLoading="logisticsLoading"
+      :orderTimeline="orderTimeline"
+      :afterSalesHistory="afterSalesHistory"
+      @refresh-logistics="refreshLogistics"
+    />
 
     <!-- 手机号验证对话框（统一组件） -->
     <PhoneVerifyDialog
@@ -657,6 +100,10 @@ import { ref, reactive, onMounted, onUnmounted, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import PhoneVerifyDialog from '@/components/Logistics/PhoneVerifyDialog.vue'
+// 拆分的子组件
+import OrderInfoCards from './Detail/OrderInfoCards.vue'
+import OrderProductsCard from './Detail/OrderProductsCard.vue'
+import OrderTrackingSections from './Detail/OrderTrackingSections.vue'
 import {
   ArrowLeft, Clock, User, Phone, Message, Location, Van, Document,
   ShoppingBag, Money, List, Sell, Check, Plus, ArrowDown, ArrowUp, Service, Lock, Timer, ZoomIn,
@@ -1150,7 +597,7 @@ const calculatedSubtotal = computed(() => {
     return 0
   }
   return orderDetail.products.reduce((sum, product) => {
-    return sum + (product.price * product.quantity)
+    return sum + ((product.price || 0) * (product.quantity || 0))
   }, 0)
 })
 
@@ -2273,6 +1720,7 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
+/* 子组件已各自包含自己的样式，父组件改为 scoped */
 .order-detail {
   padding: 20px;
   max-width: 1400px;

@@ -532,10 +532,11 @@ export class UserApiService {
   /**
    * 解锁用户账户
    */
-  async unlockAccount(userId: number): Promise<void> {
+  async unlockAccount(userId: number | string): Promise<void> {
     try {
-      await this.api.post(`/users/${userId}/unlock`)
-      console.log(`[UserAPI] 解锁账户成功 (ID: ${userId})`)
+      const id = String(userId)
+      await this.api.post(`/users/${id}/unlock`)
+      console.log(`[UserAPI] 解锁账户成功 (ID: ${id})`)
     } catch (error) {
       console.error(`[UserAPI] 解锁账户失败 (ID: ${userId}):`, error)
       throw error

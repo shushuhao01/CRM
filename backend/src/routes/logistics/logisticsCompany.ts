@@ -412,6 +412,265 @@ router.delete('/companies/:id', async (req: Request, res: Response) => {
   }
 });
 
+// ========== 物流公司导入导出 API ==========
+
+/**
+ * 导出全部物流公司数据（含API配置和快递100配置）
+ */
+router.get('/companies/export', async (_req: Request, res: Response) => {
+  try {
+    const companyRepo = getTenantRepo(LogisticsCompany);
+    const companies = await companyRepo.find({
+      order: { sortOrder: 'ASC', createdAt: 'DESC' }
+    });
+
+    // 获取API配置
+    let apiConfigs: any[] = [];
+    try {
+      const { LogisticsApiConfig } = await import('../../entities/LogisticsApiConfig');
+      const apiConfigRepo = getTenantRepo(LogisticsApiConfig);
+      apiConfigs = await apiConfigRepo.find();
+    } catch (e) {
+      log.warn('[物流公司导出] 获取API配置失败:', e);
+    }
+
+    // 获取快递100配置
+    let kuaidi100Config: any = null;
+    try {
+      const { SystemConfig } = await import('../../entities/SystemConfig');
+      const configRepo = getTenantRepo(SystemConfig);
+      const config = await configRepo.findOne({ where: { configKey: 'kuaidi100' } });
+      if (config && config.configValue) {
+        kuaidi100Config = typeof config.configValue === 'string'
+          ? JSON.parse(config.configValue)
+          : config.configValue;
+      }
+    } catch (e) {
+      log.warn('[物流公司导出] 获取快递100配置失败:', e);
+    }
+
+    // 构建导出数据
+    const exportData = {
+      exportTime: new Date().toISOString(),
+      version: '1.0',
+      companies: companies.map(c => ({
+        code: c.code,
+        name: c.name,
+        shortName: c.shortName || '',
+        logo: c.logo || '',
+        website: c.website || '',
+        trackingUrl: c.trackingUrl || '',
+        apiUrl: c.apiUrl || '',
+        apiKey: c.apiKey || '',
+        apiSecret: c.apiSecret || '',
+        contactPhone: c.contactPhone || '',
+        contactEmail: c.contactEmail || '',
+        serviceArea: c.serviceArea || '',
+        priceInfo: c.priceInfo || null,
+        status: c.status,
+        sortOrder: c.sortOrder || 0,
+        remark: c.remark || '',
+        createdAt: c.createdAt,
+        updatedAt: c.updatedAt
+      })),
+      apiConfigs: apiConfigs.map(ac => ({
+        companyCode: ac.companyCode,
+        companyName: ac.companyName || '',
+        appId: ac.appId || '',
+        appKey: ac.appKey || '',
+        appSecret: ac.appSecret || '',
+        customerId: ac.customerId || '',
+        apiUrl: ac.apiUrl || '',
+        apiEnvironment: ac.apiEnvironment || 'sandbox',
+        extraConfig: ac.extraConfig || null,
+        supportCreateOrder: ac.supportCreateOrder || 0,
+        enabled: ac.enabled || 0
+      })),
+      kuaidi100Config: kuaidi100Config
+    };
+
+    return res.json({
+      success: true,
+      data: exportData
+    });
+  } catch (error) {
+    log.error('[物流公司导出] 失败:', error);
+    return res.status(500).json({
+      success: false,
+      message: '导出失败'
+    });
+  }
+});
+
+/**
+ * 导入物流公司数据（重复的按code覆盖）
+ */
+router.post('/companies/import', async (req: Request, res: Response) => {
+  try {
+    const { companies, apiConfigs, kuaidi100Config } = req.body;
+
+    if (!companies || !Array.isArray(companies) || companies.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: '导入数据为空或格式不正确'
+      });
+    }
+
+    const companyRepo = getTenantRepo(LogisticsCompany);
+    let importedCount = 0;
+    let updatedCount = 0;
+    let errorCount = 0;
+
+    for (const item of companies) {
+      try {
+        if (!item.code || !item.name) {
+          errorCount++;
+          continue;
+        }
+
+        // 查找是否已存在
+        const existing = await companyRepo.findOne({ where: { code: item.code } });
+
+        if (existing) {
+          // 覆盖更新
+          if (item.name) existing.name = item.name;
+          if (item.shortName !== undefined) existing.shortName = item.shortName;
+          if (item.logo !== undefined) existing.logo = item.logo;
+          if (item.website !== undefined) existing.website = item.website;
+          if (item.trackingUrl !== undefined) existing.trackingUrl = item.trackingUrl;
+          if (item.apiUrl !== undefined) existing.apiUrl = item.apiUrl;
+          if (item.apiKey !== undefined) existing.apiKey = item.apiKey;
+          if (item.apiSecret !== undefined) existing.apiSecret = item.apiSecret;
+          if (item.contactPhone !== undefined) existing.contactPhone = item.contactPhone;
+          if (item.contactEmail !== undefined) existing.contactEmail = item.contactEmail;
+          if (item.serviceArea !== undefined) existing.serviceArea = item.serviceArea;
+          if (item.priceInfo !== undefined) existing.priceInfo = item.priceInfo;
+          if (item.status) existing.status = item.status;
+          if (item.sortOrder !== undefined) existing.sortOrder = item.sortOrder;
+          if (item.remark !== undefined) existing.remark = item.remark;
+          await companyRepo.save(existing);
+          updatedCount++;
+        } else {
+          // 新增
+          const company = companyRepo.create({
+            id: uuidv4(),
+            code: item.code,
+            name: item.name,
+            shortName: item.shortName || '',
+            logo: item.logo || '',
+            website: item.website || '',
+            trackingUrl: item.trackingUrl || '',
+            apiUrl: item.apiUrl || '',
+            apiKey: item.apiKey || '',
+            apiSecret: item.apiSecret || '',
+            contactPhone: item.contactPhone || '',
+            contactEmail: item.contactEmail || '',
+            serviceArea: item.serviceArea || '',
+            priceInfo: item.priceInfo || null,
+            status: item.status || 'active',
+            sortOrder: item.sortOrder || 0,
+            remark: item.remark || ''
+          });
+          await companyRepo.save(company);
+          importedCount++;
+        }
+      } catch (itemError) {
+        log.warn(`[物流公司导入] 处理 ${item.code} 失败:`, itemError);
+        errorCount++;
+      }
+    }
+
+    // 导入API配置
+    let apiImportedCount = 0;
+    if (apiConfigs && Array.isArray(apiConfigs) && apiConfigs.length > 0) {
+      try {
+        const { LogisticsApiConfig } = await import('../../entities/LogisticsApiConfig');
+        const apiConfigRepo = getTenantRepo(LogisticsApiConfig);
+
+        for (const ac of apiConfigs) {
+          try {
+            if (!ac.companyCode) continue;
+            const existingConfig = await apiConfigRepo.findOne({
+              where: { companyCode: ac.companyCode.toUpperCase() }
+            });
+
+            if (existingConfig) {
+              // 覆盖更新
+              if (ac.companyName) existingConfig.companyName = ac.companyName;
+              if (ac.appId !== undefined) existingConfig.appId = ac.appId;
+              if (ac.appKey !== undefined) existingConfig.appKey = ac.appKey;
+              if (ac.appSecret !== undefined) existingConfig.appSecret = ac.appSecret;
+              if (ac.customerId !== undefined) existingConfig.customerId = ac.customerId;
+              if (ac.apiUrl !== undefined) existingConfig.apiUrl = ac.apiUrl;
+              if (ac.apiEnvironment) existingConfig.apiEnvironment = ac.apiEnvironment;
+              if (ac.extraConfig !== undefined) existingConfig.extraConfig = ac.extraConfig;
+              if (ac.supportCreateOrder !== undefined) existingConfig.supportCreateOrder = ac.supportCreateOrder;
+              if (ac.enabled !== undefined) existingConfig.enabled = ac.enabled;
+              await apiConfigRepo.save(existingConfig);
+            } else {
+              const newConfig = apiConfigRepo.create({
+                id: uuidv4(),
+                companyCode: ac.companyCode.toUpperCase(),
+                companyName: ac.companyName || ac.companyCode,
+                appId: ac.appId || '',
+                appKey: ac.appKey || '',
+                appSecret: ac.appSecret || '',
+                customerId: ac.customerId || '',
+                apiUrl: ac.apiUrl || '',
+                apiEnvironment: ac.apiEnvironment || 'sandbox',
+                extraConfig: ac.extraConfig || null,
+                supportCreateOrder: ac.supportCreateOrder || 0,
+                enabled: ac.enabled || 0
+              });
+              await apiConfigRepo.save(newConfig);
+            }
+            apiImportedCount++;
+          } catch (acError) {
+            log.warn(`[物流公司导入] API配置 ${ac.companyCode} 处理失败:`, acError);
+          }
+        }
+      } catch (e) {
+        log.warn('[物流公司导入] 导入API配置失败:', e);
+      }
+    }
+
+    // 导入快递100配置
+    if (kuaidi100Config) {
+      try {
+        const { SystemConfig } = await import('../../entities/SystemConfig');
+        const configRepo = getTenantRepo(SystemConfig);
+        let config = await configRepo.findOne({ where: { configKey: 'kuaidi100' } });
+        if (config) {
+          config.configValue = JSON.stringify(kuaidi100Config);
+          await configRepo.save(config);
+        } else {
+          config = configRepo.create({
+            id: uuidv4(),
+            configKey: 'kuaidi100',
+            configValue: JSON.stringify(kuaidi100Config),
+            description: '快递100 API配置'
+          } as any);
+          await configRepo.save(config);
+        }
+      } catch (e) {
+        log.warn('[物流公司导入] 快递100配置导入失败:', e);
+      }
+    }
+
+    return res.json({
+      success: true,
+      message: `导入完成：新增 ${importedCount} 个，覆盖更新 ${updatedCount} 个${errorCount > 0 ? `，失败 ${errorCount} 个` : ''}${apiImportedCount > 0 ? `，API配置 ${apiImportedCount} 个` : ''}`,
+      data: { importedCount, updatedCount, errorCount, apiImportedCount }
+    });
+  } catch (error) {
+    log.error('[物流公司导入] 失败:', error);
+    return res.status(500).json({
+      success: false,
+      message: '导入失败: ' + (error instanceof Error ? error.message : '未知错误')
+    });
+  }
+});
+
 // ========== 原有物流跟踪 API ==========
 
 // 获取物流列表
@@ -430,7 +689,7 @@ router.post('/tracking', (req, res) => logisticsController.createLogisticsTracki
  */
 router.get('/trace/query', async (req: Request, res: Response) => {
   try {
-    const { trackingNo, companyCode, phone } = req.query;
+    const { trackingNo, companyCode, phone, senderPhone } = req.query;
 
     if (!trackingNo) {
       return res.status(400).json({
@@ -441,8 +700,10 @@ router.get('/trace/query', async (req: Request, res: Response) => {
 
     // 🔥 修复：检查手机号是否为有效值（不是空字符串）
     let phoneToUse = (phone && typeof phone === 'string' && phone.trim()) ? phone.trim() : undefined;
+    // 🔥 双保险：寄件人手机号备用
+    const senderPhoneStr = (senderPhone && typeof senderPhone === 'string' && senderPhone.trim()) ? senderPhone.trim() : undefined;
 
-    log.info(`[物流轨迹查询] 前端传递的phone参数: "${phone}", 处理后: ${phoneToUse ? phoneToUse.slice(-4) + '****' : '(空)'}`);
+    log.info(`[物流轨迹查询] 前端传递的phone参数: "${phone}", senderPhone: "${senderPhone}", 处理后: ${phoneToUse ? phoneToUse.slice(-4) + '****' : '(空)'}`);
 
     // 🔥 如果前端没有传递有效手机号，尝试从数据库获取
     if (!phoneToUse) {
@@ -510,13 +771,26 @@ router.get('/trace/query', async (req: Request, res: Response) => {
       }
     }
 
-    log.info(`[物流轨迹查询] 单号: ${trackingNo}, 快递公司: ${companyCode || '自动识别'}, 手机号: ${phoneToUse ? '已提供(' + phoneToUse.slice(-4) + ')' : '未提供'}`);
+    log.info(`[物流轨迹查询] 单号: ${trackingNo}, 快递公司: ${companyCode || '自动识别'}, 手机号: ${phoneToUse ? '已提供(' + phoneToUse.slice(-4) + ')' : '未提供'}, 寄件人手机号: ${senderPhoneStr ? '已提供(' + senderPhoneStr.slice(-4) + ')' : '未提供'}`);
 
-    const result = await logisticsTraceService.queryTrace(
+    let result = await logisticsTraceService.queryTrace(
       trackingNo as string,
       companyCode as string | undefined,
       phoneToUse
     );
+
+    // 🔥 双保险：如果首次查询失败且有寄件人手机号，用寄件人手机号重试
+    if (!result.success && senderPhoneStr && senderPhoneStr !== phoneToUse) {
+      log.info(`[物流轨迹查询] 客户手机号查询失败，使用寄件人手机号${senderPhoneStr.slice(-4)}****重试...`);
+      result = await logisticsTraceService.queryTrace(
+        trackingNo as string,
+        companyCode as string | undefined,
+        senderPhoneStr
+      );
+      if (result.success) {
+        log.info('[物流轨迹查询] ✅ 使用寄件人手机号查询成功');
+      }
+    }
 
     // 🔥 如果查询成功，更新数据库中的物流状态和最新动态
     if (result.success && result.traces.length > 0) {
@@ -527,19 +801,49 @@ router.get('/trace/query', async (req: Request, res: Response) => {
           where: { trackingNumber: trackingNo as string }
         });
         if (order) {
-          order.logisticsStatus = result.status;
           // 🔥 修复：保存最新物流动态前先按时间排序，确保取到最新的
-          if (result.traces.length > 0) {
-            const sortedTraces = [...result.traces].sort((a, b) => {
-              const timeA = new Date(a.time).getTime();
-              const timeB = new Date(b.time).getTime();
-              return timeB - timeA; // 倒序，最新的在前
-            });
-            order.latestLogisticsInfo = sortedTraces[0].description || sortedTraces[0].status || '';
-          }
+          const sortedTraces = [...result.traces].sort((a, b) => {
+            const timeA = new Date(a.time).getTime();
+            const timeB = new Date(b.time).getTime();
+            return timeB - timeA;
+          });
+          const latestDescription = sortedTraces[0].description || sortedTraces[0].status || '';
+
+          order.logisticsStatus = result.status;
+          order.latestLogisticsInfo = latestDescription;
           if (result.estimatedDeliveryTime) {
             order.expectedDeliveryDate = result.estimatedDeliveryTime;
           }
+
+          // 🔥 实时自动同步：根据最新物流动态安全更新订单状态
+          const { detectLogisticsStatus, mapLogisticsToOrderStatus } = await import('../../services/LogisticsAutoSyncService');
+          const detectedStatus = detectLogisticsStatus(latestDescription);
+          const targetOrderStatus = mapLogisticsToOrderStatus(detectedStatus, order.status);
+
+          if (targetOrderStatus && targetOrderStatus !== order.status) {
+            const oldStatus = order.status;
+            order.status = targetOrderStatus as any;
+            log.info(`[物流轨迹查询] 🔄 实时同步订单状态: ${order.orderNumber} ${oldStatus} → ${targetOrderStatus} (物流: ${detectedStatus}, 动态: "${latestDescription.substring(0, 50)}")`);
+
+            if (targetOrderStatus === 'delivered') {
+              order.deliveredAt = new Date();
+            }
+
+            // 记录状态变更历史
+            try {
+              const { OrderStatusHistory } = await import('../../entities/OrderStatusHistory');
+              const historyRepo = getTenantRepo(OrderStatusHistory);
+              await historyRepo.save(historyRepo.create({
+                orderId: order.id,
+                status: targetOrderStatus as any,
+                notes: `[实时同步] 物流动态: "${latestDescription.substring(0, 100)}" → ${detectedStatus} → ${targetOrderStatus}`,
+                operatorName: '系统实时同步'
+              }));
+            } catch (_histErr) {
+              // 历史记录失败不影响主流程
+            }
+          }
+
           order.updatedAt = new Date();
           await orderRepository.save(order);
         }
@@ -640,17 +944,32 @@ router.post('/trace/batch-query', async (req: Request, res: Response) => {
                 where: { trackingNumber: item.trackingNo }
               });
               if (order) {
-                order.logisticsStatus = result.status;
                 // 🔥 修复：保存最新物流动态前先按时间排序
                 const sortedTraces = [...result.traces].sort((a, b) => {
                   const timeA = new Date(a.time).getTime();
                   const timeB = new Date(b.time).getTime();
                   return timeB - timeA;
                 });
-                order.latestLogisticsInfo = sortedTraces[0].description || sortedTraces[0].status || '';
+                const latestDescription = sortedTraces[0].description || sortedTraces[0].status || '';
+
+                order.logisticsStatus = result.status;
+                order.latestLogisticsInfo = latestDescription;
                 if (result.estimatedDeliveryTime) {
                   order.expectedDeliveryDate = result.estimatedDeliveryTime;
                 }
+
+                // 🔥 实时自动同步：根据最新物流动态安全更新订单状态
+                const { detectLogisticsStatus, mapLogisticsToOrderStatus } = await import('../../services/LogisticsAutoSyncService');
+                const detectedStatus = detectLogisticsStatus(latestDescription);
+                const targetOrderStatus = mapLogisticsToOrderStatus(detectedStatus, order.status);
+
+                if (targetOrderStatus && targetOrderStatus !== order.status) {
+                  order.status = targetOrderStatus as any;
+                  if (targetOrderStatus === 'delivered') {
+                    order.deliveredAt = new Date();
+                  }
+                }
+
                 order.updatedAt = new Date();
                 await orderRepository.save(order);
               }

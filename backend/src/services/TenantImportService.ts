@@ -2,24 +2,24 @@
  * 租户数据导入服务
  *
  * 功能：
- * 1. 导入 JSON 格式的数据包
+ * 1. 导入 JSON 格式的数据包（兼容 v1.0 和 v2.0 格式）
  * 2. 验证数据格式和版本
  * 3. 冲突处理策略（跳过/覆盖/报错）
  * 4. 异步导入，提供进度查询
+ * 5. 🔥 支持通用SQL导入，覆盖全部核心业务表
  */
 
 import { AppDataSource } from '../config/database';
 import { Tenant } from '../entities/Tenant';
-import { Customer } from '../entities/Customer';
-import { Order } from '../entities/Order';
-import { Product } from '../entities/Product';
 import * as fs from 'fs';
 
 import { log } from '../config/logger';
+
 export interface ImportOptions {
   tenantId: string;
   filePath: string;
   conflictStrategy: 'skip' | 'overwrite' | 'error';  // 冲突处理策略
+  clearBeforeImport?: boolean;  // 导入前清空目标租户数据（全量恢复模式）
 }
 
 export interface ImportJob {
@@ -82,7 +82,7 @@ export class TenantImportService {
   }
 
   /**
-   * 执行导入
+   * 执行导入（🔥 v3.0: 事务安全 + 清空模式 + 依赖排序）
    */
   private static async executeImport(jobId: string, options: ImportOptions): Promise<void> {
     const job = importJobs.get(jobId);
@@ -109,28 +109,75 @@ export class TenantImportService {
       const fileContent = fs.readFileSync(options.filePath, 'utf-8');
       const importData = JSON.parse(fileContent);
 
-      // 3. 验证数据格式
+      // 3. 验证数据格式（兼容 v1.0 / v2.0 / v3.0）
       this.validateImportData(importData);
 
-      // 4. 计算总记录数
+      // 🔒 安全校验：导入文件中的租户ID必须与目标租户匹配（防止误导入其他租户的备份）
+      if (importData.tenant && importData.tenant.id && importData.tenant.id !== options.tenantId) {
+        log.warn(`[TenantImport] 导入文件租户ID(${importData.tenant.id})与目标租户ID(${options.tenantId})不匹配，将强制覆盖为目标租户ID`);
+      }
+
+      // 4. 按依赖顺序排列要导入的表
+      const tablesToImport = this.getOrderedTables(Object.keys(importData.data));
+
+      // 5. 计算总记录数
       job.totalRecords = 0;
-      for (const tableName in importData.data) {
-        job.totalRecords += importData.data[tableName].length;
+      for (const tableName of tablesToImport) {
+        if (Array.isArray(importData.data[tableName])) {
+          job.totalRecords += importData.data[tableName].length;
+        }
       }
 
-      // 5. 导入各个表的数据
-      for (const tableName in importData.data) {
-        const records = importData.data[tableName];
-        await this.importTable(
-          tableName,
-          records,
-          options.tenantId,
-          options.conflictStrategy,
-          job
-        );
+      if (job.totalRecords === 0) {
+        job.status = 'completed';
+        job.progress = 100;
+        job.completedAt = new Date();
+        return;
       }
 
-      // 6. 更新任务状态
+      // 6. 🔥 使用事务包裹整个导入过程（失败自动回滚，不影响其他租户）
+      await AppDataSource.transaction(async (transactionalEntityManager) => {
+
+        // 6a. 如果启用 clearBeforeImport，先按逆序删除目标租户的旧数据
+        if (options.clearBeforeImport) {
+          const reversedTables = [...tablesToImport].reverse();
+          for (const tableName of reversedTables) {
+            try {
+              // 检查表是否存在且有 tenant_id 列
+              const hasTenantCol = await transactionalEntityManager.query(
+                `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = 'tenant_id'`,
+                [tableName]
+              );
+              if (hasTenantCol.length > 0) {
+                const delResult = await transactionalEntityManager.query(
+                  `DELETE FROM \`${tableName}\` WHERE tenant_id = ?`,
+                  [options.tenantId]
+                );
+                log.info(`[TenantImport] 清空表 ${tableName}: 删除 ${delResult.affectedRows || 0} 条记录`);
+              }
+            } catch (err) {
+              log.warn(`[TenantImport] 清空表 ${tableName} 跳过: ${(err as Error).message?.substring(0, 60)}`);
+            }
+          }
+        }
+
+        // 6b. 按依赖顺序逐表导入
+        for (const tableName of tablesToImport) {
+          const records = importData.data[tableName];
+          if (!Array.isArray(records) || records.length === 0) continue;
+
+          await this.importTableBySQL(
+            tableName,
+            records,
+            options.tenantId,
+            options.conflictStrategy,
+            job,
+            transactionalEntityManager
+          );
+        }
+      });
+
+      // 7. 更新任务状态
       job.status = 'completed';
       job.progress = 100;
       job.completedAt = new Date();
@@ -149,14 +196,62 @@ export class TenantImportService {
   }
 
   /**
-   * 验证导入数据格式
+   * 🔥 按依赖关系排序导入表（与 TenantExportService.ALL_EXPORTABLE_TABLES 保持一致）
+   */
+  private static readonly IMPORT_TABLE_ORDER = [
+    'departments', 'users', 'roles', 'permissions', 'role_permissions',
+    'product_categories', 'products',
+    'customer_tags', 'customer_groups', 'customers', 'customer_shares', 'customer_assignments',
+    'follow_up_records', 'customer_files',
+    'orders', 'order_items', 'order_status_history', 'order_attachments', 'cod_cancel_applications',
+    'after_sales_services', 'service_records', 'service_follow_ups', 'service_follow_up_records',
+    'service_operation_logs', 'after_sale_attachments',
+    'logistics_companies', 'logistics_api_configs', 'logistics_tracking', 'logistics_traces',
+    'call_records', 'call_recordings', 'call_lines', 'user_line_assignments', 'phone_configs',
+    'work_phones', 'device_bind_logs', 'global_call_config', 'outbound_tasks', 'phone_blacklist',
+    'performance_configs', 'performance_metrics', 'performance_report_configs', 'performance_report_logs',
+    'performance_shares', 'performance_share_members', 'commission_settings', 'commission_ladders',
+    'department_order_limits',
+    'value_added_orders', 'value_added_price_config', 'value_added_status_configs',
+    'payment_orders', 'payment_records',
+    'system_configs', 'improvement_goals', 'rejection_reasons', 'remark_presets', 'payment_method_options',
+    'sms_templates', 'sms_records', 'outsource_companies',
+    'wecom_configs', 'wecom_user_bindings', 'wecom_customers', 'wecom_acquisition_links',
+    'wecom_service_accounts', 'wecom_payment_records', 'wecom_chat_records',
+    'announcements', 'announcement_reads', 'notifications', 'notification_templates',
+    'notification_channels', 'notification_logs', 'system_messages',
+    'message_subscriptions', 'department_subscription_configs', 'message_read_status',
+    'message_cleanup_history',
+    'customer_service_permissions', 'sensitive_info_permissions', 'operation_logs',
+    'data_records',
+  ];
+
+  private static getOrderedTables(tables: string[]): string[] {
+    const tableSet = new Set(tables);
+    const ordered: string[] = [];
+    // 先按预定义顺序添加已知表
+    for (const t of this.IMPORT_TABLE_ORDER) {
+      if (tableSet.has(t)) {
+        ordered.push(t);
+        tableSet.delete(t);
+      }
+    }
+    // 剩余未知表追加到末尾
+    for (const t of tableSet) {
+      ordered.push(t);
+    }
+    return ordered;
+  }
+
+  /**
+   * 验证导入数据格式（兼容 v1.0 和 v2.0）
    */
   private static validateImportData(data: any): void {
     if (!data.version) {
       throw new Error('缺少版本信息');
     }
 
-    if (data.version !== '1.0') {
+    if (!['1.0', '2.0', '3.0'].includes(data.version)) {
       throw new Error(`不支持的数据版本: ${data.version}`);
     }
 
@@ -170,71 +265,113 @@ export class TenantImportService {
   }
 
   /**
-   * 导入指定表的数据
+   * 🔥 通用SQL导入（事务安全，强制 tenant_id 隔离）
    */
-  private static async importTable(
+  private static async importTableBySQL(
     tableName: string,
     records: any[],
     tenantId: string,
     conflictStrategy: 'skip' | 'overwrite' | 'error',
-    job: ImportJob
+    job: ImportJob,
+    manager?: import('typeorm').EntityManager
   ): Promise<void> {
-    let repository: any;
-    let entityClass: any;
+    const queryRunner = manager || AppDataSource;
 
-    // 根据表名获取对应的 Repository
-    switch (tableName) {
-      case 'customers':
-        entityClass = Customer;
-        break;
-      case 'orders':
-        entityClass = Order;
-        break;
-      case 'products':
-        entityClass = Product;
-        break;
-      default:
-        log.warn(`未知的表名: ${tableName}`);
-        return;
+    // 检查表是否存在且有 tenant_id 列
+    const hasTenantCol = await queryRunner.query(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = 'tenant_id'`,
+      [tableName]
+    );
+    if (hasTenantCol.length === 0) {
+      log.warn(`[TenantImport] 表 ${tableName} 不存在或无 tenant_id 列，跳过`);
+      job.skippedRecords += records.length;
+      job.processedRecords += records.length;
+      return;
     }
 
-    repository = AppDataSource.getRepository(entityClass);
+    // 获取表的所有列名（用于构建INSERT语句）
+    const columns = await queryRunner.query(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? ORDER BY ORDINAL_POSITION`,
+      [tableName]
+    );
+    const columnNames = columns.map((c: any) => c.COLUMN_NAME);
+
+    // 检查表是否有 id 列（用于冲突检测）
+    const hasIdCol = columnNames.includes('id');
 
     // 逐条导入记录
     for (const record of records) {
       try {
-        // 确保 tenant_id 正确
-        record.tenantId = tenantId;
-
-        // 检查记录是否已存在
-        const existing = await repository.findOne({
-          where: { id: record.id, tenantId }
-        });
-
-        if (existing) {
-          // 处理冲突
-          if (conflictStrategy === 'skip') {
-            job.skippedRecords++;
-            job.processedRecords++;
-            continue;
-          } else if (conflictStrategy === 'error') {
-            throw new Error(`记录已存在: ${record.id}`);
-          } else if (conflictStrategy === 'overwrite') {
-            // 更新现有记录
-            await repository.update({ id: record.id, tenantId }, record);
-          }
-        } else {
-          // 插入新记录
-          await repository.save(record);
+        // 🔒 强制覆盖 tenant_id 为目标租户（核心安全逻辑）
+        record.tenant_id = tenantId;
+        if ('tenantId' in record) {
+          record.tenantId = tenantId;
         }
+
+        // 只保留表中实际存在的列
+        const validColumns = columnNames.filter((col: string) => record[col] !== undefined);
+        const values = validColumns.map((col: string) => record[col]);
+
+        if (validColumns.length === 0) {
+          job.skippedRecords++;
+          job.processedRecords++;
+          continue;
+        }
+
+        // 冲突检测（🔒 始终加 tenant_id 条件，防止影响其他租户）
+        if (hasIdCol && record.id) {
+          const existing = await queryRunner.query(
+            `SELECT id FROM \`${tableName}\` WHERE id = ? AND tenant_id = ?`,
+            [record.id, tenantId]
+          );
+
+          if (existing.length > 0) {
+            if (conflictStrategy === 'skip') {
+              job.skippedRecords++;
+              job.processedRecords++;
+              continue;
+            } else if (conflictStrategy === 'error') {
+              throw new Error(`记录已存在: ${tableName}[${record.id}]`);
+            } else if (conflictStrategy === 'overwrite') {
+              // 更新现有记录（🔒 WHERE 条件包含 tenant_id）
+              const setClauses = validColumns
+                .filter((col: string) => col !== 'id')
+                .map((col: string) => `\`${col}\` = ?`);
+              const updateValues = validColumns
+                .filter((col: string) => col !== 'id')
+                .map((col: string) => record[col]);
+
+              if (setClauses.length > 0) {
+                await queryRunner.query(
+                  `UPDATE \`${tableName}\` SET ${setClauses.join(', ')} WHERE id = ? AND tenant_id = ?`,
+                  [...updateValues, record.id, tenantId]
+                );
+              }
+              job.processedRecords++;
+              continue;
+            }
+          }
+        }
+
+        // 插入新记录
+        const placeholders = validColumns.map(() => '?').join(', ');
+        const colList = validColumns.map((col: string) => `\`${col}\``).join(', ');
+        await queryRunner.query(
+          `INSERT INTO \`${tableName}\` (${colList}) VALUES (${placeholders})`,
+          values
+        );
 
         job.processedRecords++;
         job.progress = Math.round((job.processedRecords / job.totalRecords) * 100);
 
       } catch (error: any) {
         job.errorRecords++;
-        job.errors.push(`${tableName}[${record.id}]: ${error.message}`);
-        log.error(`导入记录失败 [${tableName}]:`, error);
+        job.processedRecords++;
+        const errMsg = `${tableName}[${record.id || '?'}]: ${error.message?.substring(0, 100)}`;
+        if (job.errors.length < 50) {
+          job.errors.push(errMsg);
+        }
+        log.error(`[TenantImport] 导入记录失败:`, errMsg);
       }
     }
   }

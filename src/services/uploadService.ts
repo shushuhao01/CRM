@@ -31,6 +31,8 @@ interface StorageConfig {
   imageCompressQuality?: 'high' | 'medium' | 'low' | 'custom'
   imageCompressMaxWidth?: number
   imageCompressCustomQuality?: number
+  // 🔥 租户编码（SaaS模式下由后端返回，用于 OSS 目录隔离）
+  tenantCode?: string | null
 }
 
 // 上传结果
@@ -220,11 +222,12 @@ const uploadToOSS = async (file: File, type: UploadType, storageConfig: StorageC
       secure: true
     })
 
-    // 生成文件路径
+    // 生成文件路径（🔥 SaaS模式下按租户编码隔离目录）
     const timestamp = Date.now()
     const random = Math.random().toString(36).substring(2, 8)
     const ext = file.name.split('.').pop()
-    const fileName = `${type}/${timestamp}_${random}.${ext}`
+    const tenantPrefix = storageConfig.tenantCode ? `${storageConfig.tenantCode}/` : ''
+    const fileName = `${tenantPrefix}${type}/${timestamp}_${random}.${ext}`
 
     // 上传文件
     const result = await client.put(fileName, file)

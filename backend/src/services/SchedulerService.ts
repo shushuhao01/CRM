@@ -9,6 +9,7 @@ import { licenseExpirationReminderService } from './LicenseExpirationReminderSer
 import { paymentReminderService } from './PaymentReminderService';
 import { dataCleanupService } from './DataCleanupService';
 import { subscriptionService } from './SubscriptionService';
+import { logisticsAutoSyncService } from './LogisticsAutoSyncService';
 
 import { log } from '../config/logger';
 export class SchedulerService {
@@ -70,6 +71,16 @@ export class SchedulerService {
         await subscriptionService.runDeductRetry();
       },
       '订阅扣款重试（3次重试+7天宽限期）'
+    );
+
+    // 🔥 物流状态自动同步 - 每15分钟执行一次
+    this.scheduleTask(
+      'logistics-auto-sync',
+      '*/15 * * * *', // 每15分钟
+      async () => {
+        await logisticsAutoSyncService.runAutoSync();
+      },
+      '物流状态自动同步（每15分钟）'
     );
 
     // 如果是开发环境,可以设置更频繁的检查用于测试
@@ -143,6 +154,9 @@ export class SchedulerService {
           return true;
         case 'subscription-deduct-retry':
           await subscriptionService.runDeductRetry();
+          return true;
+        case 'logistics-auto-sync':
+          await logisticsAutoSyncService.runAutoSync();
           return true;
         default:
           log.error(`[Scheduler] 未知任务: ${name}`);

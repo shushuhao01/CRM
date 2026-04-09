@@ -69,13 +69,13 @@ router.use(adminAuth);           // 认证中间件在auth路由之后
 - 使用`decoded.adminId`而不是`decoded.userId`
 - 检查`decoded.isAdmin`标志
 - 验证AdminUser的status状态
-- 使用正确的JWT_SECRET（'admin-secret-key'）
+- 使用正确的JWT_SECRET（从环境变量读取）
 
 ```typescript
 import { AdminUser } from '../entities/AdminUser';
 
 // 验证Token
-const decoded = jwt.verify(token, 'admin-secret-key');
+const decoded = jwt.verify(token, process.env.JWT_SECRET || '<your-secret-key>');
 
 // 检查是否为Admin Token
 if (!decoded.isAdmin || !decoded.adminId) {

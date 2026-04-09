@@ -10,6 +10,65 @@ import { log } from '../../config/logger';
 const router = Router();
 
 /**
+ * GET 查询授权信息（简化版，供兼容调用）
+ * GET /api/v1/public/license-query?licenseKey=xxx
+ */
+router.get('/', async (req: Request, res: Response) => {
+  try {
+    const licenseKey = req.query.licenseKey as string;
+    if (!licenseKey) {
+      return res.status(400).json({ success: false, message: '请提供授权码（licenseKey查询参数）' });
+    }
+
+    // 只处理私有部署授权码
+    if (!licenseKey.toUpperCase().startsWith('PRIVATE-')) {
+      return res.status(400).json({
+        success: false,
+        message: '该API仅支持私有部署授权码查询（PRIVATE-前缀）',
+        errorType: 'INVALID_LICENSE_TYPE'
+      });
+    }
+
+    const rows = await AppDataSource.query(
+      `SELECT l.*, pc.customer_name as company_name
+       FROM licenses l
+       LEFT JOIN private_customers pc ON l.private_customer_id = pc.id
+       WHERE l.license_key = ? AND l.customer_type = 'private'`,
+      [licenseKey]
+    );
+    const lic = rows[0];
+
+    if (!lic) {
+      return res.status(404).json({ success: false, valid: false, message: '授权码不存在或已失效' });
+    }
+
+    const isExpired = lic.expires_at && new Date(lic.expires_at) < new Date();
+    const isRevoked = lic.status === 'revoked';
+
+    res.json({
+      success: true,
+      valid: !isExpired && !isRevoked,
+      message: isRevoked ? '该授权已被吊销' : isExpired ? '授权已过期' : '授权有效',
+      licenseInfo: {
+        licenseKey: lic.license_key,
+        customerName: lic.customer_name || lic.company_name,
+        licenseType: lic.license_type,
+        maxUsers: lic.max_users,
+        maxStorageGb: lic.max_storage_gb,
+        features: safeJsonParse(lic.features),
+        status: isRevoked ? 'revoked' : isExpired ? 'expired' : lic.status,
+        expiresAt: lic.expires_at,
+        activatedAt: lic.activated_at,
+        createdAt: lic.created_at
+      }
+    });
+  } catch (error: any) {
+    log.error('[LicenseQuery] GET查询失败:', error);
+    res.status(500).json({ success: false, message: '查询失败，请稍后重试' });
+  }
+});
+
+/**
  * 安全解析JSON
  */
 function safeJsonParse(val: any): any {

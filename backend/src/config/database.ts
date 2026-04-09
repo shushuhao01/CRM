@@ -77,6 +77,13 @@ import { MigrationHistory } from '../entities/MigrationHistory';
 import { ApiConfig } from '../entities/ApiConfig';
 import { ApiCallLog } from '../entities/ApiCallLog';
 import { Tenant } from '../entities/Tenant';
+import { Package } from '../entities/Package';
+import { PrivateCustomer } from '../entities/PrivateCustomer';
+import { TenantLog } from '../entities/TenantLog';
+import { TenantSettings } from '../entities/TenantSettings';
+import { AdminOperationLog } from '../entities/AdminOperationLog';
+import { Changelog } from '../entities/Changelog';
+import { SenderAddress } from '../entities/SenderAddress';
 import { log } from './logger';
 
 // ==================== 环境配置智能加载 ====================
@@ -114,7 +121,9 @@ const entities = [
   WecomServiceAccount, WecomChatRecord, WecomPaymentRecord,
   CodCancelApplication, ValueAddedOrder, ValueAddedPriceConfig,
   OutsourceCompany, ValueAddedStatusConfig, Module, ModuleConfig, NotificationTemplate,
-  UpdateTask, MigrationHistory, ApiConfig, ApiCallLog, Tenant
+  UpdateTask, MigrationHistory, ApiConfig, ApiCallLog, Tenant,
+  Package, PrivateCustomer, TenantLog, TenantSettings, AdminOperationLog, Changelog,
+  SenderAddress
 ];
 
 // ==================== MySQL 数据库配置 ====================
@@ -137,7 +146,8 @@ const AppDataSource = new DataSource({
   // 连接池配置（多租户场景需要更大的连接池）
   extra: {
     connectionLimit: parseInt(process.env.DB_CONNECTION_LIMIT || '50'),
-    connectTimeout: 60000,
+    connectTimeout: 10000,
+    acquireTimeout: 10000,
     waitForConnections: true,
     queueLimit: 0,
     enableKeepAlive: true,

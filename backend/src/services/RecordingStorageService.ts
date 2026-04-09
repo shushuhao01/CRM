@@ -8,6 +8,7 @@ import * as path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { AppDataSource } from '../config/database';
 import { getCurrentTenantIdSafe, tenantRawSQL } from '../utils/tenantHelpers';
+import { resolveTenantCodeFromContext } from '../utils/tenantUploadHelper';
 
 import { log } from '../config/logger';
 // 录音文件信息接口
@@ -155,17 +156,21 @@ class RecordingStorageService {
     let fileUrl: string;
     let storageType: 'local' | 'oss' | 'cos' = this.config.type;
 
+    // 🔥 云存储也按租户隔离目录
+    const tenantCode = await resolveTenantCodeFromContext();
+    const cloudTenantPrefix = tenantCode ? `${tenantCode}/` : '';
+
     switch (this.config.type) {
       case 'oss':
         // 阿里云OSS存储
-        const ossResult = await this.saveToOSS(audioBuffer, `recordings/${dateSubPath}/${fileName}`);
+        const ossResult = await this.saveToOSS(audioBuffer, `recordings/${cloudTenantPrefix}${dateSubPath}/${fileName}`);
         filePath = ossResult.path;
         fileUrl = ossResult.url;
         break;
 
       case 'cos':
         // 腾讯云COS存储
-        const cosResult = await this.saveToCOS(audioBuffer, `recordings/${dateSubPath}/${fileName}`);
+        const cosResult = await this.saveToCOS(audioBuffer, `recordings/${cloudTenantPrefix}${dateSubPath}/${fileName}`);
         filePath = cosResult.path;
         fileUrl = cosResult.url;
         break;
@@ -221,24 +226,29 @@ class RecordingStorageService {
   }
 
   /**
-   * 保存到本地存储
+   * 保存到本地存储（🔥 已改造：SaaS模式按租户目录隔离）
    */
   private async saveToLocal(
     buffer: Buffer,
     subPath: string,
     fileName: string
   ): Promise<{ path: string; url: string }> {
-    const fullDirPath = path.join(this.localBasePath, subPath);
+    // 获取租户编码，构建租户隔离目录
+    const tenantCode = await resolveTenantCodeFromContext();
+    const tenantPrefix = tenantCode ? tenantCode : '';
+
+    const fullDirPath = tenantPrefix
+      ? path.join(this.localBasePath, tenantPrefix, subPath)
+      : path.join(this.localBasePath, subPath);
     this.ensureDirectoryExists(fullDirPath);
 
     const fullFilePath = path.join(fullDirPath, fileName);
 
     await fs.promises.writeFile(fullFilePath, buffer);
 
-    // 生成访问URL
-    // 🔥 修复：不使用 encodeURIComponent 编码整个路径（会把 / 编码为 %2F 导致播放失败）
-    // 只对文件名进行编码，保持路径分隔符不变
-    const fileUrl = `${this.config.localDomain}/api/v1/calls/recordings/stream/recordings/${subPath}/${encodeURIComponent(fileName)}`;
+    // 生成访问URL（包含租户目录）
+    const urlTenantPart = tenantPrefix ? `${tenantPrefix}/` : '';
+    const fileUrl = `${this.config.localDomain}/api/v1/calls/recordings/stream/recordings/${urlTenantPart}${subPath}/${encodeURIComponent(fileName)}`;
 
     return {
       path: fullFilePath,

@@ -168,7 +168,8 @@ service.interceptors.response.use(
             ElMessage.error({ message: errorMessage, duration: 5000 })
           } else if (respData?.code === 'LICENSE_EXPIRED_WRITE_BLOCKED') {
             import('./licenseDialog').then(({ showLicenseExpiredDialog }) => {
-              showLicenseExpiredDialog()
+              const deployMode = (localStorage.getItem('crm_deploy_mode') as 'private' | 'saas') || 'saas'
+              showLicenseExpiredDialog({ deployMode })
             })
           } else {
             ElMessage.error('没有权限访问此资源')
@@ -264,7 +265,8 @@ service.interceptors.response.use(
           if (data?.code === 'LICENSE_EXPIRED_WRITE_BLOCKED') {
             errorMessage = data?.message || '系统授权已过期，无法执行此操作'
             import('./licenseDialog').then(({ showLicenseExpiredDialog }) => {
-              showLicenseExpiredDialog()
+              const deployMode = (localStorage.getItem('crm_deploy_mode') as 'private' | 'saas') || 'saas'
+              showLicenseExpiredDialog({ deployMode })
             })
             return Promise.reject(error)
           }

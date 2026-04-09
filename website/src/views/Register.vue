@@ -40,7 +40,7 @@
       <div class="register-form-wrapper">
         <div class="form-header">
           <h2>创建账号</h2>
-          <p>已有账号？<router-link to="/member/login">登录会员中心</router-link> 或 <a href="https://app.yunke-crm.com">登录CRM</a></p>
+          <p>已有账号？<router-link to="/member/login">登录会员中心</router-link><template v-if="crmUrl"> 或 <a :href="crmUrl">登录CRM</a></template></p>
         </div>
 
         <!-- 步骤指示器 -->
@@ -284,11 +284,11 @@
               <p class="field-hint">📧 填写邮箱可接收账号开通通知、到期提醒等重要信息</p>
             </div>
             <div class="form-group">
-              <label>设置密码 <span class="recommended">（推荐）</span></label>
-              <input type="password" v-model="form.password" placeholder="设置密码可登录会员中心（至少6位）" minlength="6" />
+              <label>会员中心密码 <span class="recommended">（选填）</span></label>
+              <input type="password" v-model="form.password" placeholder="不填写则使用初始密码 Aa123456" minlength="6" />
               <p class="field-hint">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#909399" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: -2px; margin-right: 2px;"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-                设置密码后可登录会员中心管理订阅、查看账单和授权信息
+                用于登录会员中心管理订阅、查看账单。不填写将使用初始密码 <strong>Aa123456</strong>，建议登录后修改
               </p>
             </div>
             <!-- 免费试用：到期自动续费选项 -->
@@ -307,7 +307,18 @@
                   <label v-for="pkg in renewablePlans" :key="pkg.code"
                     class="renew-plan-option" :class="{ selected: form.autoRenewPackage === pkg.code }">
                     <input type="radio" v-model="form.autoRenewPackage" :value="pkg.code" />
-                    <span class="plan-name">{{ pkg.name }}</span>
+                    <div class="plan-main">
+                      <span class="plan-name">{{ pkg.name }}</span>
+                      <span class="plan-benefits">
+                        {{ pkg.max_users }}用户 · {{ pkg.max_storage_gb }}GB存储
+                        <span v-if="pkg.features && pkg.features.length > 0" class="features-trigger" @mouseenter="hoveredPkg = pkg.code" @mouseleave="hoveredPkg = ''">
+                          · 更多 ▾
+                          <div v-if="hoveredPkg === pkg.code" class="features-tooltip">
+                            <div v-for="(f, i) in pkg.features" :key="i" class="feature-item">✓ {{ f }}</div>
+                          </div>
+                        </span>
+                      </span>
+                    </div>
                     <span class="plan-price">
                       {{ pkg.subscription_enabled && pkg.subscription_discount_rate > 0
                         ? '¥' + (pkg.price * (1 - pkg.subscription_discount_rate / 100)).toFixed(0) + '/月'
@@ -356,6 +367,10 @@
                   <div v-if="registeredTenant?.adminUsername" class="detail-item">
                     <span class="detail-label">管理员账号</span>
                     <span class="detail-value">{{ registeredTenant.adminUsername }}</span>
+                  </div>
+                  <div v-if="registeredTenant?.memberPasswordIsDefault" class="detail-item">
+                    <span class="detail-label">会员中心密码</span>
+                    <span class="detail-value" style="color: #e6a23c;">初始密码：Aa123456（请登录后修改）</span>
                   </div>
                 </div>
               </div>
@@ -813,7 +828,7 @@
                 </div>
               </div>
 
-              <div class="order-info">
+              <div class="order-info" v-if="paymentOrder">
                 <span>订单号：{{ paymentOrder.orderNo }}</span>
                 <span class="bank-tip">转账时请在备注中填写此订单号</span>
               </div>
@@ -860,7 +875,7 @@
               <p class="qr-tip">请使用{{ paymentMethod === 'wechat' ? '微信' : '支付宝' }}扫描二维码完成支付</p>
             </div>
 
-            <div class="order-info">
+            <div class="order-info" v-if="paymentOrder">
               <span>订单号：{{ paymentOrder.orderNo }}</span>
               <span class="expire-tip">{{ expireCountdown > 0 ? `${Math.floor(expireCountdown / 60)}分${expireCountdown % 60}秒后过期` : '订单已过期' }}</span>
             </div>
@@ -892,10 +907,12 @@
 import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { getPackages as fetchPackages, getYearlyPromoText, type Package } from '@/api/packages'
+import { getWebsiteConfig } from '@/api/website-config'
 
 const API_BASE = '/api/v1'
 const route = useRoute()
 const router = useRouter()
+const crmUrl = ref('') // 动态CRM系统地址
 
 const step = ref(1)
 const planType = ref<'saas' | 'private'>('saas')
@@ -903,6 +920,7 @@ const billingCycle = ref<'monthly' | 'yearly'>('monthly')
 const selectedPlan = ref('FREE_TRIAL')
 const paymentMethod = ref('wechat')
 const payMode = ref<'subscription' | 'normal'>('subscription')
+const hoveredPkg = ref('')
 const subscriptionChecked = ref(true)
 const privateBillingMode = ref<'perpetual' | 'annual'>('perpetual')
 const countdown = ref(0)
@@ -1009,6 +1027,12 @@ onMounted(async () => {
   } catch (e) {
     console.error('加载套餐数据失败:', e)
   }
+
+  // 加载动态CRM地址
+  try {
+    const wsConfig = await getWebsiteConfig()
+    if (wsConfig.crmUrl) crmUrl.value = wsConfig.crmUrl
+  } catch { /* 静默 */ }
 
   const plan = route.query.plan as string
   if (plan) {
@@ -1309,7 +1333,8 @@ const handleSubmitInfo = async () => {
               tenantCode: data.data.tenantCode,
               licenseKey: data.data.licenseKey,
               adminUsername: data.data.adminUsername || '',
-              adminPassword: data.data.adminPassword || ''
+              adminPassword: data.data.adminPassword || '',
+              memberPwdDefault: data.data.memberPasswordIsDefault ? '1' : '0'
             }
           })
         }
@@ -2565,7 +2590,8 @@ const autoRenewPlanKey = computed(() => {
   margin-bottom: 16px;
 
   .expire-tip {
-    color: var(--warning);
+    color: #d97706;
+    font-weight: 500;
   }
 }
 
@@ -2703,7 +2729,7 @@ const autoRenewPlanKey = computed(() => {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 12px;
+  padding: 10px 12px;
   border: 1.5px solid #e2e8f0;
   border-radius: 8px;
   cursor: pointer;
@@ -2717,14 +2743,48 @@ const autoRenewPlanKey = computed(() => {
     background: #f8f7ff;
   }
 
-  .plan-name { flex: 1; font-weight: 500; color: #1e293b; }
-  .plan-price { color: #6366f1; font-weight: 600; }
+  .plan-main {
+    flex: 1;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+  }
+  .plan-name { font-weight: 500; color: #1e293b; white-space: nowrap; }
+  .plan-benefits {
+    font-size: 11px;
+    color: #64748b;
+  }
+  .features-trigger {
+    position: relative;
+    color: #6366f1;
+    cursor: help;
+    white-space: nowrap;
+  }
+  .features-tooltip {
+    position: absolute;
+    left: 0;
+    bottom: calc(100% + 6px);
+    background: #1e293b;
+    color: #f1f5f9;
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 12px;
+    line-height: 1.8;
+    white-space: nowrap;
+    z-index: 100;
+    box-shadow: 0 4px 16px rgba(0,0,0,.2);
+    pointer-events: none;
+    .feature-item { color: #e2e8f0; }
+  }
+  .plan-price { color: #6366f1; font-weight: 600; white-space: nowrap; }
   .sub-tag {
     font-size: 10px;
     padding: 1px 6px;
     background: #dcfce7;
     color: #16a34a;
     border-radius: 8px;
+    white-space: nowrap;
   }
 }
 
@@ -3231,10 +3291,6 @@ const autoRenewPlanKey = computed(() => {
   }
 }
 
-.signing-area .bank-tip {
-  color: #d97706;
-  font-weight: 500;
-}
 
 // 签约未完成提示
 .signing-failed-notice {

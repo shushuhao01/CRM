@@ -865,7 +865,7 @@ export class UpdateService {
           reject(new Error(`命令执行失败: ${error.message}`));
           return;
         }
-        resolve(typeof stdout === 'string' ? stdout : stdout.toString());
+        resolve(String(stdout));
       });
     });
   }
@@ -881,6 +881,4 @@ export class UpdateService {
 
 // 单例导出
 export const updateService = new UpdateService();
-
-
 

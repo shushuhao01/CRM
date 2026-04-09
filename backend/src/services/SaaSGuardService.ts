@@ -95,11 +95,33 @@ class SaaSGuardServiceClass {
     this.licenseInfo = result.payload!;
     this.lastVerifyTime = Date.now();
 
+    // 域名校验（如果 Token 指定了 allowedDomains 且不含通配符 *）
+    const allowedDomains = this.licenseInfo.allowedDomains || [];
+    if (allowedDomains.length > 0 && !allowedDomains.includes('*')) {
+      const serverHost = (process.env.API_BASE_URL || process.env.CRM_URL || '')
+        .replace(/^https?:\/\//, '')
+        .replace(/:\d+$/, '')
+        .replace(/\/.*$/, '');
+      if (serverHost && !allowedDomains.some(d => serverHost === d || serverHost.endsWith('.' + d))) {
+        log.warn(`[SaaSGuard] ⚠️ 当前服务器域名 "${serverHost}" 不在许可证允许的域名列表中: [${allowedDomains.join(', ')}]`);
+        log.warn('[SaaSGuard] 域名不匹配仅作警告，不影响运行（可在许可证中更新绑定域名）');
+      }
+    }
+
+    // 过期预警（剩余不足30天时提示）
+    const now = Math.floor(Date.now() / 1000);
+    const remainDays = Math.ceil((this.licenseInfo.exp - now) / (24 * 60 * 60));
+    if (remainDays <= 30 && remainDays > 0) {
+      log.warn(`[SaaSGuard] ⚠️ SaaS 许可证将在 ${remainDays} 天后过期，请尽快续期！`);
+      log.warn('[SaaSGuard] 续期方式: cd backend && node scripts/generate-saas-license.js --expires 365');
+    }
+
     log.info('[SaaSGuard] ✅ SaaS 平台许可验证通过！');
     log.info(`[SaaSGuard]   许可证ID: ${this.licenseInfo.licenseId}`);
     log.info(`[SaaSGuard]   绑定域名: ${this.licenseInfo.allowedDomains.join(', ')}`);
     log.info(`[SaaSGuard]   最大租户数: ${this.licenseInfo.maxTenants || '无限制'}`);
     log.info(`[SaaSGuard]   过期时间: ${new Date(this.licenseInfo.exp * 1000).toISOString()}`);
+    log.info(`[SaaSGuard]   剩余有效期: ${remainDays} 天`);
 
     // 启动定期验证
     this.startPeriodicVerify();
@@ -185,6 +207,14 @@ class SaaSGuardServiceClass {
       }
 
       this.lastVerifyTime = Date.now();
+      // 定期验证时也检查过期预警
+      if (result.payload) {
+        const now = Math.floor(Date.now() / 1000);
+        const remainDays = Math.ceil((result.payload.exp - now) / (24 * 60 * 60));
+        if (remainDays <= 30 && remainDays > 0) {
+          log.warn(`[SaaSGuard] ⚠️ SaaS 许可证将在 ${remainDays} 天后过期，请尽快续期！`);
+        }
+      }
       log.debug('[SaaSGuard] 定期验证通过');
     }, VERIFY_INTERVAL);
 

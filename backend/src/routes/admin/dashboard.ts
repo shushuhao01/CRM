@@ -5,6 +5,7 @@
 import { Router, Request, Response } from 'express';
 import { AppDataSource } from '../../config/database';
 import { License } from '../../entities/License';
+import { formatDateTime, formatDate } from '../../utils/dateFormat';
 
 import { log } from '../../config/logger';
 const router = Router();
@@ -53,7 +54,7 @@ router.get('/stats', async (req: Request, res: Response) => {
     }
 
     const now = new Date();
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
+    const startOfMonth = formatDate(new Date(now.getFullYear(), now.getMonth(), 1));
 
     // ======== 私有客户统计（排除软删除） ========
     let privateTotal = 0, privateActive = 0, privateSilent = 0, privateMonthNew = 0;
@@ -265,14 +266,14 @@ router.get('/stats/license-types', async (req: Request, res: Response) => {
     const now = new Date();
 
     if (period === 'month') {
-      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
+      const startOfMonth = formatDate(new Date(now.getFullYear(), now.getMonth(), 1));
       privateDateCond = ' AND l.created_at >= ?';
       tenantDateCond = ' AND t.created_at >= ?';
       privateParams.push(startOfMonth);
       tenantParams.push(startOfMonth);
     } else if (period === 'lastMonth') {
-      const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString().slice(0, 10);
-      const endOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59).toISOString().slice(0, 19);
+      const startOfLastMonth = formatDate(new Date(now.getFullYear(), now.getMonth() - 1, 1));
+      const endOfLastMonth = formatDateTime(new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59));
       privateDateCond = ' AND l.created_at >= ? AND l.created_at <= ?';
       tenantDateCond = ' AND t.created_at >= ? AND t.created_at <= ?';
       privateParams.push(startOfLastMonth, endOfLastMonth);
@@ -351,21 +352,21 @@ router.get('/trend', async (req: Request, res: Response) => {
     if (period === 'month') {
       const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
       days = Math.ceil((now.getTime() - startOfMonth.getTime()) / 86400000) + 1;
-      startDateStr = startOfMonth.toISOString().slice(0, 10);
+      startDateStr = formatDate(startOfMonth);
     } else if (period === 'lastMonth') {
       const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
       const endOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 0);
       days = Math.ceil((endOfLastMonth.getTime() - startOfLastMonth.getTime()) / 86400000) + 1;
-      startDateStr = startOfLastMonth.toISOString().slice(0, 10);
+      startDateStr = formatDate(startOfLastMonth);
     } else if (period === 'all') {
       days = 365;
       const startDate = new Date();
       startDate.setDate(startDate.getDate() - days);
-      startDateStr = startDate.toISOString().slice(0, 10);
+      startDateStr = formatDate(startDate);
     } else {
       const startDate = new Date();
       startDate.setDate(startDate.getDate() - days);
-      startDateStr = startDate.toISOString().slice(0, 10);
+      startDateStr = formatDate(startDate);
     }
 
     const cacheKey = `trend_${period || days}`;
@@ -410,28 +411,28 @@ router.get('/trend', async (req: Request, res: Response) => {
       for (let i = 0; i < days; i++) {
         const d = new Date(startOfLastMonth);
         d.setDate(d.getDate() + i);
-        const key = d.toISOString().slice(0, 10);
+        const key = formatDate(d);
         dateMap[key] = { licenses: 0, tenants: 0, revenue: 0 };
       }
     } else {
       for (let i = 0; i < days; i++) {
         const d = new Date();
         d.setDate(d.getDate() - (days - 1 - i));
-        const key = d.toISOString().slice(0, 10);
+        const key = formatDate(d);
         dateMap[key] = { licenses: 0, tenants: 0, revenue: 0 };
       }
     }
 
     for (const row of licensesTrend) {
-      const key = new Date(row.date).toISOString().slice(0, 10);
+      const key = formatDate(new Date(row.date));
       if (dateMap[key]) dateMap[key].licenses = parseInt(row.count);
     }
     for (const row of tenantsTrend) {
-      const key = new Date(row.date).toISOString().slice(0, 10);
+      const key = formatDate(new Date(row.date));
       if (dateMap[key]) dateMap[key].tenants = parseInt(row.count);
     }
     for (const row of revenueTrend) {
-      const key = new Date(row.date).toISOString().slice(0, 10);
+      const key = formatDate(new Date(row.date));
       if (dateMap[key]) dateMap[key].revenue = parseFloat(row.amount) || 0;
     }
 

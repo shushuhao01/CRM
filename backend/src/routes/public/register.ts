@@ -141,14 +141,14 @@ router.post('/', async (req: Request, res: Response) => {
       [tenantId, companyName, tenantCode, licenseKey, licenseStatus, packageId, contactName, phone, email || null, maxUsers, expireDate]
     )
 
-    // 如果设置了密码，存储密码哈希（用于会员中心登录）
-    if (password && password.length >= 6) {
-      try {
-        const passwordHash = await bcrypt.hash(password, 10)
-        await AppDataSource.query('UPDATE tenants SET password_hash = ? WHERE id = ?', [passwordHash, tenantId])
-      } catch (pwdErr) {
-        log.warn('[Register] 存储密码失败（不影响注册）:', pwdErr)
-      }
+    // 会员中心密码：用户填了用用户的，没填则默认 Aa123456
+    const memberPassword = (password && password.length >= 6) ? password : 'Aa123456'
+    const memberPasswordIsDefault = !(password && password.length >= 6)
+    try {
+      const passwordHash = await bcrypt.hash(memberPassword, 10)
+      await AppDataSource.query('UPDATE tenants SET password_hash = ? WHERE id = ?', [passwordHash, tenantId])
+    } catch (pwdErr) {
+      log.warn('[Register] 存储会员中心密码失败（不影响注册）:', pwdErr)
     }
 
     // 如果免费试用勾选了"到期自动续费"，记录意向（实际签约在 /subscribe 端点完成）
@@ -195,7 +195,8 @@ router.post('/', async (req: Request, res: Response) => {
         needPay: !isFree,
         memberToken,
         adminUsername: adminAccount?.username || null,
-        adminPassword: adminAccount?.password || null
+        adminPassword: adminAccount?.password || null,
+        memberPasswordIsDefault
       },
       message: isFree ? '注册成功' : '注册成功，请完成支付'
     })

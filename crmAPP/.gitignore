@@ -31,3 +31,12 @@ Thumbs.db
 # 临时文件
 *.tmp
 *.temp
+
+# 签名证书（绝对不能提交到Git！）
+*.keystore
+*.jks
+
+# 发布包
+release/
+*.apk
+

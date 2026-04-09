@@ -10,22 +10,16 @@ import { User } from '../entities/User';
 import { v4 as uuidv4 } from 'uuid';
 import multer from 'multer';
 import path from 'path';
-import fs from 'fs';
 import { sendSystemMessage, sendBatchSystemMessages } from '../services/messageService';
 import { getTenantRepo } from '../utils/tenantRepo';
+import { createTenantDestination, getUploadUrl } from '../utils/tenantUploadHelper';
 
 import { log } from '../config/logger';
 const router = Router();
 
-// 配置文件上传
+// 配置文件上传（🔥 已改造：SaaS模式按租户目录隔离）
 const storage = multer.diskStorage({
-  destination: (_req, _file, cb) => {
-    const uploadDir = path.join(process.cwd(), 'uploads', 'cod-proof');
-    if (!fs.existsSync(uploadDir)) {
-      fs.mkdirSync(uploadDir, { recursive: true });
-    }
-    cb(null, uploadDir);
-  },
+  destination: createTenantDestination('cod-proof'),
   filename: (_req, file, cb) => {
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
     cb(null, uniqueSuffix + path.extname(file.originalname));
@@ -56,7 +50,8 @@ router.post('/upload-proof', authenticateToken, checkStorageLimit, upload.single
       return res.status(400).json({ success: false, message: '请选择文件' });
     }
 
-    const fileUrl = `/uploads/cod-proof/${req.file.filename}`;
+    const tenantCode = (req as any).__tenantCode || null;
+    const fileUrl = getUploadUrl(tenantCode, 'cod-proof', req.file.filename);
     res.json({ success: true, data: { url: fileUrl } });
   } catch (error: any) {
     log.error('[CodApplication] Upload proof error:', error);

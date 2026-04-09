@@ -392,6 +392,21 @@ const useDefaultCompanies = () => {
  * 🔥 加载预设的寄件人手机号
  */
 const loadPresetSenderPhone = async () => {
+  // 🔥 优先从寄件人地址管理获取默认寄件人手机号
+  try {
+    const { senderAddressApi } = await import('@/api/senderAddress')
+    const senderRes = await senderAddressApi.getDefault('sender')
+    if (senderRes?.data?.phone) {
+      presetSenderPhone.value = senderRes.data.phone
+      senderPhoneForm.phone = senderRes.data.phone
+      configSource.value = '寄件人管理（默认寄件人）'
+      console.log('[物流跟踪] ✅ 从寄件人管理加载默认手机号:', '****' + presetSenderPhone.value.slice(-4))
+      return
+    }
+  } catch (error) {
+    console.log('[物流跟踪] 从寄件人管理加载失败，尝试系统配置:', error)
+  }
+  // 回退到系统配置
   try {
     const { apiService } = await import('@/services/apiService')
     const response = await apiService.get('/system/config/logistics_sender_phone')
@@ -669,10 +684,10 @@ const handleSearch = async (phone?: string) => {
       return
     }
 
-    console.log('[物流跟踪] 🚀 开始查询，使用手机号:', safePhoneDisplay(phoneToUse))
+    console.log('[物流跟踪] 🚀 开始查询，使用手机号:', safePhoneDisplay(phoneToUse), ', 寄件人手机号:', safePhoneDisplay(presetSenderPhone.value))
 
     const { logisticsApi } = await import('@/api/logistics')
-    const response = await logisticsApi.queryTrace(trackingNum, companyCode || undefined, phoneToUse)
+    const response = await logisticsApi.queryTrace(trackingNum, companyCode || undefined, phoneToUse, presetSenderPhone.value || undefined)
 
     console.log('[物流跟踪] API响应:', response)
 

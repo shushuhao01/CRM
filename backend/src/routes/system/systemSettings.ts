@@ -12,6 +12,7 @@ import { Module } from '../../entities/Module';
 import { AppDataSource } from '../../config/database';
 import { getTenantRepo } from '../../utils/tenantRepo';
 import { updateTenantStorage, checkStorageLimit } from '../../middleware/checkTenantLimits';
+import { getUploadUrl } from '../../utils/tenantUploadHelper';
 import {
   getUploadConfig,
   systemImageUpload,
@@ -189,9 +190,9 @@ const handleImageUpload = async (req: Request, res: Response, subDir: string) =>
       });
     }
 
-    // 生成图片URL - 使用相对路径，让前端通过 Nginx 代理访问
-    // 注意：这里使用 /uploads 而不是 /api/v1/uploads，因为后端静态文件服务配置的是 /uploads
-    const imageUrl = `/uploads/${subDir}/${req.file.filename}`;
+    // 生成图片URL - 🔥 SaaS模式下包含租户编码目录
+    const tenantCode = (req as any).__tenantCode || null;
+    const imageUrl = getUploadUrl(tenantCode, subDir, req.file.filename);
 
     // 🔥 更新租户存储空间统计（SaaS模式下）
     const tenantId = (req as any).tenantId;
@@ -295,7 +296,7 @@ router.post('/upload-service-image', authenticateToken, checkStorageLimit, servi
  * @desc 删除系统图片
  * @access Private (Admin)
  */
-router.delete('/delete-image', authenticateToken, requireAdmin, (req: Request, res: Response) => {
+router.delete('/delete-image', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
   try {
     const { filename } = req.body;
 
@@ -306,10 +307,30 @@ router.delete('/delete-image', authenticateToken, requireAdmin, (req: Request, r
       });
     }
 
-    // 安全检查：只允许删除system目录下的文件
-    const filePath = path.join(process.cwd(), 'uploads', 'system', path.basename(filename));
+    // 🔥 安全检查：支持租户隔离目录
+    // filename 可能是完整 URL 路径如 /uploads/T260303A1B2/system/xxx.jpg 或仅文件名
+    // 优先尝试从 URL 路径中提取实际文件路径
+    const safeName = path.basename(filename);
+    const { resolveTenantCode: _resolve } = await import('../../utils/tenantUploadHelper');
+    const tenantCode = (req as any).__tenantCode || await _resolve(req);
+    const uploadsBase = path.join(process.cwd(), 'uploads');
 
-    if (fs.existsSync(filePath)) {
+    // 按优先级查找文件：租户目录 > 全局目录
+    let filePath: string | null = null;
+    if (tenantCode) {
+      const tenantPath = path.join(uploadsBase, tenantCode, 'system', safeName);
+      if (fs.existsSync(tenantPath)) {
+        filePath = tenantPath;
+      }
+    }
+    if (!filePath) {
+      const globalPath = path.join(uploadsBase, 'system', safeName);
+      if (fs.existsSync(globalPath)) {
+        filePath = globalPath;
+      }
+    }
+
+    if (filePath) {
       fs.unlinkSync(filePath);
     }
 
@@ -891,6 +912,11 @@ router.put('/sms-settings', authenticateToken, requireAdmin, async (req: Request
 router.get('/storage-settings', authenticateToken, async (_req: Request, res: Response) => {
   try {
     const settings = await getConfigsByGroup('storage_settings');
+
+    // 🔥 获取租户编码（用于前端 OSS 直传时的目录隔离）
+    const { resolveTenantCode: _resolveTenantCode } = await import('../../utils/tenantUploadHelper');
+    const tenantCode = await _resolveTenantCode(_req);
+
     const defaultSettings = {
       storageType: 'local',
       localPath: './uploads',
@@ -908,7 +934,15 @@ router.get('/storage-settings', authenticateToken, async (_req: Request, res: Re
       imageCompressMaxWidth: 1200,
       imageCompressCustomQuality: 60
     };
-    res.json({ success: true, data: { ...defaultSettings, ...settings } });
+    res.json({
+      success: true,
+      data: {
+        ...defaultSettings,
+        ...settings,
+        // 🔥 返回租户编码供前端 OSS 直传使用（SaaS 模式才有值）
+        tenantCode: tenantCode || null
+      }
+    });
   } catch (error) {
     log.error('获取存储设置失败:', error);
     res.status(500).json({ success: false, message: '获取存储设置失败' });

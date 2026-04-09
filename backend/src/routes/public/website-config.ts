@@ -6,6 +6,7 @@
 import { Router, Request, Response } from 'express';
 import { AppDataSource } from '../../config/database';
 import { log } from '../../config/logger';
+import { SITE_CONFIG } from '../../config/sites';
 
 const router = Router();
 
@@ -42,6 +43,11 @@ router.get('/', async (_req: Request, res: Response) => {
           workingHours: websiteConfig.workingHours || '周一至周五 9:00-18:00',
           brandSlogan: websiteConfig.brandSlogan || '',
           contactQRCodeLabel: data.contactQRCodeLabel || '',
+          // 🔥 系统地址（动态，供官网前端获取，不硬编码域名）
+          crmUrl: SITE_CONFIG.CRM_URL,
+          websiteUrl: SITE_CONFIG.WEBSITE_URL,
+          adminUrl: SITE_CONFIG.ADMIN_URL,
+          renewUrl: SITE_CONFIG.RENEW_URL,
         }
       });
     } else {

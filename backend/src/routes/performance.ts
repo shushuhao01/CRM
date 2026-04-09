@@ -89,6 +89,42 @@ router.get('/shares', async (req: Request, res: Response) => {
   }
 });
 
+/**
+ * @route GET /api/v1/performance/shares/stats
+ * @desc 获取业绩分享统计
+ */
+router.get('/shares/stats', async (req: Request, res: Response) => {
+  try {
+    const t = tenantSQL('ps.');
+
+    const [stats] = await AppDataSource.query(
+      `SELECT
+        COUNT(*) as totalShares,
+        COALESCE(SUM(ps.order_amount), 0) as totalAmount,
+        COUNT(CASE WHEN ps.status = 'active' THEN 1 END) as activeShares,
+        COUNT(CASE WHEN ps.status = 'completed' THEN 1 END) as completedShares,
+        COUNT(CASE WHEN ps.status = 'cancelled' THEN 1 END) as cancelledShares
+       FROM performance_shares ps
+       WHERE 1=1${t.sql}`,
+      [...t.params]
+    );
+
+    res.json({
+      success: true,
+      data: {
+        totalShares: Number(stats?.totalShares) || 0,
+        totalAmount: Number(stats?.totalAmount) || 0,
+        activeShares: Number(stats?.activeShares) || 0,
+        completedShares: Number(stats?.completedShares) || 0,
+        cancelledShares: Number(stats?.cancelledShares) || 0
+      }
+    });
+  } catch (error) {
+    log.error('获取业绩分享统计失败:', error);
+    res.status(500).json({ success: false, code: 500, message: '获取业绩分享统计失败' });
+  }
+});
+
 
 /**
  * @route GET /api/v1/performance/shares/:id

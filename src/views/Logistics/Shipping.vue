@@ -3,6 +3,17 @@
     <!-- 页面标题 -->
     <div class="page-header">
       <h1 class="page-title">发货列表</h1>
+      <el-tooltip content="查看物流配置指南与发货打单帮助" placement="bottom">
+        <el-button
+          type="primary"
+          link
+          @click="router.push('/help-center?section=logistics-shipping-guide')"
+          class="help-link-btn"
+        >
+          <el-icon><QuestionFilled /></el-icon>
+          配置指南
+        </el-button>
+      </el-tooltip>
     </div>
 
     <!-- 数据概览卡片 -->
@@ -199,6 +210,10 @@
         </el-tab-pane>
         </el-tabs>
         <div class="tabs-actions">
+          <el-button @click="senderInfoVisible = true" class="sender-info-btn" title="寄件人/退货地址管理">
+            <el-icon><Postcard /></el-icon>
+            寄件人
+          </el-button>
           <el-button @click="refreshData" class="refresh-btn">
             <el-icon><Refresh /></el-icon>
             刷新
@@ -222,7 +237,7 @@
       :show-index="true"
       :show-pagination="true"
       :show-actions="true"
-      :actions-width="280"
+      :actions-width="330"
       :total="total"
       :page-sizes="[10, 20, 50, 100, 200, 300, 500, 1000, 2000, 3000]"
       @selection-change="handleSelectionChange"
@@ -236,9 +251,20 @@
           <el-icon><Download /></el-icon>
           批量导出
         </el-button>
+        <el-button type="warning" @click="batchPrintLabel" class="batch-print-btn" :disabled="selectedOrders.length === 0">
+          <el-icon><Printer /></el-icon>
+          批量打印面单
+        </el-button>
         <el-button type="success" @click="batchShip" class="batch-ship-btn" :disabled="selectedOrders.length === 0">
           <el-icon><Van /></el-icon>
           批量发货
+        </el-button>
+        <el-button type="primary" @click="batchConfirmShip" :disabled="confirmableSelectedOrders.length === 0" v-if="confirmableSelectedOrders.length > 0">
+          <el-icon><Check /></el-icon>
+          已传单号待确认发货 ({{ confirmableSelectedOrders.length }})
+        </el-button>
+        <el-button @click="printerConfigVisible = true" class="printer-config-btn" title="打印机配置">
+          <el-icon><Setting /></el-icon>
         </el-button>
       </template>
 
@@ -464,6 +490,10 @@
               </el-button>
               <template #dropdown>
                 <el-dropdown-menu>
+                  <el-dropdown-item :command="{action: 'confirmShip', row}" :disabled="!(row.expressNo || row.trackingNumber) || row.status === 'shipped'">
+                    <el-icon><Check /></el-icon>
+                    {{ ((row.expressNo || row.trackingNumber) && row.status !== 'shipped') ? '已传单号待确认发货' : '确认发货' }}
+                  </el-dropdown-item>
                   <el-dropdown-item :command="{action: 'export', row}">
                     <el-icon><Download /></el-icon>
                     导出
@@ -497,7 +527,23 @@
     <PrintLabelDialog
       v-model:visible="printLabelVisible"
       :order="selectedOrder"
+      @printed="handleLabelPrinted"
+      @tracking-saved="handleTrackingSaved"
     />
+
+    <!-- 批量打印面单弹窗 -->
+    <BatchPrintLabelDialog
+      v-model:visible="batchPrintLabelVisible"
+      :orders="selectedOrders"
+      @printed="handleBatchLabelPrinted"
+      @tracking-saved="handleBatchTrackingSaved"
+    />
+
+    <!-- 打印机配置弹窗 -->
+    <PrinterConfigDialog v-model:visible="printerConfigVisible" />
+
+    <!-- 寄件人/退货地址管理弹窗 -->
+    <SenderInfoDialog v-model:visible="senderInfoVisible" />
 
     <!-- 发货弹窗 -->
     <ShippingDialog
@@ -746,7 +792,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   Box, Money, Van, Warning, CreditCard, Coin,
   Search, Download, View, Printer, ArrowDown, Back, Close, Document,
-  Edit, Check, Delete, FullScreen, CopyDocument, Refresh
+  Edit, Check, Delete, FullScreen, CopyDocument, Refresh, Setting, Postcard, QuestionFilled
 } from '@element-plus/icons-vue'
 import { useOrderStore } from '@/stores/order'
 import { useNotificationStore } from '@/stores/notification'
@@ -762,10 +808,13 @@ import { getOrderStatusColor, getOrderStatusText as getUnifiedStatusText, getOrd
 import { eventBus, EventNames } from '@/utils/eventBus'
 import OrderDetailDialog from './components/OrderDetailDialog.vue'
 import PrintLabelDialog from './components/PrintLabelDialog.vue'
+import BatchPrintLabelDialog from './components/BatchPrintLabelDialog.vue'
+import PrinterConfigDialog from './components/PrinterConfigDialog.vue'
 import ShippingDialog from './components/ShippingDialog.vue'
 import BatchShippingDialog from './components/BatchShippingDialog.vue'
 import ReturnOrderDialog from './components/ReturnOrderDialog.vue'
 import CancelOrderDialog from './components/CancelOrderDialog.vue'
+import SenderInfoDialog from './components/SenderInfoDialog.vue'
 import DynamicTable from '@/components/DynamicTable.vue'
 import { formatDateTime } from '@/utils/dateFormat'
 
@@ -845,11 +894,14 @@ const paginatedOrderList = computed(() => orderList.value)
 // 弹窗状态
 const orderDetailVisible = ref(false)
 const printLabelVisible = ref(false)
+const batchPrintLabelVisible = ref(false)
+const printerConfigVisible = ref(false)
 const shipOrderVisible = ref(false)
 const batchShipVisible = ref(false)
 const returnOrderVisible = ref(false)
 const cancelOrderVisible = ref(false)
 const fullscreenVisible = ref(false)
+const senderInfoVisible = ref(false)
 const selectedOrder = ref<any>(null)
 
 // Store
@@ -877,20 +929,20 @@ const baseTableColumns = [
   {
     prop: 'orderNo',
     label: '订单号',
-    width: 140,
+    width: 130,
     visible: true
   },
   {
     prop: 'status',
     label: '订单状态',
-    width: 100,
+    width: 90,
     align: 'center',
     visible: true
   },
   {
     prop: 'customerName',
     label: '客户名字',
-    width: 100,
+    width: 80,
     align: 'center',
     showOverflowTooltip: true,
     visible: true
@@ -898,7 +950,7 @@ const baseTableColumns = [
   {
     prop: 'phone',
     label: '电话',
-    width: 120,
+    width: 110,
     align: 'center',
     showOverflowTooltip: true,
     visible: true
@@ -906,14 +958,14 @@ const baseTableColumns = [
   {
     prop: 'address',
     label: '地址',
-    width: 200,
+    width: 160,
     showOverflowTooltip: true,
     visible: true
   },
   {
     prop: 'designatedExpress',
     label: '指定快递',
-    width: 120,
+    width: 100,
     align: 'center',
     visible: true,
     isHighlight: true // 🔥 标记为高亮字段
@@ -921,77 +973,77 @@ const baseTableColumns = [
   {
     prop: 'salesPersonName',
     label: '销售人员',
-    width: 100,
+    width: 80,
     align: 'center',
     visible: true
   },
   {
     prop: 'createTime',
     label: '下单时间',
-    width: 150,
+    width: 135,
     align: 'center',
     visible: true
   },
   {
     prop: 'productsText',
     label: '商品',
-    width: 200,
+    width: 150,
     showOverflowTooltip: true,
     visible: true
   },
   {
     prop: 'totalQuantity',
     label: '数量',
-    width: 80,
+    width: 55,
     align: 'center',
     visible: true
   },
   {
     prop: 'totalAmount',
     label: '订单总额',
-    width: 120,
+    width: 90,
     align: 'center',
     visible: true
   },
   {
     prop: 'deposit',
     label: '定金',
-    width: 100,
+    width: 80,
     align: 'center',
     visible: true
   },
   {
     prop: 'codAmount',
-    label: '代收款金额',
-    width: 120,
+    label: '代收款',
+    width: 90,
     align: 'center',
     visible: true
   },
   {
     prop: 'customerAge',
     label: '年龄',
-    width: 80,
+    width: 55,
     align: 'center',
     visible: true
   },
   {
     prop: 'customerHeight',
     label: '身高',
-    width: 80,
+    width: 55,
     align: 'center',
     visible: true
   },
   {
     prop: 'customerWeight',
     label: '体重',
-    width: 80,
+    width: 55,
     align: 'center',
     visible: true
   },
   {
     prop: 'customerGender',
     label: '性别',
-    width: 80,
+    width: 55,
     align: 'center',
     visible: true,
     formatter: (value: unknown) => {
@@ -1002,14 +1054,14 @@ const baseTableColumns = [
   {
     prop: 'medicalHistory',
     label: '疾病史',
-    width: 120,
+    width: 100,
     showOverflowTooltip: true,
     visible: true
   },
   {
     prop: 'serviceWechat',
     label: '客服微信号',
-    width: 120,
+    width: 100,
     align: 'center',
     showOverflowTooltip: true,
     visible: true
@@ -1017,7 +1069,7 @@ const baseTableColumns = [
   {
     prop: 'orderSource',
     label: '订单来源',
-    width: 110,
+    width: 95,
     align: 'center',
     visible: true
   },
@@ -1032,56 +1084,56 @@ const baseTableColumns = [
   {
     prop: 'paymentMethod',
     label: '支付方式',
-    width: 100,
+    width: 85,
     align: 'center',
     visible: true
   },
   {
     prop: 'remark',
     label: '订单备注',
-    width: 150,
+    width: 120,
     showOverflowTooltip: true,
     visible: true
   },
   {
     prop: 'expressCompany',
     label: '物流公司',
-    width: 120,
+    width: 100,
     align: 'center',
     visible: true
   },
   {
     prop: 'expressNo',
     label: '物流单号',
-    width: 150,
+    width: 135,
     align: 'center',
     visible: true
   },
   {
     prop: 'logisticsStatus',
     label: '物流状态',
-    width: 100,
+    width: 85,
     align: 'center',
     visible: true
   },
   {
     prop: 'estimatedDeliveryTime',
     label: '预计送达',
-    width: 120,
+    width: 100,
     align: 'center',
     visible: true
   },
   {
     prop: 'latestLogistics',
     label: '物流最新动态',
-    width: 200,
+    width: 160,
     showOverflowTooltip: true,
     visible: true
   },
   {
     prop: 'lastOperation',
     label: '最近操作',
-    width: 200,
+    width: 160,
     showOverflowTooltip: true,
     visible: false
   }
@@ -1816,13 +1868,65 @@ const showFullscreenView = () => {
 
 // 打印面单
 const printLabel = (order: any) => {
-  selectedOrder.value = formatOrderForDialog(order)
+  // 🔥 优先从当前 orderList 获取最新数据（可能已被 loadOrderList 刷新）
+  const latestRow = orderList.value.find((o: any) => o.id === order.id) || order
+  selectedOrder.value = formatOrderForDialog(latestRow)
   printLabelVisible.value = true
+}
+
+// 批量打印面单
+const batchPrintLabel = () => {
+  if (!selectedOrders.value || selectedOrders.value.length === 0) {
+    ElMessage.warning('请选择要打印面单的订单')
+    return
+  }
+  batchPrintLabelVisible.value = true
+}
+
+// 打印面单完成回调（单个）
+const handleLabelPrinted = (data: { orderId: string; trackingNumber: string; logisticsCompany: string }) => {
+  console.log('[发货列表] 面单打印完成，订单已发货:', data)
+  // 刷新列表数据
+  loadOrderList()
+  updateTabCounts()
+}
+
+// 批量打印面单完成回调
+const handleBatchLabelPrinted = (data: Array<{ orderId: string; trackingNumber: string; logisticsCompany: string }>) => {
+  console.log('[发货列表] 批量面单打印完成，共', data.length, '个订单已发货')
+  // 刷新列表数据
+  loadOrderList()
+  updateTabCounts()
+}
+
+// 🔥 运单号保存回调（单个）- 用于打印但未确认发货的情况
+const handleTrackingSaved = async (_data: { orderId: string; trackingNumber: string; logisticsCompany: string }) => {
+  console.log('[发货列表] 运单号已保存（未确认发货）:', _data)
+  // 🔥 保存当前选中的ID，刷新后恢复
+  const prevSelectedIds = selectedOrders.value.map((o: any) => o.id)
+  await loadOrderList()
+  // 🔥 恢复选中状态（从新数据中找到相同ID的行）
+  if (prevSelectedIds.length > 0) {
+    selectedOrders.value = orderList.value.filter((o: any) => prevSelectedIds.includes(o.id))
+  }
+}
+
+// 🔥 运单号保存回调（批量）- 用于打印但未确认发货的情况
+const handleBatchTrackingSaved = async (_data: Array<{ orderId: string; trackingNumber: string; logisticsCompany: string }>) => {
+  console.log('[发货列表] 批量运单号已保存（未确认发货）:', _data.length, '个')
+  // 🔥 保存当前选中的ID，刷新后恢复
+  const prevSelectedIds = selectedOrders.value.map((o: any) => o.id)
+  await loadOrderList()
+  // 🔥 恢复选中状态
+  if (prevSelectedIds.length > 0) {
+    selectedOrders.value = orderList.value.filter((o: any) => prevSelectedIds.includes(o.id))
+  }
 }
 
 // 发货
 const shipOrder = (order: any) => {
-  selectedOrder.value = formatOrderForDialog(order)
+  const latestRow = orderList.value.find((o: any) => o.id === order.id) || order
+  selectedOrder.value = formatOrderForDialog(latestRow)
   shipOrderVisible.value = true
 }
 
@@ -1950,6 +2054,112 @@ const handleCommand = async ({ action, row }: { action: string, row: any }) => {
     case 'cancel':
       cancelOrderVisible.value = true
       break
+    case 'confirmShip':
+      await confirmSingleShip(row)
+      break
+  }
+}
+
+// 可确认发货的已选订单（有运单号但未发货）
+const confirmableSelectedOrders = computed(() => {
+  return (selectedOrders.value || []).filter(
+    (o: any) => (o.expressNo || o.trackingNumber) && o.status !== 'shipped'
+  )
+})
+
+// 单个确认发货
+const confirmSingleShip = async (order: any) => {
+  const tn = order.expressNo || order.trackingNumber || ''
+  const company = order.expressCompany || order.logisticsCompany || ''
+  if (!tn) {
+    ElMessage.warning('该订单没有运单号，无法确认发货')
+    return
+  }
+  try {
+    await ElMessageBox.confirm(
+      `确认将此订单标记为【已发货】吗？\n\n订单号：${order.orderNo || order.orderNumber || ''}\n物流公司：${company}\n运单号：${tn}`,
+      '确认发货',
+      { type: 'info', confirmButtonText: '确认发货', cancelButtonText: '取消' }
+    )
+    const { orderApi } = await import('@/api/order')
+    const now = new Date().toISOString()
+    await orderApi.update(order.id, {
+      status: 'shipped',
+      trackingNumber: tn,
+      expressCompany: company,
+      shippedAt: now,
+    })
+    orderStore.updateOrder(order.id, {
+      status: 'shipped',
+      trackingNumber: tn,
+      expressNo: tn,
+      expressCompany: company,
+      shippedAt: now,
+    })
+    ElMessage.success('已确认发货')
+    loadOrderList()
+    updateTabCounts()
+  } catch (e) {
+    if (e !== 'cancel') {
+      console.error('确认发货失败:', e)
+      ElMessage.error('确认发货失败')
+    }
+  }
+}
+
+// 批量确认发货
+const batchConfirmShip = async () => {
+  const orders = confirmableSelectedOrders.value
+  if (orders.length === 0) {
+    ElMessage.warning('没有可确认发货的订单（需要有运单号且未发货）')
+    return
+  }
+  try {
+    await ElMessageBox.confirm(
+      `确认将 ${orders.length} 个订单标记为【已发货】吗？\n\n这些订单都已有运单号，确认后将直接标记为已发货。`,
+      '批量确认发货',
+      { type: 'info', confirmButtonText: `确认发货 (${orders.length})`, cancelButtonText: '取消' }
+    )
+    const { orderApi } = await import('@/api/order')
+    const now = new Date().toISOString()
+    let successCount = 0
+    let failCount = 0
+
+    for (const order of orders) {
+      try {
+        const tn = order.expressNo || order.trackingNumber || ''
+        const company = order.expressCompany || ''
+        await orderApi.update(order.id, {
+          status: 'shipped',
+          trackingNumber: tn,
+          expressCompany: company,
+          shippedAt: now,
+        })
+        orderStore.updateOrder(order.id, {
+          status: 'shipped',
+          trackingNumber: tn,
+          expressNo: tn,
+          expressCompany: company,
+          shippedAt: now,
+        })
+        successCount++
+      } catch (e) {
+        console.warn('批量确认发货-单个失败:', e)
+        failCount++
+      }
+    }
+
+    if (failCount === 0) {
+      ElMessage.success(`成功确认发货 ${successCount} 个订单`)
+    } else {
+      ElMessage.warning(`成功 ${successCount} 个，失败 ${failCount} 个`)
+    }
+    loadOrderList()
+    updateTabCounts()
+  } catch (e) {
+    if (e !== 'cancel') {
+      console.error('批量确认发货失败:', e)
+    }
   }
 }
 
@@ -2465,6 +2675,9 @@ onUnmounted(() => {
 
 .page-header {
   margin-bottom: 20px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 
 .page-title {
@@ -2472,6 +2685,10 @@ onUnmounted(() => {
   font-weight: 600;
   color: #303133;
   margin: 0;
+}
+
+.help-link-btn {
+  font-size: 13px;
 }
 
 /* 数据概览卡片样式 */
@@ -2656,8 +2873,25 @@ onUnmounted(() => {
 
 .action-buttons {
   display: flex;
-  gap: 5px;
-  flex-wrap: wrap;
+  gap: 4px;
+  flex-wrap: nowrap;
+  align-items: center;
+}
+
+.action-buttons :deep(.el-button) {
+  padding: 5px 8px;
+  font-size: 12px;
+}
+
+.action-buttons :deep(.el-button .el-icon) {
+  margin-right: 2px;
+}
+
+/* 防止关键列内容换行 */
+:deep(.el-table) .cell {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* 行样式 */

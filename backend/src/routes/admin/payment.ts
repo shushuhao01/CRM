@@ -5,6 +5,8 @@ import { Router, Request, Response } from 'express'
 import { AppDataSource } from '../../config/database'
 import { v4 as uuidv4 } from 'uuid'
 import crypto from 'crypto'
+import { formatDateTime } from '../../utils/dateFormat'
+import { encryptPaymentConfig, decryptPaymentConfig } from '../../utils/paymentCrypto'
 
 import { log } from '../../config/logger';
 const router = Router()
@@ -29,28 +31,9 @@ const ensureRefundColumns = async () => {
 // 延迟执行，等数据库连接就绪
 setTimeout(() => ensureRefundColumns(), 3000)
 
-// 加密密钥（生产环境应从环境变量读取）
-const ENCRYPT_KEY = process.env.PAYMENT_ENCRYPT_KEY || 'crm-payment-secret-key-2024'
-
-// 简单加密
-const encrypt = (text: string): string => {
-  const cipher = crypto.createCipheriv('aes-256-cbc',
-    crypto.scryptSync(ENCRYPT_KEY, 'salt', 32),
-    Buffer.alloc(16, 0))
-  return cipher.update(text, 'utf8', 'hex') + cipher.final('hex')
-}
-
-// 简单解密
-const decrypt = (encrypted: string): string => {
-  try {
-    const decipher = crypto.createDecipheriv('aes-256-cbc',
-      crypto.scryptSync(ENCRYPT_KEY, 'salt', 32),
-      Buffer.alloc(16, 0))
-    return decipher.update(encrypted, 'hex', 'utf8') + decipher.final('utf8')
-  } catch {
-    return ''
-  }
-}
+// 加密/解密使用统一的 paymentCrypto 模块
+const encrypt = (text: string): string => encryptPaymentConfig(text)
+const decrypt = (encrypted: string): string => decryptPaymentConfig(encrypted)
 
 // 获取支付配置
 router.get('/config', async (_req: Request, res: Response) => {
@@ -111,7 +94,7 @@ router.post('/config/wechat', async (req: Request, res: Response) => {
       receiveLimit, certPath, publicKeyPath, certPem, keyPem,
       miniAppBind, mchType, notifyUrl
     } = req.body
-    const now = new Date().toISOString().slice(0, 19).replace('T', ' ')
+    const now = formatDateTime(new Date())
 
     // 获取现有配置
     const existing = await AppDataSource.query(
@@ -167,7 +150,7 @@ router.post('/config/wechat', async (req: Request, res: Response) => {
 router.post('/config/alipay', async (req: Request, res: Response) => {
   try {
     const { enabled, appId, privateKey, alipayPublicKey, signType, notifyUrl } = req.body
-    const now = new Date().toISOString().slice(0, 19).replace('T', ' ')
+    const now = formatDateTime(new Date())
 
     // 获取现有配置
     const existing = await AppDataSource.query(
@@ -216,7 +199,7 @@ router.post('/config/alipay', async (req: Request, res: Response) => {
 router.post('/config/bank', async (req: Request, res: Response) => {
   try {
     const { enabled, bankName, accountName, accountNo, bankBranch, remark } = req.body
-    const now = new Date().toISOString().slice(0, 19).replace('T', ' ')
+    const now = formatDateTime(new Date())
 
     const configData = { bankName, accountName, accountNo, bankBranch, remark }
     const encryptedData = encrypt(JSON.stringify(configData))
@@ -429,7 +412,7 @@ router.post('/config/alipay/test', async (req: Request, res: Response) => {
 
     if (hasAppId && hasPrivateKey) {
       try {
-        const timestamp = new Date().toISOString().slice(0, 19).replace('T', ' ')
+        const timestamp = formatDateTime(new Date())
 
         const bizContent = JSON.stringify({})
         const params: Record<string, string> = {
@@ -724,7 +707,7 @@ router.post('/orders/:id/confirm', async (req: Request, res: Response) => {
   try {
     const { id } = req.params
     const { tradeNo, remark } = req.body
-    const now = new Date().toISOString().slice(0, 19).replace('T', ' ')
+    const now = formatDateTime(new Date())
 
     // 检查订单状态
     const orders = await AppDataSource.query(
@@ -753,7 +736,7 @@ router.post('/orders/:id/refund', async (req: Request, res: Response) => {
   try {
     const { id } = req.params
     const { reason } = req.body
-    const now = new Date().toISOString().slice(0, 19).replace('T', ' ')
+    const now = formatDateTime(new Date())
     const adminUser = (req as any).adminUser
 
     // 1. 验证订单存在性和当前状态
@@ -900,7 +883,7 @@ router.post('/orders/:id/refund', async (req: Request, res: Response) => {
 router.post('/orders/:id/close', async (req: Request, res: Response) => {
   try {
     const { id } = req.params
-    const now = new Date().toISOString().slice(0, 19).replace('T', ' ')
+    const now = formatDateTime(new Date())
 
     // 获取订单号用于同步关闭 capacity_orders
     const orders = await AppDataSource.query(

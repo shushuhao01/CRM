@@ -17,12 +17,26 @@ if (!fs.existsSync(uploadBaseDir)) {
   fs.mkdirSync(uploadBaseDir, { recursive: true });
 }
 
+// 🔒 允许的上传类别白名单 — 防止路径穿越攻击
+const ALLOWED_CATEGORIES = ['general', 'image', 'cert', 'version', 'logo', 'qrcode'];
+
+/**
+ * 获取安全的上传类别（白名单校验 + 路径穿越防护）
+ */
+function getSafeCategory(raw: string | undefined): string {
+  const category = (raw || 'general').replace(/[^a-zA-Z0-9_-]/g, '');
+  return ALLOWED_CATEGORIES.includes(category) ? category : 'general';
+}
+
 // 配置 multer 存储
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    // 根据类别创建子目�?
-    const category = (req.query.category as string) || 'general';
+    const category = getSafeCategory(req.query.category as string);
     const dir = path.join(uploadBaseDir, category);
+    // 🔒 二次校验：确保最终路径在 uploadBaseDir 内
+    if (!dir.startsWith(uploadBaseDir)) {
+      return cb(new Error('非法上传路径'), '');
+    }
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
     }
@@ -37,7 +51,7 @@ const storage = multer.diskStorage({
 
 // 文件类型过滤
 const fileFilter = (req: Request, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
-  const category = (req.query.category as string) || 'general';
+  const category = getSafeCategory(req.query.category as string);
 
   if (category === 'image') {
     // 图片类型限制

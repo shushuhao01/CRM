@@ -76,6 +76,60 @@
         <el-descriptions-item label="备注" :span="2">{{ detail.notes || '-' }}</el-descriptions-item>
       </el-descriptions>
 
+      <!-- 更多信息（折叠） -->
+      <el-collapse v-if="!isEditing" v-model="passwordCollapse" class="password-collapse">
+        <el-collapse-item name="more">
+          <template #title>
+            <span class="collapse-title">更多信息</span>
+          </template>
+          <el-descriptions :column="3" border size="default">
+            <template v-if="isSuperAdmin">
+            <el-descriptions-item label="会员中心密码">
+              <template v-if="detail.memberPasswordStatus === 'default'">
+                <div class="password-cell">
+                  <code>{{ showMemberPwd ? detail.memberPasswordDisplay : '••••••••' }}</code>
+                  <el-icon class="action-icon" @click="showMemberPwd = !showMemberPwd">
+                    <View v-if="!showMemberPwd" /><Hide v-else />
+                  </el-icon>
+                  <el-icon class="action-icon" @click="copyText(detail.memberPasswordDisplay)">
+                    <CopyDocument />
+                  </el-icon>
+                  <el-tag size="small" type="info" style="margin-left: 4px;">默认</el-tag>
+                </div>
+              </template>
+              <template v-else-if="detail.memberPasswordStatus === 'custom'">
+                <span style="color: #e6a23c;">{{ detail.memberPasswordDisplay }}</span>
+              </template>
+              <template v-else>
+                <span class="text-muted">未设置</span>
+              </template>
+            </el-descriptions-item>
+            <el-descriptions-item label="CRM系统密码">
+              <template v-if="detail.crmPasswordStatus === 'default'">
+                <div class="password-cell">
+                  <code>{{ showCrmPwd ? detail.crmPasswordDisplay : '••••••••' }}</code>
+                  <el-icon class="action-icon" @click="showCrmPwd = !showCrmPwd">
+                    <View v-if="!showCrmPwd" /><Hide v-else />
+                  </el-icon>
+                  <el-icon class="action-icon" @click="copyText(detail.crmPasswordDisplay)">
+                    <CopyDocument />
+                  </el-icon>
+                  <el-tag size="small" type="info" style="margin-left: 4px;">默认</el-tag>
+                </div>
+              </template>
+              <template v-else-if="detail.crmPasswordStatus === 'custom'">
+                <span style="color: #e6a23c;">{{ detail.crmPasswordDisplay }}</span>
+              </template>
+              <template v-else>
+                <span class="text-muted">未设置</span>
+              </template>
+            </el-descriptions-item>
+            </template>
+            <el-descriptions-item label=" " />
+          </el-descriptions>
+        </el-collapse-item>
+      </el-collapse>
+
       <el-form v-else ref="editFormRef" :model="editForm" :rules="editRules" label-width="90px" class="edit-form">
         <el-row :gutter="16">
           <el-col :span="8">
@@ -350,6 +404,68 @@
       </div>
     </el-card>
 
+    <!-- 扩容记录 -->
+    <el-card shadow="never" class="info-card">
+      <template #header>
+        <div class="card-header">
+          <span><el-icon><Coin /></el-icon> 扩容记录</span>
+          <el-button link type="primary" @click="fetchCapacityOrders" :loading="capacityLoading" size="small">
+            <el-icon><Refresh /></el-icon>刷新
+          </el-button>
+        </div>
+      </template>
+      <el-table :data="capacityOrders" v-loading="capacityLoading" stripe size="small">
+        <el-table-column prop="order_no" label="订单号" min-width="200" show-overflow-tooltip />
+        <el-table-column label="扩容类型" width="120" align="center">
+          <template #default="{ row }">
+            <el-tag :type="row.type === 'user' ? 'primary' : 'success'" size="small" effect="plain">
+              {{ row.type === 'user' ? '用户数' : '存储空间' }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="数量" width="100" align="center">
+          <template #default="{ row }">
+            <span class="text-bold">{{ row.quantity }}</span>
+            <span style="font-size: 12px; color: #909399; margin-left: 2px;">{{ row.type === 'user' ? '人' : 'GB' }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="单价" width="100" align="right">
+          <template #default="{ row }">
+            <span>¥{{ Number(row.unit_price || 0).toFixed(2) }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="总金额" width="110" align="right">
+          <template #default="{ row }">
+            <span class="text-price">¥{{ Number(row.total_amount || 0).toFixed(2) }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="计费周期" width="100" align="center">
+          <template #default="{ row }">{{ capacityBillingText(row.billing_cycle) }}</template>
+        </el-table-column>
+        <el-table-column label="支付方式" width="100">
+          <template #default="{ row }">{{ payTypeMap[row.pay_type] || row.pay_type || '-' }}</template>
+        </el-table-column>
+        <el-table-column label="状态" width="90" align="center">
+          <template #default="{ row }">
+            <el-tag :type="getCapacityStatusType(row.status)" size="small">{{ getCapacityStatusText(row.status) }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="支付时间" width="170" show-overflow-tooltip>
+          <template #default="{ row }">{{ row.paid_at ? formatDateTime(row.paid_at) : '-' }}</template>
+        </el-table-column>
+        <el-table-column label="创建时间" width="170" show-overflow-tooltip>
+          <template #default="{ row }">{{ formatDateTime(row.created_at) }}</template>
+        </el-table-column>
+      </el-table>
+      <template v-if="!capacityLoading && capacityOrders.length === 0">
+        <el-empty description="暂无扩容记录" :image-size="48" />
+      </template>
+      <div class="pagination-wrapper" v-if="capacityTotal > 10">
+        <el-pagination v-model:current-page="capacityPage" :page-size="10" :total="capacityTotal"
+          layout="total, prev, pager, next" @current-change="fetchCapacityOrders" small />
+      </div>
+    </el-card>
+
     <!-- 数据清理说明 -->
     <el-card shadow="never" class="info-card">
       <template #header>
@@ -513,13 +629,15 @@ import type { FormInstance, FormRules } from 'element-plus'
 import {
   Edit, ArrowLeft, Clock, VideoPause, VideoPlay, MoreFilled, RefreshRight,
   Download, Delete, CopyDocument, View, Hide, Refresh, User, Key, Grid,
-  Document, Wallet, CircleCheck, CircleClose,
+  Document, Wallet, CircleCheck, CircleClose, Coin,
   Odometer, ShoppingCart, Phone, TrendCharts, Van, Headset, Files, Money, Box, Setting
 } from '@element-plus/icons-vue'
 import { adminApi } from '@/api/admin'
 import type { Package } from '@/api/packages'
 import { getPackages } from '@/api/packages'
+import { useUserStore } from '@/stores/user'
 
+const { isSuperAdmin } = useUserStore()
 const route = useRoute()
 const router = useRouter()
 const loading = ref(false)
@@ -537,6 +655,11 @@ const isEditingModules = ref(false)
 const newLicenseKey = ref('')
 const detail = ref<any>({})
 
+// 更多信息折叠
+const passwordCollapse = ref<string[]>([])
+const showCrmPwd = ref(false)
+const showMemberPwd = ref(false)
+
 // 日志和账单
 const activationLogs = ref<any[]>([])
 const logsPage = ref(1)
@@ -546,6 +669,12 @@ const bills = ref<any[]>([])
 const billsPage = ref(1)
 const billsTotal = ref(0)
 const billsLoading = ref(false)
+
+// 扩容记录
+const capacityOrders = ref<any[]>([])
+const capacityPage = ref(1)
+const capacityTotal = ref(0)
+const capacityLoading = ref(false)
 
 // 套餐相关
 const allPackages = ref<Package[]>([])
@@ -923,7 +1052,26 @@ const fetchBills = async () => {
   finally { billsLoading.value = false }
 }
 
-onMounted(() => { fetchDetail(); fetchLogs(); fetchBills() })
+// 扩容记录
+const capacityBillingText = (cycle: string) => {
+  return ({ monthly: '按月', yearly: '按年', follow_package: '跟随套餐' }[cycle] || cycle)
+}
+const getCapacityStatusType = (s: string) => ({ pending: 'warning', paid: 'success', closed: 'info', refunded: 'danger' }[s] || 'info') as any
+const getCapacityStatusText = (s: string) => ({ pending: '待支付', paid: '已支付', closed: '已关闭', refunded: '已退款' }[s] || s)
+
+const fetchCapacityOrders = async () => {
+  capacityLoading.value = true
+  try {
+    const res = await adminApi.getCapacityOrdersByLicense(route.params.id as string, { page: capacityPage.value, pageSize: 10 })
+    if (res.success) {
+      capacityOrders.value = res.data.list || []
+      capacityTotal.value = res.data.total || 0
+    }
+  } catch { capacityOrders.value = [] }
+  finally { capacityLoading.value = false }
+}
+
+onMounted(() => { fetchDetail(); fetchLogs(); fetchBills(); fetchCapacityOrders() })
 </script>
 
 <style scoped lang="scss">
@@ -955,6 +1103,55 @@ onMounted(() => { fetchDetail(); fetchLogs(); fetchBills() })
 .text-primary { color: #409eff; }
 .text-price { color: #e6a23c; font-weight: 600; }
 .edit-form :deep(.el-form-item) { margin-bottom: 16px; }
+
+/* 系统密码折叠 */
+.password-collapse {
+  margin-top: 10px;
+  border: none;
+  :deep(.el-collapse-item__header) {
+    height: 32px;
+    line-height: 32px;
+    font-size: 13px;
+    color: #606266;
+    background: transparent;
+    border-bottom: none;
+    padding: 0;
+  }
+  :deep(.el-collapse-item__wrap) {
+    border-bottom: none;
+  }
+  :deep(.el-collapse-item__content) {
+    padding: 4px 0 0;
+  }
+}
+.collapse-title {
+  font-weight: 500;
+  font-size: 13px;
+}
+.pwd-descriptions {
+  :deep(.el-descriptions__label) {
+    width: 120px;
+  }
+}
+.password-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  code {
+    font-family: 'Monaco', 'Menlo', monospace;
+    font-size: 13px;
+    background: #f5f7fa;
+    padding: 2px 8px;
+    border-radius: 4px;
+    letter-spacing: 0.5px;
+  }
+}
+.action-icon {
+  cursor: pointer;
+  color: #409eff;
+  font-size: 14px;
+  &:hover { color: #66b1ff; }
+}
 
 /* 授权码 */
 .license-key-cell {

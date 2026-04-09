@@ -52,7 +52,7 @@ export const deployConfig: DeployConfig = {
   // 私有部署配置
   private: {
     licenseKey: process.env.LICENSE_KEY,
-    licenseServer: process.env.LICENSE_SERVER || 'https://admin.yourdomain.com'
+    licenseServer: process.env.LICENSE_SERVER || 'https://admin.yunkes.com'
   },
 
   // SaaS配置

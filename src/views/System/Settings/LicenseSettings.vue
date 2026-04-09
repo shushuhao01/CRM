@@ -23,7 +23,13 @@
       show-icon
     >
       <template #title>
-        <span>⚠️ 系统授权已过期{{ licenseData.expiresAt ? `（${formatDate(licenseData.expiresAt)}）` : '' }}，当前处于只读模式，无法新增/修改/删除数据。请联系管理员续费。</span>
+        <div class="alert-content">
+          <span>⚠️ 系统授权已过期{{ licenseData.expiresAt ? `（${formatDate(licenseData.expiresAt)}）` : '' }}，当前处于只读模式，无法新增/修改/删除数据。</span>
+          <div class="alert-actions">
+            <a v-if="memberCenterUrl" :href="memberCenterUrl" target="_blank" class="alert-btn alert-btn-primary">🔑 去会员中心续费</a>
+            <a href="javascript:void(0)" class="alert-btn alert-btn-success" @click="openContactService">💬 联系客服续费</a>
+          </div>
+        </div>
       </template>
     </el-alert>
 
@@ -35,7 +41,13 @@
       show-icon
     >
       <template #title>
-        <span>⏰ 系统授权将在 {{ licenseData.daysUntilExpiry }} 天后到期{{ licenseData.expiresAt ? `（${formatDate(licenseData.expiresAt)}）` : '' }}，到期后将无法新增数据。请及时联系管理员续费。</span>
+        <div class="alert-content">
+          <span>⏰ 系统授权将在 {{ licenseData.daysUntilExpiry }} 天后到期{{ licenseData.expiresAt ? `（${formatDate(licenseData.expiresAt)}）` : '' }}，到期后将无法新增数据。请及时续费。</span>
+          <div class="alert-actions">
+            <a v-if="memberCenterUrl" :href="memberCenterUrl" target="_blank" class="alert-btn alert-btn-primary">🔑 去会员中心续费</a>
+            <a href="javascript:void(0)" class="alert-btn alert-btn-success" @click="openContactService">💬 联系客服续费</a>
+          </div>
+        </div>
       </template>
     </el-alert>
 
@@ -134,6 +146,23 @@ import { ref, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Refresh, Loading, InfoFilled } from '@element-plus/icons-vue'
 import request from '@/utils/request'
+import { useConfigStore } from '@/stores/config'
+
+const configStore = useConfigStore()
+
+// 会员中心续费URL
+const memberCenterUrl = computed(() => {
+  const websiteUrl = configStore.systemConfig.websiteUrl
+  if (websiteUrl) {
+    return websiteUrl.replace(/\/+$/, '') + '/member/login'
+  }
+  return ''
+})
+
+// 打开联系客服弹窗
+const openContactService = () => {
+  window.dispatchEvent(new CustomEvent('open-contact-service-dialog'))
+}
 
 interface LicenseStatus {
   activated: boolean
@@ -360,6 +389,52 @@ onMounted(() => {
   .license-status-row {
     grid-template-columns: repeat(2, 1fr);
   }
+}
+
+/* 预警 alert 中的续费入口 */
+.alert-content {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.alert-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+
+.alert-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 12px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.alert-btn-primary {
+  background: #409eff;
+  color: #fff;
+}
+.alert-btn-primary:hover {
+  background: #337ecc;
+  color: #fff;
+}
+
+.alert-btn-success {
+  background: #67c23a;
+  color: #fff;
+}
+.alert-btn-success:hover {
+  background: #529b2e;
+  color: #fff;
 }
 </style>
 

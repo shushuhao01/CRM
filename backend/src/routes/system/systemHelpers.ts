@@ -8,7 +8,7 @@ import { TenantContextManager } from '../../utils/tenantContext';
 import { cacheService } from '../../services/CacheService';
 import multer from 'multer';
 import path from 'path';
-import fs from 'fs';
+import { createTenantDestination } from '../../utils/tenantUploadHelper';
 
 // ========== 文件上传配置 ==========
 
@@ -43,15 +43,9 @@ const getUploadConfig = async (): Promise<{ maxFileSize: number; allowedTypes: s
   }
 };
 
-// 创建通用图片上传存储配置
+// 创建通用图片上传存储配置（🔥 已改造：SaaS模式按租户目录隔离）
 const createImageStorage = (subDir: string) => multer.diskStorage({
-  destination: (_req, _file, cb) => {
-    const uploadDir = path.join(process.cwd(), 'uploads', subDir);
-    if (!fs.existsSync(uploadDir)) {
-      fs.mkdirSync(uploadDir, { recursive: true });
-    }
-    cb(null, uploadDir);
-  },
+  destination: createTenantDestination(subDir),
   filename: (_req, file, cb) => {
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
     const ext = path.extname(file.originalname);

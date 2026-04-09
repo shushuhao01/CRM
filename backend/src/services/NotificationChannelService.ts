@@ -17,6 +17,7 @@ import { v4 as uuidv4 } from 'uuid';
 import crypto from 'crypto';
 import { webSocketService } from './WebSocketService';
 import { getTenantRepo } from '../utils/tenantRepo';
+import { TenantContextManager } from '../utils/tenantContext';
 
 import { log as logger } from '../config/logger';
 // 发送结果接口
@@ -112,13 +113,14 @@ class NotificationChannelService {
       if (global.webSocketService) {
         results.forEach(result => {
           if (result.channelName) {
-            // 广播通知状态（管理员可见）
+            // 广播通知状态（管理员可见）- 🔥 安全修复：传入tenantId确保租户隔离
+            const currentTenantId = TenantContextManager.getTenantId();
             webSocketService.sendToRole('admin', 'channel_notification_status', {
               channelName: result.channelName,
               channelType: result.channelId,
               success: result.success,
               message: result.message
-            });
+            }, currentTenantId);
           }
         });
       }

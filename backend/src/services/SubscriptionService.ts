@@ -9,17 +9,11 @@ import axios from 'axios';
 import { AppDataSource } from '../config/database';
 import { log } from '../config/logger';
 import { adminNotificationService } from './AdminNotificationService';
-
-// 解密密钥
-const ENCRYPT_KEY = process.env.PAYMENT_ENCRYPT_KEY || 'crm-payment-secret-key-2024';
+import { formatDateTime } from '../utils/dateFormat';
+import { decryptPaymentConfig } from '../utils/paymentCrypto';
 
 function decryptConfig(encrypted: string): string {
-  try {
-    const decipher = crypto.createDecipheriv('aes-256-cbc',
-      crypto.scryptSync(ENCRYPT_KEY, 'salt', 32),
-      Buffer.alloc(16, 0));
-    return decipher.update(encrypted, 'hex', 'utf8') + decipher.final('utf8');
-  } catch { return ''; }
+  return decryptPaymentConfig(encrypted);
 }
 
 export class SubscriptionService {
@@ -324,7 +318,7 @@ export class SubscriptionService {
       method: 'alipay.user.agreement.page.sign',
       charset: 'utf-8',
       sign_type: config.signType || 'RSA2',
-      timestamp: new Date().toISOString().replace('T', ' ').slice(0, 19),
+      timestamp: formatDateTime(new Date()),
       version: '1.0',
       notify_url: `${process.env.API_BASE_URL || 'http://localhost:3000'}/api/v1/public/subscription/sign-notify/alipay`,
       return_url: `${process.env.WEBSITE_URL || 'http://localhost:8080'}/member/subscription?sign_result=success`,
@@ -663,7 +657,7 @@ export class SubscriptionService {
       method: 'alipay.trade.pay',
       charset: 'utf-8',
       sign_type: config.signType || 'RSA2',
-      timestamp: new Date().toISOString().replace('T', ' ').slice(0, 19),
+      timestamp: formatDateTime(new Date()),
       version: '1.0',
       biz_content: JSON.stringify(bizContent)
     };
@@ -895,7 +889,7 @@ export class SubscriptionService {
       method: 'alipay.user.agreement.unsign',
       charset: 'utf-8',
       sign_type: config.signType || 'RSA2',
-      timestamp: new Date().toISOString().replace('T', ' ').slice(0, 19),
+      timestamp: formatDateTime(new Date()),
       version: '1.0',
       biz_content: JSON.stringify(bizContent)
     };

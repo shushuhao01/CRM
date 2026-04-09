@@ -20,6 +20,7 @@ export class License {
   @Column({ name: 'customer_email', type: 'varchar', length: 100, nullable: true })
   customerEmail?: string;
 
+
   @Column({ name: 'license_type', type: 'enum', enum: ['trial', 'perpetual', 'annual', 'monthly'], default: 'trial' })
   licenseType!: string;
 

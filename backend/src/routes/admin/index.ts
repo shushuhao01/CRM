@@ -31,6 +31,8 @@ import updateTasksRouter from './update-tasks';
 import customerManagementRouter from './customer-management';
 import adminRolesRouter from './roles';
 import capacityRouter from './capacity';
+import tenantExportRouter from './tenant-export';
+import tenantImportRouter from './tenant-import';
 import { log } from '../../config/logger';
 // import schedulerRouter from './scheduler'; // 暂时禁用
 
@@ -166,6 +168,8 @@ router.use('/update-tasks', updateTasksRouter);
 router.use('/customer-management', customerManagementRouter);
 router.use('/roles', adminRolesRouter);
 router.use('/capacity', capacityRouter);
+router.use('/tenants', tenantExportRouter);   // 租户数据导出 API
+router.use('/tenants', tenantImportRouter);   // 租户数据导入 API
 router.use('/system-settings', systemSettingsRouter);
 // router.use('/scheduler', schedulerRouter); // 暂时禁用
 // 需要认证的系统配置路由

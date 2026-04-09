@@ -7,6 +7,7 @@ import { AppDataSource } from '../config/database';
 import { v4 as uuidv4 } from 'uuid';
 import { adminNotificationService } from '../services/AdminNotificationService';
 import { getTenantResourceUsage } from '../middleware/checkTenantLimits';
+import { formatDateTime } from '../utils/dateFormat';
 
 import { log } from '../config/logger';
 const router = Router();
@@ -145,10 +146,11 @@ router.post('/verify', async (req: Request, res: Response) => {
 
       if (!tenant) {
         // 首次激活：在本地 tenants 表创建私有租户记录
-        const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
+        const now = formatDateTime(new Date());
         const tenantId = uuidv4();
         // 生成私有编码（P前缀区分私有）
-        const tenantCode = `P${new Date().getFullYear().toString().slice(2)}${String(new Date().getMonth()+1).padStart(2,'0')}${String(new Date().getDate()).padStart(2,'0')}${Math.random().toString(36).substring(2,6).toUpperCase()}`;
+        const d = new Date();
+        const tenantCode = `P${d.getFullYear().toString().slice(2)}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}${Math.random().toString(36).substring(2,6).toUpperCase()}`;
         await AppDataSource.query(
           `INSERT INTO tenants (id, name, code, license_key, license_status, max_users, max_storage_gb, features, status, activated_at, expire_date, last_verify_at, created_at, updated_at)
            VALUES (?, ?, ?, ?, 'active', ?, ?, ?, 'active', ?, ?, ?, ?, ?)`,
@@ -397,6 +399,7 @@ router.get('/info', async (req: Request, res: Response) => {
 
 /**
  * 检查授权状态（心跳检测）
+ * 返回授权有效性，以及即将到期预警信息（剩余有效期 ≤ 总有效期20% 时触发）
  */
 router.post('/heartbeat', async (req: Request, res: Response) => {
   try {
@@ -407,7 +410,7 @@ router.post('/heartbeat', async (req: Request, res: Response) => {
     }
 
     const queryResult = await AppDataSource.query(
-      `SELECT license_status, status, expire_date FROM tenants WHERE id = ?`,
+      `SELECT license_status, status, expire_date, activated_at, created_at FROM tenants WHERE id = ?`,
       [tenantId]
     );
     const tenant = queryResult[0];
@@ -421,15 +424,41 @@ router.post('/heartbeat', async (req: Request, res: Response) => {
     }
 
     if (tenant.expire_date && new Date(tenant.expire_date) < new Date()) {
-      return res.json({ success: false, valid: false, message: '授权已过期' });
+      return res.json({ success: false, valid: false, message: '授权已过期', expireDate: tenant.expire_date });
     }
 
+    // 更新最后验证时间
     await AppDataSource.query(
       `UPDATE tenants SET last_verify_at = NOW() WHERE id = ?`,
       [tenantId]
     );
 
-    res.json({ success: true, valid: true });
+    // 计算到期天数和即将到期预警
+    let daysUntilExpiry: number | null = null;
+    let nearExpiry = false;
+    const expireDate = tenant.expire_date || null;
+
+    if (expireDate) {
+      const now = new Date();
+      const expDate = new Date(expireDate);
+      daysUntilExpiry = Math.ceil((expDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+
+      // 计算总有效期天数（从激活/创建到过期的总天数）
+      const startDate = tenant.activated_at ? new Date(tenant.activated_at) : new Date(tenant.created_at);
+      const totalDays = Math.max(1, Math.ceil((expDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)));
+
+      // 剩余有效期 ≤ 总有效期的20% 时触发预警（最低阈值7天）
+      const threshold = Math.max(Math.ceil(totalDays * 0.2), 7); // 至少7天
+      nearExpiry = daysUntilExpiry > 0 && daysUntilExpiry <= threshold;
+    }
+
+    res.json({
+      success: true,
+      valid: true,
+      daysUntilExpiry,
+      nearExpiry,
+      expireDate
+    });
   } catch (error: any) {
     log.error('[Tenant License] Heartbeat failed:', error);
     res.json({ success: true, valid: true });

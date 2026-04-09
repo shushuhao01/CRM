@@ -6,12 +6,13 @@
 const mysql = require('mysql2/promise');
 const fs = require('fs');
 const path = require('path');
+require('dotenv').config({ path: '.env.local' });
 
 const config = {
-  host: 'localhost',
-  user: 'abc789',
-  password: 'YtZWJPF2bpsCscHX',
-  database: 'crm_local',
+  host: process.env.DB_HOST || 'localhost',
+  user: process.env.DB_USERNAME || 'root',
+  password: process.env.DB_PASSWORD || '',
+  database: process.env.DB_DATABASE || 'crm_local',
   multipleStatements: true
 };
 

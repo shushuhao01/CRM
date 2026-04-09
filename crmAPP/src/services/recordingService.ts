@@ -69,27 +69,101 @@ class RecordingService {
   private knownRecordings: Set<string> = new Set()
 
   /**
-   * 检查存储权限
+   * 检查存储权限（适配 Android 11+ Scoped Storage）
    */
   async checkPermissions(): Promise<boolean> {
     // #ifdef APP-PLUS
     return new Promise((resolve) => {
-      plus.android.requestPermissions(
-        [
-          'android.permission.READ_EXTERNAL_STORAGE',
-          'android.permission.WRITE_EXTERNAL_STORAGE',
-        ],
-        (result) => {
-          console.log('[RecordingService] 权限请求结果:', result)
-          // 检查是否所有权限都已授予
-          const granted = result.granted && result.granted.length >= 2
-          resolve(granted)
-        },
-        (error) => {
-          console.error('[RecordingService] 权限请求失败:', error)
-          resolve(false)
+      try {
+        // 检查 Android 版本
+        const Build = plus.android.importClass('android.os.Build')
+        const sdkVersion = (Build as any).VERSION.SDK_INT
+
+        if (sdkVersion >= 30) {
+          // Android 11+: 检查 MANAGE_EXTERNAL_STORAGE 权限
+          const Environment = plus.android.importClass('android.os.Environment')
+          if ((Environment as any).isExternalStorageManager()) {
+            resolve(true)
+            return
+          }
+          // 请求所有文件访问权限
+          const Settings = plus.android.importClass('android.provider.Settings')
+          const Intent = plus.android.importClass('android.content.Intent')
+          const Uri = plus.android.importClass('android.net.Uri')
+          const main = plus.android.runtimeMainActivity()
+          const packageName = (main as any).getPackageName()
+
+          uni.showModal({
+            title: '需要存储权限',
+            content: '为了自动扫描和上传通话录音，需要授予"所有文件访问"权限。',
+            confirmText: '去授权',
+            success: (res) => {
+              if (res.confirm) {
+                try {
+                  const intent = new (Intent as any)((Settings as any).ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION)
+                  intent.setData((Uri as any).parse('package:' + packageName))
+                  ;(main as any).startActivity(intent)
+                } catch (_e) {
+                  // 降级方案
+                  try {
+                    const intent2 = new (Intent as any)((Settings as any).ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)
+                    ;(main as any).startActivity(intent2)
+                  } catch (_e2) {
+                    console.error('[RecordingService] 无法打开文件访问权限设置')
+                  }
+                }
+              }
+              // 延迟检查权限结果
+              setTimeout(() => {
+                resolve((Environment as any).isExternalStorageManager())
+              }, 1000)
+            }
+          })
+        } else if (sdkVersion >= 33) {
+          // Android 13+: 使用 READ_MEDIA_AUDIO
+          plus.android.requestPermissions(
+            ['android.permission.READ_MEDIA_AUDIO'],
+            (result: any) => {
+              resolve(result.granted && result.granted.length >= 1)
+            },
+            (_error: any) => {
+              resolve(false)
+            }
+          )
+        } else {
+          // Android 10 及以下: 传统存储权限
+          plus.android.requestPermissions(
+            [
+              'android.permission.READ_EXTERNAL_STORAGE',
+              'android.permission.WRITE_EXTERNAL_STORAGE',
+            ],
+            (result: any) => {
+              console.log('[RecordingService] 权限请求结果:', result)
+              const granted = result.granted && result.granted.length >= 2
+              resolve(granted)
+            },
+            (error: any) => {
+              console.error('[RecordingService] 权限请求失败:', error)
+              resolve(false)
+            }
+          )
         }
-      )
+      } catch (e) {
+        console.error('[RecordingService] 权限检查异常:', e)
+        // 降级到旧方案
+        plus.android.requestPermissions(
+          [
+            'android.permission.READ_EXTERNAL_STORAGE',
+            'android.permission.WRITE_EXTERNAL_STORAGE',
+          ],
+          (result: any) => {
+            resolve(result.granted && result.granted.length >= 2)
+          },
+          (_error: any) => {
+            resolve(false)
+          }
+        )
+      }
     })
     // #endif
 

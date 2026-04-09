@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onLaunch, onShow, onHide } from '@dcloudio/uni-app'
+import { onLaunch, onShow, onHide, onError } from '@dcloudio/uni-app'
 import { useServerStore } from '@/stores/server'
 import { useUserStore } from '@/stores/user'
 
@@ -14,6 +14,8 @@ onLaunch(() => {
   // #ifdef APP-PLUS
   // 监听系统通话状态变化
   setupCallStateListener()
+  // 设置Android返回键处理
+  setupBackButtonHandler()
   // #endif
 })
 
@@ -25,6 +27,11 @@ onShow(() => {
 
 onHide(() => {
   console.log('App Hide')
+})
+
+// 全局错误处理
+onError((err) => {
+  console.error('[App] 全局错误:', err)
 })
 
 // 检查是否有未完成的通话
@@ -76,6 +83,31 @@ const setupCallStateListener = () => {
     setTimeout(() => {
       checkPendingCall()
     }, 1000)
+  })
+}
+
+// 设置Android返回键处理（防止误触退出）
+const setupBackButtonHandler = () => {
+  let lastBackTime = 0
+  plus.key.addEventListener('backbutton', () => {
+    const pages = getCurrentPages()
+    if (pages.length > 1) {
+      // 有页面栈，正常返回
+      uni.navigateBack({})
+    } else {
+      // 最后一页，双击退出
+      const now = Date.now()
+      if (now - lastBackTime < 2000) {
+        plus.runtime.quit()
+      } else {
+        lastBackTime = now
+        uni.showToast({
+          title: '再按一次退出应用',
+          icon: 'none',
+          duration: 2000
+        })
+      }
+    }
   })
 }
 // #endif

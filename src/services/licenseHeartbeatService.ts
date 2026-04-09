@@ -70,6 +70,24 @@ class LicenseHeartbeatService {
         if (!result.valid) {
           console.warn('[License] 授权验证失败:', result.message)
           this.handleInvalidLicense(result.message || '授权已失效')
+        } else {
+          // SaaS模式：即将到期预警（剩余有效期 ≤ 总有效期20%）
+          if (result.nearExpiry && result.daysUntilExpiry != null && !this.nearExpiryNotified) {
+            this.nearExpiryNotified = true
+            const memberUrl = this.getMemberCenterUrl()
+            const renewHtml = memberUrl
+              ? `<br/><a href="${memberUrl}" target="_blank" style="color:#409eff;text-decoration:underline;font-weight:600;">🔑 去会员中心续费</a>`
+              : ''
+            const contactHtml = `<br/><a href="javascript:void(0)" onclick="window.dispatchEvent(new CustomEvent('open-contact-service-dialog'))" style="color:#67c23a;text-decoration:underline;font-weight:600;">💬 联系客服续费</a>`
+            ElNotification({
+              title: '套餐即将到期',
+              message: `您的套餐将在 ${result.daysUntilExpiry} 天后到期（${result.expireDate ? new Date(result.expireDate).toLocaleDateString() : ''}），到期后系统将进入只读模式。请及时续费。${renewHtml}${contactHtml}`,
+              dangerouslyUseHTMLString: true,
+              type: 'warning',
+              duration: 15000,
+              position: 'top-right'
+            })
+          }
         }
       }
     } catch (error) {
@@ -97,9 +115,16 @@ class LicenseHeartbeatService {
       // 即将到期预警（30天内）
       if (res.nearExpiry && res.daysUntilExpiry != null && !this.nearExpiryNotified) {
         this.nearExpiryNotified = true
+        // 获取会员中心URL
+        const memberUrl = this.getMemberCenterUrl()
+        const renewHtml = memberUrl
+          ? `<br/><a href="${memberUrl}" target="_blank" style="color:#409eff;text-decoration:underline;font-weight:600;">🔑 去会员中心续费</a>`
+          : ''
+        const contactHtml = `<br/><a href="javascript:void(0)" onclick="window.dispatchEvent(new CustomEvent('open-contact-service-dialog'))" style="color:#67c23a;text-decoration:underline;font-weight:600;">💬 联系客服续费</a>`
         ElNotification({
           title: '授权即将到期',
-          message: `系统授权将在 ${res.daysUntilExpiry} 天后到期（${res.expiresAt ? new Date(res.expiresAt).toLocaleDateString() : ''}），到期后将无法新增数据。请及时联系管理员续费。`,
+          message: `系统授权将在 ${res.daysUntilExpiry} 天后到期（${res.expiresAt ? new Date(res.expiresAt).toLocaleDateString() : ''}），到期后将无法新增数据。请及时续费。${renewHtml}${contactHtml}`,
+          dangerouslyUseHTMLString: true,
           type: 'warning',
           duration: 15000,
           position: 'top-right'
@@ -121,8 +146,9 @@ class LicenseHeartbeatService {
           '• 可以正常登录和查看数据\n' +
           '• 无法新增客户、订单、用户等\n' +
           '• 无法修改或删除现有数据\n\n' +
-          '请联系管理员续费授权，续费后点击"同步授权信息"立即恢复正常使用。',
-        title: '⚠️ 系统授权已过期'
+          '请前往会员中心续费或联系客服续费，续费后点击"同步授权信息"立即恢复正常使用。',
+        title: '⚠️ 系统授权已过期',
+        deployMode: 'private'
       })
     })
   }
@@ -131,20 +157,35 @@ class LicenseHeartbeatService {
    * 处理授权失效（SaaS模式）
    */
   private handleInvalidLicense(message: string) {
-    // 清除本地租户信息
-    clearLocalTenantInfo()
+    // 判断是否为到期失效（包含"过期"关键字）
+    const isExpired = message.includes('过期')
 
-    // 显示提示并跳转到登录页
-    ElMessageBox.alert(message, '授权提示', {
-      confirmButtonText: '重新验证',
-      type: 'warning',
-      showClose: false,
-      closeOnClickModal: false,
-      closeOnPressEscape: false
-    }).then(() => {
-      // 跳转到登录页
-      window.location.href = '/login'
-    })
+    if (isExpired) {
+      // 到期情况：显示带续费入口的弹窗
+      import('@/utils/licenseDialog').then(({ showLicenseExpiredDialog }) => {
+        showLicenseExpiredDialog({
+          message: `${message}\n\n当前处于只读模式，无法新增、修改或删除数据。\n\n请前往会员中心续费或联系客服续费，续费完成后系统将自动恢复正常使用。`,
+          title: '⚠️ 授权已过期',
+          deployMode: 'saas'
+        })
+      })
+    } else {
+      // 非到期情况（如禁用、暂停）：保留原有逻辑
+      // 清除本地租户信息
+      clearLocalTenantInfo()
+
+      // 显示提示并跳转到登录页
+      ElMessageBox.alert(message, '授权提示', {
+        confirmButtonText: '重新验证',
+        type: 'warning',
+        showClose: false,
+        closeOnClickModal: false,
+        closeOnPressEscape: false
+      }).then(() => {
+        // 跳转到登录页
+        window.location.href = '/login'
+      })
+    }
   }
 
   /**
@@ -158,6 +199,25 @@ class LicenseHeartbeatService {
       this.stop()
       this.start()
     }
+  }
+
+  /**
+   * 获取会员中心续费URL
+   */
+  private getMemberCenterUrl(): string {
+    try {
+      const configData = localStorage.getItem('crm_config_system')
+      if (configData) {
+        const config = JSON.parse(configData)
+        const websiteUrl = config?.websiteUrl
+        if (websiteUrl) {
+          return websiteUrl.replace(/\/+$/, '') + '/member/login'
+        }
+      }
+    } catch {
+      // 静默处理
+    }
+    return ''
   }
 }
 

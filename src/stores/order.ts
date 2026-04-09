@@ -330,6 +330,7 @@ export const useOrderStore = createPersistentStore('order', () => {
     // 🔥 检测环境，生产环境调用真实API
     const hostname = window.location.hostname
     const isProdEnv = (
+      hostname.includes('yunkes.com') ||
       hostname.includes('abc789.cn') ||
       hostname.includes('vercel.app') ||
       hostname.includes('netlify.app') ||
@@ -1268,6 +1269,7 @@ export const useOrderStore = createPersistentStore('order', () => {
     // 检测是否为生产环境
     const hostname = window.location.hostname
     const isProdEnv = (
+      hostname.includes('yunkes.com') ||
       hostname.includes('abc789.cn') ||
       hostname.includes('vercel.app') ||
       hostname.includes('netlify.app') ||

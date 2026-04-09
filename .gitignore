@@ -126,3 +126,12 @@ backend/scripts/generate-saas-license.js
 # 运营方机密文档（含安全机制详细说明，绝不可交付客户）
 docs/重要文件/部署模式许可证管理-运营方完整操作手册（机密）.md
 
+# 商业合同模板（运营方内部使用，不交付客户）
+docs/商业合同/
+
+# 发布指南（运营方内部使用）
+docs/发布指南/
+
+# Release 打包输出
+CRM-v*-release.zip
+

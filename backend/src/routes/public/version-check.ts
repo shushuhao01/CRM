@@ -13,10 +13,10 @@ const router = Router();
 
 /**
  * 获取最新发布版本
- * GET /version-check/latest
+ * GET /version-check (根路径 + /latest 共用同一个处理函数)
  * Query: currentVersion (可选，用于比较)
  */
-router.get('/latest', async (req: Request, res: Response) => {
+const getLatestVersion = async (req: Request, res: Response) => {
   try {
     const { currentVersion } = req.query;
     const versionRepo = AppDataSource.getRepository(Version);
@@ -64,6 +64,9 @@ router.get('/latest', async (req: Request, res: Response) => {
           releaseNotesHtml: latest.releaseNotesHtml,
           downloadUrl: latest.downloadUrl,
           sourceType: latest.sourceType,
+          gitRepoUrl: latest.gitRepoUrl,
+          gitBranch: latest.gitBranch,
+          gitTag: latest.gitTag,
           fileSize: latest.fileSize,
           isForceUpdate: latest.isForceUpdate,
           publishedAt: latest.publishedAt,
@@ -75,7 +78,9 @@ router.get('/latest', async (req: Request, res: Response) => {
     log.error('[Version Check] Get latest failed:', error);
     res.status(500).json({ success: false, message: '检查版本失败' });
   }
-});
+};
+router.get('/', getLatestVersion);
+router.get('/latest', getLatestVersion);
 
 /**
  * 获取版本更新历史列表

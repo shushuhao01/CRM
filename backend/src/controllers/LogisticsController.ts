@@ -37,47 +37,55 @@ export class LogisticsController {
         orderId
       } = req.query;
 
-      const queryBuilder = this.logisticsTrackingRepository
-        .createQueryBuilder('logistics')
-        .leftJoinAndSelect('logistics.order', 'order')
-        .leftJoinAndSelect('order.customer', 'customer');
+      let list: any[] = [];
+      let total = 0;
 
-      // 搜索条件
-      if (trackingNo) {
-        queryBuilder.andWhere('logistics.trackingNo LIKE :trackingNo', {
-          trackingNo: `%${trackingNo}%`
-        });
+      try {
+        const queryBuilder = this.logisticsTrackingRepository
+          .createQueryBuilder('logistics');
+
+        // 搜索条件
+        if (trackingNo) {
+          queryBuilder.andWhere('logistics.trackingNo LIKE :trackingNo', {
+            trackingNo: `%${trackingNo}%`
+          });
+        }
+
+        if (companyCode) {
+          queryBuilder.andWhere('logistics.companyCode = :companyCode', { companyCode });
+        }
+
+        if (status) {
+          queryBuilder.andWhere('logistics.status = :status', { status });
+        }
+
+        if (orderId) {
+          queryBuilder.andWhere('logistics.orderId = :orderId', { orderId });
+        }
+
+        if (startDate && endDate) {
+          queryBuilder.andWhere('logistics.createdAt BETWEEN :startDate AND :endDate', {
+            startDate,
+            endDate
+          });
+        }
+
+        // 分页
+        const skip = (Number(page) - 1) * Number(pageSize);
+        queryBuilder.skip(skip).take(Number(pageSize));
+
+        // 排序
+        queryBuilder.orderBy('logistics.updatedAt', 'DESC');
+
+        [list, total] = await queryBuilder.getManyAndCount();
+      } catch (queryError) {
+        log.warn('物流列表查询失败（可能表不存在），返回空列表:', queryError instanceof Error ? queryError.message : queryError);
+        list = [];
+        total = 0;
       }
-
-      if (companyCode) {
-        queryBuilder.andWhere('logistics.companyCode = :companyCode', { companyCode });
-      }
-
-      if (status) {
-        queryBuilder.andWhere('logistics.status = :status', { status });
-      }
-
-      if (orderId) {
-        queryBuilder.andWhere('logistics.orderId = :orderId', { orderId });
-      }
-
-      if (startDate && endDate) {
-        queryBuilder.andWhere('logistics.createdAt BETWEEN :startDate AND :endDate', {
-          startDate,
-          endDate
-        });
-      }
-
-      // 分页
-      const skip = (Number(page) - 1) * Number(pageSize);
-      queryBuilder.skip(skip).take(Number(pageSize));
-
-      // 排序
-      queryBuilder.orderBy('logistics.updatedAt', 'DESC');
-
-      const [list, total] = await queryBuilder.getManyAndCount();
 
       res.json({
+        success: true,
         code: 200,
         message: '获取成功',
         data: {
@@ -90,6 +98,7 @@ export class LogisticsController {
     } catch (error) {
       log.error('获取物流列表失败:', error);
       res.status(500).json({
+        success: false,
         code: 500,
         message: '获取物流列表失败',
         error: error instanceof Error ? error.message : String(error)

@@ -1,7 +1,7 @@
 -- =============================================
 -- CRM系统数据库初始化脚本（最新版）
--- 版本：1.9.4
--- 更新时间：2026-04-05
+-- 版本：1.9.5
+-- 更新时间：2026-04-08
 -- 适用于：MySQL 8.0+ / 宝塔面板 7.x+
 -- 
 -- 更新内容：
@@ -22,6 +22,9 @@
 -- 15. admin_users表新增role_id字段，关联角色权限
 -- 16. 新增扩容管理表(capacity_price_configs, capacity_orders)
 -- 17. tenants表新增extra_users/extra_storage_gb扩容字段
+-- 18. 新增面单打印记录表(print_label_logs)，记录每次打印面单操作
+-- 19. 新增寄件人/退货地址表(sender_addresses)，支持多寄件人、退货地址管理
+-- 20. logistics_api_configs表新增support_create_order字段，标记物流公司是否支持下单生成运单号
 -- =============================================
 
 -- 设置字符集和时区
@@ -1278,6 +1281,7 @@ CREATE TABLE `logistics_api_configs` (
   `api_url` VARCHAR(500) NULL COMMENT 'API接口地址',
   `api_environment` ENUM('sandbox', 'production') DEFAULT 'sandbox' COMMENT 'API环境(sandbox-测试/production-生产)',
   `extra_config` JSON NULL COMMENT '扩展配置(JSON格式)',
+  `support_create_order` TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否支持下单生成运单号: 0=仅查询, 1=支持下单',
   `enabled` TINYINT(1) DEFAULT 1 COMMENT '是否启用(0-禁用/1-启用)',
   `last_test_time` DATETIME NULL COMMENT '最后测试时间',
   `last_test_result` TINYINT(1) NULL COMMENT '最后测试结果(0-失败/1-成功)',
@@ -4079,6 +4083,67 @@ INSERT IGNORE INTO `capacity_price_configs` (`id`, `type`, `billing_cycle`, `uni
   (UUID(), 'user', 'yearly', 300.00, 1, 200, '按年扩容用户数，每人每年300元', 1),
   (UUID(), 'storage', 'monthly', 10.00, 1, 500, '按月扩容存储空间，每GB每月10元', 1),
   (UUID(), 'storage', 'yearly', 100.00, 1, 500, '按年扩容存储空间，每GB每年100元', 1);
+
+-- =============================================
+-- 面单打印记录表
+-- =============================================
+CREATE TABLE IF NOT EXISTS `print_label_logs` (
+  `id` VARCHAR(50) PRIMARY KEY COMMENT '记录ID',
+  `tenant_id` VARCHAR(36) NULL COMMENT '租户ID',
+  `order_id` VARCHAR(50) NOT NULL COMMENT '订单ID',
+  `order_number` VARCHAR(50) NOT NULL COMMENT '订单号',
+  `tracking_number` VARCHAR(100) NULL COMMENT '运单号',
+  `logistics_company_code` VARCHAR(50) NULL COMMENT '物流公司代码',
+  `logistics_company_name` VARCHAR(100) NULL COMMENT '物流公司名称',
+  `template_id` VARCHAR(100) NULL COMMENT '使用的面单模板ID',
+  `template_name` VARCHAR(200) NULL COMMENT '使用的面单模板名称',
+  `printer_name` VARCHAR(200) NULL COMMENT '使用的打印机名称',
+  `print_copies` INT DEFAULT 1 COMMENT '打印份数',
+  `print_type` ENUM('single', 'batch') DEFAULT 'single' COMMENT '打印类型(single-单张/batch-批量)',
+  `print_status` ENUM('success', 'failed', 'cancelled') DEFAULT 'success' COMMENT '打印状态',
+  `auto_shipped` TINYINT(1) DEFAULT 1 COMMENT '是否自动标记已发货(0-否/1-是)',
+  `receiver_name` VARCHAR(100) NULL COMMENT '收件人姓名',
+  `receiver_phone` VARCHAR(50) NULL COMMENT '收件人电话(加密存储)',
+  `receiver_address` VARCHAR(500) NULL COMMENT '收件人地址',
+  `operator_id` VARCHAR(50) NULL COMMENT '操作人ID',
+  `operator_name` VARCHAR(100) NULL COMMENT '操作人姓名',
+  `print_time` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '打印时间',
+  `remark` TEXT NULL COMMENT '备注',
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  INDEX `idx_tenant_id` (`tenant_id`),
+  INDEX `idx_order_id` (`order_id`),
+  INDEX `idx_order_number` (`order_number`),
+  INDEX `idx_tracking_number` (`tracking_number`),
+  INDEX `idx_logistics_company` (`logistics_company_code`),
+  INDEX `idx_print_type` (`print_type`),
+  INDEX `idx_print_status` (`print_status`),
+  INDEX `idx_operator_id` (`operator_id`),
+  INDEX `idx_print_time` (`print_time`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='面单打印记录表';
+
+-- 寄件人/退货地址表
+DROP TABLE IF EXISTS `sender_addresses`;
+CREATE TABLE IF NOT EXISTS `sender_addresses` (
+  `id` VARCHAR(50) PRIMARY KEY COMMENT '地址ID',
+  `tenant_id` VARCHAR(36) NULL COMMENT '租户ID',
+  `type` VARCHAR(20) NOT NULL DEFAULT 'sender' COMMENT '类型: sender=寄件人, return=退货地址',
+  `name` VARCHAR(50) NOT NULL COMMENT '联系人姓名',
+  `phone` VARCHAR(20) NOT NULL COMMENT '联系电话',
+  `province` VARCHAR(50) NULL COMMENT '省',
+  `city` VARCHAR(50) NULL COMMENT '市',
+  `district` VARCHAR(50) NULL COMMENT '区/县',
+  `address` VARCHAR(500) NOT NULL COMMENT '详细地址',
+  `full_address` VARCHAR(600) NULL COMMENT '完整地址(省市区+详细)',
+  `is_default` TINYINT(1) DEFAULT 0 COMMENT '是否默认: 0否 1是',
+  `sort_order` INT DEFAULT 0 COMMENT '排序',
+  `remark` TEXT NULL COMMENT '备注',
+  `linked_service_types` JSON NULL COMMENT '关联售后类型(退货地址用): ["return","exchange"]',
+  `created_by` VARCHAR(50) NULL COMMENT '创建人ID',
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  INDEX `idx_sender_addresses_tenant_type` (`tenant_id`, `type`),
+  INDEX `idx_sender_addresses_tenant_default` (`tenant_id`, `type`, `is_default`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='寄件人/退货地址表';
 
 -- =============================================
 -- 数据库初始化完成

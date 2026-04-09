@@ -11,6 +11,7 @@ import { AppDataSource } from '../config/database';
 import { notificationTemplateService } from './NotificationTemplateService';
 import { adminNotificationService } from './AdminNotificationService';
 import { SITE_CONFIG } from '../config/sites';
+import { formatDate } from '../utils/dateFormat';
 
 import { log } from '../config/logger';
 export class LicenseExpirationReminderService {
@@ -71,7 +72,7 @@ export class LicenseExpirationReminderService {
     try {
       const targetDate = new Date();
       targetDate.setDate(targetDate.getDate() + days);
-      const targetDateStr = targetDate.toISOString().slice(0, 10);
+      const targetDateStr = formatDate(targetDate);
 
       // 查询即将到期的租户
       const tenants = await AppDataSource.query(`
@@ -105,7 +106,7 @@ export class LicenseExpirationReminderService {
   private async sendExpirationReminder(tenant: any, remainDays: number): Promise<boolean> {
     try {
       // 检查今天是否已发送过提醒(防止重复发送)
-      const today = new Date().toISOString().slice(0, 10);
+      const today = formatDate(new Date());
       const logs = await AppDataSource.query(`
         SELECT id FROM notification_logs
         WHERE template_code = 'license_expire_soon'

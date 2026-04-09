@@ -73,9 +73,13 @@
             <div class="category-icon">🏢</div>
             <h3>私有部署</h3>
             <ul>
+              <li><router-link to="/docs/deploy/guide">🧭 智能部署引导</router-link></li>
               <li><router-link to="/docs/deploy/require">环境要求</router-link></li>
-              <li><router-link to="/docs/deploy/install">安装指南</router-link></li>
+              <li><router-link to="/docs/deploy/local">本地电脑部署</router-link></li>
+              <li><router-link to="/docs/deploy/bt">宝塔面板部署</router-link></li>
+              <li><router-link to="/docs/deploy/linux">纯Linux部署</router-link></li>
               <li><router-link to="/docs/deploy/configure">配置说明</router-link></li>
+              <li><router-link to="/docs/deploy/activate">激活与授权</router-link></li>
               <li><router-link to="/docs/deploy/faq">常见问题</router-link></li>
             </ul>
           </div>

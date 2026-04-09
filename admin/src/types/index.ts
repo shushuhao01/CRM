@@ -180,6 +180,9 @@ export interface UpdateLicenseData {
   end_date?: string | null
   notes?: string
   status?: string
+  memberPassword?: string
+  crmPassword?: string
+  [key: string]: any
 }
 
 /** 授权日志查询参数 */
@@ -225,6 +228,9 @@ export interface UpdateTenantData {
   features?: string[]
   notes?: string
   status?: string
+  memberPassword?: string
+  crmPassword?: string
+  [key: string]: any
 }
 
 /** 套餐查询参数 */

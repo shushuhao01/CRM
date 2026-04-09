@@ -5,6 +5,7 @@
 import { useUserStore } from '@/stores/user'
 import { useServerStore } from '@/stores/server'
 import { callStateService } from './callStateService'
+import { APP_VERSION } from '@/config/app'
 
 // 消息类型
 export interface WsMessage {
@@ -368,7 +369,7 @@ class WebSocketService {
     const userStore = useUserStore()
     this.send('DEVICE_ONLINE', {
       deviceId: userStore.deviceInfo?.deviceId,
-      appVersion: '1.0.0'
+      appVersion: APP_VERSION
     })
   }
 

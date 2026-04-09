@@ -2,6 +2,7 @@ import { useLogisticsStatusStore } from '@/stores/logisticsStatus'
 import { useOrderStore } from '@/stores/order'
 import { usePerformanceStore } from '@/stores/performance'
 import { ElMessage } from 'element-plus'
+import { detectLogisticsStatusFromDescription } from '@/utils/logisticsStatusConfig'
 
 export interface AutoSyncConfig {
   enabled: boolean
@@ -68,7 +69,7 @@ class AutoStatusSyncService {
   updateConfig(newConfig: Partial<AutoSyncConfig>) {
     this.config = { ...this.config, ...newConfig }
     this.saveConfig()
-    
+
     // 如果启用状态发生变化，重新启动或停止服务
     if (newConfig.enabled !== undefined) {
       if (newConfig.enabled) {
@@ -127,12 +128,10 @@ class AutoStatusSyncService {
 
     try {
       console.log('开始执行自动状态同步...')
-      
-      const logisticsStore = useLogisticsStatusStore()
-      
+
       // 获取需要检测的订单列表
       const pendingOrders = await this.getPendingOrders()
-      
+
       if (pendingOrders.length === 0) {
         console.log('没有需要同步的订单')
         result.success = true
@@ -142,7 +141,7 @@ class AutoStatusSyncService {
 
       // 分批处理订单
       const batches = this.chunkArray(pendingOrders, this.config.batchSize)
-      
+
       for (const batch of batches) {
         try {
           const batchResult = await this.processBatch(batch)
@@ -165,7 +164,7 @@ class AutoStatusSyncService {
       this.lastSyncTime = result.lastSyncTime
 
       console.log(`自动同步完成: 更新${result.updatedCount}个订单, 错误${result.errorCount}个`)
-      
+
       if (result.updatedCount > 0) {
         ElMessage.success(`自动同步完成，更新了${result.updatedCount}个订单状态`)
       }
@@ -181,25 +180,30 @@ class AutoStatusSyncService {
 
   // 获取待检测的订单
   private async getPendingOrders() {
-    const logisticsStore = useLogisticsStatusStore()
-    
-    // 获取状态为"运输中"、"派送中"等需要跟踪的订单
-    const trackingStatuses = ['shipping', 'delivering', 'picked']
-    const orders = []
+    try {
+      // 🔥 通过后端API获取需要跟踪的已发货订单
+      const { orderApi } = await import('@/api/order')
+      const response = await orderApi.getShippingShipped({
+        status: 'shipped',
+        pageSize: this.config.batchSize
+      }) as any
 
-    for (const status of trackingStatuses) {
-      try {
-        const statusOrders = await logisticsStore.fetchOrderList({
-          status,
-          pageSize: this.config.batchSize
-        })
-        orders.push(...statusOrders.filter(order => order.trackingNo))
-      } catch (error) {
-        console.error(`获取${status}状态订单失败:`, error)
+      if (response?.data?.list && Array.isArray(response.data.list)) {
+        return response.data.list
+          .filter((order: any) => order.trackingNumber || order.trackingNo)
+          .map((order: any) => ({
+            id: order.id,
+            orderNo: order.orderNumber || order.orderNo,
+            trackingNo: order.trackingNumber || order.trackingNo,
+            status: order.logisticsStatus || order.status,
+            customerPhone: order.customerPhone || order.shippingPhone
+          }))
       }
+      return []
+    } catch (error) {
+      console.error('获取待检测订单失败:', error)
+      return []
     }
-
-    return orders
   }
 
   // 处理订单批次
@@ -220,29 +224,29 @@ class AutoStatusSyncService {
         try {
           // 获取最新物流信息
           const trackingInfo = await logisticsStore.fetchTrackingInfo(order.trackingNo)
-          
+
           if (trackingInfo.length > 0) {
             const latestInfo = trackingInfo[0]
             const newStatus = this.determineStatusFromTracking(latestInfo.description)
-            
+
             // 如果状态发生变化，更新订单状态
             if (newStatus && newStatus !== order.status) {
-              await logisticsStore.updateOrderStatus(order.id, {
-                status: newStatus,
-                remark: `自动同步: ${latestInfo.description}`,
-                autoUpdated: true
-              })
-              
+              await logisticsStore.updateOrderStatus(
+                order.orderNo,
+                newStatus,
+                `自动同步: ${latestInfo.description}`
+              )
+
               result.updatedCount++
               console.log(`订单${order.orderNo}状态已更新: ${order.status} -> ${newStatus}`)
             }
           }
-          
+
           success = true
         } catch (error) {
           retryCount++
           console.error(`处理订单${order.orderNo}失败 (重试${retryCount}/${this.config.retryCount}):`, error)
-          
+
           if (retryCount >= this.config.retryCount) {
             result.errorCount++
             result.errors.push(`订单${order.orderNo}处理失败: ${error}`)
@@ -257,27 +261,18 @@ class AutoStatusSyncService {
     return result
   }
 
-  // 根据物流描述判断状态
+  // 根据物流描述判断状态（使用统一的状态检测逻辑）
   private determineStatusFromTracking(description: string): string | null {
-    const desc = description.toLowerCase()
-    
-    if (desc.includes('签收') || desc.includes('已收货')) {
-      return 'delivered'
-    } else if (desc.includes('拒收') || desc.includes('拒绝')) {
-      return 'rejected'
-    } else if (desc.includes('派送') || desc.includes('配送')) {
-      return 'delivering'
-    } else if (desc.includes('运输') || desc.includes('转运')) {
-      return 'shipping'
-    } else if (desc.includes('揽收') || desc.includes('收件')) {
-      return 'picked'
-    }
-    
-    return null
+    if (!description) return null
+
+    const detected = detectLogisticsStatusFromDescription(description)
+    // 如果检测结果是 unknown 或 in_transit（默认值），返回 null 表示状态不确定
+    if (detected === 'unknown') return null
+    return detected
   }
 
   // 同步到其他模块
-  private async syncToOtherModules(updatedCount: number) {
+  private async syncToOtherModules(_updatedCount: number) {
     try {
       if (this.config.syncToPerformance) {
         const performanceStore = usePerformanceStore()

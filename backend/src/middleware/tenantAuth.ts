@@ -5,6 +5,7 @@
 
 import { Request, Response, NextFunction } from 'express'
 import jwt from 'jsonwebtoken'
+import { JwtConfig } from '../config/jwt'
 import { deployConfig } from '../config/deploy'
 import { AppDataSource } from '../config/database'
 import { TenantContextManager } from '../utils/tenantContext'
@@ -47,7 +48,7 @@ export const tenantAuth = async (
     }
 
     // 验证Token
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key') as any
+    const decoded = jwt.verify(token, JwtConfig.getAccessTokenSecret()) as any
 
     // 根据部署模式处理
     if (deployConfig.isSaaS()) {
@@ -154,59 +155,21 @@ export const optionalTenantAuth = async (
 }
 
 /**
- * 租户资源限制中间件
- * 检查租户的资源使用是否超限
+ * ⚠️ 已弃用 — 请使用 middleware/checkTenantLimits.ts 中的完整实现
  *
- * 使用方式：
- * router.post('/api/users', tenantAuth, checkTenantLimits, createUser)
+ * 此处仅保留导出名以兼容可能的旧引用，内部直接放行。
+ * 完整的用户数/存储空间/模块限制检查请使用：
+ *   import { checkUserLimit, checkStorageLimit } from './checkTenantLimits'
+ *
+ * @deprecated
  */
 export const checkTenantLimits = async (
-  req: TenantRequest,
-  res: Response,
+  _req: TenantRequest,
+  _res: Response,
   next: NextFunction
 ) => {
-  try {
-    // 只在SaaS模式下检查
-    if (!deployConfig.isSaaS()) {
-      next()
-      return
-    }
-
-    const tenant = req.tenantInfo
-    if (!tenant) {
-      return res.status(403).json({
-        success: false,
-        message: '租户信息缺失'
-      })
-    }
-
-    // TODO: 实现具体的资源限制检查
-    // 1. 检查用户数限制
-    // if (req.path.includes('/users') && req.method === 'POST') {
-    //   const userCount = await User.count({ where: { tenant_id: tenant.id } })
-    //   if (userCount >= tenant.max_users) {
-    //     return res.status(403).json({
-    //       message: `用户数已达上限(${tenant.max_users})`
-    //     })
-    //   }
-    // }
-
-    // 2. 检查存储空间限制
-    // if (req.path.includes('/upload')) {
-    //   const storageUsed = await getStorageUsed(tenant.id)
-    //   const maxStorage = tenant.max_storage_gb * 1024 * 1024 * 1024
-    //   if (storageUsed >= maxStorage) {
-    //     return res.status(403).json({
-    //       message: `存储空间已满(${tenant.max_storage_gb}GB)`
-    //     })
-    //   }
-    // }
-
-    next()
-  } catch (error) {
-    log.error('检查租户资源限制失败:', error)
-    next()
-  }
+  // 直接放行 — 真实限制检查在 middleware/checkTenantLimits.ts
+  next()
 }
 
 /**

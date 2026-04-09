@@ -7,6 +7,7 @@ import { AppDataSource } from '../config/database'
 import { v4 as uuidv4 } from 'uuid'
 import bcrypt from 'bcryptjs'
 import { clearLicenseWriteCache } from '../middleware/checkLicenseWrite'
+import { formatDateTime } from '../utils/dateFormat'
 
 import { log } from '../config/logger';
 const router = Router()
@@ -103,15 +104,21 @@ router.post('/activate', async (req: Request, res: Response) => {
     // 保存授权信息到本地数据库
     await ensureLicenseTable()
 
-    const now = new Date().toISOString().slice(0, 19).replace('T', ' ')
+    const now = formatDateTime(new Date())
+
+    // 🔒 保留旧记录中的安全标记（凭据是否已展示过）
+    const oldLicense = await AppDataSource.query(
+      `SELECT admin_credentials_shown FROM system_license LIMIT 1`
+    ).catch(() => [])
+    const wasCredentialsShown = (oldLicense && oldLicense.length > 0 && oldLicense[0].admin_credentials_shown === 1) ? 1 : 0
 
     // 先删除旧的授权记录
     await AppDataSource.query(`DELETE FROM system_license`)
 
-    // 插入新的授权记录
+    // 插入新的授权记录（保留凭据展示标记）
     await AppDataSource.query(
-      `INSERT INTO system_license (id, license_key, customer_name, license_type, max_users, features, expires_at, status, activated_at, machine_id, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?)`,
+      `INSERT INTO system_license (id, license_key, customer_name, license_type, max_users, features, expires_at, status, activated_at, machine_id, admin_credentials_shown, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?)`,
       [
         uuidv4(),
         licenseKey,
@@ -122,6 +129,7 @@ router.post('/activate', async (req: Request, res: Response) => {
         licenseData.expiresAt || null,
         now,
         machineId,
+        wasCredentialsShown,
         now,
         now
       ]
@@ -135,12 +143,21 @@ router.post('/activate', async (req: Request, res: Response) => {
       `SELECT id FROM users WHERE role = 'super_admin' OR role_id IN (SELECT id FROM roles WHERE code = 'super_admin') LIMIT 1`
     ).catch(() => [])
 
+    // 🔒 安全标记：检查是否已经展示过管理员凭据（防止任何情况下的二次泄露）
+    const credentialsShownFlag = await AppDataSource.query(
+      `SELECT id FROM system_license WHERE admin_credentials_shown = 1 LIMIT 1`
+    ).catch(() => [])
+    const alreadyShownCredentials = credentialsShownFlag && credentialsShownFlag.length > 0
+
     let defaultAdmin = null
+    let isFirstActivation = false
+
     if (!adminExists || adminExists.length === 0) {
-      // 🔥 私有部署：使用购买时的管理员手机号作为默认账号，密码 Aa123456
-      // customerPhone 由管理后台公开API /verify/license 返回
+      // 🔥 首次激活：管理员不存在，创建默认管理员并返回凭据（仅此一次）
+      isFirstActivation = true
+
       const adminPhone = licenseData.customerPhone || null
-      const adminUsername = adminPhone || 'admin'  // 有手机号用手机号，没有降级为 admin
+      const adminUsername = adminPhone || 'admin'
       const defaultPassword = 'Aa123456'
       const hashedPassword = await bcrypt.hash(defaultPassword, 10)
       const adminId = uuidv4()
@@ -168,22 +185,31 @@ router.post('/activate', async (req: Request, res: Response) => {
         [adminId, adminUsername, hashedPassword, adminPhone, roleId, now, now]
       )
 
-      defaultAdmin = {
-        username: adminUsername,
-        password: defaultPassword,
-        isPhoneAccount: !!adminPhone,
-        phone: adminPhone
+      // 🔒 仅当凭据未曾展示过时才返回明文密码（双重保险）
+      if (!alreadyShownCredentials) {
+        defaultAdmin = {
+          username: adminUsername,
+          password: defaultPassword,
+          isPhoneAccount: !!adminPhone,
+          phone: adminPhone
+        }
+
+        // 标记凭据已展示，后续永不再返回
+        await AppDataSource.query(
+          `UPDATE system_license SET admin_credentials_shown = 1 WHERE status = 'active'`
+        ).catch(() => {})
       }
     }
 
     res.json({
       success: true,
-      message: '系统激活成功',
+      message: isFirstActivation ? '系统首次激活成功' : '系统激活成功',
       data: {
         customerName: licenseData.customerName,
         licenseType: licenseData.licenseType,
         maxUsers: licenseData.maxUsers,
         expiresAt: licenseData.expiresAt,
+        isFirstActivation,
         defaultAdmin
       }
     })
@@ -284,10 +310,18 @@ async function ensureLicenseTable() {
       status VARCHAR(20) DEFAULT 'active',
       activated_at DATETIME,
       machine_id VARCHAR(255),
+      admin_credentials_shown TINYINT DEFAULT 0,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `).catch(() => {})
+
+  // 兼容已有的表：尝试添加新列，已存在则忽略
+  await AppDataSource.query(
+    `ALTER TABLE system_license ADD COLUMN admin_credentials_shown TINYINT DEFAULT 0`
+  ).catch(() => {
+    // 列已存在，忽略错误
+  })
 }
 
 // 本地验证授权码（离线模式）

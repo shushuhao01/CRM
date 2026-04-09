@@ -590,7 +590,7 @@ const handleSubmit = async () => {
       if (res.success) {
         // 保存完整登录信息
         Object.assign(loginInfo, {
-          loginUrl: res.data.loginUrl || 'https://app.yunke-crm.com',
+          loginUrl: res.data.loginUrl || '',
           tenantCode: res.data.tenantCode || '',
           licenseKey: res.data.licenseKey || '',
           username: res.data.adminAccount?.username || '',

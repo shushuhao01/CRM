@@ -10,6 +10,7 @@
 import { AppDataSource } from '../config/database';
 import { notificationTemplateService } from './NotificationTemplateService';
 import { adminNotificationService } from './AdminNotificationService';
+import { formatDate } from '../utils/dateFormat';
 
 import { log } from '../config/logger';
 export class PaymentReminderService {
@@ -100,7 +101,7 @@ export class PaymentReminderService {
   private async sendPaymentReminder(order: any): Promise<boolean> {
     try {
       // 检查今天是否已发送过提醒(防止重复发送)
-      const today = new Date().toISOString().slice(0, 10);
+      const today = formatDate(new Date());
       const logs = await AppDataSource.query(`
         SELECT id FROM notification_logs
         WHERE template_code = 'payment_pending'

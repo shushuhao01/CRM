@@ -11,6 +11,8 @@ import { License } from '../entities/License';
 import { LicenseLog } from '../entities/LicenseLog';
 import { v4 as uuidv4 } from 'uuid';
 import crypto from 'crypto';
+import { formatDateTime } from '../utils/dateFormat';
+import { getCurrentTenantIdSafe } from '../utils/tenantHelpers';
 
 import { log } from '../config/logger';
 export interface LicenseInfo {
@@ -45,10 +47,16 @@ class LicenseService {
       const license = result[0];
       const isExpired = license.expires_at && new Date(license.expires_at) < new Date();
 
-      // 获取当前用户数
-      const userCountResult = await AppDataSource.query(
-        `SELECT COUNT(*) as count FROM users WHERE status = 'active'`
-      ).catch(() => [{ count: 0 }]);
+      // 获取当前用户数（SaaS模式下仅统计当前租户的用户）
+      const tenantId = getCurrentTenantIdSafe();
+      let userCountQuery = `SELECT COUNT(*) as count FROM users WHERE status = 'active'`;
+      const userCountParams: any[] = [];
+      if (tenantId) {
+        userCountQuery += ` AND tenant_id = ?`;
+        userCountParams.push(tenantId);
+      }
+      const userCountResult = await AppDataSource.query(userCountQuery, userCountParams)
+        .catch(() => [{ count: 0 }]);
       const currentUsers = userCountResult[0]?.count || 0;
 
       return {
@@ -289,8 +297,8 @@ class LicenseService {
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
     const segs = Array.from({length:4}, () => Array.from({length:4}, () => chars[Math.floor(Math.random()*chars.length)]).join(''));
     const licenseKey = `PRIVATE-${segs.join('-')}`;
-    const now = new Date().toISOString().slice(0,19).replace('T',' ');
-    const expiresAt = data.expiresAt ? data.expiresAt.toISOString().slice(0,19).replace('T',' ') : null;
+    const now = formatDateTime(new Date());
+    const expiresAt = data.expiresAt ? formatDateTime(data.expiresAt) : null;
     await AppDataSource.query(
       `INSERT INTO licenses (id,license_key,customer_name,customer_contact,customer_phone,customer_email,license_type,max_users,max_storage_gb,features,expires_at,status,notes,created_by,customer_type,created_at,updated_at)
        VALUES (?,?,?,?,?,?,?,?,?,?,?,'pending',?,?,?,NOW(),NOW())`,
@@ -354,7 +362,7 @@ class LicenseService {
   }
 
   async renewLicense(id: string, expiresAt: Date) {
-    const exp = expiresAt.toISOString().slice(0,19).replace('T',' ');
+    const exp = formatDateTime(expiresAt);
     await AppDataSource.query(`UPDATE licenses SET expires_at=?,status='active',updated_at=NOW() WHERE id=?`,[exp,id]);
     const rows = await AppDataSource.query('SELECT * FROM licenses WHERE id=?',[id]);
     return rows[0];

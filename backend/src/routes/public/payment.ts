@@ -71,13 +71,9 @@ router.post('/create', async (req: Request, res: Response) => {
           )
           if (bankRows.length > 0 && bankRows[0].config_data) {
             // 解密配置
-            const crypto = await import('crypto')
-            const ENCRYPT_KEY = process.env.PAYMENT_ENCRYPT_KEY || 'crm-payment-secret-key-2024'
+            const { decryptPaymentConfig } = await import('../../utils/paymentCrypto')
             try {
-              const decipher = crypto.createDecipheriv('aes-256-cbc',
-                crypto.scryptSync(ENCRYPT_KEY, 'salt', 32),
-                Buffer.alloc(16, 0))
-              const decrypted = decipher.update(bankRows[0].config_data, 'hex', 'utf8') + decipher.final('utf8')
+              const decrypted = decryptPaymentConfig(bankRows[0].config_data)
               const bankData = JSON.parse(decrypted)
               responseData.bankInfo = {
                 bankName: bankData.bankName || '',

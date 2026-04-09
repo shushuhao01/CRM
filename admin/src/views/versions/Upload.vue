@@ -69,8 +69,8 @@
         <!-- Git 模式 -->
         <template v-if="form.sourceType === 'git'">
           <el-form-item label="仓库地址" prop="gitRepoUrl">
-            <el-input v-model="form.gitRepoUrl" placeholder="https://github.com/yourname/crm.git" />
-            <div class="form-tip">支持 HTTPS 地址，如有需要可在私有客户服务器配置凭证</div>
+            <el-input v-model="form.gitRepoUrl" placeholder="https://github.com/shushuhao01/crm-system.git" />
+            <div class="form-tip">填写交付给私有部署客户的公开仓库地址，支持 HTTPS 格式</div>
           </el-form-item>
           <el-form-item label="分支">
             <el-input v-model="form.gitBranch" placeholder="main" style="width: 220px" />

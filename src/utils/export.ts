@@ -158,6 +158,25 @@ export interface ExportCustomer {
   source?: string
   tags?: string[]
   remarks?: string
+  // 新增字段
+  gender?: string
+  birthday?: string
+  height?: number
+  weight?: number
+  medicalHistory?: string
+  fanAcquisitionTime?: string
+  improvementGoals?: string[]
+  serviceWechat?: string
+  province?: string
+  city?: string
+  district?: string
+  returnCount?: number
+  lastServiceDate?: string
+  otherPhones?: string[]
+  street?: string
+  detailAddress?: string
+  overseasAddress?: string
+  otherGoals?: string
 }
 
 // 订单导出接口
@@ -528,19 +547,37 @@ export const exportCustomersToExcel = (customers: ExportCustomer[], filename: st
     '客户编码',
     '客户姓名',
     '手机号码',
+    '其他手机号',
+    '性别',
+    '生日',
     '年龄',
+    '身高(cm)',
+    '体重(kg)',
     '地址',
+    '省份',
+    '城市',
+    '区县',
+    '街道',
+    '详细地址',
+    '境外地址',
     '客户等级',
     '客户状态',
     '负责销售',
     '订单数量',
+    '退货次数',
     '创建时间',
     '创建人',
     '微信号',
+    '客服微信',
     '邮箱',
     '公司',
     '职位',
     '客户来源',
+    '进粉时间',
+    '疾病史',
+    '改善目标',
+    '其他改善目标',
+    '最后服务时间',
     '标签',
     '备注'
   ]
@@ -568,35 +605,53 @@ export const exportCustomersToExcel = (customers: ExportCustomer[], filename: st
   const data = customers.map(customer => {
     if (hasExportPermission) {
       return [
-        customer.code,
-        customer.name,
-        customer.phone,
-        customer.age,
-        customer.address,
-        customer.level,
-        customer.status,
-        customer.salesPersonName || customer.salesPersonId,
-        customer.orderCount,
-        customer.createTime,
-        customer.createdBy,
+        customer.code || '',
+        customer.name || '',
+        customer.phone || '',
+        customer.otherPhones ? customer.otherPhones.join(', ') : '',
+        getGenderText(customer.gender || ''),
+        customer.birthday || '',
+        customer.age || '',
+        customer.height || '',
+        customer.weight || '',
+        customer.address || '',
+        customer.province || '',
+        customer.city || '',
+        customer.district || '',
+        customer.street || '',
+        customer.detailAddress || '',
+        customer.overseasAddress || '',
+        customer.level || '',
+        customer.status || '',
+        customer.salesPersonName || customer.salesPersonId || '',
+        customer.orderCount || 0,
+        customer.returnCount || 0,
+        customer.createTime || '',
+        customer.createdBy || '',
         customer.wechatId || '',
+        customer.serviceWechat || '',
         customer.email || '',
         customer.company || '',
         customer.position || '',
         customer.source || '',
+        customer.fanAcquisitionTime || '',
+        customer.medicalHistory || '',
+        customer.improvementGoals ? customer.improvementGoals.join(', ') : '',
+        customer.otherGoals || '',
+        customer.lastServiceDate || '',
         customer.tags ? customer.tags.join(', ') : '',
         customer.remarks || ''
       ]
     } else {
       return [
-        customer.code,
-        customer.name,
+        customer.code || '',
+        customer.name || '',
         maskPhone(customer.phone),
-        customer.level,
-        customer.status,
-        customer.salesPersonName || customer.salesPersonId,
-        customer.orderCount,
-        customer.createTime
+        customer.level || '',
+        customer.status || '',
+        customer.salesPersonName || customer.salesPersonId || '',
+        customer.orderCount || 0,
+        customer.createTime || ''
       ]
     }
   })
@@ -615,21 +670,39 @@ export const exportCustomersToExcel = (customers: ExportCustomer[], filename: st
     { wch: 15 }, // 客户编码
     { wch: 12 }, // 客户姓名
     { wch: 15 }, // 手机号码
+    { wch: 20 }, // 其他手机号
+    { wch: 6 },  // 性别
+    { wch: 12 }, // 生日
     { wch: 8 },  // 年龄
+    { wch: 10 }, // 身高
+    { wch: 10 }, // 体重
     { wch: 30 }, // 地址
+    { wch: 10 }, // 省份
+    { wch: 10 }, // 城市
+    { wch: 10 }, // 区县
+    { wch: 15 }, // 街道
+    { wch: 30 }, // 详细地址
+    { wch: 30 }, // 境外地址
     { wch: 10 }, // 客户等级
     { wch: 10 }, // 客户状态
     { wch: 12 }, // 负责销售
     { wch: 10 }, // 订单数量
+    { wch: 10 }, // 退货次数
     { wch: 18 }, // 创建时间
     { wch: 12 }, // 创建人
     { wch: 15 }, // 微信号
+    { wch: 15 }, // 客服微信
     { wch: 20 }, // 邮箱
     { wch: 20 }, // 公司
     { wch: 15 }, // 职位
     { wch: 12 }, // 客户来源
+    { wch: 18 }, // 进粉时间
+    { wch: 25 }, // 疾病史
+    { wch: 25 }, // 改善目标
+    { wch: 25 }, // 其他改善目标
+    { wch: 18 }, // 最后服务时间
     { wch: 20 }, // 标签
-    { wch: 25 }  // 备注
+    { wch: 30 }  // 备注
   ]
 
   const limitedColWidths = [

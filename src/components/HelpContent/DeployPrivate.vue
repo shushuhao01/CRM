@@ -133,7 +133,7 @@
 cd /www/wwwroot
 
 # 克隆项目
-git clone https://github.com/your-repo/CRM.git
+git clone https://github.com/shushuhao01/crm-system.git
 
 # 进入项目目录
 cd CRM</pre>

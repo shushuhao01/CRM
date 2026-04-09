@@ -6,6 +6,7 @@ import { AppDataSource } from '../config/database'
 import { v4 as uuidv4 } from 'uuid'
 import crypto from 'crypto'
 import nodemailer from 'nodemailer'
+import { formatDateTime } from '../utils/dateFormat'
 
 import { log } from '../config/logger';
 // 事件类型定义
@@ -425,7 +426,7 @@ class AdminNotificationService {
   }
 
   async saveChannel(channelType: string, data: { name?: string; is_enabled?: boolean; config_data?: any }) {
-    const now = new Date().toISOString().slice(0, 19).replace('T', ' ')
+    const now = formatDateTime(new Date())
     const configStr = data.config_data ? JSON.stringify(data.config_data) : '{}'
 
     const existing = await AppDataSource.query(

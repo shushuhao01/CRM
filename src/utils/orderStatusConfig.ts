@@ -50,7 +50,12 @@ export const ORDER_STATUS_COLORS: Record<string, string> = {
   'out_for_delivery': '#EB2F96',      // 洋红色 - 派送中
   'exception': '#FF4D4F',             // 红色 - 异常
   'returned': '#FA541C',              // 橙红色 - 已退回
-  'todo': '#597EF7'                   // 浅紫蓝 - 待办
+  'todo': '#597EF7',                  // 浅紫蓝 - 待办
+
+  // 🔥 非标准物流状态别名（兼容历史数据）
+  'delivering': '#EB2F96',            // 洋红色 - 派送中（同 out_for_delivery）
+  'shipping': '#13C2C2',              // 明青色 - 运输中（同 in_transit）
+  'picked': '#722ED1'                 // 紫罗兰 - 已揽收（同 picked_up）
 }
 
 // 订单状态文本映射
@@ -102,7 +107,12 @@ export const ORDER_STATUS_TEXT: Record<string, string> = {
   'out_for_delivery': '派送中',
   'exception': '异常',
   'returned': '已退回',
-  'todo': '待办'
+  'todo': '待办',
+
+  // 🔥 非标准物流状态别名（兼容历史数据）
+  'delivering': '派送中',
+  'shipping': '运输中',
+  'picked': '已揽收'
 }
 
 // Element Plus Tag 类型映射
@@ -152,7 +162,12 @@ export const ORDER_STATUS_TAG_TYPE: Record<string, 'success' | 'warning' | 'dang
   'out_for_delivery': 'warning',
   'exception': 'danger',
   'returned': 'danger',
-  'todo': 'warning'
+  'todo': 'warning',
+
+  // 🔥 非标准物流状态别名（兼容历史数据）
+  'delivering': 'warning',
+  'shipping': 'primary',
+  'picked': 'primary'
 }
 
 /**

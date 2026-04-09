@@ -5,9 +5,11 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { AppDataSource } from '../config/database';
+import { JwtConfig } from '../config/jwt';
 import { log } from '../config/logger';
 
-const MEMBER_JWT_SECRET = process.env.MEMBER_JWT_SECRET || process.env.JWT_SECRET || 'member-center-secret-key-2026';
+// 会员中心密钥：优先 MEMBER_JWT_SECRET → 否则复用统一的安全JWT密钥
+const MEMBER_JWT_SECRET = process.env.MEMBER_JWT_SECRET || JwtConfig.getAccessTokenSecret();
 
 export interface MemberJwtPayload {
   type: 'member';

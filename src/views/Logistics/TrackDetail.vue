@@ -116,7 +116,7 @@
 
       <!-- 右侧信息 -->
       <el-col :span="8">
-        <!-- 状态统计 -->
+        <!-- 配送进度 -->
         <el-card class="status-card">
           <template #header>
             <div class="card-header">
@@ -124,16 +124,25 @@
             </div>
           </template>
 
-          <div class="progress-info">
-            <el-progress
-              :percentage="getProgressPercentage()"
-              :color="getProgressColor()"
-              :stroke-width="8"
-              text-inside
-            />
-            <div class="progress-text">
-              {{ getProgressText() }}
+          <div class="progress-steps">
+            <div
+              v-for="(step, idx) in progressSteps"
+              :key="idx"
+              class="progress-step"
+              :class="{ active: step.active, current: step.current }"
+            >
+              <div class="step-icon">
+                <el-icon v-if="step.active && !step.current" :size="16"><Check /></el-icon>
+                <span v-else>{{ idx + 1 }}</span>
+              </div>
+              <div class="step-label">{{ step.label }}</div>
+              <div v-if="idx < progressSteps.length - 1" class="step-line" :class="{ filled: step.active && !step.current }"></div>
             </div>
+          </div>
+          <div class="progress-summary">
+            <el-tag :type="getStatusColor(trackingInfo.status)" effect="dark" size="large">
+              {{ getStatusText(trackingInfo.status) }}
+            </el-tag>
           </div>
         </el-card>
 
@@ -200,7 +209,8 @@ import {
   Refresh,
   Share,
   Printer,
-  Location
+  Location,
+  Check
 } from '@element-plus/icons-vue'
 import { useOrderStore } from '@/stores/order'
 
@@ -239,20 +249,76 @@ const trackingInfo = reactive({
 })
 
 // 物流轨迹
-const trackingHistory = ref([])
+interface TrackingHistoryItem {
+  time: string
+  status: string
+  description: string
+  location: string
+  operator: string
+  type: string
+}
+const trackingHistory = ref<TrackingHistoryItem[]>([])
+
+/**
+ * 配送进度步骤（根据当前状态实时计算）
+ */
+const progressSteps = computed(() => {
+  const steps = [
+    { label: '已揽收', key: 'picked_up', active: false, current: false },
+    { label: '运输中', key: 'in_transit', active: false, current: false },
+    { label: '派送中', key: 'out_for_delivery', active: false, current: false },
+    { label: '已签收', key: 'delivered', active: false, current: false }
+  ]
+
+  const status = trackingInfo.status
+  const statusOrder = ['picked_up', 'shipped', 'in_transit', 'out_for_delivery', 'delivering', 'delivered']
+  const currentIndex = statusOrder.indexOf(status)
+
+  // 异常/拒收/退回特殊处理
+  if (['exception', 'rejected', 'returned'].includes(status)) {
+    // 标记前面已完成的步骤
+    steps.forEach((step, idx) => {
+      if (idx < steps.length - 1) {
+        step.active = true
+      }
+    })
+    return steps
+  }
+
+  steps.forEach((step) => {
+    const stepIndex = statusOrder.indexOf(step.key)
+    if (currentIndex >= 0 && stepIndex >= 0 && stepIndex <= currentIndex) {
+      step.active = true
+    }
+    if (step.key === status || (status === 'shipped' && step.key === 'picked_up') || (status === 'delivering' && step.key === 'out_for_delivery')) {
+      step.current = true
+    }
+  })
+
+  return steps
+})
 
 /**
  * 获取状态颜色
  */
 const getStatusColor = (status: string) => {
-  const colorMap = {
+  const colorMap: Record<string, string> = {
     'pending': 'info',
+    'pending_shipment': 'info',
+    'shipped': 'primary',
     'picked_up': 'warning',
+    'picked': 'warning',
     'in_transit': 'primary',
+    'shipping': 'primary',
     'out_for_delivery': 'warning',
+    'delivering': 'warning',
     'delivered': 'success',
     'exception': 'danger',
-    'returned': 'info'
+    'package_exception': 'danger',
+    'rejected': 'danger',
+    'rejected_returned': 'danger',
+    'returned': 'info',
+    'cancelled': 'info'
   }
   return colorMap[status] || 'info'
 }
@@ -261,14 +327,24 @@ const getStatusColor = (status: string) => {
  * 获取状态文本
  */
 const getStatusText = (status: string) => {
-  const textMap = {
+  const textMap: Record<string, string> = {
     'pending': '待发货',
+    'pending_shipment': '待发货',
+    'shipped': '已发货',
     'picked_up': '已揽收',
+    'picked': '已揽收',
     'in_transit': '运输中',
+    'shipping': '运输中',
     'out_for_delivery': '派送中',
+    'delivering': '派送中',
     'delivered': '已签收',
     'exception': '异常',
-    'returned': '已退回'
+    'package_exception': '包裹异常',
+    'rejected': '拒收',
+    'rejected_returned': '拒收退回',
+    'returned': '已退回',
+    'cancelled': '已取消',
+    'unknown': '未知'
   }
   return textMap[status] || '未知状态'
 }
@@ -286,44 +362,6 @@ const getTimelineType = (type: string) => {
   return typeMap[type] || 'primary'
 }
 
-/**
- * 获取进度百分比
- */
-const getProgressPercentage = () => {
-  const statusMap = {
-    'pending': 0,
-    'picked_up': 20,
-    'in_transit': 60,
-    'out_for_delivery': 80,
-    'delivered': 100,
-    'exception': 50,
-    'returned': 0
-  }
-  return statusMap[trackingInfo.status] || 0
-}
-
-/**
- * 获取进度颜色
- */
-const getProgressColor = () => {
-  const colorMap = {
-    'pending': '#909399',
-    'picked_up': '#E6A23C',
-    'in_transit': '#409EFF',
-    'out_for_delivery': '#E6A23C',
-    'delivered': '#67C23A',
-    'exception': '#F56C6C',
-    'returned': '#909399'
-  }
-  return colorMap[trackingInfo.status] || '#909399'
-}
-
-/**
- * 获取进度文本
- */
-const getProgressText = () => {
-  return getStatusText(trackingInfo.status)
-}
 
 /**
  * 获取已用时长
@@ -457,7 +495,7 @@ const loadTrackingData = async () => {
         order = response
         console.log('[物流跟踪详情] 从API获取订单成功:', order.orderNumber)
       }
-    } catch (apiError) {
+    } catch (_apiError) {
       console.log('[物流跟踪详情] API获取失败，尝试从store查找')
     }
 
@@ -526,34 +564,40 @@ const loadTrackingData = async () => {
 
     console.log('[物流跟踪详情] 物流信息已加载:', trackingInfo)
 
-    // 使用真实物流轨迹数据
-    if (order.logisticsHistory && Array.isArray(order.logisticsHistory) && order.logisticsHistory.length > 0) {
-      trackingHistory.value = order.logisticsHistory.map((item: any) => ({
-        time: item.time || '',
-        status: getLogisticsStatusText(item.status),
-        description: item.description || '',
-        location: item.location || '',
-        operator: item.operator || '',
-        type: getTimelineTypeByStatus(item.status)
-      })).reverse() // 倒序显示，最新的在上面
-    } else {
-      // 如果没有物流历史，从状态历史中提取物流相关信息
-      if (order.statusHistory && Array.isArray(order.statusHistory)) {
-        const logisticsStatuses = ['shipped', 'delivered', 'in_transit', 'out_for_delivery', 'picked_up']
-        const logisticsHistoryItems = order.statusHistory
-          .filter((h: any) => logisticsStatuses.includes(h.status))
-          .map((h: any) => ({
-            time: h.time || '',
-            status: getLogisticsStatusText(h.status),
-            description: h.description || h.remark || '',
-            location: '',
-            operator: h.operator || '',
-            type: getTimelineTypeByStatus(h.status)
-          }))
+    // 🔥 优先从真实API获取物流轨迹
+    await fetchRealTraces(order)
 
-        trackingHistory.value = logisticsHistoryItems.reverse()
+    // 如果API没有获取到轨迹，尝试使用订单本地数据
+    if (trackingHistory.value.length === 0) {
+      // 使用真实物流轨迹数据
+      if (order.logisticsHistory && Array.isArray(order.logisticsHistory) && order.logisticsHistory.length > 0) {
+        trackingHistory.value = order.logisticsHistory.map((item: any) => ({
+          time: item.time || '',
+          status: getLogisticsStatusText(item.status),
+          description: item.description || '',
+          location: item.location || '',
+          operator: item.operator || '',
+          type: getTimelineTypeByStatus(item.status)
+        })).reverse() // 倒序显示，最新的在上面
       } else {
-        trackingHistory.value = []
+        // 如果没有物流历史，从状态历史中提取物流相关信息
+        if (order.statusHistory && Array.isArray(order.statusHistory)) {
+          const logisticsStatuses = ['shipped', 'delivered', 'in_transit', 'out_for_delivery', 'picked_up']
+          const logisticsHistoryItems = order.statusHistory
+            .filter((h: any) => logisticsStatuses.includes(h.status))
+            .map((h: any) => ({
+              time: h.time || '',
+              status: getLogisticsStatusText(h.status),
+              description: h.description || h.remark || '',
+              location: '',
+              operator: h.operator || '',
+              type: getTimelineTypeByStatus(h.status)
+            }))
+
+          trackingHistory.value = logisticsHistoryItems.reverse()
+        } else {
+          trackingHistory.value = []
+        }
       }
     }
 
@@ -570,19 +614,125 @@ const loadTrackingData = async () => {
 }
 
 /**
+ * 🔥 从真实API获取物流轨迹
+ */
+const fetchRealTraces = async (order: any) => {
+  try {
+    const trackingNo = order.trackingNumber || order.expressNo
+    const companyCode = order.expressCompany
+    if (!trackingNo || !companyCode) {
+      console.log('[物流跟踪详情] 缺少物流单号或快递公司代码，跳过API查询')
+      return
+    }
+
+    const { logisticsApi } = await import('@/api/logistics')
+    const phone = order.receiverPhone || order.customerPhone || undefined
+    const response = await logisticsApi.queryTrace(trackingNo, companyCode, phone)
+
+    console.log('[物流跟踪详情] API轨迹查询响应:', response)
+
+    if (response?.success && response.data) {
+      const data = response.data
+
+      if (data.success && data.traces && data.traces.length > 0) {
+        // 按时间排序（最新的在上面）
+        const sortedTraces = [...data.traces].sort((a: any, b: any) => {
+          const timeA = new Date(a.time).getTime()
+          const timeB = new Date(b.time).getTime()
+          return timeB - timeA
+        })
+
+        trackingHistory.value = sortedTraces.map((trace: any, index: number) => ({
+          time: trace.time || '',
+          status: trace.status || detectStatusFromDescription(trace.description),
+          description: trace.description || '',
+          location: trace.location || '',
+          operator: trace.operator || '',
+          type: index === 0 ? 'success' : 'primary'
+        }))
+
+        // 🔥 同步更新物流状态（使用最新轨迹的信息）
+        if (sortedTraces.length > 0) {
+          const latestDesc = sortedTraces[0].description || ''
+          const detectedStatus = detectLogisticsStatusFromDesc(latestDesc)
+          if (detectedStatus && detectedStatus !== trackingInfo.status) {
+            trackingInfo.status = detectedStatus
+          }
+          // 更新API返回的状态
+          if (data.status && data.status !== 'error' && data.status !== 'need_phone_verify') {
+            trackingInfo.status = data.status
+          }
+        }
+
+        // 更新预计送达时间
+        if (data.estimatedDeliveryTime) {
+          trackingInfo.estimatedTime = data.estimatedDeliveryTime
+        }
+
+        console.log('[物流跟踪详情] 从API获取到', trackingHistory.value.length, '条轨迹')
+      } else {
+        console.log('[物流跟踪详情] API返回无轨迹数据:', data.statusText)
+      }
+    }
+  } catch (error) {
+    console.error('[物流跟踪详情] 调用物流API失败:', error)
+  }
+}
+
+/**
+ * 根据描述检测状态文本
+ */
+const detectStatusFromDescription = (desc: string): string => {
+  if (!desc) return '物流动态'
+  const d = desc.toLowerCase()
+  if (d.includes('签收') || d.includes('已送达') || d.includes('代收')) return '已签收'
+  if (d.includes('派送') || d.includes('派件') || d.includes('投递') || d.includes('送货')) return '派送中'
+  if (d.includes('到达') || d.includes('运输') || d.includes('转运') || d.includes('发往') || d.includes('离开')) return '运输中'
+  if (d.includes('揽收') || d.includes('收件') || d.includes('已收取') || d.includes('快件已收')) return '已揽收'
+  if (d.includes('拒收') || d.includes('拒签')) return '拒收'
+  if (d.includes('退回') || d.includes('退件')) return '退回'
+  if (d.includes('异常') || d.includes('问题件')) return '异常'
+  return '物流动态'
+}
+
+/**
+ * 根据描述检测物流状态code
+ */
+const detectLogisticsStatusFromDesc = (desc: string): string => {
+  if (!desc) return ''
+  const d = desc.toLowerCase()
+  if (d.includes('签收') || d.includes('已送达') || d.includes('代收')) return 'delivered'
+  if (d.includes('派送') || d.includes('派件') || d.includes('投递')) return 'out_for_delivery'
+  if (d.includes('到达') || d.includes('运输') || d.includes('转运') || d.includes('发往')) return 'in_transit'
+  if (d.includes('揽收') || d.includes('收件') || d.includes('已收取')) return 'picked_up'
+  if (d.includes('拒收')) return 'rejected'
+  if (d.includes('退回')) return 'returned'
+  if (d.includes('异常')) return 'exception'
+  return ''
+}
+
+/**
  * 获取物流状态文本
  */
 const getLogisticsStatusText = (status: string): string => {
   const textMap: Record<string, string> = {
     'pending': '待发货',
+    'pending_shipment': '待发货',
     'picked_up': '已揽收',
+    'picked': '已揽收',
     'shipped': '已发货',
     'in_transit': '运输中',
+    'shipping': '运输中',
     'out_for_delivery': '派送中',
+    'delivering': '派送中',
     'delivered': '已签收',
     'exception': '异常',
+    'package_exception': '包裹异常',
     'rejected': '拒收',
-    'returned': '已退回'
+    'rejected_returned': '拒收退回',
+    'returned': '已退回',
+    'cancelled': '已取消',
+    'unknown': '未知'
   }
   return textMap[status] || status
 }
@@ -611,11 +761,21 @@ const getTimelineTypeByStatus = (status: string): string => {
 const mapOrderStatusToLogisticsStatus = (orderStatus: string): string => {
   const statusMap: Record<string, string> = {
     'pending_shipment': 'pending',
+    'pending': 'pending',
     'shipped': 'shipped',
     'delivered': 'delivered',
     'in_transit': 'in_transit',
+    'shipping': 'in_transit',
     'out_for_delivery': 'out_for_delivery',
-    'package_exception': 'exception'
+    'delivering': 'out_for_delivery',
+    'package_exception': 'exception',
+    'exception': 'exception',
+    'rejected': 'rejected',
+    'rejected_returned': 'returned',
+    'returned': 'returned',
+    'picked_up': 'picked_up',
+    'picked': 'picked_up',
+    'cancelled': 'cancelled'
   }
   return statusMap[orderStatus] || 'pending'
 }
@@ -770,20 +930,98 @@ onBeforeUnmount(() => {
   font-size: 14px;
 }
 
-.progress-info {
-  text-align: center;
+.progress-steps {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  position: relative;
+  padding: 10px 0 20px;
 }
 
-.progress-text {
-  margin-top: 15px;
-  font-size: 16px;
+.progress-step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  position: relative;
+  flex: 1;
+  z-index: 1;
+}
+
+.step-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
   font-weight: bold;
+  background: #e4e7ed;
+  color: #909399;
+  border: 2px solid #dcdfe6;
+  transition: all 0.3s;
+}
+
+.progress-step.active .step-icon {
+  background: #67C23A;
+  color: #fff;
+  border-color: #67C23A;
+}
+
+.progress-step.current .step-icon {
+  background: #409EFF;
+  color: #fff;
+  border-color: #409EFF;
+  box-shadow: 0 0 0 4px rgba(64, 158, 255, 0.2);
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0% { box-shadow: 0 0 0 0 rgba(64, 158, 255, 0.4); }
+  70% { box-shadow: 0 0 0 8px rgba(64, 158, 255, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(64, 158, 255, 0); }
+}
+
+.step-label {
+  margin-top: 8px;
+  font-size: 12px;
+  color: #909399;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.progress-step.active .step-label,
+.progress-step.current .step-label {
   color: #303133;
+  font-weight: 500;
+}
+
+.step-line {
+  position: absolute;
+  top: 16px;
+  left: calc(50% + 20px);
+  width: calc(100% - 40px);
+  height: 2px;
+  background: #dcdfe6;
+  z-index: 0;
+}
+
+.step-line.filled {
+  background: #67C23A;
+}
+
+.progress-summary {
+  text-align: center;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid #f0f2f5;
 }
 
 .time-info,
 .contact-info {
-  space-y: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
 .time-item,

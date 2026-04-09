@@ -4,6 +4,7 @@
  */
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
+import { JwtConfig } from '../config/jwt';
 
 export const adminAuthMiddleware = (req: Request, res: Response, next: NextFunction) => {
   // 登录接口不需要认证
@@ -34,7 +35,7 @@ export const adminAuthMiddleware = (req: Request, res: Response, next: NextFunct
   const token = authHeader.substring(7);
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'admin-secret-key') as any;
+    const decoded = jwt.verify(token, JwtConfig.getAccessTokenSecret()) as any;
 
     // 验证是否是管理员 token
     if (!decoded.isAdmin) {

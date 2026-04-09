@@ -26,6 +26,9 @@ export interface HeartbeatResponse {
   success: boolean
   valid: boolean
   message?: string
+  daysUntilExpiry?: number | null
+  nearExpiry?: boolean
+  expireDate?: string | null
 }
 
 /**

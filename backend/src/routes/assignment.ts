@@ -5,6 +5,7 @@ import { Customer } from '../entities/Customer';
 import { User } from '../entities/User';
 import { v4 as uuidv4 } from 'uuid';
 import { getTenantRepo, tenantSQL } from '../utils/tenantRepo';
+import { TenantContextManager } from '../utils/tenantContext';
 
 import { log } from '../config/logger';
 const router = Router();
@@ -106,12 +107,13 @@ router.post('/assign', async (req: Request, res: Response) => {
     const assignmentId = uuidv4();
     const now = new Date();
 
-    // 插入分配记录
+    // 插入分配记录（🔥 安全修复：添加 tenant_id 字段）
+    const currentTenantId = TenantContextManager.getTenantId() || null;
     await AppDataSource.query(
       `INSERT INTO customer_assignments
        (id, customer_id, customer_name, from_user_id, from_user_name, to_user_id, to_user_name,
-        assignment_type, reason, operator_id, operator_name, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        assignment_type, reason, operator_id, operator_name, created_at, tenant_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         assignmentId,
         customerId,
@@ -124,7 +126,8 @@ router.post('/assign', async (req: Request, res: Response) => {
         reason || '',
         currentUser?.userId,
         currentUser?.realName || currentUser?.username,
-        now
+        now,
+        currentTenantId
       ]
     );
 
@@ -168,6 +171,7 @@ router.post('/batch-assign', async (req: Request, res: Response) => {
 
     const customerRepository = getTenantRepo(Customer);
     let successCount = 0;
+    const currentTenantId = TenantContextManager.getTenantId() || null;
 
     for (const customerId of customerIds) {
       try {
@@ -177,15 +181,16 @@ router.post('/batch-assign', async (req: Request, res: Response) => {
           await AppDataSource.query(
             `INSERT INTO customer_assignments
              (id, customer_id, customer_name, from_user_id, from_user_name, to_user_id, to_user_name,
-              assignment_type, reason, operator_id, operator_name, created_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              assignment_type, reason, operator_id, operator_name, created_at, tenant_id)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [
               assignmentId, customerId, customer.name,
               customer.salesPersonId, customer.salesPersonName,
               toUserId, toUser.realName || toUser.username,
               'manual', reason || '',
               currentUser?.userId, currentUser?.realName || currentUser?.username,
-              new Date()
+              new Date(),
+              currentTenantId
             ]
           );
 

@@ -205,12 +205,26 @@ pm2 startup  # 设置开机自启
 # 宝塔面板需要设置为true
 BAOTA_PANEL=true
 
-# CORS 配置为您的域名
-CORS_ORIGIN=http://your-domain.com,https://your-domain.com
-
-# 静态文件路径
-STATIC_PATH=../dist
+# CORS 配置为您的所有域名
+CORS_ORIGIN=https://crm.your-domain.com,https://your-domain.com,https://admin.your-domain.com
 ```
+
+### 步骤八：配置系统URL（多域名部署必须）
+
+如果使用多域名部署（如 CRM、官网、Admin 各一个域名），编辑 `backend/.env` 添加：
+```bash
+# ==================== 系统URL地址配置 ====================
+# 影响：跨系统链接、邮件通知中的链接、支付回调、官网显示的CRM登录地址等
+CRM_URL=https://crm.your-domain.com
+WEBSITE_URL=https://your-domain.com
+API_URL=https://api.your-domain.com
+ADMIN_URL=https://admin.your-domain.com
+RENEW_URL=https://your-domain.com/pricing
+```
+
+> 📌 **说明**：所有前端 API 请求使用相对路径（`/api/v1/...`），通过 Nginx 反向代理转发到后端，无需修改前端代码。以上 URL 仅影响跨系统之间的链接跳转（如官网上的"登录CRM"按钮、邮件中的链接等）。
+>
+> 📖 详细说明请参考 `docs/私有部署URL路由与多域名配置指南.md`
 
 ---
 
