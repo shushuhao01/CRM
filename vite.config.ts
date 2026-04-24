@@ -46,7 +46,13 @@ export default defineConfig({
   build: {
     target: 'esnext',
     chunkSizeWarningLimit: 2000,
-    minify: false, // 禁用压缩以减少内存使用
+    minify: 'terser',
+    terserOptions: {
+      compress: {
+        drop_console: true,
+        drop_debugger: true
+      }
+    },
     sourcemap: false,
     rollupOptions: {
       maxParallelFileOps: 2, // 限制并行操作数

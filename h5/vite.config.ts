@@ -4,7 +4,7 @@ import Components from 'unplugin-vue-components/vite'
 import { VantResolver } from '@vant/auto-import-resolver'
 import { resolve } from 'path'
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   base: '/h5/',
   plugins: [
     vue(),
@@ -26,6 +26,9 @@ export default defineConfig({
       }
     }
   },
+  esbuild: {
+    drop: mode === 'production' ? ['console', 'debugger'] : [],
+  },
   build: {
     outDir: 'dist',
     assetsDir: 'assets',
@@ -38,4 +41,4 @@ export default defineConfig({
       }
     }
   }
-})
+}))
