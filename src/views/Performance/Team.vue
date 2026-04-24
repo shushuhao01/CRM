@@ -2651,20 +2651,7 @@ const showSummaryOrdersDialog = async (countType: string) => {
       trackingNumber: order.trackingNumber || '暂无',
       createdByName: order.createdByName || '未知',
       productDetails: order.products?.map((item: any) => `${item.name || item.productName} x${item.quantity}`).join(', ') || '暂无详情',
-      products: order.products || [],
-      shareInfo: {
-        isShared: false,
-        isReceived: true,
-        totalSharedPercentage: totalSharedPct,
-        ownerRetainedPercentage: Math.max(0, 100 - totalSharedPct),
-        myPercentage: myMember.percentage || 0,
-        orderAmount: share.orderAmount || originalOrder?.totalAmount || 0,
-        members: (share.shareMembers || []).map((m: any) => ({
-          userName: m.userName || m.user_name || '未知',
-          percentage: m.percentage || 0,
-          shareAmount: m.shareAmount || m.share_amount || 0
-        }))
-      }
+      products: order.products || []
     }))
 
     summaryOrdersTotal.value = summaryOrdersList.value.length

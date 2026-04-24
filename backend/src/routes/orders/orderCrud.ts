@@ -258,7 +258,8 @@ export function registerCrudRoutes(router: Router): void {router.get('/', authen
         customerWeight: customer?.weight || null,
         medicalHistory: customer?.medicalHistory || null,
         products: products,
-        totalQuantity,  // 🔥 新增：总数量        totalAmount: Number(order.totalAmount) || 0,
+        totalQuantity,  // 🔥 新增：总数量
+        totalAmount: Number(order.totalAmount) || 0,
         depositAmount: Number(order.depositAmount) || 0,
         // 🔥 代收金额 = 订单总额 - 定金
         collectAmount: (Number(order.totalAmount) || 0) - (Number(order.depositAmount) || 0),

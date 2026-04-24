@@ -27,16 +27,12 @@ logs/
 *.sln
 *.sw?
 
-# 环境变量文件（重要！不要上传到GitHub）
-.env
+# 环境变量文件
+# 注意：.env / .env.development / .env.production 已允许提交（不含敏感信息，部署需要）
+# 仅 .local 后缀的本地覆盖文件不提交
 .env.local
 .env.*.local
-.env.production
-.env.development
-backend/.env
 backend/.env.local
-backend/.env.production
-backend/.env.development
 
 # PM2配置（如果包含敏感信息，取消注释）
 # ecosystem.config.js
@@ -127,11 +123,7 @@ backend/scripts/generate-saas-license.js
 
 # 生产服务器环境配置（含真实数据库密码、JWT密钥等）
 backend/.env.production.server
-
-# 所有可能包含密钥的环境变量文件（补充）
 backend/.env.*.local
-.env.local
-.env.*.local
 
 # ==================== 🟠 二级机密：运营方内部文档 ====================
 # 运营方机密文档（含安全机制详细说明，绝不可交付客户）

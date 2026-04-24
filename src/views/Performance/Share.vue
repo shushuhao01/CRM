@@ -156,6 +156,11 @@
           <span class="short-code" :title="row.shareNumber">{{ getShortShareCode(row.shareNumber) }}</span>
         </template>
       </el-table-column>
+      <el-table-column prop="orderCustomerName" label="客户名称" min-width="90" show-overflow-tooltip>
+        <template #default="{ row }">
+          <span>{{ row.orderCustomerName || '-' }}</span>
+        </template>
+      </el-table-column>
       <el-table-column prop="orderNumber" label="订单编号" min-width="140" show-overflow-tooltip>
         <template #default="{ row }">
           <el-link type="primary" @click="viewOrderDetail(row.orderId)">
@@ -259,124 +264,105 @@
     <el-dialog
       v-model="showShareDialog"
       :title="isEditMode ? '编辑分享' : '新建分享'"
-      width="800px"
+      width="660px"
       :close-on-click-modal="false"
+      class="share-create-dialog"
     >
       <el-form
         ref="shareFormRef"
         :model="shareForm"
         :rules="shareFormRules"
-        label-width="100px"
+        label-width="90px"
+        label-position="left"
       >
         <!-- 订单搜索 -->
         <el-form-item label="订单搜索" prop="orderId">
-          <div class="order-search-container">
-            <el-input
-              v-model="orderSearchQuery"
-              placeholder="请输入完整订单号（如：ORD20250101001）或客户信息进行搜索"
-              clearable
-              @input="handleOrderSearch(orderSearchQuery)"
-              @clear="clearOrderSearch"
-              style="margin-bottom: 10px"
-              :loading="orderSearchLoading"
-            >
-              <template #prefix>
-                <el-icon><Search /></el-icon>
-              </template>
-              <template #suffix>
-                <el-tooltip content="支持订单号、客户名称、客户电话搜索" placement="top">
-                  <el-icon><QuestionFilled /></el-icon>
-                </el-tooltip>
-              </template>
-            </el-input>
+          <el-input
+            v-model="orderSearchQuery"
+            placeholder="输入订单号或客户信息搜索"
+            clearable
+            @input="handleOrderSearch(orderSearchQuery)"
+            @clear="clearOrderSearch"
+            :loading="orderSearchLoading"
+          >
+            <template #prefix>
+              <el-icon><Search /></el-icon>
+            </template>
+          </el-input>
 
-            <!-- 搜索结果提示 -->
-            <div v-if="orderSearchQuery && !orderSearchLoading" class="search-result-tip">
-              <span v-if="availableOrders.length === 0" class="no-result">
-                <el-icon><WarningFilled /></el-icon>
-                未找到匹配的订单，请检查订单号是否正确
-              </span>
-              <span v-else-if="selectedOrder" class="found-result">
-                <el-icon><SuccessFilled /></el-icon>
-                已选中订单：{{ selectedOrder.orderNumber }}
-                <a href="javascript:void(0)" style="margin-left: 12px; color: #409eff; font-size: 12px;" @click.stop="selectedOrder = null; shareForm.orderId = ''">重新选择</a>
-              </span>
-              <span v-else class="multiple-results">
-                <el-icon><InfoFilled /></el-icon>
-                找到 {{ availableOrders.length }} 个匹配订单，请勾选要分享的订单
-              </span>
-            </div>
+          <!-- 搜索结果提示 -->
+          <div v-if="orderSearchQuery && !orderSearchLoading" class="sd-search-tip">
+            <span v-if="availableOrders.length === 0" class="sd-tip-warn">
+              未找到匹配订单
+            </span>
+            <span v-else-if="selectedOrder" class="sd-tip-ok">
+              已选中：{{ selectedOrder.orderNumber }}
+              <a href="javascript:void(0)" class="sd-reselect" @click.stop="selectedOrder = null; shareForm.orderId = ''">重新选择</a>
+            </span>
+            <span v-else class="sd-tip-info">
+              找到 {{ availableOrders.length }} 个订单，请选择
+            </span>
+          </div>
 
-            <!-- 搜索结果列表 - 用radio让用户勾选 -->
-            <div v-if="availableOrders.length > 0 && !selectedOrder" class="order-search-results">
-              <el-radio-group v-model="shareForm.orderId" @change="handleOrderChange" style="width: 100%">
-                <div
-                  v-for="order in availableOrders"
-                  :key="order.id"
-                  class="order-radio-item"
-                  :class="{ 'is-selected': shareForm.orderId === order.id }"
-                  @click="shareForm.orderId = order.id; handleOrderChange(order.id)"
-                >
-                  <el-radio :value="order.id" style="margin-right: 8px" />
-                  <div class="order-radio-info">
-                    <div class="order-main">
-                      <el-tag type="primary" size="small">{{ order.orderNumber }}</el-tag>
-                      <span class="customer-name">{{ order.customerName }}</span>
-                      <span class="order-amount">¥{{ (order.totalAmount || 0).toLocaleString() }}</span>
-                    </div>
-                    <div class="order-sub">
-                      <span class="phone">{{ order.customerPhone }}</span>
-                      <span class="time">{{ order.createTime }}</span>
-                    </div>
-                  </div>
+          <!-- 已分享订单提示 -->
+          <div v-if="alreadySharedTip" class="sd-shared-tip">
+            <el-icon><WarningFilled /></el-icon>
+            {{ alreadySharedTip }}
+          </div>
+
+          <!-- 搜索结果列表 -->
+          <div v-if="availableOrders.length > 0 && !selectedOrder" class="sd-order-list">
+            <el-radio-group v-model="shareForm.orderId" @change="handleOrderChange" style="width: 100%">
+              <div
+                v-for="order in availableOrders"
+                :key="order.id"
+                class="sd-order-item"
+                :class="{ 'is-active': shareForm.orderId === order.id }"
+                @click="shareForm.orderId = order.id; handleOrderChange(order.id)"
+              >
+                <el-radio :value="order.id" style="margin-right: 8px" />
+                <div class="sd-order-info">
+                  <span class="sd-order-no">{{ order.orderNumber }}</span>
+                  <span class="sd-order-customer">{{ order.customerName }}</span>
+                  <span class="sd-order-amt">¥{{ (order.totalAmount || 0).toLocaleString() }}</span>
                 </div>
-              </el-radio-group>
-            </div>
+              </div>
+            </el-radio-group>
           </div>
         </el-form-item>
 
         <!-- 订单信息展示 -->
-        <div v-if="selectedOrder" class="order-info-card">
-          <div class="order-info-header">
-            <el-icon class="info-icon"><InfoFilled /></el-icon>
-            <span class="info-title">订单详情</span>
+        <div v-if="selectedOrder" class="sd-order-card">
+          <div class="sd-order-grid">
+            <div class="sd-field"><span class="sd-label">订单编号</span><span class="sd-val">{{ selectedOrder.orderNumber }}</span></div>
+            <div class="sd-field"><span class="sd-label">客户名称</span><span class="sd-val">{{ selectedOrder.customerName }}</span></div>
+            <div class="sd-field"><span class="sd-label">订单金额</span><span class="sd-val sd-amt">¥{{ (selectedOrder.totalAmount || 0).toLocaleString() }}</span></div>
+            <div class="sd-field"><span class="sd-label">创建时间</span><span class="sd-val">{{ selectedOrder.createTime }}</span></div>
+            <div class="sd-field">
+              <span class="sd-label">订单状态</span>
+              <el-tag :type="getOrderStatusType(selectedOrder.status)" size="small">{{ getOrderStatusText(selectedOrder.status) }}</el-tag>
+            </div>
+            <div class="sd-field">
+              <span class="sd-label">审核状态</span>
+              <el-tag :type="getAuditStatusType(selectedOrder.auditStatus)" size="small">{{ getAuditStatusText(selectedOrder.auditStatus) }}</el-tag>
+            </div>
           </div>
-          <el-descriptions :column="2" border size="small">
-            <el-descriptions-item label="订单编号">
-              <el-tag type="primary">{{ selectedOrder.orderNumber }}</el-tag>
-            </el-descriptions-item>
-            <el-descriptions-item label="客户名称">{{ selectedOrder.customerName }}</el-descriptions-item>
-            <el-descriptions-item label="订单金额">
-              <span class="amount-text">¥{{ (selectedOrder.totalAmount || 0).toLocaleString() }}</span>
-            </el-descriptions-item>
-            <el-descriptions-item label="创建时间">{{ selectedOrder.createTime }}</el-descriptions-item>
-            <el-descriptions-item label="订单状态">
-              <el-tag :type="getOrderStatusType(selectedOrder.status)">
-                {{ getOrderStatusText(selectedOrder.status) }}
-              </el-tag>
-            </el-descriptions-item>
-            <el-descriptions-item label="审核状态">
-              <el-tag :type="getAuditStatusType(selectedOrder.auditStatus)">
-                {{ getAuditStatusText(selectedOrder.auditStatus) }}
-              </el-tag>
-            </el-descriptions-item>
-          </el-descriptions>
         </div>
 
         <!-- 分享成员配置 -->
-        <el-form-item label="分享成员" prop="shareMembers" style="margin-top: 20px;">
-          <div class="share-members-config">
+        <el-form-item label="分享成员" prop="shareMembers">
+          <div class="sd-members-wrap">
             <div
               v-for="(member, index) in shareForm.shareMembers"
               :key="index"
-              class="member-item"
+              class="sd-member-row"
             >
               <el-select
                 v-model="member.userId"
                 placeholder="选择成员"
                 filterable
                 clearable
-                style="width: 280px"
+                style="flex: 1; min-width: 180px;"
                 @change="handleMemberChange(index)"
               >
                 <el-option
@@ -393,62 +379,51 @@
                 :max="1"
                 :step="0.05"
                 :precision="2"
-                style="width: 140px; margin-left: 10px"
+                style="width: 120px;"
                 @change="validatePercentages"
               />
-              <span style="margin-left: 5px; color: #909399; font-size: 12px;">
-                占比{{ Math.round((member.percentage || 0) * 100) }}%
-              </span>
+              <span class="sd-pct-label">占比{{ Math.round((member.percentage || 0) * 100) }}%</span>
               <el-button
                 v-if="shareForm.shareMembers.length > 1"
                 type="danger"
                 size="small"
                 :icon="Delete"
                 circle
-                style="margin-left: 10px"
+                plain
                 @click="removeMember(index)"
               />
             </div>
             <el-button
               type="primary"
               size="small"
+              plain
               :icon="Plus"
               @click="addMember"
               :disabled="shareForm.shareMembers.length >= 5"
+              style="margin-top: 4px;"
             >
               添加成员
             </el-button>
-            <div class="percentage-summary">
-              <div class="share-allocation-row">
-                <span class="share-ratio-text">分享比例: {{ totalPercentageDisplay }}%</span>
-                <span v-if="selectedOrder" class="owner-retained-text">
-                  | 原始下单人保留: {{ 100 - totalPercentageDisplay }}%
-                  (¥{{ (((selectedOrder.totalAmount || 0) * (100 - totalPercentageDisplay)) / 100).toLocaleString() }})
-                </span>
-              </div>
-              <span v-if="totalPercentage > 1" class="error-text">
-                (分享比例不能超过1，即100%)
-              </span>
-              <span v-else-if="totalPercentage === 0" class="error-text">
-                (请设置分享比例)
-              </span>
-              <span v-else-if="totalPercentage >= 1" class="warning-text">
-                ⚠️ 原始下单人将不保留任何业绩和单数
-              </span>
-              <span v-else class="success-text">
-                ✅ 守恒：下单人保留 {{ 100 - totalPercentageDisplay }}%，分享 {{ totalPercentageDisplay }}%
-              </span>
+
+            <!-- 比例汇总 -->
+            <div class="sd-pct-summary" :class="{ 'is-error': totalPercentage > 1 || totalPercentage === 0, 'is-warn': totalPercentage >= 1 && totalPercentage <= 1 }">
+              <span>分享 {{ totalPercentageDisplay }}%</span>
+              <span v-if="selectedOrder" class="sd-pct-detail">下单人保留 {{ 100 - totalPercentageDisplay }}% (¥{{ (((selectedOrder.totalAmount || 0) * (100 - totalPercentageDisplay)) / 100).toLocaleString() }})</span>
+              <span v-if="totalPercentage > 1" class="sd-pct-err">超出100%</span>
+              <span v-else-if="totalPercentage === 0" class="sd-pct-err">请设置比例</span>
+              <span v-else-if="totalPercentage >= 1" class="sd-pct-warn-text">下单人将不保留业绩</span>
             </div>
           </div>
         </el-form-item>
 
         <!-- 分享说明 -->
-        <el-form-item label="分享说明" prop="description">
+        <el-form-item label="分享说明">
           <el-input
             v-model="shareForm.description"
             type="textarea"
-            :rows="3"
+            :rows="2"
             placeholder="请输入分享说明（可选）"
+            resize="none"
           />
         </el-form-item>
       </el-form>
@@ -461,7 +436,7 @@
           :loading="submitLoading"
           :disabled="totalPercentage > 1 || totalPercentage === 0"
         >
-          {{ isEditMode ? '更新' : '确认分享' }}
+          {{ isEditMode ? '更新分享' : '确认分享' }}
         </el-button>
       </template>
     </el-dialog>
@@ -586,6 +561,11 @@
             <span class="short-code" :title="row.shareNumber">{{ getShortShareCode(row.shareNumber) }}</span>
           </template>
         </el-table-column>
+        <el-table-column prop="orderCustomerName" label="客户名称" width="100" show-overflow-tooltip>
+          <template #default="{ row }">
+            <span>{{ row.orderCustomerName || '-' }}</span>
+          </template>
+        </el-table-column>
         <el-table-column prop="orderNumber" label="订单编号" width="150" fixed>
           <template #default="{ row }">
             <el-link type="primary" @click="viewOrderDetail(row.orderId)">
@@ -682,10 +662,7 @@ import {
   Document,
   Delete,
   Search,
-  InfoFilled,
-  QuestionFilled,
-  WarningFilled,
-  SuccessFilled
+  WarningFilled
 } from '@element-plus/icons-vue'
 import { usePerformanceStore } from '@/stores/performance'
 import { useUserStore } from '@/stores/user'
@@ -702,6 +679,7 @@ interface ShareOrder {
   totalAmount: number
   status: string
   createTime: string
+  auditStatus?: string
 }
 
 interface ShareUser {
@@ -790,6 +768,7 @@ const shareFormRules: FormRules = {
 const availableOrders = ref<ShareOrder[]>([])
 const availableUsers = ref<ShareUser[]>([])
 const selectedOrder = ref<ShareOrder | null>(null)
+const alreadySharedTip = ref('')
 const selectedShareDetail = ref<ShareDetail | null>(null)
 const orderSearchQuery = ref('')
 
@@ -1007,10 +986,26 @@ const handleOrderSearch = async (query: string) => {
     // 使用订单store的搜索函数进行全局真实数据搜索
     const searchResults = orderStore.searchOrders(query)
 
-    // 过滤掉已经分享过的订单
-    const filteredResults = searchResults.filter(order =>
-      !shareRecords.value.some(share => share.orderId === order.id)
-    )
+    // 检查已分享订单
+    alreadySharedTip.value = ''
+    const sharedOrderIds = new Set(shareRecords.value.map(share => share.orderId))
+    const filteredResults: typeof searchResults = []
+    const sharedMatches: typeof searchResults = []
+
+    for (const order of searchResults) {
+      if (sharedOrderIds.has(order.id)) {
+        sharedMatches.push(order)
+      } else {
+        filteredResults.push(order)
+      }
+    }
+
+    // 如果搜索结果全部是已分享订单，显示提示
+    if (filteredResults.length === 0 && sharedMatches.length > 0) {
+      alreadySharedTip.value = `订单「${sharedMatches[0].orderNumber}」已经分享，如需修改请直接在列表编辑或取消后重新分享`
+    } else if (sharedMatches.length > 0) {
+      alreadySharedTip.value = `已过滤 ${sharedMatches.length} 个已分享订单`
+    }
 
     // 精确匹配订单号优先排在最前面
     const exactOrderMatch = filteredResults.find(order =>
@@ -1018,11 +1013,9 @@ const handleOrderSearch = async (query: string) => {
     )
 
     if (exactOrderMatch) {
-      // 精确匹配排首位，但不自动选中，由用户勾选确认
       const rest = filteredResults.filter(o => o.id !== exactOrderMatch.id)
       availableOrders.value = [exactOrderMatch, ...rest].slice(0, 10)
     } else {
-      // 限制搜索结果数量
       availableOrders.value = filteredResults.slice(0, 10)
     }
 
@@ -1043,10 +1036,15 @@ const clearOrderSearch = () => {
   availableOrders.value = []
   shareForm.value.orderId = ''
   selectedOrder.value = null
+  alreadySharedTip.value = ''
 }
 
 const handleOrderChange = (orderId: string) => {
-  selectedOrder.value = availableOrders.value.find(order => order.id === orderId)
+  selectedOrder.value = availableOrders.value.find(order => order.id === orderId) || null
+  // 清除"请选择订单"验证提示
+  if (orderId) {
+    shareFormRef.value?.clearValidate('orderId')
+  }
 }
 
 const handleMemberChange = (index: number) => {
@@ -1187,6 +1185,7 @@ const cancelShareForm = () => {
   selectedOrder.value = null
   orderSearchQuery.value = ''
   availableOrders.value = []
+  alreadySharedTip.value = ''
   shareFormRef.value?.resetFields()
 }
 
@@ -1387,10 +1386,17 @@ const getStatusText = (status: string) => {
 const getOrderStatusType = (status: string) => {
   const statusMap: Record<string, string> = {
     pending: 'warning',
+    pending_transfer: 'warning',
+    pending_audit: 'warning',
+    audit_rejected: 'danger',
+    pending_shipment: 'info',
     confirmed: 'primary',
-    shipped: 'primary',           // 已发货用蓝色
-    delivered: 'success',         // 已签收用绿色
-    cancelled: 'danger'
+    shipped: 'primary',
+    delivered: 'success',
+    completed: 'success',
+    cancelled: 'danger',
+    rejected: 'danger',
+    logistics_returned: 'danger'
   }
   return statusMap[status] || 'info'
 }
@@ -1398,6 +1404,10 @@ const getOrderStatusType = (status: string) => {
 const getOrderStatusText = (status: string) => {
   const statusMap: Record<string, string> = {
     pending: '待确认',
+    pending_transfer: '待流转',
+    pending_audit: '待审核',
+    audit_rejected: '审核拒绝',
+    pending_shipment: '待发货',
     confirmed: '已确认',
     shipped: '已发货',
     delivered: '已送达',
@@ -1405,7 +1415,9 @@ const getOrderStatusText = (status: string) => {
     completed: '已完成',
     processing: '处理中',
     paid: '已支付',
-    unpaid: '未支付'
+    unpaid: '未支付',
+    rejected: '已拒收',
+    logistics_returned: '已退货'
   }
   return statusMap[status] || status
 }
@@ -2970,4 +2982,188 @@ watch([filterStatus, filterDateRange], () => {
   color: #e53e3e;
   margin-left: auto;
 }
+
+/* ========== 新建分享对话框 - 简约风格 ========== */
+.share-create-dialog :deep(.el-dialog__body) {
+  padding: 20px 24px 8px;
+}
+.share-create-dialog :deep(.el-input__wrapper) {
+  border-radius: 6px;
+  box-shadow: 0 0 0 1px #dcdfe6 inset;
+  border: none;
+}
+.share-create-dialog :deep(.el-input__wrapper:hover) {
+  box-shadow: 0 0 0 1px #c0c4cc inset;
+}
+.share-create-dialog :deep(.el-input__wrapper.is-focus) {
+  box-shadow: 0 0 0 1px #409eff inset;
+}
+.share-create-dialog :deep(.el-select .el-input__wrapper),
+.share-create-dialog :deep(.el-input-number .el-input__wrapper) {
+  border-radius: 6px;
+}
+
+/* 搜索提示 */
+.sd-search-tip {
+  margin-top: 6px;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.sd-tip-warn { color: #e6a23c; }
+.sd-tip-ok { color: #67c23a; }
+.sd-tip-info { color: #909399; }
+.sd-reselect {
+  color: #409eff;
+  margin-left: 8px;
+  font-size: 12px;
+  text-decoration: none;
+}
+.sd-reselect:hover { text-decoration: underline; }
+
+/* 搜索结果列表 */
+.sd-order-list {
+  margin-top: 8px;
+  max-height: 200px;
+  overflow-y: auto;
+  border: 1px solid #ebeef5;
+  border-radius: 6px;
+}
+.sd-order-item {
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  cursor: pointer;
+  transition: background 0.15s;
+  border-bottom: 1px solid #f2f6fc;
+}
+.sd-order-item:last-child { border-bottom: none; }
+.sd-order-item:hover { background: #f5f7fa; }
+.sd-order-item.is-active { background: #ecf5ff; }
+.sd-order-info {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+  min-width: 0;
+}
+.sd-order-no {
+  color: #409eff;
+  font-weight: 500;
+  font-family: 'Courier New', monospace;
+  font-size: 12px;
+  flex-shrink: 0;
+}
+.sd-order-customer {
+  color: #303133;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sd-order-amt {
+  color: #f56c6c;
+  font-weight: 600;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+/* 订单信息卡片 */
+.sd-order-card {
+  margin: -8px 0 16px;
+  padding: 12px 16px;
+  background: #f5f7fa;
+  border-radius: 6px;
+  border: 1px solid #ebeef5;
+}
+.sd-order-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 24px;
+}
+.sd-field {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 13px;
+  padding: 4px 0;
+}
+.sd-label {
+  color: #909399;
+  flex-shrink: 0;
+}
+.sd-val {
+  color: #303133;
+  font-weight: 500;
+  text-align: right;
+}
+.sd-amt {
+  color: #f56c6c;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+/* 分享成员区域 */
+.sd-members-wrap {
+  width: 100%;
+}
+.sd-member-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.sd-pct-label {
+  color: #909399;
+  font-size: 12px;
+  white-space: nowrap;
+  min-width: 56px;
+}
+
+/* 比例汇总 */
+.sd-pct-summary {
+  margin-top: 10px;
+  padding: 10px 14px;
+  background: #f0f9eb;
+  border: 1px solid #e1f3d8;
+  border-radius: 6px;
+  font-size: 13px;
+  color: #67c23a;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.sd-pct-summary.is-error {
+  background: #fef0f0;
+  border-color: #fde2e2;
+  color: #f56c6c;
+}
+.sd-pct-detail {
+  color: #909399;
+  font-size: 12px;
+}
+.sd-pct-err {
+  color: #f56c6c;
+  font-weight: 600;
+}
+.sd-pct-warn-text {
+  color: #e6a23c;
+  font-size: 12px;
+}
+
+/* 已分享订单提示 */
+.sd-shared-tip {
+  margin-top: 6px;
+  padding: 8px 12px;
+  background: #fdf6ec;
+  border: 1px solid #faecd8;
+  border-radius: 6px;
+  font-size: 12px;
+  color: #e6a23c;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  line-height: 1.5;
+}
 </style>
+

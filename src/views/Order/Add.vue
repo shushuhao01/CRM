@@ -305,7 +305,11 @@
             <el-table-column prop="name" label="商品名称" min-width="200">
               <template #default="{ row }">
                 <div class="selected-product-name">
-                  <span>{{ row.name }}</span>
+                  <div class="selected-product-name-row">
+                    <el-tag v-if="row.productType === 'virtual'" type="warning" size="small" effect="light" style="margin-right: 4px;">虚拟</el-tag>
+                    <el-tag v-else size="small" effect="light" style="margin-right: 4px;">实物</el-tag>
+                    <span style="font-weight: 600;">{{ row.name }}</span>
+                  </div>
                   <div class="selected-product-tags">
                     <el-tag v-if="row.isRecommended" type="warning" size="small" effect="light">
                       ⭐ 推荐
@@ -322,7 +326,7 @@
             </el-table-column>
             <el-table-column prop="price" label="单价" width="100">
               <template #default="{ row }">
-                ¥{{ row.price }}
+                <span style="color: #f56c6c; font-weight: 600;">¥{{ row.price }}</span>
               </template>
             </el-table-column>
             <el-table-column label="数量" width="150">
@@ -338,7 +342,7 @@
             </el-table-column>
             <el-table-column label="小计" width="100">
               <template #default="{ row }">
-                ¥{{ ((row.price || 0) * (row.quantity || 0)).toFixed(2) }}
+                <span style="color: #f56c6c; font-weight: 600;">¥{{ ((row.price || 0) * (row.quantity || 0)).toFixed(2) }}</span>
               </template>
             </el-table-column>
             <el-table-column label="操作" width="80">
@@ -2306,7 +2310,12 @@ onMounted(async () => {
 .selected-product-name {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
+}
+
+.selected-product-name-row {
+  display: flex;
+  align-items: center;
 }
 
 .selected-product-tags {
