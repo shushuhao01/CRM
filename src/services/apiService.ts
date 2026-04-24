@@ -122,9 +122,15 @@ export class ApiService {
                 // Token过期或无效，友好提示并跳转登录页
                 this.handleTokenExpired(data)
                 break
-              case 403:
-                ElMessage.error('没有权限访问该资源')
+              case 403: {
+                const respData403 = error.response?.data as any
+                // 如果是授权过期或资源配额限制，不显示通用错误（由 request.ts 的 licenseDialog 处理）
+                const skipCodes = ['LICENSE_EXPIRED_WRITE_BLOCKED', 'USER_LIMIT_EXCEEDED', 'STORAGE_LIMIT_EXCEEDED']
+                if (!skipCodes.includes(respData403?.code)) {
+                  ElMessage.error(respData403?.message || '没有权限访问该资源')
+                }
                 break
+              }
               case 404:
                 ElMessage.error('请求的资源不存在')
                 break
@@ -160,11 +166,26 @@ export class ApiService {
    * 处理Token过期 - 友好提示并跳转登录页
    */
   private handleTokenExpired(data?: any): void {
+    // 🔥 如果当前已在登录页，不弹出过期提示（避免直接访问登录页时误提示）
+    if (window.location.pathname === '/login') {
+      // 只清除残留token，不弹窗
+      localStorage.removeItem('auth_token')
+      localStorage.removeItem('refresh_token')
+      localStorage.removeItem('user_info')
+      localStorage.removeItem('userPermissions')
+      localStorage.removeItem('token_expiry')
+      return
+    }
+
     // 防止重复处理
     const lastExpiredTime = sessionStorage.getItem('token_expired_handled')
     const now = Date.now()
-    if (lastExpiredTime && now - parseInt(lastExpiredTime) < 3000) {
-      // 3秒内已经处理过，不重复处理
+    if (lastExpiredTime && now - parseInt(lastExpiredTime) < 5000) {
+      // 5秒内已经处理过（或 request.ts 的 isShowingAuthDialog 已激活），不重复处理
+      return
+    }
+    // 检查 request.ts 是否已在显示对话框（通过 sessionStorage 共享状态）
+    if (sessionStorage.getItem('auth_dialog_showing') === 'true') {
       return
     }
     sessionStorage.setItem('token_expired_handled', String(now))
@@ -199,7 +220,7 @@ export class ApiService {
           type: 'warning',
           showCancelButton: false,
           closeOnClickModal: false,
-          closeOnPressEscape: false
+          closeOnPressEscape: true  // 允许 Esc 关闭，防止界面卡死
         }
       ).then(() => {
         // 跳转到登录页

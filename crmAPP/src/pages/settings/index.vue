@@ -272,6 +272,7 @@ import { unbindDevice } from '@/api/auth'
 import { wsService } from '@/services/websocket'
 import { recordingService } from '@/services/recordingService'
 import { APP_VERSION } from '@/config/app'
+import { setEncryptedStorage, getEncryptedStorage } from '@/utils/crypto'
 
 const userStore = useUserStore()
 const serverStore = useServerStore()
@@ -282,12 +283,12 @@ const recordingEnabled = ref(false)
 const checkingRecording = ref(false)
 let autoCheckTimer: number | null = null
 
-// 通话设置 - 从本地存储恢复
+// 通话设置 - 从本地存储恢复（默认开启自动上传和自动清理）
 const callSettings = ref({
   callNotify: true,
   vibrate: false,
-  autoUploadRecording: false,
-  autoCleanRecording: false,
+  autoUploadRecording: true,
+  autoCleanRecording: true,
   recordingRetentionDays: 3
 })
 
@@ -342,8 +343,8 @@ const loadSettings = () => {
     if (saved) {
       callSettings.value = { ...callSettings.value, ...JSON.parse(saved) }
     }
-    // 加载密码设置
-    const passwordData = uni.getStorageSync('uploadPasswordData')
+    // 加载密码设置（使用加密存储）
+    const passwordData = getEncryptedStorage('uploadPasswordData')
     if (passwordData) {
       const data = JSON.parse(passwordData)
       storedPassword.value = data.password || ''
@@ -366,7 +367,7 @@ const saveSettings = () => {
 // 保存密码数据
 const savePasswordData = () => {
   try {
-    uni.setStorageSync('uploadPasswordData', JSON.stringify({
+    setEncryptedStorage('uploadPasswordData', JSON.stringify({
       password: storedPassword.value,
       securityAnswer: storedSecurityAnswer.value
     }))
@@ -384,13 +385,21 @@ const updateSetting = (key: string, event: any) => {
 // 处理自动上传开关点击
 const handleAutoUploadToggle = () => {
   if (callSettings.value.autoUploadRecording) {
-    // 当前是开启状态，需要验证密码才能关闭
-    passwordModalType.value = 'verify'
-    passwordModalTitle.value = '关闭自动上传'
-    inputPassword.value = ''
-    showPasswordModal.value = true
+    // 当前是开启状态，要关闭
+    if (!storedPassword.value) {
+      // 首次使用，尚未设置过密码，可以直接关闭
+      callSettings.value.autoUploadRecording = false
+      saveSettings()
+      uni.showToast({ title: '已关闭自动上传', icon: 'success' })
+    } else {
+      // 已设置过密码，需要验证密码才能关闭
+      passwordModalType.value = 'verify'
+      passwordModalTitle.value = '关闭自动上传'
+      inputPassword.value = ''
+      showPasswordModal.value = true
+    }
   } else {
-    // 当前是关闭状态，需要设置密码才能开启
+    // 当前是关闭状态，需要设置密码才能重新开启
     passwordModalType.value = 'setup'
     passwordModalTitle.value = '开启自动上传'
     newPassword.value = ''
@@ -606,7 +615,7 @@ const handleRefreshRecordingStatus = async () => {
     } else {
       uni.showModal({
         title: '系统录音未开启',
-        content: '未检测到系统录音功能，请点击"去设置"开启手机的通话录音功能',
+        content: '未检测到通话录音文件和系统录音设置。\n\n请点击下方「开启系统录音」→「去设置」开启手机的通话自动录音功能，开启后拨打一通电话再回来刷新检测。',
         showCancel: false,
         confirmText: '我知道了'
       })
@@ -708,57 +717,57 @@ const goToServerConfig = () => {
 // 打开录音设置
 const openRecordingSettings = async () => {
   // #ifdef APP-PLUS
-  uni.showLoading({ title: '正在打开设置...' })
+  uni.showLoading({ title: '正在检测手机型号...' })
 
   try {
-    const success = await recordingService.tryEnableSystemRecording()
+    // 获取设备信息用于展示
+    const systemInfo = uni.getSystemInfoSync()
+    const deviceModel = systemInfo.deviceModel || '未知型号'
+    const deviceBrand = systemInfo.deviceBrand || ''
+
+    const result: { jumped: boolean; brand: string; guideTips: string } = await recordingService.tryEnableSystemRecording()
     uni.hideLoading()
 
-    // 获取设备品牌用于显示针对性提示
-    const brand = recordingService.getDeviceBrand()
-    let tipContent = ''
-
-    if (brand.includes('xiaomi') || brand.includes('redmi')) {
-      tipContent = '请在打开的页面中找到：\n通话录音 > 自动录音 > 开启'
-    } else if (brand.includes('huawei') || brand.includes('honor')) {
-      tipContent = '请在打开的页面中找到：\n通话自动录音 > 开启'
-    } else if (brand.includes('oppo') || brand.includes('realme')) {
-      tipContent = '请在打开的页面中找到：\n通话录音 > 自动录音 > 开启'
-    } else if (brand.includes('vivo') || brand.includes('iqoo')) {
-      tipContent = '请在打开的页面中找到：\n通话录音 > 自动录音 > 开启'
-    } else {
-      tipContent = '请在打开的页面中找到"通话录音"或"自动录音"选项并开启'
-    }
-
-    if (success) {
-      // 成功跳转，显示操作提示
+    if (result.jumped) {
+      // 成功跳转到了某个设置页面
       uni.showModal({
-        title: '开启通话录音',
-        content: tipContent,
+        title: `📱 ${deviceModel}`,
+        content: result.guideTips,
         showCancel: false,
         confirmText: '我知道了'
       })
     } else {
-      // 跳转失败，显示手动设置指引
-      let guide = '请手动进入手机设置开启通话录音功能：\n\n'
-
-      if (brand.includes('xiaomi') || brand.includes('redmi')) {
-        guide += '小米/红米手机：\n设置 > 应用设置 > 系统应用设置 > 电话 > 通话录音 > 自动录音'
-      } else if (brand.includes('huawei') || brand.includes('honor')) {
-        guide += '华为/荣耀手机：\n电话 > 更多 > 设置 > 通话自动录音'
-      } else if (brand.includes('oppo') || brand.includes('realme')) {
-        guide += 'OPPO/Realme手机：\n电话 > 设置 > 通话录音 > 自动录音'
-      } else if (brand.includes('vivo') || brand.includes('iqoo')) {
-        guide += 'VIVO/iQOO手机：\n电话 > 设置 > 通话录音 > 自动录音'
-      } else {
-        guide += '通用设置路径：\n电话/拨号 > 设置 > 通话录音 > 自动录音\n\n或在系统设置中搜索"通话录音"'
-      }
+      // 无法自动跳转，提供详细的手动引导
+      const brandName = deviceBrand.toUpperCase() || result.brand.toUpperCase() || '您的手机'
+      const manualGuide = `检测到您使用的是 ${deviceModel}\n\n` +
+        `由于系统限制，无法自动跳转到通话录音设置。请按以下步骤手动开启：\n\n` +
+        `① 返回手机桌面\n` +
+        `② 打开「设置」应用\n` +
+        `③ 找到「电话」或「通话设置」\n` +
+        `④ 找到「通话录音」或「自动录音」\n` +
+        `⑤ 开启「自动录音」开关\n\n` +
+        `💡 也可以在「设置」中搜索"通话录音"快速找到`
 
       uni.showModal({
-        title: '开启通话录音',
-        content: guide,
-        showCancel: false,
-        confirmText: '我知道了'
+        title: `📋 ${brandName} 开启通话录音`,
+        content: result.guideTips || manualGuide,
+        showCancel: true,
+        cancelText: '我知道了',
+        confirmText: '打开系统设置',
+        success: (res) => {
+          if (res.confirm) {
+            // 尝试打开系统设置首页作为兜底
+            try {
+              const Intent = plus.android.importClass('android.content.Intent')
+              const main = plus.android.runtimeMainActivity()
+              const intent = new (Intent as any)()
+              intent.setAction('android.settings.SETTINGS')
+              ;(main as any).startActivity(intent)
+            } catch (_e) {
+              uni.showToast({ title: '请手动打开系统设置', icon: 'none' })
+            }
+          }
+        }
       })
     }
   } catch (e) {
@@ -769,7 +778,6 @@ const openRecordingSettings = async () => {
   // #endif
 
   // #ifndef APP-PLUS
-  // 非 APP 环境显示提示
   uni.showModal({
     title: '提示',
     content: '此功能需要在手机APP中使用。\n\n请在真机上安装APP后，进入设置页面开启系统录音功能。',

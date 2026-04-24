@@ -1,7 +1,8 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, OneToMany } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, OneToMany, Index } from 'typeorm';
 import { Order } from './Order';
 
 @Entity('customers')
+@Index('IDX_customers_tenant_wecom_userid', ['tenantId', 'wecomExternalUserid'], { unique: true })
 export class Customer {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -107,6 +108,9 @@ export class Customer {
   @Column({ name: 'other_goals', length: 200, nullable: true, comment: '其他改善目标' })
   otherGoals?: string;
 
+  @Column({ name: 'custom_fields', type: 'json', nullable: true, comment: '自定义字段数据' })
+  customFields?: Record<string, any>;
+
   @Column({ name: 'order_count', type: 'int', default: 0, comment: '订单数量' })
   orderCount: number;
 
@@ -139,6 +143,17 @@ export class Customer {
 
   @Column({ name: 'created_by_name', length: 50, nullable: true, comment: '创建人姓名' })
   createdByName?: string;
+
+  // ==================== V2.0 新增：企微USID字段 ====================
+
+  @Column({ name: 'wecom_external_userid', type: 'varchar', length: 100, nullable: true, comment: '客户唯一企微编码(USID)' })
+  wecomExternalUserid?: string;
+
+  @Column({ name: 'star_rating', type: 'int', default: 0, nullable: true, comment: '手动星级评分(1-5)' })
+  starRating?: number;
+
+  @Column({ name: 'final_score', type: 'int', default: 0, nullable: true, comment: '综合评分(0-100)' })
+  finalScore?: number;
 
   @CreateDateColumn({ name: 'created_at', comment: '创建时间' })
   createdAt: Date;

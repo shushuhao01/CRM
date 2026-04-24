@@ -644,13 +644,13 @@ router.post('/companies/import', async (req: Request, res: Response) => {
           config.configValue = JSON.stringify(kuaidi100Config);
           await configRepo.save(config);
         } else {
-          config = configRepo.create({
+          const newConfig = configRepo.create({
             id: uuidv4(),
             configKey: 'kuaidi100',
             configValue: JSON.stringify(kuaidi100Config),
             description: '快递100 API配置'
           } as any);
-          await configRepo.save(config);
+          await configRepo.save(newConfig);
         }
       } catch (e) {
         log.warn('[物流公司导入] 快递100配置导入失败:', e);

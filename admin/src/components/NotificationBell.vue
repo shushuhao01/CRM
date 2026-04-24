@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="notification-bell-container">
     <el-popover
       :visible="popVisible"
@@ -26,8 +26,8 @@
       <!-- 筛选 -->
       <div class="pop-filter">
         <el-radio-group v-model="filter" size="small" @change="loadNotifications">
-          <el-radio-button value="all">全部</el-radio-button>
-          <el-radio-button value="unread">未读</el-radio-button>
+          <el-radio-button label="all">全部</el-radio-button>
+          <el-radio-button label="unread">未读</el-radio-button>
         </el-radio-group>
       </div>
 

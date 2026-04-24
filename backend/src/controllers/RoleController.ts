@@ -56,8 +56,8 @@ export class RoleController {
 
       // 查询角色列表
       const roles = await dataSource.query(
-        `SELECT id, name, code, description, status, level, color, permissions, role_type as roleType, data_scope as dataScope, created_at as createdAt, updated_at as updatedAt
-         FROM roles ${whereClause} ORDER BY level ASC, created_at DESC LIMIT ? OFFSET ?`,
+        `SELECT id, name, code, description, status, level, color, permissions, data_scope as dataScope, createdAt, updatedAt
+         FROM roles ${whereClause} ORDER BY level ASC, createdAt DESC LIMIT ? OFFSET ?`,
         [...params, Number(limit), offset]
       );
 
@@ -135,7 +135,7 @@ export class RoleController {
 
       const t = tenantRawSQL();
       const roles = await dataSource.query(
-        'SELECT id, name, code, description, status, level, color, permissions, role_type as roleType, data_scope as dataScope, created_at as createdAt, updated_at as updatedAt FROM roles WHERE id = ?' + t.sql,
+        'SELECT id, name, code, description, status, level, color, permissions, data_scope as dataScope, createdAt, updatedAt FROM roles WHERE id = ?' + t.sql,
         [id, ...t.params]
       );
 
@@ -220,7 +220,7 @@ export class RoleController {
       // 插入角色
       const tenantId = getCurrentTenantIdSafe() || null;
       await dataSource.query(
-        `INSERT INTO roles (id, tenant_id, name, code, description, status, level, color, permissions, data_scope, created_at, updated_at)
+        `INSERT INTO roles (id, tenant_id, name, code, description, status, level, color, permissions, data_scope, createdAt, updatedAt)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
         [roleId, tenantId, name, code, description || '', status, level, color || '', JSON.stringify(permissions), dataScope]
       );
@@ -290,7 +290,7 @@ export class RoleController {
       if (dataScope !== undefined) { updates.push('data_scope = ?'); params.push(dataScope); }
 
       if (updates.length > 0) {
-        updates.push('updated_at = NOW()');
+        updates.push('updatedAt = NOW()');
         params.push(id, ...t.params);
         await dataSource.query(`UPDATE roles SET ${updates.join(', ')} WHERE id = ?` + t.sql, params);
       }
@@ -432,7 +432,7 @@ export class RoleController {
         return;
       }
 
-      await dataSource.query('UPDATE roles SET status = ?, updated_at = NOW() WHERE id = ?' + t.sql, [status, id, ...t.params]);
+      await dataSource.query('UPDATE roles SET status = ?, updatedAt = NOW() WHERE id = ?' + t.sql, [status, id, ...t.params]);
 
       res.json({
         success: true,
@@ -527,7 +527,7 @@ export class RoleController {
 
       const newPermissions = permissions || permissionIds || [];
       await dataSource.query(
-        'UPDATE roles SET permissions = ?, updated_at = NOW() WHERE id = ?' + t.sql,
+        'UPDATE roles SET permissions = ?, updatedAt = NOW() WHERE id = ?' + t.sql,
         [JSON.stringify(newPermissions), id, ...t.params]
       );
 

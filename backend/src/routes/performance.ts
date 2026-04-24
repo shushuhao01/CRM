@@ -171,7 +171,7 @@ router.post('/shares', async (req: Request, res: Response) => {
     const { orderId, orderNumber, orderAmount, shareMembers, description } = req.body;
     const currentUser = (req as any).user;
 
-    if (!orderId || !orderNumber || !orderAmount || !shareMembers || shareMembers.length === 0) {
+    if (!orderId || !orderNumber || orderAmount == null || !shareMembers || shareMembers.length === 0) {
       return res.status(400).json({ success: false, message: '缺少必填字段' });
     }
 
@@ -514,14 +514,14 @@ router.get('/personal', async (req: Request, res: Response) => {
         orderAmount += amount;
       }
 
-      // 签收业绩
-      if (order.status === 'delivered') {
+      // 签收业绩（delivered=实物已签收, signed=虚拟已签收, completed=已完成兼容）
+      if (['delivered', 'signed', 'completed'].includes(order.status)) {
         signCount++;
         signAmount += amount;
       }
 
       // 发货业绩
-      if (['shipped', 'delivered', 'rejected', 'rejected_returned'].includes(order.status)) {
+      if (['shipped', 'delivered', 'signed', 'completed', 'rejected', 'rejected_returned'].includes(order.status)) {
         shipCount++;
         shipAmount += amount;
       }
@@ -839,14 +839,14 @@ router.get('/team', async (req: Request, res: Response) => {
           orderAmount += amount;
         }
 
-        // 签收业绩
-        if (order.status === 'delivered') {
+        // 签收业绩（delivered=实物已签收, signed=虚拟已签收, completed=已完成兼容）
+        if (['delivered', 'signed', 'completed'].includes(order.status)) {
           signCount++;
           signAmount += amount;
         }
 
         // 发货业绩
-        if (['shipped', 'delivered', 'rejected', 'rejected_returned'].includes(order.status)) {
+        if (['shipped', 'delivered', 'signed', 'completed', 'rejected', 'rejected_returned'].includes(order.status)) {
           shipCount++;
           shipAmount += amount;
         }
@@ -1117,8 +1117,8 @@ router.get('/analysis/personal', async (req: Request, res: Response) => {
          SUM(total_amount) as orderAmount,
          SUM(CASE WHEN status = 'shipped' THEN 1 ELSE 0 END) as shipCount,
          SUM(CASE WHEN status = 'shipped' THEN total_amount ELSE 0 END) as shipAmount,
-         SUM(CASE WHEN status IN ('delivered', 'completed') THEN 1 ELSE 0 END) as signCount,
-         SUM(CASE WHEN status IN ('delivered', 'completed') THEN total_amount ELSE 0 END) as signAmount,
+         SUM(CASE WHEN status IN ('delivered', 'signed', 'completed') THEN 1 ELSE 0 END) as signCount,
+         SUM(CASE WHEN status IN ('delivered', 'signed', 'completed') THEN total_amount ELSE 0 END) as signAmount,
          SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END) as rejectCount,
          SUM(CASE WHEN status = 'cancelled' THEN total_amount ELSE 0 END) as rejectAmount,
          SUM(CASE WHEN status = 'refunded' THEN 1 ELSE 0 END) as returnCount,
@@ -1171,7 +1171,7 @@ router.get('/analysis/department', async (req: Request, res: Response) => {
          COUNT(o.id) as orderCount,
          SUM(o.total_amount) as orderAmount,
          SUM(CASE WHEN o.status = 'shipped' THEN 1 ELSE 0 END) as shipCount,
-         SUM(CASE WHEN o.status IN ('delivered', 'completed') THEN 1 ELSE 0 END) as signCount,
+         SUM(CASE WHEN o.status IN ('delivered', 'signed', 'completed') THEN 1 ELSE 0 END) as signCount,
          SUM(CASE WHEN o.status = 'cancelled' THEN 1 ELSE 0 END) as rejectCount,
          SUM(CASE WHEN o.status = 'refunded' THEN 1 ELSE 0 END) as returnCount
        FROM orders o
@@ -1217,7 +1217,7 @@ router.get('/analysis/company', async (_req: Request, res: Response) => {
          COUNT(*) as orderCount,
          SUM(total_amount) as orderAmount,
          SUM(CASE WHEN status = 'shipped' THEN 1 ELSE 0 END) as shipCount,
-         SUM(CASE WHEN status IN ('delivered', 'completed') THEN 1 ELSE 0 END) as signCount,
+         SUM(CASE WHEN status IN ('delivered', 'signed', 'completed') THEN 1 ELSE 0 END) as signCount,
          SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END) as rejectCount,
          SUM(CASE WHEN status = 'refunded' THEN 1 ELSE 0 END) as returnCount
        FROM orders WHERE 1=1${tComp.sql}`,

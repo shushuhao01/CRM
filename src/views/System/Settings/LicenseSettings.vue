@@ -80,8 +80,9 @@
         <div class="status-card info">
           <div class="status-icon">👥</div>
           <div class="status-info">
-            <div class="status-label">用户数</div>
-            <div class="status-value">{{ detailData?.currentUsers ?? '-' }} / {{ detailData?.maxUsers ?? '-' }}</div>
+            <div class="status-label">{{ detailData?.userLimitMode === 'online' ? '在线席位' : '用户数' }}</div>
+            <div class="status-value" v-if="detailData?.userLimitMode === 'online'">{{ detailData?.onlineCount ?? 0 }} / {{ detailData?.maxOnlineSeats ?? '-' }} 席位</div>
+            <div class="status-value" v-else>{{ detailData?.currentUsers ?? '-' }} / {{ detailData?.maxUsers ?? '-' }}</div>
           </div>
         </div>
         <div class="status-card info">
@@ -103,13 +104,23 @@
             {{ licenseData?.expired ? '已过期' : '有效' }}
           </el-tag>
         </el-descriptions-item>
-        <el-descriptions-item label="最大用户数">{{ detailData?.maxUsers ?? licenseData?.maxUsers ?? '-' }}</el-descriptions-item>
-        <el-descriptions-item label="当前用户数">
-          {{ detailData?.currentUsers ?? '-' }}
-          <span v-if="detailData?.remainingUsers != null" style="color: #909399; margin-left: 4px;">
-            （剩余 {{ detailData.remainingUsers }}）
-          </span>
+        <el-descriptions-item label="用户限制模式">
+          <el-tag v-if="detailData?.userLimitMode === 'online'" type="success" size="small">在线席位制</el-tag>
+          <el-tag v-else size="small">总用户数制</el-tag>
         </el-descriptions-item>
+        <el-descriptions-item v-if="detailData?.userLimitMode === 'online'" label="在线席位">
+          {{ detailData?.onlineCount ?? 0 }} / {{ detailData?.maxOnlineSeats ?? '-' }}
+          <span style="color: #909399; margin-left: 4px;">（注册用户 {{ detailData?.currentUsers ?? '-' }} 人）</span>
+        </el-descriptions-item>
+        <template v-else>
+          <el-descriptions-item label="最大用户数">{{ detailData?.maxUsers ?? licenseData?.maxUsers ?? '-' }}</el-descriptions-item>
+          <el-descriptions-item label="当前用户数">
+            {{ detailData?.currentUsers ?? '-' }}
+            <span v-if="detailData?.remainingUsers != null" style="color: #909399; margin-left: 4px;">
+              （剩余 {{ detailData.remainingUsers }}）
+            </span>
+          </el-descriptions-item>
+        </template>
         <el-descriptions-item label="激活时间">{{ detailData?.activatedAt ? formatDate(detailData.activatedAt) : '-' }}</el-descriptions-item>
         <el-descriptions-item label="到期时间">
           {{ licenseData?.expiresAt ? formatDate(licenseData.expiresAt) : '永久有效' }}
@@ -119,8 +130,19 @@
         </el-descriptions-item>
       </el-descriptions>
 
-      <!-- 用户数使用进度条 -->
-      <div v-if="detailData?.maxUsers && detailData?.currentUsers != null" class="usage-section">
+      <!-- 用户数/席位使用进度条 -->
+      <div v-if="detailData?.userLimitMode === 'online' && detailData?.maxOnlineSeats" class="usage-section">
+        <div class="usage-header">
+          <span>在线席位使用情况</span>
+          <span>{{ detailData.onlineCount || 0 }} / {{ detailData.maxOnlineSeats }}</span>
+        </div>
+        <el-progress
+          :percentage="seatUsagePercent"
+          :color="seatUsageColor"
+          :stroke-width="12"
+        />
+      </div>
+      <div v-else-if="detailData?.maxUsers && detailData?.currentUsers != null" class="usage-section">
         <div class="usage-header">
           <span>用户数使用情况</span>
           <span>{{ detailData.currentUsers }} / {{ detailData.maxUsers }}</span>
@@ -147,16 +169,15 @@ import { ElMessage } from 'element-plus'
 import { Refresh, Loading, InfoFilled } from '@element-plus/icons-vue'
 import request from '@/utils/request'
 import { useConfigStore } from '@/stores/config'
+import { getMemberCenterRenewUrl, getMemberCenterLoginUrl } from '@/utils/memberCenterUrl'
 
 const configStore = useConfigStore()
 
-// 会员中心续费URL
+// 会员中心续费URL — 使用统一工具自动识别
 const memberCenterUrl = computed(() => {
-  const websiteUrl = configStore.systemConfig.websiteUrl
-  if (websiteUrl) {
-    return websiteUrl.replace(/\/+$/, '') + '/member/login'
-  }
-  return ''
+  // 触发响应式依赖（确保 configStore 变化后重新计算）
+  void configStore.systemConfig.websiteUrl
+  return getMemberCenterRenewUrl() || getMemberCenterLoginUrl()
 })
 
 // 打开联系客服弹窗
@@ -183,6 +204,9 @@ interface LicenseDetail {
   maxUsers?: number
   currentUsers?: number
   remainingUsers?: number
+  userLimitMode?: string
+  maxOnlineSeats?: number
+  onlineCount?: number
   features?: any
   expiresAt?: string | null
   activatedAt?: string | null
@@ -228,6 +252,18 @@ const userUsagePercent = computed(() => {
 
 const userUsageColor = computed(() => {
   const percent = userUsagePercent.value
+  if (percent >= 90) return '#F56C6C'
+  if (percent >= 70) return '#E6A23C'
+  return '#67C23A'
+})
+
+const seatUsagePercent = computed(() => {
+  if (!detailData.value?.maxOnlineSeats) return 0
+  return Math.min(100, Math.round(((detailData.value.onlineCount || 0) / detailData.value.maxOnlineSeats) * 100))
+})
+
+const seatUsageColor = computed(() => {
+  const percent = seatUsagePercent.value
   if (percent >= 90) return '#F56C6C'
   if (percent >= 70) return '#E6A23C'
   return '#67C23A'

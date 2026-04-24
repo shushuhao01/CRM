@@ -116,21 +116,33 @@
       <!-- 快捷操作 -->
       <el-card class="quick-actions-card">
         <template #header>
-          <span class="chart-title">快捷操作</span>
+          <div class="chart-header">
+            <span class="chart-title">快捷操作</span>
+            <el-tooltip content="自定义快捷操作" placement="top">
+              <el-button type="primary" link size="small" @click="openQuickSettings" class="quick-settings-btn">
+                <el-icon :size="16"><Setting /></el-icon>
+              </el-button>
+            </el-tooltip>
+          </div>
         </template>
-        <div class="quick-actions">
+        <div class="quick-actions" :class="`cols-${quickActionsColumns}`">
           <div
             class="action-item"
-            v-for="action in (quickActions || [])"
+            v-for="action in visibleQuickActions"
             :key="action.key"
             @click="handleQuickAction(action)"
           >
             <div class="action-icon" :style="{ background: action.gradient || action.color }">
-              <el-icon :size="20">
+              <el-icon :size="quickActionsColumns === 3 ? 18 : 20">
                 <component :is="action.icon" />
               </el-icon>
             </div>
             <div class="action-label">{{ action.label }}</div>
+          </div>
+          <div v-if="visibleQuickActions.length === 0" class="quick-actions-empty">
+            <el-empty description="暂无可用的快捷操作" :image-size="60">
+              <el-button type="primary" size="small" @click="openQuickSettings">去设置</el-button>
+            </el-empty>
           </div>
         </div>
       </el-card>
@@ -276,6 +288,102 @@
         </el-button>
       </template>
     </el-dialog>
+
+    <!-- 快捷操作设置弹窗 -->
+    <el-dialog
+      v-model="showQuickSettings"
+      title=""
+      width="620px"
+      :close-on-click-modal="false"
+      class="quick-settings-dialog"
+    >
+      <template #header>
+        <div class="qs-dialog-header">
+          <div class="qs-dialog-title">
+            <el-icon :size="20" color="#409EFF"><Setting /></el-icon>
+            <span>自定义快捷操作</span>
+          </div>
+          <div class="qs-dialog-subtitle">选择最多 6 个快捷操作显示在数据看板，仅展示您有权限的功能</div>
+        </div>
+      </template>
+
+      <!-- 布局设置区 -->
+      <div class="qs-layout-section">
+        <div class="qs-layout-row">
+          <span class="qs-layout-label">卡片布局</span>
+          <el-radio-group v-model="tempQuickColumns" size="small">
+            <el-radio-button :label="2">
+              <el-icon :size="14"><Grid /></el-icon> 一行2个
+            </el-radio-button>
+            <el-radio-button :label="3">
+              <el-icon :size="14"><Menu /></el-icon> 一行3个
+            </el-radio-button>
+          </el-radio-group>
+        </div>
+        <div class="qs-selected-count" :class="{ 'qs-count-full': tempSelectedKeys.length >= 6 }">
+          已选 <strong>{{ tempSelectedKeys.length }}</strong> / 6
+        </div>
+      </div>
+
+      <!-- 分类快捷操作选择区 -->
+      <div class="qs-actions-container">
+        <div
+          v-for="category in pagedCategories"
+          :key="category.name"
+          class="qs-category"
+        >
+          <div class="qs-category-header">
+            <el-icon :size="14" :style="{ color: category.color }"><component :is="category.icon" /></el-icon>
+            <span>{{ category.name }}</span>
+          </div>
+          <div class="qs-category-grid">
+            <div
+              v-for="item in category.actions"
+              :key="item.key"
+              class="qs-action-card"
+              :class="{
+                'qs-action-selected': tempSelectedKeys.includes(item.key),
+                'qs-action-disabled': !tempSelectedKeys.includes(item.key) && tempSelectedKeys.length >= 6
+              }"
+              @click="toggleQuickAction(item.key)"
+            >
+              <div class="qs-action-icon" :style="{ background: item.gradient || item.color }">
+                <el-icon :size="16"><component :is="item.icon" /></el-icon>
+              </div>
+              <span class="qs-action-name">{{ item.label }}</span>
+              <div class="qs-action-check" v-if="tempSelectedKeys.includes(item.key)">
+                <el-icon :size="12"><CircleCheck /></el-icon>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 翻页控制 -->
+      <div class="qs-pagination" v-if="totalCategoryPages > 1">
+        <el-button :disabled="categoryPage === 1" link @click="categoryPage--">
+          <el-icon><ArrowLeft /></el-icon> 上一页
+        </el-button>
+        <span class="qs-page-info">{{ categoryPage }} / {{ totalCategoryPages }}</span>
+        <el-button :disabled="categoryPage === totalCategoryPages" link @click="categoryPage++">
+          下一页 <el-icon><ArrowRight /></el-icon>
+        </el-button>
+      </div>
+
+      <template #footer>
+        <div class="qs-dialog-footer">
+          <el-button @click="resetQuickActions">
+            <el-icon><RefreshLeft /></el-icon> 恢复默认
+          </el-button>
+          <div>
+            <el-button @click="showQuickSettings = false">取消</el-button>
+            <el-button type="primary" @click="saveQuickActions">
+              <el-icon><CircleCheck /></el-icon> 保存设置
+            </el-button>
+          </div>
+        </div>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -284,7 +392,7 @@ import { ref, computed, onMounted, watch, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { createSafeNavigator } from '@/utils/navigation'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { CircleCheck, Delete } from '@element-plus/icons-vue'
+import { CircleCheck, Delete, Setting, Grid, Menu, ArrowLeft, ArrowRight, RefreshLeft } from '@element-plus/icons-vue'
 import { eventBus, EventNames } from '@/utils/eventBus'
 import { use } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
@@ -306,6 +414,8 @@ import { useCustomerStore } from '@/stores/customer'
 import { dashboardApi, type DashboardTodo, type DashboardQuickAction } from '@/api/dashboard'
 import { messageApi } from '@/api/message'
 import { sanitizeHtml } from '@/utils/sanitize'
+import { menuConfig } from '@/config/menu'
+import { hasMenuPermission } from '@/utils/menu'
 
 // 定义组件名称
 defineOptions({
@@ -380,8 +490,8 @@ const messages = computed(() => {
 const unreadCount = computed(() => {
   // 🔥 系统消息未读数（messages已排除announcement类型）
   const msgUnread = messages.value.filter(msg => !msg.read).length
-  // 🔥 公告未读数
-  const annUnread = (messageStore.announcements || []).filter((a: any) => a.status === 'published' && !a.read).length
+  // 🔥 公告未读数（排除静默公告，即用户注册前发布的历史公告）
+  const annUnread = (messageStore.announcements || []).filter((a: any) => a.status === 'published' && !a.read && !a.silent).length
   return msgUnread + annUnread
 })
 
@@ -394,9 +504,9 @@ const recentMessages = computed(() => {
       return timeB - timeA // 倒序：最新的在前
     })
 
-  // 🔥 将公告也合并到消息提醒列表中（仅显示未读公告）
+  // 🔥 将公告也合并到消息提醒列表中（仅显示未读且非静默的公告）
   const announcementMessages = (messageStore.announcements || [])
-    .filter((a: any) => a.status === 'published' && !a.read)
+    .filter((a: any) => a.status === 'published' && !a.read && !a.silent)
     .map((a: any) => ({
       id: 'ann_' + a.id,
       title: `📢 ${a.title}`,
@@ -651,37 +761,274 @@ const topRankings = computed(() => {
 // 待办事项数据 - 从API获取
 const todos = ref<TodoItem[]>([])
 
-// 快捷操作数据 - 固定的快捷入口
-const quickActions = ref<QuickAction[]>([
-  {
-    key: 'add-customer',
-    label: '新增客户',
-    icon: 'UserFilled',
-    route: '/customer/add',
-    color: '#409EFF'
-  },
-  {
-    key: 'add-order',
-    label: '新增订单',
-    icon: 'DocumentAdd',
-    route: '/order/add',
-    color: '#67C23A'
-  },
-  {
-    key: 'search-customer',
-    label: '客户查询',
-    icon: 'Search',
-    route: '/data/search',
-    color: '#E6A23C'
-  },
-  {
-    key: 'search-logistics',
-    label: '物流查询',
-    icon: 'Van',
-    route: '/logistics/list',
-    color: '#F56C6C'
+// 快捷操作数据 - 可自定义的快捷入口（带权限控制）
+const showQuickSettings = ref(false)
+const QUICK_ACTIONS_STORAGE_KEY = 'crm_dashboard_quick_actions'
+const QUICK_LAYOUT_STORAGE_KEY = 'crm_dashboard_quick_layout'
+const MAX_QUICK_ACTIONS = 6
+const CATEGORIES_PER_PAGE = 4
+
+// 布局设置：一行几个按钮（默认2）
+const quickActionsColumns = ref<2 | 3>(2)
+
+// 弹窗临时编辑状态
+const tempSelectedKeys = ref<string[]>([])
+const tempQuickColumns = ref<2 | 3>(2)
+const categoryPage = ref(1)
+
+// 所有可选的快捷操作定义（包含权限码映射 + 分类）
+interface QuickActionDef extends QuickAction {
+  permissions: string[]
+  category: string
+}
+
+const allQuickActions: QuickActionDef[] = [
+  // ── 客户管理 ──
+  { key: 'add-customer', label: '新增客户', icon: 'UserFilled', route: '/customer/add',
+    color: '#409EFF', gradient: 'linear-gradient(135deg, #409EFF 0%, #1890ff 100%)',
+    permissions: ['customer:add', 'customer:add:create', 'customer:list:create'], category: '客户管理' },
+  { key: 'customer-list', label: '客户列表', icon: 'User', route: '/customer/list',
+    color: '#1890FF', gradient: 'linear-gradient(135deg, #1890FF 0%, #096dd9 100%)',
+    permissions: ['customer:list', 'customer:list:view'], category: '客户管理' },
+  { key: 'search-customer', label: '客户查询', icon: 'Search', route: '/data/search',
+    color: '#E6A23C', gradient: 'linear-gradient(135deg, #E6A23C 0%, #fa8c16 100%)',
+    permissions: ['data:search', 'data:search:view'], category: '客户管理' },
+  { key: 'customer-tags', label: '客户标签', icon: 'PriceTag', route: '/customer/tags',
+    color: '#9C27B0', gradient: 'linear-gradient(135deg, #9C27B0 0%, #7b1fa2 100%)',
+    permissions: ['customer:tags', 'customer:tags:view'], category: '客户管理' },
+  // ── 订单管理 ──
+  { key: 'add-order', label: '新增订单', icon: 'DocumentAdd', route: '/order/add',
+    color: '#67C23A', gradient: 'linear-gradient(135deg, #67C23A 0%, #52c41a 100%)',
+    permissions: ['order:add', 'order:add:create'], category: '订单管理' },
+  { key: 'order-list', label: '订单列表', icon: 'List', route: '/order/list',
+    color: '#909399', gradient: 'linear-gradient(135deg, #909399 0%, #606266 100%)',
+    permissions: ['order:list', 'order:list:view'], category: '订单管理' },
+  { key: 'order-audit', label: '订单审核', icon: 'Stamp', route: '/order/audit',
+    color: '#722ED1', gradient: 'linear-gradient(135deg, #722ED1 0%, #531dab 100%)',
+    permissions: ['order:audit', 'order:audit:view'], category: '订单管理' },
+  // ── 物流管理 ──
+  { key: 'search-logistics', label: '物流查询', icon: 'Van', route: '/logistics/list',
+    color: '#F56C6C', gradient: 'linear-gradient(135deg, #F56C6C 0%, #ff4d4f 100%)',
+    permissions: ['logistics:list', 'logistics:list:view'], category: '物流管理' },
+  { key: 'shipping-list', label: '发货列表', icon: 'Box', route: '/logistics/shipping',
+    color: '#FA8C16', gradient: 'linear-gradient(135deg, #FA8C16 0%, #d48806 100%)',
+    permissions: ['logistics:shipping', 'logistics:shipping:view'], category: '物流管理' },
+  { key: 'logistics-track', label: '物流跟踪', icon: 'MapLocation', route: '/logistics/track',
+    color: '#00BCD4', gradient: 'linear-gradient(135deg, #00BCD4 0%, #0097a7 100%)',
+    permissions: ['logistics:track', 'logistics:track:view'], category: '物流管理' },
+  { key: 'logistics-companies', label: '物流公司', icon: 'OfficeBuilding', route: '/logistics/companies',
+    color: '#795548', gradient: 'linear-gradient(135deg, #795548 0%, #5d4037 100%)',
+    permissions: ['logistics:companies', 'logistics:companies:view'], category: '物流管理' },
+  // ── 售后管理 ──
+  { key: 'add-service', label: '新建售后', icon: 'Headset', route: '/service/add',
+    color: '#E91E63', gradient: 'linear-gradient(135deg, #E91E63 0%, #c2185b 100%)',
+    permissions: ['service:add', 'service:add:create'], category: '售后管理' },
+  { key: 'service-list', label: '售后订单', icon: 'DocumentChecked', route: '/service/list',
+    color: '#13C2C2', gradient: 'linear-gradient(135deg, #13C2C2 0%, #08979c 100%)',
+    permissions: ['service:list', 'service:list:view'], category: '售后管理' },
+  { key: 'service-data', label: '售后数据', icon: 'DataBoard', route: '/service/data',
+    color: '#FF5722', gradient: 'linear-gradient(135deg, #FF5722 0%, #e64a19 100%)',
+    permissions: ['service:data', 'service:data:view'], category: '售后管理' },
+  // ── 业绩统计 ──
+  { key: 'performance-personal', label: '个人业绩', icon: 'TrendCharts', route: '/performance/personal',
+    color: '#52C41A', gradient: 'linear-gradient(135deg, #52C41A 0%, #389e0d 100%)',
+    permissions: ['performance:personal', 'performance:personal:view'], category: '业绩统计' },
+  { key: 'performance-team', label: '团队业绩', icon: 'DataAnalysis', route: '/performance/team',
+    color: '#2F54EB', gradient: 'linear-gradient(135deg, #2F54EB 0%, #1d39c4 100%)',
+    permissions: ['performance:team', 'performance:team:view'], category: '业绩统计' },
+  { key: 'performance-analysis', label: '业绩分析', icon: 'PieChart', route: '/performance/analysis',
+    color: '#EB2F96', gradient: 'linear-gradient(135deg, #EB2F96 0%, #c41d7f 100%)',
+    permissions: ['performance:analysis', 'performance:analysis:view'], category: '业绩统计' },
+  { key: 'performance-share', label: '业绩分享', icon: 'Share', route: '/performance/share',
+    color: '#FAAD14', gradient: 'linear-gradient(135deg, #FAAD14 0%, #d48806 100%)',
+    permissions: ['performance:share', 'performance:share:view'], category: '业绩统计' },
+  // ── 商品管理 ──
+  { key: 'product-list', label: '商品列表', icon: 'Goods', route: '/product/list',
+    color: '#4CAF50', gradient: 'linear-gradient(135deg, #4CAF50 0%, #388e3c 100%)',
+    permissions: ['product:list', 'product:list:view'], category: '商品管理' },
+  { key: 'product-inventory', label: '库存管理', icon: 'Files', route: '/product/inventory',
+    color: '#FF9800', gradient: 'linear-gradient(135deg, #FF9800 0%, #f57c00 100%)',
+    permissions: ['product:inventory', 'product:inventory:view'], category: '商品管理' },
+  // ── 财务管理 ──
+  { key: 'finance-performance', label: '绩效数据', icon: 'Coin', route: '/finance/performance-data',
+    color: '#FFB300', gradient: 'linear-gradient(135deg, #FFB300 0%, #ff8f00 100%)',
+    permissions: ['finance:performance_data', 'finance:performance_data:view'], category: '财务管理' },
+  // ── 资料管理 ──
+  { key: 'data-list', label: '资料列表', icon: 'Folder', route: '/data/list',
+    color: '#607D8B', gradient: 'linear-gradient(135deg, #607D8B 0%, #455a64 100%)',
+    permissions: ['data:list', 'data:list:view'], category: '资料管理' },
+  { key: 'data-recycle', label: '回收站', icon: 'Delete', route: '/data/recycle',
+    color: '#9E9E9E', gradient: 'linear-gradient(135deg, #9E9E9E 0%, #757575 100%)',
+    permissions: ['data:recycle', 'data:recycle:view'], category: '资料管理' },
+  // ── 服务管理 ──
+  { key: 'sms-management', label: '短信管理', icon: 'ChatLineSquare', route: '/service-management/sms',
+    color: '#3F51B5', gradient: 'linear-gradient(135deg, #3F51B5 0%, #303f9f 100%)',
+    permissions: ['service:sms', 'service:sms:view'], category: '服务管理' },
+  { key: 'call-management', label: '通话管理', icon: 'Phone', route: '/service-management/call',
+    color: '#009688', gradient: 'linear-gradient(135deg, #009688 0%, #00796b 100%)',
+    permissions: ['service:call', 'service:call:view'], category: '服务管理' },
+  // ── 系统管理 ──
+  { key: 'system-users', label: '用户管理', icon: 'UserFilled', route: '/system/users',
+    color: '#546E7A', gradient: 'linear-gradient(135deg, #546E7A 0%, #37474f 100%)',
+    permissions: ['system:users', 'system:users:view'], category: '系统管理' },
+  { key: 'system-departments', label: '部门管理', icon: 'OfficeBuilding', route: '/system/departments',
+    color: '#8D6E63', gradient: 'linear-gradient(135deg, #8D6E63 0%, #6d4c41 100%)',
+    permissions: ['system:departments', 'system:departments:view'], category: '系统管理' }
+]
+
+// 分类图标和颜色映射
+const categoryMeta: Record<string, { icon: string; color: string }> = {
+  '客户管理': { icon: 'User', color: '#409EFF' },
+  '订单管理': { icon: 'ShoppingCart', color: '#67C23A' },
+  '物流管理': { icon: 'Van', color: '#F56C6C' },
+  '售后管理': { icon: 'Headset', color: '#E91E63' },
+  '业绩统计': { icon: 'TrendCharts', color: '#2F54EB' },
+  '商品管理': { icon: 'Goods', color: '#4CAF50' },
+  '财务管理': { icon: 'Coin', color: '#FFB300' },
+  '资料管理': { icon: 'Folder', color: '#607D8B' },
+  '服务管理': { icon: 'ChatLineSquare', color: '#3F51B5' },
+  '系统管理': { icon: 'Setting', color: '#546E7A' }
+}
+
+// 各角色的默认快捷操作
+const DEFAULT_QUICK_KEYS_BY_ROLE: Record<string, string[]> = {
+  super_admin: ['add-customer', 'add-order', 'search-customer', 'search-logistics'],
+  admin: ['add-customer', 'add-order', 'search-customer', 'search-logistics'],
+  department_manager: ['add-customer', 'add-order', 'search-customer', 'search-logistics'],
+  sales_staff: ['add-customer', 'add-order', 'search-customer', 'search-logistics'],
+  customer_service: ['order-list', 'service-list', 'shipping-list', 'search-logistics']
+}
+const DEFAULT_QUICK_KEYS = ['add-customer', 'add-order', 'search-customer', 'search-logistics']
+
+const selectedQuickKeys = ref<string[]>([...DEFAULT_QUICK_KEYS])
+
+// 权限过滤：严格基于侧边栏菜单可见路径判断快捷操作是否可用
+const permittedQuickActions = computed(() => {
+  const user = userStore.currentUser
+  if (!user) return []
+  const userRole = user.role || ''
+  const userPerms = userStore.permissions || []
+  // 管理员拥有所有快捷操作
+  if (userRole === 'super_admin' || userRole === 'admin' || userPerms.includes('*')) {
+    return allQuickActions
   }
-])
+  // 收集侧边栏当前角色可见的所有二级菜单路径
+  const visiblePaths = new Set<string>()
+  for (const topMenu of menuConfig) {
+    if (!hasMenuPermission(topMenu, userRole, userPerms)) continue
+    if (topMenu.path) visiblePaths.add(topMenu.path)
+    if (topMenu.children) {
+      for (const child of topMenu.children) {
+        if (child.path && hasMenuPermission(child, userRole, userPerms)) {
+          visiblePaths.add(child.path)
+        }
+      }
+    }
+  }
+  return allQuickActions.filter(action => visiblePaths.has(action.route))
+})
+
+// 按分类组织有权限的操作（用于设置弹窗）
+const categorizedActions = computed(() => {
+  const map = new Map<string, QuickActionDef[]>()
+  for (const action of permittedQuickActions.value) {
+    const cat = action.category || '其他'
+    if (!map.has(cat)) map.set(cat, [])
+    map.get(cat)!.push(action)
+  }
+  return Array.from(map.entries()).map(([name, actions]) => ({
+    name,
+    actions,
+    icon: categoryMeta[name]?.icon || 'More',
+    color: categoryMeta[name]?.color || '#909399'
+  }))
+})
+
+// 翻页
+const totalCategoryPages = computed(() => Math.max(1, Math.ceil(categorizedActions.value.length / CATEGORIES_PER_PAGE)))
+const pagedCategories = computed(() => {
+  const start = (categoryPage.value - 1) * CATEGORIES_PER_PAGE
+  return categorizedActions.value.slice(start, start + CATEGORIES_PER_PAGE)
+})
+
+// 实际显示的快捷操作（按选择顺序 + 权限过滤）
+const visibleQuickActions = computed(() => {
+  const permittedKeys = new Set(permittedQuickActions.value.map(a => a.key))
+  return selectedQuickKeys.value
+    .filter(key => permittedKeys.has(key))
+    .map(key => allQuickActions.find(a => a.key === key))
+    .filter(Boolean) as typeof allQuickActions
+})
+
+// 打开设置弹窗时，拷贝一份临时编辑数据
+const openQuickSettings = () => {
+  tempSelectedKeys.value = [...selectedQuickKeys.value]
+  tempQuickColumns.value = quickActionsColumns.value
+  categoryPage.value = 1
+  showQuickSettings.value = true
+}
+
+// 点选/取消快捷操作
+const toggleQuickAction = (key: string) => {
+  const idx = tempSelectedKeys.value.indexOf(key)
+  if (idx >= 0) {
+    tempSelectedKeys.value.splice(idx, 1)
+  } else if (tempSelectedKeys.value.length < MAX_QUICK_ACTIONS) {
+    tempSelectedKeys.value.push(key)
+  }
+}
+
+// 从 localStorage 加载用户自定义的快捷操作
+const loadQuickActions = () => {
+  const user = userStore.currentUser
+  const storageKey = user ? `${QUICK_ACTIONS_STORAGE_KEY}_${user.id}` : QUICK_ACTIONS_STORAGE_KEY
+  const layoutKey = user ? `${QUICK_LAYOUT_STORAGE_KEY}_${user.id}` : QUICK_LAYOUT_STORAGE_KEY
+  try {
+    const stored = localStorage.getItem(storageKey)
+    if (stored) {
+      const keys = JSON.parse(stored) as string[]
+      if (Array.isArray(keys) && keys.length > 0) {
+        selectedQuickKeys.value = keys.slice(0, MAX_QUICK_ACTIONS)
+      }
+    }
+    const layoutVal = localStorage.getItem(layoutKey)
+    if (layoutVal === '3') {
+      quickActionsColumns.value = 3
+    } else {
+      quickActionsColumns.value = 2
+    }
+    if (selectedQuickKeys.value.length > 0) return
+  } catch { /* 使用默认值 */ }
+
+  // 使用角色对应的默认快捷操作
+  const role = user?.role || ''
+  const roleDefaults = DEFAULT_QUICK_KEYS_BY_ROLE[role] || DEFAULT_QUICK_KEYS
+  const permittedKeys = new Set(permittedQuickActions.value.map(a => a.key))
+  selectedQuickKeys.value = roleDefaults.filter(key => permittedKeys.has(key)).slice(0, MAX_QUICK_ACTIONS)
+}
+
+// 保存快捷操作配置
+const saveQuickActions = () => {
+  const user = userStore.currentUser
+  const storageKey = user ? `${QUICK_ACTIONS_STORAGE_KEY}_${user.id}` : QUICK_ACTIONS_STORAGE_KEY
+  const layoutKey = user ? `${QUICK_LAYOUT_STORAGE_KEY}_${user.id}` : QUICK_LAYOUT_STORAGE_KEY
+  const permittedKeys = new Set(permittedQuickActions.value.map(a => a.key))
+  selectedQuickKeys.value = tempSelectedKeys.value.filter(key => permittedKeys.has(key))
+  quickActionsColumns.value = tempQuickColumns.value
+  localStorage.setItem(storageKey, JSON.stringify(selectedQuickKeys.value))
+  localStorage.setItem(layoutKey, String(quickActionsColumns.value))
+  showQuickSettings.value = false
+  ElMessage.success('快捷操作设置已保存')
+}
+
+// 恢复默认快捷操作
+const resetQuickActions = () => {
+  const role = userStore.currentUser?.role || ''
+  const roleDefaults = DEFAULT_QUICK_KEYS_BY_ROLE[role] || DEFAULT_QUICK_KEYS
+  const permittedKeys = new Set(permittedQuickActions.value.map(a => a.key))
+  tempSelectedKeys.value = roleDefaults.filter(key => permittedKeys.has(key)).slice(0, MAX_QUICK_ACTIONS)
+  tempQuickColumns.value = 2
+}
 
 // 业绩趋势图表数据
 const performanceChartData = ref({
@@ -954,6 +1301,8 @@ const getMessageTypeName = (type: string): string => {
     'data_assigned': '资料分配',
     'data_reassigned': '资料重新分配',
     'data_batch_assigned': '批量分配完成',
+    // 在线席位
+    'online_seat_full': '席位不足',
     // 公告
     'announcement': '系统公告'
   }
@@ -2050,6 +2399,9 @@ onMounted(async () => {
   // 🔥 优化：先显示页面，再加载数据，提升用户体验
   const startTime = Date.now()
 
+  // 🔥 加载用户自定义快捷操作配置
+  loadQuickActions()
+
   // 🔥 第一步：立即显示页面框架（使用已有数据或空数据）
   loadDashboardData()
 
@@ -2362,39 +2714,58 @@ onUnmounted(() => {
 .quick-actions {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 16px;
+  gap: 12px;
+}
+
+.quick-actions.cols-3 {
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 10px;
 }
 
 .action-item {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
-  padding: 16px;
-  border-radius: 8px;
+  gap: 6px;
+  padding: 14px 8px;
+  border-radius: 10px;
   cursor: pointer;
   transition: all 0.3s;
-  border: 1px solid #e4e7ed;
+  border: 1px solid #ebeef5;
+  background: #fff;
+}
+
+.quick-actions.cols-3 .action-item {
+  padding: 10px 6px;
+  gap: 4px;
 }
 
 .action-item:hover {
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  border-color: #dcdfe6;
+  background: #fff;
 }
 
 .action-icon {
-  width: 40px;
-  height: 40px;
-  border-radius: 8px;
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
   display: flex;
   align-items: center;
   justify-content: center;
   color: white;
-  margin-bottom: 8px;
-  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.12);
   transition: all 0.3s ease;
   position: relative;
   overflow: hidden;
+  flex-shrink: 0;
+}
+
+.quick-actions.cols-3 .action-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
 }
 
 .action-icon::before {
@@ -2414,13 +2785,19 @@ onUnmounted(() => {
 
 .action-item:hover .action-icon {
   transform: translateY(-2px) scale(1.05);
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.25);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
 }
 
 .action-label {
-  font-size: 14px;
+  font-size: 13px;
   color: #303133;
   text-align: center;
+  line-height: 1.3;
+  word-break: keep-all;
+}
+
+.quick-actions.cols-3 .action-label {
+  font-size: 12px;
 }
 
 /* 响应式设计 */
@@ -2439,8 +2816,10 @@ onUnmounted(() => {
     grid-template-columns: 1fr;
   }
 
-  .quick-actions {
-    grid-template-columns: 1fr;
+  .quick-actions,
+  .quick-actions.cols-3 {
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
   }
 }
 
@@ -2719,5 +3098,237 @@ onUnmounted(() => {
   color: #c0c4cc;
   cursor: not-allowed;
   background-color: transparent;
+}
+
+/* 快捷操作设置按钮 */
+.quick-settings-btn {
+  opacity: 0.6;
+  transition: opacity 0.3s;
+}
+
+.quick-actions-card:hover .quick-settings-btn {
+  opacity: 1;
+}
+
+/* ── 快捷操作设置弹窗（全新UI）── */
+.quick-settings-dialog :deep(.el-dialog__header) {
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
+.qs-dialog-header {
+  padding-bottom: 4px;
+}
+
+.qs-dialog-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 18px;
+  font-weight: 600;
+  color: #303133;
+}
+
+.qs-dialog-subtitle {
+  margin-top: 6px;
+  font-size: 13px;
+  color: #909399;
+}
+
+/* 布局设置区 */
+.qs-layout-section {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+  background: linear-gradient(135deg, #f0f7ff 0%, #e8f4fd 100%);
+  border-radius: 10px;
+  border: 1px solid #d9ecff;
+}
+
+.qs-layout-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* 修复 radio-button 内图标和文字垂直居中 */
+.qs-layout-row :deep(.el-radio-button__inner) {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.qs-layout-label {
+  font-size: 13px;
+  color: #606266;
+  font-weight: 500;
+}
+
+.qs-selected-count {
+  font-size: 13px;
+  color: #909399;
+  padding: 4px 12px;
+  background: #fff;
+  border-radius: 20px;
+  border: 1px solid #e4e7ed;
+  transition: all 0.3s;
+}
+
+.qs-selected-count.qs-count-full {
+  color: #E6A23C;
+  border-color: #faecd8;
+  background: #fdf6ec;
+}
+
+/* 操作选择容器 */
+.qs-actions-container {
+  max-height: 400px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.qs-actions-container::-webkit-scrollbar {
+  width: 4px;
+}
+
+.qs-actions-container::-webkit-scrollbar-thumb {
+  background: #dcdfe6;
+  border-radius: 4px;
+}
+
+/* 分类 */
+.qs-category {
+  margin-bottom: 16px;
+}
+
+.qs-category:last-child {
+  margin-bottom: 0;
+}
+
+.qs-category-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #606266;
+  margin-bottom: 8px;
+  padding-left: 2px;
+}
+
+/* 分类内网格 */
+.qs-category-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+/* 操作卡片 */
+.qs-action-card {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1.5px solid #e4e7ed;
+  cursor: pointer;
+  transition: all 0.25s;
+  position: relative;
+  background: #fff;
+  user-select: none;
+}
+
+.qs-action-card:hover {
+  border-color: #c0c4cc;
+  background: #f5f7fa;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.qs-action-card.qs-action-selected {
+  border-color: #409EFF;
+  background: #ecf5ff;
+  box-shadow: 0 2px 8px rgba(64, 158, 255, 0.15);
+}
+
+.qs-action-card.qs-action-disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.qs-action-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  flex-shrink: 0;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+}
+
+.qs-action-name {
+  font-size: 13px;
+  color: #303133;
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.qs-action-check {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #409EFF;
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  animation: qs-check-pop 0.25s ease;
+}
+
+@keyframes qs-check-pop {
+  0% { transform: scale(0); }
+  60% { transform: scale(1.2); }
+  100% { transform: scale(1); }
+}
+
+/* 翻页 */
+.qs-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid #ebeef5;
+}
+
+.qs-page-info {
+  font-size: 13px;
+  color: #909399;
+}
+
+/* 底部按钮 */
+.qs-dialog-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.qs-dialog-footer > div {
+  display: flex;
+  gap: 8px;
+}
+
+.quick-actions-empty {
+  grid-column: 1 / -1;
+  padding: 16px 0;
 }
 </style>

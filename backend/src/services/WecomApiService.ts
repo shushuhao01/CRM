@@ -3,6 +3,7 @@
  * 封装企业微信各类API调用
  */
 import axios from 'axios';
+import * as crypto from 'crypto';
 import { AppDataSource } from '../config/database';
 import { WecomConfig } from '../entities/WecomConfig';
 
@@ -12,12 +13,16 @@ const WECOM_API_BASE = 'https://qyapi.weixin.qq.com/cgi-bin';
 // Access Token 缓存
 const tokenCache: Map<string, { token: string; expireTime: number }> = new Map();
 
+// JS-SDK Ticket 缓存
+const ticketCache: Map<string, { ticket: string; expireTime: number }> = new Map();
+
 export class WecomApiService {
   /**
    * 获取企业微信Access Token
    */
   static async getAccessToken(corpId: string, secret: string): Promise<string> {
-    const cacheKey = `${corpId}:${secret.substring(0, 10)}`;
+    const secretHash = crypto.createHash('md5').update(secret).digest('hex').substring(0, 12);
+    const cacheKey = `${corpId}:${secretHash}`;
     const cached = tokenCache.get(cacheKey);
 
     if (cached && cached.expireTime > Date.now()) {
@@ -26,12 +31,12 @@ export class WecomApiService {
     }
 
     try {
-      log.info(`[WecomApi] Fetching new token for corpId: ${corpId}, secret: ${secret.substring(0, 10)}...`);
+      log.info(`[WecomApi] Fetching new token for corpId: ${corpId}`);
       const response = await axios.get(`${WECOM_API_BASE}/gettoken`, {
         params: { corpid: corpId, corpsecret: secret }
       });
 
-      log.info('[WecomApi] Token response:', JSON.stringify(response.data));
+      log.info('[WecomApi] Token response errcode:', response.data.errcode);
 
       if (response.data.errcode === 0) {
         const token = response.data.access_token;
@@ -58,47 +63,13 @@ export class WecomApiService {
 
   /**
    * 根据配置ID获取Access Token
+   * 代理到 WecomTokenService，支持自建应用 + 第三方应用双模式，统一缓存管理
    * @param secretType - corp: 应用Secret, contact: 通讯录同步Secret, external: 客户联系Secret, chat: 会话存档Secret
    */
   static async getAccessTokenByConfigId(configId: number, secretType: 'corp' | 'contact' | 'external' | 'chat' = 'corp'): Promise<string> {
-    log.info(`[WecomApi] getAccessTokenByConfigId called, configId: ${configId}, secretType: ${secretType}`);
-
-    const configRepo = AppDataSource.getRepository(WecomConfig);
-    const config = await configRepo.findOne({ where: { id: configId, isEnabled: true } });
-
-    if (!config) {
-      log.error('[WecomApi] Config not found or disabled');
-      throw new Error('企微配置不存在或已禁用');
-    }
-
-    log.info(`[WecomApi] Found config: ${config.name}, corpId: ${config.corpId}`);
-    log.info(`[WecomApi] Has contactSecret: ${!!config.contactSecret}, Has externalContactSecret: ${!!(config as any).externalContactSecret}, Has corpSecret: ${!!config.corpSecret}`);
-
-    let secret = config.corpSecret;
-    let secretName = 'corp';
-
-    if (secretType === 'contact') {
-      // 通讯录同步 Secret，用于获取部门和成员列表
-      secret = config.contactSecret || config.corpSecret;
-      secretName = config.contactSecret ? 'contact' : 'corp';
-    } else if (secretType === 'external') {
-      // 客户联系 Secret，用于获取外部联系人
-      // 优先使用 externalContactSecret，如果没有则尝试 contactSecret，最后使用 corpSecret
-      secret = (config as any).externalContactSecret || config.contactSecret || config.corpSecret;
-      secretName = (config as any).externalContactSecret ? 'externalContact' : (config.contactSecret ? 'contact' : 'corp');
-    } else if (secretType === 'chat' && config.chatArchiveSecret) {
-      secret = config.chatArchiveSecret;
-      secretName = 'chat';
-    }
-
-    log.info(`[WecomApi] Using ${secretName} secret for ${secretType} API`);
-
-    if (!secret) {
-      log.error('[WecomApi] No secret available');
-      throw new Error('企微配置缺少必要的Secret');
-    }
-
-    return this.getAccessToken(config.corpId, secret);
+    log.info(`[WecomApi] getAccessTokenByConfigId → delegating to WecomTokenService, configId: ${configId}, secretType: ${secretType}`);
+    const { WecomTokenService } = await import('./wecom/WecomTokenService');
+    return WecomTokenService.getAccessTokenByConfigId(configId, secretType);
   }
 
   /**
@@ -156,7 +127,7 @@ export class WecomApiService {
         }
       });
 
-      log.info('[WecomApi] getDepartmentUsers full response:', JSON.stringify(response.data));
+      log.info('[WecomApi] getDepartmentUsers response errcode:', response.data.errcode, 'count:', (response.data.userlist || []).length);
 
       if (response.data.errcode === 0) {
         const users = response.data.userlist || [];
@@ -237,6 +208,67 @@ export class WecomApiService {
       }
     } catch (error: any) {
       log.error('[WecomApi] getCorpTagList error:', error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * 添加客户标签（组+标签）
+   * 参考: https://developer.work.weixin.qq.com/document/path/92117
+   */
+  static async addCorpTag(accessToken: string, groupName: string, tags: Array<{ name: string; order?: number }>, groupId?: string): Promise<any> {
+    try {
+      const body: any = { tag: tags.map(t => ({ name: t.name, order: t.order || 0 })) };
+      if (groupId) {
+        body.group_id = groupId;
+      } else {
+        body.group_name = groupName;
+      }
+      const response = await axios.post(`${WECOM_API_BASE}/externalcontact/add_corp_tag?access_token=${accessToken}`, body);
+      if (response.data.errcode === 0) {
+        return response.data.tag_group || {};
+      } else {
+        throw new Error(`添加标签失败: ${response.data.errmsg}`);
+      }
+    } catch (error: any) {
+      log.error('[WecomApi] addCorpTag error:', error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * 编辑客户标签/标签组
+   * 参考: https://developer.work.weixin.qq.com/document/path/92118
+   */
+  static async editCorpTag(accessToken: string, id: string, name: string, order?: number): Promise<void> {
+    try {
+      const response = await axios.post(`${WECOM_API_BASE}/externalcontact/edit_corp_tag?access_token=${accessToken}`, {
+        id, name, order: order || 0
+      });
+      if (response.data.errcode !== 0) {
+        throw new Error(`编辑标签失败: ${response.data.errmsg}`);
+      }
+    } catch (error: any) {
+      log.error('[WecomApi] editCorpTag error:', error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * 删除客户标签/标签组
+   * 参考: https://developer.work.weixin.qq.com/document/path/92119
+   */
+  static async deleteCorpTag(accessToken: string, tagIds?: string[], groupIds?: string[]): Promise<void> {
+    try {
+      const response = await axios.post(`${WECOM_API_BASE}/externalcontact/del_corp_tag?access_token=${accessToken}`, {
+        tag_id: tagIds || [],
+        group_id: groupIds || []
+      });
+      if (response.data.errcode !== 0) {
+        throw new Error(`删除标签失败: ${response.data.errmsg}`);
+      }
+    } catch (error: any) {
+      log.error('[WecomApi] deleteCorpTag error:', error.message);
       throw error;
     }
   }
@@ -335,6 +367,41 @@ export class WecomApiService {
   }
 
   /**
+   * 同步客服消息（拉取客服消息）
+   * 参考: https://developer.work.weixin.qq.com/document/path/94670
+   * @param accessToken 企微AccessToken
+   * @param cursor 上次拉取的游标，首次传空
+   * @param token 回调事件中的token（可选）
+   * @param limit 每次拉取条数，默认1000
+   */
+  static async syncKfMessages(accessToken: string, cursor?: string, token?: string, limit: number = 1000): Promise<{
+    msgList: any[];
+    hasMore: boolean;
+    nextCursor: string;
+  }> {
+    try {
+      const body: any = { limit };
+      if (cursor) body.cursor = cursor;
+      if (token) body.token = token;
+
+      const response = await axios.post(`${WECOM_API_BASE}/kf/sync_msg?access_token=${accessToken}`, body);
+
+      if (response.data.errcode === 0) {
+        return {
+          msgList: response.data.msg_list || [],
+          hasMore: response.data.has_more === 1,
+          nextCursor: response.data.next_cursor || ''
+        };
+      } else {
+        throw new Error(`同步客服消息失败: ${response.data.errmsg}`);
+      }
+    } catch (error: any) {
+      log.error('[WecomApi] syncKfMessages error:', error.message);
+      throw error;
+    }
+  }
+
+  /**
    * 获取对外收款记录
    */
   static async getPaymentList(accessToken: string, beginTime: number, endTime: number, cursor?: string): Promise<any> {
@@ -357,6 +424,298 @@ export class WecomApiService {
       log.error('[WecomApi] getPaymentList error:', error.message);
       throw error;
     }
+  }
+
+  // ==================== 会话存档相关 API ====================
+
+  /**
+   * 获取会话存档开通成员列表
+   * 参考: https://developer.work.weixin.qq.com/document/path/91614
+   */
+  static async getPermitUserList(accessToken: string, type?: number): Promise<string[]> {
+    try {
+      const body: any = {};
+      if (type !== undefined) body.type = type;
+
+      const response = await axios.post(
+        `${WECOM_API_BASE}/msgaudit/get_permit_user_list?access_token=${accessToken}`,
+        body
+      );
+
+      if (response.data.errcode === 0) {
+        return response.data.ids || [];
+      } else {
+        throw new Error(`获取会话存档开通成员列表失败(${response.data.errcode}): ${response.data.errmsg}`);
+      }
+    } catch (error: any) {
+      log.error('[WecomApi] getPermitUserList error:', error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * 获取会话同意情况（单聊）
+   * 参考: https://developer.work.weixin.qq.com/document/path/91782
+   */
+  static async checkSingleAgree(accessToken: string, info: Array<{ userid: string; exteranalopenid: string }>): Promise<any[]> {
+    try {
+      const response = await axios.post(
+        `${WECOM_API_BASE}/msgaudit/check_single_agree?access_token=${accessToken}`,
+        { info }
+      );
+
+      if (response.data.errcode === 0) {
+        return response.data.agreeinfo || [];
+      } else {
+        throw new Error(`检查单聊同意情况失败(${response.data.errcode}): ${response.data.errmsg}`);
+      }
+    } catch (error: any) {
+      log.error('[WecomApi] checkSingleAgree error:', error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * 获取会话同意情况（群聊内部成员）
+   * 参考: https://developer.work.weixin.qq.com/document/path/91782
+   */
+  static async checkRoomAgree(accessToken: string, roomId: string): Promise<any[]> {
+    try {
+      const response = await axios.post(
+        `${WECOM_API_BASE}/msgaudit/check_room_agree?access_token=${accessToken}`,
+        { roomid: roomId }
+      );
+
+      if (response.data.errcode === 0) {
+        return response.data.agreeinfo || [];
+      } else {
+        throw new Error(`检查群聊同意情况失败(${response.data.errcode}): ${response.data.errmsg}`);
+      }
+    } catch (error: any) {
+      log.error('[WecomApi] checkRoomAgree error:', error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * 获取会话存档群聊信息
+   * 参考: https://developer.work.weixin.qq.com/document/path/91774
+   */
+  static async getMsgAuditGroupChat(accessToken: string, roomId: string): Promise<any> {
+    try {
+      const response = await axios.post(
+        `${WECOM_API_BASE}/msgaudit/groupchat/get?access_token=${accessToken}`,
+        { roomid: roomId }
+      );
+
+      if (response.data.errcode === 0) {
+        return response.data;
+      } else {
+        throw new Error(`获取群聊信息失败(${response.data.errcode}): ${response.data.errmsg}`);
+      }
+    } catch (error: any) {
+      log.error('[WecomApi] getMsgAuditGroupChat error:', error.message);
+      throw error;
+    }
+  }
+
+  // ==================== JS-SDK 相关 ====================
+
+  /**
+   * 获取企业JS-SDK Ticket (corp级别)
+   */
+  static async getJsSdkTicket(accessToken: string): Promise<string> {
+    const cacheKey = `jsticket:${accessToken.substring(0, 20)}`;
+    const cached = ticketCache.get(cacheKey);
+
+    if (cached && cached.expireTime > Date.now()) {
+      return cached.ticket;
+    }
+
+    try {
+      const response = await axios.get(`${WECOM_API_BASE}/get_jsapi_ticket`, {
+        params: { access_token: accessToken }
+      });
+
+      if (response.data.errcode === 0) {
+        const ticket = response.data.ticket;
+        const expireTime = Date.now() + (response.data.expires_in - 300) * 1000;
+        ticketCache.set(cacheKey, { ticket, expireTime });
+        return ticket;
+      } else {
+        throw new Error(`获取JS-SDK Ticket失败: ${response.data.errmsg}`);
+      }
+    } catch (error: any) {
+      log.error('[WecomApi] getJsSdkTicket error:', error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * 获取应用级JS-SDK Ticket (agent级别, 用于agentConfig)
+   */
+  static async getAgentJsSdkTicket(accessToken: string): Promise<string> {
+    const cacheKey = `agent_jsticket:${accessToken.substring(0, 20)}`;
+    const cached = ticketCache.get(cacheKey);
+
+    if (cached && cached.expireTime > Date.now()) {
+      return cached.ticket;
+    }
+
+    try {
+      const response = await axios.get(`${WECOM_API_BASE}/ticket/get`, {
+        params: { access_token: accessToken, type: 'agent_config' }
+      });
+
+      if (response.data.errcode === 0) {
+        const ticket = response.data.ticket;
+        const expireTime = Date.now() + (response.data.expires_in - 300) * 1000;
+        ticketCache.set(cacheKey, { ticket, expireTime });
+        return ticket;
+      } else {
+        throw new Error(`获取Agent JS-SDK Ticket失败: ${response.data.errmsg}`);
+      }
+    } catch (error: any) {
+      log.error('[WecomApi] getAgentJsSdkTicket error:', error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * 生成JS-SDK签名
+   */
+  static generateJsSdkSignature(ticket: string, nonceStr: string, timestamp: number, url: string): string {
+    const str = `jsapi_ticket=${ticket}&noncestr=${nonceStr}&timestamp=${timestamp}&url=${url}`;
+    return crypto.createHash('sha1').update(str).digest('hex');
+  }
+
+  // ==================== 入群欢迎语模板 API ====================
+
+  /**
+   * 添加入群欢迎语模板
+   */
+  static async addGroupWelcomeTemplate(accessToken: string, data: {
+    text?: { content: string };
+    image?: { media_id: string; pic_url?: string };
+    link?: { title: string; url: string; picurl?: string; desc?: string };
+    miniprogram?: { title: string; pic_media_id: string; appid: string; page: string };
+  }): Promise<{ template_id: string }> {
+    try {
+      const response = await axios.post(`${WECOM_API_BASE}/externalcontact/group_welcome_template/add?access_token=${accessToken}`, data);
+      if (response.data.errcode === 0) {
+        return { template_id: response.data.template_id };
+      }
+      throw new Error(`添加欢迎语模板失败: ${response.data.errmsg} (errcode: ${response.data.errcode})`);
+    } catch (error: any) {
+      log.error('[WecomApi] addGroupWelcomeTemplate error:', error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * 编辑入群欢迎语模板
+   */
+  static async editGroupWelcomeTemplate(accessToken: string, templateId: string, data: any): Promise<void> {
+    try {
+      const response = await axios.post(`${WECOM_API_BASE}/externalcontact/group_welcome_template/edit?access_token=${accessToken}`, {
+        ...data,
+        template_id: templateId
+      });
+      if (response.data.errcode !== 0) {
+        throw new Error(`编辑欢迎语模板失败: ${response.data.errmsg} (errcode: ${response.data.errcode})`);
+      }
+    } catch (error: any) {
+      log.error('[WecomApi] editGroupWelcomeTemplate error:', error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * 删除入群欢迎语模板
+   */
+  static async delGroupWelcomeTemplate(accessToken: string, templateId: string): Promise<void> {
+    try {
+      const response = await axios.post(`${WECOM_API_BASE}/externalcontact/group_welcome_template/del?access_token=${accessToken}`, {
+        template_id: templateId
+      });
+      if (response.data.errcode !== 0) {
+        log.warn(`[WecomApi] delGroupWelcomeTemplate warning: ${response.data.errmsg}`);
+      }
+    } catch (error: any) {
+      log.error('[WecomApi] delGroupWelcomeTemplate error:', error.message);
+      throw error;
+    }
+  }
+
+  // ==================== 临时素材上传 API ====================
+
+  /**
+   * 上传临时素材到企业微信（用于欢迎语附件、群发附件等）
+   * @param type - image/voice/video/file
+   */
+  static async uploadMedia(accessToken: string, type: string, fileBuffer: Buffer, filename: string): Promise<string> {
+    try {
+      const FormData = require('form-data');
+      const formData = new FormData();
+      formData.append('media', fileBuffer, { filename });
+      const response = await axios.post(
+        `${WECOM_API_BASE}/media/upload?access_token=${accessToken}&type=${type}`,
+        formData,
+        { headers: formData.getHeaders() }
+      );
+      if (response.data.errcode === 0) {
+        return response.data.media_id;
+      }
+      throw new Error(`上传素材失败: ${response.data.errmsg} (errcode: ${response.data.errcode})`);
+    } catch (error: any) {
+      log.error('[WecomApi] uploadMedia error:', error.message);
+      throw error;
+    }
+  }
+
+  // ==================== 群发消息 API ====================
+
+  /**
+   * 创建企业群发（客户群）
+   */
+  static async addMsgTemplate(accessToken: string, data: {
+    chat_type: 'group';
+    sender?: string;
+    text?: { content: string };
+    attachments?: any[];
+  }): Promise<{ msgid: string; fail_list?: string[] }> {
+    try {
+      const response = await axios.post(`${WECOM_API_BASE}/externalcontact/add_msg_template?access_token=${accessToken}`, data);
+      if (response.data.errcode === 0) {
+        return { msgid: response.data.msgid, fail_list: response.data.fail_list };
+      }
+      throw new Error(`创建群发失败: ${response.data.errmsg} (errcode: ${response.data.errcode})`);
+    } catch (error: any) {
+      log.error('[WecomApi] addMsgTemplate error:', error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * 清除指定corpId的Token和Ticket缓存，取消授权时由WecomTokenService联动调用
+   */
+  static clearCache(corpId?: string): void {
+    if (corpId) {
+      for (const key of tokenCache.keys()) {
+        if (key.startsWith(`${corpId}:`)) {
+          tokenCache.delete(key);
+        }
+      }
+      for (const key of ticketCache.keys()) {
+        if (key.startsWith(`${corpId}:`)) {
+          ticketCache.delete(key);
+        }
+      }
+    } else {
+      tokenCache.clear();
+      ticketCache.clear();
+    }
+    log.info(`[WecomApi] Cache cleared${corpId ? ' for ' + corpId : ' (all)'}`);
   }
 }
 

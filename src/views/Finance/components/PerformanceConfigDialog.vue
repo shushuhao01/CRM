@@ -23,7 +23,8 @@
               <el-tag
                 v-for="item in configData.statusConfigs"
                 :key="item.id"
-                closable
+                :closable="!isSystemItem(item)"
+                :effect="getItemEffect(item)"
                 class="preset-tag"
                 @close="deleteConfig(item.id)"
               >
@@ -46,7 +47,8 @@
               <el-tag
                 v-for="item in configData.coefficientConfigs"
                 :key="item.id"
-                closable
+                :closable="!isSystemItem(item)"
+                :effect="getItemEffect(item)"
                 class="preset-tag"
                 type="success"
                 @close="deleteConfig(item.id)"
@@ -70,7 +72,8 @@
               <el-tag
                 v-for="item in configData.remarkConfigs"
                 :key="item.id"
-                closable
+                :closable="!isSystemItem(item)"
+                :effect="getItemEffect(item)"
                 class="preset-tag"
                 type="warning"
                 @close="deleteConfig(item.id)"
@@ -215,7 +218,7 @@
 import { ref, reactive, watch, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { InfoFilled } from '@element-plus/icons-vue'
-import { financeApi, type FinanceConfigData, type CommissionLadder } from '@/api/finance'
+import { financeApi, type FinanceConfigData, type PerformanceConfig, type CommissionLadder } from '@/api/finance'
 import { useDepartmentStore } from '@/stores/department'
 
 const props = defineProps<{
@@ -233,13 +236,13 @@ const departments = computed(() => departmentStore.departments)
 const dialogVisible = ref(false)
 const activeTab = ref('preset')
 
-const configData = reactive<FinanceConfigData>({
-  statusConfigs: [],
-  coefficientConfigs: [],
-  remarkConfigs: [],
-  amountLadders: [],
-  countLadders: [],
-  settings: {}
+const configData: FinanceConfigData = reactive({
+  statusConfigs: [] as PerformanceConfig[],
+  coefficientConfigs: [] as PerformanceConfig[],
+  remarkConfigs: [] as PerformanceConfig[],
+  amountLadders: [] as CommissionLadder[],
+  countLadders: [] as CommissionLadder[],
+  settings: {} as Record<string, string>
 })
 
 const newStatus = ref('')
@@ -262,6 +265,10 @@ const remarkLabelMap: Record<string, string> = {
 
 const getStatusLabel = (value: string) => statusLabelMap[value] || value
 const getRemarkLabel = (value: string) => remarkLabelMap[value] || value
+
+// 判断是否为系统预设（用于模板绑定，绕过 reactive 类型推断问题）
+const isSystemItem = (item: PerformanceConfig) => !!item.isSystem
+const getItemEffect = (item: PerformanceConfig): string => item.isSystem ? 'plain' : 'light'
 
 // 获取已在"按业绩"中使用的部门ID列表
 const usedAmountDeptIds = computed(() => {

@@ -8,6 +8,7 @@ import * as ElementPlusIconsVue from '@element-plus/icons-vue'
 import App from './App.vue'
 import router from './router'
 import './styles/index.scss'
+import './styles/admin-common.css'
 import { setupPermissionDirective } from './directives/permission'
 
 const app = createApp(App)

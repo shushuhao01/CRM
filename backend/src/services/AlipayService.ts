@@ -4,13 +4,12 @@
  */
 import crypto from 'crypto';
 import axios from 'axios';
-import bcrypt from 'bcryptjs';
 import { AppDataSource } from '../config/database';
 import { paymentService } from './PaymentService';
 import { notificationTemplateService } from './NotificationTemplateService';
 import { formatDateTime, formatDate } from '../utils/dateFormat';
-import { SITE_CONFIG } from '../config/sites';
 import { decryptPaymentConfig } from '../utils/paymentCrypto';
+import { createDefaultAdmin as sharedCreateDefaultAdmin } from '../utils/adminAccountHelper';
 
 import { log } from '../config/logger';
 export class AlipayService {
@@ -300,8 +299,20 @@ export class AlipayService {
         ]
       );
 
-      // 创建默认管理员账号
-      await this.createDefaultAdmin(tenantId, tenant.code);
+      // 创建默认管理员账号（使用租户手机号作为用户名，密码 Aa123456）
+      await this.createDefaultAdmin(tenantId, tenant.code, tenant.phone, tenant.contact, tenant.email);
+
+      // 🔥 同步设置会员中心密码（默认 Aa123456），确保租户能登录会员中心
+      try {
+        const existingPwdRows = await AppDataSource.query('SELECT password_hash FROM tenants WHERE id = ?', [tenantId]);
+        if (!existingPwdRows[0]?.password_hash) {
+          const memberPwdHash = await bcrypt.hash('Aa123456', 10);
+          await AppDataSource.query('UPDATE tenants SET password_hash = ? WHERE id = ?', [memberPwdHash, tenantId]);
+          log.info(`[Alipay] ✅ 已为租户 ${tenantId} 设置会员中心默认密码`);
+        }
+      } catch (pwdErr: any) {
+        log.warn('[Alipay] 设置会员中心密码失败（不影响激活）:', pwdErr.message?.substring(0, 80));
+      }
 
       // 发送支付成功通知
       await this.sendPaymentSuccessNotification({
@@ -322,9 +333,9 @@ export class AlipayService {
   }
 
   /**
-   * 创建默认管理员账号
+   * 创建默认管理员账号（使用统一的 adminAccountHelper）
    */
-  private async createDefaultAdmin(tenantId: string, tenantCode: string): Promise<void> {
+  private async createDefaultAdmin(tenantId: string, tenantCode: string, phone?: string, contact?: string, email?: string): Promise<void> {
     try {
       // 检查是否已存在管理员账号
       const existingAdmins = await AppDataSource.query(
@@ -337,25 +348,15 @@ export class AlipayService {
         return;
       }
 
-      const userId = crypto.randomUUID();
-      const now = formatDateTime(new Date());
+      const adminUsername = phone || `admin_${tenantCode}`;
+      const result = await sharedCreateDefaultAdmin({
+        tenantId,
+        phone: adminUsername,
+        realName: contact || '管理员',
+        email: email || undefined
+      });
 
-      // 密码：admin123 — 统一使用 bcryptjs 加密（与系统登录验证一致）
-      const saltRounds = 12;
-      const hash = await bcrypt.hash('admin123', saltRounds);
-
-      await AppDataSource.query(
-        `INSERT INTO users (
-          id, tenant_id, username, password, real_name, role,
-          status, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          userId, tenantId, 'admin', hash, '系统管理员', 'admin',
-          'active', now, now
-        ]
-      );
-
-      log.info(`[Alipay] 已为租户 ${tenantCode} 创建默认管理员账号 (admin/admin123)`);
+      log.info(`[Alipay] ✅ 已为租户 ${tenantCode} 创建默认管理员账号 (${result.username}/Aa123456)`);
     } catch (error: any) {
       log.error('[Alipay] 创建默认管理员失败:', error);
       // 不抛出错误，避免影响激活流程

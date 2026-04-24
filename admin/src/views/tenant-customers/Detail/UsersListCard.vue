@@ -4,7 +4,10 @@
       <div class="card-header">
         <span>用户列表
           <el-tag size="small" style="margin-left: 8px;">共 {{ users.length }} 个用户</el-tag>
-          <el-tag size="small" type="info" style="margin-left: 4px;">最大 {{ maxUsers || 0 }} 个</el-tag>
+          <el-tag v-if="userLimitMode === 'online'" size="small" type="success" style="margin-left: 4px;">
+            在线席位 {{ onlineCount || 0 }}/{{ maxOnlineSeats || 0 }}
+          </el-tag>
+          <el-tag v-else size="small" type="info" style="margin-left: 4px;">最大 {{ maxUsers || 0 }} 个</el-tag>
         </span>
       </div>
     </template>
@@ -52,6 +55,9 @@ defineProps<{
   users: any[]
   loading: boolean
   maxUsers: number
+  userLimitMode?: string
+  maxOnlineSeats?: number
+  onlineCount?: number
 }>()
 </script>
 

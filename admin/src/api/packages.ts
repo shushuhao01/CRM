@@ -19,6 +19,8 @@ export interface Package {
   duration_days: number
   max_users: number
   max_storage_gb: number
+  user_limit_mode: 'total' | 'online' | 'both'
+  max_online_seats: number
   features: string[]
   modules: string[]
   is_trial: boolean

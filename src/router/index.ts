@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { getTenantPackage } from '@/api/wecom'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -15,11 +16,12 @@ const router = createRouter({
       component: () => import('../views/Login.vue'),
       meta: { title: '登录', requiresAuth: false }
     },
+    // 虚拟商品领取页（公开，无需登录）
     {
-      path: '/change-password',
-      name: 'ChangePassword',
-      component: () => import('../views/ChangePassword.vue'),
-      meta: { title: '修改密码', requiresAuth: true }
+      path: '/virtual-claim/:token',
+      name: 'VirtualClaim',
+      component: () => import('../views/VirtualClaim.vue'),
+      meta: { title: '商品领取', requiresAuth: false }
     },
     {
       path: '/dashboard',
@@ -204,56 +206,31 @@ const router = createRouter({
       path: '/service/list',
       name: 'ServiceList',
       component: () => import('../views/Service/List.vue'),
-      meta: {
-        title: '售后订单',
-        requiresAuth: true,
-        roles: ['admin', 'manager', 'sales', 'customer_service'],
-        permissions: ['service:list:view']
-      }
+      meta: { title: '售后订单', requiresAuth: true }
     },
     {
       path: '/service/add',
       name: 'ServiceAdd',
       component: () => import('../views/Service/Add.vue'),
-      meta: {
-        title: '新建售后',
-        requiresAuth: true,
-        roles: ['admin', 'manager', 'sales', 'customer_service'],
-        permissions: ['service:add']
-      }
+      meta: { title: '新建售后', requiresAuth: true }
     },
     {
       path: '/service/detail/:id',
       name: 'ServiceDetail',
       component: () => import('../views/Service/Detail.vue'),
-      meta: {
-        title: '售后详情',
-        requiresAuth: true,
-        roles: ['admin', 'manager', 'sales', 'customer_service'],
-        permissions: ['service:detail:view']
-      }
+      meta: { title: '售后详情', requiresAuth: true }
     },
     {
       path: '/service/edit/:id',
       name: 'ServiceEdit',
       component: () => import('../views/Service/Edit.vue'),
-      meta: {
-        title: '编辑售后',
-        requiresAuth: true,
-        roles: ['admin', 'manager', 'customer_service'],
-        permissions: ['service:edit']
-      }
+      meta: { title: '编辑售后', requiresAuth: true }
     },
     {
       path: '/service/data',
       name: 'ServiceData',
       component: () => import('../views/Service/Data.vue'),
-      meta: {
-        title: '售后数据',
-        requiresAuth: true,
-        roles: ['admin', 'manager'],
-        permissions: ['service:data:view']
-      }
+      meta: { title: '售后数据', requiresAuth: true }
     },
 
     // 资料管理
@@ -357,13 +334,32 @@ const router = createRouter({
       component: () => import('../views/Product/Analytics.vue'),
       meta: { title: '商品分析', requiresAuth: true }
     },
+    // 虚拟商品管理
+    {
+      path: '/product/virtual/card-keys',
+      name: 'CardKeyManage',
+      component: () => import('../views/Product/CardKeyManage.vue'),
+      meta: { title: '卡密库存管理', requiresAuth: true, requiresManager: true }
+    },
+    {
+      path: '/product/virtual/resources',
+      name: 'ResourceManage',
+      component: () => import('../views/Product/ResourceManage.vue'),
+      meta: { title: '资源库存管理', requiresAuth: true, requiresManager: true }
+    },
 
     // 服务管理
     {
       path: '/service-management/sms',
       name: 'ServiceSmsManagement',
       component: () => import('../views/ServiceManagement/SmsManagement.vue'),
-      meta: { title: '短信管理', requiresAuth: true, requiresAdmin: true }
+      meta: { title: '短信管理', requiresAuth: true }
+    },
+    {
+      path: '/service-management/sms/template-detail',
+      name: 'SmsTemplateDetail',
+      component: () => import('../views/ServiceManagement/SmsTemplateDetail.vue'),
+      meta: { title: '模板详情', requiresAuth: true }
     },
     // 通话管理
     {
@@ -564,13 +560,24 @@ const router = createRouter({
       component: () => import('../views/MobileSDKInstall.vue'),
       meta: { title: '移动SDK安装指南', requiresAuth: false }
     },
-    // 🔥 企微管理（暂停开发，临时注释。恢复时取消注释即可）
-    /*
+    // ==================== 企微管理 V4.0 重构（2026-04-15） ====================
+    {
+      path: '/wecom/address-book',
+      name: 'WecomAddressBook',
+      component: () => import('../views/Wecom/AddressBook.vue'),
+      meta: { title: '通讯录', requiresAuth: true }
+    },
     {
       path: '/wecom/customer',
       name: 'WecomCustomer',
       component: () => import('../views/Wecom/Customer.vue'),
-      meta: { title: '企业客户', requiresAuth: true }
+      meta: { title: '企微客户', requiresAuth: true }
+    },
+    {
+      path: '/wecom/customer-group',
+      name: 'WecomCustomerGroup',
+      component: () => import('../views/Wecom/CustomerGroup.vue'),
+      meta: { title: '客户群', requiresAuth: true }
     },
     {
       path: '/wecom/acquisition',
@@ -579,10 +586,10 @@ const router = createRouter({
       meta: { title: '获客助手', requiresAuth: true }
     },
     {
-      path: '/wecom/service',
-      name: 'WecomService',
-      component: () => import('../views/Wecom/Service.vue'),
-      meta: { title: '微信客服', requiresAuth: true }
+      path: '/wecom/contact-way',
+      name: 'WecomContactWay',
+      component: () => import('../views/Wecom/ContactWay.vue'),
+      meta: { title: '活码管理', requiresAuth: true }
     },
     {
       path: '/wecom/chat-archive',
@@ -591,16 +598,22 @@ const router = createRouter({
       meta: { title: '会话存档', requiresAuth: true }
     },
     {
-      path: '/wecom/config',
-      name: 'WecomConfig',
-      component: () => import('../views/Wecom/Config.vue'),
-      meta: { title: '企微配置', requiresAuth: true, requiresAdmin: true }
+      path: '/wecom/service',
+      name: 'WecomService',
+      component: () => import('../views/Wecom/Service.vue'),
+      meta: { title: '微信客服', requiresAuth: true }
     },
     {
-      path: '/wecom/binding',
-      name: 'WecomBinding',
-      component: () => import('../views/Wecom/Binding.vue'),
-      meta: { title: '企微联动', requiresAuth: true, requiresAdmin: true }
+      path: '/wecom/ai-assistant',
+      name: 'WecomAiAssistant',
+      component: () => import('../views/Wecom/AiAssistant.vue'),
+      meta: { title: 'AI助手', requiresAuth: true }
+    },
+    {
+      path: '/wecom/sidebar',
+      name: 'WecomSidebar',
+      component: () => import('../views/Wecom/Sidebar.vue'),
+      meta: { title: '侧边栏', requiresAuth: true, requiresAdmin: true }
     },
     {
       path: '/wecom/payment',
@@ -609,12 +622,25 @@ const router = createRouter({
       meta: { title: '对外收款', requiresAuth: true }
     },
     {
-      path: '/wecom/sidebar',
-      name: 'WecomSidebar',
-      component: () => import('../views/Wecom/Sidebar.vue'),
-      meta: { title: '侧边栏', requiresAuth: true, requiresAdmin: true }
+      path: '/wecom/config',
+      name: 'WecomConfig',
+      component: () => import('../views/Wecom/Config.vue'),
+      meta: { title: '企微授权', requiresAuth: true, requiresAdmin: true }
     },
-    */
+    // 企微独立窗口（极简Layout，无CRM侧栏/顶栏）
+    {
+      path: '/wecom-standalone',
+      name: 'WecomStandalone',
+      component: () => import('../views/Wecom/WecomStandalone.vue'),
+      meta: { title: '企微管理', requiresAuth: true, standaloneLayout: true }
+    },
+    // 企微侧边栏客户详情（嵌入企微聊天窗口，无需CRM登录）
+    {
+      path: '/wecom-sidebar',
+      name: 'WecomSidebarDetail',
+      component: () => import('../views/WecomSidebar/CustomerDetail.vue'),
+      meta: { title: '企微侧边栏', requiresAuth: false }
+    },
     // 公开帮助中心（无需登录）
     {
       path: '/public-help',
@@ -643,13 +669,14 @@ const router = createRouter({
 router.beforeEach(async (to, from, next) => {
   const userStore = useUserStore()
 
-  // 【调试日志】检查登录状态
-  console.log('[Router] 路由守卫检查:')
-  console.log('  - 目标路径:', to.path)
-  console.log('  - 来源路径:', from.path)
-  console.log('  - token:', userStore.token ? '已设置' : '未设置')
-  console.log('  - isLoggedIn:', userStore.isLoggedIn)
-  console.log('  - localStorage token:', localStorage.getItem('auth_token') ? '已设置' : '未设置')
+  if (import.meta.env.DEV) {
+    console.log('[Router] 路由守卫检查:')
+    console.log('  - 目标路径:', to.path)
+    console.log('  - 来源路径:', from.path)
+    console.log('  - token:', userStore.token ? '已设置' : '未设置')
+    console.log('  - isLoggedIn:', userStore.isLoggedIn)
+    console.log('  - localStorage token:', localStorage.getItem('auth_token') ? '已设置' : '未设置')
+  }
 
   // 设置页面标题
   if (to.meta.title) {
@@ -667,11 +694,11 @@ router.beforeEach(async (to, from, next) => {
     // 【关键修复】如果localStorage中有token但store中没有，尝试恢复
     const savedToken = localStorage.getItem('auth_token')
     if (savedToken) {
-      console.log('[Router] ⚠️ Store中token为空但localStorage有token，尝试恢复...')
+      if (import.meta.env.DEV) console.log('[Router] Store中token为空但localStorage有token，尝试恢复...')
       try {
         await userStore.initUser()
         if (userStore.token) {
-          console.log('[Router] ✅ Token恢复成功，继续导航')
+          if (import.meta.env.DEV) console.log('[Router] Token恢复成功，继续导航')
           next()
           return
         }
@@ -733,10 +760,9 @@ router.beforeEach(async (to, from, next) => {
 
   // 检查是否需要特殊权限（如物流状态更新）
   if (to.meta.requiresSpecialPermission) {
-    console.log('[路由守卫] 检查特殊权限...')
-    console.log('[路由守卫] 当前用户:', userStore.currentUser)
-    console.log('[路由守卫] 用户角色:', userStore.currentUser?.role)
-    console.log('[路由守卫] 用户权限:', userStore.permissions)
+    if (import.meta.env.DEV) {
+      console.log('[路由守卫] 检查特殊权限, 角色:', userStore.currentUser?.role)
+    }
 
     const role = userStore.currentUser?.role
     const hasSpecialAccess = userStore.isSuperAdmin ||
@@ -762,7 +788,58 @@ router.beforeEach(async (to, from, next) => {
     console.log('[路由守卫] ✅ 特殊权限检查通过')
   }
 
+  // 企微子路由套餐权限校验（防止通过URL直接绕过套餐锁）
+  const wecomMenuPermissionMap: Record<string, string> = {
+    '/wecom/chat-archive': 'chatArchive',
+    '/wecom/ai-assistant': 'aiAssistant',
+    '/wecom/acquisition': 'acquisition',
+    '/wecom/customer-service': 'customerService',
+    '/wecom/service': 'customerService',
+    '/wecom/address-book': 'addressBook',
+    '/wecom/customer': 'customer',
+    '/wecom/customer-group': 'customerGroup',
+    '/wecom/contact-way': 'contactWay',
+    '/wecom/sidebar': 'sidebar',
+    '/wecom/payment': 'payment',
+  }
+  const requiredWecomPerm = wecomMenuPermissionMap[to.path]
+  if (requiredWecomPerm) {
+    try {
+      // 始终从服务器获取最新套餐数据（含配额管理features合并），确保Admin更新后CRM端同步
+      let pkg: any = null
+      try {
+        const res: any = await getTenantPackage()
+        pkg = res?.data || res
+        if (pkg) {
+          sessionStorage.setItem('wecom_tenant_package', JSON.stringify(pkg))
+        }
+      } catch {
+        // 网络失败时回退到缓存
+        const cachedPkg = sessionStorage.getItem('wecom_tenant_package')
+        pkg = cachedPkg ? JSON.parse(cachedPkg) : null
+      }
+      const perms = pkg?.menuPermissions
+      if (!perms || perms[requiredWecomPerm] !== true) {
+        ElMessage.warning('当前企微套餐不包含此功能，请升级套餐')
+        next('/wecom/config')
+        return
+      }
+    } catch {
+      ElMessage.warning('企微套餐信息获取失败，请从企微管理页面进入')
+      next('/wecom/config')
+      return
+    }
+  }
+
   next()
+})
+
+// 🔥 成功导航后清除重载计数
+router.afterEach(() => {
+  try {
+    sessionStorage.removeItem('dynamic_import_reload_count')
+    sessionStorage.removeItem('dynamic_import_reload_ts')
+  } catch { /* ignore */ }
 })
 
 // 路由错误处理
@@ -786,6 +863,29 @@ router.onError((error) => {
     error.message.includes('ChunkLoadError')
   )) {
     console.warn('[Router] 动态模块加载失败，可能是版本更新或缓存问题:', error.message)
+
+    // 🔥 开发环境下静默重载一次，不弹对话框
+    if (import.meta.env.DEV) {
+      const RELOAD_KEY = 'dynamic_import_reload_count'
+      const RELOAD_TS_KEY = 'dynamic_import_reload_ts'
+      let reloadCount = 0
+      try {
+        const ts = sessionStorage.getItem(RELOAD_TS_KEY)
+        if (ts && Date.now() - Number(ts) > 60000) {
+          sessionStorage.removeItem(RELOAD_KEY)
+          sessionStorage.removeItem(RELOAD_TS_KEY)
+        }
+        reloadCount = Number(sessionStorage.getItem(RELOAD_KEY) || '0')
+      } catch { /* ignore */ }
+      if (reloadCount < 1) {
+        try { sessionStorage.setItem(RELOAD_KEY, String(reloadCount + 1)); sessionStorage.setItem(RELOAD_TS_KEY, String(Date.now())) } catch {}
+        window.location.reload()
+      } else {
+        console.warn('[Router] 开发环境已重载过，跳过刷新')
+        try { sessionStorage.removeItem(RELOAD_KEY); sessionStorage.removeItem(RELOAD_TS_KEY) } catch {}
+      }
+      return
+    }
 
     // 🔥 防止无限刷新：使用sessionStorage记录重载次数
     const RELOAD_KEY = 'dynamic_import_reload_count'

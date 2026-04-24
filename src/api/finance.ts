@@ -48,6 +48,7 @@ export interface PerformanceConfig {
   configLabel: string
   sortOrder: number
   isActive: number
+  isSystem?: boolean
 }
 
 export interface CommissionLadder {

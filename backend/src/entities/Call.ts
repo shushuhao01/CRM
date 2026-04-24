@@ -29,10 +29,10 @@ export class Call {
   @Column({
     name: 'call_status',
     type: 'enum',
-    enum: ['connected', 'missed', 'busy', 'failed', 'rejected'],
+    enum: ['connected', 'missed', 'busy', 'failed', 'rejected', 'pending', 'calling'],
     default: 'connected'
   })
-  callStatus: 'connected' | 'missed' | 'busy' | 'failed' | 'rejected';
+  callStatus: 'connected' | 'missed' | 'busy' | 'failed' | 'rejected' | 'pending' | 'calling';
 
   @Column({ name: 'start_time', type: 'datetime', nullable: true })
   startTime: Date;
@@ -49,14 +49,32 @@ export class Call {
   @Column({ name: 'has_recording', type: 'tinyint', default: 0 })
   hasRecording: boolean;
 
+  @Column({ name: 'recording_size', type: 'bigint', default: 0 })
+  recordingSize: number;
+
   @Column({ type: 'text', nullable: true })
   notes: string;
+
+  @Column({ name: 'call_tags', type: 'json', nullable: true })
+  callTags: string[];
 
   @Column({ name: 'follow_up_required', type: 'tinyint', default: 0 })
   followUpRequired: boolean;
 
-  @Column({ name: 'call_tags', type: 'json', nullable: true })
-  callTags: string[];
+  @Column({ name: 'call_method', length: 20, default: 'system' })
+  callMethod: string;
+
+  @Column({ name: 'line_id', length: 50, nullable: true })
+  lineId: string;
+
+  @Column({ name: 'caller_number', length: 20, nullable: true })
+  callerNumber: string;
+
+  @Column({ name: 'provider_call_id', length: 100, nullable: true })
+  providerCallId: string;
+
+  @Column({ name: 'hangup_cause', length: 100, nullable: true })
+  hangupCause: string;
 
   @Column({ name: 'user_id', length: 100 })
   userId: string;

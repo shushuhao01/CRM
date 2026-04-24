@@ -764,7 +764,8 @@ const getConfigHandler = async (_req: Request, res: Response) => {
     const ladderRepo = getTenantRepo(CommissionLadder);
     const settingRepo = getTenantRepo(CommissionSetting);
 
-    const [statusConfigs, coefficientConfigs, remarkConfigs, amountLadders, countLadders, settings] = await Promise.all([
+    // 获取租户自己的配置
+    const [tenantStatus, tenantCoefficient, tenantRemark, amountLadders, countLadders, settings] = await Promise.all([
       configRepo.find({ where: { configType: 'status', isActive: 1 }, order: { sortOrder: 'ASC' } }),
       configRepo.find({ where: { configType: 'coefficient', isActive: 1 }, order: { sortOrder: 'ASC' } }),
       configRepo.find({ where: { configType: 'remark', isActive: 1 }, order: { sortOrder: 'ASC' } }),
@@ -772,6 +773,29 @@ const getConfigHandler = async (_req: Request, res: Response) => {
       ladderRepo.find({ where: { commissionType: 'count', isActive: 1 }, order: { sortOrder: 'ASC' } }),
       settingRepo.find()
     ]);
+
+    // 获取系统级预设（tenant_id IS NULL）— 不经过 getTenantRepo，直接查
+    const systemStatus: any[] = [], systemCoefficient: any[] = [], systemRemark: any[] = [];
+    try {
+      const { AppDataSource } = await import('../config/database');
+      const sysRows = await AppDataSource.query(
+        `SELECT * FROM performance_config WHERE tenant_id IS NULL AND is_active = 1 ORDER BY sort_order ASC`
+      );
+      for (const row of sysRows) {
+        const item = { ...row, id: row.id, configType: row.config_type, configValue: row.config_value, configLabel: row.config_label, sortOrder: row.sort_order, isActive: row.is_active, isSystem: true };
+        if (row.config_type === 'status') systemStatus.push(item);
+        else if (row.config_type === 'coefficient') systemCoefficient.push(item);
+        else if (row.config_type === 'remark') systemRemark.push(item);
+      }
+    } catch (e) {
+      log.warn('[Finance] Failed to load system presets:', e);
+    }
+
+    // 合并：系统预设在前，租户自定义在后
+    const markTenant = (items: any[]) => items.map(i => ({ ...i, isSystem: false }));
+    const statusConfigs = [...systemStatus, ...markTenant(tenantStatus)];
+    const coefficientConfigs = [...systemCoefficient, ...markTenant(tenantCoefficient)];
+    const remarkConfigs = [...systemRemark, ...markTenant(tenantRemark)];
 
     const settingsObj: Record<string, string> = {};
     settings.forEach(s => { settingsObj[s.settingKey] = s.settingValue; });
@@ -794,7 +818,25 @@ router.post('/config', async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, message: 'Missing parameters' });
     }
 
+    // 检查系统预设中是否已存在同类型同值的记录
+    try {
+      const { AppDataSource } = await import('../config/database');
+      const sysRows = await AppDataSource.query(
+        `SELECT id FROM performance_config WHERE tenant_id IS NULL AND config_type = ? AND config_value = ? AND is_active = 1`,
+        [configType, configValue.trim()]
+      );
+      if (sysRows.length > 0) {
+        return res.status(400).json({ success: false, message: '该配置值已存在于系统预设中，无需重复添加' });
+      }
+    } catch (_e) { /* 静默处理 */ }
+
+    // 检查租户自己的配置中是否已存在
     const configRepo = getTenantRepo(PerformanceConfig);
+    const existing = await configRepo.findOne({ where: { configType, configValue: configValue.trim(), isActive: 1 } });
+    if (existing) {
+      return res.status(400).json({ success: false, message: '该配置值已存在，无需重复添加' });
+    }
+
     const maxSort = await configRepo.createQueryBuilder('c').select('MAX(c.sortOrder)', 'max').where('c.configType = :configType', { configType }).getRawOne();
 
     const config = configRepo.create({ configType, configValue, configLabel: configLabel || configValue, sortOrder: (maxSort?.max || 0) + 1, isActive: 1 });
@@ -837,6 +879,16 @@ router.put('/config/:id', async (req: Request, res: Response) => {
 router.delete('/config/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
+
+    // 检查是否为系统级预设（tenant_id IS NULL），不允许删除
+    const { AppDataSource } = await import('../config/database');
+    const rows = await AppDataSource.query(
+      `SELECT tenant_id FROM performance_config WHERE id = ?`, [parseInt(id)]
+    );
+    if (rows.length > 0 && rows[0].tenant_id === null) {
+      return res.status(403).json({ success: false, message: '系统预设不可删除，仅可删除自己添加的配置项' });
+    }
+
     const configRepo = getTenantRepo(PerformanceConfig);
     await configRepo.delete({ id: parseInt(id) });
     res.json({ success: true, message: 'Deleted successfully' });

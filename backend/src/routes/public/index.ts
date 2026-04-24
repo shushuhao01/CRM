@@ -13,6 +13,8 @@ import versionCheckRoutes from './version-check';
 import memberRoutes from './member';
 import subscriptionRoutes from './subscription';
 import capacityRoutes from './capacity';
+import memberSmsQuotaRoutes from './member-sms-quota';
+import memberWecomRoutes from './member-wecom';
 
 const router = Router();
 
@@ -63,6 +65,12 @@ router.use('/payment', paymentLimiter, paymentRoutes);
 router.use('/member/login', memberLoginLimiter);
 router.use('/member/send-code', sendCodeLimiter);
 router.use('/member', memberRoutes);
+
+// 会员中心短信额度接口
+router.use('/member/sms-quota', memberSmsQuotaRoutes);
+
+// 会员中心企微服务接口
+router.use('/member/wecom', memberWecomRoutes);
 
 // 订阅管理接口
 router.use('/subscription', subscriptionRoutes);

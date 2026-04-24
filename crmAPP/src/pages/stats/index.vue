@@ -123,7 +123,7 @@ const formatDuration = (seconds: number) => {
 }
 
 const loadStats = async () => {
-  if (!userStore.token) return
+  if (!userStore.token && !userStore.isLoggedIn) return
   try {
     const data = await getStats(currentPeriod.value)
     stats.value = data
@@ -140,7 +140,7 @@ onShow(() => {
   if (!userStore.token) {
     userStore.restore()
   }
-  if (userStore.token) {
+  if (userStore.token || userStore.isLoggedIn) {
     loadStats()
   }
 })

@@ -372,7 +372,15 @@
             <el-table-column prop="productDetails" label="产品详情" min-width="200" show-overflow-tooltip>
               <template #default="{ row }">
                 <div class="product-details-cell">
-                  {{ row.productDetails }}
+                  <template v-if="row.products && row.products.length > 0">
+                    <template v-for="(p, idx) in row.products" :key="idx">
+                      <span v-if="idx > 0">、</span>
+                      <el-tag v-if="p.productType === 'virtual'" type="warning" size="small" effect="light" style="margin-right: 2px;">虚拟</el-tag>
+                      <el-tag v-else size="small" effect="light" style="margin-right: 2px;">实物</el-tag>
+                      {{ p.name || p.productName }} x{{ p.quantity }}
+                    </template>
+                  </template>
+                  <template v-else>{{ row.productDetails }}</template>
                 </div>
               </template>
             </el-table-column>
@@ -516,7 +524,19 @@
               <span v-else>-</span>
             </template>
           </el-table-column>
-          <el-table-column prop="productDetails" label="产品详情" min-width="200" show-overflow-tooltip />
+          <el-table-column prop="productDetails" label="产品详情" min-width="200" show-overflow-tooltip>
+            <template #default="{ row }">
+              <template v-if="row.products && row.products.length > 0">
+                <template v-for="(p, idx) in row.products" :key="idx">
+                  <span v-if="idx > 0">、</span>
+                  <el-tag v-if="p.productType === 'virtual'" type="warning" size="small" effect="light" style="margin-right: 2px;">虚拟</el-tag>
+                  <el-tag v-else size="small" effect="light" style="margin-right: 2px;">实物</el-tag>
+                  {{ p.name || p.productName }} x{{ p.quantity }}
+                </template>
+              </template>
+              <template v-else>{{ row.productDetails }}</template>
+            </template>
+          </el-table-column>
           <el-table-column label="操作" width="100" align="center" fixed="right">
             <template #default="{ row }">
               <el-button type="primary" size="small" @click="viewOrderDetail(row)">
@@ -594,7 +614,19 @@
               <span v-else>-</span>
             </template>
           </el-table-column>
-          <el-table-column prop="productDetails" label="产品详情" min-width="200" show-overflow-tooltip />
+          <el-table-column prop="productDetails" label="产品详情" min-width="200" show-overflow-tooltip>
+            <template #default="{ row }">
+              <template v-if="row.products && row.products.length > 0">
+                <template v-for="(p, idx) in row.products" :key="idx">
+                  <span v-if="idx > 0">、</span>
+                  <el-tag v-if="p.productType === 'virtual'" type="warning" size="small" effect="light" style="margin-right: 2px;">虚拟</el-tag>
+                  <el-tag v-else size="small" effect="light" style="margin-right: 2px;">实物</el-tag>
+                  {{ p.name || p.productName }} x{{ p.quantity }}
+                </template>
+              </template>
+              <template v-else>{{ row.productDetails }}</template>
+            </template>
+          </el-table-column>
           <el-table-column label="操作" width="100" align="center" fixed="right">
             <template #default="{ row }">
               <el-button type="primary" size="small" @click="viewOrderDetail(row)">
@@ -747,7 +779,7 @@
 
             <el-table-column label="操作" width="90" align="center" fixed="right">
               <template #default="{ row }">
-                <!-- 🔥 权限控制：只有有权限查看该成员订单的用户才能看到操作按钮 -->
+                <!-- 🔥 权限控制：只有有权限查看该成员订单才能看到操作按钮 -->
                 <div v-if="canViewMemberOrders(row)" class="operation-buttons">
                   <el-button type="primary" size="small" @click="viewMemberDetail(row)">
                     查看详情
@@ -2618,7 +2650,21 @@ const showSummaryOrdersDialog = async (countType: string) => {
       logisticsCompany: order.expressCompany || '待发货',
       trackingNumber: order.trackingNumber || '暂无',
       createdByName: order.createdByName || '未知',
-      productDetails: order.products?.map((item: any) => `${item.name || item.productName} x${item.quantity}`).join(', ') || '暂无详情'
+      productDetails: order.products?.map((item: any) => `${item.name || item.productName} x${item.quantity}`).join(', ') || '暂无详情',
+      products: order.products || [],
+      shareInfo: {
+        isShared: false,
+        isReceived: true,
+        totalSharedPercentage: totalSharedPct,
+        ownerRetainedPercentage: Math.max(0, 100 - totalSharedPct),
+        myPercentage: myMember.percentage || 0,
+        orderAmount: share.orderAmount || originalOrder?.totalAmount || 0,
+        members: (share.shareMembers || []).map((m: any) => ({
+          userName: m.userName || m.user_name || '未知',
+          percentage: m.percentage || 0,
+          shareAmount: m.shareAmount || m.share_amount || 0
+        }))
+      }
     }))
 
     summaryOrdersTotal.value = summaryOrdersList.value.length
@@ -2803,6 +2849,7 @@ const getReceivedSharedOrders = (memberId: string, existingOrderNos: Set<string>
       trackingNumber: originalOrder?.trackingNumber || originalOrder?.expressNo || '暂无',
       productDetails: originalOrder?.products?.map((item: any) => `${item.name} x${item.quantity}`).join(', ')
         || (shareProducts ? shareProducts.map((item: any) => `${item.name} x${item.quantity}`).join(', ') : '分享订单'),
+      products: originalOrder?.products || shareProducts || [],
       shareInfo: {
         isShared: false,
         isReceived: true,
@@ -2856,12 +2903,11 @@ const loadOrderTypeData = async (member: TeamMember, status?: string) => {
 
     // 日期筛选
     if (dateRange.value && dateRange.value.length === 2 && dateRange.value[0] && dateRange.value[1]) {
-      const [startDate, endDate] = dateRange.value
       memberOrders = memberOrders.filter((order: any) => {
         let orderDateStr = (order.orderDate || order.createTime || '')?.split(' ')[0] || ''
         orderDateStr = orderDateStr.replace(/\//g, '-')
-        const start = startDate.replace(/\//g, '-')
-        const end = endDate.replace(/\//g, '-')
+        const start = dateRange.value[0].replace(/\//g, '-')
+        const end = dateRange.value[1].replace(/\//g, '-')
         return orderDateStr >= start && orderDateStr <= end
       })
     }
@@ -2907,6 +2953,7 @@ const loadOrderTypeData = async (member: TeamMember, status?: string) => {
         status: order.status,
         trackingNumber: order.trackingNumber || order.expressNo || '',
         productDetails: order.products?.map((item: any) => `${item.name} x${item.quantity}`).join(', ') || '暂无详情',
+        products: order.products || [],
         shareInfo
       }
     })
@@ -2986,12 +3033,11 @@ const loadMemberOrders = async (memberId: string) => {
 
     // 日期筛选
     if (dateRange.value && dateRange.value.length === 2 && dateRange.value[0] && dateRange.value[1]) {
-      const [startDate, endDate] = dateRange.value
       memberOrders = memberOrders.filter((order: any) => {
         let orderDateStr = (order.orderDate || order.createTime || '')?.split(' ')[0] || ''
         orderDateStr = orderDateStr.replace(/\//g, '-')
-        const start = startDate.replace(/\//g, '-')
-        const end = endDate.replace(/\//g, '-')
+        const start = dateRange.value[0].replace(/\//g, '-')
+        const end = dateRange.value[1].replace(/\//g, '-')
         return orderDateStr >= start && orderDateStr <= end
       })
     }
@@ -3024,6 +3070,7 @@ const loadMemberOrders = async (memberId: string) => {
         logisticsCompany: order.expressCompany || '待发货',
         trackingNumber: order.trackingNumber || '暂无',
         productDetails: order.products?.map((item: any) => `${item.name} x${item.quantity}`).join(', ') || '暂无详情',
+        products: order.products || [],
         shareInfo
       }
     })

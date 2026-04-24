@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="page-container">
     <el-card shadow="never" class="table-card">
       <template #header>
@@ -65,7 +65,18 @@
           <div class="package-info">
             <div class="info-item">
               <el-icon><User /></el-icon>
-              <span>{{ pkg.max_users >= 99999 ? '不限' : pkg.max_users }} 用户</span>
+              <template v-if="pkg.user_limit_mode === 'both'">
+                <span>{{ pkg.max_users >= 99999 ? '不限' : pkg.max_users }} 用户 / {{ pkg.max_online_seats }} 席位</span>
+                <el-tag size="small" effect="dark" style="margin-left:4px;font-size:10px;padding:0 4px;height:18px;line-height:18px;background:linear-gradient(135deg,#667eea,#764ba2);border:none;">可选</el-tag>
+              </template>
+              <template v-else-if="pkg.user_limit_mode === 'online'">
+                <span>{{ pkg.max_online_seats }} 在线席位</span>
+                <el-tag size="small" type="success" effect="dark" style="margin-left:4px;font-size:10px;padding:0 4px;height:18px;line-height:18px;">限在</el-tag>
+              </template>
+              <template v-else>
+                <span>{{ pkg.max_users >= 99999 ? '不限' : pkg.max_users }} 用户</span>
+                <el-tag size="small" type="info" effect="dark" style="margin-left:4px;font-size:10px;padding:0 4px;height:18px;line-height:18px;">限注</el-tag>
+              </template>
             </div>
             <div class="info-item" v-if="pkg.max_storage_gb > 0">
               <el-icon><Files /></el-icon>
@@ -205,9 +216,25 @@
             <el-input-number v-model="form.duration_days" :min="1" style="width: 150px" />
             <span style="margin-left: 8px; color: #909399;">天（月付套餐通常30天）</span>
           </el-form-item>
-          <el-form-item label="用户数上限">
+          <el-form-item label="用户限制模式">
+            <el-radio-group v-model="form.user_limit_mode" size="small">
+              <el-radio-button value="total">仅限注册用户数</el-radio-button>
+              <el-radio-button value="online">仅限在线席位</el-radio-button>
+              <el-radio-button value="both">双模式（租户自选）</el-radio-button>
+            </el-radio-group>
+            <div style="margin-top: 4px; color: #909399; font-size: 12px;">
+              <template v-if="form.user_limit_mode === 'online'">按同时在线人数限制，注册用户不限</template>
+              <template v-else-if="form.user_limit_mode === 'both'">同时配置两种限制数量，租户购买后可自行选择限制方式</template>
+              <template v-else>按总注册用户数限制</template>
+            </div>
+          </el-form-item>
+          <el-form-item v-if="form.user_limit_mode === 'total' || form.user_limit_mode === 'both'" label="用户数上限">
             <el-input-number v-model="form.max_users" :min="1" style="width: 150px" />
-            <span style="margin-left: 8px; color: #909399;">个用户</span>
+            <span style="margin-left: 8px; color: #909399;">个用户{{ form.user_limit_mode === 'both' ? '（选择限注册时生效）' : '' }}</span>
+          </el-form-item>
+          <el-form-item v-if="form.user_limit_mode === 'online' || form.user_limit_mode === 'both'" label="在线席位数">
+            <el-input-number v-model="form.max_online_seats" :min="1" style="width: 150px" />
+            <span style="margin-left: 8px; color: #909399;">个席位{{ form.user_limit_mode === 'both' ? '（选择限在线时生效）' : '' }}</span>
           </el-form-item>
           <el-form-item label="存储空间">
             <el-input-number v-model="form.max_storage_gb" :min="0" style="width: 150px" />
@@ -250,9 +277,25 @@
             </div>
           </el-form-item>
           <el-divider content-position="left">🏢 私有部署资源</el-divider>
-          <el-form-item label="授权用户数">
+          <el-form-item label="用户限制模式">
+            <el-radio-group v-model="form.user_limit_mode" size="small">
+              <el-radio-button value="total">仅限注册用户数</el-radio-button>
+              <el-radio-button value="online">仅限在线席位</el-radio-button>
+              <el-radio-button value="both">双模式（客户自选）</el-radio-button>
+            </el-radio-group>
+            <div style="margin-top: 4px; color: #909399; font-size: 12px;">
+              <template v-if="form.user_limit_mode === 'online'">按同时在线人数限制，注册用户不限</template>
+              <template v-else-if="form.user_limit_mode === 'both'">同时配置两种限制，客户可自行切换</template>
+              <template v-else>按总注册用户数限制</template>
+            </div>
+          </el-form-item>
+          <el-form-item v-if="form.user_limit_mode === 'total' || form.user_limit_mode === 'both'" label="授权用户数">
             <el-input-number v-model="form.max_users" :min="1" :max="99999" style="width: 150px" />
             <el-checkbox v-model="unlimitedUsers" style="margin-left: 12px;" @change="onUnlimitedUsersChange">不限用户</el-checkbox>
+          </el-form-item>
+          <el-form-item v-if="form.user_limit_mode === 'online' || form.user_limit_mode === 'both'" label="在线席位数">
+            <el-input-number v-model="form.max_online_seats" :min="1" style="width: 150px" />
+            <span style="margin-left: 8px; color: #909399;">个席位{{ form.user_limit_mode === 'both' ? '（选择限在线时生效）' : '' }}</span>
           </el-form-item>
           <el-form-item label="存储空间">
             <el-input-number v-model="form.max_storage_gb" :min="0" style="width: 150px" />
@@ -399,6 +442,7 @@ const crmModuleOptions = [
   { value: 'data', label: '资料管理' },
   { value: 'finance', label: '财务管理' },
   { value: 'product', label: '商品管理' },
+  { value: 'wecom', label: '企微管理' },
   { value: 'system', label: '系统管理' }
 ]
 
@@ -415,12 +459,15 @@ const form = reactive({
   type: 'saas' as 'saas' | 'private',
   description: '',
   price: 0,
+  original_price: 0,
   billing_cycle: 'monthly' as 'monthly' | 'yearly' | 'once',
   yearly_discount_rate: 0,
   yearly_bonus_months: 0,
   yearly_price: 0 as number | null,
   duration_days: 30,
   max_users: 10,
+  max_online_seats: 5,
+  user_limit_mode: 'total' as 'total' | 'online',
   max_storage_gb: 5,
   features: [''] as string[],
   modules: [] as string[],
@@ -569,10 +616,11 @@ const resetForm = () => {
   const isPrivate = activeTab.value === 'private'
   Object.assign(form, {
     name: '', code: '', type: activeTab.value, description: '',
-    price: 0, billing_cycle: isPrivate ? 'once' : 'monthly',
+    price: 0, original_price: 0, billing_cycle: isPrivate ? 'once' : 'monthly',
     yearly_discount_rate: 0, yearly_bonus_months: 0, yearly_price: null,
     duration_days: isPrivate ? 36500 : 30,
-    max_users: isPrivate ? 50 : 10, max_storage_gb: isPrivate ? 0 : 5,
+    max_users: isPrivate ? 50 : 10, max_online_seats: 5, user_limit_mode: 'total' as 'total' | 'online',
+    max_storage_gb: isPrivate ? 0 : 5,
     features: [''], modules: [],
     subscription_enabled: false, subscription_channels: 'all', subscription_billing_cycle: 'monthly', subscription_discount_rate: 0,
     is_trial: false, is_recommended: false, is_visible: true,
@@ -600,7 +648,9 @@ const handleEdit = (pkg: Package) => {
     subscription_enabled: Boolean(pkg.subscription_enabled),
     subscription_channels: pkg.subscription_channels || 'all',
     subscription_billing_cycle: pkg.subscription_billing_cycle || 'monthly',
-    subscription_discount_rate: Number(pkg.subscription_discount_rate) || 0
+    subscription_discount_rate: Number(pkg.subscription_discount_rate) || 0,
+    user_limit_mode: pkg.user_limit_mode || 'total',
+    max_online_seats: Number(pkg.max_online_seats) || 5
   })
   // 回填不限用户
   unlimitedUsers.value = pkg.max_users >= 99999
@@ -655,8 +705,8 @@ const handleSubmit = async () => {
     ElMessage.success('保存成功')
     showDialog.value = false
     loadPackages()
-  } catch (error) {
-    ElMessage.error('保存失败')
+  } catch (error: any) {
+    ElMessage.error(error?.message || '保存失败')
   } finally {
     submitting.value = false
   }

@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <el-dialog
     v-model="visible"
     title="批量分配权限"
@@ -71,10 +71,10 @@
             <el-form label-width="120px">
               <el-form-item label="数据范围">
                 <el-radio-group v-model="dataScope">
-                  <el-radio value="all">全部数据</el-radio>
-                  <el-radio value="department">本部门数据</el-radio>
-                  <el-radio value="personal">个人数据</el-radio>
-                  <el-radio value="custom">自定义范围</el-radio>
+                  <el-radio label="all">全部数据</el-radio>
+                  <el-radio label="department">本部门数据</el-radio>
+                  <el-radio label="personal">个人数据</el-radio>
+                  <el-radio label="custom">自定义范围</el-radio>
                 </el-radio-group>
               </el-form-item>
 

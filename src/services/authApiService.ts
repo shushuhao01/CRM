@@ -754,7 +754,10 @@ export class AuthApiService {
         'aftersale.data', 'aftersale.data.view', 'aftersale.data.analysis',
         'data', 'data.search', 'data.search.basic', 'data.search.advanced',
         'finance', 'finance.performance_data', 'finance.performance_data.view',
-        'finance.cod_application', 'finance.cod_application.view', 'finance.cod_application.create'
+        'finance.cod_application', 'finance.cod_application.view', 'finance.cod_application.create',
+        // 企微管理（本部门绑定的企微账号数据）
+        'wecom', 'wecom.customer', 'wecom.customer.view', 'wecom.group', 'wecom.group.view',
+        'wecom.chat', 'wecom.chat.view', 'wecom.payment', 'wecom.payment.view'
       ],
       'manager': [  // 兼容旧的manager角色，与department_manager一致
         'dashboard', 'dashboard.view', 'dashboard.export',
@@ -774,7 +777,10 @@ export class AuthApiService {
         'aftersale.data', 'aftersale.data.view', 'aftersale.data.analysis',
         'data', 'data.search', 'data.search.basic', 'data.search.advanced',
         'finance', 'finance.performance_data', 'finance.performance_data.view',
-        'finance.cod_application', 'finance.cod_application.view', 'finance.cod_application.create'
+        'finance.cod_application', 'finance.cod_application.view', 'finance.cod_application.create',
+        // 企微管理（本部门绑定的企微账号数据）
+        'wecom', 'wecom.customer', 'wecom.customer.view', 'wecom.group', 'wecom.group.view',
+        'wecom.chat', 'wecom.chat.view', 'wecom.payment', 'wecom.payment.view'
       ],
       'sales_staff': [
         'dashboard', 'dashboard.view',
@@ -792,7 +798,10 @@ export class AuthApiService {
         'aftersale.add', 'aftersale.add.create',
         'data', 'data.search', 'data.search.basic',
         'finance', 'finance.performance_data', 'finance.performance_data.view',
-        'finance.cod_application', 'finance.cod_application.view', 'finance.cod_application.create'
+        'finance.cod_application', 'finance.cod_application.view', 'finance.cod_application.create',
+        // 企微管理（仅限个人绑定的企微账号数据）
+        'wecom', 'wecom.customer', 'wecom.customer.view', 'wecom.group', 'wecom.group.view',
+        'wecom.chat', 'wecom.chat.view', 'wecom.payment', 'wecom.payment.view'
       ],
       'customer_service': [
         'dashboard', 'dashboard.view',

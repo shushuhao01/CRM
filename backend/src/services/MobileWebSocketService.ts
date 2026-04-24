@@ -343,7 +343,7 @@ class MobileWebSocketService {
 
       // 更新通话记录状态
       await dataSource.query(
-        `UPDATE calls SET status = ?, updated_at = NOW() WHERE id = ?`,
+        `UPDATE call_records SET call_status = ?, updated_at = NOW() WHERE id = ?`,
         [dbStatus, data.callId]
       );
 
@@ -382,19 +382,7 @@ class MobileWebSocketService {
         finalStatus = 'failed';
       }
 
-      // 更新 calls 表
-      await dataSource.query(
-        `UPDATE calls SET
-          status = ?,
-          duration = ?,
-          end_time = NOW(),
-          has_recording = ?,
-          updated_at = NOW()
-         WHERE id = ?`,
-        [finalStatus, data.duration || 0, data.hasRecording ? 1 : 0, data.callId]
-      );
-
-      // 🔥 同时更新 call_records 表（APP端使用的表）
+      // 更新 call_records 通话记录
       await dataSource.query(
         `UPDATE call_records SET
           call_status = ?,

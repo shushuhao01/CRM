@@ -323,6 +323,55 @@
               <li>多端消息同步</li>
             </ul>
           </div>
+
+          <div class="feature-card">
+            <div class="feature-icon cyan">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>
+              </svg>
+            </div>
+            <h3>企微管理</h3>
+            <p>深度对接企业微信，获客助手、会话存档、AI质检、渠道活码，打通全渠道客户运营</p>
+            <ul class="feature-list">
+              <li>获客助手智能分配</li>
+              <li>会话存档合规质检</li>
+              <li>AI智能回复与质检</li>
+              <li>渠道活码与收款码</li>
+            </ul>
+          </div>
+
+          <div class="feature-card">
+            <div class="feature-icon lime">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+              </svg>
+            </div>
+            <h3>短信营销</h3>
+            <p>短信模板管理、额度购买、自动发送规则、四阶段审核机制，精准触达每一位客户</p>
+            <ul class="feature-list">
+              <li>模板四阶段审核</li>
+              <li>额度套餐灵活购买</li>
+              <li>自动发送规则配置</li>
+              <li>发送统计数据分析</li>
+            </ul>
+          </div>
+
+          <div class="feature-card">
+            <div class="feature-icon violet">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="2" y="7" width="20" height="14" rx="2" ry="2"/>
+                <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>
+              </svg>
+            </div>
+            <h3>虚拟商品</h3>
+            <p>卡密、网盘资源等虚拟商品全生命周期管理，自动发货与客户自助领取一站式解决</p>
+            <ul class="feature-list">
+              <li>卡密批量导入核销</li>
+              <li>网盘资源安全分发</li>
+              <li>自动匹配发货</li>
+              <li>客户自助领取</li>
+            </ul>
+          </div>
         </div>
       </div>
     </section>
@@ -1148,6 +1197,9 @@ onUnmounted(() => {
   &.red { background: rgba(239, 68, 68, 0.1); color: #ef4444; }
   &.indigo { background: rgba(79, 70, 229, 0.1); color: #4f46e5; }
   &.amber { background: rgba(245, 158, 11, 0.1); color: #d97706; }
+  &.cyan { background: rgba(6, 182, 212, 0.1); color: #0891b2; }
+  &.lime { background: rgba(132, 204, 22, 0.1); color: #65a30d; }
+  &.violet { background: rgba(139, 92, 246, 0.1); color: #7c3aed; }
 }
 
 .feature-list {

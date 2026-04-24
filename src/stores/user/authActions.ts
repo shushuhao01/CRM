@@ -12,6 +12,7 @@ import { rolePermissionService } from '@/services/rolePermissionService'
 import { getDefaultRolePermissions } from '@/config/defaultRolePermissions'
 import { convertCsPermsToMenuPerms } from '../helpers/csPermissionMap'
 import { getMockUserDatabase } from '../helpers/mockUserDatabase'
+import heartbeatService from '@/services/heartbeatService'
 import type { User, UserStoreDeps } from './types'
 
 /**
@@ -26,8 +27,11 @@ export function createAuthActions(deps: UserStoreDeps) {
   const getRoleIdByRole = (role: string): string => {
     const roleMap: Record<string, string> = {
       'admin': '2',
+      'super_admin': '2',
       'manager': '3',
+      'department_manager': '3',
       'employee': '4',
+      'sales_staff': '4',
       'customer_service': '5'
     }
     return roleMap[role] || '4'
@@ -279,7 +283,10 @@ export function createAuthActions(deps: UserStoreDeps) {
         departmentName: userDeptName,
         departmentIds: userData.departmentIds,
         customerServiceType: (userData.customerServiceType || undefined) as CustomerServiceType | undefined,
-        forcePasswordChange: false
+        // 🔥 密码安全策略：从后端获取密码相关字段
+        passwordLastChanged: userData.passwordLastChanged || userData.password_last_changed || undefined,
+        isDefaultPassword: userData.isDefaultPassword || userData.is_default_password || false,
+        forcePasswordChange: !!(userData.forcePasswordChange || userData.force_password_change || userData.needChangePassword || userData.need_change_password)
       }
 
       // 设置用户权限
@@ -448,6 +455,9 @@ export function createAuthActions(deps: UserStoreDeps) {
       isLoggedIn.value = true
       console.log('[Auth] ✅ 登录状态已设置')
 
+      // 🔥 在线席位：启动心跳服务
+      heartbeatService.start()
+
       // 登录成功后无痕刷新数据（异步执行）
       setTimeout(async () => {
         try {
@@ -511,16 +521,39 @@ export function createAuthActions(deps: UserStoreDeps) {
       } catch (error: unknown) {
         lastError = error
         const errorMessage = error instanceof Error ? error.message : String(error)
-        console.error(`[Auth] 登录尝试 ${attempt}/${maxRetries} 失败:`, errorMessage)
+        const errorCode = (error as any)?.response?.data?.code || (error as any)?.code || ''
 
-        if ((errorMessage.includes('频繁') || errorMessage.includes('429') || errorMessage === 'RATE_LIMITED') && attempt < maxRetries) {
+        console.error(`[Auth] 登录尝试 ${attempt}/${maxRetries} 失败:`, errorMessage, errorCode ? `(${errorCode})` : '')
+
+        // 🔥 修复: 认证失败(密码错误、账户锁定等)不重试,直接抛出错误
+        // 这些错误是用户输入问题,重试没有意义,且会导致失败计数多次递增
+        const authErrors = ['INVALID_CREDENTIALS', 'ACCOUNT_LOCKED', 'ACCOUNT_DISABLED', 'IP_NOT_AUTHORIZED', 'USER_STATUS_INVALID']
+        if (authErrors.includes(errorCode)) {
+          console.log('[Auth] 认证失败,不重试:', errorCode)
+          throw lastError
+        }
+
+        // 🔥 只有网络错误、服务器错误、频繁请求才重试
+        const shouldRetry = (
+          errorMessage.includes('频繁') ||
+          errorMessage.includes('429') ||
+          errorMessage === 'RATE_LIMITED' ||
+          errorMessage.includes('网络') ||
+          errorMessage.includes('超时') ||
+          errorMessage.includes('服务器') ||
+          errorMessage.includes('Network') ||
+          errorMessage.includes('timeout')
+        )
+
+        if (shouldRetry && attempt < maxRetries) {
           const delay = Math.min(1000 * Math.pow(2, attempt - 1), 10000)
           console.log(`[Auth] ${delay}ms后重试...`)
           await new Promise(resolve => setTimeout(resolve, delay))
           continue
         }
 
-        if (attempt === maxRetries) {
+        // 最后一次尝试或不应重试的错误,直接抛出
+        if (attempt === maxRetries || !shouldRetry) {
           throw lastError
         }
       }
@@ -533,6 +566,9 @@ export function createAuthActions(deps: UserStoreDeps) {
 
   const clearUserData = () => {
     console.log('[Auth] 清除用户数据（不调用API）')
+
+    // 🔥 在线席位：停止心跳
+    heartbeatService.stop()
 
     currentUser.value = null
     token.value = ''
@@ -636,6 +672,9 @@ export function createAuthActions(deps: UserStoreDeps) {
       console.log('[Auth] ✅ 登录状态已恢复:', userData.name)
       console.log('[Auth] ✅ Token:', savedToken.substring(0, 30) + '...')
       console.log('[Auth] ✅ isLoggedIn:', isLoggedIn.value)
+
+      // 🔥 在线席位：恢复登录时启动心跳
+      heartbeatService.start()
 
       // 优先从 localStorage 恢复权限
       let userPerms: string[] = []

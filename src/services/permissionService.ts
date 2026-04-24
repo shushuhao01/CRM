@@ -695,6 +695,60 @@ const PERMISSION_TREE = [
     ]
   },
 
+  // 10.5 企微管理
+  {
+    id: 'wecom',
+    name: '企微管理',
+    code: 'wecom',
+    type: 'module',
+    path: '/wecom',
+    icon: 'ChatDotRound',
+    sort: 10,
+    status: 'active',
+    children: [
+      {
+        id: 'wecom.customer',
+        name: '企微客户',
+        code: 'wecom.customer',
+        type: 'menu',
+        path: '/wecom/customer',
+        icon: 'User',
+        sort: 1,
+        status: 'active',
+        children: [
+          { id: 'wecom.customer.view', name: '查看企微客户', code: 'wecom.customer.view', type: 'action', sort: 1, status: 'active' }
+        ]
+      },
+      {
+        id: 'wecom.customer_group',
+        name: '客户群',
+        code: 'wecom.customer_group',
+        type: 'menu',
+        path: '/wecom/customer-group',
+        icon: 'UserFilled',
+        sort: 2,
+        status: 'active',
+        children: [
+          { id: 'wecom.customer_group.view', name: '查看客户群', code: 'wecom.customer_group.view', type: 'action', sort: 1, status: 'active' }
+        ]
+      },
+      {
+        id: 'wecom.chat_archive',
+        name: '会话存档',
+        code: 'wecom.chat_archive',
+        type: 'menu',
+        path: '/wecom/chat-archive',
+        icon: 'ChatLineSquare',
+        sort: 3,
+        status: 'active',
+        children: [
+          { id: 'wecom.chat_archive.view', name: '查看会话存档', code: 'wecom.chat_archive.view', type: 'action', sort: 1, status: 'active' },
+          { id: 'wecom.chat_archive.view_all', name: '查看全部存档', code: 'wecom.chat_archive.view_all', type: 'action', sort: 2, status: 'active' }
+        ]
+      }
+    ]
+  },
+
   // 11. 系统管理
   {
     id: 'system',
@@ -869,7 +923,8 @@ const ROLE_DEFAULT_PERMISSIONS = {
     'service.call.view', 'service.call.make', 'service.call.record', 'service.call.statistics',
     'service.sms.view', 'service.sms.send', 'service.sms.template', 'service.sms.batch', 'service.sms.statistics',
     'data.list.view', 'data.search.basic', 'data.search.advanced',
-    'performance.personal.view', 'performance.team.view', 'performance.analysis.view'
+    'performance.personal.view', 'performance.team.view', 'performance.analysis.view',
+    'wecom', 'wecom.customer', 'wecom.customer.view', 'wecom.customer_group', 'wecom.customer_group.view', 'wecom.chat_archive', 'wecom.chat_archive.view'
   ],
   'EMPLOYEE': [
     'customer.list.view', 'customer.follow',
@@ -883,7 +938,8 @@ const ROLE_DEFAULT_PERMISSIONS = {
     'service.call.view', 'service.call.make',
     'service.sms.view', 'service.sms.send',
     'data.list.view', 'data.search.basic',
-    'performance.personal.view'
+    'performance.personal.view',
+    'wecom', 'wecom.customer', 'wecom.customer.view', 'wecom.customer_group', 'wecom.customer_group.view', 'wecom.chat_archive', 'wecom.chat_archive.view'
   ],
   'CUSTOMER_SERVICE': [
     'customer.list.view', 'customer.follow',

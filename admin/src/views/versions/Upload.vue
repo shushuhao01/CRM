@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="page-container">
     <el-card shadow="never" class="form-card">
       <template #header>
@@ -21,17 +21,17 @@
 
         <el-form-item label="版本类型" prop="releaseType">
           <el-radio-group v-model="form.releaseType">
-            <el-radio-button value="major">大版本</el-radio-button>
-            <el-radio-button value="minor">功能更新</el-radio-button>
-            <el-radio-button value="patch">补丁修复</el-radio-button>
+            <el-radio-button label="major">大版本</el-radio-button>
+            <el-radio-button label="minor">功能更新</el-radio-button>
+            <el-radio-button label="patch">补丁修复</el-radio-button>
           </el-radio-group>
         </el-form-item>
 
         <el-form-item label="更新源类型" prop="sourceType">
           <el-radio-group v-model="form.sourceType">
-            <el-radio-button value="url">下载链接</el-radio-button>
-            <el-radio-button value="upload">上传压缩包</el-radio-button>
-            <el-radio-button value="git">Git 仓库</el-radio-button>
+            <el-radio-button label="url">下载链接</el-radio-button>
+            <el-radio-button label="upload">上传压缩包</el-radio-button>
+            <el-radio-button label="git">Git 仓库</el-radio-button>
           </el-radio-group>
         </el-form-item>
 
@@ -82,9 +82,9 @@
 
         <el-form-item label="目标受众">
           <el-radio-group v-model="form.targetAudience">
-            <el-radio-button value="all">全部客户</el-radio-button>
-            <el-radio-button value="private">仅私有客户</el-radio-button>
-            <el-radio-button value="saas">仅SaaS租户</el-radio-button>
+            <el-radio-button label="all">全部客户</el-radio-button>
+            <el-radio-button label="private">仅私有客户</el-radio-button>
+            <el-radio-button label="saas">仅SaaS租户</el-radio-button>
           </el-radio-group>
         </el-form-item>
 

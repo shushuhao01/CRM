@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div v-if="shouldShowStorageSwitch" class="storage-mode-switch">
     <!-- 模式指示器 -->
     <el-tooltip
@@ -119,8 +119,8 @@
       >
         <el-form-item label="默认模式">
           <el-radio-group v-model="configForm.mode">
-            <el-radio value="local">本地存储</el-radio>
-            <el-radio value="api" :disabled="!status.apiAvailable">API存储</el-radio>
+            <el-radio label="local">本地存储</el-radio>
+            <el-radio label="api" :disabled="!status.apiAvailable">API存储</el-radio>
           </el-radio-group>
         </el-form-item>
 

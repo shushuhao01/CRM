@@ -4,7 +4,7 @@
     "iPhone",
     "iPad"
   ],
-  "id": "__UNI__CRM_DIALER",
+  "id": "__UNI__40B02A3",
   "name": "云客CRM",
   "version": {
     "name": "1.0.0",
@@ -45,16 +45,35 @@
     "distribute": {
       "icons": {
         "android": {
-          "hdpi": "static/icons/logo-48.png",
-          "xhdpi": "static/icons/logo-64.png",
-          "xxhdpi": "static/icons/logo-128.png",
+          "ldpi": "static/icons/logo-36.png",
+          "mdpi": "static/icons/logo-48.png",
+          "hdpi": "static/icons/logo-72.png",
+          "xhdpi": "static/icons/logo-96.png",
+          "xxhdpi": "static/icons/logo-144.png",
           "xxxhdpi": "static/icons/logo-192.png"
         },
         "ios": {
           "appstore": "static/icons/logo-1024.png",
           "iphone": {
-            "app@2x": "static/icons/logo-128.png",
-            "app@3x": "static/icons/logo-192.png"
+            "app@2x": "static/icons/logo-120.png",
+            "app@3x": "static/icons/logo-180.png",
+            "notification@2x": "static/icons/logo-40.png",
+            "notification@3x": "static/icons/logo-60.png",
+            "settings@2x": "static/icons/logo-58.png",
+            "settings@3x": "static/icons/logo-87.png",
+            "spotlight@2x": "static/icons/logo-80.png",
+            "spotlight@3x": "static/icons/logo-120.png"
+          },
+          "ipad": {
+            "app": "static/icons/logo-76.png",
+            "app@2x": "static/icons/logo-152.png",
+            "notification": "static/icons/logo-20.png",
+            "notification@2x": "static/icons/logo-40.png",
+            "proapp@2x": "static/icons/logo-167.png",
+            "settings": "static/icons/logo-29.png",
+            "settings@2x": "static/icons/logo-58.png",
+            "spotlight": "static/icons/logo-40.png",
+            "spotlight@2x": "static/icons/logo-80.png"
           }
         }
       },
@@ -62,32 +81,44 @@
         "androidStyle": "common"
       },
       "google": {
+        "packagename": "com.xianhu.crm.dialer",
         "permissions": [
           "<uses-permission android:name=\"android.permission.CALL_PHONE\"/>",
           "<uses-permission android:name=\"android.permission.READ_PHONE_STATE\"/>",
           "<uses-permission android:name=\"android.permission.RECORD_AUDIO\"/>",
-          "<uses-permission android:name=\"android.permission.WRITE_EXTERNAL_STORAGE\"/>",
-          "<uses-permission android:name=\"android.permission.READ_EXTERNAL_STORAGE\"/>",
+          "<uses-permission android:name=\"android.permission.WRITE_EXTERNAL_STORAGE\" android:maxSdkVersion=\"29\"/>",
+          "<uses-permission android:name=\"android.permission.READ_EXTERNAL_STORAGE\" android:maxSdkVersion=\"32\"/>",
+          "<uses-permission android:name=\"android.permission.READ_MEDIA_AUDIO\"/>",
+          "<uses-permission android:name=\"android.permission.MANAGE_EXTERNAL_STORAGE\"/>",
           "<uses-permission android:name=\"android.permission.CAMERA\"/>",
           "<uses-permission android:name=\"android.permission.INTERNET\"/>",
           "<uses-permission android:name=\"android.permission.ACCESS_NETWORK_STATE\"/>",
+          "<uses-permission android:name=\"android.permission.ACCESS_WIFI_STATE\"/>",
           "<uses-permission android:name=\"android.permission.VIBRATE\"/>",
           "<uses-permission android:name=\"android.permission.FOREGROUND_SERVICE\"/>",
-          "<uses-permission android:name=\"android.permission.WAKE_LOCK\"/>"
+          "<uses-permission android:name=\"android.permission.WAKE_LOCK\"/>",
+          "<uses-permission android:name=\"android.permission.REQUEST_INSTALL_PACKAGES\"/>",
+          "<uses-permission android:name=\"android.permission.POST_NOTIFICATIONS\"/>"
         ],
         "minSdkVersion": 24,
-        "targetSdkVersion": 30,
+        "targetSdkVersion": 33,
         "abiFilters": [
           "armeabi-v7a",
           "arm64-v8a"
-        ]
+        ],
+        "packagingOptions": {
+          "pickFirst": [
+            "lib/**/libc++_shared.so"
+          ]
+        }
       },
       "apple": {
         "privacyDescription": {
           "NSPhotoLibraryUsageDescription": "用于选择图片",
           "NSCameraUsageDescription": "用于扫描二维码",
           "NSMicrophoneUsageDescription": "用于通话录音"
-        }
+        },
+        "dSYMs": false
       },
       "plugins": {
         "audio": {

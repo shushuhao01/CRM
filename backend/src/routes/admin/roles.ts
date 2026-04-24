@@ -79,6 +79,46 @@ const PERMISSION_TREE = [
     ]
   },
   {
+    code: 'sms-management',
+    name: '短信管理',
+    children: [
+      { code: 'sms-management:template-review:view', name: '查看模板审核' },
+      { code: 'sms-management:template-review:edit', name: '执行模板审核' },
+      { code: 'sms-management:templates:view', name: '查看模板管理' },
+      { code: 'sms-management:templates:create', name: '创建预设模板' },
+      { code: 'sms-management:templates:edit', name: '编辑模板' },
+      { code: 'sms-management:templates:delete', name: '删除模板' },
+      { code: 'sms-management:records:view', name: '查看发送记录' },
+      { code: 'sms-management:crm-config:view', name: '查看CRM短信配置' },
+      { code: 'sms-management:crm-config:edit', name: '编辑CRM短信配置' },
+      { code: 'sms-management:statistics:view', name: '查看统计总览' },
+      { code: 'sms-management:quota-packages:view', name: '查看额度套餐' },
+      { code: 'sms-management:quota-packages:edit', name: '编辑额度套餐' }
+    ]
+  },
+  {
+    code: 'wecom-management',
+    name: '企微管理',
+    children: [
+      { code: 'wecom-management:overview:view', name: '查看企微概览' },
+      { code: 'wecom-management:tenant-auth:view', name: '查看租户授权管理' },
+      { code: 'wecom-management:tenant-auth:edit', name: '操作租户授权(停用/恢复)' },
+      { code: 'wecom-management:package-templates:view', name: '查看套餐模板' },
+      { code: 'wecom-management:package-templates:edit', name: '管理套餐模板(CRUD)' },
+      { code: 'wecom-management:tenant-packages:view', name: '查看租户套餐' },
+      { code: 'wecom-management:tenant-packages:edit', name: '管理租户套餐(分配/变更/续费)' },
+      { code: 'wecom-management:quota-monitor:view', name: '查看资源配额监控' },
+      { code: 'wecom-management:chat-archive:view', name: '查看会话存档管理' },
+      { code: 'wecom-management:chat-archive:edit', name: '编辑会话存档配置' },
+      { code: 'wecom-management:vas-config:view', name: '查看增值服务配置' },
+      { code: 'wecom-management:vas-config:edit', name: '编辑增值服务配置' },
+      { code: 'wecom-management:vas-orders:view', name: '查看增值服务订单' },
+      { code: 'wecom-management:vas-orders:edit', name: '管理增值服务订单' },
+      { code: 'wecom-management:system-config:view', name: '查看企微系统配置' },
+      { code: 'wecom-management:system-config:edit', name: '编辑企微系统配置' }
+    ]
+  },
+  {
     code: 'payment',
     name: '支付管理',
     children: [

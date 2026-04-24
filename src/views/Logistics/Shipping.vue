@@ -175,6 +175,15 @@
             </span>
           </template>
         </el-tab-pane>
+        <el-tab-pane label="虚拟待发货" name="virtual_pending">
+          <template #label>
+            <span class="tab-label">
+              <el-icon><MagicStick /></el-icon>
+              虚拟待发货
+              <el-badge :value="tabCounts.virtualPending || 0" :max="999" class="tab-badge" type="warning" />
+            </span>
+          </template>
+        </el-tab-pane>
         <el-tab-pane label="已发货" name="shipped">
           <template #label>
             <span class="tab-label">
@@ -469,8 +478,15 @@
 
           <!-- 非草稿订单的常规操作 -->
           <template v-else>
+            <!-- 🔥 虚拟待发货订单：显示虚拟发货按钮 -->
+            <template v-if="activeTab === 'virtual_pending'">
+              <el-button size="small" type="primary" @click="openVirtualDeliveryDialog(row)">
+                <el-icon><MagicStick /></el-icon>
+                虚拟发货
+              </el-button>
+            </template>
             <!-- 已发货标签页：隐藏打印面单和发货按钮 -->
-            <template v-if="activeTab === 'shipped'">
+            <template v-else-if="activeTab === 'shipped'">
               <!-- 已发货订单只显示查看和更多按钮 -->
             </template>
             <!-- 待发货等其他标签页：显示所有操作按钮 -->
@@ -777,6 +793,47 @@
         </div>
       </div>
     </el-dialog>
+
+    <!-- 🔥 虚拟发货弹窗 -->
+    <el-dialog v-model="virtualDeliveryDialogVisible" title="虚拟发货" width="650px" :close-on-click-modal="false">
+      <div v-if="currentVirtualOrder" style="margin-bottom: 16px;">
+        <p><strong>订单号：</strong>{{ currentVirtualOrder.orderNumber }}</p>
+        <p><strong>客户：</strong>{{ currentVirtualOrder.customerName }}</p>
+      </div>
+      <el-divider />
+      <div v-for="(item, idx) in virtualDeliveryItems" :key="idx" style="margin-bottom: 20px; padding: 12px; background: #f9f9f9; border-radius: 8px;">
+        <h4 style="margin: 0 0 12px 0;">
+          <el-tag type="warning" size="small">虚拟</el-tag>
+          {{ item.productName }}
+          <el-tag size="small" :type="item.virtualDeliveryType === 'card_key' ? 'info' : 'success'" style="margin-left: 6px;">
+            {{ item.virtualDeliveryType === 'card_key' ? '卡密' : '网盘资源' }}
+          </el-tag>
+        </h4>
+
+        <template v-if="item.virtualDeliveryType === 'card_key'">
+          <el-form-item label="卡密内容" style="margin-bottom: 8px;">
+            <el-input v-model="item.manualContent" placeholder="请输入卡密（系统已预占的将自动使用）" />
+          </el-form-item>
+        </template>
+
+        <template v-if="item.virtualDeliveryType === 'resource_link'">
+          <el-form-item label="资源链接" style="margin-bottom: 8px;">
+            <el-input v-model="item.manualResourceLink" placeholder="请输入资源链接" />
+          </el-form-item>
+          <el-form-item label="提取码" style="margin-bottom: 8px;">
+            <el-input v-model="item.manualResourcePassword" placeholder="选填" />
+          </el-form-item>
+        </template>
+
+        <el-form-item label="备注" style="margin-bottom: 0;">
+          <el-input v-model="item.remark" placeholder="选填" />
+        </el-form-item>
+      </div>
+      <template #footer>
+        <el-button @click="virtualDeliveryDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="virtualDeliveryLoading" @click="confirmVirtualDelivery">确认发货</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -792,7 +849,8 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   Box, Money, Van, Warning, CreditCard, Coin,
   Search, Download, View, Printer, ArrowDown, Back, Close, Document,
-  Edit, Check, Delete, FullScreen, CopyDocument, Refresh, Setting, Postcard, QuestionFilled
+  Edit, Check, Delete, FullScreen, CopyDocument, Refresh, Setting, Postcard, QuestionFilled,
+  MagicStick
 } from '@element-plus/icons-vue'
 import { useOrderStore } from '@/stores/order'
 import { useNotificationStore } from '@/stores/notification'
@@ -851,6 +909,7 @@ const selectedQuickFilter = ref('all')
 const activeTab = ref('pending')
 const tabCounts = reactive({
   pending: 0,
+  virtualPending: 0,
   shipped: 0,
   returned: 0,
   cancelled: 0,
@@ -930,6 +989,7 @@ const baseTableColumns = [
     prop: 'orderNo',
     label: '订单号',
     width: 130,
+    showOverflowTooltip: true,
     visible: true
   },
   {
@@ -982,6 +1042,14 @@ const baseTableColumns = [
     label: '下单时间',
     width: 135,
     align: 'center',
+    showOverflowTooltip: true,
+    visible: true
+  },
+  {
+    prop: 'remark',
+    label: '订单备注',
+    width: 100,
+    showOverflowTooltip: true,
     visible: true
   },
   {
@@ -1086,13 +1154,6 @@ const baseTableColumns = [
     label: '支付方式',
     width: 85,
     align: 'center',
-    visible: true
-  },
-  {
-    prop: 'remark',
-    label: '订单备注',
-    width: 120,
-    showOverflowTooltip: true,
     visible: true
   },
   {
@@ -1414,6 +1475,16 @@ const loadOrderList = async () => {
         orders = response?.data?.list || []
         serverTotal = response?.data?.total || orders.length
         console.log('[发货列表] 从API获取待发货订单:', orders.length, '条，总数:', serverTotal)
+      } else if (activeTab.value === 'virtual_pending') {
+        // 🔥 虚拟待发货订单
+        const token = localStorage.getItem('auth_token')
+        const vpResp = await fetch(`/api/v1/orders?status=virtual_pending&page=${params.page}&pageSize=${params.pageSize}${params.keyword ? '&keyword=' + params.keyword : ''}`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        })
+        const vpData = await vpResp.json()
+        orders = vpData?.data?.list || vpData?.data?.orders || []
+        serverTotal = vpData?.data?.total || orders.length
+        console.log('[发货列表] 从API获取虚拟待发货订单:', orders.length, '条，总数:', serverTotal)
       } else if (activeTab.value === 'shipped') {
         const response = await orderApi.getShippingShipped(params)
         orders = response?.data?.list || []
@@ -2376,6 +2447,19 @@ const updateTabCounts = async () => {
       tabCounts.pending = 0
     }
 
+    // 获取虚拟待发货订单数量
+    try {
+      const token = localStorage.getItem('auth_token')
+      const vpResponse = await fetch('/api/v1/orders?status=virtual_pending&pageSize=1', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+      const vpData = await vpResponse.json()
+      tabCounts.virtualPending = vpData?.data?.total || vpData?.total || 0
+    } catch (e) {
+      console.warn('[发货列表] 获取虚拟待发货数量失败:', e)
+      tabCounts.virtualPending = 0
+    }
+
     // 草稿订单数量（从store获取，因为草稿通常是本地数据）
     try {
       const draftOrders = await orderStore.getOrdersByShippingStatus('draft')
@@ -2664,6 +2748,94 @@ onUnmounted(() => {
   eventBus.off(EventNames.REFRESH_SHIPPING_LIST, handleRefreshShippingList)
   console.log('[发货列表] 事件监听器已清理')
 })
+
+// ==================== 🔥 虚拟发货功能 ====================
+const virtualDeliveryDialogVisible = ref(false)
+const virtualDeliveryLoading = ref(false)
+const currentVirtualOrder = ref<any>(null)
+const virtualDeliveryItems = ref<any[]>([])
+
+const openVirtualDeliveryDialog = (row: any) => {
+  currentVirtualOrder.value = row
+  // 解析订单中的虚拟商品
+  let products: any[] = []
+  try {
+    products = typeof row.products === 'string' ? JSON.parse(row.products) : (row.products || [])
+  } catch { products = [] }
+
+  virtualDeliveryItems.value = products
+    .filter((p: any) => p.productType === 'virtual' && p.virtualDeliveryType !== 'none')
+    .map((p: any) => ({
+      productId: p.id || p.productId,
+      productName: p.name || p.productName || '未知商品',
+      virtualDeliveryType: p.virtualDeliveryType,
+      manualContent: '',
+      manualResourceLink: '',
+      manualResourcePassword: '',
+      remark: '',
+      cardKeyId: null,
+      resourceId: null
+    }))
+
+  if (virtualDeliveryItems.value.length === 0) {
+    ElMessage.info('该订单无需手动发货的虚拟商品')
+    return
+  }
+
+  virtualDeliveryDialogVisible.value = true
+}
+
+const confirmVirtualDelivery = async () => {
+  if (!currentVirtualOrder.value) return
+  virtualDeliveryLoading.value = true
+
+  try {
+    const token = localStorage.getItem('auth_token')
+    const items = virtualDeliveryItems.value.map(item => ({
+      productId: item.productId,
+      deliveryType: item.virtualDeliveryType,
+      cardKeyId: item.cardKeyId || null,
+      resourceId: item.resourceId || null,
+      manualContent: item.manualContent || null,
+      manualResourceLink: item.manualResourceLink || null,
+      manualResourcePassword: item.manualResourcePassword || null,
+      remark: item.remark || null
+    }))
+
+    const resp = await fetch('/api/v1/virtual-delivery', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        orderId: currentVirtualOrder.value.id,
+        items
+      })
+    })
+    const result = await resp.json()
+
+    if (result.success) {
+      ElMessage.success('虚拟发货成功')
+      if (result.data?.claimLink) {
+        try {
+          await navigator.clipboard.writeText(window.location.origin + result.data.claimLink)
+          ElMessage.info('领取链接已复制到剪贴板')
+        } catch {}
+      }
+      virtualDeliveryDialogVisible.value = false
+      loadOrderList()
+      updateTabCounts()
+    } else {
+      ElMessage.error(result.message || '发货失败')
+    }
+  } catch (err: any) {
+    console.error('虚拟发货失败:', err)
+    ElMessage.error('虚拟发货失败')
+  } finally {
+    virtualDeliveryLoading.value = false
+  }
+}
 </script>
 
 <style scoped>

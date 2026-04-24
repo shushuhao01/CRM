@@ -583,9 +583,14 @@ const fileList = ref<UploadUserFile[]>([])
 const orderInfo = ref<any>(null)
 
 // 计算属性
-// 启用的服务类型
+// 启用的服务类型（虚拟商品订单隐藏退货/换货/维修）
 const enabledServiceTypes = computed(() => {
-  return serviceTypeStore.enabledServiceTypes()
+  const allTypes = serviceTypeStore.enabledServiceTypes()
+  // 如果当前选中订单是虚拟商品订单，过滤掉不适用的类型
+  if (orderInfo.value?.orderProductType === 'virtual') {
+    return allTypes.filter((t: any) => !['return', 'exchange', 'repair'].includes(t.value || t.id || t.type))
+  }
+  return allTypes
 })
 
 // 是否可以管理服务类型(仅超管和管理员)

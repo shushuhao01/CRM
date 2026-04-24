@@ -28,9 +28,11 @@
           </el-select>
         </el-form-item>
         <el-form-item label="订单类型">
-          <el-select v-model="searchForm.orderType" placeholder="全部" clearable style="width: 120px">
+          <el-select v-model="searchForm.orderType" placeholder="全部" clearable style="width: 140px">
             <el-option label="套餐订单" value="package" />
             <el-option label="扩容订单" value="capacity" />
+            <el-option label="短信额度" value="sms_quota" />
+            <el-option label="增值服务(VAS)" value="vas" />
           </el-select>
         </el-form-item>
         <el-form-item label="时间">
@@ -121,9 +123,11 @@
             <span class="order-no">{{ row.order_no }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="类型" width="90" align="center">
+        <el-table-column label="类型" width="100" align="center">
           <template #default="{ row }">
-            <el-tag v-if="row.order_no?.startsWith('CAP')" type="warning" size="small" effect="plain">扩容</el-tag>
+            <el-tag v-if="row.order_no?.startsWith('VAS')" type="success" size="small" effect="plain">增值服务</el-tag>
+            <el-tag v-else-if="row.order_no?.startsWith('CAP')" type="warning" size="small" effect="plain">扩容</el-tag>
+            <el-tag v-else-if="row.order_no?.startsWith('SQ')" type="info" size="small" effect="plain">短信额度</el-tag>
             <el-tag v-else type="primary" size="small" effect="plain">套餐</el-tag>
           </template>
         </el-table-column>
@@ -209,7 +213,9 @@
       <el-descriptions :column="2" border v-if="currentOrder">
         <el-descriptions-item label="订单号" :span="2">{{ currentOrder.order_no }}</el-descriptions-item>
         <el-descriptions-item label="订单类型">
-          <el-tag v-if="currentOrder.order_no?.startsWith('CAP')" type="warning" size="small">扩容订单</el-tag>
+          <el-tag v-if="currentOrder.order_no?.startsWith('VAS')" type="success" size="small">增值服务</el-tag>
+          <el-tag v-else-if="currentOrder.order_no?.startsWith('CAP')" type="warning" size="small">扩容订单</el-tag>
+          <el-tag v-else-if="currentOrder.order_no?.startsWith('SQ')" type="info" size="small">短信额度</el-tag>
           <el-tag v-else type="primary" size="small">套餐订单</el-tag>
         </el-descriptions-item>
         <el-descriptions-item label="租户名称">{{ currentOrder.tenant_name || '-' }}</el-descriptions-item>

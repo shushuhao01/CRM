@@ -33,6 +33,7 @@ class WebSocketService {
   private reconnectDelay = 3000
   private heartbeatTimer: number | null = null
   private heartbeatInterval = 30000 // 30秒心跳
+  private intentionalClose = false // 🔥 标记是否是主动断开
 
   // 连接状态
   public isConnected = false
@@ -92,10 +93,8 @@ class WebSocketService {
 
     wsUrl = `${wsUrl}?token=${userStore.wsToken}`
 
-    console.log('[WebSocket] 正在连接:', wsUrl)
-    console.log('[WebSocket] wsToken长度:', userStore.wsToken.length)
-    console.log('[WebSocket] 当前wsUrl:', userStore.wsUrl)
-    console.log('[WebSocket] serverStore.wsUrl:', serverStore.wsUrl)
+    console.log('[WebSocket] 正在连接...')
+    console.log('[WebSocket] wsToken:', userStore.wsToken ? '有' : '无')
 
     try {
       this.socket = uni.connectSocket({
@@ -155,8 +154,11 @@ class WebSocketService {
 
       uni.$emit('ws:disconnected')
 
-      // 自动重连
-      this.scheduleReconnect()
+      // 🔥 只有非主动断开才自动重连
+      if (!this.intentionalClose) {
+        this.scheduleReconnect()
+      }
+      this.intentionalClose = false
     })
 
     // 连接错误
@@ -295,8 +297,7 @@ class WebSocketService {
     // 设置通话结束回调
     callStateService.onCallEnd((callInfo, duration) => {
       console.log('[WebSocket] 通话结束回调:', callInfo, duration)
-      // 清除当前通话记录
-      uni.removeStorageSync('currentCall')
+      // 注意：currentCall 的清除由 callStateService.onCallEnded 内部处理，这里不重复清除
     })
 
     // 直接调用系统拨号
@@ -431,6 +432,7 @@ class WebSocketService {
   // 断开连接
   disconnect() {
     this.stopHeartbeat()
+    this.intentionalClose = true // 🔥 标记为主动断开，不触发自动重连
 
     if (this.socket) {
       this.socket.close({})
@@ -438,6 +440,8 @@ class WebSocketService {
     }
 
     this.isConnected = false
+    // 🔥 断开连接时重置重连计数器，确保手动重连时可用
+    this.reconnectAttempts = 0
   }
 
   // 设置拨号请求回调

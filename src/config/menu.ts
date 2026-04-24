@@ -373,30 +373,52 @@ export const menuConfig: MenuItem[] = [
         path: '/product/analytics',
         roles: ['super_admin', 'admin'],
         permissions: ['product:analytics', 'product.analytics']
-      }
+      },
+      {
+        id: 'virtual-card-keys',
+        title: '卡密库存',
+        path: '/product/virtual/card-keys',
+        roles: ['super_admin', 'admin'],
+        permissions: ['sales:product:edit', 'product.virtual']
+      },
+      {
+        id: 'virtual-resources',
+        title: '资源库存',
+        path: '/product/virtual/resources',
+        roles: ['super_admin', 'admin'],
+        permissions: ['sales:product:edit', 'product.virtual']
+      },
+
     ]
   },
   {
     id: 'wecom',
     title: '企微管理',
     icon: 'ChatLineSquare',
-    hidden: true, // 🔥 暂停开发，临时隐藏企微管理模块
+    hidden: false, // ✅ 2026-04-10 恢复企微管理模块开发
     roles: ['super_admin', 'admin', 'department_manager', 'sales_staff'],
     permissions: ['wecom'],
     children: [
       {
+        id: 'wecom-address-book',
+        title: '通讯录',
+        path: '/wecom/address-book',
+        roles: ['super_admin', 'admin'],
+        permissions: ['wecom:contact']
+      },
+      {
         id: 'wecom-customer',
-        title: '企业客户',
+        title: '企微客户',
         path: '/wecom/customer',
         roles: ['super_admin', 'admin', 'department_manager', 'sales_staff'],
         permissions: ['wecom:customer']
       },
       {
-        id: 'wecom-binding',
-        title: '企微联动',
-        path: '/wecom/binding',
-        roles: ['super_admin', 'admin'],
-        permissions: ['wecom:binding']
+        id: 'wecom-customer-group',
+        title: '客户群',
+        path: '/wecom/customer-group',
+        roles: ['super_admin', 'admin', 'department_manager', 'sales_staff'],
+        permissions: ['wecom:group']
       },
       {
         id: 'wecom-acquisition',
@@ -406,6 +428,20 @@ export const menuConfig: MenuItem[] = [
         permissions: ['wecom:acquisition']
       },
       {
+        id: 'wecom-contact-way',
+        title: '活码管理',
+        path: '/wecom/contact-way',
+        roles: ['super_admin', 'admin', 'department_manager'],
+        permissions: ['wecom:contact_way']
+      },
+      {
+        id: 'wecom-chat-archive',
+        title: '会话存档',
+        path: '/wecom/chat-archive',
+        roles: ['super_admin', 'admin', 'department_manager', 'sales_staff'],
+        permissions: ['wecom:chat']
+      },
+      {
         id: 'wecom-service',
         title: '微信客服',
         path: '/wecom/service',
@@ -413,11 +449,18 @@ export const menuConfig: MenuItem[] = [
         permissions: ['wecom:service']
       },
       {
-        id: 'wecom-chat-archive',
-        title: '会话存档',
-        path: '/wecom/chat-archive',
+        id: 'wecom-ai-assistant',
+        title: 'AI助手',
+        path: '/wecom/ai-assistant',
         roles: ['super_admin', 'admin'],
-        permissions: ['wecom:chat']
+        permissions: ['wecom:ai']
+      },
+      {
+        id: 'wecom-sidebar',
+        title: '侧边栏',
+        path: '/wecom/sidebar',
+        roles: ['super_admin', 'admin'],
+        permissions: ['wecom:sidebar']
       },
       {
         id: 'wecom-payment',
@@ -428,17 +471,10 @@ export const menuConfig: MenuItem[] = [
       },
       {
         id: 'wecom-config',
-        title: '企微配置',
+        title: '企微授权',
         path: '/wecom/config',
         roles: ['super_admin', 'admin'],
         permissions: ['wecom:config']
-      },
-      {
-        id: 'wecom-sidebar',
-        title: '侧边栏应用',
-        path: '/wecom/sidebar',
-        roles: ['super_admin', 'admin'],
-        permissions: ['wecom:sidebar']
       }
     ]
   },
@@ -609,7 +645,10 @@ export const rolePermissions: Record<string, string[]> = {
     'data', 'data:customer', 'data:customer:search', 'data:list',
 
     // 财务管理权限 - 一级菜单和二级菜单
-    'finance', 'finance:data'
+    'finance', 'finance:data',
+
+    // 企微管理权限（企微客户、客户群、会话存档、对外收款，仅限本部门绑定的企微账号数据）
+    'wecom', 'wecom:customer', 'wecom:group', 'wecom:chat', 'wecom:payment'
   ],
 
   // 销售员：只能管理自己的客户和订单
@@ -641,7 +680,10 @@ export const rolePermissions: Record<string, string[]> = {
     'data', 'data:customer', 'data:customer:search',
 
     // 财务管理（只看个人绩效数据）
-    'finance', 'finance:data'
+    'finance', 'finance:data',
+
+    // 企微管理（企微客户、客户群、会话存档、对外收款，仅限个人绑定的企微账号数据）
+    'wecom', 'wecom:customer', 'wecom:group', 'wecom:chat', 'wecom:payment'
   ],
 
   // 客服默认权限：根据客服类型动态配置

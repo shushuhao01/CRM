@@ -64,6 +64,16 @@ export const MESSAGE_RECEIVERS: Record<string, string[]> = {
   [MessageType.DATA_ASSIGNED]: ['sales_staff', 'department_manager'], // 发送给被分配者
   [MessageType.DATA_REASSIGNED]: ['sales_staff', 'department_manager'],
   [MessageType.DATA_BATCH_ASSIGNED]: ['super_admin', 'admin', 'department_manager'],
+
+  // 短信管理相关 - v1.8.0 新增
+  [MessageType.SMS_TEMPLATE_APPLIED]: ['super_admin', 'admin'], // 模板申请通知管理员
+  [MessageType.SMS_TEMPLATE_APPROVED]: ['sales_staff', 'department_manager'], // 模板审核通过通知申请人
+  [MessageType.SMS_TEMPLATE_REJECTED]: ['sales_staff', 'department_manager'], // 模板审核拒绝通知申请人
+  [MessageType.SMS_SEND_APPLIED]: ['super_admin', 'admin', 'customer_service'], // 短信发送申请通知管理员
+  [MessageType.SMS_SEND_APPROVED]: ['sales_staff'], // 短信发送审核通过通知申请人
+  [MessageType.SMS_SEND_REJECTED]: ['sales_staff'], // 短信发送审核拒绝通知申请人
+  [MessageType.SMS_SEND_SUCCESS]: ['sales_staff', 'department_manager'], // 短信发送成功通知
+  [MessageType.SMS_SEND_FAILED]: ['super_admin', 'admin', 'customer_service', 'sales_staff'], // 短信发送失败通知
 }
 
 // 消息发送服务类 - 🔥 改为调用后端API存储消息

@@ -5,9 +5,11 @@
 import { Router, Request, Response } from 'express';
 import { AppDataSource } from '../config/database';
 import { v4 as uuidv4 } from 'uuid';
+import bcrypt from 'bcryptjs';
 import { adminNotificationService } from '../services/AdminNotificationService';
 import { getTenantResourceUsage } from '../middleware/checkTenantLimits';
 import { formatDateTime } from '../utils/dateFormat';
+import { createDefaultAdmin } from '../utils/adminAccountHelper';
 
 import { log } from '../config/logger';
 const router = Router();
@@ -62,12 +64,7 @@ router.get('/check-private', async (_req: Request, res: Response) => {
       return res.json({ success: true, data: { activated: false } });
     }
 
-    if (tenant.expire_date && new Date(tenant.expire_date) < new Date()) {
-      return res.json({
-        success: true,
-        data: { activated: false, message: '授权已过期，请重新激活或续费' }
-      });
-    }
+    const isExpired = tenant.expire_date && new Date(tenant.expire_date) < new Date();
 
     res.json({
       success: true,
@@ -81,7 +78,8 @@ router.get('/check-private', async (_req: Request, res: Response) => {
         expireDate: tenant.expire_date,
         features: safeJsonParse(tenant.features),
         packageFeatures: safeJsonParse(tenant.package_features),
-        deployType: 'private'   // 私有激活检查返回的始终是private
+        deployType: 'private',
+        expired: !!isExpired
       }
     });
   } catch (error: any) {
@@ -123,10 +121,24 @@ router.post('/verify', async (req: Request, res: Response) => {
            VALUES (?, NULL, ?, 'verify', 'failed', '私有授权码不存在', ?, ?)`,
           [uuidv4(), licenseKey, ip, userAgent]
         ).catch(() => {});
+
+        // 🔥 检测部署模式，返回适当的错误信息
+        let isInSaasMode = false;
+        try {
+          const saasCheck = await AppDataSource.query(
+            `SELECT id FROM tenants WHERE license_key LIKE 'TENANT-%' OR license_key LIKE 'LIC-%' LIMIT 1`
+          );
+          isInSaasMode = saasCheck && saasCheck.length > 0;
+        } catch { /* ignore */ }
+
+        const errorMessage = isInSaasMode
+          ? '该授权码为私有部署专用，不能在SaaS租户系统中使用。请使用租户授权码（TENANT-前缀）或联系管理员'
+          : '私有授权码不存在或无效，请检查后重试。如有疑问请联系管理员';
+
         return res.status(404).json({
           success: false,
-          message: '该授权码为私有部署专用，不能在租户系统中使用。请使用租户授权码（TENANT-前缀）或联系管理员',
-          errorType: 'WRONG_LICENSE_TYPE'
+          message: errorMessage,
+          errorType: isInSaasMode ? 'WRONG_LICENSE_TYPE' : 'LICENSE_NOT_FOUND'
         });
       }
 
@@ -174,6 +186,33 @@ router.post('/verify', async (req: Request, res: Response) => {
         tenant = { id: tenantId, name: lic.customer_name || '私有部署企业', code: tenantCode, license_status: 'active', expire_date: lic.expires_at };
         log.info(`[TenantLicense] 私有授权码首次激活，创建本地租户: ${tenant.name} (${tenantCode})`);
 
+        // 🔥 同步设置会员中心密码（默认 Aa123456），确保租户能登录会员中心
+        try {
+          const memberPwdHash = await bcrypt.hash('Aa123456', 10);
+          await AppDataSource.query('UPDATE tenants SET password_hash = ? WHERE id = ?', [memberPwdHash, tenantId]);
+          log.info(`[TenantLicense] ✅ 已为私有租户 ${tenantCode} 设置会员中心默认密码`);
+        } catch (pwdErr: any) {
+          log.warn('[TenantLicense] 设置会员中心密码失败（不影响激活）:', pwdErr.message?.substring(0, 80));
+        }
+        // 🔥 首次激活：创建默认管理员账号（用授权码对应的手机号，密码 Aa123456）
+        let adminAccount: { username: string; password: string } | null = null;
+        const adminPhone = lic.customer_phone;
+        if (adminPhone) {
+          try {
+            const result = await createDefaultAdmin({
+              tenantId,
+              phone: adminPhone,
+              realName: lic.customer_contact || lic.customer_name || '管理员',
+              email: lic.customer_email || undefined
+            });
+            adminAccount = { username: result.username, password: result.password };
+            log.info(`[TenantLicense] ✅ 私有客户首次激活，已创建管理员: ${result.username}/Aa123456`);
+          } catch (adminErr: any) {
+            log.error('[TenantLicense] 创建管理员失败:', adminErr.message);
+            adminAccount = { username: adminPhone, password: 'Aa123456' };
+          }
+        }
+
         // 通知管理员
         adminNotificationService.notify('tenant_login', {
           title: `私有客户首次激活：${tenant.name}`,
@@ -182,6 +221,25 @@ router.post('/verify', async (req: Request, res: Response) => {
           relatedType: 'tenant',
           extraData: { tenantName: tenant.name, tenantCode, ip, deployType: 'private' }
         }).catch((err: any) => log.error('[TenantLicense] 通知失败:', err.message));
+
+        // 🔥 首次激活返回管理员账号信息
+        return res.json({
+          success: true,
+          data: {
+            tenantId: tenant.id,
+            tenantCode: tenant.code,
+            tenantName: tenant.name,
+            packageName: '私有部署版',
+            maxUsers: lic.max_users || 50,
+            expireDate: lic.expires_at,
+            features: safeJsonParse(lic.features),
+            packageFeatures: null,
+            deployType: 'private',
+            isFirstActivation: true,
+            adminAccount
+          },
+          message: '私有授权码首次激活成功'
+        });
       } else {
         // 已激活：更新验证时间
         await AppDataSource.query(`UPDATE tenants SET last_verify_at = NOW() WHERE id = ?`, [tenant.id]);
@@ -220,7 +278,33 @@ router.post('/verify', async (req: Request, res: Response) => {
          VALUES (?, NULL, ?, 'verify', 'failed', '授权码不存在', ?, ?)`,
         [uuidv4(), licenseKey, ip, userAgent]
       ).catch(() => {});
-      return res.status(404).json({ success: false, message: '授权码无效，请检查后重试' });
+
+      // 🔥 检测是否在私有部署系统中误用了SaaS租户授权码
+      let isPrivateMode = false;
+      try {
+        const privateLicenseCheck = await AppDataSource.query(
+          `SELECT id FROM system_license WHERE status = 'active' LIMIT 1`
+        ).catch(() => []);
+        if (privateLicenseCheck && privateLicenseCheck.length > 0) {
+          isPrivateMode = true;
+        }
+        if (!isPrivateMode) {
+          const privateCheck = await AppDataSource.query(
+            `SELECT id FROM tenants WHERE license_key LIKE 'PRIVATE-%' LIMIT 1`
+          ).catch(() => []);
+          isPrivateMode = privateCheck && privateCheck.length > 0;
+        }
+      } catch { /* ignore */ }
+
+      if (isPrivateMode && licenseKey.toUpperCase().startsWith('TENANT-')) {
+        return res.status(404).json({
+          success: false,
+          message: '该授权码为SaaS租户专用，不能在私有部署系统中使用。请使用私有授权码（PRIVATE-前缀）',
+          errorType: 'WRONG_LICENSE_TYPE'
+        });
+      }
+
+      return res.status(404).json({ success: false, message: '授权码无效或不存在，请检查后重试' });
     }
 
     if (tenant.status === 'disabled') {
@@ -231,13 +315,11 @@ router.post('/verify', async (req: Request, res: Response) => {
       await logVerify(tenant.id, licenseKey, 'failed', '授权已暂停', ip, userAgent);
       return res.status(403).json({ success: false, message: '授权已暂停，请联系管理员' });
     }
-    if (tenant.expire_date && new Date(tenant.expire_date) < new Date()) {
-      await AppDataSource.query(`UPDATE tenants SET license_status = 'expired', status = 'expired' WHERE id = ?`, [tenant.id]);
-      await logVerify(tenant.id, licenseKey, 'failed', '授权已过期', ip, userAgent);
-      return res.status(403).json({ success: false, message: '授权已过期，请续费后使用', expireDate: tenant.expire_date });
-    }
-
-    if (tenant.license_status === 'pending' || tenant.license_status === 'paid') {
+    const isExpired = tenant.expire_date && new Date(tenant.expire_date) < new Date();
+    if (isExpired) {
+      await AppDataSource.query(`UPDATE tenants SET license_status = 'expired' WHERE id = ?`, [tenant.id]);
+      await logVerify(tenant.id, licenseKey, 'success', '授权已过期（允许只读登录）', ip, userAgent);
+    } else if (tenant.license_status === 'pending' || tenant.license_status === 'paid') {
       await AppDataSource.query(`UPDATE tenants SET license_status = 'active', activated_at = NOW(), last_verify_at = NOW() WHERE id = ?`, [tenant.id]);
       const activateMsg = tenant.license_status === 'paid' ? '付款后首次激活成功' : '首次激活成功';
       await logVerify(tenant.id, licenseKey, 'success', activateMsg, ip, userAgent);
@@ -263,13 +345,19 @@ router.post('/verify', async (req: Request, res: Response) => {
         expireDate: tenant.expire_date,
         features: safeJsonParse(tenant.features),
         packageFeatures: safeJsonParse(tenant.package_features),
-        deployType: 'saas'   // 🔑 关键标识：SaaS模式
+        deployType: 'saas',
+        expired: !!isExpired
       },
-      message: '授权验证成功'
+      message: isExpired ? '授权已过期，可登录但不能写入数据，请联系管理员续费恢复' : '授权验证成功'
     });
   } catch (error: any) {
     log.error('[Tenant License] Verify failed:', error);
-    res.status(500).json({ success: false, message: '验证失败，请稍后重试' });
+    // 🔥 返回更友好的错误信息，而不是通用的服务器内部错误
+    const errMsg = (error as any)?.message || '';
+    if (errMsg.includes('license_logs') || errMsg.includes('tenant_license_logs') || errMsg.includes("doesn't exist") || errMsg.includes('ER_NO_SUCH_TABLE')) {
+      return res.status(400).json({ success: false, message: '授权码验证失败，请确认授权码类型是否正确' });
+    }
+    res.status(500).json({ success: false, message: '授权码验证失败，请稍后重试' });
   }
 });
 
@@ -320,13 +408,7 @@ router.post('/verify-code', async (req: Request, res: Response) => {
       return res.status(403).json({ success: false, message: '授权已暂停，请联系管理员' });
     }
 
-    if (tenant.expire_date && new Date(tenant.expire_date) < new Date()) {
-      return res.status(403).json({
-        success: false,
-        message: '授权已过期，请联系管理员续费',
-        expireDate: tenant.expire_date
-      });
-    }
+    const isExpired = tenant.expire_date && new Date(tenant.expire_date) < new Date();
 
     res.json({
       success: true,
@@ -338,9 +420,10 @@ router.post('/verify-code', async (req: Request, res: Response) => {
         maxUsers: tenant.max_users,
         expireDate: tenant.expire_date,
         features: safeJsonParse(tenant.features),
-        packageFeatures: safeJsonParse(tenant.package_features)
+        packageFeatures: safeJsonParse(tenant.package_features),
+        expired: !!isExpired
       },
-      message: '租户识别成功'
+      message: isExpired ? '授权已过期，可登录但不能写入数据，请联系管理员续费恢复' : '租户识别成功'
     });
   } catch (error: any) {
     log.error('[Tenant License] Verify code failed:', error);

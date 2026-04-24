@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="department-roles-container">
     <!-- 页面标题 -->
     <div class="page-header">
@@ -111,8 +111,8 @@
         <h3>角色列表</h3>
         <div class="view-options">
           <el-radio-group v-model="viewMode" size="small">
-            <el-radio-button value="card">卡片视图</el-radio-button>
-            <el-radio-button value="table">表格视图</el-radio-button>
+            <el-radio-button label="card">卡片视图</el-radio-button>
+            <el-radio-button label="table">表格视图</el-radio-button>
           </el-radio-group>
         </div>
       </div>

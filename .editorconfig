@@ -1,8 +1,48 @@
-[*.{js,jsx,mjs,cjs,ts,tsx,mts,cts,vue,css,scss,sass,less,styl}]
+# EditorConfig - 全项目编码与格式统一配置
+# 参考规范: .coding-standards.md
+
+root = true
+
+# 所有文件默认设置
+[*]
 charset = utf-8
-indent_size = 2
-indent_style = space
+end_of_line = lf
 insert_final_newline = true
 trim_trailing_whitespace = true
-end_of_line = lf
+
+# 代码文件
+[*.{js,jsx,mjs,cjs,ts,tsx,mts,cts,vue,css,scss,sass,less,styl}]
+indent_size = 2
+indent_style = space
 max_line_length = 100
+
+# 配置文件
+[*.{json,jsonc,yaml,yml,toml}]
+indent_size = 2
+indent_style = space
+
+# 环境变量文件
+[.env*]
+indent_size = unset
+insert_final_newline = true
+
+# SQL 文件
+[*.sql]
+indent_size = 2
+indent_style = space
+
+# Markdown 文档（保留尾部空格用于换行）
+[*.md]
+trim_trailing_whitespace = false
+
+# Windows 脚本（允许 CRLF）
+[*.{bat,cmd}]
+end_of_line = crlf
+
+# Shell 脚本
+[*.sh]
+end_of_line = lf
+
+# PowerShell 脚本
+[*.ps1]
+end_of_line = crlf

@@ -197,6 +197,8 @@ onLoad((options: any) => {
   // 根据通话时长预设结果
   if (duration.value > 10) {
     callResult.value = 'connected'
+  } else {
+    callResult.value = 'no_answer'
   }
 })
 
@@ -225,6 +227,28 @@ const formatDuration = (seconds: number) => {
 // 保存
 const handleSave = async () => {
   saving.value = true
+
+  // 先把跟进数据缓存到本地（防止网络/登录问题导致丢失）
+  const pendingData = {
+    callId: callId.value,
+    callResult: callResult.value,
+    notes: notes.value,
+    tags: selectedTags.value,
+    intention: intention.value,
+    followUpRequired: followUpRequired.value,
+    nextFollowUpDate: nextFollowUpDate.value,
+    customerId: customerId.value,
+    duration: duration.value,
+    hasRecording: hasRecording.value,
+    isEditMode: isEditMode.value,
+    savedAt: new Date().toISOString()
+  }
+  try {
+    uni.setStorageSync('pendingFollowup', JSON.stringify(pendingData))
+    console.log('[CallEnded] 跟进数据已缓存到本地')
+  } catch (_e) {
+    console.warn('[CallEnded] 本地缓存失败')
+  }
 
   try {
     if (callId.value) {
@@ -279,6 +303,8 @@ const handleSave = async () => {
       uni.removeStorageSync('currentCall')
       uni.removeStorageSync('lastEndedCall')
     }
+    // 保存成功，清除本地缓存的待提交数据
+    uni.removeStorageSync('pendingFollowup')
 
     uni.showToast({ title: '保存成功', icon: 'success' })
 

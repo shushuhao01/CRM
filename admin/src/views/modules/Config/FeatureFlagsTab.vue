@@ -68,7 +68,7 @@
 
 <script setup lang="ts">
 import { markRaw } from 'vue'
-import { Check, Lock, FolderOpened, Goods, Document, Phone, Message, ChatDotRound, Bell, Upload, Notebook, DataLine, DocumentChecked, Cellphone, Connection, Setting } from '@element-plus/icons-vue'
+import { Check, Lock, FolderOpened, Goods, Document, Phone, Message, ChatDotRound, Bell, Upload, Notebook, DataLine, DocumentChecked, Cellphone, Connection, Setting, User } from '@element-plus/icons-vue'
 import FeatureSwitchGroup from './FeatureSwitchGroup.vue'
 
 interface FeatureItem {
@@ -83,6 +83,7 @@ const coreItems: FeatureItem[] = [
   { key: 'storage', name: '存储设置', desc: '文件存储、云存储', icon: markRaw(FolderOpened) },
   { key: 'product', name: '商品设置', desc: '商品分类、SKU管理', icon: markRaw(Goods) },
   { key: 'order', name: '订单设置', desc: '订单流程、审批规则', icon: markRaw(Document) },
+  { key: 'customer', name: '客户设置', desc: '客户字段配置、自定义字段', icon: markRaw(User) },
 ]
 const commItems: FeatureItem[] = [
   { key: 'call', name: '通话设置', desc: '电话外呼、通话录音', icon: markRaw(Phone) },

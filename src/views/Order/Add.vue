@@ -1,8 +1,12 @@
-<template>
+﻿<template>
   <div class="order-form">
     <!-- 页面头部 -->
     <div class="page-header">
-      <h2>{{ isEdit ? '编辑订单' : '新增订单' }}</h2>
+      <h2>{{ isEdit ? '编辑订单' : '新增订单' }}
+        <el-tooltip v-if="(userStore.isAdmin || userStore.isSuperAdmin) && !isEdit" content="订单字段设置" placement="right">
+          <el-icon class="order-settings-link" @click="goToOrderSettings" style="cursor: pointer; margin-left: 8px; font-size: 18px; color: #409eff; vertical-align: middle;"><Setting /></el-icon>
+        </el-tooltip>
+      </h2>
     </div>
 
     <el-form :model="orderForm" :rules="formRules" ref="orderFormRef" label-width="120px">
@@ -165,22 +169,31 @@
           <el-row>
             <el-col :span="24">
               <el-form-item label="收货地址" prop="receiverAddress">
+                <el-select
+                  v-if="customerAddresses.length > 0"
+                  v-model="orderForm.receiverAddress"
+                  placeholder="选择客户地址或手动输入"
+                  style="width: 100%"
+                  filterable
+                  allow-create
+                  default-first-option
+                  clearable
+                  class="address-select-dropdown"
+                  :suffix-icon="ArrowDown"
+                >
+                  <el-option
+                    v-for="addr in customerAddresses"
+                    :key="addr.id"
+                    :label="addr.content"
+                    :value="addr.content"
+                  />
+                </el-select>
                 <el-input
+                  v-else
                   v-model="orderForm.receiverAddress"
                   placeholder="请输入详细收货地址"
                   clearable
-                >
-                  <template #suffix v-if="selectedCustomer && selectedCustomer.address">
-                    <el-button
-                      size="small"
-                      type="text"
-                      @click="syncCustomerAddress"
-                      title="同步客户地址"
-                    >
-                      <el-icon><Location /></el-icon>
-                    </el-button>
-                  </template>
-                </el-input>
+                />
               </el-form-item>
             </el-col>
           </el-row>
@@ -237,22 +250,26 @@
               <img :src="product.image || '/default-product.png'" :alt="product.name" />
             </div>
             <div class="product-info">
-              <div class="product-name-with-tags">
-                <span class="product-name">{{ product.name }}</span>
-                <div class="product-badges">
-                  <el-tag v-if="product.isRecommended" type="warning" size="small" effect="plain">
-                    推荐
-                  </el-tag>
-                  <el-tag v-if="product.isNew" type="success" size="small" effect="plain">
-                    新品
-                  </el-tag>
-                  <el-tag v-if="product.isHot" type="danger" size="small" effect="plain">
-                    热销
-                  </el-tag>
-                </div>
+              <div class="product-name">
+                <el-tag v-if="product.productType === 'virtual'" type="warning" size="small" effect="light" style="margin-right: 4px;">虚拟</el-tag>
+                <el-tag v-else size="small" effect="light" style="margin-right: 4px;">实物</el-tag>
+                {{ product.name }}
               </div>
-              <div class="product-price">¥{{ product.price }}</div>
-              <div class="product-stock">库存: {{ product.stock }}</div>
+              <div class="product-price-stock">
+                <span class="product-price">¥{{ product.price }}</span>
+                <span class="product-stock">库存: {{ product.stock }}</span>
+              </div>
+              <div class="product-badges" v-if="product.isRecommended || product.isNew || product.isHot">
+                <el-tag v-if="product.isRecommended" type="warning" size="small" effect="light">
+                  ⭐ 推荐
+                </el-tag>
+                <el-tag v-if="product.isNew" type="success" size="small" effect="light">
+                  🆕 新品
+                </el-tag>
+                <el-tag v-if="product.isHot" type="danger" size="small" effect="light">
+                  🔥 热销
+                </el-tag>
+              </div>
             </div>
             <div class="product-actions">
               <el-button
@@ -290,14 +307,14 @@
                 <div class="selected-product-name">
                   <span>{{ row.name }}</span>
                   <div class="selected-product-tags">
-                    <el-tag v-if="row.isRecommended" type="warning" size="small" effect="plain">
-                      推荐
+                    <el-tag v-if="row.isRecommended" type="warning" size="small" effect="light">
+                      ⭐ 推荐
                     </el-tag>
-                    <el-tag v-if="row.isNew" type="success" size="small" effect="plain">
-                      新品
+                    <el-tag v-if="row.isNew" type="success" size="small" effect="light">
+                      🆕 新品
                     </el-tag>
-                    <el-tag v-if="row.isHot" type="danger" size="small" effect="plain">
-                      热销
+                    <el-tag v-if="row.isHot" type="danger" size="small" effect="light">
+                      🔥 热销
                     </el-tag>
                   </div>
                 </div>
@@ -793,7 +810,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox, ElImageViewer } from 'element-plus'
 import {
   User, Message, Location, ShoppingBag, Search, Plus,
-  Delete, Money, Upload, Check, DocumentCopy, ZoomIn, Refresh, View, InfoFilled, Warning
+  Delete, Money, Upload, Check, DocumentCopy, ZoomIn, Refresh, View, InfoFilled, Warning, Setting, ArrowDown
 } from '@element-plus/icons-vue'
 import { useOrderStore } from '@/stores/order'
 import { useCustomerStore } from '@/stores/customer'
@@ -807,6 +824,8 @@ import { createSafeNavigator } from '@/utils/navigation'
 import CustomFieldsCard from '@/components/Order/CustomFieldsCard.vue'
 import { orderApi } from '@/api/order'
 import type { DepartmentLimitCheckResult } from '@/api/order'
+import { customerDetailApi } from '@/api/customerDetail'
+import { getAddressLabel } from '@/utils/addressData'
 
 // 接口定义
 interface Product {
@@ -819,6 +838,9 @@ interface Product {
   category: string
   image: string
   isHot: boolean
+  productType?: string
+  isRecommended?: boolean
+  isNew?: boolean
 }
 
 interface OrderProduct extends Product {
@@ -892,9 +914,42 @@ const configStore = useConfigStore()
 const productStore = useProductStore()
 const fieldConfigStore = useOrderFieldConfigStore()
 
+// 跳转到订单设置
+const goToOrderSettings = () => {
+  router.push('/system/settings?tab=order')
+}
+
 // 响应式数据
 const orderFormRef = ref()
 const customerLoading = ref(false)
+const customerAddresses = ref<any[]>([])
+
+// 加载客户地址列表
+const loadCustomerAddresses = async (customerId: string) => {
+  try {
+    const response = await customerDetailApi.getCustomerAddresses(customerId)
+    const data = response?.data || response || []
+    customerAddresses.value = Array.isArray(data) ? data : []
+    // 🔥 如果有客户详情页维护的地址，始终默认使用最新地址
+    if (customerAddresses.value.length > 0) {
+      orderForm.receiverAddress = customerAddresses.value[0].content
+    }
+  } catch (error) {
+    console.error('加载客户地址失败:', error)
+    customerAddresses.value = []
+  }
+}
+
+// 构建客户可读地址（从省市区代码转换）
+const buildCustomerReadableAddress = (customer: any): string => {
+  if (customer.province || customer.city || customer.district) {
+    const label = getAddressLabel(customer.province, customer.city, customer.district, customer.street)
+    if (label) {
+      return customer.detailAddress ? label + customer.detailAddress : label
+    }
+  }
+  return customer.address || ''
+}
 const loading = ref(false) // 产品刷新加载状态
 const saving = ref(false)
 const submitting = ref(false)
@@ -983,7 +1038,10 @@ const productList = computed(() => {
       stock: product.stock,
       category: product.category,
       image: product.image,
-      isHot: product.isHot
+      isRecommended: product.isRecommended,
+      isNew: product.isNew,
+      isHot: product.isHot,
+      productType: product.productType || 'physical'
     }
   })
 })
@@ -1194,7 +1252,7 @@ const searchCustomers = (query: string) => {
   }
 }
 
-const handleCustomerChange = (customerId: string) => {
+const handleCustomerChange = async (customerId: string) => {
   // 🔥 先重置限制状态
   orderLimitResult.value = null
   orderLimitExceeded.value = false
@@ -1205,10 +1263,19 @@ const handleCustomerChange = (customerId: string) => {
     selectedCustomer.value = customer
     // 同步收货信息
     orderForm.receiverName = customer.name
-    orderForm.receiverAddress = customer.address
+    // 🔥 临时先设空，loadCustomerAddresses 会设置最新地址
+    orderForm.receiverAddress = ''
 
     // 加载客户手机号列表
     loadCustomerPhones(customerId)
+
+    // 🔥 加载客户地址列表（从详情页新增的地址，会自动设置最新地址）
+    await loadCustomerAddresses(customerId)
+
+    // 🔥 如果没有详情页地址，使用可读地址兜底
+    if (!orderForm.receiverAddress) {
+      orderForm.receiverAddress = buildCustomerReadableAddress(customer)
+    }
 
     // 🔥 检查部门下单限制（仅正常发货单检查）
     if (orderForm.markType !== 'reserved' && orderForm.markType !== 'return') {
@@ -1367,7 +1434,7 @@ const handleCloseAddPhoneDialog = () => {
 
 const syncCustomerAddress = () => {
   if (selectedCustomer.value) {
-    orderForm.receiverAddress = selectedCustomer.value.address
+    orderForm.receiverAddress = buildCustomerReadableAddress(selectedCustomer.value)
     ElMessage.success('已同步客户地址')
   }
 }
@@ -1960,42 +2027,21 @@ onMounted(async () => {
       orderForm.customerId = customerInfo.id
       orderForm.receiverName = customerInfo.name
       orderForm.receiverPhone = customerInfo.phone
-      orderForm.receiverAddress = customerInfo.address || ''
+      orderForm.receiverAddress = ''
 
+      // 🔥 必须先设置 selectedCustomer，否则收货信息区域不显示
       selectedCustomer.value = customerInfo
 
-      // 🔥 初始化手机号列表并设置选中
-      const phones = []
-      let phoneId = 1
+      // 加载客户手机号列表（依赖 selectedCustomer）
+      loadCustomerPhones(customerId as string)
 
-      // 主手机号
-      if (customerInfo.phone) {
-        phones.push({
-          id: phoneId++,
-          number: customerInfo.phone,
-          remark: '主手机号',
-          isDefault: true
-        })
+      // 🔥 加载客户地址列表（从详情页新增的地址，会自动设置最新地址）
+      await loadCustomerAddresses(customerId as string)
+
+      // 🔥 如果没有详情页地址，用路由传递的地址或可读地址兜底
+      if (!orderForm.receiverAddress) {
+        orderForm.receiverAddress = (customerAddress as string) || buildCustomerReadableAddress(customerInfo)
       }
-
-      // 其他手机号
-      if (customerInfo.otherPhones && Array.isArray(customerInfo.otherPhones)) {
-        customerInfo.otherPhones.forEach((phone: string, index: number) => {
-          if (phone && phone !== customerInfo.phone) {
-            phones.push({
-              id: phoneId++,
-              number: phone,
-              remark: `备用号码${index + 1}`,
-              isDefault: false
-            })
-          }
-        })
-      }
-
-      customerPhones.value = phones
-      selectedPhoneId.value = 1
-
-      ElMessage.success(`已自动选择客户：${customerInfo.name}`)
 
       // 🔥 检查部门下单限制
       checkDepartmentLimit(customerInfo.id)
@@ -2006,7 +2052,7 @@ onMounted(async () => {
       orderForm.customerId = customerId as string
       orderForm.receiverName = customerName as string
       orderForm.receiverPhone = customerPhone as string
-      orderForm.receiverAddress = customerAddress as string || ''
+      orderForm.receiverAddress = ''
 
       // 创建一个临时的客户对象
       customerInfo = {
@@ -2026,6 +2072,14 @@ onMounted(async () => {
 
       // 🔥 设置临时客户，确保下拉框能显示
       tempCustomer.value = customerInfo
+
+      // 🔥 加载客户地址列表（优先使用详情页维护的最新地址）
+      await loadCustomerAddresses(customerId as string)
+
+      // 🔥 如果没有详情页地址，使用路由传递的地址兜底
+      if (!orderForm.receiverAddress) {
+        orderForm.receiverAddress = customerAddress as string || ''
+      }
 
       // 🔥 初始化手机号列表并设置选中（路由参数来的客户可能没有otherPhones）
       const phones = []
@@ -2079,6 +2133,19 @@ onMounted(async () => {
 </script>
 
 <style scoped>
+/* 收货地址下拉框箭头更明显 */
+.address-select-dropdown :deep(.el-select__suffix) {
+  font-size: 20px;
+  color: #409EFF;
+}
+.address-select-dropdown :deep(.el-select__suffix .el-icon) {
+  font-size: 20px;
+  color: #409EFF;
+  background: #ecf5ff;
+  border-radius: 4px;
+  padding: 2px;
+}
+
 .order-form {
   padding: 20px;
   width: 100%;
@@ -2151,7 +2218,7 @@ onMounted(async () => {
 
 .product-image {
   width: 100%;
-  height: 120px;
+  aspect-ratio: 1 / 1;
   margin-bottom: 8px;
   border-radius: 4px;
   overflow: hidden;
@@ -2172,14 +2239,6 @@ onMounted(async () => {
   margin-bottom: 8px;
 }
 
-.product-name-with-tags {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-  margin-bottom: 4px;
-}
-
 .product-name {
   font-weight: 600;
   color: #303133;
@@ -2189,8 +2248,17 @@ onMounted(async () => {
   overflow: hidden;
   text-overflow: ellipsis;
   line-height: 1.4;
-  max-height: 2.8em; /* 2行的高度 */
+  max-height: 2.8em;
   text-align: center;
+  margin-bottom: 6px;
+}
+
+.product-price-stock {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 6px;
 }
 
 .product-badges {
@@ -2211,7 +2279,7 @@ onMounted(async () => {
 .product-price {
   color: #f56c6c;
   font-weight: 600;
-  font-size: 16px;
+  font-size: 15px;
 }
 
 .product-stock {

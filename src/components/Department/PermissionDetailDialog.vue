@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <el-dialog
     v-model="dialogVisible"
     title="权限详情"
@@ -74,8 +74,8 @@
           <h4>权限详情</h4>
           <div class="view-options">
             <el-radio-group v-model="viewMode" size="small">
-              <el-radio-button value="category">按模块</el-radio-button>
-              <el-radio-button value="list">列表</el-radio-button>
+              <el-radio-button label="category">按模块</el-radio-button>
+              <el-radio-button label="list">列表</el-radio-button>
             </el-radio-group>
           </div>
         </div>

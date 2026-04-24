@@ -10,6 +10,8 @@ import { logger, log, operationLogger } from '../config/logger';
 import bcrypt from 'bcryptjs';
 import { getTenantRepo } from '../utils/tenantRepo';
 import { deployConfig } from '../config/deploy';
+import { onlineSeatService } from '../services/OnlineSeatService';
+import { getClientIp } from '../utils/getClientIp';
 
 export class UserController {
   private get userRepository() {
@@ -87,9 +89,16 @@ export class UserController {
     }
 
     // 查找用户（使用原始仓储，因登录时Proxy无租户上下文）
-    const user = await this.userRepository.findOne({
-      where: whereClause
-    });
+    let user: User | null = null;
+    try {
+      user = await this.userRepository.findOne({
+        where: whereClause
+      });
+    } catch (dbError: any) {
+      logger.error('登录查询用户失败:', dbError);
+      // 友好提示，隐藏数据库内部错误细节
+      throw new BusinessError('系统登录服务暂时不可用，请稍后重试或联系管理员', 'LOGIN_SERVICE_ERROR');
+    }
 
     if (!user) {
       // 记录登录失败日志（失败不影响错误返回）
@@ -99,7 +108,7 @@ export class UserController {
           module: 'auth',
           description: `用户登录失败: 用户名不存在 - ${username}`,
           result: 'failed',
-          ipAddress: req.ip,
+          ipAddress: getClientIp(req),
           userAgent: req.get('User-Agent')
         });
       } catch (_logError) {
@@ -150,15 +159,21 @@ export class UserController {
 
     if (!isPasswordValid) {
       // 增加登录失败次数
-      user.loginFailCount += 1;
+      user.loginFailCount = (user.loginFailCount || 0) + 1;
+      const maxFails = 5;
+      const remaining = maxFails - user.loginFailCount;
 
       // 如果失败次数超过5次，锁定账户
-      if (user.loginFailCount >= 5) {
+      if (user.loginFailCount >= maxFails) {
         user.status = 'locked';
         user.lockedAt = new Date();
       }
 
-      await this.userRepository.save(user);
+      try {
+        await this.userRepository.save(user);
+      } catch (_saveError) {
+        logger.warn('保存登录失败次数异常:', _saveError);
+      }
 
       // 记录登录失败日志（失败不影响错误返回）
       try {
@@ -167,16 +182,25 @@ export class UserController {
           username: user.username,
           action: 'login',
           module: 'auth',
-          description: `用户登录失败: 密码错误 - ${username}`,
+          description: `用户登录失败: 密码错误 - ${username} (第${user.loginFailCount}次)`,
           result: 'failed',
-          ipAddress: req.ip,
+          ipAddress: getClientIp(req),
           userAgent: req.get('User-Agent')
         });
       } catch (_logError) {
         // 日志记录失败不影响主流程
       }
 
-      throw new BusinessError('用户名或密码错误', 'INVALID_CREDENTIALS');
+      if (user.status === 'locked') {
+        throw new BusinessError('密码错误次数过多，账户已被锁定，请联系管理员解锁', 'ACCOUNT_LOCKED');
+      }
+
+      throw new BusinessError(
+        remaining > 0
+          ? `用户名或密码错误，还可尝试${remaining}次，超过将锁定账户`
+          : '用户名或密码错误',
+        'INVALID_CREDENTIALS'
+      );
     }
 
     // 登录成功，重置失败次数
@@ -184,7 +208,7 @@ export class UserController {
       user.loginFailCount = 0;
       user.loginCount = user.loginCount + 1;
       user.lastLoginAt = new Date();
-      user.lastLoginIp = req.ip || '';
+      user.lastLoginIp = getClientIp(req);
       await this.userRepository.save(user);
     } catch (_saveError) {
       // 保存失败不影响登录流程
@@ -202,6 +226,42 @@ export class UserController {
 
     const tokens = JwtConfig.generateTokenPair(tokenPayload);
 
+    // 🔥 在线席位检查（有 tenantId 即生效，私有部署和SaaS模式均支持）
+    if (user.tenantId) {
+      try {
+        const seatCheck = await onlineSeatService.checkLoginAllowed(user.tenantId, user.id, {
+              realName: user.realName || user.name || user.username,
+              departmentName: user.departmentName || undefined
+            });
+        if (!seatCheck.allowed) {
+          throw new BusinessError(
+            seatCheck.message || '在线席位已满，请稍后再试',
+            'ONLINE_SEAT_FULL'
+          );
+        }
+      } catch (seatError: any) {
+        if (seatError instanceof BusinessError) throw seatError;
+        log.warn('[Login] 在线席位检查异常，允许登录:', seatError?.message);
+      }
+    }
+
+    // 🔥 创建用户会话记录（在线席位追踪）
+    try {
+      if (user.tenantId) {
+        const sessionToken = onlineSeatService.generateSessionToken(tokens.accessToken);
+        await onlineSeatService.createSession({
+          userId: user.id,
+          tenantId: user.tenantId,
+          sessionToken,
+          deviceType: 'web',
+          deviceInfo: req.get('User-Agent'),
+          ipAddress: getClientIp(req)
+        });
+      }
+    } catch (_sessionError) {
+      log.warn('[Login] 创建会话记录失败，不影响登录:', _sessionError);
+    }
+
     // 记录登录成功日志（失败不影响登录）
     try {
       await this.logOperation({
@@ -211,7 +271,7 @@ export class UserController {
         module: 'auth',
         description: `用户登录成功 - ${username}`,
         result: 'success',
-        ipAddress: req.ip,
+        ipAddress: getClientIp(req),
         userAgent: req.get('User-Agent')
       });
     } catch (_logError) {
@@ -258,7 +318,7 @@ export class UserController {
           );
           if (tenantRows.length > 0) {
             const tenant = tenantRows[0];
-            const validModuleIds = ['dashboard','customer','order','service-management','performance','logistics','service','data','finance','product','system'];
+            const validModuleIds = ['dashboard','customer','order','service-management','performance','logistics','service','data','finance','product','system','wecom'];
             // 尝试从features解析模块ID
             if (tenant.features) {
               try {
@@ -419,7 +479,7 @@ export class UserController {
       module: 'user',
       description: '更新个人信息',
       result: 'success',
-      ipAddress: req.ip,
+      ipAddress: getClientIp(req),
       userAgent: req.get('User-Agent')
     });
 
@@ -473,7 +533,7 @@ export class UserController {
       module: 'user',
       description: '修改密码',
       result: 'success',
-      ipAddress: req.ip,
+      ipAddress: getClientIp(req),
       userAgent: req.get('User-Agent')
     });
 
@@ -618,7 +678,7 @@ export class UserController {
       description: `创建用户: ${username} (${realName})`,
       result: 'success',
       details: { userId: savedUser.id, username, realName, role },
-      ipAddress: req.ip,
+      ipAddress: getClientIp(req),
       userAgent: req.get('User-Agent')
     });
 
@@ -769,19 +829,21 @@ export class UserController {
 
     const [users, total] = await queryBuilder.getManyAndCount();
 
-    // 计算在线状态：最近15分钟内有登录活动的用户视为在线
-    const now = new Date();
-    const onlineThreshold = 15 * 60 * 1000; // 15分钟
+    // 🔥 计算在线状态：基于 user_sessions 表的活跃会话判断（2分钟阈值）
+    // 不再使用 lastLoginAt 降级，确保实时准确
+    let onlineUserIds: Set<string> = new Set();
+    if (tenantId) {
+      try {
+        onlineUserIds = await onlineSeatService.getOnlineUserIds(tenantId);
+      } catch (_e) {
+        // 获取失败时降级为空集合（所有人显示离线）
+      }
+    }
 
     const usersWithOnlineStatus = users.map(user => {
-      let isOnline = false;
-      if (user.lastLoginAt) {
-        const lastLoginTime = new Date(user.lastLoginAt).getTime();
-        isOnline = (now.getTime() - lastLoginTime) < onlineThreshold;
-      }
       return {
         ...user,
-        isOnline,
+        isOnline: onlineUserIds.has(user.id),
         loginCount: user.loginCount || 0
       };
     });
@@ -954,7 +1016,7 @@ export class UserController {
       module: 'user',
       description: `更新用户信息: ${user.username}`,
       result: 'success',
-      ipAddress: req.ip,
+      ipAddress: getClientIp(req),
       userAgent: req.get('User-Agent')
     });
 
@@ -995,7 +1057,7 @@ export class UserController {
       module: 'user',
       description: `删除用户: ${user.username}`,
       result: 'success',
-      ipAddress: req.ip,
+      ipAddress: getClientIp(req),
       userAgent: req.get('User-Agent')
     });
 
@@ -1047,7 +1109,7 @@ export class UserController {
       module: 'user',
       description: `更新用户状态: ${user.username} -> ${status}`,
       result: 'success',
-      ipAddress: req.ip,
+      ipAddress: getClientIp(req),
       userAgent: req.get('User-Agent')
     });
 
@@ -1096,7 +1158,7 @@ export class UserController {
       module: 'user',
       description: `更新用户在职状态: ${user.username} -> ${employmentStatus}`,
       result: 'success',
-      ipAddress: req.ip,
+      ipAddress: getClientIp(req),
       userAgent: req.get('User-Agent')
     });
 
@@ -1135,7 +1197,9 @@ export class UserController {
     const hashedPassword = await bcrypt.hash(tempPassword, 12);
 
     user.password = hashedPassword;
-    (user as any).mustChangePassword = true;
+    // 🔥 密码安全策略：管理员重置密码后，用户下次登录需强制修改
+    // 注意：不再将 passwordLastChanged 设为 null，保留原值以便前端区分"首次登录"和"密码被重置"
+    user.needChangePassword = 1;
     user.loginFailCount = 0;
     if (user.status === 'locked') {
       user.status = 'active';
@@ -1152,7 +1216,7 @@ export class UserController {
       module: 'user',
       description: `重置用户密码: ${user.username}`,
       result: 'success',
-      ipAddress: req.ip,
+      ipAddress: getClientIp(req),
       userAgent: req.get('User-Agent')
     });
 
@@ -1220,7 +1284,7 @@ export class UserController {
       module: 'user',
       description: `强制用户下线: ${user.username}`,
       result: 'success',
-      ipAddress: req.ip,
+      ipAddress: getClientIp(req),
       userAgent: req.get('User-Agent')
     });
 
@@ -1262,7 +1326,7 @@ export class UserController {
       module: 'user',
       description: `${enabled ? '启用' : '禁用'}双因子认证: ${user.username}`,
       result: 'success',
-      ipAddress: req.ip,
+      ipAddress: getClientIp(req),
       userAgent: req.get('User-Agent')
     });
 
@@ -1310,7 +1374,7 @@ export class UserController {
       module: 'user',
       description: `解锁用户账户: ${user.username}`,
       result: 'success',
-      ipAddress: req.ip,
+      ipAddress: getClientIp(req),
       userAgent: req.get('User-Agent')
     });
 

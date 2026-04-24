@@ -25,7 +25,12 @@ export const saveStatusHistory = async (
   status: string,
   operatorId: string | number | null,
   operatorName: string,
-  notes?: string
+  notes?: string,
+  options?: {
+    operatorDepartment?: string;
+    actionType?: string;
+    changeDetail?: string;
+  }
 ): Promise<void> => {
   try {
     const statusHistoryRepository = getTenantRepo(OrderStatusHistory);
@@ -34,10 +39,13 @@ export const saveStatusHistory = async (
       status: status as any,
       operatorId: operatorId ? Number(operatorId) : undefined,
       operatorName,
+      operatorDepartment: options?.operatorDepartment || undefined,
+      actionType: options?.actionType || 'status_change',
+      changeDetail: options?.changeDetail || undefined,
       notes
     });
     await statusHistoryRepository.save(history);
-    log.info(`[状态历史] ✅ 保存成功: orderId=${orderId}, status=${status}, operator=${operatorName}`);
+    log.info(`[状态历史] ✅ 保存成功: orderId=${orderId}, status=${status}, operator=${operatorName}, dept=${options?.operatorDepartment || '-'}, type=${options?.actionType || 'status_change'}`);
   } catch (error) {
     log.error(`[状态历史] ❌ 保存失败:`, error);
   }
@@ -193,14 +201,37 @@ export function getStatusTitle(status: string): string {
     'confirmed': '已确认',
     'paid': '已支付',
     'pending_shipment': '待发货',
+    'virtual_pending': '虚拟待发货',
     'shipped': '已发货',
     'delivered': '已签收',
     'completed': '已完成',
     'cancelled': '已取消',
     'refunded': '已退款',
-    'audit_rejected': '审核拒绝'
+    'audit_rejected': '审核拒绝',
+    'cancel_failed': '取消被拒',
+    'rejected': '拒收',
+    'rejected_returned': '拒收已退回',
+    'logistics_returned': '物流退回',
+    'logistics_cancelled': '物流取消',
+    'package_exception': '包裹异常',
+    'after_sales_created': '已建售后'
   };
   return statusMap[status] || status;
+}
+
+/** 根据操作类型获取标题 */
+export function getActionTypeTitle(actionType: string | undefined, status: string): string {
+  const actionTitleMap: Record<string, string> = {
+    'create': '订单创建',
+    'edit': '编辑订单',
+    'submit_audit': '提交审核',
+    'audit_approve': '审核通过',
+    'audit_reject': '审核拒绝',
+    'cancel_approve': '取消申请通过',
+    'cancel_reject': '取消申请拒绝',
+    'status_change': getStatusTitle(status)
+  };
+  return actionTitleMap[actionType || 'status_change'] || getStatusTitle(status);
 }
 
 /** 获取售后标题 */

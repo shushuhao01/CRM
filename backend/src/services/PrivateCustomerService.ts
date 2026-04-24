@@ -1,8 +1,11 @@
 import { AppDataSource } from '../config/database';
 import { PrivateCustomer } from '../entities/PrivateCustomer';
 import { v4 as uuidv4 } from 'uuid';
+import crypto from 'crypto';
+import bcrypt from 'bcryptjs';
 import { getTenantRepo } from '../utils/tenantRepo';
 import { formatDateTime } from '../utils/dateFormat';
+import { log } from '../config/logger';
 
 export class PrivateCustomerService {
   private get customerRepository() {
@@ -247,9 +250,58 @@ export class PrivateCustomerService {
 
     const license = await AppDataSource.query('SELECT * FROM licenses WHERE id = ?', [licenseId]);
 
+    // 🔥 同步在 tenants 表创建记录，确保私有客户也能登录会员中心
+    let tenantId: string | null = null;
+    let tenantCode: string | null = null;
+    if (data.contactPhone) {
+      try {
+        const existingTenants = await AppDataSource.query(
+          'SELECT id, code FROM tenants WHERE phone = ?', [data.contactPhone]
+        );
+        if (existingTenants.length > 0) {
+          tenantId = existingTenants[0].id;
+          tenantCode = existingTenants[0].code;
+          // 确保 password_hash 已设置
+          const pwdCheck = await AppDataSource.query('SELECT password_hash FROM tenants WHERE id = ?', [tenantId]);
+          if (!pwdCheck[0]?.password_hash) {
+            const memberPwdHash = await bcrypt.hash('Aa123456', 10);
+            await AppDataSource.query('UPDATE tenants SET password_hash = ? WHERE id = ?', [memberPwdHash, tenantId]);
+          }
+        } else {
+          tenantId = uuidv4();
+          const d = new Date();
+          tenantCode = `P${d.getFullYear().toString().slice(2)}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}${crypto.randomBytes(2).toString('hex').toUpperCase()}`;
+          const memberPwdHash = await bcrypt.hash('Aa123456', 10);
+          await AppDataSource.query(
+            `INSERT INTO tenants (id, name, code, license_key, license_status, contact, phone, email,
+             max_users, max_storage_gb, expire_date, features, status, password_hash, remark, created_at, updated_at)
+             VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, NOW(), NOW())`,
+            [
+              tenantId, data.customerName, tenantCode, licenseKey,
+              data.contactPerson || null, data.contactPhone, data.contactEmail || null,
+              data.maxUsers || 10, data.maxStorageGb || 5,
+              data.expiresAt ? new Date(data.expiresAt).toISOString().split('T')[0] : null,
+              JSON.stringify(data.features || []),
+              memberPwdHash,
+              '私有部署客户（管理后台创建）'
+            ]
+          );
+          // 关联 license 的 tenant_id
+          try {
+            await AppDataSource.query('UPDATE licenses SET tenant_id = ? WHERE id = ?', [tenantId, licenseId]);
+          } catch { /* tenant_id 列可能不存在 */ }
+          log.info(`[PrivateCustomerService] ✅ 已在 tenants 表创建私有客户记录: ${data.customerName} (${tenantCode}), 会员中心密码 Aa123456`);
+        }
+      } catch (tenantErr: any) {
+        log.warn('[PrivateCustomerService] 创建 tenants 记录失败（不影响授权创建）:', tenantErr.message?.substring(0, 100));
+      }
+    }
+
     return {
       customer,
       license: license[0],
+      tenantId,
+      tenantCode,
       adminAccount: {
         username: adminAccount.username,
         password: adminAccount.password

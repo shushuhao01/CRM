@@ -173,6 +173,12 @@ export const updateLicense = async (req: Request, res: Response): Promise<void> 
       updateData.expiresAt = new Date(updateData.expiresAt);
     }
 
+    // 转换会话存档授权字段（camelCase -> snake_case）
+    if (updateData.wecomChatArchiveAuth !== undefined) {
+      updateData.wecom_chat_archive_auth = updateData.wecomChatArchiveAuth ? 1 : 0;
+      delete updateData.wecomChatArchiveAuth;
+    }
+
     const license = await licenseService.updateLicense(id, updateData);
 
     res.json({

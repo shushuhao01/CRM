@@ -84,9 +84,20 @@
               :color="item.color"
             >
               <div class="timeline-content">
-                <div class="timeline-title">{{ item.title }}</div>
+                <div class="timeline-title">
+                  <span>{{ item.title }}</span>
+                  <el-tag
+                    v-if="item.actionType && item.actionType !== 'status_change'"
+                    :type="getActionTagType(item.actionType)"
+                    size="small"
+                    style="margin-left: 8px;"
+                  >{{ getActionTagLabel(item.actionType) }}</el-tag>
+                </div>
                 <div class="timeline-description">{{ item.description }}</div>
-                <div v-if="item.operator" class="timeline-operator">操作人：{{ item.operator }}</div>
+                <div v-if="item.operator" class="timeline-operator">
+                  <el-icon><User /></el-icon>
+                  操作人：{{ item.operator }}
+                </div>
               </div>
             </el-timeline-item>
           </el-timeline>
@@ -139,7 +150,7 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
-import { Van, Location, Clock, Service, ArrowDown, ArrowUp } from '@element-plus/icons-vue'
+import { Van, Location, Clock, Service, ArrowDown, ArrowUp, User } from '@element-plus/icons-vue'
 import { formatDateTime } from '@/utils/dateFormat'
 import { getAfterSalesType } from './helpers'
 
@@ -156,6 +167,33 @@ defineEmits<{
 
 const logisticsCollapsedLocal = ref(false)
 const statusTimelineCollapsedLocal = ref(true)
+
+// 操作类型标签样式
+const getActionTagType = (actionType: string) => {
+  const map: Record<string, string> = {
+    'create': 'success',
+    'edit': 'warning',
+    'submit_audit': 'info',
+    'audit_approve': 'success',
+    'audit_reject': 'danger',
+    'cancel_approve': 'danger',
+    'cancel_reject': 'warning'
+  }
+  return map[actionType] || 'info'
+}
+
+const getActionTagLabel = (actionType: string) => {
+  const map: Record<string, string> = {
+    'create': '创建',
+    'edit': '编辑',
+    'submit_audit': '提审',
+    'audit_approve': '审核通过',
+    'audit_reject': '审核拒绝',
+    'cancel_approve': '取消通过',
+    'cancel_reject': '取消拒绝'
+  }
+  return map[actionType] || actionType
+}
 const afterSalesCollapsedLocal = ref(true)
 </script>
 
@@ -181,9 +219,9 @@ const afterSalesCollapsedLocal = ref(true)
 /* 状态时间线 */
 .status-timeline-card { margin-bottom: 20px; }
 .timeline-content { padding: 8px 0; }
-.timeline-title { font-weight: 600; color: #303133; margin-bottom: 4px; }
+.timeline-title { font-weight: 600; color: #303133; margin-bottom: 4px; display: flex; align-items: center; }
 .timeline-description { color: #606266; margin-bottom: 4px; }
-.timeline-operator { color: #909399; font-size: 12px; }
+.timeline-operator { color: #909399; font-size: 12px; display: flex; align-items: center; gap: 4px; }
 
 /* 售后历史 */
 .after-sales-content { padding: 8px 0; }

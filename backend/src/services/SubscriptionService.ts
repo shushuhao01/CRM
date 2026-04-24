@@ -498,6 +498,12 @@ export class SubscriptionService {
 
       log.info(`[Subscription] 扣款成功: ${subscriptionId}, 金额: ${sub.amount}, 交易号: ${tradeNo}`);
 
+      // 清除写入限制缓存，使续费立即生效
+      try {
+        const { clearLicenseWriteCache } = await import('../middleware/checkLicenseWrite');
+        clearLicenseWriteCache(sub.tenant_id);
+      } catch (_e) { /* ignore */ }
+
       // 发送管理员通知：扣款成功
       try {
         const tenantRows3 = await AppDataSource.query('SELECT name FROM tenants WHERE id = ?', [sub.tenant_id]);

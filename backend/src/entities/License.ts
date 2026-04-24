@@ -30,6 +30,12 @@ export class License {
   @Column({ name: 'max_storage_gb', type: 'int', default: 5 })
   maxStorageGb!: number;
 
+  @Column({ name: 'user_limit_mode', type: 'enum', enum: ['total', 'online'], default: 'total', comment: '用户限制模式：total-总用户数，online-在线席位' })
+  userLimitMode?: string;
+
+  @Column({ name: 'max_online_seats', type: 'int', default: 0, comment: '最大在线席位数' })
+  maxOnlineSeats?: number;
+
   @Column({ type: 'json', nullable: true })
   features?: string[];
 
@@ -53,6 +59,9 @@ export class License {
 
   @Column({ type: 'text', nullable: true })
   notes?: string;
+
+  @Column({ name: 'wecom_chat_archive_auth', type: 'tinyint', default: 0, comment: '会话存档增值服务授权: 0=未授权, 1=已授权' })
+  wecomChatArchiveAuth?: number;
 
   @Column({ name: 'created_by', type: 'varchar', length: 36, nullable: true })
   createdBy?: string;

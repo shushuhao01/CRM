@@ -9,6 +9,32 @@ let yearlyColumnsExist: boolean | null = null
 let privateAnnualPriceInitialized = false
 // 标记订阅字段是否存在
 let subscriptionColumnsExist: boolean | null = null
+// 标记在线席位字段是否存在
+let onlineSeatColumnsExist: boolean | null = null
+// 标记 modules 字段是否存在
+let modulesColumnExist: boolean | null = null
+
+async function ensureModulesColumn(): Promise<boolean> {
+  if (modulesColumnExist !== null) return modulesColumnExist
+  try {
+    const cols = await AppDataSource.query(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'tenant_packages'
+       AND COLUMN_NAME = 'modules'`
+    )
+    if (cols.length > 0) { modulesColumnExist = true; return true }
+    log.info('[packages] 检测到 tenant_packages 缺少 modules 字段，正在自动添加...')
+    await AppDataSource.query(
+      `ALTER TABLE tenant_packages ADD COLUMN modules JSON DEFAULT NULL COMMENT '模块列表（JSON数组）' AFTER features`
+    )
+    modulesColumnExist = true
+    return true
+  } catch (error) {
+    log.error('[packages] 添加 modules 字段失败:', error)
+    modulesColumnExist = false
+    return false
+  }
+}
 
 // 初始化私有部署套餐的年度授权价（约永久价的38%，约3年回本）
 async function initPrivateAnnualPrice(): Promise<void> {
@@ -255,11 +281,130 @@ async function ensureSubscriptionTables(): Promise<void> {
   }
 }
 
+// 检查并自动添加在线席位相关字段到 tenant_packages 表
+async function ensureOnlineSeatColumns(): Promise<boolean> {
+  if (onlineSeatColumnsExist !== null) return onlineSeatColumnsExist
+  try {
+    const columns = await AppDataSource.query(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'tenant_packages'
+       AND COLUMN_NAME IN ('user_limit_mode', 'max_online_seats')`
+    )
+    if (columns.length >= 2) {
+      onlineSeatColumnsExist = true
+      await ensureOnlineSeatTenantColumns()
+      return true
+    }
+    log.info('[packages] 检测到 tenant_packages 缺少在线席位字段，正在自动添加...')
+    const existingCols = columns.map((c: any) => c.COLUMN_NAME)
+    if (!existingCols.includes('user_limit_mode')) {
+      await AppDataSource.query(
+        `ALTER TABLE tenant_packages ADD COLUMN user_limit_mode ENUM('total','online','both') DEFAULT 'total' COMMENT '用户限制模式：total-总用户数，online-在线席位，both-都支持(租户自选)' AFTER max_storage_gb`
+      )
+    }
+    if (!existingCols.includes('max_online_seats')) {
+      await AppDataSource.query(
+        `ALTER TABLE tenant_packages ADD COLUMN max_online_seats INT DEFAULT 0 COMMENT '最大在线席位数' AFTER user_limit_mode`
+      )
+    }
+    log.info('[packages] ✅ 在线席位字段添加成功')
+    onlineSeatColumnsExist = true
+    await ensureOnlineSeatTenantColumns()
+    return true
+  } catch (error) {
+    log.error('[packages] 添加在线席位字段失败:', error)
+    onlineSeatColumnsExist = false
+    return false
+  }
+}
+
+// 确保 tenants 表有在线席位相关字段
+async function ensureOnlineSeatTenantColumns(): Promise<void> {
+  try {
+    const cols = await AppDataSource.query(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'tenants'
+       AND COLUMN_NAME IN ('user_limit_mode','max_online_seats','extra_online_seats','current_online_seats')`
+    )
+    const existingCols = cols.map((c: any) => c.COLUMN_NAME)
+    if (!existingCols.includes('user_limit_mode')) {
+      await AppDataSource.query(
+        `ALTER TABLE tenants ADD COLUMN user_limit_mode ENUM('total','online') DEFAULT 'total' COMMENT '用户限制模式' AFTER user_count`
+      )
+    }
+    if (!existingCols.includes('max_online_seats')) {
+      await AppDataSource.query(
+        `ALTER TABLE tenants ADD COLUMN max_online_seats INT DEFAULT 0 COMMENT '最大在线席位数' AFTER user_limit_mode`
+      )
+    }
+    if (!existingCols.includes('extra_online_seats')) {
+      await AppDataSource.query(
+        `ALTER TABLE tenants ADD COLUMN extra_online_seats INT DEFAULT 0 COMMENT '额外购买的在线席位数' AFTER max_online_seats`
+      )
+    }
+    if (!existingCols.includes('current_online_seats')) {
+      await AppDataSource.query(
+        `ALTER TABLE tenants ADD COLUMN current_online_seats INT DEFAULT 0 COMMENT '当前在线席位数' AFTER extra_online_seats`
+      )
+    }
+    // 确保 user_sessions 表存在
+    const sessionTable = await AppDataSource.query(
+      `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'user_sessions'`
+    )
+    if (sessionTable.length === 0) {
+      await AppDataSource.query(`
+        CREATE TABLE user_sessions (
+          id VARCHAR(36) NOT NULL PRIMARY KEY,
+          user_id VARCHAR(36) NOT NULL,
+          tenant_id VARCHAR(36) NOT NULL,
+          session_token VARCHAR(512) NOT NULL COMMENT 'JWT token标识(hash)',
+          device_type VARCHAR(50) DEFAULT 'web' COMMENT '设备类型',
+          device_info VARCHAR(255) DEFAULT NULL COMMENT '设备信息(UA)',
+          ip_address VARCHAR(50) DEFAULT NULL COMMENT '登录IP',
+          last_active_at DATETIME NOT NULL COMMENT '最后活跃时间',
+          logged_out_at DATETIME DEFAULT NULL COMMENT '主动登出时间',
+          status VARCHAR(20) DEFAULT 'active' COMMENT '会话状态: active/expired/logged_out',
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          INDEX idx_user_sessions_user_id (user_id),
+          INDEX idx_user_sessions_tenant_id (tenant_id),
+          INDEX idx_user_sessions_session_token (session_token(64)),
+          INDEX idx_user_sessions_last_active (last_active_at),
+          INDEX idx_user_sessions_status (status)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='用户会话表（在线席位追踪）'
+      `)
+      log.info('[packages] ✅ user_sessions 表创建成功')
+    }
+    // 确保 licenses 表有在线席位字段
+    const licenseCols = await AppDataSource.query(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'licenses'
+       AND COLUMN_NAME IN ('user_limit_mode','max_online_seats')`
+    )
+    const licenseExisting = licenseCols.map((c: any) => c.COLUMN_NAME)
+    if (!licenseExisting.includes('user_limit_mode')) {
+      await AppDataSource.query(
+        `ALTER TABLE licenses ADD COLUMN user_limit_mode ENUM('total','online') DEFAULT 'total' COMMENT '用户限制模式' AFTER max_storage_gb`
+      )
+    }
+    if (!licenseExisting.includes('max_online_seats')) {
+      await AppDataSource.query(
+        `ALTER TABLE licenses ADD COLUMN max_online_seats INT DEFAULT 0 COMMENT '最大在线席位数' AFTER user_limit_mode`
+      )
+    }
+    log.info('[packages] ✅ 在线席位相关表和字段已就绪')
+  } catch (error) {
+    log.error('[packages] 创建在线席位相关表/字段失败:', error)
+  }
+}
+
 // 获取所有套餐列表（管理后台）
 router.get('/', async (req: Request, res: Response) => {
   try {
     await ensureYearlyColumns()
     await ensureSubscriptionColumns()
+    await ensureOnlineSeatColumns()
+    await ensureModulesColumn()
     const { type, status } = req.query
 
     let sql = 'SELECT * FROM tenant_packages WHERE 1=1'
@@ -293,7 +438,9 @@ router.get('/', async (req: Request, res: Response) => {
       subscription_enabled: Boolean(pkg.subscription_enabled),
       subscription_channels: pkg.subscription_channels || 'all',
       subscription_billing_cycle: pkg.subscription_billing_cycle || 'monthly',
-      subscription_discount_rate: Number(pkg.subscription_discount_rate) || 0
+      subscription_discount_rate: Number(pkg.subscription_discount_rate) || 0,
+      user_limit_mode: pkg.user_limit_mode || 'total',
+      max_online_seats: Number(pkg.max_online_seats) || 0
     }))
 
     res.json({ success: true, data: result })
@@ -308,11 +455,14 @@ router.post('/', async (req: Request, res: Response) => {
   try {
     const hasYearly = await ensureYearlyColumns()
     const hasSub = await ensureSubscriptionColumns()
+    const hasSeat = await ensureOnlineSeatColumns()
+    await ensureModulesColumn()
     const {
       name, code, type, description, price, original_price,
       billing_cycle, yearly_discount_rate, yearly_bonus_months, yearly_price,
       subscription_enabled, subscription_channels, subscription_billing_cycle, subscription_discount_rate,
       duration_days, max_users, max_storage_gb,
+      user_limit_mode, max_online_seats,
       features, modules, is_trial, is_recommended, is_visible, sort_order
     } = req.body
 
@@ -335,14 +485,16 @@ router.post('/', async (req: Request, res: Response) => {
        (name, code, type, description, price, original_price, billing_cycle,
         yearly_discount_rate, yearly_bonus_months, yearly_price,
         ${hasSub ? 'subscription_enabled, subscription_channels, subscription_billing_cycle, subscription_discount_rate,' : ''}
+        ${hasSeat ? 'user_limit_mode, max_online_seats,' : ''}
         duration_days, max_users, max_storage_gb, features, modules, is_trial,
         is_recommended, is_visible, sort_order, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ${hasSub ? '?, ?, ?, ?,' : ''} ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ${hasSub ? '?, ?, ?, ?,' : ''} ${hasSeat ? '?, ?,' : ''} ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`
       insertParams = [
         name, code, type, description || '', price || 0, original_price || price || 0,
         billing_cycle || 'monthly',
         yearly_discount_rate || 0, yearly_bonus_months || 0, yearly_price || null,
         ...(hasSub ? [subscription_enabled ? 1 : 0, subscription_channels || 'all', subscription_billing_cycle || 'monthly', subscription_discount_rate || 0] : []),
+        ...(hasSeat ? [user_limit_mode || 'total', max_online_seats || 0] : []),
         duration_days || 30, max_users || 10,
         max_storage_gb || 5, JSON.stringify(features || []), JSON.stringify(modules || []),
         is_trial ? 1 : 0, is_recommended ? 1 : 0, is_visible !== false ? 1 : 0,
@@ -365,9 +517,10 @@ router.post('/', async (req: Request, res: Response) => {
 
     const result = await AppDataSource.query(insertSql, insertParams)
     res.json({ success: true, data: { id: result.insertId }, message: '创建成功' })
-  } catch (error) {
+  } catch (error: any) {
     log.error('创建套餐失败:', error)
-    res.status(500).json({ success: false, message: '创建套餐失败' })
+    const errMsg = error?.sqlMessage || error?.message || '创建套餐失败'
+    res.status(500).json({ success: false, message: `创建套餐失败: ${errMsg}` })
   }
 })
 
@@ -377,10 +530,13 @@ router.put('/:id', async (req: Request, res: Response) => {
     const hasYearly = await ensureYearlyColumns()
     const hasSub = await ensureSubscriptionColumns()
     const { id } = req.params
+    const hasSeat = await ensureOnlineSeatColumns()
+    await ensureModulesColumn()
     const {
       name, description, price, original_price, billing_cycle,
       yearly_discount_rate, yearly_bonus_months, yearly_price,
       subscription_enabled, subscription_channels, subscription_billing_cycle, subscription_discount_rate,
+      user_limit_mode, max_online_seats,
       duration_days, max_users, max_storage_gb, features, modules,
       is_trial, is_recommended, is_visible, sort_order, status
     } = req.body
@@ -393,6 +549,7 @@ router.put('/:id', async (req: Request, res: Response) => {
        name = ?, description = ?, price = ?, original_price = ?,
        billing_cycle = ?, yearly_discount_rate = ?, yearly_bonus_months = ?, yearly_price = ?,
        ${hasSub ? 'subscription_enabled = ?, subscription_channels = ?, subscription_billing_cycle = ?, subscription_discount_rate = ?,' : ''}
+       ${hasSeat ? 'user_limit_mode = ?, max_online_seats = ?,' : ''}
        duration_days = ?, max_users = ?,
        max_storage_gb = ?, features = ?, modules = ?, is_trial = ?,
        is_recommended = ?, is_visible = ?, sort_order = ?, status = ?
@@ -401,6 +558,7 @@ router.put('/:id', async (req: Request, res: Response) => {
         name, description, price, original_price, billing_cycle,
         yearly_discount_rate || 0, yearly_bonus_months || 0, yearly_price || null,
         ...(hasSub ? [subscription_enabled ? 1 : 0, subscription_channels || 'all', subscription_billing_cycle || 'monthly', subscription_discount_rate || 0] : []),
+        ...(hasSeat ? [user_limit_mode || 'total', max_online_seats || 0] : []),
         duration_days, max_users, max_storage_gb,
         JSON.stringify(features || []), JSON.stringify(modules || []), is_trial ? 1 : 0,
         is_recommended ? 1 : 0, is_visible ? 1 : 0, sort_order || 0,
@@ -424,9 +582,10 @@ router.put('/:id', async (req: Request, res: Response) => {
 
     await AppDataSource.query(updateSql, updateParams)
     res.json({ success: true, message: '更新成功' })
-  } catch (error) {
+  } catch (error: any) {
     log.error('更新套餐失败:', error)
-    res.status(500).json({ success: false, message: '更新套餐失败' })
+    const errMsg = error?.sqlMessage || error?.message || '更新套餐失败'
+    res.status(500).json({ success: false, message: `更新套餐失败: ${errMsg}` })
   }
 })
 

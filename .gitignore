@@ -85,9 +85,10 @@ test-api-result.json
 build-result*.txt
 
 # 数据库文件
-*.sql
 *.sqlite
 *.db
+# 允许 database/migrations/ 下的 SQL 迁移脚本
+# *.sql  -- 已移除全局忽略，改为精确控制
 
 # 上传文件
 uploads/

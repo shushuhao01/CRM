@@ -61,7 +61,9 @@
             </div>
             <ul class="plan-features">
               <li v-for="f in (pkg.features || []).slice(0, 4)" :key="f">✓ {{ f }}</li>
-              <li>👥 {{ pkg.max_users >= 99999 ? '不限' : pkg.max_users }}用户</li>
+              <li v-if="pkg.user_limit_mode === 'both'">👥 {{ pkg.max_users >= 99999 ? '不限' : pkg.max_users }}用户 / {{ pkg.max_online_seats }}席位</li>
+              <li v-else-if="pkg.user_limit_mode === 'online'">🟢 {{ pkg.max_online_seats }}个在线席位</li>
+              <li v-else>👥 {{ pkg.max_users >= 99999 ? '不限' : pkg.max_users }}用户</li>
               <li>💾 {{ pkg.max_storage_gb }}GB存储</li>
             </ul>
             <button v-if="canUpgrade(pkg)" class="btn-upgrade" @click="handleUpgrade(pkg)">
@@ -151,6 +153,11 @@
           </div>
         </div>
       </template>
+      <div v-else style="text-align:center;padding:60px 0;color:#94a3b8;">
+        <div style="font-size:48px;margin-bottom:16px;">💳</div>
+        <p style="font-size:15px;margin:0 0 8px;">暂无法加载续费升级信息</p>
+        <p style="font-size:13px;margin:0;">请检查网络连接或 <a href="/member/login" style="color:#6366f1;">重新登录</a></p>
+      </div>
     </div>
   </div>
 </template>
@@ -160,6 +167,7 @@ import { ref, computed, onMounted } from 'vue'
 import { getMemberProfile } from '@/api/member'
 import { getPackages, type Package, getYearlyTotal, getYearlySaving } from '@/api/packages'
 import { getMemberToken } from '@/api/member'
+import { generateQRCodeDataUrl } from '@/utils/qrcode'
 
 const API_BASE = '/api/v1'
 
@@ -335,14 +343,12 @@ const handlePay = async () => {
     if (data.code === 0 && data.data) {
       payOrderNo.value = data.data.orderNo || ''
       payNoConfig.value = false
-      if (data.data.qrCode) {
+      if (data.data.qrCode && (data.data.qrCode.startsWith('http') || data.data.qrCode.startsWith('data:'))) {
         payQrCode.value = data.data.qrCode
       } else if (data.data.payUrl) {
-        // 将 payUrl 转为二维码图片
-        payQrCode.value = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(data.data.payUrl)}`
+        payQrCode.value = await generateQRCodeDataUrl(data.data.payUrl)
       } else {
-        // 未获取到真实二维码，使用占位
-        payQrCode.value = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(payOrderNo.value || 'pending')}`
+        payQrCode.value = await generateQRCodeDataUrl(payOrderNo.value || 'pending')
       }
     } else {
       alert(data.message || '创建订单失败')

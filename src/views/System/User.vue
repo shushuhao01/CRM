@@ -99,6 +99,92 @@
       </el-row>
     </div>
 
+    <!-- 在线席位提示 -->
+    <el-alert
+      v-if="onlineSeatInfo.enabled"
+      :type="seatAlertType"
+      :closable="false"
+      show-icon
+      style="margin-bottom: 16px; font-size: 14px;"
+    >
+      <template #title>
+        <span style="font-size: 14px;">
+          当前为<strong>在线席位制</strong>，同时在线上限：<strong>{{ onlineSeatInfo.maxSeats }}</strong> 个席位，当前在线：<strong style="font-size: 16px;">{{ onlineSeatInfo.onlineCount }}</strong> 人。注册用户数不受限制。
+        </span>
+        <el-button type="primary" link style="margin-left: 12px; font-size: 14px;" @click="showOnlineSessionsDialog">
+          管理在线成员
+        </el-button>
+      </template>
+      <template #default>
+        <div v-if="onlineSeatInfo.onlineCount >= onlineSeatInfo.maxSeats && onlineSeatInfo.maxSeats > 0" style="margin-top: 4px; font-size: 13px; color: #F56C6C;">
+          ⚠️ 在线席位已达上限，其他用户将无法登录！
+          <a v-if="memberCenterLoginUrl" :href="memberCenterLoginUrl + '?redirect=/member/renew'" target="_blank" style="color: #409EFF; margin-left: 8px; cursor: pointer; text-decoration: underline;">去升级扩容 →</a>
+        </div>
+        <div v-else-if="seatUsagePercent >= 80" style="margin-top: 4px; font-size: 13px; color: #E6A23C;">
+          ⚠️ 在线席位使用率已达 {{ seatUsagePercent }}%，建议升级席位以避免用户无法登录。
+          <a v-if="memberCenterLoginUrl" :href="memberCenterLoginUrl + '?redirect=/member/renew'" target="_blank" style="color: #409EFF; margin-left: 8px; cursor: pointer; text-decoration: underline;">去升级扩容 →</a>
+        </div>
+      </template>
+    </el-alert>
+
+    <!-- 在线成员管理对话框 -->
+    <el-dialog v-model="onlineSessionsVisible" title="在线成员管理" width="800px" destroy-on-close>
+      <div style="margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center;">
+        <div>
+          <span style="color: #303133; font-size: 15px; font-weight: 500;">当前在线 <strong style="color: #409EFF; font-size: 18px;">{{ onlineSeatInfo.onlineCount }}</strong> 人 / 席位上限 <strong style="font-size: 18px;">{{ onlineSeatInfo.maxSeats }}</strong></span>
+          <el-tag v-if="onlineSeatInfo.onlineCount >= onlineSeatInfo.maxSeats && onlineSeatInfo.maxSeats > 0" type="danger" size="small" style="margin-left: 10px;">已满</el-tag>
+          <el-tag v-else-if="seatUsagePercent >= 80" type="warning" size="small" style="margin-left: 10px;">{{ seatUsagePercent }}%</el-tag>
+        </div>
+        <el-button @click="loadOnlineSessions" :loading="onlineSessionsLoading" :icon="Refresh">刷新</el-button>
+      </div>
+      <div v-if="onlineSeatInfo.onlineCount >= onlineSeatInfo.maxSeats && onlineSeatInfo.maxSeats > 0" style="margin-bottom: 12px;">
+        <el-alert type="error" :closable="false" show-icon style="font-size: 13px;">
+          <template #title>在线席位已满，其他用户将无法登录！请踢出闲置用户或
+            <a v-if="memberCenterLoginUrl" :href="memberCenterLoginUrl + '?redirect=/member/renew'" target="_blank" style="color: #409EFF; cursor: pointer; text-decoration: underline;">升级套餐扩容</a>
+          </template>
+        </el-alert>
+      </div>
+      <el-table :data="onlineSessions" v-loading="onlineSessionsLoading" stripe size="default" max-height="420" style="font-size: 14px;">
+        <el-table-column width="36" align="center">
+          <template #default>
+            <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #52c41a; box-shadow: 0 0 6px rgba(82, 196, 26, 0.4);"></span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="real_name" label="姓名" width="100">
+          <template #default="{ row }"><span style="font-weight: 500;">{{ row.real_name || row.username || '-' }}</span></template>
+        </el-table-column>
+        <el-table-column prop="username" label="用户名" width="120" show-overflow-tooltip />
+        <el-table-column prop="department_name" label="部门" width="110" show-overflow-tooltip>
+          <template #default="{ row }">{{ row.department_name || '-' }}</template>
+        </el-table-column>
+        <el-table-column prop="device_type" label="设备" width="70" align="center">
+          <template #default="{ row }">
+            <el-tag :type="row.device_type === 'mobile' ? 'warning' : 'info'">{{ row.device_type === 'mobile' ? '手机' : 'PC' }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="ip_address" label="IP地址" width="130" show-overflow-tooltip />
+        <el-table-column prop="last_active_at" label="最后活跃" min-width="160">
+          <template #default="{ row }">{{ formatDateTime(row.last_active_at) }}</template>
+        </el-table-column>
+        <el-table-column label="操作" width="80" align="center" fixed="right">
+          <template #default="{ row }">
+            <el-button type="danger" link @click="confirmKickSession(row)">踢出</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+      <div style="margin-top: 14px; display: flex; justify-content: flex-end;">
+        <el-pagination
+          v-model:current-page="sessionPage"
+          v-model:page-size="sessionPageSize"
+          :page-sizes="[10, 20, 50]"
+          :total="sessionTotal"
+          layout="total, sizes, prev, pager, next"
+          @size-change="loadOnlineSessions"
+          @current-change="loadOnlineSessions"
+        />
+      </div>
+    </el-dialog>
+
     <!-- 搜索筛选 -->
     <el-card class="search-card">
       <el-form :model="searchForm" inline>
@@ -679,6 +765,10 @@
           <el-descriptions-item label="最后登录">
             {{ formatDateTime(currentUser.lastLoginTime) }}
           </el-descriptions-item>
+          <el-descriptions-item label="最后登录IP">
+            <span v-if="currentUser.lastLoginIp" style="font-family: monospace;">{{ currentUser.lastLoginIp }}</span>
+            <span v-else class="text-gray-400">暂无</span>
+          </el-descriptions-item>
           <el-descriptions-item label="登录次数">
             {{ currentUser.loginCount }}
           </el-descriptions-item>
@@ -1114,6 +1204,8 @@ import DynamicTable from '@/components/DynamicTable.vue'
 import { formatDateTime } from '@/utils/dateFormat'
 import { getRoleTagType, getRoleDisplayName } from '@/utils/roleUtils'
 import { getDeployMode, getLocalTenantInfo } from '@/api/tenantLicense'
+import { api as requestApi } from '@/api/request'
+import { getMemberCenterLoginUrl } from '@/utils/memberCenterUrl'
 import {
   Plus,
   Download,
@@ -1226,6 +1318,37 @@ const userStats = ref({
   active: 0, // 在职人数
   resigned: 0, // 离职人数
   monthNew: 0
+})
+
+// 在线席位信息
+const onlineSeatInfo = ref({
+  enabled: false,
+  maxSeats: 0,
+  onlineCount: 0
+})
+
+// 在线成员管理
+const onlineSessionsVisible = ref(false)
+const onlineSessionsLoading = ref(false)
+const onlineSessions = ref<any[]>([])
+const sessionPage = ref(1)
+const sessionPageSize = ref(10)
+const sessionTotal = ref(0)
+
+// 席位使用率计算
+const seatUsagePercent = computed(() => {
+  if (onlineSeatInfo.value.maxSeats <= 0) return 0
+  return Math.round((onlineSeatInfo.value.onlineCount / onlineSeatInfo.value.maxSeats) * 100)
+})
+const seatAlertType = computed(() => {
+  if (onlineSeatInfo.value.onlineCount >= onlineSeatInfo.value.maxSeats && onlineSeatInfo.value.maxSeats > 0) return 'error'
+  if (seatUsagePercent.value >= 80) return 'warning'
+  return 'success'
+})
+
+// 会员中心登录URL
+const memberCenterLoginUrl = computed(() => {
+  try { return getMemberCenterLoginUrl() } catch { return '' }
 })
 
 // 搜索表单
@@ -3154,6 +3277,7 @@ const loadUserList = async () => {
         resignedDate: user.resignedDate || user.resigned_at || '',
         createTime: user.createTime || user.createdAt || user.created_at || '',
         lastLoginTime: user.lastLoginTime || user.lastLoginAt || user.last_login_at || '',
+        lastLoginIp: user.lastLoginIp || user.last_login_ip || '',
         avatar: user.avatar || '',
         remark: user.remark || '',
         roleName: user.roleName || '',
@@ -3652,12 +3776,81 @@ const handleColumnSettingsChange = (settings: ColumnSettings) => {
   // 列设置已经通过 DynamicTable 内部的 localStorage 自动保存
 }
 
+// 加载在线席位信息
+const loadOnlineSeatInfo = async () => {
+  try {
+    const res = await requestApi.get('/online-seat/stats') as any
+    console.log('[OnlineSeat] stats API raw response:', JSON.stringify(res))
+    if (res?.data) {
+      onlineSeatInfo.value = {
+        enabled: res.data.mode === 'online' || res.data.mode === 'both',
+        maxSeats: res.data.maxSeats || 0,
+        onlineCount: res.data.onlineCount || 0
+      }
+      console.log('[OnlineSeat] parsed onlineSeatInfo:', JSON.stringify(onlineSeatInfo.value))
+    }
+  } catch (_e) {
+    console.error('[OnlineSeat] stats API error:', _e)
+  }
+}
+
+// 显示在线成员管理对话框
+const showOnlineSessionsDialog = () => {
+  onlineSessionsVisible.value = true
+  loadOnlineSessions()
+}
+
+// 加载在线会话列表（支持分页）
+const loadOnlineSessions = async () => {
+  onlineSessionsLoading.value = true
+  try {
+    const res = await requestApi.get(`/online-seat/sessions?page=${sessionPage.value}&pageSize=${sessionPageSize.value}`) as any
+    console.log('[OnlineSeat] sessions API raw response:', JSON.stringify(res))
+    onlineSessions.value = res?.data?.sessions || []
+    sessionTotal.value = res?.data?.total || 0
+    // 同步刷新在线人数
+    if (res?.data?.onlineCount !== undefined) {
+      onlineSeatInfo.value.onlineCount = res.data.onlineCount
+    }
+  } catch (_e) {
+    onlineSessions.value = []
+    sessionTotal.value = 0
+  } finally {
+    onlineSessionsLoading.value = false
+  }
+}
+
+// 踢出在线会话 - 确认弹窗
+const confirmKickSession = (session: any) => {
+  const userName = session.real_name || session.username || '该用户'
+  ElMessageBox.confirm(
+    `确定踢出 ${userName} 吗？用户被踢出后将收到下线提醒。`,
+    '踢出确认',
+    {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning',
+      customStyle: { maxWidth: '460px' }
+    }
+  ).then(async () => {
+    try {
+      await requestApi.post('/online-seat/kick', { sessionId: session.id })
+      ElMessage.success(`已踢出用户 ${userName}`)
+      loadOnlineSessions()
+      loadOnlineSeatInfo()
+    } catch (_e) {
+      ElMessage.error('踢出失败')
+    }
+  }).catch(() => {})
+}
+
 // 生命周期钩子
 onMounted(async () => {
   try {
     loadUserStats()
     loadUserList()
     loadRoles()
+    loadOnlineSeatInfo()
     await departmentStore.initData()
   } catch (error) {
     console.error('初始化数据失败:', error)

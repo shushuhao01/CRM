@@ -80,9 +80,18 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, RolePermissionConfig> = {
 
       // 财务管理（绩效数据和取消代收申请，本部门/个人数据）
       'finance', 'finance.performance_data', 'finance.performance_data.view',
-      'finance.cod_application', 'finance.cod_application.view', 'finance.cod_application.create'
+      'finance.cod_application', 'finance.cod_application.view', 'finance.cod_application.create',
+
+      // 企微管理（获客助手 + 活码管理，仅限本人创建的数据）
+      'wecom', 'wecom.acquisition', 'wecom.acquisition.view', 'wecom.acquisition.create', 'wecom.acquisition.edit', 'wecom.acquisition.delete',
+      'wecom.contact_way', 'wecom.contact_way.view', 'wecom.contact_way.create', 'wecom.contact_way.edit', 'wecom.contact_way.delete',
+      // 企微客户、客户群、会话存档、对外收款（本部门绑定的企微账号数据）
+      'wecom.customer', 'wecom.customer.view',
+      'wecom.group', 'wecom.group.view',
+      'wecom.chat', 'wecom.chat.view',
+      'wecom.payment', 'wecom.payment.view'
     ],
-    description: '管理本部门业务和团队，查看部门数据'
+    description: '管理本部门业务和团队，查看部门数据，企微获客助手和活码仅限本人创建的数据'
   },
 
   // 销售员
@@ -121,7 +130,13 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, RolePermissionConfig> = {
 
       // 财务管理（绩效数据和取消代收申请，个人数据）
       'finance', 'finance.performance_data', 'finance.performance_data.view',
-      'finance.cod_application', 'finance.cod_application.view', 'finance.cod_application.create'
+      'finance.cod_application', 'finance.cod_application.view', 'finance.cod_application.create',
+
+      // 企微管理（企微客户、客户群、会话存档、对外收款，仅限个人绑定的企微账号数据）
+      'wecom', 'wecom.customer', 'wecom.customer.view',
+      'wecom.group', 'wecom.group.view',
+      'wecom.chat', 'wecom.chat.view',
+      'wecom.payment', 'wecom.payment.view'
     ],
     description: '专注于客户开发和订单管理，查看个人数据'
   },

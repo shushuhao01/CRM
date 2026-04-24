@@ -122,6 +122,23 @@
             <p>定期修改密码以保护账户安全</p>
           </div>
 
+          <!-- 密码安全状态卡片 -->
+          <div class="password-security-card" :class="passwordSecurityLevel">
+            <div class="security-icon">
+              <el-icon v-if="passwordSecurityLevel === 'safe'" :size="28"><CircleCheck /></el-icon>
+              <el-icon v-else-if="passwordSecurityLevel === 'warning'" :size="28"><Warning /></el-icon>
+              <el-icon v-else :size="28"><CircleClose /></el-icon>
+            </div>
+            <div class="security-info">
+              <div class="security-title">{{ passwordSecurityTitle }}</div>
+              <div class="security-desc">{{ passwordSecurityDesc }}</div>
+            </div>
+            <div class="security-countdown" v-if="passwordRemainingDays > 0">
+              <span class="countdown-number">{{ passwordRemainingDays }}</span>
+              <span class="countdown-unit">天后到期</span>
+            </div>
+          </div>
+
           <el-form
             ref="passwordFormRef"
             :model="passwordForm"
@@ -268,7 +285,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed, watch, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { User, Setting, Lock, Bell, Camera } from '@element-plus/icons-vue'
+import { User, Setting, Lock, Bell, Camera, CircleCheck, Warning, CircleClose } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
 import { passwordService } from '@/services/passwordService'
 import { profileApiService, type UpdateProfileRequest, type UserPreferences } from '@/services/profileApiService'
@@ -412,6 +429,38 @@ const passwordStrengthText = computed(() => {
   if (strength <= 2) return '弱'
   if (strength <= 3) return '中等'
   return '强'
+})
+
+// 密码安全状态
+const passwordRemainingDays = computed(() => {
+  const user = userStore.user || userStore.currentUser
+  if (!user) return 0
+  return passwordService.getPasswordRemainingDays(user as any)
+})
+
+const passwordSecurityLevel = computed(() => {
+  const days = passwordRemainingDays.value
+  if (days <= 0) return 'danger'
+  if (days <= 30) return 'warning'
+  return 'safe'
+})
+
+const passwordSecurityTitle = computed(() => {
+  const days = passwordRemainingDays.value
+  if (days <= 0) return '密码已过期'
+  if (days <= 30) return '密码即将到期'
+  return '密码状态正常'
+})
+
+const passwordSecurityDesc = computed(() => {
+  const user = userStore.user || userStore.currentUser
+  if (!user || !(user as any).passwordLastChanged) {
+    return '您尚未设置过密码修改记录，建议立即修改密码'
+  }
+  const days = passwordRemainingDays.value
+  if (days <= 0) return '您的密码已超过90天未修改，请立即修改密码'
+  if (days <= 30) return `距离密码强制修改还有 ${days} 天，建议尽快修改`
+  return `距离下次强制修改密码还有 ${days} 天，密码安全`
 })
 
 // 方法
@@ -845,6 +894,75 @@ onMounted(() => {
           border-color: #409eff;
           box-shadow: 0 0 0 3px rgba(64, 158, 255, 0.1);
         }
+      }
+    }
+  }
+
+  .password-security-card {
+    display: flex;
+    align-items: center;
+    padding: 16px 20px;
+    border-radius: 12px;
+    margin-bottom: 24px;
+    gap: 16px;
+    transition: all 0.3s ease;
+
+    &.safe {
+      background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
+      border: 1px solid #bbf7d0;
+
+      .security-icon { color: #16a34a; }
+      .countdown-number { color: #16a34a; }
+    }
+
+    &.warning {
+      background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%);
+      border: 1px solid #fde68a;
+
+      .security-icon { color: #d97706; }
+      .countdown-number { color: #d97706; }
+    }
+
+    &.danger {
+      background: linear-gradient(135deg, #fef2f2 0%, #fecaca 100%);
+      border: 1px solid #fca5a5;
+
+      .security-icon { color: #dc2626; }
+      .countdown-number { color: #dc2626; }
+    }
+
+    .security-info {
+      flex: 1;
+
+      .security-title {
+        font-size: 15px;
+        font-weight: 700;
+        color: #1e293b;
+        margin-bottom: 4px;
+      }
+
+      .security-desc {
+        font-size: 13px;
+        color: #64748b;
+        line-height: 1.5;
+      }
+    }
+
+    .security-countdown {
+      text-align: center;
+      padding: 0 8px;
+
+      .countdown-number {
+        display: block;
+        font-size: 28px;
+        font-weight: 800;
+        line-height: 1;
+      }
+
+      .countdown-unit {
+        font-size: 12px;
+        color: #64748b;
+        font-weight: 500;
       }
     }
   }

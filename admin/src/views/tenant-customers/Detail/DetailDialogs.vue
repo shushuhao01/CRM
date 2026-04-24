@@ -27,17 +27,44 @@
     </template>
   </el-dialog>
 
-  <!-- 调整用户数对话框 -->
-  <el-dialog :model-value="adjustUsersVisible" @update:model-value="$emit('update:adjustUsersVisible', $event)" title="调整用户数" width="450px">
+  <!-- 调整用户数/席位对话框 -->
+  <el-dialog :model-value="adjustUsersVisible" @update:model-value="$emit('update:adjustUsersVisible', $event)"
+    :title="detail.user_limit_mode === 'online' ? '调整在线席位' : '调整用户数'" width="450px">
     <el-form label-width="100px">
       <el-form-item label="客户名称">{{ detail.name }}</el-form-item>
-      <el-form-item label="当前用户数">{{ detail.userCount || 0 }} / {{ detail.maxUsers || 0 }}</el-form-item>
-      <el-form-item label="新最大用户" required>
-        <div style="display: flex; align-items: center; gap: 8px; flex-wrap: nowrap;">
-          <el-input-number :model-value="newMaxUsers" @update:model-value="$emit('update:newMaxUsers', $event)" :min="detail.userCount || 1" :max="9999" />
-          <span style="white-space: nowrap; flex-shrink: 0;">个</span>
-        </div>
+      <el-form-item label="限制模式">
+        <el-tag v-if="detail.user_limit_mode === 'online'" type="success" size="small" effect="dark">限在</el-tag>
+        <el-tag v-else type="info" size="small" effect="dark">限注</el-tag>
+        <span style="margin-left:6px;font-size:12px;color:#606266;">
+          {{ detail.user_limit_mode === 'online' ? '限制同时在线人数' : '限制总注册用户数' }}
+        </span>
       </el-form-item>
+      <!-- 在线席位模式 -->
+      <template v-if="detail.user_limit_mode === 'online'">
+        <el-form-item label="当前在线">
+          <span style="font-weight:600;color:#16a34a;">{{ detail.onlineCount || 0 }}</span>
+          <span style="color:#909399;"> / 席位 {{ (Number(detail.max_online_seats)||0) + (Number(detail.extra_online_seats)||0) }}</span>
+        </el-form-item>
+        <el-form-item label="新最大席位" required>
+          <div style="display: flex; align-items: center; gap: 8px; flex-wrap: nowrap;">
+            <el-input-number :model-value="newMaxOnlineSeats" @update:model-value="$emit('update:newMaxOnlineSeats', $event)" :min="1" :max="9999" />
+            <span style="white-space: nowrap; flex-shrink: 0;">个席位</span>
+          </div>
+        </el-form-item>
+        <el-form-item label="注册用户">
+          <span style="color:#909399;">{{ detail.userCount || 0 }} 个（席位模式不限注册）</span>
+        </el-form-item>
+      </template>
+      <!-- 注册用户模式 -->
+      <template v-else>
+        <el-form-item label="当前用户数">{{ detail.userCount || 0 }} / {{ detail.maxUsers || 0 }}</el-form-item>
+        <el-form-item label="新最大用户" required>
+          <div style="display: flex; align-items: center; gap: 8px; flex-wrap: nowrap;">
+            <el-input-number :model-value="newMaxUsers" @update:model-value="$emit('update:newMaxUsers', $event)" :min="detail.userCount || 1" :max="9999" />
+            <span style="white-space: nowrap; flex-shrink: 0;">个用户</span>
+          </div>
+        </el-form-item>
+      </template>
     </el-form>
     <template #footer>
       <el-button @click="$emit('update:adjustUsersVisible', false)">取消</el-button>
@@ -181,6 +208,7 @@ const props = defineProps<{
   submitting: boolean
   editForm: { name: string; code: string; contact: string; phone: string; email: string; remark: string }
   newMaxUsers: number
+  newMaxOnlineSeats: number
   newMaxStorageGb: number
   newPackageId: number | string
   allPackages: Package[]
@@ -210,6 +238,7 @@ const emit = defineEmits<{
   'update:renewVisible': [val: boolean]
   'update:licenseVisible': [val: boolean]
   'update:newMaxUsers': [val: number]
+  'update:newMaxOnlineSeats': [val: number]
   'update:newMaxStorageGb': [val: number]
   'update:newPackageId': [val: number | string]
   'update:packageTab': [val: string]

@@ -1733,11 +1733,17 @@ const initCharts = () => {
 
 // 权限检查
 const checkPermission = () => {
-  // 只有部门经理级别以上可以查看业绩分析
+  // 部门经理级别以上 或 拥有业绩分析权限码 可以查看业绩分析
   if (!userStore.isManager && !userStore.isAdmin) {
-    ElMessage.error('您没有权限查看业绩分析数据')
-    router.push('/performance')
-    return false
+    const userPerms = userStore.permissions || []
+    const hasAnalysisPerm = userPerms.includes('performance:analysis') ||
+                            userPerms.includes('performance.analysis') ||
+                            userPerms.includes('performance')
+    if (!hasAnalysisPerm) {
+      ElMessage.error('您没有权限查看业绩分析数据')
+      router.push('/performance')
+      return false
+    }
   }
   return true
 }

@@ -298,41 +298,40 @@
               </span>
               <span v-else-if="selectedOrder" class="found-result">
                 <el-icon><SuccessFilled /></el-icon>
-                已找到订单：{{ selectedOrder.orderNumber }}
+                已选中订单：{{ selectedOrder.orderNumber }}
+                <a href="javascript:void(0)" style="margin-left: 12px; color: #409eff; font-size: 12px;" @click.stop="selectedOrder = null; shareForm.orderId = ''">重新选择</a>
               </span>
-              <span v-else-if="availableOrders.length > 1" class="multiple-results">
+              <span v-else class="multiple-results">
                 <el-icon><InfoFilled /></el-icon>
-                找到 {{ availableOrders.length }} 个匹配订单，请从下方选择
+                找到 {{ availableOrders.length }} 个匹配订单，请勾选要分享的订单
               </span>
             </div>
 
-            <!-- 多个搜索结果时显示选择框 -->
-            <el-select
-              v-if="availableOrders.length > 1 && !selectedOrder"
-              v-model="shareForm.orderId"
-              placeholder="从搜索结果中选择订单"
-              style="width: 100%; margin-top: 10px"
-              @change="handleOrderChange"
-            >
-              <el-option
-                v-for="order in availableOrders"
-                :key="order.id"
-                :label="`${order.orderNumber} - ¥${(order.totalAmount || 0).toLocaleString()} - ${order.customerName}`"
-                :value="order.id"
-              >
-                <div class="order-option">
-                  <div class="order-main">
-                    <el-tag type="primary" size="small">{{ order.orderNumber }}</el-tag>
-                    <span class="customer-name">{{ order.customerName }}</span>
-                    <span class="order-amount">¥{{ (order.totalAmount || 0).toLocaleString() }}</span>
-                  </div>
-                  <div class="order-sub">
-                    <span class="phone">{{ order.customerPhone }}</span>
-                    <span class="time">{{ order.createTime }}</span>
+            <!-- 搜索结果列表 - 用radio让用户勾选 -->
+            <div v-if="availableOrders.length > 0 && !selectedOrder" class="order-search-results">
+              <el-radio-group v-model="shareForm.orderId" @change="handleOrderChange" style="width: 100%">
+                <div
+                  v-for="order in availableOrders"
+                  :key="order.id"
+                  class="order-radio-item"
+                  :class="{ 'is-selected': shareForm.orderId === order.id }"
+                  @click="shareForm.orderId = order.id; handleOrderChange(order.id)"
+                >
+                  <el-radio :value="order.id" style="margin-right: 8px" />
+                  <div class="order-radio-info">
+                    <div class="order-main">
+                      <el-tag type="primary" size="small">{{ order.orderNumber }}</el-tag>
+                      <span class="customer-name">{{ order.customerName }}</span>
+                      <span class="order-amount">¥{{ (order.totalAmount || 0).toLocaleString() }}</span>
+                    </div>
+                    <div class="order-sub">
+                      <span class="phone">{{ order.customerPhone }}</span>
+                      <span class="time">{{ order.createTime }}</span>
+                    </div>
                   </div>
                 </div>
-              </el-option>
-            </el-select>
+              </el-radio-group>
+            </div>
           </div>
         </el-form-item>
 
@@ -1013,27 +1012,23 @@ const handleOrderSearch = async (query: string) => {
       !shareRecords.value.some(share => share.orderId === order.id)
     )
 
-    // 精确匹配订单号（优先级最高）
+    // 精确匹配订单号优先排在最前面
     const exactOrderMatch = filteredResults.find(order =>
       order.orderNumber.toLowerCase() === query.toLowerCase().trim()
     )
 
     if (exactOrderMatch) {
-      // 如果找到精确匹配的订单号，直接选中该订单
-      selectedOrder.value = exactOrderMatch
-      shareForm.value.orderId = exactOrderMatch.id
-      availableOrders.value = [exactOrderMatch]
-      return
+      // 精确匹配排首位，但不自动选中，由用户勾选确认
+      const rest = filteredResults.filter(o => o.id !== exactOrderMatch.id)
+      availableOrders.value = [exactOrderMatch, ...rest].slice(0, 10)
+    } else {
+      // 限制搜索结果数量
+      availableOrders.value = filteredResults.slice(0, 10)
     }
 
-    // 限制搜索结果数量
-    availableOrders.value = filteredResults.slice(0, 10)
-
-    // 如果只有一个匹配结果，自动选中
-    if (availableOrders.value.length === 1) {
-      selectedOrder.value = availableOrders.value[0]
-      shareForm.value.orderId = availableOrders.value[0].id
-    }
+    // 清空之前的选中状态，等待用户手动勾选
+    selectedOrder.value = null
+    shareForm.value.orderId = ''
 
   } catch (error) {
     console.error('搜索订单失败:', error)
@@ -2011,6 +2006,42 @@ watch([filterStatus, filterDateRange], () => {
   gap: 16px;
   font-size: 12px;
   color: #6b7280;
+}
+
+/* 订单搜索结果radio列表 */
+.order-search-results {
+  margin-top: 10px;
+  max-height: 260px;
+  overflow-y: auto;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+}
+
+.order-radio-item {
+  display: flex;
+  align-items: center;
+  padding: 10px 14px;
+  cursor: pointer;
+  transition: background 0.15s;
+  border-bottom: 1px solid #f3f4f6;
+}
+
+.order-radio-item:last-child {
+  border-bottom: none;
+}
+
+.order-radio-item:hover {
+  background: #f0f9ff;
+}
+
+.order-radio-item.is-selected {
+  background: #eff6ff;
+  border-left: 3px solid #409eff;
+}
+
+.order-radio-info {
+  flex: 1;
+  min-width: 0;
 }
 
 .phone {

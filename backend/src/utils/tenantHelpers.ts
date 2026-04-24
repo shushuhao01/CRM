@@ -124,4 +124,43 @@ export function setTenantOnEntities(entities: any[]): void {
   entities.forEach(e => setTenantOnEntity(e));
 }
 
+// ==================== 私有部署兼容辅助函数 ====================
 
+/**
+ * 获取租户ID或null（用于严格场景，私有部署返回null而非undefined）
+ * 适用于需要明确区分"无租户"和"有租户"的场景（如额度管理）
+ */
+export function getTenantIdOrNull(): string | null {
+  if (deployConfig.isSaaS()) {
+    return TenantContextManager.getTenantId() || null;
+  }
+  return null;
+}
+
+/**
+ * 返回原始SQL的 tenant_id 过滤条件（包括私有模式的 IS NULL）
+ *
+ * 与 tenantRawSQL 的区别：
+ * - tenantRawSQL: 私有模式返回空字符串（不过滤 tenant_id）
+ * - tenantRawSQLStrict: 私有模式返回 `AND tenant_id IS NULL`
+ *
+ * 适用场景：system_config 等表中同时存在有tenant_id和无tenant_id的数据，
+ * 私有部署需要精确匹配 tenant_id IS NULL 的记录
+ *
+ * 用法：
+ *   const t = tenantRawSQLStrict();
+ *   AppDataSource.query(`SELECT * FROM system_config WHERE config_key = ? ${t.sql}`, ['sms_quota_total', ...t.params])
+ */
+export function tenantRawSQLStrict(prefix: string = ''): { sql: string; params: any[] } {
+  const tenantId = getCurrentTenantIdSafe();
+  if (tenantId) {
+    return {
+      sql: ` AND ${prefix}tenant_id = ?`,
+      params: [tenantId]
+    };
+  }
+  return {
+    sql: ` AND ${prefix}tenant_id IS NULL`,
+    params: []
+  };
+}

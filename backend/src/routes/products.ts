@@ -10,8 +10,88 @@ const router = Router();
  * 产品管理路由
  */
 
+// 自动迁移：确保products表有推荐/新品/热销标识列
+let _productColumnsMigrated = false;
+async function ensureProductTagColumns(): Promise<void> {
+  if (_productColumnsMigrated) return;
+  try {
+    const { AppDataSource } = await import('../config/database');
+    if (!AppDataSource || !AppDataSource.isInitialized) return;
+
+    const columns = await AppDataSource.query(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'products'
+       AND COLUMN_NAME IN ('is_recommended', 'is_new', 'is_hot', 'product_type', 'virtual_delivery_type', 'card_key_template', 'resource_link_template', 'virtual_content_encrypt')`
+    );
+    const existingCols = columns.map((c: any) => c.COLUMN_NAME);
+
+    if (!existingCols.includes('is_recommended')) {
+      await AppDataSource.query(
+        `ALTER TABLE products ADD COLUMN is_recommended TINYINT DEFAULT 0 COMMENT '是否推荐'`
+      );
+      log.info('[products] ✅ 已添加 is_recommended 列');
+    }
+    if (!existingCols.includes('is_new')) {
+      await AppDataSource.query(
+        `ALTER TABLE products ADD COLUMN is_new TINYINT DEFAULT 0 COMMENT '是否新品'`
+      );
+      log.info('[products] ✅ 已添加 is_new 列');
+    }
+    if (!existingCols.includes('is_hot')) {
+      await AppDataSource.query(
+        `ALTER TABLE products ADD COLUMN is_hot TINYINT DEFAULT 0 COMMENT '是否热销'`
+      );
+      log.info('[products] ✅ 已添加 is_hot 列');
+    }
+    // 虚拟商品字段自动迁移
+    if (!existingCols.includes('product_type')) {
+      await AppDataSource.query(
+        `ALTER TABLE products ADD COLUMN product_type VARCHAR(20) DEFAULT 'physical' COMMENT '商品类型: physical-普通商品, virtual-虚拟商品'`
+      );
+      log.info('[products] ✅ 已添加 product_type 列');
+    }
+    if (!existingCols.includes('virtual_delivery_type')) {
+      await AppDataSource.query(
+        `ALTER TABLE products ADD COLUMN virtual_delivery_type VARCHAR(20) DEFAULT NULL COMMENT '虚拟发货方式: none-无需发货, card_key-卡密发货, resource_link-网盘资源'`
+      );
+      log.info('[products] ✅ 已添加 virtual_delivery_type 列');
+    }
+    if (!existingCols.includes('card_key_template')) {
+      await AppDataSource.query(
+        `ALTER TABLE products ADD COLUMN card_key_template TEXT DEFAULT NULL COMMENT '卡密模板说明'`
+      );
+      log.info('[products] ✅ 已添加 card_key_template 列');
+    }
+    if (!existingCols.includes('resource_link_template')) {
+      await AppDataSource.query(
+        `ALTER TABLE products ADD COLUMN resource_link_template TEXT DEFAULT NULL COMMENT '资源链接模板'`
+      );
+      log.info('[products] ✅ 已添加 resource_link_template 列');
+    }
+    if (!existingCols.includes('virtual_content_encrypt')) {
+      await AppDataSource.query(
+        `ALTER TABLE products ADD COLUMN virtual_content_encrypt TINYINT(1) DEFAULT 0 COMMENT '虚拟内容是否加密显示'`
+      );
+      log.info('[products] ✅ 已添加 virtual_content_encrypt 列');
+    }
+
+    _productColumnsMigrated = true;
+    log.info('[products] ✅ 商品标识列检查完成');
+  } catch (error) {
+    log.error('[products] 商品标识列迁移失败:', error);
+  }
+}
+
 // 所有产品路由都需要认证
 router.use(authenticateToken);
+
+// 首次请求时自动迁移数据库
+router.use(async (_req, _res, next) => {
+  if (!_productColumnsMigrated) {
+    await ensureProductTagColumns();
+  }
+  next();
+});
 
 // ==================== 产品相关路由 ====================
 

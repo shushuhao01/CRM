@@ -130,9 +130,22 @@
             <el-tag :type="getPackageType(row.packageName)" size="small">{{ row.packageName || '未设置' }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="用户数" width="80" align="center">
+        <el-table-column label="在线/席位/用户" min-width="150" align="center">
           <template #default="{ row }">
-            <span class="usage-text">{{ row.userCount || 0 }}/{{ row.maxUsers }}</span>
+            <div style="display:flex;align-items:center;justify-content:center;gap:5px;cursor:default;">
+              <span style="color:#16a34a;font-weight:600;font-size:14px;">{{ row.current_online_seats || 0 }}</span>
+              <span style="color:#c0c4cc;font-size:12px;">/</span>
+              <span style="color:#7c3aed;font-weight:600;font-size:14px;">{{ (Number(row.max_online_seats)||0) + (Number(row.extra_online_seats)||0) }}</span>
+              <span style="color:#c0c4cc;font-size:12px;">/</span>
+              <span v-if="row.user_limit_mode === 'online'" style="color:#909399;font-size:13px;">{{ row.userCount || 0 }}人</span>
+              <span v-else style="color:#2563eb;font-weight:600;font-size:14px;">{{ row.userCount || 0 }}/{{ row.maxUsers || 0 }}</span>
+              <el-tooltip v-if="row.user_limit_mode === 'online'" content="限在线席位（注册不限）" placement="top">
+                <span style="background:#dcfce7;color:#16a34a;font-size:10px;padding:1px 4px;border-radius:3px;font-weight:600;line-height:16px;cursor:help;">限在</span>
+              </el-tooltip>
+              <el-tooltip v-else content="限注册用户数" placement="top">
+                <span style="background:#e0e7ff;color:#4338ca;font-size:10px;padding:1px 4px;border-radius:3px;font-weight:600;line-height:16px;cursor:help;">限注</span>
+              </el-tooltip>
+            </div>
           </template>
         </el-table-column>
         <el-table-column label="存储" width="100" align="center">
@@ -218,8 +231,22 @@
             <el-option v-for="p in packages" :key="p.id" :label="p.name" :value="p.id" />
           </el-select>
         </el-form-item>
-        <el-form-item label="最大用户数" prop="maxUsers">
+        <el-form-item label="用户限制模式">
+          <el-radio-group v-model="form.user_limit_mode" size="small">
+            <el-radio-button value="total">限制注册用户数</el-radio-button>
+            <el-radio-button value="online">限制在线席位</el-radio-button>
+          </el-radio-group>
+          <div style="margin-top:4px;color:#909399;font-size:12px;">
+            {{ form.user_limit_mode === 'online' ? '按同时在线人数限制，注册用户不限' : '按总注册用户数限制' }}
+          </div>
+        </el-form-item>
+        <el-form-item v-if="form.user_limit_mode !== 'online'" label="最大用户数" prop="maxUsers">
           <el-input-number v-model="form.maxUsers" :min="1" :max="9999" />
+          <span style="margin-left:8px;color:#909399;font-size:12px;">个用户</span>
+        </el-form-item>
+        <el-form-item v-if="form.user_limit_mode === 'online'" label="在线席位数">
+          <el-input-number v-model="form.max_online_seats" :min="1" :max="9999" />
+          <span style="margin-left:8px;color:#909399;font-size:12px;">个席位</span>
         </el-form-item>
         <el-form-item label="存储空间" prop="maxStorageGb">
           <el-input-number v-model="form.maxStorageGb" :min="1" :max="1000" />
@@ -415,7 +442,8 @@ const stats = reactive({ total: 0, active: 0, expired: 0, disabled: 0, expiringS
 const searchForm = reactive({ keyword: '', packageId: '', status: '', licenseStatus: '' })
 const form = reactive({
   name: '', code: '', contact: '', phone: '', email: '',
-  packageId: '', maxUsers: 10, maxStorageGb: 5, expireDate: null as Date | null, features: [] as string[], remark: ''
+  packageId: '', maxUsers: 10, maxStorageGb: 5, expireDate: null as Date | null, features: [] as string[], remark: '',
+  user_limit_mode: 'total' as 'total' | 'online', max_online_seats: 10
 })
 const rules: FormRules = {
   name: [{ required: true, message: '请输入客户名称', trigger: 'blur' }],
@@ -508,6 +536,18 @@ const onPackageChange = (pkgId: string | number) => {
   if (pkg) {
     form.maxUsers = pkg.max_users ?? pkg.maxUsers ?? 10
     form.maxStorageGb = pkg.max_storage_gb ?? pkg.maxStorageGb ?? 5
+    // 同步用户限制模式和在线席位数
+    const pkgMode = pkg.user_limit_mode
+    if (pkgMode === 'online') {
+      form.user_limit_mode = 'online'
+      form.max_online_seats = pkg.max_online_seats ?? 10
+    } else if (pkgMode === 'both') {
+      // 双模式默认用total，用户可手动切换
+      form.user_limit_mode = 'total'
+      form.max_online_seats = pkg.max_online_seats ?? 10
+    } else {
+      form.user_limit_mode = 'total'
+    }
     // 🔥 同步套餐的功能模块：优先使用 modules（模块ID列表），其次 features
     form.features = Array.isArray(pkg.modules) && pkg.modules.length > 0
       ? [...pkg.modules]
@@ -551,7 +591,7 @@ const onPackageChange = (pkgId: string | number) => {
 
 const handleAdd = () => {
   editingId.value = null
-  Object.assign(form, { name: '', code: '', contact: '', phone: '', email: '', packageId: '', maxUsers: 10, maxStorageGb: 5, expireDate: null, features: [], remark: '' })
+  Object.assign(form, { name: '', code: '', contact: '', phone: '', email: '', packageId: '', maxUsers: 10, maxStorageGb: 5, expireDate: null, features: [], remark: '', user_limit_mode: 'total', max_online_seats: 10 })
   showDialog.value = true
 }
 
@@ -560,7 +600,8 @@ const handleEdit = (row: any) => {
   Object.assign(form, {
     name: row.name, code: row.code, contact: row.contact || '', phone: row.phone || '', email: row.email || '',
     packageId: row.packageId, maxUsers: row.maxUsers, maxStorageGb: row.maxStorageGb || 5,
-    expireDate: row.expireDate ? new Date(row.expireDate) : null, remark: row.remark || ''
+    expireDate: row.expireDate ? new Date(row.expireDate) : null, remark: row.remark || '',
+    user_limit_mode: row.user_limit_mode || 'total', max_online_seats: row.max_online_seats || 10
   })
   showDialog.value = true
 }
@@ -846,6 +887,10 @@ const fetchData = async () => {
         usedStorageMb: Number(item.usedStorageMb ?? item.used_storage_mb ?? 0),
         expireDate: item.expireDate || item.expire_date,
         remark: item.remark,
+        user_limit_mode: item.user_limit_mode || item.userLimitMode || 'total',
+        max_online_seats: Number(item.max_online_seats ?? item.maxOnlineSeats ?? 0),
+        extra_online_seats: Number(item.extra_online_seats ?? item.extraOnlineSeats ?? 0),
+        current_online_seats: Number(item.current_online_seats ?? item.currentOnlineSeats ?? item.onlineCount ?? 0),
         showFullKey: false,
         statusLoading: false,
         licenseLoading: false

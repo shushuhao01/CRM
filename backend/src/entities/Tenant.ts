@@ -39,6 +39,24 @@ export class Tenant {
   @Column('int', { default: 0, name: 'user_count' })
   userCount: number;
 
+  @Column({
+    type: 'enum',
+    enum: ['total', 'online'],
+    default: 'total',
+    name: 'user_limit_mode',
+    comment: '用户限制模式：total-总用户数限制，online-在线席位限制'
+  })
+  userLimitMode: 'total' | 'online';
+
+  @Column('int', { default: 0, name: 'max_online_seats', comment: '最大在线席位数' })
+  maxOnlineSeats: number;
+
+  @Column('int', { default: 0, name: 'extra_online_seats', comment: '额外购买的在线席位数' })
+  extraOnlineSeats: number;
+
+  @Column('int', { default: 0, name: 'current_online_seats', comment: '当前在线席位数（定时更新）' })
+  currentOnlineSeats: number;
+
   @Column('decimal', { precision: 10, scale: 2, default: 0, name: 'used_storage_mb' })
   usedStorageMb: number;
 
@@ -63,6 +81,9 @@ export class Tenant {
 
   @Column('text', { nullable: true })
   remark: string | null;
+
+  @Column('tinyint', { name: 'wecom_chat_archive_auth', default: 0, comment: '会话存档增值服务授权: 0=未授权, 1=已授权' })
+  wecomChatArchiveAuth: number;
 
   @Index('idx_status')
   @Column('varchar', { length: 20, default: 'active' })
@@ -163,6 +184,20 @@ export class Tenant {
    */
   canAddUser(): boolean {
     return this.userCount < this.maxUsers;
+  }
+
+  /**
+   * 获取有效的最大在线席位数（基础 + 额外购买）
+   */
+  getEffectiveMaxOnlineSeats(): number {
+    return (this.maxOnlineSeats || 0) + (this.extraOnlineSeats || 0);
+  }
+
+  /**
+   * 是否为在线席位模式
+   */
+  isOnlineSeatMode(): boolean {
+    return this.userLimitMode === 'online';
   }
 
   /**

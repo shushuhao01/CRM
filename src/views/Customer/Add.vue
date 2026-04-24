@@ -2,7 +2,11 @@
   <div class="customer-form">
     <!-- 页面头部 -->
     <div class="page-header">
-      <h2>{{ isEdit ? '编辑客户' : '新增客户' }}</h2>
+      <h2>{{ isEdit ? '编辑客户' : '新增客户' }}
+        <el-tooltip v-if="(userStore.isAdmin || userStore.isSuperAdmin) && !isEdit" content="客户字段设置" placement="right">
+          <el-icon class="customer-settings-link" @click="goToCustomerSettings"><Setting /></el-icon>
+        </el-tooltip>
+      </h2>
     </div>
 
     <!-- 客户信息表单 -->
@@ -103,7 +107,11 @@
                       <!-- 权限提示 -->
                       <div v-if="shouldDisableSave" class="permission-warning">
                         <el-divider />
-                        <p style="color: #e6a23c; font-weight: 500;">
+                        <p v-if="customerVerifyResult.isOwnCustomer" style="color: #e6a23c; font-weight: 500;">
+                          <el-icon><Warning /></el-icon>
+                          提示：您已经创建过该客户资料，无需重复创建。可以直接前往客户列表查看客户信息。
+                        </p>
+                        <p v-else style="color: #e6a23c; font-weight: 500;">
                           <el-icon><Warning /></el-icon>
                           权限提示：该客户由其他成员创建，您没有权限保存修改。如需操作，请联系管理员或客户创建者。
                         </p>
@@ -129,7 +137,7 @@
               </el-form-item>
             </el-col>
             <el-col :span="8">
-              <el-form-item label="性别" prop="gender">
+              <el-form-item label="性别" prop="gender" v-if="customerFieldConfigStore.isFieldEnabled('gender')">
                 <el-radio-group v-model="customerForm.gender">
                   <el-radio label="male">男</el-radio>
                   <el-radio label="female">女</el-radio>
@@ -140,7 +148,7 @@
 
           <!-- 第二排：年龄、身高、体重 - 统一列宽对齐 -->
           <el-row :gutter="20">
-            <el-col :span="8">
+            <el-col :span="8" v-if="customerFieldConfigStore.isFieldEnabled('age')">
               <el-form-item label="年龄" prop="age">
                 <el-input-number
                   v-model="customerForm.age"
@@ -152,7 +160,7 @@
                 />
               </el-form-item>
             </el-col>
-            <el-col :span="8">
+            <el-col :span="8" v-if="customerFieldConfigStore.isFieldEnabled('height')">
               <el-form-item label="身高(cm)" prop="height">
                 <el-input-number
                   v-model="customerForm.height"
@@ -164,7 +172,7 @@
                 />
               </el-form-item>
             </el-col>
-            <el-col :span="8">
+            <el-col :span="8" v-if="customerFieldConfigStore.isFieldEnabled('weight')">
               <el-form-item label="体重(kg)" prop="weight">
                 <el-input-number
                   v-model="customerForm.weight"
@@ -180,7 +188,7 @@
 
           <!-- 第三排：进粉时间、客户微信号、邮箱 - 统一列宽对齐 -->
           <el-row :gutter="20">
-            <el-col :span="8">
+            <el-col :span="8" v-if="customerFieldConfigStore.isFieldEnabled('fanAcquisitionTime')">
               <el-form-item label="进粉时间" prop="fanAcquisitionTime">
                 <el-date-picker
                   v-model="customerForm.fanAcquisitionTime"
@@ -193,7 +201,7 @@
                 />
               </el-form-item>
             </el-col>
-            <el-col :span="8">
+            <el-col :span="8" v-if="customerFieldConfigStore.isFieldEnabled('wechat')">
               <el-form-item label="客户微信号" prop="wechat">
                 <el-input
                   v-model="customerForm.wechat"
@@ -203,7 +211,7 @@
                 />
               </el-form-item>
             </el-col>
-            <el-col :span="8">
+            <el-col :span="8" v-if="customerFieldConfigStore.isFieldEnabled('email')">
               <el-form-item label="邮箱" prop="email">
                 <el-input
                   v-model="customerForm.email"
@@ -214,10 +222,125 @@
               </el-form-item>
             </el-col>
           </el-row>
+
+          <!-- 第四排：企微UserID、客户生日 -->
+          <el-row :gutter="20" v-if="customerFieldConfigStore.isFieldEnabled('wecomExternalUserid') || customerFieldConfigStore.isFieldEnabled('birthday')">
+            <el-col :span="8" v-if="customerFieldConfigStore.isFieldEnabled('wecomExternalUserid')">
+              <el-form-item label="企微UserID" prop="wecomExternalUserid">
+                <el-input
+                  v-model="customerForm.wecomExternalUserid"
+                  placeholder="请输入企业微信UserID"
+                  clearable
+                  style="width: 200px;"
+                />
+              </el-form-item>
+            </el-col>
+            <el-col :span="8" v-if="customerFieldConfigStore.isFieldEnabled('birthday')">
+              <el-form-item label="客户生日" prop="birthday">
+                <el-date-picker
+                  v-model="customerForm.birthday"
+                  type="date"
+                  placeholder="请选择客户生日"
+                  style="width: 200px;"
+                  format="YYYY-MM-DD"
+                  value-format="YYYY-MM-DD"
+                  :disabled-date="disableFutureDate"
+                />
+              </el-form-item>
+            </el-col>
+          </el-row>
+
+          <!-- 自定义字段区域 -->
+          <template v-if="enabledCustomFields.length > 0">
+            <el-divider content-position="left">自定义字段</el-divider>
+            <el-row :gutter="20">
+              <el-col :span="8" v-for="field in enabledCustomFields" :key="field.fieldKey">
+                <el-form-item
+                  :label="field.fieldName"
+                  :prop="'customFields.' + field.fieldKey"
+                  :rules="field.required ? [{ required: true, message: '请填写' + field.fieldName, trigger: 'blur' }] : []"
+                >
+                  <!-- 文本 -->
+                  <el-input
+                    v-if="field.fieldType === 'text'"
+                    v-model="customerForm.customFields[field.fieldKey]"
+                    :placeholder="field.placeholder || '请输入' + field.fieldName"
+                    clearable
+                    style="width: 200px;"
+                  />
+                  <!-- 数字 -->
+                  <el-input-number
+                    v-else-if="field.fieldType === 'number'"
+                    v-model="customerForm.customFields[field.fieldKey]"
+                    :placeholder="field.placeholder || '请输入'"
+                    style="width: 200px;"
+                    controls-position="right"
+                  />
+                  <!-- 日期 -->
+                  <el-date-picker
+                    v-else-if="field.fieldType === 'date'"
+                    v-model="customerForm.customFields[field.fieldKey]"
+                    type="date"
+                    :placeholder="field.placeholder || '请选择日期'"
+                    style="width: 200px;"
+                    format="YYYY-MM-DD"
+                    value-format="YYYY-MM-DD"
+                  />
+                  <!-- 日期时间 -->
+                  <el-date-picker
+                    v-else-if="field.fieldType === 'datetime'"
+                    v-model="customerForm.customFields[field.fieldKey]"
+                    type="datetime"
+                    :placeholder="field.placeholder || '请选择日期时间'"
+                    style="width: 200px;"
+                    format="YYYY-MM-DD HH:mm"
+                    value-format="YYYY-MM-DD HH:mm:ss"
+                  />
+                  <!-- 下拉选择 -->
+                  <el-select
+                    v-else-if="field.fieldType === 'select'"
+                    v-model="customerForm.customFields[field.fieldKey]"
+                    :placeholder="field.placeholder || '请选择'"
+                    style="width: 200px;"
+                    clearable
+                  >
+                    <el-option
+                      v-for="opt in (field.options || [])"
+                      :key="opt.value"
+                      :label="opt.label"
+                      :value="opt.value"
+                    />
+                  </el-select>
+                  <!-- 单选 -->
+                  <el-radio-group
+                    v-else-if="field.fieldType === 'radio'"
+                    v-model="customerForm.customFields[field.fieldKey]"
+                  >
+                    <el-radio
+                      v-for="opt in (field.options || [])"
+                      :key="opt.value"
+                      :label="opt.value"
+                    >{{ opt.label }}</el-radio>
+                  </el-radio-group>
+                  <!-- 多选 -->
+                  <el-checkbox-group
+                    v-else-if="field.fieldType === 'checkbox'"
+                    v-model="customerForm.customFields[field.fieldKey]"
+                  >
+                    <el-checkbox
+                      v-for="opt in (field.options || [])"
+                      :key="opt.value"
+                      :label="opt.value"
+                    >{{ opt.label }}</el-checkbox>
+                  </el-checkbox-group>
+                </el-form-item>
+              </el-col>
+            </el-row>
+          </template>
         </div>
 
         <!-- 收货地址信息 -->
-        <div class="form-section">
+        <div class="form-section" v-if="customerFieldConfigStore.isFieldEnabled('address')">
           <h3 class="section-title">收货地址</h3>
 
           <!-- 智能地址识别 - 单行布局 -->
@@ -249,7 +372,7 @@
               <el-form-item
                 label="省份"
                 prop="province"
-                :required="!customerForm.isOverseas"
+                :required="!customerForm.isOverseas && customerFieldConfigStore.isFieldRequired('province')"
               >
                 <el-select
                   v-model="customerForm.province"
@@ -271,7 +394,7 @@
               <el-form-item
                 label="城市"
                 prop="city"
-                :required="!customerForm.isOverseas"
+                :required="!customerForm.isOverseas && customerFieldConfigStore.isFieldRequired('city')"
               >
                 <el-select
                   v-model="customerForm.city"
@@ -293,6 +416,7 @@
               <el-form-item
                 label="区县"
                 prop="district"
+                :required="!customerForm.isOverseas && customerFieldConfigStore.isFieldRequired('district')"
               >
                 <el-select
                   v-model="customerForm.district"
@@ -311,7 +435,11 @@
               </el-form-item>
             </el-col>
             <el-col :span="6">
-              <el-form-item label="街道" prop="street">
+              <el-form-item
+                label="街道"
+                prop="street"
+                :required="!customerForm.isOverseas && customerFieldConfigStore.isFieldRequired('street')"
+              >
                 <el-select
                   v-model="customerForm.street"
                   placeholder="请选择街道"
@@ -332,7 +460,7 @@
           <el-form-item
             label="详细地址"
             prop="detailAddress"
-            :required="!customerForm.isOverseas"
+            :required="!customerForm.isOverseas && customerFieldConfigStore.isFieldRequired('detailAddress')"
           >
             <el-input
               v-model="customerForm.detailAddress"
@@ -366,9 +494,9 @@
         </div>
 
         <!-- 健康信息 -->
-        <div class="form-section">
+        <div class="form-section" v-if="customerFieldConfigStore.isFieldEnabled('medicalHistory') || customerFieldConfigStore.isFieldEnabled('improvementGoals')">
           <h3 class="section-title">健康信息</h3>
-          <el-form-item label="疾病史" prop="medicalHistory">
+          <el-form-item label="疾病史" prop="medicalHistory" v-if="customerFieldConfigStore.isFieldEnabled('medicalHistory')">
             <el-input
               v-model="customerForm.medicalHistory"
               type="textarea"
@@ -377,7 +505,7 @@
             />
           </el-form-item>
 
-          <el-form-item label="改善问题" prop="improvementGoals">
+          <el-form-item label="改善问题" prop="improvementGoals" v-if="customerFieldConfigStore.isFieldEnabled('improvementGoals')">
             <div class="improvement-goals-section">
               <el-checkbox-group v-model="customerForm.improvementGoals" class="improvement-goals-group">
                 <el-checkbox
@@ -421,10 +549,10 @@
         </div>
 
         <!-- 客户分类 -->
-        <div class="form-section">
+        <div class="form-section" v-if="customerFieldConfigStore.isFieldEnabled('level') || customerFieldConfigStore.isFieldEnabled('source') || customerFieldConfigStore.isFieldEnabled('status') || customerFieldConfigStore.isFieldEnabled('tags') || customerFieldConfigStore.isFieldEnabled('salesPerson')">
           <h3 class="section-title">客户分类</h3>
           <el-row :gutter="24">
-            <el-col :span="6">
+            <el-col :span="6" v-if="customerFieldConfigStore.isFieldEnabled('level')">
               <el-form-item label="客户等级" prop="level">
                 <el-select
                   v-model="customerForm.level"
@@ -438,7 +566,7 @@
                 </el-select>
               </el-form-item>
             </el-col>
-            <el-col :span="8">
+            <el-col :span="8" v-if="customerFieldConfigStore.isFieldEnabled('source')">
               <el-form-item label="客户来源" prop="source">
                 <el-select
                   v-model="customerForm.source"
@@ -456,7 +584,7 @@
           </el-row>
 
           <el-row :gutter="24">
-            <el-col :span="6">
+            <el-col :span="6" v-if="customerFieldConfigStore.isFieldEnabled('status')">
               <el-form-item label="客户状态" prop="status">
                 <el-select
                   v-model="customerForm.status"
@@ -471,7 +599,7 @@
                 </el-select>
               </el-form-item>
             </el-col>
-            <el-col :span="8">
+            <el-col :span="8" v-if="customerFieldConfigStore.isFieldEnabled('tags')">
               <el-form-item label="客户标签" prop="tags">
                 <el-select
                   v-model="customerForm.tags"
@@ -489,7 +617,7 @@
                 </el-select>
               </el-form-item>
             </el-col>
-            <el-col :span="6">
+            <el-col :span="6" v-if="customerFieldConfigStore.isFieldEnabled('salesPerson')">
               <el-form-item label="负责销售" prop="salesPerson">
                 <el-input
                   v-model="customerForm.salesPerson"
@@ -509,8 +637,10 @@
         </div>
 
         <!-- 备注信息 -->
-        <div class="form-section">
+        <div class="form-section" v-if="customerFieldConfigStore.isFieldEnabled('remark')">
           <h3 class="section-title">备注信息</h3>
+
+
           <el-form-item label="客户备注" prop="remark">
             <el-input
               v-model="customerForm.remark"
@@ -575,6 +705,7 @@ import { useAppStore } from '@/stores/app'
 import { useCustomerStore } from '@/stores/customer'
 import { useNotificationStore } from '@/stores/notification'
 import { useImprovementGoalsStore } from '@/stores/improvementGoals'
+import { useCustomerFieldConfigStore } from '@/stores/customerFieldConfig'
 import { customerApi } from '@/api/customer'
 import { customerTagApi, type CustomerTag } from '@/api/customerTags'
 import { formRules as validationRules } from '@/utils/validation'
@@ -591,7 +722,26 @@ const appStore = useAppStore()
 const customerStore = useCustomerStore()
 const notificationStore = useNotificationStore()
 const improvementGoalsStore = useImprovementGoalsStore()
+const customerFieldConfigStore = useCustomerFieldConfigStore()
 const { isMobile, getMobileFormConfig } = useResponsive()
+
+// 启用的自定义字段
+const enabledCustomFields = computed(() => {
+  const fields = [...customerFieldConfigStore.config.customFields]
+    .sort((a, b) => a.sortOrder - b.sortOrder)
+  // 确保 checkbox 类型字段初始化为数组
+  fields.forEach(field => {
+    if (field.fieldType === 'checkbox' && !Array.isArray(customerForm.customFields[field.fieldKey])) {
+      customerForm.customFields[field.fieldKey] = []
+    }
+  })
+  return fields
+})
+
+// 跳转到客户设置
+const goToCustomerSettings = () => {
+  router.push('/system/settings?tab=customer')
+}
 
 // 创建安全导航器
 const safeNavigator = createSafeNavigator(router)
@@ -607,6 +757,7 @@ const customerVerifyResult = ref<{
   owner?: string
   createTime?: string
   customerId?: string
+  isOwnCustomer?: boolean // 是否是自己创建的客户
 } | null>(null)
 
 // 禁用未来日期（进粉时间不能选择未来）
@@ -719,7 +870,10 @@ const customerForm = reactive({
   source: '',         // 客户来源
   tags: [],           // 客户标签
   salesPerson: userStore.currentUser?.name || '',    // 负责销售（默认为当前用户姓名）
-  remark: ''          // 备注
+  remark: '',          // 备注
+  customFields: {} as Record<string, any>,  // 自定义字段
+  wecomExternalUserid: '',  // 企微UserID
+  birthday: ''  // 客户生日
 })
 
 // 地址数据
@@ -743,75 +897,184 @@ const recognizeAddress = () => {
   recognizingAddress.value = true
 
   try {
-    // 省份列表
+    // ── 辅助函数 ──────────────────────────────────────
+    // 判断名称是否在文本中作为「地名前缀」出现（而非路名/建筑名的一部分）
+    // 例如 "中山大道" 不应匹配 "中山市"，"长安街" 不应匹配 "长安区"
+    const roadSuffixes = ['路', '道', '街', '巷', '弄', '桥', '门', '里', '苑', '园', '城', '村', '庄', '号', '楼', '栋', '幢', '大厦', '大道', '公路', '高速', '广场', '花园', '小区']
+    const isPartOfRoadName = (text: string, name: string): boolean => {
+      const idx = text.indexOf(name)
+      if (idx === -1) return false
+      const afterMatch = text.substring(idx + name.length)
+      return roadSuffixes.some(suffix => afterMatch.startsWith(suffix))
+    }
+
+    // 安全匹配：确保匹配的是地名而不是路名的一部分
+    const safeMatch = (text: string, fullName: string, shortName: string): string | null => {
+      // 优先匹配全称（如"广州市"）
+      if (text.includes(fullName)) return fullName
+      // 短名匹配（如"广州"）需确保后面不是路/道/街等
+      if (shortName && shortName.length >= 2 && text.includes(shortName)) {
+        if (!isPartOfRoadName(text, shortName)) return shortName
+      }
+      return null
+    }
+
+    // 从文本中移除匹配到的地名
+    const removeMatch = (text: string, matched: string): string => {
+      const idx = text.indexOf(matched)
+      if (idx === -1) return text
+      return text.substring(0, idx) + text.substring(idx + matched.length)
+    }
+
     const provinceList = getProvinces()
     let matchedProvince = ''
     let matchedCity = ''
     let matchedDistrict = ''
+    let matchedStreet = ''
     let remainingAddress = input
 
-    // 1. 识别省份
+    // ── 1. 识别省份 ──────────────────────────────────
     for (const province of provinceList) {
       const provinceName = province.label.replace(/省|市|自治区|特别行政区/g, '')
-      if (input.includes(province.label) || input.includes(provinceName)) {
+      const matched = safeMatch(input, province.label, provinceName)
+      if (matched) {
         matchedProvince = province.value
-        remainingAddress = input.replace(province.label, '').replace(provinceName, '')
+        remainingAddress = removeMatch(input, matched)
         break
       }
     }
 
-    // 🔥 2. 如果没有识别到省份，尝试直接识别城市，然后反向查找省份
+    // ── 2. 识别城市 ──────────────────────────────────
     if (!matchedProvince) {
-      console.log('[地址识别] 未识别到省份，尝试直接识别城市...')
+      // 未识别到省份时，尝试通过区县或城市反向查找
+      // 策略：先尝试「城市+区县」组合匹配（精度最高），再尝试单独城市匹配
+      console.log('[地址识别] 未识别到省份，尝试反向识别...')
 
-      // 遍历所有省份的城市列表
+      type CandidateMatch = { province: string; city: string; district: string; matchLen: number; remaining: string }
+      let bestCandidate: CandidateMatch | null = null
+
       for (const province of provinceList) {
         const cityList = getCitiesByProvince(province.value)
         for (const city of cityList) {
           const cityName = city.label.replace(/市|地区|自治州|盟/g, '')
-          if (input.includes(city.label) || input.includes(cityName)) {
-            matchedProvince = province.value
-            matchedCity = city.value
-            remainingAddress = input.replace(city.label, '').replace(cityName, '')
-            console.log(`[地址识别] 通过城市"${city.label}"识别到省份"${province.label}"`)
-            break
+          const cityMatched = safeMatch(input, city.label, cityName)
+
+          if (cityMatched) {
+            let tempRemaining = removeMatch(input, cityMatched)
+            let candidateLen = cityMatched.length
+
+            // 尝试继续匹配区县以提高可信度
+            let distMatch = ''
+            const districtList = getDistrictsByCity(province.value, city.value)
+            for (const district of districtList) {
+              const distName = district.label.replace(/区|县|市/g, '')
+              const dMatched = safeMatch(tempRemaining, district.label, distName)
+              if (dMatched) {
+                distMatch = district.value
+                tempRemaining = removeMatch(tempRemaining, dMatched)
+                candidateLen += dMatched.length
+                break
+              }
+            }
+
+            // 选择匹配长度最长的候选（越长越精确）
+            if (!bestCandidate || candidateLen > bestCandidate.matchLen) {
+              bestCandidate = {
+                province: province.value,
+                city: city.value,
+                district: distMatch,
+                matchLen: candidateLen,
+                remaining: tempRemaining
+              }
+            }
           }
         }
-        if (matchedProvince) break
+      }
+
+      // 如果没有通过城市匹配到，尝试直接通过区县名反向查找（如 "天河珠吉街道"）
+      if (!bestCandidate) {
+        for (const province of provinceList) {
+          const cityList = getCitiesByProvince(province.value)
+          for (const city of cityList) {
+            const districtList = getDistrictsByCity(province.value, city.value)
+            for (const district of districtList) {
+              const distName = district.label.replace(/区|县|市/g, '')
+              const dMatched = safeMatch(input, district.label, distName.length >= 2 ? distName : '')
+              if (dMatched) {
+                const tempRemaining = removeMatch(input, dMatched)
+                const candidateLen = dMatched.length
+                if (!bestCandidate || candidateLen > bestCandidate.matchLen) {
+                  bestCandidate = {
+                    province: province.value,
+                    city: city.value,
+                    district: district.value,
+                    matchLen: candidateLen,
+                    remaining: tempRemaining
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+
+      if (bestCandidate) {
+        matchedProvince = bestCandidate.province
+        matchedCity = bestCandidate.city
+        matchedDistrict = bestCandidate.district
+        remainingAddress = bestCandidate.remaining
+        console.log(`[地址识别] 反向识别成功，匹配长度: ${bestCandidate.matchLen}`)
       }
     } else {
-      // 3. 如果已识别省份，继续识别城市
+      // 已识别省份，继续识别城市
       const cityList = getCitiesByProvince(matchedProvince)
       for (const city of cityList) {
         const cityName = city.label.replace(/市|地区|自治州|盟/g, '')
-        if (remainingAddress.includes(city.label) || remainingAddress.includes(cityName)) {
+        const matched = safeMatch(remainingAddress, city.label, cityName)
+        if (matched) {
           matchedCity = city.value
-          remainingAddress = remainingAddress.replace(city.label, '').replace(cityName, '')
+          remainingAddress = removeMatch(remainingAddress, matched)
           break
         }
       }
     }
 
-    // 4. 识别区县
-    if (matchedProvince && matchedCity) {
+    // ── 3. 识别区县（如果还未匹配） ──────────────────
+    if (matchedProvince && matchedCity && !matchedDistrict) {
       const districtList = getDistrictsByCity(matchedProvince, matchedCity)
       for (const district of districtList) {
         const districtName = district.label.replace(/区|县|市/g, '')
-        if (remainingAddress.includes(district.label) || remainingAddress.includes(districtName)) {
+        const matched = safeMatch(remainingAddress, district.label, districtName.length >= 2 ? districtName : '')
+        if (matched) {
           matchedDistrict = district.value
-          remainingAddress = remainingAddress.replace(district.label, '').replace(districtName, '')
+          remainingAddress = removeMatch(remainingAddress, matched)
           break
         }
       }
     }
 
-    // 5. 清理剩余地址（去除可能的姓名和电话）
+    // ── 4. 识别乡镇/街道 ──────────────────────────────
+    if (matchedProvince && matchedCity && matchedDistrict) {
+      const streetList = getStreetsByDistrict(matchedProvince, matchedCity, matchedDistrict)
+      for (const street of streetList) {
+        const streetName = street.label.replace(/街道|镇|乡|办事处/g, '')
+        // 街道匹配：优先全称，短名至少2字且不能是路名一部分
+        const matched = safeMatch(remainingAddress, street.label, streetName.length >= 2 ? streetName : '')
+        if (matched) {
+          matchedStreet = street.value
+          remainingAddress = removeMatch(remainingAddress, matched)
+          break
+        }
+      }
+    }
+
+    // ── 5. 清理剩余地址 ──────────────────────────────
     // 移除电话号码
     remainingAddress = remainingAddress.replace(/1[3-9]\d{9}/g, '')
     // 移除常见分隔符
     remainingAddress = remainingAddress.replace(/^[\s,，、\-]+/, '').trim()
 
-    // 6. 填充表单
+    // ── 6. 填充表单 ──────────────────────────────────
     if (matchedProvince) {
       customerForm.province = matchedProvince
       cities.value = getCitiesByProvince(matchedProvince)
@@ -823,6 +1086,10 @@ const recognizeAddress = () => {
         if (matchedDistrict) {
           customerForm.district = matchedDistrict
           streets.value = getStreetsByDistrict(matchedProvince, matchedCity, matchedDistrict)
+
+          if (matchedStreet) {
+            customerForm.street = matchedStreet
+          }
         }
       }
 
@@ -1005,8 +1272,9 @@ const handlePhoneTypeChange = (command: 'mainland' | 'overseas' | 'landline') =>
   ElMessage.success(`已切换到${phoneTypeLabel.value}模式`)
 }
 
-// 表单验证规则
-const formRules: FormRules = {
+// 表单验证规则（动态，基于系统设置的客户字段配置）
+const formRules = computed<FormRules>(() => {
+  const rules: FormRules = {
   name: [
     validationRules.required('请输入客户姓名'),
     validationRules.chineseName('请输入正确的姓名（支持中英文等多语言，2-50个字符）')
@@ -1052,41 +1320,13 @@ const formRules: FormRules = {
   email: [
     validationRules.email('请输入正确的邮箱格式')
   ],
-  gender: [
-    validationRules.required('请选择性别')
-  ],
-  age: [
-    { required: true, message: '请输入年龄', trigger: 'blur' },
-    { type: 'number', min: 1, max: 120, message: '年龄应在1-120之间', trigger: 'blur' }
-  ],
-  fanAcquisitionTime: [
-    validationRules.required('请选择进粉时间')
-  ],
-  height: [
-    { required: true, message: '请输入身高', trigger: 'blur' },
-    { type: 'number', min: 50, max: 250, message: '身高应在50-250cm之间', trigger: 'blur' }
-  ],
-  weight: [
-    { required: true, message: '请输入体重', trigger: 'blur' },
-    { type: 'number', min: 20, max: 300, message: '体重应在20-300kg之间', trigger: 'blur' }
-  ],
-  level: [
-    { required: true, message: '请选择客户等级', trigger: 'change' }
-  ],
-  status: [
-    { required: true, message: '请选择客户状态', trigger: 'change' }
-  ],
-  medicalHistory: [
-    { required: true, message: '请输入疾病史', trigger: 'blur' },
-    { max: 500, message: '疾病史长度不能超过500个字符', trigger: 'blur' }
-  ],
-  salesPerson: [
-    { required: true, message: '请选择负责销售', trigger: 'change' }
-  ],
+  level: [],
+  status: [],
+  salesPerson: [],
   province: [
     {
       validator: (rule: unknown, value: string, callback: (error?: Error) => void) => {
-        if (!customerForm.isOverseas && !value) {
+        if (!customerForm.isOverseas && customerFieldConfigStore.isFieldRequired('province') && !value) {
           callback(new Error('请选择省份'))
         } else {
           callback()
@@ -1098,7 +1338,7 @@ const formRules: FormRules = {
   city: [
     {
       validator: (rule: unknown, value: string, callback: (error?: Error) => void) => {
-        if (!customerForm.isOverseas && !value) {
+        if (!customerForm.isOverseas && customerFieldConfigStore.isFieldRequired('city') && !value) {
           callback(new Error('请选择城市'))
         } else {
           callback()
@@ -1108,15 +1348,33 @@ const formRules: FormRules = {
     }
   ],
   district: [
-    { min: 1, max: 50, message: '区县长度应在1-50个字符之间', trigger: 'change' }
+    {
+      validator: (rule: unknown, value: string, callback: (error?: Error) => void) => {
+        if (!customerForm.isOverseas && customerFieldConfigStore.isFieldRequired('district') && !value) {
+          callback(new Error('请选择区县'))
+        } else {
+          callback()
+        }
+      },
+      trigger: 'change'
+    }
   ],
   street: [
-    { min: 1, max: 100, message: '街道长度应在1-100个字符之间', trigger: 'blur' }
+    {
+      validator: (rule: unknown, value: string, callback: (error?: Error) => void) => {
+        if (!customerForm.isOverseas && customerFieldConfigStore.isFieldRequired('street') && !value) {
+          callback(new Error('请选择街道'))
+        } else {
+          callback()
+        }
+      },
+      trigger: 'change'
+    }
   ],
   detailAddress: [
     {
       validator: (rule: unknown, value: string, callback: (error?: Error) => void) => {
-        if (!customerForm.isOverseas && !value) {
+        if (!customerForm.isOverseas && customerFieldConfigStore.isFieldRequired('detailAddress') && !value) {
           callback(new Error('请输入详细地址'))
         } else if (!customerForm.isOverseas && value && (value.length < 5 || value.length > 200)) {
           callback(new Error('详细地址长度应在5-200个字符之间'))
@@ -1150,19 +1408,6 @@ const formRules: FormRules = {
   qq: [
     { type: 'number', min: 10000, max: 9999999999, message: '请输入正确的QQ号', trigger: 'blur' }
   ],
-  improvementGoals: [
-    {
-      required: true,
-      validator: (rule: unknown, value: string[], callback: (error?: Error) => void) => {
-        if (!value || value.length === 0) {
-          callback(new Error('请至少选择一个改善问题'))
-        } else {
-          callback()
-        }
-      },
-      trigger: 'change'
-    }
-  ],
   otherGoals: [
     {
       validator: (rule: unknown, value: string, callback: (error?: Error) => void) => {
@@ -1174,8 +1419,96 @@ const formRules: FormRules = {
       },
       trigger: 'blur'
     }
-  ]
-}
+  ],
+  wecomExternalUserid: [
+    { max: 100, message: '企微UserID长度不能超过100个字符', trigger: 'blur' }
+  ],
+  birthday: []
+  }
+
+  // 动态添加必填规则（根据系统设置）
+  if (customerFieldConfigStore.isFieldRequired('gender')) {
+    rules.gender = [validationRules.required('请选择性别')]
+  }
+  if (customerFieldConfigStore.isFieldRequired('age')) {
+    rules.age = [
+      { required: true, message: '请输入年龄', trigger: 'blur' },
+      { type: 'number', min: 1, max: 120, message: '年龄应在1-120之间', trigger: 'blur' }
+    ]
+  } else {
+    rules.age = [
+      { type: 'number', min: 1, max: 120, message: '年龄应在1-120之间', trigger: 'blur' }
+    ]
+  }
+  if (customerFieldConfigStore.isFieldRequired('fanAcquisitionTime')) {
+    rules.fanAcquisitionTime = [validationRules.required('请选择进粉时间')]
+  }
+  if (customerFieldConfigStore.isFieldRequired('height')) {
+    rules.height = [
+      { required: true, message: '请输入身高', trigger: 'blur' },
+      { type: 'number', min: 50, max: 250, message: '身高应在50-250cm之间', trigger: 'blur' }
+    ]
+  } else {
+    rules.height = [
+      { type: 'number', min: 50, max: 250, message: '身高应在50-250cm之间', trigger: 'blur' }
+    ]
+  }
+  if (customerFieldConfigStore.isFieldRequired('weight')) {
+    rules.weight = [
+      { required: true, message: '请输入体重', trigger: 'blur' },
+      { type: 'number', min: 20, max: 300, message: '体重应在20-300kg之间', trigger: 'blur' }
+    ]
+  } else {
+    rules.weight = [
+      { type: 'number', min: 20, max: 300, message: '体重应在20-300kg之间', trigger: 'blur' }
+    ]
+  }
+  if (customerFieldConfigStore.isFieldRequired('medicalHistory')) {
+    rules.medicalHistory = [
+      { required: true, message: '请输入疾病史', trigger: 'blur' },
+      { max: 500, message: '疾病史长度不能超过500个字符', trigger: 'blur' }
+    ]
+  } else {
+    rules.medicalHistory = [
+      { max: 500, message: '疾病史长度不能超过500个字符', trigger: 'blur' }
+    ]
+  }
+  if (customerFieldConfigStore.isFieldRequired('improvementGoals')) {
+    rules.improvementGoals = [
+      {
+        required: true,
+        validator: (rule: unknown, value: string[], callback: (error?: Error) => void) => {
+          if (!value || value.length === 0) {
+            callback(new Error('请至少选择一个改善问题'))
+          } else {
+            callback()
+          }
+        },
+        trigger: 'change'
+      }
+    ]
+  }
+  if (customerFieldConfigStore.isFieldRequired('wecomExternalUserid')) {
+    rules.wecomExternalUserid = [
+      { required: true, message: '请输入企微UserID', trigger: 'blur' },
+      { max: 100, message: '企微UserID长度不能超过100个字符', trigger: 'blur' }
+    ]
+  }
+  if (customerFieldConfigStore.isFieldRequired('birthday')) {
+    rules.birthday = [{ required: true, message: '请选择客户生日', trigger: 'change' }]
+  }
+  if (customerFieldConfigStore.isFieldRequired('level')) {
+    rules.level = [{ required: true, message: '请选择客户等级', trigger: 'change' }]
+  }
+  if (customerFieldConfigStore.isFieldRequired('status')) {
+    rules.status = [{ required: true, message: '请选择客户状态', trigger: 'change' }]
+  }
+  if (customerFieldConfigStore.isFieldRequired('salesPerson')) {
+    rules.salesPerson = [{ required: true, message: '请选择负责销售', trigger: 'change' }]
+  }
+
+  return rules
+})
 
 // 方法定义
 /**
@@ -1209,12 +1542,15 @@ const verifyCustomer = async () => {
     if (response.data) {
       // 客户已存在
       const existingCustomer = response.data
+      const isOwnCustomer = existingCustomer.creatorName === userStore.currentUser?.name
+
       customerVerifyResult.value = {
         type: 'warning',
-        message: '该手机号已存在客户记录',
+        message: isOwnCustomer ? '该手机号已存在客户记录' : '该手机号已存在客户记录',
         owner: existingCustomer.creatorName || existingCustomer.name,
         createTime: existingCustomer.createTime,
-        customerId: existingCustomer.id
+        customerId: existingCustomer.id,
+        isOwnCustomer // 标记是否是自己创建的
       }
       console.log('客户已存在:', existingCustomer)
     } else {
@@ -1364,7 +1700,10 @@ const handleSubmit = async () => {
         gender: customerForm.gender,
         medicalHistory: customerForm.medicalHistory,
         improvementGoals: customerForm.improvementGoals,
-        otherGoals: customerForm.otherGoals
+        otherGoals: customerForm.otherGoals,
+        customFields: customerForm.customFields,
+        wecomExternalUserid: customerForm.wecomExternalUserid || undefined,
+        birthday: customerForm.birthday || undefined
       }
 
       console.log('准备保存的客户数据:', customerData)
@@ -1443,10 +1782,13 @@ const handleSubmit = async () => {
 
   } catch (error) {
     console.error('❌ 保存客户失败:', error)
-    ElMessage.error({
-      message: error instanceof Error ? error.message : '添加客户失败',
-      duration: 3000
-    })
+    // 🔥 如果是已由拦截器处理的错误（如授权过期弹窗），不重复显示错误提示
+    if (!(error as any)?.__handled) {
+      ElMessage.error({
+        message: error instanceof Error ? error.message : '添加客户失败',
+        duration: 3000
+      })
+    }
   } finally {
     loading.value = false
   }
@@ -1694,7 +2036,9 @@ const handleSaveAndOrder = async () => {
   } catch (error) {
     console.error('handleSaveAndOrder 失败:', error)
     loading.value = false
-    ElMessage.error('保存客户信息失败')
+    if (!(error as any)?.__handled) {
+      ElMessage.error('保存客户信息失败')
+    }
   }
 }
 
@@ -2063,6 +2407,17 @@ onMounted(async () => {
 
 
 /* 响应式设计 */
+.customer-settings-link {
+  font-size: 18px;
+  color: #409eff;
+  cursor: pointer;
+  margin-left: 8px;
+  vertical-align: middle;
+}
+.customer-settings-link:hover {
+  color: #66b1ff;
+}
+
 @media (max-width: 768px) {
   .page-header {
     flex-direction: column;

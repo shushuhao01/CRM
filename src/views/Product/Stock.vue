@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="stock-container">
     <!-- 页面头部 -->
     <div class="page-header">
@@ -149,9 +149,13 @@
           <template #default="{ row }">
             <div class="product-info">
               <img :src="row.image" :alt="row.productName" class="product-image" />
-              <el-tooltip :content="row.productName" placement="top" :disabled="!row.productName || row.productName.length < 15">
-                <span class="product-name-text">{{ row.productName }}</span>
-              </el-tooltip>
+              <div style="display: flex; align-items: center; overflow: hidden;">
+                <el-tag v-if="row.productType === 'virtual'" type="warning" size="small" effect="light" style="margin-right: 4px; flex-shrink: 0;">虚拟</el-tag>
+                <el-tag v-else size="small" effect="light" style="margin-right: 4px; flex-shrink: 0;">实物</el-tag>
+                <el-tooltip :content="row.productName" placement="top" :disabled="!row.productName || row.productName.length < 15">
+                  <span class="product-name-text">{{ row.productName }}</span>
+                </el-tooltip>
+              </div>
             </div>
           </template>
         </el-table-column>
@@ -187,14 +191,27 @@
           </template>
         </el-table-column>
         <el-table-column prop="lastUpdateTime" label="最后更新" width="160" />
-        <el-table-column label="操作" width="180" fixed="right">
+        <el-table-column label="操作" width="200" fixed="right">
           <template #default="{ row }">
-            <el-button type="primary" size="small" link @click="handleAdjustStock(row)">
-              调整库存
-            </el-button>
-            <el-button type="warning" size="small" link @click="handleSetWarning(row)">
-              设置预警
-            </el-button>
+            <template v-if="row.productType === 'virtual'">
+              <el-button v-if="row.virtualDeliveryType === 'card_key'" type="warning" size="small" link @click="goToCardKeyManage(row)">
+                卡密库存
+              </el-button>
+              <el-button v-else-if="row.virtualDeliveryType === 'resource_link'" type="warning" size="small" link @click="goToResourceManage(row)">
+                资源库存
+              </el-button>
+              <el-button v-else type="info" size="small" link disabled>
+                无需管理
+              </el-button>
+            </template>
+            <template v-else>
+              <el-button type="primary" size="small" link @click="handleAdjustStock(row)">
+                调整库存
+              </el-button>
+              <el-button type="warning" size="small" link @click="handleSetWarning(row)">
+                设置预警
+              </el-button>
+            </template>
             <el-button type="info" size="small" link @click="handleViewHistory(row)">
               变动记录
             </el-button>
@@ -597,6 +614,7 @@ import {
 } from '@element-plus/icons-vue'
 import { useProductStore } from '@/stores/product'
 import { productApi } from '@/api/product'
+import { useRouter } from 'vue-router'
 
 // 接口定义
 interface StockItem {
@@ -640,6 +658,7 @@ interface StockStatistics {
 
 // 使用产品store
 const productStore = useProductStore()
+const router = useRouter()
 
 // 响应式数据
 const loading = ref(false)
@@ -812,16 +831,19 @@ const loadData = async () => {
     // 转换数据格式以匹配界面需求
     const allStockData = products.map((item: any) => ({
       id: item.id,
+      productId: item.id,
       productCode: item.code,
       productName: item.name,
+      productType: item.productType || 'physical',
+      virtualDeliveryType: item.virtualDeliveryType || null,
       category: item.categoryName || item.category,
       image: item.image,
       currentStock: item.stock,
       minStock: item.minStock || 10,
       maxStock: item.maxStock || 9999,
       unit: item.unit || '件',
-      costPrice: item.costPrice || item.price * 0.7,  // 成本价，如果没有则按销售价的70%估算
-      salePrice: item.price,  // 销售价
+      costPrice: item.costPrice || item.price * 0.7,
+      salePrice: item.price,
       lastUpdateTime: item.updateTime || item.createTime
     }))
 
@@ -931,6 +953,14 @@ const handleViewHistory = async (row: any) => {
   } finally {
     historyLoading.value = false
   }
+}
+
+// 虚拟商品库存管理跳转
+const goToCardKeyManage = (row: any) => {
+  router.push({ path: '/product/virtual/card-keys', query: { productId: row.productId } })
+}
+const goToResourceManage = (row: any) => {
+  router.push({ path: '/product/virtual/resources', query: { productId: row.productId } })
 }
 
 // 批量导入功能

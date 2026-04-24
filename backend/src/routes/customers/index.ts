@@ -4,6 +4,7 @@ import { registerCoreRoutes } from './core';
 import { registerGroupRoutes } from './groups';
 import { registerTagRoutes } from './tags';
 import { registerRelatedRoutes } from './related';
+import { registerLogRoutes } from './logs';
 
 const router = Router();
 
@@ -17,5 +18,6 @@ registerGroupRoutes(router);     // /groups/*
 registerTagRoutes(router);       // /tags/*
 registerCoreRoutes(router);      // GET /, POST /, check-exists, stats, search, /:id CRUD
 registerRelatedRoutes(router);   // /:id/orders, /:id/services, etc.
+registerLogRoutes(router);       // /:id/logs
 
 export default router;

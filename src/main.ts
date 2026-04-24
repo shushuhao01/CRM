@@ -1,4 +1,5 @@
 import './assets/main.css'
+import './styles/v4-design-system.css'
 
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
@@ -19,6 +20,8 @@ import { initSecureConsoleConfig } from './utils/secureLogger'
 
 // 🔥 防止重复弹窗的标志
 let isShowingGlobalErrorDialog = false
+// 🔥 记录应用加载完成时间，刚加载时不弹动态导入错误
+const APP_LOAD_TS = Date.now()
 
 // 🔥 动态导入重载防循环：用sessionStorage记录重载次数，避免无限刷新
 const RELOAD_KEY = 'dynamic_import_reload_count'
@@ -67,6 +70,34 @@ const isDynamicImportError = (error: Error | string): boolean => {
 // 🔥 处理动态导入失败
 const handleDynamicImportError = () => {
   if (isShowingGlobalErrorDialog) return
+
+  // 🔥 如果应用刚加载不到5秒，静默重试一次，不弹窗
+  if (Date.now() - APP_LOAD_TS < 5000) {
+    const reloadCount = getReloadCount()
+    if (reloadCount < MAX_RELOAD_ATTEMPTS) {
+      console.log('[Main] 应用刚加载，静默重试动态导入')
+      incrementReloadCount()
+      window.location.reload()
+    } else {
+      console.warn('[Main] 应用刚加载但已重试过，静默跳过')
+    }
+    return
+  }
+
+  // 🔥 开发环境下只做静默重载，不弹对话框
+  if (import.meta.env.DEV) {
+    const reloadCount = getReloadCount()
+    if (reloadCount < MAX_RELOAD_ATTEMPTS) {
+      console.log('[Main] 开发环境动态导入失败，静默重载')
+      incrementReloadCount()
+      window.location.reload()
+    } else {
+      console.warn('[Main] 开发环境动态导入失败，已重载过，跳过')
+      clearReloadCount()
+    }
+    return
+  }
+
   isShowingGlobalErrorDialog = true
 
   // 🔥 检查是否在公开页面，公开页面不需要登录验证

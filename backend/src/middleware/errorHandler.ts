@@ -96,8 +96,11 @@ export const errorHandler = (
     } else if (dbError.code === 'ER_NO_REFERENCED_ROW_2') {
       message = '关联数据不存在';
       code = 'FOREIGN_KEY_ERROR';
+    } else if (dbError.code === 'ER_BAD_FIELD_ERROR') {
+      message = '系统数据结构需要升级，请联系管理员';
+      code = 'SCHEMA_ERROR';
     } else {
-      message = '数据库操作失败';
+      message = '数据库操作失败，请稍后重试';
     }
   }
   // 处理JSON解析错误

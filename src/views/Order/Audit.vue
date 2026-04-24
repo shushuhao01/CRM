@@ -1,4 +1,4 @@
-<!-- eslint-disable vue/multi-word-component-names -->
+﻿<!-- eslint-disable vue/multi-word-component-names -->
 <template>
   <div class="order-audit">
     <!-- 页面头部 -->
@@ -321,6 +321,53 @@
         >
           {{ getAuditFlagText(row.auditFlag) }}
         </el-tag>
+      </template>
+
+      <!-- 订单备注列 -->
+      <template #column-remark="{ row }">
+        <el-tooltip
+          :content="row.remark || '无备注'"
+          placement="top"
+          :disabled="!row.remark || row.remark.length <= 20"
+        >
+          <span class="text-overflow">{{ row.remark || '-' }}</span>
+        </el-tooltip>
+      </template>
+
+      <!-- 产品列 -->
+      <template #column-products="{ row }">
+        <el-tooltip
+          placement="top"
+          :disabled="!row.products || row.products.length === 0"
+        >
+          <template #content>
+            <div class="products-tooltip">
+              <div
+                v-for="(product, index) in row.products"
+                :key="product.id"
+                class="product-item-tooltip"
+              >
+                <div class="product-name-tooltip">{{ index + 1 }}. {{ product.name }}</div>
+                <div class="product-detail-tooltip">
+                  <span v-if="product.sku">SKU: {{ product.sku }}</span>
+                  <span>数量: {{ product.quantity }}</span>
+                  <span>单价: ¥{{ (product.price || 0).toFixed(2) }}</span>
+                </div>
+              </div>
+            </div>
+          </template>
+          <span class="text-overflow products-text">
+            <template v-if="row.products && row.products.length > 0">
+              <template v-for="(p, idx) in row.products" :key="idx">
+                <span v-if="idx > 0">、</span>
+                <el-tag v-if="p.productType === 'virtual'" type="warning" size="small" effect="light" style="margin-right: 2px;">虚拟</el-tag>
+                <el-tag v-else size="small" effect="light" style="margin-right: 2px;">实物</el-tag>
+                {{ p.name }}×{{ p.quantity }}
+              </template>
+            </template>
+            <template v-else>-</template>
+          </span>
+        </el-tooltip>
       </template>
 
       <template #table-actions="{ row }">
@@ -950,6 +997,14 @@ interface AuditOrder {
   depositAmount: number
   codAmount: number
   productCount: number
+  products?: Array<{     // 商品列表
+    id: string
+    name: string
+    sku?: string
+    price: number
+    quantity: number
+    image?: string
+  }>
   createTime: string
   waitingHours?: number
   remark: string
@@ -1212,7 +1267,14 @@ const tableColumns = computed(() => [
   {
     prop: 'remark',
     label: '订单备注',
-    minWidth: 150,
+    width: 100,
+    showOverflowTooltip: true,
+    visible: true
+  },
+  {
+    prop: 'products',
+    label: '产品',
+    minWidth: 180,
     showOverflowTooltip: true,
     visible: true
   }
@@ -2160,6 +2222,7 @@ const loadOrderList = async () => {
           depositAmount: order.depositAmount || 0,
           codAmount: (order.totalAmount || 0) - (order.depositAmount || 0),
           productCount: order.products?.length || 0,
+          products: order.products || [],
           createTime: order.createTime,
           paymentMethod: order.paymentMethod || '',
           waitingMinutes: Math.floor((new Date().getTime() - new Date(order.createTime).getTime()) / (1000 * 60)),
@@ -3190,5 +3253,53 @@ onUnmounted(() => {
     margin-right: 12px;
     margin-bottom: 8px;
   }
+}
+
+/* 文本溢出样式 */
+.text-overflow {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+/* 产品列表样式 */
+.products-text {
+  color: #606266;
+  font-size: 13px;
+}
+
+/* 产品悬浮提示样式 */
+.products-tooltip {
+  max-width: 400px;
+  padding: 4px 0;
+}
+
+.product-item-tooltip {
+  padding: 8px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.product-item-tooltip:last-child {
+  border-bottom: none;
+}
+
+.product-name-tooltip {
+  font-weight: 500;
+  margin-bottom: 4px;
+  color: #fff;
+  font-size: 13px;
+}
+
+.product-detail-tooltip {
+  display: flex;
+  gap: 12px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.product-detail-tooltip span {
+  white-space: nowrap;
 }
 </style>

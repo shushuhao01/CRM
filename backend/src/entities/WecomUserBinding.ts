@@ -1,12 +1,16 @@
 /**
  * 企微成员与CRM用户绑定关系实体
  */
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, Unique } from 'typeorm';
 
 @Entity('wecom_user_bindings')
+@Unique(['tenantId', 'wecomConfigId', 'wecomUserId'])
 export class WecomUserBinding {
   @PrimaryGeneratedColumn()
   id: number;
+
+  @Column({ name: 'tenant_id', type: 'varchar', length: 36, nullable: true, comment: '租户ID' })
+  tenantId?: string;
 
   @Column({ name: 'wecom_config_id', type: 'int', comment: '企微配置ID' })
   wecomConfigId: number;
@@ -23,7 +27,7 @@ export class WecomUserBinding {
   @Column({ name: 'wecom_avatar', type: 'varchar', length: 255, nullable: true, comment: '企微成员头像' })
   wecomAvatar: string;
 
-  @Column({ name: 'wecom_department_ids', type: 'varchar', length: 50, nullable: true, comment: '企微部门ID列表(逗号分隔)' })
+  @Column({ name: 'wecom_department_ids', type: 'varchar', length: 500, nullable: true, comment: '企微部门ID列表(逗号分隔)' })
   wecomDepartmentIds: string;
 
   @Column({ name: 'crm_user_id', type: 'varchar', length: 50, comment: 'CRM系统用户ID' })

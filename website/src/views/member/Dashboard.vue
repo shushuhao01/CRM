@@ -1,7 +1,7 @@
 <template>
   <div class="dashboard-page">
     <div class="page-header">
-      <h2>欢迎回来，{{ profile?.tenant?.contact || profile?.tenant?.name || '会员' }}！</h2>
+      <h2>欢迎回来，{{ profile?.tenant?.contact || profile?.tenant?.name || profile?.name || '会员' }}！</h2>
       <p>{{ new Date().toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' }) }}</p>
     </div>
 
@@ -26,7 +26,17 @@
             <span class="stat-desc">{{ formatDate(profile.license?.expireDate) }}</span>
           </div>
         </div>
-        <div class="stat-card">
+        <div v-if="profile.usage?.userLimitMode === 'online'" class="stat-card">
+          <div class="stat-icon">🟢</div>
+          <div class="stat-info">
+            <span class="stat-label">在线席位 <span style="background:#dcfce7;color:#16a34a;font-size:10px;padding:0 4px;border-radius:6px;font-weight:600;">席位制</span></span>
+            <span class="stat-value">{{ profile.usage?.onlineCount || 0 }}/{{ profile.usage?.maxOnlineSeats || 0 }}</span>
+            <div class="progress-bar">
+              <div class="progress-fill" :style="{ width: (profile.usage?.onlineSeatPercent || 0) + '%' }"></div>
+            </div>
+          </div>
+        </div>
+        <div v-else class="stat-card">
           <div class="stat-icon">👥</div>
           <div class="stat-info">
             <span class="stat-label">用户数</span>
@@ -131,9 +141,59 @@
       </div>
     </template>
 
+    <div v-else class="empty-page">
+      <div style="text-align:center;padding:60px 0;color:#94a3b8;">
+        <div style="font-size:48px;margin-bottom:16px;">📊</div>
+        <p style="font-size:15px;margin:0 0 8px;">暂无法加载概览数据</p>
+        <p style="font-size:13px;margin:0;">请检查网络连接或 <a href="/member/login" style="color:#6366f1;">重新登录</a></p>
+      </div>
+    </div>
+
     <!-- 快捷支付弹窗 -->
     <div v-if="showQuickPay" class="pay-overlay" @click.self="closeQuickPay">
-      <!-- ...existing code... -->
+      <div class="quick-pay-dialog">
+        <div class="quick-pay-header">
+          <h3>💳 快捷支付</h3>
+          <button class="pay-close" @click="closeQuickPay">&times;</button>
+        </div>
+        <div class="quick-pay-body">
+          <div class="quick-pay-info">
+            <div class="quick-pay-amount">¥{{ quickPayBill?.amount }}</div>
+            <div class="quick-pay-name">{{ quickPayBill?.packageName }}</div>
+          </div>
+
+          <!-- 支付渠道选择 -->
+          <div class="quick-channel-opts">
+            <label class="qc-opt" :class="{ selected: quickPayChannel === 'wechat' }" @click="switchQuickChannel('wechat')">
+              <input type="radio" value="wechat" v-model="quickPayChannel" />
+              💚 微信支付
+            </label>
+            <label class="qc-opt" :class="{ selected: quickPayChannel === 'alipay' }" @click="switchQuickChannel('alipay')">
+              <input type="radio" value="alipay" v-model="quickPayChannel" />
+              🔵 支付宝
+            </label>
+          </div>
+
+          <!-- 二维码区域 -->
+          <div v-if="quickPayGenerating" class="quick-loading-area">
+            <span class="loading-spinner"></span>
+            <span>正在生成收款码...</span>
+          </div>
+          <div v-else-if="quickPayQr" class="quick-qr-area">
+            <p class="quick-qr-label">请使用{{ quickPayChannel === 'wechat' ? '微信' : '支付宝' }}扫码支付</p>
+            <div class="quick-qr-box">
+              <img :src="quickPayQr" alt="支付二维码" />
+            </div>
+            <button class="btn-check-quick" @click="handleCheckQuickPay" :disabled="quickPayChecking">
+              {{ quickPayChecking ? '查询中...' : '我已支付' }}
+            </button>
+            <p class="quick-warn">⚠️ 支付完成后请点击上方按钮确认</p>
+          </div>
+          <div v-else class="quick-loading-area">
+            <span>正在加载支付信息...</span>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- 到期提醒弹窗 -->
@@ -173,6 +233,7 @@
 import { ref, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { getMemberProfile, getMemberBills, getMemberToken } from '@/api/member'
+import { generateQRCodeDataUrl } from '@/utils/qrcode'
 
 const router = useRouter()
 const API_BASE = '/api/v1'
@@ -239,28 +300,23 @@ const formatStorage = (mb: number) => {
   return Math.round(mb) + 'MB'
 }
 
-/** 生成二维码URL */
-const generateQRCodeUrl = (content: string) => {
-  return `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(content)}`
-}
 
 /** 快捷支付 — 打开弹窗自动生成二维码 */
-const handleQuickPay = (bill: any) => {
+const handleQuickPay = async (bill: any) => {
   quickPayBill.value = bill
   quickPayQr.value = ''
   quickPayOrderNo.value = bill.orderNo
   quickPayChannel.value = bill.payType || 'wechat'
   showQuickPay.value = true
 
-  // 如果已有二维码直接显示
   if (bill.qrCode && bill.status === 'pending') {
-    quickPayQr.value = bill.qrCode
+    quickPayQr.value = bill.qrCode.startsWith('data:') || bill.qrCode.startsWith('http')
+      ? bill.qrCode : await generateQRCodeDataUrl(bill.qrCode)
     startQuickPoll(bill.orderNo)
   } else if (bill.payUrl && bill.status === 'pending') {
-    quickPayQr.value = bill.payUrl
+    quickPayQr.value = await generateQRCodeDataUrl(bill.payUrl)
     startQuickPoll(bill.orderNo)
   } else {
-    // 自动生成二维码
     handleGenQuickPay()
   }
 }
@@ -295,16 +351,14 @@ const handleGenQuickPay = async () => {
     const data = await res.json()
     if (data.code === 0 && data.data) {
       quickPayOrderNo.value = data.data.orderNo || orderNo
-      if (data.data.qrCode) {
+      if (data.data.qrCode && (data.data.qrCode.startsWith('http') || data.data.qrCode.startsWith('data:'))) {
         quickPayQr.value = data.data.qrCode
-        startQuickPoll(quickPayOrderNo.value)
       } else if (data.data.payUrl) {
-        quickPayQr.value = data.data.payUrl
-        startQuickPoll(quickPayOrderNo.value)
+        quickPayQr.value = await generateQRCodeDataUrl(data.data.payUrl)
       } else {
-        quickPayQr.value = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(quickPayOrderNo.value)}`
-        startQuickPoll(quickPayOrderNo.value)
+        quickPayQr.value = await generateQRCodeDataUrl(quickPayOrderNo.value)
       }
+      startQuickPoll(quickPayOrderNo.value)
     } else {
       alert(data.message || '生成收款码失败')
     }

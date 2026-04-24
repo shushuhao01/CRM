@@ -118,6 +118,24 @@
             <span v-else>{{ getLicenseTypeText(row.licenseType) }}</span>
           </template>
         </el-table-column>
+        <el-table-column label="在线/席位/用户" width="150" align="center">
+          <template #default="{ row }">
+            <div style="display:flex;align-items:center;justify-content:center;gap:5px;cursor:default;">
+              <span style="color:#16a34a;font-weight:600;font-size:14px;">{{ row.current_online_seats || 0 }}</span>
+              <span style="color:#c0c4cc;font-size:12px;">/</span>
+              <span style="color:#7c3aed;font-weight:600;font-size:14px;">{{ (Number(row.max_online_seats)||0) + (Number(row.extra_online_seats)||0) }}</span>
+              <span style="color:#c0c4cc;font-size:12px;">/</span>
+              <span v-if="row.user_limit_mode === 'online'" style="color:#909399;font-size:13px;">{{ row.user_count || 0 }}人</span>
+              <span v-else style="color:#2563eb;font-weight:600;font-size:14px;">{{ row.user_count || 0 }}/{{ row.maxUsers || 0 }}</span>
+              <el-tooltip v-if="row.user_limit_mode === 'online'" content="限在线席位（注册不限）" placement="top">
+                <span style="background:#dcfce7;color:#16a34a;font-size:10px;padding:1px 4px;border-radius:3px;font-weight:600;line-height:16px;cursor:help;">限在</span>
+              </el-tooltip>
+              <el-tooltip v-else content="限注册用户数" placement="top">
+                <span style="background:#e0e7ff;color:#4338ca;font-size:10px;padding:1px 4px;border-radius:3px;font-weight:600;line-height:16px;cursor:help;">限注</span>
+              </el-tooltip>
+            </div>
+          </template>
+        </el-table-column>
         <el-table-column label="到期时间" width="110" align="center">
           <template #default="{ row }">
             <span class="expire-date" :class="{ 'text-danger': row.remainingDays <= 7 || row.remainingDays < 0 }">

@@ -24,14 +24,17 @@ export function hasMenuPermission(
     return true
   }
 
+  // 🔥 角色名规范化：manager 视为 department_manager
+  const effectiveRole = userRole === 'manager' ? 'department_manager' : userRole
+
   // 🔥 定义系统预设角色列表
-  const systemRoles = ['super_admin', 'admin', 'department_manager', 'sales_staff', 'customer_service']
+  const systemRoles = ['super_admin', 'admin', 'department_manager', 'manager', 'sales_staff', 'customer_service']
   const isSystemRole = systemRoles.includes(userRole)
 
   // 检查角色权限 - 只对系统预设角色进行角色检查，自定义角色跳过角色检查
   // 🔥 customer_service 角色的菜单可见性完全由自定义权限决定，跳过 roles 数组检查
-  if (menuItem.roles && menuItem.roles.length > 0 && isSystemRole && userRole !== 'customer_service') {
-    if (!menuItem.roles.includes(userRole)) {
+  if (menuItem.roles && menuItem.roles.length > 0 && isSystemRole && effectiveRole !== 'customer_service') {
+    if (!menuItem.roles.includes(effectiveRole)) {
       return false
     }
   }
@@ -128,7 +131,7 @@ export async function getUserAccessibleMenus(menuItems: MenuItem[]): Promise<Men
     console.error('[模块过滤] 获取模块状态失败，使用默认配置:', error)
     enabledModules = [
       'dashboard', 'customer', 'order', 'finance', 'logistics',
-      'service', 'data', 'performance', 'product', 'service-management', 'system'
+      'service', 'data', 'performance', 'product', 'service-management', 'wecom', 'system'
     ]
   }
 

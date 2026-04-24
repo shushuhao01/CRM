@@ -1,0 +1,58 @@
+﻿node.exe : NODE_ENV=production is not supported in th
+e .env file. Only NODE_ENV=development is supported t
+o create a development build of your project. If you 
+need to set process.env.NODE_ENV, you can set it in t
+he Vite config instead.
+所在位置 行:1 字符: 1
++ & "D:\RJ\Node/node.exe" "D:\RJ\Node/node_modules/np
+m/bin/npx-cli.js"  ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (NODE_EN 
+   V=produc...config instead.:String) [], RemoteExc  
+  eption
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+[36mvite v5.4.20 [32mbuilding for production...[36m[39m
+transforming...
+[32m鉁?[39m 347 modules transformed.
+[31mx[39m Build failed in 1.50s
+[31merror during build:
+[31m[vite:vue] [plugin vite:vue] src/views/ServiceMa
+nagement/SmsTemplateDetail.vue (8:9): Element is miss
+ing end tag.[31m
+file: [36mD:/kaifa/CRM - 1.8.0/src/views/ServiceMana
+gement/SmsTemplateDetail.vue:8:9[31m
+SyntaxError: [plugin vite:vue] src/views/ServiceManag
+ement/SmsTemplateDetail.vue (8:9): Element is missing
+ end tag.
+    at createCompilerError (D:\kaifa\CRM - 1.8.0\node
+_modules\@vue\compiler-core\dist\compiler-core.cjs.pr
+od.js:1360:17)
+    at emitError (D:\kaifa\CRM - 1.8.0\node_modules\@
+vue\compiler-core\dist\compiler-core.cjs.prod.js:2957
+:5)
+    at Object.onclosetag (D:\kaifa\CRM - 1.8.0\node_m
+odules\@vue\compiler-core\dist\compiler-core.cjs.prod
+.js:2346:13)
+    at Tokenizer.stateInClosingTagName (D:\kaifa\CRM 
+- 1.8.0\node_modules\@vue\compiler-core\dist\compiler
+-core.cjs.prod.js:785:16)
+    at Tokenizer.parse (D:\kaifa\CRM - 1.8.0\node_mod
+ules\@vue\compiler-core\dist\compiler-core.cjs.prod.j
+s:1143:16)
+    at Object.baseParse (D:\kaifa\CRM - 1.8.0\node_mo
+dules\@vue\compiler-core\dist\compiler-core.cjs.prod.
+js:2989:13)
+    at Object.parse (D:\kaifa\CRM - 1.8.0\node_module
+s\@vue\compiler-dom\dist\compiler-dom.cjs.prod.js:665
+:23)
+    at Object.parse$1 [as parse] (D:\kaifa\CRM - 1.8.
+0\node_modules\@vue\compiler-sfc\dist\compiler-sfc.cj
+s.js:1801:24)
+    at createDescriptor (file:///D:/kaifa/CRM%20-%201
+.8.0/node_modules/@vitejs/plugin-vue/dist/index.mjs:7
+1:43)
+    at transformMain (file:///D:/kaifa/CRM%20-%201.8.
+0/node_modules/@vitejs/plugin-vue/dist/index.mjs:2421
+:34)[39m

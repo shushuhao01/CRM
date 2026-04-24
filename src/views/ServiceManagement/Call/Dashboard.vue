@@ -9,7 +9,7 @@
         </h1>
         <p class="page-description">查看通话统计、呼出时长、拨打个数等详细数据分析</p>
       </div>
-      
+
       <!-- 时间筛选 -->
       <div class="date-filter">
         <el-date-picker
@@ -42,13 +42,13 @@
                 <div class="metric-value">{{ statistics?.totalCalls || 0 }}</div>
                 <div class="metric-label">总通话数</div>
                 <div class="metric-trend">
-                  <span class="trend-text">较昨日 +12%</span>
+                  <span class="trend-text">已接通 {{ statistics?.connectedCalls || 0 }} 通</span>
                 </div>
               </div>
             </div>
           </el-card>
         </el-col>
-        
+
         <el-col :span="6">
           <el-card class="metric-card">
             <div class="metric-content">
@@ -59,13 +59,13 @@
                 <div class="metric-value">{{ formatDuration(statistics?.totalDuration || 0) }}</div>
                 <div class="metric-label">总通话时长</div>
                 <div class="metric-trend">
-                  <span class="trend-text">较昨日 +8%</span>
+                  <span class="trend-text">未接 {{ statistics?.missedCalls || 0 }} 通</span>
                 </div>
               </div>
             </div>
           </el-card>
         </el-col>
-        
+
         <el-col :span="6">
           <el-card class="metric-card">
             <div class="metric-content">
@@ -76,13 +76,13 @@
                 <div class="metric-value">{{ formatDuration(statistics?.averageDuration || 0) }}</div>
                 <div class="metric-label">平均通话时长</div>
                 <div class="metric-trend">
-                  <span class="trend-text">较昨日 -2%</span>
+                  <span class="trend-text">呼出 {{ statistics?.outgoingCalls || 0 }} 通</span>
                 </div>
               </div>
             </div>
           </el-card>
         </el-col>
-        
+
         <el-col :span="6">
           <el-card class="metric-card">
             <div class="metric-content">
@@ -93,7 +93,7 @@
                 <div class="metric-value">{{ (statistics?.connectionRate || 0).toFixed(1) }}%</div>
                 <div class="metric-label">接通率</div>
                 <div class="metric-trend">
-                  <span class="trend-text">较昨日 +5%</span>
+                  <span class="trend-text">呼入 {{ statistics?.incomingCalls || 0 }} 通</span>
                 </div>
               </div>
             </div>
@@ -121,7 +121,7 @@
             <div ref="trendChartRef" style="height: 300px;"></div>
           </el-card>
         </el-col>
-        
+
         <!-- 通话状态分布 -->
         <el-col :span="8">
           <el-card>
@@ -152,7 +152,7 @@
             </el-input>
           </div>
         </template>
-        
+
         <el-table :data="filteredUserStats" style="width: 100%">
           <el-table-column prop="userName" label="姓名" width="120" />
           <el-table-column prop="department" label="部门" width="120" />
@@ -239,9 +239,9 @@ const timeAnalysisChartRef = ref<HTMLElement>()
 // 计算属性
 const filteredUserStats = computed(() => {
   if (!statistics.value?.userStats) return []
-  
+
   return statistics.value.userStats
-    .filter(user => 
+    .filter(user =>
       user.userName.toLowerCase().includes(searchKeyword.value.toLowerCase())
     )
     .map(user => ({
@@ -257,7 +257,7 @@ const formatDuration = (seconds: number) => {
   const hours = Math.floor(seconds / 3600)
   const minutes = Math.floor((seconds % 3600) / 60)
   const remainingSeconds = seconds % 60
-  
+
   if (hours > 0) {
     return `${hours}小时${minutes}分${remainingSeconds}秒`
   }
@@ -289,7 +289,7 @@ const loadStatistics = async () => {
       groupBy: 'day'
     })
     statistics.value = data
-    
+
     // 更新图表
     await nextTick()
     initCharts()
@@ -302,16 +302,16 @@ const exportData = async () => {
   try {
     exportLoading.value = true
     const [startDate, endDate] = dateRange.value
-    
+
     const response = await callApi.exportCallRecords({
       startDate,
       endDate,
       format: 'excel'
     })
-    
+
     // 创建下载链接
-    const blob = new Blob([response.data], { 
-      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
+    const blob = new Blob([response.data], {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     })
     const url = window.URL.createObjectURL(blob)
     const link = document.createElement('a')
@@ -319,7 +319,7 @@ const exportData = async () => {
     link.download = `通话数据_${startDate}_${endDate}.xlsx`
     link.click()
     window.URL.revokeObjectURL(url)
-    
+
     ElMessage.success('数据导出成功')
   } catch (error) {
     console.error('导出失败:', error)
@@ -342,10 +342,10 @@ const initCharts = () => {
 
 const initTrendChart = () => {
   if (!trendChartRef.value || !statistics.value?.dailyStats) return
-  
+
   const chart = echarts.init(trendChartRef.value)
   const dailyStats = statistics.value.dailyStats
-  
+
   const option = {
     tooltip: {
       trigger: 'axis',
@@ -398,17 +398,17 @@ const initTrendChart = () => {
       }
     ]
   }
-  
+
   chart.setOption(option)
 }
 
 const initStatusChart = () => {
   if (!statusChartRef.value || !statistics.value) return
-  
+
   const chart = echarts.init(statusChartRef.value)
   const { totalCalls, connectedCalls, missedCalls } = statistics.value
   const failedCalls = totalCalls - connectedCalls - missedCalls
-  
+
   const option = {
     tooltip: {
       trigger: 'item',
@@ -438,15 +438,15 @@ const initStatusChart = () => {
       }
     ]
   }
-  
+
   chart.setOption(option)
 }
 
 const initTimeAnalysisChart = () => {
   if (!timeAnalysisChartRef.value) return
-  
+
   const chart = echarts.init(timeAnalysisChartRef.value)
-  
+
   // 模拟时段数据
   const timeData = [
     { time: '09:00', calls: 15 },
@@ -457,7 +457,7 @@ const initTimeAnalysisChart = () => {
     { time: '16:00', calls: 32 },
     { time: '17:00', calls: 28 }
   ]
-  
+
   const option = {
     tooltip: {
       trigger: 'axis'
@@ -485,7 +485,7 @@ const initTimeAnalysisChart = () => {
       }
     ]
   }
-  
+
   chart.setOption(option)
 }
 

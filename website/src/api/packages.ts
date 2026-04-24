@@ -20,8 +20,11 @@ export interface Package {
   subscription_price?: number
   duration_days: number
   max_users: number
+  max_online_seats: number
+  user_limit_mode: 'total' | 'online' | 'both'
   max_storage_gb: number
   features: string[]
+  modules: string[]
   is_trial: boolean
   is_recommended: boolean
   sort_order: number

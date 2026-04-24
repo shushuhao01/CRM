@@ -95,6 +95,8 @@ export const useUserStore = defineStore('user', {
       uni.removeStorageSync('wsToken')
       uni.removeStorageSync('wsUrl')
       uni.removeStorageSync('deviceInfo')
+      uni.removeStorageSync('savedUsername')
+      uni.removeStorageSync('savedPassword')
     },
 
     // 从本地存储恢复（兼容旧版明文数据 + 新版加密数据）

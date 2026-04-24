@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="page-container">
     <el-card shadow="never" class="table-card">
       <template #header>
@@ -62,9 +62,22 @@
           </div>
 
           <div class="package-info">
-            <div class="info-item">
+            <div class="info-item" v-if="pkg.user_limit_mode === 'both'">
               <el-icon><User /></el-icon>
               <span>{{ pkg.max_users >= 99999 ? '不限' : pkg.max_users }} 用户</span>
+              <el-tag size="small" type="warning" style="margin-left:4px">限注</el-tag>
+              <span style="margin-left:8px">{{ pkg.max_online_seats }} 席位</span>
+              <el-tag size="small" type="success" style="margin-left:4px">限在</el-tag>
+            </div>
+            <div class="info-item" v-else-if="pkg.user_limit_mode === 'online'">
+              <el-icon><User /></el-icon>
+              <span>{{ pkg.max_online_seats }} 在线席位</span>
+              <el-tag size="small" type="success" style="margin-left:4px">限在</el-tag>
+            </div>
+            <div class="info-item" v-else>
+              <el-icon><User /></el-icon>
+              <span>{{ pkg.max_users >= 99999 ? '不限' : pkg.max_users }} 用户</span>
+              <el-tag size="small" type="warning" style="margin-left:4px">限注</el-tag>
             </div>
             <div class="info-item" v-if="pkg.max_storage_gb > 0">
               <el-icon><Files /></el-icon>
@@ -75,6 +88,23 @@
           <div class="package-features">
             <div v-for="f in pkg.features" :key="f" class="feature-item">
               <el-icon><Check /></el-icon>{{ f }}
+            </div>
+          </div>
+
+          <div class="package-modules" v-if="pkg.modules?.length">
+            <div class="modules-label">
+              授权模块
+              <el-tag size="small" type="info" style="margin-left: 6px;">{{ pkg.modules.length }}/{{ crmModuleOptions.length }}</el-tag>
+            </div>
+            <div class="modules-tags">
+              <el-tag v-for="mid in pkg.modules" :key="mid" size="small" type="info" effect="plain">
+                {{ getModuleName(mid) }}
+              </el-tag>
+            </div>
+          </div>
+          <div class="package-modules" v-else>
+            <div class="modules-label">
+              授权模块 <el-tag size="small" type="warning" style="margin-left: 6px;">未配置</el-tag>
             </div>
           </div>
 
@@ -134,10 +164,10 @@
             <el-divider content-position="left">🎁 年付优惠配置</el-divider>
             <el-form-item label="优惠方式">
               <el-radio-group v-model="yearlyPromoType" size="small">
-                <el-radio-button value="none">不设置</el-radio-button>
-                <el-radio-button value="bonus">赠送月数</el-radio-button>
-                <el-radio-button value="discount">折扣优惠</el-radio-button>
-                <el-radio-button value="fixed">固定年价</el-radio-button>
+                <el-radio-button label="none">不设置</el-radio-button>
+                <el-radio-button label="bonus">赠送月数</el-radio-button>
+                <el-radio-button label="discount">折扣优惠</el-radio-button>
+                <el-radio-button label="fixed">固定年价</el-radio-button>
               </el-radio-group>
             </el-form-item>
             <el-form-item v-if="yearlyPromoType === 'bonus'" label="赠送月数">
@@ -187,9 +217,25 @@
             <el-input-number v-model="form.duration_days" :min="1" style="width: 150px" />
             <span style="margin-left: 8px; color: #909399;">天（月付套餐通常30天）</span>
           </el-form-item>
-          <el-form-item label="用户数上限">
+          <el-form-item label="用户限制模式">
+            <el-radio-group v-model="form.user_limit_mode" size="small">
+              <el-radio-button label="total">仅限注册用户数</el-radio-button>
+              <el-radio-button label="online">仅限在线席位</el-radio-button>
+              <el-radio-button label="both">双模式（租户自选）</el-radio-button>
+            </el-radio-group>
+            <div style="margin-top: 4px; color: #909399; font-size: 12px;">
+              <template v-if="form.user_limit_mode === 'online'">按同时在线人数限制，注册用户不限</template>
+              <template v-else-if="form.user_limit_mode === 'both'">同时配置两种限制数量，租户购买后可自行选择限制方式</template>
+              <template v-else>按总注册用户数限制</template>
+            </div>
+          </el-form-item>
+          <el-form-item v-if="form.user_limit_mode === 'total' || form.user_limit_mode === 'both'" label="用户数上限">
             <el-input-number v-model="form.max_users" :min="1" style="width: 150px" />
-            <span style="margin-left: 8px; color: #909399;">个用户</span>
+            <span style="margin-left: 8px; color: #909399;">个用户{{ form.user_limit_mode === 'both' ? '（选择限注册时生效）' : '' }}</span>
+          </el-form-item>
+          <el-form-item v-if="form.user_limit_mode === 'online' || form.user_limit_mode === 'both'" label="在线席位数">
+            <el-input-number v-model="form.max_online_seats" :min="1" style="width: 150px" />
+            <span style="margin-left: 8px; color: #909399;">个同时在线用户{{ form.user_limit_mode === 'both' ? '（选择限在线时生效）' : '' }}</span>
           </el-form-item>
           <el-form-item label="存储空间">
             <el-input-number v-model="form.max_storage_gb" :min="0" style="width: 150px" />
@@ -232,9 +278,25 @@
             </div>
           </el-form-item>
           <el-divider content-position="left">🏢 私有部署资源</el-divider>
-          <el-form-item label="授权用户数">
+          <el-form-item label="用户限制模式">
+            <el-radio-group v-model="form.user_limit_mode" size="small">
+              <el-radio-button label="total">仅限注册用户数</el-radio-button>
+              <el-radio-button label="online">仅限在线席位</el-radio-button>
+              <el-radio-button label="both">双模式（客户自选）</el-radio-button>
+            </el-radio-group>
+            <div style="margin-top: 4px; color: #909399; font-size: 12px;">
+              <template v-if="form.user_limit_mode === 'online'">按同时在线人数限制，注册用户不限</template>
+              <template v-else-if="form.user_limit_mode === 'both'">同时配置两种限制，客户可自行切换</template>
+              <template v-else>按总注册用户数限制</template>
+            </div>
+          </el-form-item>
+          <el-form-item v-if="form.user_limit_mode === 'total' || form.user_limit_mode === 'both'" label="授权用户数">
             <el-input-number v-model="form.max_users" :min="1" :max="99999" style="width: 150px" />
             <el-checkbox v-model="unlimitedUsers" style="margin-left: 12px;" @change="onUnlimitedUsersChange">不限用户</el-checkbox>
+          </el-form-item>
+          <el-form-item v-if="form.user_limit_mode === 'online' || form.user_limit_mode === 'both'" label="在线席位数">
+            <el-input-number v-model="form.max_online_seats" :min="1" style="width: 150px" />
+            <span style="margin-left: 8px; color: #909399;">个席位{{ form.user_limit_mode === 'both' ? '（选择限在线时生效）' : '' }}</span>
           </el-form-item>
           <el-form-item label="存储空间">
             <el-input-number v-model="form.max_storage_gb" :min="0" style="width: 150px" />
@@ -260,17 +322,17 @@
             <template v-if="form.subscription_enabled">
               <el-form-item label="订阅周期">
                 <el-radio-group v-model="form.subscription_billing_cycle" size="small">
-                  <el-radio-button value="monthly">按月订阅</el-radio-button>
-                  <el-radio-button value="yearly">按年订阅</el-radio-button>
-                  <el-radio-button value="both">按月+按年</el-radio-button>
+                  <el-radio-button label="monthly">按月订阅</el-radio-button>
+                  <el-radio-button label="yearly">按年订阅</el-radio-button>
+                  <el-radio-button label="both">按月+按年</el-radio-button>
                 </el-radio-group>
                 <span style="margin-left: 8px; color: #909399; font-size: 12px;">用户可选的订阅计费周期</span>
               </el-form-item>
               <el-form-item label="订阅渠道">
                 <el-radio-group v-model="form.subscription_channels" size="small">
-                  <el-radio-button value="all">全部支持</el-radio-button>
-                  <el-radio-button value="wechat">仅微信代扣</el-radio-button>
-                  <el-radio-button value="alipay">仅支付宝扣款</el-radio-button>
+                  <el-radio-button label="all">全部支持</el-radio-button>
+                  <el-radio-button label="wechat">仅微信代扣</el-radio-button>
+                  <el-radio-button label="alipay">仅支付宝扣款</el-radio-button>
                 </el-radio-group>
               </el-form-item>
               <el-form-item label="订阅优惠">
@@ -315,7 +377,19 @@
         </div>
 
         <!-- ==================== 通用配置 ==================== -->
-        <el-divider content-position="left">📋 功能特性</el-divider>
+        <el-divider content-position="left">📋 授权模块</el-divider>
+        <el-form-item label="CRM模块">
+          <div class="modules-check-group">
+            <div class="modules-toolbar">
+              <el-button size="small" link type="primary" @click="selectAllModules">全选</el-button>
+              <el-button size="small" link @click="deselectAllModules">全不选</el-button>
+            </div>
+            <el-checkbox-group v-model="form.modules">
+              <el-checkbox v-for="m in crmModuleOptions" :key="m.value" :value="m.value">{{ m.label }}</el-checkbox>
+            </el-checkbox-group>
+          </div>
+        </el-form-item>
+        <el-divider content-position="left">功能特性</el-divider>
         <el-form-item label="功能特性">
           <div v-for="(_f, i) in form.features" :key="i" class="feature-input">
             <el-input v-model="form.features[i]" placeholder="输入功能特性" />
@@ -361,6 +435,28 @@ const packages = ref<Package[]>([])
 const yearlyPromoType = ref<'none' | 'bonus' | 'discount' | 'fixed'>('none')
 const unlimitedUsers = ref(false)
 
+const crmModuleOptions = [
+  { value: 'dashboard', label: '数据看板' },
+  { value: 'customer', label: '客户管理' },
+  { value: 'order', label: '订单管理' },
+  { value: 'service-management', label: '服务管理' },
+  { value: 'performance', label: '业绩统计' },
+  { value: 'logistics', label: '物流管理' },
+  { value: 'service', label: '售后管理' },
+  { value: 'data', label: '资料管理' },
+  { value: 'finance', label: '财务管理' },
+  { value: 'product', label: '商品管理' },
+  { value: 'wecom', label: '企微管理' },
+  { value: 'system', label: '系统管理' }
+]
+
+const getModuleName = (id: string) => {
+  return crmModuleOptions.find(m => m.value === id)?.label || id
+}
+
+const selectAllModules = () => { form.modules = crmModuleOptions.map(m => m.value) }
+const deselectAllModules = () => { form.modules = [] }
+
 const form = reactive({
   name: '',
   code: '',
@@ -378,6 +474,9 @@ const form = reactive({
   duration_days: 30,
   max_users: 10,
   max_storage_gb: 5,
+  user_limit_mode: 'total' as 'total' | 'online' | 'both',
+  max_online_seats: 0,
+  modules: [] as string[],
   features: [''] as string[],
   is_trial: false,
   is_recommended: false,
@@ -523,8 +622,10 @@ const resetForm = () => {
     price: 0, billing_cycle: isPrivate ? 'once' : 'monthly',
     yearly_discount_rate: 0, yearly_bonus_months: 0, yearly_price: null,
     subscription_enabled: false, subscription_channels: 'all', subscription_billing_cycle: 'monthly', subscription_discount_rate: 0,
+    user_limit_mode: 'total', max_online_seats: 0,
     duration_days: isPrivate ? 36500 : 30,
     max_users: isPrivate ? 50 : 10, max_storage_gb: isPrivate ? 0 : 5,
+    modules: [],
     features: [''],
     is_trial: false, is_recommended: false, is_visible: true,
     sort_order: 0, status: true
@@ -550,6 +651,9 @@ const handleEdit = (pkg: Package) => {
     subscription_channels: pkg.subscription_channels || 'all',
     subscription_billing_cycle: pkg.subscription_billing_cycle || 'monthly',
     subscription_discount_rate: Number(pkg.subscription_discount_rate) || 0,
+    user_limit_mode: pkg.user_limit_mode || 'total',
+    max_online_seats: Number(pkg.max_online_seats) || 0,
+    modules: pkg.modules?.length ? [...pkg.modules] : [],
     features: pkg.features?.length ? [...pkg.features] : ['']
   })
   // 回填不限用户
@@ -736,6 +840,30 @@ onMounted(() => {
   color: #16a34a;
   font-weight: 600;
   font-size: 13px;
+}
+.package-modules {
+  margin: 8px 0;
+  padding: 8px 12px;
+  background: #f8fafc;
+  border-radius: 6px;
+}
+.modules-label {
+  font-size: 12px;
+  color: #64748b;
+  margin-bottom: 6px;
+  display: flex;
+  align-items: center;
+}
+.modules-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.modules-check-group {
+  width: 100%;
+}
+.modules-toolbar {
+  margin-bottom: 6px;
 }
 </style>
 

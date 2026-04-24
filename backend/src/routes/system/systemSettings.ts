@@ -73,7 +73,8 @@ router.get('/modules/status', authenticateToken, async (_req: Request, res: Resp
       'data_management': 'data',
       'performance_management': 'performance',
       'product_management': 'product',
-      'system_management': 'system'
+      'system_management': 'system',
+      'wecom_management': 'wecom'
     };
 
     // 转换为CRM前端的菜单ID
@@ -115,7 +116,7 @@ router.get('/modules/status', authenticateToken, async (_req: Request, res: Resp
             try {
               const parsed = typeof tenant.features === 'string' ? JSON.parse(tenant.features) : tenant.features;
               if (Array.isArray(parsed)) {
-                const validModuleIds = ['dashboard','customer','order','service-management','performance','logistics','service','data','finance','product','system'];
+                const validModuleIds = ['dashboard','customer','order','service-management','performance','logistics','service','data','finance','product','system','wecom'];
                 const hasModuleIds = parsed.some((f: string) => validModuleIds.includes(f));
                 if (hasModuleIds) {
                   const validFeatures = parsed.filter((f: string) => validModuleIds.includes(f));

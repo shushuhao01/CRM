@@ -27,10 +27,11 @@
         </div>
         <el-menu
           default-active="project-overview"
-          :default-openeds="['project', 'business', 'deployment', 'modules', 'logistics-guides', 'faq']"
+          :default-openeds="['project', 'call-guides', 'business', 'deployment', 'modules', 'logistics-guides', 'faq', 'wecom']"
           @select="handleMenuSelect"
           class="help-menu"
         >
+
           <!-- 项目介绍 -->
           <el-sub-menu index="project">
             <template #title>
@@ -60,7 +61,39 @@
             <el-menu-item index="module-data">资料管理</el-menu-item>
             <el-menu-item index="module-finance">财务管理</el-menu-item>
             <el-menu-item index="module-product">商品管理</el-menu-item>
+            <el-menu-item index="module-virtual-goods">虚拟商品</el-menu-item>
             <el-menu-item index="module-system">系统管理</el-menu-item>
+          </el-sub-menu>
+
+          <!-- 企微管理 -->
+          <el-sub-menu index="wecom">
+            <template #title>
+              <el-icon><ChatDotSquare /></el-icon>
+              <span>企微管理</span>
+            </template>
+            <el-menu-item index="wecom-overview">企微模块概述</el-menu-item>
+            <el-menu-item index="wecom-config">企微授权配置</el-menu-item>
+            <el-menu-item index="wecom-customer">企业客户管理</el-menu-item>
+            <el-menu-item index="wecom-contact-way">活码管理</el-menu-item>
+            <el-menu-item index="wecom-acquisition">获客助手</el-menu-item>
+            <el-menu-item index="wecom-group">客户群管理</el-menu-item>
+            <el-menu-item index="wecom-chat-archive">会话存档</el-menu-item>
+            <el-menu-item index="wecom-ai-assistant">AI助手</el-menu-item>
+            <el-menu-item index="wecom-payment">对外收款</el-menu-item>
+            <el-menu-item index="wecom-sidebar">企微侧边栏</el-menu-item>
+          </el-sub-menu>
+
+          <!-- 通话管理指南 -->
+          <el-sub-menu index="call-guides">
+            <template #title>
+              <el-icon><Phone /></el-icon>
+              <span>通话管理指南</span>
+            </template>
+            <el-menu-item index="call-config-guide">呼出配置完整指南</el-menu-item>
+            <el-menu-item index="call-methods-guide">外呼方式详解</el-menu-item>
+            <el-menu-item index="call-workphone-guide">工作手机绑定</el-menu-item>
+            <el-menu-item index="call-line-manage-guide">线路管理与分配</el-menu-item>
+            <el-menu-item index="call-records-guide">通话记录与录音</el-menu-item>
           </el-sub-menu>
 
           <!-- 物流配置指南 -->
@@ -170,7 +203,7 @@
 
           <!-- 正常内容显示 -->
           <div v-else class="help-content">
-            <component :is="currentContentComponent" />
+            <component :is="currentContentComponent" :section="activeMenuItem" />
           </div>
         </div>
       </div>
@@ -181,10 +214,17 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, defineAsyncComponent } from 'vue'
 import { useRoute } from 'vue-router'
-import { Search, InfoFilled, Operation, Setting, Grid, QuestionFilled, UserFilled, Iphone, Van } from '@element-plus/icons-vue'
+import { Search, InfoFilled, Operation, Setting, Grid, QuestionFilled, UserFilled, Iphone, Van, Phone, ChatDotSquare } from '@element-plus/icons-vue'
 
 // 动态导入帮助内容组件
 const helpContentComponents: Record<string, any> = {
+  // 通话管理指南
+  'call-config-guide': defineAsyncComponent(() => import('@/components/HelpContent/CallConfigGuide.vue')),
+  'call-methods-guide': defineAsyncComponent(() => import('@/components/HelpContent/CallConfigGuide.vue')),
+  'call-workphone-guide': defineAsyncComponent(() => import('@/components/HelpContent/CallConfigGuide.vue')),
+  'call-line-manage-guide': defineAsyncComponent(() => import('@/components/HelpContent/CallConfigGuide.vue')),
+  'call-records-guide': defineAsyncComponent(() => import('@/components/HelpContent/CallConfigGuide.vue')),
+
   // 项目介绍
   'project-overview': defineAsyncComponent(() => import('@/components/HelpContent/ProjectOverview.vue')),
   'project-features': defineAsyncComponent(() => import('@/components/HelpContent/ProjectFeatures.vue')),
@@ -211,7 +251,20 @@ const helpContentComponents: Record<string, any> = {
   'module-data': defineAsyncComponent(() => import('@/components/HelpContent/ModuleData.vue')),
   'module-finance': defineAsyncComponent(() => import('@/components/HelpContent/ModuleFinance.vue')),
   'module-product': defineAsyncComponent(() => import('@/components/HelpContent/ModuleProduct.vue')),
+  'module-virtual-goods': defineAsyncComponent(() => import('@/components/HelpContent/ModuleVirtualGoods.vue')),
   'module-system': defineAsyncComponent(() => import('@/components/HelpContent/ModuleSystem.vue')),
+
+  // 企微管理
+  'wecom-overview': defineAsyncComponent(() => import('@/components/HelpContent/ModuleWecom.vue')),
+  'wecom-config': defineAsyncComponent(() => import('@/components/HelpContent/ModuleWecom.vue')),
+  'wecom-customer': defineAsyncComponent(() => import('@/components/HelpContent/ModuleWecom.vue')),
+  'wecom-contact-way': defineAsyncComponent(() => import('@/components/HelpContent/ModuleWecom.vue')),
+  'wecom-acquisition': defineAsyncComponent(() => import('@/components/HelpContent/ModuleWecom.vue')),
+  'wecom-group': defineAsyncComponent(() => import('@/components/HelpContent/ModuleWecom.vue')),
+  'wecom-chat-archive': defineAsyncComponent(() => import('@/components/HelpContent/ModuleWecom.vue')),
+  'wecom-ai-assistant': defineAsyncComponent(() => import('@/components/HelpContent/ModuleWecom.vue')),
+  'wecom-payment': defineAsyncComponent(() => import('@/components/HelpContent/ModuleWecom.vue')),
+  'wecom-sidebar': defineAsyncComponent(() => import('@/components/HelpContent/ModuleWecom.vue')),
 
   // 角色权限
   'role-overview': defineAsyncComponent(() => import('@/components/HelpContent/RoleOverview.vue')),
@@ -335,6 +388,43 @@ const currentContentComponent = computed(() => {
 
 // 模拟搜索数据
 const mockSearchResults = [
+  // 通话管理指南
+  {
+    id: 'call-config-guide',
+    title: '呼出配置完整指南',
+    excerpt: '外呼配置全面指南：系统线路管理、网络电话VoIP配置、号码分配、工作手机绑定、外呼设置...',
+    category: '通话管理指南',
+    content: '呼出配置 外呼配置 通话管理 线路管理 VoIP 网络电话 阿里云通信 腾讯云通信 华为云通信 SIP PSTN 主叫号码 日限额 并发数'
+  },
+  {
+    id: 'call-methods-guide',
+    title: '外呼方式详解',
+    excerpt: '所有外呼方式详细说明：工作手机外呼、网络电话VoIP、SIP线路、PSTN网关...',
+    category: '通话管理指南',
+    content: '外呼方式 工作手机 VoIP SIP线路 PSTN网关 拨号 呼叫 通话 回拨 直拨 外呼助手APP'
+  },
+  {
+    id: 'call-workphone-guide',
+    title: '工作手机绑定',
+    excerpt: '工作手机绑定步骤：安装外呼助手APP、扫码绑定、状态管理、解绑操作...',
+    category: '通话管理指南',
+    content: '工作手机 绑定手机 扫码绑定 二维码 外呼助手 APP 在线状态 解绑 主要手机'
+  },
+  {
+    id: 'call-line-manage-guide',
+    title: '线路管理与分配',
+    excerpt: '管理员线路管理：创建线路、配置服务商、测试连接、分配线路给员工...',
+    category: '通话管理指南',
+    content: '线路管理 号码分配 创建线路 服务商配置 AccessKey SecretKey 测试连接 分配用户 日限额'
+  },
+  {
+    id: 'call-records-guide',
+    title: '通话记录与录音',
+    excerpt: '通话记录查看、筛选、录音回放、自动录音、各外呼方式录音支持...',
+    category: '通话管理指南',
+    content: '通话记录 录音回放 通话时长 通话状态 外呼任务 批量拨打 接通率 通话备注 自动录音 VoIP录音 SIP录音 PSTN录音 工作手机录音'
+  },
+
   // 项目介绍
   {
     id: 'project-overview',
@@ -486,6 +576,87 @@ const mockSearchResults = [
     excerpt: '部门管理、用户管理、角色权限、系统设置、消息管理...',
     category: '功能模块',
     content: '系统管理 部门管理 用户管理 角色权限 系统设置 消息管理 接口管理 客服管理'
+  },
+
+  // 功能模块 - 虚拟商品
+  {
+    id: 'module-virtual-goods',
+    title: '虚拟商品功能',
+    excerpt: '卡密类、资源链接类、无需发货类三种虚拟商品，完整的库存管理、订单流转和客户自助领取闭环...',
+    category: '功能模块',
+    content: '虚拟商品 卡密 资源链接 无需发货 库存管理 卡密库存 资源库存 领取链接 领取页 虚拟发货 virtual 自助领取 激活码 充值码 网盘 数字内容'
+  },
+
+  // 企微管理
+  {
+    id: 'wecom-overview',
+    title: '企微管理模块概述',
+    excerpt: '企微管理模块深度集成企业微信能力，提供授权配置、客户管理、活码、获客助手、会话存档、AI助手等全套功能...',
+    category: '企微管理',
+    content: '企业微信 企微 企微管理 WeChat Work 企微授权 活码 获客助手 会话存档 AI助手 对外收款 企微侧边栏 客户群 通讯录'
+  },
+  {
+    id: 'wecom-config',
+    title: '企微授权配置',
+    excerpt: '支持第三方应用授权（扫码）和自建应用配置（填写CorpID）两种接入方式，配额管理、回调配置、密钥管理...',
+    category: '企微管理',
+    content: '企微授权 第三方授权 自建应用 CorpID AgentID Secret 扫码授权 回调 Callback IP白名单 配额 企微配额 API诊断'
+  },
+  {
+    id: 'wecom-customer',
+    title: '企业客户管理',
+    excerpt: '同步企微外部联系人，与CRM客户数据绑定，客户标签管理，自动匹配绑定，通讯录同步...',
+    category: '企微管理',
+    content: '企微客户 外部联系人 客户标签 自动匹配 手机号绑定 通讯录 员工通讯录 客户详情 跟进记录 数据同步'
+  },
+  {
+    id: 'wecom-contact-way',
+    title: '活码管理',
+    excerpt: '创建渠道活码，多员工轮流接待，今日添加数统计，活码详情数据分析，渠道来源管理...',
+    category: '企微管理',
+    content: '活码 ContactWay 渠道活码 接待成员 欢迎语 活码统计 渠道来源 添加人数 趋势图 漏斗 批量启用禁用'
+  },
+  {
+    id: 'wecom-acquisition',
+    title: '获客助手',
+    excerpt: '获客链接管理，引流数据分析，员工排名，留存率统计，获客配额使用量监控...',
+    category: '企微管理',
+    content: '获客助手 获客链接 获客配额 引流 添加人数 员工排名 留存率 标签管理 链接管理 数据总览 增值服务'
+  },
+  {
+    id: 'wecom-group',
+    title: '客户群管理',
+    excerpt: '同步企微客户群，群数据统计、群欢迎语、群模板、群广播，群总数/活跃群/成员数/消息数...',
+    category: '企微管理',
+    content: '客户群 群管理 群欢迎语 群模板 群广播 群统计 活跃群 群成员 群消息 群详情 卡片视图 列表视图'
+  },
+  {
+    id: 'wecom-chat-archive',
+    title: '会话存档',
+    excerpt: '存档员工与客户聊天记录，全文搜索，敏感词检测，合规质检，席位配额管理，双轨制购买...',
+    category: '企微管理',
+    content: '会话存档 聊天记录 全文搜索 敏感词 合规质检 质检规则 质检报告 存档席位 席位配额 增值服务 双轨制 RSA密钥 反骚扰 智能在线'
+  },
+  {
+    id: 'wecom-ai-assistant',
+    title: 'AI助手',
+    excerpt: 'AI模型配置，知识库管理，话术库，敏感词库，标签AI自动打标，调用日志，AI额度套餐购买...',
+    category: '企微管理',
+    content: 'AI助手 AI模型 知识库 话术库 敏感词库 标签AI AiTagRule 调用日志 Token额度 AI套餐 OpenAI 通义千问 文心一言 AiAgent 智能体 System Prompt'
+  },
+  {
+    id: 'wecom-payment',
+    title: '对外收款',
+    excerpt: '企微收款记录管理，收款码管理，退款处理，收款统计，收款总额/支付笔数统计...',
+    category: '企微管理',
+    content: '对外收款 收款记录 收款码 退款管理 收款设置 收款统计 微信商户号 收款总额 已支付 待支付 已退款 同步收款'
+  },
+  {
+    id: 'wecom-sidebar',
+    title: '企微侧边栏',
+    excerpt: '嵌入企业微信客户端的CRM插件，实时客户信息，快捷下单，AI话术推荐，跟进记录...',
+    category: '企微管理',
+    content: '企微侧边栏 WecomSidebar 侧边栏 快捷下单 AI助手 话术发送 跟进记录 客户信息 授权码 侧边栏预览 可信域名 JS-SDK'
   },
 
   // 角色权限

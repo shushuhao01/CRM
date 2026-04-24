@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="order-settings-container">
     <!-- 页面头部 -->
     <div class="page-header">
@@ -394,6 +394,122 @@
         </el-button>
       </template>
     </el-dialog>
+
+    <!-- 虚拟商品发货配置 -->
+    <el-card class="config-card">
+      <template #header>
+        <div class="card-header">
+          <span>虚拟商品发货配置</span>
+          <el-tag type="success" size="small">虚拟商品</el-tag>
+        </div>
+      </template>
+
+      <el-form :model="virtualSettings" label-width="180px">
+        <!-- 发货方式 -->
+        <el-form-item label="虚拟商品发货方式">
+          <el-radio-group v-model="virtualSettings.deliveryMode">
+            <el-radio label="link">加密链接（客户登录领取）</el-radio>
+            <el-radio label="manual">成员查看复制（手动发给客户）</el-radio>
+          </el-radio-group>
+          <div class="form-tip">加密链接模式会生成领取链接，客户验证身份后查看内容；手动模式由成员复制卡密/资源发给客户</div>
+        </el-form-item>
+
+        <el-divider content-position="left">领取链接配置</el-divider>
+
+        <el-form-item label="链接有效天数">
+          <el-input-number v-model="virtualSettings.claimLinkExpiryDays" :min="1" :max="365" />
+          <span style="margin-left: 10px; color: #666;">天（超过后链接失效）</span>
+        </el-form-item>
+
+        <el-form-item label="客户登录方式">
+          <el-checkbox-group v-model="virtualSettings.loginMethodsArr">
+            <el-checkbox label="sms">短信验证码</el-checkbox>
+            <el-checkbox label="password">初始密码</el-checkbox>
+          </el-checkbox-group>
+        </el-form-item>
+
+        <el-form-item v-if="virtualSettings.loginMethodsArr.includes('password')" label="初始登录密码">
+          <el-input v-model="virtualSettings.initialPassword" placeholder="设置客户初始密码" show-password style="width: 300px;" />
+        </el-form-item>
+
+        <el-form-item label="领取页提示语">
+          <el-input v-model="virtualSettings.claimPageNotice" type="textarea" :rows="3"
+            placeholder="显示在领取页面的提示信息，如：请妥善保管您的卡密信息" style="width: 400px;" />
+        </el-form-item>
+
+        <el-divider content-position="left">邮件通知配置</el-divider>
+
+        <el-form-item label="开启邮件通知">
+          <el-switch v-model="virtualSettings.emailEnabled" />
+          <span style="margin-left: 10px; color: #999;">开启后支持在虚拟发货时发送邮件通知客户</span>
+        </el-form-item>
+
+        <template v-if="virtualSettings.emailEnabled">
+          <el-form-item label="邮箱来源">
+            <el-radio-group v-model="virtualSettings.emailSource">
+              <el-radio label="official">官方邮箱（管理后台配置）</el-radio>
+              <el-radio label="custom">自定义邮箱</el-radio>
+            </el-radio-group>
+          </el-form-item>
+
+          <!-- 自定义邮箱配置 -->
+          <template v-if="virtualSettings.emailSource === 'custom'">
+            <el-form-item label="SMTP服务器">
+              <el-input v-model="emailConfig.smtpHost" placeholder="如 smtp.qq.com" style="width: 300px;" />
+              <div class="form-tip">QQ邮箱: smtp.qq.com | 163邮箱: smtp.163.com | Gmail: smtp.gmail.com</div>
+            </el-form-item>
+            <el-form-item label="SMTP端口">
+              <el-input-number v-model="emailConfig.smtpPort" :min="1" :max="65535" />
+              <div class="form-tip">SSL: 465 | TLS: 587 | 无加密: 25</div>
+            </el-form-item>
+            <el-form-item label="加密方式">
+              <el-select v-model="emailConfig.encryption" style="width: 200px;">
+                <el-option label="SSL (推荐)" value="ssl" />
+                <el-option label="TLS" value="tls" />
+                <el-option label="无加密" value="none" />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="发件邮箱">
+              <el-input v-model="emailConfig.senderEmail" placeholder="your@email.com" style="width: 300px;" />
+            </el-form-item>
+            <el-form-item label="邮箱密码/授权码">
+              <el-input v-model="emailConfig.senderPassword" type="password" show-password
+                placeholder="QQ/163邮箱请使用授权码" style="width: 300px;" />
+              <div class="form-tip">请使用邮箱授权码而非登录密码，在邮箱设置中生成</div>
+            </el-form-item>
+            <el-form-item label="发件人名称">
+              <el-input v-model="emailConfig.senderName" placeholder="显示在收件人邮箱中的名称" style="width: 300px;" />
+            </el-form-item>
+            <el-form-item>
+              <el-button @click="testEmailConnection" :loading="testingEmail">
+                {{ testingEmail ? '测试中...' : '测试连接' }}
+              </el-button>
+              <el-tag v-if="emailConfig.isVerified" type="success" size="small" style="margin-left: 8px;">已验证</el-tag>
+              <el-tag v-else type="danger" size="small" style="margin-left: 8px;">未验证</el-tag>
+            </el-form-item>
+          </template>
+
+          <el-form-item label="邮件内容模式">
+            <el-radio-group v-model="virtualSettings.emailContentMode">
+              <el-radio label="link">仅发领取链接</el-radio>
+              <el-radio label="content">直接显示卡密/资源</el-radio>
+              <el-radio label="both">链接+内容都发</el-radio>
+            </el-radio-group>
+          </el-form-item>
+
+          <el-form-item label="自动发送">
+            <el-switch v-model="virtualSettings.emailAutoSend" />
+            <span style="margin-left: 8px; color: #999;">开启后，虚拟发货时自动给有邮箱的客户发送通知邮件</span>
+          </el-form-item>
+        </template>
+
+        <el-form-item>
+          <el-button type="primary" @click="saveVirtualSettings" :loading="savingVirtual">
+            保存虚拟商品配置
+          </el-button>
+        </el-form-item>
+      </el-form>
+    </el-card>
 
     <!-- 保存按钮 -->
     <div class="save-actions">
@@ -1406,6 +1522,134 @@ const savePaymentMethodsOrder = async () => {
 }
 
 // 初始化
+// ========== 虚拟商品发货配置 ==========
+const virtualSettings = reactive({
+  deliveryMode: 'link' as 'link' | 'manual',
+  claimLinkExpiryDays: 30,
+  loginMethodsArr: ['password'] as string[],
+  initialPassword: '123456',
+  claimPageNotice: '',
+  emailEnabled: false,
+  emailSource: 'official' as 'official' | 'custom',
+  emailContentMode: 'link' as 'link' | 'content' | 'both',
+  emailAutoSend: false
+})
+const emailConfig = reactive({
+  smtpHost: '',
+  smtpPort: 465,
+  encryption: 'ssl',
+  senderEmail: '',
+  senderPassword: '',
+  senderName: '',
+  isVerified: false
+})
+const savingVirtual = ref(false)
+const testingEmail = ref(false)
+
+const loadVirtualSettings = async () => {
+  try {
+    const token = localStorage.getItem('auth_token')
+    const res = await fetch('/api/v1/settings/virtual-claim', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
+    const result = await res.json()
+    if (result.success && result.data) {
+      const d = result.data
+      virtualSettings.deliveryMode = d.deliveryMode || 'link'
+      virtualSettings.claimLinkExpiryDays = d.claimLinkExpiryDays || 30
+      virtualSettings.loginMethodsArr = (d.loginMethods || 'password').split(',')
+      virtualSettings.initialPassword = d.initialPassword || '123456'
+      virtualSettings.claimPageNotice = d.claimPageNotice || ''
+      virtualSettings.emailEnabled = d.emailEnabled || false
+      virtualSettings.emailSource = d.emailSource || 'official'
+      virtualSettings.emailContentMode = d.emailContentMode || 'link'
+      virtualSettings.emailAutoSend = d.emailAutoSend || false
+    }
+    // 加载邮箱配置
+    const emailRes = await fetch('/api/v1/settings/tenant-email', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
+    const emailResult = await emailRes.json()
+    if (emailResult.success && emailResult.data) {
+      const e = emailResult.data
+      emailConfig.smtpHost = e.smtpHost || ''
+      emailConfig.smtpPort = e.smtpPort || 465
+      emailConfig.encryption = e.encryption || 'ssl'
+      emailConfig.senderEmail = e.senderEmail || ''
+      emailConfig.senderPassword = ''
+      emailConfig.senderName = e.senderName || ''
+      emailConfig.isVerified = e.isVerified || false
+    }
+  } catch (error) {
+    console.error('加载虚拟商品配置失败:', error)
+  }
+}
+
+const saveVirtualSettings = async () => {
+  savingVirtual.value = true
+  try {
+    const token = localStorage.getItem('auth_token')
+    // 保存领取配置
+    const res = await fetch('/api/v1/settings/virtual-claim', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({
+        deliveryMode: virtualSettings.deliveryMode,
+        claimLinkExpiryDays: virtualSettings.claimLinkExpiryDays,
+        loginMethods: virtualSettings.loginMethodsArr.join(','),
+        initialPassword: virtualSettings.initialPassword,
+        claimPageNotice: virtualSettings.claimPageNotice,
+        emailEnabled: virtualSettings.emailEnabled,
+        emailSource: virtualSettings.emailSource,
+        emailContentMode: virtualSettings.emailContentMode,
+        emailAutoSend: virtualSettings.emailAutoSend
+      })
+    })
+    const result = await res.json()
+    if (result.success) {
+      // 如果是自定义邮箱，同时保存邮箱配置
+      if (virtualSettings.emailEnabled && virtualSettings.emailSource === 'custom' && emailConfig.senderEmail) {
+        await fetch('/api/v1/settings/tenant-email', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify(emailConfig)
+        })
+      }
+      ElMessage.success('虚拟商品配置保存成功')
+    } else {
+      ElMessage.error(result.message || '保存失败')
+    }
+  } catch (error) {
+    console.error('保存虚拟商品配置失败:', error)
+    ElMessage.error('保存失败')
+  } finally {
+    savingVirtual.value = false
+  }
+}
+
+const testEmailConnection = async () => {
+  testingEmail.value = true
+  try {
+    const token = localStorage.getItem('auth_token')
+    const res = await fetch('/api/v1/settings/tenant-email/test', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify(emailConfig)
+    })
+    const result = await res.json()
+    if (result.success) {
+      emailConfig.isVerified = true
+      ElMessage.success('邮箱连接测试成功')
+    } else {
+      ElMessage.error(result.message || '连接失败')
+    }
+  } catch (error) {
+    ElMessage.error('测试连接失败')
+  } finally {
+    testingEmail.value = false
+  }
+}
+
 onMounted(async () => {
   // 🔥 先等待store从数据库加载配置
   await fieldConfigStore.loadConfig()
@@ -1419,6 +1663,7 @@ onMounted(async () => {
   loadDepartmentLimits()
   await loadPaymentMethods()
   initPaymentMethodSortable()
+  loadVirtualSettings()
 
   console.log('[订单设置] 页面初始化完成，自定义字段数量:', localConfig.customFields.length)
 })

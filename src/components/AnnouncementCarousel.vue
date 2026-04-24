@@ -57,18 +57,13 @@ const showDetail = ref(false)
 const selectedAnnouncement = ref<any>(null)
 const closedIds = ref<Set<string>>(new Set())
 
-// 从localStorage加载已关闭的公告
+// 从localStorage加载已关闭的公告（永久有效，已读状态由后端数据库持久化）
 onMounted(() => {
   try {
     const stored = localStorage.getItem('closedMarqueeIds')
     if (stored) {
       const data = JSON.parse(stored)
-      const now = Date.now()
-      // 只保留24小时内关闭的
-      const validIds = Object.entries(data)
-        .filter(([_, ts]) => now - (ts as number) < 24 * 60 * 60 * 1000)
-        .map(([id]) => id)
-      closedIds.value = new Set(validIds)
+      closedIds.value = new Set(Object.keys(data))
     }
   } catch (e) {
     console.error('加载已关闭公告失败:', e)
@@ -84,9 +79,9 @@ const visibleAnnouncements = computed(() => {
   if (!messageStore.announcements || !Array.isArray(messageStore.announcements)) {
     return []
   }
-  // 🔥 只显示未读的公告，已读自动从横幅消失
+  // 🔥 只显示未读、非静默的公告，已读/静默自动从横幅消失
   return messageStore.announcements.filter(
-    (a: any) => a.status === 'published' && a.isMarquee && !closedIds.value.has(a.id) && !a.read
+    (a: any) => a.status === 'published' && a.isMarquee && !closedIds.value.has(a.id) && !a.read && !a.silent
   ).slice(0, 5)
 })
 

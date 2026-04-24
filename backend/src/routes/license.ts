@@ -74,6 +74,15 @@ router.post('/activate', async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, message: '请输入授权码' })
     }
 
+    // 🔥 检测授权码类型：如果是 TENANT- 前缀，提示用户应在SaaS系统使用
+    if (licenseKey.toUpperCase().startsWith('TENANT-')) {
+      return res.status(400).json({
+        success: false,
+        message: '该授权码为SaaS租户专用，不能在私有部署系统中使用。请使用私有授权码（PRIVATE-前缀）激活系统',
+        errorType: 'WRONG_LICENSE_TYPE'
+      })
+    }
+
     // 获取机器码（简单实现，使用服务器信息）
     const os = await import('os')
     const machineId = `${os.hostname()}-${os.platform()}-${os.arch()}`

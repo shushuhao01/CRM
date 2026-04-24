@@ -469,6 +469,9 @@ router.put('/password', simpleAuth, async (req, res) => {
 
     // 更新数据库中的用户密码
     user.password = hashedPassword;
+    // 🔥 密码安全策略：更新密码修改时间和强制修改标记
+    user.passwordLastChanged = new Date();
+    user.needChangePassword = 0;
     await userRepository.save(user);
 
     log.info(`[Profile] 用户 ${user.username} 密码修改成功`);

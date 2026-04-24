@@ -5,6 +5,8 @@ import { User } from '../entities/User';
 import { logger } from '../config/logger';
 import { TenantContextManager } from '../utils/tenantContext';
 import { cacheService } from '../services/CacheService';
+import { onlineSeatService } from '../services/OnlineSeatService';
+import { getClientIp } from '../utils/getClientIp';
 
 // 🔥 用户认证缓存 TTL（秒）— 短TTL保证安全性，用户禁用最多延迟2分钟生效
 const AUTH_USER_CACHE_TTL = 120;
@@ -33,6 +35,35 @@ export const clearUserAuthCache = (userId: string, tenantId?: string): void => {
 };
 
 /**
+ * 🔥 从缓存或数据库查找用户（共用逻辑）
+ * authenticateToken 和 optionalAuth 共用此函数，避免重复代码
+ * 返回 { user, cacheKey } 或 null（数据库不可用时）
+ */
+const lookupUserWithCache = async (payload: JwtPayload): Promise<{ user: User | null; cacheKey: string } | null> => {
+  const tenantPrefix = payload.tenantId || 'default';
+  const cacheKey = `auth:user:${tenantPrefix}:${payload.userId}`;
+  let user: User | null = cacheService.get(cacheKey);
+
+  if (!user) {
+    const dataSource = getDataSource();
+    if (!dataSource) return null;
+
+    const userRepository = dataSource.getRepository(User);
+    const where: any = { id: payload.userId };
+    if (payload.tenantId) {
+      where.tenantId = payload.tenantId;
+    }
+    user = await userRepository.findOne({ where });
+
+    if (user) {
+      cacheService.set(cacheKey, user, AUTH_USER_CACHE_TTL);
+    }
+  }
+
+  return { user, cacheKey };
+};
+
+/**
  * JWT认证中间件
  */
 export const authenticateToken = async (req: Request, res: Response, next: NextFunction): Promise<Response | void> => {
@@ -53,35 +84,18 @@ export const authenticateToken = async (req: Request, res: Response, next: NextF
     const payload = JwtConfig.verifyAccessToken(token);
     req.user = payload;
 
-    // 🔥 性能优化：优先从缓存获取用户信息，避免每次API请求都查数据库
-    // 🔥 安全修复：缓存key包含tenantId，防止跨租户缓存混淆
-    const tenantPrefix = payload.tenantId || 'default';
-    const cacheKey = `auth:user:${tenantPrefix}:${payload.userId}`;
-    let user: User | null = cacheService.get(cacheKey);
+    // 🔥 性能优化：共用 lookupUserWithCache，避免重复的缓存/DB查询逻辑
+    const result = await lookupUserWithCache(payload);
 
-    if (!user) {
-      // 缓存未命中，从数据库查询
-      const dataSource = getDataSource();
-      if (!dataSource) {
-        return res.status(500).json({
-          success: false,
-          message: '数据库连接未初始化',
-          code: 'DATABASE_NOT_INITIALIZED'
-        });
-      }
-      const userRepository = dataSource.getRepository(User);
-      // 🔥 安全修复：添加 tenantId 过滤，防止跨租户用户认证
-      const where: any = { id: payload.userId };
-      if (payload.tenantId) {
-        where.tenantId = payload.tenantId;
-      }
-      user = await userRepository.findOne({ where });
-
-      // 查到后写入缓存（TTL 2分钟）
-      if (user) {
-        cacheService.set(cacheKey, user, AUTH_USER_CACHE_TTL);
-      }
+    if (!result) {
+      return res.status(500).json({
+        success: false,
+        message: '数据库连接未初始化',
+        code: 'DATABASE_NOT_INITIALIZED'
+      });
     }
+
+    const { user, cacheKey } = result;
 
     if (!user) {
       return res.status(401).json({
@@ -108,6 +122,37 @@ export const authenticateToken = async (req: Request, res: Response, next: NextF
       (req as any).tenantId = payload.tenantId;
       // 同步更新AsyncLocalStorage中的租户上下文
       TenantContextManager.setContext({ tenantId: payload.tenantId, userId: payload.userId });
+    }
+
+    // 🔥 在线席位：检查会话状态 + 更新活跃时间
+    if (token && payload.tenantId) {
+      try {
+        const sessionToken = onlineSeatService.generateSessionToken(token);
+        (req as any).sessionToken = sessionToken;
+
+        // 🔥 同步检查：被踢出/过期/登出的会话直接拒绝，强制用户重新登录
+        const isKicked = await onlineSeatService.isSessionKicked(sessionToken);
+        if (isKicked) {
+          return res.status(401).json({
+            success: false,
+            message: '您的会话已被下线，请重新登录',
+            code: 'SESSION_KICKED'
+          });
+        }
+
+        onlineSeatService.updateActivity(sessionToken);
+        // 🔥 异步确保会话记录存在（解决重启/表新建后已登录用户无记录的问题）
+        // 内部已检查被踢状态，不会重建被踢出的会话
+        onlineSeatService.ensureSessionExists({
+          sessionToken,
+          userId: payload.userId,
+          tenantId: payload.tenantId,
+          deviceInfo: req.get('User-Agent'),
+          ipAddress: getClientIp(req)
+        }).catch(() => {}); // 不阻塞请求
+      } catch (_e) {
+        // 在线席位更新失败不影响正常请求
+      }
     }
 
     next();
@@ -203,30 +248,11 @@ export const optionalAuth = async (req: Request, res: Response, next: NextFuncti
       const payload = JwtConfig.verifyAccessToken(token);
       req.user = payload;
 
-      // 🔥 性能优化：复用认证缓存（包含tenantId前缀）
-      const tenantPrefix = payload.tenantId || 'default';
-      const cacheKey = `auth:user:${tenantPrefix}:${payload.userId}`;
-      let user: User | null = cacheService.get(cacheKey);
+      // 🔥 性能优化：复用 lookupUserWithCache，与 authenticateToken 共享缓存逻辑
+      const result = await lookupUserWithCache(payload);
 
-      if (!user) {
-        const dataSource = getDataSource();
-        if (!dataSource) {
-          return next();
-        }
-        const userRepository = dataSource.getRepository(User);
-        // 🔥 安全修复：添加 tenantId 过滤
-        const where: any = { id: payload.userId };
-        if (payload.tenantId) {
-          where.tenantId = payload.tenantId;
-        }
-        user = await userRepository.findOne({ where });
-        if (user) {
-          cacheService.set(cacheKey, user, AUTH_USER_CACHE_TTL);
-        }
-      }
-
-      if (user && user.status === 'active') {
-        req.currentUser = user;
+      if (result?.user && result.user.status === 'active') {
+        req.currentUser = result.user;
       }
     }
   } catch (error) {
@@ -236,3 +262,48 @@ export const optionalAuth = async (req: Request, res: Response, next: NextFuncti
 
   next();
 };
+
+// ==================== 企微侧边栏认证 ====================
+
+export interface SidebarPayload {
+  type: 'sidebar';
+  wecomUserId: string;
+  crmUserId: string;
+  crmUserName: string;
+  tenantId: string;
+  corpId: string;
+}
+
+/**
+ * 企微侧边栏认证中间件
+ * 验证侧边栏专用JWT token (type='sidebar')
+ */
+export const authenticateSidebarToken = async (req: Request, res: Response, next: NextFunction): Promise<Response | void> => {
+  const authHeader = req.headers.authorization;
+  const token = authHeader && authHeader.split(' ')[1];
+
+  if (!token) {
+    return res.status(401).json({ success: false, message: '侧边栏令牌缺失', code: 'SIDEBAR_TOKEN_MISSING' });
+  }
+
+  try {
+    const payload = JwtConfig.verifyAccessToken(token) as any;
+
+    if (payload.type !== 'sidebar') {
+      return res.status(401).json({ success: false, message: '令牌类型无效', code: 'INVALID_TOKEN_TYPE' });
+    }
+
+    (req as any).sidebarUser = payload as SidebarPayload;
+
+    // 注入租户上下文
+    if (payload.tenantId) {
+      (req as any).tenantId = payload.tenantId;
+      TenantContextManager.setContext({ tenantId: payload.tenantId, userId: payload.crmUserId });
+    }
+
+    next();
+  } catch (_error) {
+    return res.status(401).json({ success: false, message: '侧边栏令牌无效或已过期', code: 'SIDEBAR_TOKEN_INVALID' });
+  }
+};
+

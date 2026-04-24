@@ -80,12 +80,14 @@ export const tenantAuth = async (
           return res.status(403).json({ success: false, message: '企业授权已暂停，请联系管理员续费' })
         }
         if (tenant.expire_date && new Date(tenant.expire_date) < new Date()) {
-          return res.status(403).json({ success: false, message: '企业授权已过期，请联系管理员续费', code: 'LICENSE_EXPIRED' })
+          // 过期租户：标记过期状态，但不阻止请求
+          // 写入限制由全局 checkLicenseWrite 中间件统一处理
+          ;(req as any).tenantExpired = true
         }
         req.tenantInfo = tenant
       } catch (dbErr) {
-        // 数据库查询失败时放行（容错，避免数据库抖动导致全部用户掉线）
-        log.error('[TenantAuth] 查询租户状态失败（已放行）:', dbErr)
+        log.error('[TenantAuth] 查询租户状态失败:', dbErr)
+        return res.status(500).json({ success: false, message: '系统异常，请稍后重试' })
       }
 
       // 更新 TenantContext（关键！让 BaseRepository 能获取到 tenantId）

@@ -32,15 +32,77 @@ const ensureFollowUpTable = async () => {
   }
 };
 
+/**
+ * 确保 licenses 和 tenants 表有 deleted_at 字段（软删除支持）
+ */
+const ensureDeletedAtColumns = async () => {
+  try {
+    // licenses.deleted_at
+    const lCol = await AppDataSource.query(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'licenses' AND COLUMN_NAME = 'deleted_at'`
+    );
+    if (lCol.length === 0) {
+      await AppDataSource.query(`ALTER TABLE licenses ADD COLUMN deleted_at DATETIME DEFAULT NULL COMMENT '软删除时间'`);
+      log.info('[CustomerManagement] ✅ licenses.deleted_at 字段添加成功');
+    }
+  } catch (e) {
+    log.warn('[CustomerManagement] licenses.deleted_at 添加失败:', (e as any).message?.substring(0, 80));
+  }
+  try {
+    // tenants.deleted_at
+    const tCol = await AppDataSource.query(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'tenants' AND COLUMN_NAME = 'deleted_at'`
+    );
+    if (tCol.length === 0) {
+      await AppDataSource.query(`ALTER TABLE tenants ADD COLUMN deleted_at DATETIME DEFAULT NULL COMMENT '软删除时间'`);
+      log.info('[CustomerManagement] ✅ tenants.deleted_at 字段添加成功');
+    }
+  } catch (e) {
+    log.warn('[CustomerManagement] tenants.deleted_at 添加失败:', (e as any).message?.substring(0, 80));
+  }
+};
+
+/**
+ * 确保 user_sessions 表存在（在线席位查询依赖此表）
+ */
+const ensureUserSessionsTable = async () => {
+  try {
+    await AppDataSource.query(`
+      CREATE TABLE IF NOT EXISTS user_sessions (
+        id VARCHAR(36) NOT NULL PRIMARY KEY,
+        user_id VARCHAR(36) NOT NULL,
+        tenant_id VARCHAR(36) NOT NULL,
+        session_token VARCHAR(512) NOT NULL,
+        device_type VARCHAR(50) NULL,
+        device_info VARCHAR(255) NULL,
+        ip_address VARCHAR(50) NULL,
+        last_active_at DATETIME NOT NULL,
+        logged_out_at DATETIME NULL,
+        status VARCHAR(20) NOT NULL DEFAULT 'active',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_us_user_id (user_id),
+        INDEX idx_us_tenant_id (tenant_id),
+        INDEX idx_us_session_token (session_token(191)),
+        INDEX idx_us_last_active (last_active_at),
+        INDEX idx_us_status (status)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='用户登录会话记录（在线席位追踪）'
+    `);
+  } catch (_e) {
+    log.warn('[CustomerManagement] user_sessions表创建失败:', (_e as any).message?.substring(0, 80));
+  }
+};
+
 // 延迟创建表：使用路由中间件确保数据库连接就绪后再建表
 let tableReady = false;
 router.use(async (_req: Request, _res: Response, next: Function) => {
   if (!tableReady) {
     try {
       await ensureFollowUpTable();
+      await ensureDeletedAtColumns();
+      await ensureUserSessionsTable();
       tableReady = true;
-    } catch (e) {
-      // 如果建表失败，下次请求继续尝试
+    } catch (_e) {
       log.warn('[CustomerManagement] 中间件建表失败，下次请求重试');
     }
   }
@@ -118,6 +180,58 @@ router.get('/all-customers', async (req: Request, res: Response) => {
     const pageSizeNum = Math.min(parseInt(pageSize as string) || 10, 100);
     const offset = (pageNum - 1) * pageSizeNum;
 
+    // 检查 customer_follow_ups 表是否存在
+    let hasFollowUpTable = false;
+    try {
+      const ftCheck = await AppDataSource.query(
+        `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'customer_follow_ups'`
+      );
+      hasFollowUpTable = ftCheck.length > 0;
+    } catch { /* ignore */ }
+
+    // 检查 licenses 表是否有在线席位字段
+    let licenseHasSeatCols = false;
+    try {
+      const lCols = await AppDataSource.query(
+        `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'licenses' AND COLUMN_NAME = 'user_limit_mode'`
+      );
+      licenseHasSeatCols = lCols.length > 0;
+    } catch { /* ignore */ }
+
+    // 检查 tenants 表是否有在线席位字段
+    let tenantHasSeatCols = false;
+    try {
+      const tCols = await AppDataSource.query(
+        `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'tenants' AND COLUMN_NAME = 'user_limit_mode'`
+      );
+      tenantHasSeatCols = tCols.length > 0;
+    } catch { /* ignore */ }
+
+    // 检查 user_sessions 表是否存在（不存在时降级为 tenants.current_online_seats 缓存值）
+    let hasUserSessionsTable = false;
+    try {
+      const usCheck = await AppDataSource.query(
+        `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'user_sessions'`
+      );
+      hasUserSessionsTable = usCheck.length > 0;
+    } catch { /* ignore */ }
+
+    const privateFollowUp = hasFollowUpTable
+      ? `(SELECT content FROM customer_follow_ups WHERE customer_id = l.id AND customer_type = 'private' ORDER BY created_at DESC LIMIT 1) as lastFollowUp,
+        (SELECT created_at FROM customer_follow_ups WHERE customer_id = l.id AND customer_type = 'private' ORDER BY created_at DESC LIMIT 1) as lastFollowUpTime`
+      : `NULL as lastFollowUp, NULL as lastFollowUpTime`;
+
+    const tenantFollowUp = hasFollowUpTable
+      ? `(SELECT content FROM customer_follow_ups WHERE customer_id = t.id AND customer_type = 'tenant' ORDER BY created_at DESC LIMIT 1) as lastFollowUp,
+        (SELECT created_at FROM customer_follow_ups WHERE customer_id = t.id AND customer_type = 'tenant' ORDER BY created_at DESC LIMIT 1) as lastFollowUpTime`
+      : `NULL as lastFollowUp, NULL as lastFollowUpTime`;
+
+    // 在线席位子查询：登录即占席位，统计所有 status='active' 的会话
+    // 注意：user_sessions 表可能使用 utf8mb4_0900_ai_ci，需要加 COLLATE 避免与 tenants.id(utf8mb4_unicode_ci) 冲突
+    const onlineSeatsSubquery = hasUserSessionsTable
+      ? `(SELECT COUNT(DISTINCT us.user_id) FROM user_sessions us WHERE us.tenant_id COLLATE utf8mb4_unicode_ci = t.id AND us.status = 'active')`
+      : `0`;
+
     // 构建私有客户子查询
     let privateSql = `
       SELECT
@@ -136,8 +250,11 @@ router.get('/all-customers', async (req: Request, res: Response) => {
         'private' as customerType,
         NULL as packageName,
         NULL as tenantCode,
-        (SELECT content FROM customer_follow_ups WHERE customer_id = l.id AND customer_type = 'private' ORDER BY created_at DESC LIMIT 1) as lastFollowUp,
-        (SELECT created_at FROM customer_follow_ups WHERE customer_id = l.id AND customer_type = 'private' ORDER BY created_at DESC LIMIT 1) as lastFollowUpTime
+        ${licenseHasSeatCols ? "COALESCE(l.user_limit_mode, 'total')" : "'total'"} as user_limit_mode,
+        ${licenseHasSeatCols ? 'COALESCE(l.max_online_seats, 0)' : '0'} as max_online_seats,
+        0 as current_online_seats,
+        0 as user_count,
+        ${privateFollowUp}
       FROM licenses l
       WHERE l.deleted_at IS NULL
     `;
@@ -161,10 +278,13 @@ router.get('/all-customers', async (req: Request, res: Response) => {
         'tenant' as customerType,
         p.name as packageName,
         t.code as tenantCode,
-        (SELECT content FROM customer_follow_ups WHERE customer_id = t.id AND customer_type = 'tenant' ORDER BY created_at DESC LIMIT 1) as lastFollowUp,
-        (SELECT created_at FROM customer_follow_ups WHERE customer_id = t.id AND customer_type = 'tenant' ORDER BY created_at DESC LIMIT 1) as lastFollowUpTime
+        ${tenantHasSeatCols ? "COALESCE(t.user_limit_mode, 'total')" : "'total'"} as user_limit_mode,
+        ${tenantHasSeatCols ? 'COALESCE(t.max_online_seats, 0)' : '0'} as max_online_seats,
+        ${onlineSeatsSubquery} as current_online_seats,
+        COALESCE(t.user_count, 0) as user_count,
+        ${tenantFollowUp}
       FROM tenants t
-      LEFT JOIN tenant_packages p ON t.package_id = p.id
+      LEFT JOIN tenant_packages p ON t.package_id COLLATE utf8mb4_unicode_ci = CAST(p.id AS CHAR) COLLATE utf8mb4_unicode_ci
       WHERE t.deleted_at IS NULL
     `;
     const tenantParams: any[] = [];
@@ -225,7 +345,7 @@ router.get('/all-customers', async (req: Request, res: Response) => {
     });
   } catch (error: any) {
     log.error('[CustomerManagement] Get all customers failed:', error);
-    res.status(500).json({ success: false, message: '获取客户列表失败' });
+    res.status(500).json({ success: false, message: '获取客户列表失败', detail: error?.message?.substring(0, 200) });
   }
 });
 
@@ -237,6 +357,60 @@ router.get('/renewal-reminders', async (req: Request, res: Response) => {
     const pageNum = parseInt(page as string) || 1;
     const pageSizeNum = Math.min(parseInt(pageSize as string) || 10, 100);
     const offset = (pageNum - 1) * pageSizeNum;
+
+    // 检查 customer_follow_ups 表是否存在
+    let hasFollowUpTable = false;
+    try {
+      const ftCheck = await AppDataSource.query(
+        `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'customer_follow_ups'`
+      );
+      hasFollowUpTable = ftCheck.length > 0;
+    } catch { /* ignore */ }
+
+    // 检查 licenses 表是否有在线席位字段
+    let licenseHasSeatCols = false;
+    try {
+      const lCols = await AppDataSource.query(
+        `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'licenses' AND COLUMN_NAME = 'user_limit_mode'`
+      );
+      licenseHasSeatCols = lCols.length > 0;
+    } catch { /* ignore */ }
+
+    // 检查 tenants 表是否有在线席位字段
+    let tenantHasSeatCols = false;
+    try {
+      const tCols = await AppDataSource.query(
+        `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'tenants' AND COLUMN_NAME = 'user_limit_mode'`
+      );
+      tenantHasSeatCols = tCols.length > 0;
+    } catch { /* ignore */ }
+
+    // 检查 user_sessions 表是否存在（不存在时降级为 tenants.current_online_seats 缓存值）
+    let hasUserSessionsTable2 = false;
+    try {
+      const usCheck2 = await AppDataSource.query(
+        `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'user_sessions'`
+      );
+      hasUserSessionsTable2 = usCheck2.length > 0;
+    } catch { /* ignore */ }
+
+    const privateFollowUp = hasFollowUpTable
+      ? `(SELECT content FROM customer_follow_ups WHERE customer_id = l.id AND customer_type = 'private' ORDER BY created_at DESC LIMIT 1) as lastFollowUp,
+        (SELECT created_at FROM customer_follow_ups WHERE customer_id = l.id AND customer_type = 'private' ORDER BY created_at DESC LIMIT 1) as lastFollowUpTime,
+        (SELECT operator_name FROM customer_follow_ups WHERE customer_id = l.id AND customer_type = 'private' ORDER BY created_at DESC LIMIT 1) as lastFollowUpBy`
+      : `NULL as lastFollowUp, NULL as lastFollowUpTime, NULL as lastFollowUpBy`;
+
+    const tenantFollowUp = hasFollowUpTable
+      ? `(SELECT content FROM customer_follow_ups WHERE customer_id = t.id AND customer_type = 'tenant' ORDER BY created_at DESC LIMIT 1) as lastFollowUp,
+        (SELECT created_at FROM customer_follow_ups WHERE customer_id = t.id AND customer_type = 'tenant' ORDER BY created_at DESC LIMIT 1) as lastFollowUpTime,
+        (SELECT operator_name FROM customer_follow_ups WHERE customer_id = t.id AND customer_type = 'tenant' ORDER BY created_at DESC LIMIT 1) as lastFollowUpBy`
+      : `NULL as lastFollowUp, NULL as lastFollowUpTime, NULL as lastFollowUpBy`;
+
+    // 在线席位子查询：登录即占席位，统计所有 status='active' 的会话
+    // 注意：user_sessions 表可能使用 utf8mb4_0900_ai_ci，需要加 COLLATE 避免与 tenants.id(utf8mb4_unicode_ci) 冲突
+    const onlineSeatsSubquery2 = hasUserSessionsTable2
+      ? `(SELECT COUNT(DISTINCT us.user_id) FROM user_sessions us WHERE us.tenant_id COLLATE utf8mb4_unicode_ci = t.id AND us.status = 'active')`
+      : `0`;
 
     // 私有客户：有到期时间且未过期且非永久的
     const privateSql = `
@@ -254,6 +428,10 @@ router.get('/renewal-reminders', async (req: Request, res: Response) => {
         l.activated_at as activatedAt,
         'private' as customerType,
         NULL as packageName,
+        ${licenseHasSeatCols ? "COALESCE(l.user_limit_mode, 'total')" : "'total'"} as user_limit_mode,
+        ${licenseHasSeatCols ? 'COALESCE(l.max_online_seats, 0)' : '0'} as max_online_seats,
+        0 as current_online_seats,
+        0 as user_count,
         DATEDIFF(l.expires_at, NOW()) as remainingDays,
         DATEDIFF(l.expires_at, COALESCE(l.activated_at, l.created_at)) as totalDays,
         CASE
@@ -261,9 +439,7 @@ router.get('/renewal-reminders', async (req: Request, res: Response) => {
           THEN ROUND(DATEDIFF(l.expires_at, NOW()) * 100.0 / DATEDIFF(l.expires_at, COALESCE(l.activated_at, l.created_at)), 1)
           ELSE 0
         END as remainingPercent,
-        (SELECT content FROM customer_follow_ups WHERE customer_id = l.id AND customer_type = 'private' ORDER BY created_at DESC LIMIT 1) as lastFollowUp,
-        (SELECT created_at FROM customer_follow_ups WHERE customer_id = l.id AND customer_type = 'private' ORDER BY created_at DESC LIMIT 1) as lastFollowUpTime,
-        (SELECT operator_name FROM customer_follow_ups WHERE customer_id = l.id AND customer_type = 'private' ORDER BY created_at DESC LIMIT 1) as lastFollowUpBy
+        ${privateFollowUp}
       FROM licenses l
       WHERE l.deleted_at IS NULL
         AND l.status IN ('active', 'expired')
@@ -287,6 +463,10 @@ router.get('/renewal-reminders', async (req: Request, res: Response) => {
         NULL as activatedAt,
         'tenant' as customerType,
         p.name as packageName,
+        ${tenantHasSeatCols ? "COALESCE(t.user_limit_mode, 'total')" : "'total'"} as user_limit_mode,
+        ${tenantHasSeatCols ? 'COALESCE(t.max_online_seats, 0)' : '0'} as max_online_seats,
+        ${onlineSeatsSubquery2} as current_online_seats,
+        COALESCE(t.user_count, 0) as user_count,
         DATEDIFF(t.expire_date, NOW()) as remainingDays,
         DATEDIFF(t.expire_date, t.created_at) as totalDays,
         CASE
@@ -294,11 +474,9 @@ router.get('/renewal-reminders', async (req: Request, res: Response) => {
           THEN ROUND(DATEDIFF(t.expire_date, NOW()) * 100.0 / DATEDIFF(t.expire_date, t.created_at), 1)
           ELSE 0
         END as remainingPercent,
-        (SELECT content FROM customer_follow_ups WHERE customer_id = t.id AND customer_type = 'tenant' ORDER BY created_at DESC LIMIT 1) as lastFollowUp,
-        (SELECT created_at FROM customer_follow_ups WHERE customer_id = t.id AND customer_type = 'tenant' ORDER BY created_at DESC LIMIT 1) as lastFollowUpTime,
-        (SELECT operator_name FROM customer_follow_ups WHERE customer_id = t.id AND customer_type = 'tenant' ORDER BY created_at DESC LIMIT 1) as lastFollowUpBy
+        ${tenantFollowUp}
       FROM tenants t
-      LEFT JOIN tenant_packages p ON t.package_id = p.id
+      LEFT JOIN tenant_packages p ON t.package_id COLLATE utf8mb4_unicode_ci = CAST(p.id AS CHAR) COLLATE utf8mb4_unicode_ci
       WHERE t.deleted_at IS NULL
         AND t.expire_date IS NOT NULL
     `;
@@ -365,7 +543,7 @@ router.get('/renewal-reminders', async (req: Request, res: Response) => {
     });
   } catch (error: any) {
     log.error('[CustomerManagement] Get renewal reminders failed:', error);
-    res.status(500).json({ success: false, message: '获取续费提醒列表失败' });
+    res.status(500).json({ success: false, message: '获取续费提醒列表失败', detail: error?.message?.substring(0, 200) });
   }
 });
 

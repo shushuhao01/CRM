@@ -5,13 +5,16 @@
         <h3>密码过期提醒</h3>
         <button @click="closeModal" class="close-btn">&times;</button>
       </div>
-      
+
       <div class="modal-body">
         <div class="reminder-message">
           <div class="reminder-icon">🔔</div>
           <div class="reminder-text">
-            <p v-if="remainingDays > 0">
-              您的密码将在 <strong>{{ remainingDays }}</strong> 天后过期，建议您及时修改密码以确保账户安全。
+            <p v-if="remainingDays > 30">
+              您的密码已使用超过30天，距离强制修改还有 <strong>{{ remainingDays }}</strong> 天，建议您及时修改密码以确保账户安全。
+            </p>
+            <p v-else-if="remainingDays > 0">
+              您的密码已使用超过60天，距离强制修改仅剩 <strong>{{ remainingDays }}</strong> 天，请尽快修改密码！
             </p>
             <p v-else>
               您的密码已过期，请立即修改密码。
@@ -33,13 +36,22 @@
 
         <div class="reminder-options">
           <label class="checkbox-label">
-            <input 
-              v-model="dontRemindToday" 
+            <input
+              v-model="dontRemindToday"
               type="checkbox"
               :disabled="remainingDays <= 0"
             />
             今天不再提醒
           </label>
+          <div v-if="!dontRemindToday" class="remind-later-section">
+            <span class="remind-label">或</span>
+            <select v-model="remindAfterDays" class="remind-select">
+              <option :value="7">7天后提醒我</option>
+              <option :value="15">15天后提醒我</option>
+              <option :value="30">30天后提醒我</option>
+            </select>
+            <button @click="remindAfterSelected" class="remind-after-btn">确定</button>
+          </div>
         </div>
       </div>
     </div>
@@ -59,12 +71,14 @@ interface Emits {
   (e: 'close'): void
   (e: 'changePassword'): void
   (e: 'remindLater', dontRemindToday: boolean): void
+  (e: 'remindAfterDays', days: number): void
 }
 
 const props = defineProps<Props>()
 const emit = defineEmits<Emits>()
 
 const dontRemindToday = ref(false)
+const remindAfterDays = ref(7)
 
 const formatDate = (date?: Date): string => {
   if (!date) return '未知'
@@ -89,7 +103,13 @@ const remindLater = () => {
 
 const closeModal = () => {
   dontRemindToday.value = false
+  remindAfterDays.value = 7
   emit('close')
+}
+
+const remindAfterSelected = () => {
+  emit('remindAfterDays', remindAfterDays.value)
+  closeModal()
 }
 </script>
 
@@ -247,5 +267,47 @@ const closeModal = () => {
 
 .checkbox-label input[type="checkbox"]:disabled {
   cursor: not-allowed;
+}
+
+.remind-later-section {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.remind-label {
+  color: #999;
+  font-size: 13px;
+}
+
+.remind-select {
+  padding: 6px 10px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 13px;
+  color: #333;
+  background: white;
+  cursor: pointer;
+}
+
+.remind-select:focus {
+  outline: none;
+  border-color: #007bff;
+}
+
+.remind-after-btn {
+  padding: 6px 14px;
+  background-color: #007bff;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background-color 0.3s;
+}
+
+.remind-after-btn:hover {
+  background-color: #0056b3;
 }
 </style>

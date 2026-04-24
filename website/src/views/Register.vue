@@ -102,28 +102,28 @@
             </div>
 
             <div v-if="planType === 'saas'" class="plans-grid">
-              <!-- 免费试用 -->
-              <div class="plan-card free-trial" :class="{ selected: selectedPlan === 'FREE_TRIAL' }" @click="selectedPlan = 'FREE_TRIAL'">
-                <div class="plan-badge free">免费</div>
-                <h4>7天免费试用</h4>
-                <p class="plan-price free">¥0</p>
-                <p class="plan-desc">3用户 · 1GB存储 · 体验全部功能</p>
-              </div>
-              <div class="plan-card" :class="{ selected: selectedPlan === 'basic' }" @click="selectedPlan = 'basic'">
-                <h4>基础版</h4>
-                <p class="plan-price">¥{{ getMonthlyPrice('basic') }}<span>/月</span></p>
-                <p class="plan-desc">10用户 · 5GB存储</p>
-              </div>
-              <div class="plan-card" :class="{ selected: selectedPlan === 'pro' }" @click="selectedPlan = 'pro'">
-                <div class="plan-badge">推荐</div>
-                <h4>专业版</h4>
-                <p class="plan-price">¥{{ getMonthlyPrice('pro') }}<span>/月</span></p>
-                <p class="plan-desc">50用户 · 50GB存储</p>
-              </div>
-              <div class="plan-card" :class="{ selected: selectedPlan === 'enterprise' }" @click="selectedPlan = 'enterprise'">
-                <h4>企业版</h4>
-                <p class="plan-price">¥{{ getMonthlyPrice('enterprise') }}<span>/月</span></p>
-                <p class="plan-desc">200用户 · 200GB存储</p>
+              <div v-for="pkg in saasPlanCards" :key="pkg.code"
+                class="plan-card" :class="{ selected: selectedPlan === pkg.code, 'free-trial': pkg.is_trial }"
+                @click="selectedPlan = pkg.code">
+                <div v-if="pkg.is_trial" class="plan-badge free">免费</div>
+                <div v-else-if="pkg.is_recommended" class="plan-badge">推荐</div>
+                <h4>{{ pkg.name }}</h4>
+                <p class="plan-price" :class="{ free: pkg.is_trial }">
+                  <template v-if="pkg.is_trial">¥0</template>
+                  <template v-else>¥{{ Number(pkg.price) }}<span>/月</span></template>
+                </p>
+                <p class="plan-desc">
+                  <template v-if="pkg.user_limit_mode === 'both'">
+                    {{ pkg.max_users >= 99999 ? '不限' : pkg.max_users }}用户 / {{ pkg.max_online_seats }}席位
+                    <span class="mode-badge">可选</span>
+                  </template>
+                  <template v-else-if="pkg.user_limit_mode === 'online'">
+                    {{ pkg.max_online_seats }}席位 · {{ pkg.max_storage_gb }}GB存储
+                  </template>
+                  <template v-else>
+                    {{ pkg.max_users >= 99999 ? '不限用户' : pkg.max_users + '用户' }} · {{ pkg.max_storage_gb }}GB存储
+                  </template>
+                </p>
               </div>
             </div>
 
@@ -149,6 +149,29 @@
                       <span class="original-price">¥{{ getYearlyOriginalPrice(selectedPlan) }}</span>
                     </span>
                     <span class="option-save">相当于¥{{ getYearlyMonthlyPrice(selectedPlan) }}/月，省¥{{ getSaveAmount(selectedPlan) }}</span>
+                  </span>
+                </label>
+              </div>
+            </div>
+
+            <!-- 用户限制模式选择（仅双模式套餐显示，必须二选一） -->
+            <div v-if="needsModeSelection && planType === 'saas' && !currentPkg?.is_trial" class="billing-toggle" style="margin-top: 12px;">
+              <p style="margin: 0 0 8px 0; font-size: 14px; font-weight: 500; color: #303133;">选择用户限制模式 <span style="color:#e6a23c;font-size:12px;">（必选）</span></p>
+              <div class="billing-options">
+                <label class="billing-option" :class="{ active: selectedUserLimitMode === 'total' }">
+                  <input type="radio" v-model="selectedUserLimitMode" value="total" />
+                  <span class="option-content">
+                    <span class="option-title">👥 限注册用户数</span>
+                    <span class="option-price">最多 {{ currentPkg?.max_users >= 99999 ? '不限' : currentPkg?.max_users }} 个注册用户</span>
+                    <span class="option-save">按总注册用户数限制，不限同时在线</span>
+                  </span>
+                </label>
+                <label class="billing-option" :class="{ active: selectedUserLimitMode === 'online' }">
+                  <input type="radio" v-model="selectedUserLimitMode" value="online" />
+                  <span class="option-content">
+                    <span class="option-title">🟢 限在线席位</span>
+                    <span class="option-price">最多 {{ currentPkg?.max_online_seats }} 人同时在线</span>
+                    <span class="option-save">按同时在线人数限制，不限注册用户数</span>
                   </span>
                 </label>
               </div>
@@ -202,21 +225,13 @@
             </div>
 
             <div v-if="planType === 'private'" class="plans-grid plans-grid-3">
-              <div class="plan-card" :class="{ selected: selectedPlan === 'private-standard' }" @click="selectedPlan = 'private-standard'">
-                <h4>标准版</h4>
-                <p class="plan-price">¥{{ getPrivateDisplayPrice('private-standard') }}<span v-if="privateBillingMode === 'annual'">/年</span></p>
-                <p class="plan-desc">50用户 · {{ privateBillingMode === 'annual' ? '年度授权' : '永久授权' }}</p>
-              </div>
-              <div class="plan-card" :class="{ selected: selectedPlan === 'private-pro' }" @click="selectedPlan = 'private-pro'">
-                <div class="plan-badge">推荐</div>
-                <h4>专业版</h4>
-                <p class="plan-price">¥{{ getPrivateDisplayPrice('private-pro') }}<span v-if="privateBillingMode === 'annual'">/年</span></p>
-                <p class="plan-desc">200用户 · {{ privateBillingMode === 'annual' ? '年度授权' : '永久授权' }}</p>
-              </div>
-              <div class="plan-card" :class="{ selected: selectedPlan === 'private-enterprise' }" @click="selectedPlan = 'private-enterprise'">
-                <h4>企业版</h4>
-                <p class="plan-price">¥{{ getPrivateDisplayPrice('private-enterprise') }}<span v-if="privateBillingMode === 'annual'">/年</span></p>
-                <p class="plan-desc">不限用户 · {{ privateBillingMode === 'annual' ? '年度授权' : '永久授权' }}</p>
+              <div v-for="pkg in privatePlanCards" :key="pkg.code"
+                class="plan-card" :class="{ selected: selectedPlan === pkg.code }"
+                @click="selectedPlan = pkg.code">
+                <div v-if="pkg.is_recommended" class="plan-badge">推荐</div>
+                <h4>{{ pkg.name }}</h4>
+                <p class="plan-price">¥{{ getPrivateDisplayPrice(pkg.code) }}<span v-if="privateBillingMode === 'annual'">/年</span></p>
+                <p class="plan-desc">{{ pkg.max_users >= 99999 ? '不限用户' : pkg.max_users + '用户' }} · {{ privateBillingMode === 'annual' ? '年度授权' : '永久授权' }}</p>
               </div>
             </div>
 
@@ -435,7 +450,7 @@
 
                 <div class="qr-code-wrapper">
                   <div v-if="signingUrl && !signingUrl.startsWith('MOCK') && !signingUrl.includes('mock_sign')" class="qr-code">
-                    <img :src="generateQRCodeUrl(signingUrl)" alt="签约二维码" />
+                    <img :src="signingQrDataUrl" alt="签约二维码" />
                   </div>
                   <div v-else class="qr-mock">
                     <div class="mock-qr">
@@ -596,7 +611,7 @@
 
                 <div class="qr-code-wrapper">
                   <div v-if="paymentOrder && paymentOrder.qrCode && !paymentOrder.qrCode.startsWith('MOCK')" class="qr-code">
-                    <img :src="generateQRCodeUrl(paymentOrder.payUrl || paymentOrder.qrCode)" alt="支付二维码" />
+                    <img :src="paymentQrDataUrl" alt="支付二维码" />
                   </div>
                   <div v-else class="qr-mock">
                     <div class="mock-qr">
@@ -863,7 +878,7 @@
 
             <div class="qr-code-wrapper">
               <div v-if="paymentOrder.qrCode && !paymentOrder.qrCode.startsWith('MOCK')" class="qr-code">
-                <img :src="generateQRCodeUrl(paymentOrder.payUrl || paymentOrder.qrCode)" alt="支付二维码" />
+                    <img :src="paymentQrDataUrl || ''" alt="支付二维码" />
               </div>
               <div v-else class="qr-mock">
                 <div class="mock-qr">
@@ -908,6 +923,7 @@ import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { getPackages as fetchPackages, getYearlyPromoText, type Package } from '@/api/packages'
 import { getWebsiteConfig } from '@/api/website-config'
+import { generateQRCodeDataUrl } from '@/utils/qrcode'
 
 const API_BASE = '/api/v1'
 const route = useRoute()
@@ -923,6 +939,7 @@ const payMode = ref<'subscription' | 'normal'>('subscription')
 const hoveredPkg = ref('')
 const subscriptionChecked = ref(true)
 const privateBillingMode = ref<'perpetual' | 'annual'>('perpetual')
+const selectedUserLimitMode = ref<'total' | 'online'>('total')
 const countdown = ref(0)
 const _paying = ref(false)
 const submitting = ref(false)
@@ -938,6 +955,13 @@ const paymentOrder = ref<{
   qrCode: string
   payUrl: string
 } | null>(null)
+const paymentQrDataUrl = ref('')
+
+watch(paymentOrder, async (order) => {
+  if (!order) { paymentQrDataUrl.value = ''; return }
+  const content = order.payUrl || order.qrCode
+  paymentQrDataUrl.value = content ? await generateQRCodeDataUrl(content) : ''
+})
 
 // 对公转账银行信息
 const bankConfig = reactive({
@@ -957,7 +981,12 @@ const signingMode = ref(false)
 const signingChannel = ref<'wechat' | 'alipay'>('wechat')
 const signingSubscription = ref<any>(null)
 const signingUrl = ref('')
+const signingQrDataUrl = ref('')
 const signingLoading = ref(false)
+
+watch(signingUrl, async (url) => {
+  signingQrDataUrl.value = url ? await generateQRCodeDataUrl(url) : ''
+})
 const signingStatus = ref<'idle' | 'waiting' | 'success' | 'paying' | 'pay-waiting' | 'pay-success'>('idle')
 
 // 签约模式下目标套餐是否免费试用
@@ -965,7 +994,7 @@ const isTrialSigning = computed(() => selectedPlan.value === 'FREE_TRIAL')
 
 // 签约模式下目标套餐code
 const signingTargetPkgCode = computed(() => {
-  if (selectedPlan.value === 'FREE_TRIAL') return form.autoRenewPackage
+  if (selectedPlan.value === 'FREE_TRIAL' || getPackageByPlan(selectedPlan.value)?.is_trial) return form.autoRenewPackage
   return planCodeMap[selectedPlan.value] || selectedPlan.value
 })
 
@@ -1006,7 +1035,7 @@ const form = reactive({
   agree: false
 })
 
-// 套餐代码映射
+// 套餐代码映射（兼容旧别名 → 实际code，同时支持直接code）
 const planCodeMap: Record<string, string> = {
   'FREE_TRIAL': 'FREE_TRIAL',
   'basic': 'SAAS_BASIC',
@@ -1017,6 +1046,23 @@ const planCodeMap: Record<string, string> = {
   'private-enterprise': 'PRIVATE_ENTERPRISE'
 }
 
+// 动态套餐列表
+const saasPlanCards = computed(() => {
+  return packagesData.value
+    .filter(p => p.type === 'saas')
+    .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
+})
+
+const privatePlanCards = computed(() => {
+  return packagesData.value
+    .filter(p => p.type === 'private')
+    .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
+})
+
+// 当前选中套餐是否需要选择限制模式（双模式套餐）
+const currentPkgLimitMode = computed(() => currentPkg.value?.user_limit_mode || 'total')
+const needsModeSelection = computed(() => currentPkgLimitMode.value === 'both')
+
 // 套餐数据（从API加载）
 const packagesData = ref<Package[]>([])
 
@@ -1024,6 +1070,14 @@ onMounted(async () => {
   // 加载套餐数据
   try {
     packagesData.value = await fetchPackages()
+    // 自动选中第一个SaaS套餐（免费试用优先）
+    const trial = packagesData.value.find(p => p.type === 'saas' && p.is_trial)
+    if (trial) {
+      selectedPlan.value = trial.code
+    } else if (packagesData.value.length > 0) {
+      const firstSaas = packagesData.value.find(p => p.type === 'saas')
+      if (firstSaas) selectedPlan.value = firstSaas.code
+    }
   } catch (e) {
     console.error('加载套餐数据失败:', e)
   }
@@ -1098,6 +1152,12 @@ const sendCode = async () => {
 }
 
 const getPlanName = (plan: string) => {
+  const pkg = getPackageByPlan(plan)
+  if (pkg) {
+    const prefix = pkg.type === 'saas' ? 'SaaS云端版' : '私有部署版'
+    return `${prefix} - ${pkg.name}`
+  }
+  // 兜底硬编码
   const names: Record<string, string> = {
     FREE_TRIAL: '7天免费试用',
     basic: 'SaaS云端版 - 基础版',
@@ -1117,11 +1177,15 @@ const fallbackPrices: Record<string, number> = {
   enterprise: 599
 }
 
-// 根据plan名称获取套餐数据
+// 根据plan代码获取套餐数据（优先直接匹配code，其次通过别名映射）
 const getPackageByPlan = (plan: string): Package | undefined => {
-  const code = planCodeMap[plan]
-  if (!code) return undefined
-  return packagesData.value.find(p => p.code === code)
+  // 先尝试直接匹配package code
+  const direct = packagesData.value.find(p => p.code === plan)
+  if (direct) return direct
+  // 兜底：通过旧别名映射
+  const mappedCode = planCodeMap[plan]
+  if (mappedCode) return packagesData.value.find(p => p.code === mappedCode)
+  return undefined
 }
 
 // 是否有私有套餐配置了年度价格
@@ -1263,10 +1327,13 @@ const getYearlyBadgeText = (plan: string) => {
 
 const getPlanPrice = (plan: string) => {
   // 免费试用
+  const pkg = getPackageByPlan(plan)
+  if (pkg?.is_trial) return '0'
   if (plan === 'FREE_TRIAL') return '0'
 
   // 私有部署版 - 根据计费模式返回对应价格
-  if (plan.startsWith('private-')) {
+  const isPrivatePlan = pkg?.type === 'private' || plan.startsWith('private-')
+  if (isPrivatePlan) {
     if (privateBillingMode.value === 'annual') {
       const annual = getPrivateAnnualPrice(plan)
       if (annual > 0) return annual.toLocaleString()
@@ -1291,6 +1358,10 @@ const handleSubmitInfo = async () => {
   submitting.value = true
   try {
     const packageCode = planCodeMap[selectedPlan.value] || selectedPlan.value
+    // 确定用户限制模式
+    const userLimitMode = needsModeSelection.value
+      ? selectedUserLimitMode.value
+      : (currentPkgLimitMode.value === 'online' ? 'online' : 'total')
     const res = await fetch(`${API_BASE}/public/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1303,7 +1374,8 @@ const handleSubmitInfo = async () => {
         password: form.password || undefined,
         autoRenew: selectedPlan.value === 'FREE_TRIAL' ? form.autoRenew : undefined,
         autoRenewPackage: selectedPlan.value === 'FREE_TRIAL' && form.autoRenew ? form.autoRenewPackage : undefined,
-        packageCode
+        packageCode,
+        userLimitMode
       })
     })
     const data = await res.json()
@@ -1383,7 +1455,10 @@ const handleCreatePayment = async () => {
         tenantName: form.companyName,
         contactName: form.contactName,
         contactPhone: form.phone,
-        contactEmail: form.email
+        contactEmail: form.email,
+        userLimitMode: needsModeSelection.value
+          ? selectedUserLimitMode.value
+          : (currentPkgLimitMode.value === 'online' ? 'online' : 'total')
       })
     })
     const data = await res.json()
@@ -1489,7 +1564,10 @@ const handleCheckPayment = async () => {
             plan: selectedPlan.value,
             type: planType.value,
             tenantCode: data.data.tenantCode,
-            licenseKey: data.data.licenseKey
+            licenseKey: data.data.licenseKey,
+            adminUsername: data.data.adminUsername || '',
+            adminPassword: data.data.adminPassword || '',
+            memberPwdDefault: '1'
           }
         })
       } else {
@@ -1535,11 +1613,6 @@ const handlePayLater = () => {
   router.push('/member/dashboard')
 }
 
-// 生成二维码URL（使用第三方API）
-const generateQRCodeUrl = (content: string) => {
-  // 使用 QR Server API 生成二维码
-  return `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(content)}`
-}
 
 // ==================== 签约相关（免费试用+自动续费） ====================
 
@@ -2243,6 +2316,18 @@ const autoRenewPlanKey = computed(() => {
     font-size: 12px;
     color: var(--text-muted);
     line-height: 1.4;
+
+    .mode-badge {
+      display: inline-block;
+      font-size: 10px;
+      padding: 1px 5px;
+      border-radius: 3px;
+      background: #fff3e0;
+      color: #e6a23c;
+      font-weight: 500;
+      margin-left: 4px;
+      vertical-align: middle;
+    }
   }
 
   .plan-badge {

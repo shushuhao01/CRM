@@ -7,6 +7,7 @@
 import { checkLicenseHeartbeat, needLicenseVerification, clearLocalTenantInfo, getDeployMode } from '@/api/tenantLicense'
 import { ElMessageBox, ElNotification } from 'element-plus'
 import request from '@/utils/request'
+import { getMemberCenterLoginUrl, getMemberCenterRenewUrl } from '@/utils/memberCenterUrl'
 
 class LicenseHeartbeatService {
   private intervalId: NodeJS.Timeout | null = null
@@ -67,14 +68,18 @@ class LicenseHeartbeatService {
       } else {
         // SaaS模式：调用租户心跳
         const result = await checkLicenseHeartbeat()
-        if (!result.valid) {
+        if (!result) {
+          // 响应为空（网络异常或响应格式不匹配），静默跳过
+          console.log('[License] 心跳响应为空，跳过本次检测')
+        } else if (result.valid === false) {
+          // 仅在后端明确返回 valid:false 时才提示授权失效
           console.warn('[License] 授权验证失败:', result.message)
           this.handleInvalidLicense(result.message || '授权已失效')
         } else {
           // SaaS模式：即将到期预警（剩余有效期 ≤ 总有效期20%）
           if (result.nearExpiry && result.daysUntilExpiry != null && !this.nearExpiryNotified) {
             this.nearExpiryNotified = true
-            const memberUrl = this.getMemberCenterUrl()
+            const memberUrl = getMemberCenterRenewUrl() || getMemberCenterLoginUrl()
             const renewHtml = memberUrl
               ? `<br/><a href="${memberUrl}" target="_blank" style="color:#409eff;text-decoration:underline;font-weight:600;">🔑 去会员中心续费</a>`
               : ''
@@ -116,7 +121,7 @@ class LicenseHeartbeatService {
       if (res.nearExpiry && res.daysUntilExpiry != null && !this.nearExpiryNotified) {
         this.nearExpiryNotified = true
         // 获取会员中心URL
-        const memberUrl = this.getMemberCenterUrl()
+        const memberUrl = getMemberCenterRenewUrl() || getMemberCenterLoginUrl()
         const renewHtml = memberUrl
           ? `<br/><a href="${memberUrl}" target="_blank" style="color:#409eff;text-decoration:underline;font-weight:600;">🔑 去会员中心续费</a>`
           : ''
@@ -201,24 +206,6 @@ class LicenseHeartbeatService {
     }
   }
 
-  /**
-   * 获取会员中心续费URL
-   */
-  private getMemberCenterUrl(): string {
-    try {
-      const configData = localStorage.getItem('crm_config_system')
-      if (configData) {
-        const config = JSON.parse(configData)
-        const websiteUrl = config?.websiteUrl
-        if (websiteUrl) {
-          return websiteUrl.replace(/\/+$/, '') + '/member/login'
-        }
-      }
-    } catch {
-      // 静默处理
-    }
-    return ''
-  }
 }
 
 export const licenseHeartbeatService = new LicenseHeartbeatService()

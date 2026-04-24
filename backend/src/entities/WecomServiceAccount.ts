@@ -8,6 +8,9 @@ export class WecomServiceAccount {
   @PrimaryGeneratedColumn()
   id: number;
 
+  @Column({ name: 'tenant_id', type: 'varchar', length: 36, nullable: true, comment: '租户ID' })
+  tenantId?: string;
+
   @Column({ name: 'wecom_config_id', type: 'int', comment: '企微配置ID' })
   wecomConfigId: number;
 

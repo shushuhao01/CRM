@@ -123,16 +123,18 @@ export const useMessageStore = defineStore('message', () => {
   })
 
   const activeAnnouncements = computed(() => {
-    return announcements.value.filter(ann =>
+    return announcements.value.filter((ann: any) =>
       ann.status === 'published' &&
-      ann.isMarquee
+      ann.isMarquee &&
+      !ann.silent
     )
   })
 
   const popupAnnouncements = computed(() => {
-    return announcements.value.filter(ann =>
+    return announcements.value.filter((ann: any) =>
       ann.status === 'published' &&
-      ann.isPopup
+      ann.isPopup &&
+      !ann.silent
     )
   })
 

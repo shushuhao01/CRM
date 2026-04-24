@@ -323,7 +323,15 @@
           <el-table-column prop="productInfo" label="商品信息" min-width="200" show-overflow-tooltip>
             <template #default="{ row }">
               <div class="product-info-cell">
-                {{ row.productInfo }}
+                <template v-if="row.products && row.products.length > 0">
+                  <template v-for="(p, idx) in row.products" :key="idx">
+                    <span v-if="idx > 0">、</span>
+                    <el-tag v-if="p.productType === 'virtual'" type="warning" size="small" effect="light" style="margin-right: 2px;">虚拟</el-tag>
+                    <el-tag v-else size="small" effect="light" style="margin-right: 2px;">实物</el-tag>
+                    {{ p.name }} x{{ p.quantity }}
+                  </template>
+                </template>
+                <template v-else>{{ row.productInfo }}</template>
               </div>
             </template>
           </el-table-column>
@@ -417,7 +425,15 @@
       <div v-show="activeTab === 'products'">
         <el-table :data="productDetails" style="width: 100%" v-loading="tableLoading">
           <el-table-column type="index" label="序号" width="60" />
-          <el-table-column prop="productName" label="商品名称" />
+          <el-table-column prop="productName" label="商品名称" min-width="200" show-overflow-tooltip>
+            <template #default="{ row }">
+              <span style="display: flex; align-items: center; gap: 4px;">
+                <el-tag v-if="row.productType === 'virtual'" type="warning" size="small" effect="light" style="flex-shrink:0;">虚拟</el-tag>
+                <el-tag v-else size="small" effect="light" style="flex-shrink:0;">实物</el-tag>
+                {{ row.productName }}
+              </span>
+            </template>
+          </el-table-column>
           <el-table-column prop="salesCount" label="销售数量" width="100" />
           <el-table-column prop="salesAmount" label="销售金额" width="120">
             <template #default="{ row }">
@@ -558,6 +574,7 @@ interface CustomerDetail {
 interface ProductDetail {
   id: string
   productName: string
+  productType?: string
   salesCount: number
   salesAmount: number
   avgPrice: number
@@ -2652,6 +2669,7 @@ const loadTableData = async () => {
             customerName: order.customerName,
             customerPhone: order.customerPhone || '未填写',
             productInfo,
+            products: order.products || [],
             totalAmount: adjustedAmount,
             depositAmount: order.depositAmount || 0,
             status: order.status,
@@ -2854,6 +2872,7 @@ const loadTableData = async () => {
                 productSalesMap.set(productId, {
                   id: productId,
                   productName: productName,
+                  productType: item.productType || 'physical',
                   salesCount: quantity,
                   salesAmount: total,
                   avgPrice: price,

@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <el-dialog
     v-model="visible"
     title="批量权限配置"
@@ -10,8 +10,8 @@
     <div class="config-target-section">
       <h4>配置目标</h4>
       <el-radio-group v-model="configType" @change="handleConfigTypeChange">
-        <el-radio value="roles">按角色配置</el-radio>
-        <el-radio value="departments">按部门配置</el-radio>
+        <el-radio label="roles">按角色配置</el-radio>
+        <el-radio label="departments">按部门配置</el-radio>
       </el-radio-group>
       
       <div class="target-selection" v-if="configType">
@@ -52,9 +52,9 @@
     <div class="config-method-section" v-if="selectedTargets.length > 0">
       <h4>配置方式</h4>
       <el-radio-group v-model="configMethod">
-        <el-radio value="template">使用权限模板</el-radio>
-        <el-radio value="custom">自定义权限</el-radio>
-        <el-radio value="copy">复制现有权限</el-radio>
+        <el-radio label="template">使用权限模板</el-radio>
+        <el-radio label="custom">自定义权限</el-radio>
+        <el-radio label="copy">复制现有权限</el-radio>
       </el-radio-group>
 
       <!-- 权限模板选择 -->

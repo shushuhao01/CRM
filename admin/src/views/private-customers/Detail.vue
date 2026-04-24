@@ -217,9 +217,33 @@
             <el-button link type="primary" size="small" @click="openChangePackage" style="margin-left: 8px">绑定套餐</el-button>
           </template>
         </el-descriptions-item>
-        <el-descriptions-item label="用户数">
-          <span class="text-bold text-primary">{{ detail.userCount || 0 }}</span> / {{ detail.maxUsers || 0 }} 人
-          <el-tag v-if="detail.maxUsers && (detail.userCount || 0) >= detail.maxUsers" type="danger" size="small" style="margin-left: 6px">已达上限</el-tag>
+        <el-descriptions-item label="限制模式">
+          <el-tag v-if="detail.user_limit_mode === 'online'" type="success" size="small" effect="dark">限在</el-tag>
+          <el-tag v-else type="info" size="small" effect="dark">限注</el-tag>
+          <span style="font-size:12px;color:#606266;margin-left:6px;">{{ detail.user_limit_mode === 'online' ? '限制同时在线人数' : '限制总注册用户数' }}</span>
+          <el-button size="small" link type="primary" style="margin-left:8px;" @click="handleSwitchLimitMode">切换</el-button>
+        </el-descriptions-item>
+        <el-descriptions-item label="在线/席位/用户">
+          <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+            <span :class="{ 'text-bold text-primary': detail.user_limit_mode === 'online' }" style="white-space:nowrap;">
+              在线 <strong>{{ detail.current_online_seats || detail.online_count || 0 }}</strong>
+            </span>
+            <span style="color:#c0c4cc;">/</span>
+            <span style="white-space:nowrap;">
+              席位 <strong>{{ (Number(detail.max_online_seats)||0) + (Number(detail.extra_online_seats)||0) }}</strong>
+            </span>
+            <el-tag v-if="detail.user_limit_mode === 'online'" size="small" type="success" effect="dark" style="font-size:10px;padding:0 4px;height:18px;line-height:18px;">限在</el-tag>
+            <span style="color:#c0c4cc;">|</span>
+            <span v-if="detail.user_limit_mode === 'online'" style="white-space:nowrap;color:#909399;">
+              注册 <strong>{{ detail.userCount || detail.user_count || 0 }}</strong> 人（不限）
+            </span>
+            <template v-else>
+              <span class="text-bold text-primary" style="white-space:nowrap;">
+                注册 <strong>{{ detail.userCount || detail.user_count || 0 }}</strong>/{{ detail.maxUsers || detail.max_users || 0 }}
+              </span>
+              <el-tag size="small" type="info" effect="dark" style="font-size:10px;padding:0 4px;height:18px;line-height:18px;">限注</el-tag>
+            </template>
+          </div>
         </el-descriptions-item>
         <el-descriptions-item label="到期时间">
           <template v-if="detail.licenseType === 'perpetual'">
@@ -515,8 +539,8 @@
         </el-form-item>
         <el-form-item label="续期方式">
           <el-radio-group v-model="renewMode">
-            <el-radio value="quick">快捷续期</el-radio>
-            <el-radio value="custom">自定义日期</el-radio>
+            <el-radio label="quick">快捷续期</el-radio>
+            <el-radio label="custom">自定义日期</el-radio>
           </el-radio-group>
         </el-form-item>
         <el-form-item v-if="renewMode === 'quick'" label="续期时长">
@@ -630,7 +654,7 @@ import {
   Edit, ArrowLeft, Clock, VideoPause, VideoPlay, MoreFilled, RefreshRight,
   Download, Delete, CopyDocument, View, Hide, Refresh, User, Key, Grid,
   Document, Wallet, CircleCheck, CircleClose, Coin,
-  Odometer, ShoppingCart, Phone, TrendCharts, Van, Headset, Files, Money, Box, Setting
+  Odometer, ShoppingCart, Phone, TrendCharts, Van, Headset, Files, Money, Box, Setting, ChatLineSquare
 } from '@element-plus/icons-vue'
 import { adminApi } from '@/api/admin'
 import type { Package } from '@/api/packages'
@@ -705,6 +729,7 @@ const crmModuleOptions = [
   { id: 'data', title: '资料管理', icon: Files },
   { id: 'finance', title: '财务管理', icon: Money },
   { id: 'product', title: '商品管理', icon: Box },
+  { id: 'wecom', title: '企微管理', icon: ChatLineSquare },
   { id: 'system', title: '系统管理', icon: Setting }
 ]
 
@@ -889,6 +914,14 @@ const confirmChangePackage = async () => {
       packageName: pkg.name,
       maxUsers: pkg.max_users
     }
+    // 🔥 同步套餐的用户限制模式和在线席位数
+    const pkgMode = pkg.user_limit_mode || 'total'
+    if (pkgMode === 'online' || pkgMode === 'both') {
+      updateData.user_limit_mode = pkgMode === 'both' ? (detail.value.user_limit_mode || 'total') : pkgMode
+      updateData.max_online_seats = pkg.max_online_seats || 0
+    } else {
+      updateData.user_limit_mode = 'total'
+    }
     // 同步套餐功能模块（modules是授权模块ID列表，features是功能特性文本）
     if (syncPackageModules.value && pkg.modules?.length) {
       updateData.modules = pkg.modules
@@ -944,6 +977,25 @@ const confirmRenew = async () => {
   } catch (e: any) {
     ElMessage.error(e.message || '续期失败')
   } finally { submitting.value = false }
+}
+
+// ============================================================
+// 切换限制模式
+// ============================================================
+const handleSwitchLimitMode = async () => {
+  const currentMode = detail.value.user_limit_mode || 'total'
+  const newMode = currentMode === 'online' ? 'total' : 'online'
+  const modeText = newMode === 'online' ? '在线席位制（限在）' : '总用户数制（限注）'
+  try {
+    await ElMessageBox.confirm(`确定将限制模式切换为「${modeText}」吗？`, '切换限制模式', { type: 'warning' })
+    const res = await adminApi.updateLicense(route.params.id as string, { user_limit_mode: newMode })
+    if (res.success) {
+      ElMessage.success(`已切换为${modeText}`)
+      fetchDetail()
+    }
+  } catch (e: any) {
+    if (e !== 'cancel') ElMessage.error(e.message || '切换失败')
+  }
 }
 
 // ============================================================

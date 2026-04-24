@@ -4,7 +4,7 @@
  */
 
 import { AppDataSource } from '../config/database';
-
+import { tenantRawSQL, getCurrentTenantIdSafe } from '../utils/tenantHelpers';
 import { log } from '../config/logger';
 // 阿里云配置接口
 interface AliyunConfig {
@@ -62,9 +62,10 @@ class AliyunCallService {
    */
   async getLineConfig(lineId: string): Promise<AliyunConfig | null> {
     try {
+      const t = tenantRawSQL();
       const lines = await AppDataSource.query(
-        `SELECT * FROM call_lines WHERE id = ? AND provider = 'aliyun' AND status = 'active'`,
-        [lineId]
+        `SELECT * FROM call_lines WHERE id = ? AND provider = 'aliyun' AND status = 'active'${t.sql}`,
+        [lineId, ...t.params]
       );
 
       if (lines.length === 0) {
@@ -119,15 +120,17 @@ class AliyunCallService {
 
       // 生成通话记录ID
       const callId = `call_${Date.now()}_${Math.random().toString(36).substr(2, 8)}`;
+      const tenantId = getCurrentTenantIdSafe() || null;
 
       // 创建通话记录
       await AppDataSource.query(
         `INSERT INTO call_records
-         (id, customer_id, customer_name, customer_phone, call_type, call_status,
+         (id, tenant_id, customer_id, customer_name, customer_phone, call_type, call_status,
           call_method, line_id, caller_number, user_id, user_name, start_time, created_at)
-         VALUES (?, ?, ?, ?, 'outbound', 'calling', 'cloud', ?, ?, ?, ?, NOW(), NOW())`,
+         VALUES (?, ?, ?, ?, ?, 'outbound', 'calling', 'cloud', ?, ?, ?, ?, NOW(), NOW())`,
         [
           callId,
+          tenantId,
           params.customerId || null,
           params.customerName || null,
           params.customerPhone,
@@ -139,14 +142,15 @@ class AliyunCallService {
       );
 
       // 更新线路使用统计
+      const tLine = tenantRawSQL();
       await AppDataSource.query(
         `UPDATE call_lines SET
          current_concurrent = current_concurrent + 1,
          daily_used = daily_used + 1,
          total_calls = total_calls + 1,
          last_used_at = NOW()
-         WHERE id = ?`,
-        [params.lineId]
+         WHERE id = ?${tLine.sql}`,
+        [params.lineId, ...tLine.params]
       );
 
       // TODO: 实际调用阿里云API
@@ -183,9 +187,10 @@ class AliyunCallService {
       const providerCallId = `aliyun_${Date.now()}`;
 
       // 更新通话记录的服务商ID
+      const tUpdate = tenantRawSQL();
       await AppDataSource.query(
-        `UPDATE call_records SET provider_call_id = ? WHERE id = ?`,
-        [providerCallId, callId]
+        `UPDATE call_records SET provider_call_id = ? WHERE id = ?${tUpdate.sql}`,
+        [providerCallId, callId, ...tUpdate.params]
       );
 
       log.info(`[AliyunCallService] 发起外呼成功: ${callId} -> ${params.customerPhone}`);
@@ -211,9 +216,10 @@ class AliyunCallService {
   async hangupCall(callId: string): Promise<{ success: boolean; message: string }> {
     try {
       // 获取通话记录
+      const t = tenantRawSQL();
       const records = await AppDataSource.query(
-        `SELECT * FROM call_records WHERE id = ?`,
-        [callId]
+        `SELECT * FROM call_records WHERE id = ?${t.sql}`,
+        [callId, ...t.params]
       );
 
       if (records.length === 0) {
@@ -232,15 +238,16 @@ class AliyunCallService {
          call_status = 'connected',
          end_time = NOW(),
          duration = TIMESTAMPDIFF(SECOND, start_time, NOW())
-         WHERE id = ?`,
-        [callId]
+         WHERE id = ?${t.sql}`,
+        [callId, ...t.params]
       );
 
       // 更新线路并发数
       if (record.line_id) {
+        const tLine = tenantRawSQL();
         await AppDataSource.query(
-          `UPDATE call_lines SET current_concurrent = GREATEST(0, current_concurrent - 1) WHERE id = ?`,
-          [record.line_id]
+          `UPDATE call_lines SET current_concurrent = GREATEST(0, current_concurrent - 1) WHERE id = ?${tLine.sql}`,
+          [record.line_id, ...tLine.params]
         );
       }
 
@@ -257,27 +264,28 @@ class AliyunCallService {
   async handleStatusCallback(data: CallStatusCallback): Promise<void> {
     try {
       const { callId, status, duration, releaseReason } = data;
+      const t = tenantRawSQL();
 
       // 根据状态更新通话记录
       switch (status) {
         case 'dialing':
           await AppDataSource.query(
-            `UPDATE call_records SET call_status = 'calling' WHERE id = ?`,
-            [callId]
+            `UPDATE call_records SET call_status = 'calling' WHERE id = ?${t.sql}`,
+            [callId, ...t.params]
           );
           break;
 
         case 'ringing':
           await AppDataSource.query(
-            `UPDATE call_records SET call_status = 'ringing' WHERE id = ?`,
-            [callId]
+            `UPDATE call_records SET call_status = 'pending' WHERE id = ?${t.sql}`,
+            [callId, ...t.params]
           );
           break;
 
         case 'connected':
           await AppDataSource.query(
-            `UPDATE call_records SET call_status = 'connected', start_time = NOW() WHERE id = ?`,
-            [callId]
+            `UPDATE call_records SET call_status = 'connected', start_time = NOW() WHERE id = ?${t.sql}`,
+            [callId, ...t.params]
           );
           break;
 
@@ -289,22 +297,23 @@ class AliyunCallService {
              end_time = NOW(),
              duration = ?,
              hangup_cause = ?
-             WHERE id = ?`,
-            [finalStatus, duration || 0, releaseReason || null, callId]
+             WHERE id = ?${t.sql}`,
+            [finalStatus, duration || 0, releaseReason || null, callId, ...t.params]
           );
 
           // 更新线路并发数和统计
           const records = await AppDataSource.query(
-            `SELECT line_id FROM call_records WHERE id = ?`,
-            [callId]
+            `SELECT line_id FROM call_records WHERE id = ?${t.sql}`,
+            [callId, ...t.params]
           );
           if (records.length > 0 && records[0].line_id) {
+            const tLine = tenantRawSQL();
             await AppDataSource.query(
               `UPDATE call_lines SET
                current_concurrent = GREATEST(0, current_concurrent - 1),
                total_duration = total_duration + ?
-               WHERE id = ?`,
-              [duration || 0, records[0].line_id]
+               WHERE id = ?${tLine.sql}`,
+              [duration || 0, records[0].line_id, ...tLine.params]
             );
           }
           break;
@@ -313,8 +322,8 @@ class AliyunCallService {
       // 推送状态到PC端
       if (global.webSocketService) {
         const callRecords = await AppDataSource.query(
-          `SELECT user_id FROM call_records WHERE id = ?`,
-          [callId]
+          `SELECT user_id FROM call_records WHERE id = ?${t.sql}`,
+          [callId, ...t.params]
         );
         if (callRecords.length > 0) {
           global.webSocketService.sendToUser(
@@ -339,13 +348,14 @@ class AliyunCallService {
     recordingSize: number;
   }): Promise<void> {
     try {
+      const t = tenantRawSQL();
       await AppDataSource.query(
         `UPDATE call_records SET
          recording_url = ?,
          has_recording = 1,
          recording_size = ?
-         WHERE id = ?`,
-        [data.recordingUrl, data.recordingSize, data.callId]
+         WHERE id = ?${t.sql}`,
+        [data.recordingUrl, data.recordingSize, data.callId, ...t.params]
       );
 
       log.info(`[AliyunCallService] 录音已保存: ${data.callId}`);

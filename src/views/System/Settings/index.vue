@@ -67,6 +67,11 @@
         <OrderSettings />
       </el-tab-pane>
 
+      <!-- 客户配置 -->
+      <el-tab-pane v-if="isFeatureEnabled('customer')" label="客户配置" name="customer">
+        <CustomerSettings />
+      </el-tab-pane>
+
       <!-- 数据备份 -->
       <el-tab-pane v-if="isFeatureEnabled('backup')" label="数据备份" name="backup">
         <BackupSettings />
@@ -120,6 +125,7 @@ import { useUserStore } from '@/stores/user'
 import { useConfigStore } from '@/stores/config'
 import HealthCheckNotificationSettings from '@/components/HealthCheckNotificationSettings.vue'
 import OrderSettings from '@/views/Settings/OrderSettings.vue'
+import CustomerSettings from '@/views/Settings/CustomerSettings.vue'
 import SecuritySettings from './SecuritySettings.vue'
 import LicenseSettings from './LicenseSettings.vue'
 import CallSettings from './CallSettings.vue'

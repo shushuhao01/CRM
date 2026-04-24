@@ -103,12 +103,18 @@
             :class="{ 'selected': isInCart(product.id) }"
           >
             <div class="product-image">
-              <div class="product-badge" v-if="product.isHot">
-                <el-tag type="danger" size="small">热销</el-tag>
+              <div class="product-badges" v-if="product.isRecommended || product.isNew || product.isHot">
+                <el-tag v-if="product.isRecommended" type="warning" size="small">推荐</el-tag>
+                <el-tag v-if="product.isNew" type="success" size="small">新品</el-tag>
+                <el-tag v-if="product.isHot" type="danger" size="small">热销</el-tag>
               </div>
             </div>
             <div class="product-info">
-              <h4 class="product-name">{{ product.name }}</h4>
+              <h4 class="product-name">
+                <el-tag v-if="product.productType === 'virtual'" type="warning" size="small" effect="light" style="margin-right: 4px; vertical-align: middle;">虚拟</el-tag>
+                <el-tag v-else type="info" size="small" effect="light" style="margin-right: 4px; vertical-align: middle;">实物</el-tag>
+                {{ product.name }}
+              </h4>
               <p class="product-code">{{ product.code }}</p>
               <div class="product-price">¥{{ product.price }}</div>
               <div class="product-stock" :class="getStockStatusClass(product.stock)">
@@ -151,7 +157,11 @@
                 <div class="table-product-info">
                   <div class="table-product-image">📦</div>
                   <div class="table-product-details">
-                    <div class="table-product-name">{{ row.name }}</div>
+                    <div class="table-product-name">
+                      <el-tag v-if="row.productType === 'virtual'" type="warning" size="small" effect="light" style="margin-right: 4px;">虚拟</el-tag>
+                      <el-tag v-else size="small" effect="light" style="margin-right: 4px;">实物</el-tag>
+                      {{ row.name }}
+                    </div>
                     <div class="table-product-code">{{ row.code }}</div>
                   </div>
                 </div>
@@ -242,7 +252,11 @@
             >
               <div class="cart-item-image">📦</div>
               <div class="cart-item-info">
-                <div class="cart-item-name">{{ item.name }}</div>
+                <div class="cart-item-name">
+                  <el-tag v-if="item.productType === 'virtual'" type="warning" size="small" effect="light" style="margin-right: 4px;">虚拟</el-tag>
+                  <el-tag v-else type="info" size="small" effect="light" style="margin-right: 4px;">实物</el-tag>
+                  {{ item.name }}
+                </div>
                 <div class="cart-item-code">{{ item.code }}</div>
               </div>
               <div class="cart-item-controls">
@@ -314,6 +328,7 @@ interface Product {
   image: string
   isHot?: boolean
   status: string
+  productType?: string
 }
 
 interface CartItem extends Product {
@@ -367,8 +382,11 @@ const allProducts = computed(() => {
       category: p.categoryId,
       categoryName: p.categoryName,
       image: p.image,
-      isHot: p.salesCount > 100, // 销量大于100的商品标记为热销
-      status: p.status
+      isRecommended: p.isRecommended,
+      isNew: p.isNew,
+      isHot: p.isHot,
+      status: p.status,
+      productType: p.productType || 'physical'
     }))
 })
 
@@ -390,7 +408,7 @@ const getFilteredProducts = computed(() => {
   // 搜索过滤
   if (searchQuery.value) {
     const query = searchQuery.value.toLowerCase()
-    products = products.filter(p => 
+    products = products.filter(p =>
       p.name.toLowerCase().includes(query) ||
       p.code.toLowerCase().includes(query)
     )
@@ -566,7 +584,7 @@ const confirmSelection = () => {
 
   // 清空购物车
   clearCart()
-  
+
   ElMessage.success('商品已添加到订单，库存已自动扣减')
 }
 
@@ -589,7 +607,7 @@ onMounted(() => {
   if (productStore.products.length === 0) {
     productStore.initData()
   }
-  
+
   // 如果有预选产品，添加到购物车
   if (props.selectedProducts.length > 0) {
     props.selectedProducts.forEach(selected => {
@@ -846,6 +864,16 @@ onMounted(() => {
   content: '📦';
   font-size: 32px;
   opacity: 0.5;
+}
+
+.product-badges {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  z-index: 1;
 }
 
 .product-info {
@@ -1255,7 +1283,7 @@ onMounted(() => {
   .cart-section {
     width: 320px;
   }
-  
+
   .product-grid {
     grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
   }
@@ -1266,12 +1294,12 @@ onMounted(() => {
     width: 95%;
     margin: 20px auto;
   }
-  
+
   .dialog-content {
     flex-direction: column;
     height: auto;
   }
-  
+
   .cart-section {
     width: 100%;
     border-left: none;
@@ -1283,7 +1311,7 @@ onMounted(() => {
     grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
     gap: 12px;
   }
-  
+
   .product-card {
     padding: 16px;
   }
@@ -1291,26 +1319,26 @@ onMounted(() => {
   .cart-item {
     padding: 12px;
   }
-  
+
   .cart-item-controls {
     flex-direction: row;
     align-items: center;
     gap: 8px;
   }
-  
+
   .quantity-control .el-input-number {
     width: 60px;
   }
-  
+
   .filter-section {
     padding: 16px;
   }
-  
+
   .filter-row {
     flex-direction: column;
     gap: 8px;
   }
-  
+
   .filter-input {
     width: 100% !important;
   }
@@ -1320,17 +1348,17 @@ onMounted(() => {
   .product-grid {
     grid-template-columns: 1fr;
   }
-  
+
   .cart-actions {
     flex-direction: column;
   }
-  
+
   .toolbar {
     flex-direction: column;
     gap: 12px;
     align-items: stretch;
   }
-  
+
   .product-stats {
     justify-content: center;
   }

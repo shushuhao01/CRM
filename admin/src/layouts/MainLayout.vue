@@ -81,6 +81,51 @@
           <el-menu-item v-if="hasPerm('modules:message:view')" index="/modules/message-management">消息管理</el-menu-item>
         </el-sub-menu>
 
+        <!-- 短信管理 -->
+        <el-sub-menu v-if="hasMenu('sms-management')" index="/sms-management">
+          <template #title>
+            <el-icon><ChatDotRound /></el-icon>
+            <span>短信管理</span>
+          </template>
+          <el-menu-item v-if="hasPerm('sms-management:template-review:view')" index="/sms-management/template-review">模板审核</el-menu-item>
+          <el-menu-item v-if="hasPerm('sms-management:templates:view')" index="/sms-management/templates">模板管理</el-menu-item>
+          <el-menu-item v-if="hasPerm('sms-management:records:view')" index="/sms-management/records">发送记录</el-menu-item>
+          <el-menu-item v-if="hasPerm('sms-management:crm-config:view')" index="/sms-management/crm-config">CRM配置</el-menu-item>
+          <el-menu-item v-if="hasPerm('sms-management:statistics:view')" index="/sms-management/statistics">统计总览</el-menu-item>
+          <el-menu-item v-if="hasPerm('sms-management:quota-packages:view')" index="/sms-management/quota-packages">额度套餐</el-menu-item>
+        </el-sub-menu>
+
+        <!-- 企微管理（V4.0重构：14菜单分3组） -->
+        <el-sub-menu v-if="hasMenu('wecom-management')" index="/wecom-management">
+          <template #title>
+            <el-icon><ChatLineSquare /></el-icon>
+            <span>企微管理</span>
+          </template>
+          <!-- 基础管理 -->
+          <el-menu-item-group title="基础管理">
+            <el-menu-item v-if="hasPerm('wecom-management:overview:view')" index="/wecom-management/overview">企微总览</el-menu-item>
+            <el-menu-item v-if="hasPerm('wecom-management:suite-app:view')" index="/wecom-management/suite-app">服务商应用管理</el-menu-item>
+            <el-menu-item v-if="hasPerm('wecom-management:tenant-auth:view')" index="/wecom-management/tenant-auth">租户授权管理</el-menu-item>
+            <el-menu-item v-if="hasPerm('wecom-management:config-quota:view')" index="/wecom-management/config-quota">企微配额管理</el-menu-item>
+          </el-menu-item-group>
+          <!-- 商业运营 -->
+          <el-menu-item-group title="商业运营">
+            <el-menu-item v-if="hasPerm('wecom-management:package-templates:view')" index="/wecom-management/pricing">套餐与定价</el-menu-item>
+            <el-menu-item v-if="hasPerm('wecom-management:tenant-packages:view')" index="/wecom-management/tenant-packages">租户套餐管理</el-menu-item>
+            <el-menu-item v-if="hasPerm('wecom-management:purchase-orders:view')" index="/wecom-management/purchase-orders">会话存档代购</el-menu-item>
+            <el-menu-item v-if="hasPerm('wecom-management:ai-management:view')" index="/wecom-management/ai-management">AI额度管理</el-menu-item>
+            <el-menu-item v-if="hasPerm('wecom-management:vas-orders:view')" index="/wecom-management/vas-orders">订单与财务</el-menu-item>
+          </el-menu-item-group>
+          <!-- 运维监控 -->
+          <el-menu-item-group title="运维监控">
+            <el-menu-item v-if="hasPerm('wecom-management:quota-monitor:view')" index="/wecom-management/quota-monitor">资源配额监控</el-menu-item>
+            <el-menu-item v-if="hasPerm('wecom-management:acquisition-quota:view')" index="/wecom-management/acquisition-usage">获客助手用量</el-menu-item>
+            <el-menu-item v-if="hasPerm('wecom-management:data-stats:view')" index="/wecom-management/data-stats">数据统计</el-menu-item>
+            <el-menu-item v-if="hasPerm('wecom-management:audit-log:view')" index="/wecom-management/audit-log">操作日志</el-menu-item>
+            <el-menu-item v-if="hasPerm('wecom-management:system-config:view')" index="/wecom-management/system-config">系统配置</el-menu-item>
+          </el-menu-item-group>
+        </el-sub-menu>
+
         <!-- 支付管理 -->
         <el-sub-menu v-if="hasMenu('payment')" index="/payment">
           <template #title>
@@ -215,7 +260,8 @@ import { useRoute, useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import {
   Platform, DataAnalysis, Key, Upload, Menu, Setting, Wallet, Connection,
-  Fold, Expand, ArrowDown, User, Lock, SwitchButton, OfficeBuilding, UserFilled, GoodsFilled
+  Fold, Expand, ArrowDown, User, Lock, SwitchButton, OfficeBuilding, UserFilled, GoodsFilled,
+  ChatDotRound, ChatLineSquare
 } from '@element-plus/icons-vue'
 import NotificationBell from '@/components/NotificationBell.vue'
 import request from '@/api/request'

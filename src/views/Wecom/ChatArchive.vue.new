@@ -1,0 +1,409 @@
+<template>
+  <div class="wecom-chat-archive">
+    <!-- 增值服务未授权提示 - 展示示例 + 开通按钮 -->
+    <el-card v-if="archiveStatus && archiveStatus.authorized === false" style="margin-bottom: 20px">
+      <div class="demo-overlay-wrapper">
+        <!-- 示例对话 -->
+        <div class="demo-chat-preview">
+          <div class="demo-header">
+            <el-icon><ChatLineSquare /></el-icon>
+            <span>会话存档示例预览</span>
+          </div>
+          <div class="demo-messages">
+            <div class="demo-msg demo-msg-left">
+              <div class="demo-avatar">👤</div>
+              <div class="demo-bubble">您好，请问这款产品有优惠吗？</div>
+            </div>
+            <div class="demo-msg demo-msg-right">
+              <div class="demo-bubble demo-bubble-right">您好！目前全场8折活动中，需要我为您推荐吗？</div>
+              <div class="demo-avatar">🧑‍💼</div>
+            </div>
+            <div class="demo-msg demo-msg-left">
+              <div class="demo-avatar">👤</div>
+              <div class="demo-bubble">好的，帮我看看适合的方案</div>
+            </div>
+            <div class="demo-msg demo-msg-right">
+              <div class="demo-bubble demo-bubble-right">好的，我给您发详细方案...</div>
+              <div class="demo-avatar">🧑‍💼</div>
+            </div>
+          </div>
+          <div class="demo-blur-mask">
+            <div class="demo-lock-info">
+              <el-icon :size="40" color="#e6a23c"><Lock /></el-icon>
+              <h3>会话存档增值服务</h3>
+              <p>开通后可查看员工与客户的完整聊天记录</p>
+              <div class="demo-features">
+                <span>📝 聊天记录查看</span>
+                <span>🔍 全文搜索</span>
+                <span>⚠️ 敏感词检测</span>
+                <span>✅ 合规质检</span>
+              </div>
+              <el-button type="primary" size="large" @click="openPurchaseDialog">
+                <el-icon><ShoppingCart /></el-icon> 立即开通
+              </el-button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </el-card>
+
+    <!-- 未配置提示 -->
+    <el-card v-else-if="archiveStatus && !archiveStatus.enabled" style="margin-bottom: 20px">
+      <el-result icon="info" title="会话存档未配置" :sub-title="archiveStatus.message || '请在企微配置中填写会话存档Secret和RSA私钥'">
+        <template #extra>
+          <el-button type="primary" @click="router.push('/wecom/config')">前往配置</el-button>
+        </template>
+      </el-result>
+    </el-card>
+
+    <el-card v-else>
+      <template #header>
+        <div class="card-header">
+          <span>会话存档</span>
+          <div class="header-actions">
+            <el-select v-model="query.configId" placeholder="选择企微配置" clearable style="width: 180px" @change="handleConfigChange">
+              <el-option v-for="c in configList" :key="c.id" :label="c.name" :value="c.id" />
+            </el-select>
+            <el-button type="success" :loading="syncing" @click="handleSync">
+              <el-icon><Refresh /></el-icon> 同步
+            </el-button>
+          </div>
+        </div>
+      </template>
+
+      <el-tabs v-model="activeTab" @tab-change="handleTabChange">
+        <!-- ==================== Tab 1: 消息记录 ==================== -->
+        <el-tab-pane label="消息记录" name="records">
+          <div class="tab-toolbar">
+            <el-input v-model="query.keyword" placeholder="搜索内容" clearable style="width: 200px" @keyup.enter="handleSearch" />
+            <el-select v-model="query.msgType" placeholder="消息类型" clearable style="width: 120px" @change="handleSearch">
+              <el-option label="文本" value="text" />
+              <el-option label="图片" value="image" />
+              <el-option label="语音" value="voice" />
+              <el-option label="视频" value="video" />
+              <el-option label="文件" value="file" />
+            </el-select>
+            <el-date-picker v-model="dateRange" type="daterange" range-separator="至" start-placeholder="开始日期" end-placeholder="结束日期" value-format="YYYY-MM-DD" style="width: 240px" @change="handleSearch" />
+            <el-button type="primary" @click="handleSearch">搜索</el-button>
+            <el-button type="warning" @click="searchDrawerVisible = true">
+              <el-icon><Search /></el-icon> 全文搜索
+            </el-button>
+          </div>
+
+          <el-alert type="info" :closable="false" style="margin-bottom: 15px">
+            当前为HTTP API模式：已同步会话关系元数据（成员↔客户映射、同意状态）。实际消息内容拉取需在服务器部署企微Finance SDK。
+          </el-alert>
+
+          <el-table :data="recordList" v-loading="loading" stripe>
+            <el-table-column label="发送方" min-width="150">
+              <template #default="{ row }">
+                <div class="user-info">
+                  <span>{{ row.fromUserName || row.fromUserId }}</span>
+                </div>
+              </template>
+            </el-table-column>
+            <el-table-column label="接收方" min-width="150">
+              <template #default="{ row }">
+                <div class="user-info">
+                  <span>{{ formatToUsers(row.toUserIds) }}</span>
+                </div>
+              </template>
+            </el-table-column>
+            <el-table-column label="消息类型" width="100">
+              <template #default="{ row }">
+                <el-tag>{{ getMsgTypeText(row.msgType) }}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="消息内容" min-width="250">
+              <template #default="{ row }">
+                <div v-if="row.msgType === 'text'" class="msg-content">{{ getTextContent(row.content) }}</div>
+                <div v-else-if="row.msgType === 'meta'" class="msg-meta-info">
+                  <el-icon><InfoFilled /></el-icon>
+                  {{ getMetaSummary(row.content) }}
+                  <el-tag v-if="getMetaAgreed(row.content)" type="success" size="small">已同意</el-tag>
+                  <el-tag v-else type="warning" size="small">未同意</el-tag>
+                </div>
+                <div v-else-if="row.msgType === 'image'" class="msg-media">
+                  <el-image v-if="row.mediaUrl" :src="row.mediaUrl" :preview-src-list="[row.mediaUrl]" fit="cover" style="width: 60px; height: 60px" />
+                  <span v-else>[图片]</span>
+                </div>
+                <div v-else class="msg-file">
+                  <el-icon><Document /></el-icon>
+                  <span>{{ row.fileName || `[${getMsgTypeText(row.msgType)}]` }}</span>
+                </div>
+              </template>
+            </el-table-column>
+            <el-table-column label="发送时间" width="160">
+              <template #default="{ row }">{{ formatMsgTime(row.msgTime) }}</template>
+            </el-table-column>
+            <el-table-column label="敏感" width="80" align="center">
+              <template #default="{ row }">
+                <el-tag v-if="row.isSensitive" type="danger" size="small">敏感</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="操作" width="120" fixed="right">
+              <template #default="{ row }">
+                <el-button link type="primary" size="small" @click="handleAudit(row)">质检</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+
+          <div class="pagination-wrapper">
+            <el-pagination
+              v-model:current-page="query.page"
+              v-model:page-size="query.pageSize"
+              :total="total"
+              :page-sizes="[20, 50, 100]"
+              layout="total, sizes, prev, pager, next"
+              @size-change="fetchList"
+              @current-change="fetchList"
+            />
+          </div>
+        </el-tab-pane>
+
+        <!-- ==================== Tab 2: 聊天会话 ==================== -->
+        <el-tab-pane label="聊天会话" name="conversations">
+          <ConversationView
+            ref="conversationViewRef"
+            :config-id="query.configId"
+            @audit="handleAudit"
+          />
+        </el-tab-pane>
+
+        <!-- ==================== Tab 3: 敏感词管理 ==================== -->
+        <el-tab-pane label="敏感词管理" name="sensitive">
+          <SensitiveWordManager
+            ref="sensitiveWordManagerRef"
+            :config-id="query.configId"
+          />
+        </el-tab-pane>
+      </el-tabs>
+    </el-card>
+
+    <!-- 质检弹窗 -->
+    <AuditDialog
+      ref="auditDialogRef"
+      v-model="auditDialogVisible"
+      @audit-success="fetchList"
+    />
+
+    <!-- 全文搜索抽屉 -->
+    <FullTextSearchDrawer
+      v-model="searchDrawerVisible"
+      :config-id="query.configId"
+    />
+
+    <!-- 购买弹窗 -->
+    <PurchaseDialog
+      ref="purchaseDialogRef"
+      v-model="purchaseDialogVisible"
+      @purchase-complete="handlePurchaseComplete"
+    />
+  </div>
+</template>
+
+<script setup lang="ts">
+defineOptions({ name: 'WecomChatArchive' })
+import { ref, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
+import { Document, Refresh, Search, Lock, ShoppingCart, ChatLineSquare, InfoFilled } from '@element-plus/icons-vue'
+import { ElMessage } from 'element-plus'
+import { getWecomConfigs, getChatArchiveStatus, getChatRecords, syncChatRecords } from '@/api/wecom'
+import { formatMsgTime, getMsgTypeText, getTextContent, getMetaSummary, getMetaAgreed, formatToUsers } from './utils'
+import type { ArchiveStatus, WecomConfig, ChatRecord } from './types'
+
+// 子组件
+import ConversationView from './components/ConversationView.vue'
+import SensitiveWordManager from './components/SensitiveWordManager.vue'
+import AuditDialog from './components/AuditDialog.vue'
+import FullTextSearchDrawer from './components/FullTextSearchDrawer.vue'
+import PurchaseDialog from './components/PurchaseDialog.vue'
+
+const router = useRouter()
+const loading = ref(false)
+const syncing = ref(false)
+const configList = ref<WecomConfig[]>([])
+const recordList = ref<ChatRecord[]>([])
+const total = ref(0)
+const dateRange = ref<string[]>([])
+const archiveStatus = ref<ArchiveStatus | null>(null)
+const activeTab = ref('records')
+
+const query = ref({
+  configId: null as number | null,
+  keyword: '',
+  msgType: '',
+  startDate: '',
+  endDate: '',
+  page: 1,
+  pageSize: 20
+})
+
+// 子组件 refs
+const conversationViewRef = ref<InstanceType<typeof ConversationView> | null>(null)
+const sensitiveWordManagerRef = ref<InstanceType<typeof SensitiveWordManager> | null>(null)
+const auditDialogRef = ref<InstanceType<typeof AuditDialog> | null>(null)
+const purchaseDialogRef = ref<InstanceType<typeof PurchaseDialog> | null>(null)
+
+// 弹窗 / 抽屉
+const auditDialogVisible = ref(false)
+const searchDrawerVisible = ref(false)
+const purchaseDialogVisible = ref(false)
+
+// ==================== 数据获取 ====================
+
+const fetchStatus = async () => {
+  try {
+    const res = await getChatArchiveStatus()
+    archiveStatus.value = (res as ArchiveStatus) || null
+  } catch (e) {
+    console.error('[WecomChatArchive] Fetch status error:', e)
+  }
+}
+
+const fetchConfigs = async () => {
+  try {
+    const res = await getWecomConfigs()
+    const configs = Array.isArray(res) ? res : []
+    configList.value = configs.filter((c: any) => c.isEnabled)
+  } catch (e) {
+    console.error('[WecomChatArchive] Fetch configs error:', e)
+  }
+}
+
+const fetchList = async () => {
+  loading.value = true
+  try {
+    const params = { ...query.value }
+    Object.keys(params).forEach(k => {
+      if (params[k as keyof typeof params] === '' || params[k as keyof typeof params] === null) {
+        delete params[k as keyof typeof params]
+      }
+    })
+    const res: any = await getChatRecords(params as any)
+    if (res?.list) {
+      recordList.value = res.list
+      total.value = res.total || 0
+    } else {
+      recordList.value = []
+      total.value = 0
+    }
+  } catch (e) {
+    console.error('[WecomChatArchive] Fetch list error:', e)
+    recordList.value = []
+    total.value = 0
+  } finally {
+    loading.value = false
+  }
+}
+
+// ==================== 事件处理 ====================
+
+const handleConfigChange = () => {
+  handleSearch()
+  if (activeTab.value === 'conversations') {
+    conversationViewRef.value?.fetchConversations()
+  }
+}
+
+const handleTabChange = (tab: string) => {
+  if (tab === 'conversations') {
+    conversationViewRef.value?.fetchConversations()
+  }
+  if (tab === 'sensitive') {
+    sensitiveWordManagerRef.value?.fetchSensitiveWords()
+  }
+}
+
+const handleSearch = () => {
+  if (dateRange.value?.length === 2) {
+    query.value.startDate = dateRange.value[0]
+    query.value.endDate = dateRange.value[1]
+  } else {
+    query.value.startDate = ''
+    query.value.endDate = ''
+  }
+  query.value.page = 1
+  fetchList()
+}
+
+const handleSync = async () => {
+  if (!query.value.configId) {
+    ElMessage.warning('请先选择企微配置')
+    return
+  }
+  syncing.value = true
+  try {
+    const res: any = await syncChatRecords(query.value.configId)
+    ElMessage.success(res?.message || '同步请求已发送')
+    if (activeTab.value === 'records') {
+      fetchList()
+    } else {
+      conversationViewRef.value?.fetchConversations()
+    }
+  } catch (e: any) {
+    ElMessage.error(e?.message || '同步失败')
+  } finally {
+    syncing.value = false
+  }
+}
+
+const handleAudit = (row: ChatRecord) => {
+  auditDialogRef.value?.open(row)
+  auditDialogVisible.value = true
+}
+
+const openPurchaseDialog = () => {
+  purchaseDialogRef.value?.open()
+  purchaseDialogVisible.value = true
+}
+
+const handlePurchaseComplete = () => {
+  window.location.reload()
+}
+
+// ==================== 初始化 ====================
+
+onMounted(() => {
+  fetchStatus()
+  fetchConfigs()
+  fetchList()
+})
+</script>
+
+<style scoped lang="scss">
+.wecom-chat-archive { padding: 20px; }
+.card-header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
+.header-actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.tab-toolbar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 15px; }
+.user-info { display: flex; align-items: center; gap: 8px; }
+.msg-content { max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.msg-media { display: inline-block; }
+.msg-file { display: flex; align-items: center; gap: 5px; color: #409eff; }
+.pagination-wrapper { margin-top: 20px; display: flex; justify-content: flex-end; }
+
+/* 会话元数据消息样式 */
+.msg-meta-info { display: flex; align-items: center; gap: 6px; color: #909399; font-size: 13px; font-style: italic; }
+
+/* 示例预览 */
+.demo-overlay-wrapper { position: relative; }
+.demo-chat-preview { position: relative; overflow: hidden; border-radius: 12px; }
+.demo-header { padding: 12px 20px; background: #f5f7fa; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+.demo-messages { padding: 20px; min-height: 200px; background: #f9fafb; }
+.demo-msg { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 16px; }
+.demo-msg-right { justify-content: flex-end; }
+.demo-avatar { width: 36px; height: 36px; border-radius: 50%; background: #e4e7ed; display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0; }
+.demo-bubble { max-width: 280px; padding: 10px 14px; background: #fff; border-radius: 10px; font-size: 14px; color: #303133; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+.demo-bubble-right { background: #95ec69; }
+.demo-blur-mask {
+  position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+  backdrop-filter: blur(6px); background: rgba(255,255,255,0.7);
+  display: flex; align-items: center; justify-content: center;
+}
+.demo-lock-info { text-align: center; padding: 30px; }
+.demo-lock-info h3 { margin: 12px 0 8px; font-size: 20px; }
+.demo-lock-info p { color: #909399; margin-bottom: 16px; }
+.demo-features { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin-bottom: 20px; }
+.demo-features span { background: #f5f7fa; padding: 4px 10px; border-radius: 6px; font-size: 13px; }
+</style>
+

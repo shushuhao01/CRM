@@ -8,6 +8,9 @@ export class WecomAcquisitionLink {
   @PrimaryGeneratedColumn()
   id: number;
 
+  @Column({ name: 'tenant_id', type: 'varchar', length: 36, nullable: true, comment: '租户ID' })
+  tenantId?: string;
+
   @Column({ name: 'wecom_config_id', type: 'int', comment: '企微配置ID' })
   wecomConfigId: number;
 
@@ -43,6 +46,29 @@ export class WecomAcquisitionLink {
 
   @Column({ name: 'add_count', type: 'int', default: 0, comment: '添加次数' })
   addCount: number;
+
+  @Column({ name: 'loss_count', type: 'int', default: 0, comment: '流失数量' })
+  lossCount: number;
+
+  @Column({ name: 'weight_config', type: 'text', nullable: true, comment: '成员权重配置(JSON)' })
+  weightConfig: string;
+
+  @Column({ name: 'daily_stats', type: 'text', nullable: true, comment: '每日统计(JSON)' })
+  dailyStats: string;
+
+  // ==================== V4.0 新增字段 ====================
+
+  @Column({ type: 'varchar', length: 100, nullable: true, comment: '渠道标识' })
+  state: string;
+
+  @Column({ name: 'welcome_config', type: 'text', nullable: true, comment: '欢迎语配置(JSON)' })
+  welcomeConfig: string;
+
+  @Column({ name: 'auto_tags', type: 'text', nullable: true, comment: '自动标签配置(JSON)' })
+  autoTags: string;
+
+  @Column({ name: 'auto_group_config', type: 'text', nullable: true, comment: '自动建群配置(JSON)' })
+  autoGroupConfig: string;
 
   @Column({ name: 'created_by', type: 'varchar', length: 50, nullable: true, comment: '创建人' })
   createdBy: string;

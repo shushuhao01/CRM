@@ -33,6 +33,9 @@ import adminRolesRouter from './roles';
 import capacityRouter from './capacity';
 import tenantExportRouter from './tenant-export';
 import tenantImportRouter from './tenant-import';
+import smsManagementRouter from './sms-management';
+import smsQuotaRouter from './sms-quota';
+import wecomManagementRouter from './wecom-management';
 import { log } from '../../config/logger';
 // import schedulerRouter from './scheduler'; // 暂时禁用
 
@@ -170,6 +173,9 @@ router.use('/roles', adminRolesRouter);
 router.use('/capacity', capacityRouter);
 router.use('/tenants', tenantExportRouter);   // 租户数据导出 API
 router.use('/tenants', tenantImportRouter);   // 租户数据导入 API
+router.use('/sms-management', smsManagementRouter); // 短信管理 API
+router.use('/sms-quota', smsQuotaRouter); // 短信额度套餐管理 API
+router.use('/wecom-management', wecomManagementRouter); // 企微管理 API
 router.use('/system-settings', systemSettingsRouter);
 // router.use('/scheduler', schedulerRouter); // 暂时禁用
 // 需要认证的系统配置路由

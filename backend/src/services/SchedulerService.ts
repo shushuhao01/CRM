@@ -10,6 +10,9 @@ import { paymentReminderService } from './PaymentReminderService';
 import { dataCleanupService } from './DataCleanupService';
 import { subscriptionService } from './SubscriptionService';
 import { logisticsAutoSyncService } from './LogisticsAutoSyncService';
+import { wecomSyncScheduler } from './WecomSyncScheduler';
+import { onlineSeatService } from './OnlineSeatService';
+import { capacityService } from './CapacityService';
 
 import { log } from '../config/logger';
 export class SchedulerService {
@@ -81,6 +84,37 @@ export class SchedulerService {
         await logisticsAutoSyncService.runAutoSync();
       },
       '物流状态自动同步（每15分钟）'
+    );
+
+    // 🔥 企微客户自动同步 - 每2小时执行一次
+    this.scheduleTask(
+      'wecom-customer-sync',
+      '0 */2 * * *', // 每2小时
+      async () => {
+        await wecomSyncScheduler.runAutoSync();
+      },
+      '企微客户自动同步（每2小时）'
+    );
+
+    // 🔥 在线席位过期会话清理 - 每1分钟执行一次（配合2分钟活跃阈值）
+    this.scheduleTask(
+      'online-seat-cleanup',
+      '* * * * *', // 每1分钟
+      async () => {
+        await onlineSeatService.cleanupExpiredSessions();
+      },
+      '在线席位过期会话清理（每1分钟）'
+    );
+
+    // 🔥 扩容到期回退 - 每小时检查一次
+    this.scheduleTask(
+      'capacity-expire-check',
+      '0 * * * *', // 每小时整点
+      async () => {
+        const count = await capacityService.expireCapacityOrders();
+        if (count > 0) log.info(`[Scheduler] 已回退 ${count} 个过期扩容订单`);
+      },
+      '扩容到期回退检查（每小时）'
     );
 
     // 如果是开发环境,可以设置更频繁的检查用于测试
@@ -157,6 +191,15 @@ export class SchedulerService {
           return true;
         case 'logistics-auto-sync':
           await logisticsAutoSyncService.runAutoSync();
+          return true;
+        case 'wecom-customer-sync':
+          await wecomSyncScheduler.runAutoSync();
+          return true;
+        case 'online-seat-cleanup':
+          await onlineSeatService.cleanupExpiredSessions();
+          return true;
+        case 'capacity-expire-check':
+          await capacityService.expireCapacityOrders();
           return true;
         default:
           log.error(`[Scheduler] 未知任务: ${name}`);

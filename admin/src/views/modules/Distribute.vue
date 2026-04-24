@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="page-container">
     <!-- 页面头部 -->
     <el-card shadow="never" class="header-card">
@@ -179,8 +179,8 @@
       <el-form v-else-if="editingKey === 'storage'" :model="storageForm" label-width="140px" class="edit-form">
         <el-form-item label="存储类型">
           <el-radio-group v-model="storageForm.storageType">
-            <el-radio-button value="local">本地存储</el-radio-button>
-            <el-radio-button value="oss">阿里云OSS</el-radio-button>
+            <el-radio-button label="local">本地存储</el-radio-button>
+            <el-radio-button label="oss">阿里云OSS</el-radio-button>
           </el-radio-group>
         </el-form-item>
         <template v-if="storageForm.storageType === 'local'">
@@ -272,9 +272,9 @@
         </el-row>
         <el-form-item label="传输协议">
           <el-radio-group v-model="callForm.sipTransport">
-            <el-radio-button value="UDP">UDP</el-radio-button>
-            <el-radio-button value="TCP">TCP</el-radio-button>
-            <el-radio-button value="TLS">TLS</el-radio-button>
+            <el-radio-button label="UDP">UDP</el-radio-button>
+            <el-radio-button label="TCP">TCP</el-radio-button>
+            <el-radio-button label="TLS">TLS</el-radio-button>
           </el-radio-group>
         </el-form-item>
         <el-divider content-position="left">录音与功能</el-divider>

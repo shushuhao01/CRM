@@ -19,6 +19,10 @@
             "Camera" : {},
             "Barcode" : {}
         },
+        "privacy" : {
+            "prompt" : "template",
+            "secondConfirm" : "true"
+        },
         "distribute" : {
             "android" : {
                 "packagename" : "com.xianhu.crm.dialer",
@@ -26,9 +30,9 @@
                     "<uses-permission android:name=\"android.permission.CALL_PHONE\"/>",
                     "<uses-permission android:name=\"android.permission.READ_PHONE_STATE\"/>",
                     "<uses-permission android:name=\"android.permission.RECORD_AUDIO\"/>",
-                    "<uses-permission android:name=\"android.permission.WRITE_EXTERNAL_STORAGE\" android:maxSdkVersion=\"29\"/>",
-                    "<uses-permission android:name=\"android.permission.READ_EXTERNAL_STORAGE\" android:maxSdkVersion=\"32\"/>",
                     "<uses-permission android:name=\"android.permission.READ_MEDIA_AUDIO\"/>",
+                    "<uses-permission android:name=\"android.permission.READ_EXTERNAL_STORAGE\"/>",
+                    "<uses-permission android:name=\"android.permission.WRITE_EXTERNAL_STORAGE\"/>",
                     "<uses-permission android:name=\"android.permission.MANAGE_EXTERNAL_STORAGE\"/>",
                     "<uses-permission android:name=\"android.permission.CAMERA\"/>",
                     "<uses-permission android:name=\"android.permission.INTERNET\"/>",
@@ -57,35 +61,35 @@
             },
             "icons" : {
                 "android" : {
-                    "ldpi" : "static/icons/logo-36.png",
-                    "mdpi" : "static/icons/logo-48.png",
-                    "hdpi" : "static/icons/logo-72.png",
-                    "xhdpi" : "static/icons/logo-96.png",
-                    "xxhdpi" : "static/icons/logo-144.png",
-                    "xxxhdpi" : "static/icons/logo-192.png"
+                    "ldpi" : "unpackage/res/icons/40x40.png",
+                    "mdpi" : "unpackage/res/icons/58x58.png",
+                    "hdpi" : "unpackage/res/icons/72x72.png",
+                    "xhdpi" : "unpackage/res/icons/96x96.png",
+                    "xxhdpi" : "unpackage/res/icons/144x144.png",
+                    "xxxhdpi" : "unpackage/res/icons/180x180.png"
                 },
                 "ios" : {
-                    "appstore" : "static/icons/logo-1024.png",
+                    "appstore" : "unpackage/res/icons/1024x1024.png",
                     "iphone" : {
-                        "app@2x" : "static/icons/logo-120.png",
-                        "app@3x" : "static/icons/logo-180.png",
-                        "notification@2x" : "static/icons/logo-40.png",
-                        "notification@3x" : "static/icons/logo-60.png",
-                        "settings@2x" : "static/icons/logo-58.png",
-                        "settings@3x" : "static/icons/logo-87.png",
-                        "spotlight@2x" : "static/icons/logo-80.png",
-                        "spotlight@3x" : "static/icons/logo-120.png"
+                        "app@2x" : "unpackage/res/icons/120x120.png",
+                        "app@3x" : "unpackage/res/icons/180x180.png",
+                        "notification@2x" : "unpackage/res/icons/40x40.png",
+                        "notification@3x" : "unpackage/res/icons/60x60.png",
+                        "settings@2x" : "unpackage/res/icons/58x58.png",
+                        "settings@3x" : "unpackage/res/icons/87x87.png",
+                        "spotlight@2x" : "unpackage/res/icons/80x80.png",
+                        "spotlight@3x" : "unpackage/res/icons/120x120.png"
                     },
                     "ipad" : {
-                        "app" : "static/icons/logo-76.png",
-                        "app@2x" : "static/icons/logo-152.png",
-                        "notification" : "static/icons/logo-20.png",
-                        "notification@2x" : "static/icons/logo-40.png",
-                        "proapp@2x" : "static/icons/logo-167.png",
-                        "settings" : "static/icons/logo-29.png",
-                        "settings@2x" : "static/icons/logo-58.png",
-                        "spotlight" : "static/icons/logo-40.png",
-                        "spotlight@2x" : "static/icons/logo-80.png"
+                        "app" : "unpackage/res/icons/76x76.png",
+                        "app@2x" : "unpackage/res/icons/152x152.png",
+                        "notification" : "unpackage/res/icons/20x20.png",
+                        "notification@2x" : "unpackage/res/icons/40x40.png",
+                        "proapp@2x" : "unpackage/res/icons/167x167.png",
+                        "settings" : "unpackage/res/icons/29x29.png",
+                        "settings@2x" : "unpackage/res/icons/58x58.png",
+                        "spotlight" : "unpackage/res/icons/40x40.png",
+                        "spotlight@2x" : "unpackage/res/icons/80x80.png"
                     }
                 }
             },

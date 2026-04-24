@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="product-edit">
     <!-- 页面头部 -->
     <div class="page-header">
@@ -22,6 +22,40 @@
         label-width="120px"
         size="default"
       >
+        <!-- ★ 商品类型选择器 -->
+        <el-card class="form-card product-type-card" style="margin-bottom: 20px;">
+          <template #header>
+            <span>★ 选择商品类型</span>
+          </template>
+          <div class="product-type-selector">
+            <div class="type-cards" :class="{ disabled: isEdit }">
+              <div
+                class="type-card"
+                :class="{ active: productForm.productType === 'physical' }"
+                @click="!isEdit && (productForm.productType = 'physical')"
+              >
+                <div class="type-card-check" v-if="productForm.productType === 'physical'">✓</div>
+                <el-icon :size="20"><Box /></el-icon>
+                <span class="type-title">普通商品</span>
+                <span class="type-desc">需要发实物物流配送</span>
+              </div>
+              <div
+                class="type-card virtual"
+                :class="{ active: productForm.productType === 'virtual' }"
+                @click="!isEdit && (productForm.productType = 'virtual')"
+              >
+                <div class="type-card-check" v-if="productForm.productType === 'virtual'">✓</div>
+                <el-icon :size="20"><MagicStick /></el-icon>
+                <span class="type-title">虚拟商品</span>
+                <span class="type-desc">无需实物物流，线上交付</span>
+              </div>
+            </div>
+            <el-alert v-if="isEdit" type="warning" :closable="false" style="margin-top: 12px;">
+              编辑模式下商品类型不可更改
+            </el-alert>
+          </div>
+        </el-card>
+
         <el-row :gutter="20">
           <!-- 左侧主要信息 -->
           <el-col :span="16">
@@ -111,7 +145,7 @@
                 </el-col>
               </el-row>
 
-              <el-row :gutter="20">
+              <el-row :gutter="20" v-if="productForm.productType === 'physical'">
                 <el-col :span="12">
                   <el-form-item label="商品重量" prop="weight">
                     <el-input-number
@@ -192,7 +226,7 @@
                     <span class="unit-text">元</span>
                   </el-form-item>
                 </el-col>
-                <el-col :span="12">
+                <el-col :span="12" v-if="productForm.productType === 'physical'">
                   <el-form-item label="当前库存" prop="stock">
                     <el-input-number
                       v-model="productForm.stock"
@@ -203,7 +237,7 @@
                 </el-col>
               </el-row>
 
-              <el-row :gutter="20">
+              <el-row :gutter="20" v-if="productForm.productType === 'physical'">
                 <el-col :span="12">
                   <el-form-item label="最低库存" prop="minStock">
                     <el-input-number
@@ -224,6 +258,16 @@
                 </el-col>
               </el-row>
 
+              <!-- 虚拟商品库存提示 -->
+              <el-alert
+                v-if="productForm.productType === 'virtual'"
+                title="虚拟商品库存通过卡密库/资源库独立管理，无需手动设置库存"
+                type="info"
+                :closable="false"
+                show-icon
+                style="margin-bottom: 16px"
+              />
+
               <!-- 利润计算 -->
               <div class="profit-info">
                 <el-alert
@@ -233,6 +277,57 @@
                   show-icon
                 />
               </div>
+            </el-card>
+
+            <!-- ★ 虚拟发货设置（仅虚拟商品显示） -->
+            <el-card v-if="productForm.productType === 'virtual'" class="form-card" style="margin-bottom: 20px;">
+              <template #header>
+                <span>虚拟发货设置</span>
+              </template>
+
+              <el-form-item label="发货方式" required>
+                <div class="virtual-delivery-cards">
+                  <div
+                    v-for="option in virtualDeliveryOptions"
+                    :key="option.value"
+                    class="virtual-delivery-card"
+                    :class="{ active: productForm.virtualDeliveryType === option.value }"
+                    @click="productForm.virtualDeliveryType = option.value"
+                  >
+                    <span class="vd-emoji">{{ option.emoji }}</span>
+                    <span class="vd-name">{{ option.label }}</span>
+                    <span class="vd-desc">{{ option.desc }}</span>
+                  </div>
+                </div>
+              </el-form-item>
+
+              <!-- 卡密格式说明 -->
+              <el-form-item v-if="productForm.virtualDeliveryType === 'card_key'" label="卡密格式说明">
+                <el-input
+                  v-model="productForm.cardKeyTemplate"
+                  type="textarea"
+                  :rows="3"
+                  placeholder="例如：XXXX-XXXX-XXXX-XXXX（16位激活码）"
+                />
+              </el-form-item>
+
+              <!-- 资源说明模板 -->
+              <el-form-item v-if="productForm.virtualDeliveryType === 'resource_link'" label="资源说明模板">
+                <el-input
+                  v-model="productForm.resourceLinkTemplate"
+                  type="textarea"
+                  :rows="3"
+                  placeholder="例如：百度网盘链接+提取码"
+                />
+              </el-form-item>
+
+              <!-- 加密开关 -->
+              <el-form-item v-if="productForm.virtualDeliveryType && productForm.virtualDeliveryType !== 'none'" label="发货内容加密">
+                <el-switch v-model="productForm.virtualContentEncrypt" />
+                <span style="margin-left: 8px; color: #909399; font-size: 12px;">
+                  开启后，发货内容在订单详情中默认以****形式展示
+                </span>
+              </el-form-item>
             </el-card>
 
             <!-- 商品图片 -->
@@ -288,27 +383,51 @@
               </el-form-item>
 
               <el-form-item label="是否推荐" prop="isRecommended">
-                <el-switch
-                  v-model="productForm.isRecommended"
-                  active-text="是"
-                  inactive-text="否"
-                />
+                <div class="switch-with-preview">
+                  <el-switch
+                    v-model="productForm.isRecommended"
+                    active-text="是"
+                    inactive-text="否"
+                    active-color="#e6a23c"
+                  />
+                  <transition name="tag-fade">
+                    <el-tag v-if="productForm.isRecommended" type="warning" size="small" effect="light" class="switch-preview-tag">
+                      ⭐ 推荐
+                    </el-tag>
+                  </transition>
+                </div>
               </el-form-item>
 
               <el-form-item label="是否新品" prop="isNew">
-                <el-switch
-                  v-model="productForm.isNew"
-                  active-text="是"
-                  inactive-text="否"
-                />
+                <div class="switch-with-preview">
+                  <el-switch
+                    v-model="productForm.isNew"
+                    active-text="是"
+                    inactive-text="否"
+                    active-color="#67c23a"
+                  />
+                  <transition name="tag-fade">
+                    <el-tag v-if="productForm.isNew" type="success" size="small" effect="light" class="switch-preview-tag">
+                      🆕 新品
+                    </el-tag>
+                  </transition>
+                </div>
               </el-form-item>
 
               <el-form-item label="是否热销" prop="isHot">
-                <el-switch
-                  v-model="productForm.isHot"
-                  active-text="是"
-                  inactive-text="否"
-                />
+                <div class="switch-with-preview">
+                  <el-switch
+                    v-model="productForm.isHot"
+                    active-text="是"
+                    inactive-text="否"
+                    active-color="#f56c6c"
+                  />
+                  <transition name="tag-fade">
+                    <el-tag v-if="productForm.isHot" type="danger" size="small" effect="light" class="switch-preview-tag">
+                      🔥 热销
+                    </el-tag>
+                  </transition>
+                </div>
               </el-form-item>
             </el-card>
 
@@ -389,7 +508,7 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { ArrowLeft, Plus } from '@element-plus/icons-vue'
+import { ArrowLeft, Plus, Box, MagicStick } from '@element-plus/icons-vue'
 import { useProductStore } from '@/stores/product'
 import { useTabsStore } from '@/stores/tabs'
 import { createSafeNavigator } from '@/utils/navigation'
@@ -447,8 +566,21 @@ const productForm = reactive({
   seoKeywords: '',
   seoDescription: '',
   mainImage: '',
-  images: []
+  images: [],
+  // 虚拟商品字段
+  productType: 'physical' as 'physical' | 'virtual',
+  virtualDeliveryType: '',
+  cardKeyTemplate: '',
+  resourceLinkTemplate: '',
+  virtualContentEncrypt: false
 })
+
+// 虚拟发货方式选项
+const virtualDeliveryOptions = [
+  { value: 'none', label: '无需发货', emoji: '🚫', desc: '审核通过后订单自动完成' },
+  { value: 'card_key', label: '卡密发货', emoji: '🔑', desc: '需在发货时填写卡密信息' },
+  { value: 'resource_link', label: '网盘资源', emoji: '☁️', desc: '需在发货时填写资源链接' }
+]
 
 // 图片上传文件列表
 const fileList = ref<UploadFile[]>([])
@@ -682,7 +814,7 @@ const handleSave = async () => {
     }
 
     // 验证库存设置
-    if (productForm.minStock > productForm.maxStock) {
+    if (productForm.productType === 'physical' && productForm.minStock > productForm.maxStock) {
       ElMessage.error('最低库存不能大于最高库存')
       return
     }
@@ -730,8 +862,16 @@ const handleSave = async () => {
         maxStock: productForm.maxStock,
         salesCount: 0,
         status: productForm.status as 'active' | 'inactive' | 'out_of_stock',
+        isRecommended: productForm.isRecommended,
+        isNew: productForm.isNew,
+        isHot: productForm.isHot,
         image: productForm.mainImage || '/src/assets/images/product-placeholder.svg',
-        images: Array.isArray(productForm.images) ? productForm.images : []
+        images: Array.isArray(productForm.images) ? productForm.images : [],
+        productType: productForm.productType,
+        virtualDeliveryType: productForm.productType === 'virtual' ? productForm.virtualDeliveryType : null,
+        cardKeyTemplate: productForm.cardKeyTemplate || null,
+        resourceLinkTemplate: productForm.resourceLinkTemplate || null,
+        virtualContentEncrypt: productForm.virtualContentEncrypt
       })
       if (newProduct && newProduct.id) {
         productForm.id = newProduct.id.toString()
@@ -756,12 +896,37 @@ const handleSave = async () => {
         minStock: productForm.minStock,
         maxStock: productForm.maxStock,
         status: productForm.status as 'active' | 'inactive' | 'out_of_stock',
+        isRecommended: productForm.isRecommended,
+        isNew: productForm.isNew,
+        isHot: productForm.isHot,
         image: productForm.mainImage || '/src/assets/images/product-placeholder.svg',
-        images: Array.isArray(productForm.images) ? productForm.images : []
+        images: Array.isArray(productForm.images) ? productForm.images : [],
+        virtualDeliveryType: productForm.virtualDeliveryType || null,
+        cardKeyTemplate: productForm.cardKeyTemplate || null,
+        resourceLinkTemplate: productForm.resourceLinkTemplate || null,
+        virtualContentEncrypt: productForm.virtualContentEncrypt
       })
     }
 
     ElMessage.success(isEdit.value ? '商品更新成功' : '商品创建成功')
+
+    // 虚拟商品保存后引导配置库存
+    if (isAddMode && productForm.productType === 'virtual' && productForm.virtualDeliveryType && productForm.virtualDeliveryType !== 'none') {
+      try {
+        await ElMessageBox.confirm(
+          '该商品需配置卡密/资源库存后才能在订单中选择，是否立即配置？',
+          '商品保存成功',
+          { confirmButtonText: '立即配置', cancelButtonText: '稍后配置', type: 'success' }
+        )
+        const target = productForm.virtualDeliveryType === 'card_key'
+          ? '/product/virtual/card-keys'
+          : '/product/virtual/resources'
+        safeNavigator.push({ path: target, query: { productId: productForm.id } })
+        return
+      } catch {
+        // 用户选择稍后配置，继续正常跳转
+      }
+    }
 
     // 延迟跳转，让用户能看到成功提示
     setTimeout(() => {
@@ -825,14 +990,19 @@ const loadProductInfo = async () => {
         minStock: product.minStock,
         maxStock: product.maxStock,
         status: product.status,
-        isRecommended: false,
-        isNew: false,
-        isHot: false,
+        isRecommended: !!product.isRecommended,
+        isNew: !!product.isNew,
+        isHot: !!product.isHot,
         seoTitle: '',
         seoKeywords: '',
         seoDescription: '',
         mainImage: product.image,
-        images: product.images || []
+        images: product.images || [],
+        productType: product.productType || 'physical',
+        virtualDeliveryType: product.virtualDeliveryType || '',
+        cardKeyTemplate: product.cardKeyTemplate || '',
+        resourceLinkTemplate: product.resourceLinkTemplate || '',
+        virtualContentEncrypt: !!product.virtualContentEncrypt
       })
 
       // 初始化文件列表
@@ -1031,6 +1201,33 @@ onMounted(() => {
   margin-bottom: 20px;
 }
 
+/* 开关预览标签样式 */
+.switch-with-preview {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.switch-preview-tag {
+  font-size: 12px;
+  border-radius: 4px;
+}
+
+/* 标签淡入淡出动画 */
+.tag-fade-enter-active {
+  transition: all 0.3s ease;
+}
+
+.tag-fade-leave-active {
+  transition: all 0.2s ease;
+}
+
+.tag-fade-enter-from,
+.tag-fade-leave-to {
+  opacity: 0;
+  transform: translateX(-8px);
+}
+
 :deep(.el-form-item__label) {
   color: #606266;
   font-weight: 500;
@@ -1054,6 +1251,124 @@ onMounted(() => {
 @media (max-width: 1200px) {
   .form-content .el-col {
     margin-bottom: 20px;
+  }
+}
+
+/* ★ 商品类型选择器样式 */
+.product-type-selector {
+  .type-cards {
+    display: flex;
+    gap: 20px;
+
+    &.disabled {
+      opacity: 0.7;
+      pointer-events: none;
+    }
+  }
+
+  .type-card {
+    position: relative;
+    flex: 1;
+    padding: 12px 16px;
+    border: 2px solid #dcdfe6;
+    border-radius: 8px;
+    cursor: pointer;
+    text-align: center;
+    transition: all 0.3s;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+
+    &:hover {
+      border-color: #c6e2ff;
+      transform: translateY(-2px);
+    }
+
+    &.active {
+      border-color: #409EFF;
+      background: #f0f7ff;
+      box-shadow: 0 2px 12px rgba(64, 158, 255, 0.15);
+    }
+
+    &.virtual.active {
+      border-color: #E6A23C;
+      background: #fdf6ec;
+      box-shadow: 0 2px 12px rgba(230, 162, 60, 0.15);
+    }
+
+    .type-card-check {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: #409EFF;
+      color: #fff;
+      font-size: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    &.virtual .type-card-check {
+      background: #E6A23C;
+    }
+
+    .type-title {
+      font-size: 14px;
+      font-weight: bold;
+      color: #303133;
+    }
+
+    .type-desc {
+      font-size: 12px;
+      color: #909399;
+    }
+  }
+}
+
+/* ★ 虚拟发货方式卡片样式 */
+.virtual-delivery-cards {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 16px;
+
+  .virtual-delivery-card {
+    flex: 1;
+    padding: 16px;
+    border: 2px solid #dcdfe6;
+    border-radius: 8px;
+    cursor: pointer;
+    text-align: center;
+    transition: all 0.3s;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+
+    &:hover {
+      border-color: #c6e2ff;
+      transform: translateY(-2px);
+    }
+
+    &.active {
+      border-color: #409EFF;
+      background: #f0f7ff;
+      box-shadow: 0 2px 12px rgba(64, 158, 255, 0.15);
+    }
+
+    .vd-name {
+      font-size: 14px;
+      font-weight: 600;
+      color: #303133;
+    }
+
+    .vd-desc {
+      font-size: 12px;
+      color: #909399;
+    }
   }
 }
 

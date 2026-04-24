@@ -58,9 +58,10 @@ router.get('/status-update/orders', async (req, res) => {
     const orderRepository = getTenantRepo(Order);
     const queryBuilder = orderRepository.createQueryBuilder('order');
 
-    // 基础条件：只查已发货及之后状态的订单（有trackingNumber的）
+    // 基础条件：只查已发货及之后状态的订单（有trackingNumber的），排除虚拟订单
     queryBuilder.andWhere('order.trackingNumber IS NOT NULL');
     queryBuilder.andWhere('order.trackingNumber != :empty', { empty: '' });
+    queryBuilder.andWhere('(order.orderProductType IS NULL OR order.orderProductType != :vType)', { vType: 'virtual' });
 
     // 根据标签页筛选
     if (tab === 'pending') {
@@ -430,7 +431,9 @@ router.post('/order/batch-status', async (req, res) => {
             orderId: order.id,
             status: newStatus as any,
             notes: remark || `批量更新物流状态为: ${newStatus}`,
-            operatorName: user?.username || '系统'
+            operatorName: user?.departmentName ? `${user.departmentName}-${user.realName || user.username || '系统'}` : (user?.realName || user?.username || '系统'),
+            operatorDepartment: user?.departmentName || '',
+            actionType: 'status_change'
           });
           await statusHistoryRepository.save(historyRecord);
         } catch (historyError) {

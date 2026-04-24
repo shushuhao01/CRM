@@ -519,9 +519,12 @@ router.get('/', async (req: Request, res: Response) => {
       status,
       startDate,
       endDate,
-      keyword
+      keyword,
+      userId,
+      department
     } = req.query;
 
+    const currentUser = (req as any).user;
     const callRepository = getTenantRepo(Call);
     const queryBuilder = callRepository.createQueryBuilder('call');
 
@@ -541,6 +544,33 @@ router.get('/', async (req: Request, res: Response) => {
         '(call.customerName LIKE :keyword OR call.customerPhone LIKE :keyword OR call.notes LIKE :keyword)',
         { keyword: `%${keyword}%` }
       );
+    }
+
+    // 🔥 角色权限过滤（与 /statistics 保持一致）
+    const userRole = currentUser?.role;
+    const currentUserId = currentUser?.userId || currentUser?.id;
+    const userDepartment = currentUser?.department;
+
+    if (userRole === 'super_admin' || userRole === 'admin') {
+      // 超管和管理员可以看所有数据，支持筛选
+      if (userId) {
+        queryBuilder.andWhere('call.userId = :userId', { userId });
+      }
+      if (department) {
+        queryBuilder.andWhere('call.department = :department', { department });
+      }
+    } else if (userRole === 'department_manager') {
+      // 部门经理只能看本部门数据
+      if (userDepartment) {
+        queryBuilder.andWhere('call.department = :department', { department: userDepartment });
+      }
+      // 支持在部门内按用户筛选
+      if (userId) {
+        queryBuilder.andWhere('call.userId = :userId', { userId });
+      }
+    } else {
+      // 销售员只能看自己的数据
+      queryBuilder.andWhere('call.userId = :userId', { userId: currentUserId });
     }
 
     queryBuilder.orderBy('call.startTime', 'DESC');

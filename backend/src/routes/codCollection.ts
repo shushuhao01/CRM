@@ -7,7 +7,7 @@ import { authenticateToken } from '../middleware/auth';
 import { Order } from '../entities/Order';
 import { User } from '../entities/User';
 import { Department } from '../entities/Department';
-import { Between, In } from 'typeorm';
+import { Between, In, Not } from 'typeorm';
 import { getTenantRepo } from '../utils/tenantRepo';
 
 import { log } from '../config/logger';
@@ -19,6 +19,9 @@ const VALID_STATUSES = ['shipped', 'delivered', 'completed'];
 // 已发货的订单状态（出现在代收列表中）- 包含所有已发货状态，用于列表展示
 const SHIPPED_STATUSES = ['shipped', 'delivered', 'completed', 'rejected', 'logistics_returned', 'exception'];
 
+// 🔥 代收管理专用：排除虚拟商品订单（虚拟订单无需代收货款）
+const EXCLUDE_VIRTUAL_CONDITION = `AND (order_product_type IS NULL OR order_product_type != 'virtual')`;
+
 /**
  * 获取代收统计数据
  */
@@ -27,9 +30,10 @@ router.get('/stats', authenticateToken, async (req: Request, res: Response) => {
     const { startDate, endDate, departmentId, salesPersonId } = req.query;
     const orderRepo = getTenantRepo(Order);
 
-    // 构建基础查询条件
+    // 构建基础查询条件（排除虚拟商品订单，虚拟订单无需代收货款）
     const baseWhere: any = {
-      status: In(SHIPPED_STATUSES)
+      status: In(SHIPPED_STATUSES),
+      orderProductType: Not('virtual')
     };
 
     // 部门筛选
@@ -220,6 +224,8 @@ router.get('/list', authenticateToken, async (req: Request, res: Response) => {
 
     // 基础条件：已发货的订单 - 🔥 修复租户隔离：使用 andWhere 而非 where
     queryBuilder.andWhere('o.status IN (:...statuses)', { statuses: SHIPPED_STATUSES });
+    // 🔥 排除虚拟商品订单（虚拟订单无需代收货款）
+    queryBuilder.andWhere(`(o.order_product_type IS NULL OR o.order_product_type != 'virtual')`);
 
     // 标签页筛选
     if (tab === 'pending') {

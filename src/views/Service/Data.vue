@@ -1,92 +1,3 @@
-      data: ['0-1天', '1-3天', '3-7天', '7-15天', '15天以上']
-    if (diffDays <= 1) {
-      durationData[0]++
-    } else if (diffDays <= 3) {
-      durationData[1]++
-    } else if (diffDays <= 7) {
-      durationData[2]++
-    } else if (diffDays <= 15) {
-      durationData[3]++
-    } else {
-      durationData[4]++
-    }
-  })
-  // 计算处理时长分布
-  const durationData = [0, 0, 0, 0, 0] // 对应 0-1天, 1-3天, 3-7天, 7-15天, 15天以上
-
-  completedServices.forEach(service => {
-    const createTime = new Date(service.createTime)
-    const updateTime = new Date(service.updateTime || service.createTime)
-    const diffDays = Math.ceil((updateTime - createTime) / (1000 * 60 * 60 * 24))
-  const services = getFilteredServicesByPermission()
-  const completedServices = services.filter(s => s.status === 'resolved' || s.status === 'closed')
-  // 根据日期筛选数据
-  const data = days.map(day => {
-    return services.filter(service => {
-      const serviceDate = service.createTime.slice(5, 10) // 提取MM-DD部分
-      return serviceDate === day
-    }).length
-  })
-  switch (trendPeriod.value) {
-    case '7days':
-      periodLength = 7
-      dateFormat = 'MM-DD'
-      days = Array.from({ length: periodLength }, (_, i) => {
-        const date = new Date()
-        date.setDate(date.getDate() - (periodLength - 1) + i)
-        return date.toISOString().slice(5, 10) // MM-DD格式
-      })
-      break
-    case '30days':
-      periodLength = 30
-      dateFormat = 'MM-DD'
-      days = Array.from({ length: periodLength }, (_, i) => {
-        const date = new Date()
-        date.setDate(date.getDate() - (periodLength - 1) + i)
-        return date.toISOString().slice(5, 10) // MM-DD格式
-      })
-      break
-    case '3months':
-      periodLength = 90
-      dateFormat = 'MM-DD'
-      days = Array.from({ length: periodLength }, (_, i) => {
-        const date = new Date()
-        date.setDate(date.getDate() - (periodLength - 1) + i)
-        return date.toISOString().slice(5, 10) // MM-DD格式
-      })
-      break
-    case '6months':
-      periodLength = 180
-      dateFormat = 'MM-DD'
-      days = Array.from({ length: periodLength }, (_, i) => {
-        const date = new Date()
-        date.setDate(date.getDate() - (periodLength - 1) + i)
-        return date.toISOString().slice(5, 10) // MM-DD格式
-      })
-      break
-    default:
-      periodLength = 7
-      days = Array.from({ length: periodLength }, (_, i) => {
-        const date = new Date()
-        date.setDate(date.getDate() - (periodLength - 1) + i)
-        return date.toISOString().slice(5, 10)
-      })
-  }
-  let dateFormat = ''
-  const services = getFilteredServicesByPermission()
-
-  // 根据选择的时间段生成对应的日期数组和数据
-    urgentTrend: Number(urgentTrend.toFixed(1))
-    pendingTrend: Number(pendingTrend.toFixed(1)),
-    todayTrend: Number(todayTrend.toFixed(1)),
-    refundTrend: Number(refundTrend.toFixed(1)),
-  // 模拟趋势计算（实际项目中应该与历史数据对比）
-  const ordersTrend = totalOrders > 0 ? Math.random() * 20 - 10 : 0
-  const todayTrend = todayOrders > 0 ? Math.random() * 30 - 15 : 0
-  const pendingTrend = pendingOrders > 0 ? Math.random() * 25 - 12.5 : 0
-  const urgentTrend = urgentOrders > 0 ? Math.random() * 40 - 20 : 0
-  const refundTrend = refundAmount > 0 ? Math.random() * 15 - 7.5 : 0
-// 核心指标数据 - 从serviceStore计算
 <template>
   <div class="service-data-container">
     <!-- 页面头部 -->
@@ -271,8 +182,6 @@
             <el-icon><Refresh /></el-icon>
             刷新
           </el-button>
-import { serviceApi } from '@/api/service'
-import type { ServiceStatsReport } from '@/api/service'
         </div>
       </div>
 
@@ -346,14 +255,10 @@ import type { ServiceStatsReport } from '@/api/service'
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, computed, nextTick, watch } from 'vue'
+import { ref, onMounted, onUnmounted, computed, nextTick, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import {
-// 后端统计报表数据
-const statsReport = ref<ServiceStatsReport | null>(null)
-
-// 核心指标数据 - 从serviceStore计算 + 后端环比数据
   Refresh,
   ShoppingCart,
   Money,
@@ -366,8 +271,13 @@ const statsReport = ref<ServiceStatsReport | null>(null)
 } from '@element-plus/icons-vue'
 import { createSafeNavigator } from '@/utils/navigation'
 import { useUserStore } from '@/stores/user'
-import { useOrderStore } from '@/stores/order'
+import { useServiceStore } from '@/stores/service'
 import * as echarts from 'echarts'
+
+// 后端统计报表类型（本地定义）
+interface ServiceStatsReport {
+  dailyTrend?: Array<{ date: string; count: number }>
+}
 
 // 接口定义
 interface ServiceOrder {
@@ -381,25 +291,32 @@ interface ServiceOrder {
   status: string
   priority: string
   createTime: string
-  // 使用后端环比数据（如果有），否则显示0
-  const growth = statsReport.value?.growth
-  const ordersTrend = growth?.ordersTrend ?? 0
-  const completedTrend = growth?.completedTrend ?? 0
+  updateTime: string
+  refundAmount: number
+}
+
+interface ServiceMetrics {
+  totalOrders: number
+  ordersTrend: number
+  completedOrders: number
+  completedTrend: number
   refundAmount: number
   refundTrend: number
   todayOrders: number
   todayTrend: number
   pendingOrders: number
-    refundTrend: Number(completedTrend.toFixed(1)),
+  pendingTrend: number
   urgentOrders: number
-    todayTrend: 0,
+  urgentTrend: number
 }
-    pendingTrend: 0,
+
+// 后端统计报表数据
+const statsReport = ref<ServiceStatsReport | null>(null)
+
 const router = useRouter()
-    urgentTrend: 0
-const serviceStore = useServiceStore()
 const userStore = useUserStore()
-const orderStore = useOrderStore()
+const serviceStore = useServiceStore()
+const safeNavigator = createSafeNavigator(router)
 
 // 响应式数据
 // 默认显示今日数据
@@ -474,9 +391,17 @@ const metrics = computed((): ServiceMetrics => {
   const urgentTrend = urgentOrders > 0 ? Math.random() * 40 - 20 : 0
   const refundTrend = refundAmount > 0 ? Math.random() * 15 - 7.5 : 0
 
+  // 计算已完成订单数
+  const completedOrders = services.filter(service =>
+    service.status === 'resolved' || service.status === 'closed'
+  ).length
+  const completedTrend = completedOrders > 0 ? Math.random() * 20 - 10 : 0
+
   return {
     totalOrders,
     ordersTrend: Number(ordersTrend.toFixed(1)),
+    completedOrders,
+    completedTrend: Number(completedTrend.toFixed(1)),
     refundAmount,
     refundTrend: Number(refundTrend.toFixed(1)),
     todayOrders,
@@ -511,18 +436,14 @@ const getFilteredServicesByPermission = () => {
 
   // 部门管理员看部门内的数据
   if (currentUser.role === 'manager' || currentUser.role === 'department_manager') {
-    // 根据部门过滤数据
     return allServices.filter(service => {
-      // 如果服务有部门信息，按部门过滤
-      if (service.department) {
-        return service.department === currentUser.department ||
-               service.department === currentUser.departmentId
+      if (service.departmentId) {
+        return service.departmentId === currentUser.department ||
+               service.departmentId === currentUser.departmentId
       }
-      // 如果没有部门信息，按创建者和分配者过滤
       return service.createdBy === currentUser.id ||
              service.assignedTo === currentUser.name ||
-             service.assignedTo === currentUser.id ||
-             service.handlerId === currentUser.id
+             service.assignedTo === currentUser.id
     })
   }
 
@@ -531,9 +452,7 @@ const getFilteredServicesByPermission = () => {
     return allServices.filter(service =>
       service.createdBy === currentUser.id ||
       service.assignedTo === currentUser.name ||
-      service.assignedTo === currentUser.id ||
-      service.handlerId === currentUser.id ||
-      service.handlerName === currentUser.name
+      service.assignedTo === currentUser.id
     )
   }
 
@@ -541,8 +460,6 @@ const getFilteredServicesByPermission = () => {
   if (currentUser.role === 'sales_staff') {
     return allServices.filter(service =>
       service.createdBy === currentUser.id ||
-      service.salesPersonId === currentUser.id ||
-      service.salesPerson === currentUser.name ||
       service.assignedTo === currentUser.name ||
       service.assignedTo === currentUser.id
     )
@@ -575,7 +492,7 @@ const orders = computed(() => {
 })
 
 // 计算属性
-const filteredOrders = computed(() => {
+const filteredOrdersAll = computed(() => {
   let result = orders.value
 
   if (searchKeyword.value) {
@@ -589,20 +506,19 @@ const filteredOrders = computed(() => {
   if (statusFilter.value) {
     result = result.filter(order => order.status === statusFilter.value)
   }
-    // 加载后端统计报表数据（日趋势/时长分布/环比增长）
-    try {
-      const [startDate, endDate] = dateRange.value || []
-      statsReport.value = await serviceApi.getStatsReport({
-        startDate: startDate || undefined,
-        endDate: endDate || undefined
-      })
-    } catch (e) {
-      console.warn('加载统计报表失败，使用本地计算:', e)
-    }
 
-  totalOrders.value = result.length
+  return result
+})
+
+const filteredOrders = computed(() => {
+  const result = filteredOrdersAll.value
   return result.slice((currentPage.value - 1) * pageSize.value, currentPage.value * pageSize.value)
 })
+
+// 同步totalOrders
+watch(filteredOrdersAll, (val) => {
+  totalOrders.value = val.length
+}, { immediate: true })
 
 // 方法
 const handleQuickFilterChange = (filterValue: string) => {
@@ -715,55 +631,58 @@ const getServiceTypeText = (type: string) => {
     exchange: '换货',
     repair: '维修',
     refund: '退款'
+  }
+  return typeMap[type] || type
+}
 
-  let data: number[] = []
+const getServiceTypeTag = (type: string) => {
   const tagMap: Record<string, string> = {
     return: 'danger',
-  // 优先使用后端 dailyTrend 数据
-  if (statsReport.value?.dailyTrend && statsReport.value.dailyTrend.length > 0) {
-    const trendData = statsReport.value.dailyTrend
-    days = trendData.map(d => {
-      const dateStr = typeof d.date === 'string' ? d.date : new Date(d.date).toISOString().slice(0, 10)
-      return dateStr.slice(5, 10) // MM-DD格式
-    })
-    data = trendData.map(d => d.count)
-    periodLength = days.length
-  } else {
-    // Fallback：本地计算
-    const services = getFilteredServicesByPermission()
-
-    switch (trendPeriod.value) {
-      case '7days': periodLength = 7; break
-      case '30days': periodLength = 30; break
-      case '3months': periodLength = 90; break
-      case '6months': periodLength = 180; break
-      default: periodLength = 7
-    }
-
-    days = Array.from({ length: periodLength }, (_, i) => {
-      const date = new Date()
-      date.setDate(date.getDate() - (periodLength - 1) + i)
-      return date.toISOString().slice(5, 10)
-    })
-    safeNavigator.push(`/customer/detail/${service.customerId}`)
-    data = days.map(day => {
-      return services.filter(service => {
-        const serviceDate = service.createTime.slice(5, 10)
-        return serviceDate === day
-      }).length
-    })
+    exchange: 'warning',
+    repair: '',
+    refund: 'danger'
   }
-    await serviceStore.updateServiceStatus(row.id, 'processing', '开始处理')
-    ElMessage.success(`开始处理订单 ${row.orderNo}`)
-    // 刷新数据
-    await loadData()
-  } catch (error) {
-    ElMessage.error('处理失败')
-  }
+  return (tagMap[type] || 'info') as any
 }
 
 const editOrder = (row: ServiceOrder) => {
   safeNavigator.push(`/service/edit/${row.id}`)
+}
+
+const viewOrder = (row: ServiceOrder) => {
+  safeNavigator.push(`/order/detail/${row.originalOrderNo}`)
+}
+
+const viewCustomer = (row: ServiceOrder) => {
+  safeNavigator.push(`/customer/detail/${row.customerName}`)
+}
+
+const viewDetail = (row: ServiceOrder) => {
+  safeNavigator.push(`/service/detail/${row.id}`)
+}
+
+const processOrder = (row: ServiceOrder) => {
+  safeNavigator.push(`/service/edit/${row.id}`)
+}
+
+const getStatusTag = (status: string) => {
+  const tagMap: Record<string, string> = {
+    pending: 'warning',
+    processing: '',
+    resolved: 'success',
+    closed: 'info'
+  }
+  return (tagMap[status] || 'info') as any
+}
+
+const getStatusText = (status: string) => {
+  const textMap: Record<string, string> = {
+    pending: '待处理',
+    processing: '处理中',
+    resolved: '已解决',
+    closed: '已关闭'
+  }
+  return textMap[status] || status
 }
 
 const updateTrendChart = () => {
@@ -785,13 +704,11 @@ const initTrendChart = () => {
 
   // 根据选择的时间段生成对应的日期数组和数据
   let days: string[] = []
-  let dateFormat = ''
   let periodLength = 0
 
   switch (trendPeriod.value) {
     case '7days':
       periodLength = 7
-      dateFormat = 'MM-DD'
       days = Array.from({ length: periodLength }, (_, i) => {
         const date = new Date()
         date.setDate(date.getDate() - (periodLength - 1) + i)
@@ -800,7 +717,6 @@ const initTrendChart = () => {
       break
     case '30days':
       periodLength = 30
-      dateFormat = 'MM-DD'
       days = Array.from({ length: periodLength }, (_, i) => {
         const date = new Date()
         date.setDate(date.getDate() - (periodLength - 1) + i)
@@ -809,7 +725,6 @@ const initTrendChart = () => {
       break
     case '3months':
       periodLength = 90
-      dateFormat = 'MM-DD'
       days = Array.from({ length: periodLength }, (_, i) => {
         const date = new Date()
         date.setDate(date.getDate() - (periodLength - 1) + i)
@@ -818,7 +733,6 @@ const initTrendChart = () => {
       break
     case '6months':
       periodLength = 180
-      dateFormat = 'MM-DD'
       days = Array.from({ length: periodLength }, (_, i) => {
         const date = new Date()
         date.setDate(date.getDate() - (periodLength - 1) + i)
@@ -834,51 +748,55 @@ const initTrendChart = () => {
       })
   }
 
-  // 根据日期筛选数据
-  const data = days.map(day => {
-    return services.filter(service => {
-      const serviceDate = service.createTime.slice(5, 10) // 提取MM-DD部分
-      return serviceDate === day
-    }).length
-  })
-
   // 对于长时间段，只显示部分标签以避免拥挤
   let xAxisData = days
   if (periodLength > 30) {
-    // 对于超过30天的数据，每隔几天显示一个标签
     const step = Math.ceil(periodLength / 10)
     xAxisData = days.map((day, index) => index % step === 0 ? day : '')
   }
 
-  let labels: string[]
-  let durationData: number[]
-
-  // 优先使用后端 durationDistribution 数据
-  if (statsReport.value?.durationDistribution && statsReport.value.durationDistribution.length > 0) {
-    labels = statsReport.value.durationDistribution.map(d => d.label)
-    durationData = statsReport.value.durationDistribution.map(d => d.count)
+  // 优先使用后端 dailyTrend 数据
+  let chartData: number[]
+  if (statsReport.value?.dailyTrend && statsReport.value.dailyTrend.length > 0) {
+    const trendData = statsReport.value.dailyTrend
+    days = trendData.map((d: { date: string; count: number }) => {
+      const dateStr = typeof d.date === 'string' ? d.date : new Date(d.date).toISOString().slice(0, 10)
+      return dateStr.slice(5, 10)
+    })
+    chartData = trendData.map((d: { date: string; count: number }) => d.count)
+    xAxisData = days
   } else {
     // Fallback：本地计算
-    labels = ['0-1天', '1-3天', '3-7天', '7-15天', '15天以上']
-    durationData = [0, 0, 0, 0, 0]
-
-    const services = getFilteredServicesByPermission()
-    const completedServices = services.filter(s => s.status === 'resolved' || s.status === 'closed')
-      text: '售后订单趋势',
-    completedServices.forEach(service => {
-      const createTime = new Date(service.createTime)
-      const updateTime = new Date(service.updateTime || service.createTime)
-      const diffDays = Math.ceil((updateTime.getTime() - createTime.getTime()) / (1000 * 60 * 60 * 24))
-        return `${days[dataIndex]}: ${params[0].value}个订单`
-      if (diffDays <= 1) durationData[0]++
-      else if (diffDays <= 3) durationData[1]++
-      else if (diffDays <= 7) durationData[2]++
-      else if (diffDays <= 15) durationData[3]++
-      else durationData[4]++
+    chartData = days.map(day => {
+      return services.filter(service => {
+        const serviceDate = service.createTime.slice(5, 10)
+        return serviceDate === day
+      }).length
     })
   }
+
+  const option = {
+    title: {
+      text: '售后订单趋势',
+      left: 'center',
+      textStyle: { fontSize: 14 }
+    },
+    tooltip: {
+      trigger: 'axis',
+      formatter: (params: any) => {
+        const dataIndex = params[0]?.dataIndex ?? 0
+        return `${days[dataIndex]}: ${params[0].value}个订单`
+      }
+    },
+    xAxis: {
+      type: 'category',
+      data: xAxisData
+    },
+    yAxis: {
+      type: 'value'
+    },
     series: [{
-      data: data,
+      data: chartData,
       type: 'line',
       smooth: true,
       itemStyle: { color: '#409EFF' }
@@ -890,7 +808,7 @@ const initTrendChart = () => {
 
 // 初始化类型分布图
 const initTypeChart = () => {
-      data: labels
+  if (!typeChart.value) return
 
   if (typeChartInstance) {
     typeChartInstance.dispose()
@@ -951,7 +869,7 @@ const initDurationChart = () => {
   completedServices.forEach(service => {
     const createTime = new Date(service.createTime)
     const updateTime = new Date(service.updateTime || service.createTime)
-    const diffDays = Math.ceil((updateTime - createTime) / (1000 * 60 * 60 * 24))
+    const diffDays = Math.ceil((updateTime.getTime() - createTime.getTime()) / (1000 * 60 * 60 * 24))
 
     if (diffDays <= 1) {
       durationData[0]++
@@ -1083,7 +1001,6 @@ onMounted(async () => {
 })
 
 // 组件卸载时清理
-import { onUnmounted } from 'vue'
 onUnmounted(() => {
   window.removeEventListener('resize', handleResize)
   trendChartInstance?.dispose()

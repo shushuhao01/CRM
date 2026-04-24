@@ -352,7 +352,7 @@ import { eventBus, EventNames } from '@/utils/eventBus'
 import { useDepartmentStore } from '@/stores/department'
 import { useUserStore } from '@/stores/user'
 import { getLogisticsInfoStyle } from '@/utils/logisticsStatusConfig'
-import { getDepartmentMembers } from '@/api/department'
+// getDepartmentMembers 需要 admin 权限，经理改用 /users/department-members
 import api from '@/utils/request'
 
 const router = useRouter()
@@ -730,13 +730,13 @@ const loadSalesPersons = async () => {
       }))
       console.log('[PerformanceManage] allSalesPersons:', allSalesPersons.value)
     } else if (isManager.value && currentUserDepartmentId.value) {
-      // 经理加载本部门成员
-      const res = await getDepartmentMembers(currentUserDepartmentId.value) as any
+      // 经理加载本部门成员 - 使用不需要管理员权限的接口
+      const res = (await api.get('/users/department-members')) as any
       const members = res?.data || res || []
       allSalesPersons.value = members.map((m: any) => ({
         id: m.userId || m.id,
         name: m.realName || m.name || m.username,
-        departmentId: currentUserDepartmentId.value
+        departmentId: m.departmentId || currentUserDepartmentId.value
       }))
       console.log('[PerformanceManage] 经理加载本部门成员:', allSalesPersons.value)
     }

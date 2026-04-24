@@ -12,6 +12,16 @@ import bcrypt from 'bcryptjs';
 import { log as logger } from '../../config/logger';
 const router = Router();
 
+// 生成私有部署客户的租户编码（P前缀区分私有）
+const generatePrivateTenantCode = (): string => {
+  const now = new Date();
+  const yy = String(now.getFullYear()).slice(-2);
+  const mm = String(now.getMonth() + 1).padStart(2, '0');
+  const dd = String(now.getDate()).padStart(2, '0');
+  const rand = crypto.randomBytes(3).toString('hex').toUpperCase().slice(0, 4);
+  return `P${yy}${mm}${dd}${rand}`;
+};
+
 // 生成授权码（私有部署）
 const generateLicenseKey = (): string => {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
@@ -152,7 +162,7 @@ router.get('/:id', async (req: Request, res: Response) => {
     }
 
     // 🔥 解析license的功能模块：检查features是否包含有效模块ID
-    const moduleIds = ['dashboard','customer','order','service-management','performance','logistics','service','data','finance','product','system'];
+    const moduleIds = ['dashboard','customer','order','service-management','performance','logistics','service','data','finance','product','system','wecom'];
     let resolvedFeatures = license.features;
     if (resolvedFeatures) {
       const parsed = Array.isArray(resolvedFeatures) ? resolvedFeatures : (typeof resolvedFeatures === 'string' ? (() => { try { return JSON.parse(resolvedFeatures as string); } catch { return []; } })() : []);
@@ -301,7 +311,85 @@ router.post('/', async (req: Request, res: Response) => {
 
     await licenseRepo.save(license);
 
-    res.json({ success: true, data: license, message: '授权创建成功' });
+    // 🔥 同步在 tenants 表创建记录，确保私有客户也能登录会员中心
+    // 会员中心不区分私有/租户，所有客户都通过 tenants 表的 phone + password_hash 登录
+    let tenantId: string | null = null;
+    let tenantCode: string | null = null;
+    if (phone) {
+      try {
+        // 检查该手机号是否已在 tenants 表中存在
+        const existingTenants = await AppDataSource.query(
+          'SELECT id, code FROM tenants WHERE phone = ?', [phone]
+        );
+        if (existingTenants.length > 0) {
+          tenantId = existingTenants[0].id;
+          tenantCode = existingTenants[0].code;
+          logger.info(`[Admin Licenses] 手机号 ${phone} 已存在于 tenants 表，跳过创建，tenantId=${tenantId}`);
+          // 确保 password_hash 已设置
+          const pwdCheck = await AppDataSource.query('SELECT password_hash FROM tenants WHERE id = ?', [tenantId]);
+          if (!pwdCheck[0]?.password_hash) {
+            const memberPasswordHash = await bcrypt.hash('Aa123456', 10);
+            await AppDataSource.query('UPDATE tenants SET password_hash = ? WHERE id = ?', [memberPasswordHash, tenantId]);
+            logger.info(`[Admin Licenses] 已为已有租户 ${tenantCode} 补充会员中心密码`);
+          }
+        } else {
+          // 在 tenants 表创建私有客户记录
+          tenantId = uuidv4();
+          tenantCode = generatePrivateTenantCode();
+          // 确保编码不重复
+          for (let i = 0; i < 5; i++) {
+            const dup = await AppDataSource.query('SELECT id FROM tenants WHERE code = ?', [tenantCode]);
+            if (dup.length === 0) break;
+            tenantCode = generatePrivateTenantCode();
+          }
+          const memberPasswordHash = await bcrypt.hash('Aa123456', 10);
+          await AppDataSource.query(
+            `INSERT INTO tenants (id, name, code, license_key, license_status, package_id, contact, phone, email,
+             max_users, max_storage_gb, expire_date, features, status, password_hash, remark, created_at, updated_at)
+             VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, NOW(), NOW())`,
+            [
+              tenantId, customerName, tenantCode, license.licenseKey,
+              packageId || null, contact || null, phone, email || null,
+              maxUsers || 10, maxStorageGb || 5,
+              expiresAt ? new Date(expiresAt).toISOString().split('T')[0] : null,
+              modules ? JSON.stringify(modules) : '[]',
+              memberPasswordHash,
+              `私有部署客户（管理后台创建）`
+            ]
+          );
+          // 关联 license 的 tenant_id
+          try {
+            await AppDataSource.query('UPDATE licenses SET tenant_id = ? WHERE id = ?', [tenantId, license.id]);
+          } catch { /* tenant_id 列可能不存在 */ }
+          logger.info(`[Admin Licenses] ✅ 已在 tenants 表创建私有客户记录: ${customerName} (${tenantCode}), 会员中心默认密码 Aa123456`);
+        }
+      } catch (tenantErr: any) {
+        logger.warn('[Admin Licenses] 创建 tenants 记录失败（不影响授权创建）:', tenantErr.message?.substring(0, 100));
+      }
+    }
+
+    // 🔥 创建私有客户默认管理员账号（记录在管理后台DB，仅用于展示凭据；实际CRM账号在私有部署激活时创建）
+    let adminAccount: { username: string; password: string } | null = null;
+    if (phone) {
+      try {
+        adminAccount = { username: phone, password: 'Aa123456' };
+        logger.info(`[Admin Licenses] 私有客户默认管理员: ${phone}/Aa123456 (CRM实际账号在激活时创建)`);
+      } catch (adminErr: any) {
+        logger.error('[Admin Licenses] 记录管理员信息失败:', adminErr.message);
+      }
+    }
+
+    res.json({
+      success: true,
+      data: {
+        ...license,
+        licenseKey: license.licenseKey,
+        tenantId,
+        tenantCode,
+        adminAccount
+      },
+      message: '授权创建成功'
+    });
   } catch (error: any) {
     logger.error('[Admin Licenses] Create failed:', error);
     res.status(500).json({ success: false, message: '创建授权失败' });
@@ -326,7 +414,9 @@ router.put('/:id', async (req: Request, res: Response) => {
       remark,
       packageId,
       packageName,
-      regenerateKey
+      regenerateKey,
+      user_limit_mode,
+      max_online_seats
     } = req.body;
 
     const licenseRepo = AppDataSource.getRepository(License);
@@ -349,6 +439,8 @@ router.put('/:id', async (req: Request, res: Response) => {
     if (status !== undefined && status !== null) license.status = status;
     if (expiresAt !== undefined) license.expiresAt = expiresAt ? new Date(expiresAt) : undefined;
     if (remark !== undefined) license.notes = remark;
+    if (user_limit_mode !== undefined) license.userLimitMode = user_limit_mode;
+    if (max_online_seats !== undefined) license.maxOnlineSeats = max_online_seats;
 
     // 重新生成授权码
     if (regenerateKey) {

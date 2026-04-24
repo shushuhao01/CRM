@@ -494,7 +494,8 @@ const messageTypeCategories = [
       { value: 'permission_configured', label: '权限配置成功', description: '权限配置成功时通知' },
       { value: 'data_export_success', label: '导出成功', description: '数据导出成功时通知' },
       { value: 'data_import_completed', label: '导入完成', description: '数据导入完成时通知' },
-      { value: 'system_alert', label: '系统告警', description: '系统异常时通知' }
+      { value: 'system_alert', label: '系统告警', description: '系统异常时通知' },
+      { value: 'online_seat_full', label: '席位不足提醒', description: '在线席位已满无法登录时通知' }
     ]
   }
 ]

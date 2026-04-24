@@ -133,13 +133,16 @@ router.get('/query/:orderNo', async (req: Request, res: Response) => {
     // 如果已支付，查询租户的授权码
     let licenseKey = null
     let tenantCode = null
+    let adminUsername = null
     if (order.status === 'paid' && order.tenant_id) {
       const tenants = await AppDataSource.query(
-        'SELECT code, license_key FROM tenants WHERE id = ?', [order.tenant_id]
+        'SELECT code, license_key, phone FROM tenants WHERE id = ?', [order.tenant_id]
       )
       if (tenants.length > 0) {
         tenantCode = tenants[0].code
         licenseKey = tenants[0].license_key
+        // 🔥 返回管理员账号（手机号）
+        adminUsername = tenants[0].phone || null
       }
     }
 
@@ -153,7 +156,9 @@ router.get('/query/:orderNo', async (req: Request, res: Response) => {
         paidAt: order.paid_at,
         tenantId: order.tenant_id,
         tenantCode,
-        licenseKey
+        licenseKey,
+        adminUsername,
+        adminPassword: adminUsername ? 'Aa123456' : null
       }
     })
   } catch (error) {

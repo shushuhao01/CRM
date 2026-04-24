@@ -1,4 +1,4 @@
-<template>
+ <template>
   <div class="login-page">
     <!-- 3D透视网格背景 -->
     <div class="perspective-bg">
@@ -300,26 +300,37 @@
         <!-- 授权验证区域 -->
         <div class="license-section" v-if="needsLicense">
           <!-- 已验证状态 -->
-          <div v-if="licenseVerified && tenantInfo" class="license-verified">
-            <div class="license-verified-icon">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/>
-              </svg>
-            </div>
-            <div class="license-verified-info">
-              <span class="tenant-name">{{ tenantInfo.tenantName }}</span>
-              <span class="tenant-meta">{{ tenantInfo.packageName || '标准版' }}
-                <template v-if="formatExpireDate(tenantInfo.expireDate)"> · {{ formatExpireDate(tenantInfo.expireDate) }}</template>
-              </span>
-            </div>
-            <el-tooltip content="切换企业" placement="top">
-              <button class="license-switch-btn" @click="handleSwitchTenant">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <polyline points="1 4 1 10 7 10"/><polyline points="23 20 23 14 17 14"/>
-                  <path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/>
+          <div v-if="licenseVerified && tenantInfo">
+            <div :class="['license-verified', { 'license-expired': tenantExpired }]">
+              <div :class="['license-verified-icon', { 'expired-icon': tenantExpired }]">
+                <svg v-if="!tenantExpired" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/>
                 </svg>
-              </button>
-            </el-tooltip>
+                <svg v-else width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+                </svg>
+              </div>
+              <div class="license-verified-info">
+                <span :class="['tenant-name', { 'expired-name': tenantExpired }]">{{ tenantInfo.tenantName }}</span>
+                <span v-if="!tenantExpired" class="tenant-meta">{{ tenantInfo.packageName || '标准版' }}
+                  <template v-if="formatExpireDate(tenantInfo.expireDate)"> · {{ formatExpireDate(tenantInfo.expireDate) }}</template>
+                </span>
+                <span v-else class="tenant-meta expired-meta">授权已过期，请联系管理员续费恢复</span>
+              </div>
+              <el-tooltip content="切换企业" placement="top">
+                <button class="license-switch-btn" @click="handleSwitchTenant">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="1 4 1 10 7 10"/><polyline points="23 20 23 14 17 14"/>
+                    <path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/>
+                  </svg>
+                </button>
+              </el-tooltip>
+            </div>
+            <!-- 过期提醒横幅 -->
+            <div v-if="tenantExpired" class="license-expired-banner">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+              <span>授权已过期，可登录但不能写入数据，请联系管理员续费恢复</span>
+            </div>
           </div>
 
           <!-- 未验证状态 -->
@@ -467,6 +478,37 @@
       </div>
     </div>
 
+    <!-- 🔥 首次私有部署激活成功 - 管理员凭据弹窗 -->
+    <el-dialog v-model="showAdminCredentialsDialog" title="🎉 系统激活成功" width="480px" :close-on-click-modal="false" :close-on-press-escape="false">
+      <div style="text-align: center; padding: 10px 0;">
+        <div style="font-size: 48px; margin-bottom: 12px;">✅</div>
+        <p style="font-size: 16px; color: #333; margin-bottom: 20px;">私有部署系统首次激活成功，以下是您的管理员账号信息</p>
+        <div style="background: #f5f7fa; border-radius: 8px; padding: 16px; text-align: left; margin-bottom: 16px;">
+          <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #e4e7ed;">
+            <span style="color: #909399;">👤 管理员账号</span>
+            <span style="font-weight: 600; font-family: monospace; font-size: 15px;">{{ activationAdminInfo.username }}</span>
+          </div>
+          <div style="display: flex; justify-content: space-between; padding: 10px 0;">
+            <span style="color: #909399;">🔐 初始密码</span>
+            <span style="font-weight: 600; font-family: monospace; font-size: 15px; color: #e6a23c;">{{ activationAdminInfo.password }}</span>
+          </div>
+        </div>
+        <el-button type="primary" size="large" @click="copyAdminCredentials" style="width: 100%; margin-bottom: 12px;">
+          📋 一键复制账号密码
+        </el-button>
+        <div style="background: #fdf6ec; border: 1px solid #faecd8; border-radius: 6px; padding: 12px; text-align: left; font-size: 13px; color: #e6a23c;">
+          <p style="margin: 0 0 4px;">⚠️ 重要提示：</p>
+          <ul style="margin: 0; padding-left: 18px; line-height: 1.8;">
+            <li>此信息仅在首次激活时展示一次，请立即复制保存</li>
+            <li>首次登录后请立即修改密码</li>
+          </ul>
+        </div>
+      </div>
+      <template #footer>
+        <el-button type="primary" @click="showAdminCredentialsDialog = false" round>我知道了，去登录</el-button>
+      </template>
+    </el-dialog>
+
     <!-- 协议弹窗 -->
     <el-dialog v-model="agreementDialogVisible" :title="agreementDialogTitle" width="680px" class="agreement-dialog" top="6vh">
       <div class="agreement-content" v-html="sanitizeHtml(agreementDialogContent)"></div>
@@ -522,7 +564,12 @@ const tenantCode = ref('')
 const showLicenseInput = ref(false)
 const licenseLoading = ref(false)
 const licenseError = ref('')
-const verifyMode = ref<'code' | 'license'>('code') // 默认租户编码模式
+const verifyMode = ref<'code' | 'license'>('code')
+const tenantExpired = ref(false)
+
+// 🔥 首次私有激活 - 管理员凭据弹窗
+const showAdminCredentialsDialog = ref(false)
+const activationAdminInfo = reactive({ username: '', password: '' })
 
 // 格式化到期日期
 const formatExpireDate = (date: string | null) => {
@@ -556,8 +603,9 @@ onMounted(async () => {
         tenantInfo.value = res.data
         saveLocalTenantInfo(res.data)
         if (res.data.deployType) saveDeployMode(res.data.deployType)
+        tenantExpired.value = !!res.data.expired
         licenseVerified.value = true
-        return // 缓存验证成功，直接结束
+        return
       } else {
         clearLocalCache() // 缓存已失效，清除
       }
@@ -592,6 +640,7 @@ onMounted(async () => {
         saveLocalTenantInfo(info)
         saveDeployMode('private')
         localStorage.setItem('crm_tenant_code', info.tenantCode)
+        tenantExpired.value = !!privateStatus.expired
         licenseVerified.value = true
       } else {
         // 私有系统尚未激活，直接展开授权码输入
@@ -668,15 +717,30 @@ const handleVerify = async () => {
     if (res.success && res.data) {
       tenantInfo.value = res.data
       saveLocalTenantInfo(res.data)
+      tenantExpired.value = !!res.data.expired
       licenseVerified.value = true
-      // 🔑 根据授权码类型自动保存部署模式（PRIVATE-前缀→private，否则→saas）
       if (res.data.deployType) {
         saveDeployMode(res.data.deployType)
       }
-      ElMessage.success(`验证成功：${res.data.tenantName}`)
+
+      const resAny = res as any
+      if (resAny.data?.isFirstActivation && resAny.data?.adminAccount) {
+        activationAdminInfo.username = resAny.data.adminAccount.username || ''
+        activationAdminInfo.password = resAny.data.adminAccount.password || 'Aa123456'
+        showAdminCredentialsDialog.value = true
+      } else if (res.data.expired) {
+        ElMessage.warning(`${res.data.tenantName}：授权已过期，可登录但不能写入数据`)
+      } else {
+        ElMessage.success(`验证成功：${res.data.tenantName}`)
+      }
     } else {
       const errData = res as any
-      licenseError.value = errData.message || '验证失败'
+      // 🔥 特殊错误类型处理（授权码类型不匹配）
+      if (errData.errorType === 'WRONG_LICENSE_TYPE') {
+        licenseError.value = errData.message || '授权码类型不匹配，请检查使用的授权码是否正确'
+      } else {
+        licenseError.value = errData.message || '验证失败'
+      }
       // 如果需要激活，自动切换到授权码模式
       if (errData.needActivation) {
         verifyMode.value = 'license'
@@ -702,10 +766,22 @@ const handleVerify = async () => {
   }
 }
 
+// 🔥 一键复制管理员凭据
+const copyAdminCredentials = async () => {
+  const text = `管理员账号：${activationAdminInfo.username}\n初始密码：${activationAdminInfo.password}\n\n⚠️ 首次登录后请立即修改密码`
+  try {
+    await navigator.clipboard.writeText(text)
+    ElMessage.success('已复制到剪贴板')
+  } catch {
+    ElMessage.warning('复制失败，请手动记录')
+  }
+}
+
 // 切换租户
 const handleSwitchTenant = () => {
   licenseVerified.value = false
   tenantInfo.value = null
+  tenantExpired.value = false
   licenseKey.value = ''
   tenantCode.value = ''
   clearLocalCache()
@@ -850,11 +926,18 @@ const handleLogin = async () => {
           ElMessage.success('登录成功')
           await nextTick()
           preloadAppData().catch(() => {})
-          window.location.href = userStore.currentUser?.forcePasswordChange ? '/change-password' : '/'
+          // 统一跳转首页，首次登录/强制修改密码由 App.vue 弹窗处理
+          window.location.href = '/'
         } else { ElMessage.error('登录失败') }
       } catch (e: any) {
         if (userStore.token && userStore.isLoggedIn) { window.location.href = '/'; return }
-        ElMessage.error(e?.message || '登录失败')
+        const errCode = e?.response?.data?.code || e?.code || ''
+        const errMsg = e?.response?.data?.message || e?.message || '登录失败'
+        if (errCode === 'ONLINE_SEAT_FULL') {
+          ElMessage.warning({ message: errMsg, duration: 5000 })
+        } else {
+          ElMessage.error(errMsg)
+        }
       } finally { debounce = setTimeout(() => { loading.value = false }, 1000) }
     }
   })
@@ -1290,6 +1373,48 @@ const handleLogin = async () => {
 .license-switch-btn:hover {
   background: rgba(16, 185, 129, 0.2);
   transform: rotate(180deg);
+}
+
+/* 过期状态样式 */
+.license-verified.license-expired {
+  background: linear-gradient(135deg, #fef2f2 0%, #fff1f2 100%);
+  border-color: #fecaca;
+}
+
+.license-verified.license-expired .license-switch-btn {
+  background: rgba(239, 68, 68, 0.1);
+  color: #ef4444;
+}
+
+.license-verified.license-expired .license-switch-btn:hover {
+  background: rgba(239, 68, 68, 0.2);
+}
+
+.expired-icon {
+  box-shadow: 0 1px 3px rgba(239, 68, 68, 0.15) !important;
+}
+
+.expired-name {
+  color: #991b1b !important;
+}
+
+.expired-meta {
+  color: #ef4444 !important;
+  font-weight: 500;
+}
+
+.license-expired-banner {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 8px 12px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  font-size: 12px;
+  color: #ef4444;
+  line-height: 1.4;
 }
 
 /* 引导入口 */

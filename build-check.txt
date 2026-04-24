@@ -1,0 +1,1067 @@
+﻿node.exe : NODE_ENV=production is not supported in th
+e .env file. Only NODE_ENV=development is supported t
+o create a development build of your project. If you 
+need to set process.env.NODE_ENV, you can set it in t
+he Vite config instead.
+所在位置 行:1 字符: 1
++ & "D:\RJ\Node/node.exe" "D:\RJ\Node/node_modules/np
+m/bin/npx-cli.js"  ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (NODE_EN 
+   V=produc...config instead.:String) [], RemoteExc  
+  eption
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+[36mvite v5.4.20 [32mbuilding for production...[36m[39m
+transforming...
+Deprecation [legacy-js-api]: The legacy JS API is dep
+recated and will be removed in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/legacy-js-api
+Deprecation [legacy-js-api]: The legacy JS API is dep
+recated and will be removed in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/legacy-js-api
+Deprecation [legacy-js-api]: The legacy JS API is dep
+recated and will be removed in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/legacy-js-api
+Deprecation [legacy-js-api]: The legacy JS API is dep
+recated and will be removed in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/legacy-js-api
+Deprecation [legacy-js-api]: The legacy JS API is dep
+recated and will be removed in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/legacy-js-api
+Deprecation [legacy-js-api]: The legacy JS API is dep
+recated and will be removed in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/legacy-js-api
+Deprecation [legacy-js-api]: The legacy JS API is dep
+recated and will be removed in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/legacy-js-api
+Deprecation [legacy-js-api]: The legacy JS API is dep
+recated and will be removed in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/legacy-js-api
+Deprecation [legacy-js-api]: The legacy JS API is dep
+recated and will be removed in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/legacy-js-api
+Deprecation [legacy-js-api]: The legacy JS API is dep
+recated and will be removed in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/legacy-js-api
+Deprecation [legacy-js-api]: The legacy JS API is dep
+recated and will be removed in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/legacy-js-api
+Deprecation [legacy-js-api]: The legacy JS API is dep
+recated and will be removed in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/legacy-js-api
+Deprecation [legacy-js-api]: The legacy JS API is dep
+recated and will be removed in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/legacy-js-api
+Deprecation [legacy-js-api]: The legacy JS API is dep
+recated and will be removed in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/legacy-js-api
+[1m[33m[plugin:vite:esbuild][39m[22m [33m[plugin
+ vite:esbuild] src/views/ServiceManagement/CallManage
+ment.vue?vue&type=script&setup=true&lang.ts: [33mThi
+s assignment will throw because "filterForm" is a con
+stant[33m
+2927|      _createVNode(CallFilterBar, {
+2928|        filterForm: filterForm,
+2929|        "onUpdate:filterForm": _cache[0] || (_ca
+che[0] = ($event: any) => ((filterForm) = $event)),
+   |                                                 
+                           ^
+2930|        searchKeyword: searchKeyword.value,
+2931|        "onUpdate:searchKeyword": _cache[1] || (
+_cache[1] = ($event: any) => ((searchKeyword).value =
+ $event)),
+[39m
+Deprecation [legacy-js-api]: The legacy JS API is dep
+recated and will be removed in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/legacy-js-api
+Deprecation [legacy-js-api]: The legacy JS API is dep
+recated and will be removed in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/legacy-js-api
+Deprecation [legacy-js-api]: The legacy JS API is dep
+recated and will be removed in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/legacy-js-api
+Deprecation [legacy-js-api]: The legacy JS API is dep
+recated and will be removed in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/legacy-js-api
+Deprecation [legacy-js-api]: The legacy JS API is dep
+recated and will be removed in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/legacy-js-api
+Deprecation [legacy-js-api]: The legacy JS API is dep
+recated and will be removed in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/legacy-js-api
+Deprecation [legacy-js-api]: The legacy JS API is dep
+recated and will be removed in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/legacy-js-api
+Deprecation [legacy-js-api]: The legacy JS API is dep
+recated and will be removed in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/legacy-js-api
+Deprecation [legacy-js-api]: The legacy JS API is dep
+recated and will be removed in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/legacy-js-api
+[32m鉁?[39m 3315 modules transformed.
+rendering chunks...
+[1m[33m[plugin:vite:reporter][39m[22m [33m[plugi
+n vite:reporter] 
+(!) D:/kaifa/CRM - 1.8.0/src/utils/request.ts is dyna
+mically imported by D:/kaifa/CRM - 1.8.0/src/stores/u
+ser/authActions.ts, D:/kaifa/CRM - 1.8.0/src/utils/li
+censeDialog.ts but also statically imported by D:/kai
+fa/CRM - 1.8.0/src/api/alternative-connection.ts, D:/
+kaifa/CRM - 1.8.0/src/api/apiInterface.ts, D:/kaifa/C
+RM - 1.8.0/src/api/callConfig.ts, D:/kaifa/CRM - 1.8.
+0/src/api/codApplication.ts, D:/kaifa/CRM - 1.8.0/src
+/api/codCollection.ts, D:/kaifa/CRM - 1.8.0/src/api/d
+ashboard.ts, D:/kaifa/CRM - 1.8.0/src/api/finance.ts,
+ D:/kaifa/CRM - 1.8.0/src/api/performance.ts, D:/kaif
+a/CRM - 1.8.0/src/api/request.ts, D:/kaifa/CRM - 1.8.
+0/src/api/sensitiveInfoPermission.ts, D:/kaifa/CRM - 
+1.8.0/src/api/tenantLicense.ts, D:/kaifa/CRM - 1.8.0/
+src/api/valueAdded.ts, D:/kaifa/CRM - 1.8.0/src/api/w
+ecom.ts, D:/kaifa/CRM - 1.8.0/src/api/wecomAddressBoo
+k.ts, D:/kaifa/CRM - 1.8.0/src/api/wecomAi.ts, D:/kai
+fa/CRM - 1.8.0/src/api/wecomContactWay.ts, D:/kaifa/C
+RM - 1.8.0/src/api/wecomGroup.ts, D:/kaifa/CRM - 1.8.
+0/src/services/licenseHeartbeatService.ts, D:/kaifa/C
+RM - 1.8.0/src/services/moduleStatusService.ts, D:/ka
+ifa/CRM - 1.8.0/src/views/Data/SearchNew.vue?vue&type
+=script&setup=true&lang.ts, D:/kaifa/CRM - 1.8.0/src/
+views/Finance/PerformanceData.vue?vue&type=script&set
+up=true&lang.ts, D:/kaifa/CRM - 1.8.0/src/views/Finan
+ce/PerformanceManage.vue?vue&type=script&setup=true&l
+ang.ts, D:/kaifa/CRM - 1.8.0/src/views/System/Setting
+s/LicenseSettings.vue?vue&type=script&setup=true&lang
+.ts, D:/kaifa/CRM - 1.8.0/src/views/System/Settings/S
+ystemEntryShare.vue?vue&type=script&setup=true&lang.t
+s, D:/kaifa/CRM - 1.8.0/src/views/System/components/M
+essageCleanupConfig.vue?vue&type=script&setup=true&la
+ng.ts, D:/kaifa/CRM - 1.8.0/src/views/Wecom/component
+s/AiAssistant/SensitiveWordEnhanced.vue?vue&type=scri
+pt&setup=true&lang.ts, dynamic import will not move m
+odule into another chunk.
+[39m
+[1m[33m[plugin:vite:reporter][39m[22m [33m[plugi
+n vite:reporter] 
+(!) D:/kaifa/CRM - 1.8.0/src/services/sensitiveInfoPe
+rmissionService.ts is dynamically imported by D:/kaif
+a/CRM - 1.8.0/src/stores/user/authActions.ts but also
+ statically imported by D:/kaifa/CRM - 1.8.0/src/comp
+onents/System/SensitiveInfoPermissionManager.vue?vue&
+type=script&setup=true&lang.ts, D:/kaifa/CRM - 1.8.0/
+src/stores/user/permissionHelpers.ts, D:/kaifa/CRM - 
+1.8.0/src/utils/phone.ts, D:/kaifa/CRM - 1.8.0/src/ut
+ils/sensitiveInfo.ts, dynamic import will not move mo
+dule into another chunk.
+[39m
+[1m[33m[plugin:vite:reporter][39m[22m [33m[plugi
+n vite:reporter] 
+(!) D:/kaifa/CRM - 1.8.0/src/services/apiService.ts i
+s dynamically imported by D:/kaifa/CRM - 1.8.0/src/co
+mponents/HealthCheckNotificationSettings.vue?vue&type
+=script&setup=true&lang.ts, D:/kaifa/CRM - 1.8.0/src/
+components/System/BasicSettingsPanel.vue?vue&type=scr
+ipt&setup=true&lang.ts, D:/kaifa/CRM - 1.8.0/src/serv
+ices/passwordService.ts, D:/kaifa/CRM - 1.8.0/src/ser
+vices/passwordService.ts, D:/kaifa/CRM - 1.8.0/src/st
+ores/config.ts, D:/kaifa/CRM - 1.8.0/src/stores/confi
+g.ts, D:/kaifa/CRM - 1.8.0/src/stores/config.ts, D:/k
+aifa/CRM - 1.8.0/src/stores/config.ts, D:/kaifa/CRM -
+ 1.8.0/src/stores/config.ts, D:/kaifa/CRM - 1.8.0/src
+/stores/config.ts, D:/kaifa/CRM - 1.8.0/src/stores/co
+nfig.ts, D:/kaifa/CRM - 1.8.0/src/stores/config.ts, D
+:/kaifa/CRM - 1.8.0/src/views/Logistics/Companies.vue
+?vue&type=script&setup=true&lang.ts, D:/kaifa/CRM - 1
+.8.0/src/views/Logistics/Companies.vue?vue&type=scrip
+t&setup=true&lang.ts, D:/kaifa/CRM - 1.8.0/src/views/
+Logistics/Companies.vue?vue&type=script&setup=true&la
+ng.ts, D:/kaifa/CRM - 1.8.0/src/views/Logistics/Compa
+nies.vue?vue&type=script&setup=true&lang.ts, D:/kaifa
+/CRM - 1.8.0/src/views/Logistics/Companies.vue?vue&ty
+pe=script&setup=true&lang.ts, D:/kaifa/CRM - 1.8.0/sr
+c/views/Logistics/Companies.vue?vue&type=script&setup
+=true&lang.ts, D:/kaifa/CRM - 1.8.0/src/views/Logisti
+cs/Detail.vue?vue&type=script&setup=true&lang.ts, D:/
+kaifa/CRM - 1.8.0/src/views/Logistics/Detail.vue?vue&
+type=script&setup=true&lang.ts, D:/kaifa/CRM - 1.8.0/
+src/views/Logistics/Edit.vue?vue&type=script&setup=tr
+ue&lang.ts, D:/kaifa/CRM - 1.8.0/src/views/Logistics/
+Edit.vue?vue&type=script&setup=true&lang.ts, D:/kaifa
+/CRM - 1.8.0/src/views/Logistics/Track.vue?vue&type=s
+cript&setup=true&lang.ts, D:/kaifa/CRM - 1.8.0/src/vi
+ews/Logistics/Track.vue?vue&type=script&setup=true&la
+ng.ts, D:/kaifa/CRM - 1.8.0/src/views/Logistics/Track
+Detail.vue?vue&type=script&setup=true&lang.ts, D:/kai
+fa/CRM - 1.8.0/src/views/Logistics/components/BatchPr
+intLabelDialog.vue?vue&type=script&setup=true&lang.ts
+, D:/kaifa/CRM - 1.8.0/src/views/Logistics/components
+/PrintLabelDialog.vue?vue&type=script&setup=true&lang
+.ts, D:/kaifa/CRM - 1.8.0/src/views/System/Settings/B
+ackupSettings.vue?vue&type=script&setup=true&lang.ts,
+ D:/kaifa/CRM - 1.8.0/src/views/System/Settings/Backu
+pSettings.vue?vue&type=script&setup=true&lang.ts, D:/
+kaifa/CRM - 1.8.0/src/views/System/Settings/BackupSet
+tings.vue?vue&type=script&setup=true&lang.ts, D:/kaif
+a/CRM - 1.8.0/src/views/System/Settings/BackupSetting
+s.vue?vue&type=script&setup=true&lang.ts, D:/kaifa/CR
+M - 1.8.0/src/views/System/Settings/BackupSettings.vu
+e?vue&type=script&setup=true&lang.ts, D:/kaifa/CRM - 
+1.8.0/src/views/System/Settings/BackupSettings.vue?vu
+e&type=script&setup=true&lang.ts, D:/kaifa/CRM - 1.8.
+0/src/views/System/Settings/BackupSettings.vue?vue&ty
+pe=script&setup=true&lang.ts, D:/kaifa/CRM - 1.8.0/sr
+c/views/System/Settings/CallSettings.vue?vue&type=scr
+ipt&setup=true&lang.ts, D:/kaifa/CRM - 1.8.0/src/view
+s/System/Settings/EmailSettings.vue?vue&type=script&s
+etup=true&lang.ts, D:/kaifa/CRM - 1.8.0/src/views/Sys
+tem/Settings/EmailSettings.vue?vue&type=script&setup=
+true&lang.ts, D:/kaifa/CRM - 1.8.0/src/views/System/S
+ettings/EmailSettings.vue?vue&type=script&setup=true&
+lang.ts, D:/kaifa/CRM - 1.8.0/src/views/System/Settin
+gs/MonitorSettings.vue?vue&type=script&setup=true&lan
+g.ts, D:/kaifa/CRM - 1.8.0/src/views/System/Settings/
+ProductSettings.vue?vue&type=script&setup=true&lang.t
+s, D:/kaifa/CRM - 1.8.0/src/views/System/Settings/Sec
+uritySettings.vue?vue&type=script&setup=true&lang.ts,
+ D:/kaifa/CRM - 1.8.0/src/views/System/Settings/SmsSe
+ttings.vue?vue&type=script&setup=true&lang.ts, D:/kai
+fa/CRM - 1.8.0/src/views/System/Settings/StorageSetti
+ngs.vue?vue&type=script&setup=true&lang.ts, D:/kaifa/
+CRM - 1.8.0/src/views/System/Settings/StorageSettings
+.vue?vue&type=script&setup=true&lang.ts but also stat
+ically imported by D:/kaifa/CRM - 1.8.0/src/services/
+authApiService.ts, D:/kaifa/CRM - 1.8.0/src/services/
+globalConfigService.ts, D:/kaifa/CRM - 1.8.0/src/serv
+ices/profileApiService.ts, D:/kaifa/CRM - 1.8.0/src/s
+ervices/roleApiService.ts, D:/kaifa/CRM - 1.8.0/src/s
+ervices/rolePermissionService.ts, D:/kaifa/CRM - 1.8.
+0/src/services/storageMode.ts, D:/kaifa/CRM - 1.8.0/s
+rc/services/userApiService.ts, dynamic import will no
+t move module into another chunk.
+[39m
+[1m[33m[plugin:vite:reporter][39m[22m [33m[plugi
+n vite:reporter] 
+(!) D:/kaifa/CRM - 1.8.0/src/api/mock.ts is dynamical
+ly imported by D:/kaifa/CRM - 1.8.0/src/stores/custom
+er.ts, D:/kaifa/CRM - 1.8.0/src/stores/customer.ts, D
+:/kaifa/CRM - 1.8.0/src/views/Customer/Edit.vue?vue&t
+ype=script&setup=true&lang.ts but also statically imp
+orted by D:/kaifa/CRM - 1.8.0/src/api/call.ts, D:/kai
+fa/CRM - 1.8.0/src/api/data.ts, D:/kaifa/CRM - 1.8.0/
+src/api/product.ts, D:/kaifa/CRM - 1.8.0/src/services
+/authApiService.ts, D:/kaifa/CRM - 1.8.0/src/services
+/globalConfigService.ts, D:/kaifa/CRM - 1.8.0/src/ser
+vices/profileApiService.ts, D:/kaifa/CRM - 1.8.0/src/
+stores/call.ts, dynamic import will not move module i
+nto another chunk.
+[39m
+[1m[33m[plugin:vite:reporter][39m[22m [33m[plugi
+n vite:reporter] 
+(!) D:/kaifa/CRM - 1.8.0/src/services/authApiService.
+ts is dynamically imported by D:/kaifa/CRM - 1.8.0/sr
+c/services/apiService.ts but also statically imported
+ by D:/kaifa/CRM - 1.8.0/src/services/globalConfigSer
+vice.ts, D:/kaifa/CRM - 1.8.0/src/services/storageMod
+e.ts, D:/kaifa/CRM - 1.8.0/src/stores/user/authAction
+s.ts, dynamic import will not move module into anothe
+r chunk.
+[39m
+[1m[33m[plugin:vite:reporter][39m[22m [33m[plugi
+n vite:reporter] 
+(!) D:/kaifa/CRM - 1.8.0/src/api/request.ts is dynami
+cally imported by D:/kaifa/CRM - 1.8.0/src/stores/con
+fig.ts, D:/kaifa/CRM - 1.8.0/src/stores/orderFieldCon
+fig.ts, D:/kaifa/CRM - 1.8.0/src/stores/orderFieldCon
+fig.ts but also statically imported by D:/kaifa/CRM -
+ 1.8.0/src/api/call.ts, D:/kaifa/CRM - 1.8.0/src/api/
+customer.ts, D:/kaifa/CRM - 1.8.0/src/api/customerDet
+ail.ts, D:/kaifa/CRM - 1.8.0/src/api/customerGroups.t
+s, D:/kaifa/CRM - 1.8.0/src/api/customerServicePermis
+sion.ts, D:/kaifa/CRM - 1.8.0/src/api/customerShare.t
+s, D:/kaifa/CRM - 1.8.0/src/api/customerTags.ts, D:/k
+aifa/CRM - 1.8.0/src/api/data.ts, D:/kaifa/CRM - 1.8.
+0/src/api/department.ts, D:/kaifa/CRM - 1.8.0/src/api
+/logistics.ts, D:/kaifa/CRM - 1.8.0/src/api/logistics
+Status.ts, D:/kaifa/CRM - 1.8.0/src/api/logs.ts, D:/k
+aifa/CRM - 1.8.0/src/api/message.ts, D:/kaifa/CRM - 1
+.8.0/src/api/order.ts, D:/kaifa/CRM - 1.8.0/src/api/o
+rderDetail.ts, D:/kaifa/CRM - 1.8.0/src/api/performan
+ceReport.ts, D:/kaifa/CRM - 1.8.0/src/api/product.ts,
+ D:/kaifa/CRM - 1.8.0/src/api/senderAddress.ts, D:/ka
+ifa/CRM - 1.8.0/src/api/service.ts, D:/kaifa/CRM - 1.
+8.0/src/api/sms.ts, D:/kaifa/CRM - 1.8.0/src/api/time
+outReminder.ts, D:/kaifa/CRM - 1.8.0/src/components/V
+ersionUpdatePanel.vue?vue&type=script&setup=true&lang
+.ts, D:/kaifa/CRM - 1.8.0/src/services/userApiService
+.ts, D:/kaifa/CRM - 1.8.0/src/views/Order/List.vue?vu
+e&type=script&setup=true&lang.ts, dynamic import will
+ not move module into another chunk.
+[39m
+[1m[33m[plugin:vite:reporter][39m[22m [33m[plugi
+n vite:reporter] 
+(!) D:/kaifa/CRM - 1.8.0/src/api/customer.ts is dynam
+ically imported by D:/kaifa/CRM - 1.8.0/src/stores/cu
+stomer.ts, D:/kaifa/CRM - 1.8.0/src/stores/customer.t
+s, D:/kaifa/CRM - 1.8.0/src/stores/customer.ts, D:/ka
+ifa/CRM - 1.8.0/src/views/Customer/Detail.vue?vue&typ
+e=script&setup=true&lang.ts, D:/kaifa/CRM - 1.8.0/src
+/views/Customer/Edit.vue?vue&type=script&setup=true&l
+ang.ts, D:/kaifa/CRM - 1.8.0/src/views/Customer/List.
+vue?vue&type=script&setup=true&lang.ts, D:/kaifa/CRM 
+- 1.8.0/src/views/Customer/List.vue?vue&type=script&s
+etup=true&lang.ts, D:/kaifa/CRM - 1.8.0/src/views/Per
+formance/Personal.vue?vue&type=script&setup=true&lang
+.ts, D:/kaifa/CRM - 1.8.0/src/views/ServiceManagement
+/CallManagement.vue?vue&type=script&setup=true&lang.t
+s but also statically imported by D:/kaifa/CRM - 1.8.
+0/src/stores/customer.ts, D:/kaifa/CRM - 1.8.0/src/vi
+ews/Customer/Add.vue?vue&type=script&setup=true&lang.
+ts, D:/kaifa/CRM - 1.8.0/src/views/Customer/Detail.vu
+e?vue&type=script&setup=true&lang.ts, D:/kaifa/CRM - 
+1.8.0/src/views/Order/Detail.vue?vue&type=script&setu
+p=true&lang.ts, dynamic import will not move module i
+nto another chunk.
+[39m
+[1m[33m[plugin:vite:reporter][39m[22m [33m[plugi
+n vite:reporter] 
+(!) D:/kaifa/CRM - 1.8.0/src/services/logistics.ts is
+ dynamically imported by D:/kaifa/CRM - 1.8.0/src/sto
+res/order.ts but also statically imported by D:/kaifa
+/CRM - 1.8.0/src/stores/order.ts, dynamic import will
+ not move module into another chunk.
+[39m
+[1m[33m[plugin:vite:reporter][39m[22m [33m[plugi
+n vite:reporter] 
+(!) D:/kaifa/CRM - 1.8.0/src/stores/notification.ts i
+s dynamically imported by D:/kaifa/CRM - 1.8.0/src/st
+ores/user/authActions.ts but also statically imported
+ by D:/kaifa/CRM - 1.8.0/src/App.vue?vue&type=script&
+setup=true&lang.ts, D:/kaifa/CRM - 1.8.0/src/componen
+ts/MessageBell.vue?vue&type=script&setup=true&lang.ts
+, D:/kaifa/CRM - 1.8.0/src/services/appInitService.ts
+, D:/kaifa/CRM - 1.8.0/src/services/messageNotificati
+onService.ts, D:/kaifa/CRM - 1.8.0/src/stores/order.t
+s, D:/kaifa/CRM - 1.8.0/src/stores/performance.ts, D:
+/kaifa/CRM - 1.8.0/src/views/Customer/Add.vue?vue&typ
+e=script&setup=true&lang.ts, D:/kaifa/CRM - 1.8.0/src
+/views/Customer/List.vue?vue&type=script&setup=true&l
+ang.ts, D:/kaifa/CRM - 1.8.0/src/views/Dashboard.vue?
+vue&type=script&setup=true&lang.ts, D:/kaifa/CRM - 1.
+8.0/src/views/Logistics/Detail.vue?vue&type=script&se
+tup=true&lang.ts, D:/kaifa/CRM - 1.8.0/src/views/Logi
+stics/Shipping.vue?vue&type=script&setup=true&lang.ts
+, D:/kaifa/CRM - 1.8.0/src/views/Logistics/components
+/ShippingDialog.vue?vue&type=script&setup=true&lang.t
+s, D:/kaifa/CRM - 1.8.0/src/views/Order/Detail.vue?vu
+e&type=script&setup=true&lang.ts, D:/kaifa/CRM - 1.8.
+0/src/views/Order/List.vue?vue&type=script&setup=true
+&lang.ts, D:/kaifa/CRM - 1.8.0/src/views/Product/Deta
+il.vue?vue&type=script&setup=true&lang.ts, D:/kaifa/C
+RM - 1.8.0/src/views/Product/List.vue?vue&type=script
+&setup=true&lang.ts, D:/kaifa/CRM - 1.8.0/src/views/S
+ervice/Add.vue?vue&type=script&setup=true&lang.ts, D:
+/kaifa/CRM - 1.8.0/src/views/Service/Detail.vue?vue&t
+ype=script&setup=true&lang.ts, D:/kaifa/CRM - 1.8.0/s
+rc/views/Service/List.vue?vue&type=script&setup=true&
+lang.ts, D:/kaifa/CRM - 1.8.0/src/views/ServiceManage
+ment/SmsManagement.vue?vue&type=script&setup=true&lan
+g.ts, D:/kaifa/CRM - 1.8.0/src/views/ServiceManagemen
+t/SmsTemplateDetail.vue?vue&type=script&setup=true&la
+ng.ts, D:/kaifa/CRM - 1.8.0/src/views/System/SmsAppro
+val.vue?vue&type=script&setup=true&lang.ts, D:/kaifa/
+CRM - 1.8.0/src/views/System/SmsSendRecords.vue?vue&t
+ype=script&setup=true&lang.ts, D:/kaifa/CRM - 1.8.0/s
+rc/views/System/SmsTemplates.vue?vue&type=script&setu
+p=true&lang.ts, dynamic import will not move module i
+nto another chunk.
+[39m
+[1m[33m[plugin:vite:reporter][39m[22m [33m[plugi
+n vite:reporter] 
+(!) D:/kaifa/CRM - 1.8.0/src/api/message.ts is dynami
+cally imported by D:/kaifa/CRM - 1.8.0/src/stores/not
+ification.ts, D:/kaifa/CRM - 1.8.0/src/stores/notific
+ation.ts, D:/kaifa/CRM - 1.8.0/src/stores/notificatio
+n.ts, D:/kaifa/CRM - 1.8.0/src/stores/notification.ts
+, D:/kaifa/CRM - 1.8.0/src/stores/notification.ts but
+ also statically imported by D:/kaifa/CRM - 1.8.0/src
+/services/messageNotificationService.ts, D:/kaifa/CRM
+ - 1.8.0/src/stores/message.ts, D:/kaifa/CRM - 1.8.0/
+src/views/Dashboard.vue?vue&type=script&setup=true&la
+ng.ts, D:/kaifa/CRM - 1.8.0/src/views/System/componen
+ts/AnnouncementPublish.vue?vue&type=script&setup=true
+&lang.ts, D:/kaifa/CRM - 1.8.0/src/views/System/compo
+nents/MessageConfig.vue?vue&type=script&setup=true&la
+ng.ts, dynamic import will not move module into anoth
+er chunk.
+[39m
+[1m[33m[plugin:vite:reporter][39m[22m [33m[plugi
+n vite:reporter] 
+(!) D:/kaifa/CRM - 1.8.0/src/services/permissionServi
+ce.ts is dynamically imported by D:/kaifa/CRM - 1.8.0
+/src/stores/user/authActions.ts but also statically i
+mported by D:/kaifa/CRM - 1.8.0/src/components/Depart
+ment/DepartmentDialog.vue?vue&type=script&setup=true&
+lang.ts, D:/kaifa/CRM - 1.8.0/src/services/department
+PermissionService.ts, D:/kaifa/CRM - 1.8.0/src/servic
+es/rolePermissionService.ts, D:/kaifa/CRM - 1.8.0/src
+/views/System/Role/PermissionListDialog.vue?vue&type=
+script&setup=true&lang.ts, D:/kaifa/CRM - 1.8.0/src/v
+iews/System/Role/PermissionSettingsDialog.vue?vue&typ
+e=script&setup=true&lang.ts, D:/kaifa/CRM - 1.8.0/src
+/views/System/Role/index.vue?vue&type=script&setup=tr
+ue&lang.ts, D:/kaifa/CRM - 1.8.0/src/views/System/Use
+r.vue?vue&type=script&setup=true&lang.ts, dynamic imp
+ort will not move module into another chunk.
+[39m
+[1m[33m[plugin:vite:reporter][39m[22m [33m[plugi
+n vite:reporter] 
+(!) D:/kaifa/CRM - 1.8.0/src/stores/user.ts is dynami
+cally imported by D:/kaifa/CRM - 1.8.0/src/services/p
+ermissionService.ts, D:/kaifa/CRM - 1.8.0/src/stores/
+performance.ts but also statically imported by D:/kai
+fa/CRM - 1.8.0/src/App.vue?vue&type=script&setup=true
+&lang.ts, D:/kaifa/CRM - 1.8.0/src/components/Call/Ca
+llConfigDialog.vue?vue&type=script&setup=true&lang.ts
+, D:/kaifa/CRM - 1.8.0/src/components/Department/Depa
+rtmentDialog.vue?vue&type=script&setup=true&lang.ts, 
+D:/kaifa/CRM - 1.8.0/src/components/Department/Member
+Dialog.vue?vue&type=script&setup=true&lang.ts, D:/kai
+fa/CRM - 1.8.0/src/components/DynamicMenu.vue?vue&typ
+e=script&setup=true&lang.ts, D:/kaifa/CRM - 1.8.0/src
+/components/HealthCheckNotificationSettings.vue?vue&t
+ype=script&setup=true&lang.ts, D:/kaifa/CRM - 1.8.0/s
+rc/components/HelpCenter.vue?vue&type=script&setup=tr
+ue&lang.ts, D:/kaifa/CRM - 1.8.0/src/components/Messa
+geBell.vue?vue&type=script&setup=true&lang.ts, D:/kai
+fa/CRM - 1.8.0/src/components/PasswordChangeModal.vue
+?vue&type=script&setup=true&lang.ts, D:/kaifa/CRM - 1
+.8.0/src/components/Permission/LogisticsStatusPermiss
+ion.vue?vue&type=script&setup=true&lang.ts, D:/kaifa/
+CRM - 1.8.0/src/components/PersonalSettingsModal.vue?
+vue&type=script&setup=true&lang.ts, D:/kaifa/CRM - 1.
+8.0/src/components/RejectionReasonManagement.vue?vue&
+type=script&setup=true&lang.ts, D:/kaifa/CRM - 1.8.0/
+src/components/Service/ServiceTypeConfigDialog.vue?vu
+e&type=script&setup=true&lang.ts, D:/kaifa/CRM - 1.8.
+0/src/components/StorageModeSwitch.vue?vue&type=scrip
+t&setup=true&lang.ts, D:/kaifa/CRM - 1.8.0/src/compon
+ents/System/BasicSettingsPanel.vue?vue&type=script&se
+tup=true&lang.ts, D:/kaifa/CRM - 1.8.0/src/components
+/System/UserDetailDialog.vue?vue&type=script&setup=tr
+ue&lang.ts, D:/kaifa/CRM - 1.8.0/src/directives/permi
+ssion.ts, D:/kaifa/CRM - 1.8.0/src/main.ts, D:/kaifa/
+CRM - 1.8.0/src/router/index.ts, D:/kaifa/CRM - 1.8.0
+/src/services/appInitService.ts, D:/kaifa/CRM - 1.8.0
+/src/services/healthCheckNotificationService.ts, D:/k
+aifa/CRM - 1.8.0/src/services/messageNotificationServ
+ice.ts, D:/kaifa/CRM - 1.8.0/src/stores/customer.ts, 
+D:/kaifa/CRM - 1.8.0/src/stores/data.ts, D:/kaifa/CRM
+ - 1.8.0/src/stores/order.ts, D:/kaifa/CRM - 1.8.0/sr
+c/stores/performance.ts, D:/kaifa/CRM - 1.8.0/src/uti
+ls/menu.ts, D:/kaifa/CRM - 1.8.0/src/utils/phone.ts, 
+D:/kaifa/CRM - 1.8.0/src/utils/request.ts, D:/kaifa/C
+RM - 1.8.0/src/utils/sensitiveInfo.ts, D:/kaifa/CRM -
+ 1.8.0/src/views/ChangePassword.vue?vue&type=script&s
+etup=true&lang.ts, D:/kaifa/CRM - 1.8.0/src/views/Cus
+tomer/Add.vue?vue&type=script&setup=true&lang.ts, D:/
+kaifa/CRM - 1.8.0/src/views/Customer/Detail.vue?vue&t
+ype=script&setup=true&lang.ts, D:/kaifa/CRM - 1.8.0/s
+rc/views/Customer/Edit.vue?vue&type=script&setup=true
+&lang.ts, D:/kaifa/CRM - 1.8.0/src/views/Customer/Gro
+ups.vue?vue&type=script&setup=true&lang.ts, D:/kaifa/
+CRM - 1.8.0/src/views/Customer/List.vue?vue&type=scri
+pt&setup=true&lang.ts, D:/kaifa/CRM - 1.8.0/src/views
+/Customer/Tags.vue?vue&type=script&setup=true&lang.ts
+, D:/kaifa/CRM - 1.8.0/src/views/Dashboard.vue?vue&ty
+pe=script&setup=true&lang.ts, D:/kaifa/CRM - 1.8.0/sr
+c/views/Data/LeaderAssignDialog.vue?vue&type=script&s
+etup=true&lang.ts, D:/kaifa/CRM - 1.8.0/src/views/Dat
+a/List.vue?vue&type=script&setup=true&lang.ts, D:/kai
+fa/CRM - 1.8.0/src/views/Debug/UserPermissions.vue?vu
+e&type=script&setup=true&lang.ts, D:/kaifa/CRM - 1.8.
+0/src/views/Finance/MyCodApplication.vue?vue&type=scr
+ipt&setup=true&lang.ts, D:/kaifa/CRM - 1.8.0/src/view
+s/Finance/PerformanceData.vue?vue&type=script&setup=t
+rue&lang.ts, D:/kaifa/CRM - 1.8.0/src/views/Finance/P
+erformanceManage.vue?vue&type=script&setup=true&lang.
+ts, D:/kaifa/CRM - 1.8.0/src/views/Login.vue?vue&type
+=script&setup=true&lang.ts, D:/kaifa/CRM - 1.8.0/src/
+views/Logistics/List.vue?vue&type=script&setup=true&l
+ang.ts, D:/kaifa/CRM - 1.8.0/src/views/Logistics/Ship
+ping.vue?vue&type=script&setup=true&lang.ts, D:/kaifa
+/CRM - 1.8.0/src/views/Logistics/StatusUpdate.vue?vue
+&type=script&setup=true&lang.ts, D:/kaifa/CRM - 1.8.0
+/src/views/Logistics/Track.vue?vue&type=script&setup=
+true&lang.ts, D:/kaifa/CRM - 1.8.0/src/views/Logistic
+s/components/CancelOrderDialog.vue?vue&type=script&se
+tup=true&lang.ts, D:/kaifa/CRM - 1.8.0/src/views/Logi
+stics/components/ReturnOrderDialog.vue?vue&type=scrip
+t&setup=true&lang.ts, D:/kaifa/CRM - 1.8.0/src/views/
+Order/Add.vue?vue&type=script&setup=true&lang.ts, D:/
+kaifa/CRM - 1.8.0/src/views/Order/Audit.vue?vue&type=
+script&setup=true&lang.ts, D:/kaifa/CRM - 1.8.0/src/v
+iews/Order/Detail.vue?vue&type=script&setup=true&lang
+.ts, D:/kaifa/CRM - 1.8.0/src/views/Order/Edit.vue?vu
+e&type=script&setup=true&lang.ts, D:/kaifa/CRM - 1.8.
+0/src/views/Order/List.vue?vue&type=script&setup=true
+&lang.ts, D:/kaifa/CRM - 1.8.0/src/views/Performance/
+Analysis.vue?vue&type=script&setup=true&lang.ts, D:/k
+aifa/CRM - 1.8.0/src/views/Performance/Personal.vue?v
+ue&type=script&setup=true&lang.ts, D:/kaifa/CRM - 1.8
+.0/src/views/Performance/Share.vue?vue&type=script&se
+tup=true&lang.ts, D:/kaifa/CRM - 1.8.0/src/views/Perf
+ormance/Team.vue?vue&type=script&setup=true&lang.ts, 
+D:/kaifa/CRM - 1.8.0/src/views/Product/Detail.vue?vue
+&type=script&setup=true&lang.ts, D:/kaifa/CRM - 1.8.0
+/src/views/Service/Add.vue?vue&type=script&setup=true
+&lang.ts, D:/kaifa/CRM - 1.8.0/src/views/Service/Data
+.vue?vue&type=script&setup=true&lang.ts, D:/kaifa/CRM
+ - 1.8.0/src/views/Service/Detail.vue?vue&type=script
+&setup=true&lang.ts, D:/kaifa/CRM - 1.8.0/src/views/S
+ervice/Edit.vue?vue&type=script&setup=true&lang.ts, D
+:/kaifa/CRM - 1.8.0/src/views/Service/List.vue?vue&ty
+pe=script&setup=true&lang.ts, D:/kaifa/CRM - 1.8.0/sr
+c/views/ServiceManagement/Call/CallRecords.vue?vue&ty
+pe=script&setup=true&lang.ts, D:/kaifa/CRM - 1.8.0/sr
+c/views/ServiceManagement/Call/FollowUpRecords.vue?vu
+e&type=script&setup=true&lang.ts, D:/kaifa/CRM - 1.8.
+0/src/views/ServiceManagement/Call/OutboundList.vue?v
+ue&type=script&setup=true&lang.ts, D:/kaifa/CRM - 1.8
+.0/src/views/ServiceManagement/Call/RecordingManageme
+nt.vue?vue&type=script&setup=true&lang.ts, D:/kaifa/C
+RM - 1.8.0/src/views/ServiceManagement/CallManagement
+.vue?vue&type=script&setup=true&lang.ts, D:/kaifa/CRM
+ - 1.8.0/src/views/ServiceManagement/SmsManagement.vu
+e?vue&type=script&setup=true&lang.ts, D:/kaifa/CRM - 
+1.8.0/src/views/Settings/PerformanceShare.vue?vue&typ
+e=script&setup=true&lang.ts, D:/kaifa/CRM - 1.8.0/src
+/views/System/CallTest.vue?vue&type=script&setup=true
+&lang.ts, D:/kaifa/CRM - 1.8.0/src/views/System/Role/
+PermissionSettingsDialog.vue?vue&type=script&setup=tr
+ue&lang.ts, D:/kaifa/CRM - 1.8.0/src/views/System/Rol
+e/index.vue?vue&type=script&setup=true&lang.ts, D:/ka
+ifa/CRM - 1.8.0/src/views/System/Settings/AgreementSe
+ttings.vue?vue&type=script&setup=true&lang.ts, D:/kai
+fa/CRM - 1.8.0/src/views/System/Settings/BackupSettin
+gs.vue?vue&type=script&setup=true&lang.ts, D:/kaifa/C
+RM - 1.8.0/src/views/System/Settings/CallSettings.vue
+?vue&type=script&setup=true&lang.ts, D:/kaifa/CRM - 1
+.8.0/src/views/System/Settings/EmailSettings.vue?vue&
+type=script&setup=true&lang.ts, D:/kaifa/CRM - 1.8.0/
+src/views/System/Settings/ProductSettings.vue?vue&typ
+e=script&setup=true&lang.ts, D:/kaifa/CRM - 1.8.0/src
+/views/System/Settings/SecuritySettings.vue?vue&type=
+script&setup=true&lang.ts, D:/kaifa/CRM - 1.8.0/src/v
+iews/System/Settings/SmsSettings.vue?vue&type=script&
+setup=true&lang.ts, D:/kaifa/CRM - 1.8.0/src/views/Sy
+stem/Settings/StorageSettings.vue?vue&type=script&set
+up=true&lang.ts, D:/kaifa/CRM - 1.8.0/src/views/Syste
+m/Settings/index.vue?vue&type=script&setup=true&lang.
+ts, D:/kaifa/CRM - 1.8.0/src/views/System/SmsTemplate
+s.vue?vue&type=script&setup=true&lang.ts, D:/kaifa/CR
+M - 1.8.0/src/views/System/User.vue?vue&type=script&s
+etup=true&lang.ts, D:/kaifa/CRM - 1.8.0/src/views/Sys
+tem/components/MessageConfig.vue?vue&type=script&setu
+p=true&lang.ts, D:/kaifa/CRM - 1.8.0/src/views/Wecom/
+Binding.vue?vue&type=script&setup=true&lang.ts, dynam
+ic import will not move module into another chunk.
+[39m
+[1m[33m[plugin:vite:reporter][39m[22m [33m[plugi
+n vite:reporter] 
+(!) D:/kaifa/CRM - 1.8.0/src/stores/config.ts is dyna
+mically imported by D:/kaifa/CRM - 1.8.0/src/utils/se
+cureLogger.ts but also statically imported by D:/kaif
+a/CRM - 1.8.0/src/App.vue?vue&type=script&setup=true&
+lang.ts, D:/kaifa/CRM - 1.8.0/src/components/DynamicM
+enu.vue?vue&type=script&setup=true&lang.ts, D:/kaifa/
+CRM - 1.8.0/src/components/System/BasicSettingsPanel.
+vue?vue&type=script&setup=true&lang.ts, D:/kaifa/CRM 
+- 1.8.0/src/components/System/SuperAdminPermissionPan
+el.vue?vue&type=script&setup=true&lang.ts, D:/kaifa/C
+RM - 1.8.0/src/main.ts, D:/kaifa/CRM - 1.8.0/src/serv
+ices/appInitService.ts, D:/kaifa/CRM - 1.8.0/src/serv
+ices/dataBackupService.ts, D:/kaifa/CRM - 1.8.0/src/s
+ervices/dataSyncService.ts, D:/kaifa/CRM - 1.8.0/src/
+services/ossService.ts, D:/kaifa/CRM - 1.8.0/src/serv
+ices/passwordService.ts, D:/kaifa/CRM - 1.8.0/src/uti
+ls/testDataPersistence.ts, D:/kaifa/CRM - 1.8.0/src/v
+iews/About.vue?vue&type=script&setup=true&lang.ts, D:
+/kaifa/CRM - 1.8.0/src/views/Login.vue?vue&type=scrip
+t&setup=true&lang.ts, D:/kaifa/CRM - 1.8.0/src/views/
+Order/Add.vue?vue&type=script&setup=true&lang.ts, D:/
+kaifa/CRM - 1.8.0/src/views/Order/Edit.vue?vue&type=s
+cript&setup=true&lang.ts, D:/kaifa/CRM - 1.8.0/src/vi
+ews/Performance/Personal.vue?vue&type=script&setup=tr
+ue&lang.ts, D:/kaifa/CRM - 1.8.0/src/views/Product/De
+tail.vue?vue&type=script&setup=true&lang.ts, D:/kaifa
+/CRM - 1.8.0/src/views/Product/List.vue?vue&type=scri
+pt&setup=true&lang.ts, D:/kaifa/CRM - 1.8.0/src/views
+/Settings/PerformanceShare.vue?vue&type=script&setup=
+true&lang.ts, D:/kaifa/CRM - 1.8.0/src/views/System/S
+ettings/AgreementSettings.vue?vue&type=script&setup=t
+rue&lang.ts, D:/kaifa/CRM - 1.8.0/src/views/System/Se
+ttings/BackupSettings.vue?vue&type=script&setup=true&
+lang.ts, D:/kaifa/CRM - 1.8.0/src/views/System/Settin
+gs/CallSettings.vue?vue&type=script&setup=true&lang.t
+s, D:/kaifa/CRM - 1.8.0/src/views/System/Settings/Ema
+ilSettings.vue?vue&type=script&setup=true&lang.ts, D:
+/kaifa/CRM - 1.8.0/src/views/System/Settings/LicenseS
+ettings.vue?vue&type=script&setup=true&lang.ts, D:/ka
+ifa/CRM - 1.8.0/src/views/System/Settings/ProductSett
+ings.vue?vue&type=script&setup=true&lang.ts, D:/kaifa
+/CRM - 1.8.0/src/views/System/Settings/SecuritySettin
+gs.vue?vue&type=script&setup=true&lang.ts, D:/kaifa/C
+RM - 1.8.0/src/views/System/Settings/SmsSettings.vue?
+vue&type=script&setup=true&lang.ts, D:/kaifa/CRM - 1.
+8.0/src/views/System/Settings/StorageSettings.vue?vue
+&type=script&setup=true&lang.ts, D:/kaifa/CRM - 1.8.0
+/src/views/System/Settings/SystemEntryShare.vue?vue&t
+ype=script&setup=true&lang.ts, D:/kaifa/CRM - 1.8.0/s
+rc/views/System/Settings/index.vue?vue&type=script&se
+tup=true&lang.ts, dynamic import will not move module
+ into another chunk.
+[39m
+[1m[33m[plugin:vite:reporter][39m[22m [33m[plugi
+n vite:reporter] 
+(!) D:/kaifa/CRM - 1.8.0/src/stores/message.ts is dyn
+amically imported by D:/kaifa/CRM - 1.8.0/src/stores/
+notification.ts but also statically imported by D:/ka
+ifa/CRM - 1.8.0/src/App.vue?vue&type=script&setup=tru
+e&lang.ts, D:/kaifa/CRM - 1.8.0/src/components/Announ
+cementCarousel.vue?vue&type=script&setup=true&lang.ts
+, D:/kaifa/CRM - 1.8.0/src/components/AnnouncementPop
+up.vue?vue&type=script&setup=true&lang.ts, D:/kaifa/C
+RM - 1.8.0/src/components/MessageBell.vue?vue&type=sc
+ript&setup=true&lang.ts, D:/kaifa/CRM - 1.8.0/src/vie
+ws/Dashboard.vue?vue&type=script&setup=true&lang.ts, 
+D:/kaifa/CRM - 1.8.0/src/views/System/MessageManageme
+nt.vue?vue&type=script&setup=true&lang.ts, D:/kaifa/C
+RM - 1.8.0/src/views/System/components/AnnouncementPu
+blish.vue?vue&type=script&setup=true&lang.ts, dynamic
+ import will not move module into another chunk.
+[39m
+[1m[33m[plugin:vite:reporter][39m[22m [33m[plugi
+n vite:reporter] 
+(!) D:/kaifa/CRM - 1.8.0/src/utils/secureLogger.ts is
+ dynamically imported by D:/kaifa/CRM - 1.8.0/src/sto
+res/user/authActions.ts but also statically imported 
+by D:/kaifa/CRM - 1.8.0/src/components/System/SuperAd
+minPermissionPanel.vue?vue&type=script&setup=true&lan
+g.ts, D:/kaifa/CRM - 1.8.0/src/main.ts, dynamic impor
+t will not move module into another chunk.
+[39m
+[1m[33m[plugin:vite:reporter][39m[22m [33m[plugi
+n vite:reporter] 
+(!) D:/kaifa/CRM - 1.8.0/src/services/ossService.ts i
+s dynamically imported by D:/kaifa/CRM - 1.8.0/src/vi
+ews/System/Settings/StorageSettings.vue?vue&type=scri
+pt&setup=true&lang.ts but also statically imported by
+ D:/kaifa/CRM - 1.8.0/src/services/dataBackupService.
+ts, D:/kaifa/CRM - 1.8.0/src/services/dataSyncService
+.ts, D:/kaifa/CRM - 1.8.0/src/utils/testDataPersisten
+ce.ts, dynamic import will not move module into anoth
+er chunk.
+[39m
+computing gzip size...
+[2mdist/[22m[32mindex.html                                            [39m[1m[2m    1.41 kB[22m[1m[22m[2m 鈹?gzip:   0.71 kB[22m
+[2mdist/[22m[35massets/TrendLineChart-BYSlYNxz.css                    [39m[1m[2m    0.07 kB[22m[1m[22m[2m 鈹?gzip:   0.09 kB[22m
+[2mdist/[22m[35massets/PhoneVerifyDialog-D2GQzSls.css                 [39m[1m[2m    0.09 kB[22m[1m[22m[2m 鈹?gzip:   0.10 kB[22m
+[2mdist/[22m[35massets/Binding-FMp54BMl.css                           [39m[1m[2m    0.14 kB[22m[1m[22m[2m 鈹?gzip:   0.13 kB[22m
+[2mdist/[22m[35massets/CustomFieldsCard-CmcYZI8g.css                  [39m[1m[2m    0.21 kB[22m[1m[22m[2m 鈹?gzip:   0.16 kB[22m
+[2mdist/[22m[35massets/UserPermissions-B84girtV.css                   [39m[1m[2m    0.45 kB[22m[1m[22m[2m 鈹?gzip:   0.24 kB[22m
+[2mdist/[22m[35massets/ProjectArchitecture-Bg3GM2zu.css               [39m[1m[2m    0.50 kB[22m[1m[22m[2m 鈹?gzip:   0.23 kB[22m
+[2mdist/[22m[35massets/ProjectConfig-DdxaGxBu.css                     [39m[1m[2m    0.57 kB[22m[1m[22m[2m 鈹?gzip:   0.24 kB[22m
+[2mdist/[22m[35massets/RoleSuperAdmin-LD1irw0Q.css                    [39m[1m[2m    0.66 kB[22m[1m[22m[2m 鈹?gzip:   0.25 kB[22m
+[2mdist/[22m[35massets/RoleAdmin-DMvhbDvM.css                         [39m[1m[2m    0.66 kB[22m[1m[22m[2m 鈹?gzip:   0.25 kB[22m
+[2mdist/[22m[35massets/RoleDeptManager-D-5uIb4I.css                   [39m[1m[2m    0.66 kB[22m[1m[22m[2m 鈹?gzip:   0.25 kB[22m
+[2mdist/[22m[35massets/AppSync-CikivHZi.css                           [39m[1m[2m    0.66 kB[22m[1m[22m[2m 鈹?gzip:   0.25 kB[22m
+[2mdist/[22m[35massets/PerformanceShare-vL4Q3iO3.css                  [39m[1m[2m    0.69 kB[22m[1m[22m[2m 鈹?gzip:   0.28 kB[22m
+[2mdist/[22m[35massets/RoleSales-CJIpNL2Q.css                         [39m[1m[2m    0.70 kB[22m[1m[22m[2m 鈹?gzip:   0.26 kB[22m
+[2mdist/[22m[35massets/RoleCustomerService-2nn8Y9pK.css               [39m[1m[2m    0.70 kB[22m[1m[22m[2m 鈹?gzip:   0.26 kB[22m
+[2mdist/[22m[35massets/AppInstall-D3PbfB0K.css                        [39m[1m[2m    0.70 kB[22m[1m[22m[2m 鈹?gzip:   0.26 kB[22m
+[2mdist/[22m[35massets/AppLogin-CgZzkVES.css                          [39m[1m[2m    0.70 kB[22m[1m[22m[2m 鈹?gzip:   0.26 kB[22m
+[2mdist/[22m[35massets/AppCall-BbRjEZRl.css                           [39m[1m[2m    0.70 kB[22m[1m[22m[2m 鈹?gzip:   0.26 kB[22m
+[2mdist/[22m[35massets/ProjectTroubleshoot-CI6Vv7s_.css               [39m[1m[2m    0.71 kB[22m[1m[22m[2m 鈹?gzip:   0.29 kB[22m
+[2mdist/[22m[35massets/Tags-07-Qv_b9.css                              [39m[1m[2m    0.77 kB[22m[1m[22m[2m 鈹?gzip:   0.31 kB[22m
+[2mdist/[22m[35massets/Groups-CSJWieBO.css                            [39m[1m[2m    0.86 kB[22m[1m[22m[2m 鈹?gzip:   0.33 kB[22m
+[2mdist/[22m[35massets/LogisticsPrinterGuide-DhnuTQpk.css             [39m[1m[2m    0.86 kB[22m[1m[22m[2m 鈹?gzip:   0.30 kB[22m
+[2mdist/[22m[35massets/LogisticsLabelGuide-BLoel9dd.css               [39m[1m[2m    0.86 kB[22m[1m[22m[2m 鈹?gzip:   0.30 kB[22m
+[2mdist/[22m[35massets/RolePermissionConfig-DFS4Kbus.css              [39m[1m[2m    0.87 kB[22m[1m[22m[2m 鈹?gzip:   0.33 kB[22m
+[2mdist/[22m[35massets/SmsConfig-D3Gv2_4L.css                         [39m[1m[2m    0.97 kB[22m[1m[22m[2m 鈹?gzip:   0.36 kB[22m
+[2mdist/[22m[35massets/TableColumnSettings-Cr_JLaSa.css               [39m[1m[2m    0.97 kB[22m[1m[22m[2m 鈹?gzip:   0.41 kB[22m
+[2mdist/[22m[35massets/SmsApproval-CUOWzeKp.css                       [39m[1m[2m    0.99 kB[22m[1m[22m[2m 鈹?gzip:   0.38 kB[22m
+[2mdist/[22m[35massets/Storage-DO0nQsEu.css                           [39m[1m[2m    0.99 kB[22m[1m[22m[2m 鈹?gzip:   0.37 kB[22m
+[2mdist/[22m[35massets/SearchDebug-DH16a8GS.css                       [39m[1m[2m    1.01 kB[22m[1m[22m[2m 鈹?gzip:   0.39 kB[22m
+[2mdist/[22m[35massets/WecomDemoBanner-DSDa-Fb-.css                   [39m[1m[2m    1.11 kB[22m[1m[22m[2m 鈹?gzip:   0.46 kB[22m
+[2mdist/[22m[35massets/DeployEnv-BD39pc9K.css                         [39m[1m[2m    1.18 kB[22m[1m[22m[2m 鈹?gzip:   0.44 kB[22m
+[2mdist/[22m[35massets/ModuleServiceMgmt-eMmgToLB.css                 [39m[1m[2m    1.22 kB[22m[1m[22m[2m 鈹?gzip:   0.40 kB[22m
+[2mdist/[22m[35massets/ModulePerformance-CrQ1RUBn.css                 [39m[1m[2m    1.22 kB[22m[1m[22m[2m 鈹?gzip:   0.40 kB[22m
+[2mdist/[22m[35massets/ModuleProduct-BYkR6RJc.css                     [39m[1m[2m    1.22 kB[22m[1m[22m[2m 鈹?gzip:   0.40 kB[22m
+[2mdist/[22m[35massets/ModuleAftersale-lm68V44y.css                   [39m[1m[2m    1.25 kB[22m[1m[22m[2m 鈹?gzip:   0.41 kB[22m
+[2mdist/[22m[35massets/ModuleData-Bp5zobZ4.css                        [39m[1m[2m    1.25 kB[22m[1m[22m[2m 鈹?gzip:   0.41 kB[22m
+[2mdist/[22m[35massets/Edit-BTZhf1m7.css                              [39m[1m[2m    1.26 kB[22m[1m[22m[2m 鈹?gzip:   0.46 kB[22m
+[2mdist/[22m[35massets/PermissionManagementGuide-DXaDOVwY.css         [39m[1m[2m    1.29 kB[22m[1m[22m[2m 鈹?gzip:   0.43 kB[22m
+[2mdist/[22m[35massets/LogisticsSenderGuide-Bnq6v9KR.css              [39m[1m[2m    1.33 kB[22m[1m[22m[2m 鈹?gzip:   0.44 kB[22m
+[2mdist/[22m[35massets/Category-CWQtGnqr.css                          [39m[1m[2m    1.33 kB[22m[1m[22m[2m 鈹?gzip:   0.46 kB[22m
+[2mdist/[22m[35massets/NotFound-CO_Yn5X4.css                          [39m[1m[2m    1.36 kB[22m[1m[22m[2m 鈹?gzip:   0.50 kB[22m
+[2mdist/[22m[35massets/List-Br0o-42A.css                              [39m[1m[2m    1.39 kB[22m[1m[22m[2m 鈹?gzip:   0.49 kB[22m
+[2mdist/[22m[35massets/Companies-IvXR1JeK.css                         [39m[1m[2m    1.40 kB[22m[1m[22m[2m 鈹?gzip:   0.47 kB[22m
+[2mdist/[22m[35massets/RolePermissionTree-IKjpZJDS.css                [39m[1m[2m    1.40 kB[22m[1m[22m[2m 鈹?gzip:   0.45 kB[22m
+[2mdist/[22m[35massets/ContactBook-ColNWop9.css                       [39m[1m[2m    1.43 kB[22m[1m[22m[2m 鈹?gzip:   0.50 kB[22m
+[2mdist/[22m[35massets/About-CQFuQoSv.css                             [39m[1m[2m    1.47 kB[22m[1m[22m[2m 鈹?gzip:   0.54 kB[22m
+[2mdist/[22m[35massets/OutboundList-DYDZSUKj.css                      [39m[1m[2m    1.51 kB[22m[1m[22m[2m 鈹?gzip:   0.50 kB[22m
+[2mdist/[22m[35massets/ModuleDashboard-DqsP-EIW.css                   [39m[1m[2m    1.54 kB[22m[1m[22m[2m 鈹?gzip:   0.47 kB[22m
+[2mdist/[22m[35massets/SensitiveInfoPermissionManager-BhpBgskP.css    [39m[1m[2m    1.57 kB[22m[1m[22m[2m 鈹?gzip:   0.53 kB[22m
+[2mdist/[22m[35massets/ModuleSystem-DZUw3igw.css                      [39m[1m[2m    1.64 kB[22m[1m[22m[2m 鈹?gzip:   0.52 kB[22m
+[2mdist/[22m[35massets/LogisticsShippingGuide-BTEAYTZ4.css            [39m[1m[2m    1.69 kB[22m[1m[22m[2m 鈹?gzip:   0.53 kB[22m
+[2mdist/[22m[35massets/TrackingDialog-DdH6jfuF.css                    [39m[1m[2m    1.69 kB[22m[1m[22m[2m 鈹?gzip:   0.54 kB[22m
+[2mdist/[22m[35massets/LogisticsTraceDialog-DrTzk5Dg.css              [39m[1m[2m    1.77 kB[22m[1m[22m[2m 鈹?gzip:   0.61 kB[22m
+[2mdist/[22m[35massets/LogisticsApiGuide-C0z3Q0mm.css                 [39m[1m[2m    1.81 kB[22m[1m[22m[2m 鈹?gzip:   0.57 kB[22m
+[2mdist/[22m[35massets/Edit-D2x1zMdk.css                              [39m[1m[2m    1.96 kB[22m[1m[22m[2m 鈹?gzip:   0.69 kB[22m
+[2mdist/[22m[35massets/ApiManagement-GTVuxxp3.css                     [39m[1m[2m    1.99 kB[22m[1m[22m[2m 鈹?gzip:   0.61 kB[22m
+[2mdist/[22m[35massets/WecomStandalone-CGvVi12y.css                   [39m[1m[2m    2.01 kB[22m[1m[22m[2m 鈹?gzip:   0.73 kB[22m
+[2mdist/[22m[35massets/CustomerServicePermissionManager-CQ5vKlXw.css  [39m[1m[2m    2.02 kB[22m[1m[22m[2m 鈹?gzip:   0.61 kB[22m
+[2mdist/[22m[35massets/List-Cu-HuVJ1.css                              [39m[1m[2m    2.03 kB[22m[1m[22m[2m 鈹?gzip:   0.72 kB[22m
+[2mdist/[22m[35massets/ChangePassword-tqnmWNfn.css                    [39m[1m[2m    2.03 kB[22m[1m[22m[2m 鈹?gzip:   0.71 kB[22m
+[2mdist/[22m[35massets/SmsSendRecords-BoJwp9su.css                    [39m[1m[2m    2.12 kB[22m[1m[22m[2m 鈹?gzip:   0.72 kB[22m
+[2mdist/[22m[35massets/ModuleCustomer-VI10a8FB.css                    [39m[1m[2m    2.14 kB[22m[1m[22m[2m 鈹?gzip:   0.59 kB[22m
+[2mdist/[22m[35massets/ModuleLogistics-ClV96Ncz.css                   [39m[1m[2m    2.20 kB[22m[1m[22m[2m 鈹?gzip:   0.62 kB[22m
+[2mdist/[22m[35massets/Add-CmsKYHYQ.css                               [39m[1m[2m    2.29 kB[22m[1m[22m[2m 鈹?gzip:   0.76 kB[22m
+[2mdist/[22m[35massets/Dashboard-D3Ybyth1.css                         [39m[1m[2m    2.57 kB[22m[1m[22m[2m 鈹?gzip:   0.74 kB[22m
+[2mdist/[22m[35massets/Analytics-DxZx5hC6.css                         [39m[1m[2m    2.60 kB[22m[1m[22m[2m 鈹?gzip:   0.74 kB[22m
+[2mdist/[22m[35massets/RoleOverview-BBWK-j3C.css                      [39m[1m[2m    2.60 kB[22m[1m[22m[2m 鈹?gzip:   0.76 kB[22m
+[2mdist/[22m[35massets/ModuleOrder-BCc7ByqH.css                       [39m[1m[2m    2.64 kB[22m[1m[22m[2m 鈹?gzip:   0.68 kB[22m
+[2mdist/[22m[35massets/DynamicTable-BaFneth5.css                      [39m[1m[2m    2.70 kB[22m[1m[22m[2m 鈹?gzip:   1.05 kB[22m
+[2mdist/[22m[35massets/ModuleFinance-BcDzzG6t.css                     [39m[1m[2m    2.72 kB[22m[1m[22m[2m 鈹?gzip:   0.67 kB[22m
+[2mdist/[22m[35massets/Edit-DoN3Gxcb.css                              [39m[1m[2m    2.72 kB[22m[1m[22m[2m 鈹?gzip:   0.90 kB[22m
+[2mdist/[22m[35massets/FaqLogin-9AD-VXjq.css                          [39m[1m[2m    2.75 kB[22m[1m[22m[2m 鈹?gzip:   0.65 kB[22m
+[2mdist/[22m[35massets/DeployDatabase-UD08KzxK.css                    [39m[1m[2m    2.84 kB[22m[1m[22m[2m 鈹?gzip:   0.79 kB[22m
+[2mdist/[22m[35massets/SmsStatistics-CgMYYGm6.css                     [39m[1m[2m    3.04 kB[22m[1m[22m[2m 鈹?gzip:   0.72 kB[22m
+[2mdist/[22m[35massets/Sidebar-CwY44G7l.css                           [39m[1m[2m    3.04 kB[22m[1m[22m[2m 鈹?gzip:   1.06 kB[22m
+[2mdist/[22m[35massets/CodApplicationReview-BV6cGwQZ.css              [39m[1m[2m    3.04 kB[22m[1m[22m[2m 鈹?gzip:   0.84 kB[22m
+[2mdist/[22m[35massets/CallTest-Ca9aWCfT.css                          [39m[1m[2m    3.07 kB[22m[1m[22m[2m 鈹?gzip:   0.72 kB[22m
+[2mdist/[22m[35massets/FollowUpRecords-BtZ7jmZm.css                   [39m[1m[2m    3.11 kB[22m[1m[22m[2m 鈹?gzip:   0.85 kB[22m
+[2mdist/[22m[35massets/Track-Dtar4dFf.css                             [39m[1m[2m    3.15 kB[22m[1m[22m[2m 鈹?gzip:   1.05 kB[22m
+[2mdist/[22m[35massets/OrderDetailDialog-CsDKMRT5.css                 [39m[1m[2m    3.17 kB[22m[1m[22m[2m 鈹?gzip:   1.00 kB[22m
+[2mdist/[22m[35massets/Edit-DDnv8W2O.css                              [39m[1m[2m    3.33 kB[22m[1m[22m[2m 鈹?gzip:   0.89 kB[22m
+[2mdist/[22m[35massets/SystemModules-DRB5j6Dp.css                     [39m[1m[2m    3.35 kB[22m[1m[22m[2m 鈹?gzip:   0.81 kB[22m
+[2mdist/[22m[35massets/AppOverview-goUsYbRz.css                       [39m[1m[2m    3.42 kB[22m[1m[22m[2m 鈹?gzip:   0.89 kB[22m
+[2mdist/[22m[35massets/CallConfigGuide-BaFb9cCw.css                   [39m[1m[2m    3.44 kB[22m[1m[22m[2m 鈹?gzip:   1.03 kB[22m
+[2mdist/[22m[35massets/FaqData-C1O5-eYU.css                           [39m[1m[2m    3.53 kB[22m[1m[22m[2m 鈹?gzip:   0.92 kB[22m
+[2mdist/[22m[35massets/MobileSDKInstall-BBgjYV7B.css                  [39m[1m[2m    3.53 kB[22m[1m[22m[2m 鈹?gzip:   0.99 kB[22m
+[2mdist/[22m[35massets/AddressBook-BGp3f1uC.css                       [39m[1m[2m    3.54 kB[22m[1m[22m[2m 鈹?gzip:   1.04 kB[22m
+[2mdist/[22m[35massets/PhoneConfig-DptSbRkY.css                       [39m[1m[2m    3.71 kB[22m[1m[22m[2m 鈹?gzip:   0.91 kB[22m
+[2mdist/[22m[35massets/FaqApp-C_isV5od.css                            [39m[1m[2m    3.73 kB[22m[1m[22m[2m 鈹?gzip:   0.95 kB[22m
+[2mdist/[22m[35massets/CompanyDetail-D9AZl34u.css                     [39m[1m[2m    3.76 kB[22m[1m[22m[2m 鈹?gzip:   0.87 kB[22m
+[2mdist/[22m[35massets/FaqOperation-C3PIOYmX.css                      [39m[1m[2m    3.76 kB[22m[1m[22m[2m 鈹?gzip:   1.02 kB[22m
+[2mdist/[22m[35massets/HelpCenter-CVwYizTU.css                        [39m[1m[2m    3.78 kB[22m[1m[22m[2m 鈹?gzip:   1.09 kB[22m
+[2mdist/[22m[35massets/Payment-R9l6YRJq.css                           [39m[1m[2m    3.79 kB[22m[1m[22m[2m 鈹?gzip:   1.10 kB[22m
+[2mdist/[22m[35massets/DeploymentGuide-FSMtEeNj.css                   [39m[1m[2m    3.83 kB[22m[1m[22m[2m 鈹?gzip:   1.04 kB[22m
+[2mdist/[22m[35massets/CallRecords-BihG8b26.css                       [39m[1m[2m    3.88 kB[22m[1m[22m[2m 鈹?gzip:   0.94 kB[22m
+[2mdist/[22m[35massets/Recycle-BBaIWDhx.css                           [39m[1m[2m    3.98 kB[22m[1m[22m[2m 鈹?gzip:   0.92 kB[22m
+[2mdist/[22m[35massets/PublicHelpCenter-CnafYM4G.css                  [39m[1m[2m    4.05 kB[22m[1m[22m[2m 鈹?gzip:   1.26 kB[22m
+[2mdist/[22m[35massets/Data-2tNmxs9P.css                              [39m[1m[2m    4.46 kB[22m[1m[22m[2m 鈹?gzip:   1.01 kB[22m
+[2mdist/[22m[35massets/FaqPerformance-C6YuNoiC.css                    [39m[1m[2m    4.62 kB[22m[1m[22m[2m 鈹?gzip:   1.15 kB[22m
+[2mdist/[22m[35massets/TrackDetail-C6X5C67q.css                       [39m[1m[2m    4.70 kB[22m[1m[22m[2m 鈹?gzip:   1.18 kB[22m
+[2mdist/[22m[35massets/Detail-Ch4O-AFO.css                            [39m[1m[2m    4.75 kB[22m[1m[22m[2m 鈹?gzip:   1.09 kB[22m
+[2mdist/[22m[35massets/PerformanceData-wi97F2zF.css                   [39m[1m[2m    4.82 kB[22m[1m[22m[2m 鈹?gzip:   1.28 kB[22m
+[2mdist/[22m[35massets/RecordingManagement-0h_8hX20.css               [39m[1m[2m    5.04 kB[22m[1m[22m[2m 鈹?gzip:   1.05 kB[22m
+[2mdist/[22m[35massets/Customer-CmNBjpl1.css                          [39m[1m[2m    5.19 kB[22m[1m[22m[2m 鈹?gzip:   1.35 kB[22m
+[2mdist/[22m[35massets/DeployNginx-DSfJVXF1.css                       [39m[1m[2m    5.24 kB[22m[1m[22m[2m 鈹?gzip:   1.18 kB[22m
+[2mdist/[22m[35massets/CreateTemplateDialog-87JpRf7H.css              [39m[1m[2m    5.32 kB[22m[1m[22m[2m 鈹?gzip:   1.37 kB[22m
+[2mdist/[22m[35massets/Service-DljbghY1.css                           [39m[1m[2m    5.45 kB[22m[1m[22m[2m 鈹?gzip:   1.42 kB[22m
+[2mdist/[22m[35massets/SettlementReport-Bz6TkSd0.css                  [39m[1m[2m    5.55 kB[22m[1m[22m[2m 鈹?gzip:   1.01 kB[22m
+[2mdist/[22m[35massets/Stock-HsF3Uohd.css                             [39m[1m[2m    5.55 kB[22m[1m[22m[2m 鈹?gzip:   1.35 kB[22m
+[2mdist/[22m[35massets/AiAssistant-xCSggSzr.css                       [39m[1m[2m    5.59 kB[22m[1m[22m[2m 鈹?gzip:   0.99 kB[22m
+[2mdist/[22m[35massets/MobileSDK-C-MCADLV.css                         [39m[1m[2m    5.66 kB[22m[1m[22m[2m 鈹?gzip:   1.27 kB[22m
+[2mdist/[22m[35massets/ProjectFeatures-Daq0SvVo.css                   [39m[1m[2m    5.80 kB[22m[1m[22m[2m 鈹?gzip:   1.18 kB[22m
+[2mdist/[22m[35massets/SmsTemplateDetail-ByWTHDpJ.css                 [39m[1m[2m    5.82 kB[22m[1m[22m[2m 鈹?gzip:   1.45 kB[22m
+[2mdist/[22m[35massets/Analysis-CJAe7Fsm.css                          [39m[1m[2m    5.95 kB[22m[1m[22m[2m 鈹?gzip:   1.33 kB[22m
+[2mdist/[22m[35massets/CodCollection-CeubmqZj.css                     [39m[1m[2m    5.98 kB[22m[1m[22m[2m 鈹?gzip:   1.35 kB[22m
+[2mdist/[22m[35massets/Personal-CXygLOkB.css                          [39m[1m[2m    6.04 kB[22m[1m[22m[2m 鈹?gzip:   1.62 kB[22m
+[2mdist/[22m[35massets/ProjectOverview-DZYhCPrv.css                   [39m[1m[2m    6.05 kB[22m[1m[22m[2m 鈹?gzip:   1.43 kB[22m
+[2mdist/[22m[35massets/MyCodApplication-CyBjjAjO.css                  [39m[1m[2m    6.13 kB[22m[1m[22m[2m 鈹?gzip:   1.32 kB[22m
+[2mdist/[22m[35massets/List-Bc7xdqLM.css                              [39m[1m[2m    6.22 kB[22m[1m[22m[2m 鈹?gzip:   1.56 kB[22m
+[2mdist/[22m[35massets/Detail-m5cTYM_E.css                            [39m[1m[2m    6.54 kB[22m[1m[22m[2m 鈹?gzip:   1.26 kB[22m
+[2mdist/[22m[35massets/BusinessLogic-D4Migwmb.css                     [39m[1m[2m    6.69 kB[22m[1m[22m[2m 鈹?gzip:   1.55 kB[22m
+[2mdist/[22m[35massets/SendSmsDialog-N0HxJJdp.css                     [39m[1m[2m    6.71 kB[22m[1m[22m[2m 鈹?gzip:   1.58 kB[22m
+[2mdist/[22m[35massets/StatusUpdate-C838BIry.css                      [39m[1m[2m    6.77 kB[22m[1m[22m[2m 鈹?gzip:   1.70 kB[22m
+[2mdist/[22m[35massets/SearchNew-3vzupF6b.css                         [39m[1m[2m    6.80 kB[22m[1m[22m[2m 鈹?gzip:   1.41 kB[22m
+[2mdist/[22m[35massets/CustomerDetail-BtwdDg8r.css                    [39m[1m[2m    6.82 kB[22m[1m[22m[2m 鈹?gzip:   1.42 kB[22m
+[2mdist/[22m[35massets/Config-DXA4T5xW.css                            [39m[1m[2m    6.83 kB[22m[1m[22m[2m 鈹?gzip:   1.78 kB[22m
+[2mdist/[22m[35massets/DeploySaas-BswGXT6m.css                        [39m[1m[2m    7.20 kB[22m[1m[22m[2m 鈹?gzip:   1.50 kB[22m
+[2mdist/[22m[35massets/DepartmentDetail-BaWv5OGv.css                  [39m[1m[2m    7.28 kB[22m[1m[22m[2m 鈹?gzip:   1.49 kB[22m
+[2mdist/[22m[35massets/DepartmentMembers-BazwBr1D.css                 [39m[1m[2m    7.35 kB[22m[1m[22m[2m 鈹?gzip:   1.49 kB[22m
+[2mdist/[22m[35massets/SuperAdminPermissionPanel-DtSoVZRu.css         [39m[1m[2m    7.44 kB[22m[1m[22m[2m 鈹?gzip:   1.67 kB[22m
+[2mdist/[22m[35massets/ContactWay-jDg3Ii3e.css                        [39m[1m[2m    7.54 kB[22m[1m[22m[2m 鈹?gzip:   1.64 kB[22m
+[2mdist/[22m[35massets/Detail-DD73L141.css                            [39m[1m[2m    8.05 kB[22m[1m[22m[2m 鈹?gzip:   1.79 kB[22m
+[2mdist/[22m[35massets/Add-BgCg65x-.css                               [39m[1m[2m    8.14 kB[22m[1m[22m[2m 鈹?gzip:   2.27 kB[22m
+[2mdist/[22m[35massets/PerformanceManage-40PASCA5.css                 [39m[1m[2m    8.15 kB[22m[1m[22m[2m 鈹?gzip:   1.77 kB[22m
+[2mdist/[22m[35massets/PermissionManagement-CuXuCMzD.css              [39m[1m[2m    8.45 kB[22m[1m[22m[2m 鈹?gzip:   1.82 kB[22m
+[2mdist/[22m[35massets/DeployPrivate-CJKP3vB2.css                     [39m[1m[2m    8.67 kB[22m[1m[22m[2m 鈹?gzip:   1.77 kB[22m
+[2mdist/[22m[35massets/index-DXNY5sNF.css                             [39m[1m[2m    8.71 kB[22m[1m[22m[2m 鈹?gzip:   1.63 kB[22m
+[2mdist/[22m[35massets/ValueAddedManage-PaQbCNw9.css                  [39m[1m[2m    9.20 kB[22m[1m[22m[2m 鈹?gzip:   1.94 kB[22m
+[2mdist/[22m[35massets/User-D9r-KOLc.css                              [39m[1m[2m    9.22 kB[22m[1m[22m[2m 鈹?gzip:   2.27 kB[22m
+[2mdist/[22m[35massets/List-VOq3D3bj.css                              [39m[1m[2m    9.63 kB[22m[1m[22m[2m 鈹?gzip:   2.34 kB[22m
+[2mdist/[22m[35massets/CustomerGroup-DSHS3imt.css                     [39m[1m[2m   10.12 kB[22m[1m[22m[2m 鈹?gzip:   2.12 kB[22m
+[2mdist/[22m[35massets/List-BB4QHfDp.css                              [39m[1m[2m   10.57 kB[22m[1m[22m[2m 鈹?gzip:   2.34 kB[22m
+[2mdist/[22m[35massets/useAcquisition-BUsRxzkr.css                    [39m[1m[2m   10.80 kB[22m[1m[22m[2m 鈹?gzip:   2.36 kB[22m
+[2mdist/[22m[35massets/SmsTemplates-B86kq4Bm.css                      [39m[1m[2m   10.96 kB[22m[1m[22m[2m 鈹?gzip:   2.32 kB[22m
+[2mdist/[22m[35massets/Team-BWjiZ7H_.css                              [39m[1m[2m   11.01 kB[22m[1m[22m[2m 鈹?gzip:   2.61 kB[22m
+[2mdist/[22m[35massets/SmsManagement-zUaJ1nmA.css                     [39m[1m[2m   11.60 kB[22m[1m[22m[2m 鈹?gzip:   2.33 kB[22m
+[2mdist/[22m[35massets/ChatArchive-DzobPXZ0.css                       [39m[1m[2m   13.68 kB[22m[1m[22m[2m 鈹?gzip:   2.93 kB[22m
+[2mdist/[22m[35massets/Acquisition-CzjMrZCh.css                       [39m[1m[2m   14.29 kB[22m[1m[22m[2m 鈹?gzip:   3.11 kB[22m
+[2mdist/[22m[35massets/style-D8K-MLUd.css                             [39m[1m[2m   14.91 kB[22m[1m[22m[2m 鈹?gzip:   2.87 kB[22m
+[2mdist/[22m[35massets/Edit-C6Z4ts8Z.css                              [39m[1m[2m   15.82 kB[22m[1m[22m[2m 鈹?gzip:   3.33 kB[22m
+[2mdist/[22m[35massets/Dashboard-BZfMSFaG.css                         [39m[1m[2m   15.84 kB[22m[1m[22m[2m 鈹?gzip:   3.11 kB[22m
+[2mdist/[22m[35massets/Login-Doedczx8.css                             [39m[1m[2m   15.99 kB[22m[1m[22m[2m 鈹?gzip:   3.65 kB[22m
+[2mdist/[22m[35massets/MessageManagement-C71AIUzN.css                 [39m[1m[2m   17.51 kB[22m[1m[22m[2m 鈹?gzip:   3.43 kB[22m
+[2mdist/[22m[35massets/DepartmentDialog-X9I6tqH9.css                  [39m[1m[2m   17.96 kB[22m[1m[22m[2m 鈹?gzip:   3.14 kB[22m
+[2mdist/[22m[35massets/Audit-Ds7ejiYD.css                             [39m[1m[2m   19.48 kB[22m[1m[22m[2m 鈹?gzip:   3.67 kB[22m
+[2mdist/[22m[35massets/Departments-DJAp7k_q.css                       [39m[1m[2m   20.06 kB[22m[1m[22m[2m 鈹?gzip:   3.42 kB[22m
+[2mdist/[22m[35massets/List-BY_KjFX9.css                              [39m[1m[2m   22.77 kB[22m[1m[22m[2m 鈹?gzip:   3.98 kB[22m
+[2mdist/[22m[35massets/DepartmentRoles-DnKTdxpl.css                   [39m[1m[2m   25.06 kB[22m[1m[22m[2m 鈹?gzip:   3.50 kB[22m
+[2mdist/[22m[35massets/Add-Do5u-po7.css                               [39m[1m[2m   25.23 kB[22m[1m[22m[2m 鈹?gzip:   4.58 kB[22m
+[2mdist/[22m[35massets/Detail-BwQ5qclY.css                            [39m[1m[2m   26.19 kB[22m[1m[22m[2m 鈹?gzip:   4.97 kB[22m
+[2mdist/[22m[35massets/Share-BIgiveE0.css                             [39m[1m[2m   27.00 kB[22m[1m[22m[2m 鈹?gzip:   4.99 kB[22m
+[2mdist/[22m[35massets/CallManagement-14bQ_IN4.css                    [39m[1m[2m   36.96 kB[22m[1m[22m[2m 鈹?gzip:   6.01 kB[22m
+[2mdist/[22m[35massets/index-DXcFatHR.css                             [39m[1m[2m   42.12 kB[22m[1m[22m[2m 鈹?gzip:   7.18 kB[22m
+[2mdist/[22m[35massets/Shipping-Czt_kKX2.css                          [39m[1m[2m   52.53 kB[22m[1m[22m[2m 鈹?gzip:   8.83 kB[22m
+[2mdist/[22m[35massets/Detail-DfJIghAj.css                            [39m[1m[2m   58.76 kB[22m[1m[22m[2m 鈹?gzip:   8.75 kB[22m
+[2mdist/[22m[35massets/index-BQTgPKqG.css                             [39m[1m[2m  402.95 kB[22m[1m[22m[2m 鈹?gzip:  59.48 kB[22m
+[2mdist/[22m[36massets/kefuQR-IMQEr_sk.js                             [39m[1m[2m    0.07 kB[22m[1m[22m[2m 鈹?gzip:   0.08 kB[22m
+[2mdist/[22m[36massets/env-DP_LsLyc.js                                [39m[1m[2m    0.36 kB[22m[1m[22m[2m 鈹?gzip:   0.19 kB[22m
+[2mdist/[22m[36massets/Add-Bf9a66k-.js                                [39m[1m[2m    0.50 kB[22m[1m[22m[2m 鈹?gzip:   0.32 kB[22m
+[2mdist/[22m[36massets/dateFormat-B-G211a-.js                         [39m[1m[2m    0.58 kB[22m[1m[22m[2m 鈹?gzip:   0.30 kB[22m
+[2mdist/[22m[36massets/codCollection-CymiIuty.js                      [39m[1m[2m    1.06 kB[22m[1m[22m[2m 鈹?gzip:   0.35 kB[22m
+[2mdist/[22m[36massets/senderAddress-IXGfRLlh.js                      [39m[1m[2m    1.09 kB[22m[1m[22m[2m 鈹?gzip:   0.49 kB[22m
+[2mdist/[22m[36massets/codApplication-BFXdxqX1.js                     [39m[1m[2m    1.21 kB[22m[1m[22m[2m 鈹?gzip:   0.43 kB[22m
+[2mdist/[22m[36massets/date-DZPcoUc2.js                               [39m[1m[2m    1.48 kB[22m[1m[22m[2m 鈹?gzip:   0.55 kB[22m
+[2mdist/[22m[36massets/department-unRXJY1-.js                         [39m[1m[2m    1.54 kB[22m[1m[22m[2m 鈹?gzip:   0.43 kB[22m
+[2mdist/[22m[36massets/wecomAddressBook-Cw8cMBX_.js                   [39m[1m[2m    1.77 kB[22m[1m[22m[2m 鈹?gzip:   0.49 kB[22m
+[2mdist/[22m[36massets/RoleAdmin-B5rpFBtu.js                          [39m[1m[2m    1.98 kB[22m[1m[22m[2m 鈹?gzip:   1.01 kB[22m
+[2mdist/[22m[36massets/RoleDeptManager-DD4FezEx.js                    [39m[1m[2m    2.11 kB[22m[1m[22m[2m 鈹?gzip:   1.08 kB[22m
+[2mdist/[22m[36massets/presetAccounts-CjAO3T80.js                     [39m[1m[2m    2.28 kB[22m[1m[22m[2m 鈹?gzip:   0.65 kB[22m
+[2mdist/[22m[36massets/ProjectConfig-XPveQLKF.js                      [39m[1m[2m    2.42 kB[22m[1m[22m[2m 鈹?gzip:   1.14 kB[22m
+[2mdist/[22m[36massets/RoleSuperAdmin-CRvC7iF8.js                     [39m[1m[2m    2.46 kB[22m[1m[22m[2m 鈹?gzip:   1.33 kB[22m
+[2mdist/[22m[36massets/ProjectArchitecture-MCgsXEaK.js                [39m[1m[2m    2.48 kB[22m[1m[22m[2m 鈹?gzip:   0.97 kB[22m
+[2mdist/[22m[36massets/addressData-BO66jzEO.js                        [39m[1m[2m    2.53 kB[22m[1m[22m[2m 鈹?gzip:   0.69 kB[22m
+[2mdist/[22m[36massets/NotFound-DfbuRtKL.js                           [39m[1m[2m    2.68 kB[22m[1m[22m[2m 鈹?gzip:   0.97 kB[22m
+[2mdist/[22m[36massets/order-ld_9Tss1.js                              [39m[1m[2m    2.86 kB[22m[1m[22m[2m 鈹?gzip:   1.21 kB[22m
+[2mdist/[22m[36massets/phoneSync-CnQCpXMb.js                          [39m[1m[2m    3.02 kB[22m[1m[22m[2m 鈹?gzip:   1.05 kB[22m
+[2mdist/[22m[36massets/ModuleAftersale-6CVyU3ma.js                    [39m[1m[2m    3.25 kB[22m[1m[22m[2m 鈹?gzip:   1.25 kB[22m
+[2mdist/[22m[36massets/RoleSales-CQOTW7Ue.js                          [39m[1m[2m    3.30 kB[22m[1m[22m[2m 鈹?gzip:   1.63 kB[22m
+[2mdist/[22m[36massets/AppLogin-CGUw7fa3.js                           [39m[1m[2m    3.43 kB[22m[1m[22m[2m 鈹?gzip:   1.45 kB[22m
+[2mdist/[22m[36massets/AppSync-DCEdb9ta.js                            [39m[1m[2m    3.50 kB[22m[1m[22m[2m 鈹?gzip:   1.38 kB[22m
+[2mdist/[22m[36massets/valueAdded-DF0wf61H.js                         [39m[1m[2m    3.81 kB[22m[1m[22m[2m 鈹?gzip:   0.74 kB[22m
+[2mdist/[22m[36massets/ModuleServiceMgmt-C9EOWtKG.js                  [39m[1m[2m    3.88 kB[22m[1m[22m[2m 鈹?gzip:   1.57 kB[22m
+[2mdist/[22m[36massets/AppInstall-BFUeT9_G.js                         [39m[1m[2m    3.89 kB[22m[1m[22m[2m 鈹?gzip:   1.48 kB[22m
+[2mdist/[22m[36massets/sms-D7-XMuUu.js                                [39m[1m[2m    4.07 kB[22m[1m[22m[2m 鈹?gzip:   0.82 kB[22m
+[2mdist/[22m[36massets/RoleCustomerService-BoSvgwVw.js                [39m[1m[2m    4.11 kB[22m[1m[22m[2m 鈹?gzip:   1.69 kB[22m
+[2mdist/[22m[36massets/customerDetail-BFmlN68O.js                     [39m[1m[2m    4.15 kB[22m[1m[22m[2m 鈹?gzip:   1.02 kB[22m
+[2mdist/[22m[36massets/Storage-BrXlldn4.js                            [39m[1m[2m    4.16 kB[22m[1m[22m[2m 鈹?gzip:   1.33 kB[22m
+[2mdist/[22m[36massets/orderStatusConfig-BeGUKRzR.js                  [39m[1m[2m    4.30 kB[22m[1m[22m[2m 鈹?gzip:   1.71 kB[22m
+[2mdist/[22m[36massets/appInitService-DO_uU0t5.js                     [39m[1m[2m    4.51 kB[22m[1m[22m[2m 鈹?gzip:   1.54 kB[22m
+[2mdist/[22m[36massets/ModuleProduct-fwMXQZOC.js                      [39m[1m[2m    4.62 kB[22m[1m[22m[2m 鈹?gzip:   1.58 kB[22m
+[2mdist/[22m[36massets/DeployEnv-F2PHwmsT.js                          [39m[1m[2m    4.69 kB[22m[1m[22m[2m 鈹?gzip:   1.70 kB[22m
+[2mdist/[22m[36massets/PhoneVerifyDialog-B4836a_A.js                  [39m[1m[2m    4.71 kB[22m[1m[22m[2m 鈹?gzip:   1.58 kB[22m
+[2mdist/[22m[36massets/AppCall-DficoQwY.js                            [39m[1m[2m    4.89 kB[22m[1m[22m[2m 鈹?gzip:   1.84 kB[22m
+[2mdist/[22m[36massets/logisticsQuery-Ds8kdgtp.js                     [39m[1m[2m    5.13 kB[22m[1m[22m[2m 鈹?gzip:   1.83 kB[22m
+[2mdist/[22m[36massets/orderFieldConfig-CEeLn6e9.js                   [39m[1m[2m    5.23 kB[22m[1m[22m[2m 鈹?gzip:   1.78 kB[22m
+[2mdist/[22m[36massets/ProjectTroubleshoot-DlHC_ubX.js                [39m[1m[2m    5.33 kB[22m[1m[22m[2m 鈹?gzip:   1.44 kB[22m
+[2mdist/[22m[36massets/ModuleData-CnpY8DNS.js                         [39m[1m[2m    5.36 kB[22m[1m[22m[2m 鈹?gzip:   1.86 kB[22m
+[2mdist/[22m[36massets/FaqLogin--4_jRMiL.js                           [39m[1m[2m    5.38 kB[22m[1m[22m[2m 鈹?gzip:   2.29 kB[22m
+[2mdist/[22m[36massets/TrendLineChart-CQ6eiuge.js                     [39m[1m[2m    5.41 kB[22m[1m[22m[2m 鈹?gzip:   1.61 kB[22m
+[2mdist/[22m[36massets/ModulePerformance-CwohK-gj.js                  [39m[1m[2m    5.43 kB[22m[1m[22m[2m 鈹?gzip:   1.81 kB[22m
+[2mdist/[22m[36massets/logistics-BGp5cCU_.js                          [39m[1m[2m    5.50 kB[22m[1m[22m[2m 鈹?gzip:   1.89 kB[22m
+[2mdist/[22m[36massets/customerTags-C-0DU1qS.js                       [39m[1m[2m    6.26 kB[22m[1m[22m[2m 鈹?gzip:   1.47 kB[22m
+[2mdist/[22m[36massets/ModuleDashboard-Bxwc52ax.js                    [39m[1m[2m    6.65 kB[22m[1m[22m[2m 鈹?gzip:   2.52 kB[22m
+[2mdist/[22m[36massets/userDataService-GGp3HaV4.js                    [39m[1m[2m    6.89 kB[22m[1m[22m[2m 鈹?gzip:   2.39 kB[22m
+[2mdist/[22m[36massets/departmentPermissionService-DyDIcwzW.js        [39m[1m[2m    7.10 kB[22m[1m[22m[2m 鈹?gzip:   1.82 kB[22m
+[2mdist/[22m[36massets/logisticsCompanyConfig-J8BmXUZp.js             [39m[1m[2m    7.27 kB[22m[1m[22m[2m 鈹?gzip:   1.52 kB[22m
+[2mdist/[22m[36massets/LogisticsSenderGuide-Boh7daYn.js               [39m[1m[2m    7.50 kB[22m[1m[22m[2m 鈹?gzip:   2.97 kB[22m
+[2mdist/[22m[36massets/sensitiveInfo-BtV1l3d7.js                      [39m[1m[2m    7.65 kB[22m[1m[22m[2m 鈹?gzip:   2.09 kB[22m
+[2mdist/[22m[36massets/WecomDemoBanner-DLs5TKUd.js                    [39m[1m[2m    7.70 kB[22m[1m[22m[2m 鈹?gzip:   2.08 kB[22m
+[2mdist/[22m[36massets/AppOverview-B3bH49d7.js                        [39m[1m[2m    8.15 kB[22m[1m[22m[2m 鈹?gzip:   2.54 kB[22m
+[2mdist/[22m[36massets/About-DzYgDVoA.js                              [39m[1m[2m    8.16 kB[22m[1m[22m[2m 鈹?gzip:   1.66 kB[22m
+[2mdist/[22m[36massets/WecomStandalone-C9OTMM5K.js                    [39m[1m[2m    8.30 kB[22m[1m[22m[2m 鈹?gzip:   2.68 kB[22m
+[2mdist/[22m[36massets/LogisticsLabelGuide-VTRJDijI.js                [39m[1m[2m    8.60 kB[22m[1m[22m[2m 鈹?gzip:   2.99 kB[22m
+[2mdist/[22m[36massets/MobileSDKInstall-BBYDeHy2.js                   [39m[1m[2m    8.71 kB[22m[1m[22m[2m 鈹?gzip:   2.95 kB[22m
+[2mdist/[22m[36massets/userApiService-BHClQj8f.js                     [39m[1m[2m    9.05 kB[22m[1m[22m[2m 鈹?gzip:   2.04 kB[22m
+[2mdist/[22m[36massets/ChangePassword-BFMh6xdB.js                     [39m[1m[2m    9.19 kB[22m[1m[22m[2m 鈹?gzip:   2.40 kB[22m
+[2mdist/[22m[36massets/useWecomDemo-B4XT_7rU.js                       [39m[1m[2m    9.42 kB[22m[1m[22m[2m 鈹?gzip:   3.25 kB[22m
+[2mdist/[22m[36massets/wecom-CXvZHWBb.js                              [39m[1m[2m    9.80 kB[22m[1m[22m[2m 鈹?gzip:   1.78 kB[22m
+[2mdist/[22m[36massets/UserPermissions-Kj6H1T4R.js                    [39m[1m[2m   10.14 kB[22m[1m[22m[2m 鈹?gzip:   1.84 kB[22m
+[2mdist/[22m[36massets/CustomFieldsCard-CRLGjjTH.js                   [39m[1m[2m   10.23 kB[22m[1m[22m[2m 鈹?gzip:   1.85 kB[22m
+[2mdist/[22m[36massets/TableColumnSettings-B8hbLYKp.js                [39m[1m[2m   10.26 kB[22m[1m[22m[2m 鈹?gzip:   2.45 kB[22m
+[2mdist/[22m[36massets/uploadService-C3oAN1wb.js                      [39m[1m[2m   10.47 kB[22m[1m[22m[2m 鈹?gzip:   3.26 kB[22m
+[2mdist/[22m[36massets/licenseDialog-BfGCQ9Aj.js                      [39m[1m[2m   10.49 kB[22m[1m[22m[2m 鈹?gzip:   3.29 kB[22m
+[2mdist/[22m[36massets/ModuleCustomer-DQLheUnQ.js                     [39m[1m[2m   10.88 kB[22m[1m[22m[2m 鈹?gzip:   3.42 kB[22m
+[2mdist/[22m[36massets/DynamicTable-BCuFQnoB.js                       [39m[1m[2m   11.13 kB[22m[1m[22m[2m 鈹?gzip:   2.96 kB[22m
+[2mdist/[22m[36massets/LogisticsShippingGuide-Byk3u0Ph.js             [39m[1m[2m   12.46 kB[22m[1m[22m[2m 鈹?gzip:   3.95 kB[22m
+[2mdist/[22m[36massets/LogisticsPrinterGuide-C9qHD06c.js              [39m[1m[2m   12.48 kB[22m[1m[22m[2m 鈹?gzip:   4.13 kB[22m
+[2mdist/[22m[36massets/webSocketService-BC3zg5Ms.js                   [39m[1m[2m   12.59 kB[22m[1m[22m[2m 鈹?gzip:   3.64 kB[22m
+[2mdist/[22m[36massets/roleApiService-MoMbsOIu.js                     [39m[1m[2m   12.67 kB[22m[1m[22m[2m 鈹?gzip:   2.88 kB[22m
+[2mdist/[22m[36massets/RolePermissionConfig-Dtzi7w8w.js               [39m[1m[2m   13.28 kB[22m[1m[22m[2m 鈹?gzip:   3.48 kB[22m
+[2mdist/[22m[36massets/ModuleSystem-CQUYncRx.js                       [39m[1m[2m   13.62 kB[22m[1m[22m[2m 鈹?gzip:   3.89 kB[22m
+[2mdist/[22m[36massets/service-CdquRz1u.js                            [39m[1m[2m   13.71 kB[22m[1m[22m[2m 鈹?gzip:   2.77 kB[22m
+[2mdist/[22m[36massets/ModuleLogistics-Cv7uYjUo.js                    [39m[1m[2m   14.46 kB[22m[1m[22m[2m 鈹?gzip:   4.01 kB[22m
+[2mdist/[22m[36massets/DeploymentGuide-D2ZvALsI.js                    [39m[1m[2m   14.72 kB[22m[1m[22m[2m 鈹?gzip:   4.08 kB[22m
+[2mdist/[22m[36massets/ProjectOverview-BiN_sn1H.js                    [39m[1m[2m   14.79 kB[22m[1m[22m[2m 鈹?gzip:   4.44 kB[22m
+[2mdist/[22m[36massets/ProjectFeatures-pIyLqLYU.js                    [39m[1m[2m   15.08 kB[22m[1m[22m[2m 鈹?gzip:   3.50 kB[22m
+[2mdist/[22m[36massets/TrackingDialog-D7-vjCRc.js                     [39m[1m[2m   15.21 kB[22m[1m[22m[2m 鈹?gzip:   3.66 kB[22m
+[2mdist/[22m[36massets/MobileSDK-B7QkguGx.js                          [39m[1m[2m   15.23 kB[22m[1m[22m[2m 鈹?gzip:   4.44 kB[22m
+[2mdist/[22m[36massets/export-Bt1_rlGz.js                             [39m[1m[2m   15.88 kB[22m[1m[22m[2m 鈹?gzip:   4.36 kB[22m
+[2mdist/[22m[36massets/PermissionManagementGuide-B_lvdx5l.js          [39m[1m[2m   16.88 kB[22m[1m[22m[2m 鈹?gzip:   3.04 kB[22m
+[2mdist/[22m[36massets/RoleOverview-CJFOCM1T.js                       [39m[1m[2m   17.63 kB[22m[1m[22m[2m 鈹?gzip:   3.50 kB[22m
+[2mdist/[22m[36massets/SensitiveInfoPermissionManager-CIopv2ie.js     [39m[1m[2m   17.82 kB[22m[1m[22m[2m 鈹?gzip:   4.40 kB[22m
+[2mdist/[22m[36massets/LogisticsTraceDialog-6bpPEzZ0.js               [39m[1m[2m   18.25 kB[22m[1m[22m[2m 鈹?gzip:   4.61 kB[22m
+[2mdist/[22m[36massets/DeploySaas-Cl1qv_Bc.js                         [39m[1m[2m   18.69 kB[22m[1m[22m[2m 鈹?gzip:   4.11 kB[22m
+[2mdist/[22m[36massets/SearchDebug-CB8giPfT.js                        [39m[1m[2m   18.95 kB[22m[1m[22m[2m 鈹?gzip:   4.04 kB[22m
+[2mdist/[22m[36massets/ModuleOrder-CGU9MUOC.js                        [39m[1m[2m   19.04 kB[22m[1m[22m[2m 鈹?gzip:   5.19 kB[22m
+[2mdist/[22m[36massets/SystemModules-Cd-q2BtJ.js                      [39m[1m[2m   19.15 kB[22m[1m[22m[2m 鈹?gzip:   5.54 kB[22m
+[2mdist/[22m[36massets/SearchNew-CJghT29I.js                          [39m[1m[2m   20.08 kB[22m[1m[22m[2m 鈹?gzip:   4.17 kB[22m
+[2mdist/[22m[36massets/LogisticsApiGuide-DQ2Ixl-K.js                  [39m[1m[2m   20.42 kB[22m[1m[22m[2m 鈹?gzip:   5.06 kB[22m
+[2mdist/[22m[36massets/DeployDatabase-CCV_ihM4.js                     [39m[1m[2m   22.26 kB[22m[1m[22m[2m 鈹?gzip:   4.54 kB[22m
+[2mdist/[22m[36massets/RolePermissionTree-D7OeE-jt.js                 [39m[1m[2m   22.77 kB[22m[1m[22m[2m 鈹?gzip:   4.05 kB[22m
+[2mdist/[22m[36massets/department-B76CSMuT.js                         [39m[1m[2m   22.89 kB[22m[1m[22m[2m 鈹?gzip:   4.38 kB[22m
+[2mdist/[22m[36massets/Category-B_Wy0RKT.js                           [39m[1m[2m   24.13 kB[22m[1m[22m[2m 鈹?gzip:   4.71 kB[22m
+[2mdist/[22m[36massets/OrderDetailDialog-D2hQqT8u.js                  [39m[1m[2m   24.39 kB[22m[1m[22m[2m 鈹?gzip:   4.85 kB[22m
+[2mdist/[22m[36massets/PermissionManagement-bKIxIh0Y.js               [39m[1m[2m   24.58 kB[22m[1m[22m[2m 鈹?gzip:   3.24 kB[22m
+[2mdist/[22m[36massets/SmsStatistics-DNQNV9am.js                      [39m[1m[2m   26.23 kB[22m[1m[22m[2m 鈹?gzip:   4.89 kB[22m
+[2mdist/[22m[36massets/Dashboard-BUHnbJIx.js                          [39m[1m[2m   26.31 kB[22m[1m[22m[2m 鈹?gzip:   4.90 kB[22m
+[2mdist/[22m[36massets/Tags-mZn8CG4a.js                               [39m[1m[2m   26.71 kB[22m[1m[22m[2m 鈹?gzip:   4.81 kB[22m
+[2mdist/[22m[36massets/product-D0Aog8cA.js                            [39m[1m[2m   26.76 kB[22m[1m[22m[2m 鈹?gzip:   5.45 kB[22m
+[2mdist/[22m[36massets/Recycle-CumCfZ3R.js                            [39m[1m[2m   27.16 kB[22m[1m[22m[2m 鈹?gzip:   5.02 kB[22m
+[2mdist/[22m[36massets/ContactBook-Ba-Dn9XS.js                        [39m[1m[2m   27.58 kB[22m[1m[22m[2m 鈹?gzip:   5.02 kB[22m
+[2mdist/[22m[36massets/ModuleFinance-BNmsO7N2.js                      [39m[1m[2m   28.42 kB[22m[1m[22m[2m 鈹?gzip:   7.34 kB[22m
+[2mdist/[22m[36massets/CallTest-Ct5IUmxU.js                           [39m[1m[2m   28.57 kB[22m[1m[22m[2m 鈹?gzip:   4.82 kB[22m
+[2mdist/[22m[36massets/BusinessLogic-DZNJGS6z.js                      [39m[1m[2m   28.81 kB[22m[1m[22m[2m 鈹?gzip:   5.35 kB[22m
+[2mdist/[22m[36massets/CompanyDetail-rdM7Lot7.js                      [39m[1m[2m   28.81 kB[22m[1m[22m[2m 鈹?gzip:   5.09 kB[22m
+[2mdist/[22m[36massets/Binding-DxobXjCT.js                            [39m[1m[2m   29.77 kB[22m[1m[22m[2m 鈹?gzip:   5.02 kB[22m
+[2mdist/[22m[36massets/FaqPerformance-D_2h3lyH.js                     [39m[1m[2m   30.65 kB[22m[1m[22m[2m 鈹?gzip:   4.92 kB[22m
+[2mdist/[22m[36massets/call-DU0erTtg.js                               [39m[1m[2m   31.78 kB[22m[1m[22m[2m 鈹?gzip:   6.18 kB[22m
+[2mdist/[22m[36massets/SmsApproval-WgzJyGSu.js                        [39m[1m[2m   32.15 kB[22m[1m[22m[2m 鈹?gzip:   5.79 kB[22m
+[2mdist/[22m[36massets/PerformanceShare-BXVfbCXB.js                   [39m[1m[2m   33.05 kB[22m[1m[22m[2m 鈹?gzip:   5.01 kB[22m
+[2mdist/[22m[36massets/DeployNginx-u8peuvbB.js                        [39m[1m[2m   34.15 kB[22m[1m[22m[2m 鈹?gzip:   7.01 kB[22m
+[2mdist/[22m[36massets/data-BU9Q9CRr.js                               [39m[1m[2m   34.37 kB[22m[1m[22m[2m 鈹?gzip:   7.04 kB[22m
+[2mdist/[22m[36massets/SmsSendRecords-CfH8Ddjq.js                     [39m[1m[2m   34.56 kB[22m[1m[22m[2m 鈹?gzip:   6.27 kB[22m
+[2mdist/[22m[36massets/TrackDetail-lUn5AAk8.js                        [39m[1m[2m   34.79 kB[22m[1m[22m[2m 鈹?gzip:   7.19 kB[22m
+[2mdist/[22m[36massets/PublicHelpCenter-R48r2ifO.js                   [39m[1m[2m   35.58 kB[22m[1m[22m[2m 鈹?gzip:   6.33 kB[22m
+[2mdist/[22m[36massets/FaqData-D7X5ghA7.js                            [39m[1m[2m   35.76 kB[22m[1m[22m[2m 鈹?gzip:   5.55 kB[22m
+[2mdist/[22m[36massets/Groups-CQPJCmRY.js                             [39m[1m[2m   36.10 kB[22m[1m[22m[2m 鈹?gzip:   6.25 kB[22m
+[2mdist/[22m[36massets/DeployPrivate-D_FJhXH9.js                      [39m[1m[2m   36.66 kB[22m[1m[22m[2m 鈹?gzip:   7.45 kB[22m
+[2mdist/[22m[36massets/Analytics-A80op9ng.js                          [39m[1m[2m   37.49 kB[22m[1m[22m[2m 鈹?gzip:   7.59 kB[22m
+[2mdist/[22m[36massets/ApiManagement-CaseFFDw.js                      [39m[1m[2m   37.67 kB[22m[1m[22m[2m 鈹?gzip:   6.13 kB[22m
+[2mdist/[22m[36massets/CreateTemplateDialog-BCkfu56S.js               [39m[1m[2m   38.29 kB[22m[1m[22m[2m 鈹?gzip:   9.25 kB[22m
+[2mdist/[22m[36massets/FaqOperation-BIubtBKy.js                       [39m[1m[2m   38.36 kB[22m[1m[22m[2m 鈹?gzip:   5.51 kB[22m
+[2mdist/[22m[36massets/PerformanceData-oFpQyKav.js                    [39m[1m[2m   39.23 kB[22m[1m[22m[2m 鈹?gzip:   7.62 kB[22m
+[2mdist/[22m[36massets/DepartmentDetail-DU7j9p3x.js                   [39m[1m[2m   40.11 kB[22m[1m[22m[2m 鈹?gzip:   6.80 kB[22m
+[2mdist/[22m[36massets/OutboundList-Dq2P3F-6.js                       [39m[1m[2m   41.76 kB[22m[1m[22m[2m 鈹?gzip:   6.62 kB[22m
+[2mdist/[22m[36massets/FaqApp-Ex30O01z.js                             [39m[1m[2m   42.22 kB[22m[1m[22m[2m 鈹?gzip:   5.65 kB[22m
+[2mdist/[22m[36massets/SettlementReport-UpOkDf2h.js                   [39m[1m[2m   43.96 kB[22m[1m[22m[2m 鈹?gzip:   7.50 kB[22m
+[2mdist/[22m[36massets/SmsTemplateDetail-DJ2wbUeI.js                  [39m[1m[2m   45.33 kB[22m[1m[22m[2m 鈹?gzip:   7.81 kB[22m
+[2mdist/[22m[36massets/CustomerDetail-BbmU0mds.js                     [39m[1m[2m   45.72 kB[22m[1m[22m[2m 鈹?gzip:   8.60 kB[22m
+[2mdist/[22m[36massets/List-C5heXrkF.js                               [39m[1m[2m   45.87 kB[22m[1m[22m[2m 鈹?gzip:   9.65 kB[22m
+[2mdist/[22m[36massets/Data-CfJZSHsm.js                               [39m[1m[2m   46.07 kB[22m[1m[22m[2m 鈹?gzip:   7.76 kB[22m
+[2mdist/[22m[36massets/List-Duk9LfFr.js                               [39m[1m[2m   46.34 kB[22m[1m[22m[2m 鈹?gzip:   8.17 kB[22m
+[2mdist/[22m[36massets/Edit-BnnEaybe.js                               [39m[1m[2m   47.24 kB[22m[1m[22m[2m 鈹?gzip:   6.37 kB[22m
+[2mdist/[22m[36massets/Track-3GGB7TQc.js                              [39m[1m[2m   48.17 kB[22m[1m[22m[2m 鈹?gzip:   9.65 kB[22m
+[2mdist/[22m[36massets/SendSmsDialog-P3e5gWt4.js                      [39m[1m[2m   48.55 kB[22m[1m[22m[2m 鈹?gzip:   9.54 kB[22m
+[2mdist/[22m[36massets/CallConfigGuide-Bhpcu1xX.js                    [39m[1m[2m   48.80 kB[22m[1m[22m[2m 鈹?gzip:  11.49 kB[22m
+[2mdist/[22m[36massets/SmsConfig-WSpqoL8x.js                          [39m[1m[2m   49.49 kB[22m[1m[22m[2m 鈹?gzip:   6.37 kB[22m
+[2mdist/[22m[36massets/CustomerServicePermissionManager-BkV9w6Nw.js   [39m[1m[2m   51.05 kB[22m[1m[22m[2m 鈹?gzip:   8.04 kB[22m
+[2mdist/[22m[36massets/HelpCenter-COMvJxIU.js                         [39m[1m[2m   51.41 kB[22m[1m[22m[2m 鈹?gzip:  10.60 kB[22m
+[2mdist/[22m[36massets/Detail-D6mt1X2j.js                             [39m[1m[2m   51.99 kB[22m[1m[22m[2m 鈹?gzip:   9.42 kB[22m
+[2mdist/[22m[36massets/CodApplicationReview-BUUu87J0.js               [39m[1m[2m   51.99 kB[22m[1m[22m[2m 鈹?gzip:   8.60 kB[22m
+[2mdist/[22m[36massets/Sidebar-CaGP117R.js                            [39m[1m[2m   54.70 kB[22m[1m[22m[2m 鈹?gzip:   9.29 kB[22m
+[2mdist/[22m[36massets/Edit-CMYNTcLs.js                               [39m[1m[2m   57.21 kB[22m[1m[22m[2m 鈹?gzip:   7.89 kB[22m
+[2mdist/[22m[36massets/SmsTemplates-DrqCV4h5.js                       [39m[1m[2m   58.59 kB[22m[1m[22m[2m 鈹?gzip:   9.22 kB[22m
+[2mdist/[22m[36massets/FollowUpRecords-BbjmKyPO.js                    [39m[1m[2m   58.71 kB[22m[1m[22m[2m 鈹?gzip:   8.16 kB[22m
+[2mdist/[22m[36massets/MyCodApplication-BhuiLw4u.js                   [39m[1m[2m   61.48 kB[22m[1m[22m[2m 鈹?gzip:  11.09 kB[22m
+[2mdist/[22m[36massets/Login-BYavjmFD.js                              [39m[1m[2m   61.51 kB[22m[1m[22m[2m 鈹?gzip:  13.70 kB[22m
+[2mdist/[22m[36massets/Edit-vJkvJMkb.js                               [39m[1m[2m   63.53 kB[22m[1m[22m[2m 鈹?gzip:   9.63 kB[22m
+[2mdist/[22m[36massets/CallRecords-Bp4Bo7J8.js                        [39m[1m[2m   64.75 kB[22m[1m[22m[2m 鈹?gzip:   9.22 kB[22m
+[2mdist/[22m[36massets/CodCollection-BU7UrB3w.js                      [39m[1m[2m   65.67 kB[22m[1m[22m[2m 鈹?gzip:  11.09 kB[22m
+[2mdist/[22m[36massets/RecordingManagement-BZ-mgVJG.js                [39m[1m[2m   66.15 kB[22m[1m[22m[2m 鈹?gzip:   9.92 kB[22m
+[2mdist/[22m[36massets/DepartmentMembers-BdARiGSK.js                  [39m[1m[2m   66.16 kB[22m[1m[22m[2m 鈹?gzip:  11.73 kB[22m
+[2mdist/[22m[36massets/AddressBook-pDIlBGTK.js                        [39m[1m[2m   66.20 kB[22m[1m[22m[2m 鈹?gzip:   9.40 kB[22m
+[2mdist/[22m[36massets/PhoneConfig-NDSJ1ta7.js                        [39m[1m[2m   66.55 kB[22m[1m[22m[2m 鈹?gzip:   7.80 kB[22m
+[2mdist/[22m[36massets/Edit-DbpwNSLQ.js                               [39m[1m[2m   66.64 kB[22m[1m[22m[2m 鈹?gzip:   9.01 kB[22m
+[2mdist/[22m[36massets/Detail-B813t4iS.js                             [39m[1m[2m   69.62 kB[22m[1m[22m[2m 鈹?gzip:  10.81 kB[22m
+[2mdist/[22m[36massets/Customer-QDw3J6B0.js                           [39m[1m[2m   70.92 kB[22m[1m[22m[2m 鈹?gzip:  11.92 kB[22m
+[2mdist/[22m[36massets/useAcquisition-A9XOBe_T.js                     [39m[1m[2m   77.55 kB[22m[1m[22m[2m 鈹?gzip:  14.11 kB[22m
+[2mdist/[22m[36massets/ContactWay-DdgAViHV.js                         [39m[1m[2m   78.88 kB[22m[1m[22m[2m 鈹?gzip:  12.52 kB[22m
+[2mdist/[22m[36massets/Share-BcbqYSSC.js                              [39m[1m[2m   80.25 kB[22m[1m[22m[2m 鈹?gzip:  13.60 kB[22m
+[2mdist/[22m[36massets/Companies-CJ1o-8kd.js                          [39m[1m[2m   80.52 kB[22m[1m[22m[2m 鈹?gzip:  14.95 kB[22m
+[2mdist/[22m[36massets/browser-CR--2gGW.js                            [39m[1m[2m   80.59 kB[22m[1m[22m[2m 鈹?gzip:  21.82 kB[22m
+[2mdist/[22m[36massets/Add-DmP14b20.js                                [39m[1m[2m   82.22 kB[22m[1m[22m[2m 鈹?gzip:  12.65 kB[22m
+[2mdist/[22m[36massets/Detail-CZ40uIOo.js                             [39m[1m[2m   83.06 kB[22m[1m[22m[2m 鈹?gzip:  12.73 kB[22m
+[2mdist/[22m[36massets/Payment-ge4ADpOD.js                            [39m[1m[2m   84.98 kB[22m[1m[22m[2m 鈹?gzip:  12.71 kB[22m
+[2mdist/[22m[36massets/List-qKoTyU7c.js                               [39m[1m[2m   85.69 kB[22m[1m[22m[2m 鈹?gzip:  15.74 kB[22m
+[2mdist/[22m[36massets/Stock-DcTbpky1.js                              [39m[1m[2m   85.76 kB[22m[1m[22m[2m 鈹?gzip:  13.12 kB[22m
+[2mdist/[22m[36massets/Edit-DikknVY0.js                               [39m[1m[2m   91.64 kB[22m[1m[22m[2m 鈹?gzip:  15.20 kB[22m
+[2mdist/[22m[36massets/Departments-CQb3FLg3.js                        [39m[1m[2m   97.13 kB[22m[1m[22m[2m 鈹?gzip:  16.09 kB[22m
+[2mdist/[22m[36massets/PerformanceManage-Bm0qg5PL.js                  [39m[1m[2m   97.87 kB[22m[1m[22m[2m 鈹?gzip:  15.56 kB[22m
+[2mdist/[22m[36massets/Config-CC-OI6YB.js                             [39m[1m[2m  101.06 kB[22m[1m[22m[2m 鈹?gzip:  15.81 kB[22m
+[2mdist/[22m[36massets/List-BrolVcAh.js                               [39m[1m[2m  105.67 kB[22m[1m[22m[2m 鈹?gzip:  18.55 kB[22m
+[2mdist/[22m[36massets/Add-DKgt0v21.js                                [39m[1m[2m  107.36 kB[22m[1m[22m[2m 鈹?gzip:  17.84 kB[22m
+[2mdist/[22m[36massets/ChatArchive-dOxC1K60.js                        [39m[1m[2m  109.99 kB[22m[1m[22m[2m 鈹?gzip:  19.17 kB[22m
+[2mdist/[22m[36massets/index-Cz-GGNaZ.js                              [39m[1m[2m  110.58 kB[22m[1m[22m[2m 鈹?gzip:  25.73 kB[22m
+[2mdist/[22m[36massets/Detail-CZrITnkG.js                             [39m[1m[2m  111.13 kB[22m[1m[22m[2m 鈹?gzip:  20.11 kB[22m
+[2mdist/[22m[36massets/Analysis-4yDwKElm.js                           [39m[1m[2m  112.21 kB[22m[1m[22m[2m 鈹?gzip:  16.86 kB[22m
+[2mdist/[22m[36massets/Add-D8amJmF6.js                                [39m[1m[2m  112.47 kB[22m[1m[22m[2m 鈹?gzip:  18.38 kB[22m
+[2mdist/[22m[36massets/StatusUpdate-Du3ObqZs.js                       [39m[1m[2m  113.16 kB[22m[1m[22m[2m 鈹?gzip:  19.99 kB[22m
+[2mdist/[22m[36massets/List-CI55m-nH.js                               [39m[1m[2m  113.70 kB[22m[1m[22m[2m 鈹?gzip:  17.21 kB[22m
+[2mdist/[22m[36massets/Audit-Z8a72WIJ.js                              [39m[1m[2m  115.63 kB[22m[1m[22m[2m 鈹?gzip:  18.85 kB[22m
+[2mdist/[22m[36massets/Service-Ml7_R0Pf.js                            [39m[1m[2m  129.87 kB[22m[1m[22m[2m 鈹?gzip:  17.90 kB[22m
+[2mdist/[22m[36massets/Dashboard-BMdE6cgP.js                          [39m[1m[2m  133.72 kB[22m[1m[22m[2m 鈹?gzip:  27.42 kB[22m
+[2mdist/[22m[36massets/SmsManagement-B-sFKa8b.js                      [39m[1m[2m  141.54 kB[22m[1m[22m[2m 鈹?gzip:  20.02 kB[22m
+[2mdist/[22m[36massets/index-Os2ewRLO.js                              [39m[1m[2m  142.36 kB[22m[1m[22m[2m 鈹?gzip:  20.95 kB[22m
+[2mdist/[22m[36massets/DepartmentRoles-BIMBDaDq.js                    [39m[1m[2m  144.88 kB[22m[1m[22m[2m 鈹?gzip:  20.53 kB[22m
+[2mdist/[22m[36massets/List-CcY5bepu.js                               [39m[1m[2m  152.64 kB[22m[1m[22m[2m 鈹?gzip:  23.77 kB[22m
+[2mdist/[22m[36massets/Team-DXL2138a.js                               [39m[1m[2m  157.36 kB[22m[1m[22m[2m 鈹?gzip:  25.17 kB[22m
+[2mdist/[22m[36massets/CustomerGroup-DuWskfIZ.js                      [39m[1m[2m  158.67 kB[22m[1m[22m[2m 鈹?gzip:  21.24 kB[22m
+[2mdist/[22m[36massets/Acquisition-Dg1Bibv8.js                        [39m[1m[2m  164.85 kB[22m[1m[22m[2m 鈹?gzip:  25.84 kB[22m
+[2mdist/[22m[36massets/User-8IvT3_r8.js                               [39m[1m[2m  166.42 kB[22m[1m[22m[2m 鈹?gzip:  28.75 kB[22m
+[2mdist/[22m[36massets/ValueAddedManage-8Lu8bUPA.js                   [39m[1m[2m  170.48 kB[22m[1m[22m[2m 鈹?gzip:  24.61 kB[22m
+[2mdist/[22m[36massets/Detail-D0VRH3Zf.js                             [39m[1m[2m  179.71 kB[22m[1m[22m[2m 鈹?gzip:  25.12 kB[22m
+[2mdist/[22m[36massets/MessageManagement-CoNVF_Cz.js                  [39m[1m[2m  199.74 kB[22m[1m[22m[2m 鈹?gzip:  28.63 kB[22m
+[2mdist/[22m[36massets/AiAssistant-FQyRWr_E.js                        [39m[1m[2m  201.15 kB[22m[1m[22m[2m 鈹?gzip:  25.90 kB[22m
+[2mdist/[22m[36massets/SuperAdminPermissionPanel-DSFB8ANW.js          [39m[1m[2m  210.24 kB[22m[1m[22m[2m 鈹?gzip:  30.52 kB[22m
+[2mdist/[22m[36massets/vue-vendor-BsLXYgUo.js                         [39m[1m[2m  306.40 kB[22m[1m[22m[2m 鈹?gzip:  72.33 kB[22m
+[2mdist/[22m[36massets/CallManagement-Cqe9P38r.js                     [39m[1m[2m  331.25 kB[22m[1m[22m[2m 鈹?gzip:  49.54 kB[22m
+[2mdist/[22m[36massets/DepartmentDialog-C5ZKvtyd.js                   [39m[1m[2m  475.99 kB[22m[1m[22m[2m 鈹?gzip: 162.83 kB[22m
+[2mdist/[22m[36massets/Personal-Qj8ITWqY.js                           [39m[1m[2m  479.09 kB[22m[1m[22m[2m 鈹?gzip:  86.24 kB[22m
+[2mdist/[22m[36massets/index-DSpxcvfs.js                              [39m[1m[2m  663.75 kB[22m[1m[22m[2m 鈹?gzip: 107.53 kB[22m
+[2mdist/[22m[36massets/Shipping-DFwZAps_.js                           [39m[1m[2m  685.44 kB[22m[1m[22m[2m 鈹?gzip: 115.23 kB[22m
+[2mdist/[22m[36massets/index-LjAToKag.js                              [39m[1m[2m  850.07 kB[22m[1m[22m[2m 鈹?gzip: 169.21 kB[22m
+[2mdist/[22m[36massets/utils-BxN9-8u5.js                              [39m[1m[2m  938.79 kB[22m[1m[22m[2m 鈹?gzip: 215.25 kB[22m
+[2mdist/[22m[36massets/style-CeHiA4ff.js                              [39m[1m[2m1,139.31 kB[22m[1m[22m[2m 鈹?gzip: 319.18 kB[22m
+[2mdist/[22m[36massets/aliyun-oss-sdk-CDmpMQif.js                     [39m[1m[2m1,586.48 kB[22m[1m[22m[2m 鈹?gzip: 260.81 kB[22m
+[2mdist/[22m[36massets/element-plus-BIPXLoJy.js                       [39m[1m[33m2,003.86 kB[39m[22m[2m 鈹?gzip: 405.59 kB[22m
+[2mdist/[22m[36massets/echarts-Bhc7LLV1.js                            [39m[1m[33m2,733.12 kB[39m[22m[2m 鈹?gzip: 619.40 kB[22m
+[32m鉁?built in 33.37s[39m

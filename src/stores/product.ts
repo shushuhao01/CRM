@@ -23,6 +23,14 @@ export interface Product {
   maxStock: number
   salesCount: number
   status: 'active' | 'inactive' | 'out_of_stock'
+  isRecommended?: boolean  // 是否推荐
+  isNew?: boolean          // 是否新品
+  isHot?: boolean          // 是否热销
+  productType?: string     // 商品类型: physical/virtual
+  virtualDeliveryType?: string | null  // 虚拟发货方式
+  cardKeyTemplate?: string | null
+  resourceLinkTemplate?: string | null
+  virtualContentEncrypt?: boolean
   image: string
   images?: string[]
   specifications?: Record<string, any> // 规格参数

@@ -410,8 +410,7 @@ const generateQRCodeImage = async (data: string): Promise<string> => {
     })
   } catch (error) {
     console.error('生成二维码失败:', error)
-    // 兜底：使用在线服务
-    return `https://api.qrserver.com/v1/create-qr-code/?size=280x280&data=${encodeURIComponent(data)}`
+    return ''
   }
 }
 
@@ -446,15 +445,6 @@ const initQRCodes = async () => {
     homeQrCode.value = homeQr
   } catch (error) {
     console.error('初始化二维码失败:', error)
-    // 兜底：使用在线服务生成
-    try {
-      const loginUrl = bestShareUrl.value
-      const homeUrl = systemHomeUrl.value
-      loginQrCode.value = `https://api.qrserver.com/v1/create-qr-code/?size=280x280&data=${encodeURIComponent(loginUrl)}`
-      homeQrCode.value = `https://api.qrserver.com/v1/create-qr-code/?size=280x280&data=${encodeURIComponent(homeUrl)}`
-    } catch (_e) {
-      console.error('兜底二维码也生成失败')
-    }
   }
 }
 

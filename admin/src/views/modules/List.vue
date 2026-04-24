@@ -187,7 +187,7 @@ import { ElMessage } from 'element-plus'
 import {
   Refresh, Lock, CircleCheck, CircleClose, Warning, InfoFilled, Clock, Menu,
   ShoppingCart, User, Money, Van, Service, Phone, Folder, TrendCharts, Goods, Setting,
-  Odometer, Box
+  Odometer, Box, ChatLineSquare
 } from '@element-plus/icons-vue'
 import request from '../../api/request'
 
@@ -229,7 +229,8 @@ const moduleIconMap: Record<string, Component> = {
   data_management: Folder,
   performance_management: TrendCharts,
   product_management: Goods,
-  system_management: Setting
+  system_management: Setting,
+  wecom_management: ChatLineSquare
 }
 const getModuleIcon = (key: string): Component => {
   return moduleIconMap[key] || Box
@@ -247,7 +248,8 @@ const moduleGradientMap: Record<string, string> = {
   data_management: 'linear-gradient(135deg, #795548 0%, #a1887f 100%)',
   performance_management: 'linear-gradient(135deg, #9c27b0 0%, #ba68c8 100%)',
   product_management: 'linear-gradient(135deg, #f56c6c 0%, #f89898 100%)',
-  system_management: 'linear-gradient(135deg, #607d8b 0%, #90a4ae 100%)'
+  system_management: 'linear-gradient(135deg, #607d8b 0%, #90a4ae 100%)',
+  wecom_management: 'linear-gradient(135deg, #07c160 0%, #38d97a 100%)'
 }
 const getModuleGradient = (key: string) => moduleGradientMap[key] || 'linear-gradient(135deg, #909399 0%, #c0c4cc 100%)'
 

@@ -288,7 +288,8 @@ export class ProductController {
         keyword,
         categoryId,
         status,
-        lowStock
+        lowStock,
+        productType
       } = req.query
 
       const productRepo = getProductRepository()
@@ -311,6 +312,11 @@ export class ProductController {
       // 状态筛选
       if (status) {
         queryBuilder.andWhere('product.status = :status', { status })
+      }
+
+      // 商品类型筛选
+      if (productType) {
+        queryBuilder.andWhere('product.productType = :productType', { productType })
       }
 
       // 低库存筛选
@@ -398,9 +404,17 @@ export class ProductController {
         maxStock: 0,
         salesCount: salesCountMap[p.id] || 0, // 🔥 使用统计的销量
         status: p.status,
+        isRecommended: !!p.isRecommended,
+        isNew: !!p.isNew,
+        isHot: !!p.isHot,
         image: p.images?.[0] || '',
         images: p.images || [],
         specifications: p.specifications || {},
+        productType: p.productType || 'physical',
+        virtualDeliveryType: p.virtualDeliveryType || null,
+        cardKeyTemplate: p.cardKeyTemplate || null,
+        resourceLinkTemplate: p.resourceLinkTemplate || null,
+        virtualContentEncrypt: !!p.virtualContentEncrypt,
         createdBy: p.createdBy || '',
         createTime: p.createdAt?.toISOString() || '',
         updateTime: p.updatedAt?.toISOString() || ''
@@ -461,9 +475,17 @@ export class ProductController {
           minStock: product.minStock || 0,
           unit: product.unit || '件',
           status: product.status,
+          isRecommended: !!product.isRecommended,
+          isNew: !!product.isNew,
+          isHot: !!product.isHot,
           image: product.images?.[0] || '',
           images: product.images || [],
           specifications: product.specifications || {},
+          productType: product.productType || 'physical',
+          virtualDeliveryType: product.virtualDeliveryType || null,
+          cardKeyTemplate: product.cardKeyTemplate || null,
+          resourceLinkTemplate: product.resourceLinkTemplate || null,
+          virtualContentEncrypt: !!product.virtualContentEncrypt,
           createdBy: product.createdBy || '',
           createTime: product.createdAt?.toISOString() || '',
           updateTime: product.updatedAt?.toISOString() || ''
@@ -538,6 +560,14 @@ export class ProductController {
         unit: productData.unit || '件',
         images: productData.images || (productData.image ? [productData.image] : []),
         status: productData.status || 'active',
+        isRecommended: !!productData.isRecommended,
+        isNew: !!productData.isNew,
+        isHot: !!productData.isHot,
+        productType: productData.productType || 'physical',
+        virtualDeliveryType: productData.productType === 'virtual' ? (productData.virtualDeliveryType || null) : null,
+        cardKeyTemplate: productData.cardKeyTemplate || null,
+        resourceLinkTemplate: productData.resourceLinkTemplate || null,
+        virtualContentEncrypt: !!productData.virtualContentEncrypt,
         createdBy
       })
 
@@ -559,9 +589,17 @@ export class ProductController {
           minStock: newProduct.minStock || 0,
           unit: newProduct.unit || '件',
           status: newProduct.status,
+          isRecommended: !!newProduct.isRecommended,
+          isNew: !!newProduct.isNew,
+          isHot: !!newProduct.isHot,
           image: newProduct.images?.[0] || '',
           images: newProduct.images || [],
           specifications: {},
+          productType: newProduct.productType || 'physical',
+          virtualDeliveryType: newProduct.virtualDeliveryType || null,
+          cardKeyTemplate: newProduct.cardKeyTemplate || null,
+          resourceLinkTemplate: newProduct.resourceLinkTemplate || null,
+          virtualContentEncrypt: !!newProduct.virtualContentEncrypt,
           createdBy: newProduct.createdBy || '',
           createTime: newProduct.createdAt?.toISOString() || '',
           updateTime: newProduct.updatedAt?.toISOString() || ''
@@ -608,10 +646,18 @@ export class ProductController {
       if (updates.minStock !== undefined) product.minStock = Number(updates.minStock)
       if (updates.unit !== undefined) product.unit = updates.unit
       if (updates.status !== undefined) product.status = updates.status
+      if (updates.isRecommended !== undefined) product.isRecommended = !!updates.isRecommended
+      if (updates.isNew !== undefined) product.isNew = !!updates.isNew
+      if (updates.isHot !== undefined) product.isHot = !!updates.isHot
       if (updates.images !== undefined) product.images = updates.images
       if (updates.image !== undefined && !updates.images) {
         product.images = [updates.image]
       }
+      // 虚拟商品字段（仅创建时设置productType，编辑时不可改类型）
+      if (updates.virtualDeliveryType !== undefined) product.virtualDeliveryType = updates.virtualDeliveryType
+      if (updates.cardKeyTemplate !== undefined) product.cardKeyTemplate = updates.cardKeyTemplate
+      if (updates.resourceLinkTemplate !== undefined) product.resourceLinkTemplate = updates.resourceLinkTemplate
+      if (updates.virtualContentEncrypt !== undefined) product.virtualContentEncrypt = !!updates.virtualContentEncrypt
 
       await productRepo.save(product)
       log.info('[ProductController] 更新产品成功:', product.name, 'ID:', id)
@@ -631,9 +677,17 @@ export class ProductController {
           minStock: product.minStock || 0,
           unit: product.unit || '件',
           status: product.status,
+          isRecommended: !!product.isRecommended,
+          isNew: !!product.isNew,
+          isHot: !!product.isHot,
           image: product.images?.[0] || '',
           images: product.images || [],
           specifications: product.specifications || {},
+          productType: product.productType || 'physical',
+          virtualDeliveryType: product.virtualDeliveryType || null,
+          cardKeyTemplate: product.cardKeyTemplate || null,
+          resourceLinkTemplate: product.resourceLinkTemplate || null,
+          virtualContentEncrypt: !!product.virtualContentEncrypt,
           createdBy: product.createdBy || '',
           createTime: product.createdAt?.toISOString() || '',
           updateTime: product.updatedAt?.toISOString() || ''

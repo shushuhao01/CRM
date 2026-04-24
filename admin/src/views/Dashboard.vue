@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="dashboard">
     <!-- 统计卡片 -->
     <el-row :gutter="16" class="stat-cards">
@@ -72,9 +72,9 @@
             <div class="card-header">
               <span class="title">授权类型分布</span>
               <el-radio-group v-model="chartPeriod" size="small" @change="fetchLicenseTypeStats">
-                <el-radio-button value="month">本月</el-radio-button>
-                <el-radio-button value="lastMonth">上月</el-radio-button>
-                <el-radio-button value="all">全部</el-radio-button>
+                <el-radio-button label="month">本月</el-radio-button>
+                <el-radio-button label="lastMonth">上月</el-radio-button>
+                <el-radio-button label="all">全部</el-radio-button>
               </el-radio-group>
             </div>
           </template>
@@ -87,9 +87,9 @@
             <div class="card-header">
               <span class="title">趋势分析</span>
               <el-radio-group v-model="trendPeriod" size="small" @change="fetchTrend">
-                <el-radio-button value="month">本月</el-radio-button>
-                <el-radio-button value="lastMonth">上月</el-radio-button>
-                <el-radio-button value="all">全部</el-radio-button>
+                <el-radio-button label="month">本月</el-radio-button>
+                <el-radio-button label="lastMonth">上月</el-radio-button>
+                <el-radio-button label="all">全部</el-radio-button>
               </el-radio-group>
             </div>
           </template>

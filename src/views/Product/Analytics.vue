@@ -142,7 +142,13 @@
         style="width: 100%"
         @sort-change="handleSortChange"
       >
-        <el-table-column prop="name" label="商品名称" min-width="150" />
+        <el-table-column prop="name" label="商品名称" min-width="200">
+          <template #default="{ row }">
+            <el-tag v-if="row.productType === 'virtual'" type="warning" size="small" effect="light" style="margin-right: 4px;">虚拟</el-tag>
+            <el-tag v-else size="small" effect="light" style="margin-right: 4px;">实物</el-tag>
+            {{ row.name }}
+          </template>
+        </el-table-column>
         <el-table-column prop="category" label="分类" width="120" />
         <el-table-column prop="price" label="单价" width="100" sortable="custom">
           <template #default="{ row }">
@@ -390,6 +396,7 @@ const productData = computed((): ProductAnalyticsItem[] => {
     return {
       id: product.id,
       name: product.name,
+      productType: product.productType || 'physical',
       category: product.categoryName || '未分类',
       price: price,
       stock: product.stock,

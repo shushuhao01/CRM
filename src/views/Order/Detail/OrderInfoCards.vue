@@ -69,37 +69,21 @@
           </div>
         </div>
       </div>
-      <div class="status-timeline-horizontal">
-        <div class="timeline-item-horizontal">
-          <div class="timeline-dot"></div>
-          <div class="timeline-content">
-            <div class="timeline-label">创建时间</div>
-            <div class="timeline-value">{{ formatDateTime(orderDetail.createTime) }}</div>
+      <div class="lifecycle-timeline">
+        <!-- 生命周期节点 -->
+        <template v-for="(node, idx) in lifecycleNodes" :key="node.key">
+          <div class="lc-node" :class="node.state">
+            <div class="lc-dot" :class="node.state"></div>
+            <div class="lc-label">{{ node.label }}</div>
+            <div class="lc-time">{{ node.time || '' }}</div>
           </div>
-        </div>
-        <div class="timeline-item-horizontal">
-          <div class="timeline-dot"></div>
-          <div class="timeline-content">
-            <div class="timeline-label">更新时间</div>
-            <div class="timeline-value">{{ formatDateTime(orderDetail.updateTime) }}</div>
-          </div>
-        </div>
-        <div v-if="showCountdown" class="timeline-item-horizontal countdown-timeline">
-          <div class="timeline-dot countdown-dot"></div>
-          <div class="timeline-content">
-            <div class="timeline-label">流转审核倒计时</div>
-            <div class="timeline-value countdown-value">
-              {{ countdownText }}
-              <el-tag type="warning" size="small" class="countdown-badge">
-                <el-icon><Timer /></el-icon> 自动流转中
-              </el-tag>
-            </div>
-          </div>
-        </div>
-        <div v-if="canChangeToReserved" class="status-tip-horizontal">
-          <el-icon class="tip-icon"><InfoFilled /></el-icon>
-          <span class="tip-text">流转前可修改为预留单，修改后将不会流转到审核</span>
-        </div>
+          <div v-if="idx < lifecycleNodes.length - 1" class="lc-line"
+            :class="node.state !== 'pending' && lifecycleNodes[idx+1].state !== 'pending' ? 'done' : 'pending'"></div>
+        </template>
+      </div>
+      <div v-if="canChangeToReserved" class="status-tip-horizontal">
+        <el-icon class="tip-icon"><InfoFilled /></el-icon>
+        <span class="tip-text">流转前可修改为预留单，修改后将不会流转到审核</span>
       </div>
     </el-card>
   </div>
@@ -255,13 +239,14 @@
 
 <script setup lang="ts">
 import { User, Phone, Message, Location, Clock, Van, Document, Timer, InfoFilled, ArrowRight, ZoomIn } from '@element-plus/icons-vue'
+import { computed } from 'vue'
 import { displaySensitiveInfo as displaySensitiveInfoNew } from '@/utils/sensitiveInfo'
 import { SensitiveInfoType } from '@/services/permission'
 import { getOrderStatusStyle, getOrderStatusText as getUnifiedStatusText } from '@/utils/orderStatusConfig'
 import { formatDateTime } from '@/utils/dateFormat'
 import { getLevelType, getLevelText, getExpressCompanyText, getOrderSourceText, getPaymentMethodText, formatDate as formatDateLocal } from './helpers'
 
-defineProps<{
+const props = defineProps<{
   orderDetail: any
   showCountdown: boolean
   countdownText: string
@@ -278,12 +263,117 @@ defineEmits<{
   'call-customer': [phone?: string]
   'track-express': []
 }>()
+
+// 订单生命周期节点计算
+const lifecycleNodes = computed(() => {
+  const o = props.orderDetail
+  const status = o?.status || ''
+  const fmt = (t: string) => t ? formatDateTime(t).replace(/:\d{2}$/, '') : ''
+  const isVirtual = o?.orderProductType === 'virtual'
+
+  // 失败终态
+  const FAIL_STATES = ['audit_rejected', 'cancelled', 'rejected', 'rejected_returned']
+  const isFail = FAIL_STATES.includes(status)
+
+  // 动态终态标签
+  const termLabel: Record<string, string> = {
+    audit_rejected: '审核拒绝',
+    cancelled: '已取消',
+    rejected: '拒收退回',
+    rejected_returned: '已退回'
+  }
+  const terminalLabel = termLabel[status] || '已签收'
+  const terminalTime = ['delivered','signed','completed'].includes(status)
+    ? fmt(o?.deliveredAt || o?.completedAt)
+    : isFail ? fmt(o?.updateTime) : ''
+
+  // 各阶段到达状态集合
+  const AUDITING_REACHED = ['pending_audit','audit_rejected','pending_shipment','shipped','delivered','completed','signed','package_exception','rejected','rejected_returned']
+  const AUDITED_REACHED  = ['pending_shipment','shipped','delivered','completed','signed','package_exception','rejected','rejected_returned']
+  const SHIPPED_REACHED  = isVirtual
+    ? ['signed','completed']
+    : ['shipped','delivered','completed','signed','package_exception','rejected','rejected_returned']
+  const TERMINAL_REACHED = ['delivered','signed','completed',...FAIL_STATES]
+
+  const allNodes = [
+    { key: 'created',  label: '已创建', reached: true,                                    time: fmt(o?.createTime), fail: false },
+    { key: 'auditing', label: '待审核', reached: AUDITING_REACHED.includes(status),       time: '',                 fail: false },
+    { key: 'audited',  label: '已审核', reached: AUDITED_REACHED.includes(status),        time: fmt(o?.auditTime),  fail: false },
+    { key: 'shipped',  label: '已发货', reached: SHIPPED_REACHED.includes(status),        time: fmt(o?.shippedAt),  fail: false },
+    { key: 'terminal', label: terminalLabel, reached: TERMINAL_REACHED.includes(status), time: terminalTime,       fail: isFail  },
+  ]
+
+  // 计算 state：
+  // - 未到达 → pending（灰色虚线）
+  // - 终态节点且到达 → fail（红色）或 current（橙色）
+  // - 中间节点且到达 → done（黑色，后面还有已到达节点）或 current（橙色，是最后一个已到达节点）
+  return allNodes.map((n, idx) => {
+    if (!n.reached) return { ...n, state: 'pending' as const }
+    if (n.key === 'terminal') return { ...n, state: (n.fail ? 'fail' : 'current') as any }
+    const hasReachedAfter = allNodes.slice(idx + 1).some(m => m.reached)
+    return { ...n, state: (hasReachedAfter ? 'done' : 'current') as any }
+  })
+})
 </script>
 
 <style scoped>
 /* 布局 */
 .row-layout { display: flex; gap: 20px; margin-bottom: 20px; align-items: stretch; }
 .row-layout.full-width { display: block; }
+
+/* 生命周期时间轴 */
+.lifecycle-timeline {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  padding: 16px 0 8px;
+  gap: 0;
+}
+.lc-node {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 72px;
+  flex-shrink: 0;
+}
+.lc-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  margin-bottom: 6px;
+  flex-shrink: 0;
+}
+.lc-dot.done    { background: #1f2937; border: 2px solid #1f2937; }
+.lc-dot.current { background: #f97316; border: 2px solid #f97316; box-shadow: 0 0 0 3px rgba(249,115,22,0.2); }
+.lc-dot.pending { background: #fff; border: 2px solid #d1d5db; }
+.lc-dot.fail    { background: #ef4444; border: 2px solid #ef4444; box-shadow: 0 0 0 3px rgba(239,68,68,0.18); }
+.lc-label {
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.lc-node.done    .lc-label { color: #1f2937; }
+.lc-node.current .lc-label { color: #f97316; }
+.lc-node.pending .lc-label { color: #9ca3af; }
+.lc-node.fail    .lc-label { color: #ef4444; }
+.lc-time {
+  font-size: 11px;
+  color: #9ca3af;
+  margin-top: 3px;
+  white-space: nowrap;
+}
+/* 连接线 */
+.lc-line {
+  flex: 1 1 24px;
+  min-width: 24px;
+  height: 2px;
+  margin-bottom: 24px;
+}
+.lc-line.done    { background: #1f2937; }
+.lc-line.pending { background: repeating-linear-gradient(to right, #d1d5db 0, #d1d5db 5px, transparent 5px, transparent 10px); }
+/* fail 终态前的连接线用红色虚线 */
+.lc-line.fail    { background: repeating-linear-gradient(to right, #fca5a5 0, #fca5a5 5px, transparent 5px, transparent 10px); }
 
 /* 现代化卡片 */
 .modern-card { border: 1px solid #f0f2f5; box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04); border-radius: 12px; overflow: hidden; }
@@ -328,17 +418,6 @@ defineEmits<{
 .title-text { font-size: 18px; font-weight: 600; color: #1e293b; }
 .status-right-section { display: flex; align-items: center; gap: 24px; }
 .status-tag-modern { font-size: 14px; font-weight: 500; padding: 8px 16px; border-radius: 20px; border: none; }
-.status-timeline-horizontal { display: flex; gap: 32px; flex-wrap: wrap; }
-.timeline-item-horizontal { display: flex; align-items: center; gap: 12px; position: relative; }
-.timeline-item-horizontal:not(:last-child)::after { content: ''; position: absolute; right: -20px; top: 50%; width: 8px; height: 2px; background: #e2e8f0; transform: translateY(-50%); }
-.timeline-dot { width: 16px; height: 16px; border-radius: 50%; background: #64748b; border: 3px solid #ffffff; box-shadow: 0 0 0 2px #e2e8f0; flex-shrink: 0; margin-top: 2px; }
-.countdown-dot { background: #f59e0b; animation: pulse 2s infinite; }
-@keyframes pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.7; transform: scale(1.1); } }
-.timeline-content { flex: 1; min-width: 0; }
-.timeline-label { font-size: 14px; color: #64748b; margin-bottom: 4px; font-weight: 500; }
-.timeline-value { font-size: 15px; color: #1e293b; font-weight: 600; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.countdown-value { color: #f59e0b; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', monospace; }
-.countdown-badge { font-size: 12px; padding: 4px 8px; border-radius: 12px; }
 .countdown-section { display: flex; flex-direction: column; align-items: center; gap: 8px; }
 .countdown-timer { display: flex; align-items: center; gap: 8px; padding: 8px 16px; background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); border: 1px solid #f59e0b; border-radius: 20px; color: #92400e; font-weight: 600; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', monospace; }
 .countdown-icon { font-size: 16px; color: #f59e0b; animation: pulse 2s infinite; }

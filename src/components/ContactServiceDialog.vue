@@ -2,11 +2,12 @@
   <el-dialog
     v-model="visible"
     title="联系客服续费"
-    width="420px"
+    width="400px"
     :show-close="true"
     :close-on-click-modal="true"
     destroy-on-close
     class="contact-service-dialog"
+    :modal-class="'cs-light-overlay'"
   >
     <!-- 头部说明 -->
     <div class="cs-header">
@@ -159,44 +160,44 @@ watch(visible, (val) => {
 .cs-header {
   display: flex;
   align-items: center;
-  gap: 14px;
-  padding: 16px 20px;
+  gap: 12px;
+  padding: 12px 16px;
   background: linear-gradient(135deg, #ecf5ff, #f0f9eb);
-  border-radius: 12px;
-  margin-bottom: 20px;
+  border-radius: 10px;
+  margin-bottom: 14px;
 }
 
 .cs-header-icon {
-  font-size: 36px;
+  font-size: 30px;
   line-height: 1;
 }
 
 .cs-header-text h4 {
-  margin: 0 0 4px 0;
-  font-size: 16px;
+  margin: 0 0 2px 0;
+  font-size: 15px;
   font-weight: 600;
   color: #303133;
 }
 
 .cs-header-text p {
   margin: 0;
-  font-size: 13px;
+  font-size: 12px;
   color: #909399;
 }
 
 /* 二维码区域 */
 .cs-qrcode-section {
   text-align: center;
-  margin-bottom: 16px;
+  margin-bottom: 12px;
 }
 
 .cs-qrcode-wrapper {
-  width: 180px;
-  height: 180px;
-  margin: 0 auto 10px;
-  padding: 8px;
+  width: 150px;
+  height: 150px;
+  margin: 0 auto 8px;
+  padding: 6px;
   background: #f8fafc;
-  border-radius: 12px;
+  border-radius: 10px;
   border: 2px dashed #e4e7ed;
   display: flex;
   align-items: center;
@@ -211,7 +212,7 @@ watch(visible, (val) => {
 }
 
 .cs-qrcode-label {
-  font-size: 13px;
+  font-size: 12px;
   color: #909399;
   margin: 0;
 }
@@ -220,7 +221,7 @@ watch(visible, (val) => {
 .cs-divider {
   display: flex;
   align-items: center;
-  margin: 16px 0;
+  margin: 12px 0;
 }
 
 .cs-divider::before,
@@ -232,7 +233,7 @@ watch(visible, (val) => {
 }
 
 .cs-divider span {
-  padding: 0 14px;
+  padding: 0 12px;
   font-size: 12px;
   color: #c0c4cc;
 }
@@ -241,15 +242,15 @@ watch(visible, (val) => {
 .cs-contact-list {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
 }
 
 .cs-contact-item {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 14px 16px;
-  border-radius: 10px;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 8px;
   text-decoration: none;
   transition: all 0.25s ease;
   cursor: pointer;
@@ -258,8 +259,8 @@ watch(visible, (val) => {
 }
 
 .cs-contact-item:hover {
-  transform: translateX(4px);
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+  transform: translateX(3px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
 }
 
 .cs-contact-item.cs-wechat {
@@ -290,9 +291,9 @@ watch(visible, (val) => {
 }
 
 .cs-contact-icon {
-  font-size: 22px;
+  font-size: 20px;
   line-height: 1;
-  width: 28px;
+  width: 24px;
   text-align: center;
   flex-shrink: 0;
   color: #07c160;
@@ -312,10 +313,10 @@ watch(visible, (val) => {
 
 .cs-contact-title {
   display: block;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
   color: #303133;
-  margin-bottom: 2px;
+  margin-bottom: 1px;
 }
 
 .cs-contact-desc {
@@ -328,7 +329,7 @@ watch(visible, (val) => {
 }
 
 .cs-contact-arrow {
-  font-size: 16px;
+  font-size: 14px;
   color: #c0c4cc;
   flex-shrink: 0;
   transition: transform 0.2s;
@@ -341,7 +342,7 @@ watch(visible, (val) => {
 
 /* 空状态 */
 .cs-empty {
-  padding: 20px 0;
+  padding: 16px 0;
 }
 
 /* 工作时间 */
@@ -350,22 +351,33 @@ watch(visible, (val) => {
   align-items: center;
   justify-content: center;
   gap: 6px;
-  margin-top: 16px;
-  padding: 10px 16px;
+  margin-top: 12px;
+  padding: 8px 14px;
   background: #f5f7fa;
   border-radius: 8px;
   font-size: 12px;
   color: #909399;
 }
 
-/* 对话框全局样式微调 */
+/* 对话框样式微调 */
 :deep(.el-dialog__header) {
-  padding-bottom: 10px;
+  padding: 14px 20px 10px;
   border-bottom: 1px solid #f0f0f0;
 }
 
 :deep(.el-dialog__body) {
-  padding: 20px;
+  padding: 16px 20px;
+}
+
+:deep(.el-dialog__footer) {
+  padding: 10px 20px 14px;
+}
+</style>
+
+<!-- 全局样式：遮罩层改为半透明浅色 -->
+<style>
+.cs-light-overlay {
+  background-color: rgba(0, 0, 0, 0.25) !important;
 }
 </style>
 

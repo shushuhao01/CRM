@@ -1,5 +1,6 @@
 /**
  * 企微会话存档记录实体
+ * V2.0: 新增发送者类型、接收者类型、OSS路径字段
  */
 import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, Index } from 'typeorm';
 
@@ -9,6 +10,9 @@ import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, Index } from 
 export class WecomChatRecord {
   @PrimaryGeneratedColumn()
   id: number;
+
+  @Column({ name: 'tenant_id', type: 'varchar', length: 36, nullable: true, comment: '租户ID' })
+  tenantId?: string;
 
   @Column({ name: 'wecom_config_id', type: 'int', comment: '企微配置ID' })
   wecomConfigId: number;
@@ -60,6 +64,17 @@ export class WecomChatRecord {
 
   @Column({ name: 'is_sensitive', type: 'boolean', default: false, comment: '是否标记敏感' })
   isSensitive: boolean;
+
+  // ==================== V2.0 新增字段 ====================
+
+  @Column({ name: 'sender_type', type: 'tinyint', nullable: true, comment: '发送者类型: 1员工 2客户' })
+  senderType: number;
+
+  @Column({ name: 'receiver_type', type: 'tinyint', nullable: true, comment: '接收者类型: 1员工 2客户 3群聊' })
+  receiverType: number;
+
+  @Column({ name: 'oss_path', type: 'varchar', length: 256, nullable: true, comment: 'OSS存储路径' })
+  ossPath: string;
 
   @CreateDateColumn({ name: 'created_at', comment: '创建时间' })
   createdAt: Date;

@@ -51,6 +51,11 @@ const TENANT_ENTITIES = new Set([
   'wecom_configs', 'wecom_user_bindings', 'wecom_customers',
   'wecom_acquisition_links', 'wecom_service_accounts', 'wecom_payment_records',
   'wecom_chat_records',
+  // V2.0 新增：企微扩展表
+  'wecom_customer_groups', 'wecom_sensitive_words', 'wecom_sensitive_hits',
+  'wecom_quality_rules', 'wecom_quality_inspections',
+  'wecom_archive_settings', 'wecom_archive_members',
+  'wecom_vas_orders', 'wecom_vas_configs',
   // 新增：外呼配置相关
   'call_lines', 'user_line_assignments', 'phone_configs',
   'work_phones', 'device_bind_logs', 'global_call_config',

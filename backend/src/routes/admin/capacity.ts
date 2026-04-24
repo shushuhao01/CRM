@@ -8,8 +8,10 @@ import { log } from '../../config/logger';
 
 const router = Router();
 
-// 初始化表结构
-capacityService.ensureTables().catch(() => {});
+// 延迟初始化表结构,等待数据库连接建立
+setTimeout(() => {
+  capacityService.ensureTables().catch(() => {});
+}, 3000);
 
 /**
  * GET /api/v1/admin/capacity/configs

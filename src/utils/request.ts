@@ -2,8 +2,6 @@ import axios, { type AxiosInstance, type AxiosRequestConfig, type AxiosResponse,
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useUserStore } from '@/stores/user'
 import { useAppStore } from '@/stores/app'
-import router from '@/router'
-import { createSafeNavigator } from '@/utils/navigation'
 
 // 请求配置接口
 interface RequestConfig extends AxiosRequestConfig {
@@ -50,7 +48,7 @@ const generateRequestKey = (config: AxiosRequestConfig): string => {
 
 // 请求拦截器
 service.interceptors.request.use(
-  (config: RequestConfig) => {
+  (config: any) => {
     const userStore = useUserStore()
     const appStore = useAppStore()
 
@@ -58,7 +56,7 @@ service.interceptors.request.use(
     const isPublicPage = window.location.pathname.startsWith('/public-help')
     if (isPublicPage) {
       // 公开页面不需要发送任何API请求，直接抛出取消错误
-      console.log('[Request] 公开页面，取消API请求:', config.url)
+      if (import.meta.env.DEV) console.log('[Request] 公开页面，取消API请求:', config.url)
       return Promise.reject(new Error('公开页面，取消API请求'))
     }
 
@@ -103,11 +101,13 @@ service.interceptors.request.use(
       }
     }
 
-    console.log(`[API Request] ${config.method?.toUpperCase()} ${config.url}`, {
-      params: config.params,
-      data: config.data,
-      headers: config.headers
-    })
+    if (import.meta.env.DEV) {
+      console.log(`[API Request] ${config.method?.toUpperCase()} ${config.url}`, {
+        params: config.params,
+        data: config.data,
+        headers: config.headers
+      })
+    }
 
     return config
   },
@@ -130,20 +130,24 @@ service.interceptors.response.use(
     const appStore = useAppStore()
     const config = response.config as RequestConfig
 
-    // 移除请求计数
-    requestCount = Math.max(0, requestCount - 1)
-    if (requestCount === 0) {
-      appStore.hideLoading('global')
+    // 移除请求计数（只有 showLoading: true 的请求才参与计数）
+    if (config.showLoading === true) {
+      requestCount = Math.max(0, requestCount - 1)
+      if (requestCount === 0) {
+        appStore.hideLoading('global')
+      }
     }
 
     // 移除pending请求
     const requestKey = generateRequestKey(config)
     pendingRequests.delete(requestKey)
 
-    console.log(`[API Response] ${config.method?.toUpperCase()} ${config.url}`, {
-      status: response.status,
-      data: response.data
-    })
+    if (import.meta.env.DEV) {
+      console.log(`[API Response] ${config.method?.toUpperCase()} ${config.url}`, {
+        status: response.status,
+        data: response.data
+      })
+    }
 
     const { code, message, data, success } = response.data
 
@@ -158,14 +162,28 @@ service.interceptors.response.use(
       switch (code) {
         case 401:
           // 🔥 Token过期，显示友好提示并跳转登录页
-          console.log('[Request] ⚠️ 收到401错误，Token已过期')
+          if (import.meta.env.DEV) console.log('[Request] 收到401错误，Token已过期')
           handleUnauthorized()
           break
         case 403: {
-          // 🔥 租户资源配额超限
+          // 🔥 租户资源配额超限 - 显示弹窗引导升级
           const respData = response.data as any
-          if (respData?.code === 'USER_LIMIT_EXCEEDED' || respData?.code === 'STORAGE_LIMIT_EXCEEDED') {
-            ElMessage.error({ message: errorMessage, duration: 5000 })
+          if (respData?.code === 'USER_LIMIT_EXCEEDED') {
+            import('./licenseDialog').then(({ showQuotaExceededDialog }) => {
+              showQuotaExceededDialog({
+                type: 'user',
+                message: errorMessage,
+                data: respData?.data
+              })
+            })
+          } else if (respData?.code === 'STORAGE_LIMIT_EXCEEDED') {
+            import('./licenseDialog').then(({ showQuotaExceededDialog }) => {
+              showQuotaExceededDialog({
+                type: 'storage',
+                message: errorMessage,
+                data: respData?.data
+              })
+            })
           } else if (respData?.code === 'LICENSE_EXPIRED_WRITE_BLOCKED') {
             import('./licenseDialog').then(({ showLicenseExpiredDialog }) => {
               const deployMode = (localStorage.getItem('crm_deploy_mode') as 'private' | 'saas') || 'saas'
@@ -201,10 +219,12 @@ service.interceptors.response.use(
     const appStore = useAppStore()
     const config = error.config as RequestConfig
 
-    // 移除请求计数
-    requestCount = Math.max(0, requestCount - 1)
-    if (requestCount === 0) {
-      appStore.hideLoading('global')
+    // 移除请求计数（只有 showLoading: true 的请求才参与计数）
+    if (config?.showLoading === true) {
+      requestCount = Math.max(0, requestCount - 1)
+      if (requestCount === 0) {
+        appStore.hideLoading('global')
+      }
     }
 
     // 移除pending请求
@@ -218,7 +238,7 @@ service.interceptors.response.use(
     // 🔥 公开页面静默处理所有错误
     const isPublicPage = window.location.pathname.startsWith('/public-help')
     if (isPublicPage) {
-      console.log('[Request] 公开页面，静默处理错误')
+      if (import.meta.env.DEV) console.log('[Request] 公开页面，静默处理错误')
       return Promise.reject(error)
     }
 
@@ -232,34 +252,54 @@ service.interceptors.response.use(
 
     if (error.response) {
       // 服务器响应错误
-      const { status, data } = error.response
+      const { status } = error.response
+      const data = error.response.data as any
 
       switch (status) {
         case 400:
           errorMessage = data?.message || '请求参数错误'
           break
-        case 401:
+        case 401: {
           // 🔥 公开页面不处理401错误（静默忽略）
           const currentPath = window.location.pathname
           if (currentPath.startsWith('/public-help')) {
-            console.log('[Request] 公开页面，静默忽略401错误')
+            if (import.meta.env.DEV) console.log('[Request] 公开页面，静默忽略401错误')
+            return Promise.reject(error)
+          }
+          // 🔥 在线席位：被管理员踢出，显示专用提示
+          if (data?.code === 'SESSION_KICKED') {
+            if (import.meta.env.DEV) console.log('[Request] 收到401错误，会话被踢出')
+            handleUnauthorized(data?.message || '您的会话已被管理员下线，请重新登录')
             return Promise.reject(error)
           }
           // 🔥 Token过期，显示友好提示并跳转登录页
-          console.log('[Request] ⚠️ 收到401错误，Token已过期')
+          if (import.meta.env.DEV) console.log('[Request] 收到401错误，Token已过期')
           handleUnauthorized()
           return Promise.reject(error)
+        }
          case 403:
-          // 🔥 租户资源配额超限的友好提示
+          // 🔥 租户资源配额超限 - 显示弹窗引导升级
           if (data?.code === 'USER_LIMIT_EXCEEDED') {
-            errorMessage = data?.message || '用户数已达上限，请联系管理员扩容或删除现有用户后重试'
-            ElMessage.error({ message: errorMessage, duration: 5000 })
-            return Promise.reject(error)
+            errorMessage = data?.message || '用户数已达上限，请升级套餐或删除现有用户后重试'
+            import('./licenseDialog').then(({ showQuotaExceededDialog }) => {
+              showQuotaExceededDialog({
+                type: 'user',
+                message: errorMessage,
+                data: data?.data
+              })
+            })
+            return Promise.reject(Object.assign(error, { __handled: true }))
           }
           if (data?.code === 'STORAGE_LIMIT_EXCEEDED') {
-            errorMessage = data?.message || '存储空间不足，请联系管理员扩容后重试'
-            ElMessage.error({ message: errorMessage, duration: 5000 })
-            return Promise.reject(error)
+            errorMessage = data?.message || '存储空间不足，请升级套餐或清理文件后重试'
+            import('./licenseDialog').then(({ showQuotaExceededDialog }) => {
+              showQuotaExceededDialog({
+                type: 'storage',
+                message: errorMessage,
+                data: data?.data
+              })
+            })
+            return Promise.reject(Object.assign(error, { __handled: true }))
           }
           // 🔥 私有部署授权过期写入限制
           if (data?.code === 'LICENSE_EXPIRED_WRITE_BLOCKED') {
@@ -268,12 +308,12 @@ service.interceptors.response.use(
               const deployMode = (localStorage.getItem('crm_deploy_mode') as 'private' | 'saas') || 'saas'
               showLicenseExpiredDialog({ deployMode })
             })
-            return Promise.reject(error)
+            return Promise.reject(Object.assign(error, { __handled: true }))
           }
           errorMessage = data?.message || '没有权限访问此资源'
           break
         case 404:
-          errorMessage = '请求的资源不存在'
+          errorMessage = data?.message || '请求的资源不存在'
           break
         case 408:
           errorMessage = '请求超时，请重试'
@@ -282,7 +322,7 @@ service.interceptors.response.use(
           errorMessage = '请求过于频繁，请稍后重试'
           break
         case 500:
-          errorMessage = '服务器内部错误'
+          errorMessage = data?.message || '服务器内部错误'
           break
         case 502:
           errorMessage = '网关错误'
@@ -327,7 +367,17 @@ service.interceptors.response.use(
       })
     }
 
-    return Promise.reject(new Error(errorMessage))
+    // 🔥 将原始响应数据附加到Error对象上，方便API层获取后端返回的errorType等
+    const err = new Error(errorMessage) as any
+    if (error.response?.data) {
+      err.__responseData = error.response.data
+      err.response = error.response
+    }
+    // 传递 __handled 标记（如果已经由拦截器处理，调用方可选择静默处理）
+    if ((error as any).__handled) {
+      err.__handled = true
+    }
+    return Promise.reject(err)
   }
 )
 
@@ -340,16 +390,16 @@ export const setLoggingOutState = (state: boolean) => {
   isLoggingOut = state
 }
 
-const handleUnauthorized = async () => {
+const handleUnauthorized = async (customMessage?: string) => {
   // 🔥 如果正在执行登出操作，不显示弹窗（避免循环）
   if (isLoggingOut) {
-    console.log('[Request] 正在登出中，跳过401弹窗')
+    if (import.meta.env.DEV) console.log('[Request] 正在登出中，跳过401弹窗')
     return
   }
 
   // 防止多个请求同时触发多个弹窗
   if (isShowingAuthDialog) {
-    console.log('[Request] 弹窗已显示，跳过重复弹窗')
+    if (import.meta.env.DEV) console.log('[Request] 弹窗已显示，跳过重复弹窗')
     return
   }
 
@@ -357,15 +407,14 @@ const handleUnauthorized = async () => {
   const currentPath = window.location.pathname
   const publicPaths = ['/login', '/public-help', '/register', '/agreement']
   if (publicPaths.some(path => currentPath.startsWith(path))) {
-    console.log('[Request] 在公开页面，跳过401弹窗:', currentPath)
+    if (import.meta.env.DEV) console.log('[Request] 在公开页面，跳过401弹窗:', currentPath)
     return
   }
 
   isShowingAuthDialog = true
+  sessionStorage.setItem('auth_dialog_showing', 'true')  // 共享状态给 apiService.ts
 
   try {
-    const safeNavigator = createSafeNavigator(router)
-
     // 🔥 先清除本地存储的认证数据，防止后续请求继续触发401
     localStorage.removeItem('auth_token')
     localStorage.removeItem('user')
@@ -377,28 +426,29 @@ const handleUnauthorized = async () => {
     sessionStorage.removeItem('user')
 
     // 显示友好提示
+    const isKicked = !!customMessage
     await ElMessageBox.alert(
-      '您的登录已过期，请重新登录以继续使用系统。',
-      '登录已过期',
+      customMessage || '您的登录已过期，请重新登录以继续使用系统。',
+      isKicked ? '已被下线' : '登录已过期',
       {
         confirmButtonText: '重新登录',
         type: 'warning',
-        showClose: true,
+        showClose: false,
         closeOnClickModal: false,
-        closeOnPressEscape: true
+        closeOnPressEscape: false
       }
     )
 
-    // 跳转到登录页
-    safeNavigator.push('/login')
+    // 🔥 使用硬跳转确保页面完全重载、清除所有内存状态
+    window.location.href = '/login'
   } catch {
     // 用户关闭弹窗也跳转登录页
-    const safeNavigator = createSafeNavigator(router)
-    safeNavigator.push('/login')
+    window.location.href = '/login'
   } finally {
     // 🔥 延迟重置标志，确保短时间内不会再次弹窗
     setTimeout(() => {
       isShowingAuthDialog = false
+      sessionStorage.removeItem('auth_dialog_showing')
     }, 1000)
   }
 }
@@ -467,4 +517,16 @@ export const cancelRequest = (config: AxiosRequestConfig) => {
   }
 }
 
-export default service
+/**
+ * 自定义 AxiosInstance 类型 —— 反映响应拦截器已解包 AxiosResponse，直接返回 data
+ * 解决 TS2339: Property 'list' / 'total' does not exist on type 'AxiosResponse'
+ */
+interface CustomAxiosInstance extends AxiosInstance {
+  get<T = any>(url: string, config?: AxiosRequestConfig): Promise<T>
+  post<T = any>(url: string, data?: any, config?: AxiosRequestConfig): Promise<T>
+  put<T = any>(url: string, data?: any, config?: AxiosRequestConfig): Promise<T>
+  delete<T = any>(url: string, config?: AxiosRequestConfig): Promise<T>
+  patch<T = any>(url: string, data?: any, config?: AxiosRequestConfig): Promise<T>
+}
+
+export default service as CustomAxiosInstance

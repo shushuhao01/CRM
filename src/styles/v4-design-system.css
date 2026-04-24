@@ -1,0 +1,382 @@
+/**
+ * V4 Design System — 企微模块精细化设计规范
+ * 全局CSS变量 + 通用组件样式
+ * 参考: 企微模块精细化设计方案V4-2026-04-14.md 第十七章
+ */
+
+:root {
+  /* ========== 色彩体系（浅色系） ========== */
+  --v4-primary: #4C6EF5;
+  --v4-primary-light: #EEF2FF;
+  --v4-primary-hover: #4263EB;
+  --v4-ai-purple: #7C3AED;
+  --v4-ai-purple-light: #F5F3FF;
+  --v4-ai-purple-hover: #6D28D9;
+  --v4-success: #10B981;
+  --v4-success-light: #ECFDF5;
+  --v4-warning: #F59E0B;
+  --v4-warning-light: #FFFBEB;
+  --v4-danger: #EF4444;
+  --v4-danger-light: #FEF2F2;
+  --v4-info: #6B7280;
+  --v4-info-light: #F3F4F6;
+
+  /* 文字色 */
+  --v4-text-primary: #1F2937;
+  --v4-text-regular: #4B5563;
+  --v4-text-secondary: #9CA3AF;
+  --v4-text-placeholder: #D1D5DB;
+
+  /* 背景色 */
+  --v4-bg-page: #F5F7FA;
+  --v4-bg-card: #FFFFFF;
+  --v4-bg-table-header: #F9FAFB;
+  --v4-bg-table-hover: #F0F5FF;
+  --v4-bg-table-stripe: #FAFBFC;
+
+  /* 边框 */
+  --v4-border: #E5E7EB;
+  --v4-border-light: #F3F4F6;
+
+  /* 圆角 */
+  --v4-radius-sm: 6px;
+  --v4-radius-md: 8px;
+  --v4-radius-lg: 12px;
+  --v4-radius-xl: 16px;
+
+  /* 阴影 */
+  --v4-shadow-sm: 0 1px 3px rgba(0,0,0,0.06);
+  --v4-shadow-md: 0 4px 12px rgba(0,0,0,0.08);
+  --v4-shadow-hover: 0 8px 24px rgba(0,0,0,0.12);
+
+  /* 字体 */
+  --v4-font-h1: 18px;
+  --v4-font-body: 14px;
+  --v4-font-small: 12px;
+  --v4-font-number: 28px;
+
+  /* ECharts调色板 */
+  --v4-chart-1: #4C6EF5;
+  --v4-chart-2: #7C3AED;
+  --v4-chart-3: #10B981;
+  --v4-chart-4: #F59E0B;
+  --v4-chart-5: #EF4444;
+  --v4-chart-6: #EC4899;
+  --v4-chart-7: #06B6D4;
+  --v4-chart-8: #8B5CF6;
+}
+
+/* ========== V4 统计卡片 ========== */
+.v4-stat-card {
+  background: var(--v4-bg-card);
+  border-radius: var(--v4-radius-lg);
+  padding: 20px 24px;
+  box-shadow: var(--v4-shadow-sm);
+  border: 1px solid var(--v4-border-light);
+  transition: all 0.25s ease;
+  position: relative;
+  overflow: hidden;
+}
+.v4-stat-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--v4-shadow-md);
+}
+.v4-stat-card .stat-num {
+  font-size: var(--v4-font-number);
+  font-weight: 700;
+  color: var(--v4-text-primary);
+  line-height: 1.2;
+}
+.v4-stat-card .stat-num.primary { color: var(--v4-primary); }
+.v4-stat-card .stat-num.success { color: var(--v4-success); }
+.v4-stat-card .stat-num.warning { color: var(--v4-warning); }
+.v4-stat-card .stat-num.danger { color: var(--v4-danger); }
+.v4-stat-card .stat-num.purple { color: var(--v4-ai-purple); }
+.v4-stat-card .stat-label {
+  font-size: var(--v4-font-small);
+  color: var(--v4-text-secondary);
+  margin-top: 6px;
+}
+.v4-stat-card .stat-trend {
+  font-size: 12px;
+  margin-top: 4px;
+}
+.v4-stat-card .stat-trend.up { color: var(--v4-success); }
+.v4-stat-card .stat-trend.down { color: var(--v4-danger); }
+.v4-stat-card .stat-sparkline {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 80px;
+  height: 36px;
+  opacity: 0.15;
+}
+
+/* ========== V4 表格覆盖 ========== */
+.v4-table .el-table {
+  --el-table-border-color: transparent;
+  --el-table-header-bg-color: var(--v4-bg-table-header);
+  --el-table-row-hover-bg-color: var(--v4-bg-table-hover);
+  --el-table-header-text-color: var(--v4-text-regular);
+  --el-table-text-color: var(--v4-text-primary);
+  border-radius: var(--v4-radius-md);
+  overflow: hidden;
+}
+.v4-table .el-table th.el-table__cell {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 14px 0;
+  background: var(--v4-bg-table-header) !important;
+  border-bottom: 1px solid var(--v4-border-light) !important;
+}
+.v4-table .el-table td.el-table__cell {
+  padding: 16px 0;
+  border-bottom: 1px solid var(--v4-border-light) !important;
+}
+.v4-table .el-table--striped .el-table__body tr.el-table__row--striped td.el-table__cell {
+  background: var(--v4-bg-table-stripe) !important;
+}
+
+/* ========== V4 胶囊Tab ========== */
+.v4-tabs .el-tabs__header {
+  margin-bottom: 20px;
+}
+.v4-tabs .el-tabs__nav-wrap::after {
+  display: none;
+}
+.v4-tabs .el-tabs__active-bar {
+  display: none;
+}
+.v4-tabs .el-tabs__item {
+  padding: 8px 20px !important;
+  height: auto !important;
+  line-height: 1.5 !important;
+  border-radius: var(--v4-radius-md);
+  font-size: 14px;
+  color: var(--v4-text-regular);
+  transition: all 0.2s;
+  margin-right: 4px;
+  border: none !important;
+}
+.v4-tabs .el-tabs__item:hover {
+  color: var(--v4-primary);
+  background: var(--v4-primary-light);
+}
+.v4-tabs .el-tabs__item.is-active {
+  color: var(--v4-primary);
+  background: var(--v4-primary-light);
+  font-weight: 600;
+}
+
+/* ========== V4 Tag 柔色系 ========== */
+.v4-tag-vip { background: #FFF7ED; color: #C2410C; border: none; }
+.v4-tag-intent { background: var(--v4-primary-light); color: var(--v4-primary); border: none; }
+.v4-tag-new { background: var(--v4-success-light); color: var(--v4-success); border: none; }
+.v4-tag-channel { background: #FDF2F8; color: #DB2777; border: none; }
+.v4-tag-deal { background: var(--v4-ai-purple-light); color: var(--v4-ai-purple); border: none; }
+.v4-tag-lost { background: var(--v4-info-light); color: var(--v4-info); border: none; }
+.v4-tag-risk { background: var(--v4-danger-light); color: var(--v4-danger); border: none; }
+
+/* ========== V4 AI 视觉标识 ========== */
+.v4-ai-btn {
+  background: linear-gradient(135deg, #7C3AED, #6D28D9) !important;
+  border: none !important;
+  color: #fff !important;
+  border-radius: var(--v4-radius-md);
+  font-weight: 600;
+  transition: all 0.2s;
+}
+.v4-ai-btn:hover {
+  background: linear-gradient(135deg, #6D28D9, #5B21B6) !important;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(124,58,237,0.3);
+}
+.v4-ai-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--v4-ai-purple-light);
+  color: var(--v4-ai-purple);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+.v4-ai-badge::before {
+  content: '✦';
+  font-size: 10px;
+}
+.v4-ai-region {
+  border-left: 3px solid var(--v4-ai-purple);
+  background: var(--v4-ai-purple-light);
+  border-radius: 0 var(--v4-radius-md) var(--v4-radius-md) 0;
+  padding: 12px 16px;
+}
+
+/* ========== V4 抽屉/面板 ========== */
+.v4-drawer .el-drawer__body {
+  background: var(--v4-bg-page);
+  padding: 20px;
+}
+.v4-drawer-card {
+  background: var(--v4-bg-card);
+  border-radius: var(--v4-radius-lg);
+  padding: 20px;
+  box-shadow: var(--v4-shadow-sm);
+  margin-bottom: 16px;
+}
+
+/* ========== V4 筛选栏 ========== */
+.v4-filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  background: var(--v4-bg-card);
+  border-radius: var(--v4-radius-md);
+  margin-bottom: 16px;
+  box-shadow: var(--v4-shadow-sm);
+  flex-wrap: wrap;
+}
+.v4-filter-bar .el-input__wrapper,
+.v4-filter-bar .el-select .el-input__wrapper {
+  border-radius: var(--v4-radius-md);
+}
+
+/* ========== V4 卡片列表 ========== */
+.v4-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+}
+.v4-card-item {
+  background: var(--v4-bg-card);
+  border: 1px solid var(--v4-border-light);
+  border-radius: var(--v4-radius-lg);
+  padding: 20px;
+  transition: all 0.25s;
+  cursor: pointer;
+}
+.v4-card-item:hover {
+  border-color: var(--v4-primary);
+  box-shadow: var(--v4-shadow-md);
+  transform: translateY(-2px);
+}
+
+/* ========== V4 页面容器 ========== */
+.v4-page {
+  padding: 20px;
+  background: var(--v4-bg-page);
+  min-height: 100%;
+}
+.v4-page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+.v4-page-title {
+  font-size: var(--v4-font-h1);
+  font-weight: 600;
+  color: var(--v4-text-primary);
+}
+
+/* ========== V4 进度条 ========== */
+.v4-progress-bar {
+  height: 8px;
+  background: var(--v4-border-light);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.v4-progress-bar-inner {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.4s ease;
+}
+.v4-progress-bar-inner.primary { background: linear-gradient(90deg, #4C6EF5, #748FFC); }
+.v4-progress-bar-inner.success { background: linear-gradient(90deg, #10B981, #34D399); }
+.v4-progress-bar-inner.warning { background: linear-gradient(90deg, #F59E0B, #FBBF24); }
+.v4-progress-bar-inner.danger { background: linear-gradient(90deg, #EF4444, #F87171); }
+
+/* ========== V4 空状态 ========== */
+.v4-empty {
+  text-align: center;
+  padding: 60px 20px;
+  color: var(--v4-text-secondary);
+}
+.v4-empty-icon {
+  font-size: 48px;
+  margin-bottom: 12px;
+  opacity: 0.4;
+}
+.v4-empty-text {
+  font-size: 14px;
+  margin-bottom: 16px;
+}
+.v4-empty-action .el-button {
+  border-radius: var(--v4-radius-md);
+}
+
+/* ========== V4 全局 Element Plus 覆盖 ========== */
+.el-card {
+  --el-card-border-radius: var(--v4-radius-lg);
+  border: 1px solid var(--v4-border-light);
+  box-shadow: var(--v4-shadow-sm);
+}
+.el-button--primary {
+  --el-button-bg-color: var(--v4-primary);
+  --el-button-border-color: var(--v4-primary);
+  --el-button-hover-bg-color: var(--v4-primary-hover);
+  --el-button-hover-border-color: var(--v4-primary-hover);
+  border-radius: var(--v4-radius-md);
+}
+.el-tag {
+  border-radius: 6px;
+  border: none;
+  font-weight: 500;
+}
+.el-tag--success {
+  background: var(--v4-success-light);
+  color: var(--v4-success);
+}
+.el-tag--warning {
+  background: var(--v4-warning-light);
+  color: #D97706;
+}
+.el-tag--danger {
+  background: var(--v4-danger-light);
+  color: var(--v4-danger);
+}
+.el-tag--info {
+  background: var(--v4-info-light);
+  color: var(--v4-info);
+}
+.el-tag--primary {
+  background: var(--v4-primary-light);
+  color: var(--v4-primary);
+}
+
+/* ========== V4 通用工具类 ========== */
+.v4-stats-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 16px;
+  margin-bottom: 20px;
+}
+.v4-section-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--v4-text-primary);
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.v4-divider {
+  height: 1px;
+  background: var(--v4-border-light);
+  margin: 20px 0;
+}
+

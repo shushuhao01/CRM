@@ -146,5 +146,77 @@ export const customerDetailApi = {
       returnCount: 0,
       lastOrderDate: null
     })
+  },
+
+  // 获取客户操作日志（分页）
+  getCustomerLogs: async (customerId: string, offset = 0, limit = 6) => {
+    console.log(`[API] 获取客户 ${customerId} 的操作日志, offset=${offset}, limit=${limit}`)
+    return safeRequest(`/customers/${customerId}/logs?offset=${offset}&limit=${limit}`, {
+      method: 'GET'
+    }, { list: [], hasMore: false })
+  },
+
+  // 创建客户操作日志
+  addCustomerLog: async (customerId: string, logData: { logType: string; content: string; detail?: any }) => {
+    console.log(`[API] 为客户 ${customerId} 添加操作日志`)
+    const response = await request(`/customers/${customerId}/logs`, {
+      method: 'POST',
+      data: logData
+    })
+    return response?.data || response
+  },
+
+  // 获取客户地址列表
+  getCustomerAddresses: async (customerId: string) => {
+    console.log(`[API] 获取客户 ${customerId} 的地址列表`)
+    return safeRequest(`/customers/${customerId}/addresses`, { method: 'GET' }, [])
+  },
+
+  // 添加客户地址
+  addCustomerAddress: async (customerId: string, data: { content: string }) => {
+    console.log(`[API] 为客户 ${customerId} 添加地址`)
+    const response = await request(`/customers/${customerId}/addresses`, { method: 'POST', data })
+    return response?.data || response
+  },
+
+  // 更新客户地址
+  updateCustomerAddress: async (customerId: string, addressId: number, data: { content: string }) => {
+    console.log(`[API] 更新客户 ${customerId} 的地址 ${addressId}`)
+    const response = await request(`/customers/${customerId}/addresses/${addressId}`, { method: 'PUT', data })
+    return response?.data || response
+  },
+
+  // 删除客户地址
+  deleteCustomerAddress: async (customerId: string, addressId: number) => {
+    console.log(`[API] 删除客户 ${customerId} 的地址 ${addressId}`)
+    const response = await request(`/customers/${customerId}/addresses/${addressId}`, { method: 'DELETE' })
+    return response?.data || response
+  },
+
+  // 获取客户备注列表
+  getCustomerNotes: async (customerId: string) => {
+    console.log(`[API] 获取客户 ${customerId} 的备注列表`)
+    return safeRequest(`/customers/${customerId}/notes`, { method: 'GET' }, [])
+  },
+
+  // 添加客户备注
+  addCustomerNote: async (customerId: string, data: { content: string }) => {
+    console.log(`[API] 为客户 ${customerId} 添加备注`)
+    const response = await request(`/customers/${customerId}/notes`, { method: 'POST', data })
+    return response?.data || response
+  },
+
+  // 更新客户备注
+  updateCustomerNote: async (customerId: string, noteId: number, data: { content: string }) => {
+    console.log(`[API] 更新客户 ${customerId} 的备注 ${noteId}`)
+    const response = await request(`/customers/${customerId}/notes/${noteId}`, { method: 'PUT', data })
+    return response?.data || response
+  },
+
+  // 删除客户备注
+  deleteCustomerNote: async (customerId: string, noteId: number) => {
+    console.log(`[API] 删除客户 ${customerId} 的备注 ${noteId}`)
+    const response = await request(`/customers/${customerId}/notes/${noteId}`, { method: 'DELETE' })
+    return response?.data || response
   }
 }

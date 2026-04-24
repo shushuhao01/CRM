@@ -48,6 +48,8 @@ export interface CallStatistics {
   averageDuration: number
   connectedCalls: number
   missedCalls: number
+  incomingCalls?: number
+  outgoingCalls?: number
   connectionRate: number
   dailyStats: Array<{
     date: string

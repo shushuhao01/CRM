@@ -25,7 +25,8 @@ export function createPermissionHelpers(
   })
   const isDepartmentManager = computed(() => {
     const role = currentUser.value?.role
-    return role === 'department_manager' || role === '部门经理' || role === '部门负责人'
+    return role === 'department_manager' || role === 'manager' ||
+           role === '部门经理' || role === '部门负责人' || role === '经理'
   })
   const isSalesStaff = computed(() => {
     const role = currentUser.value?.role

@@ -1,12 +1,20 @@
 /**
  * 企微客户信息实体
+ * V2.0: 新增标签名称、手机号、渠道来源、消息统计等字段
  */
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, Index } from 'typeorm';
 
 @Entity('wecom_customers')
+@Index('IDX_wecom_customers_config_external', ['wecomConfigId', 'externalUserId'], { unique: true })
+@Index('IDX_wecom_customers_config_follow_status', ['wecomConfigId', 'followUserId', 'status'])
+@Index('IDX_wecom_customers_config_addtime', ['wecomConfigId', 'addTime'])
+@Index('IDX_wecom_customers_tenant', ['tenantId'])
 export class WecomCustomer {
   @PrimaryGeneratedColumn()
   id: number;
+
+  @Column({ name: 'tenant_id', type: 'varchar', length: 36, nullable: true, comment: '租户ID' })
+  tenantId?: string;
 
   @Column({ name: 'wecom_config_id', type: 'int', comment: '企微配置ID' })
   wecomConfigId: number;
@@ -41,6 +49,9 @@ export class WecomCustomer {
   @Column({ name: 'follow_user_name', type: 'varchar', length: 100, nullable: true, comment: '添加此客户的成员姓名' })
   followUserName: string;
 
+  @Column({ name: 'follow_users', type: 'text', nullable: true, comment: '所有跟进人信息(JSON数组)，包含完整的follow_user列表' })
+  followUsers: string;
+
   @Column({ type: 'varchar', length: 500, nullable: true, comment: '成员对客户的备注' })
   remark: string;
 
@@ -70,6 +81,29 @@ export class WecomCustomer {
 
   @Column({ name: 'last_chat_time', type: 'datetime', nullable: true, comment: '最后聊天时间' })
   lastChatTime: Date;
+
+  // ==================== V2.0 新增字段 ====================
+
+  @Column({ name: 'tag_names', type: 'text', nullable: true, comment: '客户标签名称列表(JSON)' })
+  tagNames: string;
+
+  @Column({ name: 'phone', type: 'varchar', length: 20, nullable: true, comment: '手机号' })
+  phone: string;
+
+  @Column({ name: 'state', type: 'varchar', length: 100, nullable: true, comment: '渠道来源标识' })
+  state: string;
+
+  @Column({ name: 'msg_sent_count', type: 'int', default: 0, comment: '发送消息数(同步时统计)' })
+  msgSentCount: number;
+
+  @Column({ name: 'msg_recv_count', type: 'int', default: 0, comment: '接收消息数(同步时统计)' })
+  msgRecvCount: number;
+
+  @Column({ name: 'last_msg_time', type: 'bigint', nullable: true, comment: '最后消息时间戳' })
+  lastMsgTime: number;
+
+  @Column({ name: 'active_days_7d', type: 'int', default: 0, comment: '近7天活跃天数' })
+  activeDays7d: number;
 
   @CreateDateColumn({ name: 'created_at', comment: '创建时间' })
   createdAt: Date;

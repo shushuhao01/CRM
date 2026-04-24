@@ -6,7 +6,22 @@
         <el-button @click="goBack" :icon="ArrowLeft" circle />
         <div class="header-info">
           <h2>订单详情</h2>
-          <div class="order-number">订单号：{{ orderDetail.orderNumber }}</div>
+          <div class="order-number">
+            订单号：{{ orderDetail.orderNumber }}
+            <el-tag
+              v-if="orderDetail.orderProductType === 'virtual'"
+              type="warning"
+              size="small"
+              effect="light"
+              style="margin-left: 8px; vertical-align: middle;"
+            >虚拟</el-tag>
+            <el-tag
+              v-else-if="orderDetail.orderNumber"
+              size="small"
+              effect="light"
+              style="margin-left: 8px; vertical-align: middle;"
+            >实物</el-tag>
+          </div>
         </div>
       </div>
       <div class="header-actions">
@@ -76,6 +91,50 @@
       @apply-cod-cancel="handleApplyCodCancel"
     />
 
+    <!-- 虚拟发货信息（仅虚拟商品订单显示） -->
+    <div v-if="orderDetail.orderProductType === 'virtual' && virtualDeliveryRecords.length > 0" class="detail-card virtual-delivery-card">
+      <div class="card-title">
+        <el-icon><Box /></el-icon>
+        虚拟商品发货记录
+        <el-button
+          v-if="virtualClaimLink"
+          type="primary"
+          size="small"
+          plain
+          style="margin-left: auto;"
+          @click="copyClaimLink"
+        >
+          <el-icon><Link /></el-icon>
+          复制领取链接
+        </el-button>
+      </div>
+      <div v-if="virtualClaimLink" class="claim-link-section">
+        <span class="claim-link-label">领取链接：</span>
+        <a :href="virtualClaimLink" target="_blank" class="claim-link-url">{{ virtualClaimLink }}</a>
+      </div>
+      <el-table :data="virtualDeliveryRecords" size="small" style="margin-top: 8px;">
+        <el-table-column label="发货类型" width="100">
+          <template #default="{ row }">
+            <el-tag :type="row.deliveryType === 'card_key' ? 'info' : 'success'" size="small">
+              {{ row.deliveryType === 'card_key' ? '卡密' : '资源链接' }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="内容" min-width="160">
+          <template #default="{ row }">
+            <span v-if="row.deliveryType === 'card_key'">
+              {{ row.cardKeyContent ? '••••••' : '-' }}
+            </span>
+            <a v-else-if="row.resourceLink" :href="row.resourceLink" target="_blank" class="link-text">查看链接</a>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作人" prop="operatorName" width="90" />
+        <el-table-column label="发货时间" width="140">
+          <template #default="{ row }">{{ formatDateTime(row.deliveredAt) }}</template>
+        </el-table-column>
+      </el-table>
+    </div>
+
     <!-- 物流跟踪+订单轨迹+售后历史 -->
     <OrderTrackingSections
       :logisticsInfo="logisticsInfo"
@@ -107,7 +166,7 @@ import OrderTrackingSections from './Detail/OrderTrackingSections.vue'
 import {
   ArrowLeft, Clock, User, Phone, Message, Location, Van, Document,
   ShoppingBag, Money, List, Sell, Check, Plus, ArrowDown, ArrowUp, Service, Lock, Timer, ZoomIn,
-  Warning, Close, ArrowRight, CreditCard, Wallet
+  Warning, Close, ArrowRight, CreditCard, Wallet, Box, Link
 } from '@element-plus/icons-vue'
 import { useOrderStore } from '@/stores/order'
 import { useCustomerStore } from '@/stores/customer'
@@ -197,11 +256,17 @@ const orderDetail = reactive({
   paymentMethod: '',
   paymentMethodOther: '',
   remark: '',
-  customFields: {} as Record<string, any>
+  customFields: {} as Record<string, any>,
+  orderProductType: '',
+  completionSource: ''
 })
 
 // 订单时间轴
 const orderTimeline = ref([])
+
+// 虚拟发货记录
+const virtualDeliveryRecords = ref<any[]>([])
+const virtualClaimLink = ref('')
 
 // 物流信息
 interface LogisticsItem {
@@ -346,10 +411,11 @@ const loadOrderTimeline = async () => {
         timestamp: history.timestamp,
         type: getTimelineType(history.status),
         icon: getTimelineIcon(history.status),
-        color: getTimelineColor(history.status),
+        color: getTimelineColor(history.actionType === 'edit' ? 'edit' : history.status),
         title: history.title || getStatusText(history.status),
         description: history.description || `订单状态变更为：${getStatusText(history.status)}`,
-        operator: history.operator || '系统'
+        operator: history.operator || '系统',
+        actionType: history.actionType || 'status_change'
       }))
       console.log(`[订单详情] 加载到 ${orderTimeline.value.length} 条状态历史`)
     } else {
@@ -386,15 +452,42 @@ const loadOrderTimeline = async () => {
 const generateTimelineFromStatus = () => {
   const timeline: any[] = []
   const currentStatus = orderDetail.status
+  const isVirtual = orderDetail.orderProductType === 'virtual'
+  const completionSource = orderDetail.completionSource
 
-  // 订单状态流程定义
-  const statusFlow = [
+  // 虚拟订单-无需发货的状态流
+  const virtualNoneStatusFlow = [
+    { status: 'pending_transfer', title: '订单创建', description: `订单创建成功，订单号：${orderDetail.orderNumber}` },
+    { status: 'pending_audit', title: '待审核', description: '订单已提交审核' },
+    { status: 'signed', title: '已签收', description: '虚拟商品订单，审核通过后自动完成' }
+  ]
+
+  // 虚拟订单-卡密/资源的状态流
+  const virtualDeliveryStatusFlow = [
+    { status: 'pending_transfer', title: '订单创建', description: `订单创建成功，订单号：${orderDetail.orderNumber}` },
+    { status: 'pending_audit', title: '待审核', description: '订单已提交审核' },
+    { status: 'virtual_pending', title: '虚拟待发货', description: '等待发放卡密/资源链接' },
+    { status: 'signed', title: '已签收', description: '卡密/资源已发放，客户可通过领取链接获取' }
+  ]
+
+  // 普通订单状态流程定义
+  const normalStatusFlow = [
     { status: 'pending_transfer', title: '订单创建', description: `订单创建成功，订单号：${orderDetail.orderNumber}` },
     { status: 'pending_audit', title: '待审核', description: '订单已提交审核' },
     { status: 'pending_shipment', title: '审核通过', description: '订单审核通过，等待发货' },
     { status: 'shipped', title: '已发货', description: `订单已发货，快递公司：${orderDetail.expressCompany || '未知'}，单号：${orderDetail.trackingNumber || '未知'}` },
     { status: 'delivered', title: '已签收', description: '订单已签收' }
   ]
+
+  // 选择适用的状态流
+  let statusFlow = normalStatusFlow
+  if (isVirtual) {
+    if (completionSource === 'audit_auto_complete' || currentStatus === 'signed' && !orderDetail.trackingNumber) {
+      statusFlow = virtualNoneStatusFlow
+    } else {
+      statusFlow = virtualDeliveryStatusFlow
+    }
+  }
 
   // 状态优先级映射
   const statusPriority: Record<string, number> = {
@@ -404,11 +497,13 @@ const generateTimelineFromStatus = () => {
     'pending_audit': 1,
     'audit_rejected': 1,
     'pending_shipment': 2,
+    'virtual_pending': 2,
     'approved': 2,
     'shipped': 3,
     'in_transit': 3,
     'out_for_delivery': 3,
     'delivered': 4,
+    'signed': 4,
     'completed': 4,
     'cancelled': -1,
     'rejected': -1
@@ -427,16 +522,16 @@ const generateTimelineFromStatus = () => {
       // 计算时间（每个状态间隔一些时间）
       const timestamp = new Date(baseTime.getTime() + stepPriority * 3600000)
 
-      // 🔥 根据状态确定操作人
+      // 🔥 根据状态确定操作人 - 使用订单中记录的真实操作人
       let operator = creatorName
       if (step.status === 'pending_audit') {
         operator = creatorName // 提交审核的是创建人
-      } else if (step.status === 'pending_shipment') {
-        operator = orderDetail.auditByName || '审核员'
+      } else if (step.status === 'pending_shipment' || step.status === 'virtual_pending') {
+        operator = orderDetail.auditByName || creatorName
       } else if (step.status === 'shipped') {
-        operator = orderDetail.shippedByName || '物流部'
-      } else if (step.status === 'delivered') {
-        operator = '快递员'
+        operator = orderDetail.shippedByName || creatorName
+      } else if (step.status === 'delivered' || step.status === 'signed') {
+        operator = isVirtual ? (orderDetail.shippedByName || '虚拟发货') : '物流签收'
       }
 
       timeline.push({
@@ -470,7 +565,7 @@ const generateTimelineFromStatus = () => {
       color: '#F56C6C',
       title: '审核拒绝',
       description: orderDetail.auditRemark || '订单审核被拒绝',
-      operator: orderDetail.auditByName || '审核员'
+      operator: orderDetail.auditByName || creatorName
     })
   }
 
@@ -485,8 +580,10 @@ const getTimelineType = (status: string) => {
     'approved': 'success',
     'rejected': 'danger',
     'pending_shipment': 'warning',
+    'virtual_pending': 'warning',
     'shipped': 'primary',
     'delivered': 'success',
+    'signed': 'success',
     'completed': 'success',
     'cancelled': 'danger'
   }
@@ -501,8 +598,10 @@ const getTimelineIcon = (status: string) => {
     'approved': Check,
     'rejected': Close,
     'pending_shipment': Clock,
+    'virtual_pending': Clock,
     'shipped': Van,
     'delivered': Check,
+    'signed': Check,
     'completed': Check,
     'cancelled': Close
   }
@@ -517,10 +616,14 @@ const getTimelineColor = (status: string) => {
     'approved': '#67c23a',
     'rejected': '#f56c6c',
     'pending_shipment': '#e6a23c',
+    'virtual_pending': '#e6a23c',
     'shipped': '#409eff',
     'delivered': '#67c23a',
+    'signed': '#67c23a',
     'completed': '#67c23a',
-    'cancelled': '#f56c6c'
+    'cancelled': '#f56c6c',
+    'edit': '#e6a23c',
+    'audit_rejected': '#f56c6c'
   }
   return colors[status] || '#909399'
 }
@@ -1161,425 +1264,41 @@ const handlePhoneVerifySubmit = (phone: string) => {
   refreshLogistics(phone)
 }
 
-// 物流轨迹相关辅助方法
-const getLogisticsType = (status: string) => {
-  if (!status) return 'info'
-
-  const types = {
-    // 英文状态
-    'delivered': 'success',
-    'out_for_delivery': 'primary',
-    'in_transit': 'primary',
-    'picked_up': 'info',
-    'pending': 'info',
-    'exception': 'warning',
-    'rejected': 'danger',
-    // 中文状态
-    '已签收': 'success',
-    '已送达': 'success',
-    '派送中': 'primary',
-    '运输中': 'primary',
-    '在途': 'primary',
-    '已揽收': 'info',
-    '已发货': 'info',
-    '待发货': 'info',
-    '异常': 'warning',
-    '拒收': 'danger',
-    '退回': 'danger'
-  }
-
-  // 检查完全匹配
-  if (types[status]) {
-    return types[status]
-  }
-
-  // 检查包含关键词
-  if (status.includes('签收') || status.includes('送达')) return 'success'
-  if (status.includes('派送') || status.includes('运输') || status.includes('在途')) return 'primary'
-  if (status.includes('揽收') || status.includes('发货')) return 'info'
-  if (status.includes('异常') || status.includes('问题')) return 'warning'
-  if (status.includes('拒收') || status.includes('退回')) return 'danger'
-
-  return 'info'
-}
-
-const getLogisticsIcon = (status: string) => {
-  const icons = {
-    'delivered': Check,
-    'out_for_delivery': Van,
-    'in_transit': Van,
-    'picked_up': Van,
-    'pending': Clock,
-    'exception': Warning,
-    'rejected': Close
-  }
-  return icons[status] || Clock
-}
-
-// 辅助方法
-const getStatusType = (status: string) => {
-  const types: Record<string, string> = {
-    // 新的状态枚举
-    'pending_transfer': 'info',      // 待流转 - 灰色
-    'pending_audit': 'warning',      // 待审核 - 橙色
-    'audit_rejected': 'danger',      // 审核拒绝 - 红色
-    'pending_shipment': 'primary',   // 待发货 - 蓝色
-    'shipped': 'primary',            // 已发货 - 蓝色
-    'delivered': 'success',          // 已签收 - 绿色
-    'package_exception': 'warning',  // 包裹异常 - 橙色
-    'rejected': 'danger',            // 拒收 - 红色
-    'rejected_returned': 'info',     // 拒收已退回 - 灰色
-    'after_sales_created': 'warning', // 已建售后 - 橙色
-    'cancelled': 'info',             // 已取消 - 灰色
-    'draft': 'info',                 // 草稿 - 灰色
-
-    // 兼容旧状态
-    'pending': 'warning',
-    'pending_approval': 'warning',
-    'approved': 'success',
-    'paid': 'success',
-    'completed': 'success',
-    'confirmed': 'success'
-  }
-  return types[status] || 'info'
-}
-
-const getStatusText = (status: string) => {
-  const texts = {
-    // 新的状态枚举
-    'pending_transfer': '待流转',
-    'pending_audit': '待审核',
-    'audit_rejected': '审核拒绝',
-    'pending_shipment': '待发货',
-    'shipped': '已发货',
-    'delivered': '已签收',
-    'package_exception': '包裹异常',
-    'rejected': '拒收',
-    'rejected_returned': '拒收已退回',
-    'after_sales_created': '已建售后',
-    'cancelled': '已取消',
-    'draft': '草稿',
-
-    // 兼容旧状态
-    'pending': '待处理',
-    'pending_approval': '待审核',
-    'approved': '已审核',
-    'paid': '已付款',
-    'completed': '已完成',
-    'confirmed': '已确认'
-  }
-  return texts[status] || status
-}
-
-// 获取支付方式文本
-const getPaymentMethodText = (method: string | null | undefined) => {
-  if (!method) return '-'
-  // 如果是"其他"且有自定义文本，显示自定义文本
-  if (method === 'other' && orderDetail.paymentMethodOther) {
-    return orderDetail.paymentMethodOther
-  }
-  const methodMap: Record<string, string> = {
-    wechat: '微信支付',
-    alipay: '支付宝',
-    bank_transfer: '银行转账',
-    unionpay: '云闪付',
-    cod: '货到付款',
-    cash: '现金',
-    card: '刷卡',
-    other: '其他'
-  }
-  return methodMap[method] || method
-}
-
-const getLevelType = (level: string) => {
-  const types = {
-    'vip': 'warning',
-    'premium': 'danger',
-    'normal': 'info'
-  }
-  return types[level] || 'info'
-}
-
-const getLevelText = (level: string) => {
-  const texts = {
-    'vip': 'VIP客户',
-    'premium': '高级客户',
-    'normal': '普通客户'
-  }
-  return texts[level] || '普通客户'
-}
-
-const getExpressCompanyText = (code: string) => {
-  if (!code) return '-'
-  const companies: Record<string, string> = {
-    'SF': '顺丰速运',
-    'YTO': '圆通速递',
-    'ZTO': '中通快递',
-    'STO': '申通快递',
-    'YD': '韵达快递',
-    'JTSD': '极兔速递',
-    'EMS': 'EMS',
-    'YZBK': '邮政包裹',
-    'DBL': '德邦快递',
-    'JD': '京东物流',
-    // 兼容小写键名
-    'sf': '顺丰速运',
-    'yto': '圆通速递',
-    'zto': '中通快递',
-    'sto': '申通快递',
-    'yd': '韵达快递',
-    'jtsd': '极兔速递',
-    'ems': 'EMS',
-    'yzbk': '邮政包裹',
-    'dbl': '德邦快递',
-    'jd': '京东物流'
-  }
-  return companies[code] || code
-}
-
-// 🔥 获取自定义字段值（支持customFields对象和独立字段两种格式）
-const getCustomFieldValue = (fieldKey: string) => {
-  // 优先从customFields对象获取
-  if (orderDetail.customFields && orderDetail.customFields[fieldKey]) {
-    return orderDetail.customFields[fieldKey]
-  }
-  // 兼容独立字段格式（如customField1）
-  const independentKey = fieldKey.replace('custom_field', 'customField')
-  if (orderDetail[independentKey]) {
-    return orderDetail[independentKey]
-  }
-  return null
-}
-
-// 格式化自定义字段值
-const formatCustomFieldValue = (field: any, value: any) => {
-  if (value === null || value === undefined || value === '') return '-'
-  if (field.fieldType === 'select' || field.fieldType === 'radio') {
-    const option = field.options?.find((opt: any) => opt.value === value)
-    return option?.label || value
-  }
-  if (field.fieldType === 'checkbox' && Array.isArray(value)) {
-    return value.map((v: string) => {
-      const option = field.options?.find((opt: any) => opt.value === v)
-      return option?.label || v
-    }).join(', ')
-  }
-  if (field.fieldType === 'date' || field.fieldType === 'datetime') {
-    return formatDateTime(value)
-  }
-  return String(value)
-}
-
-const getOrderSourceText = (source: string) => {
-  const sources = {
-    'online_store': '线上商城',
-    'wechat_mini': '微信小程序',
-    'wechat_service': '微信客服',
-    'phone_call': '电话咨询',
-    'offline_store': '线下门店',
-    'referral': '客户推荐',
-    'advertisement': '广告投放',
-    'other': '其他渠道'
-  }
-  return sources[source] || source
-}
-
-const getStatusCardClass = (status: string) => {
-  const classes = {
-    'draft': 'status-draft',
-    'pending': 'status-pending',
-    'pending_approval': 'status-pending-approval',
-    'approved': 'status-approved',
-    'rejected': 'status-rejected',
-    'paid': 'status-paid',
-    'shipped': 'status-shipped',
-    'delivered': 'status-delivered',
-    'completed': 'status-completed',
-    'cancelled': 'status-cancelled'
-  }
-  return classes[status] || ''
-}
-
-const getAfterSalesType = (type: string) => {
-  const types = {
-    'refund': 'warning',
-    'return': 'danger',
-    'exchange': 'primary',
-    'repair': 'info',
-    'complaint': 'danger'
-  }
-  return types[type] || 'info'
-}
-
-const getMarkType = (markType: string) => {
-  const types = {
-    'reserved': 'warning',
-    'normal': 'success',
-    'return': 'danger'
-  }
-  return types[markType] || 'info'
-}
-
-const getMarkText = (markType: string) => {
-  const texts = {
-    'reserved': '预留单',
-    'normal': '正常发货单',
-    'return': '退单'
-  }
-  return texts[markType] || markType
-}
-
-const getMarkButtonType = () => {
-  if (!orderDetail.markType) return 'default'
-  const types = {
-    'reserved': 'warning',
-    'normal': 'success',
-    'return': 'danger'
-  }
-  return types[orderDetail.markType] || 'default'
-}
-
-const getMarkTagType = (markType: string) => {
-  const types = {
-    'reserved': 'warning',
-    'normal': 'success',
-    'return': 'danger'
-  }
-  return types[markType] || 'info'
-}
-
-// formatDateTime 已从 @/utils/dateFormat 导入
-
-const formatDate = (date: string) => {
-  if (!date) return ''
-  return new Date(date).toLocaleDateString('zh-CN')
-}
-
-// 加载订单详情
-const loadOrderDetail = async () => {
+// 加载虚拟发货记录
+const loadVirtualDeliveryRecords = async () => {
   try {
-    loading.value = true
-
-
-    // 🔥 先尝试从API获取订单详情
-    let order = null
-    try {
-      console.log('[订单详情] 正在从API加载订单:', orderId)
-      const response = await orderApi.getDetail(orderId)
-      if (response.success && response.data) {
-        order = response.data
-        console.log('[订单详情] API加载成功:', order.orderNumber)
-      }
-    } catch (apiError) {
-      console.warn('[订单详情] API加载失败，尝试从本地store获取:', apiError)
-    }
-
-    // 如果API没有返回数据，从本地store获取
-    if (!order) {
-      order = orderStore.getOrderById(orderId)
-    }
-
-    if (!order) {
-      ElMessage.error('订单不存在')
-      safeNavigator.push('/order/list')
-      return
-    }
-
-    // 按需获取客户信息（优先store缓存，否则API加载单个客户）
-    let customer = customerStore.getCustomerById(order.customerId)
-    if (!customer && order.customerId) {
-      try {
-        const res = await customerApi.getDetail(order.customerId)
-        if (res.data) customer = res.data
-      } catch (_e) {
-        console.warn('[订单详情] 加载客户详情失败，使用订单中的客户基本信息')
+    const { default: axios } = await import('axios')
+    const resp = await axios.get(`/api/v1/virtual-delivery/${orderId}`)
+    if (resp.data?.success) {
+      virtualDeliveryRecords.value = resp.data.data || []
+      // 从发货记录中提取 claim_token 拼出领取链接
+      if (virtualDeliveryRecords.value.length > 0) {
+        const firstRecord = virtualDeliveryRecords.value[0]
+        if (firstRecord.claimToken) {
+          virtualClaimLink.value = `${window.location.origin}/virtual-claim/${firstRecord.claimToken}`
+        }
       }
     }
+  } catch (e) {
+    console.warn('[订单详情] 加载虚拟发货记录失败', e)
+  }
+}
 
-    // 更新订单详情数据
-    Object.assign(orderDetail, {
-      id: order.id,
-      orderNumber: order.orderNumber,
-      status: order.status,
-      auditStatus: order.auditStatus || 'pending', // 审核状态
-      markType: order.markType || 'normal', // 默认为正常发货单
-      createTime: order.createTime,
-      updateTime: order.updateTime || order.createTime,
-      auditTransferTime: order.auditTransferTime || '', // 流转审核时间
-      isAuditTransferred: order.isAuditTransferred || false, // 是否已流转到审核
-      // 🔥 操作人信息
-      createdBy: order.createdBy || '',
-      createdByName: order.createdByName || '系统',
-      auditBy: order.auditBy || '',
-      auditByName: order.auditByName || '',
-      auditRemark: order.auditRemark || '',
-      shippedBy: order.shippedBy || '',
-      shippedByName: order.shippedByName || '',
-      cancelledBy: order.cancelledBy || '',
-      cancelledByName: order.cancelledByName || '',
-      customer: customer ? {
-        id: customer.id,
-        name: customer.name,
-        phone: customer.phone,
-        wechat: customer.wechatId || '',
-        address: customer.address,
-        level: customer.level,
-        avatar: ''
-      } : {
-        id: order.customerId,
-        name: order.customerName,
-        phone: order.customerPhone,
-        wechat: '',
-        address: '',
-        level: 'normal',
-        avatar: ''
-      },
-      receiverName: order.receiverName,
-      receiverPhone: order.receiverPhone,
-      receiverAddress: order.receiverAddress,
-      expressCompany: order.expressCompany || '',
-      trackingNumber: order.trackingNumber || '',
-      serviceWechat: order.serviceWechat || '',
-      orderSource: order.orderSource || '',
-      expectedShipDate: order.expectedShipDate || '',
-      expectedDeliveryDate: order.expectedDeliveryDate || '',
-      products: order.products,
-      subtotal: order.subtotal,
-      discount: order.discount,
-      totalAmount: order.totalAmount,
-      depositAmount: order.depositAmount,
-      codAmount: order.codAmount !== undefined ? order.codAmount : ((order.totalAmount || 0) - (order.depositAmount || 0)),
-      codStatus: order.codStatus || 'pending',
-      hasPendingCodApplication: order.hasPendingCodApplication || false,
-      depositScreenshot: order.depositScreenshot || '',
-      depositScreenshots: order.depositScreenshots || [],
-      paymentMethod: order.paymentMethod || '',
-      paymentMethodOther: order.paymentMethodOther || '',
-      remark: order.remark,
-      customFields: order.customFields || {}
+// 复制领取链接
+const copyClaimLink = () => {
+  if (!virtualClaimLink.value) return
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(virtualClaimLink.value).then(() => {
+      ElMessage.success('领取链接已复制')
     })
-
-    // 加载订单状态轨迹
-    loadOrderTimeline()
-
-    // 加载售后历史数据
-    loadAfterSalesHistory()
-
-    // 加载物流信息（如果有物流单号和快递公司）
-    if (orderDetail.trackingNumber && orderDetail.expressCompany) {
-      refreshLogistics()
-    }
-
-    // 设置事件监听
-    setupEventListeners()
-
-    // 初始化倒计时
-    initCountdown()
-  } catch (error) {
-    ElMessage.error('加载订单详情失败')
-    safeNavigator.push('/order/list')
-  } finally {
-    loading.value = false
+  } else {
+    const el = document.createElement('textarea')
+    el.value = virtualClaimLink.value
+    document.body.appendChild(el)
+    el.select()
+    document.execCommand('copy')
+    document.body.removeChild(el)
+    ElMessage.success('领取链接已复制')
   }
 }
 
@@ -1690,6 +1409,194 @@ const transferToAudit = () => {
       actionUrl: `/order/detail/${orderId}`
     }
   )
+}
+
+// 获取标记按钮样式
+const getMarkButtonType = () => {
+  const types: Record<string, string> = {
+    'reserved': 'warning',
+    'normal': 'primary',
+    'return': 'danger'
+  }
+  return types[orderDetail.markType] || 'default'
+}
+
+// 获取标记文本
+const getMarkText = (markType: string) => {
+  const texts: Record<string, string> = {
+    'reserved': '预留单',
+    'normal': '正常发货单',
+    'return': '退单'
+  }
+  return texts[markType] || markType
+}
+
+// 获取标记标签类型
+const getMarkTagType = (markType: string) => {
+  const types: Record<string, string> = {
+    'reserved': 'warning',
+    'normal': 'success',
+    'return': 'danger'
+  }
+  return types[markType] || 'info'
+}
+
+// 获取订单状态文本
+const getStatusText = (status: string) => {
+  const texts: Record<string, string> = {
+    pending_transfer: '待流转',
+    pending_audit: '待审核',
+    audit_rejected: '审核拒绝',
+    pending_shipment: '待发货',
+    virtual_pending: '虚拟待发货',
+    shipped: '已发货',
+    delivered: '已签收',
+    signed: '已签收',
+    completed: '已完成',
+    package_exception: '包裹异常',
+    rejected: '拒收',
+    rejected_returned: '拒收已退回',
+    after_sales_created: '已建售后',
+    cancelled: '已取消',
+    pending_cancel: '待取消',
+    draft: '草稿'
+  }
+  return texts[status] || status
+}
+
+// 获取自定义字段值
+const getCustomFieldValue = (fieldKey: string) => {
+  return orderDetail.customFields?.[fieldKey] ?? ''
+}
+
+// 格式化自定义字段值
+const formatCustomFieldValue = (value: any, fieldConfig?: any) => {
+  if (value === null || value === undefined || value === '') return '-'
+  if (fieldConfig?.type === 'date' && value) {
+    return formatDateTime(value)
+  }
+  return String(value)
+}
+
+// 加载订单详情
+const loadOrderDetail = async () => {
+  try {
+    loading.value = true
+
+    let order = null
+    try {
+      console.log('[订单详情] 正在从API加载订单:', orderId)
+      const response = await orderApi.getDetail(orderId)
+      if (response.success && response.data) {
+        order = response.data
+        console.log('[订单详情] API加载成功:', order.orderNumber)
+      }
+    } catch (apiError) {
+      console.warn('[订单详情] API加载失败，尝试从本地store获取:', apiError)
+    }
+
+    if (!order) {
+      order = orderStore.getOrderById(orderId)
+    }
+
+    if (!order) {
+      ElMessage.error('订单不存在')
+      safeNavigator.push('/order/list')
+      return
+    }
+
+    let customer = customerStore.getCustomerById(order.customerId)
+    if (!customer && order.customerId) {
+      try {
+        const res = await customerApi.getDetail(order.customerId)
+        if (res.data) customer = res.data
+      } catch (_e) {
+        console.warn('[订单详情] 加载客户详情失败，使用订单中的客户基本信息')
+      }
+    }
+
+    Object.assign(orderDetail, {
+      id: order.id,
+      orderNumber: order.orderNumber,
+      status: order.status,
+      auditStatus: order.auditStatus || 'pending',
+      markType: order.markType || 'normal',
+      createTime: order.createTime,
+      updateTime: order.updateTime || order.createTime,
+      auditTransferTime: order.auditTransferTime || '',
+      isAuditTransferred: order.isAuditTransferred || false,
+      createdBy: order.createdBy || '',
+      createdByName: order.createdByName || '系统',
+      auditBy: order.auditBy || '',
+      auditByName: order.auditByName || '',
+      auditRemark: order.auditRemark || '',
+      shippedBy: order.shippedBy || '',
+      shippedByName: order.shippedByName || '',
+      cancelledBy: order.cancelledBy || '',
+      cancelledByName: order.cancelledByName || '',
+      customer: customer ? {
+        id: customer.id,
+        name: customer.name,
+        phone: customer.phone,
+        wechat: customer.wechatId || '',
+        address: customer.address,
+        level: customer.level,
+        avatar: ''
+      } : {
+        id: order.customerId,
+        name: order.customerName,
+        phone: order.customerPhone,
+        wechat: '',
+        address: '',
+        level: 'normal',
+        avatar: ''
+      },
+      receiverName: order.receiverName,
+      receiverPhone: order.receiverPhone,
+      receiverAddress: order.receiverAddress,
+      expressCompany: order.expressCompany || '',
+      trackingNumber: order.trackingNumber || '',
+      serviceWechat: order.serviceWechat || '',
+      orderSource: order.orderSource || '',
+      expectedShipDate: order.expectedShipDate || '',
+      expectedDeliveryDate: order.expectedDeliveryDate || '',
+      products: order.products,
+      subtotal: order.subtotal,
+      discount: order.discount,
+      totalAmount: order.totalAmount,
+      depositAmount: order.depositAmount,
+      codAmount: order.codAmount !== undefined ? order.codAmount : ((order.totalAmount || 0) - (order.depositAmount || 0)),
+      codStatus: order.codStatus || 'pending',
+      hasPendingCodApplication: order.hasPendingCodApplication || false,
+      depositScreenshot: order.depositScreenshot || '',
+      depositScreenshots: order.depositScreenshots || [],
+      paymentMethod: order.paymentMethod || '',
+      paymentMethodOther: order.paymentMethodOther || '',
+      remark: order.remark,
+      customFields: order.customFields || {},
+      orderProductType: order.orderProductType || '',
+      completionSource: order.completionSource || ''
+    })
+
+    loadOrderTimeline()
+    loadAfterSalesHistory()
+
+    if (orderDetail.trackingNumber && orderDetail.expressCompany) {
+      refreshLogistics()
+    }
+
+    if (orderDetail.orderProductType === 'virtual') {
+      loadVirtualDeliveryRecords()
+    }
+
+    setupEventListeners()
+    initCountdown()
+  } catch (error) {
+    ElMessage.error('加载订单详情失败')
+    safeNavigator.push('/order/list')
+  } finally {
+    loading.value = false
+  }
 }
 
 onMounted(async () => {
@@ -3033,59 +2940,6 @@ onUnmounted(() => {
 }
 
 /* 响应式设计 */
-@media (max-width: 768px) {
-  .row-layout {
-    flex-direction: column;
-  }
-
-  .row-left,
-  .row-right {
-    flex: 1;
-  }
-
-  .page-header {
-    flex-direction: column;
-    gap: 16px;
-    align-items: flex-start;
-  }
-
-  .header-actions {
-    width: 100%;
-    justify-content: flex-end;
-  }
-
-  .customer-info {
-    flex-direction: column;
-    text-align: center;
-  }
-
-  .status-info {
-    gap: 12px;
-  }
-
-  .status-item {
-    flex-direction: column;
-    gap: 4px;
-    text-align: center;
-  }
-}
-
-.order-remark h4 {
-  margin: 0 0 8px 0;
-  color: #606266;
-}
-
-.order-remark p {
-  margin: 0;
-  color: #303133;
-  line-height: 1.6;
-}
-
-.operation-log-card {
-  margin-top: 20px;
-}
-
-/* 响应式设计 */
 @media (max-width: 1200px) {
   .detail-content {
     flex-direction: column;
@@ -3425,7 +3279,7 @@ onUnmounted(() => {
   background: #ecf5ff;
   padding: 4px 8px;
   border-radius: 4px;
-  font-size: 13px;
+  font-size: 12px;
 }
 
 .logistics-section {

@@ -6,6 +6,15 @@
     :close-on-click-modal="false"
     @close="handleClose"
   >
+    <!-- 帮助中心跳转链接 - 显示在最前面 -->
+    <div class="help-link-bar">
+      <el-button type="primary" link class="help-link-btn" @click="goToCallConfigGuide">
+        <el-icon class="help-link-icon"><QuestionFilled /></el-icon>
+        <span>查看《通话管理与呼出配置完整指南》</span>
+        <el-icon class="help-link-arrow"><ArrowRight /></el-icon>
+      </el-button>
+    </div>
+
     <el-tabs v-model="activeTab" type="border-card">
       <!-- 管理员配置标签页 (仅管理员可见) -->
       <el-tab-pane v-if="isAdmin" label="系统线路管理" name="lines">
@@ -42,8 +51,9 @@
                 {{ row.dailyUsed || 0 }} / {{ row.dailyLimit || 1000 }}
               </template>
             </el-table-column>
-            <el-table-column label="操作" width="120">
+            <el-table-column label="操作" width="180">
               <template #default="{ row }">
+                <el-button type="success" link size="small" @click="testLineConnection(row)" :loading="row._testing">测试</el-button>
                 <el-button type="primary" link size="small" @click="openLineDialog(row)">编辑</el-button>
                 <el-button type="danger" link size="small" @click="deleteLine(row)">删除</el-button>
               </template>
@@ -311,12 +321,69 @@
         <!-- 自定义配置 -->
         <template v-if="lineForm.provider === 'custom'">
           <el-divider content-position="left">自定义配置</el-divider>
-          <el-form-item label="API地址">
-            <el-input v-model="lineForm.config.apiUrl" placeholder="请输入API地址" />
-          </el-form-item>
-          <el-form-item label="API密钥">
-            <el-input v-model="lineForm.config.apiKey" placeholder="请输入API密钥" type="password" show-password />
-          </el-form-item>
+
+          <!-- SIP线路配置 -->
+          <template v-if="lineForm.type === 'sip'">
+            <el-form-item label="SIP服务器">
+              <el-input v-model="lineForm.config.sipServer" placeholder="例: sip.example.com" />
+            </el-form-item>
+            <el-form-item label="SIP端口">
+              <el-input-number v-model="lineForm.config.sipPort" :min="1" :max="65535" style="width: 200px" />
+            </el-form-item>
+            <el-form-item label="传输协议">
+              <el-select v-model="lineForm.config.transport" style="width: 200px">
+                <el-option label="UDP" value="udp" />
+                <el-option label="TCP" value="tcp" />
+                <el-option label="TLS" value="tls" />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="SIP用户名">
+              <el-input v-model="lineForm.config.sipUsername" placeholder="SIP认证用户名" />
+            </el-form-item>
+            <el-form-item label="SIP密码">
+              <el-input v-model="lineForm.config.sipPassword" placeholder="SIP认证密码" type="password" show-password />
+            </el-form-item>
+            <el-form-item label="SIP域名">
+              <el-input v-model="lineForm.config.sipDomain" placeholder="SIP域名(可选)" />
+            </el-form-item>
+          </template>
+
+          <!-- PSTN网关配置 -->
+          <template v-else-if="lineForm.type === 'pstn'">
+            <el-form-item label="网关地址">
+              <el-input v-model="lineForm.config.gatewayHost" placeholder="例: 192.168.1.100 或 gateway.example.com" />
+            </el-form-item>
+            <el-form-item label="网关端口">
+              <el-input-number v-model="lineForm.config.gatewayPort" :min="1" :max="65535" style="width: 200px" />
+            </el-form-item>
+            <el-form-item label="中继类型">
+              <el-select v-model="lineForm.config.trunkType" style="width: 200px">
+                <el-option label="模拟中继(FXO)" value="fxo" />
+                <el-option label="数字中继(E1/T1)" value="e1" />
+                <el-option label="SIP中继" value="sip_trunk" />
+                <el-option label="PRI中继" value="pri" />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="中继通道数">
+              <el-input-number v-model="lineForm.config.channels" :min="1" :max="120" style="width: 200px" />
+            </el-form-item>
+            <el-form-item label="认证用户名">
+              <el-input v-model="lineForm.config.authUsername" placeholder="网关认证用户名(可选)" />
+            </el-form-item>
+            <el-form-item label="认证密码">
+              <el-input v-model="lineForm.config.authPassword" placeholder="网关认证密码(可选)" type="password" show-password />
+            </el-form-item>
+          </template>
+
+          <!-- VoIP自定义API -->
+          <template v-else>
+            <el-form-item label="API地址">
+              <el-input v-model="lineForm.config.apiUrl" placeholder="请输入API地址" />
+            </el-form-item>
+            <el-form-item label="API密钥">
+              <el-input v-model="lineForm.config.apiKey" placeholder="请输入API密钥" type="password" show-password />
+            </el-form-item>
+          </template>
         </template>
 
         <el-divider content-position="left">基本设置</el-divider>
@@ -424,8 +491,9 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, watch, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Cellphone, Loading, CircleCheckFilled, WarningFilled, Refresh } from '@element-plus/icons-vue'
+import { Plus, Cellphone, Loading, CircleCheckFilled, WarningFilled, Refresh, QuestionFilled, ArrowRight } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
 import * as callConfigApi from '@/api/callConfig'
 import type { CallLine, UserLineAssignment, WorkPhone, UserCallPreference } from '@/api/callConfig'
@@ -438,6 +506,7 @@ const emit = defineEmits<{
   (e: 'update:modelValue', value: boolean): void
 }>()
 
+const router = useRouter()
 const userStore = useUserStore()
 
 // 计算属性
@@ -525,8 +594,22 @@ const lineForm = reactive({
     secretKey: '',
     accessKey: '',
     apiUrl: '',
-    apiKey: ''
-  }
+    apiKey: '',
+    // SIP线路配置
+    sipServer: '',
+    sipPort: 5060,
+    transport: 'udp',
+    sipUsername: '',
+    sipPassword: '',
+    sipDomain: '',
+    // PSTN网关配置
+    gatewayHost: '',
+    gatewayPort: 5060,
+    trunkType: 'sip_trunk',
+    channels: 30,
+    authUsername: '',
+    authPassword: ''
+  } as Record<string, any>
 })
 const lineRules = {
   name: [{ required: true, message: '请输入线路名称', trigger: 'blur' }],
@@ -824,6 +907,20 @@ const openLineDialog = (line?: CallLine) => {
     lineForm.config.accessKey = cfg.accessKey || ''
     lineForm.config.apiUrl = cfg.apiUrl || ''
     lineForm.config.apiKey = cfg.apiKey || ''
+    // SIP配置
+    lineForm.config.sipServer = cfg.sipServer || ''
+    lineForm.config.sipPort = cfg.sipPort || 5060
+    lineForm.config.transport = cfg.transport || 'udp'
+    lineForm.config.sipUsername = cfg.sipUsername || ''
+    lineForm.config.sipPassword = cfg.sipPassword || ''
+    lineForm.config.sipDomain = cfg.sipDomain || ''
+    // PSTN配置
+    lineForm.config.gatewayHost = cfg.gatewayHost || ''
+    lineForm.config.gatewayPort = cfg.gatewayPort || 5060
+    lineForm.config.trunkType = cfg.trunkType || 'sip_trunk'
+    lineForm.config.channels = cfg.channels || 30
+    lineForm.config.authUsername = cfg.authUsername || ''
+    lineForm.config.authPassword = cfg.authPassword || ''
   } else {
     // 重置表单
     lineForm.name = ''
@@ -842,6 +939,18 @@ const openLineDialog = (line?: CallLine) => {
     lineForm.config.accessKey = ''
     lineForm.config.apiUrl = ''
     lineForm.config.apiKey = ''
+    lineForm.config.sipServer = ''
+    lineForm.config.sipPort = 5060
+    lineForm.config.transport = 'udp'
+    lineForm.config.sipUsername = ''
+    lineForm.config.sipPassword = ''
+    lineForm.config.sipDomain = ''
+    lineForm.config.gatewayHost = ''
+    lineForm.config.gatewayPort = 5060
+    lineForm.config.trunkType = 'sip_trunk'
+    lineForm.config.channels = 30
+    lineForm.config.authUsername = ''
+    lineForm.config.authPassword = ''
   }
   lineDialogVisible.value = true
 }
@@ -871,9 +980,29 @@ const saveLine = async () => {
         secretKey: lineForm.config.secretKey
       }
     } else if (lineForm.provider === 'custom') {
-      config = {
-        apiUrl: lineForm.config.apiUrl,
-        apiKey: lineForm.config.apiKey
+      if (lineForm.type === 'sip') {
+        config = {
+          sipServer: lineForm.config.sipServer,
+          sipPort: lineForm.config.sipPort,
+          transport: lineForm.config.transport,
+          sipUsername: lineForm.config.sipUsername,
+          sipPassword: lineForm.config.sipPassword,
+          sipDomain: lineForm.config.sipDomain
+        }
+      } else if (lineForm.type === 'pstn') {
+        config = {
+          gatewayHost: lineForm.config.gatewayHost,
+          gatewayPort: lineForm.config.gatewayPort,
+          trunkType: lineForm.config.trunkType,
+          channels: lineForm.config.channels,
+          authUsername: lineForm.config.authUsername,
+          authPassword: lineForm.config.authPassword
+        }
+      } else {
+        config = {
+          apiUrl: lineForm.config.apiUrl,
+          apiKey: lineForm.config.apiKey
+        }
       }
     }
 
@@ -1019,12 +1148,53 @@ const testVoipConnection = async () => {
 
   testingVoip.value = true
   try {
-    await new Promise(resolve => setTimeout(resolve, 1000))
-    ElMessage.success('配置格式验证通过，请保存后进行实际通话测试')
-  } catch (_e) {
-    ElMessage.error('连接测试失败')
+    // 找到对应服务商的第一条可用线路进行测试
+    const providerLine = callLines.value.find(
+      l => l.provider === globalConfig.voipProvider && l.isEnabled
+    )
+
+    if (providerLine) {
+      // 调用后端API测试真实线路
+      const res = await callConfigApi.testLineConnection(providerLine.id)
+      const result = (res as any)?.success !== undefined ? res : (res as any)?.data || res
+      const testData = (result as any)?.data || result
+
+      if (testData?.success) {
+        ElMessage.success(`连接测试成功 (延迟: ${testData.latency || 0}ms) - ${testData.message || ''}`)
+      } else {
+        ElMessage.warning(testData?.message || '连接测试失败，请检查配置')
+      }
+    } else {
+      // 没有可测试的线路，仅验证配置格式
+      ElMessage.info('配置格式验证通过。请先创建并启用一条线路后再进行连接测试。')
+    }
+  } catch (e: any) {
+    ElMessage.error(e.message || '连接测试失败')
   } finally {
     testingVoip.value = false
+  }
+}
+
+// 测试单条线路连接
+const testLineConnection = async (line: CallLine) => {
+  // 使用Vue的响应式方式标记加载
+  ;(line as any)._testing = true
+  try {
+    const res = await callConfigApi.testLineConnection(line.id)
+    const result = (res as any)?.success !== undefined ? res : (res as any)?.data || res
+    const testData = (result as any)?.data || result
+
+    if (testData?.success) {
+      ElMessage.success(`线路 "${line.name}" 测试通过 (延迟: ${testData.latency || 0}ms)`)
+      // 刷新线路列表以更新状态
+      loadCallLines()
+    } else {
+      ElMessage.error(`线路 "${line.name}" 测试失败: ${testData?.message || '未知错误'}`)
+    }
+  } catch (e: any) {
+    ElMessage.error(`线路测试异常: ${e.message || '请稍后重试'}`)
+  } finally {
+    ;(line as any)._testing = false
   }
 }
 
@@ -1151,6 +1321,14 @@ const unbindPhone = async (phone: WorkPhone) => {
   }
 }
 
+// 跳转到帮助中心-通话管理配置指南
+const goToCallConfigGuide = () => {
+  // 关闭当前弹窗
+  visible.value = false
+  // 跳转到帮助中心对应章节
+  router.push('/help-center?section=call-config-guide')
+}
+
 const handleClose = () => {
   stopBindCheck()
 }
@@ -1172,6 +1350,46 @@ onMounted(() => {
 </script>
 
 <style scoped lang="scss">
+.help-link-bar {
+  background: linear-gradient(135deg, #ecf5ff 0%, #f0f7ff 100%);
+  border: 1px solid #d4e8ff;
+  border-radius: 8px;
+  padding: 10px 16px;
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+
+  .help-link-btn {
+    font-size: 14px;
+    font-weight: 500;
+    color: #409eff;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0;
+    height: auto;
+
+    &:hover {
+      color: #337ecc;
+    }
+
+    .help-link-icon {
+      font-size: 18px;
+      color: #409eff;
+    }
+
+    .help-link-arrow {
+      font-size: 14px;
+      margin-left: 2px;
+      transition: transform 0.2s;
+    }
+
+    &:hover .help-link-arrow {
+      transform: translateX(3px);
+    }
+  }
+}
+
 .config-section {
   padding: 16px;
 

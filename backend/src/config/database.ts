@@ -64,6 +64,8 @@ import { WecomAcquisitionLink } from '../entities/WecomAcquisitionLink';
 import { WecomServiceAccount } from '../entities/WecomServiceAccount';
 import { WecomChatRecord } from '../entities/WecomChatRecord';
 import { WecomPaymentRecord } from '../entities/WecomPaymentRecord';
+import { WecomPaymentQrcode } from '../entities/WecomPaymentQrcode';
+import { WecomPaymentRefund } from '../entities/WecomPaymentRefund';
 import { CodCancelApplication } from '../entities/CodCancelApplication';
 import { ValueAddedOrder } from '../entities/ValueAddedOrder';
 import { ValueAddedPriceConfig } from '../entities/ValueAddedPriceConfig';
@@ -84,6 +86,44 @@ import { TenantSettings } from '../entities/TenantSettings';
 import { AdminOperationLog } from '../entities/AdminOperationLog';
 import { Changelog } from '../entities/Changelog';
 import { SenderAddress } from '../entities/SenderAddress';
+import { SmsQuotaPackage } from '../entities/SmsQuotaPackage';
+import { SmsQuotaOrder } from '../entities/SmsQuotaOrder';
+import { SmsAutoSendRule } from '../entities/SmsAutoSendRule';
+import { WecomCustomerGroup } from '../entities/WecomCustomerGroup';
+import { WecomSensitiveWord } from '../entities/WecomSensitiveWord';
+import { WecomSensitiveHit } from '../entities/WecomSensitiveHit';
+import { WecomQualityRule } from '../entities/WecomQualityRule';
+import { WecomQualityInspection } from '../entities/WecomQualityInspection';
+import { WecomArchiveSetting } from '../entities/WecomArchiveSetting';
+import { WecomArchiveMember } from '../entities/WecomArchiveMember';
+import { WecomVasOrder } from '../entities/WecomVasOrder';
+import { WecomVasConfig } from '../entities/WecomVasConfig';
+import { WecomKfSession } from '../entities/WecomKfSession';
+import { WecomQuickReply } from '../entities/WecomQuickReply';
+// V4.0 新增 Entity
+import { WecomAutoMatchSuggestion } from '../entities/WecomAutoMatchSuggestion';
+import { WecomGroupTemplate } from '../entities/WecomGroupTemplate';
+import { WecomAcquisitionSmartRule } from '../entities/WecomAcquisitionSmartRule';
+import { WecomContactWay } from '../entities/WecomContactWay';
+import { WecomContactWayDailyStat } from '../entities/WecomContactWayDailyStat';
+import { WecomCustomerEvent } from '../entities/WecomCustomerEvent';
+import { WecomAiModel } from '../entities/WecomAiModel';
+import { WecomAiAgent } from '../entities/WecomAiAgent';
+import { WecomAiInspectStrategy } from '../entities/WecomAiInspectStrategy';
+import { WecomAiInspectResult } from '../entities/WecomAiInspectResult';
+import { WecomKnowledgeBase } from '../entities/WecomKnowledgeBase';
+import { WecomKnowledgeEntry } from '../entities/WecomKnowledgeEntry';
+import { WecomScriptCategory } from '../entities/WecomScriptCategory';
+import { WecomScript } from '../entities/WecomScript';
+import { WecomAiLog } from '../entities/WecomAiLog';
+import { WecomSidebarAuthCode } from '../entities/WecomSidebarAuthCode';
+import { WecomDepartmentMapping } from '../entities/WecomDepartmentMapping';
+import { WecomGroupWelcome } from '../entities/WecomGroupWelcome';
+import { WecomAntiSpamRule } from '../entities/WecomAntiSpamRule';
+import { WecomGroupBroadcast } from '../entities/WecomGroupBroadcast';
+import { WecomSuiteConfig } from '../entities/WecomSuiteConfig';
+import { WecomSuiteCallbackLog } from '../entities/WecomSuiteCallbackLog';
+import { UserSession } from '../entities/UserSession';
 import { log } from './logger';
 
 // ==================== 环境配置智能加载 ====================
@@ -118,12 +158,24 @@ const entities = [
   PerformanceConfig, CommissionSetting, CommissionLadder,
   AdminUser, AdminRole, License, Version, LicenseLog,
   WecomConfig, WecomUserBinding, WecomCustomer, WecomAcquisitionLink,
-  WecomServiceAccount, WecomChatRecord, WecomPaymentRecord,
+  WecomServiceAccount, WecomChatRecord, WecomPaymentRecord, WecomPaymentQrcode, WecomPaymentRefund,
   CodCancelApplication, ValueAddedOrder, ValueAddedPriceConfig,
   OutsourceCompany, ValueAddedStatusConfig, Module, ModuleConfig, NotificationTemplate,
   UpdateTask, MigrationHistory, ApiConfig, ApiCallLog, Tenant,
   Package, PrivateCustomer, TenantLog, TenantSettings, AdminOperationLog, Changelog,
-  SenderAddress
+  SenderAddress, SmsQuotaPackage, SmsQuotaOrder, SmsAutoSendRule,
+  WecomCustomerGroup, WecomSensitiveWord, WecomSensitiveHit,
+  WecomQualityRule, WecomQualityInspection, WecomArchiveSetting, WecomArchiveMember,
+  WecomVasOrder, WecomVasConfig, WecomKfSession, WecomQuickReply,
+  // V4.0 新增
+  WecomAutoMatchSuggestion, WecomGroupTemplate, WecomAcquisitionSmartRule,
+  WecomContactWay, WecomContactWayDailyStat, WecomCustomerEvent,
+  WecomAiModel, WecomAiAgent, WecomAiInspectStrategy, WecomAiInspectResult,
+  WecomKnowledgeBase, WecomKnowledgeEntry, WecomScriptCategory, WecomScript,
+  WecomAiLog, WecomSidebarAuthCode, WecomDepartmentMapping,
+  WecomGroupWelcome, WecomAntiSpamRule, WecomGroupBroadcast,
+  WecomSuiteConfig, WecomSuiteCallbackLog,
+  UserSession
 ];
 
 // ==================== MySQL 数据库配置 ====================

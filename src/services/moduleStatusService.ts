@@ -20,6 +20,7 @@ const DEFAULT_MODULES = [
   'performance',      // 业绩统计
   'product',          // 商品管理
   'service-management',// 服务管理(通话)
+  'wecom',            // 企微管理
   'system'            // 系统管理
 ]
 

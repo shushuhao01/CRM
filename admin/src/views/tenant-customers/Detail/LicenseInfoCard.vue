@@ -4,7 +4,9 @@
       <div class="card-header">
         <span>授权信息</span>
         <div class="button-group">
-          <el-button size="small" @click="$emit('adjust-users')">调整用户数</el-button>
+          <el-button size="small" @click="$emit('adjust-users')">
+            {{ detail.user_limit_mode === 'online' ? '调整席位数' : '调整用户数' }}
+          </el-button>
           <el-button size="small" @click="$emit('adjust-storage')">调整存储空间</el-button>
           <el-button size="small" @click="$emit('adjust-package')">调整套餐</el-button>
           <el-button size="small" @click="$emit('regenerate')">重新生成授权码</el-button>
@@ -39,15 +41,45 @@
       <el-descriptions-item label="套餐">
         <el-tag :type="getPackageType(detail.packageName)" size="small">{{ detail.packageName || '未设置' }}</el-tag>
       </el-descriptions-item>
-      <el-descriptions-item label="用户数">
-        <div style="display: flex; align-items: center; gap: 12px;">
-          <span>{{ detail.userCount || 0 }} / {{ detail.maxUsers || 0 }}</span>
+      <el-descriptions-item label="限制模式">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <el-tag v-if="detail.user_limit_mode === 'online'" type="success" size="small" effect="dark">限在</el-tag>
+          <el-tag v-else type="info" size="small" effect="dark">限注</el-tag>
+          <span style="font-size:12px;color:#606266;">{{ detail.user_limit_mode === 'online' ? '限制同时在线人数' : '限制总注册用户数' }}</span>
+          <el-button size="small" link type="primary" @click="$emit('switch-limit-mode')">切换</el-button>
+        </div>
+      </el-descriptions-item>
+      <el-descriptions-item label="在线/席位/用户">
+        <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+          <span :class="{ 'text-bold text-primary': detail.user_limit_mode === 'online' }" style="white-space:nowrap;">
+            在线 <strong>{{ detail.onlineCount || 0 }}</strong>
+          </span>
+          <span style="color:#c0c4cc;">/</span>
+          <span style="white-space:nowrap;">
+            席位 <strong>{{ (Number(detail.max_online_seats)||0) + (Number(detail.extra_online_seats)||0) }}</strong>
+          </span>
+          <el-tag v-if="detail.user_limit_mode === 'online'" size="small" type="success" effect="dark" style="font-size:10px;padding:0 4px;height:18px;line-height:18px;">限在</el-tag>
           <el-progress
-            :percentage="detail.maxUsers ? Math.round((detail.userCount || 0) / detail.maxUsers * 100) : 0"
-            :color="getProgressColor((detail.userCount || 0) / (detail.maxUsers || 1))"
-            style="flex: 1; max-width: 120px;" :show-text="false"
+            v-if="detail.user_limit_mode === 'online'"
+            :percentage="(detail.max_online_seats || 0) > 0 ? Math.round((detail.onlineCount || 0) / ((detail.max_online_seats || 0) + (detail.extra_online_seats || 0)) * 100) : 0"
+            :color="getProgressColor((detail.onlineCount || 0) / ((detail.max_online_seats || 0) + (detail.extra_online_seats || 0) || 1))"
+            style="flex: 0 0 60px;" :show-text="false"
           />
-          <el-tag v-if="detail.maxUsers && (detail.userCount || 0) >= detail.maxUsers" type="danger" size="small">已达上限</el-tag>
+          <span style="color:#c0c4cc;">|</span>
+          <span v-if="detail.user_limit_mode === 'online'" style="white-space:nowrap;color:#909399;">
+            注册 <strong>{{ detail.userCount || 0 }}</strong> 人（不限）
+          </span>
+          <template v-else>
+            <span class="text-bold text-primary" style="white-space:nowrap;">
+              注册 <strong>{{ detail.userCount || 0 }}</strong>/{{ detail.maxUsers || 0 }}
+            </span>
+            <el-tag size="small" type="info" effect="dark" style="font-size:10px;padding:0 4px;height:18px;line-height:18px;">限注</el-tag>
+            <el-progress
+              :percentage="detail.maxUsers ? Math.round((detail.userCount || 0) / detail.maxUsers * 100) : 0"
+              :color="getProgressColor((detail.userCount || 0) / (detail.maxUsers || 1))"
+              style="flex: 0 0 60px;" :show-text="false"
+            />
+          </template>
         </div>
       </el-descriptions-item>
       <el-descriptions-item label="存储空间">
@@ -152,6 +184,7 @@ defineEmits<{
   'suspend': []
   'resume': []
   'toggle-key-visibility': []
+  'switch-limit-mode': []
 }>()
 </script>
 

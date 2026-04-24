@@ -6,7 +6,23 @@ import { CustomerShare } from '../../entities/CustomerShare';
 import { In } from 'typeorm';
 import { formatDateTime, formatDate } from '../../utils/dateFormat';
 import { getTenantRepo } from '../../utils/tenantRepo';
+import { createCustomerLog } from '../../utils/customerLog';
 import { log } from '../../config/logger';
+
+// 从地址字段提取最新地址（支持JSON数组格式和纯文本格式）
+function getLatestAddress(address: string | null | undefined): string {
+  if (!address) return '';
+  try {
+    const parsed = JSON.parse(address);
+    if (Array.isArray(parsed) && parsed.length > 0) {
+      return parsed[0].content || '';
+    }
+  } catch {
+    // 纯文本地址，直接返回
+  }
+  return address;
+}
+import { v4 as uuidv4 } from 'uuid';
 
 export function registerCoreRoutes(router: Router) {
 router.get('/', async (req: Request, res: Response) => {
@@ -288,7 +304,7 @@ router.get('/', async (req: Request, res: Response) => {
         birthday: customer.birthday ? formatDate(customer.birthday) : '',  // 🔥 添加生日字段
         height: customer.height || null,
         weight: customer.weight || null,
-        address: customer.address || '',
+        address: getLatestAddress(customer.address),
         province: customer.province || '',
         city: customer.city || '',
         district: customer.district || '',
@@ -334,6 +350,8 @@ router.get('/', async (req: Request, res: Response) => {
         improvementGoals: customer.improvementGoals || [],
         otherGoals: customer.otherGoals || '',
         fanAcquisitionTime: formatDate(customer.fanAcquisitionTime),
+        customFields: customer.customFields || null,
+        wecomExternalUserid: customer.wecomExternalUserid || '',
         shareInfo // 🔥 添加分享信息
       };
     });
@@ -439,6 +457,161 @@ router.get('/check-exists', async (req: Request, res: Response) => {
       error: error instanceof Error ? error.message : '未知错误',
       data: null
     });
+  }
+});
+
+/**
+ * @route POST /customers/check-batch-phones
+ * @desc 批量检查手机号是否已存在（用于批量导入预检）
+ */
+router.post('/check-batch-phones', async (req: Request, res: Response) => {
+  try {
+    const customerRepository = getTenantRepo(Customer);
+    const { phones } = req.body;
+
+    if (!phones || !Array.isArray(phones) || phones.length === 0) {
+      return res.json({ success: true, code: 200, data: { duplicates: [] } });
+    }
+
+    // 批量查询已存在的手机号
+    const existingCustomers = await customerRepository
+      .createQueryBuilder('customer')
+      .where('customer.phone IN (:...phones)', { phones })
+      .select(['customer.phone'])
+      .getMany();
+
+    const duplicates = existingCustomers.map(c => c.phone);
+
+    res.json({ success: true, code: 200, data: { duplicates } });
+  } catch (error) {
+    log.error('批量检查手机号失败:', error);
+    res.status(500).json({ success: false, code: 500, message: '批量检查手机号失败' });
+  }
+});
+
+/**
+ * @route POST /customers/batch-import
+ * @desc 批量导入客户（仅管理员/超管/部门经理）
+ */
+router.post('/batch-import', async (req: Request, res: Response) => {
+  try {
+    const currentUser = (req as any).currentUser || (req as any).user;
+    const userId = currentUser?.id || (req as any).user?.userId;
+    const userRole = currentUser?.role;
+
+    // 权限检查：仅管理员、超级管理员、部门经理
+    if (!['super_admin', 'admin', 'department_manager'].includes(userRole)) {
+      return res.status(403).json({ success: false, code: 403, message: '无权执行批量导入操作' });
+    }
+
+    const { customers } = req.body;
+    if (!customers || !Array.isArray(customers) || customers.length === 0) {
+      return res.status(400).json({ success: false, code: 400, message: '导入数据不能为空' });
+    }
+
+    if (customers.length > 5000) {
+      return res.status(400).json({ success: false, code: 400, message: '单次最多导入5000条' });
+    }
+
+    const customerRepository = getTenantRepo(Customer);
+    let successCount = 0;
+    let duplicateCount = 0;
+    let errorCount = 0;
+    const errors: string[] = [];
+
+    for (const item of customers) {
+      try {
+        if (!item.name) {
+          errorCount++;
+          errors.push(`缺少姓名`);
+          continue;
+        }
+
+        // 检查手机号重复
+        if (item.phone) {
+          const existing = await customerRepository.findOne({ where: { phone: item.phone } });
+          if (existing) {
+            duplicateCount++;
+            continue;
+          }
+        }
+
+        const customer = customerRepository.create({
+          name: item.name,
+          phone: item.phone || null,
+          email: item.email || null,
+          address: item.address || null,
+          province: item.province || null,
+          city: item.city || null,
+          district: item.district || null,
+          street: item.street || null,
+          detailAddress: item.detailAddress || null,
+          overseasAddress: item.overseasAddress || null,
+          level: item.level || 'normal',
+          source: item.source || 'other',
+          tags: item.tags || [],
+          remark: item.remark || null,
+          company: item.company || null,
+          status: item.status || 'active',
+          salesPersonId: userId,
+          createdBy: userId,
+          age: item.age ? parseInt(item.age) : null,
+          gender: item.gender || 'unknown',
+          height: item.height ? parseFloat(item.height) : null,
+          weight: item.weight ? parseFloat(item.weight) : null,
+          wechat: item.wechat || null,
+          medicalHistory: item.medicalHistory || null,
+          improvementGoals: item.improvementGoals || [],
+          otherGoals: item.otherGoals || null,
+          fanAcquisitionTime: item.fanAcquisitionTime ? new Date(item.fanAcquisitionTime) : null,
+          birthday: item.birthday ? new Date(item.birthday) : null,
+          customFields: item.customFields || null,
+          wecomExternalUserid: item.wecomExternalUserid || null,
+          orderCount: 0,
+          returnCount: 0,
+          totalAmount: 0
+        });
+
+        const saved = await customerRepository.save(customer);
+
+        // 生成客户编号
+        try {
+          saved.customerNo = `C${saved.id.substring(0, 8).toUpperCase()}`;
+          await customerRepository.save(saved);
+        } catch (codeErr: any) {
+          log.warn('[批量导入] 客户编号生成失败:', codeErr.message);
+        }
+
+        // 记录批量导入创建日志
+        createCustomerLog({
+          customerId: saved.id,
+          logType: 'create',
+          content: `通过批量导入创建了客户「${saved.name}」`,
+          detail: { source: 'batch_import', customerName: saved.name, phone: saved.phone || '' },
+          operatorId: userId,
+          operatorName: currentUser?.realName || currentUser?.name || '系统',
+          tenantId: (req as any).tenantId || currentUser?.tenantId
+        });
+
+        successCount++;
+      } catch (itemErr: any) {
+        errorCount++;
+        errors.push(`${item.name || '未知'}: ${itemErr.message}`);
+        log.warn('[批量导入] 单条导入失败:', itemErr.message);
+      }
+    }
+
+    log.info(`[批量导入] 完成: 成功${successCount}, 重复${duplicateCount}, 失败${errorCount}`);
+
+    res.json({
+      success: true,
+      code: 200,
+      message: '批量导入完成',
+      data: { successCount, duplicateCount, errorCount, errors: errors.slice(0, 20) }
+    });
+  } catch (error) {
+    log.error('批量导入失败:', error);
+    res.status(500).json({ success: false, code: 500, message: '批量导入失败' });
   }
 });
 
@@ -613,7 +786,7 @@ router.get('/:id', async (req: Request, res: Response) => {
       height: customer.height || null,
       weight: customer.weight || null,
       birthday: customer.birthday ? formatDate(customer.birthday) : '',
-      address: customer.address || '',
+      address: getLatestAddress(customer.address),
       province: customer.province || '',
       city: customer.city || '',
       district: customer.district || '',
@@ -641,7 +814,11 @@ router.get('/:id', async (req: Request, res: Response) => {
       medicalHistory: customer.medicalHistory || '',
       improvementGoals: customer.improvementGoals || [],
       otherGoals: customer.otherGoals || '',
-      fanAcquisitionTime: formatDate(customer.fanAcquisitionTime)
+      fanAcquisitionTime: formatDate(customer.fanAcquisitionTime),
+      customFields: customer.customFields || null,
+      wecomExternalUserid: customer.wecomExternalUserid || '',
+      starRating: (customer as any).starRating || 0,
+      finalScore: (customer as any).finalScore || 0
     };
 
     res.json({
@@ -669,7 +846,7 @@ router.post('/', async (req: Request, res: Response) => {
       age, gender, height, weight, wechat, wechatId,
       province, city, district, street, detailAddress, overseasAddress,
       medicalHistory, improvementGoals, otherGoals, fanAcquisitionTime,
-      status, salesPersonId, createdBy
+      status, salesPersonId, createdBy, customFields, wecomExternalUserid, birthday
     } = req.body;
 
     log.info('[创建客户] 收到请求数据:', JSON.stringify(req.body));
@@ -754,6 +931,9 @@ router.post('/', async (req: Request, res: Response) => {
       improvementGoals: improvementGoals || [],
       otherGoals: otherGoals || null,
       fanAcquisitionTime: fanAcquisitionTime ? new Date(fanAcquisitionTime) : null,
+      birthday: birthday ? new Date(birthday) : null,
+      customFields: customFields || null,
+      wecomExternalUserid: wecomExternalUserid || null,
       orderCount: 0,
       returnCount: 0,
       totalAmount: 0
@@ -809,6 +989,30 @@ router.post('/', async (req: Request, res: Response) => {
 
     log.info('[创建客户] ✅✅ 数据库验证通过，客户确认已写入, ID:', verifyCustomer.id, '姓名:', verifyCustomer.name, '手机:', verifyCustomer.phone);
 
+    // 🔥 v1.8.1 新增：触发自动发送短信（新客户创建欢迎短信）
+    try {
+      const tenantId = (verifyCustomer as any).tenantId || (req as any).tenantId;
+      if (tenantId && verifyCustomer.phone) {
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        const { SmsAutoSendService } = require('../../services/SmsAutoSendService');
+        const currentUser = (req as any).user;
+        SmsAutoSendService.triggerEvent(tenantId, 'customer_created', {
+          customer: {
+            name: verifyCustomer.name,
+            phone: verifyCustomer.phone,
+            customerNo: verifyCustomer.customerNo || customerNo,
+            email: verifyCustomer.email || '',
+            gender: verifyCustomer.gender || '',
+            address: verifyCustomer.address || ''
+          },
+          userId: currentUser?.userId,
+          departmentId: currentUser?.department || currentUser?.departmentId || ''
+        }).catch((err: any) => log.warn('[SMS-AutoSend] 新客户创建触发失败:', err.message));
+      }
+    } catch (autoSendErr: any) {
+      log.warn('[SMS-AutoSend] 新客户触发跳过:', autoSendErr.message);
+    }
+
     // 转换数据格式返回
     const data = {
       id: verifyCustomer.id,
@@ -843,6 +1047,17 @@ router.post('/', async (req: Request, res: Response) => {
     };
 
     log.info('[创建客户] ✅ 准备返回成功响应, ID:', data.id, '姓名:', data.name);
+
+    // 记录客户创建日志
+    createCustomerLog({
+      customerId: data.id,
+      logType: 'create',
+      content: `通过CRM系统手动创建了客户「${data.name}」`,
+      detail: { source: 'crm_manual', customerName: data.name, phone: data.phone || '', createdBy: currentUser?.realName || currentUser?.name || '系统' },
+      operatorId: currentUserId,
+      operatorName: currentUser?.realName || currentUser?.name || '系统',
+      tenantId: currentTenantId
+    });
 
     res.status(201).json({
       success: true,
@@ -888,39 +1103,108 @@ router.put('/:id', async (req: Request, res: Response) => {
       name, phone, email, address, level, source, tags, remarks, remark, company, status,
       age, gender, height, weight, wechat, wechatId, birthday,
       province, city, district, street, detailAddress, overseasAddress,
-      medicalHistory, improvementGoals, otherGoals, fanAcquisitionTime, otherPhones
+      medicalHistory, improvementGoals, otherGoals, fanAcquisitionTime, otherPhones,
+      customFields, starRating, finalScore
     } = req.body;
 
-    // 更新字段
-    if (name !== undefined) customer.name = name;
-    if (phone !== undefined) customer.phone = phone;
-    if (email !== undefined) customer.email = email;
-    if (address !== undefined) customer.address = address;
-    if (province !== undefined) customer.province = province;
-    if (city !== undefined) customer.city = city;
-    if (district !== undefined) customer.district = district;
-    if (street !== undefined) customer.street = street;
-    if (detailAddress !== undefined) customer.detailAddress = detailAddress;
-    if (overseasAddress !== undefined) customer.overseasAddress = overseasAddress;
-    if (level !== undefined) customer.level = level;
-    if (source !== undefined) customer.source = source;
-    if (tags !== undefined) customer.tags = tags;
-    if (remarks !== undefined || remark !== undefined) customer.remark = remarks || remark;
-    if (company !== undefined) customer.company = company;
-    if (status !== undefined) customer.status = status;
-    if (age !== undefined) customer.age = age;
-    if (gender !== undefined) customer.gender = gender;
-    if (height !== undefined) customer.height = height;
-    if (weight !== undefined) customer.weight = weight;
-    if (birthday !== undefined) customer.birthday = birthday ? new Date(birthday) : undefined;
-    if (wechat !== undefined || wechatId !== undefined) customer.wechat = wechat || wechatId;
-    if (medicalHistory !== undefined) customer.medicalHistory = medicalHistory;
-    if (improvementGoals !== undefined) customer.improvementGoals = improvementGoals;
-    if (otherGoals !== undefined) customer.otherGoals = otherGoals;
-    if (fanAcquisitionTime !== undefined) customer.fanAcquisitionTime = fanAcquisitionTime ? new Date(fanAcquisitionTime) : undefined;
-    if (otherPhones !== undefined) customer.otherPhones = otherPhones;
+    // 字段中文名映射
+    const fieldLabelMap: Record<string, string> = {
+      name: '客户姓名', phone: '联系电话', email: '邮箱', address: '详细地址',
+      level: '客户等级', source: '客户来源', tags: '标签', remark: '备注',
+      company: '公司', status: '状态', age: '年龄', gender: '性别',
+      height: '身高', weight: '体重', birthday: '生日', wechat: '微信号',
+      province: '省份', city: '城市', district: '区县', street: '街道',
+      detailAddress: '详细地址', overseasAddress: '境外地址',
+      medicalHistory: '疾病史', improvementGoals: '改善目标', otherGoals: '其他目标',
+      fanAcquisitionTime: '进粉时间', otherPhones: '备用号码', customFields: '自定义字段',
+      starRating: '手动评分'
+    };
+    const genderMap: Record<string, string> = { male: '男', female: '女', unknown: '未知' };
+    const levelMap: Record<string, string> = { normal: '普通', vip: 'VIP', svip: 'SVIP', important: '重要', potential: '潜在' };
+
+    // 记录变更前的旧值
+    const changes: { field: string; fieldLabel: string; oldValue: any; newValue: any }[] = [];
+    // 手机号脱敏函数
+    const maskPhone = (val: string) => {
+      if (!val || val.length < 7) return val || '';
+      return val.substring(0, 3) + '****' + val.substring(val.length - 4);
+    };
+    const trackChange = (field: string, oldVal: any, newVal: any) => {
+      let oldDisplay = oldVal ?? '';
+      let newDisplay = newVal ?? '';
+      if (field === 'gender') { oldDisplay = genderMap[oldVal] || oldVal || ''; newDisplay = genderMap[newVal] || newVal || ''; }
+      if (field === 'level') { oldDisplay = levelMap[oldVal] || oldVal || ''; newDisplay = levelMap[newVal] || newVal || ''; }
+      if (field === 'phone') {
+        oldDisplay = maskPhone(String(oldVal || ''));
+        newDisplay = maskPhone(String(newVal || ''));
+      }
+      if (field === 'otherPhones') {
+        oldDisplay = Array.isArray(oldVal) ? oldVal.map(maskPhone).join(', ') : (oldVal || '');
+        newDisplay = Array.isArray(newVal) ? newVal.map(maskPhone).join(', ') : (newVal || '');
+      } else if (field === 'tags' || field === 'improvementGoals') {
+        oldDisplay = Array.isArray(oldVal) ? oldVal.join(', ') : (oldVal || '');
+        newDisplay = Array.isArray(newVal) ? newVal.join(', ') : (newVal || '');
+      }
+      if (field === 'birthday' || field === 'fanAcquisitionTime') {
+        oldDisplay = oldVal ? new Date(oldVal).toLocaleDateString('zh-CN') : '';
+        newDisplay = newVal ? new Date(newVal).toLocaleDateString('zh-CN') : '';
+      }
+      if (String(oldDisplay) !== String(newDisplay)) {
+        changes.push({ field, fieldLabel: fieldLabelMap[field] || field, oldValue: oldDisplay, newValue: newDisplay });
+      }
+    };
+
+    // 更新字段并跟踪变更
+    if (name !== undefined) { trackChange('name', customer.name, name); customer.name = name; }
+    if (phone !== undefined) { trackChange('phone', customer.phone, phone); customer.phone = phone; }
+    if (email !== undefined) { trackChange('email', customer.email, email); customer.email = email; }
+    if (address !== undefined) { trackChange('address', customer.address, address); customer.address = address; }
+    if (province !== undefined) { trackChange('province', customer.province, province); customer.province = province; }
+    if (city !== undefined) { trackChange('city', customer.city, city); customer.city = city; }
+    if (district !== undefined) { trackChange('district', customer.district, district); customer.district = district; }
+    if (street !== undefined) { trackChange('street', customer.street, street); customer.street = street; }
+    if (detailAddress !== undefined) { trackChange('detailAddress', customer.detailAddress, detailAddress); customer.detailAddress = detailAddress; }
+    if (overseasAddress !== undefined) { trackChange('overseasAddress', customer.overseasAddress, overseasAddress); customer.overseasAddress = overseasAddress; }
+    if (level !== undefined) { trackChange('level', customer.level, level); customer.level = level; }
+    if (source !== undefined) { trackChange('source', customer.source, source); customer.source = source; }
+    if (tags !== undefined) { trackChange('tags', customer.tags, tags); customer.tags = tags; }
+    if (remarks !== undefined || remark !== undefined) { trackChange('remark', customer.remark, remarks || remark); customer.remark = remarks || remark; }
+    if (company !== undefined) { trackChange('company', customer.company, company); customer.company = company; }
+    if (status !== undefined) { trackChange('status', customer.status, status); customer.status = status; }
+    if (age !== undefined) { trackChange('age', customer.age, age); customer.age = age; }
+    if (gender !== undefined) { trackChange('gender', customer.gender, gender); customer.gender = gender; }
+    if (height !== undefined) { trackChange('height', customer.height, height); customer.height = height; }
+    if (weight !== undefined) { trackChange('weight', customer.weight, weight); customer.weight = weight; }
+    if (birthday !== undefined) { trackChange('birthday', customer.birthday, birthday); customer.birthday = birthday ? new Date(birthday) : undefined; }
+    if (wechat !== undefined || wechatId !== undefined) { trackChange('wechat', customer.wechat, wechat || wechatId); customer.wechat = wechat || wechatId; }
+    if (medicalHistory !== undefined) { customer.medicalHistory = medicalHistory; }
+    if (improvementGoals !== undefined) { trackChange('improvementGoals', customer.improvementGoals, improvementGoals); customer.improvementGoals = improvementGoals; }
+    if (otherGoals !== undefined) { trackChange('otherGoals', customer.otherGoals, otherGoals); customer.otherGoals = otherGoals; }
+    if (fanAcquisitionTime !== undefined) { trackChange('fanAcquisitionTime', customer.fanAcquisitionTime, fanAcquisitionTime); customer.fanAcquisitionTime = fanAcquisitionTime ? new Date(fanAcquisitionTime) : undefined; }
+    if (otherPhones !== undefined) { trackChange('otherPhones', customer.otherPhones, otherPhones); customer.otherPhones = otherPhones; }
+    if (customFields !== undefined) { customer.customFields = customFields; }
+    if (starRating !== undefined) {
+      trackChange('starRating', (customer as any).starRating, starRating);
+      (customer as any).starRating = starRating;
+    }
+    if (finalScore !== undefined) { (customer as any).finalScore = finalScore; }
 
     const updatedCustomer = await customerRepository.save(customer);
+
+    // 自动记录客户日志（含详细字段变更）
+    const editUser = (req as any).currentUser;
+    const changesSummary = changes.length > 0
+      ? changes.map(c => `${c.fieldLabel}: "${c.oldValue || '空'}" → "${c.newValue || '空'}"`).join('；')
+      : '编辑了客户信息';
+    createCustomerLog({
+      customerId,
+      logType: 'edit',
+      content: changesSummary,
+      detail: { changes, rawBody: req.body },
+      operatorId: editUser?.id,
+      operatorName: editUser?.realName || editUser?.name || '系统',
+      tenantId: editUser?.tenantId
+    });
 
     // 转换数据格式返回
     const data = {
@@ -946,7 +1230,10 @@ router.put('/:id', async (req: Request, res: Response) => {
       tags: updatedCustomer.tags || [],
       remarks: updatedCustomer.remark || '',
       improvementGoals: updatedCustomer.improvementGoals || [],
-      fanAcquisitionTime: updatedCustomer.fanAcquisitionTime ? formatDate(updatedCustomer.fanAcquisitionTime) : ''
+      fanAcquisitionTime: updatedCustomer.fanAcquisitionTime ? formatDate(updatedCustomer.fanAcquisitionTime) : '',
+      customFields: updatedCustomer.customFields || null,
+      starRating: (updatedCustomer as any).starRating || 0,
+      finalScore: (updatedCustomer as any).finalScore || 0
     };
 
     res.json({

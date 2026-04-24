@@ -8,9 +8,11 @@ import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 import fs from 'fs';
 import path from 'path';
+import { createDefaultAdmin } from '../../utils/adminAccountHelper';
 
 import { log } from '../../config/logger';
 import { SITE_CONFIG } from '../../config/sites';
+import { onlineSeatService } from '../../services/OnlineSeatService';
 const router = Router();
 
 
@@ -170,10 +172,16 @@ router.get('/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const rows = await AppDataSource.query(
-      `SELECT t.*, p.name as package_name, p.modules as package_modules FROM tenants t
+      `SELECT t.*, p.name as package_name, p.features as package_features_raw FROM tenants t
        LEFT JOIN tenant_packages p ON t.package_id COLLATE utf8mb4_unicode_ci = p.id COLLATE utf8mb4_unicode_ci WHERE t.id = ?`, [id]
     );
-    const tenant = Array.isArray(rows) ? rows[0] : rows;
+    // 兼容有/无 modules 列的数据库：优先使用 modules，fallback 到 features
+    const tenantRow = Array.isArray(rows) ? rows[0] : rows;
+    if (tenantRow) {
+      tenantRow.package_modules = tenantRow.package_modules || tenantRow.package_features_raw || null;
+      delete tenantRow.package_features_raw;
+    }
+    const tenant = tenantRow;
 
     if (!tenant) {
       return res.status(404).json({ success: false, message: '租户不存在' });
@@ -220,13 +228,13 @@ router.get('/:id', async (req: Request, res: Response) => {
     }
 
     // 🔥 解析模块信息：优先使用租户自身的features（模块ID列表），其次使用套餐默认modules
-    const validModuleIds = ['dashboard','customer','order','service-management','performance','logistics','service','data','finance','product','system'];
+    const validModuleIds = ['dashboard','customer','order','service-management','performance','logistics','service','data','finance','product','system','wecom'];
     // 中文名称到模块ID的映射
     const chineseToModuleId: Record<string, string> = {
       '数据看板': 'dashboard', '客户管理': 'customer', '订单管理': 'order',
       '服务管理': 'service-management', '业绩统计': 'performance', '物流管理': 'logistics',
       '售后管理': 'service', '资料管理': 'data', '财务管理': 'finance',
-      '商品管理': 'product', '系统管理': 'system'
+      '商品管理': 'product', '系统管理': 'system', '企微管理': 'wecom'
     };
 
     let tenantModules: string[] = [];
@@ -270,9 +278,9 @@ router.get('/:id', async (req: Request, res: Response) => {
     // 🔥 如果仍然为空但有packageId，直接查套餐表拿modules
     if (tenantModules.length === 0 && tenant.package_id) {
       try {
-        const pkgRow = await AppDataSource.query('SELECT modules, features as pkg_features FROM tenant_packages WHERE id = ?', [tenant.package_id]);
+        const pkgRow = await AppDataSource.query('SELECT features as pkg_features FROM tenant_packages WHERE id = ?', [tenant.package_id]);
         if (pkgRow[0]) {
-          const raw = pkgRow[0].modules || pkgRow[0].pkg_features;
+          const raw = pkgRow[0].pkg_features;
           if (raw) {
             const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
             if (Array.isArray(parsed) && parsed.length > 0) {
@@ -365,6 +373,17 @@ router.get('/:id', async (req: Request, res: Response) => {
     }
     // 清理敏感字段（不返回哈希值）
     delete tenant.password_hash;
+
+    // 🔥 实时查询在线人数（不依赖tenants.current_online_seats缓存值）
+    try {
+      const onlineResult = await AppDataSource.query(
+        `SELECT COUNT(DISTINCT user_id) as cnt FROM user_sessions WHERE tenant_id = ? AND status = 'active'`,
+        [id]
+      );
+      tenant.current_online_seats = Number(onlineResult[0]?.cnt || 0);
+    } catch {
+      // user_sessions 表可能不存在，使用 tenants 表缓存值
+    }
 
     // 🔥 动态计算存储空间使用量（统计uploads目录下该租户的文件）
     try {
@@ -492,12 +511,12 @@ router.post('/', async (req: Request, res: Response) => {
     const licenseKey = generateTenantLicenseKey();
 
     // 🔥 如果指定了套餐，获取套餐的modules作为租户的默认功能模块
-    const validModuleIdsForCreate = ['dashboard','customer','order','service-management','performance','logistics','service','data','finance','product','system'];
+    const validModuleIdsForCreate = ['dashboard','customer','order','service-management','performance','logistics','service','data','finance','product','system','wecom'];
     const chineseToModuleIdForCreate: Record<string, string> = {
       '数据看板': 'dashboard', '客户管理': 'customer', '订单管理': 'order',
       '服务管理': 'service-management', '业绩统计': 'performance', '物流管理': 'logistics',
       '售后管理': 'service', '资料管理': 'data', '财务管理': 'finance',
-      '商品管理': 'product', '系统管理': 'system'
+      '商品管理': 'product', '系统管理': 'system', '企微管理': 'wecom'
     };
     let tenantFeatures: string | null = null;
     if (packageId) {
@@ -578,21 +597,27 @@ router.post('/', async (req: Request, res: Response) => {
        maxUsers || 10, maxStorageGb || 5, finalExpireDate, tenantFeatures]
     );
 
-    // 🔥 创建租户默认管理员账号
+    // 🔥 同步设置会员中心密码（默认 Aa123456），确保租户能登录会员中心
+    try {
+      const memberPasswordHash = await bcrypt.hash('Aa123456', 10);
+      await AppDataSource.query('UPDATE tenants SET password_hash = ? WHERE id = ?', [memberPasswordHash, id]);
+      log.info(`[Admin Tenants] ✅ 已为租户 ${tenantCode} 设置会员中心默认密码`);
+    } catch (pwdErr) {
+      log.warn('[Admin Tenants] 设置会员中心密码失败（不影响创建）:', (pwdErr as any).message?.substring(0, 80));
+    }
+
+    // 🔥 创建租户默认管理员账号（使用统一的 adminAccountHelper）
     let adminAccount: { username: string; password: string } | null = null;
     try {
-      const defaultPassword = 'Aa123456';
-      const hashedPassword = await bcrypt.hash(defaultPassword, 12);
       const adminUsername = phone || `admin_${tenantCode}`;
-      const adminId = uuidv4();
-
-      await AppDataSource.query(
-        `INSERT INTO users (id, tenant_id, username, password, name, real_name, phone, email, role, status, is_system, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'admin', 'active', 1, NOW(), NOW())`,
-        [adminId, id, adminUsername, hashedPassword, contact || '管理员', contact || '管理员', phone || null, email || null]
-      );
-
-      adminAccount = { username: adminUsername, password: defaultPassword };
+      const result = await createDefaultAdmin({
+        tenantId: id,
+        phone: adminUsername,
+        realName: contact || '管理员',
+        email: email || undefined
+      });
+      adminAccount = { username: result.username, password: result.password };
+      log.info(`[Admin Tenants] ✅ 已为租户 ${tenantCode} 创建管理员: ${result.username}`);
     } catch (adminErr) {
       log.info('[Admin Tenants] 创建管理员账号失败（可能已存在）:', (adminErr as any).message?.substring(0, 80));
     }
@@ -625,7 +650,7 @@ router.post('/', async (req: Request, res: Response) => {
 router.put('/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { name, packageId, contact, phone, email, maxUsers, maxStorageGb, expireDate, features, modules, status, remark } = req.body;
+    const { name, packageId, contact, phone, email, maxUsers, maxStorageGb, expireDate, features, modules, status, remark, wecomChatArchiveAuth, user_limit_mode, max_online_seats, extra_online_seats } = req.body;
 
     const updates: string[] = [];
     const params: any[] = [];
@@ -639,6 +664,10 @@ router.put('/:id', async (req: Request, res: Response) => {
     if (maxUsers) { updates.push('max_users = ?'); params.push(maxUsers); }
     if (maxStorageGb) { updates.push('max_storage_gb = ?'); params.push(maxStorageGb); }
     if (expireDate) { updates.push('expire_date = ?'); params.push(expireDate); }
+    if (wecomChatArchiveAuth !== undefined) { updates.push('wecom_chat_archive_auth = ?'); params.push(wecomChatArchiveAuth ? 1 : 0); }
+    if (user_limit_mode !== undefined) { updates.push('user_limit_mode = ?'); params.push(user_limit_mode); }
+    if (max_online_seats !== undefined) { updates.push('max_online_seats = ?'); params.push(max_online_seats); }
+    if (extra_online_seats !== undefined) { updates.push('extra_online_seats = ?'); params.push(extra_online_seats); }
     // modules 优先（模块ID列表），features 次之（文本特性列表）
     // 两者都存入 features 字段，modules 覆盖 features
     if (modules && Array.isArray(modules) && modules.length > 0) {
@@ -665,6 +694,16 @@ router.put('/:id', async (req: Request, res: Response) => {
 
     params.push(id);
     await AppDataSource.query(`UPDATE tenants SET ${updates.join(', ')} WHERE id = ?`, params);
+
+    // 🔥 如果修改了席位/模式，立即检查并踢出超额用户
+    if (user_limit_mode !== undefined || max_online_seats !== undefined || extra_online_seats !== undefined) {
+      try {
+        await onlineSeatService.syncTenantOnlineCount(id);
+        await onlineSeatService.enforceExcessKick();
+      } catch (_e) {
+        log.warn('[Admin] 席位调整后超额踢出失败:', _e);
+      }
+    }
 
     res.json({ success: true, message: '租户更新成功' });
   } catch (error: any) {
@@ -779,6 +818,12 @@ router.post('/:id/renew', async (req: Request, res: Response) => {
        VALUES (?, ?, 'renew', 'success', ?, ?, ?, ?)`,
       [uuidv4(), id, `续期：${oldExpireDate} -> ${expireDate}`, getClientIp(req), adminUser?.adminId, adminUser?.username]
     );
+
+    // 清除写入限制缓存，使续期立即生效
+    try {
+      const { clearLicenseWriteCache } = await import('../../middleware/checkLicenseWrite');
+      clearLicenseWriteCache(id);
+    } catch (_e) { /* ignore */ }
 
     res.json({ success: true, message: '租户续期成功' });
   } catch (error: any) {
@@ -1085,10 +1130,30 @@ const ensureCleanedAtColumn = async () => {
   }
 };
 
+// 确保 wecom_chat_archive_auth 字段存在（tenants + licenses 表）
+const ensureWecomChatArchiveAuthColumn = async () => {
+  const tables = ['tenants', 'licenses'];
+  for (const tableName of tables) {
+    try {
+      const cols = await AppDataSource.query(
+        `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = 'wecom_chat_archive_auth'`,
+        [tableName]
+      );
+      if (cols.length === 0) {
+        await AppDataSource.query(`ALTER TABLE \`${tableName}\` ADD COLUMN wecom_chat_archive_auth TINYINT(1) NOT NULL DEFAULT 0 COMMENT '会话存档增值服务授权: 0=未授权, 1=已授权'`);
+        log.info(`[Admin Tenants] 已添加 ${tableName}.wecom_chat_archive_auth 字段`);
+      }
+    } catch (e) {
+      log.info(`[Admin Tenants] ${tableName}.wecom_chat_archive_auth 字段检查跳过:`, (e as any).message?.substring(0, 60));
+    }
+  }
+};
+
 // 延迟初始化（等数据库连接就绪）
 setTimeout(() => {
   ensureCleanupLogsTable();
   ensureCleanedAtColumn();
+  ensureWecomChatArchiveAuthColumn();
 }, 5000);
 
 // ============================================================
@@ -1509,6 +1574,102 @@ router.get('/:id/cleanup-status', async (req: Request, res: Response) => {
   } catch (error: any) {
     log.error('[Admin Tenants] Get cleanup status failed:', error);
     res.status(500).json({ success: false, message: '获取清理状态失败' });
+  }
+});
+
+// ============================================================
+// P2-12: 租户企微统计数据
+// GET /tenants/:id/wecom-stats
+// ============================================================
+router.get('/:id/wecom-stats', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    // 验证租户存在
+    const tenantRows = await AppDataSource.query('SELECT id, name FROM tenants WHERE id = ?', [id]);
+    if (!tenantRows || tenantRows.length === 0) {
+      return res.status(404).json({ success: false, message: '租户不存在' });
+    }
+
+    // 安全查询：先检查表是否存在再统计
+    const safeCount = async (tableName: string, tenantCol: string = 'tenant_id'): Promise<number> => {
+      try {
+        const tableCheck = await AppDataSource.query(
+          `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?`,
+          [tableName]
+        );
+        if (tableCheck.length === 0) return 0;
+        // 检查是否有tenant_id列
+        const colCheck = await AppDataSource.query(
+          `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?`,
+          [tableName, tenantCol]
+        );
+        if (colCheck.length === 0) return 0;
+        const result = await AppDataSource.query(`SELECT COUNT(*) as cnt FROM \`${tableName}\` WHERE \`${tenantCol}\` = ?`, [id]);
+        return Number(result[0]?.cnt || 0);
+      } catch {
+        return 0;
+      }
+    };
+
+    // 安全求和
+    const safeSum = async (tableName: string, sumCol: string, tenantCol: string = 'tenant_id'): Promise<number> => {
+      try {
+        const tableCheck = await AppDataSource.query(
+          `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?`,
+          [tableName]
+        );
+        if (tableCheck.length === 0) return 0;
+        const result = await AppDataSource.query(
+          `SELECT COALESCE(SUM(\`${sumCol}\`), 0) as total FROM \`${tableName}\` WHERE \`${tenantCol}\` = ?`, [id]
+        );
+        return Number(result[0]?.total || 0);
+      } catch {
+        return 0;
+      }
+    };
+
+    // 并行查询所有统计
+    const [configCount, customerCount, bindingCount, chatRecordCount, paymentCount, acquisitionLinkCount, serviceAccountCount, paymentTotalAmount] = await Promise.all([
+      safeCount('wecom_configs'),
+      safeCount('wecom_customers'),
+      safeCount('wecom_user_bindings'),
+      safeCount('wecom_chat_records'),
+      safeCount('wecom_payment_records'),
+      safeCount('wecom_acquisition_links'),
+      safeCount('wecom_service_accounts'),
+      safeSum('wecom_payment_records', 'total_fee'),
+    ]);
+
+    // 查询会话存档授权状态
+    let chatArchiveAuth = false;
+    try {
+      const authRows = await AppDataSource.query(
+        `SELECT wecom_chat_archive_auth FROM tenants WHERE id = ?`, [id]
+      );
+      chatArchiveAuth = !!(authRows[0]?.wecom_chat_archive_auth);
+    } catch { /* 字段可能不存在 */ }
+
+    const hasWecomData = configCount > 0 || customerCount > 0 || chatRecordCount > 0;
+
+    res.json({
+      success: true,
+      data: {
+        hasWecomData,
+        chatArchiveAuth,
+        configCount,
+        customerCount,
+        bindingCount,
+        chatRecordCount,
+        paymentCount,
+        acquisitionLinkCount,
+        serviceAccountCount,
+        paymentTotalAmount: Number((paymentTotalAmount / 100).toFixed(2)), // 分转元
+      }
+    });
+  } catch (error: any) {
+    log.error('[Admin Tenants] Get wecom stats failed:', error);
+    res.status(500).json({ success: false, message: '获取企微统计失败' });
   }
 });
 

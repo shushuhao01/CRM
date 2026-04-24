@@ -58,7 +58,10 @@
                   <span v-else-if="pkg.is_recommended && !isCurrentSubPkg(pkg)" class="tag-rec">推荐</span>
                 </div>
                 <div class="plan-item-meta">
-                  {{ pkg.max_users >= 99999 ? '不限' : pkg.max_users }}用户 · {{ pkg.max_storage_gb }}GB存储
+                  <template v-if="pkg.user_limit_mode === 'both'">{{ pkg.max_users >= 99999 ? '不限' : pkg.max_users }}用户/{{ pkg.max_online_seats }}席位(可选)</template>
+                  <template v-else-if="pkg.user_limit_mode === 'online'">{{ pkg.max_online_seats }}席位(在线制)</template>
+                  <template v-else>{{ pkg.max_users >= 99999 ? '不限' : pkg.max_users }}用户</template>
+                  · {{ pkg.max_storage_gb }}GB存储
                 </div>
               </div>
               <div class="plan-item-price">
@@ -154,7 +157,7 @@
                   请使用{{ selectedChannel === 'wechat' ? '微信' : '支付宝' }}扫码完成签约
                 </div>
                 <div class="sign-qr-box">
-                  <img :src="generateQRCodeUrl(signQrUrl)" alt="签约二维码" />
+                  <img :src="signQrDataUrl || ''" alt="签约二维码" />
                 </div>
                 <p class="sign-qr-tip">扫码授权后，系统将自动完成签约并扣除首期费用</p>
                 <button class="btn-check-sign" @click="handleCheckSign" :disabled="checkingSign">
@@ -171,10 +174,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted, watch } from 'vue'
 import { getMemberProfile } from '@/api/member'
 import { getPackages, type Package } from '@/api/packages'
 import { createSubscription, cancelSubscription, getSubscriptionStatus } from '@/api/subscription'
+import { generateQRCodeDataUrl } from '@/utils/qrcode'
 
 const loading = ref(true)
 const profile = ref<any>(null)
@@ -189,7 +193,12 @@ const subscribing = ref(false)
 // 签约弹窗
 const showSignDialog = ref(false)
 const signQrUrl = ref('')
+const signQrDataUrl = ref('')
 const checkingSign = ref(false)
+
+watch(signQrUrl, async (url) => {
+  signQrDataUrl.value = url ? await generateQRCodeDataUrl(url) : ''
+})
 let signPollTimer: ReturnType<typeof setInterval> | null = null
 
 /** 当前订阅的套餐信息（用于升级判断） */
@@ -241,10 +250,6 @@ onUnmounted(() => { stopSignPolling() })
 
 const formatDate = (d: string) => d ? new Date(d).toLocaleDateString('zh-CN') : '-'
 
-/** 生成二维码URL */
-const generateQRCodeUrl = (content: string) => {
-  return `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(content)}`
-}
 
 /** 选择套餐 */
 const selectPlan = (pkg: Package) => {

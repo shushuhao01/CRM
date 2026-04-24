@@ -54,8 +54,23 @@ export class Package {
   @Column({ type: 'int', default: 5, comment: '最大存储空间（GB）' })
   max_storage_gb!: number;
 
+  @Column({
+    type: 'enum',
+    enum: ['total', 'online', 'both'],
+    default: 'total',
+    name: 'user_limit_mode',
+    comment: '用户限制模式：total-总用户数限制，online-在线席位限制，both-两种都支持(租户自选)'
+  })
+  user_limit_mode!: 'total' | 'online' | 'both';
+
+  @Column({ type: 'int', default: 0, name: 'max_online_seats', comment: '最大在线席位数（user_limit_mode=online时生效）' })
+  max_online_seats!: number;
+
   @Column({ type: 'json', nullable: true, comment: '功能特性列表（JSON数组）' })
   features?: string[];
+
+  @Column({ type: 'json', nullable: true, comment: '模块列表（JSON数组）' })
+  modules?: string[];
 
   @Column({ type: 'tinyint', width: 1, default: 0, comment: '是否为试用套餐' })
   is_trial!: boolean;

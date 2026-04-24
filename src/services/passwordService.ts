@@ -90,44 +90,56 @@ class PasswordService {
     return password === DEFAULT_PASSWORD
   }
 
-  // 检查密码是否过期（使用动态策略）
-  isPasswordExpired(user: User): boolean {
-    const policy = this.getPasswordPolicy() // 🔥 批次263修复：动态获取策略
+  // 🔥 密码安全策略：计算密码已使用天数
+  getPasswordAgeDays(user: User): number {
+    if (!user.passwordLastChanged) {
+      return Infinity // 从未修改过，视为无限天
+    }
+    const lastChanged = new Date(user.passwordLastChanged)
+    const today = new Date()
+    const diffTime = today.getTime() - lastChanged.getTime()
+    return Math.floor(diffTime / (1000 * 60 * 60 * 24))
+  }
 
+  // 🔥 密码安全策略：检查是否需要强制修改密码（90天未修改）
+  isPasswordExpired(user: User): boolean {
     if (!user.passwordLastChanged) {
       return true // 如果没有修改记录，认为已过期
     }
-
-    const expirationDate = new Date(user.passwordLastChanged)
-    expirationDate.setDate(expirationDate.getDate() + policy.expirationDays)
-
-    return new Date() > expirationDate
+    return this.getPasswordAgeDays(user) >= 90
   }
 
-  // 检查是否需要密码过期提醒（使用动态策略）
+  // 🔥 密码安全策略：检查是否需要密码提醒（30天或60天）
   needsPasswordReminder(user: User): boolean {
-    const policy = this.getPasswordPolicy() // 🔥 批次263修复：动态获取策略
-
     if (!user.passwordLastChanged) {
       return true
     }
-
-    const reminderDate = new Date(user.passwordLastChanged)
-    reminderDate.setDate(reminderDate.getDate() + policy.expirationDays - policy.reminderDays)
-
-    return new Date() > reminderDate && !this.isPasswordExpired(user)
+    const ageDays = this.getPasswordAgeDays(user)
+    // 30天和60天时提醒（但未到90天强制修改）
+    return (ageDays >= 30 && ageDays < 90)
   }
 
-  // 计算密码剩余天数（使用动态策略）
-  getPasswordRemainingDays(user: User): number {
-    const policy = this.getPasswordPolicy() // 🔥 批次263修复：动态获取策略
+  // 🔥 密码安全策略：获取提醒级别 'first'=30天 | 'second'=60天 | 'force'=90天 | null=不需要
+  getPasswordReminderLevel(user: User): 'first' | 'second' | 'force' | null {
+    if (!user.passwordLastChanged) {
+      return 'force'
+    }
+    const ageDays = this.getPasswordAgeDays(user)
+    if (ageDays >= 90) return 'force'
+    if (ageDays >= 60) return 'second'
+    if (ageDays >= 30) return 'first'
+    return null
+  }
 
+  // 计算密码距离强制修改（90天）的剩余天数
+  getPasswordRemainingDays(user: User): number {
     if (!user.passwordLastChanged) {
       return 0
     }
 
-    const expirationDate = new Date(user.passwordLastChanged)
-    expirationDate.setDate(expirationDate.getDate() + policy.expirationDays)
+    const lastChanged = new Date(user.passwordLastChanged)
+    const expirationDate = new Date(lastChanged)
+    expirationDate.setDate(expirationDate.getDate() + 90) // 90天强制修改
 
     const today = new Date()
     const diffTime = expirationDate.getTime() - today.getTime()
@@ -156,7 +168,7 @@ class PasswordService {
         }
       }
 
-      // 调用真实的API
+      // 调用真实的API（后端会更新数据库中的 password_last_changed 和 need_change_password）
       try {
         const { apiService } = await import('./apiService')
         const response = await apiService.put('/profile/password', {
@@ -165,12 +177,7 @@ class PasswordService {
           confirmPassword: request.confirmPassword
         })
 
-        // 更新用户密码信息
-        this.updateUserPasswordInfo(request.userId || 'current', {
-          isDefaultPassword: false,
-          passwordLastChanged: new Date(),
-          forcePasswordChange: false
-        })
+        // 🔥 不再写入本地 localStorage('users')，密码状态以后端数据库为准
 
         return {
           success: true,

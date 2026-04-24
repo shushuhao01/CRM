@@ -114,6 +114,13 @@ export class User {
   @Column('json', { name: 'authorized_ips', nullable: true, select: true })
   authorizedIps?: string[] | null;
 
+  // 🔥 密码安全策略字段
+  @Column('datetime', { name: 'password_last_changed', nullable: true })
+  passwordLastChanged: Date | null;
+
+  @Column('tinyint', { name: 'need_change_password', default: 1, nullable: true })
+  needChangePassword: number | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 

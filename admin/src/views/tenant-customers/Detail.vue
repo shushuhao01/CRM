@@ -27,6 +27,7 @@
       @suspend="handleSuspend"
       @resume="handleResume"
       @toggle-key-visibility="showFullKey = !showFullKey"
+      @switch-limit-mode="handleSwitchLimitMode"
     />
 
     <!-- 功能模块授权 -->
@@ -46,11 +47,45 @@
       @update:edit-modules="editModules = $event"
     />
 
+    <!-- 增值服务授权 -->
+    <el-card shadow="never" class="detail-section-card">
+      <template #header>
+        <div class="card-header">
+          <span><el-icon><ChatLineSquare /></el-icon> 增值服务授权</span>
+        </div>
+      </template>
+      <div class="vas-auth-item">
+        <div class="vas-info">
+          <div class="vas-title">
+            <span class="vas-name">会话存档功能</span>
+            <el-tag :type="detail.wecom_chat_archive_auth ? 'success' : 'info'" size="small" effect="dark">
+              {{ detail.wecom_chat_archive_auth ? '已授权' : '未授权' }}
+            </el-tag>
+          </div>
+          <div class="vas-desc">授权后租户可启用企业微信会话存档功能，用于合规存档和客户沟通记录查看。未授权的租户即使拥有企微管理模块权限也无法启用此功能。</div>
+        </div>
+        <div class="vas-action">
+          <el-switch
+            :model-value="!!detail.wecom_chat_archive_auth"
+            :loading="chatArchiveAuthLoading"
+            active-text="授权"
+            inactive-text="关闭"
+            inline-prompt
+            style="--el-switch-on-color: #07c160; --el-switch-off-color: #dcdfe6"
+            @change="handleToggleChatArchiveAuth"
+          />
+        </div>
+      </div>
+    </el-card>
+
     <!-- 用户列表卡片 -->
     <UsersListCard
       :users="users"
       :loading="usersLoading"
       :max-users="detail.maxUsers || 0"
+      :user-limit-mode="detail.user_limit_mode || 'total'"
+      :max-online-seats="(detail.max_online_seats || 0) + (detail.extra_online_seats || 0)"
+      :online-count="detail.onlineCount || 0"
     />
 
     <!-- 操作日志卡片 -->
@@ -121,6 +156,7 @@
       :submitting="submitting"
       :edit-form="editForm"
       :new-max-users="newMaxUsers"
+      :new-max-online-seats="newMaxOnlineSeats"
       :new-max-storage-gb="newMaxStorageGb"
       :new-package-id="newPackageId"
       :all-packages="allPackages"
@@ -142,6 +178,7 @@
       @update:renewVisible="showRenewDialog = $event"
       @update:licenseVisible="showLicenseDialog = $event"
       @update:newMaxUsers="newMaxUsers = $event"
+      @update:newMaxOnlineSeats="newMaxOnlineSeats = $event"
       @update:newMaxStorageGb="newMaxStorageGb = $event"
       @update:newPackageId="newPackageId = $event"
       @update:packageTab="packageTab = $event"
@@ -160,7 +197,7 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Odometer, User, ShoppingCart, Phone, TrendCharts, Van, Headset, Files, Money, Box, Setting } from '@element-plus/icons-vue'
+import { Odometer, User, ShoppingCart, Phone, TrendCharts, Van, Headset, Files, Money, Box, Setting, ChatLineSquare } from '@element-plus/icons-vue'
 import type { FormInstance } from 'element-plus'
 import request from '@/api/request'
 import type { Package } from '@/api/packages'
@@ -197,6 +234,7 @@ const showLicenseDialog = ref(false)
 const renewMonths = ref<number>(12)
 const newLicenseKey = ref('')
 const newMaxUsers = ref(10)
+const newMaxOnlineSeats = ref(10)
 const newMaxStorageGb = ref(5)
 const newPackageId = ref<number | string>('')
 const detailDialogsRef = ref<InstanceType<typeof DetailDialogs>>()
@@ -223,6 +261,7 @@ const capacityPagination = reactive({ page: 1, pageSize: 10, total: 0 })
 // === 模块配置 ===
 const isEditingModules = ref(false)
 const editModules = ref<string[]>([])
+const chatArchiveAuthLoading = ref(false)
 
 const crmModuleOptions = [
   { id: 'dashboard', title: '数据看板', icon: Odometer },
@@ -235,6 +274,7 @@ const crmModuleOptions = [
   { id: 'data', title: '资料管理', icon: Files },
   { id: 'finance', title: '财务管理', icon: Money },
   { id: 'product', title: '商品管理', icon: Box },
+  { id: 'wecom', title: '企微管理', icon: ChatLineSquare },
   { id: 'system', title: '系统管理', icon: Setting }
 ]
 
@@ -277,6 +317,29 @@ const saveModules = async () => {
     ElMessage.error(e.message || '更新失败')
   } finally {
     submitting.value = false
+  }
+}
+
+// === 会话存档授权 ===
+const handleToggleChatArchiveAuth = async (val: boolean) => {
+  const action = val ? '授权' : '取消授权'
+  try {
+    await ElMessageBox.confirm(
+      val
+        ? '授权后，该租户可启用企业微信会话存档功能。确定授权？'
+        : '取消授权后，该租户将无法使用会话存档功能。确定取消？',
+      `${action}会话存档`, { type: 'warning' }
+    )
+    chatArchiveAuthLoading.value = true
+    const res = await request.put(`/tenants/${route.params.id}`, { wecomChatArchiveAuth: val })
+    if (res.success) {
+      detail.value.wecom_chat_archive_auth = val ? 1 : 0
+      ElMessage.success(`已${action}会话存档功能`)
+    }
+  } catch (e: any) {
+    if (e !== 'cancel') ElMessage.error(e.message || '操作失败')
+  } finally {
+    chatArchiveAuthLoading.value = false
   }
 }
 
@@ -350,13 +413,18 @@ const confirmEdit = async () => {
 // === 调整用户数 ===
 const handleAdjustUsers = () => {
   newMaxUsers.value = detail.value.maxUsers || 10
+  newMaxOnlineSeats.value = (Number(detail.value.max_online_seats) || 0) + (Number(detail.value.extra_online_seats) || 0) || 10
   showAdjustUsersDialog.value = true
 }
 
 const confirmAdjustUsers = async () => {
   submitting.value = true
   try {
-    const res = await request.put(`/tenants/${route.params.id}`, { maxUsers: newMaxUsers.value })
+    const isOnlineMode = detail.value.user_limit_mode === 'online'
+    const updateData = isOnlineMode
+      ? { max_online_seats: newMaxOnlineSeats.value }
+      : { maxUsers: newMaxUsers.value }
+    const res = await request.put(`/tenants/${route.params.id}`, updateData)
     if (res.success) { ElMessage.success('调整成功'); showAdjustUsersDialog.value = false; fetchDetail() }
   } catch (e: any) { ElMessage.error(e.message || '调整失败') }
   finally { submitting.value = false }
@@ -401,6 +469,14 @@ const confirmAdjustPackage = async () => {
       updateData.maxUsers = pkg.max_users
       updateData.maxStorageGb = pkg.max_storage_gb
       updateData.modules = Array.isArray(pkg.modules) && pkg.modules.length > 0 ? pkg.modules : undefined
+      // 🔥 同步套餐的用户限制模式和在线席位数
+      const pkgMode = pkg.user_limit_mode || 'total'
+      if (pkgMode === 'online' || pkgMode === 'both') {
+        updateData.user_limit_mode = pkgMode === 'both' ? (detail.value.user_limit_mode || 'total') : pkgMode
+        updateData.max_online_seats = pkg.max_online_seats || 0
+      } else {
+        updateData.user_limit_mode = 'total'
+      }
     }
     const res = await request.put(`/tenants/${route.params.id}`, updateData)
     if (res.success) { ElMessage.success(`已更换为「${pkg.name}」套餐`); showAdjustPackageDialog.value = false; fetchDetail() }
@@ -432,6 +508,23 @@ const confirmRenew = async () => {
     if (res.success) { ElMessage.success(`续期${renewMonths.value}个月成功`); showRenewDialog.value = false; fetchDetail() }
   } catch (e: any) { ElMessage.error(e.message || '续期失败') }
   finally { submitting.value = false }
+}
+
+// === 切换限制模式 ===
+const handleSwitchLimitMode = async () => {
+  const currentMode = detail.value.user_limit_mode || 'total'
+  const newMode = currentMode === 'online' ? 'total' : 'online'
+  const modeText = newMode === 'online' ? '在线席位制（限在）' : '总用户数制（限注）'
+  try {
+    await ElMessageBox.confirm(`确定将限制模式切换为「${modeText}」吗？`, '切换限制模式', { type: 'warning' })
+    const res = await request.put(`/tenants/${route.params.id}`, { user_limit_mode: newMode })
+    if (res.success) {
+      ElMessage.success(`已切换为${modeText}`)
+      fetchDetail()
+    }
+  } catch (e: any) {
+    if (e !== 'cancel') ElMessage.error(e.message || '切换失败')
+  }
 }
 
 // === 暂停/恢复授权 ===
@@ -472,7 +565,12 @@ const fetchDetail = async () => {
         memberPasswordStatus: d.memberPasswordStatus || 'unknown',
         memberPasswordDisplay: d.memberPasswordDisplay || '',
         crmPasswordStatus: d.crmPasswordStatus || 'unknown',
-        crmPasswordDisplay: d.crmPasswordDisplay || ''
+        crmPasswordDisplay: d.crmPasswordDisplay || '',
+        wecom_chat_archive_auth: d.wecom_chat_archive_auth || 0,
+        user_limit_mode: d.user_limit_mode || d.userLimitMode || 'total',
+        max_online_seats: Number(d.max_online_seats ?? d.maxOnlineSeats ?? 0),
+        extra_online_seats: Number(d.extra_online_seats ?? d.extraOnlineSeats ?? 0),
+        onlineCount: Number(d.onlineCount ?? d.online_count ?? d.current_online_seats ?? 0)
       }
     }
   } catch (e: any) {
@@ -723,10 +821,31 @@ onMounted(() => {
 .page-container { display: flex; flex-direction: column; gap: 16px; }
 .page-title { font-size: 18px; font-weight: 600; }
 
+/* ====== 增值服务授权 ====== */
+.detail-section-card {
+  border-radius: 8px; border: none;
+  :deep(.el-card__header) { padding: 12px 20px; }
+}
+.card-header {
+  display: flex; justify-content: space-between; align-items: center; font-weight: 500;
+  .el-icon { margin-right: 4px; vertical-align: -2px; }
+}
+.vas-auth-item {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 16px 20px; background: #fafbfc; border-radius: 10px; border: 1px solid #f0f2f5;
+}
+.vas-info { flex: 1; }
+.vas-title { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.vas-name { font-size: 15px; font-weight: 600; color: #303133; }
+.vas-desc { font-size: 13px; color: #909399; line-height: 1.6; }
+.vas-action { flex-shrink: 0; margin-left: 20px; }
+
 /* ====== 响应式适配 ====== */
 @media screen and (max-width: 768px) {
   :deep(.card-header) { flex-direction: column; align-items: flex-start; }
   :deep(.button-group) { width: 100%; .el-button { font-size: 12px; } }
+  .vas-auth-item { flex-direction: column; gap: 12px; align-items: flex-start; }
+  .vas-action { margin-left: 0; }
 }
 </style>
 

@@ -81,6 +81,90 @@
 
       <el-divider />
 
+      <!-- P2-12: 企微管理统计 -->
+      <h4>企微管理统计</h4>
+      <div v-if="wecomStats.hasWecomData" class="wecom-stats-grid">
+        <div class="stat-card">
+          <div class="stat-icon" style="background: #ecf5ff; color: #409eff"><el-icon><Setting /></el-icon></div>
+          <div class="stat-content">
+            <div class="stat-num">{{ wecomStats.configCount }}</div>
+            <div class="stat-name">企微配置</div>
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon" style="background: #f0f9eb; color: #67c23a"><el-icon><User /></el-icon></div>
+          <div class="stat-content">
+            <div class="stat-num">{{ wecomStats.customerCount }}</div>
+            <div class="stat-name">企微客户</div>
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon" style="background: #fdf6ec; color: #e6a23c"><el-icon><Link /></el-icon></div>
+          <div class="stat-content">
+            <div class="stat-num">{{ wecomStats.bindingCount }}</div>
+            <div class="stat-name">成员绑定</div>
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon" style="background: #f4f4f5; color: #909399"><el-icon><ChatDotSquare /></el-icon></div>
+          <div class="stat-content">
+            <div class="stat-num">{{ wecomStats.chatRecordCount }}</div>
+            <div class="stat-name">会话记录</div>
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon" style="background: #fef0f0; color: #f56c6c"><el-icon><Money /></el-icon></div>
+          <div class="stat-content">
+            <div class="stat-num">{{ wecomStats.paymentCount }}</div>
+            <div class="stat-name">收款记录</div>
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon" style="background: #ecf5ff; color: #409eff"><el-icon><Promotion /></el-icon></div>
+          <div class="stat-content">
+            <div class="stat-num">{{ wecomStats.acquisitionLinkCount }}</div>
+            <div class="stat-name">获客链接</div>
+          </div>
+        </div>
+        <div class="stat-card" v-if="wecomStats.paymentTotalAmount > 0">
+          <div class="stat-icon" style="background: #f0f9eb; color: #67c23a"><el-icon><Wallet /></el-icon></div>
+          <div class="stat-content">
+            <div class="stat-num">¥{{ wecomStats.paymentTotalAmount }}</div>
+            <div class="stat-name">收款总额</div>
+          </div>
+        </div>
+      </div>
+      <el-empty v-else description="该租户暂无企微数据" :image-size="50" />
+
+      <el-divider />
+
+      <!-- 策略四: 增值服务授权 -->
+      <h4>增值服务授权</h4>
+      <div class="vas-auth-item">
+        <div class="vas-info">
+          <div class="vas-title">
+            <span class="vas-name">会话存档功能</span>
+            <el-tag :type="detail.wecom_chat_archive_auth ? 'success' : 'info'" size="small" effect="dark">
+              {{ detail.wecom_chat_archive_auth ? '已授权' : '未授权' }}
+            </el-tag>
+          </div>
+          <div class="vas-desc">授权后租户可启用企业微信会话存档功能，用于合规存档和客户沟通记录查看。</div>
+        </div>
+        <div class="vas-action">
+          <el-switch
+            :model-value="!!detail.wecom_chat_archive_auth"
+            :loading="chatArchiveAuthLoading"
+            active-text="授权"
+            inactive-text="关闭"
+            inline-prompt
+            style="--el-switch-on-color: #07c160; --el-switch-off-color: #dcdfe6"
+            @change="handleToggleChatArchiveAuth"
+          />
+        </div>
+      </div>
+
+      <el-divider />
+
       <h4>账单记录</h4>
       <el-table :data="bills" v-loading="billsLoading" stripe size="small">
         <el-table-column prop="order_no" label="订单号" width="180" />
@@ -142,6 +226,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { Setting, User, Link, ChatDotSquare, Money, Promotion, Wallet } from '@element-plus/icons-vue'
 import request from '@/api/request'
 
 const route = useRoute()
@@ -157,6 +242,8 @@ const logsTotal = ref(0)
 const bills = ref<any[]>([])
 const billsPage = ref(1)
 const billsTotal = ref(0)
+const chatArchiveAuthLoading = ref(false)
+const wecomStats = ref<any>({ hasWecomData: false, configCount: 0, customerCount: 0, bindingCount: 0, chatRecordCount: 0, paymentCount: 0, acquisitionLinkCount: 0, serviceAccountCount: 0, paymentTotalAmount: 0 })
 
 const usedStorage = computed(() => {
   const mb = detail.value.used_storage_mb || 0
@@ -321,7 +408,41 @@ onMounted(() => {
   fetchDetail()
   fetchLogs()
   fetchBills()
+  fetchWecomStats()
 })
+
+const fetchWecomStats = async () => {
+  try {
+    const res = await request.get(`/tenants/${route.params.id}/wecom-stats`)
+    if (res.success) {
+      wecomStats.value = res.data
+    }
+  } catch {
+    // 静默失败，保持默认空数据
+  }
+}
+
+const handleToggleChatArchiveAuth = async (val: boolean) => {
+  const action = val ? '授权' : '取消授权'
+  try {
+    await ElMessageBox.confirm(
+      val
+        ? '授权后，该租户可启用企业微信会话存档功能。确定授权？'
+        : '取消授权后，该租户将无法使用会话存档功能。确定取消？',
+      `${action}会话存档`, { type: 'warning' }
+    )
+    chatArchiveAuthLoading.value = true
+    const res = await request.put(`/tenants/${route.params.id}`, { wecomChatArchiveAuth: val })
+    if (res.success) {
+      detail.value.wecom_chat_archive_auth = val ? 1 : 0
+      ElMessage.success(`已${action}会话存档功能`)
+    }
+  } catch (e: any) {
+    if (e !== 'cancel') ElMessage.error(e.message || '操作失败')
+  } finally {
+    chatArchiveAuthLoading.value = false
+  }
+}
 </script>
 
 <style scoped lang="scss">
@@ -362,4 +483,51 @@ h4 { margin: 0 0 16px; color: #303133; }
 }
 
 .text-primary { color: #409eff; font-weight: 500; }
+
+.wecom-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 12px;
+}
+.stat-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  background: #f5f7fa;
+  border-radius: 8px;
+  transition: box-shadow 0.2s;
+  &:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+}
+.stat-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  flex-shrink: 0;
+}
+.stat-content {
+  .stat-num { font-size: 20px; font-weight: 600; color: #303133; line-height: 1.2; }
+  .stat-name { font-size: 12px; color: #909399; margin-top: 2px; }
+}
+
+.vas-auth-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px;
+  background: #fafafa;
+  border-radius: 8px;
+  border: 1px solid #ebeef5;
+}
+.vas-info {
+  flex: 1;
+  .vas-title { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+  .vas-name { font-size: 15px; font-weight: 500; color: #303133; }
+  .vas-desc { font-size: 13px; color: #909399; line-height: 1.5; }
+}
+.vas-action { flex-shrink: 0; margin-left: 24px; }
 </style>

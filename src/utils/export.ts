@@ -177,6 +177,8 @@ export interface ExportCustomer {
   detailAddress?: string
   overseasAddress?: string
   otherGoals?: string
+  wecomExternalUserid?: string
+  customFields?: Record<string, any>
 }
 
 // 订单导出接口
@@ -537,7 +539,7 @@ export const exportBatchOrders = (orders: ExportOrder[], isAdmin: boolean = fals
 }
 
 // 导出客户到Excel
-export const exportCustomersToExcel = (customers: ExportCustomer[], filename: string = '客户列表', hasExportPermission: boolean = false) => {
+export const exportCustomersToExcel = (customers: ExportCustomer[], filename: string = '客户列表', hasExportPermission: boolean = false, customFieldsConfig?: any[]) => {
   if (!customers || customers.length === 0) {
     throw new Error('没有可导出的数据')
   }
@@ -579,8 +581,17 @@ export const exportCustomersToExcel = (customers: ExportCustomer[], filename: st
     '其他改善目标',
     '最后服务时间',
     '标签',
-    '备注'
+    '备注',
+    '企微UserID'
   ]
+
+  // 动态追加自定义字段标题（导出包含所有自定义字段，不限于列表显示）
+  const activeCustomFields = (customFieldsConfig || []).sort((a: any, b: any) => a.sortOrder - b.sortOrder)
+  if (hasExportPermission && activeCustomFields.length > 0) {
+    activeCustomFields.forEach((f: any) => {
+      fullHeaders.push(f.fieldName)
+    })
+  }
 
   const limitedHeaders = [
     '客户编码',
@@ -604,7 +615,7 @@ export const exportCustomersToExcel = (customers: ExportCustomer[], filename: st
   // 根据权限转换数据格式
   const data = customers.map(customer => {
     if (hasExportPermission) {
-      return [
+      const row = [
         customer.code || '',
         customer.name || '',
         customer.phone || '',
@@ -640,8 +651,37 @@ export const exportCustomersToExcel = (customers: ExportCustomer[], filename: st
         customer.otherGoals || '',
         customer.lastServiceDate || '',
         customer.tags ? customer.tags.join(', ') : '',
-        customer.remarks || ''
-      ]
+        customer.remarks || '',
+        customer.wecomExternalUserid || ''
+      ] as any[]
+      // 追加自定义字段值
+      if (activeCustomFields.length > 0) {
+        activeCustomFields.forEach((f: any) => {
+          const val = customer.customFields?.[f.fieldKey]
+          if (val === undefined || val === null || val === '') {
+            row.push('')
+          } else if (Array.isArray(val)) {
+            if (f.options && f.options.length > 0) {
+              row.push(val.map((v: string) => {
+                const opt = f.options.find((o: any) => o.value === v)
+                return opt ? opt.label : v
+              }).join(', '))
+            } else {
+              row.push(val.join(', '))
+            }
+          } else if (f.fieldType === 'select' || f.fieldType === 'radio') {
+            if (f.options && f.options.length > 0) {
+              const opt = f.options.find((o: any) => o.value === val)
+              row.push(opt ? opt.label : String(val))
+            } else {
+              row.push(String(val))
+            }
+          } else {
+            row.push(String(val))
+          }
+        })
+      }
+      return row
     } else {
       return [
         customer.code || '',
@@ -753,6 +793,6 @@ export const exportSingleCustomer = (customer: ExportCustomer, hasExportPermissi
 }
 
 // 导出批量客户
-export const exportBatchCustomers = (customers: ExportCustomer[], hasExportPermission: boolean = false) => {
-  return exportCustomersToExcel(customers, `批量客户_${customers.length}条`, hasExportPermission)
+export const exportBatchCustomers = (customers: ExportCustomer[], hasExportPermission: boolean = false, customFieldsConfig?: any[]) => {
+  return exportCustomersToExcel(customers, `批量客户_${customers.length}条`, hasExportPermission, customFieldsConfig)
 }

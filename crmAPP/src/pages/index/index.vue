@@ -168,7 +168,7 @@ const formatDuration = (seconds: number) => {
 }
 
 const loadTodayStats = async () => {
-  if (!userStore.token) return
+  if (!userStore.token && !userStore.isLoggedIn) return
   try {
     const data = await getTodayStats()
     todayStats.value = data
@@ -248,7 +248,7 @@ onShow(() => {
   userStore.restore()
   wsConnected.value = wsService.isConnected
 
-  if (!userStore.token) {
+  if (!userStore.token && !userStore.isLoggedIn) {
     uni.reLaunch({ url: '/pages/login/index' })
     return
   }

@@ -70,7 +70,10 @@ router.get('/', async (req: Request, res: Response) => {
         subscription_enabled: Boolean(pkg.subscription_enabled),
         subscription_channels: pkg.subscription_channels || 'all',
         subscription_billing_cycle: pkg.subscription_billing_cycle || 'monthly',
-        subscription_discount_rate: Number(pkg.subscription_discount_rate) || 0
+        subscription_discount_rate: Number(pkg.subscription_discount_rate) || 0,
+        user_limit_mode: pkg.user_limit_mode || 'total',
+        max_online_seats: Number(pkg.max_online_seats) || 0,
+        modules: typeof pkg.modules === 'string' ? JSON.parse(pkg.modules) : (pkg.modules || [])
       }
       // 计算订阅价格（仅当启用订阅时）
       if (mapped.subscription_enabled && mapped.subscription_discount_rate > 0) {

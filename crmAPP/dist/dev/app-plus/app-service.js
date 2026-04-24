@@ -37,6 +37,7 @@ if (uni.restoreGlobal) {
   const ON_SHOW = "onShow";
   const ON_HIDE = "onHide";
   const ON_LAUNCH = "onLaunch";
+  const ON_ERROR = "onError";
   const ON_LOAD = "onLoad";
   function formatAppLog(type, filename, ...args) {
     if (uni.__log__) {
@@ -51,6 +52,7 @@ if (uni.restoreGlobal) {
   const onShow = /* @__PURE__ */ createHook(ON_SHOW);
   const onHide = /* @__PURE__ */ createHook(ON_HIDE);
   const onLaunch = /* @__PURE__ */ createHook(ON_LAUNCH);
+  const onError = /* @__PURE__ */ createHook(ON_ERROR);
   const onLoad = /* @__PURE__ */ createHook(ON_LOAD);
   function set(target, key, val) {
     if (Array.isArray(target)) {
@@ -794,7 +796,7 @@ Only state can be modified.`);
       }
     }, (api) => {
       const now2 = typeof api.now === "function" ? api.now.bind(api) : Date.now;
-      store.$onAction(({ after, onError, name, args }) => {
+      store.$onAction(({ after, onError: onError2, name, args }) => {
         const groupId = runningActionId++;
         api.addTimelineEvent({
           layerId: MUTATIONS_LAYER_ID,
@@ -828,7 +830,7 @@ Only state can be modified.`);
             }
           });
         });
-        onError((error) => {
+        onError2((error) => {
           activeAction = void 0;
           api.addTimelineEvent({
             layerId: MUTATIONS_LAYER_ID,
@@ -1213,7 +1215,7 @@ Only state can be modified.`);
         function after(callback) {
           afterCallbackList.push(callback);
         }
-        function onError(callback) {
+        function onError2(callback) {
           onErrorCallbackList.push(callback);
         }
         triggerSubscriptions(actionSubscriptions, {
@@ -1221,7 +1223,7 @@ Only state can be modified.`);
           name: wrappedAction[ACTION_NAME],
           store,
           after,
-          onError
+          onError: onError2
         });
         let ret;
         try {
@@ -1528,11 +1530,30 @@ This will fail in production.`);
         const portStr = port ? `:${port}` : "";
         return `${wsProtocol}://${host}${portStr}`;
       },
-      // 显示用的服务器地址
+      // 显示用的服务器地址（完整地址，仅用于服务器配置页）
       displayUrl() {
         if (!this.currentServer) return "未配置";
         const { host, port } = this.currentServer;
         return port ? `${host}:${port}` : host;
+      },
+      // 脱敏显示的服务器地址（用于登录页、设置页等对外展示场景）
+      maskedDisplayUrl() {
+        if (!this.currentServer) return "未配置";
+        const { host, port } = this.currentServer;
+        const ipMatch = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+        if (ipMatch) {
+          const masked = `${ipMatch[1]}.***.***.${ipMatch[4]}`;
+          return port ? `${masked}:${port}` : masked;
+        }
+        const dotIndex = host.lastIndexOf(".");
+        if (dotIndex > 0) {
+          const namePart = host.substring(0, dotIndex);
+          const tldPart = host.substring(dotIndex);
+          const prefix = namePart.length > 2 ? namePart.substring(0, 2) : namePart.charAt(0);
+          const masked = `${prefix}****${tldPart}`;
+          return port ? `${masked}:${port}` : masked;
+        }
+        return "已配置";
       }
     },
     actions: {
@@ -1642,7 +1663,7 @@ This will fail in production.`);
             this.serverHistory = JSON.parse(history);
           }
         } catch (e) {
-          formatAppLog("error", "at stores/server.ts:195", "恢复服务器配置失败:", e);
+          formatAppLog("error", "at stores/server.ts:218", "恢复服务器配置失败:", e);
         }
       },
       // 清除服务器配置
@@ -1653,6 +1674,125 @@ This will fail in production.`);
       }
     }
   });
+  function getDeviceKey() {
+    var _a, _b;
+    try {
+      const cachedKey = uni.getStorageSync("__device_key__");
+      if (cachedKey) return cachedKey;
+    } catch (_e) {
+    }
+    let keySource = "crm_app_default_key_2026";
+    try {
+      const systemInfo = uni.getSystemInfoSync();
+      keySource = [
+        systemInfo.brand || "",
+        systemInfo.model || "",
+        systemInfo.system || "",
+        systemInfo.platform || "",
+        ((_a = systemInfo.screenWidth) == null ? void 0 : _a.toString()) || "",
+        ((_b = systemInfo.screenHeight) == null ? void 0 : _b.toString()) || "",
+        // 加入随机因子，首次安装时生成
+        Date.now().toString(36),
+        Math.random().toString(36).substring(2, 10)
+      ].join("_");
+    } catch (_e) {
+      keySource += "_" + Date.now().toString(36) + Math.random().toString(36).substring(2, 10);
+    }
+    const deviceKey = simpleHash(keySource);
+    try {
+      uni.setStorageSync("__device_key__", deviceKey);
+    } catch (_e) {
+    }
+    return deviceKey;
+  }
+  function simpleHash(str) {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+      const char = str.charCodeAt(i);
+      hash = (hash << 5) - hash + char;
+      hash = hash & hash;
+    }
+    const hex = Math.abs(hash).toString(16).padStart(8, "0");
+    return hex + hex.split("").reverse().join("");
+  }
+  function xorCipher(data, key) {
+    let result = "";
+    for (let i = 0; i < data.length; i++) {
+      const charCode = data.charCodeAt(i) ^ key.charCodeAt(i % key.length);
+      result += String.fromCharCode(charCode);
+    }
+    return result;
+  }
+  function toBase64(str) {
+    try {
+      return uni.arrayBufferToBase64(
+        new Uint8Array(Array.from(str).map((c) => c.charCodeAt(0))).buffer
+      );
+    } catch (_e) {
+      try {
+        return btoa(unescape(encodeURIComponent(str)));
+      } catch (_e2) {
+        return str;
+      }
+    }
+  }
+  function fromBase64(base64) {
+    try {
+      const arrayBuffer = uni.base64ToArrayBuffer(base64);
+      const bytes = new Uint8Array(arrayBuffer);
+      return Array.from(bytes).map((b) => String.fromCharCode(b)).join("");
+    } catch (_e) {
+      try {
+        return decodeURIComponent(escape(atob(base64)));
+      } catch (_e2) {
+        return base64;
+      }
+    }
+  }
+  function encrypt(plainText) {
+    if (!plainText) return "";
+    try {
+      const key = getDeviceKey();
+      const encrypted = xorCipher(plainText, key);
+      return "ENC:" + toBase64(encrypted);
+    } catch (_e) {
+      formatAppLog("warn", "at utils/crypto.ts:119", "[Crypto] 加密失败，降级为明文存储");
+      return plainText;
+    }
+  }
+  function decrypt(encryptedText) {
+    if (!encryptedText) return "";
+    try {
+      if (!encryptedText.startsWith("ENC:")) {
+        return encryptedText;
+      }
+      const base64Data = encryptedText.substring(4);
+      const key = getDeviceKey();
+      const decoded = fromBase64(base64Data);
+      return xorCipher(decoded, key);
+    } catch (_e) {
+      formatAppLog("warn", "at utils/crypto.ts:142", "[Crypto] 解密失败，返回原始数据");
+      return encryptedText.startsWith("ENC:") ? "" : encryptedText;
+    }
+  }
+  function setEncryptedStorage(key, value) {
+    try {
+      const encrypted = encrypt(value);
+      uni.setStorageSync(key, encrypted);
+    } catch (_e) {
+      formatAppLog("error", "at utils/crypto.ts:156", "[Crypto] 加密存储失败:", key);
+    }
+  }
+  function getEncryptedStorage(key) {
+    try {
+      const encrypted = uni.getStorageSync(key);
+      if (!encrypted) return "";
+      return decrypt(encrypted);
+    } catch (_e) {
+      formatAppLog("error", "at utils/crypto.ts:169", "[Crypto] 解密读取失败:", key);
+      return "";
+    }
+  }
   const useUserStore = /* @__PURE__ */ defineStore("user", {
     state: () => ({
       token: "",
@@ -1669,14 +1809,14 @@ This will fail in production.`);
         this.token = data.token;
         this.userInfo = data.user;
         this.isLoggedIn = true;
-        uni.setStorageSync("token", data.token);
-        uni.setStorageSync("userInfo", JSON.stringify(data.user));
+        setEncryptedStorage("token", data.token);
+        setEncryptedStorage("userInfo", JSON.stringify(data.user));
       },
       // 设置WebSocket信息
       setWsInfo(wsToken, wsUrl) {
         this.wsToken = wsToken;
         this.wsUrl = wsUrl;
-        uni.setStorageSync("wsToken", wsToken);
+        setEncryptedStorage("wsToken", wsToken);
         uni.setStorageSync("wsUrl", wsUrl);
       },
       // 设置设备绑定信息
@@ -1710,12 +1850,12 @@ This will fail in production.`);
         uni.removeStorageSync("wsUrl");
         uni.removeStorageSync("deviceInfo");
       },
-      // 从本地存储恢复
+      // 从本地存储恢复（兼容旧版明文数据 + 新版加密数据）
       restore() {
         try {
-          const token = uni.getStorageSync("token");
-          const userInfo = uni.getStorageSync("userInfo");
-          const wsToken = uni.getStorageSync("wsToken");
+          const token = getEncryptedStorage("token");
+          const userInfo = getEncryptedStorage("userInfo");
+          const wsToken = getEncryptedStorage("wsToken");
           const wsUrl = uni.getStorageSync("wsUrl");
           const deviceInfo = uni.getStorageSync("deviceInfo");
           if (token) {
@@ -1736,11 +1876,12 @@ This will fail in production.`);
             this.isBound = true;
           }
         } catch (e) {
-          formatAppLog("error", "at stores/user.ts:124", "恢复用户信息失败:", e);
+          formatAppLog("error", "at stores/user.ts:128", "恢复用户信息失败:", e);
         }
       }
     }
   });
+  const APP_VERSION = "1.0.0";
   const _sfc_main$f = /* @__PURE__ */ vue.defineComponent({
     __name: "index",
     setup(__props, { expose: __expose }) {
@@ -1748,8 +1889,40 @@ This will fail in production.`);
       const loadingText = vue.ref("正在启动...");
       const serverStore = useServerStore();
       const userStore = useUserStore();
-      vue.onMounted(async () => {
-        await new Promise((resolve) => setTimeout(resolve, 1e3));
+      const appVersion = APP_VERSION;
+      const showPrivacyDialog = vue.ref(false);
+      const checkPrivacyAgreed = () => {
+        try {
+          return uni.getStorageSync("privacy_agreed") === "true";
+        } catch {
+          return false;
+        }
+      };
+      const openUserAgreement = () => {
+        uni.navigateTo({ url: "/pages/agreement/user-agreement" });
+      };
+      const openPrivacyPolicy = () => {
+        uni.navigateTo({ url: "/pages/agreement/privacy-policy" });
+      };
+      const handleAgree = () => {
+        uni.setStorageSync("privacy_agreed", "true");
+        showPrivacyDialog.value = false;
+        startApp();
+      };
+      const handleDisagree = () => {
+        uni.showModal({
+          title: "温馨提示",
+          content: '您需要同意用户协议和隐私政策才能使用本应用。点击"确定"将退出应用。',
+          confirmText: "确定退出",
+          cancelText: "再看看",
+          success: (res) => {
+            if (res.confirm) {
+              plus.runtime.quit();
+            }
+          }
+        });
+      };
+      const startApp = async () => {
         loadingText.value = "检查配置...";
         if (!serverStore.currentServer) {
           loadingText.value = "请配置服务器";
@@ -1780,8 +1953,17 @@ This will fail in production.`);
             uni.reLaunch({ url: "/pages/login/index" });
           }, 500);
         }
+      };
+      vue.onMounted(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 800));
+        if (!checkPrivacyAgreed()) {
+          loadingText.value = "请阅读并同意协议";
+          showPrivacyDialog.value = true;
+          return;
+        }
+        startApp();
       });
-      const __returned__ = { loadingText, serverStore, userStore };
+      const __returned__ = { loadingText, serverStore, userStore, appVersion, showPrivacyDialog, checkPrivacyAgreed, openUserAgreement, openPrivacyPolicy, handleAgree, handleDisagree, startApp };
       Object.defineProperty(__returned__, "__isScriptSetup", { enumerable: false, value: true });
       return __returned__;
     }
@@ -1828,10 +2010,83 @@ This will fail in production.`);
           /* TEXT */
         )
       ]),
-      vue.createElementVNode("text", { class: "version" }, "v1.0.0")
+      vue.createElementVNode(
+        "text",
+        { class: "version" },
+        "v" + vue.toDisplayString($setup.appVersion),
+        1
+        /* TEXT */
+      ),
+      vue.createCommentVNode(" 首次启动隐私政策弹窗（国内应用商店合规必须） "),
+      $setup.showPrivacyDialog ? (vue.openBlock(), vue.createElementBlock(
+        "view",
+        {
+          key: 0,
+          class: "privacy-mask",
+          onTouchmove: _cache[0] || (_cache[0] = vue.withModifiers(() => {
+          }, ["stop", "prevent"]))
+        },
+        [
+          vue.createElementVNode("view", { class: "privacy-dialog" }, [
+            vue.createElementVNode("text", { class: "privacy-title" }, "用户协议与隐私政策"),
+            vue.createElementVNode("view", { class: "privacy-body" }, [
+              vue.createElementVNode("scroll-view", {
+                "scroll-y": "",
+                class: "privacy-scroll"
+              }, [
+                vue.createElementVNode("text", { class: "privacy-text" }, " 欢迎使用云客CRM外呼助手！我们非常重视您的个人信息和隐私保护。在使用本应用前，请您仔细阅读并充分理解以下协议： "),
+                vue.createElementVNode("text", {
+                  class: "privacy-text",
+                  style: { "margin-top": "16rpx" }
+                }, " 1. 我们会根据《隐私政策》收集和使用您的必要信息（包括设备信息、通话状态、录音文件等），用于提供外呼管理服务。 "),
+                vue.createElementVNode("text", {
+                  class: "privacy-text",
+                  style: { "margin-top": "16rpx" }
+                }, " 2. 未经您的同意，我们不会向第三方共享、转让您的个人信息。 "),
+                vue.createElementVNode("text", {
+                  class: "privacy-text",
+                  style: { "margin-top": "16rpx" }
+                }, " 3. 您可以通过「设置」页面管理您的权限和个人信息。 "),
+                vue.createElementVNode("text", {
+                  class: "privacy-text",
+                  style: { "margin-top": "24rpx" }
+                }, [
+                  vue.createTextVNode(" 请您阅读并同意 "),
+                  vue.createElementVNode("text", {
+                    class: "privacy-link",
+                    onClick: $setup.openUserAgreement
+                  }, "《用户服务协议》"),
+                  vue.createTextVNode(" 和 "),
+                  vue.createElementVNode("text", {
+                    class: "privacy-link",
+                    onClick: $setup.openPrivacyPolicy
+                  }, "《隐私政策》"),
+                  vue.createTextVNode(' ，点击"同意"表示您已充分理解并同意上述协议的全部内容。 ')
+                ])
+              ])
+            ]),
+            vue.createElementVNode("view", { class: "privacy-buttons" }, [
+              vue.createElementVNode("view", {
+                class: "btn-disagree",
+                onClick: $setup.handleDisagree
+              }, [
+                vue.createElementVNode("text", { class: "btn-text-disagree" }, "不同意")
+              ]),
+              vue.createElementVNode("view", {
+                class: "btn-agree",
+                onClick: $setup.handleAgree
+              }, [
+                vue.createElementVNode("text", { class: "btn-text-agree" }, "同意")
+              ])
+            ])
+          ])
+        ],
+        32
+        /* NEED_HYDRATION */
+      )) : vue.createCommentVNode("v-if", true)
     ]);
   }
-  const PagesSplashIndex = /* @__PURE__ */ _export_sfc(_sfc_main$f, [["render", _sfc_render$e], ["__scopeId", "data-v-cf5f955c"], ["__file", "D:/kaifa/CRM - 1.8.0开发中/crmAPP/src/pages/splash/index.vue"]]);
+  const PagesSplashIndex = /* @__PURE__ */ _export_sfc(_sfc_main$f, [["render", _sfc_render$e], ["__scopeId", "data-v-cf5f955c"], ["__file", "D:/kaifa/CRM - 1.8.0/crmAPP/src/pages/splash/index.vue"]]);
   const _sfc_main$e = /* @__PURE__ */ vue.defineComponent({
     __name: "index",
     setup(__props, { expose: __expose }) {
@@ -1947,7 +2202,7 @@ This will fail in production.`);
             [vue.vModelText, $setup.serverInput]
           ])
         ]),
-        vue.createElementVNode("text", { class: "hint" }, "支持格式：abc789.cn、192.168.1.100:3000")
+        vue.createElementVNode("text", { class: "hint" }, "支持格式：crm.yourcompany.com、192.168.1.100:3000")
       ]),
       vue.createCommentVNode(" 操作按钮 "),
       vue.createElementVNode("view", { class: "actions" }, [
@@ -2010,7 +2265,7 @@ This will fail in production.`);
       ])
     ]);
   }
-  const PagesServerConfigIndex = /* @__PURE__ */ _export_sfc(_sfc_main$e, [["render", _sfc_render$d], ["__scopeId", "data-v-dacb39f7"], ["__file", "D:/kaifa/CRM - 1.8.0开发中/crmAPP/src/pages/server-config/index.vue"]]);
+  const PagesServerConfigIndex = /* @__PURE__ */ _export_sfc(_sfc_main$e, [["render", _sfc_render$d], ["__scopeId", "data-v-dacb39f7"], ["__file", "D:/kaifa/CRM - 1.8.0/crmAPP/src/pages/server-config/index.vue"]]);
   const request = (options) => {
     const serverStore = useServerStore();
     const userStore = useUserStore();
@@ -2162,7 +2417,7 @@ This will fail in production.`);
       });
       vue.onMounted(() => {
         const savedUsername = uni.getStorageSync("savedUsername");
-        const savedPassword = uni.getStorageSync("savedPassword");
+        const savedPassword = getEncryptedStorage("savedPassword");
         const savedAgreement = uni.getStorageSync("agreedToTerms");
         if (savedUsername) {
           username.value = savedUsername;
@@ -2205,14 +2460,14 @@ This will fail in production.`);
               deviceModel: systemInfo.deviceModel || "",
               osType: systemInfo.platform === "ios" ? "ios" : "android",
               osVersion: systemInfo.system || "",
-              appVersion: "1.0.0"
+              appVersion: APP_VERSION
             }
           });
           userStore.setLoginInfo(result);
-          formatAppLog("log", "at pages/login/index.vue:170", "登录成功，token已保存:", userStore.token ? "有" : "无");
+          formatAppLog("log", "at pages/login/index.vue:172", "登录成功，token已保存:", userStore.token ? "有" : "无");
           if (rememberPassword.value) {
             uni.setStorageSync("savedUsername", username.value);
-            uni.setStorageSync("savedPassword", password.value);
+            setEncryptedStorage("savedPassword", password.value);
           } else {
             uni.removeStorageSync("savedUsername");
             uni.removeStorageSync("savedPassword");
@@ -2220,7 +2475,7 @@ This will fail in production.`);
           uni.setStorageSync("agreedToTerms", true);
           uni.showToast({ title: "登录成功", icon: "success" });
           setTimeout(() => {
-            formatAppLog("log", "at pages/login/index.vue:188", "跳转首页，当前token:", userStore.token ? "有" : "无");
+            formatAppLog("log", "at pages/login/index.vue:190", "跳转首页，当前token:", userStore.token ? "有" : "无");
             uni.switchTab({ url: "/pages/index/index" });
           }, 1200);
         } catch (e) {
@@ -2348,7 +2603,7 @@ This will fail in production.`);
         vue.createElementVNode(
           "text",
           { class: "server-url" },
-          vue.toDisplayString($setup.serverStore.displayUrl),
+          vue.toDisplayString($setup.serverStore.maskedDisplayUrl),
           1
           /* TEXT */
         ),
@@ -2359,7 +2614,7 @@ This will fail in production.`);
       ])
     ]);
   }
-  const PagesLoginIndex = /* @__PURE__ */ _export_sfc(_sfc_main$d, [["render", _sfc_render$c], ["__scopeId", "data-v-45258083"], ["__file", "D:/kaifa/CRM - 1.8.0开发中/crmAPP/src/pages/login/index.vue"]]);
+  const PagesLoginIndex = /* @__PURE__ */ _export_sfc(_sfc_main$d, [["render", _sfc_render$c], ["__scopeId", "data-v-45258083"], ["__file", "D:/kaifa/CRM - 1.8.0/crmAPP/src/pages/login/index.vue"]]);
   const reportCallEnd = (data) => {
     return request({
       url: "/mobile/call/end",
@@ -2449,25 +2704,90 @@ This will fail in production.`);
       __publicField(this, "knownRecordings", /* @__PURE__ */ new Set());
     }
     /**
-     * 检查存储权限
+     * 检查存储权限（适配 Android 11+ Scoped Storage）
      */
     async checkPermissions() {
       return new Promise((resolve) => {
-        plus.android.requestPermissions(
-          [
-            "android.permission.READ_EXTERNAL_STORAGE",
-            "android.permission.WRITE_EXTERNAL_STORAGE"
-          ],
-          (result) => {
-            formatAppLog("log", "at services/recordingService.ts:83", "[RecordingService] 权限请求结果:", result);
-            const granted = result.granted && result.granted.length >= 2;
-            resolve(granted);
-          },
-          (error) => {
-            formatAppLog("error", "at services/recordingService.ts:89", "[RecordingService] 权限请求失败:", error);
-            resolve(false);
+        try {
+          const Build = plus.android.importClass("android.os.Build");
+          const sdkVersion = Build.VERSION.SDK_INT;
+          if (sdkVersion >= 30) {
+            const Environment = plus.android.importClass("android.os.Environment");
+            if (Environment.isExternalStorageManager()) {
+              resolve(true);
+              return;
+            }
+            const Settings = plus.android.importClass("android.provider.Settings");
+            const Intent = plus.android.importClass("android.content.Intent");
+            const Uri = plus.android.importClass("android.net.Uri");
+            const main = plus.android.runtimeMainActivity();
+            const packageName = main.getPackageName();
+            uni.showModal({
+              title: "需要存储权限",
+              content: '为了自动扫描和上传通话录音，需要授予"所有文件访问"权限。',
+              confirmText: "去授权",
+              success: (res) => {
+                if (res.confirm) {
+                  try {
+                    const intent = new Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION);
+                    intent.setData(Uri.parse("package:" + packageName));
+                    main.startActivity(intent);
+                  } catch (_e) {
+                    try {
+                      const intent2 = new Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION);
+                      main.startActivity(intent2);
+                    } catch (_e2) {
+                      formatAppLog("error", "at services/recordingService.ts:112", "[RecordingService] 无法打开文件访问权限设置");
+                    }
+                  }
+                }
+                setTimeout(() => {
+                  resolve(Environment.isExternalStorageManager());
+                }, 1e3);
+              }
+            });
+          } else if (sdkVersion >= 33) {
+            plus.android.requestPermissions(
+              ["android.permission.READ_MEDIA_AUDIO"],
+              (result) => {
+                resolve(result.granted && result.granted.length >= 1);
+              },
+              (_error) => {
+                resolve(false);
+              }
+            );
+          } else {
+            plus.android.requestPermissions(
+              [
+                "android.permission.READ_EXTERNAL_STORAGE",
+                "android.permission.WRITE_EXTERNAL_STORAGE"
+              ],
+              (result) => {
+                formatAppLog("log", "at services/recordingService.ts:141", "[RecordingService] 权限请求结果:", result);
+                const granted = result.granted && result.granted.length >= 2;
+                resolve(granted);
+              },
+              (error) => {
+                formatAppLog("error", "at services/recordingService.ts:146", "[RecordingService] 权限请求失败:", error);
+                resolve(false);
+              }
+            );
           }
-        );
+        } catch (e) {
+          formatAppLog("error", "at services/recordingService.ts:152", "[RecordingService] 权限检查异常:", e);
+          plus.android.requestPermissions(
+            [
+              "android.permission.READ_EXTERNAL_STORAGE",
+              "android.permission.WRITE_EXTERNAL_STORAGE"
+            ],
+            (result) => {
+              resolve(result.granted && result.granted.length >= 2);
+            },
+            (_error) => {
+              resolve(false);
+            }
+          );
+        }
       });
     }
     /**
@@ -2477,10 +2797,10 @@ This will fail in production.`);
       try {
         const Build = plus.android.importClass("android.os.Build");
         const brand = Build.BRAND || "";
-        formatAppLog("log", "at services/recordingService.ts:109", "[RecordingService] 设备品牌:", brand);
+        formatAppLog("log", "at services/recordingService.ts:183", "[RecordingService] 设备品牌:", brand);
         return brand.toLowerCase();
       } catch (e) {
-        formatAppLog("error", "at services/recordingService.ts:112", "[RecordingService] 获取设备品牌失败:", e);
+        formatAppLog("error", "at services/recordingService.ts:186", "[RecordingService] 获取设备品牌失败:", e);
       }
       return "";
     }
@@ -2527,7 +2847,7 @@ This will fail in production.`);
         } catch (_e) {
         }
       }
-      formatAppLog("log", "at services/recordingService.ts:174", "[RecordingService] 扫描到录音文件:", recordings.length);
+      formatAppLog("log", "at services/recordingService.ts:248", "[RecordingService] 扫描到录音文件:", recordings.length);
       return recordings;
     }
     /**
@@ -2561,7 +2881,7 @@ This will fail in production.`);
           }
           resolve(result);
         } catch (e) {
-          formatAppLog("error", "at services/recordingService.ts:219", "[RecordingService] 列出文件失败:", dirPath, e);
+          formatAppLog("error", "at services/recordingService.ts:293", "[RecordingService] 列出文件失败:", dirPath, e);
           resolve([]);
         }
       });
@@ -2570,10 +2890,10 @@ This will fail in production.`);
      * 查找匹配通话的录音文件
      */
     async findMatchingRecording(callInfo) {
-      formatAppLog("log", "at services/recordingService.ts:234", "[RecordingService] 查找匹配录音:", callInfo);
+      formatAppLog("log", "at services/recordingService.ts:308", "[RecordingService] 查找匹配录音:", callInfo);
       const recordings = await this.scanRecordingFolders();
       if (recordings.length === 0) {
-        formatAppLog("log", "at services/recordingService.ts:238", "[RecordingService] 未找到任何录音文件");
+        formatAppLog("log", "at services/recordingService.ts:312", "[RecordingService] 未找到任何录音文件");
         return null;
       }
       const startRange = callInfo.startTime - 3e4;
@@ -2608,10 +2928,10 @@ This will fail in production.`);
         }
       }
       if (bestMatch && bestScore >= 50) {
-        formatAppLog("log", "at services/recordingService.ts:291", "[RecordingService] 找到匹配录音:", bestMatch.name, "分数:", bestScore);
+        formatAppLog("log", "at services/recordingService.ts:365", "[RecordingService] 找到匹配录音:", bestMatch.name, "分数:", bestScore);
         return bestMatch;
       }
-      formatAppLog("log", "at services/recordingService.ts:295", "[RecordingService] 未找到匹配的录音文件");
+      formatAppLog("log", "at services/recordingService.ts:369", "[RecordingService] 未找到匹配的录音文件");
       return null;
     }
     /**
@@ -2636,15 +2956,15 @@ This will fail in production.`);
      * 上传录音文件
      */
     async uploadRecordingFile(callId, recording) {
-      formatAppLog("log", "at services/recordingService.ts:329", "[RecordingService] 开始上传录音:", recording.path);
+      formatAppLog("log", "at services/recordingService.ts:403", "[RecordingService] 开始上传录音:", recording.path);
       try {
         const result = await uploadRecording(callId, recording.path);
-        formatAppLog("log", "at services/recordingService.ts:333", "[RecordingService] 录音上传成功:", result);
+        formatAppLog("log", "at services/recordingService.ts:407", "[RecordingService] 录音上传成功:", result);
         this.knownRecordings.add(recording.path);
         uni.$emit("recording:uploaded", callId);
         return true;
       } catch (e) {
-        formatAppLog("error", "at services/recordingService.ts:343", "[RecordingService] 录音上传失败:", e);
+        formatAppLog("error", "at services/recordingService.ts:417", "[RecordingService] 录音上传失败:", e);
         return false;
       }
     }
@@ -2652,10 +2972,10 @@ This will fail in production.`);
      * 通话结束后自动查找并上传录音
      */
     async processCallRecording(callInfo) {
-      formatAppLog("log", "at services/recordingService.ts:356", "[RecordingService] 处理通话录音:", callInfo.callId);
+      formatAppLog("log", "at services/recordingService.ts:430", "[RecordingService] 处理通话录音:", callInfo.callId);
       const hasPermission = await this.checkPermissions();
       if (!hasPermission) {
-        formatAppLog("warn", "at services/recordingService.ts:361", "[RecordingService] 没有存储权限");
+        formatAppLog("warn", "at services/recordingService.ts:435", "[RecordingService] 没有存储权限");
         return { found: false, uploaded: false };
       }
       await new Promise((resolve) => setTimeout(resolve, 2e3));
@@ -2676,7 +2996,7 @@ This will fail in production.`);
     async tryEnableSystemRecording() {
       try {
         const brand = this.getDeviceBrand();
-        formatAppLog("log", "at services/recordingService.ts:391", "[RecordingService] 尝试开启系统录音, 品牌:", brand);
+        formatAppLog("log", "at services/recordingService.ts:465", "[RecordingService] 尝试开启系统录音, 品牌:", brand);
         if (brand.includes("xiaomi") || brand.includes("redmi")) {
           return this.enableXiaomiRecording();
         }
@@ -2691,7 +3011,7 @@ This will fail in production.`);
         }
         return this.enableGenericRecording();
       } catch (e) {
-        formatAppLog("error", "at services/recordingService.ts:416", "[RecordingService] 开启系统录音失败:", e);
+        formatAppLog("error", "at services/recordingService.ts:490", "[RecordingService] 开启系统录音失败:", e);
       }
       return false;
     }
@@ -2743,10 +3063,10 @@ This will fail in production.`);
       for (let i = 0; i < attempts.length; i++) {
         try {
           attempts[i]();
-          formatAppLog("log", "at services/recordingService.ts:475", `[RecordingService] 小米录音设置打开成功，方式${i + 1}`);
+          formatAppLog("log", "at services/recordingService.ts:549", `[RecordingService] 小米录音设置打开成功，方式${i + 1}`);
           return true;
         } catch (_e) {
-          formatAppLog("log", "at services/recordingService.ts:478", `[RecordingService] 小米录音设置方式${i + 1}失败，尝试下一种`);
+          formatAppLog("log", "at services/recordingService.ts:552", `[RecordingService] 小米录音设置方式${i + 1}失败，尝试下一种`);
         }
       }
       return false;
@@ -2786,10 +3106,10 @@ This will fail in production.`);
       for (let i = 0; i < attempts.length; i++) {
         try {
           attempts[i]();
-          formatAppLog("log", "at services/recordingService.ts:523", `[RecordingService] 华为录音设置打开成功，方式${i + 1}`);
+          formatAppLog("log", "at services/recordingService.ts:597", `[RecordingService] 华为录音设置打开成功，方式${i + 1}`);
           return true;
         } catch (_e) {
-          formatAppLog("log", "at services/recordingService.ts:526", `[RecordingService] 华为录音设置方式${i + 1}失败，尝试下一种`);
+          formatAppLog("log", "at services/recordingService.ts:600", `[RecordingService] 华为录音设置方式${i + 1}失败，尝试下一种`);
         }
       }
       return false;
@@ -2831,10 +3151,10 @@ This will fail in production.`);
       for (let i = 0; i < attempts.length; i++) {
         try {
           attempts[i]();
-          formatAppLog("log", "at services/recordingService.ts:573", `[RecordingService] OPPO录音设置打开成功，方式${i + 1}`);
+          formatAppLog("log", "at services/recordingService.ts:647", `[RecordingService] OPPO录音设置打开成功，方式${i + 1}`);
           return true;
         } catch (_e) {
-          formatAppLog("log", "at services/recordingService.ts:576", `[RecordingService] OPPO录音设置方式${i + 1}失败，尝试下一种`);
+          formatAppLog("log", "at services/recordingService.ts:650", `[RecordingService] OPPO录音设置方式${i + 1}失败，尝试下一种`);
         }
       }
       return false;
@@ -2874,10 +3194,10 @@ This will fail in production.`);
       for (let i = 0; i < attempts.length; i++) {
         try {
           attempts[i]();
-          formatAppLog("log", "at services/recordingService.ts:621", `[RecordingService] VIVO录音设置打开成功，方式${i + 1}`);
+          formatAppLog("log", "at services/recordingService.ts:695", `[RecordingService] VIVO录音设置打开成功，方式${i + 1}`);
           return true;
         } catch (_e) {
-          formatAppLog("log", "at services/recordingService.ts:624", `[RecordingService] VIVO录音设置方式${i + 1}失败，尝试下一种`);
+          formatAppLog("log", "at services/recordingService.ts:698", `[RecordingService] VIVO录音设置方式${i + 1}失败，尝试下一种`);
         }
       }
       return false;
@@ -2911,10 +3231,10 @@ This will fail in production.`);
       for (let i = 0; i < attempts.length; i++) {
         try {
           attempts[i]();
-          formatAppLog("log", "at services/recordingService.ts:663", `[RecordingService] 通用录音设置打开成功，方式${i + 1}`);
+          formatAppLog("log", "at services/recordingService.ts:737", `[RecordingService] 通用录音设置打开成功，方式${i + 1}`);
           return true;
         } catch (_e) {
-          formatAppLog("log", "at services/recordingService.ts:666", `[RecordingService] 通用录音设置方式${i + 1}失败，尝试下一种`);
+          formatAppLog("log", "at services/recordingService.ts:740", `[RecordingService] 通用录音设置方式${i + 1}失败，尝试下一种`);
         }
       }
       return false;
@@ -2936,32 +3256,32 @@ This will fail in production.`);
             const dir = new File(basePath);
             if (dir.exists() && dir.isDirectory()) {
               folderExists = true;
-              formatAppLog("log", "at services/recordingService.ts:693", "[RecordingService] 找到录音文件夹:", basePath);
+              formatAppLog("log", "at services/recordingService.ts:767", "[RecordingService] 找到录音文件夹:", basePath);
               break;
             }
           } catch (_e) {
           }
         }
         if (!folderExists) {
-          formatAppLog("log", "at services/recordingService.ts:702", "[RecordingService] 未找到任何录音文件夹");
+          formatAppLog("log", "at services/recordingService.ts:776", "[RecordingService] 未找到任何录音文件夹");
           return false;
         }
         const recordings = await this.scanRecordingFolders();
-        formatAppLog("log", "at services/recordingService.ts:708", "[RecordingService] 扫描到录音文件数量:", recordings.length);
+        formatAppLog("log", "at services/recordingService.ts:782", "[RecordingService] 扫描到录音文件数量:", recordings.length);
         if (recordings.length === 0) {
-          formatAppLog("log", "at services/recordingService.ts:713", "[RecordingService] 录音文件夹存在但无录音文件，可能已开启");
+          formatAppLog("log", "at services/recordingService.ts:787", "[RecordingService] 录音文件夹存在但无录音文件，可能已开启");
           return true;
         }
         const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1e3;
         const recentRecordings = recordings.filter((r) => r.lastModified > sevenDaysAgo);
         if (recentRecordings.length > 0) {
-          formatAppLog("log", "at services/recordingService.ts:722", "[RecordingService] 有最近7天的录音文件:", recentRecordings.length);
+          formatAppLog("log", "at services/recordingService.ts:796", "[RecordingService] 有最近7天的录音文件:", recentRecordings.length);
           return true;
         }
-        formatAppLog("log", "at services/recordingService.ts:727", "[RecordingService] 有录音文件但都是7天前的");
+        formatAppLog("log", "at services/recordingService.ts:801", "[RecordingService] 有录音文件但都是7天前的");
         return true;
       } catch (e) {
-        formatAppLog("error", "at services/recordingService.ts:730", "[RecordingService] 检查录音状态失败:", e);
+        formatAppLog("error", "at services/recordingService.ts:804", "[RecordingService] 检查录音状态失败:", e);
         return false;
       }
     }
@@ -2981,9 +3301,9 @@ This will fail in production.`);
         const recordings = await this.scanRecordingFolders();
         const cutoffTime = Date.now() - retentionDays * 24 * 60 * 60 * 1e3;
         const File = plus.android.importClass("java.io.File");
-        formatAppLog("log", "at services/recordingService.ts:764", `[RecordingService] 开始清理 ${retentionDays} 天前的录音文件`);
-        formatAppLog("log", "at services/recordingService.ts:765", `[RecordingService] 截止时间: ${new Date(cutoffTime).toLocaleString()}`);
-        formatAppLog("log", "at services/recordingService.ts:766", `[RecordingService] 扫描到录音文件: ${recordings.length} 个`);
+        formatAppLog("log", "at services/recordingService.ts:838", `[RecordingService] 开始清理 ${retentionDays} 天前的录音文件`);
+        formatAppLog("log", "at services/recordingService.ts:839", `[RecordingService] 截止时间: ${new Date(cutoffTime).toLocaleString()}`);
+        formatAppLog("log", "at services/recordingService.ts:840", `[RecordingService] 扫描到录音文件: ${recordings.length} 个`);
         for (const recording of recordings) {
           if (recording.lastModified > cutoffTime) {
             continue;
@@ -2995,7 +3315,7 @@ This will fail in production.`);
             if (file.exists() && file.delete()) {
               result.deletedCount++;
               result.freedSpace += recording.size;
-              formatAppLog("log", "at services/recordingService.ts:784", `[RecordingService] 已删除: ${recording.name}`);
+              formatAppLog("log", "at services/recordingService.ts:858", `[RecordingService] 已删除: ${recording.name}`);
             } else {
               result.errors.push(`无法删除: ${recording.name}`);
             }
@@ -3003,9 +3323,9 @@ This will fail in production.`);
             result.errors.push(`删除失败: ${recording.name} - ${e.message || e}`);
           }
         }
-        formatAppLog("log", "at services/recordingService.ts:793", `[RecordingService] 清理完成: 删除 ${result.deletedCount} 个文件，释放 ${(result.freedSpace / 1024 / 1024).toFixed(2)} MB`);
+        formatAppLog("log", "at services/recordingService.ts:867", `[RecordingService] 清理完成: 删除 ${result.deletedCount} 个文件，释放 ${(result.freedSpace / 1024 / 1024).toFixed(2)} MB`);
       } catch (e) {
-        formatAppLog("error", "at services/recordingService.ts:795", "[RecordingService] 清理录音失败:", e);
+        formatAppLog("error", "at services/recordingService.ts:869", "[RecordingService] 清理录音失败:", e);
         result.success = false;
         result.errors.push(e.message || "清理失败");
       }
@@ -3034,7 +3354,7 @@ This will fail in production.`);
           }
         }
       } catch (e) {
-        formatAppLog("error", "at services/recordingService.ts:836", "[RecordingService] 获取录音统计失败:", e);
+        formatAppLog("error", "at services/recordingService.ts:910", "[RecordingService] 获取录音统计失败:", e);
       }
       return stats;
     }
@@ -3318,22 +3638,22 @@ This will fail in production.`);
       const userStore = useUserStore();
       const serverStore = useServerStore();
       if (this.isConnected && this.socket) {
-        formatAppLog("log", "at services/websocket.ts:51", "[WebSocket] 已连接，跳过重复连接");
+        formatAppLog("log", "at services/websocket.ts:52", "[WebSocket] 已连接，跳过重复连接");
         return;
       }
       if (!userStore.wsToken) {
-        formatAppLog("log", "at services/websocket.ts:56", "[WebSocket] 缺少 wsToken，请重新扫码绑定");
+        formatAppLog("log", "at services/websocket.ts:57", "[WebSocket] 缺少 wsToken，请重新扫码绑定");
         uni.$emit("ws:need_rebind", { reason: "missing_token" });
         return;
       }
       const baseWsUrl = userStore.wsUrl || serverStore.wsUrl;
       if (!baseWsUrl) {
-        formatAppLog("log", "at services/websocket.ts:64", "[WebSocket] 缺少 WebSocket 地址，请重新扫码绑定");
+        formatAppLog("log", "at services/websocket.ts:65", "[WebSocket] 缺少 WebSocket 地址，请重新扫码绑定");
         uni.$emit("ws:need_rebind", { reason: "missing_url" });
         return;
       }
       if (this.socket) {
-        formatAppLog("log", "at services/websocket.ts:70", "[WebSocket] 已有连接，先关闭");
+        formatAppLog("log", "at services/websocket.ts:71", "[WebSocket] 已有连接，先关闭");
         this.disconnect();
       }
       let wsUrl = baseWsUrl;
@@ -3348,24 +3668,24 @@ This will fail in production.`);
       wsUrl = wsUrl.replace("/api/v1/ws/mobile", "/ws/mobile");
       wsUrl = wsUrl.replace("/api/ws/mobile", "/ws/mobile");
       wsUrl = `${wsUrl}?token=${userStore.wsToken}`;
-      formatAppLog("log", "at services/websocket.ts:94", "[WebSocket] 正在连接:", wsUrl);
-      formatAppLog("log", "at services/websocket.ts:95", "[WebSocket] wsToken长度:", userStore.wsToken.length);
-      formatAppLog("log", "at services/websocket.ts:96", "[WebSocket] 当前wsUrl:", userStore.wsUrl);
-      formatAppLog("log", "at services/websocket.ts:97", "[WebSocket] serverStore.wsUrl:", serverStore.wsUrl);
+      formatAppLog("log", "at services/websocket.ts:95", "[WebSocket] 正在连接:", wsUrl);
+      formatAppLog("log", "at services/websocket.ts:96", "[WebSocket] wsToken长度:", userStore.wsToken.length);
+      formatAppLog("log", "at services/websocket.ts:97", "[WebSocket] 当前wsUrl:", userStore.wsUrl);
+      formatAppLog("log", "at services/websocket.ts:98", "[WebSocket] serverStore.wsUrl:", serverStore.wsUrl);
       try {
         this.socket = uni.connectSocket({
           url: wsUrl,
           success: () => {
-            formatAppLog("log", "at services/websocket.ts:103", "[WebSocket] 连接请求已发送");
+            formatAppLog("log", "at services/websocket.ts:104", "[WebSocket] 连接请求已发送");
           },
           fail: (err) => {
-            formatAppLog("error", "at services/websocket.ts:106", "[WebSocket] 连接请求失败:", JSON.stringify(err));
+            formatAppLog("error", "at services/websocket.ts:107", "[WebSocket] 连接请求失败:", JSON.stringify(err));
             this.scheduleReconnect();
           }
         });
         this.setupListeners();
       } catch (e) {
-        formatAppLog("error", "at services/websocket.ts:114", "[WebSocket] 创建连接异常:", e);
+        formatAppLog("error", "at services/websocket.ts:115", "[WebSocket] 创建连接异常:", e);
         this.scheduleReconnect();
       }
     }
@@ -3373,7 +3693,7 @@ This will fail in production.`);
     setupListeners() {
       if (!this.socket) return;
       this.socket.onOpen(() => {
-        formatAppLog("log", "at services/websocket.ts:125", "[WebSocket] 连接成功");
+        formatAppLog("log", "at services/websocket.ts:126", "[WebSocket] 连接成功");
         this.isConnected = true;
         this.reconnectAttempts = 0;
         this.sendDeviceOnline();
@@ -3385,19 +3705,19 @@ This will fail in production.`);
           const message = JSON.parse(res.data);
           this.handleMessage(message);
         } catch (e) {
-          formatAppLog("error", "at services/websocket.ts:145", "[WebSocket] 解析消息失败:", e);
+          formatAppLog("error", "at services/websocket.ts:146", "[WebSocket] 解析消息失败:", e);
         }
       });
       this.socket.onClose((res) => {
-        formatAppLog("log", "at services/websocket.ts:151", "[WebSocket] 连接关闭:", res);
+        formatAppLog("log", "at services/websocket.ts:152", "[WebSocket] 连接关闭:", res);
         this.isConnected = false;
         this.stopHeartbeat();
         uni.$emit("ws:disconnected");
         this.scheduleReconnect();
       });
       this.socket.onError((err) => {
-        formatAppLog("error", "at services/websocket.ts:164", "[WebSocket] 连接错误:", JSON.stringify(err));
-        formatAppLog("error", "at services/websocket.ts:165", "[WebSocket] 当前连接URL:", this.getCurrentWsUrl());
+        formatAppLog("error", "at services/websocket.ts:165", "[WebSocket] 连接错误:", JSON.stringify(err));
+        formatAppLog("error", "at services/websocket.ts:166", "[WebSocket] 当前连接URL:", this.getCurrentWsUrl());
         this.isConnected = false;
         uni.$emit("ws:error", err);
       });
@@ -3405,7 +3725,7 @@ This will fail in production.`);
     // 处理消息
     handleMessage(message) {
       var _a;
-      formatAppLog("log", "at services/websocket.ts:173", "[WebSocket] 收到消息:", message.type, message.data);
+      formatAppLog("log", "at services/websocket.ts:174", "[WebSocket] 收到消息:", message.type, message.data);
       switch (message.type) {
         case "DIAL_REQUEST":
         case "DIAL_COMMAND":
@@ -3421,7 +3741,7 @@ This will fail in production.`);
           break;
         case "CALL_END":
         case "END_CALL":
-          formatAppLog("log", "at services/websocket.ts:197", "[WebSocket] 收到服务器结束通话指令:", message.data);
+          formatAppLog("log", "at services/websocket.ts:198", "[WebSocket] 收到服务器结束通话指令:", message.data);
           uni.$emit("call:end", message.data);
           uni.$emit("ws:call_ended", message.data);
           const currentCall = uni.getStorageSync("currentCall");
@@ -3452,16 +3772,16 @@ This will fail in production.`);
         case "pong":
           break;
         default:
-          formatAppLog("log", "at services/websocket.ts:239", "[WebSocket] 未知消息类型:", message.type);
+          formatAppLog("log", "at services/websocket.ts:240", "[WebSocket] 未知消息类型:", message.type);
       }
     }
     // 执行拨号 - 直接调用系统拨号，使用callStateService监听通话状态
     executeDial(data) {
       if (!data || !data.phoneNumber) {
-        formatAppLog("error", "at services/websocket.ts:246", "[WebSocket] 拨号数据无效:", data);
+        formatAppLog("error", "at services/websocket.ts:247", "[WebSocket] 拨号数据无效:", data);
         return;
       }
-      formatAppLog("log", "at services/websocket.ts:250", "[WebSocket] 执行拨号:", data.phoneNumber, "客户:", data.customerName);
+      formatAppLog("log", "at services/websocket.ts:251", "[WebSocket] 执行拨号:", data.phoneNumber, "客户:", data.customerName);
       const callStartTime = (/* @__PURE__ */ new Date()).toISOString();
       uni.setStorageSync("currentCall", {
         callId: data.callId,
@@ -3478,7 +3798,7 @@ This will fail in production.`);
         customerId: data.customerId
       });
       callStateService.onStateChange((state, callInfo) => {
-        formatAppLog("log", "at services/websocket.ts:275", "[WebSocket] 通话状态变化:", state, callInfo);
+        formatAppLog("log", "at services/websocket.ts:276", "[WebSocket] 通话状态变化:", state, callInfo);
         if (state === "offhook") {
           uni.showToast({
             title: "通话已接通",
@@ -3494,11 +3814,11 @@ This will fail in production.`);
         }
       });
       callStateService.onCallEnd((callInfo, duration) => {
-        formatAppLog("log", "at services/websocket.ts:296", "[WebSocket] 通话结束回调:", callInfo, duration);
+        formatAppLog("log", "at services/websocket.ts:297", "[WebSocket] 通话结束回调:", callInfo, duration);
         uni.removeStorageSync("currentCall");
       });
       plus.device.dial(data.phoneNumber, false);
-      formatAppLog("log", "at services/websocket.ts:304", "[WebSocket] 系统拨号已发起");
+      formatAppLog("log", "at services/websocket.ts:305", "[WebSocket] 系统拨号已发起");
       uni.showToast({
         title: "正在拨号...",
         icon: "none",
@@ -3521,7 +3841,7 @@ This will fail in production.`);
     // 发送消息
     send(type, data) {
       if (!this.socket || !this.isConnected) {
-        formatAppLog("warn", "at services/websocket.ts:347", "[WebSocket] 未连接，无法发送消息");
+        formatAppLog("warn", "at services/websocket.ts:348", "[WebSocket] 未连接，无法发送消息");
         return;
       }
       const message = {
@@ -3533,7 +3853,7 @@ This will fail in production.`);
       this.socket.send({
         data: JSON.stringify(message),
         fail: (err) => {
-          formatAppLog("error", "at services/websocket.ts:361", "[WebSocket] 发送消息失败:", err);
+          formatAppLog("error", "at services/websocket.ts:362", "[WebSocket] 发送消息失败:", err);
         }
       });
     }
@@ -3543,7 +3863,7 @@ This will fail in production.`);
       const userStore = useUserStore();
       this.send("DEVICE_ONLINE", {
         deviceId: (_a = userStore.deviceInfo) == null ? void 0 : _a.deviceId,
-        appVersion: "1.0.0"
+        appVersion: APP_VERSION
       });
     }
     // 上报通话状态
@@ -3581,13 +3901,13 @@ This will fail in production.`);
     // 重连调度
     scheduleReconnect() {
       if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-        formatAppLog("error", "at services/websocket.ts:415", "[WebSocket] 达到最大重连次数");
+        formatAppLog("error", "at services/websocket.ts:416", "[WebSocket] 达到最大重连次数");
         uni.$emit("ws:max_reconnect");
         return;
       }
       this.reconnectAttempts++;
       const delay = this.reconnectDelay * Math.pow(1.5, this.reconnectAttempts - 1);
-      formatAppLog("log", "at services/websocket.ts:423", `[WebSocket] ${delay}ms后重连，第${this.reconnectAttempts}次`);
+      formatAppLog("log", "at services/websocket.ts:424", `[WebSocket] ${delay}ms后重连，第${this.reconnectAttempts}次`);
       setTimeout(() => {
         this.connect();
       }, Math.min(delay, 3e4));
@@ -4040,7 +4360,7 @@ This will fail in production.`);
       ))
     ]);
   }
-  const PagesIndexIndex = /* @__PURE__ */ _export_sfc(_sfc_main$c, [["render", _sfc_render$b], ["__scopeId", "data-v-83a5a03c"], ["__file", "D:/kaifa/CRM - 1.8.0开发中/crmAPP/src/pages/index/index.vue"]]);
+  const PagesIndexIndex = /* @__PURE__ */ _export_sfc(_sfc_main$c, [["render", _sfc_render$b], ["__scopeId", "data-v-83a5a03c"], ["__file", "D:/kaifa/CRM - 1.8.0/crmAPP/src/pages/index/index.vue"]]);
   const makePhoneCall = (phoneNumber) => {
     return new Promise((resolve) => {
       plus.device.dial(phoneNumber, false);
@@ -4460,7 +4780,7 @@ This will fail in production.`);
       ], 40, ["refresher-triggered"])
     ]);
   }
-  const PagesCallsIndex = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_render$a], ["__scopeId", "data-v-171cc5c2"], ["__file", "D:/kaifa/CRM - 1.8.0开发中/crmAPP/src/pages/calls/index.vue"]]);
+  const PagesCallsIndex = /* @__PURE__ */ _export_sfc(_sfc_main$b, [["render", _sfc_render$a], ["__scopeId", "data-v-171cc5c2"], ["__file", "D:/kaifa/CRM - 1.8.0/crmAPP/src/pages/calls/index.vue"]]);
   const _sfc_main$a = /* @__PURE__ */ vue.defineComponent({
     __name: "index",
     setup(__props, { expose: __expose }) {
@@ -4691,13 +5011,14 @@ This will fail in production.`);
       ])
     ]);
   }
-  const PagesStatsIndex = /* @__PURE__ */ _export_sfc(_sfc_main$a, [["render", _sfc_render$9], ["__scopeId", "data-v-774cec60"], ["__file", "D:/kaifa/CRM - 1.8.0开发中/crmAPP/src/pages/stats/index.vue"]]);
+  const PagesStatsIndex = /* @__PURE__ */ _export_sfc(_sfc_main$a, [["render", _sfc_render$9], ["__scopeId", "data-v-774cec60"], ["__file", "D:/kaifa/CRM - 1.8.0/crmAPP/src/pages/stats/index.vue"]]);
   const _sfc_main$9 = /* @__PURE__ */ vue.defineComponent({
     __name: "index",
     setup(__props, { expose: __expose }) {
       __expose();
       const userStore = useUserStore();
       const serverStore = useServerStore();
+      const appVersion = APP_VERSION;
       const recordingEnabled = vue.ref(false);
       const checkingRecording = vue.ref(false);
       let autoCheckTimer = null;
@@ -4754,14 +5075,14 @@ This will fail in production.`);
             storedSecurityAnswer.value = data.securityAnswer || "";
           }
         } catch (e) {
-          formatAppLog("error", "at pages/settings/index.vue:351", "加载设置失败:", e);
+          formatAppLog("error", "at pages/settings/index.vue:353", "加载设置失败:", e);
         }
       };
       const saveSettings = () => {
         try {
           uni.setStorageSync("callSettings", JSON.stringify(callSettings.value));
         } catch (e) {
-          formatAppLog("error", "at pages/settings/index.vue:360", "保存设置失败:", e);
+          formatAppLog("error", "at pages/settings/index.vue:362", "保存设置失败:", e);
         }
       };
       const savePasswordData = () => {
@@ -4771,7 +5092,7 @@ This will fail in production.`);
             securityAnswer: storedSecurityAnswer.value
           }));
         } catch (e) {
-          formatAppLog("error", "at pages/settings/index.vue:372", "保存密码失败:", e);
+          formatAppLog("error", "at pages/settings/index.vue:374", "保存密码失败:", e);
         }
       };
       const updateSetting = (key, event) => {
@@ -4884,7 +5205,7 @@ This will fail in production.`);
             recordingStats.value = stats;
           }
         } catch (e) {
-          formatAppLog("error", "at pages/settings/index.vue:516", "自动检测录音状态失败:", e);
+          formatAppLog("error", "at pages/settings/index.vue:518", "自动检测录音状态失败:", e);
         } finally {
           checkingRecording.value = false;
         }
@@ -4923,7 +5244,7 @@ This will fail in production.`);
                 }
               } catch (e) {
                 uni.hideLoading();
-                formatAppLog("error", "at pages/settings/index.vue:559", "清理录音失败:", e);
+                formatAppLog("error", "at pages/settings/index.vue:561", "清理录音失败:", e);
                 uni.showToast({ title: "清理失败", icon: "none" });
               }
             }
@@ -4970,7 +5291,7 @@ This will fail in production.`);
           }
         } catch (e) {
           uni.hideLoading();
-          formatAppLog("error", "at pages/settings/index.vue:614", "检测录音状态失败:", e);
+          formatAppLog("error", "at pages/settings/index.vue:616", "检测录音状态失败:", e);
           uni.showToast({ title: "检测失败", icon: "none" });
         }
       };
@@ -5021,15 +5342,15 @@ This will fail in production.`);
           const now2 = Date.now();
           const oneDayMs = 24 * 60 * 60 * 1e3;
           if (!lastCleanup || now2 - parseInt(lastCleanup) > oneDayMs) {
-            formatAppLog("log", "at pages/settings/index.vue:677", "[Settings] 执行自动录音清理");
+            formatAppLog("log", "at pages/settings/index.vue:679", "[Settings] 执行自动录音清理");
             const result = await recordingService.cleanupExpiredRecordings(callSettings.value.recordingRetentionDays || 3);
             if (result.deletedCount > 0) {
-              formatAppLog("log", "at pages/settings/index.vue:681", `[Settings] 自动清理完成: 删除 ${result.deletedCount} 个文件`);
+              formatAppLog("log", "at pages/settings/index.vue:683", `[Settings] 自动清理完成: 删除 ${result.deletedCount} 个文件`);
             }
             uni.setStorageSync("lastRecordingCleanup", String(now2));
           }
         } catch (e) {
-          formatAppLog("error", "at pages/settings/index.vue:688", "[Settings] 自动清理录音失败:", e);
+          formatAppLog("error", "at pages/settings/index.vue:690", "[Settings] 自动清理录音失败:", e);
         }
       };
       vue.onUnmounted(() => {
@@ -5090,7 +5411,7 @@ This will fail in production.`);
           }
         } catch (e) {
           uni.hideLoading();
-          formatAppLog("error", "at pages/settings/index.vue:764", "打开录音设置失败:", e);
+          formatAppLog("error", "at pages/settings/index.vue:766", "打开录音设置失败:", e);
           uni.showToast({ title: "打开设置失败", icon: "none" });
         }
       };
@@ -5113,7 +5434,7 @@ This will fail in production.`);
                 uni.showToast({ title: "解绑成功", icon: "success" });
               } catch (e) {
                 uni.hideLoading();
-                formatAppLog("error", "at pages/settings/index.vue:801", "解绑失败:", e);
+                formatAppLog("error", "at pages/settings/index.vue:803", "解绑失败:", e);
                 userStore.clearDeviceInfo();
                 uni.showToast({ title: "已解绑", icon: "success" });
               }
@@ -5140,7 +5461,7 @@ This will fail in production.`);
           }
         });
       };
-      const __returned__ = { userStore, serverStore, recordingEnabled, checkingRecording, get autoCheckTimer() {
+      const __returned__ = { userStore, serverStore, appVersion, recordingEnabled, checkingRecording, get autoCheckTimer() {
         return autoCheckTimer;
       }, set autoCheckTimer(v) {
         autoCheckTimer = v;
@@ -5408,7 +5729,7 @@ This will fail in production.`);
             vue.createElementVNode(
               "text",
               { class: "value" },
-              vue.toDisplayString($setup.serverStore.displayUrl),
+              vue.toDisplayString($setup.serverStore.maskedDisplayUrl),
               1
               /* TEXT */
             ),
@@ -5419,7 +5740,13 @@ This will fail in production.`);
             onClick: $setup.goToAbout
           }, [
             vue.createElementVNode("text", { class: "label" }, "ℹ️ 关于"),
-            vue.createElementVNode("text", { class: "value" }, "v1.0.0"),
+            vue.createElementVNode(
+              "text",
+              { class: "value" },
+              "v" + vue.toDisplayString($setup.appVersion),
+              1
+              /* TEXT */
+            ),
             vue.createElementVNode("text", { class: "arrow" }, "›")
           ])
         ])
@@ -5652,7 +5979,7 @@ This will fail in production.`);
       ])) : vue.createCommentVNode("v-if", true)
     ]);
   }
-  const PagesSettingsIndex = /* @__PURE__ */ _export_sfc(_sfc_main$9, [["render", _sfc_render$8], ["__scopeId", "data-v-b4180827"], ["__file", "D:/kaifa/CRM - 1.8.0开发中/crmAPP/src/pages/settings/index.vue"]]);
+  const PagesSettingsIndex = /* @__PURE__ */ _export_sfc(_sfc_main$9, [["render", _sfc_render$8], ["__scopeId", "data-v-b4180827"], ["__file", "D:/kaifa/CRM - 1.8.0/crmAPP/src/pages/settings/index.vue"]]);
   const scriptRel = "modulepreload";
   const assetsURL = function(dep) {
     return "/" + dep;
@@ -5733,12 +6060,12 @@ This will fail in production.`);
         uni.scanCode({
           scanType: ["qrCode"],
           success: async (res) => {
-            formatAppLog("log", "at pages/scan/index.vue:64", "扫码结果:", res.result);
+            formatAppLog("log", "at pages/scan/index.vue:65", "扫码结果:", res.result);
             await processQRCode(res.result);
           },
           fail: (err) => {
             var _a;
-            formatAppLog("error", "at pages/scan/index.vue:68", "扫码失败:", err);
+            formatAppLog("error", "at pages/scan/index.vue:69", "扫码失败:", err);
             if ((_a = err.errMsg) == null ? void 0 : _a.includes("cancel")) {
               return;
             }
@@ -5752,7 +6079,7 @@ This will fail in production.`);
       const processQRCode = async (content) => {
         try {
           const data = JSON.parse(content);
-          formatAppLog("log", "at pages/scan/index.vue:87", "解析二维码数据:", data);
+          formatAppLog("log", "at pages/scan/index.vue:88", "解析二维码数据:", data);
           if (data.action !== "bind_device" && data.type !== "work_phone_bind") {
             uni.showToast({ title: "无效的二维码", icon: "none" });
             return;
@@ -5775,7 +6102,7 @@ This will fail in production.`);
               deviceModel: systemInfo.deviceModel || "",
               osType: systemInfo.platform === "ios" ? "ios" : "android",
               osVersion: systemInfo.system || "",
-              appVersion: "1.0.0"
+              appVersion: APP_VERSION
             }
           });
           uni.hideLoading();
@@ -5786,21 +6113,21 @@ This will fail in production.`);
             deviceModel: systemInfo.deviceModel || "",
             osType: systemInfo.platform === "ios" ? "ios" : "android",
             osVersion: systemInfo.system || "",
-            appVersion: "1.0.0"
+            appVersion: APP_VERSION
           });
           uni.showToast({ title: "绑定成功", icon: "success" });
           const { wsService: wsService2 } = await __vitePreload(async () => {
             const { wsService: wsService3 } = await Promise.resolve().then(() => websocket);
             return { wsService: wsService3 };
           }, false ? __VITE_PRELOAD__ : void 0);
-          formatAppLog("log", "at pages/scan/index.vue:139", "[Scan] 绑定成功，立即建立WebSocket连接");
+          formatAppLog("log", "at pages/scan/index.vue:140", "[Scan] 绑定成功，立即建立WebSocket连接");
           wsService2.connect();
           setTimeout(() => {
             uni.switchTab({ url: "/pages/index/index" });
           }, 1500);
         } catch (e) {
           uni.hideLoading();
-          formatAppLog("error", "at pages/scan/index.vue:149", "绑定失败:", e);
+          formatAppLog("error", "at pages/scan/index.vue:150", "绑定失败:", e);
           uni.showToast({ title: e.message || "绑定失败", icon: "none" });
         }
       };
@@ -5851,7 +6178,7 @@ This will fail in production.`);
       ])
     ]);
   }
-  const PagesScanIndex = /* @__PURE__ */ _export_sfc(_sfc_main$8, [["render", _sfc_render$7], ["__scopeId", "data-v-99526857"], ["__file", "D:/kaifa/CRM - 1.8.0开发中/crmAPP/src/pages/scan/index.vue"]]);
+  const PagesScanIndex = /* @__PURE__ */ _export_sfc(_sfc_main$8, [["render", _sfc_render$7], ["__scopeId", "data-v-99526857"], ["__file", "D:/kaifa/CRM - 1.8.0/crmAPP/src/pages/scan/index.vue"]]);
   const _sfc_main$7 = /* @__PURE__ */ vue.defineComponent({
     __name: "index",
     setup(__props, { expose: __expose }) {
@@ -5964,14 +6291,38 @@ This will fail in production.`);
         }
       };
       const toggleMute = () => {
-        isMuted.value = !isMuted.value;
+        const newState = !isMuted.value;
+        try {
+          plus.android.importClass("android.content.Context");
+          plus.android.importClass("android.media.AudioManager");
+          const activity = plus.android.runtimeMainActivity();
+          const audioManager = activity.getSystemService("audio");
+          audioManager.setMicrophoneMute(newState);
+          isMuted.value = newState;
+          formatAppLog("log", "at pages/calling/index.vue:249", "[Calling] 静音切换成功:", newState);
+        } catch (e) {
+          formatAppLog("error", "at pages/calling/index.vue:251", "[Calling] 静音切换失败:", e);
+          isMuted.value = newState;
+        }
         uni.showToast({
           title: isMuted.value ? "已静音" : "已取消静音",
           icon: "none"
         });
       };
       const toggleSpeaker = () => {
-        isSpeaker.value = !isSpeaker.value;
+        const newState = !isSpeaker.value;
+        try {
+          plus.android.importClass("android.content.Context");
+          plus.android.importClass("android.media.AudioManager");
+          const activity = plus.android.runtimeMainActivity();
+          const audioManager = activity.getSystemService("audio");
+          audioManager.setSpeakerphoneOn(newState);
+          isSpeaker.value = newState;
+          formatAppLog("log", "at pages/calling/index.vue:279", "[Calling] 免提切换成功:", newState);
+        } catch (e) {
+          formatAppLog("error", "at pages/calling/index.vue:281", "[Calling] 免提切换失败:", e);
+          isSpeaker.value = newState;
+        }
         uni.showToast({
           title: isSpeaker.value ? "已开启免提" : "已关闭免提",
           icon: "none"
@@ -5982,7 +6333,7 @@ This will fail in production.`);
         uni.showToast({ title: key, icon: "none", duration: 300 });
       };
       const handleHangup = async () => {
-        formatAppLog("log", "at pages/calling/index.vue:263", "[Calling] 用户点击结束通话");
+        formatAppLog("log", "at pages/calling/index.vue:304", "[Calling] 用户点击结束通话");
         uni.showModal({
           title: "提示",
           content: "请在系统电话界面点击挂断按钮结束通话",
@@ -5991,7 +6342,7 @@ This will fail in production.`);
         });
       };
       const handleCallEndFromServer = (data) => {
-        formatAppLog("log", "at pages/calling/index.vue:276", "[Calling] 收到服务器结束通话指令:", data);
+        formatAppLog("log", "at pages/calling/index.vue:317", "[Calling] 收到服务器结束通话指令:", data);
         if (data.callId === callId.value) {
           uni.showModal({
             title: "通话已结束",
@@ -6007,13 +6358,13 @@ This will fail in production.`);
         }
       };
       vue.onMounted(() => {
-        formatAppLog("log", "at pages/calling/index.vue:295", "[Calling] 页面挂载");
+        formatAppLog("log", "at pages/calling/index.vue:336", "[Calling] 页面挂载");
         uni.setKeepScreenOn({ keepScreenOn: true });
         uni.$on("call:end", handleCallEndFromServer);
         uni.$on("ws:call_ended", handleCallEndFromServer);
       });
       vue.onUnmounted(() => {
-        formatAppLog("log", "at pages/calling/index.vue:306", "[Calling] 页面卸载");
+        formatAppLog("log", "at pages/calling/index.vue:347", "[Calling] 页面卸载");
         stopDurationTimer();
         uni.setKeepScreenOn({ keepScreenOn: false });
         uni.$off("call:end", handleCallEndFromServer);
@@ -6198,7 +6549,7 @@ This will fail in production.`);
       ])
     ]);
   }
-  const PagesCallingIndex = /* @__PURE__ */ _export_sfc(_sfc_main$7, [["render", _sfc_render$6], ["__scopeId", "data-v-2f1addb2"], ["__file", "D:/kaifa/CRM - 1.8.0开发中/crmAPP/src/pages/calling/index.vue"]]);
+  const PagesCallingIndex = /* @__PURE__ */ _export_sfc(_sfc_main$7, [["render", _sfc_render$6], ["__scopeId", "data-v-2f1addb2"], ["__file", "D:/kaifa/CRM - 1.8.0/crmAPP/src/pages/calling/index.vue"]]);
   const _sfc_main$6 = /* @__PURE__ */ vue.defineComponent({
     __name: "index",
     setup(__props, { expose: __expose }) {
@@ -6568,7 +6919,7 @@ This will fail in production.`);
       ])
     ]);
   }
-  const PagesCallEndedIndex = /* @__PURE__ */ _export_sfc(_sfc_main$6, [["render", _sfc_render$5], ["__scopeId", "data-v-acbf5c2b"], ["__file", "D:/kaifa/CRM - 1.8.0开发中/crmAPP/src/pages/call-ended/index.vue"]]);
+  const PagesCallEndedIndex = /* @__PURE__ */ _export_sfc(_sfc_main$6, [["render", _sfc_render$5], ["__scopeId", "data-v-acbf5c2b"], ["__file", "D:/kaifa/CRM - 1.8.0/crmAPP/src/pages/call-ended/index.vue"]]);
   const _sfc_main$5 = /* @__PURE__ */ vue.defineComponent({
     __name: "index",
     setup(__props, { expose: __expose }) {
@@ -7034,7 +7385,7 @@ This will fail in production.`);
       ])
     ]);
   }
-  const PagesCallDetailIndex = /* @__PURE__ */ _export_sfc(_sfc_main$5, [["render", _sfc_render$4], ["__scopeId", "data-v-7dde404a"], ["__file", "D:/kaifa/CRM - 1.8.0开发中/crmAPP/src/pages/call-detail/index.vue"]]);
+  const PagesCallDetailIndex = /* @__PURE__ */ _export_sfc(_sfc_main$5, [["render", _sfc_render$4], ["__scopeId", "data-v-7dde404a"], ["__file", "D:/kaifa/CRM - 1.8.0/crmAPP/src/pages/call-detail/index.vue"]]);
   const _sfc_main$4 = /* @__PURE__ */ vue.defineComponent({
     __name: "index",
     setup(__props, { expose: __expose }) {
@@ -7170,7 +7521,7 @@ This will fail in production.`);
       ])
     ]);
   }
-  const PagesDialpadIndex = /* @__PURE__ */ _export_sfc(_sfc_main$4, [["render", _sfc_render$3], ["__scopeId", "data-v-1f062f68"], ["__file", "D:/kaifa/CRM - 1.8.0开发中/crmAPP/src/pages/dialpad/index.vue"]]);
+  const PagesDialpadIndex = /* @__PURE__ */ _export_sfc(_sfc_main$4, [["render", _sfc_render$3], ["__scopeId", "data-v-1f062f68"], ["__file", "D:/kaifa/CRM - 1.8.0/crmAPP/src/pages/dialpad/index.vue"]]);
   const _sfc_main$3 = {};
   function _sfc_render$2(_ctx, _cache) {
     return vue.openBlock(), vue.createElementBlock("view", { class: "agreement-page" }, [
@@ -7377,7 +7728,7 @@ This will fail in production.`);
       ])
     ]);
   }
-  const PagesAgreementUserAgreement = /* @__PURE__ */ _export_sfc(_sfc_main$3, [["render", _sfc_render$2], ["__scopeId", "data-v-c8dcd74e"], ["__file", "D:/kaifa/CRM - 1.8.0开发中/crmAPP/src/pages/agreement/user-agreement.vue"]]);
+  const PagesAgreementUserAgreement = /* @__PURE__ */ _export_sfc(_sfc_main$3, [["render", _sfc_render$2], ["__scopeId", "data-v-c8dcd74e"], ["__file", "D:/kaifa/CRM - 1.8.0/crmAPP/src/pages/agreement/user-agreement.vue"]]);
   const _sfc_main$2 = {};
   function _sfc_render$1(_ctx, _cache) {
     return vue.openBlock(), vue.createElementBlock("view", { class: "agreement-page" }, [
@@ -7626,11 +7977,12 @@ This will fail in production.`);
       ])
     ]);
   }
-  const PagesAgreementPrivacyPolicy = /* @__PURE__ */ _export_sfc(_sfc_main$2, [["render", _sfc_render$1], ["__scopeId", "data-v-4ef64c96"], ["__file", "D:/kaifa/CRM - 1.8.0开发中/crmAPP/src/pages/agreement/privacy-policy.vue"]]);
+  const PagesAgreementPrivacyPolicy = /* @__PURE__ */ _export_sfc(_sfc_main$2, [["render", _sfc_render$1], ["__scopeId", "data-v-4ef64c96"], ["__file", "D:/kaifa/CRM - 1.8.0/crmAPP/src/pages/agreement/privacy-policy.vue"]]);
   const _sfc_main$1 = /* @__PURE__ */ vue.defineComponent({
     __name: "index",
     setup(__props, { expose: __expose }) {
       __expose();
+      const appVersion = APP_VERSION;
       const openUserAgreement = () => {
         uni.navigateTo({ url: "/pages/agreement/user-agreement" });
       };
@@ -7679,7 +8031,7 @@ This will fail in production.`);
           }
         });
       };
-      const __returned__ = { openUserAgreement, openPrivacyPolicy, showFeedback, showContact };
+      const __returned__ = { appVersion, openUserAgreement, openPrivacyPolicy, showFeedback, showContact };
       Object.defineProperty(__returned__, "__isScriptSetup", { enumerable: false, value: true });
       return __returned__;
     }
@@ -7694,7 +8046,13 @@ This will fail in production.`);
           mode: "aspectFit"
         }),
         vue.createElementVNode("text", { class: "app-name" }, "CRM外呼助手"),
-        vue.createElementVNode("text", { class: "app-version" }, "版本 v1.0.0"),
+        vue.createElementVNode(
+          "text",
+          { class: "app-version" },
+          "版本 v" + vue.toDisplayString($setup.appVersion),
+          1
+          /* TEXT */
+        ),
         vue.createElementVNode("text", { class: "app-slogan" }, "高效外呼 · 智能管理")
       ]),
       vue.createCommentVNode(" 功能入口 "),
@@ -7739,7 +8097,7 @@ This will fail in production.`);
       ])
     ]);
   }
-  const PagesAboutIndex = /* @__PURE__ */ _export_sfc(_sfc_main$1, [["render", _sfc_render], ["__scopeId", "data-v-6b4e7e2d"], ["__file", "D:/kaifa/CRM - 1.8.0开发中/crmAPP/src/pages/about/index.vue"]]);
+  const PagesAboutIndex = /* @__PURE__ */ _export_sfc(_sfc_main$1, [["render", _sfc_render], ["__scopeId", "data-v-6b4e7e2d"], ["__file", "D:/kaifa/CRM - 1.8.0/crmAPP/src/pages/about/index.vue"]]);
   __definePage("pages/splash/index", PagesSplashIndex);
   __definePage("pages/server-config/index", PagesServerConfigIndex);
   __definePage("pages/login/index", PagesLoginIndex);
@@ -7766,23 +8124,27 @@ This will fail in production.`);
         serverStore.restoreFromStorage();
         userStore.restore();
         setupCallStateListener();
+        setupBackButtonHandler();
       });
       onShow(() => {
-        formatAppLog("log", "at App.vue:21", "App Show");
+        formatAppLog("log", "at App.vue:23", "App Show");
         checkPendingCall();
       });
       onHide(() => {
-        formatAppLog("log", "at App.vue:27", "App Hide");
+        formatAppLog("log", "at App.vue:29", "App Hide");
+      });
+      onError((err) => {
+        formatAppLog("error", "at App.vue:34", "[App] 全局错误:", err);
       });
       const checkPendingCall = () => {
         const currentCall = uni.getStorageSync("currentCall");
         if (currentCall && currentCall.callId) {
-          formatAppLog("log", "at App.vue:34", "[App] 发现未完成的通话:", currentCall.callId);
+          formatAppLog("log", "at App.vue:41", "[App] 发现未完成的通话:", currentCall.callId);
           const pages = getCurrentPages();
           const currentPage = pages[pages.length - 1];
           const currentRoute = (currentPage == null ? void 0 : currentPage.route) || "";
           if (currentRoute.includes("call-ended")) {
-            formatAppLog("log", "at App.vue:43", "[App] 已在通话结束页面，跳过");
+            formatAppLog("log", "at App.vue:50", "[App] 已在通话结束页面，跳过");
             return;
           }
           const startTime = new Date(currentCall.startTime).getTime();
@@ -7792,7 +8154,7 @@ This will fail in production.`);
             uni.navigateTo({
               url: `/pages/call-ended/index?callId=${currentCall.callId}&name=${encodeURIComponent(currentCall.customerName || "")}&customerId=${currentCall.customerId || ""}&duration=${duration}&hasRecording=false`,
               fail: (err) => {
-                formatAppLog("error", "at App.vue:59", "[App] 跳转失败:", err);
+                formatAppLog("error", "at App.vue:66", "[App] 跳转失败:", err);
                 uni.setStorageSync("currentCall", currentCall);
               }
             });
@@ -7801,18 +8163,41 @@ This will fail in production.`);
       };
       const setupCallStateListener = () => {
         plus.globalEvent.addEventListener("resume", () => {
-          formatAppLog("log", "at App.vue:74", "[App] 应用从后台返回");
+          formatAppLog("log", "at App.vue:81", "[App] 应用从后台返回");
           setTimeout(() => {
             checkPendingCall();
           }, 1e3);
         });
       };
-      const __returned__ = { checkPendingCall, setupCallStateListener, get onLaunch() {
+      const setupBackButtonHandler = () => {
+        let lastBackTime = 0;
+        plus.key.addEventListener("backbutton", () => {
+          const pages = getCurrentPages();
+          if (pages.length > 1) {
+            uni.navigateBack({});
+          } else {
+            const now2 = Date.now();
+            if (now2 - lastBackTime < 2e3) {
+              plus.runtime.quit();
+            } else {
+              lastBackTime = now2;
+              uni.showToast({
+                title: "再按一次退出应用",
+                icon: "none",
+                duration: 2e3
+              });
+            }
+          }
+        });
+      };
+      const __returned__ = { checkPendingCall, setupCallStateListener, setupBackButtonHandler, get onLaunch() {
         return onLaunch;
       }, get onShow() {
         return onShow;
       }, get onHide() {
         return onHide;
+      }, get onError() {
+        return onError;
       }, get useServerStore() {
         return useServerStore;
       }, get useUserStore() {
@@ -7822,7 +8207,7 @@ This will fail in production.`);
       return __returned__;
     }
   });
-  const App = /* @__PURE__ */ _export_sfc(_sfc_main, [["__file", "D:/kaifa/CRM - 1.8.0开发中/crmAPP/src/App.vue"]]);
+  const App = /* @__PURE__ */ _export_sfc(_sfc_main, [["__file", "D:/kaifa/CRM - 1.8.0/crmAPP/src/App.vue"]]);
   function createApp() {
     const app = vue.createVueApp(App);
     const pinia = createPinia();

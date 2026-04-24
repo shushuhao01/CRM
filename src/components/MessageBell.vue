@@ -372,7 +372,7 @@ const unreadMessageCount = computed(() =>
   systemMessages.value.filter(msg => !msg.read).length
 )
 const unreadAnnouncementCount = computed(() =>
-  announcements.value.filter(a => !a.read).length
+  announcements.value.filter((a: any) => !a.read && !a.silent).length
 )
 
 const totalUnreadCount = computed(() =>

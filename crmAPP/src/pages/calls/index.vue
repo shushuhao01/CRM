@@ -128,7 +128,7 @@ onShow(() => {
     userStore.restore()
   }
   // 每次显示页面都重新加载
-  if (userStore.token) {
+  if (userStore.token || userStore.isLoggedIn) {
     loadData(true)
   }
 })
@@ -183,7 +183,7 @@ const switchTab = (tab: 'all' | 'missed') => {
 
 const loadData = async (refresh = false) => {
   if (isLoading.value) return
-  if (!userStore.token) {
+  if (!userStore.token && !userStore.isLoggedIn) {
     console.log('[Calls] 无token，跳过加载')
     return
   }

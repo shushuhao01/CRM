@@ -43,6 +43,7 @@ import serviceRoutes from './routes/services';
 import dataRoutes from './routes/data';
 import assignmentRoutes from './routes/assignment';
 import smsRoutes from './routes/sms';
+import smsAutoSendRoutes from './routes/smsAutoSend';
 import customerShareRoutes from './routes/customerShare';
 import performanceReportRoutes from './routes/performanceReport';
 import customerServicePermissionRoutes from './routes/customerServicePermissions';
@@ -62,6 +63,12 @@ import wecomRoutes from './routes/wecom';
 import adminRoutes from './routes/admin';
 import publicRoutes from './routes/public';
 import tenantDataRoutes from './routes/tenantData';
+import smsQuotaRoutes from './routes/smsQuota';
+import virtualInventoryRoutes from './routes/virtualInventory';
+import virtualDeliveryRoutes from './routes/virtualDelivery';
+import virtualClaimRoutes from './routes/virtualClaim';
+import virtualSettingsRoutes from './routes/virtualSettings';
+import onlineSeatRoutes from './routes/onlineSeat';
 import * as fs from 'fs';
 
 // ==================== 环境配置智能加载 ====================
@@ -185,12 +192,14 @@ app.use(express.text({
 // 静态文件服务
 app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
 app.use('/recordings', express.static(path.join(process.cwd(), 'recordings')));
+// H5应用静态文件托管（生产环境: 将h5/dist复制到backend同级h5-dist目录）
+app.use('/h5', express.static(path.join(process.cwd(), '../h5/dist'), { index: 'index.html' }));
 
 // 租户上下文中间件 - 在所有路由之前，基于 AsyncLocalStorage 工作
 // authenticateToken 中间件完成 JWT 验证后，通过 TenantContextManager.setContext() 设置 tenantId
 app.use(tenantContextMiddleware);
 
-// 私有部署授权过期写入限制 - 授权过期后允许登录和查看，但禁止写入（新增/修改/删除）
+// 授权过期写入限制（私有部署 + SaaS 通用）- 过期后允许登录和查看，但禁止写入（新增/修改/删除）
 app.use(checkLicenseWrite);
 
 // ==================== 健康检查端点 ====================
@@ -269,6 +278,9 @@ app.use(`${API_PREFIX}/mobile-sdk`, mobileSdkRoutes);
 app.use(`${API_PREFIX}/qr-connection`, qrConnectionRoutes);
 app.use(`${API_PREFIX}/alternative-connection`, alternativeConnectionRoutes);
 app.use(`${API_PREFIX}/dashboard`, dashboardRoutes);
+// 🔥 Webhook路由必须在 /calls 之前注册，因为 /calls 有 authenticateToken 中间件
+// 如果 /calls 先注册，/calls/webhook/* 会被 /calls 的 auth 中间件拦截返回 401
+app.use(`${API_PREFIX}/calls/webhook`, callWebhookRoutes);
 app.use(`${API_PREFIX}/calls`, callRoutes);
 app.use(`${API_PREFIX}/logs`, logsRoutes);
 app.use(`${API_PREFIX}/message`, messageRoutes);
@@ -283,13 +295,15 @@ app.use(`${API_PREFIX}/services`, serviceRoutes);
 app.use(`${API_PREFIX}/data`, dataRoutes);
 app.use(`${API_PREFIX}/assignment`, assignmentRoutes);
 app.use(`${API_PREFIX}/sms`, smsRoutes);
+app.use(`${API_PREFIX}/sms/auto-send`, smsAutoSendRoutes);
+app.use(`${API_PREFIX}/sms`, smsQuotaRoutes);
 app.use(`${API_PREFIX}/customer-share`, customerShareRoutes);
 app.use(`${API_PREFIX}/customer-service-permissions`, customerServicePermissionRoutes);
 app.use(`${API_PREFIX}/timeout-reminder`, timeoutReminderRoutes);
 app.use(`${API_PREFIX}/sensitive-info-permissions`, sensitiveInfoPermissionRoutes);
 app.use(`${API_PREFIX}/message-cleanup`, messageCleanupRoutes);
 app.use(`${API_PREFIX}/mobile`, mobileRoutes);
-app.use(`${API_PREFIX}/calls/webhook`, callWebhookRoutes);
+// callWebhookRoutes 已在上方 /calls 之前注册
 app.use(`${API_PREFIX}/call-config`, callConfigRoutes);
 app.use(`${API_PREFIX}/finance`, financeRoutes);
 app.use(`${API_PREFIX}/cod-collection`, codCollectionRoutes);
@@ -299,6 +313,11 @@ app.use(`${API_PREFIX}/license`, licenseRoutes);
 app.use(`${API_PREFIX}/tenant-license`, tenantLicenseRoutes);
 app.use(`${API_PREFIX}/wecom`, wecomRoutes);
 app.use(`${API_PREFIX}/tenant-data`, tenantDataRoutes);
+app.use(`${API_PREFIX}/virtual-inventory`, virtualInventoryRoutes);
+app.use(`${API_PREFIX}/virtual-delivery`, virtualDeliveryRoutes);
+app.use(`${API_PREFIX}/settings`, virtualSettingsRoutes);
+app.use(`${API_PREFIX}/public/virtual-claim`, virtualClaimRoutes);
+app.use(`${API_PREFIX}/online-seat`, onlineSeatRoutes);
 app.use(`${API_PREFIX}/admin`, adminRoutes);
 app.use(`${API_PREFIX}/public`, publicRoutes);
 
@@ -483,6 +502,19 @@ const startServer = async () => {
     };
 
     startMessageCleanupService();
+
+    // 💳 启动增值服务到期检查
+    const startVasExpiryCheckService = async () => {
+      try {
+        const { vasExpiryCheckService } = await import('./services/VasExpiryCheckService');
+        vasExpiryCheckService.start(60); // 每60分钟检查一次
+        logger.info('💳 [定时任务] 增值服务到期检查已启动（每60分钟）');
+      } catch (error) {
+        logger.error('[定时任务] 启动增值服务到期检查失败:', error);
+      }
+    };
+
+    startVasExpiryCheckService();
 
     // ==================== 优雅关闭处理 ====================
     const gracefulShutdown = async (signal: string) => {

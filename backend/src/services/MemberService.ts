@@ -363,22 +363,95 @@ export class MemberService {
   }
 
   /**
+   * 确保会员资料查询所需的数据库字段存在（自动迁移）
+   */
+  private profileColumnsChecked = false;
+  private async ensureProfileColumns(): Promise<void> {
+    if (this.profileColumnsChecked) return;
+    try {
+      // tenants 表扩容和在线席位字段
+      const tCols = await AppDataSource.query(
+        `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'tenants'
+         AND COLUMN_NAME IN ('extra_users','extra_storage_gb','extra_online_seats','user_limit_mode','max_online_seats','current_online_seats')`
+      );
+      const tExisting = tCols.map((c: any) => c.COLUMN_NAME);
+      if (!tExisting.includes('extra_users'))
+        await AppDataSource.query('ALTER TABLE tenants ADD COLUMN extra_users INT NOT NULL DEFAULT 0').catch(() => {});
+      if (!tExisting.includes('extra_storage_gb'))
+        await AppDataSource.query('ALTER TABLE tenants ADD COLUMN extra_storage_gb INT NOT NULL DEFAULT 0').catch(() => {});
+      if (!tExisting.includes('user_limit_mode'))
+        await AppDataSource.query("ALTER TABLE tenants ADD COLUMN user_limit_mode ENUM('total','online') DEFAULT 'total'").catch(() => {});
+      if (!tExisting.includes('max_online_seats'))
+        await AppDataSource.query('ALTER TABLE tenants ADD COLUMN max_online_seats INT DEFAULT 0').catch(() => {});
+      if (!tExisting.includes('extra_online_seats'))
+        await AppDataSource.query('ALTER TABLE tenants ADD COLUMN extra_online_seats INT DEFAULT 0').catch(() => {});
+      if (!tExisting.includes('current_online_seats'))
+        await AppDataSource.query('ALTER TABLE tenants ADD COLUMN current_online_seats INT DEFAULT 0').catch(() => {});
+
+      // tenant_packages 表订阅和在线席位字段
+      const pCols = await AppDataSource.query(
+        `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'tenant_packages'
+         AND COLUMN_NAME IN ('subscription_enabled','subscription_channels','subscription_discount_rate','user_limit_mode','max_online_seats')`
+      );
+      const pExisting = pCols.map((c: any) => c.COLUMN_NAME);
+      if (!pExisting.includes('subscription_enabled'))
+        await AppDataSource.query('ALTER TABLE tenant_packages ADD COLUMN subscription_enabled TINYINT(1) DEFAULT 0').catch(() => {});
+      if (!pExisting.includes('subscription_channels'))
+        await AppDataSource.query("ALTER TABLE tenant_packages ADD COLUMN subscription_channels VARCHAR(50) DEFAULT 'all'").catch(() => {});
+      if (!pExisting.includes('subscription_discount_rate'))
+        await AppDataSource.query('ALTER TABLE tenant_packages ADD COLUMN subscription_discount_rate DECIMAL(5,2) DEFAULT 0').catch(() => {});
+      if (!pExisting.includes('user_limit_mode'))
+        await AppDataSource.query("ALTER TABLE tenant_packages ADD COLUMN user_limit_mode ENUM('total','online','both') DEFAULT 'total'").catch(() => {});
+      if (!pExisting.includes('max_online_seats'))
+        await AppDataSource.query('ALTER TABLE tenant_packages ADD COLUMN max_online_seats INT DEFAULT 0').catch(() => {});
+
+      this.profileColumnsChecked = true;
+      log.info('[MemberService] ✅ 会员资料所需字段已就绪');
+    } catch (e) {
+      log.warn('[MemberService] 字段检查跳过:', (e as any)?.message);
+      this.profileColumnsChecked = true; // 避免反复重试
+    }
+  }
+
+  /**
    * 获取会员资料（含套餐、授权、订阅、使用情况）
    */
   async getProfile(tenantId: string): Promise<any> {
     try {
-      // 租户基本信息
-      const tenants = await AppDataSource.query(
-        `SELECT t.*, tp.name as package_name, tp.code as package_code, tp.type as package_type,
-         tp.price as package_price, tp.max_users as pkg_max_users, tp.max_storage_gb as pkg_max_storage,
-         tp.billing_cycle as package_billing_cycle, tp.features as package_features,
-         tp.subscription_enabled, tp.subscription_channels, tp.subscription_discount_rate,
-         COALESCE(t.extra_users, 0) as extra_users, COALESCE(t.extra_storage_gb, 0) as extra_storage_gb
-         FROM tenants t
-         LEFT JOIN tenant_packages tp ON t.package_id = tp.id
-         WHERE t.id = ?`,
-        [tenantId]
-      );
+      // 确保所需字段存在
+      await this.ensureProfileColumns();
+
+      // 租户基本信息（🔥 LEFT JOIN 加 COLLATE 修复字符集不一致导致查询失败）
+      // 🔥 增加容错：如果扩展字段不存在，回退到基础查询
+      let tenants: any[];
+      try {
+        tenants = await AppDataSource.query(
+          `SELECT t.*, tp.name as package_name, tp.code as package_code, tp.type as package_type,
+           tp.price as package_price, tp.max_users as pkg_max_users, tp.max_storage_gb as pkg_max_storage,
+           tp.billing_cycle as package_billing_cycle, tp.features as package_features,
+           tp.subscription_enabled, tp.subscription_channels, tp.subscription_discount_rate,
+           tp.user_limit_mode as pkg_user_limit_mode, tp.max_online_seats as pkg_max_online_seats,
+           COALESCE(t.extra_users, 0) as extra_users, COALESCE(t.extra_storage_gb, 0) as extra_storage_gb,
+           COALESCE(t.extra_online_seats, 0) as extra_online_seats
+           FROM tenants t
+           LEFT JOIN tenant_packages tp ON t.package_id COLLATE utf8mb4_unicode_ci = tp.id COLLATE utf8mb4_unicode_ci
+           WHERE t.id = ?`,
+          [tenantId]
+        );
+      } catch (sqlErr) {
+        log.warn('[MemberService] 扩展字段查询失败，回退基础查询:', (sqlErr as any)?.message);
+        tenants = await AppDataSource.query(
+          `SELECT t.*, tp.name as package_name, tp.code as package_code, tp.type as package_type,
+           tp.price as package_price, tp.max_users as pkg_max_users, tp.max_storage_gb as pkg_max_storage,
+           tp.billing_cycle as package_billing_cycle, tp.features as package_features
+           FROM tenants t
+           LEFT JOIN tenant_packages tp ON t.package_id COLLATE utf8mb4_unicode_ci = tp.id COLLATE utf8mb4_unicode_ci
+           WHERE t.id = ?`,
+          [tenantId]
+        );
+      }
 
       if (tenants.length === 0) return null;
       const tenant = tenants[0];
@@ -473,7 +546,7 @@ export class MemberService {
       const maxUsers = baseMaxUsers + extraUsers;
       const maxStorageGb = baseMaxStorageGb + extraStorageGb;
 
-      return {
+      const result: any = {
         tenant: {
           id: tenant.id,
           name: tenant.name,
@@ -520,9 +593,35 @@ export class MemberService {
           baseMaxStorageGb: baseMaxStorageGb,
           extraStorageGb: extraStorageGb,
           userUsagePercent: maxUsers > 0 ? Math.round((actualUserCount / maxUsers) * 100) : 0,
-          storageUsagePercent: maxStorageGb > 0 ? Math.round((actualStorageMb / (maxStorageGb * 1024)) * 100) : 0
+          storageUsagePercent: maxStorageGb > 0 ? Math.round((actualStorageMb / (maxStorageGb * 1024)) * 100) : 0,
+          userLimitMode: tenant.user_limit_mode || tenant.pkg_user_limit_mode || 'total',
+          maxOnlineSeats: (Number(tenant.max_online_seats) || Number(tenant.pkg_max_online_seats) || 0) + (Number(tenant.extra_online_seats) || 0),
+          extraOnlineSeats: Number(tenant.extra_online_seats) || 0,
+          onlineCount: 0,
+          onlineSeatPercent: 0
         }
       };
+
+      // 填充在线席位实时数据
+      // 🔥 修复：使用 COUNT(DISTINCT user_id) 且不加活跃阈值，与 OnlineSeatService.getOnlineCount 保持一致
+      // 登录即占席位，退出/踢出/浏览器关闭15分钟后才释放
+      const usageLimitMode = result.usage.userLimitMode;
+      if (usageLimitMode === 'online') {
+        try {
+          const onlineResult = await AppDataSource.query(
+            "SELECT COUNT(DISTINCT user_id) as cnt FROM user_sessions WHERE tenant_id = ? AND status = 'active'",
+            [tenantId]
+          );
+          const onlineCount = Number(onlineResult[0]?.cnt || 0);
+          result.usage.onlineCount = onlineCount;
+          const maxSeats = result.usage.maxOnlineSeats;
+          result.usage.onlineSeatPercent = maxSeats > 0 ? Math.round((onlineCount / maxSeats) * 100) : 0;
+        } catch {
+          // user_sessions表可能不存在
+        }
+      }
+
+      return result;
     } catch (error) {
       log.error('[MemberService] 获取资料失败:', error);
       return null;
@@ -693,7 +792,7 @@ export class MemberService {
         `SELECT t.license_key, t.license_status, t.expire_date, t.code as tenant_code,
          tp.name as package_name, tp.code as package_code, tp.type as package_type
          FROM tenants t
-         LEFT JOIN tenant_packages tp ON t.package_id = tp.id
+         LEFT JOIN tenant_packages tp ON t.package_id COLLATE utf8mb4_unicode_ci = tp.id COLLATE utf8mb4_unicode_ci
          WHERE t.id = ?`,
         [tenantId]
       );

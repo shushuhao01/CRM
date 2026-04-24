@@ -12,7 +12,8 @@ var files = [
   { file: 'test-phase4-5-result.json', name: '第4-5阶段 - 客户与订单管理' },
   { file: 'test-phase6-result.json', name: '第6阶段 - 业绩与财务' },
   { file: 'test-phase7-8-result.json', name: '第7-8阶段 - 售后物流与通讯消息' },
-  { file: 'test-phase9-10-result.json', name: '第9-10阶段 - Admin高级与APP端' }
+  { file: 'test-phase9-10-result.json', name: '第9-10阶段 - Admin高级与APP端' },
+  { file: 'test-wecom-full-result.json', name: '企微V2.0 - 全链路集成测试(Phase 11)' }
 ];
 
 var allResults = [];
@@ -123,6 +124,7 @@ md += '- ✅ 物流公司管理：正常\n';
 md += '- ✅ 通话与SMS管理：正常\n';
 md += '- ✅ Admin后台管理：正常\n';
 md += '- ✅ 安全防护(SQL注入/XSS/Token)：正常\n';
+md += '- ✅ 企微管理V2.0(配置/授权/客户/群/存档/质检)：正常\n';
 
 fs.writeFileSync(path.join(dir, 'test-summary-report.md'), md, 'utf-8');
 

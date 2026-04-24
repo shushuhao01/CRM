@@ -585,6 +585,13 @@ class PaymentService {
 
         // 创建默认管理员账号（内部会检查是否已存在，存在则跳过）
         const { createDefaultAdmin } = await import('../utils/adminAccountHelper')
+
+        // 清除写入限制缓存，使续费/升级立即生效
+        try {
+          const { clearLicenseWriteCache } = await import('../middleware/checkLicenseWrite')
+          clearLicenseWriteCache(tenantId)
+        } catch (_e) { /* ignore */ }
+
         const adminAccount = await createDefaultAdmin({
           tenantId: tenantId,
           phone: tenant.phone,
@@ -593,6 +600,19 @@ class PaymentService {
         })
 
         log.info(`✓ 已为租户 ${tenant.code} 创建默认管理员账号: ${adminAccount.username}`)
+
+        // 🔥 同步设置会员中心密码（默认 Aa123456），确保租户能登录会员中心
+        try {
+          const existingPwdRows = await AppDataSource.query('SELECT password_hash FROM tenants WHERE id = ?', [tenantId]);
+          if (!existingPwdRows[0]?.password_hash) {
+            const bcryptLib = await import('bcryptjs');
+            const memberPwdHash = await bcryptLib.hash('Aa123456', 10);
+            await AppDataSource.query('UPDATE tenants SET password_hash = ? WHERE id = ?', [memberPwdHash, tenantId]);
+            log.info(`[Payment] ✅ 已为租户 ${tenantId} 设置会员中心默认密码`);
+          }
+        } catch (pwdErr: any) {
+          log.warn('[Payment] 设置会员中心密码失败（不影响激活）:', pwdErr.message?.substring(0, 80));
+        }
 
         // 记录授权日志（区分新开通/续费/升级）
         const { v4: uuidv4 } = await import('uuid')

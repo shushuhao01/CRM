@@ -3,6 +3,7 @@ import { AppDataSource } from '../../config/database';
 import { Customer } from '../../entities/Customer';
 import { Order } from '../../entities/Order';
 import { getTenantRepo, tenantSQL } from '../../utils/tenantRepo';
+import { createCustomerLog } from '../../utils/customerLog';
 import { log } from '../../config/logger';
 
 export function registerRelatedRoutes(router: Router) {
@@ -262,6 +263,17 @@ router.post('/:id/followups', async (req: Request, res: Response) => {
                   savedFollowUp.type === 'email' ? '邮件跟进' :
                   savedFollowUp.type === 'message' ? '消息跟进' : '跟进记录';
 
+    // 自动记录客户日志
+    createCustomerLog({
+      customerId,
+      logType: 'add_followup',
+      content: `添加了${title}：${(content || '').substring(0, 50)}`,
+      operatorId: currentUser?.id,
+      operatorName: currentUser?.realName || currentUser?.name || '系统',
+      tenantId: currentUser?.tenantId
+    });
+
+
     res.status(201).json({
       success: true,
       code: 200,
@@ -374,6 +386,16 @@ router.post('/:id/tags', async (req: Request, res: Response) => {
     const newTag = { id: `tag_${Date.now()}`, ...tagData };
     customer.tags = [...(customer.tags || []), newTag];
     await customerRepository.save(customer);
+    // 自动记录客户日志
+    const currentUser = (req as any).currentUser;
+    createCustomerLog({
+      customerId: req.params.id,
+      logType: 'add_tag',
+      content: `添加了标签「${tagData.name || ''}」`,
+      operatorId: currentUser?.id,
+      operatorName: currentUser?.realName || currentUser?.name || '系统',
+      tenantId: currentUser?.tenantId
+    });
     res.status(201).json({ success: true, code: 200, data: newTag });
   } catch (error) {
     log.error('添加客户标签失败:', error);
@@ -391,6 +413,16 @@ router.delete('/:id/tags/:tagId', async (req: Request, res: Response) => {
 
     customer.tags = (customer.tags || []).filter((tag: any) => tag.id !== req.params.tagId);
     await customerRepository.save(customer);
+    // 自动记录客户日志
+    const tagCurrentUser = (req as any).currentUser;
+    createCustomerLog({
+      customerId: req.params.id,
+      logType: 'remove_tag',
+      content: `删除了标签`,
+      operatorId: tagCurrentUser?.id,
+      operatorName: tagCurrentUser?.realName || tagCurrentUser?.name || '系统',
+      tenantId: tagCurrentUser?.tenantId
+    });
     res.json({ success: true, code: 200, message: '删除成功' });
   } catch (error) {
     log.error('删除客户标签失败:', error);
@@ -502,10 +534,357 @@ router.post('/:id/medical-history', async (req: Request, res: Response) => {
     await customerRepository.save(customer);
 
     log.info(`[添加疾病史] 客户 ${req.params.id} 添加疾病史成功`);
+    // 自动记录客户日志
+    createCustomerLog({
+      customerId: req.params.id,
+      logType: 'add_medical',
+      content: `添加了疾病史记录：${(content || '').substring(0, 50)}`,
+      operatorId: currentUser?.id,
+      operatorName: operatorName,
+      tenantId: currentUser?.tenantId
+    });
     res.status(201).json({ success: true, code: 200, data: newRecord });
   } catch (error) {
     log.error('添加客户疾病史失败:', error);
     res.status(500).json({ success: false, code: 500, message: '添加客户疾病史失败' });
+  }
+});
+
+// ==================== 客户多地址管理 ====================
+
+// 获取客户地址列表
+router.get('/:id/addresses', async (req: Request, res: Response) => {
+  try {
+    const customerRepository = getTenantRepo(Customer);
+    const customer = await customerRepository.findOne({ where: { id: req.params.id } });
+    if (!customer) {
+      return res.status(404).json({ success: false, code: 404, message: '客户不存在' });
+    }
+
+    let addresses: any[] = [];
+    if (customer.address) {
+      try {
+        const parsed = JSON.parse(customer.address);
+        if (Array.isArray(parsed)) {
+          addresses = parsed;
+        } else {
+          // 旧格式：纯文本地址，转换为数组
+          addresses = [{ id: 1, content: customer.address, createTime: customer.createdAt?.toISOString() || '', isDefault: true }];
+        }
+      } catch {
+        // 纯文本地址
+        if (customer.address.trim()) {
+          addresses = [{ id: 1, content: customer.address, createTime: customer.createdAt?.toISOString() || '', isDefault: true }];
+        }
+      }
+    }
+
+    res.json({ success: true, code: 200, data: addresses });
+  } catch (error) {
+    log.error('获取客户地址列表失败:', error);
+    res.status(500).json({ success: false, code: 500, message: '获取客户地址列表失败' });
+  }
+});
+
+// 添加客户地址
+router.post('/:id/addresses', async (req: Request, res: Response) => {
+  try {
+    const customerRepository = getTenantRepo(Customer);
+    const customer = await customerRepository.findOne({ where: { id: req.params.id } });
+    if (!customer) {
+      return res.status(404).json({ success: false, code: 404, message: '客户不存在' });
+    }
+
+    const { content } = req.body;
+    if (!content || !content.trim()) {
+      return res.status(400).json({ success: false, code: 400, message: '地址内容不能为空' });
+    }
+
+    const currentUser = (req as any).currentUser;
+    let addresses: any[] = [];
+    if (customer.address) {
+      try {
+        const parsed = JSON.parse(customer.address);
+        addresses = Array.isArray(parsed) ? parsed : [{ id: 1, content: customer.address, createTime: customer.createdAt?.toISOString() || '', isDefault: true }];
+      } catch {
+        if (customer.address.trim()) {
+          addresses = [{ id: 1, content: customer.address, createTime: customer.createdAt?.toISOString() || '', isDefault: true }];
+        }
+      }
+    }
+
+    const operatorName = currentUser?.realName || currentUser?.name || '系统';
+    const newAddress = {
+      id: Date.now(),
+      content: content.trim(),
+      createTime: new Date().toISOString(),
+      operator: operatorName,
+      isDefault: addresses.length === 0
+    };
+    addresses.unshift(newAddress);
+
+    customer.address = JSON.stringify(addresses);
+    await customerRepository.save(customer);
+
+    createCustomerLog({
+      customerId: req.params.id,
+      logType: 'edit',
+      content: `新增了客户地址：${content.trim().substring(0, 50)}`,
+      operatorId: currentUser?.id,
+      operatorName: currentUser?.realName || currentUser?.name || '系统',
+      tenantId: currentUser?.tenantId
+    });
+
+    res.status(201).json({ success: true, code: 200, data: newAddress });
+  } catch (error) {
+    log.error('添加客户地址失败:', error);
+    res.status(500).json({ success: false, code: 500, message: '添加客户地址失败' });
+  }
+});
+
+// 更新客户地址
+router.put('/:id/addresses/:addressId', async (req: Request, res: Response) => {
+  try {
+    const customerRepository = getTenantRepo(Customer);
+    const customer = await customerRepository.findOne({ where: { id: req.params.id } });
+    if (!customer) {
+      return res.status(404).json({ success: false, code: 404, message: '客户不存在' });
+    }
+
+    const { content } = req.body;
+    const addressId = parseInt(req.params.addressId);
+    const currentUser = (req as any).currentUser;
+
+    let addresses: any[] = [];
+    try {
+      const parsed = JSON.parse(customer.address || '[]');
+      addresses = Array.isArray(parsed) ? parsed : [];
+    } catch { addresses = []; }
+
+    const idx = addresses.findIndex((a: any) => a.id === addressId);
+    if (idx === -1) {
+      return res.status(404).json({ success: false, code: 404, message: '地址不存在' });
+    }
+
+    const oldContent = addresses[idx].content;
+    addresses[idx].content = content.trim();
+    addresses[idx].updateTime = new Date().toISOString();
+
+    customer.address = JSON.stringify(addresses);
+    await customerRepository.save(customer);
+
+    createCustomerLog({
+      customerId: req.params.id,
+      logType: 'edit',
+      content: `修改了客户地址：「${oldContent?.substring(0, 30) || ''}」→「${content.trim().substring(0, 30)}」`,
+      operatorId: currentUser?.id,
+      operatorName: currentUser?.realName || currentUser?.name || '系统',
+      tenantId: currentUser?.tenantId
+    });
+
+    res.json({ success: true, code: 200, data: addresses[idx] });
+  } catch (error) {
+    log.error('更新客户地址失败:', error);
+    res.status(500).json({ success: false, code: 500, message: '更新客户地址失败' });
+  }
+});
+
+// 删除客户地址
+router.delete('/:id/addresses/:addressId', async (req: Request, res: Response) => {
+  try {
+    const customerRepository = getTenantRepo(Customer);
+    const customer = await customerRepository.findOne({ where: { id: req.params.id } });
+    if (!customer) {
+      return res.status(404).json({ success: false, code: 404, message: '客户不存在' });
+    }
+
+    const addressId = parseInt(req.params.addressId);
+    const currentUser = (req as any).currentUser;
+
+    let addresses: any[] = [];
+    try {
+      const parsed = JSON.parse(customer.address || '[]');
+      addresses = Array.isArray(parsed) ? parsed : [];
+    } catch { addresses = []; }
+
+    const idx = addresses.findIndex((a: any) => a.id === addressId);
+    if (idx === -1) {
+      return res.status(404).json({ success: false, code: 404, message: '地址不存在' });
+    }
+
+    const removed = addresses.splice(idx, 1)[0];
+    customer.address = JSON.stringify(addresses);
+    await customerRepository.save(customer);
+
+    createCustomerLog({
+      customerId: req.params.id,
+      logType: 'edit',
+      content: `删除了客户地址：${removed.content?.substring(0, 50) || ''}`,
+      operatorId: currentUser?.id,
+      operatorName: currentUser?.realName || currentUser?.name || '系统',
+      tenantId: currentUser?.tenantId
+    });
+
+    res.json({ success: true, code: 200, message: '删除成功' });
+  } catch (error) {
+    log.error('删除客户地址失败:', error);
+    res.status(500).json({ success: false, code: 500, message: '删除客户地址失败' });
+  }
+});
+
+// ==================== 客户备注管理（多条记录） ====================
+
+// 获取客户备注列表
+router.get('/:id/notes', async (req: Request, res: Response) => {
+  try {
+    const customerRepository = getTenantRepo(Customer);
+    const customer = await customerRepository.findOne({ where: { id: req.params.id } });
+    if (!customer) {
+      return res.status(404).json({ success: false, code: 404, message: '客户不存在' });
+    }
+
+    let notes: any[] = [];
+    if (customer.remark) {
+      try {
+        const parsed = JSON.parse(customer.remark);
+        if (Array.isArray(parsed)) {
+          notes = parsed;
+        } else {
+          notes = [{ id: 1, content: customer.remark, createTime: customer.createdAt?.toISOString() || '', operator: '系统' }];
+        }
+      } catch {
+        if (customer.remark.trim()) {
+          notes = [{ id: 1, content: customer.remark, createTime: customer.createdAt?.toISOString() || '', operator: '系统' }];
+        }
+      }
+    }
+
+    res.json({ success: true, code: 200, data: notes });
+  } catch (error) {
+    log.error('获取客户备注列表失败:', error);
+    res.status(500).json({ success: false, code: 500, message: '获取客户备注列表失败' });
+  }
+});
+
+// 添加客户备注
+router.post('/:id/notes', async (req: Request, res: Response) => {
+  try {
+    const customerRepository = getTenantRepo(Customer);
+    const customer = await customerRepository.findOne({ where: { id: req.params.id } });
+    if (!customer) {
+      return res.status(404).json({ success: false, code: 404, message: '客户不存在' });
+    }
+
+    const { content } = req.body;
+    if (!content || !content.trim()) {
+      return res.status(400).json({ success: false, code: 400, message: '备注内容不能为空' });
+    }
+
+    const currentUser = (req as any).currentUser;
+    const operatorName = currentUser?.realName || currentUser?.name || '系统';
+    let notes: any[] = [];
+    if (customer.remark) {
+      try {
+        const parsed = JSON.parse(customer.remark);
+        notes = Array.isArray(parsed) ? parsed : [{ id: 1, content: customer.remark, createTime: customer.createdAt?.toISOString() || '', operator: '系统' }];
+      } catch {
+        if (customer.remark.trim()) {
+          notes = [{ id: 1, content: customer.remark, createTime: customer.createdAt?.toISOString() || '', operator: '系统' }];
+        }
+      }
+    }
+
+    const newNote = { id: Date.now(), content: content.trim(), createTime: new Date().toISOString(), operator: operatorName };
+    notes.unshift(newNote);
+    customer.remark = JSON.stringify(notes);
+    await customerRepository.save(customer);
+
+    createCustomerLog({
+      customerId: req.params.id, logType: 'edit_notes',
+      content: `添加了客户备注：${content.trim().substring(0, 50)}`,
+      operatorId: currentUser?.id, operatorName, tenantId: currentUser?.tenantId
+    });
+
+    res.status(201).json({ success: true, code: 200, data: newNote });
+  } catch (error) {
+    log.error('添加客户备注失败:', error);
+    res.status(500).json({ success: false, code: 500, message: '添加客户备注失败' });
+  }
+});
+
+// 更新客户备注
+router.put('/:id/notes/:noteId', async (req: Request, res: Response) => {
+  try {
+    const customerRepository = getTenantRepo(Customer);
+    const customer = await customerRepository.findOne({ where: { id: req.params.id } });
+    if (!customer) {
+      return res.status(404).json({ success: false, code: 404, message: '客户不存在' });
+    }
+
+    const { content } = req.body;
+    const noteId = parseInt(req.params.noteId);
+    const currentUser = (req as any).currentUser;
+
+    let notes: any[] = [];
+    try { const parsed = JSON.parse(customer.remark || '[]'); notes = Array.isArray(parsed) ? parsed : []; } catch { notes = []; }
+
+    const idx = notes.findIndex((n: any) => n.id === noteId);
+    if (idx === -1) {
+      return res.status(404).json({ success: false, code: 404, message: '备注不存在' });
+    }
+
+    const oldContent = notes[idx].content;
+    notes[idx].content = content.trim();
+    notes[idx].updateTime = new Date().toISOString();
+    customer.remark = JSON.stringify(notes);
+    await customerRepository.save(customer);
+
+    createCustomerLog({
+      customerId: req.params.id, logType: 'edit_notes',
+      content: `修改了客户备注：「${oldContent?.substring(0, 30) || ''}」→「${content.trim().substring(0, 30)}」`,
+      operatorId: currentUser?.id, operatorName: currentUser?.realName || currentUser?.name || '系统', tenantId: currentUser?.tenantId
+    });
+
+    res.json({ success: true, code: 200, data: notes[idx] });
+  } catch (error) {
+    log.error('更新客户备注失败:', error);
+    res.status(500).json({ success: false, code: 500, message: '更新客户备注失败' });
+  }
+});
+
+// 删除客户备注
+router.delete('/:id/notes/:noteId', async (req: Request, res: Response) => {
+  try {
+    const customerRepository = getTenantRepo(Customer);
+    const customer = await customerRepository.findOne({ where: { id: req.params.id } });
+    if (!customer) {
+      return res.status(404).json({ success: false, code: 404, message: '客户不存在' });
+    }
+
+    const noteId = parseInt(req.params.noteId);
+    const currentUser = (req as any).currentUser;
+    let notes: any[] = [];
+    try { const parsed = JSON.parse(customer.remark || '[]'); notes = Array.isArray(parsed) ? parsed : []; } catch { notes = []; }
+
+    const idx = notes.findIndex((n: any) => n.id === noteId);
+    if (idx === -1) {
+      return res.status(404).json({ success: false, code: 404, message: '备注不存在' });
+    }
+
+    const removed = notes.splice(idx, 1)[0];
+    customer.remark = JSON.stringify(notes);
+    await customerRepository.save(customer);
+
+    createCustomerLog({
+      customerId: req.params.id, logType: 'edit_notes',
+      content: `删除了客户备注：${removed.content?.substring(0, 50) || ''}`,
+      operatorId: currentUser?.id, operatorName: currentUser?.realName || currentUser?.name || '系统', tenantId: currentUser?.tenantId
+    });
+
+    res.json({ success: true, code: 200, message: '删除成功' });
+  } catch (error) {
+    log.error('删除客户备注失败:', error);
+    res.status(500).json({ success: false, code: 500, message: '删除客户备注失败' });
   }
 });
 

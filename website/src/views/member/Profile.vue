@@ -9,30 +9,30 @@
           <div class="info-grid">
             <div class="info-item">
               <span class="label">企业名称</span>
-              <span class="value" v-if="!editing">{{ profile.tenant.name }}</span>
+              <span class="value" v-if="!editing">{{ profile?.tenant?.name || profile?.name || '-' }}</span>
               <input v-else v-model="editForm.name" class="edit-input" />
             </div>
             <div class="info-item">
               <span class="label">联系人</span>
-              <span class="value" v-if="!editing">{{ profile.tenant.contact || '-' }}</span>
+              <span class="value" v-if="!editing">{{ profile?.tenant?.contact || '-' }}</span>
               <input v-else v-model="editForm.contact" class="edit-input" />
             </div>
             <div class="info-item">
               <span class="label">手机号</span>
-              <span class="value">{{ profile.tenant.phone }}</span>
+              <span class="value">{{ profile?.tenant?.phone || profile?.phone || '-' }}</span>
             </div>
             <div class="info-item">
               <span class="label">邮箱</span>
-              <span class="value" v-if="!editing">{{ profile.tenant.email || '未设置' }}</span>
+              <span class="value" v-if="!editing">{{ profile?.tenant?.email || '未设置' }}</span>
               <input v-else v-model="editForm.email" type="email" class="edit-input" />
             </div>
             <div class="info-item">
               <span class="label">租户编码</span>
-              <span class="value">{{ profile.tenant.code }}</span>
+              <span class="value">{{ profile?.tenant?.code || profile?.tenantCode || '-' }}</span>
             </div>
             <div class="info-item">
               <span class="label">注册时间</span>
-              <span class="value">{{ formatDate(profile.tenant.createdAt) }}</span>
+              <span class="value">{{ formatDate(profile?.tenant?.createdAt) }}</span>
             </div>
           </div>
           <div class="actions">
@@ -72,7 +72,15 @@
         <div class="info-section">
           <h3>资源使用</h3>
           <div class="usage-bars">
-            <div class="usage-item">
+            <div v-if="profile.usage?.userLimitMode === 'online'" class="usage-item">
+              <div class="usage-header">
+                <span>在线席位 <span style="background:#dcfce7;color:#16a34a;font-size:10px;padding:0 4px;border-radius:6px;font-weight:600;">席位制</span></span>
+                <span>{{ profile.usage?.onlineCount || 0 }} / {{ profile.usage?.maxOnlineSeats || 0 }}</span>
+              </div>
+              <div class="usage-bar"><div class="fill" :style="{ width: (profile.usage?.onlineSeatPercent || 0) + '%' }"></div></div>
+              <div style="font-size:12px;color:#909399;margin-top:4px;">注册用户 {{ profile.usage?.userCount || 0 }} 人（不受限制）</div>
+            </div>
+            <div v-else class="usage-item">
               <div class="usage-header">
                 <span>用户数</span>
                 <span>{{ profile.usage?.userCount || 0 }} / {{ profile.usage?.maxUsers || 0 }}</span>
@@ -89,6 +97,11 @@
           </div>
         </div>
       </template>
+      <div v-else style="text-align:center;padding:60px 0;color:#94a3b8;">
+        <div style="font-size:48px;margin-bottom:16px;">👤</div>
+        <p style="font-size:15px;margin:0 0 8px;">暂无法加载企业信息</p>
+        <p style="font-size:13px;margin:0;">请检查网络连接或 <a href="/member/login" style="color:#6366f1;">重新登录</a></p>
+      </div>
     </div>
   </div>
 </template>
@@ -109,9 +122,9 @@ onMounted(async () => {
 })
 
 const startEdit = () => {
-  editForm.name = profile.value.tenant.name
-  editForm.contact = profile.value.tenant.contact || ''
-  editForm.email = profile.value.tenant.email || ''
+  editForm.name = profile.value?.tenant?.name || profile.value?.name || ''
+  editForm.contact = profile.value?.tenant?.contact || ''
+  editForm.email = profile.value?.tenant?.email || ''
   editing.value = true
 }
 

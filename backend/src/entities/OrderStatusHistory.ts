@@ -28,6 +28,15 @@ export class OrderStatusHistory {
   @Column({ length: 50, nullable: true, comment: '操作人姓名' })
   operatorName?: string;
 
+  @Column({ length: 100, nullable: true, comment: '操作人部门' })
+  operatorDepartment?: string;
+
+  @Column({ type: 'varchar', length: 50, nullable: true, comment: '操作类型：status_change/edit/audit/cancel/shipment/create等' })
+  actionType?: string;
+
+  @Column({ type: 'text', nullable: true, comment: '变更详情JSON' })
+  changeDetail?: string;
+
   @CreateDateColumn({ comment: '创建时间' })
   createdAt: Date;
 

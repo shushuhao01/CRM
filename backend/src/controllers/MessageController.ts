@@ -891,6 +891,8 @@ export class MessageController {
       const currentUser = (req as any).currentUser || (req as any).user;
       const userRole = currentUser?.role;
       const userDepartmentId = currentUser?.departmentId;
+      // 用户注册时间，用于判断公告是否需要静默展示
+      const userCreatedAt = currentUser?.createdAt ? new Date(currentUser.createdAt) : null;
 
       const announcementRepo = dataSource.getRepository(Announcement);
       const now = new Date();
@@ -979,20 +981,26 @@ export class MessageController {
 
       res.json({
         success: true,
-        data: filteredAnnouncements.map(ann => ({
-          id: ann.id,
-          title: ann.title,
-          content: ann.content,
-          type: ann.type,
-          source: ann.source || 'company',  // 🔥 返回公告来源
-          priority: ann.priority,
-          status: ann.status,
-          isPinned: ann.isPinned === 1,
-          isPopup: ann.isPopup === 1,
-          isMarquee: ann.isMarquee === 1,
-          publishedAt: ann.publishedAt,
-          read: readIds.has(ann.id)
-        }))
+        data: filteredAnnouncements.map(ann => {
+          const annPublishedAt = ann.publishedAt ? new Date(ann.publishedAt) : new Date(ann.createdAt);
+          // silent: 公告发布时间早于用户注册时间 → 静默展示（不弹窗、不横幅），仅在公告列表中可浏览
+          const silent = userCreatedAt ? annPublishedAt.getTime() < userCreatedAt.getTime() : false;
+          return {
+            id: ann.id,
+            title: ann.title,
+            content: ann.content,
+            type: ann.type,
+            source: ann.source || 'company',
+            priority: ann.priority,
+            status: ann.status,
+            isPinned: ann.isPinned === 1,
+            isPopup: ann.isPopup === 1,
+            isMarquee: ann.isMarquee === 1,
+            publishedAt: ann.publishedAt,
+            read: readIds.has(ann.id),
+            silent
+          };
+        })
       });
     } catch (error) {
       log.error('获取已发布公告失败:', error);

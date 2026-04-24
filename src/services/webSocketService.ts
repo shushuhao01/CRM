@@ -251,6 +251,18 @@ class WebSocketService {
       this.emitEvent('call:ended', data)
     })
 
+    // P0: 企微客服会话实时更新
+    this.socket.on('wecom:kf_session_update', (data: any) => {
+      console.log('[WebSocket] 💬 企微客服会话更新:', data)
+      this.emitEvent('wecom:kf_session_update', data)
+    })
+
+    // P0: 企微获客助手事件
+    this.socket.on('wecom:acquisition_update', (data: any) => {
+      console.log('[WebSocket] 🔗 企微获客事件:', data)
+      this.emitEvent('wecom:acquisition_update', data)
+    })
+
     // APP端通话状态变化
     this.socket.on('mobile:call:status', (data: any) => {
       console.log('[WebSocket] 📱 APP端通话状态:', data)

@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="page-container">
     <el-card shadow="never">
       <template #header>
@@ -14,14 +14,15 @@
       <el-tabs v-model="activeTab" @tab-change="fetchData">
         <el-tab-pane label="👥 用户数扩容" name="user" />
         <el-tab-pane label="💾 存储空间扩容" name="storage" />
+        <el-tab-pane label="🟢 在线席位扩容" name="online_seat" />
       </el-tabs>
 
       <!-- 数据表格 -->
       <el-table :data="tableData" v-loading="loading" stripe>
         <el-table-column prop="type" label="类型" width="120">
           <template #default="{ row }">
-            <el-tag :type="row.type === 'user' ? 'primary' : 'success'">
-              {{ row.type === 'user' ? '用户数' : '存储空间' }}
+            <el-tag :type="typeTagColor(row.type)">
+              {{ typeLabel(row.type) }}
             </el-tag>
           </template>
         </el-table-column>
@@ -30,14 +31,24 @@
             {{ billingCycleLabel(row.billing_cycle) }}
           </template>
         </el-table-column>
-        <el-table-column prop="unit_price" label="单价" width="140">
+        <el-table-column prop="unit_price" label="单价" width="160">
           <template #default="{ row }">
             <span class="price">¥{{ Number(row.unit_price).toFixed(2) }}</span>
-            <span class="price-unit">/{{ row.type === 'user' ? '人' : 'GB' }}/{{ cycleUnit(row.billing_cycle) }}</span>
+            <span class="price-unit">/{{ unitLabel(row.type) }}/{{ cycleUnit(row.billing_cycle) }}</span>
           </template>
         </el-table-column>
         <el-table-column prop="min_qty" label="最小购买量" width="110" />
         <el-table-column prop="max_qty" label="最大购买量" width="110" />
+        <el-table-column prop="discount_rules" label="折扣规则" width="200">
+          <template #default="{ row }">
+            <template v-if="row.discount_rules && row.discount_rules.length > 0">
+              <el-tag v-for="(r, i) in row.discount_rules" :key="i" size="small" style="margin: 2px;" type="warning">
+                ≥{{ r.min_qty }}{{ unitLabel(row.type) }} 打{{ (100 - r.discount_percent) / 10 }}折
+              </el-tag>
+            </template>
+            <span v-else style="color: #c0c4cc; font-size: 12px;">无折扣</span>
+          </template>
+        </el-table-column>
         <el-table-column prop="description" label="描述" min-width="200" show-overflow-tooltip />
         <el-table-column prop="is_active" label="状态" width="90">
           <template #default="{ row }">
@@ -66,20 +77,22 @@
       <el-form ref="formRef" :model="form" :rules="formRules" label-width="100px">
         <el-form-item label="扩容类型" prop="type">
           <el-radio-group v-model="form.type">
-            <el-radio value="user">用户数</el-radio>
-            <el-radio value="storage">存储空间</el-radio>
+            <el-radio label="user">用户数</el-radio>
+            <el-radio label="storage">存储空间</el-radio>
+            <el-radio label="online_seat">在线席位</el-radio>
           </el-radio-group>
         </el-form-item>
         <el-form-item label="计费周期" prop="billing_cycle">
           <el-select v-model="form.billing_cycle" style="width: 100%">
             <el-option label="按月" value="monthly" />
             <el-option label="按年" value="yearly" />
+            <el-option label="永久" value="permanent" />
             <el-option label="跟随套餐" value="follow_package" />
           </el-select>
         </el-form-item>
         <el-form-item label="单价" prop="unit_price">
           <el-input-number v-model="form.unit_price" :min="0.01" :precision="2" :step="10" style="width: 100%" />
-          <div class="form-tip">{{ form.type === 'user' ? '每人' : '每GB' }}{{ cycleUnit(form.billing_cycle) }}的价格</div>
+          <div class="form-tip">每{{ unitLabel(form.type) }}{{ cycleUnit(form.billing_cycle) }}的价格</div>
         </el-form-item>
         <el-form-item label="最小购买量" prop="min_qty">
           <el-input-number v-model="form.min_qty" :min="1" :max="form.max_qty" style="width: 100%" />
@@ -89,6 +102,23 @@
         </el-form-item>
         <el-form-item label="描述" prop="description">
           <el-input v-model="form.description" type="textarea" :rows="2" placeholder="价格说明" />
+        </el-form-item>
+        <!-- 折扣规则 -->
+        <el-form-item label="折扣规则">
+          <div class="discount-rules">
+            <div v-for="(rule, idx) in form.discount_rules" :key="idx" class="discount-rule-row">
+              <span>≥</span>
+              <el-input-number v-model="rule.min_qty" :min="1" :max="9999" size="small" style="width: 100px;" />
+              <span>{{ unitLabel(form.type) }}时优惠</span>
+              <el-input-number v-model="rule.discount_percent" :min="1" :max="99" :precision="0" size="small" style="width: 80px;" />
+              <span>%</span>
+              <el-button link type="danger" @click="form.discount_rules.splice(idx, 1)" size="small">删除</el-button>
+            </div>
+            <el-button link type="primary" @click="form.discount_rules.push({ min_qty: 10, discount_percent: 10 })" size="small">
+              + 添加折扣梯度
+            </el-button>
+          </div>
+          <div class="form-tip">例：购买≥10席位优惠10%，则实付原价90%</div>
         </el-form-item>
         <el-form-item label="启用">
           <el-switch v-model="form.is_active" />
@@ -117,14 +147,27 @@ const editingId = ref('')
 const formRef = ref()
 
 const form = reactive({
-  type: 'user' as 'user' | 'storage',
+  type: 'user' as 'user' | 'storage' | 'online_seat',
   billing_cycle: 'monthly' as string,
   unit_price: 50,
   min_qty: 1,
   max_qty: 100,
   description: '',
-  is_active: true
+  is_active: true,
+  discount_rules: [] as Array<{ min_qty: number; discount_percent: number }>
 })
+
+const typeTagColor = (type: string) => {
+  return { user: '', storage: 'success', online_seat: 'warning' }[type] || 'info'
+}
+
+const typeLabel = (type: string) => {
+  return { user: '用户数', storage: '存储空间', online_seat: '在线席位' }[type] || type
+}
+
+const unitLabel = (type: string) => {
+  return { user: '人', storage: 'GB', online_seat: '席位' }[type] || '个'
+}
 
 const formRules = {
   type: [{ required: true, message: '请选择类型' }],
@@ -133,11 +176,11 @@ const formRules = {
 }
 
 const billingCycleLabel = (cycle: string) => {
-  return { monthly: '按月', yearly: '按年', follow_package: '跟随套餐' }[cycle] || cycle
+  return { monthly: '按月', yearly: '按年', permanent: '永久', follow_package: '跟随套餐' }[cycle] || cycle
 }
 
 const cycleUnit = (cycle: string) => {
-  return { monthly: '月', yearly: '年', follow_package: '周期' }[cycle] || '周期'
+  return { monthly: '月', yearly: '年', permanent: '永久', follow_package: '周期' }[cycle] || '周期'
 }
 
 const fetchData = async () => {
@@ -156,13 +199,14 @@ const fetchData = async () => {
 
 const handleAdd = () => {
   editingId.value = ''
-  form.type = activeTab.value as 'user' | 'storage'
+  form.type = activeTab.value as 'user' | 'storage' | 'online_seat'
   form.billing_cycle = 'monthly'
-  form.unit_price = activeTab.value === 'user' ? 50 : 10
+  form.unit_price = activeTab.value === 'storage' ? 10 : 50
   form.min_qty = 1
-  form.max_qty = 100
+  form.max_qty = activeTab.value === 'online_seat' ? 200 : 100
   form.description = ''
   form.is_active = true
+  form.discount_rules = []
   dialogVisible.value = true
 }
 
@@ -175,6 +219,7 @@ const handleEdit = (row: any) => {
   form.max_qty = row.max_qty
   form.description = row.description || ''
   form.is_active = !!row.is_active
+  form.discount_rules = Array.isArray(row.discount_rules) ? [...row.discount_rules] : []
   dialogVisible.value = true
 }
 
@@ -185,7 +230,7 @@ const handleSave = async () => {
 
   saving.value = true
   try {
-    const data = { ...form }
+    const data = { ...form, discount_rules: form.discount_rules.length > 0 ? [...form.discount_rules] : undefined }
     let res: any
     if (editingId.value) {
       res = await request.put(`/capacity/configs/${editingId.value}`, data)
@@ -199,8 +244,9 @@ const handleSave = async () => {
     } else {
       ElMessage.error(res.message || '操作失败')
     }
-  } catch (error) {
-    ElMessage.error('操作失败')
+  } catch (error: any) {
+    // 响应拦截器已弹出错误提示，此处避免重复
+    console.error('保存扩容配置失败:', error?.message || error)
   } finally {
     saving.value = false
   }
@@ -253,6 +299,18 @@ onMounted(() => fetchData())
   font-size: 12px;
   color: #94a3b8;
   margin-top: 4px;
+}
+
+.discount-rules {
+  width: 100%;
+}
+
+.discount-rule-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+  font-size: 13px;
 }
 </style>
 

@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="page-container">
     <!-- 统计概览 -->
     <div class="stats-row">
@@ -100,9 +100,22 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="用户数" width="80" align="center">
+        <el-table-column label="在线/席位/用户" min-width="150" align="center">
           <template #default="{ row }">
-            <span class="usage-text">{{ row.userCount || 0 }}/{{ row.maxUsers || 0 }}</span>
+            <div style="display:flex;align-items:center;justify-content:center;gap:5px;cursor:default;">
+              <span style="color:#16a34a;font-weight:600;font-size:14px;">{{ row.current_online_seats || 0 }}</span>
+              <span style="color:#c0c4cc;font-size:12px;">/</span>
+              <span style="color:#7c3aed;font-weight:600;font-size:14px;">{{ (Number(row.max_online_seats)||0) + (Number(row.extra_online_seats)||0) }}</span>
+              <span style="color:#c0c4cc;font-size:12px;">/</span>
+              <span v-if="row.user_limit_mode === 'online'" style="color:#909399;font-size:13px;">{{ row.userCount || row.user_count || 0 }}人</span>
+              <span v-else style="color:#2563eb;font-weight:600;font-size:14px;">{{ (row.userCount || row.user_count || 0) }}/{{ row.maxUsers || row.max_users || 0 }}</span>
+              <el-tooltip v-if="row.user_limit_mode === 'online'" content="限在线席位（注册不限）" placement="top">
+                <span style="background:#dcfce7;color:#16a34a;font-size:10px;padding:1px 4px;border-radius:3px;font-weight:600;line-height:16px;cursor:help;">限在</span>
+              </el-tooltip>
+              <el-tooltip v-else content="限注册用户数" placement="top">
+                <span style="background:#e0e7ff;color:#4338ca;font-size:10px;padding:1px 4px;border-radius:3px;font-weight:600;line-height:16px;cursor:help;">限注</span>
+              </el-tooltip>
+            </div>
           </template>
         </el-table-column>
         <el-table-column label="到期时间" width="105" align="center">
@@ -184,13 +197,31 @@
         <el-divider content-position="left">授权配置</el-divider>
         <el-form-item label="授权类型" prop="licenseType">
           <el-radio-group v-model="form.licenseType" @change="onLicenseTypeChange">
-            <el-radio value="annual">年度版</el-radio>
-            <el-radio value="perpetual">永久版</el-radio>
+            <el-radio label="annual">年度版</el-radio>
+            <el-radio label="perpetual">永久版</el-radio>
           </el-radio-group>
         </el-form-item>
-        <el-form-item label="最大用户数" prop="maxUsers">
-          <el-input-number v-model="form.maxUsers" :min="1" :max="9999" />
-          <span class="form-tip">{{ licenseTypeConfig.usersTip }}</span>
+        <el-form-item label="参考套餐">
+          <el-select v-model="form.packageId" placeholder="可选，选择后自动填充配置" clearable style="width: 100%" @change="onPackageChange">
+            <el-option v-for="pkg in packages" :key="pkg.id" :label="pkg.name" :value="pkg.id">
+              <span>{{ pkg.name }}</span>
+              <span style="float:right;color:#909399;font-size:12px;">¥{{ pkg.price }}</span>
+            </el-option>
+          </el-select>
+        </el-form-item>
+        <el-form-item label="限制模式">
+          <el-radio-group v-model="form.user_limit_mode">
+            <el-radio label="total">限制注册用户数</el-radio>
+            <el-radio label="online">限制同时在线席位</el-radio>
+          </el-radio-group>
+        </el-form-item>
+        <el-form-item v-if="form.user_limit_mode === 'online'" label="在线席位数">
+          <el-input-number v-model="form.max_online_seats" :min="1" :max="9999" />
+          <span class="form-tip">同时在线上限，注册用户不受限</span>
+        </el-form-item>
+        <el-form-item :label="form.user_limit_mode === 'online' ? '注册用户数' : '最大用户数'" prop="maxUsers">
+          <el-input-number v-model="form.maxUsers" :min="1" :max="99999" />
+          <span class="form-tip">{{ form.user_limit_mode === 'online' ? '仅参考，不强制限制' : licenseTypeConfig.usersTip }}</span>
         </el-form-item>
         <el-form-item v-if="form.licenseType !== 'perpetual'" label="到期时间" prop="expiresAt">
           <el-date-picker v-model="form.expiresAt" type="date" placeholder="请选择到期时间" style="width: 100%"
@@ -233,8 +264,8 @@
         </el-form-item>
         <el-form-item label="续期方式">
           <el-radio-group v-model="renewMode">
-            <el-radio value="quick">快捷续期</el-radio>
-            <el-radio value="custom">自定义日期</el-radio>
+            <el-radio label="quick">快捷续期</el-radio>
+            <el-radio label="custom">自定义日期</el-radio>
           </el-radio-group>
         </el-form-item>
         <el-form-item v-if="renewMode === 'quick'" label="续期时长">
@@ -363,6 +394,7 @@ import {
   Clock, RefreshRight, Delete, CircleClose, CircleCheck, Unlock, Key
 } from '@element-plus/icons-vue'
 import type { FormInstance, FormRules } from 'element-plus'
+import request from '@/api/request'
 import { adminApi } from '@/api/admin'
 
 const loading = ref(false)
@@ -398,13 +430,17 @@ const searchForm = reactive({ keyword: '', licenseType: '', status: '' })
 const pagination = reactive({ page: 1, pageSize: 10, total: 0 })
 const tableData = ref<any[]>([])
 const stats = reactive({ total: 0, active: 0, pending: 0, expired: 0, revoked: 0 })
+const packages = ref<any[]>([])
 const form = reactive({
   customerName: '',
   contact: '',
   phone: '',
   email: '',
   licenseType: 'annual' as 'annual' | 'perpetual',
+  packageId: '' as string | number,
   maxUsers: 50,
+  max_online_seats: 10,
+  user_limit_mode: 'total' as 'total' | 'online',
   expiresAt: null as Date | null,
   modules: ['dashboard', 'customer', 'order'] as string[],
   remark: ''
@@ -442,18 +478,35 @@ const moduleOptions = [
   { value: 'data', label: '资料管理' },
   { value: 'finance', label: '财务管理' },
   { value: 'product', label: '商品管理' },
+  { value: 'wecom', label: '企微管理' },
   { value: 'system', label: '系统管理' }
 ]
 
 // 授权类型对应的默认配置
 const licenseTypePresets: Record<string, { maxUsers: number; durationDays: number; modules: string[]; usersTip: string }> = {
   annual: { maxUsers: 50, durationDays: 365, modules: ['dashboard', 'customer', 'order', 'logistics', 'service', 'data', 'finance', 'performance', 'product'], usersTip: '年度版建议 10~200' },
-  perpetual: { maxUsers: 100, durationDays: 0, modules: ['dashboard', 'customer', 'order', 'service-management', 'performance', 'logistics', 'service', 'data', 'finance', 'product', 'system'], usersTip: '永久版无限制' }
+  perpetual: { maxUsers: 100, durationDays: 0, modules: ['dashboard', 'customer', 'order', 'service-management', 'performance', 'logistics', 'service', 'data', 'finance', 'product', 'wecom', 'system'], usersTip: '永久版无限制' }
 }
 
 const licenseTypeConfig = computed(() => {
   return licenseTypePresets[form.licenseType] || licenseTypePresets.annual
 })
+
+// 选择套餐时自动填充配置
+const onPackageChange = (pkgId: string | number) => {
+  if (!pkgId) return
+  const pkg = packages.value.find((p: any) => p.id === pkgId || String(p.id) === String(pkgId))
+  if (!pkg) return
+  form.maxUsers = pkg.max_users ?? pkg.maxUsers ?? 50
+  form.max_online_seats = pkg.max_online_seats ?? pkg.maxOnlineSeats ?? 10
+  // 同步限制模式
+  const mode = pkg.user_limit_mode || pkg.userLimitMode || 'total'
+  form.user_limit_mode = mode === 'both' ? 'total' : mode
+  // 同步功能模块
+  form.modules = Array.isArray(pkg.modules) && pkg.modules.length > 0
+    ? [...pkg.modules]
+    : (Array.isArray(pkg.features) ? [...pkg.features] : form.modules)
+}
 
 // 切换授权类型时同步配置
 const onLicenseTypeChange = (type: string) => {
@@ -540,7 +593,8 @@ const handleAdd = () => {
   const preset = licenseTypePresets.annual
   Object.assign(form, {
     customerName: '', contact: '', phone: '', email: '',
-    licenseType: 'annual', maxUsers: preset.maxUsers,
+    licenseType: 'annual', packageId: '', maxUsers: preset.maxUsers,
+    max_online_seats: 10, user_limit_mode: 'total',
     expiresAt: (() => { const d = new Date(); d.setDate(d.getDate() + preset.durationDays); return d })(),
     modules: [...preset.modules], remark: ''
   })
@@ -555,7 +609,10 @@ const handleEdit = (row: any) => {
     phone: row.customerPhone || '',
     email: row.customerEmail || '',
     licenseType: row.licenseType,
-    maxUsers: row.maxUsers,
+    packageId: row.packageId || row.package_id || '',
+    maxUsers: row.maxUsers || row.max_users || 50,
+    max_online_seats: row.max_online_seats || row.maxOnlineSeats || 10,
+    user_limit_mode: row.user_limit_mode || row.userLimitMode || 'total',
     expiresAt: row.expiresAt ? new Date(row.expiresAt) : null,
     modules: row.features || ['dashboard', 'customer', 'order'],
     remark: row.notes || ''
@@ -812,7 +869,14 @@ const fetchData = async () => {
   }
 }
 
-onMounted(() => { fetchData(); fetchStats() })
+const fetchPackages = async () => {
+  try {
+    const res = await request.get('/packages', { params: { type: 'private' } })
+    if (res.success) packages.value = res.data.list || res.data || []
+  } catch { /* ignore */ }
+}
+
+onMounted(() => { fetchData(); fetchPackages(); fetchStats() })
 
 const fetchStats = async () => {
   try {

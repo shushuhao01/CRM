@@ -5,8 +5,9 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { JwtConfig } from '../config/jwt';
+import { AppDataSource } from '../config/database';
 
-export const adminAuthMiddleware = (req: Request, res: Response, next: NextFunction) => {
+export const adminAuthMiddleware = async (req: Request, res: Response, next: NextFunction) => {
   // 登录接口不需要认证
   if (req.path === '/auth/login') {
     return next();
@@ -41,6 +42,27 @@ export const adminAuthMiddleware = (req: Request, res: Response, next: NextFunct
     if (!decoded.isAdmin) {
       return res.status(403).json({ success: false, message: '无权访问管理后台' });
     }
+
+    // 加载管理员权限列表
+    let permissions: string[] = [];
+    if (decoded.role === 'super_admin') {
+      permissions = ['*'];
+    } else {
+      try {
+        const adminRows = await AppDataSource.query(
+          'SELECT role_id FROM admin_users WHERE id = ? LIMIT 1', [decoded.adminId]
+        );
+        if (adminRows.length > 0 && adminRows[0].role_id) {
+          const roleRows = await AppDataSource.query(
+            "SELECT permissions FROM admin_roles WHERE id = ? AND status = 'active' LIMIT 1", [adminRows[0].role_id]
+          );
+          if (roleRows.length > 0) {
+            permissions = JSON.parse(roleRows[0].permissions || '[]');
+          }
+        }
+      } catch { /* 权限加载失败不阻塞请求 */ }
+    }
+    decoded.permissions = permissions;
 
     (req as any).adminUser = decoded;
     next();

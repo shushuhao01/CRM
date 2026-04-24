@@ -1,0 +1,302 @@
+/**
+ * 企微管理模块 V4.0 统一样式规范
+ *
+ * 色板:
+ *   背景: #F5F7FA    卡片: #FFFFFF + shadow(0 1px 3px rgba(0,0,0,0.06))
+ *   主色: #4C6EF5    AI专属: #7C3AED
+ *   成功: #10B981    警告: #F59E0B    危险: #EF4444
+ *   标题: 18px 600 #1F2937    正文: 14px #4B5563
+ *   辅助: 12px #9CA3AF        数字强调: 28px 700
+ */
+
+/* ==================== 全局变量 ==================== */
+:root {
+  --wecom-bg: #F5F7FA;
+  --wecom-card-bg: #FFFFFF;
+  --wecom-card-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+  --wecom-card-shadow-hover: 0 4px 12px rgba(0, 0, 0, 0.08);
+  --wecom-primary: #4C6EF5;
+  --wecom-primary-light: #F0F5FF;
+  --wecom-ai: #7C3AED;
+  --wecom-ai-light: #F5F3FF;
+  --wecom-ai-gradient: linear-gradient(135deg, #7C3AED, #6D28D9);
+  --wecom-success: #10B981;
+  --wecom-warning: #F59E0B;
+  --wecom-danger: #EF4444;
+  --wecom-title-color: #1F2937;
+  --wecom-text-color: #4B5563;
+  --wecom-text-muted: #9CA3AF;
+  --wecom-border-color: #EBEEF5;
+  --wecom-row-hover: #F0F5FF;
+  --wecom-row-stripe: #FAFBFC;
+  --wecom-radius: 12px;
+  --wecom-radius-sm: 8px;
+}
+
+/* ==================== 统计卡片 ==================== */
+.wecom-stat-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.wecom-stat-card {
+  background: var(--wecom-card-bg);
+  border: 1px solid var(--wecom-border-color);
+  border-radius: var(--wecom-radius);
+  padding: 20px 24px;
+  text-align: center;
+  transition: all 0.3s ease;
+  cursor: default;
+}
+
+.wecom-stat-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--wecom-card-shadow-hover);
+}
+
+.wecom-stat-card .stat-value {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--wecom-title-color);
+  line-height: 1.2;
+}
+
+.wecom-stat-card .stat-label {
+  font-size: 12px;
+  color: var(--wecom-text-muted);
+  margin-top: 6px;
+}
+
+.wecom-stat-card .stat-trend {
+  font-size: 12px;
+  margin-top: 4px;
+}
+
+.wecom-stat-card .stat-trend.up {
+  color: var(--wecom-success);
+}
+
+.wecom-stat-card .stat-trend.down {
+  color: var(--wecom-danger);
+}
+
+/* ==================== 表格样式 ==================== */
+.wecom-table .el-table__header-wrapper th {
+  background-color: #F9FAFB !important;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--wecom-text-muted);
+  border-bottom: none !important;
+}
+
+.wecom-table .el-table__row {
+  height: 56px;
+}
+
+.wecom-table .el-table__row:hover > td {
+  background-color: var(--wecom-row-hover) !important;
+}
+
+.wecom-table .el-table--striped .el-table__body tr.el-table__row--striped td {
+  background-color: var(--wecom-row-stripe) !important;
+}
+
+/* ==================== 标签(Tag)柔和配色 ==================== */
+.wecom-tag-vip {
+  background: #FFF7ED !important;
+  color: #C2410C !important;
+  border-color: #FDBA74 !important;
+}
+
+.wecom-tag-intent {
+  background: #EFF6FF !important;
+  color: #1D4ED8 !important;
+  border-color: #93C5FD !important;
+}
+
+.wecom-tag-new {
+  background: #F0FDF4 !important;
+  color: #15803D !important;
+  border-color: #86EFAC !important;
+}
+
+.wecom-tag-channel {
+  background: #FDF2F8 !important;
+  color: #BE185D !important;
+  border-color: #F9A8D4 !important;
+}
+
+.wecom-tag-deal {
+  background: #FAF5FF !important;
+  color: #7E22CE !important;
+  border-color: #C4B5FD !important;
+}
+
+.wecom-tag-loss {
+  background: #F9FAFB !important;
+  color: #6B7280 !important;
+  border-color: #D1D5DB !important;
+}
+
+.wecom-tag-risk {
+  background: #FEF2F2 !important;
+  color: #DC2626 !important;
+  border-color: #FCA5A5 !important;
+}
+
+/* ==================== AI视觉标识 ==================== */
+.ai-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--wecom-ai-gradient);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 10px;
+  letter-spacing: 0.5px;
+}
+
+.ai-btn {
+  background: var(--wecom-ai-gradient) !important;
+  border: none !important;
+  color: #fff !important;
+  transition: opacity 0.3s;
+}
+
+.ai-btn:hover {
+  opacity: 0.9;
+}
+
+.ai-section {
+  border-left: 3px solid var(--wecom-ai);
+  background: var(--wecom-ai-light);
+  padding: 16px 20px;
+  border-radius: 0 var(--wecom-radius-sm) var(--wecom-radius-sm) 0;
+  margin-bottom: 16px;
+}
+
+/* ==================== 操作工具栏 ==================== */
+.wecom-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.wecom-toolbar .spacer {
+  flex: 1;
+}
+
+/* ==================== 信息卡片 ==================== */
+.wecom-info-card {
+  background: #F9FAFB;
+  border-radius: var(--wecom-radius);
+  padding: 20px;
+  margin-bottom: 20px;
+}
+
+.wecom-info-card .info-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.wecom-info-card .info-header h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--wecom-title-color);
+}
+
+.wecom-info-card .info-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.wecom-info-card .info-item .label {
+  color: var(--wecom-text-muted);
+  font-size: 12px;
+  display: block;
+  margin-bottom: 2px;
+}
+
+.wecom-info-card .info-item .value {
+  color: var(--wecom-text-color);
+  font-size: 14px;
+}
+
+/* ==================== 使用量进度条 ==================== */
+.wecom-usage-bar {
+  background: linear-gradient(135deg, #F0F5FF 0%, #E8EEFF 100%);
+  border: 1px solid #C7D2FE;
+  border-radius: var(--wecom-radius-sm);
+  padding: 12px 16px;
+  margin-bottom: 16px;
+}
+
+.wecom-usage-bar .usage-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+  font-size: 13px;
+  color: var(--wecom-text-color);
+}
+
+/* ==================== 颜色工具类 ==================== */
+.text-primary { color: var(--wecom-primary) !important; }
+.text-success { color: var(--wecom-success) !important; }
+.text-warning { color: var(--wecom-warning) !important; }
+.text-danger { color: var(--wecom-danger) !important; }
+.text-ai { color: var(--wecom-ai) !important; }
+.text-muted { color: var(--wecom-text-muted) !important; }
+
+.bg-primary-light { background-color: var(--wecom-primary-light) !important; }
+.bg-ai-light { background-color: var(--wecom-ai-light) !important; }
+
+/* ==================== 迷你趋势线占位 ==================== */
+.wecom-sparkline {
+  display: inline-block;
+  width: 80px;
+  height: 24px;
+  background: linear-gradient(135deg, transparent 0%, var(--wecom-primary-light) 100%);
+  border-radius: 4px;
+  position: relative;
+  overflow: hidden;
+}
+
+/* ==================== 匹配卡片 ==================== */
+.wecom-match-cards {
+  display: flex;
+  align-items: stretch;
+  gap: 16px;
+}
+
+.wecom-match-card {
+  flex: 1;
+  background: #F9FAFB;
+  border-radius: var(--wecom-radius-sm);
+  padding: 16px;
+}
+
+.wecom-match-card h4 {
+  margin: 0 0 12px;
+  font-size: 13px;
+  color: var(--wecom-text-muted);
+}
+
+.wecom-match-arrow {
+  display: flex;
+  align-items: center;
+  font-size: 20px;
+  color: #D1D5DB;
+}
+

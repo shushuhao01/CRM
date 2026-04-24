@@ -50,18 +50,13 @@ const dismissedIds = ref<Set<string>>(new Set())
 // 🔥 WebSocket监听器取消函数
 let wsUnsubscribe: (() => void) | null = null
 
-// 从localStorage读取已关闭的公告ID
+// 从localStorage读取已关闭的公告ID（永久有效，已读状态由后端数据库持久化）
 const loadDismissedIds = () => {
   try {
     const stored = localStorage.getItem('dismissed_announcements')
     if (stored) {
       const data = JSON.parse(stored)
-      // 只保留24小时内关闭的记录
-      const now = Date.now()
-      const validIds = Object.entries(data)
-        .filter(([_, timestamp]) => now - (timestamp as number) < 24 * 60 * 60 * 1000)
-        .map(([id]) => id)
-      dismissedIds.value = new Set(validIds)
+      dismissedIds.value = new Set(Object.keys(data))
     }
   } catch (e) {
     console.error('读取已关闭公告失败:', e)
@@ -149,15 +144,17 @@ const checkPopupAnnouncements = () => {
   })))
 
   const popupAnnouncements = announcements.filter((a: any) => {
-    // 必须是已发布、开启弹窗、未读、且未被用户关闭的公告
+    // 必须是已发布、开启弹窗、未读、非静默（用户注册后发布的）、且未被用户关闭
     const shouldShow = a.status === 'published' &&
            a.isPopup === true &&
            !a.read &&
+           !a.silent &&
            !dismissedIds.value.has(a.id)
     console.log(`🔔 [公告弹窗] 公告 "${a.title}" 是否显示:`, shouldShow, {
       status: a.status,
       isPopup: a.isPopup,
       read: a.read,
+      silent: a.silent,
       dismissed: dismissedIds.value.has(a.id)
     })
     return shouldShow

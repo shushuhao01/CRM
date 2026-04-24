@@ -13,7 +13,8 @@ export interface TenantInfo {
   expireDate: string | null
   features: string[] | null
   packageFeatures: string[] | null
-  deployType?: 'private' | 'saas'  // 激活时由后端返回，标识部署模式
+  deployType?: 'private' | 'saas'
+  expired?: boolean
 }
 
 export interface VerifyResponse {
@@ -37,11 +38,16 @@ export interface HeartbeatResponse {
  */
 export const verifyTenantLicense = async (licenseKey: string): Promise<VerifyResponse> => {
   try {
-    const data = await request.post('/tenant-license/verify', { licenseKey })
+    const data = await request.post('/tenant-license/verify', { licenseKey }, { showError: false } as any)
     const tenantData = data as unknown as TenantInfo
     return { success: true, data: tenantData, message: '验证成功' }
   } catch (e: any) {
-    return { success: false, message: e?.message || '验证失败' }
+    // 🔥 优先使用原始 axios 响应中的 message 和 errorType（而非拦截器的通用错误信息）
+    const axiosResponseData = e?.response?.data || (e as any)?.__responseData
+    const backendMessage = axiosResponseData?.message
+    const errorType = axiosResponseData?.errorType
+    const message = backendMessage || e?.message || '验证失败'
+    return { success: false, message, errorType } as any
   }
 }
 
@@ -192,6 +198,7 @@ export interface CheckPrivateResponse {
   features?: string[] | null
   packageFeatures?: string[] | null
   message?: string
+  expired?: boolean
 }
 
 /**

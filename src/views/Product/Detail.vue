@@ -1,11 +1,26 @@
-<template>
+﻿<template>
   <div class="product-detail">
     <!-- 页面头部 -->
     <div class="page-header">
       <div class="header-left">
         <el-button @click="goBack" :icon="ArrowLeft" circle />
         <div class="header-info">
-          <h2>{{ productInfo.name }}</h2>
+          <div class="header-title-row">
+            <el-tag v-if="productInfo.productType === 'virtual'" type="warning" size="default" effect="plain" style="margin-right: 8px;">虚拟</el-tag>
+            <el-tag v-else size="default" effect="plain" style="margin-right: 8px;">实物</el-tag>
+            <h2>{{ productInfo.name }}</h2>
+            <div class="header-product-tags" v-if="productInfo.isRecommended || productInfo.isNew || productInfo.isHot">
+              <el-tag v-if="productInfo.isRecommended" type="warning" size="default" effect="light">
+                ⭐ 推荐
+              </el-tag>
+              <el-tag v-if="productInfo.isNew" type="success" size="default" effect="light">
+                🆕 新品
+              </el-tag>
+              <el-tag v-if="productInfo.isHot" type="danger" size="default" effect="light">
+                🔥 热销
+              </el-tag>
+            </div>
+          </div>
           <div class="header-meta">
             <span class="product-code">商品编码：{{ productInfo.code }}</span>
             <el-tag :type="getStatusColor(productInfo.status)" size="small">
@@ -16,8 +31,14 @@
       </div>
       <div class="header-actions">
         <!-- 仅管理员可见的操作按钮 -->
-        <el-button v-if="canAdjustStock" @click="handleStockAdjust" :icon="Edit">
+        <el-button v-if="canAdjustStock && productInfo.productType !== 'virtual'" @click="handleStockAdjust" :icon="Edit">
           调库存
+        </el-button>
+        <el-button v-if="canAdjustStock && productInfo.productType === 'virtual' && productInfo.virtualDeliveryType === 'card_key'" @click="goToCardKeyManage" type="warning" :icon="Edit">
+          管理卡密库存
+        </el-button>
+        <el-button v-if="canAdjustStock && productInfo.productType === 'virtual' && productInfo.virtualDeliveryType === 'resource_link'" @click="goToResourceManage" type="warning" :icon="Edit">
+          管理资源库存
         </el-button>
         <el-button v-if="canEditProduct" @click="handleEdit" type="primary" :icon="Edit">
           编辑商品
@@ -76,6 +97,21 @@
                 <div class="info-row">
                   <label>商品名称：</label>
                   <span>{{ productInfo.name }}</span>
+                </div>
+                <div class="info-row">
+                  <label>商品标识：</label>
+                  <div class="product-detail-tags" v-if="productInfo.isRecommended || productInfo.isNew || productInfo.isHot">
+                    <el-tag v-if="productInfo.isRecommended" type="warning" size="small" effect="light">
+                      ⭐ 推荐
+                    </el-tag>
+                    <el-tag v-if="productInfo.isNew" type="success" size="small" effect="light">
+                      🆕 新品
+                    </el-tag>
+                    <el-tag v-if="productInfo.isHot" type="danger" size="small" effect="light">
+                      🔥 热销
+                    </el-tag>
+                  </div>
+                  <span v-else class="no-tags-text">无</span>
                 </div>
                 <div class="info-row">
                   <label>商品编码：</label>
@@ -141,34 +177,65 @@
                 </div>
               </el-col>
               <el-col :span="12">
-                <div class="stock-info">
-                  <div class="info-item">
-                    <label>当前库存：</label>
-                    <span v-if="canViewStockInfo" :class="getStockClass(productInfo.stock, productInfo.minStock)">
-                      {{ productInfo.stock }}
-                    </span>
-                    <span v-else class="sensitive-info">
-                      <el-icon><View /></el-icon>
-                      ****
-                    </span>
+                <!-- 虚拟商品库存信息 -->
+                <template v-if="productInfo.productType === 'virtual'">
+                  <div class="stock-info">
+                    <div class="info-item">
+                      <label>商品类型：</label>
+                      <el-tag type="warning" size="small" effect="light">虚拟商品</el-tag>
+                    </div>
+                    <div class="info-item">
+                      <label>发货方式：</label>
+                      <el-tag v-if="productInfo.virtualDeliveryType === 'card_key'" type="primary" size="small">卡密发货</el-tag>
+                      <el-tag v-else-if="productInfo.virtualDeliveryType === 'resource_link'" type="success" size="small">网盘资源</el-tag>
+                      <el-tag v-else type="info" size="small">无需发货</el-tag>
+                    </div>
+                    <div class="info-item" v-if="productInfo.virtualDeliveryType && productInfo.virtualDeliveryType !== 'none'">
+                      <label>库存管理：</label>
+                      <el-button
+                        v-if="canAdjustStock && productInfo.virtualDeliveryType === 'card_key'"
+                        type="warning" size="small" @click="goToCardKeyManage">
+                        管理卡密库存 →
+                      </el-button>
+                      <el-button
+                        v-else-if="canAdjustStock && productInfo.virtualDeliveryType === 'resource_link'"
+                        type="success" size="small" @click="goToResourceManage">
+                        管理资源库存 →
+                      </el-button>
+                    </div>
                   </div>
-                  <div class="info-item">
-                    <label>最低库存：</label>
-                    <span v-if="canViewStockInfo">{{ productInfo.minStock }}</span>
-                    <span v-else class="sensitive-info">
-                      <el-icon><View /></el-icon>
-                      ****
-                    </span>
+                </template>
+                <!-- 实物商品库存信息 -->
+                <template v-else>
+                  <div class="stock-info">
+                    <div class="info-item">
+                      <label>当前库存：</label>
+                      <span v-if="canViewStockInfo" :class="getStockClass(productInfo.stock, productInfo.minStock)">
+                        {{ productInfo.stock }}
+                      </span>
+                      <span v-else class="sensitive-info">
+                        <el-icon><View /></el-icon>
+                        ****
+                      </span>
+                    </div>
+                    <div class="info-item">
+                      <label>最低库存：</label>
+                      <span v-if="canViewStockInfo">{{ productInfo.minStock }}</span>
+                      <span v-else class="sensitive-info">
+                        <el-icon><View /></el-icon>
+                        ****
+                      </span>
+                    </div>
+                    <div class="info-item">
+                      <label>最高库存：</label>
+                      <span v-if="canViewStockInfo">{{ productInfo.maxStock }}</span>
+                      <span v-else class="sensitive-info">
+                        <el-icon><View /></el-icon>
+                        ****
+                      </span>
+                    </div>
                   </div>
-                  <div class="info-item">
-                    <label>最高库存：</label>
-                    <span v-if="canViewStockInfo">{{ productInfo.maxStock }}</span>
-                    <span v-else class="sensitive-info">
-                      <el-icon><View /></el-icon>
-                      ****
-                    </span>
-                  </div>
-                </div>
+                </template>
               </el-col>
             </el-row>
           </el-card>
@@ -195,8 +262,8 @@
             </el-row>
           </el-card>
 
-          <!-- 库存记录 -->
-          <el-card v-if="canViewStockInfo" class="info-card" title="库存记录">
+          <!-- 库存记录（仅实物商品显示） -->
+          <el-card v-if="canViewStockInfo && productInfo.productType !== 'virtual'" class="info-card" title="库存记录">
             <template #header>
               <div class="card-header">
                 <span>库存记录</span>
@@ -250,6 +317,59 @@
               </div>
             </div>
           </el-card>
+
+          <!-- 虚拟商品库存预览（仅虚拟商品显示） -->
+          <el-card
+            v-if="productInfo.productType === 'virtual' && productInfo.virtualDeliveryType && productInfo.virtualDeliveryType !== 'none'"
+            class="info-card"
+          >
+            <template #header>
+              <div class="card-header">
+                <span>{{ productInfo.virtualDeliveryType === 'card_key' ? '卡密库存' : '资源库存' }}</span>
+                <div style="display:flex;gap:8px;align-items:center;">
+                  <span style="font-size:12px;color:#909399;">
+                    未使用：{{ virtualInventoryStats.unused }} / 总量：{{ virtualInventoryStats.total }}
+                  </span>
+                  <el-button
+                    v-if="productInfo.virtualDeliveryType === 'card_key'"
+                    type="warning" size="small" @click="goToCardKeyManage">
+                    查看全部 →
+                  </el-button>
+                  <el-button
+                    v-else-if="productInfo.virtualDeliveryType === 'resource_link'"
+                    type="success" size="small" @click="goToResourceManage">
+                    查看全部 →
+                  </el-button>
+                </div>
+              </div>
+            </template>
+            <div v-loading="virtualInventoryLoading">
+              <el-empty v-if="virtualInventoryList.length === 0" description="暂无库存数据" :image-size="60" />
+              <el-table v-else :data="virtualInventoryList" style="width:100%" size="small">
+                <el-table-column
+                  :prop="productInfo.virtualDeliveryType === 'card_key' ? 'code' : 'resourceUrl'"
+                  :label="productInfo.virtualDeliveryType === 'card_key' ? '卡密编码' : '资源链接'"
+                  show-overflow-tooltip
+                />
+                <el-table-column prop="status" label="状态" width="90" align="center">
+                  <template #default="{ row }">
+                    <el-tag
+                      :type="row.status === 'unused' ? 'success' : row.status === 'used' ? 'info' : 'warning'"
+                      size="small"
+                    >
+                      {{ row.status === 'unused' ? '未使用' : row.status === 'used' ? '已使用' : row.status === 'claimed' ? '已领取' : row.status }}
+                    </el-tag>
+                  </template>
+                </el-table-column>
+                <el-table-column prop="createdAt" label="创建时间" width="150" show-overflow-tooltip>
+                  <template #default="{ row }">{{ formatTime(row.createdAt || row.created_at) }}</template>
+                </el-table-column>
+              </el-table>
+              <div v-if="virtualInventoryStats.total > 5" style="text-align:center;margin-top:8px;color:#909399;font-size:12px;">
+                仅显示最近5条，<el-link type="primary" @click="productInfo.virtualDeliveryType === 'card_key' ? goToCardKeyManage() : goToResourceManage()">点击查看全部</el-link>
+              </div>
+            </div>
+          </el-card>
         </el-col>
 
         <!-- 右侧统计信息 -->
@@ -298,8 +418,16 @@
                 创建订单
               </el-button>
               <!-- 以下操作仅管理员可见 -->
-              <el-button v-if="canAdjustStock" @click="handleStockAdjust" :icon="Edit" block>
+              <!-- 实物商品：调整库存 -->
+              <el-button v-if="canAdjustStock && productInfo.productType !== 'virtual'" @click="handleStockAdjust" :icon="Edit" block>
                 调整库存
+              </el-button>
+              <!-- 虚拟商品：跳转到对应库存管理页 -->
+              <el-button v-if="canAdjustStock && productInfo.productType === 'virtual' && productInfo.virtualDeliveryType === 'card_key'" @click="goToCardKeyManage" type="warning" :icon="Edit" block>
+                管理卡密库存
+              </el-button>
+              <el-button v-if="canAdjustStock && productInfo.productType === 'virtual' && productInfo.virtualDeliveryType === 'resource_link'" @click="goToResourceManage" type="success" :icon="Edit" block>
+                管理资源库存
               </el-button>
               <el-button v-if="canAdjustPrice" @click="handlePriceAdjust" :icon="Money" block>
                 调整价格
@@ -544,6 +672,7 @@ import { useConfigStore } from '@/stores/config'
 import { createSafeNavigator } from '@/utils/navigation'
 import { productApi } from '@/api/product'
 import { formatTime } from '@/utils/date'
+import { apiService } from '@/services/apiService'
 
 // 路由
 const router = useRouter()
@@ -594,12 +723,19 @@ const productInfo = ref({
   viewCount: 0,
   favoriteCount: 0,
   status: '',
+  isRecommended: false,
+  isNew: false,
+  isHot: false,
   mainImage: '',
   images: [],
   createTime: '',
   updateTime: '',
   creator: '',
-  updater: ''
+  updater: '',
+  productType: 'physical' as string,
+  virtualDeliveryType: null as string | null,
+  cardKeyTemplate: null as string | null,
+  resourceLinkTemplate: null as string | null
 })
 
 // 库存调整表单
@@ -634,6 +770,49 @@ const paginatedStockRecords = computed(() => {
   const end = start + stockPagination.pageSize
   return stockRecords.value.slice(start, end)
 })
+
+// 虚拟商品库存预览
+const virtualInventoryList = ref<any[]>([])
+const virtualInventoryLoading = ref(false)
+const virtualInventoryStats = ref({ total: 0, unused: 0, used: 0, claimed: 0 })
+
+const loadVirtualInventory = async () => {
+  const productId = route.params.id as string
+  if (!productId) return
+  virtualInventoryLoading.value = true
+  try {
+    const deliveryType = productInfo.value.virtualDeliveryType
+    if (deliveryType === 'card_key') {
+      const res = await apiService.get('/virtual-inventory/card-keys', {
+        productId,
+        page: 1,
+        pageSize: 5
+      })
+      if (res && res.list) {
+        virtualInventoryList.value = res.list
+        virtualInventoryStats.value = res.stats || { total: res.total || 0, unused: 0, used: 0, claimed: 0 }
+      } else if (Array.isArray(res)) {
+        virtualInventoryList.value = res.slice(0, 5)
+      }
+    } else if (deliveryType === 'resource_link') {
+      const res = await apiService.get('/virtual-inventory/resources', {
+        productId,
+        page: 1,
+        pageSize: 5
+      })
+      if (res && res.list) {
+        virtualInventoryList.value = res.list
+        virtualInventoryStats.value = res.stats || { total: res.total || 0, unused: 0, used: 0, claimed: 0 }
+      } else if (Array.isArray(res)) {
+        virtualInventoryList.value = res.slice(0, 5)
+      }
+    }
+  } catch (e) {
+    virtualInventoryList.value = []
+  } finally {
+    virtualInventoryLoading.value = false
+  }
+}
 
 // 相关统计
 const relatedStats = ref<{
@@ -813,6 +992,15 @@ const handleStockAdjust = () => {
   })
 
   stockDialogVisible.value = true
+}
+
+// 虚拟商品跳转到对应库存管理页面
+const goToCardKeyManage = () => {
+  router.push({ path: '/product/virtual/card-keys', query: { productId: String(productInfo.value.id) } })
+}
+
+const goToResourceManage = () => {
+  router.push({ path: '/product/virtual/resources', query: { productId: String(productInfo.value.id) } })
 }
 
 /**
@@ -1612,6 +1800,12 @@ onMounted(() => {
   loadStockRecords()
   loadRelatedStats()
   loadOperationLogs()
+  // 虚拟商品单独加载库存（在loadProductInfo之后延迟加载）
+  setTimeout(() => {
+    if (productInfo.value.productType === 'virtual') {
+      loadVirtualInventory()
+    }
+  }, 500)
 })
 </script>
 
@@ -1638,8 +1832,27 @@ onMounted(() => {
 }
 
 .header-info h2 {
-  margin: 0 0 8px 0;
+  margin: 0;
   color: #303133;
+}
+
+.header-title-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+
+.header-product-tags {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.header-product-tags .el-tag {
+  font-size: 13px;
+  font-weight: 500;
 }
 
 .header-meta {
@@ -1718,6 +1931,22 @@ onMounted(() => {
 
 .info-row span {
   color: #303133;
+}
+
+.product-detail-tags {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.product-detail-tags .el-tag {
+  font-size: 12px;
+}
+
+.no-tags-text {
+  color: #c0c4cc;
+  font-size: 14px;
 }
 
 .description {

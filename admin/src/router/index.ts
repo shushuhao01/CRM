@@ -1,6 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useUserStore } from '@/stores/user'
-import { MENU_PERMISSION_MAP } from '@/utils/permissions'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -146,6 +145,165 @@ const router = createRouter({
               name: 'MessageManagement',
               component: () => import('@/views/modules/MessageManagement.vue'),
               meta: { title: '消息管理', permission: 'modules:message:view' }
+            }
+          ]
+        },
+        // 短信管理
+        {
+          path: 'sms-management',
+          name: 'SmsManagementParent',
+          meta: { title: '短信管理', icon: 'ChatDotRound' },
+          redirect: '/sms-management/template-review',
+          children: [
+            {
+              path: 'template-review',
+              name: 'SmsTemplateReview',
+              component: () => import('@/views/sms-management/TemplateReview.vue'),
+              meta: { title: '模板审核', permission: 'sms-management:template-review:view' }
+            },
+            {
+              path: 'templates',
+              name: 'SmsTemplates',
+              component: () => import('@/views/sms-management/Templates.vue'),
+              meta: { title: '模板管理', permission: 'sms-management:templates:view' }
+            },
+            {
+              path: 'records',
+              name: 'SmsRecords',
+              component: () => import('@/views/sms-management/Records.vue'),
+              meta: { title: '发送记录', permission: 'sms-management:records:view' }
+            },
+            {
+              path: 'crm-config',
+              name: 'SmsCrmConfig',
+              component: () => import('@/views/sms-management/CrmConfig.vue'),
+              meta: { title: 'CRM配置', permission: 'sms-management:crm-config:view' }
+            },
+            {
+              path: 'statistics',
+              name: 'SmsStatistics',
+              component: () => import('@/views/sms-management/Statistics.vue'),
+              meta: { title: '统计总览', permission: 'sms-management:statistics:view' }
+            },
+            {
+              path: 'quota-packages',
+              name: 'SmsQuotaPackages',
+              component: () => import('@/views/sms-management/QuotaPackages.vue'),
+              meta: { title: '额度套餐', permission: 'sms-management:quota-packages:view' }
+            }
+          ]
+        },
+        // 企微管理（V4.0重构：14个菜单分3组）
+        {
+          path: 'wecom-management',
+          name: 'WecomManagementParent',
+          meta: { title: '企微管理', icon: 'ChatLineSquare' },
+          redirect: '/wecom-management/overview',
+          children: [
+            // == 基础管理 ==
+            {
+              path: 'overview',
+              name: 'WecomOverview',
+              component: () => import('@/views/wecom/Overview.vue'),
+              meta: { title: '企微总览', permission: 'wecom-management:overview:view', group: '基础管理' }
+            },
+            {
+              path: 'suite-app',
+              name: 'WecomSuiteApp',
+              component: () => import('@/views/wecom/SuiteApp.vue'),
+              meta: { title: '服务商应用管理', permission: 'wecom-management:suite-app:view', group: '基础管理' }
+            },
+            {
+              path: 'tenant-auth',
+              name: 'WecomTenantAuth',
+              component: () => import('@/views/wecom/TenantAuth.vue'),
+              meta: { title: '租户授权管理', permission: 'wecom-management:tenant-auth:view', group: '基础管理' }
+            },
+            {
+              path: 'config-quota',
+              name: 'WecomConfigQuota',
+              component: () => import('@/views/wecom/ConfigQuota.vue'),
+              meta: { title: '企微配额管理', permission: 'wecom-management:config-quota:view', group: '基础管理' }
+            },
+            // == 商业运营 ==
+            {
+              path: 'pricing',
+              name: 'WecomPricing',
+              component: () => import('@/views/wecom/Pricing.vue'),
+              meta: { title: '套餐与定价', permission: 'wecom-management:package-templates:view', group: '商业运营' }
+            },
+            {
+              path: 'tenant-packages',
+              name: 'WecomTenantPackages',
+              component: () => import('@/views/wecom/TenantPackage.vue'),
+              meta: { title: '租户套餐管理', permission: 'wecom-management:tenant-packages:view', group: '商业运营' }
+            },
+            {
+              path: 'purchase-orders',
+              name: 'WecomPurchaseOrders',
+              component: () => import('@/views/wecom/PurchaseOrders.vue'),
+              meta: { title: '会话存档代购', permission: 'wecom-management:purchase-orders:view', group: '商业运营' }
+            },
+            {
+              path: 'ai-management',
+              name: 'WecomAiManagement',
+              component: () => import('@/views/wecom/AiManagement.vue'),
+              meta: { title: 'AI额度管理', permission: 'wecom-management:ai-management:view', group: '商业运营' }
+            },
+            {
+              path: 'vas-orders',
+              name: 'WecomVasOrders',
+              component: () => import('@/views/wecom/VasOrders.vue'),
+              meta: { title: '订单与财务', permission: 'wecom-management:vas-orders:view', group: '商业运营' }
+            },
+            // == 运维监控 ==
+            {
+              path: 'quota-monitor',
+              name: 'WecomQuotaMonitor',
+              component: () => import('@/views/wecom/QuotaMonitor.vue'),
+              meta: { title: '资源配额监控', permission: 'wecom-management:quota-monitor:view', group: '运维监控' }
+            },
+            {
+              path: 'acquisition-usage',
+              name: 'WecomAcquisitionUsage',
+              component: () => import('@/views/wecom/AcquisitionUsage.vue'),
+              meta: { title: '获客助手用量', permission: 'wecom-management:acquisition-quota:view', group: '运维监控' }
+            },
+            {
+              path: 'data-stats',
+              name: 'WecomDataStats',
+              component: () => import('@/views/wecom/DataStats.vue'),
+              meta: { title: '数据统计', permission: 'wecom-management:data-stats:view', group: '运维监控' }
+            },
+            {
+              path: 'audit-log',
+              name: 'WecomAuditLog',
+              component: () => import('@/views/wecom/AuditLog.vue'),
+              meta: { title: '操作日志', permission: 'wecom-management:audit-log:view', group: '运维监控' }
+            },
+            {
+              path: 'package-template',
+              name: 'WecomPackageTemplate',
+              component: () => import('@/views/wecom/PackageTemplate.vue'),
+              meta: { title: '套餐模板管理', permission: 'wecom-management:package-templates:view', group: '商业运营' }
+            },
+            {
+              path: 'vas-config',
+              name: 'WecomVasConfig',
+              component: () => import('@/views/wecom/VasConfig.vue'),
+              meta: { title: '增值服务配置', permission: 'wecom-management:vas-config:view', group: '商业运营' }
+            },
+            {
+              path: 'chat-archive-management',
+              name: 'WecomChatArchiveManagement',
+              component: () => import('@/views/wecom/ChatArchiveManagement.vue'),
+              meta: { title: '会话存档管理', permission: 'wecom-management:chat-archive:view', group: '运维监控' }
+            },
+            {
+              path: 'system-config',
+              name: 'WecomSystemConfig',
+              component: () => import('@/views/wecom/WecomSystemConfig.vue'),
+              meta: { title: '系统配置', permission: 'wecom-management:system-config:view', group: '运维监控' }
             }
           ]
         },

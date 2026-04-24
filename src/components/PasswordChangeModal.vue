@@ -2,7 +2,7 @@
   <div v-if="visible" class="modal-overlay">
     <div class="modal-container">
       <div class="modal-header">
-        <h3>{{ isForced ? '强制修改密码' : '修改密码' }}</h3>
+        <h3>{{ isForced ? (isFirstLogin ? '首次登录 - 修改密码' : isExpired ? '密码已过期 - 修改密码' : isDefaultPassword ? '强制修改密码' : '密码已被重置 - 请设置新密码') : '修改密码' }}</h3>
         <button v-if="!isForced" @click="closeModal" class="close-btn">&times;</button>
       </div>
 
@@ -10,9 +10,10 @@
         <div v-if="isForced" class="warning-message">
           <div class="warning-icon">⚠️</div>
           <div class="warning-text">
-            <p v-if="isDefaultPassword">检测到您正在使用默认密码，为了账户安全，请立即修改密码。</p>
-            <p v-else-if="isExpired">您的密码已过期，请立即修改密码。</p>
-            <p v-else>管理员要求您修改密码，请设置新密码。</p>
+            <p v-if="isFirstLogin">您是首次登录系统，为了您的账户安全，请立即设置新密码后才能继续使用系统。</p>
+            <p v-else-if="isDefaultPassword">检测到您正在使用默认密码，为了账户安全，请立即修改密码后才能继续使用系统。</p>
+            <p v-else-if="isExpired">您的密码已超过90天未修改，已过期。请立即修改密码后才能继续使用系统。</p>
+            <p v-else>您的密码已被管理员重置，请设置新密码后才能继续使用系统。</p>
           </div>
         </div>
 
@@ -105,6 +106,7 @@ import { useUserStore } from '@/stores/user'
 interface Props {
   visible: boolean
   isForced?: boolean
+  isFirstLogin?: boolean
   isDefaultPassword?: boolean
   isExpired?: boolean
 }
@@ -117,6 +119,7 @@ interface Emits {
 
 const props = withDefaults(defineProps<Props>(), {
   isForced: false,
+  isFirstLogin: false,
   isDefaultPassword: false,
   isExpired: false
 })
@@ -203,11 +206,15 @@ const handleSubmit = async () => {
     const result = await passwordService.changePassword(request)
 
     if (result.success) {
-      // 更新用户信息
+      // 🔥 后端已更新数据库（password_last_changed + need_change_password）
+      // 这里同步更新前端内存状态 + localStorage 会话缓存
+      // 换浏览器/重新登录时从后端数据库获取最新状态，不依赖 localStorage
       if (userStore.user) {
         userStore.user.isDefaultPassword = false
         userStore.user.passwordLastChanged = new Date()
         userStore.user.forcePasswordChange = false
+        // 同步到会话缓存，防止当前浏览器刷新后状态丢失
+        localStorage.setItem('user', JSON.stringify(userStore.user))
       }
 
       emit('success')

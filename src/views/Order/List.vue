@@ -298,9 +298,13 @@
 
       <!-- 订单号列 -->
       <template #column-orderNumber="{ row }">
-        <el-link @click="handleView(row)" type="primary">
-          {{ row.orderNumber }}
-        </el-link>
+        <div style="display: flex; align-items: center; gap: 4px; flex-wrap: wrap;">
+          <el-tag v-if="row.orderProductType === 'virtual'" type="warning" size="small" effect="light">虚拟</el-tag>
+          <el-tag v-else-if="row.orderProductType === 'mixed'" size="small" effect="light" color="#7B68EE" style="color:#fff;border:none;">混合</el-tag>
+          <el-link @click="handleView(row)" type="primary">
+            {{ row.orderNumber }}
+          </el-link>
+        </div>
       </template>
 
       <!-- 客户姓名列 -->
@@ -345,7 +349,15 @@
             :show-after="300"
           >
             <span class="product-text">
-              {{ Array.isArray(row.products) ? row.products.map((p: ProductItem) => `${p.name} × ${p.quantity}`).join('，') : (row.products || '-') }}
+              <template v-if="Array.isArray(row.products)">
+                <template v-for="(p, idx) in row.products" :key="idx">
+                  <span v-if="idx > 0">，</span>
+                  <el-tag v-if="p.productType === 'virtual'" type="warning" size="small" effect="light" style="margin-right: 2px;">虚拟</el-tag>
+                  <el-tag v-else size="small" effect="light" style="margin-right: 2px;">实物</el-tag>
+                  {{ p.name }} × {{ p.quantity }}
+                </template>
+              </template>
+              <template v-else>{{ row.products || '-' }}</template>
             </span>
           </el-tooltip>
         </div>
@@ -684,6 +696,7 @@ import { useOrderFieldConfigStore } from '@/stores/orderFieldConfig'
 interface ProductItem {
   name: string
   quantity: number
+  productType?: string
 }
 
 interface OrderItem {
@@ -845,6 +858,7 @@ const quickFilters = ref([
   { key: 'all', label: '全部', count: 0 },
   { key: 'pending_audit', label: '待审核', count: 0 },
   { key: 'pending_shipment', label: '已审核', count: 0 },
+  { key: 'virtual_pending', label: '虚拟待发货', count: 0 },
   { key: 'shipped', label: '已发货', count: 0 },
   { key: 'delivered', label: '已签收', count: 0 },
   { key: 'rejected_returned', label: '拒收已退回', count: 0 },
@@ -869,8 +883,10 @@ const allOrderStatuses = computed(() => [
   { value: 'pending_audit', label: '待审核' },
   { value: 'audit_rejected', label: '审核拒绝' },
   { value: 'pending_shipment', label: '待发货' },
+  { value: 'virtual_pending', label: '虚拟待发货' },
   { value: 'shipped', label: '已发货' },
   { value: 'delivered', label: '已签收' },
+  { value: 'signed', label: '已签收(虚拟)' },
   { value: 'package_exception', label: '包裹异常' },
   { value: 'rejected', label: '拒收' },
   { value: 'rejected_returned', label: '拒收已退回' },
@@ -1064,8 +1080,11 @@ const getStatusText = (status: string, markType?: string, isAuditTransferred?: b
     pending_audit: '待审核',
     audit_rejected: '审核拒绝',
     pending_shipment: '待发货',
+    virtual_pending: '虚拟待发货',
     shipped: '已发货',
     delivered: '已签收',
+    signed: '已签收',
+    completed: '已签收',
     package_exception: '包裹异常',
     rejected: '拒收',
     rejected_returned: '物流部退回',
@@ -1098,8 +1117,11 @@ const getStatusType = (status: string, markType?: string) => {
     pending_audit: 'warning',      // 待审核 - 橙色
     audit_rejected: 'danger',      // 审核拒绝 - 红色
     pending_shipment: 'primary',   // 待发货 - 蓝色
+    virtual_pending: 'warning',    // 虚拟待发货 - 橙色
     shipped: 'primary',            // 已发货 - 蓝色
     delivered: 'success',          // 已签收 - 绿色
+    signed: 'success',             // 已签收(虚拟) - 绿色
+    completed: 'success',          // 已完成 - 绿色
     package_exception: 'warning',  // 包裹异常 - 橙色
     rejected: 'danger',            // 拒收 - 红色
     rejected_returned: 'info',     // 拒收已退回 - 灰色

@@ -17,7 +17,33 @@
                   <img :src="row.image || '/default-product.png'" :alt="row.name" />
                 </div>
                 <div class="product-details">
-                  <div class="product-name">{{ row.name }}</div>
+                  <div class="product-name">
+                    <el-tag
+                      v-if="row.productType === 'virtual' || (!row.productType && orderDetail.orderProductType === 'virtual')"
+                      type="warning"
+                      size="small"
+                      effect="light"
+                      style="margin-right: 6px; vertical-align: middle;"
+                    >虚拟</el-tag>
+                    <el-tag
+                      v-else
+                      size="small"
+                      effect="light"
+                      style="margin-right: 6px; vertical-align: middle;"
+                    >实物</el-tag>
+                    {{ row.name }}
+                  </div>
+                  <div class="product-tags" v-if="row.isRecommended || row.isNew || row.isHot">
+                    <el-tag v-if="row.isRecommended" type="warning" size="small" effect="light">
+                      ⭐ 推荐
+                    </el-tag>
+                    <el-tag v-if="row.isNew" type="success" size="small" effect="light">
+                      🆕 新品
+                    </el-tag>
+                    <el-tag v-if="row.isHot" type="danger" size="small" effect="light">
+                      🔥 热销
+                    </el-tag>
+                  </div>
                   <div class="product-sku">SKU: {{ row.sku || row.id }}</div>
                 </div>
               </div>
@@ -166,6 +192,8 @@ const previewScreenshot = (index: number) => {
 .product-image img { width: 100%; height: 100%; object-fit: cover; }
 .product-details { flex: 1; }
 .product-name { font-weight: 600; color: #303133; margin-bottom: 4px; }
+.product-tags { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 4px; }
+.product-tags .el-tag { font-size: 11px; }
 .product-sku { color: #909399; font-size: 12px; }
 
 /* 现代化金额卡片 */

@@ -1,9 +1,9 @@
 -- =============================================
 -- CRM系统数据库初始化脚本（最新版）
--- 版本：1.9.5
--- 更新时间：2026-04-08
+-- 版本：4.1.0
+-- 更新时间：2026-04-22
 -- 适用于：MySQL 8.0+ / 宝塔面板 7.x+
--- 
+--
 -- 更新内容：
 -- 1. 添加完整的售后服务表(after_sales_services)
 -- 2. 用户表添加在职状态、备注等字段
@@ -25,6 +25,29 @@
 -- 18. 新增面单打印记录表(print_label_logs)，记录每次打印面单操作
 -- 19. 新增寄件人/退货地址表(sender_addresses)，支持多寄件人、退货地址管理
 -- 20. logistics_api_configs表新增support_create_order字段，标记物流公司是否支持下单生成运单号
+-- 21. [v1.8.0] sms_templates: status从ENUM改为VARCHAR(20)，新增8个审核/预设字段
+-- 22. [v1.8.0] sms_records: 新增sender_phone字段
+-- 23. [v1.8.0] 新增sms_quota_packages(短信额度套餐)、sms_quota_orders(短信额度购买订单)表
+-- 24. [v1.8.1] 新增sms_auto_send_rules(短信自动发送规则)表
+-- 25. [v1.8.1] sms_records: 新增sender_user_id/sender_department_id/trigger_source/auto_rule_id字段（角色权限+自动发送支持）
+-- 26. [v2.0.0] 企微V2.0: wecom_configs扩展+11字段(双模式授权), wecom_customers扩展+7字段, wecom_chat_records扩展+3字段
+-- 27. [v2.0.0] customers表新增wecom_external_userid(USID)字段+唯一索引
+-- 28. [v2.0.0] 新增wecom_customer_groups(客户群)、wecom_sensitive_words(敏感词)、wecom_sensitive_hits(敏感词命中)
+-- 29. [v2.0.0] 新增wecom_quality_rules(质检规则)、wecom_quality_inspections(质检记录)
+-- 30. [v2.0.0] 新增wecom_archive_members(存档生效成员)、wecom_vas_orders(增值服务订单)、wecom_vas_configs(增值服务配置)
+-- 31. [v2.0.0] 新增wecom_kf_sessions(客服会话)、wecom_quick_replies(快捷回复)
+-- 32. [v4.0.0] 企微V4.0: wecom_configs新增auth_mode/auth_corp_name/auth_admin_user_id/auth_time字段
+-- 33. [v4.0.0] wecom_acquisition_links新增state/welcome_config/auto_tags/auto_group_config字段
+-- 34. [v4.0.0] 新增wecom_auto_match_suggestions(自动匹配建议)、wecom_group_templates(群模板)
+-- 35. [v4.0.0] 新增wecom_acquisition_smart_rules(获客智能规则)、wecom_contact_ways(活码)、wecom_contact_way_daily_stats(活码统计)
+-- 36. [v4.0.0] 新增wecom_customer_events(客户事件)、wecom_department_mappings(部门映射)
+-- 37. [v4.0.0] 新增wecom_ai_models(AI模型)、wecom_ai_agents(智能体)、wecom_ai_logs(AI日志)
+-- 38. [v4.0.0] 新增wecom_ai_inspect_strategies(AI质检策略)、wecom_ai_inspect_results(AI质检结果)
+-- 39. [v4.0.0] 新增wecom_knowledge_bases(知识库)、wecom_knowledge_entries(知识条目)
+-- 40. [v4.0.0] 新增wecom_script_categories(话术分类)、wecom_scripts(话术)、wecom_sidebar_auth_codes(侧边栏授权码)
+-- 41. [v4.1.0] 新增wecom_anti_spam_rules(防骚扰规则)、wecom_group_broadcasts(群发消息)、wecom_group_welcomes(入群欢迎语)
+-- 42. [v4.1.0] 新增wecom_payment_qrcodes(收款码)、wecom_payment_refunds(退款记录)
+-- 43. [v4.1.0] 新增wecom_suite_configs(服务商应用配置)、wecom_suite_callback_logs(服务商回调日志)
 -- =============================================
 
 -- 设置字符集和时区
@@ -135,7 +158,9 @@ CREATE TABLE `users` (
   `login_count` INT DEFAULT 0 COMMENT '登录次数',
   `login_fail_count` INT DEFAULT 0 COMMENT '登录失败次数',
   `locked_at` DATETIME NULL COMMENT '账户锁定时间',
-  `must_change_password` BOOLEAN DEFAULT FALSE COMMENT '是否必须修改密码',
+  `must_change_password` BOOLEAN DEFAULT FALSE COMMENT '是否必须修改密码(旧字段,保留兼容)',
+  `password_last_changed` DATETIME NULL COMMENT '密码最后修改时间',
+  `need_change_password` TINYINT(1) DEFAULT 1 COMMENT '是否需要修改密码: 0=否, 1=是(新用户默认需要)',
   `remark` TEXT NULL COMMENT '备注',
   `settings` JSON COMMENT '用户设置',
   `authorized_ips` JSON COMMENT '授权登录IP列表（JSON数组，空表示无限制）',
@@ -194,6 +219,7 @@ CREATE TABLE `customers` (
   `medical_history` TEXT NULL COMMENT '疾病史',
   `improvement_goals` JSON NULL COMMENT '改善目标',
   `other_goals` VARCHAR(200) NULL COMMENT '其他改善目标',
+  `custom_fields` JSON DEFAULT NULL COMMENT '自定义字段数据',
   `order_count` INT DEFAULT 0 COMMENT '订单数量',
   `return_count` INT DEFAULT 0 COMMENT '退货次数',
   `total_amount` DECIMAL(10,2) DEFAULT 0.00 COMMENT '总消费金额',
@@ -203,6 +229,7 @@ CREATE TABLE `customers` (
   `next_follow_time` TIMESTAMP NULL COMMENT '下次跟进时间',
   `sales_person_id` VARCHAR(50) COMMENT '销售员ID',
   `sales_person_name` VARCHAR(50) COMMENT '销售员姓名',
+  `wecom_external_userid` VARCHAR(100) NULL COMMENT '客户唯一企微编码(USID)',
   `created_by` VARCHAR(50) NOT NULL COMMENT '创建人ID',
   `created_by_name` VARCHAR(50) COMMENT '创建人姓名',
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
@@ -225,7 +252,8 @@ CREATE TABLE `customers` (
   INDEX `idx_customers_tenant_created_by` (`tenant_id`, `created_by`),
   INDEX `idx_customers_tenant_created_at` (`tenant_id`, `created_at`),
   INDEX `idx_customers_tenant_phone` (`tenant_id`, `phone`),
-  INDEX `idx_customers_tenant_name` (`tenant_id`, `name`)
+  INDEX `idx_customers_tenant_name` (`tenant_id`, `name`),
+  UNIQUE INDEX `uk_tenant_wecom_userid` (`tenant_id`, `wecom_external_userid`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='客户表';
 
 -- 5. 客户标签表
@@ -350,6 +378,11 @@ CREATE TABLE `products` (
   `specifications` JSON COMMENT '规格参数',
   `images` JSON COMMENT '产品图片',
   `status` ENUM('active', 'inactive') DEFAULT 'active' COMMENT '状态',
+  `product_type` VARCHAR(20) DEFAULT 'physical' COMMENT '商品类型: physical-普通商品, virtual-虚拟商品',
+  `virtual_delivery_type` VARCHAR(20) DEFAULT NULL COMMENT '虚拟发货方式: none-无需发货, card_key-卡密发货, resource_link-网盘资源',
+  `card_key_template` TEXT DEFAULT NULL COMMENT '卡密模板说明',
+  `resource_link_template` TEXT DEFAULT NULL COMMENT '资源链接模板',
+  `virtual_content_encrypt` TINYINT(1) DEFAULT 0 COMMENT '虚拟内容是否加密显示',
   `created_by` VARCHAR(50) NOT NULL COMMENT '创建人',
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
@@ -436,6 +469,8 @@ CREATE TABLE `orders` (
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   `status_updated_at` TIMESTAMP NULL COMMENT '状态更新时间（记录最后一次状态变更的时间，如签收、发货等）',
+  `order_product_type` VARCHAR(20) DEFAULT 'physical' COMMENT '订单商品类型: physical-普通, virtual-虚拟, mixed-混合',
+  `completion_source` VARCHAR(30) DEFAULT NULL COMMENT '完成来源: audit_auto_complete/virtual_delivery/logistics_delivery',
   -- 🔥 索引优化（2026-03-30）：精简至17个索引（含PK），删除11个冗余/低效索引
   -- 保留的独立查询索引
   UNIQUE INDEX `uk_tenant_order_number` (`tenant_id`, `order_number`),
@@ -767,6 +802,8 @@ CREATE TABLE `call_records` (
   `call_method` VARCHAR(20) DEFAULT 'system' COMMENT '外呼方式：system-系统线路，mobile-工作手机，voip-网络电话',
   `line_id` VARCHAR(50) COMMENT '外呼线路ID',
   `caller_number` VARCHAR(20) COMMENT '主叫号码',
+  `provider_call_id` VARCHAR(100) COMMENT '服务商通话ID',
+  `hangup_cause` VARCHAR(100) COMMENT '挂断原因',
   `user_id` VARCHAR(100) NOT NULL COMMENT '操作用户ID',
   `user_name` VARCHAR(100) COMMENT '操作用户姓名',
   `department` VARCHAR(100) COMMENT '部门',
@@ -822,33 +859,33 @@ CREATE TABLE `phone_configs` (
   `id` INT PRIMARY KEY AUTO_INCREMENT COMMENT '配置ID',
   `user_id` VARCHAR(50) NOT NULL COMMENT '用户ID',
   `config_type` VARCHAR(50) NOT NULL DEFAULT 'call' COMMENT '配置类型: call-通话配置',
-  
+
   -- 外呼方式配置
   `call_method` VARCHAR(20) DEFAULT 'system' COMMENT '外呼方式: system/mobile/voip',
   `line_id` VARCHAR(50) COMMENT '系统外呼线路ID',
   `work_phone` VARCHAR(20) COMMENT '工作手机号',
   `dial_method` VARCHAR(20) DEFAULT 'direct' COMMENT '拨号方式: direct/callback',
-  
+
   -- 用户偏好设置 (新增)
   `prefer_mobile` TINYINT(1) DEFAULT 0 COMMENT '优先使用工作手机',
   `default_line_id` INT COMMENT '默认线路ID',
-  
+
   -- 工作手机配置
   `mobile_config` JSON COMMENT '工作手机配置',
-  
+
   -- 回拨配置
   `callback_config` JSON COMMENT '回拨模式配置',
-  
+
   -- VoIP配置
   `voip_provider` VARCHAR(20) COMMENT 'VoIP服务商: aliyun/tencent/huawei/custom',
   `audio_device` VARCHAR(20) DEFAULT 'default' COMMENT '音频设备',
   `audio_quality` VARCHAR(20) DEFAULT 'standard' COMMENT '音频质量',
-  
+
   -- 云服务商配置
   `aliyun_config` JSON COMMENT '阿里云通信配置',
   `tencent_config` JSON COMMENT '腾讯云通信配置',
   `huawei_config` JSON COMMENT '华为云通信配置',
-  
+
   -- 呼叫参数
   `call_mode` VARCHAR(20) DEFAULT 'manual' COMMENT '呼叫模式',
   `call_interval` INT DEFAULT 30 COMMENT '呼叫间隔(秒)',
@@ -856,17 +893,17 @@ CREATE TABLE `phone_configs` (
   `call_timeout` INT DEFAULT 60 COMMENT '呼叫超时(秒)',
   `enable_recording` TINYINT(1) DEFAULT 1 COMMENT '是否启用录音',
   `auto_follow_up` TINYINT(1) DEFAULT 0 COMMENT '是否自动跟进',
-  
+
   -- 高级设置
   `concurrent_calls` INT DEFAULT 1 COMMENT '并发呼叫数',
   `priority` VARCHAR(20) DEFAULT 'medium' COMMENT '优先级',
   `blacklist_check` TINYINT(1) DEFAULT 1 COMMENT '是否检查黑名单',
   `show_location` TINYINT(1) DEFAULT 1 COMMENT '是否显示归属地',
-  
+
   `is_active` TINYINT(1) DEFAULT 1 COMMENT '是否启用',
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-  
+
   UNIQUE KEY `uk_user_type` (`user_id`, `config_type`),
   INDEX `idx_user_id` (`user_id`),
   `tenant_id` VARCHAR(36) NULL COMMENT '租户ID'
@@ -1032,7 +1069,7 @@ CREATE TABLE `phone_blacklist` (
   `tenant_id` VARCHAR(36) NULL COMMENT '租户ID'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='号码黑名单表';
 
--- 18. 短信模板表
+-- 18. 短信模板表（v1.8.0 更新：status改为VARCHAR, 新增8个审核/预设字段）
 DROP TABLE IF EXISTS `sms_templates`;
 CREATE TABLE `sms_templates` (
   `id` VARCHAR(50) PRIMARY KEY COMMENT '模板ID',
@@ -1045,10 +1082,18 @@ CREATE TABLE `sms_templates` (
   `applicant` VARCHAR(50) NOT NULL COMMENT '申请人ID',
   `applicant_name` VARCHAR(50) COMMENT '申请人姓名',
   `applicant_dept` VARCHAR(100) COMMENT '申请人部门',
-  `status` ENUM('pending', 'approved', 'rejected') DEFAULT 'pending' COMMENT '审核状态',
+  `status` VARCHAR(20) NOT NULL DEFAULT 'pending_admin' COMMENT '审核状态: pending_admin/pending_vendor/active/rejected/withdrawn/deleted',
   `approved_by` VARCHAR(50) COMMENT '审核人ID',
   `approved_at` TIMESTAMP NULL COMMENT '审核时间',
   `is_system` BOOLEAN DEFAULT FALSE COMMENT '是否系统模板',
+  `vendor_template_code` VARCHAR(100) NULL COMMENT '服务商模板CODE',
+  `vendor_status` VARCHAR(20) NULL COMMENT '服务商审核状态',
+  `vendor_submit_at` TIMESTAMP NULL COMMENT '提交服务商时间',
+  `vendor_reject_reason` TEXT NULL COMMENT '服务商拒绝原因',
+  `admin_reviewer` VARCHAR(50) NULL COMMENT '管理后台审核人',
+  `admin_review_at` TIMESTAMP NULL COMMENT '管理后台审核时间',
+  `admin_review_note` TEXT NULL COMMENT '管理后台审核备注/拒绝原因',
+  `is_preset` TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否为后台预设模板: 0=租户自建, 1=预设',
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   INDEX `idx_category` (`category`),
@@ -1058,7 +1103,7 @@ CREATE TABLE `sms_templates` (
   INDEX `idx_sms_templates_tenant_id` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='短信模板表';
 
--- 19. 短信发送记录表
+-- 19. 短信发送记录表（v1.8.0 更新：新增 sender_phone 字段; v1.8.1 更新：新增角色权限+自动发送字段）
 DROP TABLE IF EXISTS `sms_records`;
 CREATE TABLE `sms_records` (
   `id` VARCHAR(50) PRIMARY KEY COMMENT '记录ID',
@@ -1079,14 +1124,95 @@ CREATE TABLE `sms_records` (
   `approved_at` TIMESTAMP NULL COMMENT '审核时间',
   `sent_at` TIMESTAMP NULL COMMENT '发送时间',
   `remark` TEXT COMMENT '备注',
+  `sender_phone` VARCHAR(20) NULL COMMENT '发送人手机号',
+  `sender_user_id` VARCHAR(50) NULL COMMENT '发送人用户ID(角色数据范围过滤)',
+  `sender_department_id` VARCHAR(100) NULL COMMENT '发送人部门ID(部门经理数据范围过滤)',
+  `trigger_source` VARCHAR(20) NULL DEFAULT 'manual' COMMENT '触发来源: manual=手动发送, auto=自动触发',
+  `auto_rule_id` VARCHAR(50) NULL COMMENT '自动发送规则ID(自动触发时关联)',
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   INDEX `idx_template` (`template_id`),
   INDEX `idx_status` (`status`),
   INDEX `idx_applicant` (`applicant`),
   INDEX `idx_sent_at` (`sent_at`),
-  INDEX `idx_sms_records_tenant_id` (`tenant_id`)
+  INDEX `idx_sms_records_tenant_id` (`tenant_id`),
+  INDEX `idx_sms_records_sender_user` (`sender_user_id`),
+  INDEX `idx_sms_records_sender_dept` (`sender_department_id`),
+  INDEX `idx_sms_records_auto_rule` (`auto_rule_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='短信发送记录表';
+
+-- 19.1 短信额度套餐表（v1.8.0 新增）
+DROP TABLE IF EXISTS `sms_quota_packages`;
+CREATE TABLE `sms_quota_packages` (
+  `id` VARCHAR(36) PRIMARY KEY COMMENT '套餐ID',
+  `name` VARCHAR(100) NOT NULL COMMENT '套餐名称',
+  `sms_count` INT NOT NULL COMMENT '短信条数',
+  `price` DECIMAL(10,2) NOT NULL COMMENT '套餐价格(元)',
+  `unit_price` DECIMAL(10,4) DEFAULT 0 COMMENT '单条价格(元)',
+  `description` VARCHAR(500) DEFAULT NULL COMMENT '套餐描述',
+  `sort_order` INT DEFAULT 0 COMMENT '排序权重',
+  `is_enabled` TINYINT DEFAULT 1 COMMENT '是否启用: 1启用 0禁用',
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间'
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='短信额度套餐表';
+
+-- 19.2 短信额度购买订单表（v1.8.0 新增）
+DROP TABLE IF EXISTS `sms_quota_orders`;
+CREATE TABLE `sms_quota_orders` (
+  `id` VARCHAR(36) PRIMARY KEY COMMENT '订单ID',
+  `order_no` VARCHAR(50) NOT NULL UNIQUE COMMENT '订单号',
+  `tenant_id` VARCHAR(36) DEFAULT NULL COMMENT '租户ID',
+  `tenant_name` VARCHAR(200) DEFAULT NULL COMMENT '租户名称',
+  `package_id` VARCHAR(36) DEFAULT NULL COMMENT '套餐ID',
+  `package_name` VARCHAR(100) DEFAULT NULL COMMENT '套餐名称',
+  `sms_count` INT DEFAULT 0 COMMENT '购买短信条数',
+  `amount` DECIMAL(10,2) DEFAULT 0 COMMENT '支付金额',
+  `pay_type` VARCHAR(20) DEFAULT NULL COMMENT '支付方式: wechat/alipay/bank',
+  `status` VARCHAR(20) DEFAULT 'pending' COMMENT '状态: pending/paid/refunded/closed',
+  `qr_code` TEXT DEFAULT NULL COMMENT '支付二维码',
+  `pay_url` TEXT DEFAULT NULL COMMENT '支付链接',
+  `paid_at` DATETIME DEFAULT NULL COMMENT '支付时间',
+  `buyer_id` VARCHAR(36) DEFAULT NULL COMMENT '购买人ID',
+  `buyer_name` VARCHAR(100) DEFAULT NULL COMMENT '购买人姓名',
+  `buyer_source` VARCHAR(20) DEFAULT 'crm' COMMENT '购买来源: crm/member',
+  `refund_amount` DECIMAL(10,2) DEFAULT 0 COMMENT '退款金额',
+  `refund_sms_count` INT DEFAULT 0 COMMENT '退款短信条数',
+  `refund_at` DATETIME DEFAULT NULL COMMENT '退款时间',
+  `refund_reason` VARCHAR(500) DEFAULT NULL COMMENT '退款原因',
+  `refunded_by` VARCHAR(100) DEFAULT NULL COMMENT '退款操作人',
+  `expire_time` DATETIME DEFAULT NULL COMMENT '订单过期时间',
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  INDEX `idx_sms_quota_orders_tenant_id` (`tenant_id`),
+  INDEX `idx_sms_quota_orders_order_no` (`order_no`),
+  INDEX `idx_sms_quota_orders_status` (`status`),
+  INDEX `idx_sms_quota_orders_paid_at` (`paid_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='短信额度购买订单表';
+
+-- 19.3 短信自动发送规则表（v1.8.1 新增）
+DROP TABLE IF EXISTS `sms_auto_send_rules`;
+CREATE TABLE `sms_auto_send_rules` (
+  `id` VARCHAR(50) PRIMARY KEY COMMENT '规则ID',
+  `tenant_id` VARCHAR(36) NULL COMMENT '租户ID',
+  `name` VARCHAR(100) NOT NULL COMMENT '规则名称',
+  `template_id` VARCHAR(50) NOT NULL COMMENT '关联模板ID',
+  `template_name` VARCHAR(100) NULL COMMENT '模板名称(冗余)',
+  `trigger_event` VARCHAR(50) NOT NULL COMMENT '触发事件类型: order_shipped/order_confirmed/order_paid/order_delivered/customer_created/follow_up_remind/payment_remind/birthday_wish',
+  `effective_departments` JSON NULL COMMENT '生效部门IDs(JSON数组,空=全部部门)',
+  `time_range_config` JSON NULL COMMENT '时间范围配置(JSON: workdaysOnly/startHour/endHour/sendImmediately)',
+  `enabled` TINYINT DEFAULT 1 COMMENT '是否启用: 1启用 0禁用',
+  `created_by` VARCHAR(50) NULL COMMENT '创建人ID',
+  `created_by_name` VARCHAR(50) NULL COMMENT '创建人姓名',
+  `stats_sent_count` INT DEFAULT 0 COMMENT '发送成功总数',
+  `stats_fail_count` INT DEFAULT 0 COMMENT '发送失败总数',
+  `last_triggered_at` TIMESTAMP NULL COMMENT '最后触发时间',
+  `description` TEXT NULL COMMENT '规则描述',
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  INDEX `idx_sms_auto_send_rules_tenant_id` (`tenant_id`),
+  INDEX `idx_sms_auto_send_rules_trigger_event` (`trigger_event`),
+  INDEX `idx_sms_auto_send_rules_enabled` (`enabled`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='短信自动发送规则表';
 
 -- 20. 消息通知表
 DROP TABLE IF EXISTS `notifications`;
@@ -1607,11 +1733,15 @@ CREATE TABLE `order_status_history` (
   `notes` TEXT NULL COMMENT '状态变更备注',
   `operatorId` INT NULL COMMENT '操作人ID',
   `operatorName` VARCHAR(50) NULL COMMENT '操作人姓名',
+  `operator_department` VARCHAR(100) NULL COMMENT '操作人部门',
+  `action_type` VARCHAR(50) NULL COMMENT '操作类型：create/edit/submit_audit/audit_approve/audit_reject/cancel_approve/cancel_reject/status_change',
+  `change_detail` TEXT NULL COMMENT '变更详情JSON',
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   INDEX `idx_order` (`orderId`),
   INDEX `idx_status` (`status`),
   INDEX `idx_operator` (`operatorId`),
   INDEX `idx_created_at` (`created_at`),
+  INDEX `idx_action_type` (`action_type`),
   INDEX `idx_order_status_history_tenant_id` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='订单状态历史表';
 
@@ -1744,17 +1874,17 @@ CREATE TABLE `improvement_goals` (
 -- =============================================
 
 -- 插入默认部门
-INSERT INTO `departments` (`id`, `name`, `description`, `parent_id`, `level`, `sort_order`, `member_count`) VALUES 
+INSERT INTO `departments` (`id`, `name`, `description`, `parent_id`, `level`, `sort_order`, `member_count`) VALUES
 ('dept_001', '系统管理部', '系统管理和维护', NULL, 1, 1, 2),
 ('dept_002', '销售部', '负责产品销售和客户维护', NULL, 1, 2, 2),
 ('dept_003', '客服部', '负责客户服务和售后支持', NULL, 1, 3, 1);
 
 -- 插入默认角色
-INSERT INTO `roles` (`id`, `name`, `code`, `description`, `permissions`, `user_count`, `role_type`, `is_template`) VALUES 
+INSERT INTO `roles` (`id`, `name`, `code`, `description`, `permissions`, `user_count`, `role_type`, `is_template`) VALUES
 ('super_admin', '超级管理员', 'super_admin', '拥有系统所有权限', JSON_ARRAY('*'), 1, 'system', FALSE),
 ('admin', '管理员', 'admin', '拥有系统所有权限', JSON_ARRAY('*'), 1, 'system', FALSE),
-('department_manager', '部门经理', 'department_manager', '管理本部门业务和团队', JSON_ARRAY('dashboard', 'dashboard.view', 'dashboard.export', 'customer', 'customer.list', 'customer.list.view', 'customer.list.edit', 'customer.list.export', 'customer.list.import', 'customer.add', 'customer.add.create', 'order', 'order.list', 'order.list.view', 'order.list.edit', 'order.add', 'order.add.create', 'communication', 'communication.call', 'communication.call.view', 'communication.call.make', 'communication.call.record', 'performance', 'performance.personal', 'performance.personal.view', 'performance.team', 'performance.team.view', 'performance.analysis', 'performance.analysis.view', 'performance.share', 'performance.share.view', 'logistics', 'logistics.list', 'logistics.list.view', 'logistics.track', 'logistics.track.view', 'aftersale', 'aftersale.list', 'aftersale.list.view', 'aftersale.add', 'aftersale.add.create', 'aftersale.data', 'aftersale.data.view', 'data', 'data.search', 'data.search.basic', 'data.search.advanced', 'finance', 'finance.performance_data', 'finance.performance_data.view', 'finance.cod_application', 'finance.cod_application.view', 'finance.cod_application.create'), 1, 'system', FALSE),
-('sales_staff', '销售员', 'sales_staff', '专注于客户开发和订单管理', JSON_ARRAY('dashboard', 'dashboard.view', 'customer', 'customer.list', 'customer.list.view', 'customer.add', 'customer.add.create', 'order', 'order.list', 'order.list.view', 'order.list.edit', 'order.add', 'order.add.create', 'communication', 'communication.call', 'communication.call.view', 'communication.call.make', 'performance', 'performance.personal', 'performance.personal.view', 'performance.team', 'performance.team.view', 'logistics', 'logistics.list', 'logistics.list.view', 'logistics.track', 'logistics.track.view', 'aftersale', 'aftersale.list', 'aftersale.list.view', 'aftersale.add', 'aftersale.add.create', 'data', 'data.search', 'data.search.basic', 'finance', 'finance.performance_data', 'finance.performance_data.view', 'finance.cod_application', 'finance.cod_application.view', 'finance.cod_application.create'), 1, 'system', FALSE),
+('department_manager', '部门经理', 'department_manager', '管理本部门业务和团队', JSON_ARRAY('dashboard', 'dashboard.view', 'dashboard.export', 'customer', 'customer.list', 'customer.list.view', 'customer.list.edit', 'customer.list.export', 'customer.list.import', 'customer.add', 'customer.add.create', 'order', 'order.list', 'order.list.view', 'order.list.edit', 'order.add', 'order.add.create', 'communication', 'communication.call', 'communication.call.view', 'communication.call.make', 'communication.call.record', 'performance', 'performance.personal', 'performance.personal.view', 'performance.team', 'performance.team.view', 'performance.analysis', 'performance.analysis.view', 'performance.share', 'performance.share.view', 'logistics', 'logistics.list', 'logistics.list.view', 'logistics.track', 'logistics.track.view', 'aftersale', 'aftersale.list', 'aftersale.list.view', 'aftersale.add', 'aftersale.add.create', 'aftersale.data', 'aftersale.data.view', 'data', 'data.search', 'data.search.basic', 'data.search.advanced', 'finance', 'finance.performance_data', 'finance.performance_data.view', 'finance.cod_application', 'finance.cod_application.view', 'finance.cod_application.create', 'wecom', 'wecom.customer', 'wecom.customer.view', 'wecom.customer_group', 'wecom.customer_group.view', 'wecom.chat_archive', 'wecom.chat_archive.view'), 1, 'system', FALSE),
+('sales_staff', '销售员', 'sales_staff', '专注于客户开发和订单管理', JSON_ARRAY('dashboard', 'dashboard.view', 'customer', 'customer.list', 'customer.list.view', 'customer.add', 'customer.add.create', 'order', 'order.list', 'order.list.view', 'order.list.edit', 'order.add', 'order.add.create', 'communication', 'communication.call', 'communication.call.view', 'communication.call.make', 'performance', 'performance.personal', 'performance.personal.view', 'performance.team', 'performance.team.view', 'logistics', 'logistics.list', 'logistics.list.view', 'logistics.track', 'logistics.track.view', 'aftersale', 'aftersale.list', 'aftersale.list.view', 'aftersale.add', 'aftersale.add.create', 'data', 'data.search', 'data.search.basic', 'finance', 'finance.performance_data', 'finance.performance_data.view', 'finance.cod_application', 'finance.cod_application.view', 'finance.cod_application.create', 'wecom', 'wecom.customer', 'wecom.customer.view', 'wecom.customer_group', 'wecom.customer_group.view', 'wecom.chat_archive', 'wecom.chat_archive.view'), 1, 'system', FALSE),
 ('customer_service', '客服', 'customer_service', '处理订单、物流和售后服务', JSON_ARRAY('dashboard', 'dashboard.view', 'order', 'order.audit', 'order.audit.view', 'order.audit.approve', 'order.audit.reject', 'logistics', 'logistics.list', 'logistics.list.view', 'logistics.shipping', 'logistics.shipping.view', 'logistics.shipping.create', 'logistics.track', 'logistics.track.view', 'logistics.track.update', 'logistics.status', 'logistics.status.view', 'logistics.status.update', 'aftersale', 'aftersale.list', 'aftersale.list.view', 'aftersale.add', 'aftersale.add.create', 'aftersale.data', 'aftersale.data.view', 'data', 'data.list', 'data.list.view', 'data.search', 'data.search.basic', 'data.search.advanced'), 1, 'system', FALSE);
 
 -- 插入默认用户（不再插入角色模板）
@@ -1770,7 +1900,7 @@ INSERT INTO `system_configs` (`configKey`, `configValue`, `valueType`, `configGr
 ON DUPLICATE KEY UPDATE `updatedAt` = CURRENT_TIMESTAMP;
 
 -- 插入预设用户（密码已加密，实际密码见文档）
-INSERT INTO `users` (`id`, `username`, `password`, `name`, `email`, `phone`, `role`, `role_id`, `department_id`, `department_name`, `position`, `status`) VALUES 
+INSERT INTO `users` (`id`, `username`, `password`, `name`, `email`, `phone`, `role`, `role_id`, `department_id`, `department_name`, `position`, `status`) VALUES
 ('superadmin', 'superadmin', 'super123456', '超级管理员', 'superadmin@example.com', '13800138000', 'super_admin', 'super_admin', 'dept_001', '系统管理部', '超级管理员', 'active'),
 ('admin', 'admin', 'admin123', '系统管理员', 'admin@example.com', '13800000000', 'admin', 'admin', 'dept_001', '管理部', '系统管理员', 'active'),
 ('manager_001', 'manager', 'manager123', '张经理', 'manager@example.com', '13800000001', 'department_manager', 'department_manager', 'dept_002', '销售部', '部门经理', 'active'),
@@ -1783,14 +1913,14 @@ UPDATE `departments` SET `member_count` = 2 WHERE `id` = 'dept_002';
 UPDATE `departments` SET `member_count` = 1 WHERE `id` = 'dept_003';
 
 -- 插入默认产品分类
-INSERT INTO `product_categories` (`id`, `name`, `description`, `sort_order`) VALUES 
+INSERT INTO `product_categories` (`id`, `name`, `description`, `sort_order`) VALUES
 ('cat_001', '默认分类', '系统默认产品分类', 1),
 ('cat_002', '电子产品', '各类电子设备和配件', 2),
 ('cat_003', '办公用品', '办公室日常用品', 3),
 ('cat_004', '服装鞋帽', '各类服装和鞋帽产品', 4);
 
 -- 插入系统配置（基本设置）
-INSERT INTO `system_configs` (`configKey`, `configValue`, `valueType`, `configGroup`, `description`, `isEnabled`, `isSystem`, `sortOrder`) VALUES 
+INSERT INTO `system_configs` (`configKey`, `configValue`, `valueType`, `configGroup`, `description`, `isEnabled`, `isSystem`, `sortOrder`) VALUES
 ('systemName', '云客CRM客户管理系统', 'string', 'basic_settings', '系统名称', TRUE, TRUE, 1),
 ('systemVersion', '2.9.0', 'string', 'basic_settings', '系统版本', TRUE, TRUE, 2),
 ('companyName', '广州仙狐网络科技有限公司', 'string', 'basic_settings', '公司名称', TRUE, TRUE, 3),
@@ -1804,7 +1934,7 @@ INSERT INTO `system_configs` (`configKey`, `configValue`, `valueType`, `configGr
 ('contactQRCodeLabel', '扫码联系', 'string', 'basic_settings', '二维码标签', TRUE, TRUE, 11);
 
 -- 插入系统配置（安全设置）
-INSERT INTO `system_configs` (`configKey`, `configValue`, `valueType`, `configGroup`, `description`, `isEnabled`, `isSystem`, `sortOrder`) VALUES 
+INSERT INTO `system_configs` (`configKey`, `configValue`, `valueType`, `configGroup`, `description`, `isEnabled`, `isSystem`, `sortOrder`) VALUES
 ('passwordMinLength', '6', 'number', 'security_settings', '密码最小长度', TRUE, TRUE, 1),
 ('passwordComplexity', '[]', 'json', 'security_settings', '密码复杂度要求', TRUE, TRUE, 2),
 ('passwordExpireDays', '0', 'number', 'security_settings', '密码有效期(天)', TRUE, TRUE, 3),
@@ -1816,7 +1946,7 @@ INSERT INTO `system_configs` (`configKey`, `configValue`, `valueType`, `configGr
 ('ipWhitelist', '', 'text', 'security_settings', 'IP白名单', TRUE, TRUE, 9);
 
 -- 插入系统配置（通话设置）
-INSERT INTO `system_configs` (`configKey`, `configValue`, `valueType`, `configGroup`, `description`, `isEnabled`, `isSystem`, `sortOrder`) VALUES 
+INSERT INTO `system_configs` (`configKey`, `configValue`, `valueType`, `configGroup`, `description`, `isEnabled`, `isSystem`, `sortOrder`) VALUES
 ('sipServer', '', 'string', 'call_settings', 'SIP服务器地址', TRUE, TRUE, 1),
 ('sipPort', '5060', 'number', 'call_settings', 'SIP端口', TRUE, TRUE, 2),
 ('sipUsername', '', 'string', 'call_settings', 'SIP用户名', TRUE, TRUE, 3),
@@ -1838,7 +1968,7 @@ INSERT INTO `system_configs` (`configKey`, `configValue`, `valueType`, `configGr
 ('allowedPrefixes', '', 'text', 'call_settings', '允许的号码前缀', TRUE, TRUE, 19);
 
 -- 插入系统配置（邮件设置）
-INSERT INTO `system_configs` (`configKey`, `configValue`, `valueType`, `configGroup`, `description`, `isEnabled`, `isSystem`, `sortOrder`) VALUES 
+INSERT INTO `system_configs` (`configKey`, `configValue`, `valueType`, `configGroup`, `description`, `isEnabled`, `isSystem`, `sortOrder`) VALUES
 ('smtpHost', '', 'string', 'email_settings', 'SMTP服务器地址', TRUE, TRUE, 1),
 ('smtpPort', '587', 'number', 'email_settings', 'SMTP端口', TRUE, TRUE, 2),
 ('senderEmail', '', 'string', 'email_settings', '发件人邮箱', TRUE, TRUE, 3),
@@ -1849,7 +1979,7 @@ INSERT INTO `system_configs` (`configKey`, `configValue`, `valueType`, `configGr
 ('testEmail', '', 'string', 'email_settings', '测试邮箱', TRUE, TRUE, 8);
 
 -- 插入系统配置（短信设置）
-INSERT INTO `system_configs` (`configKey`, `configValue`, `valueType`, `configGroup`, `description`, `isEnabled`, `isSystem`, `sortOrder`) VALUES 
+INSERT INTO `system_configs` (`configKey`, `configValue`, `valueType`, `configGroup`, `description`, `isEnabled`, `isSystem`, `sortOrder`) VALUES
 ('provider', 'aliyun', 'string', 'sms_settings', '短信服务商', TRUE, TRUE, 1),
 ('accessKey', '', 'string', 'sms_settings', 'AccessKey', TRUE, TRUE, 2),
 ('secretKey', '', 'string', 'sms_settings', 'SecretKey', TRUE, TRUE, 3),
@@ -1861,7 +1991,7 @@ INSERT INTO `system_configs` (`configKey`, `configValue`, `valueType`, `configGr
 ('testPhone', '', 'string', 'sms_settings', '测试手机号', TRUE, TRUE, 9);
 
 -- 插入系统配置（存储设置）
-INSERT INTO `system_configs` (`configKey`, `configValue`, `valueType`, `configGroup`, `description`, `isEnabled`, `isSystem`, `sortOrder`) VALUES 
+INSERT INTO `system_configs` (`configKey`, `configValue`, `valueType`, `configGroup`, `description`, `isEnabled`, `isSystem`, `sortOrder`) VALUES
 ('storageType', 'local', 'string', 'storage_settings', '存储类型', TRUE, TRUE, 1),
 ('localPath', './uploads', 'string', 'storage_settings', '本地存储路径', TRUE, TRUE, 2),
 ('localDomain', '', 'string', 'storage_settings', '访问域名', TRUE, TRUE, 3),
@@ -1874,7 +2004,7 @@ INSERT INTO `system_configs` (`configKey`, `configValue`, `valueType`, `configGr
 ('allowedTypes', 'jpg,png,gif,pdf,doc,docx,xls,xlsx', 'string', 'storage_settings', '允许的文件类型', TRUE, TRUE, 10);
 
 -- 插入系统配置（商品设置）
-INSERT INTO `system_configs` (`configKey`, `configValue`, `valueType`, `configGroup`, `description`, `isEnabled`, `isSystem`, `sortOrder`) VALUES 
+INSERT INTO `system_configs` (`configKey`, `configValue`, `valueType`, `configGroup`, `description`, `isEnabled`, `isSystem`, `sortOrder`) VALUES
 ('maxDiscountPercent', '50', 'number', 'product_settings', '全局最大优惠比例', TRUE, TRUE, 1),
 ('adminMaxDiscount', '50', 'number', 'product_settings', '管理员最大优惠', TRUE, TRUE, 2),
 ('managerMaxDiscount', '30', 'number', 'product_settings', '经理最大优惠', TRUE, TRUE, 3),
@@ -1898,19 +2028,19 @@ INSERT INTO `system_configs` (`configKey`, `configValue`, `valueType`, `configGr
 ('enablePermissionControl', 'true', 'boolean', 'product_settings', '启用权限控制', TRUE, TRUE, 21);
 
 -- 插入系统配置（订单设置）
-INSERT INTO `system_configs` (`configKey`, `configValue`, `valueType`, `configGroup`, `description`, `isEnabled`, `isSystem`, `sortOrder`) VALUES 
+INSERT INTO `system_configs` (`configKey`, `configValue`, `valueType`, `configGroup`, `description`, `isEnabled`, `isSystem`, `sortOrder`) VALUES
 ('orderTransferMode', 'delayed', 'string', 'order_settings', '订单流转模式：immediate-立即流转，delayed-延迟流转', TRUE, TRUE, 1),
 ('orderTransferDelayMinutes', '3', 'number', 'order_settings', '订单流转延迟时间（分钟）', TRUE, TRUE, 2);
 
 -- 插入系统配置（数据备份设置）
-INSERT INTO `system_configs` (`configKey`, `configValue`, `valueType`, `configGroup`, `description`, `isEnabled`, `isSystem`, `sortOrder`) VALUES 
+INSERT INTO `system_configs` (`configKey`, `configValue`, `valueType`, `configGroup`, `description`, `isEnabled`, `isSystem`, `sortOrder`) VALUES
 ('autoBackupEnabled', 'false', 'boolean', 'backup_settings', '自动备份', TRUE, TRUE, 1),
 ('backupFrequency', 'daily', 'string', 'backup_settings', '备份频率', TRUE, TRUE, 2),
 ('retentionDays', '30', 'number', 'backup_settings', '保留天数', TRUE, TRUE, 3),
 ('compression', 'true', 'boolean', 'backup_settings', '压缩备份', TRUE, TRUE, 4);
 
 -- 插入系统配置（用户协议设置）
-INSERT INTO `system_configs` (`configKey`, `configValue`, `valueType`, `configGroup`, `description`, `isEnabled`, `isSystem`, `sortOrder`) VALUES 
+INSERT INTO `system_configs` (`configKey`, `configValue`, `valueType`, `configGroup`, `description`, `isEnabled`, `isSystem`, `sortOrder`) VALUES
 ('userAgreementEnabled', 'true', 'boolean', 'agreement_settings', '用户协议启用', TRUE, TRUE, 1),
 ('userAgreementTitle', '用户服务协议', 'string', 'agreement_settings', '用户协议标题', TRUE, TRUE, 2),
 ('userAgreementContent', '', 'text', 'agreement_settings', '用户协议内容', TRUE, TRUE, 3),
@@ -1919,7 +2049,7 @@ INSERT INTO `system_configs` (`configKey`, `configValue`, `valueType`, `configGr
 ('privacyAgreementContent', '', 'text', 'agreement_settings', '隐私协议内容', TRUE, TRUE, 6);
 
 -- 插入系统配置（通用设置）
-INSERT INTO `system_configs` (`configKey`, `configValue`, `valueType`, `configGroup`, `description`, `isEnabled`, `isSystem`, `sortOrder`) VALUES 
+INSERT INTO `system_configs` (`configKey`, `configValue`, `valueType`, `configGroup`, `description`, `isEnabled`, `isSystem`, `sortOrder`) VALUES
 ('maxUploadSize', '10485760', 'number', 'general', '最大上传文件大小(字节)', TRUE, TRUE, 1),
 ('enableEmailNotification', 'true', 'boolean', 'general', '启用邮件通知', TRUE, TRUE, 2),
 ('enableSmsNotification', 'false', 'boolean', 'general', '启用短信通知', TRUE, TRUE, 3);
@@ -1961,6 +2091,42 @@ ON DUPLICATE KEY UPDATE
   `enabled` = 1,
   `updated_at` = CURRENT_TIMESTAMP;
 
+-- 插入默认短信额度套餐数据（v1.8.0 新增）
+INSERT INTO `sms_quota_packages` (`id`, `name`, `sms_count`, `price`, `unit_price`, `description`, `sort_order`, `is_enabled`) VALUES
+('pkg-sms-001', '体验包', 100, 5.00, 0.0500, '适合小规模测试使用', 1, 1),
+('pkg-sms-002', '基础包', 500, 22.50, 0.0450, '适合小团队日常使用', 2, 1),
+('pkg-sms-003', '标准包', 2000, 80.00, 0.0400, '适合中型企业日常营销', 3, 1),
+('pkg-sms-004', '旗舰包', 10000, 350.00, 0.0350, '适合大批量短信营销推广', 4, 1)
+ON DUPLICATE KEY UPDATE
+  `name` = VALUES(`name`),
+  `sms_count` = VALUES(`sms_count`),
+  `price` = VALUES(`price`),
+  `unit_price` = VALUES(`unit_price`),
+  `updated_at` = CURRENT_TIMESTAMP;
+
+-- 预设短信模板（全员全租户可用，is_preset=1, tenant_id=NULL）
+INSERT INTO `sms_templates` (`id`, `name`, `category`, `content`, `variables`, `description`, `status`, `is_preset`, `tenant_id`, `applicant`, `applicant_name`, `applicant_dept`, `created_at`, `updated_at`) VALUES
+(UUID(), '发货通知', '物流通知', '【{companyName}】尊敬的{customerName}，您的订单{orderNo}已发货，快递：{expressCompany}，单号：{trackingNo}，请留意查收。如有疑问请联系客服{servicePhone}。', '["companyName","customerName","orderNo","expressCompany","trackingNo","servicePhone"]', '订单发货后通知客户物流信息', 'active', 1, NULL, 'system', '系统预设', '平台运营', NOW(), NOW()),
+(UUID(), '签收通知', '物流通知', '【{companyName}】尊敬的{customerName}，您的订单{orderNo}已签收。如有任何问题，请在7天内联系客服{servicePhone}，祝您使用愉快！', '["companyName","customerName","orderNo","servicePhone"]', '快递签收后通知客户确认收货', 'active', 1, NULL, 'system', '系统预设', '平台运营', NOW(), NOW()),
+(UUID(), '退款成功通知', '订单通知', '【{companyName}】尊敬的{customerName}，您的退款申请已处理完成，退款金额¥{refundAmount}将在1-3个工作日退回原支付账户。订单号：{orderNo}。', '["companyName","customerName","refundAmount","orderNo"]', '退款审核通过后通知客户', 'active', 1, NULL, 'system', '系统预设', '平台运营', NOW(), NOW()),
+(UUID(), '订单确认通知', '订单通知', '【{companyName}】尊敬的{customerName}，您的订单{orderNo}已确认，金额¥{amount}，我们将尽快为您安排发货，预计{deliveryDate}前发出。', '["companyName","customerName","orderNo","amount","deliveryDate"]', '订单确认后通知客户', 'active', 1, NULL, 'system', '系统预设', '平台运营', NOW(), NOW()),
+(UUID(), '付款提醒', '订单通知', '【{companyName}】尊敬的{customerName}，您的订单{orderNo}（¥{amount}）尚未支付，请于{payDeadline}前完成付款，逾期订单将自动取消。', '["companyName","customerName","orderNo","amount","payDeadline"]', '提醒客户尽快完成未支付订单', 'active', 1, NULL, 'system', '系统预设', '平台运营', NOW(), NOW()),
+(UUID(), '售后处理完成通知', '售后服务', '【{companyName}】尊敬的{customerName}，您的售后工单{ticketNo}已处理完成，处理方案：{solution}。如有疑问请致电{servicePhone}。', '["companyName","customerName","ticketNo","solution","servicePhone"]', '售后工单处理完毕后通知客户', 'active', 1, NULL, 'system', '系统预设', '平台运营', NOW(), NOW()),
+(UUID(), '售后受理通知', '售后服务', '【{companyName}】尊敬的{customerName}，您的售后申请已受理，工单号：{ticketNo}，我们将在{processTime}内为您处理，请耐心等待。', '["companyName","customerName","ticketNo","processTime"]', '售后申请提交后通知客户已受理', 'active', 1, NULL, 'system', '系统预设', '平台运营', NOW(), NOW()),
+(UUID(), '服务电话预通知', '电话服务', '【{companyName}】尊敬的{customerName}，我司客服{staffName}将于{callTime}致电为您服务，届时来电号码{callerPhone}，请您留意接听。', '["companyName","customerName","staffName","callTime","callerPhone"]', '提前通知客户即将有服务电话，提高接听率', 'active', 1, NULL, 'system', '系统预设', '平台运营', NOW(), NOW()),
+(UUID(), '未接来电回拨提醒', '电话服务', '【{companyName}】尊敬的{customerName}，我们刚致电给您未能接通，如看到来电{callerPhone}请回拨，或联系客服{servicePhone}，我们将竭诚为您服务。', '["companyName","customerName","callerPhone","servicePhone"]', '电话未接通时发送短信提醒客户回拨', 'active', 1, NULL, 'system', '系统预设', '平台运营', NOW(), NOW()),
+(UUID(), '生日祝福', '客户关怀', '【{companyName}】亲爱的{customerName}，今天是您的生日！祝您生日快乐！为您送上{couponAmount}元生日专属优惠券，券码：{couponCode}，有效期至{couponExpiry}。回T退订', '["companyName","customerName","couponAmount","couponCode","couponExpiry"]', '客户生日当天发送祝福及优惠券', 'active', 1, NULL, 'system', '系统预设', '平台运营', NOW(), NOW()),
+(UUID(), '活动营销通知', '营销推广', '【{companyName}】尊敬的{customerName}，{activityName}火热进行中！{activityContent}，活动时间{startDate}至{endDate}，不要错过哦！详询{servicePhone}。回T退订', '["companyName","customerName","activityName","activityContent","startDate","endDate","servicePhone"]', '通知客户参与促销活动', 'active', 1, NULL, 'system', '系统预设', '平台运营', NOW(), NOW()),
+(UUID(), '活动福利通知', '营销推广', '【{companyName}】尊敬的{customerName}，专属福利来啦！{benefitContent}，限时领取截止{endDate}，点击{activityLink}立即参与！回T退订', '["companyName","customerName","benefitContent","endDate","activityLink"]', '向客户推送专属福利通知', 'active', 1, NULL, 'system', '系统预设', '平台运营', NOW(), NOW()),
+(UUID(), '商品折扣通知', '营销推广', '【{companyName}】尊敬的{customerName}，您关注的{productName}限时{discount}折优惠！原价¥{originalPrice}，现价仅¥{currentPrice}，活动截止{endDate}，先到先得！回T退订', '["companyName","customerName","productName","discount","originalPrice","currentPrice","endDate"]', '通知客户关注商品的折扣信息', 'active', 1, NULL, 'system', '系统预设', '平台运营', NOW(), NOW()),
+(UUID(), '新品上架通知', '营销推广', '【{companyName}】尊敬的{customerName}，新品{productName}已上架！{productDesc}，首发价¥{price}，详询{servicePhone}。回T退订', '["companyName","customerName","productName","productDesc","price","servicePhone"]', '新品上架时通知目标客户', 'active', 1, NULL, 'system', '系统预设', '平台运营', NOW(), NOW()),
+(UUID(), '客户回访提醒', '客户关怀', '【{companyName}】尊敬的{customerName}，感谢您的信赖！为了更好地服务您，我们的客服{staffName}将于近日回访，请您留意来电{callerPhone}。', '["companyName","customerName","staffName","callerPhone"]', '定期客户回访前发送预通知', 'active', 1, NULL, 'system', '系统预设', '平台运营', NOW(), NOW()),
+(UUID(), '客户到期续费提醒', '客户关怀', '【{companyName}】尊敬的{customerName}，您的{serviceName}将于{expireDate}到期，为确保服务不中断，请及时续费。续费咨询{servicePhone}。', '["companyName","customerName","serviceName","expireDate","servicePhone"]', '服务即将到期时提醒客户续费', 'active', 1, NULL, 'system', '系统预设', '平台运营', NOW(), NOW()),
+(UUID(), '预约确认通知', '客户关怀', '【{companyName}】尊敬的{customerName}，您已成功预约{serviceName}，时间：{appointmentDate} {appointmentTime}，地点：{location}。如需改约请联系{servicePhone}。', '["companyName","customerName","serviceName","appointmentDate","appointmentTime","location","servicePhone"]', '服务预约确认通知', 'active', 1, NULL, 'system', '系统预设', '平台运营', NOW(), NOW()),
+(UUID(), '验证码', '系统通知', '【{companyName}】您的验证码是{code}，{minutes}分钟内有效，请勿告知他人。如非本人操作请忽略。', '["companyName","code","minutes"]', '系统验证码发送', 'active', 1, NULL, 'system', '系统预设', '平台运营', NOW(), NOW()),
+(UUID(), '账户异常提醒', '系统通知', '【{companyName}】尊敬的{customerName}，您的账户在{loginTime}存在异常操作，如非本人操作请立即修改密码或联系客服{servicePhone}。', '["companyName","customerName","loginTime","servicePhone"]', '账户异常登录时通知客户', 'active', 1, NULL, 'system', '系统预设', '平台运营', NOW(), NOW())
+ON DUPLICATE KEY UPDATE `name` = VALUES(`name`), `updated_at` = NOW();
+
 -- 30. 部门下单限制配置表
 DROP TABLE IF EXISTS `department_order_limits`;
 CREATE TABLE `department_order_limits` (
@@ -1968,23 +2134,23 @@ CREATE TABLE `department_order_limits` (
   `tenant_id` VARCHAR(36) NULL COMMENT '租户ID',
   `department_id` VARCHAR(50) NOT NULL COMMENT '部门ID',
   `department_name` VARCHAR(100) COMMENT '部门名称（冗余字段）',
-  
+
   -- 下单次数限制
   `order_count_enabled` BOOLEAN DEFAULT FALSE COMMENT '是否启用下单次数限制',
   `max_order_count` INT DEFAULT 0 COMMENT '同一客户最大下单次数（0表示无限制）',
-  
+
   -- 单笔金额限制
   `single_amount_enabled` BOOLEAN DEFAULT FALSE COMMENT '是否启用单笔金额限制',
   `max_single_amount` DECIMAL(12,2) DEFAULT 0 COMMENT '单笔订单最大金额（0表示无限制）',
-  
+
   -- 累计金额限制
   `total_amount_enabled` BOOLEAN DEFAULT FALSE COMMENT '是否启用累计金额限制',
   `max_total_amount` DECIMAL(12,2) DEFAULT 0 COMMENT '同一客户累计最大金额（0表示无限制）',
-  
+
   -- 配置状态
   `is_enabled` BOOLEAN DEFAULT TRUE COMMENT '配置是否启用',
   `remark` TEXT COMMENT '备注说明',
-  
+
   -- 审计字段
   `created_by` VARCHAR(50) COMMENT '创建人ID',
   `created_by_name` VARCHAR(50) COMMENT '创建人姓名',
@@ -1992,7 +2158,7 @@ CREATE TABLE `department_order_limits` (
   `updated_by_name` VARCHAR(50) COMMENT '更新人姓名',
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-  
+
   -- 索引（同一租户同一部门唯一）
   UNIQUE INDEX `idx_tenant_department` (`tenant_id`, `department_id`),
   INDEX `idx_tenant_id` (`tenant_id`),
@@ -2258,7 +2424,7 @@ CREATE TABLE `message_cleanup_history` (
 DROP TABLE IF EXISTS `global_call_config`;
 CREATE TABLE `global_call_config` (
   `id` INT AUTO_INCREMENT PRIMARY KEY,
-  `config_key` VARCHAR(50) NOT NULL UNIQUE COMMENT '配置键',
+  `config_key` VARCHAR(50) NOT NULL COMMENT '配置键',
   `config_value` TEXT COMMENT '配置值',
   `config_type` VARCHAR(20) DEFAULT 'string' COMMENT '配置类型: string/json/number/boolean',
   `description` VARCHAR(255) COMMENT '配置说明',
@@ -2266,6 +2432,7 @@ CREATE TABLE `global_call_config` (
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   `tenant_id` VARCHAR(36) NULL COMMENT '租户ID',
+  UNIQUE INDEX `idx_config_key_tenant` (`config_key`, `tenant_id`),
   INDEX `idx_global_call_config_tenant` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='全局外呼配置表';
 
@@ -2350,31 +2517,31 @@ CREATE TABLE `device_bind_logs` (
 
 -- 修复图片路径：将 /api/v1/uploads/ 修改为 /uploads/
 -- 说明：后端静态文件服务配置的是 /uploads 路径，需要确保数据库中存储的图片路径一致
-UPDATE system_configs 
+UPDATE system_configs
 SET configValue = REPLACE(configValue, '/api/v1/uploads/', '/uploads/'),
     updatedAt = NOW()
 WHERE configValue LIKE '%/api/v1/uploads/%';
 
 -- 修复用户头像路径
-UPDATE users 
+UPDATE users
 SET avatar = REPLACE(avatar, '/api/v1/uploads/', '/uploads/'),
     updated_at = NOW()
 WHERE avatar LIKE '%/api/v1/uploads/%';
 
 -- 修复产品图片路径
-UPDATE products 
+UPDATE products
 SET images = REPLACE(images, '/api/v1/uploads/', '/uploads/'),
     updated_at = NOW()
 WHERE images LIKE '%/api/v1/uploads/%';
 
 -- 修复订单定金截图路径
-UPDATE orders 
+UPDATE orders
 SET deposit_screenshots = REPLACE(deposit_screenshots, '/api/v1/uploads/', '/uploads/'),
     updated_at = NOW()
 WHERE deposit_screenshots LIKE '%/api/v1/uploads/%';
 
 -- 修复售后服务附件路径
-UPDATE after_sales_services 
+UPDATE after_sales_services
 SET attachments = REPLACE(attachments, '/api/v1/uploads/', '/uploads/'),
     updated_at = NOW()
 WHERE attachments LIKE '%/api/v1/uploads/%';
@@ -2383,14 +2550,14 @@ WHERE attachments LIKE '%/api/v1/uploads/%';
 -- Nginx 配置说明（宝塔面板）
 -- =============================================
 -- 需要在 Nginx 配置中添加以下规则，让静态文件可以正常访问：
--- 
+--
 -- location /uploads {
 --     alias /www/wwwroot/你的项目目录/backend/uploads;
 --     expires 30d;
 --     add_header Cache-Control "public, immutable";
 --     add_header Access-Control-Allow-Origin *;
 -- }
--- 
+--
 -- location /api/v1/uploads {
 --     alias /www/wwwroot/你的项目目录/backend/uploads;
 --     expires 30d;
@@ -2506,10 +2673,10 @@ INSERT INTO `follow_up_records` (`id`, `call_id`, `customer_id`, `customer_name`
 ON DUPLICATE KEY UPDATE `updated_at` = CURRENT_TIMESTAMP;
 
 -- 外呼线路默认数据
-INSERT INTO `call_lines` (`id`, `name`, `provider`, `caller_number`, `status`, `max_concurrent`, `daily_limit`, `sort_order`, `remark`) VALUES
-('line_default_001', '默认线路', 'system', '', 'active', 10, 1000, 1, '系统默认外呼线路'),
-('line_aliyun_001', '阿里云通信', 'aliyun', '', 'inactive', 20, 2000, 2, '阿里云语音通话服务'),
-('line_tencent_001', '腾讯云通信', 'tencent', '', 'inactive', 20, 2000, 3, '腾讯云语音通话服务')
+INSERT INTO `call_lines` (`name`, `provider`, `caller_number`, `status`, `max_concurrent`, `daily_limit`, `sort_order`, `remark`) VALUES
+('默认线路', 'system', '', 'active', 10, 1000, 1, '系统默认外呼线路'),
+('阿里云通信', 'aliyun', '', 'inactive', 20, 2000, 2, '阿里云语音通话服务'),
+('腾讯云通信', 'tencent', '', 'inactive', 20, 2000, 3, '腾讯云语音通话服务')
 ON DUPLICATE KEY UPDATE `updated_at` = CURRENT_TIMESTAMP;
 
 
@@ -2741,6 +2908,8 @@ CREATE TABLE IF NOT EXISTS `licenses` (
   `license_type` ENUM('trial', 'perpetual', 'annual', 'monthly') DEFAULT 'trial' COMMENT '授权类型',
   `max_users` INT DEFAULT 10 COMMENT '最大用户数',
   `max_storage_gb` INT DEFAULT 5 COMMENT '最大存储空间(GB)',
+  `user_limit_mode` ENUM('total','online') NOT NULL DEFAULT 'total' COMMENT '用户限制模式',
+  `max_online_seats` INT NOT NULL DEFAULT 0 COMMENT '最大在线席位数',
   `features` JSON COMMENT '开通的功能模块',
   `package_id` INT NULL COMMENT '关联套餐ID',
   `package_name` VARCHAR(100) NULL COMMENT '套餐名称',
@@ -2854,6 +3023,10 @@ CREATE TABLE IF NOT EXISTS `tenants` (
   `max_storage_gb` INT DEFAULT 5 COMMENT '最大存储空间(GB)',
   `extra_storage_gb` INT NOT NULL DEFAULT 0 COMMENT '扩容存储空间(GB)',
   `user_count` INT DEFAULT 0 COMMENT '当前用户数',
+  `user_limit_mode` ENUM('total','online') NOT NULL DEFAULT 'total' COMMENT '用户限制模式（继承自套餐，可单独覆盖）',
+  `max_online_seats` INT NOT NULL DEFAULT 0 COMMENT '最大在线席位数',
+  `extra_online_seats` INT NOT NULL DEFAULT 0 COMMENT '额外增购的在线席位数',
+  `current_online_seats` INT NOT NULL DEFAULT 0 COMMENT '当前在线席位数（定时任务同步）',
   `used_storage_mb` DECIMAL(10,2) DEFAULT 0 COMMENT '已使用存储空间(MB)',
   `expire_date` DATE COMMENT '到期日期',
   `license_key` VARCHAR(100) COMMENT '租户授权码',
@@ -2869,6 +3042,7 @@ CREATE TABLE IF NOT EXISTS `tenants` (
   `deleted_at` DATETIME NULL DEFAULT NULL COMMENT '软删除时间（回收站）',
   `deleted_by` VARCHAR(36) NULL DEFAULT NULL COMMENT '删除操作人',
   `last_verify_at` DATETIME DEFAULT NULL COMMENT '最后验证时间',
+  `wecom_chat_archive_auth` TINYINT(1) NOT NULL DEFAULT 0 COMMENT '会话存档增值服务授权: 0=未授权, 1=已授权',
   INDEX `idx_code` (`code`),
   INDEX `idx_license_key` (`license_key`),
   INDEX `idx_status` (`status`),
@@ -3105,6 +3279,8 @@ CREATE TABLE IF NOT EXISTS `tenant_packages` (
   `max_customers` INT DEFAULT 10000 COMMENT '最大客户数',
   `max_orders` INT DEFAULT 10000 COMMENT '最大订单数',
   `max_storage_gb` INT DEFAULT 5 COMMENT '存储空间(GB)',
+  `user_limit_mode` ENUM('total','online') NOT NULL DEFAULT 'total' COMMENT '用户限制模式：total-限制总注册数，online-限制同时在线数',
+  `max_online_seats` INT NOT NULL DEFAULT 0 COMMENT '最大在线席位数（user_limit_mode=online时生效）',
   `features` JSON COMMENT '功能特性列表',
   `modules` JSON NULL COMMENT '授权模块ID列表（JSON数组）',
   `is_trial` TINYINT(1) DEFAULT 0 COMMENT '是否为试用套餐',
@@ -3120,9 +3296,35 @@ CREATE TABLE IF NOT EXISTS `tenant_packages` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='租户套餐表';
 
 -- =============================================
+-- 用户登录会话记录表（在线席位追踪）
+-- =============================================
+
+CREATE TABLE IF NOT EXISTS `user_sessions` (
+  `id` VARCHAR(36) NOT NULL PRIMARY KEY COMMENT '会话ID(UUID)',
+  `user_id` VARCHAR(36) NOT NULL COMMENT '用户ID',
+  `tenant_id` VARCHAR(36) NOT NULL COMMENT '租户ID',
+  `session_token` VARCHAR(512) NOT NULL COMMENT '会话标识（JWT token hash）',
+  `device_type` VARCHAR(50) NULL COMMENT '设备类型：web/mobile/h5/app',
+  `device_info` VARCHAR(255) NULL COMMENT '设备信息（User-Agent）',
+  `ip_address` VARCHAR(50) NULL COMMENT '登录IP',
+  `last_active_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '最后活跃时间（心跳更新）',
+  `logged_out_at` DATETIME NULL COMMENT '登出/踢出时间',
+  `status` VARCHAR(20) NOT NULL DEFAULT 'active' COMMENT '会话状态: active/expired/kicked/logged_out',
+  `kicked_by` VARCHAR(36) NULL COMMENT '被谁踢出（管理员ID）',
+  `kicked_at` DATETIME NULL COMMENT '被踢出时间',
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '登录时间',
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  INDEX `idx_user_sessions_user_id` (`user_id`),
+  INDEX `idx_user_sessions_tenant_id` (`tenant_id`),
+  INDEX `idx_user_sessions_session_token` (`session_token`(191)),
+  INDEX `idx_user_sessions_last_active` (`last_active_at`),
+  INDEX `idx_user_sessions_status` (`status`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='用户登录会话记录（在线席位追踪）';
+
+-- =============================================
 -- 更新现有数据库的网站地址
 -- =============================================
-UPDATE `system_configs` 
+UPDATE `system_configs`
 SET `configValue` = 'https://yunkes.com', `updatedAt` = NOW()
 WHERE `configKey` = 'websiteUrl' AND `configGroup` = 'basic_settings';
 
@@ -3130,7 +3332,7 @@ WHERE `configKey` = 'websiteUrl' AND `configGroup` = 'basic_settings';
 -- 企业微信管理模块表
 -- =============================================
 
--- 企微配置表
+-- 企微配置表（V2.0: 含双模式授权字段）
 CREATE TABLE IF NOT EXISTS `wecom_configs` (
   `id` INT PRIMARY KEY AUTO_INCREMENT,
   `tenant_id` VARCHAR(36) NULL COMMENT '租户ID',
@@ -3146,17 +3348,33 @@ CREATE TABLE IF NOT EXISTS `wecom_configs` (
   `chat_archive_secret` VARCHAR(255) NULL COMMENT '会话存档Secret',
   `chat_archive_private_key` TEXT NULL COMMENT '会话存档私钥',
   `is_enabled` TINYINT(1) DEFAULT 1 COMMENT '是否启用',
-  `connection_status` VARCHAR(20) DEFAULT 'pending' COMMENT '连接状态: pending/connected/failed',
+  `connection_status` VARCHAR(20) DEFAULT 'pending' COMMENT '连接状态: pending/connected/failed/cancelled',
   `last_error` TEXT NULL COMMENT '最后错误信息',
   `last_api_call_time` DATETIME NULL COMMENT '最后API调用时间',
   `api_call_count` INT DEFAULT 0 COMMENT 'API调用次数',
   `bind_operator` VARCHAR(50) NULL COMMENT '绑定操作人',
   `bind_time` DATETIME NULL COMMENT '绑定时间',
   `remark` TEXT NULL COMMENT '备注',
+  `auth_type` VARCHAR(20) DEFAULT 'self_built' COMMENT '授权类型: third_party/self_built',
+  `permanent_code` TEXT NULL COMMENT '第三方应用永久授权码(加密存储)',
+  `suite_id` VARCHAR(50) NULL COMMENT '第三方应用SuiteID',
+  `auth_corp_info` TEXT NULL COMMENT '授权方企业信息(JSON)',
+  `auth_user_info` TEXT NULL COMMENT '授权管理员信息(JSON)',
+  `auth_scope` TEXT NULL COMMENT '授权范围(JSON)',
+  `data_api_status` TINYINT DEFAULT 0 COMMENT '数据API授权状态: 0未授权 1已授权 2已过期',
+  `data_api_expire_time` DATETIME NULL COMMENT '数据API授权到期时间',
+  `vas_chat_archive` BOOLEAN DEFAULT FALSE COMMENT '是否开通会话存档增值服务',
+  `vas_expire_date` DATE NULL COMMENT '增值服务到期时间',
+  `vas_user_count` INT DEFAULT 0 COMMENT '增值服务开通人数',
+  `auth_mode` VARCHAR(20) DEFAULT 'self_built' COMMENT 'V4.0: 授权模式 third_party/self_built',
+  `auth_corp_name` VARCHAR(200) NULL COMMENT 'V4.0: 授权企业名称',
+  `auth_admin_user_id` VARCHAR(100) NULL COMMENT 'V4.0: 授权管理员UserID',
+  `auth_time` DATETIME NULL COMMENT 'V4.0: 授权时间',
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
   `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   UNIQUE KEY `uk_corp_id` (`corp_id`),
   INDEX `idx_is_enabled` (`is_enabled`),
+  INDEX `idx_auth_type` (`auth_type`),
   INDEX `idx_wecom_configs_tenant_id` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='企微配置表';
 
@@ -3182,7 +3400,7 @@ CREATE TABLE IF NOT EXISTS `wecom_user_bindings` (
   INDEX `idx_wecom_user_bindings_tenant_id` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='企微用户绑定表';
 
--- 企微客户表
+-- 企微客户表（V2.0: 含统计+标签+渠道字段）
 CREATE TABLE IF NOT EXISTS `wecom_customers` (
   `id` INT PRIMARY KEY AUTO_INCREMENT,
   `tenant_id` VARCHAR(36) NULL COMMENT '租户ID',
@@ -3206,6 +3424,13 @@ CREATE TABLE IF NOT EXISTS `wecom_customers` (
   `delete_time` DATETIME NULL COMMENT '删除时间',
   `is_dealt` TINYINT(1) DEFAULT 0 COMMENT '是否成交',
   `crm_customer_id` VARCHAR(50) NULL COMMENT '关联CRM客户ID',
+  `tag_names` TEXT NULL COMMENT '客户标签名称列表(JSON)',
+  `phone` VARCHAR(20) NULL COMMENT '手机号',
+  `state` VARCHAR(100) NULL COMMENT '渠道来源标识',
+  `msg_sent_count` INT DEFAULT 0 COMMENT '发送消息数',
+  `msg_recv_count` INT DEFAULT 0 COMMENT '接收消息数',
+  `last_msg_time` BIGINT NULL COMMENT '最后消息时间戳',
+  `active_days_7d` INT DEFAULT 0 COMMENT '近7天活跃天数',
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
   `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   UNIQUE KEY `uk_config_external_user` (`wecom_config_id`, `external_user_id`),
@@ -3230,13 +3455,21 @@ CREATE TABLE IF NOT EXISTS `wecom_acquisition_links` (
   `tag_ids` TEXT NULL COMMENT '自动打标签ID列表(JSON)',
   `click_count` INT DEFAULT 0 COMMENT '点击次数',
   `add_count` INT DEFAULT 0 COMMENT '添加次数',
+  `loss_count` INT DEFAULT 0 COMMENT '流失数量',
   `is_enabled` TINYINT(1) DEFAULT 1 COMMENT '是否启用',
-  `created_by` VARCHAR(50) NULL COMMENT '创建人',
+  `weight_config` TEXT NULL COMMENT '成员权重配置(JSON)',
+  `daily_stats` TEXT NULL COMMENT '每日统计(JSON)',
+  `state` VARCHAR(100) NULL COMMENT 'V4.0: 渠道标识',
+  `welcome_config` TEXT NULL COMMENT 'V4.0: 欢迎语配置(JSON)',
+  `auto_tags` TEXT NULL COMMENT 'V4.0: 自动标签配置(JSON)',
+  `auto_group_config` TEXT NULL COMMENT 'V4.0: 自动建群配置(JSON)',
+  `created_by` VARCHAR(50) NULL COMMENT '创建人ID',
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
   `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   INDEX `idx_wecom_config_id` (`wecom_config_id`),
   INDEX `idx_is_enabled` (`is_enabled`),
-  INDEX `idx_wecom_acquisition_links_tenant_id` (`tenant_id`)
+  INDEX `idx_wecom_acquisition_links_tenant_id` (`tenant_id`),
+  INDEX `idx_created_by` (`created_by`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='企微获客链接表';
 
 -- 企微客服账号表
@@ -3262,7 +3495,7 @@ CREATE TABLE IF NOT EXISTS `wecom_service_accounts` (
   INDEX `idx_wecom_service_accounts_tenant_id` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='企微客服账号表';
 
--- 企微会话存档表
+-- 企微会话存档表（V2.0: 含发送者/接收者类型+OSS路径）
 CREATE TABLE IF NOT EXISTS `wecom_chat_records` (
   `id` INT PRIMARY KEY AUTO_INCREMENT,
   `tenant_id` VARCHAR(36) NULL COMMENT '租户ID',
@@ -3283,11 +3516,15 @@ CREATE TABLE IF NOT EXISTS `wecom_chat_records` (
   `audit_by` VARCHAR(50) NULL COMMENT '质检人',
   `audit_time` DATETIME NULL COMMENT '质检时间',
   `is_sensitive` TINYINT(1) DEFAULT 0 COMMENT '是否标记敏感',
+  `sender_type` TINYINT NULL COMMENT '发送者类型: 1员工 2客户',
+  `receiver_type` TINYINT NULL COMMENT '接收者类型: 1员工 2客户 3群聊',
+  `oss_path` VARCHAR(256) NULL COMMENT 'OSS存储路径',
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
   UNIQUE KEY `uk_corp_msg` (`corp_id`, `msg_id`),
   INDEX `idx_wecom_config_id` (`wecom_config_id`),
   INDEX `idx_from_user_id` (`from_user_id`),
   INDEX `idx_msg_time` (`msg_time`),
+  INDEX `idx_sender_type` (`sender_type`),
   INDEX `idx_wecom_chat_records_tenant_id` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='企微会话存档表';
 
@@ -3316,6 +3553,626 @@ CREATE TABLE IF NOT EXISTS `wecom_payment_records` (
   INDEX `idx_pay_time` (`pay_time`),
   INDEX `idx_wecom_payment_records_tenant_id` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='企微收款记录表';
+
+-- 企微会话存档设置表（V2.0完整版: 含席位管控+可见性+拉取设置）
+CREATE TABLE IF NOT EXISTS `wecom_archive_settings` (
+  `id` INT PRIMARY KEY AUTO_INCREMENT,
+  `tenant_id` VARCHAR(36) NULL COMMENT '租户ID',
+  `wecom_config_id` INT NULL COMMENT '企微配置ID',
+  `storage_type` VARCHAR(20) NOT NULL DEFAULT 'database' COMMENT '存储方式: database/oss',
+  `oss_bucket` VARCHAR(200) NULL COMMENT 'OSS存储桶',
+  `oss_prefix` VARCHAR(200) NULL COMMENT 'OSS前缀路径',
+  `oss_endpoint` VARCHAR(200) NULL COMMENT 'OSS Endpoint',
+  `oss_access_key` VARCHAR(200) NULL COMMENT 'OSS AccessKey',
+  `oss_secret_key` VARCHAR(200) NULL COMMENT 'OSS SecretKey',
+  `retention_days` INT NOT NULL DEFAULT 180 COMMENT '保留天数',
+  `max_users` INT NOT NULL DEFAULT 0 COMMENT '开通人数上限(购买的最大席位数)',
+  `used_users` INT NOT NULL DEFAULT 0 COMMENT '已使用人数',
+  `expire_date` DATE NULL COMMENT '服务到期日期',
+  `status` VARCHAR(20) NOT NULL DEFAULT 'inactive' COMMENT '状态: inactive/active/expired/disabled',
+  `package_type` VARCHAR(30) NULL DEFAULT 'yearly' COMMENT '套餐类型: monthly/quarterly/yearly',
+  `last_cleanup_at` DATETIME NULL COMMENT '最后清理时间',
+  `total_messages` INT NOT NULL DEFAULT 0 COMMENT '累计消息数',
+  `total_storage_mb` DECIMAL(10,2) NOT NULL DEFAULT 0 COMMENT '累计存储(MB)',
+  `fetch_interval` INT DEFAULT 5 COMMENT '拉取间隔(分钟)',
+  `fetch_mode` VARCHAR(20) DEFAULT 'default' COMMENT '拉取模式: default/pre_page/adaptive',
+  `media_storage` VARCHAR(20) DEFAULT 'local' COMMENT '媒体存储方式: local/oss',
+  `auto_inspect` TINYINT(1) DEFAULT 0 COMMENT '是否自动质检',
+  `member_scope` TEXT NULL COMMENT '存档成员范围(JSON)',
+  `rsa_public_key` TEXT NULL COMMENT 'RSA公钥',
+  `visibility` VARCHAR(20) DEFAULT 'all' COMMENT '成员可见性: self/department/all',
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY `uk_tenant_id` (`tenant_id`),
+  INDEX `idx_status` (`status`),
+  INDEX `idx_expire_date` (`expire_date`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='企微会话存档设置表';
+
+-- =============================================
+-- 企微V2.0新增表（2026-04-13）
+-- =============================================
+
+-- 企微客户群表
+CREATE TABLE IF NOT EXISTS `wecom_customer_groups` (
+  `id` INT PRIMARY KEY AUTO_INCREMENT,
+  `tenant_id` VARCHAR(36) NULL COMMENT '租户ID',
+  `wecom_config_id` INT NOT NULL COMMENT '企微配置ID',
+  `chat_id` VARCHAR(100) NOT NULL COMMENT '群聊ID',
+  `name` VARCHAR(200) NULL COMMENT '群名称',
+  `owner_user_id` VARCHAR(100) NULL COMMENT '群主UserID',
+  `owner_user_name` VARCHAR(100) NULL COMMENT '群主姓名',
+  `member_count` INT DEFAULT 0 COMMENT '群成员数量',
+  `today_msg_count` INT DEFAULT 0 COMMENT '今日消息数',
+  `notice` TEXT NULL COMMENT '群公告',
+  `create_time` DATETIME NULL COMMENT '群创建时间',
+  `status` VARCHAR(20) DEFAULT 'normal' COMMENT '状态: normal/dismissed',
+  `member_list` TEXT NULL COMMENT '群成员列表(JSON)',
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY `uk_config_chat` (`wecom_config_id`, `chat_id`),
+  INDEX `idx_tenant` (`tenant_id`),
+  INDEX `idx_owner` (`owner_user_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='企微客户群表';
+
+-- 敏感词表
+CREATE TABLE IF NOT EXISTS `wecom_sensitive_words` (
+  `id` INT PRIMARY KEY AUTO_INCREMENT,
+  `tenant_id` VARCHAR(36) NULL COMMENT '租户ID',
+  `wecom_config_id` INT NULL COMMENT '企微配置ID(NULL表示全局)',
+  `word` VARCHAR(200) NOT NULL COMMENT '敏感词',
+  `group_name` VARCHAR(100) DEFAULT 'custom' COMMENT '分组: porn/politics/violence/competitor/custom',
+  `level` VARCHAR(20) DEFAULT 'warning' COMMENT '级别: info/warning/danger/critical',
+  `is_enabled` TINYINT(1) DEFAULT 1 COMMENT '是否启用',
+  `created_by` VARCHAR(50) NULL COMMENT '创建人',
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY `uk_tenant_word` (`tenant_id`, `word`),
+  INDEX `idx_tenant` (`tenant_id`),
+  INDEX `idx_group` (`group_name`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='敏感词表';
+
+-- 敏感词命中记录表
+CREATE TABLE IF NOT EXISTS `wecom_sensitive_hits` (
+  `id` INT PRIMARY KEY AUTO_INCREMENT,
+  `tenant_id` VARCHAR(36) NULL COMMENT '租户ID',
+  `wecom_config_id` INT NOT NULL COMMENT '企微配置ID',
+  `chat_record_id` INT NULL COMMENT '关联的聊天记录ID',
+  `word_id` INT NOT NULL COMMENT '命中的敏感词ID',
+  `word` VARCHAR(200) NOT NULL COMMENT '命中的敏感词内容',
+  `context` TEXT NULL COMMENT '消息上下文',
+  `from_user_id` VARCHAR(100) NULL COMMENT '发送者ID',
+  `from_user_name` VARCHAR(100) NULL COMMENT '发送者姓名',
+  `to_user_id` VARCHAR(100) NULL COMMENT '接收者ID',
+  `status` VARCHAR(20) DEFAULT 'pending' COMMENT '状态: pending/processed/ignored',
+  `processed_by` VARCHAR(50) NULL COMMENT '处理人',
+  `processed_at` DATETIME NULL COMMENT '处理时间',
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  INDEX `idx_tenant` (`tenant_id`),
+  INDEX `idx_status` (`status`),
+  INDEX `idx_created` (`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='敏感词命中记录表';
+
+-- 质检规则表
+CREATE TABLE IF NOT EXISTS `wecom_quality_rules` (
+  `id` INT PRIMARY KEY AUTO_INCREMENT,
+  `tenant_id` VARCHAR(36) NULL COMMENT '租户ID',
+  `name` VARCHAR(100) NOT NULL COMMENT '规则名称',
+  `rule_type` VARCHAR(30) NOT NULL COMMENT '规则类型: response_time/msg_count/keyword/emotion',
+  `conditions` TEXT NOT NULL COMMENT '条件参数(JSON)',
+  `score_value` INT DEFAULT 0 COMMENT '分值(正加负减)',
+  `apply_scope` TEXT NULL COMMENT '适用范围(JSON: 部门/员工)',
+  `is_enabled` TINYINT(1) DEFAULT 1 COMMENT '是否启用',
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX `idx_tenant` (`tenant_id`),
+  INDEX `idx_type` (`rule_type`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='质检规则表';
+
+-- 质检记录表
+CREATE TABLE IF NOT EXISTS `wecom_quality_inspections` (
+  `id` INT PRIMARY KEY AUTO_INCREMENT,
+  `tenant_id` VARCHAR(36) NULL COMMENT '租户ID',
+  `wecom_config_id` INT NOT NULL COMMENT '企微配置ID',
+  `session_key` VARCHAR(200) NULL COMMENT '会话标识',
+  `from_user_id` VARCHAR(100) NULL COMMENT '员工UserID',
+  `from_user_name` VARCHAR(100) NULL COMMENT '员工姓名',
+  `to_user_id` VARCHAR(100) NULL COMMENT '对方UserID',
+  `to_user_name` VARCHAR(100) NULL COMMENT '对方姓名',
+  `room_id` VARCHAR(100) NULL COMMENT '群聊ID(群聊场景)',
+  `message_count` INT DEFAULT 0 COMMENT '消息数量',
+  `start_time` DATETIME NULL COMMENT '会话开始时间',
+  `end_time` DATETIME NULL COMMENT '会话结束时间',
+  `status` VARCHAR(20) DEFAULT 'pending' COMMENT '状态: pending/normal/excellent/violation',
+  `violation_type` TEXT NULL COMMENT '违规类型(JSON数组)',
+  `score` INT NULL COMMENT '质检评分(0-100)',
+  `remark` TEXT NULL COMMENT '质检备注',
+  `inspector_id` VARCHAR(50) NULL COMMENT '质检员ID',
+  `inspector_name` VARCHAR(100) NULL COMMENT '质检员姓名',
+  `inspected_at` DATETIME NULL COMMENT '质检时间',
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  INDEX `idx_tenant` (`tenant_id`),
+  INDEX `idx_status` (`status`),
+  INDEX `idx_from_user` (`from_user_id`),
+  INDEX `idx_inspected` (`inspected_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='质检记录表';
+
+-- 存档生效成员表
+CREATE TABLE IF NOT EXISTS `wecom_archive_members` (
+  `id` INT PRIMARY KEY AUTO_INCREMENT,
+  `tenant_id` VARCHAR(50) NULL COMMENT '租户ID',
+  `wecom_user_id` VARCHAR(100) NOT NULL COMMENT '企微成员userId',
+  `wecom_user_name` VARCHAR(200) NULL COMMENT '成员名称(冗余)',
+  `crm_user_id` VARCHAR(50) NULL COMMENT '关联CRM用户ID',
+  `is_enabled` TINYINT(1) DEFAULT 1 COMMENT '是否启用存档',
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY `uk_tenant_user` (`tenant_id`, `wecom_user_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='存档生效成员表';
+
+-- 企微增值服务订单表（SaaS专属）
+CREATE TABLE IF NOT EXISTS `wecom_vas_orders` (
+  `id` INT PRIMARY KEY AUTO_INCREMENT,
+  `tenant_id` VARCHAR(36) NOT NULL COMMENT '租户ID',
+  `order_no` VARCHAR(32) NOT NULL COMMENT '订单号',
+  `wecom_config_id` INT NULL COMMENT '企微配置ID',
+  `service_type` VARCHAR(50) DEFAULT 'chat_archive' COMMENT '服务类型',
+  `order_type` VARCHAR(20) DEFAULT 'new' COMMENT '订单类型: new/renew/upgrade/addon',
+  `user_count` INT DEFAULT 0 COMMENT '开通/增购人数',
+  `unit_price` DECIMAL(10,2) NULL COMMENT '单价',
+  `total_amount` DECIMAL(10,2) NOT NULL COMMENT '总金额',
+  `pay_type` VARCHAR(20) NULL COMMENT '支付方式: wechat/alipay/bank',
+  `pay_status` TINYINT DEFAULT 0 COMMENT '0待支付 1已支付 2已取消 3已退款',
+  `pay_time` DATETIME NULL COMMENT '支付时间',
+  `transaction_id` VARCHAR(64) NULL COMMENT '第三方支付流水号',
+  `start_date` DATE NULL COMMENT '服务开始日期',
+  `end_date` DATE NULL COMMENT '服务到期日期',
+  `detail` TEXT NULL COMMENT '订单详情(JSON)',
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY `uk_order_no` (`order_no`),
+  INDEX `idx_tenant` (`tenant_id`),
+  INDEX `idx_pay_status` (`pay_status`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='企微增值服务订单表';
+
+-- 企微增值服务配置表（Admin专属）
+CREATE TABLE IF NOT EXISTS `wecom_vas_configs` (
+  `id` INT PRIMARY KEY AUTO_INCREMENT,
+  `service_type` VARCHAR(50) NOT NULL COMMENT '服务类型',
+  `service_name` VARCHAR(100) NULL COMMENT '服务名称',
+  `default_price` DECIMAL(10,2) NULL COMMENT '默认价格',
+  `min_price` DECIMAL(10,2) NULL COMMENT '最低价格',
+  `billing_unit` VARCHAR(20) DEFAULT 'per_user_year' COMMENT '计费单位',
+  `trial_days` INT DEFAULT 7 COMMENT '试用天数',
+  `tier_pricing` TEXT NULL COMMENT '阶梯定价(JSON)',
+  `description` TEXT NULL COMMENT '服务说明',
+  `is_enabled` TINYINT(1) DEFAULT 1 COMMENT '是否启用',
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY `uk_service_type` (`service_type`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='企微增值服务配置表';
+
+-- 企微客服会话表
+CREATE TABLE IF NOT EXISTS `wecom_kf_sessions` (
+  `id` INT PRIMARY KEY AUTO_INCREMENT,
+  `tenant_id` VARCHAR(36) NULL COMMENT '租户ID',
+  `wecom_config_id` INT NOT NULL COMMENT '企微配置ID',
+  `open_kf_id` VARCHAR(100) NOT NULL COMMENT '客服账号ID',
+  `external_userid` VARCHAR(100) NULL COMMENT '客户外部ID',
+  `customer_name` VARCHAR(100) NULL COMMENT '客户名称',
+  `servicer_userid` VARCHAR(100) NULL COMMENT '接待人员ID',
+  `servicer_name` VARCHAR(100) NULL COMMENT '接待人员名称',
+  `session_status` VARCHAR(20) DEFAULT 'open' COMMENT '会话状态: open/closed/timeout',
+  `msg_count` INT DEFAULT 0 COMMENT '消息数量',
+  `first_response_time` INT NULL COMMENT '首次响应时间(秒)',
+  `avg_response_time` INT NULL COMMENT '平均响应时间(秒)',
+  `satisfaction` TINYINT NULL COMMENT '满意度(1-5)',
+  `last_msg_content` TEXT NULL COMMENT '最后消息内容',
+  `last_msg_time` DATETIME NULL COMMENT '最后消息时间',
+  `session_start_time` DATETIME NULL COMMENT '会话开始时间',
+  `session_end_time` DATETIME NULL COMMENT '会话结束时间',
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX `idx_tenant` (`tenant_id`),
+  INDEX `idx_open_kf_id` (`open_kf_id`),
+  INDEX `idx_status` (`session_status`),
+  INDEX `idx_start_time` (`session_start_time`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='企微客服会话表';
+
+-- 企微快捷回复表
+CREATE TABLE IF NOT EXISTS `wecom_quick_replies` (
+  `id` INT PRIMARY KEY AUTO_INCREMENT,
+  `tenant_id` VARCHAR(36) NULL COMMENT '租户ID',
+  `category` VARCHAR(20) DEFAULT 'enterprise' COMMENT '类别: enterprise/personal',
+  `group_name` VARCHAR(100) NULL COMMENT '分组名称',
+  `title` VARCHAR(200) NOT NULL COMMENT '标题',
+  `content` TEXT NOT NULL COMMENT '内容',
+  `shortcut` VARCHAR(50) NULL COMMENT '快捷键',
+  `use_count` INT DEFAULT 0 COMMENT '使用次数',
+  `is_enabled` TINYINT(1) DEFAULT 1 COMMENT '是否启用',
+  `sort_order` INT DEFAULT 0 COMMENT '排序',
+  `created_by` VARCHAR(50) NULL COMMENT '创建人',
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX `idx_tenant` (`tenant_id`),
+  INDEX `idx_category` (`category`),
+  INDEX `idx_group` (`group_name`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='企微快捷回复表';
+
+-- =============================================
+-- 企微V4.0新增表（2026-04-15）
+-- =============================================
+
+-- 自动匹配建议表
+CREATE TABLE IF NOT EXISTS `wecom_auto_match_suggestions` (
+  `id` INT PRIMARY KEY AUTO_INCREMENT,
+  `tenant_id` VARCHAR(36) NULL,
+  `wecom_customer_id` INT NOT NULL COMMENT '企微客户ID',
+  `crm_customer_id` VARCHAR(50) NOT NULL COMMENT 'CRM客户ID',
+  `match_type` VARCHAR(20) NOT NULL DEFAULT 'phone' COMMENT '匹配方式: phone/name',
+  `match_field` VARCHAR(100) NULL COMMENT '匹配值(如手机号)',
+  `confidence` VARCHAR(20) NOT NULL DEFAULT 'medium' COMMENT '置信度: high/medium/low',
+  `status` VARCHAR(20) NOT NULL DEFAULT 'pending' COMMENT '状态: pending/confirmed/rejected',
+  `confirmed_by` VARCHAR(50) NULL COMMENT '确认人',
+  `confirmed_at` DATETIME NULL COMMENT '确认时间',
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY `uk_tenant_wecom_crm` (`tenant_id`, `wecom_customer_id`, `crm_customer_id`),
+  INDEX `idx_tenant_status` (`tenant_id`, `status`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='企微自动匹配建议表';
+
+-- 群模板表
+CREATE TABLE IF NOT EXISTS `wecom_group_templates` (
+  `id` INT PRIMARY KEY AUTO_INCREMENT,
+  `tenant_id` VARCHAR(36) NULL,
+  `wecom_config_id` INT NOT NULL COMMENT '企微配置ID',
+  `template_name` VARCHAR(100) NOT NULL COMMENT '模板名称',
+  `group_name_prefix` VARCHAR(100) NULL COMMENT '群名前缀',
+  `max_members` INT DEFAULT 200 COMMENT '最大成员数',
+  `owner_user_id` VARCHAR(100) NULL COMMENT '群主UserID',
+  `welcome_enabled` TINYINT(1) DEFAULT 0 COMMENT '是否启用欢迎语',
+  `welcome_text` TEXT NULL COMMENT '欢迎语内容',
+  `welcome_media_type` VARCHAR(20) DEFAULT 'none' COMMENT '欢迎语附件类型: none/image/link/miniprogram',
+  `welcome_media_content` TEXT NULL COMMENT '欢迎语附件内容(JSON)',
+  `anti_spam_enabled` TINYINT(1) DEFAULT 0 COMMENT '是否启用防骚扰',
+  `anti_spam_rules` TEXT NULL COMMENT '防骚扰规则(JSON)',
+  `notice_template` TEXT NULL COMMENT '群公告模板',
+  `auto_tags` TEXT NULL COMMENT '自动标签(JSON)',
+  `is_enabled` TINYINT(1) DEFAULT 1 COMMENT '是否启用',
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX `idx_tenant_config` (`tenant_id`, `wecom_config_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='企微群模板表';
+
+-- 获客助手智能上下线规则表
+CREATE TABLE IF NOT EXISTS `wecom_acquisition_smart_rules` (
+  `id` INT PRIMARY KEY AUTO_INCREMENT,
+  `tenant_id` VARCHAR(36) NULL,
+  `link_id` INT NOT NULL COMMENT '获客链接ID',
+  `daily_limit_enabled` TINYINT(1) DEFAULT 0,
+  `daily_limit_per_user` INT DEFAULT 50,
+  `daily_limit_action` VARCHAR(20) DEFAULT 'offline',
+  `work_time_enabled` TINYINT(1) DEFAULT 0,
+  `work_time_start` VARCHAR(10) DEFAULT '09:00',
+  `work_time_end` VARCHAR(10) DEFAULT '18:00',
+  `work_days` TEXT NULL COMMENT '工作日(JSON: [1,2,3,4,5])',
+  `slow_reply_enabled` TINYINT(1) DEFAULT 0,
+  `slow_reply_minutes` INT DEFAULT 30,
+  `slow_reply_action` VARCHAR(20) DEFAULT 'offline',
+  `loss_rate_enabled` TINYINT(1) DEFAULT 0,
+  `loss_rate_threshold` INT DEFAULT 30,
+  `next_day_auto_online` TINYINT(1) DEFAULT 1,
+  `next_day_online_time` VARCHAR(10) DEFAULT '09:00',
+  `next_day_exclude_manual` TINYINT(1) DEFAULT 0,
+  `next_day_exclude_loss_rate` TINYINT(1) DEFAULT 0,
+  `schedule_enabled` TINYINT(1) DEFAULT 0,
+  `schedule_config` TEXT NULL COMMENT '排班配置(JSON)',
+  `dept_quota_enabled` TINYINT(1) DEFAULT 0,
+  `dept_quotas` TEXT NULL COMMENT '部门配额(JSON)',
+  `dept_overflow_enabled` TINYINT(1) DEFAULT 0,
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX `idx_tenant_link` (`tenant_id`, `link_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='获客助手智能上下线规则表';
+
+-- 活码表
+CREATE TABLE IF NOT EXISTS `wecom_contact_ways` (
+  `id` INT PRIMARY KEY AUTO_INCREMENT,
+  `tenant_id` VARCHAR(36) NULL,
+  `wecom_config_id` INT NOT NULL,
+  `config_id` VARCHAR(100) NULL COMMENT '企微返回的config_id',
+  `name` VARCHAR(200) NOT NULL COMMENT '活码名称',
+  `type` INT DEFAULT 1 COMMENT '1=单人/多人 2=群聊',
+  `scene` INT DEFAULT 2 COMMENT '1=小程序 2=二维码',
+  `style` INT DEFAULT 0 COMMENT '样式0-3',
+  `state` VARCHAR(100) NULL COMMENT '渠道标识',
+  `remark` VARCHAR(500) NULL,
+  `skip_verify` TINYINT(1) DEFAULT 1 COMMENT '跳过验证',
+  `user_ids` TEXT NULL COMMENT '接待成员列表(JSON)',
+  `party_ids` TEXT NULL COMMENT '接待部门列表(JSON)',
+  `is_temp` TINYINT(1) DEFAULT 0 COMMENT '是否临时活码',
+  `qr_code` VARCHAR(500) NULL COMMENT '二维码链接',
+  `welcome_enabled` TINYINT(1) DEFAULT 0,
+  `welcome_config` TEXT NULL COMMENT '欢迎语配置(JSON)',
+  `auto_tags` TEXT NULL COMMENT '自动标签(JSON)',
+  `weight_mode` VARCHAR(20) DEFAULT 'single' COMMENT '分配模式: single/round_robin/weighted',
+  `user_weights` TEXT NULL COMMENT '成员权重配置(JSON)',
+  `smart_rule_id` INT NULL COMMENT '智能规则ID',
+  `auto_group_enabled` TINYINT(1) DEFAULT 0,
+  `auto_group_config` TEXT NULL COMMENT '自动建群配置(JSON)',
+  `total_add_count` INT DEFAULT 0 COMMENT '总添加数',
+  `total_loss_count` INT DEFAULT 0 COMMENT '总流失数',
+  `today_add_count` INT DEFAULT 0 COMMENT '今日添加数',
+  `today_loss_count` INT DEFAULT 0 COMMENT '今日流失数',
+  `abnormal_count` INT DEFAULT 0 COMMENT '异常数',
+  `current_reception_count` INT DEFAULT 0 COMMENT '当前接待人数',
+  `open_message_count` INT DEFAULT 0 COMMENT '开口消息数',
+  `is_enabled` TINYINT(1) DEFAULT 1,
+  `created_by` VARCHAR(50) NULL COMMENT '创建人ID',
+  `created_by_name` VARCHAR(100) NULL COMMENT '创建人姓名',
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX `idx_tenant_config` (`tenant_id`, `wecom_config_id`),
+  INDEX `idx_config_id` (`config_id`),
+  INDEX `idx_created_by` (`created_by`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='企微活码表';
+
+-- 活码每日统计表
+CREATE TABLE IF NOT EXISTS `wecom_contact_way_daily_stats` (
+  `id` INT PRIMARY KEY AUTO_INCREMENT,
+  `tenant_id` VARCHAR(36) NULL,
+  `contact_way_id` INT NOT NULL COMMENT '活码ID',
+  `stat_date` DATE NOT NULL COMMENT '统计日期',
+  `add_count` INT DEFAULT 0 COMMENT '添加数',
+  `loss_count` INT DEFAULT 0 COMMENT '流失数',
+  `net_count` INT DEFAULT 0 COMMENT '净增数',
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY `uk_contact_date` (`tenant_id`, `contact_way_id`, `stat_date`),
+  INDEX `idx_contact_way` (`contact_way_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='活码每日统计表';
+
+-- 客户事件表
+CREATE TABLE IF NOT EXISTS `wecom_customer_events` (
+  `id` INT PRIMARY KEY AUTO_INCREMENT,
+  `tenant_id` VARCHAR(36) NULL,
+  `wecom_config_id` INT NOT NULL,
+  `external_user_id` VARCHAR(100) NOT NULL,
+  `event_type` VARCHAR(30) NOT NULL COMMENT 'add/delete/tag/link/group_join/group_leave/crm_link',
+  `event_detail` TEXT NULL COMMENT '事件详情(JSON)',
+  `operator_id` VARCHAR(100) NULL COMMENT '操作人',
+  `event_time` DATETIME NOT NULL,
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  INDEX `idx_tenant_external_time` (`tenant_id`, `external_user_id`, `event_time`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='企微客户事件表';
+
+-- 部门映射表
+CREATE TABLE IF NOT EXISTS `wecom_department_mappings` (
+  `id` INT PRIMARY KEY AUTO_INCREMENT,
+  `tenant_id` VARCHAR(36) NULL,
+  `wecom_config_id` INT NOT NULL,
+  `wecom_dept_id` INT NOT NULL COMMENT '企微部门ID',
+  `wecom_dept_name` VARCHAR(200) NULL,
+  `wecom_parent_id` INT NULL COMMENT '企微父部门ID',
+  `crm_dept_id` VARCHAR(50) NULL COMMENT 'CRM部门ID',
+  `crm_dept_name` VARCHAR(200) NULL,
+  `member_count` INT DEFAULT 0,
+  `last_sync_time` DATETIME NULL,
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY `uk_tenant_config_dept` (`tenant_id`, `wecom_config_id`, `wecom_dept_id`),
+  INDEX `idx_tenant_config` (`tenant_id`, `wecom_config_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='部门映射表';
+
+-- AI模型配置表
+CREATE TABLE IF NOT EXISTS `wecom_ai_models` (
+  `id` INT PRIMARY KEY AUTO_INCREMENT,
+  `tenant_id` VARCHAR(36) NULL,
+  `model_name` VARCHAR(100) NOT NULL COMMENT '模型名称',
+  `provider` VARCHAR(20) NOT NULL DEFAULT 'openai' COMMENT '提供商: openai/azure/claude/deepseek/qwen/custom',
+  `api_url` VARCHAR(500) NULL COMMENT 'API地址',
+  `api_key` VARCHAR(500) NULL COMMENT 'API密钥(加密)',
+  `model_id` VARCHAR(100) NULL COMMENT '模型标识',
+  `temperature` DECIMAL(3,2) DEFAULT 0.70,
+  `max_tokens` INT DEFAULT 4096,
+  `top_p` DECIMAL(3,2) DEFAULT 1.00,
+  `is_default` TINYINT(1) DEFAULT 0,
+  `is_enabled` TINYINT(1) DEFAULT 1,
+  `last_test_time` DATETIME NULL,
+  `last_test_status` VARCHAR(20) NULL,
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX `idx_tenant` (`tenant_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='AI模型配置表';
+
+-- 智能体配置表
+CREATE TABLE IF NOT EXISTS `wecom_ai_agents` (
+  `id` INT PRIMARY KEY AUTO_INCREMENT,
+  `tenant_id` VARCHAR(36) NULL,
+  `agent_name` VARCHAR(100) NOT NULL COMMENT '智能体名称',
+  `usages` TEXT NULL COMMENT '用途列表(JSON)',
+  `model_id` INT NULL COMMENT '关联AI模型ID',
+  `knowledge_base_ids` TEXT NULL COMMENT '关联知识库ID列表(JSON)',
+  `system_prompt` TEXT NULL COMMENT '系统提示词',
+  `max_msg_per_analysis` INT DEFAULT 50,
+  `context_window` INT DEFAULT 8000,
+  `output_format` VARCHAR(20) DEFAULT 'json' COMMENT 'json/text/markdown',
+  `retry_count` INT DEFAULT 3,
+  `timeout_seconds` INT DEFAULT 30,
+  `is_enabled` TINYINT(1) DEFAULT 1,
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX `idx_tenant` (`tenant_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='AI智能体配置表';
+
+-- AI质检策略表
+CREATE TABLE IF NOT EXISTS `wecom_ai_inspect_strategies` (
+  `id` INT PRIMARY KEY AUTO_INCREMENT,
+  `tenant_id` VARCHAR(36) NULL,
+  `strategy_name` VARCHAR(100) NOT NULL,
+  `detect_types` TEXT NULL COMMENT '检测类型(JSON)',
+  `scope` VARCHAR(20) DEFAULT 'all' COMMENT '适用范围',
+  `scope_config` TEXT NULL COMMENT '范围配置(JSON)',
+  `max_score` INT DEFAULT 100,
+  `deduct_rules` TEXT NULL COMMENT '扣分规则(JSON)',
+  `risk_levels` TEXT NULL COMMENT '风险等级配置(JSON)',
+  `ai_model_id` INT NULL COMMENT '关联AI模型ID',
+  `prompt_template` TEXT NULL COMMENT '提示词模板',
+  `is_enabled` TINYINT(1) DEFAULT 1,
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX `idx_tenant` (`tenant_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='AI质检策略表';
+
+-- AI质检结果表
+CREATE TABLE IF NOT EXISTS `wecom_ai_inspect_results` (
+  `id` INT PRIMARY KEY AUTO_INCREMENT,
+  `tenant_id` VARCHAR(36) NULL,
+  `strategy_id` INT NULL COMMENT '策略ID',
+  `conversation_id` VARCHAR(100) NULL COMMENT '会话ID',
+  `employee_user_id` VARCHAR(100) NULL,
+  `employee_name` VARCHAR(100) NULL,
+  `customer_user_id` VARCHAR(100) NULL,
+  `customer_name` VARCHAR(100) NULL,
+  `total_score` INT NULL COMMENT '总分',
+  `dimension_scores` TEXT NULL COMMENT '维度评分(JSON)',
+  `highlights` TEXT NULL COMMENT '亮点(JSON)',
+  `improvements` TEXT NULL COMMENT '待改进(JSON)',
+  `risks` TEXT NULL COMMENT '风险(JSON)',
+  `ai_suggestion` TEXT NULL COMMENT 'AI建议',
+  `risk_level` VARCHAR(20) NULL COMMENT '风险等级: excellent/pass/fail',
+  `analyzed_msg_count` INT NULL,
+  `analyzed_at` DATETIME NULL,
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  INDEX `idx_tenant_strategy` (`tenant_id`, `strategy_id`),
+  INDEX `idx_tenant_employee` (`tenant_id`, `employee_user_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='AI质检结果表';
+
+-- 知识库表
+CREATE TABLE IF NOT EXISTS `wecom_knowledge_bases` (
+  `id` INT PRIMARY KEY AUTO_INCREMENT,
+  `tenant_id` VARCHAR(36) NULL,
+  `name` VARCHAR(100) NOT NULL,
+  `description` TEXT NULL,
+  `document_count` INT DEFAULT 0,
+  `entry_count` INT DEFAULT 0,
+  `total_size` BIGINT DEFAULT 0,
+  `index_status` VARCHAR(20) DEFAULT 'pending' COMMENT 'pending/indexing/indexed/failed',
+  `last_index_time` DATETIME NULL,
+  `sync_crm_enabled` TINYINT(1) DEFAULT 0,
+  `sync_crm_sources` TEXT NULL COMMENT '同步来源(JSON)',
+  `sync_frequency` VARCHAR(20) DEFAULT 'manual' COMMENT 'daily/manual',
+  `is_enabled` TINYINT(1) DEFAULT 1,
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX `idx_tenant` (`tenant_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='知识库表';
+
+-- 知识条目表
+CREATE TABLE IF NOT EXISTS `wecom_knowledge_entries` (
+  `id` INT PRIMARY KEY AUTO_INCREMENT,
+  `tenant_id` VARCHAR(36) NULL,
+  `knowledge_base_id` INT NOT NULL,
+  `title` VARCHAR(200) NOT NULL,
+  `content` TEXT NULL,
+  `tags` TEXT NULL COMMENT 'JSON',
+  `source_type` VARCHAR(20) DEFAULT 'manual' COMMENT 'manual/document/crm_sync',
+  `source_file` VARCHAR(500) NULL,
+  `embedding` TEXT NULL,
+  `is_enabled` TINYINT(1) DEFAULT 1,
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX `idx_tenant_kb` (`tenant_id`, `knowledge_base_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='知识条目表';
+
+-- 话术分类表
+CREATE TABLE IF NOT EXISTS `wecom_script_categories` (
+  `id` INT PRIMARY KEY AUTO_INCREMENT,
+  `tenant_id` VARCHAR(36) NULL,
+  `name` VARCHAR(100) NOT NULL,
+  `color` VARCHAR(100) NULL COMMENT '颜色标识',
+  `scope` VARCHAR(100) NULL DEFAULT 'public' COMMENT 'public=全员可见 personal=仅自己',
+  `created_by` INT NULL COMMENT '创建人用户ID',
+  `sort_order` INT DEFAULT 0,
+  `is_enabled` TINYINT(1) DEFAULT 1,
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX `idx_tenant` (`tenant_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='话术分类表';
+
+-- 话术表
+CREATE TABLE IF NOT EXISTS `wecom_scripts` (
+  `id` INT PRIMARY KEY AUTO_INCREMENT,
+  `tenant_id` VARCHAR(36) NULL,
+  `category_id` INT NULL,
+  `title` VARCHAR(200) NOT NULL,
+  `content` TEXT NULL,
+  `shortcut` VARCHAR(50) NULL COMMENT '快捷短语',
+  `attachments` TEXT NULL COMMENT 'JSON附件列表',
+  `tags` TEXT NULL COMMENT 'JSON标签',
+  `scope` VARCHAR(20) DEFAULT 'public' COMMENT 'public=全员可见 personal=仅自己',
+  `created_by` INT NULL COMMENT '创建人用户ID',
+  `created_by_name` VARCHAR(100) NULL,
+  `color` VARCHAR(20) NULL COMMENT '颜色标识',
+  `sort_order` INT DEFAULT 0,
+  `use_count` INT DEFAULT 0,
+  `ai_rewrite_enabled` TINYINT(1) DEFAULT 0,
+  `is_enabled` TINYINT(1) DEFAULT 1,
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX `idx_tenant_category` (`tenant_id`, `category_id`),
+  INDEX `idx_created_by` (`created_by`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='话术表';
+
+-- AI调用日志表
+CREATE TABLE IF NOT EXISTS `wecom_ai_logs` (
+  `id` INT PRIMARY KEY AUTO_INCREMENT,
+  `tenant_id` VARCHAR(36) NULL,
+  `agent_id` INT NULL,
+  `agent_name` VARCHAR(100) NULL,
+  `operation_type` VARCHAR(50) NULL COMMENT '操作类型',
+  `target_description` VARCHAR(500) NULL COMMENT '目标描述',
+  `input_tokens` INT DEFAULT 0,
+  `output_tokens` INT DEFAULT 0,
+  `total_tokens` INT DEFAULT 0,
+  `duration_ms` INT DEFAULT 0,
+  `status` VARCHAR(20) DEFAULT 'success' COMMENT 'success/fail/timeout',
+  `error_message` TEXT NULL,
+  `request_payload` TEXT NULL,
+  `response_payload` TEXT NULL,
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  INDEX `idx_tenant_time` (`tenant_id`, `created_at`),
+  INDEX `idx_tenant_agent` (`tenant_id`, `agent_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='AI调用日志表';
+
+-- 侧边栏授权码表
+CREATE TABLE IF NOT EXISTS `wecom_sidebar_auth_codes` (
+  `id` INT PRIMARY KEY AUTO_INCREMENT,
+  `tenant_id` VARCHAR(36) NULL,
+  `code` VARCHAR(100) NOT NULL COMMENT '授权码',
+  `code_type` VARCHAR(20) DEFAULT 'single' COMMENT 'single/multi/permanent',
+  `max_uses` INT DEFAULT 1,
+  `used_count` INT DEFAULT 0,
+  `expire_at` DATETIME NULL,
+  `created_by` VARCHAR(50) NULL,
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY `uk_code` (`code`),
+  INDEX `idx_tenant` (`tenant_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='侧边栏授权码表';
+
+-- 管理后台系统配置表（snake_case，管理后台和企微增值服务使用）
+CREATE TABLE IF NOT EXISTS `system_config` (
+  `id` VARCHAR(36) NOT NULL,
+  `config_key` VARCHAR(100) NOT NULL COMMENT '配置键',
+  `config_value` TEXT COMMENT '配置值',
+  `config_type` VARCHAR(50) DEFAULT 'string' COMMENT '配置类型: string/json/number/boolean/system',
+  `config_group` VARCHAR(100) DEFAULT 'general' COMMENT '配置分组',
+  `description` VARCHAR(255) DEFAULT NULL COMMENT '配置描述',
+  `tenant_id` VARCHAR(36) DEFAULT NULL COMMENT '租户ID（NULL表示全局配置）',
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_config_key_tenant` (`config_key`, `tenant_id`),
+  KEY `idx_config_key` (`config_key`),
+  KEY `idx_tenant_id` (`tenant_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='系统配置表（管理后台）';
 
 
 
@@ -4045,12 +4902,13 @@ FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM `admin_roles` WHERE `code` = 'tech_sup
 -- 扩容价格配置表
 CREATE TABLE IF NOT EXISTS `capacity_price_configs` (
   `id` VARCHAR(36) PRIMARY KEY,
-  `type` ENUM('user', 'storage') NOT NULL COMMENT '扩容类型: user=用户数, storage=存储空间',
-  `billing_cycle` ENUM('monthly', 'yearly', 'follow_package') NOT NULL DEFAULT 'follow_package' COMMENT '计费周期',
-  `unit_price` DECIMAL(10, 2) NOT NULL DEFAULT 0 COMMENT '单价(每用户/每GB)',
+  `type` ENUM('user', 'storage', 'online_seat') NOT NULL COMMENT '扩容类型: user=用户数, storage=存储空间, online_seat=在线席位',
+  `billing_cycle` ENUM('monthly', 'yearly', 'permanent', 'follow_package') NOT NULL DEFAULT 'follow_package' COMMENT '计费周期',
+  `unit_price` DECIMAL(10, 2) NOT NULL DEFAULT 0 COMMENT '单价(每用户/每GB/每席位)',
   `min_qty` INT NOT NULL DEFAULT 1 COMMENT '最小购买量',
   `max_qty` INT NOT NULL DEFAULT 100 COMMENT '最大购买量',
   `description` VARCHAR(255) DEFAULT '' COMMENT '描述',
+  `discount_rules` JSON DEFAULT NULL COMMENT '折扣规则：[{min_qty, discount_percent}]',
   `is_active` TINYINT(1) NOT NULL DEFAULT 1 COMMENT '是否启用',
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
@@ -4062,19 +4920,22 @@ CREATE TABLE IF NOT EXISTS `capacity_orders` (
   `id` VARCHAR(36) PRIMARY KEY,
   `order_no` VARCHAR(64) NOT NULL UNIQUE COMMENT '订单号',
   `tenant_id` VARCHAR(36) NOT NULL COMMENT '租户ID',
-  `type` ENUM('user', 'storage') NOT NULL COMMENT '扩容类型',
+  `type` ENUM('user', 'storage', 'online_seat') NOT NULL COMMENT '扩容类型',
   `quantity` INT NOT NULL DEFAULT 1 COMMENT '购买数量',
   `unit_price` DECIMAL(10, 2) NOT NULL DEFAULT 0 COMMENT '单价',
   `total_amount` DECIMAL(10, 2) NOT NULL DEFAULT 0 COMMENT '总金额',
+  `discount_percent` DECIMAL(5, 2) DEFAULT 0 COMMENT '折扣百分比',
   `billing_cycle` VARCHAR(20) NOT NULL DEFAULT 'follow_package' COMMENT '计费周期',
   `pay_type` VARCHAR(20) DEFAULT NULL COMMENT '支付方式: wechat/alipay',
-  `status` ENUM('pending', 'paid', 'closed', 'refunded') NOT NULL DEFAULT 'pending' COMMENT '订单状态',
+  `status` ENUM('pending', 'paid', 'closed', 'refunded', 'expired') NOT NULL DEFAULT 'pending' COMMENT '订单状态',
   `trade_no` VARCHAR(128) DEFAULT NULL COMMENT '第三方交易号',
   `paid_at` DATETIME DEFAULT NULL COMMENT '支付时间',
+  `expire_date` DATETIME DEFAULT NULL COMMENT '扩容到期日',
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   INDEX `idx_tenant` (`tenant_id`),
   INDEX `idx_status` (`status`),
-  INDEX `idx_order_no` (`order_no`)
+  INDEX `idx_order_no` (`order_no`),
+  INDEX `idx_expire` (`expire_date`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='扩容订单表';
 
 -- 插入默认扩容价格配置
@@ -4082,7 +4943,10 @@ INSERT IGNORE INTO `capacity_price_configs` (`id`, `type`, `billing_cycle`, `uni
   (UUID(), 'user', 'monthly', 50.00, 1, 200, '按月扩容用户数，每人每月50元', 1),
   (UUID(), 'user', 'yearly', 300.00, 1, 200, '按年扩容用户数，每人每年300元', 1),
   (UUID(), 'storage', 'monthly', 10.00, 1, 500, '按月扩容存储空间，每GB每月10元', 1),
-  (UUID(), 'storage', 'yearly', 100.00, 1, 500, '按年扩容存储空间，每GB每年100元', 1);
+  (UUID(), 'storage', 'yearly', 100.00, 1, 500, '按年扩容存储空间，每GB每年100元', 1),
+  (UUID(), 'online_seat', 'monthly', 50.00, 1, 200, '按月扩容在线席位，每席位每月50元', 1),
+  (UUID(), 'online_seat', 'yearly', 300.00, 1, 200, '按年扩容在线席位，每席位每年300元', 1),
+  (UUID(), 'online_seat', 'permanent', 800.00, 1, 200, '永久扩容在线席位，每席位800元（一次性）', 1);
 
 -- =============================================
 -- 面单打印记录表
@@ -4145,16 +5009,299 @@ CREATE TABLE IF NOT EXISTS `sender_addresses` (
   INDEX `idx_sender_addresses_tenant_default` (`tenant_id`, `type`, `is_default`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='寄件人/退货地址表';
 
+-- 客户操作日志表（审计追踪）
+DROP TABLE IF EXISTS `customer_logs`;
+CREATE TABLE IF NOT EXISTS `customer_logs` (
+  `id` VARCHAR(50) PRIMARY KEY COMMENT '日志ID',
+  `tenant_id` VARCHAR(36) NULL COMMENT '租户ID',
+  `customer_id` VARCHAR(50) NOT NULL COMMENT '客户ID',
+  `log_type` VARCHAR(30) NOT NULL COMMENT '操作类型: create/edit/delete/share/add_phone/edit_info/add_order/add_tag/remove_tag/add_followup/edit_followup/add_medical/edit_notes/view/other',
+  `content` TEXT NOT NULL COMMENT '日志内容描述',
+  `detail` JSON NULL COMMENT '详细变更数据(JSON)',
+  `operator_id` VARCHAR(50) NULL COMMENT '操作人ID',
+  `operator_name` VARCHAR(100) NULL COMMENT '操作人姓名',
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  INDEX `idx_customer_logs_tenant` (`tenant_id`),
+  INDEX `idx_customer_logs_customer_time` (`customer_id`, `created_at` DESC),
+  INDEX `idx_customer_logs_type` (`log_type`),
+  INDEX `idx_customer_logs_operator` (`operator_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='客户操作日志表（审计追踪）';
+
+-- =============================================
+-- 虚拟商品功能相关表 (v1.8.0)
+-- =============================================
+
+-- 卡密库存表
+DROP TABLE IF EXISTS `card_key_inventory`;
+CREATE TABLE `card_key_inventory` (
+  `id` VARCHAR(36) PRIMARY KEY,
+  `tenant_id` VARCHAR(36) DEFAULT NULL COMMENT '租户ID',
+  `product_id` VARCHAR(36) NOT NULL COMMENT '关联商品ID',
+  `card_key` VARCHAR(255) NOT NULL COMMENT '卡密编码',
+  `status` VARCHAR(20) DEFAULT 'unused' COMMENT '状态: unused-未使用, reserved-已预占, used-已使用, claimed-已领取, expired-已过期, voided-已作废',
+  `order_id` VARCHAR(36) DEFAULT NULL COMMENT '关联订单ID（发货后填充）',
+  `reserved_order_id` VARCHAR(36) DEFAULT NULL COMMENT '预占订单ID（下单时填充）',
+  `claim_token` VARCHAR(100) DEFAULT NULL COMMENT '客户领取令牌',
+  `claim_method` VARCHAR(20) DEFAULT NULL COMMENT '领取方式: customer_self/member_send/email_send',
+  `claimed_at` DATETIME DEFAULT NULL COMMENT '客户领取时间',
+  `usage_instructions` TEXT DEFAULT NULL COMMENT '使用说明',
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE INDEX `idx_tenant_card_key` (`tenant_id`, `card_key`),
+  INDEX `idx_product_status` (`product_id`, `status`),
+  INDEX `idx_order_id` (`order_id`),
+  INDEX `idx_claim_token` (`claim_token`),
+  INDEX `idx_tenant_id` (`tenant_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='卡密库存表';
+
+-- 网盘资源库存表
+DROP TABLE IF EXISTS `resource_inventory`;
+CREATE TABLE `resource_inventory` (
+  `id` VARCHAR(36) PRIMARY KEY,
+  `tenant_id` VARCHAR(36) DEFAULT NULL COMMENT '租户ID',
+  `product_id` VARCHAR(36) NOT NULL COMMENT '关联商品ID',
+  `resource_link` VARCHAR(500) NOT NULL COMMENT '资源链接',
+  `resource_password` VARCHAR(100) DEFAULT NULL COMMENT '提取码',
+  `resource_description` TEXT DEFAULT NULL COMMENT '资源说明',
+  `status` VARCHAR(20) DEFAULT 'unused' COMMENT '状态: unused/reserved/used/claimed/expired/voided',
+  `order_id` VARCHAR(36) DEFAULT NULL COMMENT '关联订单ID',
+  `reserved_order_id` VARCHAR(36) DEFAULT NULL COMMENT '预占订单ID',
+  `claim_token` VARCHAR(100) DEFAULT NULL COMMENT '客户领取令牌',
+  `claim_method` VARCHAR(20) DEFAULT NULL COMMENT '领取方式',
+  `claimed_at` DATETIME DEFAULT NULL COMMENT '客户领取时间',
+  `usage_instructions` TEXT DEFAULT NULL COMMENT '使用说明',
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX `idx_product_status` (`product_id`, `status`),
+  INDEX `idx_order_id` (`order_id`),
+  INDEX `idx_claim_token` (`claim_token`),
+  INDEX `idx_tenant_id` (`tenant_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='网盘资源库存表';
+
+-- 虚拟商品发货记录表
+DROP TABLE IF EXISTS `virtual_delivery_records`;
+CREATE TABLE `virtual_delivery_records` (
+  `id` VARCHAR(36) PRIMARY KEY,
+  `tenant_id` VARCHAR(36) DEFAULT NULL COMMENT '租户ID',
+  `order_id` VARCHAR(36) NOT NULL COMMENT '订单ID',
+  `delivery_type` VARCHAR(20) NOT NULL COMMENT '发货类型: none/card_key/resource_link',
+  `card_key_content` TEXT DEFAULT NULL COMMENT '卡密内容',
+  `resource_link` VARCHAR(500) DEFAULT NULL COMMENT '资源链接',
+  `resource_password` VARCHAR(100) DEFAULT NULL COMMENT '提取码',
+  `remark` TEXT DEFAULT NULL COMMENT '备注',
+  `operator_id` VARCHAR(36) NOT NULL COMMENT '操作人ID',
+  `operator_name` VARCHAR(50) DEFAULT NULL COMMENT '操作人姓名',
+  `delivered_at` DATETIME NOT NULL COMMENT '发货时间',
+  `email_sent` TINYINT(1) DEFAULT 0 COMMENT '是否已发送邮件',
+  `email_sent_at` DATETIME DEFAULT NULL COMMENT '邮件发送时间',
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX `idx_order_id` (`order_id`),
+  INDEX `idx_tenant_id` (`tenant_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='虚拟商品发货记录表';
+
+-- 虚拟商品领取配置表
+DROP TABLE IF EXISTS `virtual_claim_settings`;
+CREATE TABLE `virtual_claim_settings` (
+  `id` VARCHAR(36) PRIMARY KEY,
+  `tenant_id` VARCHAR(36) DEFAULT NULL COMMENT '租户ID',
+  `delivery_mode` VARCHAR(20) DEFAULT 'link' COMMENT '发货方式: link/manual',
+  `claim_link_expiry_days` INT DEFAULT 30 COMMENT '领取链接有效天数',
+  `login_methods` VARCHAR(50) DEFAULT 'password' COMMENT '登录方式: sms/password/sms,password',
+  `initial_password` VARCHAR(255) DEFAULT '123456' COMMENT '初始登录密码',
+  `claim_page_notice` TEXT DEFAULT NULL COMMENT '领取页面提示语',
+  `email_enabled` TINYINT(1) DEFAULT 0 COMMENT '是否开启邮件发送',
+  `email_source` VARCHAR(20) DEFAULT 'official' COMMENT '邮箱来源: official/custom',
+  `email_content_mode` VARCHAR(20) DEFAULT 'link' COMMENT '邮件模式: link/content/both',
+  `email_auto_send` TINYINT(1) DEFAULT 0 COMMENT '自动发送邮件',
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE INDEX `idx_tenant_id` (`tenant_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='虚拟商品领取配置表';
+
+-- 租户自定义邮箱配置表
+DROP TABLE IF EXISTS `tenant_email_config`;
+CREATE TABLE `tenant_email_config` (
+  `id` VARCHAR(36) PRIMARY KEY,
+  `tenant_id` VARCHAR(36) NOT NULL COMMENT '租户ID',
+  `smtp_host` VARCHAR(200) NOT NULL COMMENT 'SMTP服务器',
+  `smtp_port` INT DEFAULT 465 COMMENT 'SMTP端口',
+  `encryption` VARCHAR(10) DEFAULT 'ssl' COMMENT '加密方式: ssl/tls/none',
+  `sender_email` VARCHAR(200) NOT NULL COMMENT '发件邮箱',
+  `sender_password` VARCHAR(500) NOT NULL COMMENT '邮箱密码（加密存储）',
+  `sender_name` VARCHAR(100) DEFAULT '' COMMENT '发件人名称',
+  `is_verified` TINYINT(1) DEFAULT 0 COMMENT '是否已验证',
+  `verified_at` DATETIME DEFAULT NULL COMMENT '验证时间',
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE INDEX `idx_tenant_id` (`tenant_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='租户自定义邮箱配置表';
+
+-- =============================================
+-- [v4.1.0] 企微扩展表 - 防骚扰/群发/欢迎语/收款/退款/服务商
+-- =============================================
+
+-- 企微防骚扰规则表
+CREATE TABLE IF NOT EXISTS `wecom_anti_spam_rules` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `tenant_id` VARCHAR(36) DEFAULT NULL COMMENT '租户ID',
+  `wecom_config_id` INT DEFAULT NULL COMMENT '企微配置ID',
+  `name` VARCHAR(100) NOT NULL COMMENT '规则名称',
+  `scope` VARCHAR(20) DEFAULT 'all' COMMENT '适用范围',
+  `detect_types` TEXT DEFAULT NULL COMMENT '检测类型(JSON: ["keyword","link","frequency"])',
+  `punishments` TEXT DEFAULT NULL COMMENT '处罚措施(JSON数组)',
+  `keywords` TEXT DEFAULT NULL COMMENT '关键词列表',
+  `keyword_mode` VARCHAR(20) DEFAULT 'any' COMMENT '关键词匹配模式',
+  `link_mode` VARCHAR(20) DEFAULT 'block_all' COMMENT '链接拦截模式',
+  `link_whitelist` TEXT DEFAULT NULL COMMENT '链接白名单',
+  `freq_minutes` INT DEFAULT 5 COMMENT '频率检测时间窗口(分钟)',
+  `freq_max_msg` INT DEFAULT 10 COMMENT '频率上限(条数)',
+  `exempt_employee` TINYINT(1) DEFAULT 1 COMMENT '豁免员工',
+  `exempt_admin` TINYINT(1) DEFAULT 0 COMMENT '豁免管理员',
+  `specified_groups` TEXT DEFAULT NULL COMMENT '指定群组(JSON)',
+  `specified_templates` TEXT DEFAULT NULL COMMENT '指定模板(JSON)',
+  `is_enabled` TINYINT(1) DEFAULT 1 COMMENT '是否启用',
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  INDEX `IDX_wasr_tenant` (`tenant_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='企微防骚扰规则表';
+
+-- 企微群发消息任务表
+CREATE TABLE IF NOT EXISTS `wecom_group_broadcasts` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `tenant_id` VARCHAR(36) DEFAULT NULL COMMENT '租户ID',
+  `wecom_config_id` INT DEFAULT NULL COMMENT '企微配置ID',
+  `task_name` VARCHAR(100) NOT NULL COMMENT '任务名称',
+  `target` VARCHAR(20) DEFAULT 'all' COMMENT '发送目标: all/specified/template',
+  `target_desc` VARCHAR(100) DEFAULT NULL COMMENT '目标描述',
+  `text` TEXT NOT NULL COMMENT '消息内容',
+  `attachments` TEXT DEFAULT NULL COMMENT '附件(JSON)',
+  `content_type` VARCHAR(50) DEFAULT '文本' COMMENT '内容类型',
+  `send_mode` VARCHAR(20) DEFAULT 'now' COMMENT '发送模式: now/scheduled',
+  `scheduled_time` DATETIME DEFAULT NULL COMMENT '计划发送时间',
+  `status` VARCHAR(20) DEFAULT 'draft' COMMENT '状态: draft/pending/sent/failed/cancelled',
+  `target_count` INT DEFAULT 0 COMMENT '目标数量',
+  `success_count` INT DEFAULT 0 COMMENT '成功数量',
+  `fail_count` INT DEFAULT 0 COMMENT '失败数量',
+  `specified_groups` TEXT DEFAULT NULL COMMENT '指定群组(JSON)',
+  `specified_templates` TEXT DEFAULT NULL COMMENT '指定模板(JSON)',
+  `detail_results` TEXT DEFAULT NULL COMMENT '详细结果(JSON)',
+  `wecom_msg_id` VARCHAR(100) DEFAULT NULL COMMENT '企微消息ID',
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  INDEX `IDX_wgb_tenant` (`tenant_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='企微群发消息任务表';
+
+-- 企微入群欢迎语表
+CREATE TABLE IF NOT EXISTS `wecom_group_welcomes` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `tenant_id` VARCHAR(36) DEFAULT NULL COMMENT '租户ID',
+  `wecom_config_id` INT DEFAULT NULL COMMENT '企微配置ID',
+  `name` VARCHAR(100) NOT NULL COMMENT '欢迎语名称',
+  `scope` VARCHAR(20) DEFAULT 'all' COMMENT '适用范围: all/specified/template',
+  `text` TEXT NOT NULL COMMENT '欢迎语内容',
+  `media_type` VARCHAR(20) DEFAULT 'none' COMMENT '媒体类型',
+  `link_title` VARCHAR(200) DEFAULT NULL COMMENT '链接标题',
+  `link_url` VARCHAR(500) DEFAULT NULL COMMENT '链接地址',
+  `specified_groups` TEXT DEFAULT NULL COMMENT '指定群组(JSON)',
+  `specified_templates` TEXT DEFAULT NULL COMMENT '指定模板(JSON)',
+  `wecom_template_id` VARCHAR(100) DEFAULT NULL COMMENT '企微欢迎语模板ID',
+  `is_enabled` TINYINT(1) DEFAULT 1 COMMENT '是否启用',
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  INDEX `IDX_wgw_tenant` (`tenant_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='企微入群欢迎语表';
+
+-- 企微收款码表
+CREATE TABLE IF NOT EXISTS `wecom_payment_qrcodes` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `tenant_id` VARCHAR(36) DEFAULT NULL COMMENT '租户ID',
+  `wecom_config_id` INT NOT NULL COMMENT '企微配置ID',
+  `name` VARCHAR(100) NOT NULL COMMENT '收款码名称',
+  `amount_type` VARCHAR(20) DEFAULT 'custom' COMMENT '金额类型: fixed/custom',
+  `fixed_amount` INT DEFAULT 0 COMMENT '固定金额(分)',
+  `description` VARCHAR(500) DEFAULT NULL COMMENT '收款码描述',
+  `member_user_ids` TEXT DEFAULT NULL COMMENT '使用成员UserID(JSON)',
+  `member_names` VARCHAR(500) DEFAULT NULL COMMENT '使用成员姓名',
+  `remark_template` VARCHAR(200) DEFAULT NULL COMMENT '备注模板',
+  `qr_url` VARCHAR(500) DEFAULT NULL COMMENT '二维码URL',
+  `total_amount` BIGINT DEFAULT 0 COMMENT '累计收款(分)',
+  `total_count` INT DEFAULT 0 COMMENT '累计笔数',
+  `is_enabled` TINYINT(1) DEFAULT 1 COMMENT '是否启用',
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  INDEX `IDX_wecom_qrcode_tenant` (`tenant_id`),
+  INDEX `IDX_wecom_qrcode_config` (`wecom_config_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='企微收款码表';
+
+-- 企微退款记录表
+CREATE TABLE IF NOT EXISTS `wecom_payment_refunds` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `tenant_id` VARCHAR(36) DEFAULT NULL COMMENT '租户ID',
+  `wecom_config_id` INT NOT NULL COMMENT '企微配置ID',
+  `refund_no` VARCHAR(100) NOT NULL COMMENT '退款单号',
+  `original_payment_no` VARCHAR(100) NOT NULL COMMENT '原收款单号',
+  `original_trade_no` VARCHAR(100) DEFAULT NULL COMMENT '原交易单号',
+  `payer_name` VARCHAR(100) DEFAULT NULL COMMENT '原付款人',
+  `operator_id` VARCHAR(100) DEFAULT NULL COMMENT '操作人UserID',
+  `operator_name` VARCHAR(100) DEFAULT NULL COMMENT '操作人姓名',
+  `original_amount` INT NOT NULL COMMENT '原交易金额(分)',
+  `refund_amount` INT NOT NULL COMMENT '退款金额(分)',
+  `reason` VARCHAR(500) DEFAULT NULL COMMENT '退款原因',
+  `status` VARCHAR(20) DEFAULT 'processing' COMMENT '状态: processing/completed/rejected',
+  `refund_time` DATETIME DEFAULT NULL COMMENT '退款完成时间',
+  `reject_reason` VARCHAR(500) DEFAULT NULL COMMENT '拒绝原因',
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  INDEX `IDX_wecom_refund_tenant` (`tenant_id`),
+  UNIQUE INDEX `IDX_wecom_refund_no` (`refund_no`),
+  INDEX `IDX_wecom_refund_payment` (`original_payment_no`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='企微退款记录表';
+
+-- 企微服务商应用配置表
+CREATE TABLE IF NOT EXISTS `wecom_suite_configs` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `suite_id` VARCHAR(100) DEFAULT NULL COMMENT 'Suite ID',
+  `suite_secret` VARCHAR(255) DEFAULT NULL COMMENT 'Suite Secret',
+  `suite_ticket` TEXT DEFAULT NULL COMMENT '企微推送的suite_ticket',
+  `suite_ticket_updated_at` DATETIME DEFAULT NULL COMMENT 'suite_ticket最后更新时间',
+  `provider_corp_id` VARCHAR(100) DEFAULT NULL COMMENT '服务商CorpID',
+  `provider_secret` VARCHAR(255) DEFAULT NULL COMMENT '服务商Secret',
+  `callback_token` VARCHAR(100) DEFAULT NULL COMMENT '回调Token',
+  `callback_encoding_aes_key` VARCHAR(100) DEFAULT NULL COMMENT '回调EncodingAESKey',
+  `app_name` VARCHAR(200) DEFAULT NULL COMMENT '应用名称',
+  `app_description` TEXT DEFAULT NULL COMMENT '应用描述',
+  `app_status` VARCHAR(20) DEFAULT 'offline' COMMENT '应用状态: online/offline',
+  `permissions` TEXT DEFAULT NULL COMMENT '权限范围(JSON)',
+  `is_enabled` TINYINT(1) DEFAULT 0 COMMENT '是否启用',
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间'
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='企微服务商应用配置表';
+
+-- 企微服务商回调日志表
+CREATE TABLE IF NOT EXISTS `wecom_suite_callback_logs` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `info_type` VARCHAR(50) NOT NULL COMMENT '事件类型: suite_ticket/create_auth/cancel_auth/change_auth等',
+  `suite_id` VARCHAR(100) DEFAULT NULL COMMENT 'Suite ID',
+  `auth_corp_id` VARCHAR(100) DEFAULT NULL COMMENT '授权企业CorpID',
+  `detail` TEXT DEFAULT NULL COMMENT '事件详情/解密后的XML摘要',
+  `status` VARCHAR(20) DEFAULT 'success' COMMENT '处理状态: success/failed',
+  `error_message` TEXT DEFAULT NULL COMMENT '错误信息',
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  INDEX `IDX_suite_cb_info_type` (`info_type`),
+  INDEX `IDX_suite_cb_created_at` (`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='企微服务商回调日志表';
+
 -- =============================================
 -- 数据库初始化完成
 -- =============================================
 SET FOREIGN_KEY_CHECKS = 1;
 
-SELECT '✅ CRM数据库初始化完成！' AS message;
-SELECT '预设账号：' AS info;
-SELECT 'superadmin / super123456 (超级管理员)' AS account_1;
-SELECT 'admin / admin123 (管理员)' AS account_2;
-SELECT 'manager / manager123 (部门经理)' AS account_3;
-SELECT 'sales / sales123 (销售员)' AS account_4;
-SELECT 'service / service123 (客服)' AS account_5;
+-- CRM数据库初始化完成
+-- 预设账号：
+-- superadmin / super123456 (超级管理员)
+-- admin / admin123 (管理员)
+-- manager / manager123 (部门经理)
+-- sales / sales123 (销售员)
+-- service / service123 (客服)
 

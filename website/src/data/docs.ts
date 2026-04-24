@@ -63,6 +63,41 @@ export const docCategories: DocCategory[] = [
     ]
   },
   {
+    key: 'wecom',
+    title: '企微管理',
+    items: [
+      { key: 'intro', title: '企微管理介绍' },
+      { key: 'config', title: '企微配置与授权' },
+      { key: 'customer', title: '客户与客户群' },
+      { key: 'acquisition', title: '获客助手与活码' },
+      { key: 'archive', title: '会话存档与质检' },
+      { key: 'ai', title: 'AI助手与知识库' },
+      { key: 'payment', title: '对外收款管理' }
+    ]
+  },
+  {
+    key: 'virtual',
+    title: '虚拟商品',
+    items: [
+      { key: 'intro', title: '虚拟商品介绍' },
+      { key: 'cardkey', title: '卡密管理' },
+      { key: 'resource', title: '网盘资源管理' },
+      { key: 'delivery', title: '自动发货与领取' },
+      { key: 'settings', title: '领取页面配置' }
+    ]
+  },
+  {
+    key: 'sms',
+    title: '短信管理',
+    items: [
+      { key: 'intro', title: '短信管理介绍' },
+      { key: 'template', title: '模板管理与审核' },
+      { key: 'quota', title: '额度购买与使用' },
+      { key: 'autosend', title: '自动发送规则' },
+      { key: 'statistics', title: '统计与分析' }
+    ]
+  },
+  {
     key: 'deploy',
     title: '私有部署',
     items: [

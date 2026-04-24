@@ -15,6 +15,9 @@
       </ErrorBoundary>
     </div>
 
+    <!-- Phase 8: 企微独立窗口布局 -->
+    <WecomStandaloneLayout v-else-if="isStandaloneLayout" />
+
     <!-- 主应用布局 -->
     <el-container v-else class="layout-container">
       <!-- 顶部导航栏 -->
@@ -85,6 +88,7 @@
       <div v-if="quotaWarning" class="quota-warning-banner" :class="quotaWarning.level">
         <el-icon><WarningFilled /></el-icon>
         <span>{{ quotaWarning.message }}</span>
+        <el-button v-if="quotaWarning.level === 'critical'" size="small" type="warning" @click="handleQuotaUpgrade">升级套餐</el-button>
         <el-button v-if="quotaWarning.level === 'critical'" size="small" type="danger" text @click="quotaWarningDismissed = true">知道了</el-button>
       </div>
 
@@ -222,6 +226,7 @@
     <PasswordChangeModal
       :visible="showPasswordChangeModal"
       :is-forced="isForcePasswordChange"
+      :is-first-login="isFirstLogin"
       :is-default-password="isDefaultPassword"
       :is-expired="isPasswordExpired"
       @close="showPasswordChangeModal = false"
@@ -237,6 +242,7 @@
       @close="handlePasswordReminderClose"
       @change-password="handlePasswordReminderChangePassword"
       @remind-later="handlePasswordReminderLater"
+      @remind-after-days="handleRemindAfterDays"
     />
 
     <!-- 个人设置弹窗 -->
@@ -320,6 +326,7 @@ import HelpCenter from '@/components/HelpCenter.vue'
 import MessageBell from '@/components/MessageBell.vue'
 import VersionUpdatePanel from '@/components/VersionUpdatePanel.vue'
 import AnnouncementCarousel from '@/components/AnnouncementCarousel.vue'
+import AnnouncementPopup from '@/components/AnnouncementPopup.vue'
 import ContactServiceDialog from '@/components/ContactServiceDialog.vue'
 import { useResponsive, debounce } from '@/utils/responsive'
 import { passwordService } from '@/services/passwordService'
@@ -327,10 +334,11 @@ import { passwordReminderService } from '@/services/passwordReminderService'
 import IconHeadset from '@/components/icons/IconHeadset.vue'
 import IconCustomerService from '@/components/icons/IconCustomerService.vue'
 import DynamicMenu from '@/components/DynamicMenu.vue'
+import WecomStandaloneLayout from '@/layouts/WecomStandaloneLayout.vue'
 import { createSafeNavigator } from '@/utils/navigation'
 import {
   Menu, TrendCharts, User, ArrowDown, Odometer, ShoppingCart,
-  Box, Setting, Headset, Service, WarningFilled
+  Box, Setting, Headset, Service, WarningFilled, More
 } from '@element-plus/icons-vue'
 import { licenseHeartbeatService } from '@/services/licenseHeartbeatService'
 import { getResourceUsage, type ResourceUsage } from '@/api/tenantLicense'
@@ -359,6 +367,7 @@ const { isMobile, isTablet, isDesktop, deviceType } = useResponsive()
 const showPasswordChangeModal = ref(false)
 const showPasswordReminderModal = ref(false)
 const isForcePasswordChange = ref(false)
+const isFirstLogin = ref(false)
 const isDefaultPassword = ref(false)
 const isPasswordExpired = ref(false)
 const passwordRemainingDays = ref(0)
@@ -465,17 +474,72 @@ const handleOpenContactServiceDialog = () => {
   contactServiceDialogVisible.value = true
 }
 
+// 🔥 配额预警横幅"升级套餐"按钮
+const handleQuotaUpgrade = () => {
+  const usage = resourceUsage.value
+  if (!usage) return
+
+  // 判断是用户数超限还是存储空间超限
+  const userPercent = usage.users.usagePercent
+  const storagePercent = usage.storage.usagePercent
+
+  if (userPercent >= 100) {
+    import('@/utils/licenseDialog').then(({ showQuotaExceededDialog }) => {
+      showQuotaExceededDialog({
+        type: 'user',
+        message: `用户数已达上限（${usage.users.current}/${usage.users.max}），无法创建新用户。\n请升级套餐或联系客服扩容以继续使用。`,
+        data: {
+          currentCount: usage.users.current,
+          maxUsers: usage.users.max,
+          usagePercent: userPercent
+        }
+      })
+    })
+  } else if (storagePercent >= 100) {
+    import('@/utils/licenseDialog').then(({ showQuotaExceededDialog }) => {
+      showQuotaExceededDialog({
+        type: 'storage',
+        message: `存储空间已满（${usage.storage.usedGb}GB/${usage.storage.maxGb}GB），无法上传文件。\n请升级套餐或联系客服扩容以继续使用。`,
+        data: {
+          usedMb: parseFloat(String(usage.storage.usedMb)),
+          maxMb: usage.storage.maxMb,
+          usagePercent: storagePercent
+        }
+      })
+    })
+  } else {
+    // 80%-99% 预警级别，也可以弹窗
+    import('@/utils/licenseDialog').then(({ showQuotaExceededDialog }) => {
+      const isUserWarning = userPercent >= storagePercent
+      showQuotaExceededDialog({
+        type: isUserWarning ? 'user' : 'storage',
+        message: isUserWarning
+          ? `用户数已使用${userPercent}%（${usage.users.current}/${usage.users.max}），即将达到上限。\n建议提前升级套餐以避免影响使用。`
+          : `存储空间已使用${storagePercent}%（${usage.storage.usedGb}GB/${usage.storage.maxGb}GB），即将满额。\n建议提前升级套餐以避免影响使用。`,
+        data: isUserWarning
+          ? { currentCount: usage.users.current, maxUsers: usage.users.max, usagePercent: userPercent }
+          : { usedMb: parseFloat(String(usage.storage.usedMb)), maxMb: usage.storage.maxMb, usagePercent: storagePercent }
+      })
+    })
+  }
+}
+
 
 
 
 // 计算属性
-// 🔥 公开页面列表（不需要登录，使用简单布局）
-const publicPages = ['/login', '/public-help']
+  // 🔥 公开页面列表（不需要登录，使用简单布局）
+  const publicPages = ['/login', '/public-help']
 
-const isLoginPage = computed(() => {
-  // 登录页或公开帮助中心页面使用简单布局
-  return publicPages.some(path => route.path.startsWith(path)) || !userStore.token
-})
+  // Phase 8: 企微独立窗口路由（需要登录，但使用独立Layout）
+  const isStandaloneLayout = computed(() => {
+    return route.path.startsWith('/wecom-standalone')
+  })
+
+  const isLoginPage = computed(() => {
+    // 登录页或公开帮助中心页面使用简单布局
+    return publicPages.some(path => route.path.startsWith(path)) || !userStore.token
+  })
 
 const sidebarWidth = computed(() => {
   if (isMobile.value) return isCollapsed.value ? '0px' : '240px'
@@ -786,8 +850,7 @@ const checkPasswordStatus = () => {
     return
   }
 
-  // 初始化用户密码信息
-  passwordService.initializeUserPasswordInfo(user.id)
+  // 🔥 密码状态完全由后端数据库决定，不再操作本地 localStorage('users')
 
   // 检查是否为默认密码
   isDefaultPassword.value = user.isDefaultPassword || false
@@ -795,32 +858,44 @@ const checkPasswordStatus = () => {
   // 检查密码是否过期
   isPasswordExpired.value = passwordService.isPasswordExpired(user)
 
-  // 检查是否强制修改密码
+  // 检查是否强制修改密码（首次登录 或 管理员要求）
   isForcePasswordChange.value = user.forcePasswordChange || false
 
-  // 计算密码剩余天数
+  // 计算密码剩余天数（距90天强制修改）
   passwordRemainingDays.value = passwordService.getPasswordRemainingDays(user)
 
   // 设置今日提醒键
   dontRemindTodayKey.value = `password_reminder_${user.id}_${new Date().toDateString()}`
 
-  // 如果需要强制修改密码，显示强制修改弹窗（但允许关闭）
-  if (isDefaultPassword.value || isPasswordExpired.value || isForcePasswordChange.value) {
-    // 🔥 检查是否在"不再提醒"期间内
-    const dontRemindExpire = localStorage.getItem('password_change_remind_expire')
-    if (dontRemindExpire && Date.now() < parseInt(dontRemindExpire)) {
-      console.log('[密码提醒] 在不再提醒期间内，跳过提醒')
-      return
-    }
+  // 🔥 判断是否从未修改过密码（首次登录）
+  const neverChangedPassword = !user.passwordLastChanged
 
+  // 🔥 首次登录（从未改过密码）或 默认密码 或 管理员要求强制修改：必须强制修改，不可关闭弹窗
+  if (neverChangedPassword || isDefaultPassword.value || isForcePasswordChange.value) {
+    isFirstLogin.value = neverChangedPassword
+    // 首次登录/默认密码场景下，不应该显示"过期"提示
+    isPasswordExpired.value = false
     showPasswordChangeModal.value = true
-    // 修改：不再强制，允许用户关闭
-    isForcePasswordChange.value = false
+    isForcePasswordChange.value = true // 强制模式，弹窗不可关闭
     return
   }
 
-  // 检查是否需要密码过期提醒
-  if (passwordService.needsPasswordReminder(user)) {
+  // 🔥 密码安全策略：90天未修改 -> 强制修改密码（不可关闭）
+  if (isPasswordExpired.value) {
+    isFirstLogin.value = false
+    showPasswordChangeModal.value = true
+    isForcePasswordChange.value = true // 强制模式，弹窗不可关闭
+    return
+  }
+
+  // 🔥 密码安全策略：30天/60天 -> 提醒修改密码（可关闭）
+  const reminderLevel = passwordService.getPasswordReminderLevel(user)
+  if (reminderLevel === 'first' || reminderLevel === 'second') {
+    // 检查是否在"X天后提醒我"的延迟期内
+    const snoozeExpire = localStorage.getItem('password_reminder_snooze_expire')
+    if (snoozeExpire && Date.now() < parseInt(snoozeExpire)) {
+      return
+    }
     const dontRemindToday = localStorage.getItem(dontRemindTodayKey.value) === 'true'
     if (!dontRemindToday) {
       showPasswordReminderModal.value = true
@@ -832,6 +907,7 @@ const handlePasswordChangeSuccess = () => {
   ElMessage.success('密码修改成功')
   showPasswordChangeModal.value = false
   isForcePasswordChange.value = false
+  isFirstLogin.value = false
 
   // 重新检查密码状态
   setTimeout(() => {
@@ -857,6 +933,14 @@ const handlePasswordReminderLater = (dontRemindToday: boolean) => {
   if (dontRemindToday) {
     localStorage.setItem(dontRemindTodayKey.value, 'true')
   }
+  showPasswordReminderModal.value = false
+}
+
+// 处理"X天后提醒我"
+const handleRemindAfterDays = (days: number) => {
+  const expireTime = Date.now() + days * 24 * 60 * 60 * 1000
+  localStorage.setItem('password_reminder_snooze_expire', expireTime.toString())
+  ElMessage.success(`已设置 ${days} 天后再次提醒修改密码`)
   showPasswordReminderModal.value = false
 }
 
@@ -1802,5 +1886,29 @@ watch(isMobile, (newValue) => {
   }
 }
 
-
 </style>
+
+<!-- Phase 8: 企微全屏模式全局样式(不使用scoped，直接全局生效) -->
+<style>
+body.wecom-fullscreen .header,
+body.wecom-fullscreen .sidebar,
+body.wecom-fullscreen .tabs-container,
+body.wecom-fullscreen .quota-warning-banner,
+body.wecom-fullscreen .mobile-overlay {
+  display: none !important;
+}
+
+body.wecom-fullscreen .main-content {
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+body.wecom-fullscreen .layout-container > .el-container > .el-main {
+  width: 100% !important;
+}
+
+body.wecom-fullscreen .page-content {
+  padding: 16px !important;
+}
+</style>
+

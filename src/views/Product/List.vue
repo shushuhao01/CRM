@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="product-list">
     <!-- 页面头部 -->
     <div class="page-header">
@@ -113,6 +113,17 @@
             <el-option label="上架" value="active" />
             <el-option label="下架" value="inactive" />
             <el-option label="缺货" value="out_of_stock" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="商品类型">
+          <el-select
+            v-model="searchForm.productType"
+            placeholder="全部类型"
+            clearable
+            style="width: 150px"
+          >
+            <el-option label="普通商品" value="physical" />
+            <el-option label="虚拟商品" value="virtual" />
           </el-select>
         </el-form-item>
         <el-form-item label="库存状态">
@@ -286,21 +297,36 @@
           </el-link>
         </template>
 
-        <!-- 商品名称列 - 添加推荐/新品/热销标识 -->
+        <!-- 商品名称列 -->
         <template #column-name="{ row }">
-          <div class="product-name-cell">
-            <span class="product-name-text">{{ row.name }}</span>
-            <div class="product-tags">
-              <el-tag v-if="row.isRecommended" type="warning" size="small" effect="plain">
-                推荐
-              </el-tag>
-              <el-tag v-if="row.isNew" type="success" size="small" effect="plain">
-                新品
-              </el-tag>
-              <el-tag v-if="row.isHot" type="danger" size="small" effect="plain">
-                热销
-              </el-tag>
-            </div>
+          <div class="product-name-cell" style="display: flex; align-items: center; overflow: hidden;">
+            <el-tag v-if="row.productType === 'virtual'" type="warning" size="small" effect="light" style="margin-right: 6px; flex-shrink: 0;">
+              虚拟
+            </el-tag>
+            <el-tag v-else size="small" effect="light" style="margin-right: 6px; flex-shrink: 0;">
+              实物
+            </el-tag>
+            <el-tooltip :content="row.name" placement="top" :show-after="300">
+              <span class="product-name-text" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                {{ row.name }}
+              </span>
+            </el-tooltip>
+          </div>
+        </template>
+
+        <!-- 商品标识列 -->
+        <template #column-productBadges="{ row }">
+          <div class="product-tags">
+            <el-tag v-if="row.isRecommended" type="warning" size="small" effect="plain">
+              ⭐ 推荐
+            </el-tag>
+            <el-tag v-if="row.isNew" type="success" size="small" effect="plain">
+              🆕 新品
+            </el-tag>
+            <el-tag v-if="row.isHot" type="danger" size="small" effect="plain">
+              🔥 热销
+            </el-tag>
+            <span v-if="!row.isRecommended && !row.isNew && !row.isHot" style="color: #c0c4cc;">—</span>
           </div>
         </template>
 
@@ -311,7 +337,13 @@
 
         <!-- 库存列 -->
         <template #column-stock="{ row }">
-          <span :class="getStockClass(row.stock, row.minStock)">
+          <template v-if="row.productType === 'virtual'">
+            <span v-if="row.virtualDeliveryType === 'none'" style="color: #909399;">—</span>
+            <span v-else style="color: #409EFF;">
+              {{ row.virtualDeliveryType === 'card_key' ? '卡密' : '资源' }}: {{ row.virtualStockCount ?? 0 }}
+            </span>
+          </template>
+          <span v-else :class="getStockClass(row.stock, row.minStock)">
             {{ row.stock }}
           </span>
         </template>
@@ -336,8 +368,14 @@
               <el-button @click="handlePriceAdjust(row)" type="success" link size="small">
                 改价
               </el-button>
-              <el-button @click="handleStockAdjust(row)" type="warning" link size="small">
+              <el-button v-if="row.productType !== 'virtual'" @click="handleStockAdjust(row)" type="warning" link size="small">
                 调库存
+              </el-button>
+              <el-button v-if="row.productType === 'virtual' && row.virtualDeliveryType === 'card_key'" @click="goToCardKeyManage(row)" type="warning" link size="small">
+                卡密库存
+              </el-button>
+              <el-button v-if="row.productType === 'virtual' && row.virtualDeliveryType === 'resource_link'" @click="goToResourceManage(row)" type="warning" link size="small">
+                资源库存
               </el-button>
               <el-button
                 @click="handleToggleStatus(row)"
@@ -621,8 +659,8 @@
         </el-form-item>
         <el-form-item label="状态" prop="status">
           <el-radio-group v-model="categoryForm.status">
-            <el-radio value="active">启用</el-radio>
-            <el-radio value="inactive">禁用</el-radio>
+            <el-radio label="active">启用</el-radio>
+            <el-radio label="inactive">禁用</el-radio>
           </el-radio-group>
         </el-form-item>
         <el-form-item label="描述" prop="description">
@@ -893,12 +931,19 @@ const searchForm = reactive({
   categoryId: '',
   status: '',
   stockStatus: '',
+  productType: '',
   minPrice: null,
   maxPrice: null
 })
 
 // 快速筛选
 const quickFilter = ref('all')
+
+// 排序参数
+const searchParams = reactive({
+  sortField: '',
+  sortOrder: ''
+})
 
 // 分页数据
 const pagination = reactive({
@@ -1043,6 +1088,15 @@ const tableColumns = computed(() => [
     sortable: true,
     showOverflowTooltip: false, // 改为false，因为我们要自定义显示
     slotName: 'column-name' // 添加自定义插槽
+  },
+  {
+    prop: 'productBadges',
+    label: '商品标识',
+    width: 160,
+    visible: true,
+    sortable: false,
+    showOverflowTooltip: false,
+    slotName: 'column-productBadges'
   },
   {
     prop: 'categoryName',
@@ -1271,6 +1325,15 @@ const handleStockAdjust = (row: Product) => {
   })
 
   stockDialogVisible.value = true
+}
+
+// 虚拟商品跳转到对应库存管理页面
+const goToCardKeyManage = (row: Product) => {
+  router.push({ path: '/product/virtual/card-keys', query: { productId: String(row.id) } })
+}
+
+const goToResourceManage = (row: Product) => {
+  router.push({ path: '/product/virtual/resources', query: { productId: String(row.id) } })
 }
 
 /**
@@ -2665,14 +2728,21 @@ onMounted(async () => {
 /* 商品名称单元格样式 */
 .product-name-cell {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
+  flex-direction: row;
+  align-items: center;
+  flex-wrap: nowrap;
+  overflow: hidden;
+  gap: 0;
 }
 
 .product-name-text {
   color: #303133;
   font-size: 14px;
   line-height: 1.5;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
 }
 
 .product-tags {

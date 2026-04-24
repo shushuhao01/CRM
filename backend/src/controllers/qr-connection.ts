@@ -96,8 +96,8 @@ export class QRConnectionController {
           }
         });
       } catch (qrError) {
-        log.warn('QRCode生成失败，使用在线服务:', qrError);
-        qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrData)}`;
+        log.warn('QRCode生成失败:', qrError);
+        qrCodeUrl = '';
       }
 
       const response: QRConnectionData = {

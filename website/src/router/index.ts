@@ -82,6 +82,9 @@ const routes = [
       { path: 'license', name: 'MemberLicense', component: () => import('@/views/member/License.vue'), meta: { title: '授权信息 - 云客CRM', requiresMember: true } },
       { path: 'password', name: 'MemberPassword', component: () => import('@/views/member/Password.vue'), meta: { title: '修改密码 - 云客CRM', requiresMember: true } },
       { path: 'capacity', name: 'MemberCapacity', component: () => import('@/views/member/Capacity.vue'), meta: { title: '扩容管理 - 云客CRM', requiresMember: true } },
+      { path: 'sms-quota', name: 'MemberSmsQuota', component: () => import('@/views/member/SmsQuota.vue'), meta: { title: '短信额度 - 云客CRM', requiresMember: true } },
+      { path: 'wecom', name: 'MemberWecom', component: () => import('@/views/member/WecomService.vue'), meta: { title: '企微服务 - 云客CRM', requiresMember: true } },
+      { path: 'ai-assistant', name: 'MemberAiAssistant', component: () => import('@/views/member/AiAssistant.vue'), meta: { title: 'AI助手 - 云客CRM', requiresMember: true } },
       { path: 'renew', name: 'MemberRenew', component: () => import('@/views/member/Renew.vue'), meta: { title: '续费升级 - 云客CRM', requiresMember: true } }
     ]
   }

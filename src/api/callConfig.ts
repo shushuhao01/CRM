@@ -200,6 +200,26 @@ export function deleteCallLine(id: number): Promise<ApiResponse> {
   })
 }
 
+/**
+ * 测试外呼线路连接 (仅管理员)
+ * 验证线路的配置和连通性
+ */
+export function testLineConnection(id: number): Promise<ApiResponse<{
+  lineId: number
+  lineName: string
+  provider: string
+  type: string
+  success: boolean
+  latency: number
+  message: string
+  details?: any
+}>> {
+  return request({
+    url: `/call-config/lines/${id}/test`,
+    method: 'post'
+  })
+}
+
 // ==================== 用户线路分配 (仅管理员) ====================
 
 /**

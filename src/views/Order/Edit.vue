@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="order-edit-page">
     <!-- 页面标题 -->
     <div class="page-header">
@@ -73,6 +73,7 @@
           <div class="header-left">
             <el-icon><Location /></el-icon>
             <span>收货信息</span>
+            <el-tag v-if="orderForm.markType === 'virtual'" type="info" size="small" style="margin-left: 8px;">选填</el-tag>
           </div>
           <div class="header-right">
             <el-icon class="collapse-icon" :class="{ 'collapsed': deliveryCollapsed }">
@@ -143,22 +144,31 @@
             <el-row>
               <el-col :span="24">
                 <el-form-item label="收货地址" prop="receiverAddress">
+                  <el-select
+                    v-if="customerAddresses.length > 0"
+                    v-model="orderForm.receiverAddress"
+                    placeholder="选择客户地址或手动输入"
+                    style="width: 100%"
+                    filterable
+                    allow-create
+                    default-first-option
+                    clearable
+                    class="address-select-dropdown"
+                    :suffix-icon="ArrowDown"
+                  >
+                    <el-option
+                      v-for="addr in customerAddresses"
+                      :key="addr.id"
+                      :label="addr.content"
+                      :value="addr.content"
+                    />
+                  </el-select>
                   <el-input
+                    v-else
                     v-model="orderForm.receiverAddress"
                     placeholder="请输入详细收货地址"
                     clearable
-                  >
-                    <template #suffix v-if="selectedCustomer && selectedCustomer.address">
-                      <el-button
-                        size="small"
-                        type="text"
-                        @click="syncCustomerAddress"
-                        title="同步客户地址"
-                      >
-                        <el-icon><Location /></el-icon>
-                      </el-button>
-                    </template>
-                  </el-input>
+                  />
                 </el-form-item>
               </el-col>
             </el-row>
@@ -217,22 +227,26 @@
                 <img :src="product.image || '/default-product.png'" :alt="product.name" />
               </div>
               <div class="product-info">
-                <div class="product-name-with-tags">
-                  <span class="product-name">{{ product.name }}</span>
-                  <div class="product-badges">
-                    <el-tag v-if="product.isRecommended" type="warning" size="small" effect="plain">
-                      推荐
-                    </el-tag>
-                    <el-tag v-if="product.isNew" type="success" size="small" effect="plain">
-                      新品
-                    </el-tag>
-                    <el-tag v-if="product.isHot" type="danger" size="small" effect="plain">
-                      热销
-                    </el-tag>
-                  </div>
+                <div class="product-name">
+                  <el-tag v-if="product.productType === 'virtual'" type="warning" size="small" effect="light" style="margin-right: 4px;">虚拟</el-tag>
+                  <el-tag v-else size="small" effect="light" style="margin-right: 4px;">实物</el-tag>
+                  {{ product.name }}
                 </div>
-                <div class="product-price">¥{{ product.price }}</div>
-                <div class="product-stock">库存: {{ product.stock }}</div>
+                <div class="product-price-stock">
+                  <span class="product-price">¥{{ product.price }}</span>
+                  <span class="product-stock">库存: {{ product.stock }}</span>
+                </div>
+                <div class="product-badges" v-if="product.isRecommended || product.isNew || product.isHot">
+                  <el-tag v-if="product.isRecommended" type="warning" size="small" effect="light">
+                    ⭐ 推荐
+                  </el-tag>
+                  <el-tag v-if="product.isNew" type="success" size="small" effect="light">
+                    🆕 新品
+                  </el-tag>
+                  <el-tag v-if="product.isHot" type="danger" size="small" effect="light">
+                    🔥 热销
+                  </el-tag>
+                </div>
               </div>
               <div class="product-actions">
                 <el-button
@@ -267,14 +281,14 @@
                 <div class="selected-product-name">
                   <span>{{ row.productName }}</span>
                   <div class="selected-product-tags">
-                    <el-tag v-if="row.isRecommended" type="warning" size="small" effect="plain">
-                      推荐
+                    <el-tag v-if="row.isRecommended" type="warning" size="small" effect="light">
+                      ⭐ 推荐
                     </el-tag>
-                    <el-tag v-if="row.isNew" type="success" size="small" effect="plain">
-                      新品
+                    <el-tag v-if="row.isNew" type="success" size="small" effect="light">
+                      🆕 新品
                     </el-tag>
-                    <el-tag v-if="row.isHot" type="danger" size="small" effect="plain">
-                      热销
+                    <el-tag v-if="row.isHot" type="danger" size="small" effect="light">
+                      🔥 热销
                     </el-tag>
                   </div>
                 </div>
@@ -457,11 +471,14 @@
             <el-col :span="12">
               <el-form-item label="订单类型" prop="markType" required>
                 <el-radio-group v-model="orderForm.markType" @change="handleMarkTypeChange">
-                  <el-radio label="normal">
+                  <el-radio label="normal" :disabled="onlyVirtualProducts">
                     <el-tag type="success" size="small">正常发货单</el-tag>
                   </el-radio>
-                  <el-radio label="reserved">
+                  <el-radio label="reserved" :disabled="onlyVirtualProducts">
                     <el-tag type="warning" size="small">预留单</el-tag>
+                  </el-radio>
+                  <el-radio v-if="hasVirtualProduct" value="virtual" :disabled="hasPhysicalProduct">
+                    <el-tag type="info" size="small" color="#7B68EE" style="color:#fff;">虚拟发货</el-tag>
                   </el-radio>
                 </el-radio-group>
               </el-form-item>
@@ -473,6 +490,14 @@
                   title="预留单说明"
                   description="预留单将保留在下单人处，不会流转到审核员。需要修改为正常发货单后才会进入审核流程。"
                   type="warning"
+                  :closable="false"
+                  show-icon
+                />
+                <el-alert
+                  v-else-if="orderForm.markType === 'virtual'"
+                  title="虚拟发货"
+                  description="虚拟商品订单，审核通过后进入虚拟发货流程，无需填写物流信息。"
+                  type="info"
                   :closable="false"
                   show-icon
                 />
@@ -705,7 +730,7 @@ defineOptions({
   name: 'OrderEdit'
 })
 
-import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Search, ZoomIn, Delete, ArrowDown, User, Message, Location, Plus, ShoppingBag, Refresh, View, Upload, DocumentCopy, Money } from '@element-plus/icons-vue'
@@ -718,6 +743,8 @@ import { useUserStore } from '@/stores/user'
 import { useConfigStore } from '@/stores/config'
 import { createSafeNavigator } from '@/utils/navigation'
 import CustomFieldsCard from '@/components/Order/CustomFieldsCard.vue'
+import { customerDetailApi } from '@/api/customerDetail'
+import { getAddressLabel } from '@/utils/addressData'
 
 const route = useRoute()
 const router = useRouter()
@@ -736,6 +763,32 @@ const orderId = route.params.id
 // 响应式数据
 const saving = ref(false)
 const searchKeyword = ref('')
+const customerAddresses = ref<any[]>([])
+
+// 加载客户地址列表
+const loadCustomerAddresses = async (customerId: string) => {
+  try {
+    const response = await customerDetailApi.getCustomerAddresses(customerId)
+    const data = response?.data || response || []
+    customerAddresses.value = Array.isArray(data) ? data : []
+    // 🔥 如果有客户详情页维护的地址，始终默认使用最新地址
+    if (customerAddresses.value.length > 0) {
+      orderForm.receiverAddress = customerAddresses.value[0].content
+    }
+  } catch (error) {
+    console.error('加载客户地址失败:', error)
+    customerAddresses.value = []
+  }
+}
+
+// 构建客户可读地址
+const buildCustomerReadableAddress = (customer: any): string => {
+  if (customer.province || customer.city || customer.district) {
+    const label = getAddressLabel(customer.province, customer.city, customer.district, customer.street)
+    if (label) return customer.detailAddress ? label + customer.detailAddress : label
+  }
+  return customer.address || ''
+}
 const searchResults = ref([])
 const productSearchKeyword = ref('')
 const customerSearchKeyword = ref('')
@@ -830,6 +883,30 @@ const handleMarkTypeChange = (value: string) => {
   orderForm.markType = value
   orderForm.orderType = value
 }
+
+// 🔥 虚拟商品类型判断
+const hasPhysicalProduct = computed(() =>
+  orderForm.products.some((p: any) => (p.productType || 'physical') === 'physical')
+)
+const hasVirtualProduct = computed(() =>
+  orderForm.products.some((p: any) => p.productType === 'virtual')
+)
+const onlyVirtualProducts = computed(() =>
+  orderForm.products.length > 0 && !hasPhysicalProduct.value && hasVirtualProduct.value
+)
+
+// 🔥 监听商品列表变化，自动切换标记
+watch(() => orderForm.products, () => {
+  if (onlyVirtualProducts.value && orderForm.markType !== 'virtual') {
+    orderForm.markType = 'virtual'
+    orderForm.orderType = 'virtual'
+    ElMessage.info('当前仅含虚拟商品，已自动切换为虚拟发货')
+  } else if (hasPhysicalProduct.value && orderForm.markType === 'virtual') {
+    orderForm.markType = 'normal'
+    orderForm.orderType = 'normal'
+    ElMessage.info('包含实物商品，已自动切换为正常发货单')
+  }
+}, { deep: true })
 
 // 电话表单
 const phoneForm = reactive({
@@ -1017,6 +1094,11 @@ const loadOrderData = async () => {
         }
       }
 
+      // 🔥 加载客户地址列表
+      if (order.customerId) {
+        await loadCustomerAddresses(order.customerId)
+      }
+
       // 填充表单数据 - 确保所有字段都同步
       Object.assign(orderForm, {
         id: order.id,
@@ -1162,11 +1244,12 @@ const handleCustomerChange = async (customerId) => {
       selectedCustomer.value = customer
       orderForm.customerName = customer.name
       orderForm.customerPhone = customer.phone
-      orderForm.deliveryAddress = customer.address || ''
+      orderForm.deliveryAddress = buildCustomerReadableAddress(customer)
 
       // 同步收货人信息（默认使用客户信息）
       orderForm.receiverName = customer.name
       orderForm.receiverPhone = customer.phone
+      orderForm.receiverAddress = buildCustomerReadableAddress(customer)
 
       // 同步客户微信号到客服微信号字段
       orderForm.serviceWechat = customer.wechatId || ''
@@ -1179,6 +1262,9 @@ const handleCustomerChange = async (customerId) => {
 
       // 加载客户电话列表
       await loadCustomerPhones(customerId)
+
+      // 🔥 加载客户地址列表
+      await loadCustomerAddresses(customerId)
     }
   } else {
     selectedCustomer.value = null
@@ -1358,8 +1444,8 @@ const handlePhoneSelect = (phoneId: string | null) => {
 
 // 🔥 同步客户地址到收货地址
 const syncCustomerAddress = () => {
-  if (selectedCustomer.value && selectedCustomer.value.address) {
-    orderForm.receiverAddress = selectedCustomer.value.address
+  if (selectedCustomer.value) {
+    orderForm.receiverAddress = buildCustomerReadableAddress(selectedCustomer.value)
     ElMessage.success('已同步客户地址')
   }
 }
@@ -1670,6 +1756,19 @@ const handleConfirmDialogClose = () => {
 </script>
 
 <style scoped>
+/* 收货地址下拉框箭头更明显 */
+.address-select-dropdown :deep(.el-select__suffix) {
+  font-size: 20px;
+  color: #409EFF;
+}
+.address-select-dropdown :deep(.el-select__suffix .el-icon) {
+  font-size: 20px;
+  color: #409EFF;
+  background: #ecf5ff;
+  border-radius: 4px;
+  padding: 2px;
+}
+
 /* 页面容器 */
 .order-edit-page {
   padding: 12px;
@@ -1863,7 +1962,7 @@ const handleConfirmDialogClose = () => {
 
 .product-image {
   width: 100%;
-  height: 100px;
+  aspect-ratio: 1 / 1;
   margin-bottom: 6px;
   border-radius: 4px;
   overflow: hidden;
@@ -1884,14 +1983,6 @@ const handleConfirmDialogClose = () => {
   margin-bottom: 6px;
 }
 
-.product-name-with-tags {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-  margin-bottom: 4px;
-}
-
 .product-name {
   font-weight: 600;
   color: #303133;
@@ -1901,8 +1992,17 @@ const handleConfirmDialogClose = () => {
   overflow: hidden;
   text-overflow: ellipsis;
   line-height: 1.4;
-  max-height: 2.8em; /* 2行的高度 */
+  max-height: 2.8em;
   text-align: center;
+  margin-bottom: 6px;
+}
+
+.product-price-stock {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 6px;
 }
 
 .product-badges {
@@ -1923,7 +2023,7 @@ const handleConfirmDialogClose = () => {
 .product-price {
   color: #f56c6c;
   font-weight: 600;
-  font-size: 16px;
+  font-size: 15px;
 }
 
 .product-stock {

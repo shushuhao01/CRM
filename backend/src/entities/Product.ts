@@ -54,6 +54,30 @@ export class Product {
   })
   status: 'active' | 'inactive'
 
+  @Column({ name: 'is_recommended', type: 'tinyint', default: 0, comment: '是否推荐' })
+  isRecommended: boolean
+
+  @Column({ name: 'is_new', type: 'tinyint', default: 0, comment: '是否新品' })
+  isNew: boolean
+
+  @Column({ name: 'is_hot', type: 'tinyint', default: 0, comment: '是否热销' })
+  isHot: boolean
+
+  @Column({ name: 'product_type', type: 'varchar', length: 20, default: 'physical', comment: '商品类型: physical-普通商品, virtual-虚拟商品' })
+  productType: string
+
+  @Column({ name: 'virtual_delivery_type', type: 'varchar', length: 20, nullable: true, comment: '虚拟发货方式: none-无需发货, card_key-卡密发货, resource_link-网盘资源' })
+  virtualDeliveryType: string | null
+
+  @Column({ name: 'card_key_template', type: 'text', nullable: true, comment: '卡密模板说明' })
+  cardKeyTemplate: string | null
+
+  @Column({ name: 'resource_link_template', type: 'text', nullable: true, comment: '资源链接模板' })
+  resourceLinkTemplate: string | null
+
+  @Column({ name: 'virtual_content_encrypt', type: 'tinyint', default: 0, comment: '虚拟内容是否加密显示' })
+  virtualContentEncrypt: boolean
+
   @Column({ name: 'created_by', type: 'varchar', length: 50, comment: '创建人' })
   createdBy: string
 

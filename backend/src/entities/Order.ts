@@ -134,6 +134,12 @@ export class Order {
   @Column({ name: 'mark_type', length: 20, default: 'normal', comment: '订单标记类型' })
   markType?: string;
 
+  @Column({ name: 'order_product_type', type: 'varchar', length: 20, default: 'physical', comment: '订单商品类型: physical/virtual/mixed' })
+  orderProductType?: string;
+
+  @Column({ name: 'completion_source', type: 'varchar', length: 30, nullable: true, comment: '完成来源: audit_auto_complete/virtual_delivery/logistics_delivery' })
+  completionSource?: string;
+
   @Column({ name: 'logistics_status', length: 50, nullable: true, comment: '物流状态' })
   logisticsStatus?: string;
 

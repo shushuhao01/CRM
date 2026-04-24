@@ -241,7 +241,7 @@ const generateQRCodeImage = async (data: string): Promise<string> => {
     const QRCode = await import('qrcode')
     return await QRCode.toDataURL(data, { width: 200, margin: 2, color: { dark: '#000000', light: '#FFFFFF' }, errorCorrectionLevel: 'M' })
   } catch {
-    return `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(data)}`
+    return ''
   }
 }
 

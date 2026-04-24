@@ -168,8 +168,6 @@ const handleLogin = async () => {
     // 保存登录信息
     userStore.setLoginInfo(result)
 
-    // 确保token已保存
-    console.log('登录成功，token已保存:', userStore.token ? '有' : '无')
 
     // 记住密码（使用加密存储）
     if (rememberPassword.value) {
@@ -187,8 +185,12 @@ const handleLogin = async () => {
 
     // 跳转到首页（延迟确保状态同步）
     setTimeout(() => {
-      console.log('跳转首页，当前token:', userStore.token ? '有' : '无')
       uni.switchTab({ url: '/pages/index/index' })
+
+      // 🔥 登录成功后延迟检测录音状态，如果未开启则提醒
+      setTimeout(() => {
+        checkRecordingOnLogin()
+      }, 2000)
     }, 1200)
   } catch (e: any) {
     uni.showToast({
@@ -203,6 +205,86 @@ const handleLogin = async () => {
 // 切换服务器
 const goToServerConfig = () => {
   uni.navigateTo({ url: '/pages/server-config/index' })
+}
+
+// 🔥 登录成功后检测录音状态
+const checkRecordingOnLogin = async () => {
+  // #ifdef APP-PLUS
+  try {
+    const { recordingService } = await import('@/services/recordingService')
+    const hasPermission = await recordingService.checkPermissions()
+    if (!hasPermission) {
+      // 没有存储权限，先不提醒（权限会在需要时再请求）
+      return
+    }
+    const enabled = await recordingService.checkRecordingEnabled()
+    if (!enabled) {
+      // 检查是否已经提醒过（同一天只提醒一次）
+      const lastRemind = uni.getStorageSync('lastRecordingRemind')
+      const today = new Date().toDateString()
+      if (lastRemind === today) return
+      uni.setStorageSync('lastRecordingRemind', today)
+
+      // 获取设备信息
+      const sysInfo = uni.getSystemInfoSync()
+      const model = sysInfo.deviceModel || '您的手机'
+
+      uni.showModal({
+        title: '🎙️ 通话录音未开启',
+        content: `检测到 ${model} 尚未开启系统通话录音功能。\n\n开启后，APP会自动上传通话录音到CRM系统，方便后续回听和管理。\n\n是否现在去开启？`,
+        confirmText: '去开启',
+        cancelText: '稍后',
+        success: async (modalRes) => {
+          if (modalRes.confirm) {
+            // 尝试直接跳转到系统录音设置（和设置页一样的逻辑）
+            try {
+              const result = await recordingService.tryEnableSystemRecording()
+              if (result.jumped) {
+                uni.showModal({
+                  title: `📱 ${model}`,
+                  content: result.guideTips,
+                  showCancel: false,
+                  confirmText: '我知道了'
+                })
+              } else {
+                // 无法跳转，引导用户手动操作
+                uni.showModal({
+                  title: '📋 手动开启通话录音',
+                  content: result.guideTips || `请按以下步骤操作：\n\n① 返回手机桌面\n② 打开「设置」应用\n③ 找到「电话」或「通话设置」\n④ 找到「通话录音」→「自动录音」\n⑤ 开启自动录音\n\n💡 也可以在设置中搜索"通话录音"`,
+                  showCancel: true,
+                  cancelText: '我知道了',
+                  confirmText: '去设置页',
+                  success: (guideRes) => {
+                    if (guideRes.confirm) {
+                      uni.navigateTo({ url: '/pages/settings/index' })
+                    }
+                  }
+                })
+              }
+            } catch (_e) {
+              // 兜底：跳转到APP设置页
+              uni.navigateTo({ url: '/pages/settings/index' })
+            }
+          }
+        }
+      })
+    }
+
+    // 🔥 确保默认设置已初始化（自动上传 + 自动清理默认开启）
+    const saved = uni.getStorageSync('callSettings')
+    if (!saved) {
+      uni.setStorageSync('callSettings', JSON.stringify({
+        callNotify: true,
+        vibrate: false,
+        autoUploadRecording: true,
+        autoCleanRecording: true,
+        recordingRetentionDays: 3
+      }))
+    }
+  } catch (e) {
+    console.error('[Login] 录音检测失败:', e)
+  }
+  // #endif
 }
 </script>
 

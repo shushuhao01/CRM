@@ -18,6 +18,7 @@ import { AppDataSource } from '../config/database'
 import { Tenant } from '../entities/Tenant'
 import { User } from '../entities/User'
 import licenseService from '../services/LicenseService'
+import { onlineSeatService } from '../services/OnlineSeatService'
 
 import { log } from '../config/logger';
 /**
@@ -77,7 +78,30 @@ export const checkUserLimit = async (
       where: { tenantId }
     })
 
-    // 检查是否超过限制
+    // 🔥 在线席位模式：注册用户不限制（席位在登录时检查），但仍可配置max_users作为软上限
+    if (tenant.userLimitMode === 'online') {
+      // 在线席位模式下，max_users作为最大注册用户数的软上限
+      // 如果max_users为0或很大的值，则不限制注册用户数
+      if (tenant.maxUsers > 0 && currentUserCount >= tenant.maxUsers) {
+        return res.status(403).json({
+          success: false,
+          message: `注册用户数已达上限（${currentUserCount}/${tenant.maxUsers}），当前为在线席位模式，请联系管理员调整`,
+          code: 'USER_LIMIT_EXCEEDED',
+          data: {
+            currentCount: currentUserCount,
+            maxUsers: tenant.maxUsers,
+            userLimitMode: 'online',
+            usagePercent: Math.round((currentUserCount / tenant.maxUsers) * 100)
+          }
+        })
+      }
+      // 将当前用户数注入到请求对象
+      req.tenantInfo = { ...req.tenantInfo, currentUserCount }
+      next()
+      return
+    }
+
+    // 总用户数模式：检查是否超过限制
     if (currentUserCount >= tenant.maxUsers) {
       return res.status(403).json({
         success: false,
@@ -86,6 +110,7 @@ export const checkUserLimit = async (
         data: {
           currentCount: currentUserCount,
           maxUsers: tenant.maxUsers,
+          userLimitMode: 'total',
           usagePercent: Math.round((currentUserCount / tenant.maxUsers) * 100)
         }
       })
@@ -364,26 +389,54 @@ export const getTenantResourceUsage = async (tenantId: string) => {
 
     // 计算使用率
     const maxStorageMb = tenant.maxStorageGb * 1024
-    const userUsagePercent = Math.round((actualUserCount / tenant.maxUsers) * 100)
-    const storageUsagePercent = Math.round((usedStorageMb / maxStorageMb) * 100)
+    const userUsagePercent = tenant.maxUsers > 0 ? Math.round((actualUserCount / tenant.maxUsers) * 100) : 0
+    const storageUsagePercent = maxStorageMb > 0 ? Math.round((usedStorageMb / maxStorageMb) * 100) : 0
+
+    // 🔥 在线席位模式：获取实时在线席位统计
+    let onlineSeats: {
+      mode: string
+      maxSeats: number
+      onlineCount: number
+      usagePercent: number
+      extraSeats: number
+    } | null = null
+
+    const userLimitMode = tenant.userLimitMode || 'total'
+
+    if (userLimitMode === 'online') {
+      try {
+        const seatStats = await onlineSeatService.getTenantSeatStats(tenantId)
+        onlineSeats = {
+          mode: seatStats.mode,
+          maxSeats: seatStats.maxSeats,
+          onlineCount: seatStats.onlineCount,
+          usagePercent: seatStats.maxSeats > 0 ? Math.round((seatStats.onlineCount / seatStats.maxSeats) * 100) : 0,
+          extraSeats: tenant.extraOnlineSeats || 0
+        }
+      } catch (e) {
+        log.warn('[getTenantResourceUsage] 获取在线席位统计失败:', e)
+      }
+    }
 
     return {
       tenantId: tenant.id,
       tenantName: tenant.name,
+      userLimitMode,
       users: {
         current: actualUserCount,
         max: tenant.maxUsers,
         usagePercent: userUsagePercent,
-        available: tenant.maxUsers - actualUserCount
+        available: Math.max(0, tenant.maxUsers - actualUserCount)
       },
+      onlineSeats,
       storage: {
         usedMb: usedStorageMb,
         usedGb: (usedStorageMb / 1024).toFixed(2),
         maxGb: tenant.maxStorageGb,
         maxMb: maxStorageMb,
         usagePercent: storageUsagePercent,
-        availableMb: maxStorageMb - usedStorageMb,
-        availableGb: ((maxStorageMb - usedStorageMb) / 1024).toFixed(2)
+        availableMb: Math.max(0, maxStorageMb - usedStorageMb),
+        availableGb: (Math.max(0, maxStorageMb - usedStorageMb) / 1024).toFixed(2)
       }
     }
   } catch (error) {

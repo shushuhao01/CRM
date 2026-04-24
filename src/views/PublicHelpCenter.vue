@@ -178,7 +178,7 @@
         <span class="separator" v-if="systemSettings.websiteUrl">|</span>
         <a
           v-if="systemSettings.websiteUrl"
-          :href="systemSettings.websiteUrl"
+          :href="safeWebsiteUrl"
           target="_blank"
           class="footer-link"
         >
@@ -202,6 +202,15 @@ const systemSettings = reactive({
   systemVersion: '1.0.0',
   companyName: '',
   websiteUrl: ''
+})
+
+// 确保官网 URL 有协议前缀，避免裸域名被浏览器当相对路径
+const safeWebsiteUrl = computed(() => {
+  const url = systemSettings.websiteUrl
+  if (!url) return ''
+  if (/^https?:\/\//i.test(url)) return url
+  const protocol = window.location?.protocol === 'http:' ? 'http' : 'https'
+  return `${protocol}://${url}`
 })
 
 // 初始化时从公开API获取系统配置

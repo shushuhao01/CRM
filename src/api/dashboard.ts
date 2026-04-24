@@ -71,6 +71,7 @@ export interface DashboardQuickAction {
   gradient?: string
   route: string
   description?: string
+  permissions?: string[]  // 所需权限码列表，用于前端权限过滤
 }
 
 import { isProduction } from '@/utils/env'

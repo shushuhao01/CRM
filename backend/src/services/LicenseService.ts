@@ -335,7 +335,7 @@ class LicenseService {
   async updateLicense(id: string, data: any) {
     const sets: string[] = [];
     const values: any[] = [];
-    const allowed = ['customer_name','customer_contact','customer_phone','customer_email','license_type','max_users','max_storage_gb','features','expires_at','notes','status'];
+    const allowed = ['customer_name','customer_contact','customer_phone','customer_email','license_type','max_users','max_storage_gb','features','expires_at','notes','status','wecom_chat_archive_auth'];
     for (const [k,v] of Object.entries(data)) {
       if (allowed.includes(k)) { sets.push(`${k}=?`); values.push(v); }
     }

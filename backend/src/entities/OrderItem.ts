@@ -22,6 +22,9 @@ export class OrderItem {
   @Column({ length: 50, nullable: true, comment: '产品SKU（快照）' })
   productSku: string;
 
+  @Column({ type: 'varchar', length: 500, nullable: true, comment: '产品图片URL（快照）' })
+  productImage: string;
+
   @Column({ type: 'decimal', precision: 10, scale: 2, comment: '单价（快照）' })
   unitPrice: number;
 

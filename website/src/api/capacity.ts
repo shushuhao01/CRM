@@ -44,7 +44,7 @@ export async function getMyCapacity(page = 1, pageSize = 10): Promise<any> {
  * 创建扩容订单
  */
 export async function createCapacityOrder(params: {
-  type: 'user' | 'storage'
+  type: 'user' | 'storage' | 'online_seat'
   quantity: number
   priceConfigId: string
   payType: 'wechat' | 'alipay'

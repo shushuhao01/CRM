@@ -194,6 +194,23 @@
         >
           <el-icon><Setting /></el-icon>
         </el-button>
+        <el-button
+          type="info"
+          @click="showBatchImportDialog = true"
+          v-if="canBatchImport"
+        >
+          <el-icon><Upload /></el-icon>
+          批量导入
+        </el-button>
+        <el-button
+          type="primary"
+          plain
+          @click="handleBatchShare"
+          v-if="canShare && selectedCustomers.length > 0"
+        >
+          <el-icon><Promotion /></el-icon>
+          批量分享 ({{ selectedCustomers.length }})
+        </el-button>
         <el-button @click="handleRefresh" :loading="loading">
           <el-icon><Refresh /></el-icon>
           刷新
@@ -289,7 +306,7 @@
            <el-button type="text" size="small" @click="handleView(row)">详情</el-button>
            <el-button type="text" size="small" @click="handleOrder(row)">下单</el-button>
            <el-button type="text" size="small" @click="handleCall(row)">外呼</el-button>
-           <el-button type="text" size="small" @click="handleShare(row)" v-if="userStore.isAdmin">分享</el-button>
+           <el-button type="text" size="small" @click="handleShare(row)" v-if="canShare">分享</el-button>
          </div>
        </template>
       </DynamicTable>
@@ -492,16 +509,31 @@
       </template>
     </el-dialog>
 
+    <!-- 批量导入客户弹窗 -->
+    <CustomerBatchImport
+      v-model="showBatchImportDialog"
+      @imported="handleImportSuccess"
+    />
+
+    <!-- 批量分享客户弹窗 -->
+    <CustomerBatchShare
+      v-model="showBatchShareDialog"
+      :customers="selectedCustomers"
+      @shared="handleBatchShareSuccess"
+    />
+
   </div>
 </template>
+
 
 <script setup lang="ts">
 import { ref, reactive, onMounted, onUnmounted, computed, watch, onActivated, nextTick } from 'vue'
 import axios from 'axios'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Download, Refresh, User, UserFilled, Star, Search, Setting, Calendar, WarningFilled } from '@element-plus/icons-vue'
+import { Plus, Download, Refresh, User, UserFilled, Star, Search, Setting, Calendar, WarningFilled, Upload, Promotion } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
+import { useCustomerFieldConfigStore } from '@/stores/customerFieldConfig'
 import { useAppStore } from '@/stores/app'
 import { useCustomerStore } from '@/stores/customer'
 import { useNotificationStore } from '@/stores/notification'
@@ -509,6 +541,8 @@ import { displaySensitiveInfo as displaySensitiveInfoNew } from '@/utils/sensiti
 import { SensitiveInfoType } from '@/services/permission'
 import { exportBatchCustomers, exportSingleCustomer, type ExportCustomer } from '@/utils/export'
 import DynamicTable from '@/components/DynamicTable.vue'
+import CustomerBatchImport from '@/components/CustomerBatchImport.vue'
+import CustomerBatchShare from '@/components/CustomerBatchShare.vue'
 import { createSafeNavigator } from '@/utils/navigation'
 import customerShareApi, { type ShareRequest } from '@/api/customerShare'
 import { formatDateTime } from '@/utils/dateFormat'
@@ -536,6 +570,7 @@ interface Customer {
 const router = useRouter()
 const route = useRoute()
 const userStore = useUserStore()
+const customerFieldConfigStore = useCustomerFieldConfigStore()
 const appStore = useAppStore()
 const customerStore = useCustomerStore()
 const notificationStore = useNotificationStore()
@@ -623,6 +658,25 @@ const exportStats = reactive({
 // 所有用户列表（用于白名单选择）
 const allUsers = computed(() => {
   return userStore.users || []
+})
+
+// 批量导入弹窗
+const showBatchImportDialog = ref(false)
+// 批量分享弹窗
+const showBatchShareDialog = ref(false)
+
+// 批量导入权限：管理员、超级管理员、部门经理
+const canBatchImport = computed(() => {
+  const role = userStore.currentUser?.role
+  if (!role) return false
+  return ['super_admin', 'admin', 'department_manager'].includes(role)
+})
+
+// 分享权限：管理员、超级管理员、部门经理
+const canShare = computed(() => {
+  const role = userStore.currentUser?.role
+  if (!role) return false
+  return ['super_admin', 'admin', 'department_manager'].includes(role)
 })
 
 // 销售人员数据 - 从用户列表动态加载
@@ -715,7 +769,8 @@ const canExport = computed(() => {
 })
 
 // 表格列配置
-const tableColumns = computed(() => [
+const tableColumns = computed(() => {
+  const baseCols = [
   { prop: 'code', label: '客户编码', width: 120, visible: true },
   { prop: 'name', label: '客户姓名', width: 90, visible: true },
   { prop: 'phone', label: '手机号', width: 120, visible: true },
@@ -732,8 +787,29 @@ const tableColumns = computed(() => [
     visible: userStore.isAdmin
   },
   { prop: 'medicalHistory', label: '疾病史', minWidth: 150, showOverflowTooltip: true, visible: true },
+  { prop: 'wecomExternalUserid', label: '企微USID', width: 140, visible: false, showOverflowTooltip: true },
   { prop: 'createTime', label: '添加时间', width: 160, visible: true, formatter: (value: unknown) => formatDateTime(value as string) }
-])
+  ]
+
+  // 动态追加客户自定义字段列
+  const customFieldCols = customerFieldConfigStore.config.customFields
+    .filter(f => f.showInList)
+    .sort((a, b) => a.sortOrder - b.sortOrder)
+    .map(f => ({
+      prop: 'customFields.' + f.fieldKey,
+      label: f.fieldName,
+      width: 120,
+      visible: false,
+      showOverflowTooltip: true,
+      isCustomField: true,
+      fieldConfig: f
+    }))
+
+  // 在添加时间之前插入自定义列
+  const insertIndex = baseCols.length - 1
+  baseCols.splice(insertIndex, 0, ...customFieldCols)
+  return baseCols
+})
 
 // 获取分享给当前用户的客户ID列表
 const sharedToMeCustomerIds = ref<string[]>([])
@@ -1195,11 +1271,12 @@ const handleBatchExport = async () => {
         street: customer.street,
         detailAddress: customer.detailAddress,
         overseasAddress: customer.overseasAddress,
-        otherGoals: customer.otherGoals
+        otherGoals: customer.otherGoals,
+        customFields: customer.customFields
       }))
 
       // 使用新的导出工具函数
-      const filename = exportBatchCustomers(exportCustomers, hasExportPermission.value)
+      const filename = exportBatchCustomers(exportCustomers, hasExportPermission.value, customerFieldConfigStore.config.customFields)
 
       // 记录导出统计
       recordExportStats()
@@ -1292,11 +1369,12 @@ const handleSelectedExport = async () => {
         street: customer.street,
         detailAddress: customer.detailAddress,
         overseasAddress: customer.overseasAddress,
-        otherGoals: customer.otherGoals
+        otherGoals: customer.otherGoals,
+        customFields: customer.customFields
       }))
 
       // 使用新的导出工具函数
-      const filename = exportBatchCustomers(exportCustomers, hasExportPermission.value)
+      const filename = exportBatchCustomers(exportCustomers, hasExportPermission.value, customerFieldConfigStore.config.customFields)
 
       // 记录导出统计
       recordExportStats()
@@ -1373,8 +1451,8 @@ const timeLimitOptions = [
 
 // 分享客户
 const handleShare = async (row: Customer) => {
-  if (!userStore.isAdmin) {
-    ElMessage.warning('只有管理员可以分享客户')
+  if (!canShare.value) {
+    ElMessage.warning('只有管理员和部门经理可以分享客户')
     return
   }
 
@@ -1384,6 +1462,28 @@ const handleShare = async (row: Customer) => {
   shareForm.remark = ''
   userSearchKeyword.value = '' // 重置搜索关键词
   showShareDialog.value = true
+}
+
+// 批量分享
+const handleBatchShare = () => {
+  if (selectedCustomers.value.length === 0) {
+    ElMessage.warning('请先勾选要分享的客户')
+    return
+  }
+  showBatchShareDialog.value = true
+}
+
+// 批量分享成功回调
+const handleBatchShareSuccess = async () => {
+  selectedCustomers.value = []
+  await loadCustomerList(true)
+}
+
+// 批量导入成功回调
+const handleImportSuccess = async () => {
+  pagination.page = 1
+  await loadCustomerList(true)
+  ElMessage.success('客户数据已刷新')
 }
 
 // 确认分享

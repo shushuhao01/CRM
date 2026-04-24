@@ -492,6 +492,47 @@ export const PERMISSION_TREE: Permission[] = [
     ]
   },
   {
+    id: 'wecom',
+    name: '企微管理',
+    code: 'wecom',
+    type: 'menu',
+    icon: 'ChatDotRound',
+    sort: 10,
+    children: [
+      {
+        id: 'wecom_customer',
+        name: '企微客户',
+        code: 'wecom:customer',
+        type: 'page',
+        parentId: 'wecom',
+        children: [
+          { id: 'wecom_customer_view', name: '查看企微客户', code: 'wecom:customer:view', type: 'action', parentId: 'wecom_customer' }
+        ]
+      },
+      {
+        id: 'wecom_customer_group',
+        name: '客户群',
+        code: 'wecom:customer_group',
+        type: 'page',
+        parentId: 'wecom',
+        children: [
+          { id: 'wecom_customer_group_view', name: '查看客户群', code: 'wecom:customer_group:view', type: 'action', parentId: 'wecom_customer_group' }
+        ]
+      },
+      {
+        id: 'wecom_chat_archive',
+        name: '会话存档',
+        code: 'wecom:chat_archive',
+        type: 'page',
+        parentId: 'wecom',
+        children: [
+          { id: 'wecom_chat_archive_view', name: '查看会话存档', code: 'wecom:chat_archive:view', type: 'action', parentId: 'wecom_chat_archive' },
+          { id: 'wecom_chat_archive_view_all', name: '查看全部存档', code: 'wecom:chat_archive:view_all', type: 'action', parentId: 'wecom_chat_archive' }
+        ]
+      }
+    ]
+  },
+  {
     id: 'system',
     name: '系统管理',
     code: 'system',
@@ -619,7 +660,10 @@ export const PERMISSION_TEMPLATES = {
       'performance:team:view',
       'performance:analysis:view',
       'product:add:create',
-      'product:inventory:manage'
+      'product:inventory:manage',
+      'wecom:customer:view',
+      'wecom:customer_group:view',
+      'wecom:chat_archive:view'
     ]
   },
   admin: {
@@ -639,7 +683,8 @@ export const PERMISSION_TEMPLATES = {
       'system:users',
       'system:roles',
       'system:message',
-      'system:settings'
+      'system:settings',
+      'wecom'
     ]
   }
 }

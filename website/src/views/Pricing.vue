@@ -74,12 +74,30 @@
               </template>
             </div>
             <ul class="card-features">
-              <li><span class="check">✓</span> 最多 {{ pkg.max_users }} 个用户</li>
+              <li v-if="pkg.user_limit_mode === 'both'">
+                <span class="check">✓</span> {{ pkg.max_users >= 99999 ? '不限' : pkg.max_users }} 用户 / {{ pkg.max_online_seats }} 席位
+                <span class="seat-badge" style="background: linear-gradient(135deg, #667eea, #764ba2); color: #fff;">可选</span>
+              </li>
+              <li v-else-if="pkg.user_limit_mode === 'online'">
+                <span class="check">✓</span> {{ pkg.max_online_seats }} 个在线席位
+                <span class="seat-badge">席位制</span>
+              </li>
+              <li v-else><span class="check">✓</span> 最多 {{ pkg.max_users >= 99999 ? '不限' : pkg.max_users }} 个用户</li>
               <li v-if="pkg.max_storage_gb > 0">
                 <span class="check">✓</span> {{ pkg.max_storage_gb }}GB 存储空间
               </li>
               <li v-for="feature in pkg.features" :key="feature">
                 <span class="check">✓</span> {{ feature }}
+              </li>
+              <li v-if="pkg.modules && pkg.modules.length > 0" class="modules-item">
+                <span class="check">✓</span>
+                <span>{{ pkg.modules.length }} 个系统模块</span>
+                <span class="modules-tooltip-trigger" @mouseenter="showModulesTooltip = pkg.id" @mouseleave="showModulesTooltip = null">
+                  查看
+                  <span v-if="showModulesTooltip === pkg.id" class="modules-tooltip">
+                    <span v-for="m in pkg.modules" :key="m" class="module-tag">{{ getModuleName(m) }}</span>
+                  </span>
+                </span>
               </li>
             </ul>
             <router-link
@@ -156,7 +174,15 @@
               </template>
             </div>
             <ul class="card-features">
-              <li>
+              <li v-if="pkg.user_limit_mode === 'both'">
+                <span class="check">✓</span> {{ pkg.max_users >= 99999 ? '不限' : pkg.max_users }} 用户 / {{ pkg.max_online_seats }} 席位
+                <span class="seat-badge" style="background: linear-gradient(135deg, #667eea, #764ba2); color: #fff;">可选</span>
+              </li>
+              <li v-else-if="pkg.user_limit_mode === 'online'">
+                <span class="check">✓</span> {{ pkg.max_online_seats }} 个在线席位
+                <span class="seat-badge">席位制</span>
+              </li>
+              <li v-else>
                 <span class="check">✓</span>
                 {{ pkg.max_users >= 99999 ? '不限用户数' : `最多 ${pkg.max_users} 个用户` }}
               </li>
@@ -168,6 +194,16 @@
               </li>
               <li v-for="feature in pkg.features" :key="feature">
                 <span class="check">✓</span> {{ feature }}
+              </li>
+              <li v-if="pkg.modules && pkg.modules.length > 0" class="modules-item">
+                <span class="check">✓</span>
+                <span>{{ pkg.modules.length }} 个系统模块</span>
+                <span class="modules-tooltip-trigger" @mouseenter="showModulesTooltip = pkg.id" @mouseleave="showModulesTooltip = null">
+                  查看
+                  <span v-if="showModulesTooltip === pkg.id" class="modules-tooltip">
+                    <span v-for="m in pkg.modules" :key="m" class="module-tag">{{ getModuleName(m) }}</span>
+                  </span>
+                </span>
               </li>
             </ul>
             <router-link
@@ -242,6 +278,15 @@ const isPrivateAnnual = computed(() => !isPrivatePerpetual.value)
 const openFaq = ref<number | null>(null)
 const loading = ref(true)
 const packages = ref<Package[]>([])
+const showModulesTooltip = ref<number | null>(null)
+
+const moduleNameMap: Record<string, string> = {
+  dashboard: '数据看板', customer: '客户管理', order: '订单管理',
+  'service-management': '服务管理', performance: '业绩统计', logistics: '物流管理',
+  service: '售后管理', data: '资料管理', finance: '财务管理',
+  product: '商品管理', wecom: '企微管理', system: '系统管理'
+}
+const getModuleName = (id: string) => moduleNameMap[id] || id
 
 // 按类型筛选套餐
 const saasPackages = computed(() =>
@@ -664,6 +709,75 @@ const faqs = [
   .cross {
     color: var(--text-muted);
   }
+}
+
+.seat-badge {
+  display: inline-block;
+  background: #dcfce7;
+  color: #16a34a;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 8px;
+  margin-left: 4px;
+}
+
+.modules-item {
+  position: relative;
+}
+
+.modules-tooltip-trigger {
+  color: var(--primary, #6366f1);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  position: relative;
+  margin-left: 4px;
+  text-decoration: underline;
+  text-decoration-style: dashed;
+  text-underline-offset: 2px;
+
+  &:hover {
+    color: #4f46e5;
+  }
+}
+
+.modules-tooltip {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: #1e293b;
+  color: #f1f5f9;
+  border-radius: 10px;
+  padding: 12px 14px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 200px;
+  max-width: 280px;
+  z-index: 100;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+
+  &::after {
+    content: '';
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    border: 6px solid transparent;
+    border-top-color: #1e293b;
+  }
+}
+
+.module-tag {
+  display: inline-block;
+  background: rgba(255, 255, 255, 0.12);
+  color: #e2e8f0;
+  font-size: 12px;
+  padding: 3px 10px;
+  border-radius: 6px;
+  white-space: nowrap;
 }
 
 .addon-services {

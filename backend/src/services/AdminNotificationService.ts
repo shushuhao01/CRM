@@ -29,6 +29,15 @@ export const EVENT_TYPES = {
   subscription_deduct_failed: { label: '订阅扣款失败', level: 'error' as const, category: '订阅动态' },
   subscription_deduct_success: { label: '订阅扣款成功', level: 'success' as const, category: '订阅动态' },
   subscription_platform_cancelled: { label: '平台侧取消订阅', level: 'error' as const, category: '订阅动态' },
+  // v1.8.0 短信管理相关事件
+  sms_template_applied: { label: '新短信模板申请', level: 'info' as const, category: '短信管理' },
+  sms_template_approved: { label: '短信模板审核通过', level: 'success' as const, category: '短信管理' },
+  sms_template_rejected: { label: '短信模板审核拒绝', level: 'warning' as const, category: '短信管理' },
+  sms_template_activated: { label: '短信模板已激活', level: 'success' as const, category: '短信管理' },
+  sms_template_review_timeout: { label: '模板审核超时提醒', level: 'warning' as const, category: '短信管理' },
+  // v1.8.0 短信额度相关事件
+  sms_quota_purchased: { label: '短信额度购买成功', level: 'info' as const, category: '短信管理' },
+  sms_quota_refunded: { label: '短信额度退款', level: 'warning' as const, category: '短信管理' },
 } as const
 
 export type EventType = keyof typeof EVENT_TYPES

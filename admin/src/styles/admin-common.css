@@ -1,0 +1,110 @@
+/* 管理后台统一 UI 样式 */
+
+/* 页面容器 */
+.page-container {
+  padding: 20px;
+  background: #F5F7FA;
+  min-height: 100%;
+}
+
+/* 统计卡片 */
+.stat-card {
+  text-align: center;
+  border-radius: 12px;
+  transition: all 0.3s;
+}
+.stat-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+.stat-num {
+  font-size: 26px;
+  font-weight: 700;
+  color: #4C6EF5;
+  line-height: 1.2;
+}
+.stat-label {
+  font-size: 12px;
+  color: #9CA3AF;
+  margin-top: 6px;
+}
+
+/* 卡片头部 */
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-weight: 600;
+  font-size: 15px;
+  color: #1F2937;
+}
+.header-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+/* 章节卡片 */
+.section-card {
+  margin-bottom: 16px;
+  border-radius: 12px;
+}
+.section-title {
+  font-weight: 600;
+  font-size: 14px;
+  color: #1F2937;
+}
+
+/* 操作栏 */
+.tab-actions {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+/* 统一表格样式 */
+:deep(.el-table) {
+  border-radius: 8px;
+}
+:deep(.el-table th) {
+  background: #F9FAFB !important;
+  color: #6B7280;
+  font-weight: 600;
+}
+
+/* 统一按钮间距 */
+.action-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+/* 文字颜色辅助类 */
+.text-primary { color: #4C6EF5; }
+.text-success { color: #10B981; }
+.text-warning { color: #F59E0B; }
+.text-danger { color: #EF4444; }
+
+/* 空状态 */
+.empty-state {
+  text-align: center;
+  padding: 60px 20px;
+  color: #9CA3AF;
+}
+
+/* 表单提示 */
+.form-tip {
+  font-size: 12px;
+  color: #9CA3AF;
+  margin-top: 4px;
+}
+
+/* 响应式 */
+@media (max-width: 768px) {
+  .page-container { padding: 12px; }
+  .card-header { flex-direction: column; gap: 8px; }
+  .header-actions { width: 100%; }
+}
+

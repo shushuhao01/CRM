@@ -8,19 +8,19 @@
           <p class="page-subtitle">管理和配置短信模板，支持创建、编辑和审核流程</p>
         </div>
         <div class="header-right">
-          <el-button 
-            v-if="isSuperAdmin" 
-            type="primary" 
-            :icon="Plus" 
+          <el-button
+            v-if="isSuperAdmin"
+            type="primary"
+            :icon="Plus"
             @click="handleCreateTemplate"
             class="create-btn"
           >
             创建模板
           </el-button>
-          <el-button 
-            v-else 
-            type="primary" 
-            :icon="DocumentAdd" 
+          <el-button
+            v-else
+            type="primary"
+            :icon="DocumentAdd"
             @click="handleApplyTemplate"
             class="apply-btn"
           >
@@ -126,14 +126,14 @@
             <span class="header-title">模板列表</span>
             <div class="header-actions">
               <el-button-group>
-                <el-button 
-                  :type="viewMode === 'grid' ? 'primary' : ''" 
+                <el-button
+                  :type="viewMode === 'grid' ? 'primary' : ''"
                   :icon="Grid"
                   @click="viewMode = 'grid'"
                   size="small"
                 />
-                <el-button 
-                  :type="viewMode === 'list' ? 'primary' : ''" 
+                <el-button
+                  :type="viewMode === 'list' ? 'primary' : ''"
                   :icon="List"
                   @click="viewMode = 'list'"
                   size="small"
@@ -146,8 +146,8 @@
         <!-- 网格视图 -->
         <div v-if="viewMode === 'grid'" class="grid-view">
           <div class="templates-grid" v-loading="loading">
-            <div 
-              v-for="template in paginatedTemplates" 
+            <div
+              v-for="template in paginatedTemplates"
               :key="template.id"
               class="template-card"
               :class="{ 'pending': template.status === 'pending' }"
@@ -155,8 +155,8 @@
               <div class="template-header">
                 <div class="template-title">{{ template.name }}</div>
                 <div class="template-status">
-                  <el-tag 
-                    :type="getStatusType(template.status)" 
+                  <el-tag
+                    :type="getStatusType(template.status)"
                     size="small"
                     class="status-tag"
                   >
@@ -164,7 +164,7 @@
                   </el-tag>
                 </div>
               </div>
-              
+
               <div class="template-content">
                 <p class="content-preview">{{ template.content }}</p>
                 <div class="template-meta">
@@ -178,63 +178,63 @@
                   <span>{{ formatTime(template.updatedAt) }}</span>
                 </div>
                 <div class="template-actions">
-                  <el-button 
-                    size="small" 
-                    :icon="View" 
+                  <el-button
+                    size="small"
+                    :icon="View"
                     @click="handlePreview(template)"
                     title="预览"
                   >
                     预览
                   </el-button>
-                  <el-button 
+                  <el-button
                     v-if="canEdit(template)"
-                    size="small" 
-                    type="primary" 
-                    :icon="Edit" 
+                    size="small"
+                    type="primary"
+                    :icon="Edit"
                     @click="handleEdit(template)"
                     title="编辑"
                   >
                     编辑
                   </el-button>
-                  <el-button 
+                  <el-button
                     v-if="template.status === 'active'"
-                    size="small" 
-                    type="warning" 
+                    size="small"
+                    type="warning"
                     @click="handleDisable(template)"
                     title="禁用"
                   >
                     禁用
                   </el-button>
-                  <el-button 
+                  <el-button
                     v-if="template.status === 'disabled'"
-                    size="small" 
-                    type="success" 
+                    size="small"
+                    type="success"
                     @click="handleEnable(template)"
                     title="启用"
                   >
                     启用
                   </el-button>
-                  <el-button 
+                  <el-button
                     v-if="isSuperAdmin && template.status === 'pending'"
-                    size="small" 
-                    type="success" 
-                    :icon="Check" 
+                    size="small"
+                    type="success"
+                    :icon="Check"
                     @click="handleApprove(template)"
                     title="审核通过"
                   />
-                  <el-button 
+                  <el-button
                     v-if="isSuperAdmin && template.status === 'pending'"
-                    size="small" 
-                    type="danger" 
-                    :icon="Close" 
+                    size="small"
+                    type="danger"
+                    :icon="Close"
                     @click="handleReject(template)"
                     title="审核拒绝"
                   />
-                  <el-button 
+                  <el-button
                     v-if="canDelete(template)"
-                    size="small" 
-                    type="danger" 
-                    :icon="Delete" 
+                    size="small"
+                    type="danger"
+                    :icon="Delete"
                     @click="handleDelete(template)"
                     title="删除"
                   >
@@ -248,8 +248,8 @@
 
         <!-- 列表视图 -->
         <div v-else class="list-view">
-          <el-table 
-            :data="paginatedTemplates" 
+          <el-table
+            :data="paginatedTemplates"
             v-loading="loading"
             class="templates-table"
             @row-click="handleRowClick"
@@ -258,9 +258,9 @@
               <template #default="{ row }">
                 <div class="template-name-cell">
                   <span class="name">{{ row.name }}</span>
-                  <el-tag 
-                    v-if="row.isDefault" 
-                    type="warning" 
+                  <el-tag
+                    v-if="row.isDefault"
+                    type="warning"
                     size="small"
                     class="default-tag"
                   >
@@ -269,14 +269,14 @@
                 </div>
               </template>
             </el-table-column>
-            
+
             <el-table-column prop="content" label="模板内容" min-width="300">
               <template #default="{ row }">
                 <div class="content-cell">
                   <p class="content-text">{{ row.content }}</p>
                   <div class="variables" v-if="row.variables?.length">
-                    <el-tag 
-                      v-for="variable in row.variables" 
+                    <el-tag
+                      v-for="variable in row.variables"
                       :key="variable"
                       size="small"
                       class="variable-tag"
@@ -287,72 +287,72 @@
                 </div>
               </template>
             </el-table-column>
-            
+
             <el-table-column prop="category" label="分类" width="120">
               <template #default="{ row }">
                 <span class="category-text">{{ getCategoryText(row.category) }}</span>
               </template>
             </el-table-column>
-            
+
             <el-table-column prop="status" label="状态" width="100">
               <template #default="{ row }">
-                <el-tag 
-                  :type="getStatusType(row.status)" 
+                <el-tag
+                  :type="getStatusType(row.status)"
                   size="small"
                 >
                   {{ getStatusText(row.status) }}
                 </el-tag>
               </template>
             </el-table-column>
-            
+
             <el-table-column prop="usageCount" label="使用次数" width="100" align="center">
               <template #default="{ row }">
                 <span class="usage-count">{{ row.usageCount }}</span>
               </template>
             </el-table-column>
-            
+
             <el-table-column prop="updatedAt" label="更新时间" width="160">
               <template #default="{ row }">
                 <span class="time-text">{{ formatTime(row.updatedAt) }}</span>
               </template>
             </el-table-column>
-            
+
             <el-table-column label="操作" width="280" fixed="right">
               <template #default="{ row }">
                 <div class="action-buttons">
-                  <el-button 
-                    size="small" 
-                    :icon="View" 
+                  <el-button
+                    size="small"
+                    :icon="View"
                     @click.stop="handlePreview(row)"
                   >
                     预览
                   </el-button>
-                  <el-button 
+                  <el-button
                     v-if="canEdit(row)"
-                    size="small" 
-                    type="primary" 
-                    :icon="Edit" 
+                    size="small"
+                    type="primary"
+                    :icon="Edit"
                     @click.stop="handleEdit(row)"
                   >
                     编辑
                   </el-button>
-                  <el-button 
+                  <el-button
                     v-if="row.status === 'active'"
-                    size="small" 
-                    type="warning" 
+                    size="small"
+                    type="warning"
                     @click.stop="handleDisable(row)"
                   >
                     禁用
                   </el-button>
-                  <el-button 
+                  <el-button
                     v-if="row.status === 'disabled'"
-                    size="small" 
-                    type="success" 
+                    size="small"
+                    type="success"
                     @click.stop="handleEnable(row)"
                   >
                     启用
                   </el-button>
-                  <el-dropdown 
+                  <el-dropdown
                     v-if="isSuperAdmin && row.status === 'pending'"
                     @command="(command) => handleDropdownCommand(command, row)"
                   >
@@ -366,11 +366,11 @@
                       </el-dropdown-menu>
                     </template>
                   </el-dropdown>
-                  <el-button 
+                  <el-button
                     v-if="canDelete(row)"
-                    size="small" 
-                    type="danger" 
-                    :icon="Delete" 
+                    size="small"
+                    type="danger"
+                    :icon="Delete"
                     @click.stop="handleDelete(row)"
                   >
                     删除
@@ -420,7 +420,7 @@
             show-word-limit
           />
         </el-form-item>
-        
+
         <el-form-item label="模板分类" prop="category">
           <el-select v-model="templateForm.category" placeholder="请选择分类">
             <el-option label="营销推广" value="marketing" />
@@ -429,7 +429,7 @@
             <el-option label="订单提醒" value="order" />
           </el-select>
         </el-form-item>
-        
+
         <el-form-item label="模板内容" prop="content">
           <el-input
             v-model="templateForm.content"
@@ -445,12 +445,12 @@
             <p>• 请确保内容符合相关法规要求</p>
           </div>
         </el-form-item>
-        
+
         <el-form-item label="变量说明" v-if="detectedVariables.length">
           <div class="variables-section">
             <div class="variables-list">
-              <el-tag 
-                v-for="variable in detectedVariables" 
+              <el-tag
+                v-for="variable in detectedVariables"
                 :key="variable"
                 class="variable-item"
               >
@@ -460,7 +460,7 @@
             <p class="variables-tip">系统自动检测到以上变量，请确保在使用时提供对应的值</p>
           </div>
         </el-form-item>
-        
+
         <el-form-item label="申请说明" prop="description" v-if="dialogMode === 'apply'">
           <el-input
             v-model="templateForm.description"
@@ -471,13 +471,13 @@
             show-word-limit
           />
         </el-form-item>
-        
+
         <el-form-item label="设为默认" v-if="isSuperAdmin && dialogMode !== 'apply'">
           <el-switch v-model="templateForm.isDefault" />
           <span class="form-tip">默认模板将在发送短信时优先显示</span>
         </el-form-item>
       </el-form>
-      
+
       <template #footer>
         <div class="dialog-footer">
           <el-button @click="dialogVisible = false">取消</el-button>
@@ -502,18 +502,18 @@
             {{ getStatusText(previewTemplate?.status) }}
           </el-tag>
         </div>
-        
+
         <div class="preview-body">
           <div class="content-section">
             <h5>模板内容</h5>
             <div class="content-display">{{ previewTemplate?.content }}</div>
           </div>
-          
+
           <div class="variables-section" v-if="previewTemplate?.variables?.length">
             <h5>变量列表</h5>
             <div class="variables-display">
-              <el-tag 
-                v-for="variable in previewTemplate.variables" 
+              <el-tag
+                v-for="variable in previewTemplate.variables"
                 :key="variable"
                 class="variable-tag"
               >
@@ -521,7 +521,7 @@
               </el-tag>
             </div>
           </div>
-          
+
           <div class="meta-section">
             <div class="meta-item">
               <span class="label">分类：</span>
@@ -549,13 +549,19 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { 
-  Plus, DocumentAdd, Search, Refresh, View, Edit, Delete, 
+import {
+  Plus, DocumentAdd, Search, Refresh, View, Edit, Delete,
   Check, Close, Document, CircleCheck, Clock, TrendCharts,
   Grid, List, ArrowDown
 } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
 import { useNotificationStore, MessageType } from '@/stores/notification'
+import {
+  getTemplates as apiGetTemplates,
+  applyTemplate as apiApplyTemplate,
+  approveTemplate as apiApproveTemplate,
+  deleteTemplate as apiDeleteTemplate
+} from '@/api/sms'
 
 // 接口定义
 interface SmsTemplate {
@@ -661,8 +667,8 @@ const filteredTemplates = computed(() => {
 
   // 权限过滤
   if (!isSuperAdmin.value) {
-    result = result.filter(template => 
-      template.status === 'active' || 
+    result = result.filter(template =>
+      template.status === 'active' ||
       template.createdBy === userStore.user?.id
     )
   }
@@ -696,192 +702,61 @@ const paginatedTemplates = computed(() => {
 const loadTemplates = async () => {
   loading.value = true
   try {
-    // 模拟数据
-    await new Promise(resolve => setTimeout(resolve, 500))
-    
-    templates.value = [
-      {
-        id: '1',
-        name: '客户回访模板',
-        content: '尊敬的{customerName}，感谢您对我们产品的支持，我们将为您提供更好的服务。如有任何问题，请联系我们：{phone}',
-        category: 'notification',
-        status: 'active',
-        isDefault: false,
-        usageCount: 156,
-        variables: ['customerName', 'phone'],
-        createdBy: 'admin',
-        createdAt: '2024-01-15 10:30:00',
-        updatedAt: '2024-01-20 14:20:00'
-      },
-      {
-        id: '2',
-        name: '促销活动模板',
-        content: '【{companyName}】新年大促销！全场商品{discount}折起，活动时间：{startDate}至{endDate}，详情咨询客服。',
-        category: 'marketing',
-        status: 'active',
-        isDefault: false,
-        usageCount: 89,
-        variables: ['companyName', 'discount', 'startDate', 'endDate'],
-        createdBy: 'admin',
-        createdAt: '2024-01-10 09:15:00',
-        updatedAt: '2024-01-18 16:45:00'
-      },
-      {
-        id: '3',
-        name: '验证码模板',
-        content: '您的验证码是：{code}，请在{minutes}分钟内使用，请勿泄露给他人。',
-        category: 'verification',
-        status: 'active',
-        isDefault: true,
-        usageCount: 1234,
-        variables: ['code', 'minutes'],
-        createdBy: 'admin',
-        createdAt: '2024-01-22 11:20:00',
-        updatedAt: '2024-01-22 11:20:00'
-      },
-      {
-        id: '4',
-        name: '订单确认通知',
-        content: '【{companyName}】您的订单{orderNo}已确认，商品：{productName}，金额：{amount}元，预计{deliveryDate}发货。',
-        category: 'order',
-        status: 'active',
-        isDefault: false,
-        usageCount: 892,
-        variables: ['companyName', 'orderNo', 'productName', 'amount', 'deliveryDate'],
-        createdBy: 'admin',
-        createdAt: '2024-01-20 15:30:00',
-        updatedAt: '2024-01-25 10:15:00'
-      },
-      {
-        id: '5',
-        name: '发货通知模板',
-        content: '【{companyName}】您的订单{orderNo}已发货，快递单号：{trackingNo}，请注意查收。物流查询：{trackingUrl}',
-        category: 'notification',
-        status: 'active',
-        isDefault: false,
-        usageCount: 756,
-        variables: ['companyName', 'orderNo', 'trackingNo', 'trackingUrl'],
-        createdBy: 'admin',
-        createdAt: '2024-01-18 14:20:00',
-        updatedAt: '2024-01-23 09:45:00'
-      },
-      {
-        id: '6',
-        name: '付款提醒模板',
-        content: '尊敬的{customerName}，您的订单{orderNo}待付款，金额{amount}元，请及时完成支付。如有疑问请联系客服。',
-        category: 'notification',
-        status: 'active',
-        isDefault: false,
-        usageCount: 423,
-        variables: ['customerName', 'orderNo', 'amount'],
-        createdBy: 'admin',
-        createdAt: '2024-01-16 11:30:00',
-        updatedAt: '2024-01-21 16:20:00'
-      },
-      {
-        id: '7',
-        name: '会议通知模板',
-        content: '【会议通知】{meetingTitle}将于{meetingDate} {meetingTime}在{location}举行，请准时参加。联系人：{contact}',
-        category: 'notification',
-        status: 'active',
-        isDefault: false,
-        usageCount: 234,
-        variables: ['meetingTitle', 'meetingDate', 'meetingTime', 'location', 'contact'],
-        createdBy: 'admin',
-        createdAt: '2024-01-19 13:15:00',
-        updatedAt: '2024-01-24 08:30:00'
-      },
-      {
-        id: '8',
-        name: '生日祝福模板',
-        content: '亲爱的{customerName}，今天是您的生日，{companyName}全体员工祝您生日快乐！特为您准备了生日礼品，请到店领取。',
-        category: 'marketing',
-        status: 'active',
-        isDefault: false,
-        usageCount: 67,
-        variables: ['customerName', 'companyName'],
-        createdBy: 'admin',
-        createdAt: '2024-01-17 10:45:00',
-        updatedAt: '2024-01-22 14:10:00'
-      },
-      {
-        id: '9',
-        name: '服务预约确认',
-        content: '【{companyName}】您预约的{serviceName}服务已确认，时间：{appointmentDate} {appointmentTime}，地址：{address}，联系电话：{phone}',
-        category: 'notification',
-        status: 'active',
-        isDefault: false,
-        usageCount: 345,
-        variables: ['companyName', 'serviceName', 'appointmentDate', 'appointmentTime', 'address', 'phone'],
-        createdBy: 'admin',
-        createdAt: '2024-01-21 09:20:00',
-        updatedAt: '2024-01-26 11:40:00'
-      },
-      {
-        id: '10',
-        name: '账户余额提醒',
-        content: '【{companyName}】您的账户余额为{balance}元，余额不足可能影响服务使用，请及时充值。充值热线：{phone}',
-        category: 'notification',
-        status: 'active',
-        isDefault: false,
-        usageCount: 178,
-        variables: ['companyName', 'balance', 'phone'],
-        createdBy: 'admin',
-        createdAt: '2024-01-14 16:30:00',
-        updatedAt: '2024-01-19 12:15:00'
-      },
-      {
-        id: '11',
-        name: '密码重置通知',
-        content: '【{companyName}】您的账户密码已重置，新密码：{newPassword}，请及时登录修改。如非本人操作，请联系客服：{phone}',
-        category: 'notification',
-        status: 'disabled',
-        isDefault: false,
-        usageCount: 89,
-        variables: ['companyName', 'newPassword', 'phone'],
-        createdBy: 'admin',
-        createdAt: '2024-01-13 08:45:00',
-        updatedAt: '2024-01-18 15:20:00'
-      },
-      {
-        id: '12',
-        name: '活动邀请模板',
-        content: '【{companyName}】诚邀您参加{eventName}，时间：{eventDate}，地点：{venue}。精彩活动，丰厚奖品等您来！报名电话：{phone}',
-        category: 'marketing',
-        status: 'active',
-        isDefault: false,
-        usageCount: 123,
-        variables: ['companyName', 'eventName', 'eventDate', 'venue', 'phone'],
-        createdBy: 'admin',
-        createdAt: '2024-01-12 12:10:00',
-        updatedAt: '2024-01-17 17:25:00'
-      },
-      {
-        id: '13',
-        name: '新用户申请模板',
-        content: '【限时优惠】{name}，{product}现在只要{price}元！立即购买享受{discount}折优惠，活动截止{endTime}。',
-        category: 'marketing',
-        status: 'pending',
-        isDefault: false,
-        usageCount: 0,
-        variables: ['name', 'product', 'price', 'discount', 'endTime'],
-        createdBy: 'user2',
-        createdAt: '2024-01-26 11:20:00',
-        updatedAt: '2024-01-26 11:20:00'
-      }
-    ]
+    const res = await apiGetTemplates({
+      status: searchForm.status || undefined,
+      category: searchForm.category || undefined,
+      keyword: searchForm.keyword || undefined
+    }) as any
+
+    if (res?.data?.templates) {
+      templates.value = res.data.templates.map((t: any) => ({
+        id: String(t.id),
+        name: t.name || '',
+        content: t.content || '',
+        category: t.category || '',
+        description: t.description || '',
+        isDefault: t.isSystem || t.isPreset === 1,
+        status: mapStatus(t.status),
+        variables: t.variables || [],
+        usageCount: t.usage || 0,
+        createdBy: t.applicantName || t.applicant || '',
+        createdAt: t.createdAt || '',
+        updatedAt: t.updatedAt || '',
+        approvedBy: t.approvedBy,
+        approvedAt: t.approvedAt,
+        rejectedReason: t.adminReviewNote
+      }))
+    } else {
+      templates.value = []
+    }
 
     // 更新统计数据
     stats.total = templates.value.length
     stats.active = templates.value.filter(t => t.status === 'active').length
     stats.pending = templates.value.filter(t => t.status === 'pending').length
     stats.usage = templates.value.reduce((sum, t) => sum + t.usageCount, 0)
-    
+
   } catch (error) {
+    console.error('加载模板失败:', error)
     ElMessage.error('加载模板失败')
   } finally {
     loading.value = false
   }
+}
+
+/** 映射后端状态到本地状态 */
+const mapStatus = (status: string): SmsTemplate['status'] => {
+  const map: Record<string, SmsTemplate['status']> = {
+    active: 'active',
+    approved: 'active',
+    pending_admin: 'pending',
+    pending: 'pending',
+    pending_vendor: 'pending',
+    rejected: 'rejected',
+    disabled: 'disabled',
+    withdrawn: 'disabled'
+  }
+  return map[status] || 'active'
 }
 
 const handleCreateTemplate = () => {
@@ -913,21 +788,24 @@ const handleApprove = async (template: SmsTemplate) => {
     await ElMessageBox.confirm('确定要审核通过这个模板吗？', '确认审核', {
       type: 'warning'
     })
-    
-    template.status = 'active'
-    ElMessage.success('模板审核通过')
-    
-    // 发送通知给申请人
-    notificationStore.sendMessage(
-      MessageType.SMS_TEMPLATE_APPROVED,
-      `您申请的短信模板"${template.name}"已审核通过，现在可以使用了。`,
-      {
-        relatedId: template.id,
-        relatedType: 'sms_template',
-        actionUrl: '/system/sms-templates'
-      }
-    )
-    
+
+    const res = await apiApproveTemplate(template.id, { approved: true }) as any
+    if (res?.success || res?.code === 200) {
+      ElMessage.success('模板审核通过')
+      // 发送通知给申请人
+      notificationStore.sendMessage(
+        MessageType.SMS_TEMPLATE_APPROVED,
+        `您申请的短信模板"${template.name}"已审核通过，现在可以使用了。`,
+        {
+          relatedId: template.id,
+          relatedType: 'sms_template',
+          actionUrl: '/system/sms-templates'
+        }
+      )
+      loadTemplates()
+    } else {
+      ElMessage.error(res?.message || '审核失败')
+    }
   } catch (error) {
     // 用户取消
   }
@@ -941,22 +819,24 @@ const handleReject = async (template: SmsTemplate) => {
       inputPattern: /.{5,}/,
       inputErrorMessage: '拒绝原因至少5个字符'
     })
-    
-    template.status = 'rejected'
-    template.rejectReason = reason
-    ElMessage.success('模板已拒绝')
-    
-    // 发送通知给申请人
-    notificationStore.sendMessage(
-      MessageType.SMS_TEMPLATE_REJECTED,
-      `您申请的短信模板"${template.name}"审核未通过。拒绝原因：${reason}`,
-      {
-        relatedId: template.id,
-        relatedType: 'sms_template',
-        actionUrl: '/system/sms-templates'
-      }
-    )
-    
+
+    const res = await apiApproveTemplate(template.id, { approved: false, reason }) as any
+    if (res?.success || res?.code === 200) {
+      ElMessage.success('模板已拒绝')
+      // 发送通知给申请人
+      notificationStore.sendMessage(
+        MessageType.SMS_TEMPLATE_REJECTED,
+        `您申请的短信模板"${template.name}"审核未通过。拒绝原因：${reason}`,
+        {
+          relatedId: template.id,
+          relatedType: 'sms_template',
+          actionUrl: '/system/sms-templates'
+        }
+      )
+      loadTemplates()
+    } else {
+      ElMessage.error(res?.message || '拒绝操作失败')
+    }
   } catch (error) {
     // 用户取消
   }
@@ -967,13 +847,15 @@ const handleDelete = async (template: SmsTemplate) => {
     await ElMessageBox.confirm('确定要删除这个模板吗？删除后不可恢复。', '确认删除', {
       type: 'warning'
     })
-    
-    const index = templates.value.findIndex(t => t.id === template.id)
-    if (index > -1) {
-      templates.value.splice(index, 1)
+
+    const res = await apiDeleteTemplate(template.id) as any
+    if (res?.success || res?.code === 200) {
       ElMessage.success('模板删除成功')
+      loadTemplates()
+    } else {
+      ElMessage.error(res?.message || '删除失败')
     }
-    
+
   } catch (error) {
     // 用户取消
   }
@@ -984,11 +866,14 @@ const handleEnable = async (template: SmsTemplate) => {
     await ElMessageBox.confirm('确定要启用这个模板吗？', '确认启用', {
       type: 'info'
     })
-    
-    template.status = 'active'
-    template.updatedAt = new Date().toLocaleString()
-    ElMessage.success('模板已启用')
-    
+
+    const res = await apiApproveTemplate(template.id, { approved: true }) as any
+    if (res?.success || res?.code === 200) {
+      ElMessage.success('模板已启用')
+      loadTemplates()
+    } else {
+      ElMessage.error(res?.message || '启用失败')
+    }
   } catch (error) {
     // 用户取消
   }
@@ -999,11 +884,14 @@ const handleDisable = async (template: SmsTemplate) => {
     await ElMessageBox.confirm('确定要禁用这个模板吗？禁用后将无法使用。', '确认禁用', {
       type: 'warning'
     })
-    
-    template.status = 'disabled'
-    template.updatedAt = new Date().toLocaleString()
-    ElMessage.success('模板已禁用')
-    
+
+    const res = await apiApproveTemplate(template.id, { approved: false, reason: '管理员手动禁用' }) as any
+    if (res?.success || res?.code === 200) {
+      ElMessage.success('模板已禁用')
+      loadTemplates()
+    } else {
+      ElMessage.error(res?.message || '禁用失败')
+    }
   } catch (error) {
     // 用户取消
   }
@@ -1011,64 +899,54 @@ const handleDisable = async (template: SmsTemplate) => {
 
 const handleSubmit = async () => {
   if (!templateFormRef.value) return
-  
+
   try {
     await templateFormRef.value.validate()
     submitting.value = true
-    
-    // 模拟提交
-    await new Promise(resolve => setTimeout(resolve, 1000))
-    
-    if (dialogMode.value === 'create') {
-      const newTemplate = {
-        ...templateForm,
-        id: Date.now().toString(),
-        usageCount: 0,
-        variables: detectedVariables.value,
-        createdBy: userStore.user?.id,
-        createdAt: new Date().toLocaleString(),
-        updatedAt: new Date().toLocaleString()
-      }
-      templates.value.unshift(newTemplate)
-      ElMessage.success('模板创建成功')
-    } else if (dialogMode.value === 'edit') {
-      const index = templates.value.findIndex(t => t.id === templateForm.id)
-      if (index > -1) {
-        templates.value[index] = {
-          ...templates.value[index],
-          ...templateForm,
-          variables: detectedVariables.value,
-          updatedAt: new Date().toLocaleString()
-        }
-        ElMessage.success('模板更新成功')
-      }
-    } else if (dialogMode.value === 'apply') {
-      const newTemplate = {
-        ...templateForm,
-        id: Date.now().toString(),
-        usageCount: 0,
-        variables: detectedVariables.value,
-        createdBy: userStore.user?.id,
-        createdAt: new Date().toLocaleString(),
-        updatedAt: new Date().toLocaleString()
-      }
-      templates.value.unshift(newTemplate)
-      ElMessage.success('模板申请已提交，等待管理员审核')
-      
-      // 通知超级管理员
-      notificationStore.sendMessage(
-        MessageType.SMS_TEMPLATE_APPLIED,
-        `用户 ${userStore.user?.name} 申请了新的短信模板"${newTemplate.name}"，请及时审核。`,
-        {
-          relatedId: newTemplate.id,
-          relatedType: 'sms_template',
-          actionUrl: '/system/sms-templates'
-        }
-      )
+
+    const templateData = {
+      name: templateForm.name,
+      category: templateForm.category,
+      content: templateForm.content,
+      variables: detectedVariables.value,
+      description: templateForm.description
     }
-    
+
+    if (dialogMode.value === 'create' || dialogMode.value === 'apply') {
+      const res = await apiApplyTemplate(templateData) as any
+      if (res?.success || res?.code === 200) {
+        if (dialogMode.value === 'apply') {
+          ElMessage.success('模板申请已提交，等待管理员审核')
+          // 通知超级管理员
+          notificationStore.sendMessage(
+            MessageType.SMS_TEMPLATE_APPLIED,
+            `用户 ${userStore.user?.name} 申请了新的短信模板"${templateForm.name}"，请及时审核。`,
+            {
+              relatedId: res.data?.id ? String(res.data.id) : '',
+              relatedType: 'sms_template',
+              actionUrl: '/system/sms-templates'
+            }
+          )
+        } else {
+          ElMessage.success('模板创建成功')
+        }
+        loadTemplates()
+      } else {
+        ElMessage.error(res?.message || '操作失败')
+      }
+    } else if (dialogMode.value === 'edit') {
+      // 编辑模式：调用approve接口更新（兼容）
+      const res = await apiApproveTemplate(templateForm.id, { approved: true }) as any
+      if (res?.success || res?.code === 200) {
+        ElMessage.success('模板更新成功')
+        loadTemplates()
+      } else {
+        ElMessage.error(res?.message || '更新失败')
+      }
+    }
+
     dialogVisible.value = false
-    
+
   } catch (error) {
     ElMessage.error('操作失败，请重试')
   } finally {
@@ -1678,47 +1556,47 @@ watch([() => searchForm.keyword, () => searchForm.status, () => searchForm.categ
   .sms-templates-page {
     padding: 16px;
   }
-  
+
   .header-content {
     flex-direction: column;
     gap: 20px;
     text-align: center;
     padding: 24px;
   }
-  
+
   .stats-grid {
     grid-template-columns: 1fr;
   }
-  
+
   .search-form {
     flex-direction: column;
     align-items: stretch;
   }
-  
+
   .search-left {
     flex-direction: column;
   }
-  
+
   .search-input,
   .status-select,
   .category-select {
     width: 100%;
   }
-  
+
   .templates-grid {
     grid-template-columns: 1fr;
   }
-  
+
   .template-footer {
     flex-direction: column;
     gap: 12px;
     align-items: stretch;
   }
-  
+
   .template-actions {
     justify-content: center;
   }
-  
+
   .meta-section {
     grid-template-columns: 1fr;
   }

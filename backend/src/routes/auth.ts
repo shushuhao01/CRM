@@ -3,6 +3,7 @@ import Joi from 'joi';
 import { UserController } from '../controllers/UserController';
 import { validate, commonValidations } from '../middleware/validation';
 import { authenticateToken } from '../middleware/auth';
+import { onlineSeatService } from '../services/OnlineSeatService';
 
 const router = Router();
 const userController = new UserController();
@@ -106,9 +107,17 @@ router.put('/password', authenticateToken, validate(changePasswordSchema), userC
  * @desc 用户登出（客户端处理，服务端记录日志）
  * @access Private
  */
-router.post('/logout', authenticateToken, (req, res) => {
-  // 在实际应用中，这里可以将令牌加入黑名单
-  // 目前只是返回成功响应，客户端负责清除令牌
+router.post('/logout', authenticateToken, async (req, res) => {
+  // 🔥 在线席位：销毁会话记录
+  try {
+    const sessionToken = (req as any).sessionToken;
+    if (sessionToken) {
+      await onlineSeatService.destroySession(sessionToken);
+    }
+  } catch (_e) {
+    // 会话销毁失败不影响登出
+  }
+
   res.json({
     success: true,
     message: '登出成功'

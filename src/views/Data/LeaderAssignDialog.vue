@@ -31,12 +31,12 @@
         </el-radio-group>
           </el-form-item>
 
-          <el-form-item 
-              label="选择成员" 
+          <el-form-item
+              label="选择成员"
               v-if="assignForm.assignType === 'leader_specific'"
             >
-            <el-select 
-              v-model="assignForm.assignTo" 
+            <el-select
+              v-model="assignForm.assignTo"
               placeholder="选择部门成员"
               style="width: 100%"
             >
@@ -49,13 +49,13 @@
             </el-select>
           </el-form-item>
 
-          <el-form-item 
-              label="分配说明" 
+          <el-form-item
+              label="分配说明"
               v-if="assignForm.assignType === 'leader_roundrobin'"
             >
             <div class="preview-section">
-              <el-table 
-                :data="assignmentPreview" 
+              <el-table
+                :data="assignmentPreview"
                 size="small"
                 max-height="200px"
               >
@@ -67,13 +67,13 @@
             </div>
           </el-form-item>
 
-          <el-form-item 
-              label="自定义分配" 
+          <el-form-item
+              label="自定义分配"
               v-if="assignForm.assignType === 'leader_custom'"
             >
             <div class="custom-assign-section">
-              <div 
-                v-for="member in departmentMembers" 
+              <div
+                v-for="member in departmentMembers"
                 :key="member.id"
                 class="member-assign-item"
               >
@@ -108,8 +108,8 @@
 
       <div class="data-list-section">
         <el-divider content-position="left">待分配资料列表</el-divider>
-        <el-table 
-          :data="pendingAssignments" 
+        <el-table
+          :data="pendingAssignments"
           size="small"
           max-height="300px"
         >
@@ -137,8 +137,8 @@
     <template #footer>
       <div class="dialog-footer">
         <el-button @click="handleClose">取消</el-button>
-        <el-button 
-          type="primary" 
+        <el-button
+          type="primary"
           @click="confirmAssign"
           :loading="assigning"
           :disabled="!canAssign"
@@ -156,7 +156,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { useDataStore } from '@/stores/data'
 import { useDepartmentStore } from '@/stores/department'
 import { useUserStore } from '@/stores/user'
-import { getDepartmentMembers } from '@/api/department'
+import api from '@/utils/request'
 import { getAssignmentStats } from '@/api/data'
 import { displaySensitiveInfoNew, SensitiveInfoType } from '@/utils/sensitiveInfo'
 
@@ -221,9 +221,13 @@ const loadDepartmentMembers = async () => {
       return
     }
 
-    // 获取部门成员
-    const members = await getDepartmentMembers(currentUser.departmentId)
-    
+    // 获取部门成员 - 使用不需要admin权限的接口
+    const res = await api.get('/users/department-members') as any
+    const members = (res?.data || res || []).map((m: any) => ({
+      id: m.userId || m.id,
+      name: m.realName || m.name || m.username
+    }))
+
     // 获取成员分配统计
     const stats = await getAssignmentStats({
       departmentId: currentUser.departmentId
@@ -261,11 +265,11 @@ const initCustomAssignments = () => {
 // 轮流分配预览
 const assignmentPreview = computed(() => {
   if (assignForm.assignType !== 'leader_roundrobin') return []
-  
+
   const members = [...departmentMembers.value].sort((a, b) => a.assignmentCount - b.assignmentCount)
   const totalToAssign = pendingAssignments.value.length
   const memberCount = members.length
-  
+
   return members.map((member, index) => {
     const willAssign = Math.floor(totalToAssign / memberCount) + (index < totalToAssign % memberCount ? 1 : 0)
     return {
@@ -302,7 +306,7 @@ const formatDate = (dateStr: string) => {
 const confirmAssign = async () => {
   try {
     assigning.value = true
-    
+
     let assignments: Array<{
       dataId: string
       assigneeId: string
@@ -316,7 +320,7 @@ const confirmAssign = async () => {
         ElMessage.error('请选择有效的部门成员')
         return
       }
-      
+
       assignments = pendingAssignments.value.map(item => ({
         dataId: item.id,
         assigneeId: member.id,
@@ -325,7 +329,7 @@ const confirmAssign = async () => {
     } else if (assignForm.assignType === 'leader_roundrobin') {
       // 轮流分配
       const sortedMembers = [...departmentMembers.value].sort((a, b) => a.assignmentCount - b.assignmentCount)
-      
+
       assignments = pendingAssignments.value.map((item, index) => {
         const memberIndex = index % sortedMembers.length
         const member = sortedMembers[memberIndex]

@@ -191,6 +191,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { getMemberBills, getMemberToken } from '@/api/member'
+import { generateQRCodeDataUrl } from '@/utils/qrcode'
 
 const API_BASE = '/api/v1'
 
@@ -350,17 +351,14 @@ const handleCreatePayOrder = async () => {
 
     if (data.code === 0 && data.data) {
       payNewOrderNo.value = data.data.orderNo || orderNo
-      if (data.data.qrCode) {
-        const qr = data.data.payUrl || data.data.qrCode
-        if (qr.startsWith('http') && !qr.includes('qrserver.com')) {
-          payQrCode.value = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qr)}`
-        } else {
-          payQrCode.value = qr
-        }
+      if (data.data.qrCode && (data.data.qrCode.startsWith('data:') || data.data.qrCode.startsWith('http'))) {
+        payQrCode.value = data.data.qrCode
       } else if (data.data.payUrl) {
-        payQrCode.value = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(data.data.payUrl)}`
+        payQrCode.value = await generateQRCodeDataUrl(data.data.payUrl)
+      } else if (data.data.qrCode) {
+        payQrCode.value = await generateQRCodeDataUrl(data.data.qrCode)
       } else {
-        payQrCode.value = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(payNewOrderNo.value)}`
+        payQrCode.value = await generateQRCodeDataUrl(payNewOrderNo.value)
       }
       // 开始轮询支付状态
       startPolling(payNewOrderNo.value)

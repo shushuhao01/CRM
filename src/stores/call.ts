@@ -479,9 +479,11 @@ export const useCallStore = defineStore('call', () => {
       // 使用支持Mock的API
       const apiMethod = shouldUseMockApi() ? callApi.getCallStatisticsWithMock : callApi.getCallStatistics
 
-      const response = await apiMethod(params)
-      callStatistics.value = response.data
-      return response.data
+      const response = await apiMethod(params || {}) as any
+      // 兼容两种返回格式：真实API返回解包后的data，Mock返回 { data: ... }
+      const statsData = response?.data ?? response
+      callStatistics.value = statsData
+      return statsData
     } catch (error) {
       console.error('获取通话统计失败:', error)
 
@@ -489,9 +491,10 @@ export const useCallStore = defineStore('call', () => {
       if (shouldUseMockApi()) {
         console.log('[Call Store] API失败,使用Mock统计数据')
         try {
-          const mockResponse = await callApi.getCallStatisticsWithMock(params)
-          callStatistics.value = mockResponse.data
-          return mockResponse.data
+          const mockResponse = await callApi.getCallStatisticsWithMock(params || {}) as any
+          const mockData = mockResponse?.data ?? mockResponse
+          callStatistics.value = mockData
+          return mockData
         } catch (mockError) {
           console.error('[Call Store] Mock统计数据也失败:', mockError)
         }

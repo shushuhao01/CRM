@@ -10,7 +10,17 @@
 
     <!-- 当前额度 -->
     <div class="capacity-overview">
-      <div class="cap-card">
+      <div v-if="profile?.usage?.userLimitMode === 'online'" class="cap-card">
+        <div class="cap-icon">🟢</div>
+        <div class="cap-info">
+          <div class="cap-label">在线席位额度 <span style="background:#dcfce7;color:#16a34a;font-size:11px;padding:1px 6px;border-radius:8px;font-weight:600;">席位制</span></div>
+          <div class="cap-value">{{ profile?.usage?.onlineCount || 0 }} / {{ profile?.usage?.maxOnlineSeats || 0 }}</div>
+          <div v-if="(profile?.usage?.extraOnlineSeats || 0) > 0" class="cap-extra">含扩容 +{{ profile.usage.extraOnlineSeats }} 席位</div>
+          <div class="cap-bar"><div class="cap-fill" :style="{ width: (profile?.usage?.onlineSeatPercent || 0) + '%' }"></div></div>
+          <div style="font-size:12px;color:#909399;margin-top:4px;">注册用户 {{ profile?.usage?.userCount || 0 }} 人（不受限制）</div>
+        </div>
+      </div>
+      <div v-else class="cap-card">
         <div class="cap-icon">👥</div>
         <div class="cap-info">
           <div class="cap-label">用户数额度</div>
@@ -38,7 +48,8 @@
       <template v-else>
         <!-- 扩容类型切换 -->
         <div class="type-tabs">
-          <button :class="{ active: buyType === 'user' }" @click="buyType = 'user'">👥 扩容用户数</button>
+          <button v-if="isOnlineMode" :class="{ active: buyType === 'online_seat' }" @click="buyType = 'online_seat'">🟢 扩容在线席位</button>
+          <button v-if="!isOnlineMode" :class="{ active: buyType === 'user' }" @click="buyType = 'user'">👥 扩容用户数</button>
           <button :class="{ active: buyType === 'storage' }" @click="buyType = 'storage'">💾 扩容存储空间</button>
         </div>
 
@@ -48,7 +59,10 @@
             <input type="radio" :value="p.id" v-model="selectedPriceId" />
             <span class="price-opt-content">
               <span class="price-opt-cycle">{{ cycleLabel(p.billing_cycle) }}</span>
-              <span class="price-opt-price">¥{{ Number(p.unit_price).toFixed(2) }}<span>/{{ buyType === 'user' ? '人' : 'GB' }}</span></span>
+              <span class="price-opt-price">¥{{ Number(p.unit_price).toFixed(2) }}<span>/{{ buyUnitLabel }}</span></span>
+              <span v-if="p.discount_rules && p.discount_rules.length > 0" class="price-opt-discount">
+                <span v-for="(r, i) in p.discount_rules" :key="i">≥{{ r.min_qty }}享{{ 100 - r.discount_percent }}折</span>
+              </span>
               <span v-if="p.description" class="price-opt-desc">{{ p.description }}</span>
             </span>
           </label>
@@ -56,7 +70,7 @@
 
         <!-- 数量选择 -->
         <div v-if="selectedPrice" class="qty-section">
-          <label>购买数量（{{ buyType === 'user' ? '人' : 'GB' }}）</label>
+          <label>购买数量（{{ buyUnitLabel }}）</label>
           <div class="qty-control">
             <button @click="buyQty = Math.max(selectedPrice.min_qty, buyQty - 1)">-</button>
             <input type="number" v-model.number="buyQty" :min="selectedPrice.min_qty" :max="selectedPrice.max_qty" />
@@ -69,11 +83,15 @@
         <div v-if="selectedPrice" class="amount-summary">
           <div class="amount-row">
             <span>单价</span>
-            <span>¥{{ Number(selectedPrice.unit_price).toFixed(2) }}/{{ buyType === 'user' ? '人' : 'GB' }}</span>
+            <span>¥{{ Number(selectedPrice.unit_price).toFixed(2) }}/{{ buyUnitLabel }}</span>
           </div>
           <div class="amount-row">
             <span>数量</span>
-            <span>{{ buyQty }} {{ buyType === 'user' ? '人' : 'GB' }}</span>
+            <span>{{ buyQty }} {{ buyUnitLabel }}</span>
+          </div>
+          <div v-if="currentDiscount > 0" class="amount-row discount">
+            <span>折扣</span>
+            <span style="color:#f59e0b;">-{{ currentDiscount }}%（打{{ (100 - currentDiscount) / 10 }}折）</span>
           </div>
           <div class="amount-row total">
             <span>应付金额</span>
@@ -106,8 +124,9 @@
       <div v-else class="orders-list">
         <div class="order-item" v-for="o in orders" :key="o.id">
           <div class="order-info">
-            <span class="order-type">{{ o.type === 'user' ? '👥 用户数' : '💾 存储空间' }}</span>
-            <span class="order-qty">+{{ o.quantity }}{{ o.type === 'user' ? '人' : 'GB' }}</span>
+            <span class="order-type">{{ orderTypeLabel(o.type) }}</span>
+            <span class="order-qty">+{{ o.quantity }}{{ orderUnitLabel(o.type) }}</span>
+            <span v-if="o.expire_date" class="order-expire">到期: {{ formatDate(o.expire_date) }}</span>
           </div>
           <div class="order-amount">¥{{ Number(o.total_amount).toFixed(2) }}</div>
           <div class="order-status" :class="o.status">
@@ -134,7 +153,7 @@
           <div v-else-if="payQrCode" class="pay-qr-area">
             <p class="pay-qr-tip">请使用{{ payType === 'wechat' ? '微信' : '支付宝' }}扫码支付</p>
             <div class="pay-qr-box">
-              <img :src="payQrCode.startsWith('http') ? payQrCode : `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(payQrCode)}`" alt="支付二维码" />
+              <img :src="payQrCode" alt="支付二维码" />
             </div>
             <button class="btn-check-pay" @click="handleCheckPay" :disabled="payChecking">
               {{ payChecking ? '查询中...' : '我已支付，查询结果' }}
@@ -150,10 +169,11 @@
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { getMemberProfile, getMemberToken } from '@/api/member'
 import { getCapacityPrices, getMyCapacity, createCapacityOrder } from '@/api/capacity'
+import { generateQRCodeDataUrl } from '@/utils/qrcode'
 
 const API_BASE = '/api/v1'
 
-const statusMap: Record<string, string> = { paid: '已完成', pending: '待支付', closed: '已关闭', refunded: '已退款' }
+const statusMap: Record<string, string> = { paid: '已完成', pending: '待支付', closed: '已关闭', refunded: '已退款', expired: '已到期' }
 const statusLabel = (s: string) => statusMap[s] || s
 
 // Toast
@@ -168,21 +188,47 @@ const showToast = (msg: string, type: 'success' | 'error' | 'info' = 'info') => 
 }
 
 const profile = ref<any>(null)
+const isOnlineMode = computed(() => profile.value?.usage?.userLimitMode === 'online')
 const prices = ref<any[]>([])
 const pricesLoading = ref(true)
 const orders = ref<any[]>([])
 const ordersLoading = ref(true)
 
 // 购买
-const buyType = ref<'user' | 'storage'>('user')
+const buyType = ref<'user' | 'storage' | 'online_seat'>(isOnlineMode.value ? 'online_seat' : 'user')
 const selectedPriceId = ref('')
 const buyQty = ref(1)
 const payType = ref<'wechat' | 'alipay'>('wechat')
 const buying = ref(false)
 
+const buyUnitLabel = computed(() => {
+  return { user: '人', storage: 'GB', online_seat: '席位' }[buyType.value] || '个'
+})
 const filteredPrices = computed(() => prices.value.filter(p => p.type === buyType.value))
 const selectedPrice = computed(() => prices.value.find(p => p.id === selectedPriceId.value))
-const totalAmount = computed(() => (selectedPrice.value ? Number(selectedPrice.value.unit_price) * buyQty.value : 0))
+
+// 🔥 计算折扣
+const currentDiscount = computed(() => {
+  const sp = selectedPrice.value
+  if (!sp?.discount_rules || !Array.isArray(sp.discount_rules) || sp.discount_rules.length === 0) return 0
+  const sorted = [...sp.discount_rules].sort((a: any, b: any) => b.min_qty - a.min_qty)
+  for (const rule of sorted) {
+    if (buyQty.value >= rule.min_qty && rule.discount_percent > 0) return rule.discount_percent
+  }
+  return 0
+})
+const totalAmount = computed(() => {
+  if (!selectedPrice.value) return 0
+  const base = Number(selectedPrice.value.unit_price) * buyQty.value
+  return currentDiscount.value > 0 ? Math.round(base * (1 - currentDiscount.value / 100) * 100) / 100 : base
+})
+
+const orderTypeLabel = (type: string) => {
+  return { user: '👥 用户数', storage: '💾 存储空间', online_seat: '🟢 在线席位' }[type] || type
+}
+const orderUnitLabel = (type: string) => {
+  return { user: '人', storage: 'GB', online_seat: '席位' }[type] || '个'
+}
 
 // 支付弹窗
 const showPayDialog = ref(false)
@@ -194,7 +240,7 @@ const payOrderDesc = ref('')
 const payChecking = ref(false)
 let pollTimer: any = null
 
-const cycleLabel = (c: string) => ({ monthly: '按月', yearly: '按年', follow_package: '跟随套餐' }[c] || c)
+const cycleLabel = (c: string) => ({ monthly: '按月', yearly: '按年', permanent: '永久', follow_package: '跟随套餐' }[c] || c)
 const formatDate = (d: string) => d ? new Date(d).toLocaleDateString('zh-CN') : '-'
 const formatStorage = (mb: number) => {
   if (!mb) return '0MB'
@@ -214,6 +260,10 @@ onMounted(async () => {
   orders.value = myData.orders?.list || []
   ordersLoading.value = false
 
+  // 🔥 根据限制模式自动切换购买类型
+  if (p?.usage?.userLimitMode === 'online') {
+    buyType.value = 'online_seat'
+  }
   // 默认选中第一个价格
   const first = filteredPrices.value[0]
   if (first) { selectedPriceId.value = first.id; buyQty.value = first.min_qty }
@@ -244,7 +294,8 @@ const handleBuy = async () => {
     if (result.success && result.data) {
       payOrderNo.value = result.data.orderNo
       payOrderAmount.value = result.data.totalAmount
-      payOrderDesc.value = `${buyType.value === 'user' ? '扩容用户数' : '扩容存储空间'} x${buyQty.value}`
+      const typeDesc = { user: '扩容用户数', storage: '扩容存储空间', online_seat: '扩容在线席位' }[buyType.value] || '扩容'
+      payOrderDesc.value = `${typeDesc} x${buyQty.value}${buyUnitLabel.value}`
       showPayDialog.value = true
       // 生成支付二维码
       generateQrCode(result.data.orderNo)
@@ -266,10 +317,10 @@ const generateQrCode = async (orderNo: string) => {
     const data = await res.json()
     if (data.code === 0 && data.data) {
       const qr = data.data.qrCode || data.data.payUrl || ''
-      if (qr.startsWith('http') && !qr.includes('qrserver.com')) {
-        payQrCode.value = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qr)}`
-      } else {
+      if (qr.startsWith('data:') || qr.startsWith('http')) {
         payQrCode.value = qr
+      } else if (qr) {
+        payQrCode.value = await generateQRCodeDataUrl(qr)
       }
       startPolling(orderNo)
     }
@@ -364,6 +415,7 @@ const closePayDialog = () => {
 .price-opt-cycle { font-size: 13px; color: #64748b; margin-bottom: 6px; }
 .price-opt-price { font-size: 20px; font-weight: 700; color: #6366f1; span { font-size: 12px; color: #94a3b8; } }
 .price-opt-desc { font-size: 11px; color: #94a3b8; margin-top: 4px; }
+.price-opt-discount { font-size: 11px; color: #f59e0b; margin-top: 2px; display: flex; gap: 6px; flex-wrap: wrap; }
 
 .qty-section {
   margin-bottom: 20px;
@@ -387,6 +439,7 @@ const closePayDialog = () => {
 .amount-row {
   display: flex; justify-content: space-between; font-size: 13px; color: #64748b; padding: 4px 0;
   &.total { border-top: 1px solid #e2e8f0; margin-top: 8px; padding-top: 10px; font-size: 18px; font-weight: 700; color: #6366f1; }
+  &.discount { color: #f59e0b; font-weight: 500; }
 }
 
 .pay-methods { display: flex; gap: 10px; margin-bottom: 14px; }
@@ -409,9 +462,10 @@ const closePayDialog = () => {
   .order-info { flex: 1; }
   .order-type { color: #475569; font-weight: 500; }
   .order-qty { color: #6366f1; font-weight: 600; margin-left: 8px; }
+  .order-expire { font-size: 11px; color: #94a3b8; margin-left: 8px; }
   .order-amount { font-weight: 700; color: #1e293b; min-width: 80px; text-align: right; }
   .order-status { min-width: 60px; text-align: center; font-size: 12px;
-    &.paid { color: #16a34a; } &.pending { color: #f59e0b; } &.closed { color: #94a3b8; } &.refunded { color: #ef4444; }
+    &.paid { color: #16a34a; } &.pending { color: #f59e0b; } &.closed { color: #94a3b8; } &.refunded { color: #ef4444; } &.expired { color: #94a3b8; }
   }
   .order-date { color: #94a3b8; min-width: 80px; text-align: right; }
 }

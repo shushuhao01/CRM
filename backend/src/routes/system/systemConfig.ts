@@ -129,6 +129,85 @@ router.put('/order-field-config', authenticateToken, requireAdmin, async (req: R
   }
 });
 
+// ========== 客户字段配置路由 ==========
+
+/**
+ * @route GET /api/v1/system/customer-field-config
+ * @desc 获取客户字段配置
+ * @access Private
+ */
+router.get('/customer-field-config', authenticateToken, async (_req: Request, res: Response) => {
+  try {
+    const configRepository = getTenantRepo(SystemConfig);
+    const config = await configRepository.findOne({
+      where: { configKey: 'customerFieldConfig', configGroup: 'customer_settings' }
+    });
+
+    if (config) {
+      res.json({ success: true, code: 200, data: JSON.parse(config.configValue) });
+    } else {
+      // 返回默认配置
+      res.json({
+        success: true,
+        code: 200,
+        data: {
+          fieldVisibility: {
+            phone: { enabled: true, required: true },
+            name: { enabled: true, required: true },
+            gender: { enabled: true, required: false },
+            age: { enabled: true, required: false },
+            height: { enabled: true, required: false },
+            weight: { enabled: true, required: false },
+            email: { enabled: true, required: false },
+            wechat: { enabled: true, required: false },
+            fanAcquisitionTime: { enabled: true, required: false },
+            medicalHistory: { enabled: true, required: false },
+            improvementGoals: { enabled: true, required: false }
+          },
+          customFields: []
+        }
+      });
+    }
+  } catch (error) {
+    log.error('获取客户字段配置失败:', error);
+    res.status(500).json({ success: false, code: 500, message: '获取客户字段配置失败' });
+  }
+});
+
+/**
+ * @route PUT /api/v1/system/customer-field-config
+ * @desc 更新客户字段配置
+ * @access Private (Admin)
+ */
+router.put('/customer-field-config', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const configRepository = getTenantRepo(SystemConfig);
+    let config = await configRepository.findOne({
+      where: { configKey: 'customerFieldConfig', configGroup: 'customer_settings' }
+    });
+
+    if (config) {
+      config.configValue = JSON.stringify(req.body);
+    } else {
+      config = configRepository.create({
+        configKey: 'customerFieldConfig',
+        configValue: JSON.stringify(req.body),
+        valueType: 'json',
+        configGroup: 'customer_settings',
+        description: '客户字段配置',
+        isEnabled: true,
+        isSystem: true
+      });
+    }
+
+    await configRepository.save(config);
+    res.json({ success: true, code: 200, message: '客户字段配置保存成功' });
+  } catch (error) {
+    log.error('保存客户字段配置失败:', error);
+    res.status(500).json({ success: false, code: 500, message: '保存客户字段配置失败' });
+  }
+});
+
 // ========== 通用设置路由 ==========
 
 /**

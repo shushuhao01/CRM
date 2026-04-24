@@ -13,10 +13,12 @@
     "@vueuse/core": "^10.7.0",
     "marked": "^17.0.5",
     "pinia": "^2.1.7",
+    "qrcode": "^1.5.4",
     "vue": "^3.4.0",
     "vue-router": "^4.2.5"
   },
   "devDependencies": {
+    "@types/qrcode": "^1.5.6",
     "@vitejs/plugin-vue": "^5.0.0",
     "sass": "^1.69.0",
     "typescript": "^5.3.0",

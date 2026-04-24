@@ -36,7 +36,6 @@
     "html2canvas": "^1.4.1",
     "jsbarcode": "^3.12.3",
     "pinia": "^3.0.3",
-    "pinyin-pro": "^3.28.0",
     "qrcode": "^1.5.4",
     "socket.io-client": "^4.8.1",
     "sortablejs": "^1.15.6",

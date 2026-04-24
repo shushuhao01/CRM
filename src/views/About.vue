@@ -37,7 +37,7 @@
             </a>
           </el-descriptions-item>
           <el-descriptions-item label="官方网站">
-            <a :href="systemConfig.websiteUrl" target="_blank" class="contact-link">
+            <a :href="safeWebsiteUrl" target="_blank" class="contact-link">
               <el-icon><Link /></el-icon>
               {{ systemConfig.websiteUrl }}
             </a>
@@ -70,7 +70,9 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
 import { useConfigStore } from '@/stores/config'
+import { getWebsiteBaseUrl } from '@/utils/memberCenterUrl'
 import {
   Phone,
   Message,
@@ -85,6 +87,11 @@ defineOptions({
 
 const configStore = useConfigStore()
 const systemConfig = configStore.systemConfig
+
+// 确保官网 URL 有协议前缀，避免裸域名被浏览器当相对路径
+const safeWebsiteUrl = computed(() => {
+  return getWebsiteBaseUrl() || systemConfig.websiteUrl || ''
+})
 </script>
 
 <style scoped>

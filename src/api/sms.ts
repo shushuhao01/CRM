@@ -1,15 +1,6 @@
 import { request } from './request'
-import { isProduction } from '@/utils/env'
 
-// 检查是否使用Mock API - 生产环境强制使用真实API
-const shouldUseMockApi = (): boolean => {
-  // 生产环境强制使用真实API
-  if (isProduction()) return false
-  const mockEnabled = localStorage.getItem('erp_mock_enabled')
-  if (mockEnabled === 'true') return true
-  if (mockEnabled === 'false') return false
-  return import.meta.env.DEV
-}
+// ==================== 类型定义 ====================
 
 // 短信模板接口
 export interface SmsTemplate {
@@ -27,11 +18,29 @@ export interface SmsTemplate {
   createTime?: string
   updateTime?: string
   creator?: string
-  status: 'pending' | 'approved' | 'rejected' | 'active' | 'inactive'
+  status: 'pending_admin' | 'pending_vendor' | 'active' | 'rejected' | 'withdrawn' | 'deleted' | 'pending' | 'approved' | 'inactive'
   approvedBy?: string
   approvedAt?: string
   isSystem?: boolean
+  isPreset?: number
   usage?: number
+  // v1.8.0 新增字段
+  vendorTemplateCode?: string
+  vendorStatus?: string
+  vendorSubmitAt?: string
+  vendorRejectReason?: string
+  adminReviewer?: string
+  adminReviewAt?: string
+  adminReviewNote?: string
+}
+
+// 模板变量文档接口
+export interface SmsTemplateVariable {
+  name: string
+  label: string
+  example: string
+  category: string
+  description: string
 }
 
 // 短信申请接口
@@ -87,13 +96,13 @@ export interface SmsSendRecord {
 
 // 发送记录接口
 export interface SendRecord {
-  id: string
+  id: string | number
   templateName: string
   content: string
   recipientCount: number
   successCount: number
   failCount: number
-  status: 'sending' | 'completed' | 'failed'
+  status: 'sending' | 'completed' | 'failed' | 'pending'
   sentAt: string
   sendDetails?: SendDetail[]
 }
@@ -161,582 +170,217 @@ export interface SmsSendListResponse {
   pageSize: number
 }
 
-// 预设模板数据(系统模板)
-const PRESET_TEMPLATES: SmsTemplate[] = [
-  {
-    id: 'preset-1',
-    name: '订单确认通知',
-    category: 'order',
-    content: '尊敬的{customerName}，您的订单{orderNo}已确认，订单金额{amount}元，预计{deliveryTime}送达。如有疑问请联系客服。',
-    variables: ['{customerName}', '{orderNo}', '{amount}', '{deliveryTime}'],
-    description: '订单创建后自动发送确认通知',
-    applicant: 'system',
-    applicantName: '系统',
-    applicantDept: '系统',
-    createdAt: '2024-01-01 00:00:00',
-    status: 'approved',
-    approvedBy: '系统管理员',
-    approvedAt: '2024-01-01 00:00:00',
-    isSystem: true
-  },
-  {
-    id: 'preset-2',
-    name: '发货通知',
-    category: 'logistics',
-    content: '您的订单{orderNo}已发货，快递公司：{expressCompany}，快递单号：{trackingNo}，请注意查收。',
-    variables: ['{orderNo}', '{expressCompany}', '{trackingNo}'],
-    description: '订单发货后通知客户',
-    applicant: 'system',
-    applicantName: '系统',
-    applicantDept: '系统',
-    createdAt: '2024-01-01 00:00:00',
-    status: 'approved',
-    approvedBy: '系统管理员',
-    approvedAt: '2024-01-01 00:00:00',
-    isSystem: true
-  },
-  {
-    id: 'preset-3',
-    name: '签收提醒',
-    category: 'logistics',
-    content: '您的订单{orderNo}已签收，感谢您的购买！如有问题请及时联系我们，祝您生活愉快！',
-    variables: ['{orderNo}'],
-    description: '订单签收后发送感谢短信',
-    applicant: 'system',
-    applicantName: '系统',
-    applicantDept: '系统',
-    createdAt: '2024-01-01 00:00:00',
-    status: 'approved',
-    approvedBy: '系统管理员',
-    approvedAt: '2024-01-01 00:00:00',
-    isSystem: true
-  },
-  {
-    id: 'preset-4',
-    name: '付款提醒',
-    category: 'reminder',
-    content: '尊敬的{customerName}，您的订单{orderNo}还有{amount}元未付款，请及时处理以免影响发货。',
-    variables: ['{customerName}', '{orderNo}', '{amount}'],
-    description: '订单未付款提醒',
-    applicant: 'system',
-    applicantName: '系统',
-    applicantDept: '系统',
-    createdAt: '2024-01-01 00:00:00',
-    status: 'approved',
-    approvedBy: '系统管理员',
-    approvedAt: '2024-01-01 00:00:00',
-    isSystem: true
-  },
-  {
-    id: 'preset-5',
-    name: '客户生日祝福',
-    category: 'marketing',
-    content: '亲爱的{customerName}，祝您生日快乐！感谢一直以来的支持，专属生日礼品等您领取，祝您生活幸福美满！',
-    variables: ['{customerName}'],
-    description: '会员生日当天发送祝福',
-    applicant: 'system',
-    applicantName: '系统',
-    applicantDept: '系统',
-    createdAt: '2024-01-01 00:00:00',
-    status: 'approved',
-    approvedBy: '系统管理员',
-    approvedAt: '2024-01-01 00:00:00',
-    isSystem: true
-  },
-  {
-    id: 'preset-6',
-    name: '促销活动通知',
-    category: 'marketing',
-    content: '{activityName}火热进行中！{activityContent}，活动时间：{startTime}至{endTime}，机会难得，不容错过！',
-    variables: ['{activityName}', '{activityContent}', '{startTime}', '{endTime}'],
-    description: '促销活动推广通知',
-    applicant: 'system',
-    applicantName: '系统',
-    applicantDept: '系统',
-    createdAt: '2024-01-01 00:00:00',
-    status: 'approved',
-    approvedBy: '系统管理员',
-    approvedAt: '2024-01-01 00:00:00',
-    isSystem: true
-  },
-  {
-    id: 'preset-7',
-    name: '订单状态更新',
-    category: 'order',
-    content: '您的订单{orderNo}状态已更新为：{status}。如有疑问请联系客服，我们将竭诚为您服务。',
-    variables: ['{orderNo}', '{status}'],
-    description: '订单状态变更通知',
-    applicant: 'system',
-    applicantName: '系统',
-    applicantDept: '系统',
-    createdAt: '2024-01-01 00:00:00',
-    status: 'approved',
-    approvedBy: '系统管理员',
-    approvedAt: '2024-01-01 00:00:00',
-    isSystem: true
-  },
-  {
-    id: 'preset-8',
-    name: '售后服务提醒',
-    category: 'service',
-    content: '尊敬的{customerName}，您的售后工单{ticketNo}已处理完成，处理结果：{result}。感谢您的理解与支持！',
-    variables: ['{customerName}', '{ticketNo}', '{result}'],
-    description: '售后工单处理完成通知',
-    applicant: 'system',
-    applicantName: '系统',
-    applicantDept: '系统',
-    createdAt: '2024-01-01 00:00:00',
-    status: 'approved',
-    approvedBy: '系统管理员',
-    approvedAt: '2024-01-01 00:00:00',
-    isSystem: true
-  },
-  {
-    id: 'preset-9',
-    name: '客户回访邀请',
-    category: 'service',
-    content: '尊敬的{customerName}，感谢您购买我们的产品。为了提供更好的服务，诚邀您参与满意度调查，您的意见对我们很重要！',
-    variables: ['{customerName}'],
-    description: '购买后回访邀请',
-    applicant: 'system',
-    applicantName: '系统',
-    applicantDept: '系统',
-    createdAt: '2024-01-01 00:00:00',
-    status: 'approved',
-    approvedBy: '系统管理员',
-    approvedAt: '2024-01-01 00:00:00',
-    isSystem: true
-  },
-  {
-    id: 'preset-10',
-    name: '账户余额提醒',
-    category: 'reminder',
-    content: '尊敬的{customerName}，您的账户余额不足{balance}元，为避免影响正常使用，请及时充值。',
-    variables: ['{customerName}', '{balance}'],
-    description: '账户余额不足提醒',
-    applicant: 'system',
-    applicantName: '系统',
-    applicantDept: '系统',
-    createdAt: '2024-01-01 00:00:00',
-    status: 'approved',
-    approvedBy: '系统管理员',
-    approvedAt: '2024-01-01 00:00:00',
-    isSystem: true
-  }
-]
+// ==================== API函数 ====================
 
-// Mock数据生成函数
-function generateMockTemplates(): SmsTemplate[] {
-  const stored = localStorage.getItem('crm_sms_templates')
-  if (stored) {
-    const templates = JSON.parse(stored)
-    // 确保预设模板存在
-    const presetIds = PRESET_TEMPLATES.map(t => t.id)
-    const hasAllPresets = presetIds.every(id => templates.some((t: SmsTemplate) => t.id === id))
-    if (!hasAllPresets) {
-      // 合并预设模板
-      const userTemplates = templates.filter((t: SmsTemplate) => !t.isSystem)
-      const merged = [...PRESET_TEMPLATES, ...userTemplates]
-      localStorage.setItem('crm_sms_templates', JSON.stringify(merged))
-      return merged
-    }
-    return templates
-  }
-  localStorage.setItem('crm_sms_templates', JSON.stringify(PRESET_TEMPLATES))
-  return PRESET_TEMPLATES
-}
-
-function generateMockSmsRequests(): SmsRequest[] {
-  const stored = localStorage.getItem('crm_sms_requests')
-  return stored ? JSON.parse(stored) : []
-}
-
-function generateMockSendRecords(): SendRecord[] {
-  const stored = localStorage.getItem('crm_send_records')
-  return stored ? JSON.parse(stored) : []
-}
-
-// API函数
-
-// 获取模板列表
+/**
+ * 获取模板列表
+ * GET /api/v1/sms/templates
+ */
 export function getTemplates(params?: {
   status?: string
   category?: string
   keyword?: string
 }) {
-  if (shouldUseMockApi()) {
-    return Promise.resolve({
-      code: 200,
-      data: {
-        templates: generateMockTemplates().filter(t => {
-          if (params?.status && t.status !== params.status) return false
-          if (params?.category && t.category !== params.category) return false
-          if (params?.keyword) {
-            const keyword = params.keyword.toLowerCase()
-            return t.name.toLowerCase().includes(keyword) ||
-                   t.content.toLowerCase().includes(keyword)
-          }
-          return true
-        })
-      },
-      message: '获取成功'
-    })
-  }
-
-  return request({
-    url: '/api/sms/templates',
-    method: 'get',
+  return request('/sms/templates', {
+    method: 'GET',
     params
   })
 }
 
-// 获取短信申请列表
-export function getSmsRequests(params?: {
-  status?: string
-  keyword?: string
-}) {
-  if (shouldUseMockApi()) {
-    return Promise.resolve({
-      code: 200,
-      data: {
-        requests: generateMockSmsRequests().filter(r => {
-          if (params?.status && r.status !== params.status) return false
-          if (params?.keyword) {
-            const keyword = params.keyword.toLowerCase()
-            return r.templateName.toLowerCase().includes(keyword) ||
-                   r.content.toLowerCase().includes(keyword)
-          }
-          return true
-        })
-      },
-      message: '获取成功'
-    })
-  }
+/**
+ * 获取可用模板列表（active + 预设模板）
+ * CRM端模板详情页 Tab1 使用
+ * GET /api/v1/sms/templates/available
+ */
+export function getAvailableTemplates() {
+  return request('/sms/templates/available', {
+    method: 'GET'
+  })
+}
 
-  return request({
-    url: '/api/sms/requests',
-    method: 'get',
+/**
+ * 获取我的模板申请列表
+ * CRM端模板详情页 Tab2 使用
+ * GET /api/v1/sms/templates/my-applications
+ */
+export function getMyApplications(params?: { status?: string }) {
+  return request('/sms/templates/my-applications', {
+    method: 'GET',
     params
   })
 }
 
-// 获取发送记录
+/**
+ * 申请短信模板（提交到管理后台审核）
+ * POST /api/v1/sms/templates/apply
+ */
+export function applyTemplate(data: Partial<SmsTemplate>) {
+  return request('/sms/templates/apply', {
+    method: 'POST',
+    data
+  })
+}
+
+/**
+ * 撤销模板申请（仅 pending_admin 状态可撤销）
+ * POST /api/v1/sms/templates/:id/withdraw
+ */
+export function withdrawTemplate(id: string | number) {
+  return request(`/sms/templates/${id}/withdraw`, {
+    method: 'POST'
+  })
+}
+
+/**
+ * 删除已拒绝/已撤销的模板申请
+ * DELETE /api/v1/sms/templates/:id
+ */
+export function deleteTemplate(id: string | number) {
+  return request(`/sms/templates/${id}`, {
+    method: 'DELETE'
+  })
+}
+
+/**
+ * 创建模板（旧版兼容）
+ * POST /api/v1/sms/templates/apply
+ */
+export function createTemplate(data: Partial<SmsTemplate>) {
+  return request('/sms/templates/apply', {
+    method: 'POST',
+    data
+  })
+}
+
+/**
+ * 审核模板（租户管理员 — 保留兼容）
+ * POST /api/v1/sms/templates/:id/approve
+ */
+export function approveTemplate(id: string | number, data: { approved: boolean; reason?: string }) {
+  return request(`/sms/templates/${id}/approve`, {
+    method: 'POST',
+    data
+  })
+}
+
+/**
+ * 获取短信发送记录
+ * GET /api/v1/sms/records
+ */
 export function getSendRecords(params?: {
+  page?: number
+  pageSize?: number
+  status?: string
   startDate?: string
   endDate?: string
   keyword?: string
 }) {
-  if (shouldUseMockApi()) {
-    return Promise.resolve({
-      code: 200,
-      data: {
-        records: generateMockSendRecords().filter(r => {
-          if (params?.keyword) {
-            const keyword = params.keyword.toLowerCase()
-            return r.templateName.toLowerCase().includes(keyword) ||
-                   r.content.toLowerCase().includes(keyword)
-          }
-          return true
-        })
-      },
-      message: '获取成功'
-    })
-  }
-
-  return request({
-    url: '/api/sms/records',
-    method: 'get',
+  return request('/sms/records', {
+    method: 'GET',
     params
   })
 }
 
-// 获取统计数据
-export function getStatistics() {
-  if (shouldUseMockApi()) {
-    const templates = generateMockTemplates()
-    const requests = generateMockSmsRequests()
-    const records = generateMockSendRecords()
-
-    const today = new Date().toDateString()
-    const todayRecords = records.filter(r =>
-      new Date(r.sentAt).toDateString() === today
-    )
-
-    return Promise.resolve({
-      code: 200,
-      data: {
-        pendingTemplates: templates.filter(t => t.status === 'pending' && !t.isSystem).length,
-        pendingSms: requests.filter(r => r.status === 'pending').length,
-        todaySent: todayRecords.reduce((sum, r) => sum + r.successCount, 0),
-        totalSent: records.reduce((sum, r) => sum + r.successCount, 0)
-      },
-      message: '获取成功'
-    })
-  }
-
-  return request({
-    url: '/api/sms/statistics',
-    method: 'get'
-  })
-}
-
-// 审核模板
-export function approveTemplate(id: string, data: { approved: boolean; reason?: string }) {
-  if (shouldUseMockApi()) {
-    const templates = generateMockTemplates()
-    const index = templates.findIndex(t => t.id === id)
-    if (index !== -1) {
-      templates[index].status = data.approved ? 'approved' : 'rejected'
-      templates[index].approvedBy = '管理员'
-      templates[index].approvedAt = new Date().toISOString()
-      localStorage.setItem('crm_sms_templates', JSON.stringify(templates))
-    }
-    return Promise.resolve({
-      code: 200,
-      data: templates[index],
-      message: data.approved ? '审核通过' : '审核拒绝'
-    })
-  }
-
-  return request({
-    url: `/api/sms/templates/${id}/approve`,
-    method: 'post',
-    data
-  })
-}
-
-// 审核短信
-export function approveSms(id: string, data: { approved: boolean; reason?: string }) {
-  if (shouldUseMockApi()) {
-    const requests = generateMockSmsRequests()
-    const index = requests.findIndex(r => r.id === id)
-    if (index !== -1) {
-      requests[index].status = data.approved ? 'approved' : 'rejected'
-      requests[index].approvedBy = '管理员'
-      requests[index].approvedAt = new Date().toISOString()
-      localStorage.setItem('crm_sms_requests', JSON.stringify(requests))
-    }
-    return Promise.resolve({
-      code: 200,
-      data: requests[index],
-      message: data.approved ? '审核通过' : '审核拒绝'
-    })
-  }
-
-  return request({
-    url: `/api/sms/requests/${id}/approve`,
-    method: 'post',
-    data
-  })
-}
-
-// 创建模板
-export function createTemplate(data: Partial<SmsTemplate>) {
-  if (shouldUseMockApi()) {
-    const templates = generateMockTemplates()
-    const newTemplate: SmsTemplate = {
-      id: `template-${Date.now()}`,
-      name: data.name!,
-      category: data.category!,
-      content: data.content!,
-      variables: data.variables || [],
-      description: data.description,
-      applicant: 'current-user',
-      applicantName: '当前用户',
-      applicantDept: '销售部',
-      createdAt: new Date().toISOString(),
-      status: 'pending',
-      isSystem: false
-    }
-    templates.push(newTemplate)
-    localStorage.setItem('crm_sms_templates', JSON.stringify(templates))
-    return Promise.resolve({
-      code: 200,
-      data: newTemplate,
-      message: '创建成功'
-    })
-  }
-
-  return request({
-    url: '/api/sms/templates',
-    method: 'post',
-    data
-  })
-}
-
-// 创建短信申请
-export function createSmsRequest(data: Partial<SmsRequest>) {
-  if (shouldUseMockApi()) {
-    const requests = generateMockSmsRequests()
-    const newRequest: SmsRequest = {
-      id: `sms-${Date.now()}`,
-      templateId: data.templateId!,
-      templateName: data.templateName!,
-      content: data.content!,
-      recipients: data.recipients || [],
-      recipientCount: data.recipients?.length || 0,
-      applicant: 'current-user',
-      applicantName: '当前用户',
-      applicantDept: '销售部',
-      createdAt: new Date().toISOString(),
-      status: 'pending',
-      remark: data.remark
-    }
-    requests.push(newRequest)
-    localStorage.setItem('crm_sms_requests', JSON.stringify(requests))
-    return Promise.resolve({
-      code: 200,
-      data: newRequest,
-      message: '申请成功'
-    })
-  }
-
-  return request({
-    url: '/api/sms/requests',
-    method: 'post',
-    data
-  })
-}
-
-// 发送短信
+/**
+ * 发送短信
+ * POST /api/v1/sms/send
+ */
 export function sendSms(data: {
-  templateId: string
-  recipients: string[]
+  templateId?: string
+  templateName?: string
+  recipients: string[] | { name: string; phone: string }[]
   content: string
 }) {
-  if (shouldUseMockApi()) {
-    const records = generateMockSendRecords()
-    const templates = generateMockTemplates()
-    const template = templates.find(t => t.id === data.templateId)
-
-    const newRecord: SendRecord = {
-      id: `record-${Date.now()}`,
-      templateName: template?.name || '未知模板',
-      content: data.content,
-      recipientCount: data.recipients.length,
-      successCount: data.recipients.length,
-      failCount: 0,
-      status: 'completed',
-      sentAt: new Date().toISOString(),
-      sendDetails: data.recipients.map(phone => ({
-        phone,
-        status: 'success',
-        sentAt: new Date().toISOString()
-      }))
-    }
-    records.unshift(newRecord)
-    localStorage.setItem('crm_send_records', JSON.stringify(records))
-    return Promise.resolve({
-      code: 200,
-      data: newRecord,
-      message: '发送成功'
-    })
-  }
-
-  return request({
-    url: '/api/sms/send',
-    method: 'post',
+  return request('/sms/send', {
+    method: 'POST',
     data
   })
 }
 
-// 获取预设模板
-export function getPresetTemplates() {
-  return Promise.resolve({
-    code: 200,
-    data: { templates: PRESET_TEMPLATES },
-    message: '获取成功'
+/**
+ * 获取统计数据
+ * GET /api/v1/sms/statistics
+ */
+export function getStatistics() {
+  return request('/sms/statistics', {
+    method: 'GET'
   })
 }
 
+/**
+ * 获取短信模板变量文档
+ * GET /api/v1/sms/variable-docs
+ */
+export function getVariableDocs(): Promise<{ code: number; data: { variables: SmsTemplateVariable[] } }> {
+  return request('/sms/variable-docs', {
+    method: 'GET'
+  }) as any
+}
 
-// 获取短信发送列表（兼容SmsSendRecords.vue）
+// ==================== 兼容旧组件的API函数 ====================
+
+/**
+ * 获取短信申请列表（兼容旧版）
+ * GET /api/v1/sms/records
+ */
+export function getSmsRequests(params?: {
+  status?: string
+  keyword?: string
+}) {
+  return request('/sms/records', {
+    method: 'GET',
+    params
+  })
+}
+
+/**
+ * 创建短信申请（兼容旧版，实际调用发送接口）
+ * POST /api/v1/sms/send
+ */
+export function createSmsRequest(data: Partial<SmsRequest>) {
+  return request('/sms/send', {
+    method: 'POST',
+    data
+  })
+}
+
+/**
+ * 审核短信发送请求
+ * POST /api/v1/sms/templates/:id/approve
+ */
+export function approveSms(id: string | number, data: { approved: boolean; reason?: string }) {
+  return request(`/sms/templates/${id}/approve`, {
+    method: 'POST',
+    data
+  })
+}
+
+/**
+ * 获取短信发送列表（兼容SmsSendRecords.vue）
+ * GET /api/v1/sms/records
+ */
 export function getSmsSendList(params?: SmsSendSearchParams): Promise<SmsSendListResponse> {
-  if (shouldUseMockApi()) {
-    const records = generateMockSendRecords()
-    let filteredRecords = records
-
-    if (params?.keyword) {
-      const keyword = params.keyword.toLowerCase()
-      filteredRecords = filteredRecords.filter(r =>
-        r.templateName.toLowerCase().includes(keyword) ||
-        r.content.toLowerCase().includes(keyword)
-      )
-    }
-
-    const page = params?.page || 1
-    const pageSize = params?.pageSize || 10
-    const start = (page - 1) * pageSize
-    const end = start + pageSize
-
-    return Promise.resolve({
-      list: filteredRecords.slice(start, end).map((r, index) => ({
-        id: index + 1,
-        templateId: parseInt(r.id.replace('record-', '')) || index + 1,
-        templateName: r.templateName,
-        content: r.content,
-        recipients: r.sendDetails?.map(d => d.phone) || [],
-        successCount: r.successCount,
-        failCount: r.failCount,
-        status: r.status === 'completed' ? 'success' : r.status === 'failed' ? 'failed' : 'partial',
-        sendTime: r.sentAt,
-        operator: '系统',
-        cost: r.successCount * 0.05
-      })) as SmsSendRecord[],
-      total: filteredRecords.length,
-      page,
-      pageSize
-    })
-  }
-
-  return request({
-    url: '/api/sms/sends',
-    method: 'get',
-    params
-  })
+  return request('/sms/records', {
+    method: 'GET',
+    params: params as any
+  }) as any
 }
 
-// 获取短信模板列表（兼容SmsSendRecords.vue）
+/**
+ * 获取短信模板列表（兼容SmsSendRecords.vue）
+ * GET /api/v1/sms/templates
+ */
 export function getSmsTemplateList(params?: SmsTemplateSearchParams): Promise<SmsTemplateListResponse> {
-  if (shouldUseMockApi()) {
-    const templates = generateMockTemplates()
-    let filteredTemplates = templates
-
-    if (params?.status) {
-      filteredTemplates = filteredTemplates.filter(t => t.status === params.status)
-    }
-    if (params?.type) {
-      filteredTemplates = filteredTemplates.filter(t => t.category === params.type)
-    }
-    if (params?.keyword) {
-      const keyword = params.keyword.toLowerCase()
-      filteredTemplates = filteredTemplates.filter(t =>
-        t.name.toLowerCase().includes(keyword) ||
-        t.content.toLowerCase().includes(keyword)
-      )
-    }
-
-    const page = params?.page || 1
-    const pageSize = params?.pageSize || 10
-    const start = (page - 1) * pageSize
-    const end = start + pageSize
-
-    return Promise.resolve({
-      list: filteredTemplates.slice(start, end),
-      total: filteredTemplates.length,
-      page,
-      pageSize
-    })
-  }
-
-  return request({
-    url: '/api/sms/templates',
-    method: 'get',
-    params
-  })
+  return request('/sms/templates', {
+    method: 'GET',
+    params: params as any
+  }) as any
 }
 
-// 获取短信统计数据（兼容SmsStatistics.vue）
+/**
+ * 获取短信统计数据（兼容SmsStatistics.vue）
+ * GET /api/v1/sms/statistics
+ */
 export function getSmsStatistics(): Promise<{
   totalSent: number
   todaySent: number
@@ -745,66 +389,132 @@ export function getSmsStatistics(): Promise<{
   pendingApprovals: number
   activeTemplates: number
 }> {
-  if (shouldUseMockApi()) {
-    const templates = generateMockTemplates()
-    const records = generateMockSendRecords()
-    const requests = generateMockSmsRequests()
-
-    const today = new Date().toDateString()
-    const todayRecords = records.filter(r =>
-      new Date(r.sentAt).toDateString() === today
-    )
-
-    const totalSent = records.reduce((sum, r) => sum + r.successCount + r.failCount, 0)
-    const successCount = records.reduce((sum, r) => sum + r.successCount, 0)
-
-    return Promise.resolve({
-      totalSent,
-      todaySent: todayRecords.reduce((sum, r) => sum + r.successCount, 0),
-      successRate: totalSent > 0 ? (successCount / totalSent) * 100 : 100,
-      totalCost: successCount * 0.05,
-      pendingApprovals: requests.filter(r => r.status === 'pending').length,
-      activeTemplates: templates.filter(t => t.status === 'approved' || t.status === 'active').length
-    })
-  }
-
-  return request({
-    url: '/api/sms/statistics/overview',
-    method: 'get'
-  })
+  return request('/sms/statistics', {
+    method: 'GET'
+  }) as any
 }
 
-// 获取短信趋势数据（兼容SmsStatistics.vue）
+/**
+ * 获取短信趋势数据（兼容SmsStatistics.vue）
+ * GET /api/v1/sms/statistics
+ */
 export function getSmsTrend(params?: { days?: number }): Promise<{
   dates: string[]
   sent: number[]
   success: number[]
   failed: number[]
 }> {
-  if (shouldUseMockApi()) {
-    const days = params?.days || 7
-    const dates: string[] = []
-    const sent: number[] = []
-    const success: number[] = []
-    const failed: number[] = []
-
-    for (let i = days - 1; i >= 0; i--) {
-      const date = new Date()
-      date.setDate(date.getDate() - i)
-      dates.push(`${date.getMonth() + 1}/${date.getDate()}`)
-      const dailySent = Math.floor(Math.random() * 100) + 20
-      const dailySuccess = Math.floor(dailySent * (0.9 + Math.random() * 0.1))
-      sent.push(dailySent)
-      success.push(dailySuccess)
-      failed.push(dailySent - dailySuccess)
-    }
-
-    return Promise.resolve({ dates, sent, success, failed })
-  }
-
-  return request({
-    url: '/api/sms/statistics/trend',
-    method: 'get',
+  return request('/sms/statistics', {
+    method: 'GET',
     params
+  }) as any
+}
+
+/**
+ * 获取预设模板（兼容旧版）
+ * GET /api/v1/sms/templates/available
+ */
+export function getPresetTemplates() {
+  return request('/sms/templates/available', {
+    method: 'GET'
   })
 }
+
+// ==================== 短信额度相关 API ====================
+
+/** 获取当前租户短信额度信息 */
+export function getSmsQuota() {
+  return request('/sms/quota', { method: 'GET' })
+}
+
+/** 获取可用额度套餐列表 */
+export function getSmsQuotaPackages() {
+  return request('/sms/quota/packages', { method: 'GET' })
+}
+
+/** 创建额度购买订单 */
+export function createSmsQuotaOrder(data: { packageId: string; payType: string }) {
+  return request('/sms/quota/purchase', { method: 'POST', data })
+}
+
+/** 查询额度订单支付状态 */
+export function querySmsQuotaOrder(orderNo: string) {
+  return request(`/sms/quota/order/${orderNo}`, { method: 'GET' })
+}
+
+/** 模拟支付（开发调试用） */
+export function simulateSmsQuotaPay(orderNo: string) {
+  return request(`/sms/quota/simulate-pay/${orderNo}`, { method: 'POST' })
+}
+
+/** 获取额度购买账单记录 */
+export function getSmsQuotaBills(params?: { page?: number; pageSize?: number }) {
+  return request('/sms/quota/bills', { method: 'GET', params })
+}
+
+/** 取消未支付的额度订单 */
+export function cancelSmsQuotaOrder(orderNo: string) {
+  return request(`/sms/quota/order/${orderNo}/cancel`, { method: 'POST' })
+}
+
+// ==================== 客户搜索（发短信用，按数据范围过滤）====================
+
+/** 搜索可发短信的客户（按用户角色数据范围过滤） */
+export function searchSmsCustomers(params?: { keyword?: string; page?: number; pageSize?: number }) {
+  return request('/sms/customers/search', { method: 'GET', params })
+}
+
+// ==================== 自动发送规则 API ====================
+
+/** 获取触发事件类型列表 */
+export function getAutoSendTriggerEvents() {
+  return request('/sms/auto-send/trigger-events', { method: 'GET' })
+}
+
+/** 获取自动发送规则列表 */
+export function getAutoSendRules(params?: { page?: number; pageSize?: number; enabled?: number; triggerEvent?: string }) {
+  return request('/sms/auto-send/rules', { method: 'GET', params })
+}
+
+/** 创建自动发送规则 */
+export function createAutoSendRule(data: {
+  name: string
+  templateId: string
+  triggerEvent: string
+  effectiveDepartments?: string[]
+  timeRangeConfig?: {
+    workdaysOnly?: boolean
+    startHour?: number
+    endHour?: number
+    sendImmediately?: boolean
+  }
+  description?: string
+}) {
+  return request('/sms/auto-send/rules', { method: 'POST', data })
+}
+
+/** 更新自动发送规则 */
+export function updateAutoSendRule(id: string, data: Record<string, unknown>) {
+  return request(`/sms/auto-send/rules/${id}`, { method: 'PUT', data })
+}
+
+/** 删除自动发送规则 */
+export function deleteAutoSendRule(id: string) {
+  return request(`/sms/auto-send/rules/${id}`, { method: 'DELETE' })
+}
+
+/** 切换自动发送规则启用/禁用 */
+export function toggleAutoSendRule(id: string) {
+  return request(`/sms/auto-send/rules/${id}/toggle`, { method: 'PATCH' })
+}
+
+/** 获取自动发送规则详情 */
+export function getAutoSendRuleDetail(id: string) {
+  return request(`/sms/auto-send/rules/${id}`, { method: 'GET' })
+}
+
+/** 🔥 v1.8.1 新增：获取自动发送规则的发送记录 */
+export function getAutoSendRuleRecords(id: string, params?: { page?: number; pageSize?: number; keyword?: string }) {
+  return request(`/sms/auto-send/rules/${id}/records`, { method: 'GET', params })
+}
+

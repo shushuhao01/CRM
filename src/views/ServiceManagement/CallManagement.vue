@@ -2482,17 +2482,17 @@ const loadStatistics = async () => {
       const startDate = todayStart.toISOString()
       const endDate = todayEnd.toISOString()
 
-      const response = await callApi.getCallStatistics({
+      const data = await callApi.getCallStatistics({
         startDate,
         endDate,
         groupBy: 'day'
-      })
+      }) as any
 
-      const data = response.data
-      statistics.todayCalls = data.totalCalls || 0
-      statistics.totalDuration = data.totalDuration || 0
-      statistics.connectionRate = Math.round(data.connectionRate || 0)
-      statistics.activeUsers = data.userStats?.length || 0
+      // 响应拦截器已经解包，data 就是统计数据对象
+      statistics.todayCalls = data?.totalCalls || 0
+      statistics.totalDuration = data?.totalDuration || 0
+      statistics.connectionRate = Math.round(data?.connectionRate || 0)
+      statistics.activeUsers = data?.userStats?.length || 0
 
       console.log('[通话管理] 从API加载统计数据成功')
       return

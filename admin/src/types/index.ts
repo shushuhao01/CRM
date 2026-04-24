@@ -165,6 +165,8 @@ export interface GenerateLicenseData {
   license_type: 'perpetual' | 'subscription' | 'trial'
   deployment_type: 'private' | 'saas'
   max_users: number
+  user_limit_mode?: 'total' | 'online'
+  max_online_seats?: number
   features: string[]
   start_date: string
   end_date?: string | null
@@ -176,6 +178,8 @@ export interface UpdateLicenseData {
   customer_name?: string
   customer_contact?: string
   max_users?: number
+  user_limit_mode?: 'total' | 'online'
+  max_online_seats?: number
   features?: string[]
   end_date?: string | null
   notes?: string
@@ -213,6 +217,8 @@ export interface CreateTenantData {
   contactEmail?: string
   packageId: string
   maxUsers?: number
+  userLimitMode?: 'total' | 'online'
+  maxOnlineSeats?: number
   expireDate: string
   features?: string[]
   notes?: string
@@ -246,6 +252,8 @@ export interface PackageData {
   monthlyPrice: number
   yearlyPrice?: number
   maxUsers: number
+  userLimitMode?: 'total' | 'online'
+  maxOnlineSeats?: number
   features: string[]
   sortOrder?: number
   status?: string

@@ -102,11 +102,11 @@
             </div>
             <div class="info-item">
               <span class="field-label">身高</span>
-              <span class="field-value">{{ customerInfo.height ? customerInfo.height + 'cm' : '暂无' }}</span>
+              <span class="field-value">{{ customerInfo.height ? (Number.isInteger(Number(customerInfo.height)) ? Math.round(customerInfo.height) : customerInfo.height) + 'cm' : '暂无' }}</span>
             </div>
             <div class="info-item">
               <span class="field-label">体重</span>
-              <span class="field-value">{{ customerInfo.weight ? customerInfo.weight + 'kg' : '暂无' }}</span>
+              <span class="field-value">{{ customerInfo.weight ? (Number.isInteger(Number(customerInfo.weight)) ? Math.round(customerInfo.weight) : customerInfo.weight) + 'kg' : '暂无' }}</span>
             </div>
             <div class="info-item">
               <span class="field-label">性别</span>
@@ -118,7 +118,7 @@
           <div class="customer-info-row tags-row-flex">
             <div class="info-item flex-item">
               <span class="field-label">客户标签</span>
-              <div v-if="customerInfo.tags && customerInfo.tags.length > 0" class="customer-tags-inline">
+              <div v-if="Array.isArray(customerInfo.tags) && customerInfo.tags.length > 0" class="customer-tags-inline">
                 <el-tag
                   v-for="tag in customerInfo.tags"
                   :key="tag"
@@ -173,57 +173,124 @@
             </div>
           </div>
 
-          <!-- 第六行：详细地址 -->
-          <div class="customer-info-row">
-            <div class="info-item address-item">
-              <span class="field-label">详细地址</span>
-              <div class="address-content">{{ customerInfo.address ? displaySensitiveInfoNew(customerInfo.address, SensitiveInfoType.ADDRESS) : '暂无' }}</div>
+          <!-- 企微UserID行 -->
+          <div class="customer-info-row" v-if="customerInfo.wecomExternalUserid">
+            <div class="info-item">
+              <span class="field-label">企微UserID</span>
+              <span class="field-value">{{ customerInfo.wecomExternalUserid }}</span>
             </div>
           </div>
 
-          <!-- 第七行：客户疾病史 -->
-          <div class="customer-info-row">
-            <div class="info-item medical-item">
-              <span class="field-label">疾病史</span>
-              <div class="medical-history-section">
-                <!-- 最新疾病信息 -->
-                <div class="latest-medical-info" v-if="medicalHistory.length > 0">
-                  <div class="medical-record">
-                    <span class="medical-content">{{ medicalHistory[0].content }}</span>
-                    <span class="medical-date">{{ formatDate(medicalHistory[0].createTime) }}</span>
-                    <span class="medical-operator">{{ medicalHistory[0].operator }}</span>
+          <!-- 自定义字段区域 -->
+          <div class="customer-info-row" v-if="displayCustomFields.length > 0 && customerInfo.customFields">
+            <div class="info-item" v-for="field in displayCustomFields" :key="field.fieldKey">
+              <span class="field-label">{{ field.fieldName }}</span>
+              <span class="field-value">{{ formatCustomFieldValue(field, customerInfo.customFields) }}</span>
+            </div>
+          </div>
+
+          <!-- 第六行：详细地址 -->
+          <div class="customer-info-row full-width-row">
+            <div class="info-item address-item full-width-item">
+              <span class="field-label">详细地址</span>
+              <div class="address-management-section">
+                <!-- 新增地址按钮在最上方 -->
+                <div class="add-address-section">
+                  <el-button type="primary" size="small" @click="showAddAddress = !showAddAddress" class="add-address-btn">
+                    <el-icon><Plus /></el-icon>
+                    新增地址
+                  </el-button>
+                  <el-collapse-transition>
+                    <div class="add-address-form" v-show="showAddAddress">
+                      <el-input v-model="newAddressText" type="textarea" :rows="2" placeholder="请输入详细地址..." maxlength="200" show-word-limit />
+                      <div class="form-actions">
+                        <el-button size="small" @click="cancelAddAddress">取消</el-button>
+                        <el-button type="primary" size="small" @click="addAddress" :loading="addingAddress">保存</el-button>
+                      </div>
+                    </div>
+                  </el-collapse-transition>
+                </div>
+
+                <!-- 最新地址显示 -->
+                <div class="latest-address-info" v-if="customerAddresses.length > 0">
+                  <div class="address-record" v-if="editingAddressId !== customerAddresses[0].id">
+                    <div class="address-inline-row">
+                      <span class="address-text">{{ customerAddresses[0].content }}</span>
+                      <div class="address-actions">
+                        <el-button type="text" size="small" @click="startEditAddress(customerAddresses[0])">
+                          <el-icon><Edit /></el-icon>
+                        </el-button>
+                        <el-button type="text" size="small" class="delete-btn" @click="deleteAddress(customerAddresses[0].id)">
+                          <el-icon><Delete /></el-icon>
+                        </el-button>
+                      </div>
+                    </div>
+                    <div class="address-meta">
+                      <span class="address-date">{{ formatDate(customerAddresses[0].createTime) }}</span>
+                      <span class="address-operator">{{ customerAddresses[0].operator || '系统' }}</span>
+                    </div>
+                  </div>
+                  <div class="address-edit-inline" v-else>
+                    <el-input v-model="editAddressText" type="textarea" :rows="2" placeholder="请输入地址" />
+                    <div class="form-actions">
+                      <el-button size="small" @click="cancelEditAddress">取消</el-button>
+                      <el-button type="primary" size="small" @click="saveEditAddress" :loading="savingAddress">保存</el-button>
+                    </div>
                   </div>
                 </div>
 
-                <!-- 历史记录折叠 -->
-                <div class="medical-history-toggle" v-if="medicalHistory.length > 1">
-                  <el-button
-                    type="text"
-                    size="small"
-                    @click="showMedicalHistory = !showMedicalHistory"
-                    class="toggle-btn"
-                  >
-                    <el-icon><ArrowDown v-if="!showMedicalHistory" /><ArrowUp v-else /></el-icon>
-                    {{ showMedicalHistory ? '收起' : '查看' }}历史记录 ({{ medicalHistory.length - 1 }}条)
+                <!-- 历史地址折叠 -->
+                <div class="address-history-toggle" v-if="customerAddresses.length > 1">
+                  <el-button type="text" size="small" @click="showAddressHistory = !showAddressHistory" class="toggle-btn">
+                    <el-icon><ArrowDown v-if="!showAddressHistory" /><ArrowUp v-else /></el-icon>
+                    {{ showAddressHistory ? '收起' : '查看' }}更多地址 ({{ customerAddresses.length - 1 }}个)
                   </el-button>
                 </div>
-
-                <!-- 历史记录列表 -->
                 <el-collapse-transition>
-                  <div class="medical-history-list" v-show="showMedicalHistory">
-                    <div
-                      class="medical-record history-record"
-                      v-for="(record, index) in medicalHistory.slice(1)"
-                      :key="index"
-                    >
-                      <span class="medical-content">{{ record.content }}</span>
-                      <span class="medical-date">{{ formatDate(record.createTime) }}</span>
-                      <span class="medical-operator">{{ record.operator }}</span>
+                  <div class="address-history-list" v-show="showAddressHistory">
+                    <div class="address-record history-record" v-for="addr in customerAddresses.slice(1)" :key="addr.id">
+                      <template v-if="editingAddressId !== addr.id">
+                        <div class="address-inline-row">
+                          <span class="address-text">{{ addr.content }}</span>
+                          <div class="address-actions">
+                            <el-button type="text" size="small" @click="startEditAddress(addr)">
+                              <el-icon><Edit /></el-icon>
+                            </el-button>
+                            <el-button type="text" size="small" class="delete-btn" @click="deleteAddress(addr.id)">
+                              <el-icon><Delete /></el-icon>
+                            </el-button>
+                          </div>
+                        </div>
+                        <div class="address-meta">
+                          <span class="address-date">{{ formatDate(addr.createTime) }}</span>
+                          <span class="address-operator">{{ addr.operator || '系统' }}</span>
+                        </div>
+                      </template>
+                      <div class="address-edit-inline" v-else>
+                        <el-input v-model="editAddressText" type="textarea" :rows="2" placeholder="请输入地址" />
+                        <div class="form-actions">
+                          <el-button size="small" @click="cancelEditAddress">取消</el-button>
+                          <el-button type="primary" size="small" @click="saveEditAddress" :loading="savingAddress">保存</el-button>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </el-collapse-transition>
 
-                <!-- 新增疾病信息 -->
+                <!-- 无地址提示 -->
+                <div class="no-address-info" v-if="customerAddresses.length === 0 && !showAddAddress">
+                  <span class="empty-text">暂无</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 第七行：客户疾病史 -->
+          <div class="customer-info-row full-width-row">
+            <div class="info-item medical-item full-width-item">
+              <span class="field-label">疾病史</span>
+              <div class="medical-history-section">
+                <!-- 新增疾病信息按钮在最上方 -->
                 <div class="add-medical-section">
                   <el-button
                     type="primary"
@@ -261,6 +328,47 @@
                   </el-collapse-transition>
                 </div>
 
+                <!-- 最新疾病信息 -->
+                <div class="latest-medical-info" v-if="medicalHistory.length > 0">
+                  <div class="medical-record">
+                    <span class="medical-content">{{ medicalHistory[0].content }}</span>
+                    <div class="address-meta">
+                      <span class="address-date">{{ formatDate(medicalHistory[0].createTime) }}</span>
+                      <span class="address-operator">{{ medicalHistory[0].operator || '系统' }}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- 历史记录折叠 -->
+                <div class="medical-history-toggle" v-if="medicalHistory.length > 1">
+                  <el-button
+                    type="text"
+                    size="small"
+                    @click="showMedicalHistory = !showMedicalHistory"
+                    class="toggle-btn"
+                  >
+                    <el-icon><ArrowDown v-if="!showMedicalHistory" /><ArrowUp v-else /></el-icon>
+                    {{ showMedicalHistory ? '收起' : '查看' }}历史记录 ({{ medicalHistory.length - 1 }}条)
+                  </el-button>
+                </div>
+
+                <!-- 历史记录列表 -->
+                <el-collapse-transition>
+                  <div class="medical-history-list" v-show="showMedicalHistory">
+                    <div
+                      class="medical-record history-record"
+                      v-for="(record, index) in medicalHistory.slice(1)"
+                      :key="index"
+                    >
+                      <span class="medical-content">{{ record.content }}</span>
+                      <div class="address-meta">
+                        <span class="address-date">{{ formatDate(record.createTime) }}</span>
+                        <span class="address-operator">{{ record.operator || '系统' }}</span>
+                      </div>
+                    </div>
+                  </div>
+                </el-collapse-transition>
+
                 <!-- 无疾病史提示 -->
                 <div class="no-medical-info" v-if="medicalHistory.length === 0">
                   <span class="empty-text">暂无疾病史记录</span>
@@ -270,41 +378,96 @@
           </div>
 
           <!-- 第八行：客户备注 -->
-          <div class="customer-info-row">
-            <div class="info-item notes-item">
+          <div class="customer-info-row full-width-row">
+            <div class="info-item notes-item full-width-item">
               <span class="field-label">客户备注</span>
-              <div class="notes-content" v-if="!editingNotes">
-                <span class="notes-text">{{ customerInfo.notes || '暂无备注' }}</span>
-                <el-button
-                  type="text"
-                  size="small"
-                  @click="startEditNotes"
-                  class="edit-notes-btn"
-                >
-                  <el-icon><Edit /></el-icon>
-                  编辑
-                </el-button>
-              </div>
-              <div class="notes-edit" v-else>
-                <el-input
-                  v-model="editNotesText"
-                  type="textarea"
-                  :rows="3"
-                  placeholder="请输入客户备注..."
-                  maxlength="1000"
-                  show-word-limit
-                  class="notes-input"
-                />
-                <div class="notes-actions">
-                  <el-button size="small" @click="cancelEditNotes">取消</el-button>
-                  <el-button
-                    type="primary"
-                    size="small"
-                    @click="saveNotes"
-                    :loading="savingNotes"
-                  >
-                    保存
+              <div class="notes-management-section">
+                <!-- 新增备注按钮在最上方 -->
+                <div class="add-notes-section">
+                  <el-button type="primary" size="small" @click="showAddNote = !showAddNote" class="add-notes-btn">
+                    <el-icon><Plus /></el-icon>
+                    新增备注
                   </el-button>
+                  <el-collapse-transition>
+                    <div class="add-notes-form" v-show="showAddNote">
+                      <el-input v-model="newNoteText" type="textarea" :rows="3" placeholder="请输入客户备注..." maxlength="1000" show-word-limit />
+                      <div class="form-actions">
+                        <el-button size="small" @click="cancelAddNote">取消</el-button>
+                        <el-button type="primary" size="small" @click="addNote" :loading="addingNote">保存</el-button>
+                      </div>
+                    </div>
+                  </el-collapse-transition>
+                </div>
+
+                <!-- 最新备注显示 -->
+                <div class="latest-note-info" v-if="customerNotes.length > 0">
+                  <div class="note-record" v-if="editingNoteId !== customerNotes[0].id">
+                    <div class="note-inline-row">
+                      <span class="note-content-text">{{ customerNotes[0].content }}</span>
+                      <div class="note-actions">
+                        <el-button type="text" size="small" @click="startEditNote(customerNotes[0])">
+                          <el-icon><Edit /></el-icon>
+                        </el-button>
+                        <el-button type="text" size="small" class="delete-btn" @click="deleteNote(customerNotes[0].id)">
+                          <el-icon><Delete /></el-icon>
+                        </el-button>
+                      </div>
+                    </div>
+                    <div class="note-meta">
+                      <span class="note-date">{{ formatDate(customerNotes[0].createTime) }}</span>
+                      <span class="note-operator">{{ customerNotes[0].operator }}</span>
+                    </div>
+                  </div>
+                  <div class="note-edit-inline" v-else>
+                    <el-input v-model="editNoteText" type="textarea" :rows="3" placeholder="请输入备注" maxlength="1000" show-word-limit />
+                    <div class="form-actions">
+                      <el-button size="small" @click="cancelEditNote">取消</el-button>
+                      <el-button type="primary" size="small" @click="saveEditNote" :loading="savingNote">保存</el-button>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- 历史备注折叠 -->
+                <div class="notes-history-toggle" v-if="customerNotes.length > 1">
+                  <el-button type="text" size="small" @click="showNotesHistory = !showNotesHistory" class="toggle-btn">
+                    <el-icon><ArrowDown v-if="!showNotesHistory" /><ArrowUp v-else /></el-icon>
+                    {{ showNotesHistory ? '收起' : '查看' }}历史备注 ({{ customerNotes.length - 1 }}条)
+                  </el-button>
+                </div>
+                <el-collapse-transition>
+                  <div class="notes-history-list" v-show="showNotesHistory">
+                    <div class="note-record history-record" v-for="note in customerNotes.slice(1)" :key="note.id">
+                      <template v-if="editingNoteId !== note.id">
+                        <div class="note-inline-row">
+                          <span class="note-content-text">{{ note.content }}</span>
+                          <div class="note-actions">
+                            <el-button type="text" size="small" @click="startEditNote(note)">
+                              <el-icon><Edit /></el-icon>
+                            </el-button>
+                            <el-button type="text" size="small" class="delete-btn" @click="deleteNote(note.id)">
+                              <el-icon><Delete /></el-icon>
+                            </el-button>
+                          </div>
+                        </div>
+                        <div class="note-meta">
+                          <span class="note-date">{{ formatDate(note.createTime) }}</span>
+                          <span class="note-operator">{{ note.operator }}</span>
+                        </div>
+                      </template>
+                      <div class="note-edit-inline" v-else>
+                        <el-input v-model="editNoteText" type="textarea" :rows="3" placeholder="请输入备注" maxlength="1000" show-word-limit />
+                        <div class="form-actions">
+                          <el-button size="small" @click="cancelEditNote">取消</el-button>
+                          <el-button type="primary" size="small" @click="saveEditNote" :loading="savingNote">保存</el-button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </el-collapse-transition>
+
+                <!-- 无备注提示 -->
+                <div class="no-notes-info" v-if="customerNotes.length === 0 && !showAddNote">
+                  <span class="empty-text">暂无备注</span>
                 </div>
               </div>
             </div>
@@ -345,13 +508,27 @@
           <el-row :gutter="24">
             <el-col :span="8">
               <el-form-item label="邮箱">
-                <el-input :value="displaySensitiveInfoNew(editForm.email, SensitiveInfoType.EMAIL)" readonly>
-                  <template #suffix>
-                    <el-tooltip content="敏感信息已加密显示，不可修改">
-                      <el-icon><InfoFilled /></el-icon>
-                    </el-tooltip>
-                  </template>
-                </el-input>
+                <div class="sensitive-edit-field">
+                  <el-input
+                    v-if="emailEditing || !editForm.email"
+                    v-model="editForm.email"
+                    placeholder="请输入邮箱"
+                    clearable
+                    @clear="editForm.email = ''"
+                  />
+                  <el-input
+                    v-else
+                    :value="displaySensitiveInfoNew(editForm.email, SensitiveInfoType.EMAIL)"
+                    readonly
+                    @click="emailEditing = true"
+                  >
+                    <template #suffix>
+                      <el-tooltip content="点击修改邮箱">
+                        <el-icon style="cursor:pointer" @click="emailEditing = true"><EditPen /></el-icon>
+                      </el-tooltip>
+                    </template>
+                  </el-input>
+                </div>
               </el-form-item>
             </el-col>
             <el-col :span="8">
@@ -476,13 +653,28 @@
           <el-row :gutter="24">
             <el-col :span="8">
               <el-form-item label="微信号">
-                <el-input :value="displaySensitiveInfoNew(editForm.wechatId, SensitiveInfoType.WECHAT)" readonly>
-                  <template #suffix>
-                    <el-tooltip content="敏感信息已加密显示，不可修改">
-                      <el-icon><InfoFilled /></el-icon>
-                    </el-tooltip>
-                  </template>
-                </el-input>
+                <div class="sensitive-edit-field">
+                  <el-input
+                    v-if="wechatEditing || !editForm.wechatId"
+                    v-model="editForm.wechatId"
+                    placeholder="请输入微信号"
+                    clearable
+                    @clear="editForm.wechatId = ''"
+                    @input="editForm.wechatId = editForm.wechatId.replace(/[\u4e00-\u9fa5\s]/g, '')"
+                  />
+                  <el-input
+                    v-else
+                    :value="displaySensitiveInfoNew(editForm.wechatId, SensitiveInfoType.WECHAT)"
+                    readonly
+                    @click="wechatEditing = true"
+                  >
+                    <template #suffix>
+                      <el-tooltip content="点击修改微信号">
+                        <el-icon style="cursor:pointer" @click="wechatEditing = true"><EditPen /></el-icon>
+                      </el-tooltip>
+                    </template>
+                  </el-input>
+                </div>
               </el-form-item>
             </el-col>
             <el-col :span="8">
@@ -509,16 +701,94 @@
             </el-col>
           </el-row>
 
-          <el-row :gutter="24">
-            <el-col :span="24">
-              <el-form-item label="详细地址">
-                <el-input v-model="editForm.address" placeholder="请输入详细地址" />
+          <!-- 自定义字段 -->
+          <el-row :gutter="24" v-if="displayCustomFields.length > 0">
+            <el-col :span="8" v-for="field in displayCustomFields" :key="field.fieldKey">
+              <el-form-item :label="field.fieldName">
+                <!-- 文本输入 -->
+                <el-input
+                  v-if="field.fieldType === 'text' || field.fieldType === 'input'"
+                  v-model="editForm.customFields[field.fieldKey]"
+                  :placeholder="'请输入' + field.fieldName"
+                  style="width: 100%"
+                />
+                <!-- 数字输入 -->
+                <el-input-number
+                  v-else-if="field.fieldType === 'number'"
+                  v-model="editForm.customFields[field.fieldKey]"
+                  :placeholder="field.fieldName"
+                  style="width: 100%"
+                />
+                <!-- 单选下拉 -->
+                <el-select
+                  v-else-if="field.fieldType === 'select'"
+                  v-model="editForm.customFields[field.fieldKey]"
+                  :placeholder="'请选择' + field.fieldName"
+                  style="width: 100%"
+                  clearable
+                >
+                  <el-option
+                    v-for="opt in (field.options || [])"
+                    :key="opt.value"
+                    :label="opt.label"
+                    :value="opt.value"
+                  />
+                </el-select>
+                <!-- 单选按钮组 -->
+                <el-radio-group
+                  v-else-if="field.fieldType === 'radio'"
+                  v-model="editForm.customFields[field.fieldKey]"
+                >
+                  <el-radio
+                    v-for="opt in (field.options || [])"
+                    :key="opt.value"
+                    :label="opt.value"
+                  >{{ opt.label }}</el-radio>
+                </el-radio-group>
+                <!-- 多选复选框 -->
+                <el-checkbox-group
+                  v-else-if="field.fieldType === 'checkbox'"
+                  v-model="editForm.customFields[field.fieldKey]"
+                >
+                  <el-checkbox
+                    v-for="opt in (field.options || [])"
+                    :key="opt.value"
+                    :label="opt.value"
+                  >{{ opt.label }}</el-checkbox>
+                </el-checkbox-group>
+                <!-- 日期选择 -->
+                <el-date-picker
+                  v-else-if="field.fieldType === 'date'"
+                  v-model="editForm.customFields[field.fieldKey]"
+                  type="date"
+                  :placeholder="'选择' + field.fieldName"
+                  style="width: 100%"
+                  value-format="YYYY-MM-DD"
+                />
+                <!-- 多行文本 -->
+                <el-input
+                  v-else-if="field.fieldType === 'textarea'"
+                  v-model="editForm.customFields[field.fieldKey]"
+                  type="textarea"
+                  :rows="2"
+                  :placeholder="'请输入' + field.fieldName"
+                />
+                <!-- 默认文本输入 -->
+                <el-input
+                  v-else
+                  v-model="editForm.customFields[field.fieldKey]"
+                  :placeholder="'请输入' + field.fieldName"
+                  style="width: 100%"
+                />
               </el-form-item>
             </el-col>
           </el-row>
         </el-form>
       </el-card>
     </div>
+
+    <!-- Phase 7: 企微信息卡片 -->
+    <WecomInfoCard v-if="customerInfo.id" :customer-id="customerInfo.id" />
 
     <!-- 第二排：客户统计 -->
     <div class="second-row">
@@ -531,7 +801,7 @@
             </span>
           </div>
         </template>
-        <el-row :gutter="24" class="stats-row">
+        <el-row :gutter="20" class="stats-row">
           <el-col :span="6">
             <div class="stat-item consumption">
               <div class="stat-icon">
@@ -810,6 +1080,62 @@
             </div>
           </div>
         </el-tab-pane>
+
+        <!-- 客户画像 -->
+        <el-tab-pane label="客户画像" name="portrait">
+          <div class="tab-content">
+            <CustomerPortrait :customer="customerInfo" :stats="customerStats" />
+          </div>
+        </el-tab-pane>
+
+        <!-- 客户日志 -->
+        <el-tab-pane label="客户日志" name="logs">
+          <div class="tab-content">
+            <div class="customer-logs-container" v-loading="loadingLogs">
+              <el-timeline v-if="customerLogs.length > 0">
+                <el-timeline-item
+                  v-for="item in customerLogs"
+                  :key="item.id"
+                  :type="getLogTimelineType(item.logType)"
+                  placement="top"
+                >
+                  <div class="log-meta-line">
+                    <span class="log-operator-name">{{ item.operatorName || '系统' }}</span>
+                    <span class="log-meta-separator">·</span>
+                    <span class="log-time">{{ formatDateTime(item.createdAt) }}</span>
+                  </div>
+                  <div class="log-item">
+                    <div class="log-header">
+                      <el-tag :type="getLogTagType(item.logType)" size="small">{{ getLogTypeText(item.logType) }}</el-tag>
+                    </div>
+                    <div class="log-content">{{ item.content }}</div>
+                    <!-- 详细字段变更 -->
+                    <div class="log-changes" v-if="item.detail && item.detail.changes && item.detail.changes.length > 0">
+                      <div class="change-item" v-for="(change, ci) in item.detail.changes" :key="ci">
+                        <span class="change-field">{{ change.fieldLabel || change.field }}</span>：
+                        <span class="change-old">{{ change.oldValue || '空' }}</span>
+                        <span class="change-arrow"> → </span>
+                        <span class="change-new">{{ change.newValue || '空' }}</span>
+                      </div>
+                    </div>
+                    <!-- 创建来源 -->
+                    <div class="log-source" v-if="item.logType === 'create' && item.detail && item.detail.source">
+                      <el-tag size="small" type="info">
+                        {{ item.detail.source === 'batch_import' ? '批量导入' : 'CRM系统新增' }}
+                      </el-tag>
+                    </div>
+                  </div>
+                </el-timeline-item>
+              </el-timeline>
+              <el-empty v-else-if="!loadingLogs" description="暂无操作日志" />
+              <div class="logs-load-more" v-if="logsHasMore">
+                <el-button type="primary" link :loading="loadingMoreLogs" @click="loadMoreLogs">
+                  {{ loadingMoreLogs ? '加载中...' : '加载更多' }}
+                </el-button>
+              </div>
+            </div>
+          </div>
+        </el-tab-pane>
       </el-tabs>
     </el-card>
 
@@ -879,84 +1205,14 @@
       </template>
     </el-dialog>
 
-    <!-- 短信发送对话框 -->
-    <el-dialog v-model="showSMSDialog" title="发送短信" width="600px">
-      <el-form :model="smsForm" :rules="smsRules" ref="smsFormRef" label-width="100px">
-        <el-form-item label="接收号码" prop="phone">
-          <el-select v-model="smsForm.phone" placeholder="请选择客户号码" filterable>
-            <el-option
-              v-if="customerInfo.phone"
-              :label="`${displaySensitiveInfoNew(customerInfo.phone, SensitiveInfoType.PHONE)} (主号码)`"
-              :value="customerInfo.phone"
-            />
-            <el-option
-              v-for="(phone, index) in customerInfo.otherPhones"
-              :key="phone"
-              :label="`${displaySensitiveInfoNew(phone, SensitiveInfoType.PHONE)} (备用号码${index + 1})`"
-              :value="phone"
-            />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="短信模板" prop="templateId">
-          <div class="template-select-wrapper">
-            <el-select
-              v-model="smsForm.templateId"
-              placeholder="请选择短信模板"
-              @change="onTemplateChange"
-              style="flex: 1; margin-right: 10px;"
-            >
-              <el-option
-                v-for="template in smsTemplates"
-                :key="template.id"
-                :label="template.name"
-                :value="template.id"
-              />
-            </el-select>
-            <el-button
-              type="primary"
-              :icon="DocumentAdd"
-              @click="handleApplyTemplate"
-              class="apply-template-btn"
-              title="申请新模板"
-            >
-              申请模板
-            </el-button>
-          </div>
-        </el-form-item>
-        <el-form-item label="模板预览" v-if="selectedTemplate">
-          <div class="template-preview">
-            <div class="preview-title">{{ selectedTemplate.name }}</div>
-            <div class="preview-content">{{ previewContent }}</div>
-            <div class="preview-note">注：实际发送时会替换模板变量</div>
-          </div>
-        </el-form-item>
-        <el-form-item label="模板变量" v-if="selectedTemplate && selectedTemplate.variables && selectedTemplate.variables.length > 0">
-          <div class="template-variables">
-            <div v-for="variable in selectedTemplate.variables" :key="variable.key" class="variable-item">
-              <label>{{ variable.label }}：</label>
-              <el-input
-                v-model="smsForm.variables[variable.key]"
-                :placeholder="variable.placeholder || `请输入${variable.label}`"
-                size="small"
-              />
-            </div>
-          </div>
-        </el-form-item>
-        <el-form-item label="发送限制">
-          <div class="send-limit-info">
-            <el-alert
-              :title="`今日已发送：${userSmsStats.todayCount}/1 条，本月已发送：${userSmsStats.monthCount}/5 条`"
-              type="info"
-              :closable="false"
-            />
-          </div>
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="showSMSDialog = false">取消</el-button>
-        <el-button @click="sendSMS" type="primary" :loading="sendingSMS" :disabled="!canSendSMS">发送短信</el-button>
-      </template>
-    </el-dialog>
+    <!-- 短信发送对话框 - 使用 SendSmsDialog 组件（三步式：选模板→填变量→预览确认） -->
+    <SendSmsDialog
+      v-model="showSMSDialog"
+      :templates="approvedSmsTemplates"
+      :presetCustomer="smsPresetCustomer"
+      @submit="handleSmsSendSubmit"
+      @apply-template="handleApplyTemplate"
+    />
 
     <!-- 标签对话框 -->
     <el-dialog v-model="showTagDialog" title="添加标签" width="400px">
@@ -993,27 +1249,62 @@
 import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { User, DataAnalysis, Search, Phone, ChatDotRound, Edit, ShoppingCart, Plus, ArrowLeft, EditPen, ShoppingBag, RefreshLeft, Clock, Money, InfoFilled, ArrowDown, ArrowUp, Message, DocumentAdd, Download, Share } from '@element-plus/icons-vue'
+import { User, DataAnalysis, Search, Phone, ChatDotRound, Edit, ShoppingCart, Plus, ArrowLeft, EditPen, ShoppingBag, RefreshLeft, Clock, Money, InfoFilled, ArrowDown, ArrowUp, Message, DocumentAdd, Download, Share, Delete } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
 import { useOrderStore } from '@/stores/order'
 import { useServiceStore } from '@/stores/service'
 import { useCustomerStore } from '@/stores/customer'
 import { useCallStore } from '@/stores/call'
+import { useCustomerFieldConfigStore } from '@/stores/customerFieldConfig'
 
 import { permissionService, CallPermissionType } from '@/services/permission'
 import { displaySensitiveInfo as displaySensitiveInfoNew } from '@/utils/sensitiveInfo'
 import { SensitiveInfoType } from '@/services/permission'
 import { copyToClipboard } from '@/utils/customerCode'
 import CreateTemplateDialog from '@/components/CreateTemplateDialog.vue'
+import SendSmsDialog from '@/components/SendSmsDialog.vue'
 import { createSafeNavigator } from '@/utils/navigation'
 import { customerDetailApi } from '@/api/customerDetail'
 import { customerApi } from '@/api/customer'
+import { autoMatchVariables as autoMatchSmsVariables } from '@/utils/smsVariableMatcher'
 import { getOrderStatusText as getOrderStatusTextFromConfig, getOrderStatusTagType } from '@/utils/orderStatusConfig'
 import { formatDateTime } from '@/utils/date'
+import WecomInfoCard from './components/WecomInfoCard.vue'
+import CustomerPortrait from './Detail/CustomerPortrait.vue'
 
 const route = useRoute()
 const router = useRouter()
 const userStore = useUserStore()
+const customerFieldConfigStore = useCustomerFieldConfigStore()
+
+// 自定义字段展示
+const displayCustomFields = computed(() => {
+  return [...(customerFieldConfigStore.config?.customFields || [])]
+    .sort((a: any, b: any) => a.sortOrder - b.sortOrder)
+})
+
+const formatCustomFieldValue = (field: any, customFields: Record<string, any> | null | undefined) => {
+  if (!customFields) return '暂无'
+  const val = customFields[field.fieldKey]
+  if (val === undefined || val === null || val === '') return '暂无'
+  if (field.fieldType === 'checkbox' && Array.isArray(val)) {
+    // 多选：将值转换为标签
+    if (field.options && field.options.length > 0) {
+      return val.map((v: string) => {
+        const opt = field.options.find((o: any) => o.value === v)
+        return opt ? opt.label : v
+      }).join('、')
+    }
+    return val.join('、')
+  }
+  if (field.fieldType === 'select' || field.fieldType === 'radio') {
+    if (field.options && field.options.length > 0) {
+      const opt = field.options.find((o: any) => o.value === val)
+      return opt ? opt.label : val
+    }
+  }
+  return String(val)
+}
 const orderStore = useOrderStore()
 const serviceStore = useServiceStore()
 const customerStore = useCustomerStore()
@@ -1057,6 +1348,8 @@ const applyDataScopeControl = (orders) => {
 // 响应式数据
 const activeTab = ref('orders')
 const isEditing = ref(false)
+const emailEditing = ref(false)
+const wechatEditing = ref(false)
 const saving = ref(false)
 const loadingOrders = ref(false)
 const loadingService = ref(false)
@@ -1086,6 +1379,49 @@ const userSmsStats = ref({
   todayCount: 0,
   monthCount: 0
 })
+
+// 🔥 v1.8.1 新增：SendSmsDialog 需要的模板列表格式（id, name, category, content, variables, usage）
+const approvedSmsTemplates = ref<{ id: string | number; name: string; category: string; content: string; variables?: string[]; usage?: number }[]>([])
+
+// 🔥 v1.8.1 新增：传递给 SendSmsDialog 的预设客户对象，自动填充接收人和变量
+const smsPresetCustomer = computed(() => {
+  if (!customerInfo.value?.id) return null
+  return {
+    id: customerInfo.value.id,
+    name: customerInfo.value.name,
+    phone: customerInfo.value.phone,
+    email: customerInfo.value.email,
+    gender: customerInfo.value.gender,
+    company: '',
+    level: customerInfo.value.level,
+    customerNo: customerInfo.value.code,
+    address: customerInfo.value.address,
+    tags: (Array.isArray(customerInfo.value.tags) ? customerInfo.value.tags : []).map((t: any) => typeof t === 'string' ? t : t.name)
+  }
+})
+
+// 🔥 v1.8.1 新增：SendSmsDialog 提交发送回调
+const handleSmsSendSubmit = async (data: Record<string, unknown>) => {
+  try {
+    const { sendSms } = await import('@/api/sms')
+    const res = await sendSms({
+      templateId: data.templateId as string,
+      templateName: (data.template as any)?.name || '',
+      recipients: data.recipients as any[],
+      content: data.content as string
+    }) as any
+
+    if (res?.success || res?.code === 200) {
+      ElMessage.success('短信发送成功')
+      showSMSDialog.value = false
+    } else {
+      ElMessage.error(res?.message || '短信发送失败')
+    }
+  } catch (error: any) {
+    console.error('短信发送失败:', error)
+    ElMessage.error(error?.response?.data?.message || '短信发送失败')
+  }
+}
 
 // 短信表单
 const smsForm = reactive({
@@ -1132,6 +1468,19 @@ const customerInfo = ref<{
   improvementGoals: any[]
   otherPhones: string[]
   notes: string
+  customFields: Record<string, any> | null
+  starRating: number
+  finalScore: number
+  wecomExternalUserid: string
+  wecomAddTime: string
+  chatCount: number
+  replyRate: string
+  followUpCount: number
+  afterSalesCount: number
+  afterSalesAmount: number
+  totalAmount: number
+  orderCount: number
+  lastOrderTime: string
 }>({
   id: '',
   code: '',
@@ -1158,7 +1507,20 @@ const customerInfo = ref<{
   tags: [],
   improvementGoals: [],
   otherPhones: [],
-  notes: ''
+  notes: '',
+  customFields: null,
+  starRating: 0,
+  finalScore: 0,
+  wecomExternalUserid: '',
+  wecomAddTime: '',
+  chatCount: 0,
+  replyRate: '',
+  followUpCount: 0,
+  afterSalesCount: 0,
+  afterSalesAmount: 0,
+  totalAmount: 0,
+  orderCount: 0,
+  lastOrderTime: ''
 })
 
 // 客户统计
@@ -1186,7 +1548,8 @@ const editForm = reactive({
   wechatId: '',
   source: '',
   joinTime: '',  // 进粉时间
-  improvementGoals: [] as string[]  // 改善问题
+  improvementGoals: [] as string[],  // 改善问题
+  customFields: {} as Record<string, any>  // 自定义字段
 })
 
 // 手机号管理
@@ -1214,9 +1577,24 @@ const newMedicalRecord = ref('')
 const addingMedical = ref(false)
 
 // 客户备注管理
-const editingNotes = ref(false)
-const editNotesText = ref('')
-const savingNotes = ref(false)
+const customerNotes = ref<{ id: number; content: string; createTime: string; operator: string }[]>([])
+const showNotesHistory = ref(false)
+const showAddNote = ref(false)
+const newNoteText = ref('')
+const addingNote = ref(false)
+const editingNoteId = ref<number | null>(null)
+const editNoteText = ref('')
+const savingNote = ref(false)
+
+// 客户地址管理
+const customerAddresses = ref<{ id: number; content: string; createTime: string; isDefault?: boolean }[]>([])
+const showAddressHistory = ref(false)
+const showAddAddress = ref(false)
+const newAddressText = ref('')
+const addingAddress = ref(false)
+const editingAddressId = ref<number | null>(null)
+const editAddressText = ref('')
+const savingAddress = ref(false)
 
 const callForm = reactive({
   phone: '',
@@ -1302,6 +1680,21 @@ const customerTags = ref<{
   name: string
   type: string
 }[]>([])
+
+// 客户日志
+const customerLogs = ref<{
+  id: string
+  logType: string
+  content: string
+  detail: any
+  operatorId: string
+  operatorName: string
+  createdAt: string
+}[]>([])
+const loadingLogs = ref(false)
+const loadingMoreLogs = ref(false)
+const logsOffset = ref(0)
+const logsHasMore = ref(false)
 
 // 表单引用
 const smsFormRef = ref()
@@ -1395,21 +1788,33 @@ const handleCall = () => {
 }
 
 // 处理发送短信
-const handleSendSMS = () => {
+const handleSendSMS = async () => {
   // 检查客户是否有手机号
   if (!customerInfo.value.phone && (!customerInfo.value.otherPhones || customerInfo.value.otherPhones.length === 0)) {
     ElMessage.warning('该客户没有手机号码，无法发送短信')
     return
   }
 
-  // 初始化表单
-  smsForm.phone = customerInfo.value.phone || (customerInfo.value.otherPhones && customerInfo.value.otherPhones[0]) || ''
-  smsForm.templateId = ''
-  smsForm.variables = {}
+  // 🔥 v1.8.1: 加载 SendSmsDialog 需要的已审核模板列表
+  try {
+    const { getTemplates } = await import('@/api/sms')
+    const res = await getTemplates({ status: 'active' }) as any
+    if (res?.data?.templates && res.data.templates.length > 0) {
+      approvedSmsTemplates.value = res.data.templates.map((t: any) => ({
+        id: t.id,
+        name: t.name,
+        category: t.category || 'general',
+        content: t.content || '',
+        variables: t.variables || [],
+        usage: t.usage || 0
+      }))
+    }
+  } catch (err) {
+    console.warn('加载短信模板失败:', err)
+  }
 
-  // 加载短信模板和用户统计
+  // 也加载旧格式模板（兼容）
   loadSMSTemplates()
-  loadUserSMSStats()
 
   showSMSDialog.value = true
 }
@@ -1434,8 +1839,21 @@ const onTemplateChange = () => {
   // 重置变量
   smsForm.variables = {}
   if (selectedTemplate.value && selectedTemplate.value.variables) {
+    // 🔥 使用自动匹配工具自动填充变量
+    const customerData = {
+      name: customerInfo.value.name,
+      phone: customerInfo.value.phone,
+      email: customerInfo.value.email,
+      gender: customerInfo.value.gender,
+      address: customerInfo.value.address,
+      customerNo: customerInfo.value.code,
+      level: customerInfo.value.level
+    }
+    const matched = autoMatchSmsVariables(selectedTemplate.value.content, customerData)
+
     selectedTemplate.value.variables.forEach(variable => {
-      smsForm.variables[variable.key] = variable.defaultValue || ''
+      // 使用自动匹配的值，没有则用默认值
+      smsForm.variables[variable.key] = matched[variable.key] || variable.defaultValue || ''
     })
   }
 }
@@ -1459,22 +1877,36 @@ const sendSMS = async () => {
       customerId: customerInfo.value.id,
       phone: smsForm.phone,
       templateId: smsForm.templateId,
+      templateName: selectedTemplate.value?.name || '',
       variables: smsForm.variables,
-      content: previewContent.value
+      content: previewContent.value,
+      recipients: [{ name: customerInfo.value.name, phone: smsForm.phone }]
     }
 
-    // 调用发送API（这里先模拟）
-    await new Promise(resolve => setTimeout(resolve, 2000))
+    // 🔥 调用真实发送API
+    const { sendSms } = await import('@/api/sms')
+    const res = await sendSms({
+      templateId: sendData.templateId,
+      templateName: sendData.templateName,
+      recipients: sendData.recipients,
+      content: sendData.content
+    }) as any
 
-    ElMessage.success('短信发送成功，等待审核')
-    showSMSDialog.value = false
-
-    // 刷新统计数据
-    loadUserSMSStats()
-
-  } catch (error) {
+    if (res?.success || res?.code === 200) {
+      ElMessage.success('短信发送成功')
+      showSMSDialog.value = false
+      // 刷新统计数据
+      loadUserSMSStats()
+    } else {
+      ElMessage.error(res?.message || '短信发送失败')
+    }
+  } catch (error: any) {
     console.error('发送短信失败:', error)
-    ElMessage.error('发送短信失败，请重试')
+    if (error?.response?.data?.message) {
+      ElMessage.error(error.response.data.message)
+    } else {
+      ElMessage.error('发送短信失败，请重试')
+    }
   } finally {
     sendingSMS.value = false
   }
@@ -1483,42 +1915,46 @@ const sendSMS = async () => {
 // 加载短信模板
 const loadSMSTemplates = async () => {
   try {
-    // 这里先使用模拟数据
-    smsTemplates.value = [
-      {
-        id: '1',
-        name: '客户问候模板',
-        content: '尊敬的{customerName}，感谢您选择我们的服务！如有任何问题，请随时联系我们。',
-        variables: [
-          { key: 'customerName', label: '客户姓名', placeholder: '请输入客户姓名', defaultValue: customerInfo.value.name }
-        ],
-        status: 'approved'
-      },
-      {
-        id: '2',
-        name: '预约提醒模板',
-        content: '尊敬的{customerName}，您预约的{serviceName}将在{appointmentTime}开始，请准时到达。',
-        variables: [
-          { key: 'customerName', label: '客户姓名', placeholder: '请输入客户姓名', defaultValue: customerInfo.value.name },
-          { key: 'serviceName', label: '服务名称', placeholder: '请输入服务名称' },
-          { key: 'appointmentTime', label: '预约时间', placeholder: '请输入预约时间' }
-        ],
-        status: 'approved'
-      },
-      {
-        id: '3',
-        name: '活动通知模板',
-        content: '亲爱的{customerName}，我们有新的优惠活动：{activityName}，详情请咨询客服。',
-        variables: [
-          { key: 'customerName', label: '客户姓名', placeholder: '请输入客户姓名', defaultValue: customerInfo.value.name },
-          { key: 'activityName', label: '活动名称', placeholder: '请输入活动名称' }
-        ],
-        status: 'approved'
-      }
-    ]
+    const { getAvailableTemplates } = await import('@/api/sms')
+    const res = await getAvailableTemplates() as any
+    if (res?.data?.templates) {
+      smsTemplates.value = res.data.templates.map((t: any) => {
+        // 从模板内容中提取变量
+        const varMatches = (t.content || '').match(/\{(\w+)\}/g) || []
+
+        // 🔥 使用自动匹配工具生成默认值
+        const customerData = {
+          name: customerInfo.value.name,
+          phone: customerInfo.value.phone,
+          email: customerInfo.value.email,
+          gender: customerInfo.value.gender,
+          address: customerInfo.value.address,
+          customerNo: customerInfo.value.code,
+          level: customerInfo.value.level
+        }
+        const matched = autoMatchSmsVariables(t.content || '', customerData)
+
+        const variables = varMatches.map((v: string) => {
+          const key = v.replace(/[{}]/g, '')
+          return {
+            key,
+            label: key,
+            placeholder: `请输入${key}`,
+            defaultValue: matched[key] || (key === 'customerName' ? customerInfo.value.name : undefined)
+          }
+        })
+        return {
+          id: String(t.id),
+          name: t.name || '',
+          content: t.content || '',
+          variables,
+          status: t.status || 'active'
+        }
+      })
+    }
   } catch (error) {
     console.error('加载短信模板失败:', error)
-    ElMessage.error('加载短信模板失败')
+    // 如果API调用失败，保持空列表而不是显示错误
   }
 }
 
@@ -1543,14 +1979,29 @@ const handleAddFollowUp = () => {
 // 处理编辑客户
 const handleEdit = () => {
   isEditing.value = true
-  Object.assign(editForm, customerInfo.value)
+  const { customFields, ...rest } = customerInfo.value
+  Object.assign(editForm, rest)
+  editForm.customFields = { ...(customFields || {}) }
+  // 确保 checkbox 类型字段初始化为数组
+  for (const field of displayCustomFields.value) {
+    if (field.fieldType === 'checkbox' && !Array.isArray(editForm.customFields[field.fieldKey])) {
+      editForm.customFields[field.fieldKey] = editForm.customFields[field.fieldKey] ? [editForm.customFields[field.fieldKey]] : []
+    }
+  }
   phoneNumbers.value = customerInfo.value.otherPhones || []
 }
 
 // 开始编辑
 const startEdit = () => {
   isEditing.value = true
-  Object.assign(editForm, customerInfo.value)
+  const { customFields, ...rest } = customerInfo.value
+  Object.assign(editForm, rest)
+  editForm.customFields = { ...(customFields || {}) }
+  for (const field of displayCustomFields.value) {
+    if (field.fieldType === 'checkbox' && !Array.isArray(editForm.customFields[field.fieldKey])) {
+      editForm.customFields[field.fieldKey] = editForm.customFields[field.fieldKey] ? [editForm.customFields[field.fieldKey]] : []
+    }
+  }
   // 在编辑表单中显示加密的手机号
   editForm.phone = displaySensitiveInfoNew(customerInfo.value.phone, SensitiveInfoType.PHONE)
   phoneNumbers.value = customerInfo.value.otherPhones || []
@@ -1723,6 +2174,8 @@ const toggleEdit = () => {
 
 const cancelEdit = () => {
   isEditing.value = false
+  emailEditing.value = false
+  wechatEditing.value = false
   Object.assign(editForm, customerInfo.value)
   phoneNumbers.value = []
   showAddPhone.value = false
@@ -1734,6 +2187,20 @@ const saveCustomerInfo = async () => {
   try {
     const customerId = route.params.id as string
 
+    // 邮箱格式验证
+    if (editForm.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(editForm.email)) {
+      ElMessage.warning('请输入正确的邮箱格式')
+      saving.value = false
+      return
+    }
+
+    // 微信号格式验证：仅允许字母、数字、下划线、横线，6-20位
+    if (editForm.wechatId && !/^[a-zA-Z0-9_-]{6,20}$/.test(editForm.wechatId)) {
+      ElMessage.warning('微信号格式不正确（仅支持字母、数字、下划线、横线，6-20位）')
+      saving.value = false
+      return
+    }
+
     // 准备更新数据
     const updateData: Record<string, unknown> = {
       name: editForm.name,
@@ -1744,11 +2211,14 @@ const saveCustomerInfo = async () => {
       weight: editForm.weight ?? undefined,
       birthday: editForm.birthday || undefined,
       source: editForm.source,
-      address: editForm.address,
       salesperson: editForm.salesperson,
       fanAcquisitionTime: editForm.joinTime,
       improvementGoals: editForm.improvementGoals,
-      otherPhones: phoneNumbers.value
+      otherPhones: phoneNumbers.value,
+      customFields: editForm.customFields,
+      email: editForm.email || '',
+      wechatId: editForm.wechatId || '',
+      wechat: editForm.wechatId || ''
     }
 
     // 调用后端API更新客户
@@ -1762,10 +2232,13 @@ const saveCustomerInfo = async () => {
       customerInfo.value.improvementGoals = [...editForm.improvementGoals]
       customerInfo.value.birthday = editForm.birthday
       isEditing.value = false
+      emailEditing.value = false
+      wechatEditing.value = false
       ElMessage.success('保存成功')
 
-      // 刷新客户数据
+      // 刷新客户数据和日志
       await loadCustomerDetail()
+      loadCustomerLogs()
     } else {
       ElMessage.error(response.message || '保存失败')
     }
@@ -1822,25 +2295,37 @@ const addMedicalRecord = async () => {
 
   addingMedical.value = true
   try {
-    // 模拟API调用
-    await new Promise(resolve => setTimeout(resolve, 1000))
+    const customerId = route.params.id as string
+    const result = await customerDetailApi.addMedicalHistory(customerId, {
+      content: newMedicalRecord.value.trim()
+    })
 
-    const newRecord = {
+    // 从API返回获取新记录
+    const newRecord = result?.data || result || {
       id: Date.now(),
       content: newMedicalRecord.value.trim(),
       createTime: new Date().toISOString(),
-      operator: '当前用户', // 实际应用中应该是当前登录用户
+      operator: '当前用户',
       operationType: 'add'
     }
 
     // 新记录添加到数组开头（最新的在前面）
-    medicalHistory.value.unshift(newRecord)
+    medicalHistory.value.unshift({
+      id: newRecord.id,
+      content: newRecord.content,
+      createTime: newRecord.createTime,
+      operator: newRecord.operator || '当前用户',
+      operationType: newRecord.operationType || 'add'
+    })
 
     newMedicalRecord.value = ''
     showAddMedical.value = false
     ElMessage.success('疾病信息添加成功')
+
+    // 刷新客户日志
+    loadCustomerLogs()
   } catch (error) {
-    ElMessage.error('添加失败，请重试')
+    ElMessage.error('添加疾病史失败')
   } finally {
     addingMedical.value = false
   }
@@ -1851,33 +2336,190 @@ const cancelAddMedical = () => {
   showAddMedical.value = false
 }
 
-// 客户备注管理方法
-const startEditNotes = () => {
-  editNotesText.value = customerInfo.value.notes || ''
-  editingNotes.value = true
-}
-
-const cancelEditNotes = () => {
-  editNotesText.value = ''
-  editingNotes.value = false
-}
-
-const saveNotes = async () => {
-  savingNotes.value = true
+// 地址管理方法
+const loadCustomerAddresses = async () => {
   try {
-    // 模拟API调用
-    await new Promise(resolve => setTimeout(resolve, 800))
-
-    // 更新客户信息中的备注
-    customerInfo.value.notes = editNotesText.value.trim()
-
-    editingNotes.value = false
-    editNotesText.value = ''
-    ElMessage.success('客户备注保存成功')
+    const customerId = route.params.id as string
+    const response = await customerDetailApi.getCustomerAddresses(customerId)
+    const data = response?.data || response || []
+    customerAddresses.value = Array.isArray(data) ? data : []
   } catch (error) {
-    ElMessage.error('保存失败，请重试')
+    console.error('加载客户地址失败:', error)
+    customerAddresses.value = []
+  }
+}
+
+// 地址智能校验：必须包含省/市/区/自治区/直辖市等基本信息
+const validateAddress = (address: string): boolean => {
+  const keywords = ['省', '市', '区', '县', '自治区', '直辖市', '自治州', '盟', '旗', '镇', '街道', '路', '道', '号', '弄', '村', '组']
+  const hasKeyword = keywords.some(kw => address.includes(kw))
+  if (!hasKeyword) {
+    ElMessage.warning('请输入包含省、市、区等基本信息的完整详细地址')
+    return false
+  }
+  if (address.length < 8) {
+    ElMessage.warning('地址信息过短，请输入完整的详细地址')
+    return false
+  }
+  return true
+}
+
+const addAddress = async () => {
+  if (!newAddressText.value.trim()) {
+    ElMessage.warning('请输入地址')
+    return
+  }
+  if (!validateAddress(newAddressText.value.trim())) return
+  addingAddress.value = true
+  try {
+    const customerId = route.params.id as string
+    await customerDetailApi.addCustomerAddress(customerId, { content: newAddressText.value.trim() })
+    newAddressText.value = ''
+    showAddAddress.value = false
+    ElMessage.success('地址添加成功')
+    await loadCustomerAddresses()
+    loadCustomerLogs()
+  } catch (error) {
+    ElMessage.error('添加地址失败')
   } finally {
-    savingNotes.value = false
+    addingAddress.value = false
+  }
+}
+
+const cancelAddAddress = () => {
+  newAddressText.value = ''
+  showAddAddress.value = false
+}
+
+const startEditAddress = (addr: any) => {
+  editingAddressId.value = addr.id
+  editAddressText.value = addr.content
+}
+
+const cancelEditAddress = () => {
+  editingAddressId.value = null
+  editAddressText.value = ''
+}
+
+const saveEditAddress = async () => {
+  if (!editAddressText.value.trim()) {
+    ElMessage.warning('地址不能为空')
+    return
+  }
+  if (!validateAddress(editAddressText.value.trim())) return
+  savingAddress.value = true
+  try {
+    const customerId = route.params.id as string
+    await customerDetailApi.updateCustomerAddress(customerId, editingAddressId.value!, { content: editAddressText.value.trim() })
+    editingAddressId.value = null
+    editAddressText.value = ''
+    ElMessage.success('地址更新成功')
+    await loadCustomerAddresses()
+    loadCustomerLogs()
+  } catch (error) {
+    ElMessage.error('更新地址失败')
+  } finally {
+    savingAddress.value = false
+  }
+}
+
+const deleteAddress = async (addressId: number) => {
+  try {
+    await ElMessageBox.confirm('确定删除该地址吗？', '提示', { type: 'warning' })
+    const customerId = route.params.id as string
+    await customerDetailApi.deleteCustomerAddress(customerId, addressId)
+    ElMessage.success('地址已删除')
+    await loadCustomerAddresses()
+    loadCustomerLogs()
+  } catch (error: any) {
+    if (error !== 'cancel') {
+      ElMessage.error('删除地址失败')
+    }
+  }
+}
+
+// 客户备注管理方法
+const loadCustomerNotes = async () => {
+  try {
+    const customerId = route.params.id as string
+    const response = await customerDetailApi.getCustomerNotes(customerId)
+    const data = response?.data || response || []
+    customerNotes.value = Array.isArray(data) ? data : []
+  } catch (error) {
+    console.error('加载客户备注失败:', error)
+    customerNotes.value = []
+  }
+}
+
+const addNote = async () => {
+  if (!newNoteText.value.trim()) {
+    ElMessage.warning('请输入备注内容')
+    return
+  }
+  addingNote.value = true
+  try {
+    const customerId = route.params.id as string
+    await customerDetailApi.addCustomerNote(customerId, { content: newNoteText.value.trim() })
+    newNoteText.value = ''
+    showAddNote.value = false
+    ElMessage.success('备注添加成功')
+    await loadCustomerNotes()
+    loadCustomerLogs()
+  } catch (error) {
+    ElMessage.error('添加备注失败')
+  } finally {
+    addingNote.value = false
+  }
+}
+
+const cancelAddNote = () => {
+  newNoteText.value = ''
+  showAddNote.value = false
+}
+
+const startEditNote = (note: any) => {
+  editingNoteId.value = note.id
+  editNoteText.value = note.content
+}
+
+const cancelEditNote = () => {
+  editingNoteId.value = null
+  editNoteText.value = ''
+}
+
+const saveEditNote = async () => {
+  if (!editNoteText.value.trim()) {
+    ElMessage.warning('备注不能为空')
+    return
+  }
+  savingNote.value = true
+  try {
+    const customerId = route.params.id as string
+    await customerDetailApi.updateCustomerNote(customerId, editingNoteId.value!, { content: editNoteText.value.trim() })
+    editingNoteId.value = null
+    editNoteText.value = ''
+    ElMessage.success('备注更新成功')
+    await loadCustomerNotes()
+    loadCustomerLogs()
+  } catch (error) {
+    ElMessage.error('更新备注失败')
+  } finally {
+    savingNote.value = false
+  }
+}
+
+const deleteNote = async (noteId: number) => {
+  try {
+    await ElMessageBox.confirm('确定删除该备注吗？', '提示', { type: 'warning' })
+    const customerId = route.params.id as string
+    await customerDetailApi.deleteCustomerNote(customerId, noteId)
+    ElMessage.success('备注已删除')
+    await loadCustomerNotes()
+    loadCustomerLogs()
+  } catch (error: any) {
+    if (error !== 'cancel') {
+      ElMessage.error('删除备注失败')
+    }
   }
 }
 
@@ -1975,6 +2617,10 @@ const startCall = async () => {
 }
 
 const createOrder = () => {
+  // 🔥 优先使用客户详情页新增的最新地址，避免传递地址代码
+  const latestAddress = customerAddresses.value.length > 0
+    ? customerAddresses.value[0].content
+    : (customerInfo.value.address || '')
   safeNavigator.push({
     path: '/order/add',
     query: {
@@ -1982,7 +2628,7 @@ const createOrder = () => {
       customerName: customerInfo.value.name,
       customerPhone: customerInfo.value.phone,
       customerEmail: customerInfo.value.email,
-      customerAddress: customerInfo.value.address
+      customerAddress: latestAddress
     }
   })
 }
@@ -2153,6 +2799,8 @@ const handleTabClick = (tab: { props: { name: string } }) => {
     loadCallRecords()
   } else if (tabName === 'followup' && followUpRecords.value.length === 0) {
     loadFollowUpRecords()
+  } else if (tabName === 'logs' && customerLogs.value.length === 0) {
+    loadCustomerLogs()
   }
 }
 
@@ -2374,6 +3022,148 @@ const cancelFollowUp = () => {
   followUpForm.nextFollowUp = ''
 }
 
+// 客户日志辅助方法
+const getLogTypeText = (logType: string) => {
+  const map: Record<string, string> = {
+    'create': '创建客户',
+    'edit': '编辑客户',
+    'edit_info': '修改信息',
+    'update': '更新信息',
+    'delete': '删除客户',
+    'share': '分享客户',
+    'add_phone': '添加号码',
+    'phone_added': '添加号码',
+    'add_order': '新建订单',
+    'add_tag': '添加标签',
+    'remove_tag': '删除标签',
+    'add_followup': '添加跟进',
+    'edit_followup': '编辑跟进',
+    'delete_followup': '删除跟进',
+    'add_medical': '添加疾病史',
+    'edit_notes': '编辑备注',
+    'add_note': '添加备注',
+    'delete_note': '删除备注',
+    'view': '查看详情',
+    'status_change': '状态变更',
+    'level_change': '等级变更',
+    'portrait': '客户画像',
+    'assign': '分配客户',
+    'transfer': '转移客户',
+    'import': '导入客户',
+    'batch_import': '批量导入',
+    'export': '导出客户',
+    'archive': '归档客户',
+    'recover': '恢复客户',
+    'merge': '合并客户',
+    'wecom_bindBinding': '企微绑定',
+    'wecom_bindunbind': '企微解绑',
+    'add_address': '添加地址',
+    'edit_address': '编辑地址',
+    'delete_address': '删除地址',
+    'star_rating': '星级评分',
+    'other': '其他操作'
+  }
+  return map[logType] || logType.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()).replace(/^/, '操作: ')
+}
+
+const getLogTagType = (logType: string) => {
+  const map: Record<string, string> = {
+    'create': 'success',
+    'edit': 'warning',
+    'edit_info': 'warning',
+    'update': 'warning',
+    'delete': 'danger',
+    'share': 'primary',
+    'add_phone': 'info',
+    'phone_added': 'info',
+    'add_order': 'success',
+    'add_tag': 'info',
+    'remove_tag': 'danger',
+    'add_followup': 'primary',
+    'edit_followup': 'warning',
+    'delete_followup': 'danger',
+    'add_medical': 'info',
+    'edit_notes': 'warning',
+    'add_note': 'info',
+    'delete_note': 'danger',
+    'view': 'info',
+    'status_change': 'warning',
+    'level_change': 'warning',
+    'portrait': 'primary',
+    'assign': 'primary',
+    'transfer': 'primary',
+    'import': 'success',
+    'batch_import': 'success',
+    'archive': 'info',
+    'recover': 'success',
+    'merge': 'warning',
+    'star_rating': 'warning',
+    'add_address': 'info',
+    'edit_address': 'warning',
+    'delete_address': 'danger'
+  }
+  return map[logType] || 'info'
+}
+
+const getLogTimelineType = (logType: string) => {
+  const map: Record<string, string> = {
+    'create': 'success',
+    'edit': 'warning',
+    'edit_info': 'warning',
+    'delete': 'danger',
+    'share': 'primary',
+    'add_order': 'success',
+    'add_followup': 'primary'
+  }
+  return map[logType] || 'info'
+}
+
+const loadCustomerLogs = async () => {
+  loadingLogs.value = true
+  try {
+    const customerId = route.params.id as string
+    const response = await customerDetailApi.getCustomerLogs(customerId, 0, 6)
+    const result = response?.data || response || { list: [], hasMore: false }
+    const rawList = result.list || []
+    // 确保detail字段被解析为对象
+    customerLogs.value = rawList.map((item: any) => {
+      if (item.detail && typeof item.detail === 'string') {
+        try { item.detail = JSON.parse(item.detail) } catch { item.detail = null }
+      }
+      return item
+    })
+    logsHasMore.value = result.hasMore || false
+    logsOffset.value = customerLogs.value.length
+  } catch (error) {
+    console.error('加载客户日志失败:', error)
+    customerLogs.value = []
+  } finally {
+    loadingLogs.value = false
+  }
+}
+
+const loadMoreLogs = async () => {
+  loadingMoreLogs.value = true
+  try {
+    const customerId = route.params.id as string
+    const response = await customerDetailApi.getCustomerLogs(customerId, logsOffset.value, 10)
+    const result = response?.data || response || { list: [], hasMore: false }
+    const newLogs = (result.list || []).map((item: any) => {
+      if (item.detail && typeof item.detail === 'string') {
+        try { item.detail = JSON.parse(item.detail) } catch { item.detail = null }
+      }
+      return item
+    })
+    customerLogs.value.push(...newLogs)
+    logsHasMore.value = result.hasMore || false
+    logsOffset.value += newLogs.length
+  } catch (error) {
+    console.error('加载更多日志失败:', error)
+  } finally {
+    loadingMoreLogs.value = false
+  }
+}
+
 // 数据加载方法
 const loadCustomerDetail = async () => {
   try {
@@ -2484,7 +3274,20 @@ const loadCustomerDetail = async () => {
       tags: customer.tags || [],
       improvementGoals: customer.improvementGoals || [],
       otherPhones: customer.otherPhones || [],
-      notes: customer.notes || customer.remark || customer.remarks || ''
+      notes: customer.notes || customer.remark || customer.remarks || '',
+      customFields: customer.customFields || null,
+      starRating: customer.starRating || 0,
+      finalScore: customer.finalScore || 0,
+      wecomExternalUserid: customer.wecomExternalUserid || customer.wecom_external_userid || '',
+      wecomAddTime: customer.wecomAddTime || '',
+      chatCount: customer.chatCount || 0,
+      replyRate: customer.replyRate || '',
+      followUpCount: customer.followUpCount || 0,
+      afterSalesCount: customer.afterSalesCount || 0,
+      afterSalesAmount: customer.afterSalesAmount || 0,
+      totalAmount: customer.totalAmount || 0,
+      orderCount: customer.orderCount || 0,
+      lastOrderTime: customer.lastOrderTime || ''
     }
 
     // 客户统计数据将通过 calculateCustomerStats() 方法实时计算
@@ -2549,6 +3352,12 @@ const loadCustomerDetail = async () => {
         medicalHistory.value = []
       }
     }
+
+    // 加载客户地址数据
+    await loadCustomerAddresses()
+
+    // 加载客户备注数据
+    await loadCustomerNotes()
 
   } catch (error) {
     console.error('加载客户详情失败:', error)
@@ -3133,11 +3942,10 @@ onMounted(async () => {
 
 .info-item .label {
   font-weight: 600;
-  color: #475569;
+  color: #374151;
   margin-right: 12px;
-  min-width: 80px;
+  min-width: fit-content;
   font-size: 14px;
-  white-space: nowrap;
 }
 
 .info-item .value {
@@ -3281,78 +4089,56 @@ onMounted(async () => {
   margin-left: 8px;
 }
 
-.edit-form {
-  margin-top: 10px;
-  padding: 24px;
+/* 客户统计卡片样式 */
+.stats-card {
+  padding: 16px 20px;
+  background: #ffffff;
+  border-radius: 10px;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
 }
 
-.edit-form .el-form-item {
-  margin-bottom: 20px;
+.stats-card :deep(.el-card__header) {
+  padding: 10px 16px;
 }
 
-.phone-management {
+.stats-card {
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
+  border: 1px solid #e8ecf1;
 }
-
-/* 其他手机号表单项样式 - 标签不换行 */
-.other-phone-item .el-form-item__label {
-  white-space: nowrap;
+.stats-card:hover {
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
 }
-
-.phone-management .phone-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  align-items: center;
-  margin-bottom: 10px;
-}
-
-.phone-management .phone-tag {
-  margin-right: 8px;
-}
-
-.phone-management .add-phone {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-/* 添加手机号按钮样式 */
-.phone-management .el-button--primary.is-plain {
-  background: #f8fafc;
-  border-color: #e2e8f0;
-  color: #6366f1;
-  font-weight: 500;
-}
-
-.phone-management .el-button--primary.is-plain:hover {
-  background: #f1f5f9;
-  border-color: #cbd5e1;
-  color: #5855eb;
+.stats-card :deep(.el-card__body) {
+  padding: 16px 12px 12px;
 }
 
 .stats-row {
-  padding: 0;
-  background: transparent;
-  margin-bottom: 0;
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 14px;
 }
 
 .stat-item {
   position: relative;
-  padding: 20px 16px;
+  flex: 1;
+  min-width: 0;
+  padding: 24px 16px 20px;
   background: white;
   border-radius: 12px;
   border: 1px solid #f1f5f9;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   overflow: hidden;
-  text-align: center;
-  cursor: pointer;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  min-height: 110px;
+  text-align: center;
+  min-height: 130px;
+  cursor: pointer;
 }
-
 .stat-item::before {
   content: '';
   position: absolute;
@@ -3360,7 +4146,7 @@ onMounted(async () => {
   left: 0;
   right: 0;
   height: 3px;
-  background: var(--stat-color);
+  background: #3b82f6;
   transition: height 0.3s ease;
 }
 
@@ -3369,49 +4155,37 @@ onMounted(async () => {
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
   border-color: #e2e8f0;
 }
-
-.stat-item:hover::before {
-  height: 4px;
-}
-
-.stat-item:nth-child(1) {
-  --stat-color: #3b82f6;
-}
-
-.stat-item:nth-child(2) {
-  --stat-color: #10b981;
-}
-
-.stat-item:nth-child(3) {
-  --stat-color: #f59e0b;
-}
-
-.stat-item:nth-child(4) {
-  --stat-color: #8b5cf6;
-}
+.stat-item:hover::before { height: 4px; }
 
 .stat-icon {
-  font-size: 28px;
-  margin-bottom: 8px;
-  display: block;
-  color: var(--stat-color);
+  font-size: 32px;
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: #3b82f6;
   opacity: 0.85;
 }
 
 .stat-content {
-  flex: 1;
+  text-align: center;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
 }
 
 .stat-value {
-  font-size: 26px;
-  font-weight: 700;
+  font-size: 28px;
+  font-weight: 800;
   color: #0f172a;
   line-height: 1.2;
   letter-spacing: -0.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .stat-label {
@@ -3421,29 +4195,38 @@ onMounted(async () => {
   letter-spacing: 0.3px;
 }
 
-
-
-.tab-content {
-  padding: 24px;
+/* Tab切换区域样式 */
+.tab-card {
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
 }
 
 .tab-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 24px;
-  padding: 20px;
+  padding: 16px;
   background: #f8f9fa;
-  border-radius: 12px;
+  border-bottom: 1px solid #e2e8f0;
 }
 
-.amount {
-  color: #f56c6c;
-  font-weight: 500;
+.tab-header .el-tabs__nav {
+  margin: 0;
 }
 
+.tab-header .el-tab-pane {
+  padding: 0;
+}
+
+.tab-content {
+  padding: 24px;
+}
+
+/* 时间轴样式 */
 .timeline-container {
-  max-height: 600px;
+  max-height: 400px;
   overflow-y: auto;
 }
 
@@ -3454,8 +4237,8 @@ onMounted(async () => {
 }
 
 .timeline-card:hover {
-  transform: translateX(4px);
-  box-shadow: 0 4px 16px rgba(102, 126, 234, 0.2);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
 }
 
 .timeline-header {
@@ -3476,247 +4259,6 @@ onMounted(async () => {
   line-height: 1.6;
   font-size: 14px;
   margin-bottom: 12px;
-}
-
-.timeline-footer {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-size: 12px;
-  color: #adb5bd;
-  font-weight: 500;
-}
-
-.timeline-author {
-  font-weight: 500;
-}
-
-.tags-container {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  margin-bottom: 24px;
-}
-
-.tag-item {
-  position: relative;
-  border-radius: 20px;
-  transition: all 0.3s ease;
-}
-
-.tag-item:hover {
-  transform: scale(1.05);
-}
-
-/* 表格样式优化 */
-.customer-detail .el-table {
-  border-radius: 16px;
-  overflow: hidden;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-  border: 1px solid #f1f5f9;
-  background: white;
-}
-
-.customer-detail .el-table__header-wrapper {
-  background: #fafbfc;
-}
-
-.customer-detail .el-table th {
-  background: transparent;
-  color: #374151;
-  font-weight: 700;
-  font-size: 14px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  border-bottom: 2px solid #e2e8f0;
-  padding: 20px 16px;
-}
-
-.customer-detail .el-table tr {
-  transition: all 0.2s ease;
-}
-
-.customer-detail .el-table tr:hover {
-  background: #f8fafc;
-  transform: scale(1.001);
-}
-
-.customer-detail .el-table td {
-  border-bottom: 1px solid #f1f5f9;
-  padding: 16px;
-  font-size: 14px;
-  color: #475569;
-}
-
-.customer-detail .el-table .el-button {
-  padding: 6px 12px;
-  font-size: 12px;
-  border-radius: 8px;
-  font-weight: 600;
-}
-
-/* 按钮样式优化 */
-.customer-detail .el-button {
-  border-radius: 8px;
-  font-weight: 500;
-  transition: all 0.2s ease;
-  border: 1px solid #e2e8f0;
-  box-shadow: none;
-}
-
-.customer-detail .el-button:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-}
-
-.customer-detail .el-button--primary {
-  background: #6366f1;
-  border-color: #6366f1;
-  color: white;
-}
-
-.customer-detail .el-button--primary:hover {
-  background: #5855eb;
-  border-color: #5855eb;
-}
-
-.customer-detail .el-button--success {
-  background: #10b981;
-  border-color: #10b981;
-  color: white;
-}
-
-.customer-detail .el-button--success:hover {
-  background: #059669;
-  border-color: #059669;
-}
-
-.customer-detail .el-button--warning {
-  background: #f59e0b;
-  border-color: #f59e0b;
-  color: white;
-}
-
-.customer-detail .el-button--warning:hover {
-  background: #d97706;
-  border-color: #d97706;
-}
-
-.customer-detail .el-button--danger {
-  background: #ef4444;
-  border-color: #ef4444;
-  color: white;
-}
-
-.customer-detail .el-button--danger:hover {
-  background: #dc2626;
-  border-color: #dc2626;
-}
-
-/* 标签页样式优化 */
-.customer-detail .el-tabs__header {
-  margin-bottom: 24px;
-  border-bottom: none;
-}
-
-.customer-detail .el-tabs__nav-wrap {
-  background: #f8fafc;
-  border-radius: 12px;
-  padding: 6px;
-  box-shadow: none;
-  border: none;
-  display: flex;
-}
-
-.customer-detail .el-tabs__nav {
-  display: flex;
-  width: 100%;
-}
-
-.customer-detail .el-tabs__item {
-  border-radius: 8px;
-  font-weight: 500;
-  color: #64748b;
-  border: none;
-  padding: 10px 20px;
-  margin: 0 2px;
-  flex: 1;
-  text-align: center;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  position: relative;
-  background: transparent;
-}
-
-.customer-detail .el-tabs__item:hover {
-  background: transparent;
-  color: #475569;
-}
-
-.customer-detail .el-tabs__item.is-active {
-  background: transparent;
-  color: #6366f1;
-}
-
-.customer-detail .el-tabs__active-bar {
-  display: none;
-}
-
-/* 确保标签页文字完全居中 */
-.customer-detail .el-tabs__item .el-tabs__item-label {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-  height: 100%;
-}
-
-/* 移除可能的默认边距和填充 */
-.customer-detail .el-tabs__nav-scroll {
-  overflow: visible;
-}
-
-.customer-detail .el-tabs__nav-wrap::after {
-  display: none;
-}
-
-/* 搜索框样式 */
-.customer-detail .el-input__wrapper {
-  border-radius: 12px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-  border: 1px solid #e2e8f0;
-  transition: all 0.3s ease;
-}
-
-.customer-detail .el-input__wrapper:hover {
-  border-color: #cbd5e1;
-}
-
-.customer-detail .el-input__wrapper.is-focus {
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
-}
-
-/* 卡片样式 */
-.customer-detail .el-card {
-  border-radius: 16px;
-  border: 1px solid #f1f5f9;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-  transition: all 0.3s ease;
-}
-
-.customer-detail .el-card:hover {
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
-  transform: translateY(-2px);
-}
-
-/* 跟进记录锁定样式 */
-.locked-tip {
-  color: #f59e0b;
-  font-size: 12px;
-  font-weight: 600;
-  margin-left: 8px;
 }
 
 .timeline-footer {
@@ -3841,9 +4383,6 @@ onMounted(async () => {
   box-sizing: border-box;
 }
 
-.phone-section {
-  flex: 1;
-}
 
 /* 手机号横向显示容器 */
 .phone-container-horizontal {
@@ -4162,6 +4701,7 @@ onMounted(async () => {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
+  margin-top: 12px;
 }
 
 .no-medical-info {
@@ -4233,5 +4773,336 @@ onMounted(async () => {
 .no-goals {
   color: #9ca3af;
   font-style: italic;
+  margin-left: 8px;
+}
+
+/* 客户日志样式 */
+.customer-logs-container {
+  padding: 16px 0;
+}
+
+.log-timestamp {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.log-meta-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+  font-size: 13px;
+  padding-left: 0;
+}
+
+.log-meta-separator {
+  color: #c0c4cc;
+}
+
+.log-type-tag {
+  margin-left: auto;
+}
+
+.log-operator-name {
+  color: #909399;
+  font-weight: 500;
+}
+
+.log-time {
+  color: #909399;
+}
+
+.log-item {
+  padding: 10px 14px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  border-left: 3px solid #dcdfe6;
+  transition: all 0.3s ease;
+}
+
+.log-item:hover {
+  background: #f0f2f5;
+}
+
+.log-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.log-operator {
+  color: #909399;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.log-content {
+  color: #303133;
+  font-size: 14px;
+  line-height: 1.6;
+  word-break: break-all;
+}
+
+.logs-load-more {
+  text-align: center;
+  padding: 16px 0;
+}
+
+/* 地址管理样式 */
+.full-width-row {
+  flex-basis: 100% !important;
+  width: 100% !important;
+}
+
+.full-width-item {
+  flex: 1 1 100% !important;
+  min-width: 100% !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  margin-right: 0 !important;
+  align-items: flex-start !important;
+  flex-direction: column !important;
+}
+
+.full-width-item .field-label {
+  margin-bottom: 8px;
+}
+
+.address-management-section,
+.notes-management-section,
+.medical-history-section {
+  flex: 1;
+  width: 100%;
+}
+
+.address-record {
+  padding: 10px 12px;
+  background: #f5f7fa;
+  border-radius: 6px;
+  margin-bottom: 8px;
+}
+
+.address-record.history-record {
+  background: #fafafa;
+}
+
+.address-text {
+  display: inline;
+  color: #303133;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.address-inline-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.note-inline-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.record-right-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  font-size: 12px;
+  color: #909399;
+}
+
+.record-right-info .delete-btn {
+  color: #F56C6C;
+}
+
+.address-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 6px;
+  font-size: 12px;
+  color: #909399;
+}
+
+.address-date {
+  color: #909399;
+}
+
+.address-operator {
+  color: #409EFF;
+  font-weight: 500;
+}
+
+.address-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.address-actions .delete-btn {
+  color: #F56C6C;
+}
+
+.address-edit-inline {
+  padding: 8px 0;
+  width: 100%;
+}
+
+.address-edit-inline .form-actions {
+  margin-top: 8px;
+  text-align: right;
+}
+
+.add-address-form {
+  margin-top: 8px;
+  padding: 12px;
+  background: #f5f7fa;
+  border-radius: 8px;
+  width: 100%;
+}
+
+.address-history-toggle {
+  margin: 4px 0;
+}
+
+.add-address-section {
+  margin-bottom: 8px;
+}
+
+.add-address-btn {
+  border-radius: 6px;
+}
+
+.no-address-info {
+  padding: 4px 0;
+}
+
+/* 日志详细变更样式 */
+.log-changes {
+  margin-top: 8px;
+  padding: 8px 12px;
+  background: #f5f7fa;
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+.change-item {
+  padding: 2px 0;
+  line-height: 1.6;
+}
+
+.change-field {
+  color: #409EFF;
+  font-weight: 500;
+}
+
+.change-old {
+  color: #F56C6C;
+  text-decoration: line-through;
+}
+
+.change-arrow {
+  color: #909399;
+  margin: 0 4px;
+}
+
+.change-new {
+  color: #67C23A;
+  font-weight: 500;
+}
+
+.log-source {
+  margin-top: 6px;
+}
+
+/* 备注管理样式 */
+.notes-management-section .add-notes-form {
+  margin-top: 8px;
+  padding: 12px;
+  background: #f5f7fa;
+  border-radius: 8px;
+}
+
+.note-record {
+  padding: 10px 12px;
+  background: #f5f7fa;
+  border-radius: 6px;
+  margin-bottom: 8px;
+}
+
+.note-record.history-record {
+  background: #fafafa;
+}
+
+.note-content-text {
+  display: inline;
+  color: #303133;
+  font-size: 14px;
+  line-height: 1.6;
+  word-break: break-all;
+}
+
+
+.note-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 6px;
+  font-size: 12px;
+  color: #909399;
+}
+
+.note-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.note-date {
+  color: #909399;
+}
+
+.note-actions .delete-btn {
+  color: #F56C6C;
+}
+
+.note-edit-inline {
+  padding: 8px 0;
+  width: 100%;
+}
+
+.note-edit-inline .form-actions {
+  margin-top: 8px;
+  text-align: right;
+}
+
+.notes-history-toggle {
+  margin: 4px 0;
+}
+
+.add-notes-section {
+  margin-bottom: 8px;
+}
+
+.edit-form-hint {
+  color: #909399;
+  font-size: 13px;
+  font-style: italic;
+}
+
+.sensitive-edit-field {
+  width: 100%;
+}
+.sensitive-edit-field .el-input {
+  width: 100%;
 }
 </style>
