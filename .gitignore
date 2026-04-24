@@ -145,8 +145,9 @@ deploy.sh
 
 # 备份和同步脚本（含仓库地址等）
 backup-*.ps1
-sync-repos*.ps1
-push-website-admin.ps1
+# 注意：sync-repos*.ps1 和 push-website-admin.ps1 已允许提交（用于子仓库同步）
+# sync-repos*.ps1
+# push-website-admin.ps1
 setup-remotes.ps1
 create-release-package.ps1
 start-backend-dev.ps1
