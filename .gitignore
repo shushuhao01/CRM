@@ -28,8 +28,9 @@ logs/
 *.sw?
 
 # 环境变量文件
-# 注意：.env / .env.development / .env.production 已允许提交（不含敏感信息，部署需要）
-# 仅 .local 后缀的本地覆盖文件不提交
+# .env.development / .env.production 已允许提交（前端Vite配置，不含敏感信息）
+# backend/.env 含数据库密码等敏感信息，不提交！模板文件为 backend/.env.example
+backend/.env
 .env.local
 .env.*.local
 backend/.env.local
