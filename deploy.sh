@@ -1,9 +1,9 @@
 #!/bin/bash
 # =============================================
 # CRM系统一键部署脚本 (Linux/宝塔面板版本)
-# 版本: v2.0
+# 版本: v2.1
 # 适用: CentOS 7/8, Ubuntu 18/20/22, Debian 10/11
-# 要求: Node.js >= 22.x, PM2, MySQL 8.0+
+# 要求: Node.js >= 18.x (推荐20.x/22.x), PM2, MySQL 8.0+
 # =============================================
 
 set -e
@@ -24,7 +24,7 @@ DIST_DIR="$PROJECT_DIR/dist"
 PM2_NAME="crm-backend"
 
 echo -e "${CYAN}=========================================${NC}"
-echo -e "${CYAN}  CRM系统一键部署脚本${NC}"
+echo -e "${CYAN}  CRM系统一键部署脚本 v2.1${NC}"
 echo -e "${CYAN}=========================================${NC}"
 echo ""
 
@@ -35,14 +35,14 @@ echo -e "${YELLOW}[1] 检查环境...${NC}"
 
 # 检查 Node.js
 if ! command -v node &> /dev/null; then
-    echo -e "${RED}[X] 未找到 Node.js，请先安装 Node.js 22.x 或更高版本${NC}"
-    echo -e "${YELLOW}宝塔面板: 软件商店 -> Node.js版本管理器 -> 安装 Node.js 22.x${NC}"
+    echo -e "${RED}[X] 未找到 Node.js，请先安装 Node.js 18.x 或更高版本${NC}"
+    echo -e "${YELLOW}宝塔面板: 软件商店 -> Node.js版本管理器 -> 安装 Node.js 20.x/22.x${NC}"
     exit 1
 fi
 
 NODE_VERSION=$(node -v | sed 's/v//' | cut -d. -f1)
 if [ "$NODE_VERSION" -lt 18 ]; then
-    echo -e "${RED}[X] Node.js 版本过低 ($(node -v))，需要 >= 18.x，推荐 22.x${NC}"
+    echo -e "${RED}[X] Node.js 版本过低 ($(node -v))，需要 >= 18.x${NC}"
     exit 1
 fi
 echo -e "${GREEN}[OK] Node.js版本检查通过: $(node -v)${NC}"
@@ -97,15 +97,24 @@ fi
 echo ""
 
 # =============================================
-# 阶段 2: 设置 npm 镜像源（加速国内下载）
+# 阶段 2: 配置 npm 源
 # =============================================
-echo -e "${YELLOW}[2] 配置 npm 镜像源...${NC}"
+echo -e "${YELLOW}[2] 检查 npm 配置...${NC}"
+
+# 重要：不强制修改镜像源！
+# package-lock.json 中的 resolved URL 与生成时的 registry 绑定
+# 强制换源会导致 npm ci 下载 404 错误
+# 如需使用国内镜像，请先删除 package-lock.json 再运行此脚本
 CURRENT_REGISTRY=$(npm config get registry)
-if [[ "$CURRENT_REGISTRY" != *"npmmirror"* && "$CURRENT_REGISTRY" != *"taobao"* ]]; then
-    npm config set registry https://registry.npmmirror.com
-    echo -e "${GREEN}[OK] 已设置淘宝镜像源（加速下载）${NC}"
-else
-    echo -e "${GREEN}[OK] 已使用国内镜像源${NC}"
+echo -e "${GREEN}[OK] 当前 npm 源: $CURRENT_REGISTRY${NC}"
+
+# 如果用户已经设置了npmmirror但存在lockfile，给出提示
+if [[ "$CURRENT_REGISTRY" == *"npmmirror"* || "$CURRENT_REGISTRY" == *"taobao"* ]]; then
+    if [ -f "$PROJECT_DIR/package-lock.json" ]; then
+        echo -e "${YELLOW}[i] 检测到国内镜像源 + package-lock.json${NC}"
+        echo -e "${YELLOW}    如果安装失败(404错误)，请执行:${NC}"
+        echo -e "${YELLOW}    rm package-lock.json && ./deploy.sh${NC}"
+    fi
 fi
 echo ""
 
@@ -116,23 +125,56 @@ echo ""
 # 步骤 1/6: 安装前端依赖（需要 devDependencies 用于构建）
 echo -e "${YELLOW}[3] 步骤1/6: 安装前端依赖...${NC}"
 cd "$PROJECT_DIR"
-if [ -f "package-lock.json" ]; then
-    npm ci --legacy-peer-deps 2>/dev/null || npm install --legacy-peer-deps
+
+install_frontend() {
+    if [ -f "package-lock.json" ]; then
+        # 优先用 npm ci（快速、确定性安装）
+        npm ci --legacy-peer-deps 2>&1 && return 0
+        echo -e "${YELLOW}[!] npm ci 失败，尝试 npm install...${NC}"
+    fi
+    # 降级为 npm install
+    npm install --legacy-peer-deps 2>&1 && return 0
+    # 如果还是失败，尝试删除 lockfile 重新安装
+    echo -e "${YELLOW}[!] npm install 失败，删除 lockfile 重试...${NC}"
+    rm -f package-lock.json
+    npm install --legacy-peer-deps 2>&1 && return 0
+    return 1
+}
+
+if install_frontend; then
+    echo -e "${GREEN}[OK] 前端依赖安装完成${NC}"
 else
-    npm install --legacy-peer-deps
+    echo -e "${RED}[X] 前端依赖安装失败${NC}"
+    echo -e "${YELLOW}    尝试手动修复:${NC}"
+    echo -e "${YELLOW}    1. npm config set registry https://registry.npmjs.org${NC}"
+    echo -e "${YELLOW}    2. rm -rf node_modules package-lock.json${NC}"
+    echo -e "${YELLOW}    3. npm install --legacy-peer-deps${NC}"
+    exit 1
 fi
-echo -e "${GREEN}[OK] 前端依赖安装完成${NC}"
 echo ""
 
 # 步骤 2/6: 安装后端依赖
 echo -e "${YELLOW}[3] 步骤2/6: 安装后端依赖...${NC}"
 cd "$BACKEND_DIR"
-if [ -f "package-lock.json" ]; then
-    npm ci 2>/dev/null || npm install
+
+install_backend() {
+    if [ -f "package-lock.json" ]; then
+        npm ci 2>&1 && return 0
+        echo -e "${YELLOW}[!] npm ci 失败，尝试 npm install...${NC}"
+    fi
+    npm install 2>&1 && return 0
+    echo -e "${YELLOW}[!] npm install 失败，删除 lockfile 重试...${NC}"
+    rm -f package-lock.json
+    npm install 2>&1 && return 0
+    return 1
+}
+
+if install_backend; then
+    echo -e "${GREEN}[OK] 后端依赖安装完成${NC}"
 else
-    npm install
+    echo -e "${RED}[X] 后端依赖安装失败${NC}"
+    exit 1
 fi
-echo -e "${GREEN}[OK] 后端依赖安装完成${NC}"
 echo ""
 
 # =============================================
@@ -146,7 +188,7 @@ cd "$PROJECT_DIR"
 # 低内存用简化构建，高内存用完整构建
 if [ "$TOTAL_MEM" -lt 3000 ]; then
     echo -e "${YELLOW}    (低内存模式，使用简化构建)${NC}"
-    npx vite build --mode production 2>/dev/null || npm run build
+    npx vite build --mode production 2>&1 || npm run build
 else
     npm run build
 fi
