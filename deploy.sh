@@ -1,7 +1,7 @@
 #!/bin/bash
 # =============================================
 # CRM系统一键部署脚本 (Linux/宝塔面板版本)
-# 版本: v2.1
+# 版本: v2.2
 # 适用: CentOS 7/8, Ubuntu 18/20/22, Debian 10/11
 # 要求: Node.js >= 18.x (推荐20.x/22.x), PM2, MySQL 8.0+
 # =============================================
@@ -24,7 +24,7 @@ DIST_DIR="$PROJECT_DIR/dist"
 PM2_NAME="crm-backend"
 
 echo -e "${CYAN}=========================================${NC}"
-echo -e "${CYAN}  CRM系统一键部署脚本 v2.1${NC}"
+echo -e "${CYAN}  CRM系统一键部署脚本 v2.2${NC}"
 echo -e "${CYAN}=========================================${NC}"
 echo ""
 
@@ -45,7 +45,7 @@ if [ "$NODE_VERSION" -lt 18 ]; then
     echo -e "${RED}[X] Node.js 版本过低 ($(node -v))，需要 >= 18.x${NC}"
     exit 1
 fi
-echo -e "${GREEN}[OK] Node.js版本检查通过: $(node -v)${NC}"
+echo -e "${GREEN}[OK] Node.js版本: $(node -v)${NC}"
 
 # 检查 npm
 if ! command -v npm &> /dev/null; then
@@ -97,24 +97,27 @@ fi
 echo ""
 
 # =============================================
-# 阶段 2: 配置 npm 源
+# 阶段 2: 配置 npm 源（关键！必须与 lockfile 一致）
 # =============================================
-echo -e "${YELLOW}[2] 检查 npm 配置...${NC}"
+echo -e "${YELLOW}[2] 配置 npm 源...${NC}"
 
-# 重要：不强制修改镜像源！
-# package-lock.json 中的 resolved URL 与生成时的 registry 绑定
-# 强制换源会导致 npm ci 下载 404 错误
-# 如需使用国内镜像，请先删除 package-lock.json 再运行此脚本
-CURRENT_REGISTRY=$(npm config get registry)
-echo -e "${GREEN}[OK] 当前 npm 源: $CURRENT_REGISTRY${NC}"
+# package-lock.json 中的 resolved URL 指向 registry.npmjs.org
+# 必须确保 npm registry 一致，否则会出现 404 错误
+# 临时使用官方源进行安装，安装完成后不影响全局设置
+NPM_REGISTRY="https://registry.npmjs.org"
 
-# 如果用户已经设置了npmmirror但存在lockfile，给出提示
-if [[ "$CURRENT_REGISTRY" == *"npmmirror"* || "$CURRENT_REGISTRY" == *"taobao"* ]]; then
-    if [ -f "$PROJECT_DIR/package-lock.json" ]; then
-        echo -e "${YELLOW}[i] 检测到国内镜像源 + package-lock.json${NC}"
-        echo -e "${YELLOW}    如果安装失败(404错误)，请执行:${NC}"
-        echo -e "${YELLOW}    rm package-lock.json && ./deploy.sh${NC}"
-    fi
+# 检测网络连通性，如果官方源不通则使用镜像源（同时删除lockfile）
+echo -e "${YELLOW}    检测 npm 官方源连通性...${NC}"
+if curl -s --connect-timeout 5 --max-time 10 "https://registry.npmjs.org/pinyin-pro" > /dev/null 2>&1; then
+    echo -e "${GREEN}[OK] npm 官方源可用，使用官方源安装${NC}"
+    NPM_REGISTRY="https://registry.npmjs.org"
+else
+    echo -e "${YELLOW}[!] npm 官方源不可用，使用淘宝镜像源${NC}"
+    NPM_REGISTRY="https://registry.npmmirror.com"
+    # 镜像源与lockfile不兼容，需要删除lockfile
+    echo -e "${YELLOW}    删除 package-lock.json 以兼容镜像源...${NC}"
+    rm -f "$PROJECT_DIR/package-lock.json"
+    rm -f "$BACKEND_DIR/package-lock.json"
 fi
 echo ""
 
@@ -128,16 +131,16 @@ cd "$PROJECT_DIR"
 
 install_frontend() {
     if [ -f "package-lock.json" ]; then
-        # 优先用 npm ci（快速、确定性安装）
-        npm ci --legacy-peer-deps 2>&1 && return 0
+        # 优先用 npm ci + 指定registry（快速、确定性安装）
+        npm ci --legacy-peer-deps --registry "$NPM_REGISTRY" 2>&1 && return 0
         echo -e "${YELLOW}[!] npm ci 失败，尝试 npm install...${NC}"
     fi
     # 降级为 npm install
-    npm install --legacy-peer-deps 2>&1 && return 0
-    # 如果还是失败，尝试删除 lockfile 重新安装
-    echo -e "${YELLOW}[!] npm install 失败，删除 lockfile 重试...${NC}"
-    rm -f package-lock.json
-    npm install --legacy-peer-deps 2>&1 && return 0
+    npm install --legacy-peer-deps --registry "$NPM_REGISTRY" 2>&1 && return 0
+    # 如果还是失败，尝试删除 node_modules 和 lockfile 重新安装
+    echo -e "${YELLOW}[!] npm install 失败，清理后重试...${NC}"
+    rm -rf node_modules package-lock.json
+    npm install --legacy-peer-deps --registry "$NPM_REGISTRY" 2>&1 && return 0
     return 1
 }
 
@@ -146,9 +149,8 @@ if install_frontend; then
 else
     echo -e "${RED}[X] 前端依赖安装失败${NC}"
     echo -e "${YELLOW}    尝试手动修复:${NC}"
-    echo -e "${YELLOW}    1. npm config set registry https://registry.npmjs.org${NC}"
-    echo -e "${YELLOW}    2. rm -rf node_modules package-lock.json${NC}"
-    echo -e "${YELLOW}    3. npm install --legacy-peer-deps${NC}"
+    echo -e "${YELLOW}    1. rm -rf node_modules package-lock.json${NC}"
+    echo -e "${YELLOW}    2. npm install --legacy-peer-deps --registry https://registry.npmjs.org${NC}"
     exit 1
 fi
 echo ""
@@ -159,13 +161,13 @@ cd "$BACKEND_DIR"
 
 install_backend() {
     if [ -f "package-lock.json" ]; then
-        npm ci 2>&1 && return 0
+        npm ci --registry "$NPM_REGISTRY" 2>&1 && return 0
         echo -e "${YELLOW}[!] npm ci 失败，尝试 npm install...${NC}"
     fi
-    npm install 2>&1 && return 0
-    echo -e "${YELLOW}[!] npm install 失败，删除 lockfile 重试...${NC}"
-    rm -f package-lock.json
-    npm install 2>&1 && return 0
+    npm install --registry "$NPM_REGISTRY" 2>&1 && return 0
+    echo -e "${YELLOW}[!] npm install 失败，清理后重试...${NC}"
+    rm -rf node_modules package-lock.json
+    npm install --registry "$NPM_REGISTRY" 2>&1 && return 0
     return 1
 }
 
@@ -304,6 +306,6 @@ echo -e "${YELLOW}接下来请配置 Nginx:${NC}"
 echo "  1. 宝塔面板 -> 网站 -> 添加站点"
 echo "  2. 根目录选择: $DIST_DIR"
 echo "  3. 配置反向代理: /api -> http://127.0.0.1:3000"
-echo "  4. 配置详见项目 docs 目录中的部署教程"
+echo "  4. 配置详见项目根目录 nginx.conf.example"
 echo ""
 echo -e "${GREEN}部署成功！${NC}"
