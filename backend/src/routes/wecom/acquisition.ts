@@ -819,12 +819,15 @@ router.get('/acquisition-member-ranking', authenticateToken, async (req: Request
       const configRepo = getTenantRepo(WecomConfig);
       const config = await configRepo.findOne({ where: { id: parseInt(configId as string) } });
       if (config) {
-        const apiService = new WecomApiService(config);
+        const accessToken = await WecomApiService.getAccessTokenByConfigId(config.id, 'corp');
+        const axios = (await import('axios')).default;
         for (const member of Object.values(memberMap)) {
           try {
-            const userInfo = await apiService.getUserInfo(member.userId);
-            if (userInfo?.name) member.userName = userInfo.name;
-            if (userInfo?.department) member.department = Array.isArray(userInfo.department) ? userInfo.department.join('/') : String(userInfo.department);
+            const resp = await axios.get(`https://qyapi.weixin.qq.com/cgi-bin/user/get`, {
+              params: { access_token: accessToken, userid: member.userId }
+            });
+            if (resp.data?.name) member.userName = resp.data.name;
+            if (resp.data?.department) member.department = Array.isArray(resp.data.department) ? resp.data.department.join('/') : String(resp.data.department);
           } catch { /* ignore */ }
         }
       }

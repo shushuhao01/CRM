@@ -289,13 +289,13 @@ router.post('/customer-groups/kick-member', authenticateToken, async (req: Reque
     }
 
     // 找到该群对应的企微配置
-    const groupRepo = getTenantRepo(WecomCustomerGroup, req);
+    const groupRepo = getTenantRepo(WecomCustomerGroup);
     const group = await groupRepo.findOne({ where: { chatId } as any });
     if (!group) {
       return res.status(404).json({ success: false, message: '群聊不存在' });
     }
 
-    const configRepo = getTenantRepo(WecomConfig, req);
+    const configRepo = getTenantRepo(WecomConfig);
     const config = await configRepo.findOne({ where: { isEnabled: true } as any });
     if (!config) {
       return res.status(400).json({ success: false, message: '企微配置不存在或未启用' });

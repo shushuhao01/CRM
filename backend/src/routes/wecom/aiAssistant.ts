@@ -880,15 +880,14 @@ router.post('/ai/orders', authenticateToken, async (req: Request, res: Response)
     let payUrl = '';
     try {
       if (payType === 'wechat') {
-        const { PaymentService } = await import('../../services/PaymentService');
-        const paymentService = new PaymentService();
-        const result = await paymentService.createWechatOrder(orderNo, price * 100, packageName);
+        const { paymentService } = await import('../../services/PaymentService');
+        const result = await paymentService.createWechatOrderForExisting(orderNo, price * 100, packageName);
         qrCode = result.qrCode || '';
         payUrl = result.payUrl || '';
       } else if (payType === 'alipay') {
         const { AlipayService } = await import('../../services/AlipayService');
         const alipayService = new AlipayService();
-        const result = await alipayService.createOrder(orderNo, price, packageName);
+        const result = await alipayService.createQRPay({ orderNo, amount: price, subject: packageName });
         payUrl = result.payUrl || '';
         qrCode = result.qrCode || payUrl;
       }

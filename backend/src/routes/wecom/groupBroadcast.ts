@@ -75,7 +75,7 @@ router.post('/group-broadcasts', authenticateToken, upload.any(), async (req: Re
       successCount: 0,
     });
 
-    const saved = await repo.save(broadcast);
+    const saved = await repo.save(broadcast as any) as WecomGroupBroadcast;
 
     // 调用企微 API 发送
     if (req.body.sendMode === 'now') {

@@ -93,7 +93,7 @@ const scriptUpload = multer({
 router.get('/scripts/categories', authenticateToken, async (req: Request, res: Response) => {
   try {
     await ensureScriptTables();
-    const tenantId = getCurrentTenantId(req);
+    const tenantId = getCurrentTenantId();
     const userId = (req as any).currentUser?.id || (req as any).user?.userId;
     const catRepo = AppDataSource.getRepository(WecomScriptCategory);
     const scriptRepo = AppDataSource.getRepository(WecomScript);
@@ -130,7 +130,7 @@ router.get('/scripts/categories', authenticateToken, async (req: Request, res: R
 router.post('/scripts/categories', authenticateToken, async (req: Request, res: Response) => {
   try {
     await ensureScriptTables();
-    const tenantId = getCurrentTenantId(req);
+    const tenantId = getCurrentTenantId();
     const userId = (req as any).currentUser?.id || (req as any).user?.userId;
     const { name, color, scope, sortOrder } = req.body;
     if (!name) return res.status(400).json({ success: false, message: '分组名称必填' });
@@ -151,7 +151,7 @@ router.post('/scripts/categories', authenticateToken, async (req: Request, res: 
 // 更新分组
 router.put('/scripts/categories/:id', authenticateToken, async (req: Request, res: Response) => {
   try {
-    const tenantId = getCurrentTenantId(req);
+    const tenantId = getCurrentTenantId();
     const catRepo = AppDataSource.getRepository(WecomScriptCategory);
     const cat = await catRepo.findOne({ where: { id: Number(req.params.id), tenantId } });
     if (!cat) return res.status(404).json({ success: false, message: '分组不存在' });
@@ -166,7 +166,7 @@ router.put('/scripts/categories/:id', authenticateToken, async (req: Request, re
 // 删除分组（同时删除组内话术）
 router.delete('/scripts/categories/:id', authenticateToken, async (req: Request, res: Response) => {
   try {
-    const tenantId = getCurrentTenantId(req);
+    const tenantId = getCurrentTenantId();
     const catRepo = AppDataSource.getRepository(WecomScriptCategory);
     const scriptRepo = AppDataSource.getRepository(WecomScript);
     await scriptRepo.delete({ categoryId: Number(req.params.id), tenantId });
@@ -180,7 +180,7 @@ router.delete('/scripts/categories/:id', authenticateToken, async (req: Request,
 // 分组排序
 router.put('/scripts/categories-sort', authenticateToken, async (req: Request, res: Response) => {
   try {
-    const tenantId = getCurrentTenantId(req);
+    const tenantId = getCurrentTenantId();
     const { items } = req.body; // [{id, sortOrder}]
     const catRepo = AppDataSource.getRepository(WecomScriptCategory);
     for (const item of items || []) {
@@ -195,7 +195,7 @@ router.put('/scripts/categories-sort', authenticateToken, async (req: Request, r
 // 分组排序（简化接口：按ids数组顺序）
 router.put('/scripts/categories/sort', authenticateToken, async (req: Request, res: Response) => {
   try {
-    const tenantId = getCurrentTenantId(req);
+    const tenantId = getCurrentTenantId();
     const { ids } = req.body;
     if (!Array.isArray(ids) || ids.length === 0) {
       return res.json({ success: true });
@@ -217,7 +217,7 @@ router.put('/scripts/categories/sort', authenticateToken, async (req: Request, r
 // 话术排序（按ids数组顺序）
 router.put('/scripts/sort', authenticateToken, async (req: Request, res: Response) => {
   try {
-    const tenantId = getCurrentTenantId(req);
+    const tenantId = getCurrentTenantId();
     const { ids } = req.body;
     const scriptRepo = AppDataSource.getRepository(WecomScript);
     for (let i = 0; i < (ids || []).length; i++) {
@@ -235,7 +235,7 @@ router.put('/scripts/sort', authenticateToken, async (req: Request, res: Respons
 router.get('/scripts', authenticateToken, async (req: Request, res: Response) => {
   try {
     await ensureScriptTables();
-    const tenantId = getCurrentTenantId(req);
+    const tenantId = getCurrentTenantId();
     const userId = (req as any).currentUser?.id || (req as any).user?.userId;
     const { keyword, categoryId, scope: filterScope, page, pageSize } = req.query;
     const scriptRepo = AppDataSource.getRepository(WecomScript);
@@ -313,7 +313,7 @@ router.get('/sidebar/scripts', authenticateSidebarToken, async (req: Request, re
 router.post('/scripts', authenticateToken, async (req: Request, res: Response) => {
   try {
     await ensureScriptTables();
-    const tenantId = getCurrentTenantId(req);
+    const tenantId = getCurrentTenantId();
     const { title, content, categoryId, shortcut, tags, scope, color, sortOrder, attachments } = req.body;
     if (!title && !content) return res.status(400).json({ success: false, message: '标题或内容至少填一项' });
 
@@ -383,7 +383,7 @@ router.post('/sidebar/script-categories', authenticateSidebarToken, async (req: 
 router.put('/scripts/:id', authenticateToken, async (req: Request, res: Response) => {
   try {
     await ensureScriptTables();
-    const tenantId = getCurrentTenantId(req);
+    const tenantId = getCurrentTenantId();
     const scriptRepo = AppDataSource.getRepository(WecomScript);
     const script = await scriptRepo.findOne({ where: { id: Number(req.params.id), tenantId } });
     if (!script) return res.status(404).json({ success: false, message: '话术不存在' });
@@ -416,7 +416,7 @@ router.put('/scripts/:id', authenticateToken, async (req: Request, res: Response
 // 删除话术
 router.delete('/scripts/:id', authenticateToken, async (req: Request, res: Response) => {
   try {
-    const tenantId = getCurrentTenantId(req);
+    const tenantId = getCurrentTenantId();
     const scriptRepo = AppDataSource.getRepository(WecomScript);
     await scriptRepo.delete({ id: Number(req.params.id), tenantId });
     res.json({ success: true });
@@ -428,7 +428,7 @@ router.delete('/scripts/:id', authenticateToken, async (req: Request, res: Respo
 // 话术排序
 router.put('/scripts-sort', authenticateToken, async (req: Request, res: Response) => {
   try {
-    const tenantId = getCurrentTenantId(req);
+    const tenantId = getCurrentTenantId();
     const { items } = req.body;
     const scriptRepo = AppDataSource.getRepository(WecomScript);
     for (const item of items || []) {
@@ -484,7 +484,7 @@ router.post('/scripts/upload', authenticateToken, scriptUpload.single('file'), a
 // 导出话术（JSON格式，含附件信息）
 router.get('/scripts/export', authenticateToken, async (req: Request, res: Response) => {
   try {
-    const tenantId = getCurrentTenantId(req);
+    const tenantId = getCurrentTenantId();
     const userId = (req as any).currentUser?.id || (req as any).user?.userId;
     const { format } = req.query; // 'json' | 'text'
     const catRepo = AppDataSource.getRepository(WecomScriptCategory);
@@ -547,7 +547,7 @@ router.get('/scripts/export', authenticateToken, async (req: Request, res: Respo
 // 导入话术
 router.post('/scripts/import', authenticateToken, async (req: Request, res: Response) => {
   try {
-    const tenantId = getCurrentTenantId(req);
+    const tenantId = getCurrentTenantId();
     const user = (req as any).currentUser || (req as any).user;
     const importData = req.body;
 

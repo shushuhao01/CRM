@@ -390,7 +390,7 @@ router.put('/contact-way/:id', authenticateToken, async (req: Request, res: Resp
     if (!contactWay) return res.status(404).json({ success: false, message: '活码不存在' });
     // 非管理员只能编辑自己创建的
     const creatorFilter = getCreatorFilter(req);
-    if (creatorFilter && contactWay.createdBy !== creatorFilter) {
+    if (creatorFilter && (contactWay as any).createdBy !== creatorFilter) {
       return res.status(403).json({ success: false, message: '只能编辑自己创建的活码' });
     }
     Object.assign(contactWay, req.body);
@@ -412,7 +412,7 @@ router.delete('/contact-way/:id', authenticateToken, async (req: Request, res: R
     if (!contactWay) return res.status(404).json({ success: false, message: '活码不存在' });
     // 非管理员只能删除自己创建的
     const creatorFilter = getCreatorFilter(req);
-    if (creatorFilter && contactWay.createdBy !== creatorFilter) {
+    if (creatorFilter && (contactWay as any).createdBy !== creatorFilter) {
       return res.status(403).json({ success: false, message: '只能删除自己创建的活码' });
     }
     await repo.remove(contactWay);

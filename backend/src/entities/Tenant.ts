@@ -41,12 +41,12 @@ export class Tenant {
 
   @Column({
     type: 'enum',
-    enum: ['total', 'online'],
+    enum: ['total', 'online', 'both'],
     default: 'total',
     name: 'user_limit_mode',
-    comment: '用户限制模式：total-总用户数限制，online-在线席位限制'
+    comment: '用户限制模式：total-总用户数限制，online-在线席位限制，both-同时限制'
   })
-  userLimitMode: 'total' | 'online';
+  userLimitMode: 'total' | 'online' | 'both';
 
   @Column('int', { default: 0, name: 'max_online_seats', comment: '最大在线席位数' })
   maxOnlineSeats: number;

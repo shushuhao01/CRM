@@ -75,7 +75,7 @@ router.post('/group-welcomes', authenticateToken, upload.single('mediaFile'), as
     const tenantId = getCurrentTenantId();
     const repo = AppDataSource.getRepository(WecomGroupWelcome);
     const welcome = repo.create({ ...req.body, tenantId, isEnabled: true });
-    const saved = await repo.save(welcome);
+    const saved = await repo.save(welcome as any) as WecomGroupWelcome;
 
     // 同步到企微
     try {

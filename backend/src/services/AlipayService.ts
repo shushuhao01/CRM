@@ -4,6 +4,7 @@
  */
 import crypto from 'crypto';
 import axios from 'axios';
+import bcrypt from 'bcryptjs';
 import { AppDataSource } from '../config/database';
 import { paymentService } from './PaymentService';
 import { notificationTemplateService } from './NotificationTemplateService';
