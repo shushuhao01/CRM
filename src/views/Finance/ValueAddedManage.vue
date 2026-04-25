@@ -252,6 +252,7 @@
       v-loading="loading"
       stripe
       border
+      row-key="id"
       class="data-table"
       @selection-change="handleSelectionChange"
     >
@@ -1095,10 +1096,25 @@ const getOrderStatusType = (status: string) => {
 const getOrderStatusText = (status: string) => {
   const textMap: Record<string, string> = {
     pending: '待发货',
+    pending_transfer: '待转单',
+    pending_audit: '待审核',
+    confirmed: '已确认',
+    paid: '已支付',
     shipped: '已发货',
     delivered: '已签收',
     completed: '已完成',
-    cancelled: '已取消'
+    cancelled: '已取消',
+    refunded: '已退款',
+    audit_rejected: '审核驳回',
+    pending_shipment: '待发货',
+    logistics_returned: '物流退回',
+    logistics_cancelled: '物流取消',
+    pending_cancel: '待取消',
+    cancel_failed: '取消失败',
+    after_sales_created: '已建售后',
+    package_exception: '包裹异常',
+    rejected: '拒收',
+    rejected_returned: '拒收已退回'
   }
   return textMap[status] || status
 }
@@ -1860,21 +1876,34 @@ const handleExport = async () => {
 
   try {
     const XLSX = await import('xlsx')
-    const exportData = selectedRows.value.map((row) => ({
-      订单号: row.orderNumber || '',
-      客户姓名: row.customerName || '',
-      客户电话: row.customerPhone || '',
-      物流单号: row.trackingNumber || '',
-      订单状态: getOrderStatusText(row.orderStatus || ''),
-      下单日期: row.orderDate || '',
-      外包公司: row.companyName || '',
-      单价: Number(row.unitPrice || 0),
-      有效状态: getValidStatusLabel(row.status),
-      结算状态: getSettlementStatusLabel(row.settlementStatus),
-      实际结算: (row.settlementStatus === 'settled' && row.status === 'valid') ? Number(row.unitPrice || 0) : 0,
-      结算日期: row.settlementDate ? formatDate(row.settlementDate) : '',
-      备注: row.remark || ''
-    }))
+
+    // 🔥 使用selectedRows的ID从当前tableData中取最新数据，避免引用过期对象
+    const selectedIds = new Set(selectedRows.value.map(r => r.id))
+    const freshRows = tableData.value.filter(r => selectedIds.has(r.id))
+    // 如果tableData中找不到（极端情况），降级使用selectedRows
+    const rowsToExport = freshRows.length > 0 ? freshRows : selectedRows.value
+
+    const exportData = rowsToExport.map((row) => {
+      // 🔥 单价和实际结算的计算逻辑与页面显示完全一致
+      const currentUnitPrice = Number(row.unitPrice) || 0
+      const actualSettlement = (row.settlementStatus === 'settled' && row.status === 'valid') ? currentUnitPrice : 0
+
+      return {
+        订单号: row.orderNumber || '',
+        客户姓名: row.customerName || '',
+        客户电话: row.customerPhone || '',
+        物流单号: row.trackingNumber || '',
+        订单状态: getOrderStatusText(row.orderStatus || ''),
+        下单日期: row.orderDate || '',
+        外包公司: row.companyName || '',
+        单价: currentUnitPrice,
+        有效状态: getValidStatusLabel(row.status),
+        结算状态: getSettlementStatusLabel(row.settlementStatus),
+        实际结算: actualSettlement,
+        结算日期: row.settlementDate ? formatDate(row.settlementDate) : '',
+        备注: row.remark || ''
+      }
+    })
 
     const ws = XLSX.utils.json_to_sheet(exportData)
 

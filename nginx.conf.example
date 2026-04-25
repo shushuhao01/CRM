@@ -1,33 +1,24 @@
 # ==========================================
-# CRM 系统 Nginx 配置模板
-# 适用于: 宝塔面板 / 独立Nginx部署
+# CRM 系统 Nginx 配置（宝塔面板直接使用版）
 # ==========================================
-#
 # 使用方式:
-#   1. 将此文件复制到 Nginx 配置目录
-#   2. 修改 server_name 为您的域名或IP
-#   3. 修改 root 路径为实际前端构建目录
-#   4. 重载 Nginx: nginx -s reload
-#
-# 宝塔面板使用方式:
-#   1. 创建网站 → 设置 → 配置文件
-#   2. 将此文件内容粘贴到配置中
-#   3. 修改域名和路径
-#   4. 保存并重载
+#   宝塔面板 → 网站 → 添加站点 → 设置 → 配置文件
+#   将此内容粘贴替换即可，只需修改 server_name 为你的域名或IP
+# ==========================================
 
 server {
     listen 80;
-    # 如果有域名，替换为你的域名；没有域名用 _ 或 IP
+    # ★ 修改为你的域名或IP地址
     server_name your-domain.com;
 
-    # 前端文件根目录（CRM前端构建产物）
+    # 前端文件根目录
     root /www/wwwroot/CRM/dist;
     index index.html;
 
-    # 文件上传大小限制
+    # 文件上传大小限制（默认20MB）
     client_max_body_size 50m;
 
-    # Gzip 压缩
+    # Gzip 压缩（提升加载速度）
     gzip on;
     gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript;
     gzip_min_length 1000;
@@ -37,16 +28,16 @@ server {
     # Vue Router history 模式支持
     location / {
         try_files $uri $uri/ /index.html;
+    }
 
-        # 静态资源缓存策略
-        location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {
-            expires 30d;
-            add_header Cache-Control "public, immutable";
-        }
+    # 静态资源缓存（30天）
+    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {
+        expires 30d;
+        add_header Cache-Control "public, immutable";
+        access_log off;
     }
 
     # ==================== API 反向代理 ====================
-    # 后端 API 接口
     location /api/ {
         proxy_pass http://127.0.0.1:3000;
         proxy_http_version 1.1;
@@ -60,12 +51,12 @@ server {
         proxy_send_timeout 120s;
         proxy_read_timeout 120s;
 
-        # 关闭缓冲，支持流式响应
+        # 关闭缓冲，支持流式响应（AI对话等）
         proxy_buffering off;
     }
 
     # ==================== WebSocket 代理 ====================
-    # Socket.IO (用于实时消息推送)
+    # Socket.IO（实时消息推送）
     location /socket.io/ {
         proxy_pass http://127.0.0.1:3000;
         proxy_http_version 1.1;
@@ -74,7 +65,7 @@ server {
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_read_timeout 86400s;  # WebSocket 长连接超时
+        proxy_read_timeout 86400s;
     }
 
     # 移动端 WebSocket
@@ -88,35 +79,39 @@ server {
         proxy_read_timeout 86400s;
     }
 
-    # ==================== 文件上传访问 ====================
+    # ==================== 文件上传/静态资源访问 ====================
+    # 用户上传文件
     location /uploads/ {
         alias /www/wwwroot/CRM/backend/uploads/;
         expires 7d;
         add_header Cache-Control "public";
+        add_header Access-Control-Allow-Origin *;
     }
 
-    # 录音文件
+    # 通话录音文件
     location /recordings/ {
         alias /www/wwwroot/CRM/backend/recordings/;
         expires 7d;
+        add_header Cache-Control "public";
     }
 
     # ==================== 健康检查 ====================
     location /health {
         proxy_pass http://127.0.0.1:3000;
         proxy_set_header Host $host;
+        access_log off;
     }
 
     # ==================== 安全配置 ====================
-    # 禁止访问隐藏文件
+    # 禁止访问隐藏文件（.env, .git 等）
     location ~ /\. {
         deny all;
         access_log off;
         log_not_found off;
     }
 
-    # 禁止访问配置文件
-    location ~* \.(env|env\..*|sql|md|sh|bat|ps1|conf)$ {
+    # 禁止访问敏感文件
+    location ~* \.(env|env\..*|sql|md|sh|bat|ps1|conf|log)$ {
         deny all;
     }
 
@@ -134,24 +129,25 @@ server {
 }
 
 # ==================== HTTPS 配置（可选）====================
-# 如果需要 HTTPS，取消下面的注释并配置 SSL 证书
+# 宝塔面板可以一键申请 Let's Encrypt 免费SSL证书
+# 开启后会自动生成 HTTPS 配置，无需手动修改
 #
+# 手动配置参考:
 # server {
 #     listen 443 ssl http2;
 #     server_name your-domain.com;
 #
-#     ssl_certificate /path/to/cert.pem;
-#     ssl_certificate_key /path/to/key.pem;
+#     ssl_certificate /www/server/panel/vhost/cert/your-domain.com/fullchain.pem;
+#     ssl_certificate_key /www/server/panel/vhost/cert/your-domain.com/privkey.pem;
 #     ssl_protocols TLSv1.2 TLSv1.3;
 #     ssl_ciphers HIGH:!aNULL:!MD5;
 #
 #     # ... 上面的 location 配置同样适用 ...
 # }
 #
-# # HTTP 跳转 HTTPS
+# # HTTP 自动跳转 HTTPS
 # server {
 #     listen 80;
 #     server_name your-domain.com;
 #     return 301 https://$server_name$request_uri;
 # }
-

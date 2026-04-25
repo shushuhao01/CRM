@@ -1121,15 +1121,19 @@ const confirmBatchShipping = async () => {
         return
       }
     } else {
-      await ElMessageBox.confirm(
-        `确认批量发货 ${ordersToShip.length} 个订单吗？发货后将无法撤销。`,
-        '确认批量发货',
-        {
-          confirmButtonText: '确认发货',
-          cancelButtonText: '取消',
-          type: 'warning'
-        }
-      )
+      try {
+        await ElMessageBox.confirm(
+          `确认批量发货 ${ordersToShip.length} 个订单吗？发货后将无法撤销。`,
+          '确认批量发货',
+          {
+            confirmButtonText: '确认发货',
+            cancelButtonText: '取消',
+            type: 'warning'
+          }
+        )
+      } catch {
+        return
+      }
     }
 
     loading.value = true
@@ -1200,33 +1204,43 @@ const confirmBatchShipping = async () => {
 
     console.log('[批量发货] 后端API更新完成，成功:', successCount, '个')
 
-    // 同步更新前端store（静默处理错误，因为后端已经成功）
-    shippingData.forEach(data => {
-      try {
-        orderStore.updateOrder(data.orderId, {
-          status: 'shipped',
-          trackingNumber: data.trackingNumber,
-          expressNo: data.trackingNumber,
-          expressCompany: data.logisticsCompany,
-          logisticsCompany: data.logisticsCompany,
-          shippingTime: data.shippingTime,
-          shippedAt: data.shippedAt,
-          estimatedDelivery: data.estimatedDelivery,
-          expectedDeliveryDate: data.estimatedDelivery,
-          remarks: data.remarks
-        })
-      } catch (storeError) {
-        // 静默处理store更新错误，因为后端已经成功更新
-        console.warn(`[批量发货] 前端store更新失败 (订单 ${data.orderNo}):`, storeError)
-      }
-    })
+    // 🔥 API调用成功后，确保后续步骤不会中断关闭流程
+    try {
+      // 同步更新前端store（静默处理错误，因为后端已经成功）
+      shippingData.forEach(data => {
+        try {
+          orderStore.updateOrder(data.orderId, {
+            status: 'shipped',
+            trackingNumber: data.trackingNumber,
+            expressNo: data.trackingNumber,
+            expressCompany: data.logisticsCompany,
+            logisticsCompany: data.logisticsCompany,
+            shippingTime: data.shippingTime,
+            shippedAt: data.shippedAt,
+            estimatedDelivery: data.estimatedDelivery,
+            expectedDeliveryDate: data.estimatedDelivery,
+            remarks: data.remarks
+          })
+        } catch (storeError) {
+          console.warn(`[批量发货] 前端store更新失败 (订单 ${data.orderNo}):`, storeError)
+        }
+      })
+      emit('batch-shipped', shippingData)
+    } catch (postError) {
+      console.warn('[批量发货] 后续处理出错（不影响发货结果）:', postError)
+    }
 
-    emit('batch-shipped', shippingData)
-    ElMessage.success(`成功批量发货 ${successCount} 个订单！`)
-    handleClose()
+    // 🔥 只要有成功发货的订单，就显示成功消息并关闭对话框
+    if (successCount > 0) {
+      ElMessage.success(`成功批量发货 ${successCount} 个订单！`)
+      handleClose()
+    } else {
+      ElMessage.error('所有订单发货失败，请检查后重试')
+    }
 
   } catch (error) {
-    if (error !== 'cancel') {
+    if (error !== 'cancel' && error !== 'close') {
+      console.error('[批量发货] 发货流程异常:', error)
       ElMessage.error('批量发货失败，请重试')
     }
   } finally {

@@ -13,6 +13,11 @@ import { In, Not } from 'typeorm';
 import { getTenantRepo, tenantSQL } from '../../utils/tenantRepo';
 
 import { log } from '../../config/logger';
+
+// 🔥 同步节流机制：每个租户最多每2分钟同步一次，避免每次查询都触发同步导致性能严重下降
+const syncThrottleMap = new Map<string, number>(); // tenantKey -> lastSyncTimestamp
+const SYNC_THROTTLE_MS = 2 * 60 * 1000; // 2分钟节流间隔
+
 export function registerOrderRoutes(router: Router): void {
 router.get('/orders', authenticateToken, async (req: Request, res: Response) => {
   try {
@@ -31,12 +36,21 @@ router.get('/orders', authenticateToken, async (req: Request, res: Response) => 
 
     const orderRepo = getTenantRepo(ValueAddedOrder);
 
-    // 🔥 恢复同步功能，但使用优化版本（租户隔离）
-    try {
-      await syncOrdersToValueAddedOptimized();
-    } catch (syncError) {
-      log.error('[ValueAdded] 同步失败，但继续查询:', syncError);
-      // 同步失败不影响查询
+    // 🔥 性能优化：同步操作加节流，每2分钟最多执行一次
+    // 注意：必须await等待同步完成，否则新签收订单无法立即显示
+    const tenantKey = (req as any).currentUser?.tenantId || 'default';
+    const lastSync = syncThrottleMap.get(tenantKey) || 0;
+    const now = Date.now();
+    // 🔥 无数据时跳过节流，强制同步（确保首次访问能看到数据）
+    const currentCount = await orderRepo.count();
+    const shouldSync = currentCount === 0 || (now - lastSync > SYNC_THROTTLE_MS);
+    if (shouldSync) {
+      syncThrottleMap.set(tenantKey, now);
+      try {
+        await syncOrdersToValueAddedOptimized();
+      } catch (syncError) {
+        log.error('[ValueAdded] 同步失败，但继续查询:', syncError);
+      }
     }
 
     const queryBuilder = orderRepo.createQueryBuilder('order');

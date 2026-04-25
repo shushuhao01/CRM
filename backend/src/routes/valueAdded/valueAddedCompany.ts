@@ -798,6 +798,10 @@ router.put('/orders/batch-update-company', authenticateToken, async (req: Reques
       } else {
         order.unitPrice = 0;
       }
+      // 🔥 如果已结算且有效，同步更新结算金额，确保与单价一致
+      if (order.settlementStatus === 'settled' && order.status === 'valid') {
+        order.settlementAmount = order.unitPrice;
+      }
       order.operatorId = user.id;
       order.operatorName = user.name || user.username;
     }
@@ -850,6 +854,11 @@ router.put('/orders/:id/company', authenticateToken, async (req: Request, res: R
     order.unitPrice = unitPrice;
     order.operatorId = user.id;
     order.operatorName = user.name || user.username;
+
+    // 🔥 如果已结算且有效，同步更新结算金额，确保与单价一致
+    if (order.settlementStatus === 'settled' && order.status === 'valid') {
+      order.settlementAmount = order.unitPrice;
+    }
 
     await orderRepo.save(order);
 
