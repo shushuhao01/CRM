@@ -911,7 +911,7 @@ location /socket.io/ {
 location /uploads/ {
     proxy_pass http://127.0.0.1:3000;
 }</code>
-                    <button class="code-copy-btn" @click="copyText('location /api/ {\n    proxy_pass http://127.0.0.1:3000;\n    proxy_set_header Host $host;\n    proxy_set_header X-Real-IP $remote_addr;\n    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n    proxy_set_header X-Forwarded-Proto $scheme;\n    client_max_body_size 50m;\n}\nlocation /socket.io/ {\n    proxy_pass http://127.0.0.1:3000;\n    proxy_http_version 1.1;\n    proxy_set_header Upgrade $http_upgrade;\n    proxy_set_header Connection \"upgrade\";\n    proxy_set_header Host $host;\n}\nlocation /uploads/ {\n    proxy_pass http://127.0.0.1:3000;\n}')">复制</button>
+                    <button class="code-copy-btn" @click="copyText(nginxProxyConfig)">复制</button>
                   </div>
                   <p>同时确保 <code>location / { }</code> 中有 Vue 的历史模式路由支持：</p>
                   <div class="code-block">
@@ -1307,7 +1307,7 @@ sudo systemctl enable nginx && sudo systemctl start nginx</code>
         proxy_pass http://127.0.0.1:3000;
     }
 }</code>
-                    <button class="code-copy-btn" @click="copyText('server {\n    listen 80;\n    server_name 你的域名或IP;\n    root /www/wwwroot/CRM/dist;\n    index index.html;\n\n    location / {\n        try_files $uri $uri/ /index.html;\n    }\n\n    location /api/ {\n        proxy_pass http://127.0.0.1:3000;\n        proxy_set_header Host $host;\n        proxy_set_header X-Real-IP $remote_addr;\n        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n        proxy_set_header X-Forwarded-Proto $scheme;\n        client_max_body_size 50m;\n    }\n\n    location /socket.io/ {\n        proxy_pass http://127.0.0.1:3000;\n        proxy_http_version 1.1;\n        proxy_set_header Upgrade $http_upgrade;\n        proxy_set_header Connection \"upgrade\";\n        proxy_set_header Host $host;\n    }\n\n    location /uploads/ {\n        proxy_pass http://127.0.0.1:3000;\n    }\n}')">复制</button>
+                    <button class="code-copy-btn" @click="copyText(nginxFullConfig)">复制</button>
                   </div>
                   <p>启用站点并验证配置：</p>
                   <div class="code-block">
@@ -1680,6 +1680,57 @@ const versionGitCloneCmd = computed(() => {
   }
   return `git clone --branch ${branch} ${versionGitUrl.value} CRM`
 })
+
+const nginxFullConfig = `server {
+    listen 80;
+    server_name 你的域名或IP;
+    root /www/wwwroot/CRM/dist;
+    index index.html;
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    location /api/ {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        client_max_body_size 50m;
+    }
+
+    location /socket.io/ {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+    }
+
+    location /uploads/ {
+        proxy_pass http://127.0.0.1:3000;
+    }
+}`
+
+const nginxProxyConfig = `location /api/ {
+    proxy_pass http://127.0.0.1:3000;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    client_max_body_size 50m;
+}
+location /socket.io/ {
+    proxy_pass http://127.0.0.1:3000;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_set_header Host $host;
+}
+location /uploads/ {
+    proxy_pass http://127.0.0.1:3000;
+}`
 
 const copyText = async (text: string) => {
   try {

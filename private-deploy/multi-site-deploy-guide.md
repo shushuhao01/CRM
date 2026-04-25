@@ -300,6 +300,31 @@ rm -f /www/wwwroot/CRM/dist/.user.ini
 # 其他 dist 目录同理
 ```
 
+### Q: 构建报错 EACCES（esbuild / sass-embedded / dart 权限不足）？
+`node_modules` 中的原生二进制文件（esbuild、dart-sass）在 Linux 上需要执行权限。
+常见于：Windows 上 `npm install` 后同步到 Linux 服务器，或 `git clone` 后权限丢失。
+
+**修复方法**（一次性给所有原生二进制加权限）：
+```bash
+# 根目录的原生二进制
+chmod +x /www/wwwroot/CRM/node_modules/@esbuild/linux-x64/bin/esbuild
+chmod +x /www/wwwroot/CRM/node_modules/sass-embedded-linux-x64/dart-sass/src/dart
+
+# 如果子项目（admin/website）有自己的 node_modules，也需要执行：
+# chmod +x /www/wwwroot/CRM/admin/node_modules/@esbuild/linux-x64/bin/esbuild
+# chmod +x /www/wwwroot/CRM/website/node_modules/@esbuild/linux-x64/bin/esbuild
+```
+
+**如果 chmod 后仍然报错**，说明二进制是 Windows 版本，需要在服务器上重装：
+```bash
+cd /www/wwwroot/CRM
+rm -rf node_modules
+npm install --legacy-peer-deps --registry https://registry.npmmirror.com
+# 重装后再 chmod +x 确保权限正确
+chmod +x node_modules/@esbuild/linux-x64/bin/esbuild
+chmod +x node_modules/sass-embedded-linux-x64/dart-sass/src/dart
+```
+
 ### Q: SSL 证书怎么申请？
 宝塔面板 → 网站 → 对应站点 → SSL → Let's Encrypt → 申请免费证书。
 每个域名都需要单独申请。
