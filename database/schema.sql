@@ -2661,9 +2661,9 @@ ON DUPLICATE KEY UPDATE `updated_at` = CURRENT_TIMESTAMP;
 -- =============================================
 INSERT INTO `call_records` (`id`, `customer_id`, `customer_name`, `customer_phone`, `call_type`, `call_status`, `start_time`, `end_time`, `duration`, `has_recording`, `notes`, `follow_up_required`, `user_id`, `user_name`, `department`) VALUES
 ('call_1734567890_001', 'cust_001', '王磊', '18231431086', 'outbound', 'connected', DATE_SUB(NOW(), INTERVAL 1 HOUR), DATE_SUB(NOW(), INTERVAL 55 MINUTE), 300, 1, '客户咨询产品价格', 0, 'admin', '管理员', '销售部'),
-('call_1734567890_002', 'cust_002', '王小雨', '15287985214', 'outbound', 'connected', DATE_SUB(NOW(), INTERVAL 2 HOUR), DATE_SUB(NOW(), INTERVAL 1 HOUR 50 MINUTE), 600, 1, '售后问题处理', 1, 'admin', '管理员', '客服部'),
+('call_1734567890_002', 'cust_002', '王小雨', '15287985214', 'outbound', 'connected', DATE_SUB(NOW(), INTERVAL 2 HOUR), DATE_SUB(NOW(), INTERVAL 110 MINUTE), 600, 1, '售后问题处理', 1, 'admin', '管理员', '客服部'),
 ('call_1734567890_003', 'cust_003', '单芳波', '13736053045', 'inbound', 'missed', DATE_SUB(NOW(), INTERVAL 3 HOUR), NULL, 0, 0, '未接听', 1, 'admin', '管理员', '销售部'),
-('call_1734567890_004', 'cust_004', '贾将富', '13407722936', 'outbound', 'connected', DATE_SUB(NOW(), INTERVAL 4 HOUR), DATE_SUB(NOW(), INTERVAL 3 HOUR 45 MINUTE), 900, 1, '新客户开发', 0, 'admin', '管理员', '销售部')
+('call_1734567890_004', 'cust_004', '贾将富', '13407722936', 'outbound', 'connected', DATE_SUB(NOW(), INTERVAL 4 HOUR), DATE_SUB(NOW(), INTERVAL 225 MINUTE), 900, 1, '新客户开发', 0, 'admin', '管理员', '销售部')
 ON DUPLICATE KEY UPDATE `updated_at` = CURRENT_TIMESTAMP;
 
 -- 跟进记录测试数据
