@@ -36,8 +36,8 @@
         <div class="alert-content">
           <span>系统授权已过期{{ licenseData.expiresAt ? `（${formatDate(licenseData.expiresAt)}）` : '' }}，当前处于只读模式，无法新增/修改/删除数据。</span>
           <div class="alert-actions">
-            <a v-if="memberCenterUrl" :href="memberCenterUrl" target="_blank" class="alert-btn alert-btn-primary">去会员中心续费</a>
-            <a href="javascript:void(0)" class="alert-btn alert-btn-success" @click="openContactService">联系客服续费</a>
+            <a v-if="memberCenterUrl" :href="memberCenterUrl" target="_blank" class="alert-btn alert-btn-primary">💳 去会员中心续费</a>
+            <a href="javascript:void(0)" class="alert-btn alert-btn-success" @click="openContactService">📞 联系客服续费</a>
           </div>
         </div>
       </template>
@@ -54,8 +54,8 @@
         <div class="alert-content">
           <span>系统授权将在 {{ licenseData.daysUntilExpiry }} 天后到期{{ licenseData.expiresAt ? `（${formatDate(licenseData.expiresAt)}）` : '' }}，到期后将无法新增数据。请及时续费。</span>
           <div class="alert-actions">
-            <a v-if="memberCenterUrl" :href="memberCenterUrl" target="_blank" class="alert-btn alert-btn-primary">去会员中心续费</a>
-            <a href="javascript:void(0)" class="alert-btn alert-btn-success" @click="openContactService">联系客服续费</a>
+            <a v-if="memberCenterUrl" :href="memberCenterUrl" target="_blank" class="alert-btn alert-btn-primary">💳 去会员中心续费</a>
+            <a href="javascript:void(0)" class="alert-btn alert-btn-success" @click="openContactService">📞 联系客服续费</a>
           </div>
         </div>
       </template>
@@ -823,20 +823,39 @@ onMounted(() => {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 4px 12px;
-  border-radius: 4px;
+  padding: 5px 14px;
+  border-radius: 16px;
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 500;
   text-decoration: none;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.25s;
   white-space: nowrap;
+  border: 1px solid transparent;
 }
 
-.alert-btn-primary { background: #409eff; color: #fff; }
-.alert-btn-primary:hover { background: #337ecc; color: #fff; }
-.alert-btn-success { background: #67c23a; color: #fff; }
-.alert-btn-success:hover { background: #529b2e; color: #fff; }
+.alert-btn-primary {
+  background: #ecf5ff;
+  color: #409eff;
+  border-color: #b3d8ff;
+}
+.alert-btn-primary:hover {
+  background: #409eff;
+  color: #fff;
+  border-color: #409eff;
+  box-shadow: 0 2px 6px rgba(64, 158, 255, 0.3);
+}
+.alert-btn-success {
+  background: #f0f9eb;
+  color: #67c23a;
+  border-color: #c2e7b0;
+}
+.alert-btn-success:hover {
+  background: #67c23a;
+  color: #fff;
+  border-color: #67c23a;
+  box-shadow: 0 2px 6px rgba(103, 194, 58, 0.3);
+}
 
 /* === 未激活区域 === */
 .not-activated-section {
