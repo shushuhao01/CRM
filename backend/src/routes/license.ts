@@ -1,6 +1,6 @@
 /**
  * License Routes - CRM系统授权管理
- * 供私有部署的CRM系统使用
+ * 同时支持私有部署和SaaS租户
  */
 import { Router, Request, Response } from 'express'
 import { AppDataSource } from '../config/database'
@@ -8,30 +8,66 @@ import { v4 as uuidv4 } from 'uuid'
 import bcrypt from 'bcryptjs'
 import { clearLicenseWriteCache } from '../middleware/checkLicenseWrite'
 import { formatDateTime } from '../utils/dateFormat'
+import { optionalAuth } from '../middleware/auth'
 
 import { log } from '../config/logger';
 const router = Router()
 
-// 检查系统激活状态（公开接口）
-router.get('/status', async (_req: Request, res: Response) => {
+/**
+ * 辅助：计算过期天数和是否即将到期
+ */
+function calcExpiry(expiresAt: string | Date | null) {
+  if (!expiresAt) return { isExpired: false, nearExpiry: false, daysUntilExpiry: null as number | null }
+  const expireDate = new Date(expiresAt)
+  const isExpired = expireDate < new Date()
+  const daysUntilExpiry = Math.ceil((expireDate.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))
+  const nearExpiry = !isExpired && daysUntilExpiry <= 30
+  return { isExpired, nearExpiry, daysUntilExpiry }
+}
+
+// 检查系统激活状态（使用 optionalAuth 以识别 SaaS 租户）
+router.get('/status', optionalAuth, async (req: Request, res: Response) => {
   try {
-    // 检查本地是否有激活的授权信息
+    const tenantId = (req as any).user?.tenantId
+
+    // ========== SaaS租户：从 tenants 表读取 ==========
+    if (tenantId) {
+      const tenantRows = await AppDataSource.query(
+        `SELECT t.*, p.name as package_name, p.features as package_features, p.code as package_code
+         FROM tenants t LEFT JOIN tenant_packages p ON t.package_id = p.id
+         WHERE t.id = ?`,
+        [tenantId]
+      ).catch(() => [])
+      const tenant = tenantRows[0]
+
+      if (tenant && tenant.license_status !== 'pending') {
+        const { isExpired, nearExpiry, daysUntilExpiry } = calcExpiry(tenant.expire_date)
+        return res.json({
+          success: true,
+          data: {
+            activated: true,
+            expired: isExpired,
+            nearExpiry,
+            daysUntilExpiry,
+            licenseType: tenant.license_key?.startsWith('PRIVATE-') ? 'private' : 'saas',
+            deployType: tenant.license_key?.startsWith('PRIVATE-') ? 'private' : 'saas',
+            maxUsers: tenant.max_users,
+            customerName: tenant.name,
+            expiresAt: tenant.expire_date,
+            features: tenant.features ? (typeof tenant.features === 'string' ? JSON.parse(tenant.features) : tenant.features) : null
+          }
+        })
+      }
+    }
+
+    // ========== 私有部署：从 system_license 表读取 ==========
     const result = await AppDataSource.query(
       `SELECT * FROM system_license WHERE status = 'active' LIMIT 1`
     ).catch(() => [])
 
     if (result && result.length > 0) {
       const license = result[0]
-      const isExpired = license.expires_at && new Date(license.expires_at) < new Date()
-
-      // 计算距离过期的天数
-      let daysUntilExpiry: number | null = null
-      let nearExpiry = false
-      if (license.expires_at) {
-        const expireDate = new Date(license.expires_at)
-        daysUntilExpiry = Math.ceil((expireDate.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))
-        nearExpiry = !isExpired && daysUntilExpiry <= 30
-      }
+      const { isExpired, nearExpiry, daysUntilExpiry } = calcExpiry(license.expires_at)
 
       res.json({
         success: true,
@@ -41,6 +77,7 @@ router.get('/status', async (_req: Request, res: Response) => {
           nearExpiry,
           daysUntilExpiry,
           licenseType: license.license_type,
+          deployType: 'private',
           maxUsers: license.max_users,
           customerName: license.customer_name,
           expiresAt: license.expires_at,
@@ -74,13 +111,46 @@ router.post('/activate', async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, message: '请输入授权码' })
     }
 
-    // 🔥 检测授权码类型：如果是 TENANT- 前缀，提示用户应在SaaS系统使用
-    if (licenseKey.toUpperCase().startsWith('TENANT-')) {
-      return res.status(400).json({
-        success: false,
-        message: '该授权码为SaaS租户专用，不能在私有部署系统中使用。请使用私有授权码（PRIVATE-前缀）激活系统',
-        errorType: 'WRONG_LICENSE_TYPE'
-      })
+    // 如果是 TENANT- 前缀的SaaS租户授权码，转发到租户验证逻辑
+    if (licenseKey.toUpperCase().startsWith('TENANT-') || licenseKey.toUpperCase().startsWith('LIC-')) {
+      try {
+        const tenantRows = await AppDataSource.query(
+          `SELECT t.*, p.name as package_name, p.features as package_features
+           FROM tenants t LEFT JOIN tenant_packages p ON t.package_id = p.id
+           WHERE t.license_key = ?`,
+          [licenseKey]
+        )
+        const tenant = tenantRows[0]
+        if (!tenant) {
+          return res.status(404).json({ success: false, message: '授权码无效或不存在，请检查后重试' })
+        }
+        if (tenant.status === 'disabled') {
+          return res.status(403).json({ success: false, message: '该租户已被禁用，请联系管理员' })
+        }
+
+        const isExpired = tenant.expire_date && new Date(tenant.expire_date) < new Date()
+        // 更新验证时间
+        await AppDataSource.query(`UPDATE tenants SET last_verify_at = NOW() WHERE id = ?`, [tenant.id]).catch(() => {})
+
+        return res.json({
+          success: true,
+          message: isExpired ? '授权已过期，请联系管理员续费' : '授权码验证成功',
+          data: {
+            customerName: tenant.name,
+            licenseType: 'saas',
+            deployType: 'saas',
+            maxUsers: tenant.max_users,
+            expiresAt: tenant.expire_date,
+            tenantId: tenant.id,
+            tenantCode: tenant.code,
+            packageName: tenant.package_name,
+            expired: !!isExpired
+          }
+        })
+      } catch (tenantErr: any) {
+        log.error('租户授权码验证失败:', tenantErr)
+        return res.status(500).json({ success: false, message: '授权码验证失败，请稍后重试' })
+      }
     }
 
     // 获取机器码（简单实现，使用服务器信息）
@@ -228,9 +298,91 @@ router.post('/activate', async (req: Request, res: Response) => {
   }
 })
 
-// 获取授权详情（需要登录）
-router.get('/info', async (_req: Request, res: Response) => {
+// 获取授权详情（使用 optionalAuth 以识别 SaaS 租户）
+router.get('/info', optionalAuth, async (req: Request, res: Response) => {
   try {
+    const tenantId = (req as any).user?.tenantId
+
+    // ========== SaaS租户：从 tenants 表读取详情 ==========
+    if (tenantId) {
+      const tenantRows = await AppDataSource.query(
+        `SELECT t.*, p.name as package_name, p.features as package_features, p.code as package_code,
+                p.user_limit_mode as pkg_user_limit_mode, p.max_online_seats as pkg_max_online_seats
+         FROM tenants t LEFT JOIN tenant_packages p ON t.package_id = p.id
+         WHERE t.id = ?`,
+        [tenantId]
+      ).catch(() => [])
+      const tenant = tenantRows[0]
+
+      if (tenant) {
+        // 统计当前租户用户数
+        const userCountResult = await AppDataSource.query(
+          `SELECT COUNT(*) as count FROM users WHERE status = 'active' AND tenant_id = ?`,
+          [tenantId]
+        ).catch(() => [{ count: 0 }])
+        const currentUsers = Number(userCountResult[0]?.count) || 0
+
+        const userLimitMode = tenant.user_limit_mode || 'total'
+        const maxOnlineSeats = (tenant.max_online_seats || 0) + (tenant.extra_online_seats || 0)
+        const totalMaxUsers = (tenant.max_users || 10) + (tenant.extra_users || 0)
+        const totalMaxStorageGb = (tenant.max_storage_gb || 5) + (tenant.extra_storage_gb || 0)
+
+        // 在线席位统计
+        let onlineCount = 0
+        if (userLimitMode === 'online' || userLimitMode === 'both') {
+          const onlineResult = await AppDataSource.query(
+            `SELECT COUNT(*) as count FROM users WHERE status = 'active' AND tenant_id = ? AND last_active_at > DATE_SUB(NOW(), INTERVAL 30 MINUTE)`,
+            [tenantId]
+          ).catch(() => [{ count: 0 }])
+          onlineCount = Number(onlineResult[0]?.count) || 0
+        }
+
+        // 解析 features
+        let features = null
+        try {
+          features = tenant.features ? (typeof tenant.features === 'string' ? JSON.parse(tenant.features) : tenant.features) : null
+        } catch { features = null }
+
+        let packageFeatures = null
+        try {
+          packageFeatures = tenant.package_features ? (typeof tenant.package_features === 'string' ? JSON.parse(tenant.package_features) : tenant.package_features) : null
+        } catch { packageFeatures = null }
+
+        return res.json({
+          success: true,
+          data: {
+            licenseKey: tenant.license_key ? (tenant.license_key.substring(0, 12) + '****') : '',
+            fullLicenseKey: tenant.license_key || '',
+            customerName: tenant.name,
+            tenantId: tenant.id,
+            tenantCode: tenant.code,
+            deployType: tenant.license_key?.startsWith('PRIVATE-') ? 'private' : 'saas',
+            licenseType: tenant.license_key?.startsWith('PRIVATE-') ? 'private' : 'saas',
+            packageName: tenant.package_name || (tenant.license_key?.startsWith('PRIVATE-') ? '私有部署版' : '标准版'),
+            packageCode: tenant.package_code || null,
+            maxUsers: totalMaxUsers,
+            currentUsers,
+            remainingUsers: Math.max(0, totalMaxUsers - currentUsers),
+            userLimitMode,
+            maxOnlineSeats,
+            onlineCount,
+            maxStorageGb: totalMaxStorageGb,
+            usedStorageMb: Number(tenant.used_storage_mb) || 0,
+            features,
+            packageFeatures,
+            expiresAt: tenant.expire_date,
+            activatedAt: tenant.activated_at,
+            lastVerifyAt: tenant.last_verify_at,
+            status: tenant.license_status || tenant.status,
+            contact: tenant.contact,
+            phone: tenant.phone,
+            email: tenant.email
+          }
+        })
+      }
+    }
+
+    // ========== 私有部署：从 system_license 表读取 ==========
     const result = await AppDataSource.query(
       `SELECT * FROM system_license WHERE status = 'active' LIMIT 1`
     ).catch(() => [])
@@ -242,7 +394,7 @@ router.get('/info', async (_req: Request, res: Response) => {
       const userCountResult = await AppDataSource.query(
         `SELECT COUNT(*) as count FROM users WHERE status = 'active' AND tenant_id IS NULL`
       ).catch(() => [{ count: 0 }])
-      const currentUsers = userCountResult[0]?.count || 0
+      const currentUsers = Number(userCountResult[0]?.count) || 0
 
       // 用户限制模式和在线席位信息
       const userLimitMode = license.user_limit_mode || 'total'
@@ -254,24 +406,42 @@ router.get('/info', async (_req: Request, res: Response) => {
         const onlineResult = await AppDataSource.query(
           `SELECT COUNT(*) as count FROM users WHERE status = 'active' AND tenant_id IS NULL AND last_active_at > DATE_SUB(NOW(), INTERVAL 30 MINUTE)`
         ).catch(() => [{ count: 0 }])
-        onlineCount = onlineResult[0]?.count || 0
+        onlineCount = Number(onlineResult[0]?.count) || 0
+      }
+
+      // 尝试查对应的 tenants 记录获取额外信息
+      let tenantInfo: any = null
+      if (license.license_key) {
+        const tenantRows = await AppDataSource.query(
+          `SELECT id, code, name, activated_at, last_verify_at, max_storage_gb, extra_storage_gb, used_storage_mb FROM tenants WHERE license_key = ? LIMIT 1`,
+          [license.license_key]
+        ).catch(() => [])
+        tenantInfo = tenantRows?.[0] || null
       }
 
       res.json({
         success: true,
         data: {
-          licenseKey: license.license_key ? license.license_key.substring(0, 8) + '****' : '',
+          licenseKey: license.license_key ? license.license_key.substring(0, 12) + '****' : '',
+          fullLicenseKey: license.license_key || '',
           customerName: license.customer_name,
+          tenantId: tenantInfo?.id || null,
+          tenantCode: tenantInfo?.code || null,
+          deployType: 'private',
           licenseType: license.license_type,
+          packageName: '私有部署版',
           maxUsers: license.max_users,
           currentUsers,
           remainingUsers: Math.max(0, (license.max_users || 50) - currentUsers),
           userLimitMode,
           maxOnlineSeats,
           onlineCount,
+          maxStorageGb: tenantInfo ? ((tenantInfo.max_storage_gb || 5) + (tenantInfo.extra_storage_gb || 0)) : null,
+          usedStorageMb: tenantInfo ? (Number(tenantInfo.used_storage_mb) || 0) : null,
           features: license.features ? JSON.parse(license.features) : null,
           expiresAt: license.expires_at,
-          activatedAt: license.activated_at,
+          activatedAt: license.activated_at || tenantInfo?.activated_at,
+          lastVerifyAt: tenantInfo?.last_verify_at || null,
           status: license.status
         }
       })
@@ -288,9 +458,92 @@ router.get('/info', async (_req: Request, res: Response) => {
 })
 
 // 手动同步授权信息（从管理后台获取最新配置）
-router.post('/sync', async (_req: Request, res: Response) => {
+router.post('/sync', optionalAuth, async (req: Request, res: Response) => {
   try {
-    // 确保 system_license 表存在
+    const tenantId = (req as any).user?.tenantId
+
+    // ========== SaaS租户同步：从 tenants 表刷新 + 尝试远程同步 ==========
+    if (tenantId) {
+      // 读取当前租户信息
+      const tenantRows = await AppDataSource.query(
+        `SELECT t.*, p.name as package_name FROM tenants t LEFT JOIN tenant_packages p ON t.package_id = p.id WHERE t.id = ?`,
+        [tenantId]
+      ).catch(() => [])
+      const tenant = tenantRows[0]
+
+      if (!tenant) {
+        return res.json({ success: true, data: { synced: false, activated: false, message: '租户信息不存在' } })
+      }
+
+      // 尝试远程同步（从管理后台获取最新租户信息）
+      let remoteSynced = false
+      try {
+        const adminApiUrl = process.env.ADMIN_API_URL || 'http://localhost:3000/api/v1/admin'
+        const response = await fetch(`${adminApiUrl}/verify/tenant-license`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tenantId: tenant.id, licenseKey: tenant.license_key }),
+          signal: AbortSignal.timeout(8000)
+        })
+        const result = await response.json() as any
+
+        if (result.success && result.data) {
+          // 远程返回了最新数据，更新本地 tenants 表
+          const updates: string[] = ['last_verify_at = NOW()']
+          const values: any[] = []
+
+          if (result.data.maxUsers != null) { updates.push('max_users = ?'); values.push(result.data.maxUsers) }
+          if (result.data.expireDate !== undefined) { updates.push('expire_date = ?'); values.push(result.data.expireDate) }
+          if (result.data.maxStorageGb != null) { updates.push('max_storage_gb = ?'); values.push(result.data.maxStorageGb) }
+          if (result.data.features !== undefined) {
+            updates.push('features = ?')
+            values.push(typeof result.data.features === 'string' ? result.data.features : JSON.stringify(result.data.features))
+          }
+          if (result.data.userLimitMode) { updates.push('user_limit_mode = ?'); values.push(result.data.userLimitMode) }
+          if (result.data.maxOnlineSeats != null) { updates.push('max_online_seats = ?'); values.push(result.data.maxOnlineSeats) }
+          if (result.data.licenseStatus) { updates.push('license_status = ?'); values.push(result.data.licenseStatus) }
+
+          values.push(tenantId)
+          await AppDataSource.query(`UPDATE tenants SET ${updates.join(', ')} WHERE id = ?`, values).catch(() => {})
+          remoteSynced = true
+        }
+      } catch (syncErr: any) {
+        log.warn('[License Sync] 租户远程同步失败（将使用本地数据）:', syncErr.message || syncErr)
+      }
+
+      // 清除授权过期检查的缓存，使续费/扩容立即生效
+      clearLicenseWriteCache()
+
+      // 重新读取最新租户数据
+      const updatedRows = await AppDataSource.query(
+        `SELECT t.*, p.name as package_name FROM tenants t LEFT JOIN tenant_packages p ON t.package_id = p.id WHERE t.id = ?`,
+        [tenantId]
+      ).catch(() => [tenantRows[0]])
+      const updated = updatedRows[0] || tenant
+
+      const totalMaxUsers = (updated.max_users || 10) + (updated.extra_users || 0)
+      const userCountResult = await AppDataSource.query(
+        `SELECT COUNT(*) as count FROM users WHERE status = 'active' AND tenant_id = ?`,
+        [tenantId]
+      ).catch(() => [{ count: 0 }])
+      const currentUsers = Number(userCountResult[0]?.count) || 0
+
+      return res.json({
+        success: true,
+        message: remoteSynced ? '授权信息同步成功' : '已刷新本地授权信息（远程同步暂不可用）',
+        data: {
+          synced: true,
+          remoteSynced,
+          maxUsers: totalMaxUsers,
+          currentUsers,
+          remainingUsers: Math.max(0, totalMaxUsers - currentUsers),
+          packageName: updated.package_name,
+          expiresAt: updated.expire_date
+        }
+      })
+    }
+
+    // ========== 私有部署同步：从 system_license 表 + 在线验证 ==========
     await ensureLicenseTable()
 
     const { licenseService } = await import('../services/LicenseService')

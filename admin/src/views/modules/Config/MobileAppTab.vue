@@ -39,9 +39,9 @@
     <!-- Android 应用包列表 -->
     <h4 class="section-title">Android 应用包</h4>
     <el-table :data="androidPackages" v-loading="loading" style="width: 100%; margin-bottom: 24px" empty-text="暂无 Android 应用包">
-      <el-table-column prop="app_name" label="应用名称" width="140" />
+      <el-table-column prop="app_name" label="应用名称" min-width="120" />
       <el-table-column prop="version" label="版本号" width="100" />
-      <el-table-column label="下载方式" width="200">
+      <el-table-column label="下载方式" min-width="200">
         <template #default="{ row }">
           <el-tag v-if="row.package_url" type="success" size="small">已上传安装包</el-tag>
           <el-tag v-else-if="row.external_url" type="warning" size="small">外部链接</el-tag>
@@ -60,8 +60,12 @@
           <el-switch v-model="row.is_enabled" :active-value="1" :inactive-value="0" size="small" @change="toggleEnabled(row)" />
         </template>
       </el-table-column>
-      <el-table-column prop="uploaded_by" label="上传者" width="100" />
-      <el-table-column prop="created_at" label="创建时间" width="160" />
+      <el-table-column prop="uploaded_by" label="上传者" min-width="100" />
+      <el-table-column label="创建时间" width="160">
+        <template #default="{ row }">
+          {{ formatDateTime(row.created_at) }}
+        </template>
+      </el-table-column>
       <el-table-column label="操作" width="140" fixed="right">
         <template #default="{ row }">
           <el-button type="primary" link size="small" @click="editPackage(row)">编辑</el-button>
@@ -77,9 +81,9 @@
     <!-- iOS 应用包列表 -->
     <h4 class="section-title">iOS 应用包</h4>
     <el-table :data="iosPackages" v-loading="loading" style="width: 100%" empty-text="暂无 iOS 应用包">
-      <el-table-column prop="app_name" label="应用名称" width="140" />
+      <el-table-column prop="app_name" label="应用名称" min-width="120" />
       <el-table-column prop="version" label="版本号" width="100" />
-      <el-table-column label="下载方式" width="200">
+      <el-table-column label="下载方式" min-width="200">
         <template #default="{ row }">
           <el-tag v-if="row.package_url" type="success" size="small">已上传安装包</el-tag>
           <el-tag v-else-if="row.external_url" type="warning" size="small">外部链接</el-tag>
@@ -98,8 +102,12 @@
           <el-switch v-model="row.is_enabled" :active-value="1" :inactive-value="0" size="small" @change="toggleEnabled(row)" />
         </template>
       </el-table-column>
-      <el-table-column prop="uploaded_by" label="上传者" width="100" />
-      <el-table-column prop="created_at" label="创建时间" width="160" />
+      <el-table-column prop="uploaded_by" label="上传者" min-width="100" />
+      <el-table-column label="创建时间" width="160">
+        <template #default="{ row }">
+          {{ formatDateTime(row.created_at) }}
+        </template>
+      </el-table-column>
       <el-table-column label="操作" width="140" fixed="right">
         <template #default="{ row }">
           <el-button type="primary" link size="small" @click="editPackage(row)">编辑</el-button>
@@ -174,6 +182,7 @@ import { ref, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Plus, Refresh, Cellphone, UploadFilled } from '@element-plus/icons-vue'
 import { adminApi } from '@/api/admin'
+import { formatDateTime } from '@/views/tenant-customers/Detail/helpers'
 
 const loading = ref(false)
 const submitting = ref(false)
