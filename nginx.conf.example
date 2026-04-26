@@ -24,6 +24,13 @@ server {
     gzip_min_length 1000;
     gzip_comp_level 6;
 
+    # ==================== 企业微信/微信验证文件 ====================
+    # 必须在 try_files 之前匹配，否则会被回退到 index.html 导致 404
+    location ~* ^/(WW_verify_|MP_verify_).*\.txt$ {
+        root /www/wwwroot/CRM/dist;
+        default_type text/plain;
+    }
+
     # ==================== 前端路由 ====================
     # Vue Router history 模式支持
     location / {

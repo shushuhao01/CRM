@@ -142,6 +142,11 @@ cd ..
     # 文件上传大小
     client_max_body_size 50m;
 
+    # 企业微信/微信验证文件（必须在 try_files 之前，否则会被回退到 index.html 导致 404）
+    location ~* ^/(WW_verify_|MP_verify_).*\.txt$ {
+        default_type text/plain;
+    }
+
     # API 反向代理
     location /api/ {
         proxy_pass http://127.0.0.1:3000;
@@ -211,6 +216,11 @@ cd ..
 ```nginx
     client_max_body_size 10m;
 
+    # 企业微信/微信验证文件（必须在 try_files 之前，否则会被回退到 index.html 导致 404）
+    location ~* ^/(WW_verify_|MP_verify_).*\.txt$ {
+        default_type text/plain;
+    }
+
     # API 反向代理
     location /api/ {
         proxy_pass http://127.0.0.1:3000;
@@ -233,6 +243,11 @@ cd ..
 
 ```nginx
     client_max_body_size 50m;
+
+    # 企业微信/微信验证文件（必须在 try_files 之前，否则会被回退到 index.html 导致 404）
+    location ~* ^/(WW_verify_|MP_verify_).*\.txt$ {
+        default_type text/plain;
+    }
 
     # API 反向代理（管理后台 API 前缀 /api/v1/admin）
     location /api/ {
