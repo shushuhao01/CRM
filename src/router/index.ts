@@ -789,6 +789,7 @@ router.beforeEach(async (to, from, next) => {
   }
 
   // 企微子路由套餐权限校验（防止通过URL直接绕过套餐锁）
+  // 管理员跳过套餐校验，允许自由访问所有企微功能（管理员需要配置和管理这些功能）
   const wecomMenuPermissionMap: Record<string, string> = {
     '/wecom/chat-archive': 'chatArchive',
     '/wecom/ai-assistant': 'aiAssistant',
@@ -803,7 +804,7 @@ router.beforeEach(async (to, from, next) => {
     '/wecom/payment': 'payment',
   }
   const requiredWecomPerm = wecomMenuPermissionMap[to.path]
-  if (requiredWecomPerm) {
+  if (requiredWecomPerm && !userStore.isAdmin) {
     try {
       // 始终从服务器获取最新套餐数据（含配额管理features合并），确保Admin更新后CRM端同步
       let pkg: any = null
