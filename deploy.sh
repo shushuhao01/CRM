@@ -203,6 +203,21 @@ else
 fi
 echo ""
 
+# 步骤 3.5: 构建H5企微移动端应用（如存在）
+H5_DIR="$PROJECT_DIR/h5"
+if [ -f "$H5_DIR/package.json" ]; then
+    echo -e "${YELLOW}[3.5] 构建H5企微应用...${NC}"
+    cd "$H5_DIR"
+    npm install --production=false
+    npx vite build
+    if [ -f "$H5_DIR/dist/index.html" ]; then
+        echo -e "${GREEN}[OK] H5构建完成${NC}"
+    else
+        echo -e "${YELLOW}[!] H5构建失败，跳过（不影响主系统）${NC}"
+    fi
+    echo ""
+fi
+
 # 步骤 4/6: 构建后端（TypeScript 编译）
 echo -e "${YELLOW}[4] 步骤4/6: 构建后端...${NC}"
 cd "$BACKEND_DIR"

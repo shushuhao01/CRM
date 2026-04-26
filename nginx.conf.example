@@ -31,6 +31,14 @@ server {
         default_type text/plain;
     }
 
+    # ==================== H5 企微移动端应用 ====================
+    # 企微内置H5应用（应用主页/桌面端独立主页）
+    # 需先构建: cd h5 && npm run build
+    location /h5/ {
+        alias /www/wwwroot/CRM/h5/dist/;
+        try_files $uri $uri/ /h5/index.html;
+    }
+
     # ==================== 前端路由 ====================
     # Vue Router history 模式支持
     location / {

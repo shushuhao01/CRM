@@ -804,6 +804,16 @@ router.beforeEach(async (to, from, next) => {
     '/wecom/payment': 'payment',
   }
   const requiredWecomPerm = wecomMenuPermissionMap[to.path]
+  if (import.meta.env.DEV && to.path === '/wecom/sidebar') {
+    console.warn('[Router Debug] 侧边栏导航:', {
+      path: to.path,
+      isAdmin: userStore.isAdmin,
+      requiredWecomPerm,
+      willSkipPackageCheck: !!userStore.isAdmin,
+      token: !!userStore.token,
+      role: userStore.currentUser?.role
+    })
+  }
   if (requiredWecomPerm && !userStore.isAdmin) {
     try {
       // 始终从服务器获取最新套餐数据（含配额管理features合并），确保Admin更新后CRM端同步
@@ -864,6 +874,7 @@ router.onError((error) => {
     error.message.includes('ChunkLoadError')
   )) {
     console.warn('[Router] 动态模块加载失败，可能是版本更新或缓存问题:', error.message)
+    if (import.meta.env.DEV) console.error('[Router Debug] onError触发! 完整错误:', error)
 
     // 🔥 开发环境下静默重载一次，不弹对话框
     if (import.meta.env.DEV) {
