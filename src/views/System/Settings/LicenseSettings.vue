@@ -340,15 +340,21 @@ const handleSync = async () => {
   syncing.value = true
   try {
     const res = await request.post('/license/sync') as any
-    if (res?.message) {
-      ElMessage.success(res.message)
-    } else {
-      ElMessage.success('授权信息已同步')
+
+    // 处理未激活的情况（后端返回 success:true + activated:false）
+    if (res?.activated === false) {
+      ElMessage.warning(res.message || '系统尚未激活，请先输入授权码进行激活')
+      await loadLicenseInfo()
+      return
     }
+
+    ElMessage.success('授权信息同步成功')
     // 重新加载显示最新数据
     await loadLicenseInfo()
   } catch (error: any) {
     ElMessage.error(error?.message || '同步失败，请检查网络连接')
+    // 同步失败也刷新一下状态
+    await loadLicenseInfo()
   } finally {
     syncing.value = false
   }

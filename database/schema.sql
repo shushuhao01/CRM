@@ -48,6 +48,7 @@
 -- 41. [v4.1.0] 新增wecom_anti_spam_rules(防骚扰规则)、wecom_group_broadcasts(群发消息)、wecom_group_welcomes(入群欢迎语)
 -- 42. [v4.1.0] 新增wecom_payment_qrcodes(收款码)、wecom_payment_refunds(退款记录)
 -- 43. [v4.1.0] 新增wecom_suite_configs(服务商应用配置)、wecom_suite_callback_logs(服务商回调日志)
+-- 44. [v4.1.0] system_license表新增user_limit_mode(用户限制模式)、max_online_seats(最大在线席位数)字段
 -- =============================================
 
 -- 设置字符集和时区
@@ -3257,6 +3258,8 @@ CREATE TABLE IF NOT EXISTS `system_license` (
   `customer_name` VARCHAR(200) COMMENT '客户名称',
   `license_type` VARCHAR(50) DEFAULT 'perpetual' COMMENT '授权类型: trial试用, perpetual永久, annual年度, monthly月度',
   `max_users` INT DEFAULT 50 COMMENT '最大用户数',
+  `user_limit_mode` VARCHAR(20) DEFAULT 'total' COMMENT '用户限制模式: total总用户数, online在线席位',
+  `max_online_seats` INT DEFAULT 0 COMMENT '最大在线席位数(user_limit_mode=online时生效)',
   `features` TEXT COMMENT '功能模块(JSON)',
   `expires_at` DATETIME COMMENT '到期时间',
   `status` VARCHAR(20) DEFAULT 'active' COMMENT '状态: active激活, expired过期, revoked吊销',

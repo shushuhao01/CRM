@@ -105,7 +105,7 @@ class LicenseService {
         body: JSON.stringify({ licenseKey: license_key, machineId: machine_id })
       });
 
-      const result = await response.json() as { success?: boolean; data?: { valid?: boolean; maxUsers?: number; expiresAt?: string; features?: any; licenseType?: string }; message?: string };
+      const result = await response.json() as { success?: boolean; data?: { valid?: boolean; maxUsers?: number; expiresAt?: string; features?: any; licenseType?: string; userLimitMode?: string; maxOnlineSeats?: number }; message?: string };
 
       if (result.success && result.data?.valid) {
         // 更新本地授权信息（同步所有关键字段：maxUsers、expiresAt、features、licenseType）
@@ -127,6 +127,14 @@ class LicenseService {
         if (result.data.licenseType) {
           updates.push('license_type = ?');
           values.push(result.data.licenseType);
+        }
+        if (result.data.userLimitMode) {
+          updates.push('user_limit_mode = ?');
+          values.push(result.data.userLimitMode);
+        }
+        if (result.data.maxOnlineSeats != null) {
+          updates.push('max_online_seats = ?');
+          values.push(result.data.maxOnlineSeats);
         }
 
         values.push(license_key);

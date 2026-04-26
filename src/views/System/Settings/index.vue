@@ -145,7 +145,7 @@ const configStore = useConfigStore()
 const route = useRoute()
 
 // 当前激活的选项卡
-const activeTab = ref('security')
+const activeTab = ref('license')
 
 // 从路由query读取默认tab
 onMounted(() => {

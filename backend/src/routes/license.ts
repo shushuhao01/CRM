@@ -244,6 +244,19 @@ router.get('/info', async (_req: Request, res: Response) => {
       ).catch(() => [{ count: 0 }])
       const currentUsers = userCountResult[0]?.count || 0
 
+      // 用户限制模式和在线席位信息
+      const userLimitMode = license.user_limit_mode || 'total'
+      const maxOnlineSeats = license.max_online_seats || 0
+
+      // 在线席位模式：统计当前在线人数（30分钟内有活动的用户）
+      let onlineCount = 0
+      if (userLimitMode === 'online') {
+        const onlineResult = await AppDataSource.query(
+          `SELECT COUNT(*) as count FROM users WHERE status = 'active' AND tenant_id IS NULL AND last_active_at > DATE_SUB(NOW(), INTERVAL 30 MINUTE)`
+        ).catch(() => [{ count: 0 }])
+        onlineCount = onlineResult[0]?.count || 0
+      }
+
       res.json({
         success: true,
         data: {
@@ -253,6 +266,9 @@ router.get('/info', async (_req: Request, res: Response) => {
           maxUsers: license.max_users,
           currentUsers,
           remainingUsers: Math.max(0, (license.max_users || 50) - currentUsers),
+          userLimitMode,
+          maxOnlineSeats,
+          onlineCount,
           features: license.features ? JSON.parse(license.features) : null,
           expiresAt: license.expires_at,
           activatedAt: license.activated_at,
@@ -274,7 +290,29 @@ router.get('/info', async (_req: Request, res: Response) => {
 // 手动同步授权信息（从管理后台获取最新配置）
 router.post('/sync', async (_req: Request, res: Response) => {
   try {
+    // 确保 system_license 表存在
+    await ensureLicenseTable()
+
     const { licenseService } = await import('../services/LicenseService')
+
+    // 先检查本地是否有激活记录
+    const localLicense = await AppDataSource.query(
+      `SELECT license_key FROM system_license WHERE status = 'active' LIMIT 1`
+    ).catch(() => [])
+
+    if (!localLicense || localLicense.length === 0) {
+      // 未激活 — 用 success:true + activated:false 标记，避免前端全局错误拦截器弹窗
+      return res.json({
+        success: true,
+        data: {
+          synced: false,
+          activated: false,
+          message: '系统尚未激活，请先输入授权码进行激活'
+        }
+      })
+    }
+
+    // 已激活，尝试在线同步
     const result = await licenseService.verifyOnline()
 
     if (result.valid) {
@@ -296,6 +334,7 @@ router.post('/sync', async (_req: Request, res: Response) => {
     } else {
       res.json({
         success: false,
+        code: 'SYNC_FAILED',
         message: result.message || '同步失败，请检查网络连接'
       })
     }
@@ -314,6 +353,8 @@ async function ensureLicenseTable() {
       customer_name VARCHAR(200),
       license_type VARCHAR(50) DEFAULT 'perpetual',
       max_users INT DEFAULT 50,
+      user_limit_mode VARCHAR(20) DEFAULT 'total',
+      max_online_seats INT DEFAULT 0,
       features TEXT,
       expires_at DATETIME,
       status VARCHAR(20) DEFAULT 'active',
@@ -328,9 +369,13 @@ async function ensureLicenseTable() {
   // 兼容已有的表：尝试添加新列，已存在则忽略
   await AppDataSource.query(
     `ALTER TABLE system_license ADD COLUMN admin_credentials_shown TINYINT DEFAULT 0`
-  ).catch(() => {
-    // 列已存在，忽略错误
-  })
+  ).catch(() => {})
+  await AppDataSource.query(
+    `ALTER TABLE system_license ADD COLUMN user_limit_mode VARCHAR(20) DEFAULT 'total' COMMENT '用户限制模式: total总用户数, online在线席位'`
+  ).catch(() => {})
+  await AppDataSource.query(
+    `ALTER TABLE system_license ADD COLUMN max_online_seats INT DEFAULT 0 COMMENT '最大在线席位数'`
+  ).catch(() => {})
 }
 
 // 本地验证授权码（离线模式）
