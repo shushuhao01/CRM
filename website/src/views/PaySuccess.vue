@@ -908,7 +908,7 @@ location /socket.io/ {
     proxy_set_header Connection "upgrade";
     proxy_set_header Host $host;
 }
-location /uploads/ {
+location ^~ /uploads/ {
     proxy_pass http://127.0.0.1:3000;
 }</code>
                     <button class="code-copy-btn" @click="copyText(nginxProxyConfig)">复制</button>
@@ -1303,7 +1303,7 @@ sudo systemctl enable nginx && sudo systemctl start nginx</code>
     }
 
     # 文件上传代理
-    location /uploads/ {
+    location ^~ /uploads/ {
         proxy_pass http://127.0.0.1:3000;
     }
 }</code>
@@ -1708,7 +1708,7 @@ const nginxFullConfig = `server {
         proxy_set_header Host $host;
     }
 
-    location /uploads/ {
+    location ^~ /uploads/ {
         proxy_pass http://127.0.0.1:3000;
     }
 }`
@@ -1728,7 +1728,7 @@ location /socket.io/ {
     proxy_set_header Connection "upgrade";
     proxy_set_header Host $host;
 }
-location /uploads/ {
+location ^~ /uploads/ {
     proxy_pass http://127.0.0.1:3000;
 }`
 

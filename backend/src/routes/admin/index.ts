@@ -5,6 +5,7 @@
 import { Router, Request, Response } from 'express';
 import { adminAuthMiddleware } from '../../middleware/adminAuth';
 import { adminOperationLoggerMiddleware } from '../../middleware/operationLogger';
+import { requireSaaSMode } from '../../middleware/saasGuard';
 import { AppDataSource } from '../../config/database';
 import authRouter from './auth';
 import licensesRouter from './licenses';
@@ -153,10 +154,11 @@ router.use('/auth', authRouter);
 router.use('/licenses', licensesRouter);
 router.use('/versions', versionsRouter);
 router.use('/dashboard', dashboardRouter);
-router.use('/tenants', tenantsRouter);
-router.use('/packages', packagesRouter);
-router.use('/payment', paymentRouter);
-router.use('/modules', modulesRouter);
+// 🔒 SaaS 专属管理路由：租户、套餐、支付、模块管理、容量管理
+router.use('/tenants', requireSaaSMode, tenantsRouter);
+router.use('/packages', requireSaaSMode, packagesRouter);
+router.use('/payment', requireSaaSMode, paymentRouter);
+router.use('/modules', requireSaaSMode, modulesRouter);
 router.use('/notification-templates', notificationTemplatesRouter);
 router.use('/admin-users', adminUsersRouter);
 router.use('/api-configs', apiConfigsRouter);
@@ -170,9 +172,9 @@ router.use('/recycle-bin', recycleBinRouter);
 router.use('/update-tasks', updateTasksRouter);
 router.use('/customer-management', customerManagementRouter);
 router.use('/roles', adminRolesRouter);
-router.use('/capacity', capacityRouter);
-router.use('/tenants', tenantExportRouter);   // 租户数据导出 API
-router.use('/tenants', tenantImportRouter);   // 租户数据导入 API
+router.use('/capacity', requireSaaSMode, capacityRouter);
+router.use('/tenants', requireSaaSMode, tenantExportRouter);   // 租户数据导出 API
+router.use('/tenants', requireSaaSMode, tenantImportRouter);   // 租户数据导入 API
 router.use('/sms-management', smsManagementRouter); // 短信管理 API
 router.use('/sms-quota', smsQuotaRouter); // 短信额度套餐管理 API
 router.use('/wecom-management', wecomManagementRouter); // 企微管理 API

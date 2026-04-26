@@ -4,6 +4,7 @@
  */
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
+import { requireSaaSMode } from '../../middleware/saasGuard';
 import registerRoutes from './register';
 import packagesRoutes from './packages';
 import paymentRoutes from './payment';
@@ -50,6 +51,15 @@ const memberLoginLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
 });
+
+// 🔒 SaaS 专属接口：注册、套餐、支付、会员中心、订阅、扩容
+// 未通过 SaaS 许可验证时返回 403，防止私有部署客户擅自开启多租户功能
+router.use('/register', requireSaaSMode);
+router.use('/packages', requireSaaSMode);
+router.use('/payment', requireSaaSMode);
+router.use('/member', requireSaaSMode);
+router.use('/subscription', requireSaaSMode);
+router.use('/capacity', requireSaaSMode);
 
 // 注册相关接口（带专用限流）
 router.use('/register/send-code', sendCodeLimiter);

@@ -1,6 +1,6 @@
 # CRM 多站点部署指南（宝塔面板）
 
-> 版本: v1.0 | 更新日期: 2026-04-25
+> 版本: v1.1 | 更新日期: 2026-04-26
 > 适用: 宝塔面板 + Nginx + Node.js + PM2
 
 ---
@@ -103,13 +103,40 @@ cd ..
 每个站点创建后，在宝塔面板 **站点设置 → 配置文件** 中修改。
 
 **关键原则**：
-- 保留宝塔自动生成的 SSL 相关配置
-- 只添加 `location` 块来处理 API 代理和前端路由
+- 保留宝塔自动生成的 SSL 相关配置（`#SSL-START` 到 `#SSL-END` 之间的内容）
+- **删除** `#PHP-INFO-START` 到 `#PHP-INFO-END` 之间的 PHP 配置
+- **删除** 宝塔自动生成的静态资源缓存规则（否则会导致上传图片无法显示，详见下方说明）
 - 所有 API 请求都代理到 `http://127.0.0.1:3000`
+
+> **❗ 重要：必须删除宝塔默认的静态资源缓存规则**
+>
+> 宝塔面板创建站点后会自动添加如下规则：
+> ```nginx
+> location ~ .*\.(gif|jpg|jpeg|png|bmp|swf)$
+> {
+>     expires      30d;
+>     error_log /dev/null;
+>     access_log /dev/null;
+> }
+> location ~ .*\.(js|css)?$
+> {
+>     expires      12h;
+>     error_log /dev/null;
+>     access_log /dev/null;
+> }
+> ```
+> **这两条规则必须删除！** 原因：Nginx 正则 location 优先于普通前缀 location，
+> 当请求 `/uploads/products/xxx.jpg` 时，正则规则 `\.(jpg)$` 会先匹配，
+> 将请求导向前端 dist 目录，而非后端 uploads 目录，导致 **404 图片加载失败**。
+>
+> 即使我们的配置使用了 `^~`（优先前缀匹配），为了安全起见仍建议删除这些规则。
 
 ### 5.1 crm.yunkes.com（CRM 主应用）
 
-在宝塔自动生成的配置中，找到 `#PHP-INFO-START` 那段**删掉**，然后在 `#SSL-END` 后面添加：
+在宝塔自动生成的配置中：
+1. **删除** `#PHP-INFO-START` 到 `#PHP-INFO-END` 之间的内容
+2. **删除** `location ~ .*\.(gif|jpg|jpeg|png|bmp|swf)$` 和 `location ~ .*\.(js|css)?$` 这两条规则（含大括号内容）
+3. 在 `#SSL-END` 后面添加以下内容：
 
 ```nginx
     # 文件上传大小
@@ -124,8 +151,9 @@ cd ..
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_connect_timeout 60s;
-        proxy_send_timeout 60s;
-        proxy_read_timeout 60s;
+        proxy_send_timeout 120s;
+        proxy_read_timeout 120s;
+        proxy_buffering off;
     }
 
     # WebSocket
@@ -149,11 +177,25 @@ cd ..
         proxy_read_timeout 86400;
     }
 
-    # 上传文件访问
-    location /uploads/ {
+    # 上传文件访问（^~ 确保优先于任何正则匹配，防止图片请求被截获）
+    location ^~ /uploads/ {
         alias /www/wwwroot/CRM/backend/uploads/;
         expires 7d;
         add_header Cache-Control "public";
+        add_header Access-Control-Allow-Origin *;
+    }
+
+    # 通话录音文件
+    location ^~ /recordings/ {
+        alias /www/wwwroot/CRM/backend/recordings/;
+        expires 7d;
+        add_header Cache-Control "public";
+    }
+
+    # H5移动端
+    location /h5/ {
+        alias /www/wwwroot/CRM/h5/dist/;
+        try_files $uri $uri/ /h5/index.html;
     }
 
     # 前端路由 (Vue Router history 模式)
@@ -187,6 +229,8 @@ cd ..
 
 ### 5.3 admin.yunkes.com（管理后台）
 
+同样删除 PHP 配置和静态资源缓存规则，然后添加：
+
 ```nginx
     client_max_body_size 50m;
 
@@ -198,12 +242,25 @@ cd ..
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_buffering off;
     }
 
-    # 上传文件
-    location /uploads/ {
+    # WebSocket（管理后台实时通知）
+    location /socket.io/ {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_read_timeout 86400;
+    }
+
+    # 上传文件（^~ 确保优先于正则匹配）
+    location ^~ /uploads/ {
         alias /www/wwwroot/CRM/backend/uploads/;
         expires 7d;
+        add_header Cache-Control "public";
+        add_header Access-Control-Allow-Origin *;
     }
 
     # 前端路由
@@ -328,3 +385,23 @@ chmod +x node_modules/sass-embedded-linux-x64/dart-sass/src/dart
 ### Q: SSL 证书怎么申请？
 宝塔面板 → 网站 → 对应站点 → SSL → Let's Encrypt → 申请免费证书。
 每个域名都需要单独申请。
+
+### Q: 上传的图片显示不出来（加载失败）？
+这是宝塔面板默认静态资源缓存规则导致的。检查方法：
+
+1. **宝塔面板 → 网站 → 对应站点 → 配置文件**
+2. 搜索 `gif|jpg|jpeg|png`，如果找到以下规则：
+```nginx
+location ~ .*\.(gif|jpg|jpeg|png|bmp|swf)$
+{
+    expires      30d;
+    error_log /dev/null;
+    access_log /dev/null;
+}
+```
+3. **删除这些规则**，然后确保 `/uploads/` 使用了 `^~` 修饰符
+4. 保存并重载 nginx：`nginx -t && nginx -s reload`
+
+**原理**：Nginx 正则 location (`~`) 优先于普通前缀 location。
+宝塔的 `\.(jpg)$` 规则会截获 `/uploads/xxx.jpg` 请求，将其导向前端 dist 目录，文件不存在则返回 404。
+使用 `^~` 修饰符可让前缀匹配优先于正则，确保上传文件正确服务。

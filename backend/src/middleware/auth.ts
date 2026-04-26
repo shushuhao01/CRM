@@ -4,6 +4,7 @@ import { getDataSource } from '../config/database';
 import { User } from '../entities/User';
 import { logger } from '../config/logger';
 import { TenantContextManager } from '../utils/tenantContext';
+import { deployConfig } from '../config/deploy';
 import { cacheService } from '../services/CacheService';
 import { onlineSeatService } from '../services/OnlineSeatService';
 import { getClientIp } from '../utils/getClientIp';
@@ -118,7 +119,8 @@ export const authenticateToken = async (req: Request, res: Response, next: NextF
     req.currentUser = user;
 
     // 从JWT中提取tenantId并注入到请求对象，供租户上下文使用
-    if (payload.tenantId) {
+    // 🔒 安全守护：仅 SaaS 模式已验证时才注入租户上下文，防止私有部署绵过守卫
+    if (payload.tenantId && deployConfig.isSaaS()) {
       (req as any).tenantId = payload.tenantId;
       // 同步更新AsyncLocalStorage中的租户上下文
       TenantContextManager.setContext({ tenantId: payload.tenantId, userId: payload.userId });
@@ -295,8 +297,8 @@ export const authenticateSidebarToken = async (req: Request, res: Response, next
 
     (req as any).sidebarUser = payload as SidebarPayload;
 
-    // 注入租户上下文
-    if (payload.tenantId) {
+    // 注入租户上下文（🔒 仅 SaaS 模式已验证时才注入）
+    if (payload.tenantId && deployConfig.isSaaS()) {
       (req as any).tenantId = payload.tenantId;
       TenantContextManager.setContext({ tenantId: payload.tenantId, userId: payload.crmUserId });
     }

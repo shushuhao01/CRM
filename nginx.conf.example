@@ -80,8 +80,8 @@ server {
     }
 
     # ==================== 文件上传/静态资源访问 ====================
-    # 用户上传文件
-    location /uploads/ {
+    # 用户上传文件（^~ 确保优先于正则匹配，否则 .jpg/.png 会被静态资源缓存规则截获导致404）
+    location ^~ /uploads/ {
         alias /www/wwwroot/CRM/backend/uploads/;
         expires 7d;
         add_header Cache-Control "public";
@@ -89,7 +89,7 @@ server {
     }
 
     # 通话录音文件
-    location /recordings/ {
+    location ^~ /recordings/ {
         alias /www/wwwroot/CRM/backend/recordings/;
         expires 7d;
         add_header Cache-Control "public";

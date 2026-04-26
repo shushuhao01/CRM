@@ -230,6 +230,8 @@ CREATE TABLE `customers` (
   `sales_person_id` VARCHAR(50) COMMENT '销售员ID',
   `sales_person_name` VARCHAR(50) COMMENT '销售员姓名',
   `wecom_external_userid` VARCHAR(100) NULL COMMENT '客户唯一企微编码(USID)',
+  `star_rating` INT DEFAULT 0 NULL COMMENT '手动星级评分(1-5)',
+  `final_score` INT DEFAULT 0 NULL COMMENT '综合评分(0-100)',
   `created_by` VARCHAR(50) NOT NULL COMMENT '创建人ID',
   `created_by_name` VARCHAR(50) COMMENT '创建人姓名',
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
@@ -459,7 +461,11 @@ CREATE TABLE `orders` (
   `cod_returned_amount` DECIMAL(10,2) DEFAULT 0.00 COMMENT '已返款金额',
   `cod_returned_at` TIMESTAMP NULL COMMENT '返款时间',
   `cod_cancelled_at` TIMESTAMP NULL COMMENT '取消代收时间',
+  `cod_cancelled_by` VARCHAR(50) DEFAULT NULL COMMENT '取消代收操作人ID',
+  `cod_cancelled_by_name` VARCHAR(50) DEFAULT NULL COMMENT '取消代收操作人姓名',
   `cod_remark` VARCHAR(500) DEFAULT NULL COMMENT '代收备注',
+  `cod_returned_by` VARCHAR(50) DEFAULT NULL COMMENT '返款操作人ID',
+  `cod_returned_by_name` VARCHAR(50) DEFAULT NULL COMMENT '返款操作人姓名',
   `operator_id` VARCHAR(50) COMMENT '操作员ID',
   `operator_name` VARCHAR(50) COMMENT '操作员姓名',
   `created_by` VARCHAR(50) NOT NULL COMMENT '创建人ID',
@@ -3023,7 +3029,7 @@ CREATE TABLE IF NOT EXISTS `tenants` (
   `max_storage_gb` INT DEFAULT 5 COMMENT '最大存储空间(GB)',
   `extra_storage_gb` INT NOT NULL DEFAULT 0 COMMENT '扩容存储空间(GB)',
   `user_count` INT DEFAULT 0 COMMENT '当前用户数',
-  `user_limit_mode` ENUM('total','online') NOT NULL DEFAULT 'total' COMMENT '用户限制模式（继承自套餐，可单独覆盖）',
+  `user_limit_mode` ENUM('total','online','both') NOT NULL DEFAULT 'total' COMMENT '用户限制模式（继承自套餐，可单独覆盖）',
   `max_online_seats` INT NOT NULL DEFAULT 0 COMMENT '最大在线席位数',
   `extra_online_seats` INT NOT NULL DEFAULT 0 COMMENT '额外增购的在线席位数',
   `current_online_seats` INT NOT NULL DEFAULT 0 COMMENT '当前在线席位数（定时任务同步）',
@@ -3279,8 +3285,11 @@ CREATE TABLE IF NOT EXISTS `tenant_packages` (
   `max_customers` INT DEFAULT 10000 COMMENT '最大客户数',
   `max_orders` INT DEFAULT 10000 COMMENT '最大订单数',
   `max_storage_gb` INT DEFAULT 5 COMMENT '存储空间(GB)',
-  `user_limit_mode` ENUM('total','online') NOT NULL DEFAULT 'total' COMMENT '用户限制模式：total-限制总注册数，online-限制同时在线数',
+  `user_limit_mode` ENUM('total','online','both') NOT NULL DEFAULT 'total' COMMENT '用户限制模式：total-限制总注册数，online-限制同时在线数，both-两种都支持',
   `max_online_seats` INT NOT NULL DEFAULT 0 COMMENT '最大在线席位数（user_limit_mode=online时生效）',
+  `yearly_discount_rate` DECIMAL(5,2) DEFAULT 0 COMMENT '年付折扣率（0-100，例如20表示8折）',
+  `yearly_bonus_months` INT DEFAULT 0 COMMENT '年付赠送月数',
+  `yearly_price` DECIMAL(10,2) NULL COMMENT '年付价格（如果为NULL则自动计算）',
   `features` JSON COMMENT '功能特性列表',
   `modules` JSON NULL COMMENT '授权模块ID列表（JSON数组）',
   `is_trial` TINYINT(1) DEFAULT 0 COMMENT '是否为试用套餐',
@@ -4237,6 +4246,14 @@ CREATE TABLE IF NOT EXISTS `outsource_companies` (
   `status` ENUM('active', 'inactive') DEFAULT 'active' COMMENT '状态：active-启用, inactive-停用',
   `sort_order` INT DEFAULT 999 COMMENT '排序顺序，数字越小越靠前',
   `is_default` TINYINT(1) DEFAULT 0 COMMENT '是否默认公司（0-否，1-是）',
+  `total_orders` INT DEFAULT 0 COMMENT '总订单数',
+  `valid_orders` INT DEFAULT 0 COMMENT '有效订单数',
+  `invalid_orders` INT DEFAULT 0 COMMENT '无效订单数',
+  `total_amount` DECIMAL(12,2) DEFAULT 0 COMMENT '总金额',
+  `settled_amount` DECIMAL(12,2) DEFAULT 0 COMMENT '已结算金额',
+  `remark` TEXT NULL COMMENT '备注',
+  `created_by` VARCHAR(50) NULL COMMENT '创建人ID',
+  `created_by_name` VARCHAR(50) NULL COMMENT '创建人姓名',
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   INDEX `idx_tenant_id` (`tenant_id`),
@@ -4588,8 +4605,9 @@ CREATE TABLE IF NOT EXISTS `wechat_qrcode_scenes` (
 -- 模块管理初始数据
 -- =============================================
 
--- 插入CRM系统默认模块（10个）
+-- 插入CRM系统默认模块（12个）
 INSERT INTO `modules` (`id`, `name`, `code`, `description`, `icon`, `version`, `status`, `is_system`, `sort_order`) VALUES
+(UUID(), '数据看板', 'dashboard_management', '系统数据总览、趋势分析', 'Odometer', '1.0.0', 'enabled', 1, 0),
 (UUID(), '订单管理', 'order_management', '订单创建、审核、发货等功能', 'ShoppingCart', '1.0.0', 'enabled', 1, 1),
 (UUID(), '客户管理', 'customer_management', '客户信息管理、跟进记录', 'User', '1.0.0', 'enabled', 1, 2),
 (UUID(), '财务管理', 'finance_management', '代收管理、结算报表、增值服务', 'Money', '1.0.0', 'enabled', 1, 3),
@@ -4599,10 +4617,11 @@ INSERT INTO `modules` (`id`, `name`, `code`, `description`, `icon`, `version`, `
 (UUID(), '资料管理', 'data_management', '客户资料、文档管理', 'Folder', '1.0.0', 'enabled', 1, 7),
 (UUID(), '业绩统计', 'performance_management', '销售业绩、团队绩效', 'TrendCharts', '1.0.0', 'enabled', 1, 8),
 (UUID(), '商品管理', 'product_management', '商品信息、库存、分类管理', 'Goods', '1.0.0', 'enabled', 1, 9),
-(UUID(), '系统管理', 'system_management', '用户、角色、权限管理', 'Setting', '1.0.0', 'enabled', 1, 10)
+(UUID(), '系统管理', 'system_management', '用户、角色、权限管理', 'Setting', '1.0.0', 'enabled', 1, 10),
+(UUID(), '企微管理', 'wecom_management', '企业微信集成管理，包括企微应用配置、客户同步、会话存档等功能', 'ChatLineSquare', '1.0.0', 'enabled', 0, 11)
 ON DUPLICATE KEY UPDATE `updated_at` = CURRENT_TIMESTAMP;
 
--- 插入模块启停状态（11个前端模块）
+-- 插入模块启停状态（12个前端模块）
 INSERT INTO `module_status` (`module_key`, `module_name`, `description`, `icon`, `is_enabled`, `sort_order`) VALUES
 ('dashboard', '数据看板', '数据统计与可视化看板', 'Odometer', 1, 1),
 ('customer', '客户管理', '客户信息管理、跟进记录', 'User', 1, 2),
@@ -4614,8 +4633,79 @@ INSERT INTO `module_status` (`module_key`, `module_name`, `description`, `icon`,
 ('finance', '财务管理', '代收管理、结算报表、增值服务', 'Money', 1, 8),
 ('data', '资料管理', '客户资料、文档管理', 'Folder', 1, 9),
 ('serviceManagement', '服务管理', '服务项目与服务记录管理', 'SetUp', 1, 10),
-('system', '系统管理', '用户、角色、权限管理', 'Setting', 1, 11)
+('system', '系统管理', '用户、角色、权限管理', 'Setting', 1, 11),
+('wecom', '企微管理', '企业微信集成管理，客户同步、会话存档', 'ChatLineSquare', 1, 12)
 ON DUPLICATE KEY UPDATE `module_name` = VALUES(`module_name`), `updated_at` = CURRENT_TIMESTAMP;
+
+-- 插入默认套餐数据（8个套餐：4个SaaS + 1个测试 + 3个私有部署）
+INSERT INTO `tenant_packages` (`name`, `code`, `type`, `description`, `price`, `original_price`, `billing_cycle`, `duration_days`, `max_users`, `max_storage_gb`, `user_limit_mode`, `max_online_seats`, `features`, `modules`, `is_trial`, `is_recommended`, `is_visible`, `sort_order`, `status`, `yearly_discount_rate`, `yearly_bonus_months`, `yearly_price`) VALUES
+('7天免费试用', 'FREE_TRIAL', 'saas', '体验云客CRM全部基础功能', 0.00, NULL, 'monthly', 7, 3, 1, 'online', 5, '["客户管理", "订单管理", "基础报表", "数据导入导出"]', '["dashboard", "customer", "order", "service-management", "performance", "logistics", "service", "data", "finance", "product", "system"]', 1, 0, 1, 0, 1, 0.00, 0, NULL),
+('基础版', 'SAAS_BASIC', 'saas', '适合小型团队起步', 199.00, NULL, 'monthly', 30, 10, 5, 'total', 0, '["客户管理", "订单管理", "基础报表", "数据导入导出", "物流跟踪"]', '["dashboard", "customer", "order", "service-management", "performance", "logistics", "service", "data", "finance", "product", "system"]', 0, 0, 1, 1, 1, 0.00, 2, NULL),
+('专业版', 'SAAS_PRO', 'saas', '适合成长型团队', 299.00, NULL, 'monthly', 30, 50, 50, 'total', 0, '["客户管理", "订单管理", "基础报表", "数据导入导出", "物流跟踪", "高级报表分析", "API接口", "自定义字段"]', '["dashboard", "customer", "order", "service-management", "performance", "logistics", "service", "data", "finance", "product", "system"]', 0, 1, 1, 2, 1, 0.00, 2, NULL),
+('企业版', 'SAAS_ENTERPRISE', 'saas', '适合大型销售团队', 599.00, NULL, 'monthly', 30, 200, 200, 'total', 0, '["客户管理", "订单管理", "基础报表", "数据导入导出", "物流跟踪", "高级报表分析", "API接口", "自定义字段", "电销外呼系统", "专属客户成功经理", "优先技术支持", "SLA保障"]', '["dashboard", "customer", "order", "service-management", "performance", "logistics", "service", "data", "finance", "product", "system", "wecom"]', 0, 0, 1, 3, 1, 0.00, 2, 5990.00),
+('标准版', 'PRIVATE_STANDARD', 'private', '适合中小企业私有部署', 9800.00, NULL, 'once', 36500, 50, 0, 'total', 0, '["永久授权", "全部核心功能", "部署文档", "1年免费升级", "邮件技术支持"]', NULL, 0, 0, 1, 10, 1, 0.00, 0, 3700.00),
+('专业版', 'PRIVATE_PRO', 'private', '适合中大型企业', 19800.00, NULL, 'once', 36500, 200, 0, 'total', 0, '["永久授权", "全部功能模块", "远程部署协助", "1年技术支持", "1年免费升级", "专属技术顾问"]', NULL, 0, 1, 1, 11, 1, 0.00, 0, 7500.00),
+('企业版', 'PRIVATE_ENTERPRISE', 'private', '适合大型企业/集团', 39800.00, NULL, 'once', 36500, 99999, 0, 'total', 0, '["永久授权", "不限用户数", "全部功能模块", "现场部署支持", "专属技术顾问", "定制开发服务", "7x24技术支持"]', NULL, 0, 0, 1, 12, 1, 0.00, 0, 15100.00)
+ON DUPLICATE KEY UPDATE `updated_at` = CURRENT_TIMESTAMP;
+
+-- 插入企微增值服务配置默认数据（5个服务类型）
+INSERT INTO `wecom_vas_configs` (`service_type`, `service_name`, `default_price`, `min_price`, `billing_unit`, `trial_days`, `tier_pricing`, `description`, `is_enabled`) VALUES
+('chat_archive', '会话存档服务', 100.00, 50.00, 'per_user_year', 7,
+ '[{"min":1,"max":10,"price":100},{"min":11,"max":50,"price":90},{"min":51,"max":100,"price":80},{"min":101,"max":999999,"price":70}]',
+ '企微会话存档增值服务，可查看员工与客户的聊天记录，支持敏感词检测和质检功能。', 1),
+('ai_assistant', 'AI智能助手', 99.00, 0.00, 'per_package', 0,
+ '[{"id":"trial","name":"体验包","calls":100,"price":0},{"id":"basic","name":"基础包","calls":1000,"price":99},{"id":"standard","name":"标准包","calls":5000,"price":399},{"id":"pro","name":"专业包","calls":10000,"price":699},{"id":"enterprise","name":"企业包","calls":50000,"price":2999}]',
+ 'AI智能助手服务，提供智能客服回复、会话质检、客户画像分析等AI能力。按调用次数计费。', 1),
+('acquisition', '获客助手', 299.00, 0.00, 'monthly', 0,
+ '[{"name":"基础版","price":0,"maxChannels":3},{"name":"专业版","price":299,"maxChannels":50},{"name":"企业版","price":2999,"maxChannels":0}]',
+ '企微获客助手，提供智能获客链接、渠道活码、数据分析看板、转化漏斗等功能。', 1),
+('wecom_auth', '企微管理授权', 0.00, 0.00, 'yearly', 0,
+ '[{"name":"基础版","price":0,"wecomQuota":1},{"name":"企业版","price":2000,"wecomQuota":3},{"name":"旗舰版","price":8000,"wecomQuota":10}]',
+ '企微管理授权套餐，授权企业微信接入CRM系统。基础版免费，高级版支持多企业绑定。', 1),
+('sms_quota', '短信额度', 5.00, 5.00, 'per_package', 0,
+ '[{"id":"pkg-sms-001","name":"体验包","sms_count":100,"price":5.00},{"id":"pkg-sms-002","name":"基础包","sms_count":500,"price":22.50},{"id":"pkg-sms-003","name":"标准包","sms_count":2000,"price":80.00},{"id":"pkg-sms-004","name":"旗舰包","sms_count":10000,"price":350.00}]',
+ '短信额度套餐，用于发送短信通知、营销短信、验证码等。按条数购买。', 1)
+ON DUPLICATE KEY UPDATE
+  `service_name` = VALUES(`service_name`),
+  `default_price` = VALUES(`default_price`),
+  `tier_pricing` = VALUES(`tier_pricing`),
+  `description` = VALUES(`description`),
+  `updated_at` = CURRENT_TIMESTAMP;
+
+-- 插入企微定价配置到system_config（企微授权套餐+AI助手+会话存档+获客助手统一配置）
+INSERT INTO `system_config` (`id`, `config_key`, `config_value`, `config_type`, `created_at`, `updated_at`)
+VALUES (UUID(), 'wecom_pricing_config',
+'{"wecomPackages":[{"name":"基础版","wecomQuota":1,"featureScope":"基础功能","yearlyPrice":0,"enabled":true,"recommended":false,"sortOrder":0,"archiveIncluded":"none","aiQuotaIncluded":0,"acquisitionIncluded":false,"description":"免费体验企微基础管理功能","menuAddressBook":true,"menuCustomer":true,"menuCustomerGroup":false,"menuAcquisition":false,"menuContactWay":false,"menuChatArchive":false,"menuAiAssistant":false,"menuCustomerService":false,"menuSidebar":false,"menuPayment":false},{"name":"企业版","wecomQuota":3,"featureScope":"标准功能","yearlyPrice":2000,"enabled":true,"recommended":true,"sortOrder":1,"archiveIncluded":"20","aiQuotaIncluded":500,"acquisitionIncluded":false,"description":"适合中小企业，含会话存档和AI额度","menuAddressBook":true,"menuCustomer":true,"menuCustomerGroup":true,"menuAcquisition":false,"menuContactWay":true,"menuChatArchive":true,"menuAiAssistant":true,"menuCustomerService":true,"menuSidebar":true,"menuPayment":true},{"name":"旗舰版","wecomQuota":10,"featureScope":"全部功能","yearlyPrice":8000,"enabled":true,"recommended":false,"sortOrder":2,"archiveIncluded":"50","aiQuotaIncluded":2000,"acquisitionIncluded":true,"description":"全功能解锁，大型团队首选","menuAddressBook":true,"menuCustomer":true,"menuCustomerGroup":true,"menuAcquisition":true,"menuContactWay":true,"menuChatArchive":true,"menuAiAssistant":true,"menuCustomerService":true,"menuSidebar":true,"menuPayment":true}],"archivePricing":[{"tierLabel":"1-5人","maxMembers":5,"officialPrice":300,"salePrice":160,"costPrice":105,"profitRate":34},{"tierLabel":"6-20人","maxMembers":20,"officialPrice":300,"salePrice":150,"costPrice":105,"profitRate":30},{"tierLabel":"21-50人","maxMembers":50,"officialPrice":250,"salePrice":140,"costPrice":87,"profitRate":38},{"tierLabel":"51-200人","maxMembers":200,"officialPrice":200,"salePrice":120,"costPrice":70,"profitRate":42}],"archiveGlobalConfig":{"purchaseMode":"both","seatServiceFee":50},"aiPackages":[{"id":"trial","name":"体验包","calls":100,"price":0,"description":"免费体验100次AI调用","validity":"forever","recommended":false,"freeTrialOnce":true},{"id":"basic","name":"基础包","calls":1000,"price":99,"description":"1000次AI调用，适合小团队","validity":"90","recommended":false},{"id":"standard","name":"标准包","calls":5000,"price":399,"description":"5000次AI调用，企业常用","validity":"365","recommended":true},{"id":"pro","name":"专业包","calls":10000,"price":699,"description":"10000次AI调用，专业版","validity":"365","recommended":false},{"id":"enterprise","name":"企业包","calls":50000,"price":2999,"description":"50000次AI调用，大型企业","validity":"365","recommended":false}],"acquisitionPricing":[{"name":"基础版","price":0,"billingCycle":"月","maxChannels":3,"dashboardEnabled":true,"funnelEnabled":false,"profileEnabled":false,"recommended":false,"description":"免费使用基础获客管理功能"},{"name":"专业版","price":299,"billingCycle":"月","maxChannels":50,"dashboardEnabled":true,"funnelEnabled":true,"profileEnabled":true,"recommended":true,"description":"完整获客数据分析与转化追踪"},{"name":"企业版","price":2999,"billingCycle":"年","maxChannels":0,"dashboardEnabled":true,"funnelEnabled":true,"profileEnabled":true,"recommended":false,"description":"无限渠道，全功能解锁，年付更优惠"}]}',
+'json', NOW(), NOW())
+ON DUPLICATE KEY UPDATE `config_value` = VALUES(`config_value`), `updated_at` = NOW();
+
+-- 插入AI套餐全局配置（供CRM前端读取）
+INSERT INTO `system_config` (`id`, `config_key`, `config_value`, `config_type`, `created_at`, `updated_at`)
+VALUES (UUID(), 'ai_packages_global',
+'[{"id":"trial","name":"体验包","calls":100,"price":0,"description":"免费体验100次AI调用","validity":"forever","recommended":false,"freeTrialOnce":true},{"id":"basic","name":"基础包","calls":1000,"price":99,"description":"1000次AI调用，适合小团队","validity":"90","recommended":false},{"id":"standard","name":"标准包","calls":5000,"price":399,"description":"5000次AI调用，企业常用","validity":"365","recommended":true},{"id":"pro","name":"专业包","calls":10000,"price":699,"description":"10000次AI调用，专业版","validity":"365","recommended":false},{"id":"enterprise","name":"企业包","calls":50000,"price":2999,"description":"50000次AI调用，大型企业","validity":"365","recommended":false}]',
+'json', NOW(), NOW())
+ON DUPLICATE KEY UPDATE `config_value` = VALUES(`config_value`), `updated_at` = NOW();
+
+-- 插入会话存档定价配置（供CRM前端读取）
+INSERT INTO `system_config` (`id`, `config_key`, `config_value`, `config_type`, `created_at`, `updated_at`)
+VALUES (UUID(), 'wecom_archive_pricing',
+'[{"tierLabel":"1-5人","maxMembers":5,"officialPrice":300,"salePrice":160,"costPrice":105,"profitRate":34},{"tierLabel":"6-20人","maxMembers":20,"officialPrice":300,"salePrice":150,"costPrice":105,"profitRate":30},{"tierLabel":"21-50人","maxMembers":50,"officialPrice":250,"salePrice":140,"costPrice":87,"profitRate":38},{"tierLabel":"51-200人","maxMembers":200,"officialPrice":200,"salePrice":120,"costPrice":70,"profitRate":42}]',
+'json', NOW(), NOW())
+ON DUPLICATE KEY UPDATE `config_value` = VALUES(`config_value`), `updated_at` = NOW();
+
+-- 插入获客助手定价配置
+INSERT INTO `system_config` (`id`, `config_key`, `config_value`, `config_type`, `created_at`, `updated_at`)
+VALUES (UUID(), 'wecom_acquisition_pricing',
+'[{"name":"基础版","price":0,"billingCycle":"月","maxChannels":3,"dashboardEnabled":true,"funnelEnabled":false,"profileEnabled":false,"recommended":false,"description":"免费使用基础获客管理功能"},{"name":"专业版","price":299,"billingCycle":"月","maxChannels":50,"dashboardEnabled":true,"funnelEnabled":true,"profileEnabled":true,"recommended":true,"description":"完整获客数据分析与转化追踪"},{"name":"企业版","price":2999,"billingCycle":"年","maxChannels":0,"dashboardEnabled":true,"funnelEnabled":true,"profileEnabled":true,"recommended":false,"description":"无限渠道，全功能解锁，年付更优惠"}]',
+'json', NOW(), NOW())
+ON DUPLICATE KEY UPDATE `config_value` = VALUES(`config_value`), `updated_at` = NOW();
+
+-- 插入企微VAS会话存档增值配置
+INSERT INTO `system_config` (`id`, `config_key`, `config_value`, `config_type`, `created_at`, `updated_at`)
+VALUES (UUID(), 'wecom_vas_config',
+'{"chatArchive":{"enabled":true,"defaultPrice":100,"minPrice":50,"billingUnit":"per_user_year","trialDays":7,"tierPricing":[{"min":1,"max":10,"price":100},{"min":11,"max":50,"price":90},{"min":51,"max":100,"price":80},{"min":101,"max":999999,"price":70}],"description":"企微会话存档增值服务","purchaseMode":"both","seatServiceFee":50}}',
+'json', NOW(), NOW())
+ON DUPLICATE KEY UPDATE `config_value` = VALUES(`config_value`), `updated_at` = NOW();
 
 -- 插入通知模板默认数据（13个模板）
 INSERT INTO `notification_templates` (`id`, `template_code`, `template_name`, `template_type`, `category`, `scene`, `email_subject`, `email_content`, `sms_content`, `variables`, `variable_description`, `is_system`, `priority`, `send_email`, `send_sms`) VALUES

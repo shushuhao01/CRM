@@ -216,12 +216,14 @@ export class UserController {
 
     // 生成JWT令牌
     // 🔥 修复：使用 roleId（角色代码如 department_manager）而不是 role（可能是中文角色名）
+    // 🔒 安全守护：仅 SaaS 模式已验证时才在 JWT 中包含 tenantId
+    // 防止私有部署客户通过修改 DEPLOY_MODE=saas 绕过守卫获取多租户能力
     const tokenPayload = {
       userId: user.id,
       username: user.username,
       role: user.roleId || user.role,  // 优先使用 roleId
       departmentId: user.departmentId,
-      tenantId: user.tenantId || undefined  // 租户ID（SaaS模式）
+      tenantId: deployConfig.isSaaS() ? (user.tenantId || undefined) : undefined
     };
 
     const tokens = JwtConfig.generateTokenPair(tokenPayload);

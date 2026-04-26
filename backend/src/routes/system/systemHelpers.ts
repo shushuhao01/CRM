@@ -43,13 +43,17 @@ const getUploadConfig = async (): Promise<{ maxFileSize: number; allowedTypes: s
   }
 };
 
-// 创建通用图片上传存储配置（🔥 已改造：SaaS模式按租户目录隔离）
+// 创建通用图片上传存储配置（🔥 已改造：SaaS模式按租户目录隔离，文件名含租户编码）
 const createImageStorage = (subDir: string) => multer.diskStorage({
   destination: createTenantDestination(subDir),
-  filename: (_req, file, cb) => {
+  filename: (req: any, file, cb) => {
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
     const ext = path.extname(file.originalname);
-    cb(null, `${subDir}-${uniqueSuffix}${ext}`);
+    // SaaS模式：文件名含租户编码便于溯源（如 T260303-products-xxx.jpg）
+    // 私有模式：保持原格式（如 products-xxx.jpg）
+    const tenantCode = req.__tenantCode || '';
+    const prefix = tenantCode ? `${tenantCode}-${subDir}` : subDir;
+    cb(null, `${prefix}-${uniqueSuffix}${ext}`);
   }
 });
 

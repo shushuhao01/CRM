@@ -89,16 +89,19 @@ server {
     }
 
     # ==================== 文件上传访问 ====================
-    location /uploads/ {
+    # ^~ 确保优先于正则匹配，防止图片请求被静态资源规则截获
+    location ^~ /uploads/ {
         alias /www/wwwroot/CRM/backend/uploads/;
         expires 7d;
         add_header Cache-Control "public";
+        add_header Access-Control-Allow-Origin *;
     }
 
     # 录音文件
-    location /recordings/ {
+    location ^~ /recordings/ {
         alias /www/wwwroot/CRM/backend/recordings/;
         expires 7d;
+        add_header Cache-Control "public";
     }
 
     # ==================== 健康检查 ====================
