@@ -465,7 +465,7 @@ const fetchList = async () => {
 // 检查管理后台是否允许自建应用
 const checkSelfBuildPermission = async () => {
   try {
-    const res = await fetch('/api/v1/system/config?key=wecom_settings', {
+    const res = await fetch('/api/v1/system/config/wecom_settings', {
       headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
     })
     const json = await res.json()
