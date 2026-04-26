@@ -845,11 +845,6 @@ const checkPasswordStatus = () => {
   const user = userStore.user
   if (!user) return
 
-  // 超级管理员不进行密码提醒
-  if (userStore.isSuperAdmin) {
-    return
-  }
-
   // 🔥 密码状态完全由后端数据库决定，不再操作本地 localStorage('users')
 
   // 检查是否为默认密码
@@ -871,12 +866,18 @@ const checkPasswordStatus = () => {
   const neverChangedPassword = !user.passwordLastChanged
 
   // 🔥 首次登录（从未改过密码）或 默认密码 或 管理员要求强制修改：必须强制修改，不可关闭弹窗
+  // 注意：所有角色（包括管理员）都必须执行此检查，确保首次登录必须改密
   if (neverChangedPassword || isDefaultPassword.value || isForcePasswordChange.value) {
     isFirstLogin.value = neverChangedPassword
     // 首次登录/默认密码场景下，不应该显示"过期"提示
     isPasswordExpired.value = false
     showPasswordChangeModal.value = true
     isForcePasswordChange.value = true // 强制模式，弹窗不可关闭
+    return
+  }
+
+  // 超级管理员不进行定期密码过期提醒（但上面的首次登录/默认密码/强制修改仍然生效）
+  if (userStore.isSuperAdmin) {
     return
   }
 

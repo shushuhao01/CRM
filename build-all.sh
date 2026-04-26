@@ -115,6 +115,31 @@ fi
 echo ""
 
 # =============================================
+# 3.5 构建H5企微移动端应用
+# =============================================
+echo -e "${CYAN}[3.5] 构建H5企微移动端应用...${NC}"
+H5_DIR="$PROJECT_DIR/h5"
+if [ -d "$H5_DIR/src" ] && [ -f "$H5_DIR/package.json" ]; then
+    cd "$H5_DIR"
+    if [ ! -d "node_modules" ] || [ ! -d "node_modules/vue" ]; then
+        echo -e "${YELLOW}    安装依赖...${NC}"
+        if [ "$NPM_REGISTRY" != "https://registry.npmjs.org" ]; then
+            rm -f package-lock.json
+        fi
+        npm install --registry "$NPM_REGISTRY" 2>&1
+    fi
+    npx vite build
+    if [ -f "dist/index.html" ]; then
+        echo -e "${GREEN}[OK] H5企微应用构建成功${NC}"
+    else
+        echo -e "${YELLOW}[!] H5构建失败，跳过（不影响主系统）${NC}"
+    fi
+else
+    echo -e "${YELLOW}[i] H5源码不存在，跳过${NC}"
+fi
+echo ""
+
+# =============================================
 # 4. 构建后端 + 重启服务
 # =============================================
 echo -e "${CYAN}[4/4] 构建后端并重启服务...${NC}"

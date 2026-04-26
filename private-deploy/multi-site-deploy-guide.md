@@ -7,17 +7,22 @@
 
 ## 一、项目架构总览
 
-本项目包含 **4 个前端 + 1 个后端**，共需配置 **4 个域名**：
+本项目包含 **4 个前端 + 1 个H5应用 + 1 个后端**，共需配置 **4 个域名**：
 
 | 域名 | 用途 | 前端目录 | 说明 |
 |------|------|---------|------|
 | `crm.yunkes.com` | CRM 主应用 | `/www/wwwroot/CRM/dist` | 主要的 CRM 系统 |
+| `crm.yunkes.com/h5/` | 企微H5移动端 | `/www/wwwroot/CRM/h5/dist` | 企微内置H5应用（应用主页/侧边栏） |
 | `yunkes.com` / `www.yunkes.com` | 官方网站 | `/www/wwwroot/CRM/website/dist` | 产品介绍、注册页 |
 | `admin.yunkes.com` | 管理后台 | `/www/wwwroot/CRM/admin/dist` | 平台超管后台 |
 | `api.yunkes.com` | API 接口 | 无（反向代理） | 直接代理到后端 3000 端口 |
 
 **重要**: 所有前端都是纯静态文件（Vite 构建后的 HTML/JS/CSS），**不需要启动前端服务器**。
 只需要 **1 个后端进程**（PM2 管理，端口 3000），Nginx 把各站点的 `/api` 请求代理过去即可。
+
+> **H5应用说明**: H5移动端应用部署在 CRM 主站的 `/h5/` 路径下，不需要单独域名。
+> 在企微服务商后台配置「应用主页」和「桌面端独立主页」时，地址填写 `https://crm.yunkes.com/h5/`。
+> H5使用 Hash 路由模式，实际首页为 `https://crm.yunkes.com/h5/#/app/home`。
 
 ---
 
@@ -65,8 +70,17 @@ npm install --registry https://registry.npmjs.org
 npm run build
 ls dist/index.html    # 验证构建成功
 
+# 3. 构建H5企微移动端应用
+cd ../h5
+npm install --registry https://registry.npmjs.org
+npx vite build        # 跳过类型检查直接构建
+ls dist/index.html    # 验证构建成功
+
 cd ..
 ```
+
+> **注意**: H5构建使用 `npx vite build` 而非 `npm run build`，因为 `npm run build` 包含 `vue-tsc` 类型检查，
+> 可能因 Vant 组件类型兼容性问题报错。直接使用 `npx vite build` 可跳过类型检查正常构建。
 
 ---
 
@@ -348,9 +362,11 @@ git pull origin main
 # 3. 恢复 .env
 git stash pop
 
-# 4. 一键重新构建所有前端 + 重启后端
+# 4. 一键重新构建所有前端（含H5）+ 重启后端
 chmod +x build-all.sh
 ./build-all.sh
+# 或使用 deploy.sh（已包含H5构建步骤）
+# chmod +x deploy.sh && ./deploy.sh
 ```
 
 ---
