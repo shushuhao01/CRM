@@ -632,6 +632,75 @@ router.post('/config/alipay/test', async (req: Request, res: Response) => {
   }
 })
 
+// 诊断支付订单表结构（调试用，确认修复后可删除）
+router.get('/orders-debug', async (_req: Request, res: Response) => {
+  const info: any = { timestamp: new Date().toISOString(), codeVersion: 'v2-hasCol' }
+  try {
+    // 1. 检查表是否存在
+    const tableCheck = await AppDataSource.query(
+      `SELECT COUNT(*) as cnt FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'payment_orders'`
+    )
+    info.tableExists = !!tableCheck[0]?.cnt
+    info.database = (await AppDataSource.query('SELECT DATABASE() as db'))[0]?.db
+
+    if (info.tableExists) {
+      // 2. 获取列信息
+      const cols = await AppDataSource.query('SHOW COLUMNS FROM payment_orders')
+      info.columns = cols.map((c: any) => c.Field)
+      info.columnCount = cols.length
+
+      // 3. 尝试执行实际查询
+      try {
+        const result = await AppDataSource.query('SELECT COUNT(*) as total FROM payment_orders')
+        info.totalRows = result[0]?.total
+      } catch (e: any) {
+        info.countError = e.message
+      }
+
+      // 4. 测试完整 SELECT
+      const existingCols = new Set(info.columns as string[])
+      const hasCol = (name: string) => existingCols.has(name)
+      const selectCols = [
+        hasCol('id') ? 'po.id' : "'' as id",
+        hasCol('order_no') ? 'po.order_no' : "'' as order_no",
+        hasCol('tenant_name') ? 'po.tenant_name' : "'' as tenant_name",
+        hasCol('pay_type') ? 'po.pay_type' : "'' as pay_type",
+        hasCol('status') ? 'po.status' : "'pending' as status",
+        hasCol('amount') ? 'po.amount' : '0 as amount',
+      ].join(', ')
+      try {
+        const testQuery = `SELECT ${selectCols} FROM payment_orders po LIMIT 1`
+        info.testQuery = testQuery
+        const rows = await AppDataSource.query(testQuery)
+        info.testResult = rows.length > 0 ? rows[0] : 'empty'
+      } catch (e: any) {
+        info.testError = e.message
+        info.testSql = e.sql || ''
+      }
+    }
+
+    // 5. 检查 payment_logs 和 payment_configs
+    try {
+      await AppDataSource.query('SELECT 1 FROM payment_logs LIMIT 1')
+      info.paymentLogsExists = true
+    } catch (_e) {
+      info.paymentLogsExists = false
+    }
+    try {
+      await AppDataSource.query('SELECT 1 FROM payment_configs LIMIT 1')
+      info.paymentConfigsExists = true
+    } catch (_e) {
+      info.paymentConfigsExists = false
+    }
+
+    res.json({ success: true, data: info })
+  } catch (error: any) {
+    info.fatalError = error.message
+    info.stack = error.stack?.split('\n').slice(0, 5)
+    res.json({ success: false, data: info })
+  }
+})
+
 // 获取支付订单列表
 router.get('/orders', async (req: Request, res: Response) => {
   try {
