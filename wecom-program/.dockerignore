@@ -1,0 +1,7 @@
+*.tar
+*.md
+.git
+.gitkeep
+build.bat
+__pycache__
+*.pyc
