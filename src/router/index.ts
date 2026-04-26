@@ -475,6 +475,12 @@ const router = createRouter({
       meta: { title: '关于我们', requiresAuth: true }
     },
     {
+      path: '/mobile-app-download',
+      name: 'MobileAppDownload',
+      component: () => import('../views/MobileAppDownload.vue'),
+      meta: { title: '移动应用下载', requiresAuth: true }
+    },
+    {
       path: '/system/sms-templates',
       name: 'SmsTemplates',
       component: () => import('../views/System/SmsTemplates.vue'),

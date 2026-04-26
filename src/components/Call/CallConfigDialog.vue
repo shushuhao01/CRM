@@ -167,7 +167,12 @@
         <div class="config-section">
           <el-alert type="info" :closable="false" style="margin-bottom: 16px;">
             <template #title>
-              工作手机说明：绑定您的工作手机后，可通过手机直接拨打客户电话，系统自动录音并同步通话记录。
+              <div style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
+                <span>工作手机说明：绑定您的工作手机后，可通过手机直接拨打客户电话，系统自动录音并同步通话记录。</span>
+                <el-button type="primary" link @click="goToMobileAppDownload" style="margin-left: 12px; white-space: nowrap;">
+                  <el-icon style="margin-right: 4px;"><Download /></el-icon>下载移动应用
+                </el-button>
+              </div>
             </template>
           </el-alert>
 
@@ -493,7 +498,7 @@
 import { ref, reactive, computed, watch, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Cellphone, Loading, CircleCheckFilled, WarningFilled, Refresh, QuestionFilled, ArrowRight } from '@element-plus/icons-vue'
+import { Plus, Cellphone, Loading, CircleCheckFilled, WarningFilled, Refresh, QuestionFilled, ArrowRight, Download } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
 import * as callConfigApi from '@/api/callConfig'
 import type { CallLine, UserLineAssignment, WorkPhone, UserCallPreference } from '@/api/callConfig'
@@ -1327,6 +1332,11 @@ const goToCallConfigGuide = () => {
   visible.value = false
   // 跳转到帮助中心对应章节
   router.push('/help-center?section=call-config-guide')
+}
+
+const goToMobileAppDownload = () => {
+  visible.value = false
+  router.push('/mobile-app-download')
 }
 
 const handleClose = () => {

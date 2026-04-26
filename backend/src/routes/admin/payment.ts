@@ -9,27 +9,138 @@ import { formatDateTime } from '../../utils/dateFormat'
 import { encryptPaymentConfig, decryptPaymentConfig } from '../../utils/paymentCrypto'
 
 import { log } from '../../config/logger';
+import { SITE_CONFIG } from '../../config/sites'
 const router = Router()
 
-// 自动迁移：确保 payment_orders 表有退款操作人字段
-const ensureRefundColumns = async () => {
+// 自动生成回调地址
+const getDefaultNotifyUrl = (payType: 'wechat' | 'alipay') => {
+  const apiBase = SITE_CONFIG.API_URL || `http://localhost:${process.env.PORT || 3000}`
+  return `${apiBase}/api/v1/public/payment/${payType}/notify`
+}
+
+// 自动迁移：确保支付相关表结构完整
+const ensurePaymentTables = async () => {
   try {
+    // 1. 确保 payment_orders 表存在
+    await AppDataSource.query(`
+      CREATE TABLE IF NOT EXISTS payment_orders (
+        id VARCHAR(36) PRIMARY KEY,
+        order_no VARCHAR(50) NOT NULL UNIQUE,
+        tenant_id VARCHAR(36),
+        tenant_name VARCHAR(200),
+        package_id VARCHAR(36),
+        package_name VARCHAR(200),
+        amount DECIMAL(10,2) NOT NULL,
+        pay_type VARCHAR(20),
+        status VARCHAR(20) DEFAULT 'pending',
+        billing_cycle VARCHAR(20) DEFAULT 'monthly',
+        bonus_months INT DEFAULT 0,
+        contact_name VARCHAR(100),
+        contact_phone VARCHAR(50),
+        contact_email VARCHAR(100),
+        trade_no VARCHAR(100),
+        qr_code TEXT,
+        pay_url TEXT,
+        expire_time DATETIME,
+        paid_at DATETIME,
+        refund_amount DECIMAL(10,2),
+        refund_at DATETIME,
+        refund_reason TEXT,
+        refunded_by VARCHAR(100),
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_order_no (order_no),
+        INDEX idx_tenant_id (tenant_id),
+        INDEX idx_status (status),
+        INDEX idx_pay_type (pay_type),
+        INDEX idx_billing_cycle (billing_cycle),
+        INDEX idx_created_at (created_at)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `)
+
+    // 2. 补齐已有旧表可能缺失的列
     const cols = await AppDataSource.query(
       `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'payment_orders'`
     )
     const existingCols = cols.map((c: any) => c.COLUMN_NAME)
-    if (!existingCols.includes('refunded_by')) {
-      await AppDataSource.query(
-        `ALTER TABLE payment_orders ADD COLUMN refunded_by VARCHAR(100) DEFAULT NULL COMMENT '退款操作人'`
-      )
-      log.info('[Payment] 已添加 refunded_by 字段')
+
+    const requiredCols: [string, string][] = [
+      ['tenant_name', "VARCHAR(200) COMMENT '租户名称'"],
+      ['package_name', "VARCHAR(200) COMMENT '套餐名称'"],
+      ['pay_type', "VARCHAR(20) COMMENT '支付方式'"],
+      ['status', "VARCHAR(20) DEFAULT 'pending' COMMENT '订单状态'"],
+      ['contact_name', "VARCHAR(100) COMMENT '联系人姓名'"],
+      ['contact_phone', "VARCHAR(50) COMMENT '联系电话'"],
+      ['contact_email', "VARCHAR(100) COMMENT '联系邮箱'"],
+      ['trade_no', "VARCHAR(100) COMMENT '第三方交易号'"],
+      ['qr_code', "TEXT COMMENT '支付二维码'"],
+      ['pay_url', "TEXT COMMENT '支付链接'"],
+      ['expire_time', "DATETIME COMMENT '订单过期时间'"],
+      ['billing_cycle', "VARCHAR(20) DEFAULT 'monthly' COMMENT '计费周期'"],
+      ['bonus_months', "INT DEFAULT 0 COMMENT '赠送月数'"],
+      ['refund_amount', "DECIMAL(10,2) COMMENT '退款金额'"],
+      ['refund_at', "DATETIME COMMENT '退款时间'"],
+      ['refund_reason', "TEXT COMMENT '退款原因'"],
+      ['refunded_by', "VARCHAR(100) COMMENT '退款操作人'"],
+    ]
+    for (const [colName, colDef] of requiredCols) {
+      if (!existingCols.includes(colName)) {
+        await AppDataSource.query(`ALTER TABLE payment_orders ADD COLUMN ${colName} ${colDef}`).catch(() => {})
+        log.info(`[Payment] 已添加 payment_orders.${colName} 字段`)
+      }
     }
-  } catch (_e) {
-    // 忽略错误（如表不存在等）
+
+    // 3. 处理旧表列名兼容（payment_method → pay_type, payment_status → status）
+    if (existingCols.includes('payment_method') && !existingCols.includes('pay_type')) {
+      await AppDataSource.query(`ALTER TABLE payment_orders CHANGE COLUMN payment_method pay_type VARCHAR(20) COMMENT '支付方式'`).catch(() => {})
+      log.info('[Payment] 已将 payment_method 重命名为 pay_type')
+    }
+    if (existingCols.includes('payment_status') && !existingCols.includes('status')) {
+      await AppDataSource.query(`ALTER TABLE payment_orders CHANGE COLUMN payment_status status VARCHAR(20) DEFAULT 'pending' COMMENT '订单状态'`).catch(() => {})
+      log.info('[Payment] 已将 payment_status 重命名为 status')
+    }
+
+    // 4. 确保 payment_logs 表存在
+    await AppDataSource.query(`
+      CREATE TABLE IF NOT EXISTS payment_logs (
+        id VARCHAR(36) PRIMARY KEY,
+        order_id VARCHAR(36),
+        order_no VARCHAR(50),
+        action VARCHAR(50),
+        pay_type VARCHAR(20),
+        request_data JSON,
+        response_data JSON,
+        result VARCHAR(20),
+        error_msg TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_order_id (order_id),
+        INDEX idx_order_no (order_no),
+        INDEX idx_created_at (created_at)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `)
+
+    // 5. 确保 payment_configs 表存在
+    await AppDataSource.query(`
+      CREATE TABLE IF NOT EXISTS payment_configs (
+        id VARCHAR(36) PRIMARY KEY,
+        pay_type VARCHAR(20) NOT NULL UNIQUE,
+        enabled TINYINT(1) NOT NULL DEFAULT 0,
+        config_data TEXT,
+        notify_url VARCHAR(500),
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_pay_type (pay_type),
+        INDEX idx_enabled (enabled)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `)
+
+    log.info('[Payment] 支付表结构检查完成')
+  } catch (e: any) {
+    log.error('[Payment] 表结构自动迁移失败:', e.message)
   }
 }
 // 延迟执行，等数据库连接就绪
-setTimeout(() => ensureRefundColumns(), 3000)
+setTimeout(() => ensurePaymentTables(), 3000)
 
 // 加密/解密使用统一的 paymentCrypto 模块
 const encrypt = (text: string): string => encryptPaymentConfig(text)
@@ -43,8 +154,8 @@ router.get('/config', async (_req: Request, res: Response) => {
     )
 
     const config: Record<string, any> = {
-      wechat: { enabled: false, mchId: '', appId: '', apiKey: '', notifyUrl: '' },
-      alipay: { enabled: false, appId: '', privateKey: '', alipayPublicKey: '', signType: 'RSA2', notifyUrl: '' },
+      wechat: { enabled: false, mchId: '', appId: '', apiKey: '', notifyUrl: getDefaultNotifyUrl('wechat') },
+      alipay: { enabled: false, appId: '', privateKey: '', alipayPublicKey: '', signType: 'RSA2', notifyUrl: getDefaultNotifyUrl('alipay') },
       bank: { enabled: false, bankName: '', accountName: '', accountNo: '', bankBranch: '', remark: '' }
     }
 
@@ -62,7 +173,7 @@ router.get('/config', async (_req: Request, res: Response) => {
             config[row.pay_type] = {
               ...data,
               enabled: row.enabled === 1,
-              notifyUrl: row.notify_url,
+              notifyUrl: row.notify_url || getDefaultNotifyUrl(row.pay_type as 'wechat' | 'alipay'),
               // 敏感字段脱敏
               apiKey: data.apiKey ? '******' : '',
               privateKey: data.privateKey ? '******' : '',
@@ -532,40 +643,89 @@ router.get('/orders', async (req: Request, res: Response) => {
       return res.json({ success: true, data: { list: [], total: 0, page: 1, pageSize: 10 } })
     }
 
+    // 获取实际存在的列，动态构建查询（兼容旧表结构）
+    const colRows = await AppDataSource.query(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'payment_orders'`
+    )
+    const existingCols = new Set(colRows.map((c: any) => c.COLUMN_NAME))
+
+    // 自动修复旧列名
+    if (existingCols.has('payment_method') && !existingCols.has('pay_type')) {
+      try {
+        await AppDataSource.query(`ALTER TABLE payment_orders CHANGE COLUMN payment_method pay_type VARCHAR(20) COMMENT '支付方式'`)
+        existingCols.delete('payment_method')
+        existingCols.add('pay_type')
+        log.info('[Payment] 自动修复: payment_method → pay_type')
+      } catch (_e) { /* ignore */ }
+    }
+    if (existingCols.has('payment_status') && !existingCols.has('status')) {
+      try {
+        await AppDataSource.query(`ALTER TABLE payment_orders CHANGE COLUMN payment_status status VARCHAR(20) DEFAULT 'pending' COMMENT '订单状态'`)
+        existingCols.delete('payment_status')
+        existingCols.add('status')
+        log.info('[Payment] 自动修复: payment_status → status')
+      } catch (_e) { /* ignore */ }
+    }
+
+    // 自动添加缺失列
+    const autoAddCols: [string, string][] = [
+      ['tenant_name', "VARCHAR(200) COMMENT '租户名称'"],
+      ['package_name', "VARCHAR(200) COMMENT '套餐名称'"],
+      ['pay_type', "VARCHAR(20) COMMENT '支付方式'"],
+      ['status', "VARCHAR(20) DEFAULT 'pending' COMMENT '订单状态'"],
+      ['contact_name', "VARCHAR(100) COMMENT '联系人姓名'"],
+      ['contact_phone', "VARCHAR(50) COMMENT '联系电话'"],
+      ['trade_no', "VARCHAR(100) COMMENT '第三方交易号'"],
+      ['refund_amount', "DECIMAL(10,2) COMMENT '退款金额'"],
+      ['billing_cycle', "VARCHAR(20) DEFAULT 'monthly' COMMENT '计费周期'"],
+    ]
+    for (const [colName, colDef] of autoAddCols) {
+      if (!existingCols.has(colName)) {
+        try {
+          await AppDataSource.query(`ALTER TABLE payment_orders ADD COLUMN ${colName} ${colDef}`)
+          existingCols.add(colName)
+          log.info(`[Payment] 自动添加列: ${colName}`)
+        } catch (_e) { /* ignore duplicate column */ }
+      }
+    }
+
     const { page = 1, pageSize = 10, orderNo, payType, status, startDate, endDate, billingType, orderType } = req.query as any
     const offset = (page - 1) * pageSize
+
+    // 辅助函数：只在列存在时添加 WHERE 条件
+    const hasCol = (name: string) => existingCols.has(name)
 
     let where = '1=1'
     const params: any[] = []
 
-    if (orderNo) {
+    if (orderNo && hasCol('order_no')) {
       where += ' AND po.order_no LIKE ?'
       params.push(`%${orderNo}%`)
     }
-    if (payType) {
+    if (payType && hasCol('pay_type')) {
       where += ' AND po.pay_type = ?'
       params.push(payType)
     }
-    if (status) {
+    if (status && hasCol('status')) {
       where += ' AND po.status = ?'
       params.push(status)
     }
-    if (startDate) {
+    if (startDate && hasCol('created_at')) {
       where += ' AND po.created_at >= ?'
       params.push(startDate)
     }
-    if (endDate) {
+    if (endDate && hasCol('created_at')) {
       where += ' AND po.created_at <= ?'
       params.push(endDate + ' 23:59:59')
     }
-    if (billingType) {
+    if (billingType && hasCol('billing_cycle')) {
       if (billingType === 'subscription') {
         where += " AND po.billing_cycle IN ('monthly', 'yearly')"
       } else if (billingType === 'once') {
         where += " AND (po.billing_cycle = 'once' OR po.billing_cycle IS NULL)"
       }
     }
-    if (orderType) {
+    if (orderType && hasCol('order_no')) {
       if (orderType === 'capacity') {
         where += " AND po.order_no LIKE 'CAP%'"
       } else if (orderType === 'package') {
@@ -578,28 +738,34 @@ router.get('/orders', async (req: Request, res: Response) => {
     )
     const total = countResult[0].total
 
-    // 检查 billing_cycle 字段是否存在
-    const colCheck = await AppDataSource.query(
-      `SELECT COUNT(*) as cnt FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'payment_orders' AND COLUMN_NAME = 'billing_cycle'`
-    )
-    const hasBillingCycle = !!colCheck[0]?.cnt
-
-    // 直接返回 billing_cycle（月付/年付/买断），由前端展示对应文本
-    const billingCycleExpr = hasBillingCycle ? 'po.billing_cycle' : "NULL"
+    // 动态构建 SELECT 列表，只查询实际存在的列
+    const selectCols = [
+      hasCol('id') ? 'po.id' : "'' as id",
+      hasCol('order_no') ? 'po.order_no' : "'' as order_no",
+      hasCol('tenant_name') ? 'po.tenant_name' : "'' as tenant_name",
+      hasCol('package_name') ? 'po.package_name' : "'' as package_name",
+      hasCol('amount') ? 'po.amount' : '0 as amount',
+      hasCol('pay_type') ? 'po.pay_type' : "'' as pay_type",
+      hasCol('status') ? 'po.status' : "'pending' as status",
+      hasCol('trade_no') ? 'po.trade_no' : "'' as trade_no",
+      hasCol('contact_name') ? 'po.contact_name' : "'' as contact_name",
+      hasCol('contact_phone') ? 'po.contact_phone' : "'' as contact_phone",
+      hasCol('created_at') ? 'po.created_at' : 'NULL as created_at',
+      hasCol('paid_at') ? 'po.paid_at' : 'NULL as paid_at',
+      hasCol('refund_amount') ? 'po.refund_amount' : 'NULL as refund_amount',
+      hasCol('billing_cycle') ? 'po.billing_cycle' : "NULL as billing_cycle",
+    ].join(', ')
 
     const orders = await AppDataSource.query(
-      `SELECT po.id, po.order_no, po.tenant_name, po.package_name, po.amount, po.pay_type, po.status,
-              po.trade_no, po.contact_name, po.contact_phone, po.created_at, po.paid_at, po.refund_amount,
-              ${billingCycleExpr} as billing_cycle
-       FROM payment_orders po
-       WHERE ${where} ORDER BY po.created_at DESC LIMIT ? OFFSET ?`,
+      `SELECT ${selectCols} FROM payment_orders po
+       WHERE ${where} ORDER BY ${hasCol('created_at') ? 'po.created_at' : 'po.id'} DESC LIMIT ? OFFSET ?`,
       [...params, Number(pageSize), offset]
     )
 
     res.json({ success: true, data: { list: orders, total, page: Number(page), pageSize: Number(pageSize) } })
-  } catch (error) {
+  } catch (error: any) {
     log.error('获取支付订单失败:', error)
-    res.status(500).json({ success: false, message: '获取失败' })
+    res.status(500).json({ success: false, message: '获取失败: ' + (error.message || '未知错误') })
   }
 })
 

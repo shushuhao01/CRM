@@ -362,8 +362,6 @@ const savingWechat = ref(false)
 const savingAlipay = ref(false)
 const savingBank = ref(false)
 
-const baseUrl = window.location.origin.replace(':5174', ':3000')
-
 const wechatConfig = reactive({
   enabled: false,
   apiVersion: 'v3',
@@ -379,7 +377,7 @@ const wechatConfig = reactive({
   keyPem: '',
   miniAppBind: 'same',
   mchType: 'normal',
-  notifyUrl: `${baseUrl}/api/v1/public/payment/wechat/notify`
+  notifyUrl: ''
 })
 
 const alipayConfig = reactive({
@@ -392,7 +390,7 @@ const alipayConfig = reactive({
   alipayCertPath: '',
   alipayRootCertPath: '',
   signType: 'RSA2',
-  notifyUrl: `${baseUrl}/api/v1/public/payment/alipay/notify`
+  notifyUrl: ''
 })
 
 const bankConfig = reactive({

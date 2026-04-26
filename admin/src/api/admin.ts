@@ -276,8 +276,23 @@ export const adminApi = {
       headers: { 'Content-Type': 'multipart/form-data' }
     }),
 
-  // ============ 客户管理（统一） ============
-  // 综合统计
+  // 移动应用配置
+  getMobileAppPackages: () =>
+    request.get('/mobile-app-config'),
+  getMobileAppStats: () =>
+    request.get('/mobile-app-config/stats'),
+  createMobileAppConfig: (data: { platform: string; app_name?: string; version?: string; external_url?: string; description?: string; is_enabled?: boolean }) =>
+    request.post('/mobile-app-config', data),
+  uploadMobileAppPackage: (formData: FormData) =>
+    request.post('/mobile-app-config/upload', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    }),
+  updateMobileAppConfig: (id: number, data: { app_name?: string; version?: string; external_url?: string; description?: string; is_enabled?: boolean }) =>
+    request.put(`/mobile-app-config/${id}`, data),
+  deleteMobileAppConfig: (id: number) =>
+    request.delete(`/mobile-app-config/${id}`),
+
+  // 客户管理（统一）
   getCustomerManagementStats: () =>
     request.get('/customer-management/stats'),
   // 所有客户列表

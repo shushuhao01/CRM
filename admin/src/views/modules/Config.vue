@@ -45,6 +45,11 @@
           <StatusTab :form="form" />
         </el-tab-pane>
 
+        <!-- 移动应用 -->
+        <el-tab-pane label="移动应用" name="mobileApp">
+          <MobileAppTab />
+        </el-tab-pane>
+
         <!-- 功能开关 -->
         <el-tab-pane label="功能开关" name="features">
           <FeatureFlagsTab
@@ -73,6 +78,7 @@ import type { AgreementItem } from './Config/AgreementTab.vue'
 import WebsiteTab from './Config/WebsiteTab.vue'
 import StatusTab from './Config/StatusTab.vue'
 import FeatureFlagsTab from './Config/FeatureFlagsTab.vue'
+import MobileAppTab from './Config/MobileAppTab.vue'
 
 const saving = ref(false)
 const activeTab = ref('basic')

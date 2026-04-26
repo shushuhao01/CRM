@@ -49,6 +49,7 @@
 -- 42. [v4.1.0] 新增wecom_payment_qrcodes(收款码)、wecom_payment_refunds(退款记录)
 -- 43. [v4.1.0] 新增wecom_suite_configs(服务商应用配置)、wecom_suite_callback_logs(服务商回调日志)
 -- 44. [v4.1.0] system_license表新增user_limit_mode(用户限制模式)、max_online_seats(最大在线席位数)字段
+-- 45. [v4.1.0] 新增mobile_app_packages(移动应用安装包管理)表
 -- =============================================
 
 -- 设置字符集和时区
@@ -5392,6 +5393,26 @@ CREATE TABLE IF NOT EXISTS `wecom_suite_callback_logs` (
   INDEX `IDX_suite_cb_info_type` (`info_type`),
   INDEX `IDX_suite_cb_created_at` (`created_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='企微服务商回调日志表';
+
+-- 移动应用安装包管理表
+CREATE TABLE IF NOT EXISTS `mobile_app_packages` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `platform` VARCHAR(20) NOT NULL COMMENT '平台: android/ios',
+  `app_name` VARCHAR(100) DEFAULT '' COMMENT '应用名称',
+  `version` VARCHAR(50) DEFAULT '' COMMENT '版本号',
+  `package_url` VARCHAR(500) DEFAULT '' COMMENT '上传的安装包路径',
+  `external_url` VARCHAR(500) DEFAULT '' COMMENT '外部下载地址',
+  `file_size` BIGINT DEFAULT 0 COMMENT '文件大小(字节)',
+  `file_hash` VARCHAR(64) DEFAULT '' COMMENT '文件SHA256哈希',
+  `download_count` INT DEFAULT 0 COMMENT '下载次数',
+  `is_enabled` TINYINT DEFAULT 1 COMMENT '是否启用: 1启用 0禁用',
+  `description` TEXT COMMENT '版本说明',
+  `uploaded_by` VARCHAR(100) DEFAULT '' COMMENT '上传者',
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  KEY `idx_platform` (`platform`),
+  KEY `idx_enabled` (`is_enabled`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='移动应用安装包管理';
 
 -- =============================================
 -- 数据库初始化完成
