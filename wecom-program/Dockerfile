@@ -1,5 +1,4 @@
-# 国内服务器使用阿里云镜像源（如Docker Hub可直接访问，改回 python:3.11-slim）
-FROM registry.cn-hangzhou.aliyuncs.com/library/python:3.11-slim
+FROM python:3.11-slim
 
 # 设置时区为中国
 ENV TZ=Asia/Shanghai
