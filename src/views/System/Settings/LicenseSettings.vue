@@ -56,8 +56,37 @@
       <p style="margin-top: 8px; color: #909399;">加载授权信息中...</p>
     </div>
 
-    <div v-else-if="!licenseData?.activated" style="text-align: center; padding: 40px;">
-      <el-empty description="系统尚未激活授权" />
+    <div v-else-if="!licenseData?.activated" class="not-activated-section">
+      <el-empty description="系统尚未激活授权" :image-size="120" />
+      <div class="activate-form">
+        <p class="activate-hint">请输入授权码激活系统，授权码可在管理后台或购买时获取</p>
+        <div class="activate-input-row">
+          <el-input
+            v-model="activateLicenseKey"
+            placeholder="请输入授权码，如 PRIVATE-XXXX-XXXX-XXXX-XXXX"
+            size="large"
+            clearable
+            style="max-width: 480px;"
+            @keyup.enter="handleActivate"
+          />
+          <el-button type="primary" size="large" :loading="activating" @click="handleActivate" :disabled="!activateLicenseKey.trim()">
+            激活系统
+          </el-button>
+        </div>
+        <div v-if="activateResult" class="activate-result">
+          <el-alert v-if="activateResult.success" type="success" :closable="false" show-icon>
+            <template #title>
+              <div>{{ activateResult.message }}</div>
+              <div v-if="activateResult.defaultAdmin" style="margin-top: 8px; font-size: 13px;">
+                <strong>默认管理员账号：</strong>{{ activateResult.defaultAdmin.username }}
+                <strong style="margin-left: 12px;">密码：</strong>{{ activateResult.defaultAdmin.password }}
+                <span style="color: #E6A23C; margin-left: 8px;">（请及时修改密码！）</span>
+              </div>
+            </template>
+          </el-alert>
+          <el-alert v-else type="error" :title="activateResult.message" :closable="false" show-icon />
+        </div>
+      </div>
     </div>
 
     <template v-else>
@@ -218,6 +247,11 @@ const syncing = ref(false)
 const licenseData = ref<LicenseStatus | null>(null)
 const detailData = ref<LicenseDetail | null>(null)
 
+// 激活相关
+const activateLicenseKey = ref('')
+const activating = ref(false)
+const activateResult = ref<{ success: boolean; message: string; defaultAdmin?: any } | null>(null)
+
 // 授权状态样式
 const statusClass = computed(() => {
   if (licenseData.value?.expired) return 'danger'
@@ -317,6 +351,31 @@ const handleSync = async () => {
     ElMessage.error(error?.message || '同步失败，请检查网络连接')
   } finally {
     syncing.value = false
+  }
+}
+
+// 激活授权
+const handleActivate = async () => {
+  const key = activateLicenseKey.value.trim()
+  if (!key) return
+  activating.value = true
+  activateResult.value = null
+  try {
+    const res = await request.post('/license/activate', { licenseKey: key }) as any
+    activateResult.value = {
+      success: true,
+      message: res?.message || '系统激活成功',
+      defaultAdmin: res?.data?.defaultAdmin
+    }
+    // 激活成功后重新加载授权信息
+    setTimeout(() => loadLicenseInfo(), 1500)
+  } catch (error: any) {
+    activateResult.value = {
+      success: false,
+      message: error?.message || '激活失败，请检查授权码是否正确'
+    }
+  } finally {
+    activating.value = false
   }
 }
 
@@ -471,6 +530,34 @@ onMounted(() => {
 .alert-btn-success:hover {
   background: #529b2e;
   color: #fff;
+}
+
+.not-activated-section {
+  text-align: center;
+  padding: 20px 0;
+}
+
+.activate-form {
+  max-width: 600px;
+  margin: 0 auto;
+  padding: 0 20px;
+}
+
+.activate-hint {
+  color: #909399;
+  font-size: 14px;
+  margin: 0 0 16px;
+}
+
+.activate-input-row {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  align-items: center;
+}
+
+.activate-result {
+  margin-top: 16px;
 }
 </style>
 

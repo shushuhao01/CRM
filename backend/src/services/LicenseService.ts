@@ -92,7 +92,7 @@ class LicenseService {
       ).catch(() => []);
 
       if (!localLicense || localLicense.length === 0) {
-        return { valid: false, message: '系统未激活' };
+        return { valid: false, message: '系统尚未激活，请先在授权信息页面输入授权码进行激活' };
       }
 
       const { license_key, machine_id } = localLicense[0];

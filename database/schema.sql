@@ -3262,6 +3262,7 @@ CREATE TABLE IF NOT EXISTS `system_license` (
   `status` VARCHAR(20) DEFAULT 'active' COMMENT '状态: active激活, expired过期, revoked吊销',
   `activated_at` DATETIME COMMENT '激活时间',
   `machine_id` VARCHAR(255) COMMENT '机器码',
+  `admin_credentials_shown` TINYINT DEFAULT 0 COMMENT '管理员凭据是否已展示(防重复)',
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   UNIQUE KEY `uk_license_key` (`license_key`)

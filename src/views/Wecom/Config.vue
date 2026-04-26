@@ -231,21 +231,21 @@
               </el-button>
             </div>
             <!-- 已生成链接时 -->
-            <div v-else class="auth-action-box">
+            <div v-else class="auth-action-box" style="position: relative;">
               <el-icon :size="48" color="#67C23A"><CircleCheckFilled /></el-icon>
               <p style="color: #303133; font-weight: 600; margin: 12px 0 4px; font-size: 16px;">授权链接已生成</p>
               <p style="color: #909399; margin: 0 0 16px; font-size: 13px;">点击下方按钮跳转到企微官方授权页面，然后用手机企微APP扫码完成授权</p>
               <el-button type="success" size="large" @click="openAuthLink" style="padding: 12px 32px; font-size: 15px;">
                 <el-icon style="margin-right: 6px"><Link /></el-icon>打开企微授权页面
               </el-button>
-              <div style="display: flex; gap: 8px; margin-top: 12px;">
-                <el-button plain size="small" @click="copyAuthLink">
-                  <el-icon style="margin-right: 4px"><CopyDocument /></el-icon>复制链接
-                </el-button>
-                <el-button plain size="small" @click="generateAuthQr" :loading="loadingQr">重新生成</el-button>
-              </div>
               <div style="margin-top: 16px;">
                 <el-button type="primary" @click="authStep = 1">我已完成授权，下一步</el-button>
+              </div>
+              <div style="position: absolute; bottom: 10px; right: 12px; display: flex; gap: 6px;">
+                <el-button text size="small" @click="copyAuthLink" style="color: #909399; font-size: 12px;">
+                  <el-icon style="margin-right: 3px"><CopyDocument /></el-icon>复制链接
+                </el-button>
+                <el-button text size="small" @click="generateAuthQr" :loading="loadingQr" style="color: #909399; font-size: 12px;">重新生成</el-button>
               </div>
             </div>
           </div>
@@ -659,7 +659,7 @@ onMounted(() => { fetchList(); checkSelfBuildPermission() })
 .auth-step-content { min-height: 280px; }
 .auth-action-section { margin-bottom: 20px; }
 .auth-action-box {
-  text-align: center; padding: 32px 24px;
+  text-align: center; padding: 32px 24px 44px;
   border: 2px dashed #E5E7EB; border-radius: 16px; background: #FAFBFC;
   transition: all 0.3s;
   &:hover { border-color: #C7D2FE; background: #F5F7FF; }
