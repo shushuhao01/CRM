@@ -638,38 +638,19 @@ const handleTabAction = (command: string) => {
   }
 }
 
-const handleMenuSelect = debounce((index: string) => {
+const handleMenuSelect = (index: string) => {
   console.log('菜单选择:', index)
   console.log('当前路径:', route.path)
-  console.log('用户权限:', userStore.isAdmin, userStore.isManager)
 
   // 智能滚动定位：如果点击的是系统管理相关菜单，确保系统管理菜单及其子菜单都可见
   if (index.startsWith('/system/') || index === 'system') {
     handleSystemMenuScroll()
   }
 
-  // 检查是否为有效的路由路径
-  if (index && index.startsWith('/')) {
-    // 检查权限
-    if (index.startsWith('/system/')) {
-      // 超级管理员面板需要超级管理员权限
-      if (index === '/system/super-admin-panel' && !userStore.isSuperAdmin) {
-        ElMessage.warning('您没有超级管理员权限，无法访问此页面')
-        return
-      }
-      // 其他系统管理页面需要管理员权限
-      else if (index !== '/system/super-admin-panel' && !userStore.isAdmin) {
-        ElMessage.warning('您没有权限访问此页面，请联系管理员')
-        return
-      }
-    }
-
-    // 使用安全导航器进行导航（静默处理导航错误，避免重复导航提示）
-    safeNavigator.push(index).catch(() => {
-      // 静默处理导航错误，safeNavigator已经处理了大部分情况
-    })
-  }
-}, 300)
+  // el-menu 已开启 router 模式（:router="true"），会自动调用 router.push(index)
+  // 此处不再重复调用 safeNavigator.push()，避免与 el-menu 的导航产生竞争
+  // 权限检查由路由守卫统一处理（requiresAdmin / requiresSuperAdmin 等）
+}
 
 // 处理子菜单展开事件
 const handleSubMenuOpen = (index: string) => {

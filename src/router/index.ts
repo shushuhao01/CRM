@@ -613,7 +613,7 @@ const router = createRouter({
       path: '/wecom/sidebar',
       name: 'WecomSidebar',
       component: () => import('../views/Wecom/Sidebar.vue'),
-      meta: { title: '侧边栏', requiresAuth: true, requiresAdmin: true }
+      meta: { title: '侧边栏', requiresAuth: true }
     },
     {
       path: '/wecom/payment',
@@ -845,16 +845,22 @@ router.beforeEach(async (to, from, next) => {
   next()
 })
 
-// 🔥 成功导航后清除重载计数
+// 🔥 成功导航后清除重载计数（仅在距上次重载超过5秒后才清除，防止reload后立即清除导致无限刷新）
 router.afterEach(() => {
   try {
-    sessionStorage.removeItem('dynamic_import_reload_count')
-    sessionStorage.removeItem('dynamic_import_reload_ts')
+    const ts = sessionStorage.getItem('dynamic_import_reload_ts')
+    if (ts && Date.now() - Number(ts) > 5000) {
+      sessionStorage.removeItem('dynamic_import_reload_count')
+      sessionStorage.removeItem('dynamic_import_reload_ts')
+    }
   } catch { /* ignore */ }
 })
 
 // 路由错误处理
 router.onError((error) => {
+  if (import.meta.env.DEV) {
+    console.warn('[Router onError] 路由错误:', error.message, error)
+  }
   // 静默处理导航取消和重复导航错误
   if (error.message && (
     error.message.includes('Avoided redundant navigation') ||
@@ -876,26 +882,17 @@ router.onError((error) => {
     console.warn('[Router] 动态模块加载失败，可能是版本更新或缓存问题:', error.message)
     if (import.meta.env.DEV) console.error('[Router Debug] onError触发! 完整错误:', error)
 
-    // 🔥 开发环境下静默重载一次，不弹对话框
+    // 🔥 开发环境下不自动刷新页面，仅在控制台输出诊断信息
+    // 动态导入失败在dev模式下通常是HMR热更新导致的暂时问题，重试即可恢复
     if (import.meta.env.DEV) {
-      const RELOAD_KEY = 'dynamic_import_reload_count'
-      const RELOAD_TS_KEY = 'dynamic_import_reload_ts'
-      let reloadCount = 0
-      try {
-        const ts = sessionStorage.getItem(RELOAD_TS_KEY)
-        if (ts && Date.now() - Number(ts) > 60000) {
-          sessionStorage.removeItem(RELOAD_KEY)
-          sessionStorage.removeItem(RELOAD_TS_KEY)
-        }
-        reloadCount = Number(sessionStorage.getItem(RELOAD_KEY) || '0')
-      } catch { /* ignore */ }
-      if (reloadCount < 1) {
-        try { sessionStorage.setItem(RELOAD_KEY, String(reloadCount + 1)); sessionStorage.setItem(RELOAD_TS_KEY, String(Date.now())) } catch {}
-        window.location.reload()
-      } else {
-        console.warn('[Router] 开发环境已重载过，跳过刷新')
-        try { sessionStorage.removeItem(RELOAD_KEY); sessionStorage.removeItem(RELOAD_TS_KEY) } catch {}
-      }
+      console.warn('[Router] 开发环境动态导入失败，尝试重试导入...', error.message)
+      // 尝试通过重新导航来恢复（不reload整个页面）
+      const failedPath = window.location.pathname
+      setTimeout(() => {
+        router.replace(failedPath).catch(() => {
+          console.error('[Router] 重试导航也失败，请手动刷新页面 (Ctrl+Shift+R)')
+        })
+      }, 500)
       return
     }
 
