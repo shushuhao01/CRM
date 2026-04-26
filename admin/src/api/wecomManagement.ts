@@ -15,6 +15,14 @@ export const bindSuiteAuthTenant = (id: number, data: { tenantId: string }) => r
 export const cancelSuiteAuth = (id: number) => request.delete(`/wecom-management/suite/auths/${id}`)
 export const getSuiteCallbackLogs = (params?: any) => request.get('/wecom-management/suite/callback-logs', { params })
 
+// ==================== 通知模板管理 ====================
+
+export const getNotificationTemplates = () => request.get('/wecom-management/suite/notification-templates')
+export const createNotificationTemplate = (data: any) => request.post('/wecom-management/suite/notification-templates', data)
+export const updateNotificationTemplate = (id: number, data: any) => request.put(`/wecom-management/suite/notification-templates/${id}`, data)
+export const deleteNotificationTemplate = (id: number) => request.delete(`/wecom-management/suite/notification-templates/${id}`)
+export const toggleNotificationTemplate = (id: number) => request.patch(`/wecom-management/suite/notification-templates/${id}/toggle`)
+
 // ==================== 会话存档代购 ====================
 
 export const getPurchaseOrders = (params?: any) => request.get('/wecom-management/purchase-orders', { params })

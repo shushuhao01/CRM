@@ -2735,6 +2735,7 @@ function getDefaultSystemConfig() {
 
 import { WecomSuiteConfig } from '../../entities/WecomSuiteConfig';
 import { WecomSuiteCallbackLog } from '../../entities/WecomSuiteCallbackLog';
+import { WecomNotificationTemplate } from '../../entities/WecomNotificationTemplate';
 import { getSuiteAccessToken, getPreAuthCode } from '../wecom/suite-callback';
 
 /** 确保suite表存在 */
@@ -3044,6 +3045,116 @@ router.get('/suite/callback-logs', async (req: Request, res: Response) => {
     });
   } catch (error: any) {
     log.error('[Admin Suite] Get callback logs error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// ==================== 通知模板管理 ====================
+
+/** 确保通知模板表存在 */
+const ensureNotificationTemplateTables = async () => {
+  try {
+    await AppDataSource.query('SELECT 1 FROM wecom_notification_templates LIMIT 1');
+  } catch {
+    try { await AppDataSource.synchronize(); } catch (e: any) { log.warn('[Admin Suite] notification template sync error:', e.message); }
+  }
+};
+
+// 获取通知模板列表
+router.get('/suite/notification-templates', async (_req: Request, res: Response) => {
+  try {
+    await ensureNotificationTemplateTables();
+    const repo = AppDataSource.getRepository(WecomNotificationTemplate);
+    const list = await repo.find({ order: { sortOrder: 'ASC', id: 'ASC' } });
+    res.json({ success: true, data: list });
+  } catch (error: any) {
+    log.error('[Admin Suite] Get notification templates error:', error.message);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// 新增通知模板
+router.post('/suite/notification-templates', async (req: Request, res: Response) => {
+  if (!checkPermission(req, res, 'wecom-management:suite:edit')) return;
+  try {
+    await ensureNotificationTemplateTables();
+    const { templateId, templateName, templateType, description, templateContent, isEnabled, sortOrder } = req.body;
+    if (!templateId || !templateName || !templateType) {
+      return res.status(400).json({ success: false, message: '模板ID、名称和类型为必填项' });
+    }
+    const repo = AppDataSource.getRepository(WecomNotificationTemplate);
+    const tpl = repo.create({
+      templateId, templateName, templateType,
+      description: description || '',
+      templateContent: templateContent ? JSON.stringify(templateContent) : null,
+      isEnabled: isEnabled !== false,
+      sortOrder: sortOrder || 0,
+    });
+    await repo.save(tpl);
+    log.info(`[Admin Suite] Notification template created: ${templateName} (${templateId})`);
+    res.json({ success: true, data: tpl, message: '模板添加成功' });
+  } catch (error: any) {
+    log.error('[Admin Suite] Create notification template error:', error.message);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// 更新通知模板
+router.put('/suite/notification-templates/:id', async (req: Request, res: Response) => {
+  if (!checkPermission(req, res, 'wecom-management:suite:edit')) return;
+  try {
+    const repo = AppDataSource.getRepository(WecomNotificationTemplate);
+    const tpl = await repo.findOne({ where: { id: Number(req.params.id) } });
+    if (!tpl) return res.status(404).json({ success: false, message: '模板不存在' });
+
+    const { templateId, templateName, templateType, description, templateContent, isEnabled, sortOrder } = req.body;
+    if (templateId !== undefined) tpl.templateId = templateId;
+    if (templateName !== undefined) tpl.templateName = templateName;
+    if (templateType !== undefined) tpl.templateType = templateType;
+    if (description !== undefined) tpl.description = description;
+    if (templateContent !== undefined) tpl.templateContent = typeof templateContent === 'string' ? templateContent : JSON.stringify(templateContent);
+    if (isEnabled !== undefined) tpl.isEnabled = isEnabled;
+    if (sortOrder !== undefined) tpl.sortOrder = sortOrder;
+
+    await repo.save(tpl);
+    log.info(`[Admin Suite] Notification template updated: ${tpl.templateName} (${tpl.templateId})`);
+    res.json({ success: true, data: tpl, message: '模板更新成功' });
+  } catch (error: any) {
+    log.error('[Admin Suite] Update notification template error:', error.message);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// 删除通知模板
+router.delete('/suite/notification-templates/:id', async (req: Request, res: Response) => {
+  if (!checkPermission(req, res, 'wecom-management:suite:edit')) return;
+  try {
+    const repo = AppDataSource.getRepository(WecomNotificationTemplate);
+    const tpl = await repo.findOne({ where: { id: Number(req.params.id) } });
+    if (!tpl) return res.status(404).json({ success: false, message: '模板不存在' });
+
+    await repo.remove(tpl);
+    log.info(`[Admin Suite] Notification template deleted: ${tpl.templateName}`);
+    res.json({ success: true, message: '模板删除成功' });
+  } catch (error: any) {
+    log.error('[Admin Suite] Delete notification template error:', error.message);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// 切换通知模板启用状态
+router.patch('/suite/notification-templates/:id/toggle', async (req: Request, res: Response) => {
+  if (!checkPermission(req, res, 'wecom-management:suite:edit')) return;
+  try {
+    const repo = AppDataSource.getRepository(WecomNotificationTemplate);
+    const tpl = await repo.findOne({ where: { id: Number(req.params.id) } });
+    if (!tpl) return res.status(404).json({ success: false, message: '模板不存在' });
+
+    tpl.isEnabled = !tpl.isEnabled;
+    await repo.save(tpl);
+    res.json({ success: true, data: tpl, message: tpl.isEnabled ? '已启用' : '已禁用' });
+  } catch (error: any) {
+    log.error('[Admin Suite] Toggle notification template error:', error.message);
     res.status(500).json({ success: false, message: error.message });
   }
 });

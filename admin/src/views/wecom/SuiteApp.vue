@@ -197,6 +197,52 @@
             />
           </div>
         </el-tab-pane>
+
+        <!-- Tab4: 通知模板 -->
+        <el-tab-pane label="通知模板" name="templates">
+          <el-alert type="info" :closable="false" style="margin-bottom: 16px">
+            <template #title><strong>💡 通知模板说明</strong></template>
+            <div style="font-size: 12px; line-height: 1.8; margin-top: 4px">
+              <p>在企微服务商后台申请的消息通知模板，审核通过后会获得模板ID。将模板ID配置到此处后，系统即可通过企微API向授权企业推送应用通知。</p>
+              <p>常见场景：新订单提醒、客户跟进提醒、付款到期提醒、审批通知等。</p>
+            </div>
+          </el-alert>
+
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px">
+            <el-tag effect="dark" type="primary">已配置: {{ templateList.length }}</el-tag>
+            <el-button v-permission="'wecom-management:suite:edit'" type="primary" @click="openTemplateDialog()">添加模板</el-button>
+          </div>
+
+          <el-table :data="templateList" v-loading="templateLoading" stripe size="small">
+            <el-table-column label="模板名称" min-width="150">
+              <template #default="{ row }">
+                <div style="font-weight: 600">{{ row.templateName }}</div>
+                <div style="font-size: 11px; color: #909399">{{ row.description || '-' }}</div>
+              </template>
+            </el-table-column>
+            <el-table-column label="模板ID" min-width="200">
+              <template #default="{ row }">
+                <code style="font-size: 11px; word-break: break-all">{{ row.templateId }}</code>
+              </template>
+            </el-table-column>
+            <el-table-column label="类型" width="100" align="center">
+              <template #default="{ row }">
+                <el-tag size="small" :type="templateTypeTagMap[row.templateType] || 'info'">{{ templateTypeLabels[row.templateType] || row.templateType }}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="状态" width="80" align="center">
+              <template #default="{ row }">
+                <el-switch v-model="row.isEnabled" size="small" @change="handleToggleTemplate(row)" />
+              </template>
+            </el-table-column>
+            <el-table-column label="操作" width="120" align="center">
+              <template #default="{ row }">
+                <el-button type="primary" link size="small" @click="openTemplateDialog(row)">编辑</el-button>
+                <el-button type="danger" link size="small" @click="handleDeleteTemplate(row)">删除</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+        </el-tab-pane>
       </el-tabs>
     </el-card>
 
@@ -277,6 +323,38 @@
         <el-button v-permission="'wecom-management:suite:edit'" type="primary" @click="handleBindTenant" :loading="binding">确认关联</el-button>
       </template>
     </el-dialog>
+    <!-- 通知模板编辑弹窗 -->
+    <el-dialog v-model="templateDialogVisible" :title="editingTemplate ? '编辑模板' : '添加模板'" width="520px" destroy-on-close>
+      <el-form :model="templateForm" label-width="100px">
+        <el-form-item label="模板名称" required>
+          <el-input v-model="templateForm.templateName" placeholder="如：新订单通知" />
+        </el-form-item>
+        <el-form-item label="模板ID" required>
+          <el-input v-model="templateForm.templateId" placeholder="企微服务商后台获取的模板ID" />
+        </el-form-item>
+        <el-form-item label="模板类型" required>
+          <el-select v-model="templateForm.templateType" style="width: 100%">
+            <el-option label="订单通知" value="order" />
+            <el-option label="客户提醒" value="customer" />
+            <el-option label="跟进提醒" value="follow_up" />
+            <el-option label="付款提醒" value="payment" />
+            <el-option label="审批通知" value="approval" />
+            <el-option label="系统通知" value="system" />
+            <el-option label="自定义" value="custom" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="用途描述">
+          <el-input v-model="templateForm.description" type="textarea" :rows="2" placeholder="模板的用途说明" />
+        </el-form-item>
+        <el-form-item label="排序">
+          <el-input-number v-model="templateForm.sortOrder" :min="0" :max="999" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="templateDialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="handleSaveTemplate" :loading="templateSaving">保存</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -285,7 +363,9 @@ import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   getSuiteConfig, saveSuiteConfig, testSuiteConnection, generateAuthLink,
-  getSuiteAuths, cancelSuiteAuth, bindSuiteAuthTenant, getSuiteCallbackLogs
+  getSuiteAuths, cancelSuiteAuth, bindSuiteAuthTenant, getSuiteCallbackLogs,
+  getNotificationTemplates, createNotificationTemplate, updateNotificationTemplate,
+  deleteNotificationTemplate, toggleNotificationTemplate
 } from '@/api/wecomManagement'
 
 const activeTab = ref('config')
@@ -475,10 +555,90 @@ const fetchCallbackLogs = async () => {
   callbackLogsLoading.value = false
 }
 
+// ==================== 通知模板 ====================
+
+const templateLoading = ref(false)
+const templateList = ref<any[]>([])
+const templateDialogVisible = ref(false)
+const editingTemplate = ref<any>(null)
+const templateSaving = ref(false)
+const templateForm = ref<any>({ templateId: '', templateName: '', templateType: 'order', description: '', sortOrder: 0 })
+
+const templateTypeLabels: Record<string, string> = {
+  order: '订单通知', customer: '客户提醒', follow_up: '跟进提醒',
+  payment: '付款提醒', approval: '审批通知', system: '系统通知', custom: '自定义'
+}
+const templateTypeTagMap: Record<string, string> = {
+  order: 'warning', customer: 'success', follow_up: 'primary',
+  payment: 'danger', approval: '', system: 'info', custom: ''
+}
+
+const fetchTemplates = async () => {
+  templateLoading.value = true
+  try {
+    const res: any = await getNotificationTemplates()
+    templateList.value = Array.isArray(res) ? res : (res?.data || [])
+  } catch { templateList.value = [] }
+  templateLoading.value = false
+}
+
+const openTemplateDialog = (row?: any) => {
+  if (row) {
+    editingTemplate.value = row
+    templateForm.value = {
+      templateId: row.templateId, templateName: row.templateName,
+      templateType: row.templateType, description: row.description || '',
+      sortOrder: row.sortOrder || 0
+    }
+  } else {
+    editingTemplate.value = null
+    templateForm.value = { templateId: '', templateName: '', templateType: 'order', description: '', sortOrder: 0 }
+  }
+  templateDialogVisible.value = true
+}
+
+const handleSaveTemplate = async () => {
+  if (!templateForm.value.templateId || !templateForm.value.templateName || !templateForm.value.templateType) {
+    ElMessage.warning('请填写模板ID、名称和类型')
+    return
+  }
+  templateSaving.value = true
+  try {
+    if (editingTemplate.value) {
+      await updateNotificationTemplate(editingTemplate.value.id, templateForm.value)
+    } else {
+      await createNotificationTemplate(templateForm.value)
+    }
+    ElMessage.success(editingTemplate.value ? '模板更新成功' : '模板添加成功')
+    templateDialogVisible.value = false
+    fetchTemplates()
+  } catch (e: any) { ElMessage.error(e?.message || '保存失败') }
+  templateSaving.value = false
+}
+
+const handleDeleteTemplate = async (row: any) => {
+  await ElMessageBox.confirm(`确定删除模板「${row.templateName}」？`, '删除确认', { type: 'warning' })
+  try {
+    await deleteNotificationTemplate(row.id)
+    ElMessage.success('模板已删除')
+    fetchTemplates()
+  } catch (e: any) { ElMessage.error(e?.message || '删除失败') }
+}
+
+const handleToggleTemplate = async (row: any) => {
+  try {
+    await toggleNotificationTemplate(row.id)
+  } catch (e: any) {
+    ElMessage.error(e?.message || '操作失败')
+    row.isEnabled = !row.isEnabled
+  }
+}
+
 onMounted(() => {
   fetchConfig()
   fetchAuths()
   fetchCallbackLogs()
+  fetchTemplates()
 })
 </script>
 
