@@ -66,6 +66,7 @@ import antiSpamRuleRouter from './antiSpamRule';
 // V5.0 H5独立应用路由
 import h5AuthRouter from './h5-auth';
 import h5AppRouter from './h5-app';
+import zoneRouter from './zone';
 
 const router = Router();
 
@@ -102,6 +103,8 @@ router.use('/', antiSpamRuleRouter);
 // V5.0 H5独立应用路由注册
 router.use('/h5', h5AuthRouter);
 router.use('/h5/app', h5AppRouter);
+// 数据与智能专区回调
+router.use('/zone', zoneRouter);
 
 export default router;
 
