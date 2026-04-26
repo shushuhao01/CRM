@@ -211,42 +211,71 @@
     </el-card>
 
     <!-- ========== 扫码授权引导弹窗 ========== -->
-    <el-dialog v-model="showAuthGuide" title="企业微信扫码授权" width="600px" :close-on-click-modal="false">
+    <el-dialog v-model="showAuthGuide" title="企业微信第三方应用授权" width="640px" :close-on-click-modal="false">
       <div class="auth-guide-content">
         <el-steps :active="authStep" align-center finish-status="success" style="margin-bottom: 24px;">
-          <el-step title="生成授权链接" />
-          <el-step title="扫码确认" />
+          <el-step title="打开授权页面" />
+          <el-step title="扫码授权" />
           <el-step title="授权完成" />
         </el-steps>
 
-        <!-- Step 0: 生成二维码 -->
+        <!-- Step 0: 生成并打开授权链接 -->
         <div v-if="authStep === 0" class="auth-step-content">
-          <div class="qr-section">
-            <div class="qr-placeholder" v-loading="loadingQr">
-              <img v-if="authQrUrl" :src="authQrUrl" alt="授权二维码" class="qr-image" />
-              <div v-else class="qr-empty">
-                <el-icon :size="48" color="#dcdfe6"><Picture /></el-icon>
-                <p>点击下方按钮生成授权二维码</p>
+          <div class="auth-action-section">
+            <!-- 未生成链接时 -->
+            <div v-if="!authLinkUrl" class="auth-action-box">
+              <el-icon :size="48" color="#409EFF"><Connection /></el-icon>
+              <p style="color: #606266; margin: 12px 0 4px;">点击下方按钮，生成企微第三方应用授权链接</p>
+              <el-button type="primary" size="large" @click="generateAuthQr" :loading="loadingQr" style="margin-top: 12px;">
+                生成授权链接
+              </el-button>
+            </div>
+            <!-- 已生成链接时 -->
+            <div v-else class="auth-action-box">
+              <el-icon :size="48" color="#67C23A"><CircleCheckFilled /></el-icon>
+              <p style="color: #303133; font-weight: 600; margin: 12px 0 4px; font-size: 16px;">授权链接已生成</p>
+              <p style="color: #909399; margin: 0 0 16px; font-size: 13px;">点击下方按钮跳转到企微官方授权页面，然后用手机企微APP扫码完成授权</p>
+              <el-button type="success" size="large" @click="openAuthLink" style="padding: 12px 32px; font-size: 15px;">
+                <el-icon style="margin-right: 6px"><Link /></el-icon>打开企微授权页面
+              </el-button>
+              <div style="display: flex; gap: 8px; margin-top: 12px;">
+                <el-button plain size="small" @click="copyAuthLink">
+                  <el-icon style="margin-right: 4px"><CopyDocument /></el-icon>复制链接
+                </el-button>
+                <el-button plain size="small" @click="generateAuthQr" :loading="loadingQr">重新生成</el-button>
+              </div>
+              <div style="margin-top: 16px;">
+                <el-button type="primary" @click="authStep = 1">我已完成授权，下一步</el-button>
               </div>
             </div>
-            <el-button v-if="!authQrUrl" type="success" size="large" @click="generateAuthQr" :loading="loadingQr">
-              生成授权二维码
-            </el-button>
-            <div v-else style="display: flex; gap: 8px; justify-content: center">
-              <el-button type="primary" @click="authStep = 1">已扫码，下一步</el-button>
-              <el-button plain @click="generateAuthQr" :loading="loadingQr">刷新二维码</el-button>
-            </div>
           </div>
+
           <div class="auth-tips">
-            <h4>📋 操作步骤</h4>
-            <ol>
-              <li>点击按钮生成企业微信第三方应用授权二维码</li>
-              <li>使用<strong>企业微信管理员</strong>手机APP扫描二维码</li>
-              <li>在手机端选择授权范围（部门/人员），点击「同意授权」</li>
-              <li>授权完成后点击「已扫码，下一步」确认</li>
+            <h4>📋 详细操作步骤</h4>
+            <ol class="auth-steps-list">
+              <li>
+                <strong>生成授权链接</strong>
+                <span>点击上方「生成授权链接」按钮</span>
+              </li>
+              <li>
+                <strong>打开企微授权页面</strong>
+                <span>点击「打开企微授权页面」，系统会在<em>新标签页</em>中打开企业微信官方的应用安装页面</span>
+              </li>
+              <li>
+                <strong>手机扫码确认</strong>
+                <span>在打开的页面上会显示一个二维码，使用<strong>企业微信管理员</strong>手机APP扫描该二维码</span>
+              </li>
+              <li>
+                <strong>选择授权范围</strong>
+                <span>在手机端选择需要授权的部门或人员范围，然后点击「同意授权」</span>
+              </li>
+              <li>
+                <strong>回到本页确认</strong>
+                <span>授权完成后，回到本页点击「我已完成授权，下一步」</span>
+              </li>
             </ol>
             <el-alert type="warning" :closable="false" show-icon style="margin-top: 12px;">
-              <template #title>仅企业微信<strong>超级管理员</strong>或<strong>应用管理员</strong>可完成授权</template>
+              <template #title>仅企业微信<strong>超级管理员</strong>或<strong>应用管理员</strong>可完成授权操作</template>
             </el-alert>
           </div>
         </div>
@@ -263,19 +292,22 @@
                 <div class="scope-item">⚡ 会话存档 — 需额外开通(可选增值服务)</div>
                 <div class="scope-item">💰 对外收款 — 需在后台单独授权(可选)</div>
               </div>
-              <div style="display: flex; gap: 10px">
+              <div style="display: flex; gap: 10px; margin-top: 8px;">
                 <el-button @click="authStep = 0">返回上一步</el-button>
                 <el-button type="primary" size="large" :loading="checkingAuth" @click="checkAuthResult">
                   确认已完成授权
                 </el-button>
               </div>
+              <p style="color: #909399; font-size: 12px; margin-top: 12px;">
+                如尚未完成授权，请点击「返回上一步」重新打开授权页面
+              </p>
             </template>
           </el-result>
         </div>
 
         <!-- Step 2: 授权完成 -->
         <div v-if="authStep === 2" class="auth-step-content">
-          <el-result icon="success" title="🎉 授权成功！" sub-title="企业微信已成功接入系统">
+          <el-result icon="success" title="授权成功！" sub-title="企业微信已成功接入系统">
             <template #extra>
               <div v-if="authResult" class="auth-result-info">
                 <el-descriptions :column="1" border size="small">
@@ -398,7 +430,7 @@
 defineOptions({ name: 'WecomConfig' })
 import { ref, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Connection, Picture, Edit, Delete, Grid, List } from '@element-plus/icons-vue'
+import { Plus, Connection, CircleCheckFilled, Edit, Delete, Grid, List, CopyDocument, Link } from '@element-plus/icons-vue'
 import { getWecomConfigs, createWecomConfig, updateWecomConfig, deleteWecomConfig, testWecomConnection } from '@/api/wecom'
 import WecomHeader from './components/WecomHeader.vue'
 import ConfigSecretManager from './components/ConfigSecretManager.vue'
@@ -407,7 +439,6 @@ import ConfigFeatureAuth from './components/ConfigFeatureAuth.vue'
 import ConfigApiDiagnostic from './components/ConfigApiDiagnostic.vue'
 import PackagePurchaseTab from './components/PackagePurchaseTab.vue'
 import { formatDateTime } from '@/utils/date'
-import { generateQRCodeDataUrl } from '@/utils/qrcode'
 
 const loading = ref(false)
 const submitting = ref(false)
@@ -434,7 +465,7 @@ const quotaPercent = computed(() => Math.round((currentQuota.value.used / curren
 const showAuthGuide = ref(false)
 const authStep = ref(0)
 const loadingQr = ref(false)
-const authQrUrl = ref('')
+const authLinkUrl = ref('')
 const checkingAuth = ref(false)
 const authResult = ref<any>(null)
 
@@ -539,20 +570,33 @@ const generateAuthQr = async () => {
     })
     const json = await res.json()
     if (json.data?.authUrl) {
-      authQrUrl.value = await generateQRCodeDataUrl(json.data.authUrl, 240)
+      authLinkUrl.value = json.data.authUrl
     } else if (json.data?.suiteId && json.data?.preAuthCode) {
       const redirectUri = `${window.location.origin}/api/v1/wecom/callback/auth-callback`
-      const installUrl = `https://open.work.weixin.qq.com/3rdapp/install?suite_id=${json.data.suiteId}&pre_auth_code=${json.data.preAuthCode}&redirect_uri=${encodeURIComponent(redirectUri)}&state=crm_auth`
-      authQrUrl.value = await generateQRCodeDataUrl(installUrl, 240)
+      authLinkUrl.value = `https://open.work.weixin.qq.com/3rdapp/install?suite_id=${json.data.suiteId}&pre_auth_code=${json.data.preAuthCode}&redirect_uri=${encodeURIComponent(redirectUri)}&state=crm_auth`
     } else {
-      // 后台未配置服务商应用信息，不生成虚拟二维码
-      authQrUrl.value = ''
+      authLinkUrl.value = ''
       ElMessage.warning('后台未配置服务商应用信息(SuiteID/SuiteSecret)，请联系管理员在管理后台 → 企微设置中完成服务商应用配置后再进行扫码授权')
     }
   } catch (e) {
     console.error('[WecomConfig] Generate QR error:', e)
     ElMessage.error('生成授权二维码失败，请检查后端服务是否正常')
   } finally { loadingQr.value = false }
+}
+
+const copyAuthLink = async () => {
+  if (!authLinkUrl.value) return
+  try {
+    await navigator.clipboard.writeText(authLinkUrl.value)
+    ElMessage.success('授权链接已复制，请在 PC 浏览器中打开')
+  } catch {
+    ElMessage.error('复制失败，请手动复制')
+  }
+}
+
+const openAuthLink = () => {
+  if (!authLinkUrl.value) return
+  window.open(authLinkUrl.value, '_blank')
 }
 
 const checkAuthResult = async () => {
@@ -574,7 +618,7 @@ const checkAuthResult = async () => {
 }
 
 const finishAuth = () => {
-  showAuthGuide.value = false; authStep.value = 0; authQrUrl.value = ''; authResult.value = null
+  showAuthGuide.value = false; authStep.value = 0; authLinkUrl.value = ''; authResult.value = null
   fetchList()
 }
 
@@ -613,18 +657,22 @@ onMounted(() => { fetchList(); checkSelfBuildPermission() })
 /* 扫码授权弹窗 */
 .auth-guide-content { padding: 0 8px; }
 .auth-step-content { min-height: 280px; }
-.qr-section { text-align: center; margin-bottom: 20px; }
-.qr-placeholder {
-  width: 260px; height: 260px; margin: 0 auto 16px;
-  border: 2px dashed #E5E7EB; border-radius: 12px;
-  display: flex; align-items: center; justify-content: center; flex-direction: column; background: #FAFBFC;
+.auth-action-section { margin-bottom: 20px; }
+.auth-action-box {
+  text-align: center; padding: 32px 24px;
+  border: 2px dashed #E5E7EB; border-radius: 16px; background: #FAFBFC;
+  transition: all 0.3s;
+  &:hover { border-color: #C7D2FE; background: #F5F7FF; }
 }
-.qr-image { width: 240px; height: 240px; border-radius: 8px; }
-.qr-empty { text-align: center; color: #D1D5DB; }
-.qr-empty p { font-size: 13px; margin-top: 8px; }
-.auth-tips { background: #F9FAFB; border-radius: 12px; padding: 16px; }
-.auth-tips h4 { margin: 0 0 8px; font-size: 14px; color: #1F2937; }
-.auth-tips ol { margin: 0; padding-left: 20px; color: #4B5563; font-size: 13px; line-height: 2; }
+.auth-tips { background: #F9FAFB; border-radius: 12px; padding: 16px 20px; }
+.auth-tips h4 { margin: 0 0 12px; font-size: 14px; color: #1F2937; }
+.auth-steps-list {
+  margin: 0; padding-left: 20px; color: #4B5563; font-size: 13px;
+  li { margin-bottom: 10px; line-height: 1.6; }
+  li strong { display: block; font-size: 14px; color: #1F2937; margin-bottom: 2px; }
+  li span { color: #6B7280; }
+  li em { font-style: normal; color: #409EFF; font-weight: 500; }
+}
 .auth-scope-list { text-align: left; margin-bottom: 20px; }
 .scope-item { padding: 6px 0; font-size: 14px; color: #4B5563; }
 .auth-result-info { margin-bottom: 16px; }
