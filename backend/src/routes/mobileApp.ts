@@ -1,6 +1,6 @@
 /**
  * Mobile App Routes - CRM端移动应用下载接口
- * 提供移动应用下载列表和下载计数（需登录）
+ * 提供移动应用下载列表（需登录）和下载文件（公开访问）
  */
 import { Router, Request, Response } from 'express';
 import path from 'path';
@@ -65,9 +65,9 @@ router.get('/list', authenticateToken, async (_req: Request, res: Response) => {
 
 /**
  * GET /mobile-app/download/:id - 下载安装包（增加下载计数）
- * 需要登录
+ * 公开访问，无需登录（浏览器直接下载时不带token）
  */
-router.get('/download/:id', authenticateToken, async (req: Request, res: Response) => {
+router.get('/download/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
 
