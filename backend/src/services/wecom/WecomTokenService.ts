@@ -83,7 +83,7 @@ export class WecomTokenService {
       params: { corpid: config.corpId, corpsecret: secret }
     });
 
-    if (response.data.errcode !== 0) {
+    if (response.data.errcode && response.data.errcode !== 0) {
       const hint = this.getErrorHint(response.data.errcode);
       throw new Error(`获取Token失败: ${response.data.errmsg} (${response.data.errcode})${hint}`);
     }
@@ -123,7 +123,7 @@ export class WecomTokenService {
       }
     );
 
-    if (response.data.errcode !== 0) {
+    if (response.data.errcode && response.data.errcode !== 0) {
       throw new Error(`获取企业Token失败: ${response.data.errmsg} (${response.data.errcode})`);
     }
 
@@ -175,7 +175,7 @@ export class WecomTokenService {
       suite_ticket: suiteTicket
     });
 
-    if (response.data.errcode !== 0) {
+    if (response.data.errcode && response.data.errcode !== 0) {
       throw new Error(`获取SuiteToken失败: ${response.data.errmsg} (${response.data.errcode})`);
     }
 
@@ -201,7 +201,7 @@ export class WecomTokenService {
       { auth_code: authCode }
     );
 
-    if (response.data.errcode !== 0) {
+    if (response.data.errcode && response.data.errcode !== 0) {
       throw new Error(`获取永久授权码失败: ${response.data.errmsg}`);
     }
 

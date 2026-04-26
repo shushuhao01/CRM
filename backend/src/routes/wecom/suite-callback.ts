@@ -85,7 +85,7 @@ export async function getSuiteAccessToken(suiteConfig: WecomSuiteConfig): Promis
     suite_secret: suiteConfig.suiteSecret,
     suite_ticket: suiteConfig.suiteTicket
   });
-  if (res.data.errcode !== 0) {
+  if (res.data.errcode && res.data.errcode !== 0) {
     throw new Error(`获取suite_access_token失败: ${res.data.errmsg} (${res.data.errcode})`);
   }
   suiteTokenCache = {
@@ -101,7 +101,7 @@ export async function getPreAuthCode(suiteConfig: WecomSuiteConfig): Promise<str
   const res = await axios.get(`${WECOM_API_BASE}/service/get_pre_auth_code`, {
     params: { suite_access_token: token }
   });
-  if (res.data.errcode !== 0) {
+  if (res.data.errcode && res.data.errcode !== 0) {
     throw new Error(`获取预授权码失败: ${res.data.errmsg} (${res.data.errcode})`);
   }
   return res.data.pre_auth_code;
@@ -113,7 +113,7 @@ async function getPermanentCode(suiteConfig: WecomSuiteConfig, authCode: string)
   const res = await axios.post(`${WECOM_API_BASE}/service/get_permanent_code?suite_access_token=${token}`, {
     auth_code: authCode
   });
-  if (res.data.errcode !== 0) {
+  if (res.data.errcode && res.data.errcode !== 0) {
     throw new Error(`获取永久授权码失败: ${res.data.errmsg} (${res.data.errcode})`);
   }
   return res.data;
