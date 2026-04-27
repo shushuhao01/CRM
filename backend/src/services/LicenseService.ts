@@ -13,6 +13,7 @@ import { v4 as uuidv4 } from 'uuid';
 import crypto from 'crypto';
 import { formatDateTime } from '../utils/dateFormat';
 import { getCurrentTenantIdSafe } from '../utils/tenantHelpers';
+import { getCentralAdminApiUrl } from '../config/centralServer';
 
 import { log } from '../config/logger';
 export interface LicenseInfo {
@@ -96,7 +97,7 @@ class LicenseService {
       }
 
       const { license_key, machine_id } = localLicense[0];
-      const adminApiUrl = process.env.ADMIN_API_URL || 'http://localhost:3000/api/v1/admin';
+      const adminApiUrl = getCentralAdminApiUrl();
 
       // 请求管理后台验证
       const response = await fetch(`${adminApiUrl}/verify/license`, {

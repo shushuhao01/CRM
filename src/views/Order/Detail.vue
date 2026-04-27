@@ -319,6 +319,8 @@ const orderDetail = reactive({
   auditTransferTime: '', // 流转审核时间
   isAuditTransferred: false, // 是否已流转到审核
   // 🔥 操作人信息
+  operator: '',
+  operatorName: '',
   createdBy: '',
   createdByName: '',
   auditBy: '',
@@ -1724,6 +1726,8 @@ const loadOrderDetail = async () => {
       updateTime: order.updateTime || order.createTime,
       auditTransferTime: order.auditTransferTime || '',
       isAuditTransferred: order.isAuditTransferred || false,
+      operator: order.operator || order.operatorName || '',
+      operatorName: order.operatorName || '',
       createdBy: order.createdBy || '',
       createdByName: order.createdByName || '系统',
       auditBy: order.auditBy || '',

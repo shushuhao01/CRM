@@ -9,6 +9,7 @@ import bcrypt from 'bcryptjs'
 import { clearLicenseWriteCache } from '../middleware/checkLicenseWrite'
 import { formatDateTime } from '../utils/dateFormat'
 import { optionalAuth } from '../middleware/auth'
+import { getCentralAdminApiUrl } from '../config/centralServer'
 
 import { log } from '../config/logger';
 const router = Router()
@@ -158,7 +159,7 @@ router.post('/activate', async (req: Request, res: Response) => {
     const machineId = `${os.hostname()}-${os.platform()}-${os.arch()}`
 
     // 调用平台管理后台验证授权码
-    const adminApiUrl = process.env.ADMIN_API_URL || 'http://localhost:3000/api/v1/admin'
+    const adminApiUrl = getCentralAdminApiUrl()
 
     let verifyResult
     try {
@@ -478,7 +479,7 @@ router.post('/sync', optionalAuth, async (req: Request, res: Response) => {
       // 尝试远程同步（从管理后台获取最新租户信息）
       let remoteSynced = false
       try {
-        const adminApiUrl = process.env.ADMIN_API_URL || 'http://localhost:3000/api/v1/admin'
+        const adminApiUrl = getCentralAdminApiUrl()
         const response = await fetch(`${adminApiUrl}/verify/tenant-license`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },

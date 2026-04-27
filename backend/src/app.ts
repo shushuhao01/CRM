@@ -350,6 +350,10 @@ const startServer = async () => {
     printDeployConfig();
     logger.info(`✅ 部署模式确认: ${deployConfig.effectiveMode}`);
 
+    // 🌐 打印中央服务器配置（私有部署时显示回调地址信息）
+    const { printCentralServerConfig } = await import('./config/centralServer');
+    printCentralServerConfig();
+
     // 初始化录音存储服务
     const { recordingStorageService } = await import('./services/RecordingStorageService');
     await recordingStorageService.initialize();

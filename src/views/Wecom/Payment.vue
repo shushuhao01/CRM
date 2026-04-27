@@ -141,13 +141,13 @@
           <PaymentStats :config-id="query.configId" />
         </el-tab-pane>
 
-        <!-- Tab 3: 退款统计 -->
-        <el-tab-pane label="退款统计" name="refund" lazy>
+        <!-- Tab 3: 退款统计（仅管理员可见） -->
+        <el-tab-pane v-if="isAdminRole" label="退款统计" name="refund" lazy>
           <PaymentRefundManager />
         </el-tab-pane>
 
-        <!-- Tab 4: 收款设置 -->
-        <el-tab-pane label="收款设置" name="settings" lazy>
+        <!-- Tab 4: 收款设置（仅管理员可见） -->
+        <el-tab-pane v-if="isAdminRole" label="收款设置" name="settings" lazy>
           <PaymentSettings :config-id="query.configId" />
         </el-tab-pane>
       </el-tabs>
@@ -220,8 +220,13 @@ import PaymentStats from './components/PaymentStats.vue'
 import PaymentRefundManager from './components/PaymentRefundManager.vue'
 import PaymentSettings from './components/PaymentSettings.vue'
 import { useWecomDemo, DEMO_PAYMENTS, DEMO_CONFIGS } from './composables/useWecomDemo'
+import { useUserStore } from '@/stores/user'
 
 const { isDemoMode } = useWecomDemo()
+
+// 当前用户角色判断
+const userStore = useUserStore()
+const isAdminRole = computed(() => ['super_admin', 'admin'].includes(userStore.currentUser?.role || ''))
 
 const loading = ref(false)
 const syncing = ref(false)

@@ -238,7 +238,7 @@ router.get('/audit-statistics', authenticateToken, async (_req: Request, res: Re
  * @desc 提交取消订单申请
  * @access Private
  */
-router.post('/cancel-request', async (req: Request, res: Response) => {
+router.post('/cancel-request', authenticateToken, async (req: Request, res: Response) => {
   try {
     const orderRepository = getTenantRepo(Order);
     const { orderId, reason, description } = req.body;

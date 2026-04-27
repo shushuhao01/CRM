@@ -417,7 +417,7 @@ export const menuConfig: MenuItem[] = [
         id: 'wecom-customer-group',
         title: '客户群',
         path: '/wecom/customer-group',
-        roles: ['super_admin', 'admin', 'department_manager', 'sales_staff'],
+        roles: ['super_admin', 'admin', 'department_manager'],
         permissions: ['wecom:group']
       },
       {
@@ -682,8 +682,8 @@ export const rolePermissions: Record<string, string[]> = {
     // 财务管理（只看个人绩效数据）
     'finance', 'finance:data',
 
-    // 企微管理（企微客户、客户群、会话存档、对外收款，仅限个人绑定的企微账号数据）
-    'wecom', 'wecom:customer', 'wecom:group', 'wecom:chat', 'wecom:payment'
+    // 企微管理权限（企微客户、会话存档、对外收款，仅限个人绑定的企微账号数据）
+    'wecom', 'wecom:customer', 'wecom:chat', 'wecom:payment'
   ],
 
   // 客服默认权限：根据客服类型动态配置

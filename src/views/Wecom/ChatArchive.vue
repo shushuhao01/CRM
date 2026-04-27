@@ -92,8 +92,8 @@
           />
         </el-tab-pane>
 
-        <!-- Tab 2: 消息记录 (原Tab1，现放第二位) -->
-        <el-tab-pane label="消息记录" name="records">
+        <!-- Tab 2: 消息记录 (仅管理员可见) -->
+        <el-tab-pane v-if="isAdminRole" label="消息记录" name="records">
           <div class="tab-toolbar">
             <el-input v-model="query.keyword" placeholder="搜索内容" clearable style="width: 180px" @keyup.enter="handleSearch" prefix-icon="Search" />
             <el-select v-model="query.msgType" placeholder="消息类型" clearable style="width: 120px" @change="handleSearch">
@@ -193,13 +193,13 @@
           <ArchiveStats :config-id="selectedConfigId" :is-demo-mode="isDemoMode" />
         </el-tab-pane>
 
-        <!-- Tab 5: AI质检 -->
-        <el-tab-pane label="AI质检" name="ai-inspect">
+        <!-- Tab 5: AI质检（仅管理员可见） -->
+        <el-tab-pane v-if="isAdminRole" label="AI质检" name="ai-inspect">
           <AiInspect :config-id="selectedConfigId" :is-demo-mode="isDemoMode" />
         </el-tab-pane>
 
-        <!-- Tab 6: 敏感词管理 -->
-        <el-tab-pane label="敏感词管理" name="sensitive">
+        <!-- Tab 6: 敏感词管理（仅管理员可见） -->
+        <el-tab-pane v-if="isAdminRole" label="敏感词管理" name="sensitive">
           <SensitiveWordManager
             ref="sensitiveWordManagerRef"
             :config-id="selectedConfigId"
@@ -207,13 +207,13 @@
           />
         </el-tab-pane>
 
-        <!-- Tab 7: 存档设置 -->
-        <el-tab-pane label="存档设置" name="settings">
+        <!-- Tab 7: 存档设置（仅管理员可见） -->
+        <el-tab-pane v-if="isAdminRole" label="存档设置" name="settings">
           <ArchiveSettings :config-id="selectedConfigId" :is-demo-mode="isDemoMode" />
         </el-tab-pane>
 
-        <!-- Tab 8: 套餐与配额 -->
-        <el-tab-pane label="套餐与配额" name="purchase">
+        <!-- Tab 8: 套餐与配额（仅管理员可见） -->
+        <el-tab-pane v-if="isAdminRole" label="套餐与配额" name="purchase">
           <PackagePurchaseTab type="archive" />
         </el-tab-pane>
       </el-tabs>

@@ -39,6 +39,7 @@ import smsQuotaRouter from './sms-quota';
 import wecomManagementRouter from './wecom-management';
 import mobileAppConfigRouter from './mobile-app-config';
 import { log } from '../../config/logger';
+import { getCentralAdminApiUrl } from '../../config/centralServer';
 // import schedulerRouter from './scheduler'; // 暂时禁用
 
 const router = Router();
@@ -48,9 +49,28 @@ router.use('/verify', verifyRouter);
 
 // 公开的系统配置接口（供CRM前端调用）
 // 路径: GET /api/v1/admin/public/system-config
-// 注意：不能用 router.use('/public', systemConfigRouter)，因为同一个Router实例有同路径GET会冲突
+// 私有部署模式下：优先从中央服务器获取配置，本地作为降级
+// SaaS模式下：直接从本地数据库读取
 router.get('/public/system-config', async (_req: Request, res: Response) => {
   try {
+    // 私有部署模式：尝试从中央服务器获取管理后台配置
+    const deployMode = process.env.DEPLOY_MODE || 'private';
+    if (deployMode === 'private') {
+      try {
+        const centralApiUrl = getCentralAdminApiUrl();
+        const centralRes = await fetch(`${centralApiUrl}/public/system-config`, {
+          signal: AbortSignal.timeout(5000)
+        });
+        const centralData = await centralRes.json() as any;
+        if (centralData && centralData.success) {
+          return res.json(centralData);
+        }
+      } catch (proxyErr: any) {
+        log.debug('[Admin/public] 中央服务器配置获取失败（降级到本地）:', proxyErr.message);
+      }
+    }
+
+    // SaaS模式或中央服务器不可用时：从本地数据库读取
     const result = await AppDataSource.query(
       `SELECT config_value FROM system_config WHERE config_key = 'admin_system_config' LIMIT 1`
     ).catch(() => [])

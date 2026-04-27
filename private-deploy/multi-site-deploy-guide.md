@@ -1,6 +1,6 @@
 # CRM 多站点部署指南（宝塔面板）
 
-> 版本: v1.1 | 更新日期: 2026-04-26
+> 版本: v1.2 | 更新日期: 2026-04-27
 > 适用: 宝塔面板 + Nginx + Node.js + PM2
 
 ---
@@ -23,6 +23,23 @@
 > **H5应用说明**: H5移动端应用部署在 CRM 主站的 `/h5/` 路径下，不需要单独域名。
 > 在企微服务商后台配置「应用主页」和「桌面端独立主页」时，地址填写 `https://crm.yunkes.com/h5/`。
 > H5使用 Hash 路由模式，实际首页为 `https://crm.yunkes.com/h5/#/app/home`。
+
+### 1.1 中央服务器回调架构
+
+**私有部署客户的 CRM 后端** 会主动向我们的中央服务器发起 **出站HTTP请求**，共12类：
+
+| 分类 | 回调项 | 目标地址 |
+|------|--------|----------|
+| 授权 | 授权码激活、心跳(30分钟)、手动同步 | `api.yunkes.com/api/v1/admin/verify/license` |
+| 配置 | 系统配置/功能开关/公告/版本更新 | `api.yunkes.com/api/v1/admin/public/system-config` |
+| 企微 | 套餐定价、会话存档代购、AI额度 | `api.yunkes.com/api/v1/admin/wecom-management/*` |
+| 短信 | 短信额度/模板 | `api.yunkes.com/api/v1/admin/sms-quota` |
+| 获客 | 获客助手用量 | `api.yunkes.com/api/v1/admin/wecom-management/acquisition-usage` |
+| 企微回调 | Suite回调(企微推送) | `api.yunkes.com/api/v1/wecom/suite/callback` |
+
+> 这些都是**后端进程直接发出的出站请求**，不经过Nginx，因此Nginx不需要专门配置。
+> 但私有部署服务器的防火墙出站规则必须放行 `api.yunkes.com:443`。
+> 详见: `private-deploy/central-server-callback-guide.md`
 
 ---
 

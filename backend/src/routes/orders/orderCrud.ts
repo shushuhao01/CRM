@@ -653,7 +653,7 @@ router.get('/:id', async (req: Request, res: Response) => {
  * @desc 创建订单
  * @access Private
  */
-router.post('/', async (req: Request, res: Response) => {
+router.post('/', authenticateToken, async (req: Request, res: Response) => {
   try {
     log.info('📝 [订单创建] 收到请求数据:', JSON.stringify(req.body, null, 2));
 
@@ -1400,7 +1400,7 @@ router.delete('/:id', async (req: Request, res: Response) => {
  * @desc 提交订单审核
  * @access Private
  */
-router.post('/:id/submit-audit', async (req: Request, res: Response) => {
+router.post('/:id/submit-audit', authenticateToken, async (req: Request, res: Response) => {
   try {
     const orderRepository = getTenantRepo(Order);
     const { remark } = req.body;
@@ -1490,9 +1490,9 @@ router.post('/:id/audit', authenticateToken, async (req: Request, res: Response)
     const { action, auditStatus, remark, auditRemark } = req.body;
     const idParam = req.params.id;
 
-    // 获取当前审核员信息
-    const currentUser = (req as any).currentUser || (req as any).user;
-    const auditorName = currentUser?.realName || currentUser?.name || currentUser?.username || '审核员';
+    // 🔥 统一使用 getOperatorInfo 获取当前操作人完整信息（姓名+部门）
+    const auditOpInfo = getOperatorInfo(req);
+    const auditorName = auditOpInfo.operatorName;
 
     // 兼容两种参数格式：action='approve'/'reject' 或 auditStatus='approved'/'rejected'
     const isApproved = action === 'approve' || auditStatus === 'approved';
@@ -1591,7 +1591,6 @@ router.post('/:id/audit', authenticateToken, async (req: Request, res: Response)
     }
 
     // 🔥 审核时同步更新订单表的操作人字段（记录实际审核人）
-    const auditOpInfo = getOperatorInfo(req);
     order.operatorId = auditOpInfo.operatorId ? String(auditOpInfo.operatorId) : order.operatorId;
     order.operatorName = auditOpInfo.operatorName || order.operatorName;
 
@@ -1641,9 +1640,9 @@ router.post('/:id/cancel-audit', authenticateToken, async (req: Request, res: Re
     const orderRepository = getTenantRepo(Order);
     const { action, remark } = req.body;
 
-    // 获取当前审核员信息
-    const currentUser = (req as any).currentUser || (req as any).user;
-    const auditorName = currentUser?.realName || currentUser?.name || currentUser?.username || '审核员';
+    // 🔥 统一使用 getOperatorInfo 获取当前操作人完整信息（姓名+部门）
+    const cancelOpInfo = getOperatorInfo(req);
+    const auditorName = cancelOpInfo.operatorName;
 
     const order = await orderRepository.findOne({ where: { id: req.params.id } });
 
@@ -1686,7 +1685,6 @@ router.post('/:id/cancel-audit', authenticateToken, async (req: Request, res: Re
     }
 
     // 🔥 取消审核时同步更新订单表的操作人字段
-    const cancelOpInfo = getOperatorInfo(req);
     order.operatorId = cancelOpInfo.operatorId ? String(cancelOpInfo.operatorId) : order.operatorId;
     order.operatorName = cancelOpInfo.operatorName || order.operatorName;
 

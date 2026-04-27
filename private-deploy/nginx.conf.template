@@ -1,27 +1,42 @@
 # ==========================================
-# CRM 系统 Nginx 配置模板
+# CRM 系统 Nginx 配置模板（私有部署专用）
 # 适用于: 宝塔面板 / 独立Nginx部署
 # ==========================================
 #
 # 使用方式:
 #   1. 将此文件复制到 Nginx 配置目录
-#   2. 修改 server_name 为您的域名或IP
-#   3. 修改 root 路径为实际前端构建目录
-#   4. 重载 Nginx: nginx -s reload
+#   2. 全局替换以下占位符:
+#      - YOUR_DOMAIN     → 你的域名或IP（如 crm.example.com）
+#      - YOUR_CRM_PATH   → CRM项目根路径（如 /www/wwwroot/CRM）
+#      - YOUR_BACKEND_PORT → 后端端口（默认 3000）
+#   3. 重载 Nginx: nginx -t && nginx -s reload
 #
 # 宝塔面板使用方式:
 #   1. 创建网站 → 设置 → 配置文件
 #   2. 将此文件内容粘贴到配置中
-#   3. 修改域名和路径
-#   4. 保存并重载
+#   3. 按上述说明替换占位符
+#   4. 删除宝塔自动生成的PHP配置和静态资源缓存规则
+#   5. 保存并重载
+#
+# ==========================================
+# 中央服务器回调说明（重要）
+# ==========================================
+# 私有部署的后端进程会向云客中央服务器发起出站HTTP请求（不经过Nginx），
+# 用于授权验证、心跳同步、配置获取等（共12类回调），
+# 因此服务器必须能访问: api.yunkes.com:443 (HTTPS出站)
+#
+# 回调不需要修改Nginx配置，但服务器防火墙/安全组的出站规则
+# 必须放行 api.yunkes.com:443，否则授权激活和心跳同步将失败。
+#
+# 详见: private-deploy/central-server-callback-guide.md
 
 server {
     listen 80;
-    # 如果有域名，替换为你的域名；没有域名用 _ 或 IP
-    server_name your-domain.com;
+    # ⬇️ 替换为你的域名；没有域名用 _ 或 IP
+    server_name YOUR_DOMAIN;
 
-    # 前端文件根目录（CRM前端构建产物）
-    root /www/wwwroot/CRM/dist;
+    # ⬇️ 替换为实际CRM前端构建目录
+    root YOUR_CRM_PATH/dist;
     index index.html;
 
     # 文件上传大小限制
@@ -33,10 +48,28 @@ server {
     gzip_min_length 1000;
     gzip_comp_level 6;
 
-    # ==================== 前端路由 ====================
-    # Vue Router history 模式支持
-    location / {
-        try_files $uri $uri/ /index.html;
+    # ==================== 企微验证文件 ====================
+    # 必须在 try_files 之前，否则会被回退到 index.html 导致 404
+    location ~* ^/(WW_verify_|MP_verify_).*\.txt$ {
+        default_type text/plain;
+    }
+
+    # ==================== 文件上传访问 ====================
+    # ^~ 确保优先于正则匹配，防止图片请求被宝塔静态资源缓存规则截获
+    location ^~ /uploads/ {
+        # ⬇️ 替换为实际路径
+        alias YOUR_CRM_PATH/backend/uploads/;
+        expires 7d;
+        add_header Cache-Control "public";
+        add_header Access-Control-Allow-Origin *;
+    }
+
+    # 录音文件
+    location ^~ /recordings/ {
+        # ⬇️ 替换为实际路径
+        alias YOUR_CRM_PATH/backend/recordings/;
+        expires 7d;
+        add_header Cache-Control "public";
     }
 
     # 前端构建产物缓存（带 hash 的 assets 文件）
@@ -46,9 +79,10 @@ server {
     }
 
     # ==================== API 反向代理 ====================
-    # 后端 API 接口
+    # 后端 API 接口（包括CRM API和Admin公开API，如系统配置/授权验证）
+    # ⬇️ 如修改了后端端口，替换 3000 为实际端口
     location /api/ {
-        proxy_pass http://127.0.0.1:3000;
+        proxy_pass http://127.0.0.1:YOUR_BACKEND_PORT;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
@@ -67,19 +101,19 @@ server {
     # ==================== WebSocket 代理 ====================
     # Socket.IO (用于实时消息推送)
     location /socket.io/ {
-        proxy_pass http://127.0.0.1:3000;
+        proxy_pass http://127.0.0.1:YOUR_BACKEND_PORT;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_read_timeout 86400s;  # WebSocket 长连接超时
+        proxy_read_timeout 86400s;
     }
 
     # 移动端 WebSocket
     location /ws/ {
-        proxy_pass http://127.0.0.1:3000;
+        proxy_pass http://127.0.0.1:YOUR_BACKEND_PORT;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
@@ -88,26 +122,24 @@ server {
         proxy_read_timeout 86400s;
     }
 
-    # ==================== 文件上传访问 ====================
-    # ^~ 确保优先于正则匹配，防止图片请求被静态资源规则截获
-    location ^~ /uploads/ {
-        alias /www/wwwroot/CRM/backend/uploads/;
-        expires 7d;
-        add_header Cache-Control "public";
-        add_header Access-Control-Allow-Origin *;
-    }
-
-    # 录音文件
-    location ^~ /recordings/ {
-        alias /www/wwwroot/CRM/backend/recordings/;
-        expires 7d;
-        add_header Cache-Control "public";
+    # ==================== H5移动端 ====================
+    # 企微内置H5应用（应用主页/侧边栏）
+    location /h5/ {
+        # ⬇️ 替换为实际路径
+        alias YOUR_CRM_PATH/h5/dist/;
+        try_files $uri $uri/ /h5/index.html;
     }
 
     # ==================== 健康检查 ====================
     location /health {
-        proxy_pass http://127.0.0.1:3000;
+        proxy_pass http://127.0.0.1:YOUR_BACKEND_PORT;
         proxy_set_header Host $host;
+    }
+
+    # ==================== 前端路由 ====================
+    # Vue Router history 模式支持（必须放在最后）
+    location / {
+        try_files $uri $uri/ /index.html;
     }
 
     # ==================== 安全配置 ====================
@@ -136,25 +168,28 @@ server {
     }
 }
 
-# ==================== HTTPS 配置（可选）====================
-# 如果需要 HTTPS，取消下面的注释并配置 SSL 证书
+# ==================== HTTPS 配置（推荐）====================
+# 如果有域名，强烈建议配置 HTTPS
+# 宝塔面板: 站点设置 → SSL → Let's Encrypt 申请免费证书
+#
+# 手动配置方式: 取消下面的注释并配置 SSL 证书
 #
 # server {
 #     listen 443 ssl http2;
-#     server_name your-domain.com;
+#     server_name YOUR_DOMAIN;
 #
 #     ssl_certificate /path/to/cert.pem;
 #     ssl_certificate_key /path/to/key.pem;
 #     ssl_protocols TLSv1.2 TLSv1.3;
 #     ssl_ciphers HIGH:!aNULL:!MD5;
 #
-#     # ... 上面的 location 配置同样适用 ...
+#     # ... 上面 server{} 内的所有 location 配置复制到这里 ...
 # }
 #
 # # HTTP 跳转 HTTPS
 # server {
 #     listen 80;
-#     server_name your-domain.com;
+#     server_name YOUR_DOMAIN;
 #     return 301 https://$server_name$request_uri;
 # }
 

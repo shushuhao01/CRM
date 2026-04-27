@@ -3,6 +3,24 @@
     <!-- 示例模式横幅 -->
     <WecomDemoBanner :is-demo-mode="isDemoMode" />
 
+    <!-- 未绑定企微成员提示（非管理员用户） -->
+    <el-alert
+      v-if="bindingChecked && !userHasBinding && !isAdminRole"
+      type="warning"
+      :closable="false"
+      show-icon
+      style="margin-bottom: 16px"
+    >
+      <template #title>
+        <span style="font-weight: 600">您的CRM账号尚未绑定企微成员</span>
+      </template>
+      <template #default>
+        <div style="font-size: 13px; color: #6B7280; margin-top: 4px">
+          企微客户数据需要CRM用户绑定了企微成员后才能同步显示。请联系管理员在「通讯录 → 成员绑定」中完成绑定操作。
+        </div>
+      </template>
+    </el-alert>
+
     <!-- V4统计卡片 -->
     <div class="v4-stats-row">
       <div class="v4-stat-card">
@@ -277,9 +295,18 @@ import WecomHeader from './components/WecomHeader.vue'
 import WecomDemoBanner from './components/WecomDemoBanner.vue'
 import { useWecomDemo, DEMO_CUSTOMERS, DEMO_CUSTOMER_STATS, DEMO_CUSTOMER_DETAIL, DEMO_CRM_CUSTOMER_OPTIONS, DEMO_CONFIGS } from './composables/useWecomDemo'
 import { getAutoMatchCount } from '@/api/wecomAddressBook'
+import { getWecomBindings } from '@/api/wecom'
+import { useUserStore } from '@/stores/user'
 
 const { isDemoMode } = useWecomDemo()
 const router = useRouter()
+const userStore = useUserStore()
+
+// 当前用户角色判断
+const isAdminRole = computed(() => ['super_admin', 'admin'].includes(userStore.currentUser?.role || ''))
+// 企微成员绑定状态（非管理员需要绑定才能查看）
+const userHasBinding = ref(true) // 默认true，管理员或检查通过后才会为false
+const bindingChecked = ref(false)
 
 // V4.0: 自动匹配待确认数量
 const autoMatchCount = ref(0)
@@ -658,7 +685,31 @@ const handleUnlink = async (row: any) => {
   }
 }
 
+// 检查当前用户是否已绑定企微成员
+const checkUserBinding = async () => {
+  if (isAdminRole.value) {
+    userHasBinding.value = true
+    bindingChecked.value = true
+    return
+  }
+  try {
+    const crmUserId = userStore.currentUser?.id
+    if (!crmUserId) {
+      userHasBinding.value = false
+      bindingChecked.value = true
+      return
+    }
+    const res = await getWecomBindings({ crmUserId: String(crmUserId) })
+    const bindings = res?.data?.data || res?.data || []
+    userHasBinding.value = Array.isArray(bindings) && bindings.length > 0
+  } catch {
+    userHasBinding.value = false
+  }
+  bindingChecked.value = true
+}
+
 onMounted(() => {
+  checkUserBinding()
   fetchConfigs()
   fetchList()
   fetchStats()
