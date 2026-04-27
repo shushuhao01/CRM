@@ -114,7 +114,7 @@
             </div>
             <div class="info-row" v-if="customerData.crmCustomer.phone">
               <span class="info-label">手机</span>
-              <span class="info-value">{{ customerData.crmCustomer.phone }}</span>
+              <span class="info-value">{{ displaySensitiveInfoNew(customerData.crmCustomer.phone, SensitiveInfoType.PHONE) }}</span>
             </div>
             <div class="info-row" v-if="customerData.crmCustomer.source">
               <span class="info-label">来源</span>
@@ -296,6 +296,8 @@ import { ref, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Loading, SwitchButton, User, EditPen, InfoFilled, DataAnalysis, List, TopRight } from '@element-plus/icons-vue'
 import { getSidebarJsSdkConfig, sidebarBindAccount, sidebarVerifyBinding, getSidebarCustomerDetail, refreshSidebarToken } from '@/api/wecom'
+import { displaySensitiveInfo as displaySensitiveInfoNew } from '@/utils/sensitiveInfo'
+import { SensitiveInfoType } from '@/services/permission'
 
 const isDev = import.meta.env.DEV
 const pageState = ref<'loading' | 'no-sdk' | 'login' | 'detail' | 'error'>('loading')

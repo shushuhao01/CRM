@@ -94,6 +94,7 @@
               placeholder="请输入运单号"
               class="tracking-input"
               clearable
+              @input="(val: string) => onTrackingNumberChange(val, index)"
             />
           </div>
         </div>
@@ -177,6 +178,7 @@
                   placeholder="点右侧按钮获取或手动输入"
                   size="small"
                   clearable
+                  @input="(val: string) => onTrackingNumberChange(val, getOriginalIndex(row))"
                 />
                 <el-tooltip content="调用API获取运单号" placement="top">
                   <el-button
@@ -196,6 +198,7 @@
                 placeholder="输入运单号"
                 size="small"
                 clearable
+                @input="(val: string) => onTrackingNumberChange(val, getOriginalIndex(row))"
               />
               <el-input
                 v-else
@@ -203,6 +206,7 @@
                 placeholder="输入运单号"
                 size="small"
                 clearable
+                @input="(val: string) => onTrackingNumberChange(val, getOriginalIndex(row))"
               />
             </template>
           </el-table-column>
@@ -547,6 +551,19 @@ const onLogisticsChange = (_value: string) => {
   // 如果预计送达时间未设置，则设置为3天后（默认值）
   if (!batchForm.estimatedDelivery) {
     initEstimatedDelivery()
+  }
+}
+
+// 🔥 根据运单号自动识别物流公司并填充到预览区
+const onTrackingNumberChange = (trackingNo: string, index: number) => {
+  if (!trackingNo || trackingNo.trim().length < 2) return
+  const detected = detectCompanyByTrackingNo(trackingNo.trim())
+  if (detected && detected !== previewLogisticsCompanies.value[index]) {
+    previewLogisticsCompanies.value[index] = detected
+    const companyObj = logisticsCompanies.value.find(c => c.code === detected)
+    if (companyObj) {
+      console.log(`[批量发货] 自动识别物流公司: ${trackingNo} -> ${companyObj.name}`)
+    }
   }
 }
 

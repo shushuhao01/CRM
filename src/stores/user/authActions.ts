@@ -458,7 +458,16 @@ export function createAuthActions(deps: UserStoreDeps) {
       // 🔥 在线席位：启动心跳服务
       heartbeatService.start()
 
-      // 登录成功后无痕刷新数据（异步执行）
+      // 🔥 登录后立即加载敏感信息权限配置（必须在页面渲染前完成）
+      try {
+        const { loadSensitiveInfoPermissions } = await import('@/services/sensitiveInfoPermissionService')
+        await loadSensitiveInfoPermissions()
+        console.log('[Auth] 🔐 敏感信息权限配置已加载')
+      } catch (e) {
+        console.warn('[Auth] ⚠️ 加载敏感信息权限配置失败:', e)
+      }
+
+      // 登录成功后无痕刷新数据（异步执行，非阻塞）
       setTimeout(async () => {
         try {
           console.log('[Auth] 🔄 开始无痕刷新数据...')
@@ -467,15 +476,6 @@ export function createAuthActions(deps: UserStoreDeps) {
           console.log('[Auth] ✅ 无痕刷新完成')
         } catch (e) {
           console.warn('[Auth] ⚠️ 无痕刷新失败（不影响使用）:', e)
-        }
-
-        // 加载敏感信息权限配置
-        try {
-          const { loadSensitiveInfoPermissions } = await import('@/services/sensitiveInfoPermissionService')
-          await loadSensitiveInfoPermissions()
-          console.log('[Auth] 🔐 敏感信息权限配置已加载')
-        } catch (e) {
-          console.warn('[Auth] ⚠️ 加载敏感信息权限配置失败:', e)
         }
 
         // 刷新安全控制台配置
@@ -586,6 +586,8 @@ export function createAuthActions(deps: UserStoreDeps) {
     localStorage.removeItem('currentUser')
     localStorage.removeItem('customerServicePermissions')
     localStorage.removeItem('tenantModules')
+    localStorage.removeItem('crm_sensitive_info_permissions_cache')
+    localStorage.removeItem('crm_sensitive_info_permissions_expiry')
 
     // 清理消息通知缓存
     try {
@@ -804,6 +806,15 @@ export function createAuthActions(deps: UserStoreDeps) {
       }
 
       console.log('[Auth] ✅ 权限已恢复:', permissions.value.length, '个')
+
+      // 🔥 会话恢复时加载敏感信息权限配置（确保加密控制正常工作）
+      try {
+        const { loadSensitiveInfoPermissions } = await import('@/services/sensitiveInfoPermissionService')
+        await loadSensitiveInfoPermissions()
+        console.log('[Auth] 🔐 会话恢复：敏感信息权限配置已加载')
+      } catch (e) {
+        console.warn('[Auth] ⚠️ 会话恢复：加载敏感信息权限配置失败:', e)
+      }
 
       // 启动自动同步服务
       const config = autoStatusSyncService.getConfig()

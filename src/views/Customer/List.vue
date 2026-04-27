@@ -1685,7 +1685,7 @@ const handleExport = async () => {
           '客户姓名': customer.name,
           '手机号': displaySensitiveInfoNew(customer.phone, SensitiveInfoType.PHONE, userStore.currentUser?.id || ''),
           '年龄': customer.age,
-          '地址': customer.address,
+          '地址': customer.address ? displaySensitiveInfoNew(customer.address, SensitiveInfoType.ADDRESS) : '',
           '客户等级': getLevelText(customer.level),
           '订单数量': customer.orderCount,
           '负责销售': salesPerson?.name || '未分配',

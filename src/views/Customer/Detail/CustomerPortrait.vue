@@ -126,7 +126,7 @@
         <div class="attr-item"><span class="attr-label">年龄</span><span class="attr-val">{{ customer.age ? customer.age + '岁' : '-' }}</span></div>
         <div class="attr-item"><span class="attr-label">来源</span><span class="attr-val">{{ transSource(customer.source) }}</span></div>
         <div class="attr-item"><span class="attr-label">等级</span><span class="attr-val tag">{{ transLevel(customer.level) }}</span></div>
-        <div class="attr-item"><span class="attr-label">地址</span><span class="attr-val">{{ customer.address || '-' }}</span></div>
+        <div class="attr-item"><span class="attr-label">地址</span><span class="attr-val">{{ customer.address ? displaySensitiveInfoNew(customer.address, SensitiveInfoType.ADDRESS) : '-' }}</span></div>
         <div class="attr-item" v-if="customer.medicalHistory"><span class="attr-label">疾病史</span>
           <span class="attr-val">
             {{ latestMedical }}
@@ -210,6 +210,8 @@
 import { ref, computed, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import request from '@/utils/request'
+import { displaySensitiveInfo as displaySensitiveInfoNew } from '@/utils/sensitiveInfo'
+import { SensitiveInfoType } from '@/services/permission'
 
 const props = defineProps<{
   customer: any

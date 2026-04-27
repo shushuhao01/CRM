@@ -215,7 +215,7 @@
                 <div class="latest-address-info" v-if="customerAddresses.length > 0">
                   <div class="address-record" v-if="editingAddressId !== customerAddresses[0].id">
                     <div class="address-inline-row">
-                      <span class="address-text">{{ customerAddresses[0].content }}</span>
+                      <span class="address-text">{{ displaySensitiveInfoNew(customerAddresses[0].content, SensitiveInfoType.ADDRESS) }}</span>
                       <div class="address-actions">
                         <el-button type="text" size="small" @click="startEditAddress(customerAddresses[0])">
                           <el-icon><Edit /></el-icon>
@@ -251,7 +251,7 @@
                     <div class="address-record history-record" v-for="addr in customerAddresses.slice(1)" :key="addr.id">
                       <template v-if="editingAddressId !== addr.id">
                         <div class="address-inline-row">
-                          <span class="address-text">{{ addr.content }}</span>
+                          <span class="address-text">{{ displaySensitiveInfoNew(addr.content, SensitiveInfoType.ADDRESS) }}</span>
                           <div class="address-actions">
                             <el-button type="text" size="small" @click="startEditAddress(addr)">
                               <el-icon><Edit /></el-icon>

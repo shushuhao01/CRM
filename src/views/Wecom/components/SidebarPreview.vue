@@ -73,12 +73,12 @@
           <div class="preview-card">
             <div class="card-title">👤 CRM客户信息</div>
             <div class="info-row" v-if="customerData?.name"><span class="label">姓名</span><span>{{ customerData.name }}</span></div>
-            <div class="info-row" v-if="customerData?.phone"><span class="label">手机</span><span>{{ maskPhone(customerData.phone) }}</span></div>
-            <div class="info-row" v-if="customerData?.email"><span class="label">邮箱</span><span>{{ maskEmail(customerData.email) }}</span></div>
-            <div class="info-row" v-if="customerData?.wechatId || customerData?.wechat"><span class="label">微信</span><span>{{ maskWechat(customerData.wechatId || customerData.wechat) }}</span></div>
+            <div class="info-row" v-if="customerData?.phone"><span class="label">手机</span><span>{{ displaySensitiveInfoNew(customerData.phone, SensitiveInfoType.PHONE) }}</span></div>
+            <div class="info-row" v-if="customerData?.email"><span class="label">邮箱</span><span>{{ displaySensitiveInfoNew(customerData.email, SensitiveInfoType.EMAIL) }}</span></div>
+            <div class="info-row" v-if="customerData?.wechatId || customerData?.wechat"><span class="label">微信</span><span>{{ displaySensitiveInfoNew(customerData.wechatId || customerData.wechat, SensitiveInfoType.WECHAT) }}</span></div>
             <div class="info-row"><span class="label" style="white-space:nowrap">身高/年龄/体重</span><span style="white-space:nowrap">{{ customerData?.height || '-' }}cm / {{ customerData?.age || '-' }}岁 / {{ customerData?.weight || '-' }}kg</span></div>
             <div class="info-row"><span class="label">性别</span><span>{{ customerData?.gender === 'male' ? '男' : customerData?.gender === 'female' ? '女' : customerData?.gender || '-' }}</span></div>
-            <div class="info-row"><span class="label">地址</span><span>{{ customerData?.address || '-' }}</span></div>
+            <div class="info-row"><span class="label">地址</span><span>{{ customerData?.address ? displaySensitiveInfoNew(customerData.address, SensitiveInfoType.ADDRESS) : '-' }}</span></div>
             <div class="info-row"><span class="label">疾病史</span><span>{{ customerData?.medicalHistory || '-' }}</span></div>
             <div class="info-row" v-if="customerData?.followStatus"><span class="label">状态</span><span>{{ transFollowStatus(customerData.followStatus) }}</span></div>
             <div class="customer-tags" v-if="customerData?.tags">
@@ -337,7 +337,7 @@
                 <div v-if="qoAutoMatchedCustomer" class="qo-auto-match">
                   <div class="qo-match-badge">✅ 已匹配CRM客户</div>
                   <div class="qo-customer-item selected" @click="selectQoCustomer(qoAutoMatchedCustomer)">
-                    <div class="qo-cust-name">{{ qoAutoMatchedCustomer.name }} <span class="qo-cust-phone">{{ maskPhone(qoAutoMatchedCustomer.phone) }}</span></div>
+                    <div class="qo-cust-name">{{ qoAutoMatchedCustomer.name }} <span class="qo-cust-phone">{{ displaySensitiveInfoNew(qoAutoMatchedCustomer.phone, SensitiveInfoType.PHONE) }}</span></div>
                     <div class="qo-cust-extra">
                       <span v-if="qoAutoMatchedCustomer.source" class="mini-tag">{{ transSource(qoAutoMatchedCustomer.source) }}</span>
                       <span v-if="qoAutoMatchedCustomer.level" class="mini-tag">{{ transLevel(qoAutoMatchedCustomer.level) }}</span>
@@ -346,7 +346,7 @@
                 </div>
                 <div class="qo-customer-list" v-if="qoCustomerList.length" @scroll="onQoCustomerScroll">
                   <div class="qo-customer-item" v-for="c in qoCustomerList" :key="c.id" :class="{ selected: qoForm.customerId === c.id }" @click="selectQoCustomer(c)">
-                    <div class="qo-cust-name">{{ c.name }} <span class="qo-cust-phone">{{ maskPhone(c.phone) }}</span></div>
+                    <div class="qo-cust-name">{{ c.name }} <span class="qo-cust-phone">{{ displaySensitiveInfoNew(c.phone, SensitiveInfoType.PHONE) }}</span></div>
                     <div class="qo-cust-extra">
                       <span v-if="c.source" class="mini-tag">{{ transSource(c.source) }}</span>
                       <span v-if="c.level" class="mini-tag">{{ transLevel(c.level) }}</span>
@@ -670,7 +670,7 @@
               </div>
               <div class="qo-confirm-section">
                 <div class="qo-confirm-label">收货人</div>
-                <div class="qo-confirm-val">{{ qoForm.receiverName }} {{ maskPhone(qoForm.receiverPhone) }}</div>
+                <div class="qo-confirm-val">{{ qoForm.receiverName }} {{ displaySensitiveInfoNew(qoForm.receiverPhone, SensitiveInfoType.PHONE) }}</div>
               </div>
               <div class="qo-confirm-section">
                 <div class="qo-confirm-label">收货地址</div>
@@ -893,7 +893,7 @@
               <div class="info-row"><span class="label">来源</span><span>{{ transSource(customerData?.source) }}</span></div>
               <div class="info-row"><span class="label">等级</span><span class="tag">{{ transLevel(customerData?.level) }}</span></div>
               <div class="info-row"><span class="label">状态</span><span>{{ transFollowStatus(customerData?.followStatus) }}</span></div>
-              <div class="info-row"><span class="label">地址</span><span>{{ customerData?.address || '-' }}</span></div>
+              <div class="info-row"><span class="label">地址</span><span>{{ customerData?.address ? displaySensitiveInfoNew(customerData.address, SensitiveInfoType.ADDRESS) : '-' }}</span></div>
               <div class="info-row" v-if="customerData?.medicalHistory"><span class="label">疾病史</span><span>{{ sidebarLatestMedical }}<span v-if="sidebarAllMedicalRecords.length > 1" class="mini-tag" style="background:#f0f0f0;color:#909399;cursor:pointer;margin-left:4px;font-size:9px" :title="sidebarAllMedicalRecords.map((r:any) => (r.content||r) + (r.createTime ? ' ('+r.createTime+')' : '')).join('\n')" @click="showMedicalPopup=!showMedicalPopup">还有{{ sidebarAllMedicalRecords.length - 1 }}条</span></span></div>
               <div v-if="showMedicalPopup && sidebarAllMedicalRecords.length > 1 && customerData?.medicalHistory" style="background:#fafafa;border:1px solid #eee;border-radius:6px;padding:6px 8px;margin:-2px 0 4px;max-height:120px;overflow-y:auto">
                 <div v-for="(rec, idx) in sidebarAllMedicalRecords" :key="idx" style="padding:3px 0;border-bottom:1px solid #f0f0f0;font-size:10px">
@@ -1029,7 +1029,7 @@
           <div v-if="linkCrmLoading && !linkCrmList.length" style="text-align:center;padding:12px;font-size:11px;color:#909399">加载中...</div>
           <div v-else-if="linkCrmList.length" class="link-crm-list" @scroll="onLinkCrmScroll">
             <div class="qo-customer-item" v-for="c in linkCrmList" :key="c.id" @click="selectLinkCrmCustomer(c)">
-              <div class="qo-cust-name">{{ c.name }} <span class="qo-cust-phone">{{ maskPhone(c.phone) }}</span></div>
+              <div class="qo-cust-name">{{ c.name }} <span class="qo-cust-phone">{{ displaySensitiveInfoNew(c.phone, SensitiveInfoType.PHONE) }}</span></div>
               <div class="qo-cust-extra">
                 <span v-if="c.source" class="mini-tag">{{ transSource(c.source) }}</span>
               </div>
@@ -1049,6 +1049,8 @@ import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useRouter } from 'vue-router'
 import request from '@/utils/request'
+import { displaySensitiveInfo as displaySensitiveInfoNew } from '@/utils/sensitiveInfo'
+import { SensitiveInfoType } from '@/services/permission'
 import { useCustomerFieldConfigStore } from '@/stores/customerFieldConfig'
 import { useOrderFieldConfigStore } from '@/stores/orderFieldConfig'
 
@@ -1290,14 +1292,14 @@ const maskPhone = (p: string) => {
   return p.replace(/(\d{3})\d{4}(\d{4})/, '$1****$2')
 }
 
-const maskEmail = (e: string) => {
+const _maskEmail = (e: string) => {
   if (!e || !e.includes('@')) return e || '-'
   const [user, domain] = e.split('@')
   if (user.length <= 2) return `${user[0]}***@${domain}`
   return `${user.slice(0, 2)}***@${domain}`
 }
 
-const maskWechat = (w: string) => {
+const _maskWechat = (w: string) => {
   if (!w || w.length < 4) return w || '-'
   return w.slice(0, 2) + '****' + w.slice(-2)
 }

@@ -65,7 +65,7 @@ const DEFAULT_MASK_CONFIGS: Record<SensitiveInfoType, MaskConfig> = {
 }
 
 // 敏感信息类型到数据库字段的映射
-const INFO_TYPE_TO_DB_KEY: Record<SensitiveInfoType, string> = {
+const _INFO_TYPE_TO_DB_KEY: Record<SensitiveInfoType, string> = {
   [SensitiveInfoType.PHONE]: 'phone',
   [SensitiveInfoType.ID_CARD]: 'id_card',
   [SensitiveInfoType.EMAIL]: 'email',
@@ -230,6 +230,9 @@ export class SensitiveInfoProcessor {
     }
   }
 
+  // 调试日志节流：避免同一角色+类型重复打印
+  private static _debugLoggedKeys = new Set<string>()
+
   /**
    * 根据用户权限显示敏感信息
    * 从数据库API获取的权限配置决定是否显示完整信息
@@ -261,6 +264,13 @@ export class SensitiveInfoProcessor {
 
     // 使用新的权限服务检查权限（从数据库API获取）
     const hasAccess = sensitiveInfoPermissionService.hasPermission(userRole, dbKey)
+
+    // 调试日志（每个角色+类型组合只打印一次）
+    const logKey = `${userRole}_${dbKey}`
+    if (!SensitiveInfoProcessor._debugLoggedKeys.has(logKey)) {
+      SensitiveInfoProcessor._debugLoggedKeys.add(logKey)
+      console.log(`[SensitiveInfo] 权限检查: 角色="${userRole}", 类型="${dbKey}", 结果=${hasAccess ? '✅显示' : '🔒加密'}`)
+    }
 
     if (hasAccess) {
       return value // 有权限，显示完整信息
@@ -298,7 +308,7 @@ export class SensitiveInfoProcessor {
 
     for (const [field, type] of Object.entries(typeMapping)) {
       if (result[field]) {
-        result[field] = SensitiveInfoProcessor.displaySensitiveInfo(result[field], type, userId)
+        result[field] = SensitiveInfoProcessor.displaySensitiveInfo(result[field] as string, type, userId)
       }
     }
 

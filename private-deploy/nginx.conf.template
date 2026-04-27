@@ -13,10 +13,13 @@
 #
 # 宝塔面板使用方式:
 #   1. 创建网站 → 设置 → 配置文件
-#   2. 将此文件内容粘贴到配置中
-#   3. 按上述说明替换占位符
-#   4. 删除宝塔自动生成的PHP配置和静态资源缓存规则
-#   5. 保存并重载
+#   2. 修改 root 为对应的 dist 目录（宝塔默认是 public，必须改！）
+#   3. 修改 index 行，删掉 index.php、default.php 等 PHP 文件名
+#   4. 删除 #PHP-INFO-START 到 #PHP-INFO-END 整段（含 include enable-php-XX.conf）
+#   5. 删除 #ERROR-PAGE-START 到 #ERROR-PAGE-END 整段
+#   6. 删除宝塔自动生成的静态资源缓存规则（gif|jpg|jpeg|png 和 js|css 那两段）
+#   7. 在 #SSL-END 后粘贴下方对应站点的 location 配置
+#   8. 保存并重载: nginx -t && nginx -s reload
 #
 # ==========================================
 # 中央服务器回调说明（重要）
@@ -193,3 +196,216 @@ server {
 #     return 301 https://$server_name$request_uri;
 # }
 
+
+# ==========================================
+# 官方网站 Nginx 配置模板
+# ==========================================
+# 占位符:
+#   - YOUR_WEBSITE_DOMAIN → 官网域名（如 yunkes.com）
+#   - YOUR_CRM_PATH       → CRM项目根路径（如 /www/wwwroot/CRM）
+#   - YOUR_BACKEND_PORT   → 后端端口（默认 3000）
+#
+# ❗ 宝塔面板用户注意:
+#   1. root 必须改为 YOUR_CRM_PATH/website/dist（不是默认的 public）
+#   2. index 行删掉 index.php、default.php 等 PHP 文件名
+#   3. 删除 #PHP-INFO-START 到 #PHP-INFO-END 之间的 PHP 配置（否则 500 错误）
+#   4. 删除 #ERROR-PAGE-START 到 #ERROR-PAGE-END 之间的错误页规则
+#   5. 删除宝塔自动生成的静态资源缓存规则（gif|jpg|jpeg|png 和 js|css）
+#   6. /uploads/ 映射是关键！没有这条配置，管理后台上传的客服二维码等图片无法显示
+
+server {
+    listen 80;
+    server_name YOUR_WEBSITE_DOMAIN;
+
+    # ⬇️ 替换为官网前端构建目录
+    root YOUR_CRM_PATH/website/dist;
+    index index.html;
+
+    client_max_body_size 10m;
+
+    # Gzip 压缩
+    gzip on;
+    gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript;
+    gzip_min_length 1000;
+    gzip_comp_level 6;
+
+    # ==================== 企微/微信验证文件 ====================
+    location ~* ^/(WW_verify_|MP_verify_).*\.txt$ {
+        default_type text/plain;
+    }
+
+    # ==================== 上传文件访问（关键！）====================
+    # 管理后台上传的客服二维码、公众号二维码等图片存储在后端 uploads 目录
+    # 官网也会引用这些图片，必须添加此配置，否则图片加载失败显示破碎
+    # ^~ 确保优先于正则匹配，防止宝塔静态资源缓存规则截获
+    location ^~ /uploads/ {
+        # ⬇️ 替换为实际路径
+        alias YOUR_CRM_PATH/backend/uploads/;
+        expires 7d;
+        add_header Cache-Control "public";
+        add_header Access-Control-Allow-Origin *;
+    }
+
+    # ==================== API 反向代理 ====================
+    # 官网的注册、联系表单、系统配置等接口
+    location /api/ {
+        proxy_pass http://127.0.0.1:YOUR_BACKEND_PORT;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # 前端构建产物缓存（带 hash 的 assets 文件）
+    location ^~ /assets/ {
+        expires 30d;
+        add_header Cache-Control "public, immutable";
+    }
+
+    # ==================== 前端路由 ====================
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    # ==================== 安全配置 ====================
+    location ~ /\. {
+        deny all;
+        access_log off;
+        log_not_found off;
+    }
+
+    location ~* \.(env|env\..*|sql|md|sh|bat|ps1|conf)$ {
+        deny all;
+    }
+
+    error_page 404 /index.html;
+}
+
+
+# ==========================================
+# 管理后台 Nginx 配置模板
+# ==========================================
+# 占位符:
+#   - YOUR_ADMIN_DOMAIN   → 管理后台域名（如 admin.yunkes.com）
+#   - YOUR_CRM_PATH       → CRM项目根路径（如 /www/wwwroot/CRM）
+#   - YOUR_BACKEND_PORT   → 后端端口（默认 3000）
+#
+# ❗ 宝塔面板用户注意:
+#   1. root 必须改为 YOUR_CRM_PATH/admin/dist（不是默认的 public）
+#   2. index 行删掉 index.php、default.php 等 PHP 文件名
+#   3. 删除 #PHP-INFO-START 到 #PHP-INFO-END 之间的 PHP 配置（否则 500 错误）
+#   4. 删除 #ERROR-PAGE-START 到 #ERROR-PAGE-END 之间的错误页规则
+#   5. 删除宝塔自动生成的静态资源缓存规则（gif|jpg|jpeg|png 和 js|css）
+
+server {
+    listen 80;
+    server_name YOUR_ADMIN_DOMAIN;
+
+    # ⬇️ 替换为管理后台前端构建目录
+    root YOUR_CRM_PATH/admin/dist;
+    index index.html;
+
+    client_max_body_size 50m;
+
+    # Gzip 压缩
+    gzip on;
+    gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript;
+    gzip_min_length 1000;
+    gzip_comp_level 6;
+
+    # ==================== 企微/微信验证文件 ====================
+    location ~* ^/(WW_verify_|MP_verify_).*\.txt$ {
+        default_type text/plain;
+    }
+
+    # ==================== 上传文件访问 ====================
+    # ^~ 确保优先于正则匹配
+    location ^~ /uploads/ {
+        # ⬇️ 替换为实际路径
+        alias YOUR_CRM_PATH/backend/uploads/;
+        expires 7d;
+        add_header Cache-Control "public";
+        add_header Access-Control-Allow-Origin *;
+    }
+
+    # ==================== API 反向代理 ====================
+    location /api/ {
+        proxy_pass http://127.0.0.1:YOUR_BACKEND_PORT;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_buffering off;
+    }
+
+    # ==================== WebSocket 代理 ====================
+    location /socket.io/ {
+        proxy_pass http://127.0.0.1:YOUR_BACKEND_PORT;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_read_timeout 86400s;
+    }
+
+    # 前端构建产物缓存
+    location ^~ /assets/ {
+        expires 30d;
+        add_header Cache-Control "public, immutable";
+    }
+
+    # ==================== 前端路由 ====================
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    # ==================== 安全配置 ====================
+    location ~ /\. {
+        deny all;
+        access_log off;
+        log_not_found off;
+    }
+
+    location ~* \.(env|env\..*|sql|md|sh|bat|ps1|conf)$ {
+        deny all;
+    }
+
+    location ~ /node_modules/ {
+        deny all;
+    }
+
+    error_page 404 /index.html;
+}
+
+
+# ==========================================
+# API 接口 Nginx 配置模板
+# ==========================================
+# 占位符:
+#   - YOUR_API_DOMAIN     → API域名（如 api.yunkes.com）
+#   - YOUR_BACKEND_PORT   → 后端端口（默认 3000）
+
+server {
+    listen 80;
+    server_name YOUR_API_DOMAIN;
+
+    client_max_body_size 50m;
+
+    # 所有请求直接代理到后端
+    location / {
+        proxy_pass http://127.0.0.1:YOUR_BACKEND_PORT;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 60s;
+        proxy_read_timeout 86400s;
+    }
+}

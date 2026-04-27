@@ -55,7 +55,7 @@
         </div>
         <el-form-item label="运单号" prop="trackingNumber">
           <div class="tracking-input-row">
-            <el-input v-model="shippingForm.trackingNumber" placeholder="输入运单号或点击右侧按钮获取" clearable class="tracking-input-flex" />
+            <el-input v-model="shippingForm.trackingNumber" placeholder="输入运单号或点击右侧按钮获取" clearable class="tracking-input-flex" @input="onTrackingNumberInput" />
             <el-button
               type="success"
               @click="generateTrackingNumber"
@@ -99,6 +99,7 @@ import {
 } from '@element-plus/icons-vue'
 import { displaySensitiveInfoNew } from '@/utils/sensitiveInfo'
 import { validateTrackingCompanyMatch } from '@/utils/printService'
+import { detectCompanyByTrackingNo } from '@/utils/logisticsQuery'
 import type { Order } from '@/stores/order'
 import { useOrderStore } from '@/stores/order'
 import { useNotificationStore } from '@/stores/notification'
@@ -223,6 +224,24 @@ const formatNumber = (num: number | null | undefined) => {
 const getProductsText = () => {
   if (!props.order?.products || !Array.isArray(props.order.products)) return ''
   return props.order.products.map(p => `${p.name} × ${p.quantity}`).join('，')
+}
+
+// 🔥 根据运单号自动识别物流公司
+const onTrackingNumberInput = (trackingNo: string) => {
+  if (!trackingNo || trackingNo.trim().length < 2) return
+  const detected = detectCompanyByTrackingNo(trackingNo.trim())
+  if (detected && detected !== shippingForm.logisticsCompany) {
+    shippingForm.logisticsCompany = detected
+    // 同步更新预计送达时间
+    const days = getDeliveryDays(detected)
+    const today = new Date()
+    const deliveryDate = new Date(today.getTime() + days * 24 * 60 * 60 * 1000)
+    shippingForm.estimatedDelivery = deliveryDate.toISOString().split('T')[0]
+    const companyObj = logisticsCompanies.value.find(c => c.code === detected)
+    if (companyObj) {
+      console.log(`[发货弹窗] 自动识别物流公司: ${trackingNo} -> ${companyObj.name}`)
+    }
+  }
 }
 
 // 物流公司变化

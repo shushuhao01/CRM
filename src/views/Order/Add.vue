@@ -184,7 +184,7 @@
                   <el-option
                     v-for="addr in customerAddresses"
                     :key="addr.id"
-                    :label="addr.content"
+                    :label="displaySensitiveInfoNew(addr.content, SensitiveInfoType.ADDRESS)"
                     :value="addr.content"
                   />
                 </el-select>
@@ -594,7 +594,7 @@
             </div>
             <div class="info-item" v-if="orderForm.receiverAddress">
               <span class="label">收货地址：</span>
-              <span class="value">{{ orderForm.receiverAddress }}</span>
+              <span class="value">{{ displaySensitiveInfoNew(orderForm.receiverAddress, SensitiveInfoType.ADDRESS) }}</span>
             </div>
             <div class="info-item" v-if="orderForm.expressCompany && orderForm.markType !== 'virtual_delivery'">
               <span class="label">快递公司：</span>

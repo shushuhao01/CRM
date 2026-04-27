@@ -15,7 +15,7 @@ export interface SensitiveInfoPermissionMatrix {
 // 缓存配置
 const CACHE_KEY = 'crm_sensitive_info_permissions_cache'
 const CACHE_EXPIRY_KEY = 'crm_sensitive_info_permissions_expiry'
-const CACHE_DURATION = 5 * 60 * 1000 // 5分钟缓存
+const CACHE_DURATION = 24 * 60 * 60 * 1000 // 24小时缓存（登出时会清除）
 
 class SensitiveInfoPermissionService {
   private static instance: SensitiveInfoPermissionService
@@ -129,6 +129,22 @@ class SensitiveInfoPermissionService {
     this.saveToCache()
   }
 
+  // 常见角色名称到角色代码的映射（容错）
+  private static ROLE_NAME_MAP: Record<string, string> = {
+    '销售员': 'sales_staff',
+    '销售': 'sales_staff',
+    '客服': 'customer_service',
+    '客服人员': 'customer_service',
+    '部门经理': 'department_manager',
+    '经理': 'department_manager',
+    '管理员': 'admin',
+    '系统管理员': 'super_admin',
+    '超级管理员': 'super_admin',
+    'sales': 'sales_staff',
+    'service': 'customer_service',
+    'manager': 'department_manager'
+  }
+
   /**
    * 检查用户角色是否有权限查看特定敏感信息
    * @param roleCode 角色代码
@@ -141,21 +157,44 @@ class SensitiveInfoPermissionService {
       this.loadFromCache()
     }
 
-    // 如果仍然没有权限矩阵，使用默认规则
+    // 如果仍然没有权限矩阵，触发异步加载并使用默认规则
     if (!this.permissionMatrix) {
-      // 默认规则：只有超级管理员有权限
+      console.warn(`[SensitiveInfoPermission] 权限矩阵未加载，角色=${roleCode}, 类型=${infoType}，使用默认规则`)
+      // 触发异步加载（下次调用时可能就有了）
+      this.loadPermissions().catch(() => {})
       return roleCode === 'super_admin'
     }
 
     // 检查权限矩阵
     const typePermissions = this.permissionMatrix[infoType]
     if (!typePermissions) {
-      // 如果没有配置该类型，默认只有超级管理员有权限
+      console.warn(`[SensitiveInfoPermission] 类型 ${infoType} 未在权限矩阵中找到`)
       return roleCode === 'super_admin'
     }
 
-    // 返回配置的权限值
-    return typePermissions[roleCode]
+    // 精确匹配
+    if (typePermissions[roleCode] !== undefined) {
+      return !!typePermissions[roleCode]
+    }
+
+    // 角色名称容错：尝试将中文角色名映射为标准代码
+    const mappedCode = SensitiveInfoPermissionService.ROLE_NAME_MAP[roleCode]
+    if (mappedCode && typePermissions[mappedCode] !== undefined) {
+      console.log(`[SensitiveInfoPermission] 角色名映射: ${roleCode} → ${mappedCode}, 权限=${typePermissions[mappedCode]}`)
+      return !!typePermissions[mappedCode]
+    }
+
+    // 反向查找：如果 roleCode 不在矩阵中，遍历矩阵键看是否有大小写不敏感匹配
+    const lowerRoleCode = roleCode.toLowerCase()
+    for (const key of Object.keys(typePermissions)) {
+      if (key.toLowerCase() === lowerRoleCode) {
+        console.log(`[SensitiveInfoPermission] 大小写容错匹配: ${roleCode} → ${key}, 权限=${typePermissions[key]}`)
+        return !!typePermissions[key]
+      }
+    }
+
+    console.warn(`[SensitiveInfoPermission] 角色 "${roleCode}" 未在 ${infoType} 权限矩阵中找到。矩阵键: [${Object.keys(typePermissions).join(', ')}]`)
+    return false
   }
 
   /**

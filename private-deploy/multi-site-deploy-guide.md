@@ -133,11 +133,25 @@ cd ..
 
 每个站点创建后，在宝塔面板 **站点设置 → 配置文件** 中修改。
 
-**关键原则**：
-- 保留宝塔自动生成的 SSL 相关配置（`#SSL-START` 到 `#SSL-END` 之间的内容）
-- **删除** `#PHP-INFO-START` 到 `#PHP-INFO-END` 之间的 PHP 配置
-- **删除** 宝塔自动生成的静态资源缓存规则（否则会导致上传图片无法显示，详见下方说明）
-- 所有 API 请求都代理到 `http://127.0.0.1:3000`
+**关键原则（每个站点都要做）**：
+1. **修改 `root` 目录** — 宝塔默认指向 `public`，必须改为对应的 `dist` 目录
+2. **修改 `index` 行** — 删除 `index.php` 和 `default.php` 等 PHP 相关文件名，只保留 `index.html index.htm`
+3. **删除** `#PHP-INFO-START` 到 `#PHP-INFO-END` 之间的 PHP 配置（整段删掉，含注释行）
+4. **删除** 宝塔自动生成的静态资源缓存规则（否则会导致上传图片无法显示，详见下方说明）
+5. **删除** `#ERROR-PAGE-START` 到 `#ERROR-PAGE-END` 之间的错误页规则（避免与我们的路由冲突）
+6. 保留宝塔自动生成的 SSL 相关配置（`#SSL-START` 到 `#SSL-END` 之间的内容）
+7. 保留宝塔的证书验证（`#CERT-APPLY-CHECK`）、敏感文件/目录、`.well-known`、日志等规则
+8. 所有 API 请求都代理到 `http://127.0.0.1:3000`
+
+> **⚠️ 常见踩坑：宝塔默认生成的 root 和 PHP 配置会导致 500 错误**
+>
+> 宝塔创建站点后默认配置是：
+> ```nginx
+> root /www/wwwroot/CRM/website/public;                    # ❌ 应该是 dist
+> index index.php index.html index.htm default.php ...;    # ❌ 删掉 PHP 相关
+> include enable-php-82.conf;                              # ❌ 整段删除
+> ```
+> 如果不修改，会导致 **500 内部服务器错误**（PHP-FPM 处理静态页面失败）。
 
 > **❗ 重要：必须删除宝塔默认的静态资源缓存规则**
 >
@@ -165,9 +179,12 @@ cd ..
 ### 5.1 crm.yunkes.com（CRM 主应用）
 
 在宝塔自动生成的配置中：
-1. **删除** `#PHP-INFO-START` 到 `#PHP-INFO-END` 之间的内容
-2. **删除** `location ~ .*\.(gif|jpg|jpeg|png|bmp|swf)$` 和 `location ~ .*\.(js|css)?$` 这两条规则（含大括号内容）
-3. 在 `#SSL-END` 后面添加以下内容：
+1. **修改 `root`** 为 `/www/wwwroot/CRM/dist`（宝塔默认可能是 `public`）
+2. **修改 `index`** 为 `index.html index.htm`（删掉 `index.php`、`default.php` 等）
+3. **删除** `#PHP-INFO-START` 到 `#PHP-INFO-END` 之间的全部内容
+4. **删除** `#ERROR-PAGE-START` 到 `#ERROR-PAGE-END` 之间的全部内容
+5. **删除** `location ~ .*\.(gif|jpg|jpeg|png|bmp|swf)$` 和 `location ~ .*\.(js|css)?$` 这两条规则（含大括号内容）
+6. 在 `#SSL-END` 后面添加以下内容：
 
 ```nginx
     # 文件上传大小
@@ -242,17 +259,38 @@ cd ..
 
 ### 5.2 yunkes.com / www.yunkes.com（官方网站）
 
-同样删掉 PHP 配置，在 `#SSL-END` 后添加：
+在宝塔自动生成的配置中：
+1. **修改 `root`** 为 `/www/wwwroot/CRM/website/dist`（⚠️ 宝塔默认是 `public`，必须改！）
+2. **修改 `index`** 为 `index.html index.htm`（删掉 `index.php`、`default.php` 等）
+3. **删除** `#PHP-INFO-START` 到 `#PHP-INFO-END` 之间的全部内容（不删会导致 500 错误）
+4. **删除** `#ERROR-PAGE-START` 到 `#ERROR-PAGE-END` 之间的全部内容
+5. **删除** 静态资源缓存规则（`gif|jpg|jpeg|png` 和 `js|css` 那两条，不删会导致图片 404）
+6. 在 `#SSL-END` 后添加：
 
 ```nginx
     client_max_body_size 10m;
+
+    # Gzip 压缩
+    gzip on;
+    gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript;
+    gzip_min_length 1000;
+    gzip_comp_level 6;
 
     # 企业微信/微信验证文件（必须在 try_files 之前，否则会被回退到 index.html 导致 404）
     location ~* ^/(WW_verify_|MP_verify_).*\.txt$ {
         default_type text/plain;
     }
 
-    # API 反向代理
+    # ❗ 上传文件访问（客服二维码、公众号二维码等由管理后台上传的图片）
+    # ^~ 确保优先于任何正则匹配，防止宝塔静态资源缓存规则截获导致 404
+    location ^~ /uploads/ {
+        alias /www/wwwroot/CRM/backend/uploads/;
+        expires 7d;
+        add_header Cache-Control "public";
+        add_header Access-Control-Allow-Origin *;
+    }
+
+    # API 反向代理（官网注册、联系表单、系统配置等接口）
     location /api/ {
         proxy_pass http://127.0.0.1:3000;
         proxy_http_version 1.1;
@@ -260,6 +298,12 @@ cd ..
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # 前端构建产物缓存（带 hash 的 assets 文件）
+    location ^~ /assets/ {
+        expires 30d;
+        add_header Cache-Control "public, immutable";
     }
 
     # 前端路由
@@ -270,7 +314,13 @@ cd ..
 
 ### 5.3 admin.yunkes.com（管理后台）
 
-同样删除 PHP 配置和静态资源缓存规则，然后添加：
+在宝塔自动生成的配置中：
+1. **修改 `root`** 为 `/www/wwwroot/CRM/admin/dist`（宝塔默认是 `public`，必须改！）
+2. **修改 `index`** 为 `index.html index.htm`（删掉 `index.php`、`default.php` 等）
+3. **删除** `#PHP-INFO-START` 到 `#PHP-INFO-END` 之间的全部内容
+4. **删除** `#ERROR-PAGE-START` 到 `#ERROR-PAGE-END` 之间的全部内容
+5. **删除** 静态资源缓存规则（`gif|jpg|jpeg|png` 和 `js|css` 那两条）
+6. 在 `#SSL-END` 后添加：
 
 ```nginx
     client_max_body_size 50m;
@@ -453,3 +503,26 @@ location ~ .*\.(gif|jpg|jpeg|png|bmp|swf)$
 **原理**：Nginx 正则 location (`~`) 优先于普通前缀 location。
 宝塔的 `\.(jpg)$` 规则会截获 `/uploads/xxx.jpg` 请求，将其导向前端 dist 目录，文件不存在则返回 404。
 使用 `^~` 修饰符可让前缀匹配优先于正则，确保上传文件正确服务。
+
+### Q: 配置后出现 500 内部服务器错误？
+最常见原因是 **PHP 配置未删除** 或 **root 目录错误**。排查步骤：
+
+1. 检查 `root` 是否指向正确的 `dist` 目录（不是 `public`）：
+   - CRM: `/www/wwwroot/CRM/dist`
+   - 官网: `/www/wwwroot/CRM/website/dist`
+   - 管理后台: `/www/wwwroot/CRM/admin/dist`
+2. 检查是否删除了 `#PHP-INFO-START` 到 `#PHP-INFO-END` 之间的内容（特别是 `include enable-php-XX.conf;`）
+3. 检查 `index` 行是否还包含 `index.php`、`default.php` 等 PHP 文件名
+4. 查看错误日志：`tail -20 /www/wwwlogs/对应域名.error.log`
+
+### Q: 官网/管理后台上传的图片（二维码等）显示不出来？
+除了上面提到的静态资源缓存规则外，还要确保**每个需要显示上传图片的站点**都配置了 `/uploads/` 映射：
+```nginx
+location ^~ /uploads/ {
+    alias /www/wwwroot/CRM/backend/uploads/;
+    expires 7d;
+    add_header Cache-Control "public";
+    add_header Access-Control-Allow-Origin *;
+}
+```
+所有上传文件都存储在后端的 `backend/uploads/` 目录，CRM、官网、管理后台三个站点都需要这条规则。

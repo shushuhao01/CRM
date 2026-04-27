@@ -420,12 +420,26 @@ router.post('/config/wechat/test', async (req: Request, res: Response) => {
               try {
                 const fs = await import('fs')
                 const path = await import('path')
-                const filePath = privateKey.startsWith('/')
-                  ? path.default.join(process.cwd(), 'public', privateKey)
-                  : path.default.resolve(privateKey)
-                privateKey = fs.default.readFileSync(filePath, 'utf8')
+                // 上传文件存储在 <cwd>/uploads/admin/cert/，URL 为 /uploads/admin/cert/xxx.pem
+                const candidates = [
+                  path.default.join(process.cwd(), privateKey),
+                  path.default.join(process.cwd(), 'public', privateKey),
+                  path.default.resolve(privateKey)
+                ]
+                let found = false
+                for (const filePath of candidates) {
+                  if (fs.default.existsSync(filePath)) {
+                    privateKey = fs.default.readFileSync(filePath, 'utf8')
+                    found = true
+                    break
+                  }
+                }
+                if (!found) {
+                  connectionMessage = `私钥文件不存在（已尝试路径: ${candidates[0]}），请重新上传密钥文件并保存配置`
+                  throw new Error(connectionMessage)
+                }
               } catch (readErr: any) {
-                connectionMessage = `读取私钥文件失败: ${readErr.message}，请重新上传密钥文件`
+                if (!connectionMessage) connectionMessage = `读取私钥文件失败: ${readErr.message}，请重新上传密钥文件`
                 throw readErr
               }
             }
