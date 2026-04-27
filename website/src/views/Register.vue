@@ -517,17 +517,14 @@
                   <div class="payment-options">
                     <label class="payment-option" :class="{ selected: paymentMethod === 'wechat' }">
                       <input type="radio" v-model="paymentMethod" value="wechat" />
-                      <span class="payment-icon wechat">💚</span>
                       <span>微信支付</span>
                     </label>
                     <label class="payment-option" :class="{ selected: paymentMethod === 'alipay' }">
                       <input type="radio" v-model="paymentMethod" value="alipay" />
-                      <span class="payment-icon alipay">💙</span>
                       <span>支付宝</span>
                     </label>
                     <label class="payment-option" :class="{ selected: paymentMethod === 'bank' }">
                       <input type="radio" v-model="paymentMethod" value="bank" />
-                      <span class="payment-icon bank">🏦</span>
                       <span>对公转账</span>
                     </label>
                   </div>
@@ -762,12 +759,10 @@
                 <template v-if="payMode === 'subscription' && currentPkgSubscriptionEnabled">
                   <label v-if="currentPkgSubscriptionChannels !== 'alipay'" class="payment-option" :class="{ selected: paymentMethod === 'wechat' }">
                     <input type="radio" v-model="paymentMethod" value="wechat" />
-                    <span class="payment-icon wechat">💚</span>
                     <span>微信委托代扣</span>
                   </label>
                   <label v-if="currentPkgSubscriptionChannels !== 'wechat'" class="payment-option" :class="{ selected: paymentMethod === 'alipay' }">
                     <input type="radio" v-model="paymentMethod" value="alipay" />
-                    <span class="payment-icon alipay">💙</span>
                     <span>支付宝周期扣款</span>
                   </label>
                 </template>
@@ -775,17 +770,14 @@
                 <template v-else>
                 <label class="payment-option" :class="{ selected: paymentMethod === 'wechat' }">
                   <input type="radio" v-model="paymentMethod" value="wechat" />
-                  <span class="payment-icon wechat">💚</span>
                   <span>微信支付</span>
                 </label>
                 <label class="payment-option" :class="{ selected: paymentMethod === 'alipay' }">
                   <input type="radio" v-model="paymentMethod" value="alipay" />
-                  <span class="payment-icon alipay">💙</span>
                   <span>支付宝</span>
                 </label>
                 <label class="payment-option" :class="{ selected: paymentMethod === 'bank' }">
                   <input type="radio" v-model="paymentMethod" value="bank" />
-                  <span class="payment-icon bank">🏦</span>
                   <span>对公转账</span>
                 </label>
                 </template>
