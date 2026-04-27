@@ -12,6 +12,7 @@ import { getTenantRepo } from '../../utils/tenantRepo';
 import { orderNotificationService } from '../../services/OrderNotificationService';
 import {
   saveStatusHistory,
+  ensureStatusHistoryTable,
   formatToBeijingTime,
   checkDepartmentOrderLimit,
   getOrderTransferConfig,
@@ -343,7 +344,9 @@ router.get('/:id/status-history', async (req: Request, res: Response) => {
   try {
     const orderId = req.params.id;
 
-    // 🔥 先检查表是否存在，避免报错
+    // 🔥 确保 order_status_history 表存在（synchronize=false 时不会自动建表）
+    await ensureStatusHistoryTable();
+
     try {
       const { OrderStatusHistory } = await import('../../entities/OrderStatusHistory');
       const statusHistoryRepository = getTenantRepo(OrderStatusHistory);
@@ -369,9 +372,8 @@ router.get('/:id/status-history', async (req: Request, res: Response) => {
 
       log.info(`[订单状态历史] 订单 ${orderId} 有 ${list.length} 条状态记录`);
       res.json({ success: true, code: 200, data: list });
-    } catch (entityError) {
-      // 如果表不存在，返回空数组
-      log.warn(`[订单状态历史] 表可能不存在，返回空数组:`, entityError);
+    } catch (entityError: any) {
+      log.error(`[订单状态历史] 查询失败(orderId=${orderId}): ${entityError.message}`, entityError);
       res.json({ success: true, code: 200, data: [] });
     }
   } catch (error) {

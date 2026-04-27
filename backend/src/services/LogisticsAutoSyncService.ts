@@ -492,6 +492,8 @@ class LogisticsAutoSyncService {
       // 记录订单状态变更历史
       if (orderStatusChanged && targetOrderStatus) {
         try {
+          const { ensureStatusHistoryTable } = await import('../routes/orders/orderHelpers');
+          await ensureStatusHistoryTable();
           const historyRepo = AppDataSource!.getRepository(OrderStatusHistory);
           const historyRecord = historyRepo.create({
             orderId: order.id,

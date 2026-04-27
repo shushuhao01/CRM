@@ -260,7 +260,10 @@ router.post('/config/wechat', async (req: Request, res: Response) => {
 // 保存支付宝配置
 router.post('/config/alipay', async (req: Request, res: Response) => {
   try {
-    const { enabled, appId, privateKey, alipayPublicKey, signType, notifyUrl } = req.body
+    const {
+      enabled, appId, privateKey, alipayPublicKey, signType, notifyUrl,
+      verifyType, appCertPath, alipayCertPath, alipayRootCertPath
+    } = req.body
     const now = formatDateTime(new Date())
 
     // 获取现有配置
@@ -278,12 +281,17 @@ router.post('/config/alipay', async (req: Request, res: Response) => {
     // 更新配置
     configData.appId = appId
     configData.signType = signType || 'RSA2'
+    configData.verifyType = verifyType || 'public'
     if (privateKey && privateKey !== '******') {
       configData.privateKey = privateKey
     }
     if (alipayPublicKey && alipayPublicKey !== '******') {
       configData.alipayPublicKey = alipayPublicKey
     }
+    // 证书模式相关字段
+    if (appCertPath) configData.appCertPath = appCertPath
+    if (alipayCertPath) configData.alipayCertPath = alipayCertPath
+    if (alipayRootCertPath) configData.alipayRootCertPath = alipayRootCertPath
 
     const encryptedData = encrypt(JSON.stringify(configData))
 
@@ -557,15 +565,31 @@ router.post('/config/alipay/test', async (req: Request, res: Response) => {
         const signStr = sorted.map(k => `${k}=${params[k]}`).join('&')
         const algorithm = signType === 'RSA2' ? 'RSA-SHA256' : 'RSA-SHA1'
 
-        // 格式化私钥
-        let formattedKey = configData.privateKey
+        // 格式化私钥（自动兼容 PKCS#1 和 PKCS#8 格式）
+        const formattedKey = configData.privateKey
+        let signature = ''
         if (!formattedKey.includes('-----BEGIN')) {
-          formattedKey = `-----BEGIN RSA PRIVATE KEY-----\n${formattedKey}\n-----END RSA PRIVATE KEY-----`
+          // 先尝试 PKCS#8 格式，失败再尝试 PKCS#1 格式
+          const formats = [
+            `-----BEGIN PRIVATE KEY-----\n${formattedKey}\n-----END PRIVATE KEY-----`,
+            `-----BEGIN RSA PRIVATE KEY-----\n${formattedKey}\n-----END RSA PRIVATE KEY-----`
+          ]
+          for (const fmt of formats) {
+            try {
+              const s = crypto.createSign(algorithm)
+              s.update(signStr)
+              signature = s.sign(fmt, 'base64')
+              break
+            } catch { /* 尝试下一种格式 */ }
+          }
+          if (!signature) {
+            throw new Error('私钥格式无法识别，请检查是否为有效的RSA私钥')
+          }
+        } else {
+          const sign = crypto.createSign(algorithm)
+          sign.update(signStr)
+          signature = sign.sign(formattedKey, 'base64')
         }
-
-        const sign = crypto.createSign(algorithm)
-        sign.update(signStr)
-        const signature = sign.sign(formattedKey, 'base64')
 
         if (signature) {
           // 签名成功，尝试调用支付宝网关

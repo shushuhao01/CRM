@@ -13,6 +13,7 @@ import crypto from 'crypto';
 import axios from 'axios';
 import { v4 as uuidv4 } from 'uuid';
 import { formatDate } from '../../utils/dateFormat';
+import { ensureStatusHistoryTable } from '../orders/orderHelpers';
 
 import { log } from '../../config/logger';
 export function registerStatusAndConfigRoutes(router: Router): void {
@@ -302,6 +303,7 @@ router.post('/order/status', async (req, res) => {
 
     // 添加状态更新记录到历史表（可选，如果失败不影响主流程）
     try {
+      await ensureStatusHistoryTable();
       const realName = user?.realName || user?.name || user?.username || '系统';
       const deptName = user?.departmentName || user?.department || '';
       const fullOperatorName = deptName ? `${deptName}-${realName}` : realName;
@@ -433,6 +435,7 @@ router.post('/order/batch-status', async (req, res) => {
 
         // 添加状态更新记录到历史表
         try {
+          await ensureStatusHistoryTable();
           const historyRecord = statusHistoryRepository.create({
             orderId: order.id,
             status: newStatus as any,

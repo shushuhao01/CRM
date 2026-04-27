@@ -7,6 +7,7 @@ import { SystemConfig } from '../../entities/SystemConfig';
 import { DepartmentOrderLimit } from '../../entities/DepartmentOrderLimit';
 import { Order } from '../../entities/Order';
 import { getTenantRepo } from '../../utils/tenantRepo';
+import { AppDataSource } from '../../config/database';
 
 import { log } from '../../config/logger';
 // ========== 类型定义 ==========
@@ -18,6 +19,40 @@ export interface OrderLimitCheckResult {
 }
 
 // ========== 辅助函数 ==========
+
+/** 确保 order_status_history 表存在（synchronize=false 时需手动建表） */
+let _tableChecked = false;
+export const ensureStatusHistoryTable = async (): Promise<void> => {
+  if (_tableChecked) return;
+  try {
+    await AppDataSource.query(`
+      CREATE TABLE IF NOT EXISTS order_status_history (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        tenant_id VARCHAR(36) DEFAULT NULL COMMENT '租户ID',
+        orderId VARCHAR(50) NOT NULL COMMENT '订单ID',
+        status VARCHAR(50) NOT NULL COMMENT '状态',
+        notes TEXT DEFAULT NULL COMMENT '状态变更备注',
+        operatorId INT DEFAULT NULL COMMENT '操作人ID',
+        operatorName VARCHAR(50) DEFAULT NULL COMMENT '操作人姓名',
+        operatorDepartment VARCHAR(100) DEFAULT NULL COMMENT '操作人部门',
+        actionType VARCHAR(50) DEFAULT NULL COMMENT '操作类型',
+        changeDetail TEXT DEFAULT NULL COMMENT '变更详情JSON',
+        createdAt DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+        KEY idx_order_id (orderId),
+        KEY idx_tenant_id (tenant_id)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+    _tableChecked = true;
+    log.info('[状态历史] ✅ order_status_history 表已就绪');
+  } catch (err: any) {
+    // 表已存在或其他错误
+    if (err.message?.includes('already exists')) {
+      _tableChecked = true;
+    } else {
+      log.warn('[状态历史] ⚠️ 确保表存在时出错:', err.message);
+    }
+  }
+};
 
 /** 保存订单状态历史记录 */
 export const saveStatusHistory = async (
@@ -33,6 +68,9 @@ export const saveStatusHistory = async (
   }
 ): Promise<void> => {
   try {
+    // 🔥 确保表存在（synchronize=false 时不会自动建表）
+    await ensureStatusHistoryTable();
+
     const statusHistoryRepository = getTenantRepo(OrderStatusHistory);
     const history = statusHistoryRepository.create({
       orderId,
@@ -46,8 +84,12 @@ export const saveStatusHistory = async (
     });
     await statusHistoryRepository.save(history);
     log.info(`[状态历史] ✅ 保存成功: orderId=${orderId}, status=${status}, operator=${operatorName}, dept=${options?.operatorDepartment || '-'}, type=${options?.actionType || 'status_change'}`);
-  } catch (error) {
-    log.error(`[状态历史] ❌ 保存失败:`, error);
+  } catch (error: any) {
+    log.error(`[状态历史] ❌ 保存失败: ${error.message}`, error);
+    // 🔥 如果是表/列不存在导致的失败，重置标记下次重试建表
+    if (error.message?.includes('doesn\'t exist') || error.message?.includes('Unknown column')) {
+      _tableChecked = false;
+    }
   }
 };
 

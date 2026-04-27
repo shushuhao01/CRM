@@ -625,17 +625,18 @@ const generateTimelineFromStatus = () => {
       // 计算时间（每个状态间隔一些时间）
       const timestamp = new Date(baseTime.getTime() + stepPriority * 3600000)
 
-      // 🔥 根据状态确定操作人 - 仅下单/提审用下单人，其余不能冒用下单人姓名
+      // 🔥 根据状态确定操作人 - 优先用订单记录的最近操作人（含部门-姓名），回退用下单人
+      const lastOperator = orderDetail.operator || creatorName
       let operator = creatorName
       if (step.status === 'pending_transfer' || step.status === 'pending_audit') {
         operator = creatorName // 创建和提审确实是下单人操作
       } else if (step.status === 'pending_shipment') {
-        operator = orderDetail.operatorName || '审核员（历史记录缺失）'
+        operator = lastOperator
       } else if (step.status === 'shipped') {
-        operator = orderDetail.operatorName || '发货员（历史记录缺失）'
+        operator = lastOperator
       } else if (step.status === 'delivered' || step.status === 'signed') {
         if (isVirtual) {
-          operator = orderDetail.operatorName || '系统自动签收'
+          operator = lastOperator
         } else {
           operator = '物流签收'
         }
@@ -662,7 +663,7 @@ const generateTimelineFromStatus = () => {
       color: '#F56C6C',
       title: '订单取消',
       description: '订单已取消',
-      operator: orderDetail.operatorName || '管理员（历史记录缺失）'
+      operator: orderDetail.operator || creatorName
     })
   } else if (currentStatus === 'audit_rejected') {
     timeline.push({
@@ -672,7 +673,7 @@ const generateTimelineFromStatus = () => {
       color: '#F56C6C',
       title: '审核拒绝',
       description: orderDetail.auditRemark || '订单审核被拒绝',
-      operator: orderDetail.operatorName || '审核员（历史记录缺失）'
+      operator: orderDetail.operator || creatorName
     })
   }
 
