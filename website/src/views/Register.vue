@@ -1567,6 +1567,8 @@ const handleCheckPayment = async () => {
             memberPwdDefault: '1'
           }
         })
+      } else if (data.data.status === 'processing') {
+        alert('支付已成功，授权码正在生成中，请稍等几秒后重试')
       } else {
         alert('暂未收到支付结果，请稍后再试或联系客服')
       }
@@ -1822,6 +1824,8 @@ const handleCheckSkipPayment = async () => {
         if (data.data.licenseKey) registeredTenant.value.licenseKey = data.data.licenseKey
 
         signingStatus.value = 'pay-success'
+      } else if (data.data.status === 'processing') {
+        alert('支付已成功，授权码正在生成中，请稍等几秒后重试')
       } else {
         alert('暂未收到支付结果，请稍后再试或联系客服')
       }

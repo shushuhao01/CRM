@@ -115,7 +115,7 @@ router.get('/', async (req: Request, res: Response) => {
                FROM tenants t
                LEFT JOIN tenant_packages p ON t.package_id COLLATE utf8mb4_unicode_ci = p.id COLLATE utf8mb4_unicode_ci
                ${subJoin}
-               WHERE 1=1`;
+               WHERE t.deleted_at IS NULL`;
     const params: any[] = [];
 
     if (status) {
@@ -136,8 +136,8 @@ router.get('/', async (req: Request, res: Response) => {
     }
 
     // 提取WHERE条件用于计数查询
-    const whereConditions = (sql.split('WHERE 1=1')[1] || '');
-    const countSql = `SELECT COUNT(*) as total FROM tenants t LEFT JOIN tenant_packages p ON t.package_id COLLATE utf8mb4_unicode_ci = p.id COLLATE utf8mb4_unicode_ci WHERE 1=1` + whereConditions;
+    const whereConditions = (sql.split('WHERE t.deleted_at IS NULL')[1] || '');
+    const countSql = `SELECT COUNT(*) as total FROM tenants t LEFT JOIN tenant_packages p ON t.package_id COLLATE utf8mb4_unicode_ci = p.id COLLATE utf8mb4_unicode_ci WHERE t.deleted_at IS NULL` + whereConditions;
     // subscription子查询内部已经GROUP BY tenant_id去重，无需外层GROUP BY
     sql += ` ORDER BY t.created_at DESC LIMIT ? OFFSET ?`;
     params.push(pageSizeNum, offset);

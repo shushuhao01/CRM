@@ -170,27 +170,34 @@ router.get('/query/:orderNo', async (req: Request, res: Response) => {
       }
     }
 
-    // 如果已支付，查询租户的授权码
+    // 查询租户信息（授权码、编码、手机号）
     let licenseKey = null
     let tenantCode = null
     let adminUsername = null
-    if (order.status === 'paid' && order.tenant_id) {
+    if (order.tenant_id) {
       const tenants = await AppDataSource.query(
-        'SELECT code, license_key, phone FROM tenants WHERE id = ?', [order.tenant_id]
+        'SELECT code, license_key, license_status, phone FROM tenants WHERE id = ?', [order.tenant_id]
       )
       if (tenants.length > 0) {
         tenantCode = tenants[0].code
         licenseKey = tenants[0].license_key
-        // 🔥 返回管理员账号（手机号）
         adminUsername = tenants[0].phone || null
       }
+    }
+
+    // 🔑 防竞态：如果订单已支付但租户授权码尚未生成（activateTenant仍在执行），
+    // 返回 'processing' 让前端继续轮询，而不是跳转到无授权码的成功页
+    let effectiveStatus = order.status
+    if (order.status === 'paid' && order.tenant_id && !licenseKey) {
+      log.warn(`[Payment] 订单 ${orderNo} 已支付但授权码尚未生成，返回 processing 状态`)
+      effectiveStatus = 'processing'
     }
 
     res.json({
       code: 0,
       data: {
         orderNo: order.order_no,
-        status: order.status,
+        status: effectiveStatus,
         amount: order.amount,
         payType: order.pay_type,
         paidAt: order.paid_at,

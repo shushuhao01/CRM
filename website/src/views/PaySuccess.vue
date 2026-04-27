@@ -1512,6 +1512,35 @@ import { getLatestVersion, formatFileSize as formatSize, type VersionInfo } from
 
 const route = useRoute()
 
+// 🔑 持久化成功页数据：防止刷新丢失授权信息
+// 如果URL有query参数 → 保存到sessionStorage；如果URL无参数 → 从sessionStorage恢复
+const SESSION_KEY = 'pay_success_data'
+
+const savedData = (() => {
+  const q = route.query
+  const hasData = !!(q.tenantCode || q.licenseKey || q.plan)
+  if (hasData) {
+    // URL有数据 → 存入sessionStorage
+    const data: Record<string, string> = {}
+    for (const [k, v] of Object.entries(q)) {
+      if (v != null) data[k] = String(v)
+    }
+    try { sessionStorage.setItem(SESSION_KEY, JSON.stringify(data)) } catch {}
+    return data
+  }
+  // URL无数据 → 从sessionStorage恢复
+  try {
+    const stored = sessionStorage.getItem(SESSION_KEY)
+    if (stored) return JSON.parse(stored) as Record<string, string>
+  } catch {}
+  return {} as Record<string, string>
+})()
+
+// 统一取值：优先URL参数，其次sessionStorage缓存
+const getParam = (key: string, fallback = '') => {
+  return (route.query[key] as string) || savedData[key] || fallback
+}
+
 // 官网配置（客服链接等）
 const customerServiceUrl = ref('https://work.weixin.qq.com/kfid/kfc461ca9f5b45c8d25')
 const crmUrl = ref('') // 动态CRM系统地址
@@ -1611,27 +1640,27 @@ onMounted(async () => {
   }
 })
 
-const type = computed(() => route.query.type as string || 'saas')
-const plan = computed(() => route.query.plan as string || 'pro')
-const tenantCode = computed(() => route.query.tenantCode as string || '')
-const isBankTransfer = computed(() => route.query.payType === 'bank')
-const orderNo = computed(() => route.query.orderNo as string || '')
+const type = computed(() => getParam('type', 'saas'))
+const plan = computed(() => getParam('plan', 'pro'))
+const tenantCode = computed(() => getParam('tenantCode'))
+const isBankTransfer = computed(() => getParam('payType') === 'bank')
+const orderNo = computed(() => getParam('orderNo'))
 
-// 从URL参数获取真实授权码和账号信息
+// 从URL参数（或sessionStorage缓存）获取真实授权码和账号信息
 const hasRealLicenseKey = computed(() => {
-  const key = route.query.licenseKey as string
+  const key = getParam('licenseKey')
   return !!key && key.length > 0
 })
 
 const licenseKey = computed(() => {
-  const key = route.query.licenseKey as string
+  const key = getParam('licenseKey')
   if (key) return key
-  return '请查看邮件或短信获取授权码'
+  return '授权码生成中，请刷新页面或联系客服获取'
 })
 
-const adminUsername = computed(() => route.query.adminUsername as string || '')
-const adminPassword = computed(() => route.query.adminPassword as string || '')
-const memberPwdDefault = computed(() => route.query.memberPwdDefault === '1')
+const adminUsername = computed(() => getParam('adminUsername'))
+const adminPassword = computed(() => getParam('adminPassword'))
+const memberPwdDefault = computed(() => getParam('memberPwdDefault') === '1')
 
 const maxUsers = computed(() => {
   const users: Record<string, string> = {

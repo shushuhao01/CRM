@@ -514,9 +514,9 @@ class PaymentService {
   // 激活/升级租户（支付成功后调用，支持新开通、续费、升级三种场景）
   private async activateTenant(tenantId: string, packageId: string, billingCycle?: string, bonusMonths?: number): Promise<string | null> {
     try {
-      // 获取租户信息（包括当前套餐和过期日期，用于判断续费/升级场景）
+      // 获取租户信息（包括当前套餐、过期日期、已有授权码，用于判断续费/升级场景）
       const tenants = await AppDataSource.query(
-        'SELECT code, name, phone, contact, expire_date, package_id as current_package_id, license_status FROM tenants WHERE id = ?', [tenantId]
+        'SELECT code, name, phone, contact, expire_date, package_id as current_package_id, license_key as existing_license_key, license_status FROM tenants WHERE id = ?', [tenantId]
       )
 
       if (tenants.length === 0) {
@@ -562,8 +562,10 @@ class PaymentService {
         expireDate.setDate(expireDate.getDate() + durationDays)
         const expireDateStr = formatDate(expireDate)
 
-        // 生成新授权码
-        const licenseKey = this.generateLicenseKey()
+        // 🔑 保留注册时生成的授权码（如已有），仅续费/升级时生成新码
+        const licenseKey = (isRenewal || isUpgrade || !tenant.existing_license_key)
+          ? this.generateLicenseKey()
+          : tenant.existing_license_key
 
         // 解析套餐 features（用于同步到租户）
         let featuresStr: string | null = null

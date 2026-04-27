@@ -4,7 +4,6 @@
 import { Router, Request, Response } from 'express'
 import { AppDataSource } from '../../config/database'
 import { v4 as uuidv4 } from 'uuid'
-import crypto from 'crypto'
 import bcrypt from 'bcryptjs'
 import { aliyunSmsService } from '../../services/AliyunSmsService'
 import { adminNotificationService } from '../../services/AdminNotificationService'
@@ -28,14 +27,7 @@ const generateTenantCode = async (): Promise<string> => {
   return code
 }
 
-// 生成租户授权码
-const generateLicenseKey = (): string => {
-  const segments = []
-  for (let i = 0; i < 4; i++) {
-    segments.push(crypto.randomBytes(2).toString('hex').toUpperCase())
-  }
-  return `TENANT-${segments.join('-')}`
-}
+// 生成租户授权码（统一使用 Tenant.generateLicenseKey，与管理后台格式保持一致）
 
 // 验证码存储（生产环境应使用 Redis）
 const verificationCodes: Map<string, { code: string; expires: number }> = new Map()
@@ -83,7 +75,7 @@ router.post('/send-code', async (req: Request, res: Response) => {
 })
 
 
-// 注册租户（付费套餐：只创建记录，不生成授权码；免费套餐：直接生成授权码）
+// 注册租户（无论免费还是付费，都在注册时生成授权码，确保成功页显示完整授权码）
 router.post('/', async (req: Request, res: Response) => {
   try {
     const { companyName, contactName, phone, code, email, packageCode, password, autoRenew, autoRenewPackage } = req.body
@@ -133,9 +125,9 @@ router.post('/', async (req: Request, res: Response) => {
     const tenantId = uuidv4()
     const tenantCode = await generateTenantCode()
 
-    // 免费套餐：直接生成授权码并激活
-    // 付费套餐：不生成授权码，等支付成功后生成
-    const licenseKey = isFree ? generateLicenseKey() : null
+    // 🔑 无论免费还是付费，都在注册时生成授权码（确保成功页能显示完整授权码）
+    // 免费套餐：直接激活；付费套餐：状态为pending，支付后激活
+    const licenseKey = Tenant.generateLicenseKey()
     const licenseStatus = isFree ? 'active' : 'pending'
 
     // 计算到期时间（免费套餐立即生效，付费套餐支付后生效）
@@ -164,13 +156,11 @@ router.post('/', async (req: Request, res: Response) => {
     }
 
     // 记录日志
-    if (licenseKey) {
-      await AppDataSource.query(
-        `INSERT INTO tenant_license_logs (id, tenant_id, license_key, action, result, message)
-         VALUES (?, ?, ?, 'register', 'success', '官网注册-免费试用')`,
-        [uuidv4(), tenantId, licenseKey]
-      )
-    }
+    await AppDataSource.query(
+      `INSERT INTO tenant_license_logs (id, tenant_id, license_key, action, result, message)
+       VALUES (?, ?, ?, 'register', 'success', ?)`,
+      [uuidv4(), tenantId, licenseKey, isFree ? '官网注册-免费试用' : '官网注册-付费套餐（待支付）']
+    )
 
     // 🔥 免费套餐：创建默认管理员账号（用手机号作为用户名，默认密码 Aa123456）
     let adminAccount: { username: string; password: string } | null = null
@@ -197,7 +187,7 @@ router.post('/', async (req: Request, res: Response) => {
       data: {
         tenantId,
         tenantCode,
-        licenseKey: licenseKey || null, // 付费套餐返回null
+        licenseKey, // 🔑 无论免费还是付费，都返回完整授权码
         expireDate: expireDate ? expireDate.toISOString().split('T')[0] : null,
         needPay: !isFree,
         memberToken,
@@ -217,11 +207,13 @@ router.post('/', async (req: Request, res: Response) => {
       extraData: { companyName, contactName, phone, tenantCode, isFree }
     }).catch(err => log.error('[Register] 发送管理员通知失败:', err.message))
 
-    // 🔥 免费试用注册成功后，发送邮件和短信通知给用户（包含完整账号信息）
-    if (isFree && licenseKey) {
+    // 🔥 注册成功后，发送邮件和短信通知给用户（免费和付费都发送，包含完整授权码信息）
+    {
       const expireDateStr = expireDate ? expireDate.toISOString().split('T')[0] : ''
+      const packageLabel = isFree ? '7天免费试用' : '付费套餐（待支付）'
       // 异步发送，不阻塞响应
       ;(async () => {
+        const notifyResults: string[] = []
         try {
           // 发送短信通知
           if (phone) {
@@ -235,13 +227,13 @@ router.post('/', async (req: Request, res: Response) => {
               }
               const smsParams = {
                 tenantName: companyName,
-                orderNo: '免费试用',
-                amount: '0',
+                orderNo: isFree ? '免费试用' : '待支付',
+                amount: isFree ? '0' : String(packagePrice),
                 tenantCode: tenantCode,
                 licenseKey: licenseKey,
                 adminPassword: adminAccount?.password || 'Aa123456',
-                packageName: '7天免费试用',
-                expireDate: expireDateStr
+                packageName: packageLabel,
+                expireDate: expireDateStr || '支付后生效'
               }
               // 依次尝试: ACCOUNT_ACTIVATION → PAYMENT_ACTIVATION
               const templateTypes = ['ACCOUNT_ACTIVATION', 'PAYMENT_ACTIVATION']
@@ -251,18 +243,22 @@ router.post('/', async (req: Request, res: Response) => {
                 smsResult = await aliyunSmsService.sendSms(phone, templateType, smsParams)
                 if (smsResult.success) {
                   log.info(`[Register] ✅ 注册短信已通过 ${templateType} 模板发送至: ${phone}`)
+                  notifyResults.push(`短信:成功(${templateType})`)
                   break
                 }
                 log.warn(`[Register] ${templateType} 发送失败: ${smsResult.message}`)
-                // 如果不是"未配置"错误则不继续尝试其他模板（可能是签名/参数/余额等问题）
                 if (!smsResult.message?.includes('未配置')) break
               }
               if (!smsResult.success) {
                 log.error(`[Register] 所有短信模板均失败，最后错误: ${smsResult.message}`)
+                notifyResults.push(`短信:失败(${smsResult.message})`)
               }
             } catch (smsErr: any) {
               log.error('[Register] 发送注册短信异常:', smsErr.message, smsErr.stack?.substring(0, 300))
+              notifyResults.push(`短信:异常(${smsErr.message?.substring(0, 50)})`)
             }
+          } else {
+            notifyResults.push('短信:跳过(无手机号)')
           }
 
           // 发送邮件通知
@@ -280,15 +276,17 @@ router.post('/', async (req: Request, res: Response) => {
                 if (parsed.enabled && parsed.smtpHost && parsed.senderEmail && parsed.emailPassword) {
                   emailSettings = parsed
                 } else {
-                  const missing = []
+                  const missing: string[] = []
                   if (!parsed.enabled) missing.push('enabled=false')
                   if (!parsed.smtpHost) missing.push('smtpHost缺失')
                   if (!parsed.senderEmail) missing.push('senderEmail缺失')
                   if (!parsed.emailPassword) missing.push('emailPassword缺失')
                   log.warn(`[Register] 邮件配置不完整，缺少: ${missing.join(', ')}`)
+                  notifyResults.push(`邮件:失败(配置不完整:${missing.join(',')})`)
                 }
               } else {
                 log.warn('[Register] 数据库中未找到 email_settings 配置记录')
+                notifyResults.push('邮件:失败(无email_settings配置)')
               }
 
               if (emailSettings) {
@@ -305,6 +303,15 @@ router.post('/', async (req: Request, res: Response) => {
                   }
                 })
 
+                const emailTitle = isFree ? '🎉 注册成功 - 免费试用已开通' : '🎉 注册成功 - 请完成支付'
+                const emailDesc = isFree
+                  ? '您的7天免费试用账号已成功开通。以下是您的账号信息，请妥善保管：'
+                  : '您的账号已注册成功，请完成支付后即可使用。以下是您的授权信息，请妥善保管：'
+                const adminRows = isFree ? `
+              <tr><td style="padding:8px 16px;font-size:14px;color:#606266;">管理员账号</td><td style="padding:8px 16px;font-size:14px;color:#e6a23c;font-weight:600;">${adminAccount?.username || phone}</td></tr>
+              <tr><td style="padding:8px 16px;font-size:14px;color:#606266;">管理员密码</td><td style="padding:8px 16px;font-size:14px;color:#e6a23c;font-weight:600;">${adminAccount?.password || 'Aa123456'}</td></tr>` : ''
+                const actionText = isFree ? '立即登录 CRM 系统' : '前往会员中心'
+
                 const emailHtml = `
 <!DOCTYPE html>
 <html>
@@ -315,7 +322,7 @@ router.post('/', async (req: Request, res: Response) => {
       <table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,0.08);">
         <tr>
           <td style="background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);padding:28px 32px;">
-            <h2 style="margin:0;color:#fff;font-size:20px;font-weight:600;">🎉 注册成功 - 免费试用已开通</h2>
+            <h2 style="margin:0;color:#fff;font-size:20px;font-weight:600;">${emailTitle}</h2>
           </td>
         </tr>
         <tr>
@@ -324,19 +331,18 @@ router.post('/', async (req: Request, res: Response) => {
               尊敬的 <strong>${companyName}</strong>，您好！
             </p>
             <p style="font-size:14px;line-height:1.8;color:#333;margin:0 0 20px;">
-              您的7天免费试用账号已成功开通。以下是您的账号信息，请妥善保管：
+              ${emailDesc}
             </p>
             <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8f9fa;border-radius:8px;padding:20px;margin-bottom:20px;">
-              <tr><td style="padding:8px 16px;font-size:14px;color:#606266;">套餐名称</td><td style="padding:8px 16px;font-size:14px;color:#303133;font-weight:500;">7天免费试用</td></tr>
-              <tr><td style="padding:8px 16px;font-size:14px;color:#606266;">有效期至</td><td style="padding:8px 16px;font-size:14px;color:#303133;font-weight:500;">${expireDateStr}</td></tr>
+              <tr><td style="padding:8px 16px;font-size:14px;color:#606266;">套餐名称</td><td style="padding:8px 16px;font-size:14px;color:#303133;font-weight:500;">${packageLabel}</td></tr>
+              ${expireDateStr ? `<tr><td style="padding:8px 16px;font-size:14px;color:#606266;">有效期至</td><td style="padding:8px 16px;font-size:14px;color:#303133;font-weight:500;">${expireDateStr}</td></tr>` : ''}
               <tr><td colspan="2" style="padding:4px 16px;"><hr style="border:none;border-top:1px solid #e4e7ed;"></td></tr>
               <tr><td style="padding:8px 16px;font-size:14px;color:#606266;">租户编码</td><td style="padding:8px 16px;font-size:14px;color:#e6a23c;font-weight:600;">${tenantCode}</td></tr>
               <tr><td style="padding:8px 16px;font-size:14px;color:#606266;">授权码</td><td style="padding:8px 16px;font-size:14px;color:#e6a23c;font-weight:600;">${licenseKey}</td></tr>
-              <tr><td style="padding:8px 16px;font-size:14px;color:#606266;">管理员账号</td><td style="padding:8px 16px;font-size:14px;color:#e6a23c;font-weight:600;">${adminAccount?.username || phone}</td></tr>
-              <tr><td style="padding:8px 16px;font-size:14px;color:#606266;">管理员密码</td><td style="padding:8px 16px;font-size:14px;color:#e6a23c;font-weight:600;">${adminAccount?.password || 'Aa123456'}</td></tr>
+              ${adminRows}
             </table>
             <div style="text-align:center;margin:24px 0;">
-              <a href="${SITE_CONFIG.CRM_URL}" style="display:inline-block;padding:12px 32px;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:#fff;text-decoration:none;border-radius:6px;font-size:15px;font-weight:500;">立即登录 CRM 系统</a>
+              <a href="${SITE_CONFIG.CRM_URL}" style="display:inline-block;padding:12px 32px;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:#fff;text-decoration:none;border-radius:6px;font-size:15px;font-weight:500;">${actionText}</a>
             </div>
             <p style="font-size:13px;line-height:1.8;color:#909399;margin:16px 0 0;">
               ⚠️ 首次登录请使用租户编码和管理员密码登录，登录后请及时修改密码。如有疑问请联系客服。
@@ -357,20 +363,35 @@ router.post('/', async (req: Request, res: Response) => {
                 await transporter.sendMail({
                   from: `"${emailSettings.senderName || '云客CRM'}" <${emailSettings.senderEmail}>`,
                   to: email,
-                  subject: `【云客CRM】注册成功 - 您的免费试用账号已开通`,
+                  subject: isFree ? `【云客CRM】注册成功 - 您的免费试用账号已开通` : `【云客CRM】注册成功 - 请完成支付`,
                   html: emailHtml
                 })
                 log.info(`[Register] 注册成功邮件已发送至: ${email}`)
+                notifyResults.push('邮件:成功')
               } else {
                 log.warn('[Register] 邮件配置未启用，跳过注册成功邮件通知')
               }
             } catch (emailErr: any) {
               log.error('[Register] 发送注册邮件失败:', emailErr.message)
+              notifyResults.push(`邮件:失败(${emailErr.message?.substring(0, 50)})`)
             }
+          } else {
+            notifyResults.push('邮件:跳过(无邮箱)')
           }
         } catch (notifyErr: any) {
           log.error('[Register] 发送用户通知失败:', notifyErr.message)
+          notifyResults.push(`总异常:${notifyErr.message?.substring(0, 50)}`)
         }
+
+        // 🔥 记录通知发送结果到日志（方便排查短信/邮件不触发的问题）
+        try {
+          await AppDataSource.query(
+            `INSERT INTO tenant_license_logs (id, tenant_id, license_key, action, result, message)
+             VALUES (?, ?, ?, 'notify', ?, ?)`,
+            [uuidv4(), tenantId, licenseKey, notifyResults.some(r => r.includes(':成功')) ? 'success' : 'fail',
+             `注册通知: ${notifyResults.join('; ')}`]
+          )
+        } catch (_logErr) { /* 忽略日志写入失败 */ }
       })()
     }
   } catch (error) {
