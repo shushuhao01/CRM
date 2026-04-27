@@ -117,8 +117,8 @@ const handleScroll = () => {
   isScrolled.value = window.scrollY > 20
 }
 
-// 监听 storage 变化（其他标签页登录/登出）
-const handleStorage = () => { memberCheckKey.value++ }
+// 监听 storage 变化（其他标签页登录/登出）和自定义事件（同标签页登录）
+const handleLoginChange = () => { memberCheckKey.value++ }
 
 // 点击外部关闭下拉菜单
 const handleClickOutside = (e: MouseEvent) => {
@@ -133,7 +133,8 @@ const handleClickOutside = (e: MouseEvent) => {
 
 onMounted(async () => {
   window.addEventListener('scroll', handleScroll)
-  window.addEventListener('storage', handleStorage)
+  window.addEventListener('storage', handleLoginChange)
+  window.addEventListener('member-login-change', handleLoginChange)
   document.addEventListener('click', handleClickOutside)
   // 动态加载CRM系统地址
   try {
@@ -144,7 +145,8 @@ onMounted(async () => {
 
 onUnmounted(() => {
   window.removeEventListener('scroll', handleScroll)
-  window.removeEventListener('storage', handleStorage)
+  window.removeEventListener('storage', handleLoginChange)
+  window.removeEventListener('member-login-change', handleLoginChange)
   document.removeEventListener('click', handleClickOutside)
 })
 </script>

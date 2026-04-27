@@ -18,6 +18,7 @@ export function setMemberToken(token: string): void {
 export function clearMemberToken(): void {
   localStorage.removeItem(TOKEN_KEY)
   localStorage.removeItem(TENANT_KEY)
+  window.dispatchEvent(new Event('member-login-change'))
 }
 
 export function getMemberTenant(): any {
@@ -71,6 +72,7 @@ export async function memberLogin(params: {
         code: data.data.tenantCode,
         phone: data.data.phone
       })
+      window.dispatchEvent(new Event('member-login-change'))
     }
     return { success: data.code === 0, message: data.message, data: data.data }
   } catch {
@@ -101,6 +103,7 @@ export async function selectTenantLogin(params: {
         code: data.data.tenantCode,
         phone: data.data.phone
       })
+      window.dispatchEvent(new Event('member-login-change'))
     }
     return { success: data.code === 0, message: data.message, data: data.data }
   } catch {

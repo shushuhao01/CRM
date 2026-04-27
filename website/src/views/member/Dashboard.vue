@@ -301,24 +301,15 @@ const formatStorage = (mb: number) => {
 }
 
 
-/** 快捷支付 — 打开弹窗自动生成二维码 */
+/** 快捷支付 — 打开弹窗自动重新生成二维码（旧二维码可能已过期） */
 const handleQuickPay = async (bill: any) => {
   quickPayBill.value = bill
   quickPayQr.value = ''
   quickPayOrderNo.value = bill.orderNo
   quickPayChannel.value = bill.payType || 'wechat'
   showQuickPay.value = true
-
-  if (bill.qrCode && bill.status === 'pending') {
-    quickPayQr.value = bill.qrCode.startsWith('data:') || bill.qrCode.startsWith('http')
-      ? bill.qrCode : await generateQRCodeDataUrl(bill.qrCode)
-    startQuickPoll(bill.orderNo)
-  } else if (bill.payUrl && bill.status === 'pending') {
-    quickPayQr.value = await generateQRCodeDataUrl(bill.payUrl)
-    startQuickPoll(bill.orderNo)
-  } else {
-    handleGenQuickPay()
-  }
+  // 始终重新生成二维码，避免使用数据库中缓存的过期二维码
+  handleGenQuickPay()
 }
 
 /** 切换支付渠道时自动重新生成 */
@@ -351,12 +342,13 @@ const handleGenQuickPay = async () => {
     const data = await res.json()
     if (data.code === 0 && data.data) {
       quickPayOrderNo.value = data.data.orderNo || orderNo
-      if (data.data.qrCode && (data.data.qrCode.startsWith('http') || data.data.qrCode.startsWith('data:'))) {
+      if (data.data.qrCode && data.data.qrCode.startsWith('data:')) {
         quickPayQr.value = data.data.qrCode
-      } else if (data.data.payUrl) {
-        quickPayQr.value = await generateQRCodeDataUrl(data.data.payUrl)
+      } else if (data.data.payUrl || data.data.qrCode) {
+        quickPayQr.value = await generateQRCodeDataUrl(data.data.payUrl || data.data.qrCode)
       } else {
-        quickPayQr.value = await generateQRCodeDataUrl(quickPayOrderNo.value)
+        alert('支付二维码生成失败，请检查支付配置或联系客服')
+        return
       }
       startQuickPoll(quickPayOrderNo.value)
     } else {

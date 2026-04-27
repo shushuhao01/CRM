@@ -167,27 +167,20 @@ router.get('/query/:orderNo', async (req: Request, res: Response) => {
   }
 })
 
-// 微信支付回调
+// 微信支付回调（V3 JSON格式）
 router.post('/wechat/notify', async (req: Request, res: Response) => {
   try {
-    let xmlData = ''
-    req.on('data', chunk => { xmlData += chunk })
-    req.on('end', async () => {
-      log.info('[Payment] 微信回调:', xmlData)
-      const result = await paymentService.handleWechatNotify(xmlData)
+    const callbackData = req.body
+    log.info('[Payment] 微信V3回调:', JSON.stringify(callbackData).substring(0, 500))
 
-      if (result.success) {
-        res.set('Content-Type', 'application/xml')
-        res.send('<xml><return_code><![CDATA[SUCCESS]]></return_code><return_msg><![CDATA[OK]]></return_msg></xml>')
-      } else {
-        res.set('Content-Type', 'application/xml')
-        res.send(`<xml><return_code><![CDATA[FAIL]]></return_code><return_msg><![CDATA[${result.message}]]></return_msg></xml>`)
-      }
-    })
+    // V3回调使用 WechatPayService 处理（JSON格式，AES-GCM加密）
+    const { wechatPayService } = await import('../../services/WechatPayService')
+    const result = await wechatPayService.handleCallback(callbackData)
+
+    res.json({ code: result.code, message: result.message })
   } catch (error) {
     log.error('[Payment] 微信回调处理失败:', error)
-    res.set('Content-Type', 'application/xml')
-    res.send('<xml><return_code><![CDATA[FAIL]]></return_code><return_msg><![CDATA[系统错误]]></return_msg></xml>')
+    res.json({ code: 'FAIL', message: '系统错误' })
   }
 })
 
@@ -225,19 +218,7 @@ router.post('/repay/:orderNo', async (req: Request, res: Response) => {
 
     const actualPayType = payType || order.pay_type || 'wechat'
 
-    // 如果支付方式没变且已有有效二维码，直接返回
-    if (actualPayType === order.pay_type && order.qr_code) {
-      return res.json({
-        code: 0,
-        data: {
-          orderNo: order.order_no,
-          qrCode: order.qr_code,
-          payUrl: order.pay_url
-        }
-      })
-    }
-
-    // 重新生成二维码
+    // 始终重新生成二维码（旧二维码可能已过期）
     let qrCode = ''
     let payUrl = ''
     if (actualPayType === 'wechat') {

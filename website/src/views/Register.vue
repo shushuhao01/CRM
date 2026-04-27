@@ -306,8 +306,8 @@
                 用于登录会员中心管理订阅、查看账单。不填写将使用初始密码 <strong>Aa123456</strong>，建议登录后修改
               </p>
             </div>
-            <!-- 免费试用：到期自动续费选项 -->
-            <div v-if="selectedPlan === 'FREE_TRIAL'" class="auto-renew-section">
+            <!-- 免费试用：到期自动续费选项（仅当有支持订阅的套餐时显示） -->
+            <div v-if="selectedPlan === 'FREE_TRIAL' && renewablePlans.length > 0" class="auto-renew-section">
               <label class="checkbox-label auto-renew-label">
                 <input type="checkbox" v-model="form.autoRenew" />
                 <span class="renew-text">
@@ -1273,7 +1273,7 @@ watch(currentPkgSubscriptionEnabled, (enabled) => {
 
 // 免费试用到期可续费的套餐列表
 const renewablePlans = computed(() => {
-  return packagesData.value.filter(p => p.type === 'saas' && !p.is_trial && Number(p.price) > 0)
+  return packagesData.value.filter(p => p.type === 'saas' && !p.is_trial && Number(p.price) > 0 && p.subscription_enabled)
 })
 
 const getMonthlyPrice = (plan: string) => {
@@ -2266,12 +2266,12 @@ const autoRenewPlanKey = computed(() => {
   }
 
   &.free-trial {
-    border-color: var(--success);
-    background: rgba(16, 185, 129, 0.05);
+    border-color: #f59e0b;
+    background: rgba(245, 158, 11, 0.05);
 
     &:hover {
-      border-color: var(--success);
-      box-shadow: 0 4px 12px rgba(16, 185, 129, 0.15);
+      border-color: #f59e0b;
+      box-shadow: 0 4px 12px rgba(245, 158, 11, 0.15);
     }
 
     &.selected {

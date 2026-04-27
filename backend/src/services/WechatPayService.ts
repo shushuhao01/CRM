@@ -39,6 +39,30 @@ export class WechatPayService {
   }
 
   /**
+   * 读取私钥PEM内容（兼容直接内容和文件路径两种存储方式）
+   */
+  private async resolvePrivateKey(keyPem: string): Promise<string> {
+    if (keyPem.includes('-----BEGIN')) return keyPem;
+    // keyPem 可能是文件路径（如 /uploads/admin/cert/xxx.pem）
+    if (keyPem.startsWith('/') || keyPem.includes('uploads')) {
+      const fs = await import('fs');
+      const path = await import('path');
+      const candidates = [
+        path.default.join(process.cwd(), keyPem),
+        path.default.join(process.cwd(), 'public', keyPem),
+        path.default.resolve(keyPem)
+      ];
+      for (const filePath of candidates) {
+        if (fs.default.existsSync(filePath)) {
+          return fs.default.readFileSync(filePath, 'utf8');
+        }
+      }
+      throw new Error(`私钥文件不存在（路径: ${candidates[0]}），请重新上传密钥文件并保存配置`);
+    }
+    throw new Error('私钥格式无法识别，请在管理后台重新上传 apiclient_key.pem');
+  }
+
+  /**
    * 创建Native支付（扫码支付）
    */
   async createNativePay(params: {
@@ -53,6 +77,15 @@ export class WechatPayService {
       if (!config.appId || !config.mchId) {
         throw new Error('微信支付配置不完整');
       }
+      if (!config.keyPem) {
+        throw new Error('微信支付私钥(keyPem)未配置，请在管理后台上传 apiclient_key.pem');
+      }
+      if (!config.serialNo) {
+        throw new Error('微信支付证书序列号未配置，请在管理后台填写V3支付证书ID');
+      }
+
+      // 读取私钥内容
+      const privateKey = await this.resolvePrivateKey(config.keyPem);
 
       // 构造请求参数
       const requestData = {
@@ -60,57 +93,54 @@ export class WechatPayService {
         mchid: config.mchId,
         description: params.description,
         out_trade_no: params.orderNo,
-        notify_url: config.notifyUrl || `${process.env.API_BASE_URL || 'http://localhost:3000'}/api/v1/admin/payment/notify/wechat`,
+        notify_url: config.notifyUrl || `${process.env.API_BASE_URL || 'http://localhost:3000'}/api/v1/public/payment/wechat/notify`,
         amount: {
           total: Math.round(params.amount * 100), // 转换为分
           currency: 'CNY'
         }
       };
 
-      // 如果配置了API密钥，调用真实API
-      if (config.apiKeyV3 && config.serialNo) {
-        try {
-          // 生成签名
-          const timestamp = Math.floor(Date.now() / 1000).toString();
-          const nonce = crypto.randomBytes(16).toString('hex');
-          const signature = this.generateSignatureV3(
-            'POST',
-            '/v3/pay/transactions/native',
-            timestamp,
-            nonce,
-            JSON.stringify(requestData),
-            config.apiKeyV3
-          );
+      try {
+        // 生成 RSA-SHA256 签名
+        const timestamp = Math.floor(Date.now() / 1000).toString();
+        const nonce = crypto.randomBytes(16).toString('hex');
+        const body = JSON.stringify(requestData);
+        const signature = this.generateSignatureV3(
+          'POST',
+          '/v3/pay/transactions/native',
+          timestamp,
+          nonce,
+          body,
+          privateKey
+        );
 
-          // 调用微信支付API
-          const response = await axios.post(
-            'https://api.mch.weixin.qq.com/v3/pay/transactions/native',
-            requestData,
-            {
-              headers: {
-                'Content-Type': 'application/json',
-                'Accept': 'application/json',
-                'Authorization': `WECHATPAY2-SHA256-RSA2048 mchid="${config.mchId}",nonce_str="${nonce}",signature="${signature}",timestamp="${timestamp}",serial_no="${config.serialNo}"`
-              },
-              timeout: 10000
-            }
-          );
-
-          if (response.data && response.data.code_url) {
-            return {
-              qrCode: response.data.code_url,
-              payUrl: response.data.code_url
-            };
+        // 调用微信支付API
+        const response = await axios.post(
+          'https://api.mch.weixin.qq.com/v3/pay/transactions/native',
+          requestData,
+          {
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+              'Accept-Language': 'zh-CN',
+              'Authorization': `WECHATPAY2-SHA256-RSA2048 mchid="${config.mchId}",nonce_str="${nonce}",signature="${signature}",timestamp="${timestamp}",serial_no="${config.serialNo}"`
+            },
+            timeout: 10000
           }
-        } catch (apiError: any) {
-          const errMsg = apiError.response?.data?.message || apiError.response?.data?.code || apiError.message;
-          log.error('[WechatPay] API调用失败:', apiError.response?.data || apiError.message);
-          throw new Error(`微信支付API调用失败: ${errMsg}`);
-        }
-      }
+        );
 
-      // 配置不完整（缺少V3密钥或证书序列号），抛出明确错误
-      throw new Error('微信支付V3配置不完整，请在管理后台配置API密钥(V3)和证书序列号');
+        if (response.data && response.data.code_url) {
+          return {
+            qrCode: response.data.code_url,
+            payUrl: response.data.code_url
+          };
+        }
+        throw new Error('微信支付API返回数据异常，未包含 code_url');
+      } catch (apiError: any) {
+        const errMsg = apiError.response?.data?.message || apiError.response?.data?.code || apiError.message;
+        log.error('[WechatPay] API调用失败:', apiError.response?.data || apiError.message);
+        throw new Error(`微信支付API调用失败: ${errMsg}`);
+      }
     } catch (error: any) {
       log.error('[WechatPay] Create native pay failed:', error);
       throw new Error(`创建微信支付失败: ${error.message}`);
@@ -118,7 +148,7 @@ export class WechatPayService {
   }
 
   /**
-   * 生成微信支付V3签名
+   * 生成微信支付V3签名（RSA-SHA256 + 商户私钥）
    */
   private generateSignatureV3(
     method: string,
@@ -126,12 +156,12 @@ export class WechatPayService {
     timestamp: string,
     nonce: string,
     body: string,
-    apiKey: string
+    privateKey: string
   ): string {
     const message = `${method}\n${url}\n${timestamp}\n${nonce}\n${body}\n`;
-    const hmac = crypto.createHmac('sha256', apiKey);
-    hmac.update(message);
-    return hmac.digest('hex');
+    const sign = crypto.createSign('RSA-SHA256');
+    sign.update(message);
+    return sign.sign(privateKey, 'base64');
   }
 
   /**
@@ -168,7 +198,7 @@ export class WechatPayService {
   }
 
   /**
-   * 解密微信支付回调数据（V3版本）
+   * 解密微信支付回调数据（V3版本，AES-256-GCM）
    */
   decryptCallbackData(
     ciphertext: string,
@@ -177,20 +207,23 @@ export class WechatPayService {
     apiKey: string
   ): any {
     try {
-      // AES-256-GCM解密
+      // base64解码密文，最后16字节是GCM认证标签
+      const ciphertextBuffer = Buffer.from(ciphertext, 'base64');
+      const authTag = ciphertextBuffer.subarray(ciphertextBuffer.length - 16);
+      const encryptedData = ciphertextBuffer.subarray(0, ciphertextBuffer.length - 16);
+
       const decipher = crypto.createDecipheriv(
         'aes-256-gcm',
         Buffer.from(apiKey, 'utf8'),
         Buffer.from(nonce, 'utf8')
       );
-
-      decipher.setAuthTag(Buffer.from(ciphertext.slice(-32), 'hex'));
+      decipher.setAuthTag(authTag);
       decipher.setAAD(Buffer.from(associatedData, 'utf8'));
 
-      let decrypted = decipher.update(ciphertext.slice(0, -32), 'base64', 'utf8');
-      decrypted += decipher.final('utf8');
+      let decrypted = decipher.update(encryptedData);
+      decrypted = Buffer.concat([decrypted, decipher.final()]);
 
-      return JSON.parse(decrypted);
+      return JSON.parse(decrypted.toString('utf8'));
     } catch (error) {
       log.error('[WechatPay] Decrypt callback data failed:', error);
       throw new Error('解密回调数据失败');

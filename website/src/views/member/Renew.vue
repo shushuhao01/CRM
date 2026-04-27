@@ -343,12 +343,13 @@ const handlePay = async () => {
     if (data.code === 0 && data.data) {
       payOrderNo.value = data.data.orderNo || ''
       payNoConfig.value = false
-      if (data.data.qrCode && (data.data.qrCode.startsWith('http') || data.data.qrCode.startsWith('data:'))) {
+      if (data.data.qrCode && data.data.qrCode.startsWith('data:')) {
         payQrCode.value = data.data.qrCode
-      } else if (data.data.payUrl) {
-        payQrCode.value = await generateQRCodeDataUrl(data.data.payUrl)
+      } else if (data.data.payUrl || data.data.qrCode) {
+        payQrCode.value = await generateQRCodeDataUrl(data.data.payUrl || data.data.qrCode)
       } else {
-        payQrCode.value = await generateQRCodeDataUrl(payOrderNo.value || 'pending')
+        payNoConfig.value = true
+        return
       }
     } else {
       alert(data.message || '创建订单失败')

@@ -351,14 +351,13 @@ const handleCreatePayOrder = async () => {
 
     if (data.code === 0 && data.data) {
       payNewOrderNo.value = data.data.orderNo || orderNo
-      if (data.data.qrCode && (data.data.qrCode.startsWith('data:') || data.data.qrCode.startsWith('http'))) {
+      if (data.data.qrCode && data.data.qrCode.startsWith('data:')) {
         payQrCode.value = data.data.qrCode
-      } else if (data.data.payUrl) {
-        payQrCode.value = await generateQRCodeDataUrl(data.data.payUrl)
-      } else if (data.data.qrCode) {
-        payQrCode.value = await generateQRCodeDataUrl(data.data.qrCode)
+      } else if (data.data.payUrl || data.data.qrCode) {
+        payQrCode.value = await generateQRCodeDataUrl(data.data.payUrl || data.data.qrCode)
       } else {
-        payQrCode.value = await generateQRCodeDataUrl(payNewOrderNo.value)
+        customAlert('支付二维码生成失败，请检查支付配置或联系客服')
+        return
       }
       // 开始轮询支付状态
       startPolling(payNewOrderNo.value)
