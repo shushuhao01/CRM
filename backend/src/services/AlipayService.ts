@@ -417,6 +417,75 @@ export class AlipayService {
   }
 
   /**
+   * 申请退款（alipay.trade.refund）
+   */
+  async refund(params: {
+    orderNo: string
+    tradeNo?: string
+    refundAmount: number
+    reason?: string
+  }): Promise<{ success: boolean; refundId?: string; message?: string }> {
+    try {
+      const config = await this.getConfig();
+
+      if (!config.appId || !config.privateKey) {
+        return { success: false, message: '支付宝配置不完整（缺少AppID或私钥），无法发起退款' };
+      }
+
+      const bizContent: any = {
+        refund_amount: params.refundAmount.toFixed(2),
+        refund_reason: params.reason || '管理员操作退款'
+      };
+      // 优先使用支付宝交易号，其次用商户订单号
+      if (params.tradeNo) {
+        bizContent.trade_no = params.tradeNo;
+      } else {
+        bizContent.out_trade_no = params.orderNo;
+      }
+
+      const commonParams: Record<string, string> = {
+        app_id: config.appId,
+        method: 'alipay.trade.refund',
+        charset: 'utf-8',
+        sign_type: config.signType || 'RSA2',
+        timestamp: formatDateTime(new Date()),
+        version: '1.0',
+        biz_content: JSON.stringify(bizContent)
+      };
+
+      const sign = this.generateSign(commonParams, config.privateKey);
+      const requestParams = { ...commonParams, sign };
+
+      const gatewayUrl = config.gatewayUrl || 'https://openapi.alipay.com/gateway.do';
+      const response = await axios.post(gatewayUrl, null, {
+        params: requestParams,
+        timeout: 15000
+      });
+
+      if (response.data?.alipay_trade_refund_response) {
+        const result = response.data.alipay_trade_refund_response;
+        if (result.code === '10000') {
+          log.info(`[Alipay] 退款成功: orderNo=${params.orderNo}, tradeNo=${result.trade_no}, refundFee=${result.refund_fee}`);
+          return {
+            success: true,
+            refundId: result.trade_no,
+            message: `支付宝退款成功（交易号: ${result.trade_no}），退款金额: ¥${result.refund_fee}`
+          };
+        }
+        const errMsg = result.sub_msg || result.msg || '退款失败';
+        log.error(`[Alipay] 退款失败: ${result.code} - ${errMsg}`);
+        return { success: false, message: `支付宝退款失败: ${errMsg}` };
+      }
+
+      return { success: false, message: '支付宝退款API返回数据异常' };
+    } catch (error: any) {
+      const errMsg = error.response?.data?.alipay_trade_refund_response?.sub_msg || error.message;
+      log.error('[Alipay] 退款失败:', error.response?.data || error.message);
+      return { success: false, message: `支付宝退款失败: ${errMsg}` };
+    }
+  }
+
+  /**
    * 主动查询支付宝订单状态（alipay.trade.query）
    */
   async queryOrder(orderNo: string): Promise<{ success: boolean; data?: any; message?: string }> {

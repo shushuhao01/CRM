@@ -521,6 +521,78 @@ export class WechatPayService {
   }
 
   /**
+   * 申请退款（V3 API）
+   */
+  async refund(params: {
+    orderNo: string
+    refundNo: string
+    totalAmount: number
+    refundAmount: number
+    reason?: string
+  }): Promise<{ success: boolean; refundId?: string; message?: string }> {
+    try {
+      const config = await this.getConfig();
+
+      if (!config.mchId || !config.keyPem || !config.serialNo) {
+        return { success: false, message: '微信支付配置不完整（缺少商户号、私钥或证书序列号），无法发起退款' };
+      }
+
+      const privateKey = await this.resolvePrivateKey(config.keyPem);
+
+      const requestData: any = {
+        out_trade_no: params.orderNo,
+        out_refund_no: params.refundNo,
+        reason: params.reason || '管理员操作退款',
+        amount: {
+          refund: Math.round(params.refundAmount * 100),
+          total: Math.round(params.totalAmount * 100),
+          currency: 'CNY'
+        }
+      };
+
+      const timestamp = Math.floor(Date.now() / 1000).toString();
+      const nonce = crypto.randomBytes(16).toString('hex');
+      const body = JSON.stringify(requestData);
+      const signature = this.generateSignatureV3(
+        'POST',
+        '/v3/refund/domestic/refunds',
+        timestamp,
+        nonce,
+        body,
+        privateKey
+      );
+
+      const response = await axios.post(
+        'https://api.mch.weixin.qq.com/v3/refund/domestic/refunds',
+        requestData,
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'Authorization': `WECHATPAY2-SHA256-RSA2048 mchid="${config.mchId}",nonce_str="${nonce}",signature="${signature}",timestamp="${timestamp}",serial_no="${config.serialNo}"`
+          },
+          timeout: 15000
+        }
+      );
+
+      if (response.data && response.data.refund_id) {
+        log.info(`[WechatPay] 退款成功: orderNo=${params.orderNo}, refundId=${response.data.refund_id}, status=${response.data.status}`);
+        return {
+          success: true,
+          refundId: response.data.refund_id,
+          message: `微信退款已提交（退款单号: ${response.data.refund_id}），状态: ${response.data.status === 'SUCCESS' ? '退款成功' : '处理中'}`
+        };
+      }
+
+      return { success: false, message: '微信退款API返回数据异常' };
+    } catch (error: any) {
+      const errMsg = error.response?.data?.message || error.response?.data?.code || error.message;
+      log.error('[WechatPay] 退款失败:', error.response?.data || error.message);
+      return { success: false, message: `微信退款失败: ${errMsg}` };
+    }
+  }
+
+  /**
    * 主动查询微信支付订单状态（V3 API）
    */
   async queryOrder(orderNo: string): Promise<{ success: boolean; data?: any; message?: string }> {

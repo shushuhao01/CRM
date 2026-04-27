@@ -266,6 +266,87 @@
         </el-timeline>
       </div>
     </el-dialog>
+
+    <!-- 退款弹窗 -->
+    <el-dialog v-model="refundVisible" :title="refundForm.payType === 'bank' ? '对公退款登记' : '确认退款'" width="520px" destroy-on-close>
+      <div v-if="refundForm.orderNo" class="refund-dialog-body">
+        <el-descriptions :column="2" border size="small" style="margin-bottom: 16px;">
+          <el-descriptions-item label="订单号" :span="2">
+            <span style="font-family: monospace;">{{ refundForm.orderNo }}</span>
+          </el-descriptions-item>
+          <el-descriptions-item label="订单类型">
+            <el-tag v-if="refundForm.orderType === 'capacity'" type="warning" size="small">扩容订单</el-tag>
+            <el-tag v-else-if="refundForm.orderType === 'sms'" type="info" size="small">短信额度</el-tag>
+            <el-tag v-else-if="refundForm.orderType === 'vas'" type="success" size="small">企微增值服务</el-tag>
+            <el-tag v-else-if="refundForm.orderType === 'ai'" type="info" size="small">AI额度</el-tag>
+            <el-tag v-else type="primary" size="small">系统套餐</el-tag>
+          </el-descriptions-item>
+          <el-descriptions-item label="支付方式">
+            <el-tag :type="getPayTypeTagType(refundForm.payType)" size="small" effect="plain">{{ getPayTypeText(refundForm.payType) }}</el-tag>
+          </el-descriptions-item>
+          <el-descriptions-item label="订单金额">
+            <span style="font-weight: 600;">¥{{ Number(refundForm.orderAmount).toFixed(2) }}</span>
+          </el-descriptions-item>
+          <el-descriptions-item v-if="refundForm.tenantName" label="关联租户" :span="2">{{ refundForm.tenantName }}</el-descriptions-item>
+        </el-descriptions>
+
+        <el-alert v-if="refundForm.payType === 'bank'" type="warning" :closable="false" show-icon style="margin-bottom: 16px;">
+          对公转账需财务手工退款至对方账户
+        </el-alert>
+        <el-alert v-else type="info" :closable="false" show-icon style="margin-bottom: 16px;">
+          退款将原路退回至{{ getPayTypeText(refundForm.payType) }}账户
+        </el-alert>
+
+        <el-alert :type="refundForm.orderType === 'package' ? 'error' : 'warning'" :closable="false" show-icon style="margin-bottom: 16px;">
+          <template #title>
+            <span v-if="refundForm.orderType === 'capacity'">退款后将扣回对应的扩容额度（不影响系统套餐）</span>
+            <span v-else-if="refundForm.orderType === 'sms'">退款后将扣回对应短信额度（不影响系统套餐）</span>
+            <span v-else-if="refundForm.orderType === 'vas'">退款后将关闭/回退企微会话存档服务（不影响系统套餐）</span>
+            <span v-else-if="refundForm.orderType === 'ai'">退款后将扣回AI调用额度（不影响系统套餐）</span>
+            <span v-else>⚠️ 一旦退款，关联租户授权及私有部署授权将立即暂停</span>
+          </template>
+        </el-alert>
+
+        <el-form label-width="90px" style="margin-top: 8px;">
+          <el-form-item label="退款金额">
+            <el-radio-group v-model="refundForm.amountType" style="width: 100%;">
+              <div style="display: flex; flex-direction: column; gap: 12px; width: 100%;">
+                <el-radio value="full">
+                  全额退款
+                  <span style="color: #f56c6c; font-weight: 600; margin-left: 8px;">¥{{ Number(refundForm.orderAmount).toFixed(2) }}</span>
+                </el-radio>
+                <el-radio value="custom">
+                  自定义金额
+                </el-radio>
+              </div>
+            </el-radio-group>
+            <el-input-number
+              v-if="refundForm.amountType === 'custom'"
+              v-model="refundForm.customAmount"
+              :min="0.01"
+              :max="Number(refundForm.orderAmount)"
+              :precision="2"
+              :step="1"
+              controls-position="right"
+              style="width: 220px; margin-top: 8px;"
+              placeholder="请输入退款金额"
+            />
+            <div v-if="refundForm.amountType === 'custom'" style="font-size: 12px; color: #909399; margin-top: 4px;">
+              最大可退 ¥{{ Number(refundForm.orderAmount).toFixed(2) }}
+            </div>
+          </el-form-item>
+          <el-form-item label="退款原因">
+            <el-input v-model="refundForm.reason" type="textarea" :rows="2" placeholder="退款原因（选填）" maxlength="200" show-word-limit />
+          </el-form-item>
+        </el-form>
+      </div>
+      <template #footer>
+        <el-button @click="refundVisible = false">取消</el-button>
+        <el-button type="danger" :loading="refundSubmitting" @click="submitRefund">
+          {{ refundForm.payType === 'bank' ? '确认登记退款' : '确认退款' }}
+        </el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -455,34 +536,70 @@ const handleView = async (row: any) => {
   }
 }
 
+// ===== 退款弹窗 =====
+const refundVisible = ref(false)
+const refundSubmitting = ref(false)
+const refundForm = reactive({
+  orderId: '',
+  orderNo: '',
+  payType: '',
+  orderAmount: 0,
+  tenantName: '',
+  orderType: 'package' as 'package' | 'capacity' | 'sms' | 'vas' | 'ai',
+  amountType: 'full' as 'full' | 'custom',
+  customAmount: 0,
+  reason: ''
+})
+
 const handleRefund = (row: any) => {
-  const isCapacity = row.order_no?.startsWith('CAP')
-  const warningText = isCapacity
-    ? '⚠️ 退款后将扣回对应的扩容额度\n'
-    : (row.tenant_name ? '关联租户：' + row.tenant_name + '\n⚠️ 退款后将自动暂停该租户授权\n' : '')
-  ElMessageBox.prompt(
-    `订单号：${row.order_no}\n${isCapacity ? '类型：扩容订单\n' : ''}退款金额：¥${Number(row.amount || 0).toFixed(2)}\n${warningText}\n请输入退款原因：`,
-    '确认退款',
-    {
-      confirmButtonText: '确认退款',
-      cancelButtonText: '取消',
-      inputPlaceholder: '退款原因（选填）',
-      confirmButtonClass: 'el-button--danger'
+  refundForm.orderId = row.id
+  refundForm.orderNo = row.order_no
+  refundForm.payType = row.pay_type
+  refundForm.orderAmount = Number(row.amount || 0)
+  refundForm.tenantName = row.tenant_name || ''
+  // 根据订单号前缀判断订单类型
+  const no = row.order_no || ''
+  if (no.startsWith('CAP')) refundForm.orderType = 'capacity'
+  else if (no.startsWith('SQ') || no.startsWith('MSQ')) refundForm.orderType = 'sms'
+  else if (no.startsWith('VAS')) refundForm.orderType = 'vas'
+  else if (no.startsWith('AI')) refundForm.orderType = 'ai'
+  else refundForm.orderType = 'package'
+  refundForm.amountType = 'full'
+  refundForm.customAmount = Number(row.amount || 0)
+  refundForm.reason = ''
+  refundVisible.value = true
+}
+
+const submitRefund = async () => {
+  const amount = refundForm.amountType === 'full' ? refundForm.orderAmount : refundForm.customAmount
+  if (!amount || amount <= 0) {
+    ElMessage.warning('请输入有效的退款金额')
+    return
+  }
+  if (amount > refundForm.orderAmount) {
+    ElMessage.warning(`退款金额不能超过 ¥${refundForm.orderAmount.toFixed(2)}`)
+    return
+  }
+
+  refundSubmitting.value = true
+  try {
+    const res = await request.post(`/payment/orders/${refundForm.orderId}/refund`, {
+      reason: refundForm.reason,
+      refundAmount: amount
+    })
+    if (res.success) {
+      ElMessage.success(res.message || '退款成功')
+      refundVisible.value = false
+      fetchData()
+      fetchStats()
+    } else {
+      ElMessage.error(res.message || '退款失败')
     }
-  ).then(async ({ value }) => {
-    try {
-      const res = await request.post(`/payment/orders/${row.id}/refund`, { reason: value })
-      if (res.success) {
-        ElMessage.success(res.message || '退款成功')
-        fetchData()
-        fetchStats()
-      } else {
-        ElMessage.error(res.message || '退款失败')
-      }
-    } catch (error) {
-      ElMessage.error('退款失败')
-    }
-  }).catch(() => {})
+  } catch (error) {
+    ElMessage.error('退款失败')
+  } finally {
+    refundSubmitting.value = false
+  }
 }
 
 const handleConfirmBank = (row: any) => {
@@ -655,6 +772,23 @@ onMounted(() => {
     font-weight: 600;
     margin-bottom: 12px;
     color: #f56c6c;
+  }
+}
+
+.refund-dialog-body {
+  :deep(.el-descriptions) {
+    .el-descriptions__label {
+      width: 80px;
+    }
+  }
+
+  :deep(.el-radio-group) {
+    display: flex;
+    flex-direction: column;
+  }
+
+  :deep(.el-form-item) {
+    margin-bottom: 16px;
   }
 }
 

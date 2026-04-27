@@ -1020,17 +1020,225 @@ router.post('/orders/:id/confirm', async (req: Request, res: Response) => {
   }
 })
 
+/**
+ * 退款后处理：按订单类型分类回退关联业务
+ * - CAP：扣回扩容额度（用户数/存储）
+ * - SQ/MSQ：扣回短信额度
+ * - VAS/VASR/VASU：关闭/回退企微会话存档服务
+ * - AI：扣回AI调用额度
+ * - 系统套餐（默认）：暂停租户授权 + 私有部署授权
+ */
+async function handleRefundPostProcess(
+  order: any,
+  ctx: { tenantId: string; orderNo: string; refundAmount: number; reason: string },
+  adminUser: any
+): Promise<void> {
+  const { tenantId, orderNo, refundAmount, reason } = ctx
+
+  // ===== 1. 扩容订单 (CAP) =====
+  if (orderNo.startsWith('CAP') && tenantId) {
+    const capOrders = await AppDataSource.query(
+      'SELECT type, quantity FROM capacity_orders WHERE order_no = ? AND status = ?',
+      [orderNo, 'paid']
+    )
+    if (capOrders.length > 0) {
+      const capOrder = capOrders[0]
+      if (capOrder.type === 'user') {
+        await AppDataSource.query(
+          'UPDATE tenants SET extra_users = GREATEST(COALESCE(extra_users, 0) - ?, 0) WHERE id = ?',
+          [capOrder.quantity, tenantId]
+        )
+        await AppDataSource.query(
+          `UPDATE tenants t LEFT JOIN tenant_packages tp ON t.package_id = tp.id
+           SET t.max_users = COALESCE(tp.max_users, t.max_users) + COALESCE(t.extra_users, 0)
+           WHERE t.id = ?`,
+          [tenantId]
+        )
+      } else if (capOrder.type === 'storage') {
+        await AppDataSource.query(
+          'UPDATE tenants SET extra_storage_gb = GREATEST(COALESCE(extra_storage_gb, 0) - ?, 0) WHERE id = ?',
+          [capOrder.quantity, tenantId]
+        )
+        await AppDataSource.query(
+          `UPDATE tenants t LEFT JOIN tenant_packages tp ON t.package_id = tp.id
+           SET t.max_storage_gb = COALESCE(tp.max_storage_gb, t.max_storage_gb) + COALESCE(t.extra_storage_gb, 0)
+           WHERE t.id = ?`,
+          [tenantId]
+        )
+      }
+      await AppDataSource.query(
+        `UPDATE capacity_orders SET status = 'refunded' WHERE order_no = ?`, [orderNo]
+      )
+      log.info(`[Payment Refund] 扩容退款已扣回: tenant=${tenantId}, type=${capOrder.type}, qty=${capOrder.quantity}`)
+    }
+    return
+  }
+
+  // ===== 2. 短信额度订单 (SQ/MSQ) =====
+  if ((orderNo.startsWith('SQ') || orderNo.startsWith('MSQ')) && tenantId) {
+    try {
+      // 从 sms_quota_orders 获取购买的短信条数
+      const sqOrders = await AppDataSource.query(
+        'SELECT id, sms_count, tenant_id FROM sms_quota_orders WHERE order_no = ? LIMIT 1',
+        [orderNo]
+      ).catch(() => [])
+
+      let smsCount = 0
+      if (sqOrders.length > 0) {
+        smsCount = sqOrders[0].sms_count || 0
+        // 更新 sms_quota_orders 状态
+        await AppDataSource.query(
+          `UPDATE sms_quota_orders SET status = 'refunded', refund_amount = ?, refund_sms_count = ?,
+           refund_at = NOW(), refund_reason = ?, refunded_by = ? WHERE order_no = ?`,
+          [refundAmount, smsCount, reason || '', adminUser?.username || 'admin', orderNo]
+        )
+      }
+
+      if (smsCount > 0) {
+        // 扣回短信额度
+        await AppDataSource.query(
+          `UPDATE system_config SET config_value = GREATEST(CAST(config_value AS SIGNED) - ?, 0), updated_at = NOW()
+           WHERE config_key = 'sms_quota_total' AND tenant_id = ?`,
+          [smsCount, tenantId]
+        )
+        log.info(`[Payment Refund] 短信额度已扣回: tenant=${tenantId}, smsCount=${smsCount}`)
+      }
+    } catch (smsErr: any) {
+      log.error('[Payment Refund] 短信额度退款回退失败:', smsErr.message)
+    }
+    return
+  }
+
+  // ===== 3. 企微会话存档订单 (VAS/VASR/VASU) =====
+  if (orderNo.startsWith('VAS') && tenantId) {
+    try {
+      if (orderNo.startsWith('VASU')) {
+        // 增购订单：回退增购人数（从 remark/package_name 提取人数）
+        const addUsersMatch = (order.package_name || '').match(/\+(\d+)人/)
+        const totalUsersMatch = (order.package_name || '').match(/共(\d+)人/)
+        if (addUsersMatch) {
+          const addUsers = parseInt(addUsersMatch[1]) || 0
+          if (addUsers > 0) {
+            await AppDataSource.query(
+              `UPDATE wecom_archive_settings SET max_users = GREATEST(COALESCE(max_users, 0) - ?, 0), updated_at = NOW()
+               WHERE tenant_id = ?`,
+              [addUsers, tenantId]
+            )
+            log.info(`[Payment Refund] 会话存档增购已回退: tenant=${tenantId}, -${addUsers}人`)
+          }
+        }
+      } else {
+        // 新购(VAS)或续费(VASR)订单：关闭会话存档服务
+        await AppDataSource.query(
+          `UPDATE wecom_archive_settings SET status = 'disabled', updated_at = NOW() WHERE tenant_id = ?`,
+          [tenantId]
+        )
+        log.info(`[Payment Refund] 会话存档服务已关闭: tenant=${tenantId}`)
+      }
+
+      // 同步更新 wecom_vas_orders 状态
+      await AppDataSource.query(
+        `UPDATE wecom_vas_orders SET pay_status = 3 WHERE order_no = ? AND tenant_id = ?`,
+        [orderNo, tenantId]
+      ).catch(() => {})
+    } catch (vasErr: any) {
+      log.error('[Payment Refund] 企微增值服务退款回退失败:', vasErr.message)
+    }
+    return
+  }
+
+  // ===== 4. AI额度订单 (AI) =====
+  if (orderNo.startsWith('AI') && tenantId) {
+    try {
+      // 从 tenant_settings 的 ai_orders 中找到对应订单的 calls 数
+      const { TenantSettings } = await import('../../entities/TenantSettings')
+      const settingsRepo = AppDataSource.getRepository(TenantSettings)
+
+      const orderSetting = await settingsRepo.findOne({ where: { tenantId, settingKey: 'ai_orders' } })
+      let callsToDeduct = 0
+
+      if (orderSetting) {
+        const aiOrders: any[] = Array.isArray(orderSetting.getValue()) ? orderSetting.getValue() : []
+        const aiOrder = aiOrders.find((o: any) => o.orderNo === orderNo)
+        if (aiOrder) {
+          callsToDeduct = aiOrder.calls || 0
+          // 标记该AI订单为已退款
+          aiOrder.status = 'refunded'
+          aiOrder.refundedAt = new Date().toISOString()
+          orderSetting.setValue(aiOrders)
+          await settingsRepo.save(orderSetting)
+        }
+      }
+
+      if (callsToDeduct > 0) {
+        // 扣回AI额度
+        const quotaSetting = await settingsRepo.findOne({ where: { tenantId, settingKey: 'ai_quota' } })
+        if (quotaSetting) {
+          const currentQuota = Number(quotaSetting.getValue()) || 0
+          const newQuota = Math.max(0, currentQuota - callsToDeduct)
+          quotaSetting.setValue(newQuota)
+          await settingsRepo.save(quotaSetting)
+          log.info(`[Payment Refund] AI额度已扣回: tenant=${tenantId}, -${callsToDeduct}次, 剩余${newQuota}次`)
+        }
+      }
+    } catch (aiErr: any) {
+      log.error('[Payment Refund] AI额度退款回退失败:', aiErr.message)
+    }
+    return
+  }
+
+  // ===== 5. 系统套餐订单（默认）：暂停租户授权 + 私有部署授权 =====
+  if (tenantId) {
+    // 暂停租户状态
+    await AppDataSource.query(
+      `UPDATE tenants SET license_status = 'suspended', status = 'suspended', updated_at = NOW()
+       WHERE id = ? AND license_status IN ('active', 'paid')`,
+      [tenantId]
+    )
+
+    // 暂停 licenses 表中关联的所有有效授权（含私有部署授权）
+    try {
+      await AppDataSource.query(
+        `UPDATE licenses SET status = 'suspended', updated_at = NOW()
+         WHERE tenant_id = ? AND status IN ('active', 'pending')`,
+        [tenantId]
+      )
+      const tenantInfo = await AppDataSource.query(
+        'SELECT phone FROM tenants WHERE id = ?', [tenantId]
+      )
+      if (tenantInfo[0]?.phone) {
+        await AppDataSource.query(
+          `UPDATE licenses SET status = 'suspended', updated_at = NOW()
+           WHERE customer_phone = ? AND customer_type = 'private' AND status IN ('active', 'pending')`,
+          [tenantInfo[0].phone]
+        )
+      }
+    } catch (licErr) {
+      log.warn('[Payment Refund] 暂停licenses表授权失败:', licErr)
+    }
+
+    // 记录租户授权日志
+    await AppDataSource.query(
+      `INSERT INTO tenant_license_logs (id, tenant_id, action, result, message)
+       VALUES (?, ?, 'suspend', 'success', ?)`,
+      [uuidv4(), tenantId, `退款导致授权暂停，订单号: ${orderNo}，退款金额: ¥${refundAmount}，原因: ${reason || '无'}`]
+    ).catch(() => {})
+
+    log.info(`[Payment Refund] 系统套餐退款 → 已暂停租户授权+私有部署授权: ${tenantId}`)
+  }
+}
+
 // 退款
 router.post('/orders/:id/refund', async (req: Request, res: Response) => {
   try {
     const { id } = req.params
-    const { reason } = req.body
+    const { reason, refundAmount: reqRefundAmount } = req.body
     const now = formatDateTime(new Date())
     const adminUser = (req as any).adminUser
 
     // 1. 验证订单存在性和当前状态
     const orders = await AppDataSource.query(
-      'SELECT id, order_no, status, amount, pay_type, tenant_id, tenant_name, contact_name, contact_phone, package_name FROM payment_orders WHERE id = ?',
+      'SELECT id, order_no, status, amount, pay_type, trade_no, tenant_id, tenant_name, contact_name, contact_phone, package_name, package_id, remark FROM payment_orders WHERE id = ?',
       [id]
     )
     if (orders.length === 0) {
@@ -1041,13 +1249,63 @@ router.post('/orders/:id/refund', async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, message: '只能对已支付的订单进行退款' })
     }
 
-    // TODO: 调用微信/支付宝退款API（对公转账无需调用第三方退款接口）
+    // 退款金额：支持自定义金额，默认全额退款
+    const refundAmount = reqRefundAmount ? Number(reqRefundAmount) : Number(order.amount)
+    if (isNaN(refundAmount) || refundAmount <= 0 || refundAmount > Number(order.amount)) {
+      return res.status(400).json({ success: false, message: `退款金额无效，应在 0.01 ~ ${order.amount} 之间` })
+    }
 
-    // 2. 更新订单状态为已退款
+    // 2. 根据支付方式调用第三方退款API
+    let thirdPartyRefundResult: { success: boolean; refundId?: string; message?: string } = { success: true }
+    const refundNo = `RF${order.order_no.replace('PAY', '')}${Date.now().toString(36).toUpperCase()}`
+
+    if (order.pay_type === 'wechat') {
+      // 微信支付 → 调用微信退款API，原路退回
+      try {
+        const { WechatPayService } = await import('../../services/WechatPayService')
+        const wechatPayService = new WechatPayService()
+        thirdPartyRefundResult = await wechatPayService.refund({
+          orderNo: order.order_no,
+          refundNo,
+          totalAmount: Number(order.amount),
+          refundAmount,
+          reason: reason || '管理员操作退款'
+        })
+        if (!thirdPartyRefundResult.success) {
+          return res.status(400).json({ success: false, message: thirdPartyRefundResult.message || '微信退款请求失败' })
+        }
+      } catch (wxErr: any) {
+        log.error('[Payment Refund] 微信退款异常:', wxErr.message)
+        return res.status(500).json({ success: false, message: `微信退款异常: ${wxErr.message}` })
+      }
+    } else if (order.pay_type === 'alipay') {
+      // 支付宝 → 调用支付宝退款API，原路退回
+      try {
+        const { AlipayService } = await import('../../services/AlipayService')
+        const alipayService = new AlipayService()
+        thirdPartyRefundResult = await alipayService.refund({
+          orderNo: order.order_no,
+          tradeNo: order.trade_no || undefined,
+          refundAmount,
+          reason: reason || '管理员操作退款'
+        })
+        if (!thirdPartyRefundResult.success) {
+          return res.status(400).json({ success: false, message: thirdPartyRefundResult.message || '支付宝退款请求失败' })
+        }
+      } catch (aliErr: any) {
+        log.error('[Payment Refund] 支付宝退款异常:', aliErr.message)
+        return res.status(500).json({ success: false, message: `支付宝退款异常: ${aliErr.message}` })
+      }
+    } else if (order.pay_type === 'bank') {
+      // 对公转账 → 不调用第三方，标记为需财务手工退款
+      thirdPartyRefundResult = { success: true, message: '对公转账订单，需财务手工退款至对方账户' }
+    }
+
+    // 3. 更新订单状态为已退款
     const updateResult = await AppDataSource.query(
-      `UPDATE payment_orders SET status = 'refunded', refund_amount = amount,
+      `UPDATE payment_orders SET status = 'refunded', refund_amount = ?,
        refund_at = ?, refund_reason = ?, refunded_by = ? WHERE id = ? AND status = 'paid'`,
-      [now, reason || '', adminUser?.username || 'admin', id]
+      [refundAmount, now, reason || '', adminUser?.username || 'admin', id]
     )
 
     // 检查是否实际更新了记录（防止并发重复退款）
@@ -1055,76 +1313,14 @@ router.post('/orders/:id/refund', async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, message: '退款失败，订单状态已变更' })
     }
 
-    // 3. 退款后处理关联业务
-    const isCapacityOrder = order.order_no.startsWith('CAP')
+    // 3. 退款后处理关联业务（按订单类型分类处理）
+    const orderNo = order.order_no || ''
+    const refundContext = { tenantId: order.tenant_id, orderNo, refundAmount, reason }
 
-    if (isCapacityOrder && order.tenant_id) {
-      // 🔑 扩容订单退款：扣回扩容额度，不暂停租户授权
-      try {
-        const capOrders = await AppDataSource.query(
-          'SELECT type, quantity FROM capacity_orders WHERE order_no = ? AND status = ?',
-          [order.order_no, 'paid']
-        )
-        if (capOrders.length > 0) {
-          const capOrder = capOrders[0]
-          // 扣回扩容额度
-          if (capOrder.type === 'user') {
-            await AppDataSource.query(
-              'UPDATE tenants SET extra_users = GREATEST(COALESCE(extra_users, 0) - ?, 0) WHERE id = ?',
-              [capOrder.quantity, order.tenant_id]
-            )
-            // 同步更新 max_users
-            await AppDataSource.query(
-              `UPDATE tenants t LEFT JOIN tenant_packages tp ON t.package_id = tp.id
-               SET t.max_users = COALESCE(tp.max_users, t.max_users) + COALESCE(t.extra_users, 0)
-               WHERE t.id = ?`,
-              [order.tenant_id]
-            )
-          } else if (capOrder.type === 'storage') {
-            await AppDataSource.query(
-              'UPDATE tenants SET extra_storage_gb = GREATEST(COALESCE(extra_storage_gb, 0) - ?, 0) WHERE id = ?',
-              [capOrder.quantity, order.tenant_id]
-            )
-            // 同步更新 max_storage_gb
-            await AppDataSource.query(
-              `UPDATE tenants t LEFT JOIN tenant_packages tp ON t.package_id = tp.id
-               SET t.max_storage_gb = COALESCE(tp.max_storage_gb, t.max_storage_gb) + COALESCE(t.extra_storage_gb, 0)
-               WHERE t.id = ?`,
-              [order.tenant_id]
-            )
-          }
-          // 同步更新 capacity_orders 状态为已退款
-          await AppDataSource.query(
-            `UPDATE capacity_orders SET status = 'refunded' WHERE order_no = ?`,
-            [order.order_no]
-          )
-          log.info(`[Payment Refund] 扩容退款已扣回: tenant=${order.tenant_id}, type=${capOrder.type}, qty=${capOrder.quantity}`)
-        }
-      } catch (capRefundErr) {
-        log.error('[Payment Refund] 扩容退款扣回失败:', capRefundErr)
-      }
-    } else if (order.tenant_id) {
-      // 套餐订单退款：暂停关联租户的授权
-      try {
-        await AppDataSource.query(
-          `UPDATE tenants SET license_status = 'suspended', status = 'suspended', updated_at = NOW()
-           WHERE id = ? AND license_status = 'active'`,
-          [order.tenant_id]
-        )
-
-        // 记录租户授权日志
-        const { v4: logUuidv4 } = await import('uuid')
-        await AppDataSource.query(
-          `INSERT INTO tenant_license_logs (id, tenant_id, action, result, message)
-           VALUES (?, ?, 'suspend', 'success', ?)`,
-          [logUuidv4(), order.tenant_id, `退款导致授权暂停，订单号: ${order.order_no}，退款金额: ¥${order.amount}，原因: ${reason || '无'}`]
-        ).catch(() => {})
-
-        log.info(`[Payment Refund] 已暂停租户授权: ${order.tenant_id}，订单号: ${order.order_no}`)
-      } catch (tenantErr) {
-        log.error('[Payment Refund] 暂停租户授权失败:', tenantErr)
-        // 不影响退款主流程
-      }
+    try {
+      await handleRefundPostProcess(order, refundContext, adminUser)
+    } catch (postErr: any) {
+      log.error('[Payment Refund] 退款后处理失败（不影响退款主流程）:', postErr.message)
     }
 
     // 4. 记录退款操作日志到 payment_logs
@@ -1135,7 +1331,7 @@ router.post('/orders/:id/refund', async (req: Request, res: Response) => {
         [
           uuidv4(), order.id, order.order_no, order.pay_type,
           JSON.stringify({ reason: reason || '', operator: adminUser?.username || 'admin' }),
-          JSON.stringify({ refundAmount: order.amount, refundAt: now, tenantSuspended: !!order.tenant_id })
+          JSON.stringify({ refundAmount, refundAt: now, tenantSuspended: !!order.tenant_id })
         ]
       )
     } catch (logErr) {
@@ -1146,8 +1342,8 @@ router.post('/orders/:id/refund', async (req: Request, res: Response) => {
     try {
       const { adminNotificationService } = await import('../../services/AdminNotificationService')
       await adminNotificationService.notify('payment_refund', {
-        title: `订单退款：¥${order.amount}`,
-        content: `订单 ${order.order_no}（${order.tenant_name || order.contact_name || '未知客户'}）已退款 ¥${order.amount}，退款原因：${reason || '未填写'}，操作人：${adminUser?.username || 'admin'}`,
+        title: `订单退款：¥${refundAmount}`,
+        content: `订单 ${order.order_no}（${order.tenant_name || order.contact_name || '未知客户'}）已退款 ¥${refundAmount}${refundAmount < Number(order.amount) ? '（部分退款）' : ''}，退款原因：${reason || '未填写'}，操作人：${adminUser?.username || 'admin'}`,
         relatedId: order.order_no,
         relatedType: 'payment_order',
         extraData: { orderNo: order.order_no, amount: order.amount, reason, operator: adminUser?.username }
@@ -1156,11 +1352,32 @@ router.post('/orders/:id/refund', async (req: Request, res: Response) => {
       log.error('[Payment Refund] 发送退款通知失败:', notifyErr)
     }
 
+    // 构建退款成功消息
+    let successMessage = ''
+    if (order.pay_type === 'bank') {
+      successMessage = '退款已登记，此订单为对公转账，需财务手工退款至对方账户'
+    } else {
+      successMessage = thirdPartyRefundResult.message || '退款已提交，款项将原路退回'
+    }
+    // 根据订单类型追加具体回退说明
+    const oNo = order.order_no || ''
+    if (oNo.startsWith('CAP')) {
+      successMessage += '，已扣回扩容额度'
+    } else if (oNo.startsWith('SQ') || oNo.startsWith('MSQ')) {
+      successMessage += '，已扣回短信额度'
+    } else if (oNo.startsWith('VASU')) {
+      successMessage += '，已回退会话存档增购人数'
+    } else if (oNo.startsWith('VAS') || oNo.startsWith('VASR')) {
+      successMessage += '，已关闭会话存档服务'
+    } else if (oNo.startsWith('AI')) {
+      successMessage += '，已扣回AI调用额度'
+    } else if (order.tenant_id) {
+      successMessage += '，已暂停关联租户授权及私有部署授权'
+    }
+
     res.json({
       success: true,
-      message: isCapacityOrder
-        ? '退款成功，已扣回扩容额度'
-        : (order.tenant_id ? '退款成功，已暂停关联租户授权' : '退款成功')
+      message: successMessage
     })
   } catch (error) {
     log.error('退款失败:', error)

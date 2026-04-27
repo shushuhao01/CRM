@@ -95,6 +95,12 @@ class AdminNotificationService {
       )
 
       // 3. 分发到各渠道（异步，不阻塞主流程）
+      const channelTypes = rules.map((r: any) => r.channel_type).filter((t: string) => t !== 'system')
+      if (channelTypes.length > 0) {
+        log.info(`[AdminNotification] 事件 ${eventType} 匹配到 ${channelTypes.length} 个推送渠道: ${channelTypes.join(', ')}`)
+      } else {
+        log.warn(`[AdminNotification] 事件 ${eventType} 未匹配到任何推送渠道，请检查通知规则配置`)
+      }
       for (const rule of rules) {
         if (rule.channel_type === 'system') continue // 系统消息已通过上面的INSERT实现
         this.dispatchToChannel(rule.channel_type, rule.config_data, { title, content, level, eventType })
@@ -457,7 +463,66 @@ class AdminNotificationService {
 
   async saveChannelsBatch(channels: Array<{ channel_type: string; name: string; is_enabled: boolean; config_data: any }>) {
     for (const ch of channels) {
+      // 检查渠道是否从禁用变为启用
+      const prevRows = await AppDataSource.query(
+        'SELECT is_enabled FROM admin_notification_channels WHERE channel_type = ?',
+        [ch.channel_type]
+      )
+      const wasEnabled = prevRows.length > 0 && prevRows[0].is_enabled === 1
+      const isNowEnabled = !!ch.is_enabled
+
       await this.saveChannel(ch.channel_type, ch)
+
+      // 渠道启用时自动初始化通知规则
+      if (isNowEnabled && ch.channel_type !== 'system') {
+        if (!wasEnabled) {
+          // 首次启用：初始化所有规则
+          await this.initRulesForChannel(ch.channel_type)
+        } else {
+          // 已启用：检查是否有已启用的规则，如果一条都没有则补全
+          const enabledRules = await AppDataSource.query(
+            'SELECT COUNT(*) as cnt FROM admin_notification_rules WHERE channel_type = ? AND is_enabled = 1',
+            [ch.channel_type]
+          )
+          if (Number(enabledRules[0]?.cnt || 0) === 0) {
+            log.warn(`[AdminNotification] 渠道 ${ch.channel_type} 已启用但无通知规则，自动初始化`)
+            await this.initRulesForChannel(ch.channel_type)
+          }
+        }
+      }
+    }
+  }
+
+  /**
+   * 为指定渠道自动初始化所有事件类型的通知规则（仅插入不存在的规则，默认开启）
+   */
+  private async initRulesForChannel(channelType: string): Promise<void> {
+    try {
+      const eventTypes = Object.keys(EVENT_TYPES)
+      let created = 0, enabled = 0
+      for (const eventType of eventTypes) {
+        const existing = await AppDataSource.query(
+          'SELECT id, is_enabled FROM admin_notification_rules WHERE event_type = ? AND channel_type = ?',
+          [eventType, channelType]
+        )
+        if (existing.length === 0) {
+          await AppDataSource.query(
+            'INSERT INTO admin_notification_rules (id, event_type, channel_type, is_enabled) VALUES (?, ?, ?, 1)',
+            [uuidv4(), eventType, channelType]
+          )
+          created++
+        } else if (!existing[0].is_enabled) {
+          // 已存在但未启用的规则，自动启用
+          await AppDataSource.query(
+            'UPDATE admin_notification_rules SET is_enabled = 1 WHERE id = ?',
+            [existing[0].id]
+          )
+          enabled++
+        }
+      }
+      log.info(`[AdminNotification] 渠道 ${channelType} 规则初始化完成: 新建${created}条, 启用${enabled}条`)
+    } catch (error: any) {
+      log.error(`[AdminNotification] 初始化渠道 ${channelType} 通知规则失败:`, error.message)
     }
   }
 
