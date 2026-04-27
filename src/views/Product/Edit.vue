@@ -258,10 +258,23 @@
                 </el-col>
               </el-row>
 
-              <!-- 虚拟商品库存提示 -->
+              <!-- 虚拟商品：无需发货时必填库存 -->
+              <el-row :gutter="20" v-if="productForm.productType === 'virtual' && productForm.virtualDeliveryType === 'none'">
+                <el-col :span="12">
+                  <el-form-item label="库存数量" prop="stock" :rules="[{ required: true, message: '无需发货类型必须填写库存', trigger: 'blur' }, { type: 'number', min: 0, message: '库存不能小于0', trigger: 'blur' }]">
+                    <el-input-number
+                      v-model="productForm.stock"
+                      :min="0"
+                      style="width: 100%"
+                      placeholder="售完即止的数量限制"
+                    />
+                  </el-form-item>
+                </el-col>
+              </el-row>
+              <!-- 虚拟商品：卡密/资源类型库存自动计算提示 -->
               <el-alert
-                v-if="productForm.productType === 'virtual'"
-                title="虚拟商品库存通过卡密库/资源库独立管理，无需手动设置库存"
+                v-if="productForm.productType === 'virtual' && productForm.virtualDeliveryType && productForm.virtualDeliveryType !== 'none'"
+                title="库存由关联的卡密/资源数量自动计算：作废-1，恢复+1"
                 type="info"
                 :closable="false"
                 show-icon
@@ -301,25 +314,37 @@
                 </div>
               </el-form-item>
 
-              <!-- 卡密格式说明 -->
-              <el-form-item v-if="productForm.virtualDeliveryType === 'card_key'" label="卡密格式说明">
-                <el-input
-                  v-model="productForm.cardKeyTemplate"
-                  type="textarea"
-                  :rows="3"
-                  placeholder="例如：XXXX-XXXX-XXXX-XXXX（16位激活码）"
-                />
-              </el-form-item>
+              <!-- 卡密发货提示 -->
+              <el-alert
+                v-if="productForm.virtualDeliveryType === 'card_key'"
+                type="info"
+                :closable="false"
+                show-icon
+                style="margin-bottom: 16px;"
+              >
+                <template #title>
+                  <span>发货类型：<b>卡密发货</b>（如激活码、兑换码、会员卡号等）</span>
+                </template>
+                <template #default>
+                  <span style="color: #606266; font-size: 12px;">保存商品后，请前往「卡密库存」添加或导入卡密，并关联到此商品</span>
+                </template>
+              </el-alert>
 
-              <!-- 资源说明模板 -->
-              <el-form-item v-if="productForm.virtualDeliveryType === 'resource_link'" label="资源说明模板">
-                <el-input
-                  v-model="productForm.resourceLinkTemplate"
-                  type="textarea"
-                  :rows="3"
-                  placeholder="例如：百度网盘链接+提取码"
-                />
-              </el-form-item>
+              <!-- 资源发货提示 -->
+              <el-alert
+                v-if="productForm.virtualDeliveryType === 'resource_link'"
+                type="info"
+                :closable="false"
+                show-icon
+                style="margin-bottom: 16px;"
+              >
+                <template #title>
+                  <span>发货类型：<b>网盘资源</b>（如百度网盘链接+提取码）</span>
+                </template>
+                <template #default>
+                  <span style="color: #606266; font-size: 12px;">保存商品后，请前往「资源库存」添加或导入资源链接，并关联到此商品</span>
+                </template>
+              </el-alert>
 
               <!-- 加密开关 -->
               <el-form-item v-if="productForm.virtualDeliveryType && productForm.virtualDeliveryType !== 'none'" label="发货内容加密">
@@ -512,6 +537,7 @@ import { ArrowLeft, Plus, Box, MagicStick } from '@element-plus/icons-vue'
 import { useProductStore } from '@/stores/product'
 import { useTabsStore } from '@/stores/tabs'
 import { createSafeNavigator } from '@/utils/navigation'
+import { apiService } from '@/services/apiService'
 
 // 接口定义
 interface UploadFile {
@@ -574,6 +600,9 @@ const productForm = reactive({
   resourceLinkTemplate: '',
   virtualContentEncrypt: false
 })
+
+// 原始虚拟发货方式（编辑模式用于检测变更）
+const originalVirtualDeliveryType = ref('')
 
 // 虚拟发货方式选项
 const virtualDeliveryOptions = [
@@ -910,6 +939,24 @@ const handleSave = async () => {
 
     ElMessage.success(isEdit.value ? '商品更新成功' : '商品创建成功')
 
+    // 编辑模式：如果虚拟发货方式变更，自动解除旧库存关联
+    if (isEdit.value && originalVirtualDeliveryType.value && originalVirtualDeliveryType.value !== productForm.virtualDeliveryType) {
+      try {
+        const oldType = originalVirtualDeliveryType.value
+        const endpoint = oldType === 'card_key' ? '/virtual-inventory/card-keys/batch-associate' : '/virtual-inventory/resources/batch-associate'
+        // 查找所有关联到该商品的库存并取消关联
+        const listEndpoint = oldType === 'card_key' ? '/virtual-inventory/card-keys' : '/virtual-inventory/resources'
+        const listResp = await apiService.get(listEndpoint, { productId: productForm.id, pageSize: 9999 })
+        const ids = (listResp?.list || []).map((item: any) => item.id)
+        if (ids.length > 0) {
+          await apiService.put(endpoint, { ids, productId: null })
+          console.log(`[商品编辑] 已自动解除 ${ids.length} 条${oldType === 'card_key' ? '卡密' : '资源'}的关联`)
+        }
+      } catch (_e) {
+        console.warn('[商品编辑] 自动解除旧库存关联失败:', _e)
+      }
+    }
+
     // 虚拟商品保存后引导配置库存
     if (isAddMode && productForm.productType === 'virtual' && productForm.virtualDeliveryType && productForm.virtualDeliveryType !== 'none') {
       try {
@@ -1004,6 +1051,7 @@ const loadProductInfo = async () => {
         resourceLinkTemplate: product.resourceLinkTemplate || '',
         virtualContentEncrypt: !!product.virtualContentEncrypt
       })
+      originalVirtualDeliveryType.value = product.virtualDeliveryType || ''
 
       // 初始化文件列表
       fileList.value = (product.images || []).map((url: string, index: number) => ({

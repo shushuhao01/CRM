@@ -170,6 +170,7 @@ export const orderApi = {
     expressCompany?: string;
     startDate?: string;
     endDate?: string;
+    excludeVirtualDelivery?: string;  // 🔥 排除虚拟发货订单（物流列表使用）
   }) =>
     api.get<OrderListResponse>('/orders/shipping/shipped', { params }),
 

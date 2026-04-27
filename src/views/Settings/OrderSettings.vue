@@ -497,6 +497,43 @@
             </el-radio-group>
           </el-form-item>
 
+          <!-- 邮件模板预览 -->
+          <el-form-item label="邮件预览">
+            <div class="email-preview-wrapper">
+              <div class="email-preview-card">
+                <div class="email-preview-header">
+                  <div class="email-preview-from">
+                    发件人：{{ emailConfig.senderName || '系统通知' }} &lt;{{ emailConfig.senderEmail || 'noreply@example.com' }}&gt;
+                  </div>
+                  <div class="email-preview-subject">主题：您购买的虚拟商品已发货</div>
+                </div>
+                <div class="email-preview-body">
+                  <p style="color: #303133; font-size: 14px;">尊敬的客户，您好！</p>
+                  <p style="color: #606266; font-size: 13px;">您在我们平台购买的虚拟商品已发货，以下是您的商品信息：</p>
+
+                  <div v-if="virtualSettings.emailContentMode === 'link' || virtualSettings.emailContentMode === 'both'"
+                    class="email-preview-block" style="background: #ecf5ff; border-left: 3px solid #409EFF;">
+                    <strong style="color: #409EFF;">领取链接</strong>
+                    <p style="margin: 4px 0 0; color: #409EFF; text-decoration: underline; font-size: 12px;">https://your-domain.com/virtual-claim/xxxx-xxxx</p>
+                    <p style="margin: 4px 0 0; color: #909399; font-size: 12px;">链接有效期：{{ virtualSettings.claimLinkExpiryDays }} 天</p>
+                  </div>
+
+                  <div v-if="virtualSettings.emailContentMode === 'content' || virtualSettings.emailContentMode === 'both'"
+                    class="email-preview-block" style="background: #f0f9eb; border-left: 3px solid #67c23a;">
+                    <strong style="color: #67c23a;">商品内容</strong>
+                    <p style="margin: 4px 0 0; color: #606266; font-size: 12px;">卡密：XXXX-XXXX-XXXX-XXXX</p>
+                    <p style="margin: 4px 0 0; color: #909399; font-size: 12px;">使用说明：请在对应平台兑换使用</p>
+                  </div>
+
+                  <p v-if="virtualSettings.claimPageNotice" style="color: #e6a23c; font-size: 12px; background: #fdf6ec; padding: 8px; border-radius: 4px;">
+                    温馨提示：{{ virtualSettings.claimPageNotice }}
+                  </p>
+                  <p style="color: #909399; font-size: 12px; margin-top: 16px; border-top: 1px solid #ebeef5; padding-top: 12px;">此邮件由系统自动发送，请勿回复。</p>
+                </div>
+              </div>
+            </div>
+          </el-form-item>
+
           <el-form-item label="自动发送">
             <el-switch v-model="virtualSettings.emailAutoSend" />
             <span style="margin-left: 8px; color: #999;">开启后，虚拟发货时自动给有邮箱的客户发送通知邮件</span>
@@ -1755,5 +1792,51 @@ onMounted(async () => {
 
 .drag-handle:hover {
   color: #409eff;
+}
+
+.email-preview-wrapper {
+  width: 100%;
+  max-width: 520px;
+}
+
+.email-preview-card {
+  border: 1px solid #e4e7ed;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.email-preview-header {
+  background: #f5f7fa;
+  padding: 12px 16px;
+  border-bottom: 1px solid #e4e7ed;
+}
+
+.email-preview-from {
+  font-size: 12px;
+  color: #909399;
+  margin-bottom: 4px;
+}
+
+.email-preview-subject {
+  font-size: 13px;
+  color: #303133;
+  font-weight: 600;
+}
+
+.email-preview-body {
+  padding: 16px;
+  background: #fff;
+}
+
+.email-preview-body p {
+  margin: 8px 0;
+  line-height: 1.6;
+}
+
+.email-preview-block {
+  padding: 10px 12px;
+  border-radius: 4px;
+  margin: 10px 0;
 }
 </style>

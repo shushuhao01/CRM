@@ -664,7 +664,8 @@ const loadData = async () => {
       salesPersonId: searchForm.salesPersonId || undefined,
       expressCompany: searchForm.company || undefined,
       startDate: searchForm.dateRange?.[0] || undefined,
-      endDate: searchForm.dateRange?.[1] || undefined
+      endDate: searchForm.dateRange?.[1] || undefined,
+      excludeVirtualDelivery: 'true'  // 🔥 物流列表排除虚拟发货订单（无需物流跟踪）
     })
 
     // 🔥 后端已经根据用户角色进行了数据权限过滤，前端直接使用返回的数据

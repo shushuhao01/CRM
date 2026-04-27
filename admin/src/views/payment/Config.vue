@@ -582,6 +582,24 @@ const handleTestAlipay = async () => {
 }
 
 const handleFileUpload = async (file: any, field: string) => {
+  const isPemField = ['certPem', 'keyPem', 'publicKeyPath'].includes(field)
+
+  // PEM/密钥字段需要直接读取文件内容（而非存储URL），因为后端签名时需要实际的PEM内容
+  if (isPemField) {
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      const content = e.target?.result as string
+      (wechatConfig as any)[field] = content
+      ElMessage.success(`${file.raw.name} 已读取`)
+    }
+    reader.onerror = () => {
+      ElMessage.error('读取证书文件失败')
+    }
+    reader.readAsText(file.raw)
+    return
+  }
+
+  // 非PEM字段（如支付宝证书），上传到服务器存储URL
   try {
     const formData = new FormData()
     formData.append('file', file.raw)
@@ -589,25 +607,16 @@ const handleFileUpload = async (file: any, field: string) => {
       headers: { 'Content-Type': 'multipart/form-data' }
     })
     if (res.success && res.data?.url) {
-      if (['certPem', 'keyPem', 'publicKeyPath'].includes(field)) {
-        (wechatConfig as any)[field] = res.data.url
-      } else {
-        (alipayConfig as any)[field] = res.data.url
-      }
+      (alipayConfig as any)[field] = res.data.url
       ElMessage.success(`${file.raw.name} 上传成功`)
     } else {
       ElMessage.error('证书文件上传失败')
     }
   } catch (error) {
-    // 上传失败时回退为读取文件内容
     const reader = new FileReader()
     reader.onload = (e) => {
       const content = e.target?.result as string
-      if (['certPem', 'keyPem', 'publicKeyPath'].includes(field)) {
-        (wechatConfig as any)[field] = content
-      } else {
-        (alipayConfig as any)[field] = content
-      }
+      (alipayConfig as any)[field] = content
       ElMessage.warning('服务器上传失败，已读取文件内容')
     }
     reader.readAsText(file.raw)

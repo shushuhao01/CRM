@@ -247,7 +247,7 @@ router.get('/shipping/shipped', authenticateToken, async (req: Request, res: Res
     log.info(`🚚 [已发货订单] 用户: ${dbUser?.username || jwtUser?.username}, 角色: ${userRole}, 部门ID: ${userDepartmentId}`);
 
     // 🔥 服务端分页参数
-    const { page = 1, pageSize = 20, orderNumber, customerName, trackingNumber, customerPhone, customerCode, keyword, status, logisticsStatus, startDate, endDate, quickFilter, departmentId, salesPersonId, expressCompany } = req.query;
+    const { page = 1, pageSize = 20, orderNumber, customerName, trackingNumber, customerPhone, customerCode, keyword, status, logisticsStatus, startDate, endDate, quickFilter, departmentId, salesPersonId, expressCompany, excludeVirtualDelivery } = req.query;
     const pageNum = parseInt(page as string) || 1;
     const pageSizeNum = Math.min(parseInt(pageSize as string) || 20, 500); // 🔥 最大500条/页
     const skip = (pageNum - 1) * pageSizeNum;
@@ -281,6 +281,11 @@ router.get('/shipping/shipped', authenticateToken, async (req: Request, res: Res
       // 🔥 修复：使用完整的发货后状态列表
       const allShippedStatuses = ['shipped', 'delivered', 'completed', 'signed', 'rejected', 'rejected_returned', 'returned', 'refunded', 'after_sales_created', 'abnormal', 'exception', 'package_exception'];
       queryBuilder.where('order.status IN (:...statuses)', { statuses: allShippedStatuses });
+    }
+
+    // 🔥 排除虚拟发货订单（物流列表使用，虚拟发货订单无需物流跟踪）
+    if (excludeVirtualDelivery === 'true' || excludeVirtualDelivery === '1') {
+      queryBuilder.andWhere("(order.completionSource != 'virtual_delivery' OR order.completionSource IS NULL)");
     }
 
     // 🔥 物流状态筛选
@@ -439,8 +444,8 @@ router.get('/shipping/shipped', authenticateToken, async (req: Request, res: Res
     // 先获取总数
     const total = await queryBuilder.getCount();
 
-    // 分页和排序 - 按发货时间倒序
-    queryBuilder.orderBy('order.shippedAt', 'DESC').skip(skip).take(pageSizeNum);
+    // 分页和排序 - 按发货时间倒序（NULL值用创建时间兜底，确保虚拟订单也能正确排序）
+    queryBuilder.orderBy('COALESCE(order.shippedAt, order.createdAt)', 'DESC').skip(skip).take(pageSizeNum);
     const orders = await queryBuilder.getMany();
 
     const queryTime = Date.now() - startTime;

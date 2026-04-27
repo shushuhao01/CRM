@@ -88,6 +88,7 @@ const markTypeMap: Record<string, string> = {
   'normal': '正常发货单',
   'reserved': '预留单',
   'return': '退单',
+  'virtual_delivery': '虚拟发货',
   'urgent': '加急',
   'vip': 'VIP',
   'important': '重要'

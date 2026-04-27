@@ -91,10 +91,11 @@ class SensitiveInfoPermissionService {
 
   private async _loadPermissionsInternal(): Promise<void> {
     try {
-      const response = await getSensitiveInfoPermissions()
+      // request 拦截器已解包 response.data，返回的就是 data 字段的值（权限矩阵对象）
+      const data = await getSensitiveInfoPermissions() as any
 
-      if (response && response.data && response.data.success && response.data.data) {
-        this.permissionMatrix = response.data.data
+      if (data && typeof data === 'object' && Object.keys(data).length > 0) {
+        this.permissionMatrix = data
         this.saveToCache()
         console.log('[SensitiveInfoPermission] 权限配置加载成功')
       } else {

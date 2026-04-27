@@ -61,18 +61,20 @@ export const getAfterSalesType = (type: string): string => {
 export const getMarkButtonType = (markType: string): string => {
   if (markType === 'reserved') return 'warning'
   if (markType === 'return') return 'danger'
+  if (markType === 'virtual_delivery') return 'primary'
   return ''
 }
 
 export const getMarkTagType = (markType: string): string => {
   if (markType === 'reserved') return 'warning'
   if (markType === 'return') return 'danger'
+  if (markType === 'virtual_delivery') return 'primary'
   return 'info'
 }
 
 export const getMarkText = (markType: string): string => {
   const texts: Record<string, string> = {
-    'reserved': '预留单', 'normal': '正常发货单', 'return': '退单'
+    'reserved': '预留单', 'normal': '正常发货单', 'return': '退单', 'virtual_delivery': '虚拟发货'
   }
   return texts[markType] || markType
 }

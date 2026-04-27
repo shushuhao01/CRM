@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="order-form">
     <!-- 页面头部 -->
     <div class="page-header">
@@ -105,9 +105,9 @@
           </el-col>
         </el-row>
 
-        <!-- 收货信息 -->
+        <!-- 收货信息（虚拟发货订单时非必填但仍显示） -->
         <div v-if="selectedCustomer" class="delivery-info">
-          <h4>收货信息</h4>
+          <h4>收货信息 <el-tag v-if="orderForm.markType === 'virtual_delivery'" type="info" size="small" style="margin-left: 8px;">虚拟商品可选填</el-tag></h4>
           <el-row :gutter="20">
             <el-col :span="6">
               <el-form-item label="收货人" prop="receiverName">
@@ -149,7 +149,7 @@
               </el-form-item>
             </el-col>
             <el-col :span="6">
-              <el-form-item label="指定快递" prop="expressCompany" required>
+              <el-form-item label="指定快递" prop="expressCompany" :required="orderForm.markType !== 'virtual_delivery'">
                 <el-select
                   v-model="orderForm.expressCompany"
                   placeholder="请选择快递公司"
@@ -498,11 +498,14 @@
             <el-col :span="12">
               <el-form-item label="订单类型" prop="markType" required>
                 <el-radio-group v-model="orderForm.markType" @change="handleMarkTypeChange">
-                  <el-radio label="normal">
-                    <el-tag type="success" size="small">正常发货单</el-tag>
+                  <el-radio label="normal" :disabled="isAllVirtualProducts">
+                    <el-tag type="success" size="small" :class="{ 'is-disabled-tag': isAllVirtualProducts }">正常发货单</el-tag>
                   </el-radio>
-                  <el-radio label="reserved">
-                    <el-tag type="warning" size="small">预留单</el-tag>
+                  <el-radio label="reserved" :disabled="isAllVirtualProducts">
+                    <el-tag type="warning" size="small" :class="{ 'is-disabled-tag': isAllVirtualProducts }">预留单</el-tag>
+                  </el-radio>
+                  <el-radio v-if="hasVirtualProducts" label="virtual_delivery">
+                    <el-tag type="primary" size="small">虚拟发货</el-tag>
                   </el-radio>
                 </el-radio-group>
               </el-form-item>
@@ -514,6 +517,14 @@
                   title="预留单说明"
                   description="预留单将保留在下单人处，不会流转到审核员。需要修改为正常发货单后才会进入审核流程。"
                   type="warning"
+                  :closable="false"
+                  show-icon
+                />
+                <el-alert
+                  v-else-if="orderForm.markType === 'virtual_delivery'"
+                  title="虚拟发货单"
+                  description="虚拟商品订单，无需物流发货，审核通过后将通过卡密/资源等方式交付。"
+                  type="info"
                   :closable="false"
                   show-icon
                 />
@@ -577,17 +588,21 @@
               <span class="label">电话：</span>
               <span class="value">{{ selectedCustomer?.phone ? displaySensitiveInfoNew(selectedCustomer.phone, SensitiveInfoType.PHONE, userStore.currentUser?.id || '') : '' }}</span>
             </div>
-            <div class="info-item">
+            <div class="info-item" v-if="orderForm.receiverName">
               <span class="label">收货人：</span>
               <span class="value">{{ orderForm.receiverName }}</span>
             </div>
-            <div class="info-item">
+            <div class="info-item" v-if="orderForm.receiverAddress">
               <span class="label">收货地址：</span>
               <span class="value">{{ orderForm.receiverAddress }}</span>
             </div>
-            <div class="info-item">
+            <div class="info-item" v-if="orderForm.expressCompany && orderForm.markType !== 'virtual_delivery'">
               <span class="label">快递公司：</span>
               <span class="value">{{ getExpressCompanyText(orderForm.expressCompany) }}</span>
+            </div>
+            <div v-if="orderForm.markType === 'virtual_delivery'" class="info-item">
+              <span class="label">发货方式：</span>
+              <span class="value" style="color: #409EFF;">虚拟发货（卡密/资源交付）</span>
             </div>
           </div>
         </div>
@@ -598,14 +613,17 @@
             <div class="mark-item">
               <span class="label">订单类型：</span>
               <el-tag
-                :type="orderForm.markType === 'normal' ? 'success' : 'warning'"
+                :type="orderForm.markType === 'normal' ? 'success' : orderForm.markType === 'virtual_delivery' ? 'primary' : 'warning'"
                 size="small"
               >
-                {{ orderForm.markType === 'normal' ? '正常发货单' : '预留单' }}
+                {{ orderForm.markType === 'normal' ? '正常发货单' : orderForm.markType === 'virtual_delivery' ? '虚拟发货' : '预留单' }}
               </el-tag>
             </div>
             <div v-if="orderForm.markType === 'reserved'" class="mark-note">
               * 预留单将保留在您处，不会流转到审核员
+            </div>
+            <div v-if="orderForm.markType === 'virtual_delivery'" class="mark-note">
+              * 虚拟商品订单，审核通过后将通过卡密/资源等方式交付
             </div>
           </div>
         </div>
@@ -1141,17 +1159,20 @@ const handlePaymentMethodChange = (value: string) => {
   }
 }
 
-// 表单验证规则
-const formRules = {
-  customerId: [{ required: true, message: '请选择客户', trigger: 'change' }],
-  serviceWechat: [{ required: true, message: '请输入客服微信号', trigger: 'blur' }],
-  orderSource: [{ required: true, message: '请选择订单来源', trigger: 'change' }],
-  expressCompany: [{ required: true, message: '请选择快递公司', trigger: 'change' }],
-  receiverName: [{ required: true, message: '请输入收货人姓名', trigger: 'blur' }],
-  receiverPhone: [{ required: true, message: '请输入收货人电话', trigger: 'blur' }],
-  receiverAddress: [{ required: true, message: '请输入收货地址', trigger: 'blur' }],
-  markType: [{ required: true, message: '请选择订单类型', trigger: 'change' }]
-}
+// 表单验证规则（收货信息在虚拟发货时非必填）
+const formRules = computed(() => {
+  const isVirtual = orderForm.markType === 'virtual_delivery'
+  return {
+    customerId: [{ required: true, message: '请选择客户', trigger: 'change' }],
+    serviceWechat: [{ required: true, message: '请输入客服微信号', trigger: 'blur' }],
+    orderSource: [{ required: true, message: '请选择订单来源', trigger: 'change' }],
+    expressCompany: [{ required: !isVirtual, message: '请选择快递公司', trigger: 'change' }],
+    receiverName: [{ required: !isVirtual, message: '请输入收货人姓名', trigger: 'blur' }],
+    receiverPhone: [{ required: !isVirtual, message: '请输入收货人电话', trigger: 'blur' }],
+    receiverAddress: [{ required: !isVirtual, message: '请输入收货地址', trigger: 'blur' }],
+    markType: [{ required: true, message: '请选择订单类型', trigger: 'change' }]
+  }
+})
 
 // 多张定金截图
 const depositScreenshots = ref<string[]>([])
@@ -1186,6 +1207,24 @@ const maxDiscountRate = computed(() => {
 
 // 标记用户是否手动修改过订单总额
 const isManuallyModified = ref(false)
+
+// 虚拟商品检测
+const hasVirtualProducts = computed(() => {
+  return orderForm.products.some(p => (p as any).productType === 'virtual')
+})
+
+const isAllVirtualProducts = computed(() => {
+  return orderForm.products.length > 0 && orderForm.products.every(p => (p as any).productType === 'virtual')
+})
+
+// 自动切换订单类型：所有商品为虚拟时切虚拟发货，否则切回正常发货单
+watch(isAllVirtualProducts, (allVirtual) => {
+  if (allVirtual) {
+    orderForm.markType = 'virtual_delivery'
+  } else if (orderForm.markType === 'virtual_delivery') {
+    orderForm.markType = 'normal'
+  }
+})
 
 // 计算属性
 const subtotal = computed(() => {
@@ -1281,8 +1320,8 @@ const handleCustomerChange = async (customerId: string) => {
       orderForm.receiverAddress = buildCustomerReadableAddress(customer)
     }
 
-    // 🔥 检查部门下单限制（仅正常发货单检查）
-    if (orderForm.markType !== 'reserved' && orderForm.markType !== 'return') {
+    // 🔥 检查部门下单限制（仅正常发货单检查，预留单和虚拟发货不检查）
+    if (orderForm.markType !== 'reserved' && orderForm.markType !== 'return' && orderForm.markType !== 'virtual_delivery') {
       checkDepartmentLimit(customerId)
     }
   }
@@ -1724,6 +1763,12 @@ const handleMarkTypeChange = (value: string) => {
     orderLimitExceeded.value = false
     orderLimitResult.value = null
     orderLimitDialogVisible.value = false
+  } else if (value === 'virtual_delivery') {
+    ElMessage.info('已选择虚拟发货，订单审核通过后将通过卡密/资源等方式交付')
+    // 虚拟发货不受部门下单限制
+    orderLimitExceeded.value = false
+    orderLimitResult.value = null
+    orderLimitDialogVisible.value = false
   } else {
     ElMessage.info('已选择正常发货单，订单将按正常流程进行审核')
     // 🔥 切换回正常发货单时重新检查
@@ -1871,6 +1916,8 @@ const handleSubmitOrder = async () => {
       ElMessage.success(`订单已提交，该订单${delayMinutes}分钟后将流转至审核`)
     } else if (orderData.markType === 'reserved') {
       ElMessage.success('预留单已保存，信息将保留在系统中')
+    } else if (orderData.markType === 'virtual_delivery') {
+      ElMessage.success('虚拟发货订单已提交，审核通过后将通过卡密/资源交付')
     } else {
       ElMessage.success('订单已提交')
     }
@@ -3501,5 +3548,9 @@ onMounted(async () => {
 .form-footer {
   display: flex;
   align-items: center;
+}
+
+.is-disabled-tag {
+  opacity: 0.5;
 }
 </style>

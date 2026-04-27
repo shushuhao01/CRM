@@ -9,12 +9,19 @@
           <div class="order-number">
             订单号：{{ orderDetail.orderNumber }}
             <el-tag
-              v-if="orderDetail.orderProductType === 'virtual'"
+              v-if="computedOrderProductType === 'virtual'"
               type="warning"
               size="small"
               effect="light"
               style="margin-left: 8px; vertical-align: middle;"
             >虚拟</el-tag>
+            <el-tag
+              v-else-if="computedOrderProductType === 'mixed'"
+              type="primary"
+              size="small"
+              effect="light"
+              style="margin-left: 8px; vertical-align: middle;"
+            >混合</el-tag>
             <el-tag
               v-else-if="orderDetail.orderNumber"
               size="small"
@@ -37,8 +44,8 @@
             建立售后
           </el-button>
         </el-tooltip>
-        <el-dropdown @command="handleMarkCommand" class="mark-dropdown" :disabled="!canModifyMark">
-          <el-button :icon="Sell" :type="getMarkButtonType()" :disabled="!canModifyMark">
+        <el-dropdown @command="handleMarkCommand" class="mark-dropdown" :disabled="!canModifyMark || computedOrderProductType === 'virtual'">
+          <el-button :icon="Sell" :type="getMarkButtonType()" :disabled="!canModifyMark || computedOrderProductType === 'virtual'">
             标记 <el-icon class="el-icon--right"><arrow-down /></el-icon>
           </el-button>
           <template #dropdown>
@@ -91,48 +98,143 @@
       @apply-cod-cancel="handleApplyCodCancel"
     />
 
-    <!-- 虚拟发货信息（仅虚拟商品订单显示） -->
-    <div v-if="orderDetail.orderProductType === 'virtual' && virtualDeliveryRecords.length > 0" class="detail-card virtual-delivery-card">
-      <div class="card-title">
-        <el-icon><Box /></el-icon>
-        虚拟商品发货记录
-        <el-button
-          v-if="virtualClaimLink"
-          type="primary"
-          size="small"
-          plain
-          style="margin-left: auto;"
-          @click="copyClaimLink"
-        >
-          <el-icon><Link /></el-icon>
-          复制领取链接
-        </el-button>
-      </div>
-      <div v-if="virtualClaimLink" class="claim-link-section">
-        <span class="claim-link-label">领取链接：</span>
-        <a :href="virtualClaimLink" target="_blank" class="claim-link-url">{{ virtualClaimLink }}</a>
-      </div>
-      <el-table :data="virtualDeliveryRecords" size="small" style="margin-top: 8px;">
-        <el-table-column label="发货类型" width="100">
-          <template #default="{ row }">
-            <el-tag :type="row.deliveryType === 'card_key' ? 'info' : 'success'" size="small">
-              {{ row.deliveryType === 'card_key' ? '卡密' : '资源链接' }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="内容" min-width="160">
-          <template #default="{ row }">
-            <span v-if="row.deliveryType === 'card_key'">
-              {{ row.cardKeyContent ? '••••••' : '-' }}
-            </span>
-            <a v-else-if="row.resourceLink" :href="row.resourceLink" target="_blank" class="link-text">查看链接</a>
-          </template>
-        </el-table-column>
-        <el-table-column label="操作人" prop="operatorName" width="90" />
-        <el-table-column label="发货时间" width="140">
-          <template #default="{ row }">{{ formatDateTime(row.deliveredAt) }}</template>
-        </el-table-column>
-      </el-table>
+    <!-- 虚拟发货信息（虚拟/混合商品订单始终显示） -->
+    <div v-if="computedOrderProductType === 'virtual' || computedOrderProductType === 'mixed'" class="row-layout full-width">
+      <el-card class="modern-card">
+        <template #header>
+          <div class="card-header-modern">
+            <div class="header-left">
+              <el-icon class="header-icon"><Box /></el-icon>
+              <span class="header-title">虚拟商品发货信息</span>
+              <template v-if="virtualDeliveryRecords.length > 0">
+                <el-tag type="success" size="small" effect="light" style="margin-left: 8px;">已签收</el-tag>
+                <el-tag type="info" size="small" effect="plain" style="margin-left: 4px;">{{ virtualDeliveryRecords.length }} 条记录</el-tag>
+              </template>
+              <el-tag v-else type="info" size="small" effect="light" style="margin-left: 8px;">待发货</el-tag>
+            </div>
+            <div class="header-right" style="display: flex; gap: 8px;">
+              <el-button
+                v-if="virtualDeliveryRecords.length > 0 && virtualDeliveryConfig.deliveryMode === 'manual'"
+                type="primary"
+                size="small"
+                plain
+                @click="copyAllCardKeys"
+              >
+                <el-icon><CreditCard /></el-icon>
+                复制卡密
+              </el-button>
+              <el-button
+                v-if="virtualClaimLink"
+                type="primary"
+                size="small"
+                plain
+                @click="copyClaimLink"
+              >
+                <el-icon><Link /></el-icon>
+                复制领取链接
+              </el-button>
+            </div>
+          </div>
+        </template>
+
+        <!-- 已发货：显示发货记录 -->
+        <template v-if="virtualDeliveryRecords.length > 0">
+          <!-- 领取链接提示（link模式时显示） -->
+          <div v-if="virtualClaimLink && virtualDeliveryConfig.deliveryMode === 'link'" style="display: flex; align-items: center; gap: 12px; padding: 12px; background: #ecf5ff; border-radius: 8px; margin-bottom: 16px;">
+            <el-icon style="color: #409EFF; font-size: 18px;"><Link /></el-icon>
+            <div style="flex: 1; min-width: 0;">
+              <div style="font-size: 13px; color: #303133; font-weight: 500;">客户领取链接</div>
+              <a :href="virtualClaimLink" target="_blank" style="font-size: 12px; color: #409EFF; word-break: break-all;">{{ virtualClaimLink }}</a>
+            </div>
+          </div>
+
+          <!-- 发货记录表格 -->
+          <el-table :data="virtualDeliveryRecords" size="small" stripe>
+            <el-table-column label="商品" min-width="120">
+              <template #default="{ row }">
+                <span>{{ row.productName || '未知商品' }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="发货类型" width="100">
+              <template #default="{ row }">
+                <el-tag :type="row.deliveryType === 'card_key' ? 'info' : row.deliveryType === 'resource_link' ? 'success' : 'warning'" size="small">
+                  {{ row.deliveryType === 'card_key' ? '卡密' : row.deliveryType === 'resource_link' ? '资源链接' : '无需发货' }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="内容" min-width="160">
+              <template #default="{ row }">
+                <template v-if="row.deliveryType === 'card_key'">
+                  <template v-if="row.virtualContentEncrypt">
+                    <span style="color: #606266;">{{ row.cardKeyContent ? (row.cardKeyContent.substring(0, 4) + '****') : '-' }}</span>
+                    <el-button v-if="row.cardKeyContent && userStore.isAdmin" link size="small" type="primary" style="margin-left: 8px;" @click="showFullContent(row)">查看完整</el-button>
+                  </template>
+                  <template v-else>
+                    <span style="color: #606266;">{{ row.cardKeyContent || '-' }}</span>
+                  </template>
+                </template>
+                <template v-else-if="row.deliveryType === 'resource_link'">
+                  <template v-if="row.virtualContentEncrypt">
+                    <span style="color: #606266;">{{ row.resourceLink ? (row.resourceLink.substring(0, 8) + '****') : '-' }}</span>
+                    <el-button v-if="row.resourceLink && userStore.isAdmin" link size="small" type="primary" style="margin-left: 8px;" @click="showFullContent(row)">查看完整</el-button>
+                  </template>
+                  <template v-else>
+                    <a v-if="row.resourceLink" :href="row.resourceLink" target="_blank" style="color: #409EFF;">
+                      {{ row.resourceLink.length > 30 ? row.resourceLink.substring(0, 30) + '...' : row.resourceLink }}
+                    </a>
+                    <span v-if="row.resourcePassword" style="margin-left: 8px; color: #909399;">提取码：{{ row.resourcePassword }}</span>
+                  </template>
+                </template>
+                <span v-else style="color: #909399;">无需实际发货</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="状态" width="80">
+              <template #default="{ row }">
+                <el-tag :type="row.claimed ? 'success' : 'warning'" size="small" effect="light">
+                  {{ row.claimed ? '已领取' : '已发放' }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="操作人" prop="operatorName" width="90" />
+            <el-table-column label="发货时间" width="140">
+              <template #default="{ row }">{{ formatDateTime(row.deliveredAt) }}</template>
+            </el-table-column>
+          </el-table>
+        </template>
+
+        <!-- 未发货：按商品展示待发状态 -->
+        <template v-else>
+          <div style="padding: 8px 0;">
+            <div
+              v-for="(p, idx) in virtualProductsList"
+              :key="idx"
+              style="display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; margin-bottom: 8px; background: #fafafa; border: 1px solid #ebeef5; border-radius: 8px;"
+            >
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <el-tag type="warning" size="small">虚拟</el-tag>
+                <span style="font-weight: 500; color: #303133;">{{ p.name || p.productName || '未知商品' }}</span>
+                <span style="color: #909399; font-size: 12px;">× {{ p.quantity || 1 }}</span>
+              </div>
+              <div>
+                <el-tag v-if="p.virtualDeliveryType === 'none'" type="success" size="small" effect="light">无需实际发货</el-tag>
+                <el-tag v-else-if="p.virtualDeliveryType === 'card_key'" type="info" size="small" effect="light">卡密待发货</el-tag>
+                <el-tag v-else-if="p.virtualDeliveryType === 'resource_link'" type="warning" size="small" effect="light">资源待发货</el-tag>
+                <el-tag v-else size="small" effect="light">待发货</el-tag>
+              </div>
+            </div>
+          </div>
+          <div v-if="userStore.isAdmin" style="text-align: center; padding: 8px 0;">
+            <el-button v-if="orderDetail.status === 'pending_transfer' || orderDetail.status === 'pending_audit'" type="warning" link @click="safeNavigator.push('/order/audit')">
+              <el-icon><Check /></el-icon>
+              前往订单审核
+            </el-button>
+            <el-button v-else-if="orderDetail.status === 'pending_shipment'" type="primary" link @click="goToShippingList">
+              <el-icon><Van /></el-icon>
+              前往发货列表操作虚拟发货
+            </el-button>
+          </div>
+        </template>
+      </el-card>
     </div>
 
     <!-- 物流跟踪+订单轨迹+售后历史 -->
@@ -141,6 +243,7 @@
       :logisticsLoading="logisticsLoading"
       :orderTimeline="orderTimeline"
       :afterSalesHistory="afterSalesHistory"
+      :orderProductType="computedOrderProductType"
       @refresh-logistics="refreshLogistics"
     />
 
@@ -267,6 +370,7 @@ const orderTimeline = ref([])
 // 虚拟发货记录
 const virtualDeliveryRecords = ref<any[]>([])
 const virtualClaimLink = ref('')
+const virtualDeliveryConfig = ref<{ deliveryMode: string }>({ deliveryMode: 'link' })
 
 // 物流信息
 interface LogisticsItem {
@@ -466,7 +570,7 @@ const generateTimelineFromStatus = () => {
   const virtualDeliveryStatusFlow = [
     { status: 'pending_transfer', title: '订单创建', description: `订单创建成功，订单号：${orderDetail.orderNumber}` },
     { status: 'pending_audit', title: '待审核', description: '订单已提交审核' },
-    { status: 'virtual_pending', title: '虚拟待发货', description: '等待发放卡密/资源链接' },
+    { status: 'pending_shipment', title: '虚拟待发货', description: '等待发放卡密/资源链接' },
     { status: 'signed', title: '已签收', description: '卡密/资源已发放，客户可通过领取链接获取' }
   ]
 
@@ -497,7 +601,6 @@ const generateTimelineFromStatus = () => {
     'pending_audit': 1,
     'audit_rejected': 1,
     'pending_shipment': 2,
-    'virtual_pending': 2,
     'approved': 2,
     'shipped': 3,
     'in_transit': 3,
@@ -522,16 +625,20 @@ const generateTimelineFromStatus = () => {
       // 计算时间（每个状态间隔一些时间）
       const timestamp = new Date(baseTime.getTime() + stepPriority * 3600000)
 
-      // 🔥 根据状态确定操作人 - 使用订单中记录的真实操作人
+      // 🔥 根据状态确定操作人 - 仅下单/提审用下单人，其余不能冒用下单人姓名
       let operator = creatorName
-      if (step.status === 'pending_audit') {
-        operator = creatorName // 提交审核的是创建人
-      } else if (step.status === 'pending_shipment' || step.status === 'virtual_pending') {
-        operator = orderDetail.auditByName || creatorName
+      if (step.status === 'pending_transfer' || step.status === 'pending_audit') {
+        operator = creatorName // 创建和提审确实是下单人操作
+      } else if (step.status === 'pending_shipment') {
+        operator = orderDetail.operatorName || '审核员（历史记录缺失）'
       } else if (step.status === 'shipped') {
-        operator = orderDetail.shippedByName || creatorName
+        operator = orderDetail.operatorName || '发货员（历史记录缺失）'
       } else if (step.status === 'delivered' || step.status === 'signed') {
-        operator = isVirtual ? (orderDetail.shippedByName || '虚拟发货') : '物流签收'
+        if (isVirtual) {
+          operator = orderDetail.operatorName || '系统自动签收'
+        } else {
+          operator = '物流签收'
+        }
       }
 
       timeline.push({
@@ -555,7 +662,7 @@ const generateTimelineFromStatus = () => {
       color: '#F56C6C',
       title: '订单取消',
       description: '订单已取消',
-      operator: orderDetail.cancelledByName || creatorName
+      operator: orderDetail.operatorName || '管理员（历史记录缺失）'
     })
   } else if (currentStatus === 'audit_rejected') {
     timeline.push({
@@ -565,7 +672,7 @@ const generateTimelineFromStatus = () => {
       color: '#F56C6C',
       title: '审核拒绝',
       description: orderDetail.auditRemark || '订单审核被拒绝',
-      operator: orderDetail.auditByName || creatorName
+      operator: orderDetail.operatorName || '审核员（历史记录缺失）'
     })
   }
 
@@ -580,7 +687,6 @@ const getTimelineType = (status: string) => {
     'approved': 'success',
     'rejected': 'danger',
     'pending_shipment': 'warning',
-    'virtual_pending': 'warning',
     'shipped': 'primary',
     'delivered': 'success',
     'signed': 'success',
@@ -598,7 +704,6 @@ const getTimelineIcon = (status: string) => {
     'approved': Check,
     'rejected': Close,
     'pending_shipment': Clock,
-    'virtual_pending': Clock,
     'shipped': Van,
     'delivered': Check,
     'signed': Check,
@@ -616,7 +721,6 @@ const getTimelineColor = (status: string) => {
     'approved': '#67c23a',
     'rejected': '#f56c6c',
     'pending_shipment': '#e6a23c',
-    'virtual_pending': '#e6a23c',
     'shipped': '#409eff',
     'delivered': '#67c23a',
     'signed': '#67c23a',
@@ -628,11 +732,36 @@ const getTimelineColor = (status: string) => {
   return colors[status] || '#909399'
 }
 
+// 根据订单商品动态计算商品类型标签（实物/虚拟/混合）
+const computedOrderProductType = computed(() => {
+  // 优先使用后端返回的orderProductType
+  if (orderDetail.orderProductType) return orderDetail.orderProductType
+  // 如果后端没有设置，根据products数组计算
+  const products = orderDetail.products || []
+  if (products.length === 0) return 'physical'
+  const hasVirtual = products.some((p: any) => p.productType === 'virtual')
+  const hasPhysical = products.some((p: any) => p.productType !== 'virtual')
+  if (hasVirtual && hasPhysical) return 'mixed'
+  if (hasVirtual) return 'virtual'
+  return 'physical'
+})
+
+// 虚拟商品列表（用于待发货状态展示）
+const virtualProductsList = computed(() => {
+  const products = orderDetail.products || []
+  return products.filter((p: any) => p.productType === 'virtual')
+})
+
+// 跳转到发货列表
+const goToShippingList = () => {
+  safeNavigator.push('/logistics/shipping')
+}
+
 // 计算属性
 const showCountdown = computed(() => {
-  // 只有在订单状态为pending_transfer（待流转）时显示倒计时
+  // 待流转状态显示倒计时（正常发货单和虚拟发货单都需要倒计时）
   return orderDetail.status === 'pending_transfer' &&
-         orderDetail.markType === 'normal' &&
+         (orderDetail.markType === 'normal' || orderDetail.markType === 'virtual_delivery') &&
          orderDetail.auditTransferTime &&
          !orderDetail.isAuditTransferred
 })
@@ -1264,19 +1393,42 @@ const handlePhoneVerifySubmit = (phone: string) => {
   refreshLogistics(phone)
 }
 
+// 加载虚拟发货配置
+const loadVirtualDeliveryConfig = async () => {
+  try {
+    const token = localStorage.getItem('auth_token')
+    const res = await fetch('/api/v1/settings/virtual-claim', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
+    const result = await res.json()
+    if (result.success && result.data) {
+      virtualDeliveryConfig.value = { deliveryMode: result.data.deliveryMode || 'link' }
+    }
+  } catch (e) {
+    console.warn('[订单详情] 加载虚拟发货配置失败', e)
+  }
+}
+
 // 加载虚拟发货记录
 const loadVirtualDeliveryRecords = async () => {
   try {
-    const { default: axios } = await import('axios')
-    const resp = await axios.get(`/api/v1/virtual-delivery/${orderId}`)
-    if (resp.data?.success) {
-      virtualDeliveryRecords.value = resp.data.data || []
-      // 从发货记录中提取 claim_token 拼出领取链接
-      if (virtualDeliveryRecords.value.length > 0) {
-        const firstRecord = virtualDeliveryRecords.value[0]
-        if (firstRecord.claimToken) {
-          virtualClaimLink.value = `${window.location.origin}/virtual-claim/${firstRecord.claimToken}`
-        }
+    const { apiService } = await import('@/services/apiService')
+    const records = await apiService.get(`/virtual-delivery/${orderId}`)
+    const recordList = Array.isArray(records) ? records : []
+    // 补全商品名称：如果后端未返回productName，从订单products中匹配
+    const productsArr = orderDetail.products || []
+    virtualDeliveryRecords.value = recordList.map((r: any) => {
+      if (!r.productName && r.productId) {
+        const match = productsArr.find((p: any) => (p.id || p.productId) === r.productId)
+        if (match) r.productName = match.name || match.productName || ''
+      }
+      return r
+    })
+    // 从发货记录中提取 claim_token 拼出领取链接
+    if (virtualDeliveryRecords.value.length > 0) {
+      const firstRecord = virtualDeliveryRecords.value[0]
+      if (firstRecord.claimToken) {
+        virtualClaimLink.value = `${window.location.origin}/virtual-claim/${firstRecord.claimToken}`
       }
     }
   } catch (e) {
@@ -1284,22 +1436,66 @@ const loadVirtualDeliveryRecords = async () => {
   }
 }
 
-// 复制领取链接
-const copyClaimLink = () => {
-  if (!virtualClaimLink.value) return
+// 复制文本到剪贴板
+const copyToClipboard = (text: string, successMsg: string) => {
   if (navigator.clipboard) {
-    navigator.clipboard.writeText(virtualClaimLink.value).then(() => {
-      ElMessage.success('领取链接已复制')
+    navigator.clipboard.writeText(text).then(() => {
+      ElMessage.success(successMsg)
     })
   } else {
     const el = document.createElement('textarea')
-    el.value = virtualClaimLink.value
+    el.value = text
     document.body.appendChild(el)
     el.select()
     document.execCommand('copy')
     document.body.removeChild(el)
-    ElMessage.success('领取链接已复制')
+    ElMessage.success(successMsg)
   }
+}
+
+// 复制领取链接
+const copyClaimLink = () => {
+  if (!virtualClaimLink.value) return
+  copyToClipboard(virtualClaimLink.value, '领取链接已复制')
+}
+
+// 复制所有卡密内容
+const copyAllCardKeys = async () => {
+  const cardKeys = virtualDeliveryRecords.value
+    .filter(r => r.deliveryType === 'card_key' && r.cardKeyContent)
+    .map(r => r.cardKeyContent)
+  if (cardKeys.length === 0) {
+    ElMessage.warning('暂无可复制的卡密')
+    return
+  }
+  copyToClipboard(cardKeys.join('\n'), `已复制 ${cardKeys.length} 条卡密`)
+  // 标记为成员发送
+  try {
+    const { apiService } = await import('@/services/apiService')
+    await apiService.post(`/virtual-delivery/${orderId}/mark-member-send`, {})
+  } catch (e) {
+    console.warn('[订单详情] 标记成员发送失败:', e)
+  }
+}
+
+// 查看完整卡密/资源内容
+const showFullContent = (row: any) => {
+  const content = row.deliveryType === 'card_key' ? row.cardKeyContent : row.resourceLink
+  ElMessageBox.alert(content || '-', '完整内容', {
+    confirmButtonText: '复制并关闭',
+    callback: async () => {
+      if (content && navigator.clipboard) {
+        navigator.clipboard.writeText(content).then(() => {
+          ElMessage.success('已复制到剪贴板')
+        })
+        // 标记为成员发送
+        try {
+          const { apiService } = await import('@/services/apiService')
+          await apiService.post(`/virtual-delivery/${orderId}/mark-member-send`, {})
+        } catch (_e) { /* ignore */ }
+      }
+    }
+  })
 }
 
 // 倒计时相关方法
@@ -1318,8 +1514,8 @@ const initCountdown = () => {
     countdownTimer.value = null
   }
 
-  // 只有正常发货单且状态为pending_transfer才需要倒计时
-  if (orderDetail.markType !== 'normal' || orderDetail.status !== 'pending_transfer') {
+  // 正常发货单和虚拟发货单且状态为pending_transfer才需要倒计时
+  if ((orderDetail.markType !== 'normal' && orderDetail.markType !== 'virtual_delivery') || orderDetail.status !== 'pending_transfer') {
     console.log('[倒计时] 不满足倒计时条件，跳过')
     return
   }
@@ -1416,7 +1612,8 @@ const getMarkButtonType = () => {
   const types: Record<string, string> = {
     'reserved': 'warning',
     'normal': 'primary',
-    'return': 'danger'
+    'return': 'danger',
+    'virtual_delivery': 'primary'
   }
   return types[orderDetail.markType] || 'default'
 }
@@ -1426,7 +1623,8 @@ const getMarkText = (markType: string) => {
   const texts: Record<string, string> = {
     'reserved': '预留单',
     'normal': '正常发货单',
-    'return': '退单'
+    'return': '退单',
+    'virtual_delivery': '虚拟发货'
   }
   return texts[markType] || markType
 }
@@ -1436,7 +1634,8 @@ const getMarkTagType = (markType: string) => {
   const types: Record<string, string> = {
     'reserved': 'warning',
     'normal': 'success',
-    'return': 'danger'
+    'return': 'danger',
+    'virtual_delivery': 'primary'
   }
   return types[markType] || 'info'
 }
@@ -1448,7 +1647,6 @@ const getStatusText = (status: string) => {
     pending_audit: '待审核',
     audit_rejected: '审核拒绝',
     pending_shipment: '待发货',
-    virtual_pending: '虚拟待发货',
     shipped: '已发货',
     delivered: '已签收',
     signed: '已签收',
@@ -1585,8 +1783,11 @@ const loadOrderDetail = async () => {
       refreshLogistics()
     }
 
-    if (orderDetail.orderProductType === 'virtual') {
+    // 虚拟/混合订单加载虚拟发货记录和配置
+    const productType = computedOrderProductType.value
+    if (productType === 'virtual' || productType === 'mixed') {
       loadVirtualDeliveryRecords()
+      loadVirtualDeliveryConfig()
     }
 
     setupEventListeners()

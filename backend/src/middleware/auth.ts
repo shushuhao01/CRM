@@ -203,11 +203,11 @@ export const requireRole = (roles: string | string[]) => {
       });
     }
 
-    const userRole = req.user.role;
-    const allowedRoles = Array.isArray(roles) ? roles : [roles];
+    const userRole = (req.user.role || '').toLowerCase();
+    const allowedRoles = (Array.isArray(roles) ? roles : [roles]).map(r => r.toLowerCase());
 
     if (!allowedRoles.includes(userRole)) {
-      logger.warn(`用户 ${req.user.username} 尝试访问需要 ${allowedRoles.join('/')} 权限的资源，但用户角色为 ${userRole}`);
+      logger.warn(`用户 ${req.user.username} 尝试访问需要 ${allowedRoles.join('/')} 权限的资源，但用户角色为 ${req.user.role}`);
 
       return res.status(403).json({
         success: false,

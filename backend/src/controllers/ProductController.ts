@@ -383,42 +383,97 @@ export class ProductController {
         }
       }
 
+      // 🔥 查询虚拟商品的库存数量（卡密/资源中unused状态的数量）
+      const virtualStockMap: Record<string, number> = {}
+      const virtualProducts = products.filter(p => p.productType === 'virtual' && p.virtualDeliveryType && p.virtualDeliveryType !== 'none')
+      if (virtualProducts.length > 0) {
+        try {
+          const { getDataSource } = await import('../config/database')
+          const ds = getDataSource()
+          const tenantId = (req as any).user?.tenantId || (req as any).tenantId || 'default'
+
+          // 统计卡密库存
+          const cardKeyProducts = virtualProducts.filter(p => p.virtualDeliveryType === 'card_key')
+          if (cardKeyProducts.length > 0) {
+            const ckIds = cardKeyProducts.map(p => p.id)
+            const ckRows = await ds.query(
+              `SELECT product_id, COUNT(*) as cnt FROM card_key_inventory WHERE product_id IN (${ckIds.map(() => '?').join(',')}) AND status = 'unused' AND tenant_id = ? GROUP BY product_id`,
+              [...ckIds, tenantId]
+            )
+            ckRows.forEach((r: any) => { virtualStockMap[r.product_id] = Number(r.cnt) })
+          }
+
+          // 统计资源库存
+          const resProducts = virtualProducts.filter(p => p.virtualDeliveryType === 'resource_link')
+          if (resProducts.length > 0) {
+            const resIds = resProducts.map(p => p.id)
+            const resRows = await ds.query(
+              `SELECT product_id, COUNT(*) as cnt FROM resource_inventory WHERE product_id IN (${resIds.map(() => '?').join(',')}) AND status = 'unused' AND tenant_id = ? GROUP BY product_id`,
+              [...resIds, tenantId]
+            )
+            resRows.forEach((r: any) => { virtualStockMap[r.product_id] = Number(r.cnt) })
+          }
+
+          // 🔥 同步更新products表的stock字段为虚拟库存数量
+          for (const vp of virtualProducts) {
+            const vStock = virtualStockMap[vp.id] || 0
+            if (vp.stock !== vStock) {
+              vp.stock = vStock
+              await productRepo.update(vp.id, { stock: vStock })
+            }
+          }
+
+          log.info('[商品列表] 虚拟库存统计:', virtualStockMap)
+        } catch (virtualStockError) {
+          log.error('[商品列表] 统计虚拟库存失败:', virtualStockError)
+        }
+      }
+
       // 转换数据格式以匹配前端期望
-      const list = products.map(p => ({
-        id: p.id,
-        code: p.code,
-        name: p.name,
-        categoryId: p.categoryId,
-        categoryName: p.categoryName || p.category?.name || '',
-        brand: '',
-        specification: '',
-        unit: p.unit || '件',
-        weight: 0,
-        dimensions: '',
-        description: p.description || '',
-        price: Number(p.price),
-        costPrice: Number(p.costPrice) || 0,
-        marketPrice: Number(p.price),
-        stock: p.stock,
-        minStock: p.minStock || 0,
-        maxStock: 0,
-        salesCount: salesCountMap[p.id] || 0, // 🔥 使用统计的销量
-        status: p.status,
-        isRecommended: !!p.isRecommended,
-        isNew: !!p.isNew,
-        isHot: !!p.isHot,
-        image: p.images?.[0] || '',
-        images: p.images || [],
-        specifications: p.specifications || {},
-        productType: p.productType || 'physical',
-        virtualDeliveryType: p.virtualDeliveryType || null,
-        cardKeyTemplate: p.cardKeyTemplate || null,
-        resourceLinkTemplate: p.resourceLinkTemplate || null,
-        virtualContentEncrypt: !!p.virtualContentEncrypt,
-        createdBy: p.createdBy || '',
-        createTime: p.createdAt?.toISOString() || '',
-        updateTime: p.updatedAt?.toISOString() || ''
-      }))
+      const list = products.map(p => {
+        // 虚拟商品（卡密/资源类型）使用虚拟库存数量
+        let stock = p.stock
+        if (p.productType === 'virtual' && p.virtualDeliveryType && p.virtualDeliveryType !== 'none') {
+          stock = virtualStockMap[p.id] || 0
+        }
+
+        return {
+          id: p.id,
+          code: p.code,
+          name: p.name,
+          categoryId: p.categoryId,
+          categoryName: p.categoryName || p.category?.name || '',
+          brand: '',
+          specification: '',
+          unit: p.unit || '件',
+          weight: 0,
+          dimensions: '',
+          description: p.description || '',
+          price: Number(p.price),
+          costPrice: Number(p.costPrice) || 0,
+          marketPrice: Number(p.price),
+          stock: stock,
+          minStock: p.minStock || 0,
+          maxStock: 0,
+          salesCount: salesCountMap[p.id] || 0, // 🔥 使用统计的销量
+          status: p.status,
+          isRecommended: !!p.isRecommended,
+          isNew: !!p.isNew,
+          isHot: !!p.isHot,
+          image: p.images?.[0] || '',
+          images: p.images || [],
+          specifications: p.specifications || {},
+          productType: p.productType || 'physical',
+          virtualDeliveryType: p.virtualDeliveryType || null,
+          virtualStockCount: p.productType === 'virtual' ? (p.virtualDeliveryType === 'none' ? stock : (virtualStockMap[p.id] || 0)) : undefined,
+          cardKeyTemplate: p.cardKeyTemplate || null,
+          resourceLinkTemplate: p.resourceLinkTemplate || null,
+          virtualContentEncrypt: !!p.virtualContentEncrypt,
+          createdBy: p.createdBy || '',
+          createTime: p.createdAt?.toISOString() || '',
+          updateTime: p.updatedAt?.toISOString() || ''
+        }
+      })
 
       res.json({
         success: true,
@@ -460,6 +515,30 @@ export class ProductController {
         return
       }
 
+      // 🔥 计算虚拟商品库存数量
+      let virtualStockCount: number | undefined = undefined
+      let stock = product.stock
+      if (product.productType === 'virtual') {
+        if (product.virtualDeliveryType && product.virtualDeliveryType !== 'none') {
+          try {
+            const { getDataSource } = await import('../config/database')
+            const ds = getDataSource()
+            const tenantId = (req as any).user?.tenantId || (req as any).tenantId || 'default'
+            const table = product.virtualDeliveryType === 'card_key' ? 'card_key_inventory' : 'resource_inventory'
+            const [result] = await ds.query(
+              `SELECT COUNT(*) as cnt FROM ${table} WHERE product_id = ? AND status = 'unused' AND tenant_id = ?`,
+              [product.id, tenantId]
+            )
+            virtualStockCount = Number(result?.cnt || 0)
+            stock = virtualStockCount
+          } catch (e) {
+            log.error('[商品详情] 统计虚拟库存失败:', e)
+          }
+        } else {
+          virtualStockCount = product.stock ?? 0
+        }
+      }
+
       res.json({
         success: true,
         data: {
@@ -471,7 +550,7 @@ export class ProductController {
           description: product.description || '',
           price: Number(product.price),
           costPrice: Number(product.costPrice) || 0,
-          stock: product.stock,
+          stock: stock,
           minStock: product.minStock || 0,
           unit: product.unit || '件',
           status: product.status,
@@ -483,6 +562,7 @@ export class ProductController {
           specifications: product.specifications || {},
           productType: product.productType || 'physical',
           virtualDeliveryType: product.virtualDeliveryType || null,
+          virtualStockCount,
           cardKeyTemplate: product.cardKeyTemplate || null,
           resourceLinkTemplate: product.resourceLinkTemplate || null,
           virtualContentEncrypt: !!product.virtualContentEncrypt,

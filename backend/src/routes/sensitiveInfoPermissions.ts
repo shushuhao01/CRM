@@ -191,13 +191,15 @@ router.put('/', authenticateToken, requireAdmin, async (req: Request, res: Respo
 
     res.json({
       success: true,
+      data: { saved: true },
       message: '权限配置保存成功'
     });
-  } catch (error) {
-    logger.error('保存敏感信息权限配置失败:', error);
+  } catch (error: any) {
+    const errMsg = error?.message || String(error);
+    logger.error('保存敏感信息权限配置失败:', errMsg, error?.stack);
     res.status(500).json({
       success: false,
-      message: '保存敏感信息权限配置失败'
+      message: `保存敏感信息权限配置失败: ${errMsg}`
     });
   }
 });

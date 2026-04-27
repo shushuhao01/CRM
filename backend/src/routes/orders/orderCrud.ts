@@ -1,4 +1,4 @@
-﻿/**
+/**
  * 订单模块 - CRUD及审批相关路由
  * 包含：订单列表、详情、创建、更新、删除、提交审核、审核通过/拒绝、取消审核
  */
@@ -624,8 +624,9 @@ router.get('/:id', async (req: Request, res: Response) => {
       createdBy: order.createdBy || '',
       createdByName: order.createdByName || '',
       salesPersonId: order.createdBy || '',
-      operatorId: order.createdBy || '',
-      operator: order.createdByName || ''
+      operatorId: order.operatorId || order.createdBy || '',
+      operator: order.operatorName || order.createdByName || '',
+      operatorName: order.operatorName || ''
     };
 
     res.json({
@@ -757,12 +758,34 @@ router.post('/', async (req: Request, res: Response) => {
       depositAmount: finalDepositAmount
     });
 
-    // 🔥 自动计算订单商品类型
+    // 🔥 自动计算订单商品类型，并补全虚拟商品的 virtualDeliveryType
     const hasPhysical = products.some((p: any) => (p.productType || 'physical') === 'physical');
     const hasVirtual = products.some((p: any) => p.productType === 'virtual');
     let orderProductType = 'physical';
     if (hasPhysical && hasVirtual) orderProductType = 'mixed';
     else if (hasVirtual) orderProductType = 'virtual';
+
+    // 补全虚拟商品的 virtualDeliveryType（从商品表查最新值）
+    if (hasVirtual) {
+      try {
+        const { getDataSource } = await import('../../config/database');
+        const ds = getDataSource();
+        for (const item of products) {
+          const pid = item.id || item.productId;
+          if (item.productType === 'virtual' && !item.virtualDeliveryType && pid) {
+            const [prod] = await ds.query(
+              `SELECT virtual_delivery_type FROM products WHERE id = ? LIMIT 1`,
+              [pid]
+            );
+            if (prod?.virtual_delivery_type) {
+              item.virtualDeliveryType = prod.virtual_delivery_type;
+            }
+          }
+        }
+      } catch (_e) {
+        log.warn('[订单创建] 补全virtualDeliveryType失败，继续创建');
+      }
+    }
 
     // 创建订单
     const order = orderRepository.create({
@@ -841,33 +864,51 @@ router.post('/', async (req: Request, res: Response) => {
 
       for (const item of products) {
         const productId = item.id || item.productId;
-        if (item.productType === 'virtual' && item.virtualDeliveryType === 'card_key' && productId) {
-          const [available] = await ds.query(
-            `SELECT id FROM card_key_inventory WHERE product_id = ? AND status = 'unused' AND tenant_id = ? LIMIT 1`,
-            [productId, tenantId]
+        if (item.productType !== 'virtual' || !productId) continue;
+
+        // 如果订单数据中没有 virtualDeliveryType，从商品表查最新值
+        let deliveryType = item.virtualDeliveryType;
+        if (!deliveryType) {
+          try {
+            const [prod] = await ds.query(
+              `SELECT virtual_delivery_type FROM products WHERE id = ? LIMIT 1`,
+              [productId]
+            );
+            deliveryType = prod?.virtual_delivery_type || 'none';
+          } catch (_e) { deliveryType = 'none'; }
+        }
+
+        const qty = item.quantity || 1;
+
+        if (deliveryType === 'card_key') {
+          const availableList = await ds.query(
+            `SELECT id FROM card_key_inventory WHERE product_id = ? AND status = 'unused' AND tenant_id = ? LIMIT ?`,
+            [productId, tenantId, qty]
           );
-          if (available) {
+          for (const available of availableList) {
             await ds.query(
               `UPDATE card_key_inventory SET status = 'reserved', reserved_order_id = ?, updated_at = NOW() WHERE id = ?`,
               [savedOrder.id, available.id]
             );
             log.info(`🔑 [虚拟库存] 卡密 ${available.id} 已预占给订单 ${savedOrder.id}`);
-          } else {
-            log.warn(`⚠️ [虚拟库存] 商品 ${productId} 无可用卡密`);
           }
-        } else if (item.productType === 'virtual' && item.virtualDeliveryType === 'resource_link' && productId) {
-          const [available] = await ds.query(
-            `SELECT id FROM resource_inventory WHERE product_id = ? AND status = 'unused' AND tenant_id = ? LIMIT 1`,
-            [productId, tenantId]
+          if (availableList.length < qty) {
+            log.warn(`⚠️ [虚拟库存] 商品 ${productId} 可用卡密不足: 需要${qty}个，仅有${availableList.length}个`);
+          }
+        } else if (deliveryType === 'resource_link') {
+          const availableList = await ds.query(
+            `SELECT id FROM resource_inventory WHERE product_id = ? AND status = 'unused' AND tenant_id = ? LIMIT ?`,
+            [productId, tenantId, qty]
           );
-          if (available) {
+          for (const available of availableList) {
             await ds.query(
               `UPDATE resource_inventory SET status = 'reserved', reserved_order_id = ?, updated_at = NOW() WHERE id = ?`,
               [savedOrder.id, available.id]
             );
             log.info(`☁️ [虚拟库存] 资源 ${available.id} 已预占给订单 ${savedOrder.id}`);
-          } else {
-            log.warn(`⚠️ [虚拟库存] 商品 ${productId} 无可用资源`);
+          }
+          if (availableList.length < qty) {
+            log.warn(`⚠️ [虚拟库存] 商品 ${productId} 可用资源不足: 需要${qty}个，仅有${availableList.length}个`);
           }
         }
       }
@@ -954,10 +995,9 @@ router.post('/', async (req: Request, res: Response) => {
 // 🔥 订单状态流转规则：定义合法的状态变更路径
 const VALID_STATUS_TRANSITIONS: Record<string, string[]> = {
   'pending_transfer': ['pending_audit'],                                    // 待流转 → 待审核
-  'pending_audit': ['pending_shipment', 'audit_rejected', 'virtual_pending', 'completed'], // 待审核 → 待发货/审核拒绝/虚拟待发货/直接完成
+  'pending_audit': ['pending_shipment', 'audit_rejected', 'completed'], // 待审核 → 待发货/审核拒绝/虚拟待发货/直接完成
   'audit_rejected': ['pending_audit', 'cancelled'],                         // 审核拒绝 → 重新提审/取消
-  'pending_shipment': ['shipped', 'logistics_returned', 'logistics_cancelled', 'cancelled'], // 待发货 → 已发货/退回/取消
-  'virtual_pending': ['signed', 'completed', 'cancelled'],                  // 虚拟待发货 → 已签收/已完成/取消
+  'pending_shipment': ['shipped', 'signed', 'logistics_returned', 'logistics_cancelled', 'cancelled'], // 待发货 → 已发货/已签收(虚拟)/退回/取消
   'shipped': ['delivered', 'rejected', 'package_exception', 'logistics_returned'], // 已发货 → 已签收/拒收/异常/退回
   'delivered': ['after_sales_created'],                                     // 已签收 → 已建售后（终态，一般不变）
   'signed': ['after_sales_created'],                                        // 已签收（虚拟订单专用终态）
@@ -1000,7 +1040,6 @@ const getStatusName = (status: string): string => {
     'rejected': '拒收',
     'rejected_returned': '拒收已退回',
     'after_sales_created': '已建售后',
-    'virtual_pending': '虚拟待发货',
     'signed': '已签收',
     'completed': '已完成',
     'cancelled': '已取消'
@@ -1121,6 +1160,13 @@ router.put('/:id', authenticateToken, async (req: Request, res: Response) => {
       if (updateData.customFields.custom_field5 !== undefined) order.customField5 = updateData.customFields.custom_field5;
       if (updateData.customFields.custom_field6 !== undefined) order.customField6 = updateData.customFields.custom_field6;
       if (updateData.customFields.custom_field7 !== undefined) order.customField7 = updateData.customFields.custom_field7;
+    }
+
+    // 🔥 状态变更时同步更新订单表的操作人字段（供审计和回退显示使用）
+    if (updateData.status !== undefined && updateData.status !== previousStatus) {
+      const opInfoForSave = getOperatorInfo(req);
+      order.operatorId = opInfoForSave.operatorId ? String(opInfoForSave.operatorId) : order.operatorId;
+      order.operatorName = opInfoForSave.operatorName || order.operatorName;
     }
 
     const updatedOrder = await orderRepository.save(order);
@@ -1493,9 +1539,9 @@ router.post('/:id/audit', authenticateToken, async (req: Request, res: Response)
           (order as any).completionSource = 'audit_auto_complete';
           log.info(`✅ [订单审核] 虚拟订单 ${order.orderNumber} 全部无需发货，审核通过直接签收`);
         } else {
-          // 卡密/资源型：进入虚拟待发货
-          order.status = 'virtual_pending' as any;
-          log.info(`✅ [订单审核] 虚拟订单 ${order.orderNumber} 审核通过，进入虚拟待发货`);
+          // 卡密/资源型：进入待发货（与实物订单使用相同状态）
+          order.status = 'pending_shipment';
+          log.info(`✅ [订单审核] 虚拟订单 ${order.orderNumber} 审核通过，进入待发货`);
         }
       } else {
         // 普通/混合订单：进入普通待发货
@@ -1510,7 +1556,7 @@ router.post('/:id/audit', authenticateToken, async (req: Request, res: Response)
         .catch(err => log.error('[订单审核] 发送审核通过通知失败:', err));
 
       // 🔥 发送待发货通知给下单员（仅非直接完成的订单）
-      if (order.status === 'pending_shipment' || order.status === ('virtual_pending' as any)) {
+      if (order.status === 'pending_shipment') {
         orderNotificationService.notifyOrderPendingShipment(orderInfo)
           .catch(err => log.error('[订单审核] 发送待发货通知失败:', err));
       }
@@ -1542,10 +1588,14 @@ router.post('/:id/audit', authenticateToken, async (req: Request, res: Response)
         .catch(err => log.error('[订单审核] 发送审核拒绝通知失败:', err));
     }
 
+    // 🔥 审核时同步更新订单表的操作人字段（记录实际审核人）
+    const auditOpInfo = getOperatorInfo(req);
+    order.operatorId = auditOpInfo.operatorId ? String(auditOpInfo.operatorId) : order.operatorId;
+    order.operatorName = auditOpInfo.operatorName || order.operatorName;
+
     await orderRepository.save(order);
 
     // 🔥 保存状态历史记录
-    const auditOpInfo = getOperatorInfo(req);
     await saveStatusHistory(
       order.id,
       order.status,
@@ -1633,10 +1683,14 @@ router.post('/:id/cancel-audit', authenticateToken, async (req: Request, res: Re
         .catch(err => log.error('[取消审核] 发送拒绝通知失败:', err));
     }
 
+    // 🔥 取消审核时同步更新订单表的操作人字段
+    const cancelOpInfo = getOperatorInfo(req);
+    order.operatorId = cancelOpInfo.operatorId ? String(cancelOpInfo.operatorId) : order.operatorId;
+    order.operatorName = cancelOpInfo.operatorName || order.operatorName;
+
     await orderRepository.save(order);
 
     // 🔥 保存状态历史记录
-    const cancelOpInfo = getOperatorInfo(req);
     await saveStatusHistory(
       order.id,
       order.status,

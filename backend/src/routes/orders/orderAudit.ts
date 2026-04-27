@@ -8,7 +8,7 @@ import { Order } from '../../entities/Order';
 import { getTenantRepo } from '../../utils/tenantRepo';
 import { orderNotificationService } from '../../services/OrderNotificationService';
 import { formatDateTime } from '../../utils/dateFormat';
-import { formatToBeijingTime } from './orderHelpers';
+import { formatToBeijingTime, saveStatusHistory } from './orderHelpers';
 import { log } from '../../config/logger';
 export function registerAuditRoutes(router: Router): void {router.get('/audit-list', authenticateToken, async (req: Request, res: Response) => {
   try {
@@ -269,6 +269,20 @@ router.post('/cancel-request', async (req: Request, res: Response) => {
     order.cancelReason = cancelReason; // 🔥 保存取消原因到专门的字段
 
     await orderRepository.save(order);
+
+    // 🔥 保存状态历史记录 - 取消申请
+    const currentUser = (req as any).currentUser || (req as any).user;
+    const realName = currentUser?.realName || currentUser?.name || currentUser?.username || '系统';
+    const deptName = currentUser?.departmentName || currentUser?.department || '';
+    const operatorName = deptName ? `${deptName}-${realName}` : realName;
+    await saveStatusHistory(
+      order.id,
+      'pending_cancel',
+      currentUser?.id || null,
+      operatorName,
+      `申请取消订单，原因：${cancelReason}`,
+      { operatorDepartment: deptName, actionType: 'cancel_request' }
+    );
 
     // 🔥 发送取消申请通知给管理员
     orderNotificationService.notifyOrderCancelRequest({

@@ -213,9 +213,13 @@
       <div v-show="activeTab === 'orders'">
         <el-table :data="orderDetails" style="width: 100%" v-loading="tableLoading" class="order-detail-table">
           <el-table-column type="index" label="序号" width="60" align="center" />
-          <el-table-column prop="orderNo" label="订单号" width="160">
+          <el-table-column prop="orderNo" label="订单号" width="180">
             <template #default="{ row }">
-              <span>{{ row.orderNo }}</span>
+              <div style="display: flex; align-items: center; gap: 4px;">
+                <el-tag v-if="row.products && row.products.length > 0 && row.products.every((p: any) => p.productType === 'virtual')" type="warning" size="small" effect="light">虚拟</el-tag>
+                <el-tag v-else-if="row.products && row.products.some((p: any) => p.productType === 'virtual') && row.products.some((p: any) => p.productType !== 'virtual')" size="small" effect="light" color="#7B68EE" style="color:#fff;border:none;">混合</el-tag>
+                <span>{{ row.orderNo }}</span>
+              </div>
             </template>
           </el-table-column>
           <el-table-column prop="customerName" label="客户姓名" width="110" show-overflow-tooltip>

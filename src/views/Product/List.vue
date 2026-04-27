@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="product-list">
     <!-- 页面头部 -->
     <div class="page-header">
@@ -338,7 +338,9 @@
         <!-- 库存列 -->
         <template #column-stock="{ row }">
           <template v-if="row.productType === 'virtual'">
-            <span v-if="row.virtualDeliveryType === 'none'" style="color: #909399;">—</span>
+            <span v-if="row.virtualDeliveryType === 'none'" style="color: #909399;">
+              {{ row.stock ?? 0 }}
+            </span>
             <span v-else style="color: #409EFF;">
               {{ row.virtualDeliveryType === 'card_key' ? '卡密' : '资源' }}: {{ row.virtualStockCount ?? 0 }}
             </span>

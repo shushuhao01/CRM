@@ -497,7 +497,8 @@ class LogisticsAutoSyncService {
             orderId: order.id,
             status: targetOrderStatus as any,
             notes: `[自动同步] 物流动态: "${description.substring(0, 100)}" → 物流状态: ${newLogisticsStatus} → 订单状态: ${targetOrderStatus}`,
-            operatorName: '系统自动同步'
+            operatorName: '系统自动同步',
+            actionType: 'auto_sync'
           });
           await historyRepo.save(historyRecord);
         } catch (historyErr: any) {

@@ -69,7 +69,7 @@ export interface Order {
   remark: string
   status: OrderStatus
   auditStatus: 'pending' | 'approved' | 'rejected'
-  markType?: 'normal' | 'reserved' | 'return'
+  markType?: 'normal' | 'reserved' | 'return' | 'virtual_delivery'
   createTime: string
   createdBy: string
   salesPersonId: string
@@ -356,6 +356,11 @@ export const useOrderStore = createPersistentStore('order', () => {
         // 同时更新本地缓存
         orders.value.unshift(newOrder)
         console.log('[OrderStore] 本地缓存已更新，订单总数:', orders.value.length)
+
+        // 🔥 派发订单创建事件，通知库存页面自动刷新
+        window.dispatchEvent(new CustomEvent('order-created', {
+          detail: { orderId: newOrder.id, orderNumber: newOrder.orderNumber }
+        }))
 
         return newOrder
       } else {

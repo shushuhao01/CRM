@@ -529,7 +529,7 @@ const handleQuotaUpgrade = () => {
 
 // 计算属性
   // 🔥 公开页面列表（不需要登录，使用简单布局）
-  const publicPages = ['/login', '/public-help']
+  const publicPages = ['/login', '/public-help', '/virtual-claim']
 
   // Phase 8: 企微独立窗口路由（需要登录，但使用独立Layout）
   const isStandaloneLayout = computed(() => {

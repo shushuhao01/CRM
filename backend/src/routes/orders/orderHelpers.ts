@@ -201,7 +201,6 @@ export function getStatusTitle(status: string): string {
     'confirmed': '已确认',
     'paid': '已支付',
     'pending_shipment': '待发货',
-    'virtual_pending': '虚拟待发货',
     'shipped': '已发货',
     'delivered': '已签收',
     'completed': '已完成',

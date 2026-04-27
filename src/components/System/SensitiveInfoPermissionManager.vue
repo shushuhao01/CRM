@@ -214,11 +214,10 @@ const loadRoles = async () => {
 const loadPermissions = async () => {
   loading.value = true
   try {
-    const response = await getSensitiveInfoPermissions()
-    const responseData = response.data
+    // request 拦截器已解包 response.data，返回的就是 data 字段的值（权限矩阵对象）
+    const data = await getSensitiveInfoPermissions() as any
 
-    if (responseData && responseData.success && responseData.data) {
-      const data = responseData.data
+    if (data && typeof data === 'object' && Object.keys(data).length > 0) {
 
       // 转换为表格数据格式
       const matrix: Array<{ infoType: string; permissions: Record<string, boolean> }> = []
@@ -344,22 +343,21 @@ const savePermissions = async () => {
       permissions[item.infoType] = { ...item.permissions }
     })
 
-    const response = await saveSensitiveInfoPermissions(permissions)
+    // request 拦截器已解包 response.data，返回的是 data 字段的值
+    await saveSensitiveInfoPermissions(permissions)
 
-    if (response.data.success) {
-      ElMessage.success('权限配置保存成功！')
-      // 刷新前端敏感信息权限缓存，确保其他页面立即使用新配置
-      try {
-        await refreshSensitiveInfoPermissions()
-      } catch (e) {
-        console.warn('刷新权限缓存失败（不影响保存结果）:', e)
-      }
-    } else {
-      ElMessage.error(response.data.message || '保存失败')
+    // 保存成功（拦截器已处理 success 判断，能走到这里就是成功）
+    ElMessage.success('权限配置保存成功！')
+    // 刷新前端敏感信息权限缓存，确保其他页面立即使用新配置
+    try {
+      await refreshSensitiveInfoPermissions()
+    } catch (e) {
+      console.warn('刷新权限缓存失败（不影响保存结果）:', e)
     }
-  } catch (error) {
-    ElMessage.error('保存失败，请重试')
-    console.error('保存权限配置失败:', error)
+  } catch (error: any) {
+    const msg = error?.response?.data?.message || error?.message || '保存失败，请重试'
+    ElMessage.error(msg)
+    console.error('保存权限配置失败:', error?.response?.status, error?.response?.data || error)
   } finally {
     saving.value = false
   }

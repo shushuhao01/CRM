@@ -286,7 +286,15 @@
           <h4>订单列表</h4>
           <el-table :data="paginatedOrderList" stripe border class="order-table">
             <el-table-column type="index" label="序号" width="60" align="center" />
-            <el-table-column prop="orderNo" label="订单号" width="140" show-overflow-tooltip />
+            <el-table-column prop="orderNo" label="订单号" width="170" show-overflow-tooltip>
+              <template #default="{ row }">
+                <div style="display: flex; align-items: center; gap: 4px;">
+                  <el-tag v-if="row.products && row.products.length > 0 && row.products.every((p: any) => p.productType === 'virtual')" type="warning" size="small" effect="light">虚拟</el-tag>
+                  <el-tag v-else-if="row.products && row.products.some((p: any) => p.productType === 'virtual') && row.products.some((p: any) => p.productType !== 'virtual')" size="small" effect="light" color="#7B68EE" style="color:#fff;border:none;">混合</el-tag>
+                  <span>{{ row.orderNo }}</span>
+                </div>
+              </template>
+            </el-table-column>
             <el-table-column prop="orderDate" label="下单时间" width="160" show-overflow-tooltip>
               <template #default="{ row }">
                 {{ formatBeijingTime(row.orderDate) }}
@@ -441,7 +449,15 @@
         <!-- 订单列表 -->
         <el-table :data="orderTypeOrders" stripe border class="order-table" v-loading="orderTypeLoading">
           <el-table-column type="index" label="序号" width="60" align="center" />
-          <el-table-column prop="orderNo" label="订单号" width="140" show-overflow-tooltip />
+          <el-table-column prop="orderNo" label="订单号" width="170" show-overflow-tooltip>
+            <template #default="{ row }">
+              <div style="display: flex; align-items: center; gap: 4px;">
+                <el-tag v-if="row.products && row.products.length > 0 && row.products.every((p: any) => p.productType === 'virtual')" type="warning" size="small" effect="light">虚拟</el-tag>
+                <el-tag v-else-if="row.products && row.products.some((p: any) => p.productType === 'virtual') && row.products.some((p: any) => p.productType !== 'virtual')" size="small" effect="light" color="#7B68EE" style="color:#fff;border:none;">混合</el-tag>
+                <span>{{ row.orderNo }}</span>
+              </div>
+            </template>
+          </el-table-column>
           <el-table-column prop="orderDate" label="下单时间" width="160" show-overflow-tooltip>
             <template #default="{ row }">
               {{ formatBeijingTime(row.orderDate) }}
@@ -572,7 +588,15 @@
       <div class="summary-orders-content">
         <el-table :data="paginatedSummaryOrders" stripe border class="order-table" v-loading="summaryOrdersLoading">
           <el-table-column type="index" label="序号" width="60" align="center" />
-          <el-table-column prop="orderNo" label="订单号" width="140" show-overflow-tooltip />
+          <el-table-column prop="orderNo" label="订单号" width="170" show-overflow-tooltip>
+            <template #default="{ row }">
+              <div style="display: flex; align-items: center; gap: 4px;">
+                <el-tag v-if="row.products && row.products.length > 0 && row.products.every((p: any) => p.productType === 'virtual')" type="warning" size="small" effect="light">虚拟</el-tag>
+                <el-tag v-else-if="row.products && row.products.some((p: any) => p.productType === 'virtual') && row.products.some((p: any) => p.productType !== 'virtual')" size="small" effect="light" color="#7B68EE" style="color:#fff;border:none;">混合</el-tag>
+                <span>{{ row.orderNo }}</span>
+              </div>
+            </template>
+          </el-table-column>
           <el-table-column prop="orderDate" label="下单时间" width="160" show-overflow-tooltip>
             <template #default="{ row }">
               {{ formatBeijingTime(row.orderDate) }}

@@ -858,7 +858,6 @@ const quickFilters = ref([
   { key: 'all', label: '全部', count: 0 },
   { key: 'pending_audit', label: '待审核', count: 0 },
   { key: 'pending_shipment', label: '已审核', count: 0 },
-  { key: 'virtual_pending', label: '虚拟待发货', count: 0 },
   { key: 'shipped', label: '已发货', count: 0 },
   { key: 'delivered', label: '已签收', count: 0 },
   { key: 'rejected_returned', label: '拒收已退回', count: 0 },
@@ -883,7 +882,6 @@ const allOrderStatuses = computed(() => [
   { value: 'pending_audit', label: '待审核' },
   { value: 'audit_rejected', label: '审核拒绝' },
   { value: 'pending_shipment', label: '待发货' },
-  { value: 'virtual_pending', label: '虚拟待发货' },
   { value: 'shipped', label: '已发货' },
   { value: 'delivered', label: '已签收' },
   { value: 'signed', label: '已签收(虚拟)' },
@@ -1054,7 +1052,8 @@ const getMarkTagType = (markType: string) => {
   const types: Record<string, string> = {
     'reserved': 'warning',    // 预留单 - 黄色
     'normal': 'success',      // 正常发货单 - 淡绿色
-    'return': 'danger'        // 退单 - 淡粉红色
+    'return': 'danger',       // 退单 - 淡粉红色
+    'virtual_delivery': 'primary'  // 虚拟发货 - 蓝色
   }
   return types[markType] || 'success'
 }
@@ -1063,7 +1062,8 @@ const getMarkText = (markType: string) => {
   const texts: Record<string, string> = {
     'reserved': '预留单',
     'normal': '正常发货单',
-    'return': '退单'
+    'return': '退单',
+    'virtual_delivery': '虚拟发货'
   }
   return texts[markType] || '正常发货单'
 }
@@ -1080,7 +1080,6 @@ const getStatusText = (status: string, markType?: string, isAuditTransferred?: b
     pending_audit: '待审核',
     audit_rejected: '审核拒绝',
     pending_shipment: '待发货',
-    virtual_pending: '虚拟待发货',
     shipped: '已发货',
     delivered: '已签收',
     signed: '已签收',
@@ -1117,7 +1116,6 @@ const getStatusType = (status: string, markType?: string) => {
     pending_audit: 'warning',      // 待审核 - 橙色
     audit_rejected: 'danger',      // 审核拒绝 - 红色
     pending_shipment: 'primary',   // 待发货 - 蓝色
-    virtual_pending: 'warning',    // 虚拟待发货 - 橙色
     shipped: 'primary',            // 已发货 - 蓝色
     delivered: 'success',          // 已签收 - 绿色
     signed: 'success',             // 已签收(虚拟) - 绿色

@@ -1,4 +1,4 @@
-import { Router, Request, Response } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import { authenticateToken } from '../middleware/auth';
 import { getDataSource } from '../config/database';
 import { log } from '../config/logger';
@@ -64,6 +64,7 @@ async function ensureVirtualTables() {
         id VARCHAR(36) NOT NULL,
         tenant_id VARCHAR(36) DEFAULT NULL COMMENT '租户ID',
         order_id VARCHAR(36) NOT NULL COMMENT '订单ID',
+        product_id VARCHAR(36) DEFAULT NULL COMMENT '关联商品ID',
         delivery_type VARCHAR(20) NOT NULL COMMENT '发货类型: none/card_key/resource_link',
         card_key_content TEXT DEFAULT NULL COMMENT '卡密内容',
         resource_link VARCHAR(500) DEFAULT NULL COMMENT '资源链接',
@@ -118,6 +119,8 @@ async function ensureVirtualTables() {
         UNIQUE KEY idx_tenant_id (tenant_id)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='租户自定义邮箱配置表'
     `);
+    // 补充 product_id 列（已有表可能缺失）
+    await ds.query(`ALTER TABLE virtual_delivery_records ADD COLUMN product_id VARCHAR(36) DEFAULT NULL COMMENT '关联商品ID' AFTER order_id`).catch(() => {});
     tablesEnsured = true;
     // 修复：将已有的 NULL tenant_id 更新为 'default'
     await ds.query(`UPDATE card_key_inventory SET tenant_id = 'default' WHERE tenant_id IS NULL`).catch(() => {});
@@ -144,6 +147,26 @@ function getTenantId(req: Request): string {
   return (req as any).user?.tenantId || (req as any).tenantId || 'default';
 }
 
+// 🔥 辅助函数：同步虚拟商品的库存到products表
+async function syncVirtualProductStock(productId: string, inventoryType: 'card_key' | 'resource_link', tenantId: string) {
+  try {
+    const ds = getDataSource();
+    const table = inventoryType === 'card_key' ? 'card_key_inventory' : 'resource_inventory';
+    const [result] = await ds.query(
+      `SELECT COUNT(*) as cnt FROM ${table} WHERE product_id = ? AND status = 'unused' AND tenant_id = ?`,
+      [productId, tenantId]
+    );
+    const unusedCount = Number(result?.cnt || 0);
+    await ds.query(
+      'UPDATE products SET stock = ?, updated_at = NOW() WHERE id = ?',
+      [unusedCount, productId]
+    );
+    log.info(`[虚拟库存] 同步商品 ${productId} 库存为 ${unusedCount}`);
+  } catch (syncErr) {
+    log.error('[虚拟库存] 同步商品库存失败:', syncErr);
+  }
+}
+
 // ==================== 虚拟商品列表（供下拉选择用） ====================
 
 /**
@@ -151,11 +174,12 @@ function getTenantId(req: Request): string {
  */
 router.get('/products', async (req: Request, res: Response) => {
   try {
+    const tenantId = getTenantId(req);
     const { deliveryType } = req.query;
     const ds = getDataSource();
 
-    let sql = `SELECT id, name, code, product_type, virtual_delivery_type FROM products WHERE product_type = 'virtual' AND status = 'active'`;
-    const params: any[] = [];
+    let sql = `SELECT id, name, code, product_type, virtual_delivery_type FROM products WHERE product_type = 'virtual' AND status = 'active' AND (tenant_id = ? OR tenant_id IS NULL)`;
+    const params: any[] = [tenantId];
 
     if (deliveryType) {
       sql += ` AND virtual_delivery_type = ?`;
@@ -191,7 +215,9 @@ router.get('/card-keys', async (req: Request, res: Response) => {
   try {
     const tenantId = getTenantId(req);
     const { productId, status, keyword, page = '1', pageSize = '20' } = req.query;
-    const offset = (Number(page) - 1) * Number(pageSize);
+    const pageNum = Math.max(1, Number(page) || 1);
+    const pageSizeNum = Math.max(1, Math.min(100, Number(pageSize) || 20));
+    const offset = (pageNum - 1) * pageSizeNum;
 
     const ds = getDataSource();
     let whereClause = 'c.tenant_id = ?';
@@ -210,19 +236,69 @@ router.get('/card-keys', async (req: Request, res: Response) => {
       params.push(`%${keyword}%`);
     }
 
-    const [countResult] = await ds.query(
-      `SELECT COUNT(*) as total FROM card_key_inventory c WHERE ${whereClause}`, params
-    );
-    const total = countResult?.total || 0;
+    // 分步查询，避免一个失败导致全部丢失
+    let total = 0;
+    try {
+      const [countResult] = await ds.query(
+        `SELECT COUNT(*) as total FROM card_key_inventory c WHERE ${whereClause}`, [...params]
+      );
+      total = Number(countResult?.total || 0);
+    } catch (countErr) {
+      log.error('[虚拟库存] 卡密COUNT查询失败:', countErr);
+    }
 
-    const list = await ds.query(
-      `SELECT c.*, p.name as product_name FROM card_key_inventory c
-       LEFT JOIN products p ON c.product_id = p.id
-       WHERE ${whereClause}
-       ORDER BY c.created_at DESC
-       LIMIT ? OFFSET ?`,
-      [...params, Number(pageSize), offset]
-    );
+    // ⭐ 两步查询法：先查库存表，再批量查商品名，彻底避免 LEFT JOIN 问题
+    let list: any[] = [];
+    try {
+      list = await ds.query(
+        `SELECT * FROM card_key_inventory c WHERE ${whereClause}
+         ORDER BY c.created_at DESC
+         LIMIT ${pageSizeNum} OFFSET ${offset}`,
+        [...params]
+      );
+    } catch (listErr) {
+      log.error('[虚拟库存] 卡密列表查询失败:', listErr);
+    }
+
+    // 批量查询关联商品名称
+    const productNameMap: Record<string, string> = {};
+    if (list.length > 0) {
+      const productIds = [...new Set(list.map((r: any) => r.product_id).filter(Boolean))];
+      if (productIds.length > 0) {
+        try {
+          const placeholders = productIds.map(() => '?').join(',');
+          const products = await ds.query(
+            `SELECT id, name FROM products WHERE id IN (${placeholders})`,
+            productIds
+          );
+          products.forEach((p: any) => { productNameMap[p.id] = p.name; });
+          log.info(`[虚拟库存] 卡密列表商品名映射: ${JSON.stringify(productNameMap)}`);
+        } catch (prodErr) {
+          log.error('[虚拟库存] 批量查询商品名失败:', prodErr);
+        }
+      }
+    }
+
+    // 批量查询关联订单号
+    const orderNumberMap: Record<string, string> = {};
+    if (list.length > 0) {
+      const orderIds = [...new Set([
+        ...list.map((r: any) => r.order_id).filter(Boolean),
+        ...list.map((r: any) => r.reserved_order_id).filter(Boolean)
+      ])];
+      if (orderIds.length > 0) {
+        try {
+          const placeholders = orderIds.map(() => '?').join(',');
+          const orders = await ds.query(
+            `SELECT id, order_number FROM orders WHERE id IN (${placeholders})`,
+            orderIds
+          );
+          orders.forEach((o: any) => { orderNumberMap[o.id] = o.order_number; });
+        } catch (orderErr) {
+          log.error('[虚拟库存] 批量查询订单号失败:', orderErr);
+        }
+      }
+    }
 
     res.json({
       success: true,
@@ -230,11 +306,13 @@ router.get('/card-keys', async (req: Request, res: Response) => {
         list: list.map((item: any) => ({
           id: item.id,
           productId: item.product_id,
-          productName: item.product_name || '',
+          productName: productNameMap[item.product_id] || '',
           cardKey: item.card_key,
           status: item.status,
           orderId: item.order_id,
+          orderNumber: orderNumberMap[item.order_id] || null,
           reservedOrderId: item.reserved_order_id,
+          reservedOrderNumber: orderNumberMap[item.reserved_order_id] || null,
           claimToken: item.claim_token,
           claimMethod: item.claim_method,
           claimedAt: item.claimed_at,
@@ -243,13 +321,12 @@ router.get('/card-keys', async (req: Request, res: Response) => {
           updatedAt: item.updated_at
         })),
         total,
-        page: Number(page),
-        pageSize: Number(pageSize)
+        page: pageNum,
+        pageSize: pageSizeNum
       }
     });
   } catch (error) {
-    log.error('[虚拟库存] 获取卡密列表失败:', error);
-    // 不返回500，返回空数据
+    log.error('[虚拟库存] 获取卡密列表失败(顶层):', error);
     res.json({ success: true, data: { list: [], total: 0, page: 1, pageSize: 20 } });
   }
 });
@@ -316,6 +393,9 @@ router.post('/card-keys', async (req: Request, res: Response) => {
       [id, tenantId, productId, cardKey.trim(), usageInstructions || null]
     );
 
+    // 🔥 同步商品库存
+    await syncVirtualProductStock(productId, 'card_key', tenantId);
+
     res.status(201).json({ success: true, data: { id }, message: '卡密添加成功' });
   } catch (error) {
     log.error('[虚拟库存] 添加卡密失败:', error);
@@ -365,6 +445,9 @@ router.post('/card-keys/batch', async (req: Request, res: Response) => {
       }
     }
 
+    // 🔥 同步商品库存
+    await syncVirtualProductStock(productId, 'card_key', tenantId);
+
     res.json({ success: true, data: { success, duplicate, errors, total: cardKeys.length } });
   } catch (error) {
     log.error('[虚拟库存] 批量导入卡密失败:', error);
@@ -375,7 +458,9 @@ router.post('/card-keys/batch', async (req: Request, res: Response) => {
 /**
  * PUT /card-keys/:id - 修改卡密状态
  */
-router.put('/card-keys/:id', async (req: Request, res: Response) => {
+router.put('/card-keys/:id', async (req: Request, res: Response, next: NextFunction) => {
+  // 跳过已知子路径，让后续具体路由处理
+  if (['instructions', 'batch-associate'].includes(req.params.id)) return next('route');
   try {
     const tenantId = getTenantId(req);
     const { id } = req.params;
@@ -406,6 +491,12 @@ router.put('/card-keys/:id', async (req: Request, res: Response) => {
       'UPDATE card_key_inventory SET status = ?, updated_at = NOW() WHERE id = ? AND tenant_id = ?',
       [status, id, tenantId]
     );
+
+    // 🔥 同步商品库存（作废-1，恢复+1）
+    const [itemForSync] = await ds.query('SELECT product_id FROM card_key_inventory WHERE id = ?', [id]);
+    if (itemForSync) {
+      await syncVirtualProductStock(itemForSync.product_id, 'card_key', tenantId);
+    }
 
     res.json({ success: true, message: '状态更新成功' });
   } catch (error) {
@@ -466,6 +557,91 @@ router.post('/card-keys/release', async (req: Request, res: Response) => {
 });
 
 /**
+ * GET /card-keys/:id - 卡密详情
+ */
+router.get('/card-keys/:id', async (req: Request, res: Response) => {
+  try {
+    const tenantId = getTenantId(req);
+    const { id } = req.params;
+    const ds = getDataSource();
+
+    const [item] = await ds.query(
+      `SELECT * FROM card_key_inventory WHERE id = ? AND tenant_id = ?`,
+      [id, tenantId]
+    );
+    if (!item) {
+      return res.status(404).json({ success: false, message: '卡密不存在' });
+    }
+
+    // 单独查询商品名称
+    let productName = '';
+    if (item.product_id) {
+      try {
+        const [prod] = await ds.query(`SELECT name FROM products WHERE id = ?`, [item.product_id]);
+        productName = prod?.name || '';
+      } catch (_e) { /* ignore */ }
+    }
+
+    res.json({
+      success: true,
+      data: {
+        id: item.id,
+        productId: item.product_id,
+        productName,
+        cardKey: item.card_key,
+        status: item.status,
+        orderId: item.order_id,
+        reservedOrderId: item.reserved_order_id,
+        claimToken: item.claim_token,
+        claimMethod: item.claim_method,
+        claimedAt: item.claimed_at,
+        usageInstructions: item.usage_instructions,
+        createdAt: item.created_at,
+        updatedAt: item.updated_at
+      }
+    });
+  } catch (error) {
+    log.error('[虚拟库存] 获取卡密详情失败:', error);
+    res.status(500).json({ success: false, message: '获取卡密详情失败' });
+  }
+});
+
+/**
+ * DELETE /card-keys/:id - 删除卡密（仅允许删除未使用/已作废/已过期的）
+ */
+router.delete('/card-keys/:id', async (req: Request, res: Response) => {
+  try {
+    const tenantId = getTenantId(req);
+    const { id } = req.params;
+    const ds = getDataSource();
+
+    const [item] = await ds.query(
+      'SELECT status FROM card_key_inventory WHERE id = ? AND tenant_id = ?',
+      [id, tenantId]
+    );
+    if (!item) {
+      return res.status(404).json({ success: false, message: '卡密不存在' });
+    }
+
+    const deletableStatuses = ['unused', 'voided', 'expired'];
+    if (!deletableStatuses.includes(item.status)) {
+      return res.status(400).json({ success: false, message: `状态为"${item.status}"的卡密不能删除，仅可删除未使用/已作废/已过期的卡密` });
+    }
+
+    // 🔥 先获取product_id用于同步库存
+    const [itemForDel] = await ds.query('SELECT product_id FROM card_key_inventory WHERE id = ? AND tenant_id = ?', [id, tenantId]);
+    await ds.query('DELETE FROM card_key_inventory WHERE id = ? AND tenant_id = ?', [id, tenantId]);
+    if (itemForDel) {
+      await syncVirtualProductStock(itemForDel.product_id, 'card_key', tenantId);
+    }
+    res.json({ success: true, message: '卡密删除成功' });
+  } catch (error) {
+    log.error('[虚拟库存] 删除卡密失败:', error);
+    res.status(500).json({ success: false, message: '删除卡密失败' });
+  }
+});
+
+/**
  * PUT /card-keys/instructions - 批量更新使用说明
  */
 router.put('/card-keys/instructions', async (req: Request, res: Response) => {
@@ -494,7 +670,9 @@ router.get('/resources', async (req: Request, res: Response) => {
   try {
     const tenantId = getTenantId(req);
     const { productId, status, keyword, page = '1', pageSize = '20' } = req.query;
-    const offset = (Number(page) - 1) * Number(pageSize);
+    const pageNum = Math.max(1, Number(page) || 1);
+    const pageSizeNum = Math.max(1, Math.min(100, Number(pageSize) || 20));
+    const offset = (pageNum - 1) * pageSizeNum;
 
     const ds = getDataSource();
     let whereClause = 'r.tenant_id = ?';
@@ -504,19 +682,69 @@ router.get('/resources', async (req: Request, res: Response) => {
     if (status) { whereClause += ' AND r.status = ?'; params.push(status); }
     if (keyword) { whereClause += ' AND r.resource_link LIKE ?'; params.push(`%${keyword}%`); }
 
-    const [countResult] = await ds.query(
-      `SELECT COUNT(*) as total FROM resource_inventory r WHERE ${whereClause}`, params
-    );
-    const total = countResult?.total || 0;
+    // 分步查询
+    let total = 0;
+    try {
+      const [countResult] = await ds.query(
+        `SELECT COUNT(*) as total FROM resource_inventory r WHERE ${whereClause}`, [...params]
+      );
+      total = Number(countResult?.total || 0);
+    } catch (countErr) {
+      log.error('[虚拟库存] 资源COUNT查询失败:', countErr);
+    }
 
-    const list = await ds.query(
-      `SELECT r.*, p.name as product_name FROM resource_inventory r
-       LEFT JOIN products p ON r.product_id = p.id
-       WHERE ${whereClause}
-       ORDER BY r.created_at DESC
-       LIMIT ? OFFSET ?`,
-      [...params, Number(pageSize), offset]
-    );
+    // ⭐ 两步查询法：先查库存表，再批量查商品名，彻底避免 LEFT JOIN 问题
+    let list: any[] = [];
+    try {
+      list = await ds.query(
+        `SELECT * FROM resource_inventory r WHERE ${whereClause}
+         ORDER BY r.created_at DESC
+         LIMIT ${pageSizeNum} OFFSET ${offset}`,
+        [...params]
+      );
+    } catch (listErr) {
+      log.error('[虚拟库存] 资源列表查询失败:', listErr);
+    }
+
+    // 批量查询关联商品名称
+    const productNameMap: Record<string, string> = {};
+    if (list.length > 0) {
+      const productIds = [...new Set(list.map((r: any) => r.product_id).filter(Boolean))];
+      if (productIds.length > 0) {
+        try {
+          const placeholders = productIds.map(() => '?').join(',');
+          const products = await ds.query(
+            `SELECT id, name FROM products WHERE id IN (${placeholders})`,
+            productIds
+          );
+          products.forEach((p: any) => { productNameMap[p.id] = p.name; });
+          log.info(`[虚拟库存] 资源列表商品名映射: ${JSON.stringify(productNameMap)}`);
+        } catch (prodErr) {
+          log.error('[虚拟库存] 批量查询商品名失败:', prodErr);
+        }
+      }
+    }
+
+    // 批量查询关联订单号
+    const orderNumberMap: Record<string, string> = {};
+    if (list.length > 0) {
+      const orderIds = [...new Set([
+        ...list.map((r: any) => r.order_id).filter(Boolean),
+        ...list.map((r: any) => r.reserved_order_id).filter(Boolean)
+      ])];
+      if (orderIds.length > 0) {
+        try {
+          const placeholders = orderIds.map(() => '?').join(',');
+          const orders = await ds.query(
+            `SELECT id, order_number FROM orders WHERE id IN (${placeholders})`,
+            orderIds
+          );
+          orders.forEach((o: any) => { orderNumberMap[o.id] = o.order_number; });
+        } catch (orderErr) {
+          log.error('[虚拟库存] 批量查询订单号失败:', orderErr);
+        }
+      }
+    }
 
     res.json({
       success: true,
@@ -524,13 +752,15 @@ router.get('/resources', async (req: Request, res: Response) => {
         list: list.map((item: any) => ({
           id: item.id,
           productId: item.product_id,
-          productName: item.product_name || '',
+          productName: productNameMap[item.product_id] || '',
           resourceLink: item.resource_link,
           resourcePassword: item.resource_password,
           resourceDescription: item.resource_description,
           status: item.status,
           orderId: item.order_id,
+          orderNumber: orderNumberMap[item.order_id] || null,
           reservedOrderId: item.reserved_order_id,
+          reservedOrderNumber: orderNumberMap[item.reserved_order_id] || null,
           claimToken: item.claim_token,
           claimMethod: item.claim_method,
           claimedAt: item.claimed_at,
@@ -539,12 +769,12 @@ router.get('/resources', async (req: Request, res: Response) => {
           updatedAt: item.updated_at
         })),
         total,
-        page: Number(page),
-        pageSize: Number(pageSize)
+        page: pageNum,
+        pageSize: pageSizeNum
       }
     });
   } catch (error) {
-    log.error('[虚拟库存] 获取资源列表失败:', error);
+    log.error('[虚拟库存] 获取资源列表失败(顶层):', error);
     res.json({ success: true, data: { list: [], total: 0, page: 1, pageSize: 20 } });
   }
 });
@@ -596,6 +826,9 @@ router.post('/resources', async (req: Request, res: Response) => {
       [id, tenantId, productId, resourceLink.trim(), resourcePassword || null, resourceDescription || null, usageInstructions || null]
     );
 
+    // 🔥 同步商品库存
+    await syncVirtualProductStock(productId, 'resource_link', tenantId);
+
     res.status(201).json({ success: true, data: { id }, message: '资源添加成功' });
   } catch (error) {
     log.error('[虚拟库存] 添加资源失败:', error);
@@ -636,6 +869,9 @@ router.post('/resources/batch', async (req: Request, res: Response) => {
       }
     }
 
+    // 🔥 同步商品库存
+    await syncVirtualProductStock(productId, 'resource_link', tenantId);
+
     res.json({ success: true, data: { success, errors, total: resources.length } });
   } catch (error) {
     log.error('[虚拟库存] 批量导入资源失败:', error);
@@ -646,7 +882,9 @@ router.post('/resources/batch', async (req: Request, res: Response) => {
 /**
  * PUT /resources/:id - 修改资源状态
  */
-router.put('/resources/:id', async (req: Request, res: Response) => {
+router.put('/resources/:id', async (req: Request, res: Response, next: NextFunction) => {
+  // 跳过已知子路径，让后续具体路由处理
+  if (['instructions', 'batch-associate'].includes(req.params.id)) return next('route');
   try {
     const tenantId = getTenantId(req);
     const { id } = req.params;
@@ -676,6 +914,12 @@ router.put('/resources/:id', async (req: Request, res: Response) => {
       'UPDATE resource_inventory SET status = ?, updated_at = NOW() WHERE id = ? AND tenant_id = ?',
       [status, id, tenantId]
     );
+
+    // 🔥 同步商品库存
+    const [resForSync] = await ds.query('SELECT product_id FROM resource_inventory WHERE id = ?', [id]);
+    if (resForSync) {
+      await syncVirtualProductStock(resForSync.product_id, 'resource_link', tenantId);
+    }
 
     res.json({ success: true, message: '状态更新成功' });
   } catch (error) {
@@ -736,6 +980,93 @@ router.post('/resources/release', async (req: Request, res: Response) => {
 });
 
 /**
+ * GET /resources/:id - 资源详情
+ */
+router.get('/resources/:id', async (req: Request, res: Response) => {
+  try {
+    const tenantId = getTenantId(req);
+    const { id } = req.params;
+    const ds = getDataSource();
+
+    const [item] = await ds.query(
+      `SELECT * FROM resource_inventory WHERE id = ? AND tenant_id = ?`,
+      [id, tenantId]
+    );
+    if (!item) {
+      return res.status(404).json({ success: false, message: '资源不存在' });
+    }
+
+    // 单独查询商品名称
+    let productName = '';
+    if (item.product_id) {
+      try {
+        const [prod] = await ds.query(`SELECT name FROM products WHERE id = ?`, [item.product_id]);
+        productName = prod?.name || '';
+      } catch (_e) { /* ignore */ }
+    }
+
+    res.json({
+      success: true,
+      data: {
+        id: item.id,
+        productId: item.product_id,
+        productName,
+        resourceLink: item.resource_link,
+        resourcePassword: item.resource_password,
+        resourceDescription: item.resource_description,
+        status: item.status,
+        orderId: item.order_id,
+        reservedOrderId: item.reserved_order_id,
+        claimToken: item.claim_token,
+        claimMethod: item.claim_method,
+        claimedAt: item.claimed_at,
+        usageInstructions: item.usage_instructions,
+        createdAt: item.created_at,
+        updatedAt: item.updated_at
+      }
+    });
+  } catch (error) {
+    log.error('[虚拟库存] 获取资源详情失败:', error);
+    res.status(500).json({ success: false, message: '获取资源详情失败' });
+  }
+});
+
+/**
+ * DELETE /resources/:id - 删除资源（仅允许删除未使用/已作废/已过期的）
+ */
+router.delete('/resources/:id', async (req: Request, res: Response) => {
+  try {
+    const tenantId = getTenantId(req);
+    const { id } = req.params;
+    const ds = getDataSource();
+
+    const [item] = await ds.query(
+      'SELECT status FROM resource_inventory WHERE id = ? AND tenant_id = ?',
+      [id, tenantId]
+    );
+    if (!item) {
+      return res.status(404).json({ success: false, message: '资源不存在' });
+    }
+
+    const deletableStatuses = ['unused', 'voided', 'expired'];
+    if (!deletableStatuses.includes(item.status)) {
+      return res.status(400).json({ success: false, message: `状态为"${item.status}"的资源不能删除，仅可删除未使用/已作废/已过期的资源` });
+    }
+
+    // 🔥 先获取product_id用于同步库存
+    const [resForDel] = await ds.query('SELECT product_id FROM resource_inventory WHERE id = ? AND tenant_id = ?', [id, tenantId]);
+    await ds.query('DELETE FROM resource_inventory WHERE id = ? AND tenant_id = ?', [id, tenantId]);
+    if (resForDel) {
+      await syncVirtualProductStock(resForDel.product_id, 'resource_link', tenantId);
+    }
+    res.json({ success: true, message: '资源删除成功' });
+  } catch (error) {
+    log.error('[虚拟库存] 删除资源失败:', error);
+    res.status(500).json({ success: false, message: '删除资源失败' });
+  }
+});
+
+/**
  * PUT /resources/instructions - 批量更新使用说明
  */
 router.put('/resources/instructions', async (req: Request, res: Response) => {
@@ -752,6 +1083,105 @@ router.put('/resources/instructions', async (req: Request, res: Response) => {
   } catch (error) {
     log.error('[虚拟库存] 更新使用说明失败:', error);
     res.status(500).json({ success: false, message: '更新失败' });
+  }
+});
+
+// ==================== 批量关联/取消关联商品 ====================
+
+/**
+ * PUT /card-keys/batch-associate - 批量关联卡密到商品
+ */
+router.put('/card-keys/batch-associate', async (req: Request, res: Response) => {
+  try {
+    const tenantId = getTenantId(req);
+    const { ids, productId } = req.body;
+    if (!ids || !Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ success: false, message: '请选择要操作的卡密' });
+    }
+    const ds = getDataSource();
+    const placeholders = ids.map(() => '?').join(',');
+
+    // 🔥 保护已使用/已领取/已预占的卡密，不允许重新关联
+    const protectedItems = await ds.query(
+      `SELECT id, status FROM card_key_inventory WHERE id IN (${placeholders}) AND tenant_id = ? AND status IN ('used', 'claimed', 'reserved')`,
+      [...ids, tenantId]
+    );
+    if (protectedItems.length > 0) {
+      return res.status(400).json({ success: false, message: `有 ${protectedItems.length} 个卡密已被使用/领取/预占，无法修改关联` });
+    }
+
+    if (productId) {
+      await ds.query(
+        `UPDATE card_key_inventory SET product_id = ?, updated_at = NOW() WHERE id IN (${placeholders}) AND tenant_id = ? AND status NOT IN ('used', 'claimed', 'reserved')`,
+        [productId, ...ids, tenantId]
+      );
+      await syncVirtualProductStock(productId, 'card_key', tenantId);
+    } else {
+      // 取消关联：先获取旧商品ID用于同步（排除已使用/已领取/已预占）
+      const oldItems = await ds.query(
+        `SELECT DISTINCT product_id FROM card_key_inventory WHERE id IN (${placeholders}) AND tenant_id = ? AND product_id IS NOT NULL AND status NOT IN ('used', 'claimed', 'reserved')`,
+        [...ids, tenantId]
+      );
+      await ds.query(
+        `UPDATE card_key_inventory SET product_id = NULL, updated_at = NOW() WHERE id IN (${placeholders}) AND tenant_id = ? AND status NOT IN ('used', 'claimed', 'reserved')`,
+        [...ids, tenantId]
+      );
+      for (const item of oldItems) {
+        if (item.product_id) await syncVirtualProductStock(item.product_id, 'card_key', tenantId);
+      }
+    }
+    res.json({ success: true, message: productId ? '关联成功' : '取消关联成功' });
+  } catch (error) {
+    log.error('[虚拟库存] 批量关联卡密失败:', error);
+    res.status(500).json({ success: false, message: '操作失败' });
+  }
+});
+
+/**
+ * PUT /resources/batch-associate - 批量关联资源到商品
+ */
+router.put('/resources/batch-associate', async (req: Request, res: Response) => {
+  try {
+    const tenantId = getTenantId(req);
+    const { ids, productId } = req.body;
+    if (!ids || !Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ success: false, message: '请选择要操作的资源' });
+    }
+    const ds = getDataSource();
+    const placeholders = ids.map(() => '?').join(',');
+
+    // 🔥 保护已使用/已领取/已预占的资源，不允许重新关联
+    const protectedItems = await ds.query(
+      `SELECT id, status FROM resource_inventory WHERE id IN (${placeholders}) AND tenant_id = ? AND status IN ('used', 'claimed', 'reserved')`,
+      [...ids, tenantId]
+    );
+    if (protectedItems.length > 0) {
+      return res.status(400).json({ success: false, message: `有 ${protectedItems.length} 个资源已被使用/领取/预占，无法修改关联` });
+    }
+
+    if (productId) {
+      await ds.query(
+        `UPDATE resource_inventory SET product_id = ?, updated_at = NOW() WHERE id IN (${placeholders}) AND tenant_id = ? AND status NOT IN ('used', 'claimed', 'reserved')`,
+        [productId, ...ids, tenantId]
+      );
+      await syncVirtualProductStock(productId, 'resource_link', tenantId);
+    } else {
+      const oldItems = await ds.query(
+        `SELECT DISTINCT product_id FROM resource_inventory WHERE id IN (${placeholders}) AND tenant_id = ? AND product_id IS NOT NULL AND status NOT IN ('used', 'claimed', 'reserved')`,
+        [...ids, tenantId]
+      );
+      await ds.query(
+        `UPDATE resource_inventory SET product_id = NULL, updated_at = NOW() WHERE id IN (${placeholders}) AND tenant_id = ? AND status NOT IN ('used', 'claimed', 'reserved')`,
+        [...ids, tenantId]
+      );
+      for (const item of oldItems) {
+        if (item.product_id) await syncVirtualProductStock(item.product_id, 'resource_link', tenantId);
+      }
+    }
+    res.json({ success: true, message: productId ? '关联成功' : '取消关联成功' });
+  } catch (error) {
+    log.error('[虚拟库存] 批量关联资源失败:', error);
+    res.status(500).json({ success: false, message: '操作失败' });
   }
 });
 

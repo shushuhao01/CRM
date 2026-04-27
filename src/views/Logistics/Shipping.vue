@@ -307,6 +307,8 @@
       <template #products="{ row }">
         <div class="product-list">
           <div v-for="(product, index) in row.products" :key="index" class="product-item">
+            <el-tag v-if="product.productType === 'virtual'" type="warning" size="small" effect="light" style="margin-right: 4px;">虚拟</el-tag>
+            <el-tag v-else size="small" effect="light" style="margin-right: 4px;">实物</el-tag>
             {{ product.name }} × {{ product.quantity }}
           </div>
         </div>
@@ -353,6 +355,18 @@
       <template #column-remark="{ row }">
         <span v-if="row.remark" class="remark-text" v-html="highlightKeywords(row.remark)"></span>
         <span v-else class="no-remark">无备注</span>
+      </template>
+
+      <!-- 商品列 - 显示实物/虚拟标签 -->
+      <template #column-productsText="{ row }">
+        <div v-if="Array.isArray(row.products) && row.products.length > 0">
+          <div v-for="(p, i) in row.products" :key="i" style="display:flex;align-items:center;gap:4px;margin-bottom:2px;">
+            <el-tag v-if="p.productType === 'virtual'" type="warning" size="small" effect="light" style="flex-shrink:0;">虚拟</el-tag>
+            <el-tag v-else size="small" effect="light" style="flex-shrink:0;">实物</el-tag>
+            <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ p.name }} x{{ p.quantity }}</span>
+          </div>
+        </div>
+        <span v-else>{{ row.productsText || '-' }}</span>
       </template>
 
       <!-- 物流公司列 - 使用和指定快递一样的彩色样式 -->
@@ -698,7 +712,18 @@
                 <span v-else>-</span>
               </template>
             </el-table-column>
-            <el-table-column prop="productsText" label="商品信息" width="160" align="left" show-overflow-tooltip />
+            <el-table-column label="商品信息" width="200" align="left">
+              <template #default="{ row }">
+                <div v-if="Array.isArray(row.products) && row.products.length > 0" class="product-list">
+                  <div v-for="(p, i) in row.products" :key="i" style="display: flex; align-items: center; gap: 4px; margin-bottom: 2px;">
+                    <el-tag v-if="p.productType === 'virtual'" type="warning" size="small" effect="light" style="flex-shrink:0;">虚拟</el-tag>
+                    <el-tag v-else size="small" effect="light" style="flex-shrink:0;">实物</el-tag>
+                    <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ p.name }} × {{ p.quantity }}</span>
+                  </div>
+                </div>
+                <span v-else>{{ row.productsText || '-' }}</span>
+              </template>
+            </el-table-column>
             <el-table-column prop="totalAmount" label="订单金额" width="100" align="center">
               <template #default="{ row }">
                 <span class="amount">¥{{ formatNumber(row.totalAmount) }}</span>
@@ -795,40 +820,84 @@
     </el-dialog>
 
     <!-- 🔥 虚拟发货弹窗 -->
-    <el-dialog v-model="virtualDeliveryDialogVisible" title="虚拟发货" width="650px" :close-on-click-modal="false">
-      <div v-if="currentVirtualOrder" style="margin-bottom: 16px;">
-        <p><strong>订单号：</strong>{{ currentVirtualOrder.orderNumber }}</p>
-        <p><strong>客户：</strong>{{ currentVirtualOrder.customerName }}</p>
+    <el-dialog v-model="virtualDeliveryDialogVisible" title="虚拟发货" width="680px" :close-on-click-modal="false">
+      <!-- 订单基本信息 -->
+      <div v-if="currentVirtualOrder" style="margin-bottom: 16px; padding: 12px; background: #f5f7fa; border-radius: 8px;">
+        <el-descriptions :column="2" size="small" border>
+          <el-descriptions-item label="订单号">{{ currentVirtualOrder.orderNumber }}</el-descriptions-item>
+          <el-descriptions-item label="客户">{{ currentVirtualOrder.customerName }}</el-descriptions-item>
+        </el-descriptions>
       </div>
-      <el-divider />
-      <div v-for="(item, idx) in virtualDeliveryItems" :key="idx" style="margin-bottom: 20px; padding: 12px; background: #f9f9f9; border-radius: 8px;">
-        <h4 style="margin: 0 0 12px 0;">
+
+      <el-divider content-position="left" style="margin: 12px 0;">发货商品</el-divider>
+
+      <!-- 每个虚拟商品的发货配置 -->
+      <div v-for="(item, idx) in virtualDeliveryItems" :key="idx" style="margin-bottom: 20px; padding: 16px; background: #fafafa; border: 1px solid #ebeef5; border-radius: 8px;">
+        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 14px;">
           <el-tag type="warning" size="small">虚拟</el-tag>
-          {{ item.productName }}
-          <el-tag size="small" :type="item.virtualDeliveryType === 'card_key' ? 'info' : 'success'" style="margin-left: 6px;">
-            {{ item.virtualDeliveryType === 'card_key' ? '卡密' : '网盘资源' }}
+          <span style="font-weight: 600; font-size: 14px;">{{ item.productName }}</span>
+          <el-tag size="small" :type="item.virtualDeliveryType === 'card_key' ? 'primary' : item.virtualDeliveryType === 'resource_link' ? 'success' : 'info'" style="margin-left: auto;">
+            {{ item.virtualDeliveryType === 'card_key' ? '卡密发货' : item.virtualDeliveryType === 'resource_link' ? '网盘资源' : '无需发货' }}
           </el-tag>
-        </h4>
+        </div>
 
-        <template v-if="item.virtualDeliveryType === 'card_key'">
-          <el-form-item label="卡密内容" style="margin-bottom: 8px;">
-            <el-input v-model="item.manualContent" placeholder="请输入卡密（系统已预占的将自动使用）" />
+        <!-- 无需发货类型 -->
+        <template v-if="item.virtualDeliveryType === 'none'">
+          <el-alert type="success" :closable="false" show-icon style="margin-bottom: 0;">
+            <template #title>该商品无需实际发货，确认后将直接标记为已签收</template>
+          </el-alert>
+        </template>
+
+        <!-- 卡密发货 -->
+        <template v-else-if="item.virtualDeliveryType === 'card_key'">
+          <div v-if="item.autoMatchedKey" style="padding: 8px 12px; background: #f0f9eb; border-radius: 4px; margin-bottom: 10px; font-size: 12px; color: #67c23a;">
+            <el-icon><Check /></el-icon>
+            系统已自动匹配卡密：{{ item.autoMatchedKey.length > 8 ? item.autoMatchedKey.substring(0, 8) + '****' : item.autoMatchedKey }}
+          </div>
+          <el-form-item label="卡密" label-width="80px" style="margin-bottom: 8px;">
+            <el-input
+              v-model="item.manualContent"
+              :placeholder="item.autoMatchedKey ? '已自动匹配，如需修改请输入新卡密' : '请输入卡密编码（手动填写将自动加入库存）'"
+            >
+              <template v-if="item.autoMatchedKey" #suffix>
+                <el-tag type="success" size="small" effect="light">库存匹配</el-tag>
+              </template>
+            </el-input>
+          </el-form-item>
+          <el-form-item label="使用说明" label-width="80px" style="margin-bottom: 8px;">
+            <el-input v-model="item.usageInstructions" :placeholder="item.usageInstructions ? '' : '选填，如激活方法、使用步骤等'" />
           </el-form-item>
         </template>
 
-        <template v-if="item.virtualDeliveryType === 'resource_link'">
-          <el-form-item label="资源链接" style="margin-bottom: 8px;">
-            <el-input v-model="item.manualResourceLink" placeholder="请输入资源链接" />
+        <!-- 资源发货 -->
+        <template v-else-if="item.virtualDeliveryType === 'resource_link'">
+          <div v-if="item.autoMatchedResource" style="padding: 8px 12px; background: #f0f9eb; border-radius: 4px; margin-bottom: 10px; font-size: 12px; color: #67c23a;">
+            <el-icon><Check /></el-icon>
+            系统已自动匹配资源
+          </div>
+          <el-form-item label="资源链接" label-width="80px" style="margin-bottom: 8px;">
+            <el-input v-model="item.manualResourceLink" :placeholder="item.autoMatchedResource ? '已自动匹配，如需修改请输入新链接' : '请输入资源链接（手动填写将自动加入库存）'" />
           </el-form-item>
-          <el-form-item label="提取码" style="margin-bottom: 8px;">
-            <el-input v-model="item.manualResourcePassword" placeholder="选填" />
+          <el-form-item label="提取码" label-width="80px" style="margin-bottom: 8px;">
+            <el-input v-model="item.manualResourcePassword" placeholder="选填" style="width: 200px;" />
+          </el-form-item>
+          <el-form-item label="使用说明" label-width="80px" style="margin-bottom: 8px;">
+            <el-input v-model="item.usageInstructions" :placeholder="item.usageInstructions ? '' : '选填，如使用步骤等'" />
           </el-form-item>
         </template>
 
-        <el-form-item label="备注" style="margin-bottom: 0;">
+        <el-form-item v-if="item.virtualDeliveryType !== 'none'" label="备注说明" label-width="80px" style="margin-bottom: 0;">
           <el-input v-model="item.remark" placeholder="选填" />
         </el-form-item>
       </div>
+
+      <!-- 确认提示 -->
+      <el-alert type="info" :closable="false" show-icon style="margin-top: 8px;">
+        <template #title>
+          确认后订单将标记为已签收，卡密/资源将标记为已使用；手动填写的内容将自动加入对应库存
+        </template>
+      </el-alert>
+
       <template #footer>
         <el-button @click="virtualDeliveryDialogVisible = false">取消</el-button>
         <el-button type="primary" :loading="virtualDeliveryLoading" @click="confirmVirtualDelivery">确认发货</el-button>
@@ -973,8 +1042,9 @@ const fieldConfigStore = useOrderFieldConfigStore()
 
 // 表格标题
 const tableTitle = computed(() => {
-  const tabNames = {
+  const tabNames: Record<string, string> = {
     pending: '待发货',
+    virtual_pending: '虚拟待发货',
     shipped: '已发货',
     returned: '退回',
     cancelled: '取消',
@@ -1476,9 +1546,9 @@ const loadOrderList = async () => {
         serverTotal = response?.data?.total || orders.length
         console.log('[发货列表] 从API获取待发货订单:', orders.length, '条，总数:', serverTotal)
       } else if (activeTab.value === 'virtual_pending') {
-        // 🔥 虚拟待发货订单
+        // 虚拟待发货订单：使用标准pending_shipment状态 + 虚拟商品类型过滤
         const token = localStorage.getItem('auth_token')
-        const vpResp = await fetch(`/api/v1/orders?status=virtual_pending&page=${params.page}&pageSize=${params.pageSize}${params.keyword ? '&keyword=' + params.keyword : ''}`, {
+        const vpResp = await fetch(`/api/v1/orders?status=pending_shipment&orderProductType=virtual&markType=virtual_delivery&page=${params.page}&pageSize=${params.pageSize}${params.keyword ? '&keyword=' + params.keyword : ''}`, {
           headers: { 'Authorization': `Bearer ${token}` }
         })
         const vpData = await vpResp.json()
@@ -2450,7 +2520,7 @@ const updateTabCounts = async () => {
     // 获取虚拟待发货订单数量
     try {
       const token = localStorage.getItem('auth_token')
-      const vpResponse = await fetch('/api/v1/orders?status=virtual_pending&pageSize=1', {
+      const vpResponse = await fetch('/api/v1/orders?status=pending_shipment&orderProductType=virtual&markType=virtual_delivery&pageSize=1', {
         headers: { 'Authorization': `Bearer ${token}` }
       })
       const vpData = await vpResponse.json()
@@ -2755,7 +2825,7 @@ const virtualDeliveryLoading = ref(false)
 const currentVirtualOrder = ref<any>(null)
 const virtualDeliveryItems = ref<any[]>([])
 
-const openVirtualDeliveryDialog = (row: any) => {
+const openVirtualDeliveryDialog = async (row: any) => {
   currentVirtualOrder.value = row
   // 解析订单中的虚拟商品
   let products: any[] = []
@@ -2763,26 +2833,125 @@ const openVirtualDeliveryDialog = (row: any) => {
     products = typeof row.products === 'string' ? JSON.parse(row.products) : (row.products || [])
   } catch { products = [] }
 
-  virtualDeliveryItems.value = products
-    .filter((p: any) => p.productType === 'virtual' && p.virtualDeliveryType !== 'none')
-    .map((p: any) => ({
-      productId: p.id || p.productId,
+  const virtualProducts = products.filter((p: any) => p.productType === 'virtual')
+  if (virtualProducts.length === 0) {
+    ElMessage.info('该订单没有虚拟商品')
+    return
+  }
+
+  const token = localStorage.getItem('auth_token')
+
+  // 🔥 始终从后端查询每个虚拟商品的最新 virtualDeliveryType（以商品管理中的最新设置为准）
+  const productDeliveryTypeMap: Record<string, string> = {}
+  for (const p of virtualProducts) {
+    const pid = p.id || p.productId
+    if (pid) {
+      try {
+        const resp = await fetch(`/api/v1/products/${pid}`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        })
+        const result = await resp.json()
+        const prod = result?.data || result
+        if (prod?.virtualDeliveryType) {
+          productDeliveryTypeMap[pid] = prod.virtualDeliveryType
+        }
+      } catch (_e) {
+        console.warn(`[虚拟发货] 查询商品 ${pid} 发货方式失败`)
+      }
+    }
+  }
+
+  virtualDeliveryItems.value = virtualProducts.map((p: any) => {
+    const pid = p.id || p.productId
+    // 🔥 优先使用从商品表查询的最新值，其次使用订单中存储的值，最后才兜底 none
+    const deliveryType = productDeliveryTypeMap[pid] || p.virtualDeliveryType || 'none'
+    return {
+      productId: pid,
       productName: p.name || p.productName || '未知商品',
-      virtualDeliveryType: p.virtualDeliveryType,
+      virtualDeliveryType: deliveryType,
       manualContent: '',
       manualResourceLink: '',
       manualResourcePassword: '',
       remark: '',
       cardKeyId: null,
-      resourceId: null
-    }))
-
-  if (virtualDeliveryItems.value.length === 0) {
-    ElMessage.info('该订单无需手动发货的虚拟商品')
-    return
-  }
+      resourceId: null,
+      autoMatchedKey: null as string | null,
+      autoMatchedResource: null as any,
+      usageInstructions: ''
+    }
+  })
 
   virtualDeliveryDialogVisible.value = true
+
+  // 异步自动匹配库存（优先匹配预占给本订单的库存）
+  const orderId = row.id || row.orderId
+  for (const item of virtualDeliveryItems.value) {
+    try {
+      if (item.virtualDeliveryType === 'card_key' && item.productId) {
+        // 优先查预占给本订单的卡密
+        let matched = false
+        if (orderId) {
+          const resp = await fetch(`/api/v1/virtual-inventory/card-keys?productId=${item.productId}&status=reserved&pageSize=1`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+          })
+          const result = await resp.json()
+          const list = (result?.data?.list || []).filter((ck: any) => ck.reservedOrderId === orderId)
+          if (list.length > 0) {
+            item.autoMatchedKey = list[0].cardKey || list[0].card_key
+            item.cardKeyId = list[0].id
+            item.usageInstructions = list[0].usageInstructions || list[0].usage_instructions || ''
+            matched = true
+          }
+        }
+        if (!matched) {
+          const resp = await fetch(`/api/v1/virtual-inventory/card-keys?productId=${item.productId}&status=unused&pageSize=1`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+          })
+          const result = await resp.json()
+          const list = result?.data?.list || []
+          if (list.length > 0) {
+            item.autoMatchedKey = list[0].cardKey || list[0].card_key
+            item.cardKeyId = list[0].id
+            item.usageInstructions = list[0].usageInstructions || list[0].usage_instructions || ''
+          }
+        }
+      } else if (item.virtualDeliveryType === 'resource_link' && item.productId) {
+        // 优先查预占给本订单的资源
+        let matched = false
+        if (orderId) {
+          const resp = await fetch(`/api/v1/virtual-inventory/resources?productId=${item.productId}&status=reserved&pageSize=1`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+          })
+          const result = await resp.json()
+          const list = (result?.data?.list || []).filter((rs: any) => rs.reservedOrderId === orderId)
+          if (list.length > 0) {
+            item.autoMatchedResource = true
+            item.resourceId = list[0].id
+            item.manualResourceLink = list[0].resourceLink || list[0].resource_link || ''
+            item.manualResourcePassword = list[0].resourcePassword || list[0].resource_password || ''
+            item.usageInstructions = list[0].usageInstructions || list[0].usage_instructions || ''
+            matched = true
+          }
+        }
+        if (!matched) {
+          const resp = await fetch(`/api/v1/virtual-inventory/resources?productId=${item.productId}&status=unused&pageSize=1`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+          })
+          const result = await resp.json()
+          const list = result?.data?.list || []
+          if (list.length > 0) {
+            item.autoMatchedResource = true
+            item.resourceId = list[0].id
+            item.manualResourceLink = list[0].resourceLink || list[0].resource_link || ''
+            item.manualResourcePassword = list[0].resourcePassword || list[0].resource_password || ''
+            item.usageInstructions = list[0].usageInstructions || list[0].usage_instructions || ''
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('[虚拟发货] 自动匹配库存失败:', e)
+    }
+  }
 }
 
 const confirmVirtualDelivery = async () => {
@@ -2794,11 +2963,12 @@ const confirmVirtualDelivery = async () => {
     const items = virtualDeliveryItems.value.map(item => ({
       productId: item.productId,
       deliveryType: item.virtualDeliveryType,
-      cardKeyId: item.cardKeyId || null,
-      resourceId: item.resourceId || null,
+      cardKeyId: (!item.manualContent && item.cardKeyId) ? item.cardKeyId : null,
+      resourceId: (!item.manualResourceLink?.trim() && item.resourceId) ? item.resourceId : null,
       manualContent: item.manualContent || null,
       manualResourceLink: item.manualResourceLink || null,
       manualResourcePassword: item.manualResourcePassword || null,
+      usageInstructions: item.usageInstructions || null,
       remark: item.remark || null
     }))
 

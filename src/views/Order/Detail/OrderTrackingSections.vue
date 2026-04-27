@@ -44,6 +44,9 @@
               </div>
             </el-timeline-item>
           </el-timeline>
+          <el-alert v-else-if="orderProductType === 'virtual'" type="info" :closable="false" show-icon style="margin: 8px 0;">
+            <template #title>虚拟商品无需实物发货，没有物流单号</template>
+          </el-alert>
           <el-empty v-else description="物流信息请点击上方刷新按钮获取" />
         </div>
       </el-collapse-transition>
@@ -154,18 +157,20 @@ import { Van, Location, Clock, Service, ArrowDown, ArrowUp, User } from '@elemen
 import { formatDateTime } from '@/utils/dateFormat'
 import { getAfterSalesType } from './helpers'
 
-defineProps<{
+const props = defineProps<{
   logisticsInfo: any[]
   logisticsLoading: boolean
   orderTimeline: any[]
   afterSalesHistory: any[]
+  orderProductType?: string
 }>()
 
 defineEmits<{
   'refresh-logistics': []
 }>()
 
-const logisticsCollapsedLocal = ref(false)
+// 虚拟商品订单默认折叠物流卡片
+const logisticsCollapsedLocal = ref(props.orderProductType === 'virtual')
 const statusTimelineCollapsedLocal = ref(true)
 
 // 操作类型标签样式

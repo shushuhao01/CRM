@@ -279,7 +279,11 @@
             <el-table-column prop="productName" label="商品名称" min-width="200">
               <template #default="{ row }">
                 <div class="selected-product-name">
-                  <span>{{ row.productName }}</span>
+                  <div class="selected-product-name-row">
+                    <el-tag v-if="row.productType === 'virtual'" type="warning" size="small" effect="light" style="margin-right: 4px;">虚拟</el-tag>
+                    <el-tag v-else size="small" effect="light" style="margin-right: 4px;">实物</el-tag>
+                    <span style="font-weight: 600;">{{ row.productName }}</span>
+                  </div>
                   <div class="selected-product-tags">
                     <el-tag v-if="row.isRecommended" type="warning" size="small" effect="light">
                       ⭐ 推荐
@@ -296,7 +300,7 @@
             </el-table-column>
             <el-table-column prop="price" label="单价" width="100">
               <template #default="{ row }">
-                ¥{{ row.price }}
+                <span style="color: #f56c6c; font-weight: 600;">¥{{ row.price }}</span>
               </template>
             </el-table-column>
             <el-table-column label="数量" width="150">
@@ -306,13 +310,13 @@
                   :min="1"
                   :max="row.stock"
                   size="small"
-                  @change="calculateAmounts"
+                  @change="calculateSubtotal"
                 />
               </template>
             </el-table-column>
             <el-table-column label="小计" width="100">
               <template #default="{ row }">
-                ¥{{ ((row.price || 0) * (row.quantity || 0)).toFixed(2) }}
+                <span style="color: #f56c6c; font-weight: 600;">¥{{ ((row.price || 0) * (row.quantity || 0)).toFixed(2) }}</span>
               </template>
             </el-table-column>
             <el-table-column label="操作" width="80">
@@ -322,9 +326,7 @@
                   size="small"
                   :icon="Delete"
                   @click="removeProduct($index)"
-                >
-                  删除
-                </el-button>
+                />
               </template>
             </el-table-column>
           </el-table>
@@ -603,94 +605,106 @@
     <el-dialog
       v-model="showConfirmDialog"
       title="订单确认"
-      width="900px"
+      width="600px"
       :before-close="handleConfirmDialogClose"
     >
-      <div class="confirm-content">
-        <!-- 客户信息 -->
-        <div class="confirm-section">
-          <h4 class="confirm-title">客户信息</h4>
+      <div class="order-confirm">
+        <h4>请确认以下订单信息：</h4>
+
+        <div class="confirm-section customer-info-section">
+          <h5>客户信息</h5>
           <div class="info-grid">
             <div class="info-item">
-              <span class="label">客户姓名:</span>
+              <span class="label">客户：</span>
               <span class="value">{{ orderForm.customerName }}</span>
             </div>
             <div class="info-item">
-              <span class="label">联系电话:</span>
+              <span class="label">电话：</span>
               <span class="value">{{ orderForm.customerPhone }}</span>
             </div>
-            <div class="info-item">
-              <span class="label">配送地址:</span>
-              <span class="value">{{ orderForm.deliveryAddress || '无' }}</span>
+            <div class="info-item" v-if="orderForm.receiverName">
+              <span class="label">收货人：</span>
+              <span class="value">{{ orderForm.receiverName }}</span>
             </div>
-            <div class="info-item">
-              <span class="label">配送时间:</span>
-              <span class="value">{{ orderForm.deliveryTime || '无' }}</span>
+            <div class="info-item" v-if="orderForm.receiverAddress">
+              <span class="label">收货地址：</span>
+              <span class="value">{{ orderForm.receiverAddress }}</span>
             </div>
-            <div class="info-item">
-              <span class="label">订单类型:</span>
-              <el-tag :type="orderForm.orderType === 'normal' ? 'success' : 'warning'">
-                {{ orderForm.orderType === 'normal' ? '正常订单' : '预留订单' }}
-              </el-tag>
+            <div class="info-item" v-if="orderForm.expressCompany && orderForm.markType !== 'virtual'">
+              <span class="label">快递公司：</span>
+              <span class="value">{{ orderForm.expressCompany }}</span>
             </div>
-            <div v-if="orderForm.remarks" class="info-item">
-              <span class="label">备注:</span>
-              <span class="value">{{ orderForm.remarks }}</span>
+            <div v-if="orderForm.markType === 'virtual'" class="info-item">
+              <span class="label">发货方式：</span>
+              <span class="value" style="color: #409EFF;">虚拟发货（卡密/资源交付）</span>
+            </div>
+            <div v-if="orderForm.remarks || orderForm.remark" class="info-item">
+              <span class="label">备注：</span>
+              <span class="value">{{ orderForm.remarks || orderForm.remark }}</span>
             </div>
           </div>
         </div>
 
-        <!-- 金额汇总 -->
-        <div class="confirm-section">
-          <h4 class="confirm-title">金额汇总</h4>
+        <div class="confirm-section order-mark">
+          <h5>订单标记</h5>
+          <div class="mark-content">
+            <div class="mark-item">
+              <span class="label">订单类型：</span>
+              <el-tag
+                :type="orderForm.markType === 'normal' ? 'success' : orderForm.markType === 'virtual' ? 'primary' : 'warning'"
+                size="small"
+              >
+                {{ orderForm.markType === 'normal' ? '正常发货单' : orderForm.markType === 'virtual' ? '虚拟发货' : '预留单' }}
+              </el-tag>
+            </div>
+          </div>
+        </div>
+
+        <div class="confirm-section amount-info">
+          <h5>金额汇总</h5>
           <div class="amount-summary-two-columns">
             <div class="amount-column basic-amounts">
               <div class="amount-item">
                 <span class="label">商品小计</span>
-                <span class="value">¥{{ orderForm.subtotal }}</span>
+                <span class="value">¥{{ subtotal.toFixed(2) }}</span>
               </div>
               <div class="amount-item">
                 <span class="label">优惠金额</span>
                 <div class="discount-info">
-                  <span class="value discount">-¥{{ orderForm.discountAmount }}</span>
-                  <span v-if="discountPercentage > 0" class="discount-percent">{{ discountPercentage }}%</span>
+                  <span class="value discount">¥{{ discountAmount.toFixed(2) }}</span>
+                  <span class="discount-percent" v-if="discountAmount > 0">
+                    ({{ discountPercentage.toFixed(1) }}%)
+                  </span>
                 </div>
               </div>
             </div>
             <div class="amount-column important-amounts">
-              <div class="amount-item total-amount">
+              <div class="amount-item highlight total-amount">
                 <span class="label">订单总额</span>
-                <span class="value">¥{{ orderForm.totalAmount }}</span>
+                <span class="value">¥{{ (orderForm.totalAmount || 0).toFixed(2) }}</span>
               </div>
-              <div class="amount-item deposit-amount">
-                <span class="label">定金金额</span>
-                <span class="value">¥{{ orderForm.depositAmount }}</span>
+              <div class="amount-item highlight deposit-amount">
+                <span class="label">定金</span>
+                <span class="value">¥{{ (orderForm.depositAmount || 0).toFixed(2) }}</span>
               </div>
-              <div class="amount-item collect-amount">
-                <span class="label">已收金额</span>
-                <span class="value">¥{{ orderForm.collectedAmount }}</span>
+              <div class="amount-item highlight collect-amount">
+                <span class="label">代收金额</span>
+                <span class="value">¥{{ collectAmount.toFixed(2) }}</span>
               </div>
             </div>
           </div>
         </div>
 
-        <!-- 产品信息 -->
-        <div class="confirm-section">
-          <h4 class="confirm-title">产品信息</h4>
-          <el-table :data="orderForm.products" style="width: 100%">
-            <el-table-column prop="productName" label="产品名称" />
-            <el-table-column prop="productCode" label="产品编号" width="120" />
-            <el-table-column prop="specification" label="规格" width="120" />
-            <el-table-column prop="price" label="单价" width="100">
-              <template #default="scope">
-                ¥{{ scope.row.price }}
-              </template>
+        <div class="confirm-section product-info-section">
+          <h5>商品信息</h5>
+          <el-table :data="orderForm.products" size="small">
+            <el-table-column prop="productName" label="商品名称" />
+            <el-table-column prop="price" label="单价" width="80">
+              <template #default="{ row }">¥{{ row.price }}</template>
             </el-table-column>
-            <el-table-column prop="quantity" label="数量" width="80" />
-            <el-table-column prop="subtotal" label="小计" width="100">
-              <template #default="scope">
-                ¥{{ scope.row.subtotal }}
-              </template>
+            <el-table-column prop="quantity" label="数量" width="60" />
+            <el-table-column label="小计" width="80">
+              <template #default="{ row }">¥{{ ((row.price || 0) * (row.quantity || 0)).toFixed(2) }}</template>
             </el-table-column>
           </el-table>
         </div>
@@ -1186,6 +1200,10 @@ const searchProducts = async () => {
 const addProduct = (product) => {
   const existingItem = orderForm.products.find(item => item.productId === product.id)
   if (existingItem) {
+    if (product.stock && existingItem.quantity >= product.stock) {
+      ElMessage.warning('库存不足')
+      return
+    }
     existingItem.quantity += 1
     existingItem.subtotal = existingItem.quantity * existingItem.price
   } else {
@@ -1196,7 +1214,9 @@ const addProduct = (product) => {
       specification: product.specification,
       price: product.price,
       quantity: 1,
-      subtotal: product.price
+      subtotal: product.price,
+      stock: product.stock || 9999,
+      productType: product.productType || 'physical'
     })
   }
   calculateSubtotal()
@@ -1226,7 +1246,7 @@ const calculateSubtotal = () => {
 const calculateAmounts = () => {
   // 🔥 修复：加载已有订单时不覆盖totalAmount，保留数据库中的真实值（用户可能给过优惠）
   if (!isLoadingOrder) {
-    orderForm.totalAmount = orderForm.subtotal - orderForm.discountAmount
+    orderForm.totalAmount = orderForm.subtotal
   }
   orderForm.collectedAmount = orderForm.depositAmount
 }
@@ -2064,6 +2084,11 @@ const handleConfirmDialogClose = () => {
   gap: 6px;
 }
 
+.selected-product-name-row {
+  display: flex;
+  align-items: center;
+}
+
 .selected-product-tags {
   display: flex;
   gap: 4px;
@@ -2373,51 +2398,145 @@ const handleConfirmDialogClose = () => {
   overflow-y: auto;
 }
 
-.confirm-content {
-  max-height: 600px;
+/* 订单确认弹窗 */
+.order-confirm {
+  max-height: 500px;
   overflow-y: auto;
+  padding: 8px;
+}
+
+.order-confirm h4 {
+  margin: 0 0 20px 0;
+  color: #303133;
+  font-size: 16px;
+  text-align: center;
+  padding-bottom: 12px;
+  border-bottom: 2px solid #f0f2f5;
 }
 
 .confirm-section {
-  margin-bottom: 24px;
+  margin-bottom: 16px;
+  padding: 16px;
+  background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
+  border-radius: 12px;
+  border: 1px solid #e5e7eb;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  transition: all 0.2s ease;
 }
 
-.confirm-title {
-  margin: 0 0 16px 0;
-  font-size: 16px;
+.confirm-section:hover {
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+  transform: translateY(-1px);
+}
+
+.confirm-section:last-child {
+  margin-bottom: 0;
+}
+
+.confirm-section h5 {
+  margin: 0 0 12px 0;
+  color: #1f2937;
   font-weight: 600;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.confirm-section h5::before {
+  content: '';
+  width: 4px;
+  height: 16px;
+  background: #409eff;
+  border-radius: 2px;
+}
+
+.confirm-section p {
+  margin: 6px 0;
+  color: #4b5563;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+}
+
+.confirm-section p strong {
   color: #374151;
-  padding-bottom: 8px;
-  border-bottom: 2px solid #e5e7eb;
+  font-weight: 500;
+  min-width: 80px;
+}
+
+/* 确认弹窗中的表格样式 */
+.confirm-section .el-table {
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid #e5e7eb;
+}
+
+.confirm-section .el-table th {
+  background: linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%);
+  color: #374151;
+  font-weight: 600;
+  font-size: 12px;
+  border-bottom: 1px solid #d1d5db;
+}
+
+.confirm-section .el-table td {
+  border-bottom: 1px solid #f3f4f6;
+  font-size: 12px;
+  color: #4b5563;
+}
+
+.confirm-section .el-table tr:hover td {
+  background-color: #f8fafc;
+}
+
+.confirm-section .el-tag {
+  border-radius: 6px;
+  font-weight: 500;
 }
 
 .info-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-  gap: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .info-item {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 12px;
-  background: #f9fafb;
-  border-radius: 6px;
-  border: 1px solid #e5e7eb;
+  padding: 6px 0;
+  border-bottom: 1px solid #f3f4f6;
+}
+
+.info-item:last-child {
+  border-bottom: none;
 }
 
 .info-item .label {
-  min-width: 80px;
-  font-weight: 600;
   color: #6b7280;
+  font-weight: 500;
+  min-width: 80px;
   font-size: 13px;
 }
 
 .info-item .value {
   color: #374151;
-  font-weight: 500;
+  font-weight: 400;
   flex: 1;
+  font-size: 13px;
+}
+
+/* 订单标记样式 */
+.mark-content {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.mark-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 /* 订单确认弹窗 - 两列金额汇总样式 */

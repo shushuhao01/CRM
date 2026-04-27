@@ -169,12 +169,12 @@ router.post('/check-transfer', async (_req: Request, res: Response) => {
     const now = new Date();
     const delayMs = transferConfig.delayMinutes * 60 * 1000;
 
-    // 查找所有待流转的订单（状态为pending_transfer且markType为normal）
+    // 查找所有待流转的订单（状态为pending_transfer且markType为normal或virtual_delivery）
     const pendingOrders = await orderRepository.find({
-      where: {
-        status: 'pending_transfer',
-        markType: 'normal'
-      }
+      where: [
+        { status: 'pending_transfer', markType: 'normal' },
+        { status: 'pending_transfer', markType: 'virtual_delivery' as any }
+      ]
     });
 
     log.info(`🔍 [订单流转] 找到 ${pendingOrders.length} 个待流转订单`);

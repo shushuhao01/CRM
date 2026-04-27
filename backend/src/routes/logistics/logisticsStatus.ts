@@ -302,14 +302,20 @@ router.post('/order/status', async (req, res) => {
 
     // 添加状态更新记录到历史表（可选，如果失败不影响主流程）
     try {
+      const realName = user?.realName || user?.name || user?.username || '系统';
+      const deptName = user?.departmentName || user?.department || '';
+      const fullOperatorName = deptName ? `${deptName}-${realName}` : realName;
       const historyRecord = statusHistoryRepository.create({
         orderId: order.id,
-        status: newStatus as any, // 直接使用新状态
+        status: newStatus as any,
         notes: remark || `物流状态更新为: ${newStatus}`,
-        operatorName: user?.username || '系统'
+        operatorId: user?.id ? Number(user.id) : undefined,
+        operatorName: fullOperatorName,
+        operatorDepartment: deptName,
+        actionType: 'status_change'
       });
       await statusHistoryRepository.save(historyRecord);
-      log.info('✅ 状态历史记录已保存:', newStatus);
+      log.info('✅ 状态历史记录已保存:', newStatus, '操作人:', fullOperatorName);
     } catch (historyError) {
       // 历史记录保存失败不影响主流程
       log.warn('⚠️ 状态历史记录保存失败（不影响主流程）:', historyError);

@@ -917,7 +917,7 @@ router.onError((error) => {
 
     // 🔥 检查是否在公开页面，公开页面不需要登录验证
     const currentPath = window.location.pathname
-    const publicPaths = ['/login', '/public-help', '/register', '/agreement']
+    const publicPaths = ['/login', '/public-help', '/register', '/agreement', '/virtual-claim']
     const isPublicPage = publicPaths.some(path => currentPath.startsWith(path))
 
     if (isPublicPage) {

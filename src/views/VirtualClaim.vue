@@ -1,9 +1,29 @@
 <template>
   <div class="virtual-claim-page">
+    <!-- 左上角Logo -->
+    <div class="claim-top-bar">
+      <div class="top-bar-logo">
+        <svg width="28" height="28" viewBox="0 0 44 44" fill="none" class="logo-icon-svg">
+          <defs>
+            <linearGradient id="claimLogoGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#6ee7b7"/>
+              <stop offset="100%" stop-color="#34d399"/>
+            </linearGradient>
+          </defs>
+          <rect width="44" height="44" rx="10" fill="url(#claimLogoGrad)"/>
+          <rect x="10" y="10" width="10" height="10" rx="2" fill="white"/>
+          <circle cx="29" cy="15" r="5" fill="white" opacity="0.85"/>
+          <rect x="10" y="24" width="10" height="10" rx="5" fill="white" opacity="0.7"/>
+          <rect x="24" y="24" width="10" height="10" rx="2" fill="white"/>
+        </svg>
+        <span class="top-bar-name">{{ systemName }}</span>
+      </div>
+    </div>
+
     <!-- 页面头部 -->
     <div class="claim-header">
       <div class="claim-logo">
-        <img v-if="systemAvatar" :src="systemAvatar" alt="logo" class="logo-img" />
+        <img v-if="systemLogo || systemAvatar" :src="systemLogo || systemAvatar" alt="logo" class="logo-img" />
         <div v-else class="logo-placeholder">📦</div>
       </div>
       <div class="claim-title">{{ systemName }}</div>
@@ -21,7 +41,13 @@
         <el-icon><Lock /></el-icon>
         验证身份后领取
       </div>
-      <el-form :model="loginForm" label-position="top" size="large">
+
+      <div v-if="loginError && !tokenValid" class="login-error" style="margin-bottom: 16px;">
+        <el-icon><Warning /></el-icon>
+        {{ loginError }}
+      </div>
+
+      <el-form v-if="tokenValid" :model="loginForm" label-position="top" size="large" @keyup.enter="handleLogin">
         <el-form-item label="下单手机号">
           <el-input
             v-model="loginForm.phone"
@@ -33,8 +59,20 @@
           </el-input>
         </el-form-item>
 
+        <!-- 登录方式切换 -->
+        <div class="login-method-switch">
+          <span
+            :class="['method-tab', { active: activeLoginMethod === 'password' }]"
+            @click="activeLoginMethod = 'password'"
+          >密码验证</span>
+          <span
+            :class="['method-tab', { active: activeLoginMethod === 'sms' }]"
+            @click="activeLoginMethod = 'sms'"
+          >短信验证码</span>
+        </div>
+
         <!-- 短信验证码登录 -->
-        <template v-if="loginMethod === 'sms'">
+        <template v-if="activeLoginMethod === 'sms'">
           <el-form-item label="验证码">
             <div style="display: flex; gap: 8px; width: 100%;">
               <el-input
@@ -79,12 +117,12 @@
         >
           验证并领取
         </el-button>
-      </el-form>
 
-      <div v-if="loginError" class="login-error">
-        <el-icon><Warning /></el-icon>
-        {{ loginError }}
-      </div>
+        <div v-if="loginError && tokenValid" class="login-error">
+          <el-icon><Warning /></el-icon>
+          {{ loginError }}
+        </div>
+      </el-form>
     </div>
 
     <!-- 领取内容 -->
@@ -92,6 +130,17 @@
       <div class="claim-success-header">
         <el-icon class="success-icon"><CircleCheck /></el-icon>
         <span>身份验证成功，以下是您的商品</span>
+      </div>
+
+      <!-- 领取页提示语 -->
+      <div v-if="claimPageNotice" class="claim-content-notice">
+        <el-icon><InfoFilled /></el-icon>
+        <span>{{ claimPageNotice }}</span>
+      </div>
+
+      <!-- 客户信息（脱敏） -->
+      <div v-if="maskedPhone" class="customer-info">
+        <span>领取账户：{{ maskedPhone }}</span>
       </div>
 
       <!-- 卡密列表 -->
@@ -104,26 +153,41 @@
           </div>
           <div class="item-body">
             <div class="card-key-display">
-              <span class="card-key-value">{{ item.encrypted && !claimedItems.has(`ck-${idx}`) ? '• • • • • • • •' : item.cardKey }}</span>
-              <el-button
-                v-if="!claimedItems.has(`ck-${idx}`)"
-                type="primary"
-                size="small"
-                @click="revealAndCopy(item.cardKey, `ck-${idx}`)"
-                plain
-              >
-                <el-icon><View /></el-icon>
-                点击查看并复制
-              </el-button>
-              <el-button
-                v-else
-                type="success"
-                size="small"
-                @click="copyToClipboard(item.cardKey)"
-              >
-                <el-icon><DocumentCopy /></el-icon>
-                复制卡密
-              </el-button>
+              <span class="card-key-value">{{ revealedItems.has(`ck-${idx}`) ? item.cardKey : maskContent(item.cardKey) }}</span>
+              <div class="card-key-actions">
+                <el-button
+                  v-if="!revealedItems.has(`ck-${idx}`)"
+                  type="primary"
+                  size="small"
+                  @click="revealItem(`ck-${idx}`)"
+                  plain
+                  circle
+                  title="查看"
+                >
+                  <el-icon><View /></el-icon>
+                </el-button>
+                <el-button
+                  v-else
+                  type="info"
+                  size="small"
+                  @click="hideItem(`ck-${idx}`)"
+                  plain
+                  circle
+                  title="隐藏"
+                >
+                  <el-icon><Hide /></el-icon>
+                </el-button>
+                <el-button
+                  type="success"
+                  size="small"
+                  @click="copyToClipboard(item.cardKey)"
+                  plain
+                  circle
+                  title="复制"
+                >
+                  <el-icon><DocumentCopy /></el-icon>
+                </el-button>
+              </div>
             </div>
             <div v-if="item.usageInstructions" class="item-instructions">
               <el-icon><InfoFilled /></el-icon>
@@ -143,31 +207,91 @@
           </div>
           <div class="item-body">
             <div class="resource-link-display">
-              <a
-                v-if="claimedItems.has(`rs-${idx}`) || !item.encrypted"
-                :href="item.resourceLink"
-                target="_blank"
-                class="resource-link"
-              >
-                {{ item.resourceLink }}
-              </a>
-              <el-button
-                v-else
-                type="primary"
-                size="small"
-                @click="revealAndCopy(item.resourceLink, `rs-${idx}`)"
-                plain
-              >
-                <el-icon><View /></el-icon>
-                点击查看资源链接
-              </el-button>
+              <div class="resource-link-row">
+                <a
+                  v-if="revealedItems.has(`rs-${idx}`)"
+                  :href="item.resourceLink"
+                  target="_blank"
+                  class="resource-link"
+                >
+                  {{ item.resourceLink }}
+                </a>
+                <span v-else class="resource-link-masked">{{ maskContent(item.resourceLink) }}</span>
+                <div class="resource-link-actions">
+                  <el-button
+                    v-if="!revealedItems.has(`rs-${idx}`)"
+                    type="primary"
+                    size="small"
+                    @click="revealItem(`rs-${idx}`)"
+                    plain
+                    circle
+                    title="查看"
+                  >
+                    <el-icon><View /></el-icon>
+                  </el-button>
+                  <el-button
+                    v-else
+                    type="info"
+                    size="small"
+                    @click="hideItem(`rs-${idx}`)"
+                    plain
+                    circle
+                    title="隐藏"
+                  >
+                    <el-icon><Hide /></el-icon>
+                  </el-button>
+                  <el-button
+                    type="success"
+                    size="small"
+                    @click="copyToClipboard(item.resourceLink)"
+                    plain
+                    circle
+                    title="复制"
+                  >
+                    <el-icon><DocumentCopy /></el-icon>
+                  </el-button>
+                </div>
+              </div>
             </div>
             <div v-if="item.resourcePassword" class="resource-password">
               <span class="pwd-label">访问密码：</span>
-              <el-tag type="warning" effect="plain">{{ item.resourcePassword }}</el-tag>
-              <el-button size="small" text @click="copyToClipboard(item.resourcePassword)">复制</el-button>
+              <el-tag type="warning" effect="plain">{{ revealedItems.has(`rs-pwd-${idx}`) ? item.resourcePassword : '****' }}</el-tag>
+              <el-button
+                v-if="!revealedItems.has(`rs-pwd-${idx}`)"
+                type="primary"
+                size="small"
+                @click="revealItem(`rs-pwd-${idx}`)"
+                plain
+                circle
+                title="查看"
+              >
+                <el-icon><View /></el-icon>
+              </el-button>
+              <el-button
+                v-else
+                type="info"
+                size="small"
+                @click="hideItem(`rs-pwd-${idx}`)"
+                plain
+                circle
+                title="隐藏"
+              >
+                <el-icon><Hide /></el-icon>
+              </el-button>
+              <el-button
+                type="success"
+                size="small"
+                @click="copyToClipboard(item.resourcePassword)"
+                plain
+                circle
+                title="复制"
+              >
+                <el-icon><DocumentCopy /></el-icon>
+              </el-button>
             </div>
-            <div v-if="item.resourceDescription" class="item-description">{{ item.resourceDescription }}</div>
+            <div v-if="item.resourceDescription" class="item-description">
+              <span class="desc-label">资源说明：</span>{{ item.resourceDescription }}
+            </div>
             <div v-if="item.usageInstructions" class="item-instructions">
               <el-icon><InfoFilled /></el-icon>
               <span>{{ item.usageInstructions }}</span>
@@ -182,25 +306,48 @@
         <el-empty description="暂无可领取的内容" />
       </div>
 
-      <!-- 确认领取按钮 -->
-      <div v-if="showConfirmBtn" class="confirm-section">
+      <!-- 一键复制全部 -->
+      <div v-if="claimData.cardKeys.length > 0 || claimData.resources.length > 0" class="confirm-section">
         <el-button
           type="success"
           size="large"
           style="width: 100%;"
-          :loading="confirmLoading"
-          @click="confirmClaim"
+          @click="copyAll"
         >
-          <el-icon><Check /></el-icon>
-          确认已领取
+          <el-icon><DocumentCopy /></el-icon>
+          一键复制全部
         </el-button>
-        <div class="confirm-tip">点击确认后，系统将记录您的领取状态</div>
+        <div class="confirm-tip">复制所有卡密和资源链接到剪贴板</div>
       </div>
     </div>
 
-    <!-- 页脚 -->
+    <!-- 页脚（与CRM系统同步） -->
     <div class="claim-footer">
-      <span>Powered by CRM系统</span>
+      <div class="footer-content">
+        <span>{{ copyrightText || `©${new Date().getFullYear()} ${companyName || systemName} 版权所有` }}</span>
+        <span class="footer-sep">|</span>
+        <span>v{{ systemVersion }}</span>
+        <template v-if="websiteUrl">
+          <span class="footer-sep">|</span>
+          <a :href="websiteUrl" target="_blank" class="footer-link">官网</a>
+        </template>
+        <template v-if="contactPhone">
+          <span class="footer-sep">|</span>
+          <span class="footer-link">联系我们</span>
+        </template>
+        <template v-if="icpNumber">
+          <span class="footer-sep">|</span>
+          <a href="https://beian.miit.gov.cn/" target="_blank" class="footer-link">{{ icpNumber }}</a>
+        </template>
+        <template v-if="policeNumber">
+          <span class="footer-sep">|</span>
+          <a href="http://www.beian.gov.cn/" target="_blank" class="footer-link">🛡️ {{ policeNumber }}</a>
+        </template>
+        <template v-if="techSupport">
+          <span class="footer-sep">|</span>
+          <span>{{ techSupport }}</span>
+        </template>
+      </div>
     </div>
   </div>
 </template>
@@ -211,7 +358,7 @@ import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import {
   Lock, Phone, Key, Warning, CircleCheck, View, DocumentCopy,
-  InfoFilled, Check
+  InfoFilled, Hide
 } from '@element-plus/icons-vue'
 import axios from 'axios'
 
@@ -221,11 +368,22 @@ const token = computed(() => route.params.token as string)
 // 系统信息
 const systemName = ref('CRM系统')
 const systemAvatar = ref('')
+const systemLogo = ref('')
 const claimPageNotice = ref('')
+const copyrightText = ref('')
+const icpNumber = ref('')
+const policeNumber = ref('')
+const techSupport = ref('')
+const contactPhone = ref('')
+const systemVersion = ref('1.0.0')
+const websiteUrl = ref('')
+const companyName = ref('')
 
 // 登录相关
 const isLoggedIn = ref(false)
+const tokenValid = ref(true)
 const loginMethod = ref<'password' | 'sms'>('password')
+const activeLoginMethod = ref<'password' | 'sms'>('password')
 const loginLoading = ref(false)
 const loginError = ref('')
 const sessionToken = ref('')
@@ -238,6 +396,13 @@ const loginForm = reactive({
   smsCode: ''
 })
 
+// 脱敏手机号
+const maskedPhone = computed(() => {
+  const p = loginForm.phone
+  if (!p || p.length < 7) return ''
+  return p.substring(0, 3) + '****' + p.substring(p.length - 4)
+})
+
 // 领取内容
 const claimData = reactive<{
   cardKeys: any[]
@@ -247,31 +412,56 @@ const claimData = reactive<{
   resources: []
 })
 
-// 已展示的项目
-const claimedItems = ref(new Set<string>())
-const confirmLoading = ref(false)
-const confirmed = ref(false)
+// 已展示/已隐藏的项目
+const revealedItems = ref(new Set<string>())
 
-const showConfirmBtn = computed(() => {
-  return !confirmed.value && (claimData.cardKeys.length > 0 || claimData.resources.length > 0)
-})
+// 内容脱敏：显示前4位 + **** + 后4位
+const maskContent = (text: string) => {
+  if (!text) return '****'
+  if (text.length <= 8) return text.substring(0, 2) + '****'
+  return text.substring(0, 4) + '****' + text.substring(text.length - 4)
+}
+
+const revealItem = (key: string) => {
+  revealedItems.value.add(key)
+}
+
+const hideItem = (key: string) => {
+  revealedItems.value.delete(key)
+}
 
 // 初始化：预加载系统信息（公开接口，无需登录）
 onMounted(async () => {
   if (!token.value) {
     loginError.value = '领取链接无效'
+    tokenValid.value = false
     return
   }
-  // 尝试预加载设置（失败不影响）
   try {
     const res = await axios.get(`/api/v1/public/virtual-claim/info?token=${token.value}`)
     if (res.data?.data) {
       systemName.value = res.data.data.systemName || 'CRM系统'
       systemAvatar.value = res.data.data.systemAvatar || ''
+      systemLogo.value = res.data.data.systemLogo || ''
       claimPageNotice.value = res.data.data.claimPageNotice || ''
       loginMethod.value = res.data.data.loginMethod === 'sms' ? 'sms' : 'password'
+      activeLoginMethod.value = loginMethod.value
+      copyrightText.value = res.data.data.copyrightText || ''
+      icpNumber.value = res.data.data.icpNumber || ''
+      policeNumber.value = res.data.data.policeNumber || ''
+      techSupport.value = res.data.data.techSupport || ''
+      contactPhone.value = res.data.data.contactPhone || ''
+      systemVersion.value = res.data.data.systemVersion || '1.0.0'
+      websiteUrl.value = res.data.data.websiteUrl || ''
+      companyName.value = res.data.data.companyName || ''
     }
-  } catch { /* 使用默认值 */ }
+  } catch (e: any) {
+    const msg = e?.response?.data?.message
+    if (e?.response?.status === 404) {
+      loginError.value = msg || '领取链接无效或已过期'
+      tokenValid.value = false
+    }
+  }
 })
 
 // 发送短信验证码
@@ -281,7 +471,7 @@ const sendSmsCode = async () => {
     return
   }
   try {
-    await axios.post('/api/v1/public/virtual-claim/send-sms', { phone: loginForm.phone })
+    await axios.post('/api/v1/public/virtual-claim/send-sms', { phone: loginForm.phone, token: token.value })
     ElMessage.success('验证码已发送')
     smsCountdown.value = 60
     smsTimer = setInterval(() => {
@@ -301,11 +491,11 @@ const handleLogin = async () => {
     loginError.value = '请填写手机号'
     return
   }
-  if (loginMethod.value === 'sms' && !loginForm.smsCode) {
+  if (activeLoginMethod.value === 'sms' && !loginForm.smsCode) {
     loginError.value = '请填写验证码'
     return
   }
-  if (loginMethod.value === 'password' && !loginForm.password) {
+  if (activeLoginMethod.value === 'password' && !loginForm.password) {
     loginError.value = '请填写领取密码'
     return
   }
@@ -316,8 +506,8 @@ const handleLogin = async () => {
     const resp = await axios.post('/api/v1/public/virtual-claim/login', {
       token: token.value,
       phone: loginForm.phone,
-      password: loginMethod.value === 'password' ? loginForm.password : undefined,
-      smsCode: loginMethod.value === 'sms' ? loginForm.smsCode : undefined
+      password: activeLoginMethod.value === 'password' ? loginForm.password : undefined,
+      smsCode: activeLoginMethod.value === 'sms' ? loginForm.smsCode : undefined
     })
     sessionToken.value = resp.data.data.sessionToken
     isLoggedIn.value = true
@@ -342,22 +532,16 @@ const loadClaimDetail = async () => {
     claimData.cardKeys = data.cardKeys || []
     claimData.resources = data.resources || []
 
-    // 已领取的项目自动显示
-    claimData.cardKeys.forEach((item, idx) => {
-      if (item.status === 'claimed') claimedItems.value.add(`ck-${idx}`)
+    // 已领取的项目自动展示
+    claimData.cardKeys.forEach((_item, idx) => {
+      if (_item.status === 'claimed') revealedItems.value.add(`ck-${idx}`)
     })
-    claimData.resources.forEach((item, idx) => {
-      if (item.status === 'claimed') claimedItems.value.add(`rs-${idx}`)
+    claimData.resources.forEach((_item, idx) => {
+      if (_item.status === 'claimed') revealedItems.value.add(`rs-${idx}`)
     })
   } catch (e: any) {
     ElMessage.error(e?.response?.data?.message || '获取领取内容失败')
   }
-}
-
-// 显示内容并复制
-const revealAndCopy = (content: string, key: string) => {
-  claimedItems.value.add(key)
-  copyToClipboard(content)
 }
 
 // 复制到剪贴板
@@ -383,22 +567,25 @@ const fallbackCopy = (text: string) => {
   ElMessage.success('已复制到剪贴板')
 }
 
-// 确认领取
-const confirmClaim = async () => {
-  confirmLoading.value = true
-  try {
-    await axios.post('/api/v1/public/virtual-claim/confirm', {
-      sessionToken: sessionToken.value
-    })
-    confirmed.value = true
-    ElMessage.success('领取确认成功！感谢您的购买')
-    // 刷新状态
-    await loadClaimDetail()
-  } catch (e: any) {
-    ElMessage.error(e?.response?.data?.message || '确认失败')
-  } finally {
-    confirmLoading.value = false
+// 一键复制全部
+const copyAll = () => {
+  const parts: string[] = []
+  claimData.cardKeys.forEach((item) => {
+    let line = `【卡密】${item.productName || ''}: ${item.cardKey}`
+    if (item.usageInstructions) line += `\n  使用说明: ${item.usageInstructions}`
+    parts.push(line)
+  })
+  claimData.resources.forEach((item) => {
+    let line = `【资源链接】${item.productName || ''}: ${item.resourceLink}`
+    if (item.resourcePassword) line += `\n  提取码: ${item.resourcePassword}`
+    if (item.usageInstructions) line += `\n  使用说明: ${item.usageInstructions}`
+    parts.push(line)
+  })
+  if (parts.length === 0) {
+    ElMessage.warning('暂无可复制的内容')
+    return
   }
+  copyToClipboard(parts.join('\n\n'))
 }
 </script>
 
@@ -410,9 +597,36 @@ const confirmClaim = async () => {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 
+.claim-top-bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 48px;
+  background: rgba(255,255,255,0.92);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  z-index: 100;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+}
+
+.top-bar-logo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.top-bar-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: #303133;
+}
+
 .claim-header {
   text-align: center;
-  padding: 32px 0 24px;
+  padding: 60px 0 24px;
 }
 
 .claim-logo {
@@ -520,6 +734,63 @@ const confirmClaim = async () => {
   flex: 1;
 }
 
+.login-method-switch {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  margin-bottom: 16px;
+  border: 1px solid #e4e7ed;
+  border-radius: 8px;
+  overflow: hidden;
+  width: fit-content;
+}
+
+.method-tab {
+  font-size: 13px;
+  color: #909399;
+  cursor: pointer;
+  padding: 7px 16px;
+  transition: all 0.2s;
+  background: #fafafa;
+  user-select: none;
+}
+
+.method-tab + .method-tab {
+  border-left: 1px solid #e4e7ed;
+}
+
+.method-tab.active {
+  color: #409eff;
+  font-weight: 600;
+  background: #ecf5ff;
+}
+
+.method-tab:hover {
+  color: #409eff;
+  background: #f5f9ff;
+}
+
+.claim-content-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: 13px;
+  color: #606266;
+  background: #ecf5ff;
+  padding: 10px 14px;
+  border-radius: 8px;
+  margin-bottom: 12px;
+}
+
+.customer-info {
+  font-size: 13px;
+  color: #909399;
+  margin-bottom: 12px;
+  padding: 8px 14px;
+  background: #fafafa;
+  border-radius: 6px;
+}
+
 .card-key-display {
   display: flex;
   align-items: center;
@@ -538,14 +809,45 @@ const confirmClaim = async () => {
   word-break: break-all;
 }
 
+.card-key-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
 .resource-link-display {
   margin-bottom: 8px;
 }
 
+.resource-link-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #f5f7fa;
+  border-radius: 8px;
+  padding: 10px 14px;
+}
+
 .resource-link {
+  flex: 1;
   color: #409eff;
   word-break: break-all;
   font-size: 14px;
+}
+
+.resource-link-masked {
+  flex: 1;
+  font-family: monospace;
+  font-size: 14px;
+  color: #909399;
+}
+
+.resource-link-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
 }
 
 .resource-password {
@@ -564,6 +866,11 @@ const confirmClaim = async () => {
   font-size: 13px;
   color: #606266;
   margin-bottom: 8px;
+}
+
+.desc-label {
+  color: #909399;
+  font-weight: 500;
 }
 
 .item-instructions {
@@ -596,10 +903,54 @@ const confirmClaim = async () => {
 }
 
 .claim-footer {
-  text-align: center;
   margin-top: 32px;
-  font-size: 12px;
+  padding: 16px 12px;
+  text-align: center;
+}
+
+.footer-content {
   color: #c0c4cc;
+  font-size: 11px;
+  line-height: 1.2;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 3px;
+}
+
+.footer-content .footer-sep {
+  color: #dcdfe6;
+  margin: 0 5px;
+}
+
+.footer-content .footer-link {
+  color: #c0c4cc;
+  text-decoration: none;
+  transition: color 0.3s;
+}
+
+.footer-content .footer-link:hover {
+  color: #409eff;
+}
+
+@media (max-width: 480px) {
+  .claim-top-bar {
+    padding: 0 12px;
+  }
+  .top-bar-name {
+    font-size: 14px;
+  }
+  .claim-header {
+    padding: 56px 0 20px;
+  }
+  .footer-content {
+    font-size: 10px;
+    gap: 2px;
+  }
+  .footer-content .footer-sep {
+    margin: 0 3px;
+  }
 }
 </style>
 

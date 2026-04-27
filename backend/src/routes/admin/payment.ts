@@ -406,9 +406,24 @@ router.post('/config/wechat/test', async (req: Request, res: Response) => {
         // 如果有私钥，用私钥签名
         if (configData.keyPem) {
           try {
+            // 兼容处理：如果keyPem是文件路径而非PEM内容，则从磁盘读取
+            let privateKey = configData.keyPem as string
+            if (!privateKey.includes('-----BEGIN') && (privateKey.startsWith('/') || privateKey.includes('uploads'))) {
+              try {
+                const fs = await import('fs')
+                const path = await import('path')
+                const filePath = privateKey.startsWith('/')
+                  ? path.default.join(process.cwd(), 'public', privateKey)
+                  : path.default.resolve(privateKey)
+                privateKey = fs.default.readFileSync(filePath, 'utf8')
+              } catch (readErr: any) {
+                connectionMessage = `读取私钥文件失败: ${readErr.message}，请重新上传密钥文件`
+                throw readErr
+              }
+            }
             const sign = crypto.createSign('RSA-SHA256')
             sign.update(signStr)
-            const signature = sign.sign(configData.keyPem, 'base64')
+            const signature = sign.sign(privateKey, 'base64')
 
             const authorization = `WECHATPAY2-SHA256-RSA2048 mchid="${configData.mchId}",nonce_str="${nonceStr}",signature="${signature}",timestamp="${timestamp}",serial_no="${configData.serialNo || ''}"`
 
