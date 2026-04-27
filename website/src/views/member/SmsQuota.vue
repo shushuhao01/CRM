@@ -142,9 +142,6 @@
               <button class="btn-check-pay" @click="handleCheckPay" :disabled="payChecking">
                 {{ payChecking ? '查询中...' : '我已支付，查询结果' }}
               </button>
-              <button class="btn-simulate" @click="handleSimulatePay">
-                模拟支付(调试)
-              </button>
             </div>
           </div>
         </div>
@@ -305,20 +302,6 @@ const handleCheckPay = async () => {
   finally { payChecking.value = false }
 }
 
-const handleSimulatePay = async () => {
-  if (!payOrderNo.value) return
-  try {
-    const data = await apiFetch(`${API_BASE}/public/member/sms-quota/simulate-pay/${payOrderNo.value}`, { method: 'POST' })
-    if (data.code === 0) {
-      closePayDialog()
-      showToast(`模拟支付成功！已充值 ${data.data?.smsCount?.toLocaleString() || ''} 条`, 'success')
-      loadQuota()
-      loadBills()
-    } else {
-      showToast(data.message || '模拟支付失败', 'error')
-    }
-  } catch { showToast('模拟支付失败', 'error') }
-}
 
 const closePayDialog = () => {
   showPayDialog.value = false
@@ -486,10 +469,6 @@ onUnmounted(() => { if (pollTimer) clearInterval(pollTimer) })
   background: #6366f1; color: white; font-size: 14px; font-weight: 500; cursor: pointer;
 }
 .btn-check-pay:disabled { opacity: 0.5; }
-.btn-simulate {
-  padding: 6px 20px; border: 1px solid #e2e8f0; border-radius: 6px;
-  background: white; color: #64748b; font-size: 12px; cursor: pointer;
-}
 
 /* 响应式 */
 @media (max-width: 768px) {

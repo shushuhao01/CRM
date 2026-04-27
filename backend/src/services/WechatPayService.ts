@@ -103,17 +103,14 @@ export class WechatPayService {
             };
           }
         } catch (apiError: any) {
+          const errMsg = apiError.response?.data?.message || apiError.response?.data?.code || apiError.message;
           log.error('[WechatPay] API调用失败:', apiError.response?.data || apiError.message);
-          // API调用失败，返回模拟数据
+          throw new Error(`微信支付API调用失败: ${errMsg}`);
         }
       }
 
-      // 返回模拟数据（开发/测试环境）
-      log.info('[WechatPay] 使用模拟支付二维码');
-      return {
-        qrCode: `MOCK_WECHAT_${params.orderNo}`,
-        payUrl: `weixin://wxpay/bizpayurl?pr=mock_${params.orderNo}`
-      };
+      // 配置不完整（缺少V3密钥或证书序列号），抛出明确错误
+      throw new Error('微信支付V3配置不完整，请在管理后台配置API密钥(V3)和证书序列号');
     } catch (error: any) {
       log.error('[WechatPay] Create native pay failed:', error);
       throw new Error(`创建微信支付失败: ${error.message}`);

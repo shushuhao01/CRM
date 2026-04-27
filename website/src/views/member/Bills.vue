@@ -588,7 +588,6 @@ const handleCancelBill = async (bill: any) => {
 .pay-btn-group { display: flex; flex-direction: column; gap: 8px; }
 .btn-create-pay { width: 100%; padding: 12px; background: #6366f1; color: white; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; &:hover { background: #4f46e5; } }
 .btn-check-pay { width: 100%; padding: 10px; background: white; color: #6366f1; border: 1.5px solid #6366f1; border-radius: 8px; font-size: 13px; font-weight: 500; cursor: pointer; &:disabled { opacity: 0.5; } &:hover { background: #f8f7ff; } }
-.btn-mock-pay { width: 100%; padding: 8px; border: 1.5px solid #f59e0b; border-radius: 8px; background: #fffbeb; color: #d97706; cursor: pointer; font-size: 12px; }
 
 .pay-loading {
   display: flex; align-items: center; justify-content: center; gap: 8px;

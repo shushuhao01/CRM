@@ -10,15 +10,22 @@ import { aliyunSmsService } from '../../services/AliyunSmsService'
 import { adminNotificationService } from '../../services/AdminNotificationService'
 import { createDefaultAdmin } from '../../utils/adminAccountHelper'
 import { generateMemberToken } from '../../middleware/memberAuth'
+import { Tenant } from '../../entities/Tenant'
 
 import { log } from '../../config/logger';
 const router = Router()
 
-// 生成租户编码
-const generateTenantCode = (): string => {
-  const timestamp = Date.now().toString(36).toUpperCase()
-  const random = crypto.randomBytes(2).toString('hex').toUpperCase()
-  return `T${timestamp}${random}`
+// 生成租户编码（与管理后台 Tenant.generateShortCode 格式保持一致）
+// 格式: T + YYMMDD + 4位随机字符 (例如: T260427A1B2)
+const generateTenantCode = async (): Promise<string> => {
+  let code = Tenant.generateShortCode()
+  // 确保编码不重复
+  for (let i = 0; i < 10; i++) {
+    const existing = await AppDataSource.query('SELECT id FROM tenants WHERE code = ?', [code])
+    if (existing.length === 0) break
+    code = Tenant.generateShortCode()
+  }
+  return code
 }
 
 // 生成租户授权码
@@ -124,7 +131,7 @@ router.post('/', async (req: Request, res: Response) => {
 
     // 创建租户
     const tenantId = uuidv4()
-    const tenantCode = generateTenantCode()
+    const tenantCode = await generateTenantCode()
 
     // 免费套餐：直接生成授权码并激活
     // 付费套餐：不生成授权码，等支付成功后生成
@@ -209,6 +216,131 @@ router.post('/', async (req: Request, res: Response) => {
       relatedType: 'tenant',
       extraData: { companyName, contactName, phone, tenantCode, isFree }
     }).catch(err => log.error('[Register] 发送管理员通知失败:', err.message))
+
+    // 🔥 免费试用注册成功后，发送邮件和短信通知给用户（包含完整账号信息）
+    if (isFree && licenseKey) {
+      const expireDateStr = expireDate ? expireDate.toISOString().split('T')[0] : ''
+      // 异步发送，不阻塞响应
+      ;(async () => {
+        try {
+          // 发送短信通知
+          if (phone) {
+            try {
+              const dbLoaded = await aliyunSmsService.loadFromDatabase()
+              if (!dbLoaded) aliyunSmsService.loadFromEnv()
+              await aliyunSmsService.sendSms(phone, 'PAYMENT_ACTIVATION', {
+                tenantName: companyName,
+                orderNo: '免费试用',
+                amount: '0',
+                tenantCode: tenantCode,
+                licenseKey: licenseKey,
+                adminPassword: adminAccount?.password || 'Aa123456',
+                packageName: '7天免费试用',
+                expireDate: expireDateStr
+              })
+              log.info(`[Register] 注册成功短信已发送至: ${phone}`)
+            } catch (smsErr: any) {
+              log.error('[Register] 发送注册短信失败:', smsErr.message)
+            }
+          }
+
+          // 发送邮件通知
+          if (email) {
+            try {
+              const emailConfigRows = await AppDataSource.query(
+                `SELECT config_value FROM system_config WHERE config_key = 'email_settings' LIMIT 1`
+              ).catch(() => [])
+
+              let emailSettings: any = null
+              if (emailConfigRows && emailConfigRows.length > 0) {
+                const parsed = JSON.parse(emailConfigRows[0].config_value || '{}')
+                if (parsed.enabled && parsed.smtpHost && parsed.senderEmail && parsed.emailPassword) {
+                  emailSettings = parsed
+                }
+              }
+
+              if (emailSettings) {
+                const nodemailer = await import('nodemailer')
+                const { SITE_CONFIG } = await import('../../config/sites')
+
+                const transporter = nodemailer.createTransport({
+                  host: emailSettings.smtpHost,
+                  port: emailSettings.smtpPort || 465,
+                  secure: emailSettings.enableSsl !== false,
+                  auth: {
+                    user: emailSettings.senderEmail,
+                    pass: emailSettings.emailPassword
+                  }
+                })
+
+                const emailHtml = `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+<body style="margin:0;padding:0;background:#f4f5f7;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,'PingFang SC','Microsoft YaHei',sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f5f7;padding:24px 0;">
+    <tr><td align="center">
+      <table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,0.08);">
+        <tr>
+          <td style="background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);padding:28px 32px;">
+            <h2 style="margin:0;color:#fff;font-size:20px;font-weight:600;">🎉 注册成功 - 免费试用已开通</h2>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:28px 32px;">
+            <p style="font-size:15px;line-height:1.8;color:#333;margin:0 0 16px;">
+              尊敬的 <strong>${companyName}</strong>，您好！
+            </p>
+            <p style="font-size:14px;line-height:1.8;color:#333;margin:0 0 20px;">
+              您的7天免费试用账号已成功开通。以下是您的账号信息，请妥善保管：
+            </p>
+            <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8f9fa;border-radius:8px;padding:20px;margin-bottom:20px;">
+              <tr><td style="padding:8px 16px;font-size:14px;color:#606266;">套餐名称</td><td style="padding:8px 16px;font-size:14px;color:#303133;font-weight:500;">7天免费试用</td></tr>
+              <tr><td style="padding:8px 16px;font-size:14px;color:#606266;">有效期至</td><td style="padding:8px 16px;font-size:14px;color:#303133;font-weight:500;">${expireDateStr}</td></tr>
+              <tr><td colspan="2" style="padding:4px 16px;"><hr style="border:none;border-top:1px solid #e4e7ed;"></td></tr>
+              <tr><td style="padding:8px 16px;font-size:14px;color:#606266;">租户编码</td><td style="padding:8px 16px;font-size:14px;color:#e6a23c;font-weight:600;">${tenantCode}</td></tr>
+              <tr><td style="padding:8px 16px;font-size:14px;color:#606266;">授权码</td><td style="padding:8px 16px;font-size:14px;color:#e6a23c;font-weight:600;">${licenseKey}</td></tr>
+              <tr><td style="padding:8px 16px;font-size:14px;color:#606266;">管理员账号</td><td style="padding:8px 16px;font-size:14px;color:#e6a23c;font-weight:600;">${adminAccount?.username || phone}</td></tr>
+              <tr><td style="padding:8px 16px;font-size:14px;color:#606266;">管理员密码</td><td style="padding:8px 16px;font-size:14px;color:#e6a23c;font-weight:600;">${adminAccount?.password || 'Aa123456'}</td></tr>
+            </table>
+            <div style="text-align:center;margin:24px 0;">
+              <a href="${SITE_CONFIG.CRM_URL}" style="display:inline-block;padding:12px 32px;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:#fff;text-decoration:none;border-radius:6px;font-size:15px;font-weight:500;">立即登录 CRM 系统</a>
+            </div>
+            <p style="font-size:13px;line-height:1.8;color:#909399;margin:16px 0 0;">
+              ⚠️ 首次登录请使用租户编码和管理员密码登录，登录后请及时修改密码。如有疑问请联系客服。
+            </p>
+          </td>
+        </tr>
+        <tr>
+          <td style="background:#f8f9fa;padding:16px 32px;text-align:center;border-top:1px solid #eee;">
+            <p style="margin:0;color:#999;font-size:12px;line-height:1.6;">此邮件由云客CRM系统自动发送，请勿直接回复</p>
+          </td>
+        </tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`
+
+                await transporter.sendMail({
+                  from: `"${emailSettings.senderName || '云客CRM'}" <${emailSettings.senderEmail}>`,
+                  to: email,
+                  subject: `【云客CRM】注册成功 - 您的免费试用账号已开通`,
+                  html: emailHtml
+                })
+                log.info(`[Register] 注册成功邮件已发送至: ${email}`)
+              } else {
+                log.warn('[Register] 邮件配置未启用，跳过注册成功邮件通知')
+              }
+            } catch (emailErr: any) {
+              log.error('[Register] 发送注册邮件失败:', emailErr.message)
+            }
+          }
+        } catch (notifyErr: any) {
+          log.error('[Register] 发送用户通知失败:', notifyErr.message)
+        }
+      })()
+    }
   } catch (error) {
     log.error('注册失败:', error)
     res.status(500).json({ code: 500, message: '注册失败，请稍后重试' })

@@ -454,6 +454,7 @@ router.post('/config/wechat/test', async (req: Request, res: Response) => {
               headers: {
                 'Authorization': authorization,
                 'Accept': 'application/json',
+                'Accept-Language': 'zh-CN',
                 'User-Agent': 'CRM-Platform/1.0'
               }
             })

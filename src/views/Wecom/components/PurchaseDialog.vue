@@ -118,7 +118,6 @@
             <el-button type="primary" @click="checkPayStatus" :loading="checkingPay">
               <el-icon><Refresh /></el-icon> 我已完成支付
             </el-button>
-            <el-button v-if="isDev" type="success" @click="simulatePay">模拟支付（开发用）</el-button>
           </div>
         </div>
       </div>
@@ -146,7 +145,7 @@
 import { ref, computed, onUnmounted } from 'vue'
 import { Refresh } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
-import { getVasPricing, purchaseChatArchive, getVasOrderStatus, simulateVasPay } from '@/api/wecom'
+import { getVasPricing, purchaseChatArchive, getVasOrderStatus } from '@/api/wecom'
 import type { VasPricing, PurchaseResult, PresetPackage } from '../types'
 
 defineOptions({ name: 'PurchaseDialog' })
@@ -167,7 +166,6 @@ const checkingPay = ref(false)
 const vasPricing = ref<VasPricing>({})
 const purchaseForm = ref({ userCount: 5, payType: 'wechat' })
 const purchaseResult = ref<PurchaseResult>({ orderNo: '', amount: 0, packageName: '' })
-const isDev = import.meta.env.DEV
 let pollTimer: ReturnType<typeof setInterval> | null = null
 
 // 预设套餐包
@@ -268,16 +266,6 @@ const checkPayStatus = async () => {
   }
 }
 
-const simulatePay = async () => {
-  try {
-    await simulateVasPay(purchaseResult.value.orderNo)
-    purchaseStep.value = 'success'
-    if (pollTimer) clearInterval(pollTimer)
-    ElMessage.success('模拟支付成功！')
-  } catch (e: any) {
-    ElMessage.error(e?.message || '模拟支付失败')
-  }
-}
 
 const handlePurchaseComplete = () => {
   emit('update:modelValue', false)

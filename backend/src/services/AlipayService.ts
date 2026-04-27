@@ -102,17 +102,14 @@ export class AlipayService {
             }
           }
         } catch (apiError: any) {
+          const errMsg = apiError.response?.data?.sub_msg || apiError.response?.data?.msg || apiError.message;
           log.error('[Alipay] API调用失败:', apiError.response?.data || apiError.message);
-          // API调用失败，返回模拟数据
+          throw new Error(`支付宝API调用失败: ${errMsg}`);
         }
       }
 
-      // 返回模拟数据（开发/测试环境）
-      log.info('[Alipay] 使用模拟支付二维码');
-      return {
-        qrCode: `MOCK_ALIPAY_${params.orderNo}`,
-        payUrl: `https://qr.alipay.com/mock_${params.orderNo}`
-      };
+      // 配置不完整（缺少私钥或支付宝公钥），抛出明确错误
+      throw new Error('支付宝配置不完整，请在管理后台配置应用私钥和支付宝公钥');
     } catch (error: any) {
       log.error('[Alipay] Create QR pay failed:', error);
       throw new Error(`创建支付宝支付失败: ${error.message}`);

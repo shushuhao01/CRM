@@ -385,7 +385,7 @@
                     </el-button>
                   </div>
                   <div class="license-help">
-                    <span>租户编码由企业管理员提供，如 T20260XXXXX</span>
+                    <span>租户编码由企业管理员提供，如 T260427A1B2</span>
                   </div>
                 </div>
 
@@ -676,9 +676,9 @@ const handleVerify = async () => {
         return
       }
 
-      // 格式验证：租户编码应该是 T/P 开头 + 数字/字母组合
-      if (!code.match(/^[TP]\d{6,}/)) {
-        licenseError.value = '租户编码格式不正确，应为 T 或 P 开头的编码（如：T20260XXXXX）'
+      // 格式验证：租户编码应该是 T/P 开头 + 至少6位数字字母组合（如 T260427A1B2）
+      if (!code.match(/^[TP][0-9A-Za-z]{6,}/)) {
+        licenseError.value = '租户编码格式不正确，应为 T 或 P 开头的编码（如：T260427A1B2）'
         return
       }
 

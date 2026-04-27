@@ -449,15 +449,13 @@
                 </div>
 
                 <div class="qr-code-wrapper">
-                  <div v-if="signingUrl && !signingUrl.startsWith('MOCK') && !signingUrl.includes('mock_sign')" class="qr-code">
+                  <div v-if="signingUrl && signingQrDataUrl" class="qr-code">
                     <img :src="signingQrDataUrl" alt="签约二维码" />
                   </div>
-                  <div v-else class="qr-mock">
-                    <div class="mock-qr">
-                      <span>📱</span>
-                      <p>开发模式</p>
-                      <p class="mock-tip">实际部署后显示真实签约二维码</p>
-                    </div>
+                  <div v-else class="qr-error">
+                    <span>⚠️</span>
+                    <p>二维码加载失败</p>
+                    <p class="error-tip">请检查支付配置或联系客服</p>
                   </div>
                   <p class="qr-tip">请使用{{ signingChannel === 'wechat' ? '微信' : '支付宝' }}扫描二维码完成签约授权</p>
                 </div>
@@ -610,15 +608,13 @@
                 </div>
 
                 <div class="qr-code-wrapper">
-                  <div v-if="paymentOrder && paymentOrder.qrCode && !paymentOrder.qrCode.startsWith('MOCK')" class="qr-code">
+                  <div v-if="paymentOrder && paymentQrDataUrl" class="qr-code">
                     <img :src="paymentQrDataUrl" alt="支付二维码" />
                   </div>
-                  <div v-else class="qr-mock">
-                    <div class="mock-qr">
-                      <span>📱</span>
-                      <p>开发模式</p>
-                      <p class="mock-tip">实际部署后显示真实二维码</p>
-                    </div>
+                  <div v-else class="qr-error">
+                    <span>⚠️</span>
+                    <p>二维码加载失败</p>
+                    <p class="error-tip">请检查支付配置或联系客服</p>
                   </div>
                   <p class="qr-tip">请使用{{ paymentMethod === 'wechat' ? '微信' : '支付宝' }}扫描二维码完成支付</p>
                 </div>
@@ -877,15 +873,13 @@
             </div>
 
             <div class="qr-code-wrapper">
-              <div v-if="paymentOrder.qrCode && !paymentOrder.qrCode.startsWith('MOCK')" class="qr-code">
+              <div v-if="paymentQrDataUrl" class="qr-code">
                     <img :src="paymentQrDataUrl || ''" alt="支付二维码" />
               </div>
-              <div v-else class="qr-mock">
-                <div class="mock-qr">
-                  <span>📱</span>
-                  <p>开发模式</p>
-                  <p class="mock-tip">实际部署后显示真实二维码</p>
-                </div>
+              <div v-else class="qr-error">
+                <span>⚠️</span>
+                <p>二维码加载失败</p>
+                <p class="error-tip">请检查支付配置或联系客服</p>
               </div>
               <p class="qr-tip">请使用{{ paymentMethod === 'wechat' ? '微信' : '支付宝' }}扫描二维码完成支付</p>
             </div>
@@ -1511,7 +1505,10 @@ const startPaymentCheck = () => {
               plan: selectedPlan.value,
               type: planType.value,
               tenantCode: data.data.tenantCode,
-              licenseKey: data.data.licenseKey
+              licenseKey: data.data.licenseKey,
+              adminUsername: data.data.adminUsername || '',
+              adminPassword: data.data.adminPassword || '',
+              memberPwdDefault: '1'
             }
           })
         }
@@ -2621,6 +2618,36 @@ const autoRenewPlanKey = computed(() => {
     width: 160px;
     height: 160px;
     display: block;
+  }
+}
+
+.qr-error {
+  display: inline-block;
+  padding: 16px;
+  background: #fff3f3;
+  border-radius: var(--radius);
+  border: 1px solid #ffccc7;
+
+  span {
+    font-size: 36px;
+    display: block;
+    text-align: center;
+    margin-bottom: 8px;
+  }
+
+  p {
+    margin: 0;
+    text-align: center;
+    font-size: 14px;
+    color: #cf1322;
+    font-weight: 500;
+  }
+
+  .error-tip {
+    font-size: 12px;
+    color: #999;
+    margin-top: 4px;
+    font-weight: 400;
   }
 }
 

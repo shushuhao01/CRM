@@ -189,44 +189,49 @@ class PaymentService {
     return this.createAlipayOrder(orderNo, amount, description)
   }
 
-  // 创建微信支付订单 (Native支付)
+  // 创建微信支付订单 (Native支付) - 委托给 WechatPayService (V3 API)
   private async createWechatOrder(orderNo: string, amount: number, description: string): Promise<{
     qrCode?: string
     payUrl?: string
   }> {
-    if (!this.config.wechat) {
-      // 开发模式：返回模拟二维码
-      log.info('[Payment] 微信支付未配置，使用模拟模式')
-      return {
-        qrCode: this.generateMockQRCode(`weixin://wxpay/bizpayurl?pr=${orderNo}`),
-        payUrl: `weixin://wxpay/bizpayurl?pr=${orderNo}`
+    try {
+      const { WechatPayService } = await import('./WechatPayService')
+      const wechatPayService = new WechatPayService()
+      const result = await wechatPayService.createNativePay({ orderNo, amount, description })
+      return { qrCode: result.qrCode, payUrl: result.payUrl }
+    } catch (err: any) {
+      // 如果 WechatPayService 失败，尝试使用内部 V2 实现
+      if (this.config.wechat) {
+        return this.createWechatOrderV2(orderNo, amount, description)
       }
+      throw new Error(err.message || '微信支付配置不完整，请在管理后台配置微信支付')
     }
+  }
 
-    const { mchId, appId, apiKey } = this.config.wechat
+  // 微信支付 V2 内部实现（备用）
+  private async createWechatOrderV2(orderNo: string, amount: number, description: string): Promise<{
+    qrCode?: string
+    payUrl?: string
+  }> {
+    const { mchId, appId, apiKey } = this.config.wechat!
     const nonceStr = crypto.randomBytes(16).toString('hex')
     const notifyUrl = process.env.PAYMENT_NOTIFY_URL || 'https://api.example.com/api/v1/public/payment/wechat/notify'
 
-    // 构建请求参数
     const params: Record<string, string> = {
       appid: appId,
       mch_id: mchId,
       nonce_str: nonceStr,
       body: description,
       out_trade_no: orderNo,
-      total_fee: String(Math.round(amount * 100)), // 转为分
+      total_fee: String(Math.round(amount * 100)),
       spbill_create_ip: '127.0.0.1',
       notify_url: notifyUrl,
       trade_type: 'NATIVE'
     }
 
-    // 签名
     params.sign = this.signWechat(params, apiKey)
-
-    // 转XML
     const xml = this.toXml(params)
 
-    // 调用微信API
     const response = await fetch('https://api.mch.weixin.qq.com/pay/unifiedorder', {
       method: 'POST',
       headers: { 'Content-Type': 'application/xml' },
@@ -245,21 +250,31 @@ class PaymentService {
     }
   }
 
-  // 创建支付宝订单
+  // 创建支付宝订单 - 优先委托给 AlipayService
   private async createAlipayOrder(orderNo: string, amount: number, subject: string): Promise<{
     qrCode?: string
     payUrl?: string
   }> {
-    if (!this.config.alipay) {
-      // 开发模式：返回模拟二维码
-      log.info('[Payment] 支付宝未配置，使用模拟模式')
-      return {
-        qrCode: this.generateMockQRCode(`https://qr.alipay.com/${orderNo}`),
-        payUrl: `https://qr.alipay.com/${orderNo}`
+    try {
+      const { AlipayService } = await import('./AlipayService')
+      const alipayService = new AlipayService()
+      const result = await alipayService.createQRPay({ orderNo, amount, subject })
+      return { qrCode: result.qrCode, payUrl: result.payUrl }
+    } catch (err: any) {
+      // 如果 AlipayService 失败，尝试使用内部实现
+      if (this.config.alipay) {
+        return this.createAlipayOrderInternal(orderNo, amount, subject)
       }
+      throw new Error(err.message || '支付宝配置不完整，请在管理后台配置支付宝')
     }
+  }
 
-    const { appId, privateKey, signType } = this.config.alipay
+  // 支付宝内部实现（备用）
+  private async createAlipayOrderInternal(orderNo: string, amount: number, subject: string): Promise<{
+    qrCode?: string
+    payUrl?: string
+  }> {
+    const { appId, privateKey, signType } = this.config.alipay!
     const notifyUrl = process.env.PAYMENT_NOTIFY_URL_ALIPAY || 'https://api.example.com/api/v1/public/payment/alipay/notify'
     const returnUrl = process.env.PAYMENT_RETURN_URL || 'https://www.example.com/pay-success'
 
@@ -902,10 +917,6 @@ class PaymentService {
     return `data:text/plain;base64,${Buffer.from(content).toString('base64')}`
   }
 
-  // 生成模拟二维码
-  private generateMockQRCode(content: string): string {
-    return `MOCK_QR:${content}`
-  }
 }
 
 export const paymentService = new PaymentService()
