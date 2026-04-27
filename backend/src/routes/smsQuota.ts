@@ -230,6 +230,57 @@ router.get('/quota/order/:orderNo', async (req: Request, res: Response) => {
       return res.status(404).json({ success: false, message: '订单不存在' });
     }
 
+    // 🔑 兜底：订单仍为 pending 时，先查 payment_orders 是否已被回调更新
+    if (order.status === 'pending') {
+      try {
+        const payRows = await AppDataSource.query(
+          `SELECT status, pay_type, trade_no FROM payment_orders WHERE order_no = ? AND status = 'paid' LIMIT 1`,
+          [orderNo]
+        );
+        if (payRows.length > 0) {
+          // payment_orders 已 paid，同步更新 sms_quota_orders
+          order.status = 'paid';
+          order.paidAt = new Date();
+          await repo.save(order);
+          await addTenantQuota(order.tenantId ?? null, order.smsCount);
+          log.info(`[SmsQuota] 兜底：从 payment_orders 同步支付状态成功: ${orderNo}`);
+        } else {
+          // payment_orders 也没更新，主动向支付渠道查询
+          const payTypeRows = await AppDataSource.query(
+            `SELECT pay_type FROM payment_orders WHERE order_no = ? LIMIT 1`, [orderNo]
+          ).catch(() => []);
+          const payType = payTypeRows[0]?.pay_type || order.payType;
+          if (payType === 'wechat') {
+            const { wechatPayService } = await import('../services/WechatPayService');
+            const wxResult = await wechatPayService.queryOrder(orderNo);
+            if (wxResult.success && wxResult.data?.trade_state === 'SUCCESS') {
+              const { paymentService } = await import('../services/PaymentService');
+              await paymentService.updateOrderStatus(orderNo, 'paid', { tradeNo: wxResult.data.transaction_id, paidAt: new Date() });
+              order.status = 'paid';
+              order.paidAt = new Date();
+              await repo.save(order);
+              await addTenantQuota(order.tenantId ?? null, order.smsCount);
+              log.info(`[SmsQuota] 兜底：微信主动查询发现订单 ${orderNo} 已支付`);
+            }
+          } else if (payType === 'alipay') {
+            const { alipayService } = await import('../services/AlipayService');
+            const aliResult = await alipayService.queryOrder(orderNo);
+            if (aliResult.success && (aliResult.data?.trade_status === 'TRADE_SUCCESS' || aliResult.data?.trade_status === 'TRADE_FINISHED')) {
+              const { paymentService } = await import('../services/PaymentService');
+              await paymentService.updateOrderStatus(orderNo, 'paid', { tradeNo: aliResult.data.trade_no, paidAt: new Date() });
+              order.status = 'paid';
+              order.paidAt = new Date();
+              await repo.save(order);
+              await addTenantQuota(order.tenantId ?? null, order.smsCount);
+              log.info(`[SmsQuota] 兜底：支付宝主动查询发现订单 ${orderNo} 已支付`);
+            }
+          }
+        }
+      } catch (checkErr: any) {
+        log.warn('[SmsQuota] 主动查询支付状态失败（不影响正常流程）:', checkErr.message?.substring(0, 100));
+      }
+    }
+
     res.json({
       success: true,
       data: {

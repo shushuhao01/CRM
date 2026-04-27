@@ -2266,17 +2266,19 @@ const autoRenewPlanKey = computed(() => {
   }
 
   &.free-trial {
-    border-color: #f59e0b;
-    background: rgba(245, 158, 11, 0.05);
+    // 未选中时和其他套餐一样
+    border-color: var(--border);
+    background: white;
 
     &:hover {
-      border-color: #f59e0b;
-      box-shadow: 0 4px 12px rgba(245, 158, 11, 0.15);
+      border-color: var(--primary-light);
+      box-shadow: 0 4px 12px rgba(99, 102, 241, 0.15);
     }
 
     &.selected {
+      // 选中时使用淡绿色
       border-color: var(--success);
-      background: rgba(16, 185, 129, 0.12);
+      background: rgba(16, 185, 129, 0.08);
       box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.2), 0 4px 12px rgba(16, 185, 129, 0.15);
 
       &::after {

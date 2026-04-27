@@ -273,7 +273,7 @@
         </div>
       </div>
       <template #footer>
-        <el-button @click="payDialogVisible = false">取消</el-button>
+        <el-button @click="payDialogVisible = false; stopAiPayPolling()">取消</el-button>
         <el-button type="primary" @click="checkPayStatus" :loading="checkingPayStatus">我已支付</el-button>
       </template>
     </el-dialog>
@@ -283,7 +283,7 @@
 <script setup lang="ts">
 defineOptions({ name: 'WecomAiAssistant' })
 
-import { ref, computed, onMounted, watch, nextTick } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Timer, Warning } from '@element-plus/icons-vue'
 import WecomHeader from './components/WecomHeader.vue'
@@ -369,6 +369,29 @@ const payingOrder = ref<any>(null)
 const payType = ref('wechat')
 const payQrCode = ref('')
 const checkingPayStatus = ref(false)
+let aiPayPollTimer: ReturnType<typeof setInterval> | null = null
+
+const startAiPayPolling = (orderNo: string) => {
+  stopAiPayPolling()
+  aiPayPollTimer = setInterval(async () => {
+    try {
+      const res: any = await checkAiOrderStatus(orderNo)
+      const status = res?.status || res?.data?.status
+      if (status === 'paid') {
+        stopAiPayPolling()
+        ElMessage.success('支付成功！配额已增加')
+        payDialogVisible.value = false
+        fetchUsageOverview()
+        fetchOrders()
+      }
+    } catch { /* ignore */ }
+  }, 3000)
+  setTimeout(() => stopAiPayPolling(), 5 * 60 * 1000)
+}
+
+const stopAiPayPolling = () => {
+  if (aiPayPollTimer) { clearInterval(aiPayPollTimer); aiPayPollTimer = null }
+}
 
 // 检查免费套餐领取状态
 const checkFreePackageClaimed = async () => {
@@ -412,6 +435,7 @@ const handleBuyPackage = async (pkg: any) => {
       payQrCode.value = orderData?.qrCode || orderData?.payUrl || ''
       payDialogVisible.value = true
       fetchOrders()
+      if (orderData?.orderNo) startAiPayPolling(orderData.orderNo)
     }
   } catch (e: any) {
     ElMessage.error(e?.message || '购买失败')
@@ -423,7 +447,10 @@ const handleRepay = (order: any) => {
   payingOrder.value = order
   payQrCode.value = order.qrCode || order.payUrl || ''
   payDialogVisible.value = true
+  if (order.orderNo) startAiPayPolling(order.orderNo)
 }
+
+onUnmounted(() => stopAiPayPolling())
 
 const checkPayStatus = async () => {
   if (!payingOrder.value?.orderNo) {
@@ -435,6 +462,7 @@ const checkPayStatus = async () => {
     const res: any = await checkAiOrderStatus(payingOrder.value.orderNo)
     const status = res?.status || res?.data?.status
     if (status === 'paid') {
+      stopAiPayPolling()
       ElMessage.success('支付成功！配额已增加')
       payDialogVisible.value = false
       fetchUsageOverview()

@@ -121,13 +121,53 @@ router.post('/create', async (req: Request, res: Response) => {
 })
 
 // 查询订单状态（支付成功后返回授权码）
+// 🔑 兜底逻辑：如果DB中订单仍为pending，主动向微信/支付宝查询真实支付状态
 router.get('/query/:orderNo', async (req: Request, res: Response) => {
   try {
     const { orderNo } = req.params
-    const order = await paymentService.queryOrder(orderNo)
+    let order = await paymentService.queryOrder(orderNo)
 
     if (!order) {
       return res.status(404).json({ code: 404, message: '订单不存在' })
+    }
+
+    // 🔑 兜底：订单仍为 pending 时，主动向支付渠道查询真实状态（防止回调丢失/延迟）
+    if (order.status === 'pending') {
+      try {
+        if (order.pay_type === 'wechat') {
+          const { wechatPayService } = await import('../../services/WechatPayService')
+          const wxResult = await wechatPayService.queryOrder(orderNo)
+          if (wxResult.success && wxResult.data?.trade_state === 'SUCCESS') {
+            log.info(`[Payment] 主动查询发现微信订单 ${orderNo} 已支付，执行补偿更新`)
+            await paymentService.updateOrderStatus(orderNo, 'paid', {
+              tradeNo: wxResult.data.transaction_id,
+              paidAt: new Date()
+            })
+            // 重新读取已更新的订单
+            order = await paymentService.queryOrder(orderNo)
+          }
+        }
+        // 支付宝主动查询兜底
+        if (order.pay_type === 'alipay') {
+          try {
+            const { alipayService } = await import('../../services/AlipayService')
+            const aliResult = await alipayService.queryOrder(orderNo)
+            if (aliResult.success && (aliResult.data?.trade_status === 'TRADE_SUCCESS' || aliResult.data?.trade_status === 'TRADE_FINISHED')) {
+              log.info(`[Payment] 主动查询发现支付宝订单 ${orderNo} 已支付，执行补偿更新`)
+              await paymentService.updateOrderStatus(orderNo, 'paid', {
+                tradeNo: aliResult.data.trade_no,
+                paidAt: new Date()
+              })
+              // 重新读取已更新的订单
+              order = await paymentService.queryOrder(orderNo)
+            }
+          } catch (aliErr: any) {
+            log.warn('[Payment] 支付宝主动查询失败（不影响正常流程）:', aliErr.message?.substring(0, 100))
+          }
+        }
+      } catch (activeCheckErr: any) {
+        log.warn('[Payment] 主动查询支付状态失败（不影响正常流程）:', activeCheckErr.message?.substring(0, 100))
+      }
     }
 
     // 如果已支付，查询租户的授权码

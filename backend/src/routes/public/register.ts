@@ -100,9 +100,9 @@ router.post('/', async (req: Request, res: Response) => {
     }
     verificationCodes.delete(phone)
 
-    // 检查手机号是否已注册
+    // 检查手机号是否已注册（排除已软删除的租户，允许删除后重新注册）
     const existing = await AppDataSource.query(
-      'SELECT id FROM tenants WHERE phone = ?', [phone]
+      'SELECT id FROM tenants WHERE phone = ? AND deleted_at IS NULL', [phone]
     )
     if (existing && existing.length > 0) {
       return res.status(400).json({ code: 400, message: '该手机号已注册' })
@@ -227,8 +227,13 @@ router.post('/', async (req: Request, res: Response) => {
           if (phone) {
             try {
               const dbLoaded = await aliyunSmsService.loadFromDatabase()
-              if (!dbLoaded) aliyunSmsService.loadFromEnv()
-              await aliyunSmsService.sendSms(phone, 'PAYMENT_ACTIVATION', {
+              if (!dbLoaded) {
+                log.warn('[Register] 数据库无有效短信配置，尝试环境变量')
+                aliyunSmsService.loadFromEnv()
+              } else {
+                log.info('[Register] 已从数据库加载短信配置')
+              }
+              const smsParams = {
                 tenantName: companyName,
                 orderNo: '免费试用',
                 amount: '0',
@@ -237,16 +242,33 @@ router.post('/', async (req: Request, res: Response) => {
                 adminPassword: adminAccount?.password || 'Aa123456',
                 packageName: '7天免费试用',
                 expireDate: expireDateStr
-              })
-              log.info(`[Register] 注册成功短信已发送至: ${phone}`)
+              }
+              // 依次尝试: ACCOUNT_ACTIVATION → PAYMENT_ACTIVATION
+              const templateTypes = ['ACCOUNT_ACTIVATION', 'PAYMENT_ACTIVATION']
+              let smsResult: { success: boolean; message?: string } = { success: false, message: '未尝试发送' }
+              for (const templateType of templateTypes) {
+                log.info(`[Register] 尝试使用模板 ${templateType} 发送短信`)
+                smsResult = await aliyunSmsService.sendSms(phone, templateType, smsParams)
+                if (smsResult.success) {
+                  log.info(`[Register] ✅ 注册短信已通过 ${templateType} 模板发送至: ${phone}`)
+                  break
+                }
+                log.warn(`[Register] ${templateType} 发送失败: ${smsResult.message}`)
+                // 如果不是"未配置"错误则不继续尝试其他模板（可能是签名/参数/余额等问题）
+                if (!smsResult.message?.includes('未配置')) break
+              }
+              if (!smsResult.success) {
+                log.error(`[Register] 所有短信模板均失败，最后错误: ${smsResult.message}`)
+              }
             } catch (smsErr: any) {
-              log.error('[Register] 发送注册短信失败:', smsErr.message)
+              log.error('[Register] 发送注册短信异常:', smsErr.message, smsErr.stack?.substring(0, 300))
             }
           }
 
           // 发送邮件通知
           if (email) {
             try {
+              log.info(`[Register] 准备发送注册邮件至: ${email}`)
               const emailConfigRows = await AppDataSource.query(
                 `SELECT config_value FROM system_config WHERE config_key = 'email_settings' LIMIT 1`
               ).catch(() => [])
@@ -254,9 +276,19 @@ router.post('/', async (req: Request, res: Response) => {
               let emailSettings: any = null
               if (emailConfigRows && emailConfigRows.length > 0) {
                 const parsed = JSON.parse(emailConfigRows[0].config_value || '{}')
+                log.info(`[Register] 邮件配置状态: enabled=${parsed.enabled}, smtpHost=${parsed.smtpHost ? '已配置' : '未配置'}, senderEmail=${parsed.senderEmail ? '已配置' : '未配置'}, password=${parsed.emailPassword ? '已配置' : '未配置'}`)
                 if (parsed.enabled && parsed.smtpHost && parsed.senderEmail && parsed.emailPassword) {
                   emailSettings = parsed
+                } else {
+                  const missing = []
+                  if (!parsed.enabled) missing.push('enabled=false')
+                  if (!parsed.smtpHost) missing.push('smtpHost缺失')
+                  if (!parsed.senderEmail) missing.push('senderEmail缺失')
+                  if (!parsed.emailPassword) missing.push('emailPassword缺失')
+                  log.warn(`[Register] 邮件配置不完整，缺少: ${missing.join(', ')}`)
                 }
+              } else {
+                log.warn('[Register] 数据库中未找到 email_settings 配置记录')
               }
 
               if (emailSettings) {

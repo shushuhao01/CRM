@@ -426,7 +426,12 @@ const loadSmsConfig = async () => {
   try {
     const res = await request.get('/system-config/sms')
     if (res.data) {
+      // 深度合并 templates，保留前端定义的完整key列表
+      const serverTemplates = res.data.templates || {}
+      delete res.data.templates
       Object.assign(smsForm, res.data)
+      // 将服务端返回的模板值合并到前端默认模板（保留前端key结构）
+      Object.assign(smsForm.templates, serverTemplates)
     }
   } catch (e) {
     console.error('加载短信配置失败', e)

@@ -9,6 +9,54 @@ import { formatDateTime } from '../../utils/dateFormat'
 import { log } from '../../config/logger';
 const router = Router()
 
+// 短信模板key映射：旧key → 新key（兼容迁移）
+const TEMPLATE_KEY_MIGRATION: Record<string, string> = {
+  REGISTER_SUCCESS: 'ACCOUNT_ACTIVATION',
+  PAYMENT_SUCCESS: 'PAYMENT_ACTIVATION'
+}
+
+// 获取完整的默认模板列表（与 AliyunSmsService.SmsConfig.templates 对齐）
+function getDefaultTemplates(): Record<string, string> {
+  return {
+    VERIFY_CODE: '',
+    ACCOUNT_ACTIVATION: '',
+    PAYMENT_ACTIVATION: '',
+    RENEW_SUCCESS: '',
+    PACKAGE_CHANGE: '',
+    QUOTA_CHANGE: '',
+    ACCOUNT_SUSPEND: '',
+    ACCOUNT_RESUME: '',
+    ACCOUNT_CANCEL: '',
+    REFUND_SUCCESS: '',
+    EXPIRE_REMIND: '',
+    EXPIRED_NOTICE: '',
+    ADMIN_NOTIFICATION: '',
+    SUBSCRIPTION_DEDUCT_SUCCESS: '',
+    SUBSCRIPTION_DEDUCT_FAILED: '',
+    SUBSCRIPTION_ACTIVATED: '',
+    SUBSCRIPTION_CANCELLED: '',
+    SUBSCRIPTION_EXPIRED: '',
+    PASSWORD_RESET: '',
+    CAPACITY_SUCCESS: '',
+    CAPACITY_REFUND: ''
+  }
+}
+
+// 迁移旧模板key到新key，并补全缺失的key
+function migrateTemplateKeys(templates: Record<string, string>): Record<string, string> {
+  const result = { ...getDefaultTemplates() }
+  for (const [key, value] of Object.entries(templates)) {
+    const newKey = TEMPLATE_KEY_MIGRATION[key] || key
+    // 旧key的值迁移到新key（仅当新key尚未有值时）
+    if (value && !result[newKey]) {
+      result[newKey] = value
+    } else if (value) {
+      result[key] = value
+    }
+  }
+  return result
+}
+
 // 获取管理后台系统配置（需要管理员认证）
 router.get('/system-config', async (_req: Request, res: Response) => {
   try {
@@ -93,20 +141,7 @@ router.get('/system-config/sms', async (_req: Request, res: Response) => {
           accessKeySecret: data.accessKeySecret ? '******' : '',
           signName: data.signName || '',
           templateCode: data.templateCode || '', // 保留兼容旧版
-          templates: data.templates || {
-            VERIFY_CODE: '',
-            REGISTER_SUCCESS: '',
-            PAYMENT_SUCCESS: '',
-            RENEW_SUCCESS: '',
-            PACKAGE_CHANGE: '',
-            QUOTA_CHANGE: '',
-            ACCOUNT_SUSPEND: '',
-            ACCOUNT_RESUME: '',
-            ACCOUNT_CANCEL: '',
-            REFUND_SUCCESS: '',
-            EXPIRE_REMIND: '',
-            EXPIRED_NOTICE: ''
-          }
+          templates: migrateTemplateKeys(data.templates || {})
         }
       })
     } else {
@@ -118,20 +153,7 @@ router.get('/system-config/sms', async (_req: Request, res: Response) => {
           accessKeySecret: '',
           signName: '',
           templateCode: '',
-          templates: {
-            VERIFY_CODE: '',
-            REGISTER_SUCCESS: '',
-            PAYMENT_SUCCESS: '',
-            RENEW_SUCCESS: '',
-            PACKAGE_CHANGE: '',
-            QUOTA_CHANGE: '',
-            ACCOUNT_SUSPEND: '',
-            ACCOUNT_RESUME: '',
-            ACCOUNT_CANCEL: '',
-            REFUND_SUCCESS: '',
-            EXPIRE_REMIND: '',
-            EXPIRED_NOTICE: ''
-          }
+          templates: getDefaultTemplates()
         }
       })
     }
@@ -168,7 +190,7 @@ router.post('/system-config/sms', async (req: Request, res: Response) => {
 
     // 更新模板配置
     if (templates) {
-      configData.templates = templates
+      configData.templates = migrateTemplateKeys(templates)
     }
 
     const configValue = JSON.stringify(configData)

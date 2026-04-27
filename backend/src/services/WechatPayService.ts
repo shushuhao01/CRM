@@ -288,16 +288,12 @@ export class WechatPayService {
             return { code: 'SUCCESS', message: '订单已处理' };
           }
 
-          // 更新订单状态
-          await paymentService.updateOrderStatus(order.id, 'paid', {
+          // 更新订单状态（注意：updateOrderStatus 按 order_no 查询，必须传 out_trade_no 而非 order.id）
+          // updateOrderStatus 内部已包含租户激活逻辑，无需再调用 activateTenant
+          await paymentService.updateOrderStatus(out_trade_no, 'paid', {
             tradeNo: transaction_id,
             paidAt: new Date()
           });
-
-          // 激活租户并生成授权码
-          if (order.tenant_id) {
-            await this.activateTenant(order.tenant_id, order.id);
-          }
         }
       }
 
@@ -525,30 +521,49 @@ export class WechatPayService {
   }
 
   /**
-   * 查询订单状态
+   * 主动查询微信支付订单状态（V3 API）
    */
-  async queryOrder(orderNo: string): Promise<any> {
+  async queryOrder(orderNo: string): Promise<{ success: boolean; data?: any; message?: string }> {
     try {
       const config = await this.getConfig();
 
-      // TODO: 调用微信支付查询订单API
-      // const response = await axios.get(`https://api.mch.weixin.qq.com/v3/pay/transactions/out-trade-no/${orderNo}`, {
-      //   headers: {
-      //     'Authorization': this.generateAuthHeader(config, 'GET', `/v3/pay/transactions/out-trade-no/${orderNo}`)
-      //   }
-      // });
+      if (!config.mchId || !config.keyPem || !config.serialNo) {
+        return { success: false, message: '微信支付配置不完整，无法主动查询' };
+      }
 
-      return {
-        success: true,
-        data: {
-          out_trade_no: orderNo,
-          trade_state: 'SUCCESS',
-          transaction_id: 'mock_transaction_id'
+      const privateKey = await this.resolvePrivateKey(config.keyPem);
+      const urlPath = `/v3/pay/transactions/out-trade-no/${orderNo}?mchid=${config.mchId}`;
+
+      const timestamp = Math.floor(Date.now() / 1000).toString();
+      const nonce = crypto.randomBytes(16).toString('hex');
+      const signature = this.generateSignatureV3('GET', urlPath, timestamp, nonce, '', privateKey);
+
+      const response = await axios.get(
+        `https://api.mch.weixin.qq.com${urlPath}`,
+        {
+          headers: {
+            'Accept': 'application/json',
+            'Authorization': `WECHATPAY2-SHA256-RSA2048 mchid="${config.mchId}",nonce_str="${nonce}",signature="${signature}",timestamp="${timestamp}",serial_no="${config.serialNo}"`
+          },
+          timeout: 10000
         }
-      };
+      );
+
+      if (response.data) {
+        return {
+          success: true,
+          data: {
+            out_trade_no: response.data.out_trade_no || orderNo,
+            trade_state: response.data.trade_state,
+            transaction_id: response.data.transaction_id
+          }
+        };
+      }
+      return { success: false, message: '微信支付API返回数据异常' };
     } catch (error: any) {
-      log.error('[WechatPay] Query order failed:', error);
-      throw new Error('查询订单失败');
+      const errMsg = error.response?.data?.message || error.message;
+      log.error('[WechatPay] Query order failed:', error.response?.data || error.message);
+      return { success: false, message: errMsg };
     }
   }
 }

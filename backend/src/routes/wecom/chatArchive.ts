@@ -8,7 +8,6 @@ import { AppDataSource } from '../../config/database';
 import { getTenantRepo } from '../../utils/tenantRepo';
 import { WecomConfig } from '../../entities/WecomConfig';
 import { WecomCustomer } from '../../entities/WecomCustomer';
-import { WecomAcquisitionLink } from '../../entities/WecomAcquisitionLink';
 import { WecomChatRecord } from '../../entities/WecomChatRecord';
 import WecomApiService from '../../services/WecomApiService';
 import { log } from '../../config/logger';
@@ -338,6 +337,33 @@ router.get('/chat-archive/order/:orderNo', authenticateToken, async (req: Reques
     const rows = await AppDataSource.query(`SELECT id, order_no, amount, status, pay_type, paid_at, package_name FROM payment_orders WHERE order_no = ? AND tenant_id = ? LIMIT 1`, [orderNo, tenantId]);
     if (rows.length === 0) return res.status(404).json({ success: false, message: '订单不存在' });
     const order = rows[0];
+
+    // 🔑 兜底：订单仍为 pending 时，主动向支付渠道查询真实状态
+    if (order.status === 'pending') {
+      try {
+        const { paymentService } = await import('../../services/PaymentService');
+        if (order.pay_type === 'wechat') {
+          const { wechatPayService } = await import('../../services/WechatPayService');
+          const wxResult = await wechatPayService.queryOrder(orderNo);
+          if (wxResult.success && wxResult.data?.trade_state === 'SUCCESS') {
+            log.info(`[Wecom VAS] 主动查询发现微信订单 ${orderNo} 已支付，执行补偿更新`);
+            await paymentService.updateOrderStatus(orderNo, 'paid', { tradeNo: wxResult.data.transaction_id, paidAt: new Date() });
+            order.status = 'paid';
+          }
+        } else if (order.pay_type === 'alipay') {
+          const { alipayService } = await import('../../services/AlipayService');
+          const aliResult = await alipayService.queryOrder(orderNo);
+          if (aliResult.success && (aliResult.data?.trade_status === 'TRADE_SUCCESS' || aliResult.data?.trade_status === 'TRADE_FINISHED')) {
+            log.info(`[Wecom VAS] 主动查询发现支付宝订单 ${orderNo} 已支付，执行补偿更新`);
+            await paymentService.updateOrderStatus(orderNo, 'paid', { tradeNo: aliResult.data.trade_no, paidAt: new Date() });
+            order.status = 'paid';
+          }
+        }
+      } catch (checkErr: any) {
+        log.warn('[Wecom VAS] 主动查询支付状态失败（不影响正常流程）:', checkErr.message?.substring(0, 100));
+      }
+    }
+
     if (order.status === 'paid') {
       await AppDataSource.query('UPDATE tenants SET wecom_chat_archive_auth = 1 WHERE id = ?', [tenantId]).catch(() => {});
       await AppDataSource.query("UPDATE wecom_archive_settings SET status = 'active', expire_date = DATE_ADD(NOW(), INTERVAL 1 YEAR) WHERE tenant_id = ?", [tenantId]).catch(() => {});

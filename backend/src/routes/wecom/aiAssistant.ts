@@ -441,7 +441,7 @@ router.post('/ai/tag-rules', authenticateToken, async (req: Request, res: Respon
     const { TenantSettings } = await import('../../entities/TenantSettings');
     const repo = AppDataSource.getRepository(TenantSettings);
     let setting = await repo.findOne({ where: { tenantId, settingKey: 'wecom_ai_tag_rules' } });
-    let rules: any[] = setting ? (Array.isArray(setting.getValue()) ? setting.getValue() : []) : [];
+    const rules: any[] = setting ? (Array.isArray(setting.getValue()) ? setting.getValue() : []) : [];
     const newRule = {
       id: Date.now(),
       ...req.body,
@@ -484,7 +484,7 @@ router.put('/ai/tag-rules/:id', authenticateToken, async (req: Request, res: Res
     const repo = AppDataSource.getRepository(TenantSettings);
     const setting = await repo.findOne({ where: { tenantId, settingKey: 'wecom_ai_tag_rules' } });
     if (!setting) return res.status(404).json({ success: false, message: '规则不存在' });
-    let rules: any[] = Array.isArray(setting.getValue()) ? setting.getValue() : [];
+    const rules: any[] = Array.isArray(setting.getValue()) ? setting.getValue() : [];
     const id = parseInt(req.params.id);
     const idx = rules.findIndex((r: any) => r.id === id);
     if (idx === -1) return res.status(404).json({ success: false, message: '规则不存在' });
@@ -747,7 +747,7 @@ router.get('/ai/packages', authenticateToken, async (req: Request, res: Response
     // 次选：从 TenantSettings 读取
     const { TenantSettings } = await import('../../entities/TenantSettings');
     const repo = AppDataSource.getRepository(TenantSettings);
-    let setting = await repo.findOne({ where: { settingKey: 'ai_packages_global' } });
+    const setting = await repo.findOne({ where: { settingKey: 'ai_packages_global' } });
     if (setting) {
       const packages = setting.getValue();
       if (Array.isArray(packages) && packages.length > 0) {
@@ -808,7 +808,7 @@ router.post('/ai/orders', authenticateToken, async (req: Request, res: Response)
       const repo = AppDataSource.getRepository(TenantSettings);
       // 记录订单
       let orderSetting = await repo.findOne({ where: { tenantId, settingKey: 'ai_orders' } });
-      let orders: any[] = orderSetting ? (Array.isArray(orderSetting.getValue()) ? orderSetting.getValue() : []) : [];
+      const orders: any[] = orderSetting ? (Array.isArray(orderSetting.getValue()) ? orderSetting.getValue() : []) : [];
       const newOrder = {
         id: Date.now(), orderNo, packageId, packageName, calls, price: 0,
         status: 'paid', payType: 'free', createdAt: new Date().toISOString(),
@@ -910,7 +910,7 @@ router.post('/ai/orders', authenticateToken, async (req: Request, res: Response)
     const { TenantSettings } = await import('../../entities/TenantSettings');
     const repo = AppDataSource.getRepository(TenantSettings);
     let orderSetting = await repo.findOne({ where: { tenantId, settingKey: 'ai_orders' } });
-    let orders: any[] = orderSetting ? (Array.isArray(orderSetting.getValue()) ? orderSetting.getValue() : []) : [];
+    const orders: any[] = orderSetting ? (Array.isArray(orderSetting.getValue()) ? orderSetting.getValue() : []) : [];
     const newOrder = {
       id: Date.now(), orderNo, packageId, packageName, calls, price,
       status: 'pending', payType, qrCode, payUrl,
@@ -947,13 +947,38 @@ router.get('/ai/orders/:orderNo/status', authenticateToken, async (req: Request,
 
     // 先查 payment_orders 表
     let status = 'pending';
+    let payType = '';
     try {
       const [row] = await AppDataSource.query(
-        `SELECT status FROM payment_orders WHERE order_no = ? AND tenant_id = ?`,
+        `SELECT status, pay_type FROM payment_orders WHERE order_no = ? AND tenant_id = ?`,
         [orderNo, tenantId]
       );
-      if (row) status = row.status;
+      if (row) { status = row.status; payType = row.pay_type || ''; }
     } catch { /* table may not exist */ }
+
+    // 🔑 兜底：订单仍为 pending 时，主动向支付渠道查询真实状态
+    if (status === 'pending' && payType) {
+      try {
+        const { paymentService } = await import('../../services/PaymentService');
+        if (payType === 'wechat') {
+          const { wechatPayService } = await import('../../services/WechatPayService');
+          const wxResult = await wechatPayService.queryOrder(orderNo);
+          if (wxResult.success && wxResult.data?.trade_state === 'SUCCESS') {
+            await paymentService.updateOrderStatus(orderNo, 'paid', { tradeNo: wxResult.data.transaction_id, paidAt: new Date() });
+            status = 'paid';
+          }
+        } else if (payType === 'alipay') {
+          const { alipayService } = await import('../../services/AlipayService');
+          const aliResult = await alipayService.queryOrder(orderNo);
+          if (aliResult.success && (aliResult.data?.trade_status === 'TRADE_SUCCESS' || aliResult.data?.trade_status === 'TRADE_FINISHED')) {
+            await paymentService.updateOrderStatus(orderNo, 'paid', { tradeNo: aliResult.data.trade_no, paidAt: new Date() });
+            status = 'paid';
+          }
+        }
+      } catch (checkErr: any) {
+        console.warn('[AI Order] 主动查询支付状态失败:', checkErr.message?.substring(0, 100));
+      }
+    }
 
     // 如果已支付，更新 TenantSettings 中的订单状态并增加配额
     if (status === 'paid') {

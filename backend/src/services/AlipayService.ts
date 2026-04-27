@@ -184,16 +184,12 @@ export class AlipayService {
             return 'success';
           }
 
-          // 更新订单状态
-          await paymentService.updateOrderStatus(order.id, 'paid', {
+          // 更新订单状态（注意：updateOrderStatus 按 order_no 查询，必须传 out_trade_no 而非 order.id）
+          // updateOrderStatus 内部已包含租户激活逻辑，无需再调用 activateTenant
+          await paymentService.updateOrderStatus(out_trade_no, 'paid', {
             tradeNo: trade_no,
             paidAt: new Date()
           });
-
-          // 激活租户并生成授权码
-          if (order.tenant_id) {
-            await this.activateTenant(order.tenant_id, order.id);
-          }
         }
       }
 
@@ -421,34 +417,56 @@ export class AlipayService {
   }
 
   /**
-   * 查询订单状态
+   * 主动查询支付宝订单状态（alipay.trade.query）
    */
-  async queryOrder(orderNo: string): Promise<any> {
+  async queryOrder(orderNo: string): Promise<{ success: boolean; data?: any; message?: string }> {
     try {
       const config = await this.getConfig();
 
-      // TODO: 调用支付宝查询订单API
-      // const params = {
-      //   app_id: config.appId,
-      //   method: 'alipay.trade.query',
-      //   charset: 'utf-8',
-      //   sign_type: config.signType,
-      //   timestamp: new Date().toISOString(),
-      //   version: '1.0',
-      //   biz_content: JSON.stringify({ out_trade_no: orderNo })
-      // };
+      if (!config.appId || !config.privateKey) {
+        return { success: false, message: '支付宝配置不完整，无法主动查询' };
+      }
 
-      return {
-        success: true,
-        data: {
-          out_trade_no: orderNo,
-          trade_status: 'TRADE_SUCCESS',
-          trade_no: 'mock_trade_no'
-        }
+      const bizContent = JSON.stringify({ out_trade_no: orderNo });
+
+      const commonParams: Record<string, string> = {
+        app_id: config.appId,
+        method: 'alipay.trade.query',
+        charset: 'utf-8',
+        sign_type: config.signType || 'RSA2',
+        timestamp: formatDateTime(new Date()),
+        version: '1.0',
+        biz_content: bizContent
       };
+
+      const sign = this.generateSign(commonParams, config.privateKey);
+      const requestParams = { ...commonParams, sign };
+
+      const gatewayUrl = config.gatewayUrl || 'https://openapi.alipay.com/gateway.do';
+      const response = await axios.post(gatewayUrl, null, {
+        params: requestParams,
+        timeout: 10000
+      });
+
+      if (response.data?.alipay_trade_query_response) {
+        const result = response.data.alipay_trade_query_response;
+        if (result.code === '10000') {
+          return {
+            success: true,
+            data: {
+              out_trade_no: result.out_trade_no || orderNo,
+              trade_status: result.trade_status,
+              trade_no: result.trade_no
+            }
+          };
+        }
+        return { success: false, message: result.sub_msg || result.msg || '查询失败' };
+      }
+      return { success: false, message: '支付宝API返回数据异常' };
     } catch (error: any) {
-      log.error('[Alipay] Query order failed:', error);
-      throw new Error('查询订单失败');
+      const errMsg = error.response?.data?.alipay_trade_query_response?.sub_msg || error.message;
+      log.error('[Alipay] Query order failed:', error.response?.data || error.message);
+      return { success: false, message: errMsg };
     }
   }
 

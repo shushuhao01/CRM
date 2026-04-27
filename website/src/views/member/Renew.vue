@@ -83,11 +83,11 @@
         </div>
 
         <!-- 升级支付弹窗 -->
-        <div v-if="showPayDialog" class="pay-overlay" @click.self="showPayDialog = false">
+        <div v-if="showPayDialog" class="pay-overlay" @click.self="showPayDialog = false; stopPayPolling()">
           <div class="pay-dialog">
             <div class="pay-dialog-header">
               <h3>{{ isCurrentPlan ? '续费' : '升级' }} — {{ upgradePkg?.name }}</h3>
-              <button class="pay-close" @click="showPayDialog = false">&times;</button>
+              <button class="pay-close" @click="showPayDialog = false; stopPayPolling()">&times;</button>
             </div>
             <div class="pay-dialog-body">
               <!-- 左侧：支付信息 -->
@@ -163,7 +163,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { getMemberProfile } from '@/api/member'
 import { getPackages, type Package, getYearlyTotal, getYearlySaving } from '@/api/packages'
 import { getMemberToken } from '@/api/member'
@@ -192,6 +192,7 @@ const checkingPay = ref(false)
 const upgradeSuccess = ref(false)
 const newLicenseKey = ref('')
 const payAmount = ref('')
+let pollTimer: ReturnType<typeof setInterval> | null = null
 
 onMounted(async () => {
   try {
@@ -230,7 +231,7 @@ const getDisplayPrice = (pkg: Package): string => {
 }
 
 /** 获取价格单位 */
-const getPriceUnit = (pkg: Package): string => {
+const getPriceUnit = (_pkg: Package): string => {
   if (planTab.value === 'private') {
     return privateBillingMode.value === 'annual' ? '/年' : ''
   }
@@ -345,8 +346,11 @@ const handlePay = async () => {
       payNoConfig.value = false
       if (data.data.qrCode && data.data.qrCode.startsWith('data:')) {
         payQrCode.value = data.data.qrCode
+        startPayPolling()
       } else if (data.data.payUrl || data.data.qrCode) {
         payQrCode.value = await generateQRCodeDataUrl(data.data.payUrl || data.data.qrCode)
+        // 生成二维码后启动轮询
+        startPayPolling()
       } else {
         payNoConfig.value = true
         return
@@ -361,6 +365,30 @@ const handlePay = async () => {
   }
 }
 
+/** 启动轮询检测支付结果 */
+const startPayPolling = () => {
+  stopPayPolling()
+  pollTimer = setInterval(async () => {
+    if (!payOrderNo.value) return
+    try {
+      const res = await fetch(`${API_BASE}/public/payment/query/${payOrderNo.value}`)
+      const data = await res.json()
+      if (data.code === 0 && data.data?.status === 'paid') {
+        stopPayPolling()
+        newLicenseKey.value = data.data.licenseKey || ''
+        showPayDialog.value = false
+        upgradeSuccess.value = true
+      }
+    } catch { /* 忽略轮询错误 */ }
+  }, 3000)
+  // 5分钟后自动停止轮询
+  setTimeout(() => stopPayPolling(), 5 * 60 * 1000)
+}
+
+const stopPayPolling = () => {
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null }
+}
+
 /** 查询支付状态 */
 const checkPayStatus = async () => {
   if (!payOrderNo.value) return
@@ -369,6 +397,7 @@ const checkPayStatus = async () => {
     const res = await fetch(`${API_BASE}/public/payment/query/${payOrderNo.value}`)
     const data = await res.json()
     if (data.code === 0 && data.data?.status === 'paid') {
+      stopPayPolling()
       newLicenseKey.value = data.data.licenseKey || ''
       showPayDialog.value = false
       upgradeSuccess.value = true
@@ -380,6 +409,8 @@ const checkPayStatus = async () => {
   }
 }
 
+
+onUnmounted(() => stopPayPolling())
 
 /** 升级完成 → 刷新页面 */
 const handleUpgradeComplete = () => {

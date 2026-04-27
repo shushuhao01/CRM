@@ -63,15 +63,27 @@ class AliyunSmsService {
       if (result && result.length > 0) {
         const data = JSON.parse(result[0].config_value || '{}')
         if (data.enabled && data.accessKeyId && data.accessKeySecret) {
+          // 兼容迁移：将旧模板key映射到新key
+          const templates = data.templates || {}
+          if (templates.REGISTER_SUCCESS && !templates.ACCOUNT_ACTIVATION) {
+            templates.ACCOUNT_ACTIVATION = templates.REGISTER_SUCCESS
+          }
+          if (templates.PAYMENT_SUCCESS && !templates.PAYMENT_ACTIVATION) {
+            templates.PAYMENT_ACTIVATION = templates.PAYMENT_SUCCESS
+          }
           this.config = {
             accessKeyId: data.accessKeyId,
             accessKeySecret: data.accessKeySecret,
             signName: data.signName,
             templateCode: data.templateCode, // 保留兼容旧版
-            templates: data.templates || {}
+            templates
           }
+          log.info(`[SMS] 数据库配置已加载: signName=${data.signName}, 模板数=${Object.keys(templates).filter(k => templates[k]).length}`)
           return true
         }
+        log.warn(`[SMS] 数据库有sms_config记录但配置不完整: enabled=${data.enabled}, hasAK=${!!data.accessKeyId}, hasSK=${!!data.accessKeySecret}`)
+      } else {
+        log.warn('[SMS] 数据库中未找到 sms_config 配置记录')
       }
       return false
     } catch (error) {
