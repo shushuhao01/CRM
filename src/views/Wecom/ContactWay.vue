@@ -127,8 +127,8 @@
           <ContactWayChannel :config-id="selectedConfigId" />
         </el-tab-pane>
 
-        <!-- Tab 4: 标签管理 -->
-        <el-tab-pane label="标签管理" name="tags">
+        <!-- Tab 4: 标签管理（仅管理员可见） -->
+        <el-tab-pane v-if="isAdminRole" label="标签管理" name="tags">
           <AcquisitionTagManager
             :tag-groups="tagGroups"
             :loading="tagLoading"
@@ -200,6 +200,7 @@
 defineOptions({ name: 'WecomContactWay' })
 
 import { ref, computed, onMounted } from 'vue'
+import { useUserStore } from '@/stores/user'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, ArrowDown, Download, Cellphone } from '@element-plus/icons-vue'
 import WecomHeader from './components/WecomHeader.vue'
@@ -214,6 +215,10 @@ import {
   getContactWayList, createContactWay, updateContactWay,
   deleteContactWay, syncContactWayList, batchUpdateContactWay, batchDeleteContactWay
 } from '@/api/wecomContactWay'
+
+// 当前用户角色判断
+const userStore = useUserStore()
+const isAdminRole = computed(() => ['super_admin', 'admin'].includes(userStore.currentUser?.role || ''))
 
 const selectedConfigId = ref<number | null>(null)
 const configList = ref<any[]>([])

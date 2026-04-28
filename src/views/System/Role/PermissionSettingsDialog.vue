@@ -23,7 +23,7 @@
               :data="permissionTree"
               :props="treeProps"
               show-checkbox
-              node-key="id"
+              node-key="code"
               :default-checked-keys="checkedPermissions"
               :check-strictly="true"
               @check="handlePermissionCheck"
@@ -47,27 +47,66 @@
         <!-- 数据设置标签页 -->
         <el-tab-pane label="数据设置" name="dataScope">
           <div class="data-scope-setting">
-            <div class="scope-title">数据范围</div>
-            <el-radio-group v-model="currentRoleDataScope" @change="handleDataScopeChange" class="scope-radio-group">
-              <div class="scope-item">
-                <el-radio label="all">
-                  <span class="scope-label">全部数据</span>
-                  <span class="scope-tip">可查看系统中所有数据，适用于管理员角色</span>
-                </el-radio>
+            <div class="scope-header">
+              <span class="scope-title">数据范围</span>
+              <span class="scope-subtitle">设置该角色可访问的数据范围</span>
+            </div>
+            <div class="scope-cards">
+              <div
+                class="scope-card"
+                :class="{ 'scope-card--active': currentRoleDataScope === 'all' }"
+                @click="handleDataScopeChange('all')"
+              >
+                <div class="scope-card__radio">
+                  <el-radio v-model="currentRoleDataScope" label="all" />
+                </div>
+                <div class="scope-card__content">
+                  <div class="scope-card__icon">
+                    <el-icon :size="24" color="#409EFF"><Connection /></el-icon>
+                  </div>
+                  <div class="scope-card__text">
+                    <div class="scope-card__label">全部数据</div>
+                    <div class="scope-card__desc">可查看系统中所有数据，适用于管理员角色</div>
+                  </div>
+                </div>
               </div>
-              <div class="scope-item">
-                <el-radio label="department">
-                  <span class="scope-label">部门数据</span>
-                  <span class="scope-tip">仅可查看本部门及下属部门的数据，适用于部门经理</span>
-                </el-radio>
+              <div
+                class="scope-card"
+                :class="{ 'scope-card--active': currentRoleDataScope === 'department' }"
+                @click="handleDataScopeChange('department')"
+              >
+                <div class="scope-card__radio">
+                  <el-radio v-model="currentRoleDataScope" label="department" />
+                </div>
+                <div class="scope-card__content">
+                  <div class="scope-card__icon">
+                    <el-icon :size="24" color="#E6A23C"><OfficeBuilding /></el-icon>
+                  </div>
+                  <div class="scope-card__text">
+                    <div class="scope-card__label">部门数据</div>
+                    <div class="scope-card__desc">仅可查看本部门及下属部门的数据，适用于部门经理</div>
+                  </div>
+                </div>
               </div>
-              <div class="scope-item">
-                <el-radio label="self">
-                  <span class="scope-label">个人数据</span>
-                  <span class="scope-tip">仅可查看自己创建的数据，适用于普通员工</span>
-                </el-radio>
+              <div
+                class="scope-card"
+                :class="{ 'scope-card--active': currentRoleDataScope === 'self' }"
+                @click="handleDataScopeChange('self')"
+              >
+                <div class="scope-card__radio">
+                  <el-radio v-model="currentRoleDataScope" label="self" />
+                </div>
+                <div class="scope-card__content">
+                  <div class="scope-card__icon">
+                    <el-icon :size="24" color="#67C23A"><User /></el-icon>
+                  </div>
+                  <div class="scope-card__text">
+                    <div class="scope-card__label">个人数据</div>
+                    <div class="scope-card__desc">仅可查看自己创建的数据，适用于普通员工</div>
+                  </div>
+                </div>
               </div>
-            </el-radio-group>
+            </div>
           </div>
         </el-tab-pane>
       </el-tabs>
@@ -185,14 +224,17 @@
 <script setup lang="ts">
 import { ref, reactive, watch, nextTick } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Expand, Fold } from '@element-plus/icons-vue'
+import { Plus, Expand, Fold, Connection, OfficeBuilding, User as UserIcon } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
-// @ts-ignore
+// @ts-expect-error - permissionService 本地兼容层
 import permissionService from '@/services/permissionService'
+import { permissionApiService } from '@/services/permissionApiService'
 import { roleApiService } from '@/services/roleApiService'
 import { getDefaultRolePermissions } from '@/config/defaultRolePermissions'
-// @ts-ignore - 本地数据文件
+// @ts-expect-error - 本地数据文件
 import { FALLBACK_PERMISSION_TREE, FALLBACK_ALL_PERMISSIONS } from './permissionFallbackData'
+
+const User = UserIcon
 
 interface PermissionData {
   id: string
@@ -279,12 +321,23 @@ watch(manageDialogVisible, (val) => {
 // ========== 加载权限树 ==========
 const loadPermissionTree = async () => {
   try {
-    const allPermissions = permissionService.getAllPermissions()
-    permissionTree.value = allPermissions
-    console.log('权限树加载成功')
+    // 优先从后端API加载权限树（数据库驱动）
+    const apiPermissions = await permissionApiService.getPermissionTree()
+    if (apiPermissions && apiPermissions.length > 0) {
+      permissionTree.value = apiPermissions
+      console.log('[权限树] 从API加载成功，数量:', apiPermissions.length)
+    } else {
+      // API返回空数据，降级使用本地硬编码数据
+      console.warn('[权限树] API返回空数据，使用本地数据')
+      permissionTree.value = permissionService.getAllPermissions()
+    }
   } catch (error) {
-    console.error('加载权限树失败:', error)
-    permissionTree.value = FALLBACK_PERMISSION_TREE
+    console.error('[权限树] API加载失败，降级使用本地数据:', error)
+    try {
+      permissionTree.value = permissionService.getAllPermissions()
+    } catch (_e) {
+      permissionTree.value = FALLBACK_PERMISSION_TREE
+    }
   } finally {
     permissionTreeSelect.value = buildTreeSelect(permissionTree.value)
   }
@@ -292,11 +345,19 @@ const loadPermissionTree = async () => {
 
 const loadAllPermissions = async () => {
   try {
-    const permissions = permissionService.getAllPermissions()
-    allPermissionsList.value = permissions
+    const apiPermissions = await permissionApiService.getPermissionTree()
+    if (apiPermissions && apiPermissions.length > 0) {
+      allPermissionsList.value = apiPermissions
+    } else {
+      allPermissionsList.value = permissionService.getAllPermissions()
+    }
   } catch (error) {
     console.error('加载所有权限失败:', error)
-    allPermissionsList.value = FALLBACK_ALL_PERMISSIONS
+    try {
+      allPermissionsList.value = permissionService.getAllPermissions()
+    } catch (_e) {
+      allPermissionsList.value = FALLBACK_ALL_PERMISSIONS
+    }
     permissionTreeSelect.value = buildTreeSelect(allPermissionsList.value)
   }
 }
@@ -343,17 +404,17 @@ const openPermissionSettings = async (role: any) => {
   }
 
   // 收集所有权限树节点ID
-  const allTreeNodeIds = new Set<string>()
-  const collectNodeIds = (nodes: any[]) => {
+  const allTreeNodeCodes = new Set<string>()
+  const collectNodeCodes = (nodes: any[]) => {
     nodes.forEach(node => {
-      allTreeNodeIds.add(node.id)
-      if (node.children?.length) collectNodeIds(node.children)
+      allTreeNodeCodes.add(node.code || node.id)
+      if (node.children?.length) collectNodeCodes(node.children)
     })
   }
-  collectNodeIds(permissionTree.value)
+  collectNodeCodes(permissionTree.value)
 
-  // 过滤出存在于权限树中的有效权限ID
-  const validPermissions = rolePermissions.filter(permId => allTreeNodeIds.has(permId))
+  // 过滤出存在于权限树中的有效权限code
+  const validPermissions = rolePermissions.filter(permId => allTreeNodeCodes.has(permId))
   console.log('[角色权限] 有效权限数量:', validPermissions.length, '/', rolePermissions.length)
 
   if (validPermissions.length === 0) {
@@ -390,10 +451,10 @@ const openPermissionSettings = async (role: any) => {
 
 const handlePermissionCheck = (data: any, checked: any) => {
   if (!permissionTreeRef.value) return
-  const isChecked = checked.checkedKeys.includes(data.id)
+  const isChecked = checked.checkedKeys.includes(data.code || data.id)
 
   const toggleChildren = (nodeData: any, check: boolean) => {
-    permissionTreeRef.value?.setChecked(nodeData.id, check, false)
+    permissionTreeRef.value?.setChecked(nodeData.code || nodeData.id, check, false)
     if (nodeData.children?.length) {
       nodeData.children.forEach((child: any) => toggleChildren(child, check))
     }
@@ -408,7 +469,7 @@ const confirmPermissions = async () => {
     const halfCheckedKeys = permissionTreeRef.value?.getHalfCheckedKeys() as string[]
 
     // 过滤掉半选的模块级key
-    const moduleTopKeys = (permissionTree.value || []).map((m: any) => m.id)
+    const moduleTopKeys = (permissionTree.value || []).map((m: any) => m.code || m.id)
     const filteredHalfChecked = (halfCheckedKeys || []).filter(
       (key: string) => !moduleTopKeys.includes(key)
     )
@@ -492,7 +553,7 @@ const handleDataScopeChange = (value: 'all' | 'department' | 'self') => {
 
 // ========== 权限管理 ==========
 const getPermissionTypeColor = (type: string) => {
-  const colors: Record<string, string> = { menu: 'primary', button: 'success', api: 'warning' }
+  const colors: Record<string, string> = { menu: 'primary', button: 'success', api: 'warning', tab: 'info', action: 'success' }
   return colors[type] || ''
 }
 
@@ -501,7 +562,7 @@ const handleExpandAll = () => {
     const allKeys: string[] = []
     const collectKeys = (nodes: any[]) => {
       nodes.forEach(node => {
-        allKeys.push(node.id)
+        allKeys.push(node.code || node.id)
         if (node.children) collectKeys(node.children)
       })
     }
@@ -585,17 +646,24 @@ defineExpose({
 .manage-header { display: flex; gap: 12px; }
 .dialog-footer { display: flex; justify-content: flex-end; gap: 12px; }
 
-.data-scope-setting { padding: 16px 0; }
-.data-scope-setting .scope-title { font-size: 14px; font-weight: 500; color: #303133; margin-bottom: 16px; }
-.data-scope-setting .scope-radio-group { display: flex; flex-direction: column; width: 100%; }
-.data-scope-setting .scope-item { padding: 12px 0; border-bottom: 1px solid #f0f0f0; }
-.data-scope-setting .scope-item:last-child { border-bottom: none; }
-.data-scope-setting .scope-item .el-radio { display: flex; align-items: flex-start; height: auto; white-space: normal; margin-right: 0; width: 100%; }
-.data-scope-setting .scope-item :deep(.el-radio__input) { margin-top: 2px; }
-.data-scope-setting .scope-item :deep(.el-radio__label) { display: flex; flex-direction: column; padding-left: 8px; flex: 1; }
-.data-scope-setting .scope-label { font-size: 14px; font-weight: 500; color: #303133; line-height: 1.5; }
-.data-scope-setting .scope-tip { font-size: 12px; color: #909399; margin-top: 4px; line-height: 1.5; }
-.data-scope-setting .scope-item:hover { background-color: #f5f7fa; }
+.data-scope-setting { padding: 20px 0; }
+.scope-header { margin-bottom: 20px; }
+.scope-header .scope-title { font-size: 16px; font-weight: 600; color: #303133; }
+.scope-header .scope-subtitle { display: block; font-size: 13px; color: #909399; margin-top: 4px; }
+.scope-cards { display: flex; flex-direction: column; gap: 12px; }
+.scope-card { display: flex; align-items: center; padding: 16px 20px; border: 1px solid #e4e7ed; border-radius: 8px; cursor: pointer; transition: all 0.2s ease; background: #fff; }
+.scope-card:hover { border-color: #c0c4cc; background: #fafafa; }
+.scope-card--active { border-color: #409EFF; background: #ecf5ff; box-shadow: 0 0 0 1px #409EFF inset; }
+.scope-card--active:hover { border-color: #409EFF; background: #ecf5ff; }
+.scope-card__radio { flex-shrink: 0; margin-right: 12px; }
+.scope-card__radio :deep(.el-radio__label) { display: none; }
+.scope-card__content { display: flex; align-items: center; gap: 14px; flex: 1; }
+.scope-card__icon { flex-shrink: 0; width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; border-radius: 8px; background: #f5f7fa; }
+.scope-card--active .scope-card__icon { background: #d9ecff; }
+.scope-card__text { flex: 1; }
+.scope-card__label { font-size: 15px; font-weight: 500; color: #303133; line-height: 1.4; }
+.scope-card__desc { font-size: 13px; color: #909399; margin-top: 3px; line-height: 1.4; }
+.scope-card--active .scope-card__label { color: #409EFF; }
 
 @media (max-width: 768px) {
   .manage-header { flex-wrap: wrap; justify-content: center; }

@@ -191,7 +191,9 @@ cd ..
     client_max_body_size 50m;
 
     # 企业微信/微信验证文件（必须在 try_files 之前，否则会被回退到 index.html 导致 404）
+    # root 指向项目根目录，确保验证文件不会因前端 dist 重建而丢失
     location ~* ^/(WW_verify_|MP_verify_).*\.txt$ {
+        root /www/wwwroot/CRM;
         default_type text/plain;
     }
 
@@ -277,7 +279,9 @@ cd ..
     gzip_comp_level 6;
 
     # 企业微信/微信验证文件（必须在 try_files 之前，否则会被回退到 index.html 导致 404）
+    # root 指向项目根目录，确保验证文件不会因前端 dist 重建而丢失
     location ~* ^/(WW_verify_|MP_verify_).*\.txt$ {
+        root /www/wwwroot/CRM;
         default_type text/plain;
     }
 
@@ -326,7 +330,9 @@ cd ..
     client_max_body_size 50m;
 
     # 企业微信/微信验证文件（必须在 try_files 之前，否则会被回退到 index.html 导致 404）
+    # root 指向项目根目录，确保验证文件不会因前端 dist 重建而丢失
     location ~* ^/(WW_verify_|MP_verify_).*\.txt$ {
+        root /www/wwwroot/CRM;
         default_type text/plain;
     }
 

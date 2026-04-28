@@ -596,6 +596,42 @@ const PERMISSION_TREE = [
           { id: 'product.analytics.view', name: '查看分析', code: 'product.analytics.view', type: 'action', sort: 1, status: 'active' },
           { id: 'product.analytics.export', name: '导出分析', code: 'product.analytics.export', type: 'action', sort: 2, status: 'active' }
         ]
+      },
+      {
+        id: 'product.virtual_keys',
+        name: '卡密库存',
+        code: 'product.virtual_keys',
+        type: 'menu',
+        path: '/product/virtual/card-keys',
+        icon: 'Key',
+        sort: 6,
+        status: 'active',
+        children: [
+          { id: 'product.virtual_keys.view', name: '查看卡密', code: 'product.virtual_keys.view', type: 'action', sort: 1, status: 'active' },
+          { id: 'product.virtual_keys.create', name: '新增卡密', code: 'product.virtual_keys.create', type: 'action', sort: 2, status: 'active' },
+          { id: 'product.virtual_keys.edit', name: '编辑卡密', code: 'product.virtual_keys.edit', type: 'action', sort: 3, status: 'active' },
+          { id: 'product.virtual_keys.delete', name: '删除卡密', code: 'product.virtual_keys.delete', type: 'action', sort: 4, status: 'active' },
+          { id: 'product.virtual_keys.import', name: '导入卡密', code: 'product.virtual_keys.import', type: 'action', sort: 5, status: 'active' },
+          { id: 'product.virtual_keys.export', name: '导出卡密', code: 'product.virtual_keys.export', type: 'action', sort: 6, status: 'active' }
+        ]
+      },
+      {
+        id: 'product.virtual_resources',
+        name: '资源库存',
+        code: 'product.virtual_resources',
+        type: 'menu',
+        path: '/product/virtual/resources',
+        icon: 'FolderOpened',
+        sort: 7,
+        status: 'active',
+        children: [
+          { id: 'product.virtual_resources.view', name: '查看资源', code: 'product.virtual_resources.view', type: 'action', sort: 1, status: 'active' },
+          { id: 'product.virtual_resources.create', name: '新增资源', code: 'product.virtual_resources.create', type: 'action', sort: 2, status: 'active' },
+          { id: 'product.virtual_resources.edit', name: '编辑资源', code: 'product.virtual_resources.edit', type: 'action', sort: 3, status: 'active' },
+          { id: 'product.virtual_resources.delete', name: '删除资源', code: 'product.virtual_resources.delete', type: 'action', sort: 4, status: 'active' },
+          { id: 'product.virtual_resources.import', name: '导入资源', code: 'product.virtual_resources.import', type: 'action', sort: 5, status: 'active' },
+          { id: 'product.virtual_resources.export', name: '导出资源', code: 'product.virtual_resources.export', type: 'action', sort: 6, status: 'active' }
+        ]
       }
     ]
   },
@@ -707,16 +743,36 @@ const PERMISSION_TREE = [
     status: 'active',
     children: [
       {
+        id: 'wecom.address_book',
+        name: '通讯录',
+        code: 'wecom.address_book',
+        type: 'menu',
+        path: '/wecom/address-book',
+        icon: 'Notebook',
+        sort: 1,
+        status: 'active',
+        children: [
+          { id: 'wecom.address_book.view', name: '查看通讯录', code: 'wecom.address_book.view', type: 'action', sort: 1, status: 'active' },
+          { id: 'wecom.address_book.sync', name: '同步通讯录', code: 'wecom.address_book.sync', type: 'action', sort: 2, status: 'active' },
+          { id: 'wecom.address_book.binding', name: '成员绑定', code: 'wecom.address_book.binding', type: 'tab', sort: 3, status: 'active' },
+          { id: 'wecom.address_book.auto_match', name: '自动匹配', code: 'wecom.address_book.auto_match', type: 'tab', sort: 4, status: 'active' },
+          { id: 'wecom.address_book.sync_settings', name: '同步设置', code: 'wecom.address_book.sync_settings', type: 'tab', sort: 5, status: 'active' },
+          { id: 'wecom.address_book.sync_logs', name: '同步日志', code: 'wecom.address_book.sync_logs', type: 'tab', sort: 6, status: 'active' }
+        ]
+      },
+      {
         id: 'wecom.customer',
         name: '企微客户',
         code: 'wecom.customer',
         type: 'menu',
         path: '/wecom/customer',
         icon: 'User',
-        sort: 1,
+        sort: 2,
         status: 'active',
         children: [
-          { id: 'wecom.customer.view', name: '查看企微客户', code: 'wecom.customer.view', type: 'action', sort: 1, status: 'active' }
+          { id: 'wecom.customer.view', name: '查看企微客户', code: 'wecom.customer.view', type: 'action', sort: 1, status: 'active' },
+          { id: 'wecom.customer.export', name: '导出企微客户', code: 'wecom.customer.export', type: 'action', sort: 2, status: 'active' },
+          { id: 'wecom.customer.sync', name: '同步企微客户', code: 'wecom.customer.sync', type: 'action', sort: 3, status: 'active' }
         ]
       },
       {
@@ -726,10 +782,57 @@ const PERMISSION_TREE = [
         type: 'menu',
         path: '/wecom/customer-group',
         icon: 'UserFilled',
-        sort: 2,
+        sort: 3,
         status: 'active',
         children: [
-          { id: 'wecom.customer_group.view', name: '查看客户群', code: 'wecom.customer_group.view', type: 'action', sort: 1, status: 'active' }
+          { id: 'wecom.customer_group.view', name: '查看客户群', code: 'wecom.customer_group.view', type: 'action', sort: 1, status: 'active' },
+          { id: 'wecom.customer_group.export', name: '导出客户群', code: 'wecom.customer_group.export', type: 'action', sort: 2, status: 'active' },
+          { id: 'wecom.customer_group.sync', name: '同步客户群', code: 'wecom.customer_group.sync', type: 'action', sort: 3, status: 'active' },
+          { id: 'wecom.customer_group.template', name: '群模板', code: 'wecom.customer_group.template', type: 'tab', sort: 4, status: 'active' },
+          { id: 'wecom.customer_group.welcome', name: '入群欢迎语', code: 'wecom.customer_group.welcome', type: 'tab', sort: 5, status: 'active' },
+          { id: 'wecom.customer_group.anti_spam', name: '防骚扰规则', code: 'wecom.customer_group.anti_spam', type: 'tab', sort: 6, status: 'active' },
+          { id: 'wecom.customer_group.broadcast', name: '群发消息', code: 'wecom.customer_group.broadcast', type: 'tab', sort: 7, status: 'active' },
+          { id: 'wecom.customer_group.stats', name: '群数据', code: 'wecom.customer_group.stats', type: 'tab', sort: 8, status: 'active' }
+        ]
+      },
+      {
+        id: 'wecom.acquisition',
+        name: '获客助手',
+        code: 'wecom.acquisition',
+        type: 'menu',
+        path: '/wecom/acquisition',
+        icon: 'Promotion',
+        sort: 4,
+        status: 'active',
+        children: [
+          { id: 'wecom.acquisition.view', name: '查看获客助手', code: 'wecom.acquisition.view', type: 'action', sort: 1, status: 'active' },
+          { id: 'wecom.acquisition.create', name: '创建获客链接', code: 'wecom.acquisition.create', type: 'action', sort: 2, status: 'active' },
+          { id: 'wecom.acquisition.edit', name: '编辑获客链接', code: 'wecom.acquisition.edit', type: 'action', sort: 3, status: 'active' },
+          { id: 'wecom.acquisition.delete', name: '删除获客链接', code: 'wecom.acquisition.delete', type: 'action', sort: 4, status: 'active' },
+          { id: 'wecom.acquisition.overview', name: '数据总览', code: 'wecom.acquisition.overview', type: 'tab', sort: 5, status: 'active' },
+          { id: 'wecom.acquisition.retention', name: '留存分析', code: 'wecom.acquisition.retention', type: 'tab', sort: 6, status: 'active' },
+          { id: 'wecom.acquisition.ranking', name: '成员排行', code: 'wecom.acquisition.ranking', type: 'tab', sort: 7, status: 'active' },
+          { id: 'wecom.acquisition.tags', name: '标签管理', code: 'wecom.acquisition.tags', type: 'tab', sort: 8, status: 'active' },
+          { id: 'wecom.acquisition.purchase', name: '套餐与配额', code: 'wecom.acquisition.purchase', type: 'tab', sort: 9, status: 'active' }
+        ]
+      },
+      {
+        id: 'wecom.contact_way',
+        name: '活码管理',
+        code: 'wecom.contact_way',
+        type: 'menu',
+        path: '/wecom/contact-way',
+        icon: 'Connection',
+        sort: 5,
+        status: 'active',
+        children: [
+          { id: 'wecom.contact_way.view', name: '查看活码', code: 'wecom.contact_way.view', type: 'action', sort: 1, status: 'active' },
+          { id: 'wecom.contact_way.create', name: '创建活码', code: 'wecom.contact_way.create', type: 'action', sort: 2, status: 'active' },
+          { id: 'wecom.contact_way.edit', name: '编辑活码', code: 'wecom.contact_way.edit', type: 'action', sort: 3, status: 'active' },
+          { id: 'wecom.contact_way.delete', name: '删除活码', code: 'wecom.contact_way.delete', type: 'action', sort: 4, status: 'active' },
+          { id: 'wecom.contact_way.stats', name: '数据统计', code: 'wecom.contact_way.stats', type: 'tab', sort: 5, status: 'active' },
+          { id: 'wecom.contact_way.channel', name: '渠道分析', code: 'wecom.contact_way.channel', type: 'tab', sort: 6, status: 'active' },
+          { id: 'wecom.contact_way.tags', name: '标签管理', code: 'wecom.contact_way.tags', type: 'tab', sort: 7, status: 'active' }
         ]
       },
       {
@@ -739,11 +842,113 @@ const PERMISSION_TREE = [
         type: 'menu',
         path: '/wecom/chat-archive',
         icon: 'ChatLineSquare',
-        sort: 3,
+        sort: 6,
         status: 'active',
         children: [
           { id: 'wecom.chat_archive.view', name: '查看会话存档', code: 'wecom.chat_archive.view', type: 'action', sort: 1, status: 'active' },
-          { id: 'wecom.chat_archive.view_all', name: '查看全部存档', code: 'wecom.chat_archive.view_all', type: 'action', sort: 2, status: 'active' }
+          { id: 'wecom.chat_archive.view_all', name: '查看全部存档', code: 'wecom.chat_archive.view_all', type: 'action', sort: 2, status: 'active' },
+          { id: 'wecom.chat_archive.export', name: '导出会话记录', code: 'wecom.chat_archive.export', type: 'action', sort: 3, status: 'active' },
+          { id: 'wecom.chat_archive.records', name: '消息记录', code: 'wecom.chat_archive.records', type: 'tab', sort: 4, status: 'active' },
+          { id: 'wecom.chat_archive.stats', name: '数据统计', code: 'wecom.chat_archive.stats', type: 'tab', sort: 5, status: 'active' },
+          { id: 'wecom.chat_archive.ai_inspect', name: 'AI质检', code: 'wecom.chat_archive.ai_inspect', type: 'tab', sort: 6, status: 'active' },
+          { id: 'wecom.chat_archive.sensitive', name: '敏感词管理', code: 'wecom.chat_archive.sensitive', type: 'tab', sort: 7, status: 'active' },
+          { id: 'wecom.chat_archive.settings', name: '存档设置', code: 'wecom.chat_archive.settings', type: 'tab', sort: 8, status: 'active' },
+          { id: 'wecom.chat_archive.purchase', name: '套餐与配额', code: 'wecom.chat_archive.purchase', type: 'tab', sort: 9, status: 'active' }
+        ]
+      },
+      {
+        id: 'wecom.service',
+        name: '微信客服',
+        code: 'wecom.service',
+        type: 'menu',
+        path: '/wecom/service',
+        icon: 'Service',
+        sort: 7,
+        status: 'active',
+        children: [
+          { id: 'wecom.service.view', name: '查看微信客服', code: 'wecom.service.view', type: 'action', sort: 1, status: 'active' },
+          { id: 'wecom.service.config', name: '配置微信客服', code: 'wecom.service.config', type: 'action', sort: 2, status: 'active' },
+          { id: 'wecom.service.accounts', name: '客服账号', code: 'wecom.service.accounts', type: 'tab', sort: 3, status: 'active' },
+          { id: 'wecom.service.workspace', name: '实时工作台', code: 'wecom.service.workspace', type: 'tab', sort: 4, status: 'active' },
+          { id: 'wecom.service.sessions', name: '会话记录', code: 'wecom.service.sessions', type: 'tab', sort: 5, status: 'active' },
+          { id: 'wecom.service.stats', name: '数据统计', code: 'wecom.service.stats', type: 'tab', sort: 6, status: 'active' },
+          { id: 'wecom.service.replies', name: '快捷回复', code: 'wecom.service.replies', type: 'tab', sort: 7, status: 'active' },
+          { id: 'wecom.service.auto_reply', name: '自动回复', code: 'wecom.service.auto_reply', type: 'tab', sort: 8, status: 'active' }
+        ]
+      },
+      {
+        id: 'wecom.ai_assistant',
+        name: 'AI助手',
+        code: 'wecom.ai_assistant',
+        type: 'menu',
+        path: '/wecom/ai-assistant',
+        icon: 'MagicStick',
+        sort: 8,
+        status: 'active',
+        children: [
+          { id: 'wecom.ai_assistant.view', name: '查看AI助手', code: 'wecom.ai_assistant.view', type: 'action', sort: 1, status: 'active' },
+          { id: 'wecom.ai_assistant.config', name: '配置AI助手', code: 'wecom.ai_assistant.config', type: 'action', sort: 2, status: 'active' },
+          { id: 'wecom.ai_assistant.model_config', name: 'AI配置', code: 'wecom.ai_assistant.model_config', type: 'tab', sort: 3, status: 'active' },
+          { id: 'wecom.ai_assistant.knowledge', name: '知识库', code: 'wecom.ai_assistant.knowledge', type: 'tab', sort: 4, status: 'active' },
+          { id: 'wecom.ai_assistant.scripts', name: '话术库', code: 'wecom.ai_assistant.scripts', type: 'tab', sort: 5, status: 'active' },
+          { id: 'wecom.ai_assistant.sensitive', name: '敏感词库', code: 'wecom.ai_assistant.sensitive', type: 'tab', sort: 6, status: 'active' },
+          { id: 'wecom.ai_assistant.tag_ai', name: '标签AI', code: 'wecom.ai_assistant.tag_ai', type: 'tab', sort: 7, status: 'active' },
+          { id: 'wecom.ai_assistant.logs', name: '调用日志', code: 'wecom.ai_assistant.logs', type: 'tab', sort: 8, status: 'active' },
+          { id: 'wecom.ai_assistant.usage', name: '订单与使用量', code: 'wecom.ai_assistant.usage', type: 'tab', sort: 9, status: 'active' }
+        ]
+      },
+      {
+        id: 'wecom.sidebar',
+        name: '侧边栏',
+        code: 'wecom.sidebar',
+        type: 'menu',
+        path: '/wecom/sidebar',
+        icon: 'Operation',
+        sort: 9,
+        status: 'active',
+        children: [
+          { id: 'wecom.sidebar.view', name: '查看侧边栏', code: 'wecom.sidebar.view', type: 'action', sort: 1, status: 'active' },
+          { id: 'wecom.sidebar.config', name: '配置侧边栏', code: 'wecom.sidebar.config', type: 'action', sort: 2, status: 'active' },
+          { id: 'wecom.sidebar.builtin', name: '内置应用', code: 'wecom.sidebar.builtin', type: 'tab', sort: 3, status: 'active' },
+          { id: 'wecom.sidebar.custom', name: '自定义应用', code: 'wecom.sidebar.custom', type: 'tab', sort: 4, status: 'active' },
+          { id: 'wecom.sidebar.scripts', name: '快捷话术', code: 'wecom.sidebar.scripts', type: 'tab', sort: 5, status: 'active' }
+        ]
+      },
+      {
+        id: 'wecom.payment',
+        name: '对外收款',
+        code: 'wecom.payment',
+        type: 'menu',
+        path: '/wecom/payment',
+        icon: 'Wallet',
+        sort: 10,
+        status: 'active',
+        children: [
+          { id: 'wecom.payment.view', name: '查看收款记录', code: 'wecom.payment.view', type: 'action', sort: 1, status: 'active' },
+          { id: 'wecom.payment.create', name: '创建收款', code: 'wecom.payment.create', type: 'action', sort: 2, status: 'active' },
+          { id: 'wecom.payment.export', name: '导出收款记录', code: 'wecom.payment.export', type: 'action', sort: 3, status: 'active' },
+          { id: 'wecom.payment.stats', name: '收款统计', code: 'wecom.payment.stats', type: 'tab', sort: 4, status: 'active' },
+          { id: 'wecom.payment.refund', name: '退款统计', code: 'wecom.payment.refund', type: 'tab', sort: 5, status: 'active' },
+          { id: 'wecom.payment.settings', name: '收款设置', code: 'wecom.payment.settings', type: 'tab', sort: 6, status: 'active' }
+        ]
+      },
+      {
+        id: 'wecom.config',
+        name: '企微授权',
+        code: 'wecom.config',
+        type: 'menu',
+        path: '/wecom/config',
+        icon: 'Setting',
+        sort: 11,
+        status: 'active',
+        children: [
+          { id: 'wecom.config.view', name: '查看授权配置', code: 'wecom.config.view', type: 'action', sort: 1, status: 'active' },
+          { id: 'wecom.config.edit', name: '编辑授权配置', code: 'wecom.config.edit', type: 'action', sort: 2, status: 'active' },
+          { id: 'wecom.config.secret', name: 'Secret管理', code: 'wecom.config.secret', type: 'tab', sort: 3, status: 'active' },
+          { id: 'wecom.config.callback', name: '回调配置', code: 'wecom.config.callback', type: 'tab', sort: 4, status: 'active' },
+          { id: 'wecom.config.feature', name: '功能授权', code: 'wecom.config.feature', type: 'tab', sort: 5, status: 'active' },
+          { id: 'wecom.config.diagnostic', name: 'API诊断', code: 'wecom.config.diagnostic', type: 'tab', sort: 6, status: 'active' },
+          { id: 'wecom.config.package', name: '企微套餐', code: 'wecom.config.package', type: 'tab', sort: 7, status: 'active' }
         ]
       }
     ]
@@ -924,7 +1129,12 @@ const ROLE_DEFAULT_PERMISSIONS = {
     'service.sms.view', 'service.sms.send', 'service.sms.template', 'service.sms.batch', 'service.sms.statistics',
     'data.list.view', 'data.search.basic', 'data.search.advanced',
     'performance.personal.view', 'performance.team.view', 'performance.analysis.view',
-    'wecom', 'wecom.customer', 'wecom.customer.view', 'wecom.customer_group', 'wecom.customer_group.view', 'wecom.chat_archive', 'wecom.chat_archive.view'
+    'wecom', 'wecom.customer', 'wecom.customer.view',
+    'wecom.customer_group', 'wecom.customer_group.view',
+    'wecom.acquisition', 'wecom.acquisition.view', 'wecom.acquisition.create', 'wecom.acquisition.edit', 'wecom.acquisition.delete',
+    'wecom.contact_way', 'wecom.contact_way.view', 'wecom.contact_way.create', 'wecom.contact_way.edit', 'wecom.contact_way.delete',
+    'wecom.chat_archive', 'wecom.chat_archive.view',
+    'wecom.payment', 'wecom.payment.view'
   ],
   'EMPLOYEE': [
     'customer.list.view', 'customer.follow',
@@ -939,7 +1149,9 @@ const ROLE_DEFAULT_PERMISSIONS = {
     'service.sms.view', 'service.sms.send',
     'data.list.view', 'data.search.basic',
     'performance.personal.view',
-    'wecom', 'wecom.customer', 'wecom.customer.view', 'wecom.customer_group', 'wecom.customer_group.view', 'wecom.chat_archive', 'wecom.chat_archive.view'
+    'wecom', 'wecom.customer', 'wecom.customer.view',
+    'wecom.chat_archive', 'wecom.chat_archive.view',
+    'wecom.payment', 'wecom.payment.view'
   ],
   'CUSTOMER_SERVICE': [
     'customer.list.view', 'customer.follow',

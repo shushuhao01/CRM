@@ -131,23 +131,23 @@
           </div>
         </el-tab-pane>
 
-        <!-- Tab 2: 群模板 -->
-        <el-tab-pane label="群模板" name="template">
+        <!-- Tab 2: 群模板（仅管理员可见） -->
+        <el-tab-pane v-if="isAdminRole" label="群模板" name="template">
           <GroupTemplate />
         </el-tab-pane>
 
-        <!-- Tab 3: 入群欢迎语 -->
-        <el-tab-pane label="入群欢迎语" name="welcome">
+        <!-- Tab 3: 入群欢迎语（仅管理员可见） -->
+        <el-tab-pane v-if="isAdminRole" label="入群欢迎语" name="welcome">
           <GroupWelcome />
         </el-tab-pane>
 
-        <!-- Tab 4: 防骚扰规则 -->
-        <el-tab-pane label="防骚扰规则" name="anti-spam">
+        <!-- Tab 4: 防骚扰规则（仅管理员可见） -->
+        <el-tab-pane v-if="isAdminRole" label="防骚扰规则" name="anti-spam">
           <AntiSpamRules />
         </el-tab-pane>
 
-        <!-- Tab 5: 群发消息 -->
-        <el-tab-pane label="群发消息" name="broadcast">
+        <!-- Tab 5: 群发消息（仅管理员可见） -->
+        <el-tab-pane v-if="isAdminRole" label="群发消息" name="broadcast">
           <GroupBroadcast />
         </el-tab-pane>
 
@@ -172,6 +172,7 @@
 defineOptions({ name: 'WecomCustomerGroup' })
 
 import { ref, reactive, computed, onMounted } from 'vue'
+import { useUserStore } from '@/stores/user'
 import { Refresh, ChatDotRound, List, Grid } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { getWecomConfigs } from '@/api/wecom'
@@ -194,6 +195,10 @@ import GroupStats from './components/GroupStats.vue'
 import { useWecomDemo, DEMO_GROUPS, DEMO_GROUP_STATS, DEMO_GROUP_MEMBERS, DEMO_CONFIGS } from './composables/useWecomDemo'
 
 const { isDemoMode } = useWecomDemo()
+
+// 当前用户角色判断
+const userStore = useUserStore()
+const isAdminRole = computed(() => ['super_admin', 'admin'].includes(userStore.currentUser?.role || ''))
 
 // 状态
 const loading = ref(false)

@@ -462,29 +462,13 @@ const loadData = async () => {
     if (batchSearchKeywords.value) p.keywords = batchSearchKeywords.value
     const r = await getCodList(p) as any
     if (r) {
-      let list = r.list || []
+      const list = r.list || []
 
-      // 🔥 根据标签页过滤订单
-      if (activeTab.value === 'pending') {
-        // 待处理标签：只显示当前代收金额>0且未返款未改代收的订单
-        list = list.filter((order: CodOrder) => order.codAmount > 0)
-      } else if (activeTab.value === 'returned') {
-        // 已返款标签：只显示当前代收金额>0且已返款的订单
-        list = list.filter((order: CodOrder) => order.codAmount > 0)
-      } else if (activeTab.value === 'cancelled') {
-        // 已改代收标签：显示所有已改代收的订单（由后端tab参数控制）
-        // 不过滤，保持后端返回的结果
-      } else if (activeTab.value === 'zero') {
-        // 无需代收标签：只显示原始代收金额为0的订单
-        list = list.filter((order: CodOrder) => {
-          const originalCodAmount = (order.totalAmount || 0) - (order.depositAmount || 0)
-          return originalCodAmount === 0
-        })
-      }
-      // 全部标签：显示所有订单
-
+      // 🔥 修复：后端已根据 tab 参数做好筛选，前端不再重复过滤
+      // 避免前端过滤导致分页总数与实际不符
       tableData.value = list
-      pagination.value.total = list.length
+      // 🔥 修复：使用后端返回的 total 作为分页总数（而非当前页数据条数）
+      pagination.value.total = r.total || 0
 
       // 🔥 计算缺失的搜索关键词
       computeMissingKeywords()

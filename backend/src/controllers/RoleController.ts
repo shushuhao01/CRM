@@ -20,6 +20,76 @@ export class RoleController {
     return dataSource.getTreeRepository(Permission);
   }
 
+  /**
+   * 按租户优先查找角色：优先匹配当前租户的角色，没有则回退到任意匹配
+   * 实现租户隔离：每个租户可以有自己的角色副本
+   */
+  private async findRoleWithTenantPriority(
+    dataSource: any, field: 'id' | 'code', value: string, columns: string = '*'
+  ): Promise<any | null> {
+    const tenantId = getCurrentTenantIdSafe();
+    if (tenantId) {
+      // 优先查找当前租户的角色
+      const tenantRoles = await dataSource.query(
+        `SELECT ${columns} FROM roles WHERE ${field} = ? AND tenant_id = ?`, [value, tenantId]
+      );
+      if (tenantRoles.length > 0) return tenantRoles[0];
+    }
+    // 回退：查找任意匹配（兼容默认共享角色）
+    const roles = await dataSource.query(
+      `SELECT ${columns} FROM roles WHERE ${field} = ? LIMIT 1`, [value]
+    );
+    return roles.length > 0 ? roles[0] : null;
+  }
+
+  /**
+   * 写时克隆：如果当前租户没有该角色的专属副本，从默认角色克隆一份
+   * 返回当前租户专属角色的 id
+   */
+  private async ensureTenantRole(dataSource: any, roleId: string): Promise<{ id: string; name: string; cloned: boolean }> {
+    const tenantId = getCurrentTenantIdSafe();
+    if (!tenantId) {
+      // 非SaaS模式或无租户上下文，直接使用原角色
+      const role = await dataSource.query('SELECT id, name FROM roles WHERE id = ?', [roleId]);
+      if (role.length === 0) throw new Error('角色不存在');
+      return { id: role[0].id, name: role[0].name, cloned: false };
+    }
+
+    // 检查当前租户是否已有此角色的专属副本（按code匹配）
+    const sourceRole = await dataSource.query(
+      'SELECT id, name, code, description, level, color, data_scope, permissions, status FROM roles WHERE id = ?', [roleId]
+    );
+    if (sourceRole.length === 0) throw new Error('角色不存在');
+
+    const roleCode = sourceRole[0].code;
+    const tenantRole = await dataSource.query(
+      'SELECT id, name FROM roles WHERE code = ? AND tenant_id = ?', [roleCode, tenantId]
+    );
+    if (tenantRole.length > 0) {
+      return { id: tenantRole[0].id, name: tenantRole[0].name, cloned: false };
+    }
+
+    // 租户没有此角色副本，克隆一份（仅克隆当前共享角色的权限，不是全部权限）
+    const newRoleId = `${roleCode}_${tenantId.substring(0, 8)}`;
+    const src = sourceRole[0];
+    const srcPermissions = typeof src.permissions === 'string' ? src.permissions : JSON.stringify(src.permissions || []);
+    let srcPermCount = 0;
+    try {
+      const parsed = typeof src.permissions === 'string' ? JSON.parse(src.permissions) : (src.permissions || []);
+      srcPermCount = Array.isArray(parsed) ? parsed.length : 0;
+    } catch { srcPermCount = 0; }
+    log.info(`[RoleController] 开始克隆角色: source=${roleId}(code=${roleCode}), 源权限数=${srcPermCount}, 目标=${newRoleId}, tenant=${tenantId}`);
+    await dataSource.query(
+      `INSERT INTO roles (id, tenant_id, name, code, description, level, color, data_scope, permissions, status, createdAt, updatedAt)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+      [newRoleId, tenantId, src.name, src.code, src.description || '', src.level || 0, src.color || '',
+       src.data_scope || 'self', srcPermissions,
+       src.status || 'active']
+    );
+    log.info(`[RoleController] ✅ 克隆角色完成: ${roleCode} -> ${newRoleId}, 克隆权限数=${srcPermCount}`);
+    return { id: newRoleId, name: src.name, cloned: true };
+  }
+
   // 获取角色列表
   async getRoles(req: Request, res: Response) {
     try {
@@ -44,33 +114,41 @@ export class RoleController {
         params.push(status);
       }
 
-      // 租户隔离条件
+      // 租户隔离：优先显示当前租户角色，没有租户副本的显示共享默认角色
       const tenantId = getCurrentTenantIdSafe();
       if (tenantId) {
-        conditions.push('tenant_id = ?');
-        params.push(tenantId);
+        // 显示当前租户专属角色 + 没有租户副本的共享角色（按code去重，租户优先）
+        conditions.push('(tenant_id = ? OR code NOT IN (SELECT code FROM roles WHERE tenant_id = ?))');
+        params.push(tenantId, tenantId);
       }
 
       const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
       const offset = (Number(page) - 1) * Number(limit);
 
-      // 查询角色列表
-      const roles = await dataSource.query(
-        `SELECT id, name, code, description, status, level, color, permissions, data_scope as dataScope, createdAt, updatedAt
-         FROM roles ${whereClause} ORDER BY level ASC, createdAt DESC LIMIT ? OFFSET ?`,
-        [...params, Number(limit), offset]
+      // 查询角色列表（按 tenant_id 排序，确保租户专属在前）
+      const allRoles = await dataSource.query(
+        `SELECT id, name, code, description, status, level, color, permissions, data_scope as dataScope, createdAt, updatedAt, tenant_id
+         FROM roles ${whereClause} ORDER BY CASE WHEN tenant_id = ? THEN 0 ELSE 1 END, level ASC, createdAt DESC`,
+        [...params, tenantId || '']
       );
 
-      // 查询总数
-      const countResult = await dataSource.query(
-        `SELECT COUNT(*) as total FROM roles ${whereClause}`,
-        params
-      );
-      const total = parseInt(countResult[0]?.total || '0', 10);
+      // 按 code 去重（租户专属优先）
+      const seenCodes = new Set<string>();
+      const roles: any[] = [];
+      for (const role of allRoles) {
+        if (!seenCodes.has(role.code)) {
+          seenCodes.add(role.code);
+          roles.push(role);
+        }
+      }
+
+      // 分页
+      const total = roles.length;
+      const pagedRoles = roles.slice(offset, offset + Number(limit));
 
       // 计算每个角色的用户数量和权限数量
       const rolesWithCounts = await Promise.all(
-        roles.map(async (role: any) => {
+        pagedRoles.map(async (role: any) => {
           let userCount = 0;
           try {
             const tUser = tenantRawSQL();
@@ -255,7 +333,7 @@ export class RoleController {
     });
   }
 
-  // 更新角色
+  // 更新角色（写时克隆）
   async updateRole(req: Request, res: Response): Promise<void> {
     try {
       const { id } = req.params;
@@ -265,14 +343,12 @@ export class RoleController {
         throw new Error('数据库连接未初始化');
       }
 
-      // 检查角色是否存在
-      const t = tenantRawSQL();
-      const existing = await dataSource.query('SELECT id, code FROM roles WHERE id = ?' + t.sql, [id, ...t.params]);
-      if (existing.length === 0) {
-        res.status(404).json({
-          success: false,
-          message: '角色不存在'
-        });
+      // 写时克隆：确保当前租户有自己的角色副本
+      let tenantRole: { id: string; name: string; cloned: boolean };
+      try {
+        tenantRole = await this.ensureTenantRole(dataSource, id);
+      } catch (err: any) {
+        res.status(404).json({ success: false, message: err.message || '角色不存在' });
         return;
       }
 
@@ -291,8 +367,8 @@ export class RoleController {
 
       if (updates.length > 0) {
         updates.push('updatedAt = NOW()');
-        params.push(id, ...t.params);
-        await dataSource.query(`UPDATE roles SET ${updates.join(', ')} WHERE id = ?` + t.sql, params);
+        params.push(tenantRole.id);
+        await dataSource.query(`UPDATE roles SET ${updates.join(', ')} WHERE id = ?`, params);
       }
 
       res.json({
@@ -308,7 +384,7 @@ export class RoleController {
     }
   }
 
-  // 删除角色
+  // 删除角色（只删除当前租户的角色副本）
   async deleteRole(req: Request, res: Response): Promise<void> {
     try {
       const { id } = req.params;
@@ -317,19 +393,11 @@ export class RoleController {
         throw new Error('数据库连接未初始化');
       }
 
-      const t = tenantRawSQL();
-
-      // 检查角色是否存在
-      const roles = await dataSource.query('SELECT id, code FROM roles WHERE id = ?' + t.sql, [id, ...t.params]);
-      if (roles.length === 0) {
-        res.status(404).json({
-          success: false,
-          message: '角色不存在'
-        });
+      const role = await this.findRoleWithTenantPriority(dataSource, 'id', id, 'id, code, tenant_id');
+      if (!role) {
+        res.status(404).json({ success: false, message: '角色不存在' });
         return;
       }
-
-      const role = roles[0];
 
       // 检查是否有用户使用此角色
       const tUser = tenantRawSQL();
@@ -347,7 +415,7 @@ export class RoleController {
         return;
       }
 
-      await dataSource.query('DELETE FROM roles WHERE id = ?' + t.sql, [id, ...t.params]);
+      await dataSource.query('DELETE FROM roles WHERE id = ?', [role.id]);
 
       res.json({
         success: true,
@@ -410,21 +478,22 @@ export class RoleController {
         return;
       }
 
-      const t = tenantRawSQL();
-      const roles = await dataSource.query('SELECT id, code FROM roles WHERE id = ?' + t.sql, [id, ...t.params]);
-      if (roles.length === 0) {
-        res.status(404).json({
-          success: false,
-          message: '角色不存在'
-        });
+      // 写时克隆：确保当前租户有自己的角色副本
+      let tenantRole: { id: string; name: string; cloned: boolean };
+      try {
+        tenantRole = await this.ensureTenantRole(dataSource, id);
+      } catch (err: any) {
+        res.status(404).json({ success: false, message: err.message || '角色不存在' });
         return;
       }
 
-      const role = roles[0];
+      // 获取角色code用于系统角色检查
+      const roleData = await dataSource.query('SELECT code FROM roles WHERE id = ?', [tenantRole.id]);
+      const roleCode = roleData[0]?.code || '';
 
       // 防止禁用系统预设角色
       const nonDisableableRoles = ['super_admin', 'admin'];
-      if (status === 'inactive' && nonDisableableRoles.includes(role.code)) {
+      if (status === 'inactive' && nonDisableableRoles.includes(roleCode)) {
         res.status(400).json({
           success: false,
           message: '系统预设角色不可禁用'
@@ -432,7 +501,7 @@ export class RoleController {
         return;
       }
 
-      await dataSource.query('UPDATE roles SET status = ?, updatedAt = NOW() WHERE id = ?' + t.sql, [status, id, ...t.params]);
+      await dataSource.query('UPDATE roles SET status = ?, updatedAt = NOW() WHERE id = ?', [status, tenantRole.id]);
 
       res.json({
         success: true,
@@ -447,7 +516,7 @@ export class RoleController {
     }
   }
 
-  // 获取角色权限
+  // 获取角色权限（租户优先：先查当前租户专属角色，没有则回退到共享角色）
   async getRolePermissions(req: Request, res: Response): Promise<void> {
     try {
       const { id } = req.params;
@@ -456,13 +525,10 @@ export class RoleController {
         throw new Error('数据库连接未初始化');
       }
 
-      const t = tenantRawSQL();
-      const roles = await dataSource.query(
-        'SELECT id, name, permissions FROM roles WHERE id = ?' + t.sql,
-        [id, ...t.params]
-      );
+      // 按租户优先查找角色
+      const role = await this.findRoleWithTenantPriority(dataSource, 'id', id, 'id, name, permissions');
 
-      if (roles.length === 0) {
+      if (!role) {
         res.json({
           success: true,
           data: {
@@ -474,7 +540,6 @@ export class RoleController {
         return;
       }
 
-      const role = roles[0];
       let permissions: string[] = [];
       try {
         if (role.permissions) {
@@ -505,7 +570,7 @@ export class RoleController {
     }
   }
 
-  // 更新角色权限
+  // 更新角色权限（写时克隆：租户没有专属角色时自动克隆，确保修改不影响其他租户）
   async updateRolePermissions(req: Request, res: Response): Promise<void> {
     try {
       const { id } = req.params;
@@ -515,27 +580,34 @@ export class RoleController {
         throw new Error('数据库连接未初始化');
       }
 
-      const t = tenantRawSQL();
-      const roles = await dataSource.query('SELECT id, name FROM roles WHERE id = ?' + t.sql, [id, ...t.params]);
-      if (roles.length === 0) {
+      // 写时克隆：确保当前租户有自己的角色副本
+      let tenantRole: { id: string; name: string; cloned: boolean };
+      try {
+        tenantRole = await this.ensureTenantRole(dataSource, id);
+      } catch (err: any) {
         res.status(404).json({
           success: false,
-          message: '角色不存在'
+          message: err.message || '角色不存在'
         });
         return;
       }
 
       const newPermissions = permissions || permissionIds || [];
+      log.info(`[updateRolePermissions] 更新角色权限: roleId=${tenantRole.id}, cloned=${tenantRole.cloned}, 新权限数=${newPermissions.length}`);
       await dataSource.query(
-        'UPDATE roles SET permissions = ?, updatedAt = NOW() WHERE id = ?' + t.sql,
-        [JSON.stringify(newPermissions), id, ...t.params]
+        'UPDATE roles SET permissions = ?, updatedAt = NOW() WHERE id = ?',
+        [JSON.stringify(newPermissions), tenantRole.id]
       );
+
+      if (tenantRole.cloned) {
+        log.info(`[updateRolePermissions] ✅ 已为租户克隆角色 ${id} -> ${tenantRole.id}，并更新权限(${newPermissions.length}个)`);
+      }
 
       res.json({
         success: true,
         data: {
-          roleId: id,
-          roleName: roles[0].name,
+          roleId: tenantRole.id,
+          roleName: tenantRole.name,
           permissions: newPermissions
         },
         message: '权限更新成功'

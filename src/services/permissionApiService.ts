@@ -10,7 +10,7 @@ export interface Permission {
   code: string
   description?: string
   module: string
-  type: 'menu' | 'button' | 'api'
+  type: 'module' | 'menu' | 'action' | 'button' | 'api'
   path?: string
   icon?: string
   sort: number

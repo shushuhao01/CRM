@@ -1,17 +1,17 @@
 import { Request, Response } from 'express';
 import { getDataSource } from '../config/database';
 import { Permission } from '../entities/Permission';
-import { TreeRepository } from 'typeorm';
+import { Repository } from 'typeorm';
 import { getCurrentTenantIdSafe } from '../utils/tenantHelpers';
 
 import { log } from '../config/logger';
 export class PermissionController {
-  private get permissionRepository(): TreeRepository<Permission> {
+  private get permissionRepository(): Repository<Permission> {
     const dataSource = getDataSource();
     if (!dataSource) {
       throw new Error('数据库连接未初始化');
     }
-    return dataSource.getTreeRepository(Permission);
+    return dataSource.getRepository(Permission);
   }
 
   /**
@@ -29,7 +29,8 @@ export class PermissionController {
       const tenantId = this.getTenantId();
       const qb = this.permissionRepository.createQueryBuilder('permission');
       if (tenantId) {
-        qb.andWhere('permission.tenant_id = :_tenantId', { _tenantId: tenantId });
+        // 查询当前租户专属权限 + 全局共享权限(tenant_id IS NULL)
+        qb.andWhere('(permission.tenant_id = :_tenantId OR permission.tenant_id IS NULL)', { _tenantId: tenantId });
       }
       qb.orderBy('permission.sort', 'ASC');
       const allPermissions = await qb.getMany();
@@ -71,7 +72,8 @@ export class PermissionController {
 
       const tenantId = this.getTenantId();
       if (tenantId) {
-        queryBuilder.andWhere('permission.tenant_id = :_tenantId', { _tenantId: tenantId });
+        // 查询当前租户专属权限 + 全局共享权限(tenant_id IS NULL)
+        queryBuilder.andWhere('(permission.tenant_id = :_tenantId OR permission.tenant_id IS NULL)', { _tenantId: tenantId });
       }
 
       if (type) {
@@ -136,8 +138,7 @@ export class PermissionController {
         });
       }
 
-      // 获取父权限
-      let parent: Permission | undefined = undefined;
+      // 验证父权限
       if (parentId) {
         const parentWhere: any = { id: parentId };
         if (tenantId) {
@@ -152,7 +153,6 @@ export class PermissionController {
             message: '父权限不存在'
           });
         }
-        parent = foundParent;
       }
 
       // 创建权限
@@ -165,15 +165,12 @@ export class PermissionController {
         path,
         icon,
         sort,
-        status: status as 'active' | 'inactive'
+        status: status as 'active' | 'inactive',
+        parentId: parentId || null
       };
 
       if (tenantId) {
         permissionData.tenantId = tenantId;
-      }
-
-      if (parent) {
-        permissionData.parent = parent;
       }
 
       const permission = this.permissionRepository.create(permissionData);
@@ -249,18 +246,18 @@ export class PermissionController {
           if (tenantId) {
             parentWhere.tenantId = tenantId;
           }
-          const parent = await this.permissionRepository.findOne({
+          const parentPerm = await this.permissionRepository.findOne({
             where: parentWhere
           });
-          if (!parent) {
+          if (!parentPerm) {
             return res.status(400).json({
               success: false,
               message: '父权限不存在'
             });
           }
-          (permission as any).parent = parent;
+          permission.parentId = parentId;
         } else {
-          (permission as any).parent = undefined;
+          permission.parentId = null as any;
         }
       }
 

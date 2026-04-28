@@ -246,6 +246,126 @@ export const FALLBACK_PERMISSION_TREE = [
         { id: 'product.category.create', name: '新增分类', type: 'action' },
         { id: 'product.category.edit', name: '编辑分类', type: 'action' },
         { id: 'product.category.delete', name: '删除分类', type: 'action' }
+      ]},
+      { id: 'product.virtual_keys', name: '卡密库存', icon: 'Key', type: 'menu', children: [
+        { id: 'product.virtual_keys.view', name: '查看卡密', type: 'action' },
+        { id: 'product.virtual_keys.create', name: '新增卡密', type: 'action' },
+        { id: 'product.virtual_keys.edit', name: '编辑卡密', type: 'action' },
+        { id: 'product.virtual_keys.delete', name: '删除卡密', type: 'action' },
+        { id: 'product.virtual_keys.import', name: '导入卡密', type: 'action' },
+        { id: 'product.virtual_keys.export', name: '导出卡密', type: 'action' }
+      ]},
+      { id: 'product.virtual_resources', name: '资源库存', icon: 'FolderOpened', type: 'menu', children: [
+        { id: 'product.virtual_resources.view', name: '查看资源', type: 'action' },
+        { id: 'product.virtual_resources.create', name: '新增资源', type: 'action' },
+        { id: 'product.virtual_resources.edit', name: '编辑资源', type: 'action' },
+        { id: 'product.virtual_resources.delete', name: '删除资源', type: 'action' },
+        { id: 'product.virtual_resources.import', name: '导入资源', type: 'action' },
+        { id: 'product.virtual_resources.export', name: '导出资源', type: 'action' }
+      ]}
+    ]
+  },
+  {
+    id: 'wecom', name: '企微管理', icon: 'ChatDotRound', type: 'menu',
+    children: [
+      { id: 'wecom.address_book', name: '通讯录', icon: 'Notebook', type: 'menu', children: [
+        { id: 'wecom.address_book.view', name: '查看通讯录', type: 'action' },
+        { id: 'wecom.address_book.sync', name: '同步通讯录', type: 'action' },
+        { id: 'wecom.address_book.binding', name: '成员绑定', type: 'tab' },
+        { id: 'wecom.address_book.auto_match', name: '自动匹配', type: 'tab' },
+        { id: 'wecom.address_book.sync_settings', name: '同步设置', type: 'tab' },
+        { id: 'wecom.address_book.sync_logs', name: '同步日志', type: 'tab' }
+      ]},
+      { id: 'wecom.customer', name: '企微客户', icon: 'User', type: 'menu', children: [
+        { id: 'wecom.customer.view', name: '查看企微客户', type: 'action' },
+        { id: 'wecom.customer.export', name: '导出企微客户', type: 'action' },
+        { id: 'wecom.customer.sync', name: '同步企微客户', type: 'action' }
+      ]},
+      { id: 'wecom.customer_group', name: '客户群', icon: 'UserFilled', type: 'menu', children: [
+        { id: 'wecom.customer_group.view', name: '查看客户群', type: 'action' },
+        { id: 'wecom.customer_group.export', name: '导出客户群', type: 'action' },
+        { id: 'wecom.customer_group.sync', name: '同步客户群', type: 'action' },
+        { id: 'wecom.customer_group.template', name: '群模板', type: 'tab' },
+        { id: 'wecom.customer_group.welcome', name: '入群欢迎语', type: 'tab' },
+        { id: 'wecom.customer_group.anti_spam', name: '防骚扰规则', type: 'tab' },
+        { id: 'wecom.customer_group.broadcast', name: '群发消息', type: 'tab' },
+        { id: 'wecom.customer_group.stats', name: '群数据', type: 'tab' }
+      ]},
+      { id: 'wecom.acquisition', name: '获客助手', icon: 'Promotion', type: 'menu', children: [
+        { id: 'wecom.acquisition.view', name: '查看获客助手', type: 'action' },
+        { id: 'wecom.acquisition.create', name: '创建获客链接', type: 'action' },
+        { id: 'wecom.acquisition.edit', name: '编辑获客链接', type: 'action' },
+        { id: 'wecom.acquisition.delete', name: '删除获客链接', type: 'action' },
+        { id: 'wecom.acquisition.overview', name: '数据总览', type: 'tab' },
+        { id: 'wecom.acquisition.retention', name: '留存分析', type: 'tab' },
+        { id: 'wecom.acquisition.ranking', name: '成员排行', type: 'tab' },
+        { id: 'wecom.acquisition.tags', name: '标签管理', type: 'tab' },
+        { id: 'wecom.acquisition.purchase', name: '套餐与配额', type: 'tab' }
+      ]},
+      { id: 'wecom.contact_way', name: '活码管理', icon: 'Connection', type: 'menu', children: [
+        { id: 'wecom.contact_way.view', name: '查看活码', type: 'action' },
+        { id: 'wecom.contact_way.create', name: '创建活码', type: 'action' },
+        { id: 'wecom.contact_way.edit', name: '编辑活码', type: 'action' },
+        { id: 'wecom.contact_way.delete', name: '删除活码', type: 'action' },
+        { id: 'wecom.contact_way.stats', name: '数据统计', type: 'tab' },
+        { id: 'wecom.contact_way.channel', name: '渠道分析', type: 'tab' },
+        { id: 'wecom.contact_way.tags', name: '标签管理', type: 'tab' }
+      ]},
+      { id: 'wecom.chat_archive', name: '会话存档', icon: 'ChatLineSquare', type: 'menu', children: [
+        { id: 'wecom.chat_archive.view', name: '查看会话存档', type: 'action' },
+        { id: 'wecom.chat_archive.view_all', name: '查看全部存档', type: 'action' },
+        { id: 'wecom.chat_archive.export', name: '导出会话记录', type: 'action' },
+        { id: 'wecom.chat_archive.records', name: '消息记录', type: 'tab' },
+        { id: 'wecom.chat_archive.stats', name: '数据统计', type: 'tab' },
+        { id: 'wecom.chat_archive.ai_inspect', name: 'AI质检', type: 'tab' },
+        { id: 'wecom.chat_archive.sensitive', name: '敏感词管理', type: 'tab' },
+        { id: 'wecom.chat_archive.settings', name: '存档设置', type: 'tab' },
+        { id: 'wecom.chat_archive.purchase', name: '套餐与配额', type: 'tab' }
+      ]},
+      { id: 'wecom.service', name: '微信客服', icon: 'Service', type: 'menu', children: [
+        { id: 'wecom.service.view', name: '查看微信客服', type: 'action' },
+        { id: 'wecom.service.config', name: '配置微信客服', type: 'action' },
+        { id: 'wecom.service.accounts', name: '客服账号', type: 'tab' },
+        { id: 'wecom.service.workspace', name: '实时工作台', type: 'tab' },
+        { id: 'wecom.service.sessions', name: '会话记录', type: 'tab' },
+        { id: 'wecom.service.stats', name: '数据统计', type: 'tab' },
+        { id: 'wecom.service.replies', name: '快捷回复', type: 'tab' },
+        { id: 'wecom.service.auto_reply', name: '自动回复', type: 'tab' }
+      ]},
+      { id: 'wecom.ai_assistant', name: 'AI助手', icon: 'MagicStick', type: 'menu', children: [
+        { id: 'wecom.ai_assistant.view', name: '查看AI助手', type: 'action' },
+        { id: 'wecom.ai_assistant.config', name: '配置AI助手', type: 'action' },
+        { id: 'wecom.ai_assistant.model_config', name: 'AI配置', type: 'tab' },
+        { id: 'wecom.ai_assistant.knowledge', name: '知识库', type: 'tab' },
+        { id: 'wecom.ai_assistant.scripts', name: '话术库', type: 'tab' },
+        { id: 'wecom.ai_assistant.sensitive', name: '敏感词库', type: 'tab' },
+        { id: 'wecom.ai_assistant.tag_ai', name: '标签AI', type: 'tab' },
+        { id: 'wecom.ai_assistant.logs', name: '调用日志', type: 'tab' },
+        { id: 'wecom.ai_assistant.usage', name: '订单与使用量', type: 'tab' }
+      ]},
+      { id: 'wecom.sidebar', name: '侧边栏', icon: 'Operation', type: 'menu', children: [
+        { id: 'wecom.sidebar.view', name: '查看侧边栏', type: 'action' },
+        { id: 'wecom.sidebar.config', name: '配置侧边栏', type: 'action' },
+        { id: 'wecom.sidebar.builtin', name: '内置应用', type: 'tab' },
+        { id: 'wecom.sidebar.custom', name: '自定义应用', type: 'tab' },
+        { id: 'wecom.sidebar.scripts', name: '快捷话术', type: 'tab' }
+      ]},
+      { id: 'wecom.payment', name: '对外收款', icon: 'Wallet', type: 'menu', children: [
+        { id: 'wecom.payment.view', name: '查看收款记录', type: 'action' },
+        { id: 'wecom.payment.create', name: '创建收款', type: 'action' },
+        { id: 'wecom.payment.export', name: '导出收款记录', type: 'action' },
+        { id: 'wecom.payment.stats', name: '收款统计', type: 'tab' },
+        { id: 'wecom.payment.refund', name: '退款统计', type: 'tab' },
+        { id: 'wecom.payment.settings', name: '收款设置', type: 'tab' }
+      ]},
+      { id: 'wecom.config', name: '企微授权', icon: 'Setting', type: 'menu', children: [
+        { id: 'wecom.config.view', name: '查看授权配置', type: 'action' },
+        { id: 'wecom.config.edit', name: '编辑授权配置', type: 'action' },
+        { id: 'wecom.config.secret', name: 'Secret管理', type: 'tab' },
+        { id: 'wecom.config.callback', name: '回调配置', type: 'tab' },
+        { id: 'wecom.config.feature', name: '功能授权', type: 'tab' },
+        { id: 'wecom.config.diagnostic', name: 'API诊断', type: 'tab' },
+        { id: 'wecom.config.package', name: '企微套餐', type: 'tab' }
       ]}
     ]
   }

@@ -456,6 +456,36 @@ export const PERMISSION_TREE: Permission[] = [
         children: [
           { id: 'product_analytics_view', name: '查看分析', code: 'product:analytics:view', type: 'action', parentId: 'product_analytics' }
         ]
+      },
+      {
+        id: 'product_virtual_keys',
+        name: '卡密库存',
+        code: 'product:virtual_keys',
+        type: 'page',
+        parentId: 'product',
+        children: [
+          { id: 'product_virtual_keys_view', name: '查看卡密', code: 'product:virtual_keys:view', type: 'action', parentId: 'product_virtual_keys' },
+          { id: 'product_virtual_keys_create', name: '新增卡密', code: 'product:virtual_keys:create', type: 'action', parentId: 'product_virtual_keys' },
+          { id: 'product_virtual_keys_edit', name: '编辑卡密', code: 'product:virtual_keys:edit', type: 'action', parentId: 'product_virtual_keys' },
+          { id: 'product_virtual_keys_delete', name: '删除卡密', code: 'product:virtual_keys:delete', type: 'action', parentId: 'product_virtual_keys' },
+          { id: 'product_virtual_keys_import', name: '导入卡密', code: 'product:virtual_keys:import', type: 'action', parentId: 'product_virtual_keys' },
+          { id: 'product_virtual_keys_export', name: '导出卡密', code: 'product:virtual_keys:export', type: 'action', parentId: 'product_virtual_keys' }
+        ]
+      },
+      {
+        id: 'product_virtual_resources',
+        name: '资源库存',
+        code: 'product:virtual_resources',
+        type: 'page',
+        parentId: 'product',
+        children: [
+          { id: 'product_virtual_resources_view', name: '查看资源', code: 'product:virtual_resources:view', type: 'action', parentId: 'product_virtual_resources' },
+          { id: 'product_virtual_resources_create', name: '新增资源', code: 'product:virtual_resources:create', type: 'action', parentId: 'product_virtual_resources' },
+          { id: 'product_virtual_resources_edit', name: '编辑资源', code: 'product:virtual_resources:edit', type: 'action', parentId: 'product_virtual_resources' },
+          { id: 'product_virtual_resources_delete', name: '删除资源', code: 'product:virtual_resources:delete', type: 'action', parentId: 'product_virtual_resources' },
+          { id: 'product_virtual_resources_import', name: '导入资源', code: 'product:virtual_resources:import', type: 'action', parentId: 'product_virtual_resources' },
+          { id: 'product_virtual_resources_export', name: '导出资源', code: 'product:virtual_resources:export', type: 'action', parentId: 'product_virtual_resources' }
+        ]
       }
     ]
   },
@@ -500,13 +530,26 @@ export const PERMISSION_TREE: Permission[] = [
     sort: 10,
     children: [
       {
+        id: 'wecom_address_book',
+        name: '通讯录',
+        code: 'wecom:address_book',
+        type: 'page',
+        parentId: 'wecom',
+        children: [
+          { id: 'wecom_address_book_view', name: '查看通讯录', code: 'wecom:address_book:view', type: 'action', parentId: 'wecom_address_book' },
+          { id: 'wecom_address_book_sync', name: '同步通讯录', code: 'wecom:address_book:sync', type: 'action', parentId: 'wecom_address_book' }
+        ]
+      },
+      {
         id: 'wecom_customer',
         name: '企微客户',
         code: 'wecom:customer',
         type: 'page',
         parentId: 'wecom',
         children: [
-          { id: 'wecom_customer_view', name: '查看企微客户', code: 'wecom:customer:view', type: 'action', parentId: 'wecom_customer' }
+          { id: 'wecom_customer_view', name: '查看企微客户', code: 'wecom:customer:view', type: 'action', parentId: 'wecom_customer' },
+          { id: 'wecom_customer_export', name: '导出企微客户', code: 'wecom:customer:export', type: 'action', parentId: 'wecom_customer' },
+          { id: 'wecom_customer_sync', name: '同步企微客户', code: 'wecom:customer:sync', type: 'action', parentId: 'wecom_customer' }
         ]
       },
       {
@@ -516,7 +559,35 @@ export const PERMISSION_TREE: Permission[] = [
         type: 'page',
         parentId: 'wecom',
         children: [
-          { id: 'wecom_customer_group_view', name: '查看客户群', code: 'wecom:customer_group:view', type: 'action', parentId: 'wecom_customer_group' }
+          { id: 'wecom_customer_group_view', name: '查看客户群', code: 'wecom:customer_group:view', type: 'action', parentId: 'wecom_customer_group' },
+          { id: 'wecom_customer_group_export', name: '导出客户群', code: 'wecom:customer_group:export', type: 'action', parentId: 'wecom_customer_group' },
+          { id: 'wecom_customer_group_sync', name: '同步客户群', code: 'wecom:customer_group:sync', type: 'action', parentId: 'wecom_customer_group' }
+        ]
+      },
+      {
+        id: 'wecom_acquisition',
+        name: '获客助手',
+        code: 'wecom:acquisition',
+        type: 'page',
+        parentId: 'wecom',
+        children: [
+          { id: 'wecom_acquisition_view', name: '查看获客助手', code: 'wecom:acquisition:view', type: 'action', parentId: 'wecom_acquisition' },
+          { id: 'wecom_acquisition_create', name: '创建获客链接', code: 'wecom:acquisition:create', type: 'action', parentId: 'wecom_acquisition' },
+          { id: 'wecom_acquisition_edit', name: '编辑获客链接', code: 'wecom:acquisition:edit', type: 'action', parentId: 'wecom_acquisition' },
+          { id: 'wecom_acquisition_delete', name: '删除获客链接', code: 'wecom:acquisition:delete', type: 'action', parentId: 'wecom_acquisition' }
+        ]
+      },
+      {
+        id: 'wecom_contact_way',
+        name: '活码管理',
+        code: 'wecom:contact_way',
+        type: 'page',
+        parentId: 'wecom',
+        children: [
+          { id: 'wecom_contact_way_view', name: '查看活码', code: 'wecom:contact_way:view', type: 'action', parentId: 'wecom_contact_way' },
+          { id: 'wecom_contact_way_create', name: '创建活码', code: 'wecom:contact_way:create', type: 'action', parentId: 'wecom_contact_way' },
+          { id: 'wecom_contact_way_edit', name: '编辑活码', code: 'wecom:contact_way:edit', type: 'action', parentId: 'wecom_contact_way' },
+          { id: 'wecom_contact_way_delete', name: '删除活码', code: 'wecom:contact_way:delete', type: 'action', parentId: 'wecom_contact_way' }
         ]
       },
       {
@@ -527,7 +598,64 @@ export const PERMISSION_TREE: Permission[] = [
         parentId: 'wecom',
         children: [
           { id: 'wecom_chat_archive_view', name: '查看会话存档', code: 'wecom:chat_archive:view', type: 'action', parentId: 'wecom_chat_archive' },
-          { id: 'wecom_chat_archive_view_all', name: '查看全部存档', code: 'wecom:chat_archive:view_all', type: 'action', parentId: 'wecom_chat_archive' }
+          { id: 'wecom_chat_archive_view_all', name: '查看全部存档', code: 'wecom:chat_archive:view_all', type: 'action', parentId: 'wecom_chat_archive' },
+          { id: 'wecom_chat_archive_export', name: '导出会话记录', code: 'wecom:chat_archive:export', type: 'action', parentId: 'wecom_chat_archive' }
+        ]
+      },
+      {
+        id: 'wecom_service',
+        name: '微信客服',
+        code: 'wecom:service',
+        type: 'page',
+        parentId: 'wecom',
+        children: [
+          { id: 'wecom_service_view', name: '查看微信客服', code: 'wecom:service:view', type: 'action', parentId: 'wecom_service' },
+          { id: 'wecom_service_config', name: '配置微信客服', code: 'wecom:service:config', type: 'action', parentId: 'wecom_service' }
+        ]
+      },
+      {
+        id: 'wecom_ai_assistant',
+        name: 'AI助手',
+        code: 'wecom:ai_assistant',
+        type: 'page',
+        parentId: 'wecom',
+        children: [
+          { id: 'wecom_ai_assistant_view', name: '查看AI助手', code: 'wecom:ai_assistant:view', type: 'action', parentId: 'wecom_ai_assistant' },
+          { id: 'wecom_ai_assistant_config', name: '配置AI助手', code: 'wecom:ai_assistant:config', type: 'action', parentId: 'wecom_ai_assistant' }
+        ]
+      },
+      {
+        id: 'wecom_sidebar',
+        name: '侧边栏',
+        code: 'wecom:sidebar',
+        type: 'page',
+        parentId: 'wecom',
+        children: [
+          { id: 'wecom_sidebar_view', name: '查看侧边栏', code: 'wecom:sidebar:view', type: 'action', parentId: 'wecom_sidebar' },
+          { id: 'wecom_sidebar_config', name: '配置侧边栏', code: 'wecom:sidebar:config', type: 'action', parentId: 'wecom_sidebar' }
+        ]
+      },
+      {
+        id: 'wecom_payment',
+        name: '对外收款',
+        code: 'wecom:payment',
+        type: 'page',
+        parentId: 'wecom',
+        children: [
+          { id: 'wecom_payment_view', name: '查看收款记录', code: 'wecom:payment:view', type: 'action', parentId: 'wecom_payment' },
+          { id: 'wecom_payment_create', name: '创建收款', code: 'wecom:payment:create', type: 'action', parentId: 'wecom_payment' },
+          { id: 'wecom_payment_export', name: '导出收款记录', code: 'wecom:payment:export', type: 'action', parentId: 'wecom_payment' }
+        ]
+      },
+      {
+        id: 'wecom_config',
+        name: '企微授权',
+        code: 'wecom:config',
+        type: 'page',
+        parentId: 'wecom',
+        children: [
+          { id: 'wecom_config_view', name: '查看授权配置', code: 'wecom:config:view', type: 'action', parentId: 'wecom_config' },
+          { id: 'wecom_config_edit', name: '编辑授权配置', code: 'wecom:config:edit', type: 'action', parentId: 'wecom_config' }
         ]
       }
     ]

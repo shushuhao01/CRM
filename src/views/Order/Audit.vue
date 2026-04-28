@@ -1604,16 +1604,10 @@ const handleReAudit = (row: AuditOrder, result: 'approved' | 'rejected') => {
 }
 
 /**
- * 更新标签计数
+ * 更新标签计数 - 🔥 修复：从后端刷新统计数据，确保跨分页计数准确
  */
-const updateTabCounts = () => {
-  tabCounts.pending = pendingOrders.value.length
-  tabCounts.approved = approvedOrders.value.length
-  tabCounts.rejected = rejectedOrders.value.length
-
-  // 同时更新汇总数据中的待审核订单数量
-  summaryData.pendingCount = pendingOrders.value.length
-  summaryData.pendingAmount = pendingOrders.value.reduce((sum, order) => sum + order.totalAmount, 0)
+const updateTabCounts = async () => {
+  await loadSummaryData()
 }
 
 /**
@@ -2253,8 +2247,8 @@ const loadOrderList = async () => {
       console.log(`[订单审核] 📊 数据加载完成: ${activeTab.value}=${convertedOrders.length}, 总数=${total}`)
     }
 
-    // 更新标签计数
-    updateTabCounts()
+    // 🔥 修复：从后端刷新标签计数，确保跨分页准确
+    loadSummaryData()
 
   } catch (error) {
     // 🔥 修复：忽略请求被取消的错误（由新请求替代旧请求时产生，属于正常行为）

@@ -513,8 +513,8 @@
           </div>
         </el-tab-pane>
 
-        <!-- ==================== Tab 4: 快捷回复 ==================== -->
-        <el-tab-pane label="快捷回复" name="replies">
+        <!-- ==================== Tab 4: 快捷回复（仅管理员可见） ==================== -->
+        <el-tab-pane v-if="isAdminRole" label="快捷回复" name="replies">
           <div class="tab-toolbar">
             <el-select v-model="replyFilter.category" placeholder="类型" clearable style="width: 130px" @change="fetchReplies">
               <el-option label="全部" value="" />
@@ -587,8 +587,8 @@
           </div>
         </el-tab-pane>
 
-        <!-- ==================== Tab 5: 自动回复 ==================== -->
-        <el-tab-pane label="自动回复" name="autoReply">
+        <!-- ==================== Tab 5: 自动回复（仅管理员可见） ==================== -->
+        <el-tab-pane v-if="isAdminRole" label="自动回复" name="autoReply">
           <div class="auto-reply-layout">
             <!-- 非工作时间回复 -->
             <el-card shadow="never" class="auto-reply-card">
@@ -861,6 +861,7 @@
 <script setup lang="ts">
 defineOptions({ name: 'WecomService' })
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
+import { useUserStore } from '@/stores/user'
 import { ElMessage, ElMessageBox, ElNotification } from 'element-plus'
 import { Plus, Search, Refresh, Download } from '@element-plus/icons-vue'
 import QRCode from 'qrcode'
@@ -882,6 +883,10 @@ import {
 } from './composables/useWecomDemo'
 
 const { isDemoMode } = useWecomDemo()
+
+// 当前用户角色判断
+const userStore = useUserStore()
+const isAdminRole = computed(() => ['super_admin', 'admin'].includes(userStore.currentUser?.role || ''))
 
 // ==================== 通用状态 ====================
 const activeTab = ref('accounts')

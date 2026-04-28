@@ -49,7 +49,7 @@ export interface CodListParams {
   status?: string
   codStatus?: string
   keywords?: string
-  tab?: 'pending' | 'returned' | 'cancelled'
+  tab?: 'pending' | 'returned' | 'cancelled' | 'zero' | 'all'
 }
 
 // 获取代收统计数据

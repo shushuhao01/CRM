@@ -27,43 +27,49 @@ export function hasMenuPermission(
   // 🔥 角色名规范化：manager 视为 department_manager
   const effectiveRole = userRole === 'manager' ? 'department_manager' : userRole
 
-  // 🔥 定义系统预设角色列表
-  const systemRoles = ['super_admin', 'admin', 'department_manager', 'manager', 'sales_staff', 'customer_service']
-  const isSystemRole = systemRoles.includes(userRole)
-
-  // 检查角色权限 - 只对系统预设角色进行角色检查，自定义角色跳过角色检查
-  // 🔥 customer_service 角色的菜单可见性完全由自定义权限决定，跳过 roles 数组检查
-  if (menuItem.roles && menuItem.roles.length > 0 && isSystemRole && effectiveRole !== 'customer_service') {
-    if (!menuItem.roles.includes(effectiveRole)) {
-      return false
-    }
+  // 🔥 权限匹配函数，同时支持冒号格式(customer:list)和点号格式(customer.list)
+  const matchPermission = (requiredPerm: string, userPerms: string[]): boolean => {
+    if (userPerms.includes(requiredPerm)) return true
+    const dotFormat = requiredPerm.replace(/:/g, '.')
+    if (userPerms.includes(dotFormat)) return true
+    const colonFormat = requiredPerm.replace(/\./g, ':')
+    if (userPerms.includes(colonFormat)) return true
+    // 🔥 前缀匹配：检查用户是否拥有更细粒度的子权限（如 requiredPerm='customer' 且用户有 'customer.list.view'）
+    // 注意：不再做父模块反向匹配（拥有'order'不能自动匹配'order.audit'等子菜单权限）
+    const colonPrefix = colonFormat + ':'
+    const dotPrefix = dotFormat + '.'
+    if (userPerms.some(p => p.startsWith(colonPrefix) || p.startsWith(dotPrefix))) return true
+    return false
   }
 
-  // 检查具体权限
+  // 🔥 先检查用户是否拥有菜单所需的权限码（动态权限优先于静态角色白名单）
+  // 这样管理员在后台动态分配权限后，角色就能看到对应的菜单
+  let hasExplicitPermission = false
   if (menuItem.permissions && menuItem.permissions.length > 0) {
-    // 🔥 权限匹配函数，同时支持冒号格式(customer:list)和点号格式(customer.list)
-    const matchPermission = (requiredPerm: string, userPerms: string[]): boolean => {
-      if (userPerms.includes(requiredPerm)) return true
-      const dotFormat = requiredPerm.replace(/:/g, '.')
-      if (userPerms.includes(dotFormat)) return true
-      const colonFormat = requiredPerm.replace(/\./g, ':')
-      if (userPerms.includes(colonFormat)) return true
-      const parentPerm = requiredPerm.split(/[:.]/)[0]
-      if (userPerms.includes(parentPerm)) return true
-      // 🔥 前缀匹配：检查用户是否拥有更细粒度的子权限（如 requiredPerm='customer' 且用户有 'customer:list:view'）
-      const colonPrefix = colonFormat + ':'
-      const dotPrefix = dotFormat + '.'
-      if (userPerms.some(p => p.startsWith(colonPrefix) || p.startsWith(dotPrefix))) return true
-      return false
-    }
-
     if (menuItem.requireAll) {
-      return menuItem.permissions.every(permission => matchPermission(permission, userPermissions))
+      hasExplicitPermission = menuItem.permissions.every(permission => matchPermission(permission, userPermissions))
     } else {
-      return menuItem.permissions.some(permission => matchPermission(permission, userPermissions))
+      hasExplicitPermission = menuItem.permissions.some(permission => matchPermission(permission, userPermissions))
     }
   }
 
+  // 如果用户拥有匹配的权限码，直接通过
+  if (hasExplicitPermission) {
+    return true
+  }
+
+  // 🔥 修复：如果菜单定义了权限要求但用户没有匹配的权限，直接拒绝
+  // 对所有角色生效（包括系统角色和自定义角色），避免自定义角色绕过权限检查
+  if (menuItem.permissions && menuItem.permissions.length > 0) {
+    return false
+  }
+
+  // 没有定义 permissions 的菜单项，使用角色白名单检查（对所有角色生效）
+  if (menuItem.roles && menuItem.roles.length > 0) {
+    return menuItem.roles.includes(effectiveRole)
+  }
+
+  // 没有 permissions 也没有 roles 约束的菜单项，默认允许
   return true
 }
 

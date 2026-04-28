@@ -256,6 +256,12 @@ export const optionalAuth = async (req: Request, res: Response, next: NextFuncti
       if (result?.user && result.user.status === 'active') {
         req.currentUser = result.user;
       }
+
+      // 🔥 与 authenticateToken 一致：设置租户上下文，确保 GET 路由也能获取租户信息
+      if (payload.tenantId && deployConfig.isSaaS()) {
+        (req as any).tenantId = payload.tenantId;
+        TenantContextManager.setContext({ tenantId: payload.tenantId, userId: payload.userId });
+      }
     }
   } catch (error) {
     // 可选认证失败时不阻止请求继续

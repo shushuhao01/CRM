@@ -49,22 +49,12 @@ class RoleApiService {
       // 但apiService可能已经解包了一层，需要检查多种情况
       let roles: Role[] = []
 
-      // 情况1: response.data.data.roles (完整axios响应)
-      if (response?.data?.data?.roles) {
-        roles = response.data.data.roles
-        console.log('[RoleAPI] 从 response.data.data.roles 获取角色')
-      }
-      // 情况2: response.data.roles (apiService已解包一层)
-      else if (response?.data?.roles) {
-        roles = response.data.roles
-        console.log('[RoleAPI] 从 response.data.roles 获取角色')
-      }
-      // 情况3: response.roles (apiService已解包两层)
-      else if (response?.roles) {
+      // apiService.get 已返回 response.data.data，即后端的 data 字段
+      if (response?.roles) {
         roles = response.roles
         console.log('[RoleAPI] 从 response.roles 获取角色')
       }
-      // 情况4: response 本身就是数组
+      // response 本身就是数组
       else if (Array.isArray(response)) {
         roles = response
         console.log('[RoleAPI] response 本身就是角色数组')
@@ -120,9 +110,9 @@ class RoleApiService {
    */
   async getRoleById(id: string): Promise<Role> {
     try {
-      const response = await apiService.get<{ success: boolean; data: Role }>(`/roles/${id}`)
+      const result = await apiService.get<Role>(`/roles/${id}`)
       console.log(`[RoleAPI] 获取角色详情成功: ${id}`)
-      return response.data
+      return result
     } catch (error) {
       console.error(`[RoleAPI] 获取角色详情失败: ${id}`, error)
       throw error
@@ -134,9 +124,9 @@ class RoleApiService {
    */
   async createRole(data: CreateRoleData): Promise<Role> {
     try {
-      const response = await apiService.post<{ success: boolean; data: Role; message: string }>('/roles', data)
+      const result = await apiService.post<Role>('/roles', data)
       console.log('[RoleAPI] 创建角色成功')
-      return response.data
+      return result
     } catch (error) {
       console.warn('[RoleAPI] API创建失败，使用localStorage创建角色', error)
 
@@ -179,9 +169,9 @@ class RoleApiService {
    */
   async updateRole(data: UpdateRoleData): Promise<Role> {
     try {
-      const response = await apiService.put<{ success: boolean; data: Role; message: string }>(`/roles/${data.id}`, data)
+      const result = await apiService.put<Role>(`/roles/${data.id}`, data)
       console.log(`[RoleAPI] 更新角色成功: ${data.id}`)
-      return response.data
+      return result
     } catch (error) {
       console.warn(`[RoleAPI] API更新失败，使用localStorage更新角色: ${data.id}`, error)
 
@@ -278,9 +268,9 @@ class RoleApiService {
    */
   async updateRoleStatus(id: string, status: 'active' | 'inactive'): Promise<Role> {
     try {
-      const response = await apiService.patch<{ success: boolean; data: Role; message: string }>(`/roles/${id}/status`, { status })
+      const result = await apiService.patch<Role>(`/roles/${id}/status`, { status })
       console.log(`[RoleAPI] 更新角色状态成功: ${id} -> ${status}`)
-      return response.data
+      return result
     } catch (error) {
       console.error(`[RoleAPI] 更新角色状态失败: ${id}`, error)
       throw error
@@ -293,9 +283,9 @@ class RoleApiService {
   async getRoleStats(): Promise<unknown> {
     try {
       console.log('[RoleAPI] 开始获取角色统计...')
-      const response = await apiService.get<{ success: boolean; data: unknown }>('/roles/stats')
-      console.log('[RoleAPI] 获取角色统计成功:', response)
-      return response.data
+      const result = await apiService.get<unknown>('/roles/stats')
+      console.log('[RoleAPI] 获取角色统计成功:', result)
+      return result
     } catch (error: unknown) {
       console.warn('[RoleAPI] 获取角色统计失败，使用默认数据')
       console.warn('[RoleAPI] 错误详情:', {
@@ -418,12 +408,10 @@ class RoleApiService {
       console.log('[RoleAPI] 获取角色模板列表响应:', response)
 
       let templates: Role[] = []
-      if (response?.data?.data) {
-        templates = response.data.data
+      if (Array.isArray(response)) {
+        templates = response
       } else if (response?.data) {
         templates = Array.isArray(response.data) ? response.data : []
-      } else if (Array.isArray(response)) {
-        templates = response
       }
 
       console.log('[RoleAPI] 解析后的模板数量:', templates.length)
@@ -439,12 +427,12 @@ class RoleApiService {
    */
   async createRoleTemplate(data: CreateRoleData & { isTemplate: true }): Promise<Role> {
     try {
-      const response = await apiService.post<{ success: boolean; data: Role; message: string }>('/roles', {
+      const result = await apiService.post<Role>('/roles', {
         ...data,
         isTemplate: true
       })
       console.log('[RoleAPI] 创建角色模板成功')
-      return response.data
+      return result
     } catch (error) {
       console.error('[RoleAPI] 创建角色模板失败', error)
       throw error
@@ -456,12 +444,12 @@ class RoleApiService {
    */
   async createRoleFromTemplate(templateId: string, data: { name: string; code: string; description?: string }): Promise<Role> {
     try {
-      const response = await apiService.post<{ success: boolean; data: Role; message: string }>('/roles/from-template', {
+      const result = await apiService.post<Role>('/roles/from-template', {
         templateId,
         ...data
       })
       console.log('[RoleAPI] 从模板创建角色成功')
-      return response.data
+      return result
     } catch (error) {
       console.error('[RoleAPI] 从模板创建角色失败', error)
       throw error
@@ -474,9 +462,9 @@ class RoleApiService {
   async getRolePermissions(roleId: string): Promise<{ roleId: string; roleName: string; permissions: string[] }> {
     try {
       console.log(`[RoleAPI] 开始获取角色权限: ${roleId}`)
-      const response = await apiService.get<{ success: boolean; data: { roleId: string; roleName: string; permissions: string[] } }>(`/roles/${roleId}/permissions`)
-      console.log(`[RoleAPI] 获取角色权限成功:`, response.data)
-      return response.data
+      const result = await apiService.get<{ roleId: string; roleName: string; permissions: string[] }>(`/roles/${roleId}/permissions`)
+      console.log(`[RoleAPI] 获取角色权限成功:`, result)
+      return result
     } catch (error) {
       console.warn(`[RoleAPI] 获取角色权限失败: ${roleId}`, error)
       // 返回空权限
@@ -494,11 +482,11 @@ class RoleApiService {
   async updateRolePermissions(roleId: string, permissions: string[]): Promise<{ roleId: string; roleName: string; permissions: string[] }> {
     try {
       console.log(`[RoleAPI] 开始更新角色权限: ${roleId}`, permissions)
-      const response = await apiService.put<{ success: boolean; data: { roleId: string; roleName: string; permissions: string[] }; message: string }>(`/roles/${roleId}/permissions`, {
+      const result = await apiService.put<{ roleId: string; roleName: string; permissions: string[] }>(`/roles/${roleId}/permissions`, {
         permissions
       })
-      console.log(`[RoleAPI] 更新角色权限成功:`, response.data)
-      return response.data
+      console.log(`[RoleAPI] 更新角色权限成功:`, result)
+      return result
     } catch (error) {
       console.error(`[RoleAPI] 更新角色权限失败: ${roleId}`, error)
       throw error

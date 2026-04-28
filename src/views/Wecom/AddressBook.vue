@@ -91,8 +91,8 @@
           </div>
         </el-tab-pane>
 
-        <!-- Tab 2: 成员绑定 -->
-        <el-tab-pane label="成员绑定" name="binding">
+        <!-- Tab 2: 成员绑定（仅管理员可见） -->
+        <el-tab-pane v-if="isAdminRole" label="成员绑定" name="binding">
           <div class="stat-cards">
             <div class="stat-card"><div class="stat-value">{{ bindingStats.total }}</div><div class="stat-label">总成员</div></div>
             <div class="stat-card"><div class="stat-value text-success">{{ bindingStats.bound }}</div><div class="stat-label">已绑定</div></div>
@@ -155,8 +155,8 @@
           </div>
         </el-tab-pane>
 
-        <!-- Tab 3: 自动匹配 -->
-        <el-tab-pane name="auto-match">
+        <!-- Tab 3: 自动匹配（仅管理员可见） -->
+        <el-tab-pane v-if="isAdminRole" name="auto-match">
           <template #label>
             <span>自动匹配</span>
             <el-badge v-if="autoMatchPendingCount > 0" :value="autoMatchPendingCount" :max="99" class="match-badge" />
@@ -213,8 +213,8 @@
           <el-empty v-else-if="!matchRunning" description="暂无待确认匹配，请执行自动匹配" style="margin-top: 40px" />
         </el-tab-pane>
 
-        <!-- Tab 4: 同步设置 -->
-        <el-tab-pane label="同步设置" name="sync-settings">
+        <!-- Tab 4: 同步设置（仅管理员可见） -->
+        <el-tab-pane v-if="isAdminRole" label="同步设置" name="sync-settings">
           <div class="sync-settings-container" v-loading="loadingSyncSettings">
             <!-- 定时同步开关 -->
             <div class="settings-section">
@@ -270,8 +270,8 @@
           </div>
         </el-tab-pane>
 
-        <!-- Tab 5: 同步日志 -->
-        <el-tab-pane label="同步日志" name="sync-logs">
+        <!-- Tab 5: 同步日志（仅管理员可见） -->
+        <el-tab-pane v-if="isAdminRole" label="同步日志" name="sync-logs">
           <div class="tab-actions">
             <el-radio-group v-model="logFilter.type" @change="handleLogFilterChange">
               <el-radio-button label="all">全部</el-radio-button>
@@ -428,6 +428,7 @@
 defineOptions({ name: 'WecomAddressBook' })
 
 import { ref, reactive, computed, onMounted, watch } from 'vue'
+import { useUserStore } from '@/stores/user'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import WecomHeader from './components/WecomHeader.vue'
 import WecomDemoBanner from './components/WecomDemoBanner.vue'
@@ -444,6 +445,10 @@ import { formatDateTime } from '@/utils/date'
 import request from '@/utils/request'
 
 const { isDemoMode } = useWecomDemo()
+
+// 当前用户角色判断
+const userStore = useUserStore()
+const isAdminRole = computed(() => ['super_admin', 'admin'].includes(userStore.currentUser?.role || ''))
 
 const selectedConfigId = ref<number>()
 const configs = ref<any[]>([])

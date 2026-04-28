@@ -179,8 +179,8 @@
           <AcquisitionMemberRanking :config-id="selectedConfigId" :is-demo-mode="isDemoMode" />
         </el-tab-pane>
 
-        <!-- Tab 5: 标签管理（增强版） -->
-        <el-tab-pane label="标签管理" name="tags">
+        <!-- Tab 5: 标签管理（增强版，仅管理员可见） -->
+        <el-tab-pane v-if="isAdminRole" label="标签管理" name="tags">
           <AcquisitionTagManager
             :tag-groups="displayTagGroups"
             :loading="tagLoading"
@@ -193,8 +193,8 @@
           />
         </el-tab-pane>
 
-        <!-- Tab 6: 套餐与配额 -->
-        <el-tab-pane label="套餐与配额" name="purchase">
+        <!-- Tab 6: 套餐与配额（仅管理员可见） -->
+        <el-tab-pane v-if="isAdminRole" label="套餐与配额" name="purchase">
           <PackagePurchaseTab type="acquisition" />
         </el-tab-pane>
       </el-tabs>
@@ -301,6 +301,7 @@
 defineOptions({ name: 'WecomAcquisition' })
 
 import { ref, computed, onMounted, watch, nextTick } from 'vue'
+import { useUserStore } from '@/stores/user'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Download, ArrowDown, Refresh } from '@element-plus/icons-vue'
 import QRCode from 'qrcode'
@@ -318,6 +319,10 @@ import SmartOnlineRules from './components/SmartOnlineRules.vue'
 import { useAcquisition } from './composables/useAcquisition'
 import { getAcquisitionSmartRules } from '@/api/wecom'
 import type { AcquisitionWeightItem } from './types'
+
+// 当前用户角色判断
+const userStore = useUserStore()
+const isAdminRole = computed(() => ['super_admin', 'admin'].includes(userStore.currentUser?.role || ''))
 
 const {
   isDemoMode, loading, submitting, syncingStats, savingWeight,

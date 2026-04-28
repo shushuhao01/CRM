@@ -379,14 +379,14 @@ export const menuConfig: MenuItem[] = [
         title: '卡密库存',
         path: '/product/virtual/card-keys',
         roles: ['super_admin', 'admin'],
-        permissions: ['sales:product:edit', 'product.virtual']
+        permissions: ['sales:product:edit', 'product.virtual_keys']
       },
       {
         id: 'virtual-resources',
         title: '资源库存',
         path: '/product/virtual/resources',
         roles: ['super_admin', 'admin'],
-        permissions: ['sales:product:edit', 'product.virtual']
+        permissions: ['sales:product:edit', 'product.virtual_resources']
       },
 
     ]
@@ -404,7 +404,7 @@ export const menuConfig: MenuItem[] = [
         title: '通讯录',
         path: '/wecom/address-book',
         roles: ['super_admin', 'admin'],
-        permissions: ['wecom:contact']
+        permissions: ['wecom:contact', 'wecom.address_book']
       },
       {
         id: 'wecom-customer',
@@ -418,7 +418,7 @@ export const menuConfig: MenuItem[] = [
         title: '客户群',
         path: '/wecom/customer-group',
         roles: ['super_admin', 'admin', 'department_manager'],
-        permissions: ['wecom:group']
+        permissions: ['wecom:group', 'wecom.customer_group']
       },
       {
         id: 'wecom-acquisition',
@@ -439,7 +439,7 @@ export const menuConfig: MenuItem[] = [
         title: '会话存档',
         path: '/wecom/chat-archive',
         roles: ['super_admin', 'admin', 'department_manager', 'sales_staff'],
-        permissions: ['wecom:chat']
+        permissions: ['wecom:chat', 'wecom.chat_archive']
       },
       {
         id: 'wecom-service',
@@ -453,7 +453,7 @@ export const menuConfig: MenuItem[] = [
         title: 'AI助手',
         path: '/wecom/ai-assistant',
         roles: ['super_admin', 'admin'],
-        permissions: ['wecom:ai']
+        permissions: ['wecom:ai', 'wecom.ai_assistant']
       },
       {
         id: 'wecom-sidebar',
@@ -609,8 +609,13 @@ export const rolePermissions: Record<string, string[]> = {
     'system:message', 'system:message:view', 'system:message:subscription', 'system:message:announcement', 'system:message:config',
 
     // 企微管理（全部权限）
-    'wecom', 'wecom:config', 'wecom:binding', 'wecom:customer', 'wecom:acquisition',
-    'wecom:service', 'wecom:chat', 'wecom:payment', 'wecom:sidebar'
+    'wecom', 'wecom:contact', 'wecom.address_book', 'wecom:config', 'wecom:binding', 'wecom:customer', 'wecom:group', 'wecom.customer_group',
+    'wecom:acquisition', 'wecom:contact_way', 'wecom:service', 'wecom:ai', 'wecom.ai_assistant',
+    'wecom:chat', 'wecom.chat_archive', 'wecom:payment', 'wecom:sidebar',
+
+    // 商品管理 - 卡密库存和资源库存
+    'product', 'product.list', 'product.add', 'product.inventory', 'product.category', 'product.analytics',
+    'product.virtual', 'product.virtual_keys', 'product.virtual_resources'
   ],
 
   // 部门管理员：管理本部门的业务
@@ -647,8 +652,9 @@ export const rolePermissions: Record<string, string[]> = {
     // 财务管理权限 - 一级菜单和二级菜单
     'finance', 'finance:data',
 
-    // 企微管理权限（企微客户、客户群、会话存档、对外收款，仅限本部门绑定的企微账号数据）
-    'wecom', 'wecom:customer', 'wecom:group', 'wecom:chat', 'wecom:payment'
+    // 企微管理权限（企微客户、客户群、获客助手、活码管理、会话存档、对外收款，仅限本部门绑定的企微账号数据）
+    'wecom', 'wecom:customer', 'wecom:group', 'wecom.customer_group', 'wecom:acquisition', 'wecom:contact_way',
+    'wecom:chat', 'wecom.chat_archive', 'wecom:payment'
   ],
 
   // 销售员：只能管理自己的客户和订单
@@ -682,8 +688,8 @@ export const rolePermissions: Record<string, string[]> = {
     // 财务管理（只看个人绩效数据）
     'finance', 'finance:data',
 
-    // 企微管理权限（企微客户、会话存档、对外收款，仅限个人绑定的企微账号数据）
-    'wecom', 'wecom:customer', 'wecom:chat', 'wecom:payment'
+    // 企微管理权限（企微客户、会话存档、对外收款，仅限个人绑定的企微账号数据；客户群不开放）
+    'wecom', 'wecom:customer', 'wecom:chat', 'wecom.chat_archive', 'wecom:payment'
   ],
 
   // 客服默认权限：根据客服类型动态配置

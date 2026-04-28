@@ -230,13 +230,22 @@ router.get('/list', authenticateToken, async (req: Request, res: Response) => {
     // 标签页筛选
     if (tab === 'pending') {
       queryBuilder.andWhere('o.cod_status = :codStatus', { codStatus: 'pending' });
-      log.info('[CodCollection] 查询待处理订单，条件: cod_status = pending');
+      // 🔥 排除原始代收金额为0的订单（无需代收的不显示在待处理中）
+      queryBuilder.andWhere('(o.total_amount - COALESCE(o.deposit_amount, 0)) > 0');
+      log.info('[CodCollection] 查询待处理订单，条件: cod_status = pending, 原始代收 > 0');
     } else if (tab === 'returned') {
       queryBuilder.andWhere('o.cod_status = :codStatus', { codStatus: 'returned' });
       log.info('[CodCollection] 查询已返款订单，条件: cod_status = returned');
     } else if (tab === 'cancelled') {
       queryBuilder.andWhere('o.cod_status = :codStatus', { codStatus: 'cancelled' });
       log.info('[CodCollection] 查询已改代收订单，条件: cod_status = cancelled');
+    } else if (tab === 'zero') {
+      // 🔥 无需代收：原始代收金额（订单总额 - 定金）= 0 的订单
+      queryBuilder.andWhere('(o.total_amount - COALESCE(o.deposit_amount, 0)) = 0');
+      log.info('[CodCollection] 查询无需代收订单，条件: 原始代收金额 = 0');
+    } else if (tab === 'all') {
+      // 全部：不添加额外筛选
+      log.info('[CodCollection] 查询全部订单，无额外条件');
     }
 
     // 日期筛选（订单下单时间）

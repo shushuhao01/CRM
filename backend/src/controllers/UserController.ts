@@ -283,24 +283,46 @@ export class UserController {
     // 获取客服权限配置
     const customerServicePermissions = await this.getCustomerServicePermissions(user.id);
 
-    // 🔥 获取用户角色的权限列表
+    // 🔥 获取用户角色的权限列表（租户优先：先找租户专属角色，没有则用共享角色）
     let rolePermissions: string[] = [];
+    let permissionSource = 'none';
     try {
       const dataSource = getDataSource();
       if (dataSource) {
         const roleCode = user.roleId || user.role;
-        let roleQuery = 'SELECT permissions FROM roles WHERE code = ?';
-        const roleParams: any[] = [roleCode];
+        let roleData = null;
+        log.info(`[Login] 开始加载角色权限: roleCode=${roleCode}, tenantId=${user.tenantId || '无'}`);
+        // 优先查找当前租户专属角色（克隆角色）
         if (user.tenantId) {
-          roleQuery += ' AND tenant_id = ?';
-          roleParams.push(user.tenantId);
+          const [tenantRoleData] = await dataSource.query(
+            'SELECT id, permissions FROM roles WHERE code = ? AND tenant_id = ?', [roleCode, user.tenantId]
+          );
+          if (tenantRoleData) {
+            roleData = tenantRoleData;
+            permissionSource = `tenant_clone(id=${tenantRoleData.id})`;
+            log.info(`[Login] ✅ 找到租户克隆角色: id=${tenantRoleData.id}, code=${roleCode}`);
+          } else {
+            log.info(`[Login] 未找到租户克隆角色(code=${roleCode}, tenant=${user.tenantId})，回退到共享角色`);
+          }
         }
-        const [roleData] = await dataSource.query(roleQuery, roleParams);
+        // 没有租户专属角色，回退到任意匹配（共享默认角色）
+        if (!roleData) {
+          const [fallbackData] = await dataSource.query(
+            'SELECT id, permissions FROM roles WHERE code = ? LIMIT 1', [roleCode]
+          );
+          if (fallbackData) {
+            roleData = fallbackData;
+            permissionSource = `shared(id=${fallbackData.id})`;
+            log.info(`[Login] 使用共享角色: id=${fallbackData.id}, code=${roleCode}`);
+          }
+        }
         if (roleData && roleData.permissions) {
           rolePermissions = typeof roleData.permissions === 'string'
             ? JSON.parse(roleData.permissions)
             : roleData.permissions;
-          log.info(`[Login] 从数据库加载角色权限: ${roleCode}, ${rolePermissions.length}个权限`);
+          log.info(`[Login] 角色权限加载完成: source=${permissionSource}, code=${roleCode}, 权限数=${rolePermissions.length}`);
+        } else {
+          log.warn(`[Login] 角色权限为空: code=${roleCode}, source=${permissionSource}`);
         }
       }
     } catch (permError) {
