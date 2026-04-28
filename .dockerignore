@@ -1,0 +1,61 @@
+# ==================== Docker 构建排除 ====================
+# 不交付的子项目
+website/
+admin/
+h5/
+crmAPP/
+wecom-program/
+
+# 依赖和构建产物（容器内重新安装/构建）
+node_modules/
+backend/node_modules/
+dist/
+backend/dist/
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# 内部文档
+docs/
+重要文档/
+tests/
+scripts/
+
+# 敏感文件
+backend/scripts/generate-saas-license.js
+private-deploy/SaaS-license-guide.md
+private-deploy/delivery-guide.md
+private-deploy/clean-for-delivery.bat
+private-deploy/payment-config-guide.md
+private-deploy/central-server-callback-guide.md
+deploy.ps1
+*.ps1
+data/
+
+# 日志和临时文件
+*.log
+logs/
+backend/logs/
+uploads/
+backend/uploads/
+*.tmp
+*.temp
+
+# IDE
+.vs/
+.vscode/
+.idea/
+.kiro/
+
+# 开发配置
+.coding-standards.md
+.dev-guide.md
+.dev-rules.md
+.project
+vitest.config.ts
+
+# 验证文件（我方专属）
+MP_verify_*.txt
+WW_verify_*.txt

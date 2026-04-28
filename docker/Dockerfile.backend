@@ -1,0 +1,59 @@
+# ==================== CRM 后端 API Docker 镜像 ====================
+# 多阶段构建：编译 TypeScript → 生产运行
+# 构建命令：docker build -f docker/Dockerfile.backend -t crm-api:1.8.0 .
+# 注意：构建上下文为项目根目录
+
+# ---- Stage 1: 编译 TypeScript ----
+FROM node:22-alpine AS builder
+
+WORKDIR /build
+
+# 先复制依赖描述文件（利用 Docker 缓存）
+COPY backend/package.json backend/package-lock.json ./
+RUN npm ci
+
+# 复制后端源码并编译
+COPY backend/tsconfig.json ./
+COPY backend/src/ ./src/
+RUN npm run build
+
+# ---- Stage 2: 生产运行镜像 ----
+FROM node:22-alpine AS production
+
+# 安装 PM2 全局
+RUN npm install -g pm2
+
+# 设置工作目录
+WORKDIR /app
+
+# 只安装生产依赖
+COPY backend/package.json backend/package-lock.json ./
+RUN npm ci --production && npm cache clean --force
+
+# 从编译阶段复制产物
+COPY --from=builder /build/dist/ ./dist/
+
+# 复制 PM2 配置
+COPY backend/ecosystem.config.js ./
+
+# 复制数据库初始化脚本（容器内初始化用）
+COPY database/schema.sql /app/database/schema.sql
+COPY private-deploy/init-mysql-database.js /app/private-deploy/init-mysql-database.js
+
+# 创建必要目录
+RUN mkdir -p uploads logs
+
+# 环境变量（可通过 docker-compose 或 -e 覆盖）
+ENV NODE_ENV=production \
+    PORT=3000 \
+    API_PREFIX=/api/v1 \
+    DEPLOY_MODE=private
+
+EXPOSE 3000
+
+# 健康检查
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD wget -qO- http://localhost:3000/api/v1/health || exit 1
+
+# 使用 PM2 启动（自动重启 + 日志管理）
+CMD ["pm2-runtime", "ecosystem.config.js"]
