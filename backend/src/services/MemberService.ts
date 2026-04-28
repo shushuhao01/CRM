@@ -460,7 +460,9 @@ export class MemberService {
       let daysRemaining = 0;
       let totalDays = 365; // 默认年付
       let remainingPercent = 100;
-      if (tenant.expire_date) {
+      const hasExpireDate = !!tenant.expire_date;
+      const isActiveStatus = ['active', 'paid'].includes(tenant.license_status);
+      if (hasExpireDate) {
         const now = new Date();
         const expire = new Date(tenant.expire_date);
         daysRemaining = Math.max(0, Math.ceil((expire.getTime() - now.getTime()) / (1000 * 3600 * 24)));
@@ -474,6 +476,10 @@ export class MemberService {
           totalDays = Math.max(1, Math.ceil((expire.getTime() - created.getTime()) / (1000 * 3600 * 24)));
         }
         remainingPercent = totalDays > 0 ? Math.round((daysRemaining / totalDays) * 100) : 0;
+      } else if (isActiveStatus) {
+        // 🔑 expire_date 为空但状态为 active/paid → 视为永久有效（可能是支付后激活流程未完成）
+        daysRemaining = 99999;
+        remainingPercent = 100;
       }
 
       // 查询当前有效订阅
@@ -579,8 +585,8 @@ export class MemberService {
           daysRemaining,
           totalDays,
           remainingPercent,
-          isExpired: daysRemaining <= 0 && tenant.license_status === 'active',
-          isExpiringSoon: daysRemaining > 0 && remainingPercent < 20
+          isExpired: hasExpireDate && daysRemaining <= 0 && isActiveStatus,
+          isExpiringSoon: hasExpireDate && daysRemaining > 0 && remainingPercent < 20
         },
         subscription,
         usage: {

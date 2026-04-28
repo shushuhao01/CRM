@@ -495,7 +495,7 @@ class PaymentService {
     // 支付成功 → 通知管理员
     if (status === 'paid') {
       const orderInfo = await AppDataSource.query(
-        'SELECT po.amount, po.pay_type, po.contact_name, po.contact_phone, t.name as tenant_name FROM payment_orders po LEFT JOIN tenants t ON po.tenant_id = t.id WHERE po.order_no = ?',
+        'SELECT po.amount, po.pay_type, po.contact_name, po.contact_phone, t.name as tenant_name FROM payment_orders po LEFT JOIN tenants t ON po.tenant_id COLLATE utf8mb4_unicode_ci = t.id COLLATE utf8mb4_unicode_ci WHERE po.order_no = ?',
         [orderNo]
       )
       const info = orderInfo[0] || {}
@@ -525,17 +525,48 @@ class PaymentService {
       }
 
       const tenant = tenants[0]
-      const isRenewal = tenant.current_package_id === packageId  // 续费：同套餐
-      const isUpgrade = tenant.current_package_id && tenant.current_package_id !== packageId  // 升级：换套餐
 
-      // 获取套餐完整信息
-      const packages = await AppDataSource.query(
-        `SELECT id, name, code, type, duration_days, max_users, max_storage_gb, features, modules
-         FROM tenant_packages WHERE id = ?`, [packageId]
-      )
+      // 获取套餐完整信息（兼容 package_id 存储的是数字ID或套餐code）
+      // 🔑 使用 SELECT * 避免 modules 等可选列不存在时报 Unknown column 导致整个激活流程失败
+      let packages: any[] = []
+      const isNumericId = /^\d+$/.test(String(packageId))
+
+      if (isNumericId) {
+        // packageId 是数字 → 直接按 id 查找
+        try {
+          packages = await AppDataSource.query(
+            `SELECT * FROM tenant_packages WHERE id = ?`, [packageId]
+          )
+        } catch (e: any) {
+          log.warn(`[Payment] 按id查找套餐失败: ${e.message?.substring(0, 100)}`)
+        }
+      }
+
+      if (packages.length === 0) {
+        // packageId 不是数字 或 按id没找到 → 按 code 查找
+        try {
+          packages = await AppDataSource.query(
+            `SELECT * FROM tenant_packages WHERE code = ?`, [packageId]
+          )
+          if (packages.length > 0) {
+            log.info(`[Payment] 通过套餐code匹配到套餐: ${packageId} → ${packages[0].name} (id=${packages[0].id})`)
+          }
+        } catch (e: any) {
+          log.warn(`[Payment] 按code查找套餐失败: ${e.message?.substring(0, 100)}`)
+        }
+      }
+
+      if (packages.length === 0) {
+        log.error(`[Payment] ❌ 无法找到套餐: packageId=${packageId} (isNumeric=${isNumericId})`)
+      }
 
       if (packages.length > 0) {
         const pkg = packages[0]
+        // 🔑 用解析后的真实套餐ID判断续费/升级（兼容 packageId 为code的情况）
+        const resolvedPkgId = String(pkg.id)
+        const currentPkgId = String(tenant.current_package_id || '')
+        const isRenewal = currentPkgId === resolvedPkgId  // 续费：同套餐
+        const isUpgrade = currentPkgId && currentPkgId !== resolvedPkgId  // 升级：换套餐
 
         // ━━━ 根据计费周期计算服务时长 ━━━
         let durationDays = pkg.duration_days || 30
@@ -588,7 +619,7 @@ class PaymentService {
             features = COALESCE(?, features),
             updated_at = NOW()
           WHERE id = ?`,
-          [packageId, licenseKey, expireDateStr, pkg.max_users || 3,
+          [pkg.id, licenseKey, expireDateStr, pkg.max_users || 3,
            pkg.max_storage_gb || 10, featuresStr, tenantId]
         )
 

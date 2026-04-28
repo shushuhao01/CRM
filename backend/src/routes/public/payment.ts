@@ -23,33 +23,33 @@ router.post('/create', async (req: Request, res: Response) => {
       return res.status(400).json({ code: 400, message: '不支持的支付方式' })
     }
 
-    // 查询套餐的年付赠送月数
+    // 🔑 解析套餐信息：将 packageId（可能是code如'SAAS_BASIC'）解析为真实的数字ID
+    // 同时获取年付赠送月数等信息
+    let resolvedPackageId = packageId
     let bonusMonths = 0
-    if (billingCycle === 'yearly') {
-      try {
-        const pkgRows = await AppDataSource.query(
-          `SELECT yearly_bonus_months, yearly_discount_rate FROM tenant_packages WHERE id = ? OR code = ? LIMIT 1`,
-          [packageId, packageId]
-        )
-        if (pkgRows.length === 0) {
-          // 兼容 packages 表
-          const pkgRows2 = await AppDataSource.query(
-            `SELECT yearly_bonus_months, yearly_discount_rate FROM packages WHERE id = ? OR code = ? LIMIT 1`,
-            [packageId, packageId]
-          )
-          if (pkgRows2.length > 0) {
-            bonusMonths = Number(pkgRows2[0].yearly_bonus_months) || 0
-          }
-        } else {
+    try {
+      const isNumeric = /^\d+$/.test(String(packageId))
+      const pkgQuery = isNumeric
+        ? `SELECT * FROM tenant_packages WHERE id = ? LIMIT 1`
+        : `SELECT * FROM tenant_packages WHERE code = ? LIMIT 1`
+      const pkgRows = await AppDataSource.query(pkgQuery, [packageId])
+      if (pkgRows.length > 0) {
+        resolvedPackageId = String(pkgRows[0].id)
+        if (billingCycle === 'yearly') {
           bonusMonths = Number(pkgRows[0].yearly_bonus_months) || 0
         }
-      } catch (e) {
-        log.warn('[Payment] 查询套餐赠送月数失败:', e)
+        if (resolvedPackageId !== String(packageId)) {
+          log.info(`[Payment] 套餐ID解析: ${packageId} → ${resolvedPackageId}`)
+        }
+      } else {
+        log.warn(`[Payment] 未找到套餐 ${packageId}，将原样存入订单`)
       }
+    } catch (e: any) {
+      log.warn('[Payment] 解析套餐信息失败:', e.message?.substring(0, 100))
     }
 
     const result = await paymentService.createOrder({
-      packageId, packageName, amount, payType, tenantId, tenantName,
+      packageId: resolvedPackageId, packageName, amount, payType, tenantId, tenantName,
       contactName, contactPhone, contactEmail,
       billingCycle: billingCycle || 'monthly',
       bonusMonths
