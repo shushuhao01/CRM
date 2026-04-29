@@ -249,42 +249,72 @@ router.get('/tenants', async (req: Request, res: Response) => {
 // 导出支付订单列表
 router.get('/payments', async (req: Request, res: Response) => {
   try {
-    const { status, payType, startDate, endDate, format } = req.query;
+    const { keyword, status, payType, startDate, endDate, billingType, orderType, format } = req.query;
     let where = '1=1';
     const params: any[] = [];
 
+    // 关键字搜索：订单号、租户名称、租户编码、联系人、联系电话
+    if (keyword) {
+      const kw = `%${keyword}%`;
+      where += ` AND (order_no LIKE ? OR tenant_name LIKE ? OR contact_name LIKE ? OR contact_phone LIKE ?
+        OR tenant_id IN (SELECT id FROM tenants WHERE code LIKE ?))`;
+      params.push(kw, kw, kw, kw, kw);
+    }
     if (status) { where += ' AND status = ?'; params.push(status); }
     if (payType) { where += ' AND pay_type = ?'; params.push(payType); }
     if (startDate) { where += ' AND created_at >= ?'; params.push(startDate); }
     if (endDate) { where += ' AND created_at <= ?'; params.push(`${endDate} 23:59:59`); }
+    if (billingType === 'subscription') {
+      where += " AND billing_cycle IN ('monthly', 'yearly')";
+    } else if (billingType === 'once') {
+      where += " AND (billing_cycle = 'once' OR billing_cycle IS NULL)";
+    }
+    if (orderType === 'capacity') {
+      where += " AND order_no LIKE 'CAP%'";
+    } else if (orderType === 'sms_quota') {
+      where += " AND (order_no LIKE 'SQ%' OR order_no LIKE 'MSQ%')";
+    } else if (orderType === 'vas') {
+      where += " AND order_no LIKE 'VAS%'";
+    } else if (orderType === 'package') {
+      where += " AND order_no NOT LIKE 'CAP%' AND order_no NOT LIKE 'SQ%' AND order_no NOT LIKE 'MSQ%' AND order_no NOT LIKE 'VAS%'";
+    }
 
     const rows = await AppDataSource.query(
       `SELECT order_no, tenant_name, package_name, amount, pay_type, status,
-              paid_at, refund_at, created_at
+              billing_cycle, contact_name, contact_phone, trade_no,
+              refund_amount, paid_at, refund_at, created_at
        FROM payment_orders WHERE ${where} ORDER BY created_at DESC`,
       params
     );
 
-    const payTypeMap: Record<string, string> = { wechat: '微信支付', alipay: '支付宝' };
-    const statusMap: Record<string, string> = { pending: '待支付', paid: '已支付', refunded: '已退款', closed: '已关闭' };
+    const payTypeMap: Record<string, string> = { wechat: '微信支付', alipay: '支付宝', bank: '对公转账' };
+    const statusMap: Record<string, string> = { pending: '待支付', paid: '已支付', refunded: '已退款', closed: '已关闭', expired: '已过期' };
+    const cycleMap: Record<string, string> = { monthly: '月付', yearly: '年付', once: '买断' };
 
     const formatted = rows.map((r: any) => ({
       ...r,
       amount: r.amount ? `¥${Number(r.amount).toFixed(2)}` : '¥0.00',
+      refund_amount: r.refund_amount ? `¥${Number(r.refund_amount).toFixed(2)}` : '',
       pay_type: payTypeMap[r.pay_type] || r.pay_type || '',
       status: statusMap[r.status] || r.status,
+      billing_cycle: cycleMap[r.billing_cycle] || r.billing_cycle || '一次性',
+      contact_info: [r.contact_name, r.contact_phone].filter(Boolean).join(' '),
       paid_at: r.paid_at ? new Date(r.paid_at).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) : '',
-      refunded_at: r.refund_at ? new Date(r.refund_at).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) : '',
+      refund_at: r.refund_at ? new Date(r.refund_at).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) : '',
       created_at: r.created_at ? new Date(r.created_at).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) : ''
     }));
 
     const columns: ColumnDef[] = [
-      { key: 'order_no', label: '订单号', width: 24 },
-      { key: 'tenant_name', label: '租户名称', width: 22 },
-      { key: 'package_name', label: '套餐名称', width: 16 },
+      { key: 'order_no', label: '订单号', width: 26 },
+      { key: 'tenant_name', label: '租户名称', width: 20 },
+      { key: 'contact_info', label: '联系人/电话', width: 22 },
+      { key: 'package_name', label: '套餐名称', width: 18 },
       { key: 'amount', label: '金额', width: 12 },
       { key: 'pay_type', label: '支付方式', width: 12 },
       { key: 'status', label: '状态', width: 10 },
+      { key: 'billing_cycle', label: '计费周期', width: 10 },
+      { key: 'trade_no', label: '交易号', width: 26 },
+      { key: 'refund_amount', label: '退款金额', width: 12 },
       { key: 'paid_at', label: '支付时间', width: 20 },
       { key: 'refund_at', label: '退款时间', width: 20 },
       { key: 'created_at', label: '创建时间', width: 20 }

@@ -893,7 +893,7 @@ router.get('/orders', async (req: Request, res: Response) => {
       }
     }
 
-    const { page = 1, pageSize = 10, orderNo, payType, status, startDate, endDate, billingType, orderType } = req.query as any
+    const { page = 1, pageSize = 10, keyword, payType, status, startDate, endDate, billingType, orderType } = req.query as any
     const offset = (page - 1) * pageSize
 
     // 辅助函数：只在列存在时添加 WHERE 条件
@@ -902,9 +902,18 @@ router.get('/orders', async (req: Request, res: Response) => {
     let where = '1=1'
     const params: any[] = []
 
-    if (orderNo && hasCol('order_no')) {
-      where += ' AND po.order_no LIKE ?'
-      params.push(`%${orderNo}%`)
+    // 关键字搜索：支持订单号、租户名称、租户编码、联系人、联系电话
+    if (keyword) {
+      const kw = `%${keyword}%`
+      const orConds: string[] = []
+      if (hasCol('order_no')) { orConds.push('po.order_no LIKE ?'); params.push(kw) }
+      if (hasCol('tenant_name')) { orConds.push('po.tenant_name LIKE ?'); params.push(kw) }
+      if (hasCol('contact_name')) { orConds.push('po.contact_name LIKE ?'); params.push(kw) }
+      if (hasCol('contact_phone')) { orConds.push('po.contact_phone LIKE ?'); params.push(kw) }
+      if (hasCol('tenant_id')) { orConds.push('po.tenant_id IN (SELECT id FROM tenants WHERE code LIKE ?)'); params.push(kw) }
+      if (orConds.length > 0) {
+        where += ` AND (${orConds.join(' OR ')})`
+      }
     }
     if (payType && hasCol('pay_type')) {
       where += ' AND po.pay_type = ?'
@@ -932,8 +941,12 @@ router.get('/orders', async (req: Request, res: Response) => {
     if (orderType && hasCol('order_no')) {
       if (orderType === 'capacity') {
         where += " AND po.order_no LIKE 'CAP%'"
+      } else if (orderType === 'sms_quota') {
+        where += " AND (po.order_no LIKE 'SQ%' OR po.order_no LIKE 'MSQ%')"
+      } else if (orderType === 'vas') {
+        where += " AND po.order_no LIKE 'VAS%'"
       } else if (orderType === 'package') {
-        where += " AND po.order_no NOT LIKE 'CAP%'"
+        where += " AND po.order_no NOT LIKE 'CAP%' AND po.order_no NOT LIKE 'SQ%' AND po.order_no NOT LIKE 'MSQ%' AND po.order_no NOT LIKE 'VAS%'"
       }
     }
 

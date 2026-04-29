@@ -3,8 +3,9 @@
     <!-- 搜索区域 -->
     <el-card shadow="never" class="search-card">
       <el-form :model="searchForm" inline>
-        <el-form-item label="订单号">
-          <el-input v-model="searchForm.orderNo" placeholder="请输入订单号" clearable style="width: 180px" />
+        <el-form-item label="关键字">
+          <el-input v-model="searchForm.keyword" placeholder="订单号/租户名称/编码/联系人/电话" clearable style="width: 280px"
+            @keyup.enter="handleSearch" />
         </el-form-item>
         <el-form-item label="支付方式">
           <el-select v-model="searchForm.payType" placeholder="全部" clearable style="width: 120px">
@@ -40,12 +41,12 @@
             start-placeholder="开始" end-placeholder="结束"
             value-format="YYYY-MM-DD" style="width: 240px" />
         </el-form-item>
-        <el-form-item>
+        <el-form-item class="search-actions">
           <el-button type="primary" @click="handleSearch">
             <el-icon><Search /></el-icon>搜索
           </el-button>
           <el-button @click="handleReset">重置</el-button>
-          <el-button @click="handleExport">
+          <el-button type="success" plain @click="handleExport">
             <el-icon><Download /></el-icon>导出
           </el-button>
         </el-form-item>
@@ -197,13 +198,18 @@
       </el-table>
 
       <div class="pagination-wrapper">
+        <span class="pagination-info">
+          当前第 {{ Math.min((page - 1) * pageSize + 1, total) }}-{{ Math.min(page * pageSize, total) }} 条，
+          共 <b>{{ total }}</b> 条记录<template v-if="total - page * pageSize > 0">，剩余 {{ total - page * pageSize }} 条</template>
+        </span>
         <el-pagination
           v-model:current-page="page"
           v-model:page-size="pageSize"
           :total="total"
           :page-sizes="[10, 20, 50, 100]"
-          layout="total, sizes, prev, pager, next, jumper"
-          @change="fetchData"
+          layout="sizes, prev, pager, next, jumper"
+          @size-change="fetchData"
+          @current-change="fetchData"
         />
       </div>
     </el-card>
@@ -365,7 +371,7 @@ const detailVisible = ref(false)
 const currentOrder = ref<any>(null)
 
 const searchForm = reactive({
-  orderNo: '',
+  keyword: '',
   payType: '',
   status: '',
   billingType: '',
@@ -433,7 +439,7 @@ const fetchData = async () => {
     const params: any = {
       page: page.value,
       pageSize: pageSize.value,
-      orderNo: searchForm.orderNo,
+      keyword: searchForm.keyword,
       payType: searchForm.payType,
       status: searchForm.status,
       billingType: searchForm.billingType,
@@ -497,21 +503,26 @@ const handleSearch = () => {
 }
 
 const handleReset = () => {
-  Object.assign(searchForm, { orderNo: '', payType: '', status: '', billingType: '', orderType: '', dateRange: null })
+  Object.assign(searchForm, { keyword: '', payType: '', status: '', billingType: '', orderType: '', dateRange: null })
   handleSearch()
 }
 
 const handleExport = () => {
   const params = new URLSearchParams()
+  if (searchForm.keyword) params.set('keyword', searchForm.keyword)
   if (searchForm.status) params.set('status', searchForm.status)
   if (searchForm.payType) params.set('payType', searchForm.payType)
   if (searchForm.billingType) params.set('billingType', searchForm.billingType)
+  if (searchForm.orderType) params.set('orderType', searchForm.orderType)
   if (searchForm.dateRange?.[0]) params.set('startDate', searchForm.dateRange[0])
   if (searchForm.dateRange?.[1]) params.set('endDate', searchForm.dateRange[1])
   const token = localStorage.getItem('admin_token')
   const url = `/api/v1/admin/export/payments?${params.toString()}`
   fetch(url, { headers: { Authorization: `Bearer ${token}` } })
-    .then(res => res.blob())
+    .then(res => {
+      if (!res.ok) throw new Error('导出失败')
+      return res.blob()
+    })
     .then(blob => {
       const a = document.createElement('a')
       a.href = URL.createObjectURL(blob)
@@ -519,6 +530,7 @@ const handleExport = () => {
       document.body.appendChild(a)
       a.click()
       document.body.removeChild(a)
+      URL.revokeObjectURL(a.href)
       ElMessage.success('导出成功')
     })
     .catch(() => ElMessage.error('导出失败'))
@@ -743,9 +755,29 @@ onMounted(() => {
 }
 
 .pagination-wrapper {
-  margin-top: 16px;
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid #f0f0f0;
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.pagination-info {
+  font-size: 13px;
+  color: #606266;
+  flex-shrink: 0;
+
+  b {
+    color: #409eff;
+    font-weight: 600;
+  }
+}
+
+.search-actions {
+  :deep(.el-form-item__content) {
+    gap: 8px;
+  }
 }
 
 .order-logs {
