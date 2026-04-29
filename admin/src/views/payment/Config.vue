@@ -154,6 +154,16 @@
               </el-form-item>
             </template>
 
+            <!-- 委托代扣配置（PAPPAY） -->
+            <template v-if="wechatConfig.apiVersion === 'v3'">
+              <el-divider content-position="left">委托代扣配置（选填）</el-divider>
+
+              <el-form-item label="委托代扣计划ID">
+                <el-input v-model="wechatConfig.pappayPlanId" placeholder="请输入在微信商户平台创建的扣费服务计划ID" />
+                <div class="form-tip">微信商户平台 → 产品中心 → 委托代扣 → 创建扣费服务后获得的计划ID。留空则使用系统自动生成的临时ID（仅适用于开发测试）</div>
+              </el-form-item>
+            </template>
+
             <!-- 小程序配置 -->
             <el-divider content-position="left">小程序配置（选填）</el-divider>
 
@@ -413,6 +423,7 @@ const wechatConfig = reactive({
   publicKeyPath: '',
   certPem: '',
   keyPem: '',
+  pappayPlanId: '',
   miniAppBind: 'same',
   mchType: 'normal',
   notifyUrl: ''

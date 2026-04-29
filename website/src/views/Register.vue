@@ -403,12 +403,12 @@
               <div v-if="signingStatus === 'idle'">
                 <p class="channel-label">请选择签约渠道：</p>
                 <div class="payment-options">
-                  <label class="payment-option" :class="{ selected: signingChannel === 'wechat' }">
+                  <label v-if="signingTargetPkgChannels !== 'alipay'" class="payment-option" :class="{ selected: signingChannel === 'wechat' }">
                     <input type="radio" v-model="signingChannel" value="wechat" />
                     <span class="payment-icon wechat">💚</span>
                     <span>微信委托代扣</span>
                   </label>
-                  <label class="payment-option" :class="{ selected: signingChannel === 'alipay' }">
+                  <label v-if="signingTargetPkgChannels !== 'wechat'" class="payment-option" :class="{ selected: signingChannel === 'alipay' }">
                     <input type="radio" v-model="signingChannel" value="alipay" />
                     <span class="payment-icon alipay">💙</span>
                     <span>支付宝周期扣款</span>
@@ -768,15 +768,15 @@
                 </template>
                 <!-- 正常支付显示全部方式 -->
                 <template v-else>
-                <label v-if="enabledPayMethods.wechat" class="payment-option" :class="{ selected: paymentMethod === 'wechat' }">
+                <label class="payment-option" :class="{ selected: paymentMethod === 'wechat' }">
                   <input type="radio" v-model="paymentMethod" value="wechat" />
                   <span>微信支付</span>
                 </label>
-                <label v-if="enabledPayMethods.alipay" class="payment-option" :class="{ selected: paymentMethod === 'alipay' }">
+                <label class="payment-option" :class="{ selected: paymentMethod === 'alipay' }">
                   <input type="radio" v-model="paymentMethod" value="alipay" />
                   <span>支付宝</span>
                 </label>
-                <label v-if="enabledPayMethods.bank" class="payment-option" :class="{ selected: paymentMethod === 'bank' }">
+                <label class="payment-option" :class="{ selected: paymentMethod === 'bank' }">
                   <input type="radio" v-model="paymentMethod" value="bank" />
                   <span>对公转账</span>
                 </label>
@@ -976,6 +976,7 @@ const signingLoading = ref(false)
 watch(signingUrl, async (url) => {
   signingQrDataUrl.value = url ? await generateQRCodeDataUrl(url) : ''
 })
+
 const signingStatus = ref<'idle' | 'waiting' | 'success' | 'paying' | 'pay-waiting' | 'pay-success'>('idle')
 
 // 签约模式下目标套餐是否免费试用
@@ -1004,6 +1005,15 @@ const signingTargetPkgPrice = computed(() => {
   }
   return Number(pkg.price).toString()
 })
+
+// 签约模式下目标套餐支持的签约渠道（'wechat' | 'alipay' | 'all'）
+const signingTargetPkgChannels = computed(() => signingTargetPkg.value?.subscription_channels || 'all')
+
+// 🔑 当套餐渠道配置变化时，自动修正签约渠道默认值
+watch(signingTargetPkgChannels, (channels) => {
+  if (channels === 'wechat') signingChannel.value = 'wechat'
+  else if (channels === 'alipay') signingChannel.value = 'alipay'
+}, { immediate: true })
 
 // 签约模式下目标套餐原价（不含订阅折扣）
 const signingTargetPkgFullPrice = computed(() => {
@@ -1083,6 +1093,10 @@ onMounted(async () => {
     const pmData = await pmRes.json()
     if (pmData.code === 0 && pmData.data) {
       Object.assign(enabledPayMethods, pmData.data)
+    }
+    // 🔑 兜底：如果所有支付方式都未启用，至少启用微信支付
+    if (!enabledPayMethods.wechat && !enabledPayMethods.alipay && !enabledPayMethods.bank) {
+      enabledPayMethods.wechat = true
     }
   } catch { /* 静默 */ }
 

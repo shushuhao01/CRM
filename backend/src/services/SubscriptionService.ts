@@ -30,6 +30,31 @@ export class SubscriptionService {
   }
 
   /**
+   * 读取私钥PEM内容（兼容直接内容和文件路径两种存储方式）
+   */
+  private async resolvePrivateKey(keyPem: string): Promise<string> {
+    if (keyPem.includes('-----BEGIN')) return keyPem;
+    // keyPem 可能是文件路径
+    if (keyPem.startsWith('/') || keyPem.includes('uploads')) {
+      const fs = await import('fs');
+      const path = await import('path');
+      const absPath = path.resolve(process.cwd(), keyPem.replace(/^\//, ''));
+      if (fs.existsSync(absPath)) return fs.readFileSync(absPath, 'utf-8');
+    }
+    throw new Error('微信支付私钥配置无效');
+  }
+
+  /**
+   * 微信支付V3签名（RSA-SHA256）
+   */
+  private generateSignV3(method: string, url: string, timestamp: string, nonce: string, body: string, privateKey: string): string {
+    const message = `${method}\n${url}\n${timestamp}\n${nonce}\n${body}\n`;
+    const sign = crypto.createSign('RSA-SHA256');
+    sign.update(message);
+    return sign.sign(privateKey, 'base64');
+  }
+
+  /**
    * 获取支付宝配置
    */
   private async getAlipayConfig(): Promise<any> {
@@ -218,12 +243,17 @@ export class SubscriptionService {
   ): Promise<{ signUrl: string; signType: string; planId?: string }> {
     const config = await this.getWechatConfig();
 
-    if (!config.appId || !config.mchId || !config.apiKeyV3) {
-      throw new Error('微信支付配置不完整，无法发起委托代扣签约');
+    if (!config.appId || !config.mchId || !config.keyPem || !config.serialNo) {
+      throw new Error('微信支付配置不完整（需要appId/mchId/keyPem/serialNo），无法发起委托代扣签约');
     }
 
-    // 代扣计划编号（与套餐关联）
-    const planId = `PLAN_${billingCycle.toUpperCase()}_${Date.now()}`;
+    const privateKey = await this.resolvePrivateKey(config.keyPem);
+
+    // 代扣计划编号：优先使用商户平台预创建的计划ID，未配置则动态生成（仅开发测试用）
+    const planId = config.pappayPlanId || `PLAN_${billingCycle.toUpperCase()}_${Date.now()}`;
+    if (!config.pappayPlanId) {
+      log.warn('[Subscription] 未配置微信委托代扣计划ID(pappayPlanId)，使用临时生成的planId，正式环境请在管理后台配置');
+    }
 
     const requestData = {
       appid: config.appId,
@@ -244,14 +274,11 @@ export class SubscriptionService {
     };
 
     try {
-      // 生成签名
+      // 生成签名（微信V3使用RSA-SHA256 + 商户私钥）
       const timestamp = Math.floor(Date.now() / 1000).toString();
       const nonce = crypto.randomBytes(16).toString('hex');
       const body = JSON.stringify(requestData);
-      const signStr = `POST\n/v3/papay/sign/contracts\n${timestamp}\n${nonce}\n${body}\n`;
-      const hmac = crypto.createHmac('sha256', config.apiKeyV3);
-      hmac.update(signStr);
-      const signature = hmac.digest('hex');
+      const signature = this.generateSignV3('POST', '/v3/papay/sign/contracts', timestamp, nonce, body, privateKey);
 
       const response = await axios.post(
         'https://api.mch.weixin.qq.com/v3/papay/sign/contracts',
@@ -586,15 +613,16 @@ export class SubscriptionService {
   private async wechatDeduct(sub: any): Promise<string> {
     const config = await this.getWechatConfig();
 
-    if (!config.appId || !config.mchId || !config.apiKeyV3 || !sub.wechat_contract_id) {
+    if (!config.appId || !config.mchId || !config.keyPem || !config.serialNo || !sub.wechat_contract_id) {
       // 开发环境模拟
       if (process.env.NODE_ENV !== 'production') {
         log.info('[Subscription] 开发环境模拟微信扣款成功');
         return `MOCK_WX_${Date.now()}`;
       }
-      throw new Error('微信委托代扣配置不完整');
+      throw new Error('微信委托代扣配置不完整（需要keyPem/serialNo）');
     }
 
+    const privateKey = await this.resolvePrivateKey(config.keyPem);
     const orderNo = `SUB_WX_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
     const requestData = {
       appid: config.appId,
@@ -611,10 +639,7 @@ export class SubscriptionService {
     const timestamp = Math.floor(Date.now() / 1000).toString();
     const nonce = crypto.randomBytes(16).toString('hex');
     const body = JSON.stringify(requestData);
-    const signStr = `POST\n/v3/papay/pay/transactions/apply\n${timestamp}\n${nonce}\n${body}\n`;
-    const hmac = crypto.createHmac('sha256', config.apiKeyV3);
-    hmac.update(signStr);
-    const signature = hmac.digest('hex');
+    const signature = this.generateSignV3('POST', '/v3/papay/pay/transactions/apply', timestamp, nonce, body, privateKey);
 
     const response = await axios.post(
       'https://api.mch.weixin.qq.com/v3/papay/pay/transactions/apply',
@@ -855,17 +880,15 @@ export class SubscriptionService {
    */
   private async cancelWechatContract(contractId: string): Promise<void> {
     const config = await this.getWechatConfig();
-    if (!config.apiKeyV3 || !config.mchId) return;
+    if (!config.keyPem || !config.mchId || !config.serialNo) return;
 
     try {
+      const privateKey = await this.resolvePrivateKey(config.keyPem);
       const timestamp = Math.floor(Date.now() / 1000).toString();
       const nonce = crypto.randomBytes(16).toString('hex');
       const body = JSON.stringify({ contract_termination_remark: '用户取消订阅' });
       const url = `/v3/papay/sign/contracts/${contractId}/terminate`;
-      const signStr = `POST\n${url}\n${timestamp}\n${nonce}\n${body}\n`;
-      const hmac = crypto.createHmac('sha256', config.apiKeyV3);
-      hmac.update(signStr);
-      const signature = hmac.digest('hex');
+      const signature = this.generateSignV3('POST', url, timestamp, nonce, body, privateKey);
 
       await axios.post(`https://api.mch.weixin.qq.com${url}`, body, {
         headers: {

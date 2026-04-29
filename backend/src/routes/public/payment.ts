@@ -130,8 +130,16 @@ router.get('/methods', async (_req: Request, res: Response) => {
     for (const row of rows) {
       if (row.pay_type && methods.hasOwnProperty(row.pay_type)) {
         // 兼容MySQL驱动返回 number/boolean/string/Buffer 等各种类型
-        methods[row.pay_type as keyof typeof methods] = row.enabled == 1 || row.enabled === true || row.enabled === '1'
+        let enabled = row.enabled
+        // Buffer 类型（MySQL BIT 列）
+        if (Buffer.isBuffer(enabled)) enabled = enabled[0]
+        methods[row.pay_type as keyof typeof methods] = enabled == 1 || enabled === true || enabled === '1'
       }
+    }
+    // 🔑 安全兆底：如果所有支付方式都未启用（表为空或全禁用），至少启用微信支付
+    if (!methods.wechat && !methods.alipay && !methods.bank) {
+      log.warn('[Payment] 所有支付方式均未启用，兑底启用微信支付')
+      methods.wechat = true
     }
     log.info(`[Payment] 支付方式查询结果: ${JSON.stringify(methods)}, raw: ${JSON.stringify(rows.map((r: any) => ({ t: r.pay_type, e: r.enabled, type: typeof r.enabled })))}`)
     res.json({ code: 0, data: methods })

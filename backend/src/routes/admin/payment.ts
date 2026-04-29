@@ -204,7 +204,7 @@ router.post('/config/wechat', async (req: Request, res: Response) => {
     const {
       enabled, apiVersion, mchId, appId, apiKey, apiKeyV3, serialNo,
       receiveLimit, certPath, publicKeyPath, certPem, keyPem,
-      miniAppBind, mchType, notifyUrl
+      pappayPlanId, miniAppBind, mchType, notifyUrl
     } = req.body
     const now = formatDateTime(new Date())
 
@@ -229,6 +229,7 @@ router.post('/config/wechat', async (req: Request, res: Response) => {
     configData.certPath = certPath
     configData.miniAppBind = miniAppBind
     configData.mchType = mchType
+    configData.pappayPlanId = pappayPlanId || ''
 
     // 敏感字段处理
     if (apiKey && apiKey !== '******') configData.apiKey = apiKey

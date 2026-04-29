@@ -439,13 +439,15 @@ router.post('/subscribe', async (req: Request, res: Response) => {
       return res.status(400).json({ code: 400, message: '不支持的签约渠道' })
     }
 
-    // 校验租户存在且是免费试用（30分钟内创建）
+    // 校验租户存在（30分钟内创建）
+    // 🔑 允许 active 和 pending 状态：免费试用套餐 license_status='active'，付费套餐 license_status='pending'
+    // 付费套餐签约后首次扣款会自动激活租户（SubscriptionService.executeDeduction）
     const tenants = await AppDataSource.query(
-      `SELECT id, license_status, created_at FROM tenants WHERE id = ? AND license_status = 'active'`,
+      `SELECT id, license_status, created_at FROM tenants WHERE id = ? AND license_status IN ('active', 'pending')`,
       [tenantId]
     )
     if (tenants.length === 0) {
-      return res.status(400).json({ code: 400, message: '租户不存在或未激活' })
+      return res.status(400).json({ code: 400, message: '租户不存在' })
     }
     const createdAt = new Date(tenants[0].created_at).getTime()
     if (Date.now() - createdAt > 30 * 60 * 1000) {

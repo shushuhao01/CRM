@@ -120,15 +120,29 @@ router.post('/sign-notify/wechat', async (req: Request, res: Response) => {
       return res.json({ code: 'SUCCESS', message: '成功' });
     }
 
-    // 解析回调数据（实际需要解密）
-    const contractCode = resource.out_contract_code || resource.contract_code;
-    const contractId = resource.contract_id;
-    const changeType = resource.change_type;
+    // 🔑 解密微信V3回调数据（resource 字段是 AES-256-GCM 加密的）
+    let data = resource;
+    if (resource.ciphertext) {
+      try {
+        const { wechatPayService } = await import('../../services/WechatPayService');
+        const config = await (wechatPayService as any).getConfig();
+        data = wechatPayService.decryptCallbackData(
+          resource.ciphertext, resource.associated_data || '', resource.nonce, config.apiKeyV3 || config.apiKey
+        );
+        log.info('[Subscription] 微信签约回调解密成功:', JSON.stringify(data).substring(0, 300));
+      } catch (decryptErr: any) {
+        log.error('[Subscription] 微信签约回调解密失败，尝试直接使用resource:', decryptErr.message);
+        data = resource;
+      }
+    }
+
+    const contractCode = data.out_contract_code || data.contract_code;
+    const contractId = data.contract_id;
+    const changeType = data.change_type;
 
     if (changeType === 'ADD' && contractCode && contractId) {
       await subscriptionService.handleSignSuccess(contractCode, contractId, 'wechat');
     } else if (changeType === 'DELETE') {
-      // 微信平台侧解约（用户在微信支付中取消了代扣协议）
       const unsignId = contractCode || contractId;
       if (unsignId) {
         await subscriptionService.handlePlatformUnsign(unsignId, 'wechat');
@@ -181,10 +195,26 @@ router.post('/deduct-notify/wechat', async (req: Request, res: Response) => {
 
     const { resource } = req.body;
     if (resource) {
-      const tradeNo = resource.transaction_id;
-      const tradeState = resource.trade_state;
+      // 🔑 解密微信V3回调数据
+      let data = resource;
+      if (resource.ciphertext) {
+        try {
+          const { wechatPayService } = await import('../../services/WechatPayService');
+          const config = await (wechatPayService as any).getConfig();
+          data = wechatPayService.decryptCallbackData(
+            resource.ciphertext, resource.associated_data || '', resource.nonce, config.apiKeyV3 || config.apiKey
+          );
+          log.info('[Subscription] 微信扣款回调解密成功:', JSON.stringify(data).substring(0, 300));
+        } catch (decryptErr: any) {
+          log.error('[Subscription] 微信扣款回调解密失败，尝试直接使用resource:', decryptErr.message);
+          data = resource;
+        }
+      }
+
+      const tradeNo = data.transaction_id;
+      const tradeState = data.trade_state;
       const success = tradeState === 'SUCCESS';
-      await subscriptionService.handleDeductCallback(tradeNo, success, 'wechat', resource);
+      await subscriptionService.handleDeductCallback(tradeNo, success, 'wechat', data);
     }
 
     res.json({ code: 'SUCCESS', message: '成功' });

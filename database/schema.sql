@@ -3433,7 +3433,7 @@ CREATE TABLE IF NOT EXISTS `module_schemes` (
 -- 支付配置表
 CREATE TABLE IF NOT EXISTS `payment_configs` (
   `id` VARCHAR(36) PRIMARY KEY,
-  `pay_type` VARCHAR(20) NOT NULL COMMENT '支付类型: wechat/alipay',
+  `pay_type` VARCHAR(20) NOT NULL COMMENT '支付类型: wechat/alipay/bank',
   `enabled` TINYINT(1) DEFAULT 0 COMMENT '是否启用',
   `config_data` TEXT COMMENT '配置数据(JSON加密存储)',
   `notify_url` VARCHAR(500) COMMENT '回调地址',
@@ -3515,6 +3515,65 @@ CREATE TABLE IF NOT EXISTS `payment_records` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='支付记录表（平台管理后台专用）';
 
 -- 注：payment_configs 支付配置表已在上方"支付系统表"区域定义
+-- 注：payment_configs.config_data 以加密JSON存储各支付渠道配置，微信委托代扣计划ID(pappayPlanId)也存储在此JSON中
+
+-- 订阅记录表（委托代扣/周期扣款）
+CREATE TABLE IF NOT EXISTS `subscriptions` (
+  `id` VARCHAR(36) NOT NULL PRIMARY KEY COMMENT '订阅ID',
+  `tenant_id` VARCHAR(36) NOT NULL COMMENT '租户ID',
+  `package_id` INT NOT NULL COMMENT '套餐ID',
+  `status` ENUM('signing','active','paused','cancelled','expired') DEFAULT 'signing' COMMENT '订阅状态',
+  `channel` ENUM('wechat','alipay') NOT NULL COMMENT '订阅渠道',
+  `wechat_contract_id` VARCHAR(100) DEFAULT NULL COMMENT '微信签约协议号',
+  `wechat_plan_id` VARCHAR(100) DEFAULT NULL COMMENT '微信代扣计划编号',
+  `alipay_agreement_no` VARCHAR(100) DEFAULT NULL COMMENT '支付宝协议号',
+  `sign_url` VARCHAR(500) DEFAULT NULL COMMENT '签约链接',
+  `amount` DECIMAL(10,2) NOT NULL DEFAULT 0 COMMENT '每期扣款金额',
+  `billing_cycle` ENUM('monthly','yearly') DEFAULT 'monthly' COMMENT '扣款周期',
+  `next_deduct_date` DATE DEFAULT NULL COMMENT '下次扣款日期',
+  `last_deduct_date` DATE DEFAULT NULL COMMENT '最近扣款日期',
+  `sign_date` DATETIME DEFAULT NULL COMMENT '签约时间',
+  `cancel_date` DATETIME DEFAULT NULL COMMENT '取消时间',
+  `cancel_reason` VARCHAR(500) DEFAULT NULL COMMENT '取消原因',
+  `total_deducted` DECIMAL(10,2) DEFAULT 0 COMMENT '累计扣款金额',
+  `deduct_count` INT DEFAULT 0 COMMENT '已扣款次数',
+  `fail_count` INT DEFAULT 0 COMMENT '连续失败次数',
+  `source` ENUM('register','renew','upgrade') DEFAULT 'register' COMMENT '订阅来源',
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX `idx_sub_tenant` (`tenant_id`),
+  INDEX `idx_sub_status` (`status`),
+  INDEX `idx_sub_next_deduct` (`next_deduct_date`),
+  INDEX `idx_sub_channel` (`channel`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='订阅记录表（委托代扣/周期扣款）';
+
+-- 订阅扣款明细表
+CREATE TABLE IF NOT EXISTS `subscription_deduct_logs` (
+  `id` VARCHAR(36) NOT NULL PRIMARY KEY COMMENT '扣款记录ID',
+  `subscription_id` VARCHAR(36) NOT NULL COMMENT '订阅ID',
+  `tenant_id` VARCHAR(36) NOT NULL COMMENT '租户ID',
+  `amount` DECIMAL(10,2) NOT NULL COMMENT '扣款金额',
+  `channel` ENUM('wechat','alipay') NOT NULL COMMENT '扣款渠道',
+  `status` ENUM('pending','success','failed') DEFAULT 'pending' COMMENT '扣款状态',
+  `trade_no` VARCHAR(100) DEFAULT NULL COMMENT '第三方交易号',
+  `payment_order_id` VARCHAR(36) DEFAULT NULL COMMENT '关联payment_orders',
+  `deduct_date` DATE NOT NULL COMMENT '扣款日期',
+  `executed_at` DATETIME DEFAULT NULL COMMENT '执行时间',
+  `retry_count` INT DEFAULT 0 COMMENT '重试次数',
+  `max_retry` INT DEFAULT 3 COMMENT '最大重试次数',
+  `next_retry_at` DATETIME DEFAULT NULL COMMENT '下次重试时间',
+  `error_code` VARCHAR(50) DEFAULT NULL COMMENT '错误代码',
+  `error_msg` TEXT DEFAULT NULL COMMENT '错误信息',
+  `period_number` INT DEFAULT 1 COMMENT '第几期',
+  `billing_start` DATE DEFAULT NULL COMMENT '本期开始日',
+  `billing_end` DATE DEFAULT NULL COMMENT '本期结束日',
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX `idx_deduct_sub` (`subscription_id`),
+  INDEX `idx_deduct_tenant` (`tenant_id`),
+  INDEX `idx_deduct_status` (`status`),
+  INDEX `idx_deduct_date` (`deduct_date`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='订阅扣款明细表';
 
 -- API接口统计表
 CREATE TABLE IF NOT EXISTS `api_statistics` (
