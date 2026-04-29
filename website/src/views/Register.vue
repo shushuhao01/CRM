@@ -546,42 +546,86 @@
                     <span>对公转账</span>
                   </div>
 
-                  <div class="qr-amount">
-                    <span class="amount-label">转账金额</span>
-                    <span class="amount-value">¥{{ getPlanPrice(selectedPlan) }}</span>
+                  <!-- 转账金额 - 突出显示 -->
+                  <div class="bank-amount-highlight">
+                    <div class="amount-label">应转账金额</div>
+                    <div class="amount-value">¥{{ getPlanPrice(selectedPlan) }}</div>
+                    <div class="amount-tip">请务必按此金额转账，以便快速核对</div>
                   </div>
 
-                  <div class="bank-info">
-                    <div class="bank-info-item" v-if="bankConfig.bankName">
-                      <span class="bank-label">开户银行</span>
-                      <span class="bank-value">{{ bankConfig.bankName }}</span>
+                  <!-- 银行账户信息卡片 -->
+                  <div class="bank-info-card">
+                    <div class="bank-card-header">
+                      <span class="card-title">收款账户信息</span>
+                      <button type="button" class="btn-copy-bank" @click="copyBankInfo" :class="{ copied: bankInfoCopied }">
+                        <svg v-if="!bankInfoCopied" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                          <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                        </svg>
+                        <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                          <polyline points="20 6 9 17 4 12"></polyline>
+                        </svg>
+                        <span>{{ bankInfoCopied ? '已复制' : '一键复制' }}</span>
+                      </button>
                     </div>
-                    <div class="bank-info-item" v-if="bankConfig.accountName">
-                      <span class="bank-label">账户名称</span>
-                      <span class="bank-value">{{ bankConfig.accountName }}</span>
+
+                    <div class="bank-info-grid">
+                      <div class="bank-info-row" v-if="bankConfig.accountName">
+                        <div class="info-label">账户名称</div>
+                        <div class="info-value highlight">{{ bankConfig.accountName }}</div>
+                      </div>
+                      <div class="bank-info-row" v-if="bankConfig.accountNo">
+                        <div class="info-label">银行账号</div>
+                        <div class="info-value account-number">{{ bankConfig.accountNo }}</div>
+                      </div>
+                      <div class="bank-info-row" v-if="bankConfig.bankName">
+                        <div class="info-label">开户银行</div>
+                        <div class="info-value">{{ bankConfig.bankName }}</div>
+                      </div>
+                      <div class="bank-info-row" v-if="bankConfig.bankBranch">
+                        <div class="info-label">开户支行</div>
+                        <div class="info-value">{{ bankConfig.bankBranch }}</div>
+                      </div>
                     </div>
-                    <div class="bank-info-item" v-if="bankConfig.accountNo">
-                      <span class="bank-label">银行账号</span>
-                      <span class="bank-value monospace">{{ bankConfig.accountNo }}</span>
-                    </div>
-                    <div class="bank-info-item" v-if="bankConfig.bankBranch">
-                      <span class="bank-label">开户支行</span>
-                      <span class="bank-value">{{ bankConfig.bankBranch }}</span>
-                    </div>
-                    <div class="bank-info-remark" v-if="bankConfig.remark">
-                      <p>📌 {{ bankConfig.remark }}</p>
+
+                    <div class="bank-remark" v-if="bankConfig.remark">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <line x1="12" y1="16" x2="12" y2="12"></line>
+                        <line x1="12" y1="8" x2="12.01" y2="8"></line>
+                      </svg>
+                      <span>{{ bankConfig.remark }}</span>
                     </div>
                   </div>
 
-                  <div class="order-info" v-if="paymentOrder">
-                    <span>订单号：{{ paymentOrder.orderNo }}</span>
-                    <span class="bank-tip">转账时请在备注中填写此订单号</span>
+                  <!-- 订单号提示 -->
+                  <div class="order-number-notice" v-if="paymentOrder">
+                    <div class="notice-icon">💡</div>
+                    <div class="notice-content">
+                      <div class="notice-title">转账备注请填写订单号</div>
+                      <div class="order-number">{{ paymentOrder.orderNo }}</div>
+                      <div class="notice-desc">填写订单号可加快到账确认速度</div>
+                    </div>
                   </div>
 
-                  <div class="bank-notice">
-                    <p>✅ 订单已创建成功，请按以上信息完成转账</p>
-                    <p>⏰ 转账后工作人员将在1-2个工作日内确认到账并激活您的账号</p>
-                    <p>📞 如有疑问请联系客服</p>
+                  <!-- 转账须知 -->
+                  <div class="bank-notice-steps">
+                    <div class="notice-step">
+                      <span class="step-num">1</span>
+                      <span class="step-text">使用网银或手机银行向以上账户转账</span>
+                    </div>
+                    <div class="notice-step">
+                      <span class="step-num">2</span>
+                      <span class="step-text">转账备注中填写订单号，便于快速核对</span>
+                    </div>
+                    <div class="notice-step">
+                      <span class="step-num">3</span>
+                      <span class="step-text">转账完成后点击"我已完成转账"按钮</span>
+                    </div>
+                    <div class="notice-step">
+                      <span class="step-num">4</span>
+                      <span class="step-text">工作人员将在1-2个工作日内确认并激活账号</span>
+                    </div>
                   </div>
 
                   <div class="form-actions">
@@ -804,42 +848,86 @@
                 <span>对公转账</span>
               </div>
 
-              <div class="qr-amount">
-                <span class="amount-label">转账金额</span>
-                <span class="amount-value">¥{{ getPlanPrice(selectedPlan) }}</span>
+              <!-- 转账金额 - 突出显示 -->
+              <div class="bank-amount-highlight">
+                <div class="amount-label">应转账金额</div>
+                <div class="amount-value">¥{{ getPlanPrice(selectedPlan) }}</div>
+                <div class="amount-tip">请务必按此金额转账，以便快速核对</div>
               </div>
 
-              <div class="bank-info">
-                <div class="bank-info-item" v-if="bankConfig.bankName">
-                  <span class="bank-label">开户银行</span>
-                  <span class="bank-value">{{ bankConfig.bankName }}</span>
+              <!-- 银行账户信息卡片 -->
+              <div class="bank-info-card">
+                <div class="bank-card-header">
+                  <span class="card-title">收款账户信息</span>
+                  <button type="button" class="btn-copy-bank" @click="copyBankInfo" :class="{ copied: bankInfoCopied }">
+                    <svg v-if="!bankInfoCopied" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                    </svg>
+                    <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <polyline points="20 6 9 17 4 12"></polyline>
+                    </svg>
+                    <span>{{ bankInfoCopied ? '已复制' : '一键复制' }}</span>
+                  </button>
                 </div>
-                <div class="bank-info-item" v-if="bankConfig.accountName">
-                  <span class="bank-label">账户名称</span>
-                  <span class="bank-value">{{ bankConfig.accountName }}</span>
+
+                <div class="bank-info-grid">
+                  <div class="bank-info-row" v-if="bankConfig.accountName">
+                    <div class="info-label">账户名称</div>
+                    <div class="info-value highlight">{{ bankConfig.accountName }}</div>
+                  </div>
+                  <div class="bank-info-row" v-if="bankConfig.accountNo">
+                    <div class="info-label">银行账号</div>
+                    <div class="info-value account-number">{{ bankConfig.accountNo }}</div>
+                  </div>
+                  <div class="bank-info-row" v-if="bankConfig.bankName">
+                    <div class="info-label">开户银行</div>
+                    <div class="info-value">{{ bankConfig.bankName }}</div>
+                  </div>
+                  <div class="bank-info-row" v-if="bankConfig.bankBranch">
+                    <div class="info-label">开户支行</div>
+                    <div class="info-value">{{ bankConfig.bankBranch }}</div>
+                  </div>
                 </div>
-                <div class="bank-info-item" v-if="bankConfig.accountNo">
-                  <span class="bank-label">银行账号</span>
-                  <span class="bank-value monospace">{{ bankConfig.accountNo }}</span>
-                </div>
-                <div class="bank-info-item" v-if="bankConfig.bankBranch">
-                  <span class="bank-label">开户支行</span>
-                  <span class="bank-value">{{ bankConfig.bankBranch }}</span>
-                </div>
-                <div class="bank-info-remark" v-if="bankConfig.remark">
-                  <p>📌 {{ bankConfig.remark }}</p>
+
+                <div class="bank-remark" v-if="bankConfig.remark">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <line x1="12" y1="16" x2="12" y2="12"></line>
+                    <line x1="12" y1="8" x2="12.01" y2="8"></line>
+                  </svg>
+                  <span>{{ bankConfig.remark }}</span>
                 </div>
               </div>
 
-              <div class="order-info" v-if="paymentOrder">
-                <span>订单号：{{ paymentOrder.orderNo }}</span>
-                <span class="bank-tip">转账时请在备注中填写此订单号</span>
+              <!-- 订单号提示 -->
+              <div class="order-number-notice" v-if="paymentOrder">
+                <div class="notice-icon">💡</div>
+                <div class="notice-content">
+                  <div class="notice-title">转账备注请填写订单号</div>
+                  <div class="order-number">{{ paymentOrder.orderNo }}</div>
+                  <div class="notice-desc">填写订单号可加快到账确认速度</div>
+                </div>
               </div>
 
-              <div class="bank-notice">
-                <p>✅ 订单已创建成功，请按以上信息完成转账</p>
-                <p>⏰ 转账后工作人员将在1-2个工作日内确认到账并激活您的账号</p>
-                <p>📞 如有疑问请联系客服</p>
+              <!-- 转账须知 -->
+              <div class="bank-notice-steps">
+                <div class="notice-step">
+                  <span class="step-num">1</span>
+                  <span class="step-text">使用网银或手机银行向以上账户转账</span>
+                </div>
+                <div class="notice-step">
+                  <span class="step-num">2</span>
+                  <span class="step-text">转账备注中填写订单号，便于快速核对</span>
+                </div>
+                <div class="notice-step">
+                  <span class="step-num">3</span>
+                  <span class="step-text">转账完成后点击"我已完成转账"按钮</span>
+                </div>
+                <div class="notice-step">
+                  <span class="step-num">4</span>
+                  <span class="step-text">工作人员将在1-2个工作日内确认并激活账号</span>
+                </div>
               </div>
 
               <div class="form-actions">
@@ -957,6 +1045,9 @@ const bankConfig = reactive({
   bankBranch: '',
   remark: ''
 })
+
+// 银行信息复制状态
+const bankInfoCopied = ref(false)
 
 // 可用的支付方式（从后端配置加载）
 const enabledPayMethods = reactive({ wechat: true, alipay: true, bank: false })
@@ -1622,6 +1713,39 @@ const handleBankTransferDone = () => {
       orderNo: paymentOrder.value?.orderNo || ''
     }
   })
+}
+
+// 复制银行信息
+const copyBankInfo = async () => {
+  const bankInfo = `账户名称：${bankConfig.accountName}
+银行账号：${bankConfig.accountNo}
+开户银行：${bankConfig.bankName}
+开户支行：${bankConfig.bankBranch}
+${bankConfig.remark ? '备注：' + bankConfig.remark : ''}`
+
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(bankInfo)
+    } else {
+      // 降级方案：使用传统方法
+      const textarea = document.createElement('textarea')
+      textarea.value = bankInfo
+      textarea.style.position = 'fixed'
+      textarea.style.opacity = '0'
+      document.body.appendChild(textarea)
+      textarea.select()
+      document.execCommand('copy')
+      document.body.removeChild(textarea)
+    }
+
+    bankInfoCopied.value = true
+    setTimeout(() => {
+      bankInfoCopied.value = false
+    }, 2000)
+  } catch (err) {
+    console.error('复制失败:', err)
+    alert('复制失败，请手动复制')
+  }
 }
 
 // 取消支付
@@ -2605,6 +2729,244 @@ const autoRenewPlanKey = computed(() => {
 /* 支付二维码样式 */
 .payment-qrcode {
   text-align: center;
+}
+
+/* 对公转账金额突出显示 */
+.bank-amount-highlight {
+  background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+  border: 2px solid #0ea5e9;
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 20px;
+  text-align: center;
+
+  .amount-label {
+    font-size: 14px;
+    color: #0369a1;
+    font-weight: 600;
+    margin-bottom: 8px;
+  }
+
+  .amount-value {
+    font-size: 36px;
+    font-weight: 700;
+    color: #0284c7;
+    line-height: 1.2;
+    margin-bottom: 6px;
+  }
+
+  .amount-tip {
+    font-size: 12px;
+    color: #0369a1;
+  }
+}
+
+/* 银行信息卡片 */
+.bank-info-card {
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 20px;
+  text-align: left;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.bank-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 2px solid #f3f4f6;
+
+  .card-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: #1f2937;
+  }
+}
+
+.btn-copy-bank {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: #f3f4f6;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 13px;
+  color: #374151;
+  cursor: pointer;
+  transition: all 0.2s ease;
+
+  svg {
+    flex-shrink: 0;
+  }
+
+  &:hover {
+    background: #e5e7eb;
+    border-color: #9ca3af;
+  }
+
+  &.copied {
+    background: #dcfce7;
+    border-color: #86efac;
+    color: #166534;
+  }
+}
+
+.bank-info-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.bank-info-row {
+  display: grid;
+  grid-template-columns: 90px 1fr;
+  gap: 16px;
+  align-items: baseline;
+  padding: 10px 0;
+  border-bottom: 1px solid #f3f4f6;
+
+  &:last-child {
+    border-bottom: none;
+  }
+}
+
+.info-label {
+  font-size: 13px;
+  color: #6b7280;
+  font-weight: 500;
+}
+
+.info-value {
+  font-size: 14px;
+  color: #111827;
+  font-weight: 500;
+  word-break: break-all;
+
+  &.highlight {
+    color: #0284c7;
+    font-weight: 600;
+    font-size: 15px;
+  }
+
+  &.account-number {
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-size: 16px;
+    font-weight: 600;
+    color: #dc2626;
+    letter-spacing: 1px;
+  }
+}
+
+.bank-remark {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 10px 12px;
+  background: #fef3c7;
+  border-radius: 8px;
+  font-size: 12px;
+  color: #92400e;
+  line-height: 1.5;
+
+  svg {
+    flex-shrink: 0;
+    margin-top: 2px;
+    stroke: #f59e0b;
+  }
+}
+
+/* 订单号提示 */
+.order-number-notice {
+  display: flex;
+  gap: 12px;
+  padding: 16px;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-radius: 10px;
+  margin-bottom: 20px;
+
+  .notice-icon {
+    font-size: 24px;
+    flex-shrink: 0;
+    line-height: 1;
+  }
+
+  .notice-content {
+    flex: 1;
+  }
+
+  .notice-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: #92400e;
+    margin-bottom: 8px;
+  }
+
+  .order-number {
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-size: 16px;
+    font-weight: 700;
+    color: #b45309;
+    padding: 8px 12px;
+    background: white;
+    border-radius: 6px;
+    display: inline-block;
+    margin-bottom: 6px;
+    letter-spacing: 0.5px;
+  }
+
+  .notice-desc {
+    font-size: 12px;
+    color: #a16207;
+  }
+}
+
+/* 转账须知步骤 */
+.bank-notice-steps {
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: 10px;
+  padding: 16px;
+  margin-bottom: 20px;
+}
+
+.notice-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 10px 0;
+  font-size: 13px;
+  color: #166534;
+  line-height: 1.6;
+
+  &:not(:last-child) {
+    border-bottom: 1px solid #dcfce7;
+  }
+
+  .step-num {
+    flex-shrink: 0;
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #16a34a;
+    color: white;
+    border-radius: 50%;
+    font-size: 12px;
+    font-weight: 700;
+  }
+
+  .step-text {
+    flex: 1;
+    padding-top: 2px;
+  }
 }
 
 .qr-header {
