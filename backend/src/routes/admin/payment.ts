@@ -167,12 +167,12 @@ router.get('/config', async (_req: Request, res: Response) => {
             // 对公转账无敏感字段
             config.bank = {
               ...data,
-              enabled: row.enabled === 1
+              enabled: row.enabled === 1 || row.enabled === true
             }
           } else {
             config[row.pay_type] = {
               ...data,
-              enabled: row.enabled === 1,
+              enabled: row.enabled === 1 || row.enabled === true,
               notifyUrl: row.notify_url || getDefaultNotifyUrl(row.pay_type as 'wechat' | 'alipay'),
               // 敏感字段脱敏
               apiKey: data.apiKey ? '******' : '',
@@ -182,11 +182,11 @@ router.get('/config', async (_req: Request, res: Response) => {
             }
           }
         } catch {
-          config[row.pay_type].enabled = row.enabled === 1
+          config[row.pay_type].enabled = row.enabled === 1 || row.enabled === true
           if (row.notify_url) config[row.pay_type].notifyUrl = row.notify_url
         }
       } else {
-        config[row.pay_type].enabled = row.enabled === 1
+        config[row.pay_type].enabled = row.enabled === 1 || row.enabled === true
         if (row.notify_url) config[row.pay_type].notifyUrl = row.notify_url
       }
     }

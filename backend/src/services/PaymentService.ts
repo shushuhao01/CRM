@@ -327,6 +327,23 @@ class PaymentService {
     const str = sorted.map(k => `${k}=${params[k]}`).join('&')
 
     const algorithm = signType === 'RSA2' ? 'RSA-SHA256' : 'RSA-SHA1'
+
+    // 兼容处理：如果私钥没有PEM头，自动添加（先尝试PKCS#8，再尝试PKCS#1）
+    if (!privateKey.includes('-----BEGIN')) {
+      const formats = [
+        `-----BEGIN PRIVATE KEY-----\n${privateKey}\n-----END PRIVATE KEY-----`,
+        `-----BEGIN RSA PRIVATE KEY-----\n${privateKey}\n-----END RSA PRIVATE KEY-----`
+      ]
+      for (const fmt of formats) {
+        try {
+          const s = crypto.createSign(algorithm)
+          s.update(str)
+          return s.sign(fmt, 'base64')
+        } catch { /* 尝试下一种格式 */ }
+      }
+      throw new Error('私钥格式无法识别，请检查是否为有效的RSA私钥')
+    }
+
     const sign = crypto.createSign(algorithm)
     sign.update(str)
     return sign.sign(privateKey, 'base64')

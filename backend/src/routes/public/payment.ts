@@ -129,7 +129,7 @@ router.get('/methods', async (_req: Request, res: Response) => {
     const methods: Record<string, boolean> = { wechat: false, alipay: false, bank: false }
     for (const row of rows) {
       if (row.pay_type && methods.hasOwnProperty(row.pay_type)) {
-        methods[row.pay_type] = row.enabled === 1
+        methods[row.pay_type] = row.enabled === 1 || row.enabled === true
       }
     }
     res.json({ code: 0, data: methods })

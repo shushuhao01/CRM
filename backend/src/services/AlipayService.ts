@@ -73,7 +73,7 @@ export class AlipayService {
             sign_type: config.signType || 'RSA2',
             timestamp: formatDateTime(new Date()),
             version: '1.0',
-            notify_url: config.notifyUrl || `${process.env.API_BASE_URL || 'http://localhost:3000'}/api/v1/admin/payment/notify/alipay`,
+            notify_url: config.notifyUrl || `${process.env.API_BASE_URL || 'http://localhost:3000'}/api/v1/public/payment/alipay/notify`,
             biz_content: JSON.stringify(bizContent)
           };
 
@@ -100,9 +100,14 @@ export class AlipayService {
                 payUrl: result.qr_code
               };
             }
+            // API返回了响应但不是成功码，抛出实际错误信息
+            const apiErrMsg = result.sub_msg || result.msg || `错误码: ${result.code}`;
+            log.error(`[Alipay] API返回错误: code=${result.code}, msg=${apiErrMsg}`);
+            throw new Error(`支付宝API返回错误: ${apiErrMsg}`);
           }
         } catch (apiError: any) {
-          const errMsg = apiError.response?.data?.sub_msg || apiError.response?.data?.msg || apiError.message;
+          const errMsg = apiError.response?.data?.alipay_trade_precreate_response?.sub_msg
+            || apiError.response?.data?.sub_msg || apiError.response?.data?.msg || apiError.message;
           log.error('[Alipay] API调用失败:', apiError.response?.data || apiError.message);
           throw new Error(`支付宝API调用失败: ${errMsg}`);
         }
@@ -548,9 +553,26 @@ export class AlipayService {
       .map(key => `${key}=${params[key]}`)
       .join('&');
 
+    // 兼容处理：如果私钥没有PEM头，自动添加（先尝试PKCS#8，再尝试PKCS#1）
+    const formattedKey = privateKey;
+    if (!privateKey.includes('-----BEGIN')) {
+      const formats = [
+        `-----BEGIN PRIVATE KEY-----\n${privateKey}\n-----END PRIVATE KEY-----`,
+        `-----BEGIN RSA PRIVATE KEY-----\n${privateKey}\n-----END RSA PRIVATE KEY-----`
+      ];
+      for (const fmt of formats) {
+        try {
+          const s = crypto.createSign('RSA-SHA256');
+          s.update(sortedParams, 'utf8');
+          return s.sign(fmt, 'base64');
+        } catch { /* 尝试下一种格式 */ }
+      }
+      throw new Error('私钥格式无法识别，请检查是否为有效的RSA私钥');
+    }
+
     const sign = crypto.createSign('RSA-SHA256');
     sign.update(sortedParams, 'utf8');
-    return sign.sign(privateKey, 'base64');
+    return sign.sign(formattedKey, 'base64');
   }
 }
 
