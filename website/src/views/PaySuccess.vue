@@ -156,8 +156,8 @@
             <a v-if="customerServiceUrl" :href="customerServiceUrl" target="_blank" class="btn btn-contact wechat-btn">
               💬 微信在线客服
             </a>
-            <button class="btn btn-contact" @click="copyText('400-xxx-xxxx')">
-              📞 客服电话：400-xxx-xxxx
+            <button v-if="servicePhone" class="btn btn-contact" @click="copyText(servicePhone)">
+              📞 客服电话：{{ servicePhone }}
             </button>
           </div>
           <p class="contact-tip">转账后请联系客服告知订单号，可加快到账确认速度</p>
@@ -1666,6 +1666,7 @@ const getParam = (key: string, fallback = '') => {
 // 官网配置（客服链接等）
 const customerServiceUrl = ref('https://work.weixin.qq.com/kfid/kfc461ca9f5b45c8d25')
 const crmUrl = ref('') // 动态CRM系统地址
+const servicePhone = ref('')
 
 // 最新版本信息（用于代码下载）
 const latestVersion = ref<VersionInfo | null>(null)
@@ -1741,6 +1742,9 @@ onMounted(async () => {
     }
     if (config.crmUrl) {
       crmUrl.value = config.crmUrl
+    }
+    if (config.servicePhone || config.contactPhone) {
+      servicePhone.value = config.servicePhone || config.contactPhone
     }
   } catch (_e) {
     // 使用默认值

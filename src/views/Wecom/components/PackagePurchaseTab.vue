@@ -176,10 +176,10 @@
     </template>
 
     <!-- 账单记录 -->
-    <BillingRecordSection :type="type" ref="billingRef" />
+    <BillingRecordSection :type="type" ref="billingRef" @repay="handleRepay" />
 
     <!-- 支付弹窗 -->
-    <el-dialog v-model="showPayDialog" title="扫码支付" width="420px" :close-on-click-modal="false" center>
+    <el-dialog v-model="showPayDialog" title="扫码支付" width="420px" :close-on-click-modal="false" center @closed="onPayDialogClosed">
       <div class="pay-dialog-body">
         <div class="pay-pkg-name">{{ pendingPkg?.name || pendingPkg?.tierLabel }}</div>
         <div class="pay-amount">
@@ -187,21 +187,34 @@
           <strong>¥{{ payAmount }}</strong>
         </div>
         <div class="pay-qrcode">
-          <div class="qr-placeholder">
-            <el-icon :size="48" color="#409eff"><CreditCard /></el-icon>
-            <p>请使用微信或支付宝扫码支付</p>
-            <p class="qr-hint">支付完成后将自动开通服务，如未自动开通请联系客服</p>
+          <div v-if="currentPayUrl" class="qr-code-box">
+            <canvas ref="qrCanvasRef" />
+          </div>
+          <div v-else-if="qrLoading" class="qr-placeholder">
+            <el-icon :size="48" color="#409eff" class="is-loading"><Loading /></el-icon>
+            <p>二维码生成中...</p>
+          </div>
+          <div v-else class="qr-placeholder">
+            <el-icon :size="48" color="#909399"><Warning /></el-icon>
+            <p>支付服务配置中，请联系管理员</p>
+            <p class="qr-hint">订单已创建，配置支付后可在购买记录中重新支付</p>
           </div>
         </div>
         <div class="pay-methods">
           <span class="pm-label">支付方式：</span>
-          <el-radio-group v-model="payMethod" size="small">
-            <el-radio-button label="wechat">微信支付</el-radio-button>
-            <el-radio-button label="alipay">支付宝</el-radio-button>
-          </el-radio-group>
+          <div class="pm-buttons">
+            <div class="pm-btn" :class="{ active: payMethod === 'wechat' }" @click="switchPayMethod('wechat')">
+              <span class="pm-icon wechat-icon"></span>微信支付
+            </div>
+            <div class="pm-btn" :class="{ active: payMethod === 'alipay' }" @click="switchPayMethod('alipay')">
+              <span class="pm-icon alipay-icon"></span>支付宝
+            </div>
+          </div>
         </div>
+        <p v-if="currentPayUrl" class="pay-scan-tip">请使用{{ payMethod === 'wechat' ? '微信' : '支付宝' }}扫描二维码完成支付</p>
+        <p v-if="currentOrderNo" class="pay-order-no">订单号：{{ currentOrderNo }}</p>
         <el-alert v-if="isDev" type="warning" :closable="false" style="margin-top:12px; margin-bottom:8px">
-          <template #title>开发模式：点击"我已完成支付"将直接确认，生产环境需真实支付</template>
+          <template #title>开发模式：点击“我已完成支付”将直接确认，生产环境需真实支付</template>
         </el-alert>
         <div style="margin-top:16px; text-align:center">
           <el-button type="primary" @click="confirmPayment" :loading="purchasing">我已完成支付</el-button>
@@ -213,9 +226,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
-import { CircleCheckFilled, CreditCard, ShoppingCart, Promotion } from '@element-plus/icons-vue'
+import { CircleCheckFilled, ShoppingCart, Promotion, Loading, Warning } from '@element-plus/icons-vue'
+import QRCode from 'qrcode'
 import {
   getPricingConfig, getTenantPackage,
   claimWecomPackage, purchaseAiPackage,
@@ -225,6 +239,7 @@ import {
   getBillingRecords
 } from '@/api/wecom'
 import BillingRecordSection from './BillingRecordSection.vue'
+import request from '@/utils/request'
 
 const props = defineProps<{
   type: 'wecom' | 'archive' | 'ai' | 'acquisition'
@@ -248,6 +263,11 @@ const payMethod = ref('wechat')
 const pendingPkg = ref<any>(null)
 const pendingIdx = ref<number>(0)
 const billingRef = ref<InstanceType<typeof BillingRecordSection> | null>(null)
+const qrCanvasRef = ref<HTMLCanvasElement>()
+const currentPayUrl = ref('')
+const currentOrderNo = ref('')
+const qrLoading = ref(false)
+let payPollTimer: ReturnType<typeof setInterval> | null = null
 const freePackageClaimed = ref<Record<string, boolean>>({
   ai: false,
   acquisition: false
@@ -374,19 +394,29 @@ const selectArchiveTier = (idx: number) => {
 
 const handleArchiveCustomPurchase = async () => {
   if (customUserCount.value < 1) return
+  currentPayUrl.value = ''
+  currentOrderNo.value = ''
+  qrLoading.value = true
   purchasing.value = true
   try {
-    await _purchaseArchivePackage({ userCount: customUserCount.value, purchaseMode: archiveMode.value })
-    ElMessage.success('下单成功，请完成支付')
-    emit('packageChanged')
-    window.dispatchEvent(new CustomEvent('wecom-package-changed'))
+    const res: any = await _purchaseArchivePackage({ userCount: customUserCount.value, purchaseMode: archiveMode.value, payType: payMethod.value } as any)
+    const data = res?.data || res
+    currentOrderNo.value = data?.orderNo || ''
+    currentPayUrl.value = data?.payUrl || ''
     pendingPkg.value = { tierLabel: `自选${customUserCount.value}人` }
     payAmount.value = archiveCustomTotal.value
     showPayDialog.value = true
+    billingRef.value?.loadRecords()
+    emit('packageChanged')
+    window.dispatchEvent(new CustomEvent('wecom-package-changed'))
+    await nextTick()
+    renderQrCode(data?.payUrl || data?.qrCode || '')
+    if (currentOrderNo.value) startPayPolling(currentOrderNo.value)
   } catch (e: any) {
     ElMessage.error(e?.response?.data?.message || e?.message || '购买失败')
   }
   purchasing.value = false
+  qrLoading.value = false
 }
 
 const handleClaim = async (pkg: any, idx: number) => {
@@ -424,24 +454,35 @@ const handlePurchase = async (pkg: any, idx: number) => {
   pendingIdx.value = idx
   payAmount.value = computePrice(pkg)
   orderCreated.value = false
+  currentPayUrl.value = ''
+  currentOrderNo.value = ''
+  qrLoading.value = true
   purchasing.value = true
   try {
-    // 先创建订单（不激活套餐，仅生成待支付账单）
+    let res: any
     if (props.type === 'wecom') {
-      await claimWecomPackage({ packageId: idx, action: 'purchase' })
+      res = await claimWecomPackage({ packageId: idx, action: 'purchase', payType: payMethod.value } as any)
     } else if (props.type === 'archive') {
-      await _purchaseArchivePackage({ tierId: idx, purchaseMode: archiveMode.value })
+      res = await _purchaseArchivePackage({ tierId: idx, purchaseMode: archiveMode.value, payType: payMethod.value } as any)
     } else if (props.type === 'acquisition') {
-      await purchaseAcquisitionPackage({ tierId: idx })
+      res = await purchaseAcquisitionPackage({ tierId: idx, payType: payMethod.value } as any)
     } else if (props.type === 'ai') {
-      await purchaseAiPackage({ packageId: pkg.id })
+      res = await purchaseAiPackage({ packageId: pkg.id, payType: payMethod.value } as any)
     }
     orderCreated.value = true
+    const data = res?.data || res
+    currentOrderNo.value = data?.orderNo || ''
+    currentPayUrl.value = data?.payUrl || ''
     showPayDialog.value = true
+    billingRef.value?.loadRecords()
+    await nextTick()
+    renderQrCode(data?.payUrl || data?.qrCode || '')
+    if (currentOrderNo.value) startPayPolling(currentOrderNo.value)
   } catch (e: any) {
     ElMessage.error(e?.response?.data?.message || e?.message || '创建订单失败')
   }
   purchasing.value = false
+  qrLoading.value = false
 }
 
 const confirmPayment = async () => {
@@ -452,9 +493,11 @@ const confirmPayment = async () => {
     await confirmWecomPayment({
       type: props.type,
       packageName: pkg.name || pkg.tierLabel,
-    })
+      orderNo: currentOrderNo.value || undefined
+    } as any)
     ElMessage.success('支付确认成功，服务已开通！')
     showPayDialog.value = false
+    stopPayPolling()
     await loadData()
     billingRef.value?.loadRecords()
     emit('packageChanged')
@@ -466,7 +509,102 @@ const confirmPayment = async () => {
   purchasing.value = false
 }
 
+const renderQrCode = async (url: string) => {
+  if (!url) return
+  // 如果是base64编码的支付URL，解码出真实 URL
+  let payUrl = url
+  if (url.startsWith('data:text/plain;base64,')) {
+    try { payUrl = atob(url.replace('data:text/plain;base64,', '')) } catch { /* ignore */ }
+  }
+  await nextTick()
+  if (qrCanvasRef.value && payUrl) {
+    try {
+      await QRCode.toCanvas(qrCanvasRef.value, payUrl, {
+        width: 200, margin: 2,
+        color: { dark: '#1F2937', light: '#FFFFFF' }
+      })
+    } catch (e) { console.error('[QR] render error:', e) }
+  }
+}
+
+const switchPayMethod = async (method: string) => {
+  if (method === payMethod.value) return
+  payMethod.value = method
+  if (!currentOrderNo.value) return
+  qrLoading.value = true
+  currentPayUrl.value = ''
+  try {
+    const res: any = await request.post(`/public/payment/repay/${currentOrderNo.value}`, { payType: method })
+    const data = res?.data || res
+    currentPayUrl.value = data?.payUrl || ''
+    await nextTick()
+    renderQrCode(data?.payUrl || data?.qrCode || '')
+  } catch (e: any) {
+    console.warn('[Pay] repay error:', e)
+    ElMessage.warning('切换支付方式失败，请重试')
+  }
+  qrLoading.value = false
+}
+
+const startPayPolling = (orderNo: string) => {
+  stopPayPolling()
+  payPollTimer = setInterval(async () => {
+    try {
+      const res: any = await request.get(`/public/payment/query/${orderNo}`)
+      const data = res?.data || res
+      if (data?.status === 'paid') {
+        stopPayPolling()
+        ElMessage.success('支付成功，服务已开通！')
+        showPayDialog.value = false
+        await loadData()
+        billingRef.value?.loadRecords()
+        emit('packageChanged')
+        window.dispatchEvent(new CustomEvent('wecom-package-changed'))
+      }
+    } catch { /* ignore */ }
+  }, 3000)
+  setTimeout(() => stopPayPolling(), 10 * 60 * 1000)
+}
+
+const stopPayPolling = () => {
+  if (payPollTimer) { clearInterval(payPollTimer); payPollTimer = null }
+}
+
+const onPayDialogClosed = () => {
+  stopPayPolling()
+  currentPayUrl.value = ''
+  currentOrderNo.value = ''
+}
+
+const handleRepay = async (row: any) => {
+  const orderNo = row.orderNo
+  if (!orderNo) {
+    ElMessage.info('该订单无支付信息，请重新下单')
+    return
+  }
+  pendingPkg.value = { name: row.packageName, tierLabel: row.packageName }
+  payAmount.value = row.amount || 0
+  currentOrderNo.value = orderNo
+  currentPayUrl.value = ''
+  qrLoading.value = true
+  showPayDialog.value = true
+  try {
+    const res: any = await request.post(`/public/payment/repay/${orderNo}`, { payType: payMethod.value })
+    const data = res?.data || res
+    currentPayUrl.value = data?.payUrl || ''
+    await nextTick()
+    renderQrCode(data?.payUrl || data?.qrCode || '')
+    startPayPolling(orderNo)
+  } catch (e: any) {
+    console.warn('[Pay] repay error:', e)
+  }
+  qrLoading.value = false
+}
+
 onMounted(loadData)
+onUnmounted(stopPayPolling)
+
+defineExpose({ handleRepay })
 </script>
 
 <style scoped>
@@ -581,6 +719,27 @@ onMounted(loadData)
 }
 .qr-placeholder p { margin: 8px 0 0; font-size: 13px; color: #86909c; }
 .qr-hint { font-size: 11px !important; color: #c0c4cc !important; }
-.pay-methods { display: flex; align-items: center; justify-content: center; gap: 8px; }
-.pm-label { font-size: 13px; color: #4e5969; }
+.qr-code-box {
+  width: 200px; height: 200px; margin: 0 auto;
+  display: flex; align-items: center; justify-content: center;
+  border: 1px solid #ebeef5; border-radius: 8px; background: #fff;
+}
+.pay-scan-tip { font-size: 13px; color: #409eff; margin: 8px 0 0; }
+.pay-order-no { font-size: 12px; color: #909399; margin: 4px 0 0; }
+.pay-methods { display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 16px; }
+.pm-label { font-size: 13px; color: #4e5969; flex-shrink: 0; }
+.pm-buttons { display: flex; gap: 8px; }
+.pm-btn {
+  display: flex; align-items: center; gap: 6px; cursor: pointer;
+  padding: 6px 16px; border-radius: 6px; font-size: 13px; font-weight: 500;
+  border: 1px solid #dcdfe6; color: #606266; background: #fff; transition: all 0.2s;
+}
+.pm-btn:hover { border-color: #409eff; color: #409eff; }
+.pm-btn.active { border-color: #409eff; color: #409eff; background: #ecf5ff; }
+.pm-icon {
+  display: inline-block; width: 18px; height: 18px; border-radius: 3px;
+  background-size: contain; background-repeat: no-repeat; background-position: center;
+}
+.wechat-icon { background-color: #07c160; mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M8.691 2.188C3.891 2.188 0 5.476 0 9.53c0 2.212 1.17 4.203 3.002 5.55a.59.59 0 0 1 .213.665l-.39 1.48c-.019.07-.048.141-.048.213 0 .163.13.295.29.295a.326.326 0 0 0 .167-.054l1.903-1.114a.864.864 0 0 1 .717-.098 10.16 10.16 0 0 0 2.837.403c.276 0 .543-.027.811-.05-.857-2.578.157-4.972 1.932-6.446 1.703-1.415 3.882-1.98 5.853-1.838-.576-3.583-4.196-6.348-8.596-6.348zM5.785 5.99a.96.96 0 0 1 0 1.92.96.96 0 0 1 0-1.92zm5.812 0a.96.96 0 0 1 0 1.92.96.96 0 0 1 0-1.92zm3.649 3.271c-3.889 0-7.246 2.677-7.246 6.08 0 3.402 3.357 6.079 7.246 6.079.613 0 1.206-.075 1.78-.218a.62.62 0 0 1 .52.072l1.38.808a.24.24 0 0 0 .122.04c.116 0 .21-.097.21-.215 0-.052-.021-.104-.035-.155l-.283-1.073a.43.43 0 0 1 .154-.483c1.33-.981 2.178-2.424 2.178-4.025 0-2.232-1.825-4.134-4.348-5.333a8.028 8.028 0 0 0-1.678-.577zm-2.055 2.54a.72.72 0 1 1 0 1.44.72.72 0 0 1 0-1.44zm4.349 0a.72.72 0 1 1 0 1.44.72.72 0 0 1 0-1.44z'/%3E%3C/svg%3E") center / contain no-repeat; -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M8.691 2.188C3.891 2.188 0 5.476 0 9.53c0 2.212 1.17 4.203 3.002 5.55a.59.59 0 0 1 .213.665l-.39 1.48c-.019.07-.048.141-.048.213 0 .163.13.295.29.295a.326.326 0 0 0 .167-.054l1.903-1.114a.864.864 0 0 1 .717-.098 10.16 10.16 0 0 0 2.837.403c.276 0 .543-.027.811-.05-.857-2.578.157-4.972 1.932-6.446 1.703-1.415 3.882-1.98 5.853-1.838-.576-3.583-4.196-6.348-8.596-6.348zM5.785 5.99a.96.96 0 0 1 0 1.92.96.96 0 0 1 0-1.92zm5.812 0a.96.96 0 0 1 0 1.92.96.96 0 0 1 0-1.92zm3.649 3.271c-3.889 0-7.246 2.677-7.246 6.08 0 3.402 3.357 6.079 7.246 6.079.613 0 1.206-.075 1.78-.218a.62.62 0 0 1 .52.072l1.38.808a.24.24 0 0 0 .122.04c.116 0 .21-.097.21-.215 0-.052-.021-.104-.035-.155l-.283-1.073a.43.43 0 0 1 .154-.483c1.33-.981 2.178-2.424 2.178-4.025 0-2.232-1.825-4.134-4.348-5.333a8.028 8.028 0 0 0-1.678-.577zm-2.055 2.54a.72.72 0 1 1 0 1.44.72.72 0 0 1 0-1.44zm4.349 0a.72.72 0 1 1 0 1.44.72.72 0 0 1 0-1.44z'/%3E%3C/svg%3E") center / contain no-repeat; }
+.alipay-icon { background-color: #1677ff; mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M21.422 15.358c-1.549-.724-4.494-2.064-6.455-3.04.63-1.27 1.1-2.727 1.357-4.318h-4.324V6.2h5.2V5.1h-5.2V2.3h-2.3s-.1.047-.1.147V5.1H4.4v1.1h5.2V8h-4.324v.9H14.2c-.2 1.2-.6 2.3-1.1 3.2-2.2-1-5.4-2-7.7-2-3.3 0-5.4 1.8-5.4 4 0 2.1 1.8 4.1 5.7 4.1 2.9 0 5.4-1.4 7.3-3.4 2.3 1.2 7.4 3.5 8.6 4.1.3.1.5.2.7.2.7 0 1.7-.6 1.7-1.8 0-.6-.2-1.2-.58-2zm-16.522 2.5c-2.9 0-3.9-1.3-3.9-2.6 0-1.4 1.3-2.6 3.7-2.6 1.8 0 4.3.7 6.3 1.7-1.6 2-3.7 3.5-6.1 3.5z'/%3E%3C/svg%3E") center / contain no-repeat; -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M21.422 15.358c-1.549-.724-4.494-2.064-6.455-3.04.63-1.27 1.1-2.727 1.357-4.318h-4.324V6.2h5.2V5.1h-5.2V2.3h-2.3s-.1.047-.1.147V5.1H4.4v1.1h5.2V8h-4.324v.9H14.2c-.2 1.2-.6 2.3-1.1 3.2-2.2-1-5.4-2-7.7-2-3.3 0-5.4 1.8-5.4 4 0 2.1 1.8 4.1 5.7 4.1 2.9 0 5.4-1.4 7.3-3.4 2.3 1.2 7.4 3.5 8.6 4.1.3.1.5.2.7.2.7 0 1.7-.6 1.7-1.8 0-.6-.2-1.2-.58-2zm-16.522 2.5c-2.9 0-3.9-1.3-3.9-2.6 0-1.4 1.3-2.6 3.7-2.6 1.8 0 4.3.7 6.3 1.7-1.6 2-3.7 3.5-6.1 3.5z'/%3E%3C/svg%3E") center / contain no-repeat; }
 </style>

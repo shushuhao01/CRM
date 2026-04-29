@@ -1086,6 +1086,17 @@ onMounted(async () => {
     }
   } catch { /* 静默 */ }
 
+  // 预加载对公转账银行信息（如果已启用）
+  if (enabledPayMethods.bank) {
+    try {
+      const bankRes = await fetch(`${API_BASE}/public/payment/bank-info`)
+      const bankData = await bankRes.json()
+      if (bankData.code === 0 && bankData.data) {
+        Object.assign(bankConfig, bankData.data)
+      }
+    } catch { /* 静默 */ }
+  }
+
   const plan = route.query.plan as string
   if (plan) {
     if (plan === 'FREE_TRIAL') {

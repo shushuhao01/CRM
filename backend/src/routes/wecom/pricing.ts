@@ -272,6 +272,37 @@ router.post('/claim-package', authenticateToken, async (req: Request, res: Respo
     }
 
     log.info(`[Pricing] Tenant ${tenantId} ${action} package: ${pkg.name}`);
+
+    // 付费购买时通过 PaymentService 创建真实支付订单
+    let paymentData: any = {};
+    if (action === 'purchase' && pkg.yearlyPrice > 0) {
+      const payType = req.body.payType || 'wechat';
+      try {
+        const { paymentService } = await import('../../services/PaymentService');
+        const tenantRows = await AppDataSource.query('SELECT name FROM tenants WHERE id = ? LIMIT 1', [tenantId]).catch(() => []);
+        const tenantName = tenantRows[0]?.name || '';
+        const currentUser = (req as any).user || {};
+        const payResult = await paymentService.createOrder({
+          packageId: `wecom_pkg_${packageId}`,
+          packageName: `企微套餐-${pkg.name}`,
+          amount: pkg.yearlyPrice,
+          payType: payType as 'wechat' | 'alipay' | 'bank',
+          tenantId,
+          tenantName,
+          contactName: currentUser.name || currentUser.username || '',
+          contactPhone: '',
+          billingCycle: 'yearly'
+        });
+        if (payResult.success) {
+          paymentData = { orderNo: payResult.orderNo, qrCode: payResult.qrCode, payUrl: payResult.payUrl };
+        } else {
+          log.warn(`[Pricing] PaymentService failed: ${payResult.message}`);
+        }
+      } catch (payErr: any) {
+        log.warn(`[Pricing] PaymentService error: ${payErr.message}`);
+      }
+    }
+
     // 写入账单记录（付费的记为pending_payment，需支付后confirm-payment激活）
     await appendBillingRecord(tenantId, {
       type: 'wecom',
@@ -282,9 +313,16 @@ router.post('/claim-package', authenticateToken, async (req: Request, res: Respo
       action,
       status: action === 'claim' ? 'free' : 'pending_payment',
       remark: action === 'claim' ? '免费领取' : '待支付',
-      packageData: action === 'purchase' ? tenantPkg : undefined
+      packageData: action === 'purchase' ? tenantPkg : undefined,
+      orderNo: paymentData.orderNo || undefined,
+      qrCodeUrl: paymentData.qrCode || undefined,
+      payUrl: paymentData.payUrl || undefined
     });
-    res.json({ success: true, message: action === 'claim' ? '领取成功' : '订单已创建，请完成支付', data: tenantPkg });
+    res.json({
+      success: true,
+      message: action === 'claim' ? '领取成功' : '订单已创建，请完成支付',
+      data: { ...tenantPkg, ...paymentData }
+    });
   } catch (error: any) {
     log.error('[Pricing] Claim package error:', error.message);
     res.status(500).json({ success: false, message: '操作失败: ' + error.message });
@@ -342,6 +380,35 @@ router.post('/purchase-ai', authenticateToken, async (req: Request, res: Respons
     }
 
     log.info(`[Pricing] Tenant ${tenantId} purchase AI package: ${pkg.name}`);
+
+    // 付费时创建真实支付订单
+    let paymentData: any = {};
+    if (pkg.price > 0) {
+      const payType = req.body.payType || 'wechat';
+      try {
+        const { paymentService } = await import('../../services/PaymentService');
+        const tenantRows = await AppDataSource.query('SELECT name FROM tenants WHERE id = ? LIMIT 1', [tenantId]).catch(() => []);
+        const tenantName = tenantRows[0]?.name || '';
+        const currentUser = (req as any).user || {};
+        const payResult = await paymentService.createOrder({
+          packageId: `ai_${packageId}`,
+          packageName: `AI额度-${pkg.name}`,
+          amount: pkg.price,
+          payType: payType as 'wechat' | 'alipay' | 'bank',
+          tenantId,
+          tenantName,
+          contactName: currentUser.name || currentUser.username || '',
+          contactPhone: '',
+          billingCycle: 'once'
+        });
+        if (payResult.success) {
+          paymentData = { orderNo: payResult.orderNo, qrCode: payResult.qrCode, payUrl: payResult.payUrl };
+        }
+      } catch (payErr: any) {
+        log.warn(`[Pricing] PaymentService error for AI: ${payErr.message}`);
+      }
+    }
+
     // 写入账单记录
     await appendBillingRecord(tenantId, {
       type: 'ai',
@@ -350,7 +417,10 @@ router.post('/purchase-ai', authenticateToken, async (req: Request, res: Respons
       amount: pkg.price || 0,
       calls: pkg.calls,
       status: pkg.price === 0 ? 'free' : 'pending_payment',
-      remark: pkg.price === 0 ? '免费体验包领取' : `${pkg.calls}次调用，待支付`
+      remark: pkg.price === 0 ? '免费体验包领取' : `${pkg.calls}次调用，待支付`,
+      orderNo: paymentData.orderNo || undefined,
+      qrCodeUrl: paymentData.qrCode || undefined,
+      payUrl: paymentData.payUrl || undefined
     });
 
     // 免费领取立即解锁AI助手权限；付费在 confirm-payment 时解锁
@@ -363,7 +433,7 @@ router.post('/purchase-ai', authenticateToken, async (req: Request, res: Respons
     res.json({
       success: true,
       message: pkg.price === 0 ? '免费体验包领取成功' : '购买成功，请完成支付',
-      data: { packageId: pkg.id, name: pkg.name, calls: pkg.calls, price: pkg.price }
+      data: { packageId: pkg.id, name: pkg.name, calls: pkg.calls, price: pkg.price, ...paymentData }
     });
   } catch (error: any) {
     log.error('[Pricing] Purchase AI error:', error.message);
@@ -430,6 +500,35 @@ router.post('/purchase-archive', authenticateToken, async (req: Request, res: Re
     const needConfirmation = effectiveMode === 'proxy';
 
     log.info(`[Pricing] Tenant ${tenantId} purchase archive: ${packageName} users=${actualUserCount} mode=${effectiveMode}`);
+
+    // 付费时创建真实支付订单
+    let paymentData: any = {};
+    if (totalAmount > 0) {
+      const payType = req.body.payType || 'wechat';
+      try {
+        const { paymentService } = await import('../../services/PaymentService');
+        const tenantRows = await AppDataSource.query('SELECT name FROM tenants WHERE id = ? LIMIT 1', [tenantId]).catch(() => []);
+        const tenantName = tenantRows[0]?.name || '';
+        const currentUser = (req as any).user || {};
+        const payResult = await paymentService.createOrder({
+          packageId: `archive_${tierId || 'custom'}`,
+          packageName: `会话存档-${packageName}`,
+          amount: totalAmount,
+          payType: payType as 'wechat' | 'alipay' | 'bank',
+          tenantId,
+          tenantName,
+          contactName: currentUser.name || currentUser.username || '',
+          contactPhone: '',
+          billingCycle: 'yearly'
+        });
+        if (payResult.success) {
+          paymentData = { orderNo: payResult.orderNo, qrCode: payResult.qrCode, payUrl: payResult.payUrl };
+        }
+      } catch (payErr: any) {
+        log.warn(`[Pricing] PaymentService error for archive: ${payErr.message}`);
+      }
+    }
+
     await appendBillingRecord(tenantId, {
       type: 'archive',
       typeName: effectiveMode === 'service_fee' ? '会话存档服务费' : '会话存档代购',
@@ -440,7 +539,10 @@ router.post('/purchase-archive', authenticateToken, async (req: Request, res: Re
       status: 'pending_payment',
       remark: effectiveMode === 'service_fee'
         ? `${actualUserCount}人服务费，支付后立即生效（您需自行在企微购买席位）`
-        : `${actualUserCount}人代购，支付后由平台代购并需企业管理员签署确认函`
+        : `${actualUserCount}人代购，支付后由平台代购并需企业管理员签署确认函`,
+      orderNo: paymentData.orderNo || undefined,
+      qrCodeUrl: paymentData.qrCode || undefined,
+      payUrl: paymentData.payUrl || undefined
     });
 
     res.json({
@@ -455,7 +557,8 @@ router.post('/purchase-archive', authenticateToken, async (req: Request, res: Re
         needConfirmation,
         hint: effectiveMode === 'service_fee'
           ? '支付确认后席位将立即开放（需确保您已在企微官方购买了对应席位）'
-          : '支付后我们将为您代购席位，企业管理员需签署确认函后生效（1-3个工作日）'
+          : '支付后我们将为您代购席位，企业管理员需签署确认函后生效（1-3个工作日）',
+        ...paymentData
       }
     });
   } catch (error: any) {
@@ -733,6 +836,35 @@ router.post('/purchase-acquisition', authenticateToken, async (req: Request, res
     }
 
     log.info(`[Pricing] Tenant ${tenantId} purchase acquisition tier: ${tier.name}`);
+
+    // 付费时创建真实支付订单
+    let paymentData: any = {};
+    if (tier.price > 0) {
+      const payType = req.body.payType || 'wechat';
+      try {
+        const { paymentService } = await import('../../services/PaymentService');
+        const tenantRows = await AppDataSource.query('SELECT name FROM tenants WHERE id = ? LIMIT 1', [tenantId]).catch(() => []);
+        const tenantName = tenantRows[0]?.name || '';
+        const currentUser = (req as any).user || {};
+        const payResult = await paymentService.createOrder({
+          packageId: `acquisition_${tierId}`,
+          packageName: `获客助手-${tier.name}`,
+          amount: tier.price,
+          payType: payType as 'wechat' | 'alipay' | 'bank',
+          tenantId,
+          tenantName,
+          contactName: currentUser.name || currentUser.username || '',
+          contactPhone: '',
+          billingCycle: tier.billingCycle || 'monthly'
+        });
+        if (payResult.success) {
+          paymentData = { orderNo: payResult.orderNo, qrCode: payResult.qrCode, payUrl: payResult.payUrl };
+        }
+      } catch (payErr: any) {
+        log.warn(`[Pricing] PaymentService error for acquisition: ${payErr.message}`);
+      }
+    }
+
     // 写入账单记录
     await appendBillingRecord(tenantId, {
       type: 'acquisition',
@@ -742,7 +874,10 @@ router.post('/purchase-acquisition', authenticateToken, async (req: Request, res
       billingCycle: tier.billingCycle,
       maxChannels: tier.maxChannels ?? null,
       status: tier.price === 0 ? 'free' : 'pending_payment',
-      remark: tier.price === 0 ? '免费方案领取' : `${tier.billingCycle}付，待支付`
+      remark: tier.price === 0 ? '免费方案领取' : `${tier.billingCycle}付，待支付`,
+      orderNo: paymentData.orderNo || undefined,
+      qrCodeUrl: paymentData.qrCode || undefined,
+      payUrl: paymentData.payUrl || undefined
     });
 
     // 免费领取立即解锁权限；付费在 confirm-payment 时解锁
@@ -755,7 +890,7 @@ router.post('/purchase-acquisition', authenticateToken, async (req: Request, res
     res.json({
       success: true,
       message: tier.price === 0 ? '免费方案领取成功' : '请完成支付',
-      data: { name: tier.name, price: tier.price, billingCycle: tier.billingCycle }
+      data: { name: tier.name, price: tier.price, billingCycle: tier.billingCycle, ...paymentData }
     });
   } catch (error: any) {
     log.error('[Pricing] Purchase acquisition error:', error.message);

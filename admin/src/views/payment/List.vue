@@ -197,20 +197,17 @@
         </el-table-column>
       </el-table>
 
-      <div class="pagination-wrapper">
-        <span class="pagination-info">
-          当前第 {{ Math.min((page - 1) * pageSize + 1, total) }}-{{ Math.min(page * pageSize, total) }} 条，
-          共 <b>{{ total }}</b> 条记录<template v-if="total - page * pageSize > 0">，剩余 {{ total - page * pageSize }} 条</template>
-        </span>
-        <el-pagination
-          v-model:current-page="page"
-          v-model:page-size="pageSize"
-          :total="total"
-          :page-sizes="[10, 20, 50, 100]"
-          layout="sizes, prev, pager, next, jumper"
-          @size-change="fetchData"
-          @current-change="fetchData"
-        />
+      <div class="pagination-bar">
+        <span class="pagination-total">共 {{ total }} 条</span>
+        <el-select v-model="pageSize" style="width: 110px" @change="page = 1; fetchData()">
+          <el-option :value="10" label="10 条/页" />
+          <el-option :value="20" label="20 条/页" />
+          <el-option :value="50" label="50 条/页" />
+          <el-option :value="100" label="100 条/页" />
+        </el-select>
+        <el-button :disabled="page <= 1" @click="page--; fetchData()">&lt;</el-button>
+        <span class="pagination-page">{{ page }} / {{ Math.max(Math.ceil(total / pageSize), 1) }}</span>
+        <el-button :disabled="page >= Math.ceil(total / pageSize)" @click="page++; fetchData()">&gt;</el-button>
       </div>
     </el-card>
 
@@ -674,7 +671,7 @@ onMounted(() => {
   }
 
   :deep(.el-form-item) {
-    margin-bottom: 0;
+    margin-bottom: 12px;
     margin-right: 16px;
   }
 }
@@ -754,23 +751,26 @@ onMounted(() => {
   color: #303133;
 }
 
-.pagination-wrapper {
-  margin-top: 20px;
-  padding-top: 16px;
+.pagination-bar {
+  margin-top: 16px;
+  padding-top: 12px;
   border-top: 1px solid #f0f0f0;
   display: flex;
-  justify-content: space-between;
   align-items: center;
-}
+  justify-content: flex-end;
+  gap: 8px;
 
-.pagination-info {
-  font-size: 13px;
-  color: #606266;
-  flex-shrink: 0;
+  .pagination-total {
+    font-size: 13px;
+    color: #606266;
+    margin-right: 8px;
+  }
 
-  b {
-    color: #409eff;
-    font-weight: 600;
+  .pagination-page {
+    font-size: 13px;
+    color: #303133;
+    min-width: 60px;
+    text-align: center;
   }
 }
 

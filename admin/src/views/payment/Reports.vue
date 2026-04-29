@@ -168,7 +168,7 @@
         </div>
       </template>
 
-      <el-table :data="tableData" v-loading="loading" stripe style="width: 100%">
+      <el-table :data="pagedTableData" v-loading="loading" stripe style="width: 100%">
         <el-table-column prop="date" label="日期" min-width="120" fixed="left" />
         <el-table-column prop="amount" label="收入金额" min-width="140" align="right">
           <template #default="{ row }">
@@ -197,12 +197,17 @@
           </template>
         </el-table-column>
       </el-table>
+
+      <div class="pagination-wrapper">
+        <el-pagination v-model:current-page="reportPage" v-model:page-size="reportPageSize" :total="tableData.length"
+          :page-sizes="[10, 20, 50, 100]" layout="total, sizes, prev, pager, next" @change="() => {}" />
+      </div>
     </el-card>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Download, Search, Money, Tickets, RefreshRight, TrendCharts, Top, Bottom } from '@element-plus/icons-vue'
 import request from '@/api/request'
@@ -231,6 +236,12 @@ const summary = reactive({
 })
 
 const tableData = ref<any[]>([])
+const reportPage = ref(1)
+const reportPageSize = ref(10)
+const pagedTableData = computed(() => {
+  const start = (reportPage.value - 1) * reportPageSize.value
+  return tableData.value.slice(start, start + reportPageSize.value)
+})
 const trendChartRef = ref<HTMLElement>()
 const payTypeChartRef = ref<HTMLElement>()
 const packageChartRef = ref<HTMLElement>()
@@ -741,6 +752,12 @@ onUnmounted(() => {
 .table-card {
   border-radius: 12px;
   border: none;
+}
+
+.pagination-wrapper {
+  margin-top: 16px;
+  display: flex;
+  justify-content: flex-end;
 }
 
 .table-header {

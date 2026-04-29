@@ -134,6 +134,7 @@ import request from '@/utils/request'
 const props = defineProps<{
   type: 'wecom' | 'archive' | 'ai' | 'acquisition'
 }>()
+const emit = defineEmits<{ (e: 'repay', row: any): void }>()
 
 const loading = ref(false)
 const allRecords = ref<any[]>([])
@@ -216,11 +217,7 @@ const handleConfirmationUpload = async (e: Event) => {
 }
 
 const handlePay = (row: any) => {
-  if (row.qrCodeUrl || row.payUrl) {
-    window.open(row.qrCodeUrl || row.payUrl, '_blank')
-  } else {
-    ElMessage.info('请联系客服完成支付，或重新下单')
-  }
+  emit('repay', row)
 }
 
 const handleCancel = async (row: any) => {
