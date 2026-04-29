@@ -768,15 +768,15 @@
                 </template>
                 <!-- 正常支付显示全部方式 -->
                 <template v-else>
-                <label class="payment-option" :class="{ selected: paymentMethod === 'wechat' }">
+                <label v-if="enabledPayMethods.wechat" class="payment-option" :class="{ selected: paymentMethod === 'wechat' }">
                   <input type="radio" v-model="paymentMethod" value="wechat" />
                   <span>微信支付</span>
                 </label>
-                <label class="payment-option" :class="{ selected: paymentMethod === 'alipay' }">
+                <label v-if="enabledPayMethods.alipay" class="payment-option" :class="{ selected: paymentMethod === 'alipay' }">
                   <input type="radio" v-model="paymentMethod" value="alipay" />
                   <span>支付宝</span>
                 </label>
-                <label class="payment-option" :class="{ selected: paymentMethod === 'bank' }">
+                <label v-if="enabledPayMethods.bank" class="payment-option" :class="{ selected: paymentMethod === 'bank' }">
                   <input type="radio" v-model="paymentMethod" value="bank" />
                   <span>对公转账</span>
                 </label>
@@ -979,6 +979,9 @@ watch(signingUrl, async (url) => {
 
 const signingStatus = ref<'idle' | 'waiting' | 'success' | 'paying' | 'pay-waiting' | 'pay-success'>('idle')
 
+// 套餐数据（从API加载）
+const packagesData = ref<Package[]>([])
+
 // 签约模式下目标套餐是否免费试用
 const isTrialSigning = computed(() => selectedPlan.value === 'FREE_TRIAL')
 
@@ -1013,7 +1016,7 @@ const signingTargetPkgChannels = computed(() => signingTargetPkg.value?.subscrip
 watch(signingTargetPkgChannels, (channels) => {
   if (channels === 'wechat') signingChannel.value = 'wechat'
   else if (channels === 'alipay') signingChannel.value = 'alipay'
-}, { immediate: true })
+})
 
 // 签约模式下目标套餐原价（不含订阅折扣）
 const signingTargetPkgFullPrice = computed(() => {
@@ -1061,9 +1064,6 @@ const privatePlanCards = computed(() => {
 // 当前选中套餐是否需要选择限制模式（双模式套餐）
 const currentPkgLimitMode = computed(() => currentPkg.value?.user_limit_mode || 'total')
 const needsModeSelection = computed(() => currentPkgLimitMode.value === 'both')
-
-// 套餐数据（从API加载）
-const packagesData = ref<Package[]>([])
 
 onMounted(async () => {
   // 加载套餐数据
