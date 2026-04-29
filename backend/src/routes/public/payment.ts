@@ -129,9 +129,11 @@ router.get('/methods', async (_req: Request, res: Response) => {
     const methods: Record<string, boolean> = { wechat: false, alipay: false, bank: false }
     for (const row of rows) {
       if (row.pay_type && methods.hasOwnProperty(row.pay_type)) {
-        methods[row.pay_type] = row.enabled === 1 || row.enabled === true
+        // 兼容MySQL驱动返回 number/boolean/string/Buffer 等各种类型
+        methods[row.pay_type as keyof typeof methods] = row.enabled == 1 || row.enabled === true || row.enabled === '1'
       }
     }
+    log.info(`[Payment] 支付方式查询结果: ${JSON.stringify(methods)}, raw: ${JSON.stringify(rows.map((r: any) => ({ t: r.pay_type, e: r.enabled, type: typeof r.enabled })))}`)
     res.json({ code: 0, data: methods })
   } catch (error) {
     log.error('[Payment] 获取支付方式失败:', error)
@@ -336,9 +338,16 @@ router.post('/repay/:orderNo', async (req: Request, res: Response) => {
       qrCode = result.qrCode || ''
       payUrl = result.payUrl || ''
     } else if (actualPayType === 'alipay') {
-      const result = await paymentService.createAlipayOrderForExisting(orderNo, Number(order.amount), order.package_name || '套餐支付')
-      payUrl = result.payUrl || ''
-      qrCode = result.qrCode || ''
+      try {
+        const result = await paymentService.createAlipayOrderForExisting(orderNo, Number(order.amount), order.package_name || '套餐支付')
+        payUrl = result.payUrl || ''
+        qrCode = result.qrCode || ''
+      } catch (alipayErr: any) {
+        log.error(`[Payment] 支付宝repay失败(orderNo=${orderNo}):`, alipayErr.message)
+        return res.status(500).json({ code: 500, message: `支付宝二维码生成失败: ${alipayErr.message}` })
+      }
+    } else if (actualPayType === 'bank') {
+      // 对公转账无需二维码，只更新支付方式
     }
 
     // 更新订单的二维码和支付方式
@@ -352,8 +361,8 @@ router.post('/repay/:orderNo', async (req: Request, res: Response) => {
       data: { orderNo: order.order_no, qrCode, payUrl }
     })
   } catch (error: any) {
-    log.error('[Payment] 重新生成二维码失败:', error)
-    res.status(500).json({ code: 500, message: '重新生成二维码失败' })
+    log.error('[Payment] 重新生成二维码失败:', error.message, error.stack?.substring(0, 300))
+    res.status(500).json({ code: 500, message: `重新生成二维码失败: ${error.message}` })
   }
 })
 

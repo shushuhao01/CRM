@@ -56,7 +56,10 @@ const memberLoginLimiter = rateLimit({
 // 未通过 SaaS 许可验证时返回 403，防止私有部署客户擅自开启多租户功能
 router.use('/register', requireSaaSMode);
 router.use('/packages', requireSaaSMode);
-router.use('/payment', requireSaaSMode);
+// 支付接口：仅对创建/关闭等写操作保护，回调和查询接口不受限
+// ⚠️ 回调接口（wechat/notify, alipay/notify）由支付平台服务器调用，必须绕过SaaS守卫
+router.use('/payment/create', requireSaaSMode);
+router.use('/payment/close', requireSaaSMode);
 router.use('/member', requireSaaSMode);
 router.use('/subscription', requireSaaSMode);
 router.use('/capacity', requireSaaSMode);
