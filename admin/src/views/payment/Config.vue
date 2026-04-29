@@ -87,8 +87,8 @@
               </el-form-item>
 
               <el-form-item label="V3密钥" required>
-                <el-input v-model="wechatConfig.apiKeyV3" type="textarea" :rows="2"
-                  placeholder="请输入APIv3密钥" />
+                <el-input v-model="wechatConfig.apiKeyV3" type="password"
+                  placeholder="请输入APIv3密钥" show-password />
                 <div class="key-field-actions">
                   <el-button text size="small" @click="toggleWechatKey('apiKeyV3')">
                     <el-icon><View v-if="!showWechatApiKeyV3" /><Hide v-else /></el-icon>
