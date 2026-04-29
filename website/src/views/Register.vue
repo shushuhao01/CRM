@@ -1050,7 +1050,7 @@ const bankConfig = reactive({
 const bankInfoCopied = ref(false)
 
 // 可用的支付方式（从后端配置加载）
-const enabledPayMethods = reactive({ wechat: true, alipay: true, bank: false })
+const enabledPayMethods = reactive({ wechat: true, alipay: true, bank: true })
 
 let paymentCheckTimer: any = null
 let expireTimer: any = null
