@@ -13,8 +13,20 @@ import WecomApiService from '../../services/WecomApiService';
 import { log } from '../../config/logger';
 import { v4 as uuidv4 } from 'uuid';
 import { safeJsonParse } from './wecomHelpers';
+import { WecomSuiteConfig } from '../../entities/WecomSuiteConfig';
 
 const router = Router();
+
+/** 获取服务商级别的全局RSA私钥（第三方模式用） */
+async function getGlobalRsaPrivateKey(): Promise<string | null> {
+  try {
+    const repo = AppDataSource.getRepository(WecomSuiteConfig);
+    const suiteConfig = await repo.findOne({ where: {}, order: { id: 'ASC' } });
+    return suiteConfig?.chatArchiveRsaPrivateKey || null;
+  } catch {
+    return null;
+  }
+}
 
 // ==================== 会话存档状态 ====================
 
@@ -38,10 +50,22 @@ router.get('/chat-archive/status', authenticateToken, async (req: Request, res: 
 
     const configRepo = getTenantRepo(WecomConfig);
     const configs = await configRepo.find({ where: { isEnabled: true } });
-    const archiveConfigs = configs.filter(c => c.chatArchiveSecret && c.chatArchivePrivateKey);
+    const globalRsaKey = await getGlobalRsaPrivateKey();
+
+    // 第三方模式：有permanent_code + 全局私钥即可；自建模式：需要每租户配置archiveSecret+privateKey
+    const archiveConfigs = configs.filter(c => {
+      if (c.authType === 'third_party' && c.permanentCode) {
+        return !!globalRsaKey;
+      }
+      return c.chatArchiveSecret && c.chatArchivePrivateKey;
+    });
 
     if (archiveConfigs.length === 0) {
-      return res.json({ success: true, data: { authorized: true, enabled: false, message: '未配置会话存档Secret和私钥' } });
+      const isThirdParty = configs.some(c => c.authType === 'third_party');
+      const message = isThirdParty && !globalRsaKey
+        ? '第三方模式未配置服务商全局RSA私钥，请在管理后台「服务商应用管理」中配置'
+        : '未配置会话存档Secret和私钥';
+      return res.json({ success: true, data: { authorized: true, enabled: false, message } });
     }
 
     res.json({ success: true, data: { authorized: true, enabled: true, configCount: archiveConfigs.length, configs: archiveConfigs.map(c => ({ id: c.id, name: c.name, corpId: c.corpId })) } });
@@ -92,12 +116,17 @@ router.post('/chat-records/sync', authenticateToken, requireAdmin, async (req: R
     const configRepo = getTenantRepo(WecomConfig);
     const config = await configRepo.findOne({ where: { id: configId, isEnabled: true } });
     if (!config) return res.status(404).json({ success: false, message: '企微配置不存在或已禁用' });
-    if (!config.chatArchiveSecret) return res.status(400).json({ success: false, message: '未配置会话存档Secret' });
+    // 第三方模式不需要单独的chatArchiveSecret，通过permanent_code获取token
+    if (config.authType !== 'third_party' && !config.chatArchiveSecret) {
+      return res.status(400).json({ success: false, message: '未配置会话存档Secret' });
+    }
     const { WecomChatArchiveService } = await import('../../services/WecomChatArchiveService');
     const result = await WecomChatArchiveService.syncChatRecords(config, true);
+    const globalRsaKey = await getGlobalRsaPrivateKey();
+    const hasPrivateKey = !!(config.chatArchivePrivateKey || globalRsaKey);
     res.json({
       success: true, message: result.message,
-      data: { configId: result.configId, configName: result.configName, permitUsers: result.permitUsers, agreedUsers: result.agreedUsers, syncedRecords: result.syncedRecords, newConversations: result.newConversations, errors: result.errors, sdkRequired: result.sdkRequired, mode: result.mode, hasPrivateKey: !!config.chatArchivePrivateKey }
+      data: { configId: result.configId, configName: result.configName, permitUsers: result.permitUsers, agreedUsers: result.agreedUsers, syncedRecords: result.syncedRecords, newConversations: result.newConversations, errors: result.errors, sdkRequired: result.sdkRequired, mode: result.mode, hasPrivateKey }
     });
   } catch (error: any) {
     log.error('[Wecom] Sync chat records error:', error.message, error.stack);
@@ -116,7 +145,10 @@ router.get('/chat-archive/stats', authenticateToken, async (req: Request, res: R
     if (!config) return res.status(404).json({ success: false, message: '企微配置不存在' });
     const { WecomChatArchiveService } = await import('../../services/WecomChatArchiveService');
     const stats = await WecomChatArchiveService.getArchiveStats(config);
-    res.json({ success: true, data: { ...stats, hasSecret: !!config.chatArchiveSecret, hasPrivateKey: !!config.chatArchivePrivateKey, mode: 'http_api' } });
+    const globalRsaKey = await getGlobalRsaPrivateKey();
+    const hasSecret = config.authType === 'third_party' ? !!config.permanentCode : !!config.chatArchiveSecret;
+    const hasPrivateKey = !!(config.chatArchivePrivateKey || globalRsaKey);
+    res.json({ success: true, data: { ...stats, hasSecret, hasPrivateKey, mode: 'http_api' } });
   } catch (error: any) {
     log.error('[Wecom] Get chat archive stats error:', error.message);
     res.status(500).json({ success: false, message: '获取统计信息失败' });

@@ -75,6 +75,29 @@
               </el-checkbox-group>
             </el-form-item>
 
+            <el-divider content-position="left">会话存档RSA私钥</el-divider>
+            <el-alert type="warning" :closable="false" style="margin-bottom: 12px">
+              <template #title>此RSA私钥为<strong>服务商级别全局配置</strong></template>
+              在企微后台「会话存档」中上传的公钥对应的私钥。所有授权企业的会话消息都使用此公钥加密，服务端用此私钥解密。配置后，租户扫码授权即可自动使用会话存档功能，无需每个租户单独配置。
+            </el-alert>
+            <el-form-item label="RSA私钥">
+              <div style="width: 100%">
+                <el-button v-if="!showRsaInput" size="small" @click="showRsaInput = true">
+                  {{ suiteConfig.chatArchiveRsaPrivateKey === '******' ? '已配置 - 点击修改' : '上传/粘贴私钥' }}
+                </el-button>
+                <template v-else>
+                  <el-input
+                    v-model="rsaPrivateKeyInput"
+                    type="textarea"
+                    :rows="6"
+                    placeholder="-----BEGIN PRIVATE KEY-----&#10;...&#10;-----END PRIVATE KEY-----"
+                    style="margin-bottom: 8px"
+                  />
+                  <el-button size="small" @click="showRsaInput = false">收起</el-button>
+                </template>
+              </div>
+            </el-form-item>
+
             <el-form-item>
               <el-button v-permission="'wecom-management:suite:edit'" type="primary" @click="handleSaveConfig" :loading="saving">保存配置</el-button>
               <el-button v-permission="'wecom-management:suite:edit'" @click="handleTestSuiteConnection" :loading="testingConnection">测试连接</el-button>
@@ -377,8 +400,11 @@ const suiteConfig = ref<any>({
   suiteId: '', suiteSecret: '', suiteTicket: '', ticketUpdateTime: '',
   providerCorpId: '', providerSecret: '', appName: '', appDescription: '',
   appStatus: '', permissions: [],
-  callbackToken: '', callbackEncodingAesKey: ''
+  callbackToken: '', callbackEncodingAesKey: '',
+  chatArchiveRsaPrivateKey: ''
 })
+const showRsaInput = ref(false)
+const rsaPrivateKeyInput = ref('')
 
 const callbackUrl = computed(() => {
   const base = window.location.origin
@@ -438,8 +464,16 @@ const fetchConfig = async () => {
 const handleSaveConfig = async () => {
   saving.value = true
   try {
-    await saveSuiteConfig(suiteConfig.value)
+    const payload = { ...suiteConfig.value }
+    // 如果用户填写了新的RSA私钥，替换到payload中
+    if (rsaPrivateKeyInput.value) {
+      payload.chatArchiveRsaPrivateKey = rsaPrivateKeyInput.value
+    }
+    await saveSuiteConfig(payload)
     ElMessage.success('配置已保存')
+    rsaPrivateKeyInput.value = ''
+    showRsaInput.value = false
+    fetchConfig()
   } catch (e: any) { ElMessage.error(e?.message || '保存失败') }
   saving.value = false
 }

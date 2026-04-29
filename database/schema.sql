@@ -5694,6 +5694,7 @@ CREATE TABLE IF NOT EXISTS `wecom_suite_configs` (
   `app_description` TEXT DEFAULT NULL COMMENT '应用描述',
   `app_status` VARCHAR(20) DEFAULT 'offline' COMMENT '应用状态: online/offline',
   `permissions` TEXT DEFAULT NULL COMMENT '权限范围(JSON)',
+  `chat_archive_rsa_private_key` TEXT DEFAULT NULL COMMENT '会话存档RSA私钥(服务商级别，所有授权企业共用)',
   `is_enabled` TINYINT(1) DEFAULT 0 COMMENT '是否启用',
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间'

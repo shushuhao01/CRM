@@ -45,6 +45,9 @@ export class WecomSuiteConfig {
   @Column({ name: 'permissions', type: 'text', nullable: true, comment: '权限范围(JSON数组)' })
   permissions: string;
 
+  @Column({ name: 'chat_archive_rsa_private_key', type: 'text', nullable: true, comment: '会话存档RSA私钥(服务商级别，所有授权企业共用)' })
+  chatArchiveRsaPrivateKey: string;
+
   @Column({ name: 'is_enabled', type: 'boolean', default: false })
   isEnabled: boolean;
 

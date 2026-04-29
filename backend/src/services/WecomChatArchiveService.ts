@@ -72,8 +72,8 @@ export class WecomChatArchiveService {
       }
     }
 
-    // 验证配置
-    if (!config.chatArchiveSecret) {
+    // 验证配置：第三方模式通过permanent_code获取token，不需要单独的chatArchiveSecret
+    if (config.authType !== 'third_party' && !config.chatArchiveSecret) {
       result.message = '未配置会话存档Secret';
       return result;
     }
