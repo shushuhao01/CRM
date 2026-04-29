@@ -165,13 +165,15 @@ const statusType = (s: string) => {
   if (s === 'free' || s === 'paid' || s === 'active') return 'success'
   if (s === 'pending_payment') return 'warning'
   if (s === 'failed') return 'danger'
+  if (s === 'closed' || s === 'cancelled') return 'info'
   return 'info'
 }
 
 const statusText = (s: string) => {
   const map: Record<string, string> = {
     free: '免费领取', paid: '已支付', active: '已生效',
-    pending_payment: '待支付', pending_fulfillment: '待履约', failed: '失败'
+    pending_payment: '待支付', pending_fulfillment: '待履约', failed: '失败',
+    closed: '已关闭', cancelled: '已取消'
   }
   return map[s] || s
 }

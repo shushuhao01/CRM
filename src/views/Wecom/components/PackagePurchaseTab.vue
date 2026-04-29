@@ -450,6 +450,15 @@ const handleClaim = async (pkg: any, idx: number) => {
 const orderCreated = ref(false)
 
 const handlePurchase = async (pkg: any, idx: number) => {
+  // 🔑 只允许升级不允许降级（企微套餐和获客助手按索引比较）
+  if (currentPackage.value && (props.type === 'wecom' || props.type === 'acquisition')) {
+    const currentIdx = Number(currentPackage.value.packageIndex)
+    if (!isNaN(currentIdx) && idx <= currentIdx) {
+      ElMessage.warning('当前已是该套餐或更高级别，仅支持升级到更高级套餐')
+      return
+    }
+  }
+
   pendingPkg.value = pkg
   pendingIdx.value = idx
   payAmount.value = computePrice(pkg)
@@ -489,6 +498,18 @@ const confirmPayment = async () => {
   if (!pendingPkg.value) return
   purchasing.value = true
   try {
+    // 先主动查询支付状态（触发后端向微信/支付宝主动查询，防止回调丢失）
+    if (currentOrderNo.value) {
+      try {
+        const queryRes: any = await request.get(`/public/payment/query/${currentOrderNo.value}`, { showError: false } as any)
+        const qData = queryRes?.data || queryRes
+        if (qData?.status !== 'paid' && qData?.status !== 'processing') {
+          ElMessage.warning('支付尚未完成，请确认已完成支付后重试')
+          purchasing.value = false
+          return
+        }
+      } catch { /* 查询失败不阻塞，继续尝试确认 */ }
+    }
     const pkg = pendingPkg.value
     await confirmWecomPayment({
       type: props.type,
@@ -498,6 +519,7 @@ const confirmPayment = async () => {
     ElMessage.success('支付确认成功，服务已开通！')
     showPayDialog.value = false
     stopPayPolling()
+    currentOrderNo.value = ''
     await loadData()
     billingRef.value?.loadRecords()
     emit('packageChanged')
@@ -534,14 +556,15 @@ const switchPayMethod = async (method: string) => {
   qrLoading.value = true
   currentPayUrl.value = ''
   try {
-    const res: any = await request.post(`/public/payment/repay/${currentOrderNo.value}`, { payType: method })
+    const res: any = await request.post(`/public/payment/repay/${currentOrderNo.value}`, { payType: method }, { showError: false } as any)
     const data = res?.data || res
     currentPayUrl.value = data?.payUrl || ''
     await nextTick()
     renderQrCode(data?.payUrl || data?.qrCode || '')
   } catch (e: any) {
     console.warn('[Pay] repay error:', e)
-    ElMessage.warning('切换支付方式失败，请重试')
+    const msg = e?.message || '切换支付方式失败'
+    ElMessage.warning(`切换支付方式失败: ${msg.substring(0, 80)}`)
   }
   qrLoading.value = false
 }
@@ -550,12 +573,22 @@ const startPayPolling = (orderNo: string) => {
   stopPayPolling()
   payPollTimer = setInterval(async () => {
     try {
-      const res: any = await request.get(`/public/payment/query/${orderNo}`)
+      const res: any = await request.get(`/public/payment/query/${orderNo}`, { showError: false } as any)
       const data = res?.data || res
-      if (data?.status === 'paid') {
+      if (data?.status === 'paid' || data?.status === 'processing') {
+        // processing = 支付已到但授权尚未生成，也视为成功
         stopPayPolling()
+        // 自动确认支付，激活权限和额度（后端回调可能已处理，此处为双保险）
+        try {
+          await confirmWecomPayment({
+            type: props.type,
+            packageName: pendingPkg.value?.name || pendingPkg.value?.tierLabel,
+            orderNo: orderNo || currentOrderNo.value || undefined
+          } as any)
+        } catch { /* 可能已被回调确认，忽略 */ }
         ElMessage.success('支付成功，服务已开通！')
         showPayDialog.value = false
+        currentOrderNo.value = ''
         await loadData()
         billingRef.value?.loadRecords()
         emit('packageChanged')
@@ -563,7 +596,8 @@ const startPayPolling = (orderNo: string) => {
       }
     } catch { /* ignore */ }
   }, 3000)
-  setTimeout(() => stopPayPolling(), 10 * 60 * 1000)
+  // 轮询超时延长到30分钟（原10分钟），给用户足够时间完成支付
+  setTimeout(() => stopPayPolling(), 30 * 60 * 1000)
 }
 
 const stopPayPolling = () => {
@@ -571,9 +605,10 @@ const stopPayPolling = () => {
 }
 
 const onPayDialogClosed = () => {
-  stopPayPolling()
+  // 🔑 弹窗关闭后不停止轮询！继续后台检查支付状态
+  // 用户可能先关闭弹窗再完成支付，轮询仍能检测到支付成功并自动激活
   currentPayUrl.value = ''
-  currentOrderNo.value = ''
+  // 保留 currentOrderNo 以便后台轮询继续
 }
 
 const handleRepay = async (row: any) => {
@@ -601,7 +636,14 @@ const handleRepay = async (row: any) => {
   qrLoading.value = false
 }
 
-onMounted(loadData)
+onMounted(async () => {
+  await loadData()
+  // 🔑 页面加载时检查是否有待支付订单需要恢复轮询
+  // 场景：用户已付款但页面刷新后轮询丢失，通过加载 billing records 触发后端自动同步
+  try {
+    await billingRef.value?.loadRecords()
+  } catch { /* ignore */ }
+})
 onUnmounted(stopPayPolling)
 
 defineExpose({ handleRepay })

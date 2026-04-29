@@ -496,6 +496,14 @@ class PaymentService {
         } catch (closeErr: any) {
           log.warn('[Payment] 自动关闭待支付订单失败:', closeErr.message)
         }
+
+        // 🔑 CRM端增值服务套餐（企微授权/会话存档/AI助手/获客助手）回调自动同步账单和权限
+        // 这些套餐的 package_id 格式: wecom_pkg_*, ai_*, archive_*, acquisition_*
+        // 它们不走 activateTenant（因为不在 tenant_packages 表中），需要单独处理
+        const pkgId = String(orders[0].package_id || '')
+        if (this.isCrmVasPackage(pkgId)) {
+          await this.syncCrmVasBilling(orders[0].tenant_id, orderNo, pkgId)
+        }
       }
     } else {
       await AppDataSource.query(
@@ -916,6 +924,171 @@ class PaymentService {
       }
     }
     return true
+  }
+
+  // 判断是否为CRM端增值服务套餐（非官网tenant_packages套餐）
+  private isCrmVasPackage(packageId: string): boolean {
+    return /^(wecom_pkg_|ai_|archive_|acquisition_)/.test(packageId)
+  }
+
+  /**
+   * CRM端增值服务套餐支付成功后自动同步账单记录和权限
+   * 当微信/支付宝回调更新 payment_orders 后，同步更新 system_config 中的:
+   * 1. 账单记录 (tenant_billing_records_*): pending_payment → paid
+   * 2. 同类型其他待支付记录自动关闭
+   * 3. 租户菜单权限 (tenant_wecom_package_*): 解锁对应功能
+   */
+  private async syncCrmVasBilling(tenantId: string, orderNo: string, _packageId: string): Promise<void> {
+    try {
+      // ━━━ 1. 读取并更新账单记录 ━━━
+      const billingKey = `tenant_billing_records_${tenantId}`
+      const rows = await AppDataSource.query(
+        "SELECT config_value FROM system_config WHERE config_key = ? LIMIT 1", [billingKey]
+      ).catch(() => [])
+
+      let records: any[] = []
+      if (rows.length > 0) {
+        try { records = JSON.parse(rows[0].config_value) } catch { records = [] }
+      }
+      if (!Array.isArray(records) || records.length === 0) {
+        log.info(`[Payment] syncCrmVasBilling: no billing records for tenant=${tenantId}`)
+        return
+      }
+
+      // 通过 orderNo 精确匹配待支付的账单记录
+      let matchIdx = -1
+      for (let i = records.length - 1; i >= 0; i--) {
+        if (records[i].orderNo === orderNo && records[i].status === 'pending_payment') {
+          matchIdx = i
+          break
+        }
+      }
+      if (matchIdx === -1) {
+        // 可能已被前端 confirmWecomPayment 处理过，无需重复
+        log.info(`[Payment] syncCrmVasBilling: no pending record for orderNo=${orderNo} (may already synced)`)
+        return
+      }
+
+      const matchedRecord = records[matchIdx]
+      const paidType: string = matchedRecord.type // 'wecom' | 'archive' | 'ai' | 'acquisition'
+
+      // 更新为已支付
+      records[matchIdx].status = 'paid'
+      records[matchIdx].paidAt = new Date().toISOString()
+      records[matchIdx].syncedByCallback = true
+
+      // ━━━ 2. 关闭同类型的其他待支付记录（一个类型同时只需一个有效套餐）━━━
+      for (let i = 0; i < records.length; i++) {
+        if (i !== matchIdx && records[i].type === paidType && records[i].status === 'pending_payment') {
+          records[i].status = 'closed'
+          records[i].closedAt = new Date().toISOString()
+          records[i].closeReason = '同类型新订单已支付'
+        }
+      }
+
+      // 保存账单记录
+      await AppDataSource.query(
+        "UPDATE system_config SET config_value = ?, updated_at = NOW() WHERE config_key = ?",
+        [JSON.stringify(records), billingKey]
+      )
+
+      // ━━━ 3. 解锁CRM菜单权限 ━━━
+      const permKey = `tenant_wecom_package_${tenantId}`
+      const pkgRows = await AppDataSource.query(
+        "SELECT id, config_value FROM system_config WHERE config_key = ? LIMIT 1", [permKey]
+      ).catch(() => [])
+
+      let pkg: any = {}
+      if (pkgRows.length > 0) {
+        try { pkg = JSON.parse(pkgRows[0].config_value) } catch { pkg = {} }
+      }
+      if (!pkg.menuPermissions) pkg.menuPermissions = {}
+
+      // 根据套餐类型解锁对应菜单权限
+      const permsMap: Record<string, string[]> = {
+        'archive': ['chatArchive'],
+        'ai': ['aiAssistant'],
+        'acquisition': ['acquisition', 'contactWay'],
+      }
+      const keysToUnlock = permsMap[paidType] || []
+      for (const k of keysToUnlock) {
+        pkg.menuPermissions[k] = true
+      }
+
+      // wecom套餐：从账单记录的 packageData 恢复完整套餐信息（含全部菜单权限）
+      if (paidType === 'wecom' && matchedRecord.packageData) {
+        Object.assign(pkg, matchedRecord.packageData)
+        pkg.paidAt = new Date().toISOString()
+      }
+
+      pkg.updatedAt = new Date().toISOString()
+      const pkgVal = JSON.stringify(pkg)
+      if (pkgRows.length > 0) {
+        await AppDataSource.query(
+          "UPDATE system_config SET config_value = ?, updated_at = NOW() WHERE config_key = ?",
+          [pkgVal, permKey]
+        )
+      } else {
+        await AppDataSource.query(
+          "INSERT INTO system_config (id, config_key, config_value, config_type, created_at, updated_at) VALUES (UUID(), ?, ?, 'json', NOW(), NOW())",
+          [permKey, pkgVal]
+        )
+      }
+
+      // ━━━ 4. 会话存档服务套餐立即激活 ━━━
+      if (paidType === 'archive' && (matchedRecord.archiveType === 'service' || !matchedRecord.archiveType)) {
+        records[matchIdx].status = 'active'
+        records[matchIdx].activatedAt = new Date().toISOString()
+        await AppDataSource.query(
+          "UPDATE system_config SET config_value = ?, updated_at = NOW() WHERE config_key = ?",
+          [JSON.stringify(records), billingKey]
+        )
+      }
+
+      // ━━━ 5. 同步套餐权限到配额管理（与 pricing.ts 中 syncPackageToQuota 相同逻辑）━━━
+      if (paidType === 'wecom' && matchedRecord.packageData?.menuPermissions) {
+        try {
+          const quotaRows = await AppDataSource.query(
+            "SELECT config_value FROM system_config WHERE config_key = 'wecom_tenant_quotas' LIMIT 1"
+          ).catch(() => [])
+          let quotaMap: Record<string, any> = {}
+          if (quotaRows.length > 0) {
+            try { quotaMap = JSON.parse(quotaRows[0].config_value) } catch { quotaMap = {} }
+          }
+          const existing = quotaMap[tenantId] || {}
+          const existingFeatures = existing.features || {}
+          const permToFeatureMap: Record<string, string> = {
+            customer: 'customer', customerGroup: 'group', acquisition: 'acquisition',
+            contactWay: 'contactWay', chatArchive: 'chatArchive', customerService: 'kf',
+            aiAssistant: 'ai', sidebar: 'sidebar', payment: 'payment', addressBook: 'customer',
+          }
+          const mergedFeatures = { ...existingFeatures }
+          for (const [permKey2, enabled] of Object.entries(matchedRecord.packageData.menuPermissions)) {
+            if (enabled === true) {
+              const featureKey = permToFeatureMap[permKey2] || permKey2
+              mergedFeatures[featureKey] = true
+            }
+          }
+          quotaMap[tenantId] = { ...existing, features: mergedFeatures, updatedAt: new Date().toISOString() }
+          const quotaVal = JSON.stringify(quotaMap)
+          if (quotaRows.length > 0) {
+            await AppDataSource.query(
+              "UPDATE system_config SET config_value = ?, updated_at = NOW() WHERE config_key = 'wecom_tenant_quotas'", [quotaVal]
+            )
+          } else {
+            await AppDataSource.query(
+              "INSERT INTO system_config (id, config_key, config_value, config_type, created_at, updated_at) VALUES (UUID(), 'wecom_tenant_quotas', ?, 'json', NOW(), NOW())", [quotaVal]
+            )
+          }
+        } catch (quotaErr: any) {
+          log.warn('[Payment] syncCrmVasBilling quota sync error:', quotaErr.message)
+        }
+      }
+
+      log.info(`[Payment] ✅ CRM VAS billing synced: tenant=${tenantId}, orderNo=${orderNo}, type=${paidType}`)
+    } catch (e: any) {
+      log.error('[Payment] syncCrmVasBilling error:', e.message)
+    }
   }
 
   // 记录支付日志（公开包装方法，供AlipayService/WechatPayService调用）

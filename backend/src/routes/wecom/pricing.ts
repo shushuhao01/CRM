@@ -206,6 +206,23 @@ router.post('/claim-package', authenticateToken, async (req: Request, res: Respo
       return res.status(400).json({ success: false, message: '该套餐需要付费购买，不能免费领取' });
     }
 
+    // 🔑 升级限制：不允许降级到更低级别的套餐
+    if (action === 'purchase') {
+      const currentPkgRows = await AppDataSource.query(
+        "SELECT config_value FROM system_config WHERE config_key = ? LIMIT 1",
+        [`tenant_wecom_package_${tenantId}`]
+      ).catch(() => []);
+      if (currentPkgRows.length > 0) {
+        try {
+          const currentPkg = JSON.parse(currentPkgRows[0].config_value);
+          const currentIdx = Number(currentPkg.packageIndex);
+          if (!isNaN(currentIdx) && Number(packageId) <= currentIdx) {
+            return res.status(400).json({ success: false, message: '当前已是该套餐或更高级别，仅支持升级到更高级套餐' });
+          }
+        } catch { /* ignore */ }
+      }
+    }
+
     // 免费领取防重复：每租户仅可领取一次
     if (action === 'claim') {
       const claimKey = `tenant_wecom_free_claimed_${tenantId}`;
@@ -697,18 +714,55 @@ router.post('/confirm-payment', authenticateToken, async (req: Request, res: Res
     if (rows.length > 0) {
       try { records = JSON.parse(rows[0].config_value); } catch { /* ignore */ }
     }
-    // 将最新匹配的pending记录改为paid
+
+    // 🔑 匹配策略：优先用 orderNo 精确匹配，回退到 type+packageName
     let updated = false;
+    let matchedIdx = -1;
+    let matchedType = type;
+
     for (let i = records.length - 1; i >= 0; i--) {
-      if (records[i].type === type && records[i].packageName === packageName && records[i].status === 'pending_payment') {
+      // 策略1: 通过 orderNo 精确匹配（最可靠）
+      if (orderNo && records[i].orderNo === orderNo && records[i].status === 'pending_payment') {
         records[i].status = 'paid';
         records[i].paidAt = new Date().toISOString();
-        if (orderNo) records[i].orderNo = orderNo;
         updated = true;
+        matchedIdx = i;
+        matchedType = records[i].type || type;
+        break;
+      }
+      // 策略2: 回退到 type + packageName 匹配（兼容旧记录或无 orderNo 的情况）
+      if (!orderNo && records[i].type === type && records[i].packageName === packageName && records[i].status === 'pending_payment') {
+        records[i].status = 'paid';
+        records[i].paidAt = new Date().toISOString();
+        updated = true;
+        matchedIdx = i;
+        matchedType = records[i].type;
         break;
       }
     }
-    if (updated) {
+
+    // 🔑 处理已被回调 syncCrmVasBilling 自动同步的记录（status已是paid/active）
+    if (!updated && orderNo) {
+      const alreadySynced = records.find((r: any) => r.orderNo === orderNo && (r.status === 'paid' || r.status === 'active'));
+      if (alreadySynced) {
+        updated = true; // 标记已处理，后续权限解锁仍执行
+        matchedType = alreadySynced.type || type;
+        log.info(`[Pricing] confirm-payment: order ${orderNo} already synced by callback, ensuring permissions`);
+      }
+    }
+
+    // 🔑 支付成功后关闭同类型其他待支付记录（防重复支付）
+    if (updated && matchedIdx >= 0) {
+      for (let i = 0; i < records.length; i++) {
+        if (i !== matchedIdx && records[i].type === matchedType && records[i].status === 'pending_payment') {
+          records[i].status = 'closed';
+          records[i].closedAt = new Date().toISOString();
+          records[i].closeReason = '同类型订单已支付';
+        }
+      }
+    }
+
+    if (updated || matchedIdx >= 0) {
       const val = JSON.stringify(records);
       if (rows.length > 0) {
         await AppDataSource.query("UPDATE system_config SET config_value = ?, updated_at = NOW() WHERE config_key = ?", [val, key]);
@@ -717,11 +771,19 @@ router.post('/confirm-payment', authenticateToken, async (req: Request, res: Res
       }
     }
 
+    // 🔑 使用精确匹配的记录（matchedIdx），避免 packageName 不一致导致激活失败
+    // 回退兜底：如果 matchedIdx 无效，仍用 type+packageName 搜索
+    const getMatchedRecord = () => {
+      if (matchedIdx >= 0 && records[matchedIdx]) return records[matchedIdx];
+      return [...records].reverse().find((r: any) =>
+        r.type === matchedType && (r.status === 'paid' || r.status === 'active')
+      );
+    };
+
     // 服务套餐立即激活 WecomArchiveSetting.maxUsers
-    if (type === 'archive') {
-      const record = [...records].reverse().find((r: any) => r.type === 'archive' && r.packageName === packageName && r.status === 'paid');
-      if (record && (record.archiveType === 'service' || !record.archiveType)) {
-        // 服务套餐：立即更新所有关联configId的存档席位
+    if (matchedType === 'archive') {
+      const record = getMatchedRecord();
+      if (record && (record.archiveType === 'service' || !record.archiveType) && record.status === 'paid') {
         try {
           const targetConfigId = configId ? parseInt(configId) : null;
           if (targetConfigId) {
@@ -731,12 +793,10 @@ router.post('/confirm-payment', authenticateToken, async (req: Request, res: Res
             ).catch(() => {/* 表可能不存在，忽略 */});
           }
           // 更新账单状态为active
-          for (let i = records.length - 1; i >= 0; i--) {
-            if (records[i].type === 'archive' && records[i].packageName === packageName && records[i].status === 'paid') {
-              records[i].status = 'active';
-              records[i].activatedAt = new Date().toISOString();
-              break;
-            }
+          const activeIdx = matchedIdx >= 0 ? matchedIdx : records.findIndex((r: any) => r === record);
+          if (activeIdx >= 0) {
+            records[activeIdx].status = 'active';
+            records[activeIdx].activatedAt = new Date().toISOString();
           }
           await AppDataSource.query("UPDATE system_config SET config_value = ?, updated_at = NOW() WHERE config_key = ?",
             [JSON.stringify(records), key]
@@ -749,10 +809,8 @@ router.post('/confirm-payment', authenticateToken, async (req: Request, res: Res
     }
 
     // 支付成功后：保存租户套餐（付费购买在此处才正式激活）
-    if (updated && type === 'wecom') {
-      const paidRecord = [...records].reverse().find((r: any) =>
-        r.type === 'wecom' && r.packageName === packageName && r.status === 'paid' && r.packageData
-      );
+    if (updated && matchedType === 'wecom') {
+      const paidRecord = getMatchedRecord();
       if (paidRecord?.packageData) {
         const pkgKey = `tenant_wecom_package_${tenantId}`;
         const pkgData = { ...paidRecord.packageData, paidAt: new Date().toISOString() };
@@ -765,8 +823,7 @@ router.post('/confirm-payment', authenticateToken, async (req: Request, res: Res
         } else {
           await AppDataSource.query("INSERT INTO system_config (id, config_key, config_value, config_type, created_at, updated_at) VALUES (UUID(), ?, ?, 'json', NOW(), NOW())", [pkgKey, pkgVal]);
         }
-        log.info(`[Pricing] Wecom package activated after payment for tenant ${tenantId}: ${packageName}`);
-        // 同步套餐权限到配额管理
+        log.info(`[Pricing] Wecom package activated after payment for tenant ${tenantId}: ${paidRecord.packageName}`);
         if (paidRecord.packageData?.menuPermissions) {
           await syncPackageToQuota(tenantId, paidRecord.packageData.menuPermissions);
         }
@@ -774,8 +831,8 @@ router.post('/confirm-payment', authenticateToken, async (req: Request, res: Res
     }
 
     // 支付成功后解锁对应功能权限
-    if (updated && ['archive', 'ai', 'acquisition', 'wecom'].includes(type)) {
-      await unlockTenantPermissions(tenantId, type as any);
+    if (updated && ['archive', 'ai', 'acquisition', 'wecom'].includes(matchedType)) {
+      await unlockTenantPermissions(tenantId, matchedType as any);
     }
 
     res.json({
@@ -901,6 +958,7 @@ router.post('/purchase-acquisition', authenticateToken, async (req: Request, res
 /**
  * GET /wecom/billing-records
  * 获取当前租户的账单购买记录（最近100条）
+ * 🔑 兜底机制：自动检测 pending_payment 记录是否已在 payment_orders 中支付，若是则同步状态
  */
 router.get('/billing-records', authenticateToken, async (req: Request, res: Response) => {
   try {
@@ -909,18 +967,75 @@ router.get('/billing-records', authenticateToken, async (req: Request, res: Resp
       return res.json({ success: true, data: [] });
     }
 
+    const billingKey = `tenant_billing_records_${tenantId}`;
     const rows = await AppDataSource.query(
       "SELECT config_value FROM system_config WHERE config_key = ? LIMIT 1",
-      [`tenant_billing_records_${tenantId}`]
+      [billingKey]
     ).catch(() => []);
 
     let records: any[] = [];
     if (rows.length > 0) {
       try { records = JSON.parse(rows[0].config_value); } catch { /* ignore */ }
     }
+    if (!Array.isArray(records)) records = [];
+
+    // 🔑 兜底同步：检查 pending_payment 记录是否已在 payment_orders 中支付
+    const pendingWithOrder = records.filter((r: any) => r.status === 'pending_payment' && r.orderNo);
+    if (pendingWithOrder.length > 0) {
+      try {
+        const orderNos = pendingWithOrder.map((r: any) => r.orderNo);
+        const placeholders = orderNos.map(() => '?').join(',');
+        const paidOrders = await AppDataSource.query(
+          `SELECT order_no FROM payment_orders WHERE order_no IN (${placeholders}) AND status = 'paid'`,
+          orderNos
+        ).catch(() => []);
+
+        if (paidOrders.length > 0) {
+          const paidOrderSet = new Set(paidOrders.map((o: any) => o.order_no));
+          let needUpdate = false;
+          const typesNeedUnlock = new Set<string>();
+
+          for (let i = 0; i < records.length; i++) {
+            if (records[i].status === 'pending_payment' && records[i].orderNo && paidOrderSet.has(records[i].orderNo)) {
+              records[i].status = 'paid';
+              records[i].paidAt = new Date().toISOString();
+              records[i].autoSynced = true;
+              needUpdate = true;
+              typesNeedUnlock.add(records[i].type);
+
+              // 关闭同类型其他待支付记录
+              const paidType = records[i].type;
+              for (let j = 0; j < records.length; j++) {
+                if (j !== i && records[j].type === paidType && records[j].status === 'pending_payment') {
+                  records[j].status = 'closed';
+                  records[j].closedAt = new Date().toISOString();
+                  records[j].closeReason = '同类型订单已支付（自动同步）';
+                }
+              }
+            }
+          }
+
+          if (needUpdate) {
+            // 保存同步后的账单记录
+            await AppDataSource.query(
+              "UPDATE system_config SET config_value = ?, updated_at = NOW() WHERE config_key = ?",
+              [JSON.stringify(records), billingKey]
+            );
+
+            // 解锁权限（每种已支付类型解锁一次）
+            for (const paidType of typesNeedUnlock) {
+              await unlockTenantPermissions(tenantId, paidType as any);
+            }
+            log.info(`[Pricing] billing-records auto-synced for tenant ${tenantId}: types=${[...typesNeedUnlock].join(',')}`);
+          }
+        }
+      } catch (syncErr: any) {
+        log.warn('[Pricing] billing-records auto-sync error:', syncErr.message);
+      }
+    }
 
     // 按时间倒序，最多返回100条
-    records = Array.isArray(records) ? records.slice(-100).reverse() : [];
+    records = records.slice(-100).reverse();
     res.json({ success: true, data: records });
   } catch (error: any) {
     log.error('[Pricing] Get billing records error:', error.message);
@@ -1078,7 +1193,7 @@ async function syncPackageToQuota(tenantId: string, menuPermissions: Record<stri
  */
 router.post('/cancel-order', authenticateToken, async (req: Request, res: Response) => {
   try {
-    const tenantId = (req as any).tenantId || (req as any).currentUser?.tenantId;
+    const tenantId = (req as any).user?.tenantId;
     const { orderId, orderNo } = req.body;
     if (!tenantId) return res.status(401).json({ success: false, message: '未授权' });
 
