@@ -515,15 +515,15 @@
                 <div class="payment-methods">
                   <h4>选择支付方式</h4>
                   <div class="payment-options">
-                    <label class="payment-option" :class="{ selected: paymentMethod === 'wechat' }">
+                    <label v-if="enabledPayMethods.wechat" class="payment-option" :class="{ selected: paymentMethod === 'wechat' }">
                       <input type="radio" v-model="paymentMethod" value="wechat" />
                       <span>微信支付</span>
                     </label>
-                    <label class="payment-option" :class="{ selected: paymentMethod === 'alipay' }">
+                    <label v-if="enabledPayMethods.alipay" class="payment-option" :class="{ selected: paymentMethod === 'alipay' }">
                       <input type="radio" v-model="paymentMethod" value="alipay" />
                       <span>支付宝</span>
                     </label>
-                    <label class="payment-option" :class="{ selected: paymentMethod === 'bank' }">
+                    <label v-if="enabledPayMethods.bank" class="payment-option" :class="{ selected: paymentMethod === 'bank' }">
                       <input type="radio" v-model="paymentMethod" value="bank" />
                       <span>对公转账</span>
                     </label>
@@ -768,15 +768,15 @@
                 </template>
                 <!-- 正常支付显示全部方式 -->
                 <template v-else>
-                <label class="payment-option" :class="{ selected: paymentMethod === 'wechat' }">
+                <label v-if="enabledPayMethods.wechat" class="payment-option" :class="{ selected: paymentMethod === 'wechat' }">
                   <input type="radio" v-model="paymentMethod" value="wechat" />
                   <span>微信支付</span>
                 </label>
-                <label class="payment-option" :class="{ selected: paymentMethod === 'alipay' }">
+                <label v-if="enabledPayMethods.alipay" class="payment-option" :class="{ selected: paymentMethod === 'alipay' }">
                   <input type="radio" v-model="paymentMethod" value="alipay" />
                   <span>支付宝</span>
                 </label>
-                <label class="payment-option" :class="{ selected: paymentMethod === 'bank' }">
+                <label v-if="enabledPayMethods.bank" class="payment-option" :class="{ selected: paymentMethod === 'bank' }">
                   <input type="radio" v-model="paymentMethod" value="bank" />
                   <span>对公转账</span>
                 </label>
@@ -958,6 +958,9 @@ const bankConfig = reactive({
   remark: ''
 })
 
+// 可用的支付方式（从后端配置加载）
+const enabledPayMethods = reactive({ wechat: true, alipay: true, bank: false })
+
 let paymentCheckTimer: any = null
 let expireTimer: any = null
 let signingCheckTimer: any = null
@@ -1072,6 +1075,15 @@ onMounted(async () => {
   try {
     const wsConfig = await getWebsiteConfig()
     if (wsConfig.crmUrl) crmUrl.value = wsConfig.crmUrl
+  } catch { /* 静默 */ }
+
+  // 加载可用支付方式
+  try {
+    const pmRes = await fetch(`${API_BASE}/public/payment/methods`)
+    const pmData = await pmRes.json()
+    if (pmData.code === 0 && pmData.data) {
+      Object.assign(enabledPayMethods, pmData.data)
+    }
   } catch { /* 静默 */ }
 
   const plan = route.query.plan as string

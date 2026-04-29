@@ -56,7 +56,17 @@
             <!-- V2配置 -->
             <template v-if="wechatConfig.apiVersion === 'v2'">
               <el-form-item label="API密钥(V2)" required>
-                <el-input v-model="wechatConfig.apiKey" type="password" show-password placeholder="请输入API密钥" />
+                <el-input v-model="wechatConfig.apiKey" type="textarea" :rows="2"
+                  placeholder="请输入API密钥" />
+                <div class="key-field-actions">
+                  <el-button text size="small" @click="toggleWechatKey('apiKey')">
+                    <el-icon><View v-if="!showWechatApiKey" /><Hide v-else /></el-icon>
+                    {{ showWechatApiKey ? '隐藏' : '查看实际值' }}
+                  </el-button>
+                  <el-button text size="small" v-if="showWechatApiKey" @click="copyWechatKey('apiKey')">
+                    <el-icon><CopyDocument /></el-icon>复制
+                  </el-button>
+                </div>
                 <div class="form-tip">商户平台 → API安全 → API密钥(V2)</div>
               </el-form-item>
             </template>
@@ -77,7 +87,17 @@
               </el-form-item>
 
               <el-form-item label="V3密钥" required>
-                <el-input v-model="wechatConfig.apiKeyV3" type="password" show-password placeholder="请输入APIv3密钥" />
+                <el-input v-model="wechatConfig.apiKeyV3" type="textarea" :rows="2"
+                  placeholder="请输入APIv3密钥" />
+                <div class="key-field-actions">
+                  <el-button text size="small" @click="toggleWechatKey('apiKeyV3')">
+                    <el-icon><View v-if="!showWechatApiKeyV3" /><Hide v-else /></el-icon>
+                    {{ showWechatApiKeyV3 ? '隐藏' : '查看实际值' }}
+                  </el-button>
+                  <el-button text size="small" v-if="showWechatApiKeyV3" @click="copyWechatKey('apiKeyV3')">
+                    <el-icon><CopyDocument /></el-icon>复制
+                  </el-button>
+                </div>
                 <div class="form-tip">V3支付密钥</div>
               </el-form-item>
 
@@ -206,6 +226,15 @@
             <el-form-item label="支付宝商家私钥" required>
               <el-input v-model="alipayConfig.privateKey" type="textarea" :rows="4"
                 placeholder="MIIEvAIBADANBgkqhkiG9w0BAQEFAASC..." />
+              <div class="key-field-actions">
+                <el-button text size="small" @click="toggleAlipayKey('privateKey')">
+                  <el-icon><View v-if="!showPrivateKey" /><Hide v-else /></el-icon>
+                  {{ showPrivateKey ? '隐藏' : '查看实际值' }}
+                </el-button>
+                <el-button text size="small" v-if="showPrivateKey" @click="copyAlipayKey('privateKey')">
+                  <el-icon><CopyDocument /></el-icon>复制
+                </el-button>
+              </div>
               <div class="form-tip">应用私钥，用于签名请求</div>
             </el-form-item>
 
@@ -220,6 +249,15 @@
             <el-form-item label="支付宝公钥" required v-if="alipayConfig.verifyType === 'public'">
               <el-input v-model="alipayConfig.alipayPublicKey" type="textarea" :rows="4"
                 placeholder="MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8A..." />
+              <div class="key-field-actions">
+                <el-button text size="small" @click="toggleAlipayKey('alipayPublicKey')">
+                  <el-icon><View v-if="!showAlipayPublicKey" /><Hide v-else /></el-icon>
+                  {{ showAlipayPublicKey ? '隐藏' : '查看实际值' }}
+                </el-button>
+                <el-button text size="small" v-if="showAlipayPublicKey" @click="copyAlipayKey('alipayPublicKey')">
+                  <el-icon><CopyDocument /></el-icon>复制
+                </el-button>
+              </div>
               <div class="form-tip">用于验证支付宝回调签名</div>
             </el-form-item>
 
@@ -352,7 +390,7 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElNotification } from 'element-plus'
-import { Check, CopyDocument, Upload } from '@element-plus/icons-vue'
+import { Check, CopyDocument, Upload, View, Hide } from '@element-plus/icons-vue'
 import request from '@/api/request'
 import { adminApi } from '@/api/admin'
 
@@ -392,6 +430,72 @@ const alipayConfig = reactive({
   signType: 'RSA2',
   notifyUrl: ''
 })
+
+const showWechatApiKey = ref(false)
+const showWechatApiKeyV3 = ref(false)
+
+const toggleWechatKey = async (field: 'apiKey' | 'apiKeyV3') => {
+  const isV2 = field === 'apiKey'
+  if (isV2 ? !showWechatApiKey.value : !showWechatApiKeyV3.value) {
+    try {
+      const res = await request.get('/payment/config/wechat/keys')
+      if (res.success && res.data[field]) {
+        wechatConfig[field] = res.data[field]
+        if (isV2) showWechatApiKey.value = true
+        else showWechatApiKeyV3.value = true
+      } else {
+        ElMessage.warning('未找到已保存的密钥，请先保存配置')
+      }
+    } catch {
+      ElMessage.error('获取密钥失败')
+    }
+  } else {
+    wechatConfig[field] = '******'
+    if (isV2) showWechatApiKey.value = false
+    else showWechatApiKeyV3.value = false
+  }
+}
+
+const copyWechatKey = (field: 'apiKey' | 'apiKeyV3') => {
+  const value = wechatConfig[field]
+  if (value && value !== '******') {
+    navigator.clipboard.writeText(value)
+    ElMessage.success('已复制到剪贴板')
+  }
+}
+
+const showPrivateKey = ref(false)
+const showAlipayPublicKey = ref(false)
+
+const toggleAlipayKey = async (field: 'privateKey' | 'alipayPublicKey') => {
+  const isPrivate = field === 'privateKey'
+  if (isPrivate ? !showPrivateKey.value : !showAlipayPublicKey.value) {
+    try {
+      const res = await request.get('/payment/config/alipay/keys')
+      if (res.success && res.data[field]) {
+        alipayConfig[field] = res.data[field]
+        if (isPrivate) showPrivateKey.value = true
+        else showAlipayPublicKey.value = true
+      } else {
+        ElMessage.warning('暂无已保存的密钥数据')
+      }
+    } catch {
+      ElMessage.error('获取密钥失败')
+    }
+  } else {
+    alipayConfig[field] = '******'
+    if (isPrivate) showPrivateKey.value = false
+    else showAlipayPublicKey.value = false
+  }
+}
+
+const copyAlipayKey = (field: 'privateKey' | 'alipayPublicKey') => {
+  const value = alipayConfig[field]
+  if (value && value !== '******') {
+    navigator.clipboard.writeText(value)
+    ElMessage.success('已复制到剪贴板')
+  }
+}
 
 const bankConfig = reactive({
   enabled: false,
@@ -536,7 +640,7 @@ const handleTestAlipay = async () => {
     ElMessage.warning('请先填写支付宝AppID，并保存配置后再测试连接')
     return
   }
-  if (!alipayConfig.privateKey || alipayConfig.privateKey === '******') {
+  if (!alipayConfig.privateKey) {
     ElMessage.warning('请先填写支付宝商家私钥，并保存配置后再测试连接')
     return
   }
@@ -706,6 +810,17 @@ onMounted(() => {
 .unit {
   margin-left: 8px;
   color: #606266;
+}
+
+.key-field-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+
+  .el-button {
+    font-size: 13px;
+    color: #409eff;
+  }
 }
 
 .form-footer {

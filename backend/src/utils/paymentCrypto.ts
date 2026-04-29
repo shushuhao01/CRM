@@ -50,6 +50,7 @@ export const PAYMENT_ENCRYPT_KEY = getPaymentEncryptKey();
  * 后续新版本应迁移到随机IV方案
  */
 export function decryptPaymentConfig(encrypted: string): string {
+  if (!encrypted) return '';
   try {
     const decipher = crypto.createDecipheriv(
       'aes-256-cbc',
@@ -57,7 +58,8 @@ export function decryptPaymentConfig(encrypted: string): string {
       Buffer.alloc(16, 0)
     );
     return decipher.update(encrypted, 'hex', 'utf8') + decipher.final('utf8');
-  } catch {
+  } catch (err: any) {
+    log.error('[PaymentCrypto] 解密失败（可能密钥不匹配或数据损坏）:', err.message?.substring(0, 200));
     return '';
   }
 }
@@ -67,6 +69,7 @@ export function decryptPaymentConfig(encrypted: string): string {
  * 使用 AES-256-CBC + 固定IV（与解密配套）
  */
 export function encryptPaymentConfig(plain: string): string {
+  if (!plain) return '';
   try {
     const cipher = crypto.createCipheriv(
       'aes-256-cbc',
@@ -74,7 +77,8 @@ export function encryptPaymentConfig(plain: string): string {
       Buffer.alloc(16, 0)
     );
     return cipher.update(plain, 'utf8', 'hex') + cipher.final('hex');
-  } catch {
+  } catch (err: any) {
+    log.error('[PaymentCrypto] 加密失败:', err.message?.substring(0, 200));
     return '';
   }
 }

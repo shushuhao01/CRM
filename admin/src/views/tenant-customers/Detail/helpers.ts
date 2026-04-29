@@ -65,12 +65,12 @@ export const getStatusText = (s: string): string => {
 }
 
 export const getLicenseStatusType = (s: string): string => {
-  const map: Record<string, string> = { active: 'success', pending: 'warning', expired: 'info', suspended: 'danger' }
+  const map: Record<string, string> = { active: 'success', pending: 'warning', paid: 'warning', expired: 'info', suspended: 'danger' }
   return map[s] || 'info'
 }
 
 export const getLicenseStatusText = (s: string): string => {
-  const map: Record<string, string> = { active: '已激活', pending: '待激活', expired: '已过期', suspended: '已暂停' }
+  const map: Record<string, string> = { active: '已激活', pending: '待激活', paid: '已付款待激活', expired: '已过期', suspended: '已暂停' }
   return map[s] || s
 }
 

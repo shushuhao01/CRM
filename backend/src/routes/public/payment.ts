@@ -120,6 +120,69 @@ router.post('/create', async (req: Request, res: Response) => {
   }
 })
 
+// 获取可用的支付方式（公开接口，用于前端显示/隐藏支付选项）
+router.get('/methods', async (_req: Request, res: Response) => {
+  try {
+    const rows = await AppDataSource.query(
+      'SELECT pay_type, enabled FROM payment_configs'
+    )
+    const methods: Record<string, boolean> = { wechat: false, alipay: false, bank: false }
+    for (const row of rows) {
+      if (row.pay_type && methods.hasOwnProperty(row.pay_type)) {
+        methods[row.pay_type] = row.enabled === 1
+      }
+    }
+    res.json({ code: 0, data: methods })
+  } catch (error) {
+    log.error('[Payment] 获取支付方式失败:', error)
+    res.json({ code: 0, data: { wechat: true, alipay: true, bank: false } })
+  }
+})
+
+// 获取对公转账银行信息（公开接口，用于转账确认页面显示）
+router.get('/bank-info', async (_req: Request, res: Response) => {
+  try {
+    const bankRows = await AppDataSource.query(
+      'SELECT config_data FROM payment_configs WHERE pay_type = ? AND enabled = 1', ['bank']
+    )
+    if (bankRows.length > 0 && bankRows[0].config_data) {
+      const { decryptPaymentConfig } = await import('../../utils/paymentCrypto')
+      try {
+        const decrypted = decryptPaymentConfig(bankRows[0].config_data)
+        const bankData = JSON.parse(decrypted)
+        return res.json({
+          code: 0,
+          data: {
+            bankName: bankData.bankName || '',
+            accountName: bankData.accountName || '',
+            accountNo: bankData.accountNo || '',
+            bankBranch: bankData.bankBranch || '',
+            remark: bankData.remark || ''
+          }
+        })
+      } catch {
+        try {
+          const bankData = JSON.parse(bankRows[0].config_data)
+          return res.json({
+            code: 0,
+            data: {
+              bankName: bankData.bankName || '',
+              accountName: bankData.accountName || '',
+              accountNo: bankData.accountNo || '',
+              bankBranch: bankData.bankBranch || '',
+              remark: bankData.remark || ''
+            }
+          })
+        } catch {}
+      }
+    }
+    res.json({ code: 0, data: null })
+  } catch (error) {
+    log.error('[Payment] 获取银行配置失败:', error)
+    res.json({ code: 0, data: null })
+  }
+})
+
 // 查询订单状态（支付成功后返回授权码）
 // 🔑 兜底逻辑：如果DB中订单仍为pending，主动向微信/支付宝查询真实支付状态
 router.get('/query/:orderNo', async (req: Request, res: Response) => {

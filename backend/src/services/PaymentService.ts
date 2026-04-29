@@ -598,10 +598,15 @@ class PaymentService {
           ? this.generateLicenseKey()
           : tenant.existing_license_key
 
-        // 解析套餐 features（用于同步到租户）
+        // 解析套餐 features/modules（用于同步到租户）
+        // 🔑 优先使用 modules（模块ID列表），其次 features
         let featuresStr: string | null = null
-        if (pkg.features) {
-          featuresStr = typeof pkg.features === 'string' ? pkg.features : JSON.stringify(pkg.features)
+        const rawModules = pkg.modules || pkg.features
+        if (rawModules) {
+          const parsed = typeof rawModules === 'string' ? JSON.parse(rawModules) : rawModules
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            featuresStr = JSON.stringify(parsed)
+          }
         }
 
         // ━━━ 🔑 更新租户状态（完整同步套餐信息） ━━━

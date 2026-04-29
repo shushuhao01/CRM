@@ -2,11 +2,78 @@
   <div class="pay-success-page">
     <div class="success-container">
       <div class="success-icon">🎉</div>
-      <h1>{{ isTrial ? '注册成功！' : (isBankTransfer ? '转账订单已提交！' : '购买成功！') }}</h1>
-      <p class="success-desc">{{ isTrial ? '您的7天免费试用已开通' : (isBankTransfer ? '请完成对公转账，我们将在确认到账后为您开通账号' : '感谢您选择云客CRM，您的账号已开通') }}</p>
+      <h1>{{ isTrial ? '注册成功！' : (isBankTransfer ? (bankOrderPaid ? '购买成功！' : '转账订单已提交！') : '购买成功！') }}</h1>
+      <p class="success-desc">{{ isTrial ? '您的7天免费试用已开通' : (isBankTransfer ? (bankOrderPaid ? '转账已确认到账，您的账号已开通' : '请完成对公转账，我们将在确认到账后为您开通账号') : '感谢您选择云客CRM，您的账号已开通') }}</p>
 
-      <!-- 对公转账等待确认 -->
-      <div v-if="isBankTransfer" class="info-card bank-pending">
+      <!-- 对公转账：已到账确认 → 显示授权信息 -->
+      <div v-if="isBankTransfer && bankOrderPaid" class="info-card">
+        <h3>🎉 转账已确认，账号已开通！</h3>
+        <div class="info-list">
+          <div class="info-item" v-if="bankPaidData.tenantCode">
+            <span class="info-label">租户编码</span>
+            <span class="info-value code">
+              {{ bankPaidData.tenantCode }}
+              <button class="copy-btn" @click="copyText(bankPaidData.tenantCode)">复制</button>
+            </span>
+          </div>
+          <div class="info-item" v-if="bankPaidData.licenseKey">
+            <span class="info-label">租户授权码</span>
+            <span class="info-value code">
+              {{ bankPaidData.licenseKey }}
+              <button class="copy-btn" @click="copyText(bankPaidData.licenseKey)">复制</button>
+            </span>
+          </div>
+          <div class="info-item">
+            <span class="info-label">管理员账号</span>
+            <span class="info-value code" v-if="bankPaidData.adminUsername">
+              {{ bankPaidData.adminUsername }}
+              <button class="copy-btn" @click="copyText(bankPaidData.adminUsername)">复制</button>
+            </span>
+            <span class="info-value placeholder" v-else>与注册手机号相同</span>
+          </div>
+          <div class="info-item">
+            <span class="info-label">初始密码</span>
+            <span class="info-value code">
+              {{ bankPaidData.adminPassword || 'Aa123456' }}
+              <button class="copy-btn" @click="copyText(bankPaidData.adminPassword || 'Aa123456')">复制</button>
+              <em class="warning">（请登录后立即修改）</em>
+            </span>
+          </div>
+        </div>
+
+        <div class="copy-all-section">
+          <button class="copy-all-btn" @click="copyBankPaidInfo">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+            </svg>
+            一键复制全部登录信息
+          </button>
+        </div>
+
+        <div class="steps-guide">
+          <h4>首次登录步骤：</h4>
+          <ol>
+            <li>点击下方"立即登录系统"按钮</li>
+            <li>在登录页点击 🔑 图标，选择"SaaS租户"</li>
+            <li>输入您的租户授权码进行激活</li>
+            <li>使用管理员账号和初始密码登录</li>
+            <li>登录后请立即修改密码</li>
+          </ol>
+        </div>
+
+        <div class="action-buttons">
+          <a v-if="crmUrl" :href="crmUrl" target="_blank" class="btn btn-primary btn-lg">
+            立即登录系统
+          </a>
+          <router-link to="/member/dashboard" class="btn btn-outline btn-lg">
+            👤 进入会员中心
+          </router-link>
+        </div>
+      </div>
+
+      <!-- 对公转账：等待确认中 -->
+      <div v-if="isBankTransfer && !bankOrderPaid" class="info-card bank-pending">
         <h3>📋 转账信息确认</h3>
         <div class="info-list">
           <div class="info-item" v-if="orderNo">
@@ -18,6 +85,47 @@
           </div>
         </div>
 
+        <!-- 银行账户信息 -->
+        <div v-if="bankInfo.accountNo" class="bank-account-card">
+          <h4>🏦 收款账户信息</h4>
+          <div class="bank-account-list">
+            <div class="bank-account-item" v-if="bankInfo.bankName">
+              <span class="bank-label">开户银行</span>
+              <span class="bank-value">{{ bankInfo.bankName }}
+                <button class="copy-btn-sm" @click="copyText(bankInfo.bankName)">复制</button>
+              </span>
+            </div>
+            <div class="bank-account-item" v-if="bankInfo.accountName">
+              <span class="bank-label">账户名称</span>
+              <span class="bank-value">{{ bankInfo.accountName }}
+                <button class="copy-btn-sm" @click="copyText(bankInfo.accountName)">复制</button>
+              </span>
+            </div>
+            <div class="bank-account-item" v-if="bankInfo.accountNo">
+              <span class="bank-label">银行账号</span>
+              <span class="bank-value monospace">{{ bankInfo.accountNo }}
+                <button class="copy-btn-sm" @click="copyText(bankInfo.accountNo)">复制</button>
+              </span>
+            </div>
+            <div class="bank-account-item" v-if="bankInfo.bankBranch">
+              <span class="bank-label">开户支行</span>
+              <span class="bank-value">{{ bankInfo.bankBranch }}
+                <button class="copy-btn-sm" @click="copyText(bankInfo.bankBranch)">复制</button>
+              </span>
+            </div>
+          </div>
+          <div class="bank-remark" v-if="bankInfo.remark">
+            <p>📌 {{ bankInfo.remark }}</p>
+          </div>
+          <button class="copy-all-btn" style="margin-top: 12px;" @click="copyBankAccountInfo">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+            </svg>
+            一键复制银行信息
+          </button>
+        </div>
+
         <div class="bank-pending-notice">
           <div class="notice-item">
             <span class="notice-icon">✅</span>
@@ -25,7 +133,7 @@
           </div>
           <div class="notice-item">
             <span class="notice-icon">🏦</span>
-            <span>请按照页面提示的银行信息完成对公转账</span>
+            <span>请按照上方银行信息完成对公转账</span>
           </div>
           <div class="notice-item">
             <span class="notice-icon">⏰</span>
@@ -35,18 +143,32 @@
             <span class="notice-icon">📱</span>
             <span>账号激活后，授权信息将通过短信和邮件发送给您</span>
           </div>
-          <div class="notice-item">
-            <span class="notice-icon">📞</span>
-            <span>如有疑问，请联系客服：400-xxx-xxxx</span>
+          <div class="notice-item" v-if="bankOrderChecking">
+            <span class="notice-icon">🔄</span>
+            <span>正在自动检测到账状态，确认后本页面将自动刷新...</span>
           </div>
         </div>
 
+        <!-- 客服联系方式 -->
+        <div class="contact-section">
+          <h4>📞 联系客服</h4>
+          <div class="contact-buttons">
+            <a v-if="customerServiceUrl" :href="customerServiceUrl" target="_blank" class="btn btn-contact wechat-btn">
+              💬 微信在线客服
+            </a>
+            <button class="btn btn-contact" @click="copyText('400-xxx-xxxx')">
+              📞 客服电话：400-xxx-xxxx
+            </button>
+          </div>
+          <p class="contact-tip">转账后请联系客服告知订单号，可加快到账确认速度</p>
+        </div>
+
         <div class="action-buttons">
-          <router-link to="/" class="btn btn-primary btn-lg">
+          <button class="btn btn-primary btn-lg" @click="checkBankOrderStatus">
+            {{ bankOrderChecking ? '检测中...' : '🔍 手动检测到账状态' }}
+          </button>
+          <router-link to="/" class="btn btn-outline btn-lg">
             返回首页
-          </router-link>
-          <router-link to="/pricing" class="btn btn-outline btn-lg">
-            查看套餐详情
           </router-link>
         </div>
       </div>
@@ -1505,7 +1627,7 @@ pm2 startup  # 按照输出的提示执行命令，配置开机自启</code>
 </template>
 
 <script setup lang="ts">
-import { computed, ref, onMounted } from 'vue'
+import { computed, ref, reactive, onMounted, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { getWebsiteConfig } from '@/api/website-config'
 import { getLatestVersion, formatFileSize as formatSize, type VersionInfo } from '@/api/version'
@@ -1638,6 +1760,11 @@ onMounted(async () => {
       versionLoading.value = false
     }
   }
+
+  // 对公转账：初始化银行信息 + 轮询订单状态
+  if (isBankTransfer.value) {
+    initBankTransfer()
+  }
 })
 
 const type = computed(() => getParam('type', 'saas'))
@@ -1661,6 +1788,104 @@ const licenseKey = computed(() => {
 const adminUsername = computed(() => getParam('adminUsername'))
 const adminPassword = computed(() => getParam('adminPassword'))
 const memberPwdDefault = computed(() => getParam('memberPwdDefault') === '1')
+
+// === 对公转账状态管理 ===
+const API_BASE = '/api/v1'
+const bankOrderPaid = ref(false)
+const bankOrderChecking = ref(false)
+const bankInfo = reactive({ bankName: '', accountName: '', accountNo: '', bankBranch: '', remark: '' })
+const bankPaidData = reactive({ tenantCode: '', licenseKey: '', adminUsername: '', adminPassword: '' })
+let bankPollTimer: ReturnType<typeof setInterval> | null = null
+
+const fetchBankInfo = async () => {
+  try {
+    const res = await fetch(`${API_BASE}/public/payment/bank-info`)
+    const data = await res.json()
+    if (data.code === 0 && data.data) {
+      Object.assign(bankInfo, data.data)
+    }
+  } catch (_e) { /* ignore */ }
+}
+
+const checkBankOrderStatus = async () => {
+  const no = orderNo.value
+  if (!no) return
+  bankOrderChecking.value = true
+  try {
+    const res = await fetch(`${API_BASE}/public/payment/query/${no}`)
+    const data = await res.json()
+    if (data.code === 0 && data.data.status === 'paid') {
+      bankOrderPaid.value = true
+      bankPaidData.tenantCode = data.data.tenantCode || ''
+      bankPaidData.licenseKey = data.data.licenseKey || ''
+      bankPaidData.adminUsername = data.data.adminUsername || ''
+      bankPaidData.adminPassword = data.data.adminPassword || 'Aa123456'
+      if (bankPollTimer) { clearInterval(bankPollTimer); bankPollTimer = null }
+      // 持久化到 sessionStorage
+      try {
+        const stored = JSON.parse(sessionStorage.getItem(SESSION_KEY) || '{}')
+        Object.assign(stored, { bankPaid: '1', tenantCode: bankPaidData.tenantCode, licenseKey: bankPaidData.licenseKey, adminUsername: bankPaidData.adminUsername, adminPassword: bankPaidData.adminPassword })
+        sessionStorage.setItem(SESSION_KEY, JSON.stringify(stored))
+      } catch (_e) { /* ignore */ }
+    } else if (data.code === 0 && data.data.status === 'processing') {
+      // still processing
+    }
+  } catch (_e) { /* ignore */ }
+  finally { bankOrderChecking.value = false }
+}
+
+const startBankPoll = () => {
+  if (bankPollTimer) return
+  bankOrderChecking.value = true
+  bankPollTimer = setInterval(() => { checkBankOrderStatus() }, 10000)
+}
+
+const copyBankAccountInfo = async () => {
+  const lines = []
+  if (bankInfo.bankName) lines.push(`开户银行：${bankInfo.bankName}`)
+  if (bankInfo.accountName) lines.push(`账户名称：${bankInfo.accountName}`)
+  if (bankInfo.accountNo) lines.push(`银行账号：${bankInfo.accountNo}`)
+  if (bankInfo.bankBranch) lines.push(`开户支行：${bankInfo.bankBranch}`)
+  if (bankInfo.remark) lines.push(`备注：${bankInfo.remark}`)
+  try { await navigator.clipboard.writeText(lines.join('\n')); alert('银行信息已复制到剪贴板') } catch { alert('复制失败，请手动复制') }
+}
+
+const copyBankPaidInfo = async () => {
+  const text = `【云客CRM - 租户登录信息】
+
+🏢 租户编码：${bankPaidData.tenantCode}
+🔑 授权码：${bankPaidData.licenseKey}
+👤 管理员账号：${bankPaidData.adminUsername || '注册手机号'}
+🔐 初始密码：${bankPaidData.adminPassword || 'Aa123456'}
+🌐 登录地址：${crmUrl.value || '（请联系管理员获取）'}
+
+💡 首次登录请使用授权码激活后，用管理员账号和初始密码登录，登录后请立即修改密码。`
+  try { await navigator.clipboard.writeText(text); alert('已复制全部信息到剪贴板') } catch { alert('复制失败，请手动复制') }
+}
+
+// 对公转账初始化：恢复已付状态 / 拉取银行信息 / 开始轮询
+const initBankTransfer = () => {
+  // 恢复已付款状态
+  try {
+    const stored = JSON.parse(sessionStorage.getItem(SESSION_KEY) || '{}')
+    if (stored.bankPaid === '1' && stored.licenseKey) {
+      bankOrderPaid.value = true
+      bankPaidData.tenantCode = stored.tenantCode || ''
+      bankPaidData.licenseKey = stored.licenseKey || ''
+      bankPaidData.adminUsername = stored.adminUsername || ''
+      bankPaidData.adminPassword = stored.adminPassword || 'Aa123456'
+      return
+    }
+  } catch (_e) { /* ignore */ }
+  // 未付款 → 拉取银行信息 + 首次检查 + 轮询
+  fetchBankInfo()
+  checkBankOrderStatus()
+  startBankPoll()
+}
+
+onUnmounted(() => {
+  if (bankPollTimer) { clearInterval(bankPollTimer); bankPollTimer = null }
+})
 
 const maxUsers = computed(() => {
   const users: Record<string, string> = {
@@ -2093,6 +2318,157 @@ h1 {
 .bank-pending {
   border-color: #fde68a;
   background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%);
+}
+
+.bank-account-card {
+  margin-top: 20px;
+  padding: 24px;
+  background: white;
+  border-radius: 12px;
+  border: 1px solid #e5e7eb;
+
+  h4 {
+    font-size: 16px;
+    font-weight: 600;
+    margin-bottom: 16px;
+    color: #1f2937;
+  }
+}
+
+.bank-account-list {
+  .bank-account-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 0;
+    border-bottom: 1px solid #f3f4f6;
+
+    &:last-child { border-bottom: none; }
+
+    .bank-label {
+      font-size: 13px;
+      color: #6b7280;
+      min-width: 80px;
+    }
+
+    .bank-value {
+      font-size: 14px;
+      color: #1f2937;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+
+      &.monospace { font-family: 'Courier New', monospace; letter-spacing: 1px; }
+    }
+  }
+}
+
+.bank-remark {
+  margin-top: 12px;
+  padding: 10px 14px;
+  background: #fef3c7;
+  border-radius: 8px;
+  font-size: 13px;
+  color: #92400e;
+  line-height: 1.5;
+
+  p { margin: 0; }
+}
+
+.copy-btn-sm {
+  font-size: 12px;
+  padding: 2px 8px;
+  background: #eff6ff;
+  color: #2563eb;
+  border: 1px solid #bfdbfe;
+  border-radius: 4px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s;
+
+  &:hover { background: #dbeafe; }
+}
+
+.contact-section {
+  margin-top: 24px;
+  padding: 20px;
+  background: #f0f9ff;
+  border: 1px solid #bae6fd;
+  border-radius: 12px;
+  text-align: center;
+
+  h4 {
+    font-size: 16px;
+    font-weight: 600;
+    margin-bottom: 14px;
+    color: #0369a1;
+  }
+
+  .contact-buttons {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+
+  .contact-tip {
+    margin-top: 10px;
+    font-size: 13px;
+    color: #6b7280;
+  }
+}
+
+.btn-contact {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 20px;
+  border-radius: 8px;
+  font-size: 14px;
+  cursor: pointer;
+  border: 1px solid #d1d5db;
+  background: white;
+  color: #374151;
+  text-decoration: none;
+  transition: all 0.15s;
+
+  &:hover { background: #f9fafb; border-color: #9ca3af; }
+
+  &.wechat-btn {
+    background: #07c160;
+    color: white;
+    border-color: #07c160;
+
+    &:hover { background: #06ad56; }
+  }
+}
+
+.steps-guide {
+  margin-top: 24px;
+  padding: 20px;
+  background: #f8fafc;
+  border-radius: 12px;
+  text-align: left;
+
+  h4 {
+    font-size: 15px;
+    font-weight: 600;
+    margin-bottom: 12px;
+    color: #334155;
+  }
+
+  ol {
+    padding-left: 20px;
+    margin: 0;
+
+    li {
+      padding: 4px 0;
+      font-size: 14px;
+      color: #475569;
+      line-height: 1.6;
+    }
+  }
 }
 
 // ============ 私有部署增强样式 ============

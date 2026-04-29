@@ -176,6 +176,7 @@ router.get('/config', async (_req: Request, res: Response) => {
               notifyUrl: row.notify_url || getDefaultNotifyUrl(row.pay_type as 'wechat' | 'alipay'),
               // 敏感字段脱敏
               apiKey: data.apiKey ? '******' : '',
+              apiKeyV3: data.apiKeyV3 ? '******' : '',
               privateKey: data.privateKey ? '******' : '',
               alipayPublicKey: data.alipayPublicKey ? '******' : ''
             }
@@ -236,7 +237,12 @@ router.post('/config/wechat', async (req: Request, res: Response) => {
     if (certPem) configData.certPem = certPem
     if (keyPem) configData.keyPem = keyPem
 
-    const encryptedData = encrypt(JSON.stringify(configData))
+    const wxConfigJson = JSON.stringify(configData)
+    const encryptedData = encrypt(wxConfigJson)
+    if (!encryptedData) {
+      log.error('[Payment] 微信支付配置加密失败，数据长度:', wxConfigJson.length)
+      return res.status(500).json({ success: false, message: '配置加密失败，请检查后端日志' })
+    }
 
     if (existing.length > 0) {
       await AppDataSource.query(
@@ -293,7 +299,12 @@ router.post('/config/alipay', async (req: Request, res: Response) => {
     if (alipayCertPath) configData.alipayCertPath = alipayCertPath
     if (alipayRootCertPath) configData.alipayRootCertPath = alipayRootCertPath
 
-    const encryptedData = encrypt(JSON.stringify(configData))
+    const configJson = JSON.stringify(configData)
+    const encryptedData = encrypt(configJson)
+    if (!encryptedData) {
+      log.error('[Payment] 支付宝配置加密失败，数据长度:', configJson.length)
+      return res.status(500).json({ success: false, message: '配置加密失败，请检查后端日志' })
+    }
 
     if (existing.length > 0) {
       await AppDataSource.query(
@@ -359,8 +370,14 @@ router.post('/config/wechat/test', async (req: Request, res: Response) => {
     }
 
     let configData: any = {}
+    const rawWxConfig = rows[0].config_data
     try {
-      configData = JSON.parse(decrypt(rows[0].config_data) || '{}')
+      const decrypted = decrypt(rawWxConfig)
+      if (!decrypted && rawWxConfig) {
+        log.error('[Payment] 微信支付配置解密失败，可能加密密钥已变更。请重新保存配置。')
+        return res.json({ success: false, message: '配置解密失败（加密密钥可能已变更），请重新填写并保存配置后再测试' })
+      }
+      configData = JSON.parse(decrypted || '{}')
     } catch {
       return res.json({ success: false, message: '配置数据解析失败，请重新保存配置' })
     }
@@ -518,8 +535,14 @@ router.post('/config/alipay/test', async (req: Request, res: Response) => {
     }
 
     let configData: any = {}
+    const rawConfigData = rows[0].config_data
     try {
-      configData = JSON.parse(decrypt(rows[0].config_data) || '{}')
+      const decrypted = decrypt(rawConfigData)
+      if (!decrypted && rawConfigData) {
+        log.error('[Payment] 支付宝配置解密失败，可能加密密钥已变更。请重新保存配置。')
+        return res.json({ success: false, message: '配置解密失败（加密密钥可能已变更），请重新填写并保存配置后再测试' })
+      }
+      configData = JSON.parse(decrypted || '{}')
     } catch {
       return res.json({ success: false, message: '配置数据解析失败，请重新保存配置' })
     }
@@ -538,14 +561,14 @@ router.post('/config/alipay/test', async (req: Request, res: Response) => {
     checkItems.push({
       name: '商家私钥',
       status: hasPrivateKey,
-      message: hasPrivateKey ? '商家私钥已配置' : '未配置商家私钥'
+      message: hasPrivateKey ? '商家私钥已配置' : '未配置商家私钥（请重新填写并保存配置）'
     })
 
     const hasPublicKey = !!configData.alipayPublicKey
     checkItems.push({
       name: '支付宝公钥',
       status: hasPublicKey,
-      message: hasPublicKey ? '支付宝公钥已配置' : '未配置支付宝公钥'
+      message: hasPublicKey ? '支付宝公钥已配置' : '未配置支付宝公钥（请重新填写并保存配置）'
     })
 
     const signType = configData.signType || 'RSA2'
@@ -683,6 +706,64 @@ router.post('/config/alipay/test', async (req: Request, res: Response) => {
   } catch (error: any) {
     log.error('测试支付宝连接失败:', error)
     res.status(500).json({ success: false, message: '测试失败: ' + (error.message || '未知错误') })
+  }
+})
+
+// 获取微信支付解密密钥（管理员查看/复制用）
+router.get('/config/wechat/keys', async (_req: Request, res: Response) => {
+  try {
+    const rows = await AppDataSource.query(
+      'SELECT config_data FROM payment_configs WHERE pay_type = ?', ['wechat']
+    )
+
+    if (rows.length === 0 || !rows[0].config_data) {
+      return res.json({ success: true, data: { apiKey: '', apiKeyV3: '' } })
+    }
+
+    try {
+      const data = JSON.parse(decrypt(rows[0].config_data) || '{}')
+      res.json({
+        success: true,
+        data: {
+          apiKey: data.apiKey || '',
+          apiKeyV3: data.apiKeyV3 || ''
+        }
+      })
+    } catch {
+      res.json({ success: true, data: { apiKey: '', apiKeyV3: '' } })
+    }
+  } catch (error) {
+    log.error('获取微信支付密钥失败:', error)
+    res.status(500).json({ success: false, message: '获取失败' })
+  }
+})
+
+// 获取支付宝解密密钥（管理员查看/复制用）
+router.get('/config/alipay/keys', async (_req: Request, res: Response) => {
+  try {
+    const rows = await AppDataSource.query(
+      'SELECT config_data FROM payment_configs WHERE pay_type = ?', ['alipay']
+    )
+
+    if (rows.length === 0 || !rows[0].config_data) {
+      return res.json({ success: true, data: { privateKey: '', alipayPublicKey: '' } })
+    }
+
+    try {
+      const data = JSON.parse(decrypt(rows[0].config_data) || '{}')
+      res.json({
+        success: true,
+        data: {
+          privateKey: data.privateKey || '',
+          alipayPublicKey: data.alipayPublicKey || ''
+        }
+      })
+    } catch {
+      res.json({ success: true, data: { privateKey: '', alipayPublicKey: '' } })
+    }
+  } catch (error) {
+    log.error('获取支付宝密钥失败:', error)
+    res.status(500).json({ success: false, message: '获取失败' })
   }
 })
 

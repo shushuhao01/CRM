@@ -187,7 +187,7 @@ router.post('/', async (req: Request, res: Response) => {
       data: {
         tenantId,
         tenantCode,
-        licenseKey, // 🔑 无论免费还是付费，都返回完整授权码
+        licenseKey: isFree ? licenseKey : null, // � 付费套餐支付前不暴露授权码
         expireDate: expireDate ? expireDate.toISOString().split('T')[0] : null,
         needPay: !isFree,
         memberToken,
@@ -230,8 +230,8 @@ router.post('/', async (req: Request, res: Response) => {
                 orderNo: isFree ? '免费试用' : '待支付',
                 amount: isFree ? '0' : String(packagePrice),
                 tenantCode: tenantCode,
-                licenseKey: licenseKey,
-                adminPassword: adminAccount?.password || 'Aa123456',
+                licenseKey: isFree ? licenseKey : '支付后发放', // 🔒 付费套餐不泄露授权码
+                adminPassword: isFree ? (adminAccount?.password || 'Aa123456') : '支付后发放',
                 packageName: packageLabel,
                 expireDate: expireDateStr || '支付后生效'
               }
@@ -303,14 +303,50 @@ router.post('/', async (req: Request, res: Response) => {
                   }
                 })
 
-                const emailTitle = isFree ? '🎉 注册成功 - 免费试用已开通' : '🎉 注册成功 - 请完成支付'
-                const emailDesc = isFree
-                  ? '您的7天免费试用账号已成功开通。以下是您的账号信息，请妥善保管：'
-                  : '您的账号已注册成功，请完成支付后即可使用。以下是您的授权信息，请妥善保管：'
-                const adminRows = isFree ? `
+                const emailTitle = isFree ? '🎉 注册成功 - 免费试用已开通' : '📋 注册成功 - 请完成支付'
+                const actionText = isFree ? '立即登录 CRM 系统' : '前往会员中心完成支付'
+                const actionUrl = isFree ? SITE_CONFIG.CRM_URL : `${SITE_CONFIG.WEBSITE_URL || SITE_CONFIG.CRM_URL}/member`
+
+                // 🔒 免费/付费使用不同邮件内容，付费不暴露授权码和密码
+                let emailBodyContent = ''
+                if (isFree) {
+                  emailBodyContent = `
+            <p style="font-size:14px;line-height:1.8;color:#333;margin:0 0 20px;">
+              您的7天免费试用账号已成功开通。以下是您的账号信息，请妥善保管：
+            </p>
+            <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8f9fa;border-radius:8px;padding:20px;margin-bottom:20px;">
+              <tr><td style="padding:8px 16px;font-size:14px;color:#606266;">套餐名称</td><td style="padding:8px 16px;font-size:14px;color:#303133;font-weight:500;">${packageLabel}</td></tr>
+              ${expireDateStr ? `<tr><td style="padding:8px 16px;font-size:14px;color:#606266;">有效期至</td><td style="padding:8px 16px;font-size:14px;color:#303133;font-weight:500;">${expireDateStr}</td></tr>` : ''}
+              <tr><td colspan="2" style="padding:4px 16px;"><hr style="border:none;border-top:1px solid #e4e7ed;"></td></tr>
+              <tr><td style="padding:8px 16px;font-size:14px;color:#606266;">租户编码</td><td style="padding:8px 16px;font-size:14px;color:#e6a23c;font-weight:600;">${tenantCode}</td></tr>
+              <tr><td style="padding:8px 16px;font-size:14px;color:#606266;">授权码</td><td style="padding:8px 16px;font-size:14px;color:#e6a23c;font-weight:600;">${licenseKey}</td></tr>
               <tr><td style="padding:8px 16px;font-size:14px;color:#606266;">管理员账号</td><td style="padding:8px 16px;font-size:14px;color:#e6a23c;font-weight:600;">${adminAccount?.username || phone}</td></tr>
-              <tr><td style="padding:8px 16px;font-size:14px;color:#606266;">管理员密码</td><td style="padding:8px 16px;font-size:14px;color:#e6a23c;font-weight:600;">${adminAccount?.password || 'Aa123456'}</td></tr>` : ''
-                const actionText = isFree ? '立即登录 CRM 系统' : '前往会员中心'
+              <tr><td style="padding:8px 16px;font-size:14px;color:#606266;">管理员密码</td><td style="padding:8px 16px;font-size:14px;color:#e6a23c;font-weight:600;">${adminAccount?.password || 'Aa123456'}</td></tr>
+            </table>
+            <p style="font-size:13px;line-height:1.8;color:#909399;margin:16px 0 0;">
+              ⚠️ 首次登录请使用租户编码和管理员密码登录，登录后请及时修改密码。
+            </p>`
+                } else {
+                  emailBodyContent = `
+            <p style="font-size:14px;line-height:1.8;color:#333;margin:0 0 20px;">
+              您的账号已注册成功，请尽快完成支付以开通服务。
+            </p>
+            <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8f9fa;border-radius:8px;padding:20px;margin-bottom:20px;">
+              <tr><td style="padding:8px 16px;font-size:14px;color:#606266;">企业名称</td><td style="padding:8px 16px;font-size:14px;color:#303133;font-weight:500;">${companyName}</td></tr>
+              <tr><td style="padding:8px 16px;font-size:14px;color:#606266;">租户编码</td><td style="padding:8px 16px;font-size:14px;color:#e6a23c;font-weight:600;">${tenantCode}</td></tr>
+              <tr><td style="padding:8px 16px;font-size:14px;color:#606266;">联系人</td><td style="padding:8px 16px;font-size:14px;color:#303133;font-weight:500;">${contactName}（${phone}）</td></tr>
+              <tr><td colspan="2" style="padding:4px 16px;"><hr style="border:none;border-top:1px solid #e4e7ed;"></td></tr>
+              <tr><td style="padding:8px 16px;font-size:14px;color:#606266;">套餐名称</td><td style="padding:8px 16px;font-size:14px;color:#303133;font-weight:500;">${packageLabel}</td></tr>
+              <tr><td style="padding:8px 16px;font-size:14px;color:#606266;">套餐价格</td><td style="padding:8px 16px;font-size:14px;color:#f56c6c;font-weight:600;">¥${packagePrice}</td></tr>
+              <tr><td style="padding:8px 16px;font-size:14px;color:#606266;">支付状态</td><td style="padding:8px 16px;font-size:14px;color:#e6a23c;font-weight:600;">⏳ 待支付</td></tr>
+            </table>
+            <p style="font-size:14px;line-height:1.8;color:#606266;margin:0 0 8px;">
+              💡 完成支付后，系统将自动为您开通服务并发送账号信息（含授权码和登录密码）。
+            </p>
+            <p style="font-size:13px;line-height:1.8;color:#909399;margin:0 0 0;">
+              如有疑问请联系客服。
+            </p>`
+                }
 
                 const emailHtml = `
 <!DOCTYPE html>
@@ -330,23 +366,10 @@ router.post('/', async (req: Request, res: Response) => {
             <p style="font-size:15px;line-height:1.8;color:#333;margin:0 0 16px;">
               尊敬的 <strong>${companyName}</strong>，您好！
             </p>
-            <p style="font-size:14px;line-height:1.8;color:#333;margin:0 0 20px;">
-              ${emailDesc}
-            </p>
-            <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8f9fa;border-radius:8px;padding:20px;margin-bottom:20px;">
-              <tr><td style="padding:8px 16px;font-size:14px;color:#606266;">套餐名称</td><td style="padding:8px 16px;font-size:14px;color:#303133;font-weight:500;">${packageLabel}</td></tr>
-              ${expireDateStr ? `<tr><td style="padding:8px 16px;font-size:14px;color:#606266;">有效期至</td><td style="padding:8px 16px;font-size:14px;color:#303133;font-weight:500;">${expireDateStr}</td></tr>` : ''}
-              <tr><td colspan="2" style="padding:4px 16px;"><hr style="border:none;border-top:1px solid #e4e7ed;"></td></tr>
-              <tr><td style="padding:8px 16px;font-size:14px;color:#606266;">租户编码</td><td style="padding:8px 16px;font-size:14px;color:#e6a23c;font-weight:600;">${tenantCode}</td></tr>
-              <tr><td style="padding:8px 16px;font-size:14px;color:#606266;">授权码</td><td style="padding:8px 16px;font-size:14px;color:#e6a23c;font-weight:600;">${licenseKey}</td></tr>
-              ${adminRows}
-            </table>
+            ${emailBodyContent}
             <div style="text-align:center;margin:24px 0;">
-              <a href="${SITE_CONFIG.CRM_URL}" style="display:inline-block;padding:12px 32px;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:#fff;text-decoration:none;border-radius:6px;font-size:15px;font-weight:500;">${actionText}</a>
+              <a href="${actionUrl}" style="display:inline-block;padding:12px 32px;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:#fff;text-decoration:none;border-radius:6px;font-size:15px;font-weight:500;">${actionText}</a>
             </div>
-            <p style="font-size:13px;line-height:1.8;color:#909399;margin:16px 0 0;">
-              ⚠️ 首次登录请使用租户编码和管理员密码登录，登录后请及时修改密码。如有疑问请联系客服。
-            </p>
           </td>
         </tr>
         <tr>
