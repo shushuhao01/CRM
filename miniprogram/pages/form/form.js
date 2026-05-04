@@ -400,16 +400,8 @@ Page({
     this.setData({ agreedPrivacy: true, showAgreementModal: false, agreementType: '' })
   },
 
-  // ===== 提交 =====
-  async onSubmit() {
-    if (this.data.submitting) return
-
-    // 检查协议勾选
-    if (!this.data.agreedPrivacy) {
-      util.showToast('请先阅读并同意用户协议和隐私政策')
-      return
-    }
-
+  // ===== 验证必填字段（返回 true 表示通过） =====
+  _validateRequiredFields() {
     const { formData, visibleFields, collapsedFields, customFields, customFormData } = this.data
 
     // 验证内置必填字段
@@ -418,25 +410,31 @@ Page({
       if (!field.mpRequired) continue
       const key = field.key
       if (key === 'address' || key === 'province') {
-        if (!formData.province) { util.showToast('请选择收货地址'); return }
+        if (!formData.province) { util.showToast('请选择收货地址'); return false }
         continue
       }
       if (key === 'city' || key === 'district' || key === 'street' || key === 'detailAddress') continue
-      if (!formData[key]) { util.showToast(`请填写${field.label}`); return }
+      if (!formData[key]) { util.showToast(`请填写${field.label}`); return false }
     }
 
     // 手机号格式验证
     if (formData.phone && !util.isValidPhone(formData.phone)) {
-      util.showToast('请输入正确的手机号'); return
+      util.showToast('请输入正确的手机号'); return false
     }
 
     // 验证自定义必填字段
     for (const field of customFields) {
       if (field.mpRequired && !customFormData[field.fieldKey]) {
-        util.showToast(`请填写${field.fieldName}`); return
+        util.showToast(`请填写${field.fieldName}`); return false
       }
     }
 
+    return true
+  },
+
+  // ===== 执行实际提交 =====
+  async _doSubmit() {
+    const { formData, customFormData } = this.data
     this.setData({ submitting: true })
     util.showLoading('提交中...')
 
@@ -464,5 +462,37 @@ Page({
     } finally {
       this.setData({ submitting: false })
     }
+  },
+
+  // ===== 提交 =====
+  onSubmit() {
+    console.log('[表单] onSubmit 被触发, submitting=', this.data.submitting, 'agreedPrivacy=', this.data.agreedPrivacy)
+    if (this.data.submitting) return
+
+    // 第一步：验证必填字段
+    var valid = this._validateRequiredFields()
+    console.log('[表单] 必填验证结果:', valid)
+    if (!valid) return
+
+    // 第二步：检查协议勾选
+    if (!this.data.agreedPrivacy) {
+      var self = this
+      wx.showModal({
+        title: '协议确认',
+        content: '您还未勾选用户协议和隐私政策，是否同意并继续提交？',
+        confirmText: '同意提交',
+        cancelText: '取消',
+        success: function (res) {
+          if (res.confirm) {
+            self.setData({ agreedPrivacy: true })
+            self._doSubmit()
+          }
+        }
+      })
+      return
+    }
+
+    // 已勾选，直接提交
+    this._doSubmit()
   }
 })

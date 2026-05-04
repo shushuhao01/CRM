@@ -279,7 +279,7 @@
 
   <!-- 提交按钮 -->
   <view class="submit-section">
-    <button class="btn-primary {{!agreedPrivacy ? 'btn-disabled' : ''}}" bindtap="onSubmit" disabled="{{submitting}}">
+    <button class="btn-primary" bindtap="onSubmit" disabled="{{submitting}}">
       {{submitting ? '提交中...' : '提交资料'}}
     </button>
     <view class="submit-tip">您的信息仅用于服务沟通，不会泄露给第三方</view>

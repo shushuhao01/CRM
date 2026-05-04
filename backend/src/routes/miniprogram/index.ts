@@ -282,15 +282,15 @@ router.post('/submit-customer', validateMpSign, async (req: Request, res: Respon
       } : {})
     } as any);
 
-    const saved = await customerRepo.save(customer);
+    const saved: any = await customerRepo.save(customer);
 
     // 发送系统消息通知
     try {
-      const { messageService } = await import('../../services/MessageService');
+      const { messageService } = await import('../../services/messageService');
       const maskedPhone = customerData.phone
         ? customerData.phone.replace(/(\d{3})\d{4}(\d{4})/, '$1****$2')
         : '未填写';
-      await messageService.sendSystemMessage({
+      await messageService.sendMessage({
         type: 'customer_mp_submit',
         title: '客户自助提交资料',
         content: `客户「${customerData.name}」通过小程序提交了个人资料，手机号：${maskedPhone}`,
@@ -383,7 +383,6 @@ router.post('/get-phone', validateMpSign, async (req: Request, res: Response) =>
     }
 
     // 先获取access_token
-    const fetch = (await import('node-fetch')).default;
     const tokenUrl = `https://api.weixin.qq.com/cgi-bin/token?grant_type=client_credential&appid=${appId}&secret=${appSecret}`;
     const tokenResp = await fetch(tokenUrl);
     const tokenData: any = await tokenResp.json();
@@ -400,7 +399,7 @@ router.post('/get-phone', validateMpSign, async (req: Request, res: Response) =>
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ code })
     });
-    const phoneData: any = await phoneResp.json();
+    const phoneData: any = await (phoneResp as any).json();
 
     if (phoneData.errcode !== 0) {
       log.error('[小程序] 获取手机号失败:', phoneData);
@@ -881,9 +880,7 @@ router.post('/phone-quota/purchase', authenticateToken, async (req: Request, res
     });
 
     if (quotaSetting) {
-      quotaSetting.settingValue = typeof quotaSetting.settingValue === 'string'
-        ? JSON.stringify(currentQuota)
-        : currentQuota;
+      quotaSetting.settingValue = JSON.stringify(currentQuota);
       await settingsRepo.save(quotaSetting);
     } else {
       await settingsRepo.save(settingsRepo.create({
@@ -944,7 +941,6 @@ router.get('/wxacode', authenticateToken, async (req: Request, res: Response) =>
     }
 
     // 获取 access_token
-    const fetch = (await import('node-fetch')).default;
     const tokenUrl = `https://api.weixin.qq.com/cgi-bin/token?grant_type=client_credential&appid=${appId}&secret=${appSecret}`;
     const tokenResp = await fetch(tokenUrl);
     const tokenData: any = await tokenResp.json();
@@ -973,7 +969,7 @@ router.get('/wxacode', authenticateToken, async (req: Request, res: Response) =>
 
     // 如果返回的是图片，直接转发
     if (contentType.includes('image')) {
-      const buffer = await wxacodeResp.buffer();
+      const buffer = Buffer.from(await wxacodeResp.arrayBuffer());
       // 转成 base64 data URL 返回
       const base64 = buffer.toString('base64');
       return res.json({
@@ -1020,14 +1016,24 @@ router.delete('/upload-file', authenticateToken, async (req: Request, res: Respo
       return res.json({ success: true, message: '文件已删除' });
     }
 
-    // 如果是OSS文件，尝试通过 ossService 删除
+    // 如果是OSS文件，尝试通过 ali-oss 删除
     try {
-      const { ossService } = await import('../../services/ossService');
-      if (ossService) {
-        const key = urlPath.replace(/^\//, '');
-        await ossService.deleteFile(key);
-        log.info(`[小程序] 已删除OSS文件: ${key}`);
-        return res.json({ success: true, message: '文件已删除' });
+      const OSS = (await import('ali-oss')).default;
+      const { AppDataSource } = await import('../../config/database');
+      const { TenantSettings } = await import('../../entities/TenantSettings');
+      const settingsRepo = AppDataSource.getRepository(TenantSettings);
+      const ossSetting = await settingsRepo.findOne({ where: { settingKey: 'oss_config' } });
+      if (ossSetting) {
+        const ossConfig = typeof ossSetting.settingValue === 'string'
+          ? JSON.parse(ossSetting.settingValue)
+          : ossSetting.settingValue;
+        if (ossConfig.accessKeyId && ossConfig.bucket) {
+          const client = new OSS(ossConfig);
+          const key = urlPath.replace(/^\//, '');
+          await client.delete(key);
+          log.info(`[小程序] 已删除OSS文件: ${key}`);
+          return res.json({ success: true, message: '文件已删除' });
+        }
       }
     } catch { /* ignore */ }
 

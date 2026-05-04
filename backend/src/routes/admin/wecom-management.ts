@@ -3712,7 +3712,6 @@ router.get('/suite/mp-test-connection', async (_req: Request, res: Response) => 
       return res.json({ success: false, message: '请先配置小程序AppID和AppSecret' });
     }
 
-    const fetch = (await import('node-fetch')).default;
     const startTime = Date.now();
     const tokenUrl = `https://api.weixin.qq.com/cgi-bin/token?grant_type=client_credential&appid=${appId}&secret=${appSecret}`;
     const tokenResp = await fetch(tokenUrl);
@@ -3760,7 +3759,6 @@ router.get('/suite/wxacode', async (req: Request, res: Response) => {
     }
 
     // 获取 access_token
-    const fetch = (await import('node-fetch')).default;
     const tokenUrl = `https://api.weixin.qq.com/cgi-bin/token?grant_type=client_credential&appid=${appId}&secret=${appSecret}`;
     const tokenResp = await fetch(tokenUrl);
     const tokenData: any = await tokenResp.json();
@@ -3788,7 +3786,7 @@ router.get('/suite/wxacode', async (req: Request, res: Response) => {
     const contentType = wxacodeResp.headers.get('content-type') || '';
 
     if (contentType.includes('image')) {
-      const buffer = await wxacodeResp.buffer();
+      const buffer = Buffer.from(await wxacodeResp.arrayBuffer());
       const base64 = buffer.toString('base64');
       return res.json({
         success: true,
