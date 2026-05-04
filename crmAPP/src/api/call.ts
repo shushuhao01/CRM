@@ -162,3 +162,23 @@ export const getStats = (period: 'today' | 'week' | 'month' = 'today'): Promise<
     showLoading: false
   })
 }
+
+// 上报来电检测（HTTP备份通道，WebSocket不稳定时使用）
+export const reportIncomingCall = (data: {
+  callerNumber: string
+  timestamp?: string
+}): Promise<{
+  callId: string
+  customerName?: string
+  customerId?: string
+}> => {
+  return request({
+    url: '/mobile/call/incoming',
+    method: 'POST',
+    data: {
+      ...data,
+      timestamp: data.timestamp || new Date().toISOString()
+    },
+    showLoading: false
+  })
+}

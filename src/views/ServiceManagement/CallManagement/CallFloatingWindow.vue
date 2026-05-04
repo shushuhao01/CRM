@@ -55,8 +55,16 @@
         <div class="caller-details">
           <h3>{{ incomingCallData.customerName || '未知客户' }}</h3>
           <p class="phone-number">{{ displaySensitiveInfoNew(incomingCallData.phone, SensitiveInfoType.PHONE) }}</p>
+          <p class="company-info" v-if="incomingCallData.company">
+            <span style="color: #909399; font-size: 13px;">{{ incomingCallData.company }}</span>
+          </p>
           <p class="customer-level" v-if="incomingCallData.customerLevel">
             <el-tag :type="getLevelType(incomingCallData.customerLevel)">{{ getLevelText(incomingCallData.customerLevel) }}</el-tag>
+          </p>
+          <p class="call-source" v-if="incomingCallData.callSource">
+            <el-tag size="small" :type="incomingCallData.callSource === 'mobile' ? 'success' : 'primary'">
+              {{ incomingCallData.callSource === 'mobile' ? '工作手机' : (incomingCallData.callSource === 'sip' ? 'SIP线路' : '网络电话') }}
+            </el-tag>
           </p>
           <p class="last-call" v-if="incomingCallData.lastCallTime">上次通话：{{ incomingCallData.lastCallTime }}</p>
         </div>

@@ -21,7 +21,10 @@
         <div class="toc-item" @click="scrollTo('call-records')">九、通话记录管理</div>
         <div class="toc-item" @click="scrollTo('recording-support')">十、通话录音支持</div>
         <div class="toc-item" @click="scrollTo('outbound-tasks')">十一、外呼任务管理</div>
-        <div class="toc-item" @click="scrollTo('faq')">十二、常见问题</div>
+        <div class="toc-item" @click="scrollTo('inbound-call')">十二、呼入功能与来电弹窗</div>
+        <div class="toc-item" @click="scrollTo('sip-pbx')">十三、SIP/PBX 呼入对接</div>
+        <div class="toc-item" @click="scrollTo('agent-status')">十四、坐席状态管理</div>
+        <div class="toc-item" @click="scrollTo('faq')">十五、常见问题</div>
       </div>
     </section>
 
@@ -717,9 +720,270 @@
       </ul>
     </section>
 
-    <!-- 十二、常见问题 -->
+    <!-- 十二、呼入功能与来电弹窗 -->
+    <section id="inbound-call">
+      <h2>十二、呼入功能与来电弹窗</h2>
+      <el-alert type="success" :closable="false" style="margin-bottom: 15px">
+        <template #title>系统支持多种呼入场景：SIP/PBX呼入、工作手机来电、APP侧来电检测。当有客户来电时，系统自动匹配客户信息并在前端弹窗显示。</template>
+      </el-alert>
+
+      <h3>12.1 呼入场景总览</h3>
+      <el-table :data="inboundScenarios" stripe style="width: 100%; margin: 10px 0" border>
+        <el-table-column prop="scenario" label="呼入场景" width="160" />
+        <el-table-column prop="trigger" label="触发方式" width="220" />
+        <el-table-column prop="description" label="说明" />
+      </el-table>
+
+      <h3>12.2 来电弹窗功能</h3>
+      <p>当有来电时，CRM前端会弹出来电通知窗口，包含以下信息：</p>
+      <div class="info-box">
+        <h4>📞 来电弹窗内容</h4>
+        <ul>
+          <li><strong>主叫号码</strong>：客户电话号码</li>
+          <li><strong>客户信息</strong>：自动匹配的客户姓名、公司、等级、标签</li>
+          <li><strong>历史通话</strong>：上次通话时间</li>
+          <li><strong>来电源</strong>：SIP线路 / 工作手机 / 网络电话</li>
+          <li><strong>操作按钮</strong>：接听 / 拒绝</li>
+        </ul>
+        <h4>⚠️ 来电匹配规则</h4>
+        <ul>
+          <li>系统根据主叫号码自动查找客户表的 <strong>phone</strong> 和 <strong>mobile</strong> 字段</li>
+          <li>匹配到客户时，显示客户详细信息，可一键跳转客户详情页</li>
+          <li>未匹配时显示“未知来电”，可手动关联客户</li>
+        </ul>
+      </div>
+
+      <h3>12.3 呼入来电分配策略</h3>
+      <p>当收到来电时，系统按以下优先级分配坐席（从低到高）：</p>
+      <div class="step-list">
+        <div class="step-item">
+          <div class="step-num">1</div>
+          <div class="step-desc">
+            <strong>呼入路由匹配</strong>
+            <p>根据被叫号码（DID）在 <strong>呼入路由表</strong> 中查找配置的目标坐席</p>
+          </div>
+        </div>
+        <div class="step-item">
+          <div class="step-num">2</div>
+          <div class="step-desc">
+            <strong>线路分配匹配</strong>
+            <p>根据被叫号码在 <strong>线路分配</strong> 中查找对应坐席</p>
+          </div>
+        </div>
+        <div class="step-item">
+          <div class="step-num">3</div>
+          <div class="step-desc">
+            <strong>客户专属销售 ← 最高优先级</strong>
+            <p>如果来电客户有专属销售，最终会覆盖前两步的分配结果</p>
+          </div>
+        </div>
+      </div>
+
+      <h3>12.4 呼入通话记录</h3>
+      <p>所有呼入通话自动记录，包含：</p>
+      <el-descriptions :column="1" border>
+        <el-descriptions-item label="呼叫方向">入站（in），区别于外呼的 out</el-descriptions-item>
+        <el-descriptions-item label="呼入来源">SIP分机 / 工作手机 / 网络电话 / PBX系统</el-descriptions-item>
+        <el-descriptions-item label="振铃时长">从来电到接听的等待时间（秒）</el-descriptions-item>
+        <el-descriptions-item label="排队时长">呼入队列等待时间（秒）</el-descriptions-item>
+        <el-descriptions-item label="转接信息">转接来源坐席 / 转接目标坐席</el-descriptions-item>
+        <el-descriptions-item label="呼入路由">关联的呼入路由配置名称</el-descriptions-item>
+      </el-descriptions>
+    </section>
+
+    <!-- 十三、SIP/PBX 呼入对接 -->
+    <section id="sip-pbx">
+      <h2>十三、SIP/PBX 呼入对接</h2>
+      <el-alert type="warning" :closable="false" style="margin-bottom: 15px">
+        <template #title>此功能面向系统管理员和运维人员。需要在PBX/SIP系统和CRM两侧同时配置。</template>
+      </el-alert>
+
+      <h3>13.1 对接架构</h3>
+      <div class="info-box">
+        <h4>📡 呼入数据流</h4>
+        <p>外线来电 → PBX/SIP网关 → <strong>Webhook POST</strong> → CRM后端 → <strong>WebSocket</strong> → CRM前端弹窗</p>
+        <h4>接口地址</h4>
+        <el-descriptions :column="1" border>
+          <el-descriptions-item label="呼入通知">POST {CRM地址}/api/v1/calls/webhook/sip/incoming</el-descriptions-item>
+          <el-descriptions-item label="状态更新">POST {CRM地址}/api/v1/calls/webhook/sip/status</el-descriptions-item>
+          <el-descriptions-item label="测试接口">POST {CRM地址}/api/v1/calls/webhook/test</el-descriptions-item>
+        </el-descriptions>
+      </div>
+
+      <h3>13.2 安全配置（Webhook密钥）</h3>
+      <div class="step-list">
+        <div class="step-item">
+          <div class="step-num">1</div>
+          <div class="step-desc">
+            <strong>配置环境变量</strong>
+            <p>在CRM后端 <code>.env</code> 文件中添加：<code>SIP_WEBHOOK_SECRET=你的密钥</code></p>
+          </div>
+        </div>
+        <div class="step-item">
+          <div class="step-num">2</div>
+          <div class="step-desc">
+            <strong>PBX侧携带密钥</strong>
+            <p>支持两种方式（任选其一）：</p>
+            <ul>
+              <li><strong>HTTP Header</strong>：<code>X-Webhook-Secret: 你的密钥</code>（推荐）</li>
+              <li><strong>请求体字段</strong>：<code>"secret": "你的密钥"</code></li>
+            </ul>
+          </div>
+        </div>
+        <div class="step-item">
+          <div class="step-num">3</div>
+          <div class="step-desc">
+            <strong>开发模式</strong>
+            <p>如果未设置 <code>SIP_WEBHOOK_SECRET</code> 环境变量，系统会跳过密钥验证，方便开发调试</p>
+          </div>
+        </div>
+      </div>
+
+      <h3>13.3 呼入通知接口参数</h3>
+      <el-table :data="sipIncomingParams" stripe style="width: 100%; margin: 10px 0" border>
+        <el-table-column prop="field" label="字段" width="150" />
+        <el-table-column prop="required" label="必填" width="70" />
+        <el-table-column prop="description" label="说明" />
+        <el-table-column prop="example" label="示例" width="200" />
+      </el-table>
+
+      <h3>13.4 状态更新接口参数</h3>
+      <el-table :data="sipStatusParams" stripe style="width: 100%; margin: 10px 0" border>
+        <el-table-column prop="field" label="字段" width="150" />
+        <el-table-column prop="required" label="必填" width="70" />
+        <el-table-column prop="description" label="说明" />
+      </el-table>
+
+      <h3>13.5 状态事件映射</h3>
+      <el-table :data="sipEventMapping" stripe style="width: 100%; margin: 10px 0" border>
+        <el-table-column prop="event" label="PBX事件" width="120" />
+        <el-table-column prop="crmStatus" label="CRM状态" width="120" />
+        <el-table-column prop="description" label="说明" />
+      </el-table>
+
+      <h3>13.6 PBX配置示例</h3>
+      <el-collapse>
+        <el-collapse-item title="FreePBX 配置方法" name="freepbx">
+          <div class="info-box">
+            <h4>AGI 脚本方式</h4>
+            <p>1. 创建 AGI 脚本 <code>/var/lib/asterisk/agi-bin/crm_webhook.sh</code>，在脚本中使用 <code>curl</code> 调用 CRM 的 <code>/sip/incoming</code> 接口</p>
+            <p>2. 设置脚本权限：<code>chmod +x</code> 并将 owner 设为 asterisk</p>
+            <p>3. 在 FreePBX 入站路由中添加自定义拨号计划，调用此 AGI 脚本</p>
+          </div>
+        </el-collapse-item>
+
+        <el-collapse-item title="Asterisk 原生配置" name="asterisk">
+          <div class="info-box">
+            <h4>extensions.conf 配置</h4>
+            <p>1. 在 <code>[incoming]</code> context 中使用 <code>CURL()</code> 函数调用 CRM Webhook</p>
+            <p>2. 在 <code>exten => h</code> （hangup handler）中调用 <code>/sip/status</code> 接口通知挂断</p>
+            <p>3. 需要加载 <code>func_curl.so</code> 模块</p>
+          </div>
+        </el-collapse-item>
+
+        <el-collapse-item title="FusionPBX 配置方法" name="fusionpbx">
+          <div class="info-box">
+            <h4>Lua 脚本方式</h4>
+            <p>1. 创建 Lua 脚本 <code>/usr/share/freeswitch/scripts/crm_incoming.lua</code></p>
+            <p>2. 在脚本中使用 <code>os.execute</code> + <code>curl</code> 调用 CRM Webhook</p>
+            <p>3. 在 FusionPBX 管理面板 → Dialplan → Inbound Routes 中添加 lua action</p>
+          </div>
+        </el-collapse-item>
+
+        <el-collapse-item title="其他PBX系统（3CX、Yeastar等）" name="other">
+          <div class="info-box">
+            <p>如果PBX支持自定义HTTP Webhook回调，直接配置：</p>
+            <ul>
+              <li><strong>URL</strong>：CRM的 <code>/api/v1/calls/webhook/sip/incoming</code></li>
+              <li><strong>Method</strong>：POST</li>
+              <li><strong>Headers</strong>：<code>Content-Type: application/json</code>, <code>X-Webhook-Secret: 你的密钥</code></li>
+              <li><strong>Body</strong>：按照上述参数格式映射PBX字段即可</li>
+            </ul>
+          </div>
+        </el-collapse-item>
+      </el-collapse>
+
+      <h3>13.7 呼入路由配置</h3>
+      <div class="info-box">
+        <h4>🛣️ 呼入路由说明</h4>
+        <p>管理员可在数据库 <code>inbound_routes</code> 表中配置 DID 号码到坐席的映射规则。</p>
+        <el-descriptions :column="1" border>
+          <el-descriptions-item label="直接分配 (direct)">指定 DID 号码直接转接给某个坐席</el-descriptions-item>
+          <el-descriptions-item label="排队分配 (queue)">来电进入队列，按策略分配（轮询/最少通话/随机/优先级）</el-descriptions-item>
+          <el-descriptions-item label="振铃组 (ring_group)">多个坐席同时振铃，先接听的获得通话</el-descriptions-item>
+          <el-descriptions-item label="IVR转接 (ivr)">通过IVR语音菜单引导客户选择服务</el-descriptions-item>
+        </el-descriptions>
+        <h4>⚙️ 溢出策略</h4>
+        <p>当所有坐席忙碌或超时未接听时：</p>
+        <ul>
+          <li><strong>语音留言</strong>：转入留言信箱</li>
+          <li><strong>转接</strong>：转接到其他号码或坐席</li>
+          <li><strong>挂断</strong>：直接挂断通话</li>
+        </ul>
+      </div>
+
+      <h3>13.8 对接验证清单</h3>
+      <el-table :data="sipChecklist" stripe style="width: 100%; margin: 10px 0" border>
+        <el-table-column prop="step" label="步骤" width="60" />
+        <el-table-column prop="action" label="操作" width="220" />
+        <el-table-column prop="expected" label="预期结果" />
+      </el-table>
+    </section>
+
+    <!-- 十四、坐席状态管理 -->
+    <section id="agent-status">
+      <h2>十四、坐席状态管理</h2>
+      <el-alert type="info" :closable="false" style="margin-bottom: 15px">
+        <template #title>坐席状态决定了您是否会收到来电通知。切换为“忙碌”状态后，呼入电话将不会分配给您。</template>
+      </el-alert>
+
+      <h3>14.1 状态说明</h3>
+      <el-table :data="agentStatusList" stripe style="width: 100%; margin: 10px 0" border>
+        <el-table-column prop="status" label="状态" width="100" />
+        <el-table-column prop="label" label="显示" width="100" />
+        <el-table-column prop="effect" label="效果" />
+      </el-table>
+
+      <h3>14.2 切换坐席状态</h3>
+      <div class="step-list">
+        <div class="step-item">
+          <div class="step-num">1</div>
+          <div class="step-desc">
+            <strong>打开通话管理页面</strong>
+            <p>进入 服务管理 → 通话管理</p>
+          </div>
+        </div>
+        <div class="step-item">
+          <div class="step-num">2</div>
+          <div class="step-desc">
+            <strong>点击状态切换按钮</strong>
+            <p>页面顶部显示当前坐席状态，点击即可在「就绪」和「忙碌」之间切换</p>
+          </div>
+        </div>
+        <div class="step-item">
+          <div class="step-num">3</div>
+          <div class="step-desc">
+            <strong>状态自动同步</strong>
+            <p>状态变更会实时同步到后端数据库，并通过WebSocket广播给管理后台</p>
+          </div>
+        </div>
+      </div>
+
+      <h3>14.3 管理员坐席监控</h3>
+      <div class="info-box">
+        <h4>📊 坐席列表</h4>
+        <p>管理员和超级管理员可查看所有坐席的实时状态：</p>
+        <ul>
+          <li>坐席姓名、当前状态、状态变更时间</li>
+          <li>实时更新（通过WebSocket推送）</li>
+          <li>可用于监控团队在线情况和工作负载</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- 十五、常见问题 -->
     <section id="faq">
-      <h2>十二、常见问题</h2>
+      <h2>十五、常见问题</h2>
 
       <el-collapse>
         <el-collapse-item title="Q1: 工作手机扫码后一直显示等待扫码怎么办" name="1">
@@ -781,6 +1045,35 @@
             <li>如需提升权限，请联系超级管理员在用户管理中修改角色</li>
           </ul>
         </el-collapse-item>
+
+        <el-collapse-item title="Q7: 来电振铃不显示怎么办" name="7">
+          <p><strong>A：</strong></p>
+          <ul>
+            <li>确认坐席状态为“就绪”，忙碌状态不会接收来电</li>
+            <li>检查浏览器是否允许弹窗通知</li>
+            <li>确认WebSocket连接正常（页面右下角无异常提示）</li>
+            <li>确认PBX/SIP系统已正确配置Webhook地址和密钥</li>
+            <li>检查来电号码是否已匹配到客户信息</li>
+          </ul>
+        </el-collapse-item>
+
+        <el-collapse-item title="Q8: PBX调用Webhook返回401/403" name="8">
+          <p><strong>A：</strong></p>
+          <ul>
+            <li><strong>401</strong>：请求中缺少密钥，确认在Header或Body中包含了密钥</li>
+            <li><strong>403</strong>：密钥不匹配，检查PBX配置的密钥与CRM后端.env中的SIP_WEBHOOK_SECRET是否一致</li>
+            <li>开发环境可能需要临时修改.env中的SIP_WEBHOOK_SECRET以绕过验证</li>
+          </ul>
+        </el-collapse-item>
+
+        <el-collapse-item title="Q9: 客户信息显示&quot;未知来电&quot;" name="9">
+          <p><strong>A：</strong></p>
+          <ul>
+            <li>主叫号码未匹配到客户表中的phone或mobile字段</li>
+            <li>检查号码格式：确认CRM中存储的号码格式与PBX传递的号码格式一致（是否包含国家码、区号等）</li>
+            <li>多租户场景下，确认Webhook请求中包含了正确的tenantCode</li>
+          </ul>
+        </el-collapse-item>
       </el-collapse>
     </section>
   </div>
@@ -824,6 +1117,62 @@ const recordingSupport = [
     recordingSource: '网关或PBX录音',
     description: '通过语音网关或IP-PBX内置录音功能自动录制，录音文件通过FTP或API定期同步到CRM。需网关设备支持录音功能。'
   },
+]
+
+// 呼入场景总览
+const inboundScenarios = [
+  { scenario: 'SIP/PBX 呼入', trigger: 'PBX调用Webhook通知CRM', description: '企业PBX或SIP中继收到外线来电时，通过HTTP Webhook通知CRM系统，CRM自动匹配客户并推送来电弹窗' },
+  { scenario: '工作手机来电', trigger: 'APP检测来电→WebSocket通知', description: '外呼助手APP在后台监听来电，检测到来电后通过WebSocket发送INCOMING_CALL_DETECTED消息给CRM' },
+  { scenario: 'APP HTTP上报', trigger: 'APP调用HTTP API上报', description: '外呼助手APP通过HTTP接口主动上报来电信息，适用于WebSocket不稳定的场景' },
+]
+
+// SIP呼入通知接口参数
+const sipIncomingParams = [
+  { field: 'callerNumber', required: '是', description: '主叫号码（客户号码）', example: '13800138888' },
+  { field: 'calledNumber', required: '是', description: '被叫号码（企业DID号码）', example: '02188888888' },
+  { field: 'callId', required: '否', description: 'PBX侧通话唯一ID', example: 'sip-1717430400-abc' },
+  { field: 'trunkId', required: '否', description: '中继线路ID', example: 'trunk-001' },
+  { field: 'trunkName', required: '否', description: '中继线路名称', example: '主线路' },
+  { field: 'tenantCode', required: '否', description: 'SaaS模式下的租户编码', example: 'company-a' },
+  { field: 'secret', required: '否', description: 'Webhook验证密钥（如不用Header传递）', example: 'your-secret-key' },
+]
+
+// SIP状态更新接口参数
+const sipStatusParams = [
+  { field: 'callId', required: '是', description: '通话ID（来自呼入通知响应的callId）' },
+  { field: 'event', required: '是', description: '事件类型：ringing/answered/hangup/failed/busy/no_answer' },
+  { field: 'duration', required: '否', description: '通话时长（秒），hangup事件时传入' },
+  { field: 'hangupCause', required: '否', description: '挂断原因，如 normal、busy、cancel 等' },
+  { field: 'recordingUrl', required: '否', description: '录音文件URL，PBX有录音时传入' },
+  { field: 'ringDuration', required: '否', description: '振铃时长（秒）' },
+]
+
+// SIP事件映射
+const sipEventMapping = [
+  { event: 'ringing', crmStatus: 'ringing', description: '振铃中，来电正在等待接听' },
+  { event: 'answered', crmStatus: 'connected', description: '已接听，通话开始' },
+  { event: 'hangup', crmStatus: 'connected/missed', description: '挂断。有通话时长记为connected，无时长记为missed' },
+  { event: 'failed', crmStatus: 'failed', description: '呼叫失败，网络或线路异常' },
+  { event: 'busy', crmStatus: 'busy', description: '忙线，对方正在通话中' },
+  { event: 'no_answer', crmStatus: 'missed', description: '无人接听，振铃超时' },
+]
+
+// 对接验证清单
+const sipChecklist = [
+  { step: '1', action: '测试Webhook连通性', expected: '调用 /webhook/test 返回 success: true' },
+  { step: '2', action: '模拟SIP呼入通知', expected: '调用 /sip/incoming 返回 callId 和匹配信息' },
+  { step: '3', action: '验证密钥认证', expected: '错误密钥返回 403，正确密钥返回 200' },
+  { step: '4', action: '验证来电弹窗', expected: 'CRM前端收到WebSocket推送，弹出来电弹窗' },
+  { step: '5', action: '模拟接听/挂断', expected: '调用 /sip/status 后通话记录状态和时长更新正确' },
+  { step: '6', action: '验证客户匹配', expected: '已有客户来电时弹窗显示客户姓名和公司信息' },
+  { step: '7', action: '验证坐席忙碌过滤', expected: '坐席设为忙碌时，来电只记录不弹窗' },
+]
+
+// 坐席状态列表
+const agentStatusList = [
+  { status: 'ready', label: '🟢 就绪', effect: '可以接收来电。系统会将呼入电话分配给处于就绪状态的坐席，并推送来电弹窗通知' },
+  { status: 'busy', label: '🟡 忙碌', effect: '暂停接收来电。呼入电话仍会创建通话记录，但不会推送来电弹窗给该坐席' },
+  { status: 'offline', label: '⚫ 离线', effect: '不在线。通常在用户登出或长时间未操作时自动设置' },
 ]
 
 // 滚动到指定位置

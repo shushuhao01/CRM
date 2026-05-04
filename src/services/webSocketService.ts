@@ -263,6 +263,27 @@ class WebSocketService {
       this.emitEvent('wecom:acquisition_update', data)
     })
 
+    // 来电通知（呼入）
+    this.socket.on('CALL_INCOMING', (data: any) => {
+      console.log('[WebSocket] 📞 来电通知:', data)
+      this.emitEvent('call:incoming', data)
+
+      // 播放来电铃声
+      this.playIncomingRingtone()
+
+      // 桌面通知
+      if ('Notification' in window && Notification.permission === 'granted') {
+        const customerName = data.customerInfo?.customerName || data.customerName || '未知来电'
+        const callerNumber = data.callerNumber || ''
+        new Notification('来电提醒', {
+          body: `${customerName} (${callerNumber}) 正在呼入`,
+          icon: '/logo.svg',
+          tag: `incoming_${data.callId}`,
+          requireInteraction: true
+        })
+      }
+    })
+
     // APP端通话状态变化
     this.socket.on('mobile:call:status', (data: any) => {
       console.log('[WebSocket] 📱 APP端通话状态:', data)
@@ -390,6 +411,27 @@ class WebSocketService {
       }
     } else if (Notification.permission !== 'denied') {
       Notification.requestPermission()
+    }
+  }
+
+  /**
+   * 播放来电铃声（呼入专用，更醒目）
+   */
+  private playIncomingRingtone(): void {
+    try {
+      const audio = new Audio()
+      audio.volume = 0.6
+      // 来电铃声：使用更醒目的提示音
+      audio.src = 'data:audio/wav;base64,UklGRl9vT19XQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YU'
+      audio.loop = false
+      audio.play().catch(() => {})
+      // 3秒后停止
+      setTimeout(() => {
+        audio.pause()
+        audio.currentTime = 0
+      }, 3000)
+    } catch {
+      // 忽略音频播放错误
     }
   }
 

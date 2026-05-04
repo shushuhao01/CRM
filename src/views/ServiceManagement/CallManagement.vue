@@ -825,6 +825,9 @@ const toggleCallStatus = async () => {
   const statusText = newStatus === 'ready' ? '就绪' : '忙碌'
 
   try {
+    // 同步到后端
+    await callConfigApi.updateAgentStatus(newStatus)
+
     // 保存状态到本地存储
     localStorage.setItem('call_agent_status', newStatus)
     localStorage.setItem('call_agent_status_time', new Date().toISOString())
@@ -834,23 +837,28 @@ const toggleCallStatus = async () => {
 
     // 如果切换到忙碌状态，记录原因（可选）
     if (newStatus === 'busy') {
-      // 可以弹出选择忙碌原因的对话框
       ElMessage.warning(`状态已切换为：${statusText}，来电将不会分配给您`)
     } else {
       ElMessage.success(`状态已切换为：${statusText}，您可以接收来电了`)
     }
-
-    // TODO: 同步到后端（如果有坐席状态 API）
-    // await callApi.updateAgentStatus({ status: newStatus })
-
   } catch (error) {
     console.error('切换状态失败:', error)
     ElMessage.error('切换状态失败')
   }
 }
 
-// 初始化坐席状态（从本地存储恢复）
-const initAgentStatus = () => {
+// 初始化坐席状态（先从后端获取，失败则从本地存储恢复）
+const initAgentStatus = async () => {
+  try {
+    const res = await callConfigApi.getAgentStatus()
+    if (res.success && res.data?.status) {
+      callStatus.value = res.data.status
+      localStorage.setItem('call_agent_status', res.data.status)
+      return
+    }
+  } catch (_e) {
+    // 后端获取失败，降级到本地存储
+  }
   const savedStatus = localStorage.getItem('call_agent_status')
   if (savedStatus === 'ready' || savedStatus === 'busy') {
     callStatus.value = savedStatus
@@ -2045,6 +2053,42 @@ const handleOutboundCall = async () => {
 }
 
 // 呼入通话相关方法
+const handleIncomingCall = (data: any) => {
+  // 检查忙碌状态
+  if (callStatus.value === 'busy') {
+    console.log('[CallManagement] 忙碌状态，忽略来电')
+    return
+  }
+
+  // 检查是否已在通话中
+  if (callInProgressVisible.value) {
+    ElNotification({
+      title: '来电提醒',
+      message: `${data.customerInfo?.customerName || data.customerName || '未知'} (${data.callerNumber || data.phone || ''}) 来电，但您正在通话中`,
+      type: 'warning',
+      duration: 10000
+    })
+    return
+  }
+
+  // 构建来电数据
+  const incomingData = {
+    id: data.callId,
+    customerName: data.customerInfo?.customerName || data.customerName || '未知来电',
+    phone: data.callerNumber || data.phone,
+    customerId: data.customerInfo?.customerId || data.customerId,
+    customerLevel: data.customerInfo?.customerLevel || data.customerLevel,
+    company: data.customerInfo?.company || data.company,
+    lastCallTime: data.customerInfo?.lastCallTime || data.lastCallTime,
+    callSource: data.callSource,
+    deviceInfo: data.deviceInfo,
+    tags: data.customerInfo?.tags || []
+  }
+
+  // 触发来电弹窗
+  simulateIncomingCall(incomingData)
+}
+
 const simulateIncomingCall = (customerData: any) => {
   if (callStatus.value === 'busy') {
     ElMessage.warning('当前状态为忙碌，无法接收来电')
@@ -2055,29 +2099,52 @@ const simulateIncomingCall = (customerData: any) => {
   incomingCallVisible.value = true
 }
 
-const answerCall = () => {
+const answerCall = async () => {
   if (!incomingCallData.value) return
 
   // 关闭呼入弹窗
   incomingCallVisible.value = false
 
   // 设置当前通话数据
-  currentCallData.value = incomingCallData.value
+  currentCallData.value = {
+    ...incomingCallData.value,
+    callMethod: incomingCallData.value.callSource || 'sip'
+  }
+  currentCallId.value = incomingCallData.value.id
   callDuration.value = 0
   callNotes.value = ''
+  callConnected.value = true
 
   // 显示通话中弹窗
   callInProgressVisible.value = true
-
-  // 开始计时
   startCallTimer()
+
+  // 通知后端已接听（更新call_records状态）
+  try {
+    if (incomingCallData.value.id) {
+      await callConfigApi.updateCallStatus(incomingCallData.value.id, 'connected')
+    }
+  } catch (e) {
+    console.error('[CallManagement] 更新接听状态失败:', e)
+  }
 
   ElMessage.success('通话已接通')
 }
 
-const rejectCall = () => {
+const rejectCall = async () => {
+  const callId = incomingCallData.value?.id
   incomingCallVisible.value = false
   incomingCallData.value = null
+
+  // 通知后端已拒绝来电
+  try {
+    if (callId) {
+      await callConfigApi.updateCallStatus(callId, 'rejected')
+    }
+  } catch (e) {
+    console.error('[CallManagement] 更新拒绝状态失败:', e)
+  }
+
   ElMessage.info('已拒绝来电')
 }
 
@@ -2683,6 +2750,12 @@ const setupCallStatusListener = () => {
     handleCallEndedFromWebSocket(data)
   })
 
+  // 监听来电通知（呼入）
+  webSocketService.on('call:incoming', (data: any) => {
+    console.log('[CallManagement] 收到来电通知:', data)
+    handleIncomingCall(data)
+  })
+
   // 监听WebSocket消息，处理通话状态变化（兼容旧格式）
   webSocketService.onMessage((message) => {
     console.log('[CallManagement] 收到WebSocket消息:', message)
@@ -2695,6 +2768,11 @@ const setupCallStatusListener = () => {
     // 处理通话结束消息
     if (message.type === 'CALL_ENDED' || message.type === 'call_ended') {
       handleCallEnded(message)
+    }
+
+    // 处理来电通知（兼容旧格式）
+    if (message.type === 'CALL_INCOMING') {
+      handleIncomingCall(message.data || message)
     }
   })
 }

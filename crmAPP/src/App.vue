@@ -2,6 +2,7 @@
 import { onLaunch, onShow, onHide, onError } from '@dcloudio/uni-app'
 import { useServerStore } from '@/stores/server'
 import { useUserStore } from '@/stores/user'
+import { incomingCallService } from '@/services/incomingCallService'
 
 onLaunch(() => {
   console.log('App Launch')
@@ -14,6 +15,8 @@ onLaunch(() => {
   // #ifdef APP-PLUS
   // 监听系统通话状态变化
   setupCallStateListener()
+  // 启动来电检测监听（呼入）
+  setupIncomingCallListener()
   // 设置Android返回键处理
   setupBackButtonHandler()
   // #endif
@@ -73,6 +76,36 @@ const checkPendingCall = () => {
 }
 
 // #ifdef APP-PLUS
+// 启动来电检测监听服务
+const setupIncomingCallListener = () => {
+  // 延迟启动，等WebSocket连接就绪
+  uni.$on('ws:connected', () => {
+    console.log('[App] WebSocket已连接，启动来电监听')
+    incomingCallService.startListening()
+  })
+
+  uni.$on('ws:disconnected', () => {
+    // WebSocket断开时不停止监听，还有HTTP备份通道
+    console.log('[App] WebSocket断开，来电监听继续（HTTP备份）')
+  })
+
+  // 来电检测回调
+  incomingCallService.onIncoming((info) => {
+    console.log('[App] 检测到来电:', info.callerNumber)
+    uni.showToast({
+      title: `来电: ${info.callerNumber}`,
+      icon: 'none',
+      duration: 3000
+    })
+  })
+
+  incomingCallService.onIncomingEnd((info, duration) => {
+    console.log('[App] 来电结束:', info.callerNumber, '时长:', duration)
+    // 触发全局事件，刷新首页统计
+    uni.$emit('call:completed')
+  })
+}
+
 // 设置通话状态监听器
 const setupCallStateListener = () => {
   // 监听应用从后台返回前台

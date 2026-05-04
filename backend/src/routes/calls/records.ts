@@ -396,6 +396,70 @@ router.put('/records/:id/end', async (req: Request, res: Response) => {
   }
 });
 
+router.put('/:id/status', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+    const callRepository = getTenantRepo(Call);
+
+    log.info('[Calls] 更新通话状态:', { callId: id, status });
+
+    if (!status) {
+      return res.status(400).json({
+        success: false,
+        message: '状态不能为空'
+      });
+    }
+
+    const record = await callRepository.findOne({ where: { id } });
+
+    if (!record) {
+      return res.status(404).json({
+        success: false,
+        message: '通话记录不存在'
+      });
+    }
+
+    record.callStatus = status;
+    record.updatedAt = new Date();
+
+    // 接听时记录接听时间
+    if (status === 'connected' && !record.startTime) {
+      record.startTime = new Date();
+    }
+
+    // 拒绝/未接时记录结束时间
+    if (status === 'rejected' || status === 'missed') {
+      record.endTime = new Date();
+    }
+
+    const savedRecord = await callRepository.save(record);
+
+    log.info('[Calls] 通话状态更新成功:', savedRecord.id, '->', status);
+
+    // 推送状态更新到CRM端
+    if ((global as any).webSocketService && record.userId) {
+      (global as any).webSocketService.sendToUser(record.userId, 'CALL_STATUS', {
+        callId: id,
+        status,
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    res.json({
+      success: true,
+      message: '状态更新成功',
+      data: savedRecord
+    });
+  } catch (error) {
+    log.error('更新通话状态失败:', error);
+    res.status(500).json({
+      success: false,
+      message: '更新状态失败'
+    });
+  }
+});
+
 router.put('/:id/notes', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;

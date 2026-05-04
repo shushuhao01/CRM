@@ -137,7 +137,9 @@ class CallStateService {
         break
 
       case 1: // RINGING - 响铃中
-        if (oldState === 'dialing') {
+        if (oldState === 'dialing' || oldState === 'idle') {
+          // dialing -> ringing: 外呼对方响铃
+          // idle -> ringing: 呼入来电（由 incomingCallService 处理，这里不重复）
           this.currentCall.state = 'ringing'
           this.notifyStateChange('ringing')
         }

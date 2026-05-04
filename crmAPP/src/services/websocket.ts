@@ -5,6 +5,7 @@
 import { useUserStore } from '@/stores/user'
 import { useServerStore } from '@/stores/server'
 import { callStateService } from './callStateService'
+import { incomingCallService } from './incomingCallService'
 import { APP_VERSION } from '@/config/app'
 
 // 消息类型
@@ -222,6 +223,14 @@ class WebSocketService {
               })
             }
           })
+        }
+        break
+
+      case 'INCOMING_CALL_CONFIRMED':
+        // 后端确认来电，回传 callId 和客户信息
+        console.log('[WebSocket] 收到来电确认:', message.data)
+        if (message.data) {
+          incomingCallService.handleIncomingCallConfirmed(message.data)
         }
         break
 

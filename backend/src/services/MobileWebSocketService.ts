@@ -301,6 +301,11 @@ class MobileWebSocketService {
           this.handleCallEnded(deviceId, connection.userId, message.data);
           break;
 
+        case 'INCOMING_CALL_DETECTED':
+          // APP检测到来电
+          this.handleIncomingCallDetected(deviceId, connection.userId, message.data);
+          break;
+
         case 'DIAL_REJECTED':
           // 用户拒绝拨号
           this.handleDialRejected(deviceId, connection.userId, message.data);
@@ -413,6 +418,142 @@ class MobileWebSocketService {
       }
     } catch (error: any) {
       logger.error('[MobileWS] 更新通话结束状态失败:', error.message);
+    }
+  }
+
+  /**
+   * 处理APP检测到的来电（呼入）
+   */
+  private async handleIncomingCallDetected(
+    deviceId: string, userId: number, data: any
+  ): Promise<void> {
+    try {
+      const dataSource = getDataSource();
+      if (!dataSource || !data.callerNumber) return;
+
+      const callerNumber = data.callerNumber;
+      logger.info(`[MobileWS] APP检测到来电: ${callerNumber}, deviceId: ${deviceId}`);
+
+      // 1. 查找客户信息
+      let customerId = null;
+      let customerName = '未知来电';
+      let customerLevel = null;
+      let company = null;
+      let lastCallTime = null;
+      let tags: string[] = [];
+
+      try {
+        const customers = await dataSource.query(
+          `SELECT c.id, c.name, c.level, c.company, c.tags,
+                  (SELECT MAX(start_time) FROM call_records
+                   WHERE customer_id = c.id) as last_call
+           FROM customers c
+           WHERE c.phone = ? OR c.mobile = ?
+           LIMIT 1`,
+          [callerNumber, callerNumber]
+        );
+
+        if (customers.length > 0) {
+          const cust = customers[0];
+          customerId = cust.id;
+          customerName = cust.name;
+          customerLevel = cust.level;
+          company = cust.company;
+          lastCallTime = cust.last_call;
+          try {
+            tags = cust.tags ? JSON.parse(cust.tags) : [];
+          } catch (_e) {
+            tags = [];
+          }
+        }
+      } catch (err: any) {
+        logger.warn('[MobileWS] 查询客户信息失败:', err.message);
+      }
+
+      // 2. 获取工作手机信息
+      let phoneName = '';
+      try {
+        const phones = await dataSource.query(
+          `SELECT id, phone_number, device_name FROM work_phones
+           WHERE device_id = ? LIMIT 1`, [deviceId]
+        );
+        phoneName = phones[0]?.device_name || phones[0]?.phone_number || '';
+      } catch (_e) {
+        // 忽略
+      }
+
+      // 3. 创建呼入通话记录
+      const callId = `IN-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+      let userName = '';
+      try {
+        const userInfo = await dataSource.query(
+          `SELECT name, real_name FROM users WHERE id = ? LIMIT 1`, [userId]
+        );
+        userName = userInfo[0]?.real_name || userInfo[0]?.name || '';
+      } catch (_e) {
+        // 忽略
+      }
+
+      // 获取租户ID
+      let tenantId = null;
+      try {
+        const phoneInfo = await dataSource.query(
+          `SELECT tenant_id FROM work_phones WHERE device_id = ? LIMIT 1`, [deviceId]
+        );
+        tenantId = phoneInfo[0]?.tenant_id || null;
+      } catch (_e) {
+        // 忽略
+      }
+
+      try {
+        await dataSource.query(
+          `INSERT INTO call_records
+           (id, customer_id, customer_name, customer_phone, call_type, call_status,
+            call_method, user_id, user_name, start_time, created_at, tenant_id)
+           VALUES (?, ?, ?, ?, 'inbound', 'ringing', 'mobile', ?, ?, NOW(), NOW(), ?)`,
+          [callId, customerId, customerName, callerNumber,
+           String(userId), userName, tenantId]
+        );
+      } catch (err: any) {
+        logger.error('[MobileWS] 创建呼入通话记录失败:', err.message);
+      }
+
+      // 4. 推送来电通知给CRM端
+      if ((global as any).webSocketService) {
+        (global as any).webSocketService.sendToUser(userId, 'CALL_INCOMING', {
+          callId,
+          callerNumber,
+          callSource: 'mobile',
+          customerInfo: {
+            customerId,
+            customerName,
+            customerLevel,
+            company,
+            lastCallTime,
+            tags
+          },
+          deviceInfo: {
+            deviceId,
+            phoneName
+          },
+          timestamp: new Date().toISOString()
+        });
+      }
+
+      // 5. 回传callId给APP
+      this.sendToDevice(deviceId, {
+        type: 'INCOMING_CALL_CONFIRMED',
+        data: {
+          callId,
+          callerNumber,
+          customerName,
+          customerId
+        }
+      });
+
+      logger.info(`[MobileWS] 来电已处理: callId=${callId}, customer=${customerName}`);
+    } catch (error: any) {
+      logger.error('[MobileWS] 处理来电检测失败:', error.message);
     }
   }
 

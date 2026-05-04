@@ -138,10 +138,11 @@ router.post('/call/end', authenticateToken, async (req: Request, res: Response) 
       }
 
       const tenantId = getCurrentTenantIdSafe() || null
+      const callType = req.body.callType || 'outbound'
       await AppDataSource.query(
         `INSERT INTO call_records (id, user_id, customer_phone, call_type, call_status, duration, has_recording, start_time, end_time, created_at, updated_at, tenant_id)
-         VALUES (?, ?, ?, 'outbound', ?, ?, ?, ?, ?, NOW(), NOW(), ?)`,
-        [callId, userId, phoneNumber || '', status || 'connected', callDuration, hasRecording ? 1 : 0, finalStartTime, callEndTime, tenantId]
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), ?)`,
+        [callId, userId, phoneNumber || '', callType, status || 'connected', callDuration, hasRecording ? 1 : 0, finalStartTime, callEndTime, tenantId]
       )
       log.info('[通话结束] 创建新通话记录:', callId)
     }
@@ -175,6 +176,124 @@ router.post('/call/end', authenticateToken, async (req: Request, res: Response) 
     })
   } catch (error) {
     log.error('上报通话结束失败:', error)
+    res.status(500).json({
+      success: false,
+      message: '上报失败',
+      code: 'SERVER_ERROR'
+    })
+  }
+})
+
+router.post('/call/incoming', authenticateToken, async (req: Request, res: Response) => {
+  const startTime = Date.now()
+  try {
+    const currentUser = (req as any).user
+    const userId = currentUser?.userId || currentUser?.id
+    const { callerNumber } = req.body
+    const deviceId = req.headers['x-device-id'] as string
+
+    if (!callerNumber) {
+      return res.status(400).json({
+        success: false,
+        message: '来电号码不能为空',
+        code: 'INVALID_PARAMS'
+      })
+    }
+
+    // 查找客户信息
+    let customerId = null
+    let customerName = '未知来电'
+    let customerLevel = null
+    let company = null
+    let lastCallTime = null
+
+    try {
+      const t = tenantRawSQL()
+      const customers = await AppDataSource.query(
+        `SELECT c.id, c.name, c.level, c.company,
+                (SELECT MAX(start_time) FROM call_records WHERE customer_id = c.id) as last_call
+         FROM customers c
+         WHERE (c.phone = ? OR c.mobile = ?)${t.sql}
+         LIMIT 1`,
+        [callerNumber, callerNumber, ...t.params]
+      )
+      if (customers.length > 0) {
+        customerId = customers[0].id
+        customerName = customers[0].name
+        customerLevel = customers[0].level
+        company = customers[0].company
+        lastCallTime = customers[0].last_call
+      }
+    } catch (err) {
+      log.warn('[呼入上报] 查询客户信息失败:', err)
+    }
+
+    // 创建呼入通话记录
+    const callId = `IN-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
+    const tenantId = getCurrentTenantIdSafe() || null
+
+    // 获取用户姓名
+    let userName = ''
+    try {
+      const userInfo = await AppDataSource.query(
+        `SELECT name, real_name FROM users WHERE id = ? LIMIT 1`, [userId]
+      )
+      userName = userInfo[0]?.real_name || userInfo[0]?.name || ''
+    } catch (_e) {
+      // 忽略
+    }
+
+    await AppDataSource.query(
+      `INSERT INTO call_records
+       (id, customer_id, customer_name, customer_phone, call_type, call_status,
+        call_method, user_id, user_name, start_time, created_at, tenant_id)
+       VALUES (?, ?, ?, ?, 'inbound', 'ringing', 'mobile', ?, ?, NOW(), NOW(), ?)`,
+      [callId, customerId, customerName, callerNumber, String(userId), userName, tenantId]
+    )
+
+    // 推送CRM端来电通知
+    if (global.webSocketService) {
+      global.webSocketService.sendToUser(userId, 'CALL_INCOMING', {
+        callId,
+        callerNumber,
+        callSource: 'mobile',
+        customerInfo: {
+          customerId,
+          customerName,
+          customerLevel,
+          company,
+          lastCallTime
+        },
+        deviceInfo: { deviceId },
+        timestamp: new Date().toISOString()
+      })
+    }
+
+    await logApiCall({
+      interfaceCode: 'mobile_call_incoming',
+      method: 'POST',
+      endpoint: '/api/v1/mobile/call/incoming',
+      responseCode: 200,
+      responseTime: Date.now() - startTime,
+      success: true,
+      clientIp: req.ip,
+      userAgent: req.headers['user-agent'],
+      userId,
+      deviceId
+    })
+
+    res.json({
+      success: true,
+      data: {
+        callId,
+        customerId,
+        customerName,
+        customerLevel,
+        lastCallTime
+      }
+    })
+  } catch (error) {
+    log.error('上报呼入来电失败:', error)
     res.status(500).json({
       success: false,
       message: '上报失败',

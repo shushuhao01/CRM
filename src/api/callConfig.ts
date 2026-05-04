@@ -401,6 +401,17 @@ export function endCall(callId: string, data?: {
 }
 
 /**
+ * 更新通话状态（呼入接听/拒绝等）
+ */
+export function updateCallStatus(callId: string, status: string): Promise<ApiResponse> {
+  return request({
+    url: `/calls/${callId}/status`,
+    method: 'put',
+    data: { status }
+  })
+}
+
+/**
  * 更新通话备注
  */
 export function updateCallNotes(callId: string, notes: string): Promise<ApiResponse> {
@@ -408,5 +419,40 @@ export function updateCallNotes(callId: string, notes: string): Promise<ApiRespo
     url: `/calls/${callId}/notes`,
     method: 'put',
     data: { notes }
+  })
+}
+
+// ==================== 坐席状态管理 ====================
+
+/**
+ * 获取当前用户坐席状态
+ */
+export function getAgentStatus(): Promise<ApiResponse> {
+  return request({
+    url: `/call-config/agent-status`,
+    method: 'get'
+  })
+}
+
+/**
+ * 更新坐席状态
+ * @param status 'ready' | 'busy' | 'offline'
+ * @param reason 切换原因（可选）
+ */
+export function updateAgentStatus(status: string, reason?: string): Promise<ApiResponse> {
+  return request({
+    url: `/call-config/agent-status`,
+    method: 'put',
+    data: { status, reason }
+  })
+}
+
+/**
+ * 获取所有坐席状态列表（管理员）
+ */
+export function getAgentStatusList(): Promise<ApiResponse> {
+  return request({
+    url: `/call-config/agent-status/list`,
+    method: 'get'
   })
 }

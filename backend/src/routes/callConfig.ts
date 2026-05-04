@@ -1301,4 +1301,104 @@ router.post('/calls/:callId/end', async (req: Request, res: Response) => {
   }
 });
 
+// ==================== 坐席状态管理 ====================
+
+/**
+ * 获取当前用户坐席状态
+ * GET /call-config/agent-status
+ */
+router.get('/agent-status', async (req: Request, res: Response) => {
+  try {
+    const currentUser = (req as any).user;
+    const userId = String(currentUser?.userId || currentUser?.id);
+
+    const t = tenantRawSQL();
+    const rows = await AppDataSource.query(
+      `SELECT agent_status, status_changed_at, status_reason FROM users WHERE id = ?${t.sql} LIMIT 1`,
+      [userId, ...t.params]
+    );
+
+    const status = rows[0]?.agent_status || 'ready';
+    const changedAt = rows[0]?.status_changed_at || null;
+    const reason = rows[0]?.status_reason || null;
+
+    res.json(successResponse({ status, changedAt, reason }));
+  } catch (error) {
+    logger.error('获取坐席状态失败:', error);
+    res.status(500).json(errorResponse('获取坐席状态失败'));
+  }
+});
+
+/**
+ * 更新当前用户坐席状态
+ * PUT /call-config/agent-status
+ *
+ * Body: { status: 'ready' | 'busy' | 'offline', reason?: string }
+ */
+router.put('/agent-status', async (req: Request, res: Response) => {
+  try {
+    const currentUser = (req as any).user;
+    const userId = String(currentUser?.userId || currentUser?.id);
+    const { status, reason } = req.body;
+
+    if (!status || !['ready', 'busy', 'offline'].includes(status)) {
+      return res.status(400).json(errorResponse('状态值无效，可选: ready/busy/offline', 400));
+    }
+
+    const t = tenantRawSQL();
+    await AppDataSource.query(
+      `UPDATE users SET agent_status = ?, status_changed_at = NOW(), status_reason = ? WHERE id = ?${t.sql}`,
+      [status, reason || null, userId, ...t.params]
+    );
+
+    // 通过WebSocket广播坐席状态变化（供管理后台实时监控）
+    if ((global as any).webSocketService) {
+      (global as any).webSocketService.sendToUser(userId, 'AGENT_STATUS_CHANGED', {
+        userId,
+        status,
+        reason,
+        changedAt: new Date().toISOString()
+      });
+    }
+
+    logger.info(`[CallConfig] 坐席状态变更: userId=${userId}, status=${status}, reason=${reason || '无'}`);
+    res.json(successResponse({ status, changedAt: new Date().toISOString() }, `状态已切换为 ${status}`));
+  } catch (error) {
+    logger.error('更新坐席状态失败:', error);
+    res.status(500).json(errorResponse('更新坐席状态失败'));
+  }
+});
+
+/**
+ * 获取所有坐席的状态列表（管理员用）
+ * GET /call-config/agent-status/list
+ */
+router.get('/agent-status/list', async (req: Request, res: Response) => {
+  try {
+    const currentUser = (req as any).user;
+    if (!['super_admin', 'admin'].includes(currentUser?.role)) {
+      return res.status(403).json(errorResponse('无权限查看坐席列表', 403));
+    }
+
+    const t = tenantRawSQL();
+    const rows = await AppDataSource.query(
+      `SELECT id, name, real_name, agent_status, status_changed_at, status_reason
+       FROM users WHERE status = 'active'${t.sql}
+       ORDER BY agent_status ASC, name ASC`,
+      [...t.params]
+    );
+
+    res.json(successResponse(rows.map((u: any) => ({
+      userId: u.id,
+      name: u.real_name || u.name,
+      agentStatus: u.agent_status || 'ready',
+      changedAt: u.status_changed_at,
+      reason: u.status_reason
+    }))));
+  } catch (error) {
+    logger.error('获取坐席列表失败:', error);
+    res.status(500).json(errorResponse('获取坐席列表失败'));
+  }
+});
+
 export default router;
