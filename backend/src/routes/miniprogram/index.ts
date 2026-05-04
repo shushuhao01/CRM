@@ -13,6 +13,8 @@
  * - GET  /collect-records   收集记录列表（需登录鉴权）
  * - GET  /phone-quota       查询手机号额度（需登录鉴权）
  * - POST /phone-quota/purchase  购买手机号额度（需登录鉴权）
+ * - GET  /callback            微信消息推送URL验证（微信服务器调用）
+ * - POST /callback            接收微信消息推送事件（微信服务器调用）
  */
 import { Router, Request, Response } from 'express';
 import crypto from 'crypto';
@@ -1094,6 +1096,89 @@ router.get('/address-streets', async (req: Request, res: Response) => {
   } catch (error: any) {
     log.error('[小程序] 获取街道列表失败:', error);
     res.status(500).json({ success: false, message: '获取街道列表失败' });
+  }
+});
+
+// ==================== 微信消息推送回调（预留） ====================
+
+/**
+ * GET /callback - 微信消息推送URL验证
+ * 微信后台配置消息推送时，会发送GET请求验证URL有效性
+ * 参数: signature, timestamp, nonce, echostr
+ */
+router.get('/callback', async (req: Request, res: Response) => {
+  try {
+    const { signature, timestamp, nonce, echostr } = req.query;
+    log.info('[小程序回调] 收到URL验证请求');
+
+    if (!signature || !timestamp || !nonce || !echostr) {
+      return res.status(400).send('Missing parameters');
+    }
+
+    // 获取小程序消息推送Token
+    const { AppDataSource } = await import('../../config/database');
+    const { WecomSuiteConfig } = await import('../../entities/WecomSuiteConfig');
+    const repo = AppDataSource.getRepository(WecomSuiteConfig);
+    const config = await repo.findOne({ where: {}, order: { id: 'ASC' } });
+
+    const token = config?.mpCallbackToken || process.env.MP_CALLBACK_TOKEN || '';
+    if (!token) {
+      log.warn('[小程序回调] 未配置消息推送Token');
+      return res.status(403).send('No token configured');
+    }
+
+    // 验证签名: sort([token, timestamp, nonce]) → SHA1 → compare signature
+    const arr = [token, timestamp as string, nonce as string].sort();
+    const hash = crypto.createHash('sha1').update(arr.join('')).digest('hex');
+
+    if (hash !== signature) {
+      log.warn('[小程序回调] 签名验证失败');
+      return res.status(403).send('Signature mismatch');
+    }
+
+    log.info('[小程序回调] URL验证成功');
+    // 验证成功，原样返回 echostr
+    return res.send(echostr);
+  } catch (error: any) {
+    log.error('[小程序回调] URL验证异常:', error);
+    return res.status(500).send('error');
+  }
+});
+
+/**
+ * POST /callback - 接收微信消息推送事件
+ * 当前为预留接口，接收后直接返回 success
+ * 后续可扩展处理: 客服消息、订阅通知回执、审核通知等
+ */
+router.post('/callback', async (req: Request, res: Response) => {
+  try {
+    const { signature, timestamp, nonce, msg_signature } = req.query;
+    const body = req.body;
+    log.info('[小程序回调] 收到消息推送:', JSON.stringify(body).substring(0, 200));
+
+    // 获取Token用于签名验证
+    const { AppDataSource } = await import('../../config/database');
+    const { WecomSuiteConfig } = await import('../../entities/WecomSuiteConfig');
+    const repo = AppDataSource.getRepository(WecomSuiteConfig);
+    const config = await repo.findOne({ where: {}, order: { id: 'ASC' } });
+
+    const token = config?.mpCallbackToken || process.env.MP_CALLBACK_TOKEN || '';
+    if (token && signature) {
+      const arr = [token, timestamp as string, nonce as string].sort();
+      const hash = crypto.createHash('sha1').update(arr.join('')).digest('hex');
+      if (hash !== signature) {
+        log.warn('[小程序回调] POST签名验证失败');
+        return res.send('success');
+      }
+    }
+
+    // TODO: 后续根据 MsgType/Event 分发处理
+    // 当前预留，直接返回 success
+    log.info('[小程序回调] 消息已接收(预留处理)');
+    return res.send('success');
+  } catch (error: any) {
+    log.error('[小程序回调] 消息处理异常:', error);
+    return res.send('success');
   }
 });
 

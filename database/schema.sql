@@ -50,7 +50,7 @@
 -- 43. [v4.1.0] 新增wecom_suite_configs(服务商应用配置)、wecom_suite_callback_logs(服务商回调日志)
 -- 44. [v4.1.0] system_license表新增user_limit_mode(用户限制模式)、max_online_seats(最大在线席位数)字段
 -- 45. [v4.1.0] 新增mobile_app_packages(移动应用安装包管理)表
--- 46. [v4.2.0] wecom_suite_configs表新增mp_app_id/mp_app_secret/mp_form_secret/mp_enabled/mp_config(微信小程序配置)字段
+-- 46. [v4.2.0] wecom_suite_configs表新增mp_app_id/mp_app_secret/mp_form_secret/mp_enabled/mp_config/mp_callback_token/mp_callback_encoding_aes_key(微信小程序配置)字段
 -- 47. [v4.2.0] 新增mp_form_submissions(小程序表单提交记录)、mp_card_send_logs(小程序卡片发送日志)表
 -- =============================================
 
@@ -5793,6 +5793,8 @@ CREATE TABLE IF NOT EXISTS `wecom_suite_configs` (
   `mp_app_secret` VARCHAR(255) DEFAULT NULL COMMENT '微信小程序AppSecret(加密存储)',
   `mp_form_secret` VARCHAR(100) DEFAULT NULL COMMENT '表单签名密钥',
   `mp_enabled` TINYINT(1) DEFAULT 0 COMMENT '是否启用小程序资料收集',
+  `mp_callback_token` VARCHAR(100) DEFAULT NULL COMMENT '小程序消息推送Token',
+  `mp_callback_encoding_aes_key` VARCHAR(100) DEFAULT NULL COMMENT '小程序消息推送EncodingAESKey',
   `mp_config` TEXT DEFAULT NULL COMMENT '小程序扩展配置(JSON)',
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间'

@@ -3643,6 +3643,8 @@ router.get('/suite/mp-config', async (_req: Request, res: Response) => {
         mpAppSecret: config.mpAppSecret ? '******' : '',
         mpFormSecret: config.mpFormSecret || '',
         mpEnabled: config.mpEnabled || false,
+        mpCallbackToken: config.mpCallbackToken || '',
+        mpCallbackEncodingAesKey: config.mpCallbackEncodingAesKey || '',
         mpCardTitle: mpConfigData.cardTitle || '',
         mpCardCoverUrl: mpConfigData.cardCoverUrl || '',
         mpPosterUrl: mpConfigData.posterUrl || '',
@@ -3669,11 +3671,13 @@ router.put('/suite/mp-config', async (req: Request, res: Response) => {
       config = repo.create({});
     }
 
-    const { mpAppId, mpAppSecret, mpFormSecret, mpCardTitle, mpCardCoverUrl, mpPosterUrl, mpLinkExpireDays } = req.body;
+    const { mpAppId, mpAppSecret, mpFormSecret, mpCallbackToken, mpCallbackEncodingAesKey, mpCardTitle, mpCardCoverUrl, mpPosterUrl, mpLinkExpireDays } = req.body;
 
     if (mpAppId !== undefined) config.mpAppId = mpAppId;
     if (mpAppSecret && mpAppSecret !== '******') config.mpAppSecret = mpAppSecret;
     if (mpFormSecret !== undefined) config.mpFormSecret = mpFormSecret;
+    if (mpCallbackToken !== undefined) config.mpCallbackToken = mpCallbackToken;
+    if (mpCallbackEncodingAesKey !== undefined) config.mpCallbackEncodingAesKey = mpCallbackEncodingAesKey;
 
     // 扩展配置存入 mpConfig JSON
     let mpConfigData: any = {};

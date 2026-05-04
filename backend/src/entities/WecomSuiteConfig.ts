@@ -63,6 +63,12 @@ export class WecomSuiteConfig {
   @Column({ name: 'mp_enabled', type: 'boolean', default: false, comment: '是否启用小程序资料收集' })
   mpEnabled: boolean;
 
+  @Column({ name: 'mp_callback_token', type: 'varchar', length: 100, nullable: true, comment: '小程序消息推送Token' })
+  mpCallbackToken: string;
+
+  @Column({ name: 'mp_callback_encoding_aes_key', type: 'varchar', length: 100, nullable: true, comment: '小程序消息推送EncodingAESKey' })
+  mpCallbackEncodingAesKey: string;
+
   @Column({ name: 'mp_config', type: 'text', nullable: true, comment: '小程序扩展配置(JSON)' })
   mpConfig: string;
 

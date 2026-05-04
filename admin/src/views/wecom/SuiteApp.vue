@@ -251,6 +251,36 @@
               </div>
             </el-form-item>
 
+            <el-divider content-position="left">消息推送回调（预留）</el-divider>
+            <el-alert type="warning" :closable="false" style="margin-bottom: 12px">
+              <div style="font-size: 11px; line-height: 1.6">
+                当前小程序功能暂不依赖消息推送，此配置为预留。如后续需要接入客服消息、订阅通知等功能，请在
+                <a href="https://mp.weixin.qq.com" target="_blank" style="color:#409eff">微信公众平台</a>
+                → 开发管理 → 消息推送 中填入以下回调URL、Token和EncodingAESKey。
+              </div>
+            </el-alert>
+            <el-form-item label="回调URL">
+              <div style="display: flex; gap: 8px; width: 100%">
+                <el-input :model-value="mpCallbackUrl" readonly />
+                <el-button size="small" @click="copyText(mpCallbackUrl)">复制</el-button>
+              </div>
+              <div style="font-size: 11px; color: #909399; margin-top: 4px">
+                微信公众平台 → 开发管理 → 消息推送 → URL(服务器地址) 填入此地址
+              </div>
+            </el-form-item>
+            <el-form-item label="Token(令牌)">
+              <div style="display: flex; gap: 8px; width: 100%">
+                <el-input v-model="mpConfig.mpCallbackToken" placeholder="与微信后台消息推送配置中的Token一致" />
+                <el-button size="small" @click="mpConfig.mpCallbackToken = generateRandom(32)">随机生成</el-button>
+              </div>
+            </el-form-item>
+            <el-form-item label="EncodingAESKey">
+              <div style="display: flex; gap: 8px; width: 100%">
+                <el-input v-model="mpConfig.mpCallbackEncodingAesKey" placeholder="与微信后台消息推送配置中的EncodingAESKey一致" />
+                <el-button size="small" @click="mpConfig.mpCallbackEncodingAesKey = generateRandom(43)">随机生成</el-button>
+              </div>
+            </el-form-item>
+
             <el-divider content-position="left">卡片与链接配置</el-divider>
             <el-form-item label="卡片标题">
               <el-input v-model="mpConfig.mpCardTitle" placeholder="如：请填写您的个人资料" />
@@ -812,8 +842,14 @@ const handleToggleTemplate = async (row: any) => {
 const mpSaving = ref(false)
 const mpConfig = ref<any>({
   mpAppId: '', mpAppSecret: '', mpFormSecret: '',
+  mpCallbackToken: '', mpCallbackEncodingAesKey: '',
   mpCardTitle: '', mpCardCoverUrl: '', mpPosterUrl: '',
   mpLinkExpireDays: 7
+})
+
+const mpCallbackUrl = computed(() => {
+  const base = window.location.origin
+  return `${base}/api/v1/mp/callback`
 })
 
 const fetchMpConfig = async () => {
