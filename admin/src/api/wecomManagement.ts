@@ -78,3 +78,8 @@ export const exportAuditLogs = (params?: any) => request.get('/wecom-management/
 
 export const getPricingConfig = () => request.get('/wecom-management/pricing-config')
 export const savePricingConfig = (data: any) => request.put('/wecom-management/pricing-config', data)
+
+// ==================== 小程序配置管理 ====================
+
+export const getMpConfig = () => request.get('/wecom-management/suite/mp-config')
+export const saveMpConfig = (data: any) => request.put('/wecom-management/suite/mp-config', data)

@@ -3615,6 +3615,201 @@ router.get('/acquisition-usage/:tenantId', async (req: Request, res: Response) =
   }
 });
 
+// ==================== 小程序配置管理 (MP Config) ====================
+
+/**
+ * 获取小程序配置
+ * GET /api/v1/admin/wecom-management/suite/mp-config
+ */
+router.get('/suite/mp-config', async (_req: Request, res: Response) => {
+  try {
+    await ensureSuiteTables();
+    const repo = AppDataSource.getRepository(WecomSuiteConfig);
+    const config = await repo.findOne({ where: {}, order: { id: 'ASC' } });
+    if (!config) {
+      return res.json({ success: true, data: {} });
+    }
+
+    // 解析 mpConfig JSON 扩展字段
+    let mpConfigData: any = {};
+    if (config.mpConfig) {
+      try { mpConfigData = typeof config.mpConfig === 'string' ? JSON.parse(config.mpConfig) : config.mpConfig; } catch { /* ignore */ }
+    }
+
+    res.json({
+      success: true,
+      data: {
+        mpAppId: config.mpAppId || '',
+        mpAppSecret: config.mpAppSecret ? '******' : '',
+        mpFormSecret: config.mpFormSecret || '',
+        mpEnabled: config.mpEnabled || false,
+        mpCardTitle: mpConfigData.cardTitle || '',
+        mpCardCoverUrl: mpConfigData.cardCoverUrl || '',
+        mpPosterUrl: mpConfigData.posterUrl || '',
+        mpLinkExpireDays: mpConfigData.linkExpireDays || 7
+      }
+    });
+  } catch (error: any) {
+    log.error('[Admin Suite] Get mp-config error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+/**
+ * 保存小程序配置
+ * PUT /api/v1/admin/wecom-management/suite/mp-config
+ */
+router.put('/suite/mp-config', async (req: Request, res: Response) => {
+  if (!checkPermission(req, res, 'wecom-management:suite:edit')) return;
+  try {
+    await ensureSuiteTables();
+    const repo = AppDataSource.getRepository(WecomSuiteConfig);
+    let config = await repo.findOne({ where: {}, order: { id: 'ASC' } });
+    if (!config) {
+      config = repo.create({});
+    }
+
+    const { mpAppId, mpAppSecret, mpFormSecret, mpCardTitle, mpCardCoverUrl, mpPosterUrl, mpLinkExpireDays } = req.body;
+
+    if (mpAppId !== undefined) config.mpAppId = mpAppId;
+    if (mpAppSecret && mpAppSecret !== '******') config.mpAppSecret = mpAppSecret;
+    if (mpFormSecret !== undefined) config.mpFormSecret = mpFormSecret;
+
+    // 扩展配置存入 mpConfig JSON
+    let mpConfigData: any = {};
+    if (config.mpConfig) {
+      try { mpConfigData = typeof config.mpConfig === 'string' ? JSON.parse(config.mpConfig) : config.mpConfig; } catch { /* ignore */ }
+    }
+    if (mpCardTitle !== undefined) mpConfigData.cardTitle = mpCardTitle;
+    if (mpCardCoverUrl !== undefined) mpConfigData.cardCoverUrl = mpCardCoverUrl;
+    if (mpPosterUrl !== undefined) mpConfigData.posterUrl = mpPosterUrl;
+    if (mpLinkExpireDays !== undefined) mpConfigData.linkExpireDays = mpLinkExpireDays;
+    config.mpConfig = JSON.stringify(mpConfigData);
+
+    await repo.save(config);
+    log.info('[Admin Suite] MP config saved');
+    res.json({ success: true, message: '小程序配置已保存' });
+  } catch (error: any) {
+    log.error('[Admin Suite] Save mp-config error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+/**
+ * 测试小程序连接
+ * GET /api/v1/admin/wecom-management/suite/mp-test-connection
+ */
+router.get('/suite/mp-test-connection', async (_req: Request, res: Response) => {
+  try {
+    await ensureSuiteTables();
+    const repo = AppDataSource.getRepository(WecomSuiteConfig);
+    const config = await repo.findOne({ where: {}, order: { id: 'ASC' } });
+
+    const appId = config?.mpAppId || process.env.MP_APP_ID || '';
+    const appSecret = config?.mpAppSecret || process.env.MP_APP_SECRET || '';
+
+    if (!appId || !appSecret) {
+      return res.json({ success: false, message: '请先配置小程序AppID和AppSecret' });
+    }
+
+    const fetch = (await import('node-fetch')).default;
+    const startTime = Date.now();
+    const tokenUrl = `https://api.weixin.qq.com/cgi-bin/token?grant_type=client_credential&appid=${appId}&secret=${appSecret}`;
+    const tokenResp = await fetch(tokenUrl);
+    const tokenData: any = await tokenResp.json();
+    const latency = Date.now() - startTime;
+
+    if (tokenData.access_token) {
+      log.info(`[Admin Suite] MP test connection OK, latency=${latency}ms`);
+      return res.json({
+        success: true,
+        message: '连接成功',
+        latency,
+        data: { hasToken: true, expiresIn: tokenData.expires_in }
+      });
+    }
+
+    log.warn('[Admin Suite] MP test connection failed:', tokenData);
+    return res.json({
+      success: false,
+      message: `连接失败: ${tokenData.errmsg || '未知错误'} (errcode: ${tokenData.errcode || '-'})`,
+      latency
+    });
+  } catch (error: any) {
+    log.error('[Admin Suite] MP test connection error:', error);
+    res.json({ success: false, message: `连接异常: ${error.message}` });
+  }
+});
+
+/**
+ * 生成小程序码
+ * GET /api/v1/admin/wecom-management/suite/wxacode
+ */
+router.get('/suite/wxacode', async (req: Request, res: Response) => {
+  try {
+    const { page, scene } = req.query as any;
+
+    const repo = AppDataSource.getRepository(WecomSuiteConfig);
+    const config = await repo.findOne({ where: {}, order: { id: 'ASC' } });
+
+    const appId = config?.mpAppId || process.env.MP_APP_ID || '';
+    const appSecret = config?.mpAppSecret || process.env.MP_APP_SECRET || '';
+
+    if (!appId || !appSecret) {
+      return res.status(400).json({ success: false, message: '小程序未配置AppID/AppSecret，请先填写', code: 'MP_NOT_CONFIGURED' });
+    }
+
+    // 获取 access_token
+    const fetch = (await import('node-fetch')).default;
+    const tokenUrl = `https://api.weixin.qq.com/cgi-bin/token?grant_type=client_credential&appid=${appId}&secret=${appSecret}`;
+    const tokenResp = await fetch(tokenUrl);
+    const tokenData: any = await tokenResp.json();
+
+    if (!tokenData.access_token) {
+      log.error('[Admin Suite] 获取access_token失败:', tokenData);
+      return res.status(500).json({ success: false, message: '获取微信access_token失败' });
+    }
+
+    // 调用 getwxacodeunlimit 生成小程序码
+    const wxacodeUrl = `https://api.weixin.qq.com/wxa/getwxacodeunlimit?access_token=${tokenData.access_token}`;
+    const wxacodeResp = await fetch(wxacodeUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        scene: scene || 'default',
+        page: page || 'pages/form/form',
+        width: 280,
+        auto_color: false,
+        line_color: { r: 64, g: 158, b: 255 },
+        is_hyaline: false
+      })
+    });
+
+    const contentType = wxacodeResp.headers.get('content-type') || '';
+
+    if (contentType.includes('image')) {
+      const buffer = await wxacodeResp.buffer();
+      const base64 = buffer.toString('base64');
+      return res.json({
+        success: true,
+        data: { wxacodeBase64: `data:image/png;base64,${base64}`, appId }
+      });
+    }
+
+    const errData: any = await wxacodeResp.json();
+    log.error('[Admin Suite] 生成小程序码失败:', errData);
+    return res.status(400).json({
+      success: false,
+      message: `生成小程序码失败: ${errData.errmsg || '未知错误'}`,
+      code: 'WXACODE_FAILED',
+      errcode: errData.errcode
+    });
+  } catch (error: any) {
+    log.error('[Admin Suite] 生成小程序码异常:', error);
+    res.status(500).json({ success: false, message: '生成小程序码失败' });
+  }
+});
+
 // ==================== 辅助函数 ====================
 
 export default router;

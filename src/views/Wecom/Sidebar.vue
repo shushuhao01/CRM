@@ -134,6 +134,252 @@
       </el-table>
       </el-tab-pane>
 
+        <el-tab-pane v-if="isAdminUser" label="小程序配置" name="mp-config">
+          <el-alert type="info" :closable="false" style="margin-bottom: 12px">
+            <template #title><strong>📱 小程序资料收集配置</strong></template>
+            <div style="font-size: 12px; line-height: 1.6; margin-top: 4px">
+              配置本租户的小程序卡片标题和海报。未配置时使用服务商全局默认值。
+            </div>
+          </el-alert>
+          <el-form :model="mpTenantConfig" label-width="120px" style="max-width: 560px">
+            <el-form-item label="卡片标题">
+              <el-input v-model="mpTenantConfig.mpCardTitle" placeholder="如：请填写您的个人资料（留空用默认）" />
+            </el-form-item>
+            <el-form-item label="卡片封面图">
+              <div style="display:flex;gap:8px;width:100%;align-items:center">
+                <el-input v-model="mpTenantConfig.mpCardCoverUrl" placeholder="https://... 或上传" style="flex:1" />
+                <el-button type="primary" size="small" @click="triggerMpImgUpload('mpCardCoverUrl', 500, 400)">📤 上传</el-button>
+                <div v-if="mpTenantConfig.mpCardCoverUrl" style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+                  <el-image :src="mpTenantConfig.mpCardCoverUrl" :preview-src-list="[mpTenantConfig.mpCardCoverUrl]" fit="contain" style="width:56px;height:42px;border-radius:6px;border:1px solid #ebeef5;cursor:pointer" preview-teleported />
+                  <el-button type="danger" link size="small" @click="handleDeleteMpTenantFile('mpCardCoverUrl')">✕</el-button>
+                </div>
+              </div>
+              <div style="font-size:11px;color:#909399;margin-top:4px">推荐 500×400（5:4），上传后自动裁剪</div>
+            </el-form-item>
+            <el-form-item label="推广海报">
+              <div style="display:flex;gap:8px;width:100%;align-items:center">
+                <el-input v-model="mpTenantConfig.mpPosterUrl" placeholder="https://... 或上传" style="flex:1" />
+                <el-button type="primary" size="small" @click="triggerMpImgUpload('mpPosterUrl', 750, 1334)">📤 上传</el-button>
+                <div v-if="mpTenantConfig.mpPosterUrl" style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+                  <el-image :src="mpTenantConfig.mpPosterUrl" :preview-src-list="[mpTenantConfig.mpPosterUrl]" fit="contain" style="width:32px;height:56px;border-radius:6px;border:1px solid #ebeef5;cursor:pointer" preview-teleported />
+                  <el-button type="danger" link size="small" @click="handleDeleteMpTenantFile('mpPosterUrl')">✕</el-button>
+                </div>
+              </div>
+              <div style="font-size:11px;color:#909399;margin-top:4px">推荐 750×1334，上传后自动裁剪</div>
+            </el-form-item>
+            <el-form-item>
+              <el-button type="primary" @click="handleSaveMpTenantConfig" :loading="mpTenantSaving">保存配置</el-button>
+            </el-form-item>
+          </el-form>
+
+          <!-- 小程序卡片预览 (仿微信转发卡片样式) -->
+          <el-divider content-position="left">小程序卡片预览</el-divider>
+          <div style="margin-bottom:20px;max-width:320px">
+            <div style="background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 1px 6px rgba(0,0,0,0.1);border:1px solid #e8e8e8">
+              <div style="padding:8px 10px 4px">
+                <div style="font-size:13px;color:#303133;line-height:1.5;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">{{ mpTenantConfig.mpCardTitle || '请填写您的个人资料' }}</div>
+              </div>
+              <div style="position:relative;width:100%;height:0;padding-bottom:80%;overflow:hidden;background:#f5f7fa">
+                <img v-if="mpTenantConfig.mpCardCoverUrl" :src="mpTenantConfig.mpCardCoverUrl" style="position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover" />
+                <div v-else style="position:absolute;top:0;left:0;width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:#c0c4cc;font-size:12px">未设置封面图</div>
+              </div>
+              <div style="padding:5px 10px;display:flex;align-items:center;gap:4px;border-top:1px solid #f0f0f0">
+                <span style="font-size:11px;color:#b0b0b0">🔗</span>
+                <span style="font-size:10px;color:#909399">小程序</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 海报预览 (含小程序码) -->
+          <el-divider content-position="left">海报预览</el-divider>
+          <div style="margin-bottom:20px;max-width:320px">
+            <div v-if="mpTenantConfig.mpPosterUrl" style="background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 2px 10px rgba(0,0,0,0.08);border:1px solid #ebeef5">
+              <div style="position:relative;width:100%">
+                <img :src="mpTenantConfig.mpPosterUrl" style="width:100%;display:block;object-fit:contain" />
+              </div>
+              <div style="padding:14px;text-align:center;border-top:1px solid #f0f0f0">
+                <div v-if="mpTenantWxacodeBase64" style="margin-bottom:10px">
+                  <img :src="mpTenantWxacodeBase64" style="width:100px;height:100px;border-radius:6px" />
+                  <div style="font-size:10px;color:#909399;margin-top:3px">长按识别小程序码</div>
+                </div>
+                <div v-else style="margin-bottom:10px">
+                  <div style="width:100px;height:100px;margin:0 auto;border:2px dashed #dcdfe6;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#c0c4cc;font-size:11px;line-height:1.3;text-align:center;flex-direction:column">
+                    <span>暂无小程序码</span>
+                    <span style="font-size:10px;margin-top:2px">请先关联配置</span>
+                  </div>
+                </div>
+                <el-button size="small" type="primary" @click="handleFetchMpTenantWxacode" :loading="mpTenantWxacodeLoading" style="margin-right:6px">生成小程序码</el-button>
+                <el-button size="small" @click="handleDownloadMpTenantPoster" :disabled="!mpTenantConfig.mpPosterUrl">下载海报</el-button>
+              </div>
+            </div>
+            <div v-else style="padding:24px;text-align:center;color:#c0c4cc;background:#fafafa;border-radius:10px;border:1px dashed #dcdfe6">
+              <div style="font-size:28px;margin-bottom:6px">🖼️</div>
+              <div style="font-size:12px">未设置海报模板，请上传海报图片</div>
+            </div>
+          </div>
+
+          <!-- 隐藏文件输入 -->
+          <input ref="mpTenantFileInput" type="file" accept="image/png,image/jpeg,image/jpg,image/webp" style="display:none" @change="handleMpTenantFileSelected" />
+
+          <!-- 裁剪弹窗 -->
+          <el-dialog v-model="mpCropVisible" title="裁剪图片" width="520px" :close-on-click-modal="false" destroy-on-close append-to-body>
+            <div style="text-align:center">
+              <div style="font-size:13px;color:#606266;margin-bottom:10px">
+                目标尺寸: <strong>{{ mpCropW }} × {{ mpCropH }}</strong> px
+                <span v-if="mpCropOrigSize" style="margin-left:12px;color:#909399">原图: {{ mpCropOrigSize }}</span>
+              </div>
+              <div style="display:inline-block;background:#f5f7fa;border-radius:8px;overflow:hidden;max-height:360px">
+                <canvas ref="mpCropCanvasRef" style="max-width:100%;max-height:340px;cursor:crosshair" @mousedown="mpCropDown" @mousemove="mpCropMove" @mouseup="mpCropUp" />
+              </div>
+              <div style="margin-top:6px;font-size:11px;color:#909399">拖拽选区或直接确认使用自动居中裁剪</div>
+            </div>
+            <template #footer>
+              <el-button @click="mpCropVisible = false">取消</el-button>
+              <el-button type="primary" @click="handleMpCropConfirm" :loading="mpCropUploading">确认裁剪并上传</el-button>
+            </template>
+          </el-dialog>
+        </el-tab-pane>
+
+        <el-tab-pane v-if="isAdminUser" label="手机号套餐" name="mp-phone">
+          <!-- 功能说明 -->
+          <div class="mp-phone-header">
+            <div class="mp-phone-header__icon">📱</div>
+            <div class="mp-phone-header__body">
+              <h3 class="mp-phone-header__title">微信手机号获取套餐</h3>
+              <p class="mp-phone-header__desc">
+                此套餐用于<strong>「微信小程序 · 客户自助填写资料」</strong>功能。客户通过小程序填写个人资料时，可点击「微信一键获取手机号」按钮自动填入手机号，每成功获取一次消耗 <strong>1 次</strong>额度（微信官方收取 ¥0.03/次）。额度用完后客户仍可手动输入手机号，不影响其他功能使用。
+              </p>
+            </div>
+          </div>
+
+          <!-- 额度概览 -->
+          <div class="mp-phone-quota-grid">
+            <div class="mp-phone-quota-card mp-phone-quota-card--total">
+              <div class="mp-phone-quota-card__icon">🎫</div>
+              <div class="mp-phone-quota-card__info">
+                <div class="mp-phone-quota-card__label">总额度</div>
+                <div class="mp-phone-quota-card__value">{{ mpPhoneQuota.total.toLocaleString() }} <small>次</small></div>
+              </div>
+            </div>
+            <div class="mp-phone-quota-card mp-phone-quota-card--used">
+              <div class="mp-phone-quota-card__icon">📊</div>
+              <div class="mp-phone-quota-card__info">
+                <div class="mp-phone-quota-card__label">已使用</div>
+                <div class="mp-phone-quota-card__value">{{ mpPhoneQuota.used.toLocaleString() }} <small>次</small></div>
+              </div>
+            </div>
+            <div class="mp-phone-quota-card mp-phone-quota-card--remaining">
+              <div class="mp-phone-quota-card__icon">✅</div>
+              <div class="mp-phone-quota-card__info">
+                <div class="mp-phone-quota-card__label">剩余额度</div>
+                <div class="mp-phone-quota-card__value">{{ mpPhoneQuota.remaining.toLocaleString() }} <small>次</small></div>
+              </div>
+            </div>
+            <div class="mp-phone-quota-card mp-phone-quota-card--rate">
+              <div class="mp-phone-quota-card__icon">📈</div>
+              <div class="mp-phone-quota-card__info">
+                <div class="mp-phone-quota-card__label">使用率</div>
+                <div class="mp-phone-quota-card__value">{{ mpPhoneQuota.total > 0 ? Math.round(mpPhoneQuota.used / mpPhoneQuota.total * 100) : 0 }}%</div>
+                <el-progress :percentage="mpPhoneQuota.total > 0 ? Math.round(mpPhoneQuota.used / mpPhoneQuota.total * 100) : 0" :stroke-width="6" :show-text="false" :color="mpPhoneQuota.remaining <= 0 ? '#f56c6c' : mpPhoneQuota.remaining < 50 ? '#e6a23c' : '#67c23a'" style="margin-top:6px" />
+              </div>
+            </div>
+          </div>
+
+          <!-- 额度告警 -->
+          <el-alert v-if="mpPhoneQuota.remaining <= 0 && mpPhoneQuota.total > 0" type="error" :closable="false" style="margin-bottom:16px" show-icon>
+            额度已用完！客户当前只能手动输入手机号，无法使用微信一键授权获取。请尽快购买套餐补充额度。
+          </el-alert>
+          <el-alert v-else-if="mpPhoneQuota.remaining > 0 && mpPhoneQuota.remaining < 50" type="warning" :closable="false" style="margin-bottom:16px" show-icon>
+            剩余额度不足 50 次，建议尽快补充以免影响客户体验。
+          </el-alert>
+
+          <!-- 可购买套餐 -->
+          <el-divider content-position="left"><span style="font-size:14px;font-weight:600">可购买套餐</span></el-divider>
+          <div v-if="mpPhonePackages.length === 0" style="text-align:center;padding:40px 20px">
+            <div style="font-size:42px;margin-bottom:10px">📦</div>
+            <div style="font-size:14px;color:#909399">暂无可购买的套餐</div>
+            <div style="font-size:12px;color:#c0c4cc;margin-top:6px">请联系管理员在后台「企微管理 → 套餐与定价 → 手机号套餐」中配置</div>
+          </div>
+          <div v-else class="mp-phone-packages">
+            <div
+              v-for="pkg in mpPhonePackages" :key="pkg.id"
+              class="mp-phone-pkg-card"
+              :class="{ 'mp-phone-pkg-recommended': pkg.recommended }"
+            >
+              <div v-if="pkg.recommended" class="mp-phone-pkg-badge">推荐</div>
+              <div class="mp-phone-pkg-name">{{ pkg.name }}</div>
+              <div class="mp-phone-pkg-price">
+                <span class="mp-phone-pkg-price__sym">¥</span>
+                <span class="mp-phone-pkg-price__num">{{ pkg.price?.toFixed?.(2) || '0.00' }}</span>
+              </div>
+              <div class="mp-phone-pkg-divider"></div>
+              <div class="mp-phone-pkg-features">
+                <div class="mp-phone-pkg-feature"><span>📱</span> 获取次数 <strong>{{ pkg.quota?.toLocaleString?.() || 0 }}</strong> 次</div>
+                <div class="mp-phone-pkg-feature"><span>💰</span> 折合单次 ¥{{ pkg.quota > 0 ? (pkg.price / pkg.quota).toFixed(4) : '-' }}</div>
+              </div>
+              <div v-if="pkg.description" class="mp-phone-pkg-desc">{{ pkg.description }}</div>
+              <el-button type="primary" round style="width:100%;margin-top:12px" @click="handleBuyMpPhonePackage(pkg)">
+                立即购买
+              </el-button>
+            </div>
+          </div>
+
+          <!-- 购买记录 -->
+          <el-divider content-position="left">
+            <span style="font-size:14px">购买记录</span>
+            <el-button link type="primary" style="margin-left:8px" @click="loadMpPhonePurchaseRecords">
+              <el-icon><Refresh /></el-icon> 刷新
+            </el-button>
+          </el-divider>
+          <el-table :data="mpPhonePurchaseRecords" v-loading="mpPhonePurchaseLoading" size="small" stripe style="width:100%">
+            <el-table-column label="套餐名称" prop="packageName" min-width="120" />
+            <el-table-column label="额度" prop="quota" width="80" align="center">
+              <template #default="{ row }">{{ row.quota }} 次</template>
+            </el-table-column>
+            <el-table-column label="金额" prop="price" width="100" align="center">
+              <template #default="{ row }">¥{{ (row.price || 0).toFixed(2) }}</template>
+            </el-table-column>
+            <el-table-column label="购买时间" prop="purchaseTime" min-width="160">
+              <template #default="{ row }">{{ formatDate(row.purchaseTime) }}</template>
+            </el-table-column>
+          </el-table>
+          <div v-if="mpPhonePurchaseTotal > mpPhonePurchasePageSize" style="margin-top:12px;text-align:right">
+            <el-pagination
+              v-model:current-page="mpPhonePurchasePage"
+              :page-size="mpPhonePurchasePageSize"
+              :total="mpPhonePurchaseTotal"
+              layout="total, prev, pager, next"
+              background
+              small
+            />
+          </div>
+
+          <!-- 支付弹窗 -->
+          <el-dialog v-model="mpPhonePayVisible" title="购买手机号套餐" width="420px" :close-on-click-modal="false" destroy-on-close append-to-body @closed="stopMpPhonePayPoll">
+            <div style="text-align:center;padding:10px 0">
+              <div style="font-size:15px;color:#303133;margin-bottom:6px">{{ mpPhonePayPkg?.name }}</div>
+              <div style="font-size:13px;color:#909399;margin-bottom:12px">{{ mpPhonePayPkg?.quota }} 次手机号获取额度</div>
+              <div style="font-size:32px;font-weight:700;color:#f56c6c;margin-bottom:16px">¥{{ mpPhonePayPkg?.price?.toFixed(2) }}</div>
+              <div v-if="mpPhonePayCreating" style="padding:30px 0">
+                <el-icon class="is-loading" :size="32" color="#409eff"><Loading /></el-icon>
+                <div style="font-size:13px;color:#909399;margin-top:10px">正在生成支付二维码...</div>
+              </div>
+              <div v-else-if="mpPhonePayQrCode" style="margin-bottom:12px">
+                <img :src="mpPhonePayQrCode" style="width:200px;height:200px;border:1px solid #ebeef5;border-radius:8px" />
+                <div style="font-size:12px;color:#909399;margin-top:6px">请使用微信扫码支付</div>
+              </div>
+              <div v-else-if="mpPhonePayError" style="padding:20px 0">
+                <div style="color:#f56c6c;margin-bottom:12px">{{ mpPhonePayError }}</div>
+                <el-button type="primary" @click="createMpPhoneOrder">重试</el-button>
+              </div>
+              <div v-if="mpPhonePayQrCode" style="display:flex;gap:10px;justify-content:center;margin-top:10px">
+                <el-button type="success" @click="handleMpPhonePayCheck" :loading="mpPhonePayChecking">我已支付完成</el-button>
+                <el-button @click="mpPhonePayVisible = false">取消</el-button>
+              </div>
+            </div>
+          </el-dialog>
+        </el-tab-pane>
+
         <el-tab-pane label="快捷话术" name="scripts">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
             <div style="display:flex;gap:8px;align-items:center">
@@ -466,7 +712,7 @@
 defineOptions({ name: 'WecomSidebar' })
 import { ref, onMounted, onUnmounted, computed, watch, nextTick } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus } from '@element-plus/icons-vue'
+import { Plus, Refresh, Loading } from '@element-plus/icons-vue'
 import { getSidebarApps, addSidebarApp, saveSidebarApps, deleteSidebarApp } from '@/api/wecom'
 import WecomHeader from './components/WecomHeader.vue'
 import WecomDemoBanner from './components/WecomDemoBanner.vue'
@@ -500,6 +746,7 @@ const builtinApps = ref([
   { id: 'scripts', name: '快捷话术', desc: '分类话术一键发送到聊天', icon: '💬', path: '/wecom-sidebar?tab=scripts', enabled: true },
   { id: 'quick-order', name: '快捷下单', desc: '在聊天中快速为客户创建订单', icon: '🛒', path: '/wecom-sidebar?tab=order', enabled: false },
   { id: 'portrait', name: '客户画像', desc: '多维度客户画像与AI分析', icon: '📊', path: '/wecom-sidebar?tab=portrait', enabled: false },
+  { id: 'mp-collect', name: '客户资料收集', desc: '发送小程序卡片，客户自助填写资料', icon: '📋', path: '/wecom-sidebar?tab=mp-collect', enabled: true },
 ])
 
 const handleSaveBuiltinApps = async () => {
@@ -535,6 +782,409 @@ const handleCopyBuiltinUrl = async (row: any) => {
     ElMessage.info(`地址: ${fullUrl}`)
   }
 }
+
+// ========== 小程序租户配置 ==========
+const mpTenantSaving = ref(false)
+const mpTenantConfig = ref<any>({
+  mpCardTitle: '',
+  mpCardCoverUrl: '',
+  mpPosterUrl: ''
+})
+
+const loadMpTenantConfig = async () => {
+  try {
+    const { default: request } = await import('@/utils/request')
+    const res: any = await request.get('/wecom/sidebar-mp-config')
+    const data = res?.data || res
+    if (data && typeof data === 'object') {
+      mpTenantConfig.value = {
+        mpCardTitle: data.mpCardTitle || '',
+        mpCardCoverUrl: data.mpCardCoverUrl || '',
+        mpPosterUrl: data.mpPosterUrl || ''
+      }
+    }
+  } catch { /* ignore */ }
+}
+
+const handleSaveMpTenantConfig = async () => {
+  mpTenantSaving.value = true
+  try {
+    const { default: request } = await import('@/utils/request')
+    await request.put('/wecom/sidebar-mp-config', mpTenantConfig.value)
+    ElMessage.success('小程序配置已保存')
+  } catch (e: any) {
+    ElMessage.error(e?.message || '保存失败')
+  }
+  mpTenantSaving.value = false
+}
+
+// 在合适时机加载
+loadMpTenantConfig()
+
+// ========== 小程序码 & 海报下载 ==========
+const mpTenantWxacodeBase64 = ref('')
+const mpTenantWxacodeLoading = ref(false)
+
+const handleFetchMpTenantWxacode = async () => {
+  mpTenantWxacodeLoading.value = true
+  try {
+    const { default: request } = await import('@/utils/request')
+    const res: any = await request.get('/mp/wxacode', { params: { page: 'pages/form/form', scene: 'tenant_preview' } })
+    const data = res?.data || res
+    if (data?.wxacodeBase64) {
+      mpTenantWxacodeBase64.value = data.wxacodeBase64
+      ElMessage.success('小程序码生成成功')
+    } else {
+      ElMessage.warning('生成失败，请检查小程序配置')
+    }
+  } catch (e: any) {
+    const code = e?.response?.data?.code || e?.data?.code
+    if (code === 'MP_NOT_CONFIGURED') {
+      ElMessage.warning('暂无关联小程序，请先在服务商配置中填写AppID和AppSecret')
+    } else {
+      ElMessage.error(e?.response?.data?.message || e?.message || '生成失败')
+    }
+  }
+  mpTenantWxacodeLoading.value = false
+}
+
+const handleDownloadMpTenantPoster = async () => {
+  if (!mpTenantConfig.value.mpPosterUrl) { ElMessage.warning('请先上传海报模板'); return }
+  try {
+    const canvas = document.createElement('canvas')
+    const posterImg = new Image()
+    posterImg.crossOrigin = 'anonymous'
+    posterImg.onload = () => {
+      canvas.width = posterImg.width
+      canvas.height = posterImg.height + 180
+      const ctx = canvas.getContext('2d')!
+      ctx.fillStyle = '#ffffff'
+      ctx.fillRect(0, 0, canvas.width, canvas.height)
+      ctx.drawImage(posterImg, 0, 0)
+      if (mpTenantWxacodeBase64.value) {
+        const qrImg = new Image()
+        qrImg.onload = () => {
+          const qrSize = 140
+          const qrX = (canvas.width - qrSize) / 2
+          const qrY = posterImg.height + 20
+          ctx.drawImage(qrImg, qrX, qrY, qrSize, qrSize)
+          const link = document.createElement('a')
+          link.download = `miniprogram_poster_${Date.now()}.png`
+          link.href = canvas.toDataURL('image/png')
+          link.click()
+          ElMessage.success('海报已下载')
+        }
+        qrImg.src = mpTenantWxacodeBase64.value
+      } else {
+        const link = document.createElement('a')
+        link.download = `miniprogram_poster_${Date.now()}.png`
+        link.href = canvas.toDataURL('image/png')
+        link.click()
+        ElMessage.success('海报已下载（无小程序码）')
+      }
+    }
+    posterImg.onerror = () => ElMessage.error('海报图片加载失败')
+    posterImg.src = mpTenantConfig.value.mpPosterUrl
+  } catch { ElMessage.error('下载失败') }
+}
+
+const handleDeleteMpTenantFile = async (field: string) => {
+  const url = mpTenantConfig.value[field]
+  if (!url) return
+  try {
+    const { default: request } = await import('@/utils/request')
+    await request.delete('/mp/upload-file', { params: { url } })
+  } catch { /* ignore, still clear the field */ }
+  mpTenantConfig.value[field] = ''
+  ElMessage.success('已删除')
+}
+
+// ========== 小程序图片上传 & 裁剪 ==========
+const mpTenantFileInput = ref<HTMLInputElement>()
+const mpCropCanvasRef = ref<HTMLCanvasElement>()
+const mpCropVisible = ref(false)
+const mpCropUploading = ref(false)
+const mpCropW = ref(500)
+const mpCropH = ref(400)
+const mpCropOrigSize = ref('')
+const mpCropFieldKey = ref('mpCardCoverUrl')
+let _mpCropImg: HTMLImageElement | null = null
+let _mpCropSel = { x: 0, y: 0, w: 0, h: 0, dragging: false, sx: 0, sy: 0 }
+
+const triggerMpImgUpload = (field: string, w: number, h: number) => {
+  mpCropFieldKey.value = field
+  mpCropW.value = w
+  mpCropH.value = h
+  mpTenantFileInput.value?.click()
+}
+
+const handleMpTenantFileSelected = (e: Event) => {
+  const input = e.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+  input.value = ''
+  if (file.size > 10 * 1024 * 1024) { ElMessage.error('图片不能超过10MB'); return }
+  const img = new Image()
+  img.onload = () => {
+    _mpCropImg = img
+    mpCropOrigSize.value = `${img.width}×${img.height}`
+    _mpCropSel = { x: 0, y: 0, w: 0, h: 0, dragging: false, sx: 0, sy: 0 }
+    mpCropVisible.value = true
+    nextTick(() => _drawMpCrop())
+  }
+  img.onerror = () => ElMessage.error('图片加载失败')
+  img.src = URL.createObjectURL(file)
+}
+
+const _drawMpCrop = () => {
+  const cvs = mpCropCanvasRef.value
+  if (!cvs || !_mpCropImg) return
+  const img = _mpCropImg
+  const sc = Math.min(460 / img.width, 340 / img.height, 1)
+  cvs.width = Math.round(img.width * sc)
+  cvs.height = Math.round(img.height * sc)
+  const ctx = cvs.getContext('2d')!
+  ctx.drawImage(img, 0, 0, cvs.width, cvs.height)
+  const sel = _mpCropSel
+  if (sel.w > 2 && sel.h > 2) {
+    ctx.fillStyle = 'rgba(0,0,0,0.4)'
+    ctx.fillRect(0, 0, cvs.width, cvs.height)
+    ctx.clearRect(sel.x, sel.y, sel.w, sel.h)
+    ctx.drawImage(img, sel.x / sc, sel.y / sc, sel.w / sc, sel.h / sc, sel.x, sel.y, sel.w, sel.h)
+    ctx.strokeStyle = '#409eff'; ctx.lineWidth = 2; ctx.setLineDash([4, 3])
+    ctx.strokeRect(sel.x, sel.y, sel.w, sel.h); ctx.setLineDash([])
+  } else {
+    const ratio = mpCropW.value / mpCropH.value
+    let gw: number, gh: number
+    if (cvs.width / cvs.height > ratio) { gh = cvs.height; gw = gh * ratio } else { gw = cvs.width; gh = gw / ratio }
+    const gx = (cvs.width - gw) / 2, gy = (cvs.height - gh) / 2
+    ctx.fillStyle = 'rgba(0,0,0,0.25)'
+    ctx.fillRect(0, 0, cvs.width, gy); ctx.fillRect(0, gy + gh, cvs.width, cvs.height - gy - gh)
+    ctx.fillRect(0, gy, gx, gh); ctx.fillRect(gx + gw, gy, cvs.width - gx - gw, gh)
+    ctx.strokeStyle = '#409eff'; ctx.lineWidth = 1.5; ctx.setLineDash([6, 4])
+    ctx.strokeRect(gx, gy, gw, gh); ctx.setLineDash([])
+  }
+}
+
+const mpCropDown = (e: MouseEvent) => {
+  const r = mpCropCanvasRef.value!.getBoundingClientRect()
+  _mpCropSel = { x: 0, y: 0, w: 0, h: 0, dragging: true, sx: e.clientX - r.left, sy: e.clientY - r.top }
+}
+const mpCropMove = (e: MouseEvent) => {
+  if (!_mpCropSel.dragging) return
+  const r = mpCropCanvasRef.value!.getBoundingClientRect()
+  const cx = e.clientX - r.left, cy = e.clientY - r.top
+  const ratio = mpCropW.value / mpCropH.value
+  let w = cx - _mpCropSel.sx, h = cy - _mpCropSel.sy
+  if (Math.abs(w) / ratio > Math.abs(h)) h = Math.sign(h || 1) * Math.abs(w) / ratio
+  else w = Math.sign(w || 1) * Math.abs(h) * ratio
+  _mpCropSel.x = w > 0 ? _mpCropSel.sx : _mpCropSel.sx + w
+  _mpCropSel.y = h > 0 ? _mpCropSel.sy : _mpCropSel.sy + h
+  _mpCropSel.w = Math.abs(w); _mpCropSel.h = Math.abs(h)
+  _drawMpCrop()
+}
+const mpCropUp = () => { _mpCropSel.dragging = false }
+
+const handleMpCropConfirm = async () => {
+  if (!_mpCropImg) return
+  mpCropUploading.value = true
+  try {
+    const img = _mpCropImg
+    const sc = Math.min(460 / img.width, 340 / img.height, 1)
+    const tw = mpCropW.value, th = mpCropH.value, sel = _mpCropSel
+    let sx: number, sy: number, sw: number, sh: number
+    if (sel.w > 10 && sel.h > 10) {
+      sx = sel.x / sc; sy = sel.y / sc; sw = sel.w / sc; sh = sel.h / sc
+    } else {
+      const ratio = tw / th
+      if (img.width / img.height > ratio) { sh = img.height; sw = sh * ratio } else { sw = img.width; sh = sw / ratio }
+      sx = (img.width - sw) / 2; sy = (img.height - sh) / 2
+    }
+    const out = document.createElement('canvas')
+    out.width = tw; out.height = th
+    out.getContext('2d')!.drawImage(img, sx, sy, sw, sh, 0, 0, tw, th)
+    const blob: Blob = await new Promise(resolve => out.toBlob(b => resolve(b!), 'image/jpeg', 0.9))
+
+    const { uploadImage } = await import('@/services/uploadService')
+    const file = new File([blob], `mp_${mpCropFieldKey.value}_${Date.now()}.jpg`, { type: 'image/jpeg' })
+    const result = await uploadImage(file, 'system', false)
+    if (!result.success || !result.url) throw new Error(result.error || '上传失败')
+
+    ;(mpTenantConfig.value as any)[mpCropFieldKey.value] = result.url
+    mpCropVisible.value = false
+    ElMessage.success('图片上传成功')
+  } catch (e: any) {
+    ElMessage.error(e?.message || '上传失败')
+  }
+  mpCropUploading.value = false
+}
+
+// ========== 手机号套餐购买 ==========
+const mpPhoneQuota = ref({ total: 0, used: 0, remaining: 0 })
+const mpPhonePackages = ref<any[]>([])
+const mpPhonePurchaseRecords = ref<any[]>([])
+const mpPhonePurchaseLoading = ref(false)
+const mpPhonePurchaseTotal = ref(0)
+const mpPhonePurchasePage = ref(1)
+const mpPhonePurchasePageSize = 10
+
+const mpPhonePayVisible = ref(false)
+const mpPhonePayPkg = ref<any>(null)
+const mpPhonePayQrCode = ref('')
+const mpPhonePayCreating = ref(false)
+const mpPhonePayChecking = ref(false)
+const mpPhonePayOrderNo = ref('')
+let mpPhonePayPollTimer: any = null
+
+const loadMpPhoneQuota = async () => {
+  try {
+    const { default: request } = await import('@/utils/request')
+    const res: any = await request.get('/mp/phone-quota')
+    const data = res?.data || res
+    mpPhoneQuota.value = { total: data.total || 0, used: data.used || 0, remaining: data.remaining || 0 }
+    mpPhonePackages.value = (data.packages || []).filter((p: any) => p.enabled !== false)
+
+    // 解析购买记录
+    await loadMpPhonePurchaseRecords()
+  } catch { /* ignore */ }
+}
+
+const loadMpPhonePurchaseRecords = async () => {
+  mpPhonePurchaseLoading.value = true
+  try {
+    const { default: request } = await import('@/utils/request')
+    const res: any = await request.get('/mp/phone-quota')
+    const data = res?.data || res
+    // purchases are stored inside the quota JSON
+    const allPurchases: any[] = []
+    if (data._raw?.purchases) {
+      allPurchases.push(...data._raw.purchases)
+    } else {
+      // Fallback: refetch the full quota data which includes purchases in settingValue
+      try {
+        const fullRes: any = await request.get('/mp/phone-quota/records', { params: { page: mpPhonePurchasePage.value, pageSize: mpPhonePurchasePageSize } })
+        const fullData = fullRes?.data || fullRes
+        if (fullData?.list) {
+          mpPhonePurchaseRecords.value = fullData.list
+          mpPhonePurchaseTotal.value = fullData.total || fullData.list.length
+          mpPhonePurchaseLoading.value = false
+          return
+        }
+      } catch { /* ignore, use inline records below */ }
+    }
+    // Sort by time desc
+    allPurchases.sort((a: any, b: any) => new Date(b.purchaseTime).getTime() - new Date(a.purchaseTime).getTime())
+    mpPhonePurchaseTotal.value = allPurchases.length
+    const start = (mpPhonePurchasePage.value - 1) * mpPhonePurchasePageSize
+    mpPhonePurchaseRecords.value = allPurchases.slice(start, start + mpPhonePurchasePageSize)
+  } catch { /* ignore */ }
+  mpPhonePurchaseLoading.value = false
+}
+
+const mpPhonePayError = ref('')
+
+const handleBuyMpPhonePackage = (pkg: any) => {
+  mpPhonePayPkg.value = pkg
+  mpPhonePayQrCode.value = ''
+  mpPhonePayOrderNo.value = ''
+  mpPhonePayError.value = ''
+  mpPhonePayVisible.value = true
+  // 直接创建订单，无需额外确认步骤
+  createMpPhoneOrder()
+}
+
+const createMpPhoneOrder = async () => {
+  if (!mpPhonePayPkg.value) return
+  mpPhonePayCreating.value = true
+  mpPhonePayError.value = ''
+  try {
+    const { default: request } = await import('@/utils/request')
+    const pkg = mpPhonePayPkg.value
+    const res: any = await request.post('/wecom/purchase-mp-phone', {
+      packageId: pkg.id,
+      payType: 'wechat'
+    })
+    const data = res?.data || res
+    if (data?.qrCode) {
+      mpPhonePayQrCode.value = data.qrCode
+      mpPhonePayOrderNo.value = data.orderNo || ''
+      startMpPhonePayPoll()
+    } else if (data?.payUrl) {
+      window.open(data.payUrl, '_blank')
+      mpPhonePayOrderNo.value = data.orderNo || ''
+      startMpPhonePayPoll()
+    } else if (res?.message?.includes('领取成功') || (pkg.price === 0)) {
+      // 免费套餐直接成功
+      ElMessage.success(res?.message || '领取成功')
+      mpPhonePayVisible.value = false
+      await loadMpPhoneQuota()
+    } else {
+      mpPhonePayError.value = '支付服务暂不可用，请联系管理员配置支付渠道'
+    }
+  } catch (e: any) {
+    mpPhonePayError.value = e?.message || '创建订单失败，请稍后重试'
+  }
+  mpPhonePayCreating.value = false
+}
+
+const startMpPhonePayPoll = () => {
+  stopMpPhonePayPoll()
+  let pollCount = 0
+  mpPhonePayPollTimer = setInterval(async () => {
+    pollCount++
+    if (pollCount > 60) { stopMpPhonePayPoll(); return } // 5分钟超时
+    try {
+      const { default: request } = await import('@/utils/request')
+      const res: any = await request.get('/wecom/payment-status/' + mpPhonePayOrderNo.value)
+      const data = res?.data || res
+      if (data?.status === 'paid') {
+        stopMpPhonePayPoll()
+        await onMpPhonePaySuccess()
+      }
+    } catch { /* ignore poll errors */ }
+  }, 5000) // 每5秒轮询
+}
+
+const stopMpPhonePayPoll = () => {
+  if (mpPhonePayPollTimer) { clearInterval(mpPhonePayPollTimer); mpPhonePayPollTimer = null }
+}
+
+const handleMpPhonePayCheck = async () => {
+  mpPhonePayChecking.value = true
+  try {
+    const { default: request } = await import('@/utils/request')
+    // 调用 confirm-payment 确认支付并激活额度
+    const pkg = mpPhonePayPkg.value
+    const res: any = await request.post('/wecom/confirm-payment', {
+      type: 'mp_phone_quota',
+      packageName: pkg?.name,
+      orderNo: mpPhonePayOrderNo.value || undefined
+    })
+    if (res?.success !== false) {
+      await onMpPhonePaySuccess()
+    } else {
+      ElMessage.warning(res?.message || '订单尚未支付，请先完成扫码支付')
+    }
+  } catch (e: any) {
+    ElMessage.warning(e?.message || '请先完成扫码支付')
+  }
+  mpPhonePayChecking.value = false
+}
+
+const onMpPhonePaySuccess = async () => {
+  stopMpPhonePayPoll()
+  const pkg = mpPhonePayPkg.value
+  ElMessage.success(`套餐「${pkg?.name}」购买成功，已增加${pkg?.quota}次额度`)
+  mpPhonePayVisible.value = false
+  await loadMpPhoneQuota()
+}
+
+// 切到 mp-phone tab 时加载数据
+watch(appTab, (v) => { if (v === 'mp-phone') loadMpPhoneQuota() })
+// 页面加载时如果已在 mp-phone tab，也加载数据
+if (appTab.value === 'mp-phone') loadMpPhoneQuota()
+// 翻页时重新加载记录
+watch(mpPhonePurchasePage, () => loadMpPhonePurchaseRecords())
 
 // 详情 & 预览
 const detailDrawerVisible = ref(false)
@@ -1056,7 +1706,7 @@ img{max-width:200px;border-radius:6px;margin:4px}</style></head><body>
         for (const s of catScripts) {
           let attHtml = ''
           if (s.attachments) {
-            let atts = typeof s.attachments === 'string' ? JSON.parse(s.attachments || '[]') : s.attachments
+            const atts = typeof s.attachments === 'string' ? JSON.parse(s.attachments || '[]') : s.attachments
             if (Array.isArray(atts)) atts.forEach((a: any) => { if (a.type?.startsWith('image/')) attHtml += `<img src="${a.url}" alt="${a.name||'图片'}"/>` })
           }
           html += `<div class="script"><div class="script-title">${s.title || '(无标题)'}</div><div class="script-content">${(s.content || '').replace(/</g,'&lt;')}</div>${attHtml}</div>`
@@ -1266,5 +1916,78 @@ watch(scriptSelectedCatId, () => { scriptPage.value = 1 })
 }
 .preview-body {
   height: 400px; display: flex; align-items: center; justify-content: center; background: #FAFBFC;
+}
+
+/* ========== 手机号套餐 - 功能说明 ========== */
+.mp-phone-header {
+  display: flex; gap: 16px; align-items: flex-start;
+  padding: 18px 20px; margin-bottom: 20px;
+  background: linear-gradient(135deg, #f0f5ff 0%, #e6f7ff 100%);
+  border-radius: 12px; border: 1px solid #d6e4ff;
+}
+.mp-phone-header__icon { font-size: 36px; flex-shrink: 0; line-height: 1; }
+.mp-phone-header__body { flex: 1; min-width: 0; }
+.mp-phone-header__title { margin: 0 0 6px; font-size: 16px; font-weight: 700; color: #1f2937; }
+.mp-phone-header__desc { margin: 0; font-size: 13px; color: #4b5563; line-height: 1.7; }
+
+/* ========== 手机号套餐 - 额度概览 ========== */
+.mp-phone-quota-grid {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 20px;
+}
+@media (max-width: 900px) { .mp-phone-quota-grid { grid-template-columns: repeat(2, 1fr); } }
+.mp-phone-quota-card {
+  display: flex; align-items: center; gap: 14px;
+  padding: 16px 18px; border-radius: 12px;
+  background: #fff; border: 1px solid #f0f0f0;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  transition: all 0.25s;
+  &:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
+}
+.mp-phone-quota-card__icon { font-size: 28px; flex-shrink: 0; }
+.mp-phone-quota-card__info { flex: 1; min-width: 0; }
+.mp-phone-quota-card__label { font-size: 12px; color: #909399; margin-bottom: 2px; }
+.mp-phone-quota-card__value { font-size: 24px; font-weight: 700; color: #1f2937; line-height: 1.2;
+  small { font-size: 12px; font-weight: 400; color: #909399; margin-left: 2px; }
+}
+.mp-phone-quota-card--total { border-left: 3px solid #667eea; }
+.mp-phone-quota-card--used { border-left: 3px solid #f5576c; }
+.mp-phone-quota-card--remaining { border-left: 3px solid #4facfe; }
+.mp-phone-quota-card--rate { border-left: 3px solid #67c23a; }
+
+/* ========== 手机号套餐 - 套餐卡片 ========== */
+.mp-phone-packages {
+  display: flex; gap: 18px; flex-wrap: wrap; margin-bottom: 24px;
+}
+.mp-phone-pkg-card {
+  position: relative; width: 210px; padding: 24px 20px 20px;
+  background: #fff; border-radius: 14px; border: 2px solid #E5E7EB;
+  text-align: center; transition: all 0.3s;
+  &:hover { border-color: #409eff; box-shadow: 0 6px 24px rgba(64,158,255,0.15); transform: translateY(-3px); }
+}
+.mp-phone-pkg-recommended {
+  border-color: #f56c6c; background: linear-gradient(180deg, #fff5f5 0%, #fff 40%);
+  &:hover { border-color: #f56c6c; box-shadow: 0 6px 24px rgba(245,108,108,0.18); }
+}
+.mp-phone-pkg-badge {
+  position: absolute; top: -1px; right: -1px;
+  background: linear-gradient(135deg, #f56c6c, #e6364a); color: #fff;
+  font-size: 11px; font-weight: 600; padding: 3px 12px;
+  border-radius: 0 12px 0 12px; letter-spacing: 0.5px;
+}
+.mp-phone-pkg-name { font-size: 15px; font-weight: 600; color: #303133; margin-bottom: 10px; }
+.mp-phone-pkg-price { margin-bottom: 8px; }
+.mp-phone-pkg-price__sym { font-size: 14px; color: #f56c6c; vertical-align: super; }
+.mp-phone-pkg-price__num { font-size: 32px; font-weight: 700; color: #f56c6c; letter-spacing: -0.5px; }
+.mp-phone-pkg-divider { width: 40px; height: 2px; background: #e5e7eb; margin: 10px auto; border-radius: 1px; }
+.mp-phone-pkg-features { text-align: left; margin: 8px 0; }
+.mp-phone-pkg-feature {
+  font-size: 13px; color: #4b5563; padding: 3px 0;
+  span:first-child { margin-right: 4px; }
+  strong { color: #1f2937; }
+}
+.mp-phone-pkg-desc {
+  font-size: 12px; color: #909399; margin: 8px 0 0;
+  overflow: hidden; text-overflow: ellipsis;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
 }
 </style>

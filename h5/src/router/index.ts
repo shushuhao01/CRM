@@ -63,6 +63,13 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/views/app/BindWecom.vue'),
     meta: { title: '客户关联CRM' }
   },
+  // 小程序资料收集
+  {
+    path: '/app/mp-collect',
+    name: 'MpCollect',
+    component: () => import('@/views/app/MpCollect.vue'),
+    meta: { title: '客户资料收集' }
+  },
   // 绑定页面
   {
     path: '/bind',

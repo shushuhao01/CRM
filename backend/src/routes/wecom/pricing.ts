@@ -830,6 +830,15 @@ router.post('/confirm-payment', authenticateToken, async (req: Request, res: Res
       }
     }
 
+    // 支付成功后：手机号套餐增加额度
+    if (updated && matchedType === 'mp_phone_quota') {
+      const paidRecord = getMatchedRecord();
+      if (paidRecord?.packageData) {
+        await addMpPhoneQuota(tenantId, paidRecord.packageData);
+        log.info(`[Pricing] MP phone quota activated after payment for tenant ${tenantId}: ${paidRecord.packageName}`);
+      }
+    }
+
     // 支付成功后解锁对应功能权限
     if (updated && ['archive', 'ai', 'acquisition', 'wecom'].includes(matchedType)) {
       await unlockTenantPermissions(tenantId, matchedType as any);
@@ -1229,6 +1238,172 @@ router.post('/cancel-order', authenticateToken, async (req: Request, res: Respon
     res.status(500).json({ success: false, message: '取消订单失败' });
   }
 });
+
+/**
+ * POST /wecom/purchase-mp-phone
+ * 购买手机号获取额度套餐
+ */
+router.post('/purchase-mp-phone', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const tenantId = (req as any).user?.tenantId;
+    if (!tenantId) return res.status(401).json({ success: false, message: '未登录' });
+
+    const { packageId, payType } = req.body;
+
+    // 从定价配置中查找套餐
+    const configRows = await AppDataSource.query(
+      "SELECT config_value FROM system_config WHERE config_key = 'wecom_pricing_config' LIMIT 1"
+    ).catch(() => []);
+
+    let pricingConfig: any = null;
+    if (configRows.length > 0) {
+      try { pricingConfig = JSON.parse(configRows[0].config_value); } catch { /* ignore */ }
+    }
+
+    const packages = pricingConfig?.mpPhonePackages || [];
+    const pkg = packages.find((p: any) => p.id === packageId);
+    if (!pkg) return res.status(404).json({ success: false, message: '套餐不存在' });
+    if (pkg.enabled === false) return res.status(400).json({ success: false, message: '该套餐已下架' });
+
+    // 通过 PaymentService 创建支付订单
+    let paymentData: any = {};
+    if (pkg.price > 0) {
+      try {
+        const { paymentService } = await import('../../services/PaymentService');
+        const tenantRows = await AppDataSource.query('SELECT name FROM tenants WHERE id = ? LIMIT 1', [tenantId]).catch(() => []);
+        const tenantName = tenantRows[0]?.name || '';
+        const currentUser = (req as any).user || {};
+        const payResult = await paymentService.createOrder({
+          packageId: `mp_phone_${packageId}`,
+          packageName: `手机号套餐-${pkg.name}`,
+          amount: pkg.price,
+          payType: (payType || 'wechat') as 'wechat' | 'alipay' | 'bank',
+          tenantId,
+          tenantName,
+          contactName: currentUser.name || currentUser.username || '',
+          contactPhone: currentUser.phone || '',
+          billingCycle: 'once'
+        });
+        if (payResult.success) {
+          paymentData = { orderNo: payResult.orderNo, qrCode: payResult.qrCode, payUrl: payResult.payUrl };
+        }
+      } catch (payErr: any) {
+        log.warn(`[Pricing] PaymentService error for mp-phone: ${payErr.message}`);
+      }
+    }
+
+    // 写入账单记录
+    await appendBillingRecord(tenantId, {
+      type: 'mp_phone_quota',
+      typeName: '手机号套餐',
+      packageName: pkg.name,
+      packageIndex: packageId,
+      amount: pkg.price || 0,
+      action: 'purchase',
+      status: pkg.price === 0 ? 'paid' : 'pending_payment',
+      remark: pkg.price === 0 ? '免费领取' : `${pkg.quota}次额度，待支付`,
+      packageData: { quota: pkg.quota, price: pkg.price, packageId: pkg.id, packageName: pkg.name },
+      orderNo: paymentData.orderNo || undefined,
+      qrCodeUrl: paymentData.qrCode || undefined,
+      payUrl: paymentData.payUrl || undefined
+    });
+
+    // 免费套餐立即增加额度
+    if (pkg.price === 0) {
+      await addMpPhoneQuota(tenantId, pkg);
+    }
+
+    log.info(`[Pricing] MP phone quota purchase: tenant=${tenantId}, pkg=${pkg.name}, price=${pkg.price}`);
+
+    res.json({
+      success: true,
+      message: pkg.price === 0 ? '领取成功' : '订单已创建，请扫码支付',
+      data: {
+        packageName: pkg.name,
+        quota: pkg.quota,
+        price: pkg.price,
+        ...paymentData
+      }
+    });
+  } catch (error: any) {
+    log.error('[Pricing] Purchase mp-phone error:', error.message);
+    res.status(500).json({ success: false, message: '购买失败: ' + error.message });
+  }
+});
+
+/**
+ * GET /wecom/payment-status/:orderNo
+ * 查询支付订单状态（轮询用）
+ */
+router.get('/payment-status/:orderNo', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const tenantId = (req as any).user?.tenantId;
+    const { orderNo } = req.params;
+    if (!tenantId || !orderNo) return res.status(400).json({ success: false, message: '参数不完整' });
+
+    const rows = await AppDataSource.query(
+      "SELECT status, trade_no, paid_at FROM payment_orders WHERE order_no = ? AND tenant_id = ? LIMIT 1",
+      [orderNo, tenantId]
+    ).catch(() => []);
+
+    if (rows.length === 0) {
+      return res.json({ success: true, data: { status: 'unknown' } });
+    }
+
+    res.json({
+      success: true,
+      data: { status: rows[0].status, tradeNo: rows[0].trade_no, paidAt: rows[0].paid_at }
+    });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: '查询失败' });
+  }
+});
+
+/**
+ * 内部方法：为租户增加手机号额度
+ */
+async function addMpPhoneQuota(tenantId: string, pkg: any) {
+  try {
+    const { TenantSettings } = await import('../../entities/TenantSettings');
+    const settingsRepo = AppDataSource.getRepository(TenantSettings);
+    let quotaSetting = await settingsRepo.findOne({
+      where: { tenantId, settingKey: 'mp_phone_quota' }
+    });
+
+    let currentQuota = { total: 0, used: 0, purchases: [] as any[] };
+    if (quotaSetting) {
+      currentQuota = typeof quotaSetting.settingValue === 'string'
+        ? JSON.parse(quotaSetting.settingValue)
+        : quotaSetting.settingValue;
+    }
+
+    currentQuota.total = (currentQuota.total || 0) + (pkg.quota || 0);
+    currentQuota.purchases = currentQuota.purchases || [];
+    currentQuota.purchases.push({
+      packageId: pkg.id || pkg.packageId,
+      packageName: pkg.name || pkg.packageName,
+      quota: pkg.quota,
+      price: pkg.price || 0,
+      purchaseTime: new Date().toISOString()
+    });
+
+    if (quotaSetting) {
+      quotaSetting.settingValue = JSON.stringify(currentQuota);
+      await settingsRepo.save(quotaSetting);
+    } else {
+      await settingsRepo.save(settingsRepo.create({
+        tenantId,
+        settingKey: 'mp_phone_quota',
+        settingType: 'json',
+        settingValue: JSON.stringify(currentQuota),
+      } as any));
+    }
+
+    log.info(`[Pricing] MP phone quota added: tenant=${tenantId}, +${pkg.quota}, total=${currentQuota.total}`);
+  } catch (e: any) {
+    log.error('[Pricing] addMpPhoneQuota error:', e.message);
+  }
+}
 
 export default router;
 

@@ -547,6 +547,83 @@
         </div>
         <el-empty v-else description="暂无获客助手定价方案" />
       </el-tab-pane>
+
+      <!-- ========== Tab7: 微信小程序获取手机号套餐 ========== -->
+      <el-tab-pane label="手机号套餐" name="mpPhone">
+        <div class="tab-intro">
+          <div class="intro-text">
+            <h3>微信小程序获取手机号套餐</h3>
+            <p>配置小程序客户资料收集中微信手机号获取的额度套餐。每次获取微信手机号微信官方收取¥0.03，套餐定价应覆盖此成本</p>
+          </div>
+          <el-button v-permission="'wecom-management:pricing:edit'" type="primary" @click="addMpPhonePackage"><el-icon><Plus /></el-icon> 添加套餐</el-button>
+        </div>
+
+        <el-alert type="info" :closable="false" style="margin-bottom: 16px" show-icon>
+          <template #title>套餐说明</template>
+          <ul style="margin: 4px 0 0; padding-left: 18px; font-size: 13px; line-height: 1.8">
+            <li>套餐保存后自动同步到CRM侧边栏的小程序资料收集页面，租户可直接购买</li>
+            <li>购买后额度立即生效，每次客户通过小程序授权获取手机号时扣减1次额度</li>
+            <li>额度用完后客户只能手动输入手机号，无法使用微信授权获取</li>
+          </ul>
+        </el-alert>
+
+        <div class="package-cards" v-if="mpPhonePackages.length">
+          <div
+            v-for="(pkg, idx) in mpPhonePackages" :key="idx"
+            class="package-card"
+            :class="{ 'package-recommended': pkg.recommended }"
+          >
+            <div class="pkg-badge" v-if="pkg.recommended">推荐</div>
+            <div class="pkg-header">
+              <el-input v-model="pkg.name" class="pkg-name-input" placeholder="套餐名称" />
+              <el-switch v-model="pkg.enabled" size="small" active-text="启用" inactive-text="停用" />
+            </div>
+            <div class="pkg-price">
+              <span class="price-symbol">¥</span>
+              <el-input-number v-model="pkg.price" :min="0" :precision="2" :controls="false" class="price-input" />
+            </div>
+            <el-divider style="margin: 12px 0" />
+            <div class="pkg-features">
+              <div class="feature-row">
+                <span class="feature-label">获取次数</span>
+                <el-input-number v-model="pkg.quota" :min="1" :max="999999" size="small" style="width: 120px" />
+                <span class="feature-hint">次</span>
+              </div>
+              <div class="feature-row">
+                <span class="feature-label">单次成本</span>
+                <span style="font-size: 13px; color: #86909c">¥0.03（微信官方）</span>
+              </div>
+              <div class="feature-row">
+                <span class="feature-label">单次售价</span>
+                <span style="font-size: 13px; color: #1d2129; font-weight: 500">
+                  ¥{{ pkg.quota > 0 ? (pkg.price / pkg.quota).toFixed(4) : '0' }}
+                </span>
+              </div>
+              <div class="feature-row">
+                <span class="feature-label">利润</span>
+                <span style="font-size: 13px; font-weight: 600" :style="{ color: (pkg.price - pkg.quota * 0.03) > 0 ? '#52c41a' : '#f5222d' }">
+                  ¥{{ (pkg.price - pkg.quota * 0.03).toFixed(2) }}
+                </span>
+              </div>
+              <div class="feature-row" style="margin-top: 8px">
+                <span class="feature-label">推荐标签</span>
+                <el-switch v-model="pkg.recommended" size="small" />
+              </div>
+            </div>
+            <el-input v-model="pkg.description" type="textarea" :rows="2" placeholder="套餐描述" style="margin-top: 12px" />
+            <div class="pkg-sort">
+              <span class="feature-label">排序</span>
+              <el-input-number v-model="pkg.sortOrder" :min="0" size="small" style="width: 80px" />
+            </div>
+            <div class="pkg-actions">
+              <el-button v-permission="'wecom-management:pricing:edit'" type="danger" text size="small" @click="mpPhonePackages.splice(idx, 1)">
+                <el-icon><Delete /></el-icon> 删除套餐
+              </el-button>
+            </div>
+          </div>
+        </div>
+        <el-empty v-else description="暂无手机号获取套餐，点击右上方添加" />
+      </el-tab-pane>
     </el-tabs>
   </div>
 </template>
@@ -569,6 +646,7 @@ const archiveGlobalConfig = ref<any>({
 })
 const aiPackages = ref<any[]>([])
 const acquisitionPricing = ref<any[]>([])
+const mpPhonePackages = ref<any[]>([])
 const paymentMethods = ref<string[]>(['wechat', 'alipay'])
 const quotaUnit = ref<string>('calls')
 const trialConfig = ref<any>({
@@ -618,6 +696,20 @@ const addAcquisitionTier = () => {
   })
 }
 
+const addMpPhonePackage = () => {
+  const idx = mpPhonePackages.value.length + 1
+  mpPhonePackages.value.push({
+    id: 'mp_phone_' + idx,
+    name: '',
+    quota: 1000,
+    price: 50,
+    description: '',
+    enabled: true,
+    recommended: false,
+    sortOrder: mpPhonePackages.value.length
+  })
+}
+
 const togglePayment = (method: string) => {
   const idx = paymentMethods.value.indexOf(method)
   if (idx >= 0) paymentMethods.value.splice(idx, 1)
@@ -640,6 +732,7 @@ const loadConfig = async () => {
       if (data.archiveGlobalConfig) archiveGlobalConfig.value = { ...archiveGlobalConfig.value, ...data.archiveGlobalConfig }
       if (data.aiPackages) aiPackages.value = data.aiPackages
       if (data.acquisitionPricing) acquisitionPricing.value = data.acquisitionPricing
+      if (data.mpPhonePackages) mpPhonePackages.value = data.mpPhonePackages
       if (data.paymentMethods) paymentMethods.value = data.paymentMethods
       if (data.quotaUnit) quotaUnit.value = data.quotaUnit
       if (data.trialConfig) trialConfig.value = { ...trialConfig.value, ...data.trialConfig }
@@ -660,6 +753,7 @@ const handleSaveAll = async () => {
       archiveGlobalConfig: archiveGlobalConfig.value,
       aiPackages: aiPackages.value,
       acquisitionPricing: acquisitionPricing.value,
+      mpPhonePackages: mpPhonePackages.value,
       paymentMethods: paymentMethods.value,
       quotaUnit: quotaUnit.value,
       trialConfig: trialConfig.value,

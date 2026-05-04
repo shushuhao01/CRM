@@ -71,7 +71,14 @@
             </div>
           </div>
           <div class="preview-card">
-            <div class="card-title">👤 CRM客户信息</div>
+            <div class="card-title" style="display:flex;justify-content:space-between;align-items:center">
+              <span style="display:flex;align-items:center;gap:4px">👤 CRM客户信息
+                <span class="btn-refresh-inline" @click="handleRefreshCustomerData" title="刷新客户信息">
+                  <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg>
+                </span>
+              </span>
+              <button class="btn-send-form-card" @click="handleSendFormCard" :disabled="mpSendingCard">{{ mpSendingCard ? '发送中...' : '📋 转发填写资料' }}</button>
+            </div>
             <div class="info-row" v-if="customerData?.name"><span class="label">姓名</span><span>{{ customerData.name }}</span></div>
             <div class="info-row" v-if="customerData?.phone"><span class="label">手机</span><span>{{ displaySensitiveInfoNew(customerData.phone, SensitiveInfoType.PHONE) }}</span></div>
             <div class="info-row" v-if="customerData?.email"><span class="label">邮箱</span><span>{{ displaySensitiveInfoNew(customerData.email, SensitiveInfoType.EMAIL) }}</span></div>
@@ -996,6 +1003,87 @@
           </template>
         </div>
 
+        <!-- ========== 客户资料收集视图 ========== -->
+        <div v-else-if="step === 'detail' && appId === 'mp-collect'" class="preview-detail">
+          <div class="preview-user-bar">
+            <span>{{ boundUserName }}</span>
+            <div><span class="action-link" @click="step = 'login'">退出</span></div>
+          </div>
+
+          <!-- 顶部引导卡片 -->
+          <div class="mpc-hero">
+            <div class="mpc-hero-icon">
+              <svg viewBox="0 0 48 48" width="38" height="38" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M15.6 28.8c-4.97 0-9-3.58-9-8s4.03-8 9-8c4.97 0 9 3.58 9 8 0 1.36-.4 2.64-1.1 3.76l.5 3.64-3.36-1.6c-1.56.76-3.28 1.2-5.04 1.2z" fill="#57BE6A"/>
+                <path d="M33.6 36c-1.76 0-3.48-.44-5.04-1.2l-3.36 1.6.5-3.64c-.7-1.12-1.1-2.4-1.1-3.76 0-4.42 4.03-8 9-8s9 3.58 9 8-4.03 8-9 8z" fill="#57BE6A" opacity=".7"/>
+                <circle cx="12" cy="21.2" r="1.2" fill="#fff"/>
+                <circle cx="15.6" cy="21.2" r="1.2" fill="#fff"/>
+                <circle cx="19.2" cy="21.2" r="1.2" fill="#fff"/>
+              </svg>
+            </div>
+            <div class="mpc-hero-title">客户资料收集</div>
+            <div class="mpc-hero-desc">点击下方按钮，将小程序卡片发送给客户<br/>客户填写后资料自动同步到CRM</div>
+          </div>
+
+          <!-- 数据统计 -->
+          <div class="mpc-stats">
+            <div class="mpc-stat-item">
+              <div class="mpc-stat-num" style="color:#1677ff">{{ mpStats.filled }}</div>
+              <div class="mpc-stat-label">已收集</div>
+            </div>
+            <div class="mpc-stat-divider"></div>
+            <div class="mpc-stat-item">
+              <div class="mpc-stat-num" style="color:#52c41a">{{ mpStats.filled }}</div>
+              <div class="mpc-stat-label">已同步CRM</div>
+            </div>
+          </div>
+
+          <!-- 发送卡片按钮 -->
+          <div class="mpc-action">
+            <button class="mpc-send-btn" @click="handleMpCollectSend" :disabled="mpSendingCollect">
+              <svg v-if="!mpSendingCollect" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15.6 28.8c-4.97 0-9-3.58-9-8s4.03-8 9 8" fill="none"/><path d="M22 2L11 13"/><path d="M22 2L15 22L11 13L2 9L22 2Z"/></svg>
+              {{ mpSendingCollect ? '发送中...' : '发送资料填写卡片' }}
+            </button>
+            <div class="mpc-send-tip">点击后将向当前聊天对象发送小程序卡片</div>
+          </div>
+
+          <!-- 收集记录 -->
+          <div class="mpc-records">
+            <div class="mpc-records-title" style="display:flex;justify-content:space-between;align-items:center">
+              <span>收集记录 <span v-if="mpRecordsTotal > 0" style="font-size:10px;color:#909399">({{ mpRecordsTotal }})</span></span>
+              <span class="mpc-refresh-btn" @click="refreshMpRecords" :style="{ opacity: mpRecordsLoading ? 0.5 : 1 }" title="刷新">
+                <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="#909399" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg>
+              </span>
+            </div>
+            <div v-if="mpRecordsLoading && !mpRecords.length" style="text-align:center;padding:12px 0;font-size:11px;color:#909399">加载中...</div>
+            <template v-else-if="mpRecords.length">
+              <div v-for="rec in mpRecords" :key="rec.id" class="mpc-record-row" @click="toggleRecordExpand(rec.id)" style="cursor:pointer">
+                <div class="mpc-record-avatar">{{ (rec.name || '?')[0] }}</div>
+                <div class="mpc-record-info">
+                  <div class="mpc-record-name">{{ rec.name }}</div>
+                  <div class="mpc-record-phone">{{ rec.phone || '未填手机号' }}</div>
+                </div>
+                <div class="mpc-record-time">{{ rec.time }}</div>
+              </div>
+              <!-- 展开的详情 -->
+              <div v-for="rec in mpRecords" :key="'detail-'+rec.id" v-show="mpExpandedRecordId === rec.id" class="mpc-record-detail">
+                <div v-if="rec.gender" class="mpc-detail-row"><span class="mpc-detail-label">性别</span><span>{{ rec.gender }}</span></div>
+                <div v-if="rec.address" class="mpc-detail-row"><span class="mpc-detail-label">地区</span><span>{{ rec.address }}</span></div>
+              </div>
+              <!-- 翻页 -->
+              <div v-if="mpRecordsTotal > mpRecordsPageSize" style="display:flex;justify-content:space-between;align-items:center;padding:4px 0 2px;font-size:10px;color:#909399">
+                <span :style="{ opacity: mpRecordsPage > 1 ? 1 : 0.3, cursor: mpRecordsPage > 1 ? 'pointer' : 'default' }" @click="mpRecordsPage > 1 && (mpRecordsPage--, loadMpRecords())">‹ 上页</span>
+                <span>{{ mpRecordsPage }} / {{ mpRecordsTotalPages }}</span>
+                <span :style="{ opacity: mpRecordsHasMore ? 1 : 0.3, cursor: mpRecordsHasMore ? 'pointer' : 'default' }" @click="loadMoreMpRecords">下页 ›</span>
+              </div>
+            </template>
+            <div class="mpc-empty" v-else>
+              <svg viewBox="0 0 48 48" width="28" height="28" fill="none"><rect x="8" y="6" width="32" height="36" rx="4" stroke="#d0d5dd" stroke-width="2"/><path d="M16 16h16M16 24h10" stroke="#d0d5dd" stroke-width="2" stroke-linecap="round"/></svg>
+              <div>暂无收集记录</div>
+            </div>
+          </div>
+        </div>
+
         <!-- 通用已绑定但无匹配appId -->
         <div v-else-if="step === 'detail'" class="preview-detail">
           <div class="preview-user-bar">
@@ -1114,6 +1202,105 @@ watch(() => customerData.value?.starRating, (val) => {
 const newTagInput = ref('')
 const showTagInput = ref(false)
 const showMedicalPopup = ref(false)
+
+// ========== 小程序资料收集（转发按钮 & mp-collect预览） ==========
+const mpSendingCard = ref(false)
+const mpQuota = ref({ total: 0, used: 0, remaining: 0 })
+const mpStats = ref({ filled: 0 })
+const mpRecords = ref<any[]>([])
+const mpPackages = ref<any[]>([])
+const mpSendingCollect = ref(false)
+
+const handleRefreshCustomerData = () => {
+  ElMessage.success('已刷新最新客户信息')
+}
+
+const handleSendFormCard = async () => {
+  if (mpSendingCard.value) return
+  mpSendingCard.value = true
+  try {
+    await request.post('/wecom/h5/app/mp-generate-card', {})
+    ElMessage.success('卡片已生成（预览环境模拟发送成功）')
+    // 实际企微环境会通过 wx.invoke('sendChatMessage') 发送
+  } catch {
+    ElMessage.warning('生成卡片失败')
+  } finally {
+    mpSendingCard.value = false
+  }
+}
+
+const mpRecordsPage = ref(1)
+const mpRecordsTotal = ref(0)
+const mpRecordsPageSize = 3
+const mpRecordsLoading = ref(false)
+const mpExpandedRecordId = ref<string | null>(null)
+
+const toggleRecordExpand = (id: string) => {
+  mpExpandedRecordId.value = mpExpandedRecordId.value === id ? null : id
+}
+
+const loadMpCollectData = async () => {
+  try {
+    const [quotaRes, statsRes]: any[] = await Promise.all([
+      request.get('/wecom/h5/app/mp-phone-quota').catch(() => null),
+      request.get('/wecom/h5/app/mp-collect-stats').catch(() => null)
+    ])
+    const qd = quotaRes?.data || {}
+    mpQuota.value = { total: qd.total || 0, used: qd.used || 0, remaining: qd.remaining || 0 }
+    mpPackages.value = qd.packages || []
+    const sd = statsRes?.data || {}
+    mpStats.value = { filled: sd.filled || 0 }
+  } catch { /* ignore */ }
+  // 同时加载收集记录
+  await loadMpRecords()
+}
+
+const loadMpRecords = async () => {
+  mpRecordsLoading.value = true
+  try {
+    const res: any = await request.get('/mp/collect-records', {
+      params: { page: mpRecordsPage.value, pageSize: mpRecordsPageSize }
+    })
+    const rd = res?.data || {}
+    mpRecords.value = (rd.list || []).map((r: any) => ({
+      id: r.id,
+      name: r.name || '-',
+      phone: r.phone || '',
+      address: [r.province, r.city, r.district].filter(Boolean).join(' ') || '',
+      gender: r.gender || '',
+      time: r.createdAt ? new Date(r.createdAt).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : ''
+    }))
+    mpRecordsTotal.value = rd.total || 0
+  } catch { mpRecords.value = []; mpRecordsTotal.value = 0 }
+  mpRecordsLoading.value = false
+}
+
+const mpRecordsTotalPages = computed(() => Math.ceil(mpRecordsTotal.value / mpRecordsPageSize) || 1)
+const mpRecordsHasMore = computed(() => mpRecordsPage.value < mpRecordsTotalPages.value)
+
+const loadMoreMpRecords = async () => {
+  if (!mpRecordsHasMore.value || mpRecordsLoading.value) return
+  mpRecordsPage.value++
+  await loadMpRecords()
+}
+
+const refreshMpRecords = async () => {
+  mpRecordsPage.value = 1
+  await loadMpCollectData()
+}
+
+const handleMpCollectSend = async () => {
+  if (mpSendingCollect.value) return
+  mpSendingCollect.value = true
+  try {
+    await request.post('/wecom/h5/app/mp-generate-card', {})
+    ElMessage.success('小程序卡片已发送（预览环境模拟）')
+  } catch {
+    ElMessage.warning('发送失败')
+  } finally {
+    mpSendingCollect.value = false
+  }
+}
 
 // Medical history parsing
 const sidebarAllMedicalRecords = computed(() => {
@@ -2760,6 +2947,40 @@ onUnmounted(() => {
 /* 关联CRM按钮(浅色边框) */
 .link-crm-btn { font-size: 10px; padding: 2px 8px; border: 1px solid #c8e6c9; border-radius: 4px; background: #fff; color: #4caf50; cursor: pointer; white-space: nowrap; }
 .link-crm-btn:hover { background: #e8f5e9; border-color: #81c784; }
+/* ===== 客户资料收集(mpc) ===== */
+.mpc-hero { margin: 8px 10px; background: linear-gradient(135deg, #ecfdf5 0%, #f0fdf4 50%, #f0f9ff 100%); border: 1px solid #bbf7d0; border-radius: 12px; padding: 16px 12px; text-align: center; }
+.mpc-hero-icon { width: 48px; height: 48px; margin: 0 auto 8px; background: #fff; border-radius: 12px; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 8px rgba(87,190,106,0.15); }
+.mpc-hero-title { font-size: 14px; font-weight: 700; color: #1d2129; margin-bottom: 4px; }
+.mpc-hero-desc { font-size: 11px; color: #6b7280; line-height: 1.6; }
+.mpc-stats { display: flex; align-items: center; margin: 8px 10px; background: #fff; border-radius: 10px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
+.mpc-stat-item { flex: 1; text-align: center; padding: 10px 0; }
+.mpc-stat-num { font-size: 22px; font-weight: 700; line-height: 1.2; }
+.mpc-stat-label { font-size: 10px; color: #9ca3af; margin-top: 2px; }
+.mpc-stat-divider { width: 1px; height: 28px; background: #f0f0f0; flex-shrink: 0; }
+.mpc-action { padding: 4px 10px 8px; }
+.mpc-send-btn { width: 100%; height: 36px; border: none; border-radius: 8px; background: linear-gradient(135deg, #22c55e, #16a34a); color: #fff; font-size: 13px; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; transition: all 0.2s; box-shadow: 0 2px 8px rgba(34,197,94,0.3); }
+.mpc-send-btn:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(34,197,94,0.35); }
+.mpc-send-btn:active { transform: translateY(0); }
+.mpc-send-btn:disabled { opacity: 0.6; cursor: not-allowed; transform: none; box-shadow: none; }
+.mpc-send-tip { text-align: center; font-size: 10px; color: #9ca3af; margin-top: 6px; }
+.mpc-records { margin: 0 10px 8px; background: #fff; border-radius: 10px; padding: 10px 12px; box-shadow: 0 1px 4px rgba(0,0,0,0.04); }
+.mpc-records-title { font-size: 11px; font-weight: 600; color: #6b7280; margin-bottom: 8px; }
+.mpc-record-row { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid #f9fafb; }
+.mpc-record-row:last-child { border-bottom: none; }
+.mpc-record-avatar { width: 24px; height: 24px; border-radius: 50%; background: linear-gradient(135deg, #a7f3d0, #6ee7b7); color: #065f46; font-size: 11px; font-weight: 600; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.mpc-record-info { flex: 1; min-width: 0; }
+.mpc-record-name { font-size: 11px; font-weight: 600; color: #1f2937; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mpc-record-phone { font-size: 10px; color: #9ca3af; }
+.mpc-record-time { font-size: 9px; color: #d1d5db; white-space: nowrap; flex-shrink: 0; }
+.mpc-empty { text-align: center; padding: 20px 10px; color: #d1d5db; font-size: 11px; margin: 0 10px; background: #fff; border-radius: 10px; }
+.mpc-empty svg { margin-bottom: 6px; }
+/* 刷新按钮(内联小图标) */
+.btn-refresh-inline { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 50%; cursor: pointer; color: #909399; transition: all 0.2s; }
+.btn-refresh-inline:hover { color: #409eff; background: #ecf5ff; }
+/* 转发填写资料按钮(蓝色边框，与关联CRM按钮同级) */
+.btn-send-form-card { font-size: 10px; padding: 2px 8px; border: 1px solid #93c5fd; border-radius: 4px; background: #fff; color: #3b82f6; cursor: pointer; white-space: nowrap; transition: all 0.2s; }
+.btn-send-form-card:hover { background: #eff6ff; border-color: #60a5fa; }
+.btn-send-form-card:disabled { opacity: 0.5; cursor: not-allowed; }
 .s-upload-btn { border-color: #dcdfe6 !important; color: #606266 !important; background: transparent !important; }
 .s-upload-btn:hover { border-color: #409eff !important; color: #409eff !important; background: #ecf5ff !important; }
 /* 复制图标按钮 */

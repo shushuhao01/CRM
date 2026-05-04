@@ -33,15 +33,35 @@
         </van-cell-group>
       </div>
 
-      <!-- CRM信息 -->
+      <!-- CRM客户信息 -->
       <div v-if="customer.crm" class="card">
-        <div class="card-title">CRM信息</div>
+        <div class="card-title-row">
+          <div class="card-title" style="margin-bottom: 0">CRM客户信息</div>
+          <div class="card-title-actions">
+            <div class="btn-refresh" @click="handleRefresh" :class="{ spinning: refreshing }">
+              <van-icon name="replay" size="14" />
+            </div>
+            <div class="btn-send-form" @click="sendFormCard" v-if="!sendingCard">
+              <van-icon name="description" size="12" /> 转发填写资料
+            </div>
+            <div class="btn-send-form btn-send-form--loading" v-else>
+              <van-loading size="12" color="#3b82f6" /> 发送中
+            </div>
+          </div>
+        </div>
         <van-cell-group :border="false">
+          <van-cell title="姓名" :value="customer.crm.name || '-'" />
           <van-cell title="手机" :value="customer.crm.phone || '-'" />
-          <van-cell title="公司" :value="customer.crm.company || '-'" />
-          <van-cell title="意向金额" :value="customer.crm.amount ? `¥${customer.crm.amount}` : '-'" />
-          <van-cell title="跟进阶段" :value="customer.crm.stage || '-'" />
-          <van-cell title="最近跟进" :value="customer.crm.lastFollowUp || '-'" />
+          <van-cell title="邮箱" :value="customer.crm.email || '-'" v-if="customer.crm.email" />
+          <van-cell title="微信" :value="customer.crm.wechat || '-'" v-if="customer.crm.wechat" />
+          <van-cell v-if="customer.crm.height || customer.crm.age || customer.crm.weight" title="身高/年龄/体重" :value="formatHAW(customer.crm)" />
+          <van-cell title="性别" :value="customer.crm.gender || '-'" v-if="customer.crm.gender" />
+          <van-cell title="地址" :value="customer.crm.address || '-'" v-if="customer.crm.address" />
+          <van-cell title="医病史" :value="customer.crm.medicalHistory || '-'" v-if="customer.crm.medicalHistory" />
+          <van-cell title="公司" :value="customer.crm.company || '-'" v-if="customer.crm.company" />
+          <van-cell title="意向金额" :value="customer.crm.amount ? `¥${customer.crm.amount}` : '-'" v-if="customer.crm.amount" />
+          <van-cell title="跟进阶段" :value="customer.crm.stage || '-'" v-if="customer.crm.stage" />
+          <van-cell title="最近跟进" :value="customer.crm.lastFollowUp || '-'" v-if="customer.crm.lastFollowUp" />
         </van-cell-group>
       </div>
 
@@ -82,14 +102,24 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
+import { showToast, showSuccessToast } from 'vant'
 import { getCustomerDetail } from '@/api/customer'
+import { useAuthStore } from '@/stores/auth'
+import api from '@/api/index'
 
 const route = useRoute()
+const authStore = useAuthStore()
 const loading = ref(true)
+const refreshing = ref(false)
 const customer = ref<any>(null)
+const sendingCard = ref(false)
 
-async function loadDetail() {
-  loading.value = true
+async function loadDetail(isRefresh = false) {
+  if (isRefresh) {
+    refreshing.value = true
+  } else {
+    loading.value = true
+  }
   try {
     const id = route.params.id as string
     const { data } = await getCustomerDetail(id)
@@ -100,6 +130,66 @@ async function loadDetail() {
     console.error('[CustomerDetail] load error:', e)
   } finally {
     loading.value = false
+    refreshing.value = false
+  }
+}
+
+function handleRefresh() {
+  loadDetail(true)
+}
+
+function formatHAW(crm: any) {
+  const parts: string[] = []
+  if (crm.height) parts.push(`${crm.height}cm`)
+  if (crm.age) parts.push(`${crm.age}岁`)
+  if (crm.weight) parts.push(`${crm.weight}kg`)
+  return parts.join(' / ') || '-'
+}
+
+async function sendFormCard() {
+  if (sendingCard.value) return
+  sendingCard.value = true
+  try {
+    const tenantId = authStore.user?.tenantId || ''
+    const memberId = authStore.user?.id || ''
+    const ts = String(Math.floor(Date.now() / 1000))
+
+    const res: any = await api.post('/app/mp-generate-card', { tenantId, memberId, ts })
+    const cardData = res?.data?.data || res?.data || {}
+    const { sign, appId, cardTitle } = cardData
+
+    const path = `/pages/form/form?tenantId=${tenantId}&memberId=${memberId}&ts=${ts}&sign=${sign}`
+
+    if (typeof (window as any).wx !== 'undefined' && (window as any).wx.invoke) {
+      (window as any).wx.invoke('sendChatMessage', {
+        msgtype: 'miniprogram',
+        miniprogram: {
+          appid: appId,
+          title: cardTitle || '请填写您的个人资料',
+          imgUrl: cardData.cardCoverUrl || '',
+          page: path
+        }
+      }, (result: any) => {
+        if (result.err_msg === 'sendChatMessage:ok') {
+          showSuccessToast('已发送')
+          api.post('/app/mp-log-send', { tenantId, memberId, ts }).catch(() => {})
+        } else {
+          showToast('发送失败: ' + (result.err_msg || ''))
+        }
+      })
+    } else {
+      const link = `小程序路径: ${path}`
+      if (navigator.clipboard) {
+        await navigator.clipboard.writeText(link)
+        showSuccessToast('路径已复制')
+      } else {
+        showToast('非企微环境无法发送')
+      }
+    }
+  } catch (e: any) {
+    showToast(e?.response?.data?.message || '生成卡片失败')
+  } finally {
+    sendingCard.value = false
   }
 }
 
@@ -107,6 +197,61 @@ onMounted(loadDetail)
 </script>
 
 <style scoped>
+.card-title-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+.card-title-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.btn-refresh {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  color: #86909c;
+  cursor: pointer;
+  transition: all 0.2s;
+  background: #f5f7fa;
+}
+.btn-refresh:active {
+  background: #e8eaed;
+}
+.btn-refresh.spinning {
+  animation: spin-detail 0.8s linear;
+}
+@keyframes spin-detail {
+  from { transform: rotate(0); }
+  to { transform: rotate(360deg); }
+}
+.btn-send-form {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: #3b82f6;
+  border: 1px solid #3b82f6;
+  border-radius: 6px;
+  padding: 3px 10px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s;
+  background: #fff;
+}
+.btn-send-form:active {
+  background: #eff6ff;
+  transform: scale(0.97);
+}
+.btn-send-form--loading {
+  opacity: 0.7;
+  cursor: default;
+}
 .customer-profile {
   text-align: left;
 }

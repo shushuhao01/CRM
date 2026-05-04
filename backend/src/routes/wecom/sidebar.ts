@@ -715,5 +715,60 @@ router.post('/sidebar/link-crm-customer', authenticateSidebarToken, async (req: 
   }
 });
 
+// ==================== 小程序租户配置 ====================
+
+const MP_CONFIG_KEY = 'wecom_mp_tenant_config';
+
+/**
+ * 获取小程序租户配置
+ */
+router.get('/sidebar-mp-config', authenticateToken, async (_req: Request, res: Response) => {
+  try {
+    const tenantId = getCurrentTenantId();
+    if (!tenantId) return res.json({ success: true, data: {} });
+
+    const settingsRepo = AppDataSource.getRepository(TenantSettings);
+    const setting = await settingsRepo.findOne({ where: { tenantId, settingKey: MP_CONFIG_KEY } });
+    const data = setting ? setting.getValue() : {};
+    res.json({ success: true, data: data || {} });
+  } catch (error: any) {
+    log.error('[Wecom] Get mp tenant config error:', error.message);
+    res.status(500).json({ success: false, message: '获取小程序配置失败' });
+  }
+});
+
+/**
+ * 保存小程序租户配置
+ */
+router.put('/sidebar-mp-config', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const tenantId = getCurrentTenantId();
+    if (!tenantId) return res.status(400).json({ success: false, message: '无法获取租户信息' });
+
+    const { mpCardTitle, mpCardCoverUrl, mpPosterUrl } = req.body;
+
+    const settingsRepo = AppDataSource.getRepository(TenantSettings);
+    let setting = await settingsRepo.findOne({ where: { tenantId, settingKey: MP_CONFIG_KEY } });
+    if (!setting) {
+      setting = settingsRepo.create({
+        id: uuidv4(),
+        tenantId,
+        settingKey: MP_CONFIG_KEY,
+        settingType: 'json',
+        description: '小程序资料收集租户配置'
+      });
+    }
+
+    setting.settingType = 'json';
+    setting.setValue({ mpCardTitle: mpCardTitle || '', mpCardCoverUrl: mpCardCoverUrl || '', mpPosterUrl: mpPosterUrl || '' });
+    await settingsRepo.save(setting);
+
+    res.json({ success: true, message: '小程序配置已保存' });
+  } catch (error: any) {
+    log.error('[Wecom] Save mp tenant config error:', error.message);
+    res.status(500).json({ success: false, message: '保存小程序配置失败' });
+  }
+});
+
 export default router;
 

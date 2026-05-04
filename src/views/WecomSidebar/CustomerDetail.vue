@@ -104,8 +104,16 @@
 
         <!-- CRM客户信息 -->
         <div v-if="customerData.crmCustomer" class="info-card">
-          <div class="section-title">
-            <el-icon><User /></el-icon> CRM客户信息
+          <div class="section-title" style="display:flex;justify-content:space-between;align-items:center">
+            <span style="display:flex;align-items:center;gap:6px">
+              <el-icon><User /></el-icon> CRM客户信息
+              <el-button link type="primary" size="small" @click="refreshCustomerData" :loading="refreshingData" style="padding:2px 4px;font-size:12px">
+                <el-icon><Refresh /></el-icon>
+              </el-button>
+            </span>
+            <el-button size="small" type="primary" plain @click="handleSendFormCard" :loading="sendingFormCard" style="font-size:11px;padding:4px 10px">
+              📋 转发填写资料
+            </el-button>
           </div>
           <div class="info-rows">
             <div class="info-row">
@@ -151,6 +159,27 @@
         <div v-else class="info-card info-card-muted">
           <el-icon><InfoFilled /></el-icon>
           <span>该企微客户尚未关联CRM客户</span>
+        </div>
+
+        <!-- 资料收集状态 -->
+        <div class="info-card" v-if="collectStatus">
+          <div class="section-title">
+            📋 资料收集状态
+          </div>
+          <div v-if="collectStatus.status === 'filled'" class="collect-status-row">
+            <el-tag type="success" size="small">✅ 已收集</el-tag>
+            <span v-if="collectStatus.customer" style="font-size:12px;color:#606266;margin-left:8px">
+              {{ collectStatus.customer.name }} {{ collectStatus.customer.phone }}
+            </span>
+          </div>
+          <div v-else-if="collectStatus.status === 'pending'" class="collect-status-row">
+            <el-tag type="warning" size="small">⏳ 已发送待填写</el-tag>
+            <span style="font-size:12px;color:#909399;margin-left:8px">已发送卡片，等待客户填写</span>
+          </div>
+          <div v-else class="collect-status-row">
+            <el-tag type="info" size="small">未发送</el-tag>
+            <span style="font-size:12px;color:#909399;margin-left:8px">点击上方「转发填写资料」发送卡片</span>
+          </div>
         </div>
 
         <!-- 购买统计 -->
@@ -294,7 +323,7 @@
 defineOptions({ name: 'WecomSidebarDetail' })
 import { ref, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Loading, SwitchButton, User, EditPen, InfoFilled, DataAnalysis, List, TopRight } from '@element-plus/icons-vue'
+import { Loading, SwitchButton, User, EditPen, InfoFilled, DataAnalysis, List, TopRight, Refresh } from '@element-plus/icons-vue'
 import { getSidebarJsSdkConfig, sidebarBindAccount, sidebarVerifyBinding, getSidebarCustomerDetail, refreshSidebarToken } from '@/api/wecom'
 import { displaySensitiveInfo as displaySensitiveInfoNew } from '@/utils/sensitiveInfo'
 import { SensitiveInfoType } from '@/services/permission'
@@ -323,6 +352,9 @@ const boundUser = ref<any>(null)
 
 // 客户数据
 const customerData = ref<any>(null)
+const refreshingData = ref(false)
+const sendingFormCard = ref(false)
+const collectStatus = ref<any>(null)
 
 // 调试模式
 const debugCorpId = ref('')
@@ -488,6 +520,7 @@ async function checkBindingAndLoad() {
       }
       pageState.value = 'detail'
       await loadCustomerDetail()
+      loadCollectStatus()
       return
     }
 
@@ -499,6 +532,7 @@ async function checkBindingAndLoad() {
       sessionStorage.setItem('wecom_sidebar_token', res.token)
       pageState.value = 'detail'
       await loadCustomerDetail()
+      loadCollectStatus()
     } else {
       pageState.value = 'login'
     }
@@ -530,6 +564,7 @@ async function handleLogin() {
       ElMessage.success('绑定成功')
       pageState.value = 'detail'
       await loadCustomerDetail()
+      loadCollectStatus()
     } else {
       ElMessage.error('绑定失败')
     }
@@ -655,6 +690,104 @@ async function copyUsid(usid: string) {
     document.execCommand('copy')
     document.body.removeChild(input)
     ElMessage.success('USID已复制')
+  }
+}
+
+/** 刷新客户数据 */
+async function refreshCustomerData() {
+  refreshingData.value = true
+  try {
+    await loadCustomerDetail()
+    await loadCollectStatus()
+    ElMessage.success('已刷新最新信息')
+  } catch {
+    ElMessage.error('刷新失败')
+  } finally {
+    refreshingData.value = false
+  }
+}
+
+/** 加载当前企微客户的收集状态 */
+async function loadCollectStatus() {
+  if (!externalUserId.value || !sidebarToken.value) return
+  try {
+    let tenantId = '', memberId = ''
+    try {
+      const payload = JSON.parse(atob(sidebarToken.value.split('.')[1]))
+      tenantId = payload.tenantId || ''
+      memberId = payload.userId || payload.id || ''
+    } catch { return }
+    const { default: axios } = await import('axios')
+    const baseUrl = `${window.location.origin}/api/v1`
+    const res: any = await axios.get(`${baseUrl}/mp/collect-status`, {
+      params: { tenantId, memberId, externalUserId: externalUserId.value },
+      headers: { Authorization: `Bearer ${sidebarToken.value}` }
+    })
+    collectStatus.value = res?.data?.data || null
+  } catch { /* ignore */ }
+}
+
+/** 转发填写资料卡片 */
+async function handleSendFormCard() {
+  if (sendingFormCard.value) return
+  sendingFormCard.value = true
+  try {
+    // 解析 token 中的 tenantId 和 userId
+    let tenantId = '', memberId = ''
+    if (sidebarToken.value) {
+      try {
+        const payload = JSON.parse(atob(sidebarToken.value.split('.')[1]))
+        tenantId = payload.tenantId || ''
+        memberId = payload.userId || payload.id || ''
+      } catch { /* ignore */ }
+    }
+    const ts = Date.now().toString()
+    // 调用后端生成卡片签名
+    const { default: axios } = await import('axios')
+    const baseUrl = `${window.location.origin}/api/v1`
+    const res: any = await axios.post(`${baseUrl}/mp/generate-card`, { tenantId, memberId, ts }, {
+      headers: { Authorization: `Bearer ${sidebarToken.value}` }
+    })
+    const data = res?.data?.data || res?.data || {}
+    const path = data.path || `/pages/form/form?tenantId=${tenantId}&memberId=${memberId}&ts=${ts}&sign=${data.sign || ''}`
+
+    // 企微环境：通过JS-SDK发送小程序卡片
+    const wx = (window as any).wx
+    if (wx?.invoke) {
+      wx.invoke('sendChatMessage', {
+        msgtype: 'miniprogram',
+        miniprogram: {
+          appid: data.appId || '',
+          title: data.title || '请填写您的资料',
+          imgUrl: data.imageUrl || '',
+          page: path
+        }
+      }, (sendRes: any) => {
+        if (sendRes.err_msg === 'sendChatMessage:ok') {
+          ElMessage.success('卡片已发送')
+        } else {
+          ElMessage.info('已生成卡片链接，请手动分享')
+        }
+      })
+    } else {
+      ElMessage.success('已生成资料收集链接（非企微环境无法直接发送卡片）')
+    }
+
+    // 记录发送日志（含 externalUserId）
+    try {
+      const { default: axios } = await import('axios')
+      const baseUrl = `${window.location.origin}/api/v1`
+      await axios.post(`${baseUrl}/mp/log-send`, {
+        tenantId, memberId, ts, externalUserId: externalUserId.value
+      }, { headers: { Authorization: `Bearer ${sidebarToken.value}` } })
+    } catch { /* ignore */ }
+
+    // 刷新收集状态
+    await loadCollectStatus()
+  } catch (e: any) {
+    ElMessage.error(e?.message || '发送失败')
+  } finally {
+    sendingFormCard.value = false
   }
 }
 
@@ -915,6 +1048,13 @@ function getAfterSaleStatusText(status: string): string {
   margin-top: 10px;
   padding-top: 10px;
   border-top: 1px solid #f2f3f5;
+}
+
+// ==================== 收集状态 ====================
+.collect-status-row {
+  display: flex;
+  align-items: center;
+  padding: 4px 0;
 }
 
 // ==================== 统计 ====================

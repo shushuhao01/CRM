@@ -233,8 +233,28 @@ router.get('/customer/:id', authenticateSidebarToken, async (req: Request, res: 
             ? crmCustomer.phone.replace(/(\d{3})\d{4}(\d{4})/, '$1****$2')
             : crmCustomer.phone || '';
 
+          // 脱敏邮箱
+          const desensEmail = crmCustomer.email
+            ? crmCustomer.email.replace(/(.{2}).*(@.*)/, '$1***$2')
+            : '';
+          // 脱敏微信号
+          const desensWechat = crmCustomer.wechat
+            ? (crmCustomer.wechat.substring(0, 3) + '***')
+            : '';
+          // 拼接地址
+          const fullAddress = [crmCustomer.province, crmCustomer.city, crmCustomer.district, crmCustomer.street, crmCustomer.detailAddress].filter(Boolean).join('') || crmCustomer.address || '';
+
           result.crm = {
+            name: crmCustomer.name || '',
             phone: desensPhone,
+            email: desensEmail,
+            wechat: desensWechat,
+            gender: crmCustomer.gender || '',
+            age: crmCustomer.age || '',
+            height: crmCustomer.height ? Number(crmCustomer.height) : null,
+            weight: crmCustomer.weight ? Number(crmCustomer.weight) : null,
+            address: fullAddress,
+            medicalHistory: crmCustomer.medicalHistory || '',
             company: crmCustomer.company || '',
             amount: crmCustomer.totalAmount || 0,
             stage: crmCustomer.followStatus || '',
@@ -1154,6 +1174,227 @@ router.get('/notifications', authenticateSidebarToken, async (req: Request, res:
   } catch (error: any) {
     log.error('[H5 App] notifications error:', error.message);
     res.status(500).json({ success: false, message: '获取通知失败' });
+  }
+});
+
+// ==================== 小程序资料收集 ====================
+
+/**
+ * GET /h5/app/mp-phone-quota
+ * 查询手机号获取额度
+ */
+router.get('/mp-phone-quota', authenticateSidebarToken, async (req: Request, res: Response) => {
+  try {
+    const { tenantId } = getH5Context(req);
+    if (!tenantId) return res.json({ success: true, data: { total: 0, used: 0, remaining: 0, packages: [] } });
+
+    const { TenantSettings } = await import('../../entities/TenantSettings');
+    const settingsRepo = AppDataSource.getRepository(TenantSettings);
+    const quotaSetting = await settingsRepo.findOne({
+      where: { tenantId, settingKey: 'mp_phone_quota' }
+    });
+
+    let total = 0, used = 0;
+    if (quotaSetting) {
+      const q = typeof quotaSetting.settingValue === 'string'
+        ? JSON.parse(quotaSetting.settingValue)
+        : quotaSetting.settingValue;
+      total = q.total || 0;
+      used = q.used || 0;
+    }
+
+    // 获取可购买套餐
+    let packages: any[] = [];
+    try {
+      const { SystemConfig } = await import('../../entities/SystemConfig');
+      const configRepo = AppDataSource.getRepository(SystemConfig);
+      const pricingConfig = await configRepo.findOne({
+        where: { configKey: 'wecom_pricing_config', configGroup: 'wecom' }
+      });
+      if (pricingConfig) {
+        const config = typeof pricingConfig.configValue === 'string'
+          ? JSON.parse(pricingConfig.configValue) : pricingConfig.configValue;
+        if (config.mpPhonePackages) packages = config.mpPhonePackages;
+      }
+    } catch { /* ignore */ }
+
+    res.json({
+      success: true,
+      data: { total, used, remaining: Math.max(0, total - used), packages }
+    });
+  } catch (error: any) {
+    log.error('[H5 App] mp-phone-quota error:', error.message);
+    res.json({ success: true, data: { total: 0, used: 0, remaining: 0, packages: [] } });
+  }
+});
+
+/**
+ * POST /h5/app/mp-phone-quota-purchase
+ * 购买手机号额度
+ */
+router.post('/mp-phone-quota-purchase', authenticateSidebarToken, async (req: Request, res: Response) => {
+  try {
+    const { tenantId } = getH5Context(req);
+    const { packageId, packageName, quota, price } = req.body;
+
+    if (!tenantId || !quota || quota <= 0) {
+      return res.status(400).json({ success: false, message: '参数无效' });
+    }
+
+    const { TenantSettings } = await import('../../entities/TenantSettings');
+    const settingsRepo = AppDataSource.getRepository(TenantSettings);
+    const quotaSetting = await settingsRepo.findOne({
+      where: { tenantId, settingKey: 'mp_phone_quota' }
+    });
+
+    const currentQuota = quotaSetting
+      ? (typeof quotaSetting.settingValue === 'string' ? JSON.parse(quotaSetting.settingValue) : quotaSetting.settingValue)
+      : { total: 0, used: 0, purchases: [] as any[] };
+
+    currentQuota.total = (currentQuota.total || 0) + quota;
+    currentQuota.purchases = currentQuota.purchases || [];
+    currentQuota.purchases.push({
+      packageId, packageName: packageName || `${quota}次额度包`,
+      quota, price: price || 0, purchaseTime: new Date().toISOString()
+    });
+
+    if (quotaSetting) {
+      quotaSetting.settingValue = typeof quotaSetting.settingValue === 'string'
+        ? JSON.stringify(currentQuota) : currentQuota;
+      await settingsRepo.save(quotaSetting);
+    } else {
+      await settingsRepo.save(settingsRepo.create({
+        tenantId, settingKey: 'mp_phone_quota', settingType: 'json',
+        settingValue: JSON.stringify(currentQuota), settingGroup: 'miniprogram'
+      } as any));
+    }
+
+    log.info(`[H5 App] mp-phone-quota purchase: tenant=${tenantId}, quota=${quota}`);
+    res.json({
+      success: true,
+      message: `成功购买${quota}次手机号获取额度`,
+      data: { total: currentQuota.total, used: currentQuota.used || 0, remaining: currentQuota.total - (currentQuota.used || 0) }
+    });
+  } catch (error: any) {
+    log.error('[H5 App] mp-phone-quota-purchase error:', error.message);
+    res.status(500).json({ success: false, message: '购买失败' });
+  }
+});
+
+/**
+ * POST /h5/app/mp-generate-card
+ * 生成小程序卡片
+ */
+router.post('/mp-generate-card', authenticateSidebarToken, async (req: Request, res: Response) => {
+  try {
+    const { tenantId, memberId, ts } = req.body;
+    if (!tenantId || !memberId || !ts) {
+      return res.status(400).json({ success: false, message: '缺少必要参数' });
+    }
+
+    const crypto = await import('crypto');
+    const secret = process.env.MP_FORM_SECRET || 'mp_default_secret_key_2026';
+    const sign = crypto.createHash('md5').update(tenantId + memberId + ts + secret).digest('hex');
+
+    let appId = process.env.MP_APP_ID || 'wxXXXXXXXXXXXX';
+    let cardTitle = '请填写您的个人资料';
+    let cardCoverUrl = '';
+
+    try {
+      const { TenantSettings } = await import('../../entities/TenantSettings');
+      const settingsRepo = AppDataSource.getRepository(TenantSettings);
+      const mpSetting = await settingsRepo.findOne({ where: { tenantId, settingKey: 'miniprogram_config' } });
+      if (mpSetting) {
+        const config = typeof mpSetting.settingValue === 'string' ? JSON.parse(mpSetting.settingValue) : mpSetting.settingValue;
+        if (config.cardTitle) cardTitle = config.cardTitle;
+        if (config.cardCoverUrl) cardCoverUrl = config.cardCoverUrl;
+        if (config.appId) appId = config.appId;
+      }
+    } catch { /* ignore */ }
+
+    res.json({ success: true, data: { sign, appId, cardTitle, cardCoverUrl } });
+  } catch (error: any) {
+    log.error('[H5 App] mp-generate-card error:', error.message);
+    res.status(500).json({ success: false, message: '生成卡片失败' });
+  }
+});
+
+/**
+ * POST /h5/app/mp-log-send
+ * 记录发送日志
+ */
+router.post('/mp-log-send', authenticateSidebarToken, async (req: Request, res: Response) => {
+  const { tenantId } = getH5Context(req);
+  log.info(`[H5 App] mp-log-send: tenant=${tenantId}`);
+  res.json({ success: true });
+});
+
+/**
+ * GET /h5/app/mp-collect-stats
+ * 收集统计
+ */
+router.get('/mp-collect-stats', authenticateSidebarToken, async (req: Request, res: Response) => {
+  try {
+    const { tenantId, userId } = getH5Context(req);
+    if (!tenantId) return res.json({ success: true, data: { filled: 0 } });
+
+    const { Customer } = await import('../../entities/Customer');
+    const customerRepo = AppDataSource.getRepository(Customer);
+    const totalFilled = await customerRepo.count({
+      where: { tenantId, salesPersonId: userId, source: 'miniprogram' as any }
+    });
+
+    res.json({ success: true, data: { filled: totalFilled } });
+  } catch {
+    res.json({ success: true, data: { filled: 0 } });
+  }
+});
+
+/**
+ * GET /h5/app/mp-collect-records
+ * 收集记录列表（带脱敏、分页）
+ */
+router.get('/mp-collect-records', authenticateSidebarToken, async (req: Request, res: Response) => {
+  try {
+    const { tenantId, userId } = getH5Context(req);
+    if (!tenantId) return res.json({ success: true, data: { list: [], total: 0 } });
+
+    const { page = '1', pageSize = '3' } = req.query as any;
+    const take = Math.min(parseInt(pageSize, 10) || 3, 20);
+    const skip = (Math.max(parseInt(page, 10) || 1, 1) - 1) * take;
+
+    const { Customer } = await import('../../entities/Customer');
+    const customerRepo = AppDataSource.getRepository(Customer);
+
+    const [list, total] = await customerRepo.findAndCount({
+      where: { tenantId, salesPersonId: userId, source: 'miniprogram' as any },
+      order: { createdAt: 'DESC' },
+      take,
+      skip
+    });
+
+    const maskedList = list.map((c: any) => ({
+      id: c.id,
+      name: c.name ? (c.name[0] + '**') : '-',
+      phone: c.phone ? c.phone.replace(/(\d{3})\d{4}(\d{4})/, '$1****$2') : '',
+      gender: c.gender || '',
+      province: c.province || '',
+      city: c.city || '',
+      district: c.district || '',
+      street: c.street || '',
+      detailAddress: c.detailAddress ? (c.detailAddress.length > 6 ? c.detailAddress.substring(0, 6) + '***' : c.detailAddress) : '',
+      email: c.email ? c.email.replace(/(.{2}).*(@.*)/, '$1***$2') : '',
+      wechat: c.wechat ? (c.wechat.substring(0, 3) + '***') : '',
+      age: c.age || '',
+      birthday: c.birthday || '',
+      remark: c.remark ? (c.remark.length > 20 ? c.remark.substring(0, 20) + '...' : c.remark) : '',
+      createdAt: c.createdAt
+    }));
+
+    res.json({ success: true, data: { list: maskedList, total, page: parseInt(page, 10), pageSize: take } });
+  } catch (error: any) {
+    log.error('[H5 App] mp-collect-records error:', error.message);
+    res.json({ success: true, data: { list: [], total: 0 } });
   }
 });
 

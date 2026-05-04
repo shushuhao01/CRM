@@ -221,7 +221,124 @@
           </div>
         </el-tab-pane>
 
-        <!-- Tab4: 通知模板 -->
+        <!-- Tab4: 小程序配置 -->
+        <el-tab-pane label="小程序配置" name="miniprogram">
+          <el-alert type="info" :closable="false" style="margin-bottom: 16px">
+            <template #title><strong>📱 小程序配置说明</strong></template>
+            <div style="font-size: 12px; line-height: 1.8; margin-top: 4px">
+              <p>配置客户自助填写资料的微信小程序相关信息。配置好后，CRM侧边栏的「客户资料收集」应用即可向客户发送小程序卡片。</p>
+              <p>需在<a href="https://mp.weixin.qq.com" target="_blank" style="color:#409eff">微信公众平台</a>注册小程序并获取AppID和AppSecret。</p>
+            </div>
+          </el-alert>
+          <el-form :model="mpConfig" label-width="140px" style="max-width: 700px">
+            <el-divider content-position="left">小程序凭证</el-divider>
+            <el-form-item label="小程序 AppID">
+              <div style="display: flex; gap: 8px; width: 100%">
+                <el-input v-model="mpConfig.mpAppId" placeholder="wx..." />
+                <el-button size="small" @click="copyText(mpConfig.mpAppId)">复制</el-button>
+              </div>
+            </el-form-item>
+            <el-form-item label="小程序 AppSecret">
+              <el-input v-model="mpConfig.mpAppSecret" placeholder="小程序Secret" show-password />
+            </el-form-item>
+            <el-form-item label="表单签名密钥">
+              <div style="display: flex; gap: 8px; width: 100%">
+                <el-input v-model="mpConfig.mpFormSecret" placeholder="用于生成签名防篡改" show-password />
+                <el-button size="small" @click="mpConfig.mpFormSecret = generateRandom(32)">随机生成</el-button>
+              </div>
+              <div style="font-size: 11px; color: #909399; margin-top: 4px">
+                签名公式: sign = MD5(tenantId + memberId + ts + SECRET)
+              </div>
+            </el-form-item>
+
+            <el-divider content-position="left">卡片与链接配置</el-divider>
+            <el-form-item label="卡片标题">
+              <el-input v-model="mpConfig.mpCardTitle" placeholder="如：请填写您的个人资料" />
+              <div style="font-size: 11px; color: #909399; margin-top: 4px">
+                默认值：「请填写您的个人资料」，各租户可在侧边栏中覆盖
+              </div>
+            </el-form-item>
+            <el-form-item label="卡片封面图">
+              <div style="display:flex;gap:8px;width:100%;align-items:center">
+                <el-input v-model="mpConfig.mpCardCoverUrl" placeholder="https://... 或点击上传" style="flex:1" />
+                <el-button type="primary" size="small" @click="triggerImageUpload('cover', 500, 400)">📤 上传图片</el-button>
+                <div v-if="mpConfig.mpCardCoverUrl" style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+                  <el-image :src="mpConfig.mpCardCoverUrl" :preview-src-list="[mpConfig.mpCardCoverUrl]" fit="contain" style="width:64px;height:48px;border-radius:6px;border:1px solid #ebeef5;cursor:pointer" preview-teleported />
+                  <el-button type="danger" link size="small" @click="handleDeleteMpFile('mpCardCoverUrl')">✕</el-button>
+                </div>
+              </div>
+              <div style="font-size:11px;color:#909399;margin-top:4px">推荐尺寸 500×400（5:4），用于小程序分享卡片封面。上传后自动裁剪到合适尺寸</div>
+            </el-form-item>
+            <el-form-item label="海报模板">
+              <div style="display:flex;gap:8px;width:100%;align-items:center">
+                <el-input v-model="mpConfig.mpPosterUrl" placeholder="https://... 或点击上传" style="flex:1" />
+                <el-button type="primary" size="small" @click="triggerImageUpload('poster', 750, 1334)">📤 上传图片</el-button>
+                <div v-if="mpConfig.mpPosterUrl" style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+                  <el-image :src="mpConfig.mpPosterUrl" :preview-src-list="[mpConfig.mpPosterUrl]" fit="contain" style="width:36px;height:64px;border-radius:6px;border:1px solid #ebeef5;cursor:pointer" preview-teleported />
+                  <el-button type="danger" link size="small" @click="handleDeleteMpFile('mpPosterUrl')">✕</el-button>
+                </div>
+              </div>
+              <div style="font-size:11px;color:#909399;margin-top:4px">推荐尺寸 750×1334，用于生成含小程序码的推广海报。各租户可在侧边栏覆盖</div>
+            </el-form-item>
+            <el-form-item label="链接有效期(天)">
+              <el-input-number v-model="mpConfig.mpLinkExpireDays" :min="1" :max="365" />
+              <span style="margin-left: 8px; font-size: 12px; color: #909399">默认7天</span>
+            </el-form-item>
+
+            <el-form-item>
+              <el-button v-permission="'wecom-management:suite:edit'" type="primary" @click="handleSaveMpConfig" :loading="mpSaving">保存小程序配置</el-button>
+              <el-button @click="handleTestMpConnection" :loading="mpTesting" :disabled="!mpConfig.mpAppId">🔗 测试连接</el-button>
+            </el-form-item>
+          </el-form>
+
+          <!-- 小程序卡片预览 (仿微信转发卡片样式) -->
+          <el-divider content-position="left">小程序卡片预览</el-divider>
+          <div style="margin-bottom:24px;max-width:360px">
+            <div style="background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 1px 6px rgba(0,0,0,0.1);border:1px solid #e8e8e8">
+              <div style="padding:10px 12px 6px">
+                <div style="font-size:14px;color:#303133;line-height:1.5;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">{{ mpConfig.mpCardTitle || '请填写您的个人资料' }}</div>
+              </div>
+              <div style="position:relative;width:100%;height:0;padding-bottom:80%;overflow:hidden;background:#f5f7fa">
+                <img v-if="mpConfig.mpCardCoverUrl" :src="mpConfig.mpCardCoverUrl" style="position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover" />
+                <div v-else style="position:absolute;top:0;left:0;width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:#c0c4cc;font-size:13px">未设置封面图</div>
+              </div>
+              <div style="padding:6px 12px;display:flex;align-items:center;gap:4px;border-top:1px solid #f0f0f0">
+                <span style="font-size:12px;color:#b0b0b0">🔗</span>
+                <span style="font-size:11px;color:#909399">小程序</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 海报预览 (含小程序码) -->
+          <el-divider content-position="left">海报预览</el-divider>
+          <div style="margin-bottom:24px;max-width:360px">
+            <div v-if="mpConfig.mpPosterUrl" style="background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,0.08);border:1px solid #ebeef5">
+              <div style="position:relative;width:100%">
+                <img :src="mpConfig.mpPosterUrl" style="width:100%;display:block;object-fit:contain" />
+              </div>
+              <div style="padding:16px;text-align:center;border-top:1px solid #f0f0f0">
+                <div v-if="adminWxacodeBase64" style="margin-bottom:12px">
+                  <img :src="adminWxacodeBase64" style="width:120px;height:120px;border-radius:8px" />
+                  <div style="font-size:11px;color:#909399;margin-top:4px">长按识别小程序码</div>
+                </div>
+                <div v-else style="margin-bottom:12px">
+                  <div style="width:120px;height:120px;margin:0 auto;border:2px dashed #dcdfe6;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#c0c4cc;font-size:12px;line-height:1.4;text-align:center;flex-direction:column">
+                    <span>暂无小程序码</span>
+                    <span style="font-size:11px;margin-top:2px">请先配置AppID</span>
+                  </div>
+                </div>
+                <el-button size="small" type="primary" @click="handleFetchAdminWxacode" :loading="adminWxacodeLoading" style="margin-right:8px">生成小程序码</el-button>
+                <el-button size="small" @click="handleDownloadAdminPoster" :disabled="!mpConfig.mpPosterUrl">下载海报</el-button>
+              </div>
+            </div>
+            <div v-else style="padding:32px;text-align:center;color:#c0c4cc;background:#fafafa;border-radius:12px;border:1px dashed #dcdfe6">
+              <div style="font-size:32px;margin-bottom:8px">🖼️</div>
+              <div style="font-size:13px">未设置海报模板，请上传海报图片</div>
+            </div>
+          </div>
+        </el-tab-pane>
+
+        <!-- Tab5: 通知模板 -->
         <el-tab-pane label="通知模板" name="templates">
           <el-alert type="info" :closable="false" style="margin-bottom: 16px">
             <template #title><strong>💡 通知模板说明</strong></template>
@@ -378,6 +495,27 @@
         <el-button type="primary" @click="handleSaveTemplate" :loading="templateSaving">保存</el-button>
       </template>
     </el-dialog>
+
+    <!-- 图片上传隐藏input -->
+    <input ref="mpImageFileInput" type="file" accept="image/png,image/jpeg,image/jpg,image/webp" style="display:none" @change="handleMpImageSelected" />
+
+    <!-- 图片裁剪弹窗 -->
+    <el-dialog v-model="cropDialogVisible" title="裁剪图片" width="560px" :close-on-click-modal="false" destroy-on-close>
+      <div style="text-align:center">
+        <div style="font-size:13px;color:#606266;margin-bottom:12px">
+          目标尺寸: <strong>{{ cropTargetW }} × {{ cropTargetH }}</strong> px
+          <span v-if="cropOriginalSize" style="margin-left:12px;color:#909399">原图: {{ cropOriginalSize }}</span>
+        </div>
+        <div style="position:relative;display:inline-block;background:#f5f7fa;border-radius:8px;overflow:hidden;max-height:400px">
+          <canvas ref="cropCanvas" style="max-width:100%;max-height:380px;cursor:crosshair" @mousedown="onCropMouseDown" @mousemove="onCropMouseMove" @mouseup="onCropMouseUp" />
+        </div>
+        <div style="margin-top:8px;font-size:12px;color:#909399">在图片上拖拽选择裁剪区域，或直接确认使用自动居中裁剪</div>
+      </div>
+      <template #footer>
+        <el-button @click="cropDialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="handleCropConfirm" :loading="cropUploading">确认裁剪并上传</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -388,7 +526,8 @@ import {
   getSuiteConfig, saveSuiteConfig, testSuiteConnection, generateAuthLink,
   getSuiteAuths, cancelSuiteAuth, bindSuiteAuthTenant, getSuiteCallbackLogs,
   getNotificationTemplates, createNotificationTemplate, updateNotificationTemplate,
-  deleteNotificationTemplate, toggleNotificationTemplate
+  deleteNotificationTemplate, toggleNotificationTemplate,
+  getMpConfig, saveMpConfig
 } from '@/api/wecomManagement'
 
 const activeTab = ref('config')
@@ -668,11 +807,298 @@ const handleToggleTemplate = async (row: any) => {
   }
 }
 
+// ==================== 小程序配置 ====================
+
+const mpSaving = ref(false)
+const mpConfig = ref<any>({
+  mpAppId: '', mpAppSecret: '', mpFormSecret: '',
+  mpCardTitle: '', mpCardCoverUrl: '', mpPosterUrl: '',
+  mpLinkExpireDays: 7
+})
+
+const fetchMpConfig = async () => {
+  try {
+    const res: any = await getMpConfig()
+    const data = res?.data || res
+    if (data && typeof data === 'object') Object.assign(mpConfig.value, data)
+  } catch { /* ignore */ }
+}
+
+const handleSaveMpConfig = async () => {
+  mpSaving.value = true
+  try {
+    await saveMpConfig(mpConfig.value)
+    ElMessage.success('小程序配置已保存')
+    fetchMpConfig()
+  } catch (e: any) { ElMessage.error(e?.message || '保存失败') }
+  mpSaving.value = false
+}
+
+// ==================== 小程序连接测试 ====================
+const mpTesting = ref(false)
+const handleTestMpConnection = async () => {
+  if (!mpConfig.value.mpAppId) { ElMessage.warning('请先填写小程序AppID'); return }
+  mpTesting.value = true
+  try {
+    const { default: request } = await import('@/api/request')
+    const res: any = await request.get('/wecom-management/suite/mp-test-connection')
+    const data = res?.data || res
+    if (data?.success) {
+      ElMessage.success(`连接成功！access_token已获取 (耗时${data.latency || '-'}ms)`)
+    } else {
+      ElMessage.error(data?.message || '连接失败')
+    }
+  } catch (e: any) {
+    const msg = e?.response?.data?.message || e?.message || '连接测试失败'
+    ElMessage.error(msg)
+  } finally { mpTesting.value = false }
+}
+
+// ==================== 小程序码 & 海报下载 ====================
+const adminWxacodeBase64 = ref('')
+const adminWxacodeLoading = ref(false)
+
+const handleFetchAdminWxacode = async () => {
+  adminWxacodeLoading.value = true
+  try {
+    const { default: request } = await import('@/api/request')
+    const res: any = await request.get('/wecom-management/suite/wxacode', { params: { page: 'pages/form/form', scene: 'admin_preview' } })
+    const data = res?.data || res
+    if (data?.wxacodeBase64) {
+      adminWxacodeBase64.value = data.wxacodeBase64
+      ElMessage.success('小程序码生成成功')
+    } else {
+      ElMessage.warning('生成失败，请检查小程序配置')
+    }
+  } catch (e: any) {
+    const msg = e?.response?.data?.message || e?.message || '生成失败'
+    if (e?.response?.data?.code === 'MP_NOT_CONFIGURED') {
+      ElMessage.warning('暂无关联小程序，请先配置AppID和AppSecret')
+    } else {
+      ElMessage.error(msg)
+    }
+  }
+  adminWxacodeLoading.value = false
+}
+
+const handleDownloadAdminPoster = async () => {
+  if (!mpConfig.value.mpPosterUrl) { ElMessage.warning('请先上传海报模板'); return }
+  try {
+    const canvas = document.createElement('canvas')
+    const posterImg = new Image()
+    posterImg.crossOrigin = 'anonymous'
+    posterImg.onload = () => {
+      canvas.width = posterImg.width
+      canvas.height = posterImg.height + 200
+      const ctx = canvas.getContext('2d')!
+      ctx.fillStyle = '#ffffff'
+      ctx.fillRect(0, 0, canvas.width, canvas.height)
+      ctx.drawImage(posterImg, 0, 0)
+      if (adminWxacodeBase64.value) {
+        const qrImg = new Image()
+        qrImg.onload = () => {
+          const qrSize = 160
+          const qrX = (canvas.width - qrSize) / 2
+          const qrY = posterImg.height + 20
+          ctx.drawImage(qrImg, qrX, qrY, qrSize, qrSize)
+          const link = document.createElement('a')
+          link.download = `miniprogram_poster_${Date.now()}.png`
+          link.href = canvas.toDataURL('image/png')
+          link.click()
+          ElMessage.success('海报已下载')
+        }
+        qrImg.src = adminWxacodeBase64.value
+      } else {
+        const link = document.createElement('a')
+        link.download = `miniprogram_poster_${Date.now()}.png`
+        link.href = canvas.toDataURL('image/png')
+        link.click()
+        ElMessage.success('海报已下载（无小程序码）')
+      }
+    }
+    posterImg.onerror = () => ElMessage.error('海报图片加载失败')
+    posterImg.src = mpConfig.value.mpPosterUrl
+  } catch (e: any) { ElMessage.error('下载失败') }
+}
+
+const handleDeleteMpFile = async (field: 'mpCardCoverUrl' | 'mpPosterUrl') => {
+  const url = mpConfig.value[field]
+  if (!url) return
+  try {
+    const { default: request } = await import('@/api/request')
+    await request.delete('/mp/upload-file', { params: { url } })
+  } catch { /* ignore, still clear the field */ }
+  mpConfig.value[field] = ''
+  ElMessage.success('已删除')
+}
+
+// ==================== 图片上传 & 裁剪 ====================
+const mpImageFileInput = ref<HTMLInputElement>()
+const cropDialogVisible = ref(false)
+const cropCanvas = ref<HTMLCanvasElement>()
+const cropUploading = ref(false)
+const cropTargetW = ref(500)
+const cropTargetH = ref(400)
+const cropOriginalSize = ref('')
+const cropFieldKey = ref<'cover' | 'poster'>('cover')
+let _cropImage: HTMLImageElement | null = null
+let _cropSelection = { x: 0, y: 0, w: 0, h: 0, dragging: false, startX: 0, startY: 0 }
+
+const triggerImageUpload = (field: 'cover' | 'poster', w: number, h: number) => {
+  cropFieldKey.value = field
+  cropTargetW.value = w
+  cropTargetH.value = h
+  mpImageFileInput.value?.click()
+}
+
+const handleMpImageSelected = (e: Event) => {
+  const input = e.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+  input.value = ''
+  if (file.size > 10 * 1024 * 1024) { ElMessage.error('图片不能超过10MB'); return }
+
+  const img = new Image()
+  img.onload = () => {
+    _cropImage = img
+    cropOriginalSize.value = `${img.width}×${img.height}`
+    _cropSelection = { x: 0, y: 0, w: 0, h: 0, dragging: false, startX: 0, startY: 0 }
+    cropDialogVisible.value = true
+    nextTick(() => drawCropPreview())
+  }
+  img.onerror = () => ElMessage.error('图片加载失败')
+  img.src = URL.createObjectURL(file)
+}
+
+const drawCropPreview = () => {
+  const canvas = cropCanvas.value
+  if (!canvas || !_cropImage) return
+  const img = _cropImage
+  const scale = Math.min(500 / img.width, 380 / img.height, 1)
+  canvas.width = Math.round(img.width * scale)
+  canvas.height = Math.round(img.height * scale)
+  const ctx = canvas.getContext('2d')!
+  ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
+
+  // Draw auto-crop guide (centered)
+  const sel = _cropSelection
+  if (sel.w > 2 && sel.h > 2) {
+    // User selection: dim outside, highlight inside
+    ctx.fillStyle = 'rgba(0,0,0,0.4)'
+    ctx.fillRect(0, 0, canvas.width, canvas.height)
+    ctx.clearRect(sel.x, sel.y, sel.w, sel.h)
+    ctx.drawImage(img, sel.x / scale, sel.y / scale, sel.w / scale, sel.h / scale, sel.x, sel.y, sel.w, sel.h)
+    ctx.strokeStyle = '#409eff'
+    ctx.lineWidth = 2
+    ctx.setLineDash([4, 3])
+    ctx.strokeRect(sel.x, sel.y, sel.w, sel.h)
+    ctx.setLineDash([])
+  } else {
+    // Show auto center-crop guide
+    const tw = cropTargetW.value, th = cropTargetH.value
+    const ratio = tw / th
+    let gw: number, gh: number
+    if (canvas.width / canvas.height > ratio) {
+      gh = canvas.height
+      gw = gh * ratio
+    } else {
+      gw = canvas.width
+      gh = gw / ratio
+    }
+    const gx = (canvas.width - gw) / 2, gy = (canvas.height - gh) / 2
+    ctx.fillStyle = 'rgba(0,0,0,0.25)'
+    ctx.fillRect(0, 0, canvas.width, gy)
+    ctx.fillRect(0, gy + gh, canvas.width, canvas.height - gy - gh)
+    ctx.fillRect(0, gy, gx, gh)
+    ctx.fillRect(gx + gw, gy, canvas.width - gx - gw, gh)
+    ctx.strokeStyle = '#409eff'
+    ctx.lineWidth = 1.5
+    ctx.setLineDash([6, 4])
+    ctx.strokeRect(gx, gy, gw, gh)
+    ctx.setLineDash([])
+  }
+}
+
+const onCropMouseDown = (e: MouseEvent) => {
+  const rect = cropCanvas.value!.getBoundingClientRect()
+  _cropSelection = { x: 0, y: 0, w: 0, h: 0, dragging: true, startX: e.clientX - rect.left, startY: e.clientY - rect.top }
+}
+const onCropMouseMove = (e: MouseEvent) => {
+  if (!_cropSelection.dragging) return
+  const rect = cropCanvas.value!.getBoundingClientRect()
+  const cx = e.clientX - rect.left, cy = e.clientY - rect.top
+  const sx = _cropSelection.startX, sy = _cropSelection.startY
+  // Enforce aspect ratio
+  const ratio = cropTargetW.value / cropTargetH.value
+  let w = cx - sx, h = cy - sy
+  if (Math.abs(w) / ratio > Math.abs(h)) { h = Math.sign(h || 1) * Math.abs(w) / ratio }
+  else { w = Math.sign(w || 1) * Math.abs(h) * ratio }
+  _cropSelection.x = w > 0 ? sx : sx + w
+  _cropSelection.y = h > 0 ? sy : sy + h
+  _cropSelection.w = Math.abs(w)
+  _cropSelection.h = Math.abs(h)
+  drawCropPreview()
+}
+const onCropMouseUp = () => { _cropSelection.dragging = false }
+
+const handleCropConfirm = async () => {
+  if (!_cropImage) return
+  cropUploading.value = true
+  try {
+    const img = _cropImage
+    const scale = Math.min(500 / img.width, 380 / img.height, 1)
+    const tw = cropTargetW.value, th = cropTargetH.value
+    const sel = _cropSelection
+
+    // Determine source rect in original image coords
+    let sx: number, sy: number, sw: number, sh: number
+    if (sel.w > 10 && sel.h > 10) {
+      sx = sel.x / scale; sy = sel.y / scale; sw = sel.w / scale; sh = sel.h / scale
+    } else {
+      // Auto center-crop
+      const ratio = tw / th
+      if (img.width / img.height > ratio) {
+        sh = img.height; sw = sh * ratio
+      } else {
+        sw = img.width; sh = sw / ratio
+      }
+      sx = (img.width - sw) / 2; sy = (img.height - sh) / 2
+    }
+
+    // Draw cropped result
+    const outCanvas = document.createElement('canvas')
+    outCanvas.width = tw; outCanvas.height = th
+    const ctx = outCanvas.getContext('2d')!
+    ctx.drawImage(img, sx, sy, sw, sh, 0, 0, tw, th)
+
+    // Convert to blob
+    const blob: Blob = await new Promise(resolve => outCanvas.toBlob(b => resolve(b!), 'image/jpeg', 0.9))
+    const formData = new FormData()
+    formData.append('file', blob, `mp_${cropFieldKey.value}_${Date.now()}.jpg`)
+
+    // Upload via admin API
+    const { adminApi } = await import('@/api/admin')
+    const res: any = await adminApi.uploadFile(formData)
+    const url = res?.data?.url || res?.url
+    if (!url) throw new Error('上传失败: 未获取到URL')
+
+    if (cropFieldKey.value === 'cover') { mpConfig.value.mpCardCoverUrl = url }
+    else { mpConfig.value.mpPosterUrl = url }
+
+    cropDialogVisible.value = false
+    ElMessage.success('图片上传成功')
+  } catch (e: any) {
+    ElMessage.error(e?.message || '上传失败')
+  }
+  cropUploading.value = false
+}
+
 onMounted(() => {
   fetchConfig()
   fetchAuths()
   fetchCallbackLogs()
   fetchTemplates()
+  fetchMpConfig()
 })
 </script>
 

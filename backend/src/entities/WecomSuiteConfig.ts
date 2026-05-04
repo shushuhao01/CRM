@@ -51,6 +51,21 @@ export class WecomSuiteConfig {
   @Column({ name: 'is_enabled', type: 'boolean', default: false })
   isEnabled: boolean;
 
+  @Column({ name: 'mp_app_id', type: 'varchar', length: 50, nullable: true, comment: '关联的微信小程序AppID' })
+  mpAppId: string;
+
+  @Column({ name: 'mp_app_secret', type: 'varchar', length: 255, nullable: true, comment: '微信小程序AppSecret(加密存储)' })
+  mpAppSecret: string;
+
+  @Column({ name: 'mp_form_secret', type: 'varchar', length: 100, nullable: true, comment: '表单签名密钥' })
+  mpFormSecret: string;
+
+  @Column({ name: 'mp_enabled', type: 'boolean', default: false, comment: '是否启用小程序资料收集' })
+  mpEnabled: boolean;
+
+  @Column({ name: 'mp_config', type: 'text', nullable: true, comment: '小程序扩展配置(JSON)' })
+  mpConfig: string;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 
