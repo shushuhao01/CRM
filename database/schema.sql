@@ -50,6 +50,8 @@
 -- 43. [v4.1.0] 新增wecom_suite_configs(服务商应用配置)、wecom_suite_callback_logs(服务商回调日志)
 -- 44. [v4.1.0] system_license表新增user_limit_mode(用户限制模式)、max_online_seats(最大在线席位数)字段
 -- 45. [v4.1.0] 新增mobile_app_packages(移动应用安装包管理)表
+-- 46. [v4.2.0] wecom_suite_configs表新增mp_app_id/mp_app_secret/mp_form_secret/mp_enabled/mp_config(微信小程序配置)字段
+-- 47. [v4.2.0] 新增mp_form_submissions(小程序表单提交记录)、mp_card_send_logs(小程序卡片发送日志)表
 -- =============================================
 
 -- 设置字符集和时区
@@ -166,6 +168,9 @@ CREATE TABLE `users` (
   `remark` TEXT NULL COMMENT '备注',
   `settings` JSON COMMENT '用户设置',
   `authorized_ips` JSON COMMENT '授权登录IP列表（JSON数组，空表示无限制）',
+  `agent_status` VARCHAR(20) DEFAULT 'ready' COMMENT '坐席状态：ready-就绪，busy-忙碌，offline-离线',
+  `status_changed_at` DATETIME NULL COMMENT '坐席状态变更时间',
+  `status_reason` VARCHAR(200) NULL COMMENT '坐席状态变更原因',
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   INDEX `idx_username` (`username`),
@@ -797,7 +802,7 @@ CREATE TABLE `call_records` (
   `customer_name` VARCHAR(100) COMMENT '客户姓名',
   `customer_phone` VARCHAR(20) NOT NULL COMMENT '客户电话',
   `call_type` ENUM('outbound', 'inbound') DEFAULT 'outbound' COMMENT '通话类型：outbound-呼出，inbound-呼入',
-  `call_status` ENUM('connected', 'missed', 'busy', 'failed', 'rejected', 'pending', 'calling') DEFAULT 'connected' COMMENT '通话状态：connected-已接通，missed-未接，busy-忙线，failed-失败，rejected-拒接，pending-待处理，calling-拨号中',
+  `call_status` VARCHAR(20) DEFAULT 'connected' COMMENT '通话状态：connected-已接通，missed-未接，busy-忙线，failed-失败，rejected-拒接，pending-待处理，calling-拨号中，ringing-响铃中，dialing-拨号中，cancelled-已取消',
   `start_time` DATETIME COMMENT '通话开始时间',
   `end_time` DATETIME COMMENT '通话结束时间',
   `duration` INT DEFAULT 0 COMMENT '通话时长(秒)',
@@ -807,11 +812,18 @@ CREATE TABLE `call_records` (
   `notes` TEXT COMMENT '通话备注',
   `call_tags` JSON COMMENT '通话标签（JSON数组，如：["意向","需报价"]）',
   `follow_up_required` TINYINT(1) DEFAULT 0 COMMENT '是否需要跟进',
-  `call_method` VARCHAR(20) DEFAULT 'system' COMMENT '外呼方式：system-系统线路，mobile-工作手机，voip-网络电话',
+  `call_method` VARCHAR(20) DEFAULT 'system' COMMENT '外呼方式：system-系统线路，mobile-工作手机，voip-网络电话，sip-SIP线路，manual-手动',
   `line_id` VARCHAR(50) COMMENT '外呼线路ID',
   `caller_number` VARCHAR(20) COMMENT '主叫号码',
   `provider_call_id` VARCHAR(100) COMMENT '服务商通话ID',
   `hangup_cause` VARCHAR(100) COMMENT '挂断原因',
+  `call_direction` VARCHAR(10) DEFAULT NULL COMMENT '呼叫方向：in-呼入，out-呼出（冗余字段，与call_type配合）',
+  `ring_duration` INT DEFAULT 0 COMMENT '振铃时长(秒)',
+  `queue_time` INT DEFAULT 0 COMMENT '排队等待时长(秒)',
+  `transfer_from` VARCHAR(100) DEFAULT NULL COMMENT '转接来源坐席ID',
+  `transfer_to` VARCHAR(100) DEFAULT NULL COMMENT '转接目标坐席ID',
+  `inbound_route_id` VARCHAR(50) DEFAULT NULL COMMENT '呼入路由ID',
+  `inbound_source` VARCHAR(50) DEFAULT NULL COMMENT '呼入来源：sip-SIP分机，mobile-工作手机，voip-网络电话，pbx-PBX系统',
   `user_id` VARCHAR(100) NOT NULL COMMENT '操作用户ID',
   `user_name` VARCHAR(100) COMMENT '操作用户姓名',
   `department` VARCHAR(100) COMMENT '部门',
@@ -826,7 +838,10 @@ CREATE TABLE `call_records` (
   INDEX `idx_has_recording` (`has_recording`),
   INDEX `idx_created_at` (`created_at`),
   INDEX `idx_call_records_tenant_id` (`tenant_id`),
-  INDEX `idx_call_records_tenant_user` (`tenant_id`, `user_id`)
+  INDEX `idx_call_records_tenant_user` (`tenant_id`, `user_id`),
+  INDEX `idx_call_direction` (`call_direction`),
+  INDEX `idx_inbound_route_id` (`inbound_route_id`),
+  INDEX `idx_inbound_source` (`inbound_source`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='通话记录表';
 
 -- 17. 跟进记录表
@@ -1057,6 +1072,25 @@ CREATE TABLE `work_phones` (
   `tenant_id` VARCHAR(36) NULL COMMENT '租户ID',
   INDEX `idx_work_phones_tenant` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='工作手机绑定表';
+
+-- 17.55 坐席状态表
+DROP TABLE IF EXISTS `agent_status`;
+CREATE TABLE `agent_status` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY COMMENT '主键',
+  `user_id` VARCHAR(100) NOT NULL COMMENT '用户ID',
+  `tenant_id` VARCHAR(36) NULL COMMENT '租户ID',
+  `status` VARCHAR(20) DEFAULT 'offline' COMMENT '坐席状态：ready-就绪，busy-忙碌，offline-离线，resting-小休',
+  `busy_reason` VARCHAR(100) NULL COMMENT '忙碌原因',
+  `status_changed_at` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '状态变更时间',
+  `last_call_at` DATETIME NULL COMMENT '最后通话时间',
+  `today_call_count` INT DEFAULT 0 COMMENT '今日通话数',
+  `today_call_duration` INT DEFAULT 0 COMMENT '今日通话总时长(秒)',
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  UNIQUE KEY `uk_user_tenant` (`user_id`, `tenant_id`),
+  INDEX `idx_agent_status_tenant` (`tenant_id`),
+  INDEX `idx_agent_status_status` (`status`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='坐席状态表';
 
 -- 17.6 号码黑名单表
 DROP TABLE IF EXISTS `phone_blacklist`;
@@ -5755,9 +5789,56 @@ CREATE TABLE IF NOT EXISTS `wecom_suite_configs` (
   `permissions` TEXT DEFAULT NULL COMMENT '权限范围(JSON)',
   `chat_archive_rsa_private_key` TEXT DEFAULT NULL COMMENT '会话存档RSA私钥(服务商级别，所有授权企业共用)',
   `is_enabled` TINYINT(1) DEFAULT 0 COMMENT '是否启用',
+  `mp_app_id` VARCHAR(50) DEFAULT NULL COMMENT '关联的微信小程序AppID',
+  `mp_app_secret` VARCHAR(255) DEFAULT NULL COMMENT '微信小程序AppSecret(加密存储)',
+  `mp_form_secret` VARCHAR(100) DEFAULT NULL COMMENT '表单签名密钥',
+  `mp_enabled` TINYINT(1) DEFAULT 0 COMMENT '是否启用小程序资料收集',
+  `mp_config` TEXT DEFAULT NULL COMMENT '小程序扩展配置(JSON)',
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='企微服务商应用配置表';
+
+-- 小程序表单提交记录表
+CREATE TABLE IF NOT EXISTS `mp_form_submissions` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `tenant_id` VARCHAR(36) NOT NULL COMMENT '租户ID',
+  `member_id` VARCHAR(36) NULL COMMENT '发送卡片的企微成员ID',
+  `external_user_id` VARCHAR(100) NULL COMMENT '企微外部联系人id',
+  `customer_name` VARCHAR(100) NULL COMMENT '客户填写的姓名',
+  `customer_phone` VARCHAR(20) NULL COMMENT '客户手机号',
+  `customer_gender` VARCHAR(10) NULL COMMENT '性别',
+  `customer_age` INT NULL COMMENT '年龄',
+  `province` VARCHAR(50) NULL COMMENT '省',
+  `city` VARCHAR(50) NULL COMMENT '市',
+  `district` VARCHAR(50) NULL COMMENT '区',
+  `detail_address` VARCHAR(500) NULL COMMENT '详细地址',
+  `custom_fields` TEXT NULL COMMENT '自定义字段数据(JSON)',
+  `phone_source` VARCHAR(20) DEFAULT 'manual' COMMENT '手机号来源: wechat_auth / manual',
+  `form_sign` VARCHAR(64) NULL COMMENT '表单签名',
+  `submitted_at` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '提交时间',
+  `synced_to_crm` TINYINT(1) DEFAULT 0 COMMENT '是否已同步到CRM',
+  `synced_at` DATETIME NULL COMMENT '同步时间',
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  INDEX `idx_mp_sub_tenant` (`tenant_id`),
+  INDEX `idx_mp_sub_member` (`member_id`),
+  INDEX `idx_mp_sub_phone` (`customer_phone`),
+  INDEX `idx_mp_sub_submitted` (`submitted_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='小程序表单提交记录';
+
+-- 小程序卡片发送日志表
+CREATE TABLE IF NOT EXISTS `mp_card_send_logs` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `tenant_id` VARCHAR(36) NOT NULL COMMENT '租户ID',
+  `member_id` VARCHAR(36) NOT NULL COMMENT '发送者企微成员ID',
+  `external_user_id` VARCHAR(100) NULL COMMENT '接收者外部联系人id',
+  `card_title` VARCHAR(200) NULL COMMENT '卡片标题',
+  `card_path` VARCHAR(500) NULL COMMENT '小程序路径',
+  `sent_at` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '发送时间',
+  INDEX `idx_mp_send_tenant` (`tenant_id`),
+  INDEX `idx_mp_send_member` (`member_id`),
+  INDEX `idx_mp_send_sent` (`sent_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='小程序卡片发送日志';
 
 -- 企微服务商回调日志表
 CREATE TABLE IF NOT EXISTS `wecom_suite_callback_logs` (
@@ -5792,6 +5873,38 @@ CREATE TABLE IF NOT EXISTS `mobile_app_packages` (
   KEY `idx_platform` (`platform`),
   KEY `idx_enabled` (`is_enabled`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='移动应用安装包管理';
+
+-- =============================================
+-- 呼入路由配置表
+-- =============================================
+DROP TABLE IF EXISTS `inbound_routes`;
+CREATE TABLE `inbound_routes` (
+  `id` VARCHAR(50) PRIMARY KEY COMMENT '路由ID',
+  `tenant_id` VARCHAR(36) NULL COMMENT '租户ID',
+  `name` VARCHAR(100) NOT NULL COMMENT '路由名称',
+  `description` VARCHAR(500) NULL COMMENT '路由描述',
+  `did_number` VARCHAR(20) NOT NULL COMMENT 'DID号码/被叫号码',
+  `route_type` VARCHAR(20) DEFAULT 'direct' COMMENT '路由类型：direct-直接分配，queue-排队分配，ivr-IVR转接，ring_group-振铃组',
+  `target_user_id` VARCHAR(100) NULL COMMENT '目标坐席ID（direct模式）',
+  `target_group` JSON NULL COMMENT '振铃组成员（ring_group模式，JSON数组）',
+  `queue_strategy` VARCHAR(20) DEFAULT 'round_robin' COMMENT '排队策略：round_robin-轮询，least_calls-最少通话，random-随机，priority-优先级',
+  `max_wait_time` INT DEFAULT 60 COMMENT '最大等待时间(秒)',
+  `overflow_action` VARCHAR(20) DEFAULT 'voicemail' COMMENT '溢出动作：voicemail-语音留言，transfer-转接，hangup-挂断',
+  `overflow_target` VARCHAR(100) NULL COMMENT '溢出转接目标',
+  `welcome_message` VARCHAR(500) NULL COMMENT '欢迎语/IVR提示语',
+  `business_hours` JSON NULL COMMENT '工作时间配置（JSON格式）',
+  `after_hours_action` VARCHAR(20) DEFAULT 'voicemail' COMMENT '非工作时间动作',
+  `priority` INT DEFAULT 0 COMMENT '路由优先级（越大越优先）',
+  `is_enabled` TINYINT(1) DEFAULT 1 COMMENT '是否启用',
+  `status` VARCHAR(20) DEFAULT 'active' COMMENT '状态',
+  `created_by` VARCHAR(100) NULL COMMENT '创建者',
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  INDEX `idx_inbound_routes_tenant` (`tenant_id`),
+  INDEX `idx_inbound_routes_did` (`did_number`),
+  INDEX `idx_inbound_routes_enabled` (`is_enabled`),
+  UNIQUE INDEX `uk_tenant_did` (`tenant_id`, `did_number`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='呼入路由配置表';
 
 -- =============================================
 -- 数据库初始化完成

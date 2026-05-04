@@ -70,6 +70,7 @@ import virtualClaimRoutes from './routes/virtualClaim';
 import virtualSettingsRoutes from './routes/virtualSettings';
 import onlineSeatRoutes from './routes/onlineSeat';
 import mobileAppRoutes from './routes/mobileApp';
+import miniprogramRoutes from './routes/miniprogram';
 import * as fs from 'fs';
 
 // ==================== 环境配置智能加载 ====================
@@ -322,6 +323,7 @@ app.use(`${API_PREFIX}/online-seat`, onlineSeatRoutes);
 app.use(`${API_PREFIX}/mobile-app`, mobileAppRoutes);
 app.use(`${API_PREFIX}/admin`, adminRoutes);
 app.use(`${API_PREFIX}/public`, publicRoutes);
+app.use(`${API_PREFIX}/mp`, miniprogramRoutes);
 
 // 404 处理
 app.use(notFoundHandler);
