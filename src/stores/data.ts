@@ -95,114 +95,8 @@ export const useDataStore = createPersistentStore('data', () => {
 
   const selectedDataCount = computed(() => selectedDataIds.value.length)
 
-  const filteredDataList = computed(() => {
-    const userStore = useUserStore()
-    let result = dataList.value
-
-    // 客户归属权限控制
-    if (userStore.currentUser) {
-      const currentUserId = userStore.currentUser.id
-      const currentUserRole = userStore.currentUser.role
-      const isSuperAdmin = currentUserRole === 'super_admin' || currentUserRole === 'admin'
-      const isDepartmentManager = currentUserRole === 'department_manager'
-
-      // 超级管理员和管理员可以查看所有数据
-      if (isSuperAdmin) {
-        // 管理员可以查看所有资料
-        console.log(`[资料列表] 管理员 ${userStore.currentUser.name} 查看所有数据: ${result.length} 条`)
-      } else if (isDepartmentManager) {
-        // 🔥 部门经理：只能查看被分配给自己的资料（不包括自己创建的）
-        result = result.filter(item => {
-          // 只有被分配给自己的资料才显示
-          return item.assigneeId === currentUserId
-        })
-        console.log(`[资料列表] 部门经理 ${userStore.currentUser.name} 过滤后数据: ${result.length} 条（仅显示分配给自己的）`)
-      } else {
-        // 🔥 销售员等普通角色：不能查看资料列表，返回空数组
-        result = []
-        console.log(`[资料列表] 普通用户 ${userStore.currentUser.name} 无权查看资料列表`)
-      }
-    }
-
-    // 按状态筛选
-    if (filters.value.status) {
-      result = result.filter(item => item.status === filters.value.status)
-    }
-
-    // 按关键词搜索
-    if (filters.value.searchKeyword) {
-      const keyword = filters.value.searchKeyword.toLowerCase()
-      result = result.filter(item =>
-        item.customerName.toLowerCase().includes(keyword) ||
-        item.phone.includes(keyword) ||
-        item.orderNo.toLowerCase().includes(keyword) ||
-        (item.customerCode && item.customerCode.toLowerCase().includes(keyword))
-      )
-    }
-
-    // 按分配人筛选
-    if (filters.value.assigneeId) {
-      result = result.filter(item => item.assigneeId === filters.value.assigneeId)
-    }
-
-    // 按订单金额范围筛选
-    if (filters.value.orderAmountRange && filters.value.orderAmountRange.length === 2) {
-      const [min, max] = filters.value.orderAmountRange
-      result = result.filter(item => item.orderAmount >= min && item.orderAmount <= max)
-    }
-
-    // 按日期范围筛选
-    if (filters.value.dateRange && filters.value.dateRange.length === 2) {
-      const [startDate, endDate] = filters.value.dateRange
-      result = result.filter(item => {
-        const itemDate = new Date(item.orderDate)
-        return itemDate >= new Date(startDate) && itemDate <= new Date(endDate)
-      })
-    }
-
-    // 按快捷日期筛选
-    if (filters.value.dateFilter && filters.value.dateFilter !== 'all') {
-      const now = new Date()
-      let startDate: Date
-
-      switch (filters.value.dateFilter) {
-        case 'today':
-          startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-          result = result.filter(item => {
-            const itemDate = new Date(item.orderDate)
-            return itemDate >= startDate && itemDate < new Date(startDate.getTime() + 24 * 60 * 60 * 1000)
-          })
-          break
-        case 'yesterday':
-          startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1)
-          result = result.filter(item => {
-            const itemDate = new Date(item.orderDate)
-            return itemDate >= startDate && itemDate < new Date(startDate.getTime() + 24 * 60 * 60 * 1000)
-          })
-          break
-        case 'thisWeek':
-          const weekStart = new Date(now)
-          weekStart.setDate(now.getDate() - now.getDay())
-          weekStart.setHours(0, 0, 0, 0)
-          result = result.filter(item => new Date(item.orderDate) >= weekStart)
-          break
-        case 'last30Days':
-          startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
-          result = result.filter(item => new Date(item.orderDate) >= startDate)
-          break
-        case 'thisMonth':
-          startDate = new Date(now.getFullYear(), now.getMonth(), 1)
-          result = result.filter(item => new Date(item.orderDate) >= startDate)
-          break
-        case 'thisYear':
-          startDate = new Date(now.getFullYear(), 0, 1)
-          result = result.filter(item => new Date(item.orderDate) >= startDate)
-          break
-      }
-    }
-
-    return result
-  })
+  // 🔥 后端已处理所有筛选（状态/关键词/日期/权限/分页），直接返回
+  const filteredDataList = computed(() => dataList.value)
 
   // 获取资料列表
   const fetchDataList = async (params?: Partial<DataListParams>) => {
@@ -312,6 +206,18 @@ export const useDataStore = createPersistentStore('data', () => {
         } catch (error) {
           console.error('发送资料分配通知失败:', error)
         }
+
+        // 同步到客户管理模块 - 确保分配后的资料出现在对应成员的客户列表中
+        try {
+          await dataApi.syncAssignedDataToCustomer({
+            dataIds: params.dataIds,
+            assigneeId: params.assigneeId,
+            assigneeName: params.assigneeName
+          })
+          console.log('[资料分配] 已同步到客户管理模块')
+        } catch (syncError) {
+          console.warn('[资料分配] 同步到客户模块失败（不影响分配结果）:', syncError)
+        }
       }
 
       return result
@@ -404,7 +310,32 @@ export const useDataStore = createPersistentStore('data', () => {
     remark?: string
   }) => {
     try {
-      // 初始化部门状态
+      // 尝试从后端加载真实分配统计来初始化轮流状态（仅首次）
+      if (!departmentAssignmentState.value[params.departmentId]) {
+        try {
+          const stats = await dataApi.getAssignmentStats({ departmentId: params.departmentId })
+          if (stats && Array.isArray(stats) && stats.length > 0) {
+            departmentAssignmentState.value[params.departmentId] = {
+              members: params.members.map(member => {
+                const memberStat = stats.find((s: any) => s.userId === member.id)
+                return {
+                  id: member.id,
+                  name: member.name,
+                  assignmentCount: memberStat?.totalAssigned || 0,
+                  lastAssignedAt: memberStat?.lastAssignedTime
+                }
+              }),
+              currentIndex: 0,
+              lastRoundCompleted: false
+            }
+            console.log('[轮流分配] 使用后端真实分配统计初始化轮流状态')
+          }
+        } catch (e) {
+          console.warn('[轮流分配] 无法获取后端分配统计，将使用本地状态:', e)
+        }
+      }
+
+      // 初始化部门状态（如果上面没有成功初始化，则使用默认值）
       initializeDepartmentState(params.departmentId, params.members)
 
       let assignments: Array<{

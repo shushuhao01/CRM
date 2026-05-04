@@ -129,6 +129,7 @@ export interface DataListResponse {
     pendingCount: number
     assignedCount: number
     archivedCount: number
+    recoveredCount: number
     totalAmount: number
     todayCount: number
     weekCount: number
@@ -141,28 +142,24 @@ export const getDataList = async (params: DataListParams): Promise<DataListRespo
   // 🔥 始终尝试从后端API获取数据
   try {
     console.log('[Data API] 从后端API获取资料列表...', params)
-    // 🔥 修复：正确传递查询参数 { params } 而非直接传 params
-    const response = await api.get('/data/list', { params: params as any })
+    // 🔥 拦截器 return data 已解包，response 即 { list, total, page, pageSize, summary }
+    const response = await api.get('/data/list', { params: params as any }) as any
 
-    // 处理API响应格式
-    if (response && response.data) {
-      return {
-        list: response.data.list || [],
-        total: response.data.total || 0,
-        summary: response.summary || {
-          totalCount: response.data.total || 0,
-          pendingCount: 0,
-          assignedCount: 0,
-          archivedCount: 0,
-          totalAmount: 0,
-          todayCount: 0,
-          weekCount: 0,
-          monthCount: 0
-        }
+    return {
+      list: response?.list || [],
+      total: response?.total || 0,
+      summary: response?.summary || {
+        totalCount: response?.total || 0,
+        pendingCount: 0,
+        assignedCount: 0,
+        archivedCount: 0,
+        recoveredCount: 0,
+        totalAmount: 0,
+        todayCount: 0,
+        weekCount: 0,
+        monthCount: 0
       }
     }
-
-    return response
   } catch (error) {
     console.error('[Data API] 从后端获取资料列表失败，尝试使用本地数据:', error)
 
@@ -246,6 +243,24 @@ export const batchAssignData = (params: BatchAssignParams): Promise<{ success: b
 
   // 注意：BASE_URL已包含/api/v1，所以这里只需要/data/batch-assign
   return api.post('/data/batch-assign', params)
+}
+
+// 同步分配数据到客户管理模块
+export const syncAssignedDataToCustomer = async (params: {
+  dataIds: string[]
+  assigneeId: string
+  assigneeName: string
+}): Promise<{ success: boolean; message: string; syncedCount?: number }> => {
+  if (shouldUseMockApi()) {
+    return Promise.resolve({ success: true, message: '同步成功', syncedCount: params.dataIds.length })
+  }
+
+  try {
+    return await api.post('/data/sync-to-customer', params)
+  } catch (error) {
+    console.warn('[Data API] 同步分配数据到客户模块失败（后端可能尚未实现此接口）:', error)
+    return { success: false, message: '同步接口暂不可用' }
+  }
 }
 
 // 批量封存资料

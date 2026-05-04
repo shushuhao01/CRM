@@ -592,6 +592,7 @@
               collapse-tags
               collapse-tags-tooltip
               :max-collapse-tags="3"
+              :multiple-limit="selectedItems.length"
             >
               <el-option
                 v-for="member in filteredMembers"
@@ -615,7 +616,7 @@
             <div v-if="!isReassigning && assignForm.assignToList.length > 0" class="selected-members-info" style="margin-top: 8px;">
               <el-text type="info" size="small">
                 <el-icon><User /></el-icon>
-                已选择 {{ assignForm.assignToList.length }} 位成员
+                已选择 {{ assignForm.assignToList.length }} / {{ selectedItems.length }} 位成员（最多不超过资料数量）
               </el-text>
             </div>
           </el-form-item>
@@ -678,7 +679,7 @@
 
             <div class="preview-table-container" :class="{ expanded: expandPreview }">
               <el-table
-                :data="selectedItems.slice(0, expandPreview ? selectedItems.length : 3)"
+                :data="assignmentPreviewData.slice(0, expandPreview ? assignmentPreviewData.length : 3)"
                 size="small"
                 stripe
                 :max-height="expandPreview ? 400 : 200"
@@ -709,6 +710,14 @@
                     </el-tag>
                   </template>
                 </el-table-column>
+                <el-table-column label="分配给" width="120" show-overflow-tooltip>
+                  <template #default="scope">
+                    <el-tag v-if="scope.row.previewAssigneeName && scope.row.previewAssigneeName !== '-'" type="success" size="small">
+                      {{ scope.row.previewAssigneeName }}
+                    </el-tag>
+                    <span v-else style="color: #909399;">待确认</span>
+                  </template>
+                </el-table-column>
                 <el-table-column prop="createTime" label="创建时间" width="160" show-overflow-tooltip>
                   <template #default="scope">
                     {{ formatDateTime(scope.row.createTime) }}
@@ -716,10 +725,10 @@
                 </el-table-column>
               </el-table>
 
-              <div v-if="!expandPreview && selectedItems.length > 3" class="more-data-tip">
+              <div v-if="!expandPreview && assignmentPreviewData.length > 3" class="more-data-tip">
                 <el-text type="info" size="small">
                   <el-icon><MoreFilled /></el-icon>
-                  还有 {{ selectedItems.length - 3 }} 条客户数据，点击展开查看全部
+                  还有 {{ assignmentPreviewData.length - 3 }} 条客户数据，点击展开查看全部
                 </el-text>
               </div>
             </div>
@@ -1058,12 +1067,127 @@ const assignForm = reactive({
   assignToList: [] as string[], // 多选时使用（批量分配）
   departmentId: '',
   crossDepartmentStrategy: 'batch_workload', // 'batch_workload' | 'batch_performance' | 'batch_manual' (跨部门分配策略)
-  selectedDepartments: [], // 手动选择的部门列表
+  selectedDepartments: [] as string[], // 手动选择的部门列表
   remark: ''
 })
 
 // 分配预览相关
 const expandPreview = ref(false)
+
+// 分配预览数据 - 预先计算每条资料分给谁
+const assignmentPreviewData = computed(() => {
+  const items = selectedItems.value
+  if (!items.length) return []
+
+  // 重新分配 - 单个目标
+  if (isReassigning.value && assignForm.assignTo) {
+    const member = allSystemMembers.value.find(m => m.id === assignForm.assignTo)
+    return items.map(item => ({
+      ...item,
+      previewAssigneeName: member?.name || '未选择'
+    }))
+  }
+
+  // 指定成员分配
+  if (assignForm.assignType === 'batch_specific' && assignForm.assignToList.length > 0) {
+    const assignees = allSystemMembers.value.filter(m => assignForm.assignToList.includes(m.id))
+    if (assignees.length === 0) return items.map(item => ({ ...item, previewAssigneeName: '未选择' }))
+
+    const itemsPerMember = Math.ceil(items.length / assignees.length)
+    return items.map((item, index) => {
+      const memberIndex = Math.min(Math.floor(index / itemsPerMember), assignees.length - 1)
+      return {
+        ...item,
+        previewAssigneeName: assignees[memberIndex]?.name || '未选择'
+      }
+    })
+  }
+
+  // 部门内轮流分配
+  if (assignForm.assignType === 'batch_roundrobin' && assignForm.departmentId) {
+    const department = departments.value.find((d: any) => d.id === assignForm.departmentId)
+    if (!department) return items.map(item => ({ ...item, previewAssigneeName: '待选择部门' }))
+
+    const deptMembers = allSystemMembers.value.filter(
+      m => m.department === department.name
+    )
+    if (deptMembers.length === 0) return items.map(item => ({ ...item, previewAssigneeName: '无可分配成员' }))
+
+    // 先分配给部门负责人模式
+    if (assignForm.assignMode === 'batch_leader') {
+      let leader = (department as any).managerId
+        ? deptMembers.find(m => m.id === (department as any).managerId)
+        : null
+      if (!leader) leader = deptMembers.find(m => m.role === 'department_manager' || m.role === 'manager')
+      if (!leader) leader = deptMembers[0]
+
+      return items.map(item => ({
+        ...item,
+        previewAssigneeName: leader?.name || '部门负责人'
+      }))
+    }
+
+    // 直接轮流分配 - 模拟 getNextAssignees 排序逻辑
+    const deptState = dataStore.departmentAssignmentState?.[assignForm.departmentId]
+    const sortedMembers = [...deptMembers].sort((a, b) => {
+      const aState = deptState?.members?.find((m: any) => m.id === a.id)
+      const bState = deptState?.members?.find((m: any) => m.id === b.id)
+      const aCount = aState?.assignmentCount || 0
+      const bCount = bState?.assignmentCount || 0
+      if (aCount !== bCount) return aCount - bCount
+      if (!aState?.lastAssignedAt && !bState?.lastAssignedAt) return 0
+      if (!aState?.lastAssignedAt) return -1
+      if (!bState?.lastAssignedAt) return 1
+      return new Date(aState.lastAssignedAt).getTime() - new Date(bState.lastAssignedAt).getTime()
+    })
+
+    return items.map((item, index) => ({
+      ...item,
+      previewAssigneeName: sortedMembers[index % sortedMembers.length]?.name || '待分配'
+    }))
+  }
+
+  // 跨部门智能分配
+  if (assignForm.assignType === 'batch_cross_department') {
+    const targetDepts = assignForm.crossDepartmentStrategy === 'batch_manual'
+      ? departments.value.filter((d: any) => assignForm.selectedDepartments.includes(d.id))
+      : departments.value
+
+    if (targetDepts.length === 0) return items.map(item => ({ ...item, previewAssigneeName: '待选择部门' }))
+
+    const crossMembers: Array<{ id: string; name: string; department: string; workload: number }> = []
+    for (const dept of targetDepts) {
+      const deptMembers = allSystemMembers.value.filter(m => m.department === (dept as any).name)
+      crossMembers.push(...deptMembers.map(m => {
+        const assignedCount = dataStore.dataList.filter(
+          (d: any) => d.assigneeId === m.id && d.status === 'assigned'
+        ).length
+        return {
+          id: m.id,
+          name: m.name,
+          department: (dept as any).name,
+          workload: assignedCount
+        }
+      }))
+    }
+
+    if (crossMembers.length === 0) return items.map(item => ({ ...item, previewAssigneeName: '无可分配成员' }))
+
+    // 按策略排序
+    const sortedMembers = [...crossMembers]
+    if (assignForm.crossDepartmentStrategy === 'batch_workload') {
+      sortedMembers.sort((a, b) => a.workload - b.workload)
+    }
+
+    return items.map((item, index) => ({
+      ...item,
+      previewAssigneeName: `${sortedMembers[index % sortedMembers.length]?.name}（${sortedMembers[index % sortedMembers.length]?.department}）`
+    }))
+  }
+
+  // 默认：未选择分配方式
+  return items.map(item => ({ ...item, previewAssigneeName: '-' }))
+})
 
 // 判断是否为重新分配操作
 const isReassigning = computed(() => {
@@ -1877,15 +2001,18 @@ const confirmBatchAssign = async () => {
 
           console.log('[资料列表] 部门成员数量:', deptMembers.length)
 
-          // 合并成员信息和统计数据（简化版，不调用API）
+          // 合并成员信息和统计数据 - 从当前数据列表统计工作负载
           const membersWithStats = deptMembers.map(member => {
+            const assignedCount = dataStore.dataList.filter(
+              (item: any) => item.assigneeId === member.id && item.status === 'assigned'
+            ).length
             return {
               id: member.id,
               name: member.name,
               account: member.account,
               department: dept.name,
-              workload: memberStats?.totalAssigned || 0,
-              performance: memberStats?.conversionRate || 0
+              workload: assignedCount,
+              performance: 0
             }
           })
 
@@ -1902,10 +2029,10 @@ const confirmBatchAssign = async () => {
 
         // 根据策略排序成员
         const sortedMembers = [...targetMembers]
-        if (assignForm.crossDepartmentStrategy === 'workload') {
+        if (assignForm.crossDepartmentStrategy === 'batch_workload') {
           // 按工作负载升序排序（负载低的优先）
           sortedMembers.sort((a, b) => a.workload - b.workload)
-        } else if (assignForm.crossDepartmentStrategy === 'performance') {
+        } else if (assignForm.crossDepartmentStrategy === 'batch_performance') {
           // 按业绩降序排序（业绩高的优先）
           sortedMembers.sort((a, b) => b.performance - a.performance)
         }
@@ -1930,19 +2057,19 @@ const confirmBatchAssign = async () => {
           targetDepartments: targetDepartments.map(dept => ({ id: dept.id, name: dept.name })),
           remark: assignForm.remark
         })
+
+        const strategyText = {
+          batch_workload: '工作负载均衡',
+          batch_performance: '业绩表现优先',
+          batch_manual: '手动选择部门'
+        }[assignForm.crossDepartmentStrategy]
+
+        ElMessage.success('成功使用“' + (strategyText || '智能分配') + '”策略将 ' + selectedItems.value.length + ' 条资料跨部门分配给 ' + targetDepartments.length + ' 个部门的 ' + sortedMembers.length + ' 名成员')
       } catch (error) {
         console.error('获取跨部门成员失败:', error)
         ElMessage.error('获取跨部门成员失败，无法进行分配')
         return
       }
-
-      const strategyText = {
-        workload: '工作负载均衡',
-        performance: '业绩表现优先',
-        manual: '手动选择部门'
-      }[assignForm.crossDepartmentStrategy]
-
-      ElMessage.success('成功使用"' + strategyText + '"策略将 ' + selectedItems.value.length + ' 条资料跨部门分配给 ' + targetDepartments.length + ' 个部门的 ' + sortedMembers.length + ' 名成员')
     }
 
     showBatchAssignDialog.value = false

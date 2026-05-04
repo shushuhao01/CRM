@@ -20,11 +20,16 @@ export interface CustomField {
   placeholder?: string
   showInList: boolean
   sortOrder: number
+  mpRequired?: boolean
+  mpDisplay?: 'show' | 'collapsed' | 'hidden'
 }
 
 export interface FieldVisibilityItem {
   enabled: boolean
   required: boolean
+  mpEnabled?: boolean
+  mpRequired?: boolean
+  mpCollapsed?: boolean
 }
 
 export interface CustomerFieldConfig {

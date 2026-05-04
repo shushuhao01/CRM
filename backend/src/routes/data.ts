@@ -18,7 +18,7 @@ router.use(authenticateToken);
  */
 router.get('/list', async (req: Request, res: Response) => {
   try {
-    const { page = 1, pageSize = 10, _status, keyword, assigneeId, departmentId, dateFilter } = req.query;
+    const { page = 1, pageSize = 10, status, keyword, assigneeId, departmentId, dateFilter } = req.query;
     const currentUser = req.user;
 
     // 🔥 从订单表获取已签收的订单数据
@@ -141,43 +141,84 @@ router.get('/list', async (req: Request, res: Response) => {
       }
     }
 
+    // 🔥 资料分配状态筛选（基于客户记录派生）
+    if (status && status !== 'all') {
+      switch (status) {
+        case 'pending':
+          queryBuilder.andWhere(
+            '(customer.sales_person_id IS NULL AND (customer.status IS NULL OR customer.status NOT IN (:...excludePending)))',
+            { excludePending: ['archived', 'deleted'] }
+          );
+          break;
+        case 'assigned':
+          queryBuilder.andWhere(
+            'customer.sales_person_id IS NOT NULL AND (customer.status IS NULL OR customer.status NOT IN (:...excludeAssigned))',
+            { excludeAssigned: ['archived', 'deleted'] }
+          );
+          break;
+        case 'archived':
+          queryBuilder.andWhere('customer.status = :archivedStatus', { archivedStatus: 'archived' });
+          break;
+        case 'recovered':
+          // recovered 客户状态会被重置为 active，暂不区分
+          break;
+      }
+    }
+
     queryBuilder.orderBy('order.deliveredAt', 'DESC');
     queryBuilder.skip((Number(page) - 1) * Number(pageSize));
     queryBuilder.take(Number(pageSize));
 
     const [orders, total] = await queryBuilder.getManyAndCount();
 
-    // 转换为资料列表格式
-    const list = orders.map(order => ({
-      id: order.id,
-      customerName: order.customerName || '',
-      customerCode: order.customer?.customerNo || '',
-      phone: order.customerPhone || '',
-      orderNo: order.orderNumber,
-      orderAmount: Number(order.totalAmount) || 0,
-      orderDate: order.createdAt ? new Date(order.createdAt).toISOString().split('T')[0] : '',
-      signDate: order.deliveredAt ? new Date(order.deliveredAt).toISOString().split('T')[0] : '',
-      orderStatus: order.status, // 订单状态（delivered=已签收）
-      status: 'pending' as const, // 资料分配状态（待分配）
-      assigneeId: order.createdBy,
-      assigneeName: order.createdByName,
-      assigneeDepartment: order.createdByDepartmentName,
-      createTime: order.createdAt ? new Date(order.createdAt).toISOString() : '',
-      updateTime: order.updatedAt ? new Date(order.updatedAt).toISOString() : '',
-      trackingNo: order.trackingNumber || '',
-      address: order.shippingAddress || '',
-      remark: order.remark || ''
-    }));
+    // 🔥 转换为资料列表格式 —— 从客户记录派生分配状态
+    const list = orders.map(order => {
+      let allocationStatus: 'pending' | 'assigned' | 'archived' | 'recovered' = 'pending';
+      const cust = order.customer;
+      if (cust) {
+        if (cust.status === 'archived') {
+          allocationStatus = 'archived';
+        } else if ((cust as any).salesPersonId) {
+          allocationStatus = 'assigned';
+        }
+      }
 
-    // 🔥 使用SQL聚合查询高效计算汇总数据（带租户隔离）
+      return {
+        id: order.id,
+        customerName: order.customerName || '',
+        customerCode: cust?.customerNo || '',
+        phone: order.customerPhone || '',
+        orderNo: order.orderNumber,
+        orderAmount: Number(order.totalAmount) || 0,
+        orderDate: order.createdAt ? new Date(order.createdAt).toISOString().split('T')[0] : '',
+        signDate: order.deliveredAt ? new Date(order.deliveredAt).toISOString().split('T')[0] : '',
+        orderStatus: order.status,
+        status: allocationStatus,
+        assigneeId: (cust as any)?.salesPersonId || order.createdBy,
+        assigneeName: (cust as any)?.salesPersonName || order.createdByName,
+        assigneeDepartment: order.createdByDepartmentName,
+        operatorName: order.createdByName || '',
+        createTime: order.createdAt ? new Date(order.createdAt).toISOString() : '',
+        updateTime: order.updatedAt ? new Date(order.updatedAt).toISOString() : '',
+        trackingNo: order.trackingNumber || '',
+        address: order.shippingAddress || '',
+        remark: order.remark || ''
+      };
+    });
+
+    // 🔥 使用SQL聚合查询高效计算汇总数据（带客户JOIN，按分配状态统计）
     const summaryBuilder = orderRepository.createQueryBuilder('o')
+      .leftJoin('o.customer', 'sc')
       .select('COUNT(*)', 'totalCount')
-      .addSelect('COALESCE(SUM(o.totalAmount), 0)', 'totalAmount')
-      .addSelect(`SUM(CASE WHEN DATE(o.deliveredAt) = CURDATE() THEN 1 ELSE 0 END)`, 'todayCount')
-      .addSelect(`SUM(CASE WHEN o.deliveredAt >= DATE_SUB(NOW(), INTERVAL 7 DAY) THEN 1 ELSE 0 END)`, 'weekCount')
-      .addSelect(`SUM(CASE WHEN o.deliveredAt >= DATE_SUB(NOW(), INTERVAL 1 MONTH) THEN 1 ELSE 0 END)`, 'monthCount');
+      .addSelect('COALESCE(SUM(o.total_amount), 0)', 'totalAmount')
+      .addSelect(`SUM(CASE WHEN sc.sales_person_id IS NULL AND (sc.status IS NULL OR sc.status NOT IN ('archived','deleted')) THEN 1 WHEN sc.id IS NULL THEN 1 ELSE 0 END)`, 'pendingCount')
+      .addSelect(`SUM(CASE WHEN sc.sales_person_id IS NOT NULL AND (sc.status IS NULL OR sc.status NOT IN ('archived','deleted')) THEN 1 ELSE 0 END)`, 'assignedCount')
+      .addSelect(`SUM(CASE WHEN sc.status = 'archived' THEN 1 ELSE 0 END)`, 'archivedCount')
+      .addSelect(`SUM(CASE WHEN DATE(o.delivered_at) = CURDATE() THEN 1 ELSE 0 END)`, 'todayCount')
+      .addSelect(`SUM(CASE WHEN o.delivered_at >= DATE_SUB(NOW(), INTERVAL 7 DAY) THEN 1 ELSE 0 END)`, 'weekCount')
+      .addSelect(`SUM(CASE WHEN o.delivered_at >= DATE_SUB(NOW(), INTERVAL 1 MONTH) THEN 1 ELSE 0 END)`, 'monthCount');
     // 租户隔离已由 getTenantRepo 自动添加
-    summaryBuilder.andWhere('o.status = :deliveredStatus', { deliveredStatus: 'delivered' });
+    summaryBuilder.andWhere('o.status = :sDeliveredStatus', { sDeliveredStatus: 'delivered' });
 
     // 🔥 汇总也需要权限过滤（与列表查询保持一致）
     if (adminRoles.includes(role)) {
@@ -210,30 +251,22 @@ router.get('/list', async (req: Request, res: Response) => {
 
     const summaryRaw = await summaryBuilder.getRawOne();
 
-    // 🔥 同时获取客户维度的已分配和已封存统计
-    const customerRepo = getTenantRepo(Customer);
-    const assignedCount = await customerRepo.count({
-      where: { salesPersonId: Not(IsNull()) } as any
-    });
-    const archivedCount = await customerRepo.count({
-      where: { status: 'archived' }
-    });
-
     const summary = {
       totalCount: Number(summaryRaw?.totalCount || 0),
-      pendingCount: Math.max(0, Number(summaryRaw?.totalCount || 0) - assignedCount),
-      assignedCount,
-      archivedCount,
+      pendingCount: Number(summaryRaw?.pendingCount || 0),
+      assignedCount: Number(summaryRaw?.assignedCount || 0),
+      archivedCount: Number(summaryRaw?.archivedCount || 0),
+      recoveredCount: 0,
       totalAmount: Number(summaryRaw?.totalAmount || 0),
       todayCount: Number(summaryRaw?.todayCount || 0),
       weekCount: Number(summaryRaw?.weekCount || 0),
       monthCount: Number(summaryRaw?.monthCount || 0)
     };
 
+    // 🔥 把 summary 放入 data 内部，避免被前端拦截器 `return data` 丢弃
     res.json({
       success: true,
-      data: { list, total, page: Number(page), pageSize: Number(pageSize) },
-      summary
+      data: { list, total, page: Number(page), pageSize: Number(pageSize), summary }
     });
   } catch (error) {
     log.error('获取资料列表失败:', error);

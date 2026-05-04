@@ -359,15 +359,25 @@ const confirmAssign = async () => {
       }
     }
 
-    // 调用分配API
-    await dataStore.batchAssignData({
-      dataIds: assignments.map(a => a.dataId),
-      assigneeId: assignments[0].assigneeId, // 这里需要根据实际API调整
-      assigneeName: assignments[0].assigneeName,
-      remark: assignForm.remark
-    })
+    // 调用分配API - 按分配对象分组，逐组调用
+    const assigneeGroups = new Map<string, { assigneeId: string; assigneeName: string; dataIds: string[] }>()
+    for (const a of assignments) {
+      if (!assigneeGroups.has(a.assigneeId)) {
+        assigneeGroups.set(a.assigneeId, { assigneeId: a.assigneeId, assigneeName: a.assigneeName, dataIds: [] })
+      }
+      assigneeGroups.get(a.assigneeId)!.dataIds.push(a.dataId)
+    }
 
-    ElMessage.success(`成功分配 ${assignments.length} 条资料`)
+    for (const group of assigneeGroups.values()) {
+      await dataStore.batchAssignData({
+        dataIds: group.dataIds,
+        assigneeId: group.assigneeId,
+        assigneeName: group.assigneeName,
+        remark: assignForm.remark
+      })
+    }
+
+    ElMessage.success(`成功分配 ${assignments.length} 条资料给 ${assigneeGroups.size} 位成员`)
     emit('assigned')
     handleClose()
   } catch (error) {
