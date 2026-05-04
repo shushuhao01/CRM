@@ -1,0 +1,29 @@
+<view class="success-page">
+  <!-- 上半区：成功提示 -->
+  <view class="top-section">
+    <view class="success-icon">✓</view>
+    <view class="success-title">提交成功</view>
+    <view class="success-desc">您的资料已成功提交，顾问会尽快与您联系</view>
+    <view class="success-tips">
+      <text class="tip-item">🔒 信息已加密保存</text>
+      <text class="tip-item">💬 顾问收到通知后会主动联系您</text>
+    </view>
+  </view>
+
+  <!-- 中间：操作按钮（并排一行） -->
+  <view class="action-row">
+    <button class="btn-notify" open-type="share">💬 告知顾问</button>
+    <button class="btn-back" bindtap="handleBackToChat">↩️ 返回聊天</button>
+  </view>
+
+  <!-- 下半区：微信广告 -->
+  <view class="ad-section">
+    <view class="ad-divider">
+      <view class="ad-divider-line"></view>
+      <text class="ad-divider-text">推荐</text>
+      <view class="ad-divider-line"></view>
+    </view>
+    <!-- 微信流量主 Banner 广告 -->
+    <ad unit-id="{{adUnitId}}" ad-type="banner" ad-intervals="30" binderror="onAdError" bindload="onAdLoad" bindclose="onAdClose"></ad>
+  </view>
+</view>

@@ -1,0 +1,17 @@
+{
+  "pages": [
+    "pages/form/form",
+    "pages/success/success",
+    "pages/expired/expired"
+  ],
+  "window": {
+    "navigationBarBackgroundColor": "#ffffff",
+    "navigationBarTitleText": "填写资料",
+    "navigationBarTextStyle": "black",
+    "backgroundColor": "#f5f7fa",
+    "backgroundTextStyle": "light"
+  },
+  "style": "v2",
+  "sitemapLocation": "sitemap.json",
+  "lazyCodeLoading": "requiredComponents"
+}

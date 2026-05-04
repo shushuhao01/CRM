@@ -1,0 +1,11 @@
+<view class="expired-page">
+  <view class="expired-card">
+    <view class="expired-icon">⏰</view>
+    <view class="expired-title">链接已过期</view>
+    <view class="expired-desc">此资料填写链接已超过有效期</view>
+  </view>
+  <view class="expired-tips">
+    <view class="tip-item">💬 请联系您的专属顾问重新发送</view>
+    <view class="tip-item">📋 顾问重新分享后您将收到新的填写卡片</view>
+  </view>
+</view>

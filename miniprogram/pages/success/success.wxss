@@ -1,0 +1,132 @@
+.success-page {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-height: 100vh;
+  padding: 0 32rpx;
+  text-align: center;
+  background: linear-gradient(180deg, #f0fff0 0%, #f5f7fa 35%, #ffffff 100%);
+}
+
+/* ===== 上半区 ===== */
+.top-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: 80rpx;
+  padding-bottom: 32rpx;
+}
+
+.success-icon {
+  width: 120rpx;
+  height: 120rpx;
+  background: linear-gradient(135deg, #52c41a, #73d13d);
+  color: #fff;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 60rpx;
+  font-weight: 700;
+  margin-bottom: 24rpx;
+  box-shadow: 0 8rpx 24rpx rgba(82, 196, 26, 0.3);
+}
+
+.success-title {
+  font-size: 40rpx;
+  font-weight: 700;
+  color: #1d2129;
+  margin-bottom: 10rpx;
+}
+
+.success-desc {
+  font-size: 26rpx;
+  color: #86909c;
+  line-height: 1.6;
+  margin-bottom: 16rpx;
+}
+
+.success-tips {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4rpx;
+}
+
+.tip-item {
+  font-size: 22rpx;
+  color: #a8abb2;
+  line-height: 1.8;
+}
+
+/* ===== 中间按钮区（并排一行） ===== */
+.action-row {
+  width: 100%;
+  max-width: 600rpx;
+  display: flex;
+  flex-direction: row;
+  gap: 20rpx;
+  margin-bottom: 48rpx;
+}
+
+.btn-notify {
+  flex: 1;
+  height: 80rpx;
+  line-height: 80rpx;
+  background: linear-gradient(135deg, #409eff, #1677ff);
+  color: #fff;
+  font-size: 26rpx;
+  font-weight: 600;
+  border: none;
+  border-radius: 40rpx;
+  box-shadow: 0 6rpx 20rpx rgba(22, 119, 255, 0.25);
+  padding: 0 8rpx;
+}
+
+.btn-notify::after {
+  border: none;
+}
+
+.btn-back {
+  flex: 1;
+  height: 80rpx;
+  line-height: 80rpx;
+  background: #fff;
+  color: #4e5969;
+  font-size: 26rpx;
+  font-weight: 500;
+  border: 2rpx solid #e5e6eb;
+  border-radius: 40rpx;
+  padding: 0 8rpx;
+}
+
+.btn-back::after {
+  border: none;
+}
+
+/* ===== 下半区：广告 ===== */
+.ad-section {
+  width: 100%;
+  max-width: 650rpx;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.ad-divider {
+  display: flex;
+  align-items: center;
+  margin-bottom: 20rpx;
+}
+
+.ad-divider-line {
+  flex: 1;
+  height: 1rpx;
+  background: #e5e6eb;
+}
+
+.ad-divider-text {
+  font-size: 22rpx;
+  color: #c0c4cc;
+  padding: 0 16rpx;
+}

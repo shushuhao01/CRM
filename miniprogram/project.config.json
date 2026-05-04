@@ -1,0 +1,78 @@
+{
+  "description": "云客CRM客户自助填写资料小程序",
+  "packOptions": {
+    "ignore": [],
+    "include": []
+  },
+  "setting": {
+    "bundle": false,
+    "userConfirmedBundleSwitch": false,
+    "urlCheck": false,
+    "scopeJSCheck": false,
+    "coverView": true,
+    "es6": true,
+    "postcss": true,
+    "compileHotReLoad": false,
+    "lazyloadPlaceholderEnable": false,
+    "preloadBackgroundData": false,
+    "minified": true,
+    "autoAudits": false,
+    "newFeature": false,
+    "uglifyFileName": false,
+    "uploadWithSourceMap": true,
+    "enhance": true,
+    "showShadowRootInWxmlPanel": true,
+    "packNpmManually": false,
+    "packNpmRelationList": [],
+    "minifyWXSS": true,
+    "disableUseStrict": false,
+    "minifyWXML": true,
+    "babelSetting": {
+      "ignore": [],
+      "disablePlugins": [],
+      "outputPath": ""
+    },
+    "condition": false,
+    "compileWorklet": false,
+    "localPlugins": false,
+    "useCompilerPlugins": false,
+    "swc": false,
+    "disableSWC": true
+  },
+  "compileType": "miniprogram",
+  "libVersion": "3.3.4",
+  "appid": "wxa11e52021fadffc7",
+  "projectname": "yunke-crm-mp",
+  "condition": {
+    "miniprogram": {
+      "current": 0,
+      "list": [
+        {
+          "name": "表单页(带参数)",
+          "pathName": "pages/form/form",
+          "query": "tenantId=test_tenant&memberId=test_member&ts=9999999999&sign=test_debug_sign"
+        },
+        {
+          "name": "表单页(无参数-开发模式)",
+          "pathName": "pages/form/form",
+          "query": ""
+        },
+        {
+          "name": "提交成功页",
+          "pathName": "pages/success/success",
+          "query": ""
+        },
+        {
+          "name": "链接过期页",
+          "pathName": "pages/expired/expired",
+          "query": ""
+        }
+      ]
+    }
+  },
+  "editorSetting": {
+    "tabIndent": "insertSpaces",
+    "tabSize": 2
+  },
+  "simulatorPluginLibVersion": {}
+}

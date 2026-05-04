@@ -1,0 +1,45 @@
+page {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+  background: #f5f7fa;
+  color: #1d2129;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.container {
+  padding: 24rpx;
+  min-height: 100vh;
+}
+
+.btn-primary {
+  width: 100%;
+  height: 96rpx;
+  background: linear-gradient(135deg, #409eff, #1677ff);
+  color: #fff;
+  border: none;
+  border-radius: 16rpx;
+  font-size: 32rpx;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.btn-primary[disabled] {
+  opacity: 0.5;
+}
+
+.btn-phone {
+  width: 100%;
+  height: 88rpx;
+  background: #07c160;
+  color: #fff;
+  border: none;
+  border-radius: 12rpx;
+  font-size: 30rpx;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8rpx;
+}
