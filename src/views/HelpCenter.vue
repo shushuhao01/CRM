@@ -94,6 +94,9 @@
             <el-menu-item index="call-workphone-guide">工作手机绑定</el-menu-item>
             <el-menu-item index="call-line-manage-guide">线路管理与分配</el-menu-item>
             <el-menu-item index="call-records-guide">通话记录与录音</el-menu-item>
+            <el-menu-item index="call-inbound-guide">呼入功能与来电弹窗</el-menu-item>
+            <el-menu-item index="call-sip-pbx-guide">SIP/PBX呼入对接</el-menu-item>
+            <el-menu-item index="call-agent-status-guide">坐席状态管理</el-menu-item>
           </el-sub-menu>
 
           <!-- 物流配置指南 -->
@@ -222,6 +225,9 @@ const helpContentComponents: Record<string, any> = {
   'call-config-guide': defineAsyncComponent(() => import('@/components/HelpContent/CallConfigGuide.vue')),
   'call-methods-guide': defineAsyncComponent(() => import('@/components/HelpContent/CallConfigGuide.vue')),
   'call-workphone-guide': defineAsyncComponent(() => import('@/components/HelpContent/CallConfigGuide.vue')),
+  'call-inbound-guide': defineAsyncComponent(() => import('@/components/HelpContent/CallConfigGuide.vue')),
+  'call-sip-pbx-guide': defineAsyncComponent(() => import('@/components/HelpContent/CallConfigGuide.vue')),
+  'call-agent-status-guide': defineAsyncComponent(() => import('@/components/HelpContent/CallConfigGuide.vue')),
   'call-line-manage-guide': defineAsyncComponent(() => import('@/components/HelpContent/CallConfigGuide.vue')),
   'call-records-guide': defineAsyncComponent(() => import('@/components/HelpContent/CallConfigGuide.vue')),
 
@@ -423,6 +429,27 @@ const mockSearchResults = [
     excerpt: '通话记录查看、筛选、录音回放、自动录音、各外呼方式录音支持...',
     category: '通话管理指南',
     content: '通话记录 录音回放 通话时长 通话状态 外呼任务 批量拨打 接通率 通话备注 自动录音 VoIP录音 SIP录音 PSTN录音 工作手机录音'
+  },
+  {
+    id: 'call-inbound-guide',
+    title: '呼入功能与来电弹窗',
+    excerpt: '呼入来电弹窗、客户自动匹配、接听/拒绝操作、呼入通话记录...',
+    category: '通话管理指南',
+    content: '呼入 来电 来电弹窗 来电通知 接听 拒绝 未接 客户匹配 来电铃声 桌面通知 呼入记录 inbound'
+  },
+  {
+    id: 'call-sip-pbx-guide',
+    title: 'SIP/PBX呼入对接',
+    excerpt: 'SIP中继、PBX系统Webhook对接配置、FreePBX/Asterisk/FusionPBX集成指南...',
+    category: '通话管理指南',
+    content: 'SIP PBX FreePBX Asterisk FusionPBX Webhook 呼入路由 DID 中继 AGI Lua 密钥验证 对接 配置'
+  },
+  {
+    id: 'call-agent-status-guide',
+    title: '坐席状态管理',
+    excerpt: '坐席就绪/忙碌状态切换、来电分配策略、坐席监控...',
+    category: '通话管理指南',
+    content: '坐席状态 就绪 忙碌 离线 状态切换 来电分配 坐席监控 agent status ready busy'
   },
 
   // 项目介绍

@@ -174,7 +174,10 @@
       <el-card class="history-card" shadow="hover">
         <template #header>
           <div class="card-header">
-            <span><el-icon><Document /></el-icon> 清理历史</span>
+            <span><el-icon><Document /></el-icon> 清理历史 <el-tag size="small" type="info" style="margin-left: 8px;">共 {{ historyTotal }} 条</el-tag></span>
+            <el-button type="primary" link @click="loadHistory" :loading="historyLoading">
+              <el-icon><Refresh /></el-icon> 刷新
+            </el-button>
           </div>
         </template>
         <el-table :data="cleanupHistory" stripe v-loading="historyLoading">
@@ -190,6 +193,17 @@
           <el-table-column prop="operator" label="操作人" width="120" />
           <el-table-column prop="remark" label="备注" />
         </el-table>
+        <div class="history-pagination">
+          <el-pagination
+            v-model:current-page="historyPage"
+            v-model:page-size="historyPageSize"
+            :page-sizes="[10, 20, 50, 100]"
+            :total="historyTotal"
+            layout="total, sizes, prev, pager, next, jumper"
+            @size-change="handleHistorySizeChange"
+            @current-change="handleHistoryPageChange"
+          />
+        </div>
       </el-card>
   </div>
 </template>
@@ -244,6 +258,9 @@ const cleaning = ref(false)
 // 清理历史
 const cleanupHistory = ref<any[]>([])
 const historyLoading = ref(false)
+const historyPage = ref(1)
+const historyPageSize = ref(10)
+const historyTotal = ref(0)
 
 // 禁用未来日期
 const disabledDate = (date: Date) => {
@@ -277,19 +294,49 @@ const loadConfig = async () => {
   }
 }
 
-// 加载清理历史
+// 加载清理历史（分页加载）
 const loadHistory = async () => {
   historyLoading.value = true
   try {
-    const res = await api.get('/message-cleanup/history')
+    const res = await api.get('/message-cleanup/history', {
+      params: {
+        page: historyPage.value,
+        pageSize: historyPageSize.value
+      }
+    })
     if (res) {
-      cleanupHistory.value = Array.isArray(res) ? res : []
+      // 支持分页响应格式 { list: [], total: number } 和数组格式兼容
+      if (res.list && typeof res.total === 'number') {
+        cleanupHistory.value = res.list
+        historyTotal.value = res.total
+      } else if (Array.isArray(res)) {
+        // 后端返回数组时做前端分页兼容
+        const allData = res
+        historyTotal.value = allData.length
+        const start = (historyPage.value - 1) * historyPageSize.value
+        cleanupHistory.value = allData.slice(start, start + historyPageSize.value)
+      } else {
+        cleanupHistory.value = []
+        historyTotal.value = 0
+      }
     }
   } catch (error) {
     console.error('加载清理历史失败:', error)
   } finally {
     historyLoading.value = false
   }
+}
+
+// 清理历史分页变化
+const handleHistoryPageChange = (page: number) => {
+  historyPage.value = page
+  loadHistory()
+}
+
+const handleHistorySizeChange = (size: number) => {
+  historyPageSize.value = size
+  historyPage.value = 1
+  loadHistory()
 }
 
 // 启用状态变更
@@ -435,5 +482,11 @@ onMounted(() => {
   display: inline-flex;
   align-items: center;
   gap: 4px;
+}
+
+.history-pagination {
+  margin-top: 16px;
+  display: flex;
+  justify-content: flex-end;
 }
 </style>

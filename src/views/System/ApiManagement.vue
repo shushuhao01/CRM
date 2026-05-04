@@ -62,6 +62,19 @@
         <div class="card-header">
           <span>APP对接接口</span>
           <div class="header-actions">
+            <el-input
+              v-model="searchKeyword"
+              placeholder="搜索接口名称/编码/地址"
+              :prefix-icon="Search"
+              clearable
+              style="width: 240px; margin-right: 8px;"
+              @clear="handleSearch"
+              @keyup.enter="handleSearch"
+            />
+            <el-select v-model="filterStatus" placeholder="状态" clearable style="width: 100px; margin-right: 8px;" @change="handleSearch">
+              <el-option label="启用" value="enabled" />
+              <el-option label="停用" value="disabled" />
+            </el-select>
             <el-button :icon="Refresh" @click="loadData" :loading="loading">刷新</el-button>
             <el-button type="primary" :icon="Document" @click="showApiDoc">查看文档</el-button>
           </div>
@@ -134,6 +147,18 @@
           </template>
         </el-table-column>
       </el-table>
+
+      <div class="pagination-wrapper" v-if="pagination.total > 0">
+        <el-pagination
+          v-model:current-page="pagination.page"
+          v-model:page-size="pagination.pageSize"
+          :total="pagination.total"
+          :page-sizes="[10, 20, 50, 100]"
+          layout="total, sizes, prev, pager, next, jumper"
+          @size-change="handlePageSizeChange"
+          @current-change="handlePageChange"
+        />
+      </div>
     </el-card>
 
     <!-- 接口详情弹窗 -->
@@ -263,7 +288,7 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Connection, Cellphone, DataLine, Timer, Refresh, Document } from '@element-plus/icons-vue'
+import { Connection, Cellphone, DataLine, Timer, Refresh, Document, Search } from '@element-plus/icons-vue'
 import { getApiInterfaces, updateApiInterface, getApiCallLogs, getApiStats, resetApiStats } from '@/api/apiInterface'
 
 // 状态
@@ -274,6 +299,17 @@ const stats = reactive({
   calls: { total: 0, success: 0, fail: 0, successRate: 0 },
   today: { calls: 0, success: 0, avgResponseTime: 0 },
   devices: { total: 0, online: 0 }
+})
+
+// 搜索筛选
+const searchKeyword = ref('')
+const filterStatus = ref('')
+
+// 分页
+const pagination = reactive({
+  page: 1,
+  pageSize: 10,
+  total: 0
 })
 
 // 详情弹窗
@@ -328,10 +364,17 @@ const loginDocResponse = `{
 const loadData = async () => {
   loading.value = true
   try {
-    const [interfacesData, statsData] = await Promise.all([
-      getApiInterfaces().catch(err => {
+    const params: any = {
+      page: pagination.page,
+      pageSize: pagination.pageSize
+    }
+    if (searchKeyword.value) params.keyword = searchKeyword.value
+    if (filterStatus.value) params.status = filterStatus.value
+
+    const [rawInterfacesData, statsData] = await Promise.all([
+      getApiInterfaces(params).catch(err => {
         console.error('获取接口列表失败:', err)
-        return []
+        return null
       }),
       getApiStats().catch(err => {
         console.error('获取统计数据失败:', err)
@@ -339,8 +382,16 @@ const loadData = async () => {
       })
     ])
 
-    // request.ts 响应拦截器返回的是 response.data.data，所以这里直接就是数据
-    interfaces.value = Array.isArray(interfacesData) ? interfacesData : []
+    // 兼容分页返回结构 { list, total, page, pageSize } 和旧结构（直接数组）
+    const interfacesData = rawInterfacesData as any
+    if (interfacesData && typeof interfacesData === 'object' && !Array.isArray(interfacesData)) {
+      interfaces.value = Array.isArray(interfacesData.list) ? interfacesData.list : []
+      pagination.total = parseInt(interfacesData.total, 10) || 0
+    } else {
+      interfaces.value = Array.isArray(interfacesData) ? interfacesData : []
+      pagination.total = interfaces.value.length
+    }
+    console.log('[ApiManagement] 接口数:', interfaces.value.length, '总数:', pagination.total)
 
     if (statsData) {
       Object.assign(stats, statsData)
@@ -351,6 +402,23 @@ const loadData = async () => {
   } finally {
     loading.value = false
   }
+}
+
+// 搜索
+const handleSearch = () => {
+  pagination.page = 1
+  loadData()
+}
+
+// 分页切换
+const handlePageChange = (page: number) => {
+  pagination.page = page
+  loadData()
+}
+const handlePageSizeChange = (size: number) => {
+  pagination.pageSize = size
+  pagination.page = 1
+  loadData()
 }
 
 // 状态变更
@@ -385,11 +453,12 @@ const showLogs = async (row: any) => {
 const loadLogs = async () => {
   logsLoading.value = true
   try {
-    const data = await getApiCallLogs({
+    const rawData = await getApiCallLogs({
       interfaceCode: currentLogCode.value,
       page: logsPagination.page,
       pageSize: logsPagination.pageSize
     })
+    const data = rawData as any
     if (data) {
       logs.value = data.logs || []
       logsPagination.total = data.total || 0

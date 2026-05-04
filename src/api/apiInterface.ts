@@ -3,12 +3,26 @@
  */
 import request from '@/utils/request'
 
-// 获取接口列表
-export function getApiInterfaces(params?: { category?: string }) {
+// 获取接口列表（分页）
+export function getApiInterfaces(params?: {
+  category?: string
+  keyword?: string
+  status?: string
+  page?: number
+  pageSize?: number
+}) {
   return request({
     url: '/mobile/interfaces',
     method: 'get',
     params
+  })
+}
+
+// 获取单个接口详情
+export function getApiInterfaceDetail(id: number) {
+  return request({
+    url: `/mobile/interfaces/${id}`,
+    method: 'get'
   })
 }
 
@@ -79,5 +93,14 @@ export function unbindDevice(deviceId?: string) {
     url: '/mobile/unbind',
     method: 'delete',
     data: { deviceId }
+  })
+}
+
+// 清理历史日志（保留最近N天）
+export function clearApiCallLogs(days: number = 30) {
+  return request({
+    url: '/mobile/interfaces/logs/clear',
+    method: 'delete',
+    params: { days }
   })
 }

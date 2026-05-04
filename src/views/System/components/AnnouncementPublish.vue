@@ -139,6 +139,17 @@
           </template>
         </el-table-column>
       </el-table>
+      <div class="announcement-pagination">
+        <el-pagination
+          v-model:current-page="pagination.page"
+          v-model:page-size="pagination.pageSize"
+          :page-sizes="[10, 20, 50]"
+          :total="pagination.total"
+          layout="total, sizes, prev, pager, next, jumper"
+          @size-change="handleSizeChange"
+          @current-change="handlePageChange"
+        />
+      </div>
     </div>
 
     <!-- 预览公告对话框 -->
@@ -360,6 +371,13 @@ const filterForm = reactive({
 // 公告列表
 const announcements = ref([])
 
+// 分页
+const pagination = reactive({
+  page: 1,
+  pageSize: 10,
+  total: 0
+})
+
 // 公告表单
 const announcementForm = reactive({
   title: '',
@@ -434,42 +452,68 @@ const getStatusText = (status: string) => {
   return texts[status] || status
 }
 
-// 加载公告列表
+// 加载公告列表（分页加载）
 const loadAnnouncements = async () => {
   loading.value = true
   try {
-    console.log('[AnnouncementPublish] 开始加载公告列表, 参数:', filterForm)
-    const response = await messageApi.getAnnouncements(filterForm)
+    const params = {
+      ...filterForm,
+      page: pagination.page,
+      pageSize: pagination.pageSize
+    }
+    console.log('[AnnouncementPublish] 开始加载公告列表, 参数:', params)
+    const response = await messageApi.getAnnouncements(params)
     console.log('[AnnouncementPublish] API响应:', response)
     // 后端返回 { success: true, data: { list: [], total: 0 } } 格式
     if (response && response.success && response.data) {
       if (Array.isArray(response.data.list)) {
         announcements.value = response.data.list
+        pagination.total = response.data.total || 0
         console.log('[AnnouncementPublish] 使用data.list格式')
       } else if (Array.isArray(response.data)) {
-        announcements.value = response.data
-        console.log('[AnnouncementPublish] 使用data数组格式')
+        // 后端返回数组时做前端分页兼容
+        const allData = response.data
+        pagination.total = allData.length
+        const start = (pagination.page - 1) * pagination.pageSize
+        announcements.value = allData.slice(start, start + pagination.pageSize)
+        console.log('[AnnouncementPublish] 使用data数组格式，前端分页')
       } else {
         announcements.value = []
+        pagination.total = 0
         console.log('[AnnouncementPublish] data格式不匹配，设为空数组')
       }
     } else {
       announcements.value = []
+      pagination.total = 0
       console.log('[AnnouncementPublish] 响应无效，设为空数组')
     }
-    console.log('[AnnouncementPublish] 最终加载公告列表:', announcements.value.length, '条')
+    console.log('[AnnouncementPublish] 最终加载公告列表:', announcements.value.length, '条，总数:', pagination.total)
   } catch (error) {
     console.error('[AnnouncementPublish] 加载公告列表失败:', error)
     announcements.value = []
+    pagination.total = 0
   } finally {
     loading.value = false
   }
+}
+
+// 分页变化
+const handlePageChange = (page: number) => {
+  pagination.page = page
+  loadAnnouncements()
+}
+
+const handleSizeChange = (size: number) => {
+  pagination.pageSize = size
+  pagination.page = 1
+  loadAnnouncements()
 }
 
 // 重置筛选条件
 const resetFilter = () => {
   filterForm.status = ''
   filterForm.type = ''
+  pagination.page = 1
   loadAnnouncements()
 }
 
@@ -676,6 +720,12 @@ onBeforeUnmount(() => {
 
 .announcement-list {
   margin-bottom: 24px;
+}
+
+.announcement-pagination {
+  margin-top: 16px;
+  display: flex;
+  justify-content: flex-end;
 }
 
 .announcement-title {

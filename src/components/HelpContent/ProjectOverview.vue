@@ -116,7 +116,21 @@
           <span class="module-icon">📦</span>
           <div class="module-info">
             <h4>商品管理</h4>
-            <p>商品信息、库存管理、分类管理、商品分析</p>
+            <p>商品信息、库存管理、分类管理、商品分析、虚拟商品（卡密/网盘资源）</p>
+          </div>
+        </div>
+        <div class="module-item">
+          <span class="module-icon">💬</span>
+          <div class="module-info">
+            <h4>企微管理</h4>
+            <p>客户同步、会话存档、AI助手、渠道活码、客户群、话术库、敏感词监控</p>
+          </div>
+        </div>
+        <div class="module-item">
+          <span class="module-icon">📬</span>
+          <div class="module-info">
+            <h4>消息通知</h4>
+            <p>站内消息、系统公告、通知订阅、消息已读、短信模板与自动发送</p>
           </div>
         </div>
         <div class="module-item">

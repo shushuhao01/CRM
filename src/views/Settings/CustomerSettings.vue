@@ -36,6 +36,36 @@
             />
           </template>
         </el-table-column>
+        <el-table-column label="小程序启用" width="100">
+          <template #default="{ row }">
+            <el-switch
+              v-model="row.mpEnabled"
+              size="small"
+              :disabled="!row.enabled"
+              @change="handleFieldVisibilityChange"
+            />
+          </template>
+        </el-table-column>
+        <el-table-column label="小程序必填" width="100">
+          <template #default="{ row }">
+            <el-switch
+              v-model="row.mpRequired"
+              size="small"
+              :disabled="!row.enabled || !row.mpEnabled"
+              @change="handleFieldVisibilityChange"
+            />
+          </template>
+        </el-table-column>
+        <el-table-column label="小程序折叠" width="100">
+          <template #default="{ row }">
+            <el-switch
+              v-model="row.mpCollapsed"
+              size="small"
+              :disabled="!row.enabled || !row.mpEnabled"
+              @change="handleFieldVisibilityChange"
+            />
+          </template>
+        </el-table-column>
         <el-table-column label="说明">
           <template #default="{ row }">
             <span v-if="row.alwaysEnabled" style="color: #999; font-size: 12px;">核心字段，不可禁用</span>
@@ -89,7 +119,21 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="placeholder" label="占位符" min-width="150" show-overflow-tooltip />
+        <el-table-column prop="placeholder" label="占位符" min-width="120" show-overflow-tooltip />
+        <el-table-column label="小程序必填" width="100">
+          <template #default="{ row }">
+            <el-tag :type="row.mpRequired ? 'danger' : 'info'" size="small">
+              {{ row.mpRequired ? '是' : '否' }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="小程序显示" width="100">
+          <template #default="{ row }">
+            <el-tag :type="row.mpDisplay === 'show' ? 'success' : row.mpDisplay === 'collapsed' ? 'warning' : 'info'" size="small">
+              {{ ({ show: '显示', collapsed: '折叠', hidden: '隐藏' } as Record<string, string>)[row.mpDisplay || 'show'] }}
+            </el-tag>
+          </template>
+        </el-table-column>
         <el-table-column label="操作" width="200" fixed="right">
           <template #default="{ row, $index }">
             <el-button size="small" type="primary" link @click="openEditFieldDialog(row, $index)">编辑</el-button>
@@ -170,6 +214,17 @@
           <el-switch v-model="customFieldForm.showInList" />
           <div class="form-tip">开启后，该字段将在客户列表中显示</div>
         </el-form-item>
+        <el-form-item label="小程序必填">
+          <el-switch v-model="customFieldForm.mpRequired" />
+          <div class="form-tip">开启后，客户在小程序填写时此字段为必填</div>
+        </el-form-item>
+        <el-form-item label="小程序显示">
+          <el-select v-model="customFieldForm.mpDisplay" style="width: 200px">
+            <el-option label="显示" value="show" />
+            <el-option label="折叠（展开后可见）" value="collapsed" />
+            <el-option label="隐藏（不在小程序中显示）" value="hidden" />
+          </el-select>
+        </el-form-item>
         <el-form-item
           label="选项配置"
           v-if="['select', 'radio', 'checkbox'].includes(customFieldForm.fieldType)"
@@ -243,7 +298,10 @@ const builtinFieldsData = reactive(
   BUILTIN_FIELDS.map(f => ({
     ...f,
     enabled: true,
-    required: false
+    required: false,
+    mpEnabled: true,
+    mpRequired: false,
+    mpCollapsed: false
   }))
 )
 
@@ -267,7 +325,9 @@ const customFieldForm = reactive({
   required: false,
   placeholder: '',
   showInList: true,
-  options: [] as Array<{ label: string; value: string }>
+  options: [] as Array<{ label: string; value: string }>,
+  mpRequired: false,
+  mpDisplay: 'show' as 'show' | 'collapsed' | 'hidden'
 })
 
 // 表单验证规则
@@ -310,6 +370,9 @@ const syncBuiltinFieldsFromConfig = () => {
     if (v) {
       f.enabled = v.enabled
       f.required = v.required
+      f.mpEnabled = v.mpEnabled !== false
+      f.mpRequired = v.mpRequired || false
+      f.mpCollapsed = v.mpCollapsed || false
     }
     if (f.alwaysEnabled) {
       f.enabled = true
@@ -338,7 +401,8 @@ const openAddFieldDialog = () => {
   editingFieldIndex.value = -1
   Object.assign(customFieldForm, {
     fieldName: '', fieldKey: '', fieldType: 'text',
-    required: false, placeholder: '', showInList: true, options: []
+    required: false, placeholder: '', showInList: true, options: [],
+    mpRequired: false, mpDisplay: 'show'
   })
   customFieldDialogVisible.value = true
 }
@@ -354,7 +418,9 @@ const openEditFieldDialog = (field: any, index: number) => {
     required: field.required,
     placeholder: field.placeholder || '',
     showInList: field.showInList,
-    options: field.options ? JSON.parse(JSON.stringify(field.options)) : []
+    options: field.options ? JSON.parse(JSON.stringify(field.options)) : [],
+    mpRequired: field.mpRequired || false,
+    mpDisplay: field.mpDisplay || 'show'
   })
   customFieldDialogVisible.value = true
 }
@@ -391,6 +457,8 @@ const saveCustomField = async () => {
       field.required = customFieldForm.required
       field.placeholder = customFieldForm.placeholder
       field.showInList = customFieldForm.showInList
+      field.mpRequired = customFieldForm.mpRequired
+      field.mpDisplay = customFieldForm.mpDisplay
       if (customFieldForm.options.length > 0) {
         field.options = JSON.parse(JSON.stringify(customFieldForm.options))
       }
@@ -405,7 +473,9 @@ const saveCustomField = async () => {
         placeholder: customFieldForm.placeholder,
         showInList: customFieldForm.showInList,
         sortOrder: localConfig.customFields.length,
-        options: customFieldForm.options.length > 0 ? JSON.parse(JSON.stringify(customFieldForm.options)) : undefined
+        options: customFieldForm.options.length > 0 ? JSON.parse(JSON.stringify(customFieldForm.options)) : undefined,
+        mpRequired: customFieldForm.mpRequired,
+        mpDisplay: customFieldForm.mpDisplay
       })
       ElMessage.success('字段已添加，请点击"保存配置"按钮保存')
     }
@@ -465,9 +535,15 @@ const saveConfig = async () => {
     saving.value = true
 
     // 构建 fieldVisibility
-    const fieldVisibility: Record<string, { enabled: boolean; required: boolean }> = {}
+    const fieldVisibility: Record<string, { enabled: boolean; required: boolean; mpEnabled?: boolean; mpRequired?: boolean; mpCollapsed?: boolean }> = {}
     builtinFieldsData.forEach(f => {
-      fieldVisibility[f.key] = { enabled: f.enabled, required: f.required }
+      fieldVisibility[f.key] = {
+        enabled: f.enabled,
+        required: f.required,
+        mpEnabled: f.mpEnabled,
+        mpRequired: f.mpRequired,
+        mpCollapsed: f.mpCollapsed
+      }
     })
 
     const configData = {
