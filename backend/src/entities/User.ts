@@ -121,6 +121,15 @@ export class User {
   @Column('tinyint', { name: 'need_change_password', default: 1, nullable: true })
   needChangePassword: number | null;
 
+  @Column('varchar', { name: 'agent_status', length: 20, default: 'ready', nullable: true })
+  agentStatus: string | null;
+
+  @Column('datetime', { name: 'status_changed_at', nullable: true })
+  statusChangedAt: Date | null;
+
+  @Column('varchar', { name: 'status_reason', length: 200, nullable: true })
+  statusReason: string | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 

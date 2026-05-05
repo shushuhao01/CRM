@@ -1312,15 +1312,24 @@ router.get('/agent-status', async (req: Request, res: Response) => {
     const currentUser = (req as any).user;
     const userId = String(currentUser?.userId || currentUser?.id);
 
-    const t = tenantRawSQL();
-    const rows = await AppDataSource.query(
-      `SELECT agent_status, status_changed_at, status_reason FROM users WHERE id = ?${t.sql} LIMIT 1`,
-      [userId, ...t.params]
-    );
+    // 先检查 users 表是否有 agent_status 列（可能尚未迁移）
+    let status = 'ready';
+    let changedAt = null;
+    let reason = null;
 
-    const status = rows[0]?.agent_status || 'ready';
-    const changedAt = rows[0]?.status_changed_at || null;
-    const reason = rows[0]?.status_reason || null;
+    try {
+      const t = tenantRawSQL();
+      const rows = await AppDataSource.query(
+        `SELECT agent_status, status_changed_at, status_reason FROM users WHERE id = ?${t.sql} LIMIT 1`,
+        [userId, ...t.params]
+      );
+      status = rows[0]?.agent_status || 'ready';
+      changedAt = rows[0]?.status_changed_at || null;
+      reason = rows[0]?.status_reason || null;
+    } catch (columnError: any) {
+      // 列不存在时降级返回默认值，不阻塞页面
+      logger.warn('[agent-status] 坐席状态列可能不存在，返回默认值。需执行: ALTER TABLE users ADD COLUMN agent_status VARCHAR(20) DEFAULT "ready", ADD COLUMN status_changed_at DATETIME NULL, ADD COLUMN status_reason VARCHAR(255) NULL;');
+    }
 
     res.json(successResponse({ status, changedAt, reason }));
   } catch (error) {
@@ -1345,11 +1354,16 @@ router.put('/agent-status', async (req: Request, res: Response) => {
       return res.status(400).json(errorResponse('状态值无效，可选: ready/busy/offline', 400));
     }
 
-    const t = tenantRawSQL();
-    await AppDataSource.query(
-      `UPDATE users SET agent_status = ?, status_changed_at = NOW(), status_reason = ? WHERE id = ?${t.sql}`,
-      [status, reason || null, userId, ...t.params]
-    );
+    try {
+      const t = tenantRawSQL();
+      await AppDataSource.query(
+        `UPDATE users SET agent_status = ?, status_changed_at = NOW(), status_reason = ? WHERE id = ?${t.sql}`,
+        [status, reason || null, userId, ...t.params]
+      );
+    } catch (columnError: any) {
+      // 列不存在时仅记录警告，仍返回成功（状态保存在前端 localStorage）
+      logger.warn('[agent-status] 坐席状态列可能不存在，状态仅保存在客户端。需执行: ALTER TABLE users ADD COLUMN agent_status VARCHAR(20) DEFAULT "ready", ADD COLUMN status_changed_at DATETIME NULL, ADD COLUMN status_reason VARCHAR(255) NULL;');
+    }
 
     // 通过WebSocket广播坐席状态变化（供管理后台实时监控）
     if ((global as any).webSocketService) {
@@ -1381,19 +1395,30 @@ router.get('/agent-status/list', async (req: Request, res: Response) => {
     }
 
     const t = tenantRawSQL();
-    const rows = await AppDataSource.query(
-      `SELECT id, name, real_name, agent_status, status_changed_at, status_reason
-       FROM users WHERE status = 'active'${t.sql}
-       ORDER BY agent_status ASC, name ASC`,
-      [...t.params]
-    );
+    let rows: any[] = [];
+
+    try {
+      rows = await AppDataSource.query(
+        `SELECT id, name, real_name, agent_status, status_changed_at, status_reason
+         FROM users WHERE status = 'active'${t.sql}
+         ORDER BY agent_status ASC, name ASC`,
+        [...t.params]
+      );
+    } catch (columnError: any) {
+      // 列不存在时回退到不查询坐席状态列
+      logger.warn('[agent-status/list] 坐席状态列可能不存在，回退查询');
+      rows = await AppDataSource.query(
+        `SELECT id, name, real_name FROM users WHERE status = 'active'${t.sql} ORDER BY name ASC`,
+        [...t.params]
+      );
+    }
 
     res.json(successResponse(rows.map((u: any) => ({
       userId: u.id,
       name: u.real_name || u.name,
       agentStatus: u.agent_status || 'ready',
-      changedAt: u.status_changed_at,
-      reason: u.status_reason
+      changedAt: u.status_changed_at || null,
+      reason: u.status_reason || null
     }))));
   } catch (error) {
     logger.error('获取坐席列表失败:', error);

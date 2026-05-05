@@ -53,17 +53,17 @@
 
 .btn-get-phone {
   flex-shrink: 0;
-  height: 72rpx;
-  line-height: 72rpx;
-  padding: 0 16rpx;
-  background: linear-gradient(135deg, #52c41a, #389e0d);
-  color: #fff;
-  font-size: 22rpx;
+  height: 76rpx;
+  line-height: 76rpx;
+  padding: 0 24rpx;
+  background: linear-gradient(135deg, #e8f4fd, #d4ecfa);
+  color: #1890ff;
+  font-size: 28rpx;
   font-weight: 500;
-  border: none;
+  border: 1rpx solid #91d5ff;
   border-radius: 12rpx;
   white-space: nowrap;
-  max-width: 160rpx;
+  max-width: 180rpx;
 }
 
 /* 智能识别填充区域 */

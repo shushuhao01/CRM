@@ -959,7 +959,7 @@ router.get('/wxacode', authenticateToken, async (req: Request, res: Response) =>
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         scene: scene || 'default',
-        page: page || 'pages/form/form',
+        page: page || 'pages/index/index',
         width: 280,
         auto_color: false,
         line_color: { r: 64, g: 158, b: 255 },

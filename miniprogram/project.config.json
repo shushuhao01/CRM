@@ -48,6 +48,16 @@
       "current": 0,
       "list": [
         {
+          "name": "首页(无参数-审核模式)",
+          "pathName": "pages/index/index",
+          "query": ""
+        },
+        {
+          "name": "首页(带参数-跳转表单)",
+          "pathName": "pages/index/index",
+          "query": "tenantId=test_tenant&memberId=test_member&ts=9999999999&sign=test_debug_sign"
+        },
+        {
           "name": "表单页(带参数)",
           "pathName": "pages/form/form",
           "query": "tenantId=test_tenant&memberId=test_member&ts=9999999999&sign=test_debug_sign"

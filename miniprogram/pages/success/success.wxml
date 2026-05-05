@@ -2,22 +2,30 @@
   <!-- 上半区：成功提示 -->
   <view class="top-section">
     <view class="success-icon">✓</view>
-    <view class="success-title">提交成功</view>
-    <view class="success-desc">您的资料已成功提交，顾问会尽快与您联系</view>
-    <view class="success-tips">
+    <view class="success-title">{{isDemo ? '体验完成' : '提交成功'}}</view>
+    <view class="success-desc" wx:if="{{!isDemo}}">您的资料已成功提交，顾问会尽快与您联系</view>
+    <view class="success-desc" wx:else>您已完整体验了资料填写功能，正式使用时请通过顾问发送的小程序卡片打开</view>
+    <view class="success-tips" wx:if="{{!isDemo}}">
       <text class="tip-item">🔒 信息已加密保存</text>
       <text class="tip-item">💬 顾问收到通知后会主动联系您</text>
     </view>
+    <view class="success-tips" wx:else>
+      <text class="tip-item">✅ 表单填写、地址选择、智能识别均可正常使用</text>
+      <text class="tip-item">📋 体验数据不会真实提交，请放心操作</text>
+    </view>
   </view>
 
-  <!-- 中间：操作按钮（并排一行） -->
-  <view class="action-row">
+  <!-- 中间：操作按钮 -->
+  <view class="action-row" wx:if="{{!isDemo}}">
     <button class="btn-notify" open-type="share">💬 告知顾问</button>
     <button class="btn-back" bindtap="handleBackToChat">↩️ 返回聊天</button>
   </view>
+  <view class="action-row" wx:else>
+    <button class="btn-back" bindtap="handleBackToHome" style="flex:1">返回首页</button>
+  </view>
 
-  <!-- 下半区：微信广告 -->
-  <view class="ad-section">
+  <!-- 下半区：微信广告（仅在配置了有效广告位ID时显示） -->
+  <view class="ad-section" wx:if="{{showAd}}">
     <view class="ad-divider">
       <view class="ad-divider-line"></view>
       <text class="ad-divider-text">推荐</text>

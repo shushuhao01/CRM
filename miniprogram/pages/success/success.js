@@ -1,18 +1,29 @@
 Page({
   data: {
-    // 替换为你在微信流量主后台创建的广告位ID
-    adUnitId: 'adunit-xxxxxxxxxxxxxxxxxx',
+    // 替换为你在微信流量主后台创建的广告位ID，留空则不显示广告区域
+    adUnitId: '',
+    showAd: false,
     tenantId: '',
     memberId: '',
-    customerName: ''
+    customerName: '',
+    isDemo: false
   },
 
   onLoad(options) {
+    const isDemo = options.demo === '1'
+    // 判断是否配置了有效的广告位ID（非空且不是占位符）
+    var adId = this.data.adUnitId
+    var showAd = !!adId && adId.indexOf('xxxxxxxxxx') === -1
     this.setData({
       tenantId: options.tenantId || '',
       memberId: options.memberId || '',
-      customerName: decodeURIComponent(options.name || '')
+      customerName: decodeURIComponent(options.name || ''),
+      isDemo,
+      showAd
     })
+    if (isDemo) {
+      wx.setNavigationBarTitle({ title: '体验完成' })
+    }
   },
 
   /**
@@ -26,6 +37,13 @@ Page({
       path: '/pages/success/success?tenantId=' + this.data.tenantId + '&memberId=' + this.data.memberId,
       imageUrl: ''
     }
+  },
+
+  /**
+   * 返回首页（体验模式）
+   */
+  handleBackToHome() {
+    wx.reLaunch({ url: '/pages/index/index' })
   },
 
   /**

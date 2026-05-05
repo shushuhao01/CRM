@@ -5,19 +5,19 @@
 
 // Mock dependencies before importing
 jest.mock('axios')
-jest.mock('../../config/database', () => ({
+jest.mock('../config/database', () => ({
   AppDataSource: {
     getRepository: jest.fn(),
     query: jest.fn()
   }
 }))
-jest.mock('../../config/logger', () => ({
+jest.mock('../config/logger', () => ({
   log: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() }
 }))
 
 import axios from 'axios'
-import { AppDataSource } from '../../config/database'
-import { WecomTokenService } from '../../services/wecom/WecomTokenService'
+import { AppDataSource } from '../config/database'
+import { WecomTokenService } from '../services/wecom/WecomTokenService'
 
 const mockedAxios = axios as jest.Mocked<typeof axios>
 const mockedAppDataSource = AppDataSource as jest.Mocked<typeof AppDataSource>

@@ -63,6 +63,13 @@ Page({
       sign: params.sign
     })
 
+    // 体验模式（从首页点击"体验表单功能"进入，所有环境通用，审核员可体验完整表单）
+    if (options.demo === '1') {
+      console.log('[表单] 体验模式：加载示例表单')
+      this._loadDemoForm()
+      return
+    }
+
     if (!params.tenantId || !params.memberId || !params.ts || !params.sign) {
       const isDevTools = typeof __wxConfig !== 'undefined' && __wxConfig.envVersion === 'develop'
       if (isDevTools) {
@@ -80,7 +87,31 @@ Page({
     this.loadFormConfig()
   },
 
-  /** 开发模式Mock数据 */
+  /** 体验模式表单（审核员 / 首页体验入口，所有环境可用） */
+  _loadDemoForm() {
+    this.setData({
+      loading: false,
+      tenantId: 'DEMO_MODE',
+      tenantCode: '',
+      phoneAuthEnabled: true,
+      visibleFields: [
+        { key: 'name', label: '客户姓名', mpRequired: true },
+        { key: 'phone', label: '手机号', mpRequired: true },
+        { key: 'province', label: '收货地址', mpRequired: false }
+      ],
+      collapsedFields: [
+        { key: 'gender', label: '性别', mpRequired: false },
+        { key: 'age', label: '年龄', mpRequired: false },
+        { key: 'email', label: '邮箱', mpRequired: false },
+        { key: 'wechat', label: '微信号', mpRequired: false },
+        { key: 'birthday', label: '客户生日', mpRequired: false }
+      ],
+      customFields: []
+    })
+    wx.setNavigationBarTitle({ title: '填写资料（体验）' })
+  },
+
+  /** 开发模式Mock数据（仅DevTools） */
   _loadMockForm() {
     this.setData({
       loading: false,
@@ -187,6 +218,13 @@ Page({
     if (e.detail.errMsg !== 'getPhoneNumber:ok') return
     const code = e.detail.code
     if (!code) { util.showToast('获取手机号失败'); return }
+
+    // 体验模式 / 开发模式：模拟获取手机号
+    if (this.data.tenantId === 'DEMO_MODE' || this.data.tenantId === 'DEV_TENANT') {
+      this.setData({ 'formData.phone': '13800138000' })
+      util.showToast('获取成功（体验）')
+      return
+    }
 
     util.showLoading('获取手机号...')
     try {
@@ -467,6 +505,18 @@ Page({
     this.setData({ submitting: true })
     util.showLoading('提交中...')
 
+    // 体验模式 / DevTools开发模式：跳过网络请求，直接模拟提交成功
+    // DEMO_MODE = 首页"体验表单功能"按钮进入（所有环境，审核员可用）
+    // DEV_TENANT = DevTools无参数编译进入（仅开发工具）
+    // 生产环境正常卡片打开时 tenantId 是真实租户ID，绝不会匹配这两个值
+    if (this.data.tenantId === 'DEMO_MODE' || this.data.tenantId === 'DEV_TENANT') {
+      util.hideLoading()
+      console.log('[表单] 体验/开发模式提交，数据:', JSON.stringify(formData))
+      wx.redirectTo({ url: '/pages/success/success?name=' + encodeURIComponent(formData.name || '') + '&demo=1' })
+      this.setData({ submitting: false })
+      return
+    }
+
     try {
       await api.submitCustomer({
         tenantId: this.data.tenantId,
@@ -485,6 +535,12 @@ Page({
       console.error('[表单] 提交失败:', err)
       if (err.code === 'DUPLICATE_PHONE') {
         util.showToast('您的资料已提交过')
+      } else if (err.statusCode === -1) {
+        util.showToast('网络连接失败，请检查网络后重试')
+      } else if (err.statusCode === 400) {
+        util.showToast('参数异常，请通过小程序卡片重新打开')
+      } else if (err.statusCode === 403) {
+        util.showToast('签名验证失败，链接可能已失效')
       } else {
         util.showToast(err.message || '提交失败，请稍后重试')
       }

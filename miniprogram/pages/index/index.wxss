@@ -1,0 +1,273 @@
+/* pages/index/index.wxss */
+.page-container {
+  min-height: 100vh;
+  background: #f5f7fa;
+}
+
+/* ===== 加载中 ===== */
+.loading-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+}
+
+.loading-spinner {
+  width: 56rpx;
+  height: 56rpx;
+  border: 5rpx solid #e8eaed;
+  border-top: 5rpx solid #409eff;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.loading-text {
+  font-size: 28rpx;
+  color: #86909c;
+  margin-top: 20rpx;
+}
+
+/* ===== 欢迎页 ===== */
+.welcome-section {
+  width: 100%;
+}
+
+/* Hero 顶部区域 */
+.hero-area {
+  position: relative;
+  width: 100%;
+  padding: 80rpx 0 60rpx;
+  overflow: hidden;
+}
+
+.hero-bg {
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: linear-gradient(145deg, #1a6cf7 0%, #409eff 40%, #69b4ff 100%);
+  border-radius: 0 0 60rpx 60rpx;
+}
+
+.hero-content {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.logo-wrap {
+  margin-bottom: 24rpx;
+}
+
+.logo-img {
+  width: 120rpx;
+  height: 120rpx;
+  border-radius: 30rpx;
+  box-shadow: 0 8rpx 24rpx rgba(0, 0, 0, 0.15);
+  background: #fff;
+}
+
+.hero-title {
+  font-size: 44rpx;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: 2rpx;
+  margin-bottom: 12rpx;
+}
+
+.hero-subtitle {
+  font-size: 26rpx;
+  color: rgba(255,255,255,0.8);
+  letter-spacing: 4rpx;
+}
+
+/* ===== 功能亮点卡片 ===== */
+.features-card {
+  margin: -20rpx 28rpx 24rpx;
+  background: #fff;
+  border-radius: 24rpx;
+  padding: 28rpx 28rpx 8rpx;
+  box-shadow: 0 8rpx 30rpx rgba(0, 0, 0, 0.06);
+  position: relative;
+  z-index: 2;
+}
+
+.feature-item {
+  display: flex;
+  align-items: center;
+  margin-bottom: 24rpx;
+}
+
+.feature-icon-wrap {
+  width: 80rpx;
+  height: 80rpx;
+  border-radius: 20rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-right: 20rpx;
+}
+
+.feature-icon {
+  font-size: 36rpx;
+}
+
+.feature-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.feature-title {
+  font-size: 28rpx;
+  font-weight: 600;
+  color: #1d2129;
+  margin-bottom: 4rpx;
+}
+
+.feature-desc {
+  font-size: 24rpx;
+  color: #86909c;
+}
+
+/* ===== 使用说明卡片 ===== */
+.guide-card {
+  margin: 0 28rpx 32rpx;
+  background: #fff;
+  border-radius: 24rpx;
+  padding: 28rpx;
+  box-shadow: 0 4rpx 16rpx rgba(0, 0, 0, 0.04);
+}
+
+.guide-header {
+  margin-bottom: 24rpx;
+}
+
+.guide-title {
+  font-size: 30rpx;
+  font-weight: 700;
+  color: #1d2129;
+}
+
+.guide-steps {
+  padding-left: 8rpx;
+}
+
+.guide-step {
+  position: relative;
+  padding-left: 36rpx;
+  padding-bottom: 28rpx;
+}
+
+.guide-step.last {
+  padding-bottom: 0;
+}
+
+.step-dot {
+  position: absolute;
+  left: 0;
+  top: 8rpx;
+  width: 18rpx;
+  height: 18rpx;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #409eff, #1677ff);
+  box-shadow: 0 2rpx 8rpx rgba(64, 158, 255, 0.3);
+}
+
+.step-line {
+  position: absolute;
+  left: 7rpx;
+  top: 28rpx;
+  width: 4rpx;
+  bottom: 0;
+  background: linear-gradient(180deg, #409eff, #d6e4ff);
+  border-radius: 2rpx;
+}
+
+.step-content {
+  display: flex;
+  flex-direction: column;
+}
+
+.step-label {
+  font-size: 28rpx;
+  font-weight: 600;
+  color: #1d2129;
+  margin-bottom: 4rpx;
+}
+
+.step-desc {
+  font-size: 24rpx;
+  color: #86909c;
+  line-height: 1.5;
+}
+
+/* ===== 体验按钮 ===== */
+.action-area {
+  padding: 0 60rpx;
+  margin-bottom: 32rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.demo-btn {
+  width: 100%;
+  height: 88rpx;
+  background: #fff;
+  border: 2rpx solid #b3d8ff;
+  border-radius: 44rpx;
+  box-shadow: 0 4rpx 16rpx rgba(64, 158, 255, 0.1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.demo-btn-text {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: #409eff;
+  letter-spacing: 2rpx;
+}
+
+.demo-btn:active {
+  background: #f0f7ff;
+  transform: scale(0.98);
+}
+
+.demo-tip {
+  display: block;
+  text-align: center;
+  font-size: 22rpx;
+  color: #c0c4cc;
+  margin-top: 12rpx;
+}
+
+/* ===== 底部 ===== */
+.footer-area {
+  padding: 0 60rpx 60rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.footer-divider {
+  width: 60rpx;
+  height: 4rpx;
+  background: #e8eaed;
+  border-radius: 2rpx;
+  margin-bottom: 16rpx;
+}
+
+.footer-text {
+  font-size: 22rpx;
+  color: #c0c4cc;
+  text-align: center;
+}

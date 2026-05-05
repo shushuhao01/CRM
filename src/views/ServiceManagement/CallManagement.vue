@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="call-management">
     <!-- 页面头部 -->
     <div class="page-header">
@@ -69,7 +69,11 @@
         <el-table-column prop="customerName" label="客户姓名" width="120" />
         <el-table-column prop="phone" label="电话号码" width="140">
           <template #default="{ row }">
-            {{ displaySensitiveInfoNew(row.phone, SensitiveInfoType.PHONE) }}
+            <span
+              class="phone-link"
+              @click="goCustomerDetail(row)"
+              :title="'点击查看客户详情'"
+            >{{ displaySensitiveInfoNew(row.phone, SensitiveInfoType.PHONE) }}</span>
           </template>
         </el-table-column>
         <el-table-column prop="customerLevel" label="客户等级" width="100">
@@ -1409,6 +1413,13 @@ const handleCall = (row: any) => {
   outboundForm.value.customerPhone = row.phone
 
   showOutboundDialog.value = true
+}
+
+const goCustomerDetail = (row: any) => {
+  const customerId = row.id || row.customerId
+  if (customerId) {
+    safeNavigator.push({ path: `/customer/detail/${customerId}` })
+  }
 }
 
 const handleViewDetail = async (row: any) => {
@@ -4315,6 +4326,18 @@ onUnmounted(() => {
   display: flex;
   justify-content: flex-end;
   gap: 16px;
+}
+
+/* 电话号码超链接样式 */
+.phone-link {
+  color: #409eff;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.phone-link:hover {
+  color: #66b1ff;
+  text-decoration: underline;
 }
 </style>
 

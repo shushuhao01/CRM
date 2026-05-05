@@ -1,0 +1,100 @@
+<!--pages/index/index.wxml-->
+<view class="page-container">
+  <!-- 有参数：自动跳转中 -->
+  <view wx:if="{{redirecting}}" class="loading-section">
+    <view class="loading-spinner"></view>
+    <text class="loading-text">正在加载...</text>
+  </view>
+
+  <!-- 无参数：展示欢迎页面（微信审核 / 用户直接打开） -->
+  <view wx:else class="welcome-section">
+    <!-- 顶部渐变背景区域 -->
+    <view class="hero-area">
+      <view class="hero-bg"></view>
+      <view class="hero-content">
+        <view class="logo-wrap">
+          <image class="logo-img" src="/images/logo.png" mode="aspectFit"></image>
+        </view>
+        <view class="hero-title">客户资料填写</view>
+        <view class="hero-subtitle">安全 · 便捷 · 高效的信息采集服务</view>
+      </view>
+    </view>
+
+    <!-- 功能亮点 -->
+    <view class="features-card">
+      <view class="feature-item">
+        <view class="feature-icon-wrap" style="background:linear-gradient(135deg,#e8f5e9,#c8e6c9)">
+          <text class="feature-icon">🔒</text>
+        </view>
+        <view class="feature-body">
+          <text class="feature-title">隐私安全保障</text>
+          <text class="feature-desc">数据加密传输，仅供服务沟通使用</text>
+        </view>
+      </view>
+      <view class="feature-item">
+        <view class="feature-icon-wrap" style="background:linear-gradient(135deg,#e3f2fd,#bbdefb)">
+          <text class="feature-icon">⚡</text>
+        </view>
+        <view class="feature-body">
+          <text class="feature-title">智能填写体验</text>
+          <text class="feature-desc">支持一键粘贴识别，自动解析地址信息</text>
+        </view>
+      </view>
+      <view class="feature-item">
+        <view class="feature-icon-wrap" style="background:linear-gradient(135deg,#fff3e0,#ffe0b2)">
+          <text class="feature-icon">📱</text>
+        </view>
+        <view class="feature-body">
+          <text class="feature-title">微信授权获取</text>
+          <text class="feature-desc">一键授权手机号，无需手动输入</text>
+        </view>
+      </view>
+    </view>
+
+    <!-- 使用说明 -->
+    <view class="guide-card">
+      <view class="guide-header">
+        <text class="guide-title">如何使用</text>
+      </view>
+      <view class="guide-steps">
+        <view class="guide-step">
+          <view class="step-line"></view>
+          <view class="step-dot"></view>
+          <view class="step-content">
+            <text class="step-label">顾问发送卡片</text>
+            <text class="step-desc">您的专属顾问通过企业微信向您发送填写邀请</text>
+          </view>
+        </view>
+        <view class="guide-step">
+          <view class="step-line"></view>
+          <view class="step-dot"></view>
+          <view class="step-content">
+            <text class="step-label">点击打开填写</text>
+            <text class="step-desc">点击小程序卡片即可进入个人资料填写页面</text>
+          </view>
+        </view>
+        <view class="guide-step last">
+          <view class="step-dot"></view>
+          <view class="step-content">
+            <text class="step-label">提交完成</text>
+            <text class="step-desc">信息自动同步至顾问，为您提供更好的服务</text>
+          </view>
+        </view>
+      </view>
+    </view>
+
+    <!-- 体验按钮（审核模式 & 用户预览） -->
+    <view class="action-area">
+      <view class="demo-btn" bindtap="onEnterDemo">
+        <text class="demo-btn-text">体验表单功能</text>
+      </view>
+      <text class="demo-tip">点击可预览填写表单的完整功能</text>
+    </view>
+
+    <!-- 底部 -->
+    <view class="footer-area">
+      <view class="footer-divider"></view>
+      <text class="footer-text">您的信息仅用于服务沟通，不会泄露给第三方</text>
+    </view>
+  </view>
+</view>

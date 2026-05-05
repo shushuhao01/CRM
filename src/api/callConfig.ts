@@ -430,7 +430,8 @@ export function updateCallNotes(callId: string, notes: string): Promise<ApiRespo
 export function getAgentStatus(): Promise<ApiResponse> {
   return request({
     url: `/call-config/agent-status`,
-    method: 'get'
+    method: 'get',
+    showError: false
   })
 }
 
