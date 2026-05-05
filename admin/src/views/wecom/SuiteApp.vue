@@ -240,14 +240,23 @@
             </el-form-item>
             <el-form-item label="小程序 AppSecret">
               <el-input v-model="mpConfig.mpAppSecret" placeholder="小程序Secret" show-password />
+              <div class="key-field-actions" style="margin-top: 4px">
+                <el-button text size="small" @click="toggleMpSecret">
+                  {{ showMpAppSecret ? '🙈 隐藏' : '👁️ 查看实际值' }}
+                </el-button>
+                <el-button v-if="showMpAppSecret" text size="small" @click="copyMpSecret">
+                  📋 复制
+                </el-button>
+                <span style="font-size: 11px; color: #909399; margin-left: 8px">保存后密钥会加密存储，前端仅显示掩码</span>
+              </div>
             </el-form-item>
             <el-form-item label="表单签名密钥">
               <div style="display: flex; gap: 8px; width: 100%">
-                <el-input v-model="mpConfig.mpFormSecret" placeholder="用于生成签名防篡改" show-password />
+                <el-input v-model="mpConfig.mpFormSecret" placeholder="点击右侧按钮随机生成即可" show-password />
                 <el-button size="small" @click="mpConfig.mpFormSecret = generateRandom(32)">随机生成</el-button>
               </div>
               <div style="font-size: 11px; color: #909399; margin-top: 4px">
-                签名公式: sign = MD5(tenantId + memberId + ts + SECRET)
+                系统内部使用的防篡改密钥，非微信密钥，点击「随机生成」即可。签名公式: sign = MD5(tenantId + memberId + ts + SECRET)
               </div>
             </el-form-item>
 
@@ -840,6 +849,7 @@ const handleToggleTemplate = async (row: any) => {
 // ==================== 小程序配置 ====================
 
 const mpSaving = ref(false)
+const showMpAppSecret = ref(false)
 const mpConfig = ref<any>({
   mpAppId: '', mpAppSecret: '', mpFormSecret: '',
   mpCallbackToken: '', mpCallbackEncodingAesKey: '',
@@ -865,9 +875,39 @@ const handleSaveMpConfig = async () => {
   try {
     await saveMpConfig(mpConfig.value)
     ElMessage.success('小程序配置已保存')
+    showMpAppSecret.value = false
     fetchMpConfig()
-  } catch (e: any) { ElMessage.error(e?.message || '保存失败') }
+  } catch { /* interceptor already shows error */ }
   mpSaving.value = false
+}
+
+// 查看/隐藏小程序 AppSecret 真实值
+const toggleMpSecret = async () => {
+  if (!showMpAppSecret.value) {
+    try {
+      const { default: request } = await import('@/api/request')
+      const res: any = await request.get('/wecom-management/suite/mp-secret')
+      if (res?.success && res?.data?.mpAppSecret) {
+        mpConfig.value.mpAppSecret = res.data.mpAppSecret
+        showMpAppSecret.value = true
+      } else {
+        ElMessage.warning('未找到已保存的密钥，请先保存配置')
+      }
+    } catch { /* interceptor handles */ }
+  } else {
+    mpConfig.value.mpAppSecret = '******'
+    showMpAppSecret.value = false
+  }
+}
+
+const copyMpSecret = () => {
+  const value = mpConfig.value.mpAppSecret
+  if (value && value !== '******') {
+    navigator.clipboard.writeText(value)
+    ElMessage.success('已复制到剪贴板')
+  } else {
+    ElMessage.warning('请先点击查看实际值')
+  }
 }
 
 // ==================== 小程序连接测试 ====================
@@ -878,15 +918,15 @@ const handleTestMpConnection = async () => {
   try {
     const { default: request } = await import('@/api/request')
     const res: any = await request.get('/wecom-management/suite/mp-test-connection')
-    const data = res?.data || res
-    if (data?.success) {
-      ElMessage.success(`连接成功！access_token已获取 (耗时${data.latency || '-'}ms)`)
+    // 后端始终返回 success:true，测试结果在 data 中
+    const result = res?.data
+    if (result?.connected) {
+      ElMessage.success(`连接成功！access_token已获取 (耗时${result.latency || '-'}ms)`)
     } else {
-      ElMessage.error(data?.message || '连接失败')
+      ElMessage.error(result?.message || '连接失败，请检查AppID和AppSecret是否正确')
     }
   } catch (e: any) {
-    const msg = e?.response?.data?.message || e?.message || '连接测试失败'
-    ElMessage.error(msg)
+    ElMessage.error(e?.message || '连接测试请求失败')
   } finally { mpTesting.value = false }
 }
 

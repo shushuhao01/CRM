@@ -3658,6 +3658,27 @@ router.get('/suite/mp-config', async (_req: Request, res: Response) => {
 });
 
 /**
+ * 获取小程序 AppSecret 真实值（管理员查看/复制用）
+ * GET /api/v1/admin/wecom-management/suite/mp-secret
+ */
+router.get('/suite/mp-secret', async (_req: Request, res: Response) => {
+  try {
+    await ensureSuiteTables();
+    const repo = AppDataSource.getRepository(WecomSuiteConfig);
+    const config = await repo.findOne({ where: {}, order: { id: 'ASC' } });
+    res.json({
+      success: true,
+      data: {
+        mpAppSecret: config?.mpAppSecret || ''
+      }
+    });
+  } catch (error: any) {
+    log.error('[Admin Suite] Get mp-secret error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+/**
  * 保存小程序配置
  * PUT /api/v1/admin/wecom-management/suite/mp-config
  */
@@ -3713,7 +3734,8 @@ router.get('/suite/mp-test-connection', async (_req: Request, res: Response) => 
     const appSecret = config?.mpAppSecret || process.env.MP_APP_SECRET || '';
 
     if (!appId || !appSecret) {
-      return res.json({ success: false, message: '请先配置小程序AppID和AppSecret' });
+      // 始终返回 success:true，将测试结果放在 data 中，避免 axios 拦截器拦截
+      return res.json({ success: true, data: { connected: false, message: '请先配置小程序AppID和AppSecret' } });
     }
 
     const startTime = Date.now();
@@ -3726,21 +3748,23 @@ router.get('/suite/mp-test-connection', async (_req: Request, res: Response) => 
       log.info(`[Admin Suite] MP test connection OK, latency=${latency}ms`);
       return res.json({
         success: true,
-        message: '连接成功',
-        latency,
-        data: { hasToken: true, expiresIn: tokenData.expires_in }
+        data: { connected: true, message: '连接成功', latency, expiresIn: tokenData.expires_in }
       });
     }
 
     log.warn('[Admin Suite] MP test connection failed:', tokenData);
     return res.json({
-      success: false,
-      message: `连接失败: ${tokenData.errmsg || '未知错误'} (errcode: ${tokenData.errcode || '-'})`,
-      latency
+      success: true,
+      data: {
+        connected: false,
+        message: `连接失败: ${tokenData.errmsg || '未知错误'} (errcode: ${tokenData.errcode || '-'})`,
+        latency,
+        errcode: tokenData.errcode
+      }
     });
   } catch (error: any) {
     log.error('[Admin Suite] MP test connection error:', error);
-    res.json({ success: false, message: `连接异常: ${error.message}` });
+    res.json({ success: true, data: { connected: false, message: `连接异常: ${error.message}` } });
   }
 });
 
