@@ -34,6 +34,9 @@ export default defineConfig(({ mode }) => ({
         manualChunks: {
           'vue-vendor': ['vue', 'vue-router', 'pinia'],
           'element-plus': ['element-plus', '@element-plus/icons-vue'],
+          'echarts': ['echarts/core', 'echarts/charts', 'echarts/components', 'echarts/renderers'],
+          'wangeditor': ['@wangeditor/editor', '@wangeditor/editor-for-vue'],
+          'xlsx': ['xlsx'],
         }
       }
     }
