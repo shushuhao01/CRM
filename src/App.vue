@@ -306,7 +306,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import { useTabsStore } from '@/stores/tabs'
@@ -329,8 +329,6 @@ import AnnouncementCarousel from '@/components/AnnouncementCarousel.vue'
 import AnnouncementPopup from '@/components/AnnouncementPopup.vue'
 import ContactServiceDialog from '@/components/ContactServiceDialog.vue'
 import { useResponsive, debounce } from '@/utils/responsive'
-import { passwordService } from '@/services/passwordService'
-import { passwordReminderService } from '@/services/passwordReminderService'
 import IconHeadset from '@/components/icons/IconHeadset.vue'
 import IconCustomerService from '@/components/icons/IconCustomerService.vue'
 import DynamicMenu from '@/components/DynamicMenu.vue'
@@ -341,7 +339,10 @@ import {
   Box, Setting, Headset, Service, WarningFilled, More
 } from '@element-plus/icons-vue'
 import { licenseHeartbeatService } from '@/services/licenseHeartbeatService'
-import { getResourceUsage, type ResourceUsage } from '@/api/tenantLicense'
+import { usePasswordManagement } from '@/composables/usePasswordManagement'
+import { useQuotaWarning } from '@/composables/useQuotaWarning'
+import { useMenuScroll } from '@/composables/useMenuScroll'
+import { useMessagePolling } from '@/composables/useMessagePolling'
 
 
 const route = useRoute()
@@ -361,17 +362,49 @@ const safeNavigator = createSafeNavigator(router)
 const isCollapsed = ref(false)
 const { isMobile, isTablet, isDesktop, deviceType } = useResponsive()
 
+// 🔥 Composable 解构：密码管理
+const {
+  showPasswordChangeModal,
+  showPasswordReminderModal,
+  isForcePasswordChange,
+  isFirstLogin,
+  isDefaultPassword,
+  isPasswordExpired,
+  passwordRemainingDays,
+  checkPasswordStatus,
+  handlePasswordChangeSuccess,
+  handlePasswordReminderClose,
+  handlePasswordReminderChangePassword,
+  handlePasswordReminderLater,
+  handleRemindAfterDays,
+  handleDontRemind,
+  startPasswordReminder,
+  stopPasswordReminder,
+} = usePasswordManagement()
 
+// 🔥 Composable 解构：配额预警
+const {
+  quotaWarningDismissed,
+  quotaWarning,
+  startQuotaCheckTimer,
+  stopQuotaCheckTimer,
+  handleQuotaUpgrade,
+} = useQuotaWarning()
 
-// 密码管理相关状态
-const showPasswordChangeModal = ref(false)
-const showPasswordReminderModal = ref(false)
-const isForcePasswordChange = ref(false)
-const isFirstLogin = ref(false)
-const isDefaultPassword = ref(false)
-const isPasswordExpired = ref(false)
-const passwordRemainingDays = ref(0)
-const dontRemindTodayKey = ref('')
+// 🔥 Composable 解构：菜单滚动
+const {
+  handleSmartMenuScroll,
+  handleSystemMenuScroll,
+  initSidebarWheelScroll,
+  cleanupSidebarWheelScroll,
+} = useMenuScroll()
+
+// 🔥 Composable 解构：消息轮询
+const {
+  initWebSocketConnection,
+  startMessagePollingTimer,
+  cleanupMessagePolling,
+} = useMessagePolling()
 
 // 个人设置相关状态
 const showPersonalSettingsModal = ref(false)
@@ -382,88 +415,6 @@ const contactDialogVisible = ref(false)
 // 🔥 联系客服续费弹窗（由授权过期弹窗触发）
 const contactServiceDialogVisible = ref(false)
 
-// 🔥 租户资源配额预警
-const quotaWarningDismissed = ref(false)
-const resourceUsage = ref<ResourceUsage | null>(null)
-let quotaCheckTimer: ReturnType<typeof setInterval> | null = null
-
-// 配额预警计算属性
-const quotaWarning = computed(() => {
-  if (quotaWarningDismissed.value) return null
-  const usage = resourceUsage.value
-  if (!usage) return null
-
-  const warnings: string[] = []
-  let level: 'warning' | 'critical' = 'warning'
-
-  // 检查用户数
-  const userPercent = usage.users.usagePercent
-  if (userPercent >= 100) {
-    warnings.push(`用户数已达上限（${usage.users.current}/${usage.users.max}）`)
-    level = 'critical'
-  } else if (userPercent >= 90) {
-    warnings.push(`用户数已使用${userPercent}%（${usage.users.current}/${usage.users.max}）`)
-    level = 'critical'
-  } else if (userPercent >= 80) {
-    warnings.push(`用户数已使用${userPercent}%（${usage.users.current}/${usage.users.max}）`)
-  }
-
-  // 检查存储空间
-  const storagePercent = usage.storage.usagePercent
-  if (storagePercent >= 100) {
-    warnings.push(`存储空间已满（${usage.storage.usedGb}GB/${usage.storage.maxGb}GB）`)
-    level = 'critical'
-  } else if (storagePercent >= 90) {
-    warnings.push(`存储空间已使用${storagePercent}%（${usage.storage.usedGb}GB/${usage.storage.maxGb}GB）`)
-    if (level !== 'critical') level = 'critical'
-  } else if (storagePercent >= 80) {
-    warnings.push(`存储空间已使用${storagePercent}%（${usage.storage.usedGb}GB/${usage.storage.maxGb}GB）`)
-  }
-
-  if (warnings.length === 0) return null
-
-  const suffix = level === 'critical' ? '请联系管理员扩容！' : '请关注资源使用情况。'
-  return {
-    level,
-    message: `⚠️ ${warnings.join('；')}。${suffix}`
-  }
-})
-
-// 获取资源使用情况
-const fetchResourceUsage = async () => {
-  try {
-    const data = await getResourceUsage()
-    if (data) {
-      resourceUsage.value = data
-      // 当预警级别变化时重置dismissed状态
-      quotaWarningDismissed.value = false
-    }
-  } catch {
-    // 静默失败
-  }
-}
-
-// 启动配额检测定时器（每5分钟检测一次）
-const startQuotaCheckTimer = () => {
-  // 延迟3秒首次执行，避免登录时大量并发请求
-  setTimeout(() => {
-    fetchResourceUsage()
-  }, 3000)
-  quotaCheckTimer = setInterval(() => {
-    if (userStore.token && !isLoginPage.value) {
-      fetchResourceUsage()
-    }
-  }, 5 * 60 * 1000)
-}
-
-// 停止配额检测定时器
-const stopQuotaCheckTimer = () => {
-  if (quotaCheckTimer) {
-    clearInterval(quotaCheckTimer)
-    quotaCheckTimer = null
-  }
-}
-
 // 显示联系我们对话框
 const showContactDialog = () => {
   contactDialogVisible.value = true
@@ -472,56 +423,6 @@ const showContactDialog = () => {
 // 🔥 联系客服续费弹窗事件处理
 const handleOpenContactServiceDialog = () => {
   contactServiceDialogVisible.value = true
-}
-
-// 🔥 配额预警横幅"升级套餐"按钮
-const handleQuotaUpgrade = () => {
-  const usage = resourceUsage.value
-  if (!usage) return
-
-  // 判断是用户数超限还是存储空间超限
-  const userPercent = usage.users.usagePercent
-  const storagePercent = usage.storage.usagePercent
-
-  if (userPercent >= 100) {
-    import('@/utils/licenseDialog').then(({ showQuotaExceededDialog }) => {
-      showQuotaExceededDialog({
-        type: 'user',
-        message: `用户数已达上限（${usage.users.current}/${usage.users.max}），无法创建新用户。\n请升级套餐或联系客服扩容以继续使用。`,
-        data: {
-          currentCount: usage.users.current,
-          maxUsers: usage.users.max,
-          usagePercent: userPercent
-        }
-      })
-    })
-  } else if (storagePercent >= 100) {
-    import('@/utils/licenseDialog').then(({ showQuotaExceededDialog }) => {
-      showQuotaExceededDialog({
-        type: 'storage',
-        message: `存储空间已满（${usage.storage.usedGb}GB/${usage.storage.maxGb}GB），无法上传文件。\n请升级套餐或联系客服扩容以继续使用。`,
-        data: {
-          usedMb: parseFloat(String(usage.storage.usedMb)),
-          maxMb: usage.storage.maxMb,
-          usagePercent: storagePercent
-        }
-      })
-    })
-  } else {
-    // 80%-99% 预警级别，也可以弹窗
-    import('@/utils/licenseDialog').then(({ showQuotaExceededDialog }) => {
-      const isUserWarning = userPercent >= storagePercent
-      showQuotaExceededDialog({
-        type: isUserWarning ? 'user' : 'storage',
-        message: isUserWarning
-          ? `用户数已使用${userPercent}%（${usage.users.current}/${usage.users.max}），即将达到上限。\n建议提前升级套餐以避免影响使用。`
-          : `存储空间已使用${storagePercent}%（${usage.storage.usedGb}GB/${usage.storage.maxGb}GB），即将满额。\n建议提前升级套餐以避免影响使用。`,
-        data: isUserWarning
-          ? { currentCount: usage.users.current, maxUsers: usage.users.max, usagePercent: userPercent }
-          : { usedMb: parseFloat(String(usage.storage.usedMb)), maxMb: usage.storage.maxMb, usagePercent: storagePercent }
-      })
-    })
-  }
 }
 
 
@@ -660,276 +561,12 @@ const handleSubMenuOpen = (index: string) => {
   handleSmartMenuScroll(index)
 }
 
-// 智能菜单滚动定位 - 通用函数
-const handleSmartMenuScroll = (menuIndex: string) => {
-  console.log('开始智能滚动定位:', menuIndex)
-
-  // 使用nextTick确保DOM已更新
-  nextTick(() => {
-    const sidebarMenu = document.querySelector('.sidebar-menu') as HTMLElement
-    const targetSubMenu = document.querySelector(`.sidebar-menu .el-sub-menu[index="${menuIndex}"]`) as HTMLElement
-
-    if (!sidebarMenu || !targetSubMenu) {
-      console.log('未找到菜单元素:', { sidebarMenu: !!sidebarMenu, targetSubMenu: !!targetSubMenu })
-      return
-    }
-
-    // 多次检查，确保子菜单完全展开
-    const checkAndScroll = (attempt = 0) => {
-      const maxAttempts = 5
-      const delay = attempt === 0 ? 100 : 200
-
-      setTimeout(() => {
-        const menuHeight = sidebarMenu.clientHeight
-        const menuScrollTop = sidebarMenu.scrollTop
-        const targetMenuTop = targetSubMenu.offsetTop
-        const targetMenuHeight = targetSubMenu.offsetHeight
-        const maxScrollTop = sidebarMenu.scrollHeight - menuHeight
-
-        console.log('滚动计算参数:', {
-          attempt,
-          menuHeight,
-          menuScrollTop,
-          targetMenuTop,
-          targetMenuHeight,
-          maxScrollTop,
-          scrollHeight: sidebarMenu.scrollHeight
-        })
-
-        // 如果子菜单高度还很小，可能还在动画中，继续等待
-        if (targetMenuHeight < 50 && attempt < maxAttempts) {
-          console.log('子菜单可能还在展开中，继续等待...')
-          checkAndScroll(attempt + 1)
-          return
-        }
-
-        // 计算子菜单在视口中的位置
-        const menuTopInViewport = targetMenuTop - menuScrollTop
-        const menuBottomInViewport = menuTopInViewport + targetMenuHeight
-
-        console.log('视口位置:', {
-          menuTopInViewport,
-          menuBottomInViewport,
-          viewportHeight: menuHeight
-        })
-
-        // 预留空间
-        const topPadding = 10
-        const bottomPadding = 20
-
-        let targetScrollTop = menuScrollTop
-        let needScroll = false
-
-        // 如果子菜单顶部超出视口上边界
-        if (menuTopInViewport < topPadding) {
-          targetScrollTop = targetMenuTop - topPadding
-          needScroll = true
-          console.log('需要向上滚动')
-        }
-        // 如果子菜单底部超出视口下边界
-        else if (menuBottomInViewport > menuHeight - bottomPadding) {
-          // 优先显示子菜单底部，确保所有子项都可见
-          targetScrollTop = targetMenuTop + targetMenuHeight - menuHeight + bottomPadding
-          needScroll = true
-          console.log('需要向下滚动')
-        }
-
-        // 确保滚动位置在有效范围内
-        targetScrollTop = Math.max(0, Math.min(targetScrollTop, maxScrollTop))
-
-        console.log('滚动决策:', {
-          needScroll,
-          currentScrollTop: menuScrollTop,
-          targetScrollTop,
-          scrollDiff: Math.abs(targetScrollTop - menuScrollTop)
-        })
-
-        // 执行滚动
-        if (needScroll && Math.abs(targetScrollTop - menuScrollTop) > 2) {
-          console.log('执行滚动到:', targetScrollTop)
-          sidebarMenu.scrollTo({
-            top: targetScrollTop,
-            behavior: 'smooth'
-          })
-        } else {
-          console.log('无需滚动或滚动距离太小')
-        }
-      }, delay)
-    }
-
-    // 开始检查和滚动
-    checkAndScroll()
-  })
-}
-
-// 兼容旧的系统菜单滚动函数
-const handleSystemMenuScroll = () => {
-  handleSmartMenuScroll('system')
-}
-
-// 初始化侧边栏鼠标滚轮事件
-const initSidebarWheelScroll = () => {
-  nextTick(() => {
-    const sidebarMenu = document.querySelector('.sidebar-menu') as HTMLElement
-    if (sidebarMenu) {
-      console.log('初始化侧边栏滚轮事件')
-      sidebarMenu.addEventListener('wheel', handleSidebarWheel, { passive: false })
-    } else {
-      console.log('未找到侧边栏菜单元素')
-    }
-  })
-}
-
-// 处理侧边栏鼠标滚轮事件
-const handleSidebarWheel = (event: WheelEvent) => {
-  event.preventDefault()
-  event.stopPropagation()
-
-  const sidebarMenu = event.currentTarget as HTMLElement
-  const scrollAmount = 80 // 增加滚动距离，提供更好的滚动体验
-  const currentScrollTop = sidebarMenu.scrollTop
-  const maxScrollTop = sidebarMenu.scrollHeight - sidebarMenu.clientHeight
-
-  console.log('鼠标滚轮事件:', {
-    deltaY: event.deltaY,
-    currentScrollTop,
-    maxScrollTop,
-    scrollHeight: sidebarMenu.scrollHeight,
-    clientHeight: sidebarMenu.clientHeight
-  })
-
-  // 根据滚轮方向计算新的滚动位置
-  const newScrollTop = event.deltaY > 0
-    ? currentScrollTop + scrollAmount  // 向下滚动
-    : currentScrollTop - scrollAmount  // 向上滚动
-
-  // 确保滚动位置在有效范围内
-  const targetScrollTop = Math.max(0, Math.min(newScrollTop, maxScrollTop))
-
-  console.log('滚动到:', targetScrollTop)
-
-  // 平滑滚动到目标位置
-  sidebarMenu.scrollTo({
-    top: targetScrollTop,
-    behavior: 'smooth'
-  })
-}
-
 const handleTabContextMenu = (event: MouseEvent) => {
   event.preventDefault()
 }
 
-
-
-// 密码管理相关方法
-const checkPasswordStatus = () => {
-  const user = userStore.user
-  if (!user) return
-
-  // 🔥 密码状态完全由后端数据库决定，不再操作本地 localStorage('users')
-
-  // 检查是否为默认密码
-  isDefaultPassword.value = user.isDefaultPassword || false
-
-  // 检查密码是否过期
-  isPasswordExpired.value = passwordService.isPasswordExpired(user)
-
-  // 检查是否强制修改密码（首次登录 或 管理员要求）
-  isForcePasswordChange.value = user.forcePasswordChange || false
-
-  // 计算密码剩余天数（距90天强制修改）
-  passwordRemainingDays.value = passwordService.getPasswordRemainingDays(user)
-
-  // 设置今日提醒键
-  dontRemindTodayKey.value = `password_reminder_${user.id}_${new Date().toDateString()}`
-
-  // 🔥 判断是否从未修改过密码（首次登录）
-  const neverChangedPassword = !user.passwordLastChanged
-
-  // 🔥 首次登录（从未改过密码）或 默认密码 或 管理员要求强制修改：必须强制修改，不可关闭弹窗
-  // 注意：所有角色（包括管理员）都必须执行此检查，确保首次登录必须改密
-  if (neverChangedPassword || isDefaultPassword.value || isForcePasswordChange.value) {
-    isFirstLogin.value = neverChangedPassword
-    // 首次登录/默认密码场景下，不应该显示"过期"提示
-    isPasswordExpired.value = false
-    showPasswordChangeModal.value = true
-    isForcePasswordChange.value = true // 强制模式，弹窗不可关闭
-    return
-  }
-
-  // 超级管理员不进行定期密码过期提醒（但上面的首次登录/默认密码/强制修改仍然生效）
-  if (userStore.isSuperAdmin) {
-    return
-  }
-
-  // 🔥 密码安全策略：90天未修改 -> 强制修改密码（不可关闭）
-  if (isPasswordExpired.value) {
-    isFirstLogin.value = false
-    showPasswordChangeModal.value = true
-    isForcePasswordChange.value = true // 强制模式，弹窗不可关闭
-    return
-  }
-
-  // 🔥 密码安全策略：30天/60天 -> 提醒修改密码（可关闭）
-  const reminderLevel = passwordService.getPasswordReminderLevel(user)
-  if (reminderLevel === 'first' || reminderLevel === 'second') {
-    // 检查是否在"X天后提醒我"的延迟期内
-    const snoozeExpire = localStorage.getItem('password_reminder_snooze_expire')
-    if (snoozeExpire && Date.now() < parseInt(snoozeExpire)) {
-      return
-    }
-    const dontRemindToday = localStorage.getItem(dontRemindTodayKey.value) === 'true'
-    if (!dontRemindToday) {
-      showPasswordReminderModal.value = true
-    }
-  }
-}
-
-const handlePasswordChangeSuccess = () => {
-  ElMessage.success('密码修改成功')
-  showPasswordChangeModal.value = false
-  isForcePasswordChange.value = false
-  isFirstLogin.value = false
-
-  // 重新检查密码状态
-  setTimeout(() => {
-    checkPasswordStatus()
-  }, 1000)
-}
-
 const handlePersonalSettingsSuccess = () => {
   showPersonalSettingsModal.value = false
-  // 可以在这里刷新用户信息或执行其他操作
-}
-
-const handlePasswordReminderClose = () => {
-  showPasswordReminderModal.value = false
-}
-
-const handlePasswordReminderChangePassword = () => {
-  showPasswordReminderModal.value = false
-  showPasswordChangeModal.value = true
-}
-
-const handlePasswordReminderLater = (dontRemindToday: boolean) => {
-  if (dontRemindToday) {
-    localStorage.setItem(dontRemindTodayKey.value, 'true')
-  }
-  showPasswordReminderModal.value = false
-}
-
-// 处理"X天后提醒我"
-const handleRemindAfterDays = (days: number) => {
-  const expireTime = Date.now() + days * 24 * 60 * 60 * 1000
-  localStorage.setItem('password_reminder_snooze_expire', expireTime.toString())
-  ElMessage.success(`已设置 ${days} 天后再次提醒修改密码`)
-  showPasswordReminderModal.value = false
-}
-
-// 处理"不再提醒"
-const handleDontRemind = (days: number) => {
-  console.log(`[密码提醒] 用户选择 ${days} 天内不再提醒`)
-  ElMessage.success(`已设置 ${days} 天内不再提醒修改密码`)
 }
 
 // 监听路由变化，添加标签页
@@ -942,29 +579,6 @@ watch(route, (newRoute) => {
     })
   }
 }, { immediate: true })
-
-// 启动密码提醒服务
-const startPasswordReminder = () => {
-  const user = userStore.user
-  if (!user || userStore.isSuperAdmin) return
-
-  passwordReminderService.startReminder(user, () => {
-    // 检查是否需要提醒
-    if (passwordService.needsPasswordReminder(user)) {
-      const dontRemindTodayKey = `password_reminder_${user.id}_${new Date().toDateString()}`
-      const dontRemindToday = localStorage.getItem(dontRemindTodayKey) === 'true'
-
-      if (!dontRemindToday) {
-        showPasswordReminderModal.value = true
-      }
-    }
-  })
-}
-
-// 停止密码提醒服务
-const stopPasswordReminder = () => {
-  passwordReminderService.stopReminder()
-}
 
 // 监听用户登录状态变化
 watch(() => userStore.isLoggedIn, (isLoggedIn) => {
@@ -995,9 +609,6 @@ onMounted(async () => {
   // 初始化配置（异步从API加载最新系统配置）
   await configStore.initConfig()
 
-  // 初始化密码提醒服务
-  passwordReminderService.init()
-
   // 注意：用户信息初始化已在main.ts中完成，这里不再重复调用
   // userStore.initUser() // 移除重复调用
 
@@ -1021,7 +632,7 @@ onMounted(async () => {
 
   // 🔥 启动配额预警检测定时器（每5分钟检测一次用户数和存储空间使用率）
   if (userStore.token) {
-    startQuotaCheckTimer()
+    startQuotaCheckTimer(isLoginPage)
   }
 
   // 启动订单流转检查定时器（每30秒检查一次）
@@ -1054,60 +665,6 @@ onMounted(async () => {
   }, 2000)
 })
 
-// 🔥 WebSocket实时推送连接
-const initWebSocketConnection = async () => {
-  if (!userStore.token) {
-    console.log('[App] 用户未登录，跳过WebSocket连接')
-    return
-  }
-
-  try {
-    await notificationStore.initWebSocket(userStore.token)
-    console.log('[App] 🔌 WebSocket实时推送已初始化')
-  } catch (error) {
-    console.error('[App] WebSocket初始化失败，将使用轮询降级方案:', error)
-  }
-}
-
-// 🔥 消息轮询定时器 - 作为WebSocket的降级方案
-let messagePollingTimer: number | null = null
-
-const startMessagePollingTimer = () => {
-  // 如果用户未登录，不启动轮询
-  if (!userStore.token) {
-    console.log('[App] 用户未登录，跳过消息轮询')
-    return
-  }
-
-  // 设置定时器，每30秒检查一次新消息（WebSocket连接时作为备份，断开时作为主要方案）
-  messagePollingTimer = window.setInterval(async () => {
-    if (!userStore.token) {
-      // 用户已登出，停止轮询
-      if (messagePollingTimer) {
-        clearInterval(messagePollingTimer)
-        messagePollingTimer = null
-      }
-      return
-    }
-
-    // 如果WebSocket已连接，降低轮询频率（仅作为备份同步）
-    if (notificationStore.wsStatus === 'connected') {
-      // WebSocket已连接，跳过本次轮询
-      return
-    }
-
-    try {
-      await notificationStore.loadMessagesFromAPI()
-      console.log('[App] 消息轮询完成（WebSocket降级），未读消息数:', notificationStore.unreadCount)
-    } catch (error) {
-      // 静默处理错误，避免频繁报错
-      console.log('[App] 消息轮询失败（非关键）')
-    }
-  }, 30000) // 30秒（WebSocket断开时的降级方案）
-
-  console.log('[App] 🔔 消息轮询定时器已启动（WebSocket降级方案，每30秒）')
-}
-
 // 订单流转检查定时器
 let orderTransferTimer: number | null = null
 
@@ -1123,23 +680,14 @@ const startOrderTransferTimer = () => {
 
 // 组件卸载时清理定时器
 onUnmounted(() => {
-  // 清理密码提醒服务
-  passwordReminderService.stopReminder()
+  // 清理密码提醒服务（composable）
+  stopPasswordReminder()
 
-  // 清理侧边栏滚轮事件监听器
-  const sidebarMenu = document.querySelector('.sidebar-menu') as HTMLElement
-  if (sidebarMenu) {
-    sidebarMenu.removeEventListener('wheel', handleSidebarWheel)
-  }
+  // 清理侧边栏滚轮事件监听器（composable）
+  cleanupSidebarWheelScroll()
 
-  // 🔥 断开WebSocket连接
-  notificationStore.disconnectWebSocket()
-
-  // 🔥 清理消息轮询定时器
-  if (messagePollingTimer) {
-    clearInterval(messagePollingTimer)
-    messagePollingTimer = null
-  }
+  // 🔥 清理消息轮询和WebSocket（composable）
+  cleanupMessagePolling()
 
   if (orderTransferTimer) {
     clearInterval(orderTransferTimer)

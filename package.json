@@ -9,7 +9,7 @@
   "homepage": "./",
   "scripts": {
     "dev": "vite",
-    "build": "node --max-old-space-size=4096 --expose-gc node_modules/vite/bin/vite.js build",
+    "build": "node --max-old-space-size=2048 node_modules/vite/bin/vite.js build",
     "build-with-check": "run-p type-check \"build-only {@}\" --",
     "build-bt": "vite build --config vite.config.production.ts",
     "build-simple": "vite build --mode production",
@@ -58,7 +58,6 @@
     "jsdom": "^29.0.1",
     "npm-run-all2": "^7.0.1",
     "sass-embedded": "^1.93.3",
-    "terser": "^5.36.0",
     "typescript": "^5.7.2",
     "vite": "^5.4.11",
     "vite-plugin-vue-devtools": "^7.6.4",

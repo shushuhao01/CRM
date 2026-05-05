@@ -5,11 +5,13 @@ import vue from '@vitejs/plugin-vue'
 import vueDevTools from 'vite-plugin-vue-devtools'
 
 // https://vitejs.dev/config/
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   plugins: [
     vue(),
     // vueDevTools(), // 暂时禁用以解决解析问题
   ],
+  // 仅生产构建时移除 console/debugger，开发模式保留
+  ...(mode === 'production' ? { esbuild: { drop: ['console', 'debugger'] } } : {}),
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url))
@@ -46,13 +48,8 @@ export default defineConfig({
   build: {
     target: 'esnext',
     chunkSizeWarningLimit: 2000,
-    minify: 'terser',
-    terserOptions: {
-      compress: {
-        drop_console: true,
-        drop_debugger: true
-      }
-    },
+    minify: 'esbuild',
+    // esbuild 原生压缩：内存占用仅为 terser 的 1/5，速度快 3~5 倍
     sourcemap: false,
     rollupOptions: {
       maxParallelFileOps: 2, // 限制并行操作数
@@ -61,7 +58,12 @@ export default defineConfig({
           'vue-vendor': ['vue', 'vue-router', 'pinia'],
           'element-plus': ['element-plus', '@element-plus/icons-vue'],
           'echarts': ['echarts'],
-          'utils': ['axios', 'xlsx']
+          'utils': ['axios'],
+          'xlsx': ['xlsx'],
+          'wangeditor': ['@wangeditor/editor', '@wangeditor/editor-for-vue'],
+          'ali-oss': ['ali-oss'],
+          'media-libs': ['qrcode', 'jsbarcode', 'html2canvas'],
+          'pinyin': ['pinyin-pro']
         }
       }
     }
@@ -70,4 +72,4 @@ export default defineConfig({
     // 为Node.js 16环境提供crypto.getRandomValues polyfill
     global: 'globalThis',
   }
-})
+}))
