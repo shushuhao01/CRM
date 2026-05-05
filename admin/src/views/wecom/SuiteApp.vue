@@ -43,6 +43,15 @@
                 <el-input v-model="suiteConfig.suiteSecret" placeholder="Suite Secret" show-password />
                 <el-button size="small" @click="handleTestSuiteConnection" :loading="testingConnection">测试</el-button>
               </div>
+              <div class="key-field-actions" style="margin-top: 4px">
+                <el-button text size="small" @click="toggleSuiteSecret('suiteSecret')">
+                  {{ showSuiteSecret ? '🙈 隐藏' : '👁️ 查看实际值' }}
+                </el-button>
+                <el-button v-if="showSuiteSecret" text size="small" @click="copySuiteSecret('suiteSecret')">
+                  📋 复制
+                </el-button>
+                <span style="font-size: 11px; color: #909399; margin-left: 8px">保存后密钥仅显示掩码</span>
+              </div>
             </el-form-item>
             <el-form-item label="Suite Ticket">
               <el-tag v-if="suiteConfig.suiteTicket" type="success" size="small">自动接收中</el-tag>
@@ -58,6 +67,15 @@
             </el-form-item>
             <el-form-item label="服务商Secret">
               <el-input v-model="suiteConfig.providerSecret" placeholder="Secret" show-password />
+              <div class="key-field-actions" style="margin-top: 4px">
+                <el-button text size="small" @click="toggleSuiteSecret('providerSecret')">
+                  {{ showProviderSecret ? '🙈 隐藏' : '👁️ 查看实际值' }}
+                </el-button>
+                <el-button v-if="showProviderSecret" text size="small" @click="copySuiteSecret('providerSecret')">
+                  📋 复制
+                </el-button>
+                <span style="font-size: 11px; color: #909399; margin-left: 8px">保存后密钥仅显示掩码</span>
+              </div>
             </el-form-item>
 
             <el-divider content-position="left">应用权限范围</el-divider>
@@ -583,6 +601,8 @@ const suiteConfig = ref<any>({
 })
 const showRsaInput = ref(false)
 const rsaPrivateKeyInput = ref('')
+const showSuiteSecret = ref(false)
+const showProviderSecret = ref(false)
 
 const callbackUrl = computed(() => {
   const base = window.location.origin
@@ -651,8 +671,10 @@ const handleSaveConfig = async () => {
     ElMessage.success('配置已保存')
     rsaPrivateKeyInput.value = ''
     showRsaInput.value = false
+    showSuiteSecret.value = false
+    showProviderSecret.value = false
     fetchConfig()
-  } catch (e: any) { ElMessage.error(e?.message || '保存失败') }
+  } catch { /* interceptor already shows error */ }
   saving.value = false
 }
 
@@ -660,9 +682,49 @@ const handleTestSuiteConnection = async () => {
   testingConnection.value = true
   try {
     const res: any = await testSuiteConnection()
-    ElMessage.success(`连接成功${res?.latency ? `，延迟${res.latency}ms` : ''}`)
-  } catch (e: any) { ElMessage.error(e?.message || '连接失败') }
+    // 后端始终返回 success:true，测试结果在 data 中
+    const result = res?.data
+    if (result?.connected) {
+      ElMessage.success(`连接成功！${result.latency ? `延迟${result.latency}ms` : ''}${result.suiteTicketAge ? ` (ticket: ${result.suiteTicketAge})` : ''}`)
+    } else {
+      ElMessage.error(result?.message || '连接失败，请检查配置')
+    }
+  } catch (e: any) {
+    ElMessage.error(e?.message || '连接测试请求失败')
+  }
   testingConnection.value = false
+}
+
+// 查看/隐藏 Suite Secret 和 Provider Secret 真实值
+const toggleSuiteSecret = async (field: 'suiteSecret' | 'providerSecret') => {
+  const isShow = field === 'suiteSecret' ? showSuiteSecret : showProviderSecret
+  if (!isShow.value) {
+    try {
+      const { default: request } = await import('@/api/request')
+      const res: any = await request.get('/wecom-management/suite/secrets')
+      if (res?.success && res?.data?.[field]) {
+        suiteConfig.value[field] = res.data[field]
+        if (field === 'suiteSecret') showSuiteSecret.value = true
+        else showProviderSecret.value = true
+      } else {
+        ElMessage.warning('未找到已保存的密钥，请先保存配置')
+      }
+    } catch { /* interceptor handles */ }
+  } else {
+    suiteConfig.value[field] = '******'
+    if (field === 'suiteSecret') showSuiteSecret.value = false
+    else showProviderSecret.value = false
+  }
+}
+
+const copySuiteSecret = (field: 'suiteSecret' | 'providerSecret') => {
+  const value = suiteConfig.value[field]
+  if (value && value !== '******') {
+    navigator.clipboard.writeText(value)
+    ElMessage.success('已复制到剪贴板')
+  } else {
+    ElMessage.warning('请先点击查看实际值')
+  }
 }
 
 const fetchAuths = async () => {

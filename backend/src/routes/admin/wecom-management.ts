@@ -2833,6 +2833,25 @@ router.put('/suite/config', async (req: Request, res: Response) => {
   }
 });
 
+// 获取 Suite Secret / Provider Secret 真实值（管理员查看/复制用）
+router.get('/suite/secrets', async (_req: Request, res: Response) => {
+  try {
+    await ensureSuiteTables();
+    const repo = AppDataSource.getRepository(WecomSuiteConfig);
+    const config = await repo.findOne({ where: {}, order: { id: 'ASC' } });
+    res.json({
+      success: true,
+      data: {
+        suiteSecret: config?.suiteSecret || '',
+        providerSecret: config?.providerSecret || ''
+      }
+    });
+  } catch (error: any) {
+    log.error('[Admin Suite] Get secrets error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 // 测试服务商连接
 router.post('/suite/test-connection', async (_req: Request, res: Response) => {
   if (!checkPermission(_req, res, 'wecom-management:config:edit')) return;
@@ -2841,13 +2860,16 @@ router.post('/suite/test-connection', async (_req: Request, res: Response) => {
     const config = await repo.findOne({ where: {}, order: { id: 'ASC' } });
 
     if (!config || !config.suiteId || !config.suiteSecret) {
-      return res.json({ success: false, message: '请先配置Suite ID和Suite Secret' });
+      return res.json({ success: true, data: { connected: false, message: '请先配置Suite ID和Suite Secret' } });
     }
 
     if (!config.suiteTicket) {
       return res.json({
-        success: false,
-        message: '尚未接收到suite_ticket。请先在企微服务商后台配置好回调URL，等待企微推送suite_ticket（约10分钟推送一次）'
+        success: true,
+        data: {
+          connected: false,
+          message: '尚未接收到suite_ticket。请先在企微服务商后台配置好回调URL，等待企微推送suite_ticket（约10分钟推送一次）'
+        }
       });
     }
 
@@ -2857,12 +2879,17 @@ router.post('/suite/test-connection', async (_req: Request, res: Response) => {
 
     res.json({
       success: true,
-      message: '连接成功',
-      data: { latency, hasToken: !!token, suiteTicketAge: config.suiteTicketUpdatedAt ? Math.round((Date.now() - new Date(config.suiteTicketUpdatedAt).getTime()) / 1000 / 60) + '分钟前' : '未知' }
+      data: {
+        connected: true,
+        message: '连接成功',
+        latency,
+        hasToken: !!token,
+        suiteTicketAge: config.suiteTicketUpdatedAt ? Math.round((Date.now() - new Date(config.suiteTicketUpdatedAt).getTime()) / 1000 / 60) + '分钟前' : '未知'
+      }
     });
   } catch (error: any) {
     log.error('[Admin Suite] Test connection error:', error);
-    res.json({ success: false, message: error.message });
+    res.json({ success: true, data: { connected: false, message: error.message } });
   }
 });
 
