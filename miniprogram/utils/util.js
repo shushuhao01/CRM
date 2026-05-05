@@ -288,6 +288,27 @@ function isValidPhone(phone) {
 }
 
 /**
+ * 邮箱格式校验
+ */
+function isValidEmail(email) {
+  return /^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$/.test(email)
+}
+
+/**
+ * 微信号格式校验（6-20位，字母开头，允许字母/数字/下划线/减号）
+ */
+function isValidWechat(wechat) {
+  return /^[a-zA-Z][a-zA-Z0-9_\-]{5,19}$/.test(wechat)
+}
+
+/**
+ * 数字格式校验（正整数或正小数）
+ */
+function isValidNumber(value) {
+  return /^\d+(\.\d+)?$/.test(value) && Number(value) >= 0
+}
+
+/**
  * 显示加载
  */
 function showLoading(title) {
@@ -308,6 +329,9 @@ module.exports = {
   extractName,
   extractAddress,
   isValidPhone,
+  isValidEmail,
+  isValidWechat,
+  isValidNumber,
   showLoading,
   hideLoading,
   showToast

@@ -422,10 +422,39 @@ Page({
       util.showToast('请输入正确的手机号'); return false
     }
 
+    // 邮箱格式验证
+    if (formData.email && !util.isValidEmail(formData.email)) {
+      util.showToast('请输入正确的邮箱地址'); return false
+    }
+
+    // 微信号格式验证（6-20位，字母开头）
+    if (formData.wechat && !util.isValidWechat(formData.wechat)) {
+      util.showToast('微信号格式不正确（字母开头，6-20位）'); return false
+    }
+
+    // 年龄格式验证
+    if (formData.age && (!util.isValidNumber(formData.age) || Number(formData.age) < 1 || Number(formData.age) > 150 || formData.age.includes('.'))) {
+      util.showToast('请输入正确的年龄（1-150的整数）'); return false
+    }
+
+    // 身高格式验证
+    if (formData.height && (!util.isValidNumber(formData.height) || Number(formData.height) <= 0 || Number(formData.height) > 300)) {
+      util.showToast('请输入正确的身高（单位cm）'); return false
+    }
+
+    // 体重格式验证
+    if (formData.weight && (!util.isValidNumber(formData.weight) || Number(formData.weight) <= 0 || Number(formData.weight) > 500)) {
+      util.showToast('请输入正确的体重（单位kg）'); return false
+    }
+
     // 验证自定义必填字段
     for (const field of customFields) {
       if (field.mpRequired && !customFormData[field.fieldKey]) {
         util.showToast(`请填写${field.fieldName}`); return false
+      }
+      // 自定义数字字段格式验证
+      if (field.fieldType === 'number' && customFormData[field.fieldKey] && !util.isValidNumber(customFormData[field.fieldKey])) {
+        util.showToast(`${field.fieldName}请输入正确的数字`); return false
       }
     }
 
