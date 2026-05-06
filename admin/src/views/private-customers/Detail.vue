@@ -815,8 +815,8 @@ const isExpiringSoon = (date: string) => {
 const formatDate = (date: string) => date ? new Date(date).toLocaleDateString('zh-CN', { timeZone: 'Asia/Shanghai' }) : '-'
 const formatDateTime = (date: string) => date ? new Date(date).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) : '-'
 
-const getLicenseTypeTag = (type: string) => ({ trial: 'info', annual: '', perpetual: 'success', monthly: 'warning' }[type] || 'info') as any
-const getLicenseTypeText = (type: string) => ({ trial: '试用', annual: '年度', perpetual: '永久', monthly: '月付' }[type] || type)
+const getLicenseTypeTag = (type: string) => ({ trial: 'info', annual: '', perpetual: 'success', monthly: 'warning', community: 'success' }[type] || 'info') as any
+const getLicenseTypeText = (type: string) => ({ trial: '试用', annual: '年度', perpetual: '永久', monthly: '月付', community: '社区版' }[type] || type)
 const getStatusType = (status: string) => ({ pending: 'warning', active: 'success', expired: 'info', revoked: 'danger' }[status] || 'info') as any
 const getStatusText = (status: string) => ({ pending: '待激活', active: '有效', expired: '已过期', revoked: '已吊销' }[status] || status)
 const getBillStatusType = (s: string) => ({ pending: 'warning', paid: 'success', expired: 'info', refunded: 'danger', closed: 'info' }[s] || 'info') as any

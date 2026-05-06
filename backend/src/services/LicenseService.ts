@@ -305,7 +305,8 @@ class LicenseService {
     const id = crypto.randomUUID();
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
     const segs = Array.from({length:4}, () => Array.from({length:4}, () => chars[Math.floor(Math.random()*chars.length)]).join(''));
-    const licenseKey = `PRIVATE-${segs.join('-')}`;
+    const prefix = data.licenseType === 'community' ? 'COMMUNITY' : 'PRIVATE';
+    const licenseKey = `${prefix}-${segs.join('-')}`;
     const now = formatDateTime(new Date());
     const expiresAt = data.expiresAt ? formatDateTime(data.expiresAt) : null;
     await AppDataSource.query(

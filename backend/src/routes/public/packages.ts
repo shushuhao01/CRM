@@ -62,6 +62,7 @@ router.get('/', async (req: Request, res: Response) => {
       const mapped: any = {
         ...pkg,
         features: typeof pkg.features === 'string' ? JSON.parse(pkg.features) : (pkg.features || []),
+        feature_details: typeof pkg.feature_details === 'string' ? JSON.parse(pkg.feature_details) : (pkg.feature_details || null),
         is_trial: Boolean(pkg.is_trial),
         is_recommended: Boolean(pkg.is_recommended),
         yearly_discount_rate: Number(pkg.yearly_discount_rate) || 0,

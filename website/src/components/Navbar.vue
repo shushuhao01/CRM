@@ -27,6 +27,7 @@
         <router-link to="/" class="nav-link" @click="menuOpen = false">首页</router-link>
         <router-link to="/features" class="nav-link" @click="menuOpen = false">功能特性</router-link>
         <router-link to="/pricing" class="nav-link" @click="menuOpen = false">价格方案</router-link>
+        <router-link to="/compare" class="nav-link" @click="menuOpen = false">版本对比</router-link>
         <router-link to="/solutions" class="nav-link" @click="menuOpen = false">解决方案</router-link>
         <router-link to="/docs" class="nav-link" @click="menuOpen = false">帮助文档</router-link>
         <router-link to="/about" class="nav-link" @click="menuOpen = false">关于我们</router-link>

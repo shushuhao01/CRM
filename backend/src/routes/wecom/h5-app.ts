@@ -1398,4 +1398,82 @@ router.get('/mp-collect-records', authenticateSidebarToken, async (req: Request,
   }
 });
 
+// ==================== 租户授权信息 ====================
+
+/**
+ * GET /h5/app/tenant-info
+ * 获取当前用户所属租户的授权信息（租户名称、编码、套餐、权益、到期时间等）
+ */
+router.get('/tenant-info', authenticateSidebarToken, async (req: Request, res: Response) => {
+  try {
+    const { tenantId } = getH5Context(req);
+    if (!tenantId) return res.json({ success: true, data: null });
+
+    // 查询租户信息
+    const tenants = await AppDataSource.query(
+      `SELECT t.id, t.name, t.code, t.package_id, t.contact, t.phone, t.email,
+              t.max_users, t.user_count, t.max_storage_gb, t.expire_date, t.status,
+              t.license_key, t.license_status, t.created_at
+       FROM tenants t WHERE t.id = ?`,
+      [tenantId]
+    );
+    if (tenants.length === 0) return res.json({ success: true, data: null });
+    const tenant = tenants[0];
+
+    // 查询套餐信息
+    let packageName = '免费试用';
+    let packageFeatures: string[] = [];
+    if (tenant.package_id) {
+      const pkgs = await AppDataSource.query(
+        'SELECT name, description, max_users, max_storage_gb, features FROM tenant_packages WHERE id = ?',
+        [tenant.package_id]
+      );
+      if (pkgs.length > 0) {
+        packageName = pkgs[0].name || '免费试用';
+        try {
+          packageFeatures = pkgs[0].features ? JSON.parse(pkgs[0].features) : [];
+        } catch { /* ignore */ }
+      }
+    }
+
+    // 计算剩余天数
+    let remainingDays = 0;
+    if (tenant.expire_date) {
+      const expireTime = new Date(tenant.expire_date).getTime();
+      const now = Date.now();
+      remainingDays = Math.max(0, Math.ceil((expireTime - now) / (24 * 60 * 60 * 1000)));
+    }
+
+    // 获取站点配置
+    const { SITE_CONFIG } = await import('../../config/sites');
+
+    res.json({
+      success: true,
+      data: {
+        tenantId: tenant.id,
+        tenantName: tenant.name,
+        tenantCode: tenant.code,
+        contact: tenant.contact,
+        phone: tenant.phone ? tenant.phone.replace(/(\d{3})\d{4}(\d{4})/, '$1****$2') : '',
+        email: tenant.email || '',
+        packageName,
+        packageFeatures,
+        maxUsers: tenant.max_users,
+        currentUsers: tenant.user_count,
+        maxStorageGb: tenant.max_storage_gb,
+        expireDate: tenant.expire_date ? new Date(tenant.expire_date).toLocaleDateString('zh-CN') : '未设置',
+        remainingDays,
+        status: tenant.status,
+        licenseStatus: tenant.license_status,
+        createdAt: tenant.created_at ? new Date(tenant.created_at).toLocaleDateString('zh-CN') : '',
+        crmUrl: SITE_CONFIG.CRM_URL,
+        memberUrl: `${SITE_CONFIG.WEBSITE_URL}/member`
+      }
+    });
+  } catch (error: any) {
+    log.error('[H5 App] tenant-info error:', error.message);
+    res.status(500).json({ success: false, message: '获取授权信息失败' });
+  }
+});
+
 export default router;

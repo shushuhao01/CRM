@@ -113,6 +113,23 @@ export class Tenant {
   }
 
   /**
+   * 生成社区版授权码
+   * 格式: COMMUNITY-XXXX-XXXX-XXXX-XXXX
+   */
+  static generateCommunityLicenseKey(): string {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    const segments = [];
+    for (let i = 0; i < 4; i++) {
+      let segment = '';
+      for (let j = 0; j < 4; j++) {
+        segment += chars.charAt(Math.floor(Math.random() * chars.length));
+      }
+      segments.push(segment);
+    }
+    return `COMMUNITY-${segments.join('-')}`;
+  }
+
+  /**
    * 生成短租户编码
    * 格式: T + 年月日 + 4位随机数 (例如: T20260303A1B2)
    */

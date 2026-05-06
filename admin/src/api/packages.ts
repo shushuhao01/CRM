@@ -4,7 +4,7 @@ export interface Package {
   id: number
   name: string
   code: string
-  type: 'saas' | 'private'
+  type: 'saas' | 'private' | 'community'
   description: string
   price: number
   original_price: number

@@ -162,8 +162,8 @@ export interface LicenseListParams extends PaginationParams {
 export interface GenerateLicenseData {
   customer_name: string
   customer_contact: string
-  license_type: 'perpetual' | 'subscription' | 'trial'
-  deployment_type: 'private' | 'saas'
+  license_type: 'perpetual' | 'subscription' | 'trial' | 'community'
+  deployment_type: 'private' | 'saas' | 'community'
   max_users: number
   user_limit_mode?: 'total' | 'online'
   max_online_seats?: number

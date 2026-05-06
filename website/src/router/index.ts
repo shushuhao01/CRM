@@ -20,6 +20,12 @@ const routes = [
     meta: { title: '价格方案 - 云客CRM', description: '灵活的定价方案，满足不同规模企业需求' }
   },
   {
+    path: '/compare',
+    name: 'FeatureCompare',
+    component: () => import('@/views/FeatureCompare.vue'),
+    meta: { title: '功能对比 - 云客CRM', description: '各版本功能特性完整对照，帮您选择最适合的方案' }
+  },
+  {
     path: '/solutions',
     name: 'Solutions',
     component: () => import('@/views/Solutions.vue'),

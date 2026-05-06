@@ -70,12 +70,26 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/views/app/MpCollect.vue'),
     meta: { title: '客户资料收集' }
   },
-  // 绑定页面
+  // 授权信息
+  {
+    path: '/app/authorization',
+    name: 'AuthorizationInfo',
+    component: () => import('@/views/app/AuthorizationInfo.vue'),
+    meta: { title: '授权信息' }
+  },
+  // 绑定页面（登录/注册）
   {
     path: '/bind',
     name: 'Bind',
     component: () => import('@/views/common/BindAccount.vue'),
-    meta: { title: '绑定CRM账号' }
+    meta: { title: '登录/注册' }
+  },
+  // 注册成功页
+  {
+    path: '/register-success',
+    name: 'RegisterSuccess',
+    component: () => import('@/views/common/RegisterSuccess.vue'),
+    meta: { title: '注册成功' }
   },
   // 默认重定向
   { path: '/', redirect: '/app/home' },
@@ -92,8 +106,8 @@ router.beforeEach((to, _from, next) => {
   const authStore = useAuthStore()
   document.title = (to.meta?.title as string) || '云客CRM'
 
-  // 绑定页面不需要验证
-  if (to.path === '/bind') {
+  // 登录/注册相关页面不需要验证
+  if (to.path === '/bind' || to.path === '/register-success') {
     return next()
   }
 

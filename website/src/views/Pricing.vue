@@ -5,6 +5,11 @@
       <div class="container">
         <h1>简单透明的<span class="gradient-text">定价方案</span></h1>
         <p>选择适合您团队规模的套餐，随时升级或降级</p>
+        <div class="compare-link-wrapper">
+          <router-link to="/compare" class="compare-link">
+            📊 查看各版本功能特性完整对比 →
+          </router-link>
+        </div>
 
         <!-- 版本切换 -->
         <div class="version-toggle">
@@ -13,6 +18,9 @@
           </button>
           <button :class="{ active: currentVersion === 'private' }" @click="currentVersion = 'private'">
             🏢 私有部署版
+          </button>
+          <button :class="{ active: currentVersion === 'community' }" @click="currentVersion = 'community'">
+            🌐 开源社区版
           </button>
         </div>
       </div>
@@ -245,6 +253,189 @@
       </div>
     </section>
 
+    <!-- 开源社区版 -->
+    <section v-if="currentVersion === 'community'" class="pricing-section">
+      <div class="container">
+        <div v-if="loading" class="loading-state">加载中...</div>
+
+        <div v-else class="pricing-cards community-pricing-cards">
+          <div
+            v-for="pkg in communityPackages"
+            :key="pkg.id"
+            class="pricing-card community-card"
+          >
+            <div class="card-badge community">永久免费</div>
+            <div class="card-header">
+              <h3>{{ pkg.name }}</h3>
+              <p>{{ pkg.description }}</p>
+            </div>
+            <div class="card-price">
+              <span class="price free">免费</span>
+              <span class="period">/ 永久</span>
+            </div>
+            <ul class="card-features">
+              <li>
+                <span class="check">✓</span> 最多 {{ pkg.max_users }} 个用户
+              </li>
+              <li v-if="pkg.max_storage_gb > 0">
+                <span class="check">✓</span> {{ pkg.max_storage_gb }}GB 存储空间
+              </li>
+              <li v-for="feature in pkg.features" :key="feature">
+                <span class="check">✓</span> {{ feature }}
+              </li>
+              <li v-if="pkg.modules && pkg.modules.length > 0" class="modules-item">
+                <span class="check">✓</span>
+                <span>{{ pkg.modules.length }} 个系统模块</span>
+                <span class="modules-tooltip-trigger" @mouseenter="showModulesTooltip = pkg.id" @mouseleave="showModulesTooltip = null">
+                  查看
+                  <span v-if="showModulesTooltip === pkg.id" class="modules-tooltip">
+                    <span v-for="m in pkg.modules" :key="m" class="module-tag">{{ getModuleName(m) }}</span>
+                  </span>
+                </span>
+              </li>
+            </ul>
+            <div class="community-extras">
+              <div class="extra-item">
+                <span class="extra-icon">📦</span>
+                <span>部署方式：Docker 自行部署</span>
+              </div>
+              <div class="extra-item">
+                <span class="extra-icon">🔑</span>
+                <span>授权码：COMMUNITY- 前缀，永不过期</span>
+              </div>
+              <div class="extra-item">
+                <span class="extra-icon">💬</span>
+                <span>支持：GitHub Issues + 社区</span>
+              </div>
+              <div class="extra-item">
+                <span class="extra-icon">📄</span>
+                <span>协议：Apache 2.0 开源</span>
+              </div>
+            </div>
+            <router-link
+              :to="`/register?plan=${pkg.code}`"
+              class="btn btn-primary"
+            >
+              免费获取授权码
+            </router-link>
+          </div>
+
+          <!-- 升级引导卡片 -->
+          <div class="pricing-card upgrade-card">
+            <div class="card-header">
+              <h3>需要更多功能？</h3>
+              <p>升级到私有部署版，解锁全部模块</p>
+            </div>
+            <div class="card-price">
+              <span class="price">¥29,800</span>
+              <span class="period">起</span>
+            </div>
+            <ul class="card-features">
+              <li><span class="check">✓</span> 不限用户数</li>
+              <li><span class="check">✓</span> 全部功能模块</li>
+              <li><span class="check">✓</span> 企微完整集成</li>
+              <li><span class="check">✓</span> 移动APP源码</li>
+              <li><span class="check">✓</span> 专属技术支持</li>
+              <li><span class="check">✓</span> 完整源码交付</li>
+            </ul>
+            <router-link
+              to="/pricing?version=private"
+              class="btn btn-outline"
+              @click.prevent="currentVersion = 'private'"
+            >
+              查看私有部署方案
+            </router-link>
+          </div>
+        </div>
+
+        <!-- 社区版与私有部署对比 -->
+        <div class="community-compare">
+          <h3>社区版 vs 私有部署版对比</h3>
+          <table class="community-compare-table">
+            <thead>
+              <tr>
+                <th>对比项</th>
+                <th class="community-col">🌐 社区版</th>
+                <th>🏢 私有部署版</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>价格</td>
+                <td class="community-col">¥0 永久免费</td>
+                <td>¥29,800 起</td>
+              </tr>
+              <tr>
+                <td>用户数</td>
+                <td class="community-col">3 用户</td>
+                <td>不限</td>
+              </tr>
+              <tr>
+                <td>客户管理</td>
+                <td class="community-col"><span class="val-yes">✓</span></td>
+                <td><span class="val-yes">✓</span></td>
+              </tr>
+              <tr>
+                <td>订单管理</td>
+                <td class="community-col"><span class="val-yes">✓</span></td>
+                <td><span class="val-yes">✓</span></td>
+              </tr>
+              <tr>
+                <td>物流管理</td>
+                <td class="community-col"><span class="val-yes">✓</span></td>
+                <td><span class="val-yes">✓</span></td>
+              </tr>
+              <tr>
+                <td>售后管理</td>
+                <td class="community-col"><span class="val-yes">✓</span></td>
+                <td><span class="val-yes">✓</span></td>
+              </tr>
+              <tr>
+                <td>数据看板</td>
+                <td class="community-col"><span class="val-yes">✓</span></td>
+                <td><span class="val-yes">✓</span></td>
+              </tr>
+              <tr>
+                <td>企微集成</td>
+                <td class="community-col"><span class="val-no">—</span></td>
+                <td><span class="val-yes">✓</span></td>
+              </tr>
+              <tr>
+                <td>财务管理</td>
+                <td class="community-col"><span class="val-no">—</span></td>
+                <td><span class="val-yes">✓</span></td>
+              </tr>
+              <tr>
+                <td>通话/短信</td>
+                <td class="community-col"><span class="val-no">—</span></td>
+                <td><span class="val-yes">✓</span></td>
+              </tr>
+              <tr>
+                <td>移动APP</td>
+                <td class="community-col"><span class="val-no">—</span></td>
+                <td><span class="val-yes">✓</span></td>
+              </tr>
+              <tr>
+                <td>数据导出</td>
+                <td class="community-col">100条/次</td>
+                <td>不限</td>
+              </tr>
+              <tr>
+                <td>技术支持</td>
+                <td class="community-col">社区支持</td>
+                <td>专属顾问</td>
+              </tr>
+              <tr>
+                <td>源码交付</td>
+                <td class="community-col">裁剪版</td>
+                <td>完整源码</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
     <!-- FAQ -->
     <section class="faq-section">
       <div class="container">
@@ -271,7 +462,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { getPackages, getYearlyPrice, getYearlyTotal, getYearlySaving, getYearlyPromoText, type Package } from '@/api/packages'
 
-const currentVersion = ref<'saas' | 'private'>('saas')
+const currentVersion = ref<'saas' | 'private' | 'community'>('saas')
 const isYearly = ref(false)
 const isPrivatePerpetual = ref(true)
 const isPrivateAnnual = computed(() => !isPrivatePerpetual.value)
@@ -295,6 +486,10 @@ const saasPackages = computed(() =>
 
 const privatePackages = computed(() =>
   packages.value.filter(p => p.type === 'private').sort((a, b) => a.sort_order - b.sort_order)
+)
+
+const communityPackages = computed(() =>
+  packages.value.filter(p => p.type === 'community').sort((a, b) => a.sort_order - b.sort_order)
 )
 
 // 是否有私有套餐配置了年度价格
@@ -355,7 +550,7 @@ const faqs = [
   },
   {
     question: '可以先试用再购买吗？',
-    answer: '当然可以！SaaS版提供7天免费试用，无需绑定信用卡。私有部署版可以申请演示账号体验。'
+    answer: '当然可以！SaaS版提供14天全功能免费试用，无需绑定信用卡。私有部署版可以申请演示账号体验。'
   },
   {
     question: '数据安全如何保障？',
@@ -396,7 +591,30 @@ const faqs = [
   > .container > p {
     font-size: 18px;
     color: var(--text-secondary);
-    margin-bottom: 40px;
+    margin-bottom: 20px;
+  }
+}
+
+.compare-link-wrapper {
+  margin-bottom: 32px;
+}
+
+.compare-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--primary);
+  text-decoration: none;
+  padding: 8px 20px;
+  border-radius: 8px;
+  background: rgba(99, 102, 241, 0.06);
+  transition: all 0.2s ease;
+
+  &:hover {
+    background: rgba(99, 102, 241, 0.12);
+    transform: translateX(4px);
   }
 }
 
@@ -580,17 +798,22 @@ const faqs = [
 
 .card-badge {
   position: absolute;
-  top: -12px;
-  left: 50%;
-  transform: translateX(-50%);
+  top: 16px;
+  right: 16px;
+  z-index: 2;
   background: var(--gradient-primary);
   color: white;
-  padding: 6px 20px;
-  border-radius: 20px;
-  font-size: 13px;
+  padding: 4px 14px;
+  border-radius: 12px;
+  font-size: 12px;
   font-weight: 600;
+  white-space: nowrap;
 
   &.trial {
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  }
+
+  &.community {
     background: linear-gradient(135deg, #10b981 0%, #059669 100%);
   }
 }
@@ -897,6 +1120,124 @@ const faqs = [
 
   .addon-grid {
     grid-template-columns: 1fr;
+  }
+}
+
+// 社区版样式
+.community-pricing-cards {
+  max-width: 700px;
+  margin: 0 auto;
+  grid-template-columns: 1fr 1fr;
+}
+
+.community-card {
+  border-color: #10b981 !important;
+
+  .card-price .price.free {
+    color: #10b981;
+  }
+}
+
+.upgrade-card {
+  border: 2px dashed #e2e8f0;
+  background: #fafbfc;
+
+  .card-header h3 {
+    color: var(--primary);
+  }
+}
+
+.community-extras {
+  padding: 16px 0;
+  border-top: 1px solid #f1f5f9;
+  margin-top: 8px;
+
+  .extra-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 0;
+    font-size: 13px;
+    color: var(--text-secondary);
+
+    .extra-icon {
+      font-size: 16px;
+    }
+  }
+}
+
+.community-compare {
+  margin-top: 60px;
+
+  h3 {
+    text-align: center;
+    font-size: 24px;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: 24px;
+  }
+}
+
+.community-compare-table {
+  width: 100%;
+  max-width: 700px;
+  margin: 0 auto;
+  border-collapse: collapse;
+  background: white;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
+
+  th, td {
+    padding: 14px 20px;
+    text-align: center;
+    border-bottom: 1px solid #f1f5f9;
+    font-size: 14px;
+  }
+
+  th {
+    background: #f8fafc;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+
+  td:first-child {
+    text-align: left;
+    font-weight: 500;
+    color: var(--text-secondary);
+  }
+
+  .community-col {
+    background: rgba(16, 185, 129, 0.04);
+  }
+
+  .val-yes {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #10b981, #059669);
+    color: white;
+    font-size: 12px;
+    font-weight: 700;
+  }
+
+  .val-no {
+    color: #cbd5e1;
+    font-size: 18px;
+  }
+
+  tbody tr:hover {
+    background: rgba(99, 102, 241, 0.02);
+  }
+}
+
+@media (max-width: 640px) {
+  .community-pricing-cards {
+    grid-template-columns: 1fr;
+    max-width: 400px;
   }
 }
 </style>

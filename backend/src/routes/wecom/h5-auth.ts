@@ -14,6 +14,12 @@ import WecomApiService from '../../services/WecomApiService';
 import { authenticateSidebarToken } from '../../middleware/auth';
 import { log } from '../../config/logger';
 import { v4 as uuidv4 } from 'uuid';
+import bcrypt from 'bcryptjs';
+import { Tenant } from '../../entities/Tenant';
+import { createDefaultAdmin } from '../../utils/adminAccountHelper';
+import { aliyunSmsService } from '../../services/AliyunSmsService';
+import { adminNotificationService } from '../../services/AdminNotificationService';
+import { SITE_CONFIG } from '../../config/sites';
 
 const router = Router();
 
@@ -348,6 +354,216 @@ router.get('/agent-config', h5JsSdkLimiter, authenticateSidebarToken, async (req
   } catch (error: any) {
     log.error('[H5 Auth] agent-config error:', error.message);
     res.status(500).json({ success: false, message: '获取Agent配置失败' });
+  }
+});
+
+// ==================== H5自主注册（满足企微服务商上架要求） ====================
+
+/** H5注册限流: 每IP每15分钟最多10次 */
+const h5RegisterLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, message: '注册请求过于频繁，请稍后再试' },
+  keyGenerator: (req: Request) => req.ip || req.socket.remoteAddress || 'unknown'
+});
+
+// 验证码存储（与公开注册共用格式，生产环境应使用 Redis）
+const h5VerificationCodes: Map<string, { code: string; expires: number }> = new Map();
+
+/**
+ * POST /h5/send-code
+ * H5应用内发送注册验证码
+ */
+router.post('/send-code', h5RegisterLimiter, async (req: Request, res: Response) => {
+  try {
+    const { phone } = req.body;
+
+    if (!phone || !/^1[3-9]\d{9}$/.test(phone)) {
+      return res.status(400).json({ success: false, message: '请输入正确的手机号' });
+    }
+
+    // 检查发送频率（1分钟内只能发送一次）
+    const existing = h5VerificationCodes.get(phone);
+    if (existing && existing.expires > Date.now() + 4 * 60 * 1000) {
+      return res.status(400).json({ success: false, message: '发送太频繁，请稍后再试' });
+    }
+
+    // 生成6位验证码
+    const code = Math.random().toString().slice(-6);
+    const expires = Date.now() + 5 * 60 * 1000; // 5分钟有效
+
+    // 优先从数据库加载配置
+    const dbLoaded = await aliyunSmsService.loadFromDatabase();
+    if (!dbLoaded) {
+      aliyunSmsService.loadFromEnv();
+    }
+
+    // 发送短信
+    const result = await aliyunSmsService.sendVerificationCode(phone, code);
+    if (!result.success) {
+      log.error(`[H5 Register] 发送验证码失败: ${result.message}`);
+      return res.status(500).json({ success: false, message: result.message || '发送失败，请稍后重试' });
+    }
+
+    h5VerificationCodes.set(phone, { code, expires });
+    log.info(`[H5 Register] 验证码已发送: ${phone}`);
+
+    res.json({ success: true, message: '验证码已发送' });
+  } catch (error: any) {
+    log.error('[H5 Register] 发送验证码失败:', error.message);
+    res.status(500).json({ success: false, message: '发送验证码失败' });
+  }
+});
+
+/**
+ * POST /h5/register
+ * H5应用内注册新租户（免费试用，满足企微上架自主注册要求）
+ */
+router.post('/register', h5RegisterLimiter, async (req: Request, res: Response) => {
+  try {
+    const { companyName, contactName, phone, code, password } = req.body;
+
+    // 验证必填字段
+    if (!companyName || !contactName || !phone || !code) {
+      return res.status(400).json({ success: false, message: '请填写完整信息' });
+    }
+    if (!password || password.length < 6) {
+      return res.status(400).json({ success: false, message: '密码至少6位' });
+    }
+    if (!/^1[3-9]\d{9}$/.test(phone)) {
+      return res.status(400).json({ success: false, message: '手机号格式不正确' });
+    }
+
+    // 验证验证码
+    const stored = h5VerificationCodes.get(phone);
+    if (!stored || stored.code !== code || stored.expires < Date.now()) {
+      return res.status(400).json({ success: false, message: '验证码错误或已过期' });
+    }
+    h5VerificationCodes.delete(phone);
+
+    // 检查手机号是否已注册
+    const existingTenant = await AppDataSource.query(
+      'SELECT id FROM tenants WHERE phone = ? AND deleted_at IS NULL', [phone]
+    );
+    if (existingTenant && existingTenant.length > 0) {
+      return res.status(400).json({ success: false, message: '该手机号已注册，请直接登录' });
+    }
+
+    // 获取免费试用套餐
+    let packageId = null;
+    let maxUsers = 3;
+    let expireDays = 7;
+    const freePackages = await AppDataSource.query(
+      "SELECT id, max_users, duration_days FROM tenant_packages WHERE price = 0 AND status = 1 AND type != 'community' ORDER BY duration_days DESC LIMIT 1"
+    );
+    if (freePackages && freePackages.length > 0) {
+      packageId = freePackages[0].id;
+      maxUsers = freePackages[0].max_users || 3;
+      expireDays = freePackages[0].duration_days || 7;
+    }
+
+    // 创建租户
+    const tenantId = uuidv4();
+    const tenantCode = Tenant.generateShortCode();
+    const licenseKey = Tenant.generateLicenseKey();
+    const expireDate = new Date(Date.now() + expireDays * 24 * 60 * 60 * 1000);
+
+    await AppDataSource.query(
+      `INSERT INTO tenants
+       (id, name, code, license_key, license_status, package_id, contact, phone, max_users, expire_date, status, created_at)
+       VALUES (?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, 'active', NOW())`,
+      [tenantId, companyName, tenantCode, licenseKey, packageId, contactName, phone, maxUsers, expireDate]
+    );
+
+    // 存储会员中心密码
+    try {
+      const passwordHash = await bcrypt.hash(password, 10);
+      await AppDataSource.query('UPDATE tenants SET password_hash = ? WHERE id = ?', [passwordHash, tenantId]);
+    } catch (pwdErr) {
+      log.warn('[H5 Register] 存储会员中心密码失败（不影响注册）:', pwdErr);
+    }
+
+    // 记录注册日志
+    await AppDataSource.query(
+      `INSERT INTO tenant_license_logs (id, tenant_id, license_key, action, result, message)
+       VALUES (?, ?, ?, 'register', 'success', ?)`,
+      [uuidv4(), tenantId, licenseKey, '企微H5应用注册-免费试用']
+    );
+
+    // 创建默认管理员账号
+    let adminAccount: { username: string; password: string } | null = null;
+    try {
+      const result = await createDefaultAdmin({
+        tenantId,
+        phone,
+        realName: contactName
+      });
+      adminAccount = { username: result.username, password: result.password };
+      log.info(`[H5 Register] ✅ 已为租户 ${tenantCode} 创建默认管理员: ${result.username}`);
+    } catch (adminErr: any) {
+      log.error('[H5 Register] 创建默认管理员失败（不影响注册）:', adminErr.message?.substring(0, 100));
+    }
+
+    // 生成H5应用登录token（注册即登录）
+    const { JwtConfig } = await import('../../config/jwt');
+    const { User } = await import('../../entities/User');
+    const userRepo = AppDataSource.getRepository(User);
+    const adminUser = await userRepo.findOne({ where: { username: adminAccount?.username || phone, tenantId } });
+
+    let token = '';
+    if (adminUser) {
+      token = JwtConfig.generateAccessToken({
+        type: 'sidebar',
+        userId: adminUser.id,
+        username: adminUser.username,
+        role: adminUser.role,
+        wecomUserId: '',
+        crmUserId: adminUser.id,
+        crmUserName: adminUser.name || adminUser.username,
+        tenantId,
+        corpId: ''
+      } as any);
+    }
+
+    log.info(`[H5 Register] ✅ 企微H5注册成功: ${companyName} (${tenantCode})`);
+
+    res.json({
+      success: true,
+      data: {
+        tenantId,
+        tenantCode,
+        licenseKey,
+        expireDate: expireDate.toISOString().split('T')[0],
+        token,
+        user: adminUser ? {
+          id: adminUser.id,
+          name: adminUser.name || adminUser.username,
+          username: adminUser.username,
+          avatar: '',
+          role: adminUser.role,
+          tenantId
+        } : null,
+        adminUsername: adminAccount?.username || null,
+        adminPassword: adminAccount?.password || null,
+        crmUrl: SITE_CONFIG.CRM_URL,
+        memberUrl: `${SITE_CONFIG.WEBSITE_URL}/member`
+      },
+      message: '注册成功，免费试用已开通'
+    });
+
+    // 异步通知管理员
+    adminNotificationService.notify('tenant_registered', {
+      title: `新租户注册（企微H5）：${companyName}`,
+      content: `企业「${companyName}」（联系人：${contactName}，手机：${phone}）通过企微H5应用注册了免费试用。租户编码：${tenantCode}`,
+      relatedId: tenantId,
+      relatedType: 'tenant',
+      extraData: { companyName, contactName, phone, tenantCode, source: 'wecom_h5' }
+    }).catch(err => log.error('[H5 Register] 发送管理员通知失败:', err.message));
+  } catch (error: any) {
+    log.error('[H5 Register] 注册失败:', error.message);
+    res.status(500).json({ success: false, message: '注册失败，请稍后重试' });
   }
 });
 

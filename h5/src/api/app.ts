@@ -29,3 +29,8 @@ export function getActivities(params?: { page?: number; pageSize?: number }) {
 export function getNotifications() {
   return api.get('/app/notifications')
 }
+
+/** 获取租户授权信息 */
+export function getTenantInfo() {
+  return api.get('/app/tenant-info')
+}

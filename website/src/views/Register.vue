@@ -57,13 +57,13 @@
           <div class="step-line" :class="{ active: step > 2 }"></div>
           <div class="step" :class="{ active: step >= 3 }">
             <span class="step-num">3</span>
-            <span class="step-text">{{ selectedPlan === 'FREE_TRIAL' ? (form.autoRenew ? '签约授权' : '完成注册') : (subscriptionChecked && currentPkgSubscriptionEnabled ? '签约支付' : '完成支付') }}</span>
+            <span class="step-text">{{ planType === 'community' ? '完成注册' : (selectedPlan === 'FREE_TRIAL' ? (form.autoRenew ? '签约授权' : '完成注册') : (subscriptionChecked && currentPkgSubscriptionEnabled ? '签约支付' : '完成支付')) }}</span>
           </div>
         </div>
 
         <!-- 已选套餐提示 -->
-        <div class="selected-plan-banner" :class="{ free: selectedPlan === 'FREE_TRIAL' }">
-          <span class="banner-icon">{{ selectedPlan === 'FREE_TRIAL' ? '🎁' : '📦' }}</span>
+        <div class="selected-plan-banner" :class="{ free: selectedPlan === 'FREE_TRIAL' || planType === 'community' }">
+          <span class="banner-icon">{{ planType === 'community' ? '🌐' : (selectedPlan === 'FREE_TRIAL' ? '🎁' : '📦') }}</span>
           <span class="banner-text">
             已选择：<strong>{{ getPlanName(selectedPlan) }}</strong>
             <template v-if="selectedPlan !== 'FREE_TRIAL' && planType === 'saas'">
@@ -93,11 +93,14 @@
         <div v-if="step === 1" class="form-step">
           <div class="plan-selector">
             <div class="plan-type-toggle">
-              <button :class="{ active: planType === 'saas' }" @click="planType = 'saas'">
+              <button :class="{ active: planType === 'saas' }" @click="switchPlanType('saas')">
                 ☁️ SaaS云端版
               </button>
-              <button :class="{ active: planType === 'private' }" @click="planType = 'private'">
+              <button :class="{ active: planType === 'private' }" @click="switchPlanType('private')">
                 🏢 私有部署版
+              </button>
+              <button :class="{ active: planType === 'community' }" @click="switchPlanType('community')">
+                🌐 开源社区版
               </button>
             </div>
 
@@ -224,6 +227,47 @@
               </label>
             </div>
 
+            <!-- 开源社区版 套餐卡片 -->
+            <div v-if="planType === 'community'" class="plans-grid community-plans">
+              <div v-for="pkg in communityPlanCards" :key="pkg.code"
+                class="plan-card community-card selected"
+                @click="selectedPlan = pkg.code">
+                <div class="plan-badge free">永久免费</div>
+                <h4>{{ pkg.name }}</h4>
+                <p class="plan-price free">¥0</p>
+                <p class="plan-desc">{{ pkg.max_users }}用户 · {{ pkg.max_storage_gb }}GB存储</p>
+                <ul class="community-features">
+                  <li v-for="(feat, idx) in parseCommunityFeatures(pkg)" :key="idx">✓ {{ feat }}</li>
+                </ul>
+                <div class="community-info">
+                  <p>适合：1-3人微型团队</p>
+                  <p>授权：免费授权码，永不过期</p>
+                  <p>部署：用户自行 Docker 部署</p>
+                  <p>支持：GitHub Issues + 社区</p>
+                </div>
+              </div>
+              <div v-if="communityPlanCards.length === 0" class="plan-card community-card selected">
+                <div class="plan-badge free">永久免费</div>
+                <h4>社区版</h4>
+                <p class="plan-price free">¥0</p>
+                <p class="plan-desc">3用户 · 2GB存储</p>
+                <ul class="community-features">
+                  <li>✓ 客户管理</li>
+                  <li>✓ 订单管理</li>
+                  <li>✓ 物流追踪</li>
+                  <li>✓ 售后管理</li>
+                  <li>✓ 数据看板</li>
+                  <li>✓ 商品管理</li>
+                </ul>
+                <div class="community-info">
+                  <p>适合：1-3人微型团队</p>
+                  <p>授权：免费授权码，永不过期</p>
+                  <p>部署：用户自行 Docker 部署</p>
+                  <p>支持：GitHub Issues + 社区</p>
+                </div>
+              </div>
+            </div>
+
             <div v-if="planType === 'private'" class="plans-grid plans-grid-3">
               <div v-for="pkg in privatePlanCards" :key="pkg.code"
                 class="plan-card" :class="{ selected: selectedPlan === pkg.code }"
@@ -264,7 +308,7 @@
               </div>
             </div>
           </div>
-          <button class="btn btn-primary btn-block" @click="step = 2">下一步</button>
+          <button class="btn btn-primary btn-block" @click="handleStep1Next">下一步</button>
         </div>
 
         <!-- 步骤2：填写信息 -->
@@ -1005,7 +1049,7 @@ const router = useRouter()
 const crmUrl = ref('') // 动态CRM系统地址
 
 const step = ref(1)
-const planType = ref<'saas' | 'private'>('saas')
+const planType = ref<'saas' | 'private' | 'community'>('saas')
 const billingCycle = ref<'monthly' | 'yearly'>('monthly')
 const selectedPlan = ref('FREE_TRIAL')
 const paymentMethod = ref('wechat')
@@ -1152,6 +1196,41 @@ const privatePlanCards = computed(() => {
     .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
 })
 
+const communityPlanCards = computed(() => {
+  return packagesData.value
+    .filter(p => p.type === 'community')
+    .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
+})
+
+// 解析社区版套餐的 features 字段为功能列表
+const parseCommunityFeatures = (pkg: Package): string[] => {
+  if (Array.isArray(pkg.features)) {
+    return pkg.features.filter((f: string) => !f.includes('用户上限') && !f.includes('社区支持'))
+  }
+  return ['客户管理', '订单管理', '物流追踪', '售后管理', '数据看板', '商品管理']
+}
+
+// 切换套餐类型时自动选中默认套餐
+const switchPlanType = (type: 'saas' | 'private' | 'community') => {
+  planType.value = type
+  if (type === 'saas') {
+    const trial = packagesData.value.find(p => p.type === 'saas' && p.is_trial)
+    selectedPlan.value = trial?.code || saasPlanCards.value[0]?.code || 'FREE_TRIAL'
+  } else if (type === 'private') {
+    selectedPlan.value = privatePlanCards.value[0]?.code || 'PRIVATE_STANDARD'
+  } else if (type === 'community') {
+    selectedPlan.value = communityPlanCards.value[0]?.code || 'COMMUNITY_FREE'
+  }
+}
+
+// 步骤1“下一步”按钮
+const handleStep1Next = () => {
+  if (planType.value === 'community' && !selectedPlan.value) {
+    selectedPlan.value = communityPlanCards.value[0]?.code || 'COMMUNITY_FREE'
+  }
+  step.value = 2
+}
+
 // 当前选中套餐是否需要选择限制模式（双模式套餐）
 const currentPkgLimitMode = computed(() => currentPkg.value?.user_limit_mode || 'total')
 const needsModeSelection = computed(() => currentPkgLimitMode.value === 'both')
@@ -1213,6 +1292,9 @@ onMounted(async () => {
     } else if (plan.startsWith('PRIVATE_')) {
       selectedPlan.value = 'private-' + plan.replace('PRIVATE_', '').toLowerCase()
       planType.value = 'private'
+    } else if (plan.startsWith('COMMUNITY')) {
+      selectedPlan.value = plan
+      planType.value = 'community'
     } else {
       selectedPlan.value = plan
       if (plan.startsWith('private')) {
@@ -1268,8 +1350,8 @@ const sendCode = async () => {
 const getPlanName = (plan: string) => {
   const pkg = getPackageByPlan(plan)
   if (pkg) {
-    const prefix = pkg.type === 'saas' ? 'SaaS云端版' : '私有部署版'
-    return `${prefix} - ${pkg.name}`
+    const prefix = pkg.type === 'saas' ? 'SaaS云端版' : (pkg.type === 'community' ? '开源社区版' : '私有部署版')
+    return pkg.type === 'community' ? `${prefix} - ${pkg.name}` : `${prefix} - ${pkg.name}`
   }
   // 兜底硬编码
   const names: Record<string, string> = {
@@ -1500,6 +1582,23 @@ const handleSubmitInfo = async () => {
       // 注册成功后保存会员token（如果后端返回了），让未付费用户也能登录会员中心
       if (data.data.memberToken) {
         localStorage.setItem('member_token', data.data.memberToken)
+      }
+
+      // 社区版：注册即激活，直接跳成功页
+      if (planType.value === 'community') {
+        router.push({
+          path: '/pay-success',
+          query: {
+            plan: selectedPlan.value,
+            type: 'community',
+            tenantCode: data.data.tenantCode,
+            licenseKey: data.data.licenseKey,
+            adminUsername: data.data.adminUsername || '',
+            adminPassword: data.data.adminPassword || '',
+            memberPwdDefault: data.data.memberPasswordIsDefault ? '1' : '0'
+          }
+        })
+        return
       }
 
       // 免费套餐
@@ -2500,6 +2599,66 @@ const autoRenewPlanKey = computed(() => {
     &.free {
       background: var(--success);
     }
+  }
+}
+
+// 社区版套餐卡片样式
+.community-plans {
+  display: flex;
+  justify-content: center;
+}
+
+.community-card {
+  max-width: 360px;
+  text-align: left;
+  border-color: var(--success) !important;
+  background: rgba(16, 185, 129, 0.06) !important;
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.15), 0 4px 12px rgba(16, 185, 129, 0.1) !important;
+
+  h4 {
+    text-align: center;
+  }
+
+  .plan-price {
+    text-align: center;
+  }
+
+  .plan-desc {
+    text-align: center;
+    margin-bottom: 12px;
+  }
+
+  &::after {
+    background: var(--success) !important;
+  }
+}
+
+.community-features {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 12px 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 12px;
+
+  li {
+    font-size: 13px;
+    color: var(--text-primary);
+    padding: 2px 0;
+  }
+}
+
+.community-info {
+  background: rgba(0, 0, 0, 0.03);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-top: 8px;
+
+  p {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin: 3px 0;
+    line-height: 1.5;
   }
 }
 

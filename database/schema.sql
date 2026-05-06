@@ -1,7 +1,7 @@
 -- =============================================
 -- CRM系统数据库初始化脚本（最新版）
--- 版本：4.1.0
--- 更新时间：2026-04-22
+-- 版本：4.2.1
+-- 更新时间：2026-05-06
 -- 适用于：MySQL 8.0+ / 宝塔面板 7.x+
 --
 -- 更新内容：
@@ -52,6 +52,9 @@
 -- 45. [v4.1.0] 新增mobile_app_packages(移动应用安装包管理)表
 -- 46. [v4.2.0] wecom_suite_configs表新增mp_app_id/mp_app_secret/mp_form_secret/mp_enabled/mp_config/mp_callback_token/mp_callback_encoding_aes_key(微信小程序配置)字段
 -- 47. [v4.2.0] 新增mp_form_submissions(小程序表单提交记录)、mp_card_send_logs(小程序卡片发送日志)表
+-- 48. [v4.2.1] 开源社区版：licenses.license_type新增community枚举值
+-- 49. [v4.2.1] 开源社区版：tenant_packages.type新增community枚举值+社区版默认套餐数据
+-- 50. [v4.2.1] 开源社区版：system_license.license_type注释补充community社区版
 -- =============================================
 
 -- 设置字符集和时区
@@ -3266,7 +3269,7 @@ CREATE TABLE IF NOT EXISTS `licenses` (
   `customer_contact` VARCHAR(100) COMMENT '联系人',
   `customer_phone` VARCHAR(20) COMMENT '联系电话',
   `customer_email` VARCHAR(100) COMMENT '邮箱',
-  `license_type` ENUM('trial', 'perpetual', 'annual', 'monthly') DEFAULT 'trial' COMMENT '授权类型',
+  `license_type` ENUM('trial', 'perpetual', 'annual', 'monthly', 'community') DEFAULT 'trial' COMMENT '授权类型：trial-试用，perpetual-永久，annual-年度，monthly-月度，community-社区版',
   `max_users` INT DEFAULT 10 COMMENT '最大用户数',
   `max_storage_gb` INT DEFAULT 5 COMMENT '最大存储空间(GB)',
   `user_limit_mode` ENUM('total','online') NOT NULL DEFAULT 'total' COMMENT '用户限制模式',
@@ -3669,7 +3672,7 @@ CREATE TABLE IF NOT EXISTS `system_license` (
   `id` VARCHAR(36) PRIMARY KEY COMMENT '授权ID',
   `license_key` VARCHAR(255) NOT NULL COMMENT '授权码',
   `customer_name` VARCHAR(200) COMMENT '客户名称',
-  `license_type` VARCHAR(50) DEFAULT 'perpetual' COMMENT '授权类型: trial试用, perpetual永久, annual年度, monthly月度',
+  `license_type` VARCHAR(50) DEFAULT 'perpetual' COMMENT '授权类型: trial试用, perpetual永久, annual年度, monthly月度, community社区版',
   `max_users` INT DEFAULT 50 COMMENT '最大用户数',
   `user_limit_mode` VARCHAR(20) DEFAULT 'total' COMMENT '用户限制模式: total总用户数, online在线席位',
   `max_online_seats` INT DEFAULT 0 COMMENT '最大在线席位数(user_limit_mode=online时生效)',
@@ -3692,7 +3695,7 @@ CREATE TABLE IF NOT EXISTS `tenant_packages` (
   `id` INT PRIMARY KEY AUTO_INCREMENT,
   `name` VARCHAR(100) NOT NULL COMMENT '套餐名称',
   `code` VARCHAR(50) NOT NULL UNIQUE COMMENT '套餐代码',
-  `type` ENUM('saas', 'private') NOT NULL DEFAULT 'saas' COMMENT '套餐类型：saas-云端版，private-私有部署',
+  `type` ENUM('saas', 'private', 'community') NOT NULL DEFAULT 'saas' COMMENT '套餐类型：saas-云端版，private-私有部署，community-开源社区版',
   `description` TEXT COMMENT '套餐描述',
   `price` DECIMAL(10,2) NOT NULL DEFAULT 0 COMMENT '价格',
   `original_price` DECIMAL(10,2) COMMENT '原价（用于显示折扣）',
@@ -3704,10 +3707,15 @@ CREATE TABLE IF NOT EXISTS `tenant_packages` (
   `max_storage_gb` INT DEFAULT 5 COMMENT '存储空间(GB)',
   `user_limit_mode` ENUM('total','online','both') NOT NULL DEFAULT 'total' COMMENT '用户限制模式：total-限制总注册数，online-限制同时在线数，both-两种都支持',
   `max_online_seats` INT NOT NULL DEFAULT 0 COMMENT '最大在线席位数（user_limit_mode=online时生效）',
-  `yearly_discount_rate` DECIMAL(5,2) DEFAULT 0 COMMENT '年付折扣率（0-100，例如20表示8折）',
+  `yearly_discount_rate` DECIMAL(5,2) DEFAULT 0 COMMENT '年付折扣率（0-100，例如10表示9折）',
   `yearly_bonus_months` INT DEFAULT 0 COMMENT '年付赠送月数',
   `yearly_price` DECIMAL(10,2) NULL COMMENT '年付价格（如果为NULL则自动计算）',
+  `subscription_enabled` TINYINT(1) DEFAULT 0 COMMENT '是否启用订阅：0-不支持 1-支持',
+  `subscription_channels` VARCHAR(50) DEFAULT 'all' COMMENT '订阅渠道：wechat/alipay/all',
+  `subscription_billing_cycle` VARCHAR(20) DEFAULT 'monthly' COMMENT '订阅计费周期：monthly/yearly/both',
+  `subscription_discount_rate` DECIMAL(5,2) DEFAULT 0.00 COMMENT '订阅优惠折扣率（0-100）',
   `features` JSON COMMENT '功能特性列表',
+  `feature_details` JSON NULL COMMENT '功能特性详情(对比表用，JSON对象)',
   `modules` JSON NULL COMMENT '授权模块ID列表（JSON数组）',
   `is_trial` TINYINT(1) DEFAULT 0 COMMENT '是否为试用套餐',
   `is_recommended` TINYINT(1) DEFAULT 0 COMMENT '是否推荐',
@@ -5054,16 +5062,40 @@ INSERT INTO `module_status` (`module_key`, `module_name`, `description`, `icon`,
 ('wecom', '企微管理', '企业微信集成管理，客户同步、会话存档', 'ChatLineSquare', 1, 12)
 ON DUPLICATE KEY UPDATE `module_name` = VALUES(`module_name`), `updated_at` = CURRENT_TIMESTAMP;
 
--- 插入默认套餐数据（8个套餐：4个SaaS + 1个测试 + 3个私有部署）
-INSERT INTO `tenant_packages` (`name`, `code`, `type`, `description`, `price`, `original_price`, `billing_cycle`, `duration_days`, `max_users`, `max_storage_gb`, `user_limit_mode`, `max_online_seats`, `features`, `modules`, `is_trial`, `is_recommended`, `is_visible`, `sort_order`, `status`, `yearly_discount_rate`, `yearly_bonus_months`, `yearly_price`) VALUES
-('7天免费试用', 'FREE_TRIAL', 'saas', '体验云客CRM全部基础功能', 0.00, NULL, 'monthly', 7, 3, 1, 'online', 5, '["客户管理", "订单管理", "基础报表", "数据导入导出"]', '["dashboard", "customer", "order", "service-management", "performance", "logistics", "service", "data", "finance", "product", "system"]', 1, 0, 1, 0, 1, 0.00, 0, NULL),
-('基础版', 'SAAS_BASIC', 'saas', '适合小型团队起步', 199.00, NULL, 'monthly', 30, 10, 5, 'total', 0, '["客户管理", "订单管理", "基础报表", "数据导入导出", "物流跟踪"]', '["dashboard", "customer", "order", "service-management", "performance", "logistics", "service", "data", "finance", "product", "system"]', 0, 0, 1, 1, 1, 0.00, 2, NULL),
-('专业版', 'SAAS_PRO', 'saas', '适合成长型团队', 299.00, NULL, 'monthly', 30, 50, 50, 'total', 0, '["客户管理", "订单管理", "基础报表", "数据导入导出", "物流跟踪", "高级报表分析", "API接口", "自定义字段"]', '["dashboard", "customer", "order", "service-management", "performance", "logistics", "service", "data", "finance", "product", "system"]', 0, 1, 1, 2, 1, 0.00, 2, NULL),
-('企业版', 'SAAS_ENTERPRISE', 'saas', '适合大型销售团队', 599.00, NULL, 'monthly', 30, 200, 200, 'total', 0, '["客户管理", "订单管理", "基础报表", "数据导入导出", "物流跟踪", "高级报表分析", "API接口", "自定义字段", "电销外呼系统", "专属客户成功经理", "优先技术支持", "SLA保障"]', '["dashboard", "customer", "order", "service-management", "performance", "logistics", "service", "data", "finance", "product", "system", "wecom"]', 0, 0, 1, 3, 1, 0.00, 2, 5990.00),
-('标准版', 'PRIVATE_STANDARD', 'private', '适合中小企业私有部署', 9800.00, NULL, 'once', 36500, 50, 0, 'total', 0, '["永久授权", "全部核心功能", "部署文档", "1年免费升级", "邮件技术支持"]', NULL, 0, 0, 1, 10, 1, 0.00, 0, 3700.00),
-('专业版', 'PRIVATE_PRO', 'private', '适合中大型企业', 19800.00, NULL, 'once', 36500, 200, 0, 'total', 0, '["永久授权", "全部功能模块", "远程部署协助", "1年技术支持", "1年免费升级", "专属技术顾问"]', NULL, 0, 1, 1, 11, 1, 0.00, 0, 7500.00),
-('企业版', 'PRIVATE_ENTERPRISE', 'private', '适合大型企业/集团', 39800.00, NULL, 'once', 36500, 99999, 0, 'total', 0, '["永久授权", "不限用户数", "全部功能模块", "现场部署支持", "专属技术顾问", "定制开发服务", "7x24技术支持"]', NULL, 0, 0, 1, 12, 1, 0.00, 0, 15100.00)
-ON DUPLICATE KEY UPDATE `updated_at` = CURRENT_TIMESTAMP;
+-- 插入默认套餐数据（9个套餐：5个SaaS + 3个私有部署 + 1个开源社区版）
+-- SaaS: 免费试用 | 入门版¥149 | 基础版¥399 | 专业版¥699⭐ | 企业版¥1,299
+-- 私有: 标准版¥29,800 | 专业版¥59,800⭐ | 企业版¥99,800
+-- 社区: 社区版（免费，3用户，核心CRM功能，COMMUNITY-前缀授权码）
+-- 配置: 默认不支持订阅 | SaaS年付9折不赠月数 | SaaS在线席位制 | 私有注册用户制
+INSERT INTO `tenant_packages` (`name`, `code`, `type`, `description`, `price`, `original_price`, `billing_cycle`, `duration_days`, `max_users`, `max_storage_gb`, `user_limit_mode`, `max_online_seats`, `yearly_discount_rate`, `yearly_bonus_months`, `yearly_price`, `subscription_enabled`, `subscription_channels`, `subscription_billing_cycle`, `subscription_discount_rate`, `features`, `feature_details`, `modules`, `is_trial`, `is_recommended`, `is_visible`, `sort_order`, `status`) VALUES
+-- 1. 14天免费试用（体验期享有全功能）
+('14天免费试用', 'FREE_TRIAL', 'saas', '14天全功能体验，零风险评估', 0.00, NULL, 'monthly', 14, 5, 1, 'online', 5, 0.00, 0, NULL, 0, 'all', 'monthly', 0.00, '["全功能体验", "客户管理", "订单管理", "财务管理", "物流管理", "商品管理", "业绩管理", "通话短信", "售后管理", "企微管理", "移动APP"]', '{"核心数据仪表盘":true,"多维度趋势图表":true,"客户信息管理":true,"客户标签与分组":true,"跟进记录与提醒":true,"客户全景画像":true,"数据导入导出":true,"批量导入Excel":true,"客户分享转移":true,"隐私信息脱敏":true,"订单创建编辑":true,"订单审核工作流":true,"批量审核":true,"退款管理":true,"绩效数据查看":true,"绩效管理":true,"COD代收管理":true,"增值服务管理":true,"财务结算报表":true,"物流轨迹追踪":true,"发货管理":true,"批量发货打单":true,"寄件人地址管理":true,"快递公司管理":true,"商品列表分类":true,"库存管理":true,"库存预警":true,"虚拟商品卡密":true,"商品分析报表":true,"个人业绩统计":true,"团队业绩排行":true,"佣金阶梯计算":true,"业绩分析":true,"业绩分享导出":true,"通话记录管理":true,"通话录音存储":true,"坐席状态管理":true,"外呼线路配置":true,"工作手机绑定":true,"短信发送":true,"短信模板管理":true,"短信审核统计":true,"自动发送规则":true,"售后工单":true,"售后统计分析":true,"资料列表":true,"客户查询":true,"回收站":true,"部门用户角色":true,"权限精细控制":true,"操作日志审计":true,"消息管理":true,"自定义字段":true,"企微客户同步":true,"客户群管理":true,"获客助手活码":true,"企微对外收款":true,"微信客服":true,"话术库":true,"敏感词监控":true,"企微侧边栏":true,"会话存档":true,"AI智能助手":true,"H5企微侧边栏(5个内置应用)":true,"微信小程序(客户自助填写地址)":true,"移动APP":true,"API接口":true,"Webhook回调":true,"WebSocket推送":true,"数据批量导出":true,"在线文档帮助中心":true,"邮件工单":true,"在线客服":true,"专属技术顾问":true,"7x24电话远程":true}', '["dashboard","customer","order","service-management","performance","logistics","service","data","finance","product","system","wecom"]', 1, 0, 1, 0, 1),
+-- 2. 入门版 ¥149/月（核心CRM全功能，无企微模块）
+('入门版', 'SAAS_STARTER', 'saas', '微型团队轻松起步', 149.00, NULL, 'monthly', 30, 5, 3, 'online', 5, 10.00, 0, NULL, 0, 'all', 'monthly', 0.00, '["客户管理", "订单管理", "财务管理", "物流管理", "通话管理", "短信50条/月", "售后管理", "邮件支持"]', '{"核心数据仪表盘":true,"多维度趋势图表":true,"客户信息管理":true,"客户标签与分组":true,"跟进记录与提醒":true,"客户全景画像":true,"数据导入导出":true,"批量导入Excel":false,"客户分享转移":true,"隐私信息脱敏":true,"订单创建编辑":true,"订单审核工作流":true,"批量审核":true,"退款管理":true,"绩效数据查看":true,"绩效管理":true,"COD代收管理":true,"增值服务管理":true,"财务结算报表":true,"物流轨迹追踪":true,"发货管理":true,"批量发货打单":true,"寄件人地址管理":true,"快递公司管理":true,"商品列表分类":true,"库存管理":true,"库存预警":true,"虚拟商品卡密":true,"商品分析报表":true,"个人业绩统计":true,"团队业绩排行":true,"佣金阶梯计算":true,"业绩分析":true,"业绩分享导出":true,"通话记录管理":true,"通话录音存储":true,"坐席状态管理":true,"外呼线路配置":true,"工作手机绑定":true,"短信发送":"50条/月","短信模板管理":true,"短信审核统计":true,"自动发送规则":false,"售后工单":true,"售后统计分析":true,"资料列表":true,"客户查询":true,"回收站":true,"部门用户角色":true,"权限精细控制":true,"操作日志审计":true,"消息管理":true,"自定义字段":true,"企微客户同步":false,"客户群管理":false,"获客助手活码":false,"企微对外收款":false,"微信客服":false,"话术库":false,"敏感词监控":false,"企微侧边栏":false,"会话存档":false,"AI智能助手":false,"H5企微侧边栏(5个内置应用)":true,"微信小程序(客户自助填写地址)":true,"移动APP":false,"API接口":true,"Webhook回调":true,"WebSocket推送":true,"数据批量导出":false,"在线文档帮助中心":true,"邮件工单":true,"在线客服":false,"专属技术顾问":false,"7x24电话远程":false}', '["dashboard","customer","order","service-management","performance","logistics","service","data","finance","product","system"]', 0, 0, 1, 1, 1),
+-- 3. 基础版 ¥399/月（核心CRM全功能 + 批量导入导出，无企微模块）
+('基础版', 'SAAS_BASIC', 'saas', '小型团队高效协作', 399.00, NULL, 'monthly', 30, 10, 10, 'online', 10, 10.00, 0, NULL, 0, 'all', 'monthly', 0.00, '["全部核心功能", "批量导入导出", "通话管理", "短信100条/月", "数据批量导出", "在线客服"]', '{"核心数据仪表盘":true,"多维度趋势图表":true,"客户信息管理":true,"客户标签与分组":true,"跟进记录与提醒":true,"客户全景画像":true,"数据导入导出":true,"批量导入Excel":true,"客户分享转移":true,"隐私信息脱敏":true,"订单创建编辑":true,"订单审核工作流":true,"批量审核":true,"退款管理":true,"绩效数据查看":true,"绩效管理":true,"COD代收管理":true,"增值服务管理":true,"财务结算报表":true,"物流轨迹追踪":true,"发货管理":true,"批量发货打单":true,"寄件人地址管理":true,"快递公司管理":true,"商品列表分类":true,"库存管理":true,"库存预警":true,"虚拟商品卡密":true,"商品分析报表":true,"个人业绩统计":true,"团队业绩排行":true,"佣金阶梯计算":true,"业绩分析":true,"业绩分享导出":true,"通话记录管理":true,"通话录音存储":true,"坐席状态管理":true,"外呼线路配置":true,"工作手机绑定":true,"短信发送":"100条/月","短信模板管理":true,"短信审核统计":true,"自动发送规则":true,"售后工单":true,"售后统计分析":true,"资料列表":true,"客户查询":true,"回收站":true,"部门用户角色":true,"权限精细控制":true,"操作日志审计":true,"消息管理":true,"自定义字段":true,"企微客户同步":false,"客户群管理":false,"获客助手活码":false,"企微对外收款":false,"微信客服":false,"话术库":false,"敏感词监控":false,"企微侧边栏":false,"会话存档":false,"AI智能助手":false,"H5企微侧边栏(5个内置应用)":true,"微信小程序(客户自助填写地址)":true,"移动APP":false,"API接口":true,"Webhook回调":true,"WebSocket推送":true,"数据批量导出":true,"在线文档帮助中心":true,"邮件工单":true,"在线客服":true,"专属技术顾问":false,"7x24电话远程":false}', '["dashboard","customer","order","service-management","performance","logistics","service","data","finance","product","system"]', 0, 0, 1, 2, 1),
+-- 4. 专业版 ¥699/月 ⭐推荐（全功能 + 企微管理 + 移动APP）
+('专业版', 'SAAS_PRO', 'saas', '成长型团队全面赋能', 699.00, NULL, 'monthly', 30, 20, 50, 'online', 20, 10.00, 0, NULL, 0, 'all', 'monthly', 0.00, '["全部功能", "企微管理", "短信500条/月", "移动APP", "数据批量导出", "专属技术顾问"]', '{"核心数据仪表盘":true,"多维度趋势图表":true,"客户信息管理":true,"客户标签与分组":true,"跟进记录与提醒":true,"客户全景画像":true,"数据导入导出":true,"批量导入Excel":true,"客户分享转移":true,"隐私信息脱敏":true,"订单创建编辑":true,"订单审核工作流":true,"批量审核":true,"退款管理":true,"绩效数据查看":true,"绩效管理":true,"COD代收管理":true,"增值服务管理":true,"财务结算报表":true,"物流轨迹追踪":true,"发货管理":true,"批量发货打单":true,"寄件人地址管理":true,"快递公司管理":true,"商品列表分类":true,"库存管理":true,"库存预警":true,"虚拟商品卡密":true,"商品分析报表":true,"个人业绩统计":true,"团队业绩排行":true,"佣金阶梯计算":true,"业绩分析":true,"业绩分享导出":true,"通话记录管理":true,"通话录音存储":true,"坐席状态管理":true,"外呼线路配置":true,"工作手机绑定":true,"短信发送":"500条/月","短信模板管理":true,"短信审核统计":true,"自动发送规则":true,"售后工单":true,"售后统计分析":true,"资料列表":true,"客户查询":true,"回收站":true,"部门用户角色":true,"权限精细控制":true,"操作日志审计":true,"消息管理":true,"自定义字段":true,"企微客户同步":true,"客户群管理":true,"获客助手活码":true,"企微对外收款":true,"微信客服":true,"话术库":true,"敏感词监控":true,"企微侧边栏":true,"会话存档":"加购","AI智能助手":"加购","H5企微侧边栏(5个内置应用)":true,"微信小程序(客户自助填写地址)":true,"移动APP":true,"API接口":true,"Webhook回调":true,"WebSocket推送":true,"数据批量导出":true,"在线文档帮助中心":true,"邮件工单":true,"在线客服":true,"专属技术顾问":true,"7x24电话远程":false}', '["dashboard","customer","order","service-management","performance","logistics","service","data","finance","product","system","wecom"]', 0, 1, 1, 3, 1),
+-- 5. 企业版 ¥1,299/月（全功能 + 企微全集成 + 7×24支持）
+('企业版', 'SAAS_ENTERPRISE', 'saas', '大型团队企微深度整合', 1299.00, NULL, 'monthly', 30, 50, 200, 'online', 50, 10.00, 0, NULL, 0, 'all', 'monthly', 0.00, '["全部专业版功能", "企微全集成", "短信2000条/月", "会话存档", "7×24支持"]', '{"核心数据仪表盘":true,"多维度趋势图表":true,"客户信息管理":true,"客户标签与分组":true,"跟进记录与提醒":true,"客户全景画像":true,"数据导入导出":true,"批量导入Excel":true,"客户分享转移":true,"隐私信息脱敏":true,"订单创建编辑":true,"订单审核工作流":true,"批量审核":true,"退款管理":true,"绩效数据查看":true,"绩效管理":true,"COD代收管理":true,"增值服务管理":true,"财务结算报表":true,"物流轨迹追踪":true,"发货管理":true,"批量发货打单":true,"寄件人地址管理":true,"快递公司管理":true,"商品列表分类":true,"库存管理":true,"库存预警":true,"虚拟商品卡密":true,"商品分析报表":true,"个人业绩统计":true,"团队业绩排行":true,"佣金阶梯计算":true,"业绩分析":true,"业绩分享导出":true,"通话记录管理":true,"通话录音存储":true,"坐席状态管理":true,"外呼线路配置":true,"工作手机绑定":true,"短信发送":"2000条/月","短信模板管理":true,"短信审核统计":true,"自动发送规则":true,"售后工单":true,"售后统计分析":true,"资料列表":true,"客户查询":true,"回收站":true,"部门用户角色":true,"权限精细控制":true,"操作日志审计":true,"消息管理":true,"自定义字段":true,"企微客户同步":true,"客户群管理":true,"获客助手活码":true,"企微对外收款":true,"微信客服":true,"话术库":true,"敏感词监控":true,"企微侧边栏":true,"会话存档":true,"AI智能助手":"加购","H5企微侧边栏(5个内置应用)":true,"微信小程序(客户自助填写地址)":true,"移动APP":true,"API接口":true,"Webhook回调":true,"WebSocket推送":true,"数据批量导出":true,"在线文档帮助中心":true,"邮件工单":true,"在线客服":true,"专属技术顾问":true,"7x24电话远程":true}', '["dashboard","customer","order","service-management","performance","logistics","service","data","finance","product","system","wecom"]', 0, 0, 1, 4, 1),
+-- 6. 私有标准版 ¥29,800 买断 | ¥11,800/年
+('标准版', 'PRIVATE_STANDARD', 'private', '小微企业自主掌控数据', 29800.00, NULL, 'once', 36500, 30, 0, 'total', 0, 0.00, 0, 11800.00, 0, 'all', 'monthly', 0.00, '["永久授权", "全部核心功能", "完整源码交付", "Docker一键部署", "部署文档全套", "1年免费升级", "邮件技术支持"]', '{"全部CRM功能模块":true,"企微完整集成":true,"通话短信模块":true,"完整后端源码":true,"完整前端源码":true,"移动APP源码":false,"数据100%私有":true,"Docker一键部署":true,"部署文档全套":true,"远程部署协助":false,"现场部署支持":false,"免费版本升级":"1年","技术支持方式":"邮件","专属技术顾问":false,"定制开发服务":false,"源码加密部署":false,"多服务器集群":false}', NULL, 0, 0, 1, 10, 1),
+-- 7. 私有专业版 ¥59,800 买断 | ¥23,800/年 ⭐推荐
+('专业版', 'PRIVATE_PRO', 'private', '中型企业专业级私有部署', 59800.00, NULL, 'once', 36500, 100, 0, 'total', 0, 0.00, 0, 23800.00, 0, 'all', 'monthly', 0.00, '["永久授权", "全部功能模块", "移动APP源码", "远程部署协助(1次)", "1年技术支持", "1年免费升级", "在线+邮件支持", "专属技术顾问"]', '{"全部CRM功能模块":true,"企微完整集成":true,"通话短信模块":true,"完整后端源码":true,"完整前端源码":true,"移动APP源码":true,"数据100%私有":true,"Docker一键部署":true,"部署文档全套":true,"远程部署协助":"1次","现场部署支持":false,"免费版本升级":"1年","技术支持方式":"在线+邮件","专属技术顾问":true,"定制开发服务":false,"源码加密部署":false,"多服务器集群":false}', NULL, 0, 1, 1, 11, 1),
+-- 8. 私有企业版 ¥99,800 买断 | ¥39,800/年
+('企业版', 'PRIVATE_ENTERPRISE', 'private', '大型企业/集团定制级方案', 99800.00, NULL, 'once', 36500, 99999, 0, 'total', 0, 0.00, 0, 39800.00, 0, 'all', 'monthly', 0.00, '["永久授权", "不限用户数", "全部功能+源码", "远程部署协助(3次)", "现场部署支持", "3年免费升级", "专属+7×24支持", "可协商定制开发", "源码加密部署", "多服务器集群"]', '{"全部CRM功能模块":true,"企微完整集成":true,"通话短信模块":true,"完整后端源码":true,"完整前端源码":true,"移动APP源码":true,"数据100%私有":true,"Docker一键部署":true,"部署文档全套":true,"远程部署协助":"3次","现场部署支持":true,"免费版本升级":"3年","技术支持方式":"专属+7×24","专属技术顾问":true,"定制开发服务":"可协商","源码加密部署":true,"多服务器集群":true}', NULL, 0, 0, 1, 12, 1),
+-- 9. 开源社区版（免费，3用户，核心CRM功能）
+('社区版', 'COMMUNITY_FREE', 'community', '开源社区版，包含核心CRM功能，适合小团队免费使用', 0.00, NULL, 'once', 36500, 3, 2, 'total', 0, 0.00, 0, NULL, 0, 'all', 'monthly', 0.00, '["客户管理", "订单管理", "物流管理", "售后管理", "数据看板", "3用户上限", "社区支持"]', '{"核心数据仪表盘":true,"多维度趋势图表":true,"客户信息管理":true,"客户标签与分组":true,"跟进记录与提醒":true,"客户全景画像":true,"数据导入导出":"100条/次","批量导入Excel":true,"客户分享转移":true,"隐私信息脱敏":false,"订单创建编辑":true,"订单审核工作流":true,"批量审核":true,"退款管理":true,"绩效数据查看":false,"绩效管理":false,"COD代收管理":false,"增值服务管理":false,"财务结算报表":false,"物流轨迹追踪":true,"发货管理":true,"批量发货打单":true,"寄件人地址管理":true,"快递公司管理":true,"商品列表分类":true,"库存管理":true,"库存预警":true,"虚拟商品卡密":false,"商品分析报表":false,"个人业绩统计":false,"团队业绩排行":false,"佣金阶梯计算":false,"业绩分析":false,"业绩分享导出":false,"通话记录管理":false,"通话录音存储":false,"坐席状态管理":false,"外呼线路配置":false,"工作手机绑定":false,"短信发送":false,"短信模板管理":false,"短信审核统计":false,"自动发送规则":false,"售后工单":true,"售后统计分析":true,"资料列表":true,"客户查询":true,"回收站":true,"部门用户角色":true,"权限精细控制":false,"操作日志审计":true,"消息管理":true,"自定义字段":true,"企微客户同步":false,"客户群管理":false,"获客助手活码":false,"企微对外收款":false,"微信客服":false,"话术库":false,"敏感词监控":false,"企微侧边栏":false,"会话存档":false,"AI智能助手":false,"H5企微侧边栏(5个内置应用)":false,"微信小程序(客户自助填写地址)":false,"移动APP":false,"API接口":true,"Webhook回调":true,"WebSocket推送":false,"数据批量导出":"100条/次","数据批量导入":true}', '["dashboard","customer","order","logistics","service"]', 0, 0, 1, 100, 1)
+ON DUPLICATE KEY UPDATE
+  `name`=VALUES(`name`), `description`=VALUES(`description`), `price`=VALUES(`price`),
+  `billing_cycle`=VALUES(`billing_cycle`), `duration_days`=VALUES(`duration_days`),
+  `max_users`=VALUES(`max_users`), `max_storage_gb`=VALUES(`max_storage_gb`),
+  `user_limit_mode`=VALUES(`user_limit_mode`), `max_online_seats`=VALUES(`max_online_seats`),
+  `yearly_discount_rate`=VALUES(`yearly_discount_rate`), `yearly_bonus_months`=VALUES(`yearly_bonus_months`),
+  `yearly_price`=VALUES(`yearly_price`), `subscription_enabled`=VALUES(`subscription_enabled`),
+  `features`=VALUES(`features`), `feature_details`=VALUES(`feature_details`),
+  `modules`=VALUES(`modules`), `is_trial`=VALUES(`is_trial`), `is_recommended`=VALUES(`is_recommended`),
+  `is_visible`=VALUES(`is_visible`), `sort_order`=VALUES(`sort_order`), `status`=VALUES(`status`);
 
 -- 插入企微增值服务配置默认数据（5个服务类型）
 INSERT INTO `wecom_vas_configs` (`service_type`, `service_name`, `default_price`, `min_price`, `billing_unit`, `trial_days`, `tier_pricing`, `description`, `is_enabled`) VALUES

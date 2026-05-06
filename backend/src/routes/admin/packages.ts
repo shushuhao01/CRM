@@ -427,6 +427,7 @@ router.get('/', async (req: Request, res: Response) => {
     const result = packages.map((pkg: any) => ({
       ...pkg,
       features: typeof pkg.features === 'string' ? JSON.parse(pkg.features) : (pkg.features || []),
+      feature_details: typeof pkg.feature_details === 'string' ? JSON.parse(pkg.feature_details) : (pkg.feature_details || null),
       modules: typeof pkg.modules === 'string' ? JSON.parse(pkg.modules) : (pkg.modules || []),
       is_trial: Boolean(pkg.is_trial),
       is_recommended: Boolean(pkg.is_recommended),
@@ -463,7 +464,7 @@ router.post('/', async (req: Request, res: Response) => {
       subscription_enabled, subscription_channels, subscription_billing_cycle, subscription_discount_rate,
       duration_days, max_users, max_storage_gb,
       user_limit_mode, max_online_seats,
-      features, modules, is_trial, is_recommended, is_visible, sort_order
+      features, feature_details, modules, is_trial, is_recommended, is_visible, sort_order
     } = req.body
 
     if (!name || !code || !type) {
@@ -486,9 +487,9 @@ router.post('/', async (req: Request, res: Response) => {
         yearly_discount_rate, yearly_bonus_months, yearly_price,
         ${hasSub ? 'subscription_enabled, subscription_channels, subscription_billing_cycle, subscription_discount_rate,' : ''}
         ${hasSeat ? 'user_limit_mode, max_online_seats,' : ''}
-        duration_days, max_users, max_storage_gb, features, modules, is_trial,
+        duration_days, max_users, max_storage_gb, features, feature_details, modules, is_trial,
         is_recommended, is_visible, sort_order, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ${hasSub ? '?, ?, ?, ?,' : ''} ${hasSeat ? '?, ?,' : ''} ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ${hasSub ? '?, ?, ?, ?,' : ''} ${hasSeat ? '?, ?,' : ''} ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`
       insertParams = [
         name, code, type, description || '', price || 0, original_price || price || 0,
         billing_cycle || 'monthly',
@@ -496,7 +497,7 @@ router.post('/', async (req: Request, res: Response) => {
         ...(hasSub ? [subscription_enabled ? 1 : 0, subscription_channels || 'all', subscription_billing_cycle || 'monthly', subscription_discount_rate || 0] : []),
         ...(hasSeat ? [user_limit_mode || 'total', max_online_seats || 0] : []),
         duration_days || 30, max_users || 10,
-        max_storage_gb || 5, JSON.stringify(features || []), JSON.stringify(modules || []),
+        max_storage_gb || 5, JSON.stringify(features || []), feature_details ? JSON.stringify(feature_details) : null, JSON.stringify(modules || []),
         is_trial ? 1 : 0, is_recommended ? 1 : 0, is_visible !== false ? 1 : 0,
         sort_order || 0
       ]
@@ -537,7 +538,7 @@ router.put('/:id', async (req: Request, res: Response) => {
       yearly_discount_rate, yearly_bonus_months, yearly_price,
       subscription_enabled, subscription_channels, subscription_billing_cycle, subscription_discount_rate,
       user_limit_mode, max_online_seats,
-      duration_days, max_users, max_storage_gb, features, modules,
+      duration_days, max_users, max_storage_gb, features, feature_details, modules,
       is_trial, is_recommended, is_visible, sort_order, status
     } = req.body
 
@@ -551,7 +552,7 @@ router.put('/:id', async (req: Request, res: Response) => {
        ${hasSub ? 'subscription_enabled = ?, subscription_channels = ?, subscription_billing_cycle = ?, subscription_discount_rate = ?,' : ''}
        ${hasSeat ? 'user_limit_mode = ?, max_online_seats = ?,' : ''}
        duration_days = ?, max_users = ?,
-       max_storage_gb = ?, features = ?, modules = ?, is_trial = ?,
+       max_storage_gb = ?, features = ?, feature_details = ?, modules = ?, is_trial = ?,
        is_recommended = ?, is_visible = ?, sort_order = ?, status = ?
        WHERE id = ?`
       updateParams = [
@@ -560,7 +561,7 @@ router.put('/:id', async (req: Request, res: Response) => {
         ...(hasSub ? [subscription_enabled ? 1 : 0, subscription_channels || 'all', subscription_billing_cycle || 'monthly', subscription_discount_rate || 0] : []),
         ...(hasSeat ? [user_limit_mode || 'total', max_online_seats || 0] : []),
         duration_days, max_users, max_storage_gb,
-        JSON.stringify(features || []), JSON.stringify(modules || []), is_trial ? 1 : 0,
+        JSON.stringify(features || []), feature_details ? JSON.stringify(feature_details) : null, JSON.stringify(modules || []), is_trial ? 1 : 0,
         is_recommended ? 1 : 0, is_visible ? 1 : 0, sort_order || 0,
         status ? 1 : 0, id
       ]

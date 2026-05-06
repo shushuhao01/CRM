@@ -199,6 +199,7 @@
           <el-radio-group v-model="form.licenseType" @change="onLicenseTypeChange">
             <el-radio label="annual">年度版</el-radio>
             <el-radio label="perpetual">永久版</el-radio>
+            <el-radio label="community">社区版</el-radio>
           </el-radio-group>
         </el-form-item>
         <el-form-item label="参考套餐">
@@ -485,7 +486,8 @@ const moduleOptions = [
 // 授权类型对应的默认配置
 const licenseTypePresets: Record<string, { maxUsers: number; durationDays: number; modules: string[]; usersTip: string }> = {
   annual: { maxUsers: 50, durationDays: 365, modules: ['dashboard', 'customer', 'order', 'logistics', 'service', 'data', 'finance', 'performance', 'product'], usersTip: '年度版建议 10~200' },
-  perpetual: { maxUsers: 100, durationDays: 0, modules: ['dashboard', 'customer', 'order', 'service-management', 'performance', 'logistics', 'service', 'data', 'finance', 'product', 'wecom', 'system'], usersTip: '永久版无限制' }
+  perpetual: { maxUsers: 100, durationDays: 0, modules: ['dashboard', 'customer', 'order', 'service-management', 'performance', 'logistics', 'service', 'data', 'finance', 'product', 'wecom', 'system'], usersTip: '永久版无限制' },
+  community: { maxUsers: 3, durationDays: 0, modules: ['dashboard', 'customer', 'order', 'logistics', 'service'], usersTip: '社区版上限 3 用户' }
 }
 
 const licenseTypeConfig = computed(() => {
@@ -517,8 +519,8 @@ const onLicenseTypeChange = (type: string) => {
     form.maxUsers = preset.maxUsers
     form.modules = [...preset.modules]
   }
-  // 到期时间始终同步
-  if (type === 'perpetual') {
+  // 到期时间始终同步（永久版和社区版均永久有效）
+  if (type === 'perpetual' || type === 'community') {
     form.expiresAt = null
   } else if (preset.durationDays > 0) {
     const expire = new Date()
@@ -547,8 +549,8 @@ const copyKey = async (key: string) => {
 const isExpired = (date: string) => date && new Date(date) < new Date()
 const formatDate = (date: string) => date ? new Date(date).toLocaleDateString('zh-CN', { timeZone: 'Asia/Shanghai' }) : '-'
 
-const getLicenseTypeTag = (type: string) => ({ trial: 'info', annual: '', perpetual: 'success' }[type] || 'info') as any
-const getLicenseTypeText = (type: string) => ({ trial: '试用', annual: '年度', perpetual: '永久' }[type] || type)
+const getLicenseTypeTag = (type: string) => ({ trial: 'info', annual: '', perpetual: 'success', community: 'success' }[type] || 'info') as any
+const getLicenseTypeText = (type: string) => ({ trial: '试用', annual: '年度', perpetual: '永久', community: '社区版' }[type] || type)
 const getStatusType = (status: string) => ({ pending: 'warning', active: 'success', expired: 'info', revoked: 'danger' }[status] || 'info') as any
 const getStatusText = (status: string) => ({ pending: '待激活', active: '有效', expired: '已过期', revoked: '已吊销' }[status] || status)
 

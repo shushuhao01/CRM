@@ -24,3 +24,13 @@ export function getAgentConfig(url: string) {
 export function bindAccount(data: { wecomUserId: string; corpId: string; tenantCode: string; username: string; password: string }) {
   return api.post('/bind-account', data)
 }
+
+/** H5发送注册验证码 */
+export function sendRegisterCode(phone: string) {
+  return api.post('/send-code', { phone })
+}
+
+/** H5注册新租户 */
+export function h5Register(data: { companyName: string; contactName: string; phone: string; code: string; password: string }) {
+  return api.post('/register', data)
+}

@@ -50,6 +50,15 @@
       </van-cell-group>
     </div>
 
+    <!-- 系统服务 -->
+    <div class="card func-card">
+      <van-cell-group :border="false">
+        <van-cell title="授权信息" is-link icon="shield-o" to="/app/authorization" />
+        <van-cell title="CRM系统" is-link icon="apps-o" @click="openCrm" />
+        <van-cell title="会员中心" is-link icon="vip-card-o" @click="openMember" />
+      </van-cell-group>
+    </div>
+
     <div class="card func-card">
       <van-cell-group :border="false">
         <van-cell title="关于" is-link icon="info-o" to="/app/about" />
@@ -67,13 +76,15 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
-import { getProfile, getNotifications } from '@/api/app'
+import { getProfile, getNotifications, getTenantInfo } from '@/api/app'
 import { showToast } from 'vant'
 
 const authStore = useAuthStore()
 const router = useRouter()
 const profileData = ref<any>({})
 const unreadCount = ref(0)
+const crmUrl = ref('')
+const memberUrl = ref('')
 
 const roleText = computed(() => {
   const map: Record<string, string> = {
@@ -113,16 +124,37 @@ function handleLogout() {
   router.replace('/bind')
 }
 
+function openCrm() {
+  if (crmUrl.value) {
+    window.open(crmUrl.value, '_blank')
+  } else {
+    showToast('CRM系统地址未配置')
+  }
+}
+
+function openMember() {
+  if (memberUrl.value) {
+    window.open(memberUrl.value, '_blank')
+  } else {
+    showToast('会员中心地址未配置')
+  }
+}
+
 onMounted(async () => {
   try {
-    const [profileRes, notiRes] = await Promise.all([
+    const [profileRes, notiRes, tenantRes] = await Promise.all([
       getProfile(),
-      getNotifications()
+      getNotifications(),
+      getTenantInfo()
     ])
     if (profileRes.data?.success) profileData.value = profileRes.data.data || {}
     if (notiRes.data?.success) {
       const list = notiRes.data.data || []
       unreadCount.value = list.filter((n: any) => !n.read).length
+    }
+    if (tenantRes.data?.success && tenantRes.data.data) {
+      crmUrl.value = tenantRes.data.data.crmUrl || ''
+      memberUrl.value = tenantRes.data.data.memberUrl || ''
     }
   } catch (e) {
     console.error('[Profile] load error:', e)

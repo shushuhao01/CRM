@@ -21,7 +21,7 @@ export class License {
   customerEmail?: string;
 
 
-  @Column({ name: 'license_type', type: 'enum', enum: ['trial', 'perpetual', 'annual', 'monthly'], default: 'trial' })
+  @Column({ name: 'license_type', type: 'enum', enum: ['trial', 'perpetual', 'annual', 'monthly', 'community'], default: 'trial' })
   licenseType!: string;
 
   @Column({ name: 'max_users', type: 'int', default: 10 })

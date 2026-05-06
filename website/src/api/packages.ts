@@ -5,7 +5,7 @@ export interface Package {
   id: number
   name: string
   code: string
-  type: 'saas' | 'private'
+  type: 'saas' | 'private' | 'community'
   description: string
   price: number
   original_price: number
@@ -24,6 +24,7 @@ export interface Package {
   user_limit_mode: 'total' | 'online' | 'both'
   max_storage_gb: number
   features: string[]
+  feature_details: Record<string, boolean | string> | null
   modules: string[]
   is_trial: boolean
   is_recommended: boolean
@@ -31,7 +32,7 @@ export interface Package {
 }
 
 // 获取套餐列表
-export async function getPackages(type?: 'saas' | 'private'): Promise<Package[]> {
+export async function getPackages(type?: 'saas' | 'private' | 'community'): Promise<Package[]> {
   try {
     const url = type
       ? `${API_BASE}/public/packages?type=${type}`

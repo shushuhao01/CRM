@@ -13,6 +13,7 @@
       <el-tabs v-model="activeTab" @tab-change="loadPackages">
         <el-tab-pane label="SaaS云端版" name="saas" />
         <el-tab-pane label="私有部署版" name="private" />
+        <el-tab-pane label="社区版" name="community" />
       </el-tabs>
 
       <div v-loading="loading" class="package-grid">
@@ -20,10 +21,11 @@
           v-for="pkg in packages"
           :key="pkg.id"
           class="package-card"
-          :class="{ recommended: pkg.is_recommended, trial: pkg.is_trial, disabled: !pkg.status }"
+          :class="{ recommended: pkg.is_recommended, trial: pkg.is_trial, community: pkg.type === 'community', disabled: !pkg.status }"
         >
           <div v-if="pkg.is_recommended" class="recommend-badge">推荐</div>
           <div v-if="pkg.is_trial" class="trial-badge">免费试用</div>
+          <div v-if="pkg.type === 'community'" class="community-badge">社区版</div>
           <div v-if="!pkg.status" class="disabled-badge">已禁用</div>
 
           <div class="package-header">
@@ -138,6 +140,7 @@
           <el-select v-model="form.type" :disabled="!!editingId">
             <el-option label="SaaS云端版" value="saas" />
             <el-option label="私有部署版" value="private" />
+            <el-option label="社区版" value="community" />
           </el-select>
         </el-form-item>
         <el-form-item label="套餐描述">
@@ -372,6 +375,31 @@
           </template>
         </div>
 
+        <!-- ==================== 社区版特有配置 ==================== -->
+        <template v-if="form.type === 'community'">
+          <el-divider content-position="left">🌐 社区版配置</el-divider>
+          <el-form-item label="价格">
+            <span style="font-size: 20px; font-weight: 700; color: #67c23a;">¥0 永久免费</span>
+          </el-form-item>
+          <el-form-item label="用户上限">
+            <el-input-number v-model="form.max_users" :min="1" :max="10" style="width: 150px" />
+            <span style="margin-left: 8px; color: #909399;">个用户（社区版建议 3 用户）</span>
+          </el-form-item>
+          <el-form-item label="存储空间">
+            <el-input-number v-model="form.max_storage_gb" :min="1" :max="10" style="width: 150px" />
+            <span style="margin-left: 8px; color: #909399;">GB（社区版建议 2GB）</span>
+          </el-form-item>
+          <el-form-item label="有效期">
+            <span style="color: #67c23a; font-weight: 500;">永不过期（36500天 ≈ 100年）</span>
+          </el-form-item>
+          <el-alert type="info" :closable="false" show-icon style="margin-bottom: 16px;">
+            <template #title>社区版说明</template>
+            <p style="margin: 4px 0;">• 社区版免费，注册即激活，授权码前缀 COMMUNITY-</p>
+            <p style="margin: 4px 0;">• 下方勾选的模块为社区版<strong>可用模块</strong>，未勾选模块在CRM中灰色显示并提示升级</p>
+            <p style="margin: 4px 0;">• 导出数据限制 100 条/次，批量操作部分受限</p>
+          </el-alert>
+        </template>
+
         <!-- ==================== 通用配置 ==================== -->
         <el-divider content-position="left">📋 授权模块</el-divider>
         <el-form-item label="CRM模块">
@@ -379,9 +407,14 @@
             <div class="modules-toolbar">
               <el-button size="small" link type="primary" @click="selectAllModules">全选</el-button>
               <el-button size="small" link @click="deselectAllModules">全不选</el-button>
+              <el-button v-if="form.type === 'community'" size="small" link type="success" @click="selectCommunityModules">社区版默认</el-button>
             </div>
             <el-checkbox-group v-model="form.modules">
-              <el-checkbox v-for="m in crmModuleOptions" :key="m.value" :value="m.value">{{ m.label }}</el-checkbox>
+              <el-checkbox v-for="m in crmModuleOptions" :key="m.value" :value="m.value">
+                {{ m.label }}
+                <el-tag v-if="form.type === 'community' && communityDefaultModules.includes(m.value)" size="small" type="success" effect="plain" style="margin-left: 4px; font-size: 10px; padding: 0 4px; height: 16px; line-height: 16px;">免费</el-tag>
+                <el-tag v-else-if="form.type === 'community'" size="small" type="warning" effect="plain" style="margin-left: 4px; font-size: 10px; padding: 0 4px; height: 16px; line-height: 16px;">升级</el-tag>
+              </el-checkbox>
             </el-checkbox-group>
           </div>
         </el-form-item>
@@ -450,13 +483,16 @@ const getModuleName = (id: string) => {
   return crmModuleOptions.find(m => m.value === id)?.label || id
 }
 
+const communityDefaultModules = ['dashboard', 'customer', 'order', 'logistics', 'service']
+
 const selectAllModules = () => { form.modules = crmModuleOptions.map(m => m.value) }
 const deselectAllModules = () => { form.modules = [] }
+const selectCommunityModules = () => { form.modules = [...communityDefaultModules] }
 
 const form = reactive({
   name: '',
   code: '',
-  type: 'saas' as 'saas' | 'private',
+  type: 'saas' as 'saas' | 'private' | 'community',
   description: '',
   price: 0,
   original_price: 0,
@@ -508,7 +544,21 @@ const onUnlimitedUsersChange = (val: boolean | string | number) => {
 // 套餐类型切换时，自动设置合理的默认值
 watch(() => form.type, (val) => {
   if (!editingId.value) {
-    if (val === 'private') {
+    if (val === 'community') {
+      form.price = 0
+      form.billing_cycle = 'once'
+      form.duration_days = 36500
+      form.max_users = 3
+      form.max_storage_gb = 2
+      form.user_limit_mode = 'total' as 'total' | 'online'
+      form.yearly_discount_rate = 0
+      form.yearly_bonus_months = 0
+      form.yearly_price = null
+      form.subscription_enabled = false
+      form.is_trial = false
+      yearlyPromoType.value = 'none'
+      form.modules = [...communityDefaultModules]
+    } else if (val === 'private') {
       form.billing_cycle = 'once'
       form.duration_days = 36500
       form.max_users = 50
@@ -614,14 +664,18 @@ const loadPackages = async () => {
 
 const resetForm = () => {
   const isPrivate = activeTab.value === 'private'
+  const isCommunity = activeTab.value === 'community'
   Object.assign(form, {
     name: '', code: '', type: activeTab.value, description: '',
-    price: 0, original_price: 0, billing_cycle: isPrivate ? 'once' : 'monthly',
+    price: 0, original_price: 0, billing_cycle: (isPrivate || isCommunity) ? 'once' : 'monthly',
     yearly_discount_rate: 0, yearly_bonus_months: 0, yearly_price: null,
-    duration_days: isPrivate ? 36500 : 30,
-    max_users: isPrivate ? 50 : 10, max_online_seats: 5, user_limit_mode: 'total' as 'total' | 'online',
-    max_storage_gb: isPrivate ? 0 : 5,
-    features: [''], modules: [],
+    duration_days: (isPrivate || isCommunity) ? 36500 : 30,
+    max_users: isCommunity ? 3 : (isPrivate ? 50 : 10),
+    max_online_seats: 5,
+    user_limit_mode: 'total' as 'total' | 'online',
+    max_storage_gb: isCommunity ? 2 : (isPrivate ? 0 : 5),
+    features: isCommunity ? ['客户管理', '订单管理', '物流管理', '售后管理', '数据看板', '3用户上限', '社区支持'] : [''],
+    modules: isCommunity ? [...communityDefaultModules] : [],
     subscription_enabled: false, subscription_channels: 'all', subscription_billing_cycle: 'monthly', subscription_discount_rate: 0,
     is_trial: false, is_recommended: false, is_visible: true,
     sort_order: 0, status: true
@@ -751,13 +805,17 @@ onMounted(() => {
     border-color: #67c23a;
   }
 
+  &.community {
+    border-color: #10b981;
+  }
+
   &.disabled {
     opacity: 0.6;
     background: #f5f7fa;
   }
 }
 
-.recommend-badge, .trial-badge, .disabled-badge {
+.recommend-badge, .trial-badge, .community-badge, .disabled-badge {
   position: absolute;
   top: -1px;
   right: 16px;
@@ -769,6 +827,7 @@ onMounted(() => {
 
 .recommend-badge { background: #409eff; }
 .trial-badge { background: #67c23a; }
+.community-badge { background: #10b981; }
 .disabled-badge { background: #909399; }
 
 .package-header {

@@ -106,10 +106,11 @@ router.post('/', async (req: Request, res: Response) => {
     let expireDays = 7
     let isFree = true
     let packagePrice = 0
+    let isCommunity = false
 
     if (packageCode) {
       const packages = await AppDataSource.query(
-        'SELECT id, max_users, duration_days, price FROM tenant_packages WHERE code = ? AND status = 1',
+        'SELECT id, max_users, duration_days, price, type FROM tenant_packages WHERE code = ? AND status = 1',
         [packageCode]
       )
       if (packages && packages.length > 0) {
@@ -118,6 +119,7 @@ router.post('/', async (req: Request, res: Response) => {
         expireDays = packages[0].duration_days || 7  // 防止NULL覆盖默认值
         packagePrice = Number(packages[0].price) || 0  // 🔥 MySQL返回字符串"0.00"，必须转数字
         isFree = packagePrice === 0
+        isCommunity = packages[0].type === 'community'
       }
     }
 
@@ -126,8 +128,8 @@ router.post('/', async (req: Request, res: Response) => {
     const tenantCode = await generateTenantCode()
 
     // 🔑 无论免费还是付费，都在注册时生成授权码（确保成功页能显示完整授权码）
-    // 免费套餐：直接激活；付费套餐：状态为pending，支付后激活
-    const licenseKey = Tenant.generateLicenseKey()
+    // 社区版：COMMUNITY-前缀，直接激活；免费套餐：TENANT-前缀，直接激活；付费套餐：状态为pending，支付后激活
+    const licenseKey = isCommunity ? Tenant.generateCommunityLicenseKey() : Tenant.generateLicenseKey()
     const licenseStatus = isFree ? 'active' : 'pending'
 
     // 计算到期时间（免费套餐立即生效，付费套餐支付后生效）
@@ -159,7 +161,7 @@ router.post('/', async (req: Request, res: Response) => {
     await AppDataSource.query(
       `INSERT INTO tenant_license_logs (id, tenant_id, license_key, action, result, message)
        VALUES (?, ?, ?, 'register', 'success', ?)`,
-      [uuidv4(), tenantId, licenseKey, isFree ? '官网注册-免费试用' : '官网注册-付费套餐（待支付）']
+      [uuidv4(), tenantId, licenseKey, isCommunity ? '官网注册-开源社区版' : (isFree ? '官网注册-免费试用' : '官网注册-付费套餐（待支付）')]
     )
 
     // 🔥 免费套餐：创建默认管理员账号（用手机号作为用户名，默认密码 Aa123456）

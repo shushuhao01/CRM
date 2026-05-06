@@ -69,6 +69,9 @@ export class Package {
   @Column({ type: 'json', nullable: true, comment: '功能特性列表（JSON数组）' })
   features?: string[];
 
+  @Column({ type: 'json', nullable: true, comment: '功能特性详情(对比表用)' })
+  feature_details?: Record<string, any>;
+
   @Column({ type: 'json', nullable: true, comment: '模块列表（JSON数组）' })
   modules?: string[];
 
