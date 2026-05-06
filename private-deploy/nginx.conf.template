@@ -129,7 +129,8 @@ server {
 
     # ==================== H5移动端 ====================
     # 企微内置H5应用（应用主页/侧边栏）
-    location /h5/ {
+    # ★ 必须用 ^~ 前缀，防止宝塔自动生成的 .js/.css 正则缓存规则截获H5资源请求
+    location ^~ /h5/ {
         # ⬇️ 替换为实际路径
         alias YOUR_CRM_PATH/h5/dist/;
         try_files $uri $uri/ /h5/index.html;
