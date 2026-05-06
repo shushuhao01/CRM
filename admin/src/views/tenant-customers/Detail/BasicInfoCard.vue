@@ -29,6 +29,10 @@
         <span v-if="detail.createdByName">{{ detail.createdByName }}</span>
         <span v-else class="text-secondary">未知</span>
       </el-descriptions-item>
+      <el-descriptions-item label="租户ID">
+        <code class="id-code">{{ detail.id || '-' }}</code>
+        <el-button v-if="detail.id" link size="small" @click="copyText(detail.id)"><el-icon><CopyDocument /></el-icon></el-button>
+      </el-descriptions-item>
       <el-descriptions-item label="备注" :span="2">{{ detail.remark || '-' }}</el-descriptions-item>
     </el-descriptions>
 
@@ -191,5 +195,14 @@ const copyText = async (text: string) => {
   color: #409eff;
   font-size: 14px;
   &:hover { color: #66b1ff; }
+}
+.id-code {
+  font-family: 'Monaco', 'Menlo', monospace;
+  font-size: 12px;
+  background: #f5f7fa;
+  padding: 2px 6px;
+  border-radius: 3px;
+  color: #606266;
+  word-break: break-all;
 }
 </style>

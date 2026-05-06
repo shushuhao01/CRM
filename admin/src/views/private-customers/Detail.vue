@@ -73,7 +73,15 @@
         <el-descriptions-item label="创建时间">{{ formatDateTime(detail.createdAt) }}</el-descriptions-item>
         <el-descriptions-item label="更新时间">{{ formatDateTime(detail.updatedAt) }}</el-descriptions-item>
         <el-descriptions-item label="创建人">{{ detail.createdByName || detail.createdBy || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="备注" :span="2">{{ detail.notes || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="客户ID">
+          <code class="id-code">{{ detail.id || '-' }}</code>
+          <el-button v-if="detail.id" link size="small" @click="copyText(detail.id)"><el-icon><CopyDocument /></el-icon></el-button>
+        </el-descriptions-item>
+        <el-descriptions-item label="租户ID">
+          <code class="id-code">{{ detail.tenantId || '-' }}</code>
+          <el-button v-if="detail.tenantId" link size="small" @click="copyText(detail.tenantId)"><el-icon><CopyDocument /></el-icon></el-button>
+        </el-descriptions-item>
+        <el-descriptions-item label="备注" :span="1">{{ detail.notes || '-' }}</el-descriptions-item>
       </el-descriptions>
 
       <!-- 更多信息（折叠） -->
@@ -1348,5 +1356,14 @@ onMounted(() => { fetchDetail(); fetchLogs(); fetchBills(); fetchCapacityOrders(
   .modules-grid { grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); gap: 8px; }
   .module-card { padding: 12px 6px 8px; }
   .module-card-icon { width: 36px; height: 36px; }
+}
+.id-code {
+  font-family: 'Monaco', 'Menlo', monospace;
+  font-size: 12px;
+  background: #f5f7fa;
+  padding: 2px 6px;
+  border-radius: 3px;
+  color: #606266;
+  word-break: break-all;
 }
 </style>

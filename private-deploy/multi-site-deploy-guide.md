@@ -16,6 +16,7 @@
 | `yunkes.com` / `www.yunkes.com` | 官方网站 | `/www/wwwroot/CRM/website/dist` | 产品介绍、注册页 |
 | `admin.yunkes.com` | 管理后台 | `/www/wwwroot/CRM/admin/dist` | 平台超管后台 |
 | `api.yunkes.com` | API 接口 | 无（反向代理） | 直接代理到后端 3000 端口 |
+| `demo.yunkes.com` | 演示系统 | `/www/wwwroot/CRM/dist` | 共用 CRM 主应用前端，独立演示租户 |
 
 **重要**: 所有前端都是纯静态文件（Vite 构建后的 HTML/JS/CSS），**不需要启动前端服务器**。
 只需要 **1 个后端进程**（PM2 管理，端口 3000），Nginx 把各站点的 `/api` 请求代理过去即可。
@@ -124,6 +125,15 @@ cd ..
 - **域名**: `api.yunkes.com`
 - **根目录**: `/www/wwwroot/CRM/backend/public`（随意，主要靠反向代理）
 - **SSL**: 申请证书
+
+### 4.5 站点 5：演示系统（可选）
+- **域名**: `demo.yunkes.com`
+- **根目录**: `/www/wwwroot/CRM/dist`（与 CRM 主站共用同一套前端）
+- **SSL**: 申请证书
+
+> **演示站点说明**: 演示系统与 CRM 主站共用同一套前端代码和后端服务，通过独立的演示租户实现数据隔离。
+> 需要先在管理后台创建演示租户，然后导入演示种子数据（`private-deploy/demo-seed-data.sql`）。
+> 建议配置 crontab 每日凌晨重置演示数据，防止被用户乱改。
 
 > **注意**: 先创建站点并申请好 SSL 证书，再修改 Nginx 配置！
 
@@ -371,6 +381,63 @@ cd ..
     }
 ```
 
+### 5.5 demo.yunkes.com（演示系统）
+
+演示站点与 CRM 主站共用同一套前端和后端，配置基本一致。
+
+在宝塔自动生成的配置中：
+1. **修改 `root`** 为 `/www/wwwroot/CRM/dist`（与 CRM 主站相同）
+2. **修改 `index`** 为 `index.html index.htm`（删掉 `index.php`、`default.php` 等）
+3. **删除** `#PHP-INFO-START` 到 `#PHP-INFO-END` 之间的全部内容
+4. **删除** `#ERROR-PAGE-START` 到 `#ERROR-PAGE-END` 之间的全部内容
+5. **删除** `location ~ .*\.(gif|jpg|jpeg|png|bmp|swf)$` 和 `location ~ .*\.(js|css)?$` 这两条规则
+6. 在 `#SSL-END` 后面添加以下内容：
+
+```nginx
+    # 文件上传大小
+    client_max_body_size 50m;
+
+    # API 反向代理（共用同一个后端）
+    location /api/ {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 120s;
+        proxy_read_timeout 120s;
+        proxy_buffering off;
+    }
+
+    # WebSocket
+    location /socket.io/ {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_read_timeout 86400;
+    }
+
+    # 上传文件访问
+    location ^~ /uploads/ {
+        alias /www/wwwroot/CRM/backend/uploads/;
+        expires 7d;
+        add_header Cache-Control "public";
+        add_header Access-Control-Allow-Origin *;
+    }
+
+    # 前端路由 (Vue Router history 模式)
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+```
+
+> **注意**: 演示站点不需要 H5、录音文件、企微验证文件等配置，只保留核心的 API 代理、WebSocket、uploads 和前端路由即可。
+
 ### 5.4 api.yunkes.com（API 接口）
 
 ```nginx
@@ -399,7 +466,7 @@ cd ..
 修改 `backend/.env` 中的 CORS 配置，添加所有域名：
 
 ```env
-CORS_ORIGIN=https://crm.yunkes.com,https://yunkes.com,https://www.yunkes.com,https://admin.yunkes.com,https://api.yunkes.com
+CORS_ORIGIN=https://crm.yunkes.com,https://yunkes.com,https://www.yunkes.com,https://admin.yunkes.com,https://api.yunkes.com,https://demo.yunkes.com
 ```
 
 修改后重启后端：
