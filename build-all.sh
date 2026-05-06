@@ -36,6 +36,17 @@ if ! curl -s --connect-timeout 5 --max-time 10 "https://registry.npmjs.org/vue" 
     echo -e "${YELLOW}[i] 使用淘宝镜像源${NC}"
 fi
 
+# 修复 node_modules 可执行文件权限（宝塔环境必须）
+fix_permissions() {
+    local dir="$1"
+    if [ -d "$dir/node_modules/.bin" ]; then
+        find "$dir/node_modules/.bin" -type f -o -type l | xargs chmod +x 2>/dev/null || true
+    fi
+    # esbuild 原生二进制
+    find "$dir/node_modules/@esbuild" -name esbuild -type f 2>/dev/null | xargs chmod +x 2>/dev/null || true
+    find "$dir/node_modules/esbuild" -name esbuild -type f 2>/dev/null | xargs chmod +x 2>/dev/null || true
+}
+
 # 解锁宝塔 .user.ini 文件（防止构建失败）
 echo -e "${YELLOW}[0] 解锁 .user.ini 文件...${NC}"
 for d in "$PROJECT_DIR/dist" "$PROJECT_DIR/website/dist" "$PROJECT_DIR/admin/dist"; do
@@ -56,6 +67,8 @@ if [ ! -d "node_modules" ]; then
     echo -e "${YELLOW}    安装依赖...${NC}"
     npm install --legacy-peer-deps --registry "$NPM_REGISTRY" 2>&1
 fi
+echo -e "${YELLOW}    修复可执行文件权限...${NC}"
+fix_permissions "$PROJECT_DIR"
 npm run build
 if [ -f "dist/index.html" ]; then
     echo -e "${GREEN}[OK] CRM 主应用构建成功${NC}"
@@ -79,6 +92,7 @@ if [ -d "src" ] && [ -f "package.json" ]; then
         fi
         npm install --registry "$NPM_REGISTRY" 2>&1
     fi
+    fix_permissions "$PROJECT_DIR/website"
     npm run build
     if [ -f "dist/index.html" ]; then
         echo -e "${GREEN}[OK] 官方网站构建成功${NC}"
@@ -103,6 +117,7 @@ if [ -d "src" ] && [ -f "package.json" ]; then
         fi
         npm install --registry "$NPM_REGISTRY" 2>&1
     fi
+    fix_permissions "$PROJECT_DIR/admin"
     npm run build
     if [ -f "dist/index.html" ]; then
         echo -e "${GREEN}[OK] 管理后台构建成功${NC}"
@@ -128,6 +143,7 @@ if [ -d "$H5_DIR/src" ] && [ -f "$H5_DIR/package.json" ]; then
         fi
         npm install --registry "$NPM_REGISTRY" 2>&1
     fi
+    fix_permissions "$H5_DIR"
     npx vite build
     if [ -f "dist/index.html" ]; then
         echo -e "${GREEN}[OK] H5企微应用构建成功${NC}"
@@ -151,6 +167,8 @@ if [ ! -d "node_modules" ] || [ ! -d "node_modules/express" ]; then
     fi
     npm install --registry "$NPM_REGISTRY" 2>&1
 fi
+echo -e "${YELLOW}    修复可执行文件权限...${NC}"
+fix_permissions "$PROJECT_DIR/backend"
 npm run build
 echo -e "${GREEN}[OK] 后端构建成功${NC}"
 

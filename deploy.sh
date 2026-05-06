@@ -146,6 +146,11 @@ install_frontend() {
 
 if install_frontend; then
     echo -e "${GREEN}[OK] 前端依赖安装完成${NC}"
+    # 修复 node_modules 可执行文件权限（宝塔环境必须）
+    echo -e "${YELLOW}    修复可执行文件权限...${NC}"
+    find "$PROJECT_DIR/node_modules/.bin" -type f -o -type l | xargs chmod +x 2>/dev/null || true
+    find "$PROJECT_DIR/node_modules/@esbuild" -name esbuild -type f | xargs chmod +x 2>/dev/null || true
+    find "$PROJECT_DIR/node_modules/esbuild" -name esbuild -type f | xargs chmod +x 2>/dev/null || true
 else
     echo -e "${RED}[X] 前端依赖安装失败${NC}"
     echo -e "${YELLOW}    尝试手动修复:${NC}"
@@ -173,6 +178,9 @@ install_backend() {
 
 if install_backend; then
     echo -e "${GREEN}[OK] 后端依赖安装完成${NC}"
+    # 修复 node_modules 可执行文件权限（宝塔环境必须）
+    echo -e "${YELLOW}    修复可执行文件权限...${NC}"
+    find "$BACKEND_DIR/node_modules/.bin" -type f -o -type l | xargs chmod +x 2>/dev/null || true
 else
     echo -e "${RED}[X] 后端依赖安装失败${NC}"
     exit 1
