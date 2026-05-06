@@ -151,6 +151,8 @@ if install_frontend; then
     find "$PROJECT_DIR/node_modules/.bin" -type f -o -type l | xargs chmod +x 2>/dev/null || true
     find "$PROJECT_DIR/node_modules/@esbuild" -name esbuild -type f | xargs chmod +x 2>/dev/null || true
     find "$PROJECT_DIR/node_modules/esbuild" -name esbuild -type f | xargs chmod +x 2>/dev/null || true
+    find "$PROJECT_DIR/node_modules/sass-embedded-linux-x64" -name dart -type f | xargs chmod +x 2>/dev/null || true
+    find "$PROJECT_DIR/node_modules/sass-embedded-linux-arm64" -name dart -type f | xargs chmod +x 2>/dev/null || true
 else
     echo -e "${RED}[X] 前端依赖安装失败${NC}"
     echo -e "${YELLOW}    尝试手动修复:${NC}"

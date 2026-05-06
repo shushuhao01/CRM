@@ -88,7 +88,10 @@ echo ""
 log_title "Step 3: 安装后端依赖"
 cd "$PROJECT_DIR/backend"
 log_info "正在安装后端npm依赖..."
-npm install --production 2>/dev/null || true
+npm install 2>/dev/null || true
+# postinstall 钩子会自动修复权限，以下为兜底
+find "$PROJECT_DIR/backend/node_modules/.bin" -type f -exec chmod +x {} \; 2>/dev/null || true
+find "$PROJECT_DIR/backend/node_modules/.bin" -type l -exec chmod +x {} \; 2>/dev/null || true
 log_success "后端依赖安装完成"
 echo ""
 
@@ -106,7 +109,10 @@ echo ""
 log_title "Step 5: 构建CRM前端"
 cd "$PROJECT_DIR"
 log_info "正在安装前端npm依赖..."
-npm install 2>/dev/null || true
+npm install --legacy-peer-deps 2>/dev/null || true
+# postinstall 钩子自动修复权限，兜底修复 sass-embedded
+find "$PROJECT_DIR/node_modules" -path "*/sass-embedded-linux-*/dart-sass/src/dart" -exec chmod +x {} \; 2>/dev/null || true
+find "$PROJECT_DIR/node_modules/@esbuild" -name "esbuild" -type f -exec chmod +x {} \; 2>/dev/null || true
 log_info "正在构建前端..."
 npm run build || npm run build-simple || true
 log_success "CRM前端构建完成"

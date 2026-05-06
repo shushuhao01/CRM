@@ -45,10 +45,21 @@ fix_permissions() {
     # esbuild 原生二进制
     find "$dir/node_modules/@esbuild" -name esbuild -type f 2>/dev/null | xargs chmod +x 2>/dev/null || true
     find "$dir/node_modules/esbuild" -name esbuild -type f 2>/dev/null | xargs chmod +x 2>/dev/null || true
+    # sass-embedded 原生二进制（dart 可执行文件）
+    find "$dir/node_modules/sass-embedded-linux-x64" -name dart -type f 2>/dev/null | xargs chmod +x 2>/dev/null || true
+    find "$dir/node_modules/sass-embedded-linux-arm64" -name dart -type f 2>/dev/null | xargs chmod +x 2>/dev/null || true
 }
 
+# 预先修复根目录权限（子项目也会解析根目录的 node_modules）
+if [ -d "$PROJECT_DIR/node_modules" ]; then
+    echo -e "${YELLOW}[0] 修复 node_modules 可执行文件权限...${NC}"
+    fix_permissions "$PROJECT_DIR"
+    echo -e "${GREEN}[OK] 权限修复完成${NC}"
+    echo ""
+fi
+
 # 解锁宝塔 .user.ini 文件（防止构建失败）
-echo -e "${YELLOW}[0] 解锁 .user.ini 文件...${NC}"
+echo -e "${YELLOW}[0.5] 解锁 .user.ini 文件...${NC}"
 for d in "$PROJECT_DIR/dist" "$PROJECT_DIR/website/dist" "$PROJECT_DIR/admin/dist"; do
     if [ -f "$d/.user.ini" ]; then
         chattr -i "$d/.user.ini" 2>/dev/null || true

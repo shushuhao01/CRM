@@ -13,7 +13,7 @@ export default defineConfigWithVueTs(
     files: ['**/*.{ts,mts,tsx,vue}'],
   },
 
-  globalIgnores(['**/dist/**', '**/dist-ssr/**', '**/coverage/**', '**/miniprogram/**']),
+  globalIgnores(['**/dist/**', '**/dist-ssr/**', '**/coverage/**', '**/miniprogram/**', '**/*.cjs']),
 
   pluginVue.configs['flat/essential'],
   vueTsConfigs.recommended,
