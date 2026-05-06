@@ -80,11 +80,20 @@ cd "$PROJECT_DIR/backend"
 npm install 2>&1
 echo -e "${GREEN}    [OK] 后端依赖已更新（postinstall自动修复权限）${NC}"
 
+# 子项目通用权限修复函数
+fix_subproject_permissions() {
+    local dir="$1"
+    chmod -R +x "$dir/node_modules/.bin" 2>/dev/null || true
+    find "$dir/node_modules/@esbuild" -name esbuild -type f -exec chmod +x {} \; 2>/dev/null || true
+    find "$dir/node_modules" -path "*/sass-embedded-linux-*/dart-sass/src/dart" -exec chmod +x {} \; 2>/dev/null || true
+}
+
 # 官网
 if [ -f "$PROJECT_DIR/website/package.json" ]; then
     echo -e "${YELLOW}    [4.3] 官网依赖...${NC}"
     cd "$PROJECT_DIR/website"
     npm install 2>&1
+    fix_subproject_permissions "$PROJECT_DIR/website"
     echo -e "${GREEN}    [OK] 官网依赖已更新${NC}"
 fi
 
@@ -93,6 +102,7 @@ if [ -f "$PROJECT_DIR/admin/package.json" ]; then
     echo -e "${YELLOW}    [4.4] 管理后台依赖...${NC}"
     cd "$PROJECT_DIR/admin"
     npm install 2>&1
+    fix_subproject_permissions "$PROJECT_DIR/admin"
     echo -e "${GREEN}    [OK] 管理后台依赖已更新${NC}"
 fi
 
@@ -101,6 +111,7 @@ if [ -f "$PROJECT_DIR/h5/package.json" ]; then
     echo -e "${YELLOW}    [4.5] H5企微依赖...${NC}"
     cd "$PROJECT_DIR/h5"
     npm install 2>&1
+    fix_subproject_permissions "$PROJECT_DIR/h5"
     echo -e "${GREEN}    [OK] H5依赖已更新${NC}"
 fi
 

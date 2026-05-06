@@ -7,7 +7,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc --noEmit && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "postinstall": "node -e \"if(process.platform!=='win32'){const{execSync:r}=require('child_process');try{r('chmod -R +x node_modules/.bin 2>/dev/null;find node_modules/@esbuild -name esbuild -type f -exec chmod +x {} \\\\; 2>/dev/null',{stdio:'ignore'})}catch(e){}}\""
   },
   "dependencies": {
     "vue": "^3.4.21",
