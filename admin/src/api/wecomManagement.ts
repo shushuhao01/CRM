@@ -13,6 +13,7 @@ export const getSuiteAuths = (params?: any) => request.get('/wecom-management/su
 export const getSuiteAuthDetail = (id: number) => request.get(`/wecom-management/suite/auths/${id}`)
 export const bindSuiteAuthTenant = (id: number, data: { tenantId: string }) => request.post(`/wecom-management/suite/auths/${id}/bind-tenant`, data)
 export const cancelSuiteAuth = (id: number) => request.delete(`/wecom-management/suite/auths/${id}`)
+export const getBindableCustomers = (params?: any) => request.get('/wecom-management/suite/bindable-customers', { params })
 export const getSuiteCallbackLogs = (params?: any) => request.get('/wecom-management/suite/callback-logs', { params })
 
 // ==================== 通知模板管理 ====================

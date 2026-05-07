@@ -3156,6 +3156,141 @@ router.get('/suite/auths/:id', async (req: Request, res: Response) => {
   }
 });
 
+// 搜索可关联客户（租户+私有客户，排除已关联的）
+router.get('/suite/bindable-customers', async (req: Request, res: Response) => {
+  try {
+    const { keyword = '', page = 1, pageSize = 20 } = req.query;
+    const pageNum = parseInt(page as string) || 1;
+    const pageSizeNum = Math.min(parseInt(pageSize as string) || 20, 50);
+    const offset = (pageNum - 1) * pageSizeNum;
+
+    // 获取已关联的租户ID列表（用于排除）
+    let boundTenantIds: string[] = [];
+    try {
+      const boundRows = await AppDataSource.query(
+        `SELECT DISTINCT tenant_id FROM wecom_configs WHERE tenant_id IS NOT NULL AND tenant_id != ''`
+      );
+      boundTenantIds = boundRows.map((r: any) => r.tenant_id);
+    } catch { /* ignore */ }
+
+    const results: any[] = [];
+    let totalCount = 0;
+
+    // 查询租户客户
+    try {
+      const excludeClause = boundTenantIds.length > 0
+        ? `AND t.id NOT IN (${boundTenantIds.map(() => '?').join(',')})`
+        : '';
+      const excludeParams = boundTenantIds.length > 0 ? [...boundTenantIds] : [];
+
+      let tenantWhere = `t.status = 'active'`;
+      const tenantParams: any[] = [];
+
+      // deleted_at 列可能不存在，安全检查
+      try {
+        const delCol = await AppDataSource.query(
+          `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'tenants' AND COLUMN_NAME = 'deleted_at'`
+        );
+        if (delCol.length > 0) tenantWhere += ` AND t.deleted_at IS NULL`;
+      } catch { /* ignore */ }
+
+      if (keyword) {
+        tenantWhere += ` AND (t.name LIKE ? OR t.code LIKE ? OR t.contact LIKE ?)`;
+        tenantParams.push(`%${keyword}%`, `%${keyword}%`, `%${keyword}%`);
+      }
+
+      const tenantCountSql = `SELECT COUNT(*) as cnt FROM tenants t WHERE ${tenantWhere} ${excludeClause}`;
+      const tenantCountRes = await AppDataSource.query(tenantCountSql, [...tenantParams, ...excludeParams]);
+      const tenantTotal = Number(tenantCountRes[0]?.cnt || 0);
+
+      const tenantSql = `SELECT t.id, t.name, t.code, t.contact, t.phone, t.status, 'tenant' as customerType
+                          FROM tenants t WHERE ${tenantWhere} ${excludeClause}
+                          ORDER BY t.created_at DESC`;
+      const tenantRows = await AppDataSource.query(tenantSql, [...tenantParams, ...excludeParams]);
+      for (const row of tenantRows) {
+        results.push({
+          id: row.id,
+          name: row.name,
+          code: row.code,
+          contact: row.contact,
+          phone: row.phone,
+          status: row.status,
+          customerType: 'tenant',
+          label: `${row.name}（租户 ${row.code}）`
+        });
+      }
+      totalCount += tenantTotal;
+    } catch (e) {
+      log.warn('[Suite] 查询租户列表失败:', (e as any).message?.substring(0, 80));
+    }
+
+    // 查询私有客户
+    try {
+      let licenseWhere = `l.status = 'active'`;
+      const licenseParams: any[] = [];
+
+      // deleted_at 列安全检查
+      try {
+        const delCol = await AppDataSource.query(
+          `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'licenses' AND COLUMN_NAME = 'deleted_at'`
+        );
+        if (delCol.length > 0) licenseWhere += ` AND l.deleted_at IS NULL`;
+      } catch { /* ignore */ }
+
+      const excludeClause = boundTenantIds.length > 0
+        ? `AND l.id NOT IN (${boundTenantIds.map(() => '?').join(',')})`
+        : '';
+      const excludeParams = boundTenantIds.length > 0 ? [...boundTenantIds] : [];
+
+      if (keyword) {
+        licenseWhere += ` AND (l.customer_name LIKE ? OR l.license_key LIKE ? OR l.customer_contact LIKE ?)`;
+        licenseParams.push(`%${keyword}%`, `%${keyword}%`, `%${keyword}%`);
+      }
+
+      const licenseCountSql = `SELECT COUNT(*) as cnt FROM licenses l WHERE ${licenseWhere} ${excludeClause}`;
+      const licenseCountRes = await AppDataSource.query(licenseCountSql, [...licenseParams, ...excludeParams]);
+      const licenseTotal = Number(licenseCountRes[0]?.cnt || 0);
+
+      const licenseSql = `SELECT l.id, l.customer_name as name, l.license_key as code, l.customer_contact as contact,
+                           l.customer_phone as phone, l.status, 'private' as customerType
+                           FROM licenses l WHERE ${licenseWhere} ${excludeClause}
+                           ORDER BY l.created_at DESC`;
+      const licenseRows = await AppDataSource.query(licenseSql, [...licenseParams, ...excludeParams]);
+      for (const row of licenseRows) {
+        results.push({
+          id: row.id,
+          name: row.name,
+          code: row.code,
+          contact: row.contact,
+          phone: row.phone,
+          status: row.status,
+          customerType: 'private',
+          label: `${row.name}（私有 ${row.code?.substring(0, 16) || ''}）`
+        });
+      }
+      totalCount += licenseTotal;
+    } catch (e) {
+      log.warn('[Suite] 查询私有客户列表失败:', (e as any).message?.substring(0, 80));
+    }
+
+    // 分页（合并后排序取分页段）
+    const pagedResults = results.slice(offset, offset + pageSizeNum);
+
+    res.json({
+      success: true,
+      data: {
+        list: pagedResults,
+        total: totalCount,
+        page: pageNum,
+        pageSize: pageSizeNum
+      }
+    });
+  } catch (error: any) {
+    log.error('[Suite] Get bindable customers error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 // 绑定已授权企业到租户
 router.post('/suite/auths/:id/bind-tenant', async (req: Request, res: Response) => {
   if (!checkPermission(req, res, 'wecom-management:tenants:edit')) return;

@@ -586,16 +586,54 @@
     </el-dialog>
 
     <!-- 关联租户弹窗 -->
-    <el-dialog v-model="showBindDialog" title="关联租户" width="400px" destroy-on-close>
+    <el-dialog v-model="showBindDialog" title="关联租户" width="480px" destroy-on-close>
       <el-form label-width="80px">
         <el-form-item label="企业">{{ bindTarget?.corpName }}</el-form-item>
-        <el-form-item label="租户ID">
-          <el-input v-model="bindTenantId" placeholder="输入要关联的租户ID" />
+        <el-form-item label="关联对象">
+          <el-select
+            v-model="bindTenantId"
+            filterable
+            remote
+            reserve-keyword
+            :remote-method="searchBindableCustomers"
+            :loading="bindableLoading"
+            placeholder="搜索租户名称/编码/联系人"
+            style="width: 100%"
+            clearable
+            popper-class="bind-customer-select-popper"
+            @visible-change="onBindSelectVisible"
+          >
+            <el-option
+              v-for="item in bindableCustomers"
+              :key="item.id"
+              :label="item.label"
+              :value="item.id"
+            >
+              <div style="display: flex; justify-content: space-between; align-items: center">
+                <span style="flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{ item.name }}</span>
+                <el-tag :type="item.customerType === 'tenant' ? '' : 'warning'" size="small" style="margin-left: 8px; flex-shrink: 0">
+                  {{ item.customerType === 'tenant' ? '租户' : '私有' }}
+                </el-tag>
+              </div>
+              <div style="font-size: 12px; color: #909399; line-height: 1.4">{{ item.code }}{{ item.contact ? ` · ${item.contact}` : '' }}</div>
+            </el-option>
+            <el-option v-if="bindableHasMore" value="__loadmore__" disabled>
+              <div
+                style="text-align: center; cursor: pointer; color: #409eff; font-size: 13px; padding: 4px 0"
+                @click.stop="loadMoreBindableCustomers"
+              >
+                {{ bindableLoadingMore ? '加载中...' : '点击加载更多' }}
+              </div>
+            </el-option>
+            <el-option v-if="!bindableLoading && bindableCustomers.length === 0 && bindableKeyword" value="__empty__" disabled>
+              <div style="text-align: center; color: #909399; font-size: 13px">无匹配结果</div>
+            </el-option>
+          </el-select>
         </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="showBindDialog = false">取消</el-button>
-        <el-button v-permission="'wecom-management:suite:edit'" type="primary" @click="handleBindTenant" :loading="binding">确认关联</el-button>
+        <el-button v-permission="'wecom-management:suite:edit'" type="primary" @click="handleBindTenant" :loading="binding" :disabled="!bindTenantId || bindTenantId === '__loadmore__' || bindTenantId === '__empty__'">确认关联</el-button>
       </template>
     </el-dialog>
     <!-- 通知模板编辑弹窗 -->
@@ -662,7 +700,8 @@ import {
   getSuiteAuths, cancelSuiteAuth, bindSuiteAuthTenant, getSuiteCallbackLogs,
   getNotificationTemplates, createNotificationTemplate, updateNotificationTemplate,
   deleteNotificationTemplate, toggleNotificationTemplate,
-  getMpConfig, saveMpConfig
+  getMpConfig, saveMpConfig,
+  getBindableCustomers
 } from '@/api/wecomManagement'
 
 const activeTab = ref('config')
@@ -725,6 +764,13 @@ const showBindDialog = ref(false)
 const bindTarget = ref<any>(null)
 const bindTenantId = ref('')
 const binding = ref(false)
+const bindableCustomers = ref<any[]>([])
+const bindableLoading = ref(false)
+const bindableLoadingMore = ref(false)
+const bindablePage = ref(1)
+const bindableTotal = ref(0)
+const bindableKeyword = ref('')
+const bindablePageSize = 20
 
 // Callback logs
 const callbackLogsLoading = ref(false)
@@ -926,9 +972,61 @@ const viewAuthDetail = (row: any) => {
   ElMessage.info(`授权详情: ${row.corpName} (${row.corpId})`)
 }
 
+const bindableHasMore = computed(() => bindableCustomers.value.length < bindableTotal.value)
+
+const fetchBindableCustomers = async (keyword: string = '', append = false) => {
+  if (!append) {
+    bindableLoading.value = true
+    bindablePage.value = 1
+  } else {
+    bindableLoadingMore.value = true
+  }
+  try {
+    const res: any = await getBindableCustomers({
+      keyword: keyword || undefined,
+      page: bindablePage.value,
+      pageSize: bindablePageSize
+    })
+    const data = res?.data || res
+    const list = data?.list || []
+    if (append) {
+      bindableCustomers.value = [...bindableCustomers.value, ...list]
+    } else {
+      bindableCustomers.value = list
+    }
+    bindableTotal.value = data?.total || 0
+  } catch (e: any) {
+    console.error('Fetch bindable customers error:', e)
+  } finally {
+    bindableLoading.value = false
+    bindableLoadingMore.value = false
+  }
+}
+
+const searchBindableCustomers = (keyword: string) => {
+  bindableKeyword.value = keyword
+  fetchBindableCustomers(keyword)
+}
+
+const loadMoreBindableCustomers = () => {
+  if (bindableLoadingMore.value || !bindableHasMore.value) return
+  bindablePage.value++
+  fetchBindableCustomers(bindableKeyword.value, true)
+}
+
+const onBindSelectVisible = (visible: boolean) => {
+  if (visible && bindableCustomers.value.length === 0) {
+    fetchBindableCustomers('')
+  }
+}
+
 const openBindDialog = (row: any) => {
   bindTarget.value = row
   bindTenantId.value = ''
+  bindableCustomers.value = []
+  bindableKeyword.value = ''
+  bindablePage.value = 1
+  bindableTotal.value = 0
   showBindDialog.value = true
 }
 
