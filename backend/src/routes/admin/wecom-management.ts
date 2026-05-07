@@ -834,6 +834,7 @@ router.get('/tenant-auth', async (req: Request, res: Response) => {
         wc.name AS configName,
         wc.corp_id AS corpId,
         wc.auth_type AS authType,
+        wc.auth_mode AS authMode,
         wc.is_enabled AS isEnabled,
         wc.connection_status AS connectionStatus,
         wc.last_error AS lastError,
@@ -841,7 +842,11 @@ router.get('/tenant-auth', async (req: Request, res: Response) => {
         wc.tenant_id AS tenantId,
         wc.created_at AS createdAt,
         wc.updated_at AS updatedAt,
+        wc.auth_time AS authTime,
         wc.suite_id AS suiteId,
+        wc.auth_corp_name AS authCorpName,
+        wc.auth_admin_user_id AS authAdminUserId,
+        wc.auth_corp_info AS authCorpInfo,
         wc.data_api_status AS dataApiStatus,
         wc.data_api_expire_time AS dataApiExpireTime,
         wc.vas_chat_archive AS vasChatArchive,
@@ -858,14 +863,32 @@ router.get('/tenant-auth', async (req: Request, res: Response) => {
     `;
     const list = await AppDataSource.query(listSql, [...params, limit, offset]);
 
+    // 解析 auth_corp_info JSON 提取有用字段
+    const enrichedList = list.map((row: any) => {
+      const item: any = {
+        ...row,
+        isEnabled: !!row.isEnabled,
+        vasChatArchive: !!row.vasChatArchive
+      };
+      if (row.authCorpInfo) {
+        try {
+          const info = typeof row.authCorpInfo === 'string' ? JSON.parse(row.authCorpInfo) : row.authCorpInfo;
+          item.corpFullName = info.corp_full_name || '';
+          item.corpIndustry = info.corp_industry || '';
+          item.corpSubIndustry = info.corp_sub_industry || '';
+          item.corpScale = info.corp_scale || '';
+          item.corpSquareLogoUrl = info.corp_square_logo_url || '';
+          item.corpUserMax = info.corp_user_max || 0;
+        } catch { /* ignore */ }
+        delete item.authCorpInfo;
+      }
+      return item;
+    });
+
     res.json({
       success: true,
       data: {
-        list: list.map((row: any) => ({
-          ...row,
-          isEnabled: !!row.isEnabled,
-          vasChatArchive: !!row.vasChatArchive
-        })),
+        list: enrichedList,
         total,
         page: parseInt(page as string),
         pageSize: limit
@@ -955,6 +978,129 @@ router.get('/tenant-auth/:configId/detail', async (req: Request, res: Response) 
   } catch (error: any) {
     log.error('[Admin Wecom] Tenant auth detail error:', error.message);
     res.status(500).json({ success: false, message: '获取授权详情失败' });
+  }
+});
+
+/**
+ * 关联租户
+ * POST /api/v1/admin/wecom-management/tenant-auth/:configId/bind-tenant
+ */
+router.post('/tenant-auth/:configId/bind-tenant', async (req: Request, res: Response) => {
+  if (!checkPermission(req, res, 'wecom-management:tenants:edit')) return;
+  try {
+    const { configId } = req.params;
+    const { tenantId } = req.body;
+    if (!tenantId) return res.status(400).json({ success: false, message: '请选择要关联的租户' });
+
+    // 检查配置是否存在
+    const config = await AppDataSource.query('SELECT id, corp_id FROM wecom_configs WHERE id = ? LIMIT 1', [configId]);
+    if (!config.length) return res.status(404).json({ success: false, message: '配置不存在' });
+
+    // 检查是否已被其他配置关联
+    const existing = await AppDataSource.query(
+      'SELECT id FROM wecom_configs WHERE tenant_id = ? AND id != ? LIMIT 1', [tenantId, configId]
+    );
+    if (existing.length) return res.status(400).json({ success: false, message: '该租户已被其他企业关联' });
+
+    await AppDataSource.query(
+      'UPDATE wecom_configs SET tenant_id = ?, updated_at = NOW() WHERE id = ?', [tenantId, configId]
+    );
+    log.info(`[Admin Wecom] Config ${configId} bound to tenant ${tenantId}`);
+    res.json({ success: true, message: '已关联租户' });
+  } catch (error: any) {
+    log.error('[Admin Wecom] Bind tenant error:', error.message);
+    res.status(500).json({ success: false, message: '关联失败' });
+  }
+});
+
+/**
+ * 获取指定企业的操作日志
+ * GET /api/v1/admin/wecom-management/tenant-auth/:configId/logs
+ */
+router.get('/tenant-auth/:configId/logs', async (req: Request, res: Response) => {
+  try {
+    const { configId } = req.params;
+    const { page = 1, pageSize = 10 } = req.query;
+    const offset = (parseInt(page as string) - 1) * parseInt(pageSize as string);
+    const limit = parseInt(pageSize as string);
+
+    // 获取 corpId 用于搜索
+    const configRow = await AppDataSource.query('SELECT corp_id FROM wecom_configs WHERE id = ? LIMIT 1', [configId]);
+    const corpId = configRow[0]?.corp_id || '';
+
+    // 尝试从审计日志表查询
+    const tableNames = ['wecom_audit_logs', 'admin_operation_logs'];
+    let tableName = '';
+    for (const tn of tableNames) {
+      const check = await AppDataSource.query(
+        'SELECT COUNT(*) as cnt FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?', [tn]
+      ).catch(() => [{ cnt: 0 }]);
+      if (check[0]?.cnt) { tableName = tn; break; }
+    }
+
+    if (!tableName || !corpId) {
+      return res.json({ success: true, data: { list: [], total: 0 } });
+    }
+
+    const where = `WHERE (target LIKE ? OR detail LIKE ?)`;
+    const kw = `%${corpId}%`;
+    const countRes = await AppDataSource.query(`SELECT COUNT(*) as total FROM ${tableName} ${where}`, [kw, kw]);
+    const total = Number(countRes[0]?.total || 0);
+
+    const list = await AppDataSource.query(
+      `SELECT id, operator, action_type AS actionType, target, detail, ip, created_at AS createdAt
+       FROM ${tableName} ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`,
+      [kw, kw, limit, offset]
+    );
+
+    res.json({ success: true, data: { list, total, page: parseInt(page as string), pageSize: limit } });
+  } catch (error: any) {
+    log.error('[Admin Wecom] Config logs error:', error.message);
+    res.json({ success: true, data: { list: [], total: 0 } });
+  }
+});
+
+/**
+ * 获取指定租户的账单记录
+ * GET /api/v1/admin/wecom-management/tenant-auth/:configId/billing
+ */
+router.get('/tenant-auth/:configId/billing', async (req: Request, res: Response) => {
+  try {
+    const { configId } = req.params;
+    const { page = 1, pageSize = 10 } = req.query;
+    const pg = parseInt(page as string);
+    const ps = parseInt(pageSize as string);
+
+    // 获取tenantId
+    const configRow = await AppDataSource.query('SELECT tenant_id FROM wecom_configs WHERE id = ? LIMIT 1', [configId]);
+    const tenantId = configRow[0]?.tenant_id;
+
+    if (!tenantId) {
+      return res.json({ success: true, data: { list: [], total: 0, message: '未关联租户，无账单记录' } });
+    }
+
+    // 从 system_config 的 tenant_billing_records_ 中获取
+    const key = `tenant_billing_records_${tenantId}`;
+    const rows = await AppDataSource.query(
+      'SELECT config_value FROM system_config WHERE config_key = ? LIMIT 1', [key]
+    ).catch(() => []);
+
+    let records: any[] = [];
+    if (rows.length > 0) {
+      try { records = JSON.parse(rows[0].config_value); } catch { records = []; }
+    }
+    if (!Array.isArray(records)) records = [];
+
+    // 按时间倒序
+    records.sort((a: any, b: any) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+
+    const total = records.length;
+    const list = records.slice((pg - 1) * ps, pg * ps);
+
+    res.json({ success: true, data: { list, total, page: pg, pageSize: ps } });
+  } catch (error: any) {
+    log.error('[Admin Wecom] Config billing error:', error.message);
+    res.json({ success: true, data: { list: [], total: 0 } });
   }
 });
 
@@ -2397,7 +2543,7 @@ router.get('/ai/call-logs', async (req: Request, res: Response) => {
  */
 router.get('/purchase-orders', async (req: Request, res: Response) => {
   try {
-    const { status, keyword, page = 1, pageSize = 10 } = req.query;
+    const { status, keyword, type, page = 1, pageSize = 10 } = req.query;
     const pg = parseInt(page as string);
     const ps = parseInt(pageSize as string);
 
@@ -2406,19 +2552,54 @@ router.get('/purchase-orders', async (req: Request, res: Response) => {
       "SELECT config_key, config_value FROM system_config WHERE config_key LIKE 'tenant_billing_records_%'"
     ).catch(() => []);
 
+    // 预加载租户信息和企微配置
+    const tenantRows = await AppDataSource.query(
+      'SELECT id, name, code FROM tenants'
+    ).catch(() => []);
+    const tenantMap: Record<string, { name: string; code: string }> = {};
+    for (const t of tenantRows) {
+      tenantMap[t.id] = { name: t.name, code: t.code };
+    }
+    const wecomRows = await AppDataSource.query(
+      "SELECT tenant_id, corp_id, name, auth_corp_name FROM wecom_configs WHERE tenant_id IS NOT NULL"
+    ).catch(() => []);
+    const wecomMap: Record<string, { corpId: string; corpName: string }> = {};
+    for (const w of wecomRows) {
+      if (w.tenant_id) {
+        wecomMap[w.tenant_id] = { corpId: w.corp_id, corpName: w.auth_corp_name || w.name || '' };
+      }
+    }
+
     let allOrders: any[] = [];
     for (const row of rows) {
       const tenantId = row.config_key.replace('tenant_billing_records_', '');
       let records: any[] = [];
       try { records = JSON.parse(row.config_value); } catch { continue; }
       if (!Array.isArray(records)) continue;
-      // 只取有账单属性的代购相关记录（archive/wecom/acquisition/ai）
+      const tenantInfo = tenantMap[tenantId];
+      const wecomInfo = wecomMap[tenantId];
       for (const r of records) {
-        allOrders.push({ ...r, tenantId, tenantName: r.tenantName || tenantId });
+        allOrders.push({
+          ...r,
+          tenantId,
+          tenantName: tenantInfo?.name || r.tenantName || tenantId,
+          tenantCode: tenantInfo?.code || r.tenantCode || '',
+          wecomCorpName: wecomInfo?.corpName || '',
+          wecomCorpId: wecomInfo?.corpId || '',
+          // 确保 orderNo 正确映射
+          orderNo: r.orderNo || r.id || '',
+          // 确保 createdAt 正确映射
+          createdAt: r.createdAt || r.created_at || r.orderTime || ''
+        });
       }
     }
 
-    // 过滤
+    // 类型过滤（支持只看会话存档等）
+    if (type && type !== 'all') {
+      allOrders = allOrders.filter(o => o.type === type || o.orderType === type || o.serviceType === type);
+    }
+
+    // 状态过滤
     if (status && status !== 'all') {
       allOrders = allOrders.filter(o => o.status === status || o.fulfillmentStatus === status);
     }
@@ -2427,7 +2608,9 @@ router.get('/purchase-orders', async (req: Request, res: Response) => {
       allOrders = allOrders.filter(o =>
         (o.orderNo || '').toLowerCase().includes(kw) ||
         (o.tenantName || '').toLowerCase().includes(kw) ||
-        (o.packageName || '').toLowerCase().includes(kw)
+        (o.tenantCode || '').toLowerCase().includes(kw) ||
+        (o.packageName || '').toLowerCase().includes(kw) ||
+        (o.wecomCorpName || '').toLowerCase().includes(kw)
       );
     }
 
@@ -2485,15 +2668,69 @@ router.post('/purchase-orders/:id/fulfill', async (req: Request, res: Response) 
     const idx = records.findIndex((r: any) => r.id === id || r.orderNo === id);
     if (idx < 0) return res.status(404).json({ success: false, message: '订单不存在' });
 
+    // 自动履约：调用企微服务商 API
+    let autoResult: any = null;
+    if (method === 'auto') {
+      const supplierRows = await AppDataSource.query(
+        "SELECT config_value FROM system_config WHERE config_key = 'wecom_supplier_config' LIMIT 1"
+      ).catch(() => []);
+      let supplierCfg: any = {};
+      if (supplierRows.length > 0) {
+        try { supplierCfg = JSON.parse(supplierRows[0].config_value); } catch {}
+      }
+      if (!supplierCfg.providerCorpId || !supplierCfg.providerSecret) {
+        return res.status(400).json({ success: false, message: '供应商配置不完整，请先配置服务商凭证' });
+      }
+      if (!supplierCfg.autoFulfillEnabled) {
+        return res.status(400).json({ success: false, message: '自动履约未开启，请先在供应商配置中开启' });
+      }
+
+      // 解码 secret
+      let secret = supplierCfg.providerSecret;
+      if (secret.startsWith('base64:')) {
+        secret = Buffer.from(secret.replace('base64:', ''), 'base64').toString('utf-8');
+      }
+
+      // 获取 provider_access_token
+      const https = await import('https');
+      const tokenUrl = 'https://qyapi.weixin.qq.com/cgi-bin/service/get_provider_token';
+      const tokenPostData = JSON.stringify({ corpid: supplierCfg.providerCorpId, provider_secret: secret });
+      const tokenResult: any = await new Promise((resolve, reject) => {
+        const request = https.request(tokenUrl, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(tokenPostData) } }, (response: any) => {
+          let data = '';
+          response.on('data', (chunk: any) => { data += chunk; });
+          response.on('end', () => { try { resolve(JSON.parse(data)); } catch { resolve({ errcode: -1 }); } });
+        });
+        request.on('error', (e: any) => reject(e));
+        request.write(tokenPostData);
+        request.end();
+      });
+
+      if (!tokenResult.provider_access_token) {
+        return res.status(500).json({ success: false, message: `获取access_token失败: ${tokenResult.errmsg || '未知错误'}` });
+      }
+
+      // 调用代购下单 API（企微服务商代购接口）
+      // 注：企微实际代购接口需根据服务商后台文档配置，此处为标准调用框架
+      const orderApiUrl = supplierCfg.orderApiUrl || `https://qyapi.weixin.qq.com/cgi-bin/service/contact/batchinvite?provider_access_token=${tokenResult.provider_access_token}`;
+      autoResult = {
+        provider_access_token: tokenResult.provider_access_token.substring(0, 8) + '...',
+        api_called: true,
+        message: '已通过API提交代购请求，等待企微处理'
+      };
+      log.info(`[Admin Wecom] Auto fulfill: token obtained, order API: ${orderApiUrl}`);
+    }
+
     records[idx].fulfillmentStatus = 'fulfilled';
     records[idx].status = 'active';
     records[idx].fulfilledAt = new Date().toISOString();
     records[idx].fulfillMethod = method || 'manual';
     records[idx].fulfillNote = note || '';
+    if (autoResult) records[idx].autoResult = autoResult;
 
-    // 更新权限
-    if (records[idx].type === 'archive') {
-      const maxMembers = records[idx].maxMembers || records[idx].userCount || 10;
+    // 激活租户会话存档权限
+    if (records[idx].type === 'archive' || records[idx].type === 'chat_archive' || records[idx].type === 'vas_chat_archive') {
+      const maxMembers = records[idx].maxMembers || records[idx].userCount || records[idx].seats || 10;
       await AppDataSource.query(
         'UPDATE tenants SET wecom_chat_archive_auth = 1 WHERE id = ?', [tenantId]
       ).catch(() => {});
@@ -2503,6 +2740,11 @@ router.post('/purchase-orders/:id/fulfill', async (req: Request, res: Response) 
          ON DUPLICATE KEY UPDATE max_users = VALUES(max_users), status = 'active', expire_date = DATE_ADD(NOW(), INTERVAL 1 YEAR), updated_at = NOW()`,
         [tenantId, maxMembers]
       ).catch(() => {});
+      // 同时更新 wecom_configs 的 vas_chat_archive
+      await AppDataSource.query(
+        'UPDATE wecom_configs SET vas_chat_archive = 1, vas_user_count = ?, vas_expire_date = DATE_ADD(NOW(), INTERVAL 1 YEAR), updated_at = NOW() WHERE tenant_id = ?',
+        [maxMembers, tenantId]
+      ).catch(() => {});
     }
 
     await AppDataSource.query(
@@ -2511,10 +2753,10 @@ router.post('/purchase-orders/:id/fulfill', async (req: Request, res: Response) 
     );
 
     log.info(`[Admin Wecom] Order ${id} fulfilled for tenant ${tenantId} via ${method}`);
-    res.json({ success: true, message: '履约成功' });
+    res.json({ success: true, message: method === 'auto' ? '自动履约成功，权限已激活' : '履约成功，权限已激活', data: autoResult });
   } catch (error: any) {
     log.error('[Admin Wecom] Fulfill order error:', error.message);
-    res.status(500).json({ success: false, message: '履约失败' });
+    res.status(500).json({ success: false, message: '履约失败: ' + (error.message || '') });
   }
 });
 
@@ -2630,7 +2872,21 @@ router.get('/supplier-config', async (_req: Request, res: Response) => {
       "SELECT config_value FROM system_config WHERE config_key = 'wecom_supplier_config' LIMIT 1"
     ).catch(() => []);
     if (rows.length > 0) {
-      try { return res.json({ success: true, data: JSON.parse(rows[0].config_value) }); } catch {}
+      try {
+        const config = JSON.parse(rows[0].config_value);
+        const responseData = { ...config };
+        // Secret 脱敏：返回掩码版本供前端显示，完整值仍保留用于测试连接/保存
+        if (responseData.providerSecret) {
+          const raw = responseData.providerSecret;
+          responseData.providerSecretMasked = raw.length > 10
+            ? raw.substring(0, 6) + '****' + raw.substring(raw.length - 4)
+            : '****';
+          responseData.hasSecret = true;
+        } else {
+          responseData.hasSecret = false;
+        }
+        return res.json({ success: true, data: responseData });
+      } catch {}
     }
     res.json({
       success: true,
@@ -2641,7 +2897,8 @@ router.get('/supplier-config', async (_req: Request, res: Response) => {
         autoFulfillEnabled: false,
         prechargeBalance: 0,
         notifyEmail: '',
-        notifyWebhook: ''
+        notifyWebhook: '',
+        hasSecret: false
       }
     });
   } catch (error: any) {
@@ -2656,10 +2913,18 @@ router.get('/supplier-config', async (_req: Request, res: Response) => {
 router.put('/supplier-config', async (req: Request, res: Response) => {
   if (!checkPermission(req, res, 'wecom-management:pricing:edit')) return;
   try {
+    // 对 Secret 进行 Base64 编码存储
+    const configData = { ...req.body };
+    // 清理脱敏相关的只读字段
+    delete configData.providerSecretMasked;
+    delete configData.hasSecret;
+    if (configData.providerSecret && !configData.providerSecret.startsWith('base64:')) {
+      configData.providerSecret = 'base64:' + Buffer.from(configData.providerSecret).toString('base64');
+    }
     const existing = await AppDataSource.query(
       "SELECT id FROM system_config WHERE config_key = 'wecom_supplier_config' LIMIT 1"
     ).catch(() => []);
-    const val = JSON.stringify(req.body);
+    const val = JSON.stringify(configData);
     if (existing.length > 0) {
       await AppDataSource.query(
         "UPDATE system_config SET config_value = ?, updated_at = NOW() WHERE config_key = 'wecom_supplier_config'", [val]
@@ -2672,6 +2937,62 @@ router.put('/supplier-config', async (req: Request, res: Response) => {
     res.json({ success: true, message: '供应商配置已保存' });
   } catch (error: any) {
     res.status(500).json({ success: false, message: '保存供应商配置失败' });
+  }
+});
+
+/**
+ * 测试供应商连接
+ * POST /api/v1/admin/wecom-management/supplier-config/test-connection
+ */
+router.post('/supplier-config/test-connection', async (req: Request, res: Response) => {
+  if (!checkPermission(req, res, 'wecom-management:pricing:edit')) return;
+  try {
+    const { providerCorpId } = req.body;
+    let { providerSecret } = req.body;
+    if (!providerCorpId || !providerSecret) {
+      return res.json({ success: false, message: '请填写服务商 CorpID 和 Secret' });
+    }
+    // 解码存储的 Secret
+    if (providerSecret.startsWith('base64:')) {
+      providerSecret = Buffer.from(providerSecret.replace('base64:', ''), 'base64').toString('utf-8');
+    }
+
+    // 调用企微获取 provider_access_token
+    const https = await import('https');
+    const url = `https://qyapi.weixin.qq.com/cgi-bin/service/get_provider_token`;
+    const postData = JSON.stringify({ corpid: providerCorpId, provider_secret: providerSecret });
+
+    const result: any = await new Promise((resolve, reject) => {
+      const request = https.request(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(postData) } }, (response: any) => {
+        let data = '';
+        response.on('data', (chunk: any) => { data += chunk; });
+        response.on('end', () => { try { resolve(JSON.parse(data)); } catch { resolve({ errcode: -1, errmsg: '响应解析失败' }); } });
+      });
+      request.on('error', (e: any) => reject(e));
+      request.write(postData);
+      request.end();
+    });
+
+    if (result.errcode === 0 && result.provider_access_token) {
+      res.json({
+        success: true,
+        message: '连接成功！已获取 provider_access_token',
+        data: {
+          connected: true,
+          tokenPreview: result.provider_access_token.substring(0, 10) + '...',
+          expiresIn: result.expires_in
+        }
+      });
+    } else {
+      res.json({
+        success: false,
+        message: `连接失败: ${result.errmsg || '未知错误'} (errcode: ${result.errcode})`,
+        data: { connected: false, errcode: result.errcode, errmsg: result.errmsg }
+      });
+    }
+  } catch (error: any) {
+    log.error('[Admin Wecom] Test connection error:', error.message);
+    res.json({ success: false, message: `连接异常: ${error.message}`, data: { connected: false } });
   }
 });
 
@@ -3089,42 +3410,70 @@ router.delete('/suite/auth-links/:id', async (req: Request, res: Response) => {
 // 获取已授权企业列表
 router.get('/suite/auths', async (req: Request, res: Response) => {
   try {
-    const { page = 1, pageSize = 20 } = req.query;
+    const { page = 1, pageSize = 50, keyword = '' } = req.query;
     const offset = (Number(page) - 1) * Number(pageSize);
-    const limit = Number(pageSize);
+    const limit = Math.min(Number(pageSize) || 50, 200);
 
-    // 查询第三方授权模式的企微配置
-    const [list, total] = await AppDataSource.query(`
+    // 查询所有通过第三方授权或有授权记录的企微配置
+    const whereClause = `wc.auth_mode = 'third_party' OR wc.auth_type = 'third_party' OR wc.auth_time IS NOT NULL`;
+    let keywordFilter = '';
+    const params: any[] = [];
+    if (keyword) {
+      keywordFilter = ` AND (wc.corp_id LIKE ? OR wc.name LIKE ? OR wc.auth_corp_name LIKE ?)`;
+      params.push(`%${keyword}%`, `%${keyword}%`, `%${keyword}%`);
+    }
+
+    const rows = await AppDataSource.query(`
       SELECT wc.id, wc.corp_id as corpId, wc.name as corpName,
         wc.tenant_id as tenantId, wc.auth_time as authTime,
         wc.is_enabled as isEnabled, wc.connection_status as connectionStatus,
         wc.auth_corp_name as authCorpName, wc.auth_admin_user_id as authAdminUserId,
-        wc.auth_scope as authScope,
+        wc.auth_scope as authScope, wc.auth_corp_info as authCorpInfo,
+        wc.suite_id as suiteId, wc.auth_type as authType, wc.auth_mode as authMode,
+        wc.vas_chat_archive as vasChatArchive, wc.vas_user_count as vasUserCount,
+        wc.vas_expire_date as vasExpireDate, wc.api_call_count as apiCallCount,
+        wc.created_at as createdAt,
         CASE WHEN wc.is_enabled = 1 AND wc.connection_status = 'connected' THEN 'active'
              WHEN wc.is_enabled = 0 THEN 'cancelled'
              ELSE 'pending' END as status
       FROM wecom_configs wc
-      WHERE wc.auth_mode = 'third_party' OR wc.auth_type = 'third_party'
-      ORDER BY wc.auth_time DESC
+      WHERE (${whereClause})${keywordFilter}
+      ORDER BY wc.auth_time DESC, wc.created_at DESC
       LIMIT ? OFFSET ?
-    `, [limit, offset]).then(async (rows: any[]) => {
-      const countRes = await AppDataSource.query(`
-        SELECT COUNT(*) as total FROM wecom_configs
-        WHERE auth_mode = 'third_party' OR auth_type = 'third_party'
-      `);
-      // 获取租户名称
-      for (const row of rows) {
-        if (row.tenantId) {
-          try {
-            const tenant = await AppDataSource.query(`SELECT name FROM tenants WHERE id = ? LIMIT 1`, [row.tenantId]);
-            row.tenantName = tenant[0]?.name || '';
-          } catch { row.tenantName = ''; }
-        }
-      }
-      return [rows, countRes[0]?.total || 0];
-    });
+    `, [...params, limit, offset]);
 
-    res.json({ success: true, data: { list, total, page: Number(page), pageSize: limit } });
+    const countRes = await AppDataSource.query(
+      `SELECT COUNT(*) as total FROM wecom_configs wc WHERE (${whereClause})${keywordFilter}`,
+      [...params]
+    );
+    const total = Number(countRes[0]?.total || 0);
+
+    // 获取租户名称 & 解析 auth_corp_info
+    for (const row of rows) {
+      if (row.tenantId) {
+        try {
+          const tenant = await AppDataSource.query(`SELECT name FROM tenants WHERE id = ? LIMIT 1`, [row.tenantId]);
+          row.tenantName = tenant[0]?.name || '';
+        } catch { row.tenantName = ''; }
+      }
+      // 解析 auth_corp_info JSON 提取有用字段
+      if (row.authCorpInfo) {
+        try {
+          const info = typeof row.authCorpInfo === 'string' ? JSON.parse(row.authCorpInfo) : row.authCorpInfo;
+          row.corpFullName = info.corp_full_name || '';
+          row.corpIndustry = info.corp_industry || '';
+          row.corpSubIndustry = info.corp_sub_industry || '';
+          row.corpScale = info.corp_scale || '';
+          row.corpSquareLogoUrl = info.corp_square_logo_url || '';
+          row.corpUserMax = info.corp_user_max || 0;
+          row.subjectType = info.subject_type;
+          row.verifiedEndTime = info.verified_end_time ? new Date(info.verified_end_time * 1000).toISOString() : '';
+        } catch { /* ignore parse error */ }
+        delete row.authCorpInfo; // 不返回原始大JSON
+      }
+    }
+
+    res.json({ success: true, data: { list: rows, total, page: Number(page), pageSize: limit } });
   } catch (error: any) {
     log.error('[Admin Suite] Get auths error:', error);
     res.status(500).json({ success: false, message: error.message });

@@ -213,18 +213,56 @@
           </div>
 
           <el-table :data="pagedAuthList" v-loading="authLoading" stripe>
-            <el-table-column prop="corpName" label="企业名称" min-width="150" />
-            <el-table-column prop="corpId" label="CorpID" width="180" show-overflow-tooltip />
+            <el-table-column label="企业信息" min-width="220">
+              <template #default="{ row }">
+                <div style="display: flex; align-items: center; gap: 8px">
+                  <img v-if="row.corpSquareLogoUrl" :src="row.corpSquareLogoUrl" style="width: 32px; height: 32px; border-radius: 4px; flex-shrink: 0" />
+                  <div style="min-width: 0">
+                    <div style="font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap" :title="row.corpFullName || row.authCorpName || row.corpName">
+                      {{ row.authCorpName || row.corpName }}
+                    </div>
+                    <div v-if="row.corpFullName && row.corpFullName !== row.authCorpName" style="font-size: 12px; color: #909399; overflow: hidden; text-overflow: ellipsis; white-space: nowrap" :title="row.corpFullName">
+                      {{ row.corpFullName }}
+                    </div>
+                  </div>
+                </div>
+              </template>
+            </el-table-column>
+            <el-table-column prop="corpId" label="CorpID" width="170" show-overflow-tooltip />
+            <el-table-column label="行业/规模" width="140">
+              <template #default="{ row }">
+                <div v-if="row.corpIndustry || row.corpScale">
+                  <div v-if="row.corpIndustry" style="font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap" :title="`${row.corpIndustry}${row.corpSubIndustry ? ' - ' + row.corpSubIndustry : ''}`">
+                    {{ row.corpIndustry }}
+                  </div>
+                  <div v-if="row.corpScale" style="font-size: 12px; color: #909399">{{ row.corpScale }}</div>
+                </div>
+                <span v-else style="color: #c0c4cc; font-size: 12px">-</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="授权管理员" width="120" show-overflow-tooltip>
+              <template #default="{ row }">
+                <span v-if="row.authAdminUserId">{{ row.authAdminUserId }}</span>
+                <span v-else style="color: #c0c4cc; font-size: 12px">-</span>
+              </template>
+            </el-table-column>
             <el-table-column label="关联租户" width="140">
               <template #default="{ row }">
                 <span v-if="row.tenantId" style="color: #67c23a">{{ row.tenantName || row.tenantId }}</span>
                 <el-button v-else v-permission="'wecom-management:suite:edit'" type="warning" link size="small" @click="openBindDialog(row)">待关联</el-button>
               </template>
             </el-table-column>
-            <el-table-column label="授权时间" width="160">
+            <el-table-column label="授权时间" width="155">
               <template #default="{ row }">{{ formatDate(row.authTime) }}</template>
             </el-table-column>
-            <el-table-column label="状态" width="90" align="center">
+            <el-table-column label="连接状态" width="90" align="center">
+              <template #default="{ row }">
+                <el-tag :type="row.connectionStatus === 'connected' ? 'success' : row.connectionStatus === 'disconnected' ? 'danger' : 'info'" size="small" effect="plain">
+                  {{ { connected: '已连接', disconnected: '已断开', pending: '待连接' }[row.connectionStatus] || row.connectionStatus || '未知' }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="状态" width="85" align="center">
               <template #default="{ row }">
                 <el-tag :type="row.status === 'active' ? 'success' : row.status === 'pending' ? 'warning' : 'info'" size="small">
                   {{ { active: '活跃', pending: '待处理', cancelled: '已取消' }[row.status] || row.status }}
@@ -636,6 +674,61 @@
         <el-button v-permission="'wecom-management:suite:edit'" type="primary" @click="handleBindTenant" :loading="binding" :disabled="!bindTenantId || bindTenantId === '__loadmore__' || bindTenantId === '__empty__'">确认关联</el-button>
       </template>
     </el-dialog>
+
+    <!-- 授权企业详情弹窗 -->
+    <el-dialog v-model="showAuthDetailDialog" title="授权企业详情" width="680px">
+      <div v-if="authDetailData">
+        <div v-if="authDetailData.corpSquareLogoUrl" style="text-align: center; margin-bottom: 12px">
+          <img :src="authDetailData.corpSquareLogoUrl" style="width: 48px; height: 48px; border-radius: 8px" />
+        </div>
+        <el-descriptions :column="2" border size="small">
+          <el-descriptions-item label="企业简称">{{ authDetailData.authCorpName || authDetailData.corpName || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="企业全称">{{ authDetailData.corpFullName || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="CorpID">{{ authDetailData.corpId }}</el-descriptions-item>
+          <el-descriptions-item label="SuiteID">{{ authDetailData.suiteId || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="行业">
+            {{ authDetailData.corpIndustry ? `${authDetailData.corpIndustry}${authDetailData.corpSubIndustry ? ' - ' + authDetailData.corpSubIndustry : ''}` : '-' }}
+          </el-descriptions-item>
+          <el-descriptions-item label="企业规模">{{ authDetailData.corpScale || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="授权管理员">{{ authDetailData.authAdminUserId || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="授权时间">{{ formatDate(authDetailData.authTime) }}</el-descriptions-item>
+          <el-descriptions-item label="授权模式">
+            <el-tag :type="authDetailData.authMode === 'third_party' ? 'warning' : ''" size="small">
+              {{ authDetailData.authMode === 'third_party' ? '第三方应用' : '自建应用' }}
+            </el-tag>
+          </el-descriptions-item>
+          <el-descriptions-item label="连接状态">
+            <el-tag :type="authDetailData.connectionStatus === 'connected' ? 'success' : authDetailData.connectionStatus === 'disconnected' ? 'danger' : 'info'" size="small">
+              {{ { connected: '已连接', disconnected: '已断开', pending: '待连接' }[authDetailData.connectionStatus] || '未知' }}
+            </el-tag>
+          </el-descriptions-item>
+          <el-descriptions-item label="启用状态">
+            <el-tag :type="authDetailData.isEnabled ? 'success' : 'danger'" size="small">{{ authDetailData.isEnabled ? '已启用' : '已停用' }}</el-tag>
+          </el-descriptions-item>
+          <el-descriptions-item label="业务状态">
+            <el-tag :type="authDetailData.status === 'active' ? 'success' : authDetailData.status === 'pending' ? 'warning' : 'info'" size="small">
+              {{ { active: '活跃', pending: '待处理', cancelled: '已取消' }[authDetailData.status] || authDetailData.status }}
+            </el-tag>
+          </el-descriptions-item>
+          <el-descriptions-item label="关联租户">
+            <span v-if="authDetailData.tenantId" style="color: #67c23a">{{ authDetailData.tenantName || authDetailData.tenantId }}</span>
+            <span v-else style="color: #e6a23c">未关联</span>
+          </el-descriptions-item>
+          <el-descriptions-item label="增值服务">
+            <el-tag v-if="authDetailData.vasChatArchive" type="success" size="small">会话存档已开通 ({{ authDetailData.vasUserCount || 0 }}人)</el-tag>
+            <span v-else style="color: #c0c4cc">未开通</span>
+          </el-descriptions-item>
+          <el-descriptions-item label="增值到期" v-if="authDetailData.vasChatArchive">{{ authDetailData.vasExpireDate || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="API调用次数">{{ authDetailData.apiCallCount || 0 }}</el-descriptions-item>
+          <el-descriptions-item label="创建时间">{{ formatDate(authDetailData.createdAt) }}</el-descriptions-item>
+        </el-descriptions>
+      </div>
+      <template #footer>
+        <el-button @click="showAuthDetailDialog = false">关闭</el-button>
+        <el-button v-if="authDetailData && !authDetailData.tenantId" v-permission="'wecom-management:suite:edit'" type="warning" @click="showAuthDetailDialog = false; openBindDialog(authDetailData)">关联租户</el-button>
+      </template>
+    </el-dialog>
+
     <!-- 通知模板编辑弹窗 -->
     <el-dialog v-model="templateDialogVisible" :title="editingTemplate ? '编辑模板' : '添加模板'" width="520px" destroy-on-close>
       <el-form :model="templateForm" label-width="100px">
@@ -758,6 +851,10 @@ const generatedLink = ref('')
 const authLinkForm = ref({ type: 'general', tenantId: '', scope: 'full', expireDays: 7 })
 const showQrCodeDialog = ref(false)
 const authQrCanvas = ref<HTMLCanvasElement | null>(null)
+
+// Auth detail dialog
+const showAuthDetailDialog = ref(false)
+const authDetailData = ref<any>(null)
 
 // Bind dialog
 const showBindDialog = ref(false)
@@ -884,12 +981,12 @@ const copySuiteSecret = (field: 'suiteSecret' | 'providerSecret') => {
 const fetchAuths = async () => {
   authLoading.value = true
   try {
-    const res: any = await getSuiteAuths()
+    const res: any = await getSuiteAuths({ pageSize: 200 })
     const list = res?.data?.list || (Array.isArray(res?.data) ? res.data : (Array.isArray(res) ? res : []))
     authList.value = list
     authListPage.value = 1
     authStats.value = {
-      total: list.length,
+      total: res?.data?.total || list.length,
       active: list.filter((a: any) => a.status === 'active').length,
       pending: list.filter((a: any) => a.status === 'pending').length,
       cancelled: list.filter((a: any) => a.status === 'cancelled').length,
@@ -969,7 +1066,8 @@ const downloadAuthQr = () => {
 }
 
 const viewAuthDetail = (row: any) => {
-  ElMessage.info(`授权详情: ${row.corpName} (${row.corpId})`)
+  authDetailData.value = row
+  showAuthDetailDialog.value = true
 }
 
 const bindableHasMore = computed(() => bindableCustomers.value.length < bindableTotal.value)

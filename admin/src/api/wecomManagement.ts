@@ -34,6 +34,7 @@ export const getPurchaseCostConfig = () => request.get('/wecom-management/purcha
 export const savePurchaseCostConfig = (data: any) => request.put('/wecom-management/purchase-cost', data)
 export const getSupplierConfig = () => request.get('/wecom-management/supplier-config')
 export const saveSupplierConfig = (data: any) => request.put('/wecom-management/supplier-config', data)
+export const testSupplierConnection = (data: { providerCorpId: string; providerSecret: string }) => request.post('/wecom-management/supplier-config/test-connection', data)
 
 // ==================== AI额度管理 ====================
 

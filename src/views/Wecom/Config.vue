@@ -428,7 +428,8 @@
 
 <script setup lang="ts">
 defineOptions({ name: 'WecomConfig' })
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Connection, CircleCheckFilled, Edit, Delete, Grid, List, CopyDocument, Link } from '@element-plus/icons-vue'
 import { getWecomConfigs, createWecomConfig, updateWecomConfig, deleteWecomConfig, testWecomConnection } from '@/api/wecom'
@@ -440,6 +441,8 @@ import ConfigApiDiagnostic from './components/ConfigApiDiagnostic.vue'
 import PackagePurchaseTab from './components/PackagePurchaseTab.vue'
 import { formatDateTime } from '@/utils/date'
 
+const route = useRoute()
+const router = useRouter()
 const loading = ref(false)
 const submitting = ref(false)
 const configList = ref<any[]>([])
@@ -597,32 +600,149 @@ const copyAuthLink = async () => {
 const openAuthLink = () => {
   if (!authLinkUrl.value) return
   window.open(authLinkUrl.value, '_blank')
+  // 打开授权链接后立即开始轮询，无需等待用户手动点击"下一步"
+  startPolling()
+}
+
+// 轮询相关
+let pollTimer: ReturnType<typeof setInterval> | null = null
+const pollStartTime = ref(0)
+const POLL_INTERVAL = 3000 // 3秒轮询一次
+const POLL_TIMEOUT = 120000 // 最长轮询2分钟
+
+const startPolling = () => {
+  stopPolling()
+  pollStartTime.value = Date.now()
+  pollTimer = setInterval(async () => {
+    // 超时自动停止
+    if (Date.now() - pollStartTime.value > POLL_TIMEOUT) {
+      stopPolling()
+      return
+    }
+    // 静默检测授权状态
+    try {
+      const found = await detectAuthSuccess()
+      if (found) {
+        stopPolling()
+      }
+    } catch { /* 静默忽略轮询错误 */ }
+  }, POLL_INTERVAL)
+}
+
+const stopPolling = () => {
+  if (pollTimer) {
+    clearInterval(pollTimer)
+    pollTimer = null
+  }
+}
+
+// 检测是否有新的或刚更新的授权记录
+const detectAuthSuccess = async (): Promise<boolean> => {
+  const res = await getWecomConfigs()
+  const configs = Array.isArray(res) ? res : []
+  const thirdPartyConfigs = configs.filter((c: any) => c.authType === 'third_party')
+  const oldThirdParty = configList.value.filter((c: any) => c.authType === 'third_party')
+
+  // 检测方式1: 数量增加（新增了企业）
+  if (thirdPartyConfigs.length > oldThirdParty.length) {
+    const newest = thirdPartyConfigs.sort((a: any, b: any) => new Date(b.authTime || b.createdAt).getTime() - new Date(a.authTime || a.createdAt).getTime())[0]
+    authResult.value = { corpName: newest.name || newest.authCorpName, corpId: newest.corpId, authUserName: newest.bindOperator || '管理员' }
+    authStep.value = 2
+    configList.value = configs
+    return true
+  }
+
+  // 检测方式2: 已有记录被更新（authTime在最近5分钟内变更）
+  const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000)
+  for (const cfg of thirdPartyConfigs) {
+    const authTime = cfg.authTime ? new Date(cfg.authTime) : null
+    if (authTime && authTime > fiveMinAgo) {
+      // 对比旧列表中同corpId的记录
+      const oldCfg = oldThirdParty.find((o: any) => o.corpId === cfg.corpId)
+      if (!oldCfg || !oldCfg.authTime || new Date(oldCfg.authTime).getTime() !== authTime.getTime()) {
+        authResult.value = { corpName: cfg.name || cfg.authCorpName, corpId: cfg.corpId, authUserName: cfg.bindOperator || '管理员' }
+        authStep.value = 2
+        configList.value = configs
+        return true
+      }
+    }
+  }
+
+  // 检测方式3: connectionStatus从非connected变为connected
+  for (const cfg of thirdPartyConfigs) {
+    const oldCfg = oldThirdParty.find((o: any) => o.corpId === cfg.corpId)
+    if (oldCfg && oldCfg.connectionStatus !== 'connected' && cfg.connectionStatus === 'connected') {
+      authResult.value = { corpName: cfg.name || cfg.authCorpName, corpId: cfg.corpId, authUserName: cfg.bindOperator || '管理员' }
+      authStep.value = 2
+      configList.value = configs
+      return true
+    }
+  }
+
+  return false
 }
 
 const checkAuthResult = async () => {
   checkingAuth.value = true
   try {
-    const res = await getWecomConfigs()
-    const configs = Array.isArray(res) ? res : []
-    const thirdPartyConfigs = configs.filter((c: any) => c.authType === 'third_party')
-    if (thirdPartyConfigs.length > configList.value.filter((c: any) => c.authType === 'third_party').length) {
-      const newest = thirdPartyConfigs[thirdPartyConfigs.length - 1]
-      authResult.value = { corpName: newest.name || newest.authCorpName, corpId: newest.corpId, authUserName: newest.bindOperator || '管理员' }
-      authStep.value = 2
-      configList.value = configs
-    } else {
+    const found = await detectAuthSuccess()
+    if (!found) {
       ElMessage.warning('暂未检测到新的授权记录。请确认：\n1. 已在企微手机端完成扫码\n2. 已点击「同意授权」\n3. 授权范围已勾选所需权限')
     }
   } catch { ElMessage.error('检查授权状态失败') }
   finally { checkingAuth.value = false }
 }
 
+// 监听authStep变化，Step 1时开始轮询
+watch(authStep, (newStep) => {
+  if (newStep === 1) {
+    startPolling()
+  } else {
+    stopPolling()
+  }
+})
+
+// 监听弹窗关闭，停止轮询
+watch(showAuthGuide, (visible) => {
+  if (!visible) {
+    stopPolling()
+  }
+})
+
 const finishAuth = () => {
   showAuthGuide.value = false; authStep.value = 0; authLinkUrl.value = ''; authResult.value = null
   fetchList()
 }
 
-onMounted(() => { fetchList(); checkSelfBuildPermission() })
+onMounted(async () => {
+  fetchList()
+  checkSelfBuildPermission()
+  // 处理授权回调重定向（auth=success URL参数）
+  if (route.query.auth === 'success') {
+    // 清除URL参数
+    router.replace({ path: route.path, query: {} })
+    // 延迟检测授权结果（等待数据库写入完成）
+    setTimeout(async () => {
+      try {
+        const res = await getWecomConfigs()
+        const configs = Array.isArray(res) ? res : []
+        const thirdPartyConfigs = configs.filter((c: any) => c.authType === 'third_party')
+        if (thirdPartyConfigs.length > 0) {
+          const newest = thirdPartyConfigs.sort((a: any, b: any) => new Date(b.authTime || b.createdAt).getTime() - new Date(a.authTime || a.createdAt).getTime())[0]
+          authResult.value = { corpName: newest.name || newest.authCorpName || route.query.corp, corpId: newest.corpId, authUserName: newest.bindOperator || '管理员' }
+          authStep.value = 2
+          showAuthGuide.value = true
+          configList.value = configs
+          ElMessage.success('企微授权成功！')
+        }
+      } catch { /* 静默处理 */ }
+    }, 500)
+  }
+})
+
+onUnmounted(() => {
+  stopPolling()
+})
 </script>
 
 <style scoped lang="scss">

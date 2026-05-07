@@ -45,12 +45,6 @@
               <el-option label="已退款" value="refunded" />
               <el-option label="失败" value="failed" />
             </el-select>
-            <el-select v-model="filter.type" placeholder="套餐类型" clearable style="width:120px" @change="doSearch">
-              <el-option label="企微套餐" value="wecom" />
-              <el-option label="会话存档" value="archive" />
-              <el-option label="获客助手" value="acquisition" />
-              <el-option label="AI助手" value="ai" />
-            </el-select>
             <el-input v-model="filter.keyword" placeholder="搜索订单号/租户" clearable style="width:200px" @keyup.enter="doSearch" />
             <el-button type="primary" @click="doSearch" :loading="loading">搜索</el-button>
             <el-button @click="resetFilter">重置</el-button>
@@ -68,21 +62,21 @@
               <div class="cell-sub">{{ fmtDate(row.createdAt) }}</div>
             </template>
           </el-table-column>
-          <el-table-column label="租户" min-width="130">
+          <el-table-column label="租户" min-width="200">
             <template #default="{ row }">
-              <div class="cell-main">{{ row.tenantName || row.tenantId || '-' }}</div>
-              <div class="cell-sub" v-if="row.tenantId">{{ row.tenantId.substring(0, 8) }}…</div>
+              <div class="cell-main">{{ row.tenantName || '-' }}<span v-if="row.tenantCode" class="cell-sub" style="margin-left:6px">{{ row.tenantCode }}</span></div>
+              <div class="cell-sub" v-if="row.wecomCorpName || row.wecomCorpId">{{ row.wecomCorpName || '企业' }} · {{ row.wecomCorpId || '-' }}</div>
             </template>
           </el-table-column>
           <el-table-column label="类型" width="105" align="center">
             <template #default="{ row }">
-              <el-tag :type="typeColor(row.type)" size="small" effect="light">{{ typeText(row.type) }}</el-tag>
+              <el-tag :type="typeColor(row.type || row.orderType || row.serviceType)" size="small" effect="light">{{ typeText(row.type || row.orderType || row.serviceType) }}</el-tag>
             </template>
           </el-table-column>
           <el-table-column label="套餐 / 人数" min-width="140">
             <template #default="{ row }">
-              <div class="cell-main">{{ row.packageName || '-' }}</div>
-              <div class="cell-sub" v-if="row.userCount || row.maxMembers">{{ row.userCount || row.maxMembers }} 人</div>
+              <div class="cell-main">{{ row.packageName || row.planName || '-' }}</div>
+              <div class="cell-sub" v-if="row.userCount || row.maxMembers || row.seats">{{ row.userCount || row.maxMembers || row.seats }} 人</div>
             </template>
           </el-table-column>
           <el-table-column label="金额" width="95" align="right">
@@ -332,7 +326,14 @@
           <el-row :gutter="24">
             <el-col :span="12">
               <el-card shadow="never" class="inner-card">
-                <template #header><div class="ic-head">服务商应用凭证</div></template>
+                <template #header>
+                  <div class="ic-head-row">
+                    <span class="ic-head">服务商应用凭证</span>
+                    <el-button v-permission="'wecom-management:orders:edit'" type="success" size="small" plain @click="testConnection" :loading="testingConnection">
+                      {{ testingConnection ? '测试中...' : '测试连接' }}
+                    </el-button>
+                  </div>
+                </template>
                 <div class="frow">
                   <label>服务商 CorpID</label>
                   <el-input v-model="supplierConfig.providerCorpId" placeholder="ww开头的服务商企业ID" style="width:260px" />
@@ -344,6 +345,14 @@
                 <div class="frow">
                   <label>代购 API 地址</label>
                   <el-input v-model="supplierConfig.orderApiUrl" placeholder="留空使用企微官方默认接口" style="width:260px" />
+                </div>
+                <!-- 连接状态 -->
+                <div v-if="connectionStatus" class="frow" style="margin-top:8px">
+                  <label>连接状态</label>
+                  <el-tag :type="connectionStatus.connected ? 'success' : 'danger'" size="small">
+                    {{ connectionStatus.connected ? '已连接' : '未连接' }}
+                  </el-tag>
+                  <span style="font-size:12px;color:#86909c;margin-left:8px">{{ connectionStatus.message }}</span>
                 </div>
               </el-card>
             </el-col>
@@ -373,11 +382,14 @@
             <template #title><strong>如何配置企微服务商代购</strong></template>
             <div style="margin-top:8px;line-height:2">
               <b>当前阶段（推荐手动履约）：</b>
-              客户支付 → 收到待履约通知 → 登录企微服务商后台手动下单 → 在订单列表标记"履约"完成，系统自动激活租户权限。
+              客户支付 → 收到待履约通知 → 登录企微服务商后台手动下单 → 在订单列表标记“履约”完成，系统自动激活租户权限。
               <br>
               <b>自动履约：</b>
               在 <a href="https://open.work.weixin.qq.com/" target="_blank" style="color:#409eff">企微开放平台</a>
               创建服务商应用，填写凭证并开启自动履约开关后即可。
+              <br>
+              <b>秘钥安全：</b>
+              服务商 Secret 会以 Base64 编码存储，不会明文保存在数据库中。
             </div>
           </el-alert>
           <div class="cfg-footer">
@@ -400,6 +412,24 @@
               <el-button type="primary" @click="activeTab = 'supplier'">前往供应商配置</el-button>
             </template>
           </el-result>
+
+          <!-- 业务流程说明 -->
+          <el-divider content-position="left">代购业务流程</el-divider>
+          <el-steps direction="vertical" :active="3" finish-status="success" style="max-width:600px;margin:0 auto">
+            <el-step title="客户下单" description="客户在会员中心或CRM企微管理的会话存档套餐页购买，生成代购订单" />
+            <el-step title="支付确认" description="客户完成支付（微信/支付宝/对公转账），订单进入待履约状态" />
+            <el-step title="代购履约" description="手动模式：管理员在企微服务商后台下单并标记履约；自动模式：系统自动调用API下单" />
+            <el-step title="权限激活" description="履约成功后系统自动激活租户会话存档权限，更新席位数和有效期" />
+            <el-step title="确认函提交" description="企业在企业微信或服务商应用授权上传确认函（由企业自行处理，无需平台介入）" />
+          </el-steps>
+
+          <el-alert type="warning" :closable="false" style="margin-top:20px">
+            <template #title><strong>关于确认函</strong></template>
+            <div style="margin-top:6px;font-size:13px;line-height:1.8;color:#606266">
+              企业微信会话存档开通后，企业需在企业微信后台或通过服务商应用授权上传《会话存档确认函》。
+              此流程由企业客户自行完成，平台无需介入处理。
+            </div>
+          </el-alert>
         </div>
       </el-tab-pane>
 
@@ -433,20 +463,160 @@
     </el-dialog>
 
     <!-- ===== 详情弹窗 ===== -->
-    <el-dialog v-model="showDetailDlg" title="订单详情" width="520px">
-      <el-descriptions v-if="detailRow" :column="2" border>
-        <el-descriptions-item label="订单号" :span="2">{{ detailRow.orderNo || detailRow.id }}</el-descriptions-item>
-        <el-descriptions-item label="租户">{{ detailRow.tenantName }}</el-descriptions-item>
-        <el-descriptions-item label="类型">{{ typeText(detailRow.type) }}</el-descriptions-item>
-        <el-descriptions-item label="套餐">{{ detailRow.packageName }}</el-descriptions-item>
-        <el-descriptions-item label="人数">{{ detailRow.userCount || detailRow.maxMembers || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="金额">¥{{ detailRow.amount }}</el-descriptions-item>
-        <el-descriptions-item label="支付方式">{{ payText(detailRow.payType) }}</el-descriptions-item>
-        <el-descriptions-item label="状态">{{ statusText(detailRow.status, detailRow.fulfillmentStatus) }}</el-descriptions-item>
-        <el-descriptions-item label="创建时间">{{ fmtDate(detailRow.createdAt) }}</el-descriptions-item>
-        <el-descriptions-item label="履约时间">{{ fmtDate(detailRow.fulfilledAt) }}</el-descriptions-item>
-        <el-descriptions-item label="备注" :span="2">{{ detailRow.remark || detailRow.fulfillNote || '-' }}</el-descriptions-item>
-      </el-descriptions>
+    <el-dialog v-model="showDetailDlg" title="订单详情" width="740px" top="5vh">
+      <div v-if="detailRow" class="detail-content">
+        <!-- 基本信息 -->
+        <el-descriptions :column="2" border size="small">
+          <el-descriptions-item label="订单号" :span="2">
+            <span style="font-weight:600;font-size:14px">{{ detailRow.orderNo || detailRow.id || '-' }}</span>
+            <el-tag :type="statusColor(detailRow.status, detailRow.fulfillmentStatus)" size="small" effect="light" style="margin-left:8px">
+              {{ statusText(detailRow.status, detailRow.fulfillmentStatus) }}
+            </el-tag>
+          </el-descriptions-item>
+          <el-descriptions-item label="租户名称">{{ detailRow.tenantName || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="租户编码">{{ detailRow.tenantCode || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="租户ID">
+            <span style="font-size:11px;color:#86909c">{{ detailRow.tenantId || '-' }}</span>
+          </el-descriptions-item>
+          <el-descriptions-item label="关联企微">{{ detailRow.wecomCorpName || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="企业ID">
+            <span style="font-family:monospace;font-size:12px">{{ detailRow.wecomCorpId || '-' }}</span>
+          </el-descriptions-item>
+          <el-descriptions-item label="联系人">{{ detailRow.contactName || detailRow.contact || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="联系电话">{{ detailRow.contactPhone || detailRow.phone || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="联系邮箱">{{ detailRow.contactEmail || detailRow.email || '-' }}</el-descriptions-item>
+        </el-descriptions>
+
+        <el-divider content-position="left">服务信息</el-divider>
+        <el-descriptions :column="2" border size="small">
+          <el-descriptions-item label="服务类型">
+            <el-tag :type="typeColor(detailRow.type || detailRow.orderType || detailRow.serviceType)" size="small" effect="light">{{ typeText(detailRow.type || detailRow.orderType || detailRow.serviceType) }}</el-tag>
+          </el-descriptions-item>
+          <el-descriptions-item label="服务版本">
+            <span v-if="detailRow.editionType === 'enterprise'" style="color:#409eff;font-weight:500">企业版</span>
+            <span v-else-if="detailRow.editionType === 'service'" style="color:#e6a23c;font-weight:500">服务版</span>
+            <span v-else>{{ detailRow.editionType || '服务版' }}</span>
+          </el-descriptions-item>
+          <el-descriptions-item label="套餐名称">{{ detailRow.packageName || detailRow.planName || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="授权人数">
+            <span style="font-weight:600;color:#1d2129">{{ detailRow.userCount || detailRow.maxMembers || detailRow.seats || '-' }}</span> 人
+          </el-descriptions-item>
+          <el-descriptions-item label="服务时长">{{ detailRow.duration || 1 }} {{ (detailRow.durationUnit === 'month' ? '月' : '年') }}</el-descriptions-item>
+          <el-descriptions-item label="购买方式">
+            <span v-if="detailRow.purchaseMode === 'self_service'">自购服务费</span>
+            <span v-else>平台代购</span>
+          </el-descriptions-item>
+        </el-descriptions>
+
+        <el-divider content-position="left">费用信息</el-divider>
+        <el-descriptions :column="3" border size="small">
+          <el-descriptions-item label="订单金额">
+            <span v-if="!detailRow.amount || +detailRow.amount === 0" class="free-tag">免费</span>
+            <span v-else class="price-tag" style="font-size:15px">¥{{ Number(detailRow.amount || 0).toLocaleString() }}</span>
+          </el-descriptions-item>
+          <el-descriptions-item label="采购成本">
+            <span v-if="detailRow.costPrice" class="price-tag">¥{{ Number(detailRow.costPrice).toLocaleString() }}</span>
+            <span v-else class="cell-sub">—</span>
+          </el-descriptions-item>
+          <el-descriptions-item label="利润">
+            <span v-if="detailRow.costPrice && detailRow.amount"
+              :class="(+detailRow.amount - +detailRow.costPrice) >= 0 ? 'profit-pos' : 'profit-neg'">
+              ¥{{ (+detailRow.amount - +detailRow.costPrice).toLocaleString() }}
+            </span>
+            <span v-else class="cell-sub">—</span>
+          </el-descriptions-item>
+          <el-descriptions-item label="单价">
+            <span v-if="detailRow.unitPrice">¥{{ Number(detailRow.unitPrice).toLocaleString() }}/人/年</span>
+            <span v-else-if="detailRow.amount && (detailRow.userCount || detailRow.maxMembers)">
+              ¥{{ Math.round(+detailRow.amount / (+detailRow.userCount || +detailRow.maxMembers || 1)).toLocaleString() }}/人/年
+            </span>
+            <span v-else class="cell-sub">—</span>
+          </el-descriptions-item>
+          <el-descriptions-item label="利润率">
+            <span v-if="detailRow.costPrice && detailRow.amount && +detailRow.amount > 0"
+              :class="((+detailRow.amount - +detailRow.costPrice) / +detailRow.amount * 100) >= 20 ? 'profit-pos' : 'profit-neg'">
+              {{ ((+detailRow.amount - +detailRow.costPrice) / +detailRow.amount * 100).toFixed(1) }}%
+            </span>
+            <span v-else class="cell-sub">—</span>
+          </el-descriptions-item>
+          <el-descriptions-item label="折扣">
+            <span v-if="detailRow.discount">{{ (detailRow.discount * 100).toFixed(0) }}%</span>
+            <span v-else class="cell-sub">—</span>
+          </el-descriptions-item>
+          <el-descriptions-item label="支付方式">{{ payText(detailRow.payType) }}</el-descriptions-item>
+          <el-descriptions-item label="支付时间">{{ fmtDate(detailRow.paidAt) || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="到期时间">
+            <span v-if="detailRow.expireDate" :style="{ color: new Date(detailRow.expireDate) < new Date() ? '#f56c6c' : '#67c23a' }">
+              {{ fmtDate(detailRow.expireDate) }}
+            </span>
+            <span v-else>-</span>
+          </el-descriptions-item>
+        </el-descriptions>
+
+        <el-divider content-position="left">履约信息</el-divider>
+        <el-descriptions :column="2" border size="small">
+          <el-descriptions-item label="订单状态">
+            <el-tag :type="statusColor(detailRow.status, detailRow.fulfillmentStatus)" size="small" effect="light">
+              {{ statusText(detailRow.status, detailRow.fulfillmentStatus) }}
+            </el-tag>
+          </el-descriptions-item>
+          <el-descriptions-item label="履约方式">
+            <span v-if="detailRow.fulfillMethod === 'auto'" style="color:#409eff;font-weight:500">自动履约（API）</span>
+            <span v-else-if="detailRow.fulfillMethod === 'manual'" style="color:#67c23a;font-weight:500">手动履约</span>
+            <span v-else class="cell-sub">待履约</span>
+          </el-descriptions-item>
+          <el-descriptions-item label="创建时间">{{ fmtDate(detailRow.createdAt) }}</el-descriptions-item>
+          <el-descriptions-item label="更新时间">{{ fmtDate(detailRow.updatedAt) || fmtDate(detailRow.fulfilledAt) || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="履约时间">{{ fmtDate(detailRow.fulfilledAt) || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="操作人">{{ detailRow.operatorName || detailRow.operator || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="履约备注" :span="2">{{ detailRow.fulfillNote || detailRow.remark || '-' }}</el-descriptions-item>
+          <el-descriptions-item v-if="detailRow.refundedAt" label="退款时间">{{ fmtDate(detailRow.refundedAt) }}</el-descriptions-item>
+          <el-descriptions-item v-if="detailRow.refundReason" label="退款原因">{{ detailRow.refundReason }}</el-descriptions-item>
+          <el-descriptions-item v-if="detailRow.refundAmount" label="退款金额">
+            <span class="price-tag">¥{{ Number(detailRow.refundAmount).toLocaleString() }}</span>
+          </el-descriptions-item>
+        </el-descriptions>
+
+        <!-- 自动履约结果 -->
+        <template v-if="detailRow.autoResult">
+          <el-divider content-position="left">自动履约结果</el-divider>
+          <el-descriptions :column="2" border size="small">
+            <el-descriptions-item label="API状态">
+              <el-tag :type="detailRow.autoResult.api_called ? 'success' : 'danger'" size="small">
+                {{ detailRow.autoResult.api_called ? '已调用' : '未调用' }}
+              </el-tag>
+            </el-descriptions-item>
+            <el-descriptions-item label="Token预览">
+              <span style="font-family:monospace;font-size:11px">{{ detailRow.autoResult.provider_access_token || '-' }}</span>
+            </el-descriptions-item>
+            <el-descriptions-item label="执行结果" :span="2">
+              <el-alert :type="detailRow.autoResult.api_called ? 'success' : 'warning'" :closable="false" show-icon style="padding:4px 10px">
+                <template #title>{{ detailRow.autoResult.message || 'API调用完成' }}</template>
+              </el-alert>
+            </el-descriptions-item>
+          </el-descriptions>
+        </template>
+
+        <!-- 确认函说明 -->
+        <template v-if="detailRow.status === 'active' || detailRow.fulfillmentStatus === 'fulfilled'">
+          <el-divider content-position="left">确认函</el-divider>
+          <el-alert type="info" :closable="false" style="padding:8px 12px">
+            <template #title>企业需自行上传确认函</template>
+            <div style="font-size:12px;color:#606266;line-height:1.8;margin-top:4px">
+              会话存档开通后，企业需在企业微信后台或通过服务商应用授权上传《会话存档确认函》。此流程由企业客户自行完成，平台无需介入。
+            </div>
+          </el-alert>
+        </template>
+
+        <!-- 时间线 -->
+        <el-divider content-position="left">订单时间线</el-divider>
+        <el-steps :active="getTimelineStep(detailRow)" finish-status="success" simple style="margin-top:10px">
+          <el-step title="创建订单" :description="fmtDate(detailRow.createdAt)" />
+          <el-step title="已支付" :description="fmtDate(detailRow.paidAt) || ((detailRow.status === 'free' || +detailRow.amount === 0) ? '免费' : '待支付')" />
+          <el-step title="已履约" :description="fmtDate(detailRow.fulfilledAt) || '待履约'" />
+          <el-step title="已生效" :description="detailRow.status === 'active' ? '服务已激活' : '待激活'" />
+        </el-steps>
+      </div>
     </el-dialog>
 
     </el-card>
@@ -460,7 +630,7 @@ import { Refresh, InfoFilled, Delete } from '@element-plus/icons-vue'
 import {
   getPurchaseOrders, fulfillPurchaseOrder, refundPurchaseOrder,
   getPurchaseCostConfig, savePurchaseCostConfig,
-  getSupplierConfig, saveSupplierConfig
+  getSupplierConfig, saveSupplierConfig, testSupplierConnection
 } from '@/api/wecomManagement'
 
 const activeTab = ref('orders')
@@ -469,7 +639,7 @@ const orders = ref<any[]>([])
 const total = ref(0)
 const page = ref(1)
 const pageSize = ref(10)
-const filter = ref({ status: '', keyword: '', type: '' })
+const filter = ref({ status: '', keyword: '', type: 'archive' })
 const stats = ref({ pending: 0, fulfilled: 0, failed: 0, monthCost: 0, totalRevenue: 0 })
 
 const showFulfillDlg = ref(false)
@@ -498,15 +668,32 @@ const costConfig = ref<any>({
 
 const supplierLoading = ref(false)
 const savingSupplier = ref(false)
+const testingConnection = ref(false)
+const connectionStatus = ref<any>(null)
 const supplierConfig = ref<any>({
   providerCorpId: '', providerSecret: '', orderApiUrl: '',
   autoFulfillEnabled: false, prechargeBalance: 0, notifyEmail: '', notifyWebhook: ''
 })
 
-const typeText = (t: string) =>
-  ({ wecom: '企微套餐', archive: '会话存档', acquisition: '获客助手', ai: 'AI助手' }[t] || t || '未知')
-const typeColor = (t: string): any =>
-  ({ wecom: 'primary', archive: 'warning', acquisition: 'success', ai: '' }[t] || 'info')
+const typeText = (t: string) => {
+  const map: Record<string, string> = {
+    wecom: '企微套餐', archive: '会话存档', chat_archive: '会话存档',
+    acquisition: '获客助手', ai: 'AI助手', recharge: '企业充值',
+    enterprise: '企业版', service: '服务版', basic: '基础版',
+    mg_phone_quol: '获客助手', phone_quol: '获客助手',
+    vas_chat_archive: '会话存档', vas: '增值服务'
+  }
+  return map[t] || (t && !t.includes('_') ? t : '会话存档')
+}
+const typeColor = (t: string): any => {
+  const map: Record<string, string> = {
+    wecom: 'primary', archive: 'warning', chat_archive: 'warning',
+    acquisition: 'success', ai: '', recharge: 'primary',
+    enterprise: 'primary', service: 'warning', basic: 'info',
+    mg_phone_quol: 'success', vas_chat_archive: 'warning', vas: 'warning'
+  }
+  return map[t] || 'info'
+}
 const payText = (t: string) =>
   ({ wechat: '微信', alipay: '支付宝', bank: '银行转账', free: '免费' }[t] || t || '-')
 const statusText = (status: string, fs?: string) => {
@@ -554,7 +741,7 @@ const fetchOrders = async () => {
 }
 
 const doSearch = () => { page.value = 1; fetchOrders() }
-const resetFilter = () => { filter.value = { status: '', keyword: '', type: '' }; doSearch() }
+const resetFilter = () => { filter.value = { status: '', keyword: '', type: 'archive' }; doSearch() }
 
 const openFulfillDlg = (row: any) => {
   fulfillTarget.value = row; fulfillMethod.value = 'manual'; fulfillNote.value = ''; showFulfillDlg.value = true
@@ -638,6 +825,42 @@ const saveSupplier = async () => {
     ElMessage.success('供应商配置已保存')
   } catch (e: any) { ElMessage.error(e?.message || '保存失败') }
   savingSupplier.value = false
+}
+
+const testConnection = async () => {
+  if (!supplierConfig.value.providerCorpId || !supplierConfig.value.providerSecret) {
+    ElMessage.warning('请先填写服务商 CorpID 和 Secret')
+    return
+  }
+  testingConnection.value = true
+  connectionStatus.value = null
+  try {
+    const res: any = await testSupplierConnection({
+      providerCorpId: supplierConfig.value.providerCorpId,
+      providerSecret: supplierConfig.value.providerSecret
+    })
+    const data = res?.data || res
+    if (data?.success !== false && (data?.data?.connected || data?.connected)) {
+      connectionStatus.value = { connected: true, message: data?.message || '连接成功' }
+      ElMessage.success(data?.message || '连接成功')
+    } else {
+      connectionStatus.value = { connected: false, message: data?.message || '连接失败' }
+      ElMessage.error(data?.message || '连接失败')
+    }
+  } catch (e: any) {
+    connectionStatus.value = { connected: false, message: e?.message || '测试连接异常' }
+    ElMessage.error(e?.message || '测试连接异常')
+  }
+  testingConnection.value = false
+}
+
+const getTimelineStep = (row: any): number => {
+  if (!row) return 0
+  if (row.status === 'active' || row.fulfillmentStatus === 'fulfilled') return 3
+  if (row.fulfilledAt) return 2
+  if (row.paidAt || row.status === 'paid' || row.status === 'free' || +row.amount === 0) return 1
+  if (row.createdAt) return 0
+  return 0
 }
 
 onMounted(() => { fetchOrders(); fetchCostConfig(); fetchSupplierConfig() })

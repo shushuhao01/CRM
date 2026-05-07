@@ -44,7 +44,7 @@ router.get('/chat-archive/settings', authenticateToken, async (req: Request, res
           usedUsers: 0,
           status: 'inactive',
           expireDate: null,
-          hasSecret: !!config.chatArchiveSecret,
+          hasSecret: config.authType === 'third_party' ? !!config.permanentCode : !!config.chatArchiveSecret,
           hasPrivateKey: !!config.chatArchivePrivateKey
         }
       });
@@ -54,7 +54,7 @@ router.get('/chat-archive/settings', authenticateToken, async (req: Request, res
       success: true,
       data: {
         ...setting,
-        hasSecret: !!config.chatArchiveSecret,
+        hasSecret: config.authType === 'third_party' ? !!config.permanentCode : !!config.chatArchiveSecret,
         hasPrivateKey: !!config.chatArchivePrivateKey
       }
     });

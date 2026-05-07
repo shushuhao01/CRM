@@ -544,8 +544,22 @@ router.get('/callback/auth-url', async (req: Request, res: Response) => {
     }
 
     const preAuthCode = preAuthRes.data.pre_auth_code;
-    const redirectUri = `${req.protocol}://${req.get('host')}/api/v1/wecom/callback/auth-callback`;
-    const tenantId = (req.query.tenantId as string) || '';
+    // 优先使用 X-Forwarded-Proto 以支持反向代理(nginx)场景
+    const protocol = (req.headers['x-forwarded-proto'] as string) || req.protocol;
+    const redirectUri = `${protocol}://${req.get('host')}/api/v1/wecom/callback/auth-callback`;
+    // 从query参数或JWT token中提取tenantId
+    let tenantId = (req.query.tenantId as string) || '';
+    if (!tenantId) {
+      try {
+        const authHeader = req.headers.authorization;
+        const jwtToken = authHeader && authHeader.split(' ')[1];
+        if (jwtToken) {
+          const { JwtConfig } = require('../../config/jwt');
+          const payload = JwtConfig.verifyAccessToken(jwtToken);
+          tenantId = payload.tenantId || '';
+        }
+      } catch { /* JWT解析失败忽略 */ }
+    }
     const statePayload = tenantId ? `crm_auth_${tenantId}` : 'crm_auth';
     const authUrl = `https://open.work.weixin.qq.com/3rdapp/install?suite_id=${suiteId}&pre_auth_code=${preAuthCode}&redirect_uri=${encodeURIComponent(redirectUri)}&state=${encodeURIComponent(statePayload)}`;
 

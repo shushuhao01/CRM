@@ -239,7 +239,7 @@ router.get('/configs/:id/users', authenticateToken, async (req: Request, res: Re
       return res.status(404).json({ success: false, message: '企微配置不存在或已禁用' });
     }
 
-    if (!config.contactSecret) {
+    if (config.authType !== 'third_party' && !config.contactSecret) {
       return res.status(400).json({
         success: false,
         message: '未配置通讯录同步Secret，请在企微配置中填写通讯录Secret'
@@ -276,7 +276,7 @@ router.post('/configs/:id/sync-contacts', authenticateToken, requireAdmin, async
     if (!config) {
       return res.status(404).json({ success: false, message: '企微配置不存在或已禁用' });
     }
-    if (!config.contactSecret) {
+    if (config.authType !== 'third_party' && !config.contactSecret) {
       return res.status(400).json({ success: false, message: '未配置通讯录Secret' });
     }
 
@@ -334,7 +334,7 @@ router.get('/configs/:id/diagnose/:item', authenticateToken, async (req: Request
           break;
         }
         case 'address': {
-          if (!config.contactSecret) { status = 'none'; detail = '未配置通讯录Secret，请在Secret管理中配置'; break; }
+          if (config.authType !== 'third_party' && !config.contactSecret) { status = 'none'; detail = '未配置通讯录Secret，请在Secret管理中配置'; break; }
           try {
             const token = await WecomApiService.getAccessTokenByConfigId(configId, 'contact');
             if (!token) { status = 'fail'; detail = '通讯录Token获取失败，Secret可能无效'; break; }
@@ -405,7 +405,7 @@ router.get('/configs/:id/diagnose/:item', authenticateToken, async (req: Request
           break;
         }
         case 'archive': {
-          if (!config.chatArchiveSecret) { status = 'none'; detail = '未配置会话存档Secret，需企业先开通会话存档功能'; break; }
+          if (config.authType !== 'third_party' && !config.chatArchiveSecret) { status = 'none'; detail = '未配置会话存档Secret，需企业先开通会话存档功能'; break; }
           try {
             const token = await WecomApiService.getAccessTokenByConfigId(configId, 'chat');
             if (token) {
