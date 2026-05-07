@@ -65,9 +65,17 @@ router.get('/system-config', async (_req: Request, res: Response) => {
     ).catch(() => [])
 
     if (result && result.length > 0) {
+      const data = JSON.parse(result[0].config_value || '{}');
+      // 🔒 对敏感密钥脱敏返回
+      if (data.distributedConfig?.storage?.secretKey) {
+        data.distributedConfig.storage.secretKey = '******';
+      }
+      if (data.distributedConfig?.sms?.secretKey) {
+        data.distributedConfig.sms.secretKey = '******';
+      }
       res.json({
         success: true,
-        data: JSON.parse(result[0].config_value || '{}')
+        data
       })
     } else {
       res.json({
@@ -93,6 +101,35 @@ router.get('/system-config', async (_req: Request, res: Response) => {
 router.post('/system-config', async (req: Request, res: Response) => {
   try {
     const configData = req.body
+
+    // 🔒 如果前端发送的密钥是脱敏值，从body中恢复数据库中的原值
+    if (configData.distributedConfig?.storage?.secretKey === '******' ||
+        configData.distributedConfig?.storage?.secretKey === '••••••') {
+      const existingResult = await AppDataSource.query(
+        `SELECT config_value FROM system_config WHERE config_key = 'admin_system_config' LIMIT 1`
+      ).catch(() => []);
+      if (existingResult && existingResult.length > 0) {
+        const existingData = JSON.parse(existingResult[0].config_value || '{}');
+        const originalKey = existingData?.distributedConfig?.storage?.secretKey;
+        if (originalKey && originalKey !== '******') {
+          configData.distributedConfig.storage.secretKey = originalKey;
+        }
+      }
+    }
+    if (configData.distributedConfig?.sms?.secretKey === '******' ||
+        configData.distributedConfig?.sms?.secretKey === '••••••') {
+      const existingResult = await AppDataSource.query(
+        `SELECT config_value FROM system_config WHERE config_key = 'admin_system_config' LIMIT 1`
+      ).catch(() => []);
+      if (existingResult && existingResult.length > 0) {
+        const existingData = JSON.parse(existingResult[0].config_value || '{}');
+        const originalKey = existingData?.distributedConfig?.sms?.secretKey;
+        if (originalKey && originalKey !== '******') {
+          configData.distributedConfig.sms.secretKey = originalKey;
+        }
+      }
+    }
+
     const configValue = JSON.stringify(configData)
     const now = formatDateTime(new Date())
 
@@ -274,10 +311,22 @@ router.post('/system-config/sms/test', async (req: Request, res: Response) => {
 
 // ============ OSS存储连接测试 API ============
 
+// 清洗字符串：移除所有不可见字符、零宽字符、BOM等，再trim
+function cleanOSSInput(str: string): string {
+  return (str || '')
+    .replace(/[\x00-\x1F\x7F\u200B\u200C\u200D\u200E\u200F\uFEFF\u00A0\u2000-\u200A\u2028\u2029\u202F\u205F\u3000]/g, '')
+    .trim();
+}
+
 // 测试OSS连接（服务器端发起，避免浏览器CORS问题）
 router.post('/system-config/storage/test-oss', async (req: Request, res: Response) => {
   try {
-    const { accessKey, secretKey, bucketName, region, customDomain } = req.body;
+    // 清洗所有字符串输入，移除不可见字符/零宽字符/BOM
+    const accessKey = cleanOSSInput(req.body.accessKey);
+    const secretKey = cleanOSSInput(req.body.secretKey);
+    const bucketName = cleanOSSInput(req.body.bucketName);
+    const region = cleanOSSInput(req.body.region);
+    const customDomain = cleanOSSInput(req.body.customDomain);
 
     if (!accessKey || !secretKey || !bucketName || !region) {
       res.status(400).json({
@@ -287,14 +336,57 @@ router.post('/system-config/storage/test-oss', async (req: Request, res: Respons
       return;
     }
 
-    // 动态导入 ali-oss
+    // 如果secretKey是脱敏值，从数据库读取真实值
+    let actualSecretKey = secretKey;
+    if (secretKey === '******' || secretKey === '••••••') {
+      try {
+        const result = await AppDataSource.query(
+          `SELECT config_value FROM system_config WHERE config_key = 'admin_system_config' LIMIT 1`
+        ).catch(() => []);
+        if (result && result.length > 0) {
+          const data = JSON.parse(result[0].config_value || '{}');
+          const storedKey = data?.distributedConfig?.storage?.secretKey;
+          if (storedKey && storedKey !== '******') {
+            actualSecretKey = storedKey;
+          } else {
+            res.status(400).json({
+              success: false,
+              message: 'Secret Key 未保存，请重新输入完整的 AccessKey Secret'
+            });
+            return;
+          }
+        }
+      } catch {
+        res.status(400).json({
+          success: false,
+          message: '无法读取已保存的密钥，请重新输入 AccessKey Secret'
+        });
+        return;
+      }
+    }
+
+    // region格式校验（ali-oss SDK要求: 仅字母、数字、横杠、下划线）
+    if (!/^[a-zA-Z0-9\-_]+$/.test(region)) {
+      res.status(400).json({
+        success: false,
+        message: `Region 格式不正确（当前值: "${region}"），应为如 oss-cn-hangzhou、oss-cn-guangzhou 等格式（仅字母、数字和横杠）`
+      });
+      return;
+    }
+
+    // 动态导入 ali-oss（兼容CJS和ESM）
     let OSS: any;
     try {
-      OSS = (await import('ali-oss')).default;
-    } catch {
+      const aliOssModule = await import('ali-oss');
+      OSS = aliOssModule.default || aliOssModule;
+      if (!OSS || typeof OSS !== 'function') {
+        throw new Error('ali-oss 模块加载异常: 导出不是构造函数');
+      }
+    } catch (importErr: any) {
+      log.error('ali-oss 导入失败:', importErr);
       res.status(500).json({
         success: false,
-        message: '服务器未安装 ali-oss SDK，请联系管理员执行 npm install ali-oss'
+        message: '服务器未安装或无法加载 ali-oss SDK，请联系管理员执行 npm install ali-oss'
       });
       return;
     }
@@ -303,7 +395,7 @@ router.post('/system-config/storage/test-oss', async (req: Request, res: Respons
     const ossConfig: Record<string, any> = {
       region,
       accessKeyId: accessKey,
-      accessKeySecret: secretKey,
+      accessKeySecret: actualSecretKey,
       bucket: bucketName,
       secure: true,
       timeout: 10000
@@ -359,7 +451,7 @@ router.post('/system-config/storage/test-oss', async (req: Request, res: Respons
       errorMessage = error.message;
     }
 
-    log.error('OSS连接测试失败:', { code: error.code, message: errorMessage });
+    log.error('OSS连接测试失败:', { code: error.code, message: errorMessage, stack: error.stack });
 
     res.status(400).json({
       success: false,

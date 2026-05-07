@@ -131,6 +131,13 @@ router.get('/public/system-config', async (_req: Request, res: Response) => {
             cleanDistributedConfig[k] = null
           }
         }
+        // 🔒 对公开接口脱敏敏感字段（secretKey不能暴露给前端）
+        if (cleanDistributedConfig.storage?.secretKey) {
+          cleanDistributedConfig.storage = { ...cleanDistributedConfig.storage, secretKey: '******' }
+        }
+        if (cleanDistributedConfig.sms?.secretKey) {
+          cleanDistributedConfig.sms = { ...cleanDistributedConfig.sms, secretKey: '******' }
+        }
       }
 
       res.json({

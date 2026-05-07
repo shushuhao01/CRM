@@ -203,7 +203,22 @@
             <el-input v-model="storageForm.bucketName" placeholder="请输入Bucket名称" />
           </el-form-item>
           <el-form-item label="地域(Region)">
-            <el-input v-model="storageForm.region" placeholder="如 oss-cn-hangzhou" />
+            <el-select v-model="storageForm.region" placeholder="请选择存储区域" style="width: 100%" filterable allow-create>
+              <el-option label="华东1（杭州）" value="oss-cn-hangzhou" />
+              <el-option label="华东2（上海）" value="oss-cn-shanghai" />
+              <el-option label="华北1（青岛）" value="oss-cn-qingdao" />
+              <el-option label="华北2（北京）" value="oss-cn-beijing" />
+              <el-option label="华北3（张家口）" value="oss-cn-zhangjiakou" />
+              <el-option label="华北5（呼和浩特）" value="oss-cn-huhehaote" />
+              <el-option label="华南1（深圳）" value="oss-cn-shenzhen" />
+              <el-option label="华南2（河源）" value="oss-cn-heyuan" />
+              <el-option label="华南3（广州）" value="oss-cn-guangzhou" />
+              <el-option label="西南1（成都）" value="oss-cn-chengdu" />
+              <el-option label="中国（香港）" value="oss-cn-hongkong" />
+              <el-option label="亚太东南1（新加坡）" value="oss-ap-southeast-1" />
+              <el-option label="亚太东北1（东京）" value="oss-ap-northeast-1" />
+              <el-option label="美国西部1（硅谷）" value="oss-us-west-1" />
+            </el-select>
           </el-form-item>
           <el-form-item label="自定义域名">
             <el-input v-model="storageForm.customDomain" placeholder="CDN加速域名（选填）" />

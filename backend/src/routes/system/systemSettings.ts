@@ -25,6 +25,7 @@ import {
 } from './systemHelpers';
 import path from 'path';
 import fs from 'fs';
+import { isOSSMode, uploadToOSS } from '../../services/OSSUploadService';
 
 import { log } from '../../config/logger';
 const departmentController = new DepartmentController();
@@ -191,9 +192,41 @@ const handleImageUpload = async (req: Request, res: Response, subDir: string) =>
       });
     }
 
-    // 生成图片URL - 🔥 SaaS模式下包含租户编码目录
     const tenantCode = (req as any).__tenantCode || null;
-    const imageUrl = getUploadUrl(tenantCode, subDir, req.file.filename);
+
+    // 🔥 检查存储模式：OSS或本地
+    const useOSS = await isOSSMode();
+
+    let imageUrl: string;
+    let storageMode: string = 'local';
+
+    if (useOSS) {
+      // OSS模式：上传到阿里云OSS，不占用本地磁盘
+      const objectKey = tenantCode
+        ? `uploads/${tenantCode}/${subDir}/${req.file.filename}`
+        : `uploads/${subDir}/${req.file.filename}`;
+
+      const ossResult = await uploadToOSS(req.file.path, objectKey);
+
+      if (ossResult.success) {
+        imageUrl = ossResult.url;
+        storageMode = 'oss';
+        // 上传成功后删除本地临时文件，释放磁盘空间
+        try {
+          fs.unlinkSync(req.file.path);
+        } catch (unlinkErr: any) {
+          log.warn('[Upload] 删除本地临时文件失败:', unlinkErr.message);
+        }
+      } else {
+        // OSS上传失败，回退到本地存储
+        log.warn(`[Upload] OSS上传失败，回退到本地存储: ${ossResult.error}`);
+        imageUrl = getUploadUrl(tenantCode, subDir, req.file.filename);
+        storageMode = 'local(fallback)';
+      }
+    } else {
+      // 本地存储模式
+      imageUrl = getUploadUrl(tenantCode, subDir, req.file.filename);
+    }
 
     // 🔥 更新租户存储空间统计（SaaS模式下）
     const tenantId = (req as any).tenantId;
@@ -211,7 +244,8 @@ const handleImageUpload = async (req: Request, res: Response, subDir: string) =>
         url: imageUrl,
         filename: req.file.filename,
         size: req.file.size,
-        mimetype: req.file.mimetype
+        mimetype: req.file.mimetype,
+        storageMode
       }
     });
   } catch (error) {
@@ -935,11 +969,15 @@ router.get('/storage-settings', authenticateToken, async (_req: Request, res: Re
       imageCompressMaxWidth: 1200,
       imageCompressCustomQuality: 60
     };
+    // 🔒 对secretKey脱敏：有值时返回 ****** 而非明文
+    const safeSettings = { ...defaultSettings, ...settings };
+    if (safeSettings.secretKey && safeSettings.secretKey !== '') {
+      safeSettings.secretKey = '******';
+    }
     res.json({
       success: true,
       data: {
-        ...defaultSettings,
-        ...settings,
+        ...safeSettings,
         // 🔥 返回租户编码供前端 OSS 直传使用（SaaS 模式才有值）
         tenantCode: tenantCode || null
       }
@@ -957,7 +995,18 @@ router.get('/storage-settings', authenticateToken, async (_req: Request, res: Re
  */
 router.put('/storage-settings', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
   try {
-    const settings = req.body;
+    const settings = { ...req.body };
+
+    // 🔒 如果secretKey是脱敏值（前端未修改），保留数据库中的原值
+    if (settings.secretKey === '******' || settings.secretKey === '••••••') {
+      const existingSettings = await getConfigsByGroup('storage_settings');
+      if (existingSettings.secretKey && existingSettings.secretKey !== '******') {
+        settings.secretKey = existingSettings.secretKey;
+      } else {
+        delete settings.secretKey; // 不覆盖
+      }
+    }
+
     const configItems = [
       { key: 'storageType', type: 'string' as const, desc: '存储类型' },
       { key: 'localPath', type: 'string' as const, desc: '本地存储路径' },
@@ -989,8 +1038,20 @@ router.put('/storage-settings', authenticateToken, requireAdmin, async (req: Req
  * @access Private (Admin)
  */
 router.post('/test-oss-connection', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+  // 清洗字符串：移除所有不可见字符、零宽字符、BOM等，再trim
+  const cleanInput = (str: string): string => {
+    return (str || '')
+      .replace(/[\x00-\x1F\x7F\u200B\u200C\u200D\u200E\u200F\uFEFF\u00A0\u2000-\u200A\u2028\u2029\u202F\u205F\u3000]/g, '')
+      .trim();
+  };
+
   try {
-    const { accessKey, secretKey, bucketName, region, customDomain } = req.body;
+    // 清洗所有字符串输入，移除不可见字符/零宽字符/BOM
+    const accessKey = cleanInput(req.body.accessKey);
+    const secretKey = cleanInput(req.body.secretKey);
+    const bucketName = cleanInput(req.body.bucketName);
+    const region = cleanInput(req.body.region);
+    const customDomain = cleanInput(req.body.customDomain);
 
     // 参数校验
     if (!accessKey || !secretKey || !bucketName || !region) {
@@ -1001,14 +1062,54 @@ router.post('/test-oss-connection', authenticateToken, requireAdmin, async (req:
       return;
     }
 
-    // 动态导入 ali-oss
+    // 如果secretKey是脱敏值，从数据库读取真实值
+    let actualSecretKey = secretKey;
+    if (secretKey === '******' || secretKey === '••••••') {
+      try {
+        const configRepo = getTenantRepo(SystemConfig);
+        const secretConfig = await configRepo.findOne({
+          where: { configKey: 'secretKey', configGroup: 'storage_settings', isEnabled: true }
+        });
+        if (secretConfig && secretConfig.configValue && secretConfig.configValue !== '******') {
+          actualSecretKey = secretConfig.configValue;
+        } else {
+          res.status(400).json({
+            success: false,
+            message: 'Secret Key 未保存，请重新输入完整的 AccessKey Secret'
+          });
+          return;
+        }
+      } catch {
+        res.status(400).json({
+          success: false,
+          message: '无法读取已保存的密钥，请重新输入 AccessKey Secret'
+        });
+        return;
+      }
+    }
+
+    // region格式校验（ali-oss SDK要求: 仅字母、数字、横杠、下划线）
+    if (!/^[a-zA-Z0-9\-_]+$/.test(region)) {
+      res.status(400).json({
+        success: false,
+        message: `Region 格式不正确（当前值: "${region}"），应为如 oss-cn-hangzhou、oss-cn-guangzhou 等格式（仅字母、数字和横杠）`
+      });
+      return;
+    }
+
+    // 动态导入 ali-oss（兼容CJS和ESM）
     let OSS: any;
     try {
-      OSS = (await import('ali-oss')).default;
-    } catch {
+      const aliOssModule = await import('ali-oss');
+      OSS = aliOssModule.default || aliOssModule;
+      if (!OSS || typeof OSS !== 'function') {
+        throw new Error('ali-oss 模块加载异常: 导出不是构造函数');
+      }
+    } catch (importErr: any) {
+      log.error('ali-oss 导入失败:', importErr);
       res.status(500).json({
         success: false,
-        message: '服务器未安装 ali-oss SDK，请联系管理员执行 npm install ali-oss'
+        message: '服务器未安装或无法加载 ali-oss SDK，请联系管理员执行 npm install ali-oss'
       });
       return;
     }
@@ -1017,7 +1118,7 @@ router.post('/test-oss-connection', authenticateToken, requireAdmin, async (req:
     const ossConfig: Record<string, any> = {
       region,
       accessKeyId: accessKey,
-      accessKeySecret: secretKey,
+      accessKeySecret: actualSecretKey,
       bucket: bucketName,
       secure: true,
       timeout: 10000
@@ -1025,7 +1126,6 @@ router.post('/test-oss-connection', authenticateToken, requireAdmin, async (req:
 
     // 如果有自定义域名，使用CNAME模式
     if (customDomain) {
-      // 去除协议前缀和末尾斜杠，提取纯域名
       const endpoint = customDomain.replace(/^https?:\/\//, '').replace(/\/+$/, '');
       ossConfig.endpoint = `https://${endpoint}`;
       ossConfig.cname = true;
