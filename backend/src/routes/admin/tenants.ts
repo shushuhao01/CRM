@@ -66,9 +66,33 @@ const generateTenantLicenseKey = (): string => {
   return `TENANT-${segments.join('-')}`;
 };
 
+// 🔥 确保 tenants 表有 deleted_at / deleted_by 列（软删除支持）
+let _deletedAtReady = false;
+const ensureDeletedAt = async () => {
+  if (_deletedAtReady) return;
+  try {
+    const cols = await AppDataSource.query(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'tenants' AND COLUMN_NAME IN ('deleted_at', 'deleted_by')`
+    );
+    const existing = cols.map((c: any) => c.COLUMN_NAME);
+    if (!existing.includes('deleted_at')) {
+      await AppDataSource.query(`ALTER TABLE tenants ADD COLUMN deleted_at DATETIME DEFAULT NULL COMMENT '软删除时间'`);
+      log.info('[Admin Tenants] ✅ tenants.deleted_at 字段自动添加成功');
+    }
+    if (!existing.includes('deleted_by')) {
+      await AppDataSource.query(`ALTER TABLE tenants ADD COLUMN deleted_by VARCHAR(36) DEFAULT NULL COMMENT '删除操作人ID'`);
+      log.info('[Admin Tenants] ✅ tenants.deleted_by 字段自动添加成功');
+    }
+  } catch (e) {
+    log.warn('[Admin Tenants] deleted_at/deleted_by检查失败:', (e as any).message?.substring(0, 80));
+  }
+  _deletedAtReady = true;
+};
+
 // 获取租户列表
 router.get('/', async (req: Request, res: Response) => {
   try {
+    await ensureDeletedAt();
     const { page = 1, pageSize = 20, status, keyword, packageId, licenseStatus } = req.query;
     const pageNum = parseInt(page as string) || 1;
     const pageSizeNum = Math.min(parseInt(pageSize as string) || 20, 100);
@@ -867,6 +891,7 @@ router.get('/:id/logs', async (req: Request, res: Response) => {
 // 删除租户（软删除，移入回收站）
 router.delete('/:id', async (req: Request, res: Response) => {
   try {
+    await ensureDeletedAt();
     const { id } = req.params;
 
     // 检查租户是否存在
