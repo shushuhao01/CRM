@@ -154,7 +154,7 @@
               <el-button size="small" @click="fetchAuthLinks">刷新</el-button>
             </div>
           </div>
-          <el-table :data="authLinkList" v-loading="authLinksLoading" stripe size="small" style="margin-bottom: 24px">
+          <el-table :data="pagedAuthLinkList" v-loading="authLinksLoading" stripe size="small">
             <el-table-column label="类型" width="90">
               <template #default="{ row }">
                 <el-tag size="small" :type="row.type === 'tenant' ? 'warning' : ''">{{ row.type === 'tenant' ? '指定租户' : '通用' }}</el-tag>
@@ -188,6 +188,15 @@
               </template>
             </el-table-column>
           </el-table>
+          <div style="display: flex; justify-content: flex-end; margin-top: 12px; margin-bottom: 24px">
+            <el-pagination
+              v-model:current-page="authLinkPage"
+              :page-size="authLinkPageSize"
+              :total="authLinkList.length"
+              layout="total, prev, pager, next"
+              small
+            />
+          </div>
 
           <!-- 已授权企业列表 -->
           <el-divider content-position="left">已授权企业</el-divider>
@@ -203,7 +212,7 @@
             </div>
           </div>
 
-          <el-table :data="authList" v-loading="authLoading" stripe>
+          <el-table :data="pagedAuthList" v-loading="authLoading" stripe>
             <el-table-column prop="corpName" label="企业名称" min-width="150" />
             <el-table-column prop="corpId" label="CorpID" width="180" show-overflow-tooltip />
             <el-table-column label="关联租户" width="140">
@@ -230,6 +239,15 @@
               </template>
             </el-table-column>
           </el-table>
+          <div style="display: flex; justify-content: flex-end; margin-top: 12px">
+            <el-pagination
+              v-model:current-page="authListPage"
+              :page-size="authListPageSize"
+              :total="authList.length"
+              layout="total, prev, pager, next"
+              small
+            />
+          </div>
         </el-tab-pane>
 
         <!-- Tab3: 回调配置 -->
@@ -677,6 +695,22 @@ const authStats = ref({ total: 0, active: 0, pending: 0, cancelled: 0 })
 // Auth link records
 const authLinkList = ref<any[]>([])
 const authLinksLoading = ref(false)
+const authLinkPage = ref(1)
+const authLinkPageSize = 10
+
+// Auth list pagination
+const authListPage = ref(1)
+const authListPageSize = 10
+
+const pagedAuthLinkList = computed(() => {
+  const start = (authLinkPage.value - 1) * authLinkPageSize
+  return authLinkList.value.slice(start, start + authLinkPageSize)
+})
+
+const pagedAuthList = computed(() => {
+  const start = (authListPage.value - 1) * authListPageSize
+  return authList.value.slice(start, start + authListPageSize)
+})
 
 // Auth link dialog
 const showAuthLinkDialog = ref(false)
@@ -805,8 +839,9 @@ const fetchAuths = async () => {
   authLoading.value = true
   try {
     const res: any = await getSuiteAuths()
-    const list = Array.isArray(res) ? res : (res?.data || [])
+    const list = res?.data?.list || (Array.isArray(res?.data) ? res.data : (Array.isArray(res) ? res : []))
     authList.value = list
+    authListPage.value = 1
     authStats.value = {
       total: list.length,
       active: list.filter((a: any) => a.status === 'active').length,

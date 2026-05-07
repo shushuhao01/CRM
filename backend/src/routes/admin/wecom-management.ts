@@ -2739,13 +2739,80 @@ import { WecomSuiteAuthLink } from '../../entities/WecomSuiteAuthLink';
 import { WecomNotificationTemplate } from '../../entities/WecomNotificationTemplate';
 import { getSuiteAccessToken, getPreAuthCode, clearSuiteTokenCache } from '../wecom/suite-callback';
 
-/** 确保suite表存在 */
+/** 确保suite表存在（仅创建缺失表/列，不全量同步避免影响其他表） */
 const ensureSuiteTables = async () => {
+  const qr = AppDataSource.createQueryRunner();
   try {
-    await AppDataSource.query(`SELECT 1 FROM wecom_suite_configs LIMIT 1`);
-    await AppDataSource.query(`SELECT 1 FROM wecom_suite_auth_links LIMIT 1`);
-  } catch {
-    try { await AppDataSource.synchronize(); } catch (e: any) { log.warn('[Admin Suite] sync error:', e.message); }
+    // 检查并创建 wecom_suite_configs 表
+    const hasConfigTable = await qr.hasTable('wecom_suite_configs');
+    if (!hasConfigTable) {
+      await qr.query(`CREATE TABLE IF NOT EXISTS wecom_suite_configs (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        suite_id VARCHAR(100) NULL,
+        suite_secret VARCHAR(255) NULL,
+        suite_ticket TEXT NULL,
+        suite_ticket_updated_at DATETIME NULL,
+        provider_corp_id VARCHAR(100) NULL,
+        provider_secret VARCHAR(255) NULL,
+        callback_token VARCHAR(100) NULL,
+        callback_encoding_aes_key VARCHAR(100) NULL,
+        redirect_domain VARCHAR(255) NULL,
+        app_name VARCHAR(200) NULL,
+        app_description TEXT NULL,
+        app_status VARCHAR(20) DEFAULT 'offline',
+        permissions TEXT NULL,
+        chat_archive_rsa_private_key TEXT NULL,
+        is_enabled TINYINT DEFAULT 0,
+        mp_app_id VARCHAR(50) NULL,
+        mp_app_secret VARCHAR(255) NULL,
+        mp_form_secret VARCHAR(100) NULL,
+        mp_enabled TINYINT DEFAULT 0,
+        mp_callback_token VARCHAR(100) NULL,
+        mp_callback_encoding_aes_key VARCHAR(100) NULL,
+        mp_config TEXT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
+      log.info('[Admin Suite] Created wecom_suite_configs table');
+    } else {
+      // 检查是否存在 redirect_domain 列
+      try {
+        await qr.query(`SELECT redirect_domain FROM wecom_suite_configs LIMIT 1`);
+      } catch {
+        await qr.query(`ALTER TABLE wecom_suite_configs ADD COLUMN redirect_domain VARCHAR(255) NULL`);
+        log.info('[Admin Suite] Added redirect_domain column to wecom_suite_configs');
+      }
+    }
+
+    // 检查并创建 wecom_suite_auth_links 表
+    const hasAuthLinkTable = await qr.hasTable('wecom_suite_auth_links');
+    if (!hasAuthLinkTable) {
+      await qr.query(`CREATE TABLE IF NOT EXISTS wecom_suite_auth_links (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        suite_id VARCHAR(100) NULL,
+        pre_auth_code VARCHAR(255) NULL,
+        auth_url TEXT NULL,
+        redirect_uri TEXT NULL,
+        state VARCHAR(100) DEFAULT 'general',
+        type VARCHAR(20) DEFAULT 'general',
+        tenant_id VARCHAR(100) NULL,
+        expire_days INT DEFAULT 7,
+        status VARCHAR(20) DEFAULT 'pending',
+        auth_corp_id VARCHAR(100) NULL,
+        auth_corp_name VARCHAR(200) NULL,
+        auth_time DATETIME NULL,
+        remark VARCHAR(500) NULL,
+        created_by VARCHAR(100) NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        expires_at DATETIME NULL
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
+      log.info('[Admin Suite] Created wecom_suite_auth_links table');
+    }
+  } catch (e: any) {
+    log.warn('[Admin Suite] ensureSuiteTables error:', e.message);
+  } finally {
+    await qr.release();
   }
 };
 
@@ -2944,7 +3011,12 @@ router.post('/suite/auth-link', async (req: Request, res: Response) => {
     const { type, tenantId, expireDays = 7 } = req.body;
 
     // 使用配置的回调域名构建redirect_uri（必须与企微服务商后台「授权完成回调域名」一致）
-    const baseDomain = config.redirectDomain.replace(/\/+$/, ''); // 去除末尾斜杠
+    // 自动提取域名部分(protocol+host)，防止用户误填完整URL导致路径拼接错误
+    let baseDomain = config.redirectDomain.replace(/\/+$/, '');
+    try {
+      const urlObj = new URL(baseDomain);
+      baseDomain = urlObj.origin; // 只取 protocol + host
+    } catch { /* 如果不是合法URL则原样使用 */ }
     const rawRedirectUri = `${baseDomain}/api/v1/wecom/suite/auth-callback`;
     const redirectUri = encodeURIComponent(rawRedirectUri);
     const state = type === 'tenant' && tenantId ? `tenant_${tenantId}` : 'general';

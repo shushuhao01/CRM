@@ -9,6 +9,7 @@ import * as crypto from 'crypto';
 import { AppDataSource } from '../../config/database';
 import { WecomSuiteConfig } from '../../entities/WecomSuiteConfig';
 import { WecomSuiteCallbackLog } from '../../entities/WecomSuiteCallbackLog';
+import { WecomSuiteAuthLink } from '../../entities/WecomSuiteAuthLink';
 import { WecomConfig } from '../../entities/WecomConfig';
 import { log } from '../../config/logger';
 import axios from 'axios';
@@ -393,15 +394,66 @@ async function handleResetPermanentCode(suiteConfig: WecomSuiteConfig, authCode:
 // ==================== 授权完成回调(企业扫码授权后重定向到此) ====================
 router.get('/auth-callback', async (req: Request, res: Response) => {
   try {
-    const { auth_code, state, expires_in } = req.query;
+    const { auth_code, state } = req.query;
     log.info(`[SuiteCallback] Auth callback received, state: ${state}, auth_code: ${(auth_code as string)?.substring(0, 10)}...`);
 
+    let authCorpName = '';
+    let authCorpId = '';
     if (auth_code) {
       const config = await getSuiteConfigRow();
       if (config) {
         try {
           await handleCreateAuth(config, auth_code as string, '');
           log.info('[SuiteCallback] Auth processed via redirect callback');
+
+          // 查找刚授权的企业信息（用于更新auth link记录）
+          try {
+            // 从WecomConfig查最新授权记录获取企业信息
+            const configRepo = AppDataSource.getRepository(WecomConfig);
+            const latestAuth = await configRepo.findOne({
+              where: { suiteId: config.suiteId, authType: 'third_party' },
+              order: { authTime: 'DESC' }
+            });
+            if (latestAuth) {
+              authCorpName = latestAuth.authCorpName || latestAuth.name || '';
+              authCorpId = latestAuth.corpId || '';
+            }
+          } catch { /* ignore */ }
+
+          // 更新最近的待扫码授权链接记录为已授权状态
+          try {
+            const linkRepo = AppDataSource.getRepository(WecomSuiteAuthLink);
+            const stateStr = state as string || '';
+            // 查找匹配state的最新待扫码链接
+            const pendingLink = await linkRepo.findOne({
+              where: { suiteId: config.suiteId, status: 'pending', state: stateStr },
+              order: { createdAt: 'DESC' }
+            });
+            if (pendingLink) {
+              pendingLink.status = 'authorized';
+              pendingLink.authCorpId = authCorpId;
+              pendingLink.authCorpName = authCorpName;
+              pendingLink.authTime = new Date();
+              await linkRepo.save(pendingLink);
+              log.info(`[SuiteCallback] Auth link ${pendingLink.id} updated to authorized, corp: ${authCorpName}`);
+            } else {
+              // 如果没有精确匹配state的，更新最近一条pending的
+              const anyPending = await linkRepo.findOne({
+                where: { suiteId: config.suiteId, status: 'pending' },
+                order: { createdAt: 'DESC' }
+              });
+              if (anyPending) {
+                anyPending.status = 'authorized';
+                anyPending.authCorpId = authCorpId;
+                anyPending.authCorpName = authCorpName;
+                anyPending.authTime = new Date();
+                await linkRepo.save(anyPending);
+                log.info(`[SuiteCallback] Auth link ${anyPending.id} updated to authorized (fallback), corp: ${authCorpName}`);
+              }
+            }
+          } catch (linkErr: any) {
+            log.warn('[SuiteCallback] Failed to update auth link status:', linkErr.message);
+          }
         } catch (e: any) {
           log.error('[SuiteCallback] Auth callback process error:', e.message);
         }
