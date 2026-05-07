@@ -2736,7 +2736,7 @@ function getDefaultSystemConfig() {
 import { WecomSuiteConfig } from '../../entities/WecomSuiteConfig';
 import { WecomSuiteCallbackLog } from '../../entities/WecomSuiteCallbackLog';
 import { WecomNotificationTemplate } from '../../entities/WecomNotificationTemplate';
-import { getSuiteAccessToken, getPreAuthCode } from '../wecom/suite-callback';
+import { getSuiteAccessToken, getPreAuthCode, clearSuiteTokenCache } from '../wecom/suite-callback';
 
 /** 确保suite表存在 */
 const ensureSuiteTables = async () => {
@@ -2877,6 +2877,17 @@ router.post('/suite/test-connection', async (_req: Request, res: Response) => {
     const token = await getSuiteAccessToken(config);
     const latency = Date.now() - startTime;
 
+    // 测试连接成功，自动更新应用状态为online
+    if (token && config.appStatus !== 'online') {
+      try {
+        config.appStatus = 'online';
+        await repo.save(config);
+        log.info('[Admin Suite] appStatus auto-updated to online after successful connection test');
+      } catch (e: any) {
+        log.warn('[Admin Suite] Failed to auto-update appStatus:', e.message);
+      }
+    }
+
     res.json({
       success: true,
       data: {
@@ -2884,12 +2895,26 @@ router.post('/suite/test-connection', async (_req: Request, res: Response) => {
         message: '连接成功',
         latency,
         hasToken: !!token,
+        appStatus: config.appStatus,
         suiteTicketAge: config.suiteTicketUpdatedAt ? Math.round((Date.now() - new Date(config.suiteTicketUpdatedAt).getTime()) / 1000 / 60) + '分钟前' : '未知'
       }
     });
   } catch (error: any) {
     log.error('[Admin Suite] Test connection error:', error);
     res.json({ success: true, data: { connected: false, message: error.message } });
+  }
+});
+
+// 清除suite token缓存（用于排障/刷新）
+router.post('/suite/clear-cache', async (req: Request, res: Response) => {
+  if (!checkPermission(req, res, 'wecom-management:config:edit')) return;
+  try {
+    clearSuiteTokenCache();
+    log.info('[Admin Suite] Token cache cleared manually');
+    res.json({ success: true, message: 'Token缓存已清除，下次操作将使用最新的suite_ticket重新获取' });
+  } catch (error: any) {
+    log.error('[Admin Suite] Clear cache error:', error);
+    res.json({ success: true, message: '缓存清除操作完成' });
   }
 });
 

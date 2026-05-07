@@ -583,7 +583,7 @@ router.get('/callback/auth-callback', async (req: Request, res: Response) => {
     const stateStr = String(state || '');
     const stateTenantId = stateStr.startsWith('crm_auth_') ? stateStr.substring('crm_auth_'.length) : '';
 
-    // 读取服务商配置
+    // 读取服务商配置（优先system_config，回退wecom_suite_configs）
     let suiteId = '', suiteSecret = '', suiteTicket = '';
     try {
       const result = await AppDataSource.query(
@@ -598,7 +598,27 @@ router.get('/callback/auth-callback', async (req: Request, res: Response) => {
         suiteTicket = config.suite_ticket || '';
       }
     } catch (e) {
-      log.error('[Wecom Auth] Read suite config error:', e);
+      log.warn('[Wecom Auth] Read system_config suite config error:', e);
+    }
+
+    // 回退到wecom_suite_configs表（回调handler存储ticket的位置）
+    if (!suiteId || !suiteSecret || !suiteTicket) {
+      try {
+        const suiteRows = await AppDataSource.query(
+          `SELECT suite_id, suite_secret, suite_ticket FROM wecom_suite_configs ORDER BY id ASC LIMIT 1`
+        );
+        if (suiteRows?.[0]) {
+          suiteId = suiteId || suiteRows[0].suite_id || '';
+          suiteSecret = suiteSecret || suiteRows[0].suite_secret || '';
+          suiteTicket = suiteTicket || suiteRows[0].suite_ticket || '';
+        }
+      } catch (e) {
+        log.warn('[Wecom Auth] Read wecom_suite_configs error:', e);
+      }
+    }
+
+    if (!suiteId || !suiteSecret || !suiteTicket) {
+      log.error('[Wecom Auth] Suite config incomplete for auth-callback');
       return res.redirect('/?error=config_read_failed');
     }
 

@@ -136,6 +136,7 @@ export class WecomTokenService {
   /**
    * 获取 Suite Access Token (第三方应用专用)
    * 需要: suite_id + suite_secret + suite_ticket (来自企微推送)
+   * 同时从 system_config 和 wecom_suite_configs 两个表读取配置，确保获取最新ticket
    */
   static async getSuiteAccessToken(suiteId: string): Promise<string> {
     const cacheKey = `suite:${suiteId}`;
@@ -149,22 +150,35 @@ export class WecomTokenService {
       "SELECT config_value FROM system_config WHERE config_key = 'wecom_suite_config' LIMIT 1"
     ).catch(() => []);
 
-    if (rows.length === 0) {
-      throw new Error('未配置第三方应用Suite信息(wecom_suite_config)');
+    let suiteSecret = '';
+    let suiteTicket = '';
+
+    if (rows.length > 0) {
+      try {
+        const suiteConfig = JSON.parse(rows[0].config_value);
+        suiteSecret = suiteConfig.suite_secret || '';
+        suiteTicket = suiteConfig.suite_ticket || '';
+      } catch {
+        log.warn('[WecomToken] Suite配置格式错误(system_config)');
+      }
     }
 
-    let suiteConfig: any;
-    try {
-      suiteConfig = JSON.parse(rows[0].config_value);
-    } catch {
-      throw new Error('Suite配置格式错误');
+    // 回退/补充从 wecom_suite_configs 表读取（回调handler将ticket存在此表）
+    if (!suiteSecret || !suiteTicket) {
+      try {
+        const suiteRows = await AppDataSource.query(
+          'SELECT suite_secret, suite_ticket FROM wecom_suite_configs WHERE suite_id = ? ORDER BY id ASC LIMIT 1',
+          [suiteId]
+        );
+        if (suiteRows?.[0]) {
+          suiteSecret = suiteSecret || suiteRows[0].suite_secret || '';
+          suiteTicket = suiteTicket || suiteRows[0].suite_ticket || '';
+        }
+      } catch { /* wecom_suite_configs表可能不存在 */ }
     }
-
-    const suiteSecret = suiteConfig.suite_secret;
-    const suiteTicket = suiteConfig.suite_ticket;
 
     if (!suiteSecret || !suiteTicket) {
-      throw new Error('Suite配置缺少必要参数(suite_secret/suite_ticket)');
+      throw new Error('Suite配置缺少必要参数(suite_secret/suite_ticket)，请检查服务商应用配置和回调URL');
     }
 
     log.info(`[WecomToken] Fetching suite_access_token, suiteId=${suiteId}`);
@@ -174,6 +188,37 @@ export class WecomTokenService {
       suite_secret: suiteSecret,
       suite_ticket: suiteTicket
     });
+
+    // 40085重试：从wecom_suite_configs重读最新ticket
+    if (response.data.errcode === 40085) {
+      log.warn('[WecomToken] 40085 invalid suite_ticket, 尝试从wecom_suite_configs重读最新ticket...');
+      try {
+        const freshRows = await AppDataSource.query(
+          'SELECT suite_ticket FROM wecom_suite_configs WHERE suite_id = ? ORDER BY suite_ticket_updated_at DESC LIMIT 1',
+          [suiteId]
+        );
+        const freshTicket = freshRows?.[0]?.suite_ticket;
+        if (freshTicket && freshTicket !== suiteTicket) {
+          log.info('[WecomToken] 发现更新的suite_ticket, 重试...');
+          const retryRes = await axios.post(`${WECOM_API_BASE}/service/get_suite_token`, {
+            suite_id: suiteId,
+            suite_secret: suiteSecret,
+            suite_ticket: freshTicket
+          });
+          if (retryRes.data.errcode && retryRes.data.errcode !== 0) {
+            throw new Error(`获取SuiteToken失败(重试): ${retryRes.data.errmsg} (${retryRes.data.errcode})`);
+          }
+          const token = retryRes.data.suite_access_token;
+          const expireTime = Date.now() + (retryRes.data.expires_in - 300) * 1000;
+          suiteTokenCache.set(cacheKey, { token, expireTime });
+          return token;
+        }
+      } catch (retryErr: any) {
+        if (retryErr.message?.includes('获取SuiteToken失败')) throw retryErr;
+        log.warn('[WecomToken] 重试读取ticket失败:', retryErr.message);
+      }
+      throw new Error(`获取SuiteToken失败: ${response.data.errmsg} (${response.data.errcode}) - suite_ticket可能已过期，请确认回调URL正常接收企微推送`);
+    }
 
     if (response.data.errcode && response.data.errcode !== 0) {
       throw new Error(`获取SuiteToken失败: ${response.data.errmsg} (${response.data.errcode})`);

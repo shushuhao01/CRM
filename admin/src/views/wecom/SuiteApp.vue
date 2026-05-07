@@ -59,6 +59,7 @@
               <span v-if="suiteConfig.ticketUpdateTime" style="margin-left: 8px; font-size: 12px; color: #909399">
                 最近: {{ formatDate(suiteConfig.ticketUpdateTime) }}
               </span>
+              <el-button text size="small" style="margin-left: 8px" @click="handleClearSuiteCache">🔄 清除Token缓存</el-button>
             </el-form-item>
 
             <el-divider content-position="left">服务商信息</el-divider>
@@ -678,6 +679,14 @@ const handleSaveConfig = async () => {
   saving.value = false
 }
 
+const handleClearSuiteCache = async () => {
+  try {
+    const { default: request } = await import('@/api/request')
+    const res: any = await request.post('/wecom-management/suite/clear-cache')
+    ElMessage.success(res?.message || 'Token缓存已清除')
+  } catch (e: any) { ElMessage.error(e?.message || '操作失败') }
+}
+
 const handleTestSuiteConnection = async () => {
   testingConnection.value = true
   try {
@@ -686,6 +695,8 @@ const handleTestSuiteConnection = async () => {
     const result = res?.data
     if (result?.connected) {
       ElMessage.success(`连接成功！${result.latency ? `延迟${result.latency}ms` : ''}${result.suiteTicketAge ? ` (ticket: ${result.suiteTicketAge})` : ''}`)
+      // 连接成功后刷新配置，反映可能的appStatus自动更新
+      fetchConfig()
     } else {
       ElMessage.error(result?.message || '连接失败，请检查配置')
     }
@@ -747,7 +758,7 @@ const handleGenerateLink = async () => {
   generatingLink.value = true
   try {
     const res: any = await generateAuthLink(authLinkForm.value)
-    generatedLink.value = res?.url || res?.link || res?.data?.authUrl || ''
+    generatedLink.value = res?.data?.url || res?.url || res?.data?.authUrl || res?.link || ''
     if (generatedLink.value) {
       ElMessage.success('链接已生成')
     } else {

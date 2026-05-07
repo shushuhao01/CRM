@@ -19,6 +19,11 @@ const WECOM_API_BASE = 'https://qyapi.weixin.qq.com/cgi-bin';
 // Suite access token 缓存
 let suiteTokenCache: { token: string; expireTime: number } | null = null;
 
+/** 清除suite token缓存（供外部调用，如手动刷新） */
+export function clearSuiteTokenCache(): void {
+  suiteTokenCache = null;
+}
+
 /** 从XML中提取字段 */
 function extractXml(xml: string, tag: string): string {
   const re = new RegExp(`<${tag}><!\\[CDATA\\[(.+?)\\]\\]><\\/${tag}>`, 's');
@@ -72,7 +77,7 @@ async function logCallback(infoType: string, suiteId: string, authCorpId: string
   }
 }
 
-/** 获取suite_access_token */
+/** 获取suite_access_token（含40085自动重试：从DB重读最新ticket） */
 export async function getSuiteAccessToken(suiteConfig: WecomSuiteConfig): Promise<string> {
   if (suiteTokenCache && suiteTokenCache.expireTime > Date.now()) {
     return suiteTokenCache.token;
@@ -80,11 +85,42 @@ export async function getSuiteAccessToken(suiteConfig: WecomSuiteConfig): Promis
   if (!suiteConfig.suiteId || !suiteConfig.suiteSecret || !suiteConfig.suiteTicket) {
     throw new Error('Suite配置不完整: 缺少suiteId/suiteSecret/suiteTicket');
   }
+
+  // 第一次尝试：用传入的 suiteConfig.suiteTicket
   const res = await axios.post(`${WECOM_API_BASE}/service/get_suite_token`, {
     suite_id: suiteConfig.suiteId,
     suite_secret: suiteConfig.suiteSecret,
     suite_ticket: suiteConfig.suiteTicket
   });
+
+  if (res.data.errcode === 40085) {
+    // 40085 = invalid suite ticket，可能 ticket 已过期或被刷新
+    // 从DB重新读取最新的 suite_ticket 再重试一次
+    log.warn('[SuiteCallback] 40085 invalid suite_ticket, 尝试从数据库重读最新ticket重试...');
+    const freshConfig = await getSuiteConfigRow();
+    if (freshConfig && freshConfig.suiteTicket && freshConfig.suiteTicket !== suiteConfig.suiteTicket) {
+      log.info('[SuiteCallback] 发现更新的suite_ticket, 重试获取token...');
+      suiteConfig.suiteTicket = freshConfig.suiteTicket; // 同步更新调用方的config
+      const retryRes = await axios.post(`${WECOM_API_BASE}/service/get_suite_token`, {
+        suite_id: suiteConfig.suiteId,
+        suite_secret: suiteConfig.suiteSecret,
+        suite_ticket: freshConfig.suiteTicket
+      });
+      if (retryRes.data.errcode && retryRes.data.errcode !== 0) {
+        throw new Error(`获取suite_access_token失败(重试): ${retryRes.data.errmsg} (${retryRes.data.errcode})`);
+      }
+      suiteTokenCache = {
+        token: retryRes.data.suite_access_token,
+        expireTime: Date.now() + (retryRes.data.expires_in - 300) * 1000
+      };
+      return suiteTokenCache.token;
+    }
+    // DB中ticket相同或无更新，返回原始错误
+    const ticketAge = suiteConfig.suiteTicket ?
+      `(ticket存在，可能已过期。请确认回调URL正常接收企微推送，企微每10分钟推送一次suite_ticket)` : '';
+    throw new Error(`获取suite_access_token失败: ${res.data.errmsg} (${res.data.errcode}) ${ticketAge}`);
+  }
+
   if (res.data.errcode && res.data.errcode !== 0) {
     throw new Error(`获取suite_access_token失败: ${res.data.errmsg} (${res.data.errcode})`);
   }
@@ -235,6 +271,11 @@ async function handleSuiteTicket(config: WecomSuiteConfig, xml: string) {
   const repo = AppDataSource.getRepository(WecomSuiteConfig);
   config.suiteTicket = ticket;
   config.suiteTicketUpdatedAt = new Date();
+  // 能正常接收suite_ticket说明应用已上线且回调正常，自动更新状态
+  if (config.suiteId && config.suiteSecret && config.appStatus !== 'online') {
+    config.appStatus = 'online';
+    log.info('[SuiteCallback] appStatus auto-updated to online (suite_ticket received successfully)');
+  }
   await repo.save(config);
 
   // 清除token缓存，下次使用新ticket获取
