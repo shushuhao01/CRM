@@ -2735,6 +2735,7 @@ function getDefaultSystemConfig() {
 
 import { WecomSuiteConfig } from '../../entities/WecomSuiteConfig';
 import { WecomSuiteCallbackLog } from '../../entities/WecomSuiteCallbackLog';
+import { WecomSuiteAuthLink } from '../../entities/WecomSuiteAuthLink';
 import { WecomNotificationTemplate } from '../../entities/WecomNotificationTemplate';
 import { getSuiteAccessToken, getPreAuthCode, clearSuiteTokenCache } from '../wecom/suite-callback';
 
@@ -2742,6 +2743,7 @@ import { getSuiteAccessToken, getPreAuthCode, clearSuiteTokenCache } from '../we
 const ensureSuiteTables = async () => {
   try {
     await AppDataSource.query(`SELECT 1 FROM wecom_suite_configs LIMIT 1`);
+    await AppDataSource.query(`SELECT 1 FROM wecom_suite_auth_links LIMIT 1`);
   } catch {
     try { await AppDataSource.synchronize(); } catch (e: any) { log.warn('[Admin Suite] sync error:', e.message); }
   }
@@ -2761,6 +2763,7 @@ router.get('/suite/config', async (_req: Request, res: Response) => {
           suiteId: '', suiteSecret: '', suiteTicket: '', ticketUpdateTime: null,
           providerCorpId: '', providerSecret: '',
           callbackToken: '', callbackEncodingAesKey: '',
+          redirectDomain: '',
           appName: '', appDescription: '', appStatus: 'offline',
           permissions: [],
           chatArchiveRsaPrivateKey: ''
@@ -2778,6 +2781,7 @@ router.get('/suite/config', async (_req: Request, res: Response) => {
         providerSecret: config.providerSecret ? '******' : '',
         callbackToken: config.callbackToken || '',
         callbackEncodingAesKey: config.callbackEncodingAesKey || '',
+        redirectDomain: config.redirectDomain || '',
         appName: config.appName || '',
         appDescription: config.appDescription || '',
         appStatus: config.appStatus || 'offline',
@@ -2802,7 +2806,7 @@ router.put('/suite/config', async (req: Request, res: Response) => {
 
     const {
       suiteId, suiteSecret, providerCorpId, providerSecret,
-      callbackToken, callbackEncodingAesKey,
+      callbackToken, callbackEncodingAesKey, redirectDomain,
       appName, appDescription, appStatus, permissions,
       chatArchiveRsaPrivateKey
     } = req.body;
@@ -2818,6 +2822,7 @@ router.put('/suite/config', async (req: Request, res: Response) => {
     if (providerSecret && providerSecret !== '******') config.providerSecret = providerSecret;
     if (callbackToken !== undefined) config.callbackToken = callbackToken;
     if (callbackEncodingAesKey !== undefined) config.callbackEncodingAesKey = callbackEncodingAesKey;
+    if (redirectDomain !== undefined) config.redirectDomain = redirectDomain;
     if (appName !== undefined) config.appName = appName;
     if (appDescription !== undefined) config.appDescription = appDescription;
     if (appStatus !== undefined) config.appStatus = appStatus;
@@ -2931,20 +2936,80 @@ router.post('/suite/auth-link', async (req: Request, res: Response) => {
     if (!config.suiteTicket) {
       return res.json({ success: false, message: '尚未接收到suite_ticket，请先配置回调URL并等待企微推送' });
     }
+    if (!config.redirectDomain) {
+      return res.json({ success: false, message: '请先在应用配置中填写「授权回调域名」（需与企微服务商后台配置一致）' });
+    }
 
     const preAuthCode = await getPreAuthCode(config);
-    const { type, tenantId } = req.body;
+    const { type, tenantId, expireDays = 7 } = req.body;
 
-    // 构建授权回调地址(企业授权完成后企微会重定向到这个地址)
-    const redirectUri = encodeURIComponent(`${req.protocol}://${req.get('host')}/api/v1/wecom/suite/auth-callback`);
+    // 使用配置的回调域名构建redirect_uri（必须与企微服务商后台「授权完成回调域名」一致）
+    const baseDomain = config.redirectDomain.replace(/\/+$/, ''); // 去除末尾斜杠
+    const rawRedirectUri = `${baseDomain}/api/v1/wecom/suite/auth-callback`;
+    const redirectUri = encodeURIComponent(rawRedirectUri);
     const state = type === 'tenant' && tenantId ? `tenant_${tenantId}` : 'general';
 
     const authUrl = `https://open.work.weixin.qq.com/3rdapp/install?suite_id=${config.suiteId}&pre_auth_code=${preAuthCode}&redirect_uri=${redirectUri}&state=${state}`;
 
-    log.info('[Admin Suite] Auth link generated, state:', state);
-    res.json({ success: true, data: { url: authUrl, preAuthCode, expiresIn: 1800 } });
+    // 保存授权链接记录
+    try {
+      const linkRepo = AppDataSource.getRepository(WecomSuiteAuthLink);
+      const expiresAt = new Date();
+      expiresAt.setDate(expiresAt.getDate() + Number(expireDays || 7));
+      await linkRepo.save(linkRepo.create({
+        suiteId: config.suiteId,
+        preAuthCode,
+        authUrl,
+        redirectUri: rawRedirectUri,
+        state,
+        type: type || 'general',
+        tenantId: tenantId || null,
+        expireDays: Number(expireDays || 7),
+        status: 'pending',
+        expiresAt,
+        createdBy: (req as any).adminUser?.username || 'admin'
+      }));
+    } catch (e: any) {
+      log.warn('[Admin Suite] Save auth link record failed:', e.message);
+    }
+
+    log.info('[Admin Suite] Auth link generated, state:', state, 'redirectDomain:', baseDomain);
+    res.json({ success: true, data: { url: authUrl, preAuthCode, expiresIn: expireDays * 86400 } });
   } catch (error: any) {
     log.error('[Admin Suite] Generate auth link error:', error);
+    res.json({ success: false, message: error.message });
+  }
+});
+
+// 获取授权链接记录列表
+router.get('/suite/auth-links', async (req: Request, res: Response) => {
+  try {
+    await ensureSuiteTables();
+    const linkRepo = AppDataSource.getRepository(WecomSuiteAuthLink);
+    const links = await linkRepo.find({ order: { createdAt: 'DESC' }, take: 50 });
+    // 自动标记过期
+    const now = new Date();
+    for (const link of links) {
+      if (link.status === 'pending' && link.expiresAt && new Date(link.expiresAt) < now) {
+        link.status = 'expired';
+        await linkRepo.save(link).catch(() => {});
+      }
+    }
+    res.json({ success: true, data: { list: links } });
+  } catch (error: any) {
+    log.error('[Admin Suite] Get auth links error:', error);
+    res.json({ success: true, data: { list: [] } });
+  }
+});
+
+// 删除授权链接记录
+router.delete('/suite/auth-links/:id', async (req: Request, res: Response) => {
+  if (!checkPermission(req, res, 'wecom-management:config:edit')) return;
+  try {
+    const linkRepo = AppDataSource.getRepository(WecomSuiteAuthLink);
+    await linkRepo.delete(Number(req.params.id));
+    res.json({ success: true, message: '已删除' });
+  } catch (error: any) {
     res.json({ success: false, message: error.message });
   }
 });

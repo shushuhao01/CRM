@@ -123,6 +123,7 @@ import { WecomAntiSpamRule } from '../entities/WecomAntiSpamRule';
 import { WecomGroupBroadcast } from '../entities/WecomGroupBroadcast';
 import { WecomSuiteConfig } from '../entities/WecomSuiteConfig';
 import { WecomSuiteCallbackLog } from '../entities/WecomSuiteCallbackLog';
+import { WecomSuiteAuthLink } from '../entities/WecomSuiteAuthLink';
 import { WecomNotificationTemplate } from '../entities/WecomNotificationTemplate';
 import { UserSession } from '../entities/UserSession';
 import { log } from './logger';
@@ -175,7 +176,7 @@ const entities = [
   WecomKnowledgeBase, WecomKnowledgeEntry, WecomScriptCategory, WecomScript,
   WecomAiLog, WecomSidebarAuthCode, WecomDepartmentMapping,
   WecomGroupWelcome, WecomAntiSpamRule, WecomGroupBroadcast,
-  WecomSuiteConfig, WecomSuiteCallbackLog, WecomNotificationTemplate,
+  WecomSuiteConfig, WecomSuiteCallbackLog, WecomSuiteAuthLink, WecomNotificationTemplate,
   UserSession
 ];
 

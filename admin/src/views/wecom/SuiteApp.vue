@@ -79,6 +79,17 @@
               </div>
             </el-form-item>
 
+            <el-divider content-position="left">授权回调域名</el-divider>
+            <el-form-item label="回调域名">
+              <div style="display: flex; gap: 8px; width: 100%">
+                <el-input v-model="suiteConfig.redirectDomain" placeholder="https://admin.yunkes.com" />
+              </div>
+              <div style="font-size: 11px; color: #e6a23c; margin-top: 4px; line-height: 1.6">
+                ⚠️ 必须与企微服务商后台「授权完成回调域名」配置完全一致（含https://前缀，不含路径）。
+                生成授权链接时将使用此域名构造redirect_uri，域名不匹配会导致扫码报错。
+              </div>
+            </el-form-item>
+
             <el-divider content-position="left">应用权限范围</el-divider>
             <el-form-item label="权限">
               <el-checkbox-group v-model="suiteConfig.permissions">
@@ -134,6 +145,52 @@
               <strong>授权权限范围由「应用配置」Tab中勾选的权限统一控制，所有企业获得相同权限。</strong>
             </div>
           </el-alert>
+          <!-- 授权链接记录 -->
+          <el-divider content-position="left">授权链接</el-divider>
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px">
+            <span style="font-size: 13px; color: #606266">已生成的授权链接，可查看二维码、复制链接或下载二维码</span>
+            <div>
+              <el-button v-permission="'wecom-management:suite:edit'" type="primary" size="small" @click="showAuthLinkDialog = true">创建授权链接</el-button>
+              <el-button size="small" @click="fetchAuthLinks">刷新</el-button>
+            </div>
+          </div>
+          <el-table :data="authLinkList" v-loading="authLinksLoading" stripe size="small" style="margin-bottom: 24px">
+            <el-table-column label="类型" width="90">
+              <template #default="{ row }">
+                <el-tag size="small" :type="row.type === 'tenant' ? 'warning' : ''">{{ row.type === 'tenant' ? '指定租户' : '通用' }}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="状态" width="80" align="center">
+              <template #default="{ row }">
+                <el-tag size="small" :type="row.status === 'authorized' ? 'success' : row.status === 'expired' ? 'info' : 'warning'">
+                  {{ { pending: '待扫码', authorized: '已授权', expired: '已过期', cancelled: '已取消' }[row.status] || row.status }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="创建时间" width="160">
+              <template #default="{ row }">{{ formatDate(row.createdAt) }}</template>
+            </el-table-column>
+            <el-table-column label="过期时间" width="160">
+              <template #default="{ row }">{{ formatDate(row.expiresAt) }}</template>
+            </el-table-column>
+            <el-table-column label="授权企业" min-width="120">
+              <template #default="{ row }">
+                <span v-if="row.authCorpName">{{ row.authCorpName }}</span>
+                <span v-else style="color: #909399">-</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="操作" width="240" fixed="right">
+              <template #default="{ row }">
+                <el-button type="primary" link size="small" @click="viewLinkQrCode(row)">二维码</el-button>
+                <el-button type="success" link size="small" @click="copyText(row.authUrl)">复制链接</el-button>
+                <el-button link size="small" @click="openLinkInBrowser(row)">打开</el-button>
+                <el-button v-permission="'wecom-management:suite:edit'" type="danger" link size="small" @click="handleDeleteAuthLink(row)">删除</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+
+          <!-- 已授权企业列表 -->
+          <el-divider content-position="left">已授权企业</el-divider>
           <div class="tab-toolbar">
             <div class="auth-stats">
               <el-tag effect="dark" type="primary">已授权: {{ authStats.total }}</el-tag>
@@ -142,7 +199,6 @@
               <el-tag effect="dark" type="info">已取消: {{ authStats.cancelled }}</el-tag>
             </div>
             <div>
-              <el-button v-permission="'wecom-management:suite:edit'" type="primary" @click="showAuthLinkDialog = true">生成授权链接</el-button>
               <el-button @click="fetchAuths">刷新</el-button>
             </div>
           </div>
@@ -449,11 +505,13 @@
       <el-alert type="info" :closable="false" style="margin-bottom: 16px">
         <template #title><strong>📋 使用说明</strong></template>
         <div style="margin-top: 4px; font-size: 12px; line-height: 1.8">
-          <p>1. 生成链接后，将链接/二维码发送给目标企业的管理员</p>
-          <p>2. 企业管理员用企微扫码 → 确认授权安装我们的应用</p>
-          <p>3. 授权成功后，该企业会出现在上方「授权管理」列表中</p>
-          <p>4. 管理员点击"关联租户"绑定到CRM租户 → 该租户即可使用企微功能</p>
-          <p style="color: #e6a23c">⚠️ 授权权限范围由「应用配置」Tab中已勾选的权限决定，此处无需单独选择</p>
+          <p>1. 生成链接后，将链接发送给目标企业的管理员</p>
+          <p>2. 管理员在<strong>电脑浏览器</strong>中打开链接 → 页面会展示企微官方授权二维码</p>
+          <p>3. 管理员用<strong>企业微信App</strong>扫描页面上的二维码 → 确认授权安装</p>
+          <p>4. 授权成功后，该企业会出现在「已授权企业」列表中</p>
+          <p>5. 管理员点击"关联租户"绑定到CRM租户 → 该租户即可使用企微功能</p>
+          <p style="color: #e6a23c">⚠️ 此链接必须在PC浏览器打开（企微限制），不能直接手机扫码打开</p>
+          <p style="color: #e6a23c">⚠️ 请确保「应用配置」中已填写正确的「授权回调域名」，否则会报域名不一致错误</p>
         </div>
       </el-alert>
       <el-form label-width="100px">
@@ -503,7 +561,8 @@
     <el-dialog v-model="showQrCodeDialog" title="授权二维码" width="360px" append-to-body>
       <div style="text-align: center; padding: 16px">
         <canvas ref="authQrCanvas" style="border: 1px solid #e5e7eb; border-radius: 12px; padding: 8px"></canvas>
-        <p style="margin-top: 12px; font-size: 13px; color: #606266">企业管理员用企微扫码即可授权安装</p>
+        <p style="margin-top: 12px; font-size: 13px; color: #606266">请在电脑浏览器中打开此链接，页面会显示企微官方二维码供管理员扫码授权</p>
+        <p style="margin-top: 4px; font-size: 11px; color: #e6a23c">注意：此二维码不能直接用手机扫码，需在PC打开链接后扫描页面中的二维码</p>
         <el-button type="primary" size="small" style="margin-top: 8px" @click="downloadAuthQr">下载二维码</el-button>
       </div>
     </el-dialog>
@@ -596,7 +655,7 @@ const testingConnection = ref(false)
 const suiteConfig = ref<any>({
   suiteId: '', suiteSecret: '', suiteTicket: '', ticketUpdateTime: '',
   providerCorpId: '', providerSecret: '', appName: '', appDescription: '',
-  appStatus: '', permissions: [],
+  appStatus: '', permissions: [], redirectDomain: '',
   callbackToken: '', callbackEncodingAesKey: '',
   chatArchiveRsaPrivateKey: ''
 })
@@ -614,6 +673,10 @@ const callbackUrl = computed(() => {
 const authLoading = ref(false)
 const authList = ref<any[]>([])
 const authStats = ref({ total: 0, active: 0, pending: 0, cancelled: 0 })
+
+// Auth link records
+const authLinkList = ref<any[]>([])
+const authLinksLoading = ref(false)
 
 // Auth link dialog
 const showAuthLinkDialog = ref(false)
@@ -761,11 +824,42 @@ const handleGenerateLink = async () => {
     generatedLink.value = res?.data?.url || res?.url || res?.data?.authUrl || res?.link || ''
     if (generatedLink.value) {
       ElMessage.success('链接已生成')
+      fetchAuthLinks() // 刷新授权链接列表
     } else {
       ElMessage.warning('后端返回空链接，请确认服务商应用配置是否完整')
     }
   } catch (e: any) { ElMessage.error(e?.message || '生成失败') }
   generatingLink.value = false
+}
+
+// 授权链接记录管理
+const fetchAuthLinks = async () => {
+  authLinksLoading.value = true
+  try {
+    const { default: request } = await import('@/api/request')
+    const res: any = await request.get('/wecom-management/suite/auth-links')
+    authLinkList.value = res?.data?.list || []
+  } catch { authLinkList.value = [] }
+  authLinksLoading.value = false
+}
+
+const viewLinkQrCode = (row: any) => {
+  generatedLink.value = row.authUrl
+  showQrCodeDialog.value = true
+}
+
+const openLinkInBrowser = (row: any) => {
+  window.open(row.authUrl, '_blank')
+}
+
+const handleDeleteAuthLink = async (row: any) => {
+  await ElMessageBox.confirm('确定删除此授权链接记录？', '删除确认', { type: 'warning' })
+  try {
+    const { default: request } = await import('@/api/request')
+    await request.delete(`/wecom-management/suite/auth-links/${row.id}`)
+    ElMessage.success('已删除')
+    fetchAuthLinks()
+  } catch (e: any) { ElMessage.error(e?.message || '删除失败') }
 }
 
 // QR code
@@ -1245,6 +1339,7 @@ const handleCropConfirm = async () => {
 onMounted(() => {
   fetchConfig()
   fetchAuths()
+  fetchAuthLinks()
   fetchCallbackLogs()
   fetchTemplates()
   fetchMpConfig()

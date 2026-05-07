@@ -33,6 +33,9 @@ export class WecomSuiteConfig {
   @Column({ name: 'callback_encoding_aes_key', type: 'varchar', length: 100, nullable: true, comment: '回调EncodingAESKey' })
   callbackEncodingAesKey: string;
 
+  @Column({ name: 'redirect_domain', type: 'varchar', length: 255, nullable: true, comment: '授权完成回调域名(需与企微服务商后台配置一致，如: https://admin.yunkes.com)' })
+  redirectDomain: string;
+
   @Column({ name: 'app_name', type: 'varchar', length: 200, nullable: true, comment: '应用名称' })
   appName: string;
 
