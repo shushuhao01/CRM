@@ -12,6 +12,7 @@ import { WecomCustomer } from '../../entities/WecomCustomer';
 import WecomApiService from '../../services/WecomApiService';
 import { log } from '../../config/logger';
 import axios from 'axios';
+import { authenticateToken } from '../../middleware/auth';
 
 const router = Router();
 
@@ -445,7 +446,7 @@ async function handleExternalChatChange(config: WecomConfig, changeType: string,
  * 获取第三方应用授权URL
  * 前端调用此接口获取授权安装链接，生成二维码供管理员扫码
  */
-router.get('/callback/auth-url', async (req: Request, res: Response) => {
+router.get('/callback/auth-url', authenticateToken, async (req: Request, res: Response) => {
   try {
     // 从system_config或wecom_suite_configs读取服务商应用配置
     let suiteId = '';
@@ -547,9 +548,16 @@ router.get('/callback/auth-url', async (req: Request, res: Response) => {
     // 优先使用 X-Forwarded-Proto 以支持反向代理(nginx)场景
     const protocol = (req.headers['x-forwarded-proto'] as string) || req.protocol;
     const redirectUri = `${protocol}://${req.get('host')}/api/v1/wecom/callback/auth-callback`;
-    // 从query参数或JWT token中提取tenantId
-    let tenantId = (req.query.tenantId as string) || '';
+    // 从认证中间件、currentUser或query参数中提取tenantId
+    let tenantId = (req as any).tenantId || '';
+    if (!tenantId && (req as any).currentUser?.tenantId) {
+      tenantId = (req as any).currentUser.tenantId;
+    }
     if (!tenantId) {
+      tenantId = (req.query.tenantId as string) || '';
+    }
+    if (!tenantId) {
+      // 最后回退：从JWT手动解析
       try {
         const authHeader = req.headers.authorization;
         const jwtToken = authHeader && authHeader.split(' ')[1];
@@ -559,6 +567,9 @@ router.get('/callback/auth-url', async (req: Request, res: Response) => {
           tenantId = payload.tenantId || '';
         }
       } catch { /* JWT解析失败忽略 */ }
+    }
+    if (!tenantId) {
+      log.warn('[Wecom Auth] ⚠️ 无法确定tenantId，授权后可能无法自动绑定租户');
     }
     const statePayload = tenantId ? `crm_auth_${tenantId}` : 'crm_auth';
     const authUrl = `https://open.work.weixin.qq.com/3rdapp/install?suite_id=${suiteId}&pre_auth_code=${preAuthCode}&redirect_uri=${encodeURIComponent(redirectUri)}&state=${encodeURIComponent(statePayload)}`;
@@ -682,14 +693,16 @@ router.get('/callback/auth-callback', async (req: Request, res: Response) => {
       config.authTime = new Date();
       config.connectionStatus = 'connected';
       config.suiteId = suiteId;
+      config.isEnabled = true;
       config.name = corpName || config.name;
       if (auth_user_info?.userid) {
         config.bindOperator = auth_user_info.name || auth_user_info.userid;
         config.authAdminUserId = auth_user_info.userid;
       }
-      if (!config.tenantId && stateTenantId) {
+      // 确保tenantId被设置（从state参数获取）
+      if (stateTenantId) {
         config.tenantId = stateTenantId;
-        log.info(`[Wecom Auth] auth-callback: 从state参数补充tenantId=${stateTenantId}, corpId=${corpId}`);
+        log.info(`[Wecom Auth] auth-callback: 设置tenantId=${stateTenantId}, corpId=${corpId}`);
       } else if (!config.tenantId) {
         log.warn(`[Wecom Auth] auth-callback: 更新已有WecomConfig但tenantId为空, corpId=${corpId}, configId=${config.id}`);
       }

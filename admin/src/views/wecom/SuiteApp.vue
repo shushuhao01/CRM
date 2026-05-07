@@ -67,7 +67,10 @@
               <el-input v-model="suiteConfig.providerCorpId" placeholder="ww_provider_..." />
             </el-form-item>
             <el-form-item label="服务商Secret">
-              <el-input v-model="suiteConfig.providerSecret" placeholder="Secret" show-password />
+              <div style="display: flex; gap: 8px; width: 100%">
+                <el-input v-model="suiteConfig.providerSecret" placeholder="Secret" show-password />
+                <el-button size="small" @click="handleTestProviderConnection" :loading="testingProvider">测试</el-button>
+              </div>
               <div class="key-field-actions" style="margin-top: 4px">
                 <el-button text size="small" @click="toggleSuiteSecret('providerSecret')">
                   {{ showProviderSecret ? '🙈 隐藏' : '👁️ 查看实际值' }}
@@ -75,7 +78,7 @@
                 <el-button v-if="showProviderSecret" text size="small" @click="copySuiteSecret('providerSecret')">
                   📋 复制
                 </el-button>
-                <span style="font-size: 11px; color: #909399; margin-left: 8px">保存后密钥仅显示掩码</span>
+                <span style="font-size: 11px; color: #909399; margin-left: 8px">保存后密钥仅显示掩码，此配置同步到「会话存档代购-供应商配置」</span>
               </div>
             </el-form-item>
 
@@ -216,7 +219,7 @@
             <el-table-column label="企业信息" min-width="220">
               <template #default="{ row }">
                 <div style="display: flex; align-items: center; gap: 8px">
-                  <img v-if="row.corpSquareLogoUrl" :src="row.corpSquareLogoUrl" style="width: 32px; height: 32px; border-radius: 4px; flex-shrink: 0" />
+                  <img v-if="row.corpSquareLogoUrl" :src="row.corpSquareLogoUrl" style="max-width: 120px; max-height: 32px; object-fit: contain; border-radius: 4px; flex-shrink: 0" />
                   <div style="min-width: 0">
                     <div style="font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap" :title="row.corpFullName || row.authCorpName || row.corpName">
                       {{ row.authCorpName || row.corpName }}
@@ -679,7 +682,7 @@
     <el-dialog v-model="showAuthDetailDialog" title="授权企业详情" width="680px">
       <div v-if="authDetailData">
         <div v-if="authDetailData.corpSquareLogoUrl" style="text-align: center; margin-bottom: 12px">
-          <img :src="authDetailData.corpSquareLogoUrl" style="width: 48px; height: 48px; border-radius: 8px" />
+          <img :src="authDetailData.corpSquareLogoUrl" style="max-width: 120px; height: 48px; object-fit: contain; border-radius: 8px" />
         </div>
         <el-descriptions :column="2" border size="small">
           <el-descriptions-item label="企业简称">{{ authDetailData.authCorpName || authDetailData.corpName || '-' }}</el-descriptions-item>
@@ -800,6 +803,7 @@ import {
 const activeTab = ref('config')
 const saving = ref(false)
 const testingConnection = ref(false)
+const testingProvider = ref(false)
 
 // Suite config
 const suiteConfig = ref<any>({
@@ -944,6 +948,33 @@ const handleTestSuiteConnection = async () => {
     ElMessage.error(e?.message || '连接测试请求失败')
   }
   testingConnection.value = false
+}
+
+// 测试服务商Secret连接（provider_access_token）
+const handleTestProviderConnection = async () => {
+  if (!suiteConfig.value.providerCorpId) {
+    ElMessage.warning('请先填写服务商CorpID')
+    return
+  }
+  testingProvider.value = true
+  try {
+    const { default: request } = await import('@/api/request')
+    const res: any = await request.post('/wecom-management/supplier-config/test-connection', {
+      providerCorpId: suiteConfig.value.providerCorpId,
+      providerSecret: suiteConfig.value.providerSecret || ''
+    })
+    const data = res?.data || res
+    const connected = data?.data?.connected || data?.connected
+    const message = data?.message || data?.data?.message || ''
+    if (data?.success !== false && connected) {
+      ElMessage.success(message || '服务商连接成功！')
+    } else {
+      ElMessage.error(message || '服务商连接失败，请检查CorpID和Secret')
+    }
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.message || e?.message || '服务商连接测试失败')
+  }
+  testingProvider.value = false
 }
 
 // 查看/隐藏 Suite Secret 和 Provider Secret 真实值

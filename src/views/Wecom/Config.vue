@@ -568,7 +568,17 @@ const handleQuotaUpgrade = () => { ElMessage.info('增购配额 — 请联系管
 const generateAuthQr = async () => {
   loadingQr.value = true
   try {
-    const res = await fetch('/api/v1/wecom/callback/auth-url', {
+    // 从localStorage获取当前用户的tenantId，显式传递给后端确保授权绑定正确的租户
+    let tenantId = ''
+    try {
+      const userStr = localStorage.getItem('user') || localStorage.getItem('user_info') || localStorage.getItem('crm_current_user')
+      if (userStr) {
+        const user = JSON.parse(userStr)
+        tenantId = user.tenantId || ''
+      }
+    } catch { /* ignore */ }
+    const queryParams = tenantId ? `?tenantId=${encodeURIComponent(tenantId)}` : ''
+    const res = await fetch(`/api/v1/wecom/callback/auth-url${queryParams}`, {
       headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
     })
     const json = await res.json()
@@ -576,7 +586,8 @@ const generateAuthQr = async () => {
       authLinkUrl.value = json.data.authUrl
     } else if (json.data?.suiteId && json.data?.preAuthCode) {
       const redirectUri = `${window.location.origin}/api/v1/wecom/callback/auth-callback`
-      authLinkUrl.value = `https://open.work.weixin.qq.com/3rdapp/install?suite_id=${json.data.suiteId}&pre_auth_code=${json.data.preAuthCode}&redirect_uri=${encodeURIComponent(redirectUri)}&state=crm_auth`
+      const stateParam = tenantId ? `crm_auth_${tenantId}` : 'crm_auth'
+      authLinkUrl.value = `https://open.work.weixin.qq.com/3rdapp/install?suite_id=${json.data.suiteId}&pre_auth_code=${json.data.preAuthCode}&redirect_uri=${encodeURIComponent(redirectUri)}&state=${encodeURIComponent(stateParam)}`
     } else {
       authLinkUrl.value = ''
       ElMessage.warning('后台未配置服务商应用信息(SuiteID/SuiteSecret)，请联系管理员在管理后台 → 企微设置中完成服务商应用配置后再进行扫码授权')

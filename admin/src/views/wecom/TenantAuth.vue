@@ -24,7 +24,7 @@
         <el-table-column label="企业信息" min-width="220">
           <template #default="{ row }">
             <div style="display: flex; align-items: center; gap: 8px">
-              <img v-if="row.corpSquareLogoUrl" :src="row.corpSquareLogoUrl" style="width: 32px; height: 32px; border-radius: 4px; flex-shrink: 0" />
+              <img v-if="row.corpSquareLogoUrl" :src="row.corpSquareLogoUrl" style="max-width: 120px; max-height: 32px; object-fit: contain; border-radius: 4px; flex-shrink: 0" />
               <div style="min-width: 0">
                 <div style="font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap" :title="row.corpFullName || row.authCorpName || row.configName">
                   {{ row.authCorpName || row.configName }}
@@ -114,7 +114,7 @@
           <!-- Tab: 基本信息 -->
           <el-tab-pane label="基本信息" name="info">
             <div v-if="detailData.authCorpInfo?.corp_square_logo_url" style="text-align: center; margin-bottom: 12px">
-              <img :src="detailData.authCorpInfo.corp_square_logo_url" style="width: 48px; height: 48px; border-radius: 8px" />
+              <img :src="detailData.authCorpInfo.corp_square_logo_url" style="max-width: 200px; max-height: 48px; object-fit: contain; border-radius: 8px" />
             </div>
             <el-descriptions :column="2" border size="small">
               <el-descriptions-item label="配置名称">{{ detailData.configName }}</el-descriptions-item>

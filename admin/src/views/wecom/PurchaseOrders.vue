@@ -828,28 +828,32 @@ const saveSupplier = async () => {
 }
 
 const testConnection = async () => {
-  if (!supplierConfig.value.providerCorpId || !supplierConfig.value.providerSecret) {
-    ElMessage.warning('请先填写服务商 CorpID 和 Secret')
+  if (!supplierConfig.value.providerCorpId) {
+    ElMessage.warning('请先填写服务商 CorpID')
     return
   }
+  // Secret 可以从已保存配置读取，不强制前端必须填写
   testingConnection.value = true
   connectionStatus.value = null
   try {
     const res: any = await testSupplierConnection({
       providerCorpId: supplierConfig.value.providerCorpId,
-      providerSecret: supplierConfig.value.providerSecret
+      providerSecret: supplierConfig.value.providerSecret || ''
     })
     const data = res?.data || res
-    if (data?.success !== false && (data?.data?.connected || data?.connected)) {
-      connectionStatus.value = { connected: true, message: data?.message || '连接成功' }
-      ElMessage.success(data?.message || '连接成功')
+    const connected = data?.data?.connected || data?.connected
+    const message = data?.message || data?.data?.message || ''
+    if (data?.success !== false && connected) {
+      connectionStatus.value = { connected: true, message: message || '连接成功' }
+      ElMessage.success(message || '连接成功')
     } else {
-      connectionStatus.value = { connected: false, message: data?.message || '连接失败' }
-      ElMessage.error(data?.message || '连接失败')
+      connectionStatus.value = { connected: false, message: message || '连接失败，请检查CorpID和Secret' }
+      ElMessage.error(message || '连接失败，请检查CorpID和Secret')
     }
   } catch (e: any) {
-    connectionStatus.value = { connected: false, message: e?.message || '测试连接异常' }
-    ElMessage.error(e?.message || '测试连接异常')
+    const errMsg = e?.response?.data?.message || e?.message || '测试连接异常'
+    connectionStatus.value = { connected: false, message: errMsg }
+    ElMessage.error(errMsg)
   }
   testingConnection.value = false
 }

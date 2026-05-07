@@ -2865,42 +2865,62 @@ router.put('/purchase-cost', async (req: Request, res: Response) => {
 /**
  * 获取供应商配置
  * GET /api/v1/admin/wecom-management/supplier-config
+ * 自动从「服务商应用配置」(wecom_suite_configs)同步 providerCorpId/providerSecret
  */
 router.get('/supplier-config', async (_req: Request, res: Response) => {
   try {
     const rows = await AppDataSource.query(
       "SELECT config_value FROM system_config WHERE config_key = 'wecom_supplier_config' LIMIT 1"
     ).catch(() => []);
+
+    let config: any = {
+      providerCorpId: '',
+      providerSecret: '',
+      orderApiUrl: '',
+      autoFulfillEnabled: false,
+      prechargeBalance: 0,
+      notifyEmail: '',
+      notifyWebhook: '',
+      hasSecret: false,
+      syncedFromSuiteConfig: false
+    };
+
     if (rows.length > 0) {
-      try {
-        const config = JSON.parse(rows[0].config_value);
-        const responseData = { ...config };
-        // Secret 脱敏：返回掩码版本供前端显示，完整值仍保留用于测试连接/保存
-        if (responseData.providerSecret) {
-          const raw = responseData.providerSecret;
-          responseData.providerSecretMasked = raw.length > 10
-            ? raw.substring(0, 6) + '****' + raw.substring(raw.length - 4)
-            : '****';
-          responseData.hasSecret = true;
-        } else {
-          responseData.hasSecret = false;
-        }
-        return res.json({ success: true, data: responseData });
-      } catch {}
+      try { config = { ...config, ...JSON.parse(rows[0].config_value) }; } catch {}
     }
-    res.json({
-      success: true,
-      data: {
-        providerCorpId: '',
-        providerSecret: '',
-        orderApiUrl: '',
-        autoFulfillEnabled: false,
-        prechargeBalance: 0,
-        notifyEmail: '',
-        notifyWebhook: '',
-        hasSecret: false
-      }
-    });
+
+    // 如果供应商配置没有 providerCorpId/providerSecret，从服务商应用配置(wecom_suite_configs)同步
+    if (!config.providerCorpId || !config.providerSecret) {
+      try {
+        const suiteRows = await AppDataSource.query(
+          "SELECT provider_corp_id, provider_secret FROM wecom_suite_configs ORDER BY id ASC LIMIT 1"
+        );
+        if (suiteRows.length > 0 && suiteRows[0].provider_corp_id) {
+          if (!config.providerCorpId) {
+            config.providerCorpId = suiteRows[0].provider_corp_id;
+            config.syncedFromSuiteConfig = true;
+          }
+          if (!config.providerSecret && suiteRows[0].provider_secret) {
+            config.providerSecret = suiteRows[0].provider_secret;
+            config.syncedFromSuiteConfig = true;
+          }
+        }
+      } catch { /* ignore */ }
+    }
+
+    // Secret 脱敏
+    const responseData = { ...config };
+    if (responseData.providerSecret) {
+      const raw = responseData.providerSecret;
+      responseData.providerSecretMasked = raw.length > 10
+        ? raw.substring(0, 6) + '****' + raw.substring(raw.length - 4)
+        : '****';
+      responseData.hasSecret = true;
+    } else {
+      responseData.hasSecret = false;
+    }
+
+    res.json({ success: true, data: responseData });
   } catch (error: any) {
     res.status(500).json({ success: false, message: '获取供应商配置失败' });
   }
@@ -2949,50 +2969,98 @@ router.post('/supplier-config/test-connection', async (req: Request, res: Respon
   try {
     const { providerCorpId } = req.body;
     let { providerSecret } = req.body;
-    if (!providerCorpId || !providerSecret) {
-      return res.json({ success: false, message: '请填写服务商 CorpID 和 Secret' });
+    if (!providerCorpId) {
+      return res.json({ success: false, message: '请填写服务商 CorpID' });
     }
-    // 解码存储的 Secret
+
+    // 如果前端传来的是掩码值或为空，从已保存配置中读取实际Secret
+    if (!providerSecret || providerSecret === '******' || providerSecret.includes('****')) {
+      try {
+        const rows = await AppDataSource.query(
+          "SELECT config_value FROM system_config WHERE config_key = 'wecom_supplier_config' LIMIT 1"
+        );
+        if (rows.length > 0) {
+          const savedConfig = JSON.parse(rows[0].config_value);
+          providerSecret = savedConfig.providerSecret || '';
+        }
+      } catch { /* ignore */ }
+    }
+
+    // 如果仍然没有，尝试从服务商应用配置(wecom_suite_configs)读取
+    if (!providerSecret) {
+      try {
+        const suiteRows = await AppDataSource.query(
+          "SELECT provider_secret FROM wecom_suite_configs ORDER BY id ASC LIMIT 1"
+        );
+        if (suiteRows.length > 0 && suiteRows[0].provider_secret) {
+          providerSecret = suiteRows[0].provider_secret;
+        }
+      } catch { /* ignore */ }
+    }
+
+    if (!providerSecret) {
+      return res.json({ success: false, message: '请填写服务商 Secret（未找到已保存的Secret）' });
+    }
+
+    // 解码存储的 Secret（base64编码存储）
     if (providerSecret.startsWith('base64:')) {
       providerSecret = Buffer.from(providerSecret.replace('base64:', ''), 'base64').toString('utf-8');
     }
 
+    log.info('[Admin Wecom] Testing supplier connection, corpId:', providerCorpId, 'secretLen:', providerSecret.length);
+
     // 调用企微获取 provider_access_token
-    const https = await import('https');
-    const url = `https://qyapi.weixin.qq.com/cgi-bin/service/get_provider_token`;
-    const postData = JSON.stringify({ corpid: providerCorpId, provider_secret: providerSecret });
+    const axios = (await import('axios')).default;
+    const result = await axios.post(
+      'https://qyapi.weixin.qq.com/cgi-bin/service/get_provider_token',
+      { corpid: providerCorpId, provider_secret: providerSecret },
+      { timeout: 10000, headers: { 'Content-Type': 'application/json' } }
+    );
 
-    const result: any = await new Promise((resolve, reject) => {
-      const request = https.request(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(postData) } }, (response: any) => {
-        let data = '';
-        response.on('data', (chunk: any) => { data += chunk; });
-        response.on('end', () => { try { resolve(JSON.parse(data)); } catch { resolve({ errcode: -1, errmsg: '响应解析失败' }); } });
-      });
-      request.on('error', (e: any) => reject(e));
-      request.write(postData);
-      request.end();
-    });
+    const data = result.data;
+    log.info('[Admin Wecom] Provider token response:', JSON.stringify(data).substring(0, 200));
 
-    if (result.errcode === 0 && result.provider_access_token) {
+    if (data && data.errcode === 0 && data.provider_access_token) {
       res.json({
         success: true,
         message: '连接成功！已获取 provider_access_token',
         data: {
           connected: true,
-          tokenPreview: result.provider_access_token.substring(0, 10) + '...',
-          expiresIn: result.expires_in
+          tokenPreview: data.provider_access_token.substring(0, 10) + '...',
+          expiresIn: data.expires_in
         }
       });
-    } else {
+    } else if (data && typeof data.errcode === 'number' && data.errcode !== 0) {
+      const errHints: Record<number, string> = {
+        40001: 'Secret无效，请确认是否从企微服务商后台正确复制',
+        40013: 'CorpID无效，请确认服务商企业ID是否正确',
+        40056: '不合法的服务商凭证',
+        40091: '请确认Secret为服务商的通用开发参数中的Secret',
+        42009: 'suite_ticket已过期，请等待企微重新推送'
+      };
+      const hint = errHints[data.errcode] || '';
       res.json({
         success: false,
-        message: `连接失败: ${result.errmsg || '未知错误'} (errcode: ${result.errcode})`,
-        data: { connected: false, errcode: result.errcode, errmsg: result.errmsg }
+        message: `连接失败: ${data.errmsg || '未知错误'} (errcode: ${data.errcode})${hint ? ' - ' + hint : ''}`,
+        data: { connected: false, errcode: data.errcode, errmsg: data.errmsg }
+      });
+    } else {
+      // 响应格式异常（无errcode字段或非预期结构）
+      log.warn('[Admin Wecom] Unexpected provider token response structure:', JSON.stringify(data).substring(0, 300));
+      res.json({
+        success: false,
+        message: `连接失败: 企微API返回异常响应，请检查CorpID和Secret是否正确`,
+        data: { connected: false, rawResponse: typeof data === 'object' ? JSON.stringify(data).substring(0, 100) : String(data).substring(0, 100) }
       });
     }
   } catch (error: any) {
-    log.error('[Admin Wecom] Test connection error:', error.message);
-    res.json({ success: false, message: `连接异常: ${error.message}`, data: { connected: false } });
+    log.error('[Admin Wecom] Test connection error:', error.message, error.response?.data);
+    const axiosErr = error.response?.data;
+    if (axiosErr) {
+      res.json({ success: false, message: `连接失败: ${axiosErr.errmsg || error.message}`, data: { connected: false } });
+    } else {
+      res.json({ success: false, message: `连接异常: ${error.message}`, data: { connected: false } });
+    }
   }
 });
 
