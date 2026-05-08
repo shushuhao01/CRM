@@ -13,6 +13,7 @@ import {
   editAcquisitionTag, deleteAcquisitionTags
 } from '@/api/wecom'
 import { useWecomDemo, DEMO_ACQUISITION_LINKS, DEMO_ACQUISITION_USAGE, DEMO_WEIGHT_MEMBERS, DEMO_CONFIGS, DEMO_WECOM_USERS } from './useWecomDemo'
+import { getLastSelectedConfigId, saveSelectedConfigId } from './useWecomConfig'
 import type { AcquisitionWeightItem, AcquisitionUsage } from '../types'
 
 // 7日示例趋势数据（sparkline用）
@@ -135,7 +136,12 @@ export function useAcquisition() {
       const configs = Array.isArray(res) ? res : []
       configList.value = configs.filter((c: any) => c.isEnabled)
       if (configList.value.length > 0 && !selectedConfigId.value) {
-        selectedConfigId.value = configList.value[0].id
+        const lastId = getLastSelectedConfigId()
+        if (lastId && configList.value.some((c: any) => c.id === lastId)) {
+          selectedConfigId.value = lastId
+        } else {
+          selectedConfigId.value = configList.value[0].id
+        }
         handleConfigChange()
       }
     } catch (e) {
@@ -144,6 +150,7 @@ export function useAcquisition() {
   }
 
   const handleConfigChange = () => {
+    saveSelectedConfigId(selectedConfigId.value)
     fetchList()
     fetchUsage()
   }

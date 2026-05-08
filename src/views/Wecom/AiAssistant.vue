@@ -10,7 +10,7 @@
             AI助手
           </span>
           <template #actions>
-            <el-select v-model="selectedConfigId" placeholder="选择企微配置" style="width: 180px">
+            <el-select v-model="selectedConfigId" placeholder="选择企微配置" style="width: 180px" @change="saveSelectedConfigId(selectedConfigId)">
               <el-option v-for="c in configs" :key="c.id" :label="c.name" :value="c.id" />
             </el-select>
           </template>
@@ -301,6 +301,7 @@ import {
   getAiModelUsage, getAiUsageTrend, checkAiOrderStatus
 } from '@/api/wecomAi'
 import { getWecomConfigs } from '@/api/wecom'
+import { getLastSelectedConfigId, saveSelectedConfigId } from './composables/useWecomConfig'
 
 const { isDemoMode } = useWecomDemo()
 
@@ -314,7 +315,12 @@ const fetchWecomConfigs = async () => {
     const list = res?.data || res || []
     configs.value = Array.isArray(list) ? list : []
     if (configs.value.length > 0 && !selectedConfigId.value) {
-      selectedConfigId.value = configs.value[0].id
+      const lastId = getLastSelectedConfigId()
+      if (lastId && configs.value.some((c: any) => c.id === lastId)) {
+        selectedConfigId.value = lastId
+      } else {
+        selectedConfigId.value = configs.value[0].id
+      }
     }
   } catch { /* ignore */ }
 }

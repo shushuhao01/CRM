@@ -65,8 +65,12 @@ router.post('/group-broadcasts', authenticateToken, upload.any(), async (req: Re
     const attachmentsMeta = req.body.attachments ? JSON.parse(req.body.attachments) : [];
     const contentType = attachmentsMeta.length > 0 ? '文本+附件' : '文本';
 
+    // 确保taskName有值
+    const taskName = req.body.taskName || `群发任务-${new Date().toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}`;
+
     const broadcast = repo.create({
       ...req.body,
+      taskName,
       tenantId,
       targetDesc,
       targetCount,

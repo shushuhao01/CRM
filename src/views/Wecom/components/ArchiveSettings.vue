@@ -531,11 +531,12 @@ defineExpose({ fetchSettings })
 
 /* 可见范围 */
 .visibility-group {
-  display: flex !important; flex-direction: column !important; gap: 0 !important; width: 100%;
+  display: flex !important; flex-direction: row !important; gap: 12px !important; width: 100%; flex-wrap: nowrap !important;
 }
+.visibility-group :deep(.el-radio) { margin-right: 0; }
 .visibility-option {
-  display: flex; align-items: center; gap: 10px; padding: 12px 16px;
-  border: 1px solid #ebeef5; border-radius: 6px; margin-bottom: 8px;
+  display: flex; align-items: center; gap: 10px; padding: 14px 16px;
+  border: 1px solid #ebeef5; border-radius: 6px; flex: 1; min-width: 0;
   cursor: pointer; transition: all 0.2s;
   &:hover { border-color: #c0c4cc; }
   &.active { border-color: #409eff; background: #ecf5ff; }

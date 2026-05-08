@@ -211,6 +211,7 @@ import ContactWayCreateWizard from './components/ContactWayCreateWizard.vue'
 import AcquisitionTagManager from './components/AcquisitionTagManager.vue'
 import SmartOnlineRules from './components/SmartOnlineRules.vue'
 import { getWecomConfigs, getAcquisitionTags, createAcquisitionTagGroup, editAcquisitionTag, deleteAcquisitionTags } from '@/api/wecom'
+import { getLastSelectedConfigId, saveSelectedConfigId } from './composables/useWecomConfig'
 import {
   getContactWayList, createContactWay, updateContactWay,
   deleteContactWay, syncContactWayList, batchUpdateContactWay, batchDeleteContactWay
@@ -269,14 +270,19 @@ const fetchConfigs = async () => {
     const res = await getWecomConfigs()
     configList.value = (Array.isArray(res) ? res : []).filter((c: any) => c.isEnabled)
     if (configList.value.length > 0 && !selectedConfigId.value) {
-      selectedConfigId.value = configList.value[0].id
+      const lastId = getLastSelectedConfigId()
+      if (lastId && configList.value.some((c: any) => c.id === lastId)) {
+        selectedConfigId.value = lastId
+      } else {
+        selectedConfigId.value = configList.value[0].id
+      }
       fetchList()
       fetchTags()
     }
   } catch { /* ignore */ }
 }
 
-const handleConfigChange = () => { listPage.value = 1; fetchList(); fetchTags() }
+const handleConfigChange = () => { listPage.value = 1; saveSelectedConfigId(selectedConfigId.value); fetchList(); fetchTags() }
 const handleSearch = () => { listPage.value = 1; fetchList() }
 
 const fetchList = async () => {

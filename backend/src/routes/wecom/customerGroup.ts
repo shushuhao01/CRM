@@ -382,13 +382,13 @@ router.post('/customer-groups/kick-member', authenticateToken, async (req: Reque
     const groupRepo = getTenantRepo(WecomCustomerGroup);
     const group = await groupRepo.findOne({ where: { chatId } as any });
     if (!group) {
-      return res.status(404).json({ success: false, message: '群聊不存在' });
+      return res.status(400).json({ success: false, message: '群聊不存在，请先同步客户群数据' });
     }
 
     const configRepo = getTenantRepo(WecomConfig);
-    const config = await configRepo.findOne({ where: { isEnabled: true } as any });
+    const config = await configRepo.findOne({ where: { id: group.wecomConfigId, isEnabled: true } as any });
     if (!config) {
-      return res.status(400).json({ success: false, message: '企微配置不存在或未启用' });
+      return res.status(400).json({ success: false, message: '该群对应的企微配置不存在或已禁用' });
     }
 
     const accessToken = await WecomApiService.getAccessTokenByConfigId(config.id, 'external');

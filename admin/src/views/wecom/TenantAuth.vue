@@ -219,7 +219,9 @@
                     size="default"
                     style="margin: 0 8px 8px 0"
                   >
-                    {{ perm.granted ? '✅' : '⬜' }} {{ perm.label }}
+                    <span v-if="perm.granted" style="color: #67c23a; margin-right: 4px; font-weight: bold">✓</span>
+                    <span v-else style="color: #c0c4cc; margin-right: 4px">○</span>
+                    {{ perm.label }}
                   </el-tag>
                 </template>
                 <el-text v-else type="info" size="small">暂无权限数据（授权信息可能未同步，请点击上方刷新按钮）</el-text>
@@ -242,7 +244,7 @@
                     <el-descriptions-item label="授权部门">
                       <template v-if="agent.privilege.allow_party && agent.privilege.allow_party.length > 0">
                         <el-tag v-for="partyId in agent.privilege.allow_party" :key="partyId" size="small" style="margin: 0 4px 4px 0" effect="plain">
-                          部门ID: {{ partyId }}
+                          {{ resolveDeptName(partyId) }}
                         </el-tag>
                         <span style="font-size: 12px; color: #909399; margin-left: 4px">共 {{ agent.privilege.allow_party.length }} 个部门</span>
                       </template>
@@ -251,7 +253,7 @@
                     <el-descriptions-item label="授权成员">
                       <template v-if="agent.privilege.allow_user && agent.privilege.allow_user.length > 0">
                         <el-tag v-for="userId in agent.privilege.allow_user.slice(0, 5)" :key="userId" size="small" style="margin: 0 4px 4px 0" effect="plain">
-                          {{ userId }}
+                          {{ resolveMemberName(userId) }}
                         </el-tag>
                         <el-button link type="primary" size="small" style="margin-left: 4px" @click="openMemberListDialog(agent.privilege.allow_user, agent.name || ('应用 ' + agent.agentid))">
                           共 {{ agent.privilege.allow_user.length }} 人 ›
@@ -270,12 +272,12 @@
                     </el-descriptions-item>
                     <el-descriptions-item label="额外可见部门" v-if="agent.privilege.extra_party && agent.privilege.extra_party.length > 0">
                       <el-tag v-for="partyId in agent.privilege.extra_party" :key="partyId" size="small" style="margin: 0 4px 4px 0" effect="plain" type="info">
-                        部门ID: {{ partyId }}
+                        {{ resolveDeptName(partyId) }}
                       </el-tag>
                     </el-descriptions-item>
                     <el-descriptions-item label="额外可见成员" v-if="agent.privilege.extra_user && agent.privilege.extra_user.length > 0">
                       <el-tag v-for="userId in agent.privilege.extra_user" :key="userId" size="small" style="margin: 0 4px 4px 0" effect="plain" type="info">
-                        {{ userId }}
+                        {{ resolveMemberName(userId) }}
                       </el-tag>
                     </el-descriptions-item>
                   </el-descriptions>
@@ -306,6 +308,20 @@
 
           <!-- Tab: 操作日志 -->
           <el-tab-pane label="操作日志" name="logs">
+            <!-- 自动清理配置 -->
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; padding: 8px 12px; background: #f5f7fa; border-radius: 6px">
+              <div style="display: flex; align-items: center; gap: 8px; font-size: 13px; color: #606266">
+                <span>自动清理：</span>
+                <el-switch v-model="logAutoClean.enabled" size="small" @change="handleLogAutoCleanChange" />
+                <template v-if="logAutoClean.enabled">
+                  <span>保留</span>
+                  <el-input-number v-model="logAutoClean.retentionDays" :min="7" :max="365" :step="7" size="small" style="width: 100px" @change="handleLogAutoCleanChange" />
+                  <span>天</span>
+                </template>
+                <span v-else style="color: #909399">（关闭后日志将永久保留）</span>
+              </div>
+              <el-button size="small" type="danger" plain @click="handleManualCleanLogs" :loading="logCleaning">手动清理</el-button>
+            </div>
             <el-table :data="logList" v-loading="logLoading" stripe size="small" style="margin-bottom: 12px">
               <el-table-column prop="operator" label="来源" width="120">
                 <template #default="{ row }">
@@ -385,14 +401,36 @@
     </el-dialog>
 
     <!-- 授权成员列表弹窗 -->
-    <el-dialog v-model="memberListVisible" :title="`授权成员 - ${memberListTitle}`" width="560px" destroy-on-close append-to-body>
+    <el-dialog v-model="memberListVisible" :title="`授权成员 - ${memberListTitle}`" width="720px" destroy-on-close append-to-body>
       <div style="margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center">
         <span style="font-size: 14px; color: #606266">共 <strong>{{ memberListAll.length }}</strong> 名成员</span>
-        <el-input v-model="memberListSearch" placeholder="搜索成员ID" clearable style="width: 200px" size="small" />
+        <el-input v-model="memberListSearch" placeholder="搜索成员姓名/ID" clearable style="width: 200px" size="small" />
       </div>
       <el-table :data="paginatedMemberList" stripe size="small" style="margin-bottom: 12px">
         <el-table-column label="#" type="index" width="50" :index="(i: number) => (memberListPage - 1) * memberListPageSize + i + 1" />
-        <el-table-column label="成员UserID" prop="userId" />
+        <el-table-column label="成员姓名" min-width="120">
+          <template #default="{ row }">
+            <span style="font-weight: 500">{{ row.name || '-' }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="账号(UserID)" min-width="150" show-overflow-tooltip>
+          <template #default="{ row }">
+            <span style="font-size: 12px; font-family: monospace; color: #606266">{{ row.userId }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="部门" min-width="120" show-overflow-tooltip>
+          <template #default="{ row }">
+            <span>{{ row.deptNames || '-' }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="创建时间" width="140">
+          <template #default="{ row }">{{ row.createdAt ? formatDate(row.createdAt) : '-' }}</template>
+        </el-table-column>
+        <el-table-column label="状态" width="80" align="center">
+          <template #default="{ row }">
+            <el-tag :type="row.isEnabled === false ? 'danger' : 'success'" size="small">{{ row.isEnabled === false ? '异常' : '正常' }}</el-tag>
+          </template>
+        </el-table-column>
       </el-table>
       <div style="display: flex; justify-content: flex-end">
         <el-pagination
@@ -481,6 +519,41 @@ const logLoading = ref(false)
 const logTotal = ref(0)
 const logPage = ref(1)
 const logPageSize = ref(10)
+const logAutoClean = ref({ enabled: false, retentionDays: 30 })
+const logCleaning = ref(false)
+
+const handleLogAutoCleanChange = async () => {
+  try {
+    const configId = detailData.value?.configId
+    if (!configId) return
+    await request.put(`/wecom-management/tenant-auth/${configId}/log-auto-clean`, {
+      enabled: logAutoClean.value.enabled,
+      retentionDays: logAutoClean.value.retentionDays
+    })
+    ElMessage.success('自动清理设置已保存')
+  } catch (e: any) {
+    ElMessage.error(e?.message || '保存失败')
+  }
+}
+
+const handleManualCleanLogs = async () => {
+  const configId = detailData.value?.configId
+  if (!configId) return
+  try {
+    await ElMessageBox.confirm(
+      `确定清理 ${logAutoClean.value.retentionDays} 天前的操作日志？此操作不可恢复。`,
+      '手动清理',
+      { type: 'warning' }
+    )
+    logCleaning.value = true
+    await request.delete(`/wecom-management/tenant-auth/${configId}/logs`, {
+      params: { beforeDays: logAutoClean.value.retentionDays }
+    })
+    ElMessage.success('清理完成')
+    fetchLogs(1)
+  } catch { /* cancelled */ }
+  logCleaning.value = false
+}
 
 // ==================== 账单记录 ====================
 const billingList = ref<any[]>([])
@@ -499,12 +572,25 @@ const memberListPageSize = ref(10)
 const filteredMemberList = computed(() => {
   if (!memberListSearch.value) return memberListAll.value
   const kw = memberListSearch.value.toLowerCase()
-  return memberListAll.value.filter(u => u.toLowerCase().includes(kw))
+  return memberListAll.value.filter(u => {
+    const info = detailData.value?.memberInfoMap?.[u]
+    const name = info?.name || ''
+    return u.toLowerCase().includes(kw) || name.toLowerCase().includes(kw)
+  })
 })
 
 const paginatedMemberList = computed(() => {
   const start = (memberListPage.value - 1) * memberListPageSize.value
-  return filteredMemberList.value.slice(start, start + memberListPageSize.value).map(userId => ({ userId }))
+  return filteredMemberList.value.slice(start, start + memberListPageSize.value).map(userId => {
+    const info = detailData.value?.memberInfoMap?.[userId]
+    return {
+      userId,
+      name: info?.name || '',
+      deptNames: info?.deptNames || '',
+      isEnabled: info?.isEnabled !== false,
+      createdAt: info?.createdAt || ''
+    }
+  })
 })
 
 const openMemberListDialog = (users: string[], appName: string) => {
@@ -513,6 +599,20 @@ const openMemberListDialog = (users: string[], appName: string) => {
   memberListSearch.value = ''
   memberListPage.value = 1
   memberListVisible.value = true
+}
+
+/** 解析部门ID为名称 */
+const resolveDeptName = (partyId: number) => {
+  const nameMap = detailData.value?.deptNameMap
+  if (nameMap && nameMap[partyId]) return nameMap[partyId]
+  return `部门${partyId}`
+}
+
+/** 解析成员ID为姓名 */
+const resolveMemberName = (userId: string) => {
+  const infoMap = detailData.value?.memberInfoMap
+  if (infoMap && infoMap[userId]?.name) return infoMap[userId].name
+  return userId
 }
 
 // ==================== 关联租户弹窗 ====================

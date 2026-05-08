@@ -84,19 +84,27 @@
           <!-- 列表模式 -->
           <div v-else>
             <el-table :data="filteredGroups" v-loading="loading" stripe table-layout="auto">
-              <el-table-column label="群名称" min-width="220">
+              <el-table-column label="群名称" min-width="180">
                 <template #default="{ row }">
                   <div class="group-name-cell">
                     <el-icon style="color: #4C6EF5; flex-shrink:0"><ChatDotRound /></el-icon>
-                    <div class="g-info">
-                      <span class="g-name">{{ row.name || '未命名群' }}</span>
-                      <div class="g-meta">
-                        <span>👥 {{ row.memberCount || 0 }}人</span>
-                        <span v-if="getExternalCount(row) > 0">· 外部{{ getExternalCount(row) }}</span>
-                        <span v-if="row.createTime">· {{ formatShortDate(row.createTime) }}</span>
-                      </div>
-                    </div>
+                    <span class="g-name">{{ row.name || '未命名群' }}</span>
                   </div>
+                </template>
+              </el-table-column>
+              <el-table-column label="群成员" width="90" align="center" sortable :sort-by="'memberCount'">
+                <template #default="{ row }">
+                  <span style="font-weight: 600; color: #4C6EF5">{{ row.memberCount || 0 }}</span>
+                </template>
+              </el-table-column>
+              <el-table-column label="外部人数" width="90" align="center">
+                <template #default="{ row }">
+                  <span :style="{ color: getExternalCount(row) > 0 ? '#10B981' : '#9CA3AF' }">{{ getExternalCount(row) }}</span>
+                </template>
+              </el-table-column>
+              <el-table-column label="创建时间" width="120" align="center">
+                <template #default="{ row }">
+                  <span style="font-size: 12px; color: #6B7280">{{ formatShortDate(row.createTime) || '-' }}</span>
                 </template>
               </el-table-column>
               <el-table-column label="群主" min-width="140">
@@ -210,6 +218,7 @@ import AntiSpamRules from './components/AntiSpamRules.vue'
 import GroupBroadcast from './components/GroupBroadcast.vue'
 import GroupStats from './components/GroupStats.vue'
 import { useWecomDemo, DEMO_GROUPS, DEMO_GROUP_STATS, DEMO_GROUP_MEMBERS, DEMO_CONFIGS } from './composables/useWecomDemo'
+import { getLastSelectedConfigId, saveSelectedConfigId } from './composables/useWecomConfig'
 
 const { isDemoMode } = useWecomDemo()
 
@@ -240,7 +249,7 @@ const query = reactive({
 const stats = reactive({
   totalGroups: 0, activeGroups: 0, dismissedGroups: 0,
   totalMembers: 0, avgMembers: 0, todayMsgCount: 0
-})
+} as Record<string, number>)
 
 // 显示数据
 const displayConfigs = computed(() => {
@@ -254,8 +263,8 @@ const displayGroups = computed(() => {
 })
 
 const displayStats = computed(() => {
-  if (!isDemoMode.value) return stats
-  return DEMO_GROUP_STATS
+  if (!isDemoMode.value) return stats as any
+  return DEMO_GROUP_STATS as any
 })
 
 const filteredGroups = computed(() => {
@@ -291,7 +300,12 @@ const fetchConfigs = async () => {
     const res = await getWecomConfigs()
     configList.value = Array.isArray(res) ? res : []
     if (configList.value.length > 0 && !query.configId) {
-      query.configId = configList.value[0].id
+      const lastId = getLastSelectedConfigId()
+      if (lastId && configList.value.some(c => c.id === lastId)) {
+        query.configId = lastId
+      } else {
+        query.configId = configList.value[0].id
+      }
     }
   } catch { /* ignore */ }
 }
@@ -313,7 +327,7 @@ const fetchStats = async () => {
   } catch { /* ignore */ }
 }
 
-const handleConfigChange = () => { query.page = 1; fetchList(); fetchStats() }
+const handleConfigChange = () => { query.page = 1; saveSelectedConfigId(query.configId); fetchList(); fetchStats() }
 
 const handleSync = async () => {
   if (!query.configId) { ElMessage.warning('请先选择企微配置'); return }

@@ -121,7 +121,10 @@ export const getWecomCustomers = (params?: {
   configId?: number
   status?: string
   followUserId?: string
+  departmentId?: number
   keyword?: string
+  startDate?: string
+  endDate?: string
   page?: number
   pageSize?: number
 }) => {

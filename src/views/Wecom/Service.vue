@@ -881,6 +881,7 @@ import {
   DEMO_SERVICE_ACCOUNTS, DEMO_CONFIGS, DEMO_WECOM_USERS,
   DEMO_KF_SESSIONS, DEMO_KF_STATS, DEMO_QUICK_REPLIES
 } from './composables/useWecomDemo'
+import { getLastSelectedConfigId, saveSelectedConfigId } from './composables/useWecomConfig'
 
 const { isDemoMode } = useWecomDemo()
 
@@ -1288,7 +1289,12 @@ const fetchConfigs = async () => {
     const configs = Array.isArray(res) ? res : []
     configList.value = configs.filter((c: any) => c.isEnabled)
     if (configList.value.length > 0 && !selectedConfigId.value) {
-      selectedConfigId.value = configList.value[0].id
+      const lastId = getLastSelectedConfigId()
+      if (lastId && configList.value.some((c: any) => c.id === lastId)) {
+        selectedConfigId.value = lastId
+      } else {
+        selectedConfigId.value = configList.value[0].id
+      }
       fetchAccountList()
     }
   } catch (e) { console.error('[WecomService] Fetch configs error:', e) }
@@ -1369,6 +1375,7 @@ const fetchWecomUsers = async () => {
 
 // ==================== 事件处理 ====================
 const handleConfigChange = () => {
+  saveSelectedConfigId(selectedConfigId.value)
   fetchAccountList()
   if (activeTab.value === 'sessions') fetchSessions()
   else if (activeTab.value === 'stats') fetchStats()

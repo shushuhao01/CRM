@@ -250,6 +250,7 @@ import { getWecomConfigs, getChatArchiveStatus, getChatRecords, syncChatRecords,
 import { formatMsgTime, getMsgTypeText, getTextContent, getMetaSummary, getMetaAgreed, formatToUsers } from './utils'
 import type { ArchiveStatus, ChatRecord } from './types'
 import { useWecomDemo, DEMO_CONFIGS } from './composables/useWecomDemo'
+import { getLastSelectedConfigId, saveSelectedConfigId } from './composables/useWecomConfig'
 import { useUserStore } from '@/stores/user'
 import api from '@/utils/request'
 
@@ -382,7 +383,12 @@ const fetchConfigs = async () => {
     const configs = Array.isArray(res) ? res : []
     configList.value = configs.filter((c: any) => c.isEnabled)
     if (configList.value.length > 0 && !selectedConfigId.value) {
-      selectedConfigId.value = configList.value[0].id
+      const lastId = getLastSelectedConfigId()
+      if (lastId && configList.value.some((c: any) => c.id === lastId)) {
+        selectedConfigId.value = lastId
+      } else {
+        selectedConfigId.value = configList.value[0].id
+      }
       fetchList()
       fetchSeatInfo()
       fetchDeptAndMembers()
@@ -482,6 +488,7 @@ const fetchDeptAndMembers = async () => {
 // ==================== 事件处理 ====================
 
 const handleConfigChange = () => {
+  saveSelectedConfigId(selectedConfigId.value)
   fetchList()
   fetchSeatInfo()
   fetchDeptAndMembers()

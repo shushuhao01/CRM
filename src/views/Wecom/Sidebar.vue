@@ -23,11 +23,18 @@
         <template #title><strong>🎯 内置侧边栏客户详情</strong></template>
         <div style="margin-top:4px">
           <p style="margin:2px 0">系统已内置「侧边栏客户详情」页面，员工在企微聊天时可查看客户CRM信息、订单记录和购买统计。</p>
+          <div v-if="corpConfigList.length > 1" style="margin:8px 0 4px;display:flex;align-items:center;gap:8px">
+            <span style="font-size:13px;color:#606266;white-space:nowrap">选择企微主体：</span>
+            <el-select v-model="currentCorpId" size="small" style="width:320px" placeholder="请选择企微主体">
+              <el-option v-for="c in corpConfigList" :key="c.corpId" :value="c.corpId" :label="c.name + ' (' + c.corpId + ')'" />
+            </el-select>
+          </div>
           <p style="margin:6px 0 2px">侧边栏地址（请在企微后台配置）：</p>
           <code style="background:#f0faf4;padding:4px 8px;border-radius:4px;font-size:12px;word-break:break-all;display:block">
             {{ sidebarDetailUrl }}
           </code>
-          <p style="margin:4px 0;color:#909399;font-size:12px">将此地址添加到企微后台 → 应用管理 → 自建应用 → 配置到聊天侧边栏。其中 <code>corpId</code> 参数需替换为您的企业ID。</p>
+          <p v-if="corpConfigList.length <= 1" style="margin:4px 0;color:#909399;font-size:12px">将此地址添加到企微后台 → 应用管理 → 自建应用 → 配置到聊天侧边栏。其中 <code>corpId</code> 参数需替换为您的企业ID。</p>
+          <p v-else style="margin:4px 0;color:#e6a23c;font-size:12px;font-weight:500">⚠️ 注意：请确认选择的主体与企微后台配置的主体一致，不要填错！每个企微主体的侧边栏地址中 corpId 不同，配错将导致JS-SDK验证失败。</p>
         </div>
       </el-alert>
 
@@ -730,6 +737,7 @@ const loading = ref(false)
 const submitting = ref(false)
 const appList = ref<any[]>([])
 const currentCorpId = ref('')
+const corpConfigList = ref<Array<{ corpId: string; name: string; isEnabled: boolean }>>([])
 const dialogVisible = ref(false)
 const isEdit = ref(false)
 const currentId = ref<number | null>(null)
@@ -1339,6 +1347,7 @@ onMounted(async () => {
   try {
     const res: any = await getWecomConfigs()
     const configs = Array.isArray(res) ? res : (res?.data || res?.list || [])
+    corpConfigList.value = configs.filter((c: any) => c.corpId).map((c: any) => ({ corpId: c.corpId, name: c.name || c.corpName || '未命名主体', isEnabled: !!c.isEnabled }))
     const activeConfig = configs.find((c: any) => c.isEnabled) || configs[0]
     if (activeConfig?.corpId) currentCorpId.value = activeConfig.corpId
   } catch { /* 静默处理 */ }

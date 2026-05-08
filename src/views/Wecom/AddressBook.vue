@@ -41,16 +41,16 @@
                   <span class="mixed-tree-node" :class="{ 'is-member': data.nodeType === 'member' }">
                     <template v-if="data.nodeType === 'dept'">
                       <el-icon style="color: #F59E0B; margin-right: 4px"><FolderOpened /></el-icon>
-                      <span class="node-label">{{ data.label }}</span>
+                      <span class="node-label">{{ formatDeptLabel(data) }}</span>
                       <span class="node-count">({{ data.memberCount || 0 }}人)</span>
                       <el-tag v-if="data.crmDeptName" type="success" size="small" style="margin-left: 4px">已映射</el-tag>
                     </template>
                     <template v-else>
                       <el-avatar :size="22" :src="data.wecomAvatar" style="margin-right: 6px; flex-shrink: 0">
-                        {{ (data.label || '?')[0] }}
+                        {{ getMemberInitial(data) }}
                       </el-avatar>
-                      <span class="node-label">{{ data.label }}</span>
-                      <span class="node-account" v-if="data.wecomUserId && data.label !== data.wecomUserId">({{ data.wecomUserId }})</span>
+                      <span class="node-label">{{ formatMemberLabel(data) }}</span>
+                      <span class="node-account" v-if="data.wecomUserId && data.label !== data.wecomUserId">({{ shortenUserId(data.wecomUserId) }})</span>
                       <el-tag v-if="data.crmUserName" type="success" size="small" style="margin-left: 4px">{{ data.crmUserName }}</el-tag>
                       <el-tag v-else type="info" size="small" style="margin-left: 4px">未绑定</el-tag>
                     </template>
@@ -441,6 +441,7 @@ import WecomDemoBanner from './components/WecomDemoBanner.vue'
 import MemberProfile from './components/MemberProfile.vue'
 import DeptSummary from './components/DeptSummary.vue'
 import { useWecomDemo } from './composables/useWecomDemo'
+import { getLastSelectedConfigId, saveSelectedConfigId } from './composables/useWecomConfig'
 import { getWecomConfigs, createWecomBinding, batchCreateWecomBindings } from '@/api/wecom'
 import {
   getWecomDepartmentTree, setDeptMapping,
@@ -651,10 +652,15 @@ const openBindDialog = (row: any) => {
 const searchCrmUsers = async (keyword: string) => {
   searchingCrmUsers.value = true
   try {
-    const params: any = { pageSize: 20 }
-    if (keyword && keyword.length >= 1) params.keyword = keyword
+    const params: any = { limit: 50 }
+    if (keyword && keyword.length >= 1) params.search = keyword
     const res: any = await request.get('/users', { params })
-    crmUserOptions.value = (res?.list || res || []).slice(0, 20)
+    const rawList = res?.items || res?.users || res?.list || res?.data?.items || res?.data?.users || []
+    crmUserOptions.value = (Array.isArray(rawList) ? rawList : []).map((u: any) => ({
+      id: u.id,
+      name: u.realName || u.name || u.username || '',
+      username: u.username || u.code || ''
+    }))
   } catch { crmUserOptions.value = [] }
   searchingCrmUsers.value = false
 }
@@ -816,8 +822,32 @@ const maskPhone = (phone: string) => {
   return phone.slice(0, 3) + '****' + phone.slice(-4)
 }
 
+/** 格式化部门树节点标签：优先显示部门名称 */
+const formatDeptLabel = (data: any) => {
+  return data.label || data.wecomDeptName || ('部门 ' + data.wecomDeptId)
+}
+
+/** 格式化成员树节点标签：显示姓名 */
+const formatMemberLabel = (data: any) => {
+  return data.wecomUserName || data.label || data.wecomUserId || '-'
+}
+
+/** 获取成员首字符用于头像fallback */
+const getMemberInitial = (data: any) => {
+  const name = data.wecomUserName || data.label || data.wecomUserId || '?'
+  return name.charAt(0)
+}
+
+/** 截短过长的UserId用于树节点展示 */
+const shortenUserId = (userId: string) => {
+  if (!userId) return ''
+  if (userId.length <= 12) return userId
+  return userId.slice(0, 6) + '...' + userId.slice(-4)
+}
+
 const handleConfigChange = async (id: number) => {
   selectedConfigId.value = id
+  saveSelectedConfigId(id)
   selectedDept.value = null
   deptMembers.value = []
   reloadMixedTree()
@@ -1071,8 +1101,13 @@ const fetchConfigs = async () => {
     const res = await getWecomConfigs()
     configs.value = (Array.isArray(res) ? res : []).filter((c: any) => c.isEnabled)
     if (configs.value.length > 0) {
-      selectedConfigId.value = configs.value[0].id
-      handleConfigChange(configs.value[0].id)
+      const lastId = getLastSelectedConfigId()
+      if (lastId && configs.value.some((c: any) => c.id === lastId)) {
+        selectedConfigId.value = lastId
+      } else {
+        selectedConfigId.value = configs.value[0].id
+      }
+      handleConfigChange(selectedConfigId.value)
     }
   } catch (e) {
     console.error('获取配置失败:', e)

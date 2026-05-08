@@ -581,26 +581,57 @@ function loadWecomJsSdk(): Promise<void> {
       resolve()
       return
     }
-    // 企业微信PC端侧边栏必须使用企微专用JS-SDK
-    const wwScript = document.createElement('script')
-    wwScript.src = 'https://open.work.weixin.qq.com/wwopen/js/jwxwork-1.0.0.js'
-    wwScript.onload = () => {
-      // jwxwork SDK 可能挂载到 jWeixin 或 wx
-      if (!(window as any).wx && (window as any).jWeixin) {
-        (window as any).wx = (window as any).jWeixin
-      }
-      resolve()
+
+    // 等待wx对象就绪的轮询函数
+    function waitForWx(timeout = 3000): Promise<void> {
+      return new Promise((res, rej) => {
+        const start = Date.now()
+        const check = () => {
+          if ((window as any).wx || (window as any).jWeixin) {
+            if (!(window as any).wx && (window as any).jWeixin) {
+              (window as any).wx = (window as any).jWeixin
+            }
+            res()
+          } else if (Date.now() - start > timeout) {
+            rej(new Error('wx object not available after SDK load'))
+          } else {
+            setTimeout(check, 50)
+          }
+        }
+        check()
+      })
     }
-    wwScript.onerror = () => {
-      // fallback: 尝试加载微信通用SDK（仅移动端可用）
-      console.warn('[Sidebar] 企微专用SDK加载失败，尝试fallback到jWeixin...')
+
+    // 企业微信侧边栏应使用 jWeixin SDK（支持PC端和移动端）
+    const script = document.createElement('script')
+    script.src = 'https://res.wx.qq.com/open/js/jWeixin-1.2.0.js'
+    script.onload = () => {
+      console.log('[Sidebar] jWeixin-1.2.0.js loaded')
+      // SDK加载后可能需要短暂等待wx对象挂载
+      waitForWx(3000).then(resolve).catch(() => {
+        // fallback: 尝试备用CDN
+        console.warn('[Sidebar] wx对象未就绪，尝试备用CDN...')
+        const fallbackScript = document.createElement('script')
+        fallbackScript.src = 'https://wwcdn.weixin.qq.com/node/open/js/jweixin-1.2.0.js'
+        fallbackScript.onload = () => {
+          waitForWx(3000).then(resolve).catch(() => reject(new Error('wx object not available')))
+        }
+        fallbackScript.onerror = () => reject(new Error('Failed to load WeChat JS-SDK from all CDNs'))
+        document.head.appendChild(fallbackScript)
+      })
+    }
+    script.onerror = () => {
+      // 主CDN加载失败，尝试备用CDN
+      console.warn('[Sidebar] 主CDN加载失败，尝试备用CDN...')
       const fallbackScript = document.createElement('script')
-      fallbackScript.src = 'https://res.wx.qq.com/open/js/jWeixin-1.2.0.js'
-      fallbackScript.onload = () => resolve()
+      fallbackScript.src = 'https://wwcdn.weixin.qq.com/node/open/js/jweixin-1.2.0.js'
+      fallbackScript.onload = () => {
+        waitForWx(3000).then(resolve).catch(() => reject(new Error('wx object not available')))
+      }
       fallbackScript.onerror = () => reject(new Error('Failed to load WeChat JS-SDK'))
       document.head.appendChild(fallbackScript)
     }
-    document.head.appendChild(wwScript)
+    document.head.appendChild(script)
   })
 }
 

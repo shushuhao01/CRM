@@ -10,7 +10,7 @@
       <template #title>入群欢迎语通过企业微信API（externalcontact/group_welcome_template）同步生效。创建后将自动同步到企业微信，新成员入群时由企业微信自动发送。</template>
     </el-alert>
 
-    <el-table :data="welcomeTemplates" stripe v-loading="loading">
+    <el-table :data="pagedWelcomes" stripe v-loading="loading">
       <el-table-column label="欢迎语名称" min-width="150">
         <template #default="{ row }">
           <span style="color: #1F2937">{{ row.name }}</span>
@@ -42,6 +42,14 @@
         </template>
       </el-table-column>
     </el-table>
+    <el-pagination
+      v-if="welcomeTemplates.length > welcomePageSize"
+      v-model:current-page="welcomePage"
+      :page-size="welcomePageSize"
+      :total="welcomeTemplates.length"
+      layout="total, prev, pager, next"
+      style="margin-top: 16px; justify-content: flex-end; display: flex"
+    />
 
     <!-- 创建/编辑弹窗 -->
     <el-dialog v-model="showDialog" :title="editing ? '编辑欢迎语' : '创建欢迎语'" width="640px" destroy-on-close>
@@ -185,6 +193,13 @@ const groupList = ref<any[]>([])
 const templateList = ref<any[]>([])
 
 const welcomeTemplates = ref<any[]>([])
+const welcomePage = ref(1)
+const welcomePageSize = 10
+
+const pagedWelcomes = computed(() => {
+  const start = (welcomePage.value - 1) * welcomePageSize
+  return welcomeTemplates.value.slice(start, start + welcomePageSize)
+})
 
 const defaultForm = () => ({
   name: '', scope: 'all' as string, text: '', mediaType: 'none' as string,

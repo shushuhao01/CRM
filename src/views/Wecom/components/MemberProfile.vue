@@ -217,10 +217,15 @@ watch(() => [props.wecomUserId, props.configId], () => fetchProfile(), { immedia
 const searchCrmUsers = async (keyword: string) => {
   searchingCrm.value = true
   try {
-    const params: any = { pageSize: 20 }
-    if (keyword && keyword.length >= 1) params.keyword = keyword
+    const params: any = { limit: 50 }
+    if (keyword && keyword.length >= 1) params.search = keyword
     const res: any = await request.get('/users', { params })
-    crmOptions.value = (res?.list || res || []).slice(0, 20)
+    const rawList = res?.items || res?.users || res?.list || res?.data?.items || res?.data?.users || []
+    crmOptions.value = (Array.isArray(rawList) ? rawList : []).map((u: any) => ({
+      id: u.id,
+      name: u.realName || u.name || u.username || '',
+      username: u.username || u.code || ''
+    })).slice(0, 50)
   } catch { crmOptions.value = [] }
   searchingCrm.value = false
 }

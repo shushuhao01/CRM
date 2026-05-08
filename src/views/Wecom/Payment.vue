@@ -8,7 +8,7 @@
         <WecomHeader tab-name="payment">
           对外收款
           <template #actions>
-            <el-select v-model="query.configId" placeholder="选择企微配置" clearable style="width: 180px" @change="handleSearch">
+            <el-select v-model="query.configId" placeholder="选择企微配置" clearable style="width: 180px" @change="() => { saveSelectedConfigId(query.configId); handleSearch() }">
               <el-option v-for="c in displayConfigs" :key="c.id" :label="c.name" :value="c.id" />
             </el-select>
             <el-button type="success" :icon="Refresh" @click="handleSync" :loading="syncing" style="margin-left: 8px">同步收款</el-button>
@@ -293,6 +293,7 @@ import PaymentRefundStats from './components/PaymentRefundStats.vue'
 import PaymentSettings from './components/PaymentSettings.vue'
 import PaymentQrcodeManager from './components/PaymentQrcodeManager.vue'
 import { useWecomDemo, DEMO_PAYMENTS, DEMO_CONFIGS } from './composables/useWecomDemo'
+import { getLastSelectedConfigId, saveSelectedConfigId } from './composables/useWecomConfig'
 import { useUserStore } from '@/stores/user'
 
 const { isDemoMode } = useWecomDemo()
@@ -362,6 +363,14 @@ const fetchConfigs = async () => {
   try {
     const res = await getWecomConfigs()
     configList.value = (Array.isArray(res) ? res : []).filter((c: any) => c.isEnabled)
+    if (configList.value.length > 0 && !query.value.configId) {
+      const lastId = getLastSelectedConfigId()
+      if (lastId && configList.value.some((c: any) => c.id === lastId)) {
+        query.value.configId = lastId
+      } else {
+        query.value.configId = configList.value[0]?.id
+      }
+    }
   } catch (e) { console.error('[WecomPayment] Fetch configs error:', e) }
 }
 

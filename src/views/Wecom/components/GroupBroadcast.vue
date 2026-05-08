@@ -10,7 +10,7 @@
       <template #title>群发消息通过群主身份发送（企业微信API限制），支持多群同时发送。消息将以群主名义在群内发出，请确保群主账号已绑定企微。</template>
     </el-alert>
 
-    <el-table :data="broadcasts" stripe v-loading="loading">
+    <el-table :data="pagedBroadcasts" stripe v-loading="loading">
       <el-table-column label="任务名称" min-width="140">
         <template #default="{ row }">
           <span style="color: #1F2937">{{ row.taskName }}</span>
@@ -47,6 +47,14 @@
         </template>
       </el-table-column>
     </el-table>
+    <el-pagination
+      v-if="broadcasts.length > broadcastPageSize"
+      v-model:current-page="broadcastPage"
+      :page-size="broadcastPageSize"
+      :total="broadcasts.length"
+      layout="total, prev, pager, next"
+      style="margin-top: 16px; justify-content: flex-end; display: flex"
+    />
 
     <!-- 创建群发弹窗 -->
     <el-dialog v-model="showDialog" :title="'创建群发'" width="680px" destroy-on-close>
@@ -234,7 +242,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Picture, VideoCamera, Document, Link } from '@element-plus/icons-vue'
 import { getGroupBroadcasts, createGroupBroadcast, cancelGroupBroadcast, deleteGroupBroadcast, getGroupBroadcastDetail, getWecomCustomerGroups, getGroupTemplates } from '@/api/wecomGroup'
@@ -252,6 +260,13 @@ const templateList = ref<any[]>([])
 
 const broadcasts = ref<any[]>([])
 const detailResults = ref<any[]>([])
+const broadcastPage = ref(1)
+const broadcastPageSize = 10
+
+const pagedBroadcasts = computed(() => {
+  const start = (broadcastPage.value - 1) * broadcastPageSize
+  return broadcasts.value.slice(start, start + broadcastPageSize)
+})
 
 const statusType = (s: string) => {
   const map: Record<string, string> = { sent: 'success', pending: 'warning', failed: 'danger', cancelled: 'info', draft: '' }

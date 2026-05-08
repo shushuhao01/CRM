@@ -208,6 +208,7 @@ import { getWecomConfigs, getWecomDepartments, getWecomUsers, syncWecomContacts 
 import WecomHeader from './components/WecomHeader.vue'
 import WecomDemoBanner from './components/WecomDemoBanner.vue'
 import { useWecomDemo, DEMO_CONFIGS } from './composables/useWecomDemo'
+import { getLastSelectedConfigId, saveSelectedConfigId } from './composables/useWecomConfig'
 
 const { isDemoMode, loadWecomConfigs } = useWecomDemo()
 
@@ -386,6 +387,7 @@ const handleTableRowClick = (row: any) => {
 }
 
 const handleConfigChange = () => {
+  saveSelectedConfigId(selectedConfigId.value)
   if (selectedConfigId.value) {
     departments.value = []
     allMembers.value = []
@@ -403,7 +405,12 @@ const fetchConfigs = async () => {
     const data = Array.isArray(res) ? res : (res as any)?.data || []
     configList.value = data.filter((c: any) => c.isEnabled)
     if (configList.value.length > 0 && !selectedConfigId.value) {
-      selectedConfigId.value = configList.value[0].id
+      const lastId = getLastSelectedConfigId()
+      if (lastId && configList.value.some((c: any) => c.id === lastId)) {
+        selectedConfigId.value = lastId
+      } else {
+        selectedConfigId.value = configList.value[0].id
+      }
       fetchDepartments()
     }
   } catch (e) {

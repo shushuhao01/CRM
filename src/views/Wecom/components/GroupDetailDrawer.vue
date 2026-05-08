@@ -193,7 +193,9 @@
 
       <!-- 操作区 -->
       <div class="action-bar">
-        <el-button size="small" type="primary" plain @click="transferDialogVisible = true" :disabled="group.status !== 'normal'">群主转让</el-button>
+        <el-tooltip content="企业微信API仅支持离职继承转让群主，不支持主动转让" placement="top">
+          <el-button size="small" type="primary" plain disabled>群主转让（不支持）</el-button>
+        </el-tooltip>
         <el-button size="small" plain @click="broadcastDialogVisible = true" :disabled="group.status !== 'normal'">群发消息</el-button>
         <el-button size="small" plain @click="handleExportMembers">导出成员</el-button>
       </div>
@@ -401,11 +403,13 @@ const handleSendBroadcast = async () => {
   if (!broadcastForm.value.content.trim()) { ElMessage.warning('请输入消息内容'); return }
   broadcasting.value = true
   try {
+    const now = new Date()
+    const timeStr = `${now.getMonth() + 1}/${now.getDate()} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
     await createGroupBroadcast({
+      taskName: `快捷群发-${props.group?.name || '群'}-${timeStr}`,
       target: 'specified',
-      targetGroupIds: [props.group.chatId],
-      msgType: 'text',
-      content: broadcastForm.value.content,
+      specifiedGroups: JSON.stringify([props.group.chatId]),
+      text: broadcastForm.value.content,
       sendMode: 'now'
     })
     ElMessage.success('群发任务已创建')

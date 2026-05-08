@@ -150,6 +150,7 @@ import WecomDemoBanner from './components/WecomDemoBanner.vue'
 import { useUserStore } from '@/stores/user'
 import { formatDateTime } from '@/utils/date'
 import { useWecomDemo, DEMO_BINDINGS, DEMO_CONFIGS, DEMO_WECOM_USERS } from './composables/useWecomDemo'
+import { getLastSelectedConfigId, saveSelectedConfigId } from './composables/useWecomConfig'
 
 const { isDemoMode } = useWecomDemo()
 
@@ -216,7 +217,12 @@ const fetchConfigs = async () => {
     const res = await getWecomConfigs()
     configList.value = (res.data?.data || []).filter((c: any) => c.isEnabled)
     if (configList.value.length > 0 && !selectedConfigId.value) {
-      selectedConfigId.value = configList.value[0].id
+      const lastId = getLastSelectedConfigId()
+      if (lastId && configList.value.some((c: any) => c.id === lastId)) {
+        selectedConfigId.value = lastId
+      } else {
+        selectedConfigId.value = configList.value[0].id
+      }
       fetchBindings()
     }
   } catch (e) {
@@ -261,6 +267,7 @@ const fetchCrmUsers = async () => {
 }
 
 const handleConfigChange = () => {
+  saveSelectedConfigId(selectedConfigId.value)
   fetchBindings()
   wecomUsers.value = []
 }

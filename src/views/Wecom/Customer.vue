@@ -97,13 +97,19 @@
         <WecomHeader tab-name="customer">
           企微客户
           <template #actions>
-            <el-select v-model="query.configId" placeholder="选择企微配置" clearable style="width: 180px" @change="handleSearch">
+            <el-select v-model="query.configId" placeholder="选择企微配置" clearable style="width: 180px" @change="handleConfigChange">
               <el-option v-for="c in displayConfigs" :key="c.id" :label="c.name" :value="c.id" />
             </el-select>
             <el-input v-model="query.keyword" placeholder="搜索客户名/备注/UserID" clearable style="width: 220px" @keyup.enter="handleSearch" />
             <el-select v-model="query.status" placeholder="客户状态" clearable style="width: 120px" @change="handleSearch">
               <el-option label="正常" value="normal" />
               <el-option label="已删除" value="deleted" />
+            </el-select>
+            <el-select v-model="query.departmentId" placeholder="部门" clearable style="width: 140px" @change="handleDepartmentChange">
+              <el-option v-for="d in departmentList" :key="d.id" :label="d.name" :value="d.id" />
+            </el-select>
+            <el-select v-model="query.followUserId" placeholder="企微成员" clearable filterable style="width: 150px" @change="handleSearch">
+              <el-option v-for="m in filteredMembers" :key="m.userId || m.wecomUserId" :label="m.name || m.wecomUserName" :value="m.userId || m.wecomUserId" />
             </el-select>
             <el-date-picker
               v-model="dateRange"
@@ -128,6 +134,8 @@
         <span>筛选结果：共 <strong>{{ displayTotal }}</strong> 条记录</span>
         <template v-if="query.keyword"><el-tag size="small" closable @close="query.keyword = ''; handleSearch()">关键词: {{ query.keyword }}</el-tag></template>
         <template v-if="query.status"><el-tag size="small" closable @close="query.status = ''; handleSearch()">状态: {{ query.status === 'normal' ? '正常' : '已删除' }}</el-tag></template>
+        <template v-if="query.departmentId"><el-tag size="small" closable @close="query.departmentId = null; handleSearch()">部门: {{ departmentList.find(d => d.id === query.departmentId)?.name || query.departmentId }}</el-tag></template>
+        <template v-if="query.followUserId"><el-tag size="small" closable @close="query.followUserId = ''; handleSearch()">成员: {{ memberList.find(m => (m.userId || m.wecomUserId) === query.followUserId)?.name || query.followUserId }}</el-tag></template>
         <template v-if="query.startDate"><el-tag size="small" closable @close="dateRange = []; handleSearch()">日期: {{ query.startDate }} ~ {{ query.endDate }}</el-tag></template>
         <el-button link type="primary" size="small" @click="clearFilters">清空筛选</el-button>
       </div>
@@ -153,7 +161,13 @@
             </el-tooltip>
           </template>
         </el-table-column>
-        <el-table-column prop="followUserName" label="跟进人" width="90" />
+        <el-table-column label="跟进人" width="120">
+          <template #default="{ row }">
+            <el-tooltip :content="getFollowUserTooltip(row)" placement="top" :show-after="300" raw-content>
+              <span style="cursor: default">{{ getFollowUserDisplay(row) }}</span>
+            </el-tooltip>
+          </template>
+        </el-table-column>
         <el-table-column label="添加方式" width="100">
           <template #default="{ row }">{{ getAddWayText(row.addWay) }}</template>
         </el-table-column>
@@ -162,7 +176,7 @@
         </el-table-column>
         <el-table-column label="状态" width="80">
           <template #default="{ row }">
-            <el-tag :type="row.status === 'normal' ? 'success' : 'danger'" size="small">{{ row.status === 'normal' ? '正常' : '已删除' }}</el-tag>
+            <el-tag :type="getStatusTagType(row.status)" size="small">{{ getStatusLabel(row.status) }}</el-tag>
           </template>
         </el-table-column>
         <el-table-column label="标签" min-width="150">
@@ -200,12 +214,14 @@
             <el-tag v-else type="info" size="small">沉默</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="消息统计" width="110">
+        <el-table-column label="消息统计" width="130">
           <template #default="{ row }">
-            <span style="font-size: 12px">
-              发 <strong>{{ row.msgSentCount || 0 }}</strong> /
-              收 <strong>{{ row.msgRecvCount || 0 }}</strong>
-            </span>
+            <el-tooltip :content="`发送: ${row.msgSentCount ?? row.chatSentCount ?? 0}条 / 接收: ${row.msgRecvCount ?? row.chatRecvCount ?? 0}条`" placement="top" :show-after="300">
+              <span style="font-size: 12px">
+                ↑ <strong>{{ row.msgSentCount ?? row.chatSentCount ?? 0 }}</strong>
+                ↓ <strong>{{ row.msgRecvCount ?? row.chatRecvCount ?? 0 }}</strong>
+              </span>
+            </el-tooltip>
           </template>
         </el-table-column>
         <el-table-column label="操作" width="80" fixed="right">
@@ -286,7 +302,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   getWecomConfigs, getWecomCustomers, getWecomCustomerStats, syncWecomCustomers,
   linkWecomCustomerToCrm, unlinkWecomCustomerFromCrm, searchCrmCustomersForLink,
-  syncWecomTagsToCustomers
+  syncWecomTagsToCustomers, getWecomDepartments, getWecomUsers
 } from '@/api/wecom'
 import { formatDateTime } from '@/utils/date'
 import { Filter } from '@element-plus/icons-vue'
@@ -294,6 +310,7 @@ import CustomerDetailDrawer from './components/CustomerDetailDrawer.vue'
 import WecomHeader from './components/WecomHeader.vue'
 import WecomDemoBanner from './components/WecomDemoBanner.vue'
 import { useWecomDemo, DEMO_CUSTOMERS, DEMO_CUSTOMER_STATS, DEMO_CUSTOMER_DETAIL, DEMO_CRM_CUSTOMER_OPTIONS, DEMO_CONFIGS } from './composables/useWecomDemo'
+import { getLastSelectedConfigId, saveSelectedConfigId } from './composables/useWecomConfig'
 import { getAutoMatchCount } from '@/api/wecomAddressBook'
 import { getWecomBindings } from '@/api/wecom'
 import { useUserStore } from '@/stores/user'
@@ -321,7 +338,7 @@ const syncingTags = ref(false)
 const configList = ref<any[]>([])
 const customerList = ref<any[]>([])
 const total = ref(0)
-const stats = ref({ todayAdd: 0, totalAdd: 0, deleted: 0, dealt: 0 })
+const stats = ref({ todayAdd: 0, totalAdd: 0, deleted: 0, dealt: 0, yesterdayAdd: 0 })
 const dateRange = ref<string[]>([])
 
 /** 显示的配置选项 */
@@ -368,7 +385,8 @@ const displayStats = computed(() => {
     todayAdd: filtered.filter(c => c.addTime && c.addTime.startsWith(today) && c.status === 'normal').length,
     totalAdd: filtered.filter(c => c.status === 'normal').length,
     deleted: filtered.filter(c => c.status === 'deleted').length,
-    dealt: filtered.filter(c => c.isDealt).length
+    dealt: filtered.filter(c => c.isDealt).length,
+    yesterdayAdd: 0
   }
 })
 
@@ -387,11 +405,17 @@ const query = ref({
   configId: null as number | null,
   keyword: '',
   status: '',
+  departmentId: null as number | null,
+  followUserId: '',
   startDate: '',
   endDate: '',
   page: 1,
   pageSize: 20
 })
+
+// 部门与成员筛选数据
+const departmentList = ref<any[]>([])
+const memberList = ref<any[]>([])
 
 // CRM关联弹窗
 const linkDialogVisible = ref(false)
@@ -442,6 +466,18 @@ const goToCreateOrder = (crmId: string) => {
 
 const formatDate = (date: string) => date ? formatDateTime(date) : '-'
 
+/** 状态标签类型 */
+const getStatusTagType = (status: string) => {
+  const map: Record<string, string> = { normal: 'success', deleted: 'danger', inactive: 'warning', blocked: 'info' }
+  return (map[status] || 'info') as any
+}
+
+/** 状态文案映射 */
+const getStatusLabel = (status: string) => {
+  const map: Record<string, string> = { normal: '正常', deleted: '已删除', inactive: '已停用', blocked: '已拉黑' }
+  return map[status] || status || '未知'
+}
+
 const parseTags = (tagIds: any): string[] => {
   if (!tagIds) return []
   try {
@@ -465,10 +501,70 @@ const fetchConfigs = async () => {
     const res = await getWecomConfigs()
     const configs = Array.isArray(res) ? res : []
     configList.value = configs.filter((c: any) => c.isEnabled)
+    // 默认选择：优先读取上次选择，否则选第一个
+    if (!query.value.configId && configList.value.length > 0) {
+      const lastId = getLastSelectedConfigId()
+      if (lastId && configList.value.find((c: any) => c.id === lastId)) {
+        query.value.configId = lastId
+      } else {
+        query.value.configId = configList.value[0].id
+      }
+      fetchDepartmentsAndMembers()
+      fetchList()
+      fetchStats()
+    }
   } catch (e) {
     console.error('[WecomCustomer] Fetch configs error:', e)
   }
 }
+
+/** 切换企微配置时保存选择并刷新部门/成员列表 */
+const handleConfigChange = () => {
+  if (query.value.configId) {
+    saveSelectedConfigId(query.value.configId)
+  }
+  query.value.departmentId = null
+  query.value.followUserId = ''
+  fetchDepartmentsAndMembers()
+  handleSearch()
+}
+
+/** 获取部门和成员列表 */
+const fetchDepartmentsAndMembers = async () => {
+  if (!query.value.configId) {
+    departmentList.value = []
+    memberList.value = []
+    return
+  }
+  try {
+    const [deptRes, userRes] = await Promise.all([
+      getWecomDepartments(query.value.configId),
+      getWecomUsers(query.value.configId)
+    ])
+    departmentList.value = Array.isArray(deptRes) ? deptRes : (deptRes as any)?.data || []
+    memberList.value = Array.isArray(userRes) ? userRes : (userRes as any)?.data || []
+  } catch (e) {
+    console.error('[WecomCustomer] Fetch departments/members error:', e)
+    departmentList.value = []
+    memberList.value = []
+  }
+}
+
+/** 切换部门时筛选成员列表 */
+const handleDepartmentChange = () => {
+  query.value.followUserId = ''
+  handleSearch()
+}
+
+/** 当前部门下的成员（筛选用） */
+const filteredMembers = computed(() => {
+  if (!query.value.departmentId) return memberList.value
+  return memberList.value.filter((m: any) => {
+    const deptIds = m.departmentIds || m.department || []
+    if (Array.isArray(deptIds)) return deptIds.includes(query.value.departmentId)
+    return String(deptIds).includes(String(query.value.departmentId))
+  })
+})
 
 const fetchList = async () => {
   if (isDemoMode.value) return
@@ -501,7 +597,7 @@ const fetchStats = async () => {
       startDate: query.value.startDate || undefined,
       endDate: query.value.endDate || undefined
     })
-    stats.value = res || { todayAdd: 0, totalAdd: 0, deleted: 0, dealt: 0 }
+    stats.value = res || { todayAdd: 0, totalAdd: 0, deleted: 0, dealt: 0, yesterdayAdd: 0 }
   } catch (e) {
     console.error('[WecomCustomer] Fetch stats error:', e)
   }
@@ -522,17 +618,40 @@ const handleSearch = () => {
 
 /** 是否有活跃的筛选条件 */
 const hasActiveFilter = computed(() => {
-  return !!(query.value.keyword || query.value.status || query.value.startDate || query.value.endDate)
+  return !!(query.value.keyword || query.value.status || query.value.startDate || query.value.endDate || query.value.departmentId || query.value.followUserId)
 })
 
 /** 清空所有筛选条件 */
 const clearFilters = () => {
   query.value.keyword = ''
   query.value.status = ''
+  query.value.departmentId = null
+  query.value.followUserId = ''
   query.value.startDate = ''
   query.value.endDate = ''
   dateRange.value = []
   handleSearch()
+}
+
+/** 获取跟进人显示名（企微成员姓名） */
+const getFollowUserDisplay = (row: any) => {
+  // 优先返回后端已解析的名称
+  if (row.followUserName && row.followUserName !== row.followUserId) return row.followUserName
+  // 从本地成员列表匹配
+  if (row.followUserId && memberList.value.length > 0) {
+    const member = memberList.value.find((m: any) => m.userId === row.followUserId || m.wecomUserId === row.followUserId)
+    if (member) return member.name || member.wecomUserName || row.followUserId
+  }
+  return row.followUserName || row.followUserId || '-'
+}
+
+/** 获取跟进人tooltip内容 */
+const getFollowUserTooltip = (row: any) => {
+  const wecomName = getFollowUserDisplay(row)
+  const crmName = row.crmFollowUserName || row.crmUserName || ''
+  let tip = `企微跟进人：${wecomName}`
+  if (crmName) tip += `<br>CRM跟进人：${crmName}`
+  return tip
 }
 
 const handleSync = async () => {
@@ -711,8 +830,7 @@ const checkUserBinding = async () => {
 onMounted(() => {
   checkUserBinding()
   fetchConfigs()
-  fetchList()
-  fetchStats()
+  // fetchList 和 fetchStats 会在 fetchConfigs 成功后自动调用（默认选中配置后触发）
   // V4.0: 获取自动匹配待确认数量
   getAutoMatchCount().then((res: any) => {
     autoMatchCount.value = res?.pendingCount || 0

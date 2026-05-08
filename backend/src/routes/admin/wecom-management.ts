@@ -945,6 +945,62 @@ router.get('/tenant-auth/:configId/detail', async (req: Request, res: Response) 
       chatRecordCount: await safeCount('SELECT COUNT(*) as cnt FROM wecom_chat_records WHERE wecom_config_id = ?', [configId])
     };
 
+    // 解析授权范围中的部门ID和成员ID，查询对应名称
+    let deptNameMap: Record<number, string> = {};
+    let memberInfoMap: Record<string, { name: string; avatar?: string; deptNames?: string; isEnabled?: boolean; createdAt?: string }> = {};
+    try {
+      // 收集所有需要解析的部门ID和成员ID
+      const allDeptIds = new Set<number>();
+      const allUserIds = new Set<string>();
+      if (authScope?.agent) {
+        for (const agent of authScope.agent) {
+          if (agent.privilege?.allow_party) agent.privilege.allow_party.forEach((id: number) => allDeptIds.add(id));
+          if (agent.privilege?.extra_party) agent.privilege.extra_party.forEach((id: number) => allDeptIds.add(id));
+          if (agent.privilege?.allow_user) agent.privilege.allow_user.forEach((id: string) => allUserIds.add(id));
+          if (agent.privilege?.extra_user) agent.privilege.extra_user.forEach((id: string) => allUserIds.add(id));
+        }
+      }
+      // 查询部门名称
+      if (allDeptIds.size > 0) {
+        try {
+          const deptRows = await AppDataSource.query(
+            `SELECT wecom_dept_id, wecom_dept_name FROM wecom_department_mappings WHERE wecom_config_id = ? AND wecom_dept_id IN (?)`,
+            [configId, [...allDeptIds]]
+          );
+          for (const r of deptRows) {
+            if (r.wecom_dept_name) deptNameMap[r.wecom_dept_id] = r.wecom_dept_name;
+          }
+        } catch { /* table may not exist */ }
+      }
+      // 查询成员信息
+      if (allUserIds.size > 0) {
+        try {
+          const memberRows = await AppDataSource.query(
+            `SELECT wecom_user_id, wecom_user_name, wecom_avatar, wecom_department_ids, is_enabled, created_at FROM wecom_user_bindings WHERE wecom_config_id = ? AND wecom_user_id IN (?)`,
+            [configId, [...allUserIds]]
+          );
+          for (const r of memberRows) {
+            memberInfoMap[r.wecom_user_id] = {
+              name: r.wecom_user_name || '',
+              avatar: r.wecom_avatar || '',
+              deptNames: r.wecom_department_ids || '',
+              isEnabled: !!r.is_enabled,
+              createdAt: r.created_at
+            };
+          }
+          // 解析部门名称给成员
+          for (const uid of Object.keys(memberInfoMap)) {
+            const info = memberInfoMap[uid];
+            if (info.deptNames) {
+              const ids = info.deptNames.split(',').map(s => Number(s.trim())).filter(n => n > 0);
+              const names = ids.map(id => deptNameMap[id] || String(id));
+              info.deptNames = names.join(', ');
+            }
+          }
+        } catch { /* table may not exist */ }
+      }
+    } catch { /* ignore resolution errors */ }
+
     res.json({
       success: true,
       data: {
@@ -970,6 +1026,8 @@ router.get('/tenant-auth/:configId/detail', async (req: Request, res: Response) 
         authScope,
         authCorpInfo,
         authUserInfo,
+        deptNameMap,
+        memberInfoMap,
         createdAt: config.created_at,
         updatedAt: config.updated_at,
         stats
@@ -1200,6 +1258,60 @@ router.get('/tenant-auth/:configId/logs', async (req: Request, res: Response) =>
   } catch (error: any) {
     log.error('[Admin Wecom] Config logs error:', error.message);
     res.json({ success: true, data: { list: [], total: 0 } });
+  }
+});
+
+/**
+ * 获取/保存操作日志自动清理配置
+ * PUT /api/v1/admin/wecom-management/tenant-auth/:configId/log-auto-clean
+ */
+router.put('/tenant-auth/:configId/log-auto-clean', async (req: Request, res: Response) => {
+  try {
+    const { configId } = req.params;
+    const { enabled, retentionDays } = req.body;
+    // 存储到 tenant_settings
+    const configRow = await AppDataSource.query('SELECT tenant_id FROM wecom_configs WHERE id = ? LIMIT 1', [configId]);
+    const tenantId = configRow[0]?.tenant_id;
+    if (!tenantId) return res.json({ success: false, message: '未关联租户' });
+    const settingValue = JSON.stringify({ enabled: !!enabled, retentionDays: retentionDays || 30 });
+    await AppDataSource.query(
+      `INSERT INTO tenant_settings (tenant_id, setting_key, setting_value) VALUES (?, 'wecom_log_auto_clean', ?)
+       ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)`,
+      [tenantId, settingValue]
+    );
+    res.json({ success: true, message: '保存成功' });
+  } catch (error: any) {
+    log.error('[Admin Wecom] Save log auto-clean config error:', error.message);
+    res.status(500).json({ success: false, message: '保存失败' });
+  }
+});
+
+/**
+ * 手动清理操作日志
+ * DELETE /api/v1/admin/wecom-management/tenant-auth/:configId/logs
+ */
+router.delete('/tenant-auth/:configId/logs', async (req: Request, res: Response) => {
+  try {
+    const { configId } = req.params;
+    const { beforeDays = 30 } = req.query;
+    const configRow = await AppDataSource.query('SELECT corp_id, tenant_id FROM wecom_configs WHERE id = ? LIMIT 1', [configId]);
+    const corpId = configRow[0]?.corp_id || '';
+    const cutoffDate = new Date(Date.now() - Number(beforeDays) * 86400000).toISOString();
+    let deleted = 0;
+    // 清理回调日志
+    if (corpId) {
+      try {
+        const result = await AppDataSource.query(
+          `DELETE FROM wecom_suite_callback_logs WHERE auth_corp_id = ? AND created_at < ?`,
+          [corpId, cutoffDate]
+        );
+        deleted += result?.affectedRows || 0;
+      } catch { /* table may not exist */ }
+    }
+    res.json({ success: true, data: { deleted }, message: `已清理 ${deleted} 条日志` });
+  } catch (error: any) {
+    log.error('[Admin Wecom] Clean logs error:', error.message);
+    res.status(500).json({ success: false, message: '清理失败' });
   }
 });
 
