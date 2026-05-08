@@ -349,6 +349,7 @@ async function handleCancelAuth(authCorpId: string) {
     config.isEnabled = false;
     config.connectionStatus = 'disconnected';
     config.permanentCode = '';
+    config.lastError = `企业主动取消授权 (${new Date().toLocaleString('zh-CN')})`;
     await configRepo.save(config);
     log.info(`[SuiteCallback] Auth cancelled for corp: ${authCorpId}`);
   }

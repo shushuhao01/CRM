@@ -174,16 +174,121 @@
 
           <!-- Tab: 授权范围 -->
           <el-tab-pane label="授权范围" name="scope">
+            <!-- 应用被删除/取消授权提示 -->
+            <el-alert
+              v-if="detailData.connectionStatus === 'disconnected' && !detailData.isEnabled"
+              type="error"
+              :closable="false"
+              style="margin-bottom: 16px"
+            >
+              <template #title><strong>⚠️ 企业已取消授权（主动删除应用）</strong></template>
+              <div style="font-size: 12px; margin-top: 4px">
+                该企业已在企业微信后台删除/停用了本服务商应用，所有API调用将不可用。
+                <span v-if="detailData.lastError" style="color: #f56c6c">{{ detailData.lastError }}</span>
+              </div>
+            </el-alert>
+
+            <!-- 刷新按钮 -->
+            <div style="display: flex; justify-content: flex-end; margin-bottom: 12px" v-if="detailData.authType === 'third_party'">
+              <el-button size="small" type="primary" :loading="refreshingAuth" @click="handleRefreshAuth">
+                🔄 从企微同步最新授权信息
+              </el-button>
+            </div>
+
             <template v-if="detailData.authScope">
-              <el-descriptions :column="1" border size="small" style="margin-bottom: 16px" v-if="detailData.authScope.agent">
-                <el-descriptions-item label="应用数量">{{ detailData.authScope.agent?.length || 0 }} 个</el-descriptions-item>
-              </el-descriptions>
-              <pre class="json-block">{{ JSON.stringify(detailData.authScope, null, 2) }}</pre>
+              <!-- 已授权权限概览 -->
+              <el-divider content-position="left">已授权权限</el-divider>
+              <div style="margin-bottom: 16px">
+                <template v-if="parsedPermissions.length > 0">
+                  <el-tag
+                    v-for="perm in parsedPermissions"
+                    :key="perm.key"
+                    :type="perm.granted ? 'success' : 'info'"
+                    effect="plain"
+                    size="default"
+                    style="margin: 0 8px 8px 0"
+                  >
+                    {{ perm.granted ? '✅' : '⬜' }} {{ perm.label }}
+                  </el-tag>
+                </template>
+                <el-text v-else type="info" size="small">暂无权限数据（授权信息可能未同步，请点击上方刷新按钮）</el-text>
+              </div>
+
+              <!-- 授权应用列表 -->
+              <el-divider content-position="left">授权应用范围</el-divider>
+              <template v-if="detailData.authScope.agent && detailData.authScope.agent.length > 0">
+                <el-card v-for="(agent, idx) in detailData.authScope.agent" :key="idx" shadow="never" style="margin-bottom: 12px; border: 1px solid #ebeef5">
+                  <template #header>
+                    <div style="display: flex; align-items: center; gap: 8px">
+                      <img v-if="agent.square_logo_url" :src="agent.square_logo_url" style="width: 24px; height: 24px; border-radius: 4px" />
+                      <span style="font-weight: 600">{{ agent.name || `应用 ${agent.agentid}` }}</span>
+                      <el-tag size="small" type="info">AgentID: {{ agent.agentid }}</el-tag>
+                      <el-tag v-if="agent.privilege?.level === 1" size="small" type="warning">管理权限</el-tag>
+                      <el-tag v-else size="small">使用权限</el-tag>
+                    </div>
+                  </template>
+                  <el-descriptions :column="1" border size="small" v-if="agent.privilege">
+                    <el-descriptions-item label="授权部门">
+                      <template v-if="agent.privilege.allow_party && agent.privilege.allow_party.length > 0">
+                        <el-tag v-for="partyId in agent.privilege.allow_party" :key="partyId" size="small" style="margin: 0 4px 4px 0" effect="plain">
+                          部门ID: {{ partyId }}
+                        </el-tag>
+                        <span style="font-size: 12px; color: #909399; margin-left: 4px">共 {{ agent.privilege.allow_party.length }} 个部门</span>
+                      </template>
+                      <span v-else style="color: #c0c4cc">全部部门 / 未限制</span>
+                    </el-descriptions-item>
+                    <el-descriptions-item label="授权成员">
+                      <template v-if="agent.privilege.allow_user && agent.privilege.allow_user.length > 0">
+                        <el-tag v-for="userId in agent.privilege.allow_user.slice(0, 20)" :key="userId" size="small" style="margin: 0 4px 4px 0" effect="plain">
+                          {{ userId }}
+                        </el-tag>
+                        <span style="font-size: 12px; color: #909399; margin-left: 4px">共 {{ agent.privilege.allow_user.length }} 人</span>
+                        <span v-if="agent.privilege.allow_user.length > 20" style="font-size: 12px; color: #e6a23c; margin-left: 4px">（仅显示前20个）</span>
+                      </template>
+                      <span v-else style="color: #c0c4cc">全部成员 / 未限制</span>
+                    </el-descriptions-item>
+                    <el-descriptions-item label="授权标签">
+                      <template v-if="agent.privilege.allow_tag && agent.privilege.allow_tag.length > 0">
+                        <el-tag v-for="tagId in agent.privilege.allow_tag" :key="tagId" size="small" style="margin: 0 4px 4px 0" effect="plain" type="warning">
+                          标签ID: {{ tagId }}
+                        </el-tag>
+                        <span style="font-size: 12px; color: #909399; margin-left: 4px">共 {{ agent.privilege.allow_tag.length }} 个标签</span>
+                      </template>
+                      <span v-else style="color: #c0c4cc">无标签限制</span>
+                    </el-descriptions-item>
+                    <el-descriptions-item label="额外可见部门" v-if="agent.privilege.extra_party && agent.privilege.extra_party.length > 0">
+                      <el-tag v-for="partyId in agent.privilege.extra_party" :key="partyId" size="small" style="margin: 0 4px 4px 0" effect="plain" type="info">
+                        部门ID: {{ partyId }}
+                      </el-tag>
+                    </el-descriptions-item>
+                    <el-descriptions-item label="额外可见成员" v-if="agent.privilege.extra_user && agent.privilege.extra_user.length > 0">
+                      <el-tag v-for="userId in agent.privilege.extra_user" :key="userId" size="small" style="margin: 0 4px 4px 0" effect="plain" type="info">
+                        {{ userId }}
+                      </el-tag>
+                    </el-descriptions-item>
+                  </el-descriptions>
+                </el-card>
+              </template>
+              <el-empty v-else description="暂无应用授权范围数据" :image-size="60" />
             </template>
-            <el-empty v-else description="暂无授权范围数据" />
+            <el-empty v-else description="暂无授权范围数据，请点击刷新获取最新信息" :image-size="60" />
+
+            <!-- 企业信息 -->
             <template v-if="detailData.authCorpInfo">
-              <el-divider content-position="left">企业信息</el-divider>
-              <pre class="json-block">{{ JSON.stringify(detailData.authCorpInfo, null, 2) }}</pre>
+              <el-divider content-position="left">授权企业信息</el-divider>
+              <el-descriptions :column="2" border size="small">
+                <el-descriptions-item label="企业名称">{{ detailData.authCorpInfo.corp_name || '-' }}</el-descriptions-item>
+                <el-descriptions-item label="企业全称">{{ detailData.authCorpInfo.corp_full_name || '-' }}</el-descriptions-item>
+                <el-descriptions-item label="企业类型">{{ corpTypeLabel(detailData.authCorpInfo.corp_type) }}</el-descriptions-item>
+                <el-descriptions-item label="企业规模">{{ detailData.authCorpInfo.corp_scale || '-' }}</el-descriptions-item>
+                <el-descriptions-item label="行业">
+                  {{ detailData.authCorpInfo.corp_industry || '-' }}
+                  {{ detailData.authCorpInfo.corp_sub_industry ? ' - ' + detailData.authCorpInfo.corp_sub_industry : '' }}
+                </el-descriptions-item>
+                <el-descriptions-item label="授权人数上限">{{ detailData.authCorpInfo.corp_user_max || '-' }}</el-descriptions-item>
+                <el-descriptions-item label="企业微信ID">{{ detailData.authCorpInfo.corpid || '-' }}</el-descriptions-item>
+                <el-descriptions-item label="认证到期">{{ detailData.authCorpInfo.corp_wxqrcode ? '已认证' : '-' }}</el-descriptions-item>
+              </el-descriptions>
             </template>
           </el-tab-pane>
 
@@ -322,6 +427,7 @@ const detailVisible = ref(false)
 const detailLoading = ref(false)
 const detailData = ref<any>(null)
 const detailTab = ref('info')
+const refreshingAuth = ref(false)
 
 // ==================== 操作日志 ====================
 const logList = ref<any[]>([])
@@ -360,6 +466,43 @@ const dataApiStatusLabel = (status: number) => {
   return map[status] || '未知'
 }
 
+const corpTypeLabel = (type: string) => {
+  const map: Record<string, string> = { verified: '已认证企业', unverified: '未认证企业', trial: '试用企业' }
+  return map[type] || type || '-'
+}
+
+// 权限类别映射表（企微服务商应用常见权限）
+const PERMISSION_CATEGORIES = [
+  { key: 'contact', label: '组织架构/通讯录' },
+  { key: 'external_contact', label: '客户联系' },
+  { key: 'customer_acquisition', label: '获客助手' },
+  { key: 'customer_group', label: '客户群管理' },
+  { key: 'contact_way', label: '联系我(活码)' },
+  { key: 'chat_archive', label: '会话存档' },
+  { key: 'kf', label: '微信客服' },
+  { key: 'external_pay', label: '对外收款' },
+  { key: 'sidebar', label: '侧边栏' },
+  { key: 'corp_info', label: '企业信息' },
+  { key: 'employee_info', label: '员工信息' },
+  { key: 'data_intelligence', label: '数据与智能专区' },
+]
+
+// 根据授权数据解析已授权的权限列表
+const parsedPermissions = computed(() => {
+  if (!detailData.value?.authScope) return []
+  const scope = detailData.value.authScope
+  const agents = scope.agent || []
+  if (agents.length === 0) return []
+
+  // 有agent即代表该应用已被授权使用，第三方应用授权后所配置的权限均已授权
+  const hasAgent = agents.length > 0
+  return PERMISSION_CATEGORIES.map(cat => ({
+    key: cat.key,
+    label: cat.label,
+    granted: hasAgent
+  }))
+})
+
 // ==================== 列表加载 ====================
 const fetchList = async () => {
   loading.value = true
@@ -383,6 +526,33 @@ const fetchList = async () => {
   } finally {
     loading.value = false
   }
+}
+
+// ==================== 刷新授权信息 ====================
+const handleRefreshAuth = async () => {
+  if (!detailData.value?.configId) return
+  refreshingAuth.value = true
+  try {
+    const res = await request.post(`/wecom-management/tenant-auth/${detailData.value.configId}/refresh-auth`)
+    if (res.success !== false && res.data) {
+      // 更新本地数据
+      detailData.value.authScope = res.data.authScope || detailData.value.authScope
+      detailData.value.authCorpInfo = res.data.authCorpInfo || detailData.value.authCorpInfo
+      detailData.value.connectionStatus = 'connected'
+      detailData.value.lastError = null
+      ElMessage.success(res.message || '授权信息已刷新')
+    } else {
+      ElMessage.warning(res.message || '刷新失败')
+      // 如果是授权失效，更新本地状态
+      if (res.message?.includes('取消授权') || res.message?.includes('已删除')) {
+        detailData.value.connectionStatus = 'disconnected'
+        detailData.value.isEnabled = false
+      }
+    }
+  } catch (e: any) {
+    ElMessage.error(e?.message || '刷新授权信息失败')
+  }
+  refreshingAuth.value = false
 }
 
 // ==================== 详情 ====================

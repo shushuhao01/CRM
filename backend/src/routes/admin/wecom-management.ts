@@ -982,6 +982,70 @@ router.get('/tenant-auth/:configId/detail', async (req: Request, res: Response) 
 });
 
 /**
+ * 刷新授权信息（从企微API实时获取最新授权范围）
+ * POST /api/v1/admin/wecom-management/tenant-auth/:configId/refresh-auth
+ */
+router.post('/tenant-auth/:configId/refresh-auth', async (req: Request, res: Response) => {
+  if (!checkPermission(req, res, 'wecom-management:tenants:edit')) return;
+  try {
+    const { configId } = req.params;
+    const configRows = await AppDataSource.query(
+      'SELECT id, corp_id, auth_type, suite_id FROM wecom_configs WHERE id = ? LIMIT 1', [configId]
+    );
+    if (!configRows.length) return res.status(404).json({ success: false, message: '配置不存在' });
+    const config = configRows[0];
+
+    if (config.auth_type !== 'third_party') {
+      return res.json({ success: false, message: '仅第三方应用授权支持刷新' });
+    }
+
+    // 获取suite配置
+    const suiteRepo = AppDataSource.getRepository(WecomSuiteConfig);
+    const suiteConfig = await suiteRepo.findOne({ where: {}, order: { id: 'ASC' } });
+    if (!suiteConfig || !suiteConfig.suiteId || !suiteConfig.suiteSecret) {
+      return res.json({ success: false, message: '服务商应用配置不完整' });
+    }
+
+    const token = await getSuiteAccessToken(suiteConfig);
+    const axios = (await import('axios')).default;
+    const result = await axios.post(
+      `https://qyapi.weixin.qq.com/cgi-bin/service/get_auth_info?suite_access_token=${token}`,
+      { auth_corpid: config.corp_id, suite_id: suiteConfig.suiteId }
+    );
+
+    if (result.data.errcode && result.data.errcode !== 0) {
+      // 如果企微返回错误，可能是企业已取消授权
+      const errcode = result.data.errcode;
+      if (errcode === 40078 || errcode === 40082 || errcode === 60011) {
+        // 授权已取消
+        await AppDataSource.query(
+          `UPDATE wecom_configs SET connection_status = 'disconnected', is_enabled = 0,
+           last_error = ?, updated_at = NOW() WHERE id = ?`,
+          [`企业已取消授权 (errcode: ${errcode}, ${new Date().toLocaleString('zh-CN')})`, configId]
+        );
+        return res.json({ success: false, message: `授权已失效: ${result.data.errmsg} (${errcode})，该企业可能已删除应用` });
+      }
+      return res.json({ success: false, message: `刷新失败: ${result.data.errmsg} (${result.data.errcode})` });
+    }
+
+    // 更新数据库中的授权信息
+    const authInfo = result.data.auth_info || {};
+    const authCorpInfo = result.data.auth_corp_info || {};
+    await AppDataSource.query(
+      `UPDATE wecom_configs SET auth_scope = ?, auth_corp_info = ?, connection_status = 'connected',
+       last_error = NULL, updated_at = NOW() WHERE id = ?`,
+      [JSON.stringify(authInfo), JSON.stringify(authCorpInfo), configId]
+    );
+
+    log.info(`[Admin Wecom] Auth info refreshed for config ${configId}, corp: ${config.corp_id}`);
+    res.json({ success: true, message: '授权信息已刷新', data: { authScope: authInfo, authCorpInfo } });
+  } catch (error: any) {
+    log.error('[Admin Wecom] Refresh auth error:', error.message);
+    res.status(500).json({ success: false, message: `刷新失败: ${error.message}` });
+  }
+});
+
+/**
  * 关联租户
  * POST /api/v1/admin/wecom-management/tenant-auth/:configId/bind-tenant
  */
@@ -2969,33 +3033,37 @@ router.post('/supplier-config/test-connection', async (req: Request, res: Respon
   try {
     const { providerCorpId } = req.body;
     let { providerSecret } = req.body;
+    let secretSource = 'request';
     if (!providerCorpId) {
       return res.json({ success: false, message: '请填写服务商 CorpID' });
     }
 
     // 如果前端传来的是掩码值或为空，从已保存配置中读取实际Secret
     if (!providerSecret || providerSecret === '******' || providerSecret.includes('****')) {
-      try {
-        const rows = await AppDataSource.query(
-          "SELECT config_value FROM system_config WHERE config_key = 'wecom_supplier_config' LIMIT 1"
-        );
-        if (rows.length > 0) {
-          const savedConfig = JSON.parse(rows[0].config_value);
-          providerSecret = savedConfig.providerSecret || '';
-        }
-      } catch { /* ignore */ }
-    }
-
-    // 如果仍然没有，尝试从服务商应用配置(wecom_suite_configs)读取
-    if (!providerSecret) {
+      // 优先从 wecom_suite_configs 读取（SuiteApp页面保存的配置，明文存储）
       try {
         const suiteRows = await AppDataSource.query(
           "SELECT provider_secret FROM wecom_suite_configs ORDER BY id ASC LIMIT 1"
         );
         if (suiteRows.length > 0 && suiteRows[0].provider_secret) {
           providerSecret = suiteRows[0].provider_secret;
+          secretSource = 'wecom_suite_configs';
         }
       } catch { /* ignore */ }
+
+      // 如果仍然没有，从 system_config 的 supplier_config 读取（base64编码存储）
+      if (!providerSecret) {
+        try {
+          const rows = await AppDataSource.query(
+            "SELECT config_value FROM system_config WHERE config_key = 'wecom_supplier_config' LIMIT 1"
+          );
+          if (rows.length > 0) {
+            const savedConfig = JSON.parse(rows[0].config_value);
+            providerSecret = savedConfig.providerSecret || '';
+            if (providerSecret) secretSource = 'system_config';
+          }
+        } catch { /* ignore */ }
+      }
     }
 
     if (!providerSecret) {
@@ -3007,7 +3075,7 @@ router.post('/supplier-config/test-connection', async (req: Request, res: Respon
       providerSecret = Buffer.from(providerSecret.replace('base64:', ''), 'base64').toString('utf-8');
     }
 
-    log.info('[Admin Wecom] Testing supplier connection, corpId:', providerCorpId, 'secretLen:', providerSecret.length);
+    log.info('[Admin Wecom] Testing supplier connection, corpId:', providerCorpId, 'secretLen:', providerSecret.length, 'source:', secretSource);
 
     // 调用企微获取 provider_access_token
     const axios = (await import('axios')).default;
@@ -3020,7 +3088,11 @@ router.post('/supplier-config/test-connection', async (req: Request, res: Respon
     const data = result.data;
     log.info('[Admin Wecom] Provider token response:', JSON.stringify(data).substring(0, 200));
 
-    if (data && data.errcode === 0 && data.provider_access_token) {
+    // 统一将 errcode 转为数字处理（企微API可能返回数字或字符串）
+    const errcode = data?.errcode !== undefined && data?.errcode !== null ? Number(data.errcode) : undefined;
+
+    if (data && data.provider_access_token && (errcode === undefined || errcode === 0)) {
+      // 成功：有 provider_access_token 且 errcode 为 0 或不存在
       res.json({
         success: true,
         message: '连接成功！已获取 provider_access_token',
@@ -3030,7 +3102,8 @@ router.post('/supplier-config/test-connection', async (req: Request, res: Respon
           expiresIn: data.expires_in
         }
       });
-    } else if (data && typeof data.errcode === 'number' && data.errcode !== 0) {
+    } else if (errcode !== undefined && errcode !== 0) {
+      // 明确的错误码
       const errHints: Record<number, string> = {
         40001: 'Secret无效，请确认是否从企微服务商后台正确复制',
         40013: 'CorpID无效，请确认服务商企业ID是否正确',
@@ -3038,26 +3111,36 @@ router.post('/supplier-config/test-connection', async (req: Request, res: Respon
         40091: '请确认Secret为服务商的通用开发参数中的Secret',
         42009: 'suite_ticket已过期，请等待企微重新推送'
       };
-      const hint = errHints[data.errcode] || '';
+      const hint = errHints[errcode] || '';
       res.json({
         success: false,
-        message: `连接失败: ${data.errmsg || '未知错误'} (errcode: ${data.errcode})${hint ? ' - ' + hint : ''}`,
-        data: { connected: false, errcode: data.errcode, errmsg: data.errmsg }
+        message: `连接失败: ${data.errmsg || '未知错误'} (errcode: ${errcode})${hint ? ' - ' + hint : ''}`,
+        data: { connected: false, errcode, errmsg: data.errmsg }
       });
     } else {
-      // 响应格式异常（无errcode字段或非预期结构）
-      log.warn('[Admin Wecom] Unexpected provider token response structure:', JSON.stringify(data).substring(0, 300));
+      // 响应格式异常（无errcode字段且无provider_access_token）
+      const rawStr = typeof data === 'object' ? JSON.stringify(data).substring(0, 200) : String(data).substring(0, 200);
+      log.warn('[Admin Wecom] Unexpected provider token response structure:', rawStr);
       res.json({
         success: false,
-        message: `连接失败: 企微API返回异常响应，请检查CorpID和Secret是否正确`,
-        data: { connected: false, rawResponse: typeof data === 'object' ? JSON.stringify(data).substring(0, 100) : String(data).substring(0, 100) }
+        message: `连接失败: 企微API返回异常响应（Secret来源: ${secretSource}），原始响应: ${rawStr}`,
+        data: { connected: false, rawResponse: rawStr, secretSource }
       });
     }
   } catch (error: any) {
     log.error('[Admin Wecom] Test connection error:', error.message, error.response?.data);
     const axiosErr = error.response?.data;
     if (axiosErr) {
-      res.json({ success: false, message: `连接失败: ${axiosErr.errmsg || error.message}`, data: { connected: false } });
+      // axios收到HTTP响应但包含企微错误信息
+      const errcode = axiosErr.errcode !== undefined ? Number(axiosErr.errcode) : undefined;
+      const errHints: Record<number, string> = {
+        40001: 'Secret无效，请确认是否从企微服务商后台正确复制',
+        40013: 'CorpID无效，请确认服务商企业ID是否正确',
+        40056: '不合法的服务商凭证',
+        40091: '请确认Secret为服务商的通用开发参数中的Secret',
+      };
+      const hint = errcode ? (errHints[errcode] || '') : '';
+      res.json({ success: false, message: `连接失败: ${axiosErr.errmsg || error.message}${errcode ? ` (errcode: ${errcode})` : ''}${hint ? ' - ' + hint : ''}`, data: { connected: false, errcode } });
     } else {
       res.json({ success: false, message: `连接异常: ${error.message}`, data: { connected: false } });
     }
