@@ -17,6 +17,28 @@ import axios from 'axios';
 const router = Router();
 const WECOM_API_BASE = 'https://qyapi.weixin.qq.com/cgi-bin';
 
+// 惰性确保 wecom_configs 表有新增列（避免 Unknown column 错误）
+let wecomConfigColumnsChecked = false;
+async function ensureWecomConfigColumns() {
+  if (wecomConfigColumnsChecked) return;
+  wecomConfigColumnsChecked = true;
+  try {
+    const cols = await AppDataSource.query(`SHOW COLUMNS FROM wecom_configs LIKE 'payment_secret'`);
+    if (cols.length === 0) {
+      await AppDataSource.query(`ALTER TABLE wecom_configs ADD COLUMN payment_secret VARCHAR(255) NULL COMMENT '对外收款Secret'`);
+      log.info('[SuiteCallback] Added payment_secret column to wecom_configs');
+    }
+    const cols2 = await AppDataSource.query(`SHOW COLUMNS FROM wecom_configs LIKE 'payment_settings'`);
+    if (cols2.length === 0) {
+      await AppDataSource.query(`ALTER TABLE wecom_configs ADD COLUMN payment_settings TEXT NULL COMMENT '对外收款设置(JSON)'`);
+      log.info('[SuiteCallback] Added payment_settings column to wecom_configs');
+    }
+  } catch (e: any) {
+    log.warn('[SuiteCallback] ensureWecomConfigColumns error:', e.message);
+    wecomConfigColumnsChecked = false; // 下次重试
+  }
+}
+
 // Suite access token 缓存
 let suiteTokenCache: { token: string; expireTime: number } | null = null;
 
@@ -280,6 +302,11 @@ router.post('/callback', async (req: Request, res: Response) => {
     const authCode = extractXml(xmlContent, 'AuthCode');
 
     log.info(`[SuiteCallback] Event: ${infoType}, SuiteId: ${suiteId}, AuthCorpId: ${authCorpId}`);
+
+    // 确保 WecomConfig 表结构完整（避免 Unknown column 错误）
+    if (infoType !== 'suite_ticket') {
+      await ensureWecomConfigColumns();
+    }
 
     // 分发事件处理
     try {

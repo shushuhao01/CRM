@@ -3961,7 +3961,7 @@ router.put('/suite/callback-logs/auto-clean', async (req: Request, res: Response
       );
     } else {
       await AppDataSource.query(
-        "INSERT INTO system_config (config_key, config_value, created_at, updated_at) VALUES ('wecom_callback_log_auto_clean', ?, NOW(), NOW())",
+        "INSERT INTO system_config (id, config_key, config_value, config_type, created_at, updated_at) VALUES (UUID(), 'wecom_callback_log_auto_clean', ?, 'json', NOW(), NOW())",
         [JSON.stringify(config)]
       );
     }
