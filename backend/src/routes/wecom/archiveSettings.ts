@@ -26,6 +26,14 @@ router.get('/chat-archive/settings', authenticateToken, async (req: Request, res
     const settingRepo = getTenantRepo(WecomArchiveSetting);
     const setting = await settingRepo.findOne({ where: { wecomConfigId: parseInt(configId as string) } });
 
+    const commonFields = {
+      authType: config.authType || 'self_built',
+      dataApiStatus: config.dataApiStatus || 0,
+      hasSecret: config.authType === 'third_party' ? !!config.permanentCode : !!config.chatArchiveSecret,
+      hasPrivateKey: !!config.chatArchivePrivateKey,
+      vasChatArchive: !!config.vasChatArchive,
+    };
+
     if (!setting) {
       // 返回默认设置
       return res.json({
@@ -44,8 +52,7 @@ router.get('/chat-archive/settings', authenticateToken, async (req: Request, res
           usedUsers: 0,
           status: 'inactive',
           expireDate: null,
-          hasSecret: config.authType === 'third_party' ? !!config.permanentCode : !!config.chatArchiveSecret,
-          hasPrivateKey: !!config.chatArchivePrivateKey
+          ...commonFields
         }
       });
     }
@@ -54,8 +61,7 @@ router.get('/chat-archive/settings', authenticateToken, async (req: Request, res
       success: true,
       data: {
         ...setting,
-        hasSecret: config.authType === 'third_party' ? !!config.permanentCode : !!config.chatArchiveSecret,
-        hasPrivateKey: !!config.chatArchivePrivateKey
+        ...commonFields
       }
     });
   } catch (error: any) {

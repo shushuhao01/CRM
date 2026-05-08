@@ -340,6 +340,7 @@
                 <el-option :value="90" label="90天前" />
               </el-select>
               <el-button type="danger" size="small" plain :loading="cleaning" @click="handleCleanLogs">清理日志</el-button>
+              <el-button size="small" :loading="callbackLogsLoading" @click="fetchCallbackLogs" icon="Refresh">刷新</el-button>
             </div>
             <div style="display: flex; align-items: center; gap: 8px">
               <span style="font-size: 13px; color: #606266">自动清理</span>

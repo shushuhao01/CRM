@@ -496,7 +496,10 @@ router.get('/configs/:id/diagnose/:item', authenticateToken, async (req: Request
           break;
         }
         case 'callback': {
-          if (config.callbackToken && config.encodingAesKey) {
+          if (config.authType === 'third_party') {
+            // 第三方授权模式：回调由服务商应用统一接收，无需企业单独配置
+            status = 'ok'; detail = '第三方授权模式，回调由服务商应用统一接收（管理后台配置）';
+          } else if (config.callbackToken && config.encodingAesKey) {
             if (config.callbackUrl) {
               status = 'ok'; detail = `回调已配置: ${config.callbackUrl}`;
             } else {

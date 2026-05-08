@@ -1,127 +1,260 @@
 <template>
-  <div class="archive-settings">
+  <div class="archive-settings" v-loading="loading">
+    <!-- 未选择配置 -->
     <el-alert v-if="!configId" type="warning" :closable="false" style="margin-bottom: 16px">
       请先在顶部选择企微配置后再进行设置。
     </el-alert>
 
     <template v-else>
-      <!-- 授权状态卡片 -->
-      <el-card shadow="never" class="status-card" :class="statusCardClass">
-        <div class="status-row">
-          <div class="status-icon">
-            <el-icon :size="28" :color="settings.status === 'active' ? '#67c23a' : '#e6a23c'">
-              <CircleCheckFilled v-if="settings.status === 'active'" />
-              <WarningFilled v-else />
-            </el-icon>
+
+      <!-- ==================== 第一区：服务状态总览 ==================== -->
+      <div class="section-card" :class="settings.status === 'active' ? 'card-ok' : 'card-warn'">
+        <div class="section-header">
+          <div class="section-icon" :class="settings.status === 'active' ? 'icon-ok' : 'icon-warn'">
+            {{ settings.status === 'active' ? '✅' : '⚠️' }}
           </div>
-          <div class="status-info">
-            <div class="status-title">
-              {{ settings.status === 'active' ? '会话存档已开通' : '会话存档未激活' }}
-            </div>
-            <div class="status-desc">
-              <template v-if="settings.status === 'active'">
-                到期时间：{{ formatDate(settings.expireDate) }} · 席位：{{ settings.usedUsers }}/{{ settings.maxUsers }}
-              </template>
-              <template v-else>
-                请配置Secret和RSA私钥后开通会话存档服务
-              </template>
-            </div>
-          </div>
-          <div class="status-badges">
-            <el-tag :type="settings.hasSecret ? 'success' : 'danger'" size="small">
-              Secret {{ settings.hasSecret ? '✓' : '✗' }}
-            </el-tag>
-            <el-tag :type="settings.hasPrivateKey ? 'success' : 'danger'" size="small">
-              RSA私钥 {{ settings.hasPrivateKey ? '✓' : '✗' }}
-            </el-tag>
+          <div class="section-main">
+            <h3 class="section-title">{{ settings.status === 'active' ? '会话存档已激活' : '会话存档未激活' }}</h3>
+            <p class="section-desc" v-if="settings.status === 'active'">
+              到期时间：{{ formatDate(settings.expireDate) }} · 席位：{{ settings.usedUsers }}/{{ settings.maxUsers }}人
+            </p>
+            <p class="section-desc" v-else>
+              {{ isSaas ? '请在企业微信中完成授权后激活服务' : '请配置Secret和RSA私钥后开通服务' }}
+            </p>
           </div>
         </div>
-      </el-card>
+      </div>
 
-      <!-- 设置表单 -->
-      <el-form :model="form" label-width="120px" label-position="right" style="max-width: 680px; margin-top: 20px" v-loading="loading">
-        <!-- A: 基础拉取设置 -->
-        <el-divider content-position="left">拉取设置</el-divider>
+      <!-- ==================== 第二区：SaaS模式 - 授权状态检查 ==================== -->
+      <div v-if="isSaas" class="section-card">
+        <h3 class="block-title">📋 企微授权状态</h3>
+        <p class="block-desc">会话存档需要企业在企业微信完成以下授权，方可使用。</p>
+        <div class="auth-checklist">
+          <div class="auth-item" :class="settings.hasSecret ? 'auth-ok' : 'auth-pending'">
+            <span class="auth-dot">{{ settings.hasSecret ? '✓' : '!' }}</span>
+            <div class="auth-content">
+              <span class="auth-label">应用授权</span>
+              <span class="auth-hint" v-if="settings.hasSecret">已完成第三方应用授权</span>
+              <span class="auth-hint" v-else>请先完成企微第三方应用授权</span>
+            </div>
+          </div>
+          <div class="auth-item" :class="settings.dataApiStatus === 1 ? 'auth-ok' : 'auth-pending'">
+            <span class="auth-dot">{{ settings.dataApiStatus === 1 ? '✓' : '!' }}</span>
+            <div class="auth-content">
+              <span class="auth-label">数据与智能专区权限</span>
+              <span class="auth-hint" v-if="settings.dataApiStatus === 1">已授权数据访问</span>
+              <span class="auth-hint" v-else>
+                需在企业微信 → 云客CRM应用 → 应用权限 → 数据与智能专区 中授权
+              </span>
+            </div>
+          </div>
+          <div class="auth-item" :class="settings.vasChatArchive ? 'auth-ok' : 'auth-pending'">
+            <span class="auth-dot">{{ settings.vasChatArchive ? '✓' : '!' }}</span>
+            <div class="auth-content">
+              <span class="auth-label">会话存档增值服务</span>
+              <span class="auth-hint" v-if="settings.vasChatArchive">已开通</span>
+              <span class="auth-hint" v-else>请在「套餐与配额」中购买会话存档服务</span>
+            </div>
+          </div>
+        </div>
+        <!-- 未授权时的指引 -->
+        <el-alert
+          v-if="settings.dataApiStatus !== 1"
+          type="info"
+          :closable="false"
+          style="margin-top: 16px"
+          show-icon
+        >
+          <template #title>如何授权数据与智能专区？</template>
+          <ol class="guide-steps">
+            <li>企业管理员在企业微信中打开 <strong>云客CRM</strong> 应用</li>
+            <li>进入 <strong>应用管理 → 应用权限</strong></li>
+            <li>分别授权 <strong>「组织架构信息」</strong> 和 <strong>「数据与智能专区权限」</strong></li>
+            <li>在数据与智能专区中选择 <strong>会话内容 → 配置人员范围</strong></li>
+            <li>填写企业确认函（在企业微信端完成，CRM无需上传）</li>
+            <li>等待官方审核通过后，回到本页面配置生效范围</li>
+          </ol>
+        </el-alert>
+      </div>
 
-        <el-form-item label="拉取间隔">
-          <el-input-number v-model="form.fetchInterval" :min="1" :max="60" :step="1" />
-          <span class="form-tip">分钟（建议 5~15 分钟）</span>
-        </el-form-item>
-
-        <el-form-item label="拉取模式">
-          <el-radio-group v-model="form.fetchMode">
-            <el-radio label="default">默认模式</el-radio>
-            <el-radio label="pre_page">预分页模式</el-radio>
-            <el-radio label="adaptive">自适应模式</el-radio>
-          </el-radio-group>
-        </el-form-item>
-
-        <el-form-item label="保留天数">
-          <el-input-number v-model="form.retentionDays" :min="7" :max="3650" :step="30" />
-          <span class="form-tip">天（超期数据将被清理）</span>
-        </el-form-item>
-
-        <!-- B: 存储设置 -->
-        <el-divider content-position="left">存储设置</el-divider>
-
-        <el-form-item label="媒体存储">
-          <el-radio-group v-model="form.mediaStorage">
-            <el-radio label="local">本地存储</el-radio>
-            <el-radio label="oss">OSS云存储</el-radio>
-          </el-radio-group>
-        </el-form-item>
-
-        <!-- C: 质检设置 -->
-        <el-divider content-position="left">质检设置</el-divider>
-
-        <el-form-item label="自动质检">
-          <el-switch v-model="form.autoInspect" />
-          <span class="form-tip">开启后新消息将自动触发质检规则</span>
-        </el-form-item>
-
-        <!-- D: 可见性设置 -->
-        <el-divider content-position="left">成员可见性</el-divider>
-
-        <el-form-item label="数据可见范围">
-          <el-radio-group v-model="form.visibility">
-            <el-radio label="self">
-              <span>仅自己</span>
-              <span class="radio-desc">成员只能查看自己的聊天记录</span>
-            </el-radio>
-            <el-radio label="department">
-              <span>本部门</span>
-              <span class="radio-desc">成员可查看同部门同事的聊天记录</span>
-            </el-radio>
-            <el-radio label="all">
-              <span>全部可见</span>
-              <span class="radio-desc">所有成员可查看全部聊天记录（管理员始终全部可见）</span>
-            </el-radio>
-          </el-radio-group>
-        </el-form-item>
-
-        <!-- E: RSA公钥 -->
-        <el-divider content-position="left">RSA公钥配置</el-divider>
-
-        <el-form-item label="RSA公钥">
+      <!-- ==================== 第二区（替代）：私有部署 - Secret配置提醒 ==================== -->
+      <div v-if="!isSaas" class="section-card">
+        <h3 class="block-title">🔑 凭证配置</h3>
+        <p class="block-desc">私有部署模式需要手动配置Secret和RSA私钥，请在「企微授权」页面的Secret管理中配置。</p>
+        <div class="auth-checklist">
+          <div class="auth-item" :class="settings.hasSecret ? 'auth-ok' : 'auth-pending'">
+            <span class="auth-dot">{{ settings.hasSecret ? '✓' : '!' }}</span>
+            <div class="auth-content">
+              <span class="auth-label">会话存档Secret</span>
+              <span class="auth-hint">{{ settings.hasSecret ? '已配置' : '请在Secret管理中配置' }}</span>
+            </div>
+          </div>
+          <div class="auth-item" :class="settings.hasPrivateKey ? 'auth-ok' : 'auth-pending'">
+            <span class="auth-dot">{{ settings.hasPrivateKey ? '✓' : '!' }}</span>
+            <div class="auth-content">
+              <span class="auth-label">RSA私钥</span>
+              <span class="auth-hint">{{ settings.hasPrivateKey ? '已配置' : '请在Secret管理中配置' }}</span>
+            </div>
+          </div>
+        </div>
+        <!-- RSA公钥（仅私有部署） -->
+        <div style="margin-top: 16px">
+          <label class="field-label">RSA公钥（可选）</label>
           <el-input
             v-model="form.rsaPublicKey"
             type="textarea"
-            :rows="5"
-            placeholder="粘贴RSA公钥内容（用于企微会话存档加密通信）..."
+            :rows="4"
+            placeholder="粘贴RSA公钥，用于消息加密传输验证..."
+            style="max-width: 600px"
           />
-          <div class="form-tip" style="margin-top: 6px">
-            在企微管理后台获取RSA公钥，配置后可用于消息加密传输验证。
-          </div>
-        </el-form-item>
+          <p class="field-hint">在企微管理后台获取RSA公钥，配置后可用于消息加密传输验证。</p>
+        </div>
+      </div>
 
-        <!-- 保存按钮 -->
-        <el-form-item>
-          <el-button type="primary" :loading="saving" @click="handleSave" :disabled="!configId">
-            保存设置
+      <!-- ==================== 第三区：生效范围 ==================== -->
+      <div class="section-card">
+        <div class="block-header">
+          <div>
+            <h3 class="block-title">👥 生效范围</h3>
+            <p class="block-desc">选择会话存档生效的成员，聊天会话、消息记录、数据统计均以此范围为准。</p>
+          </div>
+          <el-button type="primary" plain size="small" @click="loadScopeTree" :loading="scopeLoading">
+            {{ scopeTree.length > 0 ? '刷新成员' : '加载企微成员' }}
           </el-button>
-          <el-button @click="fetchSettings">重置</el-button>
-        </el-form-item>
-      </el-form>
+        </div>
+
+        <!-- 额度提示 -->
+        <div class="quota-bar">
+          <div class="quota-info">
+            <span>已选 <strong>{{ scopeSelectedCount }}</strong> 人</span>
+            <span class="quota-sep">/</span>
+            <span>套餐额度 <strong>{{ settings.maxUsers }}</strong> 人</span>
+            <el-tag v-if="settings.maxUsers > 0 && scopeSelectedCount > settings.maxUsers" type="danger" size="small" style="margin-left: 8px">超出额度</el-tag>
+          </div>
+          <el-progress
+            :percentage="settings.maxUsers > 0 ? Math.min(100, Math.round(scopeSelectedCount / settings.maxUsers * 100)) : 0"
+            :color="scopeSelectedCount > settings.maxUsers ? '#f56c6c' : '#409eff'"
+            :stroke-width="8"
+            style="width: 200px"
+          />
+        </div>
+
+        <template v-if="isSaas && settings.dataApiStatus !== 1">
+          <el-alert type="warning" :closable="false" show-icon>
+            请先在企业微信中授权「数据与智能专区权限」，授权后才能加载和选择生效成员。
+          </el-alert>
+        </template>
+        <template v-else>
+          <!-- 成员树 -->
+          <div v-if="scopeTree.length > 0" class="scope-tree-area">
+            <el-tree
+              ref="scopeTreeRef"
+              :data="scopeTree"
+              show-checkbox
+              node-key="nodeId"
+              :default-checked-keys="scopeCheckedKeys"
+              :props="{ label: 'label', children: 'children' }"
+              @check="onScopeCheck"
+              style="max-height: 360px; overflow-y: auto; border: 1px solid #ebeef5; border-radius: 6px; padding: 8px"
+            />
+            <div style="margin-top: 12px; display: flex; gap: 8px">
+              <el-button type="primary" :loading="scopeSaving" @click="handleSaveScope" :disabled="settings.maxUsers > 0 && scopeSelectedCount > settings.maxUsers">
+                保存生效范围
+              </el-button>
+              <span v-if="settings.maxUsers > 0 && scopeSelectedCount > settings.maxUsers" class="field-hint" style="color: #f56c6c; line-height: 32px">
+                已选人数超出套餐额度，请减少选择或增购席位
+              </span>
+            </div>
+          </div>
+          <div v-else class="scope-empty">
+            <p>点击「加载企微成员」获取企业组织架构和成员列表。</p>
+          </div>
+        </template>
+      </div>
+
+      <!-- ==================== 第四区：数据可见范围 ==================== -->
+      <div class="section-card">
+        <h3 class="block-title">👁️ 数据可见范围</h3>
+        <p class="block-desc">控制CRM中不同角色的成员可以查看哪些聊天记录（管理员始终可见全部）。</p>
+        <el-radio-group v-model="form.visibility" class="visibility-group">
+          <div class="visibility-option" :class="{ active: form.visibility === 'self' }" @click="form.visibility = 'self'">
+            <el-radio label="self" />
+            <div class="visibility-text">
+              <span class="visibility-label">仅自己</span>
+              <span class="visibility-desc">成员只能查看自己的聊天记录</span>
+            </div>
+          </div>
+          <div class="visibility-option" :class="{ active: form.visibility === 'department' }" @click="form.visibility = 'department'">
+            <el-radio label="department" />
+            <div class="visibility-text">
+              <span class="visibility-label">本部门</span>
+              <span class="visibility-desc">成员可查看同部门所有同事的聊天记录</span>
+            </div>
+          </div>
+          <div class="visibility-option" :class="{ active: form.visibility === 'all' }" @click="form.visibility = 'all'">
+            <el-radio label="all" />
+            <div class="visibility-text">
+              <span class="visibility-label">全部可见</span>
+              <span class="visibility-desc">所有成员可查看全部聊天记录</span>
+            </div>
+          </div>
+        </el-radio-group>
+      </div>
+
+      <!-- ==================== 第五区：拉取与质检设置 ==================== -->
+      <div class="section-card">
+        <h3 class="block-title">⚙️ 拉取与质检</h3>
+        <el-form :model="form" label-width="100px" label-position="right" style="max-width: 560px; margin-top: 16px">
+          <el-form-item label="拉取间隔">
+            <div style="display: flex; align-items: center; gap: 8px">
+              <el-input-number v-model="form.fetchInterval" :min="1" :max="60" :step="1" size="default" />
+              <span class="field-hint">分钟（建议 5~15）</span>
+            </div>
+          </el-form-item>
+          <el-form-item label="拉取模式">
+            <el-radio-group v-model="form.fetchMode">
+              <el-radio label="default">默认模式</el-radio>
+              <el-radio label="pre_page">预分页模式</el-radio>
+              <el-radio label="adaptive">自适应模式</el-radio>
+            </el-radio-group>
+          </el-form-item>
+          <el-form-item label="保留天数">
+            <div style="display: flex; align-items: center; gap: 8px">
+              <el-input-number v-model="form.retentionDays" :min="7" :max="3650" :step="30" size="default" />
+              <span class="field-hint">天（超期数据将自动清理）</span>
+            </div>
+          </el-form-item>
+          <el-form-item label="自动质检">
+            <div style="display: flex; align-items: center; gap: 8px">
+              <el-switch v-model="form.autoInspect" />
+              <span class="field-hint">开启后新消息自动触发敏感词和质检规则</span>
+            </div>
+          </el-form-item>
+        </el-form>
+      </div>
+
+      <!-- ==================== 第六区：存储设置（仅私有部署） ==================== -->
+      <div v-if="!isSaas" class="section-card">
+        <h3 class="block-title">💾 存储设置</h3>
+        <p class="block-desc">配置媒体文件（图片、语音、视频等）的存储方式。</p>
+        <el-form label-width="100px" style="max-width: 400px; margin-top: 12px">
+          <el-form-item label="媒体存储">
+            <el-radio-group v-model="form.mediaStorage">
+              <el-radio label="local">本地存储</el-radio>
+              <el-radio label="oss">OSS云存储</el-radio>
+            </el-radio-group>
+          </el-form-item>
+        </el-form>
+      </div>
+
+      <!-- ==================== 底部：保存按钮 ==================== -->
+      <div class="save-bar">
+        <el-button type="primary" size="large" :loading="saving" @click="handleSave" :disabled="!configId">
+          保存设置
+        </el-button>
+        <el-button size="large" @click="fetchSettings">重置</el-button>
+      </div>
+
     </template>
   </div>
 </template>
@@ -129,14 +262,19 @@
 <script setup lang="ts">
 defineOptions({ name: 'ArchiveSettings' })
 import { ref, reactive, computed, watch, onMounted } from 'vue'
-import { CircleCheckFilled, WarningFilled } from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
-import { getArchiveSettings, updateArchiveSettings } from '@/api/wecom'
+import { ElMessage, ElTree } from 'element-plus'
+import { getArchiveSettings, updateArchiveSettings, getArchiveSeats, getArchiveSeatWecomTree, updateArchiveSeatMembers } from '@/api/wecom'
 
-const props = defineProps<{ configId: number | null }>()
+const props = defineProps<{
+  configId: number | null
+  isDemoMode?: boolean
+  authType?: string
+}>()
 
 const loading = ref(false)
 const saving = ref(false)
+
+const isSaas = computed(() => props.authType === 'third_party')
 
 const settings = reactive({
   status: 'inactive',
@@ -144,7 +282,9 @@ const settings = reactive({
   hasPrivateKey: false,
   maxUsers: 0,
   usedUsers: 0,
-  expireDate: null as string | null
+  expireDate: null as string | null,
+  dataApiStatus: 0,
+  vasChatArchive: false,
 })
 
 const form = reactive({
@@ -157,10 +297,99 @@ const form = reactive({
   rsaPublicKey: ''
 })
 
-const statusCardClass = computed(() => {
-  return settings.status === 'active' ? 'status-active' : 'status-inactive'
-})
+// ==================== 生效范围 ====================
+const scopeLoading = ref(false)
+const scopeSaving = ref(false)
+const scopeTree = ref<any[]>([])
+const scopeCheckedKeys = ref<string[]>([])
+const scopeTreeRef = ref<InstanceType<typeof ElTree> | null>(null)
+const scopeSelectedCount = ref(0)
+const seatMembers = ref<any[]>([])
 
+const loadScopeTree = async () => {
+  if (!props.configId) return
+  scopeLoading.value = true
+  try {
+    const [treeRes, seatRes]: any[] = await Promise.all([
+      getArchiveSeatWecomTree(props.configId),
+      getArchiveSeats(props.configId)
+    ])
+    const treeData = treeRes?.data || treeRes
+    const seatData = seatRes?.data || seatRes
+
+    if (seatData?.members) {
+      seatMembers.value = seatData.members
+    }
+
+    // 构建树数据
+    if (treeData?.tree) {
+      const checkedKeys: string[] = []
+      const transform = (nodes: any[]): any[] => {
+        return nodes.map((n: any) => {
+          const children: any[] = []
+          // 子部门
+          if (n.children?.length) {
+            children.push(...transform(n.children))
+          }
+          // 成员节点
+          if (n.members?.length) {
+            for (const m of n.members) {
+              const nodeId = `user_${m.wecomUserId}`
+              children.push({ nodeId, label: m.name || m.wecomUserId, isUser: true, wecomUserId: m.wecomUserId })
+              if (m.isSelected) checkedKeys.push(nodeId)
+            }
+          }
+          return { nodeId: `dept_${n.id}`, label: n.name, children }
+        })
+      }
+      scopeTree.value = transform(treeData.tree)
+      scopeCheckedKeys.value = checkedKeys
+      scopeSelectedCount.value = checkedKeys.length
+    }
+  } catch (e: any) {
+    ElMessage.error(e?.message || '加载成员失败')
+  } finally {
+    scopeLoading.value = false
+  }
+}
+
+const onScopeCheck = () => {
+  if (!scopeTreeRef.value) return
+  const checked = scopeTreeRef.value.getCheckedNodes(true) as any[]
+  const users = checked.filter((n: any) => n.isUser)
+  scopeSelectedCount.value = users.length
+}
+
+const handleSaveScope = async () => {
+  if (!props.configId || !scopeTreeRef.value) return
+  const checked = scopeTreeRef.value.getCheckedNodes(true) as any[]
+  const users = checked.filter((n: any) => n.isUser)
+
+  if (settings.maxUsers > 0 && users.length > settings.maxUsers) {
+    ElMessage.error(`已选 ${users.length} 人，超出套餐额度 ${settings.maxUsers} 人`)
+    return
+  }
+
+  scopeSaving.value = true
+  try {
+    await updateArchiveSeatMembers({
+      configId: props.configId,
+      members: users.map((u: any) => ({
+        wecomUserId: u.wecomUserId,
+        wecomUserName: u.label,
+        isEnabled: true
+      }))
+    })
+    ElMessage.success('生效范围已保存')
+    settings.usedUsers = users.length
+  } catch (e: any) {
+    ElMessage.error(e?.message || '保存失败')
+  } finally {
+    scopeSaving.value = false
+  }
+}
+
+// ==================== 设置加载/保存 ====================
 const fetchSettings = async () => {
   if (!props.configId) return
   loading.value = true
@@ -173,6 +402,8 @@ const fetchSettings = async () => {
       settings.maxUsers = res.maxUsers || 0
       settings.usedUsers = res.usedUsers || 0
       settings.expireDate = res.expireDate || null
+      settings.dataApiStatus = res.dataApiStatus || 0
+      settings.vasChatArchive = !!res.vasChatArchive
 
       form.fetchInterval = res.fetchInterval || 5
       form.fetchMode = res.fetchMode || 'default'
@@ -193,16 +424,20 @@ const handleSave = async () => {
   if (!props.configId) return
   saving.value = true
   try {
-    await updateArchiveSettings({
+    const payload: any = {
       configId: props.configId,
       fetchInterval: form.fetchInterval,
       fetchMode: form.fetchMode,
       retentionDays: form.retentionDays,
-      mediaStorage: form.mediaStorage,
       autoInspect: form.autoInspect,
       visibility: form.visibility,
-      rsaPublicKey: form.rsaPublicKey || undefined
-    })
+    }
+    // 仅私有部署模式才传这些
+    if (!isSaas.value) {
+      payload.mediaStorage = form.mediaStorage
+      payload.rsaPublicKey = form.rsaPublicKey || undefined
+    }
+    await updateArchiveSettings(payload)
     ElMessage.success('存档设置已保存')
     fetchSettings()
   } catch (e: any) {
@@ -231,27 +466,91 @@ defineExpose({ fetchSettings })
 <style scoped lang="scss">
 .archive-settings { padding: 0; }
 
-.status-card {
-  border-radius: 10px;
-  &.status-active { border-left: 4px solid #67c23a; }
-  &.status-inactive { border-left: 4px solid #e6a23c; }
+/* 区块卡片 */
+.section-card {
+  background: #fff;
+  border: 1px solid #ebeef5;
+  border-radius: 8px;
+  padding: 20px 24px;
+  margin-bottom: 16px;
+  &.card-ok { border-left: 4px solid #67c23a; }
+  &.card-warn { border-left: 4px solid #e6a23c; }
 }
-.status-row {
-  display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+.section-header {
+  display: flex; align-items: center; gap: 14px;
 }
-.status-icon { flex-shrink: 0; }
-.status-info { flex: 1; min-width: 200px; }
-.status-title { font-size: 16px; font-weight: 600; color: #303133; }
-.status-desc { font-size: 13px; color: #909399; margin-top: 4px; }
-.status-badges { display: flex; gap: 8px; flex-shrink: 0; }
+.section-icon { font-size: 28px; flex-shrink: 0; }
+.section-main { flex: 1; }
+.section-title { font-size: 17px; font-weight: 600; color: #303133; margin: 0; }
+.section-desc { font-size: 13px; color: #909399; margin: 4px 0 0; }
 
-.form-tip { margin-left: 10px; font-size: 12px; color: #909399; }
+/* 区块标题 */
+.block-title { font-size: 15px; font-weight: 600; color: #303133; margin: 0 0 4px; }
+.block-desc { font-size: 13px; color: #909399; margin: 0 0 12px; }
+.block-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
 
-.el-radio-group {
-  display: flex; flex-direction: column; gap: 10px;
+/* 授权检查清单 */
+.auth-checklist { display: flex; flex-direction: column; gap: 10px; }
+.auth-item {
+  display: flex; align-items: center; gap: 10px; padding: 10px 14px;
+  border-radius: 6px; background: #f5f7fa;
+  &.auth-ok { background: #f0f9eb; }
+  &.auth-pending { background: #fdf6ec; }
 }
-.radio-desc {
-  display: block; font-size: 12px; color: #909399; margin-top: 2px; margin-left: 0;
+.auth-dot {
+  width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  font-size: 12px; font-weight: 700; flex-shrink: 0;
+  .auth-ok & { background: #67c23a; color: #fff; }
+  .auth-pending & { background: #e6a23c; color: #fff; }
+}
+.auth-content { flex: 1; }
+.auth-label { font-size: 14px; font-weight: 500; color: #303133; display: block; }
+.auth-hint { font-size: 12px; color: #909399; display: block; margin-top: 2px; }
+
+/* 指引步骤 */
+.guide-steps {
+  margin: 8px 0 0; padding-left: 20px; font-size: 13px; color: #606266; line-height: 1.8;
+  li { margin-bottom: 2px; }
+}
+
+/* 额度条 */
+.quota-bar {
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  padding: 10px 14px; background: #f5f7fa; border-radius: 6px; margin-bottom: 14px;
+}
+.quota-info { font-size: 13px; color: #606266; display: flex; align-items: center; gap: 4px; }
+.quota-sep { color: #c0c4cc; margin: 0 2px; }
+
+/* 成员树区域 */
+.scope-tree-area { margin-top: 8px; }
+.scope-empty {
+  padding: 24px; text-align: center; color: #909399; font-size: 13px;
+  background: #fafafa; border-radius: 6px; border: 1px dashed #dcdfe6;
+  p { margin: 0; }
+}
+
+/* 可见范围 */
+.visibility-group {
+  display: flex !important; flex-direction: column !important; gap: 0 !important; width: 100%;
+}
+.visibility-option {
+  display: flex; align-items: center; gap: 10px; padding: 12px 16px;
+  border: 1px solid #ebeef5; border-radius: 6px; margin-bottom: 8px;
+  cursor: pointer; transition: all 0.2s;
+  &:hover { border-color: #c0c4cc; }
+  &.active { border-color: #409eff; background: #ecf5ff; }
+}
+.visibility-text { flex: 1; }
+.visibility-label { font-size: 14px; font-weight: 500; color: #303133; display: block; }
+.visibility-desc { font-size: 12px; color: #909399; display: block; margin-top: 2px; }
+
+/* 字段提示 */
+.field-label { font-size: 13px; font-weight: 500; color: #606266; display: block; margin-bottom: 6px; }
+.field-hint { font-size: 12px; color: #909399; }
+
+/* 保存栏 */
+.save-bar {
+  padding: 16px 0; display: flex; gap: 10px;
+  border-top: 1px solid #ebeef5; margin-top: 8px;
 }
 </style>
-

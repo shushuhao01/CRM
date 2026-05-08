@@ -209,7 +209,7 @@
 
         <!-- Tab 7: 存档设置（仅管理员可见） -->
         <el-tab-pane v-if="isAdminRole" label="存档设置" name="settings">
-          <ArchiveSettings :config-id="selectedConfigId" :is-demo-mode="isDemoMode" />
+          <ArchiveSettings :config-id="selectedConfigId" :is-demo-mode="isDemoMode" :auth-type="selectedAuthType" />
         </el-tab-pane>
 
         <!-- Tab 8: 套餐与配额（仅管理员可见） -->
@@ -282,6 +282,10 @@ const loading = ref(false)
 const syncing = ref(false)
 const configList = ref<any[]>([])
 const selectedConfigId = ref<number | null>(null)
+const selectedAuthType = computed(() => {
+  const cfg = configList.value.find((c: any) => c.id === selectedConfigId.value)
+  return cfg?.authType || cfg?.authMode || 'third_party'
+})
 const recordList = ref<ChatRecord[]>([])
 const total = ref(0)
 const archiveStatus = ref<ArchiveStatus | null>(null)
