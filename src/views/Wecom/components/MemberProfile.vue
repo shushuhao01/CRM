@@ -33,7 +33,10 @@
           <el-icon color="#10B981"><CircleCheckFilled /></el-icon>
           <span>已绑定CRM用户: <strong>{{ profile.crmUserName }}</strong></span>
         </div>
-        <el-button type="danger" size="small" plain @click="handleUnbind">解除绑定</el-button>
+        <div style="display: flex; gap: 8px">
+          <el-button type="primary" size="small" @click="showBindDialog = true">换绑</el-button>
+          <el-button type="danger" size="small" plain @click="handleUnbind">解除绑定</el-button>
+        </div>
       </div>
       <div class="crm-bind-content" v-else>
         <div class="bind-status unbound">
@@ -77,58 +80,70 @@
       </div>
     </div>
 
-    <!-- 消息统计 -->
-    <div class="profile-section">
-      <div class="section-title">
-        <el-icon><ChatDotRound /></el-icon> 消息统计
+    <!-- 消息统计 + 对外收款横向一行两个 -->
+    <div class="section-row-grid">
+      <!-- 消息统计 -->
+      <div class="profile-section">
+        <div class="section-title">
+          <el-icon><ChatDotRound /></el-icon> 消息统计
+        </div>
+        <div class="detail-rows">
+          <div class="detail-row">
+            <span class="row-label">发送给客户消息</span>
+            <span class="row-value">{{ profile.messageStats?.sentToCustomers || 0 }} 条</span>
+          </div>
+          <div class="detail-row">
+            <span class="row-label">接收客户消息</span>
+            <span class="row-value">{{ profile.messageStats?.recvFromCustomers || 0 }} 条</span>
+          </div>
+          <div class="detail-row">
+            <span class="row-label">会话存档消息</span>
+            <span class="row-value">{{ profile.messageStats?.chatRecordCount || 0 }} 条</span>
+          </div>
+        </div>
       </div>
-      <div class="detail-rows">
-        <div class="detail-row">
-          <span class="row-label">发送给客户消息</span>
-          <span class="row-value">{{ profile.messageStats?.sentToCustomers || 0 }} 条</span>
-        </div>
-        <div class="detail-row">
-          <span class="row-label">接收客户消息</span>
-          <span class="row-value">{{ profile.messageStats?.recvFromCustomers || 0 }} 条</span>
-        </div>
-        <div class="detail-row">
-          <span class="row-label">会话存档消息</span>
-          <span class="row-value">{{ profile.messageStats?.chatRecordCount || 0 }} 条</span>
-        </div>
-      </div>
-    </div>
 
-    <!-- 收款与退款 -->
-    <div class="profile-section">
-      <div class="section-title">
-        <el-icon><Money /></el-icon> 对外收款
-      </div>
-      <div class="detail-rows">
-        <div class="detail-row">
-          <span class="row-label">收款笔数</span>
-          <span class="row-value">{{ profile.payments?.count || 0 }} 笔</span>
+      <!-- 收款与退款 -->
+      <div class="profile-section">
+        <div class="section-title">
+          <el-icon><Money /></el-icon> 对外收款
         </div>
-        <div class="detail-row">
-          <span class="row-label">收款总额</span>
-          <span class="row-value text-success">¥ {{ formatAmount(profile.payments?.totalAmount) }}</span>
-        </div>
-        <div class="detail-row">
-          <span class="row-label">退款笔数</span>
-          <span class="row-value">{{ profile.refunds?.count || 0 }} 笔</span>
-        </div>
-        <div class="detail-row">
-          <span class="row-label">退款总额</span>
-          <span class="row-value text-danger">¥ {{ formatAmount(profile.refunds?.totalAmount) }}</span>
+        <div class="detail-rows">
+          <div class="detail-row">
+            <span class="row-label">收款笔数</span>
+            <span class="row-value">{{ profile.payments?.count || 0 }} 笔</span>
+          </div>
+          <div class="detail-row">
+            <span class="row-label">收款总额</span>
+            <span class="row-value text-success">¥ {{ formatAmount(profile.payments?.totalAmount) }}</span>
+          </div>
+          <div class="detail-row">
+            <span class="row-label">退款笔数</span>
+            <span class="row-value">{{ profile.refunds?.count || 0 }} 笔</span>
+          </div>
+          <div class="detail-row">
+            <span class="row-label">退款总额</span>
+            <span class="row-value text-danger">¥ {{ formatAmount(profile.refunds?.totalAmount) }}</span>
+          </div>
         </div>
       </div>
     </div>
 
     <!-- 绑定弹窗 -->
-    <el-dialog v-model="showBindDialog" title="绑定CRM用户" width="480px" append-to-body>
+    <el-dialog v-model="showBindDialog" :title="profile.crmUserName ? '换绑CRM用户' : '绑定CRM用户'" width="480px" append-to-body>
       <el-form label-width="100px">
         <el-form-item label="企微成员">
-          <span style="font-weight: 600">{{ profile.wecomUserName }}</span>
-          <span style="color: #9CA3AF; margin-left: 8px; font-size: 12px">{{ profile.wecomUserId }}</span>
+          <div style="display: flex; align-items: center; gap: 8px">
+            <el-avatar :size="32" :src="profile.wecomAvatar">{{ (profile.wecomUserName || '?')[0] }}</el-avatar>
+            <div style="line-height: 1.4">
+              <div style="font-weight: 600">{{ profile.wecomUserName || profile.wecomUserId }}</div>
+              <div v-if="profile.wecomUserName" style="color: #9CA3AF; font-size: 12px">{{ profile.wecomUserId }}</div>
+            </div>
+          </div>
+        </el-form-item>
+        <el-form-item label="当前绑定" v-if="profile.crmUserName">
+          <el-tag type="success">{{ profile.crmUserName }}</el-tag>
+          <span style="color: #9CA3AF; font-size: 12px; margin-left: 8px">将被替换</span>
         </el-form-item>
         <el-form-item label="CRM用户">
           <el-select
@@ -136,11 +151,12 @@
             filterable
             remote
             reserve-keyword
-            placeholder="搜索CRM用户名/工号"
+            placeholder="点击下拉选择或搜索CRM用户"
             :remote-method="searchCrmUsers"
             :loading="searchingCrm"
             style="width: 100%"
             @change="handleCrmSelect"
+            @focus="loadInitialCrmUsers"
           >
             <el-option v-for="u in crmOptions" :key="u.id" :label="`${u.name} (${u.username || u.code || ''})`" :value="u.id" />
           </el-select>
@@ -148,7 +164,7 @@
       </el-form>
       <template #footer>
         <el-button @click="showBindDialog = false">取消</el-button>
-        <el-button type="primary" :disabled="!bindForm.crmUserId" :loading="binding" @click="handleBind">确认绑定</el-button>
+        <el-button type="primary" :disabled="!bindForm.crmUserId" :loading="binding" @click="handleBind">{{ profile.crmUserName ? '确认换绑' : '确认绑定' }}</el-button>
       </template>
     </el-dialog>
   </div>
@@ -199,13 +215,18 @@ const fetchProfile = async () => {
 watch(() => [props.wecomUserId, props.configId], () => fetchProfile(), { immediate: true })
 
 const searchCrmUsers = async (keyword: string) => {
-  if (!keyword || keyword.length < 1) { crmOptions.value = []; return }
   searchingCrm.value = true
   try {
-    const res: any = await request.get('/users', { params: { keyword, pageSize: 20 } })
+    const params: any = { pageSize: 20 }
+    if (keyword && keyword.length >= 1) params.keyword = keyword
+    const res: any = await request.get('/users', { params })
     crmOptions.value = (res?.list || res || []).slice(0, 20)
   } catch { crmOptions.value = [] }
   searchingCrm.value = false
+}
+
+const loadInitialCrmUsers = () => {
+  if (crmOptions.value.length === 0) searchCrmUsers('')
 }
 
 const handleCrmSelect = (val: string) => {
@@ -214,7 +235,8 @@ const handleCrmSelect = (val: string) => {
 }
 
 const handleBind = async () => {
-  if (!profile.value.bindingId || !bindForm.value.crmUserId) return
+  if (!profile.value.bindingId && !profile.value.wecomUserId) return
+  if (!bindForm.value.crmUserId) return
   binding.value = true
   try {
     await bindMemberCrm(profile.value.bindingId, {
@@ -258,10 +280,14 @@ const handleUnbind = async () => {
 .header-meta { font-size: 13px; color: #6B7280; margin-top: 4px; }
 .header-meta code { background: rgba(0,0,0,.06); padding: 1px 6px; border-radius: 4px; font-size: 12px; }
 
+.section-row-grid {
+  display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 12px;
+}
 .profile-section {
   background: #fff; border: 1px solid #F3F4F6; border-radius: 12px;
   padding: 16px 20px; margin-bottom: 12px;
 }
+.section-row-grid .profile-section { margin-bottom: 0; }
 .section-title {
   display: flex; align-items: center; gap: 6px;
   font-size: 15px; font-weight: 600; color: #1F2937;

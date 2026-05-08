@@ -35,90 +35,93 @@
       </div>
     </div>
 
-    <!-- 外部联系人详情 -->
-    <div class="summary-section">
-      <div class="section-title">
-        <el-icon><User /></el-icon> 外部联系人
+    <!-- 卡片两个一行布局 -->
+    <div class="section-grid">
+      <!-- 外部联系人详情 -->
+      <div class="summary-section">
+        <div class="section-title">
+          <el-icon><User /></el-icon> 外部联系人
+        </div>
+        <div class="detail-rows">
+          <div class="detail-row">
+            <span class="row-label">外部联系人总数</span>
+            <span class="row-value">{{ data.externalContacts?.total || 0 }}</span>
+          </div>
+          <div class="detail-row">
+            <span class="row-label">有效（正常）</span>
+            <span class="row-value text-success">{{ data.externalContacts?.valid || 0 }}</span>
+          </div>
+          <div class="detail-row">
+            <span class="row-label">已删除</span>
+            <span class="row-value text-danger">{{ data.externalContacts?.deleted || 0 }}</span>
+          </div>
+        </div>
       </div>
-      <div class="detail-rows">
-        <div class="detail-row">
-          <span class="row-label">外部联系人总数</span>
-          <span class="row-value">{{ data.externalContacts?.total || 0 }}</span>
-        </div>
-        <div class="detail-row">
-          <span class="row-label">有效（正常）</span>
-          <span class="row-value text-success">{{ data.externalContacts?.valid || 0 }}</span>
-        </div>
-        <div class="detail-row">
-          <span class="row-label">已删除</span>
-          <span class="row-value text-danger">{{ data.externalContacts?.deleted || 0 }}</span>
-        </div>
-      </div>
-    </div>
 
-    <!-- 客户群详情 -->
-    <div class="summary-section">
-      <div class="section-title">
-        <el-icon><ChatDotRound /></el-icon> 客户群
-      </div>
-      <div class="detail-rows">
-        <div class="detail-row">
-          <span class="row-label">群数量</span>
-          <span class="row-value">{{ data.customerGroups?.count || 0 }}</span>
+      <!-- 客户群详情 -->
+      <div class="summary-section">
+        <div class="section-title">
+          <el-icon><ChatDotRound /></el-icon> 客户群
         </div>
-        <div class="detail-row">
-          <span class="row-label">群总成员数</span>
-          <span class="row-value">{{ data.customerGroups?.totalMembers || 0 }}</span>
+        <div class="detail-rows">
+          <div class="detail-row">
+            <span class="row-label">群数量</span>
+            <span class="row-value">{{ data.customerGroups?.count || 0 }}</span>
+          </div>
+          <div class="detail-row">
+            <span class="row-label">群总成员数</span>
+            <span class="row-value">{{ data.customerGroups?.totalMembers || 0 }}</span>
+          </div>
         </div>
       </div>
-    </div>
 
-    <!-- 收款与退款 -->
-    <div class="summary-section">
-      <div class="section-title">
-        <el-icon><Money /></el-icon> 对外收款
+      <!-- 收款与退款 -->
+      <div class="summary-section">
+        <div class="section-title">
+          <el-icon><Money /></el-icon> 对外收款
+        </div>
+        <div class="detail-rows">
+          <div class="detail-row">
+            <span class="row-label">收款笔数</span>
+            <span class="row-value">{{ data.payments?.count || 0 }} 笔</span>
+          </div>
+          <div class="detail-row">
+            <span class="row-label">收款总额</span>
+            <span class="row-value text-success">¥ {{ formatAmount(data.payments?.totalAmount) }}</span>
+          </div>
+          <div class="detail-row">
+            <span class="row-label">退款笔数</span>
+            <span class="row-value">{{ data.refunds?.count || 0 }} 笔</span>
+          </div>
+          <div class="detail-row">
+            <span class="row-label">退款总额</span>
+            <span class="row-value text-danger">¥ {{ formatAmount(data.refunds?.totalAmount) }}</span>
+          </div>
+        </div>
       </div>
-      <div class="detail-rows">
-        <div class="detail-row">
-          <span class="row-label">收款笔数</span>
-          <span class="row-value">{{ data.payments?.count || 0 }} 笔</span>
-        </div>
-        <div class="detail-row">
-          <span class="row-label">收款总额</span>
-          <span class="row-value text-success">¥ {{ formatAmount(data.payments?.totalAmount) }}</span>
-        </div>
-        <div class="detail-row">
-          <span class="row-label">退款笔数</span>
-          <span class="row-value">{{ data.refunds?.count || 0 }} 笔</span>
-        </div>
-        <div class="detail-row">
-          <span class="row-label">退款总额</span>
-          <span class="row-value text-danger">¥ {{ formatAmount(data.refunds?.totalAmount) }}</span>
-        </div>
-      </div>
-    </div>
 
-    <!-- 消息记录 -->
-    <div class="summary-section">
-      <div class="section-title">
-        <el-icon><Message /></el-icon> 消息记录
-      </div>
-      <div class="detail-rows">
-        <div class="detail-row">
-          <span class="row-label">部门聊天记录总数</span>
-          <span class="row-value">{{ data.chatMessages || 0 }} 条</span>
+      <!-- 消息记录 -->
+      <div class="summary-section">
+        <div class="section-title">
+          <el-icon><Message /></el-icon> 消息记录
+        </div>
+        <div class="detail-rows">
+          <div class="detail-row">
+            <span class="row-label">部门聊天记录总数</span>
+            <span class="row-value">{{ data.chatMessages || 0 }} 条</span>
+          </div>
         </div>
       </div>
     </div>
 
     <!-- 成员列表概要 -->
-    <div class="summary-section" v-if="data.members?.length">
+    <div class="summary-section" v-if="data.members?.length" style="grid-column: 1 / -1">
       <div class="section-title">
         <el-icon><Avatar /></el-icon> 成员列表 ({{ data.members.length }})
       </div>
       <div class="member-list">
         <div
-          v-for="m in data.members"
+          v-for="m in paginatedMembers"
           :key="m.wecomUserId"
           class="member-item"
           @click="$emit('select-member', m.wecomUserId)"
@@ -134,12 +137,24 @@
           <el-icon class="member-arrow"><ArrowRight /></el-icon>
         </div>
       </div>
+      <div class="member-pagination" v-if="data.members.length > memberPageSize">
+        <el-pagination
+          v-model:current-page="memberPage"
+          v-model:page-size="memberPageSize"
+          :page-sizes="[10, 20, 50]"
+          :total="data.members.length"
+          layout="total, sizes, prev, pager, next"
+          small
+          background
+          @size-change="memberPage = 1"
+        />
+      </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { OfficeBuilding, User, ChatDotRound, Money, Message, Avatar, ArrowRight } from '@element-plus/icons-vue'
 import { getWecomDeptSummary } from '@/api/wecomAddressBook'
 
@@ -152,6 +167,14 @@ defineEmits(['select-member'])
 
 const loading = ref(false)
 const data = ref<any>({})
+const memberPage = ref(1)
+const memberPageSize = ref(10)
+
+const paginatedMembers = computed(() => {
+  const members = data.value.members || []
+  const start = (memberPage.value - 1) * memberPageSize.value
+  return members.slice(start, start + memberPageSize.value)
+})
 
 const formatAmount = (cents: number | undefined) => {
   if (!cents) return '0.00'
@@ -172,7 +195,10 @@ const fetchSummary = async () => {
   }
 }
 
-watch(() => [props.deptId, props.configId], () => fetchSummary(), { immediate: true })
+watch(() => [props.deptId, props.configId], () => {
+  memberPage.value = 1
+  fetchSummary()
+}, { immediate: true })
 </script>
 
 <style scoped>
@@ -210,9 +236,12 @@ watch(() => [props.deptId, props.configId], () => fetchSummary(), { immediate: t
 .text-purple { color: #7C3AED; }
 .text-orange { color: #F59E0B; }
 
+.section-grid {
+  display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 12px;
+}
 .summary-section {
   background: #fff; border: 1px solid #F3F4F6; border-radius: 12px;
-  padding: 16px 20px; margin-bottom: 12px;
+  padding: 16px 20px;
 }
 .section-title {
   display: flex; align-items: center; gap: 6px;
@@ -240,4 +269,5 @@ watch(() => [props.deptId, props.configId], () => fetchSummary(), { immediate: t
 .member-name { font-size: 14px; font-weight: 500; color: #1F2937; }
 .member-meta { font-size: 12px; color: #9CA3AF; margin-top: 2px; }
 .member-arrow { color: #D1D5DB; }
+.member-pagination { display: flex; justify-content: flex-end; margin-top: 12px; padding-top: 12px; border-top: 1px solid #F3F4F6; }
 </style>

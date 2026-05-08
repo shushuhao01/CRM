@@ -481,7 +481,8 @@ async function initWecomSdk() {
       configRes = await getSidebarJsSdkConfig({ url: window.location.href.split('#')[0], corpId: corpId.value })
     } catch (e: any) {
       console.error('[Sidebar] JS-SDK签名获取失败:', e)
-      setSdkError('api', 'JS-SDK签名获取失败', `请检查企微配置是否正确（CorpID: ${corpId.value}）`, `错误: ${e?.message || '未知'}`)
+      const backendMsg = e?.response?.data?.message || e?.data?.message || e?.message || '未知错误'
+      setSdkError('api', 'JS-SDK签名获取失败', `请检查企微配置是否正确（CorpID: ${corpId.value}）`, `错误: ${backendMsg}`)
       return
     }
     if (!configRes?.corpId) {

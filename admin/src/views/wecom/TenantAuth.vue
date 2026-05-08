@@ -146,14 +146,25 @@
               <el-descriptions-item label="会话存档">
                 <el-tag :type="detailData.chatArchiveAuth ? 'success' : 'info'" size="small">{{ detailData.chatArchiveAuth ? '已授权' : '未授权' }}</el-tag>
               </el-descriptions-item>
-              <el-descriptions-item label="数据API">
+              <el-descriptions-item>
+                <template #label>
+                  <el-tooltip content="企业微信数据与智能专区API授权状态，授权后可调用数据分析相关接口" placement="top">
+                    <span style="cursor: help; border-bottom: 1px dashed #c0c4cc">数据API</span>
+                  </el-tooltip>
+                </template>
                 <el-tag :type="detailData.dataApiStatus === 1 ? 'success' : detailData.dataApiStatus === 2 ? 'danger' : 'info'" size="small">{{ dataApiStatusLabel(detailData.dataApiStatus) }}</el-tag>
+                <span v-if="detailData.dataApiExpireTime" style="font-size: 12px; color: #909399; margin-left: 6px">到期: {{ formatDate(detailData.dataApiExpireTime) }}</span>
               </el-descriptions-item>
-              <el-descriptions-item label="增值服务">
-                <el-tag v-if="detailData.vasChatArchive" type="success" size="small">已开通 ({{ detailData.vasUserCount || 0 }}人)</el-tag>
+              <el-descriptions-item>
+                <template #label>
+                  <el-tooltip content="会话存档增值服务，开通后可获取企业成员的聊天记录（需企业在企微后台单独购买）" placement="top">
+                    <span style="cursor: help; border-bottom: 1px dashed #c0c4cc">增值服务</span>
+                  </el-tooltip>
+                </template>
+                <el-tag v-if="detailData.vasChatArchive" type="success" size="small">会话存档已开通 ({{ detailData.vasUserCount || 0 }}人)</el-tag>
                 <span v-else style="color: #c0c4cc">未开通</span>
+                <span v-if="detailData.vasChatArchive && detailData.vasExpireDate" style="font-size: 12px; color: #909399; margin-left: 6px">到期: {{ detailData.vasExpireDate }}</span>
               </el-descriptions-item>
-              <el-descriptions-item label="增值到期" v-if="detailData.vasChatArchive">{{ detailData.vasExpireDate || '-' }}</el-descriptions-item>
               <el-descriptions-item label="API调用次数">{{ detailData.apiCallCount || 0 }}</el-descriptions-item>
               <el-descriptions-item label="创建时间">{{ formatDate(detailData.createdAt) }}</el-descriptions-item>
               <el-descriptions-item label="更新时间">{{ formatDate(detailData.updatedAt) }}</el-descriptions-item>
@@ -239,11 +250,12 @@
                     </el-descriptions-item>
                     <el-descriptions-item label="授权成员">
                       <template v-if="agent.privilege.allow_user && agent.privilege.allow_user.length > 0">
-                        <el-tag v-for="userId in agent.privilege.allow_user.slice(0, 20)" :key="userId" size="small" style="margin: 0 4px 4px 0" effect="plain">
+                        <el-tag v-for="userId in agent.privilege.allow_user.slice(0, 5)" :key="userId" size="small" style="margin: 0 4px 4px 0" effect="plain">
                           {{ userId }}
                         </el-tag>
-                        <span style="font-size: 12px; color: #909399; margin-left: 4px">共 {{ agent.privilege.allow_user.length }} 人</span>
-                        <span v-if="agent.privilege.allow_user.length > 20" style="font-size: 12px; color: #e6a23c; margin-left: 4px">（仅显示前20个）</span>
+                        <el-button link type="primary" size="small" style="margin-left: 4px" @click="openMemberListDialog(agent.privilege.allow_user, agent.name || ('应用 ' + agent.agentid))">
+                          共 {{ agent.privilege.allow_user.length }} 人 ›
+                        </el-button>
                       </template>
                       <span v-else style="color: #c0c4cc">全部成员 / 未限制</span>
                     </el-descriptions-item>
@@ -295,13 +307,23 @@
           <!-- Tab: 操作日志 -->
           <el-tab-pane label="操作日志" name="logs">
             <el-table :data="logList" v-loading="logLoading" stripe size="small" style="margin-bottom: 12px">
-              <el-table-column prop="operator" label="操作人" width="120" />
-              <el-table-column prop="actionType" label="操作类型" width="130">
+              <el-table-column prop="operator" label="来源" width="120">
                 <template #default="{ row }">
-                  <el-tag size="small" effect="plain">{{ row.actionType || '-' }}</el-tag>
+                  <el-tag :type="row.operator === '企业微信回调' ? 'warning' : row.operator === '系统同步' ? '' : 'info'" size="small" effect="plain">
+                    {{ row.operator || '-' }}
+                  </el-tag>
                 </template>
               </el-table-column>
-              <el-table-column prop="detail" label="操作详情" min-width="200" show-overflow-tooltip />
+              <el-table-column prop="actionType" label="操作类型" width="140">
+                <template #default="{ row }">
+                  <el-tag
+                    :type="logActionTagType(row.actionType)"
+                    size="small"
+                    effect="plain"
+                  >{{ row.actionType || '-' }}</el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column prop="detail" label="操作详情" min-width="220" show-overflow-tooltip />
               <el-table-column label="时间" width="155">
                 <template #default="{ row }">{{ formatDate(row.createdAt) }}</template>
               </el-table-column>
@@ -310,10 +332,12 @@
             <div v-if="logTotal > 0" style="display: flex; justify-content: flex-end">
               <el-pagination
                 v-model:current-page="logPage"
-                :page-size="10"
+                v-model:page-size="logPageSize"
                 :total="logTotal"
-                layout="total, prev, pager, next"
+                :page-sizes="[10, 20, 50]"
+                layout="total, sizes, prev, pager, next"
                 small
+                @size-change="fetchLogs(1)"
                 @current-change="fetchLogs"
               />
             </div>
@@ -358,6 +382,28 @@
         <el-button @click="detailVisible = false">关闭</el-button>
         <el-button v-if="detailData && !detailData.tenantId" v-permission="'wecom-management:tenant-auth:edit'" type="warning" @click="detailVisible = false; openBindDialog(detailData)">关联租户</el-button>
       </template>
+    </el-dialog>
+
+    <!-- 授权成员列表弹窗 -->
+    <el-dialog v-model="memberListVisible" :title="`授权成员 - ${memberListTitle}`" width="560px" destroy-on-close append-to-body>
+      <div style="margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center">
+        <span style="font-size: 14px; color: #606266">共 <strong>{{ memberListAll.length }}</strong> 名成员</span>
+        <el-input v-model="memberListSearch" placeholder="搜索成员ID" clearable style="width: 200px" size="small" />
+      </div>
+      <el-table :data="paginatedMemberList" stripe size="small" style="margin-bottom: 12px">
+        <el-table-column label="#" type="index" width="50" :index="(i: number) => (memberListPage - 1) * memberListPageSize + i + 1" />
+        <el-table-column label="成员UserID" prop="userId" />
+      </el-table>
+      <div style="display: flex; justify-content: flex-end">
+        <el-pagination
+          v-model:current-page="memberListPage"
+          v-model:page-size="memberListPageSize"
+          :total="filteredMemberList.length"
+          :page-sizes="[10, 20, 50]"
+          layout="total, sizes, prev, pager, next"
+          small
+        />
+      </div>
     </el-dialog>
 
     <!-- 关联租户弹窗 -->
@@ -434,12 +480,40 @@ const logList = ref<any[]>([])
 const logLoading = ref(false)
 const logTotal = ref(0)
 const logPage = ref(1)
+const logPageSize = ref(10)
 
 // ==================== 账单记录 ====================
 const billingList = ref<any[]>([])
 const billingLoading = ref(false)
 const billingTotal = ref(0)
 const billingPage = ref(1)
+
+// ==================== 授权成员列表弹窗 ====================
+const memberListVisible = ref(false)
+const memberListTitle = ref('')
+const memberListAll = ref<string[]>([])
+const memberListSearch = ref('')
+const memberListPage = ref(1)
+const memberListPageSize = ref(10)
+
+const filteredMemberList = computed(() => {
+  if (!memberListSearch.value) return memberListAll.value
+  const kw = memberListSearch.value.toLowerCase()
+  return memberListAll.value.filter(u => u.toLowerCase().includes(kw))
+})
+
+const paginatedMemberList = computed(() => {
+  const start = (memberListPage.value - 1) * memberListPageSize.value
+  return filteredMemberList.value.slice(start, start + memberListPageSize.value).map(userId => ({ userId }))
+})
+
+const openMemberListDialog = (users: string[], appName: string) => {
+  memberListAll.value = users
+  memberListTitle.value = appName
+  memberListSearch.value = ''
+  memberListPage.value = 1
+  memberListVisible.value = true
+}
 
 // ==================== 关联租户弹窗 ====================
 const showBindDialog = ref(false)
@@ -469,6 +543,15 @@ const dataApiStatusLabel = (status: number) => {
 const corpTypeLabel = (type: string) => {
   const map: Record<string, string> = { verified: '已认证企业', unverified: '未认证企业', trial: '试用企业' }
   return map[type] || type || '-'
+}
+
+const logActionTagType = (actionType: string) => {
+  if (!actionType) return 'info'
+  if (actionType.includes('取消') || actionType.includes('删除') || actionType.includes('停用')) return 'danger'
+  if (actionType.includes('授权') || actionType.includes('安装')) return 'success'
+  if (actionType.includes('变更') || actionType.includes('重置')) return 'warning'
+  if (actionType.includes('同步')) return ''
+  return 'info'
 }
 
 // 权限类别映射表（企微服务商应用常见权限）
@@ -591,7 +674,7 @@ const fetchLogs = async (pg?: number) => {
   try {
     const configId = detailData.value.configId
     const res = await request.get(`/wecom-management/tenant-auth/${configId}/logs`, {
-      params: { page: logPage.value, pageSize: 10 }
+      params: { page: logPage.value, pageSize: logPageSize.value }
     })
     const data = res.data
     logList.value = data?.list || []

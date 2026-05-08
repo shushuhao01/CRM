@@ -990,13 +990,17 @@ router.post('/tenant-auth/:configId/refresh-auth', async (req: Request, res: Res
   try {
     const { configId } = req.params;
     const configRows = await AppDataSource.query(
-      'SELECT id, corp_id, auth_type, suite_id FROM wecom_configs WHERE id = ? LIMIT 1', [configId]
+      'SELECT id, corp_id, auth_type, suite_id, permanent_code FROM wecom_configs WHERE id = ? LIMIT 1', [configId]
     );
     if (!configRows.length) return res.status(404).json({ success: false, message: '配置不存在' });
     const config = configRows[0];
 
     if (config.auth_type !== 'third_party') {
       return res.json({ success: false, message: '仅第三方应用授权支持刷新' });
+    }
+
+    if (!config.permanent_code) {
+      return res.json({ success: false, message: '缺少永久授权码(permanent_code)，请让企业管理员重新授权' });
     }
 
     // 获取suite配置
@@ -1008,9 +1012,21 @@ router.post('/tenant-auth/:configId/refresh-auth', async (req: Request, res: Res
 
     const token = await getSuiteAccessToken(suiteConfig);
     const axios = (await import('axios')).default;
+
+    // permanent_code 可能是加密存储的，需要解密
+    let permanentCode = config.permanent_code;
+    if (permanentCode && permanentCode.startsWith('enc:')) {
+      try {
+        const configEntity = await AppDataSource.getRepository(WecomConfig).findOne({ where: { id: Number(configId) } });
+        permanentCode = configEntity?.permanentCode || permanentCode;
+      } catch (_e: any) {
+        log.warn('[Admin Wecom] Failed to decrypt permanent_code via entity, using raw value');
+      }
+    }
+
     const result = await axios.post(
       `https://qyapi.weixin.qq.com/cgi-bin/service/get_auth_info?suite_access_token=${token}`,
-      { auth_corpid: config.corp_id, suite_id: suiteConfig.suiteId }
+      { auth_corpid: config.corp_id, permanent_code: permanentCode }
     );
 
     if (result.data.errcode && result.data.errcode !== 0) {
@@ -1080,44 +1096,107 @@ router.post('/tenant-auth/:configId/bind-tenant', async (req: Request, res: Resp
 /**
  * 获取指定企业的操作日志
  * GET /api/v1/admin/wecom-management/tenant-auth/:configId/logs
+ * 聚合来源：1) 企微回调日志(create_auth/cancel_auth/change_auth)  2) 审计日志  3) 同步日志
  */
 router.get('/tenant-auth/:configId/logs', async (req: Request, res: Response) => {
   try {
     const { configId } = req.params;
     const { page = 1, pageSize = 10 } = req.query;
-    const offset = (parseInt(page as string) - 1) * parseInt(pageSize as string);
-    const limit = parseInt(pageSize as string);
+    const pg = parseInt(page as string);
+    const ps = parseInt(pageSize as string);
 
-    // 获取 corpId 用于搜索
-    const configRow = await AppDataSource.query('SELECT corp_id FROM wecom_configs WHERE id = ? LIMIT 1', [configId]);
+    // 获取 corpId 和 tenantId
+    const configRow = await AppDataSource.query('SELECT corp_id, tenant_id FROM wecom_configs WHERE id = ? LIMIT 1', [configId]);
     const corpId = configRow[0]?.corp_id || '';
+    const tenantId = configRow[0]?.tenant_id || '';
 
-    // 尝试从审计日志表查询
-    const tableNames = ['wecom_audit_logs', 'admin_operation_logs'];
-    let tableName = '';
-    for (const tn of tableNames) {
-      const check = await AppDataSource.query(
-        'SELECT COUNT(*) as cnt FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?', [tn]
-      ).catch(() => [{ cnt: 0 }]);
-      if (check[0]?.cnt) { tableName = tn; break; }
+    const allLogs: any[] = [];
+
+    // 来源1: 企微服务商回调日志 (create_auth, cancel_auth, change_auth 等)
+    if (corpId) {
+      try {
+        const hasTable = await AppDataSource.query(
+          "SELECT COUNT(*) as cnt FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'wecom_suite_callback_logs'"
+        ).catch(() => [{ cnt: 0 }]);
+        if (hasTable[0]?.cnt) {
+          const cbLogs = await AppDataSource.query(
+            `SELECT id, info_type, auth_corp_id, detail, status, error_message, created_at
+             FROM wecom_suite_callback_logs
+             WHERE auth_corp_id = ? AND info_type != 'suite_ticket'
+             ORDER BY created_at DESC LIMIT 200`,
+            [corpId]
+          );
+          const infoTypeLabels: Record<string, string> = {
+            create_auth: '企业授权安装', cancel_auth: '企业取消授权',
+            change_auth: '企业变更授权', reset_permanent_code: '重置永久授权码',
+            change_contact: '通讯录变更', change_external_contact: '客户联系变更'
+          };
+          for (const row of cbLogs) {
+            allLogs.push({
+              operator: '企业微信回调',
+              actionType: infoTypeLabels[row.info_type] || row.info_type,
+              detail: row.detail ? (row.detail.length > 200 ? row.detail.substring(0, 200) + '...' : row.detail) : (row.status === 'failed' ? `处理失败: ${row.error_message || ''}` : '处理成功'),
+              createdAt: row.created_at
+            });
+          }
+        }
+      } catch (_e) { /* 表可能不存在 */ }
     }
 
-    if (!tableName || !corpId) {
-      return res.json({ success: true, data: { list: [], total: 0 } });
+    // 来源2: 审计日志表
+    if (corpId) {
+      try {
+        const auditTables = ['wecom_audit_logs', 'admin_operation_logs'];
+        for (const tn of auditTables) {
+          const check = await AppDataSource.query(
+            'SELECT COUNT(*) as cnt FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?', [tn]
+          ).catch(() => [{ cnt: 0 }]);
+          if (check[0]?.cnt) {
+            const kw = `%${corpId}%`;
+            const auditLogs = await AppDataSource.query(
+              `SELECT operator, action_type AS actionType, detail, created_at AS createdAt
+               FROM ${tn} WHERE (target LIKE ? OR detail LIKE ?)
+               ORDER BY created_at DESC LIMIT 200`,
+              [kw, kw]
+            );
+            allLogs.push(...auditLogs);
+            break;
+          }
+        }
+      } catch (_e) { /* 表可能不存在 */ }
     }
 
-    const where = `WHERE (target LIKE ? OR detail LIKE ?)`;
-    const kw = `%${corpId}%`;
-    const countRes = await AppDataSource.query(`SELECT COUNT(*) as total FROM ${tableName} ${where}`, [kw, kw]);
-    const total = Number(countRes[0]?.total || 0);
+    // 来源3: 同步日志 (存储在 tenant_settings 的 wecom_sync_logs key)
+    if (tenantId) {
+      try {
+        const rows = await AppDataSource.query(
+          "SELECT setting_value FROM tenant_settings WHERE tenant_id = ? AND setting_key = 'wecom_sync_logs' LIMIT 1",
+          [tenantId]
+        );
+        if (rows.length > 0) {
+          let syncLogs: any[] = [];
+          try { syncLogs = JSON.parse(rows[0].setting_value); } catch { syncLogs = []; }
+          if (Array.isArray(syncLogs)) {
+            for (const entry of syncLogs) {
+              allLogs.push({
+                operator: '系统同步',
+                actionType: entry.operation || entry.type || '同步',
+                detail: entry.detail || '',
+                createdAt: entry.timestamp || entry.createdAt || ''
+              });
+            }
+          }
+        }
+      } catch (_e) { /* ignore */ }
+    }
 
-    const list = await AppDataSource.query(
-      `SELECT id, operator, action_type AS actionType, target, detail, ip, created_at AS createdAt
-       FROM ${tableName} ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`,
-      [kw, kw, limit, offset]
-    );
+    // 按时间倒序排序
+    allLogs.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
 
-    res.json({ success: true, data: { list, total, page: parseInt(page as string), pageSize: limit } });
+    const total = allLogs.length;
+    const list = allLogs.slice((pg - 1) * ps, pg * ps);
+
+    res.json({ success: true, data: { list, total, page: pg, pageSize: ps } });
   } catch (error: any) {
     log.error('[Admin Wecom] Config logs error:', error.message);
     res.json({ success: true, data: { list: [], total: 0 } });

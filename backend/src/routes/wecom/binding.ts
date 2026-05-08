@@ -51,19 +51,26 @@ router.post('/bindings', authenticateToken, requireAdmin, async (req: Request, r
 
     const bindingRepo = getTenantRepo(WecomUserBinding);
     const existing = await bindingRepo.findOne({ where: { wecomConfigId, wecomUserId } });
-    if (existing) {
-      return res.status(400).json({ success: false, message: '该企微成员已绑定' });
-    }
-
     const currentUser = (req as any).currentUser;
-    const binding = bindingRepo.create({
-      wecomConfigId, corpId: config.corpId, wecomUserId, wecomUserName,
-      wecomAvatar, wecomDepartmentIds, crmUserId, crmUserName,
-      bindOperator: currentUser?.name || 'admin'
-    });
 
-    await bindingRepo.save(binding);
-    res.json({ success: true, data: binding, message: '绑定成功' });
+    if (existing) {
+      // 支持换绑：更新已有绑定的CRM用户
+      existing.crmUserId = crmUserId;
+      existing.crmUserName = crmUserName || '';
+      if (wecomUserName) existing.wecomUserName = wecomUserName;
+      if (wecomAvatar) existing.wecomAvatar = wecomAvatar;
+      existing.bindOperator = currentUser?.name || 'admin';
+      await bindingRepo.save(existing);
+      res.json({ success: true, data: existing, message: '换绑成功' });
+    } else {
+      const binding = bindingRepo.create({
+        wecomConfigId, corpId: config.corpId, wecomUserId, wecomUserName,
+        wecomAvatar, wecomDepartmentIds, crmUserId, crmUserName,
+        bindOperator: currentUser?.name || 'admin'
+      });
+      await bindingRepo.save(binding);
+      res.json({ success: true, data: binding, message: '绑定成功' });
+    }
   } catch (error: any) {
     log.error('[Wecom] Create binding error:', error);
     res.status(500).json({ success: false, message: '创建绑定失败' });

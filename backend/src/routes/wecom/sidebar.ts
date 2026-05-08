@@ -563,7 +563,12 @@ router.post('/sidebar/js-sdk-config', jsSdkConfigLimiter, validateJsSdkReferer, 
     const config = await configRepo.findOne({ where: { corpId, isEnabled: true } });
     if (!config) return res.status(400).json({ success: false, message: '未找到匹配的企微配置' });
 
-    const accessToken = await WecomApiService.getAccessToken(config.corpId, config.corpSecret);
+    log.info(`[Wecom Sidebar] JS-SDK config request: corpId=${corpId}, authType=${config.authType}, authMode=${config.authMode}, configId=${config.id}`);
+
+    // 使用 WecomTokenService 统一获取 access_token，支持自建应用和第三方应用双模式
+    const { WecomTokenService } = await import('../../services/wecom/WecomTokenService');
+    const accessToken = await WecomTokenService.getAccessToken(config);
+
     const corpTicket = await WecomApiService.getJsSdkTicket(accessToken);
     let agentTicket = '';
     try { agentTicket = await WecomApiService.getAgentJsSdkTicket(accessToken); } catch (e: any) { log.warn('[Wecom Sidebar] Get agent ticket failed:', e.message); }
@@ -576,8 +581,8 @@ router.post('/sidebar/js-sdk-config', jsSdkConfigLimiter, validateJsSdkReferer, 
 
     res.json({ success: true, data: { corpId: config.corpId, agentId: config.agentId, timestamp, nonceStr, corpSignature, agentSignature } });
   } catch (error: any) {
-    log.error('[Wecom Sidebar] JS-SDK config error:', error.message);
-    res.status(500).json({ success: false, message: '获取JS-SDK配置失败' });
+    log.error('[Wecom Sidebar] JS-SDK config error:', error.message, error.stack?.substring(0, 300));
+    res.status(500).json({ success: false, message: `获取JS-SDK配置失败: ${error.message}` });
   }
 });
 

@@ -22,8 +22,7 @@
             <div class="org-tree-panel">
               <div class="tree-toolbar">
                 <el-input v-model="deptSearch" placeholder="搜索部门/成员" prefix-icon="Search" clearable size="small" @input="handleDeptSearch" />
-                <el-button type="primary" size="small" :loading="syncingDepts" @click="handleSyncDepts">同步</el-button>
-                <el-button size="small" :loading="syncingMembers" @click="handleSyncMembers">同步成员</el-button>
+                <el-button type="primary" size="small" :loading="syncingAll" @click="handleSyncAll">同步组织架构</el-button>
               </div>
               <el-tree
                 :key="treeKey"
@@ -51,13 +50,18 @@
                         {{ (data.label || '?')[0] }}
                       </el-avatar>
                       <span class="node-label">{{ data.label }}</span>
+                      <span class="node-account" v-if="data.wecomUserId && data.label !== data.wecomUserId">({{ data.wecomUserId }})</span>
                       <el-tag v-if="data.crmUserName" type="success" size="small" style="margin-left: 4px">{{ data.crmUserName }}</el-tag>
                       <el-tag v-else type="info" size="small" style="margin-left: 4px">未绑定</el-tag>
                     </template>
                   </span>
                 </template>
               </el-tree>
-              <el-empty v-if="!mixedTreeData.length && !loadingDepts" description="暂无数据，请先同步部门和成员" :image-size="60" />
+              <el-empty v-if="!mixedTreeData.length && !loadingDepts && !syncingAll" description="暂无组织架构数据，请点击「同步组织架构」" :image-size="60" />
+              <div v-if="syncingAll && !mixedTreeData.length" style="text-align: center; padding: 40px 0; color: #909399">
+                <el-icon class="is-loading" :size="24"><Loading /></el-icon>
+                <div style="margin-top: 8px">正在自动同步组织架构，请稍候...</div>
+              </div>
             </div>
             <!-- 右侧：详情面板 -->
             <div class="org-detail-panel">
@@ -94,17 +98,15 @@
             <el-input v-model="bindingSearch" placeholder="搜索成员" prefix-icon="Search" clearable style="width: 200px" />
           </div>
            <el-table :data="paginatedBindingList" stripe v-loading="loadingBindings">
-            <el-table-column prop="wecomUserName" label="企微成员" min-width="120">
+            <el-table-column prop="wecomUserName" label="企微成员" min-width="160">
               <template #default="{ row }">
                 <div class="member-info">
                   <el-avatar :size="28" :src="row.wecomAvatar">{{ (row.wecomUserName || '?')[0] }}</el-avatar>
-                  <span>{{ row.wecomUserName }}</span>
+                  <div style="display: flex; flex-direction: column; line-height: 1.4">
+                    <span style="font-weight: 500">{{ row.wecomUserName || row.wecomUserId }}</span>
+                    <span v-if="row.wecomUserName" class="monospace-text" style="font-size: 11px">{{ row.wecomUserId }}</span>
+                  </div>
                 </div>
-              </template>
-            </el-table-column>
-            <el-table-column prop="wecomUserId" label="企微ID" min-width="120">
-              <template #default="{ row }">
-                <span class="monospace-text">{{ row.wecomUserId }}</span>
               </template>
             </el-table-column>
             <el-table-column label="CRM用户" min-width="120">
@@ -113,7 +115,11 @@
                 <el-tag v-else type="info" size="small">未绑定</el-tag>
               </template>
             </el-table-column>
-            <el-table-column prop="wecomDepartmentIds" label="部门" min-width="100" />
+            <el-table-column label="部门" min-width="120">
+              <template #default="{ row }">
+                <span>{{ resolveDeptNames(row.wecomDepartmentIds) }}</span>
+              </template>
+            </el-table-column>
             <el-table-column label="绑定时间" min-width="150">
               <template #default="{ row }">{{ row.createdAt ? formatDate(row.createdAt) : '-' }}</template>
             </el-table-column>
@@ -125,7 +131,8 @@
             <el-table-column label="操作" width="120" fixed="right">
               <template #default="{ row }">
                 <el-button v-if="!row.crmUserName" type="primary" link size="small" @click="openBindDialog(row)">去绑定</el-button>
-                <el-button v-else type="danger" link size="small" @click="handleUnbind(row)">解除</el-button>
+                <el-button v-else type="warning" link size="small" @click="openBindDialog(row)">换绑</el-button>
+                <el-button v-if="row.crmUserName" type="danger" link size="small" @click="handleUnbind(row)">解除</el-button>
               </template>
             </el-table-column>
           </el-table>
@@ -323,11 +330,20 @@
     </el-dialog>
 
     <!-- 手动绑定弹窗 -->
-    <el-dialog v-model="showManualBind" title="手动绑定CRM用户" width="520px">
+    <el-dialog v-model="showManualBind" :title="manualBindOriginalCrm ? '换绑CRM用户' : '绑定CRM用户'" width="520px">
       <el-form label-width="100px">
         <el-form-item label="企微成员">
-          <span style="font-weight: 600">{{ manualBindForm.wecomUserName || '-' }}</span>
-          <span style="color: #9CA3AF; margin-left: 8px; font-size: 12px">{{ manualBindForm.wecomUserId }}</span>
+          <div style="display: flex; align-items: center; gap: 8px">
+            <el-avatar :size="32" :src="manualBindForm.wecomAvatar">{{ (manualBindForm.wecomUserName || '?')[0] }}</el-avatar>
+            <div style="line-height: 1.4">
+              <div style="font-weight: 600">{{ manualBindForm.wecomUserName || manualBindForm.wecomUserId }}</div>
+              <div v-if="manualBindForm.wecomUserName" style="color: #9CA3AF; font-size: 12px">{{ manualBindForm.wecomUserId }}</div>
+            </div>
+          </div>
+        </el-form-item>
+        <el-form-item label="当前绑定" v-if="manualBindOriginalCrm">
+          <el-tag type="success">{{ manualBindOriginalCrm }}</el-tag>
+          <span style="color: #9CA3AF; font-size: 12px; margin-left: 8px">将被替换</span>
         </el-form-item>
         <el-form-item label="CRM用户">
           <el-select
@@ -335,11 +351,12 @@
             filterable
             remote
             reserve-keyword
-            placeholder="搜索CRM用户名/工号"
+            placeholder="点击下拉选择或搜索CRM用户"
             :remote-method="searchCrmUsers"
             :loading="searchingCrmUsers"
             style="width: 100%"
             @change="handleCrmUserSelect"
+            @focus="loadInitialCrmUsers"
           >
             <el-option v-for="u in crmUserOptions" :key="u.id" :label="`${u.name} (${u.username || u.code || ''})`" :value="u.id" />
           </el-select>
@@ -382,6 +399,7 @@
             :loading="searchingCrmUsers"
             style="width: 100%"
             @change="handleMultiCrmUserSelect"
+            @focus="loadInitialCrmUsers"
           >
             <el-option v-for="u in crmUserOptions" :key="u.id" :label="`${u.name} (${u.username || u.code || ''})`" :value="u.id" />
           </el-select>
@@ -397,7 +415,7 @@
             <el-option
               v-for="b in bindingList.filter(b => !b.crmUserId)"
               :key="b.wecomUserId"
-              :label="b.wecomUserName || b.wecomUserId"
+              :label="(b.wecomUserName || b.wecomUserId) + (b.wecomUserName ? ' (' + b.wecomUserId + ')' : '')"
               :value="b.wecomUserId"
             />
           </el-select>
@@ -417,7 +435,7 @@ defineOptions({ name: 'WecomAddressBook' })
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useUserStore } from '@/stores/user'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { FolderOpened } from '@element-plus/icons-vue'
+import { FolderOpened, Loading } from '@element-plus/icons-vue'
 import WecomHeader from './components/WecomHeader.vue'
 import WecomDemoBanner from './components/WecomDemoBanner.vue'
 import MemberProfile from './components/MemberProfile.vue'
@@ -454,12 +472,35 @@ const deptTreeRef = ref()
 const loadingDepts = ref(false)
 const syncingDepts = ref(false)
 const syncingMembers = ref(false)
+const syncingAll = ref(false)
 
 // 混合树相关
 const mixedTreeData = ref<any[]>([])
 const orgSelectedType = ref<'dept' | 'member' | ''>('')
 const orgSelectedDeptId = ref<number>(0)
 const orgSelectedMemberId = ref('')
+
+// 部门名称映射：用于将部门ID解析为名称
+const deptNameMap = ref<Record<number, string>>({})
+
+const buildDeptNameMap = (nodes: any[]) => {
+  for (const n of nodes) {
+    const id = n.wecomDeptId ?? n.id
+    const name = n.wecomDeptName ?? n.name ?? n.label
+    if (id && name && String(name) !== String(id)) {
+      deptNameMap.value[id] = name
+    }
+    if (n.children?.length) buildDeptNameMap(n.children)
+  }
+}
+
+const resolveDeptNames = (deptIds: string) => {
+  if (!deptIds) return '-'
+  return deptIds.split(',').map(s => {
+    const id = Number(s.trim())
+    return deptNameMap.value[id] || s.trim()
+  }).join(', ')
+}
 
 const mixedTreeProps = {
   label: 'label',
@@ -472,6 +513,9 @@ const filterMixedNode = (value: string, data: any) => {
   return (data.label || '').toLowerCase().includes(value.toLowerCase())
 }
 
+// 记录已自动同步过的configId，避免重复自动同步
+const autoSyncedConfigs = new Set<number>()
+
 const loadMixedTreeNode = async (node: any, resolve: (data: any[]) => void) => {
   if (!selectedConfigId.value) { resolve([]); return }
 
@@ -479,11 +523,31 @@ const loadMixedTreeNode = async (node: any, resolve: (data: any[]) => void) => {
     // 根节点：加载顶层部门树并转换为混合节点
     try {
       const res: any = await getWecomDepartmentTree(selectedConfigId.value)
-      const depts = Array.isArray(res) ? res : (res?.data || [])
+      let depts = Array.isArray(res) ? res : (res?.data || [])
+
+      // 如果本地无数据且尚未自动同步过，则自动触发同步
+      if (depts.length === 0 && !autoSyncedConfigs.has(selectedConfigId.value)) {
+        autoSyncedConfigs.add(selectedConfigId.value)
+        syncingAll.value = true
+        try {
+          await syncWecomDepartments(selectedConfigId.value!)
+          await syncWecomMembers(selectedConfigId.value!)
+          // 重新加载
+          const res2: any = await getWecomDepartmentTree(selectedConfigId.value!)
+          depts = Array.isArray(res2) ? res2 : (res2?.data || [])
+        } catch (e: any) {
+          console.warn('[AddressBook] 自动同步失败:', e?.message)
+        } finally {
+          syncingAll.value = false
+        }
+      }
+
+      // 构建部门名称映射
+      buildDeptNameMap(depts)
       const rootNodes = depts.map((d: any) => ({
         nodeId: `dept_${d.wecomDeptId}`,
         nodeType: 'dept',
-        label: d.wecomDeptName,
+        label: d.wecomDeptName || ('部门 ' + d.wecomDeptId),
         wecomDeptId: d.wecomDeptId,
         memberCount: d.memberCount || 0,
         crmDeptName: d.crmDeptName,
@@ -566,9 +630,11 @@ const searchingCrmUsers = ref(false)
 const crmUserOptions = ref<any[]>([])
 
 const manualBindForm = ref({ wecomUserId: '', wecomUserName: '', wecomAvatar: '', wecomDepartmentIds: '', crmUserId: '', crmUserName: '' })
+const manualBindOriginalCrm = ref('')
 const multiBind = ref({ crmUserId: '', crmUserName: '', wecomUserIds: [] as string[] })
 
 const openBindDialog = (row: any) => {
+  manualBindOriginalCrm.value = row.crmUserName || ''
   manualBindForm.value = {
     wecomUserId: row.wecomUserId,
     wecomUserName: row.wecomUserName || row.name || '',
@@ -579,16 +645,22 @@ const openBindDialog = (row: any) => {
   }
   crmUserOptions.value = []
   showManualBind.value = true
+  loadInitialCrmUsers()
 }
 
 const searchCrmUsers = async (keyword: string) => {
-  if (!keyword || keyword.length < 1) { crmUserOptions.value = []; return }
   searchingCrmUsers.value = true
   try {
-    const res: any = await request.get('/users', { params: { keyword, pageSize: 20 } })
+    const params: any = { pageSize: 20 }
+    if (keyword && keyword.length >= 1) params.keyword = keyword
+    const res: any = await request.get('/users', { params })
     crmUserOptions.value = (res?.list || res || []).slice(0, 20)
   } catch { crmUserOptions.value = [] }
   searchingCrmUsers.value = false
+}
+
+const loadInitialCrmUsers = () => {
+  if (crmUserOptions.value.length === 0) searchCrmUsers('')
 }
 
 const handleCrmUserSelect = (val: string) => {
@@ -757,7 +829,7 @@ const handleDeptSearch = () => {
   deptTreeRef.value?.filter(deptSearch.value)
 }
 
-const handleSyncDepts = async () => {
+const _handleSyncDepts = async () => {
   if (!selectedConfigId.value) { ElMessage.warning('请先选择企微配置'); return }
   syncingDepts.value = true
   try {
@@ -771,7 +843,7 @@ const handleSyncDepts = async () => {
   }
 }
 
-const handleSyncMembers = async () => {
+const _handleSyncMembers = async () => {
   if (!selectedConfigId.value) return
   syncingMembers.value = true
   try {
@@ -782,6 +854,21 @@ const handleSyncMembers = async () => {
     ElMessage.error(e?.message || '同步失败')
   } finally {
     syncingMembers.value = false
+  }
+}
+
+const handleSyncAll = async () => {
+  if (!selectedConfigId.value) { ElMessage.warning('请先选择企微配置'); return }
+  syncingAll.value = true
+  try {
+    await syncWecomDepartments(selectedConfigId.value)
+    await syncWecomMembers(selectedConfigId.value)
+    ElMessage.success('组织架构同步完成')
+    reloadMixedTree()
+  } catch (e: any) {
+    ElMessage.error(e?.message || '同步失败')
+  } finally {
+    syncingAll.value = false
   }
 }
 
@@ -1017,6 +1104,7 @@ onMounted(() => {
 .mixed-tree-node .node-count { color: #9CA3AF; font-size: 12px; margin-left: 4px; }
 .mixed-tree-node.is-member { padding: 2px 0; }
 .mixed-tree-node.is-member .node-label { font-weight: 400; color: #374151; }
+.mixed-tree-node .node-account { font-size: 11px; color: #9CA3AF; margin-left: 4px; font-family: 'SF Mono', 'Menlo', 'Consolas', monospace; }
 .org-tree-panel :deep(.el-tree-node__content) { height: 36px; }
 .org-tree-panel :deep(.el-tree-node.is-current > .el-tree-node__content) { background: #EEF2FF; }
 .monospace-text { font-family: 'SF Mono', 'Menlo', 'Consolas', monospace; font-size: 12px; color: #6B7280; }
