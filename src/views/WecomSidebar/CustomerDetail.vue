@@ -572,15 +572,34 @@ function isTokenExpiringSoon(token: string): boolean {
 
 function loadWecomJsSdk(): Promise<void> {
   return new Promise((resolve, reject) => {
-    if ((window as any).wx) {
+    if ((window as any).wx || (window as any).jWeixin) {
+      // 统一挂载到 window.wx
+      if (!(window as any).wx && (window as any).jWeixin) {
+        (window as any).wx = (window as any).jWeixin
+      }
       resolve()
       return
     }
-    const script = document.createElement('script')
-    script.src = 'https://res.wx.qq.com/open/js/jWeixin-1.2.0.js'
-    script.onload = () => resolve()
-    script.onerror = () => reject(new Error('Failed to load WeChat JS-SDK'))
-    document.head.appendChild(script)
+    // 企业微信PC端侧边栏必须使用企微专用JS-SDK
+    const wwScript = document.createElement('script')
+    wwScript.src = 'https://open.work.weixin.qq.com/wwopen/js/jwxwork-1.0.0.js'
+    wwScript.onload = () => {
+      // jwxwork SDK 可能挂载到 jWeixin 或 wx
+      if (!(window as any).wx && (window as any).jWeixin) {
+        (window as any).wx = (window as any).jWeixin
+      }
+      resolve()
+    }
+    wwScript.onerror = () => {
+      // fallback: 尝试加载微信通用SDK（仅移动端可用）
+      console.warn('[Sidebar] 企微专用SDK加载失败，尝试fallback到jWeixin...')
+      const fallbackScript = document.createElement('script')
+      fallbackScript.src = 'https://res.wx.qq.com/open/js/jWeixin-1.2.0.js'
+      fallbackScript.onload = () => resolve()
+      fallbackScript.onerror = () => reject(new Error('Failed to load WeChat JS-SDK'))
+      document.head.appendChild(fallbackScript)
+    }
+    document.head.appendChild(wwScript)
   })
 }
 
