@@ -64,9 +64,9 @@ export class WecomApiService {
   /**
    * 根据配置ID获取Access Token
    * 代理到 WecomTokenService，支持自建应用 + 第三方应用双模式，统一缓存管理
-   * @param secretType - corp: 应用Secret, contact: 通讯录同步Secret, external: 客户联系Secret, chat: 会话存档Secret
+   * @param secretType - corp: 应用Secret, contact: 通讯录同步Secret, external: 客户联系Secret, chat: 会话存档Secret, payment: 对外收款Secret
    */
-  static async getAccessTokenByConfigId(configId: number, secretType: 'corp' | 'contact' | 'external' | 'chat' = 'corp'): Promise<string> {
+  static async getAccessTokenByConfigId(configId: number, secretType: 'corp' | 'contact' | 'external' | 'chat' | 'payment' = 'corp'): Promise<string> {
     log.info(`[WecomApi] getAccessTokenByConfigId → delegating to WecomTokenService, configId: ${configId}, secretType: ${secretType}`);
     const { WecomTokenService } = await import('./wecom/WecomTokenService');
     return WecomTokenService.getAccessTokenByConfigId(configId, secretType);

@@ -471,8 +471,28 @@ router.get('/configs/:id/diagnose/:item', authenticateToken, async (req: Request
           break;
         }
         case 'payment': {
-          // 检测是否有收款Secret配置
-          status = 'none'; detail = '对外收款功能需单独申请开通，请在企微后台「应用管理→对外收款」中配置';
+          if (config.authType !== 'third_party' && !config.paymentSecret) {
+            status = 'none'; detail = '未配置对外收款Secret，请在企微后台「应用管理→对外收款」中获取Secret后配置'; break;
+          }
+          try {
+            const token = await WecomApiService.getAccessTokenByConfigId(configId, config.authType === 'third_party' ? 'corp' : 'payment');
+            const axios = (await import('axios')).default;
+            const now = Math.floor(Date.now() / 1000);
+            const verifyRes = await axios.post(
+              `https://qyapi.weixin.qq.com/cgi-bin/externalpay/get_bill_list?access_token=${token}`,
+              { begin_time: now - 3600, end_time: now, limit: 1 }
+            );
+            const ec = verifyRes.data?.errcode;
+            if (ec === 0 || ec === undefined) {
+              status = 'ok'; detail = '对外收款API可用，权限正常';
+            } else if (ec === 48002 || ec === 60011 || ec === 60020) {
+              status = 'fail'; detail = `收款权限不足(${ec})，请确认${config.authType === 'third_party' ? '授权时已勾选「对外收款」权限' : 'Secret对应的应用已开通「对外收款」'}`;
+            } else {
+              status = 'fail'; detail = `收款API异常: ${verifyRes.data?.errmsg || '未知错误'} (${ec})`;
+            }
+          } catch (e: any) {
+            status = 'fail'; detail = `对外收款检测失败: ${e.message || '未知错误'}`;
+          }
           break;
         }
         case 'callback': {

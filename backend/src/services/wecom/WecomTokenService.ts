@@ -20,7 +20,7 @@ import { log } from '../../config/logger';
 const WECOM_API_BASE = 'https://qyapi.weixin.qq.com/cgi-bin';
 
 /** Token类型 */
-type SecretType = 'corp' | 'contact' | 'external' | 'chat';
+type SecretType = 'corp' | 'contact' | 'external' | 'chat' | 'payment';
 
 /** 缓存条目 */
 interface CacheEntry {
@@ -367,6 +367,10 @@ export class WecomTokenService {
         return config.externalContactSecret || config.contactSecret || config.corpSecret;
       case 'chat':
         return config.chatArchiveSecret || config.corpSecret;
+      case 'payment':
+        // 2023年12月起不再支持独立的对外收款Secret，使用自建应用的corpSecret
+        // 需在企微后台「对外收款→API→可调用接口的应用」中配置该自建应用
+        return config.corpSecret;
       default:
         return config.corpSecret;
     }

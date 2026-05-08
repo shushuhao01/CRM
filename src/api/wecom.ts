@@ -286,6 +286,13 @@ export const approveWecomPaymentRefund = (id: number, data: { action: 'approve' 
   return request.put(`/wecom/payments/refunds/${id}/approve`, data)
 }
 
+/** 退款统计 */
+export const getWecomRefundStats = (params?: {
+  startDate?: string; endDate?: string
+}) => {
+  return request.get('/wecom/payments/refund-stats', { params, showError: false } as any)
+}
+
 /** 搜索已支付记录（退款用） */
 export const searchWecomPaidPayments = (keyword?: string) => {
   return request.get('/wecom/payments/search-paid', { params: { keyword }, showError: false } as any)
@@ -319,6 +326,11 @@ export const getWecomPaymentSettings = (configId?: number) => {
 /** 保存收款设置 */
 export const saveWecomPaymentSettings = (data: any) => {
   return request.put('/wecom/payments/settings', data)
+}
+
+/** 测试对外收款API权限 */
+export const testPaymentSecret = (data: { configId?: number; paymentSecret?: string }) => {
+  return request.post('/wecom/payments/test-secret', data)
 }
 
 // ==================== 会话存档 ====================

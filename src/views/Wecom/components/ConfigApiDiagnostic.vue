@@ -131,7 +131,7 @@ const runDiagnostic = async (item: DiagItem) => {
   const start = Date.now()
   try {
     const res = await fetch(`/api/v1/wecom/configs/${props.configId}/diagnose/${item.id}`, {
-      headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+      headers: { 'Authorization': `Bearer ${localStorage.getItem('auth_token') || localStorage.getItem('token')}` }
     })
     const json = await res.json()
     item.latency = Date.now() - start

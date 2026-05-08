@@ -124,7 +124,7 @@ const fetchCallbackConfig = async () => {
   if (!props.configId) return
   try {
     const res = await fetch(`/api/v1/wecom/configs/${props.configId}`, {
-      headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+      headers: { 'Authorization': `Bearer ${localStorage.getItem('auth_token') || localStorage.getItem('token')}` }
     })
     const json = await res.json()
     if (json?.data) {
@@ -141,7 +141,7 @@ const fetchLogs = async () => {
   loadingLogs.value = true
   try {
     const res = await fetch(`/api/v1/wecom/callback/logs?configId=${props.configId}&limit=10`, {
-      headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+      headers: { 'Authorization': `Bearer ${localStorage.getItem('auth_token') || localStorage.getItem('token')}` }
     })
     const json = await res.json()
     if (json?.data) recentLogs.value = json.data
@@ -174,7 +174,7 @@ const sendTestRequest = async () => {
   try {
     const res = await fetch(`/api/v1/wecom/callback/test?configId=${props.configId}`, {
       method: 'POST',
-      headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}`, 'Content-Type': 'application/json' }
+      headers: { 'Authorization': `Bearer ${localStorage.getItem('auth_token') || localStorage.getItem('token')}`, 'Content-Type': 'application/json' }
     })
     const json = await res.json()
     if (json?.success) {
@@ -197,7 +197,7 @@ const handleSave = async () => {
 
     const res = await fetch(`/api/v1/wecom/configs/${props.configId}`, {
       method: 'PUT',
-      headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}`, 'Content-Type': 'application/json' },
+      headers: { 'Authorization': `Bearer ${localStorage.getItem('auth_token') || localStorage.getItem('token')}`, 'Content-Type': 'application/json' },
       body: JSON.stringify(body)
     })
     const json = await res.json()

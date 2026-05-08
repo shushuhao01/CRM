@@ -181,23 +181,15 @@
             </div>
           </div>
 
-          <!-- 对外收款Secret(可选) -->
+          <!-- 对外收款说明 -->
           <div class="secret-item">
             <div class="secret-header">
-              <span class="secret-name">对外收款Secret <el-tag type="info" size="small">可选</el-tag></span>
-              <el-tag :type="statusTagType(secrets.paymentSecret.status)" size="small">
-                {{ statusLabel(secrets.paymentSecret.status) }}
-              </el-tag>
+              <span class="secret-name">对外收款 <el-tag type="info" size="small">无需独立Secret</el-tag></span>
             </div>
-            <div class="secret-input-row">
-              <el-input
-                v-model="secrets.paymentSecret.value"
-                :type="secrets.paymentSecret.visible ? 'text' : 'password'"
-                placeholder="对外收款API Secret"
-                style="flex: 1"
-              />
-              <el-button :icon="secrets.paymentSecret.visible ? Hide : View" @click="secrets.paymentSecret.visible = !secrets.paymentSecret.visible" />
-              <el-button type="success" @click="testSecret('payment')" :loading="secrets.paymentSecret.testing">测试</el-button>
+            <div style="font-size: 12px; color: #909399; line-height: 1.8; padding: 4px 0">
+              2023年12月起企微不再支持独立的「对外收款Secret」。<br/>
+              请在企微管理后台 → 对外收款 → API → 设置「可调用接口的应用」中勾选当前自建应用，<br/>
+              系统将使用上方配置的应用Secret调用收款API。可在「对外收款 → 收款设置」中测试连接。
             </div>
           </div>
         </div>
@@ -251,9 +243,9 @@ const thirdPartySecrets = computed(() => [
   },
   {
     key: 'payment', icon: '💰', name: '对外收款',
-    autoManaged: false,
-    desc: '对外收款功能需在企微后台单独申请开通',
-    statusText: '需企业在企微后台单独开通'
+    autoManaged: true,
+    desc: '对外收款权限在企业授权安装时勾选授予，无需单独配置Secret',
+    statusText: '随授权自动获取，取决于授权时是否勾选收款权限'
   },
 ])
 
@@ -300,7 +292,7 @@ const testSecret = async (type: string) => {
       return
     }
     const res = await fetch(`/api/v1/wecom/configs/${props.configId}/diagnose/${type === 'app' ? 'token' : type === 'contact' ? 'address' : type === 'external' ? 'external' : type === 'archive' ? 'archive' : 'payment'}`, {
-      headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+      headers: { 'Authorization': `Bearer ${localStorage.getItem('auth_token') || localStorage.getItem('token')}` }
     })
     const json = await res.json()
     target.testing = false
@@ -330,14 +322,13 @@ const handleSaveAll = async () => {
       if (secrets.appSecret.value) body.corpSecret = secrets.appSecret.value
       if (secrets.contactSecret.value) body.contactSecret = secrets.contactSecret.value
       if (secrets.externalSecret.value) body.externalContactSecret = secrets.externalSecret.value
-      if (secrets.paymentSecret.value) body.paymentSecret = secrets.paymentSecret.value
     }
     if (secrets.archiveSecret.value) body.chatArchiveSecret = secrets.archiveSecret.value
     if (rsaPrivateKey.value) body.chatArchivePrivateKey = rsaPrivateKey.value
 
     const res = await fetch(`/api/v1/wecom/configs/${props.configId}`, {
       method: 'PUT',
-      headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}`, 'Content-Type': 'application/json' },
+      headers: { 'Authorization': `Bearer ${localStorage.getItem('auth_token') || localStorage.getItem('token')}`, 'Content-Type': 'application/json' },
       body: JSON.stringify(body)
     })
     const json = await res.json()

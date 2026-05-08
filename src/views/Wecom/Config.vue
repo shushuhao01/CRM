@@ -290,7 +290,7 @@
                 <div class="scope-item">✅ 客户群管理 — 读取客户群列表和成员</div>
                 <div class="scope-item">✅ 应用消息 — 发送应用通知消息</div>
                 <div class="scope-item">⚡ 会话存档 — 需额外开通(可选增值服务)</div>
-                <div class="scope-item">💰 对外收款 — 需在后台单独授权(可选)</div>
+                <div class="scope-item">💰 对外收款 — 授权时勾选即可获取收款记录(可选)</div>
               </div>
               <div style="display: flex; gap: 10px; margin-top: 8px;">
                 <el-button @click="authStep = 0">返回上一步</el-button>
@@ -500,7 +500,7 @@ const fetchList = async () => {
 const checkSelfBuildPermission = async () => {
   try {
     const res = await fetch('/api/v1/system/config/wecom_settings', {
-      headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+      headers: { 'Authorization': `Bearer ${localStorage.getItem('auth_token') || localStorage.getItem('token')}` }
     })
     const json = await res.json()
     if (json?.data?.allowSelfBuild === false) allowSelfBuild.value = false

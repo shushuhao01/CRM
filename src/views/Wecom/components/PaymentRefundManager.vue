@@ -18,7 +18,7 @@
     </div>
 
     <el-alert type="info" :closable="false" style="margin-bottom: 16px">
-      退款记录由企业微信对外收款同步而来，退款操作需在企微管理后台进行，此处仅展示退款数据统计。
+      退款申请由收款记录页发起，管理员可在此审批或拒绝。审批通过后退款金额自动更新到原收款记录。企微官方API暂不支持接口直接退款，实际退款请在企微管理后台操作。
     </el-alert>
 
     <el-table :data="refunds" stripe v-loading="loading" border>
@@ -47,9 +47,13 @@
           <el-tag :type="refundStatusType(row.status)" size="small">{{ refundStatusLabel(row.status) }}</el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="80" fixed="right">
+      <el-table-column label="操作" width="180" fixed="right">
         <template #default="{ row }">
           <el-button type="primary" link size="small" @click="viewDetail(row)">详情</el-button>
+          <template v-if="row.status === 'processing'">
+            <el-button type="success" link size="small" @click="handleApprove(row)">通过</el-button>
+            <el-button type="danger" link size="small" @click="handleReject(row)">拒绝</el-button>
+          </template>
         </template>
       </el-table-column>
     </el-table>
@@ -74,9 +78,19 @@
           <el-descriptions-item label="状态">
             <el-tag :type="refundStatusType(detailRow.status)">{{ refundStatusLabel(detailRow.status) }}</el-tag>
           </el-descriptions-item>
+          <el-descriptions-item label="操作人">{{ detailRow.operatorName || '-' }}</el-descriptions-item>
           <el-descriptions-item label="申请时间">{{ formatDate(detailRow.createdAt) }}</el-descriptions-item>
           <el-descriptions-item label="完成时间">{{ detailRow.refundTime ? formatDate(detailRow.refundTime) : '-' }}</el-descriptions-item>
+          <el-descriptions-item v-if="detailRow.status === 'rejected' && detailRow.rejectReason" label="拒绝原因">
+            <span style="color: #EF4444">{{ detailRow.rejectReason }}</span>
+          </el-descriptions-item>
         </el-descriptions>
+      </template>
+      <template v-if="detailRow?.status === 'processing'" #footer>
+        <div style="display: flex; gap: 10px">
+          <el-button type="success" style="flex: 1" @click="handleApprove(detailRow)">审批通过</el-button>
+          <el-button type="danger" style="flex: 1" @click="handleReject(detailRow)">拒绝退款</el-button>
+        </div>
       </template>
     </el-drawer>
   </div>
@@ -85,7 +99,8 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { Search } from '@element-plus/icons-vue'
-import { getWecomPaymentRefunds } from '@/api/wecom'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { getWecomPaymentRefunds, approveWecomPaymentRefund } from '@/api/wecom'
 import { formatDateTime } from '@/utils/date'
 
 const loading = ref(false)
@@ -123,6 +138,38 @@ const fetchRefunds = async () => {
 const viewDetail = (row: any) => {
   detailRow.value = row
   detailVisible.value = true
+}
+
+const handleApprove = async (row: any) => {
+  try {
+    await ElMessageBox.confirm(
+      `确认通过退款申请？\n退款单号: ${row.refundNo}\n退款金额: ¥${(row.refundAmount / 100).toFixed(2)}`,
+      '审批确认',
+      { confirmButtonText: '确认通过', cancelButtonText: '取消', type: 'warning' }
+    )
+    const res = await approveWecomPaymentRefund(row.id, { action: 'approve' }) as any
+    ElMessage.success(res?.message || '退款已通过')
+    detailVisible.value = false
+    fetchRefunds()
+  } catch (e: any) {
+    if (e !== 'cancel') ElMessage.error(e?.message || '审批失败')
+  }
+}
+
+const handleReject = async (row: any) => {
+  try {
+    const { value: reason } = await ElMessageBox.prompt(
+      `拒绝退款单: ${row.refundNo}\n退款金额: ¥${(row.refundAmount / 100).toFixed(2)}`,
+      '拒绝退款',
+      { confirmButtonText: '确认拒绝', cancelButtonText: '取消', inputPlaceholder: '请输入拒绝原因', inputType: 'textarea', type: 'warning' }
+    ) as any
+    const res = await approveWecomPaymentRefund(row.id, { action: 'reject', rejectReason: reason || '' }) as any
+    ElMessage.success(res?.message || '退款已拒绝')
+    detailVisible.value = false
+    fetchRefunds()
+  } catch (e: any) {
+    if (e !== 'cancel') ElMessage.error(e?.message || '拒绝失败')
+  }
 }
 
 onMounted(() => fetchRefunds())

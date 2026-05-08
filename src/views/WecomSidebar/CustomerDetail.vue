@@ -8,12 +8,13 @@
 
     <!-- JS-SDK不可用 / 非企微环境 -->
     <div v-else-if="pageState === 'no-sdk'" class="sidebar-center">
-      <el-result icon="warning" title="非企微环境" sub-title="请在企业微信聊天侧边栏中打开此页面">
+      <el-result icon="warning" :title="sdkErrorTitle" :sub-title="sdkErrorDetail">
         <template #extra>
           <p style="color:#909399;font-size:12px">如果您是管理员，请在企微后台配置侧边栏应用地址指向此页面</p>
-          <!-- 开发模式下允许手动输入调试 -->
-          <div v-if="isDev" style="margin-top:16px">
-            <el-divider>开发调试</el-divider>
+          <p v-if="sdkDebugInfo" style="color:#C0C4CC;font-size:11px;margin-top:8px;word-break:break-all">{{ sdkDebugInfo }}</p>
+          <!-- 开发模式或环境检测失败时允许手动调试 -->
+          <div v-if="isDev || sdkErrorCode === 'env'" style="margin-top:16px">
+            <el-divider>手动调试</el-divider>
             <el-form size="small" label-width="90px" style="max-width:300px;margin:0 auto">
               <el-form-item label="CorpID">
                 <el-input v-model="debugCorpId" placeholder="ww****" />
@@ -365,6 +366,18 @@ import { SensitiveInfoType } from '@/services/permission'
 const isDev = import.meta.env.DEV
 const pageState = ref<'loading' | 'no-sdk' | 'login' | 'detail' | 'error'>('loading')
 const errorMsg = ref('')
+const sdkErrorCode = ref('') // env | no-corpid | sdk-load | sdk-config | sdk-agent | api
+const sdkErrorTitle = ref('非企微环境')
+const sdkErrorDetail = ref('请在企业微信聊天侧边栏中打开此页面')
+const sdkDebugInfo = ref('')
+
+function setSdkError(code: string, title: string, detail: string, debug = '') {
+  sdkErrorCode.value = code
+  sdkErrorTitle.value = title
+  sdkErrorDetail.value = detail
+  sdkDebugInfo.value = debug
+  pageState.value = 'no-sdk'
+}
 
 // 企微上下文
 const corpId = ref('')
@@ -416,48 +429,71 @@ onMounted(async () => {
     currentTab.value = tabParam as typeof currentTab.value
   }
   // 检测是否在企微环境
-  if (isWecomEnv()) {
+  const envResult = isWecomEnv()
+  console.log('[Sidebar] 环境检测结果:', envResult)
+  if (envResult.isWecom) {
     await initWecomSdk()
-  } else if (isDev) {
-    // 开发模式允许手动调试
-    pageState.value = 'no-sdk'
   } else {
-    pageState.value = 'no-sdk'
+    setSdkError('env', '非企微环境', '请在企业微信聊天侧边栏中打开此页面', `UA: ${envResult.ua.substring(0, 120)}... | 检测方式: ${envResult.method}`)
   }
 })
 
-function isWecomEnv(): boolean {
+function isWecomEnv(): { isWecom: boolean; ua: string; method: string } {
   const ua = navigator.userAgent.toLowerCase()
-  return ua.includes('wxwork') || ua.includes('micromessenger')
+  // 方式1: 标准 UA 检测
+  if (ua.includes('wxwork')) return { isWecom: true, ua, method: 'ua-wxwork' }
+  if (ua.includes('micromessenger')) return { isWecom: true, ua, method: 'ua-micromessenger' }
+  // 方式2: 企微桌面版可能的 UA 标识
+  if (ua.includes('wechat') && ua.includes('windowswechat')) return { isWecom: true, ua, method: 'ua-windowswechat' }
+  // 方式3: 检测企微 JS Bridge 对象
+  if ((window as any).wx || (window as any).WeixinJSBridge || (window as any).__wxjs_environment) return { isWecom: true, ua, method: 'js-bridge' }
+  // 方式4: URL 参数推断（如果配置了 corpId 参数，说明是企微侧边栏配置的链接）
+  const urlParams = new URLSearchParams(window.location.search)
+  if (urlParams.get('corpId')) return { isWecom: true, ua, method: 'url-corpId' }
+  return { isWecom: false, ua, method: 'none' }
 }
 
 async function initWecomSdk() {
   try {
     // 动态加载企微JS-SDK
-    await loadWecomJsSdk()
+    console.log('[Sidebar] 加载JS-SDK...')
+    try {
+      await loadWecomJsSdk()
+    } catch (e: any) {
+      setSdkError('sdk-load', 'JS-SDK加载失败', '无法加载企微JS-SDK，请检查网络', e?.message)
+      return
+    }
 
     // 获取JS-SDK配置 - 需要先知道corpId
-    // 从URL参数获取corpId，或者从页面配置获取
     const urlParams = new URLSearchParams(window.location.search)
     corpId.value = urlParams.get('corpId') || ''
+    console.log('[Sidebar] corpId:', corpId.value)
 
     if (!corpId.value) {
-      // 尝试从meta标签或配置获取
-      pageState.value = 'no-sdk'
+      setSdkError('no-corpid', '缺少企业ID参数', 'URL中缺少corpId参数，请在企微后台配置侧边栏地址时添加?corpId=您的企业ID', `当前URL: ${window.location.href}`)
       return
     }
 
     // 获取JS-SDK签名
-    const configRes: any = await getSidebarJsSdkConfig({ url: window.location.href.split('#')[0], corpId: corpId.value })
-    if (!configRes?.corpId) {
-      pageState.value = 'no-sdk'
+    console.log('[Sidebar] 获取JS-SDK签名...')
+    let configRes: any
+    try {
+      configRes = await getSidebarJsSdkConfig({ url: window.location.href.split('#')[0], corpId: corpId.value })
+    } catch (e: any) {
+      console.error('[Sidebar] JS-SDK签名获取失败:', e)
+      setSdkError('api', 'JS-SDK签名获取失败', `请检查企微配置是否正确（CorpID: ${corpId.value}）`, `错误: ${e?.message || '未知'}`)
       return
     }
+    if (!configRes?.corpId) {
+      setSdkError('api', 'JS-SDK配置返回异常', '后端未返回有效的JS-SDK签名配置', `响应: ${JSON.stringify(configRes || {}).substring(0, 200)}`)
+      return
+    }
+    console.log('[Sidebar] JS-SDK签名获取成功, agentId:', configRes.agentId)
 
     // 注入wx.config
     const wx = (window as any).wx
     if (!wx) {
-      pageState.value = 'no-sdk'
+      setSdkError('sdk-load', 'wx对象不存在', 'JS-SDK已加载但wx对象未生成，请重试')
       return
     }
 
@@ -472,6 +508,7 @@ async function initWecomSdk() {
     })
 
     wx.ready(() => {
+      console.log('[Sidebar] wx.config ready')
       // 注入agentConfig
       if (configRes.agentSignature && configRes.agentId) {
         wx.agentConfig({
@@ -482,11 +519,12 @@ async function initWecomSdk() {
           signature: configRes.agentSignature,
           jsApiList: ['getCurExternalContact'],
           success: () => {
+            console.log('[Sidebar] agentConfig success')
             getCurExternalContact(wx)
           },
           fail: (err: any) => {
             console.error('[Sidebar] agentConfig fail:', err)
-            pageState.value = 'no-sdk'
+            setSdkError('sdk-agent', 'agentConfig失败', '应用配置验证失败，请检查应用AgentID和Secret', `错误: ${JSON.stringify(err)}`)
           }
         })
       } else {
@@ -496,11 +534,11 @@ async function initWecomSdk() {
 
     wx.error((err: any) => {
       console.error('[Sidebar] wx.config error:', err)
-      pageState.value = 'no-sdk'
+      setSdkError('sdk-config', 'JS-SDK配置失败', 'wx.config验证失败，请检查CorpID和Secret是否正确', `错误: ${JSON.stringify(err)}`)
     })
   } catch (e: any) {
     console.error('[Sidebar] Init error:', e)
-    pageState.value = 'no-sdk'
+    setSdkError('api', '初始化失败', e?.message || '未知错误', `堆栈: ${e?.stack?.substring(0, 200) || ''}`)
   }
 }
 

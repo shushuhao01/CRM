@@ -167,7 +167,7 @@ const fetchFeatures = async () => {
   loading.value = true
   try {
     const res = await fetch(`/api/v1/wecom/configs/${props.configId}/features`, {
-      headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+      headers: { 'Authorization': `Bearer ${localStorage.getItem('auth_token') || localStorage.getItem('token')}` }
     })
     const json = await res.json()
     if (json?.data) {

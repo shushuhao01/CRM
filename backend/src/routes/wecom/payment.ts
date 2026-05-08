@@ -182,7 +182,7 @@ router.post('/payments/sync', authenticateToken, requireAdmin, async (req: Reque
     const endTime = endDate ? Math.floor(new Date(endDate).getTime() / 1000) : Math.floor(Date.now() / 1000);
     const beginTime = startDate ? Math.floor(new Date(startDate).getTime() / 1000) : endTime - 30 * 24 * 3600;
 
-    const accessToken = await WecomApiService.getAccessTokenByConfigId(configId);
+    const accessToken = await WecomApiService.getAccessTokenByConfigId(configId, 'payment');
     const paymentRepo = getTenantRepo(WecomPaymentRecord);
     let syncCount = 0;
     let cursor = '';
@@ -266,7 +266,8 @@ router.post('/payments/refunds', authenticateToken, async (req: Request, res: Re
     const payment = await paymentRepo.findOne({ where: { paymentNo: originalPaymentNo } });
     if (!payment) return res.status(404).json({ success: false, message: '原收款记录不存在' });
     if (payment.status !== 'paid') return res.status(400).json({ success: false, message: '只有已支付的记录可以退款' });
-    if (refundAmount > payment.amount) return res.status(400).json({ success: false, message: '退款金额不能超过原金额' });
+    const maxRefundable = payment.amount - (payment.refundAmount || 0);
+    if (refundAmount > maxRefundable) return res.status(400).json({ success: false, message: `退款金额不能超过可退金额(¥${(maxRefundable / 100).toFixed(2)})` });
 
     const user = (req as any).user;
     const refundNo = `RF${Date.now()}`;
@@ -325,6 +326,83 @@ router.put('/payments/refunds/:id/approve', authenticateToken, requireAdmin, asy
   } catch (error: any) {
     log.error('[Wecom] Approve refund error:', error);
     res.status(500).json({ success: false, message: '审批退款失败' });
+  }
+});
+
+/**
+ * 退款统计数据
+ */
+router.get('/payments/refund-stats', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const { startDate, endDate } = req.query;
+    const refundRepo = getTenantRepo(WecomPaymentRefund);
+    const qb = refundRepo.createQueryBuilder('r');
+    if (startDate) qb.andWhere('r.createdAt >= :startDate', { startDate });
+    if (endDate) qb.andWhere('r.createdAt <= :endDate', { endDate: `${endDate} 23:59:59` });
+
+    const records = await qb.getMany();
+
+    // 汇总
+    const totalCount = records.length;
+    const completedRecords = records.filter(r => r.status === 'completed');
+    const rejectedRecords = records.filter(r => r.status === 'rejected');
+    const processingRecords = records.filter(r => r.status === 'processing');
+    const totalRefundAmount = completedRecords.reduce((s, r) => s + (r.refundAmount || 0), 0);
+    const approvalRate = totalCount > 0 ? Math.round((completedRecords.length / totalCount) * 1000) / 10 : 0;
+    const avgProcessMs = completedRecords.length > 0
+      ? completedRecords.reduce((s, r) => s + (r.refundTime ? new Date(r.refundTime).getTime() - new Date(r.createdAt).getTime() : 0), 0) / completedRecords.length
+      : 0;
+    const avgProcessHours = Math.round(avgProcessMs / 3600000 * 10) / 10;
+
+    // 趋势
+    const trendMap: Record<string, { amount: number; count: number; completed: number; rejected: number }> = {};
+    for (const r of records) {
+      const dateKey = new Date(r.createdAt).toISOString().split('T')[0];
+      if (!trendMap[dateKey]) trendMap[dateKey] = { amount: 0, count: 0, completed: 0, rejected: 0 };
+      trendMap[dateKey].count += 1;
+      if (r.status === 'completed') { trendMap[dateKey].amount += r.refundAmount || 0; trendMap[dateKey].completed += 1; }
+      if (r.status === 'rejected') { trendMap[dateKey].rejected += 1; }
+    }
+    const trend = Object.entries(trendMap).sort(([a], [b]) => a.localeCompare(b)).map(([date, data]) => ({ date, ...data }));
+
+    // 原因分布
+    const reasonMap: Record<string, number> = {};
+    for (const r of records) {
+      const reason = r.reason?.trim() || '未填写原因';
+      reasonMap[reason] = (reasonMap[reason] || 0) + 1;
+    }
+    const reasonDistribution = Object.entries(reasonMap)
+      .map(([reason, count]) => ({ reason, count, percent: Math.round((count / (totalCount || 1)) * 1000) / 10 }))
+      .sort((a, b) => b.count - a.count);
+
+    // 操作人排行
+    const operatorMap: Record<string, { name: string; count: number; amount: number; completedCount: number; rejectedCount: number }> = {};
+    for (const r of records) {
+      const key = r.operatorName || '未知';
+      if (!operatorMap[key]) operatorMap[key] = { name: key, count: 0, amount: 0, completedCount: 0, rejectedCount: 0 };
+      operatorMap[key].count += 1;
+      if (r.status === 'completed') { operatorMap[key].amount += r.refundAmount || 0; operatorMap[key].completedCount += 1; }
+      if (r.status === 'rejected') { operatorMap[key].rejectedCount += 1; }
+    }
+    const operatorRanking = Object.values(operatorMap).sort((a, b) => b.amount - a.amount);
+
+    // 状态分布
+    const statusDistribution = [
+      { status: 'completed', label: '已完成', count: completedRecords.length, percent: Math.round((completedRecords.length / (totalCount || 1)) * 1000) / 10 },
+      { status: 'processing', label: '处理中', count: processingRecords.length, percent: Math.round((processingRecords.length / (totalCount || 1)) * 1000) / 10 },
+      { status: 'rejected', label: '已拒绝', count: rejectedRecords.length, percent: Math.round((rejectedRecords.length / (totalCount || 1)) * 1000) / 10 },
+    ];
+
+    res.json({
+      success: true,
+      data: {
+        summary: { totalCount, totalRefundAmount, approvalRate, avgProcessHours, completedCount: completedRecords.length, rejectedCount: rejectedRecords.length, processingCount: processingRecords.length },
+        trend, reasonDistribution, operatorRanking, statusDistribution
+      }
+    });
+  } catch (error: any) {
+    log.error('[Wecom] Get refund stats error:', error);
+    res.status(500).json({ success: false, message: '获取退款统计失败' });
   }
 });
 
@@ -404,21 +482,22 @@ router.get('/payments/settings', authenticateToken, async (req: Request, res: Re
   try {
     const { configId } = req.query;
     const configRepo = getTenantRepo(WecomConfig);
-    const config: any = configId
+    const config = configId
       ? await configRepo.findOne({ where: { id: parseInt(configId as string) } })
       : await configRepo.findOne({ where: { isEnabled: true } });
 
     const defaults = {
-      paymentSecret: '', autoSync: true, syncFrequency: '1h',
+      autoSync: true, syncFrequency: '1h',
       autoLinkOrder: true, autoUpdateOrderStatus: true,
       notifyOnPaid: true, notifyOnRefund: true, notifyOnTimeout: false,
       timeoutHours: 24, refundApproval: true, refundMaxDays: 90,
     };
 
-    let settings = defaults;
+    let settings: any = { ...defaults };
     if (config?.paymentSettings) {
       try { settings = { ...defaults, ...JSON.parse(config.paymentSettings) }; } catch { /* defaults */ }
     }
+    settings.authType = config?.authType || 'self_built';
 
     res.json({ success: true, data: settings });
   } catch (error: any) {
@@ -431,17 +510,95 @@ router.put('/payments/settings', authenticateToken, requireAdmin, async (req: Re
   try {
     const { configId, ...settings } = req.body;
     const configRepo = getTenantRepo(WecomConfig);
-    const config: any = configId
+    const config = configId
       ? await configRepo.findOne({ where: { id: parseInt(configId) } })
       : await configRepo.findOne({ where: { isEnabled: true } });
     if (!config) return res.status(404).json({ success: false, message: '未找到企微配置' });
 
+    // 设置存 JSON（2023.12起无需独立的paymentSecret）
     config.paymentSettings = JSON.stringify(settings);
     await configRepo.save(config);
     res.json({ success: true, message: '收款设置已保存' });
   } catch (error: any) {
     log.error('[Wecom] Save payment settings error:', error);
     res.status(500).json({ success: false, message: '保存收款设置失败' });
+  }
+});
+
+/**
+ * 测试对外收款API权限
+ * 支持两种模式：
+ * - 自建应用: corpSecret → gettoken → 调用get_bill_list验证（需在企微后台配置可调用接口的应用）
+ * - 第三方应用: permanent_code → get_corp_token → 调用get_bill_list验证权限
+ * 注: 2023年12月起，企微不再支持独立的「对外收款Secret」
+ */
+router.post('/payments/test-secret', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const { configId } = req.body;
+    const configRepo = getTenantRepo(WecomConfig);
+    const config = configId
+      ? await configRepo.findOne({ where: { id: parseInt(configId) } })
+      : await configRepo.findOne({ where: { isEnabled: true } });
+    if (!config) return res.status(404).json({ success: false, message: '未找到企微配置' });
+
+    if (config.authType === 'third_party') {
+      // 第三方应用模式：通过permanent_code获取token后调用收款API验证权限
+      if (!config.permanentCode) {
+        return res.json({ success: true, data: { connected: false, message: '第三方应用尚未完成授权(缺少永久授权码)' } });
+      }
+      try {
+        const { WecomTokenService } = await import('../../services/wecom/WecomTokenService');
+        const token = await WecomTokenService.getAccessToken(config, 'payment');
+        // 用获取到的token尝试调用收款API(空查询)验证权限
+        const axios = (await import('axios')).default;
+        const now = Math.floor(Date.now() / 1000);
+        const verifyRes = await axios.post(
+          `https://qyapi.weixin.qq.com/cgi-bin/externalpay/get_bill_list?access_token=${token}`,
+          { begin_time: now - 3600, end_time: now, limit: 1 }
+        );
+        const ec = verifyRes.data?.errcode;
+        if (ec === 0 || ec === undefined) {
+          res.json({ success: true, data: { connected: true, message: '第三方应用收款权限验证通过' } });
+        } else if (ec === 48002 || ec === 60011 || ec === 60020) {
+          res.json({ success: true, data: { connected: false, message: `收款权限不足(errcode:${ec})，请确认授权时已勾选「对外收款」权限` } });
+        } else {
+          res.json({ success: true, data: { connected: false, message: `收款API调用异常: ${verifyRes.data?.errmsg} (${ec})` } });
+        }
+      } catch (e: any) {
+        res.json({ success: true, data: { connected: false, message: `验证失败: ${e.message}` } });
+      }
+    } else {
+      // 自建应用模式：使用corpSecret获取token后调用收款API验证
+      // 2023年12月起不再支持独立的「对外收款Secret」，必须使用已配置的自建应用Secret
+      if (!config.corpSecret) {
+        return res.json({ success: true, data: { connected: false, message: '未配置应用Secret(corpSecret)，请在Secret管理中先配置' } });
+      }
+      try {
+        const { WecomTokenService } = await import('../../services/wecom/WecomTokenService');
+        const token = await WecomTokenService.getAccessToken(config, 'corp');
+        const axios = (await import('axios')).default;
+        const now = Math.floor(Date.now() / 1000);
+        const verifyRes = await axios.post(
+          `https://qyapi.weixin.qq.com/cgi-bin/externalpay/get_bill_list?access_token=${token}`,
+          { begin_time: now - 3600, end_time: now, limit: 1 }
+        );
+        const ec = verifyRes.data?.errcode;
+        if (ec === 0 || ec === undefined) {
+          res.json({ success: true, data: { connected: true, message: '收款API可用，自建应用已被授权调用对外收款接口' } });
+        } else if (ec === 48002) {
+          res.json({ success: true, data: { connected: false, message: '当前自建应用未被授权调用对外收款接口。请在企微管理后台→对外收款→API→设置「可调用接口的应用」中勾选该应用' } });
+        } else if (ec === 60011 || ec === 60020) {
+          res.json({ success: true, data: { connected: false, message: `权限不足(errcode:${ec})，请检查应用的可见范围设置` } });
+        } else {
+          res.json({ success: true, data: { connected: false, message: `收款API调用异常: ${verifyRes.data?.errmsg} (${ec})` } });
+        }
+      } catch (e: any) {
+        res.json({ success: true, data: { connected: false, message: `验证失败: ${e.message}` } });
+      }
+    }
+  } catch (error: any) {
+    log.error('[Wecom] Test payment secret error:', error);
+    res.status(500).json({ success: false, message: error.message || '测试连接失败' });
   }
 });
 
@@ -459,6 +616,28 @@ router.get('/payments/search-paid', authenticateToken, async (req: Request, res:
   } catch (error: any) {
     log.error('[Wecom] Search paid error:', error);
     res.status(500).json({ success: false, message: '搜索失败' });
+  }
+});
+
+/**
+ * 关联CRM订单
+ */
+router.put('/payments/:id/link-order', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { crmOrderNo } = req.body;
+    if (!crmOrderNo) return res.status(400).json({ success: false, message: 'CRM订单号必填' });
+
+    const paymentRepo = getTenantRepo(WecomPaymentRecord);
+    const payment = await paymentRepo.findOne({ where: { id: parseInt(id) } });
+    if (!payment) return res.status(404).json({ success: false, message: '收款记录不存在' });
+
+    payment.crmOrderNo = crmOrderNo;
+    await paymentRepo.save(payment);
+    res.json({ success: true, message: '关联成功', data: payment });
+  } catch (error: any) {
+    log.error('[Wecom] Link order error:', error);
+    res.status(500).json({ success: false, message: '关联CRM订单失败' });
   }
 });
 

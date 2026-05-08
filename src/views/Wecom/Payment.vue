@@ -124,9 +124,10 @@
                 <span v-else style="color: #C0C4CC">-</span>
               </template>
             </el-table-column>
-            <el-table-column label="操作" width="100" fixed="right">
+            <el-table-column label="操作" width="160" fixed="right">
               <template #default="{ row }">
                 <el-button type="primary" link size="small" @click="handleViewDetail(row)">详情</el-button>
+                <el-button v-if="row.status === 'paid' && (!row.refundAmount || row.refundAmount < row.amount)" type="warning" link size="small" @click="openRefundDialog(row)">退款</el-button>
               </template>
             </el-table-column>
           </el-table>
@@ -141,17 +142,87 @@
           <PaymentStats :config-id="query.configId" />
         </el-tab-pane>
 
-        <!-- Tab 3: 退款统计（仅管理员可见） -->
-        <el-tab-pane v-if="isAdminRole" label="退款统计" name="refund" lazy>
+        <!-- Tab 3: 退款管理（仅管理员可见） -->
+        <el-tab-pane v-if="isAdminRole" label="退款管理" name="refund" lazy>
           <PaymentRefundManager />
         </el-tab-pane>
 
-        <!-- Tab 4: 收款设置（仅管理员可见） -->
+        <!-- Tab 4: 退款统计 -->
+        <el-tab-pane label="退款统计" name="refundStats" lazy>
+          <PaymentRefundStats />
+        </el-tab-pane>
+
+        <!-- Tab 5: 收款码登记 -->
+        <el-tab-pane label="收款码登记" name="qrcode" lazy>
+          <PaymentQrcodeManager :config-id="query.configId" />
+        </el-tab-pane>
+
+        <!-- Tab 6: 收款设置（仅管理员可见） -->
         <el-tab-pane v-if="isAdminRole" label="收款设置" name="settings" lazy>
           <PaymentSettings :config-id="query.configId" />
         </el-tab-pane>
       </el-tabs>
     </el-card>
+
+    <!-- 退款对话框 -->
+    <el-dialog v-model="refundDialogVisible" title="发起退款" width="500px" destroy-on-close>
+      <template v-if="refundTarget">
+        <el-descriptions :column="1" border style="margin-bottom: 20px">
+          <el-descriptions-item label="收款单号">{{ refundTarget.paymentNo }}</el-descriptions-item>
+          <el-descriptions-item label="收款金额">
+            <span style="font-weight: 700; color: #EF4444">&yen;{{ (refundTarget.amount / 100).toFixed(2) }}</span>
+          </el-descriptions-item>
+          <el-descriptions-item v-if="refundTarget.refundAmount" label="已退金额">
+            <span style="color: #F59E0B">&yen;{{ (refundTarget.refundAmount / 100).toFixed(2) }}</span>
+          </el-descriptions-item>
+          <el-descriptions-item label="可退金额">
+            <span style="font-weight: 600; color: #10B981">&yen;{{ ((refundTarget.amount - (refundTarget.refundAmount || 0)) / 100).toFixed(2) }}</span>
+          </el-descriptions-item>
+        </el-descriptions>
+        <el-form label-width="100px">
+          <el-form-item label="退款方式">
+            <el-radio-group v-model="refundMode">
+              <el-radio label="full">全额退款</el-radio>
+              <el-radio label="partial">自定义金额</el-radio>
+            </el-radio-group>
+          </el-form-item>
+          <el-form-item v-if="refundMode === 'partial'" label="退款金额(元)">
+            <el-input-number v-model="refundAmountYuan" :min="0.01" :max="(refundTarget.amount - (refundTarget.refundAmount || 0)) / 100" :precision="2" :step="1" style="width: 200px" />
+          </el-form-item>
+          <el-form-item label="退款原因">
+            <el-input v-model="refundReason" type="textarea" :rows="2" placeholder="请输入退款原因（选填）" maxlength="200" />
+          </el-form-item>
+        </el-form>
+        <el-alert type="warning" :closable="false" style="margin-top: 12px">
+          <template #title>说明</template>
+          退款申请提交后将进入审批流程（如已开启审批），管理员审批通过后退款金额将自动更新到收款记录。企微官方API暂不支持接口直接退款，实际退款需在企微管理后台操作。
+        </el-alert>
+      </template>
+      <template #footer>
+        <el-button @click="refundDialogVisible = false">取消</el-button>
+        <el-button type="warning" @click="submitRefund" :loading="refundSubmitting">提交退款申请</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- CRM订单关联对话框 -->
+    <el-dialog v-model="linkOrderVisible" title="关联CRM订单" width="560px" destroy-on-close>
+      <template v-if="linkTarget">
+        <el-descriptions :column="1" border style="margin-bottom: 16px">
+          <el-descriptions-item label="收款单号">{{ linkTarget.paymentNo }}</el-descriptions-item>
+          <el-descriptions-item label="收款金额">&yen;{{ (linkTarget.amount / 100).toFixed(2) }}</el-descriptions-item>
+          <el-descriptions-item label="付款客户">{{ linkTarget.customerName || linkTarget.payerName || '-' }}</el-descriptions-item>
+        </el-descriptions>
+        <el-form label-width="100px">
+          <el-form-item label="CRM订单号">
+            <el-input v-model="linkOrderNo" placeholder="请输入CRM订单号" clearable style="width: 300px" />
+          </el-form-item>
+        </el-form>
+      </template>
+      <template #footer>
+        <el-button @click="linkOrderVisible = false">取消</el-button>
+        <el-button type="primary" @click="submitLinkOrder" :loading="linkSubmitting">确认关联</el-button>
+      </template>
+    </el-dialog>
 
     <!-- 收款详情抽屉 -->
     <el-drawer v-model="detailVisible" title="收款详情" size="500px">
@@ -218,7 +289,9 @@ import WecomHeader from './components/WecomHeader.vue'
 import WecomDemoBanner from './components/WecomDemoBanner.vue'
 import PaymentStats from './components/PaymentStats.vue'
 import PaymentRefundManager from './components/PaymentRefundManager.vue'
+import PaymentRefundStats from './components/PaymentRefundStats.vue'
 import PaymentSettings from './components/PaymentSettings.vue'
+import PaymentQrcodeManager from './components/PaymentQrcodeManager.vue'
 import { useWecomDemo, DEMO_PAYMENTS, DEMO_CONFIGS } from './composables/useWecomDemo'
 import { useUserStore } from '@/stores/user'
 
@@ -338,8 +411,72 @@ const handleViewDetail = (row: any) => {
   detailVisible.value = true
 }
 
+// ==================== 退款对话框 ====================
+const refundDialogVisible = ref(false)
+const refundTarget = ref<any>(null)
+const refundMode = ref<'full' | 'partial'>('full')
+const refundAmountYuan = ref(0)
+const refundReason = ref('')
+const refundSubmitting = ref(false)
+
+const openRefundDialog = (row: any) => {
+  refundTarget.value = row
+  refundMode.value = 'full'
+  const maxRefundableYuan = (row.amount - (row.refundAmount || 0)) / 100
+  refundAmountYuan.value = maxRefundableYuan
+  refundReason.value = ''
+  refundDialogVisible.value = true
+}
+
+const submitRefund = async () => {
+  if (!refundTarget.value) return
+  const maxRefundable = refundTarget.value.amount - (refundTarget.value.refundAmount || 0)
+  const refundAmountFen = refundMode.value === 'full' ? maxRefundable : Math.round(refundAmountYuan.value * 100)
+  if (refundAmountFen <= 0 || refundAmountFen > maxRefundable) {
+    ElMessage.warning('退款金额不合法'); return
+  }
+  refundSubmitting.value = true
+  try {
+    const { createWecomPaymentRefund } = await import('@/api/wecom')
+    const res = await createWecomPaymentRefund({
+      originalPaymentNo: refundTarget.value.paymentNo,
+      refundAmount: refundAmountFen,
+      reason: refundReason.value
+    }) as any
+    ElMessage.success(res?.message || '退款申请已提交')
+    refundDialogVisible.value = false
+    fetchList()
+  } catch (e: any) { ElMessage.error(e?.message || '提交退款失败') }
+  finally { refundSubmitting.value = false }
+}
+
+// ==================== CRM订单关联 ====================
+const linkOrderVisible = ref(false)
+const linkTarget = ref<any>(null)
+const linkOrderNo = ref('')
+const linkSubmitting = ref(false)
+
 const handleLinkOrder = (row: any) => {
-  ElMessage.info(`关联CRM订单 — 收款单: ${row.paymentNo}`)
+  linkTarget.value = row
+  linkOrderNo.value = ''
+  linkOrderVisible.value = true
+}
+
+const submitLinkOrder = async () => {
+  if (!linkTarget.value || !linkOrderNo.value.trim()) {
+    ElMessage.warning('请输入CRM订单号'); return
+  }
+  linkSubmitting.value = true
+  try {
+    const { request } = await import('@/utils/request')
+    const res = await request.put(`/wecom/payments/${linkTarget.value.id}/link-order`, {
+      crmOrderNo: linkOrderNo.value.trim()
+    }) as any
+    ElMessage.success(res?.message || '关联成功')
+    linkOrderVisible.value = false
+    fetchList()
+  } catch (e: any) { ElMessage.error(e?.message || '关联失败') }
+  finally { linkSubmitting.value = false }
 }
 
 onMounted(() => { fetchConfigs(); fetchList() })

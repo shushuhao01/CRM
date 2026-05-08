@@ -5,26 +5,42 @@
         <strong>企微对外收款API说明</strong>
       </template>
       <p style="margin: 8px 0 0; line-height: 1.8; color: #606266">
-        企业微信对外收款功能需要企业在企微管理后台开通「对外收款」应用，并配置对应的API Secret。<br/>
         • 收款记录查询：通过 <code>externalpay/get_bill_list</code> 接口获取企业对外收款账单<br/>
-        • 退款操作：目前企微官方API不支持通过接口直接发起退款，退款需在企微管理后台操作，系统记录退款申请用于审计<br/>
-        • 收款码：企微对外收款码由成员在企微客户端生成，系统用于管理和统计收款码数据<br/>
-        • 权限要求：需要在企微管理后台「应用管理」中为第三方应用授权「对外收款」权限
+        • 退款操作：企微官方<strong>无服务端退款API</strong>，退款需在企微管理后台或企微APP中操作，本系统记录退款申请用于审批审计<br/>
+        • 收款码：企微收款码由成员在企微APP中创建，<strong>无法通过API生成</strong><br/>
+        • 接口限制：2023年12月起不再支持系统应用Secret调用，自建应用需在企微后台配置「可调用接口的应用」<br/>
+        • 第三方应用：授权时勾选「对外收款」权限即可调用，但4.1.0后新增的部分商户号记录不会返回
       </p>
     </el-alert>
 
     <el-form :model="form" label-width="160px" style="max-width: 720px" v-loading="loading">
-      <!-- 收款Secret -->
-      <el-divider content-position="left">收款API Secret配置</el-divider>
-      <el-form-item label="对外收款Secret">
-        <div style="display: flex; gap: 8px; width: 100%">
-          <el-input v-model="form.paymentSecret" :type="showSecret ? 'text' : 'password'" placeholder="在企微管理后台 → 应用管理 → 对外收款 获取" style="flex: 1" />
-          <el-button @click="showSecret = !showSecret">{{ showSecret ? '隐藏' : '显示' }}</el-button>
-          <el-button type="success" @click="testSecret" :loading="testing">测试连接</el-button>
-        </div>
-        <div style="font-size: 12px; color: #909399; margin-top: 4px">
-          需要在企微管理后台「应用管理 → 对外收款」中获取Secret
-        </div>
+      <!-- 收款API权限配置 -->
+      <el-divider content-position="left">收款API权限</el-divider>
+      <el-form-item label="接入模式">
+        <template v-if="isThirdParty">
+          <div style="display: flex; gap: 8px; width: 100%; align-items: center">
+            <el-tag type="success" size="large">第三方应用授权</el-tag>
+            <el-button type="success" @click="testSecret" :loading="testing">验证收款权限</el-button>
+          </div>
+          <div style="font-size: 12px; color: #909399; margin-top: 6px; line-height: 1.8">
+            第三方应用通过企业授权自动获取收款权限，无需单独配置Secret。<br/>
+            如企业授权时未勾选「对外收款」权限，请联系企业管理员重新授权并勾选。<br/>
+            <strong>注意：</strong>4.1.0及以上版本新增的部分商户号收款记录不会返回给第三方应用。
+          </div>
+        </template>
+        <template v-else>
+          <div style="display: flex; gap: 8px; width: 100%; align-items: center">
+            <el-tag type="primary" size="large">自建应用模式</el-tag>
+            <el-button type="success" @click="testSecret" :loading="testing">测试收款API</el-button>
+          </div>
+          <div style="font-size: 12px; color: #909399; margin-top: 6px; line-height: 1.8">
+            自建应用调用收款API需完成以下配置：<br/>
+            1. 企微管理后台 → 应用管理 → 对外收款 → 点击「API」 → 设置「可调用接口的应用」<br/>
+            2. 在弹出的列表中勾选当前使用的自建应用（如已在企微授权页配置的应用）<br/>
+            3. 系统将使用该自建应用的corpSecret调用收款API<br/>
+            <strong>注意：</strong>2023年12月起不再支持独立的「对外收款Secret」，所有调用均通过自建应用Secret完成。
+          </div>
+        </template>
       </el-form-item>
 
       <!-- 自动同步 -->
@@ -94,17 +110,17 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import { getWecomPaymentSettings, saveWecomPaymentSettings } from '@/api/wecom'
+import { getWecomPaymentSettings, saveWecomPaymentSettings, testPaymentSecret as testPaymentSecretApi } from '@/api/wecom'
 
 const props = defineProps<{ configId?: number | null }>()
 
-const showSecret = ref(false)
 const testing = ref(false)
 const saving = ref(false)
 const loading = ref(false)
+const isThirdParty = ref(false)
 
 const defaults = {
-  paymentSecret: '', autoSync: true, syncFrequency: '1h',
+  autoSync: true, syncFrequency: '1h',
   autoLinkOrder: true, autoUpdateOrderStatus: true,
   notifyOnPaid: true, notifyOnRefund: true, notifyOnTimeout: false,
   timeoutHours: 24, refundApproval: true, refundMaxDays: 90,
@@ -117,19 +133,29 @@ const fetchSettings = async () => {
   try {
     const res = await getWecomPaymentSettings(props.configId || undefined)
     const data = res?.data || res
-    if (data) Object.assign(form, { ...defaults, ...data })
+    if (data) {
+      isThirdParty.value = data.authType === 'third_party'
+      Object.assign(form, { ...defaults, ...data })
+    }
   } catch (e) { console.error('[Settings] Fetch error:', e) }
   finally { loading.value = false }
 }
 
 const testSecret = async () => {
-  if (!form.paymentSecret) { ElMessage.warning('请先填写Secret'); return }
   testing.value = true
-  // 调用后端验证Secret（通过尝试获取access_token）
-  setTimeout(() => {
+  try {
+    const res = await testPaymentSecretApi({ configId: props.configId || undefined }) as any
+    // axios拦截器解包后 res = { connected, message }
+    if (res?.connected) {
+      ElMessage.success(res.message || '收款Secret连接测试通过')
+    } else {
+      ElMessage.warning(res?.message || '连接测试失败')
+    }
+  } catch (e: any) {
+    ElMessage.error(e?.message || '连接测试失败，请检查Secret是否正确')
+  } finally {
     testing.value = false
-    ElMessage.success('收款Secret连接测试通过')
-  }, 1200)
+  }
 }
 
 const handleSave = async () => {

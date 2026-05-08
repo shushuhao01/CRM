@@ -71,6 +71,12 @@ export class WecomConfig {
   @Column({ name: 'chat_archive_private_key', type: 'text', nullable: true, comment: '会话存档RSA私钥', transformer: secretTransformer })
   chatArchivePrivateKey: string;
 
+  @Column({ name: 'payment_secret', type: 'varchar', length: 255, nullable: true, comment: '对外收款Secret', transformer: secretTransformer })
+  paymentSecret: string;
+
+  @Column({ name: 'payment_settings', type: 'text', nullable: true, comment: '对外收款设置(JSON)' })
+  paymentSettings: string;
+
   @Column({ name: 'is_enabled', type: 'boolean', default: true, comment: '是否启用' })
   isEnabled: boolean;
 
