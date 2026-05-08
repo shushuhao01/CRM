@@ -725,29 +725,55 @@ const finishAuth = () => {
   fetchList()
 }
 
+// 授权回调检测并展示结果
+const detectAndShowAuthResult = async (delayMs: number, retries: number) => {
+  for (let i = 0; i < retries; i++) {
+    await new Promise(r => setTimeout(r, i === 0 ? delayMs : 2000))
+    try {
+      const res = await getWecomConfigs()
+      const configs = Array.isArray(res) ? res : []
+      const thirdPartyConfigs = configs.filter((c: any) => c.authType === 'third_party')
+      if (thirdPartyConfigs.length > 0) {
+        const newest = thirdPartyConfigs.sort((a: any, b: any) => new Date(b.authTime || b.createdAt).getTime() - new Date(a.authTime || a.createdAt).getTime())[0]
+        authResult.value = { corpName: newest.name || newest.authCorpName || route.query.corp, corpId: newest.corpId, authUserName: newest.bindOperator || '管理员' }
+        authStep.value = 2
+        showAuthGuide.value = true
+        configList.value = configs
+        ElMessage.success('企微授权成功！')
+        return
+      }
+    } catch { /* 静默处理 */ }
+  }
+}
+
 onMounted(async () => {
   fetchList()
   checkSelfBuildPermission()
-  // 处理授权回调重定向（auth=success URL参数）
-  if (route.query.auth === 'success') {
-    // 清除URL参数
+
+  const authStatus = route.query.auth as string
+  const errorStatus = route.query.error as string
+
+  // 清除URL参数（无论哪种状态）
+  if (authStatus || errorStatus) {
     router.replace({ path: route.path, query: {} })
-    // 延迟检测授权结果（等待数据库写入完成）
-    setTimeout(async () => {
-      try {
-        const res = await getWecomConfigs()
-        const configs = Array.isArray(res) ? res : []
-        const thirdPartyConfigs = configs.filter((c: any) => c.authType === 'third_party')
-        if (thirdPartyConfigs.length > 0) {
-          const newest = thirdPartyConfigs.sort((a: any, b: any) => new Date(b.authTime || b.createdAt).getTime() - new Date(a.authTime || a.createdAt).getTime())[0]
-          authResult.value = { corpName: newest.name || newest.authCorpName || route.query.corp, corpId: newest.corpId, authUserName: newest.bindOperator || '管理员' }
-          authStep.value = 2
-          showAuthGuide.value = true
-          configList.value = configs
-          ElMessage.success('企微授权成功！')
-        }
-      } catch { /* 静默处理 */ }
-    }, 500)
+  }
+
+  // 处理授权回调重定向
+  if (authStatus === 'success') {
+    // 授权成功，延迟检测结果
+    detectAndShowAuthResult(500, 1)
+  } else if (authStatus === 'pending') {
+    // 竞态条件：auth_code被消耗但配置可能已创建，多次重试检测
+    ElMessage.info('授权处理中，正在检测授权结果...')
+    detectAndShowAuthResult(1500, 3)
+  } else if (errorStatus) {
+    const errorMessages: Record<string, string> = {
+      missing_auth_code: '授权回调缺少auth_code参数',
+      config_read_failed: '服务商配置读取失败，请联系管理员',
+      suite_token_failed: '获取suite_access_token失败',
+      auth_callback_failed: '授权回调处理异常，请重试'
+    }
+    ElMessage.error(errorMessages[errorStatus] || '授权过程出错，请重新尝试')
   }
 })
 

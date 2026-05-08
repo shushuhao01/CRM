@@ -8,6 +8,7 @@ import { Router, Request, Response } from 'express';
 import * as crypto from 'crypto';
 import { AppDataSource } from '../../config/database';
 import { WecomConfig } from '../../entities/WecomConfig';
+import { WecomSuiteAuthLink } from '../../entities/WecomSuiteAuthLink';
 import { WecomCustomer } from '../../entities/WecomCustomer';
 import WecomApiService from '../../services/WecomApiService';
 import { log } from '../../config/logger';
@@ -576,6 +577,27 @@ router.get('/callback/auth-url', authenticateToken, async (req: Request, res: Re
 
     log.info('[Wecom Auth] Generated auth URL for suiteId:', suiteId, 'tenantId:', tenantId || '(none)');
 
+    // 保存授权链接记录到 DB，供 create_auth 推送事件中 resolveTenantIdFromAuthLinks 查找 tenantId
+    try {
+      const linkRepo = AppDataSource.getRepository(WecomSuiteAuthLink);
+      const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+      await linkRepo.save(linkRepo.create({
+        suiteId,
+        preAuthCode,
+        authUrl,
+        redirectUri,
+        state: statePayload,
+        type: 'crm',
+        tenantId: tenantId || null,
+        expireDays: 1,
+        status: 'pending',
+        expiresAt,
+        createdBy: 'crm'
+      }));
+    } catch (e: any) {
+      log.warn('[Wecom Auth] Save CRM auth link record failed (non-fatal):', e.message);
+    }
+
     res.json({
       success: true,
       data: {
@@ -596,12 +618,15 @@ router.get('/callback/auth-url', authenticateToken, async (req: Request, res: Re
  * 接收auth_code，换取永久授权码，自动创建WecomConfig
  */
 router.get('/callback/auth-callback', async (req: Request, res: Response) => {
+  // 辅助函数：始终重定向到企微配置页（而不是首页）
+  const redirectToWecomConfig = (params: string) => res.redirect('/wecom/config?' + params);
+
   try {
     const { auth_code, state } = req.query;
     log.info('[Wecom Auth] Auth callback received, auth_code:', auth_code?.toString()?.substring(0, 10) + '...', 'state:', state);
 
     if (!auth_code) {
-      return res.redirect('/?error=missing_auth_code');
+      return redirectToWecomConfig('error=missing_auth_code');
     }
 
     // 从 state 参数中提取 tenantId（格式: crm_auth_<tenantId>）
@@ -644,7 +669,7 @@ router.get('/callback/auth-callback', async (req: Request, res: Response) => {
 
     if (!suiteId || !suiteSecret || !suiteTicket) {
       log.error('[Wecom Auth] Suite config incomplete for auth-callback');
-      return res.redirect('/?error=config_read_failed');
+      return redirectToWecomConfig('error=config_read_failed');
     }
 
     // 获取suite_access_token
@@ -656,7 +681,7 @@ router.get('/callback/auth-callback', async (req: Request, res: Response) => {
 
     if (tokenRes.data.errcode && tokenRes.data.errcode !== 0) {
       log.error('[Wecom Auth] Get suite token for callback failed:', tokenRes.data);
-      return res.redirect('/?error=suite_token_failed');
+      return redirectToWecomConfig('error=suite_token_failed');
     }
 
     const suiteAccessToken = tokenRes.data.suite_access_token;
@@ -670,38 +695,64 @@ router.get('/callback/auth-callback', async (req: Request, res: Response) => {
     const configRepo = AppDataSource.getRepository(WecomConfig);
 
     if (permRes.data.errcode && permRes.data.errcode !== 0) {
-      // auth_code可能已被suite-callback的create_auth事件消耗（竞态条件）
-      // 尝试查找最近由create_auth创建但尚未绑定tenantId的配置，补设tenantId
-      log.warn('[Wecom Auth] get_permanent_code failed (auth_code may be consumed by suite callback):', permRes.data.errmsg);
-      if (stateTenantId) {
-        try {
-          // 查找最近5分钟内创建/更新的第三方授权配置（无tenantId或tenantId与当前一致）
-          const recentConfigs = await AppDataSource.query(
-            `SELECT id, corp_id, auth_corp_name, tenant_id FROM wecom_configs
-             WHERE auth_type = 'third_party' AND connection_status = 'connected' AND is_enabled = 1
-               AND suite_id = ? AND updated_at >= DATE_SUB(NOW(), INTERVAL 5 MINUTE)
-             ORDER BY updated_at DESC LIMIT 5`,
-            [suiteId]
-          );
+      // auth_code 已被 suite-callback 的 create_auth 事件消耗（竞态条件）
+      // handleCreateAuth 可能已创建配置并绑定了 tenantId，尝试查找并确认
+      log.warn('[Wecom Auth] get_permanent_code failed (auth_code likely consumed by suite-callback create_auth):', permRes.data.errmsg);
 
-          // 优先匹配无tenantId的记录
+      try {
+        // 放宽条件查找：只需 auth_type 和 suite_id 匹配，最近10分钟内更新
+        const recentConfigs = await AppDataSource.query(
+          `SELECT id, corp_id, auth_corp_name, tenant_id, name FROM wecom_configs
+           WHERE auth_type = 'third_party' AND suite_id = ?
+             AND updated_at >= DATE_SUB(NOW(), INTERVAL 10 MINUTE)
+           ORDER BY updated_at DESC LIMIT 5`,
+          [suiteId]
+        );
+
+        if (recentConfigs.length > 0) {
+          // 优先匹配：1) 无tenantId的 2) tenantId已匹配的
           const target = recentConfigs.find((r: any) => !r.tenant_id)
-            || recentConfigs.find((r: any) => r.tenant_id === stateTenantId);
+            || recentConfigs.find((r: any) => r.tenant_id === stateTenantId)
+            || recentConfigs[0]; // 最后回退：使用最近更新的
 
-          if (target) {
+          // 绑定 tenantId（如果还没绑定）
+          if (stateTenantId && (!target.tenant_id || target.tenant_id !== stateTenantId)) {
+            await AppDataSource.query(
+              'UPDATE wecom_configs SET tenant_id = ?, updated_at = NOW() WHERE id = ? AND (tenant_id IS NULL OR tenant_id = ?)',
+              [stateTenantId, target.id, '']
+            );
+            log.info(`[Wecom Auth] Fallback: bound tenantId=${stateTenantId} to config ${target.id} (corp: ${target.auth_corp_name || target.corp_id})`);
+          } else if (target.tenant_id) {
+            log.info(`[Wecom Auth] Fallback: config ${target.id} already has tenantId=${target.tenant_id} (likely set by handleCreateAuth)`);
+          }
+
+          return redirectToWecomConfig('auth=success&corp=' + encodeURIComponent(target.auth_corp_name || target.name || target.corp_id));
+        }
+
+        // 二次搜索：不限suite_id，查找最近5分钟内任何新的第三方授权配置
+        const broadConfigs = await AppDataSource.query(
+          `SELECT id, corp_id, auth_corp_name, tenant_id, name FROM wecom_configs
+           WHERE auth_type = 'third_party' AND auth_time >= DATE_SUB(NOW(), INTERVAL 5 MINUTE)
+           ORDER BY auth_time DESC LIMIT 3`
+        );
+        if (broadConfigs.length > 0) {
+          const target = broadConfigs[0];
+          if (stateTenantId && !target.tenant_id) {
             await AppDataSource.query(
               'UPDATE wecom_configs SET tenant_id = ?, updated_at = NOW() WHERE id = ?',
               [stateTenantId, target.id]
             );
-            log.info(`[Wecom Auth] Fallback: bound tenantId=${stateTenantId} to config ${target.id} (corp: ${target.auth_corp_name || target.corp_id})`);
-            return res.redirect('/wecom/config?auth=success&corp=' + encodeURIComponent(target.auth_corp_name || target.corp_id));
+            log.info(`[Wecom Auth] Broad fallback: bound tenantId=${stateTenantId} to config ${target.id}`);
           }
-        } catch (e: any) {
-          log.error('[Wecom Auth] Fallback tenant binding error:', e.message);
+          return redirectToWecomConfig('auth=success&corp=' + encodeURIComponent(target.auth_corp_name || target.name || target.corp_id));
         }
+      } catch (e: any) {
+        log.error('[Wecom Auth] Fallback tenant binding error:', e.message);
       }
-      log.error('[Wecom Auth] Get permanent code failed and fallback failed:', permRes.data);
-      return res.redirect('/?error=permanent_code_failed');
+
+      // 所有回退都失败，仍然重定向到企微配置页（而不是首页），让用户看到最新状态
+      log.error('[Wecom Auth] Get permanent code failed and all fallbacks failed:', permRes.data);
+      return redirectToWecomConfig('auth=pending&message=auth_code_consumed');
     }
 
     const { permanent_code, auth_corp_info, auth_user_info, auth_info } = permRes.data;
@@ -780,10 +831,10 @@ router.get('/callback/auth-callback', async (req: Request, res: Response) => {
     log.info('[Wecom Auth] Config saved for corp:', corpName, 'id:', config.id);
 
     // 重定向到前端企微配置页
-    res.redirect('/wecom/config?auth=success&corp=' + encodeURIComponent(corpName));
+    redirectToWecomConfig('auth=success&corp=' + encodeURIComponent(corpName));
   } catch (error: any) {
     log.error('[Wecom Auth] Auth callback error:', error.message, error.stack);
-    res.redirect('/?error=auth_callback_failed');
+    redirectToWecomConfig('error=auth_callback_failed');
   }
 });
 

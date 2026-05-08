@@ -284,6 +284,36 @@ async function handleSuiteTicket(config: WecomSuiteConfig, xml: string) {
   log.info('[SuiteCallback] SuiteTicket updated');
 }
 
+/**
+ * 从最近的待处理授权链接中提取 tenantId
+ * 支持 CRM 发起的授权（state='crm_auth_<tenantId>'）和 Admin 发起的授权（state='tenant_<tenantId>'）
+ */
+async function resolveTenantIdFromAuthLinks(suiteId: string): Promise<string | null> {
+  try {
+    const pendingLinks = await AppDataSource.query(
+      `SELECT tenant_id, state FROM wecom_suite_auth_links
+       WHERE suite_id = ? AND status = 'pending'
+       ORDER BY created_at DESC LIMIT 5`,
+      [suiteId]
+    );
+    for (const link of (pendingLinks || [])) {
+      // 优先使用直接存储的 tenant_id
+      if (link.tenant_id) return link.tenant_id;
+      // 从 state 参数中解析（CRM: crm_auth_<tenantId>, Admin: tenant_<tenantId>）
+      const st = link.state || '';
+      if (st.startsWith('crm_auth_') && st.length > 'crm_auth_'.length) {
+        return st.substring('crm_auth_'.length);
+      }
+      if (st.startsWith('tenant_') && st.length > 'tenant_'.length) {
+        return st.substring('tenant_'.length);
+      }
+    }
+  } catch (e: any) {
+    log.warn('[SuiteCallback] resolveTenantIdFromAuthLinks error:', e.message);
+  }
+  return null;
+}
+
 /** 处理企业授权(create_auth) */
 async function handleCreateAuth(suiteConfig: WecomSuiteConfig, authCode: string, authCorpId: string) {
   if (!authCode) throw new Error('AuthCode为空');
@@ -296,9 +326,12 @@ async function handleCreateAuth(suiteConfig: WecomSuiteConfig, authCode: string,
   const authInfo = data.auth_info || {};
   const authUserInfo = data.auth_user_info || {};
 
+  // 尝试从待处理的授权链接中获取 tenantId（解决 CRM 端看不到配置的根本问题）
+  const resolvedTenantId = await resolveTenantIdFromAuthLinks(suiteConfig.suiteId);
+
   // 查找是否已存在该企业的配置
   const configRepo = AppDataSource.getRepository(WecomConfig);
-    const existing = await configRepo.findOne({ where: { corpId } });
+  const existing = await configRepo.findOne({ where: { corpId } });
 
   if (existing) {
     // 更新已有配置
@@ -314,11 +347,17 @@ async function handleCreateAuth(suiteConfig: WecomSuiteConfig, authCode: string,
     existing.authTime = new Date();
     existing.isEnabled = true;
     existing.connectionStatus = 'connected';
+    // 绑定 tenantId（优先保留已有的，否则使用从授权链接中解析的）
+    if (!existing.tenantId && resolvedTenantId) {
+      existing.tenantId = resolvedTenantId;
+      log.info(`[SuiteCallback] Auto-bound tenantId=${resolvedTenantId} to existing config (corp: ${corpName})`);
+    }
     await configRepo.save(existing);
-    log.info(`[SuiteCallback] Updated auth for corp: ${corpName} (${corpId})`);
+    log.info(`[SuiteCallback] Updated auth for corp: ${corpName} (${corpId}), tenantId: ${existing.tenantId || '(none)'}`);
   } else {
     // 创建新配置
     const newConfig = configRepo.create({
+      tenantId: resolvedTenantId || undefined,
       name: corpName || `企业${corpId}`,
       corpId,
       corpSecret: '', // 第三方模式不需要corpSecret
@@ -336,7 +375,7 @@ async function handleCreateAuth(suiteConfig: WecomSuiteConfig, authCode: string,
       connectionStatus: 'connected',
     });
     await configRepo.save(newConfig);
-    log.info(`[SuiteCallback] Created auth for corp: ${corpName} (${corpId})`);
+    log.info(`[SuiteCallback] Created auth for corp: ${corpName} (${corpId}), tenantId: ${resolvedTenantId || '(none)'}`);
   }
 }
 
