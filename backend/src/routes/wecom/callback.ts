@@ -13,6 +13,7 @@ import WecomApiService from '../../services/WecomApiService';
 import { log } from '../../config/logger';
 import axios from 'axios';
 import { authenticateToken } from '../../middleware/auth';
+import { JwtConfig } from '../../config/jwt';
 
 const router = Router();
 
@@ -562,7 +563,6 @@ router.get('/callback/auth-url', authenticateToken, async (req: Request, res: Re
         const authHeader = req.headers.authorization;
         const jwtToken = authHeader && authHeader.split(' ')[1];
         if (jwtToken) {
-          const { JwtConfig } = require('../../config/jwt');
           const payload = JwtConfig.verifyAccessToken(jwtToken);
           tenantId = payload.tenantId || '';
         }
@@ -665,10 +665,42 @@ router.get('/callback/auth-callback', async (req: Request, res: Response) => {
     const permRes = await axios.post(
       `https://qyapi.weixin.qq.com/cgi-bin/service/get_permanent_code?suite_access_token=${suiteAccessToken}`,
       { auth_code: auth_code as string }
-    );
+    ).catch(e => ({ data: { errcode: -1, errmsg: e.message } }));
+
+    const configRepo = AppDataSource.getRepository(WecomConfig);
 
     if (permRes.data.errcode && permRes.data.errcode !== 0) {
-      log.error('[Wecom Auth] Get permanent code failed:', permRes.data);
+      // auth_code可能已被suite-callback的create_auth事件消耗（竞态条件）
+      // 尝试查找最近由create_auth创建但尚未绑定tenantId的配置，补设tenantId
+      log.warn('[Wecom Auth] get_permanent_code failed (auth_code may be consumed by suite callback):', permRes.data.errmsg);
+      if (stateTenantId) {
+        try {
+          // 查找最近5分钟内创建/更新的第三方授权配置（无tenantId或tenantId与当前一致）
+          const recentConfigs = await AppDataSource.query(
+            `SELECT id, corp_id, auth_corp_name, tenant_id FROM wecom_configs
+             WHERE auth_type = 'third_party' AND connection_status = 'connected' AND is_enabled = 1
+               AND suite_id = ? AND updated_at >= DATE_SUB(NOW(), INTERVAL 5 MINUTE)
+             ORDER BY updated_at DESC LIMIT 5`,
+            [suiteId]
+          );
+
+          // 优先匹配无tenantId的记录
+          const target = recentConfigs.find((r: any) => !r.tenant_id)
+            || recentConfigs.find((r: any) => r.tenant_id === stateTenantId);
+
+          if (target) {
+            await AppDataSource.query(
+              'UPDATE wecom_configs SET tenant_id = ?, updated_at = NOW() WHERE id = ?',
+              [stateTenantId, target.id]
+            );
+            log.info(`[Wecom Auth] Fallback: bound tenantId=${stateTenantId} to config ${target.id} (corp: ${target.auth_corp_name || target.corp_id})`);
+            return res.redirect('/wecom/config?auth=success&corp=' + encodeURIComponent(target.auth_corp_name || target.corp_id));
+          }
+        } catch (e: any) {
+          log.error('[Wecom Auth] Fallback tenant binding error:', e.message);
+        }
+      }
+      log.error('[Wecom Auth] Get permanent code failed and fallback failed:', permRes.data);
       return res.redirect('/?error=permanent_code_failed');
     }
 
@@ -679,7 +711,6 @@ router.get('/callback/auth-callback', async (req: Request, res: Response) => {
     log.info('[Wecom Auth] Authorization success for corp:', corpName, corpId);
 
     // 创建或更新WecomConfig
-    const configRepo = AppDataSource.getRepository(WecomConfig);
     let config = await configRepo.findOne({ where: { corpId } });
 
     if (config) {

@@ -577,20 +577,20 @@ const generateAuthQr = async () => {
         tenantId = user.tenantId || ''
       }
     } catch { /* ignore */ }
-    const queryParams = tenantId ? `?tenantId=${encodeURIComponent(tenantId)}` : ''
-    const res = await fetch(`/api/v1/wecom/callback/auth-url${queryParams}`, {
-      headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+    const { default: request } = await import('@/utils/request')
+    const json: any = await request.get('/wecom/callback/auth-url', {
+      params: tenantId ? { tenantId } : undefined
     })
-    const json = await res.json()
-    if (json.data?.authUrl) {
-      authLinkUrl.value = json.data.authUrl
-    } else if (json.data?.suiteId && json.data?.preAuthCode) {
+    // axios响应拦截器已解包：json = response.data.data
+    if (json?.authUrl) {
+      authLinkUrl.value = json.authUrl
+    } else if (json?.suiteId && json?.preAuthCode) {
       const redirectUri = `${window.location.origin}/api/v1/wecom/callback/auth-callback`
       const stateParam = tenantId ? `crm_auth_${tenantId}` : 'crm_auth'
-      authLinkUrl.value = `https://open.work.weixin.qq.com/3rdapp/install?suite_id=${json.data.suiteId}&pre_auth_code=${json.data.preAuthCode}&redirect_uri=${encodeURIComponent(redirectUri)}&state=${encodeURIComponent(stateParam)}`
+      authLinkUrl.value = `https://open.work.weixin.qq.com/3rdapp/install?suite_id=${json.suiteId}&pre_auth_code=${json.preAuthCode}&redirect_uri=${encodeURIComponent(redirectUri)}&state=${encodeURIComponent(stateParam)}`
     } else {
       authLinkUrl.value = ''
-      ElMessage.warning('后台未配置服务商应用信息(SuiteID/SuiteSecret)，请联系管理员在管理后台 → 企微设置中完成服务商应用配置后再进行扫码授权')
+      ElMessage.warning(json?.message || '后台未配置服务商应用信息(SuiteID/SuiteSecret)，请联系管理员在管理后台 → 企微设置中完成服务商应用配置后再进行扫码授权')
     }
   } catch (e) {
     console.error('[WecomConfig] Generate QR error:', e)
