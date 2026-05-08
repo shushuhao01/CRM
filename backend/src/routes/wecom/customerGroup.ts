@@ -233,19 +233,30 @@ router.post('/customer-groups/sync', authenticateToken, requireAdmin, async (req
           const gc = detailResp.data.group_chat;
           let group = await groupRepo.findOne({ where: { chatId, wecomConfigId: configId } });
 
+          // 从成员列表中提取群主姓名
+          const ownerUserId = gc.owner || '';
+          let ownerUserName = '';
+          if (gc.member_list && ownerUserId) {
+            const ownerMember = gc.member_list.find((m: any) => m.userid === ownerUserId);
+            if (ownerMember?.name) ownerUserName = ownerMember.name;
+          }
+          // 计算外部成员数和内部成员数
+          const externalCount = gc.member_list ? gc.member_list.filter((m: any) => m.type === 2).length : 0;
           if (group) {
             group.name = gc.name || group.name;
-            group.ownerUserId = gc.owner || group.ownerUserId;
+            group.ownerUserId = ownerUserId || group.ownerUserId;
+            group.ownerUserName = ownerUserName || group.ownerUserName;
             group.memberCount = gc.member_list?.length || 0;
             group.notice = gc.notice || '';
-            group.memberList = gc.member_list ? JSON.stringify(gc.member_list) : null;
+            group.memberList = gc.member_list ? JSON.stringify(gc.member_list.map((m: any) => ({ ...m, externalCount }))) : null;
           } else {
             group = groupRepo.create({
               tenantId: config.tenantId,
               wecomConfigId: configId,
               chatId,
               name: gc.name || '',
-              ownerUserId: gc.owner || '',
+              ownerUserId,
+              ownerUserName,
               memberCount: gc.member_list?.length || 0,
               notice: gc.notice || '',
               createTime: gc.create_time ? new Date(gc.create_time * 1000) : new Date(),
@@ -270,6 +281,85 @@ router.post('/customer-groups/sync', authenticateToken, requireAdmin, async (req
   } catch (error: any) {
     log.error('[Wecom] Sync customer groups error:', error.message);
     res.status(500).json({ success: false, message: error.message || '同步客户群失败' });
+  }
+});
+
+// ==================== 群主转让 ====================
+
+router.post('/customer-groups/transfer-owner', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const { chatId, newOwnerUserId } = req.body;
+    if (!chatId || !newOwnerUserId) {
+      return res.status(400).json({ success: false, message: '参数错误：需要 chatId 和 newOwnerUserId' });
+    }
+    const groupRepo = getTenantRepo(WecomCustomerGroup);
+    const group = await groupRepo.findOne({ where: { chatId } as any });
+    if (!group) return res.status(404).json({ success: false, message: '群不存在' });
+
+    const configRepo = getTenantRepo(WecomConfig);
+    const config = await configRepo.findOne({ where: { id: group.wecomConfigId } as any });
+    if (!config) return res.status(400).json({ success: false, message: '企微配置不存在' });
+
+    const accessToken = await WecomApiService.getAccessTokenByConfigId(config.id, 'external');
+    const response = await axios.post(
+      `${WECOM_API}/externalcontact/groupchat/transfer?access_token=${accessToken}`,
+      { chat_id_list: [chatId], new_owner: newOwnerUserId }
+    );
+
+    if (response.data.errcode !== 0) {
+      return res.status(400).json({ success: false, message: `转让失败: ${response.data.errmsg} (${response.data.errcode})` });
+    }
+
+    // 更新数据库记录
+    let newOwnerName = newOwnerUserId;
+    try {
+      const memberList = group.memberList ? JSON.parse(group.memberList) : [];
+      const newOwner = memberList.find((m: any) => m.userid === newOwnerUserId);
+      if (newOwner?.name) newOwnerName = newOwner.name;
+    } catch { /* ignore */ }
+
+    await groupRepo.update({ chatId } as any, {
+      ownerUserId: newOwnerUserId,
+      ownerUserName: newOwnerName
+    });
+
+    log.info(`[Wecom] Transferred group ${chatId} owner to ${newOwnerUserId}`);
+    res.json({ success: true, message: `群主已转让为「${newOwnerName}」` });
+  } catch (error: any) {
+    log.error('[Wecom] Transfer group owner error:', error.message);
+    res.status(500).json({ success: false, message: error.message || '转让失败' });
+  }
+});
+
+// ==================== 导出群成员 ====================
+
+router.get('/customer-groups/:id/export-members', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const groupRepo = getTenantRepo(WecomCustomerGroup);
+    const group = await groupRepo.findOne({ where: { id: parseInt(req.params.id) } });
+    if (!group) return res.status(404).json({ success: false, message: '群不存在' });
+
+    let memberList: any[] = [];
+    try { memberList = group.memberList ? JSON.parse(group.memberList) : []; } catch { memberList = []; }
+
+    // 构建 CSV
+    const header = '\uFEFF成员ID,成员名称,类型,角色,是否外部';
+    const rows = memberList.map((m: any) => {
+      const name = m.name || m.userid || '';
+      const type = m.type === 1 ? '内部员工' : '外部客户';
+      const role = m.userid === group.ownerUserId ? '群主' : (m.is_admin ? '管理员' : '普通成员');
+      const id = m.userid || m.external_userid || '';
+      return `${id},${name},${type},${role},${m.type === 2 ? '是' : '否'}`;
+    });
+    const csv = [header, ...rows].join('\n');
+
+    const filename = encodeURIComponent(`${group.name || 'group'}_成员列表_${new Date().toISOString().split('T')[0]}.csv`);
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${filename}`);
+    res.send(csv);
+  } catch (error: any) {
+    log.error('[Wecom] Export group members error:', error.message);
+    res.status(500).json({ success: false, message: '导出失败' });
   }
 });
 

@@ -83,38 +83,55 @@
 
           <!-- 列表模式 -->
           <div v-else>
-            <el-table :data="filteredGroups" v-loading="loading" stripe>
-              <el-table-column label="群名称" min-width="180">
+            <el-table :data="filteredGroups" v-loading="loading" stripe table-layout="auto">
+              <el-table-column label="群名称" min-width="220">
                 <template #default="{ row }">
                   <div class="group-name-cell">
-                    <el-icon style="color: #4C6EF5"><ChatDotRound /></el-icon>
-                    <span class="g-name">{{ row.name || '未命名群' }}</span>
+                    <el-icon style="color: #4C6EF5; flex-shrink:0"><ChatDotRound /></el-icon>
+                    <div class="g-info">
+                      <span class="g-name">{{ row.name || '未命名群' }}</span>
+                      <div class="g-meta">
+                        <span>👥 {{ row.memberCount || 0 }}人</span>
+                        <span v-if="getExternalCount(row) > 0">· 外部{{ getExternalCount(row) }}</span>
+                        <span v-if="row.createTime">· {{ formatShortDate(row.createTime) }}</span>
+                      </div>
+                    </div>
                   </div>
                 </template>
               </el-table-column>
-              <el-table-column label="群主" width="100">
-                <template #default="{ row }">{{ row.ownerUserName || row.ownerUserId || '-' }}</template>
+              <el-table-column label="群主" min-width="140">
+                <template #default="{ row }">
+                  <div v-if="row.ownerUserName" class="owner-cell">
+                    <el-avatar :size="22" style="flex-shrink:0;font-size:11px">{{ row.ownerUserName.charAt(0) }}</el-avatar>
+                    <div class="owner-info">
+                      <span class="owner-name">{{ row.ownerUserName }}</span>
+                      <span class="owner-id" :title="row.ownerUserId">{{ row.ownerUserId }}</span>
+                    </div>
+                  </div>
+                  <span v-else class="owner-id" :title="row.ownerUserId">{{ row.ownerUserId || '-' }}</span>
+                </template>
               </el-table-column>
-              <el-table-column prop="memberCount" label="成员数" width="80" align="center" sortable />
-              <el-table-column label="今日消息" width="100" align="center" sortable :sort-by="'todayMsgCount'">
+              <el-table-column label="今日消息" width="90" align="center" sortable :sort-by="'todayMsgCount'">
                 <template #default="{ row }">
                   <span class="msg-highlight">{{ row.todayMsgCount || 0 }}</span>
                 </template>
               </el-table-column>
-              <el-table-column label="活跃度" width="100">
+              <el-table-column label="活跃度" width="110">
                 <template #default="{ row }">
                   <el-progress :percentage="row.activityRate || 0" :stroke-width="8" :show-text="false"
                     :color="(row.activityRate || 0) >= 70 ? '#10B981' : (row.activityRate || 0) >= 40 ? '#F59E0B' : '#EF4444'" />
                 </template>
               </el-table-column>
-              <el-table-column label="创建时间" width="130">
-                <template #default="{ row }">{{ formatDate(row.createTime) }}</template>
+              <el-table-column label="状态" width="80" align="center">
+                <template #default="{ row }">
+                  <el-tag :type="row.status === 'normal' ? 'success' : 'danger'" size="small">
+                    {{ row.status === 'normal' ? '正常' : '已解散' }}
+                  </el-tag>
+                </template>
               </el-table-column>
-              <el-table-column label="操作" width="170" fixed="right">
+              <el-table-column label="操作" width="80" fixed="right">
                 <template #default="{ row }">
                   <el-button type="primary" link size="small" @click="handleDetail(row)">详情</el-button>
-                  <el-button type="success" link size="small" @click="handleDetail(row)">成员</el-button>
-                  <el-button link size="small" @click="handleDetail(row)">统计</el-button>
                 </template>
               </el-table-column>
             </el-table>
@@ -182,7 +199,7 @@ import {
   getWecomCustomerGroupStats,
   syncWecomCustomerGroups
 } from '@/api/wecomGroup'
-import { formatDateTime } from '@/utils/date'
+
 import WecomHeader from './components/WecomHeader.vue'
 import WecomDemoBanner from './components/WecomDemoBanner.vue'
 import GroupDetailDrawer from './components/GroupDetailDrawer.vue'
@@ -254,7 +271,19 @@ const filteredGroups = computed(() => {
 })
 
 // 工具函数
-const formatDate = (d: string) => d ? formatDateTime(d) : '-'
+const formatShortDate = (d: string | Date) => {
+  if (!d) return ''
+  const dt = new Date(d)
+  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`
+}
+
+const getExternalCount = (row: any): number => {
+  if (!row.memberList) return 0
+  try {
+    const list = typeof row.memberList === 'string' ? JSON.parse(row.memberList) : row.memberList
+    return Array.isArray(list) ? list.filter((m: any) => m.type === 2).length : 0
+  } catch { return 0 }
+}
 
 // 数据获取
 const fetchConfigs = async () => {
@@ -345,8 +374,14 @@ onMounted(async () => {
 .card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
 
 /* 列表模式 */
-.group-name-cell { display: flex; align-items: center; gap: 6px; }
-.g-name { font-weight: 400; color: #1F2937; }
+.group-name-cell { display: flex; align-items: center; gap: 8px; }
+.g-info { display: flex; flex-direction: column; min-width: 0; }
+.g-name { font-weight: 500; color: #1F2937; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.g-meta { font-size: 11px; color: #9CA3AF; margin-top: 2px; display: flex; gap: 4px; flex-wrap: wrap; }
 .msg-highlight { font-weight: 700; color: #4C6EF5; }
+.owner-cell { display: flex; align-items: center; gap: 6px; }
+.owner-info { display: flex; flex-direction: column; min-width: 0; }
+.owner-name { font-size: 13px; color: #1F2937; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.owner-id { font-size: 11px; color: #9CA3AF; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100px; display: block; }
 </style>
 

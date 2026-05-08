@@ -59,7 +59,7 @@
     <div v-else-if="pageState === 'detail'" class="sidebar-detail">
       <!-- 顶部用户信息 -->
       <div class="sidebar-user-bar">
-        <span class="user-name">{{ boundUser?.name }}</span>
+        <span class="user-name">{{ currentTabTitle }} · {{ boundUser?.name }}</span>
         <div class="sidebar-user-actions">
           <el-button link type="warning" size="small" @click="handleRebind">换绑</el-button>
           <el-button link type="info" size="small" @click="handleUnbind">
@@ -68,8 +68,42 @@
         </div>
       </div>
 
+      <!-- 非客户详情 Tab：快捷话术 / 快捷下单 / 客户画像 -->
+      <div v-if="currentTab !== 'customer' && currentTab !== 'mp-collect'" class="sidebar-center" style="padding-top:60px">
+        <el-result icon="info" :title="currentTabTitle" sub-title="功能建设中，敬请期待">
+          <template #extra>
+            <el-button size="small" @click="currentTab = 'customer'">查看客户详情</el-button>
+          </template>
+        </el-result>
+      </div>
+
+      <!-- 资料收集 Tab -->
+      <div v-else-if="currentTab === 'mp-collect'" class="sidebar-content">
+        <div class="info-card" v-if="collectStatus">
+          <div class="section-title">📋 资料收集状态</div>
+          <div v-if="collectStatus.status === 'filled'" class="collect-status-row">
+            <el-tag type="success" size="small">✅ 已收集</el-tag>
+            <span v-if="collectStatus.customer" style="font-size:12px;color:#606266;margin-left:8px">
+              {{ collectStatus.customer.name }} {{ collectStatus.customer.phone }}
+            </span>
+          </div>
+          <div v-else-if="collectStatus.status === 'pending'" class="collect-status-row">
+            <el-tag type="warning" size="small">⏳ 已发送待填写</el-tag>
+          </div>
+          <div v-else class="collect-status-row">
+            <el-tag type="info" size="small">未发送</el-tag>
+          </div>
+        </div>
+        <div class="info-card" style="text-align:center;padding:20px">
+          <el-button type="primary" style="width:100%" :loading="sendingFormCard" @click="handleSendFormCard">
+            📋 向客户发送资料收集卡片
+          </el-button>
+          <p style="color:#909399;font-size:12px;margin-top:8px">发送小程序卡片，客户自助填写资料</p>
+        </div>
+      </div>
+
       <!-- 未找到客户 -->
-      <div v-if="customerData && !customerData.found" class="sidebar-center" style="padding-top:40px">
+      <div v-if="currentTab === 'customer' && customerData && !customerData.found" class="sidebar-center" style="padding-top:40px">
         <el-empty description="未找到该客户信息" :image-size="60">
           <template #description>
             <p style="color:#909399;font-size:12px">该外部联系人尚未同步到CRM系统</p>
@@ -78,7 +112,7 @@
       </div>
 
       <!-- 客户信息 -->
-      <div v-else-if="customerData && customerData.found" class="sidebar-content">
+      <div v-else-if="currentTab === 'customer' && customerData && customerData.found" class="sidebar-content">
         <!-- 企微客户卡片 -->
         <div class="info-card">
           <div class="card-header-row">
@@ -302,7 +336,7 @@
       </div>
 
       <!-- 加载客户中 -->
-      <div v-else class="sidebar-center" style="padding-top:60px">
+      <div v-else-if="currentTab === 'customer'" class="sidebar-center" style="padding-top:60px">
         <el-icon class="is-loading" :size="24" color="#07c160"><Loading /></el-icon>
         <p style="color:#909399;margin-top:8px;font-size:13px">加载客户信息...</p>
       </div>
@@ -321,7 +355,7 @@
 
 <script setup lang="ts">
 defineOptions({ name: 'WecomSidebarDetail' })
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Loading, SwitchButton, User, EditPen, InfoFilled, DataAnalysis, List, TopRight, Refresh } from '@element-plus/icons-vue'
 import { getSidebarJsSdkConfig, sidebarBindAccount, sidebarVerifyBinding, getSidebarCustomerDetail, refreshSidebarToken } from '@/api/wecom'
@@ -356,6 +390,17 @@ const refreshingData = ref(false)
 const sendingFormCard = ref(false)
 const collectStatus = ref<any>(null)
 
+// 当前 Tab（从 URL ?tab= 参数读取）
+const currentTab = ref<'customer' | 'scripts' | 'order' | 'portrait' | 'mp-collect'>('customer')
+const tabTitles: Record<string, string> = {
+  customer: 'CRM客户详情',
+  scripts: '快捷话术',
+  order: '快捷下单',
+  portrait: '客户画像',
+  'mp-collect': '资料收集'
+}
+const currentTabTitle = computed(() => tabTitles[currentTab.value] || 'CRM客户详情')
+
 // 调试模式
 const debugCorpId = ref('')
 const debugWecomUserId = ref('')
@@ -364,6 +409,12 @@ const debugExternalUserId = ref('')
 // ==================== 初始化 ====================
 
 onMounted(async () => {
+  // 读取 URL 中的 tab 参数
+  const urlParams = new URLSearchParams(window.location.search)
+  const tabParam = urlParams.get('tab')
+  if (tabParam && tabParam in tabTitles) {
+    currentTab.value = tabParam as typeof currentTab.value
+  }
   // 检测是否在企微环境
   if (isWecomEnv()) {
     await initWecomSdk()

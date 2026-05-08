@@ -582,5 +582,369 @@ router.get('/address-book/bindings', authenticateToken, async (req: Request, res
   }
 });
 
+// ==================== 11. 获取部门子节点（子部门 + 直属成员混合） ====================
+router.get('/address-book/dept/:deptId/children', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const tenantId = getCurrentTenantId();
+    const { configId } = req.query;
+    const parentDeptId = Number(req.params.deptId);
+
+    if (!configId) return res.json({ success: true, data: [] });
+
+    // 获取子部门
+    const deptRepo = AppDataSource.getRepository(WecomDepartmentMapping);
+    const childDepts = await deptRepo.find({
+      where: { tenantId, wecomConfigId: Number(configId), wecomParentId: parentDeptId }
+    });
+
+    const deptNodes = childDepts.map(d => ({
+      nodeId: `dept_${d.wecomDeptId}`,
+      nodeType: 'dept' as const,
+      label: d.wecomDeptName,
+      wecomDeptId: d.wecomDeptId,
+      memberCount: d.memberCount || 0,
+      crmDeptName: d.crmDeptName,
+      isLeaf: false
+    }));
+
+    // 获取直属成员
+    const bindingRepo = AppDataSource.getRepository(WecomUserBinding);
+    const deptIdStr = String(parentDeptId);
+    const members = await bindingRepo.createQueryBuilder('b')
+      .where('b.wecom_config_id = :configId', { configId: Number(configId) })
+      .andWhere('b.tenant_id = :tenantId', { tenantId })
+      .andWhere(
+        '(b.wecom_department_ids = :deptId OR b.wecom_department_ids LIKE :startWith OR b.wecom_department_ids LIKE :endWith OR b.wecom_department_ids LIKE :middle)',
+        { deptId: deptIdStr, startWith: `${deptIdStr},%`, endWith: `%,${deptIdStr}`, middle: `%,${deptIdStr},%` }
+      )
+      .orderBy('b.wecom_user_name', 'ASC')
+      .getMany();
+
+    const memberNodes = members.map(m => ({
+      nodeId: `member_${m.wecomUserId}`,
+      nodeType: 'member' as const,
+      label: m.wecomUserName || m.wecomUserId,
+      wecomUserId: m.wecomUserId,
+      wecomAvatar: m.wecomAvatar,
+      crmUserName: m.crmUserName,
+      crmUserId: m.crmUserId,
+      isEnabled: m.isEnabled,
+      isLeaf: true
+    }));
+
+    res.json({ success: true, data: [...deptNodes, ...memberNodes] });
+  } catch (error: any) {
+    log.error('[AddressBook] Get dept children error:', error.message);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// ==================== 12. 成员详情画像 ====================
+router.get('/address-book/member/:wecomUserId/profile', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const tenantId = getCurrentTenantId();
+    const { configId } = req.query;
+    const { wecomUserId } = req.params;
+
+    // 1. 基本信息（从绑定表）
+    const bindingRepo = AppDataSource.getRepository(WecomUserBinding);
+    const binding = await bindingRepo.findOne({
+      where: { tenantId, wecomConfigId: Number(configId), wecomUserId }
+    });
+    if (!binding) {
+      return res.status(404).json({ success: false, message: '成员不存在' });
+    }
+
+    // 2. 外部联系人统计（从 wecom_customers）
+    const { WecomCustomer } = await import('../../entities/WecomCustomer');
+    const customerRepo = AppDataSource.getRepository(WecomCustomer);
+    const totalExternalQb = customerRepo.createQueryBuilder('c')
+      .where('c.wecom_config_id = :configId', { configId: Number(configId) })
+      .andWhere('c.follow_user_id = :uid', { uid: wecomUserId });
+    if (tenantId) totalExternalQb.andWhere('c.tenant_id = :tenantId', { tenantId });
+
+    const totalExternal = await totalExternalQb.getCount();
+    const validExternal = await totalExternalQb.clone().andWhere('c.status = :s', { s: 'normal' }).getCount();
+    const deletedExternal = await totalExternalQb.clone().andWhere('c.status = :s', { s: 'deleted' }).getCount();
+
+    // 消息统计：汇总该成员的客户消息
+    const msgStats = await totalExternalQb.clone()
+      .select('SUM(c.msg_sent_count)', 'totalSent')
+      .addSelect('SUM(c.msg_recv_count)', 'totalRecv')
+      .getRawOne();
+
+    // 3. 客户群统计（从 wecom_customer_groups，群主为该成员）
+    const { WecomCustomerGroup } = await import('../../entities/WecomCustomerGroup');
+    const groupRepo = AppDataSource.getRepository(WecomCustomerGroup);
+    const groupQb = groupRepo.createQueryBuilder('g')
+      .where('g.owner_user_id = :uid', { uid: wecomUserId });
+    if (tenantId) groupQb.andWhere('g.tenant_id = :tenantId', { tenantId });
+
+    const ownedGroups = await groupQb.getCount();
+    const groupMemberSum = await groupQb.clone()
+      .select('SUM(g.member_count)', 'total')
+      .getRawOne();
+
+    // 4. 对外收款统计（从 wecom_payment_records）
+    const { WecomPaymentRecord } = await import('../../entities/WecomPaymentRecord');
+    const payRepo = AppDataSource.getRepository(WecomPaymentRecord);
+    const payQb = payRepo.createQueryBuilder('p')
+      .where('p.user_id = :uid', { uid: wecomUserId });
+    if (tenantId) payQb.andWhere('p.tenant_id = :tenantId', { tenantId });
+
+    const payCount = await payQb.getCount();
+    const paySum = await payQb.clone()
+      .andWhere('p.status = :ps', { ps: 'paid' })
+      .select('SUM(p.amount)', 'total')
+      .getRawOne();
+
+    // 5. 退款统计（从 wecom_payment_refunds，操作人 = 该成员）
+    const { WecomPaymentRefund } = await import('../../entities/WecomPaymentRefund');
+    const refundRepo = AppDataSource.getRepository(WecomPaymentRefund);
+    const refundQb = refundRepo.createQueryBuilder('r')
+      .where('r.operator_id = :uid', { uid: wecomUserId });
+    if (tenantId) refundQb.andWhere('r.tenant_id = :tenantId', { tenantId });
+
+    const refundCount = await refundQb.getCount();
+    const refundSum = await refundQb.clone()
+      .andWhere('r.status = :rs', { rs: 'completed' })
+      .select('SUM(r.refund_amount)', 'total')
+      .getRawOne();
+
+    // 6. 消息记录统计（从 wecom_chat_records）
+    const { WecomChatRecord } = await import('../../entities/WecomChatRecord');
+    const chatRepo = AppDataSource.getRepository(WecomChatRecord);
+    const chatQb = chatRepo.createQueryBuilder('ch')
+      .where('ch.from_user_id = :uid', { uid: wecomUserId });
+    if (tenantId) chatQb.andWhere('ch.tenant_id = :tenantId', { tenantId });
+    const chatMsgCount = await chatQb.getCount();
+
+    // 7. 部门名称解析
+    const deptIds = (binding.wecomDepartmentIds || '').split(',').filter(Boolean).map(Number);
+    let deptNames: string[] = [];
+    if (deptIds.length > 0) {
+      const deptRepo = AppDataSource.getRepository(WecomDepartmentMapping);
+      const depts = await deptRepo.createQueryBuilder('d')
+        .where('d.wecom_config_id = :configId', { configId: Number(configId) })
+        .andWhere('d.wecom_dept_id IN (:...ids)', { ids: deptIds })
+        .getMany();
+      deptNames = depts.map(d => d.wecomDeptName);
+    }
+
+    res.json({
+      success: true,
+      data: {
+        // 基本信息
+        wecomUserId: binding.wecomUserId,
+        wecomUserName: binding.wecomUserName,
+        wecomAvatar: binding.wecomAvatar,
+        isEnabled: binding.isEnabled,
+        departments: deptNames,
+        wecomDepartmentIds: binding.wecomDepartmentIds,
+        // CRM绑定
+        crmUserId: binding.crmUserId,
+        crmUserName: binding.crmUserName,
+        bindingId: binding.id,
+        // 外部联系人
+        externalContacts: {
+          total: totalExternal,
+          valid: validExternal,
+          deleted: deletedExternal
+        },
+        // 客户群
+        customerGroups: {
+          ownedCount: ownedGroups,
+          totalMembers: parseInt(groupMemberSum?.total) || 0
+        },
+        // 消息
+        messageStats: {
+          sentToCustomers: parseInt(msgStats?.totalSent) || 0,
+          recvFromCustomers: parseInt(msgStats?.totalRecv) || 0,
+          chatRecordCount: chatMsgCount
+        },
+        // 收款
+        payments: {
+          count: payCount,
+          totalAmount: parseInt(paySum?.total) || 0
+        },
+        // 退款
+        refunds: {
+          count: refundCount,
+          totalAmount: parseInt(refundSum?.total) || 0
+        }
+      }
+    });
+  } catch (error: any) {
+    log.error('[AddressBook] Get member profile error:', error.message);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// ==================== 13. 部门汇总统计 ====================
+router.get('/address-book/dept/:deptId/summary', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const tenantId = getCurrentTenantId();
+    const { configId } = req.query;
+    const deptId = Number(req.params.deptId);
+
+    if (!configId) return res.status(400).json({ success: false, message: '缺少configId' });
+
+    // 1. 部门信息
+    const deptRepo = AppDataSource.getRepository(WecomDepartmentMapping);
+    const dept = await deptRepo.findOne({
+      where: { tenantId, wecomConfigId: Number(configId), wecomDeptId: deptId }
+    });
+    if (!dept) return res.status(404).json({ success: false, message: '部门不存在' });
+
+    // 2. 获取该部门下所有成员的 wecomUserId 列表
+    const bindingRepo = AppDataSource.getRepository(WecomUserBinding);
+    const deptIdStr = String(deptId);
+    const members = await bindingRepo.createQueryBuilder('b')
+      .where('b.wecom_config_id = :configId', { configId: Number(configId) })
+      .andWhere('b.tenant_id = :tenantId', { tenantId })
+      .andWhere(
+        '(b.wecom_department_ids = :deptId OR b.wecom_department_ids LIKE :startWith OR b.wecom_department_ids LIKE :endWith OR b.wecom_department_ids LIKE :middle)',
+        { deptId: deptIdStr, startWith: `${deptIdStr},%`, endWith: `%,${deptIdStr}`, middle: `%,${deptIdStr},%` }
+      )
+      .getMany();
+
+    const memberIds = members.map(m => m.wecomUserId);
+    const memberCount = members.length;
+
+    // 如果没有成员，返回空统计
+    if (memberIds.length === 0) {
+      return res.json({
+        success: true,
+        data: {
+          deptName: dept.wecomDeptName,
+          wecomDeptId: dept.wecomDeptId,
+          crmDeptName: dept.crmDeptName,
+          memberCount: 0,
+          members: [],
+          externalContacts: { total: 0, valid: 0, deleted: 0 },
+          customerGroups: { count: 0, totalMembers: 0 },
+          payments: { count: 0, totalAmount: 0 },
+          refunds: { count: 0, totalAmount: 0 },
+          chatMessages: 0
+        }
+      });
+    }
+
+    // 3. 外部联系人汇总
+    const { WecomCustomer } = await import('../../entities/WecomCustomer');
+    const customerRepo = AppDataSource.getRepository(WecomCustomer);
+    const extQb = customerRepo.createQueryBuilder('c')
+      .where('c.follow_user_id IN (:...uids)', { uids: memberIds });
+    if (tenantId) extQb.andWhere('c.tenant_id = :tenantId', { tenantId });
+
+    const totalExternal = await extQb.getCount();
+    const validExternal = await extQb.clone().andWhere('c.status = :s', { s: 'normal' }).getCount();
+    const deletedExternal = await extQb.clone().andWhere('c.status = :s', { s: 'deleted' }).getCount();
+
+    // 4. 客户群汇总
+    const { WecomCustomerGroup } = await import('../../entities/WecomCustomerGroup');
+    const groupRepo = AppDataSource.getRepository(WecomCustomerGroup);
+    const grpQb = groupRepo.createQueryBuilder('g')
+      .where('g.owner_user_id IN (:...uids)', { uids: memberIds });
+    if (tenantId) grpQb.andWhere('g.tenant_id = :tenantId', { tenantId });
+
+    const groupCount = await grpQb.getCount();
+    const groupMemberSum = await grpQb.clone().select('SUM(g.member_count)', 'total').getRawOne();
+
+    // 5. 收款汇总
+    const { WecomPaymentRecord } = await import('../../entities/WecomPaymentRecord');
+    const payRepo = AppDataSource.getRepository(WecomPaymentRecord);
+    const payQb = payRepo.createQueryBuilder('p')
+      .where('p.user_id IN (:...uids)', { uids: memberIds });
+    if (tenantId) payQb.andWhere('p.tenant_id = :tenantId', { tenantId });
+
+    const payCount = await payQb.getCount();
+    const paySum = await payQb.clone().andWhere('p.status = :ps', { ps: 'paid' }).select('SUM(p.amount)', 'total').getRawOne();
+
+    // 6. 退款汇总
+    const { WecomPaymentRefund } = await import('../../entities/WecomPaymentRefund');
+    const refundRepo = AppDataSource.getRepository(WecomPaymentRefund);
+    const refundQb = refundRepo.createQueryBuilder('r')
+      .where('r.operator_id IN (:...uids)', { uids: memberIds });
+    if (tenantId) refundQb.andWhere('r.tenant_id = :tenantId', { tenantId });
+
+    const refundCount = await refundQb.getCount();
+    const refundSum = await refundQb.clone().andWhere('r.status = :rs', { rs: 'completed' }).select('SUM(r.refund_amount)', 'total').getRawOne();
+
+    // 7. 聊天记录总数
+    const { WecomChatRecord } = await import('../../entities/WecomChatRecord');
+    const chatRepo = AppDataSource.getRepository(WecomChatRecord);
+    const chatQb = chatRepo.createQueryBuilder('ch')
+      .where('ch.from_user_id IN (:...uids)', { uids: memberIds });
+    if (tenantId) chatQb.andWhere('ch.tenant_id = :tenantId', { tenantId });
+    const chatCount = await chatQb.getCount();
+
+    // 8. 成员列表概要（含外部联系人数）
+    const memberSummaries = [];
+    for (const m of members) {
+      const mExtCount = await customerRepo.createQueryBuilder('c')
+        .where('c.follow_user_id = :uid', { uid: m.wecomUserId })
+        .andWhere(tenantId ? 'c.tenant_id = :tenantId' : '1=1', { tenantId })
+        .andWhere('c.status = :s', { s: 'normal' })
+        .getCount();
+      memberSummaries.push({
+        wecomUserId: m.wecomUserId,
+        wecomUserName: m.wecomUserName,
+        wecomAvatar: m.wecomAvatar,
+        crmUserName: m.crmUserName,
+        isEnabled: m.isEnabled,
+        externalContactCount: mExtCount
+      });
+    }
+
+    res.json({
+      success: true,
+      data: {
+        deptName: dept.wecomDeptName,
+        wecomDeptId: dept.wecomDeptId,
+        crmDeptName: dept.crmDeptName,
+        memberCount,
+        members: memberSummaries,
+        externalContacts: { total: totalExternal, valid: validExternal, deleted: deletedExternal },
+        customerGroups: { count: groupCount, totalMembers: parseInt(groupMemberSum?.total) || 0 },
+        payments: { count: payCount, totalAmount: parseInt(paySum?.total) || 0 },
+        refunds: { count: refundCount, totalAmount: parseInt(refundSum?.total) || 0 },
+        chatMessages: chatCount
+      }
+    });
+  } catch (error: any) {
+    log.error('[AddressBook] Get dept summary error:', error.message);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// ==================== 14. 在组织架构中直接绑定CRM用户 ====================
+router.put('/address-book/member/:id/bind-crm', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const tenantId = getCurrentTenantId();
+    const { crmUserId, crmUserName } = req.body;
+    const bindingRepo = AppDataSource.getRepository(WecomUserBinding);
+    const binding = await bindingRepo.findOne({ where: { id: Number(req.params.id), tenantId } });
+    if (!binding) return res.status(404).json({ success: false, message: '成员不存在' });
+
+    binding.crmUserId = crmUserId || '';
+    binding.crmUserName = crmUserName || '';
+    await bindingRepo.save(binding);
+
+    if (tenantId) {
+      await appendSyncLog(tenantId, {
+        type: 'binding',
+        operation: 'CRM绑定',
+        result: 'success',
+        detail: `成员「${binding.wecomUserName}」绑定CRM用户「${crmUserName || '解除绑定'}」`
+      });
+    }
+
+    res.json({ success: true, message: crmUserId ? '绑定成功' : '已解除绑定' });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 export default router;
 

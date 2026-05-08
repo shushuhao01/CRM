@@ -166,8 +166,9 @@ export class ApiService {
    * 处理Token过期 - 友好提示并跳转登录页
    */
   private handleTokenExpired(data?: any): void {
-    // 🔥 如果当前已在登录页，不弹出过期提示（避免直接访问登录页时误提示）
-    if (window.location.pathname === '/login') {
+    // 🔥 如果当前已在登录页或企微侧边栏，不弹出过期提示
+    const currentPath = window.location.pathname
+    if (currentPath === '/login' || currentPath.startsWith('/wecom-sidebar')) {
       // 只清除残留token，不弹窗
       localStorage.removeItem('auth_token')
       localStorage.removeItem('refresh_token')

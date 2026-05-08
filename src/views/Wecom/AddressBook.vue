@@ -15,78 +15,65 @@
       </template>
 
       <el-tabs v-model="activeTab">
-        <!-- Tab 1: 组织架构 -->
+        <!-- Tab 1: 组织架构（混合树 + 详情面板） -->
         <el-tab-pane label="组织架构" name="organization">
           <div class="org-layout">
+            <!-- 左侧：部门/成员混合树 -->
             <div class="org-tree-panel">
               <div class="tree-toolbar">
-                <el-input v-model="deptSearch" placeholder="搜索部门" prefix-icon="Search" clearable size="small" @input="handleDeptSearch" />
-                <el-button type="primary" size="small" :loading="syncingDepts" @click="handleSyncDepts">
-                  同步部门
-                </el-button>
+                <el-input v-model="deptSearch" placeholder="搜索部门/成员" prefix-icon="Search" clearable size="small" @input="handleDeptSearch" />
+                <el-button type="primary" size="small" :loading="syncingDepts" @click="handleSyncDepts">同步</el-button>
+                <el-button size="small" :loading="syncingMembers" @click="handleSyncMembers">同步成员</el-button>
               </div>
               <el-tree
-                :data="departmentTree"
-                :props="{ label: 'wecomDeptName', children: 'children' }"
-                :filter-node-method="filterDeptNode"
+                :key="treeKey"
+                :data="mixedTreeData"
+                :props="mixedTreeProps"
+                :filter-node-method="filterMixedNode"
                 ref="deptTreeRef"
+                node-key="nodeId"
                 highlight-current
-                default-expand-all
-                @node-click="handleDeptClick"
+                :expand-on-click-node="false"
+                lazy
+                :load="loadMixedTreeNode"
+                @node-click="handleMixedNodeClick"
               >
                 <template #default="{ data }">
-                  <span class="dept-tree-node">
-                    <span>{{ data.wecomDeptName }} ({{ data.memberCount || 0 }}人)</span>
-                    <el-tag v-if="data.crmDeptName" type="success" size="small" style="margin-left: 6px">已映射</el-tag>
+                  <span class="mixed-tree-node" :class="{ 'is-member': data.nodeType === 'member' }">
+                    <template v-if="data.nodeType === 'dept'">
+                      <el-icon style="color: #F59E0B; margin-right: 4px"><FolderOpened /></el-icon>
+                      <span class="node-label">{{ data.label }}</span>
+                      <span class="node-count">({{ data.memberCount || 0 }}人)</span>
+                      <el-tag v-if="data.crmDeptName" type="success" size="small" style="margin-left: 4px">已映射</el-tag>
+                    </template>
+                    <template v-else>
+                      <el-avatar :size="22" :src="data.wecomAvatar" style="margin-right: 6px; flex-shrink: 0">
+                        {{ (data.label || '?')[0] }}
+                      </el-avatar>
+                      <span class="node-label">{{ data.label }}</span>
+                      <el-tag v-if="data.crmUserName" type="success" size="small" style="margin-left: 4px">{{ data.crmUserName }}</el-tag>
+                      <el-tag v-else type="info" size="small" style="margin-left: 4px">未绑定</el-tag>
+                    </template>
                   </span>
                 </template>
               </el-tree>
-              <el-empty v-if="!departmentTree.length && !loadingDepts" description="暂无部门数据，请先同步" :image-size="60" />
+              <el-empty v-if="!mixedTreeData.length && !loadingDepts" description="暂无数据，请先同步部门和成员" :image-size="60" />
             </div>
+            <!-- 右侧：详情面板 -->
             <div class="org-detail-panel">
-              <el-empty v-if="!selectedDept" description="请选择左侧部门查看详情" />
-              <div v-else>
-                <div class="dept-header">
-                  <h3>{{ selectedDept.wecomDeptName }}</h3>
-                  <el-tag :type="selectedDept.crmDeptName ? 'success' : 'warning'" size="small">
-                    {{ selectedDept.crmDeptName ? '已映射' : '未映射' }}
-                  </el-tag>
-                </div>
-                <div class="dept-meta">
-                  <span>企微部门ID: <strong>{{ selectedDept.wecomDeptId }}</strong></span>
-                  <el-divider direction="vertical" />
-                  <span>CRM部门: <strong>{{ selectedDept.crmDeptName || '未映射' }}</strong></span>
-                  <el-divider direction="vertical" />
-                  <span>成员: <strong>{{ selectedDept.memberCount || 0 }}</strong>人</span>
-                </div>
-                <div class="dept-actions">
-                  <el-button type="primary" size="small" :loading="syncingMembers" @click="handleSyncMembers">同步成员</el-button>
-                  <el-button size="small" @click="showBatchBind = true">批量绑定</el-button>
-                  <el-button size="small" @click="showMappingDialog = true">映射CRM部门</el-button>
-                </div>
-                <el-table :data="deptMembers" stripe style="margin-top: 16px" v-loading="loadingMembers">
-                  <el-table-column prop="name" label="姓名" width="120" />
-                  <el-table-column prop="wecomUserId" label="企微ID" min-width="150">
-                    <template #default="{ row }">
-                      <span class="monospace-text">{{ row.wecomUserId }}</span>
-                    </template>
-                  </el-table-column>
-                  <el-table-column label="CRM绑定" min-width="150">
-                    <template #default="{ row }">
-                      <el-tag v-if="row.crmUserName" type="success" size="small">{{ row.crmUserName }}</el-tag>
-                      <el-tag v-else type="info" size="small">未绑定</el-tag>
-                    </template>
-                  </el-table-column>
-                  <el-table-column prop="position" label="职务" width="100" />
-                  <el-table-column label="状态" width="80">
-                    <template #default="{ row }">
-                      <el-tag :type="row.status === 'active' ? 'success' : 'danger'" size="small">
-                        {{ row.status === 'active' ? '在职' : '离职' }}
-                      </el-tag>
-                    </template>
-                  </el-table-column>
-                </el-table>
-              </div>
+              <el-empty v-if="!orgSelectedType" description="请选择左侧部门或成员查看详情" />
+              <DeptSummary
+                v-else-if="orgSelectedType === 'dept'"
+                :dept-id="orgSelectedDeptId"
+                :config-id="selectedConfigId!"
+                @select-member="handleSelectMemberFromDept"
+              />
+              <MemberProfile
+                v-else-if="orgSelectedType === 'member'"
+                :wecom-user-id="orgSelectedMemberId"
+                :config-id="selectedConfigId!"
+                @refresh="handleProfileRefresh"
+              />
             </div>
           </div>
         </el-tab-pane>
@@ -430,16 +417,20 @@ defineOptions({ name: 'WecomAddressBook' })
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useUserStore } from '@/stores/user'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { FolderOpened } from '@element-plus/icons-vue'
 import WecomHeader from './components/WecomHeader.vue'
 import WecomDemoBanner from './components/WecomDemoBanner.vue'
+import MemberProfile from './components/MemberProfile.vue'
+import DeptSummary from './components/DeptSummary.vue'
 import { useWecomDemo } from './composables/useWecomDemo'
 import { getWecomConfigs, createWecomBinding, batchCreateWecomBindings } from '@/api/wecom'
 import {
-  getWecomDepartmentTree, getWecomDeptMembers, setDeptMapping,
+  getWecomDepartmentTree, setDeptMapping,
   syncWecomDepartments, syncWecomMembers,
   getSyncSettings, saveSyncSettings, getSyncLogs,
   getAutoMatchPending, getAutoMatchCount, confirmAutoMatch, rejectAutoMatch,
-  getBindingList, runAutoMatch
+  getBindingList, runAutoMatch,
+  getWecomDeptChildren
 } from '@/api/wecomAddressBook'
 import { formatDateTime } from '@/utils/date'
 import request from '@/utils/request'
@@ -455,16 +446,110 @@ const configs = ref<any[]>([])
 const activeTab = ref('organization')
 
 
-// ==================== Tab1: 组织架构 ====================
+// ==================== Tab1: 组织架构（混合树） ====================
 const deptSearch = ref('')
-const departmentTree = ref<any[]>([])
 const selectedDept = ref<any>(null)
 const deptMembers = ref<any[]>([])
 const deptTreeRef = ref()
 const loadingDepts = ref(false)
-const loadingMembers = ref(false)
 const syncingDepts = ref(false)
 const syncingMembers = ref(false)
+
+// 混合树相关
+const mixedTreeData = ref<any[]>([])
+const orgSelectedType = ref<'dept' | 'member' | ''>('')
+const orgSelectedDeptId = ref<number>(0)
+const orgSelectedMemberId = ref('')
+
+const mixedTreeProps = {
+  label: 'label',
+  children: 'children',
+  isLeaf: 'isLeaf'
+}
+
+const filterMixedNode = (value: string, data: any) => {
+  if (!value) return true
+  return (data.label || '').toLowerCase().includes(value.toLowerCase())
+}
+
+const loadMixedTreeNode = async (node: any, resolve: (data: any[]) => void) => {
+  if (!selectedConfigId.value) { resolve([]); return }
+
+  if (node.level === 0) {
+    // 根节点：加载顶层部门树并转换为混合节点
+    try {
+      const res: any = await getWecomDepartmentTree(selectedConfigId.value)
+      const depts = Array.isArray(res) ? res : (res?.data || [])
+      const rootNodes = depts.map((d: any) => ({
+        nodeId: `dept_${d.wecomDeptId}`,
+        nodeType: 'dept',
+        label: d.wecomDeptName,
+        wecomDeptId: d.wecomDeptId,
+        memberCount: d.memberCount || 0,
+        crmDeptName: d.crmDeptName,
+        isLeaf: false
+      }))
+      mixedTreeData.value = rootNodes
+      resolve(rootNodes)
+    } catch {
+      resolve([])
+    }
+    return
+  }
+
+  // 非根节点：如果是部门节点，加载子部门 + 成员
+  const nodeData = node.data
+  if (nodeData.nodeType === 'dept' && nodeData.wecomDeptId) {
+    try {
+      const res: any = await getWecomDeptChildren(nodeData.wecomDeptId, selectedConfigId.value!)
+      const children = Array.isArray(res) ? res : []
+      resolve(children)
+    } catch {
+      resolve([])
+    }
+  } else {
+    resolve([])
+  }
+}
+
+const handleMixedNodeClick = (data: any) => {
+  if (data.nodeType === 'dept') {
+    orgSelectedType.value = 'dept'
+    orgSelectedDeptId.value = data.wecomDeptId
+    orgSelectedMemberId.value = ''
+  } else if (data.nodeType === 'member') {
+    orgSelectedType.value = 'member'
+    orgSelectedMemberId.value = data.wecomUserId
+    orgSelectedDeptId.value = 0
+  }
+}
+
+const handleSelectMemberFromDept = (wecomUserId: string) => {
+  orgSelectedType.value = 'member'
+  orgSelectedMemberId.value = wecomUserId
+  orgSelectedDeptId.value = 0
+  // 尝试在树中高亮该成员节点
+  deptTreeRef.value?.setCurrentKey(`member_${wecomUserId}`)
+}
+
+const handleProfileRefresh = () => {
+  // 成员绑定变化后，刷新树数据
+  reloadMixedTree()
+}
+
+const reloadMixedTree = () => {
+  mixedTreeData.value = []
+  orgSelectedType.value = ''
+  orgSelectedDeptId.value = 0
+  orgSelectedMemberId.value = ''
+  // el-tree lazy模式，清空后会触发重新加载
+  if (deptTreeRef.value) {
+    // 通过改变 key 强制重建树
+    treeKey.value++
+  }
+}
+
+const treeKey = ref(0)
 
 // ==================== Tab2: 成员绑定 ====================
 const bindingStats = reactive({ total: 0, bound: 0, unbound: 0, anomaly: 0 })
@@ -663,7 +748,7 @@ const handleConfigChange = async (id: number) => {
   selectedConfigId.value = id
   selectedDept.value = null
   deptMembers.value = []
-  await fetchDeptTree()
+  reloadMixedTree()
   fetchBindings()
   fetchAutoMatchCount()
 }
@@ -672,44 +757,13 @@ const handleDeptSearch = () => {
   deptTreeRef.value?.filter(deptSearch.value)
 }
 
-const filterDeptNode = (value: string, data: any) => !value || (data.wecomDeptName || '').includes(value)
-
-const handleDeptClick = async (data: any) => {
-  selectedDept.value = data
-  if (!selectedConfigId.value) return
-  loadingMembers.value = true
-  try {
-    const res: any = await getWecomDeptMembers(data.wecomDeptId, selectedConfigId.value)
-    deptMembers.value = res?.list || res || []
-  } catch (e: any) {
-    console.error('获取部门成员失败:', e)
-    deptMembers.value = []
-  } finally {
-    loadingMembers.value = false
-  }
-}
-
-const fetchDeptTree = async () => {
-  if (!selectedConfigId.value) return
-  loadingDepts.value = true
-  try {
-    const res: any = await getWecomDepartmentTree(selectedConfigId.value)
-    departmentTree.value = Array.isArray(res) ? res : (res?.data || [])
-  } catch (e: any) {
-    console.error('获取部门树失败:', e)
-    departmentTree.value = []
-  } finally {
-    loadingDepts.value = false
-  }
-}
-
 const handleSyncDepts = async () => {
   if (!selectedConfigId.value) { ElMessage.warning('请先选择企微配置'); return }
   syncingDepts.value = true
   try {
     await syncWecomDepartments(selectedConfigId.value)
     ElMessage.success('部门同步完成')
-    await fetchDeptTree()
+    reloadMixedTree()
   } catch (e: any) {
     ElMessage.error(e?.message || '同步失败')
   } finally {
@@ -723,7 +777,7 @@ const handleSyncMembers = async () => {
   try {
     await syncWecomMembers(selectedConfigId.value)
     ElMessage.success('成员同步完成')
-    if (selectedDept.value) handleDeptClick(selectedDept.value)
+    reloadMixedTree()
   } catch (e: any) {
     ElMessage.error(e?.message || '同步失败')
   } finally {
@@ -957,12 +1011,14 @@ onMounted(() => {
 .org-tree-panel { width: 320px; flex-shrink: 0; border-right: 1px solid #E5E7EB; padding-right: 20px; }
 .org-detail-panel { flex: 1; }
 .tree-toolbar { display: flex; gap: 8px; margin-bottom: 12px; }
-.dept-tree-node { display: flex; align-items: center; }
-.dept-header { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
-.dept-header h3 { margin: 0; font-size: 18px; font-weight: 600; color: #1F2937; }
-.dept-meta { color: #9CA3AF; font-size: 13px; margin-bottom: 16px; }
-.dept-meta strong { color: #4B5563; }
-.dept-actions { display: flex; gap: 8px; }
+/* 混合树节点 */
+.mixed-tree-node { display: flex; align-items: center; line-height: 1.4; font-size: 14px; }
+.mixed-tree-node .node-label { color: #1F2937; font-weight: 500; }
+.mixed-tree-node .node-count { color: #9CA3AF; font-size: 12px; margin-left: 4px; }
+.mixed-tree-node.is-member { padding: 2px 0; }
+.mixed-tree-node.is-member .node-label { font-weight: 400; color: #374151; }
+.org-tree-panel :deep(.el-tree-node__content) { height: 36px; }
+.org-tree-panel :deep(.el-tree-node.is-current > .el-tree-node__content) { background: #EEF2FF; }
 .monospace-text { font-family: 'SF Mono', 'Menlo', 'Consolas', monospace; font-size: 12px; color: #6B7280; }
 .member-info { display: flex; align-items: center; gap: 8px; }
 

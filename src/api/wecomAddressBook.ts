@@ -61,6 +61,28 @@ export const getBindingList = (params: { configId?: number; page?: number; pageS
   return request.get('/wecom/address-book/bindings', { params })
 }
 
+// ==================== 组织架构增强（混合树 + 详情） ====================
+
+/** 获取部门子节点（子部门 + 直属成员混合） */
+export const getWecomDeptChildren = (deptId: number, configId: number) => {
+  return request.get(`/wecom/address-book/dept/${deptId}/children`, { params: { configId } })
+}
+
+/** 获取成员详情画像 */
+export const getWecomMemberProfile = (wecomUserId: string, configId: number) => {
+  return request.get(`/wecom/address-book/member/${wecomUserId}/profile`, { params: { configId } })
+}
+
+/** 获取部门汇总统计 */
+export const getWecomDeptSummary = (deptId: number, configId: number) => {
+  return request.get(`/wecom/address-book/dept/${deptId}/summary`, { params: { configId } })
+}
+
+/** 在组织架构中直接绑定/解绑CRM用户 */
+export const bindMemberCrm = (bindingId: number, data: { crmUserId: string; crmUserName: string }) => {
+  return request.put(`/wecom/address-book/member/${bindingId}/bind-crm`, data)
+}
+
 // ==================== 自动匹配 ====================
 
 /** 执行自动匹配 */

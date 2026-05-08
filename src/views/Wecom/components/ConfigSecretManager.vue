@@ -9,141 +9,253 @@
         <span class="config-label">当前配置:</span>
         <span class="config-name">{{ configName }}</span>
         <el-tag size="small" type="info">{{ corpId }}</el-tag>
+        <el-tag v-if="isThirdParty" type="warning" size="small" style="margin-left: 4px">第三方授权</el-tag>
+        <el-tag v-else type="primary" size="small" style="margin-left: 4px">自建应用</el-tag>
       </div>
 
-      <div class="secret-list">
-        <!-- 应用Secret(必填) -->
-        <div class="secret-item">
-          <div class="secret-header">
-            <span class="secret-name">应用Secret <el-tag type="danger" size="small">必填</el-tag></span>
-            <el-tag :type="secrets.appSecret.status === 'ok' ? 'success' : 'danger'" size="small">
-              {{ secrets.appSecret.status === 'ok' ? '正常' : '未配置' }}
-            </el-tag>
-          </div>
-          <div class="secret-input-row">
-            <el-input
-              v-model="secrets.appSecret.value"
-              :type="secrets.appSecret.visible ? 'text' : 'password'"
-              placeholder="应用管理 → 自建应用 → Secret"
-              style="flex: 1"
-            />
-            <el-button :icon="secrets.appSecret.visible ? Hide : View" @click="secrets.appSecret.visible = !secrets.appSecret.visible" />
-            <el-button type="success" @click="testSecret('app')" :loading="secrets.appSecret.testing">测试</el-button>
+      <!-- ========== 第三方授权模式 ========== -->
+      <template v-if="isThirdParty">
+        <el-alert type="success" :closable="false" style="margin-bottom: 20px">
+          <template #title><strong>第三方应用授权模式 — Secret自动管理</strong></template>
+          当前企业通过服务商第三方应用扫码授权接入，系统通过 <code>suite_access_token</code> + <code>permanent_code</code> 自动获取企业AccessToken，<strong>无需手动配置各类Secret</strong>。
+        </el-alert>
+
+        <div class="tp-secret-grid">
+          <div v-for="item in thirdPartySecrets" :key="item.key" class="tp-secret-card">
+            <div class="tp-secret-card__header">
+              <span class="tp-secret-card__icon">{{ item.icon }}</span>
+              <span class="tp-secret-card__name">{{ item.name }}</span>
+              <el-tag :type="item.autoManaged ? 'success' : 'info'" size="small">
+                {{ item.autoManaged ? '自动获取' : '需额外配置' }}
+              </el-tag>
+            </div>
+            <div class="tp-secret-card__desc">{{ item.desc }}</div>
+            <div class="tp-secret-card__status">
+              <el-icon v-if="item.autoManaged" color="#10B981" :size="16"><CircleCheckFilled /></el-icon>
+              <el-icon v-else color="#F59E0B" :size="16"><WarningFilled /></el-icon>
+              <span :style="{ color: item.autoManaged ? '#10B981' : '#F59E0B' }">{{ item.statusText }}</span>
+            </div>
           </div>
         </div>
 
-        <!-- 通讯录Secret(可选) -->
-        <div class="secret-item">
-          <div class="secret-header">
-            <span class="secret-name">通讯录Secret <el-tag type="info" size="small">可选</el-tag></span>
-            <el-tag :type="statusTagType(secrets.contactSecret.status)" size="small">
-              {{ statusLabel(secrets.contactSecret.status) }}
-            </el-tag>
-          </div>
-          <div class="secret-input-row">
-            <el-input
-              v-model="secrets.contactSecret.value"
-              :type="secrets.contactSecret.visible ? 'text' : 'password'"
-              placeholder="管理工具 → 通讯录同步 → Secret"
-              style="flex: 1"
-            />
-            <el-button :icon="secrets.contactSecret.visible ? Hide : View" @click="secrets.contactSecret.visible = !secrets.contactSecret.visible" />
-            <el-button type="success" @click="testSecret('contact')" :loading="secrets.contactSecret.testing">测试</el-button>
+        <el-divider content-position="left" style="margin: 28px 0 20px">
+          <span style="font-size: 13px; color: #6B7280">可选：增值Secret补充配置（仅特定场景需要）</span>
+        </el-divider>
+
+        <div class="secret-list">
+          <!-- 会话存档Secret(增值-第三方模式也可能需要) -->
+          <div class="secret-item">
+            <div class="secret-header">
+              <span class="secret-name">会话存档Secret <el-tag size="small">增值-可选</el-tag></span>
+              <el-tag :type="statusTagType(secrets.archiveSecret.status)" size="small">
+                {{ statusLabel(secrets.archiveSecret.status) }}
+              </el-tag>
+            </div>
+            <div class="secret-hint">第三方授权模式下，会话存档可通过授权自动获取。如有独立会话存档Secret可在此补充。</div>
+            <div class="secret-input-row">
+              <el-input
+                v-model="secrets.archiveSecret.value"
+                :type="secrets.archiveSecret.visible ? 'text' : 'password'"
+                placeholder="管理工具 → 会话内容存档 → Secret（可选）"
+                style="flex: 1"
+              />
+              <el-button :icon="secrets.archiveSecret.visible ? Hide : View" @click="secrets.archiveSecret.visible = !secrets.archiveSecret.visible" />
+              <el-button type="success" @click="testSecret('archive')" :loading="secrets.archiveSecret.testing">测试</el-button>
+            </div>
+            <div class="secret-sub">
+              <span class="secret-sub-label">RSA私钥:</span>
+              <el-button size="small" @click="showRsaInput = !showRsaInput">
+                {{ showRsaInput ? '收起' : rsaKeySet ? '已配置 - 点击修改' : '上传/粘贴' }}
+              </el-button>
+            </div>
+            <div v-if="showRsaInput" class="rsa-input-area">
+              <el-input
+                v-model="rsaPrivateKey"
+                type="textarea"
+                :rows="5"
+                placeholder="-----BEGIN RSA PRIVATE KEY-----&#10;...&#10;-----END RSA PRIVATE KEY-----"
+              />
+            </div>
           </div>
         </div>
 
-        <!-- 客户联系Secret(推荐) -->
-        <div class="secret-item">
-          <div class="secret-header">
-            <span class="secret-name">客户联系Secret <el-tag type="warning" size="small">推荐</el-tag></span>
-            <el-tag :type="statusTagType(secrets.externalSecret.status)" size="small">
-              {{ statusLabel(secrets.externalSecret.status) }}
-            </el-tag>
+        <div class="save-row">
+          <el-button type="primary" @click="handleSaveAll" :loading="saving">保存补充配置</el-button>
+        </div>
+      </template>
+
+      <!-- ========== 自建应用模式 ========== -->
+      <template v-else>
+        <div class="secret-list">
+          <!-- 应用Secret(必填) -->
+          <div class="secret-item">
+            <div class="secret-header">
+              <span class="secret-name">应用Secret <el-tag type="danger" size="small">必填</el-tag></span>
+              <el-tag :type="secrets.appSecret.status === 'ok' ? 'success' : 'danger'" size="small">
+                {{ secrets.appSecret.status === 'ok' ? '正常' : '未配置' }}
+              </el-tag>
+            </div>
+            <div class="secret-input-row">
+              <el-input
+                v-model="secrets.appSecret.value"
+                :type="secrets.appSecret.visible ? 'text' : 'password'"
+                placeholder="应用管理 → 自建应用 → Secret"
+                style="flex: 1"
+              />
+              <el-button :icon="secrets.appSecret.visible ? Hide : View" @click="secrets.appSecret.visible = !secrets.appSecret.visible" />
+              <el-button type="success" @click="testSecret('app')" :loading="secrets.appSecret.testing">测试</el-button>
+            </div>
           </div>
-          <div class="secret-input-row">
-            <el-input
-              v-model="secrets.externalSecret.value"
-              :type="secrets.externalSecret.visible ? 'text' : 'password'"
-              placeholder="客户联系 → API → Secret"
-              style="flex: 1"
-            />
-            <el-button :icon="secrets.externalSecret.visible ? Hide : View" @click="secrets.externalSecret.visible = !secrets.externalSecret.visible" />
-            <el-button type="success" @click="testSecret('external')" :loading="secrets.externalSecret.testing">测试</el-button>
+
+          <!-- 通讯录Secret(可选) -->
+          <div class="secret-item">
+            <div class="secret-header">
+              <span class="secret-name">通讯录Secret <el-tag type="info" size="small">可选</el-tag></span>
+              <el-tag :type="statusTagType(secrets.contactSecret.status)" size="small">
+                {{ statusLabel(secrets.contactSecret.status) }}
+              </el-tag>
+            </div>
+            <div class="secret-input-row">
+              <el-input
+                v-model="secrets.contactSecret.value"
+                :type="secrets.contactSecret.visible ? 'text' : 'password'"
+                placeholder="管理工具 → 通讯录同步 → Secret"
+                style="flex: 1"
+              />
+              <el-button :icon="secrets.contactSecret.visible ? Hide : View" @click="secrets.contactSecret.visible = !secrets.contactSecret.visible" />
+              <el-button type="success" @click="testSecret('contact')" :loading="secrets.contactSecret.testing">测试</el-button>
+            </div>
+          </div>
+
+          <!-- 客户联系Secret(推荐) -->
+          <div class="secret-item">
+            <div class="secret-header">
+              <span class="secret-name">客户联系Secret <el-tag type="warning" size="small">推荐</el-tag></span>
+              <el-tag :type="statusTagType(secrets.externalSecret.status)" size="small">
+                {{ statusLabel(secrets.externalSecret.status) }}
+              </el-tag>
+            </div>
+            <div class="secret-input-row">
+              <el-input
+                v-model="secrets.externalSecret.value"
+                :type="secrets.externalSecret.visible ? 'text' : 'password'"
+                placeholder="客户联系 → API → Secret"
+                style="flex: 1"
+              />
+              <el-button :icon="secrets.externalSecret.visible ? Hide : View" @click="secrets.externalSecret.visible = !secrets.externalSecret.visible" />
+              <el-button type="success" @click="testSecret('external')" :loading="secrets.externalSecret.testing">测试</el-button>
+            </div>
+          </div>
+
+          <!-- 会话存档Secret(增值) -->
+          <div class="secret-item">
+            <div class="secret-header">
+              <span class="secret-name">会话存档Secret <el-tag size="small">增值</el-tag></span>
+              <el-tag :type="statusTagType(secrets.archiveSecret.status)" size="small">
+                {{ statusLabel(secrets.archiveSecret.status) }}
+              </el-tag>
+            </div>
+            <div class="secret-input-row">
+              <el-input
+                v-model="secrets.archiveSecret.value"
+                :type="secrets.archiveSecret.visible ? 'text' : 'password'"
+                placeholder="管理工具 → 会话内容存档 → Secret"
+                style="flex: 1"
+              />
+              <el-button :icon="secrets.archiveSecret.visible ? Hide : View" @click="secrets.archiveSecret.visible = !secrets.archiveSecret.visible" />
+              <el-button type="success" @click="testSecret('archive')" :loading="secrets.archiveSecret.testing">测试</el-button>
+            </div>
+            <div class="secret-sub">
+              <span class="secret-sub-label">RSA私钥:</span>
+              <el-button size="small" @click="showRsaInput = !showRsaInput">
+                {{ showRsaInput ? '收起' : rsaKeySet ? '已配置 - 点击修改' : '上传/粘贴' }}
+              </el-button>
+            </div>
+            <div v-if="showRsaInput" class="rsa-input-area">
+              <el-input
+                v-model="rsaPrivateKey"
+                type="textarea"
+                :rows="5"
+                placeholder="-----BEGIN RSA PRIVATE KEY-----&#10;...&#10;-----END RSA PRIVATE KEY-----"
+              />
+            </div>
+          </div>
+
+          <!-- 对外收款Secret(可选) -->
+          <div class="secret-item">
+            <div class="secret-header">
+              <span class="secret-name">对外收款Secret <el-tag type="info" size="small">可选</el-tag></span>
+              <el-tag :type="statusTagType(secrets.paymentSecret.status)" size="small">
+                {{ statusLabel(secrets.paymentSecret.status) }}
+              </el-tag>
+            </div>
+            <div class="secret-input-row">
+              <el-input
+                v-model="secrets.paymentSecret.value"
+                :type="secrets.paymentSecret.visible ? 'text' : 'password'"
+                placeholder="对外收款API Secret"
+                style="flex: 1"
+              />
+              <el-button :icon="secrets.paymentSecret.visible ? Hide : View" @click="secrets.paymentSecret.visible = !secrets.paymentSecret.visible" />
+              <el-button type="success" @click="testSecret('payment')" :loading="secrets.paymentSecret.testing">测试</el-button>
+            </div>
           </div>
         </div>
 
-        <!-- 会话存档Secret(增值) -->
-        <div class="secret-item">
-          <div class="secret-header">
-            <span class="secret-name">会话存档Secret <el-tag size="small">增值</el-tag></span>
-            <el-tag :type="statusTagType(secrets.archiveSecret.status)" size="small">
-              {{ statusLabel(secrets.archiveSecret.status) }}
-            </el-tag>
-          </div>
-          <div class="secret-input-row">
-            <el-input
-              v-model="secrets.archiveSecret.value"
-              :type="secrets.archiveSecret.visible ? 'text' : 'password'"
-              placeholder="管理工具 → 会话内容存档 → Secret"
-              style="flex: 1"
-            />
-            <el-button :icon="secrets.archiveSecret.visible ? Hide : View" @click="secrets.archiveSecret.visible = !secrets.archiveSecret.visible" />
-            <el-button type="success" @click="testSecret('archive')" :loading="secrets.archiveSecret.testing">测试</el-button>
-          </div>
-          <div class="secret-sub">
-            <span class="secret-sub-label">RSA私钥:</span>
-            <el-button size="small" @click="showRsaInput = !showRsaInput">
-              {{ showRsaInput ? '收起' : rsaKeySet ? '已配置 - 点击修改' : '上传/粘贴' }}
-            </el-button>
-          </div>
-          <div v-if="showRsaInput" class="rsa-input-area">
-            <el-input
-              v-model="rsaPrivateKey"
-              type="textarea"
-              :rows="5"
-              placeholder="-----BEGIN RSA PRIVATE KEY-----&#10;...&#10;-----END RSA PRIVATE KEY-----"
-            />
-          </div>
+        <div class="save-row">
+          <el-button type="primary" size="large" @click="handleSaveAll" :loading="saving">保存全部Secret</el-button>
         </div>
-
-        <!-- 对外收款Secret(可选) -->
-        <div class="secret-item">
-          <div class="secret-header">
-            <span class="secret-name">对外收款Secret <el-tag type="info" size="small">可选</el-tag></span>
-            <el-tag :type="statusTagType(secrets.paymentSecret.status)" size="small">
-              {{ statusLabel(secrets.paymentSecret.status) }}
-            </el-tag>
-          </div>
-          <div class="secret-input-row">
-            <el-input
-              v-model="secrets.paymentSecret.value"
-              :type="secrets.paymentSecret.visible ? 'text' : 'password'"
-              placeholder="对外收款API Secret"
-              style="flex: 1"
-            />
-            <el-button :icon="secrets.paymentSecret.visible ? Hide : View" @click="secrets.paymentSecret.visible = !secrets.paymentSecret.visible" />
-            <el-button type="success" @click="testSecret('payment')" :loading="secrets.paymentSecret.testing">测试</el-button>
-          </div>
-        </div>
-      </div>
-
-      <div class="save-row">
-        <el-button type="primary" size="large" @click="handleSaveAll" :loading="saving">保存全部Secret</el-button>
-      </div>
+      </template>
     </template>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive } from 'vue'
-import { View, Hide } from '@element-plus/icons-vue'
+import { ref, reactive, computed } from 'vue'
+import { View, Hide, CircleCheckFilled, WarningFilled } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 
 const props = defineProps<{
   configId?: number
   configName?: string
   corpId?: string
+  authType?: string
 }>()
+
+const isThirdParty = computed(() => props.authType === 'third_party')
+
+const thirdPartySecrets = computed(() => [
+  {
+    key: 'app', icon: '🔑', name: '应用AccessToken',
+    autoManaged: true,
+    desc: '通过 suite_access_token + permanent_code 自动换取企业token',
+    statusText: '授权后自动获取，无需手动配置'
+  },
+  {
+    key: 'contact', icon: '📋', name: '通讯录权限',
+    autoManaged: true,
+    desc: '通讯录读取权限由第三方应用授权范围决定',
+    statusText: '随授权自动获取，取决于授权范围'
+  },
+  {
+    key: 'external', icon: '👥', name: '客户联系权限',
+    autoManaged: true,
+    desc: '客户联系/客户群权限由第三方应用授权范围决定',
+    statusText: '随授权自动获取，取决于授权范围'
+  },
+  {
+    key: 'archive', icon: '📝', name: '会话存档',
+    autoManaged: false,
+    desc: '会话存档为增值服务，需企业单独开通并授权',
+    statusText: '需企业开通会话存档后授权，可在下方补充配置'
+  },
+  {
+    key: 'payment', icon: '💰', name: '对外收款',
+    autoManaged: false,
+    desc: '对外收款功能需在企微后台单独申请开通',
+    statusText: '需企业在企微后台单独开通'
+  },
+])
 
 const saving = ref(false)
 const showRsaInput = ref(false)
@@ -187,7 +299,6 @@ const testSecret = async (type: string) => {
       ElMessage.warning('请先填写Secret')
       return
     }
-    // 真实测试: 调用后端API验证Secret
     const res = await fetch(`/api/v1/wecom/configs/${props.configId}/diagnose/${type === 'app' ? 'token' : type === 'contact' ? 'address' : type === 'external' ? 'external' : type === 'archive' ? 'archive' : 'payment'}`, {
       headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
     })
@@ -215,12 +326,14 @@ const handleSaveAll = async () => {
   saving.value = true
   try {
     const body: any = {}
-    if (secrets.appSecret.value) body.corpSecret = secrets.appSecret.value
-    if (secrets.contactSecret.value) body.contactSecret = secrets.contactSecret.value
-    if (secrets.externalSecret.value) body.externalContactSecret = secrets.externalSecret.value
+    if (!isThirdParty.value) {
+      if (secrets.appSecret.value) body.corpSecret = secrets.appSecret.value
+      if (secrets.contactSecret.value) body.contactSecret = secrets.contactSecret.value
+      if (secrets.externalSecret.value) body.externalContactSecret = secrets.externalSecret.value
+      if (secrets.paymentSecret.value) body.paymentSecret = secrets.paymentSecret.value
+    }
     if (secrets.archiveSecret.value) body.chatArchiveSecret = secrets.archiveSecret.value
     if (rsaPrivateKey.value) body.chatArchivePrivateKey = rsaPrivateKey.value
-    // paymentSecret handled separately via payment settings
 
     const res = await fetch(`/api/v1/wecom/configs/${props.configId}`, {
       method: 'PUT',
@@ -229,7 +342,7 @@ const handleSaveAll = async () => {
     })
     const json = await res.json()
     if (json?.success) {
-      ElMessage.success('全部Secret已保存')
+      ElMessage.success(isThirdParty.value ? '补充配置已保存' : '全部Secret已保存')
     } else {
       ElMessage.error(json?.message || '保存失败')
     }
@@ -245,10 +358,24 @@ const handleSaveAll = async () => {
 .config-label { font-size: 13px; color: #6B7280; }
 .config-name { font-weight: 600; color: #1F2937; }
 
+/* 第三方授权模式卡片网格 */
+.tp-secret-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; max-width: 960px; }
+.tp-secret-card {
+  padding: 16px 18px; background: #fff; border: 1px solid #E5E7EB; border-radius: 10px;
+  transition: all 0.2s;
+}
+.tp-secret-card:hover { border-color: #C7D2FE; box-shadow: 0 2px 8px rgba(0,0,0,0.04); }
+.tp-secret-card__header { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.tp-secret-card__icon { font-size: 18px; }
+.tp-secret-card__name { font-weight: 600; color: #1F2937; font-size: 14px; }
+.tp-secret-card__desc { font-size: 12px; color: #9CA3AF; margin-bottom: 8px; line-height: 1.5; }
+.tp-secret-card__status { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+
 .secret-list { display: flex; flex-direction: column; gap: 20px; max-width: 680px; }
 .secret-item { padding: 16px; background: #fff; border: 1px solid #EBEEF5; border-radius: 10px; }
 .secret-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
 .secret-name { font-weight: 600; color: #1F2937; display: flex; align-items: center; gap: 8px; }
+.secret-hint { font-size: 12px; color: #9CA3AF; margin-bottom: 10px; line-height: 1.5; }
 .secret-input-row { display: flex; gap: 8px; }
 .secret-sub { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
 .secret-sub-label { font-size: 13px; color: #6B7280; }

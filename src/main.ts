@@ -102,7 +102,7 @@ const handleDynamicImportError = () => {
 
   // 🔥 检查是否在公开页面，公开页面不需要登录验证
   const currentPath = window.location.pathname
-  const publicPaths = ['/login', '/public-help', '/register', '/agreement']
+  const publicPaths = ['/login', '/public-help', '/register', '/agreement', '/wecom-sidebar']
   const isPublicPage = publicPaths.some(path => currentPath.startsWith(path))
 
   // 检查 token 状态
@@ -300,7 +300,7 @@ const initializeApp = async () => {
     const configStore = useConfigStore()
 
     // 🔥 公开页面检查
-    const isPublicPage = window.location.pathname.startsWith('/public-help')
+    const isPublicPage = window.location.pathname.startsWith('/public-help') || window.location.pathname.startsWith('/wecom-sidebar')
 
     // 初始化安全控制台配置（从服务器获取）- 公开页面跳过
     if (!isPublicPage) {

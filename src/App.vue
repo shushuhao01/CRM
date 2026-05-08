@@ -8,8 +8,13 @@
       :show-progress="appStore.globalLoadingProgress >= 0"
     />
 
+    <!-- 企微侧边栏极简布局（无CRM导航/登录态依赖） -->
+    <div v-if="isWecomSidebarPage" class="wecom-sidebar-standalone">
+      <router-view />
+    </div>
+
     <!-- 登录页面 -->
-    <div v-if="isLoginPage" class="login-layout">
+    <div v-else-if="isLoginPage" class="login-layout">
       <ErrorBoundary>
         <router-view />
       </ErrorBoundary>
@@ -437,7 +442,14 @@ const handleOpenContactServiceDialog = () => {
     return route.path.startsWith('/wecom-standalone')
   })
 
+  // 🔥 企微侧边栏路由（极简布局，完全独立于CRM主布局，不依赖CRM登录态）
+  const isWecomSidebarPage = computed(() => {
+    return route.path.startsWith('/wecom-sidebar')
+  })
+
   const isLoginPage = computed(() => {
+    // 企微侧边栏有专用布局，不走 login 布局
+    if (isWecomSidebarPage.value) return false
     // 登录页或公开帮助中心页面使用简单布局
     return publicPages.some(path => route.path.startsWith(path)) || !userStore.token
   })
@@ -603,6 +615,12 @@ onMounted(async () => {
   const isPublicPage = publicPages.some(path => currentPath.startsWith(path))
   if (isPublicPage && !userStore.token) {
     console.log('[App] 公开页面，跳过需要认证的初始化')
+    return
+  }
+
+  // 🔥 企微侧边栏页面：完全跳过CRM主服务初始化，侧边栏有独立的Auth体系
+  if (currentPath.startsWith('/wecom-sidebar')) {
+    console.log('[App] 企微侧边栏页面，跳过CRM服务初始化')
     return
   }
 
@@ -1439,6 +1457,16 @@ body.wecom-fullscreen .layout-container > .el-container > .el-main {
 
 body.wecom-fullscreen .page-content {
   padding: 16px !important;
+}
+</style>
+
+<style scoped>
+.wecom-sidebar-standalone {
+  height: 100vh;
+  width: 100vw;
+  overflow-y: auto;
+  overflow-x: hidden;
+  background: #f5f5f5;
 }
 </style>
 

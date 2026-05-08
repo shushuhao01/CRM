@@ -149,3 +149,15 @@ export const kickGroupMember = (chatId: string, userIds: string[]) => {
   return request.post('/wecom/customer-groups/kick-member', { chatId, userIds })
 }
 
+/** 群主转让 */
+export const transferGroupOwner = (chatId: string, newOwnerUserId: string) => {
+  return request.post('/wecom/customer-groups/transfer-owner', { chatId, newOwnerUserId })
+}
+
+/** 导出群成员（返回 Blob，带认证） */
+export const exportGroupMembers = (id: number) => {
+  return request.get(`/wecom/customer-groups/${id}/export-members`, {
+    responseType: 'blob'
+  } as any) as Promise<Blob>
+}
+

@@ -713,7 +713,7 @@ defineOptions({ name: 'WecomSidebar' })
 import { ref, onMounted, onUnmounted, computed, watch, nextTick } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Refresh, Loading } from '@element-plus/icons-vue'
-import { getSidebarApps, addSidebarApp, saveSidebarApps, deleteSidebarApp } from '@/api/wecom'
+import { getSidebarApps, addSidebarApp, saveSidebarApps, deleteSidebarApp, getWecomConfigs } from '@/api/wecom'
 import WecomHeader from './components/WecomHeader.vue'
 import WecomDemoBanner from './components/WecomDemoBanner.vue'
 import SidebarPreview from './components/SidebarPreview.vue'
@@ -729,6 +729,7 @@ const isAdminUser = computed(() => userStore.isAdmin)
 const loading = ref(false)
 const submitting = ref(false)
 const appList = ref<any[]>([])
+const currentCorpId = ref('')
 const dialogVisible = ref(false)
 const isEdit = ref(false)
 const currentId = ref<number | null>(null)
@@ -774,7 +775,9 @@ const handleSwitchPreviewApp = (appId: string) => {
 }
 
 const handleCopyBuiltinUrl = async (row: any) => {
-  const fullUrl = `${window.location.origin}${row.path}`
+  const corpIdParam = currentCorpId.value || 'YOUR_CORP_ID'
+  const sep = row.path.includes('?') ? '&' : '?'
+  const fullUrl = `${window.location.origin}${row.path}${sep}corpId=${corpIdParam}`
   try {
     await navigator.clipboard.writeText(fullUrl)
     ElMessage.success('地址已复制到剪贴板')
@@ -1196,7 +1199,8 @@ const iconOptions = ['👤', '📚', '📦', '💰', '🎫', '🔍', '📊', '�
 
 const sidebarDetailUrl = computed(() => {
   const origin = window.location.origin
-  return `${origin}/wecom-sidebar?corpId=YOUR_CORP_ID`
+  const corpIdParam = currentCorpId.value || 'YOUR_CORP_ID'
+  return `${origin}/wecom-sidebar?corpId=${corpIdParam}`
 })
 
 /** 显示的应用列表 */
@@ -1327,10 +1331,17 @@ const handlePreview = (row: any) => {
 }
 
 
-onMounted(() => {
+onMounted(async () => {
   fetchList()
   loadBuiltinConfig()
   if (appTab.value === 'scripts') loadScriptsData()
+  // 动态获取企微配置的 corpId，供内置应用URL使用
+  try {
+    const res: any = await getWecomConfigs()
+    const configs = Array.isArray(res) ? res : (res?.data || res?.list || [])
+    const activeConfig = configs.find((c: any) => c.isEnabled) || configs[0]
+    if (activeConfig?.corpId) currentCorpId.value = activeConfig.corpId
+  } catch { /* 静默处理 */ }
   // Ctrl+V paste listener for script dialog
   document.addEventListener('paste', handleGlobalScriptPaste)
 })

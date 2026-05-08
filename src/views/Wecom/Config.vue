@@ -185,7 +185,7 @@
             <template #title>当前为<strong>第三方应用授权</strong>模式</template>
             第三方应用授权自动获取所需权限，无需手动管理Secret。如需配置额外API（如通讯录同步、会话存档），可在此处补充。
           </el-alert>
-          <ConfigSecretManager :config-id="selectedConfigId" :config-name="selectedConfigName" :corp-id="selectedCorpId" />
+          <ConfigSecretManager :config-id="selectedConfigId" :config-name="selectedConfigName" :corp-id="selectedCorpId" :auth-type="configList[0]?.authType || 'self_built'" />
         </el-tab-pane>
 
         <!-- Tab 3: 回调配置 -->

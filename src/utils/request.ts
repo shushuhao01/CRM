@@ -149,6 +149,11 @@ service.interceptors.response.use(
       })
     }
 
+    // Blob 响应（如文件下载）直接返回
+    if (response.config?.responseType === 'blob') {
+      return response.data
+    }
+
     const { code, message, data, success } = response.data
 
     // 处理业务错误 - 兼容多种响应格式：
@@ -236,10 +241,10 @@ service.interceptors.response.use(
 
     console.error(`[API Error] ${config?.method?.toUpperCase()} ${config?.url}`, error)
 
-    // 🔥 公开页面静默处理所有错误
-    const isPublicPage = window.location.pathname.startsWith('/public-help')
-    if (isPublicPage) {
-      if (import.meta.env.DEV) console.log('[Request] 公开页面，静默处理错误')
+    // 🔥 公开页面/侧边栏页面静默处理所有错误
+    const currentPagePath = window.location.pathname
+    if (currentPagePath.startsWith('/public-help') || currentPagePath.startsWith('/wecom-sidebar')) {
+      if (import.meta.env.DEV) console.log('[Request] 公开/侧边栏页面，静默处理错误')
       return Promise.reject(error)
     }
 
@@ -263,8 +268,8 @@ service.interceptors.response.use(
         case 401: {
           // 🔥 公开页面不处理401错误（静默忽略）
           const currentPath = window.location.pathname
-          if (currentPath.startsWith('/public-help')) {
-            if (import.meta.env.DEV) console.log('[Request] 公开页面，静默忽略401错误')
+          if (currentPath.startsWith('/public-help') || currentPath.startsWith('/wecom-sidebar')) {
+            if (import.meta.env.DEV) console.log('[Request] 公开/侧边栏页面，静默忽略401错误')
             return Promise.reject(error)
           }
           // 🔥 在线席位：被管理员踢出，显示专用提示
@@ -406,7 +411,7 @@ const handleUnauthorized = async (customMessage?: string) => {
 
   // 🔥 检查当前是否已经在登录页或公开页面，如果是则不显示弹窗
   const currentPath = window.location.pathname
-  const publicPaths = ['/login', '/public-help', '/register', '/agreement']
+  const publicPaths = ['/login', '/public-help', '/register', '/agreement', '/wecom-sidebar']
   if (publicPaths.some(path => currentPath.startsWith(path))) {
     if (import.meta.env.DEV) console.log('[Request] 在公开页面，跳过401弹窗:', currentPath)
     return

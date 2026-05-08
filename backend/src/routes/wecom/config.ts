@@ -185,7 +185,34 @@ router.post('/configs/:id/test', authenticateToken, requireAdmin, async (req: Re
       return res.status(404).json({ success: false, message: '配置不存在' });
     }
 
-    const result = await WecomApiService.testConnection(config.corpId, config.corpSecret);
+    let result: { success: boolean; message: string };
+
+    if (config.authType === 'third_party') {
+      // 第三方授权模式：使用 suite_access_token + permanent_code 获取企业token
+      try {
+        const { WecomTokenService } = await import('../../services/wecom/WecomTokenService');
+        const token = await WecomTokenService.getAccessToken(config, 'corp');
+        if (token) {
+          result = { success: true, message: '第三方授权连接正常' };
+        } else {
+          result = { success: false, message: '获取企业Token失败' };
+        }
+      } catch (e: any) {
+        log.error('[Wecom] Third-party test connection error:', e.message);
+        let hint = e.message || '连接失败';
+        if (hint.includes('suite_ticket')) {
+          hint = '尚未收到suite_ticket推送，请确认服务商应用回调URL配置正确，等待企微推送（约10分钟一次）';
+        } else if (hint.includes('permanent_code') || hint.includes('永久授权码')) {
+          hint = '永久授权码缺失，请重新进行扫码授权';
+        } else if (hint.includes('Suite配置')) {
+          hint = '服务商应用配置不完整，请检查SuiteID/SuiteSecret/SuiteTicket';
+        }
+        result = { success: false, message: hint };
+      }
+    } else {
+      // 自建应用模式：使用 corpId + corpSecret
+      result = await WecomApiService.testConnection(config.corpId, config.corpSecret);
+    }
 
     config.connectionStatus = result.success ? 'connected' : 'failed';
     config.lastError = result.success ? null : result.message;
@@ -323,21 +350,41 @@ router.get('/configs/:id/diagnose/:item', authenticateToken, async (req: Request
     try {
       switch (item) {
         case 'token': {
-          const token = await WecomApiService.getAccessTokenByConfigId(configId, 'corp');
-          if (token) {
-            detail = `Token获取成功，有效期2小时 (${token.substring(0, 8)}...)`;
-            status = 'ok';
-          } else {
-            detail = 'AccessToken获取失败，请检查CorpID和应用Secret是否正确';
+          try {
+            const token = await WecomApiService.getAccessTokenByConfigId(configId, 'corp');
+            if (token) {
+              const modeLabel = config.authType === 'third_party' ? '第三方授权' : '自建应用';
+              detail = `Token获取成功(${modeLabel}模式)，有效期2小时 (${token.substring(0, 8)}...)`;
+              status = 'ok';
+            } else {
+              detail = config.authType === 'third_party'
+                ? 'Token获取失败，请检查服务商应用配置(SuiteID/SuiteSecret/SuiteTicket)'
+                : 'AccessToken获取失败，请检查CorpID和应用Secret是否正确';
+              status = 'fail';
+            }
+          } catch (tokenErr: any) {
             status = 'fail';
+            let msg = tokenErr.message || '未知错误';
+            if (config.authType === 'third_party') {
+              if (msg.includes('suite_ticket')) {
+                msg = '尚未收到suite_ticket推送，请确认回调URL正确配置，等待企微推送(约10分钟一次)';
+              } else if (msg.includes('Suite配置')) {
+                msg = '服务商应用配置不完整，请在数据看板→企微授权→服务商应用中检查配置';
+              } else if (msg.includes('permanent_code') || msg.includes('永久授权码')) {
+                msg = '永久授权码缺失或无效，请重新扫码授权';
+              }
+              detail = `第三方授权Token获取失败: ${msg}`;
+            } else {
+              detail = `AccessToken获取失败: ${msg}`;
+            }
           }
           break;
         }
         case 'address': {
           if (config.authType !== 'third_party' && !config.contactSecret) { status = 'none'; detail = '未配置通讯录Secret，请在Secret管理中配置'; break; }
           try {
-            const token = await WecomApiService.getAccessTokenByConfigId(configId, 'contact');
-            if (!token) { status = 'fail'; detail = '通讯录Token获取失败，Secret可能无效'; break; }
+            const token = await WecomApiService.getAccessTokenByConfigId(configId, config.authType === 'third_party' ? 'corp' : 'contact');
+            if (!token) { status = 'fail'; detail = config.authType === 'third_party' ? '通讯录Token获取失败(第三方授权)，请检查授权范围是否包含通讯录权限' : '通讯录Token获取失败，Secret可能无效'; break; }
             const depts = await WecomApiService.getDepartmentList(token);
             detail = `通讯录正常，共${depts.length}个部门`;
             status = 'ok';
@@ -355,7 +402,7 @@ router.get('/configs/:id/diagnose/:item', authenticateToken, async (req: Request
             status = 'none'; detail = '未配置客户联系Secret，第三方授权模式可跳过'; break;
           }
           try {
-            const token = await WecomApiService.getAccessTokenByConfigId(configId, 'external');
+            const token = await WecomApiService.getAccessTokenByConfigId(configId, config.authType === 'third_party' ? 'corp' : 'external');
             if (token) {
               detail = '客户联系API可用，权限正常';
               status = 'ok';
@@ -374,7 +421,7 @@ router.get('/configs/:id/diagnose/:item', authenticateToken, async (req: Request
         }
         case 'group': {
           try {
-            const token = await WecomApiService.getAccessTokenByConfigId(configId, 'external');
+            const token = await WecomApiService.getAccessTokenByConfigId(configId, config.authType === 'third_party' ? 'corp' : 'external');
             if (token) {
               detail = '客户群API可用，权限正常';
               status = 'ok';
@@ -390,7 +437,7 @@ router.get('/configs/:id/diagnose/:item', authenticateToken, async (req: Request
         }
         case 'link': {
           try {
-            const token = await WecomApiService.getAccessTokenByConfigId(configId, 'external');
+            const token = await WecomApiService.getAccessTokenByConfigId(configId, config.authType === 'third_party' ? 'corp' : 'external');
             if (token) {
               detail = '获客助手API可用';
               status = 'ok';
@@ -407,7 +454,7 @@ router.get('/configs/:id/diagnose/:item', authenticateToken, async (req: Request
         case 'archive': {
           if (config.authType !== 'third_party' && !config.chatArchiveSecret) { status = 'none'; detail = '未配置会话存档Secret，需企业先开通会话存档功能'; break; }
           try {
-            const token = await WecomApiService.getAccessTokenByConfigId(configId, 'chat');
+            const token = await WecomApiService.getAccessTokenByConfigId(configId, config.authType === 'third_party' ? 'corp' : 'chat');
             if (token) {
               detail = `会话存档已开通，授权${config.vasUserCount || 0}人`;
               status = 'ok';
@@ -476,7 +523,8 @@ router.get('/configs/:id/diagnose/:item', authenticateToken, async (req: Request
 // ==================== 功能授权 (V4.0) ====================
 
 /**
- * 获取功能授权列表
+ * 获取功能授权列表 + 使用量卡片数据
+ * 根据authType区分自建/第三方模式，返回真实授权范围和使用量
  */
 router.get('/configs/:id/features', authenticateToken, async (req: Request, res: Response) => {
   try {
@@ -488,42 +536,154 @@ router.get('/configs/:id/features', authenticateToken, async (req: Request, res:
       return res.status(404).json({ success: false, message: '配置不存在' });
     }
 
-    // 根据实际配置状态生成功能列表
+    // 解析第三方授权范围
+    const authorizedPrivileges: string[] = [];
+    if (config.authType === 'third_party' && config.authScope) {
+      try {
+        const authScopeData = JSON.parse(config.authScope);
+        // 提取已授权的权限列表
+        const agents = authScopeData?.agent || [];
+        for (const agent of agents) {
+          const privs = agent.privilege || {};
+          if (privs.allow_party?.length > 0 || privs.allow_user?.length > 0 || privs.allow_tag?.length > 0) {
+            authorizedPrivileges.push('通讯录');
+          }
+          if (privs.extra_party?.length > 0 || privs.extra_user?.length > 0 || privs.extra_tag?.length > 0) {
+            authorizedPrivileges.push('客户联系');
+          }
+          // 检查level（如有）
+          if (agent.appid || agent.agentid) {
+            authorizedPrivileges.push('应用消息');
+          }
+        }
+      } catch { /* ignore parse error */ }
+    }
+
+    const isConnected = config.connectionStatus === 'connected';
+    const isThirdParty = config.authType === 'third_party';
+
+    // 查询实际使用量数据
+    let acquisitionLinkCount = 0;
+    const archiveUserCount = config.vasUserCount || 0;
+    let aiUsageCount = 0;
+    const tenantId = (req as any).tenantId;
+
+    try {
+      // 获客助手：统计获客链接数量
+      const linkRows = await configRepo.manager.query(
+        'SELECT COUNT(*) as cnt FROM wecom_acquisition_links WHERE tenant_id = ? AND is_deleted = 0',
+        [tenantId]
+      ).catch(() => [{ cnt: 0 }]);
+      acquisitionLinkCount = parseInt(linkRows[0]?.cnt || 0);
+    } catch { /* table may not exist */ }
+
+    try {
+      // AI助手：统计AI调用次数
+      const aiRows = await configRepo.manager.query(
+        'SELECT COUNT(*) as cnt FROM wecom_ai_logs WHERE tenant_id = ? AND created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)',
+        [tenantId]
+      ).catch(() => [{ cnt: 0 }]);
+      aiUsageCount = parseInt(aiRows[0]?.cnt || 0);
+    } catch { /* table may not exist */ }
+
+    // 功能列表
     const features = [
       {
         key: 'basic', name: '基础功能', desc: '通讯录/客户/群/活码/侧边栏', icon: '📦',
-        status: config.connectionStatus === 'connected' ? 'active' : 'inactive',
-        expireDate: '永久', usage: null
+        status: isConnected ? 'active' : 'inactive',
+        expireDate: '永久', usage: null,
+        authSource: isThirdParty ? '第三方授权自动获取' : '自建应用配置'
       },
       {
         key: 'acquisition', name: '获客助手', desc: '获客链接/渠道统计/客户画像', icon: '🎯',
-        status: config.connectionStatus === 'connected' ? 'active' : 'inactive',
+        status: isConnected ? 'active' : 'inactive',
         expireDate: config.vasExpireDate ? config.vasExpireDate.toISOString().split('T')[0] : '永久',
-        usage: null
+        usage: { used: acquisitionLinkCount, max: 1000, percent: Math.min(100, Math.round((acquisitionLinkCount / 1000) * 100)) },
+        authSource: isThirdParty ? '第三方授权自动获取' : '客户联系Secret'
       },
       {
         key: 'chat_archive', name: '会话存档', desc: '聊天记录/敏感词/质检', icon: '📝',
         status: config.vasChatArchive ? 'active' : 'inactive',
         expireDate: config.vasExpireDate ? config.vasExpireDate.toISOString().split('T')[0] : null,
-        usage: config.vasChatArchive ? { used: config.vasUserCount || 0, max: 50, percent: Math.round(((config.vasUserCount || 0) / 50) * 100) } : null
+        usage: config.vasChatArchive ? { used: archiveUserCount, max: 70, percent: Math.min(100, Math.round((archiveUserCount / 70) * 100)) } : null,
+        authSource: config.vasChatArchive ? (isThirdParty ? '第三方授权+增值开通' : '会话存档Secret') : '未开通'
       },
       {
         key: 'ai_assistant', name: 'AI助手', desc: 'AI质检/智能回复/客户分析', icon: '🤖',
-        status: 'active', expireDate: '永久',
-        usage: { used: 0, max: 10000, percent: 0 }
+        status: isConnected ? 'active' : 'inactive',
+        expireDate: config.vasExpireDate ? config.vasExpireDate.toISOString().split('T')[0] : '永久',
+        usage: { used: aiUsageCount, max: 10000, percent: Math.min(100, Math.round((aiUsageCount / 10000) * 100)) },
+        authSource: '平台提供'
       },
       {
         key: 'payment', name: '对外收款', desc: '收款记录/收款统计/退款记录', icon: '💰',
-        status: config.connectionStatus === 'connected' ? 'active' : 'inactive',
-        expireDate: '永久', usage: null
+        status: isConnected ? 'active' : 'inactive',
+        expireDate: '永久', usage: null,
+        authSource: isThirdParty ? '需企业在企微后台单独开通' : '对外收款Secret'
       },
       {
         key: 'kf', name: '微信客服', desc: '微信客服消息/会话管理', icon: '💬',
-        status: 'inactive', expireDate: null, usage: null
+        status: 'inactive', expireDate: null, usage: null,
+        authSource: '未开通'
       }
     ];
 
-    res.json({ success: true, data: features });
+    // 使用量统计卡片数据（独立区域展示）
+    const usageCards = [
+      {
+        key: 'wecom_package', title: '企微套餐',
+        icon: '📊', color: '#4C6EF5',
+        purchased: isConnected ? '已授权' : '未授权',
+        authorized: isConnected ? 1 : 0,
+        authorizedMax: 1,
+        status: isConnected ? 'active' : 'inactive',
+        expireDate: config.vasExpireDate ? config.vasExpireDate.toISOString().split('T')[0] : '永久',
+        detail: isThirdParty ? `第三方授权企业: ${config.name || config.corpId}` : `自建应用: ${config.name || config.corpId}`
+      },
+      {
+        key: 'chat_archive_usage', title: '会话存档',
+        icon: '📝', color: '#10B981',
+        purchased: config.vasChatArchive ? `${archiveUserCount}人` : '未购买',
+        authorized: archiveUserCount,
+        authorizedMax: 70,
+        status: config.vasChatArchive ? 'active' : 'inactive',
+        expireDate: config.vasExpireDate ? config.vasExpireDate.toISOString().split('T')[0] : null,
+        detail: config.vasChatArchive ? `已开通${archiveUserCount}人存档，上限70人` : '需在企微后台开通会话存档功能'
+      },
+      {
+        key: 'acquisition_usage', title: '获客助手',
+        icon: '🎯', color: '#F59E0B',
+        purchased: isConnected ? '已开通' : '未开通',
+        authorized: acquisitionLinkCount,
+        authorizedMax: 1000,
+        status: isConnected ? 'active' : 'inactive',
+        expireDate: config.vasExpireDate ? config.vasExpireDate.toISOString().split('T')[0] : '永久',
+        detail: `已创建${acquisitionLinkCount}个获客链接，上限1000个`
+      },
+      {
+        key: 'ai_assistant_usage', title: 'AI助手',
+        icon: '🤖', color: '#8B5CF6',
+        purchased: isConnected ? '已开通' : '未开通',
+        authorized: aiUsageCount,
+        authorizedMax: 10000,
+        status: isConnected ? 'active' : 'inactive',
+        expireDate: config.vasExpireDate ? config.vasExpireDate.toISOString().split('T')[0] : '永久',
+        detail: `近30天已调用${aiUsageCount}次，月上限10000次`
+      }
+    ];
+
+    res.json({
+      success: true,
+      data: features,
+      usageCards,
+      authInfo: {
+        authType: config.authType,
+        authMode: isThirdParty ? '第三方服务商应用授权' : '自建应用配置',
+        authorizedPrivileges: isThirdParty ? authorizedPrivileges : [],
+        suiteId: isThirdParty ? config.suiteId : null,
+        hasPermanentCode: !!config.permanentCode,
+      }
+    });
   } catch (error: any) {
     log.error('[Wecom Features] Error:', error.message);
     res.status(500).json({ success: false, message: '获取功能列表失败' });
