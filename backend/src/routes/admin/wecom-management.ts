@@ -3842,10 +3842,37 @@ router.delete('/suite/auths/:id', async (req: Request, res: Response) => {
   }
 });
 
+// 惰性自动清理：查询日志时顺带检查并执行自动清理
+let lastAutoCleanCheck = 0;
+const AUTO_CLEAN_INTERVAL = 60 * 60 * 1000; // 每小时检查一次
+async function lazyAutoCleanCallbackLogs() {
+  const now = Date.now();
+  if (now - lastAutoCleanCheck < AUTO_CLEAN_INTERVAL) return;
+  lastAutoCleanCheck = now;
+  try {
+    const rows = await AppDataSource.query(
+      "SELECT config_value FROM system_config WHERE config_key = 'wecom_callback_log_auto_clean' LIMIT 1"
+    ).catch(() => []);
+    if (rows.length === 0) return;
+    const config = JSON.parse(rows[0].config_value);
+    if (!config.enabled || !config.retentionDays) return;
+    const repo = AppDataSource.getRepository(WecomSuiteCallbackLog);
+    const result = await repo.createQueryBuilder()
+      .delete()
+      .where('created_at < DATE_SUB(NOW(), INTERVAL :days DAY)', { days: config.retentionDays })
+      .execute();
+    if (result.affected && result.affected > 0) {
+      log.info(`[Admin Suite] Lazy auto-clean: deleted ${result.affected} callback logs older than ${config.retentionDays} days`);
+    }
+  } catch { /* ignore */ }
+}
+
 // 获取回调日志
 router.get('/suite/callback-logs', async (req: Request, res: Response) => {
   try {
     await ensureSuiteTables();
+    // 惰性执行自动清理
+    lazyAutoCleanCallbackLogs().catch(() => {});
     const { page = 1, pageSize = 10, infoType } = req.query;
     const offset = (Number(page) - 1) * Number(pageSize);
     const limit = Number(pageSize);
@@ -3873,6 +3900,90 @@ router.get('/suite/callback-logs', async (req: Request, res: Response) => {
     });
   } catch (error: any) {
     log.error('[Admin Suite] Get callback logs error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// 手动清理回调日志（删除N天前的日志）
+router.delete('/suite/callback-logs', async (req: Request, res: Response) => {
+  try {
+    await ensureSuiteTables();
+    const { beforeDays = 30 } = req.query;
+    const days = Math.max(1, Number(beforeDays));
+    const repo = AppDataSource.getRepository(WecomSuiteCallbackLog);
+    const result = await repo.createQueryBuilder()
+      .delete()
+      .where('created_at < DATE_SUB(NOW(), INTERVAL :days DAY)', { days })
+      .execute();
+    const deletedCount = result.affected || 0;
+    log.info(`[Admin Suite] Callback logs cleanup: deleted ${deletedCount} records older than ${days} days`);
+    res.json({ success: true, message: `已清理 ${deletedCount} 条 ${days} 天前的日志`, data: { deletedCount, days } });
+  } catch (error: any) {
+    log.error('[Admin Suite] Callback logs cleanup error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// 获取回调日志自动清理配置
+router.get('/suite/callback-logs/auto-clean', async (_req: Request, res: Response) => {
+  try {
+    const rows = await AppDataSource.query(
+      "SELECT config_value FROM system_config WHERE config_key = 'wecom_callback_log_auto_clean' LIMIT 1"
+    ).catch(() => []);
+    const defaultConfig = { enabled: false, retentionDays: 30 };
+    if (rows.length > 0) {
+      try {
+        const config = JSON.parse(rows[0].config_value);
+        res.json({ success: true, data: { ...defaultConfig, ...config } });
+      } catch {
+        res.json({ success: true, data: defaultConfig });
+      }
+    } else {
+      res.json({ success: true, data: defaultConfig });
+    }
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// 保存回调日志自动清理配置
+router.put('/suite/callback-logs/auto-clean', async (req: Request, res: Response) => {
+  try {
+    const { enabled, retentionDays } = req.body;
+    const config = { enabled: !!enabled, retentionDays: Math.max(1, Number(retentionDays) || 30) };
+    const existing = await AppDataSource.query(
+      "SELECT id FROM system_config WHERE config_key = 'wecom_callback_log_auto_clean' LIMIT 1"
+    ).catch(() => []);
+    if (existing.length > 0) {
+      await AppDataSource.query(
+        "UPDATE system_config SET config_value = ?, updated_at = NOW() WHERE config_key = 'wecom_callback_log_auto_clean'",
+        [JSON.stringify(config)]
+      );
+    } else {
+      await AppDataSource.query(
+        "INSERT INTO system_config (config_key, config_value, created_at, updated_at) VALUES ('wecom_callback_log_auto_clean', ?, NOW(), NOW())",
+        [JSON.stringify(config)]
+      );
+    }
+
+    // 如果开启了自动清理，立即执行一次
+    if (config.enabled) {
+      try {
+        await ensureSuiteTables();
+        const repo = AppDataSource.getRepository(WecomSuiteCallbackLog);
+        const result = await repo.createQueryBuilder()
+          .delete()
+          .where('created_at < DATE_SUB(NOW(), INTERVAL :days DAY)', { days: config.retentionDays })
+          .execute();
+        const deletedCount = result.affected || 0;
+        log.info(`[Admin Suite] Auto-clean enabled, immediate cleanup: deleted ${deletedCount} records older than ${config.retentionDays} days`);
+      } catch (e: any) {
+        log.warn('[Admin Suite] Auto-clean immediate execution failed:', e.message);
+      }
+    }
+
+    res.json({ success: true, message: '自动清理配置已保存' });
+  } catch (error: any) {
     res.status(500).json({ success: false, message: error.message });
   }
 });

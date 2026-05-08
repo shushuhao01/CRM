@@ -78,7 +78,23 @@ async function logCallback(infoType: string, suiteId: string, authCorpId: string
   }
 }
 
-/** 获取suite_access_token（含40085自动重试：从DB重读最新ticket） */
+/** 尝试从 system_config 表获取 suite_ticket（备用来源） */
+async function getTicketFromSystemConfig(suiteId: string): Promise<string | null> {
+  try {
+    const rows = await AppDataSource.query(
+      `SELECT config_value FROM system_config WHERE config_key = 'wecom_suite_config' LIMIT 1`
+    );
+    if (rows?.[0]?.config_value) {
+      const cfg = typeof rows[0].config_value === 'string' ? JSON.parse(rows[0].config_value) : rows[0].config_value;
+      if (cfg.suite_ticket && (!suiteId || cfg.suite_id === suiteId || !cfg.suite_id)) {
+        return cfg.suite_ticket;
+      }
+    }
+  } catch { /* ignore */ }
+  return null;
+}
+
+/** 获取suite_access_token（含40085多级重试：DB重读 → 延迟重读 → system_config回退） */
 export async function getSuiteAccessToken(suiteConfig: WecomSuiteConfig): Promise<string> {
   if (suiteTokenCache && suiteTokenCache.expireTime > Date.now()) {
     return suiteTokenCache.token;
@@ -87,7 +103,10 @@ export async function getSuiteAccessToken(suiteConfig: WecomSuiteConfig): Promis
     throw new Error('Suite配置不完整: 缺少suiteId/suiteSecret/suiteTicket');
   }
 
+  const ticketPreview = (t: string) => t ? t.substring(0, 12) + '...' : '(empty)';
+
   // 第一次尝试：用传入的 suiteConfig.suiteTicket
+  log.info(`[SuiteCallback] getSuiteAccessToken: 尝试ticket=${ticketPreview(suiteConfig.suiteTicket)}`);
   const res = await axios.post(`${WECOM_API_BASE}/service/get_suite_token`, {
     suite_id: suiteConfig.suiteId,
     suite_secret: suiteConfig.suiteSecret,
@@ -95,31 +114,65 @@ export async function getSuiteAccessToken(suiteConfig: WecomSuiteConfig): Promis
   });
 
   if (res.data.errcode === 40085) {
-    // 40085 = invalid suite ticket，可能 ticket 已过期或被刷新
-    // 从DB重新读取最新的 suite_ticket 再重试一次
-    log.warn('[SuiteCallback] 40085 invalid suite_ticket, 尝试从数据库重读最新ticket重试...');
+    // 40085 = invalid suite ticket，立即清除缓存
+    suiteTokenCache = null;
+    log.warn(`[SuiteCallback] 40085 invalid suite_ticket (${ticketPreview(suiteConfig.suiteTicket)}), 开始多级重试...`);
+
+    // 重试1：从 wecom_suite_configs 重读最新 ticket
     const freshConfig = await getSuiteConfigRow();
-    if (freshConfig && freshConfig.suiteTicket && freshConfig.suiteTicket !== suiteConfig.suiteTicket) {
-      log.info('[SuiteCallback] 发现更新的suite_ticket, 重试获取token...');
-      suiteConfig.suiteTicket = freshConfig.suiteTicket; // 同步更新调用方的config
+    if (freshConfig?.suiteTicket && freshConfig.suiteTicket !== suiteConfig.suiteTicket) {
+      log.info(`[SuiteCallback] 重试1: 从DB发现更新的ticket=${ticketPreview(freshConfig.suiteTicket)}`);
       const retryRes = await axios.post(`${WECOM_API_BASE}/service/get_suite_token`, {
-        suite_id: suiteConfig.suiteId,
-        suite_secret: suiteConfig.suiteSecret,
-        suite_ticket: freshConfig.suiteTicket
+        suite_id: suiteConfig.suiteId, suite_secret: suiteConfig.suiteSecret, suite_ticket: freshConfig.suiteTicket
       });
-      if (retryRes.data.errcode && retryRes.data.errcode !== 0) {
-        throw new Error(`获取suite_access_token失败(重试): ${retryRes.data.errmsg} (${retryRes.data.errcode})`);
+      if (!retryRes.data.errcode || retryRes.data.errcode === 0) {
+        suiteConfig.suiteTicket = freshConfig.suiteTicket;
+        suiteTokenCache = { token: retryRes.data.suite_access_token, expireTime: Date.now() + (retryRes.data.expires_in - 300) * 1000 };
+        return suiteTokenCache.token;
       }
-      suiteTokenCache = {
-        token: retryRes.data.suite_access_token,
-        expireTime: Date.now() + (retryRes.data.expires_in - 300) * 1000
-      };
-      return suiteTokenCache.token;
+      log.warn(`[SuiteCallback] 重试1失败: ${retryRes.data.errmsg}`);
     }
-    // DB中ticket相同或无更新，返回原始错误
-    const ticketAge = suiteConfig.suiteTicket ?
-      `(ticket存在，可能已过期。请确认回调URL正常接收企微推送，企微每10分钟推送一次suite_ticket)` : '';
-    throw new Error(`获取suite_access_token失败: ${res.data.errmsg} (${res.data.errcode}) ${ticketAge}`);
+
+    // 重试2：延迟500ms后再读DB（等待并发的 handleSuiteTicket 完成写入）
+    await new Promise(r => setTimeout(r, 500));
+    const delayedConfig = await getSuiteConfigRow();
+    if (delayedConfig?.suiteTicket && delayedConfig.suiteTicket !== suiteConfig.suiteTicket) {
+      log.info(`[SuiteCallback] 重试2(延迟): 从DB发现更新的ticket=${ticketPreview(delayedConfig.suiteTicket)}`);
+      const retryRes = await axios.post(`${WECOM_API_BASE}/service/get_suite_token`, {
+        suite_id: suiteConfig.suiteId, suite_secret: suiteConfig.suiteSecret, suite_ticket: delayedConfig.suiteTicket
+      });
+      if (!retryRes.data.errcode || retryRes.data.errcode === 0) {
+        suiteConfig.suiteTicket = delayedConfig.suiteTicket;
+        suiteTokenCache = { token: retryRes.data.suite_access_token, expireTime: Date.now() + (retryRes.data.expires_in - 300) * 1000 };
+        return suiteTokenCache.token;
+      }
+      log.warn(`[SuiteCallback] 重试2失败: ${retryRes.data.errmsg}`);
+    }
+
+    // 重试3：从 system_config 表获取 ticket（callback.ts 可能更新了这里）
+    const sysTicket = await getTicketFromSystemConfig(suiteConfig.suiteId);
+    if (sysTicket && sysTicket !== suiteConfig.suiteTicket) {
+      log.info(`[SuiteCallback] 重试3: 从system_config发现不同ticket=${ticketPreview(sysTicket)}`);
+      const retryRes = await axios.post(`${WECOM_API_BASE}/service/get_suite_token`, {
+        suite_id: suiteConfig.suiteId, suite_secret: suiteConfig.suiteSecret, suite_ticket: sysTicket
+      });
+      if (!retryRes.data.errcode || retryRes.data.errcode === 0) {
+        // 同步回 wecom_suite_configs
+        try {
+          await AppDataSource.query('UPDATE wecom_suite_configs SET suite_ticket = ?, suite_ticket_updated_at = NOW() WHERE id = ?', [sysTicket, suiteConfig.id || 1]);
+        } catch { /* ignore */ }
+        suiteConfig.suiteTicket = sysTicket;
+        suiteTokenCache = { token: retryRes.data.suite_access_token, expireTime: Date.now() + (retryRes.data.expires_in - 300) * 1000 };
+        return suiteTokenCache.token;
+      }
+      log.warn(`[SuiteCallback] 重试3失败: ${retryRes.data.errmsg}`);
+    }
+
+    // 所有重试失败
+    const ticketAge = suiteConfig.suiteTicketUpdatedAt
+      ? `(最近ticket更新: ${new Date(suiteConfig.suiteTicketUpdatedAt).toLocaleString('zh-CN')}, 距今${Math.round((Date.now() - new Date(suiteConfig.suiteTicketUpdatedAt).getTime()) / 60000)}分钟)`
+      : '(ticket更新时间未知)';
+    throw new Error(`获取suite_access_token失败: ${res.data.errmsg} (${res.data.errcode}) ${ticketAge}。请确认回调URL正常接收企微推送，或在企微服务商后台手动刷新suite_ticket`);
   }
 
   if (res.data.errcode && res.data.errcode !== 0) {
@@ -269,19 +322,43 @@ async function handleSuiteTicket(config: WecomSuiteConfig, xml: string) {
   const ticket = extractXml(xml, 'SuiteTicket');
   if (!ticket) throw new Error('SuiteTicket为空');
 
-  const repo = AppDataSource.getRepository(WecomSuiteConfig);
+  const ticketPreview = ticket.substring(0, 12) + '...';
+
+  // 使用原子 SQL UPDATE 替代 ORM save()，避免并发请求互相覆盖（3个同时到达时只更新ticket字段）
+  const needUpdateStatus = !!(config.suiteId && config.suiteSecret && config.appStatus !== 'online');
+  if (needUpdateStatus) {
+    await AppDataSource.query(
+      `UPDATE wecom_suite_configs SET suite_ticket = ?, suite_ticket_updated_at = NOW(), updated_at = NOW(), app_status = ? WHERE id = ?`,
+      [ticket, 'online', config.id]
+    );
+  } else {
+    await AppDataSource.query(
+      `UPDATE wecom_suite_configs SET suite_ticket = ?, suite_ticket_updated_at = NOW(), updated_at = NOW() WHERE id = ?`,
+      [ticket, config.id]
+    );
+  }
+
+  // 同步更新内存中的 config 对象
   config.suiteTicket = ticket;
   config.suiteTicketUpdatedAt = new Date();
-  // 能正常接收suite_ticket说明应用已上线且回调正常，自动更新状态
-  if (config.suiteId && config.suiteSecret && config.appStatus !== 'online') {
+  if (needUpdateStatus) {
     config.appStatus = 'online';
     log.info('[SuiteCallback] appStatus auto-updated to online (suite_ticket received successfully)');
   }
-  await repo.save(config);
+
+  // 双向同步：也更新 system_config 表（callback.ts 的 auth-callback 读取该表）
+  try {
+    await AppDataSource.query(
+      `UPDATE system_config SET config_value = JSON_SET(config_value, '$.suite_ticket', ?) WHERE config_key = 'wecom_suite_config'`,
+      [ticket]
+    );
+  } catch (e: any) {
+    log.warn('[SuiteCallback] Sync suite_ticket to system_config failed (non-fatal):', e.message);
+  }
 
   // 清除token缓存，下次使用新ticket获取
   suiteTokenCache = null;
-  log.info('[SuiteCallback] SuiteTicket updated');
+  log.info(`[SuiteCallback] SuiteTicket updated: ${ticketPreview} for configId=${config.id}`);
 }
 
 /**

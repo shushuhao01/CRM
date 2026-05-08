@@ -239,15 +239,25 @@ registerHandler('suite_ticket', async (_config, msgContent) => {
   const suiteTicket = extractXmlField(msgContent, 'SuiteTicket');
   const suiteId = extractXmlField(msgContent, 'SuiteId');
   if (suiteTicket && suiteId) {
+    // 更新 system_config 表
     try {
       await AppDataSource.query(
         `UPDATE system_config SET config_value = JSON_SET(config_value, '$.suite_ticket', ?) WHERE config_key = 'wecom_suite_config'`,
         [suiteTicket]
       );
-      log.info('[Wecom Callback] suite_ticket updated for suiteId:', suiteId);
     } catch (e: any) {
-      log.error('[Wecom Callback] suite_ticket update failed:', e.message);
+      log.error('[Wecom Callback] suite_ticket update system_config failed:', e.message);
     }
+    // 同步更新 wecom_suite_configs 表（确保两个表的 ticket 一致）
+    try {
+      await AppDataSource.query(
+        `UPDATE wecom_suite_configs SET suite_ticket = ?, suite_ticket_updated_at = NOW(), updated_at = NOW() WHERE suite_id = ?`,
+        [suiteTicket, suiteId]
+      );
+    } catch (e: any) {
+      log.warn('[Wecom Callback] suite_ticket sync to wecom_suite_configs failed:', e.message);
+    }
+    log.info('[Wecom Callback] suite_ticket updated for suiteId:', suiteId);
   }
 });
 

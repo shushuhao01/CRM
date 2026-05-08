@@ -329,6 +329,29 @@
 
             <el-divider content-position="left">回调事件接收日志</el-divider>
           </el-form>
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px">
+            <div style="display: flex; align-items: center; gap: 8px">
+              <span style="font-size: 13px; color: #606266">手动清理</span>
+              <el-select v-model="cleanDays" size="small" style="width: 130px">
+                <el-option :value="7" label="7天前" />
+                <el-option :value="15" label="15天前" />
+                <el-option :value="30" label="30天前" />
+                <el-option :value="60" label="60天前" />
+                <el-option :value="90" label="90天前" />
+              </el-select>
+              <el-button type="danger" size="small" plain :loading="cleaning" @click="handleCleanLogs">清理日志</el-button>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px">
+              <span style="font-size: 13px; color: #606266">自动清理</span>
+              <el-switch v-model="autoCleanConfig.enabled" size="small" @change="handleAutoCleanChange" />
+              <template v-if="autoCleanConfig.enabled">
+                <span style="font-size: 12px; color: #909399">保留</span>
+                <el-input-number v-model="autoCleanConfig.retentionDays" :min="1" :max="365" size="small" style="width: 100px" />
+                <span style="font-size: 12px; color: #909399">天</span>
+                <el-button size="small" @click="handleSaveAutoClean" :loading="savingAutoClean">保存</el-button>
+              </template>
+            </div>
+          </div>
           <el-table :data="pagedCallbackLogs" v-loading="callbackLogsLoading" stripe size="small">
             <el-table-column label="时间" width="170">
               <template #default="{ row }">{{ formatDate(row.createdAt) }}</template>
@@ -794,6 +817,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   getSuiteConfig, saveSuiteConfig, testSuiteConnection, generateAuthLink,
   getSuiteAuths, cancelSuiteAuth, bindSuiteAuthTenant, getSuiteCallbackLogs,
+  cleanCallbackLogs, getCallbackLogAutoClean, saveCallbackLogAutoClean,
   getNotificationTemplates, createNotificationTemplate, updateNotificationTemplate,
   deleteNotificationTemplate, toggleNotificationTemplate,
   getMpConfig, saveMpConfig,
@@ -1194,6 +1218,57 @@ const fetchCallbackLogs = async () => {
     }
   } catch { callbackLogs.value = []; callbackLogTotal.value = 0 }
   callbackLogsLoading.value = false
+}
+
+// Callback log cleanup
+const cleanDays = ref(30)
+const cleaning = ref(false)
+const savingAutoClean = ref(false)
+const autoCleanConfig = ref({ enabled: false, retentionDays: 30 })
+
+const fetchAutoCleanConfig = async () => {
+  try {
+    const res: any = await getCallbackLogAutoClean()
+    const data = res?.data || res
+    if (data) {
+      autoCleanConfig.value.enabled = !!data.enabled
+      autoCleanConfig.value.retentionDays = data.retentionDays || 30
+    }
+  } catch { /* ignore */ }
+}
+
+const handleCleanLogs = async () => {
+  try {
+    await ElMessageBox.confirm(`确定清理 ${cleanDays.value} 天前的回调日志？此操作不可恢复。`, '清理确认', { type: 'warning' })
+  } catch { return }
+  cleaning.value = true
+  try {
+    const res: any = await cleanCallbackLogs(cleanDays.value)
+    ElMessage.success(res?.message || '清理完成')
+    fetchCallbackLogs()
+  } catch (e: any) { ElMessage.error(e?.message || '清理失败') }
+  cleaning.value = false
+}
+
+const handleAutoCleanChange = async (val: boolean) => {
+  if (!val) {
+    savingAutoClean.value = true
+    try {
+      await saveCallbackLogAutoClean({ enabled: false, retentionDays: autoCleanConfig.value.retentionDays })
+      ElMessage.success('已关闭自动清理')
+    } catch (e: any) { ElMessage.error(e?.message || '操作失败') }
+    savingAutoClean.value = false
+  }
+}
+
+const handleSaveAutoClean = async () => {
+  savingAutoClean.value = true
+  try {
+    await saveCallbackLogAutoClean({ enabled: true, retentionDays: autoCleanConfig.value.retentionDays })
+    ElMessage.success('自动清理配置已保存')
+    fetchCallbackLogs()
+  } catch (e: any) { ElMessage.error(e?.message || '保存失败') }
+  savingAutoClean.value = false
 }
 
 // ==================== 通知模板 ====================
@@ -1603,6 +1678,7 @@ onMounted(() => {
   fetchAuths()
   fetchAuthLinks()
   fetchCallbackLogs()
+  fetchAutoCleanConfig()
   fetchTemplates()
   fetchMpConfig()
 })

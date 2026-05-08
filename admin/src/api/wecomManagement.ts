@@ -15,6 +15,9 @@ export const bindSuiteAuthTenant = (id: number, data: { tenantId: string }) => r
 export const cancelSuiteAuth = (id: number) => request.delete(`/wecom-management/suite/auths/${id}`)
 export const getBindableCustomers = (params?: any) => request.get('/wecom-management/suite/bindable-customers', { params })
 export const getSuiteCallbackLogs = (params?: any) => request.get('/wecom-management/suite/callback-logs', { params })
+export const cleanCallbackLogs = (beforeDays: number) => request.delete('/wecom-management/suite/callback-logs', { params: { beforeDays } })
+export const getCallbackLogAutoClean = () => request.get('/wecom-management/suite/callback-logs/auto-clean')
+export const saveCallbackLogAutoClean = (data: { enabled: boolean; retentionDays: number }) => request.put('/wecom-management/suite/callback-logs/auto-clean', data)
 
 // ==================== 通知模板管理 ====================
 
