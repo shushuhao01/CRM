@@ -991,10 +991,22 @@ const rsaPrivateKeyInput = ref('')
 const showSuiteSecret = ref(false)
 const showProviderSecret = ref(false)
 
+/** 从用户填写的「授权回调域名」中提取 origin（协议+域名），剥离任何路径，避免拼接出双重路径 */
+const extractOrigin = (raw: string): string => {
+  const v = (raw || '').trim()
+  if (!v) return ''
+  try {
+    // 兼容用户填了完整URL（含路径）的情况，例如 https://crm.yunkes.com/api/v1/wecom/suite/callback
+    return new URL(v.startsWith('http') ? v : `https://${v}`).origin
+  } catch {
+    // 退化处理：手动剥离首个 / 之后的内容
+    return v.replace(/^(https?:\/\/[^/]+).*$/i, '$1').replace(/\/+$/, '')
+  }
+}
+
 const callbackUrl = computed(() => {
   // 优先使用「授权回调域名」字段(对外API域名)，避免使用浏览器当前域(admin.yunkes.com)误导运维
-  const raw = (suiteConfig.value?.redirectDomain || '').trim()
-  const base = raw ? raw.replace(/\/+$/, '') : window.location.origin
+  const base = extractOrigin(suiteConfig.value?.redirectDomain || '') || window.location.origin
   return `${base}/api/v1/wecom/suite/callback`
 })
 
@@ -1513,8 +1525,7 @@ const mpConfig = ref<any>({
 })
 
 const mpCallbackUrl = computed(() => {
-  const raw = (suiteConfig.value?.redirectDomain || '').trim()
-  const base = raw ? raw.replace(/\/+$/, '') : window.location.origin
+  const base = extractOrigin(suiteConfig.value?.redirectDomain || '') || window.location.origin
   return `${base}/api/v1/mp/callback`
 })
 
