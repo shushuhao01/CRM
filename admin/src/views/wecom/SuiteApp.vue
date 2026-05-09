@@ -298,9 +298,11 @@
             <div style="font-size: 12px; line-height: 1.8; margin-top: 4px">
               <p><strong>回调 = 企微服务器主动推送事件到我们服务器</strong>。配置步骤：</p>
               <p>1. 复制下方的回调URL、Token、EncodingAESKey</p>
-              <p>2. 登录<a href="https://open.work.weixin.qq.com" target="_blank" style="color:#409eff">企微服务商后台</a> → 应用管理 → 找到我们的应用 → 填入这3个值</p>
-              <p>3. 保存后，企微会每10分钟推送 suite_ticket，用于获取access_token</p>
-              <p>4. 当有企业安装/卸载应用时也会推送通知到此地址</p>
+              <p>2. 登录<a href="https://open.work.weixin.qq.com" target="_blank" style="color:#409eff">企微服务商后台</a>，<strong style="color:#E6A23C">在以下两处都填入相同的URL、Token、AESKey</strong>：</p>
+              <p style="padding-left:12px">① <strong>通用开发参数 → 系统事件接收URL</strong>（接收 suite_ticket 自动推送，每10分钟一次）</p>
+              <p style="padding-left:12px">② <strong>应用管理 → 应用 → 回调配置 → 数据回调URL / 指令回调URL</strong>（接收授权变更等事件）</p>
+              <p>3. <strong style="color:#F56C6C">重要：两处必须使用完全相同的 Token 和 EncodingAESKey，否则自动推送的 suite_ticket 会因签名不匹配被丢弃！</strong></p>
+              <p>4. 保存后，企微会每10分钟推送 suite_ticket，用于获取access_token</p>
             </div>
           </el-alert>
           <el-form label-width="140px" style="max-width: 700px">

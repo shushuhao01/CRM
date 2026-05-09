@@ -3843,17 +3843,18 @@ router.get('/suite/diagnostic', async (_req: Request, res: Response) => {
       recommendation = [
         `回调URL已 ${ticketAgeMin} 分钟未收到 suite_ticket 推送（企微每10分钟推送一次，30分钟过期）。`,
         '排查方向：',
-        '1. 企微服务商后台「应用 → 数据回调」中事件接收URL是否正确（应为：' + (process.env.SUITE_CALLBACK_URL_HINT || (config.redirectDomain || '<对外域名>') + '/api/v1/wecom/suite/callback') + '）',
-        '2. 服务器是否对企微IP段开放了入站访问（公网防火墙/安全组）',
-        '3. EncodingAESKey 与 Token 是否与企微后台一致',
+        '1. 企微服务商后台「通用开发参数 → 系统事件接收URL」是否正确（应为：' + (process.env.SUITE_CALLBACK_URL_HINT || (config.redirectDomain || '<对外域名>') + '/api/v1/wecom/suite/callback') + '）',
+        '2. ⚠️ 「通用开发参数」和「应用回调配置」两处的Token/EncodingAESKey是否完全一致（不一致会导致自动推送的suite_ticket被丢弃）',
+        '3. 服务器是否对企微IP段开放了入站访问（公网防火墙/安全组）',
         '4. 紧急情况下使用下方「手动注入 Ticket」临时救急'
       ].join('\n');
     } else {
       callbackHealth = 'never';
       recommendation = [
         '从未收到过 suite_ticket 推送！',
-        '必须在企微服务商后台「应用 → 数据回调」中正确配置事件接收URL：',
-        (config.redirectDomain || '<你的对外域名>') + '/api/v1/wecom/suite/callback',
+        '必须在企微服务商后台配置回调URL：' + (config.redirectDomain || '<你的对外域名>') + '/api/v1/wecom/suite/callback',
+        '需要在两处同时配置：① 通用开发参数 → 系统事件接收URL  ② 应用 → 回调配置 → 数据回调URL',
+        '⚠️ 两处必须使用相同的Token和EncodingAESKey！',
         '配置后等待 ~10 分钟，企微会主动推送 suite_ticket。',
         '如仍然没有，可使用下方「手动注入 Ticket」临时救急。'
       ].join('\n');
@@ -3876,9 +3877,14 @@ router.get('/suite/diagnostic', async (_req: Request, res: Response) => {
           probeReason = '✅ ticket当前有效，可正常获取 suite_access_token';
         } else if (errcode === 40085) {
           if (ticketAgeMin <= 10) {
-            probeReason = `❌ ticket刚刚更新仅${ticketAgeMin}分钟，企微仍拒绝 → 强烈怀疑 SuiteSecret 不正确或与 SuiteId 不匹配（请到应用配置Tab重新粘贴SuiteSecret）`;
+            probeReason = [
+              `❌ ticket刚刚更新仅${ticketAgeMin}分钟，企微仍拒绝。排查优先级：`,
+              `1. 「通用开发参数」和「应用回调配置」两处的Token/EncodingAESKey是否完全一致（不一致会导致自动推送的ticket解密错误或被丢弃，但手动刷新可能正常）`,
+              `2. SuiteSecret 是否正确或与 SuiteId 不匹配（请到应用配置Tab检查）`,
+              `3. 在企微服务商后台手动点击「刷新Ticket」测试，若手动可以但自动不行 → 高度怀疑原因1`
+            ].join('\n');
           } else {
-            probeReason = `❌ ticket已${ticketAgeMin}分钟未刷新，可能已过期 → 等待下一次回调推送或使用「手动注入Ticket」`;
+            probeReason = `❌ ticket已${ticketAgeMin}分钟未刷新，可能已过期。请检查「通用开发参数→系统事件接收URL」是否正确配置，或使用「手动注入Ticket」`;
           }
         } else if (errcode === 41021 || errcode === 40004) {
           probeReason = `❌ SuiteSecret 错误 (errcode=${errcode}) → 请到应用配置Tab重新粘贴 SuiteSecret`;

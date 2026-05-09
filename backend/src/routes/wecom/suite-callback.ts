@@ -277,13 +277,37 @@ router.get('/callback', async (req: Request, res: Response) => {
       return res.status(403).send('No config');
     }
 
+    // 验证签名 — 优先使用 suite_config，降级尝试 wecom_configs
+    let verifyAesKey = config.callbackEncodingAesKey;
+    let verifySource = 'suite_config';
+
     if (!verifySignature(config.callbackToken, timestamp as string, nonce as string, echostr as string, msg_signature as string)) {
-      log.warn('[SuiteCallback] Signature mismatch');
-      return res.status(403).send('Signature mismatch');
+      log.warn(`[SuiteCallback] GET signature mismatch with suite_config Token (prefix=${config.callbackToken.substring(0, 8)}...). 尝试WecomConfig降级...`);
+      let found = false;
+      try {
+        const wecomConfigRepo = AppDataSource.getRepository(WecomConfig);
+        const wecomConfigs = await wecomConfigRepo.find({ where: { isEnabled: true } });
+        for (const wc of wecomConfigs) {
+          if (!wc.callbackToken || !wc.encodingAesKey) continue;
+          if (verifySignature(wc.callbackToken, timestamp as string, nonce as string, echostr as string, msg_signature as string)) {
+            verifyAesKey = wc.encodingAesKey;
+            verifySource = `wecom_config(${wc.name || wc.id})`;
+            found = true;
+            log.info(`[SuiteCallback] ✅ GET signature matched via WecomConfig fallback: ${verifySource}`);
+            break;
+          }
+        }
+      } catch (e: any) {
+        log.warn('[SuiteCallback] GET WecomConfig fallback error:', e.message);
+      }
+      if (!found) {
+        log.warn('[SuiteCallback] ❌ GET signature mismatch - 所有已知Token均不匹配');
+        return res.status(403).send('Signature mismatch');
+      }
     }
 
-    const msg = decryptMsg(config.callbackEncodingAesKey, echostr as string);
-    log.info('[SuiteCallback] Verify success');
+    const msg = decryptMsg(verifyAesKey, echostr as string);
+    log.info(`[SuiteCallback] Verify success via ${verifySource}`);
     return res.send(msg);
   } catch (error: any) {
     log.error('[SuiteCallback] Verify error:', error.message);
@@ -318,14 +342,54 @@ router.post('/callback', async (req: Request, res: Response) => {
       return res.send('success');
     }
 
-    // 验证签名
-    if (!verifySignature(config.callbackToken, timestamp as string, nonce as string, encryptMsg, msg_signature as string)) {
-      log.warn('[SuiteCallback] POST signature mismatch');
-      return res.send('success');
+    // 验证签名 — 优先使用 wecom_suite_configs 的 Token/AESKey
+    let activeToken = config.callbackToken;
+    let activeAesKey = config.callbackEncodingAesKey;
+    let tokenSource = 'suite_config';
+
+    if (!verifySignature(activeToken, timestamp as string, nonce as string, encryptMsg, msg_signature as string)) {
+      // ★ 兼容处理：企微服务商后台「通用开发参数」和「应用回调配置」可能使用了不同的 Token/AESKey
+      //   - 通用开发参数: 系统事件接收URL（接收 suite_ticket 自动推送）
+      //   - 应用回调配置: 数据回调URL/指令回调URL（接收刷新Ticket等）
+      //   如果两处的 Token 不同，自动推送的 suite_ticket 会因签名不匹配被丢弃。
+      //   此处尝试从 wecom_configs 表查找匹配的 Token 作为降级。
+      log.warn(`[SuiteCallback] POST signature mismatch with suite_config Token (prefix=${activeToken.substring(0, 8)}...). ` +
+        `可能原因: 企微服务商后台「通用开发参数」的Token与管理后台存储的不一致。尝试WecomConfig降级匹配...`);
+
+      let found = false;
+      try {
+        const wecomConfigRepo = AppDataSource.getRepository(WecomConfig);
+        const wecomConfigs = await wecomConfigRepo.find({ where: { isEnabled: true } });
+        for (const wc of wecomConfigs) {
+          if (!wc.callbackToken || !wc.encodingAesKey) continue;
+          if (verifySignature(wc.callbackToken, timestamp as string, nonce as string, encryptMsg, msg_signature as string)) {
+            activeToken = wc.callbackToken;
+            activeAesKey = wc.encodingAesKey;
+            tokenSource = `wecom_config(${wc.name || wc.id})`;
+            found = true;
+            log.info(`[SuiteCallback] ✅ Signature matched via WecomConfig fallback: ${tokenSource}. ` +
+              `⚠️ 请在企微服务商后台确保「通用开发参数」和「应用回调配置」使用相同的Token/EncodingAESKey，` +
+              `并与管理后台「回调配置」Tab中的值保持一致。`);
+            break;
+          }
+        }
+      } catch (e: any) {
+        log.warn('[SuiteCallback] WecomConfig fallback lookup error:', e.message);
+      }
+
+      if (!found) {
+        log.warn(`[SuiteCallback] ❌ POST signature mismatch - 所有已知Token均不匹配。` +
+          `请检查: 1. 企微服务商后台「通用开发参数」的Token/EncodingAESKey 是否与管理后台「回调配置」中的值一致; ` +
+          `2. 「通用开发参数」和「应用回调配置」两处是否使用了相同的Token/EncodingAESKey。`);
+        return res.send('success');
+      }
     }
 
-    // 解密
-    const xmlContent = decryptMsg(config.callbackEncodingAesKey, encryptMsg);
+    // 解密 (使用匹配到的 Token/AESKey)
+    const xmlContent = decryptMsg(activeAesKey, encryptMsg);
+    if (tokenSource !== 'suite_config') {
+      log.info(`[SuiteCallback] Decrypted via ${tokenSource} (非suite_config主配置)`);
+    }
     const infoType = extractXml(xmlContent, 'InfoType');
     const suiteId = extractXml(xmlContent, 'SuiteId');
     const authCorpId = extractXml(xmlContent, 'AuthCorpId');
