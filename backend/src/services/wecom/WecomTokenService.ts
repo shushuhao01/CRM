@@ -136,7 +136,7 @@ export class WecomTokenService {
   /**
    * 获取 Suite Access Token (第三方应用专用)
    * 需要: suite_id + suite_secret + suite_ticket (来自企微推送)
-   * 同时从 system_config 和 wecom_suite_configs 两个表读取配置，确保获取最新ticket
+   * ★ 优先从 wecom_suite_configs 表读取（权威数据源），回退到 system_config（旧版兼容）
    */
   static async getSuiteAccessToken(suiteId: string): Promise<string> {
     const cacheKey = `suite:${suiteId}`;
@@ -145,69 +145,77 @@ export class WecomTokenService {
       return cached.token;
     }
 
-    // 从系统配置中读取 suite 相关信息
-    const rows = await AppDataSource.query(
-      "SELECT config_value FROM system_config WHERE config_key = 'wecom_suite_config' LIMIT 1"
-    ).catch(() => []);
+    // 防御性清理
+    const clean = (s: string) => (s || '').replace(/[\s\r\n\t]+/g, '').trim();
 
     let suiteSecret = '';
     let suiteTicket = '';
+    let dataSource = '';
 
-    if (rows.length > 0) {
+    // ★ 优先从 wecom_suite_configs 表读取（admin面板+回调handler都写这里，是权威数据源）
+    try {
+      const suiteRows = await AppDataSource.query(
+        'SELECT suite_secret, suite_ticket FROM wecom_suite_configs WHERE suite_id = ? ORDER BY id ASC LIMIT 1',
+        [suiteId]
+      );
+      if (suiteRows?.[0]) {
+        suiteSecret = clean(suiteRows[0].suite_secret || '');
+        suiteTicket = clean(suiteRows[0].suite_ticket || '');
+        if (suiteSecret && suiteTicket) dataSource = 'wecom_suite_configs';
+      }
+    } catch { /* wecom_suite_configs表可能不存在 */ }
+
+    // 回退/补充从 system_config 表读取（旧版兼容）
+    if (!suiteSecret || !suiteTicket) {
       try {
-        const suiteConfig = JSON.parse(rows[0].config_value);
-        suiteSecret = suiteConfig.suite_secret || '';
-        suiteTicket = suiteConfig.suite_ticket || '';
+        const rows = await AppDataSource.query(
+          "SELECT config_value FROM system_config WHERE config_key = 'wecom_suite_config' LIMIT 1"
+        ).catch(() => []);
+        if (rows.length > 0) {
+          const suiteConfig = JSON.parse(rows[0].config_value);
+          if (!suiteSecret) { suiteSecret = clean(suiteConfig.suite_secret || ''); }
+          if (!suiteTicket) { suiteTicket = clean(suiteConfig.suite_ticket || ''); }
+          if (!dataSource) dataSource = 'system_config';
+          else dataSource += '+system_config';
+        }
       } catch {
         log.warn('[WecomToken] Suite配置格式错误(system_config)');
       }
-    }
-
-    // 回退/补充从 wecom_suite_configs 表读取（回调handler将ticket存在此表）
-    if (!suiteSecret || !suiteTicket) {
-      try {
-        const suiteRows = await AppDataSource.query(
-          'SELECT suite_secret, suite_ticket FROM wecom_suite_configs WHERE suite_id = ? ORDER BY id ASC LIMIT 1',
-          [suiteId]
-        );
-        if (suiteRows?.[0]) {
-          suiteSecret = suiteSecret || suiteRows[0].suite_secret || '';
-          suiteTicket = suiteTicket || suiteRows[0].suite_ticket || '';
-        }
-      } catch { /* wecom_suite_configs表可能不存在 */ }
     }
 
     if (!suiteSecret || !suiteTicket) {
       throw new Error('Suite配置缺少必要参数(suite_secret/suite_ticket)，请检查服务商应用配置和回调URL');
     }
 
-    log.info(`[WecomToken] Fetching suite_access_token, suiteId=${suiteId}`);
+    const ticketPreview = suiteTicket.substring(0, 12) + '...';
+    log.info(`[WecomToken] Fetching suite_access_token, suiteId=${suiteId}, source=${dataSource}, ticketLen=${suiteTicket.length}, secretLen=${suiteSecret.length}, ticket=${ticketPreview}`);
 
     const response = await axios.post(`${WECOM_API_BASE}/service/get_suite_token`, {
-      suite_id: suiteId,
+      suite_id: clean(suiteId),
       suite_secret: suiteSecret,
       suite_ticket: suiteTicket
     });
 
-    // 40085重试：从wecom_suite_configs重读最新ticket
+    // 40085重试：从wecom_suite_configs重读最新ticket和secret
     if (response.data.errcode === 40085) {
-      log.warn('[WecomToken] 40085 invalid suite_ticket, 清除suite/corp双缓存并尝试从wecom_suite_configs重读最新ticket...');
-      // 立即清除自身和派生的 corp token 缓存（避免后续 corp_token 调用使用基于失效suite_token换出的旧token）
+      log.warn(`[WecomToken] 40085 invalid suite_ticket (${ticketPreview}), 清除suite/corp双缓存, source=${dataSource}`);
       suiteTokenCache.delete(cacheKey);
       for (const ck of Array.from(corpTokenCache.keys())) {
         if (ck.startsWith('tp:')) corpTokenCache.delete(ck);
       }
       try {
+        // ★ 重读时同时刷新 secret 和 ticket（修复 system_config 中 secret 过时的问题）
         const freshRows = await AppDataSource.query(
-          'SELECT suite_ticket FROM wecom_suite_configs WHERE suite_id = ? ORDER BY suite_ticket_updated_at DESC LIMIT 1',
+          'SELECT suite_secret, suite_ticket FROM wecom_suite_configs WHERE suite_id = ? ORDER BY suite_ticket_updated_at DESC LIMIT 1',
           [suiteId]
         );
-        const freshTicket = freshRows?.[0]?.suite_ticket;
-        if (freshTicket && freshTicket !== suiteTicket) {
-          log.info('[WecomToken] 发现更新的suite_ticket, 重试...');
+        const freshSecret = clean(freshRows?.[0]?.suite_secret || '');
+        const freshTicket = clean(freshRows?.[0]?.suite_ticket || '');
+        if (freshTicket && (freshTicket !== suiteTicket || freshSecret !== suiteSecret)) {
+          log.info(`[WecomToken] 发现更新的数据(ticket变化=${freshTicket !== suiteTicket}, secret变化=${freshSecret !== suiteSecret}), 重试...`);
           const retryRes = await axios.post(`${WECOM_API_BASE}/service/get_suite_token`, {
-            suite_id: suiteId,
-            suite_secret: suiteSecret,
+            suite_id: clean(suiteId),
+            suite_secret: freshSecret || suiteSecret,
             suite_ticket: freshTicket
           });
           if (retryRes.data.errcode && retryRes.data.errcode !== 0) {
@@ -218,17 +226,20 @@ export class WecomTokenService {
           suiteTokenCache.set(cacheKey, { token, expireTime });
           return token;
         }
-        // 没有更新的ticket → 等待500ms再读一次（让并发的回调写入有机会落库）
+        // 没有更新的数据 → 等待500ms再读一次（让并发的回调写入有机会落库）
         await new Promise(r => setTimeout(r, 500));
         const delayedRows = await AppDataSource.query(
-          'SELECT suite_ticket FROM wecom_suite_configs WHERE suite_id = ? ORDER BY suite_ticket_updated_at DESC LIMIT 1',
+          'SELECT suite_secret, suite_ticket FROM wecom_suite_configs WHERE suite_id = ? ORDER BY suite_ticket_updated_at DESC LIMIT 1',
           [suiteId]
         );
-        const delayedTicket = delayedRows?.[0]?.suite_ticket;
-        if (delayedTicket && delayedTicket !== suiteTicket) {
-          log.info('[WecomToken] 延迟重读发现更新ticket, 重试...');
+        const delayedSecret = clean(delayedRows?.[0]?.suite_secret || '');
+        const delayedTicket = clean(delayedRows?.[0]?.suite_ticket || '');
+        if (delayedTicket && (delayedTicket !== suiteTicket || delayedSecret !== suiteSecret)) {
+          log.info('[WecomToken] 延迟重读发现更新数据, 重试...');
           const retryRes2 = await axios.post(`${WECOM_API_BASE}/service/get_suite_token`, {
-            suite_id: suiteId, suite_secret: suiteSecret, suite_ticket: delayedTicket
+            suite_id: clean(suiteId),
+            suite_secret: delayedSecret || suiteSecret,
+            suite_ticket: delayedTicket
           });
           if (!retryRes2.data.errcode || retryRes2.data.errcode === 0) {
             const token = retryRes2.data.suite_access_token;

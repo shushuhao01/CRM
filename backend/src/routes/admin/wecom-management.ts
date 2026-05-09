@@ -3677,6 +3677,22 @@ router.put('/suite/config', async (req: Request, res: Response) => {
     if (chatArchiveRsaPrivateKey && chatArchiveRsaPrivateKey !== '******') config.chatArchiveRsaPrivateKey = chatArchiveRsaPrivateKey;
 
     await repo.save(config);
+
+    // ★ 同步 suite_secret 到 system_config 表（避免两表数据不一致导致40085）
+    if (config.suiteId && config.suiteSecret) {
+      try {
+        await AppDataSource.query(
+          `UPDATE system_config SET config_value = JSON_SET(config_value, '$.suite_id', ?, '$.suite_secret', ?) WHERE config_key = 'wecom_suite_config'`,
+          [config.suiteId, config.suiteSecret]
+        );
+      } catch (e: any) {
+        log.warn('[Admin Suite] Sync suite_secret to system_config failed (non-fatal):', e.message);
+      }
+    }
+
+    // 清除所有token缓存（secret可能已变更）
+    clearSuiteTokenCache();
+
     log.info('[Admin Suite] Config saved, suiteId:', config.suiteId);
     res.json({ success: true, message: '配置保存成功' });
   } catch (error: any) {

@@ -236,9 +236,14 @@ registerHandler('cancel_auth', async (_config, msgContent) => {
 
 // 7. 第三方应用: suite_ticket推送 (V2.0新增)
 registerHandler('suite_ticket', async (_config, msgContent) => {
-  const suiteTicket = extractXmlField(msgContent, 'SuiteTicket');
+  const rawTicket = extractXmlField(msgContent, 'SuiteTicket');
   const suiteId = extractXmlField(msgContent, 'SuiteId');
-  if (suiteTicket && suiteId) {
+  if (rawTicket && suiteId) {
+    // ★ 防御性清理：去除不可见字符，与 suite-callback.ts 保持一致
+    const suiteTicket = rawTicket.replace(/[\s\r\n\t]+/g, '').trim();
+    if (suiteTicket !== rawTicket) {
+      log.warn(`[Wecom Callback] suite_ticket含不可见字符已清理: rawLen=${rawTicket.length} cleanLen=${suiteTicket.length}`);
+    }
     // 更新 system_config 表
     try {
       await AppDataSource.query(
@@ -257,7 +262,12 @@ registerHandler('suite_ticket', async (_config, msgContent) => {
     } catch (e: any) {
       log.warn('[Wecom Callback] suite_ticket sync to wecom_suite_configs failed:', e.message);
     }
-    log.info('[Wecom Callback] suite_ticket updated for suiteId:', suiteId);
+    // 清除token缓存（与suite-callback.ts一致），让下次使用新ticket
+    try {
+      const { WecomTokenService } = await import('../../services/wecom/WecomTokenService');
+      WecomTokenService.clearCache();
+    } catch { /* ignore */ }
+    log.info(`[Wecom Callback] suite_ticket updated for suiteId: ${suiteId}, ticketLen=${suiteTicket.length}`);
   }
 });
 
@@ -460,44 +470,41 @@ async function handleExternalChatChange(config: WecomConfig, changeType: string,
  */
 router.get('/callback/auth-url', authenticateToken, async (req: Request, res: Response) => {
   try {
-    // 从system_config或wecom_suite_configs读取服务商应用配置
+    // ★ 优先从 wecom_suite_configs 表读取（权威数据源），回退到 system_config
+    const clean = (s: string) => (s || '').replace(/[\s\r\n\t]+/g, '').trim();
     let suiteId = '';
     let suiteSecret = '';
     let suiteTicket = '';
 
     try {
-      // 优先从 system_config 表读取（旧版兼容）
-      const result = await AppDataSource.query(
-        `SELECT config_value FROM system_config WHERE config_key = 'wecom_suite_config' LIMIT 1`
+      const suiteRows = await AppDataSource.query(
+        `SELECT suite_id, suite_secret, suite_ticket FROM wecom_suite_configs ORDER BY id ASC LIMIT 1`
       );
-      if (result?.[0]?.config_value) {
-        const config = typeof result[0].config_value === 'string'
-          ? JSON.parse(result[0].config_value)
-          : result[0].config_value;
-        suiteId = config.suite_id || '';
-        suiteSecret = config.suite_secret || '';
-        suiteTicket = config.suite_ticket || '';
+      if (suiteRows?.[0]) {
+        suiteId = clean(suiteRows[0].suite_id);
+        suiteSecret = clean(suiteRows[0].suite_secret);
+        suiteTicket = clean(suiteRows[0].suite_ticket);
       }
     } catch (e) {
-      log.warn('[Wecom Auth] Read system_config suite config error:', e);
+      log.warn('[Wecom Auth] Read wecom_suite_configs error:', e);
     }
 
-    // 如果 system_config 中没有，从管理后台的 wecom_suite_configs 表读取
+    // 回退从 system_config 表读取（旧版兼容）
     if (!suiteId || !suiteSecret) {
       try {
-        const suiteRows = await AppDataSource.query(
-          `SELECT suite_id, suite_secret, suite_ticket FROM wecom_suite_configs ORDER BY id ASC LIMIT 1`
+        const result = await AppDataSource.query(
+          `SELECT config_value FROM system_config WHERE config_key = 'wecom_suite_config' LIMIT 1`
         );
-        if (suiteRows?.[0]) {
-          suiteId = suiteRows[0].suite_id || '';
-          suiteSecret = suiteRows[0].suite_secret || '';
-          suiteTicket = suiteTicket || suiteRows[0].suite_ticket || '';
-          if (suiteId && suiteSecret) {
-            log.info('[Wecom Auth] Suite config loaded from wecom_suite_configs table');
-          }
+        if (result?.[0]?.config_value) {
+          const config = typeof result[0].config_value === 'string'
+            ? JSON.parse(result[0].config_value)
+            : result[0].config_value;
+          if (!suiteId) suiteId = clean(config.suite_id);
+          if (!suiteSecret) suiteSecret = clean(config.suite_secret);
+          if (!suiteTicket) suiteTicket = clean(config.suite_ticket);
         }
       } catch (e) {
-        log.warn('[Wecom Auth] Read wecom_suite_configs error:', e);
+        log.warn('[Wecom Auth] Read system_config suite config error:', e);
       }
     }
 

@@ -479,13 +479,18 @@ async function handleSuiteTicket(config: WecomSuiteConfig, xml: string) {
   }
 
   // 双向同步：也更新 system_config 表（callback.ts 的 auth-callback 读取该表）
+  // ★ 同时同步 suite_id + suite_secret，避免 system_config 中存在旧/错 secret 导致40085
   try {
+    const syncFields: string[] = ["'$.suite_ticket', ?"];
+    const syncValues: any[] = [ticket];
+    if (config.suiteId) { syncFields.push("'$.suite_id', ?"); syncValues.push(config.suiteId); }
+    if (config.suiteSecret) { syncFields.push("'$.suite_secret', ?"); syncValues.push(config.suiteSecret); }
     await AppDataSource.query(
-      `UPDATE system_config SET config_value = JSON_SET(config_value, '$.suite_ticket', ?) WHERE config_key = 'wecom_suite_config'`,
-      [ticket]
+      `UPDATE system_config SET config_value = JSON_SET(config_value, ${syncFields.join(', ')}) WHERE config_key = 'wecom_suite_config'`,
+      syncValues
     );
   } catch (e: any) {
-    log.warn('[SuiteCallback] Sync suite_ticket to system_config failed (non-fatal):', e.message);
+    log.warn('[SuiteCallback] Sync suite data to system_config failed (non-fatal):', e.message);
   }
 
   // 清除token缓存（含 WecomTokenService 内的 suite/corp 双缓存），下次使用新ticket获取
