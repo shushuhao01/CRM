@@ -560,7 +560,10 @@ async function initWecomSdk() {
       setSdkError('api', 'JS-SDK配置返回异常', '后端未返回有效的JS-SDK签名配置', `响应: ${JSON.stringify(configRes || {}).substring(0, 200)}`)
       return
     }
-    console.log('[Sidebar] JS-SDK签名获取成功, agentId:', configRes.agentId)
+    console.log('[Sidebar] JS-SDK签名获取成功, agentId:', configRes.agentId, 'agentSignature:', !!configRes.agentSignature)
+    if (configRes.warnings?.length) {
+      console.warn('[Sidebar] 后端警告:', configRes.warnings)
+    }
 
     // 注入wx.config
     const wx = (window as any).wx
@@ -581,7 +584,7 @@ async function initWecomSdk() {
 
     wx.ready(() => {
       console.log('[Sidebar] wx.config ready')
-      // 注入agentConfig
+      // getCurExternalContact是敏感接口，必须先调用agentConfig
       if (configRes.agentSignature && configRes.agentId) {
         wx.agentConfig({
           corpid: configRes.corpId,
@@ -600,7 +603,19 @@ async function initWecomSdk() {
           }
         })
       } else {
-        getCurExternalContact(wx)
+        // getCurExternalContact是敏感API，必须agentConfig后才能调用
+        // 缺少agentSignature或agentId时不应直接调用，否则必定失败
+        const missingParts: string[] = []
+        if (!configRes.agentId) missingParts.push('AgentID')
+        if (!configRes.agentSignature) missingParts.push('应用签名(agentSignature)')
+        const warningText = configRes.warnings?.join('; ') || ''
+        console.error('[Sidebar] 缺少agentConfig必要参数:', missingParts.join(', '), '后端警告:', warningText)
+        setSdkError(
+          'sdk-agent',
+          '侧边栏配置不完整',
+          `缺少 ${missingParts.join(' 和 ')}，无法获取聊天对象。请在企微管理后台检查应用配置：1) 确认已填写AgentID；2) 确认应用Secret正确。`,
+          warningText ? `后端诊断: ${warningText}` : ''
+        )
       }
     })
 
@@ -616,13 +631,21 @@ async function initWecomSdk() {
 
 function getCurExternalContact(wx: any) {
   wx.invoke('getCurExternalContact', {}, (res: any) => {
+    console.log('[Sidebar] getCurExternalContact response:', JSON.stringify(res))
     if (res.err_msg === 'getCurExternalContact:ok') {
       externalUserId.value = res.userId
       checkBindingAndLoad()
     } else {
       console.error('[Sidebar] getCurExternalContact fail:', res)
       pageState.value = 'error'
-      errorMsg.value = '获取当前聊天对象失败'
+      const errDetail = res.err_msg || '未知错误'
+      if (errDetail.includes('no permission') || errDetail.includes('permission')) {
+        errorMsg.value = '获取聊天对象失败：应用缺少"客户联系"API权限，请在企微管理后台为应用添加此权限'
+      } else if (errDetail.includes('not in chat') || errDetail.includes('invalid')) {
+        errorMsg.value = '获取聊天对象失败：请确保在与外部联系人的聊天窗口中打开侧边栏'
+      } else {
+        errorMsg.value = `获取当前聊天对象失败(${errDetail})，请确保在外部联系人聊天窗口中打开侧边栏`
+      }
     }
   })
 }

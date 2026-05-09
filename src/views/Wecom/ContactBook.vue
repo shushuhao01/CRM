@@ -463,7 +463,11 @@ const handleSync = async () => {
   syncing.value = true
   try {
     const res: any = await syncWecomContacts(selectedConfigId.value)
-    ElMessage.success(res?.message || '通讯录同步完成，正在刷新数据...')
+    if (res?.warnings?.length) {
+      ElMessage.warning({ message: res.message || '同步完成但有警告', duration: 8000 })
+    } else {
+      ElMessage.success(res?.message || '通讯录同步完成，正在刷新数据...')
+    }
     await fetchDepartments()
   } catch (e: any) {
     ElMessage.error(e?.message || '同步失败，请确认企微授权配置正确')

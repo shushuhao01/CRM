@@ -420,6 +420,26 @@ router.get('/configs/:id/users', authenticateToken, async (req: Request, res: Re
             await bindingRepo2.save(local).catch(() => {});
           }
         }
+
+        // /user/list 仍然缺名称的，尝试 /user/get 逐个补充（最多50个，避免请求时间过长）
+        const stillMissing = localBindings.filter(b => !b.wecomUserName || b.wecomUserName === b.wecomUserId);
+        if (stillMissing.length > 0) {
+          const limit = Math.min(stillMissing.length, 50);
+          log.info(`[Wecom] ${stillMissing.length} users still missing names, trying /user/get for first ${limit}`);
+          for (let i = 0; i < limit; i++) {
+            try {
+              const b = stillMissing[i];
+              const detail = await WecomApiService.getUserDetail(accessToken, b.wecomUserId);
+              if (detail?.name && detail.name !== b.wecomUserId) {
+                b.wecomUserName = detail.name;
+                if (detail.avatar) b.wecomAvatar = detail.avatar;
+                await bindingRepo2.save(b).catch(() => {});
+              }
+              if (i % 20 === 19) await new Promise(r => setTimeout(r, 100));
+            } catch (_e) { /* skip */ }
+          }
+        }
+
         // 返回合并数据
         const users = localBindings.map(b => {
           const apiMatch = apiUsers.find((a: any) => a.userid === b.wecomUserId);
@@ -484,9 +504,22 @@ router.post('/configs/:id/sync-contacts', authenticateToken, requireAdmin, async
 
     const accessToken = await WecomApiService.getAccessTokenByConfigId(configId, 'contact');
 
+    // 名称有效性辅助函数
+    const isNameValid = (name: any, id: number | string): boolean => {
+      if (name === null || name === undefined) return false;
+      const s = String(name).trim();
+      if (s === '') return false;
+      if (s === String(id)) return false;
+      return true;
+    };
+
     // 1. 同步部门
     const departments = await WecomApiService.getDepartmentList(accessToken);
-    log.info('[Wecom] Synced departments:', departments.length);
+    const deptsWithValidName = departments.filter(d => isNameValid(d.name, d.id));
+    log.info(`[Wecom] Synced ${departments.length} departments, ${deptsWithValidName.length} with valid names`);
+    if (departments.length > 0 && deptsWithValidName.length === 0) {
+      log.warn('[Wecom] ⚠ API返回的部门全部缺少名称！这通常是通讯录Secret权限不足导致。示例:', JSON.stringify(departments.slice(0, 2)));
+    }
 
     // 持久化部门到本地
     const deptRepo = AppDataSource.getRepository(WecomDepartmentMapping);
@@ -495,10 +528,7 @@ router.post('/configs/:id/sync-contacts', authenticateToken, requireAdmin, async
       let mapping = await deptRepo.findOne({
         where: { wecomConfigId: configId, wecomDeptId: dept.id, ...(tenantId ? { tenantId } : {}) }
       });
-      // 仅当 API 名称“可信”（非空、非ID同值）才覆盖
-      const apiDeptNameValid = dept?.name !== null && dept?.name !== undefined
-        && String(dept.name).trim() !== ''
-        && String(dept.name).trim() !== String(dept.id);
+      const apiDeptNameValid = isNameValid(dept.name, dept.id);
       if (mapping) {
         if (apiDeptNameValid) mapping.wecomDeptName = String(dept.name).trim();
         else if (mapping.wecomDeptName && String(mapping.wecomDeptName).trim() === String(dept.id)) {
@@ -524,7 +554,36 @@ router.post('/configs/:id/sync-contacts', authenticateToken, requireAdmin, async
 
     // 2. 同步根部门下所有成员
     const users = await WecomApiService.getDepartmentUsers(accessToken, 1, true);
-    log.info('[Wecom] Synced users:', users.length);
+    const usersWithValidName = users.filter((u: any) => isNameValid(u.name, u.userid));
+    log.info(`[Wecom] Synced ${users.length} users, ${usersWithValidName.length} with valid names`);
+    if (users.length > 0 && usersWithValidName.length === 0) {
+      log.warn('[Wecom] ⚠ API返回的成员全部缺少姓名！示例:', JSON.stringify((users[0] ? { userid: users[0].userid?.substring(0, 16), name: users[0].name, department: users[0].department } : {})));
+    }
+
+    // 第三方授权应用 /user/list 常常只返回 userid 不返回 name
+    // 对名称缺失的成员逐个调 /user/get 补充（限制最多 200 个，避免接口过载）
+    let userGetEnriched = 0;
+    const missingNameUsers = users.filter((u: any) => !isNameValid(u.name, u.userid));
+    if (missingNameUsers.length > 0) {
+      const limit = Math.min(missingNameUsers.length, 200);
+      log.info(`[Wecom] ${missingNameUsers.length} 个成员名称缺失，开始通过 /user/get 逐个补充（处理前 ${limit} 个）`);
+      for (let i = 0; i < limit; i++) {
+        try {
+          const u = missingNameUsers[i];
+          const detail = await WecomApiService.getUserDetail(accessToken, u.userid);
+          if (detail && isNameValid(detail.name, u.userid)) {
+            u.name = detail.name;
+            if (detail.avatar) u.avatar = detail.avatar;
+            userGetEnriched++;
+          }
+          // 简单限速 - 避免被企微限流
+          if (i % 20 === 19) await new Promise(r => setTimeout(r, 100));
+        } catch (e: any) {
+          log.warn(`[Wecom] /user/get enrichment error:`, e.message);
+        }
+      }
+      log.info(`[Wecom] /user/get 名称补充完成：${userGetEnriched}/${limit} 成功`);
+    }
 
     // 持久化成员到本地
     const bindingRepo = AppDataSource.getRepository(WecomUserBinding);
@@ -543,9 +602,7 @@ router.post('/configs/:id/sync-contacts', authenticateToken, requireAdmin, async
         where: { wecomConfigId: configId, wecomUserId, ...(tenantId ? { tenantId } : {}) }
       });
 
-      const apiUserNameValid = user?.name !== null && user?.name !== undefined
-        && String(user.name).trim() !== ''
-        && String(user.name).trim() !== String(wecomUserId);
+      const apiUserNameValid = isNameValid(user.name, wecomUserId);
       if (binding) {
         if (apiUserNameValid) binding.wecomUserName = String(user.name).trim();
         else if (binding.wecomUserName && String(binding.wecomUserName).trim() === String(wecomUserId)) {
@@ -582,10 +639,34 @@ router.post('/configs/:id/sync-contacts', authenticateToken, requireAdmin, async
       );
     }
 
+    // 诊断信息：检查名称获取情况
+    const diagWarnings: string[] = [];
+    const finalDeptsWithName = departments.filter(d => isNameValid(d.name, d.id)).length;
+    const finalUsersWithName = users.filter((u: any) => isNameValid(u.name, u.userid)).length;
+    if (finalDeptsWithName === 0 && departments.length > 0) {
+      diagWarnings.push('所有部门名称缺失，请检查通讯录Secret是否有"通讯录读取"权限');
+    }
+    if (finalUsersWithName === 0 && users.length > 0) {
+      diagWarnings.push('所有成员姓名缺失，请检查通讯录Secret是否有"成员敏感信息读取"权限');
+    }
+
+    const message = [
+      `同步完成：${departments.length} 个部门（新增${deptCreated}/更新${deptUpdated}，${finalDeptsWithName}个有名称），`,
+      `${users.length} 个成员（新增${userCreated}/更新${userUpdated}，${finalUsersWithName}个有姓名`,
+      userGetEnriched > 0 ? `，/user/get补充${userGetEnriched}个` : '',
+      `）`,
+      diagWarnings.length > 0 ? `。⚠ ${diagWarnings.join('；')}` : ''
+    ].join('');
+
     res.json({
       success: true,
-      message: `同步完成：${departments.length} 个部门（新增${deptCreated}/更新${deptUpdated}），${users.length} 个成员（新增${userCreated}/更新${userUpdated}）`,
-      data: { departments: departments.length, users: users.length }
+      message,
+      data: {
+        departments: departments.length, users: users.length,
+        deptsWithName: finalDeptsWithName, usersWithName: finalUsersWithName,
+        userGetEnriched,
+        warnings: diagWarnings.length > 0 ? diagWarnings : undefined
+      }
     });
   } catch (error: any) {
     log.error('[Wecom] Sync contacts error:', error.message, error.stack);

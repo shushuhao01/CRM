@@ -774,6 +774,22 @@ router.get('/address-book/member/:wecomUserId/profile', authenticateToken, async
       return res.status(404).json({ success: false, message: '成员不存在' });
     }
 
+    // 1.1 如果本地名称缺失，实时通过 /user/get 补充
+    if (!isValidName(binding.wecomUserName, binding.wecomUserId) && configId) {
+      try {
+        const accessToken = await WecomApiService.getAccessTokenByConfigId(Number(configId), 'contact');
+        const detail = await WecomApiService.getUserDetail(accessToken, wecomUserId);
+        if (detail && isValidName(detail.name, wecomUserId)) {
+          binding.wecomUserName = String(detail.name).trim();
+          if (detail.avatar) binding.wecomAvatar = detail.avatar;
+          await bindingRepo.save(binding).catch(() => {});
+          log.info(`[AddressBook] Enriched member name via /user/get: ${wecomUserId.substring(0, 12)}... → ${binding.wecomUserName}`);
+        }
+      } catch (e: any) {
+        log.warn(`[AddressBook] /user/get enrich failed for ${wecomUserId.substring(0, 12)}...:`, e.message);
+      }
+    }
+
     // 2. 外部联系人统计（从 wecom_customers）
     const { WecomCustomer } = await import('../../entities/WecomCustomer');
     const customerRepo = AppDataSource.getRepository(WecomCustomer);
@@ -838,7 +854,7 @@ router.get('/address-book/member/:wecomUserId/profile', authenticateToken, async
     if (tenantId) chatQb.andWhere('ch.tenant_id = :tenantId', { tenantId });
     const chatMsgCount = await chatQb.getCount();
 
-    // 7. 部门名称解析
+    // 7. 部门名称解析（如果本地名称缺失，尝试从API补充）
     const deptIds = (binding.wecomDepartmentIds || '').split(',').filter(Boolean).map(Number);
     let deptNames: string[] = [];
     if (deptIds.length > 0) {
@@ -847,6 +863,23 @@ router.get('/address-book/member/:wecomUserId/profile', authenticateToken, async
         .where('d.wecom_config_id = :configId', { configId: Number(configId) })
         .andWhere('d.wecom_dept_id IN (:...ids)', { ids: deptIds })
         .getMany();
+
+      // 检查是否所有部门名称都缺失
+      const allNamesInvalid = depts.every(d => !sanitizeDeptName(d.wecomDeptName, d.wecomDeptId));
+      if (allNamesInvalid && depts.length > 0 && configId) {
+        try {
+          const accessToken = await WecomApiService.getAccessTokenByConfigId(Number(configId), 'contact');
+          const apiDepts = await WecomApiService.getDepartmentList(accessToken);
+          for (const d of depts) {
+            const apiMatch = apiDepts.find((a: any) => a.id === d.wecomDeptId);
+            if (apiMatch && isValidName(apiMatch.name, d.wecomDeptId)) {
+              d.wecomDeptName = String(apiMatch.name).trim();
+              await deptRepo.save(d).catch(() => {});
+            }
+          }
+        } catch (_e) { /* skip */ }
+      }
+
       deptNames = depts
         .map(d => sanitizeDeptName(d.wecomDeptName, d.wecomDeptId) || `部门${d.wecomDeptId}`);
     }
