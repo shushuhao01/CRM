@@ -116,7 +116,7 @@
             <div v-if="detailData.authCorpInfo?.corp_square_logo_url" style="text-align: center; margin-bottom: 12px">
               <img :src="detailData.authCorpInfo.corp_square_logo_url" style="max-width: 200px; max-height: 48px; object-fit: contain; border-radius: 8px" />
             </div>
-            <el-descriptions :column="2" border size="small">
+            <el-descriptions :column="2" border size="small" :label-style="{ whiteSpace: 'nowrap', width: '110px' }">
               <el-descriptions-item label="配置名称">{{ detailData.configName }}</el-descriptions-item>
               <el-descriptions-item label="企业ID">{{ detailData.corpId }}</el-descriptions-item>
               <el-descriptions-item label="企业全称">{{ detailData.authCorpInfo?.corp_full_name || '-' }}</el-descriptions-item>
@@ -290,7 +290,7 @@
             <!-- 企业信息 -->
             <template v-if="detailData.authCorpInfo">
               <el-divider content-position="left">授权企业信息</el-divider>
-              <el-descriptions :column="2" border size="small">
+              <el-descriptions :column="2" border size="small" :label-style="{ whiteSpace: 'nowrap', width: '110px' }">
                 <el-descriptions-item label="企业名称">{{ detailData.authCorpInfo.corp_name || '-' }}</el-descriptions-item>
                 <el-descriptions-item label="企业全称">{{ detailData.authCorpInfo.corp_full_name || '-' }}</el-descriptions-item>
                 <el-descriptions-item label="企业类型">{{ corpTypeLabel(detailData.authCorpInfo.corp_type) }}</el-descriptions-item>

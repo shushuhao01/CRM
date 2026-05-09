@@ -379,6 +379,21 @@
                   </el-tag>
                   <span style="margin-left:8px;color:#909399;font-size:12px">{{ formatDate(diagnosticData.recentCallback.time) }}</span>
                 </div>
+                <!-- 实时企微API探测结果 -->
+                <div v-if="diagnosticData.liveProbe" class="diag-row" style="border-top:1px dashed #e4e7ed;margin-top:8px;padding-top:8px">
+                  <span class="diag-label">实时探测:</span>
+                  <el-tag :type="diagnosticData.liveProbe.errcode === 0 ? 'success' : 'danger'" size="small">
+                    errcode={{ diagnosticData.liveProbe.errcode }}
+                  </el-tag>
+                  <span style="margin-left:8px;color:#606266;font-size:12px">
+                    secretLen={{ diagnosticData.liveProbe.secretLength }} | ticketLen={{ diagnosticData.liveProbe.ticketLengthClean }}{{ diagnosticData.liveProbe.ticketWasTrimmed ? '(已自动trim)' : '' }}
+                  </span>
+                </div>
+                <div v-if="diagnosticData.liveProbe?.reason" class="diag-recommendation" :class="{ 'diag-error': diagnosticData.liveProbe.errcode !== 0 }">
+                  <strong>探测结论：</strong>
+                  <pre>{{ diagnosticData.liveProbe.reason }}</pre>
+                  <pre v-if="diagnosticData.liveProbe.errmsg" style="color:#909399;font-size:11px">{{ diagnosticData.liveProbe.errmsg }}</pre>
+                </div>
                 <div v-if="diagnosticData.recommendation" class="diag-recommendation">
                   <strong>诊断建议：</strong>
                   <pre>{{ diagnosticData.recommendation }}</pre>
@@ -977,7 +992,9 @@ const showSuiteSecret = ref(false)
 const showProviderSecret = ref(false)
 
 const callbackUrl = computed(() => {
-  const base = window.location.origin
+  // 优先使用「授权回调域名」字段(对外API域名)，避免使用浏览器当前域(admin.yunkes.com)误导运维
+  const raw = (suiteConfig.value?.redirectDomain || '').trim()
+  const base = raw ? raw.replace(/\/+$/, '') : window.location.origin
   return `${base}/api/v1/wecom/suite/callback`
 })
 
@@ -1496,7 +1513,8 @@ const mpConfig = ref<any>({
 })
 
 const mpCallbackUrl = computed(() => {
-  const base = window.location.origin
+  const raw = (suiteConfig.value?.redirectDomain || '').trim()
+  const base = raw ? raw.replace(/\/+$/, '') : window.location.origin
   return `${base}/api/v1/mp/callback`
 })
 
@@ -1836,5 +1854,6 @@ onMounted(() => {
 .diag-label { color: #606266; min-width: 110px; flex-shrink: 0; }
 .diag-recommendation { margin-top: 8px; padding: 8px 12px; background: #fff7e6; border-left: 3px solid #faad14; border-radius: 4px; font-size: 12px; line-height: 1.7; color: #595959; }
 .diag-recommendation pre { margin: 4px 0 0; white-space: pre-wrap; word-break: break-word; font-family: inherit; }
+.diag-recommendation.diag-error { background: #fef0f0; border-left-color: #f56c6c; color: #c45656; }
 </style>
 

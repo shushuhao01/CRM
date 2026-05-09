@@ -1000,6 +1000,36 @@ router.get('/tenant-auth/:configId/detail', async (req: Request, res: Response) 
           }
         } catch { /* table may not exist */ }
       }
+
+      // 对仍缺少姓名的成员，调用企微 /user/get 实时获取（限流，最多 50 个）
+      const missingUserIds: string[] = [];
+      for (const uid of allUserIds) {
+        const info = memberInfoMap[uid];
+        if (!info || !info.name || info.name === uid) missingUserIds.push(uid);
+      }
+      if (missingUserIds.length > 0) {
+        try {
+          const accessToken = await WecomTokenService.getAccessTokenByConfigId(Number(configId), 'contact');
+          const limit = Math.min(missingUserIds.length, 50);
+          for (let i = 0; i < limit; i++) {
+            const uid = missingUserIds[i];
+            const detail = await WecomApiService.getUserDetail(accessToken, uid);
+            const name = detail?.name || detail?.alias || '';
+            if (name) {
+              const existed = memberInfoMap[uid] || { name: '', deptNames: '', isEnabled: true };
+              memberInfoMap[uid] = {
+                ...existed,
+                name,
+                avatar: detail.avatar || existed.avatar || '',
+                deptNames: existed.deptNames || ''
+              };
+            }
+            if (i % 10 === 9) await new Promise(r => setTimeout(r, 100));
+          }
+        } catch (e: any) {
+          log.warn('[Admin Wecom] tenant-auth detail enrich names failed:', e?.message);
+        }
+      }
     } catch { /* ignore resolution errors */ }
 
     res.json({
@@ -3486,6 +3516,8 @@ import { WecomSuiteCallbackLog } from '../../entities/WecomSuiteCallbackLog';
 import { WecomSuiteAuthLink } from '../../entities/WecomSuiteAuthLink';
 import { WecomNotificationTemplate } from '../../entities/WecomNotificationTemplate';
 import { getSuiteAccessToken, getPreAuthCode, clearSuiteTokenCache } from '../wecom/suite-callback';
+import { WecomTokenService } from '../../services/wecom/WecomTokenService';
+import { WecomApiService } from '../../services/WecomApiService';
 
 /** 确保suite表存在（仅创建缺失表/列，不全量同步避免影响其他表） */
 const ensureSuiteTables = async () => {
@@ -3827,6 +3859,49 @@ router.get('/suite/diagnostic', async (_req: Request, res: Response) => {
       ].join('\n');
     }
 
+    // ★ 深度调试：实时调用企微 API 验证当前 ticket，区分「ticket过期」/「secret错误」/「IP白名单」等
+    let liveProbe: any = null;
+    if (config.suiteTicket && config.suiteSecret) {
+      try {
+        const cleanTicket = String(config.suiteTicket).replace(/[\s\r\n\t]+/g, '').trim();
+        const cleanSecret = String(config.suiteSecret).trim();
+        const cleanSid = String(config.suiteId).trim();
+        const axios = (await import('axios')).default;
+        const probeRes = await axios.post('https://qyapi.weixin.qq.com/cgi-bin/service/get_suite_token', {
+          suite_id: cleanSid, suite_secret: cleanSecret, suite_ticket: cleanTicket
+        }, { timeout: 10000 });
+        const errcode = probeRes.data.errcode;
+        let probeReason = '';
+        if (errcode === 0 || errcode === undefined) {
+          probeReason = '✅ ticket当前有效，可正常获取 suite_access_token';
+        } else if (errcode === 40085) {
+          if (ticketAgeMin <= 10) {
+            probeReason = `❌ ticket刚刚更新仅${ticketAgeMin}分钟，企微仍拒绝 → 强烈怀疑 SuiteSecret 不正确或与 SuiteId 不匹配（请到应用配置Tab重新粘贴SuiteSecret）`;
+          } else {
+            probeReason = `❌ ticket已${ticketAgeMin}分钟未刷新，可能已过期 → 等待下一次回调推送或使用「手动注入Ticket」`;
+          }
+        } else if (errcode === 41021 || errcode === 40004) {
+          probeReason = `❌ SuiteSecret 错误 (errcode=${errcode}) → 请到应用配置Tab重新粘贴 SuiteSecret`;
+        } else if (errcode === 60020) {
+          probeReason = `❌ IP白名单错误 (errcode=60020)，本服务器外网IP不在企微Suite应用的IP白名单中。请将服务器IP（${probeRes.data.errmsg?.match(/from ip:\s*([\d.]+)/)?.[1] || '见errmsg'}）加入企微「服务商应用 → 通用开发参数 → 企业可信IP」白名单`;
+        } else {
+          probeReason = `❌ 错误 ${errcode}: ${probeRes.data.errmsg}`;
+        }
+        liveProbe = {
+          errcode: errcode || 0,
+          errmsg: probeRes.data.errmsg || '',
+          ticketLengthRaw: config.suiteTicket.length,
+          ticketLengthClean: cleanTicket.length,
+          ticketWasTrimmed: cleanTicket.length !== config.suiteTicket.length,
+          secretLength: cleanSecret.length,
+          suiteIdLength: cleanSid.length,
+          reason: probeReason
+        };
+      } catch (e: any) {
+        liveProbe = { errcode: -1, errmsg: e.message, reason: `❌ 调用企微API异常：${e.message}` };
+      }
+    }
+
     res.json({
       success: true,
       data: {
@@ -3845,7 +3920,8 @@ router.get('/suite/diagnostic', async (_req: Request, res: Response) => {
         lastSuiteTicketEvent,
         recentCallback,
         callbackUrlExpected: (config.redirectDomain || '<对外域名>') + '/api/v1/wecom/suite/callback',
-        recommendation
+        recommendation,
+        liveProbe // ← 新增：实时探测结果
       }
     });
   } catch (error: any) {
@@ -3862,10 +3938,12 @@ router.get('/suite/diagnostic', async (_req: Request, res: Response) => {
 router.post('/suite/manual-ticket', async (req: Request, res: Response) => {
   if (!checkPermission(req, res, 'wecom-management:config:edit')) return;
   try {
-    const { suiteTicket } = req.body || {};
-    if (!suiteTicket || typeof suiteTicket !== 'string' || suiteTicket.length < 10) {
+    const { suiteTicket: rawTicket } = req.body || {};
+    if (!rawTicket || typeof rawTicket !== 'string' || rawTicket.length < 10) {
       return res.status(400).json({ success: false, message: 'suiteTicket 必填且长度需大于10个字符' });
     }
+    // 防御性清理：去除粘贴时可能带入的不可见字符/换行
+    const suiteTicket = rawTicket.replace(/[\s\r\n\t]+/g, '').trim();
 
     const repo = AppDataSource.getRepository(WecomSuiteConfig);
     const config = await repo.findOne({ where: {}, order: { id: 'ASC' } });

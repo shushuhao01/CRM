@@ -139,12 +139,17 @@ export async function getSuiteAccessToken(suiteConfig: WecomSuiteConfig): Promis
 
   const ticketPreview = (t: string) => t ? t.substring(0, 12) + '...' : '(empty)';
 
+  // ★ 关键防御：传入的字段都做 trim，避免不可见字符导致 40085
+  const sid = (suiteConfig.suiteId || '').trim();
+  const ssec = (suiteConfig.suiteSecret || '').trim();
+  const stkt = (suiteConfig.suiteTicket || '').replace(/[\s\r\n\t]+/g, '').trim();
+
   // 第一次尝试：用传入的 suiteConfig.suiteTicket
-  log.info(`[SuiteCallback] getSuiteAccessToken: 尝试ticket=${ticketPreview(suiteConfig.suiteTicket)}`);
+  log.info(`[SuiteCallback] getSuiteAccessToken: 尝试ticket length=${stkt.length} preview=${ticketPreview(stkt)} suiteSecretLen=${ssec.length} suiteId=${sid}`);
   const res = await axios.post(`${WECOM_API_BASE}/service/get_suite_token`, {
-    suite_id: suiteConfig.suiteId,
-    suite_secret: suiteConfig.suiteSecret,
-    suite_ticket: suiteConfig.suiteTicket
+    suite_id: sid,
+    suite_secret: ssec,
+    suite_ticket: stkt
   });
 
   if (res.data.errcode === 40085) {
@@ -152,43 +157,47 @@ export async function getSuiteAccessToken(suiteConfig: WecomSuiteConfig): Promis
     suiteTokenCache = null;
     log.warn(`[SuiteCallback] 40085 invalid suite_ticket (${ticketPreview(suiteConfig.suiteTicket)}), 开始多级重试...`);
 
+    const cleanT = (t: string) => (t || '').replace(/[\s\r\n\t]+/g, '').trim();
+
     // 重试1：从 wecom_suite_configs 重读最新 ticket
     const freshConfig = await getSuiteConfigRow();
-    if (freshConfig?.suiteTicket && freshConfig.suiteTicket !== suiteConfig.suiteTicket) {
-      log.info(`[SuiteCallback] 重试1: 从DB发现更新的ticket=${ticketPreview(freshConfig.suiteTicket)}`);
+    const freshTicketClean = cleanT(freshConfig?.suiteTicket || '');
+    if (freshTicketClean && freshTicketClean !== stkt) {
+      log.info(`[SuiteCallback] 重试1: 从DB发现更新的ticket=${ticketPreview(freshTicketClean)}`);
       const retryRes = await axios.post(`${WECOM_API_BASE}/service/get_suite_token`, {
-        suite_id: suiteConfig.suiteId, suite_secret: suiteConfig.suiteSecret, suite_ticket: freshConfig.suiteTicket
+        suite_id: sid, suite_secret: ssec, suite_ticket: freshTicketClean
       });
       if (!retryRes.data.errcode || retryRes.data.errcode === 0) {
-        suiteConfig.suiteTicket = freshConfig.suiteTicket;
+        suiteConfig.suiteTicket = freshTicketClean;
         suiteTokenCache = { token: retryRes.data.suite_access_token, expireTime: Date.now() + (retryRes.data.expires_in - 300) * 1000 };
         return suiteTokenCache.token;
       }
-      log.warn(`[SuiteCallback] 重试1失败: ${retryRes.data.errmsg}`);
+      log.warn(`[SuiteCallback] 重试1失败: ${retryRes.data.errmsg} (errcode=${retryRes.data.errcode})`);
     }
 
     // 重试2：延迟500ms后再读DB（等待并发的 handleSuiteTicket 完成写入）
     await new Promise(r => setTimeout(r, 500));
     const delayedConfig = await getSuiteConfigRow();
-    if (delayedConfig?.suiteTicket && delayedConfig.suiteTicket !== suiteConfig.suiteTicket) {
-      log.info(`[SuiteCallback] 重试2(延迟): 从DB发现更新的ticket=${ticketPreview(delayedConfig.suiteTicket)}`);
+    const delayedTicketClean = cleanT(delayedConfig?.suiteTicket || '');
+    if (delayedTicketClean && delayedTicketClean !== stkt && delayedTicketClean !== freshTicketClean) {
+      log.info(`[SuiteCallback] 重试2(延迟): 从DB发现更新的ticket=${ticketPreview(delayedTicketClean)}`);
       const retryRes = await axios.post(`${WECOM_API_BASE}/service/get_suite_token`, {
-        suite_id: suiteConfig.suiteId, suite_secret: suiteConfig.suiteSecret, suite_ticket: delayedConfig.suiteTicket
+        suite_id: sid, suite_secret: ssec, suite_ticket: delayedTicketClean
       });
       if (!retryRes.data.errcode || retryRes.data.errcode === 0) {
-        suiteConfig.suiteTicket = delayedConfig.suiteTicket;
+        suiteConfig.suiteTicket = delayedTicketClean;
         suiteTokenCache = { token: retryRes.data.suite_access_token, expireTime: Date.now() + (retryRes.data.expires_in - 300) * 1000 };
         return suiteTokenCache.token;
       }
-      log.warn(`[SuiteCallback] 重试2失败: ${retryRes.data.errmsg}`);
+      log.warn(`[SuiteCallback] 重试2失败: ${retryRes.data.errmsg} (errcode=${retryRes.data.errcode})`);
     }
 
     // 重试3：从 system_config 表获取 ticket（callback.ts 可能更新了这里）
-    const sysTicket = await getTicketFromSystemConfig(suiteConfig.suiteId);
-    if (sysTicket && sysTicket !== suiteConfig.suiteTicket) {
+    const sysTicket = cleanT(await getTicketFromSystemConfig(sid) || '');
+    if (sysTicket && sysTicket !== stkt && sysTicket !== freshTicketClean && sysTicket !== delayedTicketClean) {
       log.info(`[SuiteCallback] 重试3: 从system_config发现不同ticket=${ticketPreview(sysTicket)}`);
       const retryRes = await axios.post(`${WECOM_API_BASE}/service/get_suite_token`, {
-        suite_id: suiteConfig.suiteId, suite_secret: suiteConfig.suiteSecret, suite_ticket: sysTicket
+        suite_id: sid, suite_secret: ssec, suite_ticket: sysTicket
       });
       if (!retryRes.data.errcode || retryRes.data.errcode === 0) {
         // 同步回 wecom_suite_configs
@@ -206,7 +215,16 @@ export async function getSuiteAccessToken(suiteConfig: WecomSuiteConfig): Promis
     const ticketAge = suiteConfig.suiteTicketUpdatedAt
       ? `(最近ticket更新: ${new Date(suiteConfig.suiteTicketUpdatedAt).toLocaleString('zh-CN')}, 距今${Math.round((Date.now() - new Date(suiteConfig.suiteTicketUpdatedAt).getTime()) / 60000)}分钟)`
       : '(ticket更新时间未知)';
-    throw new Error(`获取suite_access_token失败: ${res.data.errmsg} (${res.data.errcode}) ${ticketAge}。请确认回调URL正常接收企微推送，或在企微服务商后台手动刷新suite_ticket`);
+    // ★ 当 ticket 是新鲜的(<10分钟) 但企微仍报 40085 → 高度怀疑 Suite Secret 错误或 ticket/secret 不匹配
+    const ticketAgeMin = suiteConfig.suiteTicketUpdatedAt
+      ? Math.round((Date.now() - new Date(suiteConfig.suiteTicketUpdatedAt).getTime()) / 60000)
+      : 999;
+    let extraHint = '';
+    if (ticketAgeMin <= 10) {
+      extraHint = ` ⚠️ ticket刚刚更新(${ticketAgeMin}分钟前)却仍被拒绝，强烈怀疑 SuiteSecret 错误或与 SuiteId 不匹配。请到「应用配置」Tab 检查并重新粘贴 SuiteSecret（SecretLen=${ssec.length}, TicketLen=${stkt.length}），确认无多余空格/换行后保存。`;
+    }
+    log.error(`[SuiteCallback] 40085 终态失败. ticketAgeMin=${ticketAgeMin} ticketLen=${stkt.length} secretLen=${ssec.length} suiteId=${sid}`);
+    throw new Error(`获取suite_access_token失败: ${res.data.errmsg} (${res.data.errcode}) ${ticketAge}。请确认回调URL正常接收企微推送，或在企微服务商后台手动刷新suite_ticket。${extraHint}`);
   }
 
   if (res.data.errcode && res.data.errcode !== 0) {
@@ -358,10 +376,21 @@ router.post('/callback', async (req: Request, res: Response) => {
 
 /** 处理suite_ticket推送 */
 async function handleSuiteTicket(config: WecomSuiteConfig, xml: string) {
-  const ticket = extractXml(xml, 'SuiteTicket');
-  if (!ticket) throw new Error('SuiteTicket为空');
+  const rawTicket = extractXml(xml, 'SuiteTicket');
+  if (!rawTicket) throw new Error('SuiteTicket为空');
+
+  // ★ 防御性处理：去除可能的前后空白/换行，避免企微API返回40085
+  // （某些代理/反向代理或粘贴操作可能引入不可见字符）
+  const ticket = rawTicket.replace(/[\s\r\n\t]+/g, '').trim();
+  if (ticket !== rawTicket) {
+    log.warn(`[SuiteCallback] SuiteTicket 存在不可见字符，已自动清理：原始长度=${rawTicket.length} 清理后长度=${ticket.length}`);
+  }
+  if (ticket.length < 50) {
+    log.error(`[SuiteCallback] SuiteTicket 长度异常(${ticket.length})，可能解密错误。前20字符: ${ticket.substring(0, 20)}`);
+  }
 
   const ticketPreview = ticket.substring(0, 12) + '...';
+  log.info(`[SuiteCallback] handleSuiteTicket: 收到ticket length=${ticket.length} preview=${ticketPreview} suiteSecretLen=${config.suiteSecret?.length || 0}`);
 
   // 使用原子 SQL UPDATE 替代 ORM save()，避免并发请求互相覆盖（3个同时到达时只更新ticket字段）
   const needUpdateStatus = !!(config.suiteId && config.suiteSecret && config.appStatus !== 'online');
