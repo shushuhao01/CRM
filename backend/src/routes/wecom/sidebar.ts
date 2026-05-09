@@ -656,7 +656,17 @@ router.post('/sidebar/js-sdk-config', jsSdkConfigLimiter, validateJsSdkReferer, 
     res.json({ success: true, data: { corpId: config.corpId, agentId: config.agentId, timestamp, nonceStr, corpSignature, agentSignature } });
   } catch (error: any) {
     log.error('[Wecom Sidebar] JS-SDK config error:', error.message, error.stack?.substring(0, 300));
-    res.status(500).json({ success: false, message: `获取JS-SDK配置失败: ${error.message}` });
+    // 识别 40085 invalid suite ticket → 返回结构化 errorCode 让前端展示诊断面板
+    const errMsg = error?.message || '';
+    const isSuiteTicketInvalid = errMsg.includes('40085') || errMsg.includes('invalid suite ticket') || errMsg.includes('invalid suite_ticket');
+    res.status(500).json({
+      success: false,
+      errorCode: isSuiteTicketInvalid ? 'SUITE_TICKET_INVALID' : 'JS_SDK_CONFIG_FAILED',
+      message: `获取JS-SDK配置失败: ${error.message}`,
+      hint: isSuiteTicketInvalid
+        ? '第三方授权应用的suite_ticket已失效。请管理员访问「企微管理 → 服务商配置」点击「诊断」按钮排查回调URL，或在该页面手动注入新的suite_ticket。'
+        : undefined
+    });
   }
 });
 

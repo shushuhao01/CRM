@@ -3,6 +3,18 @@
  */
 import request from '@/utils/request'
 
+// ==================== 第三方应用 Suite Ticket 诊断 ====================
+
+/** 获取 suite_ticket 状态诊断（公共接口，无需登录） */
+export const getSuiteTicketDiagnostic = () => {
+  return request.get('/wecom/suite/diagnostic', { showError: false } as any)
+}
+
+/** 紧急手动注入 suite_ticket（管理员才能调用） */
+export const manualInjectSuiteTicket = (data: { suiteTicket: string; suiteId?: string }) => {
+  return request.post('/wecom/suite/manual-ticket', data)
+}
+
 // ==================== 企微配置 ====================
 
 /** 获取企微配置列表（静默错误，由组件自行处理） */

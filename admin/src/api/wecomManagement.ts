@@ -9,6 +9,8 @@ export const getSuiteConfig = () => request.get('/wecom-management/suite/config'
 export const saveSuiteConfig = (data: any) => request.put('/wecom-management/suite/config', data)
 export const testSuiteConnection = () => request.post('/wecom-management/suite/test-connection')
 export const generateAuthLink = (data: any) => request.post('/wecom-management/suite/auth-link', data)
+export const getSuiteDiagnostic = () => request.get('/wecom-management/suite/diagnostic')
+export const submitManualSuiteTicket = (suiteTicket: string) => request.post('/wecom-management/suite/manual-ticket', { suiteTicket })
 export const getSuiteAuths = (params?: any) => request.get('/wecom-management/suite/auths', { params })
 export const getSuiteAuthDetail = (id: number) => request.get(`/wecom-management/suite/auths/${id}`)
 export const bindSuiteAuthTenant = (id: number, data: { tenantId: string }) => request.post(`/wecom-management/suite/auths/${id}/bind-tenant`, data)

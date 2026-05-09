@@ -33,7 +33,8 @@
           <code style="background:#f0faf4;padding:4px 8px;border-radius:4px;font-size:12px;word-break:break-all;display:block">
             {{ sidebarDetailUrl }}
           </code>
-          <p v-if="corpConfigList.length <= 1" style="margin:4px 0;color:#909399;font-size:12px">将此地址添加到企微后台 → 应用管理 → 自建应用 → 配置到聊天侧边栏。其中 <code>corpId</code> 参数需替换为您的企业ID。</p>
+          <p v-if="isThirdParty" style="margin:4px 0;color:#67C23A;font-size:12px;font-weight:500">✅ 当前为「第三方授权应用」模式：URL中的 <code>$CORPID$</code> 是企微保留占位符，企微客户端打开侧边栏时会自动替换为实际企业ID。请不要手动替换。</p>
+          <p v-else-if="corpConfigList.length <= 1" style="margin:4px 0;color:#909399;font-size:12px">将此地址添加到企微后台 → 应用管理 → 自建应用 → 配置到聊天侧边栏。</p>
           <p v-else style="margin:4px 0;color:#e6a23c;font-size:12px;font-weight:500">⚠️ 注意：请确认选择的主体与企微后台配置的主体一致，不要填错！每个企微主体的侧边栏地址中 corpId 不同，配错将导致JS-SDK验证失败。</p>
         </div>
       </el-alert>
@@ -737,7 +738,7 @@ const loading = ref(false)
 const submitting = ref(false)
 const appList = ref<any[]>([])
 const currentCorpId = ref('')
-const corpConfigList = ref<Array<{ corpId: string; name: string; isEnabled: boolean }>>([])
+const corpConfigList = ref<Array<{ corpId: string; name: string; isEnabled: boolean; authType?: string; authMode?: string; suiteId?: string; permanentCode?: string }>>([])
 const dialogVisible = ref(false)
 const isEdit = ref(false)
 const currentId = ref<number | null>(null)
@@ -783,7 +784,7 @@ const handleSwitchPreviewApp = (appId: string) => {
 }
 
 const handleCopyBuiltinUrl = async (row: any) => {
-  const corpIdParam = currentCorpId.value || 'YOUR_CORP_ID'
+  const corpIdParam = isThirdParty.value ? '$CORPID$' : (currentCorpId.value || 'YOUR_CORP_ID')
   const sep = row.path.includes('?') ? '&' : '?'
   const fullUrl = `${window.location.origin}${row.path}${sep}corpId=${corpIdParam}`
   try {
@@ -1205,9 +1206,25 @@ const previewApp = ref<any>(null)
 
 const iconOptions = ['👤', '📚', '📦', '💰', '🎫', '🔍', '📊', '💬', '🛒', '📋', '🎯', '⚙️']
 
+// 兼容多字段判定第三方授权应用：authType / authMode / suiteId / permanentCode 任一命中即视为第三方
+// （历史数据库中部分老配置可能 authType 字段未正确写入，但 suiteId/permanentCode 已有值）
+const isThirdParty = computed(() => {
+  const c = corpConfigList.value.find(x => x.corpId === currentCorpId.value)
+  if (!c) return false
+  if (c.authType === 'third_party') return true
+  if ((c as any).authMode === 'third_party') return true
+  if (c.suiteId && String(c.suiteId).startsWith('ww')) return true
+  if (c.permanentCode && c.permanentCode !== '' && c.permanentCode !== '******') return true
+  // 服务端脱敏后 permanentCode 显示为 '******'，也视为已授权（即为第三方）
+  if (c.permanentCode === '******') return true
+  return false
+})
+
 const sidebarDetailUrl = computed(() => {
   const origin = window.location.origin
-  const corpIdParam = currentCorpId.value || 'YOUR_CORP_ID'
+  // 第三方授权应用：使用 $CORPID$ 占位符，企微会在客户端打开侧边栏时自动替换为实际企业ID
+  // 自建应用：使用实际 corpId（只服务于当前主体）
+  const corpIdParam = isThirdParty.value ? '$CORPID$' : (currentCorpId.value || 'YOUR_CORP_ID')
   return `${origin}/wecom-sidebar?corpId=${corpIdParam}`
 })
 
@@ -1347,7 +1364,15 @@ onMounted(async () => {
   try {
     const res: any = await getWecomConfigs()
     const configs = Array.isArray(res) ? res : (res?.data || res?.list || [])
-    corpConfigList.value = configs.filter((c: any) => c.corpId).map((c: any) => ({ corpId: c.corpId, name: c.name || c.corpName || '未命名主体', isEnabled: !!c.isEnabled }))
+    corpConfigList.value = configs.filter((c: any) => c.corpId).map((c: any) => ({
+      corpId: c.corpId,
+      name: c.name || c.corpName || '未命名主体',
+      isEnabled: !!c.isEnabled,
+      authType: c.authType || 'self_built',
+      authMode: c.authMode,
+      suiteId: c.suiteId,
+      permanentCode: c.permanentCode,
+    }))
     const activeConfig = configs.find((c: any) => c.isEnabled) || configs[0]
     if (activeConfig?.corpId) currentCorpId.value = activeConfig.corpId
   } catch { /* 静默处理 */ }

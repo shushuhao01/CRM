@@ -11,7 +11,41 @@
       <el-result icon="warning" :title="sdkErrorTitle" :sub-title="sdkErrorDetail">
         <template #extra>
           <el-button type="primary" @click="retrySdkInit" :loading="sdkRetrying" style="margin-bottom:12px">重新加载</el-button>
-          <p style="color:#909399;font-size:12px">如果您是管理员，请在企微后台配置侧边栏应用地址指向此页面</p>
+
+          <!-- 40085 suite_ticket 专用诊断面板 -->
+          <div v-if="sdkErrorCode === 'suite-ticket'" class="suite-ticket-panel">
+            <el-divider><span style="color:#E6A23C">⚠️ Suite Ticket 失效</span></el-divider>
+            <p style="font-size:12px;color:#606266;line-height:1.6;text-align:left">
+              您的企微是<strong>第三方授权应用</strong>，企微每 10 分钟会向后端推送 suite_ticket，但当前 ticket 已失效——通常是回调URL未正常接收推送。
+            </p>
+            <el-button size="small" type="primary" plain @click="loadSuiteDiagnostic" :loading="diagnosticLoading" style="margin:8px 0">
+              查看诊断详情
+            </el-button>
+            <div v-if="suiteDiagnostic" class="suite-diagnostic-result">
+              <div class="diag-row"><span>Suite ID:</span><code>{{ suiteDiagnostic.suiteId || '未配置' }}</code></div>
+              <div class="diag-row"><span>Ticket状态:</span>
+                <el-tag :type="suiteDiagnostic.ticketStale ? 'danger' : 'success'" size="small">
+                  {{ suiteDiagnostic.ticketStale ? '已过期' : '有效' }}
+                </el-tag>
+              </div>
+              <div class="diag-row"><span>距上次推送:</span><span>{{ suiteDiagnostic.ticketAgeMinutes >= 0 ? suiteDiagnostic.ticketAgeMinutes + ' 分钟' : '从未' }}</span></div>
+              <div class="diag-row"><span>回调健康度:</span>
+                <el-tag :type="suiteDiagnostic.callbackHealth === 'healthy' ? 'success' : 'danger'" size="small">
+                  {{ diagHealthLabel[suiteDiagnostic.callbackHealth] || suiteDiagnostic.callbackHealth }}
+                </el-tag>
+              </div>
+              <div class="diag-row"><span>预期回调URL:</span><code style="font-size:11px;word-break:break-all">{{ suiteDiagnostic.callbackUrlExpected }}</code></div>
+              <div v-if="suiteDiagnostic.recommendation" class="diag-recommendation">
+                <strong>建议：</strong>
+                <pre>{{ suiteDiagnostic.recommendation }}</pre>
+              </div>
+            </div>
+            <p style="font-size:11px;color:#909399;margin-top:10px;line-height:1.5;text-align:left">
+              <strong>紧急救命：</strong>管理员可登录 CRM 后台 → 「企微管理 → 服务商配置」，从企微服务商后台「应用 → 数据回调 → 调用日志」最近一次成功推送中复制 SuiteTicket，调用 <code>POST /api/wecom/suite/manual-ticket</code> 接口手动注入。
+            </p>
+          </div>
+
+          <p v-else style="color:#909399;font-size:12px">如果您是管理员，请在企微后台配置侧边栏应用地址指向此页面</p>
           <p v-if="sdkDebugInfo" style="color:#C0C4CC;font-size:11px;margin-top:8px;word-break:break-all">{{ sdkDebugInfo }}</p>
           <!-- 开发模式或环境检测失败时允许手动调试 -->
           <div v-if="isDev || sdkErrorCode === 'env'" style="margin-top:16px">
@@ -360,14 +394,30 @@ defineOptions({ name: 'WecomSidebarDetail' })
 import { ref, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Loading, SwitchButton, User, EditPen, InfoFilled, DataAnalysis, List, TopRight, Refresh } from '@element-plus/icons-vue'
-import { getSidebarJsSdkConfig, sidebarBindAccount, sidebarVerifyBinding, getSidebarCustomerDetail, refreshSidebarToken } from '@/api/wecom'
+import { getSidebarJsSdkConfig, sidebarBindAccount, sidebarVerifyBinding, getSidebarCustomerDetail, refreshSidebarToken, getSuiteTicketDiagnostic } from '@/api/wecom'
 import { displaySensitiveInfo as displaySensitiveInfoNew } from '@/utils/sensitiveInfo'
 import { SensitiveInfoType } from '@/services/permission'
 
 const isDev = import.meta.env.DEV
 const pageState = ref<'loading' | 'no-sdk' | 'login' | 'detail' | 'error'>('loading')
 const errorMsg = ref('')
-const sdkErrorCode = ref('') // env | no-corpid | sdk-load | sdk-config | sdk-agent | api
+const sdkErrorCode = ref('') // env | no-corpid | sdk-load | sdk-config | sdk-agent | api | suite-ticket
+
+// 40085 专用诊断状态
+const suiteDiagnostic = ref<any>(null)
+const diagnosticLoading = ref(false)
+async function loadSuiteDiagnostic() {
+  diagnosticLoading.value = true
+  try {
+    const res: any = await getSuiteTicketDiagnostic()
+    suiteDiagnostic.value = res?.data || res
+  } catch (e: any) {
+    suiteDiagnostic.value = { error: e?.message || '诊断接口调用失败' }
+  } finally {
+    diagnosticLoading.value = false
+  }
+}
+const diagHealthLabel: Record<string, string> = { healthy: '正常', stale: '已停止推送', never: '从未收到' }
 const sdkErrorTitle = ref('非企微环境')
 const sdkErrorDetail = ref('请在企业微信聊天侧边栏中打开此页面')
 const sdkDebugInfo = ref('')
@@ -494,6 +544,15 @@ async function initWecomSdk() {
     } catch (e: any) {
       console.error('[Sidebar] JS-SDK签名获取失败:', e)
       const backendMsg = e?.response?.data?.message || e?.data?.message || e?.message || '未知错误'
+      const backendErrCode = e?.response?.data?.errorCode || e?.data?.errorCode
+      const backendHint = e?.response?.data?.hint || e?.data?.hint
+      // 识别后端返回的 40085 信号，跳转专用诊断面板
+      if (backendErrCode === 'SUITE_TICKET_INVALID' || /40085|invalid suite[_ ]ticket/i.test(backendMsg)) {
+        setSdkError('suite-ticket', '侧边栏初始化失败', backendHint || '第三方授权应用的 suite_ticket 已过期', `错误: ${backendMsg}`)
+        // 自动拉诊断信息
+        loadSuiteDiagnostic()
+        return
+      }
       setSdkError('api', 'JS-SDK签名获取失败', `请检查企微配置是否正确（CorpID: ${corpId.value}）`, `错误: ${backendMsg}`)
       return
     }

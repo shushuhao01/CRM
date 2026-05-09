@@ -3731,10 +3731,187 @@ router.post('/suite/clear-cache', async (req: Request, res: Response) => {
   try {
     clearSuiteTokenCache();
     log.info('[Admin Suite] Token cache cleared manually');
-    res.json({ success: true, message: 'Token缓存已清除，下次操作将使用最新的suite_ticket重新获取' });
+    res.json({ success: true, message: 'Token缓存已清除（含suite/corp双缓存），下次操作将使用最新的suite_ticket重新获取' });
   } catch (error: any) {
     log.error('[Admin Suite] Clear cache error:', error);
     res.json({ success: true, message: '缓存清除操作完成' });
+  }
+});
+
+/**
+ * Suite Ticket 诊断接口（管理后台专用）
+ * 返回当前 suite_ticket 健康状态、最近回调推送、推荐排查方向
+ */
+router.get('/suite/diagnostic', async (_req: Request, res: Response) => {
+  try {
+    const repo = AppDataSource.getRepository(WecomSuiteConfig);
+    const config = await repo.findOne({ where: {}, order: { id: 'ASC' } });
+    if (!config) {
+      return res.json({
+        success: true,
+        data: {
+          configured: false,
+          reason: '系统中未找到 wecom_suite_configs 配置记录，请先在「应用配置」Tab 中保存 SuiteId/SuiteSecret/Token/EncodingAESKey'
+        }
+      });
+    }
+
+    const now = Date.now();
+    const ticketUpdatedAtMs = config.suiteTicketUpdatedAt ? new Date(config.suiteTicketUpdatedAt).getTime() : 0;
+    const ticketAgeMin = ticketUpdatedAtMs ? Math.round((now - ticketUpdatedAtMs) / 60000) : -1;
+    const ticketStale = !ticketUpdatedAtMs || (now - ticketUpdatedAtMs) > 30 * 60 * 1000; // 30分钟未更新视为过期
+
+    let recentCallback: any = null;
+    let suiteTicketEventCount = 0;
+    let lastSuiteTicketEvent: any = null;
+    try {
+      const logRows = await AppDataSource.query(
+        `SELECT info_type, status, error_message, detail, created_at FROM wecom_suite_callback_logs WHERE suite_id = ? ORDER BY id DESC LIMIT 1`,
+        [config.suiteId]
+      );
+      if (logRows?.[0]) {
+        recentCallback = {
+          infoType: logRows[0].info_type,
+          status: logRows[0].status,
+          errorMessage: logRows[0].error_message,
+          detail: logRows[0].detail,
+          time: logRows[0].created_at
+        };
+      }
+      const cnt = await AppDataSource.query(
+        `SELECT COUNT(*) as c FROM wecom_suite_callback_logs WHERE suite_id = ? AND info_type = 'suite_ticket' AND created_at >= DATE_SUB(NOW(), INTERVAL 1 HOUR)`,
+        [config.suiteId]
+      );
+      suiteTicketEventCount = parseInt(cnt?.[0]?.c || '0', 10);
+
+      const lastEvtRows = await AppDataSource.query(
+        `SELECT created_at, status FROM wecom_suite_callback_logs WHERE suite_id = ? AND info_type = 'suite_ticket' ORDER BY id DESC LIMIT 1`,
+        [config.suiteId]
+      );
+      if (lastEvtRows?.[0]) {
+        lastSuiteTicketEvent = {
+          time: lastEvtRows[0].created_at,
+          status: lastEvtRows[0].status
+        };
+      }
+    } catch (e: any) {
+      log.warn('[Admin Suite] diagnostic read logs failed:', e.message);
+    }
+
+    let callbackHealth: 'healthy' | 'stale' | 'never' = 'never';
+    let recommendation = '';
+    if (suiteTicketEventCount > 0) {
+      callbackHealth = 'healthy';
+      recommendation = `回调URL最近1小时内收到 ${suiteTicketEventCount} 次推送，工作正常。`;
+    } else if (ticketUpdatedAtMs && ticketAgeMin <= 30) {
+      callbackHealth = 'healthy';
+      recommendation = `最近 ${ticketAgeMin} 分钟内有过 suite_ticket 推送（虽然过去1小时内事件日志为0，但ticket时间是新鲜的）。`;
+    } else if (ticketUpdatedAtMs) {
+      callbackHealth = 'stale';
+      recommendation = [
+        `回调URL已 ${ticketAgeMin} 分钟未收到 suite_ticket 推送（企微每10分钟推送一次，30分钟过期）。`,
+        '排查方向：',
+        '1. 企微服务商后台「应用 → 数据回调」中事件接收URL是否正确（应为：' + (process.env.SUITE_CALLBACK_URL_HINT || (config.redirectDomain || '<对外域名>') + '/api/v1/wecom/suite/callback') + '）',
+        '2. 服务器是否对企微IP段开放了入站访问（公网防火墙/安全组）',
+        '3. EncodingAESKey 与 Token 是否与企微后台一致',
+        '4. 紧急情况下使用下方「手动注入 Ticket」临时救急'
+      ].join('\n');
+    } else {
+      callbackHealth = 'never';
+      recommendation = [
+        '从未收到过 suite_ticket 推送！',
+        '必须在企微服务商后台「应用 → 数据回调」中正确配置事件接收URL：',
+        (config.redirectDomain || '<你的对外域名>') + '/api/v1/wecom/suite/callback',
+        '配置后等待 ~10 分钟，企微会主动推送 suite_ticket。',
+        '如仍然没有，可使用下方「手动注入 Ticket」临时救急。'
+      ].join('\n');
+    }
+
+    res.json({
+      success: true,
+      data: {
+        configured: true,
+        suiteId: config.suiteId,
+        suiteSecretConfigured: !!config.suiteSecret,
+        callbackTokenConfigured: !!config.callbackToken,
+        callbackEncodingAesKeyConfigured: !!config.callbackEncodingAesKey,
+        ticketPresent: !!config.suiteTicket,
+        ticketPreview: config.suiteTicket ? (config.suiteTicket.substring(0, 8) + '...' + config.suiteTicket.substring(config.suiteTicket.length - 4)) : '',
+        ticketUpdatedAt: config.suiteTicketUpdatedAt,
+        ticketAgeMinutes: ticketAgeMin,
+        ticketStale,
+        callbackHealth,
+        suiteTicketEventCountLastHour: suiteTicketEventCount,
+        lastSuiteTicketEvent,
+        recentCallback,
+        callbackUrlExpected: (config.redirectDomain || '<对外域名>') + '/api/v1/wecom/suite/callback',
+        recommendation
+      }
+    });
+  } catch (error: any) {
+    log.error('[Admin Suite] diagnostic error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+/**
+ * 手动注入 suite_ticket（紧急救急）
+ * 管理员从企微服务商后台「应用 → 数据回调 → 调用日志」复制最新的 suite_ticket，
+ * 在回调URL故障期间临时使用，让 CRM 端连接恢复
+ */
+router.post('/suite/manual-ticket', async (req: Request, res: Response) => {
+  if (!checkPermission(req, res, 'wecom-management:config:edit')) return;
+  try {
+    const { suiteTicket } = req.body || {};
+    if (!suiteTicket || typeof suiteTicket !== 'string' || suiteTicket.length < 10) {
+      return res.status(400).json({ success: false, message: 'suiteTicket 必填且长度需大于10个字符' });
+    }
+
+    const repo = AppDataSource.getRepository(WecomSuiteConfig);
+    const config = await repo.findOne({ where: {}, order: { id: 'ASC' } });
+    if (!config) {
+      return res.status(404).json({ success: false, message: '未找到 wecom_suite_configs 记录，请先保存应用配置' });
+    }
+    if (!config.suiteId || !config.suiteSecret) {
+      return res.status(400).json({ success: false, message: '请先在「应用配置」Tab 中保存 SuiteId 和 SuiteSecret' });
+    }
+
+    // 调用企微 API 验证此 ticket 有效
+    const axios = (await import('axios')).default;
+    const verifyRes = await axios.post('https://qyapi.weixin.qq.com/cgi-bin/service/get_suite_token', {
+      suite_id: config.suiteId,
+      suite_secret: config.suiteSecret,
+      suite_ticket: suiteTicket
+    });
+    if (verifyRes.data.errcode && verifyRes.data.errcode !== 0) {
+      return res.status(400).json({
+        success: false,
+        message: `Ticket 验证失败: ${verifyRes.data.errmsg} (${verifyRes.data.errcode})。请确认从企微服务商后台「应用 → 数据回调 → 调用日志」复制的是最新的 suite_ticket（注意 ticket 10 分钟一次推送，30 分钟过期）`
+      });
+    }
+
+    // 验证通过 → 写入DB + 清除缓存
+    await AppDataSource.query(
+      `UPDATE wecom_suite_configs SET suite_ticket = ?, suite_ticket_updated_at = NOW(), updated_at = NOW(), app_status = 'online' WHERE id = ?`,
+      [suiteTicket, config.id]
+    );
+    try {
+      await AppDataSource.query(
+        `UPDATE system_config SET config_value = JSON_SET(config_value, '$.suite_ticket', ?) WHERE config_key = 'wecom_suite_config'`,
+        [suiteTicket]
+      );
+    } catch { /* ignore */ }
+
+    clearSuiteTokenCache();
+
+    log.info(`[Admin Suite] suite_ticket 手动注入成功，ticket=${suiteTicket.substring(0, 12)}...`);
+    res.json({
+      success: true,
+      message: 'Ticket 注入成功并验证通过，全部Token缓存已清除。请在 30 分钟内修复回调URL以避免再次过期'
+    });
+  } catch (error: any) {
+    log.error('[Admin Suite] manual-ticket error:', error);
+    res.status(500).json({ success: false, message: error.message || '手动注入失败' });
   }
 });
 

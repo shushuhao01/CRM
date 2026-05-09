@@ -327,8 +327,87 @@
               <el-button v-permission="'wecom-management:suite:edit'" type="primary" @click="handleSaveConfig" :loading="saving">保存回调配置</el-button>
             </el-form-item>
 
+            <!-- ★ Suite Ticket 健康诊断 + 手动注入（用于回调URL故障期间的紧急保活） -->
+            <el-divider content-position="left">Suite Ticket 诊断 / 紧急救急</el-divider>
+            <el-alert type="warning" :closable="false" style="margin-bottom: 12px">
+              <template #title><strong>⚠️ 当 CRM 端报错「invalid suite ticket」(40085) 时</strong></template>
+              <div style="font-size: 12px; line-height: 1.7; margin-top: 4px">
+                <p>1. 先点击「Ticket诊断」查看回调推送是否正常、ticket 是否过期、推荐排查方向；</p>
+                <p>2. 若回调URL不可达，可在企微服务商后台「应用 → 数据回调 → 调用日志」复制最新 SuiteTicket，使用「手动注入」临时救急；</p>
+                <p>3. 注入后会自动清除 suite/corp 双 token 缓存，CRM 端无需重启即可恢复连接。</p>
+              </div>
+            </el-alert>
+            <el-form-item>
+              <div style="display: flex; gap: 8px; flex-wrap: wrap">
+                <el-button :loading="diagnosticLoading" @click="loadDiagnostic">🔍 Ticket诊断</el-button>
+                <el-button type="warning" plain @click="manualTicketDialogVisible = true">🚑 手动注入Ticket</el-button>
+                <el-button type="info" plain @click="handleClearSuiteCache">🔄 清除Token缓存</el-button>
+              </div>
+            </el-form-item>
+            <el-form-item v-if="diagnosticData">
+              <div class="diagnostic-card">
+                <div class="diag-row">
+                  <span class="diag-label">Suite ID:</span>
+                  <code>{{ diagnosticData.suiteId || '未配置' }}</code>
+                </div>
+                <div class="diag-row">
+                  <span class="diag-label">Ticket状态:</span>
+                  <el-tag :type="diagnosticData.ticketStale ? 'danger' : 'success'" size="small">
+                    {{ diagnosticData.ticketStale ? '已过期' : '有效' }}
+                  </el-tag>
+                  <span v-if="diagnosticData.ticketPreview" style="margin-left:8px;color:#909399;font-size:12px">{{ diagnosticData.ticketPreview }}</span>
+                </div>
+                <div class="diag-row">
+                  <span class="diag-label">距上次推送:</span>
+                  <span>{{ diagnosticData.ticketAgeMinutes >= 0 ? diagnosticData.ticketAgeMinutes + ' 分钟' : '从未' }}</span>
+                </div>
+                <div class="diag-row">
+                  <span class="diag-label">回调健康度:</span>
+                  <el-tag :type="diagnosticData.callbackHealth === 'healthy' ? 'success' : 'danger'" size="small">
+                    {{ healthLabel(diagnosticData.callbackHealth) }}
+                  </el-tag>
+                  <span style="margin-left:8px;color:#909399;font-size:12px">最近1小时推送 {{ diagnosticData.suiteTicketEventCountLastHour }} 次</span>
+                </div>
+                <div class="diag-row">
+                  <span class="diag-label">期望回调URL:</span>
+                  <code style="font-size:11px;word-break:break-all">{{ diagnosticData.callbackUrlExpected }}</code>
+                </div>
+                <div v-if="diagnosticData.recentCallback" class="diag-row">
+                  <span class="diag-label">最近一次回调:</span>
+                  <el-tag :type="diagnosticData.recentCallback.status === 'success' ? 'success' : 'danger'" size="small">
+                    {{ diagnosticData.recentCallback.infoType }} - {{ diagnosticData.recentCallback.status }}
+                  </el-tag>
+                  <span style="margin-left:8px;color:#909399;font-size:12px">{{ formatDate(diagnosticData.recentCallback.time) }}</span>
+                </div>
+                <div v-if="diagnosticData.recommendation" class="diag-recommendation">
+                  <strong>诊断建议：</strong>
+                  <pre>{{ diagnosticData.recommendation }}</pre>
+                </div>
+              </div>
+            </el-form-item>
+
             <el-divider content-position="left">回调事件接收日志</el-divider>
           </el-form>
+
+          <!-- 手动注入 Ticket 弹窗 -->
+          <el-dialog v-model="manualTicketDialogVisible" title="🚑 手动注入 Suite Ticket" width="560px">
+            <el-alert type="info" :closable="false" style="margin-bottom: 12px">
+              <div style="font-size: 12px; line-height: 1.7">
+                <p><strong>使用场景：</strong>回调URL暂时不可达，但企微服务商后台仍能看到 ticket 推送日志。</p>
+                <p><strong>获取方式：</strong>登录企微服务商后台 → 应用管理 → 找到我们的应用 → 数据回调 → 调用日志，复制最新一条 suite_ticket 的 Ticket 字段。</p>
+                <p style="color:#e6a23c"><strong>注意：</strong>ticket 30 分钟过期，注入后请尽快修复回调URL，否则下次仍会失效。</p>
+              </div>
+            </el-alert>
+            <el-form label-width="100px">
+              <el-form-item label="Suite Ticket" required>
+                <el-input v-model="manualTicketInput" type="textarea" :rows="3" placeholder="粘贴从企微后台复制的 suite_ticket（一长串字符）" />
+              </el-form-item>
+            </el-form>
+            <template #footer>
+              <el-button @click="manualTicketDialogVisible = false">取消</el-button>
+              <el-button type="primary" :loading="manualTicketSubmitting" @click="handleManualTicketSubmit">验证并注入</el-button>
+            </template>
+          </el-dialog>
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px">
             <div style="display: flex; align-items: center; gap: 8px">
               <span style="font-size: 13px; color: #606266">手动清理</span>
@@ -822,8 +901,62 @@ import {
   getNotificationTemplates, createNotificationTemplate, updateNotificationTemplate,
   deleteNotificationTemplate, toggleNotificationTemplate,
   getMpConfig, saveMpConfig,
-  getBindableCustomers
+  getBindableCustomers,
+  getSuiteDiagnostic, submitManualSuiteTicket
 } from '@/api/wecomManagement'
+
+// Suite Ticket 诊断 / 紧急救急
+const diagnosticData = ref<any>(null)
+const diagnosticLoading = ref(false)
+const manualTicketDialogVisible = ref(false)
+const manualTicketInput = ref('')
+const manualTicketSubmitting = ref(false)
+
+const healthLabel = (h: string): string => {
+  const map: Record<string, string> = { healthy: '正常', stale: '已停止推送', never: '从未收到' }
+  return map[h] || h
+}
+
+const loadDiagnostic = async () => {
+  diagnosticLoading.value = true
+  try {
+    const res: any = await getSuiteDiagnostic()
+    diagnosticData.value = res?.data || res
+    if (diagnosticData.value?.callbackHealth === 'healthy') {
+      ElMessage.success('诊断完成：回调健康')
+    } else if (diagnosticData.value?.callbackHealth === 'stale') {
+      ElMessage.warning('诊断完成：回调已停止推送，请按建议排查')
+    } else if (diagnosticData.value?.callbackHealth === 'never') {
+      ElMessage.error('诊断完成：从未收到回调推送，请检查回调URL配置')
+    }
+  } catch (e: any) {
+    ElMessage.error(e?.message || '诊断接口调用失败')
+  } finally {
+    diagnosticLoading.value = false
+  }
+}
+
+const handleManualTicketSubmit = async () => {
+  const ticket = (manualTicketInput.value || '').trim()
+  if (!ticket || ticket.length < 10) {
+    ElMessage.warning('请粘贴有效的 suite_ticket（长度需大于10个字符）')
+    return
+  }
+  manualTicketSubmitting.value = true
+  try {
+    const res: any = await submitManualSuiteTicket(ticket)
+    ElMessage.success(res?.message || 'Ticket 注入成功')
+    manualTicketDialogVisible.value = false
+    manualTicketInput.value = ''
+    // 自动刷新诊断和配置
+    fetchConfig()
+    loadDiagnostic()
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.message || e?.message || '注入失败')
+  } finally {
+    manualTicketSubmitting.value = false
+  }
+}
 
 const activeTab = ref('config')
 const saving = ref(false)
@@ -1690,5 +1823,18 @@ onMounted(() => {
 .card-header { display: flex; justify-content: space-between; align-items: center; font-size: 16px; font-weight: 600; }
 .tab-toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
 .auth-stats { display: flex; gap: 8px; }
+
+/* Suite Ticket 诊断卡片 */
+.diagnostic-card {
+  width: 100%;
+  background: #f5f7fa;
+  border: 1px solid #e4e7ed;
+  border-radius: 6px;
+  padding: 12px 16px;
+}
+.diag-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 13px; }
+.diag-label { color: #606266; min-width: 110px; flex-shrink: 0; }
+.diag-recommendation { margin-top: 8px; padding: 8px 12px; background: #fff7e6; border-left: 3px solid #faad14; border-radius: 4px; font-size: 12px; line-height: 1.7; color: #595959; }
+.diag-recommendation pre { margin: 4px 0 0; white-space: pre-wrap; word-break: break-word; font-family: inherit; }
 </style>
 

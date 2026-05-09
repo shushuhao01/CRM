@@ -334,6 +334,27 @@ router.post('/address-book/sync-members', authenticateToken, requireAdmin, async
 
     log.info(`[AddressBook] Synced ${users.length} members from WeCom API`);
 
+    // 第三方授权应用 /user/list 常常只返回 userid，name 为空
+    // 对名称缺失的成员逐个调 /user/get 补充（限制最多 200 个，避免接口过载）
+    const missingNameUsers = users.filter((u: any) => !isValidName(u.name, u.userid));
+    if (missingNameUsers.length > 0 && config.authType === 'third_party') {
+      const limit = Math.min(missingNameUsers.length, 200);
+      log.info(`[AddressBook] 第三方应用：${missingNameUsers.length} 个成员名称缺失，开始通过 /user/get 逐个补充（处理前 ${limit} 个）`);
+      let enriched = 0;
+      for (let i = 0; i < limit; i++) {
+        const u = missingNameUsers[i];
+        const detail = await WecomApiService.getUserDetail(accessToken, u.userid);
+        if (detail && isValidName(detail.name, u.userid)) {
+          u.name = detail.name;
+          if (detail.avatar) u.avatar = detail.avatar;
+          enriched++;
+        }
+        // 简单限速 - 避免被企微限流
+        if (i % 20 === 19) await new Promise(r => setTimeout(r, 100));
+      }
+      log.info(`[AddressBook] /user/get 名称补充完成：${enriched}/${limit} 成功`);
+    }
+
     const bindingRepo = AppDataSource.getRepository(WecomUserBinding);
     let createdCount = 0;
     let updatedCount = 0;
@@ -618,7 +639,37 @@ router.get('/address-book/bindings', authenticateToken, async (req: Request, res
     // 分页
     const p = Number(page);
     const ps = Number(pageSize);
-    const list = allBindings.slice((p - 1) * ps, p * ps);
+    const pageBindings = allBindings.slice((p - 1) * ps, p * ps);
+
+    // 收集所有用到的部门ID，一次性查出名称
+    const allDeptIds = new Set<number>();
+    for (const b of pageBindings) {
+      (b.wecomDepartmentIds || '').split(',').filter(Boolean).forEach(s => allDeptIds.add(Number(s)));
+    }
+    const deptNameMap = new Map<number, string>();
+    if (allDeptIds.size > 0 && configId) {
+      const deptRepo = AppDataSource.getRepository(WecomDepartmentMapping);
+      const depts = await deptRepo.createQueryBuilder('d')
+        .where('d.wecom_config_id = :configId', { configId: Number(configId) })
+        .andWhere('d.tenant_id = :tenantId', { tenantId })
+        .andWhere('d.wecom_dept_id IN (:...ids)', { ids: Array.from(allDeptIds) })
+        .getMany();
+      for (const d of depts) {
+        deptNameMap.set(d.wecomDeptId, sanitizeDeptName(d.wecomDeptName, d.wecomDeptId) || `部门${d.wecomDeptId}`);
+      }
+    }
+
+    // sanitize + 装填 department 显示字段
+    const list = pageBindings.map(b => {
+      const cleanName = isValidName(b.wecomUserName, b.wecomUserId) ? String(b.wecomUserName).trim() : '';
+      const deptIds = (b.wecomDepartmentIds || '').split(',').filter(Boolean).map(Number);
+      const deptNames = deptIds.map(id => deptNameMap.get(id) || `部门${id}`).filter(Boolean);
+      return {
+        ...b,
+        wecomUserName: cleanName,
+        department: deptNames.join(' / ') || ''
+      };
+    });
 
     res.json({
       success: true,
@@ -1081,7 +1132,7 @@ router.post('/address-book/repair-names', authenticateToken, requireAdmin, async
             deptEnriched++;
           }
         }
-        // 拉取成员名称
+        // 拉取成员名称（先批量 /user/list）
         const rootDept = allDepts.find(d => !d.wecomParentId || d.wecomParentId === 0)?.wecomDeptId || 1;
         const apiUsers = await WecomApiService.getDepartmentUsers(accessToken, rootDept, true);
         for (const apiU of apiUsers) {
@@ -1092,6 +1143,24 @@ router.post('/address-book/repair-names', authenticateToken, requireAdmin, async
             if (apiU.avatar) local.wecomAvatar = apiU.avatar;
             await userRepo.save(local);
             userEnriched++;
+          }
+        }
+
+        // 第三方应用 fallback：对仍然缺名称的成员，逐个 /user/get（限流，最多 200 个）
+        const stillMissing = allUsers.filter(u => !isValidName(u.wecomUserName, u.wecomUserId));
+        if (stillMissing.length > 0) {
+          const limit = Math.min(stillMissing.length, 200);
+          log.info(`[AddressBook] repair-names: ${stillMissing.length} 个成员仍缺名称，通过 /user/get 补充前 ${limit} 个`);
+          for (let i = 0; i < limit; i++) {
+            const local = stillMissing[i];
+            const detail = await WecomApiService.getUserDetail(accessToken, local.wecomUserId);
+            if (detail && isValidName(detail.name, local.wecomUserId)) {
+              local.wecomUserName = String(detail.name).trim();
+              if (detail.avatar) local.wecomAvatar = detail.avatar;
+              await userRepo.save(local);
+              userEnriched++;
+            }
+            if (i % 20 === 19) await new Promise(r => setTimeout(r, 100));
           }
         }
       } catch (e: any) {

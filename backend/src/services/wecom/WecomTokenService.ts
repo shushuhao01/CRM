@@ -191,7 +191,12 @@ export class WecomTokenService {
 
     // 40085重试：从wecom_suite_configs重读最新ticket
     if (response.data.errcode === 40085) {
-      log.warn('[WecomToken] 40085 invalid suite_ticket, 尝试从wecom_suite_configs重读最新ticket...');
+      log.warn('[WecomToken] 40085 invalid suite_ticket, 清除suite/corp双缓存并尝试从wecom_suite_configs重读最新ticket...');
+      // 立即清除自身和派生的 corp token 缓存（避免后续 corp_token 调用使用基于失效suite_token换出的旧token）
+      suiteTokenCache.delete(cacheKey);
+      for (const ck of Array.from(corpTokenCache.keys())) {
+        if (ck.startsWith('tp:')) corpTokenCache.delete(ck);
+      }
       try {
         const freshRows = await AppDataSource.query(
           'SELECT suite_ticket FROM wecom_suite_configs WHERE suite_id = ? ORDER BY suite_ticket_updated_at DESC LIMIT 1',
@@ -213,11 +218,30 @@ export class WecomTokenService {
           suiteTokenCache.set(cacheKey, { token, expireTime });
           return token;
         }
+        // 没有更新的ticket → 等待500ms再读一次（让并发的回调写入有机会落库）
+        await new Promise(r => setTimeout(r, 500));
+        const delayedRows = await AppDataSource.query(
+          'SELECT suite_ticket FROM wecom_suite_configs WHERE suite_id = ? ORDER BY suite_ticket_updated_at DESC LIMIT 1',
+          [suiteId]
+        );
+        const delayedTicket = delayedRows?.[0]?.suite_ticket;
+        if (delayedTicket && delayedTicket !== suiteTicket) {
+          log.info('[WecomToken] 延迟重读发现更新ticket, 重试...');
+          const retryRes2 = await axios.post(`${WECOM_API_BASE}/service/get_suite_token`, {
+            suite_id: suiteId, suite_secret: suiteSecret, suite_ticket: delayedTicket
+          });
+          if (!retryRes2.data.errcode || retryRes2.data.errcode === 0) {
+            const token = retryRes2.data.suite_access_token;
+            const expireTime = Date.now() + (retryRes2.data.expires_in - 300) * 1000;
+            suiteTokenCache.set(cacheKey, { token, expireTime });
+            return token;
+          }
+        }
       } catch (retryErr: any) {
         if (retryErr.message?.includes('获取SuiteToken失败')) throw retryErr;
         log.warn('[WecomToken] 重试读取ticket失败:', retryErr.message);
       }
-      throw new Error(`获取SuiteToken失败: ${response.data.errmsg} (${response.data.errcode}) - suite_ticket可能已过期，请确认回调URL正常接收企微推送`);
+      throw new Error(`获取SuiteToken失败: ${response.data.errmsg} (${response.data.errcode}) - suite_ticket可能已过期，请确认回调URL正常接收企微推送，或在「企微管理→服务商应用配置→回调配置」点击「Ticket诊断」按钮排查`);
     }
 
     if (response.data.errcode && response.data.errcode !== 0) {

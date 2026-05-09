@@ -153,6 +153,28 @@ export class WecomApiService {
   }
 
   /**
+   * 获取单个成员详情（用于补充 /user/list 未返回的姓名等字段）
+   * 第三方应用 userid 是 open_userid，需通过 /user/get 单独换取详情
+   * 当成员不在应用可见范围或权限不足时返回 null（而不是抛错），方便批量调用时容错
+   */
+  static async getUserDetail(accessToken: string, userid: string): Promise<any | null> {
+    try {
+      const response = await axios.get(`${WECOM_API_BASE}/user/get`, {
+        params: { access_token: accessToken, userid }
+      });
+      if (response.data.errcode === 0) {
+        return response.data;
+      }
+      // 60111=userid不存在 / 60020=IP白名单 / 60011=权限不足 — 不抛错，返回 null
+      log.warn(`[WecomApi] getUserDetail(${userid.substring(0, 12)}...) errcode=${response.data.errcode} errmsg=${response.data.errmsg}`);
+      return null;
+    } catch (error: any) {
+      log.warn('[WecomApi] getUserDetail error:', error.message);
+      return null;
+    }
+  }
+
+  /**
    * 获取外部联系人列表
    */
   static async getExternalContactList(accessToken: string, userId: string): Promise<string[]> {
