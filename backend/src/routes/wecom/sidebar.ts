@@ -634,10 +634,32 @@ router.post('/sidebar/js-sdk-config', jsSdkConfigLimiter, validateJsSdkReferer, 
     if (!url || !corpId) return res.status(400).json({ success: false, message: '参数不完整' });
 
     const configRepo = AppDataSource.getRepository(WecomConfig);
-    const config = await configRepo.findOne({ where: { corpId, isEnabled: true } });
-    if (!config) return res.status(400).json({ success: false, message: '未找到匹配的企微配置' });
+    let config: any = null;
 
-    log.info(`[Wecom Sidebar] JS-SDK config request: corpId=${corpId}, authType=${config.authType}, authMode=${config.authMode}, configId=${config.id}`);
+    // ★ 兼容处理：当 corpId 是 $CORPID$ 占位符（企微未替换）时，尝试查找第一个可用的第三方应用配置
+    if (corpId === '$CORPID$' || corpId.includes('$')) {
+      log.warn(`[Wecom Sidebar] corpId是占位符(${corpId})，企微客户端未替换。尝试查找第一个可用的第三方应用配置...`);
+      config = await configRepo.findOne({
+        where: { isEnabled: true, authType: 'third_party' },
+        order: { id: 'ASC' }
+      });
+      if (!config) {
+        // 回退：查找任意可用配置
+        config = await configRepo.findOne({ where: { isEnabled: true }, order: { id: 'ASC' } });
+      }
+      if (!config) {
+        return res.status(400).json({
+          success: false,
+          message: '未找到匹配的企微配置。corpId占位符($CORPID$)未被企微客户端替换，可能原因：1.侧边栏URL未在企微服务商后台正确配置 2.企业未授权安装该第三方应用'
+        });
+      }
+      log.info(`[Wecom Sidebar] 占位符降级：使用配置 id=${config.id} corpId=${config.corpId} name=${config.name}`);
+    } else {
+      config = await configRepo.findOne({ where: { corpId, isEnabled: true } });
+      if (!config) return res.status(400).json({ success: false, message: '未找到匹配的企微配置' });
+    }
+
+    log.info(`[Wecom Sidebar] JS-SDK config request: corpId=${corpId}, actualCorpId=${config.corpId}, authType=${config.authType}, authMode=${config.authMode}, configId=${config.id}`);
 
     // 使用 WecomTokenService 统一获取 access_token，支持自建应用和第三方应用双模式
     const { WecomTokenService } = await import('../../services/wecom/WecomTokenService');
