@@ -3741,9 +3741,66 @@ router.post('/suite/test-connection', async (_req: Request, res: Response) => {
       });
     }
 
-    const startTime = Date.now();
-    const token = await getSuiteAccessToken(config);
-    const latency = Date.now() - startTime;
+    // ★ 诊断日志：记录测试时使用的实际值
+    const ticketPreview = config.suiteTicket.substring(0, 12) + '...' + config.suiteTicket.substring(config.suiteTicket.length - 4);
+    log.info(`[Admin Suite] test-connection: suiteId=${config.suiteId} secretLen=${config.suiteSecret?.length} ticketLen=${config.suiteTicket?.length} ticketPreview=${ticketPreview} ticketUpdatedAt=${config.suiteTicketUpdatedAt}`);
+
+    // ★ 先直接调用企微API验证当前ticket，绕过getSuiteAccessToken的缓存和重试逻辑
+    const cleanTicket = (config.suiteTicket || '').replace(/[\s\r\n\t]+/g, '').trim();
+    const cleanSecret = (config.suiteSecret || '').trim();
+    const cleanSuiteId = (config.suiteId || '').trim();
+
+    const axiosLib = (await import('axios')).default;
+    const directRes = await axiosLib.post('https://qyapi.weixin.qq.com/cgi-bin/service/get_suite_token', {
+      suite_id: cleanSuiteId,
+      suite_secret: cleanSecret,
+      suite_ticket: cleanTicket
+    }, { timeout: 10000 });
+
+    if (directRes.data.errcode && directRes.data.errcode !== 0) {
+      const ticketAge = config.suiteTicketUpdatedAt
+        ? Math.round((Date.now() - new Date(config.suiteTicketUpdatedAt).getTime()) / 60000) + '分钟前'
+        : '未知';
+      log.error(`[Admin Suite] test-connection FAILED: errcode=${directRes.data.errcode} errmsg=${directRes.data.errmsg} ticketLen=${cleanTicket.length} secretLen=${cleanSecret.length} ticketAge=${ticketAge}`);
+
+      // 尝试从system_config读取ticket对比
+      let sysTicket = '';
+      try {
+        const rows = await AppDataSource.query("SELECT config_value FROM system_config WHERE config_key = 'wecom_suite_config' LIMIT 1");
+        if (rows?.[0]?.config_value) {
+          const cfg = typeof rows[0].config_value === 'string' ? JSON.parse(rows[0].config_value) : rows[0].config_value;
+          sysTicket = (cfg.suite_ticket || '').replace(/[\s\r\n\t]+/g, '').trim();
+        }
+      } catch { /* ignore */ }
+
+      const ticketMatch = sysTicket === cleanTicket ? '一致' : `不一致(sysLen=${sysTicket.length} vs dbLen=${cleanTicket.length})`;
+
+      return res.json({
+        success: true,
+        data: {
+          connected: false,
+          message: `${directRes.data.errmsg} (${directRes.data.errcode})`,
+          debug: {
+            ticketLen: cleanTicket.length,
+            secretLen: cleanSecret.length,
+            suiteId: cleanSuiteId,
+            ticketPreview,
+            ticketAge,
+            systemConfigTicketMatch: ticketMatch,
+            hint: directRes.data.errcode === 40085
+              ? 'ticket无效。可能原因: 1.回调解密得到了错误的ticket值 2.ticket已被新推送覆盖 3.ticket已过期(>30分钟)'
+              : ''
+          }
+        }
+      });
+    }
+
+    // 成功
+    const token = directRes.data.suite_access_token;
+    const latency = 0;
+
+    // 更新缓存
+    clearSuiteTokenCache();
 
     // 测试连接成功，自动更新应用状态为online
     if (token && config.appStatus !== 'online') {

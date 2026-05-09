@@ -388,14 +388,14 @@ router.post('/callback', async (req: Request, res: Response) => {
     // 解密 (使用匹配到的 Token/AESKey)
     const xmlContent = decryptMsg(activeAesKey, encryptMsg);
     if (tokenSource !== 'suite_config') {
-      log.info(`[SuiteCallback] Decrypted via ${tokenSource} (非suite_config主配置)`);
+      log.warn(`[SuiteCallback] ⚠️ Decrypted via ${tokenSource} (非suite_config主配置)! 这可能导致ticket解密错误!`);
     }
     const infoType = extractXml(xmlContent, 'InfoType');
     const suiteId = extractXml(xmlContent, 'SuiteId');
     const authCorpId = extractXml(xmlContent, 'AuthCorpId');
     const authCode = extractXml(xmlContent, 'AuthCode');
 
-    log.info(`[SuiteCallback] Event: ${infoType}, SuiteId: ${suiteId}, AuthCorpId: ${authCorpId}`);
+    log.info(`[SuiteCallback] Event: ${infoType}, SuiteId: ${suiteId}, AuthCorpId: ${authCorpId}, tokenSource: ${tokenSource}, aesKeyLen: ${activeAesKey?.length}`);
 
     // 确保 WecomConfig 表结构完整（避免 Unknown column 错误）
     if (infoType !== 'suite_ticket') {
@@ -455,6 +455,32 @@ async function handleSuiteTicket(config: WecomSuiteConfig, xml: string) {
 
   const ticketPreview = ticket.substring(0, 12) + '...';
   log.info(`[SuiteCallback] handleSuiteTicket: 收到ticket length=${ticket.length} preview=${ticketPreview} suiteSecretLen=${config.suiteSecret?.length || 0}`);
+
+  // ★ 关键修复：在存储前先验证 ticket 有效性，避免存储解密错误的无效 ticket
+  if (config.suiteId && config.suiteSecret) {
+    try {
+      const verifyRes = await axios.post(`${WECOM_API_BASE}/service/get_suite_token`, {
+        suite_id: (config.suiteId || '').trim(),
+        suite_secret: (config.suiteSecret || '').trim(),
+        suite_ticket: ticket
+      });
+      if (verifyRes.data.errcode && verifyRes.data.errcode !== 0) {
+        log.error(`[SuiteCallback] ❌ 自动接收的ticket验证失败! errcode=${verifyRes.data.errcode} errmsg=${verifyRes.data.errmsg} ` +
+          `ticketLen=${ticket.length} ticketPreview=${ticketPreview} ` +
+          `suiteId=${config.suiteId} secretLen=${config.suiteSecret.length}. ` +
+          `可能原因: 解密使用的EncodingAESKey与企微服务商后台「通用开发参数」中配置的不一致，导致解密出错误的ticket值。`);
+        // 不存储无效的 ticket，保留之前有效的 ticket
+        throw new Error(`自动接收的ticket验证失败(${verifyRes.data.errcode}): ${verifyRes.data.errmsg}。ticket未更新，请检查EncodingAESKey配置。`);
+      }
+      log.info(`[SuiteCallback] ✅ ticket验证通过，可正常换取suite_access_token`);
+    } catch (e: any) {
+      if (e.message?.includes('自动接收的ticket验证失败')) {
+        throw e; // 重新抛出验证失败错误
+      }
+      // 网络错误等非验证失败的情况，仍然存储（避免因网络抖动丢失ticket）
+      log.warn(`[SuiteCallback] ticket验证调用异常(非致命，仍存储): ${e.message}`);
+    }
+  }
 
   // 使用原子 SQL UPDATE 替代 ORM save()，避免并发请求互相覆盖（3个同时到达时只更新ticket字段）
   const needUpdateStatus = !!(config.suiteId && config.suiteSecret && config.appStatus !== 'online');
