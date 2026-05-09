@@ -35,6 +35,11 @@ export const syncWecomMembers = (configId: number) => {
   return request.post('/wecom/address-book/sync-members', { configId })
 }
 
+/** 修复被污染为ID同值的部门/成员名称（清理脏数据 + 从企微API回填） */
+export const repairWecomNames = (configId?: number) => {
+  return request.post('/wecom/address-book/repair-names', { configId })
+}
+
 // ==================== 同步设置 ====================
 
 /** 获取同步设置 */

@@ -87,6 +87,80 @@ function validateJsSdkReferer(req: Request, res: Response, next: NextFunction) {
   next();
 }
 
+// ==================== 企微 JS-SDK 同源代理（解决私有部署/内网封锁公网CDN的问题）====================
+
+/** SDK 文件内存缓存：避免每次请求都回源 */
+const SDK_CACHE = new Map<string, { content: Buffer; contentType: string; fetchedAt: number }>();
+const SDK_CACHE_TTL = 24 * 60 * 60 * 1000; // 24小时
+
+/** 已知合法的 SDK 上游地址（白名单，避免被滥用为开放代理） */
+const SDK_UPSTREAMS: Record<string, string[]> = {
+  'jwxwork-1.0.0.js': [
+    'https://open.work.weixin.qq.com/wwopen/js/jwxwork-1.0.0.js',
+    'https://wwcdn.weixin.qq.com/node/wework/wwopen/js/jwxwork-1.0.0.js',
+  ],
+  'jweixin-1.2.0.js': [
+    'https://res.wx.qq.com/open/js/jweixin-1.2.0.js',
+    'https://res2.wx.qq.com/open/js/jweixin-1.2.0.js',
+  ],
+  'jweixin-1.6.0.js': [
+    'https://res.wx.qq.com/open/js/jweixin-1.6.0.js',
+  ],
+};
+
+router.get('/sdk/:filename', async (req: Request, res: Response) => {
+  try {
+    const filename = String(req.params.filename || '');
+    const upstreams = SDK_UPSTREAMS[filename];
+    if (!upstreams) {
+      return res.status(404).type('text/plain').send('// Unknown SDK file');
+    }
+
+    // 命中缓存
+    const cached = SDK_CACHE.get(filename);
+    if (cached && Date.now() - cached.fetchedAt < SDK_CACHE_TTL) {
+      res.setHeader('Content-Type', cached.contentType);
+      res.setHeader('Cache-Control', 'public, max-age=86400');
+      res.setHeader('X-SDK-Cache', 'HIT');
+      return res.send(cached.content);
+    }
+
+    // 回源（依次尝试 upstream）
+    const axios = (await import('axios')).default;
+    let lastErr: any = null;
+    for (const url of upstreams) {
+      try {
+        const resp = await axios.get(url, {
+          responseType: 'arraybuffer',
+          timeout: 10000,
+          headers: { 'User-Agent': 'Mozilla/5.0 (CRM-WecomSDK-Proxy)' }
+        });
+        const ct = resp.headers['content-type'] || 'application/javascript';
+        // 校验：不能是 HTML（防止上游返回404页面）
+        if (typeof ct === 'string' && ct.toLowerCase().includes('text/html')) {
+          lastErr = new Error(`Upstream returned HTML (likely 404): ${url}`);
+          continue;
+        }
+        const content = Buffer.from(resp.data);
+        SDK_CACHE.set(filename, { content, contentType: 'application/javascript; charset=utf-8', fetchedAt: Date.now() });
+        res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+        res.setHeader('Cache-Control', 'public, max-age=86400');
+        res.setHeader('X-SDK-Cache', 'MISS');
+        res.setHeader('X-SDK-Upstream', url);
+        return res.send(content);
+      } catch (e: any) {
+        lastErr = e;
+        log.warn(`[SDK Proxy] Upstream failed: ${url}: ${e?.message}`);
+      }
+    }
+    log.error('[SDK Proxy] All upstreams failed for', filename, lastErr?.message);
+    return res.status(502).type('text/plain').send('// SDK upstream unavailable');
+  } catch (e: any) {
+    log.error('[SDK Proxy] Error:', e?.message);
+    res.status(500).type('text/plain').send('// SDK proxy error');
+  }
+});
+
 // ==================== 侧边栏应用管理 ====================
 
 /**

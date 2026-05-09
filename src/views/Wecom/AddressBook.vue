@@ -23,6 +23,9 @@
               <div class="tree-toolbar">
                 <el-input v-model="deptSearch" placeholder="搜索部门/成员" prefix-icon="Search" clearable size="small" @input="handleDeptSearch" />
                 <el-button type="primary" size="small" :loading="syncingAll" @click="handleSyncAll">同步组织架构</el-button>
+                <el-tooltip content="清理名称与ID同值的脏数据，并从企微通讯录API重新拉取名称" placement="top">
+                  <el-button size="small" :loading="repairing" @click="handleRepairNames">修复名称</el-button>
+                </el-tooltip>
               </div>
               <el-tree
                 :key="treeKey"
@@ -449,7 +452,8 @@ import {
   getSyncSettings, saveSyncSettings, getSyncLogs,
   getAutoMatchPending, getAutoMatchCount, confirmAutoMatch, rejectAutoMatch,
   getBindingList, runAutoMatch,
-  getWecomDeptChildren
+  getWecomDeptChildren,
+  repairWecomNames
 } from '@/api/wecomAddressBook'
 import { formatDateTime } from '@/utils/date'
 import request from '@/utils/request'
@@ -884,6 +888,21 @@ const _handleSyncMembers = async () => {
     ElMessage.error(e?.message || '同步失败')
   } finally {
     syncingMembers.value = false
+  }
+}
+
+const repairing = ref(false)
+const handleRepairNames = async () => {
+  if (!selectedConfigId.value) { ElMessage.warning('请先选择企微配置'); return }
+  repairing.value = true
+  try {
+    const res: any = await repairWecomNames(selectedConfigId.value)
+    ElMessage.success(res?.message || '修复完成')
+    reloadMixedTree()
+  } catch (e: any) {
+    ElMessage.error(e?.message || '修复失败：请检查企微通讯录Secret是否配置正确')
+  } finally {
+    repairing.value = false
   }
 }
 

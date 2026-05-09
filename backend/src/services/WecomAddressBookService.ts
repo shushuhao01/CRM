@@ -47,13 +47,24 @@ export class WecomAddressBookService {
         where: { tenantId, wecomConfigId: configId, wecomDeptId: dept.id }
       });
 
+      // 仅当 API 名称“可信”（非空、非ID同值）才覆盖
+      const apiName = dept?.name;
+      const apiNameValid = apiName !== null && apiName !== undefined
+        && String(apiName).trim() !== ''
+        && String(apiName).trim() !== String(dept.id);
+
       if (mapping) {
-        mapping.wecomDeptName = dept.name;
+        if (apiNameValid) mapping.wecomDeptName = String(apiName).trim();
+        else if (mapping.wecomDeptName && String(mapping.wecomDeptName).trim() === String(dept.id)) {
+          mapping.wecomDeptName = '';
+        }
         mapping.wecomParentId = dept.parentid;
       } else {
         mapping = repo.create({
           tenantId, wecomConfigId: configId,
-          wecomDeptId: dept.id, wecomDeptName: dept.name, wecomParentId: dept.parentid
+          wecomDeptId: dept.id,
+          wecomDeptName: apiNameValid ? String(apiName).trim() : '',
+          wecomParentId: dept.parentid
         });
       }
 

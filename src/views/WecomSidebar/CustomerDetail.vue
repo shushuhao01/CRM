@@ -587,16 +587,21 @@ function loadWecomJsSdk(): Promise<void> {
   // 检查wx对象是否已存在（企微客户端可能预注入）
   function ensureWxObj(): boolean {
     const w = window as any
-    if (w.wx) return true
-    if (w.jWeixin) { w.wx = w.jWeixin; return true }
-    if (w.WeixinJSBridge) return true
+    if (w.wx && typeof w.wx.config === 'function') return true
+    if (w.jWeixin && typeof w.jWeixin.config === 'function') {
+      w.wx = w.jWeixin
+      return true
+    }
     return false
   }
 
-  if (ensureWxObj()) return Promise.resolve()
+  if (ensureWxObj()) {
+    console.log('[Sidebar] wx对象已存在（客户端预注入或之前加载过）')
+    return Promise.resolve()
+  }
 
-  // 等待wx对象就绪的轮询（延长到5秒）
-  function waitForWx(timeout = 5000): Promise<void> {
+  // 等待wx对象就绪的轮询
+  function waitForWx(timeout = 3000): Promise<void> {
     return new Promise((res, rej) => {
       const start = Date.now()
       const check = () => {
@@ -604,58 +609,118 @@ function loadWecomJsSdk(): Promise<void> {
         if (Date.now() - start > timeout) {
           rej(new Error('wx object not available after SDK load'))
         } else {
-          setTimeout(check, 100)
+          setTimeout(check, 80)
         }
       }
       check()
     })
   }
 
-  // 加载单个脚本
-  function loadScript(url: string): Promise<boolean> {
+  /**
+   * 移除 DOM 中所有"失败的" jweixin/jwxwork script 标签
+   * 关键：之前的代码会因为 script 标签已存在而短路，导致永远拿不到 wx 对象
+   */
+  function cleanupFailedScripts() {
+    const scripts = document.querySelectorAll('script[data-wecom-sdk="1"]')
+    scripts.forEach(s => s.parentNode?.removeChild(s))
+  }
+
+  /**
+   * 加载单个脚本，并验证脚本执行后 wx 对象真的可用（避免 HTML 404 假成功）
+   */
+  function loadScript(url: string, timeoutMs = 8000): Promise<{ ok: boolean; reason?: string }> {
     return new Promise((res) => {
-      // 避免重复加载同一脚本
-      if (document.querySelector(`script[src="${url}"]`)) {
-        res(true)
-        return
-      }
       const s = document.createElement('script')
       s.src = url
-      s.onload = () => { console.log(`[Sidebar] SDK loaded: ${url}`); res(true) }
-      s.onerror = () => { console.warn(`[Sidebar] SDK load failed: ${url}`); res(false) }
+      s.async = true
+      s.setAttribute('data-wecom-sdk', '1')
+      let done = false
+      const finish = (ok: boolean, reason?: string) => {
+        if (done) return
+        done = true
+        res({ ok, reason })
+      }
+      const timer = setTimeout(() => finish(false, 'timeout'), timeoutMs)
+      s.onload = () => {
+        clearTimeout(timer)
+        // 必须等待一小段时间，让脚本执行完成；然后真实校验 wx 是否可用
+        setTimeout(() => {
+          const w = window as any
+          if ((w.wx && typeof w.wx.config === 'function') || (w.jWeixin && typeof w.jWeixin.config === 'function')) {
+            console.log(`[Sidebar] SDK loaded & wx ready: ${url}`)
+            finish(true)
+          } else {
+            console.warn(`[Sidebar] SDK loaded but wx invalid (likely HTML 404 page): ${url}`)
+            finish(false, 'wx-not-defined')
+          }
+        }, 200)
+      }
+      s.onerror = () => {
+        clearTimeout(timer)
+        console.warn(`[Sidebar] SDK load network error: ${url}`)
+        finish(false, 'network-error')
+      }
       document.head.appendChild(s)
     })
   }
 
-  // 多CDN依次尝试（含企微专用CDN + 微信通用CDN）
+  // 多CDN依次尝试。优先级：自托管 > 官方企微CDN > 微信通用CDN
+  // 注意：jweixin 文件名是全小写（jweixin-1.2.0.js），不是 jWeixin
   const CDN_LIST = [
+    // 1. 自托管 (放置后即工作；解决私有部署/网络隔离场景)
+    '/jwxwork-1.0.0.js',
+    '/jweixin-1.2.0.js',
+    // 2. 后端代理（如果有的话），同源避免CORS和拦截
+    '/api/wecom/sdk/jwxwork-1.0.0.js',
+    '/api/wecom/sdk/jweixin-1.2.0.js',
+    // 3. 企业微信官方CDN
     'https://open.work.weixin.qq.com/wwopen/js/jwxwork-1.0.0.js',
-    'https://res.wx.qq.com/open/js/jWeixin-1.2.0.js',
-    'https://wwcdn.weixin.qq.com/node/open/js/jweixin-1.2.0.js',
-    'https://res2.wx.qq.com/open/js/jWeixin-1.2.0.js',
+    'https://wwcdn.weixin.qq.com/node/wework/wwopen/js/jwxwork-1.0.0.js',
+    // 4. 微信通用 jweixin CDN（注意全小写）
+    'https://res.wx.qq.com/open/js/jweixin-1.2.0.js',
+    'https://res.wx.qq.com/open/js/jweixin-1.6.0.js',
+    'https://res2.wx.qq.com/open/js/jweixin-1.2.0.js',
   ]
 
   return (async () => {
+    // 每次进入加载流程，先清理之前失败的 script tag
+    cleanupFailedScripts()
+
     for (let attempt = 0; attempt < 2; attempt++) {
       if (attempt > 0) {
         console.log(`[Sidebar] JS-SDK加载重试 (第${attempt + 1}次)...`)
-        await new Promise(r => setTimeout(r, 1000))
+        await new Promise(r => setTimeout(r, 800))
+        cleanupFailedScripts()
       }
+      const tried: { url: string; reason: string }[] = []
       for (const cdn of CDN_LIST) {
-        if (ensureWxObj()) return
-        const loaded = await loadScript(cdn)
-        if (loaded) {
+        if (ensureWxObj()) {
+          console.log('[Sidebar] wx对象就绪')
+          return
+        }
+        const { ok, reason } = await loadScript(cdn)
+        if (ok) {
+          // 双保险再等一下
           try {
-            await waitForWx(5000)
-            console.log('[Sidebar] wx对象就绪')
+            await waitForWx(2000)
+            console.log('[Sidebar] wx对象就绪 from:', cdn)
             return
           } catch {
-            console.warn(`[Sidebar] ${cdn} 加载成功但wx对象未生成，尝试下一个CDN`)
+            tried.push({ url: cdn, reason: 'wx-still-missing' })
           }
+        } else {
+          tried.push({ url: cdn, reason: reason || 'unknown' })
         }
       }
+      console.warn('[Sidebar] 本轮所有CDN都失败:', tried)
     }
-    throw new Error('Failed to load WeChat JS-SDK from all CDNs after retries')
+
+    throw new Error(
+      '所有JS-SDK源都无法加载或加载后未生成wx对象。请检查：\n' +
+      '1. 当前网络是否可访问 res.wx.qq.com / open.work.weixin.qq.com\n' +
+      '2. 或在 public/ 目录放置 jwxwork-1.0.0.js 与 jweixin-1.2.0.js 自托管文件\n' +
+      '3. 确认侧边栏 URL 是通过企微客户端打开（外部浏览器无法获取wx对象）'
+    )
   })()
 }
 

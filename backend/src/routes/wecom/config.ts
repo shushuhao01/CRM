@@ -250,9 +250,9 @@ router.get('/configs/:id/departments', authenticateToken, async (req: Request, r
       order: { wecomDeptId: 'ASC' }
     });
 
-    // 检查本地数据是否有有效名称（非null、非空、非纯数字ID）
+    // 检查本地数据是否有有效名称（非null、非空、非与ID同值）
     const hasValidNames = localDepts.length > 0 && localDepts.some(d =>
-      d.wecomDeptName && d.wecomDeptName.trim() && !/^\d+$/.test(d.wecomDeptName.trim())
+      d.wecomDeptName && d.wecomDeptName.trim() && d.wecomDeptName.trim() !== String(d.wecomDeptId)
     );
 
     if (localDepts.length > 0 && hasValidNames) {
@@ -278,8 +278,8 @@ router.get('/configs/:id/departments', authenticateToken, async (req: Request, r
         log.info('[Wecom] Enriching local departments with names from API...');
         for (const apiDept of apiDepts) {
           const local = localDepts.find(d => d.wecomDeptId === apiDept.id);
-          if (local && apiDept.name && apiDept.name !== String(apiDept.id)) {
-            local.wecomDeptName = apiDept.name;
+          if (local && apiDept.name && String(apiDept.name).trim() !== '' && String(apiDept.name).trim() !== String(apiDept.id)) {
+            local.wecomDeptName = String(apiDept.name).trim();
             local.wecomParentId = apiDept.parentid || 0;
             await deptRepo.save(local).catch(() => {});
           }
@@ -495,8 +495,15 @@ router.post('/configs/:id/sync-contacts', authenticateToken, requireAdmin, async
       let mapping = await deptRepo.findOne({
         where: { wecomConfigId: configId, wecomDeptId: dept.id, ...(tenantId ? { tenantId } : {}) }
       });
+      // 仅当 API 名称“可信”（非空、非ID同值）才覆盖
+      const apiDeptNameValid = dept?.name !== null && dept?.name !== undefined
+        && String(dept.name).trim() !== ''
+        && String(dept.name).trim() !== String(dept.id);
       if (mapping) {
-        mapping.wecomDeptName = dept.name;
+        if (apiDeptNameValid) mapping.wecomDeptName = String(dept.name).trim();
+        else if (mapping.wecomDeptName && String(mapping.wecomDeptName).trim() === String(dept.id)) {
+          mapping.wecomDeptName = '';
+        }
         mapping.wecomParentId = dept.parentid || 0;
         mapping.lastSyncTime = new Date();
         deptUpdated++;
@@ -505,7 +512,7 @@ router.post('/configs/:id/sync-contacts', authenticateToken, requireAdmin, async
           tenantId: tenantId || config.tenantId,
           wecomConfigId: configId,
           wecomDeptId: dept.id,
-          wecomDeptName: dept.name,
+          wecomDeptName: apiDeptNameValid ? String(dept.name).trim() : '',
           wecomParentId: dept.parentid || 0,
           memberCount: 0,
           lastSyncTime: new Date()
@@ -536,8 +543,14 @@ router.post('/configs/:id/sync-contacts', authenticateToken, requireAdmin, async
         where: { wecomConfigId: configId, wecomUserId, ...(tenantId ? { tenantId } : {}) }
       });
 
+      const apiUserNameValid = user?.name !== null && user?.name !== undefined
+        && String(user.name).trim() !== ''
+        && String(user.name).trim() !== String(wecomUserId);
       if (binding) {
-        binding.wecomUserName = user.name || binding.wecomUserName;
+        if (apiUserNameValid) binding.wecomUserName = String(user.name).trim();
+        else if (binding.wecomUserName && String(binding.wecomUserName).trim() === String(wecomUserId)) {
+          binding.wecomUserName = '';
+        }
         binding.wecomAvatar = user.avatar || binding.wecomAvatar;
         binding.wecomDepartmentIds = deptIds;
         binding.isEnabled = user.status === 1;
@@ -548,7 +561,7 @@ router.post('/configs/:id/sync-contacts', authenticateToken, requireAdmin, async
           wecomConfigId: configId,
           corpId: config.corpId,
           wecomUserId,
-          wecomUserName: user.name || '',
+          wecomUserName: apiUserNameValid ? String(user.name).trim() : '',
           wecomAvatar: user.avatar || '',
           wecomDepartmentIds: deptIds,
           crmUserId: '',

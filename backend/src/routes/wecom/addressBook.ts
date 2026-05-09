@@ -23,6 +23,24 @@ import { log } from '../../config/logger';
 
 const router = Router();
 
+// ==================== 名称有效性辅助 ====================
+/**
+ * 判断企微返回的名称是否“可信”（非空、非纯空白、非 ID 同值）
+ * 企微 API 在 contact_secret 缺失/权限不足时常返回 name="" 或 name===String(id)
+ */
+function isValidName(name: any, id: number | string): boolean {
+  if (name === null || name === undefined) return false;
+  const s = String(name).trim();
+  if (s === '') return false;
+  if (s === String(id)) return false;
+  return true;
+}
+
+/** 把 DB 中已经被污染成 "123" 这种形式的 wecomDeptName 视为缺失，统一返回 null */
+function sanitizeDeptName(name: any, id: number | string): string | null {
+  return isValidName(name, id) ? String(name).trim() : null;
+}
+
 // ==================== 同步日志辅助 ====================
 const SYNC_LOGS_KEY = 'wecom_sync_logs';
 
@@ -80,10 +98,8 @@ router.get('/address-book/departments', authenticateToken, async (req: Request, 
       order: { wecomDeptId: 'ASC' }
     });
 
-    // 检查本地数据是否有有效名称（非null、非空、非纯数字ID）
-    const hasValidNames = mappings.length > 0 && mappings.some(m =>
-      m.wecomDeptName && m.wecomDeptName.trim() && !/^\d+$/.test(m.wecomDeptName.trim())
-    );
+    // 检查本地数据是否有有效名称（非null、非空、非纯数字ID、非与ID相同）
+    const hasValidNames = mappings.length > 0 && mappings.some(m => isValidName(m.wecomDeptName, m.wecomDeptId));
 
     // 如果本地数据存在但名称缺失，尝试从API获取并回填
     if (mappings.length > 0 && !hasValidNames) {
@@ -94,8 +110,8 @@ router.get('/address-book/departments', authenticateToken, async (req: Request, 
           log.info('[AddressBook] Enriching local department names from API...');
           for (const apiDept of apiDepts) {
             const local = mappings.find(m => m.wecomDeptId === apiDept.id);
-            if (local && apiDept.name && apiDept.name !== String(apiDept.id)) {
-              local.wecomDeptName = apiDept.name;
+            if (local && isValidName(apiDept.name, apiDept.id)) {
+              local.wecomDeptName = String(apiDept.name).trim();
               local.wecomParentId = apiDept.parentid || local.wecomParentId;
               await repo.save(local).catch(() => {});
             }
@@ -111,10 +127,11 @@ router.get('/address-book/departments', authenticateToken, async (req: Request, 
     const roots: any[] = [];
 
     for (const m of mappings) {
+      const cleanName = sanitizeDeptName(m.wecomDeptName, m.wecomDeptId);
       nodeMap.set(m.wecomDeptId, {
         id: m.id,
         wecomDeptId: m.wecomDeptId,
-        wecomDeptName: m.wecomDeptName || `部门${m.wecomDeptId}`,
+        wecomDeptName: cleanName || `部门${m.wecomDeptId}`,
         wecomParentId: m.wecomParentId,
         crmDeptId: m.crmDeptId,
         crmDeptName: m.crmDeptName,
@@ -221,8 +238,15 @@ router.post('/address-book/sync-departments', authenticateToken, requireAdmin, a
         where: { tenantId, wecomConfigId: configId, wecomDeptId: dept.id }
       });
 
+      // 仅当 API 返回的 name 是“可信”的（非空、非ID同值）才覆盖；否则保留 DB 已有有效值
+      const apiNameValid = isValidName(dept.name, dept.id);
       if (mapping) {
-        mapping.wecomDeptName = dept.name;
+        if (apiNameValid) {
+          mapping.wecomDeptName = String(dept.name).trim();
+        } else if (!isValidName(mapping.wecomDeptName, dept.id)) {
+          // 旧值也是脏的（例如 "14"），清掉，让前端显示 "部门X" fallback
+          mapping.wecomDeptName = '';
+        }
         mapping.wecomParentId = dept.parentid || 0;
         mapping.lastSyncTime = new Date();
         updatedCount++;
@@ -231,7 +255,7 @@ router.post('/address-book/sync-departments', authenticateToken, requireAdmin, a
           tenantId,
           wecomConfigId: configId,
           wecomDeptId: dept.id,
-          wecomDeptName: dept.name,
+          wecomDeptName: apiNameValid ? String(dept.name).trim() : '',
           wecomParentId: dept.parentid || 0,
           memberCount: 0,
           lastSyncTime: new Date()
@@ -331,9 +355,15 @@ router.post('/address-book/sync-members', authenticateToken, requireAdmin, async
         where: { wecomConfigId: configId, wecomUserId, tenantId }
       });
 
+      // user.name 仅当“可信”才覆盖（非空、非与 userid 相同）
+      const apiUserNameValid = isValidName(user.name, wecomUserId);
       if (binding) {
-        // 更新企微侧信息，保留CRM绑定
-        binding.wecomUserName = user.name || binding.wecomUserName;
+        if (apiUserNameValid) {
+          binding.wecomUserName = String(user.name).trim();
+        } else if (!isValidName(binding.wecomUserName, wecomUserId)) {
+          // 旧值也是脏的（等于 userid），清空让前端显示成员账号 fallback
+          binding.wecomUserName = '';
+        }
         binding.wecomAvatar = user.avatar || binding.wecomAvatar;
         binding.wecomDepartmentIds = deptIds;
         binding.isEnabled = user.status === 1;
@@ -345,7 +375,7 @@ router.post('/address-book/sync-members', authenticateToken, requireAdmin, async
           wecomConfigId: configId,
           corpId: config.corpId,
           wecomUserId,
-          wecomUserName: user.name || '',
+          wecomUserName: apiUserNameValid ? String(user.name).trim() : '',
           wecomAvatar: user.avatar || '',
           wecomDepartmentIds: deptIds,
           crmUserId: '',
@@ -623,16 +653,20 @@ router.get('/address-book/dept/:deptId/children', authenticateToken, async (req:
       where: { tenantId, wecomConfigId: Number(configId), wecomParentId: parentDeptId }
     });
 
-    const deptNodes = childDepts.map(d => ({
-      nodeId: `dept_${d.wecomDeptId}`,
-      nodeType: 'dept' as const,
-      label: d.wecomDeptName || `部门${d.wecomDeptId}`,
-      wecomDeptId: d.wecomDeptId,
-      wecomDeptName: d.wecomDeptName || `部门${d.wecomDeptId}`,
-      memberCount: d.memberCount || 0,
-      crmDeptName: d.crmDeptName,
-      isLeaf: false
-    }));
+    const deptNodes = childDepts.map(d => {
+      const clean = sanitizeDeptName(d.wecomDeptName, d.wecomDeptId);
+      const display = clean || `部门${d.wecomDeptId}`;
+      return {
+        nodeId: `dept_${d.wecomDeptId}`,
+        nodeType: 'dept' as const,
+        label: display,
+        wecomDeptId: d.wecomDeptId,
+        wecomDeptName: display,
+        memberCount: d.memberCount || 0,
+        crmDeptName: d.crmDeptName,
+        isLeaf: false
+      };
+    });
 
     // 获取直属成员
     const bindingRepo = AppDataSource.getRepository(WecomUserBinding);
@@ -647,18 +681,24 @@ router.get('/address-book/dept/:deptId/children', authenticateToken, async (req:
       .orderBy('b.wecom_user_name', 'ASC')
       .getMany();
 
-    const memberNodes = members.map(m => ({
-      nodeId: `member_${m.wecomUserId}`,
-      nodeType: 'member' as const,
-      label: m.wecomUserName || m.wecomUserId,
-      wecomUserId: m.wecomUserId,
-      wecomUserName: m.wecomUserName || m.wecomUserId,
-      wecomAvatar: m.wecomAvatar,
-      crmUserName: m.crmUserName,
-      crmUserId: m.crmUserId,
-      isEnabled: m.isEnabled,
-      isLeaf: true
-    }));
+    const memberNodes = members.map(m => {
+      const cleanName = isValidName(m.wecomUserName, m.wecomUserId)
+        ? String(m.wecomUserName).trim()
+        : '';
+      const display = cleanName || m.wecomUserId;
+      return {
+        nodeId: `member_${m.wecomUserId}`,
+        nodeType: 'member' as const,
+        label: display,
+        wecomUserId: m.wecomUserId,
+        wecomUserName: cleanName,
+        wecomAvatar: m.wecomAvatar,
+        crmUserName: m.crmUserName,
+        crmUserId: m.crmUserId,
+        isEnabled: m.isEnabled,
+        isLeaf: true
+      };
+    });
 
     res.json({ success: true, data: [...deptNodes, ...memberNodes] });
   } catch (error: any) {
@@ -756,15 +796,20 @@ router.get('/address-book/member/:wecomUserId/profile', authenticateToken, async
         .where('d.wecom_config_id = :configId', { configId: Number(configId) })
         .andWhere('d.wecom_dept_id IN (:...ids)', { ids: deptIds })
         .getMany();
-      deptNames = depts.map(d => d.wecomDeptName);
+      deptNames = depts
+        .map(d => sanitizeDeptName(d.wecomDeptName, d.wecomDeptId) || `部门${d.wecomDeptId}`);
     }
+
+    const cleanUserName = isValidName(binding.wecomUserName, binding.wecomUserId)
+      ? String(binding.wecomUserName).trim()
+      : '';
 
     res.json({
       success: true,
       data: {
         // 基本信息
         wecomUserId: binding.wecomUserId,
-        wecomUserName: binding.wecomUserName,
+        wecomUserName: cleanUserName,
         wecomAvatar: binding.wecomAvatar,
         isEnabled: binding.isEnabled,
         departments: deptNames,
@@ -840,11 +885,13 @@ router.get('/address-book/dept/:deptId/summary', authenticateToken, async (req: 
     const memberCount = members.length;
 
     // 如果没有成员，返回空统计
+    const cleanDeptName = sanitizeDeptName(dept.wecomDeptName, dept.wecomDeptId) || `部门${dept.wecomDeptId}`;
+
     if (memberIds.length === 0) {
       return res.json({
         success: true,
         data: {
-          deptName: dept.wecomDeptName,
+          deptName: cleanDeptName,
           wecomDeptId: dept.wecomDeptId,
           crmDeptName: dept.crmDeptName,
           memberCount: 0,
@@ -915,9 +962,12 @@ router.get('/address-book/dept/:deptId/summary', authenticateToken, async (req: 
         .andWhere(tenantId ? 'c.tenant_id = :tenantId' : '1=1', { tenantId })
         .andWhere('c.status = :s', { s: 'normal' })
         .getCount();
+      const mCleanName = isValidName(m.wecomUserName, m.wecomUserId)
+        ? String(m.wecomUserName).trim()
+        : '';
       memberSummaries.push({
         wecomUserId: m.wecomUserId,
-        wecomUserName: m.wecomUserName,
+        wecomUserName: mCleanName,
         wecomAvatar: m.wecomAvatar,
         crmUserName: m.crmUserName,
         isEnabled: m.isEnabled,
@@ -928,7 +978,7 @@ router.get('/address-book/dept/:deptId/summary', authenticateToken, async (req: 
     res.json({
       success: true,
       data: {
-        deptName: dept.wecomDeptName,
+        deptName: cleanDeptName,
         wecomDeptId: dept.wecomDeptId,
         crmDeptName: dept.crmDeptName,
         memberCount,
@@ -970,6 +1020,92 @@ router.put('/address-book/member/:id/bind-crm', authenticateToken, requireAdmin,
 
     res.json({ success: true, message: crmUserId ? '绑定成功' : '已解除绑定' });
   } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// ==================== 15. 数据修复：清理名称被污染为 ID 同值的记录 ====================
+router.post('/address-book/repair-names', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const tenantId = getCurrentTenantId();
+    const { configId } = req.body;
+    if (!tenantId) return res.status(403).json({ success: false, message: '租户上下文缺失' });
+
+    const deptRepo = AppDataSource.getRepository(WecomDepartmentMapping);
+    const userRepo = AppDataSource.getRepository(WecomUserBinding);
+
+    // 1. 清理部门名称 == ID 的记录
+    const deptWhere: any = { tenantId };
+    if (configId) deptWhere.wecomConfigId = Number(configId);
+    const allDepts = await deptRepo.find({ where: deptWhere });
+    let deptCleaned = 0;
+    for (const d of allDepts) {
+      if (!isValidName(d.wecomDeptName, d.wecomDeptId)) {
+        if (d.wecomDeptName && d.wecomDeptName !== '') {
+          d.wecomDeptName = '';
+          await deptRepo.save(d);
+          deptCleaned++;
+        }
+      }
+    }
+
+    // 2. 清理成员名称 == userid 的记录
+    const userWhere: any = { tenantId };
+    if (configId) userWhere.wecomConfigId = Number(configId);
+    const allUsers = await userRepo.find({ where: userWhere });
+    let userCleaned = 0;
+    for (const u of allUsers) {
+      if (!isValidName(u.wecomUserName, u.wecomUserId)) {
+        if (u.wecomUserName && u.wecomUserName !== '') {
+          u.wecomUserName = '';
+          await userRepo.save(u);
+          userCleaned++;
+        }
+      }
+    }
+
+    // 3. 从企微 API 重新拉取名称
+    let deptEnriched = 0;
+    let userEnriched = 0;
+    if (configId) {
+      try {
+        const accessToken = await WecomApiService.getAccessTokenByConfigId(Number(configId), 'contact');
+        const apiDepts = await WecomApiService.getDepartmentList(accessToken);
+        for (const apiDept of apiDepts) {
+          if (!isValidName(apiDept.name, apiDept.id)) continue;
+          const local = allDepts.find(d => d.wecomDeptId === apiDept.id);
+          if (local) {
+            local.wecomDeptName = String(apiDept.name).trim();
+            local.wecomParentId = apiDept.parentid || local.wecomParentId;
+            await deptRepo.save(local);
+            deptEnriched++;
+          }
+        }
+        // 拉取成员名称
+        const rootDept = allDepts.find(d => !d.wecomParentId || d.wecomParentId === 0)?.wecomDeptId || 1;
+        const apiUsers = await WecomApiService.getDepartmentUsers(accessToken, rootDept, true);
+        for (const apiU of apiUsers) {
+          if (!isValidName(apiU.name, apiU.userid)) continue;
+          const local = allUsers.find(u => u.wecomUserId === apiU.userid);
+          if (local) {
+            local.wecomUserName = String(apiU.name).trim();
+            if (apiU.avatar) local.wecomAvatar = apiU.avatar;
+            await userRepo.save(local);
+            userEnriched++;
+          }
+        }
+      } catch (e: any) {
+        log.warn('[AddressBook] repair-names API enrich failed:', e.message);
+      }
+    }
+
+    res.json({
+      success: true,
+      message: `清理完成：部门清理 ${deptCleaned} 条、回填 ${deptEnriched} 条；成员清理 ${userCleaned} 条、回填 ${userEnriched} 条`,
+      data: { deptCleaned, deptEnriched, userCleaned, userEnriched }
+    });
+  } catch (error: any) {
+    log.error('[AddressBook] repair-names error:', error.message);
     res.status(500).json({ success: false, message: error.message });
   }
 });
