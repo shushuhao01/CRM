@@ -171,10 +171,10 @@
           <AntiSpamRules />
         </el-tab-pane>
 
-        <!-- Tab 5: 群发消息（仅管理员可见） -->
-        <el-tab-pane v-if="isAdminRole" label="群发消息" name="broadcast">
+        <!-- Tab 5: 群发消息（暂时禁用 - 任务创建成功但发送失败） -->
+        <!-- <el-tab-pane v-if="isAdminRole" label="群发消息" name="broadcast">
           <GroupBroadcast />
-        </el-tab-pane>
+        </el-tab-pane> -->
 
         <!-- Tab 6: 群数据 -->
         <el-tab-pane label="群数据" name="stats">

@@ -5,8 +5,12 @@
 import { Router, Request, Response } from 'express';
 import { authenticateToken, requireAdmin } from '../../middleware/auth';
 import { getTenantRepo } from '../../utils/tenantRepo';
+import { AppDataSource } from '../../config/database';
 import { WecomConfig } from '../../entities/WecomConfig';
+import { WecomDepartmentMapping } from '../../entities/WecomDepartmentMapping';
+import { WecomUserBinding } from '../../entities/WecomUserBinding';
 import WecomApiService from '../../services/WecomApiService';
+import { getCurrentTenantId } from '../../utils/tenantContext';
 import { log } from '../../config/logger';
 
 const router = Router();
@@ -231,17 +235,85 @@ router.post('/configs/:id/test', authenticateToken, requireAdmin, async (req: Re
 
 /**
  * 获取企微通讯录部门列表
+ * 优先使用本地同步数据（wecom_department_mappings），确保第三方授权模式下也能显示名称
  */
 router.get('/configs/:id/departments', authenticateToken, async (req: Request, res: Response) => {
   try {
     const configId = parseInt(req.params.id);
+    const tenantId = getCurrentTenantId();
     log.info('[Wecom] Getting departments for config:', configId);
 
-    const accessToken = await WecomApiService.getAccessTokenByConfigId(configId, 'contact');
-    const departments = await WecomApiService.getDepartmentList(accessToken);
-    log.info('[Wecom] Got departments:', departments.length);
+    // 优先从本地数据库获取（已同步的部门数据带有名称）
+    const deptRepo = AppDataSource.getRepository(WecomDepartmentMapping);
+    const localDepts = await deptRepo.find({
+      where: { wecomConfigId: configId, ...(tenantId ? { tenantId } : {}) },
+      order: { wecomDeptId: 'ASC' }
+    });
 
-    res.json({ success: true, data: departments });
+    // 检查本地数据是否有有效名称（非null、非空、非纯数字ID）
+    const hasValidNames = localDepts.length > 0 && localDepts.some(d =>
+      d.wecomDeptName && d.wecomDeptName.trim() && !/^\d+$/.test(d.wecomDeptName.trim())
+    );
+
+    if (localDepts.length > 0 && hasValidNames) {
+      log.info('[Wecom] Using local departments with names:', localDepts.length);
+      const departments = localDepts.map(d => ({
+        id: d.wecomDeptId,
+        name: d.wecomDeptName || `部门${d.wecomDeptId}`,
+        parentid: d.wecomParentId || 0,
+        order: 0,
+        _source: 'local'
+      }));
+      return res.json({ success: true, data: departments });
+    }
+
+    // 本地无数据 或 本地数据名称缺失 → 从API获取
+    try {
+      const accessToken = await WecomApiService.getAccessTokenByConfigId(configId, 'contact');
+      const apiDepts = await WecomApiService.getDepartmentList(accessToken);
+      log.info('[Wecom] Got departments from API:', apiDepts.length);
+
+      // 如果本地有数据但缺名称，用API数据回填本地
+      if (localDepts.length > 0 && !hasValidNames && apiDepts.length > 0) {
+        log.info('[Wecom] Enriching local departments with names from API...');
+        for (const apiDept of apiDepts) {
+          const local = localDepts.find(d => d.wecomDeptId === apiDept.id);
+          if (local && apiDept.name && apiDept.name !== String(apiDept.id)) {
+            local.wecomDeptName = apiDept.name;
+            local.wecomParentId = apiDept.parentid || 0;
+            await deptRepo.save(local).catch(() => {});
+          }
+        }
+        // 返回合并后的数据
+        const departments = localDepts.map(d => {
+          const apiMatch = apiDepts.find((a: any) => a.id === d.wecomDeptId);
+          return {
+            id: d.wecomDeptId,
+            name: d.wecomDeptName || apiMatch?.name || `部门${d.wecomDeptId}`,
+            parentid: d.wecomParentId || 0,
+            order: 0,
+            _source: 'enriched'
+          };
+        });
+        return res.json({ success: true, data: departments });
+      }
+
+      res.json({ success: true, data: apiDepts });
+    } catch (apiError: any) {
+      // API也失败时，返回本地数据（带ID作为名称fallback）
+      if (localDepts.length > 0) {
+        log.warn('[Wecom] API failed, returning local departments with ID fallback');
+        const departments = localDepts.map(d => ({
+          id: d.wecomDeptId,
+          name: d.wecomDeptName || `部门${d.wecomDeptId}`,
+          parentid: d.wecomParentId || 0,
+          order: 0,
+          _source: 'local-fallback'
+        }));
+        return res.json({ success: true, data: departments });
+      }
+      throw apiError;
+    }
   } catch (error: any) {
     log.error('[Wecom] Get departments error:', error.message, error.stack);
     res.status(500).json({ success: false, message: error.message || '获取部门列表失败' });
@@ -250,12 +322,14 @@ router.get('/configs/:id/departments', authenticateToken, async (req: Request, r
 
 /**
  * 获取企微通讯录成员列表
+ * 优先使用本地同步数据（wecom_user_bindings），确保第三方授权模式下也能显示姓名
  */
 router.get('/configs/:id/users', authenticateToken, async (req: Request, res: Response) => {
   try {
     const configId = parseInt(req.params.id);
     const departmentId = parseInt(req.query.departmentId as string) || 1;
     const fetchChild = req.query.fetchChild === 'true';
+    const tenantId = getCurrentTenantId();
 
     log.info('[Wecom] Getting users for config:', configId, 'department:', departmentId);
 
@@ -266,18 +340,118 @@ router.get('/configs/:id/users', authenticateToken, async (req: Request, res: Re
       return res.status(404).json({ success: false, message: '企微配置不存在或已禁用' });
     }
 
-    if (config.authType !== 'third_party' && !config.contactSecret) {
-      return res.status(400).json({
-        success: false,
-        message: '未配置通讯录同步Secret，请在企微配置中填写通讯录Secret'
-      });
+    // 优先从本地数据库获取（已同步的成员数据带有姓名）
+    const bindingRepo = AppDataSource.getRepository(WecomUserBinding);
+    const qb = bindingRepo.createQueryBuilder('b')
+      .where('b.wecom_config_id = :configId', { configId });
+
+    if (tenantId) {
+      qb.andWhere('b.tenant_id = :tenantId', { tenantId });
     }
 
-    const accessToken = await WecomApiService.getAccessTokenByConfigId(configId, 'contact');
-    const users = await WecomApiService.getDepartmentUsers(accessToken, departmentId, fetchChild);
-    log.info('[Wecom] Got users:', users.length);
+    if (!fetchChild) {
+      // 精确匹配单个部门
+      qb.andWhere(
+        '(b.wecom_department_ids = :deptId OR b.wecom_department_ids LIKE :startWith OR b.wecom_department_ids LIKE :endWith OR b.wecom_department_ids LIKE :middle)',
+        {
+          deptId: String(departmentId),
+          startWith: `${departmentId},%`,
+          endWith: `%,${departmentId}`,
+          middle: `%,${departmentId},%`
+        }
+      );
+    }
 
-    res.json({ success: true, data: users });
+    qb.orderBy('b.wecom_user_name', 'ASC');
+    const localBindings = await qb.getMany();
+
+    // 检查本地数据是否有有效姓名（非null、非空、非类似userid的长字符串）
+    const hasValidUserNames = localBindings.length > 0 && localBindings.some(b =>
+      b.wecomUserName && b.wecomUserName.trim() && b.wecomUserName !== b.wecomUserId
+    );
+
+    if (localBindings.length > 0 && hasValidUserNames) {
+      log.info('[Wecom] Using local users with names:', localBindings.length);
+      const users = localBindings.map(b => ({
+        userid: b.wecomUserId,
+        name: b.wecomUserName || b.wecomUserId,
+        department: b.wecomDepartmentIds ? b.wecomDepartmentIds.split(',').map(Number).filter(n => n > 0) : [],
+        avatar: b.wecomAvatar || '',
+        status: b.isEnabled ? 1 : 0,
+        _source: 'local'
+      }));
+      return res.json({ success: true, data: users });
+    }
+
+    // 本地无数据 或 本地名称缺失 → 从API获取
+    try {
+      if (config.authType !== 'third_party' && !config.contactSecret) {
+        // 自建应用无通讯录Secret → 返回本地数据（即使名称缺失）
+        if (localBindings.length > 0) {
+          const users = localBindings.map(b => ({
+            userid: b.wecomUserId,
+            name: b.wecomUserName || b.wecomUserId,
+            department: b.wecomDepartmentIds ? b.wecomDepartmentIds.split(',').map(Number).filter(n => n > 0) : [],
+            avatar: b.wecomAvatar || '',
+            status: b.isEnabled ? 1 : 0,
+            _source: 'local-no-secret'
+          }));
+          return res.json({ success: true, data: users });
+        }
+        return res.status(400).json({
+          success: false,
+          message: '未配置通讯录同步Secret，请在企微配置中填写通讯录Secret。请先执行「同步通讯录」操作。'
+        });
+      }
+
+      const accessToken = await WecomApiService.getAccessTokenByConfigId(configId, 'contact');
+      const apiUsers = await WecomApiService.getDepartmentUsers(accessToken, departmentId, fetchChild);
+      log.info('[Wecom] Got users from API:', apiUsers.length);
+
+      // 如果本地有数据但缺名称，用API数据回填本地
+      if (localBindings.length > 0 && !hasValidUserNames && apiUsers.length > 0) {
+        log.info('[Wecom] Enriching local users with names from API...');
+        const bindingRepo2 = AppDataSource.getRepository(WecomUserBinding);
+        for (const apiUser of apiUsers) {
+          const local = localBindings.find(b => b.wecomUserId === apiUser.userid);
+          if (local && apiUser.name && apiUser.name !== apiUser.userid) {
+            local.wecomUserName = apiUser.name;
+            local.wecomAvatar = apiUser.avatar || local.wecomAvatar;
+            await bindingRepo2.save(local).catch(() => {});
+          }
+        }
+        // 返回合并数据
+        const users = localBindings.map(b => {
+          const apiMatch = apiUsers.find((a: any) => a.userid === b.wecomUserId);
+          return {
+            userid: b.wecomUserId,
+            name: b.wecomUserName || apiMatch?.name || b.wecomUserId,
+            department: b.wecomDepartmentIds ? b.wecomDepartmentIds.split(',').map(Number).filter(n => n > 0) : [],
+            avatar: b.wecomAvatar || apiMatch?.avatar || '',
+            status: b.isEnabled ? 1 : 0,
+            _source: 'enriched'
+          };
+        });
+        return res.json({ success: true, data: users });
+      }
+
+      res.json({ success: true, data: apiUsers });
+    } catch (apiError: any) {
+      // API失败时返回本地数据
+      if (localBindings.length > 0) {
+        log.warn('[Wecom] API failed, returning local users with ID fallback');
+        const users = localBindings.map(b => ({
+          userid: b.wecomUserId,
+          name: b.wecomUserName || b.wecomUserId,
+          department: b.wecomDepartmentIds ? b.wecomDepartmentIds.split(',').map(Number).filter(n => n > 0) : [],
+          avatar: b.wecomAvatar || '',
+          status: b.isEnabled ? 1 : 0,
+          _source: 'local-fallback'
+        }));
+        return res.json({ success: true, data: users });
+      }
+      throw apiError;
+    }
   } catch (error: any) {
     log.error('[Wecom] Get users error:', error.message, error.stack);
 
@@ -291,11 +465,12 @@ router.get('/configs/:id/users', authenticateToken, async (req: Request, res: Re
 });
 
 /**
- * 同步通讯录（部门+成员）- 从企业微信API实时拉取
+ * 同步通讯录（部门+成员）- 从企业微信API实时拉取并持久化到本地
  */
 router.post('/configs/:id/sync-contacts', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
   try {
     const configId = parseInt(req.params.id);
+    const tenantId = getCurrentTenantId();
     log.info('[Wecom] Syncing contacts for config:', configId);
 
     const configRepo = getTenantRepo(WecomConfig);
@@ -313,13 +488,90 @@ router.post('/configs/:id/sync-contacts', authenticateToken, requireAdmin, async
     const departments = await WecomApiService.getDepartmentList(accessToken);
     log.info('[Wecom] Synced departments:', departments.length);
 
+    // 持久化部门到本地
+    const deptRepo = AppDataSource.getRepository(WecomDepartmentMapping);
+    let deptCreated = 0, deptUpdated = 0;
+    for (const dept of departments) {
+      let mapping = await deptRepo.findOne({
+        where: { wecomConfigId: configId, wecomDeptId: dept.id, ...(tenantId ? { tenantId } : {}) }
+      });
+      if (mapping) {
+        mapping.wecomDeptName = dept.name;
+        mapping.wecomParentId = dept.parentid || 0;
+        mapping.lastSyncTime = new Date();
+        deptUpdated++;
+      } else {
+        mapping = deptRepo.create({
+          tenantId: tenantId || config.tenantId,
+          wecomConfigId: configId,
+          wecomDeptId: dept.id,
+          wecomDeptName: dept.name,
+          wecomParentId: dept.parentid || 0,
+          memberCount: 0,
+          lastSyncTime: new Date()
+        });
+        deptCreated++;
+      }
+      await deptRepo.save(mapping);
+    }
+
     // 2. 同步根部门下所有成员
     const users = await WecomApiService.getDepartmentUsers(accessToken, 1, true);
     log.info('[Wecom] Synced users:', users.length);
 
+    // 持久化成员到本地
+    const bindingRepo = AppDataSource.getRepository(WecomUserBinding);
+    let userCreated = 0, userUpdated = 0;
+    const deptMemberCount = new Map<number, number>();
+
+    for (const user of users) {
+      const wecomUserId = user.userid;
+      const deptIds = (user.department || []).join(',');
+
+      for (const dId of (user.department || [])) {
+        deptMemberCount.set(dId, (deptMemberCount.get(dId) || 0) + 1);
+      }
+
+      let binding = await bindingRepo.findOne({
+        where: { wecomConfigId: configId, wecomUserId, ...(tenantId ? { tenantId } : {}) }
+      });
+
+      if (binding) {
+        binding.wecomUserName = user.name || binding.wecomUserName;
+        binding.wecomAvatar = user.avatar || binding.wecomAvatar;
+        binding.wecomDepartmentIds = deptIds;
+        binding.isEnabled = user.status === 1;
+        userUpdated++;
+      } else {
+        binding = bindingRepo.create({
+          tenantId: tenantId || config.tenantId,
+          wecomConfigId: configId,
+          corpId: config.corpId,
+          wecomUserId,
+          wecomUserName: user.name || '',
+          wecomAvatar: user.avatar || '',
+          wecomDepartmentIds: deptIds,
+          crmUserId: '',
+          crmUserName: '',
+          isEnabled: user.status === 1,
+          bindOperator: 'sync'
+        });
+        userCreated++;
+      }
+      await bindingRepo.save(binding);
+    }
+
+    // 更新部门成员计数
+    for (const [deptId, count] of deptMemberCount) {
+      await deptRepo.update(
+        { wecomConfigId: configId, wecomDeptId: deptId, ...(tenantId ? { tenantId } : {}) },
+        { memberCount: count }
+      );
+    }
+
     res.json({
       success: true,
-      message: `同步完成：${departments.length} 个部门，${users.length} 个成员`,
+      message: `同步完成：${departments.length} 个部门（新增${deptCreated}/更新${deptUpdated}），${users.length} 个成员（新增${userCreated}/更新${userUpdated}）`,
       data: { departments: departments.length, users: users.length }
     });
   } catch (error: any) {

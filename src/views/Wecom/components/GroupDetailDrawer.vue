@@ -196,7 +196,7 @@
         <el-tooltip content="企业微信API仅支持离职继承转让群主，不支持主动转让" placement="top">
           <el-button size="small" type="primary" plain disabled>群主转让（不支持）</el-button>
         </el-tooltip>
-        <el-button size="small" plain @click="broadcastDialogVisible = true" :disabled="group.status !== 'normal'">群发消息</el-button>
+        <!-- <el-button size="small" plain @click="broadcastDialogVisible = true" :disabled="group.status !== 'normal'">群发消息</el-button> -->
         <el-button size="small" plain @click="handleExportMembers">导出成员</el-button>
       </div>
     </div>

@@ -10,6 +10,7 @@
     <div v-else-if="pageState === 'no-sdk'" class="sidebar-center">
       <el-result icon="warning" :title="sdkErrorTitle" :sub-title="sdkErrorDetail">
         <template #extra>
+          <el-button type="primary" @click="retrySdkInit" :loading="sdkRetrying" style="margin-bottom:12px">重新加载</el-button>
           <p style="color:#909399;font-size:12px">如果您是管理员，请在企微后台配置侧边栏应用地址指向此页面</p>
           <p v-if="sdkDebugInfo" style="color:#C0C4CC;font-size:11px;margin-top:8px;word-break:break-all">{{ sdkDebugInfo }}</p>
           <!-- 开发模式或环境检测失败时允许手动调试 -->
@@ -370,6 +371,7 @@ const sdkErrorCode = ref('') // env | no-corpid | sdk-load | sdk-config | sdk-ag
 const sdkErrorTitle = ref('非企微环境')
 const sdkErrorDetail = ref('请在企业微信聊天侧边栏中打开此页面')
 const sdkDebugInfo = ref('')
+const sdkRetrying = ref(false)
 
 function setSdkError(code: string, title: string, detail: string, debug = '') {
   sdkErrorCode.value = code
@@ -377,6 +379,16 @@ function setSdkError(code: string, title: string, detail: string, debug = '') {
   sdkErrorDetail.value = detail
   sdkDebugInfo.value = debug
   pageState.value = 'no-sdk'
+}
+
+async function retrySdkInit() {
+  sdkRetrying.value = true
+  pageState.value = 'loading'
+  try {
+    await initWecomSdk()
+  } finally {
+    sdkRetrying.value = false
+  }
 }
 
 // 企微上下文
@@ -572,67 +584,79 @@ function isTokenExpiringSoon(token: string): boolean {
 }
 
 function loadWecomJsSdk(): Promise<void> {
-  return new Promise((resolve, reject) => {
-    if ((window as any).wx || (window as any).jWeixin) {
-      // 统一挂载到 window.wx
-      if (!(window as any).wx && (window as any).jWeixin) {
-        (window as any).wx = (window as any).jWeixin
-      }
-      resolve()
-      return
-    }
+  // 检查wx对象是否已存在（企微客户端可能预注入）
+  function ensureWxObj(): boolean {
+    const w = window as any
+    if (w.wx) return true
+    if (w.jWeixin) { w.wx = w.jWeixin; return true }
+    if (w.WeixinJSBridge) return true
+    return false
+  }
 
-    // 等待wx对象就绪的轮询函数
-    function waitForWx(timeout = 3000): Promise<void> {
-      return new Promise((res, rej) => {
-        const start = Date.now()
-        const check = () => {
-          if ((window as any).wx || (window as any).jWeixin) {
-            if (!(window as any).wx && (window as any).jWeixin) {
-              (window as any).wx = (window as any).jWeixin
-            }
-            res()
-          } else if (Date.now() - start > timeout) {
-            rej(new Error('wx object not available after SDK load'))
-          } else {
-            setTimeout(check, 50)
+  if (ensureWxObj()) return Promise.resolve()
+
+  // 等待wx对象就绪的轮询（延长到5秒）
+  function waitForWx(timeout = 5000): Promise<void> {
+    return new Promise((res, rej) => {
+      const start = Date.now()
+      const check = () => {
+        if (ensureWxObj()) { res(); return }
+        if (Date.now() - start > timeout) {
+          rej(new Error('wx object not available after SDK load'))
+        } else {
+          setTimeout(check, 100)
+        }
+      }
+      check()
+    })
+  }
+
+  // 加载单个脚本
+  function loadScript(url: string): Promise<boolean> {
+    return new Promise((res) => {
+      // 避免重复加载同一脚本
+      if (document.querySelector(`script[src="${url}"]`)) {
+        res(true)
+        return
+      }
+      const s = document.createElement('script')
+      s.src = url
+      s.onload = () => { console.log(`[Sidebar] SDK loaded: ${url}`); res(true) }
+      s.onerror = () => { console.warn(`[Sidebar] SDK load failed: ${url}`); res(false) }
+      document.head.appendChild(s)
+    })
+  }
+
+  // 多CDN依次尝试（含企微专用CDN + 微信通用CDN）
+  const CDN_LIST = [
+    'https://open.work.weixin.qq.com/wwopen/js/jwxwork-1.0.0.js',
+    'https://res.wx.qq.com/open/js/jWeixin-1.2.0.js',
+    'https://wwcdn.weixin.qq.com/node/open/js/jweixin-1.2.0.js',
+    'https://res2.wx.qq.com/open/js/jWeixin-1.2.0.js',
+  ]
+
+  return (async () => {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      if (attempt > 0) {
+        console.log(`[Sidebar] JS-SDK加载重试 (第${attempt + 1}次)...`)
+        await new Promise(r => setTimeout(r, 1000))
+      }
+      for (const cdn of CDN_LIST) {
+        if (ensureWxObj()) return
+        const loaded = await loadScript(cdn)
+        if (loaded) {
+          try {
+            await waitForWx(5000)
+            console.log('[Sidebar] wx对象就绪')
+            return
+          } catch {
+            console.warn(`[Sidebar] ${cdn} 加载成功但wx对象未生成，尝试下一个CDN`)
           }
         }
-        check()
-      })
-    }
-
-    // 企业微信侧边栏应使用 jWeixin SDK（支持PC端和移动端）
-    const script = document.createElement('script')
-    script.src = 'https://res.wx.qq.com/open/js/jWeixin-1.2.0.js'
-    script.onload = () => {
-      console.log('[Sidebar] jWeixin-1.2.0.js loaded')
-      // SDK加载后可能需要短暂等待wx对象挂载
-      waitForWx(3000).then(resolve).catch(() => {
-        // fallback: 尝试备用CDN
-        console.warn('[Sidebar] wx对象未就绪，尝试备用CDN...')
-        const fallbackScript = document.createElement('script')
-        fallbackScript.src = 'https://wwcdn.weixin.qq.com/node/open/js/jweixin-1.2.0.js'
-        fallbackScript.onload = () => {
-          waitForWx(3000).then(resolve).catch(() => reject(new Error('wx object not available')))
-        }
-        fallbackScript.onerror = () => reject(new Error('Failed to load WeChat JS-SDK from all CDNs'))
-        document.head.appendChild(fallbackScript)
-      })
-    }
-    script.onerror = () => {
-      // 主CDN加载失败，尝试备用CDN
-      console.warn('[Sidebar] 主CDN加载失败，尝试备用CDN...')
-      const fallbackScript = document.createElement('script')
-      fallbackScript.src = 'https://wwcdn.weixin.qq.com/node/open/js/jweixin-1.2.0.js'
-      fallbackScript.onload = () => {
-        waitForWx(3000).then(resolve).catch(() => reject(new Error('wx object not available')))
       }
-      fallbackScript.onerror = () => reject(new Error('Failed to load WeChat JS-SDK'))
-      document.head.appendChild(fallbackScript)
     }
-    document.head.appendChild(script)
-  })
+    throw new Error('Failed to load WeChat JS-SDK from all CDNs after retries')
+  })()
 }
 
 // ==================== 绑定检查 ====================

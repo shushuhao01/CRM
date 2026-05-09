@@ -80,6 +80,32 @@ router.get('/address-book/departments', authenticateToken, async (req: Request, 
       order: { wecomDeptId: 'ASC' }
     });
 
+    // 检查本地数据是否有有效名称（非null、非空、非纯数字ID）
+    const hasValidNames = mappings.length > 0 && mappings.some(m =>
+      m.wecomDeptName && m.wecomDeptName.trim() && !/^\d+$/.test(m.wecomDeptName.trim())
+    );
+
+    // 如果本地数据存在但名称缺失，尝试从API获取并回填
+    if (mappings.length > 0 && !hasValidNames) {
+      try {
+        const accessToken = await WecomApiService.getAccessTokenByConfigId(Number(configId), 'contact');
+        const apiDepts = await WecomApiService.getDepartmentList(accessToken);
+        if (apiDepts.length > 0) {
+          log.info('[AddressBook] Enriching local department names from API...');
+          for (const apiDept of apiDepts) {
+            const local = mappings.find(m => m.wecomDeptId === apiDept.id);
+            if (local && apiDept.name && apiDept.name !== String(apiDept.id)) {
+              local.wecomDeptName = apiDept.name;
+              local.wecomParentId = apiDept.parentid || local.wecomParentId;
+              await repo.save(local).catch(() => {});
+            }
+          }
+        }
+      } catch (e: any) {
+        log.warn('[AddressBook] API enrich failed, using local data:', e.message);
+      }
+    }
+
     // 构建树结构
     const nodeMap = new Map<number, any>();
     const roots: any[] = [];
@@ -88,7 +114,7 @@ router.get('/address-book/departments', authenticateToken, async (req: Request, 
       nodeMap.set(m.wecomDeptId, {
         id: m.id,
         wecomDeptId: m.wecomDeptId,
-        wecomDeptName: m.wecomDeptName,
+        wecomDeptName: m.wecomDeptName || `部门${m.wecomDeptId}`,
         wecomParentId: m.wecomParentId,
         crmDeptId: m.crmDeptId,
         crmDeptName: m.crmDeptName,
@@ -600,8 +626,9 @@ router.get('/address-book/dept/:deptId/children', authenticateToken, async (req:
     const deptNodes = childDepts.map(d => ({
       nodeId: `dept_${d.wecomDeptId}`,
       nodeType: 'dept' as const,
-      label: d.wecomDeptName,
+      label: d.wecomDeptName || `部门${d.wecomDeptId}`,
       wecomDeptId: d.wecomDeptId,
+      wecomDeptName: d.wecomDeptName || `部门${d.wecomDeptId}`,
       memberCount: d.memberCount || 0,
       crmDeptName: d.crmDeptName,
       isLeaf: false
@@ -625,6 +652,7 @@ router.get('/address-book/dept/:deptId/children', authenticateToken, async (req:
       nodeType: 'member' as const,
       label: m.wecomUserName || m.wecomUserId,
       wecomUserId: m.wecomUserId,
+      wecomUserName: m.wecomUserName || m.wecomUserId,
       wecomAvatar: m.wecomAvatar,
       crmUserName: m.crmUserName,
       crmUserId: m.crmUserId,

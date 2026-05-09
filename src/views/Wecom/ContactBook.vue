@@ -253,7 +253,8 @@ const buildDeptTreeWithMembers = (flatDepts: any[], members: any[]): any[] => {
   // 第一遍：创建部门节点
   for (const dept of flatDepts) {
     const id = dept.id ?? dept.wecomDeptId
-    const name = dept.name ?? dept.wecomDeptName
+    const rawName = dept.name ?? dept.wecomDeptName
+    const name = (rawName && String(rawName).trim() && !/^\d+$/.test(String(rawName).trim())) ? rawName : `部门${id}`
     const parentId = dept.parentid ?? dept.wecomParentId ?? 0
     nodeMap.set(id, {
       id,
@@ -286,7 +287,7 @@ const buildDeptTreeWithMembers = (flatDepts: any[], members: any[]): any[] => {
       ...member,
       _treeKey: `member_${member.userid}`,
       _type: 'member',
-      name: member.name,
+      name: (member.name && member.name !== member.userid) ? member.name : (member.userid || '-'),
       _isAbnormal: isMemberAbnormal(member),
       children: undefined // 叶子节点
     }

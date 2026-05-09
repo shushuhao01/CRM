@@ -5,6 +5,7 @@
 import { Router, Request, Response } from 'express';
 import { AppDataSource } from '../../config/database';
 import { WecomConfig } from '../../entities/WecomConfig';
+import { TenantSettings } from '../../entities/TenantSettings';
 import { log } from '../../config/logger';
 
 const router = Router();
@@ -1262,27 +1263,111 @@ router.get('/tenant-auth/:configId/logs', async (req: Request, res: Response) =>
 });
 
 /**
- * 获取/保存操作日志自动清理配置
+ * 确保 tenant_settings 表结构完整（synchronize: false 时自动创建缺失表/列）
+ */
+let tenantSettingsChecked = false;
+async function ensureTenantSettingsTable() {
+  if (tenantSettingsChecked) return;
+  tenantSettingsChecked = true;
+  try {
+    const tables = await AppDataSource.query(`SHOW TABLES LIKE 'tenant_settings'`);
+    if (tables.length === 0) {
+      await AppDataSource.query(`
+        CREATE TABLE tenant_settings (
+          id VARCHAR(36) NOT NULL,
+          tenant_id VARCHAR(36) NOT NULL,
+          setting_key VARCHAR(100) NOT NULL,
+          setting_value TEXT NULL,
+          setting_type VARCHAR(20) DEFAULT 'string',
+          description VARCHAR(500) NULL,
+          created_at DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6),
+          updated_at DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+          PRIMARY KEY (id),
+          UNIQUE KEY uk_tenant_setting (tenant_id, setting_key),
+          KEY idx_tenant_id (tenant_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+      `);
+      log.info('[Admin Wecom] Created tenant_settings table');
+    } else {
+      // 确保关键列存在
+      const cols = await AppDataSource.query(`SHOW COLUMNS FROM tenant_settings`);
+      const colNames = cols.map((c: any) => c.Field);
+      if (!colNames.includes('setting_type')) {
+        await AppDataSource.query(`ALTER TABLE tenant_settings ADD COLUMN setting_type VARCHAR(20) DEFAULT 'string'`);
+        log.info('[Admin Wecom] Added setting_type column to tenant_settings');
+      }
+      if (!colNames.includes('description')) {
+        await AppDataSource.query(`ALTER TABLE tenant_settings ADD COLUMN description VARCHAR(500) NULL`);
+        log.info('[Admin Wecom] Added description column to tenant_settings');
+      }
+    }
+  } catch (e: any) {
+    log.warn('[Admin Wecom] ensureTenantSettingsTable error:', e.message);
+  }
+}
+
+/**
+ * 获取操作日志自动清理配置
+ * GET /api/v1/admin/wecom-management/tenant-auth/:configId/log-auto-clean
+ */
+router.get('/tenant-auth/:configId/log-auto-clean', async (req: Request, res: Response) => {
+  try {
+    await ensureTenantSettingsTable();
+    const { configId } = req.params;
+    const configRow = await AppDataSource.query('SELECT tenant_id FROM wecom_configs WHERE id = ? LIMIT 1', [configId]);
+    const tenantId = configRow[0]?.tenant_id;
+    if (!tenantId) return res.json({ success: true, data: { enabled: false, retentionDays: 30 } });
+
+    const repo = AppDataSource.getRepository(TenantSettings);
+    const setting = await repo.findOne({ where: { tenantId, settingKey: 'wecom_log_auto_clean' } });
+    if (setting) {
+      try {
+        const val = JSON.parse(setting.settingValue || '{}');
+        return res.json({ success: true, data: { enabled: !!val.enabled, retentionDays: val.retentionDays || 30 } });
+      } catch { /* fall through */ }
+    }
+    res.json({ success: true, data: { enabled: false, retentionDays: 30 } });
+  } catch (error: any) {
+    log.error('[Admin Wecom] Get log auto-clean config error:', error.message);
+    res.json({ success: true, data: { enabled: false, retentionDays: 30 } });
+  }
+});
+
+/**
+ * 保存操作日志自动清理配置
  * PUT /api/v1/admin/wecom-management/tenant-auth/:configId/log-auto-clean
  */
 router.put('/tenant-auth/:configId/log-auto-clean', async (req: Request, res: Response) => {
   try {
+    await ensureTenantSettingsTable();
     const { configId } = req.params;
     const { enabled, retentionDays } = req.body;
-    // 存储到 tenant_settings
+    // 存储到 tenant_settings（使用TypeORM Repository）
     const configRow = await AppDataSource.query('SELECT tenant_id FROM wecom_configs WHERE id = ? LIMIT 1', [configId]);
     const tenantId = configRow[0]?.tenant_id;
     if (!tenantId) return res.json({ success: false, message: '未关联租户' });
     const settingValue = JSON.stringify({ enabled: !!enabled, retentionDays: retentionDays || 30 });
-    await AppDataSource.query(
-      `INSERT INTO tenant_settings (tenant_id, setting_key, setting_value) VALUES (?, 'wecom_log_auto_clean', ?)
-       ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)`,
-      [tenantId, settingValue]
-    );
+
+    const repo = AppDataSource.getRepository(TenantSettings);
+    const setting = await repo.findOne({ where: { tenantId, settingKey: 'wecom_log_auto_clean' } });
+
+    if (setting) {
+      setting.settingValue = settingValue;
+      await repo.save(setting);
+    } else {
+      const { v4: uuidv4 } = require('uuid');
+      const newSetting = new TenantSettings();
+      newSetting.id = uuidv4();
+      newSetting.tenantId = tenantId;
+      newSetting.settingKey = 'wecom_log_auto_clean';
+      newSetting.settingValue = settingValue;
+      newSetting.settingType = 'json';
+      await repo.save(newSetting);
+    }
     res.json({ success: true, message: '保存成功' });
   } catch (error: any) {
-    log.error('[Admin Wecom] Save log auto-clean config error:', error.message);
-    res.status(500).json({ success: false, message: '保存失败' });
+    log.error('[Admin Wecom] Save log auto-clean config error:', error.message, error.stack);
+    res.status(500).json({ success: false, message: `保存失败: ${error.message}` });
   }
 });
 
