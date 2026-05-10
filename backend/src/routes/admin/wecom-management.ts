@@ -4991,6 +4991,95 @@ router.get('/config-quotas', async (req: Request, res: Response) => {
       try { quotaMap = JSON.parse(globalCfgRows[0].config_value); } catch { quotaMap = {}; }
     }
 
+    // ★ 从实际购买记录中同步配额（确保CRM端购买后配额自动更新）
+    const billingRows = await AppDataSource.query(
+      "SELECT config_key, config_value FROM system_config WHERE config_key LIKE 'tenant_billing_records_%'"
+    ).catch(() => []);
+
+    // 从购买记录中提取每个租户的最新有效配额
+    const purchasedQuotaMap: Record<string, { maxCount: number; packageName: string }> = {};
+    for (const row of billingRows) {
+      const tenantId = row.config_key.replace('tenant_billing_records_', '');
+      try {
+        const records = JSON.parse(row.config_value);
+        if (!Array.isArray(records)) continue;
+        // 找到最新的已支付/已生效的企微套餐记录
+        const activeWecomRecords = records.filter((r: any) =>
+          (r.type === 'wecom' || r.serviceType === 'wecom') &&
+          (r.status === 'paid' || r.status === 'active' || r.status === 'free')
+        ).sort((a: any, b: any) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+
+        if (activeWecomRecords.length > 0) {
+          const latest = activeWecomRecords[0];
+          const wecomQuota = latest.wecomQuota || latest.maxConfigs || latest.quota || 1;
+          purchasedQuotaMap[tenantId] = {
+            maxCount: wecomQuota,
+            packageName: latest.packageName || latest.planName || '基础版'
+          };
+        }
+      } catch { /* ignore parse error */ }
+    }
+
+    // ★ 同时检查 payment_orders 表中的企微套餐购买记录
+    try {
+      const paidOrders = await AppDataSource.query(
+        `SELECT po.tenant_id, po.package_name, po.amount, po.paid_at,
+                COALESCE(po.remark, '') as remark
+         FROM payment_orders po
+         WHERE po.status = 'paid'
+           AND (po.package_id LIKE '%wecom%' OR po.package_name LIKE '%企微%')
+         ORDER BY po.paid_at DESC`
+      );
+      for (const order of paidOrders) {
+        if (!order.tenant_id) continue;
+        // 从套餐名称中提取配额数（如"企微基础版 3配额"）
+        const quotaMatch = (order.package_name || '').match(/(\d+)\s*配额/);
+        const remarkQuota = (order.remark || '').match(/wecomQuota[=:](\d+)/i);
+        if (quotaMatch || remarkQuota) {
+          const quota = parseInt(quotaMatch?.[1] || remarkQuota?.[1] || '1');
+          if (!purchasedQuotaMap[order.tenant_id] || quota > purchasedQuotaMap[order.tenant_id].maxCount) {
+            purchasedQuotaMap[order.tenant_id] = {
+              maxCount: quota,
+              packageName: order.package_name || '付费版'
+            };
+          }
+        }
+      }
+    } catch (e: any) {
+      log.warn('[Admin Wecom] Check payment_orders for quota sync failed:', (e as any).message?.substring(0, 80));
+    }
+
+    // ★ 将购买记录中的配额合并到 quotaMap（购买记录优先级高于手动配置）
+    let quotaMapUpdated = false;
+    for (const [tenantId, purchased] of Object.entries(purchasedQuotaMap)) {
+      const existing = quotaMap[tenantId] || {};
+      if (purchased.maxCount > (existing.maxCount || 1)) {
+        quotaMap[tenantId] = {
+          ...existing,
+          maxCount: purchased.maxCount,
+          packageName: purchased.packageName,
+          syncedFromPurchase: true,
+          syncedAt: new Date().toISOString()
+        };
+        quotaMapUpdated = true;
+      }
+    }
+
+    // 如果有更新，回写到 system_config
+    if (quotaMapUpdated) {
+      const val = JSON.stringify(quotaMap);
+      if (globalCfgRows.length > 0) {
+        await AppDataSource.query(
+          "UPDATE system_config SET config_value = ?, updated_at = NOW() WHERE config_key = 'wecom_tenant_quotas'", [val]
+        ).catch(() => {});
+      } else {
+        await AppDataSource.query(
+          "INSERT INTO system_config (id, config_key, config_value, config_type, created_at, updated_at) VALUES (UUID(), 'wecom_tenant_quotas', ?, 'json', NOW(), NOW())", [val]
+        ).catch(() => {});
+      }
+      log.info(`[Admin Wecom] Config quotas synced from purchase records, updated ${Object.keys(purchasedQuotaMap).length} tenants`);
+    }
+
     const tenants = await AppDataSource.query(
       `SELECT t.id AS tenantId, t.name AS tenantName, t.code AS tenantCode, t.status,
               IFNULL((SELECT COUNT(*) FROM wecom_configs WHERE tenant_id = t.id), 0) AS usedCount

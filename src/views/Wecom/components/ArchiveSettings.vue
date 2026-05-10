@@ -27,8 +27,15 @@
 
       <!-- ==================== 第二区：SaaS模式 - 授权状态检查 ==================== -->
       <div v-if="isSaas" class="section-card">
-        <h3 class="block-title">📋 企微授权状态</h3>
-        <p class="block-desc">会话存档需要企业在企业微信完成以下授权，方可使用。</p>
+        <div class="block-header">
+          <div>
+            <h3 class="block-title">📋 企微授权状态</h3>
+            <p class="block-desc">会话存档需要企业在企业微信完成以下授权，方可使用。</p>
+          </div>
+          <el-button type="primary" :loading="refreshingAuth" @click="handleRefreshAuthStatus">
+            <el-icon><Refresh /></el-icon> 刷新授权状态
+          </el-button>
+        </div>
         <div class="auth-checklist">
           <div class="auth-item" :class="settings.hasSecret ? 'auth-ok' : 'auth-pending'">
             <span class="auth-dot">{{ settings.hasSecret ? '✓' : '!' }}</span>
@@ -52,11 +59,27 @@
             <span class="auth-dot">{{ settings.vasChatArchive ? '✓' : '!' }}</span>
             <div class="auth-content">
               <span class="auth-label">会话存档增值服务</span>
-              <span class="auth-hint" v-if="settings.vasChatArchive">已开通</span>
+              <span class="auth-hint" v-if="settings.vasChatArchive">已开通（席位 {{ settings.usedUsers }}/{{ settings.maxUsers }}）</span>
               <span class="auth-hint" v-else>请在「套餐与配额」中购买会话存档服务</span>
             </div>
           </div>
         </div>
+
+        <!-- 刷新结果提示 -->
+        <el-alert
+          v-if="authRefreshResult"
+          :type="authRefreshResult.type"
+          :closable="true"
+          style="margin-top: 12px"
+          show-icon
+          @close="authRefreshResult = null"
+        >
+          <template #title>{{ authRefreshResult.message }}</template>
+          <template v-if="authRefreshResult.detail" #default>
+            <p style="margin: 4px 0 0; font-size: 12px; color: #606266">{{ authRefreshResult.detail }}</p>
+          </template>
+        </el-alert>
+
         <!-- 未授权时的指引 -->
         <el-alert
           v-if="settings.dataApiStatus !== 1"
@@ -72,7 +95,7 @@
             <li>分别授权 <strong>「组织架构信息」</strong> 和 <strong>「数据与智能专区权限」</strong></li>
             <li>在数据与智能专区中选择 <strong>会话内容 → 配置人员范围</strong></li>
             <li>填写企业确认函（在企业微信端完成，CRM无需上传）</li>
-            <li>等待官方审核通过后，回到本页面配置生效范围</li>
+            <li>等待官方审核通过后，回到本页面点击「刷新授权状态」，然后配置生效范围</li>
           </ol>
         </el-alert>
       </div>
@@ -119,7 +142,8 @@
             <p class="block-desc">选择会话存档生效的成员，聊天会话、消息记录、数据统计均以此范围为准。</p>
           </div>
           <el-button type="primary" plain size="small" @click="loadScopeTree" :loading="scopeLoading">
-            {{ scopeTree.length > 0 ? '刷新成员' : '加载企微成员' }}
+            <el-icon><Refresh /></el-icon>
+            {{ scopeTree.length > 0 ? '刷新成员' : '选择生效成员' }}
           </el-button>
         </div>
 
@@ -145,6 +169,14 @@
           </el-alert>
         </template>
         <template v-else>
+          <!-- 操作提示 -->
+          <el-alert v-if="scopeTree.length === 0 && !scopeLoading" type="info" :closable="false" style="margin-bottom: 12px">
+            <template #title>点击右上角「选择生效成员」加载企微已授权会话存档范围内的成员列表</template>
+            <p style="margin: 4px 0 0; font-size: 12px">
+              加载的成员来自企业微信中已授权会话存档的人员范围。选中后不超过您购买的CRM套餐席位数量即可生效。
+            </p>
+          </el-alert>
+
           <!-- 成员树 -->
           <div v-if="scopeTree.length > 0" class="scope-tree-area">
             <el-tree
@@ -157,17 +189,21 @@
               @check="onScopeCheck"
               style="max-height: 360px; overflow-y: auto; border: 1px solid #ebeef5; border-radius: 6px; padding: 8px"
             />
-            <div style="margin-top: 12px; display: flex; gap: 8px">
+            <div style="margin-top: 12px; display: flex; gap: 8px; align-items: center">
               <el-button type="primary" :loading="scopeSaving" @click="handleSaveScope" :disabled="settings.maxUsers > 0 && scopeSelectedCount > settings.maxUsers">
-                保存生效范围
+                确定生效（{{ scopeSelectedCount }}人）
               </el-button>
               <span v-if="settings.maxUsers > 0 && scopeSelectedCount > settings.maxUsers" class="field-hint" style="color: #f56c6c; line-height: 32px">
                 已选人数超出套餐额度，请减少选择或增购席位
               </span>
+              <span v-else-if="scopeSelectedCount > 0" class="field-hint" style="color: #67c23a; line-height: 32px">
+                ✅ 选中 {{ scopeSelectedCount }} 人，未超出套餐额度
+              </span>
             </div>
           </div>
-          <div v-else class="scope-empty">
-            <p>点击「加载企微成员」获取企业组织架构和成员列表。</p>
+          <div v-else-if="scopeLoading" class="scope-empty">
+            <el-icon class="is-loading" :size="24" color="#409eff"><Loading /></el-icon>
+            <p style="margin-top: 8px">正在加载企微授权成员列表...</p>
           </div>
         </template>
       </div>
@@ -263,7 +299,9 @@
 defineOptions({ name: 'ArchiveSettings' })
 import { ref, reactive, computed, watch, onMounted } from 'vue'
 import { ElMessage, ElTree } from 'element-plus'
+import { Refresh, Loading } from '@element-plus/icons-vue'
 import { getArchiveSettings, updateArchiveSettings, getArchiveSeats, getArchiveSeatWecomTree, updateArchiveSeatMembers } from '@/api/wecom'
+import request from '@/utils/request'
 
 const props = defineProps<{
   configId: number | null
@@ -275,6 +313,48 @@ const loading = ref(false)
 const saving = ref(false)
 
 const isSaas = computed(() => props.authType === 'third_party')
+
+// ==================== 刷新授权状态 ====================
+const refreshingAuth = ref(false)
+const authRefreshResult = ref<{ type: 'success' | 'warning' | 'error'; message: string; detail?: string } | null>(null)
+
+const handleRefreshAuthStatus = async () => {
+  if (!props.configId) return
+  refreshingAuth.value = true
+  authRefreshResult.value = null
+  try {
+    const res: any = await request.post('/wecom/chat-archive/refresh-auth-status', { configId: props.configId })
+    const data = res?.data || res
+    if (data?.activated) {
+      authRefreshResult.value = {
+        type: 'success',
+        message: '✅ 授权状态已更新：会话存档已激活！',
+        detail: `企微已授权数据与智能专区权限，席位 ${data.usedUsers || 0}/${data.maxUsers || 0} 人`
+      }
+      // 刷新设置
+      await fetchSettings()
+    } else {
+      const issues: string[] = []
+      if (!data?.hasSecret) issues.push('应用授权未完成')
+      if (!data?.dataApiAuthorized) issues.push('数据与智能专区未授权')
+      if (!data?.vasPurchased) issues.push('未购买会话存档服务')
+      authRefreshResult.value = {
+        type: 'warning',
+        message: '授权状态已刷新，但尚未满足激活条件',
+        detail: issues.length > 0 ? `待完成项：${issues.join('、')}` : '请确认企微端已完成所有授权步骤'
+      }
+      await fetchSettings()
+    }
+  } catch (e: any) {
+    authRefreshResult.value = {
+      type: 'error',
+      message: '刷新授权状态失败',
+      detail: e?.response?.data?.message || e?.message || '请稍后重试'
+    }
+  } finally {
+    refreshingAuth.value = false
+  }
+}
 
 const settings = reactive({
   status: 'inactive',

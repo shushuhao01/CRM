@@ -122,6 +122,7 @@ router.post('/customers/sync', authenticateToken, requireAdmin, async (req: Requ
     }
 
     const accessToken = await WecomApiService.getAccessTokenByConfigId(configId, 'external');
+    log.info(`[Wecom] Sync customers: got access token, starting sync for ${bindings.length} bindings`);
     const customerRepo = getTenantRepo(WecomCustomer);
     let syncCount = 0;
 

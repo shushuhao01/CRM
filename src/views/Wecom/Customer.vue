@@ -681,7 +681,14 @@ const handleSync = async () => {
     fetchList()
     fetchStats()
   } catch (e: any) {
-    ElMessage.error(e.message || '同步失败')
+    const errMsg = e?.response?.data?.message || e?.message || '同步失败'
+    if (e?.code === 'ECONNABORTED' || errMsg.includes('timeout')) {
+      ElMessage.error('同步超时：客户数量较多，请稍后刷新页面查看同步结果')
+    } else if (!e?.response && e?.request) {
+      ElMessage.error('同步请求超时或网络异常，请检查后端服务是否正常运行，稍后重试')
+    } else {
+      ElMessage.error(errMsg)
+    }
   } finally {
     syncing.value = false
   }

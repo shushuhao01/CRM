@@ -666,26 +666,37 @@ async function initWecomSdk() {
 
 function getCurExternalContact(wx: any) {
   console.log('[Sidebar] 调用 getCurExternalContact...')
-  wx.invoke('getCurExternalContact', {}, (res: any) => {
-    console.log('[Sidebar] getCurExternalContact 响应:', JSON.stringify(res))
-    if (res.err_msg === 'getCurExternalContact:ok') {
-      externalUserId.value = res.userId
-      console.log('[Sidebar] ✅ 获取外部联系人成功, externalUserId:', res.userId)
-      console.log('[Sidebar] 开始检查绑定状态并加载客户数据...')
-      checkBindingAndLoad()
-    } else {
-      console.error('[Sidebar] ❌ getCurExternalContact 失败:', res)
-      pageState.value = 'error'
-      const errDetail = res.err_msg || '未知错误'
-      if (errDetail.includes('no permission') || errDetail.includes('permission')) {
-        errorMsg.value = '获取聊天对象失败：应用缺少"客户联系"API权限，请在企微管理后台为应用添加此权限'
-      } else if (errDetail.includes('not in chat') || errDetail.includes('invalid')) {
-        errorMsg.value = '获取聊天对象失败：请确保在与外部联系人的聊天窗口中打开侧边栏'
+  try {
+    wx.invoke('getCurExternalContact', {}, (res: any) => {
+      console.log('[Sidebar] getCurExternalContact 响应:', JSON.stringify(res))
+      if (res.err_msg === 'getCurExternalContact:ok') {
+        externalUserId.value = res.userId
+        console.log('[Sidebar] ✅ 获取外部联系人成功, externalUserId:', res.userId)
+        console.log('[Sidebar] 开始检查绑定状态并加载客户数据...')
+        checkBindingAndLoad()
+      } else if (res.err_msg === 'getCurExternalContact:fail' || res.err_msg?.includes('fail')) {
+        console.error('[Sidebar] ❌ getCurExternalContact 失败:', res)
+        pageState.value = 'error'
+        const errDetail = res.err_msg || '未知错误'
+        if (errDetail.includes('no permission') || errDetail.includes('permission')) {
+          errorMsg.value = '获取聊天对象失败：应用缺少"客户联系"API权限，请在企微管理后台为应用添加此权限'
+        } else if (errDetail.includes('not in chat') || errDetail.includes('invalid')) {
+          errorMsg.value = '获取聊天对象失败：请确保在与外部联系人的聊天窗口中打开侧边栏'
+        } else {
+          errorMsg.value = `获取当前聊天对象失败(${errDetail})，请确保在外部联系人聊天窗口中打开侧边栏`
+        }
       } else {
-        errorMsg.value = `获取当前聊天对象失败(${errDetail})，请确保在外部联系人聊天窗口中打开侧边栏`
+        // 未知响应格式 - 可能是企微版本兼容性问题
+        console.error('[Sidebar] ❌ getCurExternalContact 未知响应:', res)
+        pageState.value = 'error'
+        errorMsg.value = `获取当前聊天对象失败(${res.err_msg || '未知错误'})，请确保在外部联系人聊天窗口中打开侧边栏`
       }
-    }
-  })
+    })
+  } catch (e: any) {
+    console.error('[Sidebar] ❌ getCurExternalContact 调用异常:', e)
+    pageState.value = 'error'
+    errorMsg.value = `获取聊天对象异常: ${e?.message || '未知错误'}。可能原因：1.应用未配置客户联系权限 2.agentConfig未成功执行 3.当前不在外部联系人聊天窗口`
+  }
 }
 
 // ==================== Token过期检查 ====================

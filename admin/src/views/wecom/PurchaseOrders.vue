@@ -73,6 +73,12 @@
               <el-tag :type="typeColor(row.type || row.orderType || row.serviceType)" size="small" effect="light">{{ typeText(row.type || row.orderType || row.serviceType) }}</el-tag>
             </template>
           </el-table-column>
+          <el-table-column label="购买方式" width="100" align="center">
+            <template #default="{ row }">
+              <el-tag v-if="row.purchaseMode === 'service_fee'" type="info" size="small" effect="plain">服务费</el-tag>
+              <el-tag v-else type="warning" size="small" effect="plain">代购</el-tag>
+            </template>
+          </el-table-column>
           <el-table-column label="套餐 / 人数" min-width="140">
             <template #default="{ row }">
               <div class="cell-main">{{ row.packageName || row.planName || '-' }}</div>
@@ -114,9 +120,18 @@
           </el-table-column>
           <el-table-column label="操作" width="165" fixed="right">
             <template #default="{ row }">
-              <el-button
-                v-if="row.fulfillmentStatus === 'pending' || row.status === 'pending_fulfillment'"
-                v-permission="'wecom-management:orders:edit'" type="success" link size="small" @click="openFulfillDlg(row)">履约</el-button>
+              <template v-if="row.purchaseMode === 'service_fee'">
+                <!-- 服务费模式：无需代购履约，只需激活服务 -->
+                <el-button
+                  v-if="row.status === 'paid' || row.status === 'pending_fulfillment'"
+                  v-permission="'wecom-management:orders:edit'" type="success" link size="small" @click="doServiceActivate(row)">激活服务</el-button>
+              </template>
+              <template v-else>
+                <!-- 代购模式：需要履约 -->
+                <el-button
+                  v-if="row.fulfillmentStatus === 'pending' || row.status === 'pending_fulfillment'"
+                  v-permission="'wecom-management:orders:edit'" type="success" link size="small" @click="openFulfillDlg(row)">履约</el-button>
+              </template>
               <el-button type="primary" link size="small" @click="showDetail(row)">详情</el-button>
               <el-button
                 v-if="row.fulfillmentStatus === 'fulfilled' || row.status === 'active'"
@@ -779,6 +794,24 @@ const confirmPaid = async (row: any) => {
     ElMessage.success('已确认收款，进入履约流程')
     fetchOrders()
   } catch (e: any) { if (e !== 'cancel') ElMessage.error(e?.message || '操作失败') }
+}
+
+/** 服务费模式：直接激活服务（无需代购履约） */
+const doServiceActivate = async (row: any) => {
+  try {
+    await ElMessageBox.confirm(
+      `此订单为「服务费」模式（客户已自行购买企微席位），确认激活服务？\n激活后将开通租户会话存档权限和成员范围。`,
+      '激活服务',
+      { confirmButtonText: '确认激活', type: 'info' }
+    )
+    await fulfillPurchaseOrder(row.id, {
+      method: 'manual',
+      note: '服务费模式：客户已自购席位，直接激活CRM服务',
+      tenantId: row.tenantId
+    })
+    ElMessage.success('服务已激活，租户可在CRM中配置生效成员范围')
+    fetchOrders()
+  } catch (e: any) { if (e !== 'cancel') ElMessage.error(e?.message || '激活失败') }
 }
 
 const addTier = () => {

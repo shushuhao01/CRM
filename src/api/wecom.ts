@@ -150,7 +150,7 @@ export const getWecomCustomerStats = (params?: { configId?: number; startDate?: 
 
 /** 同步企微客户数据 */
 export const syncWecomCustomers = (configId: number) => {
-  return request.post('/wecom/customers/sync', { configId })
+  return request.post('/wecom/customers/sync', { configId }, { timeout: 180000, showError: false } as any)
 }
 
 /** 关联企微客户到CRM客户 */

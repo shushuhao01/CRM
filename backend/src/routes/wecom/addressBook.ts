@@ -82,6 +82,31 @@ async function appendSyncLog(tenantId: string, entry: {
 // ==================== 同步设置辅助 ====================
 const SYNC_SETTINGS_KEY = 'wecom_sync_settings';
 
+// ==================== 递归获取所有后代部门ID ====================
+async function getAllDescendantDeptIds(
+  deptRepo: any,
+  tenantId: string,
+  configId: number,
+  parentDeptId: number
+): Promise<number[]> {
+  const result: number[] = [];
+  const queue: number[] = [parentDeptId];
+
+  while (queue.length > 0) {
+    const currentParentId = queue.shift()!;
+    const children = await deptRepo.find({
+      where: { tenantId, wecomConfigId: configId, wecomParentId: currentParentId },
+      select: ['wecomDeptId']
+    });
+    for (const child of children) {
+      result.push(child.wecomDeptId);
+      queue.push(child.wecomDeptId);
+    }
+  }
+
+  return result;
+}
+
 // ==================== 1. 获取部门树（本地数据） ====================
 router.get('/address-book/departments', authenticateToken, async (req: Request, res: Response) => {
   try {
@@ -135,7 +160,7 @@ router.get('/address-book/departments', authenticateToken, async (req: Request, 
         wecomParentId: m.wecomParentId,
         crmDeptId: m.crmDeptId,
         crmDeptName: m.crmDeptName,
-        memberCount: m.memberCount,
+        memberCount: m.memberCount || 0,
         lastSyncTime: m.lastSyncTime,
         children: []
       });
@@ -148,6 +173,19 @@ router.get('/address-book/departments', authenticateToken, async (req: Request, 
       } else {
         roots.push(node);
       }
+    }
+
+    // ★ 自底向上递归累加 memberCount（包含所有子部门的成员数）
+    function calcTotalMemberCount(node: any): number {
+      let total = node.memberCount || 0;
+      for (const child of node.children) {
+        total += calcTotalMemberCount(child);
+      }
+      node.memberCount = total;
+      return total;
+    }
+    for (const root of roots) {
+      calcTotalMemberCount(root);
     }
 
     res.json({ success: true, data: roots });
@@ -950,6 +988,28 @@ router.get('/address-book/dept/:deptId/children', authenticateToken, async (req:
     const deptNameFromGroups = new Map<number, string>();
 
     if (needEnrichDepts || needEnrichMembers) {
+      // ★ 来源1: 尝试从企微API直接获取部门名称
+      if (needEnrichDepts) {
+        try {
+          const accessToken = await WecomApiService.getAccessTokenByConfigId(Number(configId), 'contact');
+          for (const d of childDepts) {
+            if (!isValidName(d.wecomDeptName, d.wecomDeptId)) {
+              try {
+                const detail = await WecomApiService.getDepartmentDetail(accessToken, d.wecomDeptId);
+                if (detail && isValidName(detail.name, d.wecomDeptId)) {
+                  d.wecomDeptName = String(detail.name).trim();
+                  deptRepo.save(d).catch(() => {});
+                  log.info(`[AddressBook] 从API补充子部门名称: ${d.wecomDeptId} → ${d.wecomDeptName}`);
+                }
+              } catch { /* 单个部门获取失败不影响整体 */ }
+            }
+          }
+        } catch (e: any) {
+          log.warn('[AddressBook] API获取子部门名称失败，尝试从客户群数据补充:', e.message);
+        }
+      }
+
+      // ★ 来源2: 从客户群数据中提取名称
       try {
         const { WecomCustomerGroup } = await import('../../entities/WecomCustomerGroup');
         const groupRepo = AppDataSource.getRepository(WecomCustomerGroup);
@@ -991,7 +1051,8 @@ router.get('/address-book/dept/:deptId/children', authenticateToken, async (req:
     }
 
     // 构建部门节点（用客户群数据补充缺失的部门名称）
-    const deptNodes = childDepts.map(d => {
+    // ★ 递归统计子部门成员数量
+    const deptNodes = await Promise.all(childDepts.map(async (d) => {
       let clean = sanitizeDeptName(d.wecomDeptName, d.wecomDeptId);
       // 如果本地名称缺失，尝试从客户群数据中获取
       if (!clean && deptNameFromGroups.has(d.wecomDeptId)) {
@@ -1001,17 +1062,39 @@ router.get('/address-book/dept/:deptId/children', authenticateToken, async (req:
         deptRepo.save(d).catch(() => {});
       }
       const display = clean || `部门${d.wecomDeptId}`;
+
+      // 递归统计：当前部门直属成员 + 所有子部门的成员总数
+      let totalMemberCount = d.memberCount || 0;
+      try {
+        // 获取所有后代部门ID
+        const allDescendantDeptIds = await getAllDescendantDeptIds(deptRepo, tenantId!, Number(configId), d.wecomDeptId);
+        if (allDescendantDeptIds.length > 0) {
+          // 统计所有后代部门的成员数
+          const descendantMemberCount = await deptRepo
+            .createQueryBuilder('dept')
+            .select('SUM(dept.memberCount)', 'total')
+            .where('dept.tenantId = :tenantId', { tenantId })
+            .andWhere('dept.wecomConfigId = :configId', { configId: Number(configId) })
+            .andWhere('dept.wecomDeptId IN (:...deptIds)', { deptIds: allDescendantDeptIds })
+            .getRawOne();
+          totalMemberCount += Number(descendantMemberCount?.total || 0);
+        }
+      } catch (e: any) {
+        // 递归统计失败时回退到直属成员数
+        log.warn(`[AddressBook] 递归统计部门${d.wecomDeptId}成员数失败:`, e.message);
+      }
+
       return {
         nodeId: `dept_${d.wecomDeptId}`,
         nodeType: 'dept' as const,
         label: display,
         wecomDeptId: d.wecomDeptId,
         wecomDeptName: display,
-        memberCount: d.memberCount || 0,
+        memberCount: totalMemberCount,
         crmDeptName: d.crmDeptName,
         isLeaf: false
       };
-    });
+    }));
 
     // 构建成员节点（用客户群数据补充缺失的成员名称）
     const memberNodes = members.map(m => {
