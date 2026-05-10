@@ -629,8 +629,15 @@ router.delete('/sidebar/binding/:id', authenticateToken, async (req: Request, re
 });
 
 router.post('/sidebar/js-sdk-config', jsSdkConfigLimiter, validateJsSdkReferer, async (req: Request, res: Response) => {
+  const diagStart = Date.now();
+  const diagSteps: { step: string; ms: number; detail?: string }[] = [];
+  const addDiag = (step: string, detail?: string) => {
+    diagSteps.push({ step, ms: Date.now() - diagStart, detail });
+  };
+
   try {
     const { url, corpId } = req.body;
+    addDiag('入参校验', `url=${url ? url.substring(0, 80) : '(空)'}, corpId=${corpId || '(空)'}`);
     if (!url || !corpId) return res.status(400).json({ success: false, message: '参数不完整' });
 
     const configRepo = AppDataSource.getRepository(WecomConfig);
@@ -639,6 +646,7 @@ router.post('/sidebar/js-sdk-config', jsSdkConfigLimiter, validateJsSdkReferer, 
     // ★ 兼容处理：当 corpId 是 $CORPID$ 占位符（企微未替换）时，尝试查找第一个可用的第三方应用配置
     if (corpId === '$CORPID$' || corpId.includes('$')) {
       log.warn(`[Wecom Sidebar] corpId是占位符(${corpId})，企微客户端未替换。尝试查找第一个可用的第三方应用配置...`);
+      addDiag('corpId占位符', `原始值=${corpId}，尝试降级查找`);
       config = await configRepo.findOne({
         where: { isEnabled: true, authType: 'third_party' },
         order: { id: 'ASC' }
@@ -648,31 +656,117 @@ router.post('/sidebar/js-sdk-config', jsSdkConfigLimiter, validateJsSdkReferer, 
         config = await configRepo.findOne({ where: { isEnabled: true }, order: { id: 'ASC' } });
       }
       if (!config) {
+        addDiag('配置查找失败', '无任何可用企微配置');
         return res.status(400).json({
           success: false,
           message: '未找到匹配的企微配置。corpId占位符($CORPID$)未被企微客户端替换，可能原因：1.侧边栏URL未在企微服务商后台正确配置 2.企业未授权安装该第三方应用'
         });
       }
       log.info(`[Wecom Sidebar] 占位符降级：使用配置 id=${config.id} corpId=${config.corpId} name=${config.name}`);
+      addDiag('占位符降级', `使用配置 id=${config.id} corpId=${config.corpId}`);
     } else {
       config = await configRepo.findOne({ where: { corpId, isEnabled: true } });
-      if (!config) return res.status(400).json({ success: false, message: '未找到匹配的企微配置' });
+      if (!config) {
+        addDiag('配置查找失败', `corpId=${corpId} 无匹配的已启用配置`);
+        return res.status(400).json({ success: false, message: '未找到匹配的企微配置' });
+      }
     }
 
-    log.info(`[Wecom Sidebar] JS-SDK config request: corpId=${corpId}, actualCorpId=${config.corpId}, authType=${config.authType}, authMode=${config.authMode}, configId=${config.id}`);
+    addDiag('配置加载完成', `configId=${config.id}, name=${config.name}, authType=${config.authType}, authMode=${config.authMode}, agentId=${config.agentId || '(空)'}, permanentCode=${config.permanentCode ? '已配置' : '(空)'}, suiteId=${config.suiteId || '(空)'}`);
+    log.info(`[Wecom Sidebar] JS-SDK config request: corpId=${corpId}, actualCorpId=${config.corpId}, authType=${config.authType}, authMode=${config.authMode}, configId=${config.id}, agentId=${config.agentId || '(empty)'}`);
+
+    // ★ agentId 补充逻辑（多来源尝试）
+    if (!config.agentId) {
+      log.info(`[Wecom Sidebar] agentId为空，开始多来源补充尝试...`);
+      addDiag('agentId补充开始', '当前agentId为空');
+
+      // 来源1: 从 authScope JSON 中提取
+      if (config.authType === 'third_party' && config.authScope) {
+        try {
+          const authScope: any = safeJsonParse(config.authScope, null);
+          const agentFromScope = authScope?.agent?.[0]?.agentid;
+          if (agentFromScope) {
+            config.agentId = agentFromScope;
+            await configRepo.save(config);
+            log.info(`[Wecom Sidebar] ✅ 从authScope中恢复agentId: ${agentFromScope}`);
+            addDiag('agentId补充-authScope', `成功恢复 agentId=${agentFromScope}`);
+          } else {
+            addDiag('agentId补充-authScope', `authScope中无agent信息: ${JSON.stringify(authScope).substring(0, 200)}`);
+          }
+        } catch (e: any) {
+          log.warn('[Wecom Sidebar] 尝试从authScope提取agentId失败:', e.message);
+          addDiag('agentId补充-authScope', `解析失败: ${e.message}`);
+        }
+      }
+
+      // 来源2: 从 authCorpInfo JSON 中提取
+      if (!config.agentId && config.authCorpInfo) {
+        try {
+          const authCorpInfo: any = safeJsonParse(config.authCorpInfo, null);
+          const agentFromCorpInfo = authCorpInfo?.agent?.agentid || authCorpInfo?.agentid;
+          if (agentFromCorpInfo) {
+            config.agentId = agentFromCorpInfo;
+            await configRepo.save(config);
+            log.info(`[Wecom Sidebar] ✅ 从authCorpInfo中恢复agentId: ${agentFromCorpInfo}`);
+            addDiag('agentId补充-authCorpInfo', `成功恢复 agentId=${agentFromCorpInfo}`);
+          } else {
+            addDiag('agentId补充-authCorpInfo', `authCorpInfo中无agentId: ${JSON.stringify(authCorpInfo).substring(0, 200)}`);
+          }
+        } catch (e: any) {
+          addDiag('agentId补充-authCorpInfo', `解析失败: ${e.message}`);
+        }
+      }
+
+      // 来源3: 从同corpId的其他配置中查找（可能有历史配置保存了agentId）
+      if (!config.agentId) {
+        try {
+          const otherConfig = await configRepo.findOne({
+            where: { corpId: config.corpId, isEnabled: true },
+            order: { id: 'DESC' }
+          });
+          if (otherConfig && otherConfig.agentId && otherConfig.id !== config.id) {
+            config.agentId = otherConfig.agentId;
+            await configRepo.save(config);
+            log.info(`[Wecom Sidebar] ✅ 从同corpId其他配置(id=${otherConfig.id})中恢复agentId: ${otherConfig.agentId}`);
+            addDiag('agentId补充-同corpId配置', `从配置id=${otherConfig.id}恢复 agentId=${otherConfig.agentId}`);
+          } else {
+            addDiag('agentId补充-同corpId配置', '无其他配置包含agentId');
+          }
+        } catch (e: any) {
+          addDiag('agentId补充-同corpId配置', `查询失败: ${e.message}`);
+        }
+      }
+
+      if (!config.agentId) {
+        log.warn(`[Wecom Sidebar] ⚠️ agentId补充失败，所有来源均无法获取。configId=${config.id}, corpId=${config.corpId}`);
+        addDiag('agentId补充结果', '❌ 所有来源均无法获取agentId');
+      } else {
+        addDiag('agentId补充结果', `✅ 最终agentId=${config.agentId}`);
+      }
+    } else {
+      addDiag('agentId状态', `已存在 agentId=${config.agentId}，无需补充`);
+    }
 
     // 使用 WecomTokenService 统一获取 access_token，支持自建应用和第三方应用双模式
+    addDiag('获取AccessToken开始', `authType=${config.authType}`);
     const { WecomTokenService } = await import('../../services/wecom/WecomTokenService');
     const accessToken = await WecomTokenService.getAccessToken(config);
+    addDiag('获取AccessToken成功', `token前20位=${accessToken.substring(0, 20)}...`);
 
+    addDiag('获取CorpTicket开始');
     const corpTicket = await WecomApiService.getJsSdkTicket(accessToken);
+    addDiag('获取CorpTicket成功', `ticket前20位=${corpTicket.substring(0, 20)}...`);
+
     let agentTicket = '';
     let agentTicketError = '';
+    addDiag('获取AgentTicket开始');
     try {
       agentTicket = await WecomApiService.getAgentJsSdkTicket(accessToken);
+      addDiag('获取AgentTicket成功', `ticket前20位=${agentTicket.substring(0, 20)}...`);
     } catch (e: any) {
       agentTicketError = e.message || 'unknown';
       log.warn('[Wecom Sidebar] Get agent ticket failed:', agentTicketError);
+      addDiag('获取AgentTicket失败', agentTicketError);
     }
 
     const timestamp = Math.floor(Date.now() / 1000);
@@ -686,9 +780,39 @@ router.post('/sidebar/js-sdk-config', jsSdkConfigLimiter, validateJsSdkReferer, 
     if (!agentTicket) warnings.push(`agent_ticket获取失败: ${agentTicketError || '未知原因'}`);
     if (!config.agentId) warnings.push('未配置AgentID，侧边栏敏感API(如getCurExternalContact)将不可用');
 
-    res.json({ success: true, data: { corpId: config.corpId, agentId: config.agentId, authType: config.authType, timestamp, nonceStr, corpSignature, agentSignature, warnings: warnings.length > 0 ? warnings : undefined } });
+    // 最终诊断汇总
+    const totalMs = Date.now() - diagStart;
+    addDiag('响应完成', `总耗时=${totalMs}ms, agentId=${config.agentId || '(空)'}, hasAgentSignature=${!!agentSignature}, warnings=${warnings.length}`);
+    log.info(`[Wecom Sidebar] JS-SDK config 诊断链路:\n${diagSteps.map(s => `  [${s.ms}ms] ${s.step}: ${s.detail || ''}`).join('\n')}`);
+
+    res.json({
+      success: true,
+      data: {
+        corpId: config.corpId,
+        agentId: config.agentId,
+        authType: config.authType,
+        timestamp,
+        nonceStr,
+        corpSignature,
+        agentSignature,
+        warnings: warnings.length > 0 ? warnings : undefined,
+        // 诊断信息（仅开发环境或有警告时返回）
+        _diagnostic: (process.env.NODE_ENV !== 'production' || warnings.length > 0) ? {
+          totalMs,
+          steps: diagSteps,
+          configId: config.id,
+          configName: config.name,
+          hasAgentId: !!config.agentId,
+          hasAgentTicket: !!agentTicket,
+          hasAgentSignature: !!agentSignature
+        } : undefined
+      }
+    });
   } catch (error: any) {
-    log.error('[Wecom Sidebar] JS-SDK config error:', error.message, error.stack?.substring(0, 300));
+    const totalMs = Date.now() - diagStart;
+    addDiag('异常', `${error.message}`);
+    log.error(`[Wecom Sidebar] JS-SDK config error (${totalMs}ms):`, error.message, error.stack?.substring(0, 300));
+    log.error(`[Wecom Sidebar] 诊断链路:\n${diagSteps.map(s => `  [${s.ms}ms] ${s.step}: ${s.detail || ''}`).join('\n')}`);
     // 识别 40085 invalid suite ticket → 返回结构化 errorCode 让前端展示诊断面板
     const errMsg = error?.message || '';
     const isSuiteTicketInvalid = errMsg.includes('40085') || errMsg.includes('invalid suite ticket') || errMsg.includes('invalid suite_ticket');
@@ -698,7 +822,8 @@ router.post('/sidebar/js-sdk-config', jsSdkConfigLimiter, validateJsSdkReferer, 
       message: `获取JS-SDK配置失败: ${error.message}`,
       hint: isSuiteTicketInvalid
         ? '第三方授权应用的suite_ticket已失效。请管理员访问「企微管理 → 服务商配置」点击「诊断」按钮排查回调URL，或在该页面手动注入新的suite_ticket。'
-        : undefined
+        : undefined,
+      _diagnostic: { totalMs, steps: diagSteps }
     });
   }
 });

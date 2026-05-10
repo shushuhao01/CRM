@@ -577,17 +577,9 @@ router.post('/address-book/sync-members', authenticateToken, requireAdmin, async
     let createdCount = 0;
     let updatedCount = 0;
 
-    // 用于更新部门成员计数
-    const deptMemberCount = new Map<number, number>();
-
     for (const user of users) {
       const wecomUserId = user.userid;
       const deptIds = (user.department || []).join(',');
-
-      // 更新部门计数
-      for (const dId of (user.department || [])) {
-        deptMemberCount.set(dId, (deptMemberCount.get(dId) || 0) + 1);
-      }
 
       // 查找已有绑定
       let binding = await bindingRepo.findOne({
@@ -628,12 +620,24 @@ router.post('/address-book/sync-members', authenticateToken, requireAdmin, async
       await bindingRepo.save(binding);
     }
 
-    // 更新部门成员计数
-    for (const [deptId, count] of deptMemberCount) {
-      await deptRepo.update(
-        { wecomConfigId: configId, wecomDeptId: deptId, tenantId },
-        { memberCount: count }
-      );
+    // 更新部门成员计数 — 基于实际 wecom_user_bindings 记录重新计算
+    // API 返回的 department 字段在第三方应用中可能不完整（60011权限问题），
+    // 所以从已保存的绑定记录中统计每个部门的实际成员数
+    const allLocalDepts = await deptRepo.find({ where: { tenantId, wecomConfigId: configId } });
+    for (const dept of allLocalDepts) {
+      const deptIdStr = String(dept.wecomDeptId);
+      const actualCount = await bindingRepo.createQueryBuilder('b')
+        .where('b.wecom_config_id = :configId', { configId })
+        .andWhere('b.tenant_id = :tenantId', { tenantId })
+        .andWhere(
+          '(b.wecom_department_ids = :deptId OR b.wecom_department_ids LIKE :startWith OR b.wecom_department_ids LIKE :endWith OR b.wecom_department_ids LIKE :middle)',
+          { deptId: deptIdStr, startWith: `${deptIdStr},%`, endWith: `%,${deptIdStr}`, middle: `%,${deptIdStr},%` }
+        )
+        .getCount();
+      if (dept.memberCount !== actualCount) {
+        dept.memberCount = actualCount;
+        await deptRepo.save(dept);
+      }
     }
 
     // 记录同步日志
@@ -922,21 +926,6 @@ router.get('/address-book/dept/:deptId/children', authenticateToken, async (req:
       where: { tenantId, wecomConfigId: Number(configId), wecomParentId: parentDeptId }
     });
 
-    const deptNodes = childDepts.map(d => {
-      const clean = sanitizeDeptName(d.wecomDeptName, d.wecomDeptId);
-      const display = clean || `部门${d.wecomDeptId}`;
-      return {
-        nodeId: `dept_${d.wecomDeptId}`,
-        nodeType: 'dept' as const,
-        label: display,
-        wecomDeptId: d.wecomDeptId,
-        wecomDeptName: display,
-        memberCount: d.memberCount || 0,
-        crmDeptName: d.crmDeptName,
-        isLeaf: false
-      };
-    });
-
     // 获取直属成员
     const bindingRepo = AppDataSource.getRepository(WecomUserBinding);
     const deptIdStr = String(parentDeptId);
@@ -950,10 +939,92 @@ router.get('/address-book/dept/:deptId/children', authenticateToken, async (req:
       .orderBy('b.wecom_user_name', 'ASC')
       .getMany();
 
+    // --- 名称补充：从 wecom_customer_groups.memberList 中提取名称 ---
+    // 当第三方应用无通讯录权限(60011)时，部门名和成员名可能缺失
+    // 但 groupchat API 返回的 memberList 中包含真实姓名和部门名称
+    const needEnrichDepts = childDepts.some(d => !isValidName(d.wecomDeptName, d.wecomDeptId));
+    const needEnrichMembers = members.some(m => !isValidName(m.wecomUserName, m.wecomUserId));
+
+    // userid → name 映射，deptId → deptName 映射（从客户群数据中提取）
+    const nameFromGroups = new Map<string, string>();
+    const deptNameFromGroups = new Map<number, string>();
+
+    if (needEnrichDepts || needEnrichMembers) {
+      try {
+        const { WecomCustomerGroup } = await import('../../entities/WecomCustomerGroup');
+        const groupRepo = AppDataSource.getRepository(WecomCustomerGroup);
+        const groups = await groupRepo.find({
+          where: { wecomConfigId: Number(configId) },
+          select: ['memberList']
+        });
+        for (const g of groups) {
+          if (!g.memberList) continue;
+          try {
+            const memberArr = JSON.parse(g.memberList);
+            for (const m of memberArr) {
+              // 提取成员名称
+              if (m.userid && m.name && isValidName(m.name, m.userid)) {
+                nameFromGroups.set(m.userid, m.name);
+              }
+              // 提取部门名称（memberList 中的 department 字段可能包含 id+name）
+              if (m.department && Array.isArray(m.department)) {
+                for (const dept of m.department) {
+                  if (dept.id && dept.name && isValidName(dept.name, dept.id)) {
+                    deptNameFromGroups.set(Number(dept.id), dept.name);
+                  }
+                }
+              }
+              // 有些 memberList 格式中 department 是数字，name 在外层
+              // 也尝试从 invitor 等字段提取
+              if (m.invitor && m.invitor.userid && m.invitor.name && isValidName(m.invitor.name, m.invitor.userid)) {
+                nameFromGroups.set(m.invitor.userid, m.invitor.name);
+              }
+            }
+          } catch { /* ignore parse error */ }
+        }
+        if (nameFromGroups.size > 0 || deptNameFromGroups.size > 0) {
+          log.info(`[AddressBook] dept-children enrich: found ${nameFromGroups.size} member names, ${deptNameFromGroups.size} dept names from customer groups`);
+        }
+      } catch (e: any) {
+        log.warn('[AddressBook] dept-children enrich from groups failed:', e.message);
+      }
+    }
+
+    // 构建部门节点（用客户群数据补充缺失的部门名称）
+    const deptNodes = childDepts.map(d => {
+      let clean = sanitizeDeptName(d.wecomDeptName, d.wecomDeptId);
+      // 如果本地名称缺失，尝试从客户群数据中获取
+      if (!clean && deptNameFromGroups.has(d.wecomDeptId)) {
+        clean = deptNameFromGroups.get(d.wecomDeptId)!;
+        // 回写到数据库以便下次直接使用
+        d.wecomDeptName = clean;
+        deptRepo.save(d).catch(() => {});
+      }
+      const display = clean || `部门${d.wecomDeptId}`;
+      return {
+        nodeId: `dept_${d.wecomDeptId}`,
+        nodeType: 'dept' as const,
+        label: display,
+        wecomDeptId: d.wecomDeptId,
+        wecomDeptName: display,
+        memberCount: d.memberCount || 0,
+        crmDeptName: d.crmDeptName,
+        isLeaf: false
+      };
+    });
+
+    // 构建成员节点（用客户群数据补充缺失的成员名称）
     const memberNodes = members.map(m => {
-      const cleanName = isValidName(m.wecomUserName, m.wecomUserId)
+      let cleanName = isValidName(m.wecomUserName, m.wecomUserId)
         ? String(m.wecomUserName).trim()
         : '';
+      // 如果本地名称缺失，尝试从客户群数据中获取
+      if (!cleanName && nameFromGroups.has(m.wecomUserId)) {
+        cleanName = nameFromGroups.get(m.wecomUserId)!;
+        // 回写到数据库以便下次直接使用
+        m.wecomUserName = cleanName;
+        bindingRepo.save(m).catch(() => {});
+      }
       const display = cleanName || m.wecomUserId;
       return {
         nodeId: `member_${m.wecomUserId}`,

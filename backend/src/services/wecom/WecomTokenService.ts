@@ -42,6 +42,7 @@ export class WecomTokenService {
    * 自动根据 config.authType 选择 自建/第三方 模式
    */
   static async getAccessToken(config: WecomConfig, secretType: SecretType = 'corp'): Promise<string> {
+    log.info(`[WecomToken] getAccessToken 入口: configId=${config.id}, corpId=${config.corpId}, authType=${config.authType}, secretType=${secretType}, agentId=${(config as any).agentId || '(空)'}`);
     if (config.authType === 'third_party') {
       return this.getCorpTokenByThirdParty(config, secretType);
     }
@@ -287,6 +288,9 @@ export class WecomTokenService {
 
     const { permanent_code, auth_corp_info, auth_user_info } = response.data;
     const corpId = auth_corp_info?.corpid;
+    // 提取第三方应用在企业中的 agentId（授权时分配的应用ID）
+    const authInfo = response.data.auth_info;
+    const agentId = authInfo?.agent?.[0]?.agentid;
 
     if (!corpId || !permanent_code) {
       throw new Error('授权回调数据不完整: 缺少corpid或permanent_code');
@@ -301,6 +305,8 @@ export class WecomTokenService {
       config.suiteId = suiteId;
       config.authCorpInfo = JSON.stringify(auth_corp_info);
       config.authUserInfo = JSON.stringify(auth_user_info);
+      config.authScope = authInfo ? JSON.stringify(authInfo) : config.authScope;
+      if (agentId) config.agentId = agentId;
       config.isEnabled = true;
       config.connectionStatus = 'connected';
       if (!config.tenantId) {

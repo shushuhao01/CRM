@@ -601,21 +601,25 @@ export class WecomApiService {
     const cached = ticketCache.get(cacheKey);
 
     if (cached && cached.expireTime > Date.now()) {
+      log.info(`[WecomApi] getAgentJsSdkTicket: 命中缓存, 剩余有效期=${Math.round((cached.expireTime - Date.now()) / 1000)}s`);
       return cached.ticket;
     }
 
+    log.info(`[WecomApi] getAgentJsSdkTicket: 缓存未命中，请求企微API, token前缀=${accessToken.substring(0, 20)}...`);
     try {
       const response = await axios.get(`${WECOM_API_BASE}/ticket/get`, {
         params: { access_token: accessToken, type: 'agent_config' }
       });
 
+      log.info(`[WecomApi] getAgentJsSdkTicket: 企微API响应 errcode=${response.data.errcode}, errmsg=${response.data.errmsg}`);
       if (response.data.errcode === 0) {
         const ticket = response.data.ticket;
         const expireTime = Date.now() + (response.data.expires_in - 300) * 1000;
         ticketCache.set(cacheKey, { ticket, expireTime });
+        log.info(`[WecomApi] getAgentJsSdkTicket: ✅ 获取成功, ticket前缀=${ticket.substring(0, 20)}..., 有效期=${response.data.expires_in}s`);
         return ticket;
       } else {
-        throw new Error(`获取Agent JS-SDK Ticket失败: ${response.data.errmsg}`);
+        throw new Error(`获取Agent JS-SDK Ticket失败: ${response.data.errmsg} (errcode=${response.data.errcode})`);
       }
     } catch (error: any) {
       log.error('[WecomApi] getAgentJsSdkTicket error:', error.message);

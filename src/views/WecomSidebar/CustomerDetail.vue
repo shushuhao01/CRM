@@ -546,6 +546,10 @@ async function initWecomSdk() {
       const backendMsg = e?.response?.data?.message || e?.data?.message || e?.message || '未知错误'
       const backendErrCode = e?.response?.data?.errorCode || e?.data?.errorCode
       const backendHint = e?.response?.data?.hint || e?.data?.hint
+      const backendDiag = e?.response?.data?._diagnostic || e?.data?._diagnostic
+      if (backendDiag) {
+        console.error('[Sidebar] 后端诊断链路:', backendDiag)
+      }
       // 识别后端返回的 40085 信号，跳转专用诊断面板
       if (backendErrCode === 'SUITE_TICKET_INVALID' || /40085|invalid suite[_ ]ticket/i.test(backendMsg)) {
         setSdkError('suite-ticket', '侧边栏初始化失败', backendHint || '第三方授权应用的 suite_ticket 已过期', `错误: ${backendMsg}`)
@@ -560,10 +564,21 @@ async function initWecomSdk() {
       setSdkError('api', 'JS-SDK配置返回异常', '后端未返回有效的JS-SDK签名配置', `响应: ${JSON.stringify(configRes || {}).substring(0, 200)}`)
       return
     }
-    console.log('[Sidebar] JS-SDK签名获取成功, agentId:', configRes.agentId, 'agentSignature:', !!configRes.agentSignature)
+    // ★ 详细诊断日志
+    console.log('[Sidebar] ===== JS-SDK配置诊断 =====')
+    console.log('[Sidebar] corpId:', configRes.corpId)
+    console.log('[Sidebar] agentId:', configRes.agentId, '(类型:', typeof configRes.agentId, ')')
+    console.log('[Sidebar] authType:', configRes.authType)
+    console.log('[Sidebar] corpSignature:', configRes.corpSignature ? '✅ 已生成' : '❌ 缺失')
+    console.log('[Sidebar] agentSignature:', configRes.agentSignature ? '✅ 已生成' : '❌ 缺失')
+    console.log('[Sidebar] timestamp:', configRes.timestamp, 'nonceStr:', configRes.nonceStr)
     if (configRes.warnings?.length) {
-      console.warn('[Sidebar] 后端警告:', configRes.warnings)
+      console.warn('[Sidebar] ⚠️ 后端警告:', configRes.warnings)
     }
+    if (configRes._diagnostic) {
+      console.log('[Sidebar] 后端诊断详情:', configRes._diagnostic)
+    }
+    console.log('[Sidebar] =============================')
 
     // 注入wx.config
     const wx = (window as any).wx
@@ -583,13 +598,18 @@ async function initWecomSdk() {
     })
 
     wx.ready(() => {
-      console.log('[Sidebar] wx.config ready')
-      // 第三方应用不需要agentConfig，wx.config成功后可直接调用getCurExternalContact
-      if (configRes.authType === 'third_party') {
-        console.log('[Sidebar] 第三方应用模式，跳过agentConfig，直接获取聊天对象')
-        getCurExternalContact(wx)
-      } else if (configRes.agentSignature && configRes.agentId) {
-        // 自建应用：getCurExternalContact是敏感接口，必须先调用agentConfig
+      console.log('[Sidebar] wx.config ready ✅')
+      console.log('[Sidebar] 准备agentConfig: agentId=', configRes.agentId, ', hasAgentSignature=', !!configRes.agentSignature, ', authType=', configRes.authType)
+      // agentConfig 是调用 getCurExternalContact 的前提（无论自建还是第三方应用）
+      if (configRes.agentSignature && configRes.agentId) {
+        console.log('[Sidebar] 执行 wx.agentConfig, 参数:', {
+          corpid: configRes.corpId,
+          agentid: configRes.agentId,
+          timestamp: configRes.timestamp,
+          nonceStr: configRes.nonceStr,
+          signatureLength: configRes.agentSignature?.length,
+          jsApiList: ['getCurExternalContact']
+        })
         wx.agentConfig({
           corpid: configRes.corpId,
           agentid: configRes.agentId,
@@ -598,21 +618,33 @@ async function initWecomSdk() {
           signature: configRes.agentSignature,
           jsApiList: ['getCurExternalContact'],
           success: () => {
-            console.log('[Sidebar] agentConfig success')
+            console.log('[Sidebar] ✅ agentConfig success - agentId:', configRes.agentId, '验证通过，开始获取聊天对象')
             getCurExternalContact(wx)
           },
           fail: (err: any) => {
-            console.error('[Sidebar] agentConfig fail:', err)
-            setSdkError('sdk-agent', 'agentConfig失败', '应用配置验证失败，请检查应用AgentID和Secret', `错误: ${JSON.stringify(err)}`)
+            console.error('[Sidebar] ❌ agentConfig fail:', JSON.stringify(err))
+            console.error('[Sidebar] agentConfig失败诊断: agentId=', configRes.agentId, ', corpId=', configRes.corpId, ', authType=', configRes.authType)
+            // agentConfig 失败时，第三方应用尝试直接调用（某些企微版本支持）
+            if (configRes.authType === 'third_party') {
+              console.log('[Sidebar] 第三方应用 agentConfig 失败，降级尝试直接调用 getCurExternalContact...')
+              getCurExternalContact(wx)
+            } else {
+              setSdkError('sdk-agent', 'agentConfig失败', '应用配置验证失败，请检查应用AgentID和Secret', `错误: ${JSON.stringify(err)}`)
+            }
           }
         })
+      } else if (configRes.authType === 'third_party') {
+        // 第三方应用缺少 agentId（历史数据未保存），尝试直接调用
+        console.log('[Sidebar] ⚠️ 第三方应用缺少agentId或agentSignature，降级直接调用 getCurExternalContact...')
+        console.log('[Sidebar] 降级原因: agentId=', configRes.agentId || '(空)', ', agentSignature=', configRes.agentSignature ? '有' : '(空)')
+        getCurExternalContact(wx)
       } else {
         // 自建应用但缺少agentConfig必要参数
         const missingParts: string[] = []
         if (!configRes.agentId) missingParts.push('AgentID')
         if (!configRes.agentSignature) missingParts.push('应用签名(agentSignature)')
         const warningText = configRes.warnings?.join('; ') || ''
-        console.error('[Sidebar] 缺少agentConfig必要参数:', missingParts.join(', '), '后端警告:', warningText)
+        console.error('[Sidebar] ❌ 缺少agentConfig必要参数:', missingParts.join(', '), '后端警告:', warningText)
         setSdkError(
           'sdk-agent',
           '侧边栏配置不完整',
@@ -633,13 +665,16 @@ async function initWecomSdk() {
 }
 
 function getCurExternalContact(wx: any) {
+  console.log('[Sidebar] 调用 getCurExternalContact...')
   wx.invoke('getCurExternalContact', {}, (res: any) => {
-    console.log('[Sidebar] getCurExternalContact response:', JSON.stringify(res))
+    console.log('[Sidebar] getCurExternalContact 响应:', JSON.stringify(res))
     if (res.err_msg === 'getCurExternalContact:ok') {
       externalUserId.value = res.userId
+      console.log('[Sidebar] ✅ 获取外部联系人成功, externalUserId:', res.userId)
+      console.log('[Sidebar] 开始检查绑定状态并加载客户数据...')
       checkBindingAndLoad()
     } else {
-      console.error('[Sidebar] getCurExternalContact fail:', res)
+      console.error('[Sidebar] ❌ getCurExternalContact 失败:', res)
       pageState.value = 'error'
       const errDetail = res.err_msg || '未知错误'
       if (errDetail.includes('no permission') || errDetail.includes('permission')) {
