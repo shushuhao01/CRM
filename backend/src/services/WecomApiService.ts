@@ -112,6 +112,26 @@ export class WecomApiService {
   }
 
   /**
+   * 获取单个部门详情（用于补充 /department/list 未返回的名称）
+   * 在「组织架构信息」权限下应返回 name 字段
+   */
+  static async getDepartmentDetail(accessToken: string, deptId: number): Promise<any | null> {
+    try {
+      const response = await axios.get(`${WECOM_API_BASE}/department/get`, {
+        params: { access_token: accessToken, id: deptId }
+      });
+      if (response.data.errcode === 0) {
+        return response.data.department || null;
+      }
+      log.warn(`[WecomApi] getDepartmentDetail(${deptId}) errcode=${response.data.errcode} errmsg=${response.data.errmsg}`);
+      return null;
+    } catch (error: any) {
+      log.warn('[WecomApi] getDepartmentDetail error:', error.message);
+      return null;
+    }
+  }
+
+  /**
    * 获取部门成员列表
    */
   static async getDepartmentUsers(accessToken: string, departmentId: number, fetchChild: boolean = false): Promise<any[]> {

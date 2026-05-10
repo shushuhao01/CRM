@@ -226,6 +226,29 @@ router.post('/address-book/sync-departments', authenticateToken, requireAdmin, a
     const departments = await WecomApiService.getDepartmentList(accessToken);
 
     log.info(`[AddressBook] Synced ${departments.length} departments from WeCom API`);
+    // 调试日志：打印前5个部门的原始数据，确认API是否返回了name字段
+    if (departments.length > 0) {
+      const sample = departments.slice(0, 5).map(d => ({ id: d.id, name: d.name, parentid: d.parentid }));
+      log.info(`[AddressBook][DEBUG] Department API sample data: ${JSON.stringify(sample)}`);
+    }
+
+    // 如果 /department/list 没有返回名称，尝试通过 /department/get 逐个补充
+    const missingNameDepts = departments.filter(d => !isValidName(d.name, d.id));
+    if (missingNameDepts.length > 0) {
+      const limit = Math.min(missingNameDepts.length, 100);
+      log.info(`[AddressBook] ${missingNameDepts.length} 个部门名称缺失，尝试通过 /department/get 逐个补充（处理前 ${limit} 个）`);
+      let enriched = 0;
+      for (let i = 0; i < limit; i++) {
+        const dept = missingNameDepts[i];
+        const detail = await WecomApiService.getDepartmentDetail(accessToken, dept.id);
+        if (detail && isValidName(detail.name, dept.id)) {
+          dept.name = detail.name;
+          enriched++;
+        }
+        if (i % 20 === 19) await new Promise(r => setTimeout(r, 100));
+      }
+      log.info(`[AddressBook] /department/get 名称补充完成：${enriched}/${limit} 成功`);
+    }
 
     // 写入本地映射表
     const repo = AppDataSource.getRepository(WecomDepartmentMapping);
@@ -333,13 +356,19 @@ router.post('/address-book/sync-members', authenticateToken, requireAdmin, async
     const users = await WecomApiService.getDepartmentUsers(accessToken, rootDeptId, true);
 
     log.info(`[AddressBook] Synced ${users.length} members from WeCom API`);
+    // 调试日志：打印前5个成员的原始数据，确认API是否返回了name字段
+    if (users.length > 0) {
+      const sample = users.slice(0, 5).map((u: any) => ({ userid: u.userid, name: u.name, department: u.department, status: u.status }));
+      log.info(`[AddressBook][DEBUG] User API sample data: ${JSON.stringify(sample)}`);
+    }
 
     // 第三方授权应用 /user/list 常常只返回 userid，name 为空
+    // 自建应用如果通讯录Secret权限不足（仅"基本信息只读"），/user/list 也可能不返回 name
     // 对名称缺失的成员逐个调 /user/get 补充（限制最多 200 个，避免接口过载）
     const missingNameUsers = users.filter((u: any) => !isValidName(u.name, u.userid));
-    if (missingNameUsers.length > 0 && config.authType === 'third_party') {
+    if (missingNameUsers.length > 0) {
       const limit = Math.min(missingNameUsers.length, 200);
-      log.info(`[AddressBook] 第三方应用：${missingNameUsers.length} 个成员名称缺失，开始通过 /user/get 逐个补充（处理前 ${limit} 个）`);
+      log.info(`[AddressBook] ${missingNameUsers.length} 个成员名称缺失（authType=${config.authType}），开始通过 /user/get 逐个补充（处理前 ${limit} 个）`);
       let enriched = 0;
       for (let i = 0; i < limit; i++) {
         const u = missingNameUsers[i];
