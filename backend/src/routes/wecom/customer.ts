@@ -125,10 +125,14 @@ router.post('/customers/sync', authenticateToken, requireAdmin, async (req: Requ
     const customerRepo = getTenantRepo(WecomCustomer);
     let syncCount = 0;
 
+    // 收集本次同步到的所有 externalUserId，用于后续检测被删除的客户
+    const syncedExternalUserIds = new Set<string>();
+
     for (const binding of bindings) {
       try {
         const externalUserIds = await WecomApiService.getExternalContactList(accessToken, binding.wecomUserId);
         for (const externalUserId of externalUserIds) {
+          syncedExternalUserIds.add(externalUserId);
           try {
             const detail = await WecomApiService.getExternalContactDetail(accessToken, externalUserId);
             const externalContact = detail.external_contact;
@@ -169,11 +173,30 @@ router.post('/customers/sync', authenticateToken, requireAdmin, async (req: Requ
       }
     }
 
+    // 检测被删除的客户：本地有但企微API不再返回的客户标记为 deleted
+    let deletedCount = 0;
+    if (syncedExternalUserIds.size > 0) {
+      const localCustomers = await customerRepo.find({
+        where: { wecomConfigId: configId, status: 'normal' as any },
+        select: ['id', 'externalUserId']
+      });
+      for (const local of localCustomers) {
+        if (!syncedExternalUserIds.has(local.externalUserId)) {
+          await customerRepo.update(local.id, { status: 'deleted' as any });
+          deletedCount++;
+        }
+      }
+      if (deletedCount > 0) {
+        log.info(`[Wecom] Marked ${deletedCount} customers as deleted (no longer in WeCom contact list)`);
+      }
+    }
+
     const totalCustomers = await customerRepo.count({ where: { wecomConfigId: configId } });
+    const deletedCustomers = await customerRepo.count({ where: { wecomConfigId: configId, status: 'deleted' as any } });
     res.json({
       success: true,
-      message: `同步完成，共同步 ${syncCount} 个客户`,
-      data: { syncCount, totalCustomers, customerLimit: 5000, bindingsUsed: bindings.length }
+      message: `同步完成：同步 ${syncCount} 个客户${deletedCount > 0 ? `，发现 ${deletedCount} 个已删除` : ''}`,
+      data: { syncCount, deletedCount, totalCustomers, deletedCustomers, customerLimit: 5000, bindingsUsed: bindings.length }
     });
   } catch (error: any) {
     log.error('[Wecom] Sync customers error:', error.message, error.stack);

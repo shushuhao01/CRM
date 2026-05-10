@@ -686,7 +686,7 @@ router.post('/sidebar/js-sdk-config', jsSdkConfigLimiter, validateJsSdkReferer, 
     if (!agentTicket) warnings.push(`agent_ticket获取失败: ${agentTicketError || '未知原因'}`);
     if (!config.agentId) warnings.push('未配置AgentID，侧边栏敏感API(如getCurExternalContact)将不可用');
 
-    res.json({ success: true, data: { corpId: config.corpId, agentId: config.agentId, timestamp, nonceStr, corpSignature, agentSignature, warnings: warnings.length > 0 ? warnings : undefined } });
+    res.json({ success: true, data: { corpId: config.corpId, agentId: config.agentId, authType: config.authType, timestamp, nonceStr, corpSignature, agentSignature, warnings: warnings.length > 0 ? warnings : undefined } });
   } catch (error: any) {
     log.error('[Wecom Sidebar] JS-SDK config error:', error.message, error.stack?.substring(0, 300));
     // 识别 40085 invalid suite ticket → 返回结构化 errorCode 让前端展示诊断面板

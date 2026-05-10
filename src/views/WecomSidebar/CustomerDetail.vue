@@ -584,8 +584,12 @@ async function initWecomSdk() {
 
     wx.ready(() => {
       console.log('[Sidebar] wx.config ready')
-      // getCurExternalContact是敏感接口，必须先调用agentConfig
-      if (configRes.agentSignature && configRes.agentId) {
+      // 第三方应用不需要agentConfig，wx.config成功后可直接调用getCurExternalContact
+      if (configRes.authType === 'third_party') {
+        console.log('[Sidebar] 第三方应用模式，跳过agentConfig，直接获取聊天对象')
+        getCurExternalContact(wx)
+      } else if (configRes.agentSignature && configRes.agentId) {
+        // 自建应用：getCurExternalContact是敏感接口，必须先调用agentConfig
         wx.agentConfig({
           corpid: configRes.corpId,
           agentid: configRes.agentId,
@@ -603,8 +607,7 @@ async function initWecomSdk() {
           }
         })
       } else {
-        // getCurExternalContact是敏感API，必须agentConfig后才能调用
-        // 缺少agentSignature或agentId时不应直接调用，否则必定失败
+        // 自建应用但缺少agentConfig必要参数
         const missingParts: string[] = []
         if (!configRes.agentId) missingParts.push('AgentID')
         if (!configRes.agentSignature) missingParts.push('应用签名(agentSignature)')
