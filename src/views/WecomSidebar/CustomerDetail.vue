@@ -602,42 +602,62 @@ async function initWecomSdk() {
       console.log('[Sidebar] 准备agentConfig: agentId=', configRes.agentId, ', hasAgentSignature=', !!configRes.agentSignature, ', authType=', configRes.authType)
       // agentConfig 是调用 getCurExternalContact 的前提（无论自建还是第三方应用）
       if (configRes.agentSignature && configRes.agentId) {
+        // ★ 关键：agentid 必须是字符串类型
+        const agentIdStr = String(configRes.agentId)
         console.log('[Sidebar] 执行 wx.agentConfig, 参数:', {
           corpid: configRes.corpId,
-          agentid: configRes.agentId,
-          timestamp: configRes.timestamp,
+          agentid: agentIdStr,
+          timestamp: String(configRes.timestamp),
           nonceStr: configRes.nonceStr,
           signatureLength: configRes.agentSignature?.length,
           jsApiList: ['getCurExternalContact']
         })
         wx.agentConfig({
           corpid: configRes.corpId,
-          agentid: configRes.agentId,
-          timestamp: configRes.timestamp,
+          agentid: agentIdStr,
+          timestamp: String(configRes.timestamp),
           nonceStr: configRes.nonceStr,
           signature: configRes.agentSignature,
           jsApiList: ['getCurExternalContact'],
           success: () => {
-            console.log('[Sidebar] ✅ agentConfig success - agentId:', configRes.agentId, '验证通过，开始获取聊天对象')
+            console.log('[Sidebar] ✅ agentConfig success - agentId:', agentIdStr, '验证通过，开始获取聊天对象')
             getCurExternalContact(wx)
           },
           fail: (err: any) => {
             console.error('[Sidebar] ❌ agentConfig fail:', JSON.stringify(err))
-            console.error('[Sidebar] agentConfig失败诊断: agentId=', configRes.agentId, ', corpId=', configRes.corpId, ', authType=', configRes.authType)
-            // agentConfig 失败时，第三方应用尝试直接调用（某些企微版本支持）
-            if (configRes.authType === 'third_party') {
-              console.log('[Sidebar] 第三方应用 agentConfig 失败，降级尝试直接调用 getCurExternalContact...')
-              getCurExternalContact(wx)
+            console.error('[Sidebar] agentConfig失败诊断: agentId=', agentIdStr, ', corpId=', configRes.corpId, ', authType=', configRes.authType)
+            // ★ agentConfig 失败后不应降级调用 getCurExternalContact
+            // 根据企微官方文档，getCurExternalContact 必须在 agentConfig 成功后才能调用
+            const errMsg = err?.errMsg || err?.err_msg || JSON.stringify(err)
+            if (errMsg.includes('permission denied')) {
+              setSdkError('sdk-agent', 'agentConfig权限不足',
+                '应用没有调用该接口的权限。请检查：\n1. 应用是否已配置「客户联系」功能权限\n2. AgentID是否正确\n3. 侧边栏页面URL的域名是否在应用可信域名中',
+                `agentId=${agentIdStr}, corpId=${configRes.corpId}, err=${errMsg}`)
+            } else if (errMsg.includes('invalid signature') || errMsg.includes('sign')) {
+              setSdkError('sdk-agent', 'agentConfig签名验证失败',
+                '签名不正确。可能原因：\n1. 页面URL与签名URL不一致（检查是否有重定向）\n2. agent_ticket已过期\n3. timestamp/nonceStr不匹配',
+                `agentId=${agentIdStr}, err=${errMsg}`)
             } else {
-              setSdkError('sdk-agent', 'agentConfig失败', '应用配置验证失败，请检查应用AgentID和Secret', `错误: ${JSON.stringify(err)}`)
+              setSdkError('sdk-agent', 'agentConfig失败',
+                `应用配置验证失败(${errMsg})。请检查：\n1. AgentID(${agentIdStr})是否与企微后台一致\n2. 应用Secret是否正确\n3. 侧边栏URL域名是否在可信域名列表中`,
+                `corpId=${configRes.corpId}, authType=${configRes.authType}`)
             }
           }
         })
       } else if (configRes.authType === 'third_party') {
-        // 第三方应用缺少 agentId（历史数据未保存），尝试直接调用
-        console.log('[Sidebar] ⚠️ 第三方应用缺少agentId或agentSignature，降级直接调用 getCurExternalContact...')
-        console.log('[Sidebar] 降级原因: agentId=', configRes.agentId || '(空)', ', agentSignature=', configRes.agentSignature ? '有' : '(空)')
-        getCurExternalContact(wx)
+        // 第三方应用缺少 agentId 或 agentSignature
+        // ★ 不再降级调用，而是明确提示需要配置
+        const missingParts: string[] = []
+        if (!configRes.agentId) missingParts.push('AgentID')
+        if (!configRes.agentSignature) missingParts.push('应用签名(agent_ticket获取失败)')
+        const warningText = configRes.warnings?.join('; ') || ''
+        console.error('[Sidebar] ❌ 第三方应用缺少agentConfig必要参数:', missingParts.join(', '))
+        setSdkError(
+          'sdk-agent',
+          '侧边栏配置不完整',
+          `缺少 ${missingParts.join(' 和 ')}。\n\n请在CRM企微管理页面检查：\n1. 企微配置中是否已填写AgentID（从企微后台「应用管理→第三方应用→应用详情」获取）\n2. 应用Secret是否正确（用于获取agent_ticket）`,
+          warningText ? `后端诊断: ${warningText}` : `agentId=${configRes.agentId || '空'}`
+        )
       } else {
         // 自建应用但缺少agentConfig必要参数
         const missingParts: string[] = []

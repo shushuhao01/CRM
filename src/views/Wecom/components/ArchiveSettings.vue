@@ -326,12 +326,20 @@ const handleRefreshAuthStatus = async () => {
     const res: any = await request.post('/wecom/chat-archive/refresh-auth-status', { configId: props.configId })
     const data = res?.data || res
     if (data?.activated) {
+      // ★ 更新本地状态
+      settings.status = 'active'
+      settings.dataApiStatus = data.dataApiAuthorized ? 1 : settings.dataApiStatus
+      settings.vasChatArchive = data.vasPurchased || settings.vasChatArchive
+      settings.hasSecret = data.hasSecret || settings.hasSecret
+      if (data.maxUsers > 0) settings.maxUsers = data.maxUsers
+      if (data.usedUsers !== undefined) settings.usedUsers = data.usedUsers
+
       authRefreshResult.value = {
         type: 'success',
         message: '✅ 授权状态已更新：会话存档已激活！',
         detail: `企微已授权数据与智能专区权限，席位 ${data.usedUsers || 0}/${data.maxUsers || 0} 人`
       }
-      // 刷新设置
+      // 重新加载完整设置
       await fetchSettings()
     } else {
       const issues: string[] = []

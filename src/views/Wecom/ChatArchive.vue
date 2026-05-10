@@ -442,7 +442,17 @@ const fetchSeatInfo = async () => {
   if (!selectedConfigId.value) return
   try {
     const res: any = await getArchiveSeats(selectedConfigId.value)
-    seatInfo.value = res || null
+    // 后端返回 maxUsers/usedUsers，前端统一映射为 total/used
+    if (res) {
+      seatInfo.value = {
+        total: res.maxUsers || res.total || 0,
+        used: res.usedUsers || res.used || 0,
+        expireDate: res.expireDate || null,
+        status: res.status || 'inactive'
+      }
+    } else {
+      seatInfo.value = null
+    }
   } catch {
     // 静默
   }

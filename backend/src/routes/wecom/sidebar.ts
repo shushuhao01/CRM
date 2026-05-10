@@ -699,6 +699,41 @@ router.post('/sidebar/js-sdk-config', jsSdkConfigLimiter, validateJsSdkReferer, 
         }
       }
 
+      // ★ 来源1.5: 主动调用企微 get_auth_info API 实时获取 agentId（最可靠）
+      if (!config.agentId && config.authType === 'third_party' && config.suiteId) {
+        try {
+          addDiag('agentId补充-API实时获取', '开始调用 get_auth_info...');
+          const { WecomTokenService } = await import('../../services/wecom/WecomTokenService');
+          const suiteToken = await WecomTokenService.getSuiteAccessToken(config.suiteId);
+          const axios = (await import('axios')).default;
+          const authInfoRes = await axios.post(
+            `https://qyapi.weixin.qq.com/cgi-bin/service/get_auth_info?suite_access_token=${suiteToken}`,
+            { auth_corpid: config.corpId, suite_id: config.suiteId }
+          );
+          if (authInfoRes.data?.errcode === 0 || !authInfoRes.data?.errcode) {
+            const authInfo = authInfoRes.data?.auth_info;
+            const agentFromApi = authInfo?.agent?.[0]?.agentid;
+            if (agentFromApi) {
+              config.agentId = agentFromApi;
+              // 同时更新 authScope
+              if (authInfo) {
+                config.authScope = JSON.stringify(authInfo);
+              }
+              await configRepo.save(config);
+              log.info(`[Wecom Sidebar] ✅ 从企微API(get_auth_info)获取agentId: ${agentFromApi}`);
+              addDiag('agentId补充-API实时获取', `✅ 成功! agentId=${agentFromApi}`);
+            } else {
+              addDiag('agentId补充-API实时获取', `API返回无agent信息: ${JSON.stringify(authInfo).substring(0, 200)}`);
+            }
+          } else {
+            addDiag('agentId补充-API实时获取', `API错误: errcode=${authInfoRes.data?.errcode}, errmsg=${authInfoRes.data?.errmsg}`);
+          }
+        } catch (e: any) {
+          log.warn('[Wecom Sidebar] 从API获取agentId失败:', e.message);
+          addDiag('agentId补充-API实时获取', `失败: ${e.message}`);
+        }
+      }
+
       // 来源2: 从 authCorpInfo JSON 中提取
       if (!config.agentId && config.authCorpInfo) {
         try {

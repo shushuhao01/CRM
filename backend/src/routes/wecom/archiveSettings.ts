@@ -35,7 +35,34 @@ router.get('/chat-archive/settings', authenticateToken, async (req: Request, res
     };
 
     if (!setting) {
-      // 返回默认设置
+      // ★ 尝试从购买记录中获取 maxUsers
+      let purchasedMaxUsers = 0;
+      try {
+        const { getCurrentTenantId } = await import('../../utils/tenantContext');
+        const tenantId = getCurrentTenantId();
+        if (tenantId) {
+          const { AppDataSource } = await import('../../config/database');
+          const billingKey = `tenant_billing_records_${tenantId}`;
+          const billingRows = await AppDataSource.query(
+            'SELECT config_value FROM system_config WHERE config_key = ? LIMIT 1', [billingKey]
+          ).catch(() => []);
+          if (billingRows.length > 0) {
+            const records = JSON.parse(billingRows[0].config_value);
+            if (Array.isArray(records)) {
+              const archiveRecords = records.filter((r: any) =>
+                (r.type === 'archive' || r.type === 'chat_archive' || r.type === 'vas_chat_archive') &&
+                (r.status === 'paid' || r.status === 'active' || r.status === 'free' || r.fulfillmentStatus === 'fulfilled')
+              );
+              for (const r of archiveRecords) {
+                const seats = r.userCount || r.maxMembers || r.seats || 0;
+                purchasedMaxUsers = Math.max(purchasedMaxUsers, seats);
+              }
+            }
+          }
+        }
+      } catch { /* ignore */ }
+
+      // 返回默认设置（含购买的席位数）
       return res.json({
         success: true,
         data: {
@@ -48,13 +75,48 @@ router.get('/chat-archive/settings', authenticateToken, async (req: Request, res
           memberScope: null,
           rsaPublicKey: null,
           visibility: 'all',
-          maxUsers: 0,
+          maxUsers: purchasedMaxUsers,
           usedUsers: 0,
-          status: 'inactive',
+          status: purchasedMaxUsers > 0 ? 'active' : 'inactive',
           expireDate: null,
           ...commonFields
         }
       });
+    }
+
+    // ★ 如果 setting 存在但 maxUsers 为 0，尝试从购买记录同步
+    if (setting.maxUsers === 0 || !setting.maxUsers) {
+      try {
+        const { getCurrentTenantId } = await import('../../utils/tenantContext');
+        const tenantId = getCurrentTenantId();
+        if (tenantId) {
+          const { AppDataSource } = await import('../../config/database');
+          const billingKey = `tenant_billing_records_${tenantId}`;
+          const billingRows = await AppDataSource.query(
+            'SELECT config_value FROM system_config WHERE config_key = ? LIMIT 1', [billingKey]
+          ).catch(() => []);
+          if (billingRows.length > 0) {
+            const records = JSON.parse(billingRows[0].config_value);
+            if (Array.isArray(records)) {
+              const archiveRecords = records.filter((r: any) =>
+                (r.type === 'archive' || r.type === 'chat_archive' || r.type === 'vas_chat_archive') &&
+                (r.status === 'paid' || r.status === 'active' || r.status === 'free' || r.fulfillmentStatus === 'fulfilled')
+              );
+              let purchasedMaxUsers = 0;
+              for (const r of archiveRecords) {
+                const seats = r.userCount || r.maxMembers || r.seats || 0;
+                purchasedMaxUsers = Math.max(purchasedMaxUsers, seats);
+              }
+              if (purchasedMaxUsers > 0) {
+                setting.maxUsers = purchasedMaxUsers;
+                setting.status = 'active';
+                await settingRepo.save(setting);
+                log.info(`[ArchiveSettings] GET settings: 同步购买席位 maxUsers=${purchasedMaxUsers}`);
+              }
+            }
+          }
+        }
+      } catch { /* ignore */ }
     }
 
     res.json({
@@ -291,6 +353,72 @@ router.post('/chat-archive/refresh-auth-status', authenticateToken, requireAdmin
             vasPurchased = true;
             // 补充更新tenant表
             await AppDataSource.query('UPDATE tenants SET wecom_chat_archive_auth = 1 WHERE id = ?', [tenantId]);
+          }
+        }
+
+        // ★ 从购买记录中获取席位数并同步到 wecom_archive_settings
+        if (vasPurchased) {
+          let purchasedSeats = 0;
+          // 从 billing records 中查找
+          const billingKey = `tenant_billing_records_${tenantId}`;
+          const billingRows = await AppDataSource.query(
+            'SELECT config_value FROM system_config WHERE config_key = ? LIMIT 1', [billingKey]
+          ).catch(() => []);
+          if (billingRows.length > 0) {
+            try {
+              const records = JSON.parse(billingRows[0].config_value);
+              if (Array.isArray(records)) {
+                const archiveRecords = records.filter((r: any) =>
+                  (r.type === 'archive' || r.type === 'chat_archive' || r.type === 'vas_chat_archive') &&
+                  (r.status === 'paid' || r.status === 'active' || r.status === 'free' || r.fulfillmentStatus === 'fulfilled')
+                );
+                for (const r of archiveRecords) {
+                  const seats = r.userCount || r.maxMembers || r.seats || 0;
+                  purchasedSeats = Math.max(purchasedSeats, seats);
+                }
+              }
+            } catch { /* ignore */ }
+          }
+
+          // 从 payment_orders 中查找
+          if (purchasedSeats === 0) {
+            const paidOrders = await AppDataSource.query(
+              `SELECT package_name, remark FROM payment_orders WHERE tenant_id = ? AND package_id = 'vas_chat_archive' AND status = 'paid' ORDER BY paid_at DESC LIMIT 1`,
+              [tenantId]
+            ).catch(() => []);
+            if (paidOrders.length > 0) {
+              const pkgName = paidOrders[0].package_name || '';
+              const seatMatch = pkgName.match(/(\d+)\s*人/);
+              if (seatMatch) purchasedSeats = parseInt(seatMatch[1]);
+            }
+          }
+
+          // 更新 wecom_archive_settings 的 max_users
+          if (purchasedSeats > 0) {
+            maxUsers = purchasedSeats;
+            const settingRepo = getTenantRepo(WecomArchiveSetting);
+            let setting = await settingRepo.findOne({ where: { wecomConfigId: parseInt(configId) } });
+            if (setting) {
+              if (setting.maxUsers !== purchasedSeats) {
+                setting.maxUsers = purchasedSeats;
+                setting.status = 'active';
+                await settingRepo.save(setting);
+                log.info(`[ArchiveSettings] 同步购买席位数到设置: maxUsers=${purchasedSeats}, configId=${configId}`);
+              }
+            } else {
+              // 创建新的设置记录
+              setting = settingRepo.create({
+                wecomConfigId: parseInt(configId),
+                maxUsers: purchasedSeats,
+                status: 'active',
+                fetchInterval: 5,
+                fetchMode: 'default',
+                retentionDays: 180,
+                visibility: 'all'
+              }) as WecomArchiveSetting;
+              await settingRepo.save(setting);
+              log.info(`[ArchiveSettings] 创建存档设置并同步席位: maxUsers=${purchasedSeats}, configId=${configId}`);
+            }
           }
         }
       } catch (e: any) {
