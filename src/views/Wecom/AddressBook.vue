@@ -535,7 +535,11 @@ const loadMixedTreeNode = async (node: any, resolve: (data: any[]) => void) => {
         autoSyncedConfigs.add(selectedConfigId.value)
         syncingAll.value = true
         try {
-          await syncWecomDepartments(selectedConfigId.value!)
+          try {
+            await syncWecomDepartments(selectedConfigId.value!)
+          } catch (e: any) {
+            console.warn('[AddressBook] 自动同步部门失败，继续尝试同步成员:', e?.message)
+          }
           await syncWecomMembers(selectedConfigId.value!)
           // 重新加载
           const res2: any = await getWecomDepartmentTree(selectedConfigId.value!)
@@ -910,7 +914,13 @@ const handleSyncAll = async () => {
   if (!selectedConfigId.value) { ElMessage.warning('请先选择企微配置'); return }
   syncingAll.value = true
   try {
-    await syncWecomDepartments(selectedConfigId.value)
+    // 先同步部门
+    try {
+      await syncWecomDepartments(selectedConfigId.value)
+    } catch (e: any) {
+      console.warn('[AddressBook] 同步部门失败，继续尝试同步成员:', e?.message)
+    }
+    // 再同步成员（后端会自动处理无部门的情况）
     await syncWecomMembers(selectedConfigId.value)
     ElMessage.success('组织架构同步完成')
     reloadMixedTree()

@@ -219,11 +219,63 @@ router.post('/address-book/sync-departments', authenticateToken, requireAdmin, a
       return res.status(400).json({ success: false, message: '请指定企微配置' });
     }
 
-    // 获取通讯录 access_token
-    const accessToken = await WecomApiService.getAccessTokenByConfigId(configId, 'contact');
+    // 获取配置信息（用于判断应用类型）
+    const configRepo = AppDataSource.getRepository(WecomConfig);
+    const config = await configRepo.findOne({ where: { id: configId, isEnabled: true } });
+    if (!config) {
+      return res.status(404).json({ success: false, message: '企微配置不存在或已禁用' });
+    }
+
+    // 尝试获取通讯录 access_token
+    let accessToken: string;
+    try {
+      accessToken = await WecomApiService.getAccessTokenByConfigId(configId, 'contact');
+    } catch (e: any) {
+      log.warn('[AddressBook] contact token 获取失败，尝试 corp token:', e.message);
+      accessToken = await WecomApiService.getAccessTokenByConfigId(configId, 'corp');
+    }
 
     // 调用企微API获取部门列表
-    const departments = await WecomApiService.getDepartmentList(accessToken);
+    let departments: any[] = [];
+    try {
+      departments = await WecomApiService.getDepartmentList(accessToken);
+    } catch (e: any) {
+      // 60011 = 无权限访问通讯录
+      if (e.message?.includes('60011') || e.message?.includes('no privilege')) {
+        log.warn('[AddressBook] 通讯录API无权限(60011)，创建默认根部门作为容器');
+        // 第三方应用没有通讯录权限时，创建一个默认根部门
+        const repo = AppDataSource.getRepository(WecomDepartmentMapping);
+        let existing = await repo.findOne({ where: { tenantId, wecomConfigId: configId, wecomDeptId: 1 } });
+        if (!existing) {
+          existing = repo.create({
+            tenantId,
+            wecomConfigId: configId,
+            wecomDeptId: 1,
+            wecomDeptName: config.name || '企业根部门',
+            wecomParentId: 0,
+            memberCount: 0,
+            lastSyncTime: new Date()
+          });
+          await repo.save(existing);
+        }
+
+        if (tenantId) {
+          await appendSyncLog(tenantId, {
+            type: 'contact',
+            operation: '同步部门',
+            result: 'success',
+            detail: `通讯录API无权限，已创建默认根部门。成员将通过客户联系API获取。`
+          });
+        }
+
+        return res.json({
+          success: true,
+          message: '通讯录API无权限，已创建默认根部门。请继续同步成员（将通过客户联系API获取）。',
+          data: { total: 1, created: 1, updated: 0 }
+        });
+      }
+      throw e;
+    }
 
     log.info(`[AddressBook] Synced ${departments.length} departments from WeCom API`);
     // 调试日志：打印前5个部门的原始数据，确认API是否返回了name字段
@@ -338,22 +390,107 @@ router.post('/address-book/sync-members', authenticateToken, requireAdmin, async
       return res.status(404).json({ success: false, message: '企微配置不存在或已禁用' });
     }
 
-    // 获取通讯录 access_token
-    const accessToken = await WecomApiService.getAccessTokenByConfigId(configId, 'contact');
+    // 尝试获取通讯录 access_token（优先 contact，回退到 corp）
+    let accessToken: string;
+    let tokenType = 'contact';
+    try {
+      accessToken = await WecomApiService.getAccessTokenByConfigId(configId, 'contact');
+    } catch (e: any) {
+      log.warn('[AddressBook] contact token 获取失败，尝试 corp token:', e.message);
+      accessToken = await WecomApiService.getAccessTokenByConfigId(configId, 'corp');
+      tokenType = 'corp';
+    }
 
     // 获取所有本地部门
     const deptRepo = AppDataSource.getRepository(WecomDepartmentMapping);
-    const localDepts = await deptRepo.find({
+    let localDepts = await deptRepo.find({
       where: { tenantId, wecomConfigId: configId }
     });
 
+    // 如果本地没有部门数据，自动先同步部门（避免用户需要手动分两步操作）
     if (localDepts.length === 0) {
-      return res.status(400).json({ success: false, message: '请先同步部门' });
+      log.info('[AddressBook] sync-members: 本地无部门数据，自动先同步部门...');
+      try {
+        const departments = await WecomApiService.getDepartmentList(accessToken);
+        if (departments.length > 0) {
+          for (const dept of departments) {
+            const apiNameValid = isValidName(dept.name, dept.id);
+            const mapping = deptRepo.create({
+              tenantId,
+              wecomConfigId: configId,
+              wecomDeptId: dept.id,
+              wecomDeptName: apiNameValid ? String(dept.name).trim() : '',
+              wecomParentId: dept.parentid || 0,
+              memberCount: 0,
+              lastSyncTime: new Date()
+            });
+            await deptRepo.save(mapping);
+          }
+          localDepts = await deptRepo.find({ where: { tenantId, wecomConfigId: configId } });
+          log.info(`[AddressBook] 自动同步部门完成: ${departments.length} 个`);
+        }
+      } catch (e: any) {
+        log.warn('[AddressBook] 自动同步部门失败:', e.message);
+      }
     }
 
     // 从根部门递归获取所有成员（fetch_child=true）
     const rootDeptId = localDepts.find(d => !d.wecomParentId || d.wecomParentId === 0)?.wecomDeptId || 1;
-    const users = await WecomApiService.getDepartmentUsers(accessToken, rootDeptId, true);
+    let users: any[] = [];
+
+    try {
+      users = await WecomApiService.getDepartmentUsers(accessToken, rootDeptId, true);
+    } catch (e: any) {
+      // 60011 = 无权限访问通讯录，第三方应用常见
+      // 尝试降级方案：用 external token 通过 /externalcontact/get_follow_user_list 获取内部成员
+      if (e.message?.includes('60011') || e.message?.includes('no privilege')) {
+        log.warn('[AddressBook] 通讯录API无权限(60011)，尝试通过客户联系API获取内部成员列表...');
+        try {
+          const externalToken = await WecomApiService.getAccessTokenByConfigId(configId, 'external');
+          const { default: axios } = await import('axios');
+          const followResp = await axios.get(
+            `https://qyapi.weixin.qq.com/cgi-bin/externalcontact/get_follow_user_list?access_token=${externalToken}`
+          );
+          if (followResp.data.errcode === 0 && followResp.data.follow_user) {
+            // follow_user 是配置了客户联系功能的成员userid列表
+            const followUsers: string[] = followResp.data.follow_user;
+            log.info(`[AddressBook] 通过客户联系API获取到 ${followUsers.length} 个内部成员`);
+            users = followUsers.map(uid => ({
+              userid: uid,
+              name: '', // 名称后续通过 /user/get 补充
+              department: [1],
+              status: 1
+            }));
+
+            // 如果本地没有部门，创建一个默认根部门
+            if (localDepts.length === 0) {
+              const defaultDept = deptRepo.create({
+                tenantId,
+                wecomConfigId: configId,
+                wecomDeptId: 1,
+                wecomDeptName: config.name || '企业',
+                wecomParentId: 0,
+                memberCount: followUsers.length,
+                lastSyncTime: new Date()
+              });
+              await deptRepo.save(defaultDept);
+              localDepts = [defaultDept];
+            }
+          } else {
+            throw new Error(`获取客户联系成员列表失败: ${followResp.data.errmsg || '未知错误'}`);
+          }
+        } catch (fallbackErr: any) {
+          log.error('[AddressBook] 降级方案也失败:', fallbackErr.message);
+          // 给出更友好的错误提示
+          return res.status(400).json({
+            success: false,
+            message: '通讯录同步失败：当前企微应用没有通讯录API权限。\n\n解决方案：\n1. 如果是第三方应用，请在企微管理后台「应用管理→第三方应用」中为该应用授权「通讯录」权限\n2. 或者在企微配置中填写独立的「通讯录同步Secret」（需要在企微后台「管理工具→通讯录同步」中获取）'
+          });
+        }
+      } else {
+        throw e; // 其他错误继续抛出
+      }
+    }
 
     log.info(`[AddressBook] Synced ${users.length} members from WeCom API`);
     // 调试日志：打印前5个成员的原始数据，确认API是否返回了name字段
@@ -368,20 +505,72 @@ router.post('/address-book/sync-members', authenticateToken, requireAdmin, async
     const missingNameUsers = users.filter((u: any) => !isValidName(u.name, u.userid));
     if (missingNameUsers.length > 0) {
       const limit = Math.min(missingNameUsers.length, 200);
-      log.info(`[AddressBook] ${missingNameUsers.length} 个成员名称缺失（authType=${config.authType}），开始通过 /user/get 逐个补充（处理前 ${limit} 个）`);
-      let enriched = 0;
-      for (let i = 0; i < limit; i++) {
-        const u = missingNameUsers[i];
-        const detail = await WecomApiService.getUserDetail(accessToken, u.userid);
-        if (detail && isValidName(detail.name, u.userid)) {
-          u.name = detail.name;
-          if (detail.avatar) u.avatar = detail.avatar;
-          enriched++;
+      log.info(`[AddressBook] ${missingNameUsers.length} 个成员名称缺失（authType=${config.authType}），开始补充名称...`);
+
+      // 策略1: 先从本地客户群数据中提取成员名称（不需要API调用）
+      let enrichedFromLocal = 0;
+      try {
+        const { WecomCustomerGroup } = await import('../../entities/WecomCustomerGroup');
+        const groupRepo = AppDataSource.getRepository(WecomCustomerGroup);
+        const groups = await groupRepo.find({
+          where: { wecomConfigId: configId },
+          select: ['memberList']
+        });
+        // 构建 userid → name 映射
+        const nameFromGroups = new Map<string, string>();
+        for (const g of groups) {
+          if (!g.memberList) continue;
+          try {
+            const members = JSON.parse(g.memberList);
+            for (const m of members) {
+              if (m.userid && m.name && isValidName(m.name, m.userid)) {
+                nameFromGroups.set(m.userid, m.name);
+              }
+            }
+          } catch { /* ignore parse error */ }
         }
-        // 简单限速 - 避免被企微限流
-        if (i % 20 === 19) await new Promise(r => setTimeout(r, 100));
+        // 用本地数据补充
+        for (const u of missingNameUsers) {
+          const localName = nameFromGroups.get(u.userid);
+          if (localName) {
+            u.name = localName;
+            enrichedFromLocal++;
+          }
+        }
+        if (enrichedFromLocal > 0) {
+          log.info(`[AddressBook] 从客户群数据中补充了 ${enrichedFromLocal} 个成员名称`);
+        }
+      } catch (e: any) {
+        log.warn('[AddressBook] 从客户群提取名称失败:', e.message);
       }
-      log.info(`[AddressBook] /user/get 名称补充完成：${enriched}/${limit} 成功`);
+
+      // 策略2: 对仍然缺失名称的成员，尝试通过 /user/get 逐个补充
+      const stillMissing = missingNameUsers.filter((u: any) => !isValidName(u.name, u.userid));
+      if (stillMissing.length > 0) {
+        const apiLimit = Math.min(stillMissing.length, limit);
+        log.info(`[AddressBook] 仍有 ${stillMissing.length} 个成员名称缺失，尝试通过 /user/get 补充（处理前 ${apiLimit} 个）`);
+        let enrichedFromApi = 0;
+        let apiFailCount = 0;
+        for (let i = 0; i < apiLimit; i++) {
+          const u = stillMissing[i];
+          const detail = await WecomApiService.getUserDetail(accessToken, u.userid);
+          if (detail && isValidName(detail.name, u.userid)) {
+            u.name = detail.name;
+            if (detail.avatar) u.avatar = detail.avatar;
+            enrichedFromApi++;
+          } else if (detail === null) {
+            apiFailCount++;
+            // 如果连续5个都失败（权限问题），停止尝试
+            if (apiFailCount >= 5 && enrichedFromApi === 0) {
+              log.warn('[AddressBook] /user/get 连续失败，可能无权限，停止补充');
+              break;
+            }
+          }
+          // 简单限速 - 避免被企微限流
+          if (i % 20 === 19) await new Promise(r => setTimeout(r, 100));
+        }
+        log.info(`[AddressBook] /user/get 名称补充完成：${enrichedFromApi}/${apiLimit} 成功`);
+      }
     }
 
     const bindingRepo = AppDataSource.getRepository(WecomUserBinding);
