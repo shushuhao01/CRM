@@ -95,6 +95,9 @@ const SDK_CACHE_TTL = 24 * 60 * 60 * 1000; // 24小时
 
 /** 已知合法的 SDK 上游地址（白名单，避免被滥用为开放代理） */
 const SDK_UPSTREAMS: Record<string, string[]> = {
+  'wecom-jssdk-2.4.0.js': [
+    'https://wwcdn.weixin.qq.com/node/wework/wwopen/js/wecom-jssdk-2.4.0.js',
+  ],
   'jwxwork-1.0.0.js': [
     'https://open.work.weixin.qq.com/wwopen/js/jwxwork-1.0.0.js',
     'https://wwcdn.weixin.qq.com/node/wework/wwopen/js/jwxwork-1.0.0.js',
@@ -684,111 +687,102 @@ router.post('/sidebar/js-sdk-config', jsSdkConfigLimiter, validateJsSdkReferer, 
     } else {
       addDiag('corpId一致性检查', `✅ 一致: ${corpId}`);
     }
-    // ★ agentId 补充逻辑（多来源尝试）
-    if (!config.agentId) {
-      log.info(`[Wecom Sidebar] agentId为空，开始多来源补充尝试...`);
-      addDiag('agentId补充开始', '当前agentId为空');
+    // ★ agentId 验证+自动修正逻辑（第三方应用：每次都通过API验证）
+    const oldAgentId = config.agentId;
+    if (config.authType === 'third_party' && config.suiteId && config.permanentCode) {
+      // ★ 第三方应用：始终通过 get_auth_info API 获取/验证真实 agentId
+      addDiag('agentId验证开始', `当前DB值=${oldAgentId || '(空)'}, 开始API实时校验...`);
+      try {
+        const { WecomTokenService } = await import('../../services/wecom/WecomTokenService');
+        const suiteToken = await WecomTokenService.getSuiteAccessToken(config.suiteId);
+        const axios = (await import('axios')).default;
+        const authInfoRes = await axios.post(
+          `https://qyapi.weixin.qq.com/cgi-bin/service/get_auth_info?suite_access_token=${suiteToken}`,
+          { auth_corpid: config.corpId, permanent_code: config.permanentCode }
+        );
+        if (authInfoRes.data?.errcode === 0 || !authInfoRes.data?.errcode) {
+          const authInfo = authInfoRes.data?.auth_info;
+          const agents = authInfo?.agent || [];
+          const agentFromApi = agents[0]?.agentid;
+          const agentName = agents[0]?.name || '';
+          log.info(`[Wecom Sidebar] get_auth_info返回: agents数量=${agents.length}, agentId=${agentFromApi}, name=${agentName}`);
+          addDiag('agentId-API获取', `agents=${agents.length}, 企微返回agentId=${agentFromApi}, name=${agentName}`);
 
-      // 来源1: 从 authScope JSON 中提取
-      if (config.authType === 'third_party' && config.authScope) {
-        try {
-          const authScope: any = safeJsonParse(config.authScope, null);
-          const agentFromScope = authScope?.agent?.[0]?.agentid;
-          if (agentFromScope) {
-            config.agentId = agentFromScope;
-            await configRepo.save(config);
-            log.info(`[Wecom Sidebar] ✅ 从authScope中恢复agentId: ${agentFromScope}`);
-            addDiag('agentId补充-authScope', `成功恢复 agentId=${agentFromScope}`);
-          } else {
-            addDiag('agentId补充-authScope', `authScope中无agent信息: ${JSON.stringify(authScope).substring(0, 200)}`);
-          }
-        } catch (e: any) {
-          log.warn('[Wecom Sidebar] 尝试从authScope提取agentId失败:', e.message);
-          addDiag('agentId补充-authScope', `解析失败: ${e.message}`);
-        }
-      }
-
-      // ★ 来源1.5: 主动调用企微 get_auth_info API 实时获取 agentId（最可靠）
-      if (!config.agentId && config.authType === 'third_party' && config.suiteId) {
-        try {
-          addDiag('agentId补充-API实时获取', '开始调用 get_auth_info...');
-          const { WecomTokenService } = await import('../../services/wecom/WecomTokenService');
-          const suiteToken = await WecomTokenService.getSuiteAccessToken(config.suiteId);
-          const axios = (await import('axios')).default;
-          const authInfoRes = await axios.post(
-            `https://qyapi.weixin.qq.com/cgi-bin/service/get_auth_info?suite_access_token=${suiteToken}`,
-            { auth_corpid: config.corpId, permanent_code: config.permanentCode }
-          );
-          if (authInfoRes.data?.errcode === 0 || !authInfoRes.data?.errcode) {
-            const authInfo = authInfoRes.data?.auth_info;
-            const agentFromApi = authInfo?.agent?.[0]?.agentid;
-            if (agentFromApi) {
-              config.agentId = agentFromApi;
-              // 同时更新 authScope
-              if (authInfo) {
-                config.authScope = JSON.stringify(authInfo);
-              }
-              await configRepo.save(config);
-              log.info(`[Wecom Sidebar] ✅ 从企微API(get_auth_info)获取agentId: ${agentFromApi}`);
-              addDiag('agentId补充-API实时获取', `✅ 成功! agentId=${agentFromApi}`);
+          if (agentFromApi) {
+            if (String(agentFromApi) !== String(oldAgentId)) {
+              // agentId 不一致，自动修正
+              log.warn(`[Wecom Sidebar] ⚠️ agentId不一致! DB=${oldAgentId}, 企微API=${agentFromApi}. 自动修正!`);
+              addDiag('agentId自动修正', `❗ DB值(${oldAgentId}) ≠ API值(${agentFromApi})，已自动更新为 ${agentFromApi}`);
             } else {
-              addDiag('agentId补充-API实时获取', `API返回无agent信息: ${JSON.stringify(authInfo).substring(0, 200)}`);
+              addDiag('agentId验证通过', `✅ DB值(${oldAgentId}) === API值(${agentFromApi})`);
             }
-          } else {
-            addDiag('agentId补充-API实时获取', `API错误: errcode=${authInfoRes.data?.errcode}, errmsg=${authInfoRes.data?.errmsg}`);
-          }
-        } catch (e: any) {
-          log.warn('[Wecom Sidebar] 从API获取agentId失败:', e.message);
-          addDiag('agentId补充-API实时获取', `失败: ${e.message}`);
-        }
-      }
-
-      // 来源2: 从 authCorpInfo JSON 中提取
-      if (!config.agentId && config.authCorpInfo) {
-        try {
-          const authCorpInfo: any = safeJsonParse(config.authCorpInfo, null);
-          const agentFromCorpInfo = authCorpInfo?.agent?.agentid || authCorpInfo?.agentid;
-          if (agentFromCorpInfo) {
-            config.agentId = agentFromCorpInfo;
+            config.agentId = agentFromApi;
+            // 同步更新 authScope 缓存
+            if (authInfo) {
+              config.authScope = JSON.stringify(authInfo);
+            }
             await configRepo.save(config);
-            log.info(`[Wecom Sidebar] ✅ 从authCorpInfo中恢复agentId: ${agentFromCorpInfo}`);
-            addDiag('agentId补充-authCorpInfo', `成功恢复 agentId=${agentFromCorpInfo}`);
           } else {
-            addDiag('agentId补充-authCorpInfo', `authCorpInfo中无agentId: ${JSON.stringify(authCorpInfo).substring(0, 200)}`);
+            addDiag('agentId-API获取', `⚠️ API返回无agent信息: ${JSON.stringify(agents).substring(0, 200)}`);
           }
-        } catch (e: any) {
-          addDiag('agentId补充-authCorpInfo', `解析失败: ${e.message}`);
+        } else {
+          addDiag('agentId-API获取', `API错误: errcode=${authInfoRes.data?.errcode}, errmsg=${authInfoRes.data?.errmsg}`);
         }
+      } catch (e: any) {
+        log.warn('[Wecom Sidebar] get_auth_info验证agentId失败:', e.message);
+        addDiag('agentId-API获取失败', `${e.message}. 将使用DB中的值=${oldAgentId || '(空)'}`);
       }
 
-      // 来源3: 从同corpId的其他配置中查找（可能有历史配置保存了agentId）
+      // 如果 API 调用失败且 agentId 仍为空，尝试 authScope/authCorpInfo 回退
       if (!config.agentId) {
-        try {
-          const otherConfig = await configRepo.findOne({
-            where: { corpId: config.corpId, isEnabled: true },
-            order: { id: 'DESC' }
-          });
-          if (otherConfig && otherConfig.agentId && otherConfig.id !== config.id) {
-            config.agentId = otherConfig.agentId;
-            await configRepo.save(config);
-            log.info(`[Wecom Sidebar] ✅ 从同corpId其他配置(id=${otherConfig.id})中恢复agentId: ${otherConfig.agentId}`);
-            addDiag('agentId补充-同corpId配置', `从配置id=${otherConfig.id}恢复 agentId=${otherConfig.agentId}`);
-          } else {
-            addDiag('agentId补充-同corpId配置', '无其他配置包含agentId');
-          }
-        } catch (e: any) {
-          addDiag('agentId补充-同corpId配置', `查询失败: ${e.message}`);
+        if (config.authScope) {
+          try {
+            const authScope: any = safeJsonParse(config.authScope, null);
+            const agentFromScope = authScope?.agent?.[0]?.agentid;
+            if (agentFromScope) {
+              config.agentId = agentFromScope;
+              await configRepo.save(config);
+              addDiag('agentId回退-authScope', `恢复 agentId=${agentFromScope}`);
+            }
+          } catch { /* ignore */ }
+        }
+        if (!config.agentId && config.authCorpInfo) {
+          try {
+            const authCorpInfo: any = safeJsonParse(config.authCorpInfo, null);
+            const agentFromCorpInfo = authCorpInfo?.agent?.agentid || authCorpInfo?.agentid;
+            if (agentFromCorpInfo) {
+              config.agentId = agentFromCorpInfo;
+              await configRepo.save(config);
+              addDiag('agentId回退-authCorpInfo', `恢复 agentId=${agentFromCorpInfo}`);
+            }
+          } catch { /* ignore */ }
         }
       }
-
-      if (!config.agentId) {
-        log.warn(`[Wecom Sidebar] ⚠️ agentId补充失败，所有来源均无法获取。configId=${config.id}, corpId=${config.corpId}`);
-        addDiag('agentId补充结果', '❌ 所有来源均无法获取agentId');
-      } else {
-        addDiag('agentId补充结果', `✅ 最终agentId=${config.agentId}`);
-      }
+    } else if (!config.agentId) {
+      // 非第三方应用（自建应用）：agentId为空时尝试从同corpId配置恢复
+      addDiag('agentId状态', '自建应用agentId为空，尝试从同corpId配置恢复');
+      try {
+        const otherConfig = await configRepo.findOne({
+          where: { corpId: config.corpId, isEnabled: true },
+          order: { id: 'DESC' }
+        });
+        if (otherConfig && otherConfig.agentId && otherConfig.id !== config.id) {
+          config.agentId = otherConfig.agentId;
+          await configRepo.save(config);
+          addDiag('agentId恢复', `从配置id=${otherConfig.id}恢复 agentId=${otherConfig.agentId}`);
+        }
+      } catch { /* ignore */ }
     } else {
-      addDiag('agentId状态', `已存在 agentId=${config.agentId}，无需补充`);
+      addDiag('agentId状态', `已存在 agentId=${config.agentId}（自建应用，不自动刷新）`);
+    }
+
+    if (!config.agentId) {
+      log.warn(`[Wecom Sidebar] ⚠️ agentId最终为空! configId=${config.id}, corpId=${config.corpId}`);
+      addDiag('agentId最终结果', '❌ 无法获取agentId');
+    } else if (String(config.agentId) !== String(oldAgentId)) {
+      addDiag('agentId最终结果', `✅ 已更新: ${oldAgentId || '(空)'} → ${config.agentId}`);
+    } else {
+      addDiag('agentId最终结果', `✅ agentId=${config.agentId}`);
     }
 
     // 使用 WecomTokenService 统一获取 access_token，支持自建应用和第三方应用双模式
@@ -869,18 +863,19 @@ router.post('/sidebar/js-sdk-config', jsSdkConfigLimiter, validateJsSdkReferer, 
         corpSignature,
         agentSignature,
         warnings: warnings.length > 0 ? warnings : undefined,
-        // 诊断信息（仅开发环境或有警告时返回）
-        _diagnostic: (process.env.NODE_ENV !== 'production' || warnings.length > 0) ? {
+        // 诊断信息（始终返回，方便排查 agentConfig 问题）
+        _diagnostic: {
           totalMs,
           steps: diagSteps,
           configId: config.id,
           configName: config.name,
           hasAgentId: !!config.agentId,
+          agentIdSource: String(config.agentId) !== String(oldAgentId) ? `API刷新: ${oldAgentId || '空'} → ${config.agentId}` : `DB原值: ${config.agentId}`,
           hasAgentTicket: !!agentTicket,
           hasAgentSignature: !!agentSignature,
           signUrl: url,
           signUrlDomain: (() => { try { return new URL(url).hostname; } catch { return '(parse-fail)'; } })()
-        } : undefined
+        }
       }
     });
   } catch (error: any) {
@@ -1206,5 +1201,84 @@ router.put('/sidebar-mp-config', authenticateToken, requireAdmin, async (req: Re
   }
 });
 
-export default router;
+// ==================== 新版 JS-SDK (ww.register) 签名端点 ====================
 
+/**
+ * 新版 @wecom/jssdk 的 ww.register 签名回调端点
+ * 前端 getConfigSignature(url) 和 getAgentConfigSignature(url) 会调用此接口
+ *
+ * 优势：SDK内部自行传递当前页面URL，消除URL不匹配导致的 agentConfig:fail
+ *
+ * @body { url: string, corpId: string, type: 'config' | 'agent_config' }
+ * @returns { timestamp, nonceStr, signature }
+ */
+router.post('/sidebar/sign', jsSdkConfigLimiter, validateJsSdkReferer, async (req: Request, res: Response) => {
+  try {
+    const { url: rawUrl, corpId, type } = req.body;
+    const url = (rawUrl || '').split('#')[0].replace(/\s+$/, '');
+
+    if (!url || !corpId) {
+      return res.status(400).json({ success: false, message: '参数不完整: 需要url和corpId' });
+    }
+    if (!type || !['config', 'agent_config'].includes(type)) {
+      return res.status(400).json({ success: false, message: 'type参数无效，需为 config 或 agent_config' });
+    }
+
+    const configRepo = AppDataSource.getRepository(WecomConfig);
+    let config: any = null;
+
+    // 兼容 $CORPID$ 占位符
+    if (corpId === '$CORPID$' || corpId.includes('$')) {
+      config = await configRepo.findOne({ where: { isEnabled: true, authType: 'third_party' }, order: { id: 'ASC' } });
+      if (!config) config = await configRepo.findOne({ where: { isEnabled: true }, order: { id: 'ASC' } });
+    } else {
+      config = await configRepo.findOne({ where: { corpId, isEnabled: true } });
+    }
+
+    if (!config) {
+      return res.status(400).json({ success: false, message: '未找到匹配的企微配置' });
+    }
+
+    // 获取access_token
+    const { WecomTokenService } = await import('../../services/wecom/WecomTokenService');
+
+    // 第三方应用：临时覆盖corpId确保token正确
+    if (config.authType === 'third_party' && corpId && corpId !== config.corpId && !corpId.includes('$')) {
+      config.corpId = corpId;
+    }
+
+    const accessToken = await WecomTokenService.getAccessToken(config);
+
+    // 获取对应的ticket
+    let ticket: string;
+    if (type === 'config') {
+      ticket = await WecomApiService.getJsSdkTicket(accessToken);
+    } else {
+      ticket = await WecomApiService.getAgentJsSdkTicket(accessToken);
+    }
+
+    // 生成签名
+    const timestamp = Math.floor(Date.now() / 1000);
+    const nonceStr = uuidv4().replace(/-/g, '').substring(0, 16);
+    const signature = WecomApiService.generateJsSdkSignature(ticket, nonceStr, timestamp, url);
+
+    log.info(`[Wecom Sidebar] /sign: type=${type}, corpId=${corpId}, url=${url.substring(0, 80)}, agentId=${config.agentId || '(空)'}`);
+
+    res.json({
+      success: true,
+      data: {
+        timestamp,
+        nonceStr,
+        signature,
+        // 额外返回agentId和corpId，方便前端ww.register使用
+        corpId: corpId !== '$CORPID$' && !corpId.includes('$') ? corpId : config.corpId,
+        agentId: config.agentId || null,
+      }
+    });
+  } catch (error: any) {
+    log.error('[Wecom Sidebar] /sign error:', error.message);
+    res.status(500).json({ success: false, message: `签名失败: ${error.message}` });
+  }
+});
+
+export default router;

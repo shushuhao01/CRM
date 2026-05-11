@@ -394,7 +394,7 @@ defineOptions({ name: 'WecomSidebarDetail' })
 import { ref, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Loading, SwitchButton, User, EditPen, InfoFilled, DataAnalysis, List, TopRight, Refresh } from '@element-plus/icons-vue'
-import { getSidebarJsSdkConfig, sidebarBindAccount, sidebarVerifyBinding, getSidebarCustomerDetail, refreshSidebarToken, getSuiteTicketDiagnostic } from '@/api/wecom'
+import { getSidebarJsSdkConfig, getSidebarSign, sidebarBindAccount, sidebarVerifyBinding, getSidebarCustomerDetail, refreshSidebarToken, getSuiteTicketDiagnostic } from '@/api/wecom'
 import { displaySensitiveInfo as displaySensitiveInfoNew } from '@/utils/sensitiveInfo'
 import { SensitiveInfoType } from '@/services/permission'
 
@@ -526,188 +526,227 @@ async function initWecomSdk() {
       return
     }
 
-    // 获取JS-SDK配置 - 需要先知道corpId
+    // 获取corpId
     const urlParams = new URLSearchParams(window.location.search)
     corpId.value = urlParams.get('corpId') || ''
-    console.log('[Sidebar] corpId:', corpId.value, ', 完整URL:', window.location.href)
+    console.log('[Sidebar] corpId:', corpId.value, ', sdkMode:', sdkMode, ', URL:', window.location.href)
 
     if (!corpId.value) {
       setSdkError('no-corpid', '缺少企业ID参数', 'URL中缺少corpId参数，请在企微后台配置侧边栏地址时添加?corpId=您的企业ID', `当前URL: ${window.location.href}`)
       return
     }
 
-    // ★ 检测 $CORPID$ 是否被企微客户端替换
+    // ★ 检测 $CORPID$ 占位符
     if (corpId.value.includes('$') || corpId.value.includes('CORPID')) {
       console.error('[Sidebar] ⚠️ corpId占位符未被替换:', corpId.value)
       setSdkError('corpid-placeholder', 'CorpID占位符未替换',
-        '企微客户端未将$CORPID$替换为实际企业ID。可能原因：\n1. 侧边栏未通过企微后台「应用管理→聊天工具」正确配置\n2. 需要在服务商后台配置应用的聊天工具栏页面URL\n3. 请尝试不使用$CORPID$，改为直接填写企业CorpID',
+        '企微客户端未将$CORPID$替换为实际企业ID。可能原因：\n1. 侧边栏未通过企微后台「应用管理→聊天工具」正确配置\n2. 需要在服务商后台配置应用的聊天工具栏页面URL',
         `原始corpId=${corpId.value}, URL=${window.location.href}`)
-      // ★ 不return，允许后端fallback逻辑尝试处理
     }
 
-    // 获取JS-SDK签名
-    // ★ URL规范化：确保签名URL与页面实际URL严格一致
-    const signUrl = window.location.href.split('#')[0].replace(/\s+$/, '')
-    console.log('[Sidebar] 获取JS-SDK签名, signUrl:', signUrl)
-    let configRes: any
-    try {
-      configRes = await getSidebarJsSdkConfig({ url: signUrl, corpId: corpId.value })
-    } catch (e: any) {
-      console.error('[Sidebar] JS-SDK签名获取失败:', e)
-      const backendMsg = e?.response?.data?.message || e?.data?.message || e?.message || '未知错误'
-      const backendErrCode = e?.response?.data?.errorCode || e?.data?.errorCode
-      const backendHint = e?.response?.data?.hint || e?.data?.hint
-      const backendDiag = e?.response?.data?._diagnostic || e?.data?._diagnostic
-      if (backendDiag) {
-        console.error('[Sidebar] 后端诊断链路:', backendDiag)
-      }
-      // 识别后端返回的 40085 信号，跳转专用诊断面板
-      if (backendErrCode === 'SUITE_TICKET_INVALID' || /40085|invalid suite[_ ]ticket/i.test(backendMsg)) {
-        setSdkError('suite-ticket', '侧边栏初始化失败', backendHint || '第三方授权应用的 suite_ticket 已过期', `错误: ${backendMsg}`)
-        // 自动拉诊断信息
-        loadSuiteDiagnostic()
-        return
-      }
-      setSdkError('api', 'JS-SDK签名获取失败', `请检查企微配置是否正确（CorpID: ${corpId.value}）`, `错误: ${backendMsg}`)
-      return
+    // ★ 根据 sdkMode 分支处理
+    if (sdkMode === 'ww') {
+      await initWithNewSdk()
+    } else {
+      await initWithLegacySdk()
     }
-    if (!configRes?.corpId) {
-      setSdkError('api', 'JS-SDK配置返回异常', '后端未返回有效的JS-SDK签名配置', `响应: ${JSON.stringify(configRes || {}).substring(0, 200)}`)
-      return
-    }
-    // ★ 详细诊断日志
-    console.log('[Sidebar] ===== JS-SDK配置诊断 =====')
-    console.log('[Sidebar] corpId:', configRes.corpId)
-    console.log('[Sidebar] agentId:', configRes.agentId, '(类型:', typeof configRes.agentId, ')')
-    console.log('[Sidebar] authType:', configRes.authType)
-    console.log('[Sidebar] corpSignature:', configRes.corpSignature ? '✅ 已生成' : '❌ 缺失')
-    console.log('[Sidebar] agentSignature:', configRes.agentSignature ? '✅ 已生成' : '❌ 缺失')
-    console.log('[Sidebar] timestamp:', configRes.timestamp, 'nonceStr:', configRes.nonceStr)
-    if (configRes.warnings?.length) {
-      console.warn('[Sidebar] ⚠️ 后端警告:', configRes.warnings)
-    }
-    if (configRes._diagnostic) {
-      console.log('[Sidebar] 后端诊断详情:', configRes._diagnostic)
-    }
-    console.log('[Sidebar] =============================')
-
-    // 注入wx.config
-    const wx = (window as any).wx
-    if (!wx) {
-      setSdkError('sdk-load', 'wx对象不存在', 'JS-SDK已加载但wx对象未生成，请重试')
-      return
-    }
-
-    wx.config({
-      beta: true,
-      debug: false,
-      appId: configRes.corpId,
-      timestamp: configRes.timestamp,
-      nonceStr: configRes.nonceStr,
-      signature: configRes.corpSignature,
-      jsApiList: ['getContext']
-    })
-
-    wx.ready(() => {
-      console.log('[Sidebar] wx.config ready ✅')
-      console.log('[Sidebar] 准备agentConfig: agentId=', configRes.agentId, ', hasAgentSignature=', !!configRes.agentSignature, ', authType=', configRes.authType)
-      // agentConfig 是调用 getCurExternalContact 的前提（无论自建还是第三方应用）
-      if (configRes.agentSignature && configRes.agentId) {
-        // ★ 关键：agentid 必须是字符串类型
-        const agentIdStr = String(configRes.agentId)
-        console.log('[Sidebar] 执行 wx.agentConfig, 参数:', {
-          corpid: configRes.corpId,
-          agentid: agentIdStr,
-          timestamp: configRes.timestamp,
-          nonceStr: configRes.nonceStr,
-          signatureLength: configRes.agentSignature?.length,
-          jsApiList: ['getCurExternalContact']
-        })
-        wx.agentConfig({
-          corpid: configRes.corpId,
-          agentid: agentIdStr,
-          timestamp: configRes.timestamp,
-          nonceStr: configRes.nonceStr,
-          signature: configRes.agentSignature,
-          jsApiList: ['getCurExternalContact'],
-          debug: true,
-          success: () => {
-            console.log('[Sidebar] ✅ agentConfig success - agentId:', agentIdStr, '验证通过，开始获取聊天对象')
-            getCurExternalContact(wx)
-          },
-          fail: (err: any) => {
-            console.error('[Sidebar] ❌ agentConfig fail:', JSON.stringify(err))
-            console.error('[Sidebar] agentConfig失败诊断:', {
-              agentId: agentIdStr,
-              corpId: configRes.corpId,
-              authType: configRes.authType,
-              timestamp: configRes.timestamp,
-              nonceStr: configRes.nonceStr,
-              signatureLen: configRes.agentSignature?.length,
-              pageUrl: window.location.href.split('#')[0].substring(0, 150),
-              errKeys: err ? Object.keys(err) : [],
-              errRaw: err
-            })
-            // ★ agentConfig 失败后不应降级调用 getCurExternalContact
-            // 根据企微官方文档，getCurExternalContact 必须在 agentConfig 成功后才能调用
-            const errMsg = err?.errMsg || err?.err_msg || JSON.stringify(err)
-            if (errMsg.includes('permission denied')) {
-              setSdkError('sdk-agent', 'agentConfig权限不足',
-                '应用没有调用该接口的权限。请检查：\n1. 应用是否已配置「客户联系」功能权限\n2. AgentID是否正确\n3. 侧边栏页面URL的域名是否在应用可信域名中',
-                `agentId=${agentIdStr}, corpId=${configRes.corpId}, err=${errMsg}`)
-            } else if (errMsg.includes('invalid signature') || errMsg.includes('sign')) {
-              setSdkError('sdk-agent', 'agentConfig签名验证失败',
-                '签名不正确。可能原因：\n1. 页面URL与签名URL不一致（检查是否有重定向）\n2. agent_ticket已过期\n3. timestamp/nonceStr不匹配',
-                `agentId=${agentIdStr}, err=${errMsg}`)
-            } else if (errMsg.includes('bindDomain') || errMsg.includes('bindUrl') || errMsg.includes('bindurl') || errMsg.includes('bindDomain') || errMsg.includes('not bindDomain') || errMsg.includes('domain')) {
-              setSdkError('sdk-agent', 'agentConfig可信域名不匹配',
-                `当前页面域名不在应用的可信域名列表中。\n\n请在服务商后台 → 应用管理 → 网页授权及JS-SDK → 可信域名 中添加: ${window.location.hostname}`,
-                `agentId=${agentIdStr}, domain=${window.location.hostname}, err=${errMsg}`)
-            } else {
-              setSdkError('sdk-agent', 'agentConfig失败',
-                `应用配置验证失败(${errMsg})。请检查：\n1. AgentID(${agentIdStr})是否与企微后台一致\n2. 应用Secret是否正确\n3. 侧边栏URL域名(${window.location.hostname})是否在可信域名列表中\n4. 若为第三方应用，请在服务商后台确认可信域名配置`,
-                `corpId=${configRes.corpId}, authType=${configRes.authType}`)
-            }
-          }
-        })
-      } else if (configRes.authType === 'third_party') {
-        // 第三方应用缺少 agentId 或 agentSignature
-        // ★ 不再降级调用，而是明确提示需要配置
-        const missingParts: string[] = []
-        if (!configRes.agentId) missingParts.push('AgentID')
-        if (!configRes.agentSignature) missingParts.push('应用签名(agent_ticket获取失败)')
-        const warningText = configRes.warnings?.join('; ') || ''
-        console.error('[Sidebar] ❌ 第三方应用缺少agentConfig必要参数:', missingParts.join(', '))
-        setSdkError(
-          'sdk-agent',
-          '侧边栏配置不完整',
-          `缺少 ${missingParts.join(' 和 ')}。\n\n请在CRM企微管理页面检查：\n1. 企微配置中是否已填写AgentID（从企微后台「应用管理→第三方应用→应用详情」获取）\n2. 应用Secret是否正确（用于获取agent_ticket）`,
-          warningText ? `后端诊断: ${warningText}` : `agentId=${configRes.agentId || '空'}`
-        )
-      } else {
-        // 自建应用但缺少agentConfig必要参数
-        const missingParts: string[] = []
-        if (!configRes.agentId) missingParts.push('AgentID')
-        if (!configRes.agentSignature) missingParts.push('应用签名(agentSignature)')
-        const warningText = configRes.warnings?.join('; ') || ''
-        console.error('[Sidebar] ❌ 缺少agentConfig必要参数:', missingParts.join(', '), '后端警告:', warningText)
-        setSdkError(
-          'sdk-agent',
-          '侧边栏配置不完整',
-          `缺少 ${missingParts.join(' 和 ')}，无法获取聊天对象。请在企微管理后台检查应用配置：1) 确认已填写AgentID；2) 确认应用Secret正确。`,
-          warningText ? `后端诊断: ${warningText}` : ''
-        )
-      }
-    })
-
-    wx.error((err: any) => {
-      console.error('[Sidebar] wx.config error:', err)
-      setSdkError('sdk-config', 'JS-SDK配置失败', 'wx.config验证失败，请检查CorpID和Secret是否正确', `错误: ${JSON.stringify(err)}`)
-    })
   } catch (e: any) {
     console.error('[Sidebar] Init error:', e)
     setSdkError('api', '初始化失败', e?.message || '未知错误', `堆栈: ${e?.stack?.substring(0, 200) || ''}`)
   }
+}
+
+/**
+ * ★ 新版 SDK 初始化（ww.register）
+ * 优势：SDK内部自动传递正确的URL给签名回调，消除URL不匹配问题
+ */
+async function initWithNewSdk() {
+  const ww = (window as any).ww
+  console.log('[Sidebar] 使用新版 ww.register 模式')
+
+  // 先通过一次签名调用获取agentId（因为ww.register需要提前知道agentId）
+  let agentId: string | null = null
+  try {
+    const preRes: any = await getSidebarSign({
+      url: window.location.href.split('#')[0],
+      corpId: corpId.value,
+      type: 'config'
+    })
+    agentId = preRes?.agentId ? String(preRes.agentId) : null
+    // 如果后端返回了真实的corpId（占位符降级），使用它
+    if (preRes?.corpId && !corpId.value.includes('$')) {
+      corpId.value = preRes.corpId
+    }
+    console.log('[Sidebar] 预获取: agentId=', agentId, ', corpId=', corpId.value)
+  } catch (e: any) {
+    console.error('[Sidebar] 预获取签名失败:', e)
+    const backendMsg = e?.response?.data?.message || e?.data?.message || e?.message || '未知错误'
+    if (/40085|invalid suite[_ ]ticket/i.test(backendMsg)) {
+      setSdkError('suite-ticket', '侧边栏初始化失败', '第三方授权应用的 suite_ticket 已过期', `错误: ${backendMsg}`)
+      loadSuiteDiagnostic()
+      return
+    }
+    setSdkError('api', 'JS-SDK签名获取失败', `请检查企微配置（CorpID: ${corpId.value}）`, `错误: ${backendMsg}`)
+    return
+  }
+
+  if (!agentId) {
+    setSdkError('sdk-agent', '缺少AgentID', '后端未返回AgentID，请在CRM企微管理页面刷新授权信息', `corpId=${corpId.value}`)
+    return
+  }
+
+  // ★ 核心：签名回调函数——SDK会自动传递当前页面的真实URL
+  async function getConfigSignature(url: string) {
+    console.log('[Sidebar] ww.register → getConfigSignature, url:', url?.substring(0, 100))
+    const res: any = await getSidebarSign({ url, corpId: corpId.value, type: 'config' })
+    return { timestamp: res.timestamp, nonceStr: res.nonceStr, signature: res.signature }
+  }
+
+  async function getAgentConfigSignature(url: string) {
+    console.log('[Sidebar] ww.register → getAgentConfigSignature, url:', url?.substring(0, 100))
+    const res: any = await getSidebarSign({ url, corpId: corpId.value, type: 'agent_config' })
+    return { timestamp: res.timestamp, nonceStr: res.nonceStr, signature: res.signature }
+  }
+
+  try {
+    await ww.register({
+      corpId: corpId.value,
+      agentId: agentId,
+      jsApiList: ['getCurExternalContact'],
+      getConfigSignature,
+      getAgentConfigSignature,
+    })
+    console.log('[Sidebar] ✅ ww.register 成功! corpId=', corpId.value, ', agentId=', agentId)
+  } catch (err: any) {
+    console.error('[Sidebar] ❌ ww.register 失败:', err)
+    const errMsg = err?.message || err?.errMsg || JSON.stringify(err)
+    setSdkError('sdk-agent', 'ww.register 失败',
+      `应用注册失败(${errMsg})。请检查：\n1. AgentID(${agentId})是否正确\n2. 侧边栏URL域名(${window.location.hostname})是否在应用可信域名中\n3. 应用Secret是否正确`,
+      `corpId=${corpId.value}, agentId=${agentId}, err=${errMsg}`)
+    return
+  }
+
+  // ★ 注册成功后获取当前聊天对象
+  try {
+    console.log('[Sidebar] 调用 ww.invoke getCurExternalContact...')
+    const contactRes: any = await ww.invoke('getCurExternalContact', {})
+    console.log('[Sidebar] getCurExternalContact 响应:', JSON.stringify(contactRes))
+    if (contactRes?.userId) {
+      externalUserId.value = contactRes.userId
+      console.log('[Sidebar] ✅ 获取外部联系人成功:', contactRes.userId)
+      checkBindingAndLoad()
+    } else {
+      console.error('[Sidebar] ❌ getCurExternalContact 无userId:', contactRes)
+      pageState.value = 'error'
+      errorMsg.value = '获取当前聊天对象失败，请确保在与外部联系人的聊天窗口中打开侧边栏'
+    }
+  } catch (e: any) {
+    console.error('[Sidebar] ❌ ww.invoke getCurExternalContact 失败:', e)
+    pageState.value = 'error'
+    const errDetail = e?.message || e?.errMsg || JSON.stringify(e)
+    if (/permission/i.test(errDetail)) {
+      errorMsg.value = '获取聊天对象失败：应用缺少「客户联系」API权限，请在企微管理后台为应用添加此权限'
+    } else {
+      errorMsg.value = `获取聊天对象失败(${errDetail})，请确保在外部联系人聊天窗口中打开侧边栏`
+    }
+  }
+}
+
+/**
+ * 旧版 SDK 初始化（wx.config + wx.agentConfig）
+ * 作为降级方案保留
+ */
+async function initWithLegacySdk() {
+  console.log('[Sidebar] 使用旧版 wx.config + agentConfig 模式')
+  const signUrl = window.location.href.split('#')[0].replace(/\s+$/, '')
+  console.log('[Sidebar] 获取JS-SDK签名, signUrl:', signUrl)
+
+  let configRes: any
+  try {
+    configRes = await getSidebarJsSdkConfig({ url: signUrl, corpId: corpId.value })
+  } catch (e: any) {
+    console.error('[Sidebar] JS-SDK签名获取失败:', e)
+    const backendMsg = e?.response?.data?.message || e?.data?.message || e?.message || '未知错误'
+    const backendErrCode = e?.response?.data?.errorCode || e?.data?.errorCode
+    const backendHint = e?.response?.data?.hint || e?.data?.hint
+    if (backendErrCode === 'SUITE_TICKET_INVALID' || /40085|invalid suite[_ ]ticket/i.test(backendMsg)) {
+      setSdkError('suite-ticket', '侧边栏初始化失败', backendHint || '第三方授权应用的 suite_ticket 已过期', `错误: ${backendMsg}`)
+      loadSuiteDiagnostic()
+      return
+    }
+    setSdkError('api', 'JS-SDK签名获取失败', `请检查企微配置（CorpID: ${corpId.value}）`, `错误: ${backendMsg}`)
+    return
+  }
+  if (!configRes?.corpId) {
+    setSdkError('api', 'JS-SDK配置返回异常', '后端未返回有效的JS-SDK签名配置', `响应: ${JSON.stringify(configRes || {}).substring(0, 200)}`)
+    return
+  }
+
+  console.log('[Sidebar] ===== 旧版JS-SDK配置 =====')
+  console.log('[Sidebar] corpId:', configRes.corpId, ', agentId:', configRes.agentId, ', authType:', configRes.authType)
+  console.log('[Sidebar] corpSign:', configRes.corpSignature ? '✅' : '❌', ', agentSign:', configRes.agentSignature ? '✅' : '❌')
+
+  const wx = (window as any).wx
+  if (!wx) {
+    setSdkError('sdk-load', 'wx对象不存在', 'JS-SDK已加载但wx对象未生成，请重试')
+    return
+  }
+
+  const isDebug = new URLSearchParams(window.location.search).has('debug')
+  wx.config({
+    beta: true,
+    debug: isDebug,
+    appId: configRes.corpId,
+    timestamp: configRes.timestamp,
+    nonceStr: configRes.nonceStr,
+    signature: configRes.corpSignature,
+    jsApiList: ['getContext']
+  })
+
+  wx.ready(() => {
+    console.log('[Sidebar] wx.config ready ✅')
+    if (configRes.agentSignature && configRes.agentId) {
+      const agentIdStr = String(configRes.agentId)
+      wx.agentConfig({
+        corpid: configRes.corpId,
+        agentid: agentIdStr,
+        timestamp: configRes.timestamp,
+        nonceStr: configRes.nonceStr,
+        signature: configRes.agentSignature,
+        jsApiList: ['getCurExternalContact'],
+        debug: isDebug,
+        success: () => {
+          console.log('[Sidebar] ✅ agentConfig success')
+          getCurExternalContact(wx)
+        },
+        fail: (err: any) => {
+          console.error('[Sidebar] ❌ agentConfig fail:', JSON.stringify(err))
+          const errMsg = err?.errMsg || err?.err_msg || JSON.stringify(err)
+          if (errMsg.includes('permission denied')) {
+            setSdkError('sdk-agent', 'agentConfig权限不足', '应用缺少调用权限，请检查客户联系权限和可信域名', `err=${errMsg}`)
+          } else if (errMsg.includes('invalid signature') || errMsg.includes('sign')) {
+            setSdkError('sdk-agent', 'agentConfig签名失败', '签名不正确，可能是URL不匹配或ticket已过期。建议：刷新页面或联系管理员检查可信域名', `err=${errMsg}`)
+          } else if (errMsg.includes('domain') || errMsg.includes('bindDomain') || errMsg.includes('bindUrl')) {
+            setSdkError('sdk-agent', '可信域名不匹配', `当前域名 ${window.location.hostname} 不在应用可信域名列表中`, `err=${errMsg}`)
+          } else {
+            setSdkError('sdk-agent', 'agentConfig失败',
+              `应用配置验证失败(${errMsg})。\n建议：1) 检查AgentID(${agentIdStr})是否正确 2) 检查可信域名 3) 检查应用Secret`,
+              `corpId=${configRes.corpId}, agentId=${agentIdStr}`)
+          }
+        }
+      })
+    } else {
+      const missingParts: string[] = []
+      if (!configRes.agentId) missingParts.push('AgentID')
+      if (!configRes.agentSignature) missingParts.push('应用签名')
+      setSdkError('sdk-agent', '侧边栏配置不完整', `缺少 ${missingParts.join(' 和 ')}。请在CRM企微管理页面检查配置。`)
+    }
+  })
+
+  wx.error((err: any) => {
+    console.error('[Sidebar] wx.config error:', err)
+    setSdkError('sdk-config', 'JS-SDK配置失败', 'wx.config验证失败，请检查CorpID和Secret是否正确', `错误: ${JSON.stringify(err)}`)
+  })
 }
 
 function getCurExternalContact(wx: any) {
@@ -760,8 +799,16 @@ function isTokenExpiringSoon(token: string): boolean {
   }
 }
 
+/** SDK模式：'ww' = 新版 @wecom/jssdk (ww.register)，'wx' = 旧版 (wx.config+agentConfig) */
+let sdkMode: 'ww' | 'wx' | null = null
+
 function loadWecomJsSdk(): Promise<void> {
-  // 检查wx对象是否已存在（企微客户端可能预注入）
+  // 检查新版ww对象
+  function ensureWwObj(): boolean {
+    const w = window as any
+    return !!(w.ww && typeof w.ww.register === 'function')
+  }
+  // 检查旧版wx对象
   function ensureWxObj(): boolean {
     const w = window as any
     if (w.wx && typeof w.wx.config === 'function') return true
@@ -772,39 +819,22 @@ function loadWecomJsSdk(): Promise<void> {
     return false
   }
 
+  if (ensureWwObj()) {
+    sdkMode = 'ww'
+    console.log('[Sidebar] ww对象已存在（新版SDK）')
+    return Promise.resolve()
+  }
   if (ensureWxObj()) {
-    console.log('[Sidebar] wx对象已存在（客户端预注入或之前加载过）')
+    sdkMode = 'wx'
+    console.log('[Sidebar] wx对象已存在（旧版SDK）')
     return Promise.resolve()
   }
 
-  // 等待wx对象就绪的轮询
-  function waitForWx(timeout = 3000): Promise<void> {
-    return new Promise((res, rej) => {
-      const start = Date.now()
-      const check = () => {
-        if (ensureWxObj()) { res(); return }
-        if (Date.now() - start > timeout) {
-          rej(new Error('wx object not available after SDK load'))
-        } else {
-          setTimeout(check, 80)
-        }
-      }
-      check()
-    })
-  }
-
-  /**
-   * 移除 DOM 中所有"失败的" jweixin/jwxwork script 标签
-   * 关键：之前的代码会因为 script 标签已存在而短路，导致永远拿不到 wx 对象
-   */
   function cleanupFailedScripts() {
     const scripts = document.querySelectorAll('script[data-wecom-sdk="1"]')
     scripts.forEach(s => s.parentNode?.removeChild(s))
   }
 
-  /**
-   * 加载单个脚本，并验证脚本执行后 wx 对象真的可用（避免 HTML 404 假成功）
-   */
   function loadScript(url: string, timeoutMs = 8000): Promise<{ ok: boolean; reason?: string }> {
     return new Promise((res) => {
       const s = document.createElement('script')
@@ -820,15 +850,17 @@ function loadWecomJsSdk(): Promise<void> {
       const timer = setTimeout(() => finish(false, 'timeout'), timeoutMs)
       s.onload = () => {
         clearTimeout(timer)
-        // 必须等待一小段时间，让脚本执行完成；然后真实校验 wx 是否可用
         setTimeout(() => {
           const w = window as any
-          if ((w.wx && typeof w.wx.config === 'function') || (w.jWeixin && typeof w.jWeixin.config === 'function')) {
-            console.log(`[Sidebar] SDK loaded & wx ready: ${url}`)
+          if (w.ww && typeof w.ww.register === 'function') {
+            console.log(`[Sidebar] 新版SDK loaded & ww ready: ${url}`)
+            finish(true)
+          } else if ((w.wx && typeof w.wx.config === 'function') || (w.jWeixin && typeof w.jWeixin.config === 'function')) {
+            console.log(`[Sidebar] 旧版SDK loaded & wx ready: ${url}`)
             finish(true)
           } else {
-            console.warn(`[Sidebar] SDK loaded but wx invalid (likely HTML 404 page): ${url}`)
-            finish(false, 'wx-not-defined')
+            console.warn(`[Sidebar] SDK loaded but no ww/wx object (likely HTML 404): ${url}`)
+            finish(false, 'obj-not-defined')
           }
         }, 200)
       }
@@ -841,26 +873,22 @@ function loadWecomJsSdk(): Promise<void> {
     })
   }
 
-  // 多CDN依次尝试。优先级：自托管 > 官方企微CDN > 微信通用CDN
-  // 注意：jweixin 文件名是全小写（jweixin-1.2.0.js），不是 jWeixin
+  // ★ 新版SDK优先，降级到旧版
   const CDN_LIST = [
-    // 1. 自托管 (放置后即工作；解决私有部署/网络隔离场景)
+    // 1. 新版 @wecom/jssdk（优先）
+    '/wecom-jssdk-2.4.0.js',
+    '/api/wecom/sdk/wecom-jssdk-2.4.0.js',
+    'https://wwcdn.weixin.qq.com/node/wework/wwopen/js/wecom-jssdk-2.4.0.js',
+    // 2. 旧版（降级）
     '/jwxwork-1.0.0.js',
-    '/jweixin-1.2.0.js',
-    // 2. 后端代理（如果有的话），同源避免CORS和拦截
     '/api/wecom/sdk/jwxwork-1.0.0.js',
-    '/api/wecom/sdk/jweixin-1.2.0.js',
-    // 3. 企业微信官方CDN
     'https://open.work.weixin.qq.com/wwopen/js/jwxwork-1.0.0.js',
     'https://wwcdn.weixin.qq.com/node/wework/wwopen/js/jwxwork-1.0.0.js',
-    // 4. 微信通用 jweixin CDN（注意全小写）
+    '/jweixin-1.2.0.js',
     'https://res.wx.qq.com/open/js/jweixin-1.2.0.js',
-    'https://res.wx.qq.com/open/js/jweixin-1.6.0.js',
-    'https://res2.wx.qq.com/open/js/jweixin-1.2.0.js',
   ]
 
   return (async () => {
-    // 每次进入加载流程，先清理之前失败的 script tag
     cleanupFailedScripts()
 
     for (let attempt = 0; attempt < 2; attempt++) {
@@ -871,20 +899,13 @@ function loadWecomJsSdk(): Promise<void> {
       }
       const tried: { url: string; reason: string }[] = []
       for (const cdn of CDN_LIST) {
-        if (ensureWxObj()) {
-          console.log('[Sidebar] wx对象就绪')
-          return
-        }
+        if (ensureWwObj()) { sdkMode = 'ww'; return }
+        if (ensureWxObj()) { sdkMode = 'wx'; return }
         const { ok, reason } = await loadScript(cdn)
         if (ok) {
-          // 双保险再等一下
-          try {
-            await waitForWx(2000)
-            console.log('[Sidebar] wx对象就绪 from:', cdn)
-            return
-          } catch {
-            tried.push({ url: cdn, reason: 'wx-still-missing' })
-          }
+          if (ensureWwObj()) { sdkMode = 'ww'; console.log('[Sidebar] ✅ 新版ww.register模式 from:', cdn); return }
+          if (ensureWxObj()) { sdkMode = 'wx'; console.log('[Sidebar] ✅ 旧版wx.config模式 from:', cdn); return }
+          tried.push({ url: cdn, reason: 'obj-still-missing' })
         } else {
           tried.push({ url: cdn, reason: reason || 'unknown' })
         }
@@ -893,10 +914,10 @@ function loadWecomJsSdk(): Promise<void> {
     }
 
     throw new Error(
-      '所有JS-SDK源都无法加载或加载后未生成wx对象。请检查：\n' +
-      '1. 当前网络是否可访问 res.wx.qq.com / open.work.weixin.qq.com\n' +
-      '2. 或在 public/ 目录放置 jwxwork-1.0.0.js 与 jweixin-1.2.0.js 自托管文件\n' +
-      '3. 确认侧边栏 URL 是通过企微客户端打开（外部浏览器无法获取wx对象）'
+      '所有JS-SDK源都无法加载。请检查：\n' +
+      '1. 当前网络是否可访问 wwcdn.weixin.qq.com\n' +
+      '2. 或在 public/ 目录放置 wecom-jssdk-2.4.0.js 自托管文件\n' +
+      '3. 确认侧边栏 URL 是通过企微客户端打开'
     )
   })()
 }

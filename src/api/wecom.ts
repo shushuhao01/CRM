@@ -708,9 +708,14 @@ export const deleteSidebarApp = (appId: number) => {
 
 // ==================== 侧边栏客户详情 API ====================
 
-/** 侧边栏 - 获取JS-SDK配置 */
+/** 侧边栏 - 获取JS-SDK配置（旧版wx.config模式） */
 export const getSidebarJsSdkConfig = (data: { url: string; corpId: string }) => {
   return request.post('/wecom/sidebar/js-sdk-config', data)
+}
+
+/** 侧边栏 - JS-SDK签名（新版ww.register模式） */
+export const getSidebarSign = (data: { url: string; corpId: string; type: 'config' | 'agent_config' }) => {
+  return request.post('/wecom/sidebar/sign', data)
 }
 
 /** 侧边栏 - 绑定账号(登录) */
