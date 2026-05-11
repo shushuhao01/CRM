@@ -336,6 +336,7 @@ export class WecomTokenService {
         authType: 'third_party',
         permanentCode: permanent_code,
         suiteId,
+        agentId: agentId || undefined,
         authCorpInfo: JSON.stringify(auth_corp_info),
         authUserInfo: JSON.stringify(auth_user_info),
         isEnabled: true,

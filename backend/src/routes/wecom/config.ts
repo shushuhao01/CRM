@@ -1059,5 +1059,88 @@ router.get('/configs/:id/features', authenticateToken, async (req: Request, res:
   }
 });
 
+// ==================== 刷新授权信息（含AgentID） ====================
+
+/**
+ * 刷新第三方应用授权信息（从企微API实时获取最新的agentId等）
+ * 用于解决 agentConfig:fail 问题
+ */
+router.post('/configs/:id/refresh-auth', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const configId = parseInt(req.params.id);
+    const configRepo = getTenantRepo(WecomConfig);
+    const config = await configRepo.findOne({ where: { id: configId, isEnabled: true } });
+
+    if (!config) {
+      return res.status(404).json({ success: false, message: '企微配置不存在或已禁用' });
+    }
+
+    if (config.authType !== 'third_party') {
+      return res.status(400).json({ success: false, message: '仅第三方应用支持刷新授权信息' });
+    }
+
+    if (!config.permanentCode) {
+      return res.status(400).json({ success: false, message: '缺少永久授权码，请重新扫码授权' });
+    }
+
+    if (!config.suiteId) {
+      return res.status(400).json({ success: false, message: '缺少SuiteID配置' });
+    }
+
+    // 获取 suite_access_token
+    const { WecomTokenService } = await import('../../services/wecom/WecomTokenService');
+    const suiteToken = await WecomTokenService.getSuiteAccessToken(config.suiteId);
+
+    // 调用 get_auth_info 获取最新授权信息
+    const axios = (await import('axios')).default;
+    const authInfoRes = await axios.post(
+      `https://qyapi.weixin.qq.com/cgi-bin/service/get_auth_info?suite_access_token=${suiteToken}`,
+      { auth_corpid: config.corpId, permanent_code: config.permanentCode }
+    );
+
+    if (authInfoRes.data.errcode && authInfoRes.data.errcode !== 0) {
+      return res.status(400).json({
+        success: false,
+        message: `企微API返回错误: ${authInfoRes.data.errmsg} (${authInfoRes.data.errcode})`
+      });
+    }
+
+    const authInfo = authInfoRes.data.auth_info || {};
+    const authCorpInfo = authInfoRes.data.auth_corp_info || {};
+    const agents = authInfo.agent || [];
+    const agentId = agents[0]?.agentid;
+    const agentName = agents[0]?.name;
+
+    // 更新配置
+    config.authScope = JSON.stringify(authInfo);
+    config.authCorpInfo = JSON.stringify(authCorpInfo);
+    config.connectionStatus = 'connected';
+    config.lastError = null as any;
+    if (agentId) {
+      config.agentId = agentId;
+    }
+    if (authCorpInfo.corp_name) {
+      config.authCorpName = authCorpInfo.corp_name;
+    }
+    await configRepo.save(config);
+
+    log.info(`[Wecom Config] refresh-auth 成功: configId=${configId}, corpId=${config.corpId}, agentId=${agentId || '(未返回)'}, agentName=${agentName || '(未返回)'}`);
+
+    res.json({
+      success: true,
+      message: agentId ? `授权信息已刷新，AgentID: ${agentId}` : '授权信息已刷新（但未获取到AgentID）',
+      data: {
+        agentId: agentId || null,
+        agentName: agentName || null,
+        corpName: authCorpInfo.corp_name || null,
+        agents: agents.map((a: any) => ({ agentid: a.agentid, name: a.name }))
+      }
+    });
+  } catch (error: any) {
+    log.error('[Wecom Config] refresh-auth error:', error.message);
+    res.status(500).json({ success: false, message: `刷新授权信息失败: ${error.message}` });
+  }
+});
+
 export default router;
 

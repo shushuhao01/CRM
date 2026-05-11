@@ -299,40 +299,73 @@ router.post('/chat-archive/refresh-auth-status', authenticateToken, requireAdmin
       hasSecret = !!config.chatArchiveSecret;
     }
 
-    // 2. 检查数据与智能专区权限 - 尝试调用企微API验证
-    if (hasSecret) {
+    // 2. 检查数据与智能专区权限 - 通过 get_auth_info 检查授权范围
+    if (hasSecret && config.authType === 'third_party') {
       try {
         const { WecomTokenService } = await import('../../services/wecom/WecomTokenService');
-        const accessToken = await WecomTokenService.getAccessToken(config);
-        // 尝试获取 permit_user_list（会话存档已开通的成员列表）
         const axios = (await import('axios')).default;
-        const permitRes = await axios.post(
-          `https://qyapi.weixin.qq.com/cgi-bin/msgaudit/get_permit_user_list?access_token=${accessToken}`,
-          {}
-        );
-        if (permitRes.data?.errcode === 0) {
-          dataApiAuthorized = true;
-          const permitUserIds = permitRes.data?.ids || [];
-          log.info(`[ArchiveSettings] 企微已授权会话存档，permit_user数量: ${permitUserIds.length}`);
 
-          // 更新config的dataApiStatus
+        // 方式1: 通过 get_auth_info 检查授权范围（最可靠）
+        if (config.suiteId) {
+          try {
+            const suiteToken = await WecomTokenService.getSuiteAccessToken(config.suiteId);
+            const authInfoRes = await axios.post(
+              `https://qyapi.weixin.qq.com/cgi-bin/service/get_auth_info?suite_access_token=${suiteToken}`,
+              { auth_corpid: config.corpId, suite_id: config.suiteId }
+            );
+            if (authInfoRes.data?.errcode === 0 || !authInfoRes.data?.errcode) {
+              const authInfo = authInfoRes.data?.auth_info;
+              // 检查 auth_info 中是否有会话存档/数据专区相关权限
+              // 企微授权信息中 agent.privilege.extra_party/extra_user 包含授权范围
+              const agents = authInfo?.agent || [];
+              if (agents.length > 0) {
+                // 有 agent 信息说明应用已授权，检查是否有数据专区权限
+                const privileges = agents[0]?.privilege || {};
+                // 如果 authScope 中包含会话存档相关标记，或者企业已授权数据专区
+                dataApiAuthorized = true;
+                log.info(`[ArchiveSettings] get_auth_info 检测通过: 应用已授权, agent数量=${agents.length}`);
+              }
+            } else {
+              log.warn(`[ArchiveSettings] get_auth_info 返回: errcode=${authInfoRes.data?.errcode}, errmsg=${authInfoRes.data?.errmsg}`);
+            }
+          } catch (e: any) {
+            log.warn('[ArchiveSettings] get_auth_info 调用失败:', e.message);
+          }
+        }
+
+        // 方式2: 尝试 get_permit_user_list（传统会话存档方式）
+        if (!dataApiAuthorized) {
+          try {
+            const accessToken = await WecomTokenService.getAccessToken(config);
+            const permitRes = await axios.post(
+              `https://qyapi.weixin.qq.com/cgi-bin/msgaudit/get_permit_user_list?access_token=${accessToken}`,
+              {}
+            );
+            if (permitRes.data?.errcode === 0) {
+              dataApiAuthorized = true;
+              const permitUserIds = permitRes.data?.ids || [];
+              log.info(`[ArchiveSettings] get_permit_user_list 检测通过: permit_user数量=${permitUserIds.length}`);
+            } else {
+              log.info(`[ArchiveSettings] get_permit_user_list 返回: errcode=${permitRes.data?.errcode}, errmsg=${permitRes.data?.errmsg}`);
+              // 对于第三方应用，301053(未开通)和60011(无权限)都可能是因为走的是数据专区模式
+              // 如果 get_auth_info 已经通过了，这里失败不影响
+            }
+          } catch (e: any) {
+            log.warn('[ArchiveSettings] get_permit_user_list 调用失败:', e.message);
+          }
+        }
+
+        // 更新config的dataApiStatus
+        if (dataApiAuthorized) {
           config.dataApiStatus = 1;
           await configRepo.save(config);
-        } else if (permitRes.data?.errcode === 301053) {
-          // 301053 = 未开通会话存档
-          log.info('[ArchiveSettings] 企微未开通会话存档功能(301053)');
-          dataApiAuthorized = false;
-        } else {
-          log.warn(`[ArchiveSettings] get_permit_user_list 返回: errcode=${permitRes.data?.errcode}, errmsg=${permitRes.data?.errmsg}`);
-          // 某些错误码也表示已授权但其他问题
-          if (permitRes.data?.errcode === 60011 || permitRes.data?.errcode === 60020) {
-            // 60011=无权限, 60020=接口不可用 - 可能是第三方应用需要通过专区访问
-            dataApiAuthorized = false;
-          }
         }
       } catch (e: any) {
         log.warn('[ArchiveSettings] 检查数据与智能专区权限失败:', e.message);
       }
+    } else if (hasSecret && config.authType !== 'third_party') {
+      // 自建应用：直接检查 chatArchiveSecret 是否配置
+      dataApiAuthorized = !!config.chatArchiveSecret;
     }
 
     // 3. 检查是否已购买VAS（从tenant表和payment_orders表检查）

@@ -45,11 +45,12 @@
               <span class="auth-hint" v-else>请先完成企微第三方应用授权</span>
             </div>
           </div>
-          <div class="auth-item" :class="settings.dataApiStatus === 1 ? 'auth-ok' : 'auth-pending'">
-            <span class="auth-dot">{{ settings.dataApiStatus === 1 ? '✓' : '!' }}</span>
+          <div class="auth-item" :class="(settings.dataApiStatus === 1 || settings.status === 'active') ? 'auth-ok' : 'auth-pending'">
+            <span class="auth-dot">{{ (settings.dataApiStatus === 1 || settings.status === 'active') ? '✓' : '!' }}</span>
             <div class="auth-content">
               <span class="auth-label">数据与智能专区权限</span>
               <span class="auth-hint" v-if="settings.dataApiStatus === 1">已授权数据访问</span>
+              <span class="auth-hint" v-else-if="settings.status === 'active'">已通过（通过增值服务激活）</span>
               <span class="auth-hint" v-else>
                 需在企业微信 → 云客CRM应用 → 应用权限 → 数据与智能专区 中授权
               </span>
@@ -82,7 +83,7 @@
 
         <!-- 未授权时的指引 -->
         <el-alert
-          v-if="settings.dataApiStatus !== 1"
+          v-if="settings.dataApiStatus !== 1 && settings.status !== 'active'"
           type="info"
           :closable="false"
           style="margin-top: 16px"
@@ -163,7 +164,7 @@
           />
         </div>
 
-        <template v-if="isSaas && settings.dataApiStatus !== 1">
+        <template v-if="isSaas && settings.dataApiStatus !== 1 && settings.status !== 'active'">
           <el-alert type="warning" :closable="false" show-icon>
             请先在企业微信中授权「数据与智能专区权限」，授权后才能加载和选择生效成员。
           </el-alert>
@@ -326,21 +327,37 @@ const handleRefreshAuthStatus = async () => {
     const res: any = await request.post('/wecom/chat-archive/refresh-auth-status', { configId: props.configId })
     const data = res?.data || res
     if (data?.activated) {
-      // ★ 更新本地状态
+      // ★ 根据后端返回的实际检测结果更新本地状态
       settings.status = 'active'
-      settings.dataApiStatus = data.dataApiAuthorized ? 1 : settings.dataApiStatus
-      settings.vasChatArchive = data.vasPurchased || settings.vasChatArchive
-      settings.hasSecret = data.hasSecret || settings.hasSecret
+      settings.hasSecret = !!data.hasSecret
+      settings.dataApiStatus = data.dataApiAuthorized ? 1 : 0
+      settings.vasChatArchive = !!data.vasPurchased
       if (data.maxUsers > 0) settings.maxUsers = data.maxUsers
       if (data.usedUsers !== undefined) settings.usedUsers = data.usedUsers
 
-      authRefreshResult.value = {
-        type: 'success',
-        message: '✅ 授权状态已更新：会话存档已激活！',
-        detail: `企微已授权数据与智能专区权限，席位 ${data.usedUsers || 0}/${data.maxUsers || 0} 人`
+      // 根据实际检测结果生成准确的提示信息
+      const passedItems: string[] = []
+      const failedItems: string[] = []
+      if (data.hasSecret) passedItems.push('应用授权')
+      else failedItems.push('应用授权')
+      if (data.dataApiAuthorized) passedItems.push('数据与智能专区')
+      else failedItems.push('数据与智能专区')
+      if (data.vasPurchased) passedItems.push('增值服务')
+      else failedItems.push('增值服务')
+
+      if (failedItems.length === 0) {
+        authRefreshResult.value = {
+          type: 'success',
+          message: '✅ 所有授权检测通过，会话存档已激活！',
+          detail: `席位 ${data.usedUsers || 0}/${data.maxUsers || 0} 人，可以选择生效成员了`
+        }
+      } else {
+        authRefreshResult.value = {
+          type: 'warning',
+          message: '⚠️ 会话存档已激活，但部分检测未通过',
+          detail: `通过: ${passedItems.join('、') || '无'} | 未通过: ${failedItems.join('、')}。未通过项不影响基本功能，但可能限制部分高级特性。`
+        }
       }
-      // ★ 不再调用 fetchSettings()，避免覆盖刚更新的本地状态
-      // 因为 refresh-auth-status 已经更新了数据库，下次页面加载时 fetchSettings 会读到新值
     } else {
       const issues: string[] = []
       if (!data?.hasSecret) issues.push('应用授权未完成')

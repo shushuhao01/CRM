@@ -1136,14 +1136,25 @@ router.post('/tenant-auth/:configId/refresh-auth', async (req: Request, res: Res
     // 更新数据库中的授权信息
     const authInfo = result.data.auth_info || {};
     const authCorpInfo = result.data.auth_corp_info || {};
-    await AppDataSource.query(
-      `UPDATE wecom_configs SET auth_scope = ?, auth_corp_info = ?, connection_status = 'connected',
-       last_error = NULL, updated_at = NOW() WHERE id = ?`,
-      [JSON.stringify(authInfo), JSON.stringify(authCorpInfo), configId]
-    );
+    // ★ 提取 AgentID（agentConfig 签名必需）
+    const agentId = authInfo?.agent?.[0]?.agentid;
+    if (agentId) {
+      await AppDataSource.query(
+        `UPDATE wecom_configs SET auth_scope = ?, auth_corp_info = ?, agent_id = ?, connection_status = 'connected',
+         last_error = NULL, updated_at = NOW() WHERE id = ?`,
+        [JSON.stringify(authInfo), JSON.stringify(authCorpInfo), agentId, configId]
+      );
+      log.info(`[Admin Wecom] Auth info refreshed for config ${configId}, corp: ${config.corp_id}, agentId: ${agentId}`);
+    } else {
+      await AppDataSource.query(
+        `UPDATE wecom_configs SET auth_scope = ?, auth_corp_info = ?, connection_status = 'connected',
+         last_error = NULL, updated_at = NOW() WHERE id = ?`,
+        [JSON.stringify(authInfo), JSON.stringify(authCorpInfo), configId]
+      );
+      log.info(`[Admin Wecom] Auth info refreshed for config ${configId}, corp: ${config.corp_id} (agentId未返回)`);
+    }
 
-    log.info(`[Admin Wecom] Auth info refreshed for config ${configId}, corp: ${config.corp_id}`);
-    res.json({ success: true, message: '授权信息已刷新', data: { authScope: authInfo, authCorpInfo } });
+    res.json({ success: true, message: '授权信息已刷新', data: { authScope: authInfo, authCorpInfo, agentId: agentId || null } });
   } catch (error: any) {
     log.error('[Admin Wecom] Refresh auth error:', error.message);
     res.status(500).json({ success: false, message: `刷新失败: ${error.message}` });

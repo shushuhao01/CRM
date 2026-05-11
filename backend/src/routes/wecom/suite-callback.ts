@@ -570,6 +570,10 @@ async function handleCreateAuth(suiteConfig: WecomSuiteConfig, authCode: string,
   const authInfo = data.auth_info || {};
   const authUserInfo = data.auth_user_info || {};
 
+  // ★ 提取第三方应用在授权企业中的 AgentID（agentConfig 必需）
+  const agentId = authInfo?.agent?.[0]?.agentid;
+  log.info(`[SuiteCallback] create_auth: corpId=${corpId}, corpName=${corpName}, agentId=${agentId || '(未返回)'}`);
+
   // 尝试从待处理的授权链接中获取 tenantId（解决 CRM 端看不到配置的根本问题）
   const resolvedTenantId = await resolveTenantIdFromAuthLinks(suiteConfig.suiteId);
 
@@ -591,13 +595,18 @@ async function handleCreateAuth(suiteConfig: WecomSuiteConfig, authCode: string,
     existing.authTime = new Date();
     existing.isEnabled = true;
     existing.connectionStatus = 'connected';
+    // ★ 保存 AgentID（agentConfig 签名必需）
+    if (agentId) {
+      existing.agentId = agentId;
+      log.info(`[SuiteCallback] create_auth: 保存agentId=${agentId} to config (corp: ${corpName})`);
+    }
     // 绑定 tenantId（优先保留已有的，否则使用从授权链接中解析的）
     if (!existing.tenantId && resolvedTenantId) {
       existing.tenantId = resolvedTenantId;
       log.info(`[SuiteCallback] Auto-bound tenantId=${resolvedTenantId} to existing config (corp: ${corpName})`);
     }
     await configRepo.save(existing);
-    log.info(`[SuiteCallback] Updated auth for corp: ${corpName} (${corpId}), tenantId: ${existing.tenantId || '(none)'}`);
+    log.info(`[SuiteCallback] Updated auth for corp: ${corpName} (${corpId}), agentId: ${existing.agentId || '(none)'}, tenantId: ${existing.tenantId || '(none)'}`);
   } else {
     // 创建新配置
     const newConfig = configRepo.create({
@@ -605,6 +614,7 @@ async function handleCreateAuth(suiteConfig: WecomSuiteConfig, authCode: string,
       name: corpName || `企业${corpId}`,
       corpId,
       corpSecret: '', // 第三方模式不需要corpSecret
+      agentId: agentId || undefined, // ★ 保存 AgentID
       authType: 'third_party',
       authMode: 'third_party',
       suiteId: suiteConfig.suiteId,
@@ -619,7 +629,7 @@ async function handleCreateAuth(suiteConfig: WecomSuiteConfig, authCode: string,
       connectionStatus: 'connected',
     });
     await configRepo.save(newConfig);
-    log.info(`[SuiteCallback] Created auth for corp: ${corpName} (${corpId}), tenantId: ${resolvedTenantId || '(none)'}`);
+    log.info(`[SuiteCallback] Created auth for corp: ${corpName} (${corpId}), agentId: ${agentId || '(none)'}, tenantId: ${resolvedTenantId || '(none)'}`);
   }
 }
 
@@ -652,6 +662,12 @@ async function handleChangeAuth(suiteConfig: WecomSuiteConfig, authCorpId: strin
       if (config) {
         config.authCorpInfo = JSON.stringify(res.data.auth_corp_info || {});
         config.authScope = JSON.stringify(res.data.auth_info || {});
+        // ★ 同步更新 AgentID（授权变更可能导致 agentId 变化）
+        const agentId = res.data.auth_info?.agent?.[0]?.agentid;
+        if (agentId) {
+          config.agentId = agentId;
+          log.info(`[SuiteCallback] change_auth: 更新agentId=${agentId} for corp: ${authCorpId}`);
+        }
         await configRepo.save(config);
         log.info(`[SuiteCallback] Auth info updated for corp: ${authCorpId}`);
       }
