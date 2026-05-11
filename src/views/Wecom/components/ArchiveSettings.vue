@@ -101,6 +101,43 @@
         </el-alert>
       </div>
 
+      <!-- ==================== 第二区：加密密钥（SaaS模式公钥展示） ==================== -->
+      <div v-if="isSaas" class="section-card">
+        <div class="block-header">
+          <div>
+            <h3 class="block-title">🔐 加密密钥（公钥）</h3>
+            <p class="block-desc">请将以下公钥复制到企微管理后台「管理工具 → 企业会话内容 → 立即配置 → 加密密钥」中。</p>
+          </div>
+          <el-button v-if="rsaPublicKey" type="success" size="small" @click="copyPublicKey">
+            <el-icon><CopyDocument /></el-icon> 复制公钥
+          </el-button>
+        </div>
+        <div v-if="rsaPublicKeyLoading" v-loading="true" style="height: 60px"></div>
+        <template v-else-if="rsaPublicKey">
+          <el-input
+            :model-value="rsaPublicKey"
+            type="textarea"
+            :rows="6"
+            readonly
+            style="max-width: 680px; font-family: monospace; font-size: 12px"
+          />
+          <el-alert type="info" :closable="false" style="margin-top: 12px" show-icon>
+            <template #title>配置步骤</template>
+            <ol style="margin: 4px 0 0; padding-left: 18px; font-size: 12px; line-height: 1.8">
+              <li>复制上方公钥内容（包含 BEGIN/END 行）</li>
+              <li>进入企微管理后台 → <strong>管理工具 → 企业会话内容</strong></li>
+              <li>点击 <strong>「立即配置」</strong>，选择存档人员范围</li>
+              <li>将公钥粘贴到 <strong>「加密密钥」</strong> 输入框，保存</li>
+              <li>配置完成后企微会开始存档新消息，回到CRM点击「同步」即可查看</li>
+            </ol>
+          </el-alert>
+        </template>
+        <el-alert v-else type="warning" :closable="false" show-icon>
+          <template #title>平台尚未配置加密密钥</template>
+          <p style="margin: 4px 0 0; font-size: 12px">{{ rsaPublicKeyHint || '请联系平台管理员在管理后台配置RSA密钥对。' }}</p>
+        </el-alert>
+      </div>
+
       <!-- ==================== 第二区（替代）：私有部署 - Secret配置提醒 ==================== -->
       <div v-if="!isSaas" class="section-card">
         <h3 class="block-title">🔑 凭证配置</h3>
@@ -300,8 +337,8 @@
 defineOptions({ name: 'ArchiveSettings' })
 import { ref, reactive, computed, watch, onMounted } from 'vue'
 import { ElMessage, ElTree } from 'element-plus'
-import { Refresh, Loading } from '@element-plus/icons-vue'
-import { getArchiveSettings, updateArchiveSettings, getArchiveSeats, getArchiveSeatWecomTree, updateArchiveSeatMembers } from '@/api/wecom'
+import { Refresh, Loading, CopyDocument } from '@element-plus/icons-vue'
+import { getArchiveSettings, updateArchiveSettings, getArchiveSeats, getArchiveSeatWecomTree, updateArchiveSeatMembers, getArchiveRsaPublicKey } from '@/api/wecom'
 import request from '@/utils/request'
 
 const props = defineProps<{
@@ -314,6 +351,42 @@ const loading = ref(false)
 const saving = ref(false)
 
 const isSaas = computed(() => props.authType === 'third_party')
+
+// ==================== RSA公钥（SaaS模式） ====================
+const rsaPublicKey = ref('')
+const rsaPublicKeyHint = ref('')
+const rsaPublicKeyLoading = ref(false)
+
+const fetchRsaPublicKey = async () => {
+  if (!isSaas.value) return
+  rsaPublicKeyLoading.value = true
+  try {
+    const res: any = await getArchiveRsaPublicKey()
+    rsaPublicKey.value = res?.publicKey || ''
+    rsaPublicKeyHint.value = res?.hint || ''
+  } catch {
+    rsaPublicKey.value = ''
+  } finally {
+    rsaPublicKeyLoading.value = false
+  }
+}
+
+const copyPublicKey = async () => {
+  if (!rsaPublicKey.value) return
+  try {
+    await navigator.clipboard.writeText(rsaPublicKey.value)
+    ElMessage.success('公钥已复制到剪贴板')
+  } catch {
+    // fallback
+    const ta = document.createElement('textarea')
+    ta.value = rsaPublicKey.value
+    document.body.appendChild(ta)
+    ta.select()
+    document.execCommand('copy')
+    document.body.removeChild(ta)
+    ElMessage.success('公钥已复制到剪贴板')
+  }
+}
 
 // ==================== 刷新授权状态 ====================
 const refreshingAuth = ref(false)
@@ -563,6 +636,7 @@ watch(() => props.configId, (val) => {
 
 onMounted(() => {
   if (props.configId) fetchSettings()
+  fetchRsaPublicKey()
 })
 
 defineExpose({ fetchSettings })

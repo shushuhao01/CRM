@@ -3624,6 +3624,7 @@ router.get('/suite/config', async (_req: Request, res: Response) => {
           redirectDomain: '',
           appName: '', appDescription: '', appStatus: 'offline',
           permissions: [],
+          chatArchiveRsaPublicKey: '',
           chatArchiveRsaPrivateKey: ''
         }
       });
@@ -3644,6 +3645,7 @@ router.get('/suite/config', async (_req: Request, res: Response) => {
         appDescription: config.appDescription || '',
         appStatus: config.appStatus || 'offline',
         permissions: config.permissions ? JSON.parse(config.permissions) : [],
+        chatArchiveRsaPublicKey: config.chatArchiveRsaPublicKey || '',
         chatArchiveRsaPrivateKey: config.chatArchiveRsaPrivateKey ? '******' : '',
         isEnabled: config.isEnabled
       }
@@ -3666,7 +3668,7 @@ router.put('/suite/config', async (req: Request, res: Response) => {
       suiteId, suiteSecret, providerCorpId, providerSecret,
       callbackToken, callbackEncodingAesKey, redirectDomain,
       appName, appDescription, appStatus, permissions,
-      chatArchiveRsaPrivateKey
+      chatArchiveRsaPublicKey, chatArchiveRsaPrivateKey
     } = req.body;
 
     if (!config) {
@@ -3685,6 +3687,7 @@ router.put('/suite/config', async (req: Request, res: Response) => {
     if (appDescription !== undefined) config.appDescription = appDescription;
     if (appStatus !== undefined) config.appStatus = appStatus;
     if (permissions !== undefined) config.permissions = JSON.stringify(Array.isArray(permissions) ? permissions : []);
+    if (chatArchiveRsaPublicKey !== undefined) config.chatArchiveRsaPublicKey = chatArchiveRsaPublicKey;
     if (chatArchiveRsaPrivateKey && chatArchiveRsaPrivateKey !== '******') config.chatArchiveRsaPrivateKey = chatArchiveRsaPrivateKey;
 
     await repo.save(config);

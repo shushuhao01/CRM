@@ -495,5 +495,44 @@ router.post('/chat-archive/refresh-auth-status', authenticateToken, requireAdmin
   }
 });
 
+/**
+ * 获取会话存档RSA公钥（SaaS模式：从服务商全局配置获取）
+ * 租户复制此公钥到企微后台「管理工具 → 企业会话内容 → 加密密钥」
+ */
+router.get('/chat-archive/rsa-public-key', authenticateToken, async (_req: Request, res: Response) => {
+  try {
+    const { AppDataSource } = await import('../../config/database');
+    const { WecomSuiteConfig } = await import('../../entities/WecomSuiteConfig');
+
+    // 从服务商全局配置获取公钥
+    const suiteRepo = AppDataSource.getRepository(WecomSuiteConfig);
+    const suiteConfig = await suiteRepo.findOne({ where: {}, order: { id: 'ASC' } });
+
+    if (suiteConfig?.chatArchiveRsaPublicKey) {
+      return res.json({
+        success: true,
+        data: {
+          publicKey: suiteConfig.chatArchiveRsaPublicKey,
+          source: 'suite_config',
+          hasPrivateKey: !!suiteConfig.chatArchiveRsaPrivateKey
+        }
+      });
+    }
+
+    res.json({
+      success: true,
+      data: {
+        publicKey: '',
+        source: 'none',
+        hasPrivateKey: false,
+        hint: '管理员尚未配置RSA密钥对，请联系平台管理员在管理后台配置。'
+      }
+    });
+  } catch (error: any) {
+    log.error('[ArchiveSettings] Get RSA public key error:', error.message);
+    res.status(500).json({ success: false, message: '获取公钥失败' });
+  }
+});
+
 export default router;
 

@@ -679,6 +679,11 @@ export const updateArchiveSettings = (data: {
   return request.put('/wecom/chat-archive/settings', data)
 }
 
+/** 获取会话存档RSA公钥（SaaS模式下由平台统一提供） */
+export const getArchiveRsaPublicKey = () => {
+  return request.get('/wecom/chat-archive/rsa-public-key', { showError: false } as any)
+}
+
 // ==================== 侧边栏应用管理 ====================
 
 /** 获取侧边栏应用列表 */

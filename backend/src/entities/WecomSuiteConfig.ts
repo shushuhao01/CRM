@@ -48,6 +48,9 @@ export class WecomSuiteConfig {
   @Column({ name: 'permissions', type: 'text', nullable: true, comment: '权限范围(JSON数组)' })
   permissions: string;
 
+  @Column({ name: 'chat_archive_rsa_public_key', type: 'text', nullable: true, comment: '会话存档RSA公钥(租户复制到企微后台加密密钥处)' })
+  chatArchiveRsaPublicKey: string;
+
   @Column({ name: 'chat_archive_rsa_private_key', type: 'text', nullable: true, comment: '会话存档RSA私钥(服务商级别，所有授权企业共用)' })
   chatArchiveRsaPrivateKey: string;
 
