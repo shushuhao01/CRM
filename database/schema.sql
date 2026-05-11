@@ -55,6 +55,7 @@
 -- 48. [v4.2.1] 开源社区版：licenses.license_type新增community枚举值
 -- 49. [v4.2.1] 开源社区版：tenant_packages.type新增community枚举值+社区版默认套餐数据
 -- 50. [v4.2.1] 开源社区版：system_license.license_type注释补充community社区版
+-- 51. [v4.3.0] wecom_suite_configs表新增chat_archive_rsa_public_key(会话存档RSA公钥，SaaS模式租户复制到企微后台)字段
 -- =============================================
 
 -- 设置字符集和时区
@@ -5819,6 +5820,7 @@ CREATE TABLE IF NOT EXISTS `wecom_suite_configs` (
   `app_description` TEXT DEFAULT NULL COMMENT '应用描述',
   `app_status` VARCHAR(20) DEFAULT 'offline' COMMENT '应用状态: online/offline',
   `permissions` TEXT DEFAULT NULL COMMENT '权限范围(JSON)',
+  `chat_archive_rsa_public_key` TEXT DEFAULT NULL COMMENT '会话存档RSA公钥(租户复制到企微后台加密密钥处)',
   `chat_archive_rsa_private_key` TEXT DEFAULT NULL COMMENT '会话存档RSA私钥(服务商级别，所有授权企业共用)',
   `is_enabled` TINYINT(1) DEFAULT 0 COMMENT '是否启用',
   `mp_app_id` VARCHAR(50) DEFAULT NULL COMMENT '关联的微信小程序AppID',

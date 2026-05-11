@@ -108,15 +108,34 @@
               </el-checkbox-group>
             </el-form-item>
 
-            <el-divider content-position="left">会话存档RSA私钥</el-divider>
+            <el-divider content-position="left">会话存档RSA密钥对</el-divider>
             <el-alert type="warning" :closable="false" style="margin-bottom: 12px">
-              <template #title>此RSA私钥为<strong>服务商级别全局配置</strong></template>
-              在企微后台「会话存档」中上传的公钥对应的私钥。所有授权企业的会话消息都使用此公钥加密，服务端用此私钥解密。配置后，租户扫码授权即可自动使用会话存档功能，无需每个租户单独配置。
+              <template #title>此RSA密钥对为<strong>服务商级别全局配置</strong></template>
+              公钥：租户在CRM「存档设置」中复制，粘贴到企微后台「管理工具 → 企业会话内容 → 加密密钥」。<br/>
+              私钥：服务端用于解密所有授权企业的会话消息。公钥和私钥必须为同一对。
             </el-alert>
+            <el-form-item label="RSA公钥">
+              <div style="width: 100%">
+                <el-button v-if="!showRsaPublicKeyInput" size="small" @click="showRsaPublicKeyInput = true">
+                  {{ suiteConfig.chatArchiveRsaPublicKey ? '已配置 - 点击修改' : '粘贴公钥' }}
+                </el-button>
+                <template v-else>
+                  <el-input
+                    v-model="rsaPublicKeyInput"
+                    type="textarea"
+                    :rows="6"
+                    placeholder="-----BEGIN PUBLIC KEY-----&#10;...&#10;-----END PUBLIC KEY-----"
+                    style="margin-bottom: 8px"
+                  />
+                  <p style="font-size: 12px; color: #909399; margin: 0 0 4px">此公钥将展示给租户，供其复制到企微后台「加密密钥」处。</p>
+                  <el-button size="small" @click="showRsaPublicKeyInput = false">收起</el-button>
+                </template>
+              </div>
+            </el-form-item>
             <el-form-item label="RSA私钥">
               <div style="width: 100%">
                 <el-button v-if="!showRsaInput" size="small" @click="showRsaInput = true">
-                  {{ suiteConfig.chatArchiveRsaPrivateKey === '******' ? '已配置 - 点击修改' : '上传/粘贴私钥' }}
+                  {{ suiteConfig.chatArchiveRsaPrivateKey === '******' ? '已配置 - 点击修改' : '粘贴私钥' }}
                 </el-button>
                 <template v-else>
                   <el-input
@@ -986,10 +1005,13 @@ const suiteConfig = ref<any>({
   providerCorpId: '', providerSecret: '', appName: '', appDescription: '',
   appStatus: '', permissions: [], redirectDomain: '',
   callbackToken: '', callbackEncodingAesKey: '',
+  chatArchiveRsaPublicKey: '',
   chatArchiveRsaPrivateKey: ''
 })
 const showRsaInput = ref(false)
 const rsaPrivateKeyInput = ref('')
+const showRsaPublicKeyInput = ref(false)
+const rsaPublicKeyInput = ref('')
 const showSuiteSecret = ref(false)
 const showProviderSecret = ref(false)
 
@@ -1097,13 +1119,18 @@ const handleSaveConfig = async () => {
   saving.value = true
   try {
     const payload = { ...suiteConfig.value }
-    // 如果用户填写了新的RSA私钥，替换到payload中
+    // 如果用户填写了新的RSA公钥/私钥，替换到payload中
+    if (rsaPublicKeyInput.value) {
+      payload.chatArchiveRsaPublicKey = rsaPublicKeyInput.value
+    }
     if (rsaPrivateKeyInput.value) {
       payload.chatArchiveRsaPrivateKey = rsaPrivateKeyInput.value
     }
     await saveSuiteConfig(payload)
     ElMessage.success('配置已保存')
+    rsaPublicKeyInput.value = ''
     rsaPrivateKeyInput.value = ''
+    showRsaPublicKeyInput.value = false
     showRsaInput.value = false
     showSuiteSecret.value = false
     showProviderSecret.value = false
