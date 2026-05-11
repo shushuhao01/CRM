@@ -677,6 +677,13 @@ router.post('/sidebar/js-sdk-config', jsSdkConfigLimiter, validateJsSdkReferer, 
     addDiag('配置加载完成', `configId=${config.id}, name=${config.name}, authType=${config.authType}, authMode=${config.authMode}, agentId=${config.agentId || '(空)'}, permanentCode=${config.permanentCode ? '已配置' : '(空)'}, suiteId=${config.suiteId || '(空)'}`);
     log.info(`[Wecom Sidebar] JS-SDK config request: corpId=${corpId}, actualCorpId=${config.corpId}, authType=${config.authType}, authMode=${config.authMode}, configId=${config.id}, agentId=${config.agentId || '(empty)'}`);
 
+    // ★ 检查 corpId 一致性（92002 cross-corp 错误的常见原因）
+    if (corpId !== config.corpId) {
+      log.warn(`[Wecom Sidebar] ⚠️ corpId不一致! 前端传入=${corpId}, 数据库存储=${config.corpId}. 将使用前端传入的corpId作为wx.config的appId`);
+      addDiag('corpId一致性检查', `⚠️ 不一致! 前端=${corpId}, DB=${config.corpId}`);
+    } else {
+      addDiag('corpId一致性检查', `✅ 一致: ${corpId}`);
+    }
     // ★ agentId 补充逻辑（多来源尝试）
     if (!config.agentId) {
       log.info(`[Wecom Sidebar] agentId为空，开始多来源补充尝试...`);
@@ -710,7 +717,7 @@ router.post('/sidebar/js-sdk-config', jsSdkConfigLimiter, validateJsSdkReferer, 
           const axios = (await import('axios')).default;
           const authInfoRes = await axios.post(
             `https://qyapi.weixin.qq.com/cgi-bin/service/get_auth_info?suite_access_token=${suiteToken}`,
-            { auth_corpid: config.corpId, suite_id: config.suiteId }
+            { auth_corpid: config.corpId, permanent_code: config.permanentCode }
           );
           if (authInfoRes.data?.errcode === 0 || !authInfoRes.data?.errcode) {
             const authInfo = authInfoRes.data?.auth_info;
@@ -785,10 +792,34 @@ router.post('/sidebar/js-sdk-config', jsSdkConfigLimiter, validateJsSdkReferer, 
     }
 
     // 使用 WecomTokenService 统一获取 access_token，支持自建应用和第三方应用双模式
-    addDiag('获取AccessToken开始', `authType=${config.authType}`);
+    // ★ 关键：对于第三方应用，确保使用前端传来的 corpId（企微客户端实际替换的值）
+    // 而不是数据库中可能不一致的 config.corpId，避免 92002 cross-corp 错误
+    if (config.authType === 'third_party' && corpId && corpId !== config.corpId && !corpId.includes('$')) {
+      log.warn(`[Wecom Sidebar] corpId不一致，临时覆盖config.corpId用于token获取: 前端=${corpId}, DB=${config.corpId}`);
+      addDiag('corpId覆盖', `前端corpId=${corpId} 覆盖 DB corpId=${config.corpId}`);
+      config.corpId = corpId; // 临时覆盖，确保 getCorpTokenByThirdParty 使用正确的 auth_corpid
+    }
+    addDiag('获取AccessToken开始', `authType=${config.authType}, corpId=${config.corpId}`);
     const { WecomTokenService } = await import('../../services/wecom/WecomTokenService');
     const accessToken = await WecomTokenService.getAccessToken(config);
     addDiag('获取AccessToken成功', `token前20位=${accessToken.substring(0, 20)}...`);
+
+    // ★ 企业身份验证：确认 access_token 属于正确的企业（防止 92002 cross-corp 错误）
+    if (config.authType === 'third_party') {
+      try {
+        const axiosLib = (await import('axios')).default;
+        const verifyRes = await axiosLib.get(`https://qyapi.weixin.qq.com/cgi-bin/agent/get?access_token=${accessToken}&agentid=${config.agentId || 0}`);
+        const _verifyCorp = verifyRes.data?.corpid || verifyRes.data?.auth_corp_info?.corpid;
+        if (verifyRes.data?.errcode && verifyRes.data.errcode !== 0) {
+          addDiag('Token企业验证', `API返回错误: errcode=${verifyRes.data.errcode}, errmsg=${verifyRes.data.errmsg}（不影响签名流程，但token可能有问题）`);
+          log.warn(`[Wecom Sidebar] Token验证异常: errcode=${verifyRes.data.errcode}, errmsg=${verifyRes.data.errmsg}`);
+        } else {
+          addDiag('Token企业验证', `✅ token有效, 应用name=${verifyRes.data?.name || '(空)'}, agentid=${verifyRes.data?.agentid || '(空)'}`);
+        }
+      } catch (e: any) {
+        addDiag('Token企业验证', `验证请求失败(不阻塞): ${e.message?.substring(0, 100)}`);
+      }
+    }
 
     addDiag('获取CorpTicket开始');
     const corpTicket = await WecomApiService.getJsSdkTicket(accessToken);
@@ -828,7 +859,9 @@ router.post('/sidebar/js-sdk-config', jsSdkConfigLimiter, validateJsSdkReferer, 
     res.json({
       success: true,
       data: {
-        corpId: config.corpId,
+        // ★ 关键修复：返回前端传来的 corpId（企微客户端实际替换的值）
+        // 而不是数据库中的 config.corpId，避免 92002 cross-corp 错误
+        corpId: corpId !== '$CORPID$' && !corpId.includes('$') ? corpId : config.corpId,
         agentId: config.agentId,
         authType: config.authType,
         timestamp,

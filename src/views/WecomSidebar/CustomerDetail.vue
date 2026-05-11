@@ -529,11 +529,20 @@ async function initWecomSdk() {
     // 获取JS-SDK配置 - 需要先知道corpId
     const urlParams = new URLSearchParams(window.location.search)
     corpId.value = urlParams.get('corpId') || ''
-    console.log('[Sidebar] corpId:', corpId.value)
+    console.log('[Sidebar] corpId:', corpId.value, ', 完整URL:', window.location.href)
 
     if (!corpId.value) {
       setSdkError('no-corpid', '缺少企业ID参数', 'URL中缺少corpId参数，请在企微后台配置侧边栏地址时添加?corpId=您的企业ID', `当前URL: ${window.location.href}`)
       return
+    }
+
+    // ★ 检测 $CORPID$ 是否被企微客户端替换
+    if (corpId.value.includes('$') || corpId.value.includes('CORPID')) {
+      console.error('[Sidebar] ⚠️ corpId占位符未被替换:', corpId.value)
+      setSdkError('corpid-placeholder', 'CorpID占位符未替换',
+        '企微客户端未将$CORPID$替换为实际企业ID。可能原因：\n1. 侧边栏未通过企微后台「应用管理→聊天工具」正确配置\n2. 需要在服务商后台配置应用的聊天工具栏页面URL\n3. 请尝试不使用$CORPID$，改为直接填写企业CorpID',
+        `原始corpId=${corpId.value}, URL=${window.location.href}`)
+      // ★ 不return，允许后端fallback逻辑尝试处理
     }
 
     // 获取JS-SDK签名

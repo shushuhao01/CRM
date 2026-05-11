@@ -339,8 +339,8 @@ const handleRefreshAuthStatus = async () => {
         message: '✅ 授权状态已更新：会话存档已激活！',
         detail: `企微已授权数据与智能专区权限，席位 ${data.usedUsers || 0}/${data.maxUsers || 0} 人`
       }
-      // 重新加载完整设置
-      await fetchSettings()
+      // ★ 不再调用 fetchSettings()，避免覆盖刚更新的本地状态
+      // 因为 refresh-auth-status 已经更新了数据库，下次页面加载时 fetchSettings 会读到新值
     } else {
       const issues: string[] = []
       if (!data?.hasSecret) issues.push('应用授权未完成')
