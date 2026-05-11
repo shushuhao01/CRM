@@ -91,7 +91,6 @@ export const getWecomUsers = (configId: number, departmentId?: number, fetchChil
     params: { departmentId, fetchChild },
     showError: false
   } as any)
-  })
 }
 
 /** 获取成员绑定列表 */
