@@ -1262,7 +1262,7 @@ router.post('/sidebar/sign', jsSdkConfigLimiter, validateJsSdkReferer, async (re
     const nonceStr = uuidv4().replace(/-/g, '').substring(0, 16);
     const signature = WecomApiService.generateJsSdkSignature(ticket, nonceStr, timestamp, url);
 
-    log.info(`[Wecom Sidebar] /sign: type=${type}, corpId=${corpId}, url=${url.substring(0, 80)}, agentId=${config.agentId || '(空)'}`);
+    log.info(`[Wecom Sidebar] /sign: type=${type}, corpId=${corpId}, url=${url.substring(0, 80)}, agentId=${config.agentId || '(空)'}, ticket前缀=${ticket.substring(0, 20)}, signature前缀=${signature.substring(0, 16)}, timestamp=${timestamp}, nonceStr=${nonceStr}`);
 
     res.json({
       success: true,
