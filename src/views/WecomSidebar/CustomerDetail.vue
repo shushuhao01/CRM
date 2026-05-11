@@ -608,11 +608,12 @@ async function initWithNewSdk() {
     return { timestamp: res.timestamp, nonceStr: res.nonceStr, signature: res.signature }
   }
 
+  // ★ 注册时同时声明所有可能需要的API名称
   try {
     await ww.register({
       corpId: corpId.value,
       agentId: agentId,
-      jsApiList: ['getCurExternalContact'],
+      jsApiList: ['getCurExternalContact', 'getExternalContact', 'getContext'],
       getConfigSignature,
       getAgentConfigSignature,
     })
@@ -626,14 +627,24 @@ async function initWithNewSdk() {
     return
   }
 
-  // ★ 注册成功后获取当前聊天对象
+  // ★ 先获取入口上下文（官方要求在调用聊天工具栏API前先getContext）
   try {
-    console.log('[Sidebar] 调用 ww.invoke getCurExternalContact...')
-    const contactRes: any = await ww.invoke('getCurExternalContact', {})
+    const ctx: any = await ww.getContext()
+    console.log('[Sidebar] getContext 结果:', JSON.stringify(ctx))
+    // entry 应为 single_chat_tools 或 group_chat_tools
+  } catch (ctxErr: any) {
+    console.warn('[Sidebar] getContext 失败（非致命）:', ctxErr)
+  }
+
+  // ★ 使用新版SDK直接方法调用，而非 ww.invoke
+  try {
+    console.log('[Sidebar] 调用 ww.getCurExternalContact()...')
+    const contactRes: any = await ww.getCurExternalContact()
     console.log('[Sidebar] getCurExternalContact 响应:', JSON.stringify(contactRes))
-    if (contactRes?.userId) {
-      externalUserId.value = contactRes.userId
-      console.log('[Sidebar] ✅ 获取外部联系人成功:', contactRes.userId)
+    const uid = contactRes?.userId || contactRes?.result?.userId
+    if (uid) {
+      externalUserId.value = uid
+      console.log('[Sidebar] ✅ 获取外部联系人成功:', uid)
       checkBindingAndLoad()
     } else {
       console.error('[Sidebar] ❌ getCurExternalContact 无userId:', contactRes)
@@ -641,13 +652,17 @@ async function initWithNewSdk() {
       errorMsg.value = '获取当前聊天对象失败，请确保在与外部联系人的聊天窗口中打开侧边栏'
     }
   } catch (e: any) {
-    console.error('[Sidebar] ❌ ww.invoke getCurExternalContact 失败:', e)
+    console.error('[Sidebar] ❌ getCurExternalContact 失败:', e)
+    const errDetail = e?.message || e?.errMsg || e?.err_msg || JSON.stringify(e)
+    console.error('[Sidebar] 错误详情:', errDetail, ', 错误对象keys:', e ? Object.keys(e) : [])
     pageState.value = 'error'
-    const errDetail = e?.message || e?.errMsg || JSON.stringify(e)
-    if (/permission/i.test(errDetail)) {
-      errorMsg.value = '获取聊天对象失败：应用缺少「客户联系」API权限，请在企微管理后台为应用添加此权限'
+    // ★ 不再笼统判断 permission，显示实际错误帮助排查
+    if (/no permission|permission denied/i.test(errDetail)) {
+      errorMsg.value = `获取聊天对象失败：权限不足(${errDetail})。请检查：1) 应用是否有「客户联系」权限 2) 当前是否在外部联系人聊天窗口 3) 侧边栏是否通过企微「聊天工具」入口打开`
+    } else if (/not bindDomain|bindurl|domain/i.test(errDetail)) {
+      errorMsg.value = `获取聊天对象失败：可信域名不匹配(${errDetail})。请在服务商后台添加域名：${window.location.hostname}`
     } else {
-      errorMsg.value = `获取聊天对象失败(${errDetail})，请确保在外部联系人聊天窗口中打开侧边栏`
+      errorMsg.value = `获取聊天对象失败(${errDetail})。请确保：1) 在外部联系人聊天窗口打开侧边栏 2) 应用已配置聊天工具栏`
     }
   }
 }
