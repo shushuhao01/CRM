@@ -630,6 +630,7 @@ async function initWecomSdk() {
           nonceStr: configRes.nonceStr,
           signature: configRes.agentSignature,
           jsApiList: ['getCurExternalContact'],
+          debug: true,
           success: () => {
             console.log('[Sidebar] ✅ agentConfig success - agentId:', agentIdStr, '验证通过，开始获取聊天对象')
             getCurExternalContact(wx)

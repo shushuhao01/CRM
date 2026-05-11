@@ -903,6 +903,120 @@ router.post('/sidebar/js-sdk-config', jsSdkConfigLimiter, validateJsSdkReferer, 
   }
 });
 
+// ==================== 诊断: agentConfig 调试 ====================
+
+/**
+ * 侧边栏 agentConfig 诊断
+ * 验证 agentId、签名参数、可信域名等
+ */
+router.post('/sidebar/diagnose-agent-config', async (req: Request, res: Response) => {
+  try {
+    const { corpId, url: rawUrl } = req.body;
+    if (!corpId) return res.status(400).json({ success: false, message: '缺少corpId' });
+
+    const configRepo = AppDataSource.getRepository(WecomConfig);
+    const config = await configRepo.findOne({ where: { corpId, isEnabled: true } });
+    if (!config) return res.status(404).json({ success: false, message: '未找到匹配的企微配置' });
+
+    const results: any = {
+      configId: config.id,
+      corpId: config.corpId,
+      agentId: config.agentId,
+      authType: config.authType,
+      hasPermanentCode: !!config.permanentCode,
+      suiteId: config.suiteId || '(空)',
+      checks: []
+    };
+
+    // Check 1: AgentId 验证
+    if (!config.agentId) {
+      results.checks.push({ name: 'AgentID', status: '❌ 缺失', hint: '请通过企微API获取或手动填写' });
+    } else {
+      results.checks.push({ name: 'AgentID', status: `✅ ${config.agentId}` });
+    }
+
+    // Check 2: 通过 get_auth_info 验证 agentId 是否正确
+    if (config.authType === 'third_party' && config.suiteId && config.permanentCode) {
+      try {
+        const { WecomTokenService } = await import('../../services/wecom/WecomTokenService');
+        const suiteToken = await WecomTokenService.getSuiteAccessToken(config.suiteId);
+        const axios = (await import('axios')).default;
+        const authInfoRes = await axios.post(
+          `https://qyapi.weixin.qq.com/cgi-bin/service/get_auth_info?suite_access_token=${suiteToken}`,
+          { auth_corpid: config.corpId, permanent_code: config.permanentCode }
+        );
+        if (authInfoRes.data?.errcode === 0 || !authInfoRes.data?.errcode) {
+          const agents = authInfoRes.data?.auth_info?.agent || [];
+          const realAgentId = agents[0]?.agentid;
+          const agentName = agents[0]?.name;
+          results.authInfoAgent = { agentid: realAgentId, name: agentName, agents_count: agents.length };
+          if (realAgentId && config.agentId && String(realAgentId) !== String(config.agentId)) {
+            results.checks.push({
+              name: 'AgentID一致性',
+              status: `❌ 不一致! DB=${config.agentId}, 企微API=${realAgentId}`,
+              hint: `数据库中的agentId(${config.agentId})与企微get_auth_info返回的(${realAgentId})不匹配！请更新数据库。`,
+              fix: `UPDATE wecom_configs SET agent_id = ${realAgentId} WHERE id = ${config.id};`
+            });
+          } else if (realAgentId) {
+            results.checks.push({ name: 'AgentID一致性', status: `✅ 与企微API一致 (${realAgentId}, 应用名: ${agentName})` });
+          }
+        } else {
+          results.checks.push({ name: 'get_auth_info', status: `⚠️ errcode=${authInfoRes.data?.errcode}`, hint: authInfoRes.data?.errmsg });
+        }
+      } catch (e: any) {
+        results.checks.push({ name: 'get_auth_info', status: '⚠️ 调用失败', hint: e.message });
+      }
+    }
+
+    // Check 3: 验证 access_token 和 agent_ticket 获取
+    try {
+      const { WecomTokenService } = await import('../../services/wecom/WecomTokenService');
+      const accessToken = await WecomTokenService.getAccessToken(config);
+      results.checks.push({ name: 'AccessToken', status: `✅ 获取成功 (前缀: ${accessToken.substring(0, 15)}...)` });
+
+      // 获取 agent_ticket
+      const { WecomApiService } = await import('../../services/WecomApiService');
+      try {
+        const agentTicket = await WecomApiService.getAgentJsSdkTicket(accessToken);
+        results.checks.push({ name: 'AgentTicket', status: `✅ 获取成功 (前缀: ${agentTicket.substring(0, 15)}...)` });
+
+        // Check 4: 生成签名并与官方验证工具对比
+        const url = (rawUrl || 'https://crm.yunkes.com/wecom-sidebar/customer-detail').split('#')[0].replace(/\s+$/, '');
+        const timestamp = Math.floor(Date.now() / 1000);
+        const nonceStr = 'diagnose_test_123';
+        const signature = WecomApiService.generateJsSdkSignature(agentTicket, nonceStr, timestamp, url);
+        // 签名原始字符串（用于与官方工具对比）
+        const signStr = `jsapi_ticket=${agentTicket}&noncestr=${nonceStr}&timestamp=${timestamp}&url=${url}`;
+        results.signatureDemo = {
+          url,
+          timestamp,
+          nonceStr,
+          signature,
+          signString: signStr,
+          hint: '请到 http://open.work.weixin.qq.com/api/jsapidemo 验证签名是否正确'
+        };
+        results.checks.push({ name: '签名生成', status: '✅ 正常' });
+      } catch (e: any) {
+        results.checks.push({ name: 'AgentTicket', status: `❌ 获取失败: ${e.message}`, hint: '无法获取agent_ticket，agentConfig必然失败' });
+      }
+    } catch (e: any) {
+      results.checks.push({ name: 'AccessToken', status: `❌ 获取失败: ${e.message}` });
+    }
+
+    // Check 5: 可信域名提示
+    results.checks.push({
+      name: '可信域名',
+      status: '⚠️ 需人工确认',
+      hint: `请在服务商后台确认 crm.yunkes.com 已添加到：\n1. 应用管理 → 网页授权及JS-SDK → 可信域名\n2. 或在应用的「聊天工具」配置页中确认URL域名`
+    });
+
+    res.json({ success: true, data: results });
+  } catch (error: any) {
+    log.error('[Sidebar] Diagnose error:', error.message);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 // ==================== P1安全加固: 侧边栏Token刷新 ====================
 
 /**

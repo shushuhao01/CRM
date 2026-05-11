@@ -440,6 +440,8 @@ router.post('/chat-archive/refresh-auth-status', authenticateToken, requireAdmin
               }
             } else {
               // 创建新的设置记录
+              const defaultExpire = new Date();
+              defaultExpire.setFullYear(defaultExpire.getFullYear() + 1);
               setting = settingRepo.create({
                 wecomConfigId: parseInt(configId),
                 maxUsers: purchasedSeats,
@@ -447,7 +449,8 @@ router.post('/chat-archive/refresh-auth-status', authenticateToken, requireAdmin
                 fetchInterval: 5,
                 fetchMode: 'default',
                 retentionDays: 180,
-                visibility: 'all'
+                visibility: 'all',
+                expireDate: defaultExpire
               }) as WecomArchiveSetting;
               await settingRepo.save(setting);
               log.info(`[ArchiveSettings] 创建存档设置并同步席位: maxUsers=${purchasedSeats}, configId=${configId}`);
@@ -467,14 +470,41 @@ router.post('/chat-archive/refresh-auth-status', authenticateToken, requireAdmin
       usedUsers = setting.usedUsers || 0;
     }
 
-    // 5. 如果所有条件满足，自动激活
+    // 5. 如果所有条件满足，自动激活（并自动设置到期时间）
     const activated = hasSecret && (dataApiAuthorized || vasPurchased);
     if (activated && setting) {
+      let needSave = false;
       if (setting.status !== 'active') {
         setting.status = 'active';
-        await settingRepo.save(setting);
+        needSave = true;
         log.info(`[ArchiveSettings] 会话存档已自动激活: configId=${configId}, tenantId=${tenantId}`);
       }
+      // 自动设置到期时间（如果为空）
+      if (!setting.expireDate) {
+        // 尝试从购买记录获取到期时间
+        let expireDateFromOrder: string | null = null;
+        try {
+          const orderRows = await AppDataSource.query(
+            `SELECT expire_date, remark FROM payment_orders WHERE tenant_id = ? AND package_id = 'vas_chat_archive' AND status = 'paid' ORDER BY paid_at DESC LIMIT 1`,
+            [tenantId]
+          ).catch(() => []);
+          if (orderRows.length > 0 && orderRows[0].expire_date) {
+            expireDateFromOrder = orderRows[0].expire_date;
+          }
+        } catch { /* ignore */ }
+
+        if (expireDateFromOrder) {
+          setting.expireDate = new Date(expireDateFromOrder);
+        } else {
+          // 默认设为1年后
+          const oneYearLater = new Date();
+          oneYearLater.setFullYear(oneYearLater.getFullYear() + 1);
+          setting.expireDate = oneYearLater;
+        }
+        needSave = true;
+        log.info(`[ArchiveSettings] 自动设置到期时间: ${setting.expireDate}, configId=${configId}`);
+      }
+      if (needSave) await settingRepo.save(setting);
     }
 
     res.json({
