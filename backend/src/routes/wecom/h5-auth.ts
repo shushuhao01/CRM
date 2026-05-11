@@ -281,8 +281,10 @@ router.get('/current-user', authenticateSidebarToken, async (req: Request, res: 
  */
 router.get('/jssdk-config', h5JsSdkLimiter, authenticateSidebarToken, async (req: Request, res: Response) => {
   try {
-    const { url } = req.query;
-    if (!url) return res.status(400).json({ success: false, message: '缺少url参数' });
+    const { url: rawUrl } = req.query;
+    if (!rawUrl) return res.status(400).json({ success: false, message: '缺少url参数' });
+    // ★ URL规范化：去除hash和尾部空白
+    const url = String(rawUrl).split('#')[0].replace(/\s+$/, '');
 
     const sidebarUser = (req as any).sidebarUser;
     const corpId = sidebarUser?.corpId;
@@ -299,7 +301,7 @@ router.get('/jssdk-config', h5JsSdkLimiter, authenticateSidebarToken, async (req
 
     const timestamp = Math.floor(Date.now() / 1000);
     const nonceStr = uuidv4().replace(/-/g, '').substring(0, 16);
-    const signature = WecomApiService.generateJsSdkSignature(corpTicket, nonceStr, timestamp, String(url));
+    const signature = WecomApiService.generateJsSdkSignature(corpTicket, nonceStr, timestamp, url);
 
     res.json({
       success: true,
@@ -322,8 +324,10 @@ router.get('/jssdk-config', h5JsSdkLimiter, authenticateSidebarToken, async (req
  */
 router.get('/agent-config', h5JsSdkLimiter, authenticateSidebarToken, async (req: Request, res: Response) => {
   try {
-    const { url } = req.query;
-    if (!url) return res.status(400).json({ success: false, message: '缺少url参数' });
+    const { url: rawUrl } = req.query;
+    if (!rawUrl) return res.status(400).json({ success: false, message: '缺少url参数' });
+    // ★ URL规范化：去除hash和尾部空白
+    const url = String(rawUrl).split('#')[0].replace(/\s+$/, '');
 
     const sidebarUser = (req as any).sidebarUser;
     const corpId = sidebarUser?.corpId;
@@ -339,7 +343,7 @@ router.get('/agent-config', h5JsSdkLimiter, authenticateSidebarToken, async (req
 
     const timestamp = Math.floor(Date.now() / 1000);
     const nonceStr = uuidv4().replace(/-/g, '').substring(0, 16);
-    const signature = WecomApiService.generateJsSdkSignature(agentTicket, nonceStr, timestamp, String(url));
+    const signature = WecomApiService.generateJsSdkSignature(agentTicket, nonceStr, timestamp, url);
 
     res.json({
       success: true,

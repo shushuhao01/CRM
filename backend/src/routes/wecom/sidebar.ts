@@ -636,8 +636,10 @@ router.post('/sidebar/js-sdk-config', jsSdkConfigLimiter, validateJsSdkReferer, 
   };
 
   try {
-    const { url, corpId } = req.body;
-    addDiag('入参校验', `url=${url ? url.substring(0, 80) : '(空)'}, corpId=${corpId || '(空)'}`);
+    const { url: rawUrl, corpId } = req.body;
+    // ★ URL规范化：去除尾部空白、hash部分（前端应已处理，后端做防御性清理）
+    const url = (rawUrl || '').split('#')[0].replace(/\s+$/, '');
+    addDiag('入参校验', `rawUrl=${rawUrl ? rawUrl.substring(0, 80) : '(空)'}, cleanUrl=${url ? url.substring(0, 80) : '(空)'}, corpId=${corpId || '(空)'}`);
     if (!url || !corpId) return res.status(400).json({ success: false, message: '参数不完整' });
 
     const configRepo = AppDataSource.getRepository(WecomConfig);
@@ -810,6 +812,9 @@ router.post('/sidebar/js-sdk-config', jsSdkConfigLimiter, validateJsSdkReferer, 
     let agentSignature = '';
     if (agentTicket) { agentSignature = WecomApiService.generateJsSdkSignature(agentTicket, nonceStr, timestamp, url); }
 
+    // ★ 输出完整签名参数用于调试
+    log.info(`[Wecom Sidebar] 签名参数详情: url=${url}, timestamp=${timestamp}, nonceStr=${nonceStr}, corpTicket前20=${corpTicket.substring(0,20)}, agentTicket前20=${agentTicket ? agentTicket.substring(0,20) : '(空)'}, corpSignature=${corpSignature}, agentSignature=${agentSignature || '(空)'}, agentId=${config.agentId}`);
+
     // 当agentTicket获取失败时，给前端返回警告信息，便于诊断
     const warnings: string[] = [];
     if (!agentTicket) warnings.push(`agent_ticket获取失败: ${agentTicketError || '未知原因'}`);
@@ -839,7 +844,9 @@ router.post('/sidebar/js-sdk-config', jsSdkConfigLimiter, validateJsSdkReferer, 
           configName: config.name,
           hasAgentId: !!config.agentId,
           hasAgentTicket: !!agentTicket,
-          hasAgentSignature: !!agentSignature
+          hasAgentSignature: !!agentSignature,
+          signUrl: url,
+          signUrlDomain: (() => { try { return new URL(url).hostname; } catch { return '(parse-fail)'; } })()
         } : undefined
       }
     });

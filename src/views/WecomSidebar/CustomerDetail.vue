@@ -537,10 +537,12 @@ async function initWecomSdk() {
     }
 
     // 获取JS-SDK签名
-    console.log('[Sidebar] 获取JS-SDK签名...')
+    // ★ URL规范化：确保签名URL与页面实际URL严格一致
+    const signUrl = window.location.href.split('#')[0].replace(/\s+$/, '')
+    console.log('[Sidebar] 获取JS-SDK签名, signUrl:', signUrl)
     let configRes: any
     try {
-      configRes = await getSidebarJsSdkConfig({ url: window.location.href.split('#')[0], corpId: corpId.value })
+      configRes = await getSidebarJsSdkConfig({ url: signUrl, corpId: corpId.value })
     } catch (e: any) {
       console.error('[Sidebar] JS-SDK签名获取失败:', e)
       const backendMsg = e?.response?.data?.message || e?.data?.message || e?.message || '未知错误'
@@ -594,7 +596,7 @@ async function initWecomSdk() {
       timestamp: configRes.timestamp,
       nonceStr: configRes.nonceStr,
       signature: configRes.corpSignature,
-      jsApiList: ['getCurExternalContact', 'openUserProfile']
+      jsApiList: ['getContext']
     })
 
     wx.ready(() => {
@@ -607,7 +609,7 @@ async function initWecomSdk() {
         console.log('[Sidebar] 执行 wx.agentConfig, 参数:', {
           corpid: configRes.corpId,
           agentid: agentIdStr,
-          timestamp: String(configRes.timestamp),
+          timestamp: configRes.timestamp,
           nonceStr: configRes.nonceStr,
           signatureLength: configRes.agentSignature?.length,
           jsApiList: ['getCurExternalContact']
@@ -615,7 +617,7 @@ async function initWecomSdk() {
         wx.agentConfig({
           corpid: configRes.corpId,
           agentid: agentIdStr,
-          timestamp: String(configRes.timestamp),
+          timestamp: configRes.timestamp,
           nonceStr: configRes.nonceStr,
           signature: configRes.agentSignature,
           jsApiList: ['getCurExternalContact'],
@@ -625,7 +627,17 @@ async function initWecomSdk() {
           },
           fail: (err: any) => {
             console.error('[Sidebar] ❌ agentConfig fail:', JSON.stringify(err))
-            console.error('[Sidebar] agentConfig失败诊断: agentId=', agentIdStr, ', corpId=', configRes.corpId, ', authType=', configRes.authType)
+            console.error('[Sidebar] agentConfig失败诊断:', {
+              agentId: agentIdStr,
+              corpId: configRes.corpId,
+              authType: configRes.authType,
+              timestamp: configRes.timestamp,
+              nonceStr: configRes.nonceStr,
+              signatureLen: configRes.agentSignature?.length,
+              pageUrl: window.location.href.split('#')[0].substring(0, 150),
+              errKeys: err ? Object.keys(err) : [],
+              errRaw: err
+            })
             // ★ agentConfig 失败后不应降级调用 getCurExternalContact
             // 根据企微官方文档，getCurExternalContact 必须在 agentConfig 成功后才能调用
             const errMsg = err?.errMsg || err?.err_msg || JSON.stringify(err)
@@ -637,9 +649,13 @@ async function initWecomSdk() {
               setSdkError('sdk-agent', 'agentConfig签名验证失败',
                 '签名不正确。可能原因：\n1. 页面URL与签名URL不一致（检查是否有重定向）\n2. agent_ticket已过期\n3. timestamp/nonceStr不匹配',
                 `agentId=${agentIdStr}, err=${errMsg}`)
+            } else if (errMsg.includes('bindDomain') || errMsg.includes('bindUrl') || errMsg.includes('bindurl') || errMsg.includes('bindDomain') || errMsg.includes('not bindDomain') || errMsg.includes('domain')) {
+              setSdkError('sdk-agent', 'agentConfig可信域名不匹配',
+                `当前页面域名不在应用的可信域名列表中。\n\n请在服务商后台 → 应用管理 → 网页授权及JS-SDK → 可信域名 中添加: ${window.location.hostname}`,
+                `agentId=${agentIdStr}, domain=${window.location.hostname}, err=${errMsg}`)
             } else {
               setSdkError('sdk-agent', 'agentConfig失败',
-                `应用配置验证失败(${errMsg})。请检查：\n1. AgentID(${agentIdStr})是否与企微后台一致\n2. 应用Secret是否正确\n3. 侧边栏URL域名是否在可信域名列表中`,
+                `应用配置验证失败(${errMsg})。请检查：\n1. AgentID(${agentIdStr})是否与企微后台一致\n2. 应用Secret是否正确\n3. 侧边栏URL域名(${window.location.hostname})是否在可信域名列表中\n4. 若为第三方应用，请在服务商后台确认可信域名配置`,
                 `corpId=${configRes.corpId}, authType=${configRes.authType}`)
             }
           }
