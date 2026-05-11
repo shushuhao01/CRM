@@ -351,7 +351,7 @@ const displayRecords = computed(() => {
 
 // 席位百分比
 const seatPercent = computed(() => {
-  if (!seatInfo.value) return 0
+  if (!seatInfo.value || !seatInfo.value.total || seatInfo.value.total === 0) return 0
   return Math.min(100, Math.round((seatInfo.value.used / seatInfo.value.total) * 100))
 })
 

@@ -316,7 +316,35 @@ router.get('/configs/:id/departments', authenticateToken, async (req: Request, r
     }
   } catch (error: any) {
     log.error('[Wecom] Get departments error:', error.message, error.stack);
-    res.status(500).json({ success: false, message: error.message || '获取部门列表失败' });
+
+    const errMsg = error.message || '';
+    // ★ 识别第三方应用未授权组织架构的错误
+    if (errMsg.includes('40014') || errMsg.includes('invalid access_token')) {
+      return res.status(403).json({
+        success: false,
+        errorCode: 'CONTACT_NOT_AUTHORIZED',
+        message: '组织架构信息尚未授权',
+        hint: '请在企业微信管理后台完成组织架构授权：\n1. 打开企业微信管理后台\n2. 进入「应用管理」→「第三方应用」\n3. 找到本应用，点击「授权信息」\n4. 在「组织架构信息」处点击「去授权」\n5. 授权完成后回到CRM点击「同步通讯录」'
+      });
+    }
+    if (errMsg.includes('60011') || errMsg.includes('no privilege')) {
+      return res.status(403).json({
+        success: false,
+        errorCode: 'CONTACT_NO_PRIVILEGE',
+        message: '应用无通讯录访问权限',
+        hint: '请在企业微信管理后台授权通讯录权限：\n1. 打开企业微信管理后台\n2. 进入「应用管理」→「第三方应用」\n3. 找到本应用，点击「授权信息」\n4. 在「组织架构信息」处点击「去授权」\n5. 授权完成后回到CRM点击「同步通讯录」'
+      });
+    }
+    if (errMsg.includes('60020') || errMsg.includes('not allow')) {
+      return res.status(403).json({
+        success: false,
+        errorCode: 'IP_NOT_ALLOWED',
+        message: '服务器IP不在企微白名单中',
+        hint: '请在企微后台「应用管理」→「第三方应用」→「IP白名单」中添加服务器公网IP'
+      });
+    }
+
+    res.status(500).json({ success: false, message: errMsg || '获取部门列表失败' });
   }
 });
 
@@ -476,6 +504,23 @@ router.get('/configs/:id/users', authenticateToken, async (req: Request, res: Re
     log.error('[Wecom] Get users error:', error.message, error.stack);
 
     let message = error.message || '获取成员列表失败';
+    // ★ 识别第三方应用未授权组织架构的错误
+    if (message.includes('40014') || message.includes('invalid access_token')) {
+      return res.status(403).json({
+        success: false,
+        errorCode: 'CONTACT_NOT_AUTHORIZED',
+        message: '组织架构信息尚未授权',
+        hint: '请在企业微信管理后台完成组织架构授权：\n1. 打开企业微信管理后台\n2. 进入「应用管理」→「第三方应用」\n3. 找到本应用，点击「授权信息」\n4. 在「组织架构信息」处点击「去授权」\n5. 授权完成后回到CRM点击「同步通讯录」'
+      });
+    }
+    if (message.includes('60011') || message.includes('no privilege')) {
+      return res.status(403).json({
+        success: false,
+        errorCode: 'CONTACT_NO_PRIVILEGE',
+        message: '应用无通讯录访问权限',
+        hint: '请在企业微信管理后台授权通讯录权限：\n1. 打开企业微信管理后台\n2. 进入「应用管理」→「第三方应用」\n3. 找到本应用，点击「授权信息」\n4. 在「组织架构信息」处点击「去授权」\n5. 授权完成后回到CRM点击「同步通讯录」'
+      });
+    }
     if (message.includes('60020') || message.includes('not allow')) {
       message = '服务器IP不在企微白名单中，请在企微后台添加服务器公网IP';
     }
@@ -670,7 +715,27 @@ router.post('/configs/:id/sync-contacts', authenticateToken, requireAdmin, async
     });
   } catch (error: any) {
     log.error('[Wecom] Sync contacts error:', error.message, error.stack);
-    res.status(500).json({ success: false, message: error.message || '同步失败' });
+
+    const errMsg = error.message || '';
+    // ★ 识别第三方应用未授权组织架构的错误
+    if (errMsg.includes('40014') || errMsg.includes('invalid access_token')) {
+      return res.status(403).json({
+        success: false,
+        errorCode: 'CONTACT_NOT_AUTHORIZED',
+        message: '组织架构信息尚未授权，无法同步通讯录',
+        hint: '请在企业微信管理后台完成组织架构授权：\n1. 打开企业微信管理后台\n2. 进入「应用管理」→「第三方应用」\n3. 找到本应用，点击「授权信息」\n4. 在「组织架构信息」处点击「去授权」\n5. 授权完成后回到CRM点击「同步通讯录」'
+      });
+    }
+    if (errMsg.includes('60011') || errMsg.includes('no privilege')) {
+      return res.status(403).json({
+        success: false,
+        errorCode: 'CONTACT_NO_PRIVILEGE',
+        message: '应用无通讯录访问权限',
+        hint: '请在企业微信管理后台授权通讯录权限：\n1. 打开企业微信管理后台\n2. 进入「应用管理」→「第三方应用」\n3. 找到本应用，点击「授权信息」\n4. 在「组织架构信息」处点击「去授权」\n5. 授权完成后回到CRM点击「同步通讯录」'
+      });
+    }
+
+    res.status(500).json({ success: false, message: errMsg || '同步失败' });
   }
 });
 

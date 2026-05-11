@@ -25,6 +25,29 @@
         <div class="empty-desc">请先完成企业微信授权配置，授权后将自动同步企业通讯录</div>
       </div>
 
+      <!-- ★ 组织架构未授权引导 -->
+      <div v-else-if="contactNotAuthorized" class="empty-state">
+        <div class="empty-icon">🔐</div>
+        <div class="empty-title">组织架构信息尚未授权</div>
+        <div class="empty-desc" style="max-width: 500px; text-align: left; line-height: 2">
+          当前第三方应用尚未获得组织架构访问权限，请按以下步骤完成授权：
+        </div>
+        <div style="max-width: 500px; text-align: left; margin-top: 12px; padding: 16px; background: #f0f9ff; border-radius: 8px; border: 1px solid #bae6fd;">
+          <div style="font-weight: 600; color: #0369a1; margin-bottom: 8px;">📋 授权步骤：</div>
+          <ol style="margin: 0; padding-left: 20px; color: #374151; line-height: 2.2; font-size: 14px;">
+            <li>打开<strong>企业微信管理后台</strong>（管理员登录）</li>
+            <li>进入「<strong>应用管理</strong>」→「<strong>第三方应用</strong>」</li>
+            <li>找到「<strong>云客CRM</strong>」应用，点击进入</li>
+            <li>在「<strong>授权信息</strong>」中找到「<strong>组织架构信息</strong>」</li>
+            <li>点击「<strong style="color: #2563eb;">去授权</strong>」完成组织架构授权</li>
+            <li>授权完成后回到此页面，点击「<strong>同步通讯录</strong>」按钮</li>
+          </ol>
+        </div>
+        <el-button type="primary" style="margin-top: 16px" @click="fetchDepartments">
+          <el-icon><Refresh /></el-icon> 我已授权，重新加载
+        </el-button>
+      </div>
+
       <div v-else class="contact-layout">
         <!-- 左侧：部门+成员树 -->
         <div class="dept-tree-panel">
@@ -228,6 +251,10 @@ const selectedDeptId = ref<number | null>(null)
 const selectedDeptName = ref('')
 const selectedMember = ref<any>(null)
 
+// ★ 组织架构未授权状态
+const contactNotAuthorized = ref(false)
+const contactNotAuthorizedHint = ref('')
+
 const treeProps = { label: 'name', children: 'children' }
 
 const isMemberAbnormal = (m: any) => m.accountStatus === 'abnormal' || m.status === 2
@@ -422,6 +449,8 @@ const fetchConfigs = async () => {
 const fetchDepartments = async () => {
   if (!selectedConfigId.value) return
   loading.value = true
+  contactNotAuthorized.value = false
+  contactNotAuthorizedHint.value = ''
   try {
     const res: any = await getWecomDepartments(selectedConfigId.value)
     const rawDepts = Array.isArray(res) ? res : (res?.data || [])
@@ -437,7 +466,15 @@ const fetchDepartments = async () => {
   } catch (e: any) {
     console.error('[ContactBook] Fetch departments error:', e)
     departments.value = []
-    ElMessage.error(e?.message || '获取部门列表失败，请确认通讯录Secret已配置')
+    // ★ 识别组织架构未授权错误，显示引导提示
+    const errorCode = e?.response?.data?.errorCode || e?.data?.errorCode
+    const hint = e?.response?.data?.hint || e?.data?.hint || ''
+    if (errorCode === 'CONTACT_NOT_AUTHORIZED' || errorCode === 'CONTACT_NO_PRIVILEGE') {
+      contactNotAuthorized.value = true
+      contactNotAuthorizedHint.value = hint
+    } else {
+      ElMessage.error(e?.response?.data?.message || e?.message || '获取部门列表失败，请确认通讯录Secret已配置')
+    }
   } finally {
     loading.value = false
   }
@@ -468,9 +505,19 @@ const handleSync = async () => {
     } else {
       ElMessage.success(res?.message || '通讯录同步完成，正在刷新数据...')
     }
+    contactNotAuthorized.value = false
     await fetchDepartments()
   } catch (e: any) {
-    ElMessage.error(e?.message || '同步失败，请确认企微授权配置正确')
+    // ★ 识别组织架构未授权错误
+    const errorCode = e?.response?.data?.errorCode || e?.data?.errorCode
+    const hint = e?.response?.data?.hint || e?.data?.hint || ''
+    if (errorCode === 'CONTACT_NOT_AUTHORIZED' || errorCode === 'CONTACT_NO_PRIVILEGE') {
+      contactNotAuthorized.value = true
+      contactNotAuthorizedHint.value = hint
+      ElMessage.warning('组织架构尚未授权，请先在企微管理后台完成授权')
+    } else {
+      ElMessage.error(e?.response?.data?.message || e?.message || '同步失败，请确认企微授权配置正确')
+    }
   } finally {
     syncing.value = false
   }

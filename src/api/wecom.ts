@@ -77,18 +77,20 @@ export const testWecomConnection = (id: number) => {
 
 /** 获取企微通讯录部门列表 */
 export const getWecomDepartments = (configId: number) => {
-  return request.get(`/wecom/configs/${configId}/departments`)
+  return request.get(`/wecom/configs/${configId}/departments`, { showError: false } as any)
 }
 
 /** 同步企微通讯录（从企业微信API拉取最新部门和成员数据） */
 export const syncWecomContacts = (configId: number) => {
-  return request.post(`/wecom/configs/${configId}/sync-contacts`)
+  return request.post(`/wecom/configs/${configId}/sync-contacts`, null, { showError: false } as any)
 }
 
 /** 获取企微通讯录成员列表 */
 export const getWecomUsers = (configId: number, departmentId?: number, fetchChild?: boolean) => {
   return request.get(`/wecom/configs/${configId}/users`, {
-    params: { departmentId, fetchChild }
+    params: { departmentId, fetchChild },
+    showError: false
+  } as any)
   })
 }
 

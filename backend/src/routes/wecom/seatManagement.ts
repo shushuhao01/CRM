@@ -29,8 +29,57 @@ router.get('/chat-archive/seats', authenticateToken, async (req: Request, res: R
     const members = await memberRepo.find({ order: { createdAt: 'ASC' } });
     const enabledMembers = members.filter(m => m.isEnabled);
 
-    const maxUsers = setting?.maxUsers || 0;
+    let maxUsers = setting?.maxUsers || 0;
     const usedUsers = enabledMembers.length;
+
+    // ★ 如果 maxUsers 为 0，尝试从购买记录中获取套餐额度
+    if (maxUsers === 0) {
+      try {
+        const { getCurrentTenantId } = await import('../../utils/tenantContext');
+        const { AppDataSource } = await import('../../config/database');
+        const tenantId = getCurrentTenantId();
+        if (tenantId) {
+          const billingKey = `tenant_billing_records_${tenantId}`;
+          const billingRows = await AppDataSource.query(
+            'SELECT config_value FROM system_config WHERE config_key = ? LIMIT 1', [billingKey]
+          ).catch(() => []);
+          if (billingRows.length > 0) {
+            try {
+              const records = JSON.parse(billingRows[0].config_value);
+              if (Array.isArray(records)) {
+                const archiveRecords = records.filter((r: any) =>
+                  (r.type === 'archive' || r.type === 'chat_archive' || r.type === 'vas_chat_archive') &&
+                  (r.status === 'paid' || r.status === 'active' || r.status === 'free' || r.fulfillmentStatus === 'fulfilled')
+                );
+                for (const r of archiveRecords) {
+                  const seats = r.userCount || r.maxMembers || r.seats || 0;
+                  maxUsers = Math.max(maxUsers, seats);
+                }
+              }
+            } catch { /* ignore */ }
+          }
+          // ★ 同步到 setting 表
+          if (maxUsers > 0 && setting) {
+            setting.maxUsers = maxUsers;
+            setting.status = 'active';
+            await settingRepo.save(setting);
+            log.info(`[Wecom Seats] 从购买记录同步席位额度: maxUsers=${maxUsers}`);
+          }
+
+          // ★ 如果还是0，从 wecom_configs.vas_user_count 获取
+          if (maxUsers === 0) {
+            const { WecomConfig } = await import('../../entities/WecomConfig');
+            const configRepo = AppDataSource.getRepository(WecomConfig);
+            const config = await configRepo.findOne({ where: { id: parseInt(configId as string) } });
+            if (config?.vasUserCount && config.vasUserCount > 0) {
+              maxUsers = config.vasUserCount;
+            }
+          }
+        }
+      } catch (e: any) {
+        log.warn('[Wecom Seats] 获取购买记录失败:', e.message);
+      }
+    }
 
     // 同步已用数到setting
     if (setting && setting.usedUsers !== usedUsers) {
@@ -43,16 +92,32 @@ router.get('/chat-archive/seats', authenticateToken, async (req: Request, res: R
       data: {
         maxUsers,
         usedUsers,
-        members: members.map(m => ({
-          id: m.id,
-          wecomUserId: m.wecomUserId,
-          wecomUserName: m.wecomUserName,
-          crmUserId: m.crmUserId,
-          isEnabled: m.isEnabled,
-          createdAt: m.createdAt
+        members: await Promise.all(members.map(async (m) => {
+          // ★ 补充部门信息（从 wecom_user_bindings 获取）
+          let departmentIds = '';
+          try {
+            const { AppDataSource } = await import('../../config/database');
+            const bindingRows = await AppDataSource.query(
+              'SELECT wecom_department_ids FROM wecom_user_bindings WHERE wecom_user_id = ? LIMIT 1',
+              [m.wecomUserId]
+            );
+            if (bindingRows.length > 0 && bindingRows[0].wecom_department_ids) {
+              departmentIds = bindingRows[0].wecom_department_ids;
+            }
+          } catch { /* ignore */ }
+          return {
+            id: m.id,
+            wecomUserId: m.wecomUserId,
+            wecomUserName: m.wecomUserName,
+            name: m.wecomUserName || m.wecomUserId,
+            crmUserId: m.crmUserId,
+            isEnabled: m.isEnabled,
+            departmentIds,
+            createdAt: m.createdAt
+          };
         })),
         expireDate: setting?.expireDate || null,
-        status: setting?.status || 'inactive'
+        status: maxUsers > 0 ? 'active' : (setting?.status || 'inactive')
       }
     });
   } catch (error: any) {
@@ -117,7 +182,9 @@ router.put('/chat-archive/seats/members', authenticateToken, requireAdmin, async
           updatedCount++;
         }
       } else {
+        const { getCurrentTenantId } = await import('../../utils/tenantContext');
         const newMember = memberRepo.create({
+          tenantId: getCurrentTenantId() || undefined,
           wecomUserId: m.wecomUserId,
           wecomUserName: m.wecomUserName || '',
           isEnabled: m.isEnabled !== false
@@ -161,13 +228,69 @@ router.get('/chat-archive/seats/wecom-tree', authenticateToken, async (req: Requ
     const { configId } = req.query;
     if (!configId) return res.status(400).json({ success: false, message: '请选择企微配置' });
 
-    const accessToken = await WecomApiService.getAccessTokenByConfigId(parseInt(configId as string), 'contact');
+    const { AppDataSource } = await import('../../config/database');
+    const { WecomDepartmentMapping } = await import('../../entities/WecomDepartmentMapping');
+    const { getCurrentTenantId } = await import('../../utils/tenantContext');
+    const tenantId = getCurrentTenantId();
 
-    // 获取部门列表
-    const departments = await WecomApiService.getDepartmentList(accessToken);
+    let departments: any[] = [];
+    let users: any[] = [];
 
-    // 获取根部门下所有成员
-    const users = await WecomApiService.getDepartmentUsers(accessToken, 1, true);
+    // ★ 优先从本地数据库获取部门（已同步的数据有正确的名称）
+    const deptRepo = AppDataSource.getRepository(WecomDepartmentMapping);
+    const localDepts = await deptRepo.find({
+      where: { wecomConfigId: parseInt(configId as string), ...(tenantId ? { tenantId } : {}) },
+      order: { wecomDeptId: 'ASC' }
+    });
+
+    if (localDepts.length > 0 && localDepts.some(d => d.wecomDeptName && d.wecomDeptName.trim() !== String(d.wecomDeptId))) {
+      // 使用本地部门数据（有正确名称）
+      departments = localDepts.map(d => ({
+        id: d.wecomDeptId,
+        name: d.wecomDeptName || `部门${d.wecomDeptId}`,
+        parentid: d.wecomParentId || 0
+      }));
+      log.info(`[Wecom SeatTree] 使用本地部门数据: ${departments.length} 个部门`);
+    }
+
+    // 尝试从企微API获取（如果本地没有或需要成员数据）
+    try {
+      const accessToken = await WecomApiService.getAccessTokenByConfigId(parseInt(configId as string), 'contact');
+
+      // 如果本地没有部门数据，从API获取
+      if (departments.length === 0) {
+        const apiDepts = await WecomApiService.getDepartmentList(accessToken);
+        departments = apiDepts;
+      }
+
+      // 获取根部门下所有成员
+      users = await WecomApiService.getDepartmentUsers(accessToken, 1, true);
+    } catch (apiError: any) {
+      const errMsg = apiError.message || '';
+      // ★ 如果是未授权错误，使用本地绑定数据作为成员列表
+      if (errMsg.includes('40014') || errMsg.includes('60011') || errMsg.includes('invalid access_token')) {
+        log.warn(`[Wecom SeatTree] 企微API不可用(${errMsg.substring(0, 50)})，使用本地绑定数据`);
+
+        // 从 wecom_user_bindings 获取本地成员
+        const { WecomUserBinding } = await import('../../entities/WecomUserBinding');
+        const bindingRepo = AppDataSource.getRepository(WecomUserBinding);
+        const localBindings = await bindingRepo.find({
+          where: { wecomConfigId: parseInt(configId as string), ...(tenantId ? { tenantId } : {}) }
+        });
+        users = localBindings.map(b => ({
+          userid: b.wecomUserId,
+          name: b.wecomUserName || b.wecomUserId,
+          department: b.wecomDepartmentIds ? b.wecomDepartmentIds.split(',').map(Number).filter(n => n > 0) : [1]
+        }));
+
+        // 如果本地也没有部门数据，创建一个默认根部门
+        if (departments.length === 0) {
+          departments = [{ id: 1, name: '全部成员', parentid: 0 }];
+        }
+      } else {
+        throw apiError;
+      }
+    }
 
     // 获取当前已选成员
     const memberRepo = getTenantRepo(WecomArchiveMember);
@@ -179,7 +302,7 @@ router.get('/chat-archive/seats/wecom-tree', authenticateToken, async (req: Requ
     for (const dept of departments) {
       deptMap.set(dept.id, {
         id: dept.id,
-        name: dept.name,
+        name: dept.name || `部门${dept.id}`,
         parentId: dept.parentid || 0,
         children: [],
         members: []
@@ -192,7 +315,7 @@ router.get('/chat-archive/seats/wecom-tree', authenticateToken, async (req: Requ
       const selected = selectedMap.get(user.userid);
       const memberNode = {
         wecomUserId: user.userid,
-        name: user.name,
+        name: user.name || user.userid,
         crmUserId: selected?.crmUserId || null,
         isBound: !!selected,
         isSelected: selected?.isEnabled || false
@@ -200,6 +323,11 @@ router.get('/chat-archive/seats/wecom-tree', authenticateToken, async (req: Requ
       for (const deptId of deptIds) {
         const dept = deptMap.get(deptId);
         if (dept) dept.members.push(memberNode);
+      }
+      // 如果成员没有匹配到任何部门，放到根部门
+      if (deptIds.length === 0 || !deptIds.some(id => deptMap.has(id))) {
+        const rootDept = deptMap.get(1);
+        if (rootDept) rootDept.members.push(memberNode);
       }
     }
 
@@ -224,6 +352,17 @@ router.get('/chat-archive/seats/wecom-tree', authenticateToken, async (req: Requ
     });
   } catch (error: any) {
     log.error('[Wecom] Get wecom tree error:', error.message);
+
+    const errMsg = error.message || '';
+    if (errMsg.includes('40014') || errMsg.includes('invalid access_token')) {
+      return res.status(403).json({
+        success: false,
+        errorCode: 'CONTACT_NOT_AUTHORIZED',
+        message: '组织架构信息尚未授权，无法加载成员列表',
+        hint: '请先在企业微信管理后台「应用管理→第三方应用→授权信息」中完成组织架构授权，然后在CRM通讯录页面点击「同步通讯录」'
+      });
+    }
+
     res.status(500).json({ success: false, message: error.message || '获取部门树失败' });
   }
 });
