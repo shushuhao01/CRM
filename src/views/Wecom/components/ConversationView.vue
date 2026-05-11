@@ -346,7 +346,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, nextTick, onMounted } from 'vue'
+import { ref, computed, nextTick, onMounted, watch } from 'vue'
 import { Search, Refresh, User, Close, InfoFilled, EditPen, Download, Warning, Operation, DArrowLeft, DArrowRight, ArrowRight, Folder, OfficeBuilding } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { getConversationList, getConversationMessages, getArchiveSeats, auditChatRecord, getWecomDepartments, getWecomUsers } from '@/api/wecom'
@@ -778,7 +778,23 @@ onMounted(() => {
   fetchArchiveMembers()
 })
 
-defineExpose({ fetchConversations })
+// ★ 关键修复：监听 configId 变化，重新加载成员和会话
+watch(() => props.configId, (newVal, oldVal) => {
+  if (newVal && newVal !== oldVal) {
+    // 重置选中状态
+    selectedMemberId.value = ''
+    selectedMemberName.value = ''
+    selectedDeptId.value = null
+    selectedConv.value = null
+    messages.value = []
+    conversations.value = []
+    // 重新加载成员树和会话列表
+    fetchArchiveMembers()
+    fetchConversations()
+  }
+})
+
+defineExpose({ fetchConversations, fetchArchiveMembers })
 </script>
 
 <style scoped lang="scss">
