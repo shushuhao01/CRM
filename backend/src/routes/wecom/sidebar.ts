@@ -1308,6 +1308,212 @@ router.post('/sidebar/sign', jsSdkConfigLimiter, validateJsSdkReferer, async (re
   }
 });
 
+// ==================== 诊断: 全面排查 92002 错误 ====================
+
+/**
+ * 全面诊断侧边栏 92002 "not allow to cross corp" 错误
+ * 逐步验证: DB配置 → corpId一致性 → access_token → agent/get验证 → ticket → 签名
+ *
+ * @body { corpId: string, url?: string }
+ */
+router.post('/sidebar/diagnose', async (req: Request, res: Response) => {
+  const steps: { step: string; status: string; detail: any }[] = [];
+  const addStep = (step: string, status: string, detail: any) => {
+    steps.push({ step, status, detail });
+  };
+
+  try {
+    const { corpId, url: rawUrl } = req.body;
+    const url = (rawUrl || 'https://crm.yunkes.com/wecom-sidebar/customer').split('#')[0].replace(/\s+$/, '');
+
+    if (!corpId) {
+      return res.status(400).json({ success: false, message: '参数不完整: 需要corpId' });
+    }
+
+    // ===== Step 1: 查找数据库配置 =====
+    const configRepo = AppDataSource.getRepository(WecomConfig);
+    const config = await configRepo.findOne({ where: { corpId, isEnabled: true } });
+    if (!config) {
+      addStep('1.DB配置查找', '❌ 失败', { message: `未找到 corpId=${corpId} 的已启用配置` });
+      return res.json({ success: true, data: { steps, conclusion: 'DB中无此企业配置' } });
+    }
+    addStep('1.DB配置查找', '✅ 成功', {
+      configId: config.id,
+      name: config.name,
+      corpId: config.corpId,
+      agentId: config.agentId,
+      authType: config.authType,
+      authMode: config.authMode,
+      suiteId: config.suiteId || '(空)',
+      permanentCode: config.permanentCode ? `已配置(${config.permanentCode.length}字符)` : '❌ 未配置',
+    });
+
+    // ===== Step 2: corpId一致性 =====
+    if (corpId === config.corpId) {
+      addStep('2.corpId一致性', '✅ 一致', { frontendCorpId: corpId, dbCorpId: config.corpId });
+    } else {
+      addStep('2.corpId一致性', '⚠️ 不一致', { frontendCorpId: corpId, dbCorpId: config.corpId, note: '前端传入corpId与DB不同，会临时覆盖' });
+    }
+
+    // ===== Step 3: get_auth_info 验证授权信息 =====
+    const { WecomTokenService } = await import('../../services/wecom/WecomTokenService');
+    const axiosLib = (await import('axios')).default;
+    let suiteToken = '';
+    let apiCorpName = '';
+    let apiAgentId: any = null;
+
+    if (config.authType === 'third_party' && config.suiteId && config.permanentCode) {
+      try {
+        suiteToken = await WecomTokenService.getSuiteAccessToken(config.suiteId);
+        addStep('3a.suite_access_token', '✅ 获取成功', { tokenPrefix: suiteToken.substring(0, 20) + '...' });
+      } catch (e: any) {
+        addStep('3a.suite_access_token', '❌ 获取失败', { error: e.message });
+      }
+
+      if (suiteToken) {
+        try {
+          const authInfoRes = await axiosLib.post(
+            `https://qyapi.weixin.qq.com/cgi-bin/service/get_auth_info?suite_access_token=${suiteToken}`,
+            { auth_corpid: corpId, permanent_code: config.permanentCode }
+          );
+          if (authInfoRes.data?.errcode === 0 || !authInfoRes.data?.errcode) {
+            const authCorpInfo = authInfoRes.data?.auth_corp_info || {};
+            const agents = authInfoRes.data?.auth_info?.agent || [];
+            apiCorpName = authCorpInfo.corp_name || '';
+            apiAgentId = agents[0]?.agentid;
+            addStep('3b.get_auth_info', '✅ 授权有效', {
+              corpName: apiCorpName,
+              corpId: authCorpInfo.corpid,
+              agentId: apiAgentId,
+              agentName: agents[0]?.name,
+              agentCount: agents.length,
+              corpIdMatch: authCorpInfo.corpid === corpId ? '✅ 一致' : `❌ 不一致! API返回=${authCorpInfo.corpid}`,
+            });
+          } else {
+            addStep('3b.get_auth_info', '❌ API错误', {
+              errcode: authInfoRes.data?.errcode,
+              errmsg: authInfoRes.data?.errmsg,
+              note: '可能permanent_code已失效，需要企业重新授权'
+            });
+          }
+        } catch (e: any) {
+          addStep('3b.get_auth_info', '❌ 请求失败', { error: e.message });
+        }
+      }
+    } else {
+      addStep('3.授权验证', '⏭️ 跳过', { reason: `authType=${config.authType}, 非第三方应用或缺少suiteId/permanentCode` });
+    }
+
+    // ===== Step 4: 获取 corp_access_token =====
+    let accessToken = '';
+    // 第三方应用临时覆盖corpId
+    const configCopy = { ...config } as any;
+    if (config.authType === 'third_party' && corpId && corpId !== config.corpId) {
+      configCopy.corpId = corpId;
+    }
+    try {
+      accessToken = await WecomTokenService.getAccessToken(configCopy);
+      addStep('4.corp_access_token', '✅ 获取成功', { tokenPrefix: accessToken.substring(0, 20) + '...' });
+    } catch (e: any) {
+      addStep('4.corp_access_token', '❌ 获取失败', { error: e.message });
+      return res.json({ success: true, data: { steps, conclusion: 'access_token获取失败，无法继续诊断' } });
+    }
+
+    // ===== Step 5: 用 access_token 调用 agent/get 验证token归属 =====
+    try {
+      const agentRes = await axiosLib.get(`https://qyapi.weixin.qq.com/cgi-bin/agent/get`, {
+        params: { access_token: accessToken, agentid: config.agentId || apiAgentId || 0 }
+      });
+      if (agentRes.data?.errcode === 0 || !agentRes.data?.errcode) {
+        addStep('5.token归属验证(agent/get)', '✅ token有效', {
+          appName: agentRes.data?.name,
+          agentId: agentRes.data?.agentid,
+          squareLogoUrl: agentRes.data?.square_logo_url ? '有' : '无',
+          trustedDomains: agentRes.data?.redirect_domain || '(未返回)',
+          homeUrl: agentRes.data?.home_url || '(空)',
+        });
+      } else {
+        addStep('5.token归属验证(agent/get)', '❌ 验证失败', {
+          errcode: agentRes.data?.errcode,
+          errmsg: agentRes.data?.errmsg,
+          note: agentRes.data?.errcode === 301002 ? '应用不可见或agentId错误' : '',
+        });
+      }
+    } catch (e: any) {
+      addStep('5.token归属验证', '❌ 请求失败', { error: e.message });
+    }
+
+    // ===== Step 6: 获取 corp ticket =====
+    let corpTicket = '';
+    try {
+      corpTicket = await WecomApiService.getJsSdkTicket(accessToken);
+      addStep('6.corp_jsapi_ticket', '✅ 获取成功', { ticketPrefix: corpTicket.substring(0, 20) + '...' });
+    } catch (e: any) {
+      addStep('6.corp_jsapi_ticket', '❌ 获取失败', { error: e.message });
+    }
+
+    // ===== Step 7: 获取 agent ticket =====
+    let agentTicket = '';
+    try {
+      agentTicket = await WecomApiService.getAgentJsSdkTicket(accessToken);
+      addStep('7.agent_jsapi_ticket', '✅ 获取成功', { ticketPrefix: agentTicket.substring(0, 20) + '...' });
+    } catch (e: any) {
+      addStep('7.agent_jsapi_ticket', '❌ 获取失败', { error: e.message });
+    }
+
+    // ===== Step 8: 生成签名并对比 =====
+    const timestamp = Math.floor(Date.now() / 1000);
+    const nonceStr = uuidv4().replace(/-/g, '').substring(0, 16);
+
+    let corpSig = '', agentSig = '';
+    if (corpTicket) {
+      corpSig = WecomApiService.generateJsSdkSignature(corpTicket, nonceStr, timestamp, url);
+    }
+    if (agentTicket) {
+      agentSig = WecomApiService.generateJsSdkSignature(agentTicket, nonceStr, timestamp, url);
+    }
+    addStep('8.签名生成', corpSig && agentSig ? '✅ 成功' : '⚠️ 部分失败', {
+      url,
+      timestamp,
+      nonceStr,
+      corpSignature: corpSig ? corpSig.substring(0, 20) + '...' : '(无)',
+      agentSignature: agentSig ? agentSig.substring(0, 20) + '...' : '(无)',
+      corpSignRaw: corpTicket ? `jsapi_ticket=${corpTicket}&noncestr=${nonceStr}&timestamp=${timestamp}&url=${url}` : '(无ticket)',
+    });
+
+    // ===== Step 9: 检查其他可能的配置 =====
+    const allConfigs = await configRepo.find({ where: { isEnabled: true } });
+    addStep('9.所有启用的配置', '📋 信息', {
+      total: allConfigs.length,
+      configs: allConfigs.map(c => ({
+        id: c.id,
+        name: c.name,
+        corpId: c.corpId,
+        agentId: c.agentId,
+        authType: c.authType,
+        suiteId: c.suiteId || '(空)',
+      }))
+    });
+
+    // ===== 结论 =====
+    let conclusion = '';
+    const issues: string[] = [];
+    if (!config.permanentCode) issues.push('permanent_code 未配置');
+    if (!config.agentId) issues.push('agentId 为空');
+    if (!agentTicket) issues.push('agent_ticket 获取失败');
+    if (issues.length > 0) {
+      conclusion = `发现问题: ${issues.join('; ')}`;
+    } else {
+      conclusion = '所有参数获取成功。如果仍报92002，可能原因: 1)侧边栏域名未在服务商应用可信域名中 2)企业未正确授权该应用 3)ticket与corpId关联的企业不匹配(需检查permanent_code是否属于正确企业)';
+    }
+
+    res.json({ success: true, data: { steps, conclusion } });
+  } catch (error: any) {
+    log.error('[Wecom Sidebar] diagnose error:', error.message);
+    res.status(500).json({ success: false, message: error.message, steps });
+  }
+});
+
 // ==================== 诊断: 检查并修复 agentId ====================
 
 /**
