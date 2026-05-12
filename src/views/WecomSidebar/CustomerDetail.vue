@@ -812,6 +812,7 @@ async function initWithLegacySdk() {
         debug: isDebug,
         success: () => {
           console.log('[Sidebar] ✅ agentConfig success')
+          sessionStorage.removeItem('sidebar_92002_retried')
           getCurExternalContact(wx)
         },
         fail: async (err: any) => {
@@ -929,14 +930,15 @@ function loadWecomJsSdk(): Promise<void> {
     return false
   }
 
+  // ★ 优先检测旧版 wx 对象（对第三方服务商侧边栏兼容性更好）
+  if (ensureWxObj()) {
+    sdkMode = 'wx'
+    console.log('[Sidebar] wx对象已存在（旧版SDK，优先使用）')
+    return Promise.resolve()
+  }
   if (ensureWwObj()) {
     sdkMode = 'ww'
     console.log('[Sidebar] ww对象已存在（新版SDK）')
-    return Promise.resolve()
-  }
-  if (ensureWxObj()) {
-    sdkMode = 'wx'
-    console.log('[Sidebar] wx对象已存在（旧版SDK）')
     return Promise.resolve()
   }
 
@@ -983,17 +985,22 @@ function loadWecomJsSdk(): Promise<void> {
     })
   }
 
-  // ★ 新版SDK优先，降级到旧版
+  // ★ 旧版SDK优先（jwxwork）：对第三方服务商应用侧边栏兼容性更好
+  // 原因：新版 @wecom/jssdk 的 ww.register 在企微原生浏览器中会跳过 getConfigSignature 回调，
+  // 依赖原生桥接处理企业级配置，但对第三方服务商应用会导致 92002 "not allow to cross corp" 错误。
+  // 旧版 jwxwork SDK 的 wx.config + wx.agentConfig 显式流程可正确建立企业上下文。
+  // 主流 SCRM 产品（微伴助手、尘锋、探马等）也采用此方案。
   const CDN_LIST = [
-    // 1. 新版 @wecom/jssdk（优先）
-    '/wecom-jssdk-2.4.0.js',
-    '/api/wecom/sdk/wecom-jssdk-2.4.0.js',
-    'https://wwcdn.weixin.qq.com/node/wework/wwopen/js/wecom-jssdk-2.4.0.js',
-    // 2. 旧版（降级）
+    // 1. 旧版 jwxwork（优先 - 第三方服务商侧边栏推荐）
     '/jwxwork-1.0.0.js',
     '/api/wecom/sdk/jwxwork-1.0.0.js',
     'https://open.work.weixin.qq.com/wwopen/js/jwxwork-1.0.0.js',
     'https://wwcdn.weixin.qq.com/node/wework/wwopen/js/jwxwork-1.0.0.js',
+    // 2. 新版 @wecom/jssdk（降级备用）
+    '/wecom-jssdk-2.4.0.js',
+    '/api/wecom/sdk/wecom-jssdk-2.4.0.js',
+    'https://wwcdn.weixin.qq.com/node/wework/wwopen/js/wecom-jssdk-2.4.0.js',
+    // 3. jweixin（最终降级）
     '/jweixin-1.2.0.js',
     'https://res.wx.qq.com/open/js/jweixin-1.2.0.js',
   ]
@@ -1009,12 +1016,13 @@ function loadWecomJsSdk(): Promise<void> {
       }
       const tried: { url: string; reason: string }[] = []
       for (const cdn of CDN_LIST) {
-        if (ensureWwObj()) { sdkMode = 'ww'; return }
+        // ★ 优先检测旧版 wx（对第三方服务商侧边栏兼容性更好）
         if (ensureWxObj()) { sdkMode = 'wx'; return }
+        if (ensureWwObj()) { sdkMode = 'ww'; return }
         const { ok, reason } = await loadScript(cdn)
         if (ok) {
-          if (ensureWwObj()) { sdkMode = 'ww'; console.log('[Sidebar] ✅ 新版ww.register模式 from:', cdn); return }
           if (ensureWxObj()) { sdkMode = 'wx'; console.log('[Sidebar] ✅ 旧版wx.config模式 from:', cdn); return }
+          if (ensureWwObj()) { sdkMode = 'ww'; console.log('[Sidebar] ✅ 新版ww.register模式 from:', cdn); return }
           tried.push({ url: cdn, reason: 'obj-still-missing' })
         } else {
           tried.push({ url: cdn, reason: reason || 'unknown' })

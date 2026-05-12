@@ -775,8 +775,9 @@ router.get('/callback/auth-callback', async (req: Request, res: Response) => {
     const { permanent_code, auth_corp_info, auth_user_info, auth_info } = permRes.data;
     const corpId = auth_corp_info?.corpid;
     const corpName = auth_corp_info?.corp_name || '';
+    const agentId = auth_info?.agent?.[0]?.agentid;
 
-    log.info('[Wecom Auth] Authorization success for corp:', corpName, corpId);
+    log.info(`[Wecom Auth] Authorization success for corp: ${corpName} ${corpId}, agentId=${agentId || '(未返回)'}`);
 
     // 创建或更新WecomConfig
     let config = await configRepo.findOne({ where: { corpId } });
@@ -794,6 +795,9 @@ router.get('/callback/auth-callback', async (req: Request, res: Response) => {
       config.suiteId = suiteId;
       config.isEnabled = true;
       config.name = corpName || config.name;
+      if (agentId) {
+        config.agentId = agentId;
+      }
       if (auth_user_info?.userid) {
         config.bindOperator = auth_user_info.name || auth_user_info.userid;
         config.authAdminUserId = auth_user_info.userid;
@@ -831,6 +835,7 @@ router.get('/callback/auth-callback', async (req: Request, res: Response) => {
         authMode: 'third_party',
         permanentCode: permanent_code,
         suiteId: suiteId,
+        agentId: agentId || undefined,
         authCorpInfo: JSON.stringify(auth_corp_info),
         authUserInfo: JSON.stringify(auth_user_info),
         authScope: auth_info ? JSON.stringify(auth_info) : null,

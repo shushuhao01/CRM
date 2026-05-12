@@ -1663,4 +1663,81 @@ router.post('/sidebar/fix-agent-id', async (req: Request, res: Response) => {
   }
 });
 
+/**
+ * 批量修复所有 agent_id 为 NULL 的第三方应用配置
+ * 通过 get_auth_info API 从企微获取每个企业授权的真实 agentId 并写入数据库
+ */
+router.post('/sidebar/fix-all-agent-ids', async (_req: Request, res: Response) => {
+  try {
+    const configRepo = AppDataSource.getRepository(WecomConfig);
+    const configs = await configRepo.find({
+      where: {
+        authType: 'third_party',
+        isEnabled: true,
+      }
+    });
+
+    const nullAgentConfigs = configs.filter(c => !c.agentId && c.suiteId && c.permanentCode);
+    if (nullAgentConfigs.length === 0) {
+      return res.json({
+        success: true,
+        message: '所有第三方应用配置的 agentId 都已存在，无需修复',
+        total: configs.length,
+        needFix: 0,
+      });
+    }
+
+    const { WecomTokenService } = await import('../../services/wecom/WecomTokenService');
+    const axios = (await import('axios')).default;
+    const results: any[] = [];
+
+    for (const config of nullAgentConfigs) {
+      const item: any = { configId: config.id, corpId: config.corpId, name: config.name, status: 'pending' };
+      try {
+        const suiteToken = await WecomTokenService.getSuiteAccessToken(config.suiteId!);
+        const authInfoRes = await axios.post(
+          `https://qyapi.weixin.qq.com/cgi-bin/service/get_auth_info?suite_access_token=${suiteToken}`,
+          { auth_corpid: config.corpId, permanent_code: config.permanentCode }
+        );
+        if (authInfoRes.data?.errcode === 0 || !authInfoRes.data?.errcode) {
+          const agentId = authInfoRes.data?.auth_info?.agent?.[0]?.agentid;
+          if (agentId) {
+            config.agentId = agentId;
+            if (authInfoRes.data?.auth_info) {
+              config.authScope = JSON.stringify(authInfoRes.data.auth_info);
+            }
+            await configRepo.save(config);
+            item.status = 'fixed';
+            item.agentId = agentId;
+            log.info(`[Wecom Sidebar] fix-all-agent-ids: 修复 corpId=${config.corpId} agentId=${agentId}`);
+          } else {
+            item.status = 'no_agent';
+            item.detail = 'API返回的auth_info中没有agent信息';
+          }
+        } else {
+          item.status = 'api_error';
+          item.detail = `errcode=${authInfoRes.data?.errcode}, errmsg=${authInfoRes.data?.errmsg}`;
+        }
+      } catch (e: any) {
+        item.status = 'error';
+        item.detail = e.message;
+      }
+      results.push(item);
+    }
+
+    const fixed = results.filter(r => r.status === 'fixed').length;
+    res.json({
+      success: true,
+      message: `批量修复完成: ${fixed}/${nullAgentConfigs.length} 个配置已修复`,
+      total: configs.length,
+      needFix: nullAgentConfigs.length,
+      fixed,
+      results,
+    });
+  } catch (error: any) {
+    log.error('[Wecom Sidebar] fix-all-agent-ids error:', error.message);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 export default router;
