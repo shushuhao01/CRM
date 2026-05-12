@@ -536,12 +536,9 @@ async function initWecomSdk() {
       return
     }
 
-    // ★ 检测 $CORPID$ 占位符
+    // ★ 检测 $CORPID$ 占位符（第三方应用常见，后端会解析并返回真实corpId）
     if (corpId.value.includes('$') || corpId.value.includes('CORPID')) {
-      console.error('[Sidebar] ⚠️ corpId占位符未被替换:', corpId.value)
-      setSdkError('corpid-placeholder', 'CorpID占位符未替换',
-        '企微客户端未将$CORPID$替换为实际企业ID。可能原因：\n1. 侧边栏未通过企微后台「应用管理→聊天工具」正确配置\n2. 需要在服务商后台配置应用的聊天工具栏页面URL',
-        `原始corpId=${corpId.value}, URL=${window.location.href}`)
+      console.warn('[Sidebar] ⚠️ corpId是占位符:', corpId.value, '，将通过后端解析真实corpId')
     }
 
     // ★ 根据 sdkMode 分支处理
@@ -583,7 +580,9 @@ async function initWithNewSdk() {
       type: 'config'
     })
     agentId = preRes?.agentId ? String(preRes.agentId) : null
-    if (preRes?.corpId && !corpId.value.includes('$')) {
+    // ★ 当corpId是占位符$CORPID$时，用后端返回的真实corpId替换
+    if (preRes?.corpId && corpId.value.includes('$')) {
+      console.log('[Sidebar] 替换占位符corpId:', corpId.value, '→', preRes.corpId)
       corpId.value = preRes.corpId
     }
     console.log('[Sidebar] 预获取config签名成功: agentId=', agentId, ', corpId=', corpId.value)
