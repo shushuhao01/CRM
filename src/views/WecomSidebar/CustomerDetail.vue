@@ -541,9 +541,17 @@ async function initWecomSdk() {
       console.warn('[Sidebar] ⚠️ corpId是占位符:', corpId.value, '，将通过后端解析真实corpId')
     }
 
-    // ★ 根据 sdkMode 分支处理
-    if (sdkMode === 'ww') {
-      await initWithNewSdk()
+    // ★ 优先使用旧版 wx.config+agentConfig 流程（第三方服务商侧边栏推荐）
+    // 旧版流程显式建立企业上下文，避免新版 ww.register 的 92002 跨企业错误
+    if (sdkMode === 'wx') {
+      await initWithLegacySdk()
+    } else if (sdkMode === 'ww') {
+      // 新版SDK：先尝试，如果遇到92002则自动降级到旧版
+      const result = await initWithNewSdkWithFallback()
+      if (result === 'need_legacy_fallback') {
+        console.warn('[Sidebar] 新版SDK遇到92002，启动旧版SDK降级流程...')
+        await fallbackToLegacySdk()
+      }
     } else {
       await initWithLegacySdk()
     }
@@ -551,6 +559,80 @@ async function initWecomSdk() {
     console.error('[Sidebar] Init error:', e)
     setSdkError('api', '初始化失败', e?.message || '未知错误', `堆栈: ${e?.stack?.substring(0, 200) || ''}`)
   }
+}
+
+/**
+ * ★ 新版SDK + 92002自动降级到旧版
+ * 如果新版SDK遇到92002错误，返回 'need_legacy_fallback' 信号触发旧版SDK降级
+ */
+async function initWithNewSdkWithFallback(): Promise<string | void> {
+  try {
+    await initWithNewSdk()
+  } catch (_e) {
+    // initWithNewSdk 内部已处理错误并设置了 errorMsg
+  }
+  // 检查是否遇到了92002错误（通过错误消息判断）
+  if (pageState.value === 'error' && errorMsg.value && /92002|cross corp/i.test(errorMsg.value)) {
+    return 'need_legacy_fallback'
+  }
+}
+
+/**
+ * ★ 动态加载旧版SDK并使用旧版流程重试
+ * 当新版SDK遇到92002时，动态加载jwxwork并用wx.config+wx.agentConfig替代
+ */
+async function fallbackToLegacySdk() {
+  console.log('[Sidebar] 开始旧版SDK降级: 动态加载 jwxwork...')
+  // 重置错误状态
+  pageState.value = 'loading'
+  errorMsg.value = ''
+
+  const legacyCdns = [
+    '/api/v1/wecom/sdk/jwxwork-1.0.0.js',
+    'https://wwcdn.weixin.qq.com/node/wework/wwopen/js/jwxwork-1.0.0.js',
+    'https://open.work.weixin.qq.com/wwopen/js/jwxwork-1.0.0.js',
+  ]
+
+  let wxLoaded = false
+  for (const url of legacyCdns) {
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const s = document.createElement('script')
+        s.src = url
+        s.async = true
+        const timer = setTimeout(() => reject(new Error('timeout')), 8000)
+        s.onload = () => {
+          clearTimeout(timer)
+          setTimeout(() => {
+            const w = window as any
+            if (w.wx && typeof w.wx.config === 'function') {
+              wxLoaded = true; resolve()
+            } else if (w.jWeixin && typeof w.jWeixin.config === 'function') {
+              w.wx = w.jWeixin; wxLoaded = true; resolve()
+            } else {
+              reject(new Error('wx object not available'))
+            }
+          }, 200)
+        }
+        s.onerror = () => { clearTimeout(timer); reject(new Error('network error')) }
+        document.head.appendChild(s)
+      })
+      console.log('[Sidebar] ✅ 旧版SDK降级加载成功:', url)
+      break
+    } catch (e: any) {
+      console.warn(`[Sidebar] 旧版SDK降级加载失败(${url}):`, e.message)
+    }
+  }
+
+  if (!wxLoaded) {
+    setSdkError('sdk-load', '旧版SDK降级失败',
+      '新版SDK遇到92002错误，尝试降级到旧版SDK也失败了。请联系管理员检查SDK文件是否可访问。')
+    return
+  }
+
+  sdkMode = 'wx'
+  sessionStorage.removeItem('sidebar_92002_retried')
+  await initWithLegacySdk()
 }
 
 /**
@@ -986,22 +1068,18 @@ function loadWecomJsSdk(): Promise<void> {
   }
 
   // ★ 旧版SDK优先（jwxwork）：对第三方服务商应用侧边栏兼容性更好
-  // 原因：新版 @wecom/jssdk 的 ww.register 在企微原生浏览器中会跳过 getConfigSignature 回调，
-  // 依赖原生桥接处理企业级配置，但对第三方服务商应用会导致 92002 "not allow to cross corp" 错误。
-  // 旧版 jwxwork SDK 的 wx.config + wx.agentConfig 显式流程可正确建立企业上下文。
-  // 主流 SCRM 产品（微伴助手、尘锋、探马等）也采用此方案。
+  // 新版 @wecom/jssdk 的 ww.register 在企微浏览器中跳过 getConfigSignature，
+  // 对第三方服务商应用导致 92002 "not allow to cross corp"。
+  // 旧版 wx.config + wx.agentConfig 显式流程可正确建立企业上下文。
   const CDN_LIST = [
     // 1. 旧版 jwxwork（优先 - 第三方服务商侧边栏推荐）
-    '/jwxwork-1.0.0.js',
-    '/api/wecom/sdk/jwxwork-1.0.0.js',
-    'https://open.work.weixin.qq.com/wwopen/js/jwxwork-1.0.0.js',
+    '/api/v1/wecom/sdk/jwxwork-1.0.0.js',
     'https://wwcdn.weixin.qq.com/node/wework/wwopen/js/jwxwork-1.0.0.js',
+    'https://open.work.weixin.qq.com/wwopen/js/jwxwork-1.0.0.js',
     // 2. 新版 @wecom/jssdk（降级备用）
-    '/wecom-jssdk-2.4.0.js',
-    '/api/wecom/sdk/wecom-jssdk-2.4.0.js',
+    '/api/v1/wecom/sdk/wecom-jssdk-2.4.0.js',
     'https://wwcdn.weixin.qq.com/node/wework/wwopen/js/wecom-jssdk-2.4.0.js',
     // 3. jweixin（最终降级）
-    '/jweixin-1.2.0.js',
     'https://res.wx.qq.com/open/js/jweixin-1.2.0.js',
   ]
 

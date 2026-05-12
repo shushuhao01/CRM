@@ -218,11 +218,11 @@ const confirmResetPwd = async () => {
   await resetPwdFormRef.value?.validate()
   submitting.value = true
   try {
-    await adminApi.updateAdminUser(resetPwdUserId.value!, { password: resetPwdForm.newPassword })
+    await adminApi.resetAdminPassword(resetPwdUserId.value!, { newPassword: resetPwdForm.newPassword })
     ElMessage.success('密码重置成功')
     showResetPwdDialog.value = false
   } catch (e: any) {
-    ElMessage.error(e.message || '重置失败')
+    ElMessage.error(e.response?.data?.message || e.message || '重置失败')
   } finally {
     submitting.value = false
   }

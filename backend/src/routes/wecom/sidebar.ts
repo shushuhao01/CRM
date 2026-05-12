@@ -709,19 +709,19 @@ router.post('/sidebar/js-sdk-config', jsSdkConfigLimiter, validateJsSdkReferer, 
           addDiag('agentId-API获取', `agents=${agents.length}, 企微返回agentId=${agentFromApi}, name=${agentName}`);
 
           if (agentFromApi) {
-            if (String(agentFromApi) !== String(oldAgentId)) {
-              // agentId 不一致，自动修正
-              log.warn(`[Wecom Sidebar] ⚠️ agentId不一致! DB=${oldAgentId}, 企微API=${agentFromApi}. 自动修正!`);
-              addDiag('agentId自动修正', `❗ DB值(${oldAgentId}) ≠ API值(${agentFromApi})，已自动更新为 ${agentFromApi}`);
+            if (!oldAgentId || String(agentFromApi) !== String(oldAgentId)) {
+              log.warn(`[Wecom Sidebar] ⚠️ agentId需更新! DB=${oldAgentId || 'NULL'}, 企微API=${agentFromApi}. 自动修正!`);
+              addDiag('agentId自动修正', `❗ DB值(${oldAgentId || 'NULL'}) → API值(${agentFromApi})，已自动更新`);
+              // 使用原生SQL确保写入成功
+              await AppDataSource.query(
+                'UPDATE wecom_configs SET agent_id = ?, auth_scope = ?, updated_at = NOW() WHERE id = ?',
+                [agentFromApi, authInfo ? JSON.stringify(authInfo) : config.authScope, config.id]
+              );
+              log.info(`[Wecom Sidebar] agentId SQL更新完成: configId=${config.id}, agentId=${agentFromApi}`);
             } else {
               addDiag('agentId验证通过', `✅ DB值(${oldAgentId}) === API值(${agentFromApi})`);
             }
             config.agentId = agentFromApi;
-            // 同步更新 authScope 缓存
-            if (authInfo) {
-              config.authScope = JSON.stringify(authInfo);
-            }
-            await configRepo.save(config);
           } else {
             addDiag('agentId-API获取', `⚠️ API返回无agent信息: ${JSON.stringify(agents).substring(0, 200)}`);
           }
@@ -1248,30 +1248,42 @@ router.post('/sidebar/sign', jsSdkConfigLimiter, validateJsSdkReferer, async (re
     }
 
     // ★ agentId 自动校验+修正（第三方应用）
-    // 扩展到 config 和 agent_config 两种类型都校验（之前仅 config 触发，导致 agent_config 可能使用旧 agentId）
+    log.info(`[Wecom Sidebar] /sign 配置详情: configId=${config.id}, corpId=${config.corpId}, authType=${config.authType}, agentId=${config.agentId || '(NULL)'}, suiteId=${config.suiteId || '(NULL)'}, hasPermanentCode=${!!config.permanentCode}`);
     if (config.authType === 'third_party' && config.suiteId && config.permanentCode) {
       try {
         const suiteToken = await WecomTokenService.getSuiteAccessToken(config.suiteId);
         const axiosLib = (await import('axios')).default;
+        const authCorpId = corpId.includes('$') ? config.corpId : corpId;
         const authInfoRes = await axiosLib.post(
           `https://qyapi.weixin.qq.com/cgi-bin/service/get_auth_info?suite_access_token=${suiteToken}`,
-          { auth_corpid: corpId.includes('$') ? config.corpId : corpId, permanent_code: config.permanentCode }
+          { auth_corpid: authCorpId, permanent_code: config.permanentCode }
         );
         if (authInfoRes.data?.errcode === 0 || !authInfoRes.data?.errcode) {
           const agents = authInfoRes.data?.auth_info?.agent || [];
           const apiAgentId = agents[0]?.agentid;
-          if (apiAgentId && String(apiAgentId) !== String(config.agentId)) {
-            log.warn(`[Wecom Sidebar] /sign agentId自动修正: DB=${config.agentId} → API=${apiAgentId} (corpId=${corpId})`);
-            config.agentId = apiAgentId;
-            if (authInfoRes.data?.auth_info) {
-              config.authScope = JSON.stringify(authInfoRes.data.auth_info);
+          log.info(`[Wecom Sidebar] /sign get_auth_info成功: auth_corpid=${authCorpId}, agents数量=${agents.length}, apiAgentId=${apiAgentId || '(空)'}, 当前DB agentId=${config.agentId || '(NULL)'}`);
+          if (apiAgentId) {
+            if (!config.agentId || String(apiAgentId) !== String(config.agentId)) {
+              log.info(`[Wecom Sidebar] /sign agentId需要更新: DB=${config.agentId || 'NULL'} → API=${apiAgentId}`);
+              // 使用原生SQL确保写入成功（绕过可能的ORM缓存问题）
+              await AppDataSource.query(
+                'UPDATE wecom_configs SET agent_id = ?, auth_scope = ?, updated_at = NOW() WHERE id = ?',
+                [apiAgentId, authInfoRes.data?.auth_info ? JSON.stringify(authInfoRes.data.auth_info) : config.authScope, config.id]
+              );
+              config.agentId = apiAgentId;
+              log.info(`[Wecom Sidebar] /sign agentId已通过SQL更新: configId=${config.id}, agentId=${apiAgentId}`);
             }
-            await AppDataSource.getRepository(WecomConfig).save(config);
+          } else {
+            log.warn(`[Wecom Sidebar] /sign API返回无agent信息: agents=${JSON.stringify(agents).substring(0, 200)}`);
           }
+        } else {
+          log.warn(`[Wecom Sidebar] /sign get_auth_info失败: errcode=${authInfoRes.data?.errcode}, errmsg=${authInfoRes.data?.errmsg}`);
         }
       } catch (e: any) {
         log.warn(`[Wecom Sidebar] /sign agentId校验跳过: ${e.message}`);
       }
+    } else {
+      log.warn(`[Wecom Sidebar] /sign agentId校验条件不满足: authType=${config.authType}, suiteId=${config.suiteId || '(空)'}, hasPermanentCode=${!!config.permanentCode}`);
     }
 
     // 第三方应用：临时覆盖corpId确保token正确

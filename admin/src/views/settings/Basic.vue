@@ -547,7 +547,19 @@ const handleManualCheck = async () => {
 }
 
 const handleClearLogs = () => ElMessageBox.confirm('确定清理过期日志？').then(() => ElMessage.success('清理完成'))
-const handleChangePwd = async () => { await pwdFormRef.value?.validate(); ElMessage.success('密码修改成功'); pwdFormRef.value?.resetFields() }
+const handleChangePwd = async () => {
+  await pwdFormRef.value?.validate()
+  try {
+    await request.put('/auth/password', {
+      oldPassword: pwdForm.oldPassword,
+      newPassword: pwdForm.newPassword
+    })
+    ElMessage.success('密码修改成功，下次登录请使用新密码')
+    pwdFormRef.value?.resetFields()
+  } catch (e: any) {
+    ElMessage.error(e.response?.data?.message || e.message || '密码修改失败')
+  }
+}
 
 onMounted(() => {
   loadSmsConfig()
