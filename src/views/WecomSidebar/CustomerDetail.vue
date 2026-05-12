@@ -559,25 +559,34 @@ async function initWecomSdk() {
 /**
  * ★ 新版 SDK 初始化（ww.register）
  * 优势：SDK内部自动传递正确的URL给签名回调，消除URL不匹配问题
+ *
+ * 重要：ww.register 是惰性的，SDK不会在register时主动执行agentConfig，
+ * 而是在调用需要应用身份的API时才触发 getAgentConfigSignature 回调。
  */
 async function initWithNewSdk() {
   const ww = (window as any).ww
   console.log('[Sidebar] 使用新版 ww.register 模式')
 
-  // 先通过一次签名调用获取agentId（因为ww.register需要提前知道agentId）
+  // 诊断信息收集
+  let diagConfigCalled = false
+  let diagAgentConfigCalled = false
+  let diagConfigResult = ''
+  let diagAgentConfigResult = ''
+
+  // 先通过一次签名调用获取agentId和验证后端签名能力
   let agentId: string | null = null
+  const currentUrl = window.location.href.split('#')[0]
   try {
     const preRes: any = await getSidebarSign({
-      url: window.location.href.split('#')[0],
+      url: currentUrl,
       corpId: corpId.value,
       type: 'config'
     })
     agentId = preRes?.agentId ? String(preRes.agentId) : null
-    // 如果后端返回了真实的corpId（占位符降级），使用它
     if (preRes?.corpId && !corpId.value.includes('$')) {
       corpId.value = preRes.corpId
     }
-    console.log('[Sidebar] 预获取: agentId=', agentId, ', corpId=', corpId.value)
+    console.log('[Sidebar] 预获取config签名成功: agentId=', agentId, ', corpId=', corpId.value)
   } catch (e: any) {
     console.error('[Sidebar] 预获取签名失败:', e)
     const backendMsg = e?.response?.data?.message || e?.data?.message || e?.message || '未知错误'
@@ -595,50 +604,55 @@ async function initWithNewSdk() {
     return
   }
 
-  // ★ 核心：签名回调函数——SDK会自动传递当前页面的真实URL
+  // ★ 预验证 agent_config 签名能力（确保后端能正确生成应用级签名）
+  try {
+    const agentPreRes: any = await getSidebarSign({
+      url: currentUrl,
+      corpId: corpId.value,
+      type: 'agent_config'
+    })
+    console.log('[Sidebar] 预验证agent_config签名成功: timestamp=', agentPreRes?.timestamp, ', signature前缀=', agentPreRes?.signature?.substring(0, 16))
+  } catch (e: any) {
+    console.error('[Sidebar] ❌ agent_config签名后端失败:', e)
+    const backendMsg = e?.response?.data?.message || e?.data?.message || e?.message || '未知错误'
+    setSdkError('api', 'agent_config签名失败', `后端无法生成应用级签名: ${backendMsg}`, `corpId=${corpId.value}, agentId=${agentId}`)
+    return
+  }
+
+  // ★ 核心：签名回调函数
   async function getConfigSignature(url: string) {
-    console.log('[Sidebar] ww.register → getConfigSignature 被SDK调用, url:', url?.substring(0, 120))
+    diagConfigCalled = true
+    console.log('[Sidebar] SDK调用 getConfigSignature, url:', url?.substring(0, 120))
     try {
       const res: any = await getSidebarSign({ url, corpId: corpId.value, type: 'config' })
-      const result = {
-        timestamp: Number(res.timestamp),
-        nonceStr: String(res.nonceStr || ''),
-        signature: String(res.signature || ''),
-      }
-      console.log('[Sidebar] getConfigSignature 返回:', JSON.stringify(result))
+      const result = { timestamp: Number(res.timestamp), nonceStr: String(res.nonceStr || ''), signature: String(res.signature || '') }
+      diagConfigResult = `OK: ts=${result.timestamp}, sig=${result.signature.substring(0, 12)}...`
+      console.log('[Sidebar] getConfigSignature →', JSON.stringify(result))
       return result
     } catch (err: any) {
-      console.error('[Sidebar] ❌ getConfigSignature 后端调用失败:', err?.message || err)
+      diagConfigResult = `FAIL: ${err?.message || err}`
+      console.error('[Sidebar] ❌ getConfigSignature失败:', err?.message || err)
       throw err
     }
   }
 
   async function getAgentConfigSignature(url: string) {
-    console.log('[Sidebar] ww.register → getAgentConfigSignature 被SDK调用, url:', url?.substring(0, 120))
+    diagAgentConfigCalled = true
+    console.log('[Sidebar] SDK调用 getAgentConfigSignature, url:', url?.substring(0, 120))
     try {
       const res: any = await getSidebarSign({ url, corpId: corpId.value, type: 'agent_config' })
-      const result = {
-        timestamp: Number(res.timestamp),
-        nonceStr: String(res.nonceStr || ''),
-        signature: String(res.signature || ''),
-      }
-      console.log('[Sidebar] getAgentConfigSignature 返回:', JSON.stringify(result))
+      const result = { timestamp: Number(res.timestamp), nonceStr: String(res.nonceStr || ''), signature: String(res.signature || '') }
+      diagAgentConfigResult = `OK: ts=${result.timestamp}, sig=${result.signature.substring(0, 12)}...`
+      console.log('[Sidebar] getAgentConfigSignature →', JSON.stringify(result))
       return result
     } catch (err: any) {
-      console.error('[Sidebar] ❌ getAgentConfigSignature 后端调用失败:', err?.message || err)
+      diagAgentConfigResult = `FAIL: ${err?.message || err}`
+      console.error('[Sidebar] ❌ getAgentConfigSignature失败:', err?.message || err)
       throw err
     }
   }
 
-  // ★ 使用 Promise 追踪 agentConfig 是否完成（SDK可能延迟执行agentConfig）
-  let agentConfigResolve: (v: boolean) => void
-  let agentConfigReject: (e: any) => void
-  const agentConfigReady = new Promise<boolean>((resolve, reject) => {
-    agentConfigResolve = resolve
-    agentConfigReject = reject
-  })
-
-  // ★ 注册时同时声明所有可能需要的API名称 + 诊断回调
+  // ★ 注册
   try {
     await ww.register({
       corpId: corpId.value,
@@ -646,56 +660,32 @@ async function initWithNewSdk() {
       jsApiList: ['getCurExternalContact', 'getCurExternalChat', 'getContext'],
       getConfigSignature,
       getAgentConfigSignature,
-      // ★ 诊断回调：追踪config和agentConfig真实完成状态
       onConfigSuccess(res: any) {
         console.log('[Sidebar] ✅ onConfigSuccess:', JSON.stringify(res))
       },
       onConfigFail(res: any) {
         console.error('[Sidebar] ❌ onConfigFail:', JSON.stringify(res))
+        diagConfigResult += ` | SDK回调fail: ${JSON.stringify(res)}`
       },
       onAgentConfigSuccess(res: any) {
         console.log('[Sidebar] ✅ onAgentConfigSuccess:', JSON.stringify(res))
-        agentConfigResolve(true)
       },
       onAgentConfigFail(res: any) {
         console.error('[Sidebar] ❌ onAgentConfigFail:', JSON.stringify(res))
-        agentConfigReject(res)
+        diagAgentConfigResult += ` | SDK回调fail: ${JSON.stringify(res)}`
       },
     })
-    console.log('[Sidebar] ✅ ww.register 返回! corpId=', corpId.value, ', agentId=', agentId)
+    console.log('[Sidebar] ww.register 返回成功, corpId=', corpId.value, ', agentId=', agentId)
   } catch (err: any) {
-    console.error('[Sidebar] ❌ ww.register 失败:', err)
+    console.error('[Sidebar] ❌ ww.register 异常:', err)
     const errMsg = err?.message || err?.errMsg || JSON.stringify(err)
     setSdkError('sdk-agent', 'ww.register 失败',
-      `应用注册失败(${errMsg})。请检查：\n1. AgentID(${agentId})是否正确\n2. 侧边栏URL域名(${window.location.hostname})是否在应用可信域名中\n3. 应用Secret是否正确`,
+      `应用注册失败(${errMsg})。AgentID=${agentId}, 域名=${window.location.hostname}`,
       `corpId=${corpId.value}, agentId=${agentId}, err=${errMsg}`)
     return
   }
 
-  // ★ 等待 agentConfig 真正完成（最多等10秒）
-  try {
-    const agentConfigOk = await Promise.race([
-      agentConfigReady,
-      new Promise<boolean>((_, reject) => setTimeout(() => reject(new Error('agentConfig 超时(10s)')), 10000))
-    ])
-    console.log('[Sidebar] agentConfig 已就绪:', agentConfigOk)
-  } catch (acErr: any) {
-    const acDetail = acErr?.errMsg || acErr?.message || JSON.stringify(acErr)
-    console.error('[Sidebar] ❌ agentConfig 未就绪:', acDetail)
-    pageState.value = 'error'
-    errorMsg.value = `应用身份验证失败(${acDetail})。请检查：\n1) AgentID(${agentId})是否正确\n2) 侧边栏域名(${window.location.hostname})是否在应用可信域名中\n3) 应用的jsapi_ticket是否有效`
-    return
-  }
-
-  // ★ 获取入口上下文
-  try {
-    const ctx: any = await ww.getContext()
-    console.log('[Sidebar] getContext 结果:', JSON.stringify(ctx))
-  } catch (ctxErr: any) {
-    console.warn('[Sidebar] getContext 失败（非致命）:', ctxErr)
-  }
-
-  // ★ 调用获取当前外部联系人
+  // ★ 直接调用 getCurExternalContact（SDK会惰性触发agentConfig）
   try {
     console.log('[Sidebar] 调用 ww.getCurExternalContact()...')
     const contactRes: any = await ww.getCurExternalContact()
@@ -713,12 +703,27 @@ async function initWithNewSdk() {
   } catch (e: any) {
     console.error('[Sidebar] ❌ getCurExternalContact 失败:', e)
     const errDetail = e?.message || e?.errMsg || e?.err_msg || JSON.stringify(e)
-    console.error('[Sidebar] 错误详情:', errDetail, ', 错误对象:', JSON.stringify(e))
+    console.error('[Sidebar] 诊断: configCalled=', diagConfigCalled, ', agentConfigCalled=', diagAgentConfigCalled)
+    console.error('[Sidebar] 诊断: configResult=', diagConfigResult, ', agentConfigResult=', diagAgentConfigResult)
+
     pageState.value = 'error'
-    if (/no permission|permission denied/i.test(errDetail)) {
-      errorMsg.value = `获取聊天对象失败：权限不足(${errDetail})。请检查：1) 应用是否有「客户联系」权限 2) 当前是否在外部联系人聊天窗口 3) 侧边栏是否通过企微「聊天工具」入口打开`
+    // ★ 显示详细诊断信息帮助定位问题
+    const diagInfo = [
+      `错误: ${errDetail}`,
+      `config回调${diagConfigCalled ? '已' : '未'}被SDK调用${diagConfigResult ? '(' + diagConfigResult + ')' : ''}`,
+      `agentConfig回调${diagAgentConfigCalled ? '已' : '未'}被SDK调用${diagAgentConfigResult ? '(' + diagAgentConfigResult + ')' : ''}`,
+      `AgentID=${agentId}, CorpID=${corpId.value}`,
+    ].join('\n')
+
+    if (!diagAgentConfigCalled) {
+      // SDK根本没调用agentConfig回调——说明register没有正确识别agentId或SDK版本问题
+      errorMsg.value = `SDK未触发应用身份验证。可能原因：\n1) 企微客户端版本过低（需≥2.5.0）\n2) 非企微内置浏览器环境\n3) AgentID(${agentId})未生效\n\n${diagInfo}`
+    } else if (/agentConfig:fail/i.test(errDetail)) {
+      errorMsg.value = `应用身份验证失败(agentConfig签名无效)。请检查：\n1) 侧边栏域名(${window.location.hostname})是否在应用可信域名中\n2) AgentID(${agentId})是否匹配\n3) 应用Secret/Ticket是否过期\n\n${diagInfo}`
+    } else if (/no permission|permission denied/i.test(errDetail)) {
+      errorMsg.value = `权限不足(${errDetail})。请检查应用是否有「客户联系」权限`
     } else {
-      errorMsg.value = `获取聊天对象失败(${errDetail})。请确保：1) 在外部联系人聊天窗口打开侧边栏 2) 应用已配置聊天工具栏`
+      errorMsg.value = `获取聊天对象失败。\n${diagInfo}`
     }
   }
 }
