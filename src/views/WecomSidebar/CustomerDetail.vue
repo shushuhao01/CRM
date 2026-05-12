@@ -571,7 +571,7 @@ async function initWithNewSdk() {
   let diagAgentConfigResult = ''
 
   // 先通过一次签名调用获取agentId和验证后端签名能力
-  let agentId: string | null = null
+  let agentId: number | null = null
   const currentUrl = window.location.href.split('#')[0]
   try {
     const preRes: any = await getSidebarSign({
@@ -579,7 +579,7 @@ async function initWithNewSdk() {
       corpId: corpId.value,
       type: 'config'
     })
-    agentId = preRes?.agentId ? String(preRes.agentId) : null
+    agentId = preRes?.agentId ? Number(preRes.agentId) : null
     // ★ 当corpId是占位符$CORPID$时，用后端返回的真实corpId替换
     if (preRes?.corpId && corpId.value.includes('$')) {
       console.log('[Sidebar] 替换占位符corpId:', corpId.value, '→', preRes.corpId)
@@ -655,7 +655,7 @@ async function initWithNewSdk() {
   try {
     await ww.register({
       corpId: corpId.value,
-      agentId: agentId,
+      agentId: Number(agentId),
       jsApiList: ['getCurExternalContact', 'getCurExternalChat', 'getContext'],
       getConfigSignature,
       getAgentConfigSignature,

@@ -1239,6 +1239,33 @@ router.post('/sidebar/sign', jsSdkConfigLimiter, validateJsSdkReferer, async (re
       return res.status(400).json({ success: false, message: '未找到匹配的企微配置' });
     }
 
+    // ★ agentId 自动校验+修正（第三方应用，仅在 config 类型请求时触发，避免重复校验）
+    if (type === 'config' && config.authType === 'third_party' && config.suiteId && config.permanentCode) {
+      try {
+        const { WecomTokenService: TokSvc } = await import('../../services/wecom/WecomTokenService');
+        const suiteToken = await TokSvc.getSuiteAccessToken(config.suiteId);
+        const axiosLib = (await import('axios')).default;
+        const authInfoRes = await axiosLib.post(
+          `https://qyapi.weixin.qq.com/cgi-bin/service/get_auth_info?suite_access_token=${suiteToken}`,
+          { auth_corpid: corpId.includes('$') ? config.corpId : corpId, permanent_code: config.permanentCode }
+        );
+        if (authInfoRes.data?.errcode === 0 || !authInfoRes.data?.errcode) {
+          const agents = authInfoRes.data?.auth_info?.agent || [];
+          const apiAgentId = agents[0]?.agentid;
+          if (apiAgentId && String(apiAgentId) !== String(config.agentId)) {
+            log.warn(`[Wecom Sidebar] /sign agentId自动修正: DB=${config.agentId} → API=${apiAgentId} (corpId=${corpId})`);
+            config.agentId = apiAgentId;
+            if (authInfoRes.data?.auth_info) {
+              config.authScope = JSON.stringify(authInfoRes.data.auth_info);
+            }
+            await AppDataSource.getRepository(WecomConfig).save(config);
+          }
+        }
+      } catch (e: any) {
+        log.warn(`[Wecom Sidebar] /sign agentId校验跳过: ${e.message}`);
+      }
+    }
+
     // 获取access_token
     const { WecomTokenService } = await import('../../services/wecom/WecomTokenService');
 
@@ -1278,6 +1305,87 @@ router.post('/sidebar/sign', jsSdkConfigLimiter, validateJsSdkReferer, async (re
   } catch (error: any) {
     log.error('[Wecom Sidebar] /sign error:', error.message);
     res.status(500).json({ success: false, message: `签名失败: ${error.message}` });
+  }
+});
+
+// ==================== 诊断: 检查并修复 agentId ====================
+
+/**
+ * 检查数据库中的 agentId 是否与企微实际值一致，支持自动/手动修正
+ *
+ * @body { corpId: string, correctAgentId?: number }
+ *   - corpId: 必填，要检查的企业ID
+ *   - correctAgentId: 可选，手动指定正确的AgentId（不传则自动从API获取）
+ */
+router.post('/sidebar/fix-agent-id', async (req: Request, res: Response) => {
+  try {
+    const { corpId, correctAgentId } = req.body;
+    if (!corpId) {
+      return res.status(400).json({ success: false, message: '参数不完整: 需要corpId' });
+    }
+
+    const configRepo = AppDataSource.getRepository(WecomConfig);
+    const config = await configRepo.findOne({ where: { corpId, isEnabled: true } });
+    if (!config) {
+      return res.status(404).json({ success: false, message: `未找到 corpId=${corpId} 的已启用企微配置` });
+    }
+
+    const currentAgentId = config.agentId;
+    const result: any = {
+      configId: config.id,
+      corpId: config.corpId,
+      name: config.name,
+      authType: config.authType,
+      currentAgentId,
+      apiAgentId: null,
+      updated: false,
+    };
+
+    // 第三方应用：通过 get_auth_info API 获取真实 agentId
+    if (config.authType === 'third_party' && config.suiteId && config.permanentCode) {
+      try {
+        const { WecomTokenService } = await import('../../services/wecom/WecomTokenService');
+        const suiteToken = await WecomTokenService.getSuiteAccessToken(config.suiteId);
+        const axios = (await import('axios')).default;
+        const authInfoRes = await axios.post(
+          `https://qyapi.weixin.qq.com/cgi-bin/service/get_auth_info?suite_access_token=${suiteToken}`,
+          { auth_corpid: config.corpId, permanent_code: config.permanentCode }
+        );
+        if (authInfoRes.data?.errcode === 0 || !authInfoRes.data?.errcode) {
+          const agents = authInfoRes.data?.auth_info?.agent || [];
+          result.apiAgentId = agents[0]?.agentid || null;
+          result.apiAgentName = agents[0]?.name || null;
+          result.apiAgentsCount = agents.length;
+          result.allAgents = agents.map((a: any) => ({ agentid: a.agentid, name: a.name }));
+        } else {
+          result.apiError = `errcode=${authInfoRes.data?.errcode}, errmsg=${authInfoRes.data?.errmsg}`;
+        }
+      } catch (e: any) {
+        result.apiError = e.message;
+      }
+    }
+
+    // 确定目标 agentId：优先使用手动指定值，其次使用API返回值
+    const targetAgentId = correctAgentId != null ? Number(correctAgentId) : (result.apiAgentId != null ? Number(result.apiAgentId) : null);
+
+    if (targetAgentId != null && String(targetAgentId) !== String(currentAgentId)) {
+      const oldVal = currentAgentId;
+      config.agentId = targetAgentId;
+      await configRepo.save(config);
+      result.updated = true;
+      result.newAgentId = targetAgentId;
+      result.message = `✅ AgentId 已从 ${oldVal} 更新为 ${targetAgentId}`;
+      log.info(`[Wecom Sidebar] fix-agent-id: corpId=${corpId}, AgentId ${oldVal} → ${targetAgentId}`);
+    } else if (targetAgentId != null && String(targetAgentId) === String(currentAgentId)) {
+      result.message = `✅ AgentId 已经是正确的值: ${currentAgentId}，无需更新`;
+    } else {
+      result.message = '⚠️ 无法自动确定正确的AgentId，请手动指定 correctAgentId 参数';
+    }
+
+    res.json({ success: true, data: result });
+  } catch (error: any) {
+    log.error('[Wecom Sidebar] fix-agent-id error:', error.message);
+    res.status(500).json({ success: false, message: error.message });
   }
 });
 
