@@ -578,61 +578,145 @@ async function initWithNewSdkWithFallback(): Promise<string | void> {
 }
 
 /**
- * ★ 动态加载旧版SDK并使用旧版流程重试
- * 当新版SDK遇到92002时，动态加载jwxwork并用wx.config+wx.agentConfig替代
+ * ★ 动态获取旧版 wx 兼容层并使用旧版流程重试
+ * 策略：CDN加载 → WeixinJSBridge原生桥接 → 全部失败才报错
  */
 async function fallbackToLegacySdk() {
-  console.log('[Sidebar] 开始旧版SDK降级: 动态加载 jwxwork...')
-  // 重置错误状态
+  console.log('[Sidebar] 开始旧版SDK降级...')
   pageState.value = 'loading'
   errorMsg.value = ''
 
-  const legacyCdns = [
-    '/api/v1/wecom/sdk/jwxwork-1.0.0.js',
-    'https://wwcdn.weixin.qq.com/node/wework/wwopen/js/jwxwork-1.0.0.js',
-    'https://open.work.weixin.qq.com/wwopen/js/jwxwork-1.0.0.js',
-  ]
+  const w = window as any
 
-  let wxLoaded = false
-  for (const url of legacyCdns) {
-    try {
-      await new Promise<void>((resolve, reject) => {
-        const s = document.createElement('script')
-        s.src = url
-        s.async = true
-        const timer = setTimeout(() => reject(new Error('timeout')), 8000)
-        s.onload = () => {
-          clearTimeout(timer)
-          setTimeout(() => {
-            const w = window as any
-            if (w.wx && typeof w.wx.config === 'function') {
-              wxLoaded = true; resolve()
-            } else if (w.jWeixin && typeof w.jWeixin.config === 'function') {
-              w.wx = w.jWeixin; wxLoaded = true; resolve()
-            } else {
-              reject(new Error('wx object not available'))
-            }
-          }, 200)
-        }
-        s.onerror = () => { clearTimeout(timer); reject(new Error('network error')) }
-        document.head.appendChild(s)
-      })
-      console.log('[Sidebar] ✅ 旧版SDK降级加载成功:', url)
-      break
-    } catch (e: any) {
-      console.warn(`[Sidebar] 旧版SDK降级加载失败(${url}):`, e.message)
+  // 第一步：检查 wx 对象是否已经可用（可能由新SDK附带或原生桥接注入）
+  if (w.wx && typeof w.wx.config === 'function') {
+    console.log('[Sidebar] ✅ wx对象已存在，直接使用')
+  } else if (w.jWeixin && typeof w.jWeixin.config === 'function') {
+    w.wx = w.jWeixin
+    console.log('[Sidebar] ✅ jWeixin对象已存在，映射为wx')
+  } else {
+    // 第二步：尝试从CDN加载
+    const cdns = [
+      'https://res.wx.qq.com/open/js/jweixin-1.6.0.js',
+      'https://res2.wx.qq.com/open/js/jweixin-1.2.0.js',
+      '/api/v1/wecom/sdk/jweixin-1.2.0.js',
+      'https://open.work.weixin.qq.com/wwopen/js/jwxwork-1.0.0.js',
+      '/api/v1/wecom/sdk/jwxwork-1.0.0.js',
+    ]
+    let cdnLoaded = false
+    for (const url of cdns) {
+      try {
+        await new Promise<void>((resolve, reject) => {
+          const s = document.createElement('script')
+          s.src = url; s.async = true
+          s.setAttribute('data-wecom-fallback', '1')
+          const timer = setTimeout(() => reject(new Error('timeout')), 6000)
+          s.onload = () => {
+            clearTimeout(timer)
+            setTimeout(() => {
+              if (w.wx && typeof w.wx.config === 'function') { cdnLoaded = true; resolve() }
+              else if (w.jWeixin && typeof w.jWeixin.config === 'function') { w.wx = w.jWeixin; cdnLoaded = true; resolve() }
+              else reject(new Error('wx not created'))
+            }, 300)
+          }
+          s.onerror = () => { clearTimeout(timer); reject(new Error('network')) }
+          document.head.appendChild(s)
+        })
+        console.log('[Sidebar] ✅ 旧版SDK CDN加载成功:', url)
+        break
+      } catch (e: any) {
+        console.warn(`[Sidebar] CDN失败(${url}):`, e.message)
+      }
     }
-  }
 
-  if (!wxLoaded) {
-    setSdkError('sdk-load', '旧版SDK降级失败',
-      '新版SDK遇到92002错误，尝试降级到旧版SDK也失败了。请联系管理员检查SDK文件是否可访问。')
-    return
+    // 第三步：CDN全部失败，用企微原生桥接创建 wx 兼容层
+    if (!cdnLoaded) {
+      console.log('[Sidebar] CDN全部失败，尝试 WeixinJSBridge 原生桥接...')
+      const bridgeReady = await ensureWeixinJSBridge()
+      if (bridgeReady) {
+        createWxFromBridge()
+        console.log('[Sidebar] ✅ 通过 WeixinJSBridge 创建了 wx 兼容层')
+      } else {
+        setSdkError('sdk-load', 'SDK加载失败',
+          '无法加载企微JS-SDK。请检查：1) 是否在企微客户端中打开 2) 网络是否正常 3) 联系管理员检查服务器配置')
+        return
+      }
+    }
   }
 
   sdkMode = 'wx'
   sessionStorage.removeItem('sidebar_92002_retried')
   await initWithLegacySdk()
+}
+
+/** 等待 WeixinJSBridge 就绪（企微浏览器内置） */
+function ensureWeixinJSBridge(): Promise<boolean> {
+  const w = window as any
+  if (w.WeixinJSBridge) return Promise.resolve(true)
+  return new Promise(resolve => {
+    const timer = setTimeout(() => resolve(false), 3000)
+    document.addEventListener('WeixinJSBridgeReady', () => {
+      clearTimeout(timer); resolve(true)
+    }, { once: true })
+  })
+}
+
+/** 基于 WeixinJSBridge 创建最小化 wx 兼容对象 */
+function createWxFromBridge() {
+  const w = window as any
+  const bridge = w.WeixinJSBridge
+  const readyCbs: Array<() => void> = []
+  let configDone = false
+  let errorFn: ((err: any) => void) | null = null
+
+  w.wx = {
+    config(opts: any) {
+      bridge.invoke('preVerifyJSAPI', {
+        verifyJsApiList: opts.jsApiList || [],
+        verifyOpenTagList: opts.openTagList || [],
+        timestamp: String(opts.timestamp || ''),
+        nonceStr: String(opts.nonceStr || ''),
+        signature: String(opts.signature || ''),
+        appId: String(opts.appId || ''),
+        beta: opts.beta || false,
+      }, (res: any) => {
+        const ok = !res.err_msg || res.err_msg === 'preVerifyJSAPI:ok'
+        console.log('[Sidebar] Bridge wx.config:', ok ? 'ok' : res.err_msg)
+        if (ok) {
+          configDone = true
+          readyCbs.forEach(fn => { try { fn() } catch (_e) { /* */ } })
+          readyCbs.length = 0
+        } else if (errorFn) {
+          errorFn(res)
+        }
+      })
+    },
+    ready(fn: () => void) {
+      if (configDone) fn()
+      else readyCbs.push(fn)
+    },
+    error(fn: (err: any) => void) { errorFn = fn },
+    agentConfig(opts: any) {
+      bridge.invoke('agentConfig', {
+        corpid: String(opts.corpid || ''),
+        agentid: String(opts.agentid || ''),
+        timestamp: String(opts.timestamp || ''),
+        nonceStr: String(opts.nonceStr || ''),
+        signature: String(opts.signature || ''),
+        jsApiList: opts.jsApiList || [],
+      }, (res: any) => {
+        const msg = res.err_msg || ''
+        if (msg.indexOf('ok') > -1) {
+          if (opts.success) opts.success(res)
+        } else {
+          if (opts.fail) opts.fail(res)
+        }
+      })
+    },
+    invoke(api: string, params: any, fn: (res: any) => void) {
+      bridge.invoke(api, params || {}, (res: any) => { if (fn) fn(res) })
+    },
+  }
 }
 
 /**
@@ -1072,15 +1156,16 @@ function loadWecomJsSdk(): Promise<void> {
   // 对第三方服务商应用导致 92002 "not allow to cross corp"。
   // 旧版 wx.config + wx.agentConfig 显式流程可正确建立企业上下文。
   const CDN_LIST = [
-    // 1. 旧版 jwxwork（优先 - 第三方服务商侧边栏推荐）
-    '/api/v1/wecom/sdk/jwxwork-1.0.0.js',
-    'https://wwcdn.weixin.qq.com/node/wework/wwopen/js/jwxwork-1.0.0.js',
+    // 1. jweixin（最稳定的老SDK源，res.wx.qq.com 高可用）
+    'https://res.wx.qq.com/open/js/jweixin-1.6.0.js',
+    'https://res.wx.qq.com/open/js/jweixin-1.2.0.js',
+    '/api/v1/wecom/sdk/jweixin-1.2.0.js',
+    // 2. 旧版 jwxwork（可能已下架）
     'https://open.work.weixin.qq.com/wwopen/js/jwxwork-1.0.0.js',
-    // 2. 新版 @wecom/jssdk（降级备用）
+    '/api/v1/wecom/sdk/jwxwork-1.0.0.js',
+    // 3. 新版 @wecom/jssdk（第三方应用可能遇到92002，但作为兜底）
     '/api/v1/wecom/sdk/wecom-jssdk-2.4.0.js',
     'https://wwcdn.weixin.qq.com/node/wework/wwopen/js/wecom-jssdk-2.4.0.js',
-    // 3. jweixin（最终降级）
-    'https://res.wx.qq.com/open/js/jweixin-1.2.0.js',
   ]
 
   return (async () => {
