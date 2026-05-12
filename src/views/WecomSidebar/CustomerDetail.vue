@@ -394,7 +394,7 @@ defineOptions({ name: 'WecomSidebarDetail' })
 import { ref, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Loading, SwitchButton, User, EditPen, InfoFilled, DataAnalysis, List, TopRight, Refresh } from '@element-plus/icons-vue'
-import { getSidebarJsSdkConfig, getSidebarSign, sidebarBindAccount, sidebarVerifyBinding, getSidebarCustomerDetail, refreshSidebarToken, getSuiteTicketDiagnostic } from '@/api/wecom'
+import { getSidebarJsSdkConfig, getSidebarSign, clearSidebarCache, sidebarBindAccount, sidebarVerifyBinding, getSidebarCustomerDetail, refreshSidebarToken, getSuiteTicketDiagnostic } from '@/api/wecom'
 import { displaySensitiveInfo as displaySensitiveInfoNew } from '@/utils/sensitiveInfo'
 import { SensitiveInfoType } from '@/services/permission'
 
@@ -559,10 +559,13 @@ async function initWecomSdk() {
  *
  * 重要：ww.register 是惰性的，SDK不会在register时主动执行agentConfig，
  * 而是在调用需要应用身份的API时才触发 getAgentConfigSignature 回调。
+ *
+ * 92002 自动恢复：首次失败后自动清除后端缓存并强制刷新重试一次
  */
-async function initWithNewSdk() {
+async function initWithNewSdk(retryCount = 0) {
   const ww = (window as any).ww
-  console.log('[Sidebar] 使用新版 ww.register 模式')
+  const isRetry = retryCount > 0
+  console.log(`[Sidebar] 使用新版 ww.register 模式${isRetry ? ` (第${retryCount}次重试, forceRefresh=true)` : ''}`)
 
   // 诊断信息收集
   let diagConfigCalled = false
@@ -577,7 +580,8 @@ async function initWithNewSdk() {
     const preRes: any = await getSidebarSign({
       url: currentUrl,
       corpId: corpId.value,
-      type: 'config'
+      type: 'config',
+      forceRefresh: isRetry
     })
     agentId = preRes?.agentId ? Number(preRes.agentId) : null
     // ★ 当corpId是占位符$CORPID$时，用后端返回的真实corpId替换
@@ -608,7 +612,8 @@ async function initWithNewSdk() {
     const agentPreRes: any = await getSidebarSign({
       url: currentUrl,
       corpId: corpId.value,
-      type: 'agent_config'
+      type: 'agent_config',
+      forceRefresh: isRetry
     })
     console.log('[Sidebar] 预验证agent_config签名成功: timestamp=', agentPreRes?.timestamp, ', signature前缀=', agentPreRes?.signature?.substring(0, 16))
   } catch (e: any) {
@@ -618,12 +623,12 @@ async function initWithNewSdk() {
     return
   }
 
-  // ★ 核心：签名回调函数
+  // ★ 核心：签名回调函数（重试时带 forceRefresh 标记，强制后端刷新 token/ticket）
   async function getConfigSignature(url: string) {
     diagConfigCalled = true
     console.log('[Sidebar] SDK调用 getConfigSignature, url:', url?.substring(0, 120))
     try {
-      const res: any = await getSidebarSign({ url, corpId: corpId.value, type: 'config' })
+      const res: any = await getSidebarSign({ url, corpId: corpId.value, type: 'config', forceRefresh: isRetry })
       const result = { timestamp: Number(res.timestamp), nonceStr: String(res.nonceStr || ''), signature: String(res.signature || '') }
       diagConfigResult = `OK: ts=${result.timestamp}, sig=${result.signature.substring(0, 12)}...`
       console.log('[Sidebar] getConfigSignature →', JSON.stringify(result))
@@ -639,7 +644,7 @@ async function initWithNewSdk() {
     diagAgentConfigCalled = true
     console.log('[Sidebar] SDK调用 getAgentConfigSignature, url:', url?.substring(0, 120))
     try {
-      const res: any = await getSidebarSign({ url, corpId: corpId.value, type: 'agent_config' })
+      const res: any = await getSidebarSign({ url, corpId: corpId.value, type: 'agent_config', forceRefresh: isRetry })
       const result = { timestamp: Number(res.timestamp), nonceStr: String(res.nonceStr || ''), signature: String(res.signature || '') }
       diagAgentConfigResult = `OK: ts=${result.timestamp}, sig=${result.signature.substring(0, 12)}...`
       console.log('[Sidebar] getAgentConfigSignature →', JSON.stringify(result))
@@ -705,6 +710,19 @@ async function initWithNewSdk() {
     console.error('[Sidebar] 诊断: configCalled=', diagConfigCalled, ', agentConfigCalled=', diagAgentConfigCalled)
     console.error('[Sidebar] 诊断: configResult=', diagConfigResult, ', agentConfigResult=', diagAgentConfigResult)
 
+    // ★ 92002 "not allow to cross corp" 自动恢复：清除后端缓存并重试一次
+    const is92002 = /92002|cross corp/i.test(errDetail) || /92002|cross corp/i.test(diagAgentConfigResult)
+    if (is92002 && retryCount < 1) {
+      console.warn('[Sidebar] 检测到92002错误，清除后端缓存并重试...')
+      try {
+        await clearSidebarCache(corpId.value)
+        console.log('[Sidebar] 后端缓存已清除，开始第1次重试')
+        return initWithNewSdk(retryCount + 1)
+      } catch (clearErr: any) {
+        console.error('[Sidebar] 清除缓存失败:', clearErr?.message)
+      }
+    }
+
     pageState.value = 'error'
     // ★ 显示详细诊断信息帮助定位问题
     const diagInfo = [
@@ -712,11 +730,13 @@ async function initWithNewSdk() {
       `config回调${diagConfigCalled ? '已' : '未'}被SDK调用${diagConfigResult ? '(' + diagConfigResult + ')' : ''}`,
       `agentConfig回调${diagAgentConfigCalled ? '已' : '未'}被SDK调用${diagAgentConfigResult ? '(' + diagAgentConfigResult + ')' : ''}`,
       `AgentID=${agentId}, CorpID=${corpId.value}`,
-    ].join('\n')
+      isRetry ? '(已重试1次，仍然失败)' : '',
+    ].filter(Boolean).join('\n')
 
     if (!diagAgentConfigCalled) {
-      // SDK根本没调用agentConfig回调——说明register没有正确识别agentId或SDK版本问题
       errorMsg.value = `SDK未触发应用身份验证。可能原因：\n1) 企微客户端版本过低（需≥2.5.0）\n2) 非企微内置浏览器环境\n3) AgentID(${agentId})未生效\n\n${diagInfo}`
+    } else if (is92002) {
+      errorMsg.value = `应用身份验证失败(92002: 不允许跨企业调用)。请检查：\n1) 侧边栏域名(${window.location.hostname})是否在应用可信域名中\n2) AgentID(${agentId})与当前企业授权的应用是否匹配\n3) 是否需要重新授权安装应用\n\n${diagInfo}`
     } else if (/agentConfig:fail/i.test(errDetail)) {
       errorMsg.value = `应用身份验证失败(agentConfig签名无效)。请检查：\n1) 侧边栏域名(${window.location.hostname})是否在应用可信域名中\n2) AgentID(${agentId})是否匹配\n3) 应用Secret/Ticket是否过期\n\n${diagInfo}`
     } else if (/no permission|permission denied/i.test(errDetail)) {
@@ -794,11 +814,26 @@ async function initWithLegacySdk() {
           console.log('[Sidebar] ✅ agentConfig success')
           getCurExternalContact(wx)
         },
-        fail: (err: any) => {
+        fail: async (err: any) => {
           console.error('[Sidebar] ❌ agentConfig fail:', JSON.stringify(err))
           const errMsg = err?.errMsg || err?.err_msg || JSON.stringify(err)
+
+          // ★ 92002 自动恢复：清除后端缓存并刷新页面重试
+          if (/92002|cross corp/i.test(errMsg) && !sessionStorage.getItem('sidebar_92002_retried')) {
+            console.warn('[Sidebar] 检测到92002错误，清除后端缓存并刷新页面...')
+            sessionStorage.setItem('sidebar_92002_retried', '1')
+            try { await clearSidebarCache(configRes.corpId) } catch (_e) { /* ignore */ }
+            window.location.reload()
+            return
+          }
+          sessionStorage.removeItem('sidebar_92002_retried')
+
           if (errMsg.includes('permission denied')) {
             setSdkError('sdk-agent', 'agentConfig权限不足', '应用缺少调用权限，请检查客户联系权限和可信域名', `err=${errMsg}`)
+          } else if (/92002|cross corp/i.test(errMsg)) {
+            setSdkError('sdk-agent', 'agentConfig跨企业错误(92002)',
+              `应用身份验证失败(不允许跨企业调用)。请检查：\n1) 侧边栏域名(${window.location.hostname})是否在应用可信域名中\n2) AgentID(${agentIdStr})与当前企业授权的应用是否匹配\n3) 是否需要重新授权安装应用`,
+              `corpId=${configRes.corpId}, agentId=${agentIdStr}, err=${errMsg}`)
           } else if (errMsg.includes('invalid signature') || errMsg.includes('sign')) {
             setSdkError('sdk-agent', 'agentConfig签名失败', '签名不正确，可能是URL不匹配或ticket已过期。建议：刷新页面或联系管理员检查可信域名', `err=${errMsg}`)
           } else if (errMsg.includes('domain') || errMsg.includes('bindDomain') || errMsg.includes('bindUrl')) {

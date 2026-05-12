@@ -1214,7 +1214,7 @@ router.put('/sidebar-mp-config', authenticateToken, requireAdmin, async (req: Re
  */
 router.post('/sidebar/sign', jsSdkConfigLimiter, validateJsSdkReferer, async (req: Request, res: Response) => {
   try {
-    const { url: rawUrl, corpId, type } = req.body;
+    const { url: rawUrl, corpId, type, forceRefresh } = req.body;
     const url = (rawUrl || '').split('#')[0].replace(/\s+$/, '');
 
     if (!url || !corpId) {
@@ -1239,11 +1239,19 @@ router.post('/sidebar/sign', jsSdkConfigLimiter, validateJsSdkReferer, async (re
       return res.status(400).json({ success: false, message: '未找到匹配的企微配置' });
     }
 
-    // ★ agentId 自动校验+修正（第三方应用，仅在 config 类型请求时触发，避免重复校验）
-    if (type === 'config' && config.authType === 'third_party' && config.suiteId && config.permanentCode) {
+    // ★ 强制刷新：前端检测到92002等错误后会带此标记，清除所有缓存重新获取
+    const { WecomTokenService } = await import('../../services/wecom/WecomTokenService');
+    if (forceRefresh) {
+      log.info(`[Wecom Sidebar] /sign forceRefresh=true, 清除所有缓存 corpId=${corpId}`);
+      WecomTokenService.clearCache(corpId.includes('$') ? undefined : corpId);
+      WecomApiService.clearCache(corpId.includes('$') ? undefined : corpId);
+    }
+
+    // ★ agentId 自动校验+修正（第三方应用）
+    // 扩展到 config 和 agent_config 两种类型都校验（之前仅 config 触发，导致 agent_config 可能使用旧 agentId）
+    if (config.authType === 'third_party' && config.suiteId && config.permanentCode) {
       try {
-        const { WecomTokenService: TokSvc } = await import('../../services/wecom/WecomTokenService');
-        const suiteToken = await TokSvc.getSuiteAccessToken(config.suiteId);
+        const suiteToken = await WecomTokenService.getSuiteAccessToken(config.suiteId);
         const axiosLib = (await import('axios')).default;
         const authInfoRes = await axiosLib.post(
           `https://qyapi.weixin.qq.com/cgi-bin/service/get_auth_info?suite_access_token=${suiteToken}`,
@@ -1266,15 +1274,47 @@ router.post('/sidebar/sign', jsSdkConfigLimiter, validateJsSdkReferer, async (re
       }
     }
 
-    // 获取access_token
-    const { WecomTokenService } = await import('../../services/wecom/WecomTokenService');
-
     // 第三方应用：临时覆盖corpId确保token正确
     if (config.authType === 'third_party' && corpId && corpId !== config.corpId && !corpId.includes('$')) {
       config.corpId = corpId;
     }
 
     const accessToken = await WecomTokenService.getAccessToken(config);
+
+    // ★ agent_config类型：验证access_token归属正确性（防止跨企业token污染导致92002）
+    if (type === 'agent_config' && config.agentId) {
+      try {
+        const axiosLib = (await import('axios')).default;
+        const agentCheck = await axiosLib.get(`https://qyapi.weixin.qq.com/cgi-bin/agent/get`, {
+          params: { access_token: accessToken, agentid: config.agentId }
+        });
+        if (agentCheck.data?.errcode && agentCheck.data.errcode !== 0) {
+          log.error(`[Wecom Sidebar] /sign token归属验证失败: errcode=${agentCheck.data.errcode}, errmsg=${agentCheck.data.errmsg}, agentId=${config.agentId}`);
+          // token无效，清除缓存后重新获取
+          WecomTokenService.clearCache(config.corpId);
+          WecomApiService.clearCache(config.corpId);
+          const freshToken = await WecomTokenService.getAccessToken(config);
+          log.info(`[Wecom Sidebar] /sign token刷新完成, 旧token前缀=${accessToken.substring(0, 16)}, 新token前缀=${freshToken.substring(0, 16)}`);
+          // 使用新token继续
+          const ticket = await WecomApiService.getAgentJsSdkTicket(freshToken);
+          const timestamp = Math.floor(Date.now() / 1000);
+          const nonceStr = uuidv4().replace(/-/g, '').substring(0, 16);
+          const signature = WecomApiService.generateJsSdkSignature(ticket, nonceStr, timestamp, url);
+          log.info(`[Wecom Sidebar] /sign(refreshed): type=${type}, corpId=${corpId}, agentId=${config.agentId}, ticket前缀=${ticket.substring(0, 20)}, sig前缀=${signature.substring(0, 16)}`);
+          return res.json({
+            success: true,
+            data: {
+              timestamp, nonceStr, signature,
+              corpId: corpId !== '$CORPID$' && !corpId.includes('$') ? corpId : config.corpId,
+              agentId: config.agentId || null,
+            }
+          });
+        }
+        log.info(`[Wecom Sidebar] /sign token归属验证OK: appName=${agentCheck.data?.name}, agentId=${agentCheck.data?.agentid}`);
+      } catch (e: any) {
+        log.warn(`[Wecom Sidebar] /sign token归属验证跳过: ${e.message}`);
+      }
+    }
 
     // 获取对应的ticket
     let ticket: string;
@@ -1289,7 +1329,7 @@ router.post('/sidebar/sign', jsSdkConfigLimiter, validateJsSdkReferer, async (re
     const nonceStr = uuidv4().replace(/-/g, '').substring(0, 16);
     const signature = WecomApiService.generateJsSdkSignature(ticket, nonceStr, timestamp, url);
 
-    log.info(`[Wecom Sidebar] /sign: type=${type}, corpId=${corpId}, url=${url.substring(0, 80)}, agentId=${config.agentId || '(空)'}, ticket前缀=${ticket.substring(0, 20)}, signature前缀=${signature.substring(0, 16)}, timestamp=${timestamp}, nonceStr=${nonceStr}`);
+    log.info(`[Wecom Sidebar] /sign: type=${type}, corpId=${corpId}, authType=${config.authType}, url=${url.substring(0, 80)}, agentId=${config.agentId || '(空)'}, ticket前缀=${ticket.substring(0, 20)}, sig前缀=${signature.substring(0, 16)}, ts=${timestamp}`);
 
     res.json({
       success: true,
@@ -1297,7 +1337,6 @@ router.post('/sidebar/sign', jsSdkConfigLimiter, validateJsSdkReferer, async (re
         timestamp,
         nonceStr,
         signature,
-        // 额外返回agentId和corpId，方便前端ww.register使用
         corpId: corpId !== '$CORPID$' && !corpId.includes('$') ? corpId : config.corpId,
         agentId: config.agentId || null,
       }
@@ -1305,6 +1344,35 @@ router.post('/sidebar/sign', jsSdkConfigLimiter, validateJsSdkReferer, async (re
   } catch (error: any) {
     log.error('[Wecom Sidebar] /sign error:', error.message);
     res.status(500).json({ success: false, message: `签名失败: ${error.message}` });
+  }
+});
+
+// ==================== 缓存清理: 92002 错误恢复 ====================
+
+/**
+ * 清除指定企业的所有Token/Ticket缓存
+ * 前端检测到 92002 "not allow to cross corp" 时调用此端点，然后重试初始化
+ *
+ * @body { corpId: string }
+ */
+router.post('/sidebar/clear-cache', async (req: Request, res: Response) => {
+  try {
+    const { corpId } = req.body;
+    if (!corpId) {
+      return res.status(400).json({ success: false, message: '参数不完整: 需要corpId' });
+    }
+
+    const { WecomTokenService } = await import('../../services/wecom/WecomTokenService');
+    const resolvedCorpId = (corpId === '$CORPID$' || corpId.includes('$')) ? undefined : corpId;
+
+    WecomTokenService.clearCache(resolvedCorpId);
+    WecomApiService.clearCache(resolvedCorpId);
+
+    log.info(`[Wecom Sidebar] /clear-cache: 已清除缓存 corpId=${corpId}`);
+    res.json({ success: true, message: '缓存已清除' });
+  } catch (error: any) {
+    log.error('[Wecom Sidebar] /clear-cache error:', error.message);
+    res.status(500).json({ success: false, message: `清除缓存失败: ${error.message}` });
   }
 });
 

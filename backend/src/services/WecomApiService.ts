@@ -744,6 +744,8 @@ export class WecomApiService {
 
   /**
    * 清除指定corpId的Token和Ticket缓存，取消授权时由WecomTokenService联动调用
+   * 注意：ticket缓存key格式为 jsticket:/agent_jsticket: + token前缀，
+   * 无法按corpId精确匹配，因此清理特定corpId时也全量清理ticket缓存
    */
   static clearCache(corpId?: string): void {
     if (corpId) {
@@ -752,16 +754,14 @@ export class WecomApiService {
           tokenCache.delete(key);
         }
       }
-      for (const key of ticketCache.keys()) {
-        if (key.startsWith(`${corpId}:`)) {
-          ticketCache.delete(key);
-        }
-      }
+      // ticket缓存key基于accessToken前缀（非corpId），无法按corpId精确匹配
+      // 为确保不使用过期ticket，全量清理ticket缓存
+      ticketCache.clear();
     } else {
       tokenCache.clear();
       ticketCache.clear();
     }
-    log.info(`[WecomApi] Cache cleared${corpId ? ' for ' + corpId : ' (all)'}`);
+    log.info(`[WecomApi] Cache cleared${corpId ? ' for ' + corpId : ' (all)'}, tokenCache=${tokenCache.size}, ticketCache=${ticketCache.size}`);
   }
 }
 

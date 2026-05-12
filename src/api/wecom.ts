@@ -714,8 +714,13 @@ export const getSidebarJsSdkConfig = (data: { url: string; corpId: string }) => 
 }
 
 /** 侧边栏 - JS-SDK签名（新版ww.register模式） */
-export const getSidebarSign = (data: { url: string; corpId: string; type: 'config' | 'agent_config' }) => {
+export const getSidebarSign = (data: { url: string; corpId: string; type: 'config' | 'agent_config'; forceRefresh?: boolean }) => {
   return request.post('/wecom/sidebar/sign', data)
+}
+
+/** 侧边栏 - 清除后端Token/Ticket缓存（92002错误恢复用） */
+export const clearSidebarCache = (corpId: string) => {
+  return request.post('/wecom/sidebar/clear-cache', { corpId })
 }
 
 /** 侧边栏 - 绑定账号(登录) */
