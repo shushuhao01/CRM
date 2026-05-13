@@ -111,7 +111,10 @@
               <img :src="getProductImage(p)" :alt="p.name" @error="handleImgError($event)" />
             </div>
             <div class="qo-prod-info">
-              <div class="qo-prod-name">{{ p.name }}</div>
+              <div class="qo-prod-name">
+                <span class="prod-type-tag" :class="p.productType === 'virtual' ? 'virtual' : 'physical'">{{ p.productType === 'virtual' ? '虚拟' : '实物' }}</span>
+                {{ p.name }}
+              </div>
               <div class="qo-prod-meta">
                 <span class="qo-prod-price">¥{{ Number(p.price).toFixed(2) }}</span>
                 <span class="qo-prod-stock" :class="{ 'no-stock': p.stock <= 0 }">{{ p.stock > 0 ? '库存 ' + p.stock : '缺货' }}</span>
@@ -128,7 +131,7 @@
         <div class="card-title">📦 已选产品 ({{ form.products.length }})</div>
         <div class="qo-selected-product" v-for="(sp, idx) in form.products" :key="sp.id">
           <div class="qo-sp-top">
-            <span class="qo-sp-name">{{ sp.name }}</span>
+            <span class="qo-sp-name"><span class="prod-type-tag" :class="sp.productType === 'virtual' ? 'virtual' : 'physical'">{{ sp.productType === 'virtual' ? '虚拟' : '实物' }}</span> {{ sp.name }}</span>
             <span class="qo-sp-remove" @click="removeProduct(idx)">✕</span>
           </div>
           <div class="qo-sp-bottom">
@@ -223,9 +226,9 @@
         <div class="form-group">
           <label>订单类型 <span class="qo-req">*</span></label>
           <div class="qo-radio-group">
-            <span class="qo-radio" :class="{ active: form.markType === 'normal' }" @click="form.markType = 'normal'">正常发货单</span>
-            <span class="qo-radio" :class="{ active: form.markType === 'reserved' }" @click="form.markType = 'reserved'">预留单</span>
-            <span class="qo-radio" :class="{ active: form.markType === 'virtual_delivery' }" @click="form.markType = 'virtual_delivery'">虚拟发货</span>
+            <span class="qo-radio" :class="{ active: form.markType === 'normal', disabled: isPureVirtual }" @click="!isPureVirtual && (form.markType = 'normal')">正常发货单</span>
+            <span class="qo-radio" :class="{ active: form.markType === 'reserved', disabled: isPureVirtual }" @click="!isPureVirtual && (form.markType = 'reserved')">预留单</span>
+            <span class="qo-radio" :class="{ active: form.markType === 'virtual_delivery', disabled: !hasVirtualProduct }" @click="hasVirtualProduct && (form.markType = 'virtual_delivery')">虚拟发货</span>
           </div>
         </div>
         <div class="form-group">
@@ -407,6 +410,14 @@ const maskPhone = (p: string) => {
 
 const goStep = (s: number) => { step.value = s }
 
+const hasVirtualProduct = computed(() => form.value.products.some(p => (p as any).productType === 'virtual'))
+const isPureVirtual = computed(() => form.value.products.length > 0 && form.value.products.every(p => (p as any).productType === 'virtual'))
+
+watch(isPureVirtual, (val) => {
+  if (val) form.value.markType = 'virtual_delivery'
+  else if (form.value.markType === 'virtual_delivery') form.value.markType = 'normal'
+})
+
 const syncTotal = () => {
   form.value.totalAmount = subtotal.value
 }
@@ -532,7 +543,8 @@ const addProduct = (p: any) => {
     form.value.products.push({
       id: p.id, name: p.name, price: Number(p.price) || 0,
       quantity: 1, stock: p.stock || 999,
-      image: p.image || p.imageUrl || p.thumbnail || ''
+      image: p.image || p.imageUrl || p.thumbnail || '',
+      productType: p.productType || 'physical'
     })
     syncTotal()
   }
@@ -637,12 +649,16 @@ const submitOrder = async () => {
   try {
     const res: any = await request.post('/wecom/sidebar/orders', {
       customerId: form.value.customerId,
+      customerName: form.value.customerName,
+      customerPhone: form.value.customerPhone,
       products: form.value.products.map(p => ({
-        id: p.id, name: p.name, price: p.price, quantity: p.quantity
+        id: p.id, name: p.name, price: p.price, quantity: p.quantity,
+        image: (p as any).image || '', productType: (p as any).productType || 'physical', sku: (p as any).sku || ''
       })),
       totalAmount: Number(form.value.totalAmount) || subtotal.value,
       depositAmount: Number(form.value.depositAmount) || 0,
       paymentMethod: form.value.paymentMethod,
+      paymentMethodOther: (form.value as any).paymentMethodOther || '',
       remark: form.value.remark,
       receiverName: form.value.receiverName,
       receiverPhone: form.value.receiverPhone,
@@ -650,7 +666,8 @@ const submitOrder = async () => {
       serviceWechat: form.value.serviceWechat,
       orderSource: form.value.orderSource,
       expressCompany: form.value.expressCompany,
-      markType: form.value.markType
+      markType: form.value.markType,
+      depositScreenshots: form.value.depositScreenshots || []
     }, authHeaders.value as any)
     const data = res?.data || res
     resultOrderNo.value = data?.orderNumber || ''
@@ -799,6 +816,10 @@ select.preview-input { appearance: auto; }
 .qo-add-btn:disabled { background: #dcdfe6; cursor: not-allowed; opacity: 0.6; }
 .qo-product-item.out-of-stock { opacity: 0.6; }
 .qo-prod-stock.no-stock { color: #f56c6c; }
+.prod-type-tag { display: inline-block; padding: 0 4px; border-radius: 2px; font-size: 9px; font-weight: 600; vertical-align: middle; margin-right: 2px; }
+.prod-type-tag.physical { background: #e8f5e9; color: #4caf50; }
+.prod-type-tag.virtual { background: #e3f2fd; color: #1976d2; }
+.qo-radio.disabled { opacity: 0.4; cursor: not-allowed; }
 
 /* 已选产品 */
 .qo-selected-product { padding: 8px 0; border-bottom: 1px solid #f5f5f5; }

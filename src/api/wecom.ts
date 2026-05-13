@@ -739,9 +739,9 @@ export const sidebarVerifyBinding = (wecomUserId: string, corpId: string) => {
 }
 
 /** 侧边栏 - 获取客户详情(含订单) */
-export const getSidebarCustomerDetail = (externalUserId: string, token: string) => {
+export const getSidebarCustomerDetail = (externalUserId: string, token: string, orderPage?: number) => {
   return request.get('/wecom/sidebar/customer-detail', {
-    params: { externalUserId },
+    params: { externalUserId, ...(orderPage ? { orderPage } : {}) },
     headers: { Authorization: `Bearer ${token}` }
   } as any)
 }

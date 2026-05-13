@@ -308,6 +308,61 @@ router.post('/submit-customer', validateMpSign, async (req: Request, res: Respon
       log.warn('[小程序] 发送系统消息失败:', e);
     }
 
+    // ★ 自动关联企微客户：如果请求中携带了externalUserId，将新建的CRM客户与企微客户关联
+    const externalUserId = req.body.externalUserId || customerData.externalUserId || '';
+    if (externalUserId && saved.id) {
+      try {
+        const { WecomCustomer } = await import('../../entities/WecomCustomer');
+        const wecomCustomerRepo = AppDataSource.getRepository(WecomCustomer);
+        const wecomCust = await wecomCustomerRepo.findOne({
+          where: { externalUserId, ...(tenantId ? { tenantId } : {}) }
+        });
+        if (wecomCust && !wecomCust.crmCustomerId) {
+          wecomCust.crmCustomerId = saved.id;
+          await wecomCustomerRepo.save(wecomCust);
+          log.info(`[小程序] 自动关联企微客户: externalUserId=${externalUserId} → CRM customerId=${saved.id}`);
+        }
+        // 同时在CRM客户上记录wecomExternalUserid
+        if (!saved.wecomExternalUserid) {
+          saved.wecomExternalUserid = externalUserId;
+          await customerRepo.save(saved);
+        }
+      } catch (linkErr: any) {
+        log.warn('[小程序] 自动关联企微客户失败(非致命):', linkErr?.message);
+      }
+    }
+
+    // ★ 方案B: 无externalUserId时，从发送日志中推断（兼容小程序未更新的情况）
+    if (!externalUserId && memberId && saved.id) {
+      try {
+        const recentLog = await AppDataSource.query(
+          `SELECT external_user_id FROM mp_card_send_logs
+           WHERE tenant_id = ? AND member_id = ? AND external_user_id IS NOT NULL AND external_user_id != ''
+           ORDER BY created_at DESC LIMIT 1`,
+          [tenantId, memberId]
+        );
+        const inferredExtId = recentLog?.[0]?.external_user_id;
+        if (inferredExtId) {
+          const { WecomCustomer } = await import('../../entities/WecomCustomer');
+          const wecomCustomerRepo = AppDataSource.getRepository(WecomCustomer);
+          const wecomCust = await wecomCustomerRepo.findOne({
+            where: { externalUserId: inferredExtId, ...(tenantId ? { tenantId } : {}) }
+          });
+          if (wecomCust && !wecomCust.crmCustomerId) {
+            wecomCust.crmCustomerId = saved.id;
+            await wecomCustomerRepo.save(wecomCust);
+            if (!saved.wecomExternalUserid) {
+              saved.wecomExternalUserid = inferredExtId;
+              await customerRepo.save(saved);
+            }
+            log.info(`[小程序] 方案B推断关联: memberId=${memberId}, 推断externalUserId=${inferredExtId} → customerId=${saved.id}`);
+          }
+        }
+      } catch (inferErr: any) {
+        log.warn('[小程序] 方案B推断关联失败(非致命):', inferErr?.message);
+      }
+    }
+
     // WebSocket推送
     try {
       if ((global as any).webSocketService) {
@@ -319,7 +374,7 @@ router.post('/submit-customer', validateMpSign, async (req: Request, res: Respon
       }
     } catch { /* ignore */ }
 
-    log.info(`[小程序] 客户资料提交成功: tenant=${tenantId}, member=${memberId}, customer=${saved.id}`);
+    log.info(`[小程序] 客户资料提交成功: tenant=${tenantId}, member=${memberId}, customer=${saved.id}, externalUserId=${externalUserId || '(无)'}`);
 
     res.json({
       success: true,

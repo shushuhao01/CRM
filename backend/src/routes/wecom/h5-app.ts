@@ -1299,7 +1299,25 @@ router.post('/mp-generate-card', authenticateSidebarToken, async (req: Request, 
     let appId = process.env.MP_APP_ID || 'wxXXXXXXXXXXXX';
     let cardTitle = '请填写您的个人资料';
     let cardCoverUrl = '';
+    let imageUrl = '';
 
+    // 第1层：读取管理后台全局配置（WecomSuiteConfig.mpConfig）
+    try {
+      const { WecomSuiteConfig } = await import('../../entities/WecomSuiteConfig');
+      const suiteRepo = AppDataSource.getRepository(WecomSuiteConfig);
+      const suiteConfig = await suiteRepo.findOne({ where: {} });
+      if (suiteConfig) {
+        if ((suiteConfig as any).mpAppId) appId = (suiteConfig as any).mpAppId;
+        const mpConfig = (suiteConfig as any).mpConfig;
+        if (mpConfig) {
+          const cfg = typeof mpConfig === 'string' ? JSON.parse(mpConfig) : mpConfig;
+          if (cfg.cardTitle) cardTitle = cfg.cardTitle;
+          if (cfg.cardCoverUrl) cardCoverUrl = cfg.cardCoverUrl;
+        }
+      }
+    } catch { /* ignore */ }
+
+    // 第2层：读取租户级配置 miniprogram_config（覆盖全局）
     try {
       const { TenantSettings } = await import('../../entities/TenantSettings');
       const settingsRepo = AppDataSource.getRepository(TenantSettings);
@@ -1312,7 +1330,21 @@ router.post('/mp-generate-card', authenticateSidebarToken, async (req: Request, 
       }
     } catch { /* ignore */ }
 
-    res.json({ success: true, data: { sign, appId, cardTitle, cardCoverUrl } });
+    // 第3层：读取CRM侧边栏租户配置 wecom_mp_tenant_config（最高优先级覆盖）
+    try {
+      const { TenantSettings } = await import('../../entities/TenantSettings');
+      const settingsRepo = AppDataSource.getRepository(TenantSettings);
+      const tenantMpSetting = await settingsRepo.findOne({ where: { tenantId, settingKey: 'wecom_mp_tenant_config' } });
+      if (tenantMpSetting) {
+        const val = tenantMpSetting.getValue ? tenantMpSetting.getValue() : (typeof tenantMpSetting.settingValue === 'string' ? JSON.parse(tenantMpSetting.settingValue) : tenantMpSetting.settingValue);
+        if (val?.mpCardTitle) cardTitle = val.mpCardTitle;
+        if (val?.mpCardCoverUrl) cardCoverUrl = val.mpCardCoverUrl;
+      }
+    } catch { /* ignore */ }
+
+    imageUrl = cardCoverUrl;
+
+    res.json({ success: true, data: { sign, appId, title: cardTitle, imageUrl, cardTitle, cardCoverUrl } });
   } catch (error: any) {
     log.error('[H5 App] mp-generate-card error:', error.message);
     res.status(500).json({ success: false, message: '生成卡片失败' });

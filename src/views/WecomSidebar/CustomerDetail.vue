@@ -155,7 +155,7 @@
           <div class="preview-card">
             <div class="card-title" style="display:flex;justify-content:space-between;align-items:center">
               <span>💬 企微客户详情</span>
-              <button v-if="!customerData.crmCustomer" class="btn-send-form-card" @click="openCrmDetail" style="background:#e8f5e9;color:#4caf50;border-color:#a5d6a7">🔗 关联CRM</button>
+              <button v-if="!customerData.crmCustomer" class="btn-send-form-card" @click="showLinkDialog = true" style="background:#e8f5e9;color:#4caf50;border-color:#a5d6a7">🔗 关联CRM</button>
             </div>
             <div class="info-row"><span class="label">昵称</span><span>{{ customerData.wecomCustomer?.name || '-' }}</span></div>
             <div class="info-row"><span class="label">性别</span><span>{{ customerData.wecomCustomer?.gender === 1 ? '男' : customerData.wecomCustomer?.gender === 2 ? '女' : '-' }}</span></div>
@@ -164,34 +164,31 @@
             <div class="info-row"><span class="label">UserID</span><span style="font-size:11px;word-break:break-all">{{ customerData.wecomCustomer?.externalUserId || externalUserId || '-' }}</span></div>
           </div>
 
-          <!-- CRM客户信息 -->
-          <div v-if="customerData.crmCustomer" class="preview-card">
+          <!-- CRM客户信息（始终显示） -->
+          <div class="preview-card">
             <div class="card-title" style="display:flex;justify-content:space-between;align-items:center">
               <span style="display:flex;align-items:center;gap:4px">👤 CRM客户信息
                 <span class="btn-refresh-inline" @click="refreshCustomerData" title="刷新客户信息">🔄</span>
               </span>
               <button class="btn-send-form-card" @click="handleSendFormCard" :disabled="sendingFormCard">{{ sendingFormCard ? '发送中...' : '📋 转发填写资料' }}</button>
             </div>
-            <div class="info-row"><span class="label">姓名</span><span>{{ customerData.crmCustomer.name }}</span></div>
-            <div class="info-row" v-if="customerData.crmCustomer.phone"><span class="label">手机</span><span>{{ displaySensitiveInfoNew(customerData.crmCustomer.phone, SensitiveInfoType.PHONE) }}</span></div>
-            <div class="info-row" v-if="customerData.crmCustomer.height || customerData.crmCustomer.age || customerData.crmCustomer.weight"><span class="label" style="white-space:nowrap">身高/年龄/体重</span><span style="white-space:nowrap">{{ customerData.crmCustomer.height || '-' }}cm / {{ customerData.crmCustomer.age || '-' }}岁 / {{ customerData.crmCustomer.weight || '-' }}kg</span></div>
-            <div class="info-row" v-if="customerData.crmCustomer.gender"><span class="label">性别</span><span>{{ customerData.crmCustomer.gender === 'male' ? '男' : customerData.crmCustomer.gender === 'female' ? '女' : customerData.crmCustomer.gender || '-' }}</span></div>
-            <div class="info-row" v-if="customerData.crmCustomer.address"><span class="label">地址</span><span>{{ displaySensitiveInfoNew(customerData.crmCustomer.address, SensitiveInfoType.ADDRESS) }}</span></div>
-            <div class="info-row" v-if="customerData.crmCustomer.medicalHistory"><span class="label">疾病史</span><span>{{ customerData.crmCustomer.medicalHistory }}</span></div>
-            <div class="info-row" v-if="customerData.crmCustomer.source"><span class="label">来源</span><span>{{ customerData.crmCustomer.source }}</span></div>
-            <div class="info-row" v-if="customerData.crmCustomer.level"><span class="label">等级</span><span class="tag">{{ customerData.crmCustomer.level }}</span></div>
-            <div class="customer-tags" v-if="customerData.crmCustomer.tags?.length">
-              <span class="mini-tag" v-for="tag in customerData.crmCustomer.tags" :key="tag">{{ tag }}</span>
+            <template v-if="customerData.crmCustomer">
+              <div class="info-row"><span class="label">姓名</span><span>{{ customerData.crmCustomer.name || '-' }}</span></div>
+              <div class="info-row"><span class="label">手机</span><span>{{ customerData.crmCustomer.phone ? displaySensitiveInfoNew(customerData.crmCustomer.phone, SensitiveInfoType.PHONE) : '-' }}</span></div>
+              <div class="info-row"><span class="label" style="white-space:nowrap">身高/年龄/体重</span><span style="white-space:nowrap">{{ customerData.crmCustomer.height || '-' }}cm / {{ customerData.crmCustomer.age || '-' }}岁 / {{ customerData.crmCustomer.weight || '-' }}kg</span></div>
+              <div class="info-row"><span class="label">性别</span><span>{{ customerData.crmCustomer.gender === 'male' ? '男' : customerData.crmCustomer.gender === 'female' ? '女' : customerData.crmCustomer.gender || '-' }}</span></div>
+              <div class="info-row"><span class="label">地址</span><span>{{ customerData.crmCustomer.address ? displaySensitiveInfoNew(customerData.crmCustomer.address, SensitiveInfoType.ADDRESS) : '-' }}</span></div>
+              <div class="info-row"><span class="label">疾病史</span><span>{{ customerData.crmCustomer.medicalHistory || '-' }}</span></div>
+              <div class="customer-tags" v-if="customerData.crmCustomer.tags?.length">
+                <span class="mini-tag" v-for="tag in customerData.crmCustomer.tags" :key="tag">{{ tag }}</span>
+              </div>
+            </template>
+            <div v-else style="text-align:center;padding:8px;color:#909399;font-size:12px">
+              尚未关联CRM客户，客户填写资料后将自动关联
             </div>
           </div>
 
-          <!-- 无CRM关联 -->
-          <div v-else class="preview-card" style="text-align:center;padding:16px">
-            <div style="color:#909399;font-size:12px;margin-bottom:8px">该企微客户尚未关联CRM客户</div>
-            <button class="btn-send-form-card" @click="openCrmDetail" style="background:#e8f5e9;color:#4caf50;border-color:#a5d6a7;padding:4px 12px">🔗 关联CRM客户</button>
-          </div>
-
-          <!-- 购买统计 -->
+          <!-- 购买统计（始终显示） -->
           <div class="preview-card">
             <div class="card-title">📊 购买统计</div>
             <div class="stats-row">
@@ -201,38 +198,63 @@
             </div>
           </div>
 
-          <!-- 最近订单 -->
-          <div class="preview-card" v-if="customerData.orders?.length">
-            <div class="card-title">📋 最近订单</div>
-            <div class="order-item" v-for="order in customerData.orders" :key="order.id">
-              <div class="order-head">
-                <span class="order-no">{{ order.orderNumber }}</span>
-                <span class="order-status" :style="{ color: getOrderStatusColor(order.status) }">{{ getOrderStatusText(order.status) }}</span>
+          <!-- 最近订单（始终显示） -->
+          <div class="preview-card">
+            <div class="card-title" style="display:flex;justify-content:space-between;align-items:center">
+              <span>📋 最近订单</span>
+              <span v-if="customerData.orderTotal > customerData.orders?.length" style="font-size:10px;color:#909399">
+                {{ customerData.orderPage || 1 }} / {{ Math.ceil((customerData.orderTotal || 0) / 3) }}
+              </span>
+            </div>
+            <template v-if="customerData.orders?.length">
+              <div class="order-item" v-for="order in customerData.orders" :key="order.id">
+                <div class="order-head">
+                  <span class="order-no">{{ order.orderNumber }}</span>
+                  <span class="order-status" :style="{ color: getOrderStatusColor(order.status) }">{{ getOrderStatusText(order.status) }}</span>
+                </div>
+                <div class="order-body">
+                  <span class="order-amount">¥{{ Number(order.finalAmount || order.totalAmount || 0).toFixed(2) }}</span>
+                  <span class="order-time">{{ formatOrderTime(order.createdAt) }}</span>
+                </div>
               </div>
-              <div class="order-body">
-                <span class="order-amount">¥{{ Number(order.finalAmount || order.totalAmount || 0).toFixed(2) }}</span>
-                <span class="order-time">{{ formatOrderTime(order.createdAt) }}</span>
+              <div v-if="customerData.orderTotal > 3" style="display:flex;justify-content:space-between;padding:6px 0;font-size:11px;color:#909399">
+                <span :style="{cursor: (customerData.orderPage||1)>1?'pointer':'default',opacity:(customerData.orderPage||1)>1?1:0.3}" @click="loadOrderPage((customerData.orderPage||1)-1)">‹ 上一页</span>
+                <span>{{ customerData.orderPage || 1 }} / {{ Math.ceil((customerData.orderTotal || 0) / 3) }}</span>
+                <span :style="{cursor: (customerData.orderPage||1)*3<customerData.orderTotal?'pointer':'default',opacity:(customerData.orderPage||1)*3<customerData.orderTotal?1:0.3}" @click="loadOrderPage((customerData.orderPage||1)+1)">下一页 ›</span>
               </div>
-              <div v-if="order.products?.length" class="order-products">
-                <div v-for="(prod, idx) in order.products" :key="idx" style="font-size:11px;color:#606266;padding:2px 0">
-                  {{ prod.name }} ×{{ prod.quantity }}
+            </template>
+            <div v-else style="text-align:center;padding:12px;color:#c0c4cc;font-size:11px">暂无订单记录</div>
+          </div>
+
+          <!-- 绑定信息（始终显示） -->
+          <div class="preview-card">
+            <div class="card-title">🔗 绑定信息</div>
+            <div class="info-row"><span class="label">CRM用户</span><span>{{ customerData.bindingInfo?.crmUserName || boundUser?.name || '-' }}</span></div>
+            <div class="info-row"><span class="label">租户编码</span><span>{{ customerData.bindingInfo?.tenantCode || '-' }}</span></div>
+            <div class="info-row"><span class="label">绑定时间</span><span>{{ customerData.bindingInfo?.boundAt ? formatOrderTime(customerData.bindingInfo.boundAt) : '-' }}</span></div>
+          </div>
+
+          <!-- 底部按钮（始终显示） -->
+          <div style="padding:8px 12px">
+            <button class="preview-btn full" :disabled="!customerData.crmCustomer" :title="!customerData.crmCustomer ? '需先关联CRM客户' : ''" @click="customerData.crmCustomer && openCrmDetail()">查看完整客户详情</button>
+            <button class="preview-btn" style="margin-top:6px" @click="currentTab = 'order'">🛒 去下单</button>
+          </div>
+
+          <!-- 关联CRM弹窗 -->
+          <div v-if="showLinkDialog" class="s-dialog-overlay" @click.self="showLinkDialog = false">
+            <div class="s-dialog">
+              <div class="s-dialog-header"><span>🔗 关联CRM客户</span><span class="action-link" @click="showLinkDialog = false">✕</span></div>
+              <div class="s-dialog-body">
+                <input v-model="linkKeyword" placeholder="搜索姓名/手机号..." class="preview-input" style="margin-bottom:8px" @input="searchLinkCustomers" />
+                <div style="max-height:200px;overflow-y:auto">
+                  <div v-for="c in linkCustomerList" :key="c.id" class="link-cust-item" @click="doLinkCustomer(c)">
+                    <span style="font-weight:500">{{ c.name }}</span>
+                    <span style="color:#909399;font-size:11px;margin-left:8px">{{ c.phone }}</span>
+                  </div>
+                  <div v-if="!linkCustomerList.length && linkKeyword" style="text-align:center;padding:12px;color:#909399;font-size:11px">未找到客户</div>
                 </div>
               </div>
             </div>
-          </div>
-
-          <!-- 绑定信息 -->
-          <div class="preview-card" v-if="customerData.bindingInfo">
-            <div class="card-title">🔗 绑定信息</div>
-            <div class="info-row" v-if="customerData.bindingInfo.crmUserName"><span class="label">CRM用户</span><span>{{ customerData.bindingInfo.crmUserName }}</span></div>
-            <div class="info-row" v-if="customerData.bindingInfo.tenantCode"><span class="label">租户编码</span><span>{{ customerData.bindingInfo.tenantCode }}</span></div>
-            <div class="info-row" v-if="customerData.bindingInfo.boundAt"><span class="label">绑定时间</span><span>{{ formatOrderTime(customerData.bindingInfo.boundAt) }}</span></div>
-          </div>
-
-          <!-- 底部按钮 -->
-          <div style="padding:8px 12px" v-if="customerData.crmCustomer">
-            <button class="preview-btn full" @click="openCrmDetail">查看完整客户详情</button>
-            <button class="preview-btn" style="margin-top:6px" @click="currentTab = 'order'">🛒 去下单</button>
           </div>
         </template>
       </template>
@@ -329,6 +351,10 @@ const customerData = ref<any>(null)
 const refreshingData = ref(false)
 const sendingFormCard = ref(false)
 const collectStatus = ref<any>(null)
+const showLinkDialog = ref(false)
+const linkKeyword = ref('')
+const linkCustomerList = ref<any[]>([])
+let linkSearchTimer: any = null
 
 // 当前 Tab（从 URL ?tab= 参数读取）
 const currentTab = ref<'customer' | 'scripts' | 'order' | 'portrait' | 'mp-collect'>('customer')
@@ -1231,6 +1257,51 @@ async function refreshCustomerData() {
   }
 }
 
+/** 订单分页加载 */
+async function loadOrderPage(page: number) {
+  if (!externalUserId.value || !sidebarToken.value || page < 1) return
+  try {
+    const res: any = await getSidebarCustomerDetail(externalUserId.value, sidebarToken.value, page)
+    if (res) {
+      customerData.value = { ...customerData.value, orders: res.orders || [], orderTotal: res.orderTotal || 0, orderPage: res.orderPage || page }
+    }
+  } catch { /* ignore */ }
+}
+
+/** 搜索关联CRM客户 */
+function searchLinkCustomers() {
+  clearTimeout(linkSearchTimer)
+  linkSearchTimer = setTimeout(async () => {
+    if (!linkKeyword.value.trim()) { linkCustomerList.value = []; return }
+    try {
+      const { default: axios } = await import('axios')
+      const res: any = await axios.get(`${window.location.origin}/api/v1/wecom/sidebar/search-customers`, {
+        params: { keyword: linkKeyword.value },
+        headers: { Authorization: `Bearer ${sidebarToken.value}` }
+      })
+      linkCustomerList.value = res?.data?.data || res?.data || []
+    } catch { linkCustomerList.value = [] }
+  }, 300)
+}
+
+/** 执行关联 */
+async function doLinkCustomer(customer: any) {
+  try {
+    const { default: axios } = await import('axios')
+    await axios.post(`${window.location.origin}/api/v1/wecom/sidebar/link-crm-customer`, {
+      externalUserId: externalUserId.value,
+      crmCustomerId: customer.id
+    }, { headers: { Authorization: `Bearer ${sidebarToken.value}` } })
+    ElMessage.success('关联成功')
+    showLinkDialog.value = false
+    linkKeyword.value = ''
+    linkCustomerList.value = []
+    await loadCustomerDetail()
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.message || '关联失败')
+  }
+}
+
 /** 加载当前企微客户的收集状态 */
 async function loadCollectStatus() {
   if (!externalUserId.value || !sidebarToken.value) return
@@ -1271,7 +1342,7 @@ async function handleSendFormCard() {
       headers: { Authorization: `Bearer ${sidebarToken.value}` }
     })
     const data = res?.data?.data || res?.data || {}
-    const path = data.path || `/pages/form/form?tenantId=${tenantId}&memberId=${memberId}&ts=${ts}&sign=${data.sign || ''}`
+    const path = data.path || `/pages/form/form?tenantId=${tenantId}&memberId=${memberId}&ts=${ts}&sign=${data.sign || ''}&externalUserId=${externalUserId.value || ''}`
 
     // 企微环境：通过JS-SDK发送小程序卡片
     const wx = (window as any).wx
@@ -1393,6 +1464,13 @@ async function handleRebind() {
 .btn-send-form-card { font-size: 10px; padding: 2px 8px; border: 1px solid #93c5fd; border-radius: 4px; background: #fff; color: #3b82f6; cursor: pointer; white-space: nowrap; transition: all 0.2s; }
 .btn-send-form-card:hover { background: #eff6ff; border-color: #60a5fa; }
 .btn-send-form-card:disabled { opacity: 0.5; cursor: not-allowed; }
+/* 关联弹窗 */
+.s-dialog-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.3); z-index: 9998; display: flex; align-items: center; justify-content: center; }
+.s-dialog { background: #fff; border-radius: 10px; width: 90%; max-width: 320px; max-height: 80vh; overflow: hidden; display: flex; flex-direction: column; }
+.s-dialog-header { display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; border-bottom: 1px solid #f0f0f0; font-size: 13px; font-weight: 600; color: #303133; }
+.s-dialog-body { padding: 12px 14px; overflow-y: auto; flex: 1; }
+.link-cust-item { display: flex; align-items: center; padding: 8px; border-radius: 6px; border: 1px solid #f0f0f0; margin-bottom: 4px; cursor: pointer; color: #303133; }
+.link-cust-item:hover { border-color: #07c160; background: #f0fdf4; }
 </style>
 
 

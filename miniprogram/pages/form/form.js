@@ -60,7 +60,8 @@ Page({
       tenantId: params.tenantId,
       memberId: params.memberId,
       ts: params.ts,
-      sign: params.sign
+      sign: params.sign,
+      externalUserId: params.externalUserId || ''
     })
 
     // 体验模式（从首页点击"体验表单功能"进入，所有环境通用，审核员可体验完整表单）
@@ -523,6 +524,7 @@ Page({
         memberId: this.data.memberId,
         ts: this.data.ts,
         sign: this.data.sign,
+        externalUserId: this.data.externalUserId || '',
         customerData: { ...formData, customFields: customFormData }
       })
       util.hideLoading()

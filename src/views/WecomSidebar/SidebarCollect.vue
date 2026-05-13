@@ -160,12 +160,15 @@ const handleSend = async () => {
     const { default: axios } = await import('axios')
     const res: any = await axios.post(`${getBaseUrl()}/mp-generate-card`, { tenantId, memberId, ts }, { headers: getHeaders() })
     const data = res?.data?.data || res?.data || {}
-    const path = data.path || `/pages/form/form?tenantId=${tenantId}&memberId=${memberId}&ts=${ts}&sign=${data.sign || ''}`
+    // 获取当前聊天对象的externalUserId（从父组件localStorage缓存获取）
+    const extUserId = localStorage.getItem('wecom_sidebar_last_external_id') || ''
+    const path = data.path || `/pages/form/form?tenantId=${tenantId}&memberId=${memberId}&ts=${ts}&sign=${data.sign || ''}&externalUserId=${extUserId}`
 
     const ww = (window as any).ww
-    const wx = (window as any).wx
+    const wx = (window as any).wx || (window as any).jWeixin
+    const bridge = (window as any).WeixinJSBridge
 
-    // 优先使用新版SDK (ww.sendChatMessage)
+    // 优先使用新版SDK
     if (ww?.sendChatMessage) {
       try {
         await ww.sendChatMessage({
@@ -179,13 +182,22 @@ const handleSend = async () => {
         })
         ElMessage.success('小程序卡片已发送')
       } catch (e: any) {
-        console.warn('[Collect] ww.sendChatMessage失败，回退wx.invoke:', e)
+        console.warn('[Collect] ww.sendChatMessage失败，回退:', e)
         sendViaWxBridge(data, path)
       }
     } else if (wx?.invoke) {
       sendViaWxBridge(data, path)
+    } else if (bridge?.invoke) {
+      bridge.invoke('sendChatMessage', {
+        msgtype: 'miniprogram',
+        miniprogram: { appid: data.appId || '', title: data.title || '请填写您的资料', imgUrl: data.imageUrl || '', page: path }
+      }, (res: any) => {
+        if (res.err_msg === 'sendChatMessage:ok') ElMessage.success('小程序卡片已发送')
+        else ElMessage.info('卡片已生成，请手动确认发送')
+      })
     } else {
-      ElMessage.warning('当前环境不支持发送小程序卡片，请在企业微信中使用')
+      console.warn('[Collect] 未检测到企微SDK对象: ww=', !!ww, ', wx=', !!wx, ', bridge=', !!bridge)
+      ElMessage.warning('企微环境不可用，请确保在企业微信侧边栏中打开此页面')
     }
 
     // 记录发送日志

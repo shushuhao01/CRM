@@ -382,7 +382,7 @@ onBeforeUnmount(() => {
 .script-send-icon:hover { opacity: 1; }
 /* 右键菜单 */
 .s-ctx-menu { position: fixed; background: #fff; border-radius: 6px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); z-index: 9999; min-width: 100px; padding: 4px 0; }
-.s-ctx-item { padding: 6px 12px; font-size: 11px; cursor: pointer; white-space: nowrap; }
+.s-ctx-item { padding: 6px 12px; font-size: 11px; cursor: pointer; white-space: nowrap; color: #303133; }
 .s-ctx-item:hover { background: #f5f7fa; }
 /* 弹窗 */
 .s-dialog-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.3); z-index: 9998; display: flex; align-items: center; justify-content: center; }

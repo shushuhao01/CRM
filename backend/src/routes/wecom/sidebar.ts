@@ -1186,10 +1186,33 @@ router.get('/sidebar-mp-config', authenticateToken, async (_req: Request, res: R
     const tenantId = getCurrentTenantId();
     if (!tenantId) return res.json({ success: true, data: {} });
 
+    // 先读取租户自定义配置
     const settingsRepo = AppDataSource.getRepository(TenantSettings);
     const setting = await settingsRepo.findOne({ where: { tenantId, settingKey: MP_CONFIG_KEY } });
-    const data = setting ? setting.getValue() : {};
-    res.json({ success: true, data: data || {} });
+    const tenantData = setting ? (setting.getValue ? setting.getValue() : {}) : {};
+
+    // 如果租户没有自定义，读取管理后台全局配置作为默认值
+    let defaults: any = {};
+    if (!tenantData?.mpCardCoverUrl && !tenantData?.mpCardTitle) {
+      try {
+        const { WecomSuiteConfig } = await import('../../entities/WecomSuiteConfig');
+        const suiteRepo = AppDataSource.getRepository(WecomSuiteConfig);
+        const suiteConfig = await suiteRepo.findOne({ where: {} });
+        if (suiteConfig) {
+          const mpConfig = (suiteConfig as any).mpConfig;
+          if (mpConfig) {
+            const cfg = typeof mpConfig === 'string' ? JSON.parse(mpConfig) : mpConfig;
+            defaults = {
+              mpCardTitle: cfg.cardTitle || '',
+              mpCardCoverUrl: cfg.cardCoverUrl || '',
+              mpPosterUrl: cfg.posterUrl || ''
+            };
+          }
+        }
+      } catch { /* ignore */ }
+    }
+
+    res.json({ success: true, data: { ...defaults, ...(tenantData || {}) } });
   } catch (error: any) {
     log.error('[Wecom] Get mp tenant config error:', error.message);
     res.status(500).json({ success: false, message: '获取小程序配置失败' });
@@ -2166,8 +2189,10 @@ router.get('/sidebar/products', authenticateSidebarToken, async (req: Request, r
       data: {
         list: products.map((p: any) => ({
           id: p.id, name: p.name, price: Number(p.price || 0),
-          stock: p.stock ?? 999, image: p.image || p.imageUrl || '',
-          sku: p.sku || '', unit: p.unit || ''
+          stock: p.stock ?? 999,
+          image: Array.isArray(p.images) && p.images.length > 0 ? p.images[0] : (p.image || p.imageUrl || ''),
+          sku: p.code || p.sku || '', unit: p.unit || '',
+          productType: p.productType || 'physical'
         })),
         total
       }
@@ -2199,24 +2224,47 @@ router.post('/sidebar/orders', authenticateSidebarToken, async (req: Request, re
     // 生成订单号
     const orderNumber = 'WS' + Date.now().toString(36).toUpperCase() + Math.random().toString(36).slice(2, 6).toUpperCase();
 
+    // 查询客户信息用于填充订单
+    let customerName = req.body.customerName || '';
+    let customerPhone = req.body.customerPhone || '';
+    if ((!customerName || !customerPhone) && customerId) {
+      try {
+        const { Customer } = await import('../../entities/Customer');
+        const cust = await AppDataSource.getRepository(Customer).findOne({ where: { id: customerId } });
+        if (cust) { customerName = customerName || cust.name || ''; customerPhone = customerPhone || cust.phone || ''; }
+      } catch { /* ignore */ }
+    }
+
+    // 判断订单商品类型
+    const productTypes = (products || []).map((p: any) => p.productType || 'physical');
+    const hasPhysical = productTypes.some((t: string) => t === 'physical');
+    const hasVirtual = productTypes.some((t: string) => t === 'virtual');
+    const orderProductType = hasPhysical && hasVirtual ? 'mixed' : hasVirtual ? 'virtual' : 'physical';
+
     const orderData: any = {
       tenantId,
       customerId,
+      customerName,
+      customerPhone,
       orderNumber,
       totalAmount: totalAmount || 0,
       finalAmount: totalAmount || 0,
       depositAmount: depositAmount || 0,
       paymentMethod: paymentMethod || '',
+      paymentMethodOther: req.body.paymentMethodOther || '',
       status: 'pending',
       markType: req.body.markType || 'normal',
+      orderProductType,
       remark: remark || '',
       shippingName: receiverName || '',
       shippingPhone: receiverPhone || '',
       shippingAddress: receiverAddress || '',
       createdBy: userId,
+      createdByName: sidebarUser?.crmUserName || sidebarUser?.username || '',
       orderSource: req.body.orderSource || 'wecom_sidebar',
       serviceWechat: req.body.serviceWechat || '',
       expressCompany: req.body.expressCompany || '',
+      depositScreenshots: req.body.depositScreenshots || [],
     };
     const order: any = orderRepo.create(orderData);
     const savedOrder: any = await orderRepo.save(order);
@@ -2227,6 +2275,8 @@ router.post('/sidebar/orders', authenticateSidebarToken, async (req: Request, re
         orderId: savedOrder.id,
         productId: p.id,
         productName: p.name,
+        productImage: p.image || '',
+        productSku: p.sku || '',
         unitPrice: Number(p.price) || 0,
         quantity: Number(p.quantity) || 1,
         subtotal: (Number(p.price) || 0) * (Number(p.quantity) || 1),
