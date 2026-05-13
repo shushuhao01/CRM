@@ -230,6 +230,7 @@
           <!-- 底部按钮 -->
           <div style="padding:8px 12px" v-if="customerData.crmCustomer">
             <button class="preview-btn full" @click="openCrmDetail">查看完整客户详情</button>
+            <button class="preview-btn" style="margin-top:6px" @click="currentTab = 'order'">🛒 去下单</button>
           </div>
         </template>
       </template>
@@ -357,10 +358,10 @@ onMounted(async () => {
   if (cachedToken && !isTokenExpired(cachedToken)) {
     console.log('[Sidebar] 发现有效缓存token，直接进入已登录状态')
     sidebarToken.value = cachedToken
-    try {
-      const payload = JSON.parse(atob(cachedToken.split('.')[1]))
+    const payload = decodeJwtPayload(cachedToken)
+    if (payload) {
       boundUser.value = { name: payload.crmUserName || payload.username || '用户' }
-    } catch { /* ignore */ }
+    }
     pageState.value = 'detail'
 
     // 异步刷新即将过期的token
@@ -852,30 +853,36 @@ function getCurExternalContact(wx: any) {
   }
 }
 
+// ==================== JWT解码（支持中文） ====================
+
+/** 正确解码JWT payload（处理UTF-8中文字符） */
+function decodeJwtPayload(token: string): any {
+  try {
+    const base64Url = token.split('.')[1]
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/')
+    const jsonPayload = decodeURIComponent(
+      atob(base64).split('').map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join('')
+    )
+    return JSON.parse(jsonPayload)
+  } catch {
+    return null
+  }
+}
+
 // ==================== Token过期检查 ====================
 
 /** 检查JWT token是否已完全过期 */
 function isTokenExpired(token: string): boolean {
-  try {
-    const payload = JSON.parse(atob(token.split('.')[1]))
-    if (!payload?.exp) return false
-    return payload.exp * 1000 < Date.now()
-  } catch {
-    return true
-  }
+  const payload = decodeJwtPayload(token)
+  if (!payload?.exp) return false
+  return payload.exp * 1000 < Date.now()
 }
 
 /** 检查JWT token是否即将过期（剩余<1天） */
 function isTokenExpiringSoon(token: string): boolean {
-  try {
-    const payload = JSON.parse(atob(token.split('.')[1]))
-    if (!payload?.exp) return false
-    const expirationMs = payload.exp * 1000
-    const oneDayMs = 24 * 60 * 60 * 1000
-    return (expirationMs - Date.now()) < oneDayMs
-  } catch {
-    return false
-  }
+  const payload = decodeJwtPayload(token)
+  if (!payload?.exp) return false
+  return (payload.exp * 1000 - Date.now()) < 24 * 60 * 60 * 1000
 }
 
 /**
@@ -1037,10 +1044,10 @@ async function checkBindingAndLoad() {
 
       // 从token payload恢复用户信息
       if (!boundUser.value) {
-        try {
-          const payload = JSON.parse(atob(sidebarToken.value.split('.')[1]))
+        const payload = decodeJwtPayload(sidebarToken.value)
+        if (payload) {
           boundUser.value = { name: payload.crmUserName || payload.username || '用户' }
-        } catch { /* ignore */ }
+        }
       }
 
       pageState.value = 'detail'
@@ -1226,12 +1233,10 @@ async function refreshCustomerData() {
 async function loadCollectStatus() {
   if (!externalUserId.value || !sidebarToken.value) return
   try {
-    let tenantId = '', memberId = ''
-    try {
-      const payload = JSON.parse(atob(sidebarToken.value.split('.')[1]))
-      tenantId = payload.tenantId || ''
-      memberId = payload.userId || payload.id || ''
-    } catch { return }
+    const payload = decodeJwtPayload(sidebarToken.value)
+    if (!payload) return
+    const tenantId = payload.tenantId || ''
+    const memberId = payload.userId || payload.id || ''
     const { default: axios } = await import('axios')
     const baseUrl = `${window.location.origin}/api/v1`
     const res: any = await axios.get(`${baseUrl}/mp/collect-status`, {
@@ -1250,11 +1255,11 @@ async function handleSendFormCard() {
     // 解析 token 中的 tenantId 和 userId
     let tenantId = '', memberId = ''
     if (sidebarToken.value) {
-      try {
-        const payload = JSON.parse(atob(sidebarToken.value.split('.')[1]))
+      const payload = decodeJwtPayload(sidebarToken.value)
+      if (payload) {
         tenantId = payload.tenantId || ''
         memberId = payload.userId || payload.id || ''
-      } catch { /* ignore */ }
+      }
     }
     const ts = Date.now().toString()
     // 调用后端生成卡片签名
@@ -1329,7 +1334,7 @@ async function handleRebind() {
 </script>
 
 <style scoped>
-.wecom-sidebar-page { max-width: 375px; margin: 0 auto; min-height: 100vh; background: #f5f5f5; font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif; overflow-y: auto; }
+.wecom-sidebar-page { max-width: 375px; margin: 0 auto; min-height: 100vh; background: #f5f5f5; font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif; overflow-y: auto; color: #303133; }
 .sidebar-loading, .sidebar-center { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 60vh; padding: 20px; text-align: center; }
 .sidebar-loading p, .sidebar-center p { color: #909399; font-size: 13px; margin-top: 12px; }
 /* ========== 登录页（对齐Preview） ========== */
@@ -1341,7 +1346,7 @@ async function handleRebind() {
 .preview-form { text-align: left; }
 .form-group { margin-bottom: 12px; }
 .form-group label { display: block; font-size: 12px; color: #606266; margin-bottom: 4px; }
-.preview-input { width: 100%; padding: 8px 10px; border: 1px solid #dcdfe6; border-radius: 6px; font-size: 13px; outline: none; box-sizing: border-box; }
+.preview-input { width: 100%; padding: 8px 10px; border: 1px solid #dcdfe6; border-radius: 6px; font-size: 13px; outline: none; box-sizing: border-box; color: #303133; }
 .preview-input:focus { border-color: #07c160; }
 .preview-btn { width: 100%; padding: 10px; border: none; border-radius: 6px; background: #07c160; color: #fff; font-size: 14px; font-weight: 600; cursor: pointer; margin-top: 8px; }
 .preview-btn:hover { background: #06ad56; }
@@ -1352,7 +1357,7 @@ async function handleRebind() {
 .login-tip p { margin: 4px 0; }
 /* ========== 详情页（对齐Preview） ========== */
 .preview-detail { padding: 0; }
-.preview-user-bar { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; background: #fff; border-bottom: 1px solid #f0f0f0; font-size: 13px; font-weight: 500; }
+.preview-user-bar { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; background: #fff; border-bottom: 1px solid #f0f0f0; font-size: 13px; font-weight: 500; color: #303133; }
 .action-link { color: #4c6ef5; cursor: pointer; font-size: 12px; font-weight: 400; }
 .preview-card { background: #fff; margin: 8px; border-radius: 10px; padding: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
 .customer-head { display: flex; align-items: center; gap: 10px; }

@@ -104,7 +104,12 @@ const getHeaders = () => ({ Authorization: `Bearer ${props.sidebarToken}` })
 
 const parseSidebarToken = () => {
   try {
-    const payload = JSON.parse(atob(props.sidebarToken.split('.')[1]))
+    const base64Url = props.sidebarToken.split('.')[1]
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/')
+    const jsonPayload = decodeURIComponent(
+      atob(base64).split('').map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join('')
+    )
+    const payload = JSON.parse(jsonPayload)
     return { tenantId: payload.tenantId || '', memberId: payload.userId || payload.id || '' }
   } catch { return { tenantId: '', memberId: '' } }
 }
@@ -157,31 +162,65 @@ const handleSend = async () => {
     const data = res?.data?.data || res?.data || {}
     const path = data.path || `/pages/form/form?tenantId=${tenantId}&memberId=${memberId}&ts=${ts}&sign=${data.sign || ''}`
 
+    const ww = (window as any).ww
     const wx = (window as any).wx
-    if (wx?.invoke) {
-      wx.invoke('sendChatMessage', {
-        msgtype: 'miniprogram',
-        miniprogram: {
-          appid: data.appId || '',
-          title: data.title || '请填写您的资料',
-          imgUrl: data.imageUrl || '',
-          page: path
-        }
-      }, (sendRes: any) => {
-        if (sendRes.err_msg === 'sendChatMessage:ok') {
-          ElMessage.success('卡片已发送')
-        } else {
-          ElMessage.info('已生成卡片链接，请手动分享')
-        }
-      })
+
+    // 优先使用新版SDK (ww.sendChatMessage)
+    if (ww?.sendChatMessage) {
+      try {
+        await ww.sendChatMessage({
+          msgtype: 'miniprogram',
+          miniprogram: {
+            appid: data.appId || '',
+            title: data.title || '请填写您的资料',
+            imgUrl: data.imageUrl || '',
+            page: path
+          }
+        })
+        ElMessage.success('小程序卡片已发送')
+      } catch (e: any) {
+        console.warn('[Collect] ww.sendChatMessage失败，回退wx.invoke:', e)
+        sendViaWxBridge(data, path)
+      }
+    } else if (wx?.invoke) {
+      sendViaWxBridge(data, path)
     } else {
-      ElMessage.success('小程序卡片已发送（预览环境模拟）')
+      ElMessage.warning('当前环境不支持发送小程序卡片，请在企业微信中使用')
     }
+
+    // 记录发送日志
+    try {
+      await axios.post(`${getBaseUrl()}/mp/log-send`, { tenantId, memberId, ts }, { headers: getHeaders() })
+    } catch { /* ignore */ }
+
+    // 刷新统计和记录
+    await loadStats()
+    await loadRecords()
   } catch (e: any) {
     ElMessage.warning(e?.message || '发送失败')
   } finally {
     sending.value = false
   }
+}
+
+function sendViaWxBridge(data: any, path: string) {
+  const wx = (window as any).wx
+  if (!wx?.invoke) { ElMessage.warning('企微环境不可用'); return }
+  wx.invoke('sendChatMessage', {
+    msgtype: 'miniprogram',
+    miniprogram: {
+      appid: data.appId || '',
+      title: data.title || '请填写您的资料',
+      imgUrl: data.imageUrl || '',
+      page: path
+    }
+  }, (sendRes: any) => {
+    if (sendRes.err_msg === 'sendChatMessage:ok') {
+      ElMessage.success('小程序卡片已发送')
+    } else {
+      ElMessage.info('卡片已生成，请手动确认发送')
+    }
+  })
 }
 
 onMounted(() => {
@@ -191,7 +230,7 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.mpc-wrapper { padding: 0; }
+.mpc-wrapper { padding: 0; color: #303133; }
 .mpc-hero { margin: 8px 10px; background: linear-gradient(135deg, #ecfdf5 0%, #f0fdf4 50%, #f0f9ff 100%); border: 1px solid #bbf7d0; border-radius: 12px; padding: 16px 12px; text-align: center; }
 .mpc-hero-icon { width: 48px; height: 48px; margin: 0 auto 8px; background: #fff; border-radius: 12px; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 8px rgba(87,190,106,0.15); }
 .mpc-hero-title { font-size: 14px; font-weight: 700; color: #1d2129; margin-bottom: 4px; }

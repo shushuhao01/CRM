@@ -12,7 +12,7 @@
     </div>
     <!-- 搜索下拉结果 -->
     <div v-if="keyword && searchResults.length" class="s-search-dropdown">
-      <div class="s-search-item" v-for="s in searchResults" :key="s.id" @click.stop="handleSend(s)" @contextmenu.prevent="showCtxMenu($event, s)">
+      <div class="s-search-item" v-for="s in searchResults" :key="s.id" @click.stop="handleSend(s)" @dblclick.stop="handleDblClick(s)" @contextmenu.prevent="showCtxMenu($event, s)">
         <span class="s-scope-dot" :style="{ background: s.scope === 'personal' ? '#e6a23c' : '#07c160' }"></span>
         <span class="s-search-title" :style="s.color ? { color: s.color } : {}">{{ s.title || '无标题' }}</span>
         <span class="s-search-content">{{ s.content }}</span>
@@ -44,7 +44,7 @@
       <div class="s-script-panel">
         <div v-if="displayScripts.length === 0" style="text-align:center;padding:30px 6px;color:#c0c4cc;font-size:11px">暂无话术</div>
         <div class="script-item" v-for="(s, idx) in displayScripts" :key="s.id"
-          @click.stop="handleSend(s)" @contextmenu.prevent="showCtxMenu($event, s)">
+          @click.stop="handleSend(s)" @dblclick.stop="handleDblClick(s)" @contextmenu.prevent="showCtxMenu($event, s)">
           <span class="script-idx">{{ idx + 1 }}</span>
           <span class="s-scope-dot" :style="{ background: s.scope === 'personal' ? '#e6a23c' : '#07c160' }"></span>
           <span class="script-title-text" :style="s.color ? { color: s.color } : {}">{{ s.title || '无标题' }}</span>
@@ -266,19 +266,40 @@ function cancelEditCat() {
   newCatName.value = ''
 }
 
+/** 点击发送：通过企微JS-SDK发送到当前聊天对话框 */
 async function handleSend(script: any) {
   try { await request.post(`/wecom/sidebar/scripts/${script.id}/use`, {}, authHeaders.value as any) } catch { /* ignore */ }
+  const ww = (window as any).ww
   const wx = (window as any).wx
-  if (wx?.invoke) {
-    wx.invoke('sendChatMessage', { msgtype: 'text', text: { content: script.content } }, (res: any) => {
-      if (res.err_msg === 'sendChatMessage:ok') ElMessage.success('已发送')
-      else copyScript(script)
-    })
+  if (ww?.sendChatMessage) {
+    try {
+      await ww.sendChatMessage({ msgtype: 'text', text: { content: script.content } })
+      ElMessage.success('已发送')
+    } catch {
+      sendViaWxBridge(script)
+    }
+  } else if (wx?.invoke) {
+    sendViaWxBridge(script)
   } else {
     copyScript(script)
+    ElMessage.info('已复制到剪贴板（非企微环境无法直接发送）')
   }
   const s = allScripts.value.find(ss => ss.id === script.id)
   if (s) s.useCount = (s.useCount || 0) + 1
+}
+
+function sendViaWxBridge(script: any) {
+  const wx = (window as any).wx
+  if (!wx?.invoke) { copyScript(script); return }
+  wx.invoke('sendChatMessage', { msgtype: 'text', text: { content: script.content } }, (res: any) => {
+    if (res.err_msg === 'sendChatMessage:ok') ElMessage.success('已发送')
+    else { copyScript(script); ElMessage.info('已复制（发送需手动确认）') }
+  })
+}
+
+/** 双击复制话术内容 */
+function handleDblClick(script: any) {
+  copyScript(script)
 }
 
 async function copyScript(script: any) {
@@ -315,8 +336,8 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-.s-wrapper { display: flex; flex-direction: column; height: calc(100vh - 40px); background: #f5f5f5; overflow: hidden; }
-.preview-input { width: 100%; padding: 6px 8px; border: 1px solid #dcdfe6; border-radius: 6px; font-size: 12px; outline: none; box-sizing: border-box; }
+.s-wrapper { display: flex; flex-direction: column; height: calc(100vh - 40px); background: #f5f5f5; overflow: hidden; color: #303133; }
+.preview-input { width: 100%; padding: 6px 8px; border: 1px solid #dcdfe6; border-radius: 6px; font-size: 12px; outline: none; box-sizing: border-box; color: #303133; }
 .preview-input:focus { border-color: #07c160; }
 .s-btn { padding: 4px 10px; border: 1px solid #dcdfe6; border-radius: 5px; background: #fff; font-size: 11px; cursor: pointer; color: #606266; white-space: nowrap; }
 .s-btn:hover { border-color: #07c160; color: #07c160; }
