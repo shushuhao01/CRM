@@ -1882,15 +1882,58 @@ router.get('/sidebar-diag', async (req: Request, res: Response) => {
 
 // ==================== 辅助API：获取默认第三方配置 ====================
 
-/** GET /sidebar-config — 返回第一个可用的第三方配置的corpId和agentId */
-router.get('/sidebar-config', async (_req: Request, res: Response) => {
+/** GET /sidebar-config — 返回当前企业的配置，或列出所有可用配置 */
+router.get('/sidebar-config', async (req: Request, res: Response) => {
   try {
     const configRepo = AppDataSource.getRepository(WecomConfig);
-    const config = await configRepo.findOne({ where: { isEnabled: true, authType: 'third_party' }, order: { id: 'ASC' } });
-    if (!config) return res.json({ success: false, message: '无可用的第三方企微配置' });
-    res.json({ success: true, data: { corpId: config.corpId, agentId: config.agentId, name: config.name } });
+    const requestCorpId = req.query.corpId as string;
+
+    // 如果前端传了有效的corpId，精确匹配
+    if (requestCorpId && !requestCorpId.includes('$')) {
+      const config = await configRepo.findOne({ where: { corpId: requestCorpId, isEnabled: true } });
+      if (config) {
+        return res.json({ success: true, data: { corpId: config.corpId, agentId: config.agentId, name: config.name } });
+      }
+    }
+
+    // 否则列出所有可用的第三方配置，让前端选择
+    const configs = await configRepo.find({ where: { isEnabled: true, authType: 'third_party' }, order: { id: 'ASC' } });
+    if (!configs.length) return res.json({ success: false, message: '无可用的第三方企微配置' });
+
+    // 返回第一个，同时附上全部列表
+    res.json({
+      success: true,
+      data: { corpId: configs[0].corpId, agentId: configs[0].agentId, name: configs[0].name },
+      allConfigs: configs.map(c => ({ id: c.id, corpId: c.corpId, agentId: c.agentId, name: c.name }))
+    });
   } catch (e: any) {
     res.json({ success: false, message: e.message });
+  }
+});
+
+/** GET /sidebar-list — 列出所有第三方配置（诊断用） */
+router.get('/sidebar-list', async (_req: Request, res: Response) => {
+  try {
+    const configs = await AppDataSource.getRepository(WecomConfig).find({
+      where: { authType: 'third_party' },
+      order: { id: 'ASC' }
+    });
+    const list = configs.map(c => ({
+      id: c.id,
+      corpId: c.corpId,
+      name: c.name,
+      agentId: c.agentId,
+      isEnabled: c.isEnabled,
+      suiteId: c.suiteId,
+      hasPermanentCode: !!c.permanentCode,
+    }));
+    res.type('text/plain; charset=utf-8').send(
+      '=== 所有第三方企微配置 ===\n' +
+      list.map(c => `id=${c.id} | corpId=${c.corpId} | name=${c.name} | agentId=${c.agentId || '空'} | enabled=${c.isEnabled} | hasPermanentCode=${c.hasPermanentCode}`).join('\n') +
+      '\n\n总计: ' + list.length + ' 条配置'
+    );
+  } catch (e: any) {
+    res.type('text/plain').send('错误: ' + e.message);
   }
 });
 

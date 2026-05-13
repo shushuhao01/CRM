@@ -377,6 +377,43 @@ const startServer = async () => {
       }
     }
 
+    // 自动补全企微第三方配置中缺失的 agent_id
+    try {
+      const { AppDataSource } = await import('./config/database');
+      const { WecomConfig } = await import('./entities/WecomConfig');
+      const configRepo = AppDataSource.getRepository(WecomConfig);
+      const nullAgentConfigs = await configRepo.find({
+        where: { authType: 'third_party', isEnabled: true },
+      });
+      const needFix = nullAgentConfigs.filter(c => !c.agentId && c.permanentCode && c.suiteId);
+      if (needFix.length > 0) {
+        logger.info(`🔧 发现 ${needFix.length} 条企微配置缺少 agent_id，开始自动补全...`);
+        const { default: axios } = await import('axios');
+        const { WecomTokenService } = await import('./services/wecom/WecomTokenService');
+        for (const config of needFix) {
+          try {
+            const suiteToken = await WecomTokenService.getSuiteAccessToken(config.suiteId!);
+            const authRes = await axios.post(
+              `https://qyapi.weixin.qq.com/cgi-bin/service/get_auth_info?suite_access_token=${suiteToken}`,
+              { auth_corpid: config.corpId, permanent_code: config.permanentCode }
+            );
+            const agentId = authRes.data?.auth_info?.agent?.[0]?.agentid;
+            if (agentId) {
+              await AppDataSource.query('UPDATE wecom_configs SET agent_id = ? WHERE id = ?', [agentId, config.id]);
+              logger.info(`  ✅ ${config.name || config.corpId}: agent_id = ${agentId}`);
+            } else {
+              logger.warn(`  ⚠️ ${config.name || config.corpId}: API未返回agent信息`);
+            }
+          } catch (e: any) {
+            logger.warn(`  ❌ ${config.name || config.corpId}: ${e.message}`);
+          }
+        }
+        logger.info('🔧 agent_id 自动补全完成');
+      }
+    } catch (e: any) {
+      logger.warn('agent_id 自动补全跳过:', e.message);
+    }
+
     // 启动 HTTP 服务器（使用 httpServer 以支持 WebSocket）
     const server = httpServer.listen(PORT, () => {
       logger.info(`🚀 CRM API 服务器已启动`);
