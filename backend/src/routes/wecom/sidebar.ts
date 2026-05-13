@@ -96,6 +96,7 @@ const SDK_CACHE_TTL = 24 * 60 * 60 * 1000; // 24小时
 /** 已知合法的 SDK 上游地址（白名单，避免被滥用为开放代理） */
 const SDK_UPSTREAMS: Record<string, string[]> = {
   'wecom-jssdk-2.4.0.js': [
+    'https://wwcdn.weixin.qq.com/node/open/js/wecom-jssdk-2.4.0.js',
     'https://wwcdn.weixin.qq.com/node/wework/wwopen/js/wecom-jssdk-2.4.0.js',
   ],
   'jwxwork-1.0.0.js': [
