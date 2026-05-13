@@ -109,7 +109,7 @@ if (process.env.HELMET_ENABLED !== 'false') {
       directives: {
         defaultSrc: ["'self'"],
         styleSrc: ["'self'", "'unsafe-inline'"],
-        scriptSrc: ["'self'"],
+        scriptSrc: ["'self'", "'unsafe-eval'", "https://wwcdn.weixin.qq.com", "https://res.wx.qq.com", "https://open.work.weixin.qq.com"],
         imgSrc: ["'self'", "data:", "https:"],
         // 允许前端与后端建立连接（XHR/Fetch/WebSocket），避免 CSP 导致 net::ERR_FAILED
         connectSrc: ["'self'", apiOrigin, ...allowedOrigins, "ws:", "wss:"],

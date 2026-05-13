@@ -1902,7 +1902,6 @@ router.get('/sidebar-config', async (_req: Request, res: Response) => {
  */
 router.get('/sidebar-test', (_req: Request, res: Response) => {
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
-  res.setHeader('Content-Security-Policy', "default-src 'self' https: data:; script-src 'self' https://wwcdn.weixin.qq.com https://crm.yunkes.com; style-src 'self' 'unsafe-inline'; connect-src 'self' https:;");
   res.send(`<!DOCTYPE html>
 <html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>侧边栏测试</title>
