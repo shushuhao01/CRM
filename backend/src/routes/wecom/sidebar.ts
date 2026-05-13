@@ -1937,6 +1937,33 @@ router.get('/sidebar-list', async (_req: Request, res: Response) => {
   }
 });
 
+/**
+ * GET /sidebar-fix-agent?corpId=xxx&agentId=yyy
+ * 手动修正指定企业的 agentId
+ */
+router.get('/sidebar-fix-agent', async (req: Request, res: Response) => {
+  try {
+    const { corpId, agentId } = req.query;
+    if (!corpId || !agentId) {
+      return res.type('text/plain').send('用法: /sidebar-fix-agent?corpId=xxx&agentId=yyy');
+    }
+    const result = await AppDataSource.query(
+      'UPDATE wecom_configs SET agent_id = ?, name = COALESCE(name, ?) WHERE corp_id = ?',
+      [String(agentId), '已修正', String(corpId)]
+    );
+    const config = await AppDataSource.getRepository(WecomConfig).findOne({ where: { corpId: String(corpId) } });
+    res.type('text/plain; charset=utf-8').send(
+      `修复结果:\n` +
+      `corpId: ${corpId}\n` +
+      `agentId: ${config?.agentId || '未找到'}\n` +
+      `name: ${config?.name || '未找到'}\n` +
+      `affected: ${JSON.stringify(result)}\n`
+    );
+  } catch (e: any) {
+    res.type('text/plain').send('错误: ' + e.message);
+  }
+});
+
 // ==================== 独立测试页面：最小化侧边栏验证 ====================
 
 /**
