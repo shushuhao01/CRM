@@ -537,12 +537,10 @@ async function initWecomSdk() {
       try {
         const { getSidebarConfig } = await import('@/api/wecom')
         const configRes: any = await getSidebarConfig()
-        // 优先使用最新创建的有agentId的配置（通常是当前租户绑定的企业）
-        const configs = (configRes?.allConfigs || []).filter((c: any) => c.agentId)
-        const validConfig = configs.length > 0 ? configs[configs.length - 1] : configRes?.data
-        if (validConfig?.corpId) {
-          console.log('[Sidebar] 后端返回企业配置:', validConfig.name, validConfig.corpId, 'agentId=', validConfig.agentId)
-          corpId.value = validConfig.corpId
+        // request拦截器已解包，configRes 就是 { corpId, agentId, name }
+        if (configRes?.corpId) {
+          console.log('[Sidebar] 后端返回企业配置:', configRes.name, configRes.corpId, 'agentId=', configRes.agentId)
+          corpId.value = configRes.corpId
         } else {
           setSdkError('no-corpid', '无法获取企业配置', '后端未返回有效的企微配置，请联系管理员检查企微授权状态')
           return

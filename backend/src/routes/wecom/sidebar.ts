@@ -1896,14 +1896,15 @@ router.get('/sidebar-config', async (req: Request, res: Response) => {
       }
     }
 
-    // 否则列出所有可用的第三方配置，让前端选择
-    const configs = await configRepo.find({ where: { isEnabled: true, authType: 'third_party' }, order: { id: 'ASC' } });
+    // 否则查找最优的配置：优先有agentId的、最新创建的
+    const configs = await configRepo.find({ where: { isEnabled: true, authType: 'third_party' }, order: { id: 'DESC' } });
     if (!configs.length) return res.json({ success: false, message: '无可用的第三方企微配置' });
 
-    // 返回第一个，同时附上全部列表
+    // 优先返回有agentId的配置（最新的排在前面）
+    const best = configs.find(c => !!c.agentId) || configs[0];
     res.json({
       success: true,
-      data: { corpId: configs[0].corpId, agentId: configs[0].agentId, name: configs[0].name },
+      data: { corpId: best.corpId, agentId: best.agentId, name: best.name },
       allConfigs: configs.map(c => ({ id: c.id, corpId: c.corpId, agentId: c.agentId, name: c.name }))
     });
   } catch (e: any) {
