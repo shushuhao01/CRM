@@ -74,9 +74,13 @@
       <div class="login-header">
         <div class="login-logo">☁️</div>
         <h3>云客CRM</h3>
-        <p>绑定您的CRM账号以查看客户信息</p>
+        <p>绑定CRM账号查看客户信息</p>
       </div>
       <el-form ref="loginFormRef" :model="loginForm" :rules="loginRules" label-position="top" size="default">
+        <el-form-item label="租户编码 / 授权码" prop="tenantCode">
+          <el-input v-model="loginForm.tenantCode" placeholder="租户编码或私有部署授权码" prefix-icon="OfficeBuilding" />
+          <div class="tenant-code-hint">私有部署填授权码，SaaS填租户编码</div>
+        </el-form-item>
         <el-form-item label="用户名" prop="username">
           <el-input v-model="loginForm.username" placeholder="CRM登录用户名" prefix-icon="User" />
         </el-form-item>
@@ -84,11 +88,12 @@
           <el-input v-model="loginForm.password" type="password" placeholder="CRM登录密码" prefix-icon="Lock" show-password />
         </el-form-item>
         <el-form-item>
-          <el-button type="primary" style="width:100%" :loading="loginLoading" @click="handleLogin">
+          <el-button type="success" style="width:100%;border-radius:20px;height:42px;font-size:15px;font-weight:600;letter-spacing:2px" :loading="loginLoading" @click="handleLogin">
             绑定账号
           </el-button>
         </el-form-item>
       </el-form>
+      <div class="login-tip">💡 员工在企微聊天侧边栏首次打开时需绑定CRM账号</div>
     </div>
 
     <!-- 客户详情 -->
@@ -104,14 +109,14 @@
         </div>
       </div>
 
-      <!-- 非客户详情 Tab：快捷话术 / 快捷下单 / 客户画像 -->
-      <div v-if="currentTab !== 'customer' && currentTab !== 'mp-collect'" class="sidebar-center" style="padding-top:60px">
-        <el-result icon="info" :title="currentTabTitle" sub-title="功能建设中，敬请期待">
-          <template #extra>
-            <el-button size="small" @click="currentTab = 'customer'">查看客户详情</el-button>
-          </template>
-        </el-result>
-      </div>
+      <!-- 快捷话术 Tab -->
+      <SidebarScripts v-if="currentTab === 'scripts'" :sidebar-token="sidebarToken" />
+
+      <!-- 快捷下单 Tab -->
+      <SidebarQuickOrder v-else-if="currentTab === 'order'" :sidebar-token="sidebarToken" :customer-data="customerData" />
+
+      <!-- 客户画像 Tab -->
+      <SidebarPortrait v-else-if="currentTab === 'portrait'" :customer-data="customerData" />
 
       <!-- 资料收集 Tab -->
       <div v-else-if="currentTab === 'mp-collect'" class="sidebar-content">
@@ -393,10 +398,13 @@
 defineOptions({ name: 'WecomSidebarDetail' })
 import { ref, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Loading, SwitchButton, User, EditPen, InfoFilled, DataAnalysis, List, TopRight, Refresh } from '@element-plus/icons-vue'
+import { Loading, SwitchButton, User, Lock, EditPen, InfoFilled, DataAnalysis, List, TopRight, Refresh, OfficeBuilding } from '@element-plus/icons-vue'
 import { getSidebarJsSdkConfig, getSidebarSign, clearSidebarCache, sidebarBindAccount, sidebarVerifyBinding, getSidebarCustomerDetail, refreshSidebarToken, getSuiteTicketDiagnostic } from '@/api/wecom'
 import { displaySensitiveInfo as displaySensitiveInfoNew } from '@/utils/sensitiveInfo'
 import { SensitiveInfoType } from '@/services/permission'
+import SidebarScripts from './SidebarScripts.vue'
+import SidebarQuickOrder from './SidebarQuickOrder.vue'
+import SidebarPortrait from './SidebarPortrait.vue'
 
 const isDev = import.meta.env.DEV
 const pageState = ref<'loading' | 'no-sdk' | 'login' | 'detail' | 'error'>('loading')
@@ -448,8 +456,9 @@ const externalUserId = ref('')
 
 // 登录
 const loginFormRef = ref()
-const loginForm = ref({ username: '', password: '' })
+const loginForm = ref({ tenantCode: '', username: '', password: '' })
 const loginRules = {
+  tenantCode: [{ required: true, message: '请输入租户编码', trigger: 'blur' }],
   username: [{ required: true, message: '请输入用户名', trigger: 'blur' }],
   password: [{ required: true, message: '请输入密码', trigger: 'blur' }]
 }
@@ -1102,6 +1111,7 @@ async function handleLogin() {
     const res: any = await sidebarBindAccount({
       wecomUserId: wecomUserId.value,
       corpId: corpId.value,
+      tenantCode: loginForm.value.tenantCode,
       username: loginForm.value.username,
       password: loginForm.value.password
     })
@@ -1114,7 +1124,7 @@ async function handleLogin() {
       await loadCustomerDetail()
       loadCollectStatus()
     } else {
-      ElMessage.error('绑定失败')
+      ElMessage.error(res?.message || '绑定失败')
     }
   } catch (e: any) {
     ElMessage.error(e?.message || '账号或密码错误')
@@ -1429,6 +1439,22 @@ function getAfterSaleStatusText(status: string): string {
 // ==================== 登录 ====================
 .sidebar-login {
   padding: 40px 24px 24px;
+}
+
+.tenant-code-hint {
+  font-size: 11px;
+  color: #909399;
+  margin-top: 4px;
+  line-height: 1.4;
+}
+
+.login-tip {
+  text-align: center;
+  font-size: 12px;
+  color: #909399;
+  margin-top: 20px;
+  padding: 0 10px;
+  line-height: 1.6;
 }
 
 .login-header {

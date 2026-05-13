@@ -462,6 +462,77 @@ router.post('/sidebar/scripts/:id/use', authenticateSidebarToken, async (req: Re
   }
 });
 
+// 侧边栏更新话术
+router.put('/sidebar/scripts/:id', authenticateSidebarToken, async (req: Request, res: Response) => {
+  try {
+    const sidebarUser = (req as any).sidebarUser;
+    const tenantId = sidebarUser?.tenantId;
+    const scriptRepo = AppDataSource.getRepository(WecomScript);
+    const script = await scriptRepo.findOne({ where: { id: Number(req.params.id), tenantId } });
+    if (!script) return res.status(404).json({ success: false, message: '话术不存在' });
+    const { title, content, categoryId, tags, scope, color, attachments } = req.body;
+    const updateData: Record<string, any> = {};
+    if (title !== undefined) updateData.title = title;
+    if (content !== undefined) updateData.content = content;
+    if (categoryId !== undefined) updateData.categoryId = categoryId;
+    if (scope !== undefined) updateData.scope = scope;
+    if (color !== undefined) updateData.color = color || null;
+    if (tags !== undefined) updateData.tags = typeof tags === 'string' ? tags : JSON.stringify(tags);
+    if (attachments !== undefined) updateData.attachments = typeof attachments === 'string' ? attachments : JSON.stringify(attachments);
+    if (Object.keys(updateData).length > 0) {
+      await scriptRepo.update({ id: script.id }, updateData);
+    }
+    const updated = await scriptRepo.findOne({ where: { id: script.id } });
+    res.json({ success: true, data: updated });
+  } catch (e: any) {
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
+
+// 侧边栏删除话术
+router.delete('/sidebar/scripts/:id', authenticateSidebarToken, async (req: Request, res: Response) => {
+  try {
+    const sidebarUser = (req as any).sidebarUser;
+    const tenantId = sidebarUser?.tenantId;
+    const scriptRepo = AppDataSource.getRepository(WecomScript);
+    await scriptRepo.delete({ id: Number(req.params.id), tenantId });
+    res.json({ success: true });
+  } catch (e: any) {
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
+
+// 侧边栏更新分组
+router.put('/sidebar/script-categories/:id', authenticateSidebarToken, async (req: Request, res: Response) => {
+  try {
+    const sidebarUser = (req as any).sidebarUser;
+    const tenantId = sidebarUser?.tenantId;
+    const catRepo = AppDataSource.getRepository(WecomScriptCategory);
+    const cat = await catRepo.findOne({ where: { id: Number(req.params.id), tenantId } });
+    if (!cat) return res.status(404).json({ success: false, message: '分组不存在' });
+    Object.assign(cat, req.body);
+    await catRepo.save(cat);
+    res.json({ success: true, data: cat });
+  } catch (e: any) {
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
+
+// 侧边栏删除分组
+router.delete('/sidebar/script-categories/:id', authenticateSidebarToken, async (req: Request, res: Response) => {
+  try {
+    const sidebarUser = (req as any).sidebarUser;
+    const tenantId = sidebarUser?.tenantId;
+    const catRepo = AppDataSource.getRepository(WecomScriptCategory);
+    const scriptRepo = AppDataSource.getRepository(WecomScript);
+    await scriptRepo.delete({ categoryId: Number(req.params.id), tenantId });
+    await catRepo.delete({ id: Number(req.params.id), tenantId });
+    res.json({ success: true });
+  } catch (e: any) {
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
+
 // 上传话术附件
 router.post('/scripts/upload', authenticateToken, scriptUpload.single('file'), async (req: Request, res: Response) => {
   try {

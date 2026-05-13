@@ -315,28 +315,51 @@ router.get('/sidebar-builtin-config', authenticateToken, async (req: Request, re
 
 /**
  * 侧边栏H5 - 绑定CRM账号（登录）
- * @body { wecomUserId: string, corpId: string, username: string, password: string }
- * @returns { success, data: { token, user, binding }, message }
+ * 支持两种定位租户方式：
+ *   1. corpId → 通过企微配置查找租户（企微环境内自动获取）
+ *   2. tenantCode → 通过租户编码查找租户（兜底，解决wecomUserId/corpId为空的场景）
+ * @body { wecomUserId?: string, corpId?: string, tenantCode?: string, username: string, password: string }
  */
 router.post('/sidebar/bind-account', sidebarAuthLimiter, async (req: Request, res: Response) => {
   try {
-    const { wecomUserId, corpId, username, password } = req.body;
-    if (!wecomUserId || !corpId || !username || !password) return res.status(400).json({ success: false, message: '参数不完整' });
+    const { wecomUserId, corpId, tenantCode, username, password } = req.body;
+    if (!username || !password) return res.status(400).json({ success: false, message: '请输入用户名和密码' });
+    if (!tenantCode && !corpId) return res.status(400).json({ success: false, message: '请输入租户编码' });
 
-    // 输入长度校验，防止超长密码导致bcrypt处理耗时过长
     if (username.length > 100 || password.length > 128) {
       return res.status(400).json({ success: false, message: '用户名或密码长度超出限制' });
     }
 
-    const configRepo = AppDataSource.getRepository(WecomConfig);
-    const config = await configRepo.findOne({ where: { corpId, isEnabled: true } });
-    if (!config) return res.status(400).json({ success: false, message: '未找到匹配的企微配置' });
+    let tenantId = '';
+    let configId: any = null;
+    let resolvedCorpId = corpId || '';
 
-    const tenantId = config.tenantId;
-    if (!tenantId) {
-      log.warn(`[Wecom Sidebar] bind-account: config ${config.id} (corpId=${corpId}) 缺少tenantId，拒绝绑定`);
-      return res.status(400).json({ success: false, message: '企微配置数据不完整，请联系管理员' });
+    if (tenantCode) {
+      const { Tenant } = await import('../../entities/Tenant');
+      const tenantRepo = AppDataSource.getRepository(Tenant);
+      const tenant = await tenantRepo.findOne({ where: { code: tenantCode } });
+      if (!tenant) return res.status(400).json({ success: false, message: '租户编码不存在' });
+      tenantId = tenant.id;
+
+      const configRepo = AppDataSource.getRepository(WecomConfig);
+      const config = await configRepo.findOne({ where: { tenantId, isEnabled: true } });
+      if (config) {
+        configId = config.id;
+        resolvedCorpId = resolvedCorpId || config.corpId;
+      }
+    } else if (corpId) {
+      const configRepo = AppDataSource.getRepository(WecomConfig);
+      const config = await configRepo.findOne({ where: { corpId, isEnabled: true } });
+      if (!config) return res.status(400).json({ success: false, message: '未找到匹配的企微配置' });
+      tenantId = config.tenantId;
+      configId = config.id;
+      if (!tenantId) {
+        log.warn(`[Wecom Sidebar] bind-account: config ${config.id} (corpId=${corpId}) 缺少tenantId`);
+        return res.status(400).json({ success: false, message: '企微配置数据不完整，请联系管理员' });
+      }
     }
+
+    if (!tenantId) return res.status(400).json({ success: false, message: '无法确定租户信息' });
 
     const { User } = await import('../../entities/User');
     const userRepo = AppDataSource.getRepository(User);
@@ -347,16 +370,20 @@ router.post('/sidebar/bind-account', sidebarAuthLimiter, async (req: Request, re
     const valid = await bcrypt.compare(password, user.password);
     if (!valid) return res.status(401).json({ success: false, message: '用户名或密码错误' });
 
-    const bindingRepo = AppDataSource.getRepository(WecomUserBinding);
-    let binding = await bindingRepo.findOne({ where: { wecomUserId, corpId, wecomConfigId: config.id } });
-    if (binding) { binding.crmUserId = user.id; binding.crmUserName = user.name || user.username; binding.isEnabled = true; }
-    else { binding = bindingRepo.create({ tenantId, wecomConfigId: config.id, corpId, wecomUserId, crmUserId: user.id, crmUserName: user.name || user.username, bindOperator: 'sidebar', isEnabled: true }); }
-    await bindingRepo.save(binding);
+    let bindingData: any = null;
+    if (wecomUserId && resolvedCorpId && configId) {
+      const bindingRepo = AppDataSource.getRepository(WecomUserBinding);
+      let binding = await bindingRepo.findOne({ where: { wecomUserId, corpId: resolvedCorpId, wecomConfigId: configId } });
+      if (binding) { binding.crmUserId = user.id; binding.crmUserName = user.name || user.username; binding.isEnabled = true; }
+      else { binding = bindingRepo.create({ tenantId, wecomConfigId: configId, corpId: resolvedCorpId, wecomUserId, crmUserId: user.id, crmUserName: user.name || user.username, bindOperator: 'sidebar', isEnabled: true }); }
+      await bindingRepo.save(binding);
+      bindingData = { id: binding.id, wecomUserId, crmUserId: user.id, crmUserName: user.name || user.username };
+    }
 
     const { JwtConfig } = await import('../../config/jwt');
-    const token = JwtConfig.generateAccessToken({ type: 'sidebar', userId: user.id, username: user.username, role: user.role, wecomUserId, crmUserId: user.id, crmUserName: user.name || user.username, tenantId, corpId } as any);
+    const token = JwtConfig.generateAccessToken({ type: 'sidebar', userId: user.id, username: user.username, role: user.role, wecomUserId: wecomUserId || '', crmUserId: user.id, crmUserName: user.name || user.username, tenantId, corpId: resolvedCorpId } as any);
 
-    res.json({ success: true, data: { token, user: { id: user.id, name: user.name, username: user.username, avatar: user.avatar }, binding: { id: binding.id, wecomUserId, crmUserId: user.id, crmUserName: user.name || user.username } }, message: '绑定成功' });
+    res.json({ success: true, data: { token, user: { id: user.id, name: user.name, username: user.username, avatar: user.avatar }, binding: bindingData }, message: '绑定成功' });
   } catch (error: any) {
     log.error('[Wecom Sidebar] Bind account error:', error.message);
     res.status(500).json({ success: false, message: '账号绑定失败' });
@@ -2105,6 +2132,166 @@ async function doRegister(agentId){
   }
 }
 `);
+});
+
+// ==================== 快捷下单：产品搜索 ====================
+router.get('/sidebar/products', authenticateSidebarToken, async (req: Request, res: Response) => {
+  try {
+    const sidebarUser = (req as any).sidebarUser;
+    const tenantId = sidebarUser?.tenantId;
+    if (!tenantId) return res.json({ success: true, data: { list: [], total: 0 } });
+
+    const keyword = String(req.query.keyword || '').trim();
+    const page = Math.max(1, parseInt(String(req.query.page)) || 1);
+    const pageSize = Math.min(50, parseInt(String(req.query.pageSize)) || 20);
+
+    const { Product } = await import('../../entities/Product');
+    const productRepo = AppDataSource.getRepository(Product);
+    const qb = productRepo.createQueryBuilder('p')
+      .where('p.tenantId = :tenantId', { tenantId })
+      .andWhere('p.status = :status', { status: 'active' });
+
+    if (keyword) {
+      qb.andWhere('(p.name LIKE :kw OR p.sku LIKE :kw)', { kw: `%${keyword}%` });
+    }
+
+    const [products, total] = await qb
+      .orderBy('p.createdAt', 'DESC')
+      .skip((page - 1) * pageSize)
+      .take(pageSize)
+      .getManyAndCount();
+
+    res.json({
+      success: true,
+      data: {
+        list: products.map((p: any) => ({
+          id: p.id, name: p.name, price: Number(p.price || 0),
+          stock: p.stock ?? 999, image: p.image || p.imageUrl || '',
+          sku: p.sku || '', unit: p.unit || ''
+        })),
+        total
+      }
+    });
+  } catch (error: any) {
+    log.error('[Sidebar] Products search error:', error.message);
+    res.status(500).json({ success: false, message: '搜索产品失败' });
+  }
+});
+
+// ==================== 快捷下单：创建订单 ====================
+router.post('/sidebar/orders', authenticateSidebarToken, async (req: Request, res: Response) => {
+  try {
+    const sidebarUser = (req as any).sidebarUser;
+    const tenantId = sidebarUser?.tenantId;
+    const userId = sidebarUser?.crmUserId || sidebarUser?.userId;
+    if (!tenantId) return res.status(400).json({ success: false, message: '租户信息缺失' });
+
+    const { customerId, products, totalAmount, depositAmount, paymentMethod, remark, receiverName, receiverPhone, receiverAddress } = req.body;
+    if (!customerId || !products?.length) {
+      return res.status(400).json({ success: false, message: '客户和商品不能为空' });
+    }
+
+    const { Order } = await import('../../entities/Order');
+    const { OrderItem } = await import('../../entities/OrderItem');
+    const orderRepo = AppDataSource.getRepository(Order);
+    const orderItemRepo = AppDataSource.getRepository(OrderItem);
+
+    // 生成订单号
+    const orderNumber = 'WS' + Date.now().toString(36).toUpperCase() + Math.random().toString(36).slice(2, 6).toUpperCase();
+
+    const orderData: any = {
+      tenantId,
+      customerId,
+      orderNumber,
+      totalAmount: totalAmount || 0,
+      finalAmount: totalAmount || 0,
+      depositAmount: depositAmount || 0,
+      paymentMethod: paymentMethod || '',
+      status: 'pending',
+      remark: remark || '',
+      receiverName: receiverName || '',
+      receiverPhone: receiverPhone || '',
+      receiverAddress: receiverAddress || '',
+      createdBy: userId,
+      source: 'wecom_sidebar'
+    };
+    const order: any = orderRepo.create(orderData);
+    const savedOrder: any = await orderRepo.save(order);
+
+    // 创建订单项
+    for (const p of products) {
+      const itemData: any = {
+        orderId: savedOrder.id,
+        productId: p.id,
+        productName: p.name,
+        price: p.price,
+        quantity: p.quantity,
+        subtotal: p.price * p.quantity,
+        tenantId
+      };
+      const item = orderItemRepo.create(itemData);
+      await orderItemRepo.save(item);
+    }
+
+    log.info(`[Sidebar] Order created: ${orderNumber} by user ${userId}`);
+    res.json({ success: true, data: { orderId: savedOrder.id, orderNumber }, message: '订单创建成功' });
+  } catch (error: any) {
+    log.error('[Sidebar] Create order error:', error.message);
+    res.status(500).json({ success: false, message: '创建订单失败: ' + error.message });
+  }
+});
+
+// ==================== 快捷下单：创建客户 ====================
+router.post('/sidebar/customers', authenticateSidebarToken, async (req: Request, res: Response) => {
+  try {
+    const sidebarUser = (req as any).sidebarUser;
+    const tenantId = sidebarUser?.tenantId;
+    const userId = sidebarUser?.crmUserId || sidebarUser?.userId;
+    if (!tenantId) return res.status(400).json({ success: false, message: '租户信息缺失' });
+
+    const { name, phone, gender, source, level, status: custStatus, address, remark, tags } = req.body;
+    if (!phone || !name) return res.status(400).json({ success: false, message: '姓名和手机号必填' });
+
+    const { Customer } = await import('../../entities/Customer');
+    const customerRepo = AppDataSource.getRepository(Customer);
+
+    // 检查手机号是否存在
+    const existing = await customerRepo.findOne({ where: { phone, tenantId } });
+    if (existing) return res.status(400).json({ success: false, message: '该手机号已存在客户', data: existing });
+
+    const custData: any = {
+      tenantId, name, phone, gender: gender || '',
+      source: source || 'wecom', level: level || 'normal',
+      status: custStatus || 'potential', address: address || '',
+      remarks: remark || '', salesPersonId: userId,
+      createdBy: userId, tags: tags || undefined
+    };
+    const customer: any = customerRepo.create(custData);
+    const savedCustomer: any = await customerRepo.save(customer);
+
+    log.info(`[Sidebar] Customer created: ${savedCustomer.id} by user ${userId}`);
+    res.json({ success: true, data: savedCustomer });
+  } catch (error: any) {
+    log.error('[Sidebar] Create customer error:', error.message);
+    res.status(500).json({ success: false, message: '创建客户失败' });
+  }
+});
+
+// ==================== 快捷下单：检查手机号 ====================
+router.get('/sidebar/check-phone', authenticateSidebarToken, async (req: Request, res: Response) => {
+  try {
+    const sidebarUser = (req as any).sidebarUser;
+    const tenantId = sidebarUser?.tenantId;
+    const phone = String(req.query.phone || '');
+    if (!phone || phone.length < 11) return res.json({ success: true, data: null });
+
+    const { Customer } = await import('../../entities/Customer');
+    const customerRepo = AppDataSource.getRepository(Customer);
+    const customer = await customerRepo.findOne({ where: { phone, tenantId } });
+    res.json({ success: true, data: customer ? { id: customer.id, name: customer.name, phone: customer.phone } : null });
+  } catch (_error: any) {
+    res.json({ success: true, data: null });
+  }
 });
 
 export default router;

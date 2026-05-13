@@ -728,8 +728,8 @@ export const clearSidebarCache = (corpId: string) => {
   return request.post('/wecom/sidebar/clear-cache', { corpId })
 }
 
-/** 侧边栏 - 绑定账号(登录) */
-export const sidebarBindAccount = (data: { wecomUserId: string; corpId: string; username: string; password: string }) => {
+/** 侧边栏 - 绑定账号(登录)，支持tenantCode兜底（wecomUserId可能为空） */
+export const sidebarBindAccount = (data: { wecomUserId: string; corpId: string; tenantCode: string; username: string; password: string }) => {
   return request.post('/wecom/sidebar/bind-account', data)
 }
 
