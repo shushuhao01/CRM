@@ -1860,161 +1860,114 @@ router.get('/sidebar-diag', async (req: Request, res: Response) => {
 // ==================== 独立测试页面：最小化侧边栏验证 ====================
 
 /**
- * GET /sidebar-test
- * 完全独立的HTML测试页面，用 ww.register 验证侧边栏能否跑通
- * 侧边栏URL配置: https://crm.yunkes.com/api/v1/wecom/sidebar-test?corpId=$CORPID$
+ * GET /sidebar-test — 测试页HTML（无内联脚本，避免CSP阻止）
+ * GET /sidebar-test.js — 测试页的外部JS文件
  */
 router.get('/sidebar-test', (_req: Request, res: Response) => {
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.setHeader('Content-Security-Policy', "default-src 'self' https: data:; script-src 'self' https://wwcdn.weixin.qq.com https://crm.yunkes.com; style-src 'self' 'unsafe-inline'; connect-src 'self' https:;");
   res.send(`<!DOCTYPE html>
 <html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>侧边栏测试</title>
-<style>
-*{box-sizing:border-box;margin:0;padding:0}
-body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;padding:12px;background:#0d1117;color:#c9d1d9;font-size:13px;line-height:1.5}
-h2{color:#58a6ff;font-size:16px;margin-bottom:8px}
-#result{font-size:15px;font-weight:bold;padding:14px;border-radius:8px;margin:8px 0;text-align:center}
-.success{background:#0d2818;color:#3fb950;border:1px solid #238636}
-.fail{background:#2d1117;color:#f85149;border:1px solid #da3633}
-.loading{background:#161b22;color:#58a6ff;border:1px solid #1f6feb}
-#logs{max-height:65vh;overflow-y:auto;-webkit-overflow-scrolling:touch}
-.L{padding:6px 8px;margin:3px 0;border-radius:4px;font-size:11px;word-break:break-all;background:#161b22}
-.L.ok{border-left:3px solid #3fb950}
-.L.err{border-left:3px solid #f85149}
-.L.warn{border-left:3px solid #d29922}
-.L .t{color:#8b949e;margin-right:4px}
-</style>
+<style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:-apple-system,sans-serif;padding:12px;background:#0d1117;color:#c9d1d9;font-size:13px}h2{color:#58a6ff;font-size:16px;margin-bottom:8px}#result{font-size:15px;font-weight:bold;padding:14px;border-radius:8px;margin:8px 0;text-align:center}#result.s{background:#0d2818;color:#3fb950;border:1px solid #238636}#result.f{background:#2d1117;color:#f85149;border:1px solid #da3633}#result.l{background:#161b22;color:#58a6ff;border:1px solid #1f6feb}#logs{max-height:70vh;overflow-y:auto}.L{padding:5px 8px;margin:2px 0;border-radius:4px;font-size:11px;word-break:break-all;background:#161b22}.L.ok{border-left:3px solid #3fb950}.L.err{border-left:3px solid #f85149}.L.w{border-left:3px solid #d29922}</style>
 </head><body>
-<h2>企微侧边栏测试 (ww.register)</h2>
-<div id="result" class="loading">初始化中...</div>
+<h2>企微侧边栏测试</h2>
+<div id="result" class="l">初始化中...</div>
 <div id="logs"></div>
+<script src="/api/v1/wecom/sidebar-test.js"></script>
+</body></html>`);
+});
 
-<script>
+router.get('/sidebar-test.js', (_req: Request, res: Response) => {
+  res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.send(`
 var logEl=document.getElementById('logs');
-function L(m,t){var d=document.createElement('div');d.className='L '+(t||'');d.innerHTML='<span class=t>'+new Date().toLocaleTimeString()+'</span> '+m;logEl.appendChild(d);logEl.scrollTop=99999;console.log('[T]',m)}
-function R(m,ok){var e=document.getElementById('result');e.textContent=m;e.className=ok===true?'success':ok===false?'fail':'loading'}
+function L(m,t){var d=document.createElement('div');d.className='L '+(t||'');d.textContent=new Date().toLocaleTimeString()+' '+m;logEl.appendChild(d);logEl.scrollTop=99999;console.log('[T]',m)}
+function R(m,ok){var e=document.getElementById('result');e.textContent=m;e.className=ok===true?'s':ok===false?'f':'l'}
 
-var P=new URLSearchParams(location.search);
-var corpId=P.get('corpId')||'';
+var corpId=(new URLSearchParams(location.search)).get('corpId')||'';
+L('corpId='+corpId,corpId&&corpId.indexOf('$')<0?'ok':'err');
+L('URL='+location.href);
+L('UA='+navigator.userAgent.substring(0,120));
 
-L('corpId = <b>'+corpId+'</b>',corpId&&!corpId.includes('$')?'ok':'err');
-L('页面URL = '+location.href.substring(0,120));
-
-if(!corpId||corpId.includes('$')){
-  R('corpId为空或$CORPID$未替换',false);
-  L('请确认在企微客户端中打开此页面','err');
+if(!corpId||corpId.indexOf('$')>=0){
+  R('corpId为空或$CORPID$未被替换',false);
 }else{
-  R('加载SDK中...',null);
-  loadSDK();
-}
-
-function loadSDK(){
-  var urls=[
-    '/api/v1/wecom/sdk/wecom-jssdk-2.4.0.js',
-    'https://wwcdn.weixin.qq.com/node/open/js/wecom-jssdk-2.4.0.js',
-    'https://wwcdn.weixin.qq.com/node/wework/wwopen/js/wecom-jssdk-2.4.0.js'
-  ];
-  var i=0;
-  function tryNext(){
-    if(i>=urls.length){R('所有SDK源加载失败',false);L('SDK无法加载，请检查网络和CDN可访问性','err');return}
-    var url=urls[i++];
-    L('尝试加载SDK: '+url);
-    var s=document.createElement('script');s.src=url;
-    var timer=setTimeout(function(){L('加载超时: '+url,'warn');s.onload=s.onerror=null;tryNext()},8000);
-    s.onload=function(){
-      clearTimeout(timer);
-      setTimeout(function(){
-        if(typeof ww!=='undefined'&&typeof ww.register==='function'){
-          L('SDK加载成功 ✅ ww.register可用','ok');
-          go();
-        }else{
-          L('SDK加载但ww对象不可用','warn');tryNext();
-        }
-      },200);
-    };
-    s.onerror=function(){clearTimeout(timer);L('加载失败: '+url,'warn');tryNext()};
+  R('加载SDK...',null);
+  var sdks=['/api/v1/wecom/sdk/wecom-jssdk-2.4.0.js','https://wwcdn.weixin.qq.com/node/open/js/wecom-jssdk-2.4.0.js','https://wwcdn.weixin.qq.com/node/wework/wwopen/js/wecom-jssdk-2.4.0.js'];
+  var si=0;
+  function trySDK(){
+    if(si>=sdks.length){R('SDK全部加载失败',false);return}
+    var u=sdks[si++];L('加载: '+u);
+    var s=document.createElement('script');s.src=u;
+    var tm=setTimeout(function(){L('超时: '+u,'w');s.onload=s.onerror=null;trySDK()},8000);
+    s.onload=function(){clearTimeout(tm);setTimeout(function(){if(typeof ww!=='undefined'&&typeof ww.register==='function'){L('SDK OK, ww.register可用','ok');run()}else{L('ww不可用','w');trySDK()}},300)};
+    s.onerror=function(){clearTimeout(tm);L('失败: '+u,'w');trySDK()};
     document.head.appendChild(s);
   }
-  tryNext();
+  trySDK();
 }
 
-async function go(){
-  R('请求后端签名...',null);
+function run(){
+  R('获取签名...',null);
+  var signUrl=location.href.split('#')[0];
+  fetch('/api/v1/wecom/sidebar/sign',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:signUrl,corpId:corpId,type:'config'})})
+  .then(function(r){return r.json()})
+  .then(function(j){
+    L('签名响应: success='+j.success+' agentId='+(j.data&&j.data.agentId),j.success?'ok':'err');
+    if(!j.success){R('签名API失败: '+(j.message||''),false);return}
+    var agentId=j.data.agentId;
+    if(!agentId){R('agentId为空!',false);return}
+    doRegister(agentId);
+  })
+  .catch(function(e){L('签名请求异常: '+e.message,'err');R('后端请求失败',false)});
+}
 
-  // 1) 获取agentId
-  var agentId=null;
-  try{
-    var signUrl=location.href.split('#')[0];
-    L('请求签名API, signUrl='+signUrl.substring(0,100));
-    var r=await fetch('/api/v1/wecom/sidebar/sign',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:signUrl,corpId:corpId,type:'config'})});
-    var j=await r.json();
-    L('签名API响应: success='+j.success+', agentId='+(j.data&&j.data.agentId)+', corpId='+(j.data&&j.data.corpId), j.success?'ok':'err');
-    if(!j.success){R('签名API失败: '+(j.message||'').substring(0,80),false);return}
-    agentId=j.data.agentId;
-    if(!agentId){R('agentId为空! 数据库中缺少此字段',false);L('请让管理员在CRM后台的企微配置中确认agentId','err');return}
-  }catch(e){
-    L('签名API请求异常: '+e.message,'err');R('后端请求失败: '+e.message,false);return;
-  }
-
-  // 2) ww.register
-  R('调用 ww.register...',null);
+function doRegister(agentId){
+  R('ww.register...',null);
   var cc=false,ac=false;
-  try{
-    L('ww.register({ corpId:'+corpId+', agentId:'+agentId+' })');
-    await ww.register({
-      corpId:corpId,
-      agentId:Number(agentId),
-      jsApiList:['getCurExternalContact','getContext'],
-      async getConfigSignature(url){
-        cc=true;L('getConfigSignature 被调用 ✅ url='+url.substring(0,80),'ok');
-        var r=await fetch('/api/v1/wecom/sidebar/sign',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:url,corpId:corpId,type:'config'})});
-        var d=await r.json();if(!d.success)throw new Error(d.message);
-        return{timestamp:d.data.timestamp,nonceStr:d.data.nonceStr,signature:d.data.signature};
-      },
-      async getAgentConfigSignature(url){
-        ac=true;L('getAgentConfigSignature 被调用 ✅ url='+url.substring(0,80),'ok');
-        var r=await fetch('/api/v1/wecom/sidebar/sign',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:url,corpId:corpId,type:'agent_config'})});
-        var d=await r.json();if(!d.success)throw new Error(d.message);
-        return{timestamp:d.data.timestamp,nonceStr:d.data.nonceStr,signature:d.data.signature};
-      },
-      onConfigSuccess:function(){L('onConfigSuccess ✅','ok')},
-      onConfigFail:function(e){L('onConfigFail ❌ '+JSON.stringify(e),'err')},
-      onAgentConfigSuccess:function(){L('onAgentConfigSuccess ✅','ok')},
-      onAgentConfigFail:function(e){L('onAgentConfigFail ❌ '+JSON.stringify(e),'err')},
-    });
-    L('ww.register 完成','ok');
-    L('getConfigSignature: '+(cc?'✅已调用':'⚠️未调用(原生处理)'),cc?'ok':'warn');
-    L('getAgentConfigSignature: '+(ac?'✅已调用':'❌未调用'),ac?'ok':'err');
-  }catch(e){
-    L('ww.register 异常: '+(e.message||JSON.stringify(e)),'err');
-    R('ww.register失败',false);return;
-  }
-
-  // 3) getCurExternalContact
-  R('获取聊天对象...',null);
-  try{
-    L('调用 ww.getCurExternalContact()');
-    var c=await ww.getCurExternalContact();
-    L('响应: '+JSON.stringify(c),'ok');
+  L('ww.register corpId='+corpId+' agentId='+agentId);
+  ww.register({
+    corpId:corpId,agentId:Number(agentId),
+    jsApiList:['getCurExternalContact','getContext'],
+    getConfigSignature:function(url){
+      cc=true;L('getConfigSignature called, url='+url.substring(0,80),'ok');
+      return fetch('/api/v1/wecom/sidebar/sign',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:url,corpId:corpId,type:'config'})})
+      .then(function(r){return r.json()})
+      .then(function(d){if(!d.success)throw new Error(d.message);L('config签名OK','ok');return{timestamp:d.data.timestamp,nonceStr:d.data.nonceStr,signature:d.data.signature}});
+    },
+    getAgentConfigSignature:function(url){
+      ac=true;L('getAgentConfigSignature called, url='+url.substring(0,80),'ok');
+      return fetch('/api/v1/wecom/sidebar/sign',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:url,corpId:corpId,type:'agent_config'})})
+      .then(function(r){return r.json()})
+      .then(function(d){if(!d.success)throw new Error(d.message);L('agent签名OK','ok');return{timestamp:d.data.timestamp,nonceStr:d.data.nonceStr,signature:d.data.signature}});
+    },
+    onConfigSuccess:function(){L('onConfigSuccess','ok')},
+    onConfigFail:function(e){L('onConfigFail: '+JSON.stringify(e),'err')},
+    onAgentConfigSuccess:function(){L('onAgentConfigSuccess','ok')},
+    onAgentConfigFail:function(e){L('onAgentConfigFail: '+JSON.stringify(e),'err')}
+  }).then(function(){
+    L('register完成. configCalled='+cc+' agentConfigCalled='+ac,'ok');
+    R('获取联系人...',null);
+    return ww.getCurExternalContact();
+  }).then(function(c){
+    L('getCurExternalContact: '+JSON.stringify(c),'ok');
     var uid=c.userId||(c.result&&c.result.userId);
-    if(uid){R('✅ 成功! 联系人: '+uid,true)}
-    else{R('返回但无userId(不在聊天窗口?)',false)}
-  }catch(e){
+    if(uid)R('成功! 联系人: '+uid,true);
+    else R('返回无userId',false);
+  }).catch(function(e){
     var es=e.message||e.errMsg||e.err_msg||JSON.stringify(e);
-    L('getCurExternalContact失败: '+es,'err');
+    L('失败: '+es,'err');
     if(/92002|cross.?corp/i.test(es)){
-      R('92002 跨企业错误',false);
-      L('== 92002诊断 ==','err');
-      L('configSign: '+(cc?'已调用':'未调用'),'err');
-      L('agentConfigSign: '+(ac?'已调用':'未调用'),'err');
-      L('检查: 1)可信域名含'+location.hostname+' 2)agentId正确 3)重新授权','err');
+      R('92002错误',false);
+      L('configSign '+(cc?'已':'未')+'调用, agentConfigSign '+(ac?'已':'未')+'调用','err');
     }else{
       R('失败: '+es.substring(0,80),false);
     }
-  }
+  });
 }
-</script>
-</body></html>`);
+`);
 });
 
 export default router;
