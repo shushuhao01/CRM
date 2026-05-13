@@ -1342,7 +1342,9 @@ router.post('/sidebar/sign', jsSdkConfigLimiter, validateJsSdkReferer, async (re
     const nonceStr = uuidv4().replace(/-/g, '').substring(0, 16);
     const signature = WecomApiService.generateJsSdkSignature(ticket, nonceStr, timestamp, url);
 
-    log.info(`[Wecom Sidebar] /sign: type=${type}, corpId=${corpId}, authType=${config.authType}, url=${url.substring(0, 80)}, agentId=${config.agentId || '(空)'}, ticket前缀=${ticket.substring(0, 20)}, sig前缀=${signature.substring(0, 16)}, ts=${timestamp}`);
+    // ★ 详细诊断日志：如果 92002 持续出现，用这里的信息去企微签名校验工具对比
+    const rawSignStr = `jsapi_ticket=${ticket}&noncestr=${nonceStr}&timestamp=${timestamp}&url=${url}`;
+    log.info(`[Wecom Sidebar] /sign 完整签名参数:\n  type=${type}\n  corpId(前端)=${corpId}\n  corpId(DB)=${config.corpId}\n  authType=${config.authType}\n  agentId=${config.agentId || '(空)'}\n  url=${url}\n  rawUrl(原始)=${rawUrl}\n  ticket=${ticket}\n  nonceStr=${nonceStr}\n  timestamp=${timestamp}\n  signStr=${rawSignStr}\n  signature=${signature}`);
 
     res.json({
       success: true,
@@ -1750,6 +1752,108 @@ router.post('/sidebar/fix-all-agent-ids', async (_req: Request, res: Response) =
   } catch (error: any) {
     log.error('[Wecom Sidebar] fix-all-agent-ids error:', error.message);
     res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// ==================== 签名诊断API：直接浏览器访问查看所有中间值 ====================
+
+/**
+ * GET /sidebar-diag?corpId=xxx
+ * 直接在浏览器访问，输出签名链路中的所有中间值，用于对照企微签名校验工具
+ */
+router.get('/sidebar-diag', async (req: Request, res: Response) => {
+  const corpId = String(req.query.corpId || '');
+  const testUrl = String(req.query.url || `https://crm.yunkes.com/api/v1/wecom/sidebar-test?corpId=${corpId}`);
+  const steps: string[] = [];
+  const add = (s: string) => { steps.push(s); log.info(`[sidebar-diag] ${s}`); };
+
+  try {
+    add(`=== 侧边栏签名诊断 ===`);
+    add(`输入 corpId: ${corpId}`);
+    add(`输入 url: ${testUrl}`);
+
+    // 1. 查找配置
+    const configRepo = AppDataSource.getRepository(WecomConfig);
+    let config: any = null;
+    if (corpId && !corpId.includes('$')) {
+      config = await configRepo.findOne({ where: { corpId, isEnabled: true } });
+    }
+    if (!config) {
+      config = await configRepo.findOne({ where: { isEnabled: true, authType: 'third_party' }, order: { id: 'ASC' } });
+    }
+    if (!config) {
+      add(`❌ 未找到任何可用的企微配置`);
+      return res.type('text/plain').send(steps.join('\n'));
+    }
+
+    add(`配置 id=${config.id}, corpId(DB)=${config.corpId}, authType=${config.authType}`);
+    add(`agentId=${config.agentId || '(空)'}, suiteId=${config.suiteId || '(空)'}`);
+    add(`permanentCode=${config.permanentCode ? '已配置(' + config.permanentCode.substring(0, 8) + '...)' : '❌ 未配置'}`);
+    add(`corpId一致性: 前端=${corpId}, DB=${config.corpId}, 匹配=${corpId === config.corpId ? '✅' : '❌ 不匹配!'}`);
+
+    // 2. 获取 corp_access_token
+    const { WecomTokenService } = await import('../../services/wecom/WecomTokenService');
+    let accessToken: string;
+    try {
+      accessToken = await WecomTokenService.getAccessToken(config);
+      add(`corp_access_token: ${accessToken.substring(0, 30)}...`);
+    } catch (e: any) {
+      add(`❌ 获取corp_access_token失败: ${e.message}`);
+      return res.type('text/plain').send(steps.join('\n'));
+    }
+
+    // 3. 获取企业 jsapi_ticket
+    let corpTicket: string;
+    try {
+      corpTicket = await WecomApiService.getJsSdkTicket(accessToken);
+      add(`企业jsapi_ticket: ${corpTicket}`);
+    } catch (e: any) {
+      add(`❌ 获取企业jsapi_ticket失败: ${e.message}`);
+      return res.type('text/plain').send(steps.join('\n'));
+    }
+
+    // 4. 获取应用 jsapi_ticket
+    let agentTicket: string;
+    try {
+      agentTicket = await WecomApiService.getAgentJsSdkTicket(accessToken);
+      add(`应用jsapi_ticket(agent_config): ${agentTicket}`);
+    } catch (e: any) {
+      add(`❌ 获取应用jsapi_ticket失败: ${e.message}`);
+      agentTicket = '';
+    }
+
+    // 5. 生成企业签名
+    const ts = Math.floor(Date.now() / 1000);
+    const nonce = uuidv4().replace(/-/g, '').substring(0, 16);
+
+    const corpSignStr = `jsapi_ticket=${corpTicket}&noncestr=${nonce}&timestamp=${ts}&url=${testUrl}`;
+    const corpSig = WecomApiService.generateJsSdkSignature(corpTicket, nonce, ts, testUrl);
+    add(`--- 企业签名(config) ---`);
+    add(`签名原始串: ${corpSignStr}`);
+    add(`签名结果: ${corpSig}`);
+
+    // 6. 生成应用签名
+    if (agentTicket) {
+      const agentSignStr = `jsapi_ticket=${agentTicket}&noncestr=${nonce}&timestamp=${ts}&url=${testUrl}`;
+      const agentSig = WecomApiService.generateJsSdkSignature(agentTicket, nonce, ts, testUrl);
+      add(`--- 应用签名(agent_config) ---`);
+      add(`签名原始串: ${agentSignStr}`);
+      add(`签名结果: ${agentSig}`);
+    }
+
+    add(`--- 前端 ww.register 应使用参数 ---`);
+    add(`corpId: ${corpId || config.corpId}`);
+    add(`agentId: ${config.agentId}`);
+    add(`timestamp: ${ts}`);
+    add(`nonceStr: ${nonce}`);
+
+    add(`\n★ 请将上面的「签名原始串」复制到企微签名校验工具验证:`);
+    add(`https://open.work.weixin.qq.com/wwopen/devtool/interface/combine`);
+
+    res.type('text/plain; charset=utf-8').send(steps.join('\n'));
+  } catch (e: any) {
+    add(`全局异常: ${e.message}`);
+    res.type('text/plain; charset=utf-8').send(steps.join('\n'));
   }
 });
 
