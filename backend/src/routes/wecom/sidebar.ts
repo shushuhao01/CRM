@@ -1796,7 +1796,21 @@ router.get('/sidebar-diag', async (req: Request, res: Response) => {
     let accessToken: string;
     try {
       accessToken = await WecomTokenService.getAccessToken(config);
-      add(`corp_access_token: ${accessToken.substring(0, 30)}...`);
+      add(`corp_access_token: ${accessToken}`);
+
+      // 验证token有效性
+      const axiosLib = (await import('axios')).default;
+      try {
+        const verifyRes = await axiosLib.get(`https://qyapi.weixin.qq.com/cgi-bin/get_jsapi_ticket?access_token=${accessToken}`);
+        if (verifyRes.data.errcode === 0) {
+          add(`✅ token有效 (get_jsapi_ticket成功)`);
+        } else {
+          add(`❌ token无效! errcode=${verifyRes.data.errcode}, errmsg=${verifyRes.data.errmsg}`);
+          add(`这说明 permanent_code 可能已失效，需要企业重新授权安装应用！`);
+        }
+      } catch (ve: any) {
+        add(`token验证请求失败: ${ve.message}`);
+      }
     } catch (e: any) {
       add(`❌ 获取corp_access_token失败: ${e.message}`);
       return res.type('text/plain').send(steps.join('\n'));
@@ -1857,6 +1871,20 @@ router.get('/sidebar-diag', async (req: Request, res: Response) => {
   }
 });
 
+// ==================== 辅助API：获取默认第三方配置 ====================
+
+/** GET /sidebar-config — 返回第一个可用的第三方配置的corpId和agentId */
+router.get('/sidebar-config', async (_req: Request, res: Response) => {
+  try {
+    const configRepo = AppDataSource.getRepository(WecomConfig);
+    const config = await configRepo.findOne({ where: { isEnabled: true, authType: 'third_party' }, order: { id: 'ASC' } });
+    if (!config) return res.json({ success: false, message: '无可用的第三方企微配置' });
+    res.json({ success: true, data: { corpId: config.corpId, agentId: config.agentId, name: config.name } });
+  } catch (e: any) {
+    res.json({ success: false, message: e.message });
+  }
+});
+
 // ==================== 独立测试页面：最小化侧边栏验证 ====================
 
 /**
@@ -1887,13 +1915,25 @@ function L(m,t){var d=document.createElement('div');d.className='L '+(t||'');d.t
 function R(m,ok){var e=document.getElementById('result');e.textContent=m;e.className=ok===true?'s':ok===false?'f':'l'}
 
 var corpId=(new URLSearchParams(location.search)).get('corpId')||'';
-L('corpId='+corpId,corpId&&corpId.indexOf('$')<0?'ok':'err');
+L('原始corpId='+corpId);
 L('URL='+location.href);
 L('UA='+navigator.userAgent.substring(0,120));
 
 if(!corpId||corpId.indexOf('$')>=0){
-  R('corpId为空或$CORPID$未被替换',false);
+  L('$CORPID$未被替换，从后端自动获取...','w');
+  R('获取配置...',null);
+  fetch('/api/v1/wecom/sidebar-config').then(function(r){return r.json()}).then(function(j){
+    L('后端配置: '+JSON.stringify(j),j.success?'ok':'err');
+    if(j.success&&j.data&&j.data.corpId){corpId=j.data.corpId;startWithCorpId()}
+    else{R('后端无可用企微配置',false)}
+  }).catch(function(e){L('获取配置失败: '+e.message,'err');R('请求失败',false)});
 }else{
+  startWithCorpId();
+}
+
+function startWithCorpId(){
+  L('使用corpId='+corpId,corpId?'ok':'err');
+  if(!corpId){R('无法获取corpId',false);return}
   R('加载SDK...',null);
   var sdks=['/api/v1/wecom/sdk/wecom-jssdk-2.4.0.js','https://wwcdn.weixin.qq.com/node/open/js/wecom-jssdk-2.4.0.js','https://wwcdn.weixin.qq.com/node/wework/wwopen/js/wecom-jssdk-2.4.0.js'];
   var si=0;
