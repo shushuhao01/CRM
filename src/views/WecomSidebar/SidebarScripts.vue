@@ -14,6 +14,7 @@
     <div v-if="keyword && searchResults.length" class="s-search-dropdown">
       <div class="s-search-item" v-for="s in searchResults" :key="s.id" @click.stop="handleSend(s)" @dblclick.stop="handleDblClick(s)" @contextmenu.prevent="showCtxMenu($event, s)">
         <span class="s-scope-dot" :style="{ background: s.scope === 'personal' ? '#e6a23c' : '#07c160' }"></span>
+        <span v-if="hasAttachments(s)" class="s-att-icon">{{ getAttachmentIcon(s) }}</span>
         <span class="s-search-title" :style="s.color ? { color: s.color } : {}">{{ s.title || '无标题' }}</span>
         <span class="s-search-content">{{ s.content }}</span>
         <span class="script-send-icon" title="点击发送" @click.stop="handleSend(s)"><svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg></span>
@@ -47,6 +48,7 @@
           @click.stop="handleSend(s)" @dblclick.stop="handleDblClick(s)" @contextmenu.prevent="showCtxMenu($event, s)">
           <span class="script-idx">{{ idx + 1 }}</span>
           <span class="s-scope-dot" :style="{ background: s.scope === 'personal' ? '#e6a23c' : '#07c160' }"></span>
+          <span v-if="hasAttachments(s)" class="s-att-icon">{{ getAttachmentIcon(s) }}</span>
           <span class="script-title-text" :style="s.color ? { color: s.color } : {}">{{ s.title || '无标题' }}</span>
           <span class="script-content-inline">{{ s.content }}</span>
           <span class="script-send-icon" title="点击发送" @click.stop="handleSend(s)"><svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg></span>
@@ -314,6 +316,18 @@ async function copyScript(script: any) {
   }
 }
 
+function hasAttachments(s: any): boolean {
+  return !!(s.attachments && s.attachments.length > 0)
+}
+function getAttachmentIcon(s: any): string {
+  if (!s.attachments?.length) return ''
+  const firstType = s.attachments[0]?.type || ''
+  if (firstType.startsWith('image/')) return '🖼️'
+  if (firstType.includes('pdf')) return '📄'
+  if (firstType.includes('video')) return '🎬'
+  return '📎'
+}
+
 function showCtxMenu(e: MouseEvent, s: any) { ctxMenu.value = { visible: true, x: e.clientX, y: e.clientY, script: s } }
 function showCatCtxMenu(e: MouseEvent, cat: any) { catCtxMenu.value = { visible: true, x: e.clientX, y: e.clientY, cat } }
 
@@ -361,6 +375,7 @@ onBeforeUnmount(() => {
 .script-item:hover { background: #f5f7fa; }
 .script-idx { color: #c0c4cc; font-size: 9px; width: 14px; text-align: center; flex-shrink: 0; }
 .s-scope-dot { width: 5px; height: 5px; border-radius: 50%; flex-shrink: 0; }
+.s-att-icon { font-size: 10px; flex-shrink: 0; }
 .script-title-text { font-weight: 500; color: #303133; white-space: nowrap; max-width: 60px; overflow: hidden; text-overflow: ellipsis; flex-shrink: 0; }
 .script-content-inline { flex: 1; color: #909399; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 10px; }
 .script-send-icon { color: #07c160; cursor: pointer; flex-shrink: 0; display: flex; opacity: 0.5; }

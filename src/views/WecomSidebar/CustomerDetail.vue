@@ -155,6 +155,7 @@
           <div class="preview-card">
             <div class="card-title" style="display:flex;justify-content:space-between;align-items:center">
               <span>💬 企微客户详情</span>
+              <button v-if="!customerData.crmCustomer" class="btn-send-form-card" @click="openCrmDetail" style="background:#e8f5e9;color:#4caf50;border-color:#a5d6a7">🔗 关联CRM</button>
             </div>
             <div class="info-row"><span class="label">昵称</span><span>{{ customerData.wecomCustomer?.name || '-' }}</span></div>
             <div class="info-row"><span class="label">性别</span><span>{{ customerData.wecomCustomer?.gender === 1 ? '男' : customerData.wecomCustomer?.gender === 2 ? '女' : '-' }}</span></div>
@@ -185,8 +186,9 @@
           </div>
 
           <!-- 无CRM关联 -->
-          <div v-else class="preview-card" style="text-align:center;padding:16px;color:#909399;font-size:12px">
-            该企微客户尚未关联CRM客户
+          <div v-else class="preview-card" style="text-align:center;padding:16px">
+            <div style="color:#909399;font-size:12px;margin-bottom:8px">该企微客户尚未关联CRM客户</div>
+            <button class="btn-send-form-card" @click="openCrmDetail" style="background:#e8f5e9;color:#4caf50;border-color:#a5d6a7;padding:4px 12px">🔗 关联CRM客户</button>
           </div>
 
           <!-- 购买统计 -->
@@ -565,7 +567,7 @@ async function initWithNewSdk(retryCount = 0) {
     await ww.register({
       corpId: corpId.value,
       agentId: Number(agentId),
-      jsApiList: ['getCurExternalContact', 'getCurExternalChat', 'getContext'],
+      jsApiList: ['getCurExternalContact', 'getCurExternalChat', 'getContext', 'sendChatMessage'],
       getConfigSignature,
       getAgentConfigSignature,
       onConfigSuccess(res: any) {
@@ -766,7 +768,7 @@ async function initWithLegacySdk() {
         timestamp: configRes.timestamp,
         nonceStr: configRes.nonceStr,
         signature: configRes.agentSignature,
-        jsApiList: ['getCurExternalContact'],
+        jsApiList: ['getCurExternalContact', 'sendChatMessage'],
         debug: isDebug,
         success: () => {
           console.log('[Sidebar] ✅ agentConfig success')

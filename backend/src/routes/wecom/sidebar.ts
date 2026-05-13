@@ -2208,12 +2208,15 @@ router.post('/sidebar/orders', authenticateSidebarToken, async (req: Request, re
       depositAmount: depositAmount || 0,
       paymentMethod: paymentMethod || '',
       status: 'pending',
+      markType: req.body.markType || 'normal',
       remark: remark || '',
-      receiverName: receiverName || '',
-      receiverPhone: receiverPhone || '',
-      receiverAddress: receiverAddress || '',
+      shippingName: receiverName || '',
+      shippingPhone: receiverPhone || '',
+      shippingAddress: receiverAddress || '',
       createdBy: userId,
-      source: 'wecom_sidebar'
+      orderSource: req.body.orderSource || 'wecom_sidebar',
+      serviceWechat: req.body.serviceWechat || '',
+      expressCompany: req.body.expressCompany || '',
     };
     const order: any = orderRepo.create(orderData);
     const savedOrder: any = await orderRepo.save(order);
@@ -2224,9 +2227,9 @@ router.post('/sidebar/orders', authenticateSidebarToken, async (req: Request, re
         orderId: savedOrder.id,
         productId: p.id,
         productName: p.name,
-        price: p.price,
-        quantity: p.quantity,
-        subtotal: p.price * p.quantity,
+        unitPrice: Number(p.price) || 0,
+        quantity: Number(p.quantity) || 1,
+        subtotal: (Number(p.price) || 0) * (Number(p.quantity) || 1),
         tenantId
       };
       const item = orderItemRepo.create(itemData);
@@ -2274,6 +2277,29 @@ router.post('/sidebar/customers', authenticateSidebarToken, async (req: Request,
   } catch (error: any) {
     log.error('[Sidebar] Create customer error:', error.message);
     res.status(500).json({ success: false, message: '创建客户失败' });
+  }
+});
+
+// ==================== 客户画像：更新标签 ====================
+router.put('/sidebar/customer-tags', authenticateSidebarToken, async (req: Request, res: Response) => {
+  try {
+    const { customerId, tags } = req.body;
+    if (!customerId) return res.status(400).json({ success: false, message: '缺少customerId' });
+
+    const sidebarUser = (req as any).sidebarUser;
+    const tenantId = sidebarUser?.tenantId;
+
+    const { Customer } = await import('../../entities/Customer');
+    const customerRepo = AppDataSource.getRepository(Customer);
+    const customer = await customerRepo.findOne({ where: { id: customerId, ...(tenantId ? { tenantId } : {}) } });
+    if (!customer) return res.status(404).json({ success: false, message: '客户不存在' });
+
+    customer.tags = Array.isArray(tags) ? tags : (typeof tags === 'string' ? tags.split(',').filter(Boolean) : []);
+    await customerRepo.save(customer);
+    res.json({ success: true, message: '标签已更新' });
+  } catch (error: any) {
+    log.error('[Sidebar] Update customer tags error:', error.message);
+    res.status(500).json({ success: false, message: '更新标签失败' });
   }
 });
 

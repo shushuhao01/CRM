@@ -99,7 +99,7 @@ const toggleExpand = (id: string) => {
   expandedId.value = expandedId.value === id ? null : id
 }
 
-const getBaseUrl = () => `${window.location.origin}/api/v1`
+const getBaseUrl = () => `${window.location.origin}/api/v1/wecom/h5/app`
 const getHeaders = () => ({ Authorization: `Bearer ${props.sidebarToken}` })
 
 const parseSidebarToken = () => {
@@ -117,7 +117,7 @@ const parseSidebarToken = () => {
 const loadStats = async () => {
   try {
     const { default: axios } = await import('axios')
-    const res: any = await axios.get(`${getBaseUrl()}/mp/collect-stats`, { headers: getHeaders() })
+    const res: any = await axios.get(`${getBaseUrl()}/mp-collect-stats`, { headers: getHeaders() })
     const d = res?.data?.data || res?.data || {}
     mpStats.value = { filled: d.filled || 0 }
   } catch { /* ignore */ }
@@ -127,7 +127,7 @@ const loadRecords = async () => {
   recordsLoading.value = true
   try {
     const { default: axios } = await import('axios')
-    const res: any = await axios.get(`${getBaseUrl()}/mp/collect-records`, {
+    const res: any = await axios.get(`${getBaseUrl()}/mp-collect-records`, {
       params: { page: page.value, pageSize },
       headers: getHeaders()
     })
@@ -158,7 +158,7 @@ const handleSend = async () => {
     const { tenantId, memberId } = parseSidebarToken()
     const ts = Date.now().toString()
     const { default: axios } = await import('axios')
-    const res: any = await axios.post(`${getBaseUrl()}/mp/generate-card`, { tenantId, memberId, ts }, { headers: getHeaders() })
+    const res: any = await axios.post(`${getBaseUrl()}/mp-generate-card`, { tenantId, memberId, ts }, { headers: getHeaders() })
     const data = res?.data?.data || res?.data || {}
     const path = data.path || `/pages/form/form?tenantId=${tenantId}&memberId=${memberId}&ts=${ts}&sign=${data.sign || ''}`
 
@@ -190,7 +190,7 @@ const handleSend = async () => {
 
     // 记录发送日志
     try {
-      await axios.post(`${getBaseUrl()}/mp/log-send`, { tenantId, memberId, ts }, { headers: getHeaders() })
+      await axios.post(`${getBaseUrl()}/mp-log-send`, { tenantId, memberId, ts }, { headers: getHeaders() })
     } catch { /* ignore */ }
 
     // 刷新统计和记录

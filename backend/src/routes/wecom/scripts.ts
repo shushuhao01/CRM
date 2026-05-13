@@ -184,7 +184,11 @@ router.put('/scripts/categories-sort', authenticateToken, async (req: Request, r
     const { items } = req.body; // [{id, sortOrder}]
     const catRepo = AppDataSource.getRepository(WecomScriptCategory);
     for (const item of items || []) {
-      await catRepo.update({ id: item.id, tenantId }, { sortOrder: item.sortOrder });
+      const id = Number(item?.id);
+      const sortOrder = Number(item?.sortOrder);
+      if (!Number.isFinite(id) || id <= 0) continue;
+      if (!Number.isFinite(sortOrder)) continue;
+      await catRepo.update({ id: Math.floor(id), ...(tenantId ? { tenantId } : {}) }, { sortOrder });
     }
     res.json({ success: true });
   } catch (e: any) {
@@ -219,9 +223,12 @@ router.put('/scripts/sort', authenticateToken, async (req: Request, res: Respons
   try {
     const tenantId = getCurrentTenantId();
     const { ids } = req.body;
+    if (!Array.isArray(ids)) return res.status(400).json({ success: false, message: 'ids必须是数组' });
     const scriptRepo = AppDataSource.getRepository(WecomScript);
-    for (let i = 0; i < (ids || []).length; i++) {
-      await scriptRepo.update({ id: ids[i], tenantId }, { sortOrder: i });
+    for (let i = 0; i < ids.length; i++) {
+      const id = Number(ids[i]);
+      if (!Number.isFinite(id) || id <= 0) continue;
+      await scriptRepo.update({ id: Math.floor(id), ...(tenantId ? { tenantId } : {}) }, { sortOrder: i });
     }
     res.json({ success: true });
   } catch (e: any) {

@@ -106,18 +106,18 @@
           <input v-model="productKeyword" placeholder="搜索产品名称..." class="preview-input" @input="searchProducts" />
         </div>
         <div class="qo-product-list" v-if="productList.length">
-          <div class="qo-product-item" v-for="p in productList" :key="p.id">
+          <div class="qo-product-item" v-for="p in productList" :key="p.id" :class="{ 'out-of-stock': p.stock <= 0 }">
             <div class="qo-prod-img">
-              <img :src="p.image || p.imageUrl || p.thumbnail || '/default-product.png'" :alt="p.name" />
+              <img :src="getProductImage(p)" :alt="p.name" @error="handleImgError($event)" />
             </div>
             <div class="qo-prod-info">
               <div class="qo-prod-name">{{ p.name }}</div>
               <div class="qo-prod-meta">
                 <span class="qo-prod-price">¥{{ Number(p.price).toFixed(2) }}</span>
-                <span class="qo-prod-stock">库存 {{ p.stock }}</span>
+                <span class="qo-prod-stock" :class="{ 'no-stock': p.stock <= 0 }">{{ p.stock > 0 ? '库存 ' + p.stock : '缺货' }}</span>
               </div>
             </div>
-            <button class="qo-add-btn" @click="addProduct(p)" :disabled="p.stock <= 0">{{ p.stock > 0 ? '+' : '无货' }}</button>
+            <button class="qo-add-btn" @click="addProduct(p)" :disabled="p.stock <= 0" :title="p.stock <= 0 ? '商品缺货' : '添加到订单'">+</button>
           </div>
         </div>
         <div v-else class="qo-empty-hint">{{ productKeyword ? '未找到产品' : '加载产品中...' }}</div>
@@ -225,6 +225,7 @@
           <div class="qo-radio-group">
             <span class="qo-radio" :class="{ active: form.markType === 'normal' }" @click="form.markType = 'normal'">正常发货单</span>
             <span class="qo-radio" :class="{ active: form.markType === 'reserved' }" @click="form.markType = 'reserved'">预留单</span>
+            <span class="qo-radio" :class="{ active: form.markType === 'virtual_delivery' }" @click="form.markType = 'virtual_delivery'">虚拟发货</span>
           </div>
         </div>
         <div class="form-group">
@@ -275,7 +276,7 @@
         </div>
         <div class="qo-confirm-section">
           <div class="qo-confirm-label">订单类型</div>
-          <div class="qo-confirm-val">{{ form.markType === 'reserved' ? '预留单' : '正常发货单' }}</div>
+          <div class="qo-confirm-val">{{ { normal: '正常发货单', reserved: '预留单', virtual_delivery: '虚拟发货' }[form.markType] || '正常发货单' }}</div>
         </div>
       </div>
       <div class="preview-card">
@@ -360,7 +361,7 @@ const form = ref({
   serviceWechat: '',
   orderSource: '',
   expressCompany: '',
-  markType: 'normal' as 'normal' | 'reserved',
+  markType: 'normal' as 'normal' | 'reserved' | 'virtual_delivery',
   remark: ''
 })
 
@@ -494,6 +495,17 @@ const saveNewCustomer = async () => {
   newCustSaving.value = false
 }
 
+// ========== 图片处理 ==========
+function getProductImage(p: any): string {
+  const img = p.image || p.imageUrl || p.thumbnail || ''
+  if (!img) return 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48"><rect width="48" height="48" fill="#f0f2f5"/><text x="24" y="28" text-anchor="middle" font-size="12" fill="#c0c4cc">📦</text></svg>')
+  return img
+}
+function handleImgError(e: Event) {
+  const img = e.target as HTMLImageElement
+  img.src = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48"><rect width="48" height="48" fill="#f0f2f5"/><text x="24" y="28" text-anchor="middle" font-size="12" fill="#c0c4cc">📦</text></svg>')
+}
+
 // ========== 搜索产品 ==========
 const searchProducts = () => {
   clearTimeout(searchTimer)
@@ -557,26 +569,30 @@ const handleScreenshot = (e: Event) => {
 }
 
 const pasteScreenshot = async () => {
-  try {
-    const clipboardItems = await navigator.clipboard.read()
-    for (const item of clipboardItems) {
-      const imageType = item.types.find(t => t.startsWith('image/'))
-      if (imageType) {
-        if (form.value.depositScreenshots.length >= 3) { ElMessage.warning('最多上传3张截图'); return }
-        const blob = await item.getType(imageType)
-        const reader = new FileReader()
-        reader.onload = (ev) => {
-          if (ev.target?.result) form.value.depositScreenshots.push(ev.target.result as string)
+  // 优先尝试 Clipboard API
+  if (navigator.clipboard?.read) {
+    try {
+      const clipboardItems = await navigator.clipboard.read()
+      for (const item of clipboardItems) {
+        const imageType = item.types.find((t: string) => t.startsWith('image/'))
+        if (imageType) {
+          if (form.value.depositScreenshots.length >= 3) { ElMessage.warning('最多上传3张截图'); return }
+          const blob = await item.getType(imageType)
+          const reader = new FileReader()
+          reader.onload = (ev) => {
+            if (ev.target?.result) form.value.depositScreenshots.push(ev.target.result as string)
+          }
+          reader.readAsDataURL(blob)
+          ElMessage.success('粘贴截图成功')
+          return
         }
-        reader.readAsDataURL(blob)
-        ElMessage.success('粘贴截图成功')
-        return
       }
-    }
-    ElMessage.info('剪贴板中没有图片')
-  } catch {
-    ElMessage.info('无法读取剪贴板，请使用Ctrl+V或上传按钮')
+      ElMessage.info('剪贴板中没有图片')
+      return
+    } catch { /* Clipboard API不可用，降级处理 */ }
   }
+  // 降级：提示用户使用Ctrl+V
+  ElMessage.info('请按Ctrl+V粘贴截图，或使用上传按钮')
 }
 
 const handleGlobalPaste = async (e: ClipboardEvent) => {
@@ -780,7 +796,9 @@ select.preview-input { appearance: auto; }
 .qo-prod-price { font-size: 12px; color: #f56c6c; font-weight: 600; }
 .qo-prod-stock { font-size: 10px; color: #909399; }
 .qo-add-btn { width: 32px; height: 32px; border-radius: 50%; border: none; background: #07c160; color: #fff; font-size: 18px; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-.qo-add-btn:disabled { background: #dcdfe6; cursor: not-allowed; }
+.qo-add-btn:disabled { background: #dcdfe6; cursor: not-allowed; opacity: 0.6; }
+.qo-product-item.out-of-stock { opacity: 0.6; }
+.qo-prod-stock.no-stock { color: #f56c6c; }
 
 /* 已选产品 */
 .qo-selected-product { padding: 8px 0; border-bottom: 1px solid #f5f5f5; }

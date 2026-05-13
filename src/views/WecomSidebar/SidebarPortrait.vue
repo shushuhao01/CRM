@@ -200,6 +200,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
+import request from '@/utils/request'
 
 const props = defineProps<{ customerData: any; sidebarToken?: string }>()
 
@@ -499,20 +500,36 @@ const parseTags = (tags: any): string[] => {
   return []
 }
 
-const customTags = computed(() => parseTags(crmCustomer.value?.tags))
+const localTags = ref<string[]>([])
+watch(() => crmCustomer.value?.tags, (val) => {
+  localTags.value = parseTags(val)
+}, { immediate: true })
 
-const addTag = () => {
+const customTags = computed(() => localTags.value)
+
+const addTag = async () => {
   const tag = newTagText.value.trim()
-  if (!tag || customTags.value.includes(tag)) return
-  const current = [...customTags.value, tag]
-  if (crmCustomer.value) crmCustomer.value.tags = current.join(',')
+  if (!tag || localTags.value.includes(tag)) return
+  localTags.value = [...localTags.value, tag]
   newTagText.value = ''
+  await saveTagsToBackend()
 }
 
-const removeTag = (tag: string) => {
-  if (!crmCustomer.value) return
-  const filtered = customTags.value.filter(t => t !== tag)
-  crmCustomer.value.tags = filtered.join(',')
+const removeTag = async (tag: string) => {
+  localTags.value = localTags.value.filter(t => t !== tag)
+  await saveTagsToBackend()
+}
+
+async function saveTagsToBackend() {
+  if (!crmCustomer.value?.id || !props.sidebarToken) return
+  try {
+    await request.put(`/wecom/sidebar/customer-tags`, {
+      customerId: crmCustomer.value.id,
+      tags: localTags.value
+    }, { headers: { Authorization: `Bearer ${props.sidebarToken}` } } as any)
+  } catch (e: any) {
+    console.warn('[Portrait] 保存标签失败:', e?.message)
+  }
 }
 </script>
 
