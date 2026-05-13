@@ -531,14 +531,27 @@ async function initWecomSdk() {
     corpId.value = urlParams.get('corpId') || ''
     console.log('[Sidebar] corpId:', corpId.value, ', sdkMode:', sdkMode, ', URL:', window.location.href)
 
-    if (!corpId.value) {
-      setSdkError('no-corpid', '缺少企业ID参数', 'URL中缺少corpId参数，请在企微后台配置侧边栏地址时添加?corpId=您的企业ID', `当前URL: ${window.location.href}`)
-      return
-    }
-
-    // ★ 检测 $CORPID$ 占位符（第三方应用常见，后端会解析并返回真实corpId）
-    if (corpId.value.includes('$') || corpId.value.includes('CORPID')) {
-      console.warn('[Sidebar] ⚠️ corpId是占位符:', corpId.value, '，将通过后端解析真实corpId')
+    // ★ $CORPID$ 未替换或为空时，从后端获取当前租户绑定的企业配置
+    if (!corpId.value || corpId.value.includes('$') || corpId.value.includes('CORPID')) {
+      console.warn('[Sidebar] corpId无效:', corpId.value || '(空)', '，从后端自动获取...')
+      try {
+        const { getSidebarConfig } = await import('@/api/wecom')
+        const configRes: any = await getSidebarConfig()
+        // 优先使用最新创建的有agentId的配置（通常是当前租户绑定的企业）
+        const configs = (configRes?.allConfigs || []).filter((c: any) => c.agentId)
+        const validConfig = configs.length > 0 ? configs[configs.length - 1] : configRes?.data
+        if (validConfig?.corpId) {
+          console.log('[Sidebar] 后端返回企业配置:', validConfig.name, validConfig.corpId, 'agentId=', validConfig.agentId)
+          corpId.value = validConfig.corpId
+        } else {
+          setSdkError('no-corpid', '无法获取企业配置', '后端未返回有效的企微配置，请联系管理员检查企微授权状态')
+          return
+        }
+      } catch (e: any) {
+        console.error('[Sidebar] 获取企业配置失败:', e)
+        setSdkError('no-corpid', '获取企业配置失败', e?.message || '请检查网络连接')
+        return
+      }
     }
 
     // ★ 第三方服务商应用必须用 ww.register（新版SDK）

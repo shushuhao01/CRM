@@ -718,6 +718,11 @@ export const getSidebarSign = (data: { url: string; corpId: string; type: 'confi
   return request.post('/wecom/sidebar/sign', data)
 }
 
+/** 侧边栏 - 获取可用的企微配置列表（$CORPID$未替换时使用） */
+export const getSidebarConfig = (corpId?: string) => {
+  return request.get('/wecom/sidebar-config', { params: { corpId } })
+}
+
 /** 侧边栏 - 清除后端Token/Ticket缓存（92002错误恢复用） */
 export const clearSidebarCache = (corpId: string) => {
   return request.post('/wecom/sidebar/clear-cache', { corpId })
