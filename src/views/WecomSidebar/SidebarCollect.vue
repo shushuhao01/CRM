@@ -182,28 +182,42 @@ const handleSend = async () => {
     }
     console.log('[Collect] 发送小程序卡片:', JSON.stringify(cardPayload))
 
-    // 优先使用新版SDK ww.sendChatMessage
-    if (ww && typeof ww.sendChatMessage === 'function') {
-      try {
-        await ww.sendChatMessage(cardPayload)
-        ElMessage.success('小程序卡片已发送')
-      } catch (e: any) {
-        console.warn('[Collect] ww.sendChatMessage失败:', e?.message || e)
-        sendViaWxBridge(cardPayload)
+    // 尝试多种方式发送（企微SDK版本兼容）
+    let sent = false
+
+    // 方式1: 新版SDK ww.sendChatMessage
+    if (!sent && ww) {
+      if (typeof ww.sendChatMessage === 'function') {
+        try { await ww.sendChatMessage(cardPayload); sent = true; ElMessage.success('小程序卡片已发送') }
+        catch (e: any) { console.warn('[Collect] ww.sendChatMessage error:', e) }
+      } else if (typeof ww.invoke === 'function') {
+        try { await ww.invoke('sendChatMessage', cardPayload); sent = true; ElMessage.success('小程序卡片已发送') }
+        catch (e: any) { console.warn('[Collect] ww.invoke error:', e) }
       }
-    } else if (wx && typeof wx.invoke === 'function') {
-      // 旧版SDK wx.invoke
-      sendViaWxBridge(cardPayload)
-    } else if (bridge && typeof bridge.invoke === 'function') {
-      // 原生JSBridge
-      bridge.invoke('sendChatMessage', JSON.stringify(cardPayload), (res: any) => {
-        const result = typeof res === 'string' ? JSON.parse(res) : res
-        if (result.err_msg === 'sendChatMessage:ok') ElMessage.success('小程序卡片已发送')
-        else ElMessage.info('卡片已生成，等待确认发送')
+    }
+
+    // 方式2: 旧版SDK wx.invoke
+    if (!sent && wx && typeof wx.invoke === 'function') {
+      wx.invoke('sendChatMessage', cardPayload, (res: any) => {
+        if (res.err_msg === 'sendChatMessage:ok') ElMessage.success('小程序卡片已发送')
+        else { console.warn('[Collect] wx.invoke result:', res); ElMessage.info('卡片已生成，请确认发送') }
       })
-    } else {
-      console.error('[Collect] 企微SDK不可用! ww=', typeof ww, ', wx=', typeof wx, ', bridge=', typeof bridge, ', UA=', navigator.userAgent.substring(0, 100))
-      ElMessage.warning('企微环境不可用。请确保：1)在企微客户端打开 2)应用已配置客户联系权限')
+      sent = true
+    }
+
+    // 方式3: WeixinJSBridge
+    if (!sent && bridge && typeof bridge.invoke === 'function') {
+      bridge.invoke('sendChatMessage', JSON.stringify(cardPayload), (res: any) => {
+        const r = typeof res === 'string' ? JSON.parse(res) : res
+        if (r.err_msg === 'sendChatMessage:ok') ElMessage.success('小程序卡片已发送')
+        else ElMessage.info('卡片已生成，请确认发送')
+      })
+      sent = true
+    }
+
+    if (!sent) {
+      console.error('[Collect] 所有发送方式均不可用! ww=', ww ? Object.keys(ww).join(',') : 'null', ', wx=', wx ? 'has' : 'null', ', bridge=', bridge ? 'has' : 'null')
+      ElMessage.warning('发送失败。请确保在企微客户端侧边栏中使用，且应用已配置客户联系权限。')
     }
 
     // 记录发送日志

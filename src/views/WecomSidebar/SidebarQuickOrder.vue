@@ -19,7 +19,7 @@
     <div v-if="step === 1" class="qo-step-content">
       <div class="qo-mode-tabs">
         <span class="qo-mode-tab" :class="{ active: custMode === 'search' }" @click="custMode = 'search'">🔍 搜索客户</span>
-        <span class="qo-mode-tab" :class="{ active: custMode === 'new' }" @click="custMode = 'new'">➕ 新建客户</span>
+        <span class="qo-mode-tab" :class="{ active: custMode === 'new' }" @click="switchToNewCust">➕ 新建客户</span>
       </div>
 
       <!-- 搜索已有客户 -->
@@ -29,13 +29,14 @@
           <div class="qo-search-box">
             <input v-model="custKeyword" placeholder="搜索姓名/手机号..." class="preview-input" @input="searchCustomers" @focus="!custList.length && searchCustomers()" />
           </div>
-          <!-- 自动匹配提示 -->
-          <div v-if="autoMatchedCustomer" class="qo-auto-match">
+          <!-- 自动匹配提示（仅在未搜索时显示） -->
+          <div v-if="autoMatchedCustomer && !custKeyword && !custList.length" class="qo-auto-match">
             <div class="qo-match-badge">✅ 已匹配CRM客户</div>
             <div class="qo-customer-item selected" @click="selectCustomer(autoMatchedCustomer)">
               <div class="qo-cust-name">{{ autoMatchedCustomer.name }} <span class="qo-cust-phone">{{ maskPhone(autoMatchedCustomer.phone) }}</span></div>
             </div>
           </div>
+          <!-- 搜索结果列表 -->
           <div class="qo-customer-list" v-if="custList.length">
             <div class="qo-customer-item" v-for="c in custList" :key="c.id" :class="{ selected: form.customerId === c.id }" @click="selectCustomer(c)">
               <div class="qo-cust-name">{{ c.name || '未知' }} <span class="qo-cust-phone">{{ maskPhone(c.phone) }}</span></div>
@@ -92,8 +93,10 @@
         <div class="card-title" style="margin-top:8px">📋 收货信息</div>
         <div class="form-group"><label>收货人 <span class="qo-req">*</span></label><input v-model="form.receiverName" placeholder="收货人姓名" class="preview-input" /></div>
         <div class="form-group"><label>收货电话 <span class="qo-req">*</span></label><input v-model="form.receiverPhone" placeholder="收货电话" class="preview-input" /></div>
-        <div class="form-group"><label>收货地址 <span class="qo-req">*</span></label><input v-model="form.receiverAddress" placeholder="详细收货地址" class="preview-input" /></div>
-        <button class="preview-btn" :disabled="!form.receiverName || !form.receiverPhone || !form.receiverAddress" @click="step = 2">下一步：选择产品</button>
+        <div class="form-group"><label>收货地址 <span class="qo-req">*</span></label><input v-model="form.receiverAddress" placeholder="省市区+详细地址（如：广东广州天河区XX路XX号）" class="preview-input" />
+          <div v-if="addressError" style="color:#f56c6c;font-size:10px;margin-top:2px">{{ addressError }}</div>
+        </div>
+        <button class="preview-btn" :disabled="!form.receiverName || !form.receiverPhone || !form.receiverAddress" @click="validateAndNext">下一步：选择产品</button>
       </div>
     </div>
 
@@ -336,6 +339,37 @@ const custKeyword = ref('')
 const custList = ref<any[]>([])
 const custLoading = ref(false)
 const autoMatchedCustomer = ref<any>(null)
+const addressError = ref('')
+
+function switchToNewCust() {
+  custMode.value = 'new'
+  form.value.customerId = ''
+  form.value.customerName = ''
+  form.value.customerPhone = ''
+  form.value.receiverName = ''
+  form.value.receiverPhone = ''
+  form.value.receiverAddress = ''
+}
+
+function validateAndNext() {
+  addressError.value = ''
+  const addr = form.value.receiverAddress.trim()
+  if (addr.length < 8) {
+    addressError.value = '地址太短，请填写完整的省市区+详细地址'
+    return
+  }
+  const hasProvince = /(省|市|自治区|北京|上海|天津|重庆|广东|浙江|江苏|山东|河北|河南|四川|湖北|湖南|福建|安徽|辽宁|陕西|江西|广西|云南|贵州|山西|吉林|黑龙|内蒙|新疆|甘肃|海南|宁夏|青海|西藏)/
+  const hasDetail = /(路|街|巷|号|栋|楼|室|区|镇|村|园|城|大厦|小区|社区)/
+  if (!hasProvince.test(addr)) {
+    addressError.value = '请填写省/市信息，如：广东广州天河区...'
+    return
+  }
+  if (!hasDetail.test(addr)) {
+    addressError.value = '请填写详细地址，如：XX路XX号'
+    return
+  }
+  step.value = 2
+}
 
 const productKeyword = ref('')
 const productList = ref<any[]>([])

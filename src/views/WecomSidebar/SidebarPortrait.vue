@@ -114,8 +114,8 @@
       <div class="info-row"><span class="label">来源</span><span>{{ transSource(crmCustomer?.source) }}</span></div>
       <div class="info-row"><span class="label">等级</span><span class="tag">{{ transLevel(crmCustomer?.level) }}</span></div>
       <div class="info-row"><span class="label">状态</span><span>{{ transFollowStatus(crmCustomer?.followStatus) }}</span></div>
-      <div class="info-row"><span class="label">地址</span><span>{{ crmCustomer?.address || '-' }}</span></div>
-      <div class="info-row"><span class="label">疾病史</span><span>{{ crmCustomer?.medicalHistory || '-' }}</span></div>
+      <div class="info-row"><span class="label">地址</span><span>{{ parseLatestContent(crmCustomer?.address) || '-' }}</span></div>
+      <div class="info-row"><span class="label">疾病史</span><span>{{ parseLatestContent(crmCustomer?.medicalHistory) || '-' }}</span></div>
     </div>
 
     <!-- 5. 多维度评估卡 -->
@@ -206,6 +206,27 @@ const props = defineProps<{ customerData: any; sidebarToken?: string }>()
 
 // ========== 基础数据提取 ==========
 const crmCustomer = computed(() => props.customerData?.crmCustomer || null)
+
+function parseLatestContent(value: any): string {
+  if (!value) return ''
+  if (typeof value === 'string') {
+    if (value.startsWith('[')) {
+      try {
+        const arr = JSON.parse(value)
+        if (Array.isArray(arr) && arr.length > 0) {
+          const latest = arr[arr.length - 1]
+          return latest?.content || latest || ''
+        }
+      } catch { /* not JSON */ }
+    }
+    return value
+  }
+  if (Array.isArray(value) && value.length > 0) {
+    const latest = value[value.length - 1]
+    return latest?.content || String(latest) || ''
+  }
+  return String(value)
+}
 const wecomCustomer = computed(() => props.customerData?.wecomCustomer || null)
 
 const stats = computed(() => ({

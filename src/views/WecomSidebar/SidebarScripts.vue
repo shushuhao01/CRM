@@ -268,41 +268,83 @@ function cancelEditCat() {
   newCatName.value = ''
 }
 
-/** 点击发送：通过企微JS-SDK发送到当前聊天对话框 */
+/** 点击发送图标：通过企微JS-SDK发送到当前聊天对话框 */
 async function handleSend(script: any) {
+  try { await request.post(`/wecom/sidebar/scripts/${script.id}/use`, {}, authHeaders.value as any) } catch { /* ignore */ }
+
+  const ww = (window as any).ww
+  const wx = (window as any).wx
+
+  // 构建消息payload
+  const payload: any = { msgtype: 'text', text: { content: script.content } }
+
+  // 如果有图片附件，优先发送为news（H5链接带图）
+  if (script.attachments?.length > 0) {
+    const firstAtt = script.attachments[0]
+    if (firstAtt.type?.startsWith('image/') && firstAtt.url) {
+      payload.msgtype = 'news'
+      payload.news = {
+        link: firstAtt.url,
+        title: script.title || '话术分享',
+        desc: script.content || '',
+        imgUrl: firstAtt.url
+      }
+      delete payload.text
+    }
+  }
+
+  let sent = false
+  if (ww) {
+    try {
+      if (typeof ww.sendChatMessage === 'function') { await ww.sendChatMessage(payload); sent = true }
+      else if (typeof ww.invoke === 'function') { await ww.invoke('sendChatMessage', payload); sent = true }
+    } catch { /* fallback */ }
+  }
+  if (!sent && wx?.invoke) {
+    wx.invoke('sendChatMessage', payload, (res: any) => {
+      if (res.err_msg === 'sendChatMessage:ok') ElMessage.success('已发送')
+      else { copyScript(script); ElMessage.info('已复制到剪贴板') }
+    })
+    sent = true
+  }
+  if (sent) { ElMessage.success('已发送') }
+  else { copyScript(script); ElMessage.info('已复制到剪贴板（非企微环境）') }
+
+  const s = allScripts.value.find(ss => ss.id === script.id)
+  if (s) s.useCount = (s.useCount || 0) + 1
+}
+
+/** 双击：复制并发送到对话输入框（只显示一个提示） */
+async function handleCopyAndSend(script: any) {
+  // 先静默复制（不弹提示）
+  try {
+    await navigator.clipboard.writeText(script?.content || '')
+  } catch {
+    const ta = document.createElement('textarea')
+    ta.value = script?.content || ''
+    document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta)
+  }
+  // 再发送
   try { await request.post(`/wecom/sidebar/scripts/${script.id}/use`, {}, authHeaders.value as any) } catch { /* ignore */ }
   const ww = (window as any).ww
   const wx = (window as any).wx
   if (ww?.sendChatMessage) {
     try {
       await ww.sendChatMessage({ msgtype: 'text', text: { content: script.content } })
-      ElMessage.success('已发送')
+      ElMessage.success('已复制并发送')
     } catch {
-      sendViaWxBridge(script)
+      ElMessage.success('已复制到剪贴板')
     }
   } else if (wx?.invoke) {
-    sendViaWxBridge(script)
+    wx.invoke('sendChatMessage', { msgtype: 'text', text: { content: script.content } }, (res: any) => {
+      if (res.err_msg === 'sendChatMessage:ok') ElMessage.success('已复制并发送')
+      else ElMessage.success('已复制到剪贴板')
+    })
   } else {
-    copyScript(script)
-    ElMessage.info('已复制到剪贴板（非企微环境无法直接发送）')
+    ElMessage.success('已复制到剪贴板')
   }
   const s = allScripts.value.find(ss => ss.id === script.id)
   if (s) s.useCount = (s.useCount || 0) + 1
-}
-
-function sendViaWxBridge(script: any) {
-  const wx = (window as any).wx
-  if (!wx?.invoke) { copyScript(script); return }
-  wx.invoke('sendChatMessage', { msgtype: 'text', text: { content: script.content } }, (res: any) => {
-    if (res.err_msg === 'sendChatMessage:ok') ElMessage.success('已发送')
-    else { copyScript(script); ElMessage.info('已复制（发送需手动确认）') }
-  })
-}
-
-/** 双击：复制并发送到对话输入框 */
-function handleCopyAndSend(script: any) {
-  copyScript(script)
-  handleSend(script)
 }
 
 async function copyScript(script: any) {
@@ -376,7 +418,7 @@ onBeforeUnmount(() => {
 .script-item:hover { background: #f5f7fa; }
 .script-idx { color: #c0c4cc; font-size: 9px; width: 14px; text-align: center; flex-shrink: 0; }
 .s-scope-dot { width: 5px; height: 5px; border-radius: 50%; flex-shrink: 0; }
-.s-att-icon { font-size: 10px; flex-shrink: 0; }
+.s-att-icon { font-size: 12px; flex-shrink: 0; width: 14px; height: 14px; display: inline-flex; align-items: center; justify-content: center; }
 .script-title-text { font-weight: 500; color: #303133; white-space: nowrap; max-width: 60px; overflow: hidden; text-overflow: ellipsis; flex-shrink: 0; }
 .script-content-inline { flex: 1; color: #909399; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 10px; }
 .script-send-icon { color: #07c160; cursor: pointer; flex-shrink: 0; display: flex; opacity: 0.5; }

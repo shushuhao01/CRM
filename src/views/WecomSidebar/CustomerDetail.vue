@@ -156,6 +156,7 @@
             <div class="card-title" style="display:flex;justify-content:space-between;align-items:center">
               <span>💬 企微客户详情</span>
               <button v-if="!customerData.crmCustomer" class="btn-send-form-card" @click="showLinkDialog = true" style="background:#e8f5e9;color:#4caf50;border-color:#a5d6a7">🔗 关联CRM</button>
+              <button v-else class="btn-send-form-card" @click="showLinkDialog = true" style="background:#fff3e0;color:#f57c00;border-color:#ffcc80">🔄 换绑</button>
             </div>
             <div class="info-row"><span class="label">昵称</span><span>{{ customerData.wecomCustomer?.name || '-' }}</span></div>
             <div class="info-row"><span class="label">性别</span><span>{{ customerData.wecomCustomer?.gender === 1 ? '男' : customerData.wecomCustomer?.gender === 2 ? '女' : '-' }}</span></div>
@@ -177,8 +178,8 @@
               <div class="info-row"><span class="label">手机</span><span>{{ customerData.crmCustomer.phone ? displaySensitiveInfoNew(customerData.crmCustomer.phone, SensitiveInfoType.PHONE) : '-' }}</span></div>
               <div class="info-row"><span class="label" style="white-space:nowrap">身高/年龄/体重</span><span style="white-space:nowrap">{{ customerData.crmCustomer.height || '-' }}cm / {{ customerData.crmCustomer.age || '-' }}岁 / {{ customerData.crmCustomer.weight || '-' }}kg</span></div>
               <div class="info-row"><span class="label">性别</span><span>{{ customerData.crmCustomer.gender === 'male' ? '男' : customerData.crmCustomer.gender === 'female' ? '女' : customerData.crmCustomer.gender || '-' }}</span></div>
-              <div class="info-row"><span class="label">地址</span><span>{{ customerData.crmCustomer.address ? displaySensitiveInfoNew(customerData.crmCustomer.address, SensitiveInfoType.ADDRESS) : '-' }}</span></div>
-              <div class="info-row"><span class="label">疾病史</span><span>{{ customerData.crmCustomer.medicalHistory || '-' }}</span></div>
+              <div class="info-row"><span class="label">地址</span><span>{{ parseLatestContent(customerData.crmCustomer.address) || '-' }}</span></div>
+              <div class="info-row"><span class="label">疾病史</span><span>{{ parseLatestContent(customerData.crmCustomer.medicalHistory) || '-' }}</span></div>
               <div class="customer-tags" v-if="customerData.crmCustomer.tags?.length">
                 <span class="mini-tag" v-for="tag in customerData.crmCustomer.tags" :key="tag">{{ tag }}</span>
               </div>
@@ -1197,6 +1198,29 @@ async function debugInit() {
 }
 
 // ==================== 工具函数 ====================
+
+/** 解析JSON数组字段，取最新一条的content；如果是普通字符串直接返回 */
+function parseLatestContent(value: any): string {
+  if (!value) return ''
+  if (typeof value === 'string') {
+    // 尝试解析JSON数组
+    if (value.startsWith('[')) {
+      try {
+        const arr = JSON.parse(value)
+        if (Array.isArray(arr) && arr.length > 0) {
+          const latest = arr[arr.length - 1]
+          return latest?.content || latest || ''
+        }
+      } catch { /* not JSON */ }
+    }
+    return value
+  }
+  if (Array.isArray(value) && value.length > 0) {
+    const latest = value[value.length - 1]
+    return latest?.content || String(latest) || ''
+  }
+  return String(value)
+}
 
 function formatLastTime(time: string | null | undefined): string {
   if (!time) return '-'

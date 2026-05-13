@@ -2281,29 +2281,35 @@ router.post('/sidebar/orders', authenticateSidebarToken, async (req: Request, re
       serviceWechat: req.body.serviceWechat || '',
       expressCompany: req.body.expressCompany || '',
       depositScreenshots: Array.isArray(screenshots) && screenshots.length > 0 ? screenshots : null,
-      codAmount: Number(totalAmount) - Number(depositAmount || 0),
+      codAmount: Math.max(0, (Number(totalAmount) || 0) - (Number(depositAmount) || 0)),
     };
     const order: any = orderRepo.create(orderData);
     const savedOrder: any = await orderRepo.save(order);
 
     // 创建订单项
+    const itemErrors: string[] = [];
     for (const p of products) {
-      const itemData: any = {
-        orderId: savedOrder.id,
-        productId: p.id,
-        productName: p.name,
-        productImage: p.image || '',
-        productSku: p.sku || '',
-        unitPrice: Number(p.price) || 0,
-        quantity: Number(p.quantity) || 1,
-        subtotal: (Number(p.price) || 0) * (Number(p.quantity) || 1),
-        tenantId
-      };
-      const item = orderItemRepo.create(itemData);
-      await orderItemRepo.save(item);
+      try {
+        const itemData: any = {
+          orderId: savedOrder.id,
+          productId: String(p.id || '').substring(0, 50),
+          productName: String(p.name || '').substring(0, 100),
+          productImage: String(p.image || '').substring(0, 500),
+          productSku: String(p.sku || '').substring(0, 50),
+          unitPrice: Number(p.price) || 0,
+          quantity: Number(p.quantity) || 1,
+          subtotal: (Number(p.price) || 0) * (Number(p.quantity) || 1),
+          tenantId
+        };
+        const item = orderItemRepo.create(itemData);
+        await orderItemRepo.save(item);
+      } catch (itemErr: any) {
+        log.error(`[Sidebar] OrderItem save error for product ${p.id}:`, itemErr.message);
+        itemErrors.push(`${p.name}: ${itemErr.message}`);
+      }
     }
 
-    log.info(`[Sidebar] Order created: ${orderNumber} by user ${userId}`);
+    log.info(`[Sidebar] Order created: ${orderNumber} by user ${userId}${itemErrors.length ? ', itemErrors=' + itemErrors.length : ''}`);
     res.json({ success: true, data: { orderId: savedOrder.id, orderNumber }, message: '订单创建成功' });
   } catch (error: any) {
     log.error('[Sidebar] Create order error:', error.message);
@@ -2367,6 +2373,59 @@ router.put('/sidebar/customer-tags', authenticateSidebarToken, async (req: Reque
   } catch (error: any) {
     log.error('[Sidebar] Update customer tags error:', error.message);
     res.status(500).json({ success: false, message: '更新标签失败' });
+  }
+});
+
+// ==================== 侧边栏：获取系统配置（代理） ====================
+
+/** 获取订单字段配置（订单来源/自定义字段等） */
+router.get('/sidebar/order-field-config', authenticateSidebarToken, async (req: Request, res: Response) => {
+  try {
+    const sidebarUser = (req as any).sidebarUser;
+    const tenantId = sidebarUser?.tenantId;
+    if (!tenantId) return res.json({ success: true, data: {} });
+
+    const { SystemConfig } = await import('../../entities/SystemConfig');
+    const repo = AppDataSource.getRepository(SystemConfig);
+    const config = await repo.findOne({ where: { tenantId, configKey: 'orderFieldConfig' } });
+    const data = config?.configValue ? (typeof config.configValue === 'string' ? JSON.parse(config.configValue) : config.configValue) : {};
+    res.json({ success: true, data });
+  } catch (_e: any) {
+    res.json({ success: true, data: {} });
+  }
+});
+
+/** 获取客户字段配置（必填项/自定义字段等） */
+router.get('/sidebar/customer-field-config', authenticateSidebarToken, async (req: Request, res: Response) => {
+  try {
+    const sidebarUser = (req as any).sidebarUser;
+    const tenantId = sidebarUser?.tenantId;
+    if (!tenantId) return res.json({ success: true, data: {} });
+
+    const { SystemConfig } = await import('../../entities/SystemConfig');
+    const repo = AppDataSource.getRepository(SystemConfig);
+    const config = await repo.findOne({ where: { tenantId, configKey: 'customerFieldConfig' } });
+    const data = config?.configValue ? (typeof config.configValue === 'string' ? JSON.parse(config.configValue) : config.configValue) : {};
+    res.json({ success: true, data });
+  } catch (_e: any) {
+    res.json({ success: true, data: {} });
+  }
+});
+
+/** 获取可用快递公司列表 */
+router.get('/sidebar/express-companies', authenticateSidebarToken, async (req: Request, res: Response) => {
+  try {
+    const sidebarUser = (req as any).sidebarUser;
+    const tenantId = sidebarUser?.tenantId;
+    if (!tenantId) return res.json({ success: true, data: [] });
+
+    const { LogisticsCompany } = await import('../../entities/LogisticsCompany');
+    const repo = AppDataSource.getRepository(LogisticsCompany);
+    const companies = await repo.find({ where: { tenantId } as any, order: { sortOrder: 'ASC' } });
+    const active = companies.filter((c: any) => c.isActive !== false);
+    res.json({ success: true, data: active.map((c: any) => ({ code: c.code, name: c.name, logo: c.logo || '' })) });
+  } catch (_e: any) {
+    res.json({ success: true, data: [] });
   }
 });
 
