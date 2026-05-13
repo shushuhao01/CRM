@@ -1757,8 +1757,8 @@ router.post('/sidebar/fix-all-agent-ids', async (_req: Request, res: Response) =
 
 /**
  * GET /sidebar-test
- * 一个完全独立的HTML测试页面，用 ww.register 验证侧边栏能否跑通
- * 侧边栏URL配置为: https://crm.yunkes.com/api/v1/wecom/sidebar-test?corpId=$CORPID$
+ * 完全独立的HTML测试页面，用 ww.register 验证侧边栏能否跑通
+ * 侧边栏URL配置: https://crm.yunkes.com/api/v1/wecom/sidebar-test?corpId=$CORPID$
  */
 router.get('/sidebar-test', (_req: Request, res: Response) => {
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
@@ -1766,182 +1766,146 @@ router.get('/sidebar-test', (_req: Request, res: Response) => {
 <html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>侧边栏测试</title>
 <style>
-  body{font-family:-apple-system,sans-serif;padding:20px;background:#1a1a2e;color:#eee;font-size:14px}
-  h2{color:#e94560;margin-top:0}
-  .log{background:#16213e;border-radius:8px;padding:12px;margin:8px 0;word-break:break-all;font-size:12px;line-height:1.6}
-  .ok{border-left:4px solid #0f3460;border-color:#4ecca3}
-  .err{border-left:4px solid #e94560}
-  .warn{border-left:4px solid #f5a623}
-  #result{font-size:18px;font-weight:bold;padding:16px;border-radius:8px;margin:12px 0;text-align:center}
-  .success{background:#0a3d2a;color:#4ecca3}
-  .fail{background:#3d0a0a;color:#e94560}
-  .loading{background:#1a2a3d;color:#5bc0de}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;padding:12px;background:#0d1117;color:#c9d1d9;font-size:13px;line-height:1.5}
+h2{color:#58a6ff;font-size:16px;margin-bottom:8px}
+#result{font-size:15px;font-weight:bold;padding:14px;border-radius:8px;margin:8px 0;text-align:center}
+.success{background:#0d2818;color:#3fb950;border:1px solid #238636}
+.fail{background:#2d1117;color:#f85149;border:1px solid #da3633}
+.loading{background:#161b22;color:#58a6ff;border:1px solid #1f6feb}
+#logs{max-height:65vh;overflow-y:auto;-webkit-overflow-scrolling:touch}
+.L{padding:6px 8px;margin:3px 0;border-radius:4px;font-size:11px;word-break:break-all;background:#161b22}
+.L.ok{border-left:3px solid #3fb950}
+.L.err{border-left:3px solid #f85149}
+.L.warn{border-left:3px solid #d29922}
+.L .t{color:#8b949e;margin-right:4px}
 </style>
 </head><body>
 <h2>企微侧边栏测试 (ww.register)</h2>
 <div id="result" class="loading">初始化中...</div>
 <div id="logs"></div>
+
 <script>
-function addLog(msg, type) {
-  var d = document.createElement('div');
-  d.className = 'log ' + (type || '');
-  d.textContent = new Date().toLocaleTimeString() + ' ' + msg;
-  document.getElementById('logs').appendChild(d);
-  console.log('[SidebarTest]', msg);
-}
-function setResult(msg, ok) {
-  var el = document.getElementById('result');
-  el.textContent = msg;
-  el.className = ok ? 'success' : (ok === false ? 'fail' : 'loading');
+var logEl=document.getElementById('logs');
+function L(m,t){var d=document.createElement('div');d.className='L '+(t||'');d.innerHTML='<span class=t>'+new Date().toLocaleTimeString()+'</span> '+m;logEl.appendChild(d);logEl.scrollTop=99999;console.log('[T]',m)}
+function R(m,ok){var e=document.getElementById('result');e.textContent=m;e.className=ok===true?'success':ok===false?'fail':'loading'}
+
+var P=new URLSearchParams(location.search);
+var corpId=P.get('corpId')||'';
+
+L('corpId = <b>'+corpId+'</b>',corpId&&!corpId.includes('$')?'ok':'err');
+L('页面URL = '+location.href.substring(0,120));
+
+if(!corpId||corpId.includes('$')){
+  R('corpId为空或$CORPID$未替换',false);
+  L('请确认在企微客户端中打开此页面','err');
+}else{
+  R('加载SDK中...',null);
+  loadSDK();
 }
 
-var corpId = new URLSearchParams(location.search).get('corpId') || '';
-addLog('corpId = ' + corpId, corpId && !corpId.includes('$') ? 'ok' : 'err');
-addLog('URL = ' + location.href);
-addLog('UA = ' + navigator.userAgent.substring(0, 100));
-
-if (!corpId || corpId.includes('$')) {
-  setResult('错误: corpId为空或未被替换($CORPID$)', false);
-  addLog('$CORPID$未被企微客户端替换，请确认是在企微客户端中打开', 'err');
-} else {
-  // 动态加载SDK
-  addLog('开始加载 @wecom/jssdk ...');
-  var s = document.createElement('script');
-  s.src = 'https://wwcdn.weixin.qq.com/node/open/js/wecom-jssdk-2.4.0.js';
-  s.onload = function() {
-    addLog('SDK加载完成, ww对象: ' + (typeof ww !== 'undefined' ? '✅存在' : '❌不存在'), typeof ww !== 'undefined' ? 'ok' : 'err');
-    if (typeof ww === 'undefined') {
-      setResult('SDK加载成功但ww对象不存在', false);
-      return;
-    }
-    startRegister();
-  };
-  s.onerror = function() {
-    addLog('SDK CDN加载失败，尝试备用地址...', 'warn');
-    var s2 = document.createElement('script');
-    s2.src = 'https://wwcdn.weixin.qq.com/node/wework/wwopen/js/wecom-jssdk-2.4.0.js';
-    s2.onload = function() {
-      addLog('备用CDN加载成功', 'ok');
-      if (typeof ww !== 'undefined') startRegister();
-      else { setResult('SDK加载成功但ww对象不存在', false); }
+function loadSDK(){
+  var urls=[
+    '/api/v1/wecom/sdk/wecom-jssdk-2.4.0.js',
+    'https://wwcdn.weixin.qq.com/node/open/js/wecom-jssdk-2.4.0.js',
+    'https://wwcdn.weixin.qq.com/node/wework/wwopen/js/wecom-jssdk-2.4.0.js'
+  ];
+  var i=0;
+  function tryNext(){
+    if(i>=urls.length){R('所有SDK源加载失败',false);L('SDK无法加载，请检查网络和CDN可访问性','err');return}
+    var url=urls[i++];
+    L('尝试加载SDK: '+url);
+    var s=document.createElement('script');s.src=url;
+    var timer=setTimeout(function(){L('加载超时: '+url,'warn');s.onload=s.onerror=null;tryNext()},8000);
+    s.onload=function(){
+      clearTimeout(timer);
+      setTimeout(function(){
+        if(typeof ww!=='undefined'&&typeof ww.register==='function'){
+          L('SDK加载成功 ✅ ww.register可用','ok');
+          go();
+        }else{
+          L('SDK加载但ww对象不可用','warn');tryNext();
+        }
+      },200);
     };
-    s2.onerror = function() { setResult('所有SDK CDN都无法加载', false); };
-    document.head.appendChild(s2);
-  };
-  document.head.appendChild(s);
+    s.onerror=function(){clearTimeout(timer);L('加载失败: '+url,'warn');tryNext()};
+    document.head.appendChild(s);
+  }
+  tryNext();
 }
 
-async function startRegister() {
-  setResult('正在获取agentId和签名...', null);
+async function go(){
+  R('请求后端签名...',null);
 
-  // Step 1: 获取 agentId
-  var agentId = null;
-  try {
-    addLog('请求后端获取config签名和agentId...');
-    var signUrl = location.href.split('#')[0];
-    var preRes = await fetch('/api/v1/wecom/sidebar/sign', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url: signUrl, corpId: corpId, type: 'config' })
-    });
-    var preData = await preRes.json();
-    addLog('后端响应: ' + JSON.stringify(preData).substring(0, 300), preData.success ? 'ok' : 'err');
-    if (preData.success && preData.data) {
-      agentId = preData.data.agentId;
-      addLog('agentId = ' + agentId, agentId ? 'ok' : 'warn');
-    } else {
-      setResult('后端签名API失败: ' + (preData.message || ''), false);
-      return;
-    }
-  } catch(e) {
-    addLog('后端请求异常: ' + e.message, 'err');
-    setResult('无法连接后端签名API', false);
-    return;
+  // 1) 获取agentId
+  var agentId=null;
+  try{
+    var signUrl=location.href.split('#')[0];
+    L('请求签名API, signUrl='+signUrl.substring(0,100));
+    var r=await fetch('/api/v1/wecom/sidebar/sign',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:signUrl,corpId:corpId,type:'config'})});
+    var j=await r.json();
+    L('签名API响应: success='+j.success+', agentId='+(j.data&&j.data.agentId)+', corpId='+(j.data&&j.data.corpId), j.success?'ok':'err');
+    if(!j.success){R('签名API失败: '+(j.message||'').substring(0,80),false);return}
+    agentId=j.data.agentId;
+    if(!agentId){R('agentId为空! 数据库中缺少此字段',false);L('请让管理员在CRM后台的企微配置中确认agentId','err');return}
+  }catch(e){
+    L('签名API请求异常: '+e.message,'err');R('后端请求失败: '+e.message,false);return;
   }
 
-  if (!agentId) {
-    setResult('agentId为空，数据库中可能缺少此字段', false);
-    addLog('请在CRM管理后台检查企微配置中的agentId是否已填写', 'err');
-    return;
-  }
-
-  // Step 2: ww.register
-  setResult('正在调用 ww.register ...', null);
-  var configCalled = false, agentConfigCalled = false;
-
-  try {
-    addLog('ww.register({ corpId: ' + corpId + ', agentId: ' + agentId + ' })');
+  // 2) ww.register
+  R('调用 ww.register...',null);
+  var cc=false,ac=false;
+  try{
+    L('ww.register({ corpId:'+corpId+', agentId:'+agentId+' })');
     await ww.register({
-      corpId: corpId,
-      agentId: Number(agentId),
-      jsApiList: ['getCurExternalContact', 'getContext'],
-
-      async getConfigSignature(url) {
-        configCalled = true;
-        addLog('✅ getConfigSignature被调用, url=' + url.substring(0, 80), 'ok');
-        var r = await fetch('/api/v1/wecom/sidebar/sign', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ url: url, corpId: corpId, type: 'config' })
-        });
-        var d = await r.json();
-        if (!d.success) throw new Error('config签名失败: ' + d.message);
-        var result = { timestamp: d.data.timestamp, nonceStr: d.data.nonceStr, signature: d.data.signature };
-        addLog('config签名: ts=' + result.timestamp + ', sig=' + result.signature.substring(0,16) + '...', 'ok');
-        return result;
+      corpId:corpId,
+      agentId:Number(agentId),
+      jsApiList:['getCurExternalContact','getContext'],
+      async getConfigSignature(url){
+        cc=true;L('getConfigSignature 被调用 ✅ url='+url.substring(0,80),'ok');
+        var r=await fetch('/api/v1/wecom/sidebar/sign',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:url,corpId:corpId,type:'config'})});
+        var d=await r.json();if(!d.success)throw new Error(d.message);
+        return{timestamp:d.data.timestamp,nonceStr:d.data.nonceStr,signature:d.data.signature};
       },
-
-      async getAgentConfigSignature(url) {
-        agentConfigCalled = true;
-        addLog('✅ getAgentConfigSignature被调用, url=' + url.substring(0, 80), 'ok');
-        var r = await fetch('/api/v1/wecom/sidebar/sign', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ url: url, corpId: corpId, type: 'agent_config' })
-        });
-        var d = await r.json();
-        if (!d.success) throw new Error('agent签名失败: ' + d.message);
-        var result = { timestamp: d.data.timestamp, nonceStr: d.data.nonceStr, signature: d.data.signature };
-        addLog('agent签名: ts=' + result.timestamp + ', sig=' + result.signature.substring(0,16) + '...', 'ok');
-        return result;
+      async getAgentConfigSignature(url){
+        ac=true;L('getAgentConfigSignature 被调用 ✅ url='+url.substring(0,80),'ok');
+        var r=await fetch('/api/v1/wecom/sidebar/sign',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:url,corpId:corpId,type:'agent_config'})});
+        var d=await r.json();if(!d.success)throw new Error(d.message);
+        return{timestamp:d.data.timestamp,nonceStr:d.data.nonceStr,signature:d.data.signature};
       },
-
-      onConfigSuccess() { addLog('onConfigSuccess ✅', 'ok'); },
-      onConfigFail(e) { addLog('onConfigFail ❌: ' + JSON.stringify(e), 'err'); },
-      onAgentConfigSuccess() { addLog('onAgentConfigSuccess ✅', 'ok'); },
-      onAgentConfigFail(e) { addLog('onAgentConfigFail ❌: ' + JSON.stringify(e), 'err'); },
+      onConfigSuccess:function(){L('onConfigSuccess ✅','ok')},
+      onConfigFail:function(e){L('onConfigFail ❌ '+JSON.stringify(e),'err')},
+      onAgentConfigSuccess:function(){L('onAgentConfigSuccess ✅','ok')},
+      onAgentConfigFail:function(e){L('onAgentConfigFail ❌ '+JSON.stringify(e),'err')},
     });
-    addLog('ww.register 返回成功', 'ok');
-    addLog('getConfigSignature ' + (configCalled ? '✅被调用' : '⚠️未被调用(原生桥接处理)'));
-    addLog('getAgentConfigSignature ' + (agentConfigCalled ? '✅被调用' : '❌未被调用'));
-  } catch(e) {
-    addLog('ww.register异常: ' + (e.message || JSON.stringify(e)), 'err');
-    setResult('ww.register 失败: ' + (e.message || JSON.stringify(e)).substring(0, 100), false);
-    return;
+    L('ww.register 完成','ok');
+    L('getConfigSignature: '+(cc?'✅已调用':'⚠️未调用(原生处理)'),cc?'ok':'warn');
+    L('getAgentConfigSignature: '+(ac?'✅已调用':'❌未调用'),ac?'ok':'err');
+  }catch(e){
+    L('ww.register 异常: '+(e.message||JSON.stringify(e)),'err');
+    R('ww.register失败',false);return;
   }
 
-  // Step 3: 调用 getCurExternalContact
-  try {
-    addLog('调用 ww.getCurExternalContact() ...');
-    var contact = await ww.getCurExternalContact();
-    addLog('getCurExternalContact 响应: ' + JSON.stringify(contact), 'ok');
-    var uid = contact.userId || (contact.result && contact.result.userId);
-    if (uid) {
-      setResult('✅ 成功！外部联系人: ' + uid, true);
-    } else {
-      setResult('API返回但无userId (可能不在聊天窗口)', false);
-    }
-  } catch(e) {
-    var errStr = e.message || e.errMsg || e.err_msg || JSON.stringify(e);
-    addLog('getCurExternalContact失败: ' + errStr, 'err');
-    if (/92002|cross corp/i.test(errStr)) {
-      setResult('92002: 不允许跨企业调用', false);
-      addLog('=== 92002 诊断 ===', 'err');
-      addLog('configSignature ' + (configCalled ? '被调用' : '未被调用'), configCalled ? 'ok' : 'warn');
-      addLog('agentConfigSignature ' + (agentConfigCalled ? '被调用' : '未被调用'), agentConfigCalled ? 'ok' : 'err');
-      addLog('请检查: 1)可信域名 2)agentId是否正确 3)让企业重新授权', 'err');
-    } else {
-      setResult('获取联系人失败: ' + errStr.substring(0, 80), false);
+  // 3) getCurExternalContact
+  R('获取聊天对象...',null);
+  try{
+    L('调用 ww.getCurExternalContact()');
+    var c=await ww.getCurExternalContact();
+    L('响应: '+JSON.stringify(c),'ok');
+    var uid=c.userId||(c.result&&c.result.userId);
+    if(uid){R('✅ 成功! 联系人: '+uid,true)}
+    else{R('返回但无userId(不在聊天窗口?)',false)}
+  }catch(e){
+    var es=e.message||e.errMsg||e.err_msg||JSON.stringify(e);
+    L('getCurExternalContact失败: '+es,'err');
+    if(/92002|cross.?corp/i.test(es)){
+      R('92002 跨企业错误',false);
+      L('== 92002诊断 ==','err');
+      L('configSign: '+(cc?'已调用':'未调用'),'err');
+      L('agentConfigSign: '+(ac?'已调用':'未调用'),'err');
+      L('检查: 1)可信域名含'+location.hostname+' 2)agentId正确 3)重新授权','err');
+    }else{
+      R('失败: '+es.substring(0,80),false);
     }
   }
 }
