@@ -1826,14 +1826,23 @@ router.get('/sidebar-diag', async (req: Request, res: Response) => {
       return res.type('text/plain').send(steps.join('\n'));
     }
 
-    // 4. 获取应用 jsapi_ticket
-    let agentTicket: string;
+    // 4. 获取应用 jsapi_ticket（直接调用API查看原始响应）
+    let agentTicket: string = '';
     try {
-      agentTicket = await WecomApiService.getAgentJsSdkTicket(accessToken);
-      add(`应用jsapi_ticket(agent_config): ${agentTicket}`);
+      const axiosLib2 = (await import('axios')).default;
+      const agentTicketRes = await axiosLib2.get(`https://qyapi.weixin.qq.com/cgi-bin/ticket/get`, {
+        params: { access_token: accessToken, type: 'agent_config' }
+      });
+      add(`应用ticket API原始响应: ${JSON.stringify(agentTicketRes.data)}`);
+      if (agentTicketRes.data.errcode === 0) {
+        agentTicket = agentTicketRes.data.ticket;
+        add(`应用jsapi_ticket: ${agentTicket}`);
+        add(`ticket长度: ${agentTicket.length}${agentTicket.length < 40 ? ' ⚠️ 异常短!正常应80+字符' : ' ✅'}`);
+      } else {
+        add(`❌ 获取应用ticket失败: errcode=${agentTicketRes.data.errcode}, errmsg=${agentTicketRes.data.errmsg}`);
+      }
     } catch (e: any) {
-      add(`❌ 获取应用jsapi_ticket失败: ${e.message}`);
-      agentTicket = '';
+      add(`❌ 获取应用jsapi_ticket异常: ${e.message}`);
     }
 
     // 5. 生成企业签名
@@ -1964,39 +1973,47 @@ function run(){
   .catch(function(e){L('签名请求异常: '+e.message,'err');R('后端请求失败',false)});
 }
 
-function doRegister(agentId){
+async function doRegister(agentId){
   R('ww.register...',null);
   var cc=false,ac=false;
   L('ww.register corpId='+corpId+' agentId='+agentId);
-  ww.register({
-    corpId:corpId,agentId:Number(agentId),
-    jsApiList:['getCurExternalContact','getContext'],
-    getConfigSignature:function(url){
-      cc=true;L('getConfigSignature called, url='+url.substring(0,80),'ok');
-      return fetch('/api/v1/wecom/sidebar/sign',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:url,corpId:corpId,type:'config'})})
-      .then(function(r){return r.json()})
-      .then(function(d){if(!d.success)throw new Error(d.message);L('config签名OK','ok');return{timestamp:d.data.timestamp,nonceStr:d.data.nonceStr,signature:d.data.signature}});
-    },
-    getAgentConfigSignature:function(url){
-      ac=true;L('getAgentConfigSignature called, url='+url.substring(0,80),'ok');
-      return fetch('/api/v1/wecom/sidebar/sign',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:url,corpId:corpId,type:'agent_config'})})
-      .then(function(r){return r.json()})
-      .then(function(d){if(!d.success)throw new Error(d.message);L('agent签名OK','ok');return{timestamp:d.data.timestamp,nonceStr:d.data.nonceStr,signature:d.data.signature}});
-    },
-    onConfigSuccess:function(){L('onConfigSuccess','ok')},
-    onConfigFail:function(e){L('onConfigFail: '+JSON.stringify(e),'err')},
-    onAgentConfigSuccess:function(){L('onAgentConfigSuccess','ok')},
-    onAgentConfigFail:function(e){L('onAgentConfigFail: '+JSON.stringify(e),'err')}
-  }).then(function(){
+  try{
+    await ww.register({
+      corpId:corpId,agentId:Number(agentId),
+      jsApiList:['getCurExternalContact','getContext'],
+      getConfigSignature:async function(url){
+        cc=true;L('getConfigSignature called, url='+url.substring(0,80),'ok');
+        var r=await fetch('/api/v1/wecom/sidebar/sign',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:url,corpId:corpId,type:'config'})});
+        var d=await r.json();if(!d.success)throw new Error(d.message);
+        L('config签名OK ts='+d.data.timestamp+' sig='+String(d.data.signature).substring(0,16),'ok');
+        return{timestamp:d.data.timestamp,nonceStr:d.data.nonceStr,signature:d.data.signature};
+      },
+      getAgentConfigSignature:async function(url){
+        ac=true;L('getAgentConfigSignature called, url='+url.substring(0,80),'ok');
+        var r=await fetch('/api/v1/wecom/sidebar/sign',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:url,corpId:corpId,type:'agent_config'})});
+        var d=await r.json();if(!d.success)throw new Error(d.message);
+        L('agent签名OK ts='+d.data.timestamp+' sig='+String(d.data.signature).substring(0,16),'ok');
+        return{timestamp:d.data.timestamp,nonceStr:d.data.nonceStr,signature:d.data.signature};
+      },
+      onConfigSuccess:function(){L('onConfigSuccess','ok')},
+      onConfigFail:function(e){L('onConfigFail: '+JSON.stringify(e),'err')},
+      onAgentConfigSuccess:function(){L('onAgentConfigSuccess','ok')},
+      onAgentConfigFail:function(e){L('onAgentConfigFail: '+JSON.stringify(e),'err')}
+    });
     L('register完成. configCalled='+cc+' agentConfigCalled='+ac,'ok');
-    R('获取联系人...',null);
-    return ww.getCurExternalContact();
-  }).then(function(c){
+  }catch(e){
+    L('register异常: '+(e.message||JSON.stringify(e)),'err');
+    R('ww.register失败: '+(e.message||'').substring(0,80),false);
+    return;
+  }
+  R('获取联系人...',null);
+  try{
+    var c=await ww.getCurExternalContact();
     L('getCurExternalContact: '+JSON.stringify(c),'ok');
     var uid=c.userId||(c.result&&c.result.userId);
     if(uid)R('成功! 联系人: '+uid,true);
-    else R('返回无userId',false);
-  }).catch(function(e){
+    else R('返回但无userId',false);
+  }catch(e){
     var es=e.message||e.errMsg||e.err_msg||JSON.stringify(e);
     L('失败: '+es,'err');
     if(/92002|cross.?corp/i.test(es)){
@@ -2005,7 +2022,7 @@ function doRegister(agentId){
     }else{
       R('失败: '+es.substring(0,80),false);
     }
-  });
+  }
 }
 `);
 });
