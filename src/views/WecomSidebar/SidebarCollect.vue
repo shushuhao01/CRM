@@ -160,44 +160,50 @@ const handleSend = async () => {
     const { default: axios } = await import('axios')
     const res: any = await axios.post(`${getBaseUrl()}/mp-generate-card`, { tenantId, memberId, ts }, { headers: getHeaders() })
     const data = res?.data?.data || res?.data || {}
-    // 获取当前聊天对象的externalUserId（从父组件localStorage缓存获取）
+    // 获取当前聊天对象的externalUserId
     const extUserId = localStorage.getItem('wecom_sidebar_last_external_id') || ''
-    const path = data.path || `/pages/form/form?tenantId=${tenantId}&memberId=${memberId}&ts=${ts}&sign=${data.sign || ''}&externalUserId=${extUserId}`
+    // ★ 小程序路径必须以.html结尾（企微官方要求，否则微信端打不开）
+    const path = data.path || `/pages/form/form.html?tenantId=${tenantId}&memberId=${memberId}&ts=${ts}&sign=${data.sign || ''}&externalUserId=${extUserId}`
+    // ★ imgUrl必须带http/https协议头
+    const imgUrl = data.imageUrl ? (data.imageUrl.startsWith('http') ? data.imageUrl : `${window.location.origin}${data.imageUrl}`) : ''
 
     const ww = (window as any).ww
     const wx = (window as any).wx || (window as any).jWeixin
     const bridge = (window as any).WeixinJSBridge
 
-    // 优先使用新版SDK
-    if (ww?.sendChatMessage) {
+    const cardPayload = {
+      msgtype: 'miniprogram',
+      miniprogram: {
+        appid: data.appId || '',
+        title: data.title || '请填写您的资料',
+        imgUrl: imgUrl,
+        page: path
+      }
+    }
+    console.log('[Collect] 发送小程序卡片:', JSON.stringify(cardPayload))
+
+    // 优先使用新版SDK ww.sendChatMessage
+    if (ww && typeof ww.sendChatMessage === 'function') {
       try {
-        await ww.sendChatMessage({
-          msgtype: 'miniprogram',
-          miniprogram: {
-            appid: data.appId || '',
-            title: data.title || '请填写您的资料',
-            imgUrl: data.imageUrl || '',
-            page: path
-          }
-        })
+        await ww.sendChatMessage(cardPayload)
         ElMessage.success('小程序卡片已发送')
       } catch (e: any) {
-        console.warn('[Collect] ww.sendChatMessage失败，回退:', e)
-        sendViaWxBridge(data, path)
+        console.warn('[Collect] ww.sendChatMessage失败:', e?.message || e)
+        sendViaWxBridge(cardPayload)
       }
-    } else if (wx?.invoke) {
-      sendViaWxBridge(data, path)
-    } else if (bridge?.invoke) {
-      bridge.invoke('sendChatMessage', {
-        msgtype: 'miniprogram',
-        miniprogram: { appid: data.appId || '', title: data.title || '请填写您的资料', imgUrl: data.imageUrl || '', page: path }
-      }, (res: any) => {
-        if (res.err_msg === 'sendChatMessage:ok') ElMessage.success('小程序卡片已发送')
-        else ElMessage.info('卡片已生成，请手动确认发送')
+    } else if (wx && typeof wx.invoke === 'function') {
+      // 旧版SDK wx.invoke
+      sendViaWxBridge(cardPayload)
+    } else if (bridge && typeof bridge.invoke === 'function') {
+      // 原生JSBridge
+      bridge.invoke('sendChatMessage', JSON.stringify(cardPayload), (res: any) => {
+        const result = typeof res === 'string' ? JSON.parse(res) : res
+        if (result.err_msg === 'sendChatMessage:ok') ElMessage.success('小程序卡片已发送')
+        else ElMessage.info('卡片已生成，等待确认发送')
       })
     } else {
-      console.warn('[Collect] 未检测到企微SDK对象: ww=', !!ww, ', wx=', !!wx, ', bridge=', !!bridge)
-      ElMessage.warning('企微环境不可用，请确保在企业微信侧边栏中打开此页面')
+      console.error('[Collect] 企微SDK不可用! ww=', typeof ww, ', wx=', typeof wx, ', bridge=', typeof bridge, ', UA=', navigator.userAgent.substring(0, 100))
+      ElMessage.warning('企微环境不可用。请确保：1)在企微客户端打开 2)应用已配置客户联系权限')
     }
 
     // 记录发送日志
@@ -215,22 +221,15 @@ const handleSend = async () => {
   }
 }
 
-function sendViaWxBridge(data: any, path: string) {
+function sendViaWxBridge(payload: any) {
   const wx = (window as any).wx
-  if (!wx?.invoke) { ElMessage.warning('企微环境不可用'); return }
-  wx.invoke('sendChatMessage', {
-    msgtype: 'miniprogram',
-    miniprogram: {
-      appid: data.appId || '',
-      title: data.title || '请填写您的资料',
-      imgUrl: data.imageUrl || '',
-      page: path
-    }
-  }, (sendRes: any) => {
+  if (!wx?.invoke) { ElMessage.warning('wx.invoke不可用'); return }
+  wx.invoke('sendChatMessage', payload, (sendRes: any) => {
     if (sendRes.err_msg === 'sendChatMessage:ok') {
       ElMessage.success('小程序卡片已发送')
     } else {
-      ElMessage.info('卡片已生成，请手动确认发送')
+      console.warn('[Collect] wx.invoke sendChatMessage result:', JSON.stringify(sendRes))
+      ElMessage.info('卡片已生成，等待确认发送')
     }
   })
 }

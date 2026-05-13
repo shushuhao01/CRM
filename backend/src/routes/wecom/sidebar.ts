@@ -2221,8 +2221,15 @@ router.post('/sidebar/orders', authenticateSidebarToken, async (req: Request, re
     const orderRepo = AppDataSource.getRepository(Order);
     const orderItemRepo = AppDataSource.getRepository(OrderItem);
 
-    // 生成订单号
-    const orderNumber = 'WS' + Date.now().toString(36).toUpperCase() + Math.random().toString(36).slice(2, 6).toUpperCase();
+    // 生成订单号（和系统新增订单格式一致：ORD + 年月日时分秒 + 3位随机数）
+    const now = new Date();
+    const orderNumber = 'ORD' + now.getFullYear().toString() +
+      String(now.getMonth() + 1).padStart(2, '0') +
+      String(now.getDate()).padStart(2, '0') +
+      String(now.getHours()).padStart(2, '0') +
+      String(now.getMinutes()).padStart(2, '0') +
+      String(now.getSeconds()).padStart(2, '0') +
+      String(Math.floor(Math.random() * 1000)).padStart(3, '0');
 
     // 查询客户信息用于填充订单
     let customerName = req.body.customerName || '';
@@ -2241,17 +2248,26 @@ router.post('/sidebar/orders', authenticateSidebarToken, async (req: Request, re
     const hasVirtual = productTypes.some((t: string) => t === 'virtual');
     const orderProductType = hasPhysical && hasVirtual ? 'mixed' : hasVirtual ? 'virtual' : 'physical';
 
+    // 构建products快照JSON（与系统新增订单一致）
+    const productsSnapshot = products.map((p: any) => ({
+      id: p.id, name: p.name, price: Number(p.price) || 0,
+      quantity: Number(p.quantity) || 1, image: p.image || '',
+      productType: p.productType || 'physical', sku: p.sku || ''
+    }));
+
+    const screenshots = req.body.depositScreenshots;
     const orderData: any = {
       tenantId,
       customerId,
       customerName,
       customerPhone,
       orderNumber,
-      totalAmount: totalAmount || 0,
-      finalAmount: totalAmount || 0,
-      depositAmount: depositAmount || 0,
-      paymentMethod: paymentMethod || '',
-      paymentMethodOther: req.body.paymentMethodOther || '',
+      products: productsSnapshot,
+      totalAmount: Number(totalAmount) || 0,
+      finalAmount: Number(totalAmount) || 0,
+      depositAmount: Number(depositAmount) || 0,
+      paymentMethod: paymentMethod || null,
+      paymentMethodOther: req.body.paymentMethodOther || null,
       status: 'pending',
       markType: req.body.markType || 'normal',
       orderProductType,
@@ -2261,10 +2277,11 @@ router.post('/sidebar/orders', authenticateSidebarToken, async (req: Request, re
       shippingAddress: receiverAddress || '',
       createdBy: userId,
       createdByName: sidebarUser?.crmUserName || sidebarUser?.username || '',
-      orderSource: req.body.orderSource || 'wecom_sidebar',
+      orderSource: req.body.orderSource || 'wecom',
       serviceWechat: req.body.serviceWechat || '',
       expressCompany: req.body.expressCompany || '',
-      depositScreenshots: req.body.depositScreenshots || [],
+      depositScreenshots: Array.isArray(screenshots) && screenshots.length > 0 ? screenshots : null,
+      codAmount: Number(totalAmount) - Number(depositAmount || 0),
     };
     const order: any = orderRepo.create(orderData);
     const savedOrder: any = await orderRepo.save(order);

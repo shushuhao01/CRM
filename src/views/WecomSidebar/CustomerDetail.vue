@@ -245,7 +245,7 @@
             <div class="s-dialog">
               <div class="s-dialog-header"><span>🔗 关联CRM客户</span><span class="action-link" @click="showLinkDialog = false">✕</span></div>
               <div class="s-dialog-body">
-                <input v-model="linkKeyword" placeholder="搜索姓名/手机号..." class="preview-input" style="margin-bottom:8px" @input="searchLinkCustomers" />
+                <input v-model="linkKeyword" placeholder="搜索姓名/手机号..." class="preview-input" style="margin-bottom:8px" @input="searchLinkCustomers" @focus="!linkCustomerList.length && searchLinkCustomers()" />
                 <div style="max-height:200px;overflow-y:auto">
                   <div v-for="c in linkCustomerList" :key="c.id" class="link-cust-item" @click="doLinkCustomer(c)">
                     <span style="font-weight:500">{{ c.name }}</span>
@@ -1268,20 +1268,19 @@ async function loadOrderPage(page: number) {
   } catch { /* ignore */ }
 }
 
-/** 搜索关联CRM客户 */
+/** 搜索关联CRM客户（空关键词时加载最新5条） */
 function searchLinkCustomers() {
   clearTimeout(linkSearchTimer)
   linkSearchTimer = setTimeout(async () => {
-    if (!linkKeyword.value.trim()) { linkCustomerList.value = []; return }
     try {
       const { default: axios } = await import('axios')
       const res: any = await axios.get(`${window.location.origin}/api/v1/wecom/sidebar/search-customers`, {
-        params: { keyword: linkKeyword.value },
+        params: { keyword: linkKeyword.value || '' },
         headers: { Authorization: `Bearer ${sidebarToken.value}` }
       })
       linkCustomerList.value = res?.data?.data || res?.data || []
     } catch { linkCustomerList.value = [] }
-  }, 300)
+  }, linkKeyword.value ? 300 : 0)
 }
 
 /** 执行关联 */
@@ -1342,7 +1341,7 @@ async function handleSendFormCard() {
       headers: { Authorization: `Bearer ${sidebarToken.value}` }
     })
     const data = res?.data?.data || res?.data || {}
-    const path = data.path || `/pages/form/form?tenantId=${tenantId}&memberId=${memberId}&ts=${ts}&sign=${data.sign || ''}&externalUserId=${externalUserId.value || ''}`
+    const path = data.path || `/pages/form/form.html?tenantId=${tenantId}&memberId=${memberId}&ts=${ts}&sign=${data.sign || ''}&externalUserId=${externalUserId.value || ''}`
 
     // 企微环境：通过JS-SDK发送小程序卡片
     const wx = (window as any).wx

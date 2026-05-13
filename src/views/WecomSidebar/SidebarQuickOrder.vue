@@ -27,7 +27,7 @@
         <div class="preview-card">
           <div class="card-title">👤 搜索已有客户</div>
           <div class="qo-search-box">
-            <input v-model="custKeyword" placeholder="搜索姓名/手机号..." class="preview-input" @input="searchCustomers" />
+            <input v-model="custKeyword" placeholder="搜索姓名/手机号..." class="preview-input" @input="searchCustomers" @focus="!custList.length && searchCustomers()" />
           </div>
           <!-- 自动匹配提示 -->
           <div v-if="autoMatchedCustomer" class="qo-auto-match">
@@ -427,17 +427,16 @@ let searchTimer: any = null
 const searchCustomers = () => {
   clearTimeout(searchTimer)
   searchTimer = setTimeout(async () => {
-    if (!custKeyword.value.trim()) { custList.value = []; return }
     custLoading.value = true
     try {
       const res: any = await request.get('/wecom/sidebar/search-customers', {
-        params: { keyword: custKeyword.value },
+        params: { keyword: custKeyword.value || '' },
         ...authHeaders.value
       } as any)
       custList.value = res?.data || res || []
     } catch { custList.value = [] }
     custLoading.value = false
-  }, 300)
+  }, custKeyword.value ? 300 : 0)
 }
 
 const selectCustomer = (c: any) => {

@@ -12,7 +12,7 @@
     </div>
     <!-- 搜索下拉结果 -->
     <div v-if="keyword && searchResults.length" class="s-search-dropdown">
-      <div class="s-search-item" v-for="s in searchResults" :key="s.id" @click.stop="handleSend(s)" @dblclick.stop="handleDblClick(s)" @contextmenu.prevent="showCtxMenu($event, s)">
+      <div class="s-search-item" v-for="s in searchResults" :key="s.id" @click.stop="copyScript(s)" @dblclick.stop="handleCopyAndSend(s)" @contextmenu.prevent="showCtxMenu($event, s)">
         <span class="s-scope-dot" :style="{ background: s.scope === 'personal' ? '#e6a23c' : '#07c160' }"></span>
         <span v-if="hasAttachments(s)" class="s-att-icon">{{ getAttachmentIcon(s) }}</span>
         <span class="s-search-title" :style="s.color ? { color: s.color } : {}">{{ s.title || '无标题' }}</span>
@@ -45,7 +45,7 @@
       <div class="s-script-panel">
         <div v-if="displayScripts.length === 0" style="text-align:center;padding:30px 6px;color:#c0c4cc;font-size:11px">暂无话术</div>
         <div class="script-item" v-for="(s, idx) in displayScripts" :key="s.id"
-          @click.stop="handleSend(s)" @dblclick.stop="handleDblClick(s)" @contextmenu.prevent="showCtxMenu($event, s)">
+          @click.stop="copyScript(s)" @dblclick.stop="handleCopyAndSend(s)" @contextmenu.prevent="showCtxMenu($event, s)">
           <span class="script-idx">{{ idx + 1 }}</span>
           <span class="s-scope-dot" :style="{ background: s.scope === 'personal' ? '#e6a23c' : '#07c160' }"></span>
           <span v-if="hasAttachments(s)" class="s-att-icon">{{ getAttachmentIcon(s) }}</span>
@@ -299,9 +299,10 @@ function sendViaWxBridge(script: any) {
   })
 }
 
-/** 双击复制话术内容 */
-function handleDblClick(script: any) {
+/** 双击：复制并发送到对话输入框 */
+function handleCopyAndSend(script: any) {
   copyScript(script)
+  handleSend(script)
 }
 
 async function copyScript(script: any) {
