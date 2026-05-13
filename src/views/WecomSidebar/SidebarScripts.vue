@@ -1,272 +1,366 @@
 <template>
-  <div class="sidebar-scripts">
+  <div class="s-wrapper">
     <!-- 搜索栏 -->
-    <div class="scripts-search">
-      <el-input v-model="keyword" placeholder="搜索话术..." clearable size="small" @input="onSearch">
-        <template #prefix><el-icon><Search /></el-icon></template>
-      </el-input>
+    <div style="padding:6px 10px;position:relative">
+      <input v-model="keyword" placeholder="🔍 搜索话术关键词..." class="preview-input" style="font-size:11px;padding-right:24px" />
+      <span v-if="keyword" style="position:absolute;right:16px;top:50%;transform:translateY(-50%);cursor:pointer;color:#C0C4CC;font-size:13px;line-height:1" @click="keyword = ''" title="清空搜索">✕</span>
     </div>
-
-    <!-- 分类标签 -->
-    <div class="scripts-categories">
-      <span
-        class="cat-tag" :class="{ active: activeCatId === null }"
-        @click="activeCatId = null"
-      >全部</span>
-      <span
-        v-for="cat in categories" :key="cat.id"
-        class="cat-tag" :class="{ active: activeCatId === cat.id }"
-        :style="cat.color ? { '--cat-color': cat.color } : {}"
-        @click="activeCatId = cat.id"
-      >{{ cat.name }} ({{ getCatCount(cat.id) }})</span>
-      <span class="cat-tag cat-add" @click="showAddCat = true">+ 新分组</span>
+    <!-- 操作按钮 -->
+    <div style="display:flex;gap:4px;padding:0 10px 6px">
+      <button class="s-btn" style="flex:1;text-align:center" @click="showCatDialog = true">📁 管理分组</button>
+      <button class="s-btn" style="flex:1;text-align:center" @click="openAddScript(null)">＋ 新建话术</button>
     </div>
-
-    <!-- 话术列表 -->
-    <div class="scripts-list" v-loading="loading">
-      <div v-if="!loading && filteredScripts.length === 0" class="scripts-empty">
-        <p>{{ keyword ? '未找到匹配话术' : '暂无话术' }}</p>
-        <el-button size="small" type="primary" @click="showAddScript = true">+ 新建话术</el-button>
+    <!-- 搜索下拉结果 -->
+    <div v-if="keyword && searchResults.length" class="s-search-dropdown">
+      <div class="s-search-item" v-for="s in searchResults" :key="s.id" @click.stop="handleSend(s)" @contextmenu.prevent="showCtxMenu($event, s)">
+        <span class="s-scope-dot" :style="{ background: s.scope === 'personal' ? '#e6a23c' : '#07c160' }"></span>
+        <span class="s-search-title" :style="s.color ? { color: s.color } : {}">{{ s.title || '无标题' }}</span>
+        <span class="s-search-content">{{ s.content }}</span>
+        <span class="script-send-icon" title="点击发送" @click.stop="handleSend(s)"><svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg></span>
       </div>
-      <div v-for="script in filteredScripts" :key="script.id" class="script-item" @click="handleSend(script)">
-        <div class="script-header">
-          <span class="script-title">{{ script.title || '未命名话术' }}</span>
-          <div class="script-actions">
-            <el-button link size="small" type="primary" @click.stop="handleSend(script)" title="发送到聊天">📤</el-button>
-            <el-button link size="small" @click.stop="handleCopy(script)" title="复制内容">📋</el-button>
-            <el-button link size="small" type="danger" @click.stop="handleDelete(script)" title="删除">🗑️</el-button>
+    </div>
+    <div v-if="keyword && !searchResults.length" class="s-search-dropdown" style="text-align:center;padding:12px;color:#c0c4cc;font-size:11px">无匹配话术</div>
+    <!-- 左右布局 -->
+    <div class="s-layout" v-show="!keyword">
+      <div class="s-cat-panel" :style="{ width: catPanelWidth + 'px' }">
+        <div class="s-cat-item" :class="{ active: selectedCatId === null }" @click="selectedCatId = null">
+          <span class="script-group-color" style="background:#909399"></span>
+          <span style="flex:1;font-size:11px">全部</span>
+          <span style="font-size:10px;color:#c0c4cc">{{ allScripts.length }}</span>
+        </div>
+        <div class="s-cat-item" v-for="cat in categories" :key="cat.id" :class="{ active: selectedCatId === cat.id }" @click="selectedCatId = cat.id"
+          @contextmenu.prevent="showCatCtxMenu($event, cat)">
+          <span class="script-group-color" :style="{ background: cat.color || (cat.scope === 'personal' ? '#e6a23c' : '#07c160') }"></span>
+          <span style="flex:1;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ cat.name }}</span>
+          <span style="font-size:10px;color:#c0c4cc">{{ catScriptCount[cat.id] || 0 }}</span>
+        </div>
+        <div class="s-cat-item" :class="{ active: selectedCatId === 0 }" @click="selectedCatId = 0">
+          <span class="script-group-color" style="background:#c0c4cc"></span>
+          <span style="flex:1;font-size:11px">未分组</span>
+          <span style="font-size:10px;color:#c0c4cc">{{ uncategorized.length }}</span>
+        </div>
+      </div>
+      <div class="s-resizer" @mousedown="startResize"></div>
+      <div class="s-script-panel">
+        <div v-if="displayScripts.length === 0" style="text-align:center;padding:30px 6px;color:#c0c4cc;font-size:11px">暂无话术</div>
+        <div class="script-item" v-for="(s, idx) in displayScripts" :key="s.id"
+          @click.stop="handleSend(s)" @contextmenu.prevent="showCtxMenu($event, s)">
+          <span class="script-idx">{{ idx + 1 }}</span>
+          <span class="s-scope-dot" :style="{ background: s.scope === 'personal' ? '#e6a23c' : '#07c160' }"></span>
+          <span class="script-title-text" :style="s.color ? { color: s.color } : {}">{{ s.title || '无标题' }}</span>
+          <span class="script-content-inline">{{ s.content }}</span>
+          <span class="script-send-icon" title="点击发送" @click.stop="handleSend(s)"><svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg></span>
+        </div>
+      </div>
+    </div>
+    <!-- 右键菜单 -->
+    <teleport to="body">
+      <div v-if="ctxMenu.visible" class="s-ctx-menu" :style="{ left: ctxMenu.x + 'px', top: ctxMenu.y + 'px' }" @click="ctxMenu.visible = false">
+        <div class="s-ctx-item" @click="openAddScript(ctxMenu.script)">✏️ 编辑</div>
+        <div class="s-ctx-item" @click="delScript(ctxMenu.script)">🗑️ 删除</div>
+        <div class="s-ctx-item" @click="copyScript(ctxMenu.script)">📋 复制内容</div>
+      </div>
+      <div v-if="catCtxMenu.visible" class="s-ctx-menu" :style="{ left: catCtxMenu.x + 'px', top: catCtxMenu.y + 'px' }" @click="catCtxMenu.visible = false">
+        <div class="s-ctx-item" @click="startEditCat(catCtxMenu.cat)">✏️ 重命名</div>
+        <div class="s-ctx-item" @click="delCat(catCtxMenu.cat)">🗑️ 删除分组</div>
+      </div>
+    </teleport>
+    <!-- 管理分组弹窗 -->
+    <div v-if="showCatDialog" class="s-dialog-overlay" @click.self="showCatDialog = false">
+      <div class="s-dialog">
+        <div class="s-dialog-header"><span>📁 管理分组</span><span class="action-link" @click="showCatDialog = false">✕</span></div>
+        <div class="s-dialog-body">
+          <div style="background:#f9fafb;border-radius:8px;padding:8px;margin-bottom:10px">
+            <div style="display:flex;gap:4px;margin-bottom:6px;align-items:center">
+              <input v-model="newCatName" placeholder="分组名称" class="preview-input" style="flex:1;font-size:11px" @keyup.enter="saveCat" />
+              <select v-model="newCatScope" class="preview-input" style="width:65px;font-size:10px;padding:3px 4px">
+                <option value="public">🌐 公共</option>
+                <option value="personal">👤 个人</option>
+              </select>
+              <button class="s-btn" @click="saveCat">{{ editingCatId ? '保存' : '添加' }}</button>
+              <button v-if="editingCatId" class="s-btn" style="color:#f56c6c" @click="cancelEditCat">取消</button>
+            </div>
+            <div style="display:flex;gap:2px;align-items:center">
+              <span style="font-size:10px;color:#909399;margin-right:2px">颜色：</span>
+              <span v-for="c in sColors" :key="c" class="color-dot" :style="{ background: c }" :class="{ active: newCatColor === c }" @click="newCatColor = newCatColor === c ? '' : c"></span>
+            </div>
+          </div>
+          <div v-for="cat in categories" :key="cat.id" class="s-cat-manage-item">
+            <span class="script-group-color" :style="{ background: cat.color || (cat.scope === 'personal' ? '#e6a23c' : '#07c160') }"></span>
+            <span style="flex:1;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ cat.name }}</span>
+            <span class="s-scope-badge" :class="cat.scope === 'personal' ? 'personal' : 'public'">{{ cat.scope === 'personal' ? '个人' : '公共' }}</span>
+            <span style="font-size:10px;color:#c0c4cc;margin:0 4px">{{ catScriptCount[cat.id] || 0 }}</span>
+            <span class="action-link" style="font-size:10px;color:#409eff;margin-right:4px" @click="startEditCat(cat)">编辑</span>
+            <span class="action-link" style="font-size:10px;color:#f56c6c" @click="delCat(cat)">删除</span>
+          </div>
+          <div v-if="!categories.length" style="text-align:center;padding:16px;color:#c0c4cc;font-size:11px">暂无分组</div>
+        </div>
+      </div>
+    </div>
+    <!-- 新建/编辑话术弹窗 -->
+    <div v-if="showAddScriptDialog" class="s-dialog-overlay" @click.self="showAddScriptDialog = false">
+      <div class="s-dialog">
+        <div class="s-dialog-header"><span>{{ editScript ? '编辑话术' : '新建话术' }}</span><span class="action-link" @click="showAddScriptDialog = false">✕</span></div>
+        <div class="s-dialog-body">
+          <input v-model="scriptForm.title" placeholder="话术标题" class="preview-input" style="font-size:11px;margin-bottom:6px" />
+          <textarea v-model="scriptForm.content" placeholder="话术内容..." class="preview-input" style="font-size:11px;min-height:60px;resize:vertical;margin-bottom:6px"></textarea>
+          <select v-model="scriptForm.categoryId" class="preview-input" style="font-size:11px;margin-bottom:6px">
+            <option :value="null">未分组</option>
+            <option v-for="cat in categories" :key="cat.id" :value="cat.id">{{ cat.name }}</option>
+          </select>
+          <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">
+            <span style="font-size:10px;color:#909399">类型：</span>
+            <span class="s-scope-radio" :class="{ active: scriptForm.scope === 'public' }" @click="scriptForm.scope = 'public'">🌐 公共</span>
+            <span class="s-scope-radio" :class="{ active: scriptForm.scope === 'personal' }" @click="scriptForm.scope = 'personal'">👤 个人</span>
+          </div>
+          <div style="display:flex;gap:4px;align-items:center;margin-bottom:6px">
+            <span style="font-size:10px;color:#909399">颜色：</span>
+            <span v-for="c in sColors" :key="c" class="color-dot" :style="{ background: c }" :class="{ active: scriptForm.color === c }" @click="scriptForm.color = scriptForm.color === c ? '' : c"></span>
+          </div>
+          <div style="display:flex;gap:6px;justify-content:flex-end">
+            <button class="s-btn" style="color:#909399;border-color:#dcdfe6" @click="showAddScriptDialog = false">取消</button>
+            <button class="s-btn" @click="saveScript">保存</button>
           </div>
         </div>
-        <div class="script-content">{{ script.content }}</div>
-        <div class="script-meta">
-          <span v-if="script.categoryName" class="script-cat">{{ script.categoryName }}</span>
-          <span class="script-use">使用{{ script.useCount || 0 }}次</span>
-          <span v-if="script.scope === 'personal'" class="script-scope">个人</span>
-        </div>
       </div>
     </div>
-
-    <!-- 底部按钮 -->
-    <div class="scripts-footer">
-      <el-button type="primary" style="width:100%" @click="showAddScript = true">+ 新建话术</el-button>
-    </div>
-
-    <!-- 新建话术弹窗 -->
-    <el-dialog v-model="showAddScript" title="新建话术" width="90%" :close-on-click-modal="false" append-to-body>
-      <el-form label-position="top" size="small">
-        <el-form-item label="标题">
-          <el-input v-model="newScript.title" placeholder="话术标题" />
-        </el-form-item>
-        <el-form-item label="内容">
-          <el-input v-model="newScript.content" type="textarea" :rows="4" placeholder="话术内容" />
-        </el-form-item>
-        <el-form-item label="分组">
-          <el-select v-model="newScript.categoryId" placeholder="选择分组" clearable style="width:100%">
-            <el-option v-for="cat in categories" :key="cat.id" :label="cat.name" :value="cat.id" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="类型">
-          <el-radio-group v-model="newScript.scope">
-            <el-radio label="public">公共</el-radio>
-            <el-radio label="personal">个人</el-radio>
-          </el-radio-group>
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="showAddScript = false">取消</el-button>
-        <el-button type="primary" :loading="saving" @click="saveScript">保存</el-button>
-      </template>
-    </el-dialog>
-
-    <!-- 新建分组弹窗 -->
-    <el-dialog v-model="showAddCat" title="新建分组" width="80%" append-to-body>
-      <el-form label-position="top" size="small">
-        <el-form-item label="分组名称">
-          <el-input v-model="newCatName" placeholder="输入分组名称" />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="showAddCat = false">取消</el-button>
-        <el-button type="primary" :loading="savingCat" @click="saveCat">保存</el-button>
-      </template>
-    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
-import { Search } from '@element-plus/icons-vue'
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { ElMessage } from 'element-plus'
 import request from '@/utils/request'
 
 const props = defineProps<{ sidebarToken: string }>()
 
-const loading = ref(false)
 const keyword = ref('')
-const activeCatId = ref<number | null>(null)
+const selectedCatId = ref<number | null>(null)
 const categories = ref<any[]>([])
-const scripts = ref<any[]>([])
-const showAddScript = ref(false)
-const showAddCat = ref(false)
-const saving = ref(false)
-const savingCat = ref(false)
+const allScripts = ref<any[]>([])
+const catPanelWidth = ref(90)
+
+const showCatDialog = ref(false)
+const showAddScriptDialog = ref(false)
+const editScript = ref<any>(null)
+const scriptForm = ref({ title: '', content: '', categoryId: null as number | null, scope: 'public', color: '' })
 const newCatName = ref('')
-const newScript = ref({ title: '', content: '', categoryId: null as number | null, scope: 'public' })
+const newCatScope = ref('public')
+const newCatColor = ref('')
+const editingCatId = ref<number | null>(null)
+const sColors = ['#303133', '#07c160', '#409eff', '#e6a23c', '#f56c6c', '#9b59b6', '#1abc9c']
 
-const authHeaders = computed(() => ({
-  headers: { Authorization: `Bearer ${props.sidebarToken}` }
-}))
+const ctxMenu = ref({ visible: false, x: 0, y: 0, script: null as any })
+const catCtxMenu = ref({ visible: false, x: 0, y: 0, cat: null as any })
 
-const filteredScripts = computed(() => {
-  let list = scripts.value
-  if (activeCatId.value !== null) {
-    list = list.filter(s => s.categoryId === activeCatId.value)
-  }
-  if (keyword.value.trim()) {
-    const kw = keyword.value.toLowerCase()
-    list = list.filter(s =>
-      (s.title || '').toLowerCase().includes(kw) ||
-      (s.content || '').toLowerCase().includes(kw)
-    )
-  }
-  return list
+const authHeaders = computed(() => ({ headers: { Authorization: `Bearer ${props.sidebarToken}` } }))
+
+const catScriptCount = computed(() => {
+  const map: Record<number, number> = {}
+  allScripts.value.forEach(s => { if (s.categoryId) map[s.categoryId] = (map[s.categoryId] || 0) + 1 })
+  return map
 })
 
-const getCatCount = (catId: number) => scripts.value.filter(s => s.categoryId === catId).length
+const uncategorized = computed(() => allScripts.value.filter(s => !s.categoryId))
 
-let searchTimer: any = null
-const onSearch = () => {
-  clearTimeout(searchTimer)
-  searchTimer = setTimeout(() => {}, 300)
-}
+const displayScripts = computed(() => {
+  if (selectedCatId.value === null) return allScripts.value
+  if (selectedCatId.value === 0) return uncategorized.value
+  return allScripts.value.filter(s => s.categoryId === selectedCatId.value)
+})
+
+const searchResults = computed(() => {
+  if (!keyword.value.trim()) return []
+  const kw = keyword.value.toLowerCase()
+  return allScripts.value.filter(s => (s.title || '').toLowerCase().includes(kw) || (s.content || '').toLowerCase().includes(kw))
+})
+
+// ==================== API ====================
 
 async function loadScripts() {
-  loading.value = true
   try {
-    const res: any = await request.get('/wecom/sidebar/scripts', {
-      params: { keyword: keyword.value || undefined },
-      ...authHeaders.value
-    } as any)
+    const res: any = await request.get('/wecom/sidebar/scripts', authHeaders.value as any)
     const data = res?.data || res
     categories.value = data?.categories || []
-    scripts.value = (data?.scripts || []).map((s: any) => ({
-      ...s,
-      categoryName: categories.value.find((c: any) => c.id === s.categoryId)?.name || ''
-    }))
+    allScripts.value = data?.scripts || []
   } catch (e: any) {
     console.error('[SidebarScripts] Load error:', e)
-    ElMessage.error('加载话术失败')
   }
-  loading.value = false
 }
 
 async function saveScript() {
-  if (!newScript.value.title && !newScript.value.content) {
-    ElMessage.warning('标题或内容至少填一项')
-    return
-  }
-  saving.value = true
+  if (!scriptForm.value.title && !scriptForm.value.content) { ElMessage.warning('标题或内容至少填一项'); return }
   try {
-    await request.post('/wecom/sidebar/scripts', newScript.value, authHeaders.value as any)
-    ElMessage.success('话术创建成功')
-    showAddScript.value = false
-    newScript.value = { title: '', content: '', categoryId: null, scope: 'public' }
+    if (editScript.value) {
+      await request.put(`/wecom/sidebar/scripts/${editScript.value.id}`, scriptForm.value, authHeaders.value as any)
+      ElMessage.success('已更新')
+    } else {
+      await request.post('/wecom/sidebar/scripts', scriptForm.value, authHeaders.value as any)
+      ElMessage.success('已创建')
+    }
+    showAddScriptDialog.value = false
     await loadScripts()
-  } catch (e: any) {
-    ElMessage.error(e?.message || '创建失败')
-  }
-  saving.value = false
+  } catch (e: any) { ElMessage.error(e?.message || '保存失败') }
 }
 
 async function saveCat() {
   if (!newCatName.value.trim()) { ElMessage.warning('请输入分组名称'); return }
-  savingCat.value = true
   try {
-    await request.post('/wecom/sidebar/script-categories', { name: newCatName.value.trim(), scope: 'public' }, authHeaders.value as any)
-    ElMessage.success('分组创建成功')
-    showAddCat.value = false
+    const payload: any = { name: newCatName.value.trim(), scope: newCatScope.value }
+    if (newCatColor.value) payload.color = newCatColor.value
+    if (editingCatId.value) {
+      await request.put(`/wecom/sidebar/script-categories/${editingCatId.value}`, payload, authHeaders.value as any)
+    } else {
+      await request.post('/wecom/sidebar/script-categories', payload, authHeaders.value as any)
+    }
     newCatName.value = ''
+    newCatColor.value = ''
+    editingCatId.value = null
     await loadScripts()
-  } catch (e: any) {
-    ElMessage.error(e?.message || '创建分组失败')
-  }
-  savingCat.value = false
+  } catch (e: any) { ElMessage.error(e?.message || '保存分组失败') }
 }
 
-async function handleSend(script: any) {
-  // 记录使用次数
+async function delScript(script: any) {
+  if (!script) return
+  if (!confirm(`确定删除话术「${script.title || '未命名'}」？`)) return
   try {
-    await request.post(`/wecom/sidebar/scripts/${script.id}/use`, {}, authHeaders.value as any)
-  } catch { /* ignore */ }
-
-  // 尝试通过企微JS-SDK发送到聊天
-  const wx = (window as any).wx
-  if (wx?.sendChatMessage) {
-    try {
-      wx.sendChatMessage({
-        msgtype: 'text',
-        text: { content: script.content }
-      })
-      ElMessage.success('已发送到聊天')
-      // 刷新使用次数
-      const s = scripts.value.find(ss => ss.id === script.id)
-      if (s) s.useCount = (s.useCount || 0) + 1
-      return
-    } catch { /* fallback to copy */ }
-  }
-
-  // Fallback: 复制到剪贴板
-  handleCopy(script)
-}
-
-async function handleCopy(script: any) {
-  try {
-    await navigator.clipboard.writeText(script.content || '')
-    ElMessage.success('已复制到剪贴板')
-  } catch {
-    // Fallback
-    const ta = document.createElement('textarea')
-    ta.value = script.content || ''
-    document.body.appendChild(ta)
-    ta.select()
-    document.execCommand('copy')
-    document.body.removeChild(ta)
-    ElMessage.success('已复制到剪贴板')
-  }
-}
-
-async function handleDelete(script: any) {
-  try {
-    await ElMessageBox.confirm(`确定删除话术「${script.title || '未命名'}」？`, '提示', { type: 'warning' })
     await request.delete(`/wecom/sidebar/scripts/${script.id}`, authHeaders.value as any)
     ElMessage.success('已删除')
     await loadScripts()
-  } catch { /* cancelled */ }
+  } catch (e: any) { ElMessage.error(e?.message || '删除失败') }
 }
+
+async function delCat(cat: any) {
+  if (!cat) return
+  if (!confirm(`确定删除分组「${cat.name}」？`)) return
+  try {
+    await request.delete(`/wecom/sidebar/script-categories/${cat.id}`, authHeaders.value as any)
+    ElMessage.success('分组已删除')
+    await loadScripts()
+  } catch (e: any) { ElMessage.error(e?.message || '删除分组失败') }
+}
+
+// ==================== Actions ====================
+
+function openAddScript(s: any) {
+  if (s) {
+    editScript.value = s
+    scriptForm.value = { title: s.title || '', content: s.content || '', categoryId: s.categoryId || null, scope: s.scope || 'public', color: s.color || '' }
+  } else {
+    editScript.value = null
+    scriptForm.value = { title: '', content: '', categoryId: selectedCatId.value === 0 ? null : selectedCatId.value, scope: 'public', color: '' }
+  }
+  showAddScriptDialog.value = true
+}
+
+function startEditCat(cat: any) {
+  editingCatId.value = cat.id
+  newCatName.value = cat.name
+  newCatScope.value = cat.scope || 'public'
+  newCatColor.value = cat.color || ''
+  showCatDialog.value = true
+}
+
+function cancelEditCat() {
+  editingCatId.value = null
+  newCatName.value = ''
+}
+
+async function handleSend(script: any) {
+  try { await request.post(`/wecom/sidebar/scripts/${script.id}/use`, {}, authHeaders.value as any) } catch { /* ignore */ }
+  const wx = (window as any).wx
+  if (wx?.invoke) {
+    wx.invoke('sendChatMessage', { msgtype: 'text', text: { content: script.content } }, (res: any) => {
+      if (res.err_msg === 'sendChatMessage:ok') ElMessage.success('已发送')
+      else copyScript(script)
+    })
+  } else {
+    copyScript(script)
+  }
+  const s = allScripts.value.find(ss => ss.id === script.id)
+  if (s) s.useCount = (s.useCount || 0) + 1
+}
+
+async function copyScript(script: any) {
+  try {
+    await navigator.clipboard.writeText(script?.content || '')
+    ElMessage.success('已复制到剪贴板')
+  } catch {
+    const ta = document.createElement('textarea')
+    ta.value = script?.content || ''
+    document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta)
+    ElMessage.success('已复制')
+  }
+}
+
+function showCtxMenu(e: MouseEvent, s: any) { ctxMenu.value = { visible: true, x: e.clientX, y: e.clientY, script: s } }
+function showCatCtxMenu(e: MouseEvent, cat: any) { catCtxMenu.value = { visible: true, x: e.clientX, y: e.clientY, cat } }
+
+// ==================== Resizer ====================
+let resizing = false
+function startResize() { resizing = true }
+function onMouseMove(e: MouseEvent) { if (resizing) catPanelWidth.value = Math.max(50, Math.min(180, e.clientX - 10)) }
+function onMouseUp() { resizing = false }
 
 onMounted(() => {
   loadScripts()
+  document.addEventListener('mousemove', onMouseMove)
+  document.addEventListener('mouseup', onMouseUp)
+  document.addEventListener('click', () => { ctxMenu.value.visible = false; catCtxMenu.value.visible = false })
+})
+onBeforeUnmount(() => {
+  document.removeEventListener('mousemove', onMouseMove)
+  document.removeEventListener('mouseup', onMouseUp)
 })
 </script>
 
 <style scoped>
-.sidebar-scripts { display: flex; flex-direction: column; height: 100%; background: #f5f6f7; }
-.scripts-search { padding: 10px 12px 6px; background: #fff; }
-.scripts-categories { padding: 6px 12px 10px; background: #fff; display: flex; flex-wrap: wrap; gap: 6px; border-bottom: 1px solid #eee; }
-.cat-tag { display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: 12px; color: #606266; background: #f0f2f5; cursor: pointer; transition: all .2s; }
-.cat-tag.active { background: #07c160; color: #fff; }
-.cat-tag:hover { opacity: .85; }
-.cat-tag.cat-add { border: 1px dashed #c0c4cc; background: transparent; color: #909399; }
-.scripts-list { flex: 1; overflow-y: auto; padding: 8px 12px; }
-.scripts-empty { text-align: center; padding: 40px 0; color: #909399; font-size: 13px; }
-.script-item { background: #fff; border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; cursor: pointer; transition: box-shadow .2s; }
-.script-item:hover { box-shadow: 0 2px 8px rgba(0,0,0,.08); }
-.script-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
-.script-title { font-size: 13px; font-weight: 600; color: #303133; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 200px; }
-.script-actions { display: flex; gap: 2px; flex-shrink: 0; }
-.script-content { font-size: 12px; color: #606266; line-height: 1.5; max-height: 48px; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; word-break: break-all; }
-.script-meta { display: flex; gap: 8px; margin-top: 6px; font-size: 11px; color: #909399; }
-.script-cat { background: #f0f2f5; padding: 1px 6px; border-radius: 4px; }
-.script-scope { color: #e6a23c; }
-.scripts-footer { padding: 10px 12px; background: #fff; border-top: 1px solid #eee; }
+.s-wrapper { display: flex; flex-direction: column; height: calc(100vh - 40px); background: #f5f5f5; overflow: hidden; }
+.preview-input { width: 100%; padding: 6px 8px; border: 1px solid #dcdfe6; border-radius: 6px; font-size: 12px; outline: none; box-sizing: border-box; }
+.preview-input:focus { border-color: #07c160; }
+.s-btn { padding: 4px 10px; border: 1px solid #dcdfe6; border-radius: 5px; background: #fff; font-size: 11px; cursor: pointer; color: #606266; white-space: nowrap; }
+.s-btn:hover { border-color: #07c160; color: #07c160; }
+/* 搜索下拉 */
+.s-search-dropdown { background: #fff; margin: 0 10px; border-radius: 6px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); max-height: 200px; overflow-y: auto; }
+.s-search-item { display: flex; align-items: center; gap: 4px; padding: 6px 8px; cursor: pointer; border-bottom: 1px solid #f9fafb; font-size: 11px; }
+.s-search-item:hover { background: #f5f7fa; }
+.s-search-title { font-weight: 500; color: #303133; white-space: nowrap; max-width: 80px; overflow: hidden; text-overflow: ellipsis; }
+.s-search-content { flex: 1; color: #909399; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* 左右布局 */
+.s-layout { display: flex; flex: 1; overflow: hidden; margin: 0 6px 6px; background: #fff; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,0.04); }
+.s-cat-panel { overflow-y: auto; border-right: 1px solid #f0f0f0; padding: 4px 0; flex-shrink: 0; }
+.s-cat-item { display: flex; align-items: center; gap: 4px; padding: 5px 6px; cursor: pointer; font-size: 11px; border-left: 2px solid transparent; }
+.s-cat-item.active { background: #f0fdf4; border-left-color: #07c160; }
+.s-cat-item:hover { background: #f9fafb; }
+.script-group-color { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+.s-resizer { width: 4px; cursor: col-resize; background: transparent; flex-shrink: 0; }
+.s-resizer:hover { background: #e5e7eb; }
+.s-script-panel { flex: 1; overflow-y: auto; padding: 4px; }
+.script-item { display: flex; align-items: center; gap: 4px; padding: 5px 6px; cursor: pointer; border-radius: 4px; font-size: 11px; border-bottom: 1px solid #f9fafb; }
+.script-item:hover { background: #f5f7fa; }
+.script-idx { color: #c0c4cc; font-size: 9px; width: 14px; text-align: center; flex-shrink: 0; }
+.s-scope-dot { width: 5px; height: 5px; border-radius: 50%; flex-shrink: 0; }
+.script-title-text { font-weight: 500; color: #303133; white-space: nowrap; max-width: 60px; overflow: hidden; text-overflow: ellipsis; flex-shrink: 0; }
+.script-content-inline { flex: 1; color: #909399; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 10px; }
+.script-send-icon { color: #07c160; cursor: pointer; flex-shrink: 0; display: flex; opacity: 0.5; }
+.script-send-icon:hover { opacity: 1; }
+/* 右键菜单 */
+.s-ctx-menu { position: fixed; background: #fff; border-radius: 6px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); z-index: 9999; min-width: 100px; padding: 4px 0; }
+.s-ctx-item { padding: 6px 12px; font-size: 11px; cursor: pointer; white-space: nowrap; }
+.s-ctx-item:hover { background: #f5f7fa; }
+/* 弹窗 */
+.s-dialog-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.3); z-index: 9998; display: flex; align-items: center; justify-content: center; }
+.s-dialog { background: #fff; border-radius: 10px; width: 90%; max-width: 320px; max-height: 80vh; overflow: hidden; display: flex; flex-direction: column; }
+.s-dialog-header { display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; border-bottom: 1px solid #f0f0f0; font-size: 13px; font-weight: 600; }
+.s-dialog-body { padding: 12px 14px; overflow-y: auto; flex: 1; }
+.action-link { color: #4c6ef5; cursor: pointer; font-size: 12px; }
+.s-cat-manage-item { display: flex; align-items: center; gap: 4px; padding: 6px 4px; border-bottom: 1px solid #f9fafb; }
+.s-scope-badge { font-size: 9px; padding: 1px 4px; border-radius: 3px; }
+.s-scope-badge.public { background: #ecfdf5; color: #059669; }
+.s-scope-badge.personal { background: #fef3c7; color: #d97706; }
+.s-scope-radio { padding: 2px 8px; border-radius: 4px; font-size: 10px; cursor: pointer; border: 1px solid #dcdfe6; }
+.s-scope-radio.active { border-color: #07c160; background: #ecfdf5; color: #059669; }
+.color-dot { width: 14px; height: 14px; border-radius: 50%; cursor: pointer; border: 2px solid transparent; transition: all 0.2s; }
+.color-dot:hover { transform: scale(1.2); }
+.color-dot.active { border-color: #303133; box-shadow: 0 0 0 1px #fff inset; }
 </style>

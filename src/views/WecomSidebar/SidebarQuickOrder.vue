@@ -1,11 +1,22 @@
 <template>
   <div class="sidebar-quick-order">
+    <!-- 步骤指示器（对齐Preview） -->
+    <div class="qo-steps">
+      <div class="qo-step-dot" :class="{ active: step === 1, done: step > 1 }" @click="step > 1 && (step = 1)">
+        <span class="step-num">{{ step > 1 ? '✓' : '1' }}</span><span class="step-text">选客户</span>
+      </div>
+      <div class="qo-step-line" :class="{ active: step > 1 }"></div>
+      <div class="qo-step-dot" :class="{ active: step === 2, done: step > 2 }" @click="step > 2 && (step = 2)">
+        <span class="step-num">{{ step > 2 ? '✓' : '2' }}</span><span class="step-text">选产品</span>
+      </div>
+      <div class="qo-step-line" :class="{ active: step > 2 }"></div>
+      <div class="qo-step-dot" :class="{ active: step === 3, done: step > 3 }">
+        <span class="step-num">{{ step > 3 ? '✓' : '3' }}</span><span class="step-text">确认下单</span>
+      </div>
+    </div>
+
     <!-- Step 1: 选择客户 -->
     <div v-if="step === 1" class="qo-step">
-      <div class="step-header">
-        <span class="step-badge">1</span>
-        <span class="step-title">选择客户</span>
-      </div>
 
       <!-- 已选客户 -->
       <div v-if="form.customerId" class="selected-customer info-card">
@@ -67,11 +78,6 @@
 
     <!-- Step 2: 选择商品 -->
     <div v-else-if="step === 2" class="qo-step">
-      <div class="step-header">
-        <el-button link @click="step = 1">← 返回</el-button>
-        <span class="step-badge">2</span>
-        <span class="step-title">选择商品</span>
-      </div>
 
       <div class="info-card">
         <el-input v-model="productKeyword" placeholder="搜索商品..." clearable size="small" @input="searchProducts">
@@ -110,11 +116,6 @@
 
     <!-- Step 3: 填写订单信息并提交 -->
     <div v-else-if="step === 3" class="qo-step">
-      <div class="step-header">
-        <el-button link @click="step = 2">← 返回</el-button>
-        <span class="step-badge">3</span>
-        <span class="step-title">确认订单</span>
-      </div>
 
       <div class="info-card">
         <div class="section-title">订单摘要</div>
@@ -164,7 +165,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Search } from '@element-plus/icons-vue'
 import request from '@/utils/request'
@@ -370,24 +371,37 @@ const resetOrder = () => {
   newCust.value = { phone: '', name: '', gender: '', address: '' }
 }
 
-// Auto-load products on mount
-import { onMounted } from 'vue'
 onMounted(() => {
   searchProducts()
-  // Auto-select customer from parent if available
+  autoFillCustomer()
+})
+
+watch(() => props.customerData, () => {
+  if (!form.value.customerId) autoFillCustomer()
+})
+
+function autoFillCustomer() {
   if (props.customerData?.crmCustomer) {
     const crm = props.customerData.crmCustomer
     selectCustomer({ id: crm.id, name: crm.name, phone: crm.phone, address: crm.address })
   }
-})
+}
 </script>
 
 <style scoped>
 .sidebar-quick-order { padding: 0 0 12px; background: #f5f6f7; min-height: 100%; }
 .qo-step { padding: 0; }
-.step-header { display: flex; align-items: center; gap: 8px; padding: 10px 12px; background: #fff; border-bottom: 1px solid #eee; }
-.step-badge { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%; background: #07c160; color: #fff; font-size: 12px; font-weight: 700; }
-.step-title { font-size: 14px; font-weight: 600; color: #303133; }
+/* 步骤指示器 */
+.qo-steps { display: flex; align-items: center; padding: 10px 16px; background: #fff; border-bottom: 1px solid #f0f0f0; }
+.qo-step-dot { display: flex; align-items: center; gap: 4px; cursor: pointer; }
+.qo-step-dot .step-num { width: 20px; height: 20px; border-radius: 50%; background: #dcdfe6; color: #fff; font-size: 10px; display: flex; align-items: center; justify-content: center; font-weight: 600; }
+.qo-step-dot.active .step-num { background: #07c160; }
+.qo-step-dot.done .step-num { background: #67c23a; }
+.qo-step-dot .step-text { font-size: 11px; color: #909399; }
+.qo-step-dot.active .step-text { color: #07c160; font-weight: 600; }
+.qo-step-dot.done .step-text { color: #67c23a; }
+.qo-step-line { flex: 1; height: 2px; background: #dcdfe6; margin: 0 6px; }
+.qo-step-line.active { background: #67c23a; }
 .info-card { background: #fff; border-radius: 8px; padding: 12px; margin: 8px 12px; }
 .section-title { font-size: 13px; font-weight: 600; color: #303133; margin-bottom: 8px; }
 .mode-tabs { display: flex; gap: 12px; margin-bottom: 10px; }

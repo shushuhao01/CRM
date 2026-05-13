@@ -100,7 +100,7 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 
-const props = defineProps<{ customerData: any }>()
+const props = defineProps<{ customerData: any; sidebarToken?: string }>()
 
 const manualStar = ref(0)
 

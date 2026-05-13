@@ -39,20 +39,20 @@ const SIDEBAR_APPS_KEY = 'wecom_sidebar_apps';
 
 // ==================== P1安全加固: 速率限制 ====================
 
-/** 侧边栏认证接口限流: 每IP每15分钟最多10次 */
+/** 侧边栏认证接口限流: 每IP每5分钟最多200次（多个sidebar tab + 切换客户 + token刷新都会触发） */
 const sidebarAuthLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 10,
+  windowMs: 5 * 60 * 1000,
+  max: 200,
   standardHeaders: true,
   legacyHeaders: false,
   message: { success: false, message: '操作过于频繁，请稍后再试' },
   keyGenerator: (req: Request) => req.ip || req.socket.remoteAddress || 'unknown'
 });
 
-/** JS-SDK配置接口限流: 每IP每分钟20次 */
+/** JS-SDK配置接口限流: 每IP每分钟120次（多tab + 切换客户时频繁调用签名接口） */
 const jsSdkConfigLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 20,
+  max: 120,
   standardHeaders: true,
   legacyHeaders: false,
   message: { success: false, message: 'JS-SDK配置请求过于频繁' }
