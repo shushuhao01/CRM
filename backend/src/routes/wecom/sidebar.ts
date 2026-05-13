@@ -1998,12 +1998,22 @@ L('URL='+location.href);
 L('UA='+navigator.userAgent.substring(0,120));
 
 if(!corpId||corpId.indexOf('$')>=0){
-  L('$CORPID$未被替换，从后端自动获取...','w');
-  R('获取配置...',null);
+  L('$CORPID$未被替换，从后端获取所有可用企业...','w');
+  R('选择企业...',null);
   fetch('/api/v1/wecom/sidebar-config').then(function(r){return r.json()}).then(function(j){
     L('后端配置: '+JSON.stringify(j),j.success?'ok':'err');
-    if(j.success&&j.data&&j.data.corpId){corpId=j.data.corpId;startWithCorpId()}
-    else{R('后端无可用企微配置',false)}
+    if(!j.success||!j.allConfigs||!j.allConfigs.length){R('无可用企微配置',false);return}
+    if(j.allConfigs.length===1){corpId=j.allConfigs[0].corpId;startWithCorpId();return}
+    R('请选择当前企业:',null);
+    var div=document.createElement('div');div.style.cssText='margin:8px 0';
+    j.allConfigs.forEach(function(c){
+      var btn=document.createElement('button');
+      btn.textContent=c.name+' ('+c.corpId.substring(0,12)+'... agentId='+c.agentId+')';
+      btn.style.cssText='display:block;width:100%;padding:10px;margin:4px 0;background:#1f6feb;color:#fff;border:none;border-radius:6px;font-size:13px;cursor:pointer';
+      btn.onclick=function(){corpId=c.corpId;div.remove();startWithCorpId()};
+      div.appendChild(btn);
+    });
+    document.getElementById('logs').appendChild(div);
   }).catch(function(e){L('获取配置失败: '+e.message,'err');R('请求失败',false)});
 }else{
   startWithCorpId();
