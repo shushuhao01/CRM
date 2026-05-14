@@ -219,9 +219,11 @@
                 </div>
               </div>
               <div v-if="customerData.orderTotal > 3" style="display:flex;justify-content:space-between;padding:6px 0;font-size:11px;color:#909399">
-                <span :style="{cursor: (customerData.orderPage||1)>1?'pointer':'default',opacity:(customerData.orderPage||1)>1?1:0.3}" @click="loadOrderPage((customerData.orderPage||1)-1)">‹ 上一页</span>
+                <span v-if="(customerData.orderPage||1) > 1" style="cursor:pointer" @click="loadOrderPage((customerData.orderPage||1)-1)">‹ 上一页</span>
+                <span v-else></span>
                 <span>{{ customerData.orderPage || 1 }} / {{ Math.ceil((customerData.orderTotal || 0) / 3) }}</span>
-                <span :style="{cursor: (customerData.orderPage||1)*3<customerData.orderTotal?'pointer':'default',opacity:(customerData.orderPage||1)*3<customerData.orderTotal?1:0.3}" @click="loadOrderPage((customerData.orderPage||1)+1)">下一页 ›</span>
+                <span v-if="(customerData.orderPage||1) * 3 < customerData.orderTotal" style="cursor:pointer" @click="loadOrderPage((customerData.orderPage||1)+1)">下一页 ›</span>
+                <span v-else></span>
               </div>
             </template>
             <div v-else style="text-align:center;padding:12px;color:#c0c4cc;font-size:11px">暂无订单记录</div>
@@ -1291,6 +1293,9 @@ async function openCrmDetail() {
   if (!customerData.value?.crmCustomer?.id) return
   const url = `${window.location.origin}/customer/detail/${customerData.value.crmCustomer.id}`
 
+  // 等待agentConfig完成（openDefaultBrowser需要agentConfig权限）
+  await Promise.race([sdkReadyPromise, new Promise(r => setTimeout(r, 3000))])
+
   try {
     const ww = (window as any).ww
 
@@ -1342,7 +1347,8 @@ async function refreshCustomerData() {
 
 /** 订单分页加载 */
 async function loadOrderPage(page: number) {
-  if (!externalUserId.value || !sidebarToken.value || page < 1) return
+  const maxPage = Math.ceil((customerData.value?.orderTotal || 0) / 3) || 1
+  if (!externalUserId.value || !sidebarToken.value || page < 1 || page > maxPage) return
   try {
     const res: any = await getSidebarCustomerDetail(externalUserId.value, sidebarToken.value, page)
     if (res) {
@@ -1442,15 +1448,11 @@ async function trySendCard(payload: any): Promise<'sent' | 'cancel' | 'failed'> 
   return 'failed'
 }
 
-/** 转发填写资料卡片（和资料收集tab保持一致的发送逻辑） */
+/** 转发填写资料卡片（完全对齐SidebarCollect的发送逻辑，不等待sdkReady） */
 async function handleSendFormCard() {
   if (sendingFormCard.value) return
   sendingFormCard.value = true
   try {
-    // ★ 等待SDK就绪（PC端页面从缓存token快速显示，但SDK可能还在初始化中）
-    const sdkWaitTimeout = Promise.race([sdkReadyPromise, new Promise(r => setTimeout(r, 8000))])
-    await sdkWaitTimeout
-
     let tenantId = '', memberId = ''
     if (sidebarToken.value) {
       const payload = decodeJwtPayload(sidebarToken.value)
@@ -1460,7 +1462,7 @@ async function handleSendFormCard() {
       }
     }
     const ts = Date.now().toString()
-    const extUserId = externalUserId.value || ''
+    const extUserId = externalUserId.value || localStorage.getItem('wecom_sidebar_last_external_id') || ''
 
     // 调用后端生成卡片（使用侧边栏token认证的API）
     const { default: axios } = await import('axios')
@@ -1483,33 +1485,48 @@ async function handleSendFormCard() {
     console.log('[CustomerDetail] 卡片参数:', { mpAppId: mpAppId || '(空-不发小程序)', title, imgUrl: imgUrl?.substring(0, 60), sign: sign?.substring(0, 8) })
     console.log('[CustomerDetail] SDK状态:', { ww: !!(window as any).ww, wwSendChat: typeof (window as any).ww?.sendChatMessage })
 
-    // 构建payload（和资料收集tab一致：优先miniprogram，有降级）
+    // 构建payload（和资料收集tab完全一致）
     const mpPayload = mpAppId ? { msgtype: 'miniprogram', miniprogram: { appid: mpAppId, title, imgUrl, page: mpPage } } : null
     const newsPayload = { msgtype: 'news', news: { link: h5Url, title, desc: '点击填写您的基本资料，方便我们为您提供更好的服务', imgUrl } }
 
-    // 第一步：尝试发送主payload（优先miniprogram）
-    const primaryPayload = mpPayload || newsPayload
+    // ★ 读取用户选择的发送模式（和收集资料tab共用持久化配置）
+    const userMode = localStorage.getItem('wecom_collect_send_mode') || 'miniprogram'
+    let primaryPayload: any
+    if (userMode === 'miniprogram' && mpPayload) {
+      primaryPayload = mpPayload
+    } else {
+      primaryPayload = newsPayload
+    }
+
+    // 第一步：尝试发送主payload（和SidebarCollect一致：直接发，不等sdkReady）
     let result = await trySendCard(primaryPayload)
+    let degraded = false
 
     if (result === 'cancel') { ElMessage.info('已取消发送'); sendingFormCard.value = false; return }
 
-    // 第二步：miniprogram失败时降级为news
+    // 第二步：如果主payload是miniprogram且失败了，降级为news
     if (result === 'failed' && primaryPayload.msgtype === 'miniprogram') {
       console.log('[CustomerDetail] miniprogram发送失败，降级为news卡片')
       result = await trySendCard(newsPayload)
       if (result === 'cancel') { ElMessage.info('已取消发送'); sendingFormCard.value = false; return }
+      if (result === 'sent') degraded = true
     }
 
-    // 第三步：如果仍然失败，等待SDK就绪后重试一次（处理PC端SDK初始化较慢）
+    // 第三步：如果仍然失败，等待2秒后重试一次（和SidebarCollect一致）
     if (result === 'failed') {
-      console.warn('[CustomerDetail] 首次发送失败，等待SDK就绪后重试...')
-      await Promise.race([sdkReadyPromise, new Promise(r => setTimeout(r, 5000))])
+      console.warn('[CustomerDetail] 首次发送失败，等待2秒后重试...')
+      await new Promise(r => setTimeout(r, 2000))
       result = await trySendCard(newsPayload)
       if (result === 'cancel') { ElMessage.info('已取消发送'); sendingFormCard.value = false; return }
+      if (result === 'sent' && primaryPayload.msgtype === 'miniprogram') degraded = true
     }
 
     if (result === 'sent') {
-      ElMessage.success('卡片已发送')
+      if (degraded) {
+        ElMessage.warning('小程序卡片发送失败，已降级发送H5链接卡片')
+      } else {
+        ElMessage.success('卡片已发送')
+      }
     } else {
       const ua = navigator.userAgent.toLowerCase()
       if (!ua.includes('wxwork') && !ua.includes('wechat')) {
@@ -1528,7 +1545,8 @@ async function handleSendFormCard() {
 
     await loadCollectStatus()
   } catch (e: any) {
-    ElMessage.error(e?.message || '发送失败')
+    console.error('[CustomerDetail] handleSendFormCard异常:', e)
+    ElMessage.warning(e?.message || '发送失败')
   } finally {
     sendingFormCard.value = false
   }
