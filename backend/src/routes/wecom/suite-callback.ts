@@ -92,13 +92,28 @@ function verifySignature(token: string, timestamp: string, nonce: string, encryp
   return sha1 === signature;
 }
 
-/** 获取Suite配置(单例) */
-async function getSuiteConfigRow(): Promise<WecomSuiteConfig | null> {
+/** 获取Suite配置（支持按suiteId查找，无参数时返回第一条启用的） */
+async function getSuiteConfigRow(suiteId?: string): Promise<WecomSuiteConfig | null> {
   try {
     const repo = AppDataSource.getRepository(WecomSuiteConfig);
-    return await repo.findOne({ where: {}, order: { id: 'ASC' } });
+    if (suiteId) {
+      return await repo.findOne({ where: { suiteId } });
+    }
+    // 兼容：无suiteId时取第一条启用的
+    return await repo.findOne({ where: { isEnabled: true }, order: { id: 'ASC' } })
+      || await repo.findOne({ where: {}, order: { id: 'ASC' } });
   } catch {
     return null;
+  }
+}
+
+/** 获取所有Suite配置（用于回调解密时逐个尝试） */
+async function getAllSuiteConfigs(): Promise<WecomSuiteConfig[]> {
+  try {
+    const repo = AppDataSource.getRepository(WecomSuiteConfig);
+    return await repo.find({ order: { id: 'ASC' } });
+  } catch {
+    return [];
   }
 }
 
@@ -271,18 +286,31 @@ router.get('/callback', async (req: Request, res: Response) => {
       return res.status(400).send('Missing parameters');
     }
 
-    const config = await getSuiteConfigRow();
+    // 获取所有suite配置，逐个尝试验证签名（支持多应用共用回调URL）
+    const allConfigs = await getAllSuiteConfigs();
+    const config = allConfigs.find(c => c.callbackToken && c.callbackEncodingAesKey) || await getSuiteConfigRow();
     if (!config?.callbackToken || !config?.callbackEncodingAesKey) {
       log.warn('[SuiteCallback] No suite callback config found');
       return res.status(403).send('No config');
     }
 
-    // 验证签名 — 优先使用 suite_config，降级尝试 wecom_configs
     let verifyAesKey = config.callbackEncodingAesKey;
     let verifySource = 'suite_config';
 
-    if (!verifySignature(config.callbackToken, timestamp as string, nonce as string, echostr as string, msg_signature as string)) {
-      log.warn(`[SuiteCallback] GET signature mismatch with suite_config Token (prefix=${config.callbackToken.substring(0, 8)}...). 尝试WecomConfig降级...`);
+    // 尝试所有suite配置的Token进行签名验证
+    let matched = false;
+    for (const sc of allConfigs) {
+      if (!sc.callbackToken || !sc.callbackEncodingAesKey) continue;
+      if (verifySignature(sc.callbackToken, timestamp as string, nonce as string, echostr as string, msg_signature as string)) {
+        verifyAesKey = sc.callbackEncodingAesKey;
+        verifySource = `suite_config(${sc.appName || sc.suiteId || sc.id})`;
+        matched = true;
+        break;
+      }
+    }
+
+    if (!matched) {
+      log.warn(`[SuiteCallback] GET signature mismatch with all suite_configs. 尝试WecomConfig降级...`);
       let found = false;
       try {
         const wecomConfigRepo = AppDataSource.getRepository(WecomConfig);
@@ -321,7 +349,8 @@ router.post('/callback', async (req: Request, res: Response) => {
     const { msg_signature, timestamp, nonce } = req.query;
     const body = req.body;
 
-    const config = await getSuiteConfigRow();
+    const allSuiteConfigs = await getAllSuiteConfigs();
+    const config = allSuiteConfigs.find(c => c.callbackToken && c.callbackEncodingAesKey) || await getSuiteConfigRow();
     if (!config?.callbackToken || !config?.callbackEncodingAesKey) {
       return res.send('success');
     }
@@ -342,12 +371,25 @@ router.post('/callback', async (req: Request, res: Response) => {
       return res.send('success');
     }
 
-    // 验证签名 — 优先使用 wecom_suite_configs 的 Token/AESKey
+    // 验证签名 — 逐个尝试所有suite配置的Token/AESKey
     let activeToken = config.callbackToken;
     let activeAesKey = config.callbackEncodingAesKey;
     let tokenSource = 'suite_config';
 
-    if (!verifySignature(activeToken, timestamp as string, nonce as string, encryptMsg, msg_signature as string)) {
+    // 尝试所有suite配置
+    let suiteMatched = false;
+    for (const sc of allSuiteConfigs) {
+      if (!sc.callbackToken || !sc.callbackEncodingAesKey) continue;
+      if (verifySignature(sc.callbackToken, timestamp as string, nonce as string, encryptMsg, msg_signature as string)) {
+        activeToken = sc.callbackToken;
+        activeAesKey = sc.callbackEncodingAesKey;
+        tokenSource = `suite_config(${sc.appName || sc.suiteId || sc.id})`;
+        suiteMatched = true;
+        break;
+      }
+    }
+
+    if (!suiteMatched) {
       // ★ 兼容处理：企微服务商后台「通用开发参数」和「应用回调配置」可能使用了不同的 Token/AESKey
       //   - 通用开发参数: 系统事件接收URL（接收 suite_ticket 自动推送）
       //   - 应用回调配置: 数据回调URL/指令回调URL（接收刷新Ticket等）
@@ -402,23 +444,35 @@ router.post('/callback', async (req: Request, res: Response) => {
       await ensureWecomConfigColumns();
     }
 
+    // 按suiteId查找对应的配置记录（支持多应用）
+    let targetConfig = config;
+    if (suiteId && suiteId !== config.suiteId) {
+      const matched = await getSuiteConfigRow(suiteId);
+      if (matched) {
+        targetConfig = matched;
+        log.info(`[SuiteCallback] 已匹配到suiteId=${suiteId}的配置记录(id=${matched.id}, appType=${(matched as any).appType || 'web'})`);
+      } else {
+        log.warn(`[SuiteCallback] 未找到suiteId=${suiteId}的配置，使用默认配置(id=${config.id})`);
+      }
+    }
+
     // 分发事件处理
     try {
       switch (infoType) {
         case 'suite_ticket':
-          await handleSuiteTicket(config, xmlContent);
+          await handleSuiteTicket(targetConfig, xmlContent);
           break;
         case 'create_auth':
-          await handleCreateAuth(config, authCode, authCorpId);
+          await handleCreateAuth(targetConfig, authCode, authCorpId);
           break;
         case 'cancel_auth':
           await handleCancelAuth(authCorpId);
           break;
         case 'change_auth':
-          await handleChangeAuth(config, authCorpId);
+          await handleChangeAuth(targetConfig, authCorpId);
           break;
         case 'reset_permanent_code':
-          await handleResetPermanentCode(config, authCode, authCorpId);
+          await handleResetPermanentCode(targetConfig, authCode, authCorpId);
           break;
         default:
           log.info(`[SuiteCallback] Unhandled InfoType: ${infoType}`);

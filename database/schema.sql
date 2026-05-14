@@ -5817,6 +5817,8 @@ CREATE TABLE IF NOT EXISTS `wecom_suite_configs` (
   `provider_secret` VARCHAR(255) DEFAULT NULL COMMENT '服务商Secret',
   `callback_token` VARCHAR(100) DEFAULT NULL COMMENT '回调Token',
   `callback_encoding_aes_key` VARCHAR(100) DEFAULT NULL COMMENT '回调EncodingAESKey',
+  `redirect_domain` VARCHAR(255) DEFAULT NULL COMMENT '授权完成回调域名',
+  `app_type` VARCHAR(20) DEFAULT 'web' COMMENT '应用类型: web(网页应用)/miniprogram(小程序应用)',
   `app_name` VARCHAR(200) DEFAULT NULL COMMENT '应用名称',
   `app_description` TEXT DEFAULT NULL COMMENT '应用描述',
   `app_status` VARCHAR(20) DEFAULT 'offline' COMMENT '应用状态: online/offline',
@@ -5890,6 +5892,26 @@ CREATE TABLE IF NOT EXISTS `wecom_suite_callback_logs` (
   INDEX `IDX_suite_cb_info_type` (`info_type`),
   INDEX `IDX_suite_cb_created_at` (`created_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='企微服务商回调日志表';
+
+-- 企微服务商应用通知模板配置表
+CREATE TABLE IF NOT EXISTS `wecom_notification_templates` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `template_id` VARCHAR(200) NOT NULL COMMENT '企微消息模板ID',
+  `template_name` VARCHAR(200) NOT NULL COMMENT '模板名称',
+  `template_type` VARCHAR(50) NOT NULL COMMENT '模板类型: customer_delete_friend/acquisition_quota_low/member_delete_customer/abnormal_login/order_status/customer_follow_up/performance_report/custom',
+  `description` TEXT DEFAULT NULL COMMENT '模板用途描述',
+  `template_content` TEXT DEFAULT NULL COMMENT '模板内容/变量说明(JSON)',
+  `template_variables` TEXT DEFAULT NULL COMMENT '模板变量定义(JSON数组)',
+  `notify_scope` VARCHAR(20) DEFAULT 'all' COMMENT '通知范围: self(仅当事人)/team(当事人+部门经理)/all(全部)',
+  `suite_config_id` INT DEFAULT NULL COMMENT '关联服务商应用配置ID',
+  `is_enabled` TINYINT DEFAULT 1 COMMENT '是否启用: 1启用 0禁用',
+  `sort_order` INT DEFAULT 0 COMMENT '排序',
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  INDEX `IDX_ntpl_type` (`template_type`),
+  INDEX `IDX_ntpl_enabled` (`is_enabled`),
+  INDEX `IDX_ntpl_suite` (`suite_config_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='企微服务商应用通知模板配置表';
 
 -- 移动应用安装包管理表
 CREATE TABLE IF NOT EXISTS `mobile_app_packages` (

@@ -7,6 +7,7 @@ import request from './request'
 
 export const getSuiteConfig = () => request.get('/wecom-management/suite/config')
 export const saveSuiteConfig = (data: any) => request.put('/wecom-management/suite/config', data)
+export const deleteSuiteConfig = (id: number) => request.delete(`/wecom-management/suite/config/${id}`)
 export const testSuiteConnection = () => request.post('/wecom-management/suite/test-connection')
 export const generateAuthLink = (data: any) => request.post('/wecom-management/suite/auth-link', data)
 export const getSuiteDiagnostic = () => request.get('/wecom-management/suite/diagnostic')
@@ -23,11 +24,14 @@ export const saveCallbackLogAutoClean = (data: { enabled: boolean; retentionDays
 
 // ==================== 通知模板管理 ====================
 
-export const getNotificationTemplates = () => request.get('/wecom-management/suite/notification-templates')
+export const getNotificationTemplates = (params?: { suiteConfigId?: number; templateType?: string }) =>
+  request.get('/wecom-management/suite/notification-templates', { params })
 export const createNotificationTemplate = (data: any) => request.post('/wecom-management/suite/notification-templates', data)
 export const updateNotificationTemplate = (id: number, data: any) => request.put(`/wecom-management/suite/notification-templates/${id}`, data)
 export const deleteNotificationTemplate = (id: number) => request.delete(`/wecom-management/suite/notification-templates/${id}`)
 export const toggleNotificationTemplate = (id: number) => request.patch(`/wecom-management/suite/notification-templates/${id}/toggle`)
+export const sendNotification = (data: { templateType: string; corpId?: string; data?: Record<string, string>; targetUserIds?: string[] }) =>
+  request.post('/wecom-management/suite/notification-templates/send', data)
 
 // ==================== 会话存档代购 ====================
 

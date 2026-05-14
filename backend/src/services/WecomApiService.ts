@@ -742,6 +742,82 @@ export class WecomApiService {
     }
   }
 
+  // ==================== 应用通知消息 API ====================
+
+  /**
+   * 发送应用通知（文本卡片消息）
+   * 通过企微 message/send 接口向指定用户发送应用通知
+   * @see https://developer.work.weixin.qq.com/document/path/90236
+   */
+  static async sendAppMessage(accessToken: string, data: {
+    touser?: string;
+    toparty?: string;
+    agentid: number;
+    msgtype: 'text' | 'textcard' | 'markdown' | 'miniprogram_notice';
+    text?: { content: string };
+    textcard?: { title: string; description: string; url: string; btntxt?: string };
+    markdown?: { content: string };
+    miniprogram_notice?: { appid: string; page: string; title: string; description?: string; content_item?: Array<{ key: string; value: string }> };
+  }): Promise<{ errcode: number; errmsg: string; invaliduser?: string }> {
+    try {
+      const response = await axios.post(`${WECOM_API_BASE}/message/send?access_token=${accessToken}`, data);
+      if (response.data.errcode === 0) {
+        log.info(`[WecomApi] sendAppMessage success, touser=${data.touser}, msgtype=${data.msgtype}`);
+        return response.data;
+      }
+      log.warn(`[WecomApi] sendAppMessage failed: ${response.data.errmsg} (errcode: ${response.data.errcode}), invaliduser=${response.data.invaliduser || ''}`);
+      return response.data;
+    } catch (error: any) {
+      log.error('[WecomApi] sendAppMessage error:', error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * 通过模板卡片发送应用通知（适用于第三方服务商应用通知模板）
+   * @see https://developer.work.weixin.qq.com/document/path/94888
+   */
+  static async sendTemplateCardMessage(accessToken: string, data: {
+    touser?: string;
+    toparty?: string;
+    agentid: number;
+    template_id: string;
+    content_item?: Array<{ key: string; value: string }>;
+    url?: string;
+    task_id?: string;
+    enable_id_trans?: number;
+  }): Promise<{ errcode: number; errmsg: string }> {
+    try {
+      const payload = {
+        touser: data.touser || '@all',
+        toparty: data.toparty || '',
+        agentid: data.agentid,
+        msgtype: 'template_card',
+        template_card: {
+          card_type: 'text_notice',
+          source: {},
+          main_title: {},
+          sub_title_text: '',
+          card_action: { type: 1, url: data.url || '' },
+          task_id: data.task_id || `task_${Date.now()}`,
+          template_id: data.template_id,
+          content_item: data.content_item || [],
+        },
+        enable_id_trans: data.enable_id_trans || 0,
+      };
+      const response = await axios.post(`${WECOM_API_BASE}/message/send?access_token=${accessToken}`, payload);
+      if (response.data.errcode === 0) {
+        log.info(`[WecomApi] sendTemplateCardMessage success, template_id=${data.template_id}`);
+      } else {
+        log.warn(`[WecomApi] sendTemplateCardMessage failed: ${response.data.errmsg} (${response.data.errcode})`);
+      }
+      return response.data;
+    } catch (error: any) {
+      log.error('[WecomApi] sendTemplateCardMessage error:', error.message);
+      throw error;
+    }
+  }
+
   /**
    * 清除指定corpId的Token和Ticket缓存，取消授权时由WecomTokenService联动调用
    * 注意：ticket缓存key格式为 jsticket:/agent_jsticket: + token前缀，

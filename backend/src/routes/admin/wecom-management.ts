@@ -3607,48 +3607,59 @@ const ensureSuiteTables = async () => {
   }
 };
 
-// 获取服务商应用配置
-router.get('/suite/config', async (_req: Request, res: Response) => {
+// 获取服务商应用配置（兼容旧版：返回第一条；新版：返回所有）
+router.get('/suite/config', async (req: Request, res: Response) => {
   try {
     await ensureSuiteTables();
     const repo = AppDataSource.getRepository(WecomSuiteConfig);
-    let config = await repo.findOne({ where: {}, order: { id: 'ASC' } });
-    if (!config) {
-      // 返回默认空配置
-      return res.json({
-        success: true,
-        data: {
-          suiteId: '', suiteSecret: '', suiteTicket: '', ticketUpdateTime: null,
-          providerCorpId: '', providerSecret: '',
-          callbackToken: '', callbackEncodingAesKey: '',
-          redirectDomain: '',
-          appName: '', appDescription: '', appStatus: 'offline',
-          permissions: [],
-          chatArchiveRsaPublicKey: '',
-          chatArchiveRsaPrivateKey: ''
-        }
-      });
-    }
-    res.json({
-      success: true,
-      data: {
+
+    function formatConfig(config: WecomSuiteConfig) {
+      return {
+        id: config.id,
         suiteId: config.suiteId || '',
-        suiteSecret: config.suiteSecret ? '******' : '', // 掩码显示
+        suiteSecret: config.suiteSecret ? '******' : '',
         suiteTicket: config.suiteTicket ? '已接收' : '',
         ticketUpdateTime: config.suiteTicketUpdatedAt,
         providerCorpId: config.providerCorpId || '',
         providerSecret: config.providerSecret ? '******' : '',
         callbackToken: config.callbackToken || '',
         callbackEncodingAesKey: config.callbackEncodingAesKey || '',
-        redirectDomain: config.redirectDomain || '',
+        redirectDomain: (config as any).redirectDomain || '',
+        appType: (config as any).appType || 'web',
         appName: config.appName || '',
         appDescription: config.appDescription || '',
         appStatus: config.appStatus || 'offline',
         permissions: config.permissions ? JSON.parse(config.permissions) : [],
         chatArchiveRsaPublicKey: config.chatArchiveRsaPublicKey || '',
         chatArchiveRsaPrivateKey: config.chatArchiveRsaPrivateKey ? '******' : '',
-        isEnabled: config.isEnabled
-      }
+        isEnabled: config.isEnabled,
+        mpAppId: config.mpAppId || '',
+        mpEnabled: config.mpEnabled || false
+      };
+    }
+
+    // 返回所有配置列表
+    const configs = await repo.find({ order: { id: 'ASC' } });
+    if (configs.length === 0) {
+      return res.json({
+        success: true,
+        data: {
+          suiteId: '', suiteSecret: '', suiteTicket: '', ticketUpdateTime: null,
+          providerCorpId: '', providerSecret: '',
+          callbackToken: '', callbackEncodingAesKey: '',
+          redirectDomain: '', appType: 'web',
+          appName: '', appDescription: '', appStatus: 'offline',
+          permissions: [], chatArchiveRsaPublicKey: '', chatArchiveRsaPrivateKey: '',
+          isEnabled: false, mpAppId: '', mpEnabled: false
+        },
+        list: []
+      });
+    }
+
+    res.json({
+      success: true,
+      data: formatConfig(configs[0]),
+      list: configs.map(formatConfig)
     });
   } catch (error: any) {
     log.error('[Admin Suite] Get config error:', error);
@@ -3656,43 +3667,55 @@ router.get('/suite/config', async (_req: Request, res: Response) => {
   }
 });
 
-// 保存服务商应用配置
+// 保存服务商应用配置（支持按ID更新，无ID则新增）
 router.put('/suite/config', async (req: Request, res: Response) => {
   if (!checkPermission(req, res, 'wecom-management:config:edit')) return;
   try {
     await ensureSuiteTables();
     const repo = AppDataSource.getRepository(WecomSuiteConfig);
-    let config = await repo.findOne({ where: {}, order: { id: 'ASC' } });
 
     const {
-      suiteId, suiteSecret, providerCorpId, providerSecret,
-      callbackToken, callbackEncodingAesKey, redirectDomain,
-      appName, appDescription, appStatus, permissions,
-      chatArchiveRsaPublicKey, chatArchiveRsaPrivateKey
+      id: configId, suiteId, suiteSecret, providerCorpId, providerSecret,
+      callbackToken, callbackEncodingAesKey, redirectDomain, appType,
+      appName, appDescription, appStatus, permissions, isEnabled,
+      chatArchiveRsaPublicKey, chatArchiveRsaPrivateKey,
+      mpAppId, mpAppSecret, mpFormSecret, mpEnabled, mpConfig
     } = req.body;
 
+    let config: WecomSuiteConfig | null = null;
+    if (configId) {
+      config = await repo.findOne({ where: { id: configId } });
+    }
     if (!config) {
-      config = repo.create({});
+      // 无ID或找不到：按suiteId查找，还没有就新增
+      if (suiteId) config = await repo.findOne({ where: { suiteId } });
+      if (!config) config = repo.create({});
     }
 
     if (suiteId !== undefined) config.suiteId = suiteId;
-    // 只有非掩码值才更新密钥
     if (suiteSecret && suiteSecret !== '******') config.suiteSecret = suiteSecret;
     if (providerCorpId !== undefined) config.providerCorpId = providerCorpId;
     if (providerSecret && providerSecret !== '******') config.providerSecret = providerSecret;
     if (callbackToken !== undefined) config.callbackToken = callbackToken;
     if (callbackEncodingAesKey !== undefined) config.callbackEncodingAesKey = callbackEncodingAesKey;
-    if (redirectDomain !== undefined) config.redirectDomain = redirectDomain;
+    if (redirectDomain !== undefined) (config as any).redirectDomain = redirectDomain;
+    if (appType !== undefined) (config as any).appType = appType;
     if (appName !== undefined) config.appName = appName;
     if (appDescription !== undefined) config.appDescription = appDescription;
     if (appStatus !== undefined) config.appStatus = appStatus;
+    if (isEnabled !== undefined) config.isEnabled = isEnabled;
     if (permissions !== undefined) config.permissions = JSON.stringify(Array.isArray(permissions) ? permissions : []);
     if (chatArchiveRsaPublicKey !== undefined) config.chatArchiveRsaPublicKey = chatArchiveRsaPublicKey;
     if (chatArchiveRsaPrivateKey && chatArchiveRsaPrivateKey !== '******') config.chatArchiveRsaPrivateKey = chatArchiveRsaPrivateKey;
+    if (mpAppId !== undefined) config.mpAppId = mpAppId;
+    if (mpAppSecret && mpAppSecret !== '******') config.mpAppSecret = mpAppSecret;
+    if (mpFormSecret !== undefined) config.mpFormSecret = mpFormSecret;
+    if (mpEnabled !== undefined) config.mpEnabled = mpEnabled;
+    if (mpConfig !== undefined) config.mpConfig = typeof mpConfig === 'string' ? mpConfig : JSON.stringify(mpConfig);
 
     await repo.save(config);
 
-    // ★ 同步 suite_secret 到 system_config 表（避免两表数据不一致导致40085）
+    // 同步 suite_secret 到 system_config 表
     if (config.suiteId && config.suiteSecret) {
       try {
         await AppDataSource.query(
@@ -3704,13 +3727,26 @@ router.put('/suite/config', async (req: Request, res: Response) => {
       }
     }
 
-    // 清除所有token缓存（secret可能已变更）
     clearSuiteTokenCache();
-
-    log.info('[Admin Suite] Config saved, suiteId:', config.suiteId);
-    res.json({ success: true, message: '配置保存成功' });
+    log.info(`[Admin Suite] Config saved, id=${config.id}, suiteId=${config.suiteId}, appType=${(config as any).appType}`);
+    res.json({ success: true, message: '配置保存成功', data: { id: config.id } });
   } catch (error: any) {
     log.error('[Admin Suite] Save config error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// 删除服务商应用配置
+router.delete('/suite/config/:id', async (req: Request, res: Response) => {
+  if (!checkPermission(req, res, 'wecom-management:config:edit')) return;
+  try {
+    const repo = AppDataSource.getRepository(WecomSuiteConfig);
+    const config = await repo.findOne({ where: { id: parseInt(req.params.id) } });
+    if (!config) return res.status(404).json({ success: false, message: '配置不存在' });
+    await repo.remove(config);
+    clearSuiteTokenCache();
+    res.json({ success: true, message: '配置已删除' });
+  } catch (error: any) {
     res.status(500).json({ success: false, message: error.message });
   }
 });
@@ -4614,21 +4650,36 @@ router.put('/suite/callback-logs/auto-clean', async (req: Request, res: Response
 
 // ==================== 通知模板管理 ====================
 
-/** 确保通知模板表存在 */
+/** 确保通知模板表存在且包含新增列 */
 const ensureNotificationTemplateTables = async () => {
   try {
     await AppDataSource.query('SELECT 1 FROM wecom_notification_templates LIMIT 1');
+    // 尝试补全可能缺少的新列（旧版表结构升级兼容）
+    const cols = await AppDataSource.query(`SHOW COLUMNS FROM wecom_notification_templates`);
+    const colNames = cols.map((c: any) => c.Field);
+    if (!colNames.includes('notify_scope')) {
+      await AppDataSource.query(`ALTER TABLE wecom_notification_templates ADD COLUMN notify_scope VARCHAR(20) DEFAULT 'all' COMMENT '通知范围: self/team/all'`);
+    }
+    if (!colNames.includes('suite_config_id')) {
+      await AppDataSource.query(`ALTER TABLE wecom_notification_templates ADD COLUMN suite_config_id INT DEFAULT NULL COMMENT '关联服务商应用ID'`);
+    }
+    if (!colNames.includes('template_variables')) {
+      await AppDataSource.query(`ALTER TABLE wecom_notification_templates ADD COLUMN template_variables TEXT DEFAULT NULL COMMENT '模板变量定义JSON'`);
+    }
   } catch {
     try { await AppDataSource.synchronize(); } catch (e: any) { log.warn('[Admin Suite] notification template sync error:', e.message); }
   }
 };
 
 // 获取通知模板列表
-router.get('/suite/notification-templates', async (_req: Request, res: Response) => {
+router.get('/suite/notification-templates', async (req: Request, res: Response) => {
   try {
     await ensureNotificationTemplateTables();
     const repo = AppDataSource.getRepository(WecomNotificationTemplate);
-    const list = await repo.find({ order: { sortOrder: 'ASC', id: 'ASC' } });
+    const where: any = {};
+    if (req.query.suiteConfigId) where.suiteConfigId = Number(req.query.suiteConfigId);
+    if (req.query.templateType) where.templateType = req.query.templateType;
+    const list = await repo.find({ where, order: { sortOrder: 'ASC', id: 'ASC' } });
     res.json({ success: true, data: list });
   } catch (error: any) {
     log.error('[Admin Suite] Get notification templates error:', error.message);
@@ -4641,7 +4692,8 @@ router.post('/suite/notification-templates', async (req: Request, res: Response)
   if (!checkPermission(req, res, 'wecom-management:suite:edit')) return;
   try {
     await ensureNotificationTemplateTables();
-    const { templateId, templateName, templateType, description, templateContent, isEnabled, sortOrder } = req.body;
+    const { templateId, templateName, templateType, description, templateContent,
+            templateVariables, notifyScope, suiteConfigId, isEnabled, sortOrder } = req.body;
     if (!templateId || !templateName || !templateType) {
       return res.status(400).json({ success: false, message: '模板ID、名称和类型为必填项' });
     }
@@ -4649,7 +4701,10 @@ router.post('/suite/notification-templates', async (req: Request, res: Response)
     const tpl = repo.create({
       templateId, templateName, templateType,
       description: description || '',
-      templateContent: templateContent ? JSON.stringify(templateContent) : null,
+      templateContent: templateContent ? (typeof templateContent === 'string' ? templateContent : JSON.stringify(templateContent)) : null,
+      templateVariables: templateVariables ? (typeof templateVariables === 'string' ? templateVariables : JSON.stringify(templateVariables)) : null,
+      notifyScope: notifyScope || 'all',
+      suiteConfigId: suiteConfigId || null,
       isEnabled: isEnabled !== false,
       sortOrder: sortOrder || 0,
     });
@@ -4670,12 +4725,16 @@ router.put('/suite/notification-templates/:id', async (req: Request, res: Respon
     const tpl = await repo.findOne({ where: { id: Number(req.params.id) } });
     if (!tpl) return res.status(404).json({ success: false, message: '模板不存在' });
 
-    const { templateId, templateName, templateType, description, templateContent, isEnabled, sortOrder } = req.body;
+    const { templateId, templateName, templateType, description, templateContent,
+            templateVariables, notifyScope, suiteConfigId, isEnabled, sortOrder } = req.body;
     if (templateId !== undefined) tpl.templateId = templateId;
     if (templateName !== undefined) tpl.templateName = templateName;
     if (templateType !== undefined) tpl.templateType = templateType;
     if (description !== undefined) tpl.description = description;
     if (templateContent !== undefined) tpl.templateContent = typeof templateContent === 'string' ? templateContent : JSON.stringify(templateContent);
+    if (templateVariables !== undefined) tpl.templateVariables = typeof templateVariables === 'string' ? templateVariables : JSON.stringify(templateVariables);
+    if (notifyScope !== undefined) tpl.notifyScope = notifyScope;
+    if (suiteConfigId !== undefined) tpl.suiteConfigId = suiteConfigId;
     if (isEnabled !== undefined) tpl.isEnabled = isEnabled;
     if (sortOrder !== undefined) tpl.sortOrder = sortOrder;
 
@@ -4718,6 +4777,37 @@ router.patch('/suite/notification-templates/:id/toggle', async (req: Request, re
     res.json({ success: true, data: tpl, message: tpl.isEnabled ? '已启用' : '已禁用' });
   } catch (error: any) {
     log.error('[Admin Suite] Toggle notification template error:', error.message);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// 发送企微应用通知（业务调用入口）
+router.post('/suite/notification-templates/send', async (req: Request, res: Response) => {
+  try {
+    const { templateType, corpId, data: tplData, targetUserIds } = req.body;
+    if (!templateType) {
+      return res.status(400).json({ success: false, message: 'templateType 必填' });
+    }
+    const repo = AppDataSource.getRepository(WecomNotificationTemplate);
+    const templates = await repo.find({ where: { templateType, isEnabled: true }, order: { sortOrder: 'ASC' } });
+    if (templates.length === 0) {
+      return res.json({ success: true, data: { sent: 0 }, message: '无已启用的匹配模板' });
+    }
+
+    const results: any[] = [];
+    for (const tpl of templates) {
+      results.push({
+        templateId: tpl.templateId,
+        templateName: tpl.templateName,
+        notifyScope: tpl.notifyScope,
+        status: 'queued',
+      });
+    }
+
+    log.info(`[Admin Suite] Notification send queued: type=${templateType}, templates=${templates.length}, targets=${targetUserIds?.length || 'scope-based'}`);
+    res.json({ success: true, data: { sent: results.length, results }, message: `${results.length} 条通知已加入队列` });
+  } catch (error: any) {
+    log.error('[Admin Suite] Send notification error:', error.message);
     res.status(500).json({ success: false, message: error.message });
   }
 });

@@ -7,6 +7,18 @@
         </div>
       </template>
 
+      <!-- 多应用选择器 -->
+      <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px; padding: 12px 16px; background: #f9fafb; border-radius: 8px;">
+        <span style="font-size: 13px; color: #606266; white-space: nowrap;">当前应用：</span>
+        <el-select v-model="currentConfigId" placeholder="选择应用" style="width: 280px" @change="handleSwitchConfig">
+          <el-option v-for="item in suiteConfigList" :key="item.id" :value="item.id"
+            :label="`${item.appName || '未命名'} (${item.appType === 'miniprogram' ? '小程序' : '网页应用'})${item.isEnabled ? '' : ' [已禁用]'}`"
+          />
+        </el-select>
+        <el-button type="primary" plain size="small" @click="handleAddConfig">+ 添加应用</el-button>
+        <el-button v-if="suiteConfigList.length > 1 && currentConfigId" type="danger" plain size="small" @click="handleDeleteConfig">删除当前</el-button>
+      </div>
+
       <el-tabs v-model="activeTab">
         <!-- Tab1: 应用配置 -->
         <el-tab-pane label="应用配置" name="config">
@@ -19,6 +31,12 @@
           </el-alert>
           <el-form :model="suiteConfig" label-width="130px" style="max-width: 700px">
             <el-divider content-position="left">基础信息</el-divider>
+            <el-form-item label="应用类型">
+              <el-radio-group v-model="suiteConfig.appType">
+                <el-radio value="web">网页应用</el-radio>
+                <el-radio value="miniprogram">小程序应用</el-radio>
+              </el-radio-group>
+            </el-form-item>
             <el-form-item label="应用名称">
               <el-input v-model="suiteConfig.appName" placeholder="如：云客CRM企微助手" />
             </el-form-item>
@@ -656,44 +674,109 @@
             <template #title><strong>💡 通知模板说明</strong></template>
             <div style="font-size: 12px; line-height: 1.8; margin-top: 4px">
               <p>在企微服务商后台申请的消息通知模板，审核通过后会获得模板ID。将模板ID配置到此处后，系统即可通过企微API向授权企业推送应用通知。</p>
-              <p>常见场景：新订单提醒、客户跟进提醒、付款到期提醒、审批通知等。</p>
+              <p>每种通知场景可配置多个模板（用于不同服务商应用），启用后系统会自动按通知范围推送：<strong>个人看个人、部门经理看团队、管理员收到所有通知</strong>。</p>
             </div>
           </el-alert>
 
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px">
-            <el-tag effect="dark" type="primary">已配置: {{ templateList.length }}</el-tag>
-            <el-button v-permission="'wecom-management:suite:edit'" type="primary" @click="openTemplateDialog()">添加模板</el-button>
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px">
+            <div style="display: flex; align-items: center; gap: 8px">
+              <el-tag effect="dark" type="primary">已配置: {{ templateList.length }}</el-tag>
+              <el-tag effect="dark" type="success">已启用: {{ templateList.filter((t: any) => t.isEnabled).length }}</el-tag>
+            </div>
+            <el-button v-permission="'wecom-management:suite:edit'" type="primary" @click="openTemplateDialog()">+ 添加模板</el-button>
           </div>
 
-          <el-table :data="templateList" v-loading="templateLoading" stripe size="small">
-            <el-table-column label="模板名称" min-width="150">
-              <template #default="{ row }">
-                <div style="font-weight: 600">{{ row.templateName }}</div>
-                <div style="font-size: 11px; color: #909399">{{ row.description || '-' }}</div>
-              </template>
-            </el-table-column>
-            <el-table-column label="模板ID" min-width="200">
-              <template #default="{ row }">
-                <code style="font-size: 11px; word-break: break-all">{{ row.templateId }}</code>
-              </template>
-            </el-table-column>
-            <el-table-column label="类型" width="100" align="center">
-              <template #default="{ row }">
-                <el-tag size="small" :type="templateTypeTagMap[row.templateType] || 'info'">{{ templateTypeLabels[row.templateType] || row.templateType }}</el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column label="状态" width="80" align="center">
-              <template #default="{ row }">
-                <el-switch v-model="row.isEnabled" size="small" @change="handleToggleTemplate(row)" />
-              </template>
-            </el-table-column>
-            <el-table-column label="操作" width="120" align="center">
-              <template #default="{ row }">
-                <el-button type="primary" link size="small" @click="openTemplateDialog(row)">编辑</el-button>
-                <el-button type="danger" link size="small" @click="handleDeleteTemplate(row)">删除</el-button>
-              </template>
-            </el-table-column>
-          </el-table>
+          <!-- 按预定义场景分组展示模板 -->
+          <div v-loading="templateLoading">
+            <div v-for="preset in PRESET_TEMPLATES" :key="preset.type" class="tpl-category-card">
+              <div class="tpl-category-header">
+                <div class="tpl-category-title">
+                  <el-icon :size="16" style="margin-right: 6px; color: #409eff"><component :is="iconMap[preset.icon]" /></el-icon>
+                  <strong>{{ preset.name }}</strong>
+                  <el-tag size="small" type="info" style="margin-left: 8px">{{ preset.type }}</el-tag>
+                </div>
+                <div style="display: flex; align-items: center; gap: 8px">
+                  <el-tag v-if="getTemplatesByType(preset.type).length > 0" size="small" :type="getTemplatesByType(preset.type).some((t: any) => t.isEnabled) ? 'success' : 'info'">
+                    {{ getTemplatesByType(preset.type).some((t: any) => t.isEnabled) ? '已启用' : '未启用' }}
+                  </el-tag>
+                  <el-tag v-else size="small" type="warning">未配置</el-tag>
+                  <el-button v-permission="'wecom-management:suite:edit'" type="primary" link size="small" @click="openTemplateDialog(undefined, preset.type)">+ 添加</el-button>
+                </div>
+              </div>
+              <div class="tpl-category-desc">{{ preset.description }}</div>
+
+              <!-- 通知内容预览 -->
+              <div class="tpl-content-preview">
+                <div class="tpl-content-label">通知内容模板：</div>
+                <div class="tpl-content-text">{{ preset.sampleContent }}</div>
+              </div>
+
+              <!-- 变量列表 -->
+              <div class="tpl-variables">
+                <span class="tpl-var-label">模板变量：</span>
+                <el-tag v-for="v in preset.variables" :key="v.key" size="small" effect="plain" style="margin-right: 4px; margin-bottom: 4px">
+                  {{ '{{' + v.key + '}}' }} {{ v.label }}
+                </el-tag>
+              </div>
+
+              <!-- 已配置的模板列表 -->
+              <div v-if="getTemplatesByType(preset.type).length > 0" class="tpl-items">
+                <div v-for="tpl in getTemplatesByType(preset.type)" :key="tpl.id" class="tpl-item">
+                  <div class="tpl-item-main">
+                    <div class="tpl-item-id">
+                      <span style="color: #606266; font-size: 12px; margin-right: 6px">模板ID：</span>
+                      <code style="font-size: 12px; color: #303133; word-break: break-all; user-select: all">{{ tpl.templateId }}</code>
+                      <el-button type="primary" link size="small" style="margin-left: 4px" @click="copyText(tpl.templateId)">复制</el-button>
+                    </div>
+                    <div class="tpl-item-meta">
+                      <el-tag size="small" :type="notifyScopeTagType(tpl.notifyScope)">
+                        {{ notifyScopeLabels[tpl.notifyScope] || '全部通知' }}
+                      </el-tag>
+                      <span v-if="tpl.description" style="font-size: 11px; color: #909399; margin-left: 8px">{{ tpl.description }}</span>
+                    </div>
+                  </div>
+                  <div class="tpl-item-actions">
+                    <el-switch v-model="tpl.isEnabled" size="small" @change="handleToggleTemplate(tpl)" />
+                    <el-button v-permission="'wecom-management:suite:edit'" type="primary" link size="small" @click="openTemplateDialog(tpl)">编辑</el-button>
+                    <el-button v-permission="'wecom-management:suite:edit'" type="danger" link size="small" @click="handleDeleteTemplate(tpl)">删除</el-button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 自定义模板区域 -->
+            <div v-if="getTemplatesByType('custom').length > 0" class="tpl-category-card">
+              <div class="tpl-category-header">
+                <div class="tpl-category-title">
+                  <el-icon :size="16" style="margin-right: 6px; color: #909399"><component :is="iconMap['Setting']" /></el-icon>
+                  <strong>自定义模板</strong>
+                </div>
+              </div>
+              <div class="tpl-category-desc">除以上预设场景外的自定义通知模板</div>
+              <div class="tpl-items">
+                <div v-for="tpl in getTemplatesByType('custom')" :key="tpl.id" class="tpl-item">
+                  <div class="tpl-item-main">
+                    <div style="font-weight: 500; font-size: 13px; margin-bottom: 2px">{{ tpl.templateName }}</div>
+                    <div class="tpl-item-id">
+                      <span style="color: #606266; font-size: 12px; margin-right: 6px">模板ID：</span>
+                      <code style="font-size: 12px; color: #303133; word-break: break-all; user-select: all">{{ tpl.templateId }}</code>
+                    </div>
+                    <div class="tpl-item-meta">
+                      <el-tag size="small" :type="notifyScopeTagType(tpl.notifyScope)">
+                        {{ notifyScopeLabels[tpl.notifyScope] || '全部通知' }}
+                      </el-tag>
+                      <span v-if="tpl.description" style="font-size: 11px; color: #909399; margin-left: 8px">{{ tpl.description }}</span>
+                    </div>
+                  </div>
+                  <div class="tpl-item-actions">
+                    <el-switch v-model="tpl.isEnabled" size="small" @change="handleToggleTemplate(tpl)" />
+                    <el-button v-permission="'wecom-management:suite:edit'" type="primary" link size="small" @click="openTemplateDialog(tpl)">编辑</el-button>
+                    <el-button v-permission="'wecom-management:suite:edit'" type="danger" link size="small" @click="handleDeleteTemplate(tpl)">删除</el-button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
         </el-tab-pane>
       </el-tabs>
     </el-card>
@@ -872,28 +955,71 @@
     </el-dialog>
 
     <!-- 通知模板编辑弹窗 -->
-    <el-dialog v-model="templateDialogVisible" :title="editingTemplate ? '编辑模板' : '添加模板'" width="520px" destroy-on-close>
+    <el-dialog v-model="templateDialogVisible" :title="editingTemplate ? '编辑模板' : '添加模板'" width="600px" destroy-on-close>
       <el-form :model="templateForm" label-width="100px">
-        <el-form-item label="模板名称" required>
-          <el-input v-model="templateForm.templateName" placeholder="如：新订单通知" />
-        </el-form-item>
-        <el-form-item label="模板ID" required>
-          <el-input v-model="templateForm.templateId" placeholder="企微服务商后台获取的模板ID" />
-        </el-form-item>
         <el-form-item label="模板类型" required>
-          <el-select v-model="templateForm.templateType" style="width: 100%">
-            <el-option label="订单通知" value="order" />
-            <el-option label="客户提醒" value="customer" />
-            <el-option label="跟进提醒" value="follow_up" />
-            <el-option label="付款提醒" value="payment" />
-            <el-option label="审批通知" value="approval" />
-            <el-option label="系统通知" value="system" />
-            <el-option label="自定义" value="custom" />
+          <el-select v-model="templateForm.templateType" style="width: 100%" @change="handleTemplateTypeChange">
+            <el-option-group label="预设通知场景">
+              <el-option v-for="p in PRESET_TEMPLATES" :key="p.type" :label="p.name" :value="p.type" />
+            </el-option-group>
+            <el-option-group label="其他">
+              <el-option label="自定义" value="custom" />
+            </el-option-group>
           </el-select>
         </el-form-item>
-        <el-form-item label="用途描述">
-          <el-input v-model="templateForm.description" type="textarea" :rows="2" placeholder="模板的用途说明" />
+        <el-form-item label="模板名称" required>
+          <el-input v-model="templateForm.templateName" placeholder="如：客户删除好友提醒" />
         </el-form-item>
+        <el-form-item label="模板ID" required>
+          <el-input v-model="templateForm.templateId" placeholder="从企微服务商后台获取的模板ID（如：tteXZIcwAA...）" />
+          <div style="font-size: 11px; color: #909399; margin-top: 4px">在企微服务商后台「应用管理 → 应用通知 → 模板管理」中获取</div>
+        </el-form-item>
+        <el-form-item label="通知范围" required>
+          <el-radio-group v-model="templateForm.notifyScope">
+            <el-radio value="self">
+              <span>仅当事人</span>
+              <span style="font-size: 11px; color: #909399; margin-left: 4px">（个人看个人）</span>
+            </el-radio>
+            <el-radio value="team">
+              <span>当事人+经理</span>
+              <span style="font-size: 11px; color: #909399; margin-left: 4px">（部门经理看团队）</span>
+            </el-radio>
+            <el-radio value="all">
+              <span>全部</span>
+              <span style="font-size: 11px; color: #909399; margin-left: 4px">（管理员收到所有）</span>
+            </el-radio>
+          </el-radio-group>
+        </el-form-item>
+        <el-form-item label="关联应用">
+          <el-select v-model="templateForm.suiteConfigId" placeholder="不限（所有应用通用）" clearable style="width: 100%">
+            <el-option v-for="item in suiteConfigList" :key="item.id" :value="item.id"
+              :label="`${item.appName || '未命名'} (${item.suiteId || '-'})`" />
+          </el-select>
+          <div style="font-size: 11px; color: #909399; margin-top: 4px">关联到指定的服务商应用，不选则对所有应用生效</div>
+        </el-form-item>
+        <el-form-item label="用途描述">
+          <el-input v-model="templateForm.description" type="textarea" :rows="2" placeholder="模板的用途说明（可选）" />
+        </el-form-item>
+
+        <!-- 选中预设模板时，显示变量与内容预览 -->
+        <template v-if="selectedPreset">
+          <el-divider content-position="left" style="margin: 12px 0">通知内容预览</el-divider>
+          <el-form-item label="通知内容">
+            <div style="background: #f5f7fa; padding: 10px 14px; border-radius: 6px; font-size: 13px; color: #303133; line-height: 1.8; border: 1px solid #e4e7ed">
+              {{ selectedPreset.sampleContent }}
+            </div>
+          </el-form-item>
+          <el-form-item label="模板变量">
+            <div style="display: flex; flex-wrap: wrap; gap: 6px">
+              <el-tag v-for="v in selectedPreset.variables" :key="v.key" effect="plain" size="small">
+                <strong>{{ '{{' + v.key + '}}' }}</strong>
+                <span style="margin-left: 4px; color: #909399">{{ v.label }}</span>
+                <span v-if="v.sample" style="margin-left: 4px; color: #c0c4cc; font-size: 11px">示例: {{ v.sample }}</span>
+              </el-tag>
+            </div>
+          </el-form-item>
+        </template>
+
         <el-form-item label="排序">
           <el-input-number v-model="templateForm.sortOrder" :min="0" :max="999" />
         </el-form-item>
@@ -930,6 +1056,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { Bell, ChatDotRound, UserFilled, Warning, ShoppingCart, Odometer, DataAnalysis, Setting } from '@element-plus/icons-vue'
 import {
   getSuiteConfig, saveSuiteConfig, testSuiteConnection, generateAuthLink,
   getSuiteAuths, cancelSuiteAuth, bindSuiteAuthTenant, getSuiteCallbackLogs,
@@ -1001,13 +1128,15 @@ const testingProvider = ref(false)
 
 // Suite config
 const suiteConfig = ref<any>({
-  suiteId: '', suiteSecret: '', suiteTicket: '', ticketUpdateTime: '',
+  id: null, suiteId: '', suiteSecret: '', suiteTicket: '', ticketUpdateTime: '',
   providerCorpId: '', providerSecret: '', appName: '', appDescription: '',
-  appStatus: '', permissions: [], redirectDomain: '',
+  appStatus: '', permissions: [], redirectDomain: '', appType: 'web',
   callbackToken: '', callbackEncodingAesKey: '',
-  chatArchiveRsaPublicKey: '',
-  chatArchiveRsaPrivateKey: ''
+  chatArchiveRsaPublicKey: '', chatArchiveRsaPrivateKey: '',
+  isEnabled: true, mpAppId: '', mpEnabled: false
 })
+const suiteConfigList = ref<any[]>([])
+const currentConfigId = ref<number | null>(null)
 const showRsaInput = ref(false)
 const rsaPrivateKeyInput = ref('')
 const showRsaPublicKeyInput = ref(false)
@@ -1111,22 +1240,71 @@ const fetchConfig = async () => {
   try {
     const res: any = await getSuiteConfig()
     const data = res?.data || res
-    if (data && typeof data === 'object') Object.assign(suiteConfig.value, data)
+    // 加载列表
+    const list = res?.list || []
+    if (list.length > 0) {
+      suiteConfigList.value = list
+      if (!currentConfigId.value) currentConfigId.value = list[0].id
+      const current = list.find((c: any) => c.id === currentConfigId.value) || list[0]
+      Object.assign(suiteConfig.value, current)
+    } else if (data && typeof data === 'object') {
+      Object.assign(suiteConfig.value, data)
+      if (data.id) {
+        suiteConfigList.value = [data]
+        currentConfigId.value = data.id
+      }
+    }
   } catch { /* ignore */ }
+}
+
+function handleSwitchConfig(id: number) {
+  const item = suiteConfigList.value.find(c => c.id === id)
+  if (item) {
+    currentConfigId.value = id
+    Object.assign(suiteConfig.value, item)
+  }
+}
+
+function handleAddConfig() {
+  currentConfigId.value = null
+  suiteConfig.value = {
+    id: null, suiteId: '', suiteSecret: '', suiteTicket: '', ticketUpdateTime: '',
+    providerCorpId: suiteConfig.value.providerCorpId || '',
+    providerSecret: '', appName: '', appDescription: '',
+    appStatus: 'offline', permissions: [], redirectDomain: suiteConfig.value.redirectDomain || '',
+    appType: 'miniprogram',
+    callbackToken: '', callbackEncodingAesKey: '',
+    chatArchiveRsaPublicKey: '', chatArchiveRsaPrivateKey: '',
+    isEnabled: true, mpAppId: '', mpEnabled: false
+  }
+  ElMessage.info('请填写新应用配置后保存')
+}
+
+async function handleDeleteConfig() {
+  if (!currentConfigId.value) return
+  try {
+    await ElMessageBox.confirm('确定删除当前应用配置？删除后不可恢复。', '删除确认', { type: 'warning' })
+    const { deleteSuiteConfig } = await import('@/api/wecomManagement')
+    await deleteSuiteConfig(currentConfigId.value)
+    ElMessage.success('已删除')
+    currentConfigId.value = null
+    await fetchConfig()
+  } catch (e: any) {
+    if (e !== 'cancel') ElMessage.error(e?.message || '删除失败')
+  }
 }
 
 const handleSaveConfig = async () => {
   saving.value = true
   try {
     const payload = { ...suiteConfig.value }
-    // 如果用户填写了新的RSA公钥/私钥，替换到payload中
-    if (rsaPublicKeyInput.value) {
-      payload.chatArchiveRsaPublicKey = rsaPublicKeyInput.value
-    }
-    if (rsaPrivateKeyInput.value) {
-      payload.chatArchiveRsaPrivateKey = rsaPrivateKeyInput.value
-    }
-    await saveSuiteConfig(payload)
+    // 带上当前配置ID（更新时需要）
+    if (currentConfigId.value) payload.id = currentConfigId.value
+    if (rsaPublicKeyInput.value) payload.chatArchiveRsaPublicKey = rsaPublicKeyInput.value
+    if (rsaPrivateKeyInput.value) payload.chatArchiveRsaPrivateKey = rsaPrivateKeyInput.value
+    const saveRes: any = await saveSuiteConfig(payload)
+    // 如果是新增，更新当前ID
+    if (saveRes?.data?.id) currentConfigId.value = saveRes.data.id
     ElMessage.success('配置已保存')
     rsaPublicKeyInput.value = ''
     rsaPrivateKeyInput.value = ''
@@ -1465,20 +1643,132 @@ const handleSaveAutoClean = async () => {
 
 // ==================== 通知模板 ====================
 
+const iconMap: Record<string, any> = { Bell, ChatDotRound, UserFilled, Warning, ShoppingCart, Odometer, DataAnalysis, Setting }
+
+/** 预定义的7种通知场景（对应企微服务商后台的应用通知模板） */
+const PRESET_TEMPLATES = [
+  {
+    type: 'customer_delete_friend',
+    name: '客户删除好友提醒',
+    icon: 'Warning',
+    description: '当客户将企微成员删除好友时，通知对应成员及管理员，便于及时挽回客户',
+    defaultScope: 'team',
+    sampleContent: '您的客户 {{customer_name}} 已将您({{member_name}})删除好友，删除时间：{{delete_time}}。请及时通过其他方式联系客户挽回关系。',
+    variables: [
+      { key: 'customer_name', label: '客户名称', sample: '张三' },
+      { key: 'member_name', label: '成员名称', sample: '李经理' },
+      { key: 'delete_time', label: '删除时间', sample: '2026-05-14 15:30' },
+    ],
+  },
+  {
+    type: 'acquisition_quota_low',
+    name: '获客助手额度不足提醒',
+    icon: 'Odometer',
+    description: '当获客助手用量接近上限时，提醒管理员及时充值或扩容',
+    defaultScope: 'all',
+    sampleContent: '获客助手额度预警：当前剩余额度 {{remaining_quota}}，已使用 {{used_quota}}/{{total_quota}}（使用率 {{usage_rate}}），请及时处理。',
+    variables: [
+      { key: 'remaining_quota', label: '剩余额度', sample: '50' },
+      { key: 'used_quota', label: '已用额度', sample: '950' },
+      { key: 'total_quota', label: '总额度', sample: '1000' },
+      { key: 'usage_rate', label: '使用率', sample: '95%' },
+    ],
+  },
+  {
+    type: 'member_delete_customer',
+    name: '成员删除客户提醒',
+    icon: 'UserFilled',
+    description: '当成员主动删除外部联系人(客户)时，通知部门经理和管理员',
+    defaultScope: 'team',
+    sampleContent: '成员 {{member_name}}({{department}}) 于 {{delete_time}} 删除了客户 {{customer_name}}，请知悉。',
+    variables: [
+      { key: 'member_name', label: '成员名称', sample: '王销售' },
+      { key: 'department', label: '所属部门', sample: '销售一部' },
+      { key: 'customer_name', label: '客户名称', sample: '张总' },
+      { key: 'delete_time', label: '删除时间', sample: '2026-05-14 10:00' },
+    ],
+  },
+  {
+    type: 'abnormal_login',
+    name: '账号异常登录提醒',
+    icon: 'Warning',
+    description: '检测到异常登录行为时通知账号所有者和管理员',
+    defaultScope: 'all',
+    sampleContent: '您的账号在 {{login_time}} 发生异常登录，登录IP：{{login_ip}}，设备：{{device_info}}。如非本人操作，请立即修改密码。',
+    variables: [
+      { key: 'login_time', label: '登录时间', sample: '2026-05-14 03:22' },
+      { key: 'login_ip', label: '登录IP', sample: '192.168.1.100' },
+      { key: 'device_info', label: '设备信息', sample: 'Chrome/Windows' },
+    ],
+  },
+  {
+    type: 'order_status',
+    name: '订单状态通知',
+    icon: 'ShoppingCart',
+    description: '订单创建、支付、发货、完成等状态变更时通知相关人员',
+    defaultScope: 'self',
+    sampleContent: '订单 {{order_no}} 状态已变更为「{{order_status}}」，客户：{{customer_name}}，金额：¥{{order_amount}}。',
+    variables: [
+      { key: 'order_no', label: '订单编号', sample: 'ORD20260514001' },
+      { key: 'order_status', label: '订单状态', sample: '已支付' },
+      { key: 'customer_name', label: '客户名称', sample: '李总' },
+      { key: 'order_amount', label: '订单金额', sample: '5,800.00' },
+    ],
+  },
+  {
+    type: 'customer_follow_up',
+    name: '客户跟进提醒',
+    icon: 'ChatDotRound',
+    description: '客户超过设定天数未跟进时自动提醒负责成员',
+    defaultScope: 'self',
+    sampleContent: '您有客户 {{customer_name}} 已 {{days_no_follow}} 天未跟进，上次跟进时间：{{last_follow_time}}，请及时跟进。',
+    variables: [
+      { key: 'customer_name', label: '客户名称', sample: '王总' },
+      { key: 'days_no_follow', label: '未跟进天数', sample: '7' },
+      { key: 'last_follow_time', label: '上次跟进时间', sample: '2026-05-07' },
+    ],
+  },
+  {
+    type: 'performance_report',
+    name: '业绩统计报告',
+    icon: 'DataAnalysis',
+    description: '定期推送业绩统计数据，个人看个人数据，经理看团队汇总，管理员看全局',
+    defaultScope: 'all',
+    sampleContent: '{{report_period}} 业绩报告：新增客户 {{new_customers}} 个，新增订单 {{new_orders}} 笔，成交金额 ¥{{total_amount}}，跟进记录 {{follow_count}} 条。',
+    variables: [
+      { key: 'report_period', label: '统计周期', sample: '本周(05.08-05.14)' },
+      { key: 'new_customers', label: '新增客户数', sample: '12' },
+      { key: 'new_orders', label: '新增订单数', sample: '5' },
+      { key: 'total_amount', label: '成交总额', sample: '28,600.00' },
+      { key: 'follow_count', label: '跟进记录数', sample: '45' },
+    ],
+  },
+]
+
 const templateLoading = ref(false)
 const templateList = ref<any[]>([])
 const templateDialogVisible = ref(false)
 const editingTemplate = ref<any>(null)
 const templateSaving = ref(false)
-const templateForm = ref<any>({ templateId: '', templateName: '', templateType: 'order', description: '', sortOrder: 0 })
+const templateForm = ref<any>({
+  templateId: '', templateName: '', templateType: 'order_status',
+  description: '', notifyScope: 'all', suiteConfigId: null, sortOrder: 0
+})
 
-const templateTypeLabels: Record<string, string> = {
-  order: '订单通知', customer: '客户提醒', follow_up: '跟进提醒',
-  payment: '付款提醒', approval: '审批通知', system: '系统通知', custom: '自定义'
+const notifyScopeLabels: Record<string, string> = {
+  self: '仅当事人', team: '当事人+经理', all: '全部通知'
 }
-const templateTypeTagMap: Record<string, string> = {
-  order: 'warning', customer: 'success', follow_up: 'primary',
-  payment: 'danger', approval: '', system: 'info', custom: ''
+
+const notifyScopeTagType = (scope: string): string => {
+  return { self: 'info', team: 'warning', all: 'success' }[scope] || 'info'
+}
+
+const selectedPreset = computed(() => {
+  return PRESET_TEMPLATES.find(p => p.type === templateForm.value.templateType) || null
+})
+
+const getTemplatesByType = (type: string) => {
+  return templateList.value.filter(t => t.templateType === type)
 }
 
 const fetchTemplates = async () => {
@@ -1490,17 +1780,35 @@ const fetchTemplates = async () => {
   templateLoading.value = false
 }
 
-const openTemplateDialog = (row?: any) => {
+const handleTemplateTypeChange = (type: string) => {
+  const preset = PRESET_TEMPLATES.find(p => p.type === type)
+  if (preset && !editingTemplate.value) {
+    templateForm.value.templateName = preset.name
+    templateForm.value.notifyScope = preset.defaultScope
+    templateForm.value.description = preset.description
+  }
+}
+
+const openTemplateDialog = (row?: any, presetType?: string) => {
   if (row) {
     editingTemplate.value = row
     templateForm.value = {
       templateId: row.templateId, templateName: row.templateName,
       templateType: row.templateType, description: row.description || '',
+      notifyScope: row.notifyScope || 'all',
+      suiteConfigId: row.suiteConfigId || null,
       sortOrder: row.sortOrder || 0
     }
   } else {
     editingTemplate.value = null
-    templateForm.value = { templateId: '', templateName: '', templateType: 'order', description: '', sortOrder: 0 }
+    const type = presetType || 'order_status'
+    const preset = PRESET_TEMPLATES.find(p => p.type === type)
+    templateForm.value = {
+      templateId: '', templateName: preset?.name || '',
+      templateType: type, description: preset?.description || '',
+      notifyScope: preset?.defaultScope || 'all',
+      suiteConfigId: null, sortOrder: 0
+    }
   }
   templateDialogVisible.value = true
 }
@@ -1512,10 +1820,14 @@ const handleSaveTemplate = async () => {
   }
   templateSaving.value = true
   try {
+    const payload = {
+      ...templateForm.value,
+      templateVariables: selectedPreset.value?.variables || null,
+    }
     if (editingTemplate.value) {
-      await updateNotificationTemplate(editingTemplate.value.id, templateForm.value)
+      await updateNotificationTemplate(editingTemplate.value.id, payload)
     } else {
-      await createNotificationTemplate(templateForm.value)
+      await createNotificationTemplate(payload)
     }
     ElMessage.success(editingTemplate.value ? '模板更新成功' : '模板添加成功')
     templateDialogVisible.value = false
@@ -1895,5 +2207,89 @@ onMounted(() => {
 .diag-recommendation { margin-top: 8px; padding: 8px 12px; background: #fff7e6; border-left: 3px solid #faad14; border-radius: 4px; font-size: 12px; line-height: 1.7; color: #595959; }
 .diag-recommendation pre { margin: 4px 0 0; white-space: pre-wrap; word-break: break-word; font-family: inherit; }
 .diag-recommendation.diag-error { background: #fef0f0; border-left-color: #f56c6c; color: #c45656; }
+
+/* 通知模板卡片样式 */
+.tpl-category-card {
+  background: #fff;
+  border: 1px solid #e4e7ed;
+  border-radius: 8px;
+  padding: 16px 20px;
+  margin-bottom: 12px;
+  transition: box-shadow 0.2s;
+}
+.tpl-category-card:hover { box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06); }
+.tpl-category-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+.tpl-category-title {
+  display: flex;
+  align-items: center;
+  font-size: 14px;
+}
+.tpl-category-desc {
+  font-size: 12px;
+  color: #909399;
+  line-height: 1.6;
+  margin-bottom: 8px;
+}
+.tpl-content-preview {
+  background: #f9fafb;
+  border: 1px dashed #dcdfe6;
+  border-radius: 6px;
+  padding: 8px 12px;
+  margin-bottom: 8px;
+}
+.tpl-content-label {
+  font-size: 12px;
+  color: #606266;
+  font-weight: 500;
+  margin-bottom: 4px;
+}
+.tpl-content-text {
+  font-size: 12px;
+  color: #303133;
+  line-height: 1.7;
+}
+.tpl-variables {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 10px;
+}
+.tpl-var-label {
+  font-size: 12px;
+  color: #606266;
+  font-weight: 500;
+  margin-right: 4px;
+}
+.tpl-items {
+  border-top: 1px solid #f0f2f5;
+  padding-top: 8px;
+}
+.tpl-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background: #fafbfc;
+  border-radius: 6px;
+  margin-bottom: 6px;
+  border: 1px solid #ebeef5;
+}
+.tpl-item:last-child { margin-bottom: 0; }
+.tpl-item-main { flex: 1; min-width: 0; }
+.tpl-item-id { margin-bottom: 2px; }
+.tpl-item-meta { display: flex; align-items: center; gap: 4px; }
+.tpl-item-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  margin-left: 12px;
+}
 </style>
 

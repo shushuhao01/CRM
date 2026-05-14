@@ -36,6 +36,9 @@ export class WecomSuiteConfig {
   @Column({ name: 'redirect_domain', type: 'varchar', length: 255, nullable: true, comment: '授权完成回调域名(需与企微服务商后台配置一致，如: https://admin.yunkes.com)' })
   redirectDomain: string;
 
+  @Column({ name: 'app_type', type: 'varchar', length: 20, default: 'web', comment: '应用类型: web(网页应用)/miniprogram(小程序应用)' })
+  appType: string;
+
   @Column({ name: 'app_name', type: 'varchar', length: 200, nullable: true, comment: '应用名称' })
   appName: string;
 
