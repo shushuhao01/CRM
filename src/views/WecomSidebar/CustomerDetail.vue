@@ -103,17 +103,11 @@
       <!-- 顶部用户信息栏 -->
       <div class="preview-user-bar">
         <span>{{ boundUser?.name || '用户' }}</span>
-        <div style="display:flex;align-items:center;gap:6px">
-          <!-- SDK状态指示 + 刷新按钮 -->
-          <span class="sdk-status-dot" :class="sdkStatusClass" :title="sdkStatusTip" @click="handleRefreshSdk">
-            {{ sdkStatusIcon }}
-          </span>
+        <div>
           <span class="action-link" @click="handleRebind">换绑</span>
-          <span class="action-link" @click="handleUnbind">退出</span>
+          <span class="action-link" style="margin-left:8px" @click="handleUnbind">退出</span>
         </div>
       </div>
-      <!-- SDK状态一次性提示 -->
-      <div v-if="sdkToastMsg" class="sdk-toast" :class="sdkToastType">{{ sdkToastMsg }}</div>
 
       <!-- 快捷话术 Tab -->
       <SidebarScripts v-if="currentTab === 'scripts'" :sidebar-token="sidebarToken" />
@@ -280,7 +274,7 @@
 
 <script setup lang="ts">
 defineOptions({ name: 'WecomSidebarDetail' })
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { ref, onMounted, onBeforeUnmount } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Loading } from '@element-plus/icons-vue'
 import { getSidebarJsSdkConfig, getSidebarSign, clearSidebarCache, sidebarBindAccount, sidebarVerifyBinding, getSidebarCustomerDetail, refreshSidebarToken, getSuiteTicketDiagnostic } from '@/api/wecom'
@@ -336,55 +330,6 @@ async function retrySdkInit() {
     await initWecomSdk()
   } finally {
     sdkRetrying.value = false
-  }
-}
-
-// ========== SDK就绪状态（全局提示用） ==========
-const sdkStatus = ref<'loading' | 'ready' | 'failed'>('loading')
-const sdkToastMsg = ref('')
-const sdkToastType = ref<'success' | 'warning' | 'info'>('info')
-let sdkToastShown = false
-
-const sdkStatusClass = computed(() => ({
-  'sdk-ready': sdkStatus.value === 'ready',
-  'sdk-loading': sdkStatus.value === 'loading',
-  'sdk-failed': sdkStatus.value === 'failed'
-}))
-const sdkStatusIcon = computed(() => sdkStatus.value === 'ready' ? '●' : sdkStatus.value === 'loading' ? '◌' : '✕')
-const sdkStatusTip = computed(() => sdkStatus.value === 'ready' ? 'SDK就绪（点击刷新）' : sdkStatus.value === 'loading' ? 'SDK初始化中...' : 'SDK异常（点击重试）')
-
-function showSdkToast(msg: string, type: 'success' | 'warning' | 'info' = 'info') {
-  if (sdkToastShown && type === 'success') return
-  sdkToastMsg.value = msg
-  sdkToastType.value = type
-  if (type === 'success') sdkToastShown = true
-  setTimeout(() => { sdkToastMsg.value = '' }, 3000)
-}
-
-function markSdkReady() {
-  sdkStatus.value = 'ready'
-  ;(window as any).__wecom_sdk_ready = true
-  showSdkToast('SDK已就绪，可正常发送消息', 'success')
-}
-
-function markSdkFailed() {
-  sdkStatus.value = 'failed'
-  showSdkToast('SDK初始化失败，点击右上角●重试', 'warning')
-}
-
-async function handleRefreshSdk() {
-  if (sdkStatus.value === 'loading') {
-    showSdkToast('SDK正在初始化中，请稍等...', 'info')
-    return
-  }
-  sdkStatus.value = 'loading'
-  sdkToastShown = false
-  ;(window as any).__wecom_sdk_ready = false
-  showSdkToast('正在重新初始化SDK...', 'info')
-  try {
-    await initWecomSdk()
-  } catch {
-    markSdkFailed()
   }
 }
 
@@ -468,15 +413,7 @@ onMounted(async () => {
       }).catch(() => { /* ignore */ })
     }
 
-    // ★ 快速加载：先用缓存的externalUserId立即加载客户数据，不等SDK
-    const cachedEid = localStorage.getItem('wecom_sidebar_last_external_id')
-    if (cachedEid) {
-      externalUserId.value = cachedEid
-      loadCustomerDetail().catch(() => {})
-      loadCollectStatus()
-    }
-
-    // SDK初始化在后台异步进行（获取最新externalUserId，如果切换了客户会更新）
+    // 异步初始化SDK获取externalUserId，不阻塞页面展示
     initSdkForExternalUserId()
     return
   }
@@ -1630,20 +1567,6 @@ onBeforeUnmount(() => {
 .link-cust-item { display: flex; align-items: center; padding: 8px; border-radius: 6px; border: 1px solid #f0f0f0; margin-bottom: 4px; cursor: pointer; color: #303133; }
 .link-cust-item:hover { border-color: #07c160; background: #f0fdf4; }
 
-/* SDK状态指示器 */
-.sdk-status-dot { width: 18px; height: 18px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 10px; cursor: pointer; transition: all .2s; }
-.sdk-status-dot.sdk-ready { color: #52c41a; }
-.sdk-status-dot.sdk-loading { color: #faad14; animation: pulse 1.5s infinite; }
-.sdk-status-dot.sdk-failed { color: #ff4d4f; }
-.sdk-status-dot:hover { transform: scale(1.3); }
-@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .4; } }
-
-/* SDK Toast提示 */
-.sdk-toast { text-align: center; padding: 5px 12px; font-size: 11px; border-radius: 0; animation: slideDown .3s; }
-.sdk-toast.success { background: #f0fdf4; color: #389e0d; }
-.sdk-toast.warning { background: #fffbe6; color: #d48806; }
-.sdk-toast.info { background: #e6f4ff; color: #1677ff; }
-@keyframes slideDown { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
 </style>
 
 
