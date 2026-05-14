@@ -1357,7 +1357,7 @@ router.post('/mp-generate-card', authenticateSidebarToken, async (req: Request, 
       }
     } catch { /* ignore */ }
 
-    const defaultImgUrl = `${req.protocol}://${req.get('host')}/填写个人资料.png`;
+    const defaultImgUrl = `${req.protocol}://${req.get('host')}/form-cover.png`;
     if (!imageUrl) imageUrl = defaultImgUrl;
 
     res.json({ success: true, data: { sign, appId, title: cardTitle, imageUrl, cardTitle, cardCoverUrl, useMiniprogram } });
@@ -1388,9 +1388,9 @@ router.post('/mp-send-mode', authenticateSidebarToken, async (req: Request, res:
 
     const { TenantSettings } = await import('../../entities/TenantSettings');
     const settingsRepo = AppDataSource.getRepository(TenantSettings);
-    let setting = await settingsRepo.findOne({ where: { tenantId, settingKey: 'wecom_collect_send_mode' } });
+    const setting = await settingsRepo.findOne({ where: { tenantId, settingKey: 'wecom_collect_send_mode' } });
     if (setting) {
-      setting.settingValue = JSON.stringify({ sendMode });
+      (setting as any).settingValue = JSON.stringify({ sendMode });
       await settingsRepo.save(setting);
     } else {
       await settingsRepo.save(settingsRepo.create({

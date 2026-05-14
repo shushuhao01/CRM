@@ -203,7 +203,7 @@ const generateCard = async (showMsg = true) => {
     const ts = Date.now().toString()
     const { default: axios } = await import('axios')
     const extUserId = localStorage.getItem('wecom_sidebar_last_external_id') || ''
-    const defaultImgUrl = `${window.location.origin}/填写个人资料.png`
+    const defaultImgUrl = `${window.location.origin}/form-cover.png`
     const defaultTitle = '请填写您的个人资料'
 
     let data: any = {}
@@ -220,7 +220,7 @@ const generateCard = async (showMsg = true) => {
     const title = data.title || defaultTitle
 
     const mpAppId = data.appId || ''
-    const mpPage = data.path || `/pages/form/form.html?tenantId=${tenantId}&memberId=${memberId}&ts=${ts}&sign=${data.sign || ''}&externalUserId=${extUserId}`
+    const mpPage = data.path || `/pages/form/form?tenantId=${tenantId}&memberId=${memberId}&ts=${ts}&sign=${data.sign || ''}&externalUserId=${extUserId}`
     const h5FormUrl = `${window.location.origin}/wecom-form.html?tenantId=${tenantId}&memberId=${memberId}&ts=${ts}&sign=${data.sign || ''}&externalUserId=${extUserId}&appId=${mpAppId}`
 
     // 根据用户选择的发送模式构建主payload
@@ -251,7 +251,7 @@ const generateCard = async (showMsg = true) => {
         link: `${window.location.origin}/wecom-form.html?tenantId=${tenantId}&memberId=${memberId}&externalUserId=${extUserId}`,
         title: '请填写您的个人资料',
         desc: '点击填写您的基本资料，方便我们为您提供更好的服务',
-        imgUrl: `${window.location.origin}/填写个人资料.png`
+        imgUrl: `${window.location.origin}/form-cover.png`
       }
     }
     cardReady.value = true

@@ -604,7 +604,7 @@ async function initWithNewSdk(retryCount = 0) {
     await ww.register({
       corpId: corpId.value,
       agentId: Number(agentId),
-      jsApiList: ['getCurExternalContact', 'getCurExternalChat', 'getContext', 'sendChatMessage'],
+      jsApiList: ['getCurExternalContact', 'getCurExternalChat', 'getContext', 'sendChatMessage', 'openDefaultBrowser'],
       getConfigSignature,
       getAgentConfigSignature,
       onConfigSuccess(res: any) {
@@ -623,8 +623,10 @@ async function initWithNewSdk(retryCount = 0) {
       },
     })
     console.log('[Sidebar] ww.register 返回成功, corpId=', corpId.value, ', agentId=', agentId)
+    sdkReadyResolve?.()
   } catch (err: any) {
     console.error('[Sidebar] ❌ ww.register 异常:', err)
+    sdkReadyResolve?.()
     // ★ 如果已经有token，SDK注册失败不阻塞页面
     if (pageState.value === 'detail' && sidebarToken.value) {
       console.warn('[Sidebar] ww.register失败但已有token，维持当前页面')
@@ -947,6 +949,7 @@ async function initSdkForExternalUserId() {
     await initWecomSdk()
   } catch (e: any) {
     console.warn('[Sidebar] 后台SDK初始化失败(不影响已登录状态):', e?.message)
+    sdkReadyResolve?.()
     // SDK失败但已登录：尝试用上次缓存的externalUserId
     const cachedEid = localStorage.getItem('wecom_sidebar_last_external_id')
     if (cachedEid && !externalUserId.value) {
@@ -959,6 +962,10 @@ async function initSdkForExternalUserId() {
 
 /** SDK模式：'ww' = 新版 @wecom/jssdk (ww.register)，'wx' = 旧版 (wx.config+agentConfig) */
 let sdkMode: 'ww' | 'wx' | null = null
+
+/** SDK就绪追踪：ww.register()成功后resolve，供发送逻辑等待 */
+let sdkReadyResolve: (() => void) | null = null
+const sdkReadyPromise = new Promise<void>(r => { sdkReadyResolve = r })
 
 function loadWecomJsSdk(): Promise<void> {
   // ★★★ 必须先检测 ww（新版SDK），再检测 wx（旧版）
@@ -1265,27 +1272,34 @@ function getOrderStatusColor(status: string): string {
   return m[status] || '#07c160'
 }
 
-function openCrmDetail() {
+async function openCrmDetail() {
   if (!customerData.value?.crmCustomer?.id) return
   const url = `${window.location.origin}/customer/detail/${customerData.value.crmCustomer.id}`
 
   try {
-    const wx = (window as any).wx || (window as any).jWeixin
     const ww = (window as any).ww
 
-    // 方式1：ww.openDefaultBrowser (新版SDK)
+    // 方式1：ww.openDefaultBrowser (新版SDK，返回Promise)
     if (ww && typeof ww.openDefaultBrowser === 'function') {
-      try { ww.openDefaultBrowser({ url }); return } catch { /* fallback */ }
+      try {
+        await ww.openDefaultBrowser({ url })
+        return
+      } catch (e: any) {
+        console.warn('[CustomerDetail] ww.openDefaultBrowser失败:', e?.message || e)
+      }
     }
 
     // 方式2：wx.invoke openDefaultBrowser (旧版SDK)
+    const wx = (window as any).wx || (window as any).jWeixin
     if (wx && typeof wx.invoke === 'function') {
       try {
         wx.invoke('openDefaultBrowser', { url }, () => {})
         return
       } catch { /* fallback */ }
     }
-  } catch { /* 任何异常都降级 */ }
+  } catch (e: any) {
+    console.warn('[CustomerDetail] openDefaultBrowser异常:', e?.message)
+  }
 
   // 兜底：window.open（企微内置浏览器）
   window.open(url, '_blank')
@@ -1418,6 +1432,10 @@ async function handleSendFormCard() {
   if (sendingFormCard.value) return
   sendingFormCard.value = true
   try {
+    // ★ 等待SDK就绪（PC端页面从缓存token快速显示，但SDK可能还在初始化中）
+    const sdkWaitTimeout = Promise.race([sdkReadyPromise, new Promise(r => setTimeout(r, 8000))])
+    await sdkWaitTimeout
+
     let tenantId = '', memberId = ''
     if (sidebarToken.value) {
       const payload = decodeJwtPayload(sidebarToken.value)
@@ -1442,9 +1460,9 @@ async function handleSendFormCard() {
 
     const mpAppId = data.appId || ''
     const title = data.title || '请填写您的个人资料'
-    const imgUrl = data.imageUrl || `${window.location.origin}/填写个人资料.png`
+    const imgUrl = data.imageUrl || `${window.location.origin}/form-cover.png`
     const sign = data.sign || ''
-    const mpPage = data.path || `/pages/form/form.html?tenantId=${tenantId}&memberId=${memberId}&ts=${ts}&sign=${sign}&externalUserId=${extUserId}`
+    const mpPage = data.path || `/pages/form/form?tenantId=${tenantId}&memberId=${memberId}&ts=${ts}&sign=${sign}&externalUserId=${extUserId}`
     const h5Url = `${window.location.origin}/wecom-form.html?tenantId=${tenantId}&memberId=${memberId}&ts=${ts}&sign=${sign}&externalUserId=${extUserId}&appId=${mpAppId}`
 
     // 构建payload（和资料收集tab一致：优先miniprogram，有降级）
@@ -1464,10 +1482,10 @@ async function handleSendFormCard() {
       if (result === 'cancel') { ElMessage.info('已取消发送'); sendingFormCard.value = false; return }
     }
 
-    // 第三步：如果仍然失败，等待SDK就绪后重试一次（处理SDK初始化时序问题）
+    // 第三步：如果仍然失败，等待SDK就绪后重试一次（处理PC端SDK初始化较慢）
     if (result === 'failed') {
-      console.warn('[CustomerDetail] 首次发送失败，等待2秒后重试...')
-      await new Promise(r => setTimeout(r, 2000))
+      console.warn('[CustomerDetail] 首次发送失败，等待SDK就绪后重试...')
+      await Promise.race([sdkReadyPromise, new Promise(r => setTimeout(r, 5000))])
       result = await trySendCard(newsPayload)
       if (result === 'cancel') { ElMessage.info('已取消发送'); sendingFormCard.value = false; return }
     }
