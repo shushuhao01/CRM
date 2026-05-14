@@ -149,6 +149,9 @@ export class Customer {
   @Column({ name: 'wecom_external_userid', type: 'varchar', length: 100, nullable: true, comment: '客户唯一企微编码(USID)' })
   wecomExternalUserid?: string;
 
+  @Column({ name: 'wecom_external_userids', type: 'json', nullable: true, comment: '多企微UserID列表' })
+  wecomExternalUserids?: string[];
+
   @Column({ name: 'star_rating', type: 'int', default: 0, nullable: true, comment: '手动星级评分(1-5)' })
   starRating?: number;
 

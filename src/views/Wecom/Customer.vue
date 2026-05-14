@@ -100,7 +100,7 @@
             <el-select v-model="query.configId" placeholder="选择企微配置" clearable style="width: 180px" @change="handleConfigChange">
               <el-option v-for="c in displayConfigs" :key="c.id" :label="c.name" :value="c.id" />
             </el-select>
-            <el-input v-model="query.keyword" placeholder="搜索客户名/备注/UserID" clearable style="width: 220px" @keyup.enter="handleSearch" />
+            <el-input v-model="query.keyword" placeholder="搜索客户名/备注/UserID/手机号" clearable style="width: 220px" @keyup.enter="handleSearch" />
             <el-select v-model="query.status" placeholder="客户状态" clearable style="width: 120px" @change="handleSearch">
               <el-option label="正常" value="normal" />
               <el-option label="已删除" value="deleted" />

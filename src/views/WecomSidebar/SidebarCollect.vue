@@ -1,7 +1,10 @@
 <template>
   <div class="mpc-wrapper">
     <!-- 顶部引导卡片 -->
-    <div class="mpc-hero">
+    <div class="mpc-hero" style="position:relative">
+      <span class="mpc-regen-btn" @click="generateCard" title="重新生成卡片">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#909399" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg>
+      </span>
       <div class="mpc-hero-icon">
         <svg viewBox="0 0 48 48" width="38" height="38" fill="none" xmlns="http://www.w3.org/2000/svg">
           <path d="M15.6 28.8c-4.97 0-9-3.58-9-8s4.03-8 9-8c4.97 0 9 3.58 9 8 0 1.36-.4 2.64-1.1 3.76l.5 3.64-3.36-1.6c-1.56.76-3.28 1.2-5.04 1.2z" fill="#57BE6A"/>
@@ -12,7 +15,7 @@
         </svg>
       </div>
       <div class="mpc-hero-title">客户资料收集</div>
-      <div class="mpc-hero-desc">点击下方按钮，将小程序卡片发送给客户<br/>客户填写后资料自动同步到CRM</div>
+      <div class="mpc-hero-desc">{{ cardReady ? '✅ 卡片已生成，可直接发送' : '点击下方按钮，将小程序卡片发送给客户' }}<br/>客户填写后资料自动同步到CRM</div>
     </div>
 
     <!-- 数据统计 -->
@@ -91,6 +94,8 @@ const recordsLoading = ref(false)
 const page = ref(1)
 const pageSize = 5
 const expandedId = ref<string | null>(null)
+const cardReady = ref(false)
+const preGeneratedPayload = ref<any>(null)
 
 const totalPages = computed(() => Math.ceil(recordsTotal.value / pageSize) || 1)
 const hasMore = computed(() => page.value < totalPages.value)
@@ -151,27 +156,19 @@ const refreshRecords = async () => {
   await loadRecords()
 }
 
-const handleSend = async () => {
-  if (sending.value) return
-  sending.value = true
+/** 预生成卡片（登录时自动调用，或手动刷新） */
+const generateCard = async () => {
   try {
     const { tenantId, memberId } = parseSidebarToken()
     const ts = Date.now().toString()
     const { default: axios } = await import('axios')
     const res: any = await axios.post(`${getBaseUrl()}/mp-generate-card`, { tenantId, memberId, ts }, { headers: getHeaders() })
     const data = res?.data?.data || res?.data || {}
-    // 获取当前聊天对象的externalUserId
     const extUserId = localStorage.getItem('wecom_sidebar_last_external_id') || ''
-    // ★ 小程序路径必须以.html结尾（企微官方要求，否则微信端打不开）
     const path = data.path || `/pages/form/form.html?tenantId=${tenantId}&memberId=${memberId}&ts=${ts}&sign=${data.sign || ''}&externalUserId=${extUserId}`
-    // ★ imgUrl必须带http/https协议头
     const imgUrl = data.imageUrl ? (data.imageUrl.startsWith('http') ? data.imageUrl : `${window.location.origin}${data.imageUrl}`) : ''
 
-    const ww = (window as any).ww
-    const wx = (window as any).wx || (window as any).jWeixin
-    const bridge = (window as any).WeixinJSBridge
-
-    const cardPayload = {
+    preGeneratedPayload.value = {
       msgtype: 'miniprogram',
       miniprogram: {
         appid: data.appId || '',
@@ -180,44 +177,44 @@ const handleSend = async () => {
         page: path
       }
     }
-    console.log('[Collect] 发送小程序卡片:', JSON.stringify(cardPayload))
+    cardReady.value = true
+    console.log('[Collect] 卡片预生成完成:', JSON.stringify(preGeneratedPayload.value))
+  } catch (e: any) {
+    console.warn('[Collect] 预生成卡片失败:', e?.message)
+    cardReady.value = false
+  }
+}
 
-    // 尝试多种方式发送（企微SDK版本兼容）
+/** 发送小程序卡片（直接发送，无需确认） */
+const handleSend = async () => {
+  if (sending.value) return
+  sending.value = true
+  try {
+    // 如果没有预生成，先生成
+    if (!preGeneratedPayload.value) await generateCard()
+    if (!preGeneratedPayload.value) { ElMessage.warning('卡片生成失败'); sending.value = false; return }
+
+    const cardPayload = preGeneratedPayload.value
+    const ww = (window as any).ww
+    const wx = (window as any).wx || (window as any).jWeixin
+
     let sent = false
-
-    // 方式1: 新版SDK ww.sendChatMessage
-    if (!sent && ww) {
-      if (typeof ww.sendChatMessage === 'function') {
-        try { await ww.sendChatMessage(cardPayload); sent = true; ElMessage.success('小程序卡片已发送') }
-        catch (e: any) { console.warn('[Collect] ww.sendChatMessage error:', e) }
-      } else if (typeof ww.invoke === 'function') {
-        try { await ww.invoke('sendChatMessage', cardPayload); sent = true; ElMessage.success('小程序卡片已发送') }
-        catch (e: any) { console.warn('[Collect] ww.invoke error:', e) }
-      }
+    // 与快捷话术相同的发送逻辑
+    if (ww) {
+      try {
+        if (typeof ww.sendChatMessage === 'function') { await ww.sendChatMessage(cardPayload); sent = true }
+        else if (typeof ww.invoke === 'function') { await ww.invoke('sendChatMessage', cardPayload); sent = true }
+      } catch (e: any) { console.warn('[Collect] ww发送失败:', e) }
     }
-
-    // 方式2: 旧版SDK wx.invoke
     if (!sent && wx && typeof wx.invoke === 'function') {
-      wx.invoke('sendChatMessage', cardPayload, (res: any) => {
-        if (res.err_msg === 'sendChatMessage:ok') ElMessage.success('小程序卡片已发送')
-        else { console.warn('[Collect] wx.invoke result:', res); ElMessage.info('卡片已生成，请确认发送') }
-      })
+      wx.invoke('sendChatMessage', cardPayload, () => {})
       sent = true
     }
 
-    // 方式3: WeixinJSBridge
-    if (!sent && bridge && typeof bridge.invoke === 'function') {
-      bridge.invoke('sendChatMessage', JSON.stringify(cardPayload), (res: any) => {
-        const r = typeof res === 'string' ? JSON.parse(res) : res
-        if (r.err_msg === 'sendChatMessage:ok') ElMessage.success('小程序卡片已发送')
-        else ElMessage.info('卡片已生成，请确认发送')
-      })
-      sent = true
-    }
-
-    if (!sent) {
-      console.error('[Collect] 所有发送方式均不可用! ww=', ww ? Object.keys(ww).join(',') : 'null', ', wx=', wx ? 'has' : 'null', ', bridge=', bridge ? 'has' : 'null')
-      ElMessage.warning('发送失败。请确保在企微客户端侧边栏中使用，且应用已配置客户联系权限。')
+    if (sent) {
+      ElMessage.success('小程序卡片已发送')
+    } else {
+      ElMessage.warning('发送失败，请确保在企微客户端侧边栏中使用')
     }
 
     // 记录发送日志
@@ -251,11 +248,14 @@ function sendViaWxBridge(payload: any) {
 onMounted(() => {
   loadStats()
   loadRecords()
+  generateCard()
 })
 </script>
 
 <style scoped>
 .mpc-wrapper { padding: 0; color: #303133; }
+.mpc-regen-btn { position: absolute; top: 8px; right: 8px; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; border-radius: 50%; cursor: pointer; transition: all 0.2s; }
+.mpc-regen-btn:hover { background: rgba(0,0,0,0.05); transform: rotate(180deg); }
 .mpc-hero { margin: 8px 10px; background: linear-gradient(135deg, #ecfdf5 0%, #f0fdf4 50%, #f0f9ff 100%); border: 1px solid #bbf7d0; border-radius: 12px; padding: 16px 12px; text-align: center; }
 .mpc-hero-icon { width: 48px; height: 48px; margin: 0 auto 8px; background: #fff; border-radius: 12px; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 8px rgba(87,190,106,0.15); }
 .mpc-hero-title { font-size: 14px; font-weight: 700; color: #1d2129; margin-bottom: 4px; }

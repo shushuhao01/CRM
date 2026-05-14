@@ -903,6 +903,26 @@ export const updateCrmCustomerWecomUsid = (customerId: string, wecomExternalUser
   return request.put(`/wecom/crm-customers/${customerId}/wecom-usid`, { wecomExternalUserid })
 }
 
+/** 获取CRM客户的所有企微UserID列表 */
+export const getCrmCustomerWecomUserids = (customerId: string) => {
+  return request.get(`/wecom/crm-customers/${customerId}/wecom-userids`, { showError: false } as any)
+}
+
+/** 添加企微UserID到CRM客户 */
+export const addCrmCustomerWecomUserid = (customerId: string, wecomExternalUserid: string) => {
+  return request.post(`/wecom/crm-customers/${customerId}/wecom-userids`, { wecomExternalUserid })
+}
+
+/** 删除CRM客户的某个企微UserID */
+export const deleteCrmCustomerWecomUserid = (customerId: string, usid: string) => {
+  return request.delete(`/wecom/crm-customers/${customerId}/wecom-userids/${encodeURIComponent(usid)}`)
+}
+
+/** 修改CRM客户的某个企微UserID */
+export const updateCrmCustomerWecomUserid = (customerId: string, oldUsid: string, newWecomExternalUserid: string) => {
+  return request.put(`/wecom/crm-customers/${customerId}/wecom-userids/${encodeURIComponent(oldUsid)}`, { newWecomExternalUserid })
+}
+
 /** 侧边栏换绑 */
 export const rebindSidebarBinding = (bindingId: number) => {
   return request.put(`/wecom/sidebar/binding/${bindingId}/rebind`)

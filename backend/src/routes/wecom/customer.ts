@@ -73,7 +73,30 @@ router.get('/customers', authenticateToken, async (req: Request, res: Response) 
     if (configId) queryBuilder.andWhere('c.wecom_config_id = :configId', { configId: parseInt(configId as string) });
     if (status) queryBuilder.andWhere('c.status = :status', { status });
     if (followUserId) queryBuilder.andWhere('c.follow_user_id = :followUserId', { followUserId });
-    if (keyword) queryBuilder.andWhere('(c.name LIKE :keyword OR c.remark LIKE :keyword OR c.external_user_id LIKE :keyword)', { keyword: `%${keyword}%` });
+    if (keyword) {
+      // 支持搜索：客户名、备注、UserID、手机号、跟进人、关联的CRM客户名
+      const kw = `%${keyword}%`;
+      const { Customer } = await import('../../entities/Customer');
+      const crmRepo = getTenantRepo(Customer);
+      const matchedCrmIds = await crmRepo.createQueryBuilder('crm')
+        .select('crm.id')
+        .where('crm.name LIKE :kw', { kw })
+        .getMany()
+        .then(list => list.map(c => c.id))
+        .catch(() => [] as string[]);
+
+      if (matchedCrmIds.length > 0) {
+        queryBuilder.andWhere(
+          '(c.name LIKE :keyword OR c.remark LIKE :keyword OR c.external_user_id LIKE :keyword OR c.phone LIKE :keyword OR c.follow_user_name LIKE :keyword OR c.crm_customer_id IN (:...crmIds))',
+          { keyword: kw, crmIds: matchedCrmIds }
+        );
+      } else {
+        queryBuilder.andWhere(
+          '(c.name LIKE :keyword OR c.remark LIKE :keyword OR c.external_user_id LIKE :keyword OR c.phone LIKE :keyword OR c.follow_user_name LIKE :keyword)',
+          { keyword: kw }
+        );
+      }
+    }
     // Phase 12-A: 支持日期范围筛选
     if (startDate) queryBuilder.andWhere('c.add_time >= :startDate', { startDate: new Date(startDate as string) });
     if (endDate) {
@@ -89,7 +112,115 @@ router.get('/customers', authenticateToken, async (req: Request, res: Response) 
       .take(parseInt(pageSize as string))
       .getMany();
 
-    res.json({ success: true, data: { list: customers, total, page: parseInt(page as string), pageSize: parseInt(pageSize as string) } });
+    // 标签名称解析：如果tagNames中包含tag_id格式的值，尝试从企微API获取标签映射
+    let tagNameMap: Record<string, string> | null = null;
+    const needsTagResolve = customers.some(c => {
+      if (!c.tagNames) return false;
+      try {
+        const names = JSON.parse(c.tagNames);
+        return Array.isArray(names) && names.some((n: string) => /^et[A-Za-z0-9_-]{10,}$/.test(n));
+      } catch { return false; }
+    });
+
+    if (needsTagResolve && configId) {
+      try {
+        const accessToken = await WecomApiService.getAccessTokenByConfigId(parseInt(configId as string), 'external');
+        const tagGroups = await WecomApiService.getCorpTagList(accessToken);
+        tagNameMap = {};
+        for (const group of tagGroups) {
+          for (const tag of (group.tag || [])) {
+            if (tag.id && tag.name) tagNameMap[tag.id] = tag.name;
+          }
+        }
+      } catch { /* 忽略标签获取失败 */ }
+    }
+
+    // 批量获取关联的CRM客户名称
+    const crmCustomerIds = customers.map(c => c.crmCustomerId).filter(Boolean);
+    let crmNameMap: Record<string, string> = {};
+    if (crmCustomerIds.length > 0) {
+      try {
+        const { Customer } = await import('../../entities/Customer');
+        const crmRepo = getTenantRepo(Customer);
+        const crmCustomers = await crmRepo.createQueryBuilder('c')
+          .select(['c.id', 'c.name'])
+          .where('c.id IN (:...ids)', { ids: crmCustomerIds })
+          .getMany();
+        for (const cc of crmCustomers) {
+          crmNameMap[cc.id] = cc.name;
+        }
+      } catch { /* ignore */ }
+    }
+
+    // 批量获取消息统计（发送+接收）
+    let msgStatsMap: Record<string, { sent: number; recv: number }> = {};
+    if (customers.length > 0) {
+      try {
+        const { WecomChatRecord } = await import('../../entities/WecomChatRecord');
+        const chatRepo = getTenantRepo(WecomChatRecord);
+        const externalUserIds = customers.map(c => c.externalUserId).filter(Boolean);
+        if (externalUserIds.length > 0) {
+          // 发送统计：批量按from_user_id分组
+          const sentStats = await chatRepo.createQueryBuilder('r')
+            .select('r.from_user_id', 'uid')
+            .addSelect('COUNT(*)', 'cnt')
+            .where('r.from_user_id IN (:...uids)', { uids: externalUserIds })
+            .groupBy('r.from_user_id')
+            .getRawMany();
+          for (const s of sentStats) {
+            if (!msgStatsMap[s.uid]) msgStatsMap[s.uid] = { sent: 0, recv: 0 };
+            msgStatsMap[s.uid].sent = parseInt(s.cnt) || 0;
+          }
+          // 接收统计：逐个LIKE查询（to_user_ids存储格式不定）
+          for (const uid of externalUserIds) {
+            const recv = await chatRepo.createQueryBuilder('r')
+              .where('r.to_user_ids LIKE :uid', { uid: `%${uid}%` })
+              .getCount();
+            if (recv > 0) {
+              if (!msgStatsMap[uid]) msgStatsMap[uid] = { sent: 0, recv: 0 };
+              msgStatsMap[uid].recv = recv;
+            }
+          }
+        }
+      } catch (msgErr: any) {
+        log.warn('[Wecom] Message stats query error:', msgErr.message);
+      }
+    }
+
+    const list = customers.map(c => {
+      const item: any = { ...c };
+      // 解析并修正标签名称
+      if (c.tagNames && tagNameMap) {
+        try {
+          const names = JSON.parse(c.tagNames);
+          if (Array.isArray(names)) {
+            item.tagNames = JSON.stringify(names.map((n: string) => tagNameMap![n] || n));
+          }
+        } catch { /* keep original */ }
+      }
+      // 如果tagNames为空但tagIds有值，通过映射生成tagNames
+      if (!c.tagNames && c.tagIds && tagNameMap) {
+        try {
+          const ids = JSON.parse(c.tagIds);
+          if (Array.isArray(ids)) {
+            item.tagNames = JSON.stringify(ids.map((id: string) => tagNameMap![id] || id));
+          }
+        } catch { /* keep original */ }
+      }
+      // 补充CRM客户名称
+      if (c.crmCustomerId && crmNameMap[c.crmCustomerId]) {
+        item.crmCustomerName = crmNameMap[c.crmCustomerId];
+      }
+      // 补充消息统计
+      const msgStat = msgStatsMap[c.externalUserId];
+      if (msgStat) {
+        item.msgSentCount = msgStat.sent;
+        item.msgRecvCount = msgStat.recv;
+      }
+      return item;
+    });
+
+    res.json({ success: true, data: { list, total, page: parseInt(page as string), pageSize: parseInt(pageSize as string) } });
   } catch (error: any) {
     log.error('[Wecom] Get customers error:', error.message, error.stack);
     res.status(500).json({ success: false, message: '获取客户列表失败' });
@@ -123,6 +254,21 @@ router.post('/customers/sync', authenticateToken, requireAdmin, async (req: Requ
 
     const accessToken = await WecomApiService.getAccessTokenByConfigId(configId, 'external');
     log.info(`[Wecom] Sync customers: got access token, starting sync for ${bindings.length} bindings`);
+
+    // 预先获取企业标签映射表（tag_id -> tag_name）
+    const corpTagMap: Record<string, string> = {};
+    try {
+      const tagGroups = await WecomApiService.getCorpTagList(accessToken);
+      for (const group of tagGroups) {
+        for (const tag of (group.tag || [])) {
+          if (tag.id && tag.name) corpTagMap[tag.id] = tag.name;
+        }
+      }
+      log.info(`[Wecom] Loaded ${Object.keys(corpTagMap).length} corp tags for name resolution`);
+    } catch (tagErr: any) {
+      log.warn('[Wecom] Failed to load corp tags, will fallback to API tag_name:', tagErr.message);
+    }
+
     const customerRepo = getTenantRepo(WecomCustomer);
     let syncCount = 0;
 
@@ -159,7 +305,7 @@ router.post('/customers/sync', authenticateToken, requireAdmin, async (req: Requ
             customer.addTime = followUser?.createtime ? new Date(followUser.createtime * 1000) : null;
             customer.addWay = followUser?.add_way;
             customer.tagIds = followUser?.tags ? JSON.stringify(followUser.tags.map((t: any) => t.tag_id)) : null;
-            customer.tagNames = followUser?.tags ? JSON.stringify(followUser.tags.map((t: any) => t.tag_name || t.tag_id)) : null;
+            customer.tagNames = followUser?.tags ? JSON.stringify(followUser.tags.map((t: any) => corpTagMap[t.tag_id] || t.tag_name || t.tag_id)) : null;
             customer.state = followUser?.state || null;
             customer.status = 'normal';
 
@@ -230,8 +376,37 @@ router.put('/customers/:id/link-crm', authenticateToken, async (req: Request, re
       return res.status(404).json({ success: false, message: 'CRM客户不存在' });
     }
 
+    // 关联唯一性逻辑：检查CRM客户是否有多UserID配置
+    const multiUserIds = Array.isArray(crmCustomer.wecomExternalUserids) ? crmCustomer.wecomExternalUserids : [];
+    const hasMultiUserIds = multiUserIds.length > 1;
+
+    if (!hasMultiUserIds) {
+      // 单UserID模式：解绑之前关联该CRM客户的其他企微客户
+      const previouslyLinked = await customerRepo.find({ where: { crmCustomerId } });
+      for (const prev of previouslyLinked) {
+        if (prev.id !== wecomCustomerId) {
+          prev.crmCustomerId = null as any;
+          await customerRepo.save(prev);
+        }
+      }
+    }
+
     customer.crmCustomerId = crmCustomerId;
     await customerRepo.save(customer);
+
+    // 同步更新CRM客户的企微UserID字段
+    const externalUserId = customer.externalUserId;
+    if (externalUserId) {
+      if (!crmCustomer.wecomExternalUserid) {
+        crmCustomer.wecomExternalUserid = externalUserId;
+      }
+      const currentIds = Array.isArray(crmCustomer.wecomExternalUserids) ? [...crmCustomer.wecomExternalUserids] : [];
+      if (!currentIds.includes(externalUserId)) {
+        currentIds.push(externalUserId);
+        crmCustomer.wecomExternalUserids = currentIds;
+      }
+      await crmCustomerRepo.save(crmCustomer);
+    }
 
     res.json({ success: true, message: '关联成功', data: { wecomCustomerId, crmCustomerId, crmCustomerName: crmCustomer.name } });
   } catch (error: any) {
@@ -253,8 +428,37 @@ router.put('/customers/:id/unlink-crm', authenticateToken, async (req: Request, 
       return res.status(404).json({ success: false, message: '企微客户不存在' });
     }
 
+    const oldCrmId = customer.crmCustomerId;
+    const externalUserId = customer.externalUserId;
     customer.crmCustomerId = null as any;
     await customerRepo.save(customer);
+
+    // 同步清理CRM客户侧的UserID
+    if (oldCrmId && externalUserId) {
+      try {
+        const { Customer } = await import('../../entities/Customer');
+        const crmRepo = getTenantRepo(Customer);
+        const crmCustomer = await crmRepo.findOne({ where: { id: oldCrmId } });
+        if (crmCustomer) {
+          // 检查是否还有其他企微客户关联该CRM客户
+          const otherLinked = await customerRepo.findOne({
+            where: { crmCustomerId: oldCrmId, externalUserId: externalUserId }
+          });
+          if (!otherLinked) {
+            // 从多UserID列表中移除
+            if (Array.isArray(crmCustomer.wecomExternalUserids)) {
+              crmCustomer.wecomExternalUserids = crmCustomer.wecomExternalUserids.filter(uid => uid !== externalUserId);
+              if (crmCustomer.wecomExternalUserids.length === 0) crmCustomer.wecomExternalUserids = null as any;
+            }
+            if (crmCustomer.wecomExternalUserid === externalUserId) {
+              crmCustomer.wecomExternalUserid = (crmCustomer.wecomExternalUserids && crmCustomer.wecomExternalUserids.length > 0) ? crmCustomer.wecomExternalUserids[0] : null as any;
+            }
+            await crmRepo.save(crmCustomer);
+          }
+        }
+      } catch { /* ignore cleanup errors */ }
+    }
+
     res.json({ success: true, message: '已解除关联' });
   } catch (error: any) {
     log.error('[Wecom] Unlink CRM customer error:', error);
@@ -511,17 +715,33 @@ router.get('/crm-customers/:id/wecom-info', authenticateToken, async (req: Reque
   try {
     const crmCustomerId = req.params.id;
 
+    // 获取CRM客户信息（包含多UserID列表）
+    const { Customer } = await import('../../entities/Customer');
+    const crmRepo = getTenantRepo(Customer);
+    const crmCustomer = await crmRepo.findOne({ where: { id: crmCustomerId } });
+
     const customerRepo = getTenantRepo(WecomCustomer);
-    const wecomCustomers = await customerRepo.find({
-      where: { crmCustomerId }
-    });
+
+    // 通过 crmCustomerId 关联查找 + 通过多UserID列表查找
+    let wecomCustomers = await customerRepo.find({ where: { crmCustomerId } });
+
+    // 也查找多UserID列表中的企微客户
+    const multiIds = Array.isArray(crmCustomer?.wecomExternalUserids) ? crmCustomer.wecomExternalUserids : [];
+    if (multiIds.length > 0) {
+      for (const uid of multiIds) {
+        const found = await customerRepo.findOne({ where: { externalUserId: uid } });
+        if (found && !wecomCustomers.find(w => w.id === found.id)) {
+          wecomCustomers.push(found);
+        }
+      }
+    }
 
     if (wecomCustomers.length === 0) {
       return res.json({
         success: true,
         data: {
           bound: false,
-          wecomExternalUserid: null,
+          wecomExternalUserid: crmCustomer?.wecomExternalUserid || null,
           boundWecomAccounts: 0,
           tags: [],
           lastChatSummary: null,
@@ -539,11 +759,6 @@ router.get('/crm-customers/:id/wecom-info', authenticateToken, async (req: Reque
         return [];
       }
     })();
-
-    // 获取CRM客户的USID
-    const { Customer } = await import('../../entities/Customer');
-    const crmRepo = getTenantRepo(Customer);
-    const crmCustomer = await crmRepo.findOne({ where: { id: crmCustomerId } });
 
     res.json({
       success: true,
@@ -625,6 +840,221 @@ router.put('/crm-customers/:id/wecom-usid', authenticateToken, async (req: Reque
       return res.status(409).json({ success: false, message: '该USID已被其他客户使用' });
     }
     res.status(500).json({ success: false, message: '更新USID失败' });
+  }
+});
+
+// ==================== 多UserID管理 ====================
+
+/**
+ * 获取CRM客户的所有企微UserID
+ */
+router.get('/crm-customers/:id/wecom-userids', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const crmCustomerId = req.params.id;
+    const { Customer } = await import('../../entities/Customer');
+    const crmRepo = getTenantRepo(Customer);
+    const customer = await crmRepo.findOne({ where: { id: crmCustomerId } });
+    if (!customer) {
+      return res.status(404).json({ success: false, message: 'CRM客户不存在' });
+    }
+
+    const userids: string[] = [];
+    if (customer.wecomExternalUserid) userids.push(customer.wecomExternalUserid);
+    if (Array.isArray(customer.wecomExternalUserids)) {
+      for (const uid of customer.wecomExternalUserids) {
+        if (uid && !userids.includes(uid)) userids.push(uid);
+      }
+    }
+
+    res.json({ success: true, data: { userids } });
+  } catch (error: any) {
+    log.error('[Wecom] Get CRM customer userids error:', error.message);
+    res.status(500).json({ success: false, message: '获取UserID列表失败' });
+  }
+});
+
+/**
+ * 添加企微UserID到CRM客户
+ */
+router.post('/crm-customers/:id/wecom-userids', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const crmCustomerId = req.params.id;
+    const { wecomExternalUserid } = req.body;
+
+    if (!wecomExternalUserid || typeof wecomExternalUserid !== 'string' || wecomExternalUserid.trim().length === 0) {
+      return res.status(400).json({ success: false, message: 'UserID不能为空' });
+    }
+    const newUsid = wecomExternalUserid.trim();
+    if (newUsid.length > 100) {
+      return res.status(400).json({ success: false, message: 'UserID长度不能超过100个字符' });
+    }
+
+    const { Customer } = await import('../../entities/Customer');
+    const crmRepo = getTenantRepo(Customer);
+    const customer = await crmRepo.findOne({ where: { id: crmCustomerId } });
+    if (!customer) {
+      return res.status(404).json({ success: false, message: 'CRM客户不存在' });
+    }
+
+    // 检查是否已存在
+    const existingIds: string[] = [];
+    if (customer.wecomExternalUserid) existingIds.push(customer.wecomExternalUserid);
+    if (Array.isArray(customer.wecomExternalUserids)) {
+      existingIds.push(...customer.wecomExternalUserids);
+    }
+    if (existingIds.includes(newUsid)) {
+      return res.status(409).json({ success: false, message: '该UserID已存在' });
+    }
+
+    // 检查租户内唯一性（不能被其他客户占用）
+    const otherCustomer = await crmRepo.createQueryBuilder('c')
+      .where('c.id != :id', { id: crmCustomerId })
+      .andWhere('(c.wecom_external_userid = :usid OR JSON_CONTAINS(c.wecom_external_userids, :usidJson))', {
+        usid: newUsid,
+        usidJson: JSON.stringify(newUsid)
+      })
+      .getOne();
+    if (otherCustomer) {
+      return res.status(409).json({ success: false, message: `该UserID已被客户「${otherCustomer.name}」使用` });
+    }
+
+    // 添加到列表
+    if (!customer.wecomExternalUserid) {
+      customer.wecomExternalUserid = newUsid;
+    }
+    const currentList = Array.isArray(customer.wecomExternalUserids) ? [...customer.wecomExternalUserids] : [];
+    if (!currentList.includes(newUsid) && newUsid !== customer.wecomExternalUserid) {
+      currentList.push(newUsid);
+    } else if (newUsid === customer.wecomExternalUserid && !currentList.includes(newUsid)) {
+      // 主USID已设为该值，确保也在列表中
+    }
+    // 确保主USID也在列表中
+    if (customer.wecomExternalUserid && !currentList.includes(customer.wecomExternalUserid)) {
+      currentList.unshift(customer.wecomExternalUserid);
+    }
+    if (!currentList.includes(newUsid)) {
+      currentList.push(newUsid);
+    }
+    customer.wecomExternalUserids = currentList;
+    await crmRepo.save(customer);
+
+    // 同步关联: 找到对应的企微客户并自动关联
+    const wecomCustomerRepo = getTenantRepo(WecomCustomer);
+    const wecomCustomer = await wecomCustomerRepo.findOne({ where: { externalUserId: newUsid } });
+    if (wecomCustomer && !wecomCustomer.crmCustomerId) {
+      wecomCustomer.crmCustomerId = crmCustomerId;
+      await wecomCustomerRepo.save(wecomCustomer);
+    }
+
+    res.json({ success: true, message: 'UserID添加成功', data: { userids: customer.wecomExternalUserids } });
+  } catch (error: any) {
+    log.error('[Wecom] Add CRM customer userid error:', error.message, error.stack);
+    res.status(500).json({ success: false, message: '添加UserID失败' });
+  }
+});
+
+/**
+ * 删除CRM客户的某个企微UserID
+ */
+router.delete('/crm-customers/:id/wecom-userids/:usid', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const crmCustomerId = req.params.id;
+    const usidToRemove = decodeURIComponent(req.params.usid);
+
+    const { Customer } = await import('../../entities/Customer');
+    const crmRepo = getTenantRepo(Customer);
+    const customer = await crmRepo.findOne({ where: { id: crmCustomerId } });
+    if (!customer) {
+      return res.status(404).json({ success: false, message: 'CRM客户不存在' });
+    }
+
+    let currentList = Array.isArray(customer.wecomExternalUserids) ? [...customer.wecomExternalUserids] : [];
+    currentList = currentList.filter(uid => uid !== usidToRemove);
+    customer.wecomExternalUserids = currentList.length > 0 ? currentList : null as any;
+
+    // 如果删除的是主USID，更换为列表中的下一个
+    if (customer.wecomExternalUserid === usidToRemove) {
+      customer.wecomExternalUserid = currentList.length > 0 ? currentList[0] : null as any;
+    }
+    await crmRepo.save(customer);
+
+    // 解除对应企微客户的关联
+    const wecomCustomerRepo = getTenantRepo(WecomCustomer);
+    const wecomCustomer = await wecomCustomerRepo.findOne({ where: { externalUserId: usidToRemove, crmCustomerId } });
+    if (wecomCustomer) {
+      wecomCustomer.crmCustomerId = null as any;
+      await wecomCustomerRepo.save(wecomCustomer);
+    }
+
+    res.json({ success: true, message: 'UserID删除成功', data: { userids: customer.wecomExternalUserids || [] } });
+  } catch (error: any) {
+    log.error('[Wecom] Delete CRM customer userid error:', error.message, error.stack);
+    res.status(500).json({ success: false, message: '删除UserID失败' });
+  }
+});
+
+/**
+ * 修改CRM客户的某个企微UserID
+ */
+router.put('/crm-customers/:id/wecom-userids/:usid', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const crmCustomerId = req.params.id;
+    const oldUsid = decodeURIComponent(req.params.usid);
+    const { newWecomExternalUserid } = req.body;
+
+    if (!newWecomExternalUserid || typeof newWecomExternalUserid !== 'string' || newWecomExternalUserid.trim().length === 0) {
+      return res.status(400).json({ success: false, message: '新UserID不能为空' });
+    }
+    const newUsid = newWecomExternalUserid.trim();
+
+    const { Customer } = await import('../../entities/Customer');
+    const crmRepo = getTenantRepo(Customer);
+    const customer = await crmRepo.findOne({ where: { id: crmCustomerId } });
+    if (!customer) {
+      return res.status(404).json({ success: false, message: 'CRM客户不存在' });
+    }
+
+    // 检查新值唯一性
+    const otherCustomer = await crmRepo.createQueryBuilder('c')
+      .where('c.id != :id', { id: crmCustomerId })
+      .andWhere('(c.wecom_external_userid = :usid OR JSON_CONTAINS(c.wecom_external_userids, :usidJson))', {
+        usid: newUsid,
+        usidJson: JSON.stringify(newUsid)
+      })
+      .getOne();
+    if (otherCustomer) {
+      return res.status(409).json({ success: false, message: `该UserID已被客户「${otherCustomer.name}」使用` });
+    }
+
+    let currentList = Array.isArray(customer.wecomExternalUserids) ? [...customer.wecomExternalUserids] : [];
+    const idx = currentList.indexOf(oldUsid);
+    if (idx >= 0) {
+      currentList[idx] = newUsid;
+    }
+    customer.wecomExternalUserids = currentList;
+
+    if (customer.wecomExternalUserid === oldUsid) {
+      customer.wecomExternalUserid = newUsid;
+    }
+    await crmRepo.save(customer);
+
+    // 解除旧关联，建立新关联
+    const wecomCustomerRepo = getTenantRepo(WecomCustomer);
+    const oldWecom = await wecomCustomerRepo.findOne({ where: { externalUserId: oldUsid, crmCustomerId } });
+    if (oldWecom) {
+      oldWecom.crmCustomerId = null as any;
+      await wecomCustomerRepo.save(oldWecom);
+    }
+    const newWecom = await wecomCustomerRepo.findOne({ where: { externalUserId: newUsid } });
+    if (newWecom && !newWecom.crmCustomerId) {
+      newWecom.crmCustomerId = crmCustomerId;
+      await wecomCustomerRepo.save(newWecom);
+    }
+
+    res.json({ success: true, message: 'UserID修改成功', data: { userids: customer.wecomExternalUserids } });
+  } catch (error: any) {
+    log.error('[Wecom] Update CRM customer userid error:', error.message, error.stack);
+    res.status(500).json({ success: false, message: '修改UserID失败' });
   }
 });
 

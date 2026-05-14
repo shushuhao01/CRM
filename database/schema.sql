@@ -241,6 +241,7 @@ CREATE TABLE `customers` (
   `sales_person_id` VARCHAR(50) COMMENT '销售员ID',
   `sales_person_name` VARCHAR(50) COMMENT '销售员姓名',
   `wecom_external_userid` VARCHAR(100) NULL COMMENT '客户唯一企微编码(USID)',
+  `wecom_external_userids` JSON NULL COMMENT '多企微UserID列表',
   `star_rating` INT DEFAULT 0 NULL COMMENT '手动星级评分(1-5)',
   `final_score` INT DEFAULT 0 NULL COMMENT '综合评分(0-100)',
   `created_by` VARCHAR(50) NOT NULL COMMENT '创建人ID',

@@ -55,26 +55,60 @@
         <div class="preview-card">
           <div class="card-title">📝 新建客户</div>
           <div class="qo-new-form">
+            <!-- 手机号 + 验证按钮 -->
             <div class="form-group">
               <label>手机号 <span class="qo-req">*</span></label>
-              <input v-model="newCust.phone" placeholder="输入客户手机号" class="preview-input" @blur="checkPhone" />
-              <div v-if="phoneExists" class="qo-field-hint warn">⚠ 该手机号已存在客户，<span class="action-link" @click="useExistingCustomer">点击使用</span></div>
+              <div style="display:flex;gap:6px">
+                <input v-model="newCust.phone" placeholder="输入客户手机号" class="preview-input" style="flex:1" />
+                <button class="verify-btn" :disabled="!newCust.phone || newCust.phone.length < 11 || phoneChecking" @click="verifyPhone">{{ phoneChecking ? '验证中' : '验证' }}</button>
+              </div>
+              <div v-if="phoneVerifyResult === 'ok'" class="qo-field-hint ok">✅ 可创建</div>
+              <div v-else-if="phoneVerifyResult === 'exists'" class="qo-field-hint warn">⚠ 该客户已存在，归属：{{ phoneExistOwner }} <span class="action-link" @click="useExistingCustomer">直接使用</span></div>
             </div>
+            <!-- 客户姓名 -->
             <div class="form-group">
               <label>客户姓名 <span class="qo-req">*</span></label>
               <input v-model="newCust.name" placeholder="输入客户姓名" class="preview-input" />
             </div>
-            <div class="form-group">
-              <label>性别</label>
+            <!-- 性别 -->
+            <div class="form-group" v-if="isCustFieldEnabled('gender')">
+              <label>性别 <span class="qo-req" v-if="isCustFieldRequired('gender')">*</span></label>
               <div class="qo-radio-group">
                 <span class="qo-radio" :class="{ active: newCust.gender === '男' }" @click="newCust.gender = '男'">男</span>
                 <span class="qo-radio" :class="{ active: newCust.gender === '女' }" @click="newCust.gender = '女'">女</span>
               </div>
             </div>
-            <div class="form-group">
-              <label>收货地址</label>
-              <input v-model="newCust.address" placeholder="收货地址" class="preview-input" />
+            <!-- 年龄 -->
+            <div class="form-group" v-if="isCustFieldEnabled('age')">
+              <label>年龄 <span class="qo-req" v-if="isCustFieldRequired('age')">*</span></label>
+              <input v-model.number="newCust.age" placeholder="年龄" class="preview-input" type="number" />
             </div>
+            <!-- 来源 -->
+            <div class="form-group" v-if="isCustFieldEnabled('source')">
+              <label>客户来源 <span class="qo-req" v-if="isCustFieldRequired('source')">*</span></label>
+              <select v-model="newCust.source" class="preview-input">
+                <option value="">请选择</option>
+                <option value="wecom">企微</option><option value="wechat">微信</option>
+                <option value="phone">电话</option><option value="douyin">抖音</option>
+                <option value="referral">转介绍</option><option value="other">其他</option>
+              </select>
+            </div>
+            <!-- 收货地址 -->
+            <div class="form-group" v-if="isCustFieldEnabled('address')">
+              <label>收货地址 <span class="qo-req" v-if="isCustFieldRequired('address')">*</span></label>
+              <input v-model="newCust.address" placeholder="省市区+详细地址" class="preview-input" />
+            </div>
+            <!-- 系统自定义客户字段 -->
+            <template v-if="customerFieldConfig.customFields?.length">
+              <div class="form-group" v-for="cf in customerFieldConfig.customFields" :key="cf.fieldKey">
+                <label>{{ cf.fieldName }} <span class="qo-req" v-if="cf.required">*</span></label>
+                <select v-if="cf.fieldType === 'select'" v-model="newCust.customFields[cf.fieldKey]" class="preview-input">
+                  <option value="">请选择</option>
+                  <option v-for="opt in (cf.options || [])" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+                </select>
+                <input v-else v-model="newCust.customFields[cf.fieldKey]" class="preview-input" :placeholder="cf.placeholder || '请输入' + cf.fieldName" />
+              </div>
+            </template>
           </div>
           <div class="qo-new-actions">
             <button class="preview-btn" :disabled="newCustSaving" @click="saveNewCustomer">
@@ -210,13 +244,7 @@
           <label>订单来源 <span class="qo-req">*</span></label>
           <select v-model="form.orderSource" class="preview-input">
             <option value="">请选择</option>
-            <option value="wecom">企微</option>
-            <option value="wechat">微信</option>
-            <option value="phone">电话</option>
-            <option value="douyin">抖音</option>
-            <option value="referral">转介绍</option>
-            <option value="offline">线下</option>
-            <option value="other">其他</option>
+            <option v-for="opt in orderSourceOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
           </select>
         </div>
         <div class="form-group">
@@ -238,6 +266,18 @@
           <label>订单备注</label>
           <input v-model="form.remark" class="preview-input" placeholder="选填备注信息" />
         </div>
+        <!-- 系统自定义订单字段 -->
+        <template v-if="orderCustomFields.length">
+          <div class="form-group" v-for="cf in orderCustomFields" :key="cf.fieldKey">
+            <label>{{ cf.fieldName }} <span class="qo-req" v-if="cf.required">*</span></label>
+            <select v-if="cf.fieldType === 'select'" v-model="form.customFields[cf.fieldKey]" class="preview-input">
+              <option value="">请选择</option>
+              <option v-for="opt in (cf.options || [])" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+            </select>
+            <input v-else-if="cf.fieldType === 'number'" v-model.number="form.customFields[cf.fieldKey]" class="preview-input" type="number" :placeholder="cf.placeholder || '请输入'" />
+            <input v-else v-model="form.customFields[cf.fieldKey]" class="preview-input" :placeholder="cf.placeholder || '请输入' + cf.fieldName" />
+          </div>
+        </template>
         <button class="preview-btn" @click="goToConfirm" style="margin-top:8px">下一步：确认订单</button>
       </div>
     </div>
@@ -379,9 +419,44 @@ const submitting = ref(false)
 const resultOrderNo = ref('')
 const newCustSaving = ref(false)
 const phoneExists = ref(false)
+const phoneChecking = ref(false)
+const phoneVerifyResult = ref<'' | 'ok' | 'exists'>('')
+const phoneExistOwner = ref('')
 const existingCustomer = ref<any>(null)
 
-const newCust = ref({ phone: '', name: '', gender: '', address: '' })
+const newCust = ref({ phone: '', name: '', gender: '', address: '', age: null as number | null, source: 'wecom', customFields: {} as Record<string, any> })
+
+function isCustFieldEnabled(key: string): boolean {
+  const vis = customerFieldConfig.value?.fieldVisibility?.[key]
+  return vis ? vis.enabled !== false : true
+}
+function isCustFieldRequired(key: string): boolean {
+  const vis = customerFieldConfig.value?.fieldVisibility?.[key]
+  return vis?.required === true
+}
+
+async function verifyPhone() {
+  if (!newCust.value.phone || newCust.value.phone.length < 11) return
+  phoneChecking.value = true
+  phoneVerifyResult.value = ''
+  try {
+    const res: any = await request.get('/wecom/sidebar/check-phone', {
+      params: { phone: newCust.value.phone },
+      ...authHeaders.value
+    } as any)
+    if (res?.data) {
+      phoneVerifyResult.value = 'exists'
+      phoneExistOwner.value = res.data.salesPersonName || res.data.name || '其他成员'
+      existingCustomer.value = res.data
+      phoneExists.value = true
+    } else {
+      phoneVerifyResult.value = 'ok'
+      phoneExists.value = false
+      existingCustomer.value = null
+    }
+  } catch { phoneVerifyResult.value = '' }
+  phoneChecking.value = false
+}
 
 const form = ref({
   customerId: '' as string | number,
@@ -399,7 +474,8 @@ const form = ref({
   orderSource: '',
   expressCompany: '',
   markType: 'normal' as 'normal' | 'reserved' | 'virtual_delivery',
-  remark: ''
+  remark: '',
+  customFields: {} as Record<string, any>
 })
 
 const paymentMethods = ref([
@@ -410,27 +486,54 @@ const paymentMethods = ref([
   { label: '其他', value: 'other' }
 ])
 
-const expressCompanyList = ref([
-  { code: 'SF', name: '顺丰速运' },
-  { code: 'YD', name: '韵达速递' },
-  { code: 'ZTO', name: '中通快递' },
-  { code: 'YTO', name: '圆通速递' },
-  { code: 'STO', name: '申通快递' },
-  { code: 'JTSD', name: '极兔速递' },
-  { code: 'JD', name: '京东物流' },
-  { code: 'EMS', name: 'EMS' },
-  { code: 'DB', name: '德邦快递' }
-])
+const expressCompanyList = ref<any[]>([])
+const orderSourceOptions = ref<any[]>([])
+const orderCustomFields = ref<any[]>([])
+const customerFieldConfig = ref<any>({})
 
-const orderSourceOptions = [
-  { label: '企微', value: 'wecom' },
-  { label: '微信', value: 'wechat' },
-  { label: '电话', value: 'phone' },
-  { label: '抖音', value: 'douyin' },
-  { label: '转介绍', value: 'referral' },
-  { label: '线下', value: 'offline' },
-  { label: '其他', value: 'other' }
-]
+async function loadSystemConfigs() {
+  try {
+    const [orderCfg, expressCfg, custCfg] = await Promise.all([
+      request.get('/wecom/sidebar/order-field-config', authHeaders.value as any).catch(() => null),
+      request.get('/wecom/sidebar/express-companies', authHeaders.value as any).catch(() => null),
+      request.get('/wecom/sidebar/customer-field-config', authHeaders.value as any).catch(() => null)
+    ])
+    // 订单来源选项
+    const oCfg = orderCfg?.data || orderCfg || {}
+    if (oCfg?.orderSource?.options?.length) {
+      orderSourceOptions.value = oCfg.orderSource.options
+    }
+    if (oCfg?.customFields?.length) {
+      orderCustomFields.value = oCfg.customFields.filter((f: any) => f.fieldKey && f.fieldName)
+    }
+    // 快递公司
+    const eCfg = expressCfg?.data || expressCfg || []
+    if (Array.isArray(eCfg) && eCfg.length > 0) {
+      expressCompanyList.value = eCfg
+    }
+    // 客户配置
+    const cCfg = custCfg?.data || custCfg || {}
+    if (cCfg.fieldVisibility || cCfg.customFields) {
+      customerFieldConfig.value = cCfg
+    }
+  } catch { /* ignore */ }
+  // 兜底默认值
+  if (!orderSourceOptions.value.length) {
+    orderSourceOptions.value = [
+      { label: '企微', value: 'wecom' }, { label: '微信', value: 'wechat' },
+      { label: '电话', value: 'phone' }, { label: '抖音', value: 'douyin' },
+      { label: '转介绍', value: 'referral' }, { label: '线下', value: 'offline' }, { label: '其他', value: 'other' }
+    ]
+  }
+  if (!expressCompanyList.value.length) {
+    expressCompanyList.value = [
+      { code: 'SF', name: '顺丰速运' }, { code: 'YTO', name: '圆通速递' },
+      { code: 'ZTO', name: '中通快递' }, { code: 'YD', name: '韵达速递' },
+      { code: 'STO', name: '申通快递' }, { code: 'JTSD', name: '极兔速递' }
+    ]
+  }
+}
+
 
 // ========== 计算属性 ==========
 const subtotal = computed(() => form.value.products.reduce((sum, p) => sum + p.price * p.quantity, 0))
@@ -754,6 +857,7 @@ const initProducts = async () => {
 
 // ========== 生命周期 ==========
 onMounted(() => {
+  loadSystemConfigs()
   initProducts()
   autoFillCustomer()
   document.addEventListener('paste', handleGlobalPaste)
@@ -826,6 +930,10 @@ select.preview-input { appearance: auto; }
 .qo-req { color: #f56c6c; font-weight: 700; }
 .qo-field-hint { font-size: 10px; margin-top: 2px; }
 .qo-field-hint.warn { color: #e6a23c; }
+.qo-field-hint.ok { color: #67c23a; }
+.verify-btn { padding: 6px 12px; border: 1px solid #07c160; border-radius: 6px; background: #fff; color: #07c160; font-size: 12px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+.verify-btn:hover { background: #f0fdf4; }
+.verify-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
 /* 已选客户 */
 .qo-selected-cust-bar { display: flex; justify-content: space-between; align-items: center; font-size: 13px; font-weight: 500; color: #303133; padding: 6px 0; border-bottom: 1px solid #f0f0f0; }

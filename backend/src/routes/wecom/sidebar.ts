@@ -1136,6 +1136,10 @@ router.get('/sidebar/search-customers', authenticateSidebarToken, async (req: Re
 /**
  * 侧边栏 - 关联CRM客户
  * 将企微客户关联到CRM客户
+ * 关联唯一性规则：
+ * - 一个企微客户只能关联一个CRM客户
+ * - 若CRM客户只有单个UserID（未在详情页添加多个），则新关联会自动解绑之前的企微客户
+ * - 若CRM客户有多个UserID，则允许多个企微客户同时关联
  */
 router.post('/sidebar/link-crm-customer', authenticateSidebarToken, async (req: Request, res: Response) => {
   try {
@@ -1157,6 +1161,39 @@ router.post('/sidebar/link-crm-customer', authenticateSidebarToken, async (req: 
     const crmCustomer = await customerRepo.findOne({ where: { id: crmCustomerId, tenantId } });
     if (!crmCustomer) return res.status(404).json({ success: false, message: '未找到CRM客户' });
 
+    // 关联唯一性检查：
+    // 检查CRM客户是否配置了多UserID
+    const multiUserIds = Array.isArray(crmCustomer.wecomExternalUserids) ? crmCustomer.wecomExternalUserids : [];
+    const hasMultiUserIds = multiUserIds.length > 1;
+
+    if (!hasMultiUserIds) {
+      // 单UserID模式：先解绑之前关联该CRM客户的其他企微客户
+      const previouslyLinked = await wecomCustomerRepo.find({
+        where: { crmCustomerId, ...(tenantId ? { tenantId } : {}) }
+      });
+      for (const prev of previouslyLinked) {
+        if (prev.externalUserId !== String(externalUserId)) {
+          prev.crmCustomerId = null as any;
+          await wecomCustomerRepo.save(prev);
+          log.info(`[Wecom Sidebar] Auto-unlinked wecom customer ${prev.externalUserId} from CRM ${crmCustomerId} (unique binding)`);
+        }
+      }
+    } else {
+      // 多UserID模式：检查当前UserID是否在允许列表中
+      if (!multiUserIds.includes(String(externalUserId))) {
+        // 不在多ID列表中，按唯一模式处理：解绑不在列表中的旧关联
+        const previouslyLinked = await wecomCustomerRepo.find({
+          where: { crmCustomerId, ...(tenantId ? { tenantId } : {}) }
+        });
+        for (const prev of previouslyLinked) {
+          if (!multiUserIds.includes(prev.externalUserId) && prev.externalUserId !== String(externalUserId)) {
+            prev.crmCustomerId = null as any;
+            await wecomCustomerRepo.save(prev);
+          }
+        }
+      }
+    }
+
     // 更新关联
     wecomCustomer.crmCustomerId = crmCustomerId;
     await wecomCustomerRepo.save(wecomCustomer);
@@ -1164,8 +1201,14 @@ router.post('/sidebar/link-crm-customer', authenticateSidebarToken, async (req: 
     // 同时更新CRM客户的企微USID
     if (!crmCustomer.wecomExternalUserid) {
       crmCustomer.wecomExternalUserid = wecomCustomer.externalUserId;
-      await customerRepo.save(crmCustomer);
     }
+    // 将新UserID加入多ID列表
+    const currentIds = Array.isArray(crmCustomer.wecomExternalUserids) ? [...crmCustomer.wecomExternalUserids] : [];
+    if (!currentIds.includes(String(externalUserId))) {
+      currentIds.push(String(externalUserId));
+      crmCustomer.wecomExternalUserids = currentIds;
+    }
+    await customerRepo.save(crmCustomer);
 
     res.json({ success: true, message: '关联成功' });
   } catch (error: any) {
