@@ -300,46 +300,39 @@ async function sdkSend(payload: any): Promise<boolean> {
 
 /** 点击发送图标：通过企微JS-SDK发送到当前聊天对话框 */
 async function handleSend(script: any) {
-  try { await request.post(`/wecom/sidebar/scripts/${script.id}/use`, {}, authHeaders.value as any) } catch { /* ignore */ }
+  try { await request.post(`/wecom/sidebar/scripts/${script.id}/use`, {}, authHeaders.value as any).catch(() => {}) } catch { /* ignore */ }
 
   let sent = false
 
-  // 有图片附件：先发文字，再发图片
-  if (script.attachments?.length > 0 && script.attachments[0]?.type?.startsWith('image/')) {
-    const firstAtt = script.attachments[0]
-    const imgUrl = firstAtt.url?.startsWith('http') ? firstAtt.url : `${window.location.origin}${firstAtt.url}`
+  try {
+    // 有图片附件：先发文字，再尝试发图片
+    if (script.attachments?.length > 0 && script.attachments[0]?.type?.startsWith('image/')) {
+      const firstAtt = script.attachments[0]
+      const imgUrl = firstAtt.url?.startsWith('http') ? firstAtt.url : `${window.location.origin}${firstAtt.url}`
 
-    // 步骤1：发送文字内容
-    if (script.content) {
+      // 步骤1：发送文字内容
+      if (script.content) {
+        sent = await sdkSend({ msgtype: 'text', text: { content: script.content } })
+      }
+
+      // 步骤2：尝试获取图片mediaId并发送图片
+      try {
+        const mediaRes: any = await request.post('/wecom/sidebar/upload-image-media', { imageUrl: imgUrl }, { ...authHeaders.value, showError: false } as any)
+        const mediaId = mediaRes?.data?.mediaId || mediaRes?.mediaId
+        if (mediaId) {
+          const imgSent = await sdkSend({ msgtype: 'image', image: { mediaid: mediaId } })
+          if (imgSent) sent = true
+        }
+      } catch {
+        // 图片上传失败不影响文字发送的成功状态
+        console.warn('[Scripts] 图片mediaId获取失败，仅发送文字')
+      }
+    } else {
+      // 纯文本话术
       sent = await sdkSend({ msgtype: 'text', text: { content: script.content } })
     }
-
-    // 步骤2：获取图片mediaId并发送图片
-    try {
-      const mediaRes: any = await request.post('/wecom/sidebar/upload-image-media', { imageUrl: imgUrl }, authHeaders.value as any)
-      const mediaId = mediaRes?.data?.mediaId || mediaRes?.mediaId
-      if (mediaId) {
-        const imgSent = await sdkSend({ msgtype: 'image', image: { mediaid: mediaId } })
-        if (imgSent) sent = true
-      } else {
-        // mediaId获取失败，降级为news图文
-        const newsSent = await sdkSend({
-          msgtype: 'news',
-          news: { link: imgUrl, title: script.title || '话术', desc: script.content || '', imgUrl }
-        })
-        if (newsSent) sent = true
-      }
-    } catch (e: any) {
-      console.warn('[Scripts] 图片上传失败，降级为news:', e?.message)
-      const newsSent = await sdkSend({
-        msgtype: 'news',
-        news: { link: imgUrl, title: script.title || '话术', desc: script.content || '', imgUrl }
-      })
-      if (newsSent) sent = true
-    }
-  } else {
-    // 纯文本话术
-    sent = await sdkSend({ msgtype: 'text', text: { content: script.content } })
+  } catch (e: any) {
+    console.warn('[Scripts] handleSend异常:', e?.message)
   }
 
   if (sent) { ElMessage.success('已发送') }
