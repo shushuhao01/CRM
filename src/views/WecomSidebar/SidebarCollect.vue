@@ -264,7 +264,7 @@ async function trySend(payload: any): Promise<'sent' | 'cancel' | 'failed'> {
   const ww = (window as any).ww
   const wx = (window as any).wx || (window as any).jWeixin
 
-  // ww.sendChatMessage
+  // 方式1：新版SDK ww.sendChatMessage
   if (ww && typeof ww.sendChatMessage === 'function') {
     try {
       await ww.sendChatMessage(payload)
@@ -273,12 +273,18 @@ async function trySend(payload: any): Promise<'sent' | 'cancel' | 'failed'> {
       if (/cancel/i.test(e?.message || e?.errMsg || '')) return 'cancel'
       console.warn('[Collect] ww.sendChatMessage失败:', e?.message)
     }
+    // ★ ww存在时不再尝试wx.invoke：在ww模式下wx未经过config/agentConfig，
+    //   wx.invoke的回调可能永远不触发，导致Promise挂起
+    return 'failed'
   }
-  // wx.invoke（无超时，使用正确的reject模式）
+
+  // 方式2：旧版SDK wx.invoke（仅在ww不可用时使用，加超时防止挂起）
   if (wx && typeof wx.invoke === 'function') {
     try {
       await new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error('wx.invoke timeout')), 5000)
         wx.invoke('sendChatMessage', payload, (res: any) => {
+          clearTimeout(timer)
           if (res?.err_msg?.indexOf('ok') > -1) resolve()
           else if (/cancel/i.test(res?.err_msg || '')) reject(new Error('cancel'))
           else reject(new Error(res?.err_msg || 'failed'))
@@ -303,6 +309,7 @@ const handleSend = async () => {
 
     // 第一步：尝试发送主payload（miniprogram或news）
     let result = await trySend(preGeneratedPayload.value)
+    let degraded = false
 
     if (result === 'cancel') { ElMessage.info('已取消发送'); sending.value = false; return }
 
@@ -311,10 +318,24 @@ const handleSend = async () => {
       console.log('[Collect] miniprogram发送失败，降级为news卡片')
       result = await trySend(fallbackPayload.value)
       if (result === 'cancel') { ElMessage.info('已取消发送'); sending.value = false; return }
+      if (result === 'sent') degraded = true
+    }
+
+    // 第三步：如果仍然失败，等待SDK就绪后重试一次（处理SDK初始化时序问题）
+    if (result === 'failed') {
+      console.warn('[Collect] 首次发送失败，等待2秒后重试...')
+      await new Promise(r => setTimeout(r, 2000))
+      result = await trySend(fallbackPayload.value || preGeneratedPayload.value)
+      if (result === 'cancel') { ElMessage.info('已取消发送'); sending.value = false; return }
+      if (result === 'sent' && preGeneratedPayload.value.msgtype === 'miniprogram') degraded = true
     }
 
     if (result === 'sent') {
-      ElMessage.success('卡片已发送')
+      if (degraded) {
+        ElMessage.warning('小程序卡片发送失败，已降级发送H5链接卡片')
+      } else {
+        ElMessage.success('卡片已发送')
+      }
     } else {
       const ua = navigator.userAgent.toLowerCase()
       if (!ua.includes('wxwork') && !ua.includes('wechat')) {
