@@ -220,7 +220,7 @@ const generateCard = async (showMsg = true) => {
     const title = data.title || defaultTitle
 
     const mpAppId = data.appId || ''
-    const mpPage = data.path || `/pages/form/form?tenantId=${tenantId}&memberId=${memberId}&ts=${ts}&sign=${data.sign || ''}&externalUserId=${extUserId}`
+    const mpPage = data.path || `/pages/form/form.html?tenantId=${tenantId}&memberId=${memberId}&ts=${ts}&sign=${data.sign || ''}&externalUserId=${extUserId}`
     const h5FormUrl = `${window.location.origin}/wecom-form.html?tenantId=${tenantId}&memberId=${memberId}&ts=${ts}&sign=${data.sign || ''}&externalUserId=${extUserId}&appId=${mpAppId}`
 
     // 根据用户选择的发送模式构建主payload
@@ -274,13 +274,11 @@ async function trySend(payload: any): Promise<'sent' | 'cancel' | 'failed'> {
       console.warn('[Collect] ww.sendChatMessage失败:', e?.message)
     }
   }
-  // wx.invoke
+  // wx.invoke（无超时，使用正确的reject模式）
   if (wx && typeof wx.invoke === 'function') {
     try {
       await new Promise<void>((resolve, reject) => {
-        const timer = setTimeout(() => resolve(), 3000)
         wx.invoke('sendChatMessage', payload, (res: any) => {
-          clearTimeout(timer)
           if (res?.err_msg?.indexOf('ok') > -1) resolve()
           else if (/cancel/i.test(res?.err_msg || '')) reject(new Error('cancel'))
           else reject(new Error(res?.err_msg || 'failed'))
@@ -303,28 +301,20 @@ const handleSend = async () => {
     if (!preGeneratedPayload.value) await generateCard(false)
     if (!preGeneratedPayload.value) { ElMessage.warning('卡片生成失败'); sending.value = false; return }
 
-    // 发送主payload
-    const result = await trySend(preGeneratedPayload.value)
+    // 第一步：尝试发送主payload（miniprogram或news）
+    let result = await trySend(preGeneratedPayload.value)
 
     if (result === 'cancel') { ElMessage.info('已取消发送'); sending.value = false; return }
 
+    // 第二步：如果主payload是miniprogram且失败了，降级为news
+    if (result === 'failed' && preGeneratedPayload.value.msgtype === 'miniprogram' && fallbackPayload.value) {
+      console.log('[Collect] miniprogram发送失败，降级为news卡片')
+      result = await trySend(fallbackPayload.value)
+      if (result === 'cancel') { ElMessage.info('已取消发送'); sending.value = false; return }
+    }
+
     if (result === 'sent') {
-      ElMessage.success(preGeneratedPayload.value.msgtype === 'miniprogram' ? '小程序卡片已发送' : 'H5卡片已发送')
-    } else if (fallbackPayload.value && fallbackPayload.value !== preGeneratedPayload.value) {
-      // 主payload失败，尝试降级发送
-      console.warn('[Collect] 主payload发送失败，尝试降级发送H5卡片')
-      const fallbackResult = await trySend(fallbackPayload.value)
-      if (fallbackResult === 'cancel') { ElMessage.info('已取消发送'); sending.value = false; return }
-      if (fallbackResult === 'sent') {
-        ElMessage.success('已降级发送H5卡片')
-      } else {
-        const ua = navigator.userAgent.toLowerCase()
-        if (!ua.includes('wxwork') && !ua.includes('wechat')) {
-          ElMessage.warning('当前非企微客户端环境，请在企业微信中打开')
-        } else {
-          ElMessage.warning('发送失败，请刷新页面后重试')
-        }
-      }
+      ElMessage.success('卡片已发送')
     } else {
       const ua = navigator.userAgent.toLowerCase()
       if (!ua.includes('wxwork') && !ua.includes('wechat')) {

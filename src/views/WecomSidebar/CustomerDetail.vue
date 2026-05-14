@@ -1404,50 +1404,55 @@ async function handleSendFormCard() {
     const title = data.title || '请填写您的个人资料'
     const imgUrl = data.imageUrl || `${window.location.origin}/填写个人资料.png`
     const sign = data.sign || ''
-    const mpPage = data.path || `/pages/form/form?tenantId=${tenantId}&memberId=${memberId}&ts=${ts}&sign=${sign}&externalUserId=${extUserId}`
+    const mpPage = data.path || `/pages/form/form.html?tenantId=${tenantId}&memberId=${memberId}&ts=${ts}&sign=${sign}&externalUserId=${extUserId}`
     const h5Url = `${window.location.origin}/wecom-form.html?tenantId=${tenantId}&memberId=${memberId}&ts=${ts}&sign=${sign}&externalUserId=${extUserId}&appId=${mpAppId}`
-
-    // 读取发送模式配置（和资料收集tab同步）
-    const savedMode = localStorage.getItem('wecom_collect_send_mode') || 'miniprogram'
 
     const ww = (window as any).ww
     const wx = (window as any).wx || (window as any).jWeixin
     let sent = false
 
-    const mpPayload = mpAppId ? { msgtype: 'miniprogram', miniprogram: { appid: mpAppId, title, imgUrl, page: mpPage } } : null
-    const newsPayload = { msgtype: 'news', news: { link: h5Url, title, desc: '点击填写您的基本资料，方便我们为您提供更好的服务', imgUrl } }
-
-    // 根据配置的模式决定发送顺序
-    const primaryPayload = (savedMode === 'miniprogram' && mpPayload) ? mpPayload : newsPayload
-    const fallbackPayload = (savedMode === 'miniprogram' && mpPayload) ? newsPayload : null
-
-    // 发送主payload
-    if (ww && typeof ww.sendChatMessage === 'function') {
-      try { await ww.sendChatMessage(primaryPayload); sent = true }
-      catch (e: any) { if (/cancel/i.test(e?.message || '')) { sendingFormCard.value = false; return } }
-    }
-    if (!sent && wx && typeof wx.invoke === 'function') {
-      try {
-        sent = await new Promise<boolean>((resolve) => {
-          const timer = setTimeout(() => resolve(false), 3000)
-          wx.invoke('sendChatMessage', primaryPayload, (res: any) => { clearTimeout(timer); resolve(res?.err_msg?.indexOf('ok') > -1) })
-        })
-      } catch { /* ignore */ }
-    }
-
-    // 主payload失败时降级
-    if (!sent && fallbackPayload) {
+    // 优先级1：尝试发送miniprogram卡片（需要小程序应用已关联）
+    if (mpAppId) {
+      const mpPayload = { msgtype: 'miniprogram', miniprogram: { appid: mpAppId, title, imgUrl, page: mpPage } }
       if (ww && typeof ww.sendChatMessage === 'function') {
-        try { await ww.sendChatMessage(fallbackPayload); sent = true }
+        try { await ww.sendChatMessage(mpPayload); sent = true }
         catch (e: any) { if (/cancel/i.test(e?.message || '')) { sendingFormCard.value = false; return } }
       }
       if (!sent && wx && typeof wx.invoke === 'function') {
         try {
-          sent = await new Promise<boolean>((resolve) => {
-            const timer = setTimeout(() => resolve(false), 3000)
-            wx.invoke('sendChatMessage', fallbackPayload, (res: any) => { clearTimeout(timer); resolve(res?.err_msg?.indexOf('ok') > -1) })
+          await new Promise<void>((resolve, reject) => {
+            wx.invoke('sendChatMessage', mpPayload, (res: any) => {
+              if (res?.err_msg?.indexOf('ok') > -1) resolve()
+              else if (/cancel/i.test(res?.err_msg || '')) reject(new Error('cancel'))
+              else reject(new Error(res?.err_msg || ''))
+            })
           })
-        } catch { /* ignore */ }
+          sent = true
+        } catch (e: any) {
+          if (/cancel/i.test(e?.message || '')) { sendingFormCard.value = false; return }
+          console.warn('[CustomerDetail] miniprogram发送失败，降级为news:', e?.message)
+        }
+      }
+    }
+
+    // 优先级2：降级为news（H5链接卡片）
+    if (!sent) {
+      const newsPayload = { msgtype: 'news', news: { link: h5Url, title, desc: '点击填写您的基本资料，方便我们为您提供更好的服务', imgUrl } }
+      if (ww && typeof ww.sendChatMessage === 'function') {
+        try { await ww.sendChatMessage(newsPayload); sent = true }
+        catch (e: any) { if (/cancel/i.test(e?.message || '')) { sendingFormCard.value = false; return } }
+      }
+      if (!sent && wx && typeof wx.invoke === 'function') {
+        try {
+          await new Promise<void>((resolve, reject) => {
+            wx.invoke('sendChatMessage', newsPayload, (res: any) => {
+              if (res?.err_msg?.indexOf('ok') > -1) resolve()
+              else if (/cancel/i.test(res?.err_msg || '')) reject(new Error('cancel'))
+              else reject(new Error(res?.err_msg || ''))
+            })
+          })
+          sent = true
+        } catch (e: any) { if (/cancel/i.test(e?.message || '')) { sendingFormCard.value = false; return } }
       }
     }
 
