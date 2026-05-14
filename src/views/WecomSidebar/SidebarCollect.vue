@@ -7,7 +7,7 @@
         <span class="mpc-mode-icon">{{ sendMode === 'miniprogram' ? '🟢' : '🔵' }}</span>
         <span class="mpc-mode-text">{{ sendMode === 'miniprogram' ? '小程序' : 'H5卡片' }}</span>
       </span>
-      <span class="mpc-regen-btn" @click="generateCard" title="重新生成卡片">
+      <span class="mpc-regen-btn" @click="generateCard()" title="重新生成卡片">
         <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#909399" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg>
       </span>
       <div class="mpc-hero-icon">
@@ -220,7 +220,7 @@ const generateCard = async (showMsg = true) => {
     const title = data.title || defaultTitle
 
     const mpAppId = data.appId || ''
-    const mpPage = data.path || `/pages/form/form.html?tenantId=${tenantId}&memberId=${memberId}&ts=${ts}&sign=${data.sign || ''}&externalUserId=${extUserId}`
+    const mpPage = data.path || `/pages/form/form?tenantId=${tenantId}&memberId=${memberId}&ts=${ts}&sign=${data.sign || ''}&externalUserId=${extUserId}`
     const h5FormUrl = `${window.location.origin}/wecom-form.html?tenantId=${tenantId}&memberId=${memberId}&ts=${ts}&sign=${data.sign || ''}&externalUserId=${extUserId}&appId=${mpAppId}`
 
     // 根据用户选择的发送模式构建主payload
@@ -303,20 +303,28 @@ const handleSend = async () => {
     if (!preGeneratedPayload.value) await generateCard(false)
     if (!preGeneratedPayload.value) { ElMessage.warning('卡片生成失败'); sending.value = false; return }
 
-    // 第一步：尝试发送主payload（miniprogram或news）
-    let result = await trySend(preGeneratedPayload.value)
+    // 发送主payload
+    const result = await trySend(preGeneratedPayload.value)
 
     if (result === 'cancel') { ElMessage.info('已取消发送'); sending.value = false; return }
 
-    // 第二步：如果主payload是miniprogram且失败了，降级为news
-    if (result === 'failed' && preGeneratedPayload.value.msgtype === 'miniprogram' && fallbackPayload.value) {
-      console.log('[Collect] miniprogram发送失败，降级为news卡片')
-      result = await trySend(fallbackPayload.value)
-      if (result === 'cancel') { ElMessage.info('已取消发送'); sending.value = false; return }
-    }
-
     if (result === 'sent') {
-      ElMessage.success('卡片已发送')
+      ElMessage.success(preGeneratedPayload.value.msgtype === 'miniprogram' ? '小程序卡片已发送' : 'H5卡片已发送')
+    } else if (fallbackPayload.value && fallbackPayload.value !== preGeneratedPayload.value) {
+      // 主payload失败，尝试降级发送
+      console.warn('[Collect] 主payload发送失败，尝试降级发送H5卡片')
+      const fallbackResult = await trySend(fallbackPayload.value)
+      if (fallbackResult === 'cancel') { ElMessage.info('已取消发送'); sending.value = false; return }
+      if (fallbackResult === 'sent') {
+        ElMessage.success('已降级发送H5卡片')
+      } else {
+        const ua = navigator.userAgent.toLowerCase()
+        if (!ua.includes('wxwork') && !ua.includes('wechat')) {
+          ElMessage.warning('当前非企微客户端环境，请在企业微信中打开')
+        } else {
+          ElMessage.warning('发送失败，请刷新页面后重试')
+        }
+      }
     } else {
       const ua = navigator.userAgent.toLowerCase()
       if (!ua.includes('wxwork') && !ua.includes('wechat')) {

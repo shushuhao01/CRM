@@ -379,7 +379,9 @@ function renderCustomFields() {
 }
 
 // ===== 性别选择 =====
+var selectedGender = '';
 function selectGender(val) {
+  selectedGender = val;
   formData.gender = val;
   var m = document.getElementById('gender_m'), f = document.getElementById('gender_f');
   if (m) m.className = 'gender-btn' + (val === '男' ? ' active' : '');
@@ -596,7 +598,9 @@ function collectFormData() {
     formData[f.key] = getVal('field_' + f.key);
   }
   formData.remark = getVal('field_remark');
-  if (!formData.gender) formData.gender = '';
+  // 恢复性别选择值（formData={}重置后丢失）并映射为英文
+  var genderMap = { '男': 'male', '女': 'female' };
+  formData.gender = genderMap[selectedGender] || selectedGender || '';
 
   customFormData = {};
   for (var j = 0; j < formConfig.customFields.length; j++) {

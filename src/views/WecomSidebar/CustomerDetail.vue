@@ -623,7 +623,6 @@ async function initWithNewSdk(retryCount = 0) {
       },
     })
     console.log('[Sidebar] ww.register 返回成功, corpId=', corpId.value, ', agentId=', agentId)
-    markSdkReady()
   } catch (err: any) {
     console.error('[Sidebar] ❌ ww.register 异常:', err)
     // ★ 如果已经有token，SDK注册失败不阻塞页面
@@ -648,8 +647,7 @@ async function initWithNewSdk(retryCount = 0) {
     if (uid) {
       externalUserId.value = uid
       localStorage.setItem('wecom_sidebar_last_external_id', uid)
-      markSdkReady()
-      console.log('[Sidebar] ✅ 获取外部联系人成功:', uid, '(SDK就绪)')
+      console.log('[Sidebar] ✅ 获取外部联系人成功:', uid)
       contactSuccess = true
       // ★ 如果已经处于detail状态（token缓存快速进入），只刷新客户数据
       if (pageState.value === 'detail' && sidebarToken.value) {
@@ -949,7 +947,6 @@ async function initSdkForExternalUserId() {
     await initWecomSdk()
   } catch (e: any) {
     console.warn('[Sidebar] 后台SDK初始化失败(不影响已登录状态):', e?.message)
-    markSdkFailed()
     // SDK失败但已登录：尝试用上次缓存的externalUserId
     const cachedEid = localStorage.getItem('wecom_sidebar_last_external_id')
     if (cachedEid && !externalUserId.value) {
@@ -1407,7 +1404,7 @@ async function handleSendFormCard() {
     const title = data.title || '请填写您的个人资料'
     const imgUrl = data.imageUrl || `${window.location.origin}/填写个人资料.png`
     const sign = data.sign || ''
-    const mpPage = data.path || `/pages/form/form.html?tenantId=${tenantId}&memberId=${memberId}&ts=${ts}&sign=${sign}&externalUserId=${extUserId}`
+    const mpPage = data.path || `/pages/form/form?tenantId=${tenantId}&memberId=${memberId}&ts=${ts}&sign=${sign}&externalUserId=${extUserId}`
     const h5Url = `${window.location.origin}/wecom-form.html?tenantId=${tenantId}&memberId=${memberId}&ts=${ts}&sign=${sign}&externalUserId=${extUserId}&appId=${mpAppId}`
 
     // 读取发送模式配置（和资料收集tab同步）
