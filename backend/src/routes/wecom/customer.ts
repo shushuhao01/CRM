@@ -112,27 +112,37 @@ router.get('/customers', authenticateToken, async (req: Request, res: Response) 
       .take(parseInt(pageSize as string))
       .getMany();
 
-    // 标签名称解析：如果tagNames中包含tag_id格式的值，尝试从企微API获取标签映射
+    // 标签名称解析：如果tagNames或tagIds中包含tag_id格式的值，尝试从企微API获取标签映射
     let tagNameMap: Record<string, string> | null = null;
+    const isTagId = (s: string) => /^et[A-Za-z0-9_\-]{10,}$/.test(s);
     const needsTagResolve = customers.some(c => {
-      if (!c.tagNames) return false;
-      try {
-        const names = JSON.parse(c.tagNames);
-        return Array.isArray(names) && names.some((n: string) => /^et[A-Za-z0-9_-]{10,}$/.test(n));
-      } catch { return false; }
+      // 检查tagNames是否包含未解析的tag_id
+      if (c.tagNames) {
+        try {
+          const names = JSON.parse(c.tagNames);
+          if (Array.isArray(names) && names.some((n: string) => isTagId(n))) return true;
+        } catch { /* ignore */ }
+      }
+      // 检查tagIds是否有值但tagNames为空
+      if (c.tagIds && !c.tagNames) return true;
+      return false;
     });
 
-    if (needsTagResolve && configId) {
-      try {
-        const accessToken = await WecomApiService.getAccessTokenByConfigId(parseInt(configId as string), 'external');
-        const tagGroups = await WecomApiService.getCorpTagList(accessToken);
-        tagNameMap = {};
-        for (const group of tagGroups) {
-          for (const tag of (group.tag || [])) {
-            if (tag.id && tag.name) tagNameMap[tag.id] = tag.name;
+    if (needsTagResolve) {
+      // 优先使用传入的configId，否则从客户记录中取
+      const resolveConfigId = configId ? parseInt(configId as string) : (customers[0]?.wecomConfigId || null);
+      if (resolveConfigId) {
+        try {
+          const accessToken = await WecomApiService.getAccessTokenByConfigId(resolveConfigId, 'external');
+          const tagGroups = await WecomApiService.getCorpTagList(accessToken);
+          tagNameMap = {};
+          for (const group of tagGroups) {
+            for (const tag of (group.tag || [])) {
+              if (tag.id && tag.name) tagNameMap[tag.id] = tag.name;
+            }
           }
-        }
-      } catch { /* 忽略标签获取失败 */ }
+        } catch { /* 忽略标签获取失败 */ }
+      }
     }
 
     // 批量获取关联的CRM客户名称
@@ -468,24 +478,27 @@ router.put('/customers/:id/unlink-crm', authenticateToken, async (req: Request, 
 
 /**
  * 搜索CRM客户（用于关联选择）
+ * 支持空关键词返回最近10个客户供预选
  */
 router.get('/crm-customers/search', authenticateToken, async (req: Request, res: Response) => {
   try {
     const { keyword } = req.query;
-    if (!keyword) return res.json({ success: true, data: [] });
-
     const { Customer } = await import('../../entities/Customer');
     const crmCustomerRepo = getTenantRepo(Customer);
 
-    const customers = await crmCustomerRepo.createQueryBuilder('c')
-      .where('(c.name LIKE :kw OR c.phone LIKE :kw OR c.customer_code LIKE :kw)', { kw: `%${keyword}%` })
-      .orderBy('c.created_at', 'DESC')
-      .take(20)
+    let qb = crmCustomerRepo.createQueryBuilder('c');
+    if (keyword && String(keyword).trim()) {
+      const kw = `%${keyword}%`;
+      qb = qb.where('(c.name LIKE :kw OR c.phone LIKE :kw OR c.customer_code LIKE :kw OR c.wecom_external_userid LIKE :kw)', { kw });
+    }
+    const customers = await qb
+      .orderBy('c.updated_at', 'DESC')
+      .take(keyword ? 20 : 10)
       .getMany();
 
     const list = customers.map(c => ({
       id: c.id, name: c.name, phone: c.phone,
-      customerNo: (c as any).customerNo || (c as any).customerCode,
+      code: (c as any).customerNo || (c as any).customerCode || '',
     }));
 
     res.json({ success: true, data: list });

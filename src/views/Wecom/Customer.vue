@@ -739,6 +739,8 @@ const openLinkDialog = (row: any) => {
   }
   crmCustomerOptions.value = []
   linkDialogVisible.value = true
+  // 预加载客户列表（空关键词返回最近10个）
+  searchCrmCustomers('')
 }
 
 const handleCrmOptionChange = (val: string) => {
@@ -747,11 +749,11 @@ const handleCrmOptionChange = (val: string) => {
 }
 
 const searchCrmCustomers = async (keyword: string) => {
-  if (!keyword || keyword.length < 1) {
-    crmCustomerOptions.value = []
-    return
-  }
   if (isDemoMode.value) {
+    if (!keyword) {
+      crmCustomerOptions.value = DEMO_CRM_CUSTOMER_OPTIONS.slice(0, 10)
+      return
+    }
     crmCustomerOptions.value = DEMO_CRM_CUSTOMER_OPTIONS.filter(c =>
       c.name.includes(keyword) || c.phone.includes(keyword) || (c as any).code?.includes(keyword)
     )
@@ -759,7 +761,7 @@ const searchCrmCustomers = async (keyword: string) => {
   }
   searchLoading.value = true
   try {
-    const res = await searchCrmCustomersForLink(keyword)
+    const res = await searchCrmCustomersForLink(keyword || '')
     crmCustomerOptions.value = Array.isArray(res) ? res : []
   } catch (e) {
     console.error('[WecomCustomer] Search CRM customers error:', e)

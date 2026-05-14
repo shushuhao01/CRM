@@ -2410,12 +2410,70 @@ router.put('/sidebar/customer-tags', authenticateSidebarToken, async (req: Reque
     const customer = await customerRepo.findOne({ where: { id: customerId, ...(tenantId ? { tenantId } : {}) } });
     if (!customer) return res.status(404).json({ success: false, message: '客户不存在' });
 
+    const oldTags = Array.isArray(customer.tags) ? customer.tags : [];
     customer.tags = Array.isArray(tags) ? tags : (typeof tags === 'string' ? tags.split(',').filter(Boolean) : []);
     await customerRepo.save(customer);
+
+    // 记录客户日志
+    try {
+      const { createCustomerLog } = await import('../../utils/customerLog');
+      const operatorName = sidebarUser?.name || sidebarUser?.userId || '侧边栏用户';
+      await createCustomerLog({
+        customerId,
+        tenantId,
+        logType: 'update_tags',
+        content: `侧边栏更新标签：[${oldTags.join(',')}] → [${customer.tags.join(',')}]`,
+        operatorName,
+        operatorId: sidebarUser?.userId || ''
+      });
+    } catch { /* ignore */ }
+
     res.json({ success: true, message: '标签已更新' });
   } catch (error: any) {
     log.error('[Sidebar] Update customer tags error:', error.message);
     res.status(500).json({ success: false, message: '更新标签失败' });
+  }
+});
+
+// ==================== 客户画像：更新星级评分 ====================
+router.put('/sidebar/customer-star-rating', authenticateSidebarToken, async (req: Request, res: Response) => {
+  try {
+    const { customerId, starRating, finalScore } = req.body;
+    if (!customerId) return res.status(400).json({ success: false, message: '缺少customerId' });
+
+    const sidebarUser = (req as any).sidebarUser;
+    const tenantId = sidebarUser?.tenantId;
+
+    const { Customer } = await import('../../entities/Customer');
+    const customerRepo = AppDataSource.getRepository(Customer);
+    const customer = await customerRepo.findOne({ where: { id: customerId, ...(tenantId ? { tenantId } : {}) } });
+    if (!customer) return res.status(404).json({ success: false, message: '客户不存在' });
+
+    const oldRating = customer.starRating;
+    customer.starRating = Number(starRating) || 0;
+    if (finalScore !== undefined) customer.finalScore = Number(finalScore) || 0;
+    await customerRepo.save(customer);
+
+    // 记录客户日志
+    try {
+      const { createCustomerLog } = await import('../../utils/customerLog');
+      const operatorName = sidebarUser?.name || sidebarUser?.userId || '侧边栏用户';
+      await createCustomerLog({
+        customerId,
+        tenantId,
+        logType: 'portrait_rating',
+        content: `侧边栏画像评分：${oldRating || 0}星 → ${starRating}星（综合分${finalScore || 0}）`,
+        operatorName,
+        operatorId: sidebarUser?.userId || ''
+      });
+    } catch (logErr: any) {
+      log.warn('[Sidebar] Log star rating change failed:', logErr.message);
+    }
+
+    res.json({ success: true, message: '评分已保存' });
+  } catch (error: any) {
+    log.error('[Sidebar] Update star rating error:', error.message);
+    res.status(500).json({ success: false, message: '更新评分失败' });
   }
 });
 

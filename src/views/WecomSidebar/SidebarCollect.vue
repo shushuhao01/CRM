@@ -178,10 +178,11 @@ const generateCard = async () => {
       }
     }
     cardReady.value = true
-    console.log('[Collect] 卡片预生成完成:', JSON.stringify(preGeneratedPayload.value))
+    ElMessage.success('卡片已重新生成')
   } catch (e: any) {
     console.warn('[Collect] 预生成卡片失败:', e?.message)
     cardReady.value = false
+    ElMessage.warning('卡片生成失败：' + (e?.response?.data?.message || e?.message || '请检查配置'))
   }
 }
 
@@ -195,31 +196,69 @@ const handleSend = async () => {
     if (!preGeneratedPayload.value) { ElMessage.warning('卡片生成失败'); sending.value = false; return }
 
     const cardPayload = preGeneratedPayload.value
-    const ww = (window as any).ww
+    const ww = (window as any).ww || (window as any).WWOpenData
     const wx = (window as any).wx || (window as any).jWeixin
 
     let sent = false
-    // 与快捷话术相同的发送逻辑
-    if (ww) {
+
+    // 方式1：通过 ww (企业微信JS-SDK 3.x)
+    if (ww && typeof ww.sendChatMessage === 'function') {
       try {
-        if (typeof ww.sendChatMessage === 'function') { await ww.sendChatMessage(cardPayload); sent = true }
-        else if (typeof ww.invoke === 'function') { await ww.invoke('sendChatMessage', cardPayload); sent = true }
-      } catch (e: any) { console.warn('[Collect] ww发送失败:', e) }
+        await ww.sendChatMessage(cardPayload)
+        sent = true
+      } catch (e: any) {
+        console.warn('[Collect] ww.sendChatMessage失败:', e)
+      }
     }
+
+    // 方式2：通过 ww.invoke
+    if (!sent && ww && typeof ww.invoke === 'function') {
+      try {
+        await new Promise<void>((resolve, reject) => {
+          ww.invoke('sendChatMessage', cardPayload, (res: any) => {
+            if (res && res.err_msg && res.err_msg.indexOf('ok') > -1) resolve()
+            else reject(new Error(res?.err_msg || 'invoke failed'))
+          })
+        })
+        sent = true
+      } catch (e: any) {
+        console.warn('[Collect] ww.invoke失败:', e)
+      }
+    }
+
+    // 方式3：通过 wx.invoke (企业微信JS-SDK 1.x)
     if (!sent && wx && typeof wx.invoke === 'function') {
-      wx.invoke('sendChatMessage', cardPayload, () => {})
-      sent = true
+      try {
+        await new Promise<void>((resolve, reject) => {
+          wx.invoke('sendChatMessage', cardPayload, (res: any) => {
+            if (res && res.err_msg && res.err_msg.indexOf('ok') > -1) resolve()
+            else reject(new Error(res?.err_msg || 'wx invoke failed'))
+          })
+        })
+        sent = true
+      } catch (e: any) {
+        console.warn('[Collect] wx.invoke失败:', e)
+      }
     }
 
     if (sent) {
       ElMessage.success('小程序卡片已发送')
     } else {
-      ElMessage.warning('发送失败，请确保在企微客户端侧边栏中使用')
+      // 检测环境信息给用户更好的提示
+      const ua = navigator.userAgent.toLowerCase()
+      const isWecom = ua.includes('wxwork') || ua.includes('wechat')
+      if (!isWecom) {
+        ElMessage.warning('当前非企微客户端环境，请在企业微信中打开')
+      } else {
+        ElMessage.warning('发送失败，请检查侧边栏JS-SDK配置是否正确')
+      }
     }
 
     // 记录发送日志
     try {
-      await axios.post(`${getBaseUrl()}/mp-log-send`, { tenantId, memberId, ts }, { headers: getHeaders() })
+      const { tenantId, memberId } = parseSidebarToken()
+      const { default: axios } = await import('axios')
+      await axios.post(`${getBaseUrl()}/mp-log-send`, { tenantId, memberId, ts: Date.now().toString() }, { headers: getHeaders() })
     } catch { /* ignore */ }
 
     // 刷新统计和记录
@@ -232,18 +271,6 @@ const handleSend = async () => {
   }
 }
 
-function sendViaWxBridge(payload: any) {
-  const wx = (window as any).wx
-  if (!wx?.invoke) { ElMessage.warning('wx.invoke不可用'); return }
-  wx.invoke('sendChatMessage', payload, (sendRes: any) => {
-    if (sendRes.err_msg === 'sendChatMessage:ok') {
-      ElMessage.success('小程序卡片已发送')
-    } else {
-      console.warn('[Collect] wx.invoke sendChatMessage result:', JSON.stringify(sendRes))
-      ElMessage.info('卡片已生成，等待确认发送')
-    }
-  })
-}
 
 onMounted(() => {
   loadStats()

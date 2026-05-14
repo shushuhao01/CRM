@@ -538,7 +538,7 @@ async function loadSystemConfigs() {
 // ========== 计算属性 ==========
 const subtotal = computed(() => form.value.products.reduce((sum, p) => sum + p.price * p.quantity, 0))
 const collectAmount = computed(() => Math.max(Number(form.value.totalAmount || 0) - Number(form.value.depositAmount || 0), 0))
-const orderSourceLabel = computed(() => orderSourceOptions.find(o => o.value === form.value.orderSource)?.label || form.value.orderSource || '-')
+const orderSourceLabel = computed(() => orderSourceOptions.value.find((o: any) => o.value === form.value.orderSource)?.label || form.value.orderSource || '-')
 
 const maskPhone = (p: string) => {
   if (!p || p.length < 7) return p || '-'
@@ -825,12 +825,13 @@ const resetOrder = () => {
     receiverName: '', receiverPhone: '', receiverAddress: '',
     products: [], totalAmount: 0, depositAmount: 0, depositScreenshots: [],
     paymentMethod: '', serviceWechat: '', orderSource: '',
-    expressCompany: '', markType: 'normal', remark: ''
+    expressCompany: '', markType: 'normal', remark: '',
+    customFields: {}
   }
   resultOrderNo.value = ''
   custKeyword.value = ''
   custList.value = []
-  newCust.value = { phone: '', name: '', gender: '', address: '' }
+  newCust.value = { phone: '', name: '', gender: '', address: '', age: null, source: 'wecom', customFields: {} }
   phoneExists.value = false
 }
 

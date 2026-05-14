@@ -552,6 +552,27 @@ async function saveTagsToBackend() {
     console.warn('[Portrait] 保存标签失败:', e?.message)
   }
 }
+
+// ========== 星级评分自动保存 ==========
+let starSaveTimer: any = null
+watch(manualStar, (newVal, oldVal) => {
+  if (oldVal === undefined || oldVal === null) return
+  clearTimeout(starSaveTimer)
+  starSaveTimer = setTimeout(() => saveStarRating(newVal), 500)
+})
+
+async function saveStarRating(rating: number) {
+  if (!crmCustomer.value?.id || !props.sidebarToken) return
+  try {
+    await request.put(`/wecom/sidebar/customer-star-rating`, {
+      customerId: crmCustomer.value.id,
+      starRating: rating,
+      finalScore: finalScore.value
+    }, { headers: { Authorization: `Bearer ${props.sidebarToken}` } } as any)
+  } catch (e: any) {
+    console.warn('[Portrait] 保存评分失败:', e?.message)
+  }
+}
 </script>
 
 <style scoped>
