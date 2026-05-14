@@ -1296,7 +1296,7 @@ router.post('/mp-generate-card', authenticateSidebarToken, async (req: Request, 
     const secret = process.env.MP_FORM_SECRET || 'mp_default_secret_key_2026';
     const sign = crypto.createHash('md5').update(tenantId + memberId + ts + secret).digest('hex');
 
-    let appId = process.env.MP_APP_ID || 'wxXXXXXXXXXXXX';
+    let appId = process.env.MP_APP_ID || '';
     let cardTitle = '请填写您的个人资料';
     let cardCoverUrl = '';
     let imageUrl = '';

@@ -413,7 +413,15 @@ onMounted(async () => {
       }).catch(() => { /* ignore */ })
     }
 
-    // 异步初始化SDK获取externalUserId，不阻塞页面展示
+    // ★ 先用缓存的externalUserId立即加载客户数据（不等SDK，解决3-8秒白屏）
+    const cachedEid = localStorage.getItem('wecom_sidebar_last_external_id')
+    if (cachedEid) {
+      externalUserId.value = cachedEid
+      loadCustomerDetail()
+      loadCollectStatus()
+    }
+
+    // 异步初始化SDK获取最新externalUserId（如果客户切换了会刷新数据）
     initSdkForExternalUserId()
     return
   }
@@ -613,17 +621,24 @@ async function initWithNewSdk(retryCount = 0) {
       onConfigFail(res: any) {
         console.error('[Sidebar] ❌ onConfigFail:', JSON.stringify(res))
         diagConfigResult += ` | SDK回调fail: ${JSON.stringify(res)}`
+        // config失败则agentConfig不会触发，也要resolve防止挂起
+        sdkReadyResolve?.()
       },
       onAgentConfigSuccess(res: any) {
         console.log('[Sidebar] ✅ onAgentConfigSuccess:', JSON.stringify(res))
+        // ★ agentConfig成功后SDK才真正可用于sendChatMessage等业务API
+        sdkReadyResolve?.()
       },
       onAgentConfigFail(res: any) {
         console.error('[Sidebar] ❌ onAgentConfigFail:', JSON.stringify(res))
         diagAgentConfigResult += ` | SDK回调fail: ${JSON.stringify(res)}`
+        // ★ agentConfig失败也要resolve，否则sdkReadyPromise永远挂起
+        sdkReadyResolve?.()
       },
     })
     console.log('[Sidebar] ww.register 返回成功, corpId=', corpId.value, ', agentId=', agentId)
-    sdkReadyResolve?.()
+    // ★ 注意：这里不再 sdkReadyResolve——register()返回≠agentConfig完成
+    //   sdkReadyResolve 已移到 onAgentConfigSuccess 回调中
   } catch (err: any) {
     console.error('[Sidebar] ❌ ww.register 异常:', err)
     sdkReadyResolve?.()
@@ -1399,7 +1414,7 @@ async function trySendCard(payload: any): Promise<'sent' | 'cancel' | 'failed'> 
       return 'sent'
     } catch (e: any) {
       if (/cancel/i.test(e?.message || e?.errMsg || '')) return 'cancel'
-      console.warn('[CustomerDetail] ww.sendChatMessage失败:', e?.message)
+      console.warn('[CustomerDetail] ww.sendChatMessage失败:', e?.message || e?.errMsg || JSON.stringify(e), 'payload.msgtype=', payload?.msgtype)
     }
     // ★ ww存在时不再尝试wx.invoke：在ww模式下wx未经过config/agentConfig，
     //   wx.invoke的回调可能永远不触发，导致Promise挂起、按钮永久失效
@@ -1464,6 +1479,9 @@ async function handleSendFormCard() {
     const sign = data.sign || ''
     const mpPage = data.path || `/pages/form/form?tenantId=${tenantId}&memberId=${memberId}&ts=${ts}&sign=${sign}&externalUserId=${extUserId}`
     const h5Url = `${window.location.origin}/wecom-form.html?tenantId=${tenantId}&memberId=${memberId}&ts=${ts}&sign=${sign}&externalUserId=${extUserId}&appId=${mpAppId}`
+
+    console.log('[CustomerDetail] 卡片参数:', { mpAppId: mpAppId || '(空-不发小程序)', title, imgUrl: imgUrl?.substring(0, 60), sign: sign?.substring(0, 8) })
+    console.log('[CustomerDetail] SDK状态:', { ww: !!(window as any).ww, wwSendChat: typeof (window as any).ww?.sendChatMessage })
 
     // 构建payload（和资料收集tab一致：优先miniprogram，有降级）
     const mpPayload = mpAppId ? { msgtype: 'miniprogram', miniprogram: { appid: mpAppId, title, imgUrl, page: mpPage } } : null
