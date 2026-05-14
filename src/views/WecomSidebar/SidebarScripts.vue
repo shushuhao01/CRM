@@ -270,6 +270,14 @@ function cancelEditCat() {
 
 /** 通过SDK发送单条消息 */
 async function sdkSend(payload: any): Promise<boolean> {
+  // 等待SDK就绪（最多8秒）
+  if (!(window as any).__wecom_sdk_ready) {
+    for (let i = 0; i < 16; i++) {
+      await new Promise(r => setTimeout(r, 500))
+      if ((window as any).__wecom_sdk_ready) break
+      if ((window as any).ww && typeof (window as any).ww.sendChatMessage === 'function') break
+    }
+  }
   const ww = (window as any).ww
   const wx = (window as any).wx
   if (ww && typeof ww.sendChatMessage === 'function') {

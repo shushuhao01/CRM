@@ -259,8 +259,27 @@ const generateCard = async (showMsg = true) => {
   }
 }
 
+/** 等待SDK就绪（最多等8秒，检查父组件标记的__wecom_sdk_ready） */
+async function waitForSdk(): Promise<boolean> {
+  // 如果已经标记就绪，直接返回
+  if ((window as any).__wecom_sdk_ready) return true
+  // 等待SDK初始化完成
+  for (let i = 0; i < 16; i++) {
+    await new Promise(r => setTimeout(r, 500))
+    if ((window as any).__wecom_sdk_ready) return true
+    // 也检测SDK对象本身
+    const ww = (window as any).ww
+    if (ww && typeof ww.sendChatMessage === 'function') return true
+  }
+  return false
+}
+
 /** 尝试通过SDK发送指定payload */
 async function trySend(payload: any): Promise<'sent' | 'cancel' | 'failed'> {
+  // 等待SDK就绪
+  const ready = await waitForSdk()
+  if (!ready) return 'failed'
+
   const ww = (window as any).ww
   const wx = (window as any).wx || (window as any).jWeixin
 
@@ -319,10 +338,13 @@ const handleSend = async () => {
       ElMessage.success('卡片已发送')
     } else {
       const ua = navigator.userAgent.toLowerCase()
+      const sdkReady = !!(window as any).__wecom_sdk_ready
       if (!ua.includes('wxwork') && !ua.includes('wechat')) {
         ElMessage.warning('当前非企微客户端环境，请在企业微信中打开')
+      } else if (!sdkReady) {
+        ElMessage.warning('JS-SDK尚未初始化完成，请稍等几秒后重试')
       } else {
-        ElMessage.warning('发送失败，请检查侧边栏JS-SDK配置')
+        ElMessage.warning('发送失败，请刷新页面重试')
       }
     }
 
