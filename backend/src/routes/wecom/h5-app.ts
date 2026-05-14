@@ -1378,6 +1378,50 @@ router.post('/mp-log-send', authenticateSidebarToken, async (req: Request, res: 
 });
 
 /**
+ * POST /h5/app/mp-send-mode - 保存发送模式
+ */
+router.post('/mp-send-mode', authenticateSidebarToken, async (req: Request, res: Response) => {
+  try {
+    const { tenantId } = getH5Context(req);
+    const { sendMode } = req.body;
+    if (!tenantId || !sendMode) return res.json({ success: true });
+
+    const { TenantSettings } = await import('../../entities/TenantSettings');
+    const settingsRepo = AppDataSource.getRepository(TenantSettings);
+    let setting = await settingsRepo.findOne({ where: { tenantId, settingKey: 'wecom_collect_send_mode' } });
+    if (setting) {
+      setting.settingValue = JSON.stringify({ sendMode });
+      await settingsRepo.save(setting);
+    } else {
+      await settingsRepo.save(settingsRepo.create({
+        tenantId, settingKey: 'wecom_collect_send_mode',
+        settingValue: JSON.stringify({ sendMode })
+      } as any));
+    }
+    res.json({ success: true });
+  } catch { res.json({ success: true }); }
+});
+
+/**
+ * GET /h5/app/mp-send-mode - 获取发送模式
+ */
+router.get('/mp-send-mode', authenticateSidebarToken, async (req: Request, res: Response) => {
+  try {
+    const { tenantId } = getH5Context(req);
+    if (!tenantId) return res.json({ success: true, data: { sendMode: 'miniprogram' } });
+
+    const { TenantSettings } = await import('../../entities/TenantSettings');
+    const settingsRepo = AppDataSource.getRepository(TenantSettings);
+    const setting = await settingsRepo.findOne({ where: { tenantId, settingKey: 'wecom_collect_send_mode' } });
+    if (setting) {
+      const val = typeof setting.settingValue === 'string' ? JSON.parse(setting.settingValue) : setting.settingValue;
+      return res.json({ success: true, data: { sendMode: val?.sendMode || 'miniprogram' } });
+    }
+    res.json({ success: true, data: { sendMode: 'miniprogram' } });
+  } catch { res.json({ success: true, data: { sendMode: 'miniprogram' } }); }
+});
+
+/**
  * GET /h5/app/mp-collect-stats
  * 收集统计
  */

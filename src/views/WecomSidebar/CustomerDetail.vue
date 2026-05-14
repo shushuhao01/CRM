@@ -413,7 +413,15 @@ onMounted(async () => {
       }).catch(() => { /* ignore */ })
     }
 
-    // 异步初始化SDK获取externalUserId，不阻塞页面展示
+    // ★ 快速加载：先用缓存的externalUserId立即加载客户数据，不等SDK
+    const cachedEid = localStorage.getItem('wecom_sidebar_last_external_id')
+    if (cachedEid) {
+      externalUserId.value = cachedEid
+      loadCustomerDetail().catch(() => {})
+      loadCollectStatus()
+    }
+
+    // SDK初始化在后台异步进行（获取最新externalUserId，如果切换了客户会更新）
     initSdkForExternalUserId()
     return
   }
@@ -1407,6 +1415,9 @@ async function handleSendFormCard() {
     const mpPage = data.path || `/pages/form/form.html?tenantId=${tenantId}&memberId=${memberId}&ts=${ts}&sign=${sign}&externalUserId=${extUserId}`
     const h5Url = `${window.location.origin}/wecom-form.html?tenantId=${tenantId}&memberId=${memberId}&ts=${ts}&sign=${sign}&externalUserId=${extUserId}&appId=${mpAppId}`
 
+    // 读取发送模式配置（和资料收集tab同步）
+    const savedMode = localStorage.getItem('wecom_collect_send_mode') || 'miniprogram'
+
     const ww = (window as any).ww
     const wx = (window as any).wx || (window as any).jWeixin
     let sent = false
@@ -1414,30 +1425,38 @@ async function handleSendFormCard() {
     const mpPayload = mpAppId ? { msgtype: 'miniprogram', miniprogram: { appid: mpAppId, title, imgUrl, page: mpPage } } : null
     const newsPayload = { msgtype: 'news', news: { link: h5Url, title, desc: '点击填写您的基本资料，方便我们为您提供更好的服务', imgUrl } }
 
-    // 优先级1：尝试miniprogram
-    if (mpPayload && ww && typeof ww.sendChatMessage === 'function') {
-      try { await ww.sendChatMessage(mpPayload); sent = true }
+    // 根据配置的模式决定发送顺序
+    const primaryPayload = (savedMode === 'miniprogram' && mpPayload) ? mpPayload : newsPayload
+    const fallbackPayload = (savedMode === 'miniprogram' && mpPayload) ? newsPayload : null
+
+    // 发送主payload
+    if (ww && typeof ww.sendChatMessage === 'function') {
+      try { await ww.sendChatMessage(primaryPayload); sent = true }
       catch (e: any) { if (/cancel/i.test(e?.message || '')) { sendingFormCard.value = false; return } }
     }
-
-    // 优先级2：降级为news
-    if (!sent && ww && typeof ww.sendChatMessage === 'function') {
-      try { await ww.sendChatMessage(newsPayload); sent = true }
-      catch (e: any) { if (/cancel/i.test(e?.message || '')) { sendingFormCard.value = false; return } }
-    }
-
-    // 方式3：wx.invoke兜底
     if (!sent && wx && typeof wx.invoke === 'function') {
-      const payload = mpPayload || newsPayload
       try {
         sent = await new Promise<boolean>((resolve) => {
           const timer = setTimeout(() => resolve(false), 3000)
-          wx.invoke('sendChatMessage', payload, (res: any) => {
-            clearTimeout(timer)
-            resolve(res?.err_msg?.indexOf('ok') > -1)
-          })
+          wx.invoke('sendChatMessage', primaryPayload, (res: any) => { clearTimeout(timer); resolve(res?.err_msg?.indexOf('ok') > -1) })
         })
       } catch { /* ignore */ }
+    }
+
+    // 主payload失败时降级
+    if (!sent && fallbackPayload) {
+      if (ww && typeof ww.sendChatMessage === 'function') {
+        try { await ww.sendChatMessage(fallbackPayload); sent = true }
+        catch (e: any) { if (/cancel/i.test(e?.message || '')) { sendingFormCard.value = false; return } }
+      }
+      if (!sent && wx && typeof wx.invoke === 'function') {
+        try {
+          sent = await new Promise<boolean>((resolve) => {
+            const timer = setTimeout(() => resolve(false), 3000)
+            wx.invoke('sendChatMessage', fallbackPayload, (res: any) => { clearTimeout(timer); resolve(res?.err_msg?.indexOf('ok') > -1) })
+          })
+        } catch { /* ignore */ }
+      }
     }
 
     if (sent) {

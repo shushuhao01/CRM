@@ -2,6 +2,11 @@
   <div class="mpc-wrapper">
     <!-- 顶部引导卡片 -->
     <div class="mpc-hero" style="position:relative">
+      <!-- 切换发送方式 -->
+      <span class="mpc-mode-btn" @click="toggleSendMode" :title="sendMode === 'miniprogram' ? '当前：小程序卡片（点击切换）' : '当前：H5链接卡片（点击切换）'">
+        <span class="mpc-mode-icon">{{ sendMode === 'miniprogram' ? '🟢' : '🔵' }}</span>
+        <span class="mpc-mode-text">{{ sendMode === 'miniprogram' ? '小程序' : 'H5卡片' }}</span>
+      </span>
       <span class="mpc-regen-btn" @click="generateCard" title="重新生成卡片">
         <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#909399" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg>
       </span>
@@ -98,6 +103,40 @@ const cardReady = ref(false)
 const preGeneratedPayload = ref<any>(null)
 const fallbackPayload = ref<any>(null)
 
+// 发送模式：miniprogram（优先小程序）或 news（H5卡片）
+const sendMode = ref<'miniprogram' | 'news'>(
+  (localStorage.getItem('wecom_collect_send_mode') as any) || 'miniprogram'
+)
+
+function toggleSendMode() {
+  sendMode.value = sendMode.value === 'miniprogram' ? 'news' : 'miniprogram'
+  localStorage.setItem('wecom_collect_send_mode', sendMode.value)
+  // 持久化到后端
+  saveSendModeToBackend(sendMode.value)
+  // 重新生成对应类型的payload
+  generateCard(false)
+  ElMessage.success(sendMode.value === 'miniprogram' ? '已切换为小程序卡片' : '已切换为H5链接卡片')
+}
+
+async function saveSendModeToBackend(mode: string) {
+  try {
+    const { default: axios } = await import('axios')
+    await axios.post(`${getBaseUrl()}/mp-send-mode`, { sendMode: mode }, { headers: getHeaders() }).catch(() => {})
+  } catch { /* ignore */ }
+}
+
+async function loadSendModeFromBackend() {
+  try {
+    const { default: axios } = await import('axios')
+    const res: any = await axios.get(`${getBaseUrl()}/mp-send-mode`, { headers: getHeaders() })
+    const mode = res?.data?.data?.sendMode || res?.data?.sendMode
+    if (mode === 'miniprogram' || mode === 'news') {
+      sendMode.value = mode
+      localStorage.setItem('wecom_collect_send_mode', mode)
+    }
+  } catch { /* ignore, use local */ }
+}
+
 const totalPages = computed(() => Math.ceil(recordsTotal.value / pageSize) || 1)
 const hasMore = computed(() => page.value < totalPages.value)
 
@@ -184,17 +223,14 @@ const generateCard = async (showMsg = true) => {
     const mpPage = data.path || `/pages/form/form.html?tenantId=${tenantId}&memberId=${memberId}&ts=${ts}&sign=${data.sign || ''}&externalUserId=${extUserId}`
     const h5FormUrl = `${window.location.origin}/wecom-form.html?tenantId=${tenantId}&memberId=${memberId}&ts=${ts}&sign=${data.sign || ''}&externalUserId=${extUserId}&appId=${mpAppId}`
 
-    // 主payload：优先发送miniprogram（如果有appId配置）
-    if (mpAppId) {
-      preGeneratedPayload.value = {
-        msgtype: 'miniprogram',
-        miniprogram: { appid: mpAppId, title, imgUrl, page: mpPage }
-      }
+    // 根据用户选择的发送模式构建主payload
+    const mpPayloadObj = mpAppId ? { msgtype: 'miniprogram', miniprogram: { appid: mpAppId, title, imgUrl, page: mpPage } } : null
+    const newsPayloadObj = { msgtype: 'news', news: { link: h5FormUrl, title, desc: '点击填写您的基本资料，方便我们为您提供更好的服务', imgUrl } }
+
+    if (sendMode.value === 'miniprogram' && mpPayloadObj) {
+      preGeneratedPayload.value = mpPayloadObj
     } else {
-      preGeneratedPayload.value = {
-        msgtype: 'news',
-        news: { link: h5FormUrl, title, desc: '点击填写您的基本资料，方便我们为您提供更好的服务', imgUrl }
-      }
+      preGeneratedPayload.value = newsPayloadObj
     }
     // 降级payload：news类型（miniprogram发送失败时使用）
     fallbackPayload.value = {
@@ -309,6 +345,7 @@ const handleSend = async () => {
 
 
 onMounted(() => {
+  loadSendModeFromBackend()
   loadStats()
   loadRecords()
   generateCard(false)
@@ -317,6 +354,10 @@ onMounted(() => {
 
 <style scoped>
 .mpc-wrapper { padding: 0; color: #303133; }
+.mpc-mode-btn { position: absolute; top: 8px; left: 8px; display: flex; align-items: center; gap: 3px; padding: 3px 8px; border-radius: 12px; cursor: pointer; background: rgba(255,255,255,.85); font-size: 10px; color: #606266; transition: all .2s; box-shadow: 0 1px 3px rgba(0,0,0,.1); }
+.mpc-mode-btn:hover { background: #fff; box-shadow: 0 2px 6px rgba(0,0,0,.15); }
+.mpc-mode-icon { font-size: 10px; line-height: 1; }
+.mpc-mode-text { font-weight: 500; }
 .mpc-regen-btn { position: absolute; top: 8px; right: 8px; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; border-radius: 50%; cursor: pointer; transition: all 0.2s; }
 .mpc-regen-btn:hover { background: rgba(0,0,0,0.05); transform: rotate(180deg); }
 .mpc-hero { margin: 8px 10px; background: linear-gradient(135deg, #ecfdf5 0%, #f0fdf4 50%, #f0f9ff 100%); border: 1px solid #bbf7d0; border-radius: 12px; padding: 16px 12px; text-align: center; }
