@@ -715,7 +715,7 @@
               <div class="tpl-variables">
                 <span class="tpl-var-label">模板变量：</span>
                 <el-tag v-for="v in preset.variables" :key="v.key" size="small" effect="plain" style="margin-right: 4px; margin-bottom: 4px">
-                  {{ '{{' + v.key + '}}' }} {{ v.label }}
+                  {{ wrapVar(v.key) }} {{ v.label }}
                 </el-tag>
               </div>
 
@@ -1012,7 +1012,7 @@
           <el-form-item label="模板变量">
             <div style="display: flex; flex-wrap: wrap; gap: 6px">
               <el-tag v-for="v in selectedPreset.variables" :key="v.key" effect="plain" size="small">
-                <strong>{{ '{{' + v.key + '}}' }}</strong>
+                <strong>{{ wrapVar(v.key) }}</strong>
                 <span style="margin-left: 4px; color: #909399">{{ v.label }}</span>
                 <span v-if="v.sample" style="margin-left: 4px; color: #c0c4cc; font-size: 11px">示例: {{ v.sample }}</span>
               </el-tag>
@@ -1644,6 +1644,8 @@ const handleSaveAutoClean = async () => {
 // ==================== 通知模板 ====================
 
 const iconMap: Record<string, any> = { Bell, ChatDotRound, UserFilled, Warning, ShoppingCart, Odometer, DataAnalysis, Setting }
+
+const wrapVar = (key: string) => `\u007B\u007B${key}\u007D\u007D`
 
 /** 预定义的7种通知场景（对应企微服务商后台的应用通知模板） */
 const PRESET_TEMPLATES = [
