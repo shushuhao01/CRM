@@ -251,12 +251,19 @@ router.post('/submit-customer', validateMpSign, async (req: Request, res: Respon
       }
     }
 
+    // 性别映射：小程序传"男"/"女" → CRM用 male/female/unknown
+    const genderMap: Record<string, string> = { '男': 'male', '女': 'female' };
+    const mappedGender = genderMap[customerData.gender] || customerData.gender || 'unknown';
+
+    // 拼接完整地址
+    const fullAddress = [customerData.province, customerData.city, customerData.district, customerData.street, customerData.detailAddress].filter(Boolean).join('');
+
     // 创建客户记录
     const customer = customerRepo.create({
       tenantId,
       name: customerData.name,
       phone: customerData.phone || '',
-      gender: customerData.gender || null,
+      gender: mappedGender,
       age: customerData.age ? parseInt(customerData.age, 10) : null,
       email: customerData.email || '',
       wechat: customerData.wechat || '',
@@ -271,20 +278,28 @@ router.post('/submit-customer', validateMpSign, async (req: Request, res: Respon
       district: customerData.district || '',
       street: customerData.street || '',
       detailAddress: customerData.detailAddress || '',
+      address: fullAddress || null,
       source: 'miniprogram',
       salesPersonId: memberId,
       createdBy: memberId,
-      // 自定义字段
-      ...(customerData.customFields ? {
-        customerCustomField1: customerData.customFields.customer_custom_field1 || null,
-        customerCustomField2: customerData.customFields.customer_custom_field2 || null,
-        customerCustomField3: customerData.customFields.customer_custom_field3 || null,
-        customerCustomField4: customerData.customFields.customer_custom_field4 || null,
-        customerCustomField5: customerData.customFields.customer_custom_field5 || null,
-      } : {})
+      createdByName: '小程序提交',
+      customFields: customerData.customFields || null,
     } as any);
 
     const saved: any = await customerRepo.save(customer);
+
+    // 生成客户编码（和系统新增客户逻辑一致）
+    try {
+      const customerNo = `C${saved.id.substring(0, 8).toUpperCase()}`;
+      saved.customerNo = customerNo;
+      await customerRepo.save(saved);
+    } catch (codeErr: any) {
+      try {
+        const fallbackNo = `C${saved.id.replace(/-/g, '').substring(0, 12).toUpperCase()}`;
+        saved.customerNo = fallbackNo;
+        await customerRepo.save(saved);
+      } catch { /* 编号生成失败不影响核心流程 */ }
+    }
 
     // 发送系统消息通知
     try {

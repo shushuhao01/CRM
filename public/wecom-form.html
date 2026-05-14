@@ -394,53 +394,86 @@ function toggleCollapsed() {
   document.getElementById('expandIcon').className = 'expand-icon' + (showCollapsed ? ' expanded' : '');
 }
 
-// ===== 地址联动 =====
-var regionData = null;
+// ===== 地址联动（使用系统地址数据包） =====
+var addressData = null;
+
 function loadProvinces() {
-  fetch('https://restapi.amap.com/v3/config/district?key=your_key&subdistrict=3').catch(function(){});
-  // 使用简化方案：省市区直接用input让用户输入（兼容性更好）
   var pEl = document.getElementById('field_province');
   if (!pEl) return;
-  // 用中国行政区数据（内置常见省份）
-  var provinces = ['北京市','天津市','上海市','重庆市','河北省','山西省','辽宁省','吉林省','黑龙江省','江苏省','浙江省','安徽省','福建省','江西省','山东省','河南省','湖北省','湖南省','广东省','海南省','四川省','贵州省','云南省','陕西省','甘肃省','青海省','台湾省','广西壮族自治区','内蒙古自治区','西藏自治区','宁夏回族自治区','新疆维吾尔自治区','香港特别行政区','澳门特别行政区'];
-  var html = '<option value="">省份</option>';
-  for (var i = 0; i < provinces.length; i++) html += '<option value="' + provinces[i] + '">' + provinces[i] + '</option>';
-  pEl.innerHTML = html;
+  // 加载系统地址数据
+  fetch(window.location.origin + '/data/address.json').then(function(r) { return r.json(); }).then(function(data) {
+    addressData = data;
+    var html = '<option value="">选择省份</option>';
+    for (var i = 0; i < data.length; i++) html += '<option value="' + data[i].label + '">' + data[i].label + '</option>';
+    pEl.innerHTML = html;
+  }).catch(function() {
+    // 降级：硬编码省份
+    var provinces = ['北京市','天津市','上海市','重庆市','河北省','山西省','辽宁省','吉林省','黑龙江省','江苏省','浙江省','安徽省','福建省','江西省','山东省','河南省','湖北省','湖南省','广东省','海南省','四川省','贵州省','云南省','陕西省','甘肃省','青海省','广西壮族自治区','内蒙古自治区','西藏自治区','宁夏回族自治区','新疆维吾尔自治区'];
+    var html = '<option value="">选择省份</option>';
+    for (var i = 0; i < provinces.length; i++) html += '<option value="' + provinces[i] + '">' + provinces[i] + '</option>';
+    pEl.innerHTML = html;
+  });
 }
 
 function onProvinceChange() {
   var prov = document.getElementById('field_province').value;
-  document.getElementById('field_city').innerHTML = '<option value="">城市</option>';
-  document.getElementById('field_district').innerHTML = '<option value="">区县</option>';
-  document.getElementById('field_street').style.display = 'none';
-  if (!prov) return;
-  // 动态加载城市（通过后端或使用简单的input替代）
-  // 简化方案：将select改为可输入
   var cityEl = document.getElementById('field_city');
-  cityEl.innerHTML = '<option value="">请输入城市名</option>';
-  // 对直辖市特殊处理
-  var municipalities = {'北京市':'北京市','天津市':'天津市','上海市':'上海市','重庆市':'重庆市'};
-  if (municipalities[prov]) {
-    cityEl.innerHTML = '<option value="' + prov + '">' + prov + '</option>';
-    cityEl.value = prov;
-    onCityChange();
+  var distEl = document.getElementById('field_district');
+  cityEl.innerHTML = '<option value="">选择城市</option>';
+  distEl.innerHTML = '<option value="">选择区县</option>';
+  document.getElementById('field_street').style.display = 'none';
+  if (!prov || !addressData) return;
+  var provData = addressData.find(function(p) { return p.label === prov || p.value === prov; });
+  if (provData && provData.children) {
+    var html = '<option value="">选择城市</option>';
+    for (var i = 0; i < provData.children.length; i++) {
+      html += '<option value="' + provData.children[i].label + '">' + provData.children[i].label + '</option>';
+    }
+    cityEl.innerHTML = html;
   }
 }
 
 function onCityChange() {
-  document.getElementById('field_district').innerHTML = '<option value="">请输入区县名</option>';
+  var prov = document.getElementById('field_province').value;
+  var city = document.getElementById('field_city').value;
+  var distEl = document.getElementById('field_district');
+  distEl.innerHTML = '<option value="">选择区县</option>';
   document.getElementById('field_street').style.display = 'none';
+  if (!prov || !city || !addressData) return;
+  var provData = addressData.find(function(p) { return p.label === prov || p.value === prov; });
+  if (!provData || !provData.children) return;
+  var cityData = provData.children.find(function(c) { return c.label === city || c.value === city; });
+  if (cityData && cityData.children) {
+    var html = '<option value="">选择区县</option>';
+    for (var i = 0; i < cityData.children.length; i++) {
+      html += '<option value="' + cityData.children[i].label + '">' + cityData.children[i].label + '</option>';
+    }
+    distEl.innerHTML = html;
+  }
 }
 
 function onDistrictChange() {
   var prov = document.getElementById('field_province').value;
   var city = document.getElementById('field_city').value;
   var dist = document.getElementById('field_district').value;
-  if (prov && city && dist) loadStreets(prov, city, dist);
-}
-
-function loadStreets(province, city, district) {
-  var url = '/address-streets?province=' + encodeURIComponent(province) + '&city=' + encodeURIComponent(city) + '&district=' + encodeURIComponent(district);
+  document.getElementById('field_street').style.display = 'none';
+  if (!prov || !city || !dist) return;
+  // 从本地地址数据加载街道
+  if (addressData) {
+    var provData = addressData.find(function(p) { return p.label === prov; });
+    var cityData = provData && provData.children ? provData.children.find(function(c) { return c.label === city; }) : null;
+    var distData = cityData && cityData.children ? cityData.children.find(function(d) { return d.label === dist; }) : null;
+    if (distData && distData.children && distData.children.length > 0) {
+      var streetEl = document.getElementById('field_street');
+      var html = '<option value="">选择街道/乡镇</option>';
+      for (var i = 0; i < distData.children.length; i++) html += '<option value="' + distData.children[i].label + '">' + distData.children[i].label + '</option>';
+      streetEl.innerHTML = html;
+      streetEl.style.display = '';
+      return;
+    }
+  }
+  // 如果本地没街道数据，尝试从API获取
+  var url = '/address-streets?province=' + encodeURIComponent(prov) + '&city=' + encodeURIComponent(city) + '&district=' + encodeURIComponent(dist);
   apiGet(url).then(function(res) {
     var streets = res.data || res || [];
     if (streets.length > 0) {
@@ -623,7 +656,7 @@ function handleSubmit() {
     customerData: Object.assign({}, formData, { customFields: customFormData })
   }).then(function() {
     document.getElementById('formPage').style.display = 'none';
-    document.getElementById('successPage').style.display = '';
+    document.getElementById('successPage').style.display = 'block';
   }).catch(function(err) {
     if (err && err.code === 'DUPLICATE_PHONE') showToast('您的资料已提交过');
     else if (err && err.statusCode === 403) showToast('签名验证失败，链接可能已失效');

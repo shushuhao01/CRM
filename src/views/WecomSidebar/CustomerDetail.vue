@@ -1269,23 +1269,25 @@ function openCrmDetail() {
   if (!customerData.value?.crmCustomer?.id) return
   const url = `${window.location.origin}/customer/detail/${customerData.value.crmCustomer.id}`
 
-  // 尝试用企微JS-SDK打开系统默认浏览器
-  const wx = (window as any).wx || (window as any).jWeixin
-  const ww = (window as any).ww
+  try {
+    const wx = (window as any).wx || (window as any).jWeixin
+    const ww = (window as any).ww
 
-  if (ww && typeof ww.openDefaultBrowser === 'function') {
-    ww.openDefaultBrowser({ url })
-    return
-  }
-  if (wx && typeof wx.invoke === 'function') {
-    wx.invoke('openDefaultBrowser', { url }, (res: any) => {
-      if (res?.err_msg?.indexOf('ok') < 0) {
-        window.open(url, '_blank')
-      }
-    })
-    return
-  }
-  // 兜底：直接打开（可能是内置浏览器）
+    // 方式1：ww.openDefaultBrowser (新版SDK)
+    if (ww && typeof ww.openDefaultBrowser === 'function') {
+      try { ww.openDefaultBrowser({ url }); return } catch { /* fallback */ }
+    }
+
+    // 方式2：wx.invoke openDefaultBrowser (旧版SDK)
+    if (wx && typeof wx.invoke === 'function') {
+      try {
+        wx.invoke('openDefaultBrowser', { url }, () => {})
+        return
+      } catch { /* fallback */ }
+    }
+  } catch { /* 任何异常都降级 */ }
+
+  // 兜底：window.open（企微内置浏览器）
   window.open(url, '_blank')
 }
 
@@ -1405,53 +1407,49 @@ async function handleSendFormCard() {
     const mpPage = data.path || `/pages/form/form.html?tenantId=${tenantId}&memberId=${memberId}&ts=${ts}&sign=${sign}&externalUserId=${extUserId}`
     const h5Url = `${window.location.origin}/wecom-form.html?tenantId=${tenantId}&memberId=${memberId}&ts=${ts}&sign=${sign}&externalUserId=${extUserId}&appId=${mpAppId}`
 
+    // 使用和SidebarCollect一样的发送逻辑
     const ww = (window as any).ww
     const wx = (window as any).wx || (window as any).jWeixin
     let sent = false
 
-    // 优先级1：尝试发送miniprogram卡片（需要小程序应用已关联）
-    if (mpAppId) {
-      const mpPayload = { msgtype: 'miniprogram', miniprogram: { appid: mpAppId, title, imgUrl, page: mpPage } }
+    // 构建两种payload
+    const mpPayload = mpAppId ? { msgtype: 'miniprogram', miniprogram: { appid: mpAppId, title, imgUrl, page: mpPage } } : null
+    const newsPayload = { msgtype: 'news', news: { link: h5Url, title, desc: '点击填写您的基本资料，方便我们为您提供更好的服务', imgUrl } }
+
+    // 统一发送函数
+    const doSend = async (payload: any): Promise<'sent' | 'cancel' | 'failed'> => {
       if (ww && typeof ww.sendChatMessage === 'function') {
-        try { await ww.sendChatMessage(mpPayload); sent = true }
-        catch (e: any) { if (/cancel/i.test(e?.message || '')) { sendingFormCard.value = false; return } }
+        try { await ww.sendChatMessage(payload); return 'sent' }
+        catch (e: any) { if (/cancel/i.test(e?.message || e?.errMsg || '')) return 'cancel' }
       }
-      if (!sent && wx && typeof wx.invoke === 'function') {
+      if (wx && typeof wx.invoke === 'function') {
         try {
-          await new Promise<void>((resolve, reject) => {
-            wx.invoke('sendChatMessage', mpPayload, (res: any) => {
-              if (res?.err_msg?.indexOf('ok') > -1) resolve()
-              else if (/cancel/i.test(res?.err_msg || '')) reject(new Error('cancel'))
-              else reject(new Error(res?.err_msg || ''))
+          return await new Promise<'sent' | 'cancel' | 'failed'>((resolve) => {
+            const timer = setTimeout(() => resolve('failed'), 3000)
+            wx.invoke('sendChatMessage', payload, (res: any) => {
+              clearTimeout(timer)
+              if (res?.err_msg?.indexOf('ok') > -1) resolve('sent')
+              else if (/cancel/i.test(res?.err_msg || '')) resolve('cancel')
+              else resolve('failed')
             })
           })
-          sent = true
-        } catch (e: any) {
-          if (/cancel/i.test(e?.message || '')) { sendingFormCard.value = false; return }
-          console.warn('[CustomerDetail] miniprogram发送失败，降级为news:', e?.message)
-        }
+        } catch { return 'failed' }
       }
+      return 'failed'
     }
 
-    // 优先级2：降级为news（H5链接卡片）
+    // 优先级1：尝试miniprogram
+    if (mpPayload) {
+      const r = await doSend(mpPayload)
+      if (r === 'sent') sent = true
+      else if (r === 'cancel') { sendingFormCard.value = false; return }
+    }
+
+    // 优先级2：降级为news
     if (!sent) {
-      const newsPayload = { msgtype: 'news', news: { link: h5Url, title, desc: '点击填写您的基本资料，方便我们为您提供更好的服务', imgUrl } }
-      if (ww && typeof ww.sendChatMessage === 'function') {
-        try { await ww.sendChatMessage(newsPayload); sent = true }
-        catch (e: any) { if (/cancel/i.test(e?.message || '')) { sendingFormCard.value = false; return } }
-      }
-      if (!sent && wx && typeof wx.invoke === 'function') {
-        try {
-          await new Promise<void>((resolve, reject) => {
-            wx.invoke('sendChatMessage', newsPayload, (res: any) => {
-              if (res?.err_msg?.indexOf('ok') > -1) resolve()
-              else if (/cancel/i.test(res?.err_msg || '')) reject(new Error('cancel'))
-              else reject(new Error(res?.err_msg || ''))
-            })
-          })
-          sent = true
-        } catch (e: any) { if (/cancel/i.test(e?.message || '')) { sendingFormCard.value = false; return } }
-      }
+      const r = await doSend(newsPayload)
+      if (r === 'sent') sent = true
+      else if (r === 'cancel') { sendingFormCard.value = false; return }
     }
 
     if (sent) {
