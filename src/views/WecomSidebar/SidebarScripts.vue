@@ -268,59 +268,80 @@ function cancelEditCat() {
   newCatName.value = ''
 }
 
+/** 通过SDK发送单条消息 */
+async function sdkSend(payload: any): Promise<boolean> {
+  const ww = (window as any).ww
+  const wx = (window as any).wx
+  if (ww && typeof ww.sendChatMessage === 'function') {
+    try { await ww.sendChatMessage(payload); return true } catch { /* continue */ }
+  }
+  if (ww && typeof ww.invoke === 'function') {
+    try {
+      await new Promise<void>((resolve, reject) => {
+        ww.invoke('sendChatMessage', payload, (res: any) => {
+          if (res?.err_msg?.indexOf('ok') > -1) resolve()
+          else reject(new Error(res?.err_msg))
+        })
+      })
+      return true
+    } catch { /* continue */ }
+  }
+  if (wx && typeof wx.invoke === 'function') {
+    try {
+      let ok = false
+      await new Promise<void>((resolve) => {
+        wx.invoke('sendChatMessage', payload, (res: any) => { ok = res?.err_msg?.indexOf('ok') > -1; resolve() })
+      })
+      return ok
+    } catch { /* continue */ }
+  }
+  return false
+}
+
 /** 点击发送图标：通过企微JS-SDK发送到当前聊天对话框 */
 async function handleSend(script: any) {
   try { await request.post(`/wecom/sidebar/scripts/${script.id}/use`, {}, authHeaders.value as any) } catch { /* ignore */ }
 
-  const ww = (window as any).ww
-  const wx = (window as any).wx
-
-  // 构建消息payload
-  let payload: any = { msgtype: 'text', text: { content: script.content } }
-
-  // 如果有图片附件，使用image类型发送图片
-  if (script.attachments?.length > 0) {
-    const firstAtt = script.attachments[0]
-    if (firstAtt.type?.startsWith('image/') && firstAtt.url) {
-      const imgUrl = firstAtt.url.startsWith('http') ? firstAtt.url : `${window.location.origin}${firstAtt.url}`
-      // 先发文本，再发图片
-      payload = {
-        msgtype: 'news',
-        news: {
-          link: imgUrl,
-          title: script.title || '话术分享',
-          desc: script.content || '',
-          imgUrl: imgUrl
-        }
-      }
-    }
-  }
-
   let sent = false
-  if (ww) {
+
+  // 有图片附件：先发文字，再发图片
+  if (script.attachments?.length > 0 && script.attachments[0]?.type?.startsWith('image/')) {
+    const firstAtt = script.attachments[0]
+    const imgUrl = firstAtt.url?.startsWith('http') ? firstAtt.url : `${window.location.origin}${firstAtt.url}`
+
+    // 步骤1：发送文字内容
+    if (script.content) {
+      sent = await sdkSend({ msgtype: 'text', text: { content: script.content } })
+    }
+
+    // 步骤2：获取图片mediaId并发送图片
     try {
-      if (typeof ww.sendChatMessage === 'function') { await ww.sendChatMessage(payload); sent = true }
-      else if (typeof ww.invoke === 'function') {
-        await new Promise<void>((resolve, reject) => {
-          ww.invoke('sendChatMessage', payload, (res: any) => {
-            if (res?.err_msg?.indexOf('ok') > -1) resolve()
-            else reject(new Error(res?.err_msg))
-          })
+      const mediaRes: any = await request.post('/wecom/sidebar/upload-image-media', { imageUrl: imgUrl }, authHeaders.value as any)
+      const mediaId = mediaRes?.data?.mediaId || mediaRes?.mediaId
+      if (mediaId) {
+        const imgSent = await sdkSend({ msgtype: 'image', image: { mediaid: mediaId } })
+        if (imgSent) sent = true
+      } else {
+        // mediaId获取失败，降级为news图文
+        const newsSent = await sdkSend({
+          msgtype: 'news',
+          news: { link: imgUrl, title: script.title || '话术', desc: script.content || '', imgUrl }
         })
-        sent = true
+        if (newsSent) sent = true
       }
-    } catch { /* fallback */ }
-  }
-  if (!sent && wx?.invoke) {
-    try {
-      await new Promise<void>((resolve) => {
-        wx.invoke('sendChatMessage', payload, (res: any) => {
-          if (res?.err_msg === 'sendChatMessage:ok') { sent = true }
-          resolve()
-        })
+    } catch (e: any) {
+      console.warn('[Scripts] 图片上传失败，降级为news:', e?.message)
+      const newsSent = await sdkSend({
+        msgtype: 'news',
+        news: { link: imgUrl, title: script.title || '话术', desc: script.content || '', imgUrl }
       })
-    } catch { /* ignore */ }
+      if (newsSent) sent = true
+    }
+  } else {
+    // 纯文本话术
+    sent = await sdkSend({ msgtype: 'text', text: { content: script.content } })
   }
+
   if (sent) { ElMessage.success('已发送') }
   else { copyScript(script); ElMessage.info('已复制到剪贴板（非企微环境或发送失败）') }
 

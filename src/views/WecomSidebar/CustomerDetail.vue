@@ -1266,9 +1266,27 @@ function getOrderStatusColor(status: string): string {
 }
 
 function openCrmDetail() {
-  if (customerData.value?.crmCustomer?.id) {
-    window.open(`${window.location.origin}/customer/detail/${customerData.value.crmCustomer.id}`, '_blank')
+  if (!customerData.value?.crmCustomer?.id) return
+  const url = `${window.location.origin}/customer/detail/${customerData.value.crmCustomer.id}`
+
+  // 尝试用企微JS-SDK打开系统默认浏览器
+  const wx = (window as any).wx || (window as any).jWeixin
+  const ww = (window as any).ww
+
+  if (ww && typeof ww.openDefaultBrowser === 'function') {
+    ww.openDefaultBrowser({ url })
+    return
   }
+  if (wx && typeof wx.invoke === 'function') {
+    wx.invoke('openDefaultBrowser', { url }, (res: any) => {
+      if (res?.err_msg?.indexOf('ok') < 0) {
+        window.open(url, '_blank')
+      }
+    })
+    return
+  }
+  // 兜底：直接打开（可能是内置浏览器）
+  window.open(url, '_blank')
 }
 
 function reloadPage() {
@@ -1358,7 +1376,6 @@ async function handleSendFormCard() {
   if (sendingFormCard.value) return
   sendingFormCard.value = true
   try {
-    // 解析 token 中的 tenantId 和 userId
     let tenantId = '', memberId = ''
     if (sidebarToken.value) {
       const payload = decodeJwtPayload(sidebarToken.value)
@@ -1368,47 +1385,88 @@ async function handleSendFormCard() {
       }
     }
     const ts = Date.now().toString()
-    // 调用后端生成卡片签名
-    const { default: axios } = await import('axios')
-    const baseUrl = `${window.location.origin}/api/v1`
-    const res: any = await axios.post(`${baseUrl}/mp/generate-card`, { tenantId, memberId, ts }, {
-      headers: { Authorization: `Bearer ${sidebarToken.value}` }
-    })
-    const data = res?.data?.data || res?.data || {}
-    const path = data.path || `/pages/form/form.html?tenantId=${tenantId}&memberId=${memberId}&ts=${ts}&sign=${data.sign || ''}&externalUserId=${externalUserId.value || ''}`
+    const extUserId = externalUserId.value || ''
 
-    // 企微环境：通过JS-SDK发送小程序卡片
-    const wx = (window as any).wx
-    if (wx?.invoke) {
-      wx.invoke('sendChatMessage', {
-        msgtype: 'miniprogram',
-        miniprogram: {
-          appid: data.appId || '',
-          title: data.title || '请填写您的资料',
-          imgUrl: data.imageUrl || '',
-          page: path
-        }
-      }, (sendRes: any) => {
-        if (sendRes.err_msg === 'sendChatMessage:ok') {
-          ElMessage.success('卡片已发送')
-        } else {
-          ElMessage.info('已生成卡片链接，请手动分享')
-        }
+    // 调用后端生成卡片（使用侧边栏token认证的API）
+    const { default: axios } = await import('axios')
+    const baseUrl = `${window.location.origin}/api/v1/wecom/h5/app`
+    let data: any = {}
+    try {
+      const res: any = await axios.post(`${baseUrl}/mp-generate-card`, { tenantId, memberId, ts }, {
+        headers: { Authorization: `Bearer ${sidebarToken.value}` }
       })
-    } else {
-      ElMessage.success('已生成资料收集链接（非企微环境无法直接发送卡片）')
+      data = res?.data?.data || res?.data || {}
+    } catch { /* API失败时使用默认配置 */ }
+
+    const mpAppId = data.appId || ''
+    const title = data.title || '请填写您的个人资料'
+    const imgUrl = data.imageUrl || `${window.location.origin}/填写个人资料.png`
+    const sign = data.sign || ''
+    const mpPage = data.path || `/pages/form/form.html?tenantId=${tenantId}&memberId=${memberId}&ts=${ts}&sign=${sign}&externalUserId=${extUserId}`
+    const h5Url = `${window.location.origin}/wecom-form.html?tenantId=${tenantId}&memberId=${memberId}&ts=${ts}&sign=${sign}&externalUserId=${extUserId}&appId=${mpAppId}`
+
+    const ww = (window as any).ww
+    const wx = (window as any).wx || (window as any).jWeixin
+    let sent = false
+
+    // 优先级1：尝试发送miniprogram卡片（需要小程序应用已关联）
+    if (mpAppId) {
+      const mpPayload = { msgtype: 'miniprogram', miniprogram: { appid: mpAppId, title, imgUrl, page: mpPage } }
+      if (ww && typeof ww.sendChatMessage === 'function') {
+        try { await ww.sendChatMessage(mpPayload); sent = true }
+        catch (e: any) { if (/cancel/i.test(e?.message || '')) { sendingFormCard.value = false; return } }
+      }
+      if (!sent && wx && typeof wx.invoke === 'function') {
+        try {
+          await new Promise<void>((resolve, reject) => {
+            wx.invoke('sendChatMessage', mpPayload, (res: any) => {
+              if (res?.err_msg?.indexOf('ok') > -1) resolve()
+              else if (/cancel/i.test(res?.err_msg || '')) reject(new Error('cancel'))
+              else reject(new Error(res?.err_msg || ''))
+            })
+          })
+          sent = true
+        } catch (e: any) {
+          if (/cancel/i.test(e?.message || '')) { sendingFormCard.value = false; return }
+          console.warn('[CustomerDetail] miniprogram发送失败，降级为news:', e?.message)
+        }
+      }
     }
 
-    // 记录发送日志（含 externalUserId）
+    // 优先级2：降级为news（H5链接卡片）
+    if (!sent) {
+      const newsPayload = { msgtype: 'news', news: { link: h5Url, title, desc: '点击填写您的基本资料，方便我们为您提供更好的服务', imgUrl } }
+      if (ww && typeof ww.sendChatMessage === 'function') {
+        try { await ww.sendChatMessage(newsPayload); sent = true }
+        catch (e: any) { if (/cancel/i.test(e?.message || '')) { sendingFormCard.value = false; return } }
+      }
+      if (!sent && wx && typeof wx.invoke === 'function') {
+        try {
+          await new Promise<void>((resolve, reject) => {
+            wx.invoke('sendChatMessage', newsPayload, (res: any) => {
+              if (res?.err_msg?.indexOf('ok') > -1) resolve()
+              else if (/cancel/i.test(res?.err_msg || '')) reject(new Error('cancel'))
+              else reject(new Error(res?.err_msg || ''))
+            })
+          })
+          sent = true
+        } catch (e: any) { if (/cancel/i.test(e?.message || '')) { sendingFormCard.value = false; return } }
+      }
+    }
+
+    if (sent) {
+      ElMessage.success('卡片已发送')
+    } else {
+      ElMessage.warning('发送失败，请检查侧边栏JS-SDK配置')
+    }
+
+    // 记录发送日志
     try {
-      const { default: axios } = await import('axios')
-      const baseUrl = `${window.location.origin}/api/v1`
-      await axios.post(`${baseUrl}/mp/log-send`, {
-        tenantId, memberId, ts, externalUserId: externalUserId.value
-      }, { headers: { Authorization: `Bearer ${sidebarToken.value}` } })
+      await axios.post(`${baseUrl}/mp-log-send`, {
+        tenantId, memberId, ts, externalUserId: extUserId
+      }, { headers: { Authorization: `Bearer ${sidebarToken.value}` } }).catch(() => {})
     } catch { /* ignore */ }
 
-    // 刷新收集状态
     await loadCollectStatus()
   } catch (e: any) {
     ElMessage.error(e?.message || '发送失败')

@@ -1,126 +1,653 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>请填写您的个人资料</title>
-  <meta name="description" content="请填写您的基本资料">
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; display: flex; align-items: center; justify-content: center; }
-    .card { background: #fff; border-radius: 16px; padding: 40px 32px; max-width: 360px; width: 90%; text-align: center; box-shadow: 0 20px 60px rgba(0,0,0,0.15); }
-    .icon { width: 64px; height: 64px; margin: 0 auto 16px; background: #07c160; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
-    .icon svg { width: 32px; height: 32px; fill: #fff; }
-    h1 { font-size: 20px; color: #1d2129; margin-bottom: 8px; }
-    p { font-size: 14px; color: #86909c; line-height: 1.6; margin-bottom: 24px; }
-    .btn { display: block; width: 100%; padding: 14px; background: #07c160; color: #fff; border: none; border-radius: 8px; font-size: 16px; font-weight: 600; cursor: pointer; text-decoration: none; }
-    .btn:active { background: #06ad56; }
-    .tip { font-size: 12px; color: #c9cdd4; margin-top: 16px; }
-    .status { font-size: 14px; color: #07c160; margin-top: 12px; min-height: 20px; }
-    .params { font-size: 11px; color: #c9cdd4; margin-top: 8px; word-break: break-all; }
-    wx-open-launch-weapp { display: block; width: 100%; }
-    wx-open-launch-weapp .btn-inner { display: block; width: 100%; padding: 14px; background: #07c160; color: #fff; border: none; border-radius: 8px; font-size: 16px; font-weight: 600; text-align: center; }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>请填写您的个人资料</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif;background:#f5f7fa;min-height:100vh;color:#1d2129;font-size:14px;-webkit-font-smoothing:antialiased}
+input,textarea,select,button{font-family:inherit;font-size:inherit}
+
+/* 邀请卡片 */
+.invite-card{background:linear-gradient(135deg,#409eff 0%,#1677ff 50%,#0958d9 100%);padding:32px 20px 28px;color:#fff;text-align:center;position:relative}
+.invite-text{font-size:24px;font-weight:700;letter-spacing:2px}
+.invite-badge{display:flex;align-items:center;justify-content:center;gap:4px;margin-top:10px;font-size:11px;opacity:.85}
+.invite-code{position:absolute;right:10px;bottom:8px;font-size:10px;opacity:.5;font-family:monospace}
+
+/* 智能识别 */
+.smart-paste-section{margin:12px 12px 0;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.04)}
+.smart-paste-header{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;background:linear-gradient(135deg,#f0f9ff,#e8f4fd);border-bottom:1px solid #e8f0fe}
+.smart-paste-title{font-size:13px;font-weight:600;color:#1677ff}
+.smart-paste-tip{font-size:10px;color:#86909c}
+.smart-paste-body{padding:12px 16px}
+.smart-paste-input{width:100%;min-height:60px;max-height:100px;padding:10px 12px;border:1px dashed #c9cdd4;border-radius:8px;font-size:13px;color:#1d2129;background:#fafbfc;resize:none;line-height:1.6;outline:none}
+.smart-paste-input:focus{border-color:#409eff}
+.smart-paste-actions{display:flex;gap:8px;margin-top:10px;justify-content:flex-end}
+.smart-paste-btn{padding:0 14px;height:28px;line-height:28px;border-radius:6px;font-size:12px;font-weight:500;cursor:pointer;border:1px solid #c8e6c9;background:#e8f5e9;color:#43a047}
+.smart-paste-btn.recognize{background:#e3f2fd;color:#1976d2;border-color:#bbdefb}
+.smart-paste-btn.clear{background:#f5f5f5;color:#9e9e9e;border-color:#e0e0e0}
+
+/* 表单区 */
+.form-body{padding:12px 12px 0}
+.form-section{background:#fff;border-radius:12px;padding:16px;margin-bottom:12px;box-shadow:0 2px 8px rgba(0,0,0,.04)}
+.section-title{display:flex;align-items:center;gap:6px;font-size:14px;font-weight:600;color:#1d2129;margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid #f0f0f0}
+.section-title-bar{width:3px;height:16px;border-radius:2px;background:#409eff;flex-shrink:0}
+.expand-header{display:flex;justify-content:space-between;align-items:center;cursor:pointer}
+.expand-hint{font-size:12px;color:#a8abb2;display:flex;align-items:center;gap:4px}
+.expand-icon{font-size:12px;color:#e6a23c;transition:transform .3s;display:inline-block}
+.expand-icon.expanded{transform:rotate(90deg)}
+
+/* 表单项 */
+.form-item{margin-bottom:16px}
+.form-label{font-size:13px;color:#4e5969;margin-bottom:6px;font-weight:500;display:flex;align-items:center;gap:2px}
+.required{color:#f5222d}
+.form-input{width:100%;height:42px;padding:0 14px;border:1px solid #e5e6eb;border-radius:8px;font-size:14px;color:#1d2129;background:#fafbfc;outline:none;transition:border-color .2s,box-shadow .2s}
+.form-input:focus{border-color:#409eff;box-shadow:0 0 0 2px rgba(64,158,255,.1);background:#fff}
+.form-input::placeholder{color:#c0c4cc}
+.form-textarea{width:100%;min-height:60px;padding:10px 14px;border:1px solid #e5e6eb;border-radius:8px;font-size:14px;color:#1d2129;background:#fafbfc;resize:vertical;outline:none;line-height:1.6}
+.form-textarea:focus{border-color:#409eff;background:#fff}
+select.form-input{appearance:auto;-webkit-appearance:auto}
+
+/* 性别 */
+.gender-group{display:flex;gap:10px}
+.gender-btn{flex:1;height:42px;display:flex;align-items:center;justify-content:center;border:1px solid #e5e6eb;border-radius:8px;font-size:14px;color:#4e5969;cursor:pointer;background:#fafbfc;transition:all .2s}
+.gender-btn.active{border-color:#409eff;background:linear-gradient(135deg,#f0f5ff,#e8f0ff);color:#1677ff;font-weight:600}
+
+/* 协议 */
+.agreement-section{padding:12px 16px 0}
+.agreement-row{display:flex;align-items:flex-start;gap:8px}
+.agreement-checkbox{width:18px;height:18px;min-width:18px;border:1px solid #c0c4cc;border-radius:4px;display:flex;align-items:center;justify-content:center;margin-top:2px;font-size:12px;color:#fff;cursor:pointer;transition:all .2s}
+.agreement-checkbox.checked{background:#409eff;border-color:#409eff}
+.agreement-text{font-size:12px;color:#86909c;line-height:1.6}
+.agreement-link{color:#409eff;font-weight:500;cursor:pointer}
+
+/* 提交 */
+.submit-section{padding:14px 12px 20px}
+.btn-primary{width:100%;height:44px;border:none;border-radius:10px;background:linear-gradient(135deg,#409eff,#1677ff);color:#fff;font-size:16px;font-weight:600;cursor:pointer;transition:opacity .2s}
+.btn-primary:disabled{opacity:.5;cursor:not-allowed}
+.btn-primary:active{opacity:.8}
+.submit-tip{text-align:center;font-size:11px;color:#c0c4cc;margin-top:10px}
+
+/* 成功页 */
+.success-page{display:none;min-height:100vh;background:linear-gradient(180deg,#f0f5ff 0%,#f5f7fa 40%);padding:60px 20px;text-align:center}
+.success-icon{width:64px;height:64px;margin:0 auto 16px;background:#52c41a;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:28px;color:#fff;font-weight:700}
+.success-title{font-size:20px;font-weight:700;color:#1d2129;margin-bottom:8px}
+.success-desc{font-size:14px;color:#86909c;line-height:1.6;margin-bottom:20px}
+.success-tips{display:flex;flex-direction:column;gap:6px;font-size:12px;color:#86909c}
+
+/* 协议弹窗 */
+.modal-overlay{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.5);z-index:9999;align-items:flex-end;justify-content:center}
+.modal-overlay.show{display:flex}
+.modal-content{width:100%;max-height:85vh;background:#fff;border-radius:16px 16px 0 0;display:flex;flex-direction:column;overflow:hidden}
+.modal-header{display:flex;justify-content:space-between;align-items:center;padding:16px 20px;border-bottom:1px solid #f0f0f0;flex-shrink:0}
+.modal-title{font-size:16px;font-weight:700;color:#1d2129}
+.modal-close{font-size:20px;color:#86909c;cursor:pointer;padding:4px}
+.modal-body{flex:1;padding:16px 20px;overflow-y:auto;font-size:13px;color:#4e5969;line-height:1.8}
+.modal-body h3{font-size:14px;font-weight:700;color:#1d2129;margin:14px 0 8px}
+.modal-body p{margin-bottom:6px;text-align:justify}
+.modal-footer{padding:12px 20px 24px;border-top:1px solid #f0f0f0;flex-shrink:0}
+.modal-footer button{width:100%;height:42px;background:linear-gradient(135deg,#409eff,#1677ff);color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:600;cursor:pointer}
+
+/* 加载/错误 */
+.loading-page{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;background:linear-gradient(180deg,#f0f5ff 0%,#f5f7fa 100%)}
+.spinner{width:32px;height:32px;border:3px solid #e5e6eb;border-top-color:#409eff;border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.loading-text{margin-top:14px;font-size:14px;color:#86909c}
+.error-page{display:none;min-height:100vh;padding:40px 24px;background:linear-gradient(180deg,#fff5f5 0%,#f5f7fa 100%);text-align:center;justify-content:center;align-items:center;flex-direction:column}
+.error-icon{font-size:48px;margin-bottom:16px}
+.error-title{font-size:18px;font-weight:700;color:#1d2129;margin-bottom:10px}
+.error-msg{font-size:13px;color:#86909c;line-height:1.6}
+
+/* toast */
+.toast{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(0,0,0,.75);color:#fff;padding:10px 20px;border-radius:8px;font-size:13px;z-index:99999;pointer-events:none;opacity:0;transition:opacity .3s}
+.toast.show{opacity:1}
+</style>
 </head>
 <body>
-  <div class="card">
-    <div class="icon">
-      <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8" fill="none" stroke="#fff" stroke-width="2"/><line x1="16" y1="13" x2="8" y2="13" stroke="#fff" stroke-width="2"/><line x1="16" y1="17" x2="8" y2="17" stroke="#fff" stroke-width="2"/></svg>
-    </div>
-    <h1>请填写您的个人资料</h1>
-    <p>简单几步填写基本信息，<br>方便我们为您提供更优质的服务</p>
 
-    <!-- 微信开放标签（在微信环境中自动显示） -->
-    <div id="wechat-btn-area"></div>
+<!-- 加载页 -->
+<div id="loadingPage" class="loading-page">
+  <div class="spinner"></div>
+  <div class="loading-text">正在加载表单配置...</div>
+</div>
 
-    <!-- 普通按钮（非微信环境或开放标签不可用时显示） -->
-    <button class="btn" id="openBtn" style="display:none" onclick="openMP()">立即填写</button>
+<!-- 错误页 -->
+<div id="errorPage" class="error-page">
+  <div class="error-icon">⚠️</div>
+  <div class="error-title">无法打开表单</div>
+  <div class="error-msg" id="errorMsg">链接参数不完整</div>
+</div>
 
-    <div class="status" id="status"></div>
-    <p class="tip">填写后资料将自动同步，无需重复录入</p>
+<!-- 表单页 -->
+<div id="formPage" style="display:none">
+  <!-- 顶部邀请卡片 -->
+  <div class="invite-card">
+    <div class="invite-text">邀请您填写个人资料</div>
+    <div class="invite-badge">🔒 信息安全加密传输</div>
+    <div class="invite-code" id="tenantCodeDisplay"></div>
   </div>
 
-  <!-- 微信JS-SDK -->
-  <script src="https://res.wx.qq.com/open/js/jweixin-1.6.0.js"></script>
-  <script>
-    // 解析URL参数
-    var params = new URLSearchParams(window.location.search);
-    var appId = params.get('appId') || '';
-    var tenantId = params.get('tenantId') || '';
-    var memberId = params.get('memberId') || '';
-    var ts = params.get('ts') || '';
-    var sign = params.get('sign') || '';
-    var externalUserId = params.get('externalUserId') || '';
+  <!-- 智能识别 -->
+  <div class="smart-paste-section">
+    <div class="smart-paste-header">
+      <span class="smart-paste-title">智能识别填充区域</span>
+      <span class="smart-paste-tip">粘贴文本自动识别</span>
+    </div>
+    <div class="smart-paste-body">
+      <textarea id="smartPasteInput" class="smart-paste-input" placeholder="粘贴包含姓名、手机号的文本，如：张三 13800138000 广东省广州市海珠区阅江西路222号"></textarea>
+      <div class="smart-paste-actions">
+        <span class="smart-paste-btn" onclick="doSmartPaste()">粘贴信息</span>
+        <span class="smart-paste-btn recognize" onclick="doSmartRecognize()">识别填充</span>
+        <span class="smart-paste-btn clear" onclick="document.getElementById('smartPasteInput').value=''">清空</span>
+      </div>
+    </div>
+  </div>
 
-    // 小程序页面路径（带完整参数，确保资料归属）
-    var mpPath = '/pages/form/form?tenantId=' + encodeURIComponent(tenantId)
-      + '&memberId=' + encodeURIComponent(memberId)
-      + '&ts=' + encodeURIComponent(ts)
-      + '&sign=' + encodeURIComponent(sign)
-      + '&externalUserId=' + encodeURIComponent(externalUserId);
+  <!-- 表单主体 -->
+  <div class="form-body">
+    <div class="form-section">
+      <div class="section-title"><div class="section-title-bar"></div><span>基本信息</span></div>
+      <div id="visibleFieldsContainer"></div>
+    </div>
+    <!-- 折叠区 -->
+    <div class="form-section" id="collapsedSection" style="display:none">
+      <div class="section-title expand-header" onclick="toggleCollapsed()">
+        <div style="display:flex;align-items:center;gap:6px"><div class="section-title-bar" style="background:#e6a23c"></div><span>更多信息（选填）</span></div>
+        <span class="expand-hint"><span id="expandText">展开更多</span><span class="expand-icon" id="expandIcon">▶</span></span>
+      </div>
+      <div id="collapsedFieldsContainer" style="display:none"></div>
+    </div>
+    <!-- 备注 -->
+    <div class="form-section">
+      <div class="section-title"><div class="section-title-bar" style="background:#909399"></div><span>备注</span></div>
+      <div class="form-item"><textarea id="field_remark" class="form-textarea" placeholder="如有其他需要说明的，请在此填写" maxlength="500"></textarea></div>
+    </div>
+    <!-- 自定义字段 -->
+    <div class="form-section" id="customFieldsSection" style="display:none">
+      <div class="section-title"><div class="section-title-bar" style="background:#67c23a"></div><span>补充信息</span></div>
+      <div id="customFieldsContainer"></div>
+    </div>
+  </div>
 
-    var ua = navigator.userAgent.toLowerCase();
-    var isWechat = ua.indexOf('micromessenger') > -1;
-    var isWecom = ua.indexOf('wxwork') > -1;
+  <!-- 协议 -->
+  <div class="agreement-section">
+    <div class="agreement-row">
+      <div class="agreement-checkbox" id="agreeCheckbox" onclick="toggleAgreement()"></div>
+      <div class="agreement-text">
+        <span>我已阅读并同意</span>
+        <span class="agreement-link" onclick="showAgreement('user')">《用户协议》</span>
+        <span>和</span>
+        <span class="agreement-link" onclick="showAgreement('privacy')">《隐私政策》</span>
+      </div>
+    </div>
+  </div>
 
-    function setStatus(msg) {
-      document.getElementById('status').textContent = msg;
+  <!-- 提交 -->
+  <div class="submit-section">
+    <button class="btn-primary" id="submitBtn" onclick="handleSubmit()">提交资料</button>
+    <div class="submit-tip">您的信息仅用于服务沟通，不会泄露给第三方</div>
+  </div>
+</div>
+
+<!-- 成功页 -->
+<div id="successPage" class="success-page">
+  <div class="success-icon">✓</div>
+  <div class="success-title">提交成功</div>
+  <div class="success-desc">您的资料已成功提交，顾问会尽快与您联系</div>
+  <div class="success-tips">
+    <span>🔒 信息已加密保存</span>
+    <span>💬 顾问收到通知后会主动联系您</span>
+  </div>
+</div>
+
+<!-- 协议弹窗 -->
+<div class="modal-overlay" id="agreementModal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <span class="modal-title" id="modalTitle">用户协议</span>
+      <span class="modal-close" onclick="closeAgreement()">✕</span>
+    </div>
+    <div class="modal-body" id="modalBody"></div>
+    <div class="modal-footer"><button onclick="agreeAndClose()">我已阅读并同意</button></div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ===== 全局状态 =====
+var params = {};
+var formConfig = { visibleFields: [], collapsedFields: [], customFields: [] };
+var formData = {};
+var customFormData = {};
+var agreedPrivacy = false;
+var showCollapsed = false;
+var submitting = false;
+var API_BASE = '';
+
+// ===== 初始化 =====
+(function init() {
+  var sp = new URLSearchParams(window.location.search);
+  params = {
+    tenantId: sp.get('tenantId') || '',
+    memberId: sp.get('memberId') || '',
+    ts: sp.get('ts') || '',
+    sign: sp.get('sign') || '',
+    externalUserId: sp.get('externalUserId') || '',
+    appId: sp.get('appId') || ''
+  };
+  API_BASE = window.location.origin + '/api/v1/mp';
+
+  if (!params.tenantId || !params.memberId || !params.ts || !params.sign) {
+    showError('链接参数不完整，请通过卡片链接打开');
+    return;
+  }
+  loadFormConfig();
+})();
+
+// ===== API =====
+function apiGet(url) {
+  return fetch(API_BASE + url).then(function(r) {
+    if (!r.ok) return r.json().then(function(d) { throw d; });
+    return r.json();
+  });
+}
+function apiPost(url, data) {
+  return fetch(API_BASE + url, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data)
+  }).then(function(r) {
+    if (!r.ok) return r.json().then(function(d) { throw d; });
+    return r.json();
+  });
+}
+
+// ===== 加载配置 =====
+function loadFormConfig() {
+  var url = '/form-config?tenantId=' + encodeURIComponent(params.tenantId)
+    + '&memberId=' + encodeURIComponent(params.memberId)
+    + '&ts=' + encodeURIComponent(params.ts)
+    + '&sign=' + encodeURIComponent(params.sign);
+  apiGet(url).then(function(res) {
+    var data = res.data || res;
+    var builtinFields = data.builtinFields || [];
+    var rawCustom = data.customFields || [];
+    var ADDRESS_KEYS = ['address','province','city','district','street','detailAddress'];
+
+    var visible = [], collapsed = [], addressHandled = false;
+    for (var i = 0; i < builtinFields.length; i++) {
+      var f = builtinFields[i];
+      if (ADDRESS_KEYS.indexOf(f.key) >= 0) {
+        if (!addressHandled) {
+          addressHandled = true;
+          var addrRequired = builtinFields.filter(function(b){return ADDRESS_KEYS.indexOf(b.key)>=0}).some(function(a){return a.mpRequired});
+          var addrField = { key: 'province', label: '收货地址', mpRequired: addrRequired };
+          if (addrRequired) visible.push(addrField); else collapsed.push(addrField);
+        }
+        continue;
+      }
+      var field = { key: f.key, label: f.label, mpRequired: !!f.mpRequired };
+      if (f.mpRequired) visible.push(field); else collapsed.push(field);
     }
 
-    function openMP() {
-      setStatus('正在跳转小程序...');
+    formConfig.visibleFields = visible;
+    formConfig.collapsedFields = collapsed;
+    formConfig.customFields = rawCustom;
 
-      // 场景1：在小程序webview内（不太可能，但兜底）
-      if (window.wx && wx.miniProgram && wx.miniProgram.navigateTo) {
-        wx.miniProgram.navigateTo({ url: mpPath });
-        return;
-      }
+    if (data.tenantCode) document.getElementById('tenantCodeDisplay').textContent = data.tenantCode;
+    renderForm();
+  }).catch(function(err) {
+    if (err && err.code === 'LINK_EXPIRED') showError('链接已过期，请联系顾问重新获取');
+    else if (err && err.code === 'INVALID_SIGN') showError('链接无效，请联系顾问重新获取');
+    else showError('加载失败，请稍后重试');
+  });
+}
 
-      // 场景2：在微信/企微内置浏览器中，使用URL Scheme
-      if (appId && (isWechat || isWecom)) {
-        // 微信环境内直接用URL Scheme跳转
-        var scheme = 'weixin://dl/business/?appid=' + appId + '&path=' + encodeURIComponent(mpPath) + '&env_version=release';
-        window.location.href = scheme;
-        setTimeout(function() {
-          setStatus('如未自动跳转，请长按识别下方小程序码');
-        }, 2000);
-        return;
-      }
+// ===== 渲染表单 =====
+function renderForm() {
+  renderFields('visibleFieldsContainer', formConfig.visibleFields);
+  if (formConfig.collapsedFields.length > 0) {
+    document.getElementById('collapsedSection').style.display = '';
+    renderFields('collapsedFieldsContainer', formConfig.collapsedFields);
+  }
+  if (formConfig.customFields.length > 0) {
+    document.getElementById('customFieldsSection').style.display = '';
+    renderCustomFields();
+  }
+  document.getElementById('loadingPage').style.display = 'none';
+  document.getElementById('formPage').style.display = '';
+}
 
-      // 场景3：非微信环境，提示用户
-      setStatus('请在微信中打开此链接以填写资料');
+function renderFields(containerId, fields) {
+  var html = '';
+  for (var i = 0; i < fields.length; i++) {
+    var f = fields[i];
+    var req = f.mpRequired ? '<span class="required">*</span>' : '';
+    if (f.key === 'name') {
+      html += '<div class="form-item"><div class="form-label">' + f.label + req + '</div><input class="form-input" id="field_name" placeholder="请输入姓名"></div>';
+    } else if (f.key === 'phone') {
+      html += '<div class="form-item"><div class="form-label">' + f.label + req + '</div><input class="form-input" id="field_phone" type="tel" maxlength="11" placeholder="请输入手机号"></div>';
+    } else if (f.key === 'gender') {
+      html += '<div class="form-item"><div class="form-label">' + f.label + req + '</div><div class="gender-group"><div class="gender-btn" id="gender_m" onclick="selectGender(\'男\')">男</div><div class="gender-btn" id="gender_f" onclick="selectGender(\'女\')">女</div></div></div>';
+    } else if (f.key === 'age') {
+      html += '<div class="form-item"><div class="form-label">' + f.label + req + '</div><input class="form-input" id="field_age" type="number" maxlength="3" placeholder="请输入年龄"></div>';
+    } else if (f.key === 'birthday') {
+      html += '<div class="form-item"><div class="form-label">' + f.label + req + '</div><input class="form-input" id="field_birthday" type="date"></div>';
+    } else if (f.key === 'province') {
+      html += '<div class="form-item"><div class="form-label">收货地址' + req + '</div>'
+        + '<div style="display:flex;gap:6px;margin-bottom:8px"><select class="form-input" id="field_province" onchange="onProvinceChange()" style="flex:1"><option value="">省份</option></select>'
+        + '<select class="form-input" id="field_city" onchange="onCityChange()" style="flex:1"><option value="">城市</option></select>'
+        + '<select class="form-input" id="field_district" onchange="onDistrictChange()" style="flex:1"><option value="">区县</option></select></div>'
+        + '<select class="form-input" id="field_street" style="margin-bottom:8px;display:none"><option value="">选择街道/乡镇</option></select>'
+        + '<input class="form-input" id="field_detailAddress" placeholder="详细地址（门牌号、楼层等）">'
+        + '</div>';
+    } else if (f.key === 'email') {
+      html += '<div class="form-item"><div class="form-label">' + f.label + req + '</div><input class="form-input" id="field_email" type="email" placeholder="请输入邮箱"></div>';
+    } else if (f.key === 'wechat') {
+      html += '<div class="form-item"><div class="form-label">' + f.label + req + '</div><input class="form-input" id="field_wechat" placeholder="请输入微信号"></div>';
+    } else if (f.key === 'height') {
+      html += '<div class="form-item"><div class="form-label">' + f.label + req + '</div><input class="form-input" id="field_height" type="number" step="0.1" placeholder="请输入身高(cm)"></div>';
+    } else if (f.key === 'weight') {
+      html += '<div class="form-item"><div class="form-label">' + f.label + req + '</div><input class="form-input" id="field_weight" type="number" step="0.1" placeholder="请输入体重(kg)"></div>';
+    } else {
+      html += '<div class="form-item"><div class="form-label">' + f.label + req + '</div><input class="form-input" id="field_' + f.key + '" placeholder="请输入' + f.label + '"></div>';
     }
+  }
+  document.getElementById(containerId).innerHTML = html;
+  // 如果有地址字段，初始化省份数据
+  if (document.getElementById('field_province')) loadProvinces();
+}
 
-    // 初始化逻辑
-    (function init() {
-      // 尝试使用微信开放标签 <wx-open-launch-weapp>
-      if (isWechat && appId && !isWecom) {
-        try {
-          var btnArea = document.getElementById('wechat-btn-area');
-          btnArea.innerHTML = '<wx-open-launch-weapp id="launch-btn" appid="' + appId + '" path="' + mpPath + '">'
-            + '<template><button class="btn-inner">立即填写</button></template>'
-            + '</wx-open-launch-weapp>';
-          var launchBtn = document.getElementById('launch-btn');
-          if (launchBtn) {
-            launchBtn.addEventListener('launch', function() { setStatus('小程序已打开'); });
-            launchBtn.addEventListener('error', function(e) {
-              console.warn('开放标签错误:', e.detail);
-              document.getElementById('openBtn').style.display = 'block';
-              btnArea.style.display = 'none';
-            });
-            return; // 使用开放标签，不显示普通按钮
-          }
-        } catch(e) { console.warn('开放标签初始化失败:', e); }
-      }
+function renderCustomFields() {
+  var html = '';
+  for (var i = 0; i < formConfig.customFields.length; i++) {
+    var f = formConfig.customFields[i];
+    var req = f.mpRequired ? '<span class="required">*</span>' : '';
+    if (f.fieldType === 'select' || f.fieldType === 'radio') {
+      var opts = '<option value="">请选择' + f.fieldName + '</option>';
+      if (f.options) for (var j = 0; j < f.options.length; j++) opts += '<option value="' + f.options[j].label + '">' + f.options[j].label + '</option>';
+      html += '<div class="form-item"><div class="form-label">' + f.fieldName + req + '</div><select class="form-input" id="custom_' + f.fieldKey + '">' + opts + '</select></div>';
+    } else if (f.fieldType === 'date' || f.fieldType === 'datetime') {
+      html += '<div class="form-item"><div class="form-label">' + f.fieldName + req + '</div><input class="form-input" id="custom_' + f.fieldKey + '" type="date"></div>';
+    } else {
+      var inputType = f.fieldType === 'number' ? 'number' : 'text';
+      html += '<div class="form-item"><div class="form-label">' + f.fieldName + req + '</div><input class="form-input" id="custom_' + f.fieldKey + '" type="' + inputType + '" placeholder="' + (f.placeholder || '请输入' + f.fieldName) + '"></div>';
+    }
+  }
+  document.getElementById('customFieldsContainer').innerHTML = html;
+}
 
-      // 开放标签不可用，显示普通按钮
-      document.getElementById('openBtn').style.display = 'block';
+// ===== 性别选择 =====
+function selectGender(val) {
+  formData.gender = val;
+  var m = document.getElementById('gender_m'), f = document.getElementById('gender_f');
+  if (m) m.className = 'gender-btn' + (val === '男' ? ' active' : '');
+  if (f) f.className = 'gender-btn' + (val === '女' ? ' active' : '');
+}
 
-      // 企微/微信环境自动跳转
-      if (isWechat || isWecom) {
-        setTimeout(openMP, 800);
-      }
-    })();
-  </script>
+// ===== 折叠展开 =====
+function toggleCollapsed() {
+  showCollapsed = !showCollapsed;
+  document.getElementById('collapsedFieldsContainer').style.display = showCollapsed ? '' : 'none';
+  document.getElementById('expandText').textContent = showCollapsed ? '收起' : '展开更多';
+  document.getElementById('expandIcon').className = 'expand-icon' + (showCollapsed ? ' expanded' : '');
+}
+
+// ===== 地址联动 =====
+var regionData = null;
+function loadProvinces() {
+  fetch('https://restapi.amap.com/v3/config/district?key=your_key&subdistrict=3').catch(function(){});
+  // 使用简化方案：省市区直接用input让用户输入（兼容性更好）
+  var pEl = document.getElementById('field_province');
+  if (!pEl) return;
+  // 用中国行政区数据（内置常见省份）
+  var provinces = ['北京市','天津市','上海市','重庆市','河北省','山西省','辽宁省','吉林省','黑龙江省','江苏省','浙江省','安徽省','福建省','江西省','山东省','河南省','湖北省','湖南省','广东省','海南省','四川省','贵州省','云南省','陕西省','甘肃省','青海省','台湾省','广西壮族自治区','内蒙古自治区','西藏自治区','宁夏回族自治区','新疆维吾尔自治区','香港特别行政区','澳门特别行政区'];
+  var html = '<option value="">省份</option>';
+  for (var i = 0; i < provinces.length; i++) html += '<option value="' + provinces[i] + '">' + provinces[i] + '</option>';
+  pEl.innerHTML = html;
+}
+
+function onProvinceChange() {
+  var prov = document.getElementById('field_province').value;
+  document.getElementById('field_city').innerHTML = '<option value="">城市</option>';
+  document.getElementById('field_district').innerHTML = '<option value="">区县</option>';
+  document.getElementById('field_street').style.display = 'none';
+  if (!prov) return;
+  // 动态加载城市（通过后端或使用简单的input替代）
+  // 简化方案：将select改为可输入
+  var cityEl = document.getElementById('field_city');
+  cityEl.innerHTML = '<option value="">请输入城市名</option>';
+  // 对直辖市特殊处理
+  var municipalities = {'北京市':'北京市','天津市':'天津市','上海市':'上海市','重庆市':'重庆市'};
+  if (municipalities[prov]) {
+    cityEl.innerHTML = '<option value="' + prov + '">' + prov + '</option>';
+    cityEl.value = prov;
+    onCityChange();
+  }
+}
+
+function onCityChange() {
+  document.getElementById('field_district').innerHTML = '<option value="">请输入区县名</option>';
+  document.getElementById('field_street').style.display = 'none';
+}
+
+function onDistrictChange() {
+  var prov = document.getElementById('field_province').value;
+  var city = document.getElementById('field_city').value;
+  var dist = document.getElementById('field_district').value;
+  if (prov && city && dist) loadStreets(prov, city, dist);
+}
+
+function loadStreets(province, city, district) {
+  var url = '/address-streets?province=' + encodeURIComponent(province) + '&city=' + encodeURIComponent(city) + '&district=' + encodeURIComponent(district);
+  apiGet(url).then(function(res) {
+    var streets = res.data || res || [];
+    if (streets.length > 0) {
+      var streetEl = document.getElementById('field_street');
+      var html = '<option value="">选择街道/乡镇</option>';
+      for (var i = 0; i < streets.length; i++) html += '<option value="' + streets[i].label + '">' + streets[i].label + '</option>';
+      streetEl.innerHTML = html;
+      streetEl.style.display = '';
+    }
+  }).catch(function(){});
+}
+
+// ===== 智能识别 =====
+function doSmartPaste() {
+  navigator.clipboard.readText().then(function(text) {
+    if (text) { document.getElementById('smartPasteInput').value = text; doSmartRecognize(); }
+    else showToast('剪贴板为空');
+  }).catch(function() { showToast('请手动粘贴文本后点击识别'); });
+}
+
+function doSmartRecognize() {
+  var text = document.getElementById('smartPasteInput').value;
+  if (!text || !text.trim()) { showToast('请先粘贴或输入文本'); return; }
+  var count = 0;
+  var phone = extractPhone(text);
+  if (phone) { setFieldValue('field_phone', phone); count++; }
+  var name = extractName(text);
+  if (name) { setFieldValue('field_name', name); count++; }
+  var addr = extractAddress(text);
+  if (addr) {
+    if (addr.province) setFieldValue('field_province', addr.province);
+    if (addr.detail) setFieldValue('field_detailAddress', addr.detail);
+    count++;
+  }
+  showToast(count > 0 ? '已识别' + count + '项信息' : '未识别到有效信息');
+}
+
+function setFieldValue(id, val) {
+  var el = document.getElementById(id);
+  if (el) { el.value = val; }
+}
+
+// ===== 智能识别辅助函数 =====
+function extractPhone(text) {
+  var m = text.match(/(?:电话|手机|手机号|联系电话|phone|tel)[\uff1a:\u3001\s]*?(1[3-9]\d{9})/i);
+  if (m) return m[1];
+  m = text.match(/1[3-9]\d{9}/);
+  return m ? m[0] : '';
+}
+
+function extractName(text) {
+  var m = text.match(/(?:姓名|收件人|客户姓名|客户|称呼|name)[\uff1a:\u3001\s]*?([\u4e00-\u9fa5]{2,4})/i);
+  if (m) return m[1];
+  var labels = ['姓名','电话','手机','地址','收件','收货','联系','备注','省份','城市','广东','山东','河南','四川','江苏'];
+  var matches = text.match(/[\u4e00-\u9fa5]{2,4}/g) || [];
+  for (var i = 0; i < matches.length; i++) {
+    var w = matches[i], skip = false;
+    for (var j = 0; j < labels.length; j++) { if (w.indexOf(labels[j]) >= 0 || labels[j].indexOf(w) >= 0) { skip = true; break; } }
+    if (!skip) return w;
+  }
+  return '';
+}
+
+function extractAddress(text) {
+  var m = text.match(/(?:地址|收货地址|详细地址)[\uff1a:\u3001\s]*?(.+)/i);
+  var addrText = m ? m[1].trim() : '';
+  if (!addrText) {
+    m = text.match(/([\u4e00-\u9fa5]+(?:\u7701|\u5e02|\u81ea\u6cbb\u533a)[\u4e00-\u9fa5\d\s\-#\.·]*)/);
+    if (m) addrText = m[0];
+  }
+  if (!addrText) return null;
+  addrText = addrText.replace(/1[3-9]\d{9}/g, '').trim();
+  var result = { province: '', city: '', district: '', detail: '' };
+  var provMatch = addrText.match(/^([\u4e00-\u9fa5]+?(?:\u7701|\u5e02|\u81ea\u6cbb\u533a|\u7279\u522b\u884c\u653f\u533a))/);
+  if (provMatch) { result.province = provMatch[1]; addrText = addrText.substring(provMatch[1].length); }
+  var cityMatch = addrText.match(/^[\s,\uff0c]*?([\u4e00-\u9fa5]+?\u5e02)/);
+  if (cityMatch) { result.city = cityMatch[1]; addrText = addrText.substring(cityMatch[0].length); }
+  result.detail = addrText.replace(/^[\s,\uff0c\u3001]+/, '');
+  return (result.province || result.city || result.detail) ? result : null;
+}
+
+// ===== 协议 =====
+function toggleAgreement() {
+  agreedPrivacy = !agreedPrivacy;
+  document.getElementById('agreeCheckbox').className = 'agreement-checkbox' + (agreedPrivacy ? ' checked' : '');
+  document.getElementById('agreeCheckbox').textContent = agreedPrivacy ? '✓' : '';
+}
+
+function showAgreement(type) {
+  document.getElementById('modalTitle').textContent = type === 'privacy' ? '隐私政策' : '用户协议';
+  document.getElementById('modalBody').innerHTML = type === 'privacy' ? getPrivacyText() : getUserAgreementText();
+  document.getElementById('agreementModal').className = 'modal-overlay show';
+}
+
+function closeAgreement() { document.getElementById('agreementModal').className = 'modal-overlay'; }
+function agreeAndClose() { agreedPrivacy = true; document.getElementById('agreeCheckbox').className = 'agreement-checkbox checked'; document.getElementById('agreeCheckbox').textContent = '✓'; closeAgreement(); }
+
+function getUserAgreementText() {
+  return '<h3>一、协议概述</h3><p>欢迎您使用本客户资料填写程序。本程序由广州仙狐网络科技有限公司提供技术支持，由使用本系统的企业客户实际运营并向您发起资料收集。</p><h3>二、服务说明</h3><p>本程序为信息采集方提供客户资料收集功能，您通过本程序填写并提交的个人资料将传输至对应信息采集方的CRM系统，用于产品咨询、售后服务、物流配送等客户服务。</p><h3>三、用户义务</h3><p>您应确保所填写的信息真实、准确、完整，不得冒用他人身份信息。</p><h3>四、知识产权</h3><p>本程序的所有内容的知识产权归技术提供方（广州仙狐网络科技有限公司）所有。</p><h3>五、联系方式</h3><p>技术提供方：广州仙狐网络科技有限公司<br>官方网站：https://yunkes.com<br>联系邮箱：xianhuquwang@163.com</p>';
+}
+function getPrivacyText() {
+  return '<h3>一、信息收集</h3><p>本次资料采集的实际收集主体为向您发送资料填写邀请的企业（信息采集方），而非本程序的技术提供方。</p><h3>二、收集的信息类型</h3><p>基本身份信息（姓名、性别、年龄）、联系信息（手机号码、微信号、邮箱）、收货地址、身体数据（身高、体重）及信息采集方自定义的补充字段信息。</p><h3>三、信息使用目的</h3><p>建立客户档案、提供产品推荐和售后服务、商品配送、内部客户分析。</p><h3>四、信息安全</h3><p>您的信息存储在信息采集方CRM系统的安全服务器中，采用加密传输（HTTPS/TLS）保护数据安全。</p><h3>五、您的权利</h3><p>您享有查询权、更正权、删除权和撤回同意的权利。</p><h3>六、联系方式</h3><p>技术提供方：广州仙狐网络科技有限公司<br>官方网站：https://yunkes.com<br>联系邮箱：xianhuquwang@163.com</p>';
+}
+
+// ===== 收集表单数据 =====
+function collectFormData() {
+  formData = {};
+  var allFields = formConfig.visibleFields.concat(formConfig.collapsedFields);
+  for (var i = 0; i < allFields.length; i++) {
+    var f = allFields[i];
+    if (f.key === 'gender') continue;
+    if (f.key === 'province') {
+      formData.province = getVal('field_province');
+      formData.city = getVal('field_city');
+      formData.district = getVal('field_district');
+      formData.street = getVal('field_street');
+      formData.detailAddress = getVal('field_detailAddress');
+      continue;
+    }
+    formData[f.key] = getVal('field_' + f.key);
+  }
+  formData.remark = getVal('field_remark');
+  if (!formData.gender) formData.gender = '';
+
+  customFormData = {};
+  for (var j = 0; j < formConfig.customFields.length; j++) {
+    var cf = formConfig.customFields[j];
+    customFormData[cf.fieldKey] = getVal('custom_' + cf.fieldKey);
+  }
+}
+
+function getVal(id) { var el = document.getElementById(id); return el ? el.value.trim() : ''; }
+
+// ===== 验证 =====
+function validateForm() {
+  collectFormData();
+  var allFields = formConfig.visibleFields.concat(formConfig.collapsedFields);
+  for (var i = 0; i < allFields.length; i++) {
+    var f = allFields[i];
+    if (!f.mpRequired) continue;
+    if (f.key === 'province') { if (!formData.province) { showToast('请选择收货地址'); return false; } continue; }
+    if (['city','district','street','detailAddress'].indexOf(f.key) >= 0) continue;
+    if (f.key === 'gender') { if (!formData.gender) { showToast('请选择性别'); return false; } continue; }
+    if (!formData[f.key]) { showToast('请填写' + f.label); return false; }
+  }
+  if (formData.phone && !/^1[3-9]\d{9}$/.test(formData.phone)) { showToast('请输入正确的手机号'); return false; }
+  if (formData.email && !/^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$/.test(formData.email)) { showToast('请输入正确的邮箱'); return false; }
+  if (formData.wechat && !/^[a-zA-Z][a-zA-Z0-9_\-]{5,19}$/.test(formData.wechat)) { showToast('微信号格式不正确'); return false; }
+  if (formData.age && (isNaN(formData.age) || Number(formData.age) < 1 || Number(formData.age) > 150)) { showToast('请输入正确的年龄'); return false; }
+  if (formData.height && (isNaN(formData.height) || Number(formData.height) <= 0 || Number(formData.height) > 300)) { showToast('请输入正确的身高'); return false; }
+  if (formData.weight && (isNaN(formData.weight) || Number(formData.weight) <= 0 || Number(formData.weight) > 500)) { showToast('请输入正确的体重'); return false; }
+  for (var j = 0; j < formConfig.customFields.length; j++) {
+    var cf = formConfig.customFields[j];
+    if (cf.mpRequired && !customFormData[cf.fieldKey]) { showToast('请填写' + cf.fieldName); return false; }
+  }
+  return true;
+}
+
+// ===== 提交 =====
+function handleSubmit() {
+  if (submitting) return;
+  if (!validateForm()) return;
+  if (!agreedPrivacy) {
+    if (confirm('您还未勾选用户协议和隐私政策，是否同意并继续提交？')) {
+      agreedPrivacy = true;
+      document.getElementById('agreeCheckbox').className = 'agreement-checkbox checked';
+      document.getElementById('agreeCheckbox').textContent = '✓';
+    } else return;
+  }
+  submitting = true;
+  document.getElementById('submitBtn').disabled = true;
+  document.getElementById('submitBtn').textContent = '提交中...';
+
+  apiPost('/submit-customer', {
+    tenantId: params.tenantId,
+    memberId: params.memberId,
+    ts: params.ts,
+    sign: params.sign,
+    externalUserId: params.externalUserId,
+    customerData: Object.assign({}, formData, { customFields: customFormData })
+  }).then(function() {
+    document.getElementById('formPage').style.display = 'none';
+    document.getElementById('successPage').style.display = '';
+  }).catch(function(err) {
+    if (err && err.code === 'DUPLICATE_PHONE') showToast('您的资料已提交过');
+    else if (err && err.statusCode === 403) showToast('签名验证失败，链接可能已失效');
+    else showToast((err && err.message) || '提交失败，请稍后重试');
+  }).finally(function() {
+    submitting = false;
+    document.getElementById('submitBtn').disabled = false;
+    document.getElementById('submitBtn').textContent = '提交资料';
+  });
+}
+
+// ===== 工具函数 =====
+function showError(msg) {
+  document.getElementById('loadingPage').style.display = 'none';
+  document.getElementById('errorPage').style.display = 'flex';
+  document.getElementById('errorMsg').textContent = msg;
+}
+
+function showToast(msg) {
+  var el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'toast show';
+  setTimeout(function() { el.className = 'toast'; }, 2000);
+}
+</script>
 </body>
 </html>

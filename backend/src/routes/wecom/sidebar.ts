@@ -2405,6 +2405,38 @@ router.post('/sidebar/customers', authenticateSidebarToken, async (req: Request,
   }
 });
 
+// ==================== 侧边栏：上传图片获取mediaId ====================
+router.post('/sidebar/upload-image-media', authenticateSidebarToken, async (req: Request, res: Response) => {
+  try {
+    const { imageUrl } = req.body;
+    if (!imageUrl) return res.status(400).json({ success: false, message: '缺少imageUrl' });
+
+    const sidebarUser = (req as any).sidebarUser;
+    const tenantId = sidebarUser?.tenantId;
+
+    // 获取企微配置
+    const configRepo = AppDataSource.getRepository(WecomConfig);
+    const config = await configRepo.findOne({ where: { tenantId, isEnabled: true } as any });
+    if (!config) return res.status(400).json({ success: false, message: '未找到企微配置' });
+
+    const accessToken = await WecomApiService.getAccessTokenByConfigId(config.id, 'external');
+
+    // 下载图片
+    const axios = (await import('axios')).default;
+    const fullUrl = imageUrl.startsWith('http') ? imageUrl : `${req.protocol}://${req.get('host')}${imageUrl}`;
+    const imgRes = await axios.get(fullUrl, { responseType: 'arraybuffer', timeout: 10000 });
+    const buffer = Buffer.from(imgRes.data);
+    const ext = imageUrl.split('.').pop()?.split('?')[0] || 'png';
+    const filename = `script_image_${Date.now()}.${ext}`;
+
+    const mediaId = await WecomApiService.uploadMedia(accessToken, 'image', buffer, filename);
+    res.json({ success: true, data: { mediaId } });
+  } catch (error: any) {
+    log.error('[Sidebar] Upload image media error:', error.message);
+    res.status(500).json({ success: false, message: '上传图片失败: ' + (error.message || '') });
+  }
+});
+
 // ==================== 客户画像：更新标签 ====================
 router.put('/sidebar/customer-tags', authenticateSidebarToken, async (req: Request, res: Response) => {
   try {

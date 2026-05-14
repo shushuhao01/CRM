@@ -96,6 +96,7 @@ const pageSize = 5
 const expandedId = ref<string | null>(null)
 const cardReady = ref(false)
 const preGeneratedPayload = ref<any>(null)
+const fallbackPayload = ref<any>(null)
 
 const totalPages = computed(() => Math.ceil(recordsTotal.value / pageSize) || 1)
 const hasMore = computed(() => page.value < totalPages.value)
@@ -181,36 +182,24 @@ const generateCard = async (showMsg = true) => {
 
     const mpAppId = data.appId || ''
     const mpPage = data.path || `/pages/form/form.html?tenantId=${tenantId}&memberId=${memberId}&ts=${ts}&sign=${data.sign || ''}&externalUserId=${extUserId}`
-    // H5中转页URL（点击后自动跳转到小程序）
     const h5FormUrl = `${window.location.origin}/wecom-form.html?tenantId=${tenantId}&memberId=${memberId}&ts=${ts}&sign=${data.sign || ''}&externalUserId=${extUserId}&appId=${mpAppId}`
 
-    // 判断发送模式：
-    // useMiniprogram=true 表示已在服务商后台创建了小程序应用并完成关联（方案A）
-    // 默认使用 news 类型（方案B），对所有企业通用无需额外授权
-    if (data.useMiniprogram === true && mpAppId) {
-      // 方案A：发送完整的微信小程序卡片
-      // 前提：已在服务商后台创建"小程序"类型第三方应用并关联了该小程序
+    // 主payload：优先发送miniprogram（如果有appId配置）
+    if (mpAppId) {
       preGeneratedPayload.value = {
         msgtype: 'miniprogram',
-        miniprogram: {
-          appid: mpAppId,
-          title: title,
-          imgUrl: imgUrl,
-          page: mpPage
-        }
+        miniprogram: { appid: mpAppId, title, imgUrl, page: mpPage }
       }
     } else {
-      // 方案B（默认）：发送H5图文链接卡片，点击后H5页面自动跳转到小程序
-      // 优势：不需要创建小程序应用，不需要企业额外授权，对所有租户通用
       preGeneratedPayload.value = {
         msgtype: 'news',
-        news: {
-          link: h5FormUrl,
-          title: title,
-          desc: '点击填写您的基本资料，方便我们为您提供更好的服务',
-          imgUrl: imgUrl
-        }
+        news: { link: h5FormUrl, title, desc: '点击填写您的基本资料，方便我们为您提供更好的服务', imgUrl }
       }
+    }
+    // 降级payload：news类型（miniprogram发送失败时使用）
+    fallbackPayload.value = {
+      msgtype: 'news',
+      news: { link: h5FormUrl, title, desc: '点击填写您的基本资料，方便我们为您提供更好的服务', imgUrl }
     }
 
     cardReady.value = true
@@ -234,84 +223,70 @@ const generateCard = async (showMsg = true) => {
   }
 }
 
-/** 发送资料收集卡片 */
+/** 尝试通过SDK发送指定payload */
+async function trySend(payload: any): Promise<'sent' | 'cancel' | 'failed'> {
+  const ww = (window as any).ww
+  const wx = (window as any).wx || (window as any).jWeixin
+
+  // ww.sendChatMessage
+  if (ww && typeof ww.sendChatMessage === 'function') {
+    try {
+      await ww.sendChatMessage(payload)
+      return 'sent'
+    } catch (e: any) {
+      if (/cancel/i.test(e?.message || e?.errMsg || '')) return 'cancel'
+      console.warn('[Collect] ww.sendChatMessage失败:', e?.message)
+    }
+  }
+  // wx.invoke
+  if (wx && typeof wx.invoke === 'function') {
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(() => resolve(), 3000)
+        wx.invoke('sendChatMessage', payload, (res: any) => {
+          clearTimeout(timer)
+          if (res?.err_msg?.indexOf('ok') > -1) resolve()
+          else if (/cancel/i.test(res?.err_msg || '')) reject(new Error('cancel'))
+          else reject(new Error(res?.err_msg || 'failed'))
+        })
+      })
+      return 'sent'
+    } catch (e: any) {
+      if (/cancel/i.test(e?.message || '')) return 'cancel'
+      console.warn('[Collect] wx.invoke失败:', e?.message)
+    }
+  }
+  return 'failed'
+}
+
+/** 发送资料收集卡片（先miniprogram，失败降级news） */
 const handleSend = async () => {
   if (sending.value) return
   sending.value = true
   try {
-    // 如果没有预生成，先生成
     if (!preGeneratedPayload.value) await generateCard(false)
     if (!preGeneratedPayload.value) { ElMessage.warning('卡片生成失败'); sending.value = false; return }
 
-    const cardPayload = preGeneratedPayload.value
-    const ww = (window as any).ww
-    const wx = (window as any).wx || (window as any).jWeixin
+    // 第一步：尝试发送主payload（miniprogram或news）
+    let result = await trySend(preGeneratedPayload.value)
 
-    console.log('[Collect] 准备发送, payload:', JSON.stringify(cardPayload))
-    console.log('[Collect] SDK状态: ww=', !!ww, ', ww.sendChatMessage=', !!(ww?.sendChatMessage), ', wx=', !!wx, ', wx.invoke=', !!(wx?.invoke))
+    if (result === 'cancel') { ElMessage.info('已取消发送'); sending.value = false; return }
 
-    let sent = false
-    let sendError = ''
-
-    // 方式1：通过 ww.sendChatMessage (企业微信JS-SDK 新版)
-    if (ww && typeof ww.sendChatMessage === 'function') {
-      try {
-        const result = await ww.sendChatMessage(cardPayload)
-        console.log('[Collect] ww.sendChatMessage结果:', result)
-        // sendChatMessage 成功返回不抛异常即视为成功
-        sent = true
-      } catch (e: any) {
-        sendError = e?.message || e?.errMsg || JSON.stringify(e)
-        console.warn('[Collect] ww.sendChatMessage异常:', sendError)
-        // 某些版本企微SDK发送成功也会抛"cancel"（用户取消确认弹窗）
-        if (/cancel/i.test(sendError)) {
-          ElMessage.info('已取消发送')
-          sending.value = false
-          return
-        }
-      }
+    // 第二步：如果主payload是miniprogram且失败了，降级为news
+    if (result === 'failed' && preGeneratedPayload.value.msgtype === 'miniprogram' && fallbackPayload.value) {
+      console.log('[Collect] miniprogram发送失败，降级为news卡片')
+      result = await trySend(fallbackPayload.value)
+      if (result === 'cancel') { ElMessage.info('已取消发送'); sending.value = false; return }
     }
 
-    // 方式2：通过 wx.invoke (企业微信JS-SDK 旧版)
-    if (!sent && wx && typeof wx.invoke === 'function') {
-      try {
-        await new Promise<void>((resolve, reject) => {
-          const timer = setTimeout(() => { resolve() }, 3000)
-          wx.invoke('sendChatMessage', cardPayload, (res: any) => {
-            clearTimeout(timer)
-            console.log('[Collect] wx.invoke结果:', JSON.stringify(res))
-            if (res?.err_msg?.indexOf('ok') > -1 || res?.err_msg?.indexOf('sendChatMessage') > -1) {
-              resolve()
-            } else if (/cancel/i.test(res?.err_msg || '')) {
-              reject(new Error('cancel'))
-            } else {
-              reject(new Error(res?.err_msg || 'invoke failed'))
-            }
-          })
-        })
-        sent = true
-      } catch (e: any) {
-        if (/cancel/i.test(e?.message || '')) {
-          ElMessage.info('已取消发送')
-          sending.value = false
-          return
-        }
-        sendError = e?.message || ''
-        console.warn('[Collect] wx.invoke异常:', sendError)
-      }
-    }
-
-    if (sent) {
+    if (result === 'sent') {
       ElMessage.success('卡片已发送')
     } else {
       const ua = navigator.userAgent.toLowerCase()
-      const isWecom = ua.includes('wxwork') || ua.includes('wechat')
-      if (!isWecom) {
+      if (!ua.includes('wxwork') && !ua.includes('wechat')) {
         ElMessage.warning('当前非企微客户端环境，请在企业微信中打开')
-      } else if (sendError) {
-        ElMessage.warning('发送异常：' + sendError.substring(0, 50))
       } else {
-        ElMessage.warning('发送失败，请检查侧边栏JS-SDK配置是否正确')
+        ElMessage.warning('发送失败，请检查侧边栏JS-SDK配置')
       }
     }
 
