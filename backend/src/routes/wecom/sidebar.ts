@@ -572,7 +572,16 @@ router.get('/sidebar/customer-detail', authenticateSidebarToken, async (req: Req
           medicalHistory: crmCustomer.medicalHistory || null,
           tags: crmCustomer.tags || [],
           salesPersonName: crmCustomer.salesPersonName,
-          wecomExternalUserid: crmCustomer.wecomExternalUserid || wecomCustomer.externalUserId
+          wecomExternalUserid: crmCustomer.wecomExternalUserid || wecomCustomer.externalUserId,
+          starRating: crmCustomer.starRating || 0,
+          finalScore: crmCustomer.finalScore || 0,
+          level: crmCustomer.level || '',
+          source: crmCustomer.source || '',
+          followStatus: crmCustomer.followStatus || '',
+          orderCount: crmCustomer.orderCount || 0,
+          totalAmount: Number(crmCustomer.totalAmount) || 0,
+          lastOrderTime: crmCustomer.lastOrderTime || null,
+          createdAt: crmCustomer.createdAt || null
         } : null,
         orders: orders.map(o => ({
           id: o.id, orderNumber: o.orderNumber,

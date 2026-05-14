@@ -274,7 +274,7 @@
 
 <script setup lang="ts">
 defineOptions({ name: 'WecomSidebarDetail' })
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onBeforeUnmount } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Loading } from '@element-plus/icons-vue'
 import { getSidebarJsSdkConfig, getSidebarSign, clearSidebarCache, sidebarBindAccount, sidebarVerifyBinding, getSidebarCustomerDetail, refreshSidebarToken, getSuiteTicketDiagnostic } from '@/api/wecom'
@@ -374,7 +374,17 @@ const debugExternalUserId = ref('')
 
 // ==================== 初始化 ====================
 
+// 监听子组件切换tab事件
+const handleSidebarSwitchTab = (e: Event) => {
+  const detail = (e as CustomEvent).detail
+  if (detail?.tab && detail.tab in tabTitles) {
+    currentTab.value = detail.tab as typeof currentTab.value
+  }
+}
+
 onMounted(async () => {
+  window.addEventListener('sidebar-switch-tab', handleSidebarSwitchTab)
+
   // 读取 URL 中的 tab 参数
   const urlParams = new URLSearchParams(window.location.search)
   const tabParam = urlParams.get('tab')
@@ -1426,6 +1436,10 @@ async function handleRebind() {
     // 用户取消
   }
 }
+
+onBeforeUnmount(() => {
+  window.removeEventListener('sidebar-switch-tab', handleSidebarSwitchTab)
+})
 
 </script>
 

@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>请填写您的个人资料</title>
+  <meta name="description" content="请填写您的基本资料">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+    .card { background: #fff; border-radius: 16px; padding: 40px 32px; max-width: 360px; width: 90%; text-align: center; box-shadow: 0 20px 60px rgba(0,0,0,0.15); }
+    .icon { width: 64px; height: 64px; margin: 0 auto 16px; background: #07c160; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
+    .icon svg { width: 32px; height: 32px; fill: #fff; }
+    h1 { font-size: 20px; color: #1d2129; margin-bottom: 8px; }
+    p { font-size: 14px; color: #86909c; line-height: 1.6; margin-bottom: 24px; }
+    .btn { display: block; width: 100%; padding: 14px; background: #07c160; color: #fff; border: none; border-radius: 8px; font-size: 16px; font-weight: 600; cursor: pointer; text-decoration: none; }
+    .btn:active { background: #06ad56; }
+    .tip { font-size: 12px; color: #c9cdd4; margin-top: 16px; }
+    .status { font-size: 14px; color: #07c160; margin-top: 12px; min-height: 20px; }
+    .params { font-size: 11px; color: #c9cdd4; margin-top: 8px; word-break: break-all; }
+    wx-open-launch-weapp { display: block; width: 100%; }
+    wx-open-launch-weapp .btn-inner { display: block; width: 100%; padding: 14px; background: #07c160; color: #fff; border: none; border-radius: 8px; font-size: 16px; font-weight: 600; text-align: center; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="icon">
+      <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8" fill="none" stroke="#fff" stroke-width="2"/><line x1="16" y1="13" x2="8" y2="13" stroke="#fff" stroke-width="2"/><line x1="16" y1="17" x2="8" y2="17" stroke="#fff" stroke-width="2"/></svg>
+    </div>
+    <h1>请填写您的个人资料</h1>
+    <p>简单几步填写基本信息，<br>方便我们为您提供更优质的服务</p>
+
+    <!-- 微信开放标签（在微信环境中自动显示） -->
+    <div id="wechat-btn-area"></div>
+
+    <!-- 普通按钮（非微信环境或开放标签不可用时显示） -->
+    <button class="btn" id="openBtn" style="display:none" onclick="openMP()">立即填写</button>
+
+    <div class="status" id="status"></div>
+    <p class="tip">填写后资料将自动同步，无需重复录入</p>
+  </div>
+
+  <!-- 微信JS-SDK -->
+  <script src="https://res.wx.qq.com/open/js/jweixin-1.6.0.js"></script>
+  <script>
+    // 解析URL参数
+    var params = new URLSearchParams(window.location.search);
+    var appId = params.get('appId') || '';
+    var tenantId = params.get('tenantId') || '';
+    var memberId = params.get('memberId') || '';
+    var ts = params.get('ts') || '';
+    var sign = params.get('sign') || '';
+    var externalUserId = params.get('externalUserId') || '';
+
+    // 小程序页面路径（带完整参数，确保资料归属）
+    var mpPath = '/pages/form/form?tenantId=' + encodeURIComponent(tenantId)
+      + '&memberId=' + encodeURIComponent(memberId)
+      + '&ts=' + encodeURIComponent(ts)
+      + '&sign=' + encodeURIComponent(sign)
+      + '&externalUserId=' + encodeURIComponent(externalUserId);
+
+    var ua = navigator.userAgent.toLowerCase();
+    var isWechat = ua.indexOf('micromessenger') > -1;
+    var isWecom = ua.indexOf('wxwork') > -1;
+
+    function setStatus(msg) {
+      document.getElementById('status').textContent = msg;
+    }
+
+    function openMP() {
+      setStatus('正在跳转小程序...');
+
+      // 场景1：在小程序webview内（不太可能，但兜底）
+      if (window.wx && wx.miniProgram && wx.miniProgram.navigateTo) {
+        wx.miniProgram.navigateTo({ url: mpPath });
+        return;
+      }
+
+      // 场景2：在微信/企微内置浏览器中，使用URL Scheme
+      if (appId && (isWechat || isWecom)) {
+        // 微信环境内直接用URL Scheme跳转
+        var scheme = 'weixin://dl/business/?appid=' + appId + '&path=' + encodeURIComponent(mpPath) + '&env_version=release';
+        window.location.href = scheme;
+        setTimeout(function() {
+          setStatus('如未自动跳转，请长按识别下方小程序码');
+        }, 2000);
+        return;
+      }
+
+      // 场景3：非微信环境，提示用户
+      setStatus('请在微信中打开此链接以填写资料');
+    }
+
+    // 初始化逻辑
+    (function init() {
+      // 尝试使用微信开放标签 <wx-open-launch-weapp>
+      if (isWechat && appId && !isWecom) {
+        try {
+          var btnArea = document.getElementById('wechat-btn-area');
+          btnArea.innerHTML = '<wx-open-launch-weapp id="launch-btn" appid="' + appId + '" path="' + mpPath + '">'
+            + '<template><button class="btn-inner">立即填写</button></template>'
+            + '</wx-open-launch-weapp>';
+          var launchBtn = document.getElementById('launch-btn');
+          if (launchBtn) {
+            launchBtn.addEventListener('launch', function() { setStatus('小程序已打开'); });
+            launchBtn.addEventListener('error', function(e) {
+              console.warn('开放标签错误:', e.detail);
+              document.getElementById('openBtn').style.display = 'block';
+              btnArea.style.display = 'none';
+            });
+            return; // 使用开放标签，不显示普通按钮
+          }
+        } catch(e) { console.warn('开放标签初始化失败:', e); }
+      }
+
+      // 开放标签不可用，显示普通按钮
+      document.getElementById('openBtn').style.display = 'block';
+
+      // 企微/微信环境自动跳转
+      if (isWechat || isWecom) {
+        setTimeout(openMP, 800);
+      }
+    })();
+  </script>
+</body>
+</html>

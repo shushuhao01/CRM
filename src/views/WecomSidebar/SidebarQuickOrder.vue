@@ -560,13 +560,10 @@ const maskPhone = (p: string) => {
 
 const goStep = (s: number) => { step.value = s }
 
-/** 返回CRM客户详情页（优先系统浏览器） */
+/** 返回侧边栏的CRM客户详情页 */
 const goBackToDetail = () => {
-  const crmId = props.customerData?.crmCustomer?.id
-  if (!crmId) return
-  const detailUrl = `${window.location.origin}/customer/detail/${crmId}`
-  // 尝试通过window.open打开系统浏览器
-  window.open(detailUrl, '_blank')
+  // 通过自定义事件通知父组件切换tab
+  window.dispatchEvent(new CustomEvent('sidebar-switch-tab', { detail: { tab: 'customer' } }))
 }
 
 

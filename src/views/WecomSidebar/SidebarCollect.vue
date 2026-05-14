@@ -163,36 +163,53 @@ const generateCard = async (showMsg = true) => {
     const ts = Date.now().toString()
     const { default: axios } = await import('axios')
     const extUserId = localStorage.getItem('wecom_sidebar_last_external_id') || ''
+    const defaultImgUrl = `${window.location.origin}/填写个人资料.png`
+    const defaultTitle = '请填写您的个人资料'
 
     let data: any = {}
     try {
       const res: any = await axios.post(`${getBaseUrl()}/mp-generate-card`, { tenantId, memberId, ts }, { headers: getHeaders() })
       data = res?.data?.data || res?.data || {}
     } catch {
-      // API可能不存在，使用本地生成的H5链接
+      // API可能不存在，使用预设配置
     }
 
-    const formUrl = data.formUrl || `${window.location.origin}/wecom-form?tenantId=${tenantId}&memberId=${memberId}&ts=${ts}&externalUserId=${extUserId}`
-    const imgUrl = data.imageUrl ? (data.imageUrl.startsWith('http') ? data.imageUrl : `${window.location.origin}${data.imageUrl}`) : ''
-    const title = data.title || '请填写您的资料'
+    const imgUrl = data.imageUrl
+      ? (data.imageUrl.startsWith('http') ? data.imageUrl : `${window.location.origin}${data.imageUrl}`)
+      : defaultImgUrl
+    const title = data.title || defaultTitle
 
-    // 优先用news类型（H5链接卡片），兼容性最好
-    preGeneratedPayload.value = {
-      msgtype: 'news',
-      news: {
-        link: formUrl,
-        title: title,
-        desc: '点击填写您的基本资料，方便我们为您提供更好的服务',
-        imgUrl: imgUrl || `${window.location.origin}/logo.png`
-      }
-    }
+    const mpAppId = data.appId || ''
+    const mpPage = data.path || `/pages/form/form.html?tenantId=${tenantId}&memberId=${memberId}&ts=${ts}&sign=${data.sign || ''}&externalUserId=${extUserId}`
+    // H5中转页URL（点击后自动跳转到小程序）
+    const h5FormUrl = `${window.location.origin}/wecom-form.html?tenantId=${tenantId}&memberId=${memberId}&ts=${ts}&sign=${data.sign || ''}&externalUserId=${extUserId}&appId=${mpAppId}`
 
-    // 如果后端返回了小程序配置，也备一份
-    if (data.appId) {
-      const path = data.path || `/pages/form/form.html?tenantId=${tenantId}&memberId=${memberId}&ts=${ts}&sign=${data.sign || ''}&externalUserId=${extUserId}`
+    // 判断发送模式：
+    // useMiniprogram=true 表示已在服务商后台创建了小程序应用并完成关联（方案A）
+    // 默认使用 news 类型（方案B），对所有企业通用无需额外授权
+    if (data.useMiniprogram === true && mpAppId) {
+      // 方案A：发送完整的微信小程序卡片
+      // 前提：已在服务商后台创建"小程序"类型第三方应用并关联了该小程序
       preGeneratedPayload.value = {
         msgtype: 'miniprogram',
-        miniprogram: { appid: data.appId, title, imgUrl: imgUrl, page: path }
+        miniprogram: {
+          appid: mpAppId,
+          title: title,
+          imgUrl: imgUrl,
+          page: mpPage
+        }
+      }
+    } else {
+      // 方案B（默认）：发送H5图文链接卡片，点击后H5页面自动跳转到小程序
+      // 优势：不需要创建小程序应用，不需要企业额外授权，对所有租户通用
+      preGeneratedPayload.value = {
+        msgtype: 'news',
+        news: {
+          link: h5FormUrl,
+          title: title,
+          desc: '点击填写您的基本资料，方便我们为您提供更好的服务',
+          imgUrl: imgUrl
+        }
       }
     }
 
@@ -200,86 +217,99 @@ const generateCard = async (showMsg = true) => {
     if (showMsg) ElMessage.success('卡片已重新生成')
   } catch (e: any) {
     console.warn('[Collect] 预生成卡片失败:', e?.message)
-    // 即使API失败，也生成一个基本的H5链接
+    // 降级：使用news类型发送H5中转页
     const { tenantId, memberId } = parseSidebarToken()
     const extUserId = localStorage.getItem('wecom_sidebar_last_external_id') || ''
     preGeneratedPayload.value = {
       msgtype: 'news',
       news: {
-        link: `${window.location.origin}/wecom-form?tenantId=${tenantId}&memberId=${memberId}&externalUserId=${extUserId}`,
-        title: '请填写您的资料',
-        desc: '点击填写您的基本资料',
-        imgUrl: `${window.location.origin}/logo.png`
+        link: `${window.location.origin}/wecom-form.html?tenantId=${tenantId}&memberId=${memberId}&externalUserId=${extUserId}`,
+        title: '请填写您的个人资料',
+        desc: '点击填写您的基本资料，方便我们为您提供更好的服务',
+        imgUrl: `${window.location.origin}/填写个人资料.png`
       }
     }
     cardReady.value = true
-    if (showMsg) ElMessage.warning('使用默认卡片配置（后端配置暂不可用）')
+    if (showMsg) ElMessage.info('使用H5链接模式（后端暂不可用）')
   }
 }
 
-/** 发送小程序卡片（直接发送，无需确认） */
+/** 发送资料收集卡片 */
 const handleSend = async () => {
   if (sending.value) return
   sending.value = true
   try {
     // 如果没有预生成，先生成
-    if (!preGeneratedPayload.value) await generateCard()
+    if (!preGeneratedPayload.value) await generateCard(false)
     if (!preGeneratedPayload.value) { ElMessage.warning('卡片生成失败'); sending.value = false; return }
 
     const cardPayload = preGeneratedPayload.value
-    const ww = (window as any).ww || (window as any).WWOpenData
+    const ww = (window as any).ww
     const wx = (window as any).wx || (window as any).jWeixin
 
-    let sent = false
+    console.log('[Collect] 准备发送, payload:', JSON.stringify(cardPayload))
+    console.log('[Collect] SDK状态: ww=', !!ww, ', ww.sendChatMessage=', !!(ww?.sendChatMessage), ', wx=', !!wx, ', wx.invoke=', !!(wx?.invoke))
 
-    // 方式1：通过 ww (企业微信JS-SDK 3.x)
+    let sent = false
+    let sendError = ''
+
+    // 方式1：通过 ww.sendChatMessage (企业微信JS-SDK 新版)
     if (ww && typeof ww.sendChatMessage === 'function') {
       try {
-        await ww.sendChatMessage(cardPayload)
+        const result = await ww.sendChatMessage(cardPayload)
+        console.log('[Collect] ww.sendChatMessage结果:', result)
+        // sendChatMessage 成功返回不抛异常即视为成功
         sent = true
       } catch (e: any) {
-        console.warn('[Collect] ww.sendChatMessage失败:', e)
+        sendError = e?.message || e?.errMsg || JSON.stringify(e)
+        console.warn('[Collect] ww.sendChatMessage异常:', sendError)
+        // 某些版本企微SDK发送成功也会抛"cancel"（用户取消确认弹窗）
+        if (/cancel/i.test(sendError)) {
+          ElMessage.info('已取消发送')
+          sending.value = false
+          return
+        }
       }
     }
 
-    // 方式2：通过 ww.invoke
-    if (!sent && ww && typeof ww.invoke === 'function') {
-      try {
-        await new Promise<void>((resolve, reject) => {
-          ww.invoke('sendChatMessage', cardPayload, (res: any) => {
-            if (res && res.err_msg && res.err_msg.indexOf('ok') > -1) resolve()
-            else reject(new Error(res?.err_msg || 'invoke failed'))
-          })
-        })
-        sent = true
-      } catch (e: any) {
-        console.warn('[Collect] ww.invoke失败:', e)
-      }
-    }
-
-    // 方式3：通过 wx.invoke (企业微信JS-SDK 1.x)
+    // 方式2：通过 wx.invoke (企业微信JS-SDK 旧版)
     if (!sent && wx && typeof wx.invoke === 'function') {
       try {
         await new Promise<void>((resolve, reject) => {
+          const timer = setTimeout(() => { resolve() }, 3000)
           wx.invoke('sendChatMessage', cardPayload, (res: any) => {
-            if (res && res.err_msg && res.err_msg.indexOf('ok') > -1) resolve()
-            else reject(new Error(res?.err_msg || 'wx invoke failed'))
+            clearTimeout(timer)
+            console.log('[Collect] wx.invoke结果:', JSON.stringify(res))
+            if (res?.err_msg?.indexOf('ok') > -1 || res?.err_msg?.indexOf('sendChatMessage') > -1) {
+              resolve()
+            } else if (/cancel/i.test(res?.err_msg || '')) {
+              reject(new Error('cancel'))
+            } else {
+              reject(new Error(res?.err_msg || 'invoke failed'))
+            }
           })
         })
         sent = true
       } catch (e: any) {
-        console.warn('[Collect] wx.invoke失败:', e)
+        if (/cancel/i.test(e?.message || '')) {
+          ElMessage.info('已取消发送')
+          sending.value = false
+          return
+        }
+        sendError = e?.message || ''
+        console.warn('[Collect] wx.invoke异常:', sendError)
       }
     }
 
     if (sent) {
-      ElMessage.success('小程序卡片已发送')
+      ElMessage.success('卡片已发送')
     } else {
-      // 检测环境信息给用户更好的提示
       const ua = navigator.userAgent.toLowerCase()
       const isWecom = ua.includes('wxwork') || ua.includes('wechat')
       if (!isWecom) {
         ElMessage.warning('当前非企微客户端环境，请在企业微信中打开')
+      } else if (sendError) {
+        ElMessage.warning('发送异常：' + sendError.substring(0, 50))
       } else {
         ElMessage.warning('发送失败，请检查侧边栏JS-SDK配置是否正确')
       }
@@ -289,13 +319,13 @@ const handleSend = async () => {
     try {
       const { tenantId, memberId } = parseSidebarToken()
       const { default: axios } = await import('axios')
-      await axios.post(`${getBaseUrl()}/mp-log-send`, { tenantId, memberId, ts: Date.now().toString() }, { headers: getHeaders() })
+      await axios.post(`${getBaseUrl()}/mp-log-send`, { tenantId, memberId, ts: Date.now().toString() }, { headers: getHeaders() }).catch(() => {})
     } catch { /* ignore */ }
 
-    // 刷新统计和记录
     await loadStats()
     await loadRecords()
   } catch (e: any) {
+    console.error('[Collect] handleSend异常:', e)
     ElMessage.warning(e?.message || '发送失败')
   } finally {
     sending.value = false

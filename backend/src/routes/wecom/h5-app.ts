@@ -1344,7 +1344,23 @@ router.post('/mp-generate-card', authenticateSidebarToken, async (req: Request, 
 
     imageUrl = cardCoverUrl;
 
-    res.json({ success: true, data: { sign, appId, title: cardTitle, imageUrl, cardTitle, cardCoverUrl } });
+    // useMiniprogram: 是否使用小程序类型直接发送（需在服务商后台创建小程序应用并关联）
+    // 默认false，使用news(H5)类型；管理后台可配置为true切换为方案A
+    let useMiniprogram = false;
+    try {
+      const { TenantSettings } = await import('../../entities/TenantSettings');
+      const settingsRepo = AppDataSource.getRepository(TenantSettings);
+      const mpModeSetting = await settingsRepo.findOne({ where: { tenantId, settingKey: 'wecom_mp_send_mode' } });
+      if (mpModeSetting) {
+        const val = mpModeSetting.getValue ? mpModeSetting.getValue() : (typeof mpModeSetting.settingValue === 'string' ? JSON.parse(mpModeSetting.settingValue) : mpModeSetting.settingValue);
+        useMiniprogram = val?.useMiniprogram === true;
+      }
+    } catch { /* ignore */ }
+
+    const defaultImgUrl = `${req.protocol}://${req.get('host')}/填写个人资料.png`;
+    if (!imageUrl) imageUrl = defaultImgUrl;
+
+    res.json({ success: true, data: { sign, appId, title: cardTitle, imageUrl, cardTitle, cardCoverUrl, useMiniprogram } });
   } catch (error: any) {
     log.error('[H5 App] mp-generate-card error:', error.message);
     res.status(500).json({ success: false, message: '生成卡片失败' });
