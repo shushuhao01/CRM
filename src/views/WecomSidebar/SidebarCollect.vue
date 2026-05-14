@@ -157,32 +157,63 @@ const refreshRecords = async () => {
 }
 
 /** 预生成卡片（登录时自动调用，或手动刷新） */
-const generateCard = async () => {
+const generateCard = async (showMsg = true) => {
   try {
     const { tenantId, memberId } = parseSidebarToken()
     const ts = Date.now().toString()
     const { default: axios } = await import('axios')
-    const res: any = await axios.post(`${getBaseUrl()}/mp-generate-card`, { tenantId, memberId, ts }, { headers: getHeaders() })
-    const data = res?.data?.data || res?.data || {}
     const extUserId = localStorage.getItem('wecom_sidebar_last_external_id') || ''
-    const path = data.path || `/pages/form/form.html?tenantId=${tenantId}&memberId=${memberId}&ts=${ts}&sign=${data.sign || ''}&externalUserId=${extUserId}`
-    const imgUrl = data.imageUrl ? (data.imageUrl.startsWith('http') ? data.imageUrl : `${window.location.origin}${data.imageUrl}`) : ''
 
+    let data: any = {}
+    try {
+      const res: any = await axios.post(`${getBaseUrl()}/mp-generate-card`, { tenantId, memberId, ts }, { headers: getHeaders() })
+      data = res?.data?.data || res?.data || {}
+    } catch {
+      // API可能不存在，使用本地生成的H5链接
+    }
+
+    const formUrl = data.formUrl || `${window.location.origin}/wecom-form?tenantId=${tenantId}&memberId=${memberId}&ts=${ts}&externalUserId=${extUserId}`
+    const imgUrl = data.imageUrl ? (data.imageUrl.startsWith('http') ? data.imageUrl : `${window.location.origin}${data.imageUrl}`) : ''
+    const title = data.title || '请填写您的资料'
+
+    // 优先用news类型（H5链接卡片），兼容性最好
     preGeneratedPayload.value = {
-      msgtype: 'miniprogram',
-      miniprogram: {
-        appid: data.appId || '',
-        title: data.title || '请填写您的资料',
-        imgUrl: imgUrl,
-        page: path
+      msgtype: 'news',
+      news: {
+        link: formUrl,
+        title: title,
+        desc: '点击填写您的基本资料，方便我们为您提供更好的服务',
+        imgUrl: imgUrl || `${window.location.origin}/logo.png`
+      }
+    }
+
+    // 如果后端返回了小程序配置，也备一份
+    if (data.appId) {
+      const path = data.path || `/pages/form/form.html?tenantId=${tenantId}&memberId=${memberId}&ts=${ts}&sign=${data.sign || ''}&externalUserId=${extUserId}`
+      preGeneratedPayload.value = {
+        msgtype: 'miniprogram',
+        miniprogram: { appid: data.appId, title, imgUrl: imgUrl, page: path }
+      }
+    }
+
+    cardReady.value = true
+    if (showMsg) ElMessage.success('卡片已重新生成')
+  } catch (e: any) {
+    console.warn('[Collect] 预生成卡片失败:', e?.message)
+    // 即使API失败，也生成一个基本的H5链接
+    const { tenantId, memberId } = parseSidebarToken()
+    const extUserId = localStorage.getItem('wecom_sidebar_last_external_id') || ''
+    preGeneratedPayload.value = {
+      msgtype: 'news',
+      news: {
+        link: `${window.location.origin}/wecom-form?tenantId=${tenantId}&memberId=${memberId}&externalUserId=${extUserId}`,
+        title: '请填写您的资料',
+        desc: '点击填写您的基本资料',
+        imgUrl: `${window.location.origin}/logo.png`
       }
     }
     cardReady.value = true
-    ElMessage.success('卡片已重新生成')
-  } catch (e: any) {
-    console.warn('[Collect] 预生成卡片失败:', e?.message)
-    cardReady.value = false
-    ElMessage.warning('卡片生成失败：' + (e?.response?.data?.message || e?.message || '请检查配置'))
+    if (showMsg) ElMessage.warning('使用默认卡片配置（后端配置暂不可用）')
   }
 }
 
@@ -275,7 +306,7 @@ const handleSend = async () => {
 onMounted(() => {
   loadStats()
   loadRecords()
-  generateCard()
+  generateCard(false)
 })
 </script>
 

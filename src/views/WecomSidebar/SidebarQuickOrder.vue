@@ -15,6 +15,11 @@
       </div>
     </div>
 
+    <!-- 返回按钮 -->
+    <div v-if="props.customerData?.crmCustomer" class="qo-back-bar">
+      <button class="qo-back-btn" @click="goBackToDetail">← 返回客户详情</button>
+    </div>
+
     <!-- ==================== 步骤1: 选择客户 ==================== -->
     <div v-if="step === 1" class="qo-step-content">
       <div class="qo-mode-tabs">
@@ -59,7 +64,7 @@
             <div class="form-group">
               <label>手机号 <span class="qo-req">*</span></label>
               <div style="display:flex;gap:6px">
-                <input v-model="newCust.phone" placeholder="输入客户手机号" class="preview-input" style="flex:1" />
+                <input v-model="newCust.phone" placeholder="输入客户手机号" class="preview-input" style="flex:1" @blur="autoVerifyPhone" />
                 <button class="verify-btn" :disabled="!newCust.phone || newCust.phone.length < 11 || phoneChecking" @click="verifyPhone">{{ phoneChecking ? '验证中' : '验证' }}</button>
               </div>
               <div v-if="phoneVerifyResult === 'ok'" class="qo-field-hint ok">✅ 可创建</div>
@@ -111,9 +116,10 @@
             </template>
           </div>
           <div class="qo-new-actions">
-            <button class="preview-btn" :disabled="newCustSaving" @click="saveNewCustomer">
+            <button class="preview-btn" :disabled="newCustSaving || (newCust.phone.length >= 11 && phoneVerifyResult === '')" @click="saveNewCustomer">
               {{ newCustSaving ? '保存中...' : '💾 保存并下单' }}
             </button>
+            <div v-if="newCust.phone.length >= 11 && phoneVerifyResult === ''" style="font-size:10px;color:#e6a23c;text-align:center;margin-top:4px">请先验证手机号（点击输入框外失去焦点自动验证）</div>
           </div>
         </div>
       </div>
@@ -435,6 +441,12 @@ function isCustFieldRequired(key: string): boolean {
   return vis?.required === true
 }
 
+function autoVerifyPhone() {
+  if (newCust.value.phone && newCust.value.phone.length >= 11 && phoneVerifyResult.value === '') {
+    verifyPhone()
+  }
+}
+
 async function verifyPhone() {
   if (!newCust.value.phone || newCust.value.phone.length < 11) return
   phoneChecking.value = true
@@ -517,12 +529,13 @@ async function loadSystemConfigs() {
       customerFieldConfig.value = cCfg
     }
   } catch { /* ignore */ }
-  // 兜底默认值
+  // 兜底默认值（与CRM系统订单配置保持一致）
   if (!orderSourceOptions.value.length) {
     orderSourceOptions.value = [
-      { label: '企微', value: 'wecom' }, { label: '微信', value: 'wechat' },
-      { label: '电话', value: 'phone' }, { label: '抖音', value: 'douyin' },
-      { label: '转介绍', value: 'referral' }, { label: '线下', value: 'offline' }, { label: '其他', value: 'other' }
+      { label: '线上商城', value: 'online_store' },
+      { label: '微信小程序', value: 'wechat_mini' },
+      { label: '电话咨询', value: 'phone_call' },
+      { label: '其他渠道', value: 'other' }
     ]
   }
   if (!expressCompanyList.value.length) {
@@ -546,6 +559,16 @@ const maskPhone = (p: string) => {
 }
 
 const goStep = (s: number) => { step.value = s }
+
+/** 返回CRM客户详情页（优先系统浏览器） */
+const goBackToDetail = () => {
+  const crmId = props.customerData?.crmCustomer?.id
+  if (!crmId) return
+  const detailUrl = `${window.location.origin}/customer/detail/${crmId}`
+  // 尝试通过window.open打开系统浏览器
+  window.open(detailUrl, '_blank')
+}
+
 
 const hasVirtualProduct = computed(() => form.value.products.some(p => (p as any).productType === 'virtual'))
 const isPureVirtual = computed(() => form.value.products.length > 0 && form.value.products.every(p => (p as any).productType === 'virtual'))
@@ -582,7 +605,34 @@ const selectCustomer = (c: any) => {
   form.value.customerPhone = c.phone || ''
   form.value.receiverName = c.name || ''
   form.value.receiverPhone = c.phone || ''
-  form.value.receiverAddress = c.address || ''
+  form.value.receiverAddress = parseAddress(c.address)
+}
+
+/** 解析地址：支持JSON数组格式和纯字符串 */
+function parseAddress(addr: any): string {
+  if (!addr) return ''
+  if (typeof addr === 'string') {
+    // 尝试解析JSON数组格式 [{"id":xxx,"content":"地址"}]
+    if (addr.startsWith('[') || addr.startsWith('{')) {
+      try {
+        const parsed = JSON.parse(addr)
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          // 取最后一条（最新的）地址记录
+          const latest = parsed[parsed.length - 1]
+          return latest.content || latest.address || latest.value || ''
+        }
+        if (typeof parsed === 'object' && parsed.content) {
+          return parsed.content
+        }
+      } catch { /* 不是JSON，当做普通字符串 */ }
+    }
+    return addr
+  }
+  if (Array.isArray(addr) && addr.length > 0) {
+    const latest = addr[addr.length - 1]
+    return latest?.content || latest?.address || ''
+  }
+  return String(addr || '')
 }
 
 const clearCustomer = () => {
@@ -875,6 +925,9 @@ watch(() => props.customerData, () => {
 
 <style scoped>
 .sidebar-quick-order { padding: 0 0 12px; background: #f5f6f7; min-height: 100%; color: #303133; }
+.qo-back-bar { padding: 6px 8px; background: #fff; border-bottom: 1px solid #f0f0f0; }
+.qo-back-btn { border: none; background: transparent; color: #4c6ef5; font-size: 12px; cursor: pointer; padding: 4px 8px; border-radius: 4px; }
+.qo-back-btn:hover { background: #f0f4ff; }
 .qo-step-content { padding: 0; }
 
 /* 步骤指示器 */

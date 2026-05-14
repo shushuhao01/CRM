@@ -276,20 +276,23 @@ async function handleSend(script: any) {
   const wx = (window as any).wx
 
   // 构建消息payload
-  const payload: any = { msgtype: 'text', text: { content: script.content } }
+  let payload: any = { msgtype: 'text', text: { content: script.content } }
 
-  // 如果有图片附件，优先发送为news（H5链接带图）
+  // 如果有图片附件，使用image类型发送图片
   if (script.attachments?.length > 0) {
     const firstAtt = script.attachments[0]
     if (firstAtt.type?.startsWith('image/') && firstAtt.url) {
-      payload.msgtype = 'news'
-      payload.news = {
-        link: firstAtt.url,
-        title: script.title || '话术分享',
-        desc: script.content || '',
-        imgUrl: firstAtt.url
+      const imgUrl = firstAtt.url.startsWith('http') ? firstAtt.url : `${window.location.origin}${firstAtt.url}`
+      // 先发文本，再发图片
+      payload = {
+        msgtype: 'news',
+        news: {
+          link: imgUrl,
+          title: script.title || '话术分享',
+          desc: script.content || '',
+          imgUrl: imgUrl
+        }
       }
-      delete payload.text
     }
   }
 
@@ -297,18 +300,29 @@ async function handleSend(script: any) {
   if (ww) {
     try {
       if (typeof ww.sendChatMessage === 'function') { await ww.sendChatMessage(payload); sent = true }
-      else if (typeof ww.invoke === 'function') { await ww.invoke('sendChatMessage', payload); sent = true }
+      else if (typeof ww.invoke === 'function') {
+        await new Promise<void>((resolve, reject) => {
+          ww.invoke('sendChatMessage', payload, (res: any) => {
+            if (res?.err_msg?.indexOf('ok') > -1) resolve()
+            else reject(new Error(res?.err_msg))
+          })
+        })
+        sent = true
+      }
     } catch { /* fallback */ }
   }
   if (!sent && wx?.invoke) {
-    wx.invoke('sendChatMessage', payload, (res: any) => {
-      if (res.err_msg === 'sendChatMessage:ok') ElMessage.success('已发送')
-      else { copyScript(script); ElMessage.info('已复制到剪贴板') }
-    })
-    sent = true
+    try {
+      await new Promise<void>((resolve) => {
+        wx.invoke('sendChatMessage', payload, (res: any) => {
+          if (res?.err_msg === 'sendChatMessage:ok') { sent = true }
+          resolve()
+        })
+      })
+    } catch { /* ignore */ }
   }
   if (sent) { ElMessage.success('已发送') }
-  else { copyScript(script); ElMessage.info('已复制到剪贴板（非企微环境）') }
+  else { copyScript(script); ElMessage.info('已复制到剪贴板（非企微环境或发送失败）') }
 
   const s = allScripts.value.find(ss => ss.id === script.id)
   if (s) s.useCount = (s.useCount || 0) + 1
@@ -383,10 +397,10 @@ function hasAttachments(s: any): boolean {
 function getAttachmentIcon(s: any): string {
   if (!s.attachments?.length) return ''
   const firstType = s.attachments[0]?.type || ''
-  if (firstType.startsWith('image/')) return '◻'
+  if (firstType.startsWith('image/')) return '▣'
   if (firstType.includes('pdf')) return '▤'
   if (firstType.includes('video')) return '▶'
-  return '●'
+  return '▪'
 }
 function getAttachmentTypeClass(s: any): string {
   if (!s.attachments?.length) return ''
@@ -444,11 +458,11 @@ onBeforeUnmount(() => {
 .script-item:hover { background: #f5f7fa; }
 .script-idx { color: #c0c4cc; font-size: 9px; width: 14px; text-align: center; flex-shrink: 0; }
 .s-scope-dot { width: 5px; height: 5px; border-radius: 50%; flex-shrink: 0; }
-.s-att-icon { font-size: 10px; flex-shrink: 0; width: 14px; height: 14px; display: inline-flex; align-items: center; justify-content: center; border-radius: 2px; background: #e8f5e9; color: #4caf50; font-weight: 700; }
-.s-att-icon.att-image { background: #e3f2fd; color: #1976d2; }
-.s-att-icon.att-pdf { background: #fce4ec; color: #c62828; }
-.s-att-icon.att-video { background: #f3e5f5; color: #7b1fa2; }
-.s-att-icon.att-file { background: #f5f5f5; color: #616161; }
+.s-att-icon { font-size: 11px; flex-shrink: 0; width: 16px; height: 16px; display: inline-flex; align-items: center; justify-content: center; border-radius: 3px; font-weight: 700; line-height: 1; }
+.s-att-icon.att-image { background: #dbeafe; color: #2563eb; }
+.s-att-icon.att-pdf { background: #fee2e2; color: #dc2626; }
+.s-att-icon.att-video { background: #f3e8ff; color: #9333ea; }
+.s-att-icon.att-file { background: #f3f4f6; color: #4b5563; }
 .script-title-text { font-weight: 500; color: #303133; white-space: nowrap; max-width: 60px; overflow: hidden; text-overflow: ellipsis; flex-shrink: 0; }
 .script-content-inline { flex: 1; color: #909399; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 10px; }
 .script-send-icon { color: #07c160; cursor: pointer; flex-shrink: 0; display: flex; opacity: 0.5; }

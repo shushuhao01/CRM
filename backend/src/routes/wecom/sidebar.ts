@@ -2417,14 +2417,14 @@ router.put('/sidebar/customer-tags', authenticateSidebarToken, async (req: Reque
     // 记录客户日志
     try {
       const { createCustomerLog } = await import('../../utils/customerLog');
-      const operatorName = sidebarUser?.name || sidebarUser?.userId || '侧边栏用户';
+      const operatorName = (sidebarUser?.crmUserName || sidebarUser?.wecomUserId || '未知') + '（企微侧边栏）';
       await createCustomerLog({
         customerId,
         tenantId,
         logType: 'update_tags',
         content: `侧边栏更新标签：[${oldTags.join(',')}] → [${customer.tags.join(',')}]`,
         operatorName,
-        operatorId: sidebarUser?.userId || ''
+        operatorId: sidebarUser?.crmUserId || sidebarUser?.wecomUserId || ''
       });
     } catch { /* ignore */ }
 
@@ -2457,14 +2457,14 @@ router.put('/sidebar/customer-star-rating', authenticateSidebarToken, async (req
     // 记录客户日志
     try {
       const { createCustomerLog } = await import('../../utils/customerLog');
-      const operatorName = sidebarUser?.name || sidebarUser?.userId || '侧边栏用户';
+      const operatorName = (sidebarUser?.crmUserName || sidebarUser?.wecomUserId || '未知') + '（企微侧边栏）';
       await createCustomerLog({
         customerId,
         tenantId,
         logType: 'portrait_rating',
         content: `侧边栏画像评分：${oldRating || 0}星 → ${starRating}星（综合分${finalScore || 0}）`,
         operatorName,
-        operatorId: sidebarUser?.userId || ''
+        operatorId: sidebarUser?.crmUserId || sidebarUser?.wecomUserId || ''
       });
     } catch (logErr: any) {
       log.warn('[Sidebar] Log star rating change failed:', logErr.message);
@@ -2488,8 +2488,26 @@ router.get('/sidebar/order-field-config', authenticateSidebarToken, async (req: 
 
     const { SystemConfig } = await import('../../entities/SystemConfig');
     const repo = AppDataSource.getRepository(SystemConfig);
-    const config = await repo.findOne({ where: { tenantId, configKey: 'orderFieldConfig' } });
-    const data = config?.configValue ? (typeof config.configValue === 'string' ? JSON.parse(config.configValue) : config.configValue) : {};
+    // 兼容多种查询条件（有些租户存了tenantId，有些没有）
+    let config = await repo.findOne({ where: { tenantId, configKey: 'orderFieldConfig', configGroup: 'order_settings' } as any });
+    if (!config) {
+      config = await repo.findOne({ where: { configKey: 'orderFieldConfig', configGroup: 'order_settings' } as any });
+    }
+    if (!config) {
+      config = await repo.findOne({ where: { tenantId, configKey: 'orderFieldConfig' } as any });
+    }
+    const data = config?.configValue ? (typeof config.configValue === 'string' ? JSON.parse(config.configValue) : config.configValue) : {
+      orderSource: {
+        fieldName: '订单来源',
+        options: [
+          { label: '线上商城', value: 'online_store' },
+          { label: '微信小程序', value: 'wechat_mini' },
+          { label: '电话咨询', value: 'phone_call' },
+          { label: '其他渠道', value: 'other' }
+        ]
+      },
+      customFields: []
+    };
     res.json({ success: true, data });
   } catch (_e: any) {
     res.json({ success: true, data: {} });
