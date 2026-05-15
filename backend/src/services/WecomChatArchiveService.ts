@@ -226,13 +226,31 @@ export class WecomChatArchiveService {
         try {
           const agreeResult = await WecomApiService.checkSingleAgree(chatAccessToken, checkInfo);
           for (const item of agreeResult) {
-            if (item.status_change_time > 0) {
-              agreeMap.set(item.exteranalopenid || item.userid_list?.[0], true);
-              agreedCount++;
+            // 判断同意状态：agree_status 为 "Agree" 或 "Default_Agree" 表示已同意
+            // status_change_time > 0 且无 agree_status 字段时也视为已同意（兼容旧版API返回）
+            const isAgreed = item.agree_status === 'Agree' || item.agree_status === 'Default_Agree'
+              || (!item.agree_status && item.status_change_time > 0);
+            if (isAgreed) {
+              const extId = item.exteranalopenid || item.userid_list?.[0] || '';
+              if (extId) {
+                agreeMap.set(extId, true);
+                agreedCount++;
+              }
             }
           }
         } catch (e: any) {
           log.warn(`[ChatArchive] 检查成员 ${userId} 同意状态失败:`, e.message);
+          // 如果 checkSingleAgree 接口失败（第三方模式可能无权限），
+          // 则通过检查是否有实际聊天记录来推断同意状态
+          if (config.authType === 'third_party') {
+            // 第三方模式下，如果能拉取到消息，说明客户已同意
+            // 将所有外部联系人默认标记为已同意（后续通过实际消息验证）
+            for (const extId of sampleExternal) {
+              agreeMap.set(extId, true);
+              agreedCount++;
+            }
+            log.info(`[ChatArchive] 第三方模式: checkSingleAgree 不可用，默认标记 ${sampleExternal.length} 个客户为已同意`);
+          }
         }
 
         // 为每个外部联系人生成/更新会话元数据记录
@@ -617,8 +635,8 @@ export class WecomChatArchiveService {
         }
       }
 
-      // 批量查询客户备注和昵称
-      const customerNameMap = new Map<string, { remark: string; name: string }>();
+      // 批量查询客户备注、昵称和头像
+      const customerInfoMap = new Map<string, { remark: string; name: string; avatar: string }>();
       if (externalUserIds.size > 0) {
         try {
           let customerWhere = 'external_user_id IN (' + Array.from(externalUserIds).map(() => '?').join(',') + ')';
@@ -632,47 +650,108 @@ export class WecomChatArchiveService {
             customerParams.push(configId);
           }
           const customers = await AppDataSource.query(
-            `SELECT external_user_id, remark, name FROM wecom_customers WHERE ${customerWhere}`,
+            `SELECT external_user_id, remark, name, avatar FROM wecom_customers WHERE ${customerWhere}`,
             customerParams
           );
           for (const c of customers) {
-            customerNameMap.set(c.external_user_id, { remark: c.remark || '', name: c.name || '' });
+            customerInfoMap.set(c.external_user_id, { remark: c.remark || '', name: c.name || '', avatar: c.avatar || '' });
           }
         } catch (e: any) {
           log.warn('[ChatArchive] 批量查询客户名称失败:', e.message);
         }
       }
 
-      // 后处理：用备注+昵称作为 customerName
+      // 收集所有员工ID，批量查询员工头像
+      const memberUserIds = new Set<string>();
+      for (const item of rawList) {
+        if (item.fromUserId && !item.fromUserId.startsWith('wm') && !item.fromUserId.startsWith('wo')) {
+          memberUserIds.add(item.fromUserId);
+        }
+        try {
+          const toIds = typeof item.toUserIds === 'string' ? JSON.parse(item.toUserIds) : item.toUserIds;
+          if (Array.isArray(toIds)) {
+            toIds.forEach((id: string) => {
+              if (id && !id.startsWith('wm') && !id.startsWith('wo')) memberUserIds.add(id);
+            });
+          }
+        } catch { /* ignore */ }
+      }
+
+      const memberAvatarMap = new Map<string, string>();
+      if (memberUserIds.size > 0) {
+        try {
+          let memberWhere = 'wecom_user_id IN (' + Array.from(memberUserIds).map(() => '?').join(',') + ')';
+          const memberParams: any[] = Array.from(memberUserIds);
+          if (tenantId) {
+            memberWhere += ' AND tenant_id = ?';
+            memberParams.push(tenantId);
+          }
+          const members = await AppDataSource.query(
+            `SELECT wecom_user_id, wecom_avatar FROM wecom_user_bindings WHERE ${memberWhere}`,
+            memberParams
+          );
+          for (const m of members) {
+            if (m.wecom_avatar) memberAvatarMap.set(m.wecom_user_id, m.wecom_avatar);
+          }
+        } catch { /* ignore */ }
+      }
+
+      // 后处理：用备注+昵称作为 customerName，附带头像
       const list = rawList.map((item: any) => {
         let customerName = '';
+        let customerAvatar = '';
+        let memberAvatar = '';
 
         // 确定外部联系人ID（客户ID）
         let externalId = '';
+        let memberId = '';
         try {
           const toIds = typeof item.toUserIds === 'string' ? JSON.parse(item.toUserIds) : item.toUserIds;
           if (Array.isArray(toIds) && toIds.length > 0) {
             // 找到外部联系人ID（以 wm 开头的是外部客户）
-            externalId = toIds.find((id: string) => id && id.startsWith('wm')) || toIds[0] || '';
+            externalId = toIds.find((id: string) => id && (id.startsWith('wm') || id.startsWith('wo'))) || '';
+            // 找到员工ID
+            memberId = toIds.find((id: string) => id && !id.startsWith('wm') && !id.startsWith('wo')) || '';
           }
         } catch { /* ignore */ }
 
         // 如果 fromUserId 是外部客户（以 wm 开头），则它就是客户
-        if (!externalId && item.fromUserId && item.fromUserId.startsWith('wm')) {
-          externalId = item.fromUserId;
+        if (item.fromUserId && (item.fromUserId.startsWith('wm') || item.fromUserId.startsWith('wo'))) {
+          if (!externalId) externalId = item.fromUserId;
+          if (!memberId) {
+            try {
+              const toIds = typeof item.toUserIds === 'string' ? JSON.parse(item.toUserIds) : item.toUserIds;
+              if (Array.isArray(toIds)) memberId = toIds[0] || '';
+            } catch { /* ignore */ }
+          }
+        } else {
+          // fromUserId 是员工
+          if (!memberId) memberId = item.fromUserId;
+          if (!externalId) {
+            try {
+              const toIds = typeof item.toUserIds === 'string' ? JSON.parse(item.toUserIds) : item.toUserIds;
+              if (Array.isArray(toIds)) externalId = toIds.find((id: string) => id && (id.startsWith('wm') || id.startsWith('wo'))) || toIds[0] || '';
+            } catch { /* ignore */ }
+          }
         }
 
-        // 从客户表中获取备注和昵称，优先显示：备注 > 昵称 > ID
-        if (externalId && customerNameMap.has(externalId)) {
-          const info = customerNameMap.get(externalId)!;
+        // 从客户表中获取备注、昵称和头像
+        if (externalId && customerInfoMap.has(externalId)) {
+          const info = customerInfoMap.get(externalId)!;
           if (info.remark) {
             customerName = info.name ? `${info.remark}(${info.name})` : info.remark;
           } else {
             customerName = info.name || '';
           }
+          customerAvatar = info.avatar || '';
         }
 
-        return { ...item, customerName };
+        // 获取员工头像
+        if (memberId && memberAvatarMap.has(memberId)) {
+          memberAvatar = memberAvatarMap.get(memberId) || '';
+        }
+
+        return { ...item, customerName, customerAvatar, memberAvatar };
       });
 
       return { list, total };

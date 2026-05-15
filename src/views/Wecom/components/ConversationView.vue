@@ -1,541 +1,295 @@
 <template>
-  <div>
-    <!-- 顶部筛选搜索栏 -->
-    <div class="conv-toolbar">
-      <el-input v-model="convSearch" placeholder="搜索客户昵称/备注/消息内容" clearable style="width: 240px" size="default" @keyup.enter="fetchConversations" @clear="fetchConversations">
-        <template #prefix><el-icon><Search /></el-icon></template>
-      </el-input>
-      <el-select v-model="convMsgTypeFilter" placeholder="消息类型" clearable style="width: 110px" size="default" @change="fetchConversations">
-        <el-option label="全部" value="" />
-        <el-option label="文本" value="text" />
-        <el-option label="图片" value="image" />
-        <el-option label="文件" value="file" />
-        <el-option label="语音" value="voice" />
-        <el-option label="视频" value="video" />
-      </el-select>
-      <el-date-picker v-model="convStartDate" type="date" placeholder="开始日期" value-format="YYYY-MM-DD" style="width: 145px" size="default" @change="fetchConversations" />
-      <span style="color:#909399;font-size:13px">至</span>
-      <el-date-picker v-model="convEndDate" type="date" placeholder="结束日期" value-format="YYYY-MM-DD" style="width: 145px" size="default" @change="fetchConversations" />
-      <el-button type="primary" size="default" @click="fetchConversations">
-        <el-icon><Search /></el-icon> 搜索
-      </el-button>
-      <el-button size="default" @click="resetConvSearch">重置</el-button>
-      <div style="flex:1"></div>
-      <span class="conv-count-label">共 {{ convTotal }} 个会话</span>
-    </div>
-
-    <div class="chat-container">
-      <!-- ⓪ 可折叠部门/成员面板 -->
-      <div class="member-panel" :class="{ collapsed: memberPanelCollapsed }">
-        <div class="member-panel-toggle" @click="memberPanelCollapsed = !memberPanelCollapsed">
-          <el-icon v-if="memberPanelCollapsed"><DArrowRight /></el-icon>
-          <el-icon v-else><DArrowLeft /></el-icon>
-          <span v-if="!memberPanelCollapsed" class="toggle-text">部门/成员</span>
+  <div class="conv-view">
+    <div class="conv-layout">
+      <!-- ① 第一栏：存档员工列表 -->
+      <div class="panel-members">
+        <div class="panel-members-header">
+          <div class="members-title">
+            <span>存档员工</span>
+            <span class="members-count">{{ visibleArchiveMembers.length }}人</span>
+          </div>
+          <el-input v-model="memberSearch" placeholder="搜索员工" clearable size="small" prefix-icon="Search" />
         </div>
-        <template v-if="!memberPanelCollapsed">
-          <div class="member-panel-header">
-            <span class="member-panel-title">组织架构</span>
-            <el-input v-model="memberSearch" placeholder="搜索部门/成员" clearable size="small" style="margin-top:8px" prefix-icon="Search" />
-          </div>
-          <div class="member-panel-list" v-loading="memberLoading">
-            <!-- 全部成员入口 -->
-            <div
-              class="member-item dept-all-item"
-              :class="{ active: !selectedDeptId && !selectedMemberId }"
-              @click="handleSelectAll"
-            >
-              <el-icon><OfficeBuilding /></el-icon>
-              <span class="member-name">全部成员</span>
+        <div class="panel-members-list" v-loading="memberLoading">
+          <div
+            v-for="member in filteredMembers"
+            :key="member.wecomUserId"
+            class="member-card"
+            :class="{ active: selectedMemberId === member.wecomUserId }"
+            @click="selectMember(member)"
+          >
+            <div class="member-card-avatar">
+              <img v-if="member.avatar" :src="member.avatar" class="avatar-img" />
+              <span v-else class="avatar-letter">{{ (member.name || member.wecomUserId).charAt(0) }}</span>
             </div>
-            <!-- 部门树 -->
-            <template v-for="dept in filteredDepartments" :key="dept.id">
-              <div
-                class="dept-item"
-                :class="{ active: selectedDeptId === dept.id && !selectedMemberId }"
-                @click="handleSelectDept(dept)"
-              >
-                <el-icon class="dept-expand-icon" :class="{ expanded: expandedDepts.has(dept.id) }" @click.stop="toggleDeptExpand(dept.id)">
-                  <ArrowRight />
-                </el-icon>
-                <el-icon color="#e6a23c"><Folder /></el-icon>
-                <span class="dept-name">{{ dept.name }}</span>
-                <span class="dept-count" v-if="getDeptMemberCount(dept.id)">{{ getDeptMemberCount(dept.id) }}</span>
-              </div>
-              <!-- 部门下成员列表 -->
-              <template v-if="expandedDepts.has(dept.id)">
-                <div
-                  v-for="member in getDeptMembers(dept.id)"
-                  :key="member.wecomUserId"
-                  class="member-item member-indent"
-                  :class="{ active: selectedMemberId === member.wecomUserId }"
-                  @click="selectMember(member)"
-                >
-                  <div class="member-avatar-wrap">
-                    <span class="member-avatar-icon">{{ (member.name || member.wecomUserId).charAt(0) }}</span>
-                  </div>
-                  <div class="member-name">{{ member.name || member.wecomUserId }}</div>
-                </div>
-                <div v-if="getDeptMembers(dept.id).length === 0" class="empty-dept-hint">暂无成员</div>
-              </template>
-            </template>
-            <!-- 未分组成员 -->
-            <template v-if="ungroupedMembers.length > 0">
-              <div class="dept-item" :class="{ active: selectedDeptId === -1 && !selectedMemberId }" @click="handleSelectDept({ id: -1, name: '未分组' })">
-                <el-icon class="dept-expand-icon" :class="{ expanded: expandedDepts.has(-1) }" @click.stop="toggleDeptExpand(-1)">
-                  <ArrowRight />
-                </el-icon>
-                <el-icon color="#909399"><Folder /></el-icon>
-                <span class="dept-name">未分组</span>
-                <span class="dept-count">{{ ungroupedMembers.length }}</span>
-              </div>
-              <template v-if="expandedDepts.has(-1)">
-                <div
-                  v-for="member in ungroupedMembers"
-                  :key="member.wecomUserId"
-                  class="member-item member-indent"
-                  :class="{ active: selectedMemberId === member.wecomUserId }"
-                  @click="selectMember(member)"
-                >
-                  <div class="member-avatar-wrap">
-                    <span class="member-avatar-icon">{{ (member.name || member.wecomUserId).charAt(0) }}</span>
-                  </div>
-                  <div class="member-name">{{ member.name || member.wecomUserId }}</div>
-                </div>
-              </template>
-            </template>
-            <div v-if="filteredDepartments.length === 0 && ungroupedMembers.length === 0 && !memberLoading" class="empty-member">
-              <el-empty description="暂无成员" :image-size="40" />
+            <div class="member-card-info">
+              <div class="member-card-name">{{ member.name || member.wecomUserId }}</div>
+              <div class="member-card-time" v-if="member.lastActiveTime">{{ formatShortTime(member.lastActiveTime) }}</div>
             </div>
           </div>
-        </template>
+          <el-empty v-if="filteredMembers.length === 0 && !memberLoading" description="暂无存档员工" :image-size="40" />
+        </div>
       </div>
 
-      <!-- ① 左栏: 客户会话列表 -->
-      <div class="chat-sidebar">
-        <div class="chat-sidebar-header" v-if="selectedMemberName">
-          <el-icon><User /></el-icon>
-          <span>{{ selectedMemberName }} 的客户</span>
-          <span class="conv-total-badge">{{ convTotal }}</span>
+      <!-- ② 第二栏：会话列表 -->
+      <div class="panel-conversations">
+        <div class="panel-conv-header">
+          <div class="conv-header-member" v-if="selectedMemberId">
+            <div class="conv-header-avatar">
+              <img v-if="selectedMemberAvatar" :src="selectedMemberAvatar" class="avatar-img" />
+              <span v-else class="avatar-letter">{{ (selectedMemberName || 'M').charAt(0) }}</span>
+            </div>
+            <span class="conv-header-name">{{ selectedMemberName }} 的会话</span>
+          </div>
+          <div v-else class="conv-header-placeholder">请选择员工</div>
+          <!-- TAB: 员工/客户/群聊 -->
+          <div class="conv-tabs">
+            <div class="conv-tab" :class="{ active: convTab === 'staff' }" @click="switchConvTab('staff')">
+              <span>员工</span>
+              <span class="tab-count" v-if="convTabCounts.staff">{{ convTabCounts.staff }}</span>
+            </div>
+            <div class="conv-tab" :class="{ active: convTab === 'customer' }" @click="switchConvTab('customer')">
+              <span>客户</span>
+              <span class="tab-count" v-if="convTabCounts.customer">{{ convTabCounts.customer }}</span>
+            </div>
+            <div class="conv-tab" :class="{ active: convTab === 'group' }" @click="switchConvTab('group')">
+              <span>群聊</span>
+              <span class="tab-count" v-if="convTabCounts.group">{{ convTabCounts.group }}</span>
+            </div>
+          </div>
+          <!-- 搜索 -->
+          <el-input v-model="convSearch" placeholder="搜索会话" clearable size="small" prefix-icon="Search" style="margin: 8px 12px 4px;" @keyup.enter="fetchConversations" @clear="fetchConversations" />
         </div>
-        <div class="chat-sidebar-list" ref="convListRef" v-loading="convLoading" @scroll="handleConvScroll">
+        <div class="panel-conv-list" ref="convListRef" v-loading="convLoading" @scroll="handleConvScroll">
           <div v-if="conversations.length === 0 && !convLoading" class="empty-conv">
-            <el-empty :description="selectedMemberId ? '该成员暂无会话' : '请先选择成员'" :image-size="60" />
+            <el-empty :description="selectedMemberId ? '暂无会话' : '请先选择员工'" :image-size="50" />
           </div>
           <div
             v-for="conv in conversations"
-            :key="conv.fromUserId + '-' + (conv.roomId || getFirstToUser(conv.toUserIds))"
-            class="conv-item"
+            :key="getConvKey(conv)"
+            class="conv-card"
             :class="{ active: isActiveConv(conv) }"
             @click="selectConversation(conv)"
           >
-            <div class="conv-avatar">
-              <span class="conv-avatar-letter">{{ getConvAvatarLetter(conv) }}</span>
+            <div class="conv-card-avatar">
+              <img v-if="(conv as any).customerAvatar" :src="(conv as any).customerAvatar" class="avatar-img" />
+              <span v-else class="avatar-letter" :class="getAvatarColorClass(conv)">{{ getConvAvatarLetter(conv) }}</span>
             </div>
-            <div class="conv-info">
-              <div class="conv-top-row">
-                <el-tooltip :content="getConvDisplayName(conv)" placement="top" :disabled="(getConvDisplayName(conv) || '').length < 10">
-                  <span class="conv-name">{{ getConvDisplayName(conv) }}</span>
-                </el-tooltip>
-                <span class="conv-time">{{ conv.lastMsgTime ? formatConvTime(conv.lastMsgTime) : '' }}</span>
+            <div class="conv-card-body">
+              <div class="conv-card-top">
+                <span class="conv-card-name">{{ getConvDisplayName(conv) }}</span>
+                <span class="conv-card-tag tag-wechat" v-if="isWechatCustomer(conv)">@微信</span>
+                <span class="conv-card-tag tag-corp" v-else-if="isCorpCustomer(conv)">@{{ getCorpShortName(conv) }}</span>
+                <span class="conv-card-time">{{ conv.lastMsgTime ? formatConvTime(conv.lastMsgTime) : '' }}</span>
               </div>
-              <div class="conv-bottom-row">
-                <el-tooltip :content="getConvPreview(conv)" placement="top" :disabled="(getConvPreview(conv) || '').length < 20">
-                  <span class="conv-preview">{{ getConvPreview(conv) || '暂无消息' }}</span>
-                </el-tooltip>
-                <el-badge v-if="conv.msgCount && conv.msgCount > 1" :value="conv.msgCount" :max="999" class="conv-badge" />
+              <div class="conv-card-bottom">
+                <span class="conv-card-preview">{{ getConvPreview(conv) || '暂无消息' }}</span>
+                <div class="conv-card-stats">
+                  <span class="stat-today" v-if="(conv as any).todayCount">今{{ (conv as any).todayCount }}</span>
+                  <span class="stat-total">{{ conv.msgCount || 0 }}</span>
+                </div>
               </div>
             </div>
           </div>
-          <!-- 滚动加载更多提示 -->
-          <div v-if="convLoading && conversations.length > 0" class="conv-loading-more">
-            <el-icon class="is-loading"><Loading /></el-icon> 加载中...
-          </div>
-          <div v-if="!convLoading && conversations.length > 0 && conversations.length >= convTotal" class="conv-no-more">
-            已加载全部
-          </div>
+          <div v-if="convLoading && conversations.length > 0" class="conv-loading-more">加载中...</div>
         </div>
       </div>
 
-      <!-- ② 中间: 聊天消息区 -->
-      <div class="chat-main">
+      <!-- ③ 第三栏：消息详情 -->
+      <div class="panel-messages">
         <template v-if="selectedConv">
-          <div class="chat-main-header">
-            <div class="chat-title">
-              <span>{{ getConvDisplayName(selectedConv) }}</span>
-              <span v-if="selectedConv.roomId" class="chat-room-label">群聊</span>
-              <span class="chat-subtitle">共 {{ msgTotal }} 条消息</span>
+          <!-- 消息头部 -->
+          <div class="msg-panel-header">
+            <div class="msg-header-left">
+              <div class="msg-header-avatar">
+                <img v-if="(selectedConv as any).customerAvatar" :src="(selectedConv as any).customerAvatar" class="avatar-img" />
+                <span v-else class="avatar-letter">{{ getConvAvatarLetter(selectedConv) }}</span>
+              </div>
+              <div class="msg-header-info">
+                <span class="msg-header-name">{{ getConvDisplayName(selectedConv) }}</span>
+                <el-tag v-if="isWechatCustomer(selectedConv)" type="success" size="small" effect="plain">@微信</el-tag>
+                <el-tag v-else-if="isCorpCustomer(selectedConv)" type="warning" size="small" effect="plain">@{{ getCorpShortName(selectedConv) }}</el-tag>
+              </div>
             </div>
-            <div class="chat-actions">
-              <el-tooltip content="在消息中搜索" placement="top">
-                <el-button link size="small" @click="chatSearchVisible = !chatSearchVisible">
-                  <el-icon><Search /></el-icon>
-                </el-button>
-              </el-tooltip>
-              <el-button link type="primary" size="small" @click="refreshMessages">
-                <el-icon><Refresh /></el-icon>
-              </el-button>
-              <el-tooltip content="快捷功能" placement="top" v-if="isAdminRole">
-                <el-button link size="small" @click="actionPanelVisible = !actionPanelVisible">
-                  <el-icon><Operation /></el-icon>
-                </el-button>
-              </el-tooltip>
+            <div class="msg-header-right">
+              <span class="msg-header-count">共 {{ msgTotal }} 条</span>
+              <el-button link size="small" @click="refreshMessages"><el-icon><Refresh /></el-icon></el-button>
             </div>
           </div>
 
-          <!-- 消息内搜索栏（可折叠） -->
-          <div v-if="chatSearchVisible" class="chat-inline-search">
-            <el-input v-model="chatInlineKeyword" placeholder="搜索消息内容..." size="small" clearable style="flex:1" @keyup.enter="doChatInlineSearch" />
-            <el-button size="small" type="primary" @click="doChatInlineSearch">搜索</el-button>
-            <el-button size="small" @click="chatSearchVisible = false; chatInlineKeyword = ''">关闭</el-button>
-          </div>
-
-          <div class="chat-messages" ref="chatMessagesRef" v-loading="msgLoading">
-            <!-- 加载更多按钮 -->
-            <div v-if="msgPage > 1 || (msgTotal > messages.length)" class="load-more">
-              <el-button link type="primary" @click="loadMoreMessages" :loading="msgLoadingMore">
-                {{ msgLoadingMore ? '加载中...' : '⬆ 加载更早消息' }}
-              </el-button>
+          <!-- 消息列表 -->
+          <div class="msg-panel-body" ref="chatMessagesRef" v-loading="msgLoading">
+            <div v-if="msgTotal > messages.length" class="load-more-bar">
+              <el-button link type="primary" size="small" @click="loadMoreMessages" :loading="msgLoadingMore">⬆ 加载更早消息</el-button>
             </div>
 
-            <!-- 日期分割线 + 消息气泡 -->
             <template v-for="(msg, idx) in messages" :key="msg.id">
-              <div v-if="showDateDivider(idx)" class="msg-date-divider">
+              <!-- 日期分割线 -->
+              <div v-if="showDateDivider(idx)" class="date-divider">
                 <span>{{ getDateDividerText(msg.msgTime) }}</span>
               </div>
-              <div class="msg-row" :class="{ 'msg-row-self': isSelfMsg(msg) }">
-                <!-- 左侧：客户头像 -->
-                <div class="msg-avatar-wrapper" v-if="!isSelfMsg(msg)">
-                  <div class="msg-avatar">{{ getConvDisplayName(selectedConv).charAt(0) }}</div>
+
+              <!-- 撤回/删除消息 -->
+              <div v-if="msg.action === 'recall' || msg.msgType === 'revoke'" class="msg-system-notice recall-notice">
+                <el-icon><WarningFilled /></el-icon>
+                <span>{{ msg.fromUserName || msg.fromUserId }} 撤回了一条消息</span>
+              </div>
+
+              <!-- 同意存档系统消息 -->
+              <div v-else-if="msg.msgType === 'agree' || msg.msgType === 'disagree'" class="msg-system-notice agree-notice">
+                <el-icon><InfoFilled /></el-icon>
+                <span>{{ msg.msgType === 'agree' ? '对方已同意会话存档' : '对方不同意会话存档' }}</span>
+              </div>
+
+              <!-- 普通消息 -->
+              <div v-else class="msg-row" :class="{ 'msg-row-self': isSelfMsg(msg) }">
+                <!-- 对方头像 -->
+                <div class="msg-avatar-wrap" v-if="!isSelfMsg(msg)">
+                  <img v-if="(selectedConv as any)?.customerAvatar" :src="(selectedConv as any).customerAvatar" class="msg-avatar-img" />
+                  <span v-else class="msg-avatar-text">{{ getConvDisplayName(selectedConv).charAt(0) }}</span>
                 </div>
-                <div class="msg-body" :class="{ 'msg-body-self': isSelfMsg(msg) }">
-                  <div class="msg-sender" v-if="!isSelfMsg(msg)">
-                    {{ getConvDisplayName(selectedConv) }}
-                    <span class="msg-time-inline">{{ formatMsgTimeShort(msg.msgTime) }}</span>
+
+                <div class="msg-content-wrap" :class="{ 'msg-content-self': isSelfMsg(msg) }">
+                  <div class="msg-sender-line" v-if="!isSelfMsg(msg)">
+                    <span class="msg-sender-name">{{ getConvDisplayName(selectedConv) }}</span>
+                    <span class="msg-time">{{ formatMsgTimeShort(msg.msgTime) }}</span>
                   </div>
-                  <div class="msg-sender msg-sender-self" v-else>
-                    <span class="msg-time-inline">{{ formatMsgTimeShort(msg.msgTime) }}</span>
-                    {{ selectedMemberName || msg.fromUserName || msg.fromUserId }}
+                  <div class="msg-sender-line msg-sender-self" v-else>
+                    <span class="msg-time">{{ formatMsgTimeShort(msg.msgTime) }}</span>
+                    <span class="msg-sender-name">{{ selectedMemberName || msg.fromUserName || msg.fromUserId }}</span>
                   </div>
-                  <div class="msg-bubble" :class="{ 'msg-bubble-self': isSelfMsg(msg), 'msg-bubble-sensitive': msg.isSensitive }">
+
+                  <!-- 消息气泡 -->
+                  <div class="msg-bubble" :class="{ 'bubble-self': isSelfMsg(msg), 'bubble-sensitive': msg.isSensitive }">
+                    <!-- 文本 -->
                     <template v-if="msg.msgType === 'text'">{{ getTextContent(msg.content) }}</template>
-                    <template v-else-if="msg.msgType === 'meta'">
-                      <div class="msg-meta-info">
-                        <el-icon><InfoFilled /></el-icon>
-                        <span>{{ getMetaSummary(msg.content) }}</span>
-                        <el-tag v-if="getMetaAgreed(msg.content)" type="success" size="small" style="margin-left:6px">已同意存档</el-tag>
-                        <el-tag v-else type="warning" size="small" style="margin-left:6px">未同意存档</el-tag>
+                    <!-- 图片 -->
+                    <template v-else-if="msg.msgType === 'image'">
+                      <el-image v-if="msg.mediaUrl || getImageUrl(msg.content)" :src="msg.mediaUrl || getImageUrl(msg.content)" :preview-src-list="[msg.mediaUrl || getImageUrl(msg.content)]" fit="contain" style="max-width:220px;max-height:220px;border-radius:4px" />
+                      <span v-else class="msg-type-placeholder">[图片]</span>
+                    </template>
+                    <!-- 语音 -->
+                    <template v-else-if="msg.msgType === 'voice'">
+                      <div class="msg-voice"><el-icon><Microphone /></el-icon> <span>语音消息</span></div>
+                    </template>
+                    <!-- 视频 -->
+                    <template v-else-if="msg.msgType === 'video'">
+                      <div class="msg-video"><el-icon><VideoCamera /></el-icon> <span>视频消息</span></div>
+                    </template>
+                    <!-- 文件 -->
+                    <template v-else-if="msg.msgType === 'file'">
+                      <div class="msg-file"><el-icon><Document /></el-icon> <span>{{ getFileName(msg.content) || '文件' }}</span></div>
+                    </template>
+                    <!-- 链接 -->
+                    <template v-else-if="msg.msgType === 'link'">
+                      <div class="msg-link">
+                        <el-icon><Link /></el-icon>
+                        <span>{{ getLinkTitle(msg.content) || '链接消息' }}</span>
                       </div>
                     </template>
-                    <template v-else-if="msg.msgType === 'image'">
-                      <el-image v-if="msg.mediaUrl" :src="msg.mediaUrl" :preview-src-list="[msg.mediaUrl]" fit="contain" style="max-width:200px;max-height:200px;border-radius:4px" />
-                      <span v-else class="msg-placeholder">[图片]</span>
+                    <!-- 小程序 -->
+                    <template v-else-if="msg.msgType === 'weapp'">
+                      <div class="msg-weapp"><el-icon><Grid /></el-icon> <span>{{ getWeappTitle(msg.content) || '小程序' }}</span></div>
                     </template>
-                    <template v-else-if="msg.msgType === 'voice'"><span>[语音消息]</span></template>
-                    <template v-else-if="msg.msgType === 'video'"><span>[视频消息]</span></template>
-                    <template v-else-if="msg.msgType === 'file'"><span>{{ msg.fileName || '[文件]' }}</span></template>
-                    <template v-else-if="msg.msgType === 'link'"><span>[链接消息]</span></template>
-                    <template v-else-if="msg.msgType === 'weapp'"><span>[小程序消息]</span></template>
-                    <template v-else-if="msg.msgType === 'location'"><span>[位置消息]</span></template>
-                    <template v-else><span>[{{ getMsgTypeText(msg.msgType) }}]</span></template>
-                  </div>
-                  <div class="msg-flags" v-if="msg.isSensitive || msg.auditRemark">
-                    <el-tag v-if="msg.isSensitive" type="danger" size="small" effect="dark">敏感</el-tag>
-                    <el-tooltip v-if="msg.auditRemark" :content="msg.auditRemark" placement="top">
-                      <el-tag type="warning" size="small">质检备注</el-tag>
-                    </el-tooltip>
+                    <!-- 位置 -->
+                    <template v-else-if="msg.msgType === 'location'">
+                      <div class="msg-location"><el-icon><Location /></el-icon> <span>位置消息</span></div>
+                    </template>
+                    <!-- 表情 -->
+                    <template v-else-if="msg.msgType === 'emotion'">
+                      <span class="msg-type-placeholder">[表情]</span>
+                    </template>
+                    <!-- 名片 -->
+                    <template v-else-if="msg.msgType === 'card'">
+                      <div class="msg-card"><el-icon><User /></el-icon> <span>名片消息</span></div>
+                    </template>
+                    <!-- 其他 -->
+                    <template v-else>
+                      <span class="msg-type-placeholder">[{{ getMsgTypeLabel(msg.msgType) }}]</span>
+                    </template>
                   </div>
                 </div>
-                <!-- 右侧：成员头像 -->
-                <div class="msg-avatar-wrapper" v-if="isSelfMsg(msg)">
-                  <div class="msg-avatar msg-avatar-self">{{ (selectedMemberName || 'M').charAt(0) }}</div>
+
+                <!-- 自己头像 -->
+                <div class="msg-avatar-wrap" v-if="isSelfMsg(msg)">
+                  <img v-if="(selectedConv as any)?.memberAvatar || selectedMemberAvatar" :src="(selectedConv as any)?.memberAvatar || selectedMemberAvatar" class="msg-avatar-img msg-avatar-self" />
+                  <span v-else class="msg-avatar-text msg-avatar-text-self">{{ (selectedMemberName || 'M').charAt(0) }}</span>
                 </div>
               </div>
             </template>
 
-            <div v-if="messages.length === 0 && !msgLoading" class="empty-messages">
-              <el-empty description="暂无消息" :image-size="60" />
-            </div>
+            <el-empty v-if="messages.length === 0 && !msgLoading" description="暂无消息" :image-size="50" />
           </div>
         </template>
 
-        <div v-else class="chat-placeholder">
-          <el-empty :image-size="80">
+        <div v-else class="msg-panel-empty">
+          <el-empty :image-size="70">
             <template #description>
-              <p style="color:#909399;font-size:14px">选择左侧客户以查看聊天记录</p>
-              <p style="color:#c0c4cc;font-size:12px;margin-top:4px">先选择成员，再选择客户查看对话</p>
+              <p>选择左侧会话查看聊天记录</p>
             </template>
           </el-empty>
         </div>
-      </div>
-
-      <!-- ③ 右栏: 快捷功能面板 -->
-      <div class="chat-action-panel" :class="{ visible: actionPanelVisible && selectedConv }">
-        <template v-if="selectedConv">
-          <div class="action-panel-header">
-            <span>会话详情</span>
-            <el-button link size="small" @click="actionPanelVisible = false">
-              <el-icon><Close /></el-icon>
-            </el-button>
-          </div>
-          <div class="action-panel-body">
-            <!-- 客户信息卡片 -->
-            <div class="action-section">
-              <div class="action-profile-card">
-                <div class="action-avatar-large">{{ getConvAvatarLetter(selectedConv) }}</div>
-                <div class="action-profile-info">
-                  <div class="action-profile-name">{{ getConvDisplayName(selectedConv) }}</div>
-                  <div class="action-profile-id">{{ getFirstToUser(selectedConv.toUserIds) || selectedConv.fromUserId }}</div>
-                </div>
-              </div>
-            </div>
-
-            <!-- 会话统计 -->
-            <div class="action-section">
-              <div class="action-section-title">会话概况</div>
-              <div class="action-stats">
-                <div class="action-stat-item">
-                  <div class="action-stat-val">{{ msgTotal }}</div>
-                  <div class="action-stat-label">消息数</div>
-                </div>
-                <div class="action-stat-item">
-                  <div class="action-stat-val">{{ selectedConv.msgCount || 0 }}</div>
-                  <div class="action-stat-label">会话数</div>
-                </div>
-                <div class="action-stat-item">
-                  <div class="action-stat-val">{{ selectedConv.lastMsgTime ? formatConvTime(selectedConv.lastMsgTime) : '-' }}</div>
-                  <div class="action-stat-label">最后活跃</div>
-                </div>
-              </div>
-            </div>
-
-            <!-- 对话成员 -->
-            <div class="action-section">
-              <div class="action-section-title">对话成员</div>
-              <div class="action-member-row">
-                <div class="action-member-avatar" style="background:#c8c9cc">{{ getConvDisplayName(selectedConv).charAt(0) }}</div>
-                <span class="action-member-name">{{ getConvDisplayName(selectedConv) }}</span>
-                <el-tag size="small" type="info">客户</el-tag>
-              </div>
-              <div class="action-member-row">
-                <div class="action-member-avatar" style="background:#67c23a">{{ (selectedMemberName || 'M').charAt(0) }}</div>
-                <span class="action-member-name">{{ selectedMemberName || selectedConv.fromUserId }}</span>
-                <el-tag size="small" type="success">员工</el-tag>
-              </div>
-            </div>
-
-            <!-- 质检操作（仅管理员/超级管理员可见） -->
-            <div class="action-section" v-if="isAdminRole">
-              <div class="action-section-title">质检操作</div>
-              <div class="action-audit-status" v-if="lastMsgAuditStatus">
-                <el-tag :type="lastMsgAuditStatus === 'sensitive' ? 'danger' : 'warning'" size="small">
-                  {{ lastMsgAuditStatus === 'sensitive' ? '已标记敏感' : '已质检' }}
-                </el-tag>
-              </div>
-              <div class="action-buttons">
-                <el-button type="warning" size="small" @click="handleAuditFromChat" style="width:100%">
-                  <el-icon><EditPen /></el-icon> 标记质检
-                </el-button>
-                <el-button type="danger" size="small" plain @click="handleMarkSensitive" style="width:100%">
-                  <el-icon><Warning /></el-icon> 标记敏感
-                </el-button>
-              </div>
-              <div class="action-audit-note" style="margin-top:8px">
-                <el-input v-model="auditRemark" placeholder="质检备注（可选）" size="small" :rows="2" type="textarea" />
-                <el-button type="primary" size="small" style="width:100%;margin-top:6px" @click="handleSubmitAudit" :disabled="!auditRemark">
-                  提交备注
-                </el-button>
-              </div>
-            </div>
-
-            <!-- 操作 -->
-            <div class="action-section">
-              <div class="action-section-title">操作</div>
-              <div class="action-buttons">
-                <el-button size="small" @click="exportConvHandler" style="width:100%">
-                  <el-icon><Download /></el-icon> 导出聊天记录
-                </el-button>
-              </div>
-            </div>
-          </div>
-        </template>
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, nextTick, onMounted, watch } from 'vue'
-import { Search, Refresh, User, Close, InfoFilled, EditPen, Download, Warning, Operation, DArrowLeft, DArrowRight, ArrowRight, Folder, OfficeBuilding, Loading } from '@element-plus/icons-vue'
+import { ref, computed, onMounted, watch } from 'vue'
+import { Search, Refresh, InfoFilled, WarningFilled, Microphone, VideoCamera, Document, Link, Grid, Location, User } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
-import { getConversationList, getConversationMessages, getArchiveSeats, auditChatRecord, getWecomDepartments, getWecomUsers } from '@/api/wecom'
-import { formatConvTime, formatMsgTimeShort, formatMsgTime, getMsgTypeText, getTextContent, getMetaSummary, getMetaAgreed, getFirstToUser, getDateDividerText } from '../utils'
+import { getConversationList, getConversationMessages, getArchiveSeats } from '@/api/wecom'
+import { formatConvTime, formatMsgTimeShort, getMsgTypeText, getTextContent, getFirstToUser, getDateDividerText } from '../utils'
 import type { Conversation, ConvMessage } from '../types'
 import { useUserStore } from '@/stores/user'
 import api from '@/utils/request'
 
 defineOptions({ name: 'ConversationView' })
 
-const props = defineProps<{
-  configId: number | null
-}>()
+const props = defineProps<{ configId: number | null }>()
+const emit = defineEmits<{ (e: 'audit', record: ConvMessage): void }>()
 
-const emit = defineEmits<{
-  (e: 'audit', record: ConvMessage): void
-}>()
-
-// 当前用户角色
 const userStore = useUserStore()
 const currentUser = computed(() => userStore.currentUser)
-const currentUserRole = computed(() => currentUser.value?.role || '')
-const isAdminRole = computed(() => ['super_admin', 'admin'].includes(currentUserRole.value))
-const isManagerRole = computed(() => ['department_manager', 'manager'].includes(currentUserRole.value))
+const isAdminRole = computed(() => ['super_admin', 'admin'].includes(currentUser.value?.role || ''))
+const isManagerRole = computed(() => ['department_manager', 'manager'].includes(currentUser.value?.role || ''))
 
-// 部门成员CRM ID列表（经理角色用于范围过滤）
-const deptMemberCrmIds = ref<string[]>([])
-
-// 成员面板
-const memberPanelCollapsed = ref(false)
+// ==================== 员工面板 ====================
 const memberSearch = ref('')
 const memberLoading = ref(false)
 const archiveMembers = ref<any[]>([])
-const departments = ref<any[]>([])
 const selectedMemberId = ref('')
 const selectedMemberName = ref('')
-const selectedDeptId = ref<number | null>(null)
-const expandedDepts = ref(new Set<number>())
+const selectedMemberAvatar = ref('')
+const deptMemberCrmIds = ref<string[]>([])
 
-// 按角色过滤可见的存档成员
-// 管理员：全部 | 经理：本部门成员绑定的企微 | 其他：仅自己绑定的企微
 const visibleArchiveMembers = computed(() => {
   if (isAdminRole.value) return archiveMembers.value
   if (isManagerRole.value) {
-    return archiveMembers.value.filter((m: any) =>
-      m.crmUserId && deptMemberCrmIds.value.includes(m.crmUserId)
-    )
+    return archiveMembers.value.filter((m: any) => m.crmUserId && deptMemberCrmIds.value.includes(m.crmUserId))
   }
-  // 普通用户：只看自己绑定的企微账号
   const myId = currentUser.value?.id
   return archiveMembers.value.filter((m: any) => m.crmUserId === myId)
 })
 
-// 会话列表
-const convSearch = ref('')
-const convMsgTypeFilter = ref('')
-const convStartDate = ref('')
-const convEndDate = ref('')
-const conversations = ref<Conversation[]>([])
-const convLoading = ref(false)
-const convPage = ref(1)
-const convPageSize = ref(50)
-const convTotal = ref(0)
-const convListRef = ref<HTMLElement | null>(null)
-const convLoadingMore = ref(false)
-const selectedConv = ref<Conversation | null>(null)
-
-// 消息
-const messages = ref<ConvMessage[]>([])
-const msgLoading = ref(false)
-const msgLoadingMore = ref(false)
-const msgPage = ref(1)
-const msgPageSize = ref(50)
-const msgTotal = ref(0)
-const chatMessagesRef = ref<HTMLElement | null>(null)
-const actionPanelVisible = ref(true)
-const chatSearchVisible = ref(false)
-const chatInlineKeyword = ref('')
-
-const filteredDepartments = computed(() => {
-  // 先过滤掉没有可见成员的部门
-  const deptsWithVisibleMembers = departments.value.filter((d: any) => getDeptMemberCount(d.id) > 0)
-  if (!memberSearch.value) return deptsWithVisibleMembers
+const filteredMembers = computed(() => {
+  if (!memberSearch.value) return visibleArchiveMembers.value
   const kw = memberSearch.value.toLowerCase()
-  return deptsWithVisibleMembers.filter((d: any) =>
-    (d.name || '').toLowerCase().includes(kw) ||
-    getDeptMembers(d.id).some((m: any) => (m.name || '').toLowerCase().includes(kw) || (m.wecomUserId || '').toLowerCase().includes(kw))
+  return visibleArchiveMembers.value.filter((m: any) =>
+    (m.name || '').toLowerCase().includes(kw) || (m.wecomUserId || '').toLowerCase().includes(kw)
   )
 })
 
-const getDeptMembers = (deptId: number) => {
-  if (!memberSearch.value) {
-    return visibleArchiveMembers.value.filter((m: any) => {
-      const deptIds = m.departmentIds || m.department || ''
-      return String(deptIds).includes(String(deptId))
-    })
-  }
-  const kw = memberSearch.value.toLowerCase()
-  return visibleArchiveMembers.value.filter((m: any) => {
-    const deptIds = m.departmentIds || m.department || ''
-    const inDept = String(deptIds).includes(String(deptId))
-    const matchSearch = (m.name || '').toLowerCase().includes(kw) || (m.wecomUserId || '').toLowerCase().includes(kw)
-    return inDept && matchSearch
-  })
-}
-
-const getDeptMemberCount = (deptId: number) => {
-  return visibleArchiveMembers.value.filter((m: any) => {
-    const deptIds = m.departmentIds || m.department || ''
-    return String(deptIds).includes(String(deptId))
-  }).length
-}
-
-const ungroupedMembers = computed(() => {
-  if (departments.value.length === 0) return visibleArchiveMembers.value
-  return visibleArchiveMembers.value.filter((m: any) => {
-    const deptIds = m.departmentIds || m.department || ''
-    return !deptIds || String(deptIds).trim() === ''
-  })
-})
-
-const toggleDeptExpand = (deptId: number) => {
-  const s = new Set(expandedDepts.value)
-  if (s.has(deptId)) s.delete(deptId)
-  else s.add(deptId)
-  expandedDepts.value = s
-}
-
-const handleSelectAll = () => {
-  selectedDeptId.value = null
-  selectedMemberId.value = ''
-  selectedMemberName.value = ''
-  selectedConv.value = null
-  messages.value = []
-  convPage.value = 1
-  fetchConversations()
-}
-
-const handleSelectDept = (dept: any) => {
-  selectedDeptId.value = dept.id
-  selectedMemberId.value = ''
-  selectedMemberName.value = dept.name + '(部门)'
-  selectedConv.value = null
-  messages.value = []
-  convPage.value = 1
-  // Auto expand
-  const s = new Set(expandedDepts.value)
-  s.add(dept.id)
-  expandedDepts.value = s
-  fetchConversations()
-}
-
-// ==================== 成员面板 ====================
-
-// 加载经理角色的部门成员列表（用于范围过滤）
 const loadScopeMembers = async () => {
   if (isAdminRole.value) return
   if (isManagerRole.value) {
     try {
       const res = (await api.get('/users/department-members')) as any
       const members = res?.data || res || []
-      // 收集本部门所有CRM用户ID（包括自己）
       deptMemberCrmIds.value = members.map((m: any) => m.userId || m.id).filter(Boolean)
-      // 确保包含自己
       const myId = currentUser.value?.id
-      if (myId && !deptMemberCrmIds.value.includes(myId)) {
-        deptMemberCrmIds.value.push(myId)
-      }
-    } catch {
-      deptMemberCrmIds.value = []
-    }
+      if (myId && !deptMemberCrmIds.value.includes(myId)) deptMemberCrmIds.value.push(myId)
+    } catch { deptMemberCrmIds.value = [] }
   }
 }
 
@@ -543,29 +297,17 @@ const fetchArchiveMembers = async () => {
   if (!props.configId) return
   memberLoading.value = true
   try {
-    // 先加载范围成员（经理需要知道部门成员列表来过滤）
     await loadScopeMembers()
-    const [seatRes, deptRes] = await Promise.allSettled([
-      getArchiveSeats(props.configId),
-      getWecomDepartments(props.configId)
-    ])
-    if (seatRes.status === 'fulfilled') {
-      archiveMembers.value = (seatRes.value as any)?.members || []
-    }
-    if (deptRes.status === 'fulfilled') {
-      departments.value = Array.isArray(deptRes.value) ? deptRes.value : []
-    }
-  } catch {
-    archiveMembers.value = []
-    departments.value = []
-  } finally {
-    memberLoading.value = false
-  }
+    const seatRes: any = await getArchiveSeats(props.configId)
+    archiveMembers.value = seatRes?.members || []
+  } catch { archiveMembers.value = [] }
+  finally { memberLoading.value = false }
 }
 
 const selectMember = (member: any) => {
   selectedMemberId.value = member.wecomUserId
   selectedMemberName.value = member.name || member.wecomUserId
+  selectedMemberAvatar.value = member.avatar || ''
   selectedConv.value = null
   messages.value = []
   convPage.value = 1
@@ -573,106 +315,106 @@ const selectMember = (member: any) => {
 }
 
 // ==================== 会话列表 ====================
+const convTab = ref<'staff' | 'customer' | 'group'>('customer')
+const convSearch = ref('')
+const conversations = ref<Conversation[]>([])
+const convLoading = ref(false)
+const convPage = ref(1)
+const convPageSize = ref(50)
+const convTotal = ref(0)
+const convListRef = ref<HTMLElement | null>(null)
+const convTabCounts = ref({ staff: 0, customer: 0, group: 0 })
 
-const getConvDisplayName = (conv: Conversation) => {
-  return (conv as any).customerName || conv.fromUserName || conv.fromUserId || '未知'
+const selectedConv = ref<Conversation | null>(null)
+
+const switchConvTab = (tab: 'staff' | 'customer' | 'group') => {
+  convTab.value = tab
+  convPage.value = 1
+  selectedConv.value = null
+  messages.value = []
+  fetchConversations()
 }
 
-const getConvAvatarLetter = (conv: Conversation) => {
-  const name = getConvDisplayName(conv)
-  return name.charAt(0).toUpperCase()
+const getConvKey = (conv: Conversation) => `${conv.fromUserId}-${conv.roomId || getFirstToUser(conv.toUserIds)}`
+
+const getConvDisplayName = (conv: Conversation) => (conv as any).customerName || conv.fromUserName || conv.fromUserId || '未知'
+
+const getConvAvatarLetter = (conv: Conversation) => getConvDisplayName(conv).charAt(0).toUpperCase()
+
+const getAvatarColorClass = (conv: Conversation) => {
+  if (conv.roomId) return 'avatar-group'
+  const id = getFirstToUser(conv.toUserIds) || conv.fromUserId || ''
+  if (id.startsWith('wm') || id.startsWith('wo')) return 'avatar-customer'
+  return 'avatar-staff'
+}
+
+const isWechatCustomer = (conv: Conversation) => {
+  const id = getFirstToUser(conv.toUserIds) || ''
+  return id.startsWith('wm') && !(conv as any).corpName
+}
+
+const isCorpCustomer = (conv: Conversation) => !!(conv as any).corpName
+
+const getCorpShortName = (conv: Conversation) => {
+  const name = (conv as any).corpName || ''
+  return name.length > 4 ? name.substring(0, 4) + '..' : name
 }
 
 const getConvPreview = (conv: Conversation) => {
   if (!conv.lastContent) return ''
   const type = conv.lastMsgType
-  if (type === 'meta') return getMetaSummary(conv.lastContent).substring(0, 30)
-  if (type && type !== 'text') return `[${getMsgTypeText(type)}]`
+  if (type && type !== 'text') return `[${getMsgTypeLabel(type)}]`
   return getTextContent(conv.lastContent).substring(0, 30)
 }
 
 const isActiveConv = (conv: Conversation) => {
   if (!selectedConv.value) return false
-  return selectedConv.value.fromUserId === conv.fromUserId &&
-    (selectedConv.value.roomId || '') === (conv.roomId || '') &&
-    getFirstToUser(selectedConv.value.toUserIds) === getFirstToUser(conv.toUserIds)
-}
-
-const isSelfMsg = (msg: ConvMessage) => {
-  if (!selectedConv.value) return false
-  return msg.fromUserId !== selectedConv.value.fromUserId
-}
-
-const resetConvSearch = () => {
-  convSearch.value = ''
-  convMsgTypeFilter.value = ''
-  convStartDate.value = ''
-  convEndDate.value = ''
-  convPage.value = 1
-  fetchConversations()
+  return getConvKey(selectedConv.value) === getConvKey(conv)
 }
 
 const fetchConversations = async () => {
+  if (!selectedMemberId.value) return
   convLoading.value = true
   try {
-    // Build userId param: if a dept is selected without specific member, get all dept member IDs
-    let userIdParam = selectedMemberId.value || undefined
-    if (!userIdParam && selectedDeptId.value) {
-      const deptMembers = selectedDeptId.value === -1
-        ? ungroupedMembers.value
-        : getDeptMembers(selectedDeptId.value)
-      if (deptMembers.length > 0) {
-        userIdParam = deptMembers.map((m: any) => m.wecomUserId).join(',')
-      }
-    }
-    // 非管理员且未选择具体成员时，限制为可见成员范围
-    if (!userIdParam && !isAdminRole.value && visibleArchiveMembers.value.length > 0) {
-      userIdParam = visibleArchiveMembers.value.map((m: any) => m.wecomUserId).join(',')
-    }
     const res: any = await getConversationList({
       configId: props.configId || undefined,
-      userId: userIdParam,
+      userId: selectedMemberId.value,
       keyword: convSearch.value || undefined,
       page: convPage.value,
       pageSize: convPageSize.value
     })
     if (res?.list) {
-      // 追加模式（滚动加载更多）
-      if (convPage.value > 1) {
-        conversations.value = [...conversations.value, ...res.list]
-      } else {
-        conversations.value = res.list
+      const allList = res.list as any[]
+      // 按 tab 过滤
+      const filtered = allList.filter((c: any) => {
+        const toId = getFirstToUser(c.toUserIds) || ''
+        const fromId = c.fromUserId || ''
+        const isGroup = !!c.roomId
+        const isExternal = toId.startsWith('wm') || toId.startsWith('wo') || fromId.startsWith('wm') || fromId.startsWith('wo')
+        if (convTab.value === 'group') return isGroup
+        if (convTab.value === 'customer') return !isGroup && isExternal
+        return !isGroup && !isExternal // staff
+      })
+      conversations.value = convPage.value > 1 ? [...conversations.value, ...filtered] : filtered
+      convTotal.value = filtered.length
+      // 统计各 tab 数量
+      convTabCounts.value = {
+        staff: allList.filter((c: any) => !c.roomId && !getFirstToUser(c.toUserIds)?.startsWith('wm') && !getFirstToUser(c.toUserIds)?.startsWith('wo') && !c.fromUserId?.startsWith('wm')).length,
+        customer: allList.filter((c: any) => !c.roomId && (getFirstToUser(c.toUserIds)?.startsWith('wm') || getFirstToUser(c.toUserIds)?.startsWith('wo') || c.fromUserId?.startsWith('wm') || c.fromUserId?.startsWith('wo'))).length,
+        group: allList.filter((c: any) => !!c.roomId).length
       }
-      convTotal.value = res.total || 0
     } else {
-      if (convPage.value === 1) {
-        conversations.value = []
-        convTotal.value = 0
-      }
+      if (convPage.value === 1) { conversations.value = []; convTotal.value = 0 }
     }
-  } catch (e) {
-    console.error('[ConversationView] Fetch conversations error:', e)
-    if (convPage.value === 1) {
-      conversations.value = []
-      convTotal.value = 0
-    }
-  } finally {
-    convLoading.value = false
-    convLoadingMore.value = false
-  }
+  } catch { if (convPage.value === 1) { conversations.value = []; convTotal.value = 0 } }
+  finally { convLoading.value = false }
 }
 
-// 客户列表滚动到底加载更多
 const handleConvScroll = () => {
   const el = convListRef.value
-  if (!el || convLoading.value || convLoadingMore.value) return
-  // 距离底部50px时触发加载
+  if (!el || convLoading.value) return
   if (el.scrollTop + el.clientHeight >= el.scrollHeight - 50) {
-    if (conversations.value.length < convTotal.value) {
-      convLoadingMore.value = true
-      convPage.value++
-      fetchConversations()
-    }
+    if (conversations.value.length < convTotal.value) { convPage.value++; fetchConversations() }
   }
 }
 
@@ -681,6 +423,32 @@ const selectConversation = async (conv: Conversation) => {
   msgPage.value = 1
   messages.value = []
   await fetchMessages()
+}
+
+// ==================== 消息 ====================
+const messages = ref<ConvMessage[]>([])
+const msgLoading = ref(false)
+const msgLoadingMore = ref(false)
+const msgPage = ref(1)
+const msgPageSize = ref(50)
+const msgTotal = ref(0)
+const chatMessagesRef = ref<HTMLElement | null>(null)
+
+const isSelfMsg = (msg: ConvMessage) => {
+  if (!selectedConv.value) return false
+  // 员工发的消息显示在右侧
+  const fromId = msg.fromUserId || ''
+  return !fromId.startsWith('wm') && !fromId.startsWith('wo')
+}
+
+const showDateDivider = (idx: number) => {
+  if (idx === 0) return true
+  const curr = messages.value[idx]
+  const prev = messages.value[idx - 1]
+  if (!curr?.msgTime || !prev?.msgTime) return false
+  const d1 = new Date(curr.msgTime).toDateString()
+  const d2 = new Date(prev.msgTime).toDateString()
+  return d1 !== d2
 }
 
 const fetchMessages = async () => {
@@ -697,355 +465,142 @@ const fetchMessages = async () => {
       pageSize: msgPageSize.value
     })
     if (res?.list) {
-      messages.value = res.list
+      messages.value = msgPage.value > 1 ? [...res.list, ...messages.value] : res.list
       msgTotal.value = res.total || 0
-    } else {
-      messages.value = []
-      msgTotal.value = 0
     }
-    await nextTick()
-    scrollToBottom()
-  } catch (e) {
-    console.error('[ConversationView] Fetch messages error:', e)
-    messages.value = []
-    msgTotal.value = 0
-  } finally {
-    msgLoading.value = false
-  }
+  } catch { /* ignore */ }
+  finally { msgLoading.value = false; msgLoadingMore.value = false }
 }
 
-const loadMoreMessages = async () => {
-  if (messages.value.length >= msgTotal.value) return
-  msgLoadingMore.value = true
-  try {
-    msgPage.value++
-    const toUserId = getFirstToUser(selectedConv.value!.toUserIds)
-    const res: any = await getConversationMessages({
-      configId: props.configId || undefined,
-      fromUserId: selectedConv.value!.fromUserId,
-      toUserId,
-      roomId: selectedConv.value!.roomId || undefined,
-      page: msgPage.value,
-      pageSize: msgPageSize.value
-    })
-    if (res?.list?.length) {
-      messages.value = [...res.list, ...messages.value]
-    }
-  } catch (e) {
-    console.error('[ConversationView] Load more error:', e)
-    msgPage.value--
-  } finally {
-    msgLoadingMore.value = false
-  }
+const loadMoreMessages = () => { msgLoadingMore.value = true; msgPage.value++; fetchMessages() }
+const refreshMessages = () => { msgPage.value = 1; messages.value = []; fetchMessages() }
+
+// ==================== 辅助方法 ====================
+const formatShortTime = (ts: number | string) => {
+  if (!ts) return ''
+  const d = new Date(typeof ts === 'number' ? ts : parseInt(ts as string))
+  const now = new Date()
+  if (d.toDateString() === now.toDateString()) return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`
+  return `${d.getMonth() + 1}/${d.getDate()}`
 }
 
-const refreshMessages = () => {
-  msgPage.value = 1
-  fetchMessages()
+const getMsgTypeLabel = (type: string) => {
+  const map: Record<string, string> = { text: '文本', image: '图片', voice: '语音', video: '视频', file: '文件', link: '链接', weapp: '小程序', location: '位置', emotion: '表情', card: '名片', chatrecord: '聊天记录', revoke: '撤回', agree: '同意存档', disagree: '不同意存档' }
+  return map[type] || type
 }
 
-const scrollToBottom = () => {
-  if (chatMessagesRef.value) {
-    chatMessagesRef.value.scrollTop = chatMessagesRef.value.scrollHeight
-  }
-}
+const getImageUrl = (content: string) => { try { const c = JSON.parse(content); return c?.image?.url || c?.image?.sdkfileid || '' } catch { return '' } }
+const getFileName = (content: string) => { try { const c = JSON.parse(content); return c?.file?.filename || c?.file?.name || '' } catch { return '' } }
+const getLinkTitle = (content: string) => { try { const c = JSON.parse(content); return c?.link?.title || '' } catch { return '' } }
+const getWeappTitle = (content: string) => { try { const c = JSON.parse(content); return c?.weapp?.title || c?.weapp?.displayname || '' } catch { return '' } }
 
-const showDateDivider = (idx: number) => {
-  if (idx === 0) return true
-  const cur = messages.value[idx]
-  const prev = messages.value[idx - 1]
-  if (!cur?.msgTime || !prev?.msgTime) return false
-  const toTs = (v: number | string) => typeof v === 'string' ? parseInt(v) : v
-  return new Date(toTs(cur.msgTime)).toDateString() !== new Date(toTs(prev.msgTime)).toDateString()
-}
+// ==================== 生命周期 ====================
+watch(() => props.configId, () => { fetchArchiveMembers() }, { immediate: true })
 
-const doChatInlineSearch = () => {
-  if (!chatInlineKeyword.value.trim()) return
-  // Filter messages client-side
-  const kw = chatInlineKeyword.value.toLowerCase()
-  const el = chatMessagesRef.value
-  if (!el) return
-  const found = messages.value.findIndex(m => {
-    if (m.msgType === 'text') {
-      return getTextContent(m.content).toLowerCase().includes(kw)
-    }
-    return false
-  })
-  if (found >= 0) {
-    const rows = el.querySelectorAll('.msg-row')
-    if (rows[found]) {
-      rows[found].scrollIntoView({ behavior: 'smooth', block: 'center' })
-      ;(rows[found] as HTMLElement).style.background = '#fef9c3'
-      setTimeout(() => { (rows[found] as HTMLElement).style.background = '' }, 2000)
-    }
-  } else {
-    ElMessage.info('未找到匹配消息')
-  }
-}
-
-// ==================== 快捷操作 ====================
-
-const handleAuditFromChat = () => {
-  if (messages.value.length > 0) {
-    emit('audit', messages.value[messages.value.length - 1])
-  }
-}
-
-const handleMarkSensitive = async () => {
-  if (messages.value.length === 0) return
-  const lastMsg = messages.value[messages.value.length - 1]
-  try {
-    await auditChatRecord(lastMsg.id, { isSensitive: true, auditRemark: auditRemark.value || '手动标记敏感' })
-    ElMessage.success('已标记为敏感')
-    auditRemark.value = ''
-    refreshMessages()
-  } catch (e: any) {
-    ElMessage.error(e?.message || '标记失败')
-  }
-}
-
-const auditRemark = ref('')
-const lastMsgAuditStatus = computed(() => {
-  if (messages.value.length === 0) return ''
-  const lastMsg = messages.value[messages.value.length - 1]
-  if (lastMsg.isSensitive) return 'sensitive'
-  if (lastMsg.auditRemark) return 'audited'
-  return ''
-})
-
-const handleSubmitAudit = async () => {
-  if (messages.value.length === 0 || !auditRemark.value) return
-  const lastMsg = messages.value[messages.value.length - 1]
-  try {
-    await auditChatRecord(lastMsg.id, { auditRemark: auditRemark.value })
-    ElMessage.success('质检备注已提交')
-    auditRemark.value = ''
-    refreshMessages()
-  } catch (e: any) {
-    ElMessage.error(e?.message || '提交失败')
-  }
-}
-
-const exportConvHandler = () => {
-  if (!selectedConv.value || messages.value.length === 0) {
-    ElMessage.warning('暂无消息可导出')
-    return
-  }
-  const lines = messages.value.map(m => {
-    const time = formatMsgTime(m.msgTime)
-    const sender = m.fromUserName || m.fromUserId
-    const content = m.msgType === 'text' ? getTextContent(m.content) : `[${getMsgTypeText(m.msgType)}]`
-    return `[${time}] ${sender}: ${content}`
-  })
-  const blob = new Blob([lines.join('\n')], { type: 'text/plain;charset=utf-8' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  const name = selectedConv.value.fromUserName || selectedConv.value.fromUserId
-  a.download = `chat_${name}_${new Date().toISOString().slice(0, 10)}.txt`
-  a.click()
-  URL.revokeObjectURL(url)
-  ElMessage.success('导出成功')
-}
-
-// ==================== 初始化 ====================
-
-onMounted(() => {
-  fetchArchiveMembers()
-})
-
-// ★ 关键修复：监听 configId 变化，重新加载成员和会话
-watch(() => props.configId, (newVal, oldVal) => {
-  if (newVal && newVal !== oldVal) {
-    // 重置选中状态
-    selectedMemberId.value = ''
-    selectedMemberName.value = ''
-    selectedDeptId.value = null
-    selectedConv.value = null
-    messages.value = []
-    conversations.value = []
-    // 重新加载成员树和会话列表
-    fetchArchiveMembers()
-    fetchConversations()
-  }
-})
-
-defineExpose({ fetchConversations, fetchArchiveMembers })
+onMounted(() => { fetchArchiveMembers() })
 </script>
 
-<style scoped lang="scss">
-/* 顶部筛选搜索栏 */
-.conv-toolbar {
-  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
-  margin-bottom: 12px; padding: 10px 14px; background: #fff;
-  border: 1px solid #e4e7ed; border-radius: 8px 8px 0 0;
-}
-.conv-count-label { font-size: 12px; color: #909399; white-space: nowrap; }
+<style scoped>
+.conv-view { height: 100%; }
+.conv-layout { display: flex; height: calc(100vh - 240px); min-height: 500px; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; background: #fff; }
 
-.chat-container {
-  display: flex; height: calc(100vh - 340px); min-height: 500px;
-  border: 1px solid #e4e7ed; border-top: none; border-radius: 0 0 8px 8px; overflow: hidden;
-}
+/* 第一栏：员工列表 */
+.panel-members { width: 180px; flex-shrink: 0; border-right: 1px solid #f0f0f0; display: flex; flex-direction: column; background: #fafbfc; }
+.panel-members-header { padding: 12px; border-bottom: 1px solid #f0f0f0; }
+.members-title { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; font-size: 13px; font-weight: 600; color: #1f2937; }
+.members-count { font-size: 11px; color: #9ca3af; font-weight: 400; }
+.panel-members-list { flex: 1; overflow-y: auto; padding: 4px 0; }
+.member-card { display: flex; align-items: center; gap: 8px; padding: 8px 12px; cursor: pointer; transition: background .15s; }
+.member-card:hover { background: #f3f4f6; }
+.member-card.active { background: #e6f7ef; border-left: 3px solid #07c160; padding-left: 9px; }
+.member-card-avatar { width: 36px; height: 36px; border-radius: 4px; overflow: hidden; flex-shrink: 0; background: #c8c9cc; display: flex; align-items: center; justify-content: center; }
+.member-card-info { flex: 1; min-width: 0; }
+.member-card-name { font-size: 13px; color: #1f2937; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.member-card-time { font-size: 11px; color: #9ca3af; margin-top: 2px; }
 
-/* ⓪ 成员面板 */
-.member-panel {
-  width: 180px; min-width: 44px; background: #f0f2f5; border-right: 1px solid #e4e7ed;
-  display: flex; flex-direction: column; transition: width 0.25s ease; overflow: hidden;
-  &.collapsed { width: 44px; min-width: 44px; }
-}
-.member-panel-toggle {
-  display: flex; align-items: center; gap: 6px; padding: 10px 12px;
-  cursor: pointer; color: #606266; font-size: 13px; border-bottom: 1px solid #e4e7ed;
-  background: #ebedf0; transition: background 0.15s;
-  &:hover { background: #dcdfe6; }
-}
-.toggle-text { font-weight: 600; white-space: nowrap; }
-.member-panel-header { padding: 10px 12px 6px; }
-.member-panel-title { font-size: 13px; font-weight: 600; color: #303133; }
-.member-panel-list { flex: 1; overflow-y: auto; }
-.empty-member { padding: 20px 0; }
-.member-item {
-  display: flex; align-items: center; gap: 8px; padding: 8px 12px;
-  cursor: pointer; border-bottom: 1px solid #ebedf0; transition: background 0.15s;
-  &:hover { background: #e4e7ed; }
-  &.active { background: #d4e8fc; border-left: 3px solid #409EFF; padding-left: 9px; }
-}
-.member-avatar-wrap {
-  width: 32px; height: 32px; border-radius: 50%; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
-}
-.member-avatar-icon { color: #fff; font-size: 14px; font-weight: 600; }
-.member-name { font-size: 13px; color: #303133; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 第二栏：会话列表 */
+.panel-conversations { width: 280px; flex-shrink: 0; border-right: 1px solid #f0f0f0; display: flex; flex-direction: column; }
+.panel-conv-header { border-bottom: 1px solid #f0f0f0; }
+.conv-header-member { display: flex; align-items: center; gap: 8px; padding: 10px 12px 6px; }
+.conv-header-avatar { width: 28px; height: 28px; border-radius: 4px; overflow: hidden; flex-shrink: 0; background: #67c23a; display: flex; align-items: center; justify-content: center; }
+.conv-header-name { font-size: 13px; font-weight: 600; color: #1f2937; }
+.conv-header-placeholder { padding: 12px; font-size: 13px; color: #9ca3af; }
+.conv-tabs { display: flex; padding: 0 12px; gap: 0; border-bottom: 1px solid #f5f5f5; }
+.conv-tab { flex: 1; text-align: center; padding: 8px 0; font-size: 12px; color: #6b7280; cursor: pointer; border-bottom: 2px solid transparent; transition: all .2s; display: flex; align-items: center; justify-content: center; gap: 4px; }
+.conv-tab:hover { color: #07c160; }
+.conv-tab.active { color: #07c160; border-bottom-color: #07c160; font-weight: 600; }
+.tab-count { font-size: 10px; background: #f0f0f0; border-radius: 8px; padding: 0 5px; min-width: 16px; }
+.conv-tab.active .tab-count { background: #e6f7ef; color: #07c160; }
 
-/* 部门树样式 */
-.dept-all-item {
-  font-weight: 600;
-  color: #409EFF;
-  gap: 6px;
-  .el-icon { font-size: 16px; }
-}
-.dept-item {
-  display: flex; align-items: center; gap: 6px; padding: 7px 12px;
-  cursor: pointer; border-bottom: 1px solid #ebedf0; font-size: 13px; color: #303133; transition: background 0.15s;
-  &:hover { background: #e4e7ed; }
-  &.active { background: #e6f7ff; border-left: 3px solid #409EFF; padding-left: 9px; }
-}
-.dept-expand-icon {
-  font-size: 12px; transition: transform 0.2s; color: #909399; flex-shrink: 0;
-  &.expanded { transform: rotate(90deg); }
-}
-.dept-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.dept-count { font-size: 11px; color: #c0c4cc; background: #f0f2f5; padding: 1px 6px; border-radius: 10px; }
-.member-indent { padding-left: 36px; }
-.empty-dept-hint { padding: 8px 36px; font-size: 12px; color: #c0c4cc; }
+.panel-conv-list { flex: 1; overflow-y: auto; }
+.conv-card { display: flex; align-items: center; gap: 10px; padding: 10px 12px; cursor: pointer; border-bottom: 1px solid #fafafa; transition: background .15s; }
+.conv-card:hover { background: #f9fafb; }
+.conv-card.active { background: #e6f7ef; }
+.conv-card-avatar { width: 40px; height: 40px; border-radius: 4px; overflow: hidden; flex-shrink: 0; background: #c8c9cc; display: flex; align-items: center; justify-content: center; }
+.conv-card-body { flex: 1; min-width: 0; }
+.conv-card-top { display: flex; align-items: center; gap: 4px; }
+.conv-card-name { font-size: 13px; font-weight: 500; color: #1f2937; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100px; }
+.conv-card-tag { font-size: 10px; padding: 0 4px; border-radius: 3px; white-space: nowrap; }
+.tag-wechat { color: #07c160; background: #e6f7ef; }
+.tag-corp { color: #e6a23c; background: #fdf6ec; }
+.conv-card-time { margin-left: auto; font-size: 11px; color: #9ca3af; white-space: nowrap; }
+.conv-card-bottom { display: flex; align-items: center; margin-top: 4px; }
+.conv-card-preview { font-size: 12px; color: #9ca3af; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; }
+.conv-card-stats { display: flex; gap: 4px; margin-left: 6px; flex-shrink: 0; }
+.stat-today { font-size: 10px; color: #07c160; background: #e6f7ef; border-radius: 3px; padding: 0 4px; }
+.stat-total { font-size: 10px; color: #9ca3af; background: #f5f5f5; border-radius: 3px; padding: 0 4px; }
 
-/* ① 左栏：客户会话列表 */
-.chat-sidebar { width: 280px; min-width: 240px; border-right: 1px solid #e4e7ed; display: flex; flex-direction: column; background: #f7f8fa; }
-.chat-sidebar-header {
-  padding: 10px 14px; background: #fff; border-bottom: 1px solid #e4e7ed;
-  display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: #409EFF;
-}
-.chat-sidebar-list { flex: 1; overflow-y: auto; scroll-behavior: smooth; }
-.conv-total-badge { font-size: 11px; color: #909399; font-weight: 400; margin-left: auto; }
-.conv-loading-more { text-align: center; padding: 12px; font-size: 12px; color: #909399; }
-.conv-no-more { text-align: center; padding: 8px; font-size: 11px; color: #c0c4cc; }
+/* 第三栏：消息 */
+.panel-messages { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+.msg-panel-header { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid #f0f0f0; }
+.msg-header-left { display: flex; align-items: center; gap: 10px; }
+.msg-header-avatar { width: 36px; height: 36px; border-radius: 4px; overflow: hidden; flex-shrink: 0; background: #c8c9cc; display: flex; align-items: center; justify-content: center; }
+.msg-header-info { display: flex; align-items: center; gap: 6px; }
+.msg-header-name { font-size: 15px; font-weight: 600; color: #1f2937; }
+.msg-header-right { display: flex; align-items: center; gap: 8px; }
+.msg-header-count { font-size: 12px; color: #9ca3af; }
+
+.msg-panel-body { flex: 1; overflow-y: auto; padding: 16px; }
+.msg-panel-empty { flex: 1; display: flex; align-items: center; justify-content: center; }
+
+.load-more-bar { text-align: center; margin-bottom: 12px; }
+.date-divider { text-align: center; margin: 16px 0; }
+.date-divider span { font-size: 11px; color: #9ca3af; background: #f5f5f5; padding: 2px 12px; border-radius: 10px; }
+
+/* 系统消息 */
+.msg-system-notice { text-align: center; margin: 12px 0; font-size: 12px; color: #9ca3af; display: flex; align-items: center; justify-content: center; gap: 4px; }
+.recall-notice { color: #e6a23c; }
+.agree-notice { color: #67c23a; }
+
+/* 消息行 */
+.msg-row { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 16px; }
+.msg-row-self { flex-direction: row-reverse; }
+.msg-avatar-wrap { flex-shrink: 0; }
+.msg-avatar-img { width: 34px; height: 34px; border-radius: 4px; object-fit: cover; }
+.msg-avatar-text { width: 34px; height: 34px; border-radius: 4px; background: #c8c9cc; display: flex; align-items: center; justify-content: center; font-size: 13px; color: #fff; font-weight: 500; }
+.msg-avatar-text-self { background: #67c23a; }
+.msg-avatar-self { border: 1px solid #67c23a; }
+
+.msg-content-wrap { max-width: 60%; }
+.msg-content-self { text-align: right; }
+.msg-sender-line { font-size: 11px; color: #9ca3af; margin-bottom: 4px; display: flex; align-items: center; gap: 6px; }
+.msg-sender-self { justify-content: flex-end; }
+.msg-sender-name { font-weight: 500; color: #6b7280; }
+
+.msg-bubble { display: inline-block; padding: 8px 12px; border-radius: 8px; background: #f3f4f6; font-size: 14px; color: #1f2937; line-height: 1.5; word-break: break-word; text-align: left; max-width: 100%; }
+.bubble-self { background: #d1fae5; }
+.bubble-sensitive { border: 1px solid #fca5a5; background: #fef2f2; }
+
+.msg-voice, .msg-video, .msg-file, .msg-link, .msg-weapp, .msg-location, .msg-card { display: flex; align-items: center; gap: 6px; color: #4b5563; }
+.msg-type-placeholder { color: #9ca3af; font-style: italic; }
+
+/* 通用头像 */
+.avatar-img { width: 100%; height: 100%; object-fit: cover; }
+.avatar-letter { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 14px; color: #fff; font-weight: 500; background: #c8c9cc; }
+.avatar-customer { background: #07c160; }
+.avatar-staff { background: #409eff; }
+.avatar-group { background: #e6a23c; }
+
 .empty-conv { padding: 40px 0; }
-
-.conv-item {
-  display: flex; align-items: center; gap: 12px; padding: 12px 14px;
-  cursor: pointer; border-bottom: 1px solid #f5f5f5; transition: background 0.15s;
-  &:hover { background: #f5f7fa; }
-  &.active { background: #e6f7ef; border-left: 3px solid #07c160; padding-left: 11px; }
-}
-.conv-avatar { width: 42px; height: 42px; border-radius: 4px; background: #c8c9cc; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-.conv-avatar-letter { font-size: 16px; color: #fff; font-weight: 500; }
-.conv-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
-.conv-top-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.conv-name { font-size: 14px; font-weight: 500; color: #303133; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
-.conv-time { font-size: 11px; color: #c0c4cc; flex-shrink: 0; white-space: nowrap; }
-.conv-bottom-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.conv-preview { font-size: 12px; color: #909399; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
-.conv-badge { flex-shrink: 0; :deep(.el-badge__content) { font-size: 10px; } }
-
-/* ② 中间：消息主区 */
-.chat-main { flex: 1; display: flex; flex-direction: column; background: #fff; min-width: 0; }
-.chat-main-header { padding: 10px 16px; border-bottom: 1px solid #e4e7ed; display: flex; justify-content: space-between; align-items: center; background: #fff; }
-.chat-title { display: flex; align-items: center; gap: 8px; span:first-child { font-size: 15px; font-weight: 600; color: #303133; } }
-.chat-room-label { font-size: 11px; color: #909399; background: #f0f2f5; padding: 2px 6px; border-radius: 4px; }
-.chat-subtitle { font-size: 12px; color: #c0c4cc; font-weight: 400 !important; }
-.chat-actions { display: flex; gap: 4px; }
-
-/* 消息内搜索栏 */
-.chat-inline-search { display: flex; gap: 8px; padding: 8px 16px; background: #fafbfc; border-bottom: 1px solid #e4e7ed; }
-
-.chat-messages { flex: 1; overflow-y: auto; padding: 16px 20px; background: #ebebeb; }
-.load-more { text-align: center; padding: 6px 0 12px; }
-.empty-messages { display: flex; align-items: center; justify-content: center; height: 100%; }
-.chat-placeholder { flex: 1; display: flex; align-items: center; justify-content: center; background: #f5f6f7; }
-
-/* 日期分割线 */
-.msg-date-divider { text-align: center; margin: 16px 0 12px; span { display: inline-block; background: rgba(0,0,0,0.06); color: #909399; font-size: 11px; padding: 3px 10px; border-radius: 3px; } }
-
-/* 消息气泡 */
-.msg-row { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 16px; &.msg-row-self { flex-direction: row-reverse; } }
-.msg-avatar-wrapper { flex-shrink: 0; }
-.msg-avatar { width: 36px; height: 36px; border-radius: 4px; background: #c8c9cc; display: flex; align-items: center; justify-content: center; font-size: 14px; color: #fff; font-weight: 500; }
-.msg-avatar-self { background: #67c23a; }
-.msg-body { max-width: 60%; min-width: 0; }
-.msg-body-self { text-align: right; }
-.msg-sender { font-size: 12px; color: #909399; margin-bottom: 3px; }
-.msg-sender-self { text-align: right; }
-.msg-time-inline { color: #c0c4cc; font-size: 11px; margin: 0 4px; }
-
-.msg-bubble {
-  display: inline-block; text-align: left; padding: 10px 14px; background: #fff;
-  border-radius: 0 8px 8px 8px; font-size: 14px; line-height: 1.5; color: #303133;
-  word-break: break-word; box-shadow: 0 1px 3px rgba(0,0,0,0.06); max-width: 100%; position: relative;
-}
-.msg-bubble-self { background: #95ec69; color: #000; border-radius: 8px 0 8px 8px; }
-.msg-bubble-sensitive { border: 1px solid #f56c6c; background: #fef0f0; &.msg-bubble-self { background: #fef0f0; color: #303133; } }
-.msg-placeholder { color: #909399; font-style: italic; }
-.msg-flags { display: flex; gap: 4px; margin-top: 4px; .msg-body-self & { justify-content: flex-end; } }
-.msg-meta-info { display: flex; align-items: center; gap: 6px; color: #909399; font-size: 13px; font-style: italic; }
-
-/* ③ 右栏：快捷功能面板 */
-.chat-action-panel {
-  width: 0; overflow: hidden; transition: width 0.25s ease;
-  border-left: 1px solid #e4e7ed; background: #fafbfc; display: flex; flex-direction: column;
-  &.visible { width: 260px; min-width: 240px; }
-}
-.action-panel-header {
-  display: flex; justify-content: space-between; align-items: center;
-  padding: 12px 14px; border-bottom: 1px solid #e4e7ed; background: #fff;
-  font-size: 14px; font-weight: 600; color: #303133;
-}
-.action-panel-body { flex: 1; overflow-y: auto; padding: 16px 14px; }
-.action-section { margin-bottom: 18px; }
-.action-section-title { font-size: 12px; color: #909399; font-weight: 600; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.5px; }
-
-.action-profile-card { display: flex; align-items: center; gap: 12px; padding: 12px; background: #f5f7fa; border-radius: 8px; }
-.action-avatar-large {
-  width: 44px; height: 44px; border-radius: 4px; background: #c8c9cc;
-  display: flex; align-items: center; justify-content: center; font-size: 18px; color: #fff; font-weight: 500; flex-shrink: 0;
-}
-.action-profile-info { flex: 1; min-width: 0; }
-.action-profile-name { font-size: 14px; font-weight: 600; color: #303133; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.action-profile-id { font-size: 11px; color: #c0c4cc; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
-.action-stats { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
-.action-stat-item { text-align: center; padding: 8px 4px; background: #fff; border-radius: 6px; border: 1px solid #f0f1f3; }
-.action-stat-val { font-size: 14px; font-weight: 700; color: #303133; }
-.action-stat-label { font-size: 10px; color: #909399; margin-top: 2px; }
-
-.action-buttons { display: flex; flex-direction: column; gap: 8px; }
-.action-audit-status { margin-bottom: 8px; }
-
-.action-member-row {
-  display: flex; align-items: center; gap: 8px; padding: 8px 0;
-  border-bottom: 1px solid #f2f3f5;
-  &:last-child { border-bottom: none; }
-}
-.action-member-avatar { width: 28px; height: 28px; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 12px; color: #fff; font-weight: 500; flex-shrink: 0; }
-.action-member-name { flex: 1; font-size: 13px; color: #303133; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.conv-loading-more { text-align: center; padding: 12px; font-size: 12px; color: #9ca3af; }
 </style>
-
