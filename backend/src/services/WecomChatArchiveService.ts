@@ -83,12 +83,15 @@ export class WecomChatArchiveService {
 
     try {
       // Step 1: 获取会话存档access_token
+      log.info(`[ChatArchive] Step1: 获取会话存档Token, configId=${configId}, authType=${config.authType}`);
       const accessToken = await WecomApiService.getAccessTokenByConfigId(configId, 'chat');
+      log.info(`[ChatArchive] Step1完成: 获取到chatToken`);
 
       // Step 2: 获取开通成员列表
+      log.info(`[ChatArchive] Step2: 调用getPermitUserList...`);
       const permitUserIds = await WecomApiService.getPermitUserList(accessToken);
       result.permitUsers = permitUserIds.length;
-      log.info(`[ChatArchive] 配置 ${config.name} 已开通会话存档成员: ${permitUserIds.length} 人`);
+      log.info(`[ChatArchive] Step2完成: 配置 ${config.name} 已开通会话存档成员: ${permitUserIds.length} 人, IDs: ${permitUserIds.slice(0, 10).join(',')}`);
 
       if (permitUserIds.length === 0) {
         result.message = '没有开通会话存档的成员';
@@ -102,17 +105,27 @@ export class WecomChatArchiveService {
       // 需要使用 external contact secret 来获取外部联系人
       let externalAccessToken: string | null = null;
       try {
+        log.info(`[ChatArchive] Step4: 获取外部联系人Token (external)...`);
         externalAccessToken = await WecomApiService.getAccessTokenByConfigId(configId, 'external');
+        log.info(`[ChatArchive] Step4完成: 获取到externalToken`);
       } catch (e: any) {
-        log.warn('[ChatArchive] 获取客户联系Token失败，跳过会话元数据生成:', e.message);
+        log.warn('[ChatArchive] Step4失败: 获取客户联系Token失败，跳过会话元数据生成:', e.message);
+        // 第三方模式下，尝试用chat token作为external token（第三方模式token通用）
+        if (config.authType === 'third_party') {
+          log.info('[ChatArchive] 第三方模式: 尝试使用chatToken作为externalToken');
+          externalAccessToken = accessToken;
+        }
       }
 
       if (externalAccessToken) {
+        log.info(`[ChatArchive] Step5: 开始同步会话元数据, permitUsers=${permitUserIds.length}`);
         const convResult = await this.syncConversationMetadata(config, externalAccessToken, accessToken, permitUserIds);
         result.newConversations = convResult.newConversations;
         result.agreedUsers = convResult.agreedCount;
         result.syncedRecords = convResult.syncedRecords;
+        log.info(`[ChatArchive] Step5完成: newConversations=${convResult.newConversations}, agreedCount=${convResult.agreedCount}, syncedRecords=${convResult.syncedRecords}`);
       } else {
+        log.warn('[ChatArchive] 无externalToken，仅做同意状态抽样检查');
         // 仅做同意状态抽样检查
         result.agreedUsers = await this.checkAgreeStatus(accessToken, config, permitUserIds);
       }
@@ -163,9 +176,14 @@ export class WecomChatArchiveService {
       const userId = permitUserIds[i];
       try {
         // 获取该成员的外部联系人列表
+        log.info(`[ChatArchive] 处理成员 ${i+1}/${maxUsers}: ${userId}`);
         const externalUserIds = await WecomApiService.getExternalContactList(externalAccessToken, userId)
-          .catch(() => [] as string[]);
+          .catch((err) => {
+            log.warn(`[ChatArchive] 获取成员 ${userId} 外部联系人失败: ${err.message}`);
+            return [] as string[];
+          });
 
+        log.info(`[ChatArchive] 成员 ${userId} 外部联系人数量: ${externalUserIds.length}`);
         if (externalUserIds.length === 0) continue;
 
         // 检查该成员与外部联系人的同意状态（批量，最多取20个）
