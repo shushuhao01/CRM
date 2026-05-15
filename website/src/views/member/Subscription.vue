@@ -134,6 +134,9 @@
           <p class="subscribe-hint">
             {{ subscription && isCurrentSubPkg(selectedPlan!) ? '续订后到期自动续费，新周期从当前到期日后开始计算。随时可取消。' : subscription ? '升级后旧订阅将自动取消，新套餐立即生效。' : '签约后首期立即扣款，之后自动续费。随时可取消。' }}
           </p>
+          <p class="subscribe-agreement">
+            点击签约即表示您已阅读并同意 <router-link to="/agreement/auto-renew" target="_blank">《自动续费服务协议》</router-link>
+          </p>
         </div>
 
         <!-- ④ 签约二维码弹窗 -->
@@ -480,6 +483,7 @@ const handleCheckSign = async () => {
 .subscribe-row .channel-options { flex: 2; min-width: 0; }
 .subscribe-row .btn-subscribe { flex: 1; }
 .subscribe-hint { font-size: 12px; color: #94a3b8; text-align: center; margin-top: 8px; }
+.subscribe-agreement { font-size: 12px; color: #94a3b8; text-align: center; margin-top: 4px; a { color: #667eea; text-decoration: none; &:hover { text-decoration: underline; } } }
 
 // ④ 签约弹窗
 .sign-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(15,23,42,0.4); backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; z-index: 1000; }
