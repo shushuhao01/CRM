@@ -496,6 +496,52 @@ export class WecomApiService {
   }
 
   /**
+   * 【数据与智能专区】获取授权存档的成员列表
+   * 第三方服务商应用使用此接口替代 getPermitUserList
+   * 参考: https://developer.work.weixin.qq.com/document/path/99846
+   */
+  static async getChatDataAuthUserList(accessToken: string): Promise<Array<{ userid: string; editionList: number[] }>> {
+    const allUsers: Array<{ userid: string; editionList: number[] }> = [];
+    let cursor = '';
+    let hasMore = true;
+
+    try {
+      while (hasMore) {
+        const body: any = { limit: 1000 };
+        if (cursor) body.cursor = cursor;
+
+        log.info(`[WecomApi] getChatDataAuthUserList: 拉取授权成员, cursor=${cursor || '(首次)'}`);
+
+        const response = await axios.post(
+          `${WECOM_API_BASE}/chatdata/get_auth_user_list?access_token=${accessToken}`,
+          body
+        );
+
+        if (response.data.errcode === 0) {
+          const userList = response.data.auth_user_list || [];
+          for (const user of userList) {
+            allUsers.push({
+              userid: user.userid,
+              editionList: user.edition_list || []
+            });
+          }
+          cursor = response.data.next_cursor || '';
+          hasMore = response.data.has_more === 1 || response.data.has_more === true;
+          log.info(`[WecomApi] getChatDataAuthUserList: 本次获取 ${userList.length} 个成员, hasMore=${hasMore}`);
+        } else {
+          throw new Error(`获取专区授权成员列表失败(${response.data.errcode}): ${response.data.errmsg}`);
+        }
+      }
+
+      log.info(`[WecomApi] getChatDataAuthUserList: 共获取 ${allUsers.length} 个授权成员`);
+      return allUsers;
+    } catch (error: any) {
+      log.error('[WecomApi] getChatDataAuthUserList error:', error.message);
+      throw error;
+    }
+  }
+
+  /**
    * 获取会话同意情况（单聊）
    * 参考: https://developer.work.weixin.qq.com/document/path/91782
    */

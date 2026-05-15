@@ -35,7 +35,7 @@ export interface SyncResult {
   errors: number;
   message: string;
   sdkRequired: boolean;
-  mode: 'http_api' | 'finance_sdk';
+  mode: 'http_api' | 'finance_sdk' | 'chatdata_zone';
 }
 
 export class WecomChatArchiveService {
@@ -87,12 +87,21 @@ export class WecomChatArchiveService {
       const accessToken = await WecomApiService.getAccessTokenByConfigId(configId, 'chat');
       log.info(`[ChatArchive] Step1完成: 获取到chatToken`);
 
-      // Step 2: 获取开通成员列表
-      log.info(`[ChatArchive] Step2: 调用getPermitUserList...`);
-      const permitUserIds = await WecomApiService.getPermitUserList(accessToken);
+      // Step 2: 获取开通成员列表（根据模式选择不同接口）
+      let permitUserIds: string[] = [];
+      if (config.authType === 'third_party') {
+        // 第三方服务商模式：使用数据与智能专区接口
+        log.info(`[ChatArchive] Step2: 第三方模式 - 调用专区 getChatDataAuthUserList...`);
+        const authUsers = await WecomApiService.getChatDataAuthUserList(accessToken);
+        permitUserIds = authUsers.map(u => u.userid);
+        log.info(`[ChatArchive] Step2完成: 专区授权成员: ${permitUserIds.length} 人, IDs: ${permitUserIds.slice(0, 10).join(',')}`);
+      } else {
+        // 自建应用模式：使用传统 msgaudit 接口
+        log.info(`[ChatArchive] Step2: 自建模式 - 调用 getPermitUserList...`);
+        permitUserIds = await WecomApiService.getPermitUserList(accessToken);
+        log.info(`[ChatArchive] Step2完成: 配置 ${config.name} 已开通会话存档成员: ${permitUserIds.length} 人, IDs: ${permitUserIds.slice(0, 10).join(',')}`);
+      }
       result.permitUsers = permitUserIds.length;
-      log.info(`[ChatArchive] Step2完成: 配置 ${config.name} 已开通会话存档成员: ${permitUserIds.length} 人, IDs: ${permitUserIds.slice(0, 10).join(',')}`);
-
       if (permitUserIds.length === 0) {
         result.message = '没有开通会话存档的成员';
         return result;
@@ -137,8 +146,11 @@ export class WecomChatArchiveService {
       if (result.newConversations > 0) parts.push(`新增${result.newConversations}条会话记录`);
       if (result.syncedRecords > 0) parts.push(`更新${result.syncedRecords}条元数据`);
 
-      result.sdkRequired = true;
-      result.message = `HTTP API同步完成：${parts.join('，')}。实际消息内容拉取需部署Finance SDK。`;
+      result.sdkRequired = config.authType !== 'third_party';
+      result.mode = config.authType === 'third_party' ? 'chatdata_zone' : 'http_api';
+      result.message = config.authType === 'third_party'
+        ? `专区模式同步完成：${parts.join('，')}。消息内容通过会话展示组件展示。`
+        : `HTTP API同步完成：${parts.join('，')}。实际消息内容拉取需部署Finance SDK。`;
 
       log.info(`[ChatArchive] 配置 ${config.name} 同步完成: ${result.message}`);
       return result;
