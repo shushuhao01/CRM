@@ -710,6 +710,38 @@ router.post('/address-book/sync-members', authenticateToken, requireAdmin, async
   }
 });
 
+// ==================== 4.5 批量更新部门显示名称（第三方应用无法自动获取部门名称时使用） ====================
+router.put('/address-book/dept-names', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const tenantId = getCurrentTenantId();
+    const { configId, departments } = req.body;
+    // departments: [{ id: number, name: string }]
+    if (!configId || !Array.isArray(departments)) {
+      return res.status(400).json({ success: false, message: '参数错误：需要 configId 和 departments 数组' });
+    }
+
+    const repo = AppDataSource.getRepository(WecomDepartmentMapping);
+    let updatedCount = 0;
+
+    for (const dept of departments) {
+      if (!dept.id || !dept.name || !dept.name.trim()) continue;
+      const mapping = await repo.findOne({
+        where: { tenantId, wecomConfigId: Number(configId), wecomDeptId: Number(dept.id) }
+      });
+      if (mapping) {
+        mapping.wecomDeptName = dept.name.trim();
+        await repo.save(mapping);
+        updatedCount++;
+      }
+    }
+
+    res.json({ success: true, data: { updated: updatedCount, total: departments.length }, message: `已更新 ${updatedCount} 个部门名称` });
+  } catch (error: any) {
+    log.error('[AddressBook] Update dept names error:', error.message);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 // ==================== 5. 设置部门映射 ====================
 router.put('/address-book/dept-mapping/:id', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
   try {

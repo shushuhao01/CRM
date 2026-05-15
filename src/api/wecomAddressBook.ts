@@ -30,6 +30,11 @@ export const syncWecomDepartments = (configId: number) => {
   return request.post('/wecom/address-book/sync-departments', { configId })
 }
 
+/** 批量更新部门显示名称（第三方应用无法自动获取时手动设置） */
+export const updateDeptNames = (configId: number, departments: Array<{ id: number; name: string }>) => {
+  return request.put('/wecom/address-book/dept-names', { configId, departments })
+}
+
 /** 同步成员 */
 export const syncWecomMembers = (configId: number) => {
   return request.post('/wecom/address-book/sync-members', { configId })

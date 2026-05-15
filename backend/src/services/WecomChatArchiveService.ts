@@ -230,13 +230,69 @@ export class WecomChatArchiveService {
             });
 
             if (existing) {
-              // 更新最后活跃时间
+              // 已存在的记录，检查是否需要更新客户名称
+              try {
+                const existingContent = typeof existing.content === 'string' ? JSON.parse(existing.content) : existing.content;
+                if (!existingContent?.customerName || existingContent.customerName === extUserId || existingContent.customerName.startsWith('wm')) {
+                  // 名称是ID或以wm开头（企微外部联系人ID格式），需要更新
+                  let updatedName = await this.getCustomerName(config, extUserId);
+                  if (!updatedName || updatedName === extUserId) {
+                    try {
+                      const detailResp = await WecomApiService.getExternalContactDetail(externalAccessToken, extUserId);
+                      if (detailResp?.external_contact) {
+                        const extName = detailResp.external_contact.name || '';
+                        const followInfo = (detailResp.follow_user || []).find((f: any) => f.userid === userId);
+                        const remark = followInfo?.remark || '';
+                        updatedName = remark ? `${remark}(${extName})` : extName || extUserId;
+                      }
+                    } catch { /* ignore */ }
+                  }
+                  if (updatedName && updatedName !== extUserId) {
+                    existingContent.customerName = updatedName;
+                    existing.content = JSON.stringify(existingContent);
+                    await chatRecordRepo.save(existing);
+                  }
+                }
+              } catch { /* ignore parse error */ }
               syncedRecords++;
               continue;
             }
 
-            // 获取外部联系人名称（从 WecomCustomer 表）
-            const customerName = await this.getCustomerName(config, extUserId);
+            // 获取外部联系人名称（优先本地WecomCustomer表，其次调用API获取）
+            let customerName = await this.getCustomerName(config, extUserId);
+            if (!customerName || customerName === extUserId) {
+              // 本地没有名称，尝试从API获取外部联系人详情
+              try {
+                const detailResp = await WecomApiService.getExternalContactDetail(externalAccessToken, extUserId);
+                if (detailResp?.external_contact) {
+                  const extContact = detailResp.external_contact;
+                  const extName = extContact.name || '';
+                  // 查找当前成员对该客户的备注
+                  const followInfo = (detailResp.follow_user || []).find((f: any) => f.userid === userId);
+                  const remark = followInfo?.remark || '';
+                  customerName = remark ? `${remark}(${extName})` : extName || extUserId;
+                  // 同时更新本地 WecomCustomer 表
+                  try {
+                    const customerRepo = AppDataSource.getRepository(WecomCustomer);
+                    const existingCustomer = await customerRepo.findOne({ where: { wecomConfigId: config.id, externalUserId: extUserId } });
+                    if (existingCustomer) {
+                      existingCustomer.name = customerName;
+                      await customerRepo.save(existingCustomer);
+                    } else {
+                      await customerRepo.save(customerRepo.create({
+                        tenantId: config.tenantId,
+                        wecomConfigId: config.id,
+                        externalUserId: extUserId,
+                        name: customerName,
+                        type: extContact.type || 1
+                      }));
+                    }
+                  } catch { /* ignore save error */ }
+                }
+              } catch (detailErr: any) {
+                log.warn(`[ChatArchive] 获取外部联系人 ${extUserId} 详情失败: ${detailErr.message}`);
+              }
+            }
             const isAgreed = agreeMap.get(extUserId) || false;
 
             // 创建会话元数据记录

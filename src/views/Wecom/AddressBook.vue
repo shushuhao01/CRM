@@ -264,6 +264,45 @@
             <div style="margin-top: 24px;">
               <el-button type="primary" :loading="savingSettings" @click="handleSaveSyncSettings">保存设置</el-button>
             </div>
+
+            <!-- 部门名称设置（第三方应用专用） -->
+            <div class="settings-section" style="margin-top: 32px; border-top: 1px solid #ebeef5; padding-top: 24px;">
+              <div class="section-title-bar">
+                部门名称设置
+                <el-tag type="warning" size="small" style="margin-left: 8px">第三方应用限制</el-tag>
+              </div>
+              <el-alert
+                type="info"
+                :closable="false"
+                show-icon
+                style="margin-bottom: 16px"
+              >
+                <template #title>
+                  <span style="font-weight:500">为什么需要手动设置部门名称？</span>
+                </template>
+                <template #default>
+                  <p style="margin:4px 0;color:#606266">由于企业微信安全策略限制，第三方应用无法通过API获取部门名称（仅能获取部门ID）。请对照企业微信管理后台的组织架构，手动填写各部门的真实名称。</p>
+                </template>
+              </el-alert>
+              <div v-if="deptNameList.length > 0">
+                <div v-for="dept in deptNameList" :key="dept.id" class="dept-name-row">
+                  <span class="dept-name-id">ID: {{ dept.id }}</span>
+                  <el-input
+                    v-model="dept.editName"
+                    :placeholder="`请输入部门${dept.id}的名称`"
+                    size="small"
+                    style="width: 200px"
+                  />
+                  <span v-if="dept.currentName && dept.currentName !== String(dept.id)" class="dept-name-current">
+                    当前: {{ dept.currentName }}
+                  </span>
+                </div>
+                <el-button type="primary" size="small" style="margin-top: 12px" :loading="savingDeptNames" @click="handleSaveDeptNames">
+                  保存部门名称
+                </el-button>
+              </div>
+              <el-empty v-else description="暂无部门数据，请先同步组织架构" :image-size="40" />
+            </div>
           </div>
         </el-tab-pane>
 
@@ -453,7 +492,8 @@ import {
   getAutoMatchPending, getAutoMatchCount, confirmAutoMatch, rejectAutoMatch,
   getBindingList, runAutoMatch,
   getWecomDeptChildren,
-  repairWecomNames
+  repairWecomNames,
+  updateDeptNames
 } from '@/api/wecomAddressBook'
 import { formatDateTime } from '@/utils/date'
 import request from '@/utils/request'
@@ -1099,6 +1139,44 @@ const handleSaveSyncSettings = async () => {
   }
 }
 
+// ==================== 部门名称编辑 ====================
+const deptNameList = ref<Array<{ id: number; currentName: string; editName: string }>>([])
+const savingDeptNames = ref(false)
+
+const loadDeptNameList = async () => {
+  if (!selectedConfigId.value) return
+  try {
+    const res: any = await getWecomDepartmentTree(selectedConfigId.value)
+    const depts = Array.isArray(res) ? res : (res?.data || [])
+    deptNameList.value = depts.map((d: any) => ({
+      id: d.id || d.wecomDeptId,
+      currentName: d.name || d.wecomDeptName || String(d.id || d.wecomDeptId),
+      editName: (d.name && d.name !== String(d.id)) ? d.name : ''
+    }))
+  } catch { deptNameList.value = [] }
+}
+
+const handleSaveDeptNames = async () => {
+  if (!selectedConfigId.value) return
+  const toUpdate = deptNameList.value
+    .filter(d => d.editName && d.editName.trim())
+    .map(d => ({ id: d.id, name: d.editName.trim() }))
+  if (toUpdate.length === 0) {
+    ElMessage.warning('请至少填写一个部门名称')
+    return
+  }
+  savingDeptNames.value = true
+  try {
+    const res: any = await updateDeptNames(selectedConfigId.value, toUpdate)
+    ElMessage.success(res?.message || `已更新 ${toUpdate.length} 个部门名称`)
+    await loadDeptNameList()
+  } catch (e: any) {
+    ElMessage.error(e?.message || '保存失败')
+  } finally {
+    savingDeptNames.value = false
+  }
+}
+
 // ==================== Tab5: 同步日志 ====================
 const fetchSyncLogs = async () => {
   loadingLogs.value = true
@@ -1146,7 +1224,7 @@ const fetchConfigs = async () => {
 // 切换Tab时自动加载数据
 watch(activeTab, (tab) => {
   if (tab === 'auto-match') fetchAutoMatchList()
-  if (tab === 'sync-settings') fetchSyncSettings()
+  if (tab === 'sync-settings') { fetchSyncSettings(); loadDeptNameList() }
   if (tab === 'sync-logs') fetchSyncLogs()
 })
 
@@ -1222,6 +1300,11 @@ onMounted(() => {
 .checkbox-vertical { display: flex; flex-direction: column; gap: 12px; }
 .radio-vertical { display: flex; flex-direction: column; gap: 12px; }
 .radio-vertical .el-radio { margin-right: 0; }
+
+/* 部门名称编辑 */
+.dept-name-row { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
+.dept-name-id { font-size: 12px; color: #909399; min-width: 60px; font-family: monospace; }
+.dept-name-current { font-size: 12px; color: #67c23a; margin-left: 8px; }
 
 /* 翻页控件 */
 .pagination-wrap { display: flex; justify-content: flex-end; margin-top: 16px; padding: 8px 0; }
