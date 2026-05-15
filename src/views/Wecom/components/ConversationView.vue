@@ -115,8 +115,9 @@
         <div class="chat-sidebar-header" v-if="selectedMemberName">
           <el-icon><User /></el-icon>
           <span>{{ selectedMemberName }} 的客户</span>
+          <span class="conv-total-badge">{{ convTotal }}</span>
         </div>
-        <div class="chat-sidebar-list" v-loading="convLoading">
+        <div class="chat-sidebar-list" ref="convListRef" v-loading="convLoading" @scroll="handleConvScroll">
           <div v-if="conversations.length === 0 && !convLoading" class="empty-conv">
             <el-empty :description="selectedMemberId ? '该成员暂无会话' : '请先选择成员'" :image-size="60" />
           </div>
@@ -128,31 +129,30 @@
             @click="selectConversation(conv)"
           >
             <div class="conv-avatar">
-              <span v-if="conv.roomId">{{ String.fromCodePoint(0x1F465) }}</span>
-              <span v-else>{{ String.fromCodePoint(0x1F464) }}</span>
+              <span class="conv-avatar-letter">{{ getConvAvatarLetter(conv) }}</span>
             </div>
             <div class="conv-info">
-              <div class="conv-name">
-                {{ conv.fromUserName || conv.fromUserId }}
-                <span v-if="conv.roomId" class="conv-room">(群聊)</span>
+              <div class="conv-top-row">
+                <el-tooltip :content="getConvDisplayName(conv)" placement="top" :disabled="(getConvDisplayName(conv) || '').length < 10">
+                  <span class="conv-name">{{ getConvDisplayName(conv) }}</span>
+                </el-tooltip>
+                <span class="conv-time">{{ conv.lastMsgTime ? formatConvTime(conv.lastMsgTime) : '' }}</span>
               </div>
-              <div class="conv-preview">{{ getConvPreview(conv) }}</div>
-              <div class="conv-time-line">{{ conv.lastMsgTime ? formatConvTime(conv.lastMsgTime) : '' }}</div>
-            </div>
-            <div class="conv-meta">
-              <el-badge v-if="conv.msgCount && conv.msgCount > 1" :value="conv.msgCount" :max="999" class="conv-badge" />
+              <div class="conv-bottom-row">
+                <el-tooltip :content="getConvPreview(conv)" placement="top" :disabled="(getConvPreview(conv) || '').length < 20">
+                  <span class="conv-preview">{{ getConvPreview(conv) || '暂无消息' }}</span>
+                </el-tooltip>
+                <el-badge v-if="conv.msgCount && conv.msgCount > 1" :value="conv.msgCount" :max="999" class="conv-badge" />
+              </div>
             </div>
           </div>
-        </div>
-        <div class="chat-sidebar-footer">
-          <el-pagination
-            v-model:current-page="convPage"
-            :page-size="convPageSize"
-            :total="convTotal"
-            layout="prev, pager, next"
-            small
-            @current-change="fetchConversations"
-          />
+          <!-- 滚动加载更多提示 -->
+          <div v-if="convLoading && conversations.length > 0" class="conv-loading-more">
+            <el-icon class="is-loading"><Loading /></el-icon> 加载中...
+          </div>
+          <div v-if="!convLoading && conversations.length > 0 && conversations.length >= convTotal" class="conv-no-more">
+            已加载全部
+          </div>
         </div>
       </div>
 
@@ -161,7 +161,7 @@
         <template v-if="selectedConv">
           <div class="chat-main-header">
             <div class="chat-title">
-              <span>{{ selectedConv.fromUserName || selectedConv.fromUserId }}</span>
+              <span>{{ getConvDisplayName(selectedConv) }}</span>
               <span v-if="selectedConv.roomId" class="chat-room-label">群聊</span>
               <span class="chat-subtitle">共 {{ msgTotal }} 条消息</span>
             </div>
@@ -174,7 +174,7 @@
               <el-button link type="primary" size="small" @click="refreshMessages">
                 <el-icon><Refresh /></el-icon>
               </el-button>
-              <el-tooltip content="快捷功能" placement="top">
+              <el-tooltip content="快捷功能" placement="top" v-if="isAdminRole">
                 <el-button link size="small" @click="actionPanelVisible = !actionPanelVisible">
                   <el-icon><Operation /></el-icon>
                 </el-button>
@@ -197,23 +197,24 @@
               </el-button>
             </div>
 
-            <!-- 日期分割线 + 消息 -->
+            <!-- 日期分割线 + 消息气泡 -->
             <template v-for="(msg, idx) in messages" :key="msg.id">
               <div v-if="showDateDivider(idx)" class="msg-date-divider">
                 <span>{{ getDateDividerText(msg.msgTime) }}</span>
               </div>
               <div class="msg-row" :class="{ 'msg-row-self': isSelfMsg(msg) }">
+                <!-- 左侧：客户头像 -->
                 <div class="msg-avatar-wrapper" v-if="!isSelfMsg(msg)">
-                  <div class="msg-avatar">{{ String.fromCodePoint(0x1F464) }}</div>
+                  <div class="msg-avatar">{{ getConvDisplayName(selectedConv).charAt(0) }}</div>
                 </div>
                 <div class="msg-body" :class="{ 'msg-body-self': isSelfMsg(msg) }">
                   <div class="msg-sender" v-if="!isSelfMsg(msg)">
-                    {{ msg.fromUserName || msg.fromUserId }}
+                    {{ getConvDisplayName(selectedConv) }}
                     <span class="msg-time-inline">{{ formatMsgTimeShort(msg.msgTime) }}</span>
                   </div>
                   <div class="msg-sender msg-sender-self" v-else>
                     <span class="msg-time-inline">{{ formatMsgTimeShort(msg.msgTime) }}</span>
-                    {{ msg.fromUserName || msg.fromUserId }}
+                    {{ selectedMemberName || msg.fromUserName || msg.fromUserId }}
                   </div>
                   <div class="msg-bubble" :class="{ 'msg-bubble-self': isSelfMsg(msg), 'msg-bubble-sensitive': msg.isSensitive }">
                     <template v-if="msg.msgType === 'text'">{{ getTextContent(msg.content) }}</template>
@@ -229,12 +230,12 @@
                       <el-image v-if="msg.mediaUrl" :src="msg.mediaUrl" :preview-src-list="[msg.mediaUrl]" fit="contain" style="max-width:200px;max-height:200px;border-radius:4px" />
                       <span v-else class="msg-placeholder">[图片]</span>
                     </template>
-                    <template v-else-if="msg.msgType === 'voice'"><span>{{ String.fromCodePoint(0x1F3B5) }} [语音消息]</span></template>
-                    <template v-else-if="msg.msgType === 'video'"><span>{{ String.fromCodePoint(0x1F3AC) }} [视频消息]</span></template>
-                    <template v-else-if="msg.msgType === 'file'"><span>{{ String.fromCodePoint(0x1F4CE) }} {{ msg.fileName || '[文件]' }}</span></template>
-                    <template v-else-if="msg.msgType === 'link'"><span>{{ String.fromCodePoint(0x1F517) }} [链接消息]</span></template>
-                    <template v-else-if="msg.msgType === 'weapp'"><span>{{ String.fromCodePoint(0x1F4F1) }} [小程序消息]</span></template>
-                    <template v-else-if="msg.msgType === 'location'"><span>{{ String.fromCodePoint(0x1F4CD) }} [位置消息]</span></template>
+                    <template v-else-if="msg.msgType === 'voice'"><span>[语音消息]</span></template>
+                    <template v-else-if="msg.msgType === 'video'"><span>[视频消息]</span></template>
+                    <template v-else-if="msg.msgType === 'file'"><span>{{ msg.fileName || '[文件]' }}</span></template>
+                    <template v-else-if="msg.msgType === 'link'"><span>[链接消息]</span></template>
+                    <template v-else-if="msg.msgType === 'weapp'"><span>[小程序消息]</span></template>
+                    <template v-else-if="msg.msgType === 'location'"><span>[位置消息]</span></template>
                     <template v-else><span>[{{ getMsgTypeText(msg.msgType) }}]</span></template>
                   </div>
                   <div class="msg-flags" v-if="msg.isSensitive || msg.auditRemark">
@@ -244,8 +245,9 @@
                     </el-tooltip>
                   </div>
                 </div>
+                <!-- 右侧：成员头像 -->
                 <div class="msg-avatar-wrapper" v-if="isSelfMsg(msg)">
-                  <div class="msg-avatar msg-avatar-self">{{ String.fromCodePoint(0x1F9D1) }}</div>
+                  <div class="msg-avatar msg-avatar-self">{{ (selectedMemberName || 'M').charAt(0) }}</div>
                 </div>
               </div>
             </template>
@@ -270,19 +272,20 @@
       <div class="chat-action-panel" :class="{ visible: actionPanelVisible && selectedConv }">
         <template v-if="selectedConv">
           <div class="action-panel-header">
-            <span>快捷功能</span>
+            <span>会话详情</span>
             <el-button link size="small" @click="actionPanelVisible = false">
               <el-icon><Close /></el-icon>
             </el-button>
           </div>
           <div class="action-panel-body">
-            <!-- 客户信息 -->
+            <!-- 客户信息卡片 -->
             <div class="action-section">
-              <div class="action-section-title">客户信息</div>
-              <div class="action-profile">
-                <div class="action-avatar">{{ String.fromCodePoint(0x1F464) }}</div>
-                <div class="action-name">{{ selectedConv.fromUserName || selectedConv.fromUserId }}</div>
-                <div class="action-id">ID: {{ selectedConv.fromUserId }}</div>
+              <div class="action-profile-card">
+                <div class="action-avatar-large">{{ getConvAvatarLetter(selectedConv) }}</div>
+                <div class="action-profile-info">
+                  <div class="action-profile-name">{{ getConvDisplayName(selectedConv) }}</div>
+                  <div class="action-profile-id">{{ getFirstToUser(selectedConv.toUserIds) || selectedConv.fromUserId }}</div>
+                </div>
               </div>
             </div>
 
@@ -296,14 +299,38 @@
                 </div>
                 <div class="action-stat-item">
                   <div class="action-stat-val">{{ selectedConv.msgCount || 0 }}</div>
-                  <div class="action-stat-label">对话轮次</div>
+                  <div class="action-stat-label">会话数</div>
+                </div>
+                <div class="action-stat-item">
+                  <div class="action-stat-val">{{ selectedConv.lastMsgTime ? formatConvTime(selectedConv.lastMsgTime) : '-' }}</div>
+                  <div class="action-stat-label">最后活跃</div>
                 </div>
               </div>
             </div>
 
-            <!-- 质检操作 -->
+            <!-- 对话成员 -->
             <div class="action-section">
+              <div class="action-section-title">对话成员</div>
+              <div class="action-member-row">
+                <div class="action-member-avatar" style="background:#c8c9cc">{{ getConvDisplayName(selectedConv).charAt(0) }}</div>
+                <span class="action-member-name">{{ getConvDisplayName(selectedConv) }}</span>
+                <el-tag size="small" type="info">客户</el-tag>
+              </div>
+              <div class="action-member-row">
+                <div class="action-member-avatar" style="background:#67c23a">{{ (selectedMemberName || 'M').charAt(0) }}</div>
+                <span class="action-member-name">{{ selectedMemberName || selectedConv.fromUserId }}</span>
+                <el-tag size="small" type="success">员工</el-tag>
+              </div>
+            </div>
+
+            <!-- 质检操作（仅管理员/超级管理员可见） -->
+            <div class="action-section" v-if="isAdminRole">
               <div class="action-section-title">质检操作</div>
+              <div class="action-audit-status" v-if="lastMsgAuditStatus">
+                <el-tag :type="lastMsgAuditStatus === 'sensitive' ? 'danger' : 'warning'" size="small">
+                  {{ lastMsgAuditStatus === 'sensitive' ? '已标记敏感' : '已质检' }}
+                </el-tag>
+              </div>
               <div class="action-buttons">
                 <el-button type="warning" size="small" @click="handleAuditFromChat" style="width:100%">
                   <el-icon><EditPen /></el-icon> 标记质检
@@ -312,29 +339,20 @@
                   <el-icon><Warning /></el-icon> 标记敏感
                 </el-button>
               </div>
-            </div>
-
-            <!-- 对话成员 -->
-            <div class="action-section">
-              <div class="action-section-title">对话成员</div>
-              <div class="action-member-row">
-                <span class="action-member-icon">{{ String.fromCodePoint(0x1F464) }}</span>
-                <span class="action-member-name">{{ selectedConv.fromUserName || selectedConv.fromUserId }}</span>
-                <el-tag size="small" type="info">客户</el-tag>
-              </div>
-              <div class="action-member-row" v-if="getFirstToUser(selectedConv.toUserIds)">
-                <span class="action-member-icon">{{ String.fromCodePoint(0x1F9D1) }}</span>
-                <span class="action-member-name">{{ getFirstToUser(selectedConv.toUserIds) }}</span>
-                <el-tag size="small" type="success">员工</el-tag>
+              <div class="action-audit-note" style="margin-top:8px">
+                <el-input v-model="auditRemark" placeholder="质检备注（可选）" size="small" :rows="2" type="textarea" />
+                <el-button type="primary" size="small" style="width:100%;margin-top:6px" @click="handleSubmitAudit" :disabled="!auditRemark">
+                  提交备注
+                </el-button>
               </div>
             </div>
 
-            <!-- 更多操作 -->
+            <!-- 操作 -->
             <div class="action-section">
-              <div class="action-section-title">更多操作</div>
+              <div class="action-section-title">操作</div>
               <div class="action-buttons">
                 <el-button size="small" @click="exportConvHandler" style="width:100%">
-                  <el-icon><Download /></el-icon> 导出记录
+                  <el-icon><Download /></el-icon> 导出聊天记录
                 </el-button>
               </div>
             </div>
@@ -347,7 +365,7 @@
 
 <script setup lang="ts">
 import { ref, computed, nextTick, onMounted, watch } from 'vue'
-import { Search, Refresh, User, Close, InfoFilled, EditPen, Download, Warning, Operation, DArrowLeft, DArrowRight, ArrowRight, Folder, OfficeBuilding } from '@element-plus/icons-vue'
+import { Search, Refresh, User, Close, InfoFilled, EditPen, Download, Warning, Operation, DArrowLeft, DArrowRight, ArrowRight, Folder, OfficeBuilding, Loading } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { getConversationList, getConversationMessages, getArchiveSeats, auditChatRecord, getWecomDepartments, getWecomUsers } from '@/api/wecom'
 import { formatConvTime, formatMsgTimeShort, formatMsgTime, getMsgTypeText, getTextContent, getMetaSummary, getMetaAgreed, getFirstToUser, getDateDividerText } from '../utils'
@@ -410,6 +428,8 @@ const convLoading = ref(false)
 const convPage = ref(1)
 const convPageSize = ref(50)
 const convTotal = ref(0)
+const convListRef = ref<HTMLElement | null>(null)
+const convLoadingMore = ref(false)
 const selectedConv = ref<Conversation | null>(null)
 
 // 消息
@@ -554,6 +574,15 @@ const selectMember = (member: any) => {
 
 // ==================== 会话列表 ====================
 
+const getConvDisplayName = (conv: Conversation) => {
+  return (conv as any).customerName || conv.fromUserName || conv.fromUserId || '未知'
+}
+
+const getConvAvatarLetter = (conv: Conversation) => {
+  const name = getConvDisplayName(conv)
+  return name.charAt(0).toUpperCase()
+}
+
 const getConvPreview = (conv: Conversation) => {
   if (!conv.lastContent) return ''
   const type = conv.lastMsgType
@@ -608,18 +637,42 @@ const fetchConversations = async () => {
       pageSize: convPageSize.value
     })
     if (res?.list) {
-      conversations.value = res.list
+      // 追加模式（滚动加载更多）
+      if (convPage.value > 1) {
+        conversations.value = [...conversations.value, ...res.list]
+      } else {
+        conversations.value = res.list
+      }
       convTotal.value = res.total || 0
     } else {
-      conversations.value = []
-      convTotal.value = 0
+      if (convPage.value === 1) {
+        conversations.value = []
+        convTotal.value = 0
+      }
     }
   } catch (e) {
     console.error('[ConversationView] Fetch conversations error:', e)
-    conversations.value = []
-    convTotal.value = 0
+    if (convPage.value === 1) {
+      conversations.value = []
+      convTotal.value = 0
+    }
   } finally {
     convLoading.value = false
+    convLoadingMore.value = false
+  }
+}
+
+// 客户列表滚动到底加载更多
+const handleConvScroll = () => {
+  const el = convListRef.value
+  if (!el || convLoading.value || convLoadingMore.value) return
+  // 距离底部50px时触发加载
+  if (el.scrollTop + el.clientHeight >= el.scrollHeight - 50) {
+    if (conversations.value.length < convTotal.value) {
+      convLoadingMore.value = true
+      convPage.value++
+      fetchConversations()
+    }
   }
 }
 
@@ -742,11 +795,34 @@ const handleMarkSensitive = async () => {
   if (messages.value.length === 0) return
   const lastMsg = messages.value[messages.value.length - 1]
   try {
-    await auditChatRecord(lastMsg.id, { isSensitive: true, auditRemark: '手动标记敏感' })
+    await auditChatRecord(lastMsg.id, { isSensitive: true, auditRemark: auditRemark.value || '手动标记敏感' })
     ElMessage.success('已标记为敏感')
+    auditRemark.value = ''
     refreshMessages()
   } catch (e: any) {
     ElMessage.error(e?.message || '标记失败')
+  }
+}
+
+const auditRemark = ref('')
+const lastMsgAuditStatus = computed(() => {
+  if (messages.value.length === 0) return ''
+  const lastMsg = messages.value[messages.value.length - 1]
+  if (lastMsg.isSensitive) return 'sensitive'
+  if (lastMsg.auditRemark) return 'audited'
+  return ''
+})
+
+const handleSubmitAudit = async () => {
+  if (messages.value.length === 0 || !auditRemark.value) return
+  const lastMsg = messages.value[messages.value.length - 1]
+  try {
+    await auditChatRecord(lastMsg.id, { auditRemark: auditRemark.value })
+    ElMessage.success('质检备注已提交')
+    auditRemark.value = ''
+    refreshMessages()
+  } catch (e: any) {
+    ElMessage.error(e?.message || '提交失败')
   }
 }
 
@@ -869,24 +945,27 @@ defineExpose({ fetchConversations, fetchArchiveMembers })
   padding: 10px 14px; background: #fff; border-bottom: 1px solid #e4e7ed;
   display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: #409EFF;
 }
-.chat-sidebar-list { flex: 1; overflow-y: auto; }
-.chat-sidebar-footer { padding: 6px; border-top: 1px solid #e4e7ed; background: #fff; display: flex; justify-content: center; }
+.chat-sidebar-list { flex: 1; overflow-y: auto; scroll-behavior: smooth; }
+.conv-total-badge { font-size: 11px; color: #909399; font-weight: 400; margin-left: auto; }
+.conv-loading-more { text-align: center; padding: 12px; font-size: 12px; color: #909399; }
+.conv-no-more { text-align: center; padding: 8px; font-size: 11px; color: #c0c4cc; }
 .empty-conv { padding: 40px 0; }
 
 .conv-item {
-  display: flex; align-items: center; gap: 10px; padding: 12px 14px;
-  cursor: pointer; border-bottom: 1px solid #f0f1f3; transition: background 0.15s;
-  &:hover { background: #eef0f3; }
+  display: flex; align-items: center; gap: 12px; padding: 12px 14px;
+  cursor: pointer; border-bottom: 1px solid #f5f5f5; transition: background 0.15s;
+  &:hover { background: #f5f7fa; }
   &.active { background: #e6f7ef; border-left: 3px solid #07c160; padding-left: 11px; }
 }
-.conv-avatar { width: 40px; height: 40px; border-radius: 4px; background: #e4e7ed; display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0; }
-.conv-info { flex: 1; min-width: 0; }
-.conv-name { font-size: 14px; font-weight: 500; color: #303133; margin-bottom: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.conv-room { font-size: 12px; color: #909399; font-weight: 400; }
-.conv-preview { font-size: 12px; color: #909399; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.conv-time-line { font-size: 11px; color: #c0c4cc; margin-top: 2px; }
-.conv-meta { flex-shrink: 0; text-align: right; }
-.conv-badge { :deep(.el-badge__content) { font-size: 10px; } }
+.conv-avatar { width: 42px; height: 42px; border-radius: 4px; background: #c8c9cc; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.conv-avatar-letter { font-size: 16px; color: #fff; font-weight: 500; }
+.conv-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.conv-top-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.conv-name { font-size: 14px; font-weight: 500; color: #303133; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
+.conv-time { font-size: 11px; color: #c0c4cc; flex-shrink: 0; white-space: nowrap; }
+.conv-bottom-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.conv-preview { font-size: 12px; color: #909399; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
+.conv-badge { flex-shrink: 0; :deep(.el-badge__content) { font-size: 10px; } }
 
 /* ② 中间：消息主区 */
 .chat-main { flex: 1; display: flex; flex-direction: column; background: #fff; min-width: 0; }
@@ -908,10 +987,10 @@ defineExpose({ fetchConversations, fetchArchiveMembers })
 .msg-date-divider { text-align: center; margin: 16px 0 12px; span { display: inline-block; background: rgba(0,0,0,0.06); color: #909399; font-size: 11px; padding: 3px 10px; border-radius: 3px; } }
 
 /* 消息气泡 */
-.msg-row { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 14px; &.msg-row-self { flex-direction: row-reverse; } }
+.msg-row { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 16px; &.msg-row-self { flex-direction: row-reverse; } }
 .msg-avatar-wrapper { flex-shrink: 0; }
-.msg-avatar { width: 36px; height: 36px; border-radius: 4px; background: #e4e7ed; display: flex; align-items: center; justify-content: center; font-size: 16px; }
-.msg-avatar-self { background: #d4edda; }
+.msg-avatar { width: 36px; height: 36px; border-radius: 4px; background: #c8c9cc; display: flex; align-items: center; justify-content: center; font-size: 14px; color: #fff; font-weight: 500; }
+.msg-avatar-self { background: #67c23a; }
 .msg-body { max-width: 60%; min-width: 0; }
 .msg-body-self { text-align: right; }
 .msg-sender { font-size: 12px; color: #909399; margin-bottom: 3px; }
@@ -919,9 +998,9 @@ defineExpose({ fetchConversations, fetchArchiveMembers })
 .msg-time-inline { color: #c0c4cc; font-size: 11px; margin: 0 4px; }
 
 .msg-bubble {
-  display: inline-block; text-align: left; padding: 9px 13px; background: #fff;
+  display: inline-block; text-align: left; padding: 10px 14px; background: #fff;
   border-radius: 0 8px 8px 8px; font-size: 14px; line-height: 1.5; color: #303133;
-  word-break: break-word; box-shadow: 0 1px 2px rgba(0,0,0,0.04); max-width: 100%; position: relative;
+  word-break: break-word; box-shadow: 0 1px 3px rgba(0,0,0,0.06); max-width: 100%; position: relative;
 }
 .msg-bubble-self { background: #95ec69; color: #000; border-radius: 8px 0 8px 8px; }
 .msg-bubble-sensitive { border: 1px solid #f56c6c; background: #fef0f0; &.msg-bubble-self { background: #fef0f0; color: #303133; } }
@@ -944,27 +1023,29 @@ defineExpose({ fetchConversations, fetchArchiveMembers })
 .action-section { margin-bottom: 18px; }
 .action-section-title { font-size: 12px; color: #909399; font-weight: 600; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.5px; }
 
-.action-profile { text-align: center; margin-bottom: 12px; }
-.action-avatar {
-  width: 50px; height: 50px; border-radius: 50%; background: #e4e7ed;
-  display: inline-flex; align-items: center; justify-content: center; font-size: 24px; margin-bottom: 6px;
+.action-profile-card { display: flex; align-items: center; gap: 12px; padding: 12px; background: #f5f7fa; border-radius: 8px; }
+.action-avatar-large {
+  width: 44px; height: 44px; border-radius: 4px; background: #c8c9cc;
+  display: flex; align-items: center; justify-content: center; font-size: 18px; color: #fff; font-weight: 500; flex-shrink: 0;
 }
-.action-name { font-size: 14px; font-weight: 600; color: #303133; }
-.action-id { font-size: 11px; color: #c0c4cc; margin-top: 2px; }
+.action-profile-info { flex: 1; min-width: 0; }
+.action-profile-name { font-size: 14px; font-weight: 600; color: #303133; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.action-profile-id { font-size: 11px; color: #c0c4cc; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-.action-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.action-stat-item { text-align: center; padding: 10px 6px; background: #fff; border-radius: 8px; border: 1px solid #f0f1f3; }
-.action-stat-val { font-size: 18px; font-weight: 700; color: #303133; }
-.action-stat-label { font-size: 11px; color: #909399; margin-top: 2px; }
+.action-stats { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
+.action-stat-item { text-align: center; padding: 8px 4px; background: #fff; border-radius: 6px; border: 1px solid #f0f1f3; }
+.action-stat-val { font-size: 14px; font-weight: 700; color: #303133; }
+.action-stat-label { font-size: 10px; color: #909399; margin-top: 2px; }
 
 .action-buttons { display: flex; flex-direction: column; gap: 8px; }
+.action-audit-status { margin-bottom: 8px; }
 
 .action-member-row {
-  display: flex; align-items: center; gap: 8px; padding: 6px 0;
+  display: flex; align-items: center; gap: 8px; padding: 8px 0;
   border-bottom: 1px solid #f2f3f5;
   &:last-child { border-bottom: none; }
 }
-.action-member-icon { font-size: 16px; }
+.action-member-avatar { width: 28px; height: 28px; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 12px; color: #fff; font-weight: 500; flex-shrink: 0; }
 .action-member-name { flex: 1; font-size: 13px; color: #303133; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 </style>
 

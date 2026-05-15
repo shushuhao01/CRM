@@ -502,10 +502,10 @@ export class WecomChatArchiveService {
         MAX(cr.msg_time) AS lastMsgTime,
         COUNT(*) AS msgCount,
         (SELECT cr2.content FROM wecom_chat_records cr2
-         WHERE cr2.from_user_id = cr.from_user_id AND cr2.wecom_config_id = cr.wecom_config_id
+         WHERE cr2.from_user_id = cr.from_user_id AND cr2.to_user_ids = cr.to_user_ids AND cr2.wecom_config_id = cr.wecom_config_id
          ORDER BY cr2.msg_time DESC LIMIT 1) AS lastContent,
         (SELECT cr2.msg_type FROM wecom_chat_records cr2
-         WHERE cr2.from_user_id = cr.from_user_id AND cr2.wecom_config_id = cr.wecom_config_id
+         WHERE cr2.from_user_id = cr.from_user_id AND cr2.to_user_ids = cr.to_user_ids AND cr2.wecom_config_id = cr.wecom_config_id
          ORDER BY cr2.msg_time DESC LIMIT 1) AS lastMsgType
       FROM wecom_chat_records cr
       ${where}
@@ -518,7 +518,21 @@ export class WecomChatArchiveService {
       const countResult = await AppDataSource.query(countSql, queryParams);
       const total = countResult[0]?.total || 0;
 
-      const list = await AppDataSource.query(listSql, [...queryParams, pageSize, offset]);
+      const rawList = await AppDataSource.query(listSql, [...queryParams, pageSize, offset]);
+
+      // 后处理：从 content JSON 中提取 customerName
+      const list = rawList.map((item: any) => {
+        let customerName = '';
+        try {
+          if (item.lastContent) {
+            const content = typeof item.lastContent === 'string' ? JSON.parse(item.lastContent) : item.lastContent;
+            if (content.customerName) {
+              customerName = content.customerName;
+            }
+          }
+        } catch { /* ignore parse error */ }
+        return { ...item, customerName };
+      });
 
       return { list, total };
     } catch (e: any) {

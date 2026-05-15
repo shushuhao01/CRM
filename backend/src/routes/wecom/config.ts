@@ -269,7 +269,10 @@ router.get('/configs/:id/departments', authenticateToken, async (req: Request, r
 
     // 本地无数据 或 本地数据名称缺失 → 从API获取
     try {
-      const accessToken = await WecomApiService.getAccessTokenByConfigId(configId, 'contact');
+      // 第三方模式用corp token（通用），自建模式用contact token
+      const config = await AppDataSource.getRepository(WecomConfig).findOne({ where: { id: configId } });
+      const secretType = config?.authType === 'third_party' ? 'corp' : 'contact';
+      const accessToken = await WecomApiService.getAccessTokenByConfigId(configId, secretType as any);
       const apiDepts = await WecomApiService.getDepartmentList(accessToken);
       log.info('[Wecom] Got departments from API:', apiDepts.length);
 
