@@ -500,6 +500,15 @@ router.post('/address-book/sync-members', authenticateToken, requireAdmin, async
               status: 1
             }));
 
+            // 降级路径：contact token 权限不足，切换到 corp token 用于后续 /user/get 调用
+            try {
+              accessToken = await WecomApiService.getAccessTokenByConfigId(configId, 'corp');
+              tokenType = 'corp';
+              log.info('[AddressBook] 降级路径：已切换到 corp token 用于后续 /user/get 补充姓名');
+            } catch (corpTokenErr: any) {
+              log.warn('[AddressBook] corp token 获取失败:', corpTokenErr.message);
+            }
+
             // 如果本地没有部门，创建一个默认根部门
             if (localDepts.length === 0) {
               const defaultDept = deptRepo.create({
@@ -587,11 +596,29 @@ router.post('/address-book/sync-members', authenticateToken, requireAdmin, async
       if (stillMissing.length > 0) {
         const apiLimit = Math.min(stillMissing.length, limit);
         log.info(`[AddressBook] 仍有 ${stillMissing.length} 个成员名称缺失，尝试通过 /user/get 补充（处理前 ${apiLimit} 个）`);
+
+        // 如果当前 token 是 contact 类型但可能权限不足，先尝试用 corp token
+        let userGetToken = accessToken;
+        if (tokenType === 'contact') {
+          try {
+            // 先用 contact token 试一个，如果失败则切换到 corp token
+            const testDetail = await WecomApiService.getUserDetail(userGetToken, stillMissing[0].userid);
+            if (testDetail === null) {
+              // contact token 可能权限不足，尝试 corp token
+              try {
+                userGetToken = await WecomApiService.getAccessTokenByConfigId(configId, 'corp');
+                log.info('[AddressBook] /user/get: contact token 无效，已切换到 corp token');
+              } catch { /* 保持原 token */ }
+            }
+          } catch { /* 保持原 token */ }
+        }
+
         let enrichedFromApi = 0;
         let apiFailCount = 0;
-        for (let i = 0; i < apiLimit; i++) {
+        const startIdx = (tokenType === 'contact' && userGetToken !== accessToken) ? 0 : 0;
+        for (let i = startIdx; i < apiLimit; i++) {
           const u = stillMissing[i];
-          const detail = await WecomApiService.getUserDetail(accessToken, u.userid);
+          const detail = await WecomApiService.getUserDetail(userGetToken, u.userid);
           if (detail && isValidName(detail.name, u.userid)) {
             u.name = detail.name;
             if (detail.avatar) u.avatar = detail.avatar;
@@ -1129,6 +1156,39 @@ router.get('/address-book/dept/:deptId/children', authenticateToken, async (req:
     }));
 
     // 构建成员节点（用客户群数据补充缺失的成员名称）
+    // 策略3: 对仍然缺失名称的成员，通过 /user/get 实时补充
+    const membersNeedEnrich = members.filter(m =>
+      !isValidName(m.wecomUserName, m.wecomUserId) && !nameFromGroups.has(m.wecomUserId)
+    );
+    if (membersNeedEnrich.length > 0 && configId) {
+      const enrichLimit = Math.min(membersNeedEnrich.length, 50); // 限制单次最多补充50个
+      try {
+        let enrichToken: string;
+        try {
+          enrichToken = await WecomApiService.getAccessTokenByConfigId(Number(configId), 'contact');
+        } catch {
+          enrichToken = await WecomApiService.getAccessTokenByConfigId(Number(configId), 'corp');
+        }
+        let enriched = 0;
+        for (let i = 0; i < enrichLimit; i++) {
+          const m = membersNeedEnrich[i];
+          const detail = await WecomApiService.getUserDetail(enrichToken, m.wecomUserId);
+          if (detail && isValidName(detail.name, m.wecomUserId)) {
+            m.wecomUserName = String(detail.name).trim();
+            if (detail.avatar) m.wecomAvatar = detail.avatar;
+            bindingRepo.save(m).catch(() => {});
+            enriched++;
+          }
+          if (i % 20 === 19) await new Promise(r => setTimeout(r, 100));
+        }
+        if (enriched > 0) {
+          log.info(`[AddressBook] dept-children: 通过 /user/get 补充了 ${enriched} 个成员姓名`);
+        }
+      } catch (e: any) {
+        log.warn('[AddressBook] dept-children /user/get enrich failed:', e.message);
+      }
+    }
+
     const memberNodes = members.map(m => {
       let cleanName = isValidName(m.wecomUserName, m.wecomUserId)
         ? String(m.wecomUserName).trim()
@@ -1181,7 +1241,14 @@ router.get('/address-book/member/:wecomUserId/profile', authenticateToken, async
     // 1.1 如果本地名称缺失，实时通过 /user/get 补充
     if (!isValidName(binding.wecomUserName, binding.wecomUserId) && configId) {
       try {
-        const accessToken = await WecomApiService.getAccessTokenByConfigId(Number(configId), 'contact');
+        // 优先尝试 contact token，失败则 fallback 到 corp token（第三方应用常用）
+        let accessToken: string;
+        try {
+          accessToken = await WecomApiService.getAccessTokenByConfigId(Number(configId), 'contact');
+        } catch (tokenErr: any) {
+          log.warn(`[AddressBook] contact token 获取失败，尝试 corp token:`, tokenErr.message);
+          accessToken = await WecomApiService.getAccessTokenByConfigId(Number(configId), 'corp');
+        }
         const detail = await WecomApiService.getUserDetail(accessToken, wecomUserId);
         if (detail && isValidName(detail.name, wecomUserId)) {
           binding.wecomUserName = String(detail.name).trim();

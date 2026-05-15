@@ -607,6 +607,53 @@ export class WecomApiService {
     }
   }
 
+  /**
+   * 【数据与智能专区】拉取会话存档消息数据
+   * 第三方服务商通过此接口获取加密的聊天记录
+   * 参考: https://developer.work.weixin.qq.com/document/path/99848
+   *
+   * @param accessToken chat类型的access_token
+   * @param cursor 上次拉取的游标位置，首次传空字符串
+   * @param limit 每次拉取条数，最大1000
+   * @returns 加密的消息列表和下次拉取的游标
+   */
+  static async getChatMsgData(accessToken: string, cursor: string = '', limit: number = 100): Promise<{
+    chatdata: Array<{
+      seq: number;
+      msgid: string;
+      publickey_ver: number;
+      encrypt_random_key: string;
+      encrypt_chat_msg: string;
+    }>;
+    has_more: boolean;
+    next_cursor: string;
+  }> {
+    try {
+      const body: any = { limit };
+      if (cursor) body.cursor = cursor;
+
+      log.info(`[WecomApi] getChatMsgData: cursor=${cursor || '(首次)'}, limit=${limit}`);
+
+      const response = await axios.post(
+        `${WECOM_API_BASE}/chatdata/get_msg_data?access_token=${accessToken}`,
+        body
+      );
+
+      if (response.data.errcode === 0) {
+        const chatdata = response.data.chatdata || [];
+        const hasMore = response.data.has_more === 1 || response.data.has_more === true;
+        const nextCursor = response.data.next_cursor || '';
+        log.info(`[WecomApi] getChatMsgData: 获取 ${chatdata.length} 条消息, hasMore=${hasMore}`);
+        return { chatdata, has_more: hasMore, next_cursor: nextCursor };
+      } else {
+        throw new Error(`拉取会话存档消息失败(${response.data.errcode}): ${response.data.errmsg}`);
+      }
+    } catch (error: any) {
+      log.error('[WecomApi] getChatMsgData error:', error.message);
+      throw error;
+    }
+  }
+
   // ==================== JS-SDK 相关 ====================
 
   /**

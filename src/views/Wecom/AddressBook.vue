@@ -1143,12 +1143,29 @@ const handleSaveSyncSettings = async () => {
 const deptNameList = ref<Array<{ id: number; currentName: string; editName: string }>>([])
 const savingDeptNames = ref(false)
 
+/** 递归展平部门树为一维数组 */
+const flattenDeptTree = (nodes: any[]): any[] => {
+  const result: any[] = []
+  const walk = (list: any[]) => {
+    for (const node of list) {
+      result.push(node)
+      if (node.children && node.children.length > 0) {
+        walk(node.children)
+      }
+    }
+  }
+  walk(nodes)
+  return result
+}
+
 const loadDeptNameList = async () => {
   if (!selectedConfigId.value) return
   try {
     const res: any = await getWecomDepartmentTree(selectedConfigId.value)
-    const depts = Array.isArray(res) ? res : (res?.data || [])
-    deptNameList.value = depts.map((d: any) => ({
+    const tree = Array.isArray(res) ? res : (res?.data || [])
+    // 递归展平树结构，确保所有部门（包括子部门）都显示
+    const allDepts = flattenDeptTree(tree)
+    deptNameList.value = allDepts.map((d: any) => ({
       id: d.id || d.wecomDeptId,
       currentName: d.name || d.wecomDeptName || String(d.id || d.wecomDeptId),
       editName: (d.name && d.name !== String(d.id)) ? d.name : ''

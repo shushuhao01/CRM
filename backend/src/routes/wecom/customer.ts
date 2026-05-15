@@ -239,6 +239,7 @@ router.get('/customers', authenticateToken, async (req: Request, res: Response) 
 
 /**
  * 同步企微客户数据
+ * 采用异步模式：立即返回响应，后台执行同步，避免网关超时
  */
 router.post('/customers/sync', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
   try {
@@ -262,99 +263,118 @@ router.post('/customers/sync', authenticateToken, requireAdmin, async (req: Requ
       return res.status(400).json({ success: false, message: '没有绑定的成员，请先在企微联动中绑定成员' });
     }
 
-    const accessToken = await WecomApiService.getAccessTokenByConfigId(configId, 'external');
-    log.info(`[Wecom] Sync customers: got access token, starting sync for ${bindings.length} bindings`);
-
-    // 预先获取企业标签映射表（tag_id -> tag_name）
-    const corpTagMap: Record<string, string> = {};
-    try {
-      const tagGroups = await WecomApiService.getCorpTagList(accessToken);
-      for (const group of tagGroups) {
-        for (const tag of (group.tag || [])) {
-          if (tag.id && tag.name) corpTagMap[tag.id] = tag.name;
-        }
-      }
-      log.info(`[Wecom] Loaded ${Object.keys(corpTagMap).length} corp tags for name resolution`);
-    } catch (tagErr: any) {
-      log.warn('[Wecom] Failed to load corp tags, will fallback to API tag_name:', tagErr.message);
-    }
-
-    const customerRepo = getTenantRepo(WecomCustomer);
-    let syncCount = 0;
-
-    // 收集本次同步到的所有 externalUserId，用于后续检测被删除的客户
-    const syncedExternalUserIds = new Set<string>();
-
-    for (const binding of bindings) {
-      try {
-        const externalUserIds = await WecomApiService.getExternalContactList(accessToken, binding.wecomUserId);
-        for (const externalUserId of externalUserIds) {
-          syncedExternalUserIds.add(externalUserId);
-          try {
-            const detail = await WecomApiService.getExternalContactDetail(accessToken, externalUserId);
-            const externalContact = detail.external_contact;
-            const followUserList = detail.follow_user || [];
-            const followUser = followUserList.find((f: any) => f.userid === binding.wecomUserId) || followUserList[0];
-
-            let customer = await customerRepo.findOne({ where: { wecomConfigId: configId, externalUserId } });
-            if (!customer) {
-              customer = customerRepo.create({ wecomConfigId: configId, corpId: config.corpId, externalUserId, tenantId: config.tenantId });
-            }
-
-            customer.name = externalContact.name;
-            customer.avatar = externalContact.avatar;
-            customer.type = externalContact.type;
-            customer.gender = externalContact.gender;
-            customer.corpName = externalContact.corp_name;
-            customer.position = externalContact.position;
-            customer.followUserId = binding.wecomUserId;
-            customer.followUserName = binding.wecomUserName;
-            customer.followUsers = followUserList.length > 0 ? JSON.stringify(followUserList) : null;
-            customer.remark = followUser?.remark;
-            customer.description = followUser?.description;
-            customer.addTime = followUser?.createtime ? new Date(followUser.createtime * 1000) : null;
-            customer.addWay = followUser?.add_way;
-            customer.tagIds = followUser?.tags ? JSON.stringify(followUser.tags.map((t: any) => t.tag_id)) : null;
-            customer.tagNames = followUser?.tags ? JSON.stringify(followUser.tags.map((t: any) => corpTagMap[t.tag_id] || t.tag_name || t.tag_id)) : null;
-            customer.state = followUser?.state || null;
-            customer.status = 'normal';
-
-            await customerRepo.save(customer);
-            syncCount++;
-          } catch (e: any) {
-            log.error(`[Wecom] Sync customer ${externalUserId} error:`, e.message);
-          }
-        }
-      } catch (e: any) {
-        log.error(`[Wecom] Sync user ${binding.wecomUserId} customers error:`, e.message);
-      }
-    }
-
-    // 检测被删除的客户：本地有但企微API不再返回的客户标记为 deleted
-    let deletedCount = 0;
-    if (syncedExternalUserIds.size > 0) {
-      const localCustomers = await customerRepo.find({
-        where: { wecomConfigId: configId, status: 'normal' as any },
-        select: ['id', 'externalUserId']
-      });
-      for (const local of localCustomers) {
-        if (!syncedExternalUserIds.has(local.externalUserId)) {
-          await customerRepo.update(local.id, { status: 'deleted' as any });
-          deletedCount++;
-        }
-      }
-      if (deletedCount > 0) {
-        log.info(`[Wecom] Marked ${deletedCount} customers as deleted (no longer in WeCom contact list)`);
-      }
-    }
-
-    const totalCustomers = await customerRepo.count({ where: { wecomConfigId: configId } });
-    const deletedCustomers = await customerRepo.count({ where: { wecomConfigId: configId, status: 'deleted' as any } });
+    // 立即返回响应，避免网关超时
     res.json({
       success: true,
-      message: `同步完成：同步 ${syncCount} 个客户${deletedCount > 0 ? `，发现 ${deletedCount} 个已删除` : ''}`,
-      data: { syncCount, deletedCount, totalCustomers, deletedCustomers, customerLimit: 5000, bindingsUsed: bindings.length }
+      message: `同步任务已启动，正在后台同步 ${bindings.length} 个成员的客户数据，请稍后刷新查看结果`,
+      data: { status: 'running', bindingsCount: bindings.length, syncCount: 0, totalCustomers: 0, customerLimit: 5000, bindingsUsed: bindings.length }
     });
+
+    // 后台异步执行同步
+    (async () => {
+      try {
+        const accessToken = await WecomApiService.getAccessTokenByConfigId(configId, 'external');
+        log.info(`[Wecom] Sync customers: got access token, starting async sync for ${bindings.length} bindings`);
+
+        // 预先获取企业标签映射表（tag_id -> tag_name）
+        const corpTagMap: Record<string, string> = {};
+        try {
+          const tagGroups = await WecomApiService.getCorpTagList(accessToken);
+          for (const group of tagGroups) {
+            for (const tag of (group.tag || [])) {
+              if (tag.id && tag.name) corpTagMap[tag.id] = tag.name;
+            }
+          }
+          log.info(`[Wecom] Loaded ${Object.keys(corpTagMap).length} corp tags for name resolution`);
+        } catch (tagErr: any) {
+          log.warn('[Wecom] Failed to load corp tags, will fallback to API tag_name:', tagErr.message);
+        }
+
+        const customerRepo = getTenantRepo(WecomCustomer);
+        let syncCount = 0;
+
+        // 收集本次同步到的所有 externalUserId，用于后续检测被删除的客户
+        const syncedExternalUserIds = new Set<string>();
+
+        for (const binding of bindings) {
+          try {
+            const externalUserIds = await WecomApiService.getExternalContactList(accessToken, binding.wecomUserId);
+            log.info(`[Wecom] Member ${binding.wecomUserId}: ${externalUserIds.length} external contacts`);
+
+            // 分批处理，每批5个并发，避免企微API限流
+            const batchSize = 5;
+            for (let i = 0; i < externalUserIds.length; i += batchSize) {
+              const batch = externalUserIds.slice(i, i + batchSize);
+              await Promise.allSettled(batch.map(async (externalUserId) => {
+                syncedExternalUserIds.add(externalUserId);
+                try {
+                  const detail = await WecomApiService.getExternalContactDetail(accessToken, externalUserId);
+                  const externalContact = detail.external_contact;
+                  const followUserList = detail.follow_user || [];
+                  const followUser = followUserList.find((f: any) => f.userid === binding.wecomUserId) || followUserList[0];
+
+                  let customer = await customerRepo.findOne({ where: { wecomConfigId: configId, externalUserId } });
+                  if (!customer) {
+                    customer = customerRepo.create({ wecomConfigId: configId, corpId: config.corpId, externalUserId, tenantId: config.tenantId });
+                  }
+
+                  customer.name = externalContact.name;
+                  customer.avatar = externalContact.avatar;
+                  customer.type = externalContact.type;
+                  customer.gender = externalContact.gender;
+                  customer.corpName = externalContact.corp_name;
+                  customer.position = externalContact.position;
+                  customer.followUserId = binding.wecomUserId;
+                  customer.followUserName = binding.wecomUserName;
+                  customer.followUsers = followUserList.length > 0 ? JSON.stringify(followUserList) : null;
+                  customer.remark = followUser?.remark;
+                  customer.description = followUser?.description;
+                  customer.addTime = followUser?.createtime ? new Date(followUser.createtime * 1000) : null;
+                  customer.addWay = followUser?.add_way;
+                  customer.tagIds = followUser?.tags ? JSON.stringify(followUser.tags.map((t: any) => t.tag_id)) : null;
+                  customer.tagNames = followUser?.tags ? JSON.stringify(followUser.tags.map((t: any) => corpTagMap[t.tag_id] || t.tag_name || t.tag_id)) : null;
+                  customer.state = followUser?.state || null;
+                  customer.status = 'normal';
+
+                  await customerRepo.save(customer);
+                  syncCount++;
+                } catch (e: any) {
+                  log.error(`[Wecom] Sync customer ${externalUserId} error:`, e.message);
+                }
+              }));
+              // 每批之间稍微延迟，避免企微API限流
+              if (i + batchSize < externalUserIds.length) {
+                await new Promise(r => setTimeout(r, 200));
+              }
+            }
+          } catch (e: any) {
+            log.error(`[Wecom] Sync user ${binding.wecomUserId} customers error:`, e.message);
+          }
+        }
+
+        // 检测被删除的客户：本地有但企微API不再返回的客户标记为 deleted
+        let deletedCount = 0;
+        if (syncedExternalUserIds.size > 0) {
+          const localCustomers = await customerRepo.find({
+            where: { wecomConfigId: configId, status: 'normal' as any },
+            select: ['id', 'externalUserId']
+          });
+          for (const local of localCustomers) {
+            if (!syncedExternalUserIds.has(local.externalUserId)) {
+              await customerRepo.update(local.id, { status: 'deleted' as any });
+              deletedCount++;
+            }
+          }
+          if (deletedCount > 0) {
+            log.info(`[Wecom] Marked ${deletedCount} customers as deleted (no longer in WeCom contact list)`);
+          }
+        }
+
+        log.info(`[Wecom] Async customer sync completed: ${syncCount} synced, ${deletedCount} deleted`);
+      } catch (error: any) {
+        log.error('[Wecom] Async sync customers error:', error.message, error.stack);
+      }
+    })();
   } catch (error: any) {
     log.error('[Wecom] Sync customers error:', error.message, error.stack);
     res.status(500).json({ success: false, message: error.message || '同步客户失败' });

@@ -139,6 +139,23 @@ export class WecomChatArchiveService {
         result.agreedUsers = await this.checkAgreeStatus(accessToken, config, permitUserIds);
       }
 
+      // Step 6: 第三方模式 - 通过专区接口拉取实际聊天消息
+      if (config.authType === 'third_party') {
+        log.info(`[ChatArchive] Step6: 第三方模式 - 开始拉取实际聊天消息...`);
+        try {
+          const msgResult = await this.syncChatMessages(config, accessToken);
+          result.syncedRecords += msgResult.savedCount;
+          if (msgResult.savedCount > 0) {
+            log.info(`[ChatArchive] Step6完成: 拉取并保存 ${msgResult.savedCount} 条实际消息`);
+          } else {
+            log.info(`[ChatArchive] Step6完成: 无新消息`);
+          }
+        } catch (e: any) {
+          log.warn(`[ChatArchive] Step6失败: 拉取实际消息出错: ${e.message}`);
+          // 不影响整体同步结果
+        }
+      }
+
       // 组装结果消息
       const parts: string[] = [];
       parts.push(`${permitUserIds.length}个开通成员`);
@@ -149,7 +166,7 @@ export class WecomChatArchiveService {
       result.sdkRequired = config.authType !== 'third_party';
       result.mode = config.authType === 'third_party' ? 'chatdata_zone' : 'http_api';
       result.message = config.authType === 'third_party'
-        ? `专区模式同步完成：${parts.join('，')}。消息内容通过会话展示组件展示。`
+        ? `专区模式同步完成：${parts.join('，')}。`
         : `HTTP API同步完成：${parts.join('，')}。实际消息内容拉取需部署Finance SDK。`;
 
       log.info(`[ChatArchive] 配置 ${config.name} 同步完成: ${result.message}`);
@@ -536,8 +553,17 @@ export class WecomChatArchiveService {
       queryParams.push(configId);
     }
     if (userId) {
-      where += ' AND (cr.from_user_id = ? OR cr.to_user_ids LIKE ?)';
-      queryParams.push(userId, `%${userId}%`);
+      // 支持多个userId（逗号分隔）
+      const userIds = userId.split(',').map(s => s.trim()).filter(Boolean);
+      if (userIds.length === 1) {
+        where += ' AND (cr.from_user_id = ? OR cr.to_user_ids LIKE ?)';
+        queryParams.push(userIds[0], `%${userIds[0]}%`);
+      } else if (userIds.length > 1) {
+        const placeholders = userIds.map(() => '?').join(',');
+        const likeConditions = userIds.map(() => 'cr.to_user_ids LIKE ?').join(' OR ');
+        where += ` AND (cr.from_user_id IN (${placeholders}) OR ${likeConditions})`;
+        queryParams.push(...userIds, ...userIds.map(id => `%${id}%`));
+      }
     }
     if (keyword) {
       where += ' AND cr.content LIKE ?';
@@ -576,17 +602,76 @@ export class WecomChatArchiveService {
 
       const rawList = await AppDataSource.query(listSql, [...queryParams, pageSize, offset]);
 
-      // 后处理：从 content JSON 中提取 customerName
+      // 收集所有外部联系人ID，批量从 wecom_customers 表查找备注和昵称
+      const externalUserIds = new Set<string>();
+      for (const item of rawList) {
+        try {
+          const toIds = typeof item.toUserIds === 'string' ? JSON.parse(item.toUserIds) : item.toUserIds;
+          if (Array.isArray(toIds)) {
+            toIds.forEach((id: string) => { if (id) externalUserIds.add(id); });
+          }
+        } catch { /* ignore */ }
+        // fromUserId 也可能是外部客户（客户发给员工的消息）
+        if (item.fromUserId && item.fromUserId.startsWith('wm')) {
+          externalUserIds.add(item.fromUserId);
+        }
+      }
+
+      // 批量查询客户备注和昵称
+      const customerNameMap = new Map<string, { remark: string; name: string }>();
+      if (externalUserIds.size > 0) {
+        try {
+          let customerWhere = 'external_user_id IN (' + Array.from(externalUserIds).map(() => '?').join(',') + ')';
+          const customerParams: any[] = Array.from(externalUserIds);
+          if (tenantId) {
+            customerWhere += ' AND tenant_id = ?';
+            customerParams.push(tenantId);
+          }
+          if (configId) {
+            customerWhere += ' AND wecom_config_id = ?';
+            customerParams.push(configId);
+          }
+          const customers = await AppDataSource.query(
+            `SELECT external_user_id, remark, name FROM wecom_customers WHERE ${customerWhere}`,
+            customerParams
+          );
+          for (const c of customers) {
+            customerNameMap.set(c.external_user_id, { remark: c.remark || '', name: c.name || '' });
+          }
+        } catch (e: any) {
+          log.warn('[ChatArchive] 批量查询客户名称失败:', e.message);
+        }
+      }
+
+      // 后处理：用备注+昵称作为 customerName
       const list = rawList.map((item: any) => {
         let customerName = '';
+
+        // 确定外部联系人ID（客户ID）
+        let externalId = '';
         try {
-          if (item.lastContent) {
-            const content = typeof item.lastContent === 'string' ? JSON.parse(item.lastContent) : item.lastContent;
-            if (content.customerName) {
-              customerName = content.customerName;
-            }
+          const toIds = typeof item.toUserIds === 'string' ? JSON.parse(item.toUserIds) : item.toUserIds;
+          if (Array.isArray(toIds) && toIds.length > 0) {
+            // 找到外部联系人ID（以 wm 开头的是外部客户）
+            externalId = toIds.find((id: string) => id && id.startsWith('wm')) || toIds[0] || '';
           }
-        } catch { /* ignore parse error */ }
+        } catch { /* ignore */ }
+
+        // 如果 fromUserId 是外部客户（以 wm 开头），则它就是客户
+        if (!externalId && item.fromUserId && item.fromUserId.startsWith('wm')) {
+          externalId = item.fromUserId;
+        }
+
+        // 从客户表中获取备注和昵称，优先显示：备注 > 昵称 > ID
+        if (externalId && customerNameMap.has(externalId)) {
+          const info = customerNameMap.get(externalId)!;
+          if (info.remark) {
+            customerName = info.name ? `${info.remark}(${info.name})` : info.remark;
+          } else {
+            customerName = info.name || '';
+          }
+        }
+
         return { ...item, customerName };
       });
 
@@ -713,7 +798,349 @@ export class WecomChatArchiveService {
     if (!str || typeof str !== 'string') return fallback;
     try { return JSON.parse(str); } catch { return fallback; }
   }
+
+  // ==================== 第三方模式：专区接口拉取实际消息 ====================
+
+  /** 存储每个配置的拉取游标（持久化到 TenantSettings） */
+  private static async getSyncCursor(configId: number, tenantId?: string): Promise<string> {
+    try {
+      const key = `wecom_chat_archive_cursor_${configId}`;
+      const result = await AppDataSource.query(
+        `SELECT setting_value FROM tenant_settings WHERE tenant_id = ? AND setting_key = ? LIMIT 1`,
+        [tenantId || '', key]
+      );
+      if (result.length > 0 && result[0].setting_value) {
+        const val = JSON.parse(result[0].setting_value);
+        return val?.cursor || '';
+      }
+      return '';
+    } catch {
+      return '';
+    }
+  }
+
+  private static async saveSyncCursor(configId: number, cursor: string, tenantId?: string): Promise<void> {
+    try {
+      const key = `wecom_chat_archive_cursor_${configId}`;
+      const value = JSON.stringify({ cursor, updatedAt: new Date().toISOString() });
+      // Upsert
+      const existing = await AppDataSource.query(
+        `SELECT id FROM tenant_settings WHERE tenant_id = ? AND setting_key = ? LIMIT 1`,
+        [tenantId || '', key]
+      );
+      if (existing.length > 0) {
+        await AppDataSource.query(
+          `UPDATE tenant_settings SET setting_value = ?, updated_at = NOW() WHERE id = ?`,
+          [value, existing[0].id]
+        );
+      } else {
+        const { v4: uuidv4 } = await import('uuid');
+        await AppDataSource.query(
+          `INSERT INTO tenant_settings (id, tenant_id, setting_key, setting_type, setting_value, created_at, updated_at)
+           VALUES (?, ?, ?, 'json', ?, NOW(), NOW())`,
+          [uuidv4(), tenantId || '', key, value]
+        );
+      }
+    } catch (e: any) {
+      log.warn('[ChatArchive] 保存同步游标失败:', e.message);
+    }
+  }
+
+  /**
+   * 【第三方模式】通过数据与智能专区接口拉取实际聊天消息
+   * 调用 /chatdata/get_msg_data 获取加密消息 → RSA解密随机密钥 → AES解密消息体 → 存入数据库
+   */
+  static async syncChatMessages(config: WecomConfig, chatAccessToken: string): Promise<{ savedCount: number; totalFetched: number }> {
+    let savedCount = 0;
+    let totalFetched = 0;
+
+    // 获取RSA私钥（服务商级别）
+    const { WecomSuiteConfig } = await import('../entities/WecomSuiteConfig');
+    const suiteRepo = AppDataSource.getRepository(WecomSuiteConfig);
+    const suiteConfig = await suiteRepo.findOne({ where: {}, order: { id: 'ASC' } });
+    const rsaPrivateKey = suiteConfig?.chatArchiveRsaPrivateKey;
+
+    if (!rsaPrivateKey) {
+      log.warn('[ChatArchive] syncChatMessages: 未配置RSA私钥，无法解密消息');
+      throw new Error('未配置会话存档RSA私钥，请在服务商配置中设置');
+    }
+
+    // 获取上次拉取的游标位置
+    let cursor = await this.getSyncCursor(config.id, config.tenantId);
+    log.info(`[ChatArchive] syncChatMessages: 开始拉取, configId=${config.id}, cursor=${cursor || '(首次)'}`);
+
+    // 获取用户名称映射
+    const userNameMap = await this.getUserNameMap(config);
+
+    // 获取客户名称映射
+    const customerNameMap = new Map<string, string>();
+    try {
+      const customers = await AppDataSource.query(
+        `SELECT external_user_id, remark, name FROM wecom_customers WHERE wecom_config_id = ? AND tenant_id = ?`,
+        [config.id, config.tenantId || '']
+      );
+      for (const c of customers) {
+        const displayName = c.remark ? (c.name ? `${c.remark}(${c.name})` : c.remark) : (c.name || '');
+        if (displayName) customerNameMap.set(c.external_user_id, displayName);
+      }
+    } catch { /* ignore */ }
+
+    const chatRecordRepo = AppDataSource.getRepository(WecomChatRecord);
+    let hasMore = true;
+    let batchCount = 0;
+    const maxBatches = 10; // 每次同步最多拉取10批（防止单次同步时间过长）
+
+    while (hasMore && batchCount < maxBatches) {
+      batchCount++;
+      try {
+        const result = await WecomApiService.getChatMsgData(chatAccessToken, cursor, 200);
+        const chatdata = result.chatdata;
+        hasMore = result.has_more;
+        cursor = result.next_cursor;
+        totalFetched += chatdata.length;
+
+        if (chatdata.length === 0) break;
+
+        // 解密并保存每条消息
+        for (const item of chatdata) {
+          try {
+            // 检查是否已存在（去重）
+            const existing = await chatRecordRepo.findOne({
+              where: { corpId: config.corpId, msgId: item.msgid }
+            });
+            if (existing) continue;
+
+            // RSA解密 encrypt_random_key → 得到 AES key
+            const decryptedKey = this.rsaDecrypt(rsaPrivateKey, item.encrypt_random_key);
+            if (!decryptedKey) {
+              log.warn(`[ChatArchive] RSA解密失败, msgid=${item.msgid}`);
+              continue;
+            }
+
+            // AES解密 encrypt_chat_msg → 得到明文消息JSON
+            const plainText = this.aesDecrypt(decryptedKey, item.encrypt_chat_msg);
+            if (!plainText) {
+              log.warn(`[ChatArchive] AES解密失败, msgid=${item.msgid}`);
+              continue;
+            }
+
+            // 解析消息JSON
+            let msgData: any;
+            try {
+              msgData = JSON.parse(plainText);
+            } catch {
+              log.warn(`[ChatArchive] 消息JSON解析失败, msgid=${item.msgid}`);
+              continue;
+            }
+
+            // 提取消息字段
+            const msgType = msgData.msgtype || 'unknown';
+            const action = msgData.action || 'send';
+            const fromUserId = msgData.from || '';
+            const toList = msgData.tolist || [];
+            const roomId = msgData.roomid || null;
+            const msgTime = msgData.msgtime || Date.now();
+
+            // 提取消息内容（根据消息类型）
+            let content = '';
+            let mediaKey = '';
+            if (msgType === 'text') {
+              content = JSON.stringify({ text: msgData.text?.content || '' });
+            } else if (msgType === 'image') {
+              content = JSON.stringify({ image: msgData.image || {} });
+              mediaKey = msgData.image?.md5sum || '';
+            } else if (msgType === 'voice') {
+              content = JSON.stringify({ voice: msgData.voice || {} });
+              mediaKey = msgData.voice?.md5sum || '';
+            } else if (msgType === 'video') {
+              content = JSON.stringify({ video: msgData.video || {} });
+              mediaKey = msgData.video?.md5sum || '';
+            } else if (msgType === 'file') {
+              content = JSON.stringify({ file: msgData.file || {} });
+              mediaKey = msgData.file?.md5sum || '';
+            } else if (msgType === 'link') {
+              content = JSON.stringify({ link: msgData.link || {} });
+            } else if (msgType === 'weapp') {
+              content = JSON.stringify({ weapp: msgData.weapp || {} });
+            } else if (msgType === 'chatrecord') {
+              content = JSON.stringify({ chatrecord: msgData.chatrecord || {} });
+            } else if (msgType === 'location') {
+              content = JSON.stringify({ location: msgData.location || {} });
+            } else if (msgType === 'emotion') {
+              content = JSON.stringify({ emotion: msgData.emotion || {} });
+            } else if (msgType === 'revoke') {
+              content = JSON.stringify({ revoke: msgData.revoke || {} });
+            } else if (msgType === 'agree' || msgType === 'disagree') {
+              content = JSON.stringify({ agree: msgData.agree || msgData.disagree || {} });
+            } else {
+              // 其他类型，保存原始数据
+              content = JSON.stringify(msgData[msgType] || msgData);
+            }
+
+            // 判断发送者类型：以 wm/wo 开头的是外部联系人（客户）
+            const isExternalSender = fromUserId.startsWith('wm') || fromUserId.startsWith('wo');
+            const senderType = isExternalSender ? 2 : 1; // 1=员工 2=客户
+
+            // 获取发送者名称
+            let fromUserName = '';
+            if (isExternalSender) {
+              fromUserName = customerNameMap.get(fromUserId) || fromUserId;
+            } else {
+              fromUserName = userNameMap.get(fromUserId) || fromUserId;
+            }
+
+            // 判断接收者类型
+            const receiverType = roomId ? 3 : (toList.some((id: string) => id.startsWith('wm') || id.startsWith('wo')) ? 2 : 1);
+
+            // 保存到数据库
+            const record = chatRecordRepo.create({
+              tenantId: config.tenantId,
+              wecomConfigId: config.id,
+              corpId: config.corpId,
+              msgId: item.msgid,
+              msgType,
+              action,
+              fromUserId,
+              fromUserName,
+              toUserIds: JSON.stringify(toList),
+              roomId,
+              msgTime,
+              content,
+              mediaKey: mediaKey || null,
+              isSensitive: false,
+              senderType,
+              receiverType
+            });
+
+            await chatRecordRepo.save(record);
+            savedCount++;
+          } catch (e: any) {
+            log.warn(`[ChatArchive] 处理消息 ${item.msgid} 失败:`, e.message);
+          }
+        }
+
+        // 保存游标位置（每批保存一次，支持断点续传）
+        if (cursor) {
+          await this.saveSyncCursor(config.id, cursor, config.tenantId);
+        }
+
+        // 批间延迟，避免API限流
+        if (hasMore) {
+          await new Promise(r => setTimeout(r, 200));
+        }
+      } catch (e: any) {
+        log.error(`[ChatArchive] syncChatMessages batch ${batchCount} error:`, e.message);
+        break;
+      }
+    }
+
+    log.info(`[ChatArchive] syncChatMessages 完成: 共拉取 ${totalFetched} 条, 保存 ${savedCount} 条新消息`);
+    return { savedCount, totalFetched };
+  }
+
+  /**
+   * RSA解密 encrypt_random_key
+   * 企微使用 RSA/ECB/PKCS1Padding 加密，密文是 base64 编码
+   */
+  private static rsaDecrypt(privateKeyPem: string, encryptedBase64: string): string | null {
+    try {
+      // 确保私钥格式正确
+      let key = privateKeyPem.trim();
+      if (!key.startsWith('-----BEGIN')) {
+        key = `-----BEGIN RSA PRIVATE KEY-----\n${key}\n-----END RSA PRIVATE KEY-----`;
+      }
+
+      const buffer = Buffer.from(encryptedBase64, 'base64');
+      const decrypted = crypto.privateDecrypt(
+        {
+          key,
+          padding: crypto.constants.RSA_PKCS1_PADDING
+        },
+        buffer
+      );
+      return decrypted.toString('utf8');
+    } catch (e: any) {
+      log.warn('[ChatArchive] RSA解密失败:', e.message);
+      return null;
+    }
+  }
+
+  /**
+   * AES解密 encrypt_chat_msg
+   * 企微使用 AES-256-GCM 加密，密文格式：base64(nonce + ciphertext + tag)
+   * 其中 nonce=12字节, tag=16字节（在密文末尾）
+   */
+  private static aesDecrypt(key: string, encryptedBase64: string): string | null {
+    try {
+      const encryptedBuffer = Buffer.from(encryptedBase64, 'base64');
+
+      // AES-256-GCM: nonce(12) + ciphertext + tag(16)
+      const nonce = encryptedBuffer.subarray(0, 12);
+      const tag = encryptedBuffer.subarray(encryptedBuffer.length - 16);
+      const ciphertext = encryptedBuffer.subarray(12, encryptedBuffer.length - 16);
+
+      // key 可能是 hex 编码或 base64 编码
+      let keyBuffer: Buffer;
+      if (key.length === 64 && /^[0-9a-fA-F]+$/.test(key)) {
+        keyBuffer = Buffer.from(key, 'hex');
+      } else if (key.length === 44 && /^[A-Za-z0-9+/=]+$/.test(key)) {
+        keyBuffer = Buffer.from(key, 'base64');
+      } else {
+        // 尝试直接作为 utf8
+        keyBuffer = Buffer.from(key, 'utf8').subarray(0, 32);
+      }
+
+      const decipher = crypto.createDecipheriv('aes-256-gcm', keyBuffer, nonce);
+      decipher.setAuthTag(tag);
+
+      let decrypted = decipher.update(ciphertext);
+      decrypted = Buffer.concat([decrypted, decipher.final()]);
+
+      return decrypted.toString('utf8');
+    } catch (e: any) {
+      // 尝试 AES-256-CBC 模式（某些旧版本企微可能使用）
+      try {
+        return this.aesDecryptCBC(key, encryptedBase64);
+      } catch {
+        log.warn('[ChatArchive] AES解密失败(GCM+CBC均失败):', e.message);
+        return null;
+      }
+    }
+  }
+
+  /**
+   * AES-256-CBC 解密（备用模式）
+   */
+  private static aesDecryptCBC(key: string, encryptedBase64: string): string | null {
+    try {
+      const encryptedBuffer = Buffer.from(encryptedBase64, 'base64');
+
+      // CBC模式: IV(16) + ciphertext
+      const iv = encryptedBuffer.subarray(0, 16);
+      const ciphertext = encryptedBuffer.subarray(16);
+
+      let keyBuffer: Buffer;
+      if (key.length === 64 && /^[0-9a-fA-F]+$/.test(key)) {
+        keyBuffer = Buffer.from(key, 'hex');
+      } else if (key.length === 44 && /^[A-Za-z0-9+/=]+$/.test(key)) {
+        keyBuffer = Buffer.from(key, 'base64');
+      } else {
+        keyBuffer = Buffer.from(key, 'utf8').subarray(0, 32);
+      }
+
+      const decipher = crypto.createDecipheriv('aes-256-cbc', keyBuffer, iv);
+      decipher.setAutoPadding(true);
+
+      let decrypted = decipher.update(ciphertext);
+      decrypted = Buffer.concat([decrypted, decipher.final()]);
+
+      return decrypted.toString('utf8');
+    } catch {
+      return null;
+    }
+  }
 }
 
-export default WecomChatArchiveService;
 
+
+export default WecomChatArchiveService;
