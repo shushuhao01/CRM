@@ -77,7 +77,8 @@ const componentMap: Record<string, ReturnType<typeof defineAsyncComponent>> = {
   'acquisition': defineAsyncComponent(() => import('./Acquisition.vue')),
   'contact-way': defineAsyncComponent(() => import('./ContactWay.vue')),
   'chat-archive': defineAsyncComponent(() => import('./ChatArchive.vue')),
-  'ai-assistant': defineAsyncComponent(() => import('./AiAssistant.vue')),
+  // AI助手暂停开发
+  // 'ai-assistant': defineAsyncComponent(() => import('./AiAssistant.vue')),
   'service': defineAsyncComponent(() => import('./Service.vue')),
   'sidebar': defineAsyncComponent(() => import('./Sidebar.vue')),
   'payment': defineAsyncComponent(() => import('./Payment.vue')),
@@ -92,7 +93,8 @@ const allMenuItems = [
   { name: 'acquisition', label: '获客助手', icon: '🎯', configId: 'wecom-acquisition' },
   { name: 'contact-way', label: '渠道活码', icon: '📎', configId: 'wecom-contact-way' },
   { name: 'chat-archive', label: '会话存档', icon: '💬', configId: 'wecom-chat-archive' },
-  { name: 'ai-assistant', label: 'AI助手', icon: '🤖', configId: 'wecom-ai-assistant' },
+  // AI助手暂停开发
+  // { name: 'ai-assistant', label: 'AI助手', icon: '🤖', configId: 'wecom-ai-assistant' },
   { name: 'service', label: '微信客服', icon: '🎧', configId: 'wecom-service' },
   { name: 'sidebar', label: '侧边栏', icon: '📱', configId: 'wecom-sidebar' },
   { name: 'payment', label: '对外收款', icon: '💰', configId: 'wecom-payment' },

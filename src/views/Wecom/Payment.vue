@@ -152,10 +152,10 @@
           <PaymentRefundStats />
         </el-tab-pane>
 
-        <!-- Tab 5: 收款码登记 -->
-        <el-tab-pane label="收款码登记" name="qrcode" lazy>
+        <!-- 收款码管理暂停，后续版本恢复 -->
+        <!-- <el-tab-pane label="收款码登记" name="qrcode" lazy>
           <PaymentQrcodeManager :config-id="query.configId" />
-        </el-tab-pane>
+        </el-tab-pane> -->
 
         <!-- Tab 6: 收款设置（仅管理员可见） -->
         <el-tab-pane v-if="isAdminRole" label="收款设置" name="settings" lazy>

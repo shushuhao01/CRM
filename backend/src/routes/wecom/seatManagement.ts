@@ -124,7 +124,8 @@ router.get('/chat-archive/seats', authenticateToken, async (req: Request, res: R
           };
         })),
         expireDate: setting?.expireDate || null,
-        status: maxUsers > 0 ? 'active' : (setting?.status || 'inactive')
+        status: maxUsers > 0 ? 'active' : (setting?.status || 'inactive'),
+        visibility: setting?.visibility || 'all'
       }
     });
   } catch (error: any) {

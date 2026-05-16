@@ -161,18 +161,20 @@
       </el-form>
     </div>
 
-    <!-- Step 4: 自动标签 -->
+    <!-- Step 4: 自动标签（映射企业微信企业客户标签） -->
     <div v-show="currentStep === 3" class="step-content">
       <el-form label-width="100px">
         <el-form-item label="启用自动标签">
-          <el-switch v-model="form.autoTagEnabled" active-text="开启" inactive-text="关闭" />
+          <el-switch v-model="form.autoTagEnabled" active-text="开启" inactive-text="关闭" @change="(val: boolean) => { if (val) loadCorpTags() }" />
         </el-form-item>
         <template v-if="form.autoTagEnabled">
           <el-form-item label="始终打标签">
-            <el-select v-model="form.autoTags" multiple filterable allow-create default-first-option placeholder="选择或输入标签" style="width: 100%">
-              <el-option v-for="tag in availableTags" :key="tag" :label="tag" :value="tag" />
+            <el-select v-model="form.autoTags" multiple filterable placeholder="选择或输入标签" style="width: 100%" v-loading="tagLoading">
+              <el-option-group v-for="group in corpTagGroups" :key="group.id" :label="group.groupName">
+                <el-option v-for="tag in group.tags" :key="tag.id" :label="tag.name" :value="tag.id" />
+              </el-option-group>
             </el-select>
-            <div class="form-tip">所有通过此链接添加的客户都会自动打上所选标签</div>
+            <div class="form-tip">标签来自企业微信「企业客户标签」，所有通过此链接添加的客户都会自动打上所选标签</div>
           </el-form-item>
           <el-form-item label="按渠道标签">
             <el-switch v-model="form.channelTagEnabled" active-text="开启" />
@@ -200,7 +202,7 @@
         </el-descriptions-item>
         <el-descriptions-item label="自动标签">
           <template v-if="form.autoTagEnabled && form.autoTags.length > 0">
-            <el-tag v-for="t in form.autoTags" :key="t" size="small" style="margin-right: 4px">{{ t }}</el-tag>
+            <el-tag v-for="t in form.autoTags" :key="t" size="small" style="margin-right: 4px">{{ getTagName(t) }}</el-tag>
           </template>
           <span v-else>关闭</span>
         </el-descriptions-item>
@@ -235,19 +237,23 @@
       </template>
     </el-dialog>
 
-    <!-- 按部门选择弹窗 -->
-    <el-dialog v-model="showDeptSelector" title="按部门添加" width="460px" append-to-body>
+    <!-- 按部门选择弹窗（企业微信组织架构） -->
+    <el-dialog v-model="showDeptSelector" title="按部门添加" width="460px" append-to-body @open="loadWecomDepartments">
       <el-alert type="info" :closable="false" style="margin-bottom: 12px">
         选择部门后，该部门下所有成员将被添加为接待人
       </el-alert>
-      <el-select v-model="selectedDept" placeholder="选择部门" style="width: 100%">
-        <el-option label="销售部" value="sales" />
-        <el-option label="客服部" value="service" />
-        <el-option label="技术部" value="tech" />
+      <el-select v-model="selectedDept" placeholder="选择企业微信部门" style="width: 100%" v-loading="deptLoading" filterable>
+        <el-option
+          v-for="dept in wecomDepartments"
+          :key="dept.id"
+          :label="dept.name"
+          :value="String(dept.id)"
+        />
       </el-select>
+      <el-empty v-if="!deptLoading && wecomDepartments.length === 0" :image-size="40" description="未获取到企业微信部门，请先同步通讯录" />
       <template #footer>
         <el-button @click="showDeptSelector = false">取消</el-button>
-        <el-button type="primary" @click="showDeptSelector = false">确定添加</el-button>
+        <el-button type="primary" @click="addDeptMembers" :disabled="!selectedDept">确定添加</el-button>
       </template>
     </el-dialog>
 
@@ -267,9 +273,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, reactive, watch } from 'vue'
+import { ref, computed, reactive, watch, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Plus, OfficeBuilding, WarningFilled } from '@element-plus/icons-vue'
+import { getWecomDepartments, getWecomUsers, getAcquisitionTags } from '@/api/wecom'
 
 const props = defineProps<{
   modelValue: boolean
@@ -277,6 +284,7 @@ const props = defineProps<{
   wecomUserOptions: any[]
   getMemberName: (userId: string) => string
   submitting: boolean
+  configId?: number | null
 }>()
 
 const emit = defineEmits(['update:modelValue', 'submit'])
@@ -302,7 +310,70 @@ const welcomeVariables = [
   { label: '{当前时间}', value: '{当前时间}' }
 ]
 
-const availableTags = ['VIP客户', '意向客户', '潜在客户', '网站来源', '广告来源', '活动来源', '转介绍']
+// 企业微信部门列表（从API获取）
+const wecomDepartments = ref<Array<{ id: number; name: string; parentid: number }>>([])
+const deptLoading = ref(false)
+
+const loadWecomDepartments = async () => {
+  if (!props.configId) return
+  deptLoading.value = true
+  try {
+    const res: any = await getWecomDepartments(props.configId)
+    const data = res?.data || res
+    wecomDepartments.value = Array.isArray(data) ? data : []
+  } catch (e) {
+    console.error('[LinkWizard] Load departments error:', e)
+  } finally {
+    deptLoading.value = false
+  }
+}
+
+const addDeptMembers = async () => {
+  if (!selectedDept.value || !props.configId) return
+  try {
+    const res: any = await getWecomUsers(props.configId, Number(selectedDept.value), true)
+    const users = Array.isArray(res) ? res : (res?.data || [])
+    for (const u of users) {
+      const uid = u.userid || u.userId
+      if (uid && !form.userWeights.some(w => w.userId === uid)) {
+        form.userWeights.push({ userId: uid, weight: 5 })
+      }
+    }
+    ElMessage.success(`已添加 ${users.length} 名成员`)
+  } catch (e: any) {
+    ElMessage.error(e.message || '获取部门成员失败')
+  }
+  showDeptSelector.value = false
+  selectedDept.value = ''
+}
+
+// 企业微信企业客户标签（从API获取）
+const corpTagGroups = ref<Array<{ id: string; groupName: string; tags: Array<{ id: string; name: string }> }>>([])
+const tagLoading = ref(false)
+
+const loadCorpTags = async () => {
+  if (!props.configId) return
+  tagLoading.value = true
+  try {
+    const res: any = await getAcquisitionTags(props.configId)
+    const data = res?.data || res
+    corpTagGroups.value = Array.isArray(data) ? data : []
+  } catch (e) {
+    console.error('[LinkWizard] Load corp tags error:', e)
+  } finally {
+    tagLoading.value = false
+  }
+}
+
+const availableTagOptions = computed(() => {
+  const tags: Array<{ id: string; name: string; groupName: string }> = []
+  for (const group of corpTagGroups.value) {
+    for (const tag of (group.tags || [])) {
+      tags.push({ id: tag.id, name: tag.name, groupName: group.groupName })
+    }
+  }
+  return tags
+})
 
 const defaultForm = () => ({
   linkName: '',
@@ -374,18 +445,30 @@ const prevStep = () => {
   if (currentStep.value > 0) currentStep.value--
 }
 
+const getTagName = (tagId: string) => {
+  for (const group of corpTagGroups.value) {
+    const tag = group.tags?.find(t => t.id === tagId)
+    if (tag) return tag.name
+  }
+  return tagId
+}
+
 const handleSubmit = () => {
   const submitData = {
     linkName: form.linkName,
     state: form.state,
+    assignMode: form.assignMode,
     userIds: form.userWeights.map(u => u.userId),
+    userWeights: form.assignMode === 'weighted'
+      ? form.userWeights.map(u => ({ userId: u.userId, weight: u.weight }))
+      : undefined,
     welcomeMsg: form.welcomeEnabled ? form.welcomeMsg : '',
     welcomeConfig: form.welcomeEnabled ? JSON.stringify({
       text: form.welcomeMsg,
       mediaType: form.welcomeMediaType,
       mediaContent: form.welcomeMediaContent
     }) : null,
-    autoTags: form.autoTagEnabled ? JSON.stringify(form.autoTags) : null,
+    tagIds: form.autoTagEnabled ? form.autoTags : undefined,
     autoGroupConfig: form.autoGroupEnabled ? JSON.stringify({
       enabled: true,
       templateId: form.groupTemplateId

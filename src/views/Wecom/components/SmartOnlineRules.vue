@@ -182,7 +182,8 @@ watch(() => [props.modelValue, props.linkId], async ([show, linkId]) => {
   }
   try {
     const res: any = await getAcquisitionSmartRules(linkId as number)
-    if (res) Object.assign(rules, res)
+    const data = res?.data || res
+    if (data) Object.assign(rules, data)
   } catch (e) {
     console.error('[SmartOnlineRules] Load error:', e)
   }

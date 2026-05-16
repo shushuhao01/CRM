@@ -342,6 +342,9 @@ export interface AcquisitionUsage {
   totalClicks: number
   totalAdds: number
   quotaLimit: number
+  quotaUsed?: number
+  quotaBalance?: number
+  quotaList?: any[]
   usagePercent: number
   warningLevel: 'normal' | 'warning' | 'danger'
 }

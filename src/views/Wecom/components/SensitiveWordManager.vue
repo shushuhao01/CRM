@@ -1,280 +1,251 @@
 <template>
   <div class="sensitive-word-manager">
-    <!-- 会话存档未开启提示 -->
-    <el-alert
-      v-if="archiveStatus === 'unchecked'"
-      type="info"
-      :closable="false"
-      style="margin-bottom: 16px"
-    >
-      正在检测会话存档状态...
-    </el-alert>
-    <el-alert
-      v-else-if="archiveStatus === 'disabled'"
-      type="warning"
-      :closable="false"
-      style="margin-bottom: 16px"
-      show-icon
-    >
-      <template #title>
-        <span style="font-weight:600">会话存档未开启</span>
-      </template>
-      <div>
-        敏感词扫描依赖会话存档数据，请先前往
-        <el-button type="primary" link @click="$emit('goArchiveSettings')">会话存档设置</el-button>
-        开启后再使用此功能。
-      </div>
+    <!-- 会话存档状态检测 -->
+    <el-alert v-if="archiveStatus === 'unchecked'" type="info" :closable="false" style="margin-bottom: 16px">正在检测会话存档状态...</el-alert>
+    <el-alert v-else-if="archiveStatus === 'disabled'" type="warning" :closable="false" style="margin-bottom: 16px" show-icon>
+      <template #title><span style="font-weight:600">会话存档未开启</span></template>
+      <div>敏感词扫描依赖会话存档数据，请先前往 <el-button type="primary" link @click="$emit('goArchiveSettings')">会话存档设置</el-button> 开启后再使用。</div>
     </el-alert>
 
-    <!-- 正常内容区域（仅在会话存档开启后显示） -->
     <template v-if="archiveStatus === 'enabled'">
-      <el-alert type="info" :closable="false" style="margin-bottom: 16px">
-        配置敏感词后，可自动扫描聊天记录中包含敏感词的消息并标记。支持按时间范围筛选统计触发次数。
-      </el-alert>
+      <!-- 统计汇总卡片 -->
+      <div class="stat-cards-row">
+        <div class="stat-card-item">
+          <div class="stat-card-value">{{ sensitiveWords.length }}</div>
+          <div class="stat-card-label">敏感词数量</div>
+        </div>
+        <div class="stat-card-item warn">
+          <div class="stat-card-value">{{ scanResult?.scanned || 0 }}</div>
+          <div class="stat-card-label">已扫描记录</div>
+        </div>
+        <div class="stat-card-item danger">
+          <div class="stat-card-value">{{ scanResult?.marked || 0 }}</div>
+          <div class="stat-card-label">标记敏感</div>
+        </div>
+        <div class="stat-card-item">
+          <div class="stat-card-value">{{ sensitiveRate }}</div>
+          <div class="stat-card-label">敏感比率</div>
+        </div>
+        <div class="stat-card-item info">
+          <div class="stat-card-value">{{ hitTotal }}</div>
+          <div class="stat-card-label">触发记录</div>
+        </div>
+      </div>
 
-      <el-row :gutter="20">
-        <!-- 左侧：敏感词编辑 -->
-        <el-col :span="10">
-          <el-card shadow="never" class="sw-card">
-            <template #header>
-              <div class="sw-card-header">
-                <span class="sw-card-title">📝 敏感词列表</span>
-                <el-tag size="small" type="info">{{ sensitiveWords.length }} 个</el-tag>
-              </div>
-            </template>
-            <el-input
-              v-model="sensitiveWordsText"
-              type="textarea"
-              :rows="14"
-              placeholder="每行输入一个敏感词，例如：&#10;退款&#10;投诉&#10;骗子&#10;举报"
-            />
-            <div class="sw-actions">
-              <el-button type="primary" @click="saveSensitiveWordsHandler" :loading="savingSensitiveWords">
-                💾 保存敏感词
-              </el-button>
-              <el-button type="warning" @click="scanSensitiveWordsHandler" :loading="scanningSensitiveWords">
-                🔍 扫描聊天记录
-              </el-button>
-            </div>
+      <!-- 操作栏 -->
+      <div class="action-bar">
+        <el-button type="warning" @click="scanSensitiveWordsHandler" :loading="scanningSensitiveWords">扫描聊天记录</el-button>
+        <el-button type="primary" @click="showWordDialog = true">新建敏感词</el-button>
+        <el-button @click="showWordListDialog = true">敏感词表 ({{ sensitiveWords.length }})</el-button>
+        <div style="flex: 1" />
+        <el-select v-model="hitDateRange" placeholder="时间范围" style="width: 120px" @change="fetchHitRecords">
+          <el-option label="今日" value="today" />
+          <el-option label="近7天" value="7d" />
+          <el-option label="近30天" value="30d" />
+          <el-option label="全部" value="all" />
+        </el-select>
+      </div>
 
-            <!-- 常用模板 -->
-            <div class="sw-templates">
-              <div class="sw-templates-title">常用敏感词模板（点击添加）</div>
-              <div class="sw-templates-tags">
-                <el-tag
-                  v-for="word in commonSensitiveWords"
-                  :key="word"
-                  size="small"
-                  class="sw-tag-clickable"
-                  @click="addSensitiveWord(word)"
-                >+ {{ word }}</el-tag>
-              </div>
-            </div>
-          </el-card>
-        </el-col>
+      <!-- 触发记录列表 -->
+      <el-table :data="hitRecords" v-loading="hitLoading" stripe>
+        <el-table-column label="触发内容" min-width="220" show-overflow-tooltip>
+          <template #default="{ row }">
+            <span class="hit-content">{{ parseContent(row.content) }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="发送方" width="110">
+          <template #default="{ row }">
+            <span>{{ row.fromUserName || row.fromUserId }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="接收方" width="110">
+          <template #default="{ row }">
+            <span>{{ parseToUser(row.toUserIds) }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="消息类型" width="80">
+          <template #default="{ row }">
+            <el-tag size="small" type="info">{{ row.msgType }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="时间" width="160">
+          <template #default="{ row }">{{ formatMsgTime(row.msgTime) }}</template>
+        </el-table-column>
+        <el-table-column label="操作" width="160" fixed="right">
+          <template #default="{ row }">
+            <el-button type="primary" link size="small" @click="handleViewContext(row)">查看上下文</el-button>
+            <el-button type="danger" link size="small" @click="handleMarkAudit(row)">标记审计</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
 
-        <!-- 右侧：统计和触发记录 -->
-        <el-col :span="14">
-          <!-- 扫描结果概览 -->
-          <el-card shadow="never" class="sw-card" style="margin-bottom:16px">
-            <template #header>
-              <span class="sw-card-title">📊 扫描结果概览</span>
-            </template>
-            <div v-if="scanResult" class="sw-scan-stats">
-              <div class="sw-scan-stat">
-                <div class="sw-scan-val">{{ scanResult.scanned }}</div>
-                <div class="sw-scan-label">已扫描记录</div>
-              </div>
-              <div class="sw-scan-stat">
-                <div class="sw-scan-val text-danger">{{ scanResult.marked }}</div>
-                <div class="sw-scan-label">标记敏感</div>
-              </div>
-              <div class="sw-scan-stat">
-                <div class="sw-scan-val">{{ scanResult.scanned > 0 ? ((scanResult.marked / scanResult.scanned) * 100).toFixed(1) + '%' : '0%' }}</div>
-                <div class="sw-scan-label">敏感比率</div>
-              </div>
-            </div>
-            <div v-else class="sw-scan-empty">
-              保存敏感词后点击"扫描聊天记录"开始检测
-            </div>
-          </el-card>
-
-          <!-- 触发次数统计 -->
-          <el-card shadow="never" class="sw-card">
-            <template #header>
-              <div class="sw-card-header">
-                <span class="sw-card-title">🔥 敏感词触发统计</span>
-              </div>
-            </template>
-
-            <!-- 日期筛选 -->
-            <div class="sw-filter-bar">
-              <div class="sw-quick-dates">
-                <el-button
-                  v-for="opt in triggerDateOptions"
-                  :key="opt.value"
-                  :type="triggerDateRange === opt.value ? 'primary' : 'default'"
-                  size="small"
-                  @click="handleTriggerDateChange(opt.value)"
-                >{{ opt.label }}</el-button>
-              </div>
-              <el-date-picker v-model="triggerStartDate" type="date" placeholder="开始日期" value-format="YYYY-MM-DD" size="small" style="width:130px" />
-              <span style="color:#909399;font-size:12px">至</span>
-              <el-date-picker v-model="triggerEndDate" type="date" placeholder="结束日期" value-format="YYYY-MM-DD" size="small" style="width:130px" />
-              <el-button type="primary" size="small" @click="handleCustomTriggerQuery" :disabled="!triggerStartDate || !triggerEndDate">查询</el-button>
-            </div>
-
-            <!-- 触发排行表 -->
-            <el-table :data="triggerStats" stripe size="small" max-height="360" v-loading="triggerLoading">
-              <el-table-column label="排名" width="55" align="center">
-                <template #default="{ $index }">
-                  <span :class="['trigger-rank', (triggerPage - 1) * triggerPageSize + $index < 3 ? 'top' : '']">{{ (triggerPage - 1) * triggerPageSize + $index + 1 }}</span>
-                </template>
-              </el-table-column>
-              <el-table-column prop="word" label="敏感词" min-width="100">
-                <template #default="{ row }">
-                  <el-tag type="danger" size="small" effect="plain">{{ row.word }}</el-tag>
-                </template>
-              </el-table-column>
-              <el-table-column prop="triggerCount" label="触发次数" width="100" sortable />
-              <el-table-column prop="lastTriggeredAt" label="最近触发" width="140" />
-              <el-table-column label="趋势" width="80" align="center">
-                <template #default="{ row }">
-                  <span v-if="row.trend > 0" style="color:#EF4444;font-weight:600">↑{{ row.trend }}</span>
-                  <span v-else-if="row.trend < 0" style="color:#10B981;font-weight:600">↓{{ Math.abs(row.trend) }}</span>
-                  <span v-else style="color:#909399">-</span>
-                </template>
-              </el-table-column>
-            </el-table>
-
-            <!-- 分页 -->
-            <div class="sw-pagination" v-if="triggerTotal > 0">
-              <el-pagination
-                v-model:current-page="triggerPage"
-                v-model:page-size="triggerPageSize"
-                :total="triggerTotal"
-                :page-sizes="[10, 20, 50]"
-                layout="total, sizes, prev, pager, next"
-                small
-                @size-change="fetchTriggerStats"
-                @current-change="fetchTriggerStats"
-              />
-            </div>
-            <div v-if="triggerStats.length === 0 && !triggerLoading" style="text-align:center;padding:20px;color:#909399;font-size:13px">
-              暂无触发数据，扫描后将自动统计
-            </div>
-          </el-card>
-        </el-col>
-      </el-row>
+      <div class="pagination-bar">
+        <span class="page-total">共 {{ hitTotal }} 条触发记录</span>
+        <el-pagination
+          v-model:current-page="hitPage"
+          v-model:page-size="hitPageSize"
+          :page-sizes="[10, 20, 50, 100]"
+          :total="hitTotal"
+          layout="sizes, prev, pager, next, jumper"
+          small
+          background
+          @current-change="fetchHitRecords"
+          @size-change="() => { hitPage = 1; fetchHitRecords() }"
+        />
+      </div>
     </template>
+
+    <!-- 新建敏感词弹窗 -->
+    <el-dialog v-model="showWordDialog" title="新建敏感词" width="500px">
+      <el-input v-model="newWordsText" type="textarea" :rows="6" placeholder="每行输入一个敏感词" />
+      <div class="templates-section">
+        <div class="templates-title">常用模板（点击添加）</div>
+        <div class="templates-tags">
+          <el-tag v-for="w in commonWords" :key="w" size="small" class="tag-clickable" @click="addWord(w)">+ {{ w }}</el-tag>
+        </div>
+      </div>
+      <template #footer>
+        <el-button @click="showWordDialog = false">取消</el-button>
+        <el-button type="primary" @click="saveNewWords" :loading="savingSensitiveWords">保存</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 敏感词表弹窗 -->
+    <el-dialog v-model="showWordListDialog" title="敏感词列表" width="600px">
+      <el-table :data="triggerStats" stripe size="small" max-height="400" v-loading="triggerLoading">
+        <el-table-column label="敏感词" min-width="120">
+          <template #default="{ row }"><el-tag type="danger" size="small" effect="plain">{{ row.word }}</el-tag></template>
+        </el-table-column>
+        <el-table-column prop="triggerCount" label="触发次数" width="100" sortable />
+        <el-table-column prop="lastTriggeredAt" label="最近触发" width="160" />
+        <el-table-column label="操作" width="80">
+          <template #default="{ row }"><el-button type="danger" link size="small" @click="removeWord(row.word)">删除</el-button></template>
+        </el-table-column>
+      </el-table>
+      <template #footer>
+        <el-button @click="showWordListDialog = false">关闭</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 审计标记弹窗 -->
+    <el-dialog v-model="showAuditDialog" title="标记审计" width="480px">
+      <el-form label-width="80px">
+        <el-form-item label="触发内容"><div class="audit-preview">{{ auditTarget?.content ? parseContent(auditTarget.content) : '-' }}</div></el-form-item>
+        <el-form-item label="风险类型">
+          <el-select v-model="auditForm.riskType" style="width: 100%">
+            <el-option label="敏感词" value="sensitive_word" />
+            <el-option label="合规问题" value="compliance" />
+            <el-option label="其他" value="other" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="备注"><el-input v-model="auditForm.remark" type="textarea" :rows="2" placeholder="审计备注" /></el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="showAuditDialog = false">取消</el-button>
+        <el-button type="danger" @click="submitAudit" :loading="submittingAudit">提交</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import {
-  getSensitiveWords,
-  saveSensitiveWords,
-  scanChatRecordsForSensitiveWords,
-  getSensitiveWordTriggerStats,
-  getChatArchiveStatus
+  getSensitiveWords, saveSensitiveWords, scanChatRecordsForSensitiveWords,
+  getSensitiveWordTriggerStats, getSensitiveHitRecords, getChatArchiveStatus, createAuditMark
 } from '@/api/wecom'
-import type { ScanResult } from '../types'
 
 defineOptions({ name: 'SensitiveWordManager' })
+const props = defineProps<{ configId: number | null }>()
+defineEmits<{ (e: 'goArchiveSettings'): void }>()
 
-const props = defineProps<{
-  configId: number | null
-}>()
-
-defineEmits<{
-  (e: 'goArchiveSettings'): void
-}>()
-
-// 会话存档状态
 const archiveStatus = ref<'unchecked' | 'enabled' | 'disabled'>('unchecked')
-
 const sensitiveWords = ref<string[]>([])
-const sensitiveWordsText = ref('')
 const savingSensitiveWords = ref(false)
 const scanningSensitiveWords = ref(false)
-const scanResult = ref<ScanResult | null>(null)
+const scanResult = ref<{ scanned: number; marked: number } | null>(null)
 
-// 触发统计 - 带分页
-const triggerDateRange = ref('7d')
-const triggerStartDate = ref('')
-const triggerEndDate = ref('')
+const showWordDialog = ref(false)
+const showWordListDialog = ref(false)
+const newWordsText = ref('')
+
+const hitLoading = ref(false)
+const hitRecords = ref<any[]>([])
+const hitTotal = ref(0)
+const hitPage = ref(1)
+const hitPageSize = ref(10)
+const hitDateRange = ref('7d')
+
 const triggerLoading = ref(false)
 const triggerStats = ref<any[]>([])
-const triggerPage = ref(1)
-const triggerPageSize = ref(10)
-const triggerTotal = ref(0)
 
-const triggerDateOptions = [
-  { label: '今日', value: 'today' },
-  { label: '7天', value: '7d' },
-  { label: '30天', value: '30d' },
-]
+const showAuditDialog = ref(false)
+const submittingAudit = ref(false)
+const auditTarget = ref<any>(null)
+const auditForm = ref({ riskType: 'sensitive_word', remark: '' })
 
-const commonSensitiveWords = [
-  '退款', '投诉', '举报', '骗子', '垃圾', '骗人',
-  '工商', '消协', '315', '律师', '法院', '报警',
-  '私下转账', '个人账户', '红包', '返现', '回扣'
-]
+const commonWords = ['退款', '投诉', '举报', '骗子', '垃圾', '工商', '消协', '315', '律师', '法院', '报警', '私下转账', '个人账户', '红包', '返现', '回扣']
 
-/** 检查会话存档是否开启 */
+const sensitiveRate = computed(() => {
+  if (!scanResult.value || !scanResult.value.scanned) return '0%'
+  return ((scanResult.value.marked / scanResult.value.scanned) * 100).toFixed(1) + '%'
+})
+
+const parseContent = (content: string) => {
+  if (!content) return '-'
+  try { const obj = JSON.parse(content); return obj.text || obj.content || content } catch { return content }
+}
+const parseToUser = (ids: string) => {
+  if (!ids) return '-'
+  try { const arr = JSON.parse(ids); return Array.isArray(arr) ? arr.join(', ') : ids } catch { return ids }
+}
+const formatMsgTime = (t: number) => t ? new Date(t).toLocaleString('zh-CN') : '-'
+
 const checkArchiveStatus = async () => {
-  archiveStatus.value = 'unchecked'
   try {
     const res: any = await getChatArchiveStatus()
-    if (res && (res.enabled || res.isEnabled || res.status === 'enabled' || res.authorized === true)) {
-      archiveStatus.value = 'enabled'
-    } else {
-      archiveStatus.value = 'disabled'
-    }
-  } catch {
-    // 接口异常时默认认为已开启，避免阻断使用
-    archiveStatus.value = 'enabled'
-  }
+    const data = res?.data || res
+    archiveStatus.value = (data?.enabled || data?.isEnabled || data?.authorized) ? 'enabled' : 'disabled'
+  } catch { archiveStatus.value = 'enabled' }
 }
 
 const fetchSensitiveWords = async () => {
   try {
     const res: any = await getSensitiveWords()
-    const words = Array.isArray(res) ? res : []
-    sensitiveWords.value = words
-    sensitiveWordsText.value = words.join('\n')
-  } catch (e) {
-    console.error('[SensitiveWordManager] Fetch sensitive words error:', e)
-  }
+    const data = res?.data || res
+    sensitiveWords.value = Array.isArray(data) ? data : []
+  } catch { /* ignore */ }
 }
 
-const addSensitiveWord = (word: string) => {
-  const current = sensitiveWordsText.value.trim()
-  const lines = current ? current.split('\n') : []
-  if (!lines.includes(word)) {
-    lines.push(word)
-    sensitiveWordsText.value = lines.join('\n')
-  }
+const addWord = (w: string) => {
+  const lines = newWordsText.value.trim() ? newWordsText.value.trim().split('\n') : []
+  if (!lines.includes(w)) { lines.push(w); newWordsText.value = lines.join('\n') }
 }
 
-const saveSensitiveWordsHandler = async () => {
-  const words = sensitiveWordsText.value
-    .split('\n')
-    .map(w => w.trim())
-    .filter(Boolean)
-
+const saveNewWords = async () => {
+  const newWords = newWordsText.value.split('\n').map(w => w.trim()).filter(Boolean)
+  const merged = [...new Set([...sensitiveWords.value, ...newWords])]
   savingSensitiveWords.value = true
   try {
-    const res: any = await saveSensitiveWords(words)
-    sensitiveWords.value = Array.isArray(res) ? res : words
-    ElMessage.success('已保存 ' + words.length + ' 个敏感词')
-  } catch (e: any) {
-    ElMessage.error(e.message || '保存失败')
-  } finally {
-    savingSensitiveWords.value = false
-  }
+    await saveSensitiveWords(merged)
+    sensitiveWords.value = merged
+    ElMessage.success(`已保存 ${merged.length} 个敏感词`)
+    showWordDialog.value = false
+    newWordsText.value = ''
+    fetchTriggerStats()
+  } catch (e: any) { ElMessage.error(e?.message || '保存失败') }
+  finally { savingSensitiveWords.value = false }
+}
+
+const removeWord = async (word: string) => {
+  const updated = sensitiveWords.value.filter(w => w !== word)
+  try {
+    await saveSensitiveWords(updated)
+    sensitiveWords.value = updated
+    ElMessage.success(`已删除敏感词「${word}」`)
+    fetchTriggerStats()
+  } catch (e: any) { ElMessage.error(e?.message || '删除失败') }
 }
 
 const scanSensitiveWordsHandler = async () => {
@@ -282,75 +253,83 @@ const scanSensitiveWordsHandler = async () => {
   scanResult.value = null
   try {
     const res: any = await scanChatRecordsForSensitiveWords(props.configId || undefined)
-    scanResult.value = {
-      scanned: res?.scanned || 0,
-      marked: res?.marked || 0
-    }
-    ElMessage.success(res?.message || '扫描完成')
-    triggerPage.value = 1
+    const data = res?.data || res
+    scanResult.value = { scanned: data?.scanned || 0, marked: data?.marked || 0 }
+    ElMessage.success(data?.message || res?.message || '扫描完成')
+    fetchHitRecords()
     fetchTriggerStats()
-  } catch (e: any) {
-    ElMessage.error(e.message || '扫描失败')
-  } finally {
-    scanningSensitiveWords.value = false
-  }
+  } catch (e: any) { ElMessage.error(e?.message || '扫描失败') }
+  finally { scanningSensitiveWords.value = false }
 }
 
-const handleTriggerDateChange = (val: string) => {
-  triggerDateRange.value = val
-  triggerStartDate.value = ''
-  triggerEndDate.value = ''
-  triggerPage.value = 1
-  fetchTriggerStats()
+const fetchHitRecords = async () => {
+  hitLoading.value = true
+  try {
+    const params: any = { page: hitPage.value, pageSize: hitPageSize.value }
+    if (props.configId) params.configId = props.configId
+    if (hitDateRange.value !== 'all') {
+      const now = new Date()
+      if (hitDateRange.value === 'today') params.startDate = now.toISOString().split('T')[0]
+      else if (hitDateRange.value === '7d') params.startDate = new Date(now.getTime() - 7 * 86400000).toISOString().split('T')[0]
+      else if (hitDateRange.value === '30d') params.startDate = new Date(now.getTime() - 30 * 86400000).toISOString().split('T')[0]
+    }
+    const res: any = await getSensitiveHitRecords(params)
+    const data = res?.data || res
+    hitRecords.value = data?.list || []
+    hitTotal.value = data?.total || 0
+  } catch { hitRecords.value = []; hitTotal.value = 0 }
+  finally { hitLoading.value = false }
 }
 
-const handleCustomTriggerQuery = () => {
-  triggerDateRange.value = 'custom'
-  triggerPage.value = 1
-  fetchTriggerStats()
-}
-
-/** 从后端API获取真实触发统计数据（分页） */
 const fetchTriggerStats = async () => {
   triggerLoading.value = true
   try {
-    const params: Record<string, any> = {
-      page: triggerPage.value,
-      pageSize: triggerPageSize.value
-    }
-    if (props.configId) {
-      params.configId = props.configId
-    }
-    if (triggerDateRange.value === 'custom' && triggerStartDate.value && triggerEndDate.value) {
-      params.startDate = triggerStartDate.value
-      params.endDate = triggerEndDate.value
-    } else if (triggerDateRange.value !== 'custom') {
-      params.dateRange = triggerDateRange.value
-    }
-
+    const params: any = { page: 1, pageSize: 100 }
+    if (props.configId) params.configId = props.configId
     const res: any = await getSensitiveWordTriggerStats(params)
-    if (res && res.list) {
-      triggerStats.value = res.list
-      triggerTotal.value = res.total || 0
-    } else if (Array.isArray(res)) {
-      triggerStats.value = res
-      triggerTotal.value = res.length
-    } else {
-      triggerStats.value = []
-      triggerTotal.value = 0
-    }
-  } catch {
-    triggerStats.value = []
-    triggerTotal.value = 0
-  } finally {
-    triggerLoading.value = false
-  }
+    const data = res?.data || res
+    triggerStats.value = data?.list || []
+  } catch { triggerStats.value = [] }
+  finally { triggerLoading.value = false }
+}
+
+const handleViewContext = (row: any) => {
+  ElMessage.info(`请在「聊天会话」Tab中查找成员 ${row.fromUserName || row.fromUserId} 的会话`)
+}
+
+const handleMarkAudit = (row: any) => {
+  auditTarget.value = row
+  auditForm.value = { riskType: 'sensitive_word', remark: '' }
+  showAuditDialog.value = true
+}
+
+const submitAudit = async () => {
+  if (!props.configId || !auditTarget.value) return
+  submittingAudit.value = true
+  try {
+    await createAuditMark({
+      wecomConfigId: props.configId,
+      chatRecordId: auditTarget.value.id,
+      fromUserId: auditTarget.value.fromUserId,
+      toUserId: parseToUser(auditTarget.value.toUserIds),
+      msgContent: parseContent(auditTarget.value.content),
+      msgType: auditTarget.value.msgType,
+      msgTime: auditTarget.value.msgTime,
+      riskType: auditForm.value.riskType,
+      riskLevel: 'medium',
+      remark: auditForm.value.remark,
+    })
+    ElMessage.success('审计标记已提交')
+    showAuditDialog.value = false
+  } catch (e: any) { ElMessage.error(e?.response?.data?.message || '标记失败') }
+  finally { submittingAudit.value = false }
 }
 
 onMounted(async () => {
   await checkArchiveStatus()
   if (archiveStatus.value === 'enabled') {
     fetchSensitiveWords()
+    fetchHitRecords()
     fetchTriggerStats()
   }
 })
@@ -358,57 +337,27 @@ onMounted(async () => {
 defineExpose({ fetchSensitiveWords })
 </script>
 
-<style scoped lang="scss">
-.sensitive-word-manager {
-  .sw-card { border-radius: 10px; }
-  .sw-card-header { display: flex; align-items: center; justify-content: space-between; }
-  .sw-card-title { font-size: 15px; font-weight: 600; color: #1F2937; }
-}
+<style scoped>
+.stat-cards-row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 16px; }
+.stat-card-item { background: #fff; border: 1px solid #EBEEF5; border-radius: 10px; padding: 16px; text-align: center; transition: all 0.2s; }
+.stat-card-item:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+.stat-card-value { font-size: 24px; font-weight: 700; color: #1F2937; }
+.stat-card-label { font-size: 12px; color: #9CA3AF; margin-top: 4px; }
+.stat-card-item.warn .stat-card-value { color: #F59E0B; }
+.stat-card-item.danger .stat-card-value { color: #EF4444; }
+.stat-card-item.info .stat-card-value { color: #4C6EF5; }
 
-.sw-actions {
-  display: flex; gap: 10px; margin-top: 14px;
-}
+.action-bar { display: flex; gap: 8px; margin-bottom: 16px; align-items: center; flex-wrap: wrap; }
+.hit-content { font-size: 13px; color: #374151; }
 
-.sw-templates {
-  margin-top: 18px; padding-top: 14px; border-top: 1px solid #f0f1f3;
-}
-.sw-templates-title {
-  font-size: 13px; font-weight: 600; color: #606266; margin-bottom: 10px;
-}
-.sw-templates-tags {
-  display: flex; flex-wrap: wrap; gap: 6px;
-}
-.sw-tag-clickable {
-  cursor: pointer; transition: all 0.15s;
-  &:hover { transform: scale(1.05); box-shadow: 0 2px 6px rgba(0,0,0,0.1); }
-}
+.pagination-bar { display: flex; justify-content: space-between; align-items: center; margin-top: 16px; padding: 8px 0; }
+.page-total { font-size: 13px; color: #9CA3AF; }
 
-.sw-scan-stats {
-  display: flex; gap: 16px;
-}
-.sw-scan-stat {
-  flex: 1; text-align: center; padding: 12px; background: #f9fafb; border-radius: 8px;
-}
-.sw-scan-val { font-size: 22px; font-weight: 700; color: #1F2937; }
-.sw-scan-label { font-size: 12px; color: #9CA3AF; margin-top: 4px; }
-.sw-scan-empty { color: #909399; font-size: 13px; text-align: center; padding: 20px 0; }
-.text-danger { color: #EF4444 !important; }
+.templates-section { margin-top: 16px; padding-top: 12px; border-top: 1px solid #F3F4F6; }
+.templates-title { font-size: 13px; font-weight: 600; color: #6B7280; margin-bottom: 8px; }
+.templates-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.tag-clickable { cursor: pointer; transition: all 0.15s; }
+.tag-clickable:hover { transform: scale(1.05); box-shadow: 0 2px 6px rgba(0,0,0,0.1); }
 
-.sw-filter-bar {
-  display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 14px;
-  padding: 10px 12px; background: #f9fafb; border-radius: 8px;
-}
-.sw-quick-dates {
-  display: flex; gap: 4px;
-}
-
-.sw-pagination {
-  margin-top: 12px; display: flex; justify-content: flex-end;
-}
-
-.trigger-rank {
-  display: inline-block; width: 20px; height: 20px; line-height: 20px; text-align: center;
-  border-radius: 50%; font-size: 11px; font-weight: 700; color: #606266; background: #f0f2f5;
-}
-.trigger-rank.top { background: linear-gradient(135deg, #ff6b6b, #ee5a24); color: #fff; }
+.audit-preview { background: #F9FAFB; border-radius: 6px; padding: 8px 12px; font-size: 13px; color: #4B5563; max-height: 80px; overflow: auto; }
 </style>

@@ -152,6 +152,8 @@
       v-model="wizardVisible"
       :edit-data="editingItem"
       :is-demo-mode="false"
+      :config-id="selectedConfigId"
+      :wecom-user-options="wecomUsers"
       @submit="handleWizardSubmit"
     />
 
@@ -210,7 +212,7 @@ import ContactWayChannel from './components/ContactWayChannel.vue'
 import ContactWayCreateWizard from './components/ContactWayCreateWizard.vue'
 import AcquisitionTagManager from './components/AcquisitionTagManager.vue'
 import SmartOnlineRules from './components/SmartOnlineRules.vue'
-import { getWecomConfigs, getAcquisitionTags, createAcquisitionTagGroup, editAcquisitionTag, deleteAcquisitionTags } from '@/api/wecom'
+import { getWecomConfigs, getWecomUsers, getAcquisitionTags, createAcquisitionTagGroup, editAcquisitionTag, deleteAcquisitionTags } from '@/api/wecom'
 import { getLastSelectedConfigId, saveSelectedConfigId } from './composables/useWecomConfig'
 import {
   getContactWayList, createContactWay, updateContactWay,
@@ -250,6 +252,15 @@ const tagLoading = ref(false)
 const tagGroups = ref<any[]>([])
 
 const displayConfigs = computed(() => configList.value)
+const wecomUsers = ref<any[]>([])
+
+const fetchWecomUsers = async () => {
+  if (!selectedConfigId.value) return
+  try {
+    const res = await getWecomUsers(selectedConfigId.value, 1, true)
+    wecomUsers.value = Array.isArray(res) ? res : (res as any)?.data || []
+  } catch { /* ignore */ }
+}
 
 // 工具函数
 const typeText = (mode: string) => {
@@ -314,8 +325,8 @@ const handleSync = async () => {
 }
 
 // CRUD
-const openCreateWizard = () => { editingItem.value = null; wizardVisible.value = true }
-const handleEdit = (row: any) => { editingItem.value = row; wizardVisible.value = true }
+const openCreateWizard = () => { editingItem.value = null; wizardVisible.value = true; fetchWecomUsers() }
+const handleEdit = (row: any) => { editingItem.value = row; wizardVisible.value = true; fetchWecomUsers() }
 
 const handleWizardSubmit = async (data: any) => {
   try {

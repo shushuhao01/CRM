@@ -3895,6 +3895,7 @@ CREATE TABLE IF NOT EXISTS `wecom_acquisition_links` (
   `is_enabled` TINYINT(1) DEFAULT 1 COMMENT '是否启用',
   `weight_config` TEXT NULL COMMENT '成员权重配置(JSON)',
   `daily_stats` TEXT NULL COMMENT '每日统计(JSON)',
+  `assign_mode` VARCHAR(30) DEFAULT 'weighted' COMMENT '分配模式: weighted/online_random/priority',
   `state` VARCHAR(100) NULL COMMENT 'V4.0: 渠道标识',
   `welcome_config` TEXT NULL COMMENT 'V4.0: 欢迎语配置(JSON)',
   `auto_tags` TEXT NULL COMMENT 'V4.0: 自动标签配置(JSON)',
@@ -5969,6 +5970,34 @@ CREATE TABLE `inbound_routes` (
 -- 数据库初始化完成
 -- =============================================
 SET FOREIGN_KEY_CHECKS = 1;
+
+-- 风险审计标记表
+CREATE TABLE IF NOT EXISTS `wecom_chat_audit_marks` (
+  `id` INT PRIMARY KEY AUTO_INCREMENT,
+  `tenant_id` VARCHAR(36) NULL,
+  `wecom_config_id` INT NOT NULL COMMENT '企微配置ID',
+  `chat_record_id` INT NULL COMMENT '关联消息记录ID',
+  `from_user_id` VARCHAR(100) NOT NULL COMMENT '消息发送者',
+  `to_user_id` VARCHAR(100) NULL COMMENT '消息接收者',
+  `msg_content` TEXT NULL COMMENT '被标记的消息原文',
+  `msg_type` VARCHAR(30) NULL COMMENT '消息类型',
+  `msg_time` BIGINT NULL COMMENT '消息时间戳',
+  `risk_type` VARCHAR(50) NOT NULL COMMENT '风险类型',
+  `risk_level` VARCHAR(20) DEFAULT 'medium' COMMENT '风险等级',
+  `remark` TEXT NULL COMMENT '审计备注',
+  `status` VARCHAR(20) DEFAULT 'pending' COMMENT '处理状态',
+  `operator_id` VARCHAR(50) NOT NULL COMMENT '标记操作人ID',
+  `operator_name` VARCHAR(100) NOT NULL COMMENT '标记操作人名称',
+  `resolver_id` VARCHAR(50) NULL COMMENT '处理人ID',
+  `resolver_name` VARCHAR(100) NULL COMMENT '处理人名称',
+  `resolve_remark` TEXT NULL COMMENT '处理备注',
+  `resolved_at` DATETIME NULL COMMENT '处理时间',
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX `idx_audit_marks_tenant` (`tenant_id`),
+  INDEX `idx_audit_marks_config` (`wecom_config_id`),
+  INDEX `idx_audit_marks_status` (`status`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='会话存档风险审计标记表';
 
 -- CRM数据库初始化完成
 -- 预设账号：

@@ -6,8 +6,10 @@ import { Router, Request, Response } from 'express';
 import { authenticateToken } from '../../middleware/auth';
 import { AppDataSource } from '../../config/database';
 import { WecomContactWay } from '../../entities/WecomContactWay';
+import { WecomConfig } from '../../entities/WecomConfig';
 import { getCurrentTenantId } from '../../utils/tenantContext';
 import { log } from '../../config/logger';
+import WecomApiService from '../../services/WecomApiService';
 
 const router = Router();
 
@@ -343,7 +345,7 @@ async function getContactWayQuota(tenantId: string): Promise<number> {
   }
 }
 
-// 创建活码
+// 创建活码（调用企微API生成二维码）
 router.post('/contact-way', authenticateToken, async (req: Request, res: Response) => {
   try {
     const tenantId = getCurrentTenantId();
@@ -365,22 +367,62 @@ router.post('/contact-way', authenticateToken, async (req: Request, res: Respons
       }
     }
 
+    const { wecomConfigId, name, weightMode, state, skipVerify, userIds, welcomeMsg, autoTags, userWeights, welcomeEnabled, autoTagEnabled } = req.body;
+
+    if (!wecomConfigId || !name || !userIds?.length) {
+      return res.status(400).json({ success: false, message: '参数不完整：需要企微配置ID、活码名称和接待成员' });
+    }
+
+    // 调用企微API创建「联系我」活码
+    let apiConfigId = '';
+    let qrCode = '';
+    try {
+      const accessToken = await WecomApiService.getAccessTokenByConfigId(wecomConfigId, 'external');
+      const parsedUserIds = Array.isArray(userIds) ? userIds : JSON.parse(userIds || '[]');
+      const result = await WecomApiService.addContactWay(accessToken, {
+        type: 1,
+        scene: 2,
+        skipVerify: skipVerify ?? true,
+        state: state || '',
+        remark: name,
+        userIds: parsedUserIds,
+      });
+      apiConfigId = result.config_id;
+      qrCode = result.qr_code;
+    } catch (apiErr: any) {
+      log.error('[ContactWay] WeChat API create error:', apiErr.message);
+      return res.status(500).json({ success: false, message: `企微API创建活码失败: ${apiErr.message}` });
+    }
+
     const currentUser = req.currentUser;
     const contactWay = repo.create({
-      ...req.body,
       tenantId,
+      wecomConfigId,
+      configId: apiConfigId,
+      name,
+      weightMode: weightMode || 'single',
+      state: state || '',
+      skipVerify: skipVerify ?? true,
+      userIds: Array.isArray(userIds) ? JSON.stringify(userIds) : userIds,
+      qrCode,
+      welcomeMsg: welcomeMsg || '',
+      welcomeEnabled: welcomeEnabled ?? false,
+      autoTags: autoTags || null,
+      userWeights: userWeights || null,
+      type: 1,
+      scene: 2,
       createdBy: currentUser?.id || null,
       createdByName: currentUser?.name || currentUser?.username || null
     });
     const saved = await repo.save(contactWay);
     res.json({ success: true, data: saved });
   } catch (error: any) {
-    log.error('[ContactWay] Error:', error.message);
-    res.status(500).json({ success: false, message: '操作失败，请稍后重试' });
+    log.error('[ContactWay] Create error:', error.message);
+    res.status(500).json({ success: false, message: error.message || '创建活码失败' });
   }
 });
 
-// 更新活码
+// 更新活码（同步企微API）
 router.put('/contact-way/:id', authenticateToken, async (req: Request, res: Response) => {
   try {
     const tenantId = getCurrentTenantId();
@@ -388,21 +430,42 @@ router.put('/contact-way/:id', authenticateToken, async (req: Request, res: Resp
     const where: any = { id: Number(req.params.id), tenantId };
     const contactWay = await repo.findOne({ where });
     if (!contactWay) return res.status(404).json({ success: false, message: '活码不存在' });
-    // 非管理员只能编辑自己创建的
     const creatorFilter = getCreatorFilter(req);
     if (creatorFilter && (contactWay as any).createdBy !== creatorFilter) {
       return res.status(403).json({ success: false, message: '只能编辑自己创建的活码' });
     }
+
+    // 如果有configId，同步更新到企微
+    if (contactWay.configId && contactWay.wecomConfigId) {
+      try {
+        const accessToken = await WecomApiService.getAccessTokenByConfigId(contactWay.wecomConfigId, 'external');
+        const parsedUserIds = req.body.userIds
+          ? (Array.isArray(req.body.userIds) ? req.body.userIds : JSON.parse(req.body.userIds || '[]'))
+          : undefined;
+        await WecomApiService.updateContactWay(accessToken, contactWay.configId, {
+          remark: req.body.name || contactWay.name,
+          skipVerify: req.body.skipVerify,
+          state: req.body.state,
+          userIds: parsedUserIds,
+        });
+      } catch (apiErr: any) {
+        log.warn('[ContactWay] WeChat API update error (non-fatal):', apiErr.message);
+      }
+    }
+
     Object.assign(contactWay, req.body);
+    if (req.body.userIds && Array.isArray(req.body.userIds)) {
+      contactWay.userIds = JSON.stringify(req.body.userIds);
+    }
     const saved = await repo.save(contactWay);
     res.json({ success: true, data: saved });
   } catch (error: any) {
-    log.error('[ContactWay] Error:', error.message);
+    log.error('[ContactWay] Update error:', error.message);
     res.status(500).json({ success: false, message: '操作失败，请稍后重试' });
   }
 });
 
-// 删除活码
+// 删除活码（同步企微API）
 router.delete('/contact-way/:id', authenticateToken, async (req: Request, res: Response) => {
   try {
     const tenantId = getCurrentTenantId();
@@ -410,15 +473,23 @@ router.delete('/contact-way/:id', authenticateToken, async (req: Request, res: R
     const where: any = { id: Number(req.params.id), tenantId };
     const contactWay = await repo.findOne({ where });
     if (!contactWay) return res.status(404).json({ success: false, message: '活码不存在' });
-    // 非管理员只能删除自己创建的
     const creatorFilter = getCreatorFilter(req);
     if (creatorFilter && (contactWay as any).createdBy !== creatorFilter) {
       return res.status(403).json({ success: false, message: '只能删除自己创建的活码' });
     }
+    // 从企微删除
+    if (contactWay.configId && contactWay.wecomConfigId) {
+      try {
+        const accessToken = await WecomApiService.getAccessTokenByConfigId(contactWay.wecomConfigId, 'external');
+        await WecomApiService.delContactWay(accessToken, contactWay.configId);
+      } catch (apiErr: any) {
+        log.warn('[ContactWay] WeChat API delete error (non-fatal):', apiErr.message);
+      }
+    }
     await repo.remove(contactWay);
     res.json({ success: true, message: '删除成功' });
   } catch (error: any) {
-    log.error('[ContactWay] Error:', error.message);
+    log.error('[ContactWay] Delete error:', error.message);
     res.status(500).json({ success: false, message: '操作失败，请稍后重试' });
   }
 });

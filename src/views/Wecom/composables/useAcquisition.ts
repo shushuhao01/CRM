@@ -159,8 +159,9 @@ export function useAcquisition() {
     if (!selectedConfigId.value) return
     loading.value = true
     try {
-      const res = await getAcquisitionLinks(selectedConfigId.value)
-      linkList.value = Array.isArray(res) ? res : []
+      const res: any = await getAcquisitionLinks(selectedConfigId.value)
+      const data = res?.data || res
+      linkList.value = Array.isArray(data) ? data : []
     } catch (e) {
       console.error('[Acquisition] Fetch list error:', e)
     } finally {
@@ -172,7 +173,8 @@ export function useAcquisition() {
     if (!selectedConfigId.value) return
     try {
       const res: any = await getAcquisitionUsage(selectedConfigId.value)
-      usage.value = res || null
+      const data = res?.data || res
+      usage.value = data || null
     } catch (e) {
       console.error('[Acquisition] Fetch usage error:', e)
     }
@@ -300,7 +302,8 @@ export function useAcquisition() {
     }
     try {
       const res: any = await getAcquisitionLinkWeight(linkId)
-      return res?.members || []
+      const data = res?.data || res
+      return data?.members || []
     } catch (e) {
       console.error('[Acquisition] Fetch weight error:', e)
       return []

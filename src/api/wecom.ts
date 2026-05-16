@@ -259,6 +259,13 @@ export const getSensitiveWordTriggerStats = (params?: {
   return request.get('/wecom/sensitive-words/trigger-stats', { params, showError: false } as any)
 }
 
+/** 获取敏感词触发的详细聊天记录 */
+export const getSensitiveHitRecords = (params?: {
+  configId?: number; page?: number; pageSize?: number; startDate?: string; endDate?: string
+}) => {
+  return request.get('/wecom/sensitive-words/hit-records', { params, showError: false } as any)
+}
+
 // ==================== 对外收款 ====================
 
 /** 获取收款记录列表 */
@@ -411,47 +418,47 @@ export const syncAcquisitionLinkStats = (configId: number) => {
 
 /** 获客链接详情-客户列表 */
 export const getAcquisitionLinkCustomers = (linkId: number, params?: any) => {
-  return request.get(`/wecom/acquisition/link/${linkId}/customers`, { params, showError: false } as any)
+  return request.get(`/wecom/acquisition-links/${linkId}/customers`, { params, showError: false } as any)
 }
 
 /** 获客链接详情-开口统计 */
 export const getAcquisitionLinkStats = (linkId: number, params?: any) => {
-  return request.get(`/wecom/acquisition/link/${linkId}/stats`, { params, showError: false } as any)
+  return request.get(`/wecom/acquisition-links/${linkId}/stats`, { params, showError: false } as any)
 }
 
 /** 获客链接详情-转化漏斗 */
 export const getAcquisitionLinkFunnel = (linkId: number, params?: any) => {
-  return request.get(`/wecom/acquisition/link/${linkId}/funnel`, { params, showError: false } as any)
+  return request.get(`/wecom/acquisition-links/${linkId}/funnel`, { params, showError: false } as any)
 }
 
 /** 获客链接详情-链接画像 */
 export const getAcquisitionLinkPortrait = (linkId: number, params?: any) => {
-  return request.get(`/wecom/acquisition/link/${linkId}/portrait`, { params, showError: false } as any)
+  return request.get(`/wecom/acquisition-links/${linkId}/portrait`, { params, showError: false } as any)
 }
 
 /** 获客链接详情-日志 */
 export const getAcquisitionLinkLogs = (linkId: number, params?: any) => {
-  return request.get(`/wecom/acquisition/link/${linkId}/logs`, { params, showError: false } as any)
+  return request.get(`/wecom/acquisition-links/${linkId}/logs`, { params, showError: false } as any)
 }
 
 /** 获客链接智能规则-获取 */
 export const getAcquisitionSmartRules = (linkId: number) => {
-  return request.get(`/wecom/acquisition/link/${linkId}/smart-rules`, { showError: false } as any)
+  return request.get(`/wecom/acquisition-links/${linkId}/smart-rules`, { showError: false } as any)
 }
 
 /** 获客链接智能规则-保存 */
 export const saveAcquisitionSmartRules = (linkId: number, data: any) => {
-  return request.put(`/wecom/acquisition/link/${linkId}/smart-rules`, data)
+  return request.put(`/wecom/acquisition-links/${linkId}/smart-rules`, data)
 }
 
 /** 手动上线成员 */
 export const onlineMember = (linkId: number, userId: string) => {
-  return request.post(`/wecom/acquisition/link/${linkId}/member/${userId}/online`)
+  return request.post(`/wecom/acquisition-links/${linkId}/member/${userId}/online`)
 }
 
 /** 手动下线成员 */
 export const offlineMember = (linkId: number, userId: string) => {
-  return request.post(`/wecom/acquisition/link/${linkId}/member/${userId}/offline`)
+  return request.post(`/wecom/acquisition-links/${linkId}/member/${userId}/offline`)
 }
 
 // ==================== 获客助手 - 数据总览/趋势/留存/排行 ====================
@@ -868,6 +875,45 @@ export const deleteQuickReply = (id: number) => {
 /** 快捷回复使用计数 +1 */
 export const useQuickReply = (id: number) => {
   return request.post(`/wecom/quick-replies/${id}/use`)
+}
+
+// ==================== 风险审计标记 ====================
+
+/** 获取审计标记列表 */
+export const getAuditMarks = (params?: { configId?: number; riskType?: string; status?: string; operatorName?: string; page?: number; pageSize?: number }) => {
+  return request.get('/wecom/chat-archive/audit-marks', { params, showError: false } as any)
+}
+
+/** 创建审计标记 */
+export const createAuditMark = (data: any) => {
+  return request.post('/wecom/chat-archive/audit-marks', data)
+}
+
+/** 更新审计标记 */
+export const updateAuditMark = (id: number, data: any) => {
+  return request.put(`/wecom/chat-archive/audit-marks/${id}`, data)
+}
+
+/** 获取审计统计 */
+export const getAuditMarkStats = (configId?: number) => {
+  return request.get('/wecom/chat-archive/audit-marks/stats', { params: { configId }, showError: false } as any)
+}
+
+// ==================== 自动回复配置 ====================
+
+/** 获取自动回复配置 */
+export const getAutoReplyConfig = (configId: number) => {
+  return request.get('/wecom/auto-reply-config', { params: { configId }, showError: false } as any)
+}
+
+/** 保存自动回复配置 */
+export const saveAutoReplyConfig = (data: { configId: number; [key: string]: any }) => {
+  return request.put('/wecom/auto-reply-config', data)
+}
+
+/** 获取客服链接URL */
+export const getServiceAccountUrl = (id: number) => {
+  return request.get(`/wecom/service-accounts/${id}/url`, { showError: false } as any)
 }
 
 // ==================== Phase 7: CRM深度集成 ====================

@@ -152,121 +152,16 @@
           </div>
         </el-tab-pane>
 
-        <!-- Tab 3: 自动匹配（仅管理员可见） -->
-        <el-tab-pane v-if="isAdminRole" name="auto-match">
-          <template #label>
-            <span>自动匹配</span>
-            <el-badge v-if="autoMatchPendingCount > 0" :value="autoMatchPendingCount" :max="99" class="match-badge" />
-          </template>
-          <div class="match-config">
-            <h4>匹配规则配置</h4>
-            <div class="match-rules">
-              <el-checkbox v-model="matchRules.phoneExact">手机号完全一致（高置信度）</el-checkbox>
-              <el-checkbox v-model="matchRules.nameExact">姓名完全一致（中置信度）</el-checkbox>
-              <el-checkbox v-model="matchRules.nameFuzzy">姓名模糊匹配（相似度&gt;80%，低置信度）</el-checkbox>
-            </div>
-            <div style="margin-top: 16px; display: flex; gap: 8px">
-              <el-button type="primary" :loading="matchRunning" @click="executeAutoMatch">执行自动匹配</el-button>
-              <span v-if="lastMatchResult" style="color: #909399; font-size: 13px; line-height: 32px">
-                上次匹配: 发现 {{ lastMatchResult }} 条新建议
-              </span>
-            </div>
-          </div>
+        <!-- 自动匹配暂停，后续版本恢复 -->
+        <!-- <el-tab-pane v-if="isAdminRole" name="auto-match">
+          ...
+        </el-tab-pane> -->
 
-          <div v-if="matchSuggestions.length" style="margin-top: 20px">
-            <div class="match-list-header">
-              <span style="font-weight: 600; font-size: 15px">待确认匹配（{{ matchSuggestions.length }}条）</span>
-              <div>
-                <el-button type="primary" size="small" @click="confirmAllMatches">全部确认</el-button>
-                <el-button size="small" @click="rejectAllMatches">全部忽略</el-button>
-              </div>
-            </div>
-            <div v-for="item in matchSuggestions" :key="item.id" class="match-item-card">
-              <div class="match-pair">
-                <div class="match-side wecom-side">
-                  <div class="side-label">企微客户</div>
-                  <div class="side-name">{{ item.wecomCustomerName || '-' }}</div>
-                  <div class="side-info">手机: {{ maskPhone(item.matchField) }}</div>
-                </div>
-                <div class="match-arrow">→</div>
-                <div class="match-side crm-side">
-                  <div class="side-label">CRM客户</div>
-                  <div class="side-name">{{ item.crmCustomerName || '-' }}</div>
-                  <div class="side-info">手机: {{ maskPhone(item.matchField) }}</div>
-                </div>
-              </div>
-              <div class="match-footer">
-                <span class="match-basis">匹配方式: {{ item.matchType === 'phone' ? '手机号' : '姓名' }}</span>
-                <el-tag :type="item.confidence === 'high' ? 'success' : item.confidence === 'medium' ? 'warning' : 'info'" size="small">
-                  {{ item.confidence === 'high' ? '高置信' : item.confidence === 'medium' ? '中置信' : '低置信' }}
-                </el-tag>
-                <div class="match-ops">
-                  <el-button type="primary" size="small" @click="confirmMatch(item.id)">确认关联</el-button>
-                  <el-button size="small" @click="rejectMatch(item.id)">忽略</el-button>
-                </div>
-              </div>
-            </div>
-          </div>
-          <el-empty v-else-if="!matchRunning" description="暂无待确认匹配，请执行自动匹配" style="margin-top: 40px" />
-        </el-tab-pane>
-
-        <!-- Tab 4: 同步设置（仅管理员可见） -->
+        <!-- Tab 3: 同步设置（仅管理员可见） -->
         <el-tab-pane v-if="isAdminRole" label="同步设置" name="sync-settings">
           <div class="sync-settings-container" v-loading="loadingSyncSettings">
-            <!-- 定时同步开关 -->
-            <div class="settings-section">
-              <div class="section-row">
-                <span class="section-label">启用定时自动同步</span>
-                <el-switch v-model="syncSettings.autoSyncEnabled" />
-              </div>
-              <template v-if="syncSettings.autoSyncEnabled">
-                <div class="section-row" style="margin-top: 16px;">
-                  <span class="section-label">同步频率</span>
-                  <el-select v-model="syncSettings.frequency" style="width: 160px">
-                    <el-option label="每日" value="daily" />
-                    <el-option label="每周" value="weekly" />
-                  </el-select>
-                  <span class="section-label" style="margin-left: 24px;">同步时间</span>
-                  <el-time-picker v-model="syncSettings.syncTime" format="HH:mm" style="width: 140px" />
-                </div>
-              </template>
-            </div>
-
-            <!-- 同步内容 -->
-            <div class="settings-section">
-              <div class="section-title-bar">同步内容</div>
-              <div class="checkbox-grid">
-                <el-checkbox v-model="syncSettings.syncDepts">部门</el-checkbox>
-                <el-checkbox v-model="syncSettings.syncMembers">成员</el-checkbox>
-                <el-checkbox v-model="syncSettings.syncTags">标签</el-checkbox>
-              </div>
-            </div>
-
-            <!-- 新成员处理 -->
-            <div class="settings-section">
-              <div class="section-title-bar">新成员处理</div>
-              <el-radio-group v-model="syncSettings.newMemberAction" class="radio-vertical">
-                <el-radio label="sync_only">仅同步，不自动创建CRM用户</el-radio>
-                <el-radio label="auto_create">自动创建CRM用户</el-radio>
-              </el-radio-group>
-            </div>
-
-            <!-- 离职成员处理 -->
-            <div class="settings-section">
-              <div class="section-title-bar">离职成员处理</div>
-              <div class="checkbox-vertical">
-                <el-checkbox v-model="syncSettings.disableCrmOnLeave">企微离职后自动禁用CRM账号</el-checkbox>
-                <el-checkbox v-model="syncSettings.unbindOnLeave">企微离职后自动解绑</el-checkbox>
-                <el-checkbox v-model="syncSettings.transferCustomer">转移客户给部门负责人</el-checkbox>
-              </div>
-            </div>
-
-            <div style="margin-top: 24px;">
-              <el-button type="primary" :loading="savingSettings" @click="handleSaveSyncSettings">保存设置</el-button>
-            </div>
-
             <!-- 部门名称设置（第三方应用专用） -->
-            <div class="settings-section" style="margin-top: 32px; border-top: 1px solid #ebeef5; padding-top: 24px;">
+            <div class="settings-section">
               <div class="section-title-bar">
                 部门名称设置
                 <el-tag type="warning" size="small" style="margin-left: 8px">第三方应用限制</el-tag>

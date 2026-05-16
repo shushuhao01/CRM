@@ -448,13 +448,14 @@ export const menuConfig: MenuItem[] = [
         roles: ['super_admin', 'admin'],
         permissions: ['wecom:service']
       },
-      {
-        id: 'wecom-ai-assistant',
-        title: 'AI助手',
-        path: '/wecom/ai-assistant',
-        roles: ['super_admin', 'admin'],
-        permissions: ['wecom:ai', 'wecom.ai_assistant']
-      },
+      // AI助手暂停开发，后续版本恢复
+      // {
+      //   id: 'wecom-ai-assistant',
+      //   title: 'AI助手',
+      //   path: '/wecom/ai-assistant',
+      //   roles: ['super_admin', 'admin'],
+      //   permissions: ['wecom:ai', 'wecom.ai_assistant']
+      // },
       {
         id: 'wecom-sidebar',
         title: '侧边栏',

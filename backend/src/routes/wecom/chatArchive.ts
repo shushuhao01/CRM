@@ -52,19 +52,20 @@ router.get('/chat-archive/status', authenticateToken, async (req: Request, res: 
     const configs = await configRepo.find({ where: { isEnabled: true } });
     const globalRsaKey = await getGlobalRsaPrivateKey();
 
-    // 第三方模式：有permanent_code + 全局私钥即可；自建模式：需要每租户配置archiveSecret+privateKey
+    // 第三方模式：有permanent_code即可（RSA密钥由服务商平台统一管理）
+    // 自建模式：需要每租户配置archiveSecret+privateKey
     const archiveConfigs = configs.filter(c => {
       if (c.authType === 'third_party' && c.permanentCode) {
-        return !!globalRsaKey;
+        return true;
       }
       return c.chatArchiveSecret && c.chatArchivePrivateKey;
     });
 
     if (archiveConfigs.length === 0) {
       const isThirdParty = configs.some(c => c.authType === 'third_party');
-      const message = isThirdParty && !globalRsaKey
-        ? '第三方模式未配置服务商全局RSA私钥，请在管理后台「服务商应用管理」中配置'
-        : '未配置会话存档Secret和私钥';
+      const message = isThirdParty
+        ? '请先完成企业微信授权（扫码安装应用+上传确认函），授权通过后即可使用会话存档'
+        : '未配置会话存档Secret和私钥，请在企微配置中设置';
       return res.json({ success: true, data: { authorized: true, enabled: false, message } });
     }
 
@@ -89,7 +90,8 @@ router.get('/chat-records', authenticateToken, async (req: Request, res: Respons
     if (keyword) queryBuilder.andWhere('r.content LIKE :keyword', { keyword: `%${keyword}%` });
     if (startDate) queryBuilder.andWhere('r.msg_time >= :startTs', { startTs: new Date(startDate as string).getTime() });
     if (endDate) queryBuilder.andWhere('r.msg_time < :endTs', { endTs: new Date(endDate as string).getTime() + 86400000 });
-    if (isSensitive === 'true') queryBuilder.andWhere('r.is_sensitive = :isSensitive', { isSensitive: true });
+    if (isSensitive === 'true' || isSensitive === '1') queryBuilder.andWhere('r.is_sensitive = :isSensitive', { isSensitive: true });
+    if (isSensitive === 'false' || isSensitive === '0') queryBuilder.andWhere('(r.is_sensitive = :notSensitive OR r.is_sensitive IS NULL)', { notSensitive: false });
     const total = await queryBuilder.getCount();
     const records = await queryBuilder.orderBy('r.msg_time', 'DESC')
       .skip((parseInt(page as string) - 1) * parseInt(pageSize as string))
@@ -425,6 +427,114 @@ router.post('/chat-archive/simulate-pay/:orderNo', authenticateToken, async (req
   } catch (error: any) {
     log.error('[Wecom VAS] 模拟支付失败:', error.message);
     res.status(500).json({ success: false, message: '模拟支付失败' });
+  }
+});
+
+// ==================== 风险审计标记 ====================
+
+import { WecomChatAuditMark } from '../../entities/WecomChatAuditMark';
+
+router.get('/chat-archive/audit-marks', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const { configId, riskType, status, operatorName, page = '1', pageSize = '20' } = req.query;
+    const { getCurrentTenantId } = await import('../../utils/tenantContext');
+    const tenantId = getCurrentTenantId();
+    const repo = AppDataSource.getRepository(WecomChatAuditMark);
+    const qb = repo.createQueryBuilder('m');
+    if (tenantId) qb.andWhere('m.tenant_id = :tenantId', { tenantId });
+    if (configId) qb.andWhere('m.wecom_config_id = :configId', { configId: parseInt(configId as string) });
+    if (riskType) qb.andWhere('m.risk_type = :riskType', { riskType });
+    if (status) qb.andWhere('m.status = :status', { status });
+    if (operatorName) qb.andWhere('m.operator_name LIKE :on', { on: `%${operatorName}%` });
+
+    const total = await qb.getCount();
+    const p = parseInt(page as string) || 1;
+    const ps = parseInt(pageSize as string) || 20;
+    const list = await qb.orderBy('m.created_at', 'DESC').skip((p - 1) * ps).take(ps).getMany();
+
+    res.json({ success: true, data: { list, total, page: p, pageSize: ps } });
+  } catch (error: any) {
+    log.error('[Wecom] Get audit marks error:', error.message);
+    res.status(500).json({ success: false, message: '获取审计记录失败' });
+  }
+});
+
+router.post('/chat-archive/audit-marks', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const { getCurrentTenantId } = await import('../../utils/tenantContext');
+    const tenantId = getCurrentTenantId();
+    const user = (req as any).user || (req as any).currentUser;
+    const { wecomConfigId, chatRecordId, fromUserId, toUserId, msgContent, msgType, msgTime, riskType, riskLevel, remark } = req.body;
+
+    if (!wecomConfigId || !riskType) {
+      return res.status(400).json({ success: false, message: '缺少必要参数' });
+    }
+
+    const repo = AppDataSource.getRepository(WecomChatAuditMark);
+    const mark = repo.create({
+      tenantId, wecomConfigId, chatRecordId, fromUserId, toUserId,
+      msgContent, msgType, msgTime,
+      riskType, riskLevel: riskLevel || 'medium', remark: remark || '',
+      status: 'pending',
+      operatorId: user?.userId || String(user?.id || ''),
+      operatorName: user?.name || user?.username || '审计员',
+    });
+    await repo.save(mark);
+    res.json({ success: true, data: mark, message: '风险标记已创建' });
+  } catch (error: any) {
+    log.error('[Wecom] Create audit mark error:', error.message);
+    res.status(500).json({ success: false, message: '创建风险标记失败' });
+  }
+});
+
+router.put('/chat-archive/audit-marks/:id', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const repo = AppDataSource.getRepository(WecomChatAuditMark);
+    const mark = await repo.findOne({ where: { id: parseInt(req.params.id) } });
+    if (!mark) return res.status(404).json({ success: false, message: '审计记录不存在' });
+
+    const user = (req as any).user || (req as any).currentUser;
+    const { status, resolveRemark } = req.body;
+
+    if (status) {
+      mark.status = status;
+      if (status === 'resolved' || status === 'dismissed') {
+        mark.resolverId = user?.userId || String(user?.id || '');
+        mark.resolverName = user?.name || user?.username || '';
+        mark.resolveRemark = resolveRemark || '';
+        mark.resolvedAt = new Date();
+      }
+    }
+    if (req.body.remark !== undefined) mark.remark = req.body.remark;
+    if (req.body.riskLevel !== undefined) mark.riskLevel = req.body.riskLevel;
+
+    await repo.save(mark);
+    res.json({ success: true, data: mark, message: '审计记录已更新' });
+  } catch (error: any) {
+    log.error('[Wecom] Update audit mark error:', error.message);
+    res.status(500).json({ success: false, message: '更新审计记录失败' });
+  }
+});
+
+router.get('/chat-archive/audit-marks/stats', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const { configId } = req.query;
+    const { getCurrentTenantId } = await import('../../utils/tenantContext');
+    const tenantId = getCurrentTenantId();
+    const repo = AppDataSource.getRepository(WecomChatAuditMark);
+    const qb = repo.createQueryBuilder('m');
+    if (tenantId) qb.andWhere('m.tenant_id = :tenantId', { tenantId });
+    if (configId) qb.andWhere('m.wecom_config_id = :configId', { configId: parseInt(configId as string) });
+
+    const total = await qb.getCount();
+    const pending = await qb.clone().andWhere('m.status = :s', { s: 'pending' }).getCount();
+    const processing = await qb.clone().andWhere('m.status = :s', { s: 'processing' }).getCount();
+    const resolved = await qb.clone().andWhere('m.status = :s', { s: 'resolved' }).getCount();
+
+    res.json({ success: true, data: { total, pending, processing, resolved } });
+  } catch (error: any) {
+    log.error('[Wecom] Get audit stats error:', error.message);
+    res.status(500).json({ success: false, message: '获取审计统计失败' });
   }
 });
 

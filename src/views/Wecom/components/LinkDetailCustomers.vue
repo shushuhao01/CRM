@@ -2,7 +2,7 @@
   <div class="link-detail-customers">
     <!-- 筛选条件 -->
     <div class="filter-bar">
-      <el-select v-model="filters.status" placeholder="开口状态" style="width: 130px" clearable>
+      <el-select v-model="filters.status" placeholder="开口状态" style="width: 130px" clearable @change="fetchData">
         <el-option label="全部" value="" />
         <el-option label="已开口" value="talked" />
         <el-option label="未开口" value="not_talked" />
@@ -14,15 +14,15 @@
         <el-option label="近7天" value="7d" />
         <el-option label="近30天" value="30d" />
       </el-select>
-      <el-select v-model="filters.followUser" placeholder="跟进人" style="width: 120px" clearable>
+      <el-select v-model="filters.followUser" placeholder="跟进人" style="width: 120px" clearable @change="fetchData">
         <el-option v-for="u in followUsers" :key="u" :label="u" :value="u" />
       </el-select>
       <div style="flex: 1" />
-      <span class="result-count">共 {{ filteredList.length }} 位客户</span>
+      <span class="result-count">共 {{ total }} 位客户</span>
     </div>
 
     <!-- 客户表格 -->
-    <el-table :data="paginatedList" v-loading="loading" stripe>
+    <el-table :data="customerList" v-loading="loading" stripe>
       <el-table-column label="客户" min-width="160">
         <template #default="{ row }">
           <div class="customer-cell">
@@ -60,23 +60,25 @@
     </el-table>
 
     <!-- 分页 -->
-    <div class="pagination-bar" v-if="filteredList.length > pageSize">
+    <div class="pagination-bar" v-if="total > pageSize">
       <el-pagination
         v-model:current-page="currentPage"
         :page-size="pageSize"
-        :total="filteredList.length"
+        :total="total"
         layout="total, prev, pager, next"
         small
+        @current-change="fetchData"
       />
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed } from 'vue'
+import { ref, reactive, computed, watch, onMounted } from 'vue'
+import { getAcquisitionLinkCustomers } from '@/api/wecom'
 import type { AcquisitionLinkCustomer } from '../types'
 
-defineProps<{
+const props = defineProps<{
   linkId: number
   isDemoMode: boolean
 }>()
@@ -84,6 +86,8 @@ defineProps<{
 const loading = ref(false)
 const currentPage = ref(1)
 const pageSize = 10
+const total = ref(0)
+const customerList = ref<AcquisitionLinkCustomer[]>([])
 
 const filters = reactive({
   status: '',
@@ -91,50 +95,42 @@ const filters = reactive({
   followUser: ''
 })
 
-// 示例数据
-const demoCustomers: AcquisitionLinkCustomer[] = [
-  { id: 1, name: '张先生', avatar: '', addTime: '2026-04-15 09:23', talkStatus: 'talked', talkCount: 8, talkTime: '2026-04-15 09:25', followUser: '王销售' },
-  { id: 2, name: '李女士', avatar: '', addTime: '2026-04-15 10:15', talkStatus: 'talked', talkCount: 3, talkTime: '2026-04-15 10:45', followUser: '陈经理' },
-  { id: 3, name: '赵总', avatar: '', addTime: '2026-04-15 11:02', talkStatus: 'not_talked', talkCount: 0, followUser: '王销售' },
-  { id: 4, name: '刘经理', avatar: '', addTime: '2026-04-14 14:30', talkStatus: 'talked', talkCount: 12, talkTime: '2026-04-14 14:31', followUser: '张客服' },
-  { id: 5, name: '孙先生', avatar: '', addTime: '2026-04-14 16:20', talkStatus: 'lost', talkCount: 0, followUser: '王销售' },
-  { id: 6, name: '周女士', avatar: '', addTime: '2026-04-13 09:10', talkStatus: 'talked', talkCount: 5, talkTime: '2026-04-13 09:30', followUser: '陈经理' },
-  { id: 7, name: '吴总', avatar: '', addTime: '2026-04-13 11:45', talkStatus: 'not_talked', talkCount: 0, followUser: '张客服' },
-  { id: 8, name: '郑先生', avatar: '', addTime: '2026-04-12 08:50', talkStatus: 'talked', talkCount: 15, talkTime: '2026-04-12 08:52', followUser: '王销售' },
-  { id: 9, name: '王小姐', avatar: '', addTime: '2026-04-12 15:30', talkStatus: 'lost', talkCount: 1, talkTime: '2026-04-12 16:00', followUser: '陈经理' },
-  { id: 10, name: '冯经理', avatar: '', addTime: '2026-04-11 10:00', talkStatus: 'talked', talkCount: 6, talkTime: '2026-04-11 10:05', followUser: '张客服' },
-  { id: 11, name: '陈先生', avatar: '', addTime: '2026-04-10 13:20', talkStatus: 'not_talked', talkCount: 0, followUser: '王销售' },
-  { id: 12, name: '杨女士', avatar: '', addTime: '2026-04-10 17:00', talkStatus: 'talked', talkCount: 2, talkTime: '2026-04-10 17:30', followUser: '陈经理' },
-]
-
-const customerList = ref<AcquisitionLinkCustomer[]>(demoCustomers)
-
 const followUsers = computed(() => {
   const set = new Set(customerList.value.map(c => c.followUser))
   return Array.from(set)
 })
 
-const filteredList = computed(() => {
-  let list = customerList.value
-  if (filters.status) {
-    list = list.filter(c => c.talkStatus === filters.status)
+const fetchData = async () => {
+  if (props.isDemoMode) return
+  loading.value = true
+  try {
+    const res: any = await getAcquisitionLinkCustomers(props.linkId, {
+      status: filters.status || undefined,
+      dateRange: filters.dateRange || undefined,
+      followUser: filters.followUser || undefined,
+      page: currentPage.value,
+      pageSize
+    })
+    const data = res?.data || res
+    customerList.value = data?.customers || []
+    total.value = data?.total || customerList.value.length
+  } catch (e) {
+    console.error('[LinkDetailCustomers] Fetch error:', e)
+  } finally {
+    loading.value = false
   }
-  if (filters.followUser) {
-    list = list.filter(c => c.followUser === filters.followUser)
-  }
-  return list
-})
-
-const paginatedList = computed(() => {
-  const start = (currentPage.value - 1) * pageSize
-  return filteredList.value.slice(start, start + pageSize)
-})
+}
 
 const statusText = (row: AcquisitionLinkCustomer) => {
   if (row.talkStatus === 'talked') return `已开口(${row.talkCount}句)`
   if (row.talkStatus === 'lost') return '已流失'
   return '未开口'
 }
+
+watch(() => props.linkId, () => {
+  currentPage.value = 1
+  fetchData()
+}, { immediate: true })
 </script>
 
 <style scoped>
@@ -144,4 +140,3 @@ const statusText = (row: AcquisitionLinkCustomer) => {
 .customer-name { font-weight: 600; color: #1F2937; }
 .pagination-bar { display: flex; justify-content: flex-end; margin-top: 16px; }
 </style>
-

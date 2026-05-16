@@ -19,7 +19,7 @@
               到期时间：{{ formatDate(settings.expireDate) }} · 席位：{{ settings.usedUsers }}/{{ settings.maxUsers }}人
             </p>
             <p class="section-desc" v-else>
-              {{ isSaas ? '请在企业微信中完成授权后激活服务' : '请配置Secret和RSA私钥后开通服务' }}
+              {{ isSaas ? '请在企业微信中完成授权并上传确认函后即可激活' : '请配置Secret和RSA私钥后开通服务' }}
             </p>
           </div>
         </div>
@@ -101,40 +101,19 @@
         </el-alert>
       </div>
 
-      <!-- ==================== 第二区：加密密钥（SaaS模式公钥展示） ==================== -->
+      <!-- ==================== 第二区：SaaS模式 - 密钥说明（服务商统一管理，租户无需配置） ==================== -->
       <div v-if="isSaas" class="section-card">
         <div class="block-header">
           <div>
-            <h3 class="block-title">🔐 加密密钥（公钥）</h3>
-            <p class="block-desc">请将以下公钥复制到企微管理后台「管理工具 → 企业会话内容 → 立即配置 → 加密密钥」中。</p>
+            <h3 class="block-title">加密与安全</h3>
+            <p class="block-desc">第三方服务商模式下，加密密钥由平台统一管理，您无需手动配置公钥/私钥。</p>
           </div>
-          <el-button v-if="rsaPublicKey" type="success" size="small" @click="copyPublicKey">
-            <el-icon><CopyDocument /></el-icon> 复制公钥
-          </el-button>
         </div>
-        <div v-if="rsaPublicKeyLoading" v-loading="true" style="height: 60px"></div>
-        <template v-else-if="rsaPublicKey">
-          <el-input
-            :model-value="rsaPublicKey"
-            type="textarea"
-            :rows="6"
-            readonly
-            style="max-width: 680px; font-family: monospace; font-size: 12px"
-          />
-          <el-alert type="info" :closable="false" style="margin-top: 12px" show-icon>
-            <template #title>配置步骤</template>
-            <ol style="margin: 4px 0 0; padding-left: 18px; font-size: 12px; line-height: 1.8">
-              <li>复制上方公钥内容（包含 BEGIN/END 行）</li>
-              <li>进入企微管理后台 → <strong>管理工具 → 企业会话内容</strong></li>
-              <li>点击 <strong>「立即配置」</strong>，选择存档人员范围</li>
-              <li>将公钥粘贴到 <strong>「加密密钥」</strong> 输入框，保存</li>
-              <li>配置完成后企微会开始存档新消息，回到CRM点击「同步」即可查看</li>
-            </ol>
-          </el-alert>
-        </template>
-        <el-alert v-else type="warning" :closable="false" show-icon>
-          <template #title>平台尚未配置加密密钥</template>
-          <p style="margin: 4px 0 0; font-size: 12px">{{ rsaPublicKeyHint || '请联系平台管理员在管理后台配置RSA密钥对。' }}</p>
+        <el-alert type="success" :closable="false" show-icon>
+          <template #title>密钥由平台统一管理</template>
+          <p style="margin: 4px 0 0; font-size: 12px; color: #606266">
+            会话消息的加密与解密由服务商平台统一完成，企业仅需完成授权和上传确认函即可使用会话存档功能。无需自行配置RSA公钥或私钥。
+          </p>
         </el-alert>
       </div>
 

@@ -115,5 +115,101 @@ router.post('/sensitive-words/scan', authenticateToken, requireAdmin, async (req
   }
 });
 
+/**
+ * 敏感词触发统计（分页）
+ * 查询被标记为敏感的聊天记录，按触发词分组统计
+ */
+router.get('/sensitive-words/trigger-stats', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const { configId, dateRange, startDate, endDate, page = '1', pageSize = '10' } = req.query;
+    const tenantId = getCurrentTenantId();
+
+    const settingsRepo = AppDataSource.getRepository(TenantSettings);
+    const setting = await settingsRepo.findOne({ where: { tenantId: tenantId || '', settingKey: SENSITIVE_WORDS_KEY } });
+    const words: string[] = setting ? setting.getValue() || [] : [];
+
+    const recordRepo = getTenantRepo(WecomChatRecord);
+    const qb = recordRepo.createQueryBuilder('r')
+      .where('r.is_sensitive = :s', { s: true });
+    if (configId) qb.andWhere('r.wecom_config_id = :configId', { configId: parseInt(configId as string) });
+
+    // 日期筛选
+    const now = new Date();
+    if (dateRange === 'today') {
+      qb.andWhere('r.msg_time >= :ts', { ts: new Date(now.toISOString().split('T')[0]).getTime() });
+    } else if (dateRange === '7d') {
+      qb.andWhere('r.msg_time >= :ts', { ts: now.getTime() - 7 * 86400000 });
+    } else if (dateRange === '30d') {
+      qb.andWhere('r.msg_time >= :ts', { ts: now.getTime() - 30 * 86400000 });
+    } else if (startDate && endDate) {
+      qb.andWhere('r.msg_time >= :ts1', { ts1: new Date(startDate as string).getTime() });
+      qb.andWhere('r.msg_time <= :ts2', { ts2: new Date(endDate as string).getTime() + 86400000 });
+    }
+
+    const allRecords = await qb.getMany();
+
+    // 按敏感词统计触发次数
+    const wordCountMap = new Map<string, { count: number; lastTime: number }>();
+    for (const record of allRecords) {
+      const content = (record.content || '').toLowerCase();
+      for (const w of words) {
+        if (content.includes(w.toLowerCase())) {
+          const existing = wordCountMap.get(w) || { count: 0, lastTime: 0 };
+          existing.count++;
+          const msgTime = record.msgTime || 0;
+          if (msgTime > existing.lastTime) existing.lastTime = msgTime;
+          wordCountMap.set(w, existing);
+        }
+      }
+    }
+
+    const allStats = Array.from(wordCountMap.entries())
+      .map(([word, data]) => ({
+        word,
+        triggerCount: data.count,
+        lastTriggeredAt: data.lastTime ? new Date(data.lastTime).toISOString().replace('T', ' ').slice(0, 16) : '-',
+        trend: 0
+      }))
+      .sort((a, b) => b.triggerCount - a.triggerCount);
+
+    const total = allStats.length;
+    const p = parseInt(page as string) || 1;
+    const ps = parseInt(pageSize as string) || 10;
+    const list = allStats.slice((p - 1) * ps, p * ps);
+
+    res.json({ success: true, data: { list, total, page: p, pageSize: ps } });
+  } catch (error: any) {
+    log.error('[Wecom] Get sensitive word trigger stats error:', error.message);
+    res.status(500).json({ success: false, message: '获取触发统计失败' });
+  }
+});
+
+/**
+ * 获取敏感词触发的聊天记录列表（详细）
+ */
+router.get('/sensitive-words/hit-records', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const { configId, page = '1', pageSize = '10', startDate, endDate } = req.query;
+
+    const recordRepo = getTenantRepo(WecomChatRecord);
+    const qb = recordRepo.createQueryBuilder('r')
+      .where('r.is_sensitive = :s', { s: true })
+      .andWhere('r.msg_type IN (:...types)', { types: ['text', 'meta'] });
+    if (configId) qb.andWhere('r.wecom_config_id = :configId', { configId: parseInt(configId as string) });
+    if (startDate) qb.andWhere('r.msg_time >= :ts1', { ts1: new Date(startDate as string).getTime() });
+    if (endDate) qb.andWhere('r.msg_time <= :ts2', { ts2: new Date(endDate as string).getTime() + 86400000 });
+
+    const total = await qb.getCount();
+    const p = parseInt(page as string) || 1;
+    const ps = parseInt(pageSize as string) || 10;
+    const list = await qb.orderBy('r.msg_time', 'DESC').skip((p - 1) * ps).take(ps).getMany();
+
+    res.json({ success: true, data: { list, total, page: p, pageSize: ps } });
+  } catch (error: any) {
+    log.error('[Wecom] Get sensitive hit records error:', error.message);
+    res.status(500).json({ success: false, message: '获取触发记录失败' });
+  }
+});
+
 export default router;
 

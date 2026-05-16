@@ -22,7 +22,7 @@
 
     <!-- 开口时间分布 -->
     <el-card shadow="never" class="section-card">
-      <template #header><span class="section-title">⏱️ 开口时间分布</span></template>
+      <template #header><span class="section-title">开口时间分布</span></template>
       <div class="h-bar-chart">
         <div v-for="item in timeDistribution" :key="item.label" class="h-bar-item">
           <span class="h-bar-label">{{ item.label }}</span>
@@ -36,7 +36,7 @@
 
     <!-- 对话深度分布 -->
     <el-card shadow="never" class="section-card">
-      <template #header><span class="section-title">💬 对话深度分布</span></template>
+      <template #header><span class="section-title">对话深度分布</span></template>
       <div class="h-bar-chart">
         <div v-for="item in depthDistribution" :key="item.label" class="h-bar-item">
           <span class="h-bar-label">{{ item.label }}</span>
@@ -50,7 +50,7 @@
 
     <!-- 成员开口排行 -->
     <el-card shadow="never" class="section-card">
-      <template #header><span class="section-title">🏆 成员开口排行</span></template>
+      <template #header><span class="section-title">成员开口排行</span></template>
       <el-table :data="memberRanking" stripe size="small">
         <el-table-column prop="name" label="成员" min-width="100" />
         <el-table-column prop="addCount" label="添加数" width="90" sortable />
@@ -74,50 +74,57 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, computed } from 'vue'
+import { ref, reactive, computed, watch } from 'vue'
+import { getAcquisitionLinkStats } from '@/api/wecom'
 
-defineProps<{
+const props = defineProps<{
   linkId: number
   isDemoMode: boolean
 }>()
 
-// 示例统计数据
+const loading = ref(false)
+
 const stats = reactive({
-  totalAdd: 156,
-  talked: 112,
-  talkRate: 71.8,
-  avgTalkMinutes: 4.2
+  totalAdd: 0,
+  talked: 0,
+  talkRate: 0,
+  avgTalkMinutes: 0
 })
 
-const timeDistribution = [
-  { label: '<1分钟', count: 45 },
-  { label: '1-5分钟', count: 32 },
-  { label: '5-30分钟', count: 20 },
-  { label: '30分-1时', count: 10 },
-  { label: '>1小时', count: 5 },
-]
+const timeDistribution = ref<Array<{ label: string; count: number }>>([])
+const depthDistribution = ref<Array<{ label: string; count: number }>>([])
+const memberRanking = ref<any[]>([])
 
-const depthDistribution = [
-  { label: '1句', count: 18 },
-  { label: '2-3句', count: 35 },
-  { label: '4-5句', count: 28 },
-  { label: '6-10句', count: 22 },
-  { label: '10句以上', count: 9 },
-]
-
-const memberRanking = [
-  { name: '王销售', addCount: 52, talkedCount: 42, talkRate: 80.8, avgMinutes: 3.5, avgSentences: 6.2 },
-  { name: '陈经理', addCount: 48, talkedCount: 35, talkRate: 72.9, avgMinutes: 5.1, avgSentences: 8.4 },
-  { name: '张客服', addCount: 35, talkedCount: 22, talkRate: 62.9, avgMinutes: 4.8, avgSentences: 5.7 },
-  { name: '李主管', addCount: 21, talkedCount: 13, talkRate: 61.9, avgMinutes: 3.2, avgSentences: 4.1 },
-]
-
-const timeMaxCount = computed(() => Math.max(...timeDistribution.map(i => i.count), 1))
-const depthMaxCount = computed(() => Math.max(...depthDistribution.map(i => i.count), 1))
+const timeMaxCount = computed(() => Math.max(...timeDistribution.value.map(i => i.count), 1))
+const depthMaxCount = computed(() => Math.max(...depthDistribution.value.map(i => i.count), 1))
 
 const calcBarPercent = (count: number, max: number) => {
   return Math.min((count / max) * 100, 100)
 }
+
+const fetchData = async () => {
+  if (props.isDemoMode) return
+  loading.value = true
+  try {
+    const res: any = await getAcquisitionLinkStats(props.linkId)
+    const data = res?.data || res
+    if (data) {
+      stats.totalAdd = data.totalAdd || 0
+      stats.talked = data.talked || 0
+      stats.talkRate = data.talkRate || 0
+      stats.avgTalkMinutes = data.avgTalkMinutes || 0
+      timeDistribution.value = data.timeDistribution || []
+      depthDistribution.value = data.depthDistribution || []
+      memberRanking.value = data.memberRanking || []
+    }
+  } catch (e) {
+    console.error('[LinkDetailTalkStats] Fetch error:', e)
+  } finally {
+    loading.value = false
+  }
+}
+
+watch(() => props.linkId, () => fetchData(), { immediate: true })
 </script>
 
 <style scoped>
@@ -137,7 +144,6 @@ const calcBarPercent = (count: number, max: number) => {
 .section-card { margin-bottom: 16px; }
 .section-title { font-weight: 600; font-size: 14px; color: #1F2937; }
 
-/* 横向柱状图 */
 .h-bar-chart { display: flex; flex-direction: column; gap: 10px; padding: 8px 0; }
 .h-bar-item { display: flex; align-items: center; gap: 12px; }
 .h-bar-label { width: 90px; font-size: 13px; color: #4B5563; text-align: right; flex-shrink: 0; }
@@ -150,4 +156,3 @@ const calcBarPercent = (count: number, max: number) => {
 .depth-fill { background: linear-gradient(90deg, #10B981, #6EE7B7); }
 .h-bar-count { width: 40px; font-size: 13px; font-weight: 600; color: #4C6EF5; }
 </style>
-

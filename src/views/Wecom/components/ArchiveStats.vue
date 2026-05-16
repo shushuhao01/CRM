@@ -205,10 +205,11 @@ const handleCustomDate = () => {
 const fetchStats = async () => {
   if (!props.configId && !props.isDemoMode) return
   try {
-    const res: any = await getChatArchiveStats(props.configId || 0)
+    const rawRes: any = await getChatArchiveStats(props.configId || 0)
+    const res = rawRes?.data || rawRes
     if (res) {
-      stats.totalMsgs = res.totalMsgs || 0
-      stats.conversationCount = res.conversationCount || 0
+      stats.totalMsgs = res.totalMsgs || res.totalRecords || 0
+      stats.conversationCount = res.conversationCount || res.totalConversations || 0
       stats.avgResponseTime = res.avgResponseTime || 0
       stats.sensitiveCount = res.sensitiveCount || 0
       stats.msgTrend = res.msgTrend || 0
@@ -222,48 +223,14 @@ const fetchStats = async () => {
       const total = types.reduce((s: number, t: any) => s + (t.count || 0), 0) || 1
       typeDistribution.value = types.map((t: any) => ({
         type: t.type,
-        label: ({ text: '文本', image: '图片', voice: '语音', video: '视频', file: '文件', link: '链接' } as Record<string, string>)[t.type] || t.type,
+        label: ({ text: '文本', image: '图片', voice: '语音', video: '视频', file: '文件', link: '链接', weapp: '小程序', location: '位置', emotion: '表情', card: '名片', revoke: '撤回' } as Record<string, string>)[t.type] || t.type,
         count: t.count || 0,
         percent: Math.round(((t.count || 0) / total) * 100),
         color: typeColors[t.type] || '#909399'
       }))
     }
-  } catch {
-    if (props.isDemoMode) {
-      stats.totalMsgs = 12580; stats.conversationCount = 456; stats.avgResponseTime = 32; stats.sensitiveCount = 8
-      stats.msgTrend = 12.5; stats.convTrend = 8.3; stats.respTrend = -5.2
-      trendData.value = [
-        { dateLabel: '04-11', msgCount: 1520, convCount: 65 },
-        { dateLabel: '04-12', msgCount: 1780, convCount: 72 },
-        { dateLabel: '04-13', msgCount: 1650, convCount: 68 },
-        { dateLabel: '04-14', msgCount: 2010, convCount: 85 },
-        { dateLabel: '04-15', msgCount: 1890, convCount: 78 },
-        { dateLabel: '04-16', msgCount: 1950, convCount: 80 },
-        { dateLabel: '04-17', msgCount: 1780, convCount: 70 },
-      ]
-      typeDistribution.value = [
-        { type: 'text', label: '文本', count: 8960, percent: 71, color: '#409EFF' },
-        { type: 'image', label: '图片', count: 1890, percent: 15, color: '#67C23A' },
-        { type: 'file', label: '文件', count: 880, percent: 7, color: '#909399' },
-        { type: 'voice', label: '语音', count: 520, percent: 4, color: '#E6A23C' },
-        { type: 'video', label: '视频', count: 330, percent: 3, color: '#F56C6C' },
-      ]
-      memberRanking.value = [
-        { userName: '张三', msgCount: 3200, convCount: 120, avgResponse: 25, activePercent: 92 },
-        { userName: '李四', msgCount: 2800, convCount: 98, avgResponse: 30, activePercent: 85 },
-        { userName: '王五', msgCount: 2100, convCount: 76, avgResponse: 45, activePercent: 68 },
-        { userName: '赵六', msgCount: 1600, convCount: 55, avgResponse: 38, activePercent: 72 },
-        { userName: '钱七', msgCount: 1200, convCount: 42, avgResponse: 52, activePercent: 55 },
-        { userName: '孙八', msgCount: 980, convCount: 35, avgResponse: 60, activePercent: 42 },
-        { userName: '周九', msgCount: 860, convCount: 28, avgResponse: 55, activePercent: 38 },
-        { userName: '吴十', msgCount: 720, convCount: 22, avgResponse: 48, activePercent: 45 },
-        { userName: '郑一', msgCount: 650, convCount: 18, avgResponse: 65, activePercent: 30 },
-        { userName: '王二', msgCount: 580, convCount: 15, avgResponse: 70, activePercent: 25 },
-        { userName: '陈三', msgCount: 420, convCount: 12, avgResponse: 80, activePercent: 20 },
-        { userName: '林四', msgCount: 350, convCount: 10, avgResponse: 90, activePercent: 15 },
-      ]
-      memberRankTotal.value = memberRanking.value.length
-    }
+  } catch (e) {
+    console.error('[ArchiveStats] Fetch error:', e)
   }
 }
 

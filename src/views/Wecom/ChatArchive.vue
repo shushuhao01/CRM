@@ -193,9 +193,14 @@
           <ArchiveStats :config-id="selectedConfigId" :is-demo-mode="isDemoMode" />
         </el-tab-pane>
 
-        <!-- Tab 5: AI质检（仅管理员可见） -->
-        <el-tab-pane v-if="isAdminRole" label="AI质检" name="ai-inspect">
+        <!-- AI质检暂停开发，后续版本恢复 -->
+        <!-- <el-tab-pane v-if="isAdminRole" label="AI质检" name="ai-inspect">
           <AiInspect :config-id="selectedConfigId" :is-demo-mode="isDemoMode" />
+        </el-tab-pane> -->
+
+        <!-- Tab: 风险审计（管理员可见） -->
+        <el-tab-pane v-if="isAdminRole" label="风险审计" name="risk-audit">
+          <RiskAuditTab :config-id="selectedConfigId" @gotoConversation="handleGotoConversation" />
         </el-tab-pane>
 
         <!-- Tab 6: 敏感词管理（仅管理员可见） -->
@@ -261,10 +266,12 @@ import WecomDemoBanner from './components/WecomDemoBanner.vue'
 // 子组件
 import ConversationView from './components/ConversationView.vue'
 import ArchiveStats from './components/ArchiveStats.vue'
-import AiInspect from './components/AiInspect.vue'
+// AI质检暂停开发
+// import AiInspect from './components/AiInspect.vue'
 import SensitiveWordManager from './components/SensitiveWordManager.vue'
 import ArchiveSettings from './components/ArchiveSettings.vue'
 import PackagePurchaseTab from './components/PackagePurchaseTab.vue'
+import RiskAuditTab from './components/RiskAuditTab.vue'
 import AuditDialog from './components/AuditDialog.vue'
 import FullTextSearchDrawer from './components/FullTextSearchDrawer.vue'
 import PurchaseDialog from './components/PurchaseDialog.vue'
@@ -588,6 +595,12 @@ const openPurchaseDialog = () => {
 
 const handlePurchaseComplete = () => {
   window.location.reload()
+}
+
+// ==================== 风险审计跳转 ====================
+const handleGotoConversation = (data: { fromUserId: string; toUserId: string; msgTime: number }) => {
+  activeTab.value = 'conversations'
+  ElMessage.info(`已跳转到聊天会话，请在左侧选择成员 ${data.fromUserId} 查看上下文`)
 }
 
 // ==================== 初始化 ====================

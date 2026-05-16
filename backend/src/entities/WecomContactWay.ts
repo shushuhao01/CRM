@@ -101,6 +101,12 @@ export class WecomContactWay {
   @Column({ name: 'is_enabled', type: 'boolean', default: true })
   isEnabled: boolean;
 
+  @Column({ name: 'created_by', type: 'varchar', length: 50, nullable: true })
+  createdBy: string;
+
+  @Column({ name: 'created_by_name', type: 'varchar', length: 100, nullable: true })
+  createdByName: string;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 

@@ -68,13 +68,27 @@ router.post('/service-accounts', authenticateToken, requireAdmin, async (req: Re
 });
 
 /**
- * 删除客服账号
+ * 删除客服账号（同步企微API）
  */
 router.delete('/service-accounts/:id', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
   try {
     const accountRepo = getTenantRepo(WecomServiceAccount);
     const account = await accountRepo.findOne({ where: { id: parseInt(req.params.id) } });
     if (!account) return res.status(404).json({ success: false, message: '客服账号不存在' });
+
+    // 调用企微API删除客服账号
+    if (account.openKfId && account.wecomConfigId) {
+      try {
+        const accessToken = await WecomApiService.getAccessTokenByConfigId(account.wecomConfigId);
+        const axios = (await import('axios')).default;
+        await axios.post(`https://qyapi.weixin.qq.com/cgi-bin/kf/account/del?access_token=${accessToken}`, {
+          open_kfid: account.openKfId
+        });
+      } catch (apiErr: any) {
+        log.warn('[Wecom] Delete KF account from API error (non-fatal):', apiErr.message);
+      }
+    }
+
     await accountRepo.remove(account);
     res.json({ success: true, message: '删除成功' });
   } catch (error: any) {
@@ -194,7 +208,7 @@ router.get('/kf-sessions', authenticateToken, async (req: Request, res: Response
 });
 
 /**
- * 同步客服会话记录（从企微API拉取）
+ * 同步客服会话记录（从企微API拉取真实消息）
  */
 router.post('/kf-sessions/sync', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
   try {
@@ -210,36 +224,85 @@ router.post('/kf-sessions/sync', authenticateToken, requireAdmin, async (req: Re
       return res.json({ success: true, message: '暂无客服账号', data: { synced: 0 } });
     }
 
-    // 注意: 企微客服消息拉取API需要使用客服专用token
-    // 此处为模拟同步逻辑，实际需调用 kf/sync_msg API
     const sessionRepo = getTenantRepo(WecomKfSession);
     let synced = 0;
+    let newSessions = 0;
 
-    for (const account of accounts) {
-      try {
-        // 验证token可用性
-        await WecomApiService.getAccessTokenByConfigId(configId);
+    const accessToken = await WecomApiService.getAccessTokenByConfigId(configId);
 
-        // 实际应调用 /cgi-bin/kf/sync_msg 接口获取消息
-        // 这里创建模拟数据结构，后续对接真实API时替换
-        log.info(`[Wecom] Sync KF sessions for account: ${account.openKfId}`);
+    // 调用企微 kf/sync_msg API 拉取真实消息
+    try {
+      let cursor = '';
+      let hasMore = true;
+      let totalMsgs = 0;
 
-        // 更新账号的接待统计
-        const sessionCount = await sessionRepo.count({
-          where: { openKfId: account.openKfId }
-        });
-        account.totalServiceCount = sessionCount;
-        await accountRepo.save(account);
-        synced++;
-      } catch (e: any) {
-        log.warn(`[Wecom] Sync sessions for ${account.openKfId} failed:`, e.message);
+      while (hasMore && totalMsgs < 5000) {
+        const result = await WecomApiService.syncKfMessages(accessToken, cursor || undefined);
+        const messages = result.msgList || [];
+        totalMsgs += messages.length;
+        hasMore = result.hasMore;
+        cursor = result.nextCursor;
+
+        // 处理消息，按外部用户分组为会话
+        for (const msg of messages) {
+          if (msg.msgtype === 'event') {
+            const event = msg.event;
+            if (event?.event_type === 'enter_session' || event?.event_type === 'session_status_change') {
+              const externalUserId = msg.external_userid || event?.external_userid;
+              const kfId = msg.open_kfid || event?.open_kfid;
+              const servicerUserId = event?.servicer_userid || '';
+
+              if (externalUserId && kfId) {
+                const existing = await sessionRepo.findOne({
+                  where: { openKfId: kfId, externalUserid: externalUserId, sessionStatus: 'open' }
+                });
+
+                if (!existing) {
+                  const session = sessionRepo.create({
+                    wecomConfigId: configId,
+                    openKfId: kfId,
+                    externalUserid: externalUserId,
+                    customerName: externalUserId,
+                    servicerUserid: servicerUserId,
+                    servicerName: servicerUserId,
+                    sessionStatus: event?.event_type === 'session_status_change' && event?.change_type === 3 ? 'closed' : 'open',
+                    msgCount: 1,
+                    sessionStartTime: msg.send_time ? new Date(msg.send_time * 1000).toISOString() : new Date().toISOString(),
+                  });
+                  await sessionRepo.save(session);
+                  newSessions++;
+                } else {
+                  existing.msgCount = (existing.msgCount || 0) + 1;
+                  if (servicerUserId) existing.servicerUserid = servicerUserId;
+                  if (event?.event_type === 'session_status_change' && event?.change_type === 3) {
+                    existing.sessionStatus = 'closed';
+                    existing.sessionEndTime = new Date().toISOString();
+                  }
+                  await sessionRepo.save(existing);
+                }
+              }
+            }
+          }
+        }
+
+        if (messages.length === 0) break;
       }
+      synced = totalMsgs;
+    } catch (apiErr: any) {
+      log.warn('[Wecom] syncKfMessages API error:', apiErr.message);
+    }
+
+    // 更新每个账号的接待统计
+    for (const account of accounts) {
+      const sessionCount = await sessionRepo.count({ where: { openKfId: account.openKfId } });
+      account.totalServiceCount = sessionCount;
+      await accountRepo.save(account);
     }
 
     res.json({
       success: true,
-      message: `同步完成，处理 ${synced} 个客服账号`,
-      data: { synced }
+      message: `同步完成：拉取 ${synced} 条消息，新增 ${newSessions} 个会话`,
+      data: { synced, newSessions }
     });
   } catch (error: any) {
     log.error('[Wecom] Sync KF sessions error:', error);
@@ -472,6 +535,95 @@ router.post('/quick-replies/:id/use', authenticateToken, async (req: Request, re
   } catch (error: any) {
     log.error('[Wecom] Quick reply use count error:', error);
     res.status(500).json({ success: false, message: '更新使用计数失败' });
+  }
+});
+
+// ==================== 自动回复配置 ====================
+
+/**
+ * 获取自动回复配置
+ */
+router.get('/auto-reply-config', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const { configId } = req.query;
+    if (!configId) return res.status(400).json({ success: false, message: '请选择企微配置' });
+
+    const { AppDataSource } = await import('../../config/database');
+    const rows = await AppDataSource.query(
+      "SELECT config_value FROM system_config WHERE config_key = ? LIMIT 1",
+      [`wecom_auto_reply_${configId}`]
+    ).catch(() => []);
+
+    const config = rows.length > 0 ? JSON.parse(rows[0].config_value || '{}') : {};
+    res.json({ success: true, data: config });
+  } catch (error: any) {
+    log.error('[Wecom] Get auto reply config error:', error);
+    res.status(500).json({ success: false, message: '获取自动回复配置失败' });
+  }
+});
+
+/**
+ * 保存自动回复配置
+ */
+router.put('/auto-reply-config', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const { configId, ...replyConfig } = req.body;
+    if (!configId) return res.status(400).json({ success: false, message: '请选择企微配置' });
+
+    const { AppDataSource } = await import('../../config/database');
+    const key = `wecom_auto_reply_${configId}`;
+    const value = JSON.stringify(replyConfig);
+
+    const existing = await AppDataSource.query(
+      "SELECT id FROM system_config WHERE config_key = ? LIMIT 1", [key]
+    ).catch(() => []);
+
+    if (existing.length > 0) {
+      await AppDataSource.query("UPDATE system_config SET config_value = ? WHERE config_key = ?", [value, key]);
+    } else {
+      await AppDataSource.query(
+        "INSERT INTO system_config (config_key, config_value, config_type) VALUES (?, ?, 'json')",
+        [key, value]
+      );
+    }
+
+    res.json({ success: true, message: '自动回复配置已保存' });
+  } catch (error: any) {
+    log.error('[Wecom] Save auto reply config error:', error);
+    res.status(500).json({ success: false, message: '保存自动回复配置失败' });
+  }
+});
+
+/**
+ * 获取客服账号客服链接（kf_url）
+ */
+router.get('/service-accounts/:id/url', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const accountRepo = getTenantRepo(WecomServiceAccount);
+    const account = await accountRepo.findOne({ where: { id: parseInt(req.params.id) } });
+    if (!account) return res.status(404).json({ success: false, message: '客服账号不存在' });
+
+    if (account.openKfId && account.wecomConfigId) {
+      try {
+        const accessToken = await WecomApiService.getAccessTokenByConfigId(account.wecomConfigId);
+        const axios = (await import('axios')).default;
+        const resp = await axios.post(`https://qyapi.weixin.qq.com/cgi-bin/kf/add_contact_way?access_token=${accessToken}`, {
+          open_kfid: account.openKfId, scene: '1'
+        });
+        if (resp.data.errcode === 0 && resp.data.url) {
+          account.kfUrl = resp.data.url;
+          await accountRepo.save(account);
+          return res.json({ success: true, data: { url: resp.data.url } });
+        }
+      } catch (apiErr: any) {
+        log.warn('[Wecom] Get KF URL error:', apiErr.message);
+      }
+    }
+
+    res.json({ success: true, data: { url: account.kfUrl || '' } });
+  } catch (error: any) {
+    log.error('[Wecom] Get KF URL error:', error);
+    res.status(500).json({ success: false, message: '获取客服链接失败' });
   }
 });
 

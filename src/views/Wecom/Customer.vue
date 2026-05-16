@@ -141,14 +141,18 @@
       </div>
 
       <el-table :data="displayCustomers" v-loading="loading" stripe>
-        <!-- 客户信息：备注名(粗体)+昵称(灰色) -->
+        <!-- 客户信息：备注名+昵称上下两行，不换行，溢出悬浮提示 -->
         <el-table-column label="客户信息" min-width="200">
           <template #default="{ row }">
             <div class="customer-info">
               <el-avatar :src="row.avatar" :size="40">{{ (row.remark || row.name)?.charAt(0) }}</el-avatar>
               <div class="info-text">
-                <div class="remark-name">{{ row.remark || row.name || '-' }}</div>
-                <div class="nick-name">{{ row.nickname || row.name || '-' }}</div>
+                <el-tooltip :content="row.remark || row.name || '-'" placement="top" :show-after="500" :disabled="!row.remark && !row.name">
+                  <div class="remark-name">{{ row.remark || row.name || '-' }}</div>
+                </el-tooltip>
+                <el-tooltip :content="row.nickname || row.name || '-'" placement="top" :show-after="500" :disabled="!row.nickname">
+                  <div class="nick-name">{{ row.nickname || row.name || '-' }}</div>
+                </el-tooltip>
               </div>
             </div>
           </template>
@@ -666,20 +670,23 @@ const handleSync = async () => {
   syncing.value = true
   try {
     const res: any = await syncWecomCustomers(query.value.configId)
-    const message = res?.message || '同步成功'
+    const data = res?.data || res
+    const message = data?.message || res?.message || '同步任务已启动'
     ElMessage.success(message)
     syncResult.value = {
       message,
-      syncCount: res?.syncCount || 0,
-      totalCustomers: res?.totalCustomers || 0,
-      customerLimit: res?.customerLimit || 5000,
-      quotaRemaining: res?.quotaRemaining ?? 5000,
-      bindingsUsed: res?.bindingsUsed || 0,
-      cooldownMinutes: res?.cooldownMinutes || 60
+      syncCount: data?.syncCount || 0,
+      totalCustomers: data?.totalCustomers || 0,
+      customerLimit: data?.customerLimit || 5000,
+      quotaRemaining: data?.quotaRemaining ?? 5000,
+      bindingsUsed: data?.bindingsUsed || 0,
+      cooldownMinutes: data?.cooldownMinutes || 60
     }
     startCooldownTimer(syncResult.value.cooldownMinutes)
+    // 立即刷新列表（显示已有数据），然后定时轮询刷新（同步在后台进行）
     fetchList()
     fetchStats()
+    startSyncPolling()
   } catch (e: any) {
     const errMsg = e?.response?.data?.message || e?.message || '同步失败'
     if (e?.code === 'ECONNABORTED' || errMsg.includes('timeout')) {
@@ -692,6 +699,22 @@ const handleSync = async () => {
   } finally {
     syncing.value = false
   }
+}
+
+let syncPollTimer: ReturnType<typeof setInterval> | null = null
+const startSyncPolling = () => {
+  if (syncPollTimer) clearInterval(syncPollTimer)
+  let pollCount = 0
+  syncPollTimer = setInterval(() => {
+    pollCount++
+    fetchList()
+    fetchStats()
+    if (pollCount >= 6) {
+      if (syncPollTimer) clearInterval(syncPollTimer)
+      syncPollTimer = null
+      syncing.value = false
+    }
+  }, 5000)
 }
 
 const startCooldownTimer = (minutes: number) => {
@@ -875,8 +898,9 @@ onUnmounted(() => {
 .v4-stat-card .stat-trend.down { color: #EF4444; }
 
 .customer-info { display: flex; align-items: center; gap: 10px; }
-.info-text .remark-name { font-weight: 600; font-size: 14px; color: #1F2937; line-height: 1.3; }
-.info-text .nick-name { font-size: 12px; color: #9CA3AF; line-height: 1.3; }
+.info-text { overflow: hidden; }
+.info-text .remark-name { font-weight: 600; font-size: 14px; color: #1F2937; line-height: 1.4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.info-text .nick-name { font-size: 12px; color: #9CA3AF; line-height: 1.4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .userid-cell {
   font-family: 'SF Mono', 'Menlo', 'Consolas', monospace;
   font-size: 12px; color: #6B7280;

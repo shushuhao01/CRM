@@ -275,10 +275,22 @@ export class WecomChatArchiveService {
                     try {
                       const detailResp = await WecomApiService.getExternalContactDetail(externalAccessToken, extUserId);
                       if (detailResp?.external_contact) {
-                        const extName = detailResp.external_contact.name || '';
+                        const extContact = detailResp.external_contact;
+                        const extName = extContact.name || '';
                         const followInfo = (detailResp.follow_user || []).find((f: any) => f.userid === userId);
                         const remark = followInfo?.remark || '';
                         updatedName = remark ? `${remark}(${extName})` : extName || extUserId;
+                        // 同时更新客户头像
+                        if (extContact.avatar) {
+                          try {
+                            const customerRepo = AppDataSource.getRepository(WecomCustomer);
+                            const existingCustomer = await customerRepo.findOne({ where: { wecomConfigId: config.id, externalUserId: extUserId } });
+                            if (existingCustomer && !existingCustomer.avatar) {
+                              existingCustomer.avatar = extContact.avatar;
+                              await customerRepo.save(existingCustomer);
+                            }
+                          } catch { /* ignore */ }
+                        }
                       }
                     } catch { /* ignore */ }
                   }
@@ -295,7 +307,20 @@ export class WecomChatArchiveService {
 
             // 获取外部联系人名称（优先本地WecomCustomer表，其次调用API获取）
             let customerName = await this.getCustomerName(config, extUserId);
-            if (!customerName || customerName === extUserId) {
+            let needFetchDetail = !customerName || customerName === extUserId;
+
+            // 即使有名称，也检查是否需要补充头像
+            if (!needFetchDetail) {
+              try {
+                const customerRepo = AppDataSource.getRepository(WecomCustomer);
+                const existingCustomer = await customerRepo.findOne({ where: { wecomConfigId: config.id, externalUserId: extUserId } });
+                if (existingCustomer && !existingCustomer.avatar) {
+                  needFetchDetail = true; // 需要获取详情来补充头像
+                }
+              } catch { /* ignore */ }
+            }
+
+            if (needFetchDetail) {
               // 本地没有名称，尝试从API获取外部联系人详情
               try {
                 const detailResp = await WecomApiService.getExternalContactDetail(externalAccessToken, extUserId);
@@ -312,6 +337,7 @@ export class WecomChatArchiveService {
                     const existingCustomer = await customerRepo.findOne({ where: { wecomConfigId: config.id, externalUserId: extUserId } });
                     if (existingCustomer) {
                       existingCustomer.name = customerName;
+                      if (extContact.avatar) existingCustomer.avatar = extContact.avatar;
                       await customerRepo.save(existingCustomer);
                     } else {
                       await customerRepo.save(customerRepo.create({
@@ -319,6 +345,7 @@ export class WecomChatArchiveService {
                         wecomConfigId: config.id,
                         externalUserId: extUserId,
                         name: customerName,
+                        avatar: extContact.avatar || '',
                         type: extContact.type || 1
                       }));
                     }
@@ -696,6 +723,78 @@ export class WecomChatArchiveService {
         } catch { /* ignore */ }
       }
 
+      // 批量查询同意状态（从 meta 记录的 content 中提取 agreed 字段）
+      const agreedStatusMap = new Map<string, boolean>();
+      if (externalUserIds.size > 0) {
+        try {
+          let metaWhere = "msg_type = 'meta' AND content LIKE '%conversation_meta%'";
+          const metaParams: any[] = [];
+          if (tenantId) {
+            metaWhere += ' AND tenant_id = ?';
+            metaParams.push(tenantId);
+          }
+          if (configId) {
+            metaWhere += ' AND wecom_config_id = ?';
+            metaParams.push(configId);
+          }
+          const metaRecords = await AppDataSource.query(
+            `SELECT to_user_ids, content FROM wecom_chat_records WHERE ${metaWhere}`,
+            metaParams
+          );
+          for (const meta of metaRecords) {
+            try {
+              const toIds = typeof meta.to_user_ids === 'string' ? JSON.parse(meta.to_user_ids) : meta.to_user_ids;
+              const content = typeof meta.content === 'string' ? JSON.parse(meta.content) : meta.content;
+              if (Array.isArray(toIds) && toIds.length > 0 && content?.agreed !== undefined) {
+                agreedStatusMap.set(toIds[0], !!content.agreed);
+              }
+            } catch { /* ignore */ }
+          }
+        } catch { /* ignore */ }
+
+        // 补充判断：如果有实际消息记录（非meta），说明客户已同意存档
+        // 企微规则：只有客户同意后才能拉取到消息
+        try {
+          const extIds = Array.from(externalUserIds).filter(id => !agreedStatusMap.has(id) || agreedStatusMap.get(id) === false);
+          if (extIds.length > 0) {
+            let msgWhere = "msg_type != 'meta'";
+            const msgParams: any[] = [];
+            if (tenantId) {
+              msgWhere += ' AND tenant_id = ?';
+              msgParams.push(tenantId);
+            }
+            if (configId) {
+              msgWhere += ' AND wecom_config_id = ?';
+              msgParams.push(configId);
+            }
+            // 查找有实际消息的外部联系人
+            const likeConditions = extIds.map(() => 'from_user_id = ? OR to_user_ids LIKE ?').join(' OR ');
+            const likeParams = extIds.flatMap(id => [id, `%${id}%`]);
+            const msgRecords = await AppDataSource.query(
+              `SELECT DISTINCT from_user_id, to_user_ids FROM wecom_chat_records WHERE ${msgWhere} AND (${likeConditions}) LIMIT 200`,
+              [...msgParams, ...likeParams]
+            );
+            for (const rec of msgRecords) {
+              // 找到涉及的外部联系人ID
+              const fromId = rec.from_user_id || '';
+              if (fromId.startsWith('wm') || fromId.startsWith('wo')) {
+                agreedStatusMap.set(fromId, true);
+              }
+              try {
+                const toIds = typeof rec.to_user_ids === 'string' ? JSON.parse(rec.to_user_ids) : rec.to_user_ids;
+                if (Array.isArray(toIds)) {
+                  for (const id of toIds) {
+                    if (id && (id.startsWith('wm') || id.startsWith('wo'))) {
+                      agreedStatusMap.set(id, true);
+                    }
+                  }
+                }
+              } catch { /* ignore */ }
+            }
+          }
+        } catch { /* ignore */ }
+      }
+
       // 后处理：用备注+昵称作为 customerName，附带头像
       const list = rawList.map((item: any) => {
         let customerName = '';
@@ -751,7 +850,13 @@ export class WecomChatArchiveService {
           memberAvatar = memberAvatarMap.get(memberId) || '';
         }
 
-        return { ...item, customerName, customerAvatar, memberAvatar };
+        // 从 meta 记录中获取同意状态
+        let agreed: boolean | null = null;
+        if (externalId && agreedStatusMap.has(externalId)) {
+          agreed = agreedStatusMap.get(externalId)!;
+        }
+
+        return { ...item, customerName, customerAvatar, memberAvatar, agreed };
       });
 
       return { list, total };
@@ -830,43 +935,97 @@ export class WecomChatArchiveService {
   /**
    * 获取会话存档统计信息
    */
-  static async getArchiveStats(config: WecomConfig): Promise<{
-    totalConversations: number;
-    totalRecords: number;
-    agreedConversations: number;
-    lastSyncTime: string | null;
-  }> {
+  static async getArchiveStats(config: WecomConfig): Promise<any> {
     try {
-      const chatRecordRepo = AppDataSource.getRepository(WecomChatRecord);
+      const configId = config.id;
 
-      const totalRecords = await chatRecordRepo.count({
-        where: { wecomConfigId: config.id }
-      });
+      // 基础计数
+      const totalRecords = await AppDataSource.query(
+        `SELECT COUNT(*) as cnt FROM wecom_chat_records WHERE wecom_config_id = ? AND msg_type != 'meta'`, [configId]
+      );
+      const totalMsgs = parseInt(totalRecords[0]?.cnt) || 0;
 
-      // 统计不同会话数（去重 fromUserId+toUserIds 组合）
       const convResult = await AppDataSource.query(
-        `SELECT COUNT(DISTINCT CONCAT(from_user_id, '-', to_user_ids)) as count
-         FROM wecom_chat_records WHERE wecom_config_id = ?`,
-        [config.id]
+        `SELECT COUNT(DISTINCT CONCAT(from_user_id, '-', to_user_ids)) as cnt FROM wecom_chat_records WHERE wecom_config_id = ?`, [configId]
       );
-      const totalConversations = convResult[0]?.count || 0;
+      const conversationCount = parseInt(convResult[0]?.cnt) || 0;
 
-      // 统计已同意的会话数
       const agreedResult = await AppDataSource.query(
-        `SELECT COUNT(*) as count FROM wecom_chat_records
-         WHERE wecom_config_id = ? AND msg_type = 'meta' AND content LIKE '%"agreed":true%'`,
-        [config.id]
+        `SELECT COUNT(*) as cnt FROM wecom_chat_records WHERE wecom_config_id = ? AND msg_type = 'meta' AND content LIKE '%"agreed":true%'`, [configId]
       );
-      const agreedConversations = agreedResult[0]?.count || 0;
+      const agreedConversations = parseInt(agreedResult[0]?.cnt) || 0;
 
-      // 最后同步时间
-      const lastSync = lastArchiveSyncMap.get(config.id);
+      // 敏感消息数
+      const sensitiveResult = await AppDataSource.query(
+        `SELECT COUNT(*) as cnt FROM wecom_chat_records WHERE wecom_config_id = ? AND is_sensitive = 1`, [configId]
+      );
+      const sensitiveCount = parseInt(sensitiveResult[0]?.cnt) || 0;
+
+      // 近7天趋势
+      const trendRows = await AppDataSource.query(
+        `SELECT DATE(FROM_UNIXTIME(msg_time/1000)) as dateLabel,
+                COUNT(*) as msgCount,
+                COUNT(DISTINCT CONCAT(from_user_id, '-', to_user_ids)) as convCount
+         FROM wecom_chat_records
+         WHERE wecom_config_id = ? AND msg_type != 'meta'
+           AND msg_time >= UNIX_TIMESTAMP(DATE_SUB(CURDATE(), INTERVAL 7 DAY)) * 1000
+         GROUP BY dateLabel ORDER BY dateLabel ASC`,
+        [configId]
+      ).catch(() => []);
+      const trend = trendRows.map((r: any) => ({
+        dateLabel: r.dateLabel ? new Date(r.dateLabel).toISOString().slice(5, 10) : '',
+        msgCount: parseInt(r.msgCount) || 0,
+        convCount: parseInt(r.convCount) || 0
+      }));
+
+      // 消息类型分布
+      const typeRows = await AppDataSource.query(
+        `SELECT msg_type as type, COUNT(*) as count FROM wecom_chat_records
+         WHERE wecom_config_id = ? AND msg_type NOT IN ('meta', 'agree', 'disagree')
+         GROUP BY msg_type ORDER BY count DESC`,
+        [configId]
+      ).catch(() => []);
+      const typeDistribution = typeRows.map((r: any) => ({
+        type: r.type, count: parseInt(r.count) || 0
+      }));
+
+      // 成员排行（按发送消息数）
+      const memberRows = await AppDataSource.query(
+        `SELECT from_user_id as userId, from_user_name as userName,
+                COUNT(*) as msgCount,
+                COUNT(DISTINCT CONCAT(from_user_id, '-', to_user_ids)) as convCount
+         FROM wecom_chat_records
+         WHERE wecom_config_id = ? AND msg_type != 'meta'
+         GROUP BY from_user_id, from_user_name
+         ORDER BY msgCount DESC LIMIT 20`,
+        [configId]
+      ).catch(() => []);
+      const memberRanking = memberRows.map((r: any) => ({
+        userName: r.userName || r.userId,
+        userId: r.userId,
+        msgCount: parseInt(r.msgCount) || 0,
+        convCount: parseInt(r.convCount) || 0,
+        avgResponse: 0,
+        activePercent: 0
+      }));
+
+      const lastSync = lastArchiveSyncMap.get(configId);
       const lastSyncTime = lastSync ? new Date(lastSync).toISOString() : null;
 
-      return { totalConversations, totalRecords, agreedConversations, lastSyncTime };
+      return {
+        totalMsgs, conversationCount, agreedConversations, sensitiveCount,
+        avgResponseTime: 0, msgTrend: 0, convTrend: 0, respTrend: 0,
+        trend, typeDistribution, memberRanking, memberRankTotal: memberRanking.length,
+        totalRecords: totalMsgs, totalConversations: conversationCount, lastSyncTime
+      };
     } catch (e: any) {
       log.error('[ChatArchive] 获取统计信息失败:', e.message);
-      return { totalConversations: 0, totalRecords: 0, agreedConversations: 0, lastSyncTime: null };
+      return {
+        totalMsgs: 0, conversationCount: 0, agreedConversations: 0, sensitiveCount: 0,
+        avgResponseTime: 0, msgTrend: 0, convTrend: 0, respTrend: 0,
+        trend: [], typeDistribution: [], memberRanking: [], memberRankTotal: 0,
+        totalRecords: 0, totalConversations: 0, lastSyncTime: null
+      };
     }
   }
 
@@ -940,8 +1099,8 @@ export class WecomChatArchiveService {
     const rsaPrivateKey = suiteConfig?.chatArchiveRsaPrivateKey;
 
     if (!rsaPrivateKey) {
-      log.warn('[ChatArchive] syncChatMessages: 未配置RSA私钥，无法解密消息');
-      throw new Error('未配置会话存档RSA私钥，请在服务商配置中设置');
+      log.warn('[ChatArchive] syncChatMessages: 服务商未配置RSA私钥，无法解密消息。请平台管理员在「服务商应用管理」中配置RSA密钥对');
+      throw new Error('平台尚未配置消息解密密钥，请联系平台管理员在管理后台配置（租户无需操作）');
     }
 
     // 获取上次拉取的游标位置

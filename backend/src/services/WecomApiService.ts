@@ -373,6 +373,117 @@ export class WecomApiService {
   }
 
   /**
+   * 获取获客链接使用量（企微官方接口）
+   * 返回: { total: 已使用量, balance: 剩余量, quota_list: 配额明细 }
+   */
+  static async getAcquisitionQuota(accessToken: string): Promise<{ total: number; balance: number; quotaList: any[] }> {
+    try {
+      const response = await axios.get(`${WECOM_API_BASE}/externalcontact/customer_acquisition/quota?access_token=${accessToken}`);
+      if (response.data.errcode === 0) {
+        return {
+          total: response.data.total || 0,
+          balance: response.data.balance || 0,
+          quotaList: response.data.quota_list || []
+        };
+      } else {
+        log.warn('[WecomApi] getAcquisitionQuota non-zero errcode:', response.data.errmsg);
+        return { total: 0, balance: 0, quotaList: [] };
+      }
+    } catch (error: any) {
+      log.error('[WecomApi] getAcquisitionQuota error:', error.message);
+      return { total: 0, balance: 0, quotaList: [] };
+    }
+  }
+
+  /**
+   * 获取获客链接详情（企微官方接口，含统计数据）
+   */
+  static async getAcquisitionLinkDetail(accessToken: string, linkId: string): Promise<any> {
+    try {
+      const response = await axios.post(`${WECOM_API_BASE}/externalcontact/customer_acquisition/get?access_token=${accessToken}`, {
+        link_id: linkId
+      });
+      if (response.data.errcode === 0) {
+        return response.data.link || response.data;
+      }
+      return null;
+    } catch (error: any) {
+      log.error('[WecomApi] getAcquisitionLinkDetail error:', error.message);
+      return null;
+    }
+  }
+
+  /**
+   * 创建「联系我」活码
+   */
+  static async addContactWay(accessToken: string, params: {
+    type: number; scene: number; style?: number; remark?: string; skipVerify?: boolean;
+    state?: string; userIds?: string[]; partyIds?: number[];
+  }): Promise<{ config_id: string; qr_code: string }> {
+    try {
+      const body: any = {
+        type: params.type || 1,
+        scene: params.scene || 2,
+        style: params.style || 0,
+        skip_verify: params.skipVerify ?? true,
+        state: params.state || '',
+        remark: params.remark || '',
+      };
+      if (params.userIds?.length) body.user = params.userIds;
+      if (params.partyIds?.length) body.party = params.partyIds;
+      const response = await axios.post(`${WECOM_API_BASE}/externalcontact/add_contact_way?access_token=${accessToken}`, body);
+      if (response.data.errcode === 0) {
+        return { config_id: response.data.config_id, qr_code: response.data.qr_code };
+      }
+      throw new Error(`创建活码失败: ${response.data.errmsg} (${response.data.errcode})`);
+    } catch (error: any) {
+      log.error('[WecomApi] addContactWay error:', error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * 更新「联系我」活码
+   */
+  static async updateContactWay(accessToken: string, configId: string, params: {
+    remark?: string; skipVerify?: boolean; style?: number; state?: string;
+    userIds?: string[]; partyIds?: number[];
+  }): Promise<void> {
+    try {
+      const body: any = { config_id: configId };
+      if (params.remark !== undefined) body.remark = params.remark;
+      if (params.skipVerify !== undefined) body.skip_verify = params.skipVerify;
+      if (params.style !== undefined) body.style = params.style;
+      if (params.state !== undefined) body.state = params.state;
+      if (params.userIds?.length) body.user = params.userIds;
+      if (params.partyIds?.length) body.party = params.partyIds;
+      const response = await axios.post(`${WECOM_API_BASE}/externalcontact/update_contact_way?access_token=${accessToken}`, body);
+      if (response.data.errcode !== 0) {
+        throw new Error(`更新活码失败: ${response.data.errmsg} (${response.data.errcode})`);
+      }
+    } catch (error: any) {
+      log.error('[WecomApi] updateContactWay error:', error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * 删除「联系我」活码
+   */
+  static async delContactWay(accessToken: string, configId: string): Promise<void> {
+    try {
+      const response = await axios.post(`${WECOM_API_BASE}/externalcontact/del_contact_way?access_token=${accessToken}`, {
+        config_id: configId
+      });
+      if (response.data.errcode !== 0) {
+        log.warn('[WecomApi] delContactWay non-zero:', response.data.errmsg);
+      }
+    } catch (error: any) {
+      log.error('[WecomApi] delContactWay error:', error.message);
+    }
+  }
+
+  /**
    * 创建微信客服账号
    */
   static async createKfAccount(accessToken: string, name: string, mediaId?: string): Promise<string> {

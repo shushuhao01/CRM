@@ -867,9 +867,10 @@ import { Plus, Search, Refresh, Download } from '@element-plus/icons-vue'
 import QRCode from 'qrcode'
 import {
   getWecomConfigs, getServiceAccounts, createServiceAccount, updateServiceAccount,
-  getWecomUsers as fetchWecomUserAPI,
+  syncServiceAccountsFromApi, getWecomUsers as fetchWecomUserAPI,
   getKfSessions, syncKfSessions, getKfStats,
-  getQuickReplies, createQuickReply, updateQuickReply, deleteQuickReply
+  getQuickReplies, createQuickReply, updateQuickReply, deleteQuickReply,
+  saveAutoReplyConfig, getAutoReplyConfig
 } from '@/api/wecom'
 import { formatDateTime } from '@/utils/date'
 import { webSocketService } from '@/services/webSocketService'
@@ -1214,10 +1215,15 @@ const addKeywordRule = () => {
 }
 
 const handleSaveAutoReply = async () => {
+  if (!selectedConfigId.value) { ElMessage.warning('请先选择企微配置'); return }
   savingAutoReply.value = true
   try {
+    await saveAutoReplyConfig({
+      configId: selectedConfigId.value,
+      ...autoReplyConfig.value
+    })
     ElMessage.success('自动回复配置已保存')
-  } catch (e: any) { ElMessage.error(e?.message || '保存失败') }
+  } catch (e: any) { ElMessage.error(e?.response?.data?.message || e?.message || '保存失败') }
   savingAutoReply.value = false
 }
 
@@ -1392,7 +1398,11 @@ const handleSyncAccounts = async () => {
   if (!selectedConfigId.value) return
   if (isDemoMode.value) { ElMessage.info('示例模式：授权企微后可同步'); return }
   syncingAccounts.value = true
-  try { await fetchAccountList(); ElMessage.success('同步完成') }
+  try {
+    await syncServiceAccountsFromApi(selectedConfigId.value)
+    await fetchAccountList()
+    ElMessage.success('从企微同步客服账号完成')
+  } catch (e: any) { ElMessage.error(e?.response?.data?.message || '同步失败') }
   finally { syncingAccounts.value = false }
 }
 

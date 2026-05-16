@@ -107,8 +107,8 @@
               </div>
               <div class="msg-header-info">
                 <span class="msg-header-name">{{ getConvDisplayName(selectedConv) }}</span>
-                <el-tag v-if="isWechatCustomer(selectedConv)" type="success" size="small" effect="plain">@微信</el-tag>
-                <el-tag v-else-if="isCorpCustomer(selectedConv)" type="warning" size="small" effect="plain">@{{ getCorpShortName(selectedConv) }}</el-tag>
+                <span v-if="isWechatCustomer(selectedConv)" class="msg-header-tag tag-wechat">@微信</span>
+                <span v-else-if="isCorpCustomer(selectedConv)" class="msg-header-tag tag-corp">@{{ getCorpShortName(selectedConv) }}</span>
                 <el-tag v-if="(selectedConv as any).agreed === true" type="success" size="small">已同意存档</el-tag>
                 <el-tag v-else-if="(selectedConv as any).agreed === false" type="danger" size="small">未同意存档</el-tag>
                 <el-tag v-else type="info" size="small">存档状态未知</el-tag>
@@ -132,10 +132,18 @@
                 <span>{{ getDateDividerText(msg.msgTime) }}</span>
               </div>
 
-              <!-- 撤回/删除消息 -->
-              <div v-if="msg.action === 'recall' || msg.msgType === 'revoke'" class="msg-system-notice recall-notice">
+              <!-- 撤回消息 - 高亮警示 -->
+              <div v-if="msg.action === 'recall' || msg.msgType === 'revoke'" class="msg-system-notice recall-notice highlight-warning">
                 <el-icon><WarningFilled /></el-icon>
-                <span>{{ msg.fromUserName || msg.fromUserId }} 撤回了一条消息</span>
+                <span class="notice-text">{{ msg.fromUserName || msg.fromUserId }} <strong>撤回</strong>了一条消息</span>
+                <el-tag type="warning" size="small" effect="dark" style="margin-left: 6px">撤回</el-tag>
+              </div>
+
+              <!-- 删除消息 - 高亮警示 -->
+              <div v-else-if="msg.action === 'delete_chat_record' || msg.msgType === 'delete'" class="msg-system-notice delete-notice highlight-danger">
+                <el-icon><WarningFilled /></el-icon>
+                <span class="notice-text">{{ msg.fromUserName || msg.fromUserId }} <strong>删除</strong>了一条消息</span>
+                <el-tag type="danger" size="small" effect="dark" style="margin-left: 6px">删除</el-tag>
               </div>
 
               <!-- 同意存档系统消息 -->
@@ -163,9 +171,12 @@
                   </div>
 
                   <!-- 消息气泡 -->
-                  <div class="msg-bubble" :class="{ 'bubble-self': isSelfMsg(msg), 'bubble-sensitive': msg.isSensitive }">
-                    <!-- 文本 -->
-                    <template v-if="msg.msgType === 'text'">{{ getTextContent(msg.content) }}</template>
+                  <div class="msg-bubble" :class="{ 'bubble-self': isSelfMsg(msg), 'bubble-sensitive': msg.isSensitive }" @contextmenu.prevent="showMsgContextMenu($event, msg)">
+                    <!-- 文本（敏感词高亮） -->
+                    <template v-if="msg.msgType === 'text'">
+                      <span v-if="msg.isSensitive" v-html="highlightSensitiveWords(getTextContent(msg.content))" />
+                      <span v-else>{{ getTextContent(msg.content) }}</span>
+                    </template>
                     <!-- 图片 -->
                     <template v-else-if="msg.msgType === 'image'">
                       <el-image v-if="msg.mediaUrl || getImageUrl(msg.content)" :src="msg.mediaUrl || getImageUrl(msg.content)" :preview-src-list="[msg.mediaUrl || getImageUrl(msg.content)]" fit="contain" style="max-width:220px;max-height:220px;border-radius:4px" />
@@ -221,7 +232,13 @@
               </div>
             </template>
 
-            <el-empty v-if="messages.length === 0 && !msgLoading" description="暂无消息" :image-size="50" />
+            <el-empty v-if="messages.length === 0 && !msgLoading" :image-size="50">
+              <template #description>
+                <p v-if="(selectedConv as any).agreed === true">已同意存档，请点击同步按钮拉取消息</p>
+                <p v-else-if="(selectedConv as any).agreed === false">客户未同意会话存档</p>
+                <p v-else>暂无消息</p>
+              </template>
+            </el-empty>
           </div>
         </template>
 
@@ -234,13 +251,52 @@
         </div>
       </div>
     </div>
+
+    <!-- 标记风险弹窗 -->
+    <el-dialog v-model="markRiskVisible" title="标记风险" width="480px" destroy-on-close>
+      <el-form label-width="80px">
+        <el-form-item label="消息内容">
+          <div class="mark-msg-preview">{{ markRiskMsg?.content ? getTextContent(markRiskMsg.content) : '[非文本消息]' }}</div>
+        </el-form-item>
+        <el-form-item label="风险类型" required>
+          <el-select v-model="markRiskForm.riskType" placeholder="选择风险类型" style="width: 100%">
+            <el-option label="敏感词" value="sensitive_word" />
+            <el-option label="合规问题" value="compliance" />
+            <el-option label="服务态度" value="attitude" />
+            <el-option label="信息泄露" value="leak" />
+            <el-option label="其他" value="other" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="风险等级">
+          <el-radio-group v-model="markRiskForm.riskLevel">
+            <el-radio label="low">低</el-radio>
+            <el-radio label="medium">中</el-radio>
+            <el-radio label="high">高</el-radio>
+            <el-radio label="critical">严重</el-radio>
+          </el-radio-group>
+        </el-form-item>
+        <el-form-item label="备注">
+          <el-input v-model="markRiskForm.remark" type="textarea" :rows="3" placeholder="描述风险点" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="markRiskVisible = false">取消</el-button>
+        <el-button type="danger" @click="submitMarkRisk" :loading="markRiskSubmitting">提交标记</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 右键菜单 -->
+    <div v-if="contextMenuVisible" class="msg-context-menu" :style="contextMenuStyle" @mouseleave="contextMenuVisible = false">
+      <div class="context-menu-item" @click="openMarkRisk">标记风险</div>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { Search, Refresh, InfoFilled, WarningFilled, Microphone, VideoCamera, Document, Link, Grid, Location, User } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
+import { createAuditMark, getSensitiveWords } from '@/api/wecom'
 import { getConversationList, getConversationMessages, getArchiveSeats } from '@/api/wecom'
 import { formatConvTime, formatMsgTimeShort, getMsgTypeText, getTextContent, getFirstToUser, getDateDividerText } from '../utils'
 import type { Conversation, ConvMessage } from '../types'
@@ -257,6 +313,80 @@ const currentUser = computed(() => userStore.currentUser)
 const isAdminRole = computed(() => ['super_admin', 'admin'].includes(currentUser.value?.role || ''))
 const isManagerRole = computed(() => ['department_manager', 'manager'].includes(currentUser.value?.role || ''))
 
+// ==================== 敏感词高亮 ====================
+const sensitiveWordList = ref<string[]>([])
+
+const loadSensitiveWords = async () => {
+  try {
+    const res: any = await getSensitiveWords()
+    const data = res?.data || res
+    sensitiveWordList.value = Array.isArray(data) ? data : []
+  } catch { /* ignore */ }
+}
+
+const highlightSensitiveWords = (text: string): string => {
+  if (!text || sensitiveWordList.value.length === 0) return text
+  let result = text.replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  for (const word of sensitiveWordList.value) {
+    if (!word) continue
+    const escaped = word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    result = result.replace(new RegExp(escaped, 'gi'), `<span class="sensitive-word-hl">${word}</span>`)
+  }
+  return result
+}
+
+// ==================== 标记风险 ====================
+const markRiskVisible = ref(false)
+const markRiskMsg = ref<any>(null)
+const markRiskSubmitting = ref(false)
+const markRiskForm = reactive({ riskType: '', riskLevel: 'medium', remark: '' })
+const contextMenuVisible = ref(false)
+const contextMenuStyle = ref({ top: '0px', left: '0px' })
+const contextMenuMsg = ref<any>(null)
+
+const showMsgContextMenu = (e: MouseEvent, msg: any) => {
+  if (!isAdminRole.value && !isManagerRole.value) return
+  contextMenuMsg.value = msg
+  contextMenuStyle.value = { top: e.clientY + 'px', left: e.clientX + 'px' }
+  contextMenuVisible.value = true
+}
+
+const openMarkRisk = () => {
+  contextMenuVisible.value = false
+  markRiskMsg.value = contextMenuMsg.value
+  markRiskForm.riskType = ''
+  markRiskForm.riskLevel = 'medium'
+  markRiskForm.remark = ''
+  markRiskVisible.value = true
+}
+
+const submitMarkRisk = async () => {
+  if (!markRiskForm.riskType) { ElMessage.warning('请选择风险类型'); return }
+  if (!props.configId || !markRiskMsg.value) return
+  markRiskSubmitting.value = true
+  try {
+    const msg = markRiskMsg.value
+    await createAuditMark({
+      wecomConfigId: props.configId,
+      chatRecordId: msg.id,
+      fromUserId: msg.fromUserId,
+      toUserId: selectedConv.value ? getFirstToUser(selectedConv.value) : '',
+      msgContent: msg.msgType === 'text' ? getTextContent(msg.content) : `[${msg.msgType}]`,
+      msgType: msg.msgType,
+      msgTime: msg.msgTime,
+      riskType: markRiskForm.riskType,
+      riskLevel: markRiskForm.riskLevel,
+      remark: markRiskForm.remark,
+    })
+    ElMessage.success('风险标记已提交')
+    markRiskVisible.value = false
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.message || '标记失败')
+  } finally {
+    markRiskSubmitting.value = false
+  }
+}
+
 // ==================== 员工面板 ====================
 const memberSearch = ref('')
 const memberLoading = ref(false)
@@ -266,11 +396,22 @@ const selectedMemberName = ref('')
 const selectedMemberAvatar = ref('')
 const deptMemberCrmIds = ref<string[]>([])
 
+const archiveVisibility = ref<'self' | 'department' | 'all'>('all')
+
 const visibleArchiveMembers = computed(() => {
+  // 超级管理员始终可见所有
   if (isAdminRole.value) return archiveMembers.value
-  if (isManagerRole.value) {
+
+  // 根据存档设置的数据可见范围过滤
+  const vis = archiveVisibility.value
+
+  if (vis === 'all') return archiveMembers.value
+
+  if (vis === 'department' || isManagerRole.value) {
     return archiveMembers.value.filter((m: any) => m.crmUserId && deptMemberCrmIds.value.includes(m.crmUserId))
   }
+
+  // vis === 'self'：仅自己
   const myId = currentUser.value?.id
   return archiveMembers.value.filter((m: any) => m.crmUserId === myId)
 })
@@ -302,7 +443,9 @@ const fetchArchiveMembers = async () => {
   try {
     await loadScopeMembers()
     const seatRes: any = await getArchiveSeats(props.configId)
-    archiveMembers.value = seatRes?.members || []
+    const data = seatRes?.data || seatRes
+    archiveMembers.value = data?.members || []
+    archiveVisibility.value = data?.visibility || 'all'
   } catch { archiveMembers.value = [] }
   finally { memberLoading.value = false }
 }
@@ -501,7 +644,7 @@ const getWeappTitle = (content: string) => { try { const c = JSON.parse(content)
 // ==================== 生命周期 ====================
 watch(() => props.configId, () => { fetchArchiveMembers() }, { immediate: true })
 
-onMounted(() => { fetchArchiveMembers() })
+onMounted(() => { fetchArchiveMembers(); loadSensitiveWords() })
 
 // 暴露方法给父组件调用
 defineExpose({ fetchConversations, fetchArchiveMembers })
@@ -548,8 +691,8 @@ defineExpose({ fetchConversations, fetchArchiveMembers })
 .conv-card-top { display: flex; align-items: center; gap: 4px; }
 .conv-card-name { font-size: 13px; font-weight: 500; color: #1f2937; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100px; }
 .conv-card-tag { font-size: 10px; padding: 0 4px; border-radius: 3px; white-space: nowrap; }
-.tag-wechat { color: #07c160; background: #e6f7ef; }
-.tag-corp { color: #e6a23c; background: #fdf6ec; }
+.tag-wechat { color: #07c160; }
+.tag-corp { color: #e6a23c; }
 .conv-card-time { margin-left: auto; font-size: 11px; color: #9ca3af; white-space: nowrap; }
 .conv-card-bottom { display: flex; align-items: center; margin-top: 4px; }
 .conv-card-preview { font-size: 12px; color: #9ca3af; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; }
@@ -564,6 +707,9 @@ defineExpose({ fetchConversations, fetchArchiveMembers })
 .msg-header-avatar { width: 36px; height: 36px; border-radius: 4px; overflow: hidden; flex-shrink: 0; background: #c8c9cc; display: flex; align-items: center; justify-content: center; }
 .msg-header-info { display: flex; align-items: center; gap: 6px; }
 .msg-header-name { font-size: 15px; font-weight: 600; color: #1f2937; }
+.msg-header-tag { font-size: 12px; font-weight: 500; }
+.msg-header-tag.tag-wechat { color: #07c160; }
+.msg-header-tag.tag-corp { color: #e6a23c; }
 .msg-header-right { display: flex; align-items: center; gap: 8px; }
 .msg-header-count { font-size: 12px; color: #9ca3af; }
 
@@ -578,6 +724,14 @@ defineExpose({ fetchConversations, fetchArchiveMembers })
 .msg-system-notice { text-align: center; margin: 12px 0; font-size: 12px; color: #9ca3af; display: flex; align-items: center; justify-content: center; gap: 4px; }
 .recall-notice { color: #e6a23c; }
 .agree-notice { color: #67c23a; }
+.highlight-warning { background: #FEF3CD; border: 1px solid #F59E0B; border-radius: 8px; padding: 8px 16px; color: #92400E; font-size: 13px; font-weight: 500; }
+.highlight-danger { background: #FEE2E2; border: 1px solid #EF4444; border-radius: 8px; padding: 8px 16px; color: #991B1B; font-size: 13px; font-weight: 500; }
+.highlight-warning .notice-text strong, .highlight-danger .notice-text strong { font-weight: 700; }
+.sensitive-word-hl { background: #FEE2E2; color: #DC2626; font-weight: 700; padding: 1px 3px; border-radius: 3px; border-bottom: 2px solid #EF4444; }
+.msg-context-menu { position: fixed; z-index: 3000; background: #fff; border: 1px solid #E5E7EB; border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.12); padding: 4px 0; min-width: 120px; }
+.context-menu-item { padding: 8px 16px; font-size: 13px; color: #374151; cursor: pointer; transition: all 0.15s; }
+.context-menu-item:hover { background: #F3F4F6; color: #EF4444; }
+.mark-msg-preview { background: #F9FAFB; border-radius: 6px; padding: 8px 12px; font-size: 13px; color: #4B5563; max-height: 80px; overflow: auto; }
 
 /* 消息行 */
 .msg-row { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 16px; }

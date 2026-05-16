@@ -47,10 +47,11 @@
             <span class="nav-icon">🏢</span>
             <span>企微服务</span>
           </router-link>
-          <router-link to="/member/ai-assistant" class="nav-item" active-class="active">
+          <!-- AI助手暂停开发 -->
+          <!-- <router-link to="/member/ai-assistant" class="nav-item" active-class="active">
             <span class="nav-icon">🤖</span>
             <span>AI助手</span>
-          </router-link>
+          </router-link> -->
           <router-link to="/member/renew" class="nav-item" active-class="active">
             <span class="nav-icon">💳</span>
             <span>续费升级</span>

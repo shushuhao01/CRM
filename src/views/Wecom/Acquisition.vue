@@ -18,7 +18,9 @@
       <!-- 使用量监控条 -->
       <div v-if="displayUsage" class="usage-bar">
         <div class="usage-info">
-          <span>📊 获客使用量：已添加 {{ displayUsage.totalAdds }} / {{ displayUsage.quotaLimit }} 人</span>
+          <span>获客使用量：已使用 {{ displayUsage.quotaUsed || displayUsage.totalAdds }} / {{ displayUsage.quotaLimit }} 人
+            <template v-if="displayUsage.quotaBalance"> （剩余 {{ displayUsage.quotaBalance }}）</template>
+          </span>
           <el-tag :type="displayUsage.warningLevel === 'danger' ? 'danger' : displayUsage.warningLevel === 'warning' ? 'warning' : 'success'" size="small">
             {{ displayUsage.usagePercent }}%
           </el-tag>
@@ -127,8 +129,11 @@
                 <el-tag :type="row.isEnabled ? 'success' : 'info'" size="small">{{ row.isEnabled ? '启用' : '禁用' }}</el-tag>
               </template>
             </el-table-column>
-            <el-table-column label="操作" width="200" fixed="right">
+            <el-table-column label="操作" width="240" fixed="right">
               <template #default="{ row }">
+                <el-button type="primary" link size="small" @click="copyLink(row.linkUrl)">
+                  <el-icon><CopyDocument /></el-icon>复制链接
+                </el-button>
                 <el-button type="primary" link size="small" @click="showQrCode(row)">二维码</el-button>
                 <el-button type="success" link size="small" @click="showLinkDetail(row)">详情</el-button>
                 <el-dropdown trigger="click">
@@ -207,6 +212,7 @@
       :wecom-user-options="displayWecomUserOptions"
       :get-member-name="getMemberName"
       :submitting="submitting"
+      :config-id="selectedConfigId"
       @submit="handleWizardSubmit"
     />
 
@@ -303,7 +309,7 @@ defineOptions({ name: 'WecomAcquisition' })
 import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { useUserStore } from '@/stores/user'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Download, ArrowDown, Refresh } from '@element-plus/icons-vue'
+import { Plus, Download, ArrowDown, Refresh, CopyDocument } from '@element-plus/icons-vue'
 import QRCode from 'qrcode'
 import WecomHeader from './components/WecomHeader.vue'
 import WecomDemoBanner from './components/WecomDemoBanner.vue'
@@ -493,8 +499,8 @@ const loadSmartRuleStatuses = async () => {
   for (const link of displayLinks.value) {
     if ((link as any)._smartRuleStatus !== undefined) continue
     try {
-      const res: any = await getAcquisitionSmartRules(link.id)
-      const data = res?.data || res
+      const rawRes: any = await getAcquisitionSmartRules(link.id)
+      const data = rawRes?.data || rawRes
       if (data && (data.dailyLimitEnabled || data.workTimeEnabled || data.slowReplyEnabled || data.lossRateEnabled)) {
         const parts: string[] = []
         if (data.workTimeEnabled) parts.push('工作时间')

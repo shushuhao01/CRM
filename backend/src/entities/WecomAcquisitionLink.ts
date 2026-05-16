@@ -58,6 +58,9 @@ export class WecomAcquisitionLink {
 
   // ==================== V4.0 新增字段 ====================
 
+  @Column({ name: 'assign_mode', type: 'varchar', length: 30, nullable: true, default: 'weighted', comment: '分配模式: weighted/online_random/priority' })
+  assignMode: string;
+
   @Column({ type: 'varchar', length: 100, nullable: true, comment: '渠道标识' })
   state: string;
 
