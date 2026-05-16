@@ -1,12 +1,12 @@
-<template>
+﻿<template>
   <div class="conv-view">
     <div class="conv-layout">
-      <!-- �?第一栏：存档员工列表 -->
+      <!-- 第一栏：存档员工列表 -->
       <div class="panel-members">
         <div class="panel-members-header">
           <div class="members-title">
             <span>存档员工</span>
-            <span class="members-count">{{ visibleArchiveMembers.length }}�?/span>
+            <span class="members-count">{{ visibleArchiveMembers.length }}</span>
           </div>
           <el-input v-model="memberSearch" placeholder="搜索员工" clearable size="small" prefix-icon="Search" />
         </div>
@@ -19,7 +19,7 @@
             @click="selectMember(member)"
           >
             <div class="member-card-avatar">
-              <img referrerpolicy=" no-referrer\ v-if="member.avatar" :src="member.avatar" class="avatar-img" />
+              <img referrerpolicy="no-referrer" v-if="member.avatar" :src="member.avatar" class="avatar-img" />
               <span v-else class="avatar-letter">{{ (member.name || member.wecomUserId).charAt(0) }}</span>
             </div>
             <div class="member-card-info">
@@ -31,15 +31,15 @@
         </div>
       </div>
 
-      <!-- �?第二栏：会话列表 -->
+      <!-- 第二栏：会话列表 -->
       <div class="panel-conversations">
         <div class="panel-conv-header">
           <div class="conv-header-member" v-if="selectedMemberId">
             <div class="conv-header-avatar">
-              <img referrerpolicy=" no-referrer\ v-if="selectedMemberAvatar" :src="selectedMemberAvatar" class="avatar-img" />
+              <img referrerpolicy="no-referrer" v-if="selectedMemberAvatar" :src="selectedMemberAvatar" class="avatar-img" />
               <span v-else class="avatar-letter">{{ (selectedMemberName || 'M').charAt(0) }}</span>
             </div>
-            <span class="conv-header-name">{{ selectedMemberName }} 的会�?/span>
+            <span class="conv-header-name">{{ selectedMemberName }} 的会话</span>
           </div>
           <div v-else class="conv-header-placeholder">请选择员工</div>
           <!-- TAB: 员工/客户/群聊 -->
@@ -72,7 +72,7 @@
             @click="selectConversation(conv)"
           >
             <div class="conv-card-avatar">
-              <img referrerpolicy=" no-referrer\ v-if="(conv as any).customerAvatar" :src="(conv as any).customerAvatar" class="avatar-img" />
+              <img referrerpolicy="no-referrer" v-if="(conv as any).customerAvatar" :src="(conv as any).customerAvatar" class="avatar-img" />
               <span v-else class="avatar-letter" :class="getAvatarColorClass(conv)">{{ getConvAvatarLetter(conv) }}</span>
             </div>
             <div class="conv-card-body">
@@ -91,18 +91,18 @@
               </div>
             </div>
           </div>
-          <div v-if="convLoading && conversations.length > 0" class="conv-loading-more">加载�?..</div>
+          <div v-if="convLoading && conversations.length > 0" class="conv-loading-more">加载中...</div>
         </div>
       </div>
 
-      <!-- �?第三栏：消息详情 -->
+      <!-- 第三栏：消息详情 -->
       <div class="panel-messages">
         <template v-if="selectedConv">
           <!-- 消息头部 -->
           <div class="msg-panel-header">
             <div class="msg-header-left">
               <div class="msg-header-avatar">
-                <img referrerpolicy=" no-referrer\ v-if="(selectedConv as any).customerAvatar" :src="(selectedConv as any).customerAvatar" class="avatar-img" />
+                <img referrerpolicy="no-referrer" v-if="(selectedConv as any).customerAvatar" :src="(selectedConv as any).customerAvatar" class="avatar-img" />
                 <span v-else class="avatar-letter">{{ getConvAvatarLetter(selectedConv) }}</span>
               </div>
               <div class="msg-header-info">
@@ -115,7 +115,7 @@
               </div>
             </div>
             <div class="msg-header-right">
-              <span class="msg-header-count">�?{{ msgTotal }} �?/span>
+              <span class="msg-header-count">共 {{ msgTotal }} 条</span>
               <el-button link size="small" @click="refreshMessages"><el-icon><Refresh /></el-icon></el-button>
             </div>
           </div>
@@ -123,11 +123,11 @@
           <!-- 消息列表 -->
           <div class="msg-panel-body" ref="chatMessagesRef" v-loading="msgLoading">
             <div v-if="msgTotal > messages.length" class="load-more-bar">
-              <el-button link type="primary" size="small" @click="loadMoreMessages" :loading="msgLoadingMore">�?加载更早消息</el-button>
+              <el-button link type="primary" size="small" @click="loadMoreMessages" :loading="msgLoadingMore">加载更早消息</el-button>
             </div>
 
             <template v-for="(msg, idx) in messages" :key="msg.id">
-              <!-- 日期分割�?-->
+              <!-- 日期分割线 -->
               <div v-if="showDateDivider(idx)" class="date-divider">
                 <span>{{ getDateDividerText(msg.msgTime) }}</span>
               </div>
@@ -135,20 +135,20 @@
               <!-- 撤回/删除消息 -->
               <div v-if="msg.action === 'recall' || msg.msgType === 'revoke'" class="msg-system-notice recall-notice">
                 <el-icon><WarningFilled /></el-icon>
-                <span>{{ msg.fromUserName || msg.fromUserId }} 撤回了一条消�?/span>
+                <span>{{ msg.fromUserName || msg.fromUserId }} 撤回了一条消息</span>
               </div>
 
               <!-- 同意存档系统消息 -->
               <div v-else-if="msg.msgType === 'agree' || msg.msgType === 'disagree'" class="msg-system-notice agree-notice">
                 <el-icon><InfoFilled /></el-icon>
-                <span>{{ msg.msgType === 'agree' ? '对方已同意会话存�? : '对方不同意会话存�? }}</span>
+                <span>{{ msg.msgType === 'agree' ? '对方已同意会话存档' : '对方不同意会话存档' }}</span>
               </div>
 
-              <!-- 普通消�?-->
+              <!-- 普通消息 -->
               <div v-else class="msg-row" :class="{ 'msg-row-self': isSelfMsg(msg) }">
                 <!-- 对方头像 -->
                 <div class="msg-avatar-wrap" v-if="!isSelfMsg(msg)">
-                  <img referrerpolicy=" no-referrer\ v-if="(selectedConv as any)?.customerAvatar" :src="(selectedConv as any).customerAvatar" class="msg-avatar-img" />
+                  <img referrerpolicy="no-referrer" v-if="(selectedConv as any)?.customerAvatar" :src="(selectedConv as any).customerAvatar" class="msg-avatar-img" />
                   <span v-else class="msg-avatar-text">{{ getConvDisplayName(selectedConv).charAt(0) }}</span>
                 </div>
 
@@ -190,9 +190,9 @@
                         <span>{{ getLinkTitle(msg.content) || '链接消息' }}</span>
                       </div>
                     </template>
-                    <!-- 小程�?-->
+                    <!-- 小程序 -->
                     <template v-else-if="msg.msgType === 'weapp'">
-                      <div class="msg-weapp"><el-icon><Grid /></el-icon> <span>{{ getWeappTitle(msg.content) || '小程�? }}</span></div>
+                      <div class="msg-weapp"><el-icon><Grid /></el-icon> <span>{{ getWeappTitle(msg.content) || '小程序' }}</span></div>
                     </template>
                     <!-- 位置 -->
                     <template v-else-if="msg.msgType === 'location'">
@@ -215,7 +215,7 @@
 
                 <!-- 自己头像 -->
                 <div class="msg-avatar-wrap" v-if="isSelfMsg(msg)">
-                  <img referrerpolicy=" no-referrer\ v-if="(selectedConv as any)?.memberAvatar || selectedMemberAvatar" :src="(selectedConv as any)?.memberAvatar || selectedMemberAvatar" class="msg-avatar-img msg-avatar-self" />
+                  <img referrerpolicy="no-referrer" v-if="(selectedConv as any)?.memberAvatar || selectedMemberAvatar" :src="(selectedConv as any)?.memberAvatar || selectedMemberAvatar" class="msg-avatar-img msg-avatar-self" />
                   <span v-else class="msg-avatar-text msg-avatar-text-self">{{ (selectedMemberName || 'M').charAt(0) }}</span>
                 </div>
               </div>
@@ -388,7 +388,7 @@ const fetchConversations = async () => {
     })
     if (res?.list) {
       const allList = res.list as any[]
-      // �?tab 过滤
+      // 按tab 过滤
       const filtered = allList.filter((c: any) => {
         const toId = getFirstToUser(c.toUserIds) || ''
         const fromId = c.fromUserId || ''
@@ -400,7 +400,7 @@ const fetchConversations = async () => {
       })
       conversations.value = convPage.value > 1 ? [...conversations.value, ...filtered] : filtered
       convTotal.value = filtered.length
-      // 统计�?tab 数量
+      // 统计各tab 数量
       convTabCounts.value = {
         staff: allList.filter((c: any) => !c.roomId && !getFirstToUser(c.toUserIds)?.startsWith('wm') && !getFirstToUser(c.toUserIds)?.startsWith('wo') && !c.fromUserId?.startsWith('wm')).length,
         customer: allList.filter((c: any) => !c.roomId && (getFirstToUser(c.toUserIds)?.startsWith('wm') || getFirstToUser(c.toUserIds)?.startsWith('wo') || c.fromUserId?.startsWith('wm') || c.fromUserId?.startsWith('wo'))).length,
@@ -439,7 +439,8 @@ const chatMessagesRef = ref<HTMLElement | null>(null)
 
 const isSelfMsg = (msg: ConvMessage) => {
   if (!selectedConv.value) return false
-  // 员工发的消息显示在右�?  const fromId = msg.fromUserId || ''
+  // 员工发的消息显示在右侧
+  const fromId = msg.fromUserId || ''
   return !fromId.startsWith('wm') && !fromId.startsWith('wo')
 }
 
@@ -487,7 +488,7 @@ const formatShortTime = (ts: number | string) => {
 }
 
 const getMsgTypeLabel = (type: string) => {
-  const map: Record<string, string> = { text: '文本', image: '图片', voice: '语音', video: '视频', file: '文件', link: '链接', weapp: '小程�?, location: '位置', emotion: '表情', card: '名片', chatrecord: '聊天记录', revoke: '撤回', agree: '同意存档', disagree: '不同意存�? }
+  const map: Record<string, string> = { text: '文本', image: '图片', voice: '语音', video: '视频', file: '文件', link: '链接', weapp: '小程序', location: '位置', emotion: '表情', card: '名片', chatrecord: '聊天记录', revoke: '撤回', agree: '同意存档', disagree: '不同意存档' }
   return map[type] || type
 }
 
@@ -577,7 +578,7 @@ defineExpose({ fetchConversations, fetchArchiveMembers })
 .recall-notice { color: #e6a23c; }
 .agree-notice { color: #67c23a; }
 
-/* 消息�?*/
+/* 消息行 */
 .msg-row { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 16px; }
 .msg-row-self { flex-direction: row-reverse; }
 .msg-avatar-wrap { flex-shrink: 0; }
