@@ -276,7 +276,7 @@ router.post('/kf-sessions/sync', authenticateToken, requireAdmin, async (req: Re
                   if (servicerUserId) existing.servicerUserid = servicerUserId;
                   if (event?.event_type === 'session_status_change' && event?.change_type === 3) {
                     existing.sessionStatus = 'closed';
-                    existing.sessionEndTime = new Date().toISOString();
+                    existing.sessionEndTime = new Date() as any;
                   }
                   await sessionRepo.save(existing);
                 }

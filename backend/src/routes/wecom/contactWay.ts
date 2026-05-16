@@ -405,7 +405,7 @@ router.post('/contact-way', authenticateToken, async (req: Request, res: Respons
       skipVerify: skipVerify ?? true,
       userIds: Array.isArray(userIds) ? JSON.stringify(userIds) : userIds,
       qrCode,
-      welcomeMsg: welcomeMsg || '',
+      welcomeConfig: welcomeMsg ? JSON.stringify({ text: welcomeMsg }) : null,
       welcomeEnabled: welcomeEnabled ?? false,
       autoTags: autoTags || null,
       userWeights: userWeights || null,
@@ -413,7 +413,7 @@ router.post('/contact-way', authenticateToken, async (req: Request, res: Respons
       scene: 2,
       createdBy: currentUser?.id || null,
       createdByName: currentUser?.name || currentUser?.username || null
-    });
+    } as any);
     const saved = await repo.save(contactWay);
     res.json({ success: true, data: saved });
   } catch (error: any) {

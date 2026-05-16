@@ -38,6 +38,9 @@ export class WecomServiceAccount {
   @Column({ name: 'service_time_end', type: 'varchar', length: 50, nullable: true, comment: '接待时间结束' })
   serviceTimeEnd: string;
 
+  @Column({ name: 'kf_url', type: 'varchar', length: 500, nullable: true, comment: '客服链接URL' })
+  kfUrl: string;
+
   @Column({ name: 'is_enabled', type: 'boolean', default: true, comment: '是否启用' })
   isEnabled: boolean;
 
