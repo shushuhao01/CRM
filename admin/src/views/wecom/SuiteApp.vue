@@ -366,6 +366,43 @@
               <el-button v-permission="'wecom-management:suite:edit'" type="primary" @click="handleSaveConfig" :loading="saving">保存回调配置</el-button>
             </el-form-item>
 
+            <!-- Web登录授权配置 -->
+            <el-divider content-position="left">Web登录授权配置（会话展示组件需要）</el-divider>
+            <el-alert type="info" :closable="false" style="margin-bottom: 12px">
+              <template #title><strong>💡 Web登录授权说明</strong></template>
+              <div style="font-size: 12px; line-height: 1.7; margin-top: 4px">
+                <p>会话展示组件在普通浏览器中使用时，需要用户通过企微扫码登录。</p>
+                <p>请在服务商后台「登录授权」页面配置以下信息（与此处填写的值保持一致）。</p>
+                <p>配置路径：服务商后台 → 登录授权 → 可信域名 / 指令回调URL / Token / EncodingAESKey</p>
+              </div>
+            </el-alert>
+            <el-form-item label="可信域名">
+              <el-input v-model="suiteConfig.webLoginRedirectDomain" placeholder="如: crm.yunkes.com（与服务商后台登录授权的可信域名一致）" />
+            </el-form-item>
+            <el-form-item label="指令回调URL">
+              <div style="display: flex; gap: 8px; width: 100%; align-items: center">
+                <el-input :model-value="webLoginCallbackUrl" readonly />
+                <el-button size="small" @click="copyText(webLoginCallbackUrl)">复制</el-button>
+              </div>
+            </el-form-item>
+            <el-form-item label="Token">
+              <div style="display: flex; gap: 8px; width: 100%">
+                <el-input v-model="suiteConfig.webLoginToken" placeholder="与服务商后台登录授权配置的Token一致" />
+                <el-button size="small" @click="suiteConfig.webLoginToken = generateRandom(32)">随机生成</el-button>
+              </div>
+            </el-form-item>
+            <el-form-item label="EncodingAESKey">
+              <div style="display: flex; gap: 8px; width: 100%">
+                <el-input v-model="suiteConfig.webLoginEncodingAesKey" placeholder="与服务商后台登录授权配置的EncodingAESKey一致" />
+                <el-button size="small" @click="suiteConfig.webLoginEncodingAesKey = generateRandom(43)">随机生成</el-button>
+              </div>
+            </el-form-item>
+            <el-form-item>
+              <el-button v-permission="'wecom-management:suite:edit'" type="primary" @click="handleSaveConfig" :loading="saving">保存Web登录配置</el-button>
+              <el-tag v-if="suiteConfig.webLoginToken" type="success" size="small" style="margin-left: 12px">已配置 ✓</el-tag>
+              <el-tag v-else type="info" size="small" style="margin-left: 12px">未配置</el-tag>
+            </el-form-item>
+
             <!-- ★ Suite Ticket 健康诊断 + 手动注入（用于回调URL故障期间的紧急保活） -->
             <el-divider content-position="left">Suite Ticket 诊断 / 紧急救急</el-divider>
             <el-alert type="warning" :closable="false" style="margin-bottom: 12px">
@@ -1133,13 +1170,21 @@ const suiteConfig = ref<any>({
   appStatus: '', permissions: [], redirectDomain: '', appType: 'web',
   callbackToken: '', callbackEncodingAesKey: '',
   chatArchiveRsaPublicKey: '', chatArchiveRsaPrivateKey: '',
-  isEnabled: true, mpAppId: '', mpEnabled: false
+  isEnabled: true, mpAppId: '', mpEnabled: false,
+  webLoginToken: '', webLoginEncodingAesKey: '', webLoginRedirectDomain: ''
 })
 const suiteConfigList = ref<any[]>([])
 const currentConfigId = ref<number | null>(null)
 const showRsaInput = ref(false)
 const rsaPrivateKeyInput = ref('')
 const showRsaPublicKeyInput = ref(false)
+
+// Web登录回调URL（自动生成）
+const webLoginCallbackUrl = computed(() => {
+  const domain = suiteConfig.value.webLoginRedirectDomain || suiteConfig.value.redirectDomain || 'crm.yunkes.com'
+  const protocol = domain.startsWith('http') ? '' : 'https://'
+  return `${protocol}${domain}/api/v1/wecom/web-login/callback`
+})
 const rsaPublicKeyInput = ref('')
 const showSuiteSecret = ref(false)
 const showProviderSecret = ref(false)
