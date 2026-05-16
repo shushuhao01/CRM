@@ -93,16 +93,22 @@ router.get('/chat-archive/seats', authenticateToken, async (req: Request, res: R
         maxUsers,
         usedUsers,
         members: await Promise.all(members.map(async (m) => {
-          // ★ 补充部门信息（从 wecom_user_bindings 获取）
+          // ★ 补充部门信息和头像（从 wecom_user_bindings 获取）
           let departmentIds = '';
+          let avatar = '';
           try {
             const { AppDataSource } = await import('../../config/database');
             const bindingRows = await AppDataSource.query(
-              'SELECT wecom_department_ids FROM wecom_user_bindings WHERE wecom_user_id = ? LIMIT 1',
+              'SELECT wecom_department_ids, wecom_avatar FROM wecom_user_bindings WHERE wecom_user_id = ? LIMIT 1',
               [m.wecomUserId]
             );
-            if (bindingRows.length > 0 && bindingRows[0].wecom_department_ids) {
-              departmentIds = bindingRows[0].wecom_department_ids;
+            if (bindingRows.length > 0) {
+              if (bindingRows[0].wecom_department_ids) {
+                departmentIds = bindingRows[0].wecom_department_ids;
+              }
+              if (bindingRows[0].wecom_avatar) {
+                avatar = bindingRows[0].wecom_avatar;
+              }
             }
           } catch { /* ignore */ }
           return {
@@ -110,6 +116,7 @@ router.get('/chat-archive/seats', authenticateToken, async (req: Request, res: R
             wecomUserId: m.wecomUserId,
             wecomUserName: m.wecomUserName,
             name: m.wecomUserName || m.wecomUserId,
+            avatar,
             crmUserId: m.crmUserId,
             isEnabled: m.isEnabled,
             departmentIds,

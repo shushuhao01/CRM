@@ -366,6 +366,7 @@ const getCorpShortName = (conv: Conversation) => {
 const getConvPreview = (conv: Conversation) => {
   if (!conv.lastContent) return ''
   const type = conv.lastMsgType
+  if (type === 'meta') return '' // meta 记录不显示预览
   if (type && type !== 'text') return `[${getMsgTypeLabel(type)}]`
   return getTextContent(conv.lastContent).substring(0, 30)
 }

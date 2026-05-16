@@ -660,7 +660,7 @@ router.post('/address-book/sync-members', authenticateToken, requireAdmin, async
           // 旧值也是脏的（等于 userid），清空让前端显示成员账号 fallback
           binding.wecomUserName = '';
         }
-        binding.wecomAvatar = user.avatar || binding.wecomAvatar;
+        binding.wecomAvatar = user.avatar || user.thumb_avatar || binding.wecomAvatar;
         binding.wecomDepartmentIds = deptIds;
         binding.isEnabled = user.status === 1;
         updatedCount++;
@@ -672,7 +672,7 @@ router.post('/address-book/sync-members', authenticateToken, requireAdmin, async
           corpId: config.corpId,
           wecomUserId,
           wecomUserName: apiUserNameValid ? String(user.name).trim() : '',
-          wecomAvatar: user.avatar || '',
+          wecomAvatar: user.avatar || user.thumb_avatar || '',
           wecomDepartmentIds: deptIds,
           crmUserId: '',
           crmUserName: '',

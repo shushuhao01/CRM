@@ -559,7 +559,7 @@ export class WecomChatArchiveService {
     const { tenantId, configId, userId, keyword, page = 1, pageSize = 50 } = params;
     const offset = (page - 1) * pageSize;
 
-    let where = "WHERE cr.msg_type != 'meta'";
+    let where = "WHERE 1=1";
     const queryParams: any[] = [];
 
     if (tenantId) {
