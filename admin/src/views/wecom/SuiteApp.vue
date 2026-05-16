@@ -1207,6 +1207,7 @@ const testWebLoginConnection = async () => {
   }
   webLoginTesting.value = true
   try {
+    const { default: request } = await import('@/api/request')
     const res = await request.post('/wecom-management/suite/test-web-login', {
       appId: suiteConfig.value.webLoginAppId
     })
