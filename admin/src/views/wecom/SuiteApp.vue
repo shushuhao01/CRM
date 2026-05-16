@@ -383,7 +383,7 @@
             </el-form-item>
             <el-form-item label="登录授权Secret">
               <div style="display: flex; gap: 8px; width: 100%">
-                <el-input v-model="suiteConfig.webLoginSecret" placeholder="服务商后台「登录授权」页面的Secret" show-password />
+                <el-input v-model="suiteConfig.webLoginSecret" placeholder="服务商后台「登录授权」页面的Secret" />
               </div>
             </el-form-item>
             <el-form-item label="可信域名">
@@ -1202,23 +1202,18 @@ const webLoginCallbackUrl = computed(() => {
 const webLoginTesting = ref(false)
 const testWebLoginConnection = async () => {
   if (!suiteConfig.value.webLoginAppId) {
-    ElMessage.warning('请先填写登录授权AppID')
-    return
-  }
-  if (!suiteConfig.value.webLoginSecret || suiteConfig.value.webLoginSecret === '******') {
-    ElMessage.warning('请先填写登录授权Secret（保存后需重新输入明文Secret才能测试）')
+    ElMessage.warning('请先填写并保存登录授权AppID')
     return
   }
   webLoginTesting.value = true
   try {
     const res = await request.post('/wecom-management/suite/test-web-login', {
-      appId: suiteConfig.value.webLoginAppId,
-      secret: suiteConfig.value.webLoginSecret
+      appId: suiteConfig.value.webLoginAppId
     })
     if (res.data?.connected) {
-      ElMessage.success('✅ Web登录配置验证成功！AppID和Secret有效')
+      ElMessage.success('✅ Web登录配置验证成功！凭证有效')
     } else {
-      ElMessage.error(res.data?.message || '连接失败，请检查AppID和Secret')
+      ElMessage.error(res.data?.message || '连接失败，请检查配置')
     }
   } catch (e: any) {
     ElMessage.error(e?.response?.data?.message || e?.message || '测试失败')
