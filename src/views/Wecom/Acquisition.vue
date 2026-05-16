@@ -18,14 +18,16 @@
       <!-- 使用量监控条 -->
       <div v-if="displayUsage" class="usage-bar">
         <div class="usage-info">
-          <span>获客使用量：已使用 {{ displayUsage.quotaUsed || displayUsage.totalAdds }} / {{ displayUsage.quotaLimit }} 人
+          <span>获客使用量：已添加 {{ displayUsage.quotaUsed || displayUsage.totalAdds }} 人
+            <template v-if="displayUsage.quotaLimit"> / {{ displayUsage.quotaLimit }} 人</template>
             <template v-if="displayUsage.quotaBalance"> （剩余 {{ displayUsage.quotaBalance }}）</template>
           </span>
-          <el-tag :type="displayUsage.warningLevel === 'danger' ? 'danger' : displayUsage.warningLevel === 'warning' ? 'warning' : 'success'" size="small">
+          <el-button type="primary" link size="small" @click="handleSyncStats" :loading="syncingStats" style="margin-left: 8px">刷新</el-button>
+          <el-tag v-if="displayUsage.quotaLimit" :type="displayUsage.warningLevel === 'danger' ? 'danger' : displayUsage.warningLevel === 'warning' ? 'warning' : 'success'" size="small" style="margin-left: 4px">
             {{ displayUsage.usagePercent }}%
           </el-tag>
         </div>
-        <el-progress :percentage="displayUsage.usagePercent" :color="usageColor" :stroke-width="10" :show-text="false" />
+        <el-progress v-if="displayUsage.quotaLimit" :percentage="displayUsage.usagePercent" :color="usageColor" :stroke-width="10" :show-text="false" />
         <div class="usage-detail">
           <span>链接总数：{{ displayUsage.totalLinks }}（活跃：{{ displayUsage.activeLinks }}）</span>
           <span>总点击：{{ displayUsage.totalClicks }}</span>
@@ -461,6 +463,7 @@ watch(qrDialogVisible, async (show) => {
 })
 
 const showQrCode = (row: any) => {
+  if (!row.linkUrl) { ElMessage.warning('链接地址为空，请先同步数据'); return }
   currentLink.value = row
   qrDialogVisible.value = true
 }
@@ -475,7 +478,7 @@ const downloadQrCode = () => {
 }
 
 const copyLink = (url: string) => {
-  if (!url) return
+  if (!url) { ElMessage.warning('链接地址为空，请先同步数据'); return }
   navigator.clipboard.writeText(url)
   ElMessage.success('链接已复制')
 }

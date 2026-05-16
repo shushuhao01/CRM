@@ -134,7 +134,7 @@ router.post('/acquisition-links', authenticateToken, requireManagerOrAdmin, asyn
     const { assignMode, userWeights, welcomeConfig, state } = req.body;
     const link = linkRepo.create({
       wecomConfigId, corpId: config.corpId, linkId: linkData.link_id,
-      linkName, linkUrl: linkData.link, welcomeMsg, state,
+      linkName, linkUrl: linkData.url || linkData.link || '', welcomeMsg, state,
       userIds: JSON.stringify(userIds),
       departmentIds: departmentIds ? JSON.stringify(departmentIds) : null,
       tagIds: tagIds ? JSON.stringify(tagIds) : null,
@@ -229,6 +229,7 @@ router.post('/acquisition-links/sync-stats', authenticateToken, requireAdmin, as
           if (detail.click_count !== undefined) link.clickCount = detail.click_count;
           if (detail.create_count !== undefined) link.addCount = detail.create_count;
           if (detail.delete_count !== undefined) link.lossCount = detail.delete_count;
+          if (detail.url && !link.linkUrl) link.linkUrl = detail.url;
           await linkRepo.save(link);
           updated++;
         }
@@ -385,14 +386,15 @@ router.get('/acquisition-usage', authenticateToken, async (req: Request, res: Re
         quotaList = quotaData.quotaList || [];
       } catch (quotaErr: any) {
         log.warn('[Acquisition] Get quota from API failed, using DB stats:', quotaErr.message);
-        quotaLimit = totalAdds > 0 ? totalAdds * 2 : 50000;
+        quotaLimit = 0;
       }
     }
 
-    // 如果API返回了0（未开通或接口不可用），使用数据库中的统计数据
+    // 如果API返回了0（未开通或接口不可用），使用数据库中的统计
     if (quotaLimit === 0) {
       quotaUsed = totalAdds;
-      quotaLimit = 50000;
+      // 不硬编码额度，显示实际使用量，让前端正确展示
+      quotaLimit = 0;
     }
 
     const usagePercent = quotaLimit > 0 ? parseFloat(((quotaUsed / quotaLimit) * 100).toFixed(1)) : 0;

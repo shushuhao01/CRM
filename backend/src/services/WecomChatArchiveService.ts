@@ -855,6 +855,11 @@ export class WecomChatArchiveService {
         if (externalId && agreedStatusMap.has(externalId)) {
           agreed = agreedStatusMap.get(externalId)!;
         }
+        // 第三方模式下，如果有实际消息记录但无明确同意状态，默认视为已同意
+        // （因为企业已通过数据专区授权，能拉到消息说明客户已同意存档）
+        if (agreed === null && item.msgCount > 0) {
+          agreed = true;
+        }
 
         return { ...item, customerName, customerAvatar, memberAvatar, agreed };
       });

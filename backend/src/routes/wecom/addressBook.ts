@@ -759,6 +759,15 @@ router.put('/address-book/dept-names', authenticateToken, requireAdmin, async (r
         mapping.wecomDeptName = dept.name.trim();
         await repo.save(mapping);
         updatedCount++;
+      } else {
+        const newMapping = repo.create({
+          tenantId,
+          wecomConfigId: Number(configId),
+          wecomDeptId: Number(dept.id),
+          wecomDeptName: dept.name.trim(),
+        });
+        await repo.save(newMapping);
+        updatedCount++;
       }
     }
 

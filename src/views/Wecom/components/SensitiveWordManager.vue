@@ -36,7 +36,7 @@
       <div class="action-bar">
         <el-button type="warning" @click="scanSensitiveWordsHandler" :loading="scanningSensitiveWords">扫描聊天记录</el-button>
         <el-button type="primary" @click="showWordDialog = true">新建敏感词</el-button>
-        <el-button @click="showWordListDialog = true">敏感词表 ({{ sensitiveWords.length }})</el-button>
+        <el-button @click="() => { showWordListDialog = true; fetchTriggerStats() }">敏感词表 ({{ sensitiveWords.length }})</el-button>
         <div style="flex: 1" />
         <el-select v-model="hitDateRange" placeholder="时间范围" style="width: 120px" @change="fetchHitRecords">
           <el-option label="今日" value="today" />
@@ -48,28 +48,32 @@
 
       <!-- 触发记录列表 -->
       <el-table :data="hitRecords" v-loading="hitLoading" stripe>
-        <el-table-column label="触发内容" min-width="220" show-overflow-tooltip>
+        <el-table-column label="触发内容" min-width="260">
           <template #default="{ row }">
-            <span class="hit-content">{{ parseContent(row.content) }}</span>
+            <el-tooltip :content="parseContent(row.content)" placement="top" :show-after="300">
+              <div class="hit-content-cell" v-html="highlightContent(parseContent(row.content))" />
+            </el-tooltip>
           </template>
         </el-table-column>
-        <el-table-column label="发送方" width="110">
-          <template #default="{ row }">
-            <span>{{ row.fromUserName || row.fromUserId }}</span>
-          </template>
+        <el-table-column label="发送方" min-width="100">
+          <template #default="{ row }">{{ row.fromUserName || row.fromUserId }}</template>
         </el-table-column>
-        <el-table-column label="接收方" width="110">
-          <template #default="{ row }">
-            <span>{{ parseToUser(row.toUserIds) }}</span>
-          </template>
+        <el-table-column label="接收方" min-width="100">
+          <template #default="{ row }">{{ formatToUserName(row) }}</template>
         </el-table-column>
-        <el-table-column label="消息类型" width="80">
+        <el-table-column label="类型" width="80">
           <template #default="{ row }">
-            <el-tag size="small" type="info">{{ row.msgType }}</el-tag>
+            <el-tag size="small" type="info">{{ msgTypeLabel(row.msgType) }}</el-tag>
           </template>
         </el-table-column>
         <el-table-column label="时间" width="160">
           <template #default="{ row }">{{ formatMsgTime(row.msgTime) }}</template>
+        </el-table-column>
+        <el-table-column label="审计" width="120">
+          <template #default="{ row }">
+            <span v-if="row.auditRemark" class="audit-remark-text">{{ row.auditRemark }}</span>
+            <span v-else style="color: #D1D5DB">-</span>
+          </template>
         </el-table-column>
         <el-table-column label="操作" width="160" fixed="right">
           <template #default="{ row }">
@@ -194,13 +198,43 @@ const sensitiveRate = computed(() => {
 
 const parseContent = (content: string) => {
   if (!content) return '-'
-  try { const obj = JSON.parse(content); return obj.text || obj.content || content } catch { return content }
+  try {
+    const obj = JSON.parse(content)
+    return obj.text || obj.content || obj.summary || (typeof obj === 'string' ? obj : JSON.stringify(obj))
+  } catch { return content }
 }
-const parseToUser = (ids: string) => {
-  if (!ids) return '-'
-  try { const arr = JSON.parse(ids); return Array.isArray(arr) ? arr.join(', ') : ids } catch { return ids }
+
+const formatToUserName = (row: any) => {
+  if (row.toUserName) return row.toUserName
+  if (!row.toUserIds) return '-'
+  try {
+    const arr = JSON.parse(row.toUserIds)
+    return Array.isArray(arr) ? arr.join(', ') : row.toUserIds
+  } catch { return row.toUserIds }
 }
-const formatMsgTime = (t: number) => t ? new Date(t).toLocaleString('zh-CN') : '-'
+
+const msgTypeLabel = (t: string) => {
+  const map: Record<string, string> = { text: '文本', image: '图片', voice: '语音', video: '视频', file: '文件', link: '链接', weapp: '小程序', location: '位置', meta: '系统', agree: '同意', disagree: '拒绝' }
+  return map[t] || t
+}
+
+const formatMsgTime = (t: number) => {
+  if (!t) return '-'
+  const d = new Date(t)
+  if (isNaN(d.getTime())) return '-'
+  return d.toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', hour12: false })
+}
+
+const highlightContent = (text: string) => {
+  if (!text) return '-'
+  let result = text.replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  for (const word of sensitiveWords.value) {
+    if (!word) continue
+    const escaped = word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    result = result.replace(new RegExp(escaped, 'gi'), `<span class="sw-hl">${word}</span>`)
+  }
+  return result
+}
 
 const checkArchiveStatus = async () => {
   try {
@@ -311,7 +345,7 @@ const submitAudit = async () => {
       wecomConfigId: props.configId,
       chatRecordId: auditTarget.value.id,
       fromUserId: auditTarget.value.fromUserId,
-      toUserId: parseToUser(auditTarget.value.toUserIds),
+      toUserId: formatToUserName(auditTarget.value),
       msgContent: parseContent(auditTarget.value.content),
       msgType: auditTarget.value.msgType,
       msgTime: auditTarget.value.msgTime,
@@ -319,8 +353,16 @@ const submitAudit = async () => {
       riskLevel: 'medium',
       remark: auditForm.value.remark,
     })
+    // 同时更新聊天记录的审计备注
+    if (auditTarget.value.id && auditForm.value.remark) {
+      try {
+        const { auditChatRecord } = await import('@/api/wecom')
+        await auditChatRecord(auditTarget.value.id, { auditRemark: `[审计] ${auditForm.value.remark}` })
+      } catch { /* non-fatal */ }
+    }
     ElMessage.success('审计标记已提交')
     showAuditDialog.value = false
+    fetchHitRecords()
   } catch (e: any) { ElMessage.error(e?.response?.data?.message || '标记失败') }
   finally { submittingAudit.value = false }
 }
@@ -360,4 +402,7 @@ defineExpose({ fetchSensitiveWords })
 .tag-clickable:hover { transform: scale(1.05); box-shadow: 0 2px 6px rgba(0,0,0,0.1); }
 
 .audit-preview { background: #F9FAFB; border-radius: 6px; padding: 8px 12px; font-size: 13px; color: #4B5563; max-height: 80px; overflow: auto; }
+.hit-content-cell { font-size: 13px; color: #374151; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.5; }
+.hit-content-cell :deep(.sw-hl) { background: #FEE2E2; color: #DC2626; font-weight: 700; padding: 1px 2px; border-radius: 2px; }
+.audit-remark-text { font-size: 12px; color: #F59E0B; }
 </style>

@@ -870,7 +870,7 @@ import {
   syncServiceAccountsFromApi, getWecomUsers as fetchWecomUserAPI,
   getKfSessions, syncKfSessions, getKfStats,
   getQuickReplies, createQuickReply, updateQuickReply, deleteQuickReply,
-  saveAutoReplyConfig, getAutoReplyConfig
+  saveAutoReplyConfig, getAutoReplyConfig, getServiceAccountUrl
 } from '@/api/wecom'
 import { formatDateTime } from '@/utils/date'
 import { webSocketService } from '@/services/webSocketService'
@@ -1476,10 +1476,27 @@ const handleToggleAccount = async (row: any) => {
 }
 
 const showAccountDetail = (row: any) => { detailAccount.value = row; accountDetailVisible.value = true }
-const showLink = (row: any) => { currentAccount.value = row; linkDialogVisible.value = true }
-const showKfQrCode = (row: any) => {
+const showLink = async (row: any) => {
   currentAccount.value = row
-  if (!row.kfUrl) { ElMessage.warning('该客服暂无链接'); return }
+  if (!row.kfUrl && row.id) {
+    try {
+      const res: any = await getServiceAccountUrl(row.id)
+      const data = res?.data || res
+      if (data?.url) { row.kfUrl = data.url; currentAccount.value = { ...row } }
+    } catch { /* non-fatal */ }
+  }
+  linkDialogVisible.value = true
+}
+const showKfQrCode = async (row: any) => {
+  currentAccount.value = row
+  if (!row.kfUrl && row.id) {
+    try {
+      const res: any = await getServiceAccountUrl(row.id)
+      const data = res?.data || res
+      if (data?.url) { row.kfUrl = data.url; currentAccount.value = { ...row } }
+    } catch { /* non-fatal */ }
+  }
+  if (!row.kfUrl) { ElMessage.warning('获取客服链接失败，请先从企微同步'); return }
   kfQrDialogVisible.value = true
 }
 

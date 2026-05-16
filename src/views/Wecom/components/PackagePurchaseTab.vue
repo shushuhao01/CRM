@@ -11,8 +11,18 @@
           <span>当前套餐：<strong>{{ currentPackage.packageName }}</strong></span>
           <el-tag v-if="isFreePackage(currentPackage)" type="success" size="small">免费</el-tag>
           <el-tag v-else type="warning" size="small">付费版</el-tag>
+          <template v-if="type === 'archive'">
+            <el-tag v-if="currentPackage.userCount || currentPackage.maxUsers" type="info" size="small" style="margin-left: 6px">
+              席位：{{ currentPackage.userCount || currentPackage.maxUsers || '-' }} 人
+            </el-tag>
+            <el-tag v-if="currentPackage.purchaseType === 'proxy'" type="" size="small" style="margin-left: 4px">含代购企微官方席位</el-tag>
+            <el-tag v-else-if="currentPackage.purchaseType === 'service_only'" type="info" size="small" style="margin-left: 4px">纯服务费（自购席位）</el-tag>
+          </template>
         </div>
-        <span class="cpb-date">领取于 {{ formatDate(currentPackage.claimedAt) }}</span>
+        <div class="cpb-meta">
+          <span v-if="currentPackage.expireDate" class="cpb-date">到期：{{ formatDate(currentPackage.expireDate) }}</span>
+          <span v-else class="cpb-date">领取于 {{ formatDate(currentPackage.claimedAt) }}</span>
+        </div>
       </div>
 
       <!-- ========== archive 专属：模式切换 + 卡片 + 自选人数 ========== -->

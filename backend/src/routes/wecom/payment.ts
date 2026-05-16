@@ -180,7 +180,8 @@ router.post('/payments/sync', authenticateToken, requireAdmin, async (req: Reque
     if (!config) return res.status(404).json({ success: false, message: '企微配置不存在或已禁用' });
 
     const endTime = endDate ? Math.floor(new Date(endDate).getTime() / 1000) : Math.floor(Date.now() / 1000);
-    const beginTime = startDate ? Math.floor(new Date(startDate).getTime() / 1000) : endTime - 30 * 24 * 3600;
+    // 默认同步最近365天的记录（企微API支持查询12个月内的数据，包含授权前的记录）
+    const beginTime = startDate ? Math.floor(new Date(startDate).getTime() / 1000) : endTime - 365 * 24 * 3600;
 
     const accessToken = await WecomApiService.getAccessTokenByConfigId(configId, 'payment');
     const paymentRepo = getTenantRepo(WecomPaymentRecord);

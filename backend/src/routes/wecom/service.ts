@@ -142,16 +142,39 @@ router.post('/service-accounts/sync', authenticateToken, requireAdmin, async (re
     let updateCount = 0;
 
     for (const kf of kfAccounts) {
+      // 获取客服链接URL
+      let kfUrl = '';
+      try {
+        const axios = (await import('axios')).default;
+        const urlResp = await axios.post(`https://qyapi.weixin.qq.com/cgi-bin/kf/add_contact_way?access_token=${accessToken}`, {
+          open_kfid: kf.open_kfid, scene: '1'
+        });
+        if (urlResp.data?.errcode === 0 && urlResp.data?.url) kfUrl = urlResp.data.url;
+      } catch { /* non-fatal */ }
+
+      // 获取接待人员列表
+      let servicerUserIds = '';
+      try {
+        const axios = (await import('axios')).default;
+        const svcResp = await axios.get(`https://qyapi.weixin.qq.com/cgi-bin/kf/servicer/list?access_token=${accessToken}&open_kfid=${kf.open_kfid}`);
+        if (svcResp.data?.errcode === 0 && svcResp.data?.servicer_list) {
+          servicerUserIds = JSON.stringify(svcResp.data.servicer_list.map((s: any) => s.userid));
+        }
+      } catch { /* non-fatal */ }
+
       const existing = await accountRepo.findOne({ where: { wecomConfigId: configId, openKfId: kf.open_kfid } });
       if (existing) {
         existing.name = kf.name || existing.name;
         existing.avatar = kf.avatar || existing.avatar;
+        if (kfUrl) existing.kfUrl = kfUrl;
+        if (servicerUserIds) existing.servicerUserIds = servicerUserIds;
         await accountRepo.save(existing);
         updateCount++;
       } else {
         const account = accountRepo.create({
           wecomConfigId: configId, corpId: config.corpId, openKfId: kf.open_kfid,
           name: kf.name || '未命名客服', avatar: kf.avatar || '',
+          kfUrl, servicerUserIds,
           isEnabled: true, createdBy: 'api-sync'
         });
         await accountRepo.save(account);

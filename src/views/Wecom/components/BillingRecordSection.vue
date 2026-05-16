@@ -9,13 +9,13 @@
         <ol>
           <li>完成支付 → 我们收到订单并向企微官方提交代购申请</li>
           <li>企微将向您企业邮箱发送<b>确认函</b>（1-3个工作日）</li>
-          <li>您的企业管理员需在 <a href="https://work.weixin.qq.com/wework_admin/loginpage_wx" target="_blank" rel="noopener">企微管理后台</a> 签署并下载确认函</li>
-          <li>在下方上传已签署的确认函，我们将为您激活席位</li>
+          <li>企业管理员在 <a href="https://work.weixin.qq.com/wework_admin/loginpage_wx" target="_blank" rel="noopener">企微管理后台</a> 打开我们的服务商应用 → 应用权限 → 数据与智能专区，授权时上传确认函</li>
+          <li>授权审核通过后，回到CRM「存档设置」点击「刷新授权状态」即可激活</li>
         </ol>
-        <p style="color:#e6a23c">⚠ 如3个工作日内未收到确认函，请联系我们客服。</p>
+        <p style="color:#e6a23c">⚠ 确认函在企微管理后台上传，无需在CRM上传。如3个工作日内未收到确认函，请联系我们客服。</p>
 
-        <!-- 确认函上传区 -->
-        <div class="confirmation-upload-area">
+        <!-- 确认函上传区（备用，确认函主要在企微管理后台上传） -->
+        <div class="confirmation-upload-area" v-if="false">
           <div class="conf-status" v-if="confirmationStatus">
             <el-icon color="#67c23a"><CircleCheckFilled /></el-icon>
             <span>已上传确认函：{{ confirmationStatus.filename }}</span>

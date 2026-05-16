@@ -19,10 +19,10 @@
         <WecomHeader tab-name="config">
           企微授权
           <template #actions>
-            <el-button type="success" @click="showAuthGuide = true">
+            <el-button type="success" @click="handleScanAuth" :disabled="quotaFull">
               <el-icon><Connection /></el-icon>扫码授权
             </el-button>
-            <el-button v-if="allowSelfBuild" type="primary" @click="handleAdd" :disabled="quotaPercent >= 100">
+            <el-button v-if="allowSelfBuild" type="primary" @click="handleAdd" :disabled="quotaFull">
               <el-icon><Plus /></el-icon>自建应用
             </el-button>
           </template>
@@ -463,6 +463,19 @@ const hasThirdPartyOnly = computed(() => configList.value.length > 0 && configLi
 
 const currentQuota = computed(() => ({ used: configList.value.length, max: 3 }))
 const quotaPercent = computed(() => Math.round((currentQuota.value.used / currentQuota.value.max) * 100))
+const quotaFull = computed(() => currentQuota.value.used >= currentQuota.value.max)
+
+const handleScanAuth = () => {
+  if (quotaFull.value) {
+    ElMessageBox.confirm('企微配额已满，需要增购配额后才能新增授权。是否前往购买？', '配额已满', {
+      confirmButtonText: '去增购',
+      cancelButtonText: '取消',
+      type: 'warning'
+    }).then(() => { handleQuotaUpgrade() }).catch(() => {})
+    return
+  }
+  showAuthGuide.value = true
+}
 
 // 扫码授权
 const showAuthGuide = ref(false)
@@ -508,6 +521,14 @@ const checkSelfBuildPermission = async () => {
 }
 
 const handleAdd = () => {
+  if (quotaFull.value) {
+    ElMessageBox.confirm('企微配额已满，需要增购配额后才能新增应用。是否前往购买？', '配额已满', {
+      confirmButtonText: '去增购',
+      cancelButtonText: '取消',
+      type: 'warning'
+    }).then(() => { handleQuotaUpgrade() }).catch(() => {})
+    return
+  }
   isEdit.value = false; currentId.value = null
   form.value = { name: '', corpId: '', corpSecret: '', agentId: undefined, callbackToken: '', encodingAesKey: '', callbackUrl: '', contactSecret: '', externalContactSecret: '', chatArchiveSecret: '', chatArchivePrivateKey: '', remark: '' }
   dialogVisible.value = true
@@ -562,7 +583,15 @@ const handleDelete = async (row: any) => {
   catch { ElMessage.error('删除失败') }
 }
 
-const handleQuotaUpgrade = () => { ElMessage.info('增购配额 — 请联系管理员') }
+const handleQuotaUpgrade = () => {
+  // 跳转到套餐购买Tab
+  const activeTabEl = document.querySelector('[data-tab="purchase"]') as HTMLElement
+  if (activeTabEl) { activeTabEl.click(); return }
+  // 尝试通过路由跳转或切换Tab
+  const tabsEl = document.querySelector('.el-tabs__item:last-child') as HTMLElement
+  if (tabsEl && tabsEl.textContent?.includes('套餐')) { tabsEl.click(); return }
+  ElMessage.info('请前往「套餐与配额」Tab增购企微配额')
+}
 
 // ========== 扫码授权 ==========
 const generateAuthQr = async () => {
