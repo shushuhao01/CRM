@@ -1108,7 +1108,11 @@ export class WecomChatArchiveService {
 
   /**
    * 【第三方模式】通过数据与智能专区接口拉取实际聊天消息
-   * 调用 /chatdata/get_msg_data 获取加密消息 → RSA解密随机密钥 → AES解密消息体 → 存入数据库
+   * 调用 /chatdata/sync_msg 获取消息元数据 → RSA解密 encrypted_secret_key → 存储 msgid + secretKey
+   *
+   * 注意：根据企微专区安全机制，消息明文不能传出专区。
+   * 前端通过「会话展示组件」(ww-open-message) 传入 msgid + secretKey 来渲染消息内容。
+   * 后端只存储元数据（发送者、接收者、时间、消息类型）和解密后的 secretKey。
    */
   static async syncChatMessages(config: WecomConfig, chatAccessToken: string): Promise<{ savedCount: number; totalFetched: number }> {
     let savedCount = 0;
@@ -1161,7 +1165,7 @@ export class WecomChatArchiveService {
 
         if (chatdata.length === 0) break;
 
-        // 解密并保存每条消息
+        // 处理每条消息：只存储元数据 + RSA解密后的 secretKey（不解密消息明文）
         for (const item of chatdata) {
           try {
             // 检查是否已存在（去重）
@@ -1170,76 +1174,27 @@ export class WecomChatArchiveService {
             });
             if (existing) continue;
 
-            // RSA解密 encrypt_random_key → 得到 AES key
-            const decryptedKey = this.rsaDecrypt(rsaPrivateKey, item.encrypt_random_key);
-            if (!decryptedKey) {
-              log.warn(`[ChatArchive] RSA解密失败, msgid=${item.msgid}`);
-              continue;
+            // RSA解密 encrypt_random_key → 得到 secretKey（供前端会话展示组件使用）
+            let secretKey = '';
+            if (item.encrypt_random_key) {
+              secretKey = this.rsaDecrypt(rsaPrivateKey, item.encrypt_random_key) || '';
+              if (!secretKey) {
+                log.warn(`[ChatArchive] RSA解密失败, msgid=${item.msgid}`);
+              }
             }
 
-            // AES解密 encrypt_chat_msg → 得到明文消息JSON
-            const plainText = this.aesDecrypt(decryptedKey, item.encrypt_chat_msg);
-            if (!plainText) {
-              log.warn(`[ChatArchive] AES解密失败, msgid=${item.msgid}`);
-              continue;
-            }
+            // 从 sync_msg 返回的元数据中提取信息
+            const msgData = item as any;
+            const sender = msgData.sender || {};
+            const receiverList = msgData.receiver_list || [];
+            const sendTime = msgData.send_time || Math.floor(Date.now() / 1000);
+            const msgTypeNum = msgData.msgtype !== undefined ? Number(msgData.msgtype) : -1;
+            const chatId = msgData.chatid || '';
 
-            // 解析消息JSON
-            let msgData: any;
-            try {
-              msgData = JSON.parse(plainText);
-            } catch {
-              log.warn(`[ChatArchive] 消息JSON解析失败, msgid=${item.msgid}`);
-              continue;
-            }
-
-            // 提取消息字段
-            const msgType = msgData.msgtype || 'unknown';
-            const action = msgData.action || 'send';
-            const fromUserId = msgData.from || '';
-            const toList = msgData.tolist || [];
-            const roomId = msgData.roomid || null;
-            const msgTime = msgData.msgtime || Date.now();
-
-            // 提取消息内容（根据消息类型）
-            let content = '';
-            let mediaKey = '';
-            if (msgType === 'text') {
-              content = JSON.stringify({ text: msgData.text?.content || '' });
-            } else if (msgType === 'image') {
-              content = JSON.stringify({ image: msgData.image || {} });
-              mediaKey = msgData.image?.md5sum || '';
-            } else if (msgType === 'voice') {
-              content = JSON.stringify({ voice: msgData.voice || {} });
-              mediaKey = msgData.voice?.md5sum || '';
-            } else if (msgType === 'video') {
-              content = JSON.stringify({ video: msgData.video || {} });
-              mediaKey = msgData.video?.md5sum || '';
-            } else if (msgType === 'file') {
-              content = JSON.stringify({ file: msgData.file || {} });
-              mediaKey = msgData.file?.md5sum || '';
-            } else if (msgType === 'link') {
-              content = JSON.stringify({ link: msgData.link || {} });
-            } else if (msgType === 'weapp') {
-              content = JSON.stringify({ weapp: msgData.weapp || {} });
-            } else if (msgType === 'chatrecord') {
-              content = JSON.stringify({ chatrecord: msgData.chatrecord || {} });
-            } else if (msgType === 'location') {
-              content = JSON.stringify({ location: msgData.location || {} });
-            } else if (msgType === 'emotion') {
-              content = JSON.stringify({ emotion: msgData.emotion || {} });
-            } else if (msgType === 'revoke') {
-              content = JSON.stringify({ revoke: msgData.revoke || {} });
-            } else if (msgType === 'agree' || msgType === 'disagree') {
-              content = JSON.stringify({ agree: msgData.agree || msgData.disagree || {} });
-            } else {
-              // 其他类型，保存原始数据
-              content = JSON.stringify(msgData[msgType] || msgData);
-            }
-
-            // 判断发送者类型：以 wm/wo 开头的是外部联系人（客户）
-            const isExternalSender = fromUserId.startsWith('wm') || fromUserId.startsWith('wo');
-            const senderType = isExternalSender ? 2 : 1; // 1=员工 2=客户
+            // 发送者信息
+            const fromUserId = sender.id || '';
+            const senderType = sender.type || 1; // 1=员工 2=外部联系人 3=机器人
+            const isExternalSender = senderType === 2;
 
             // 获取发送者名称
             let fromUserName = '';
@@ -1249,24 +1204,43 @@ export class WecomChatArchiveService {
               fromUserName = userNameMap.get(fromUserId) || fromUserId;
             }
 
-            // 判断接收者类型
-            const receiverType = roomId ? 3 : (toList.some((id: string) => id.startsWith('wm') || id.startsWith('wo')) ? 2 : 1);
+            // 接收者列表
+            const toUserIds = receiverList.map((r: any) => r.id).filter(Boolean);
+            const receiverType = chatId ? 3 : (receiverList.some((r: any) => r.type === 2) ? 2 : 1);
 
-            // 保存到数据库
+            // 消息类型映射（数字→字符串）
+            const msgTypeMap: Record<number, string> = {
+              0: 'unknown', 1: 'text', 2: 'image', 3: 'emotion', 4: 'link',
+              5: 'weapp', 6: 'voice', 7: 'video', 8: 'file', 9: 'card',
+              10: 'chatrecord', 11: 'video_account', 12: 'calendar',
+              13: 'redpacket', 14: 'location', 15: 'meeting', 16: 'todo',
+              17: 'vote', 18: 'doc', 19: 'news', 20: 'mixed',
+              21: 'audio_archive', 22: 'call', 23: 'wedisk_file',
+              24: 'agree', 25: 'disagree', 26: 'group_solitaire',
+              27: 'markdown', 28: 'note'
+            };
+            const msgTypeStr = msgTypeMap[msgTypeNum] || `type_${msgTypeNum}`;
+
+            // 保存到数据库（不含消息明文，只有元数据 + secretKey）
             const record = chatRecordRepo.create({
               tenantId: config.tenantId,
               wecomConfigId: config.id,
               corpId: config.corpId,
               msgId: item.msgid,
-              msgType,
-              action,
+              msgType: msgTypeStr,
+              action: 'send',
               fromUserId,
               fromUserName,
-              toUserIds: JSON.stringify(toList),
-              roomId,
-              msgTime,
-              content,
-              mediaKey: mediaKey || null,
+              toUserIds: JSON.stringify(toUserIds),
+              roomId: chatId || null,
+              msgTime: sendTime * 1000, // 转为毫秒时间戳
+              content: JSON.stringify({
+                type: 'encrypted',
+                secretKey: secretKey,
+                publicKeyVer: item.publickey_ver || 1,
+                msgtype: msgTypeStr
+              }),
+              mediaKey: null,
               isSensitive: false,
               senderType,
               receiverType

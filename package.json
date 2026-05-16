@@ -30,6 +30,7 @@
     "@types/sortablejs": "^1.15.9",
     "@wangeditor/editor": "^5.1.23",
     "@wangeditor/editor-for-vue": "^5.1.12",
+    "@wecom/jssdk": "^2.4.0",
     "ali-oss": "^6.23.0",
     "axios": "^1.12.2",
     "echarts": "^5.6.0",

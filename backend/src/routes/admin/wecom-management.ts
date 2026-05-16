@@ -3634,7 +3634,11 @@ router.get('/suite/config', async (req: Request, res: Response) => {
         chatArchiveRsaPrivateKey: config.chatArchiveRsaPrivateKey ? '******' : '',
         isEnabled: config.isEnabled,
         mpAppId: config.mpAppId || '',
-        mpEnabled: config.mpEnabled || false
+        mpEnabled: config.mpEnabled || false,
+        // Web登录授权配置
+        webLoginToken: config.webLoginToken || '',
+        webLoginEncodingAesKey: config.webLoginEncodingAesKey || '',
+        webLoginRedirectDomain: config.webLoginRedirectDomain || ''
       };
     }
 
@@ -3679,7 +3683,8 @@ router.put('/suite/config', async (req: Request, res: Response) => {
       callbackToken, callbackEncodingAesKey, redirectDomain, appType,
       appName, appDescription, appStatus, permissions, isEnabled,
       chatArchiveRsaPublicKey, chatArchiveRsaPrivateKey,
-      mpAppId, mpAppSecret, mpFormSecret, mpEnabled, mpConfig
+      mpAppId, mpAppSecret, mpFormSecret, mpEnabled, mpConfig,
+      webLoginToken, webLoginEncodingAesKey, webLoginRedirectDomain
     } = req.body;
 
     let config: WecomSuiteConfig | null = null;
@@ -3712,6 +3717,10 @@ router.put('/suite/config', async (req: Request, res: Response) => {
     if (mpFormSecret !== undefined) config.mpFormSecret = mpFormSecret;
     if (mpEnabled !== undefined) config.mpEnabled = mpEnabled;
     if (mpConfig !== undefined) config.mpConfig = typeof mpConfig === 'string' ? mpConfig : JSON.stringify(mpConfig);
+    // Web登录授权配置
+    if (webLoginToken !== undefined) config.webLoginToken = webLoginToken;
+    if (webLoginEncodingAesKey !== undefined) config.webLoginEncodingAesKey = webLoginEncodingAesKey;
+    if (webLoginRedirectDomain !== undefined) config.webLoginRedirectDomain = webLoginRedirectDomain;
 
     await repo.save(config);
 

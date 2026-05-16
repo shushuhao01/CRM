@@ -115,6 +115,10 @@
               </div>
             </div>
             <div class="msg-header-right">
+              <el-radio-group v-model="renderMode" size="small" style="margin-right: 8px">
+                <el-radio-button value="bubble">气泡模式</el-radio-button>
+                <el-radio-button value="wecom">企微组件</el-radio-button>
+              </el-radio-group>
               <span class="msg-header-count">共 {{ msgTotal }} 条</span>
               <el-button link size="small" @click="refreshMessages"><el-icon><Refresh /></el-icon></el-button>
             </div>
@@ -122,6 +126,20 @@
 
           <!-- 消息列表 -->
           <div class="msg-panel-body" ref="chatMessagesRef" v-loading="msgLoading">
+            <!-- 模式A: 企微会话展示组件渲染（需要企微登录） -->
+            <template v-if="renderMode === 'wecom'">
+              <WecomLoginGuard :config-id="configId">
+                <WecomMessageRenderer
+                  :msg-list="messageKeys"
+                  :loading="msgLoading"
+                  @load-more="loadMoreMessages"
+                  @error="handleWecomRenderError"
+                />
+              </WecomLoginGuard>
+            </template>
+
+            <!-- 模式B: 传统气泡渲染（现有逻辑） -->
+            <template v-else>
             <div v-if="msgTotal > messages.length" class="load-more-bar">
               <el-button link type="primary" size="small" @click="loadMoreMessages" :loading="msgLoadingMore">加载更早消息</el-button>
             </div>
@@ -238,6 +256,7 @@
                 <p v-else>暂无消息，请点击顶部同步按钮拉取聊天记录</p>
               </template>
             </el-empty>
+            </template><!-- 传统气泡渲染结束 -->
           </div>
         </template>
 
@@ -296,17 +315,52 @@ import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { Search, Refresh, InfoFilled, WarningFilled, Microphone, VideoCamera, Document, Link, Grid, Location, User } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { createAuditMark, getSensitiveWords } from '@/api/wecom'
-import { getConversationList, getConversationMessages, getArchiveSeats } from '@/api/wecom'
+import { getConversationList, getConversationMessages, getArchiveSeats, getMessageKeys } from '@/api/wecom'
 import { formatConvTime, formatMsgTimeShort, getMsgTypeText, getTextContent, getFirstToUser, getDateDividerText } from '../utils'
 import type { Conversation, ConvMessage } from '../types'
 import { useUserStore } from '@/stores/user'
 import api from '@/utils/request'
+import WecomLoginGuard from './WecomLoginGuard.vue'
+import WecomMessageRenderer from './WecomMessageRenderer.vue'
 
 defineOptions({ name: 'ConversationView' })
 
 const props = defineProps<{ configId: number | null }>()
 const emit = defineEmits<{ (e: 'audit', record: ConvMessage): void }>()
 
+// ==================== 渲染模式切换 ====================
+const renderMode = ref<'bubble' | 'wecom'>('bubble')
+const messageKeys = ref<Array<{ msgid: string; secretKey: string }>>([])
+
+/** 获取消息密钥列表（企微组件模式用） */
+const fetchMessageKeys = async () => {
+  if (!selectedConv.value || !props.configId) return
+  try {
+    const fromUserId = selectedConv.value.fromUserId || ''
+    const toUserId = getFirstToUser(selectedConv.value.toUserIds) || ''
+    const res: any = await getMessageKeys({
+      configId: props.configId,
+      fromUserId,
+      toUserId,
+      pageSize: 100
+    })
+    if (res?.list) {
+      messageKeys.value = res.list.map((item: any) => ({
+        msgid: item.msgid,
+        secretKey: item.secretKey
+      }))
+    }
+  } catch (e) {
+    console.warn('获取消息密钥失败:', e)
+    messageKeys.value = []
+  }
+}
+
+/** 企微组件渲染错误处理 */
+const handleWecomRenderError = (error: any) => {
+  console.warn('企微组件渲染错误，切换回气泡模式:', error)
+  // 不自动切换，让用户手动选择
+}
 const userStore = useUserStore()
 const currentUser = computed(() => userStore.currentUser)
 const isAdminRole = computed(() => ['super_admin', 'admin'].includes(currentUser.value?.role || ''))
@@ -578,7 +632,12 @@ const selectConversation = async (conv: Conversation) => {
   selectedConv.value = conv
   msgPage.value = 1
   messages.value = []
+  messageKeys.value = []
   await fetchMessages()
+  // 企微组件模式下同时获取消息密钥
+  if (renderMode.value === 'wecom') {
+    await fetchMessageKeys()
+  }
 }
 
 // ==================== 消息 ====================
@@ -652,6 +711,11 @@ const getWeappTitle = (content: string) => { try { const c = JSON.parse(content)
 
 // ==================== 生命周期 ====================
 watch(() => props.configId, () => { fetchArchiveMembers() }, { immediate: true })
+watch(renderMode, (mode) => {
+  if (mode === 'wecom' && selectedConv.value) {
+    fetchMessageKeys()
+  }
+})
 
 onMounted(() => { fetchArchiveMembers(); loadSensitiveWords() })
 

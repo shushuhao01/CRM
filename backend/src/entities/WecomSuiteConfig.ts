@@ -81,6 +81,17 @@ export class WecomSuiteConfig {
   @Column({ name: 'mp_config', type: 'text', nullable: true, comment: '小程序扩展配置(JSON)' })
   mpConfig: string;
 
+  // ==================== Web登录授权配置 ====================
+
+  @Column({ name: 'web_login_token', type: 'varchar', length: 100, nullable: true, comment: 'Web登录授权Token(与服务商后台登录授权配置一致)' })
+  webLoginToken: string;
+
+  @Column({ name: 'web_login_encoding_aes_key', type: 'varchar', length: 100, nullable: true, comment: 'Web登录授权EncodingAESKey(与服务商后台登录授权配置一致)' })
+  webLoginEncodingAesKey: string;
+
+  @Column({ name: 'web_login_redirect_domain', type: 'varchar', length: 255, nullable: true, comment: 'Web登录可信域名(如: crm.yunkes.com)' })
+  webLoginRedirectDomain: string;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 

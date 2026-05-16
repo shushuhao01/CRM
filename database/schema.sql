@@ -5834,6 +5834,9 @@ CREATE TABLE IF NOT EXISTS `wecom_suite_configs` (
   `mp_callback_token` VARCHAR(100) DEFAULT NULL COMMENT '小程序消息推送Token',
   `mp_callback_encoding_aes_key` VARCHAR(100) DEFAULT NULL COMMENT '小程序消息推送EncodingAESKey',
   `mp_config` TEXT DEFAULT NULL COMMENT '小程序扩展配置(JSON)',
+  `web_login_token` VARCHAR(100) DEFAULT NULL COMMENT 'Web登录授权Token(与服务商后台登录授权配置一致)',
+  `web_login_encoding_aes_key` VARCHAR(100) DEFAULT NULL COMMENT 'Web登录授权EncodingAESKey(与服务商后台登录授权配置一致)',
+  `web_login_redirect_domain` VARCHAR(255) DEFAULT NULL COMMENT 'Web登录可信域名(如: crm.yunkes.com)',
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='企微服务商应用配置表';

@@ -197,6 +197,89 @@ router.get('/conversations/messages', authenticateToken, async (req: Request, re
   }
 });
 
+/**
+ * 获取消息密钥列表（供会话展示组件使用）
+ * GET /api/v1/wecom/conversations/message-keys
+ * 返回 msgid + secretKey 列表，前端传给 ww-open-message 组件渲染
+ */
+router.get('/conversations/message-keys', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const { configId, fromUserId, toUserId, roomId, page = '1', pageSize = '50' } = req.query;
+    const { getCurrentTenantId } = await import('../../utils/tenantContext');
+    const tenantId = getCurrentTenantId();
+
+    if (!fromUserId || !toUserId) {
+      return res.status(400).json({ success: false, message: '请指定发送方和接收方' });
+    }
+
+    const p = parseInt(page as string) || 1;
+    const ps = parseInt(pageSize as string) || 50;
+    const offset = (p - 1) * ps;
+
+    // 查询条件：排除 meta 类型，只返回有 secretKey 的实际消息
+    let where = "WHERE msg_type != 'meta' AND content LIKE '%\"secretKey\"%'";
+    const queryParams: any[] = [];
+
+    if (tenantId) {
+      where += ' AND tenant_id = ?';
+      queryParams.push(tenantId);
+    }
+    if (configId) {
+      where += ' AND wecom_config_id = ?';
+      queryParams.push(parseInt(configId as string));
+    }
+    if (roomId) {
+      where += ' AND room_id = ?';
+      queryParams.push(roomId);
+    } else {
+      where += ' AND ((from_user_id = ? AND to_user_ids LIKE ?) OR (from_user_id = ? AND to_user_ids LIKE ?))';
+      queryParams.push(fromUserId, `%${toUserId}%`, toUserId, `%${fromUserId}%`);
+    }
+
+    // 总数
+    const countResult = await AppDataSource.query(
+      `SELECT COUNT(*) as total FROM wecom_chat_records ${where}`, queryParams
+    );
+    const total = countResult[0]?.total || 0;
+
+    // 查询消息列表
+    const records = await AppDataSource.query(
+      `SELECT msg_id, content, msg_type, from_user_id, to_user_ids, msg_time, from_user_name
+       FROM wecom_chat_records ${where}
+       ORDER BY msg_time ASC
+       LIMIT ? OFFSET ?`,
+      [...queryParams, ps, offset]
+    );
+
+    // 提取 msgid + secretKey
+    const list = records.map((r: any) => {
+      let secretKey = '';
+      try {
+        const content = typeof r.content === 'string' ? JSON.parse(r.content) : r.content;
+        secretKey = content?.secretKey || '';
+      } catch { /* ignore */ }
+
+      return {
+        msgid: r.msg_id,
+        secretKey,
+        msgType: r.msg_type,
+        fromUserId: r.from_user_id,
+        fromUserName: r.from_user_name,
+        toUserIds: r.to_user_ids,
+        msgTime: r.msg_time
+      };
+    }).filter((item: any) => item.secretKey); // 只返回有 secretKey 的记录
+
+    res.json({
+      success: true,
+      data: { list, total, page: p, pageSize: ps }
+    });
+  } catch (error: any) {
+    log.error('[Wecom] 获取消息密钥列表失败:', error.message);
+    res.status(500).json({ success: false, message: '获取消息密钥列表失败' });
+  }
+});
+
 // ==================== 质检 ====================
 
 router.put('/chat-records/:id/audit', authenticateToken, requireAdmin, async (req: Request, res: Response) => {

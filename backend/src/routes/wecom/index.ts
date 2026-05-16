@@ -67,6 +67,7 @@ import antiSpamRuleRouter from './antiSpamRule';
 import h5AuthRouter from './h5-auth';
 import h5AppRouter from './h5-app';
 import zoneRouter from './zone';
+import webLoginRouter from './web-login';
 
 const router = Router();
 
@@ -105,6 +106,8 @@ router.use('/h5', h5AuthRouter);
 router.use('/h5/app', h5AppRouter);
 // 数据与智能专区回调
 router.use('/zone', zoneRouter);
+// Web登录授权
+router.use('/', webLoginRouter);
 
 export default router;
 

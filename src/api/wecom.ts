@@ -1021,3 +1021,31 @@ export const confirmWecomPayment = (data: { type: string; packageName: string; c
   return request.post('/wecom/confirm-payment', data)
 }
 
+
+// ==================== Web登录 & 会话展示组件 ====================
+
+/** 获取Web登录配置 */
+export const getWecomWebLoginConfig = () => {
+  return request.get('/wecom/web-login/config', { showError: false } as any)
+}
+
+/** 用auth_code换取登录用户身份 */
+export const getWecomLoginInfo = (authCode: string) => {
+  return request.post('/wecom/web-login/get-login-info', { authCode })
+}
+
+/** 获取agentConfig签名（会话展示组件需要） */
+export const getWecomAgentConfigSign = (data: { corpId: string; url: string }) => {
+  return request.post('/wecom/web-login/agent-config-sign', data)
+}
+
+/** 获取消息密钥列表（用于会话展示组件渲染） */
+export const getMessageKeys = (params: {
+  configId?: number
+  fromUserId: string
+  toUserId: string
+  page?: number
+  pageSize?: number
+}) => {
+  return request.get('/wecom/conversations/message-keys', { params, showError: false } as any)
+}
