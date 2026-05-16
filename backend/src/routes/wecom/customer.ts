@@ -361,7 +361,7 @@ router.post('/customers/sync', authenticateToken, requireAdmin, async (req: Requ
           });
           for (const local of localCustomers) {
             if (!syncedExternalUserIds.has(local.externalUserId)) {
-              await customerRepo.update(local.id, { status: 'deleted' as any });
+              await customerRepo.update(local.id, { status: 'deleted' as any, deleteTime: new Date() } as any);
               deletedCount++;
             }
           }

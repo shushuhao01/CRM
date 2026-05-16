@@ -22,6 +22,11 @@
         <span class="logo-badge">CRM</span>
       </router-link>
 
+      <!-- 企业微信服务商标识 -->
+      <a href="https://open.work.weixin.qq.com" target="_blank" class="wecom-isp-badge">
+        <img src="https://open.work.weixin.qq.com/service/img?id=wwef39016ab6decd65&t=isp&c=white&s=medium" srcset="https://open.work.weixin.qq.com/service/img?id=wwef39016ab6decd65&t=isp&c=white&s=medium@2x 2x" referrerpolicy="unsafe-url" alt="企业微信服务商">
+      </a>
+
       <!-- 导航菜单 -->
       <div class="nav-menu" :class="{ active: menuOpen }">
         <router-link to="/" class="nav-link" @click="menuOpen = false">首页</router-link>
@@ -179,7 +184,8 @@ onUnmounted(() => {
 .logo {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
+  margin-right: 0;
 
   &-text {
     font-size: 22px;
@@ -197,19 +203,34 @@ onUnmounted(() => {
   }
 }
 
+.wecom-isp-badge {
+  display: flex;
+  align-items: center;
+  margin-left: 12px;
+  flex-shrink: 0;
+
+  img {
+    height: 24px;
+    width: auto;
+    display: block;
+  }
+}
+
 .nav-menu {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
+  margin-left: 16px;
 }
 
 .nav-link {
-  padding: 10px 18px;
-  font-size: 15px;
+  padding: 10px 14px;
+  font-size: 14px;
   font-weight: 500;
   color: var(--text-secondary);
   border-radius: var(--radius);
   transition: all 0.2s ease;
+  white-space: nowrap;
 
   &:hover, &.router-link-active {
     color: var(--primary);
@@ -262,6 +283,7 @@ onUnmounted(() => {
     opacity: 0;
     pointer-events: none;
     transition: all 0.3s ease;
+    margin-left: 0;
 
     &.active {
       transform: translateY(0);
@@ -274,9 +296,14 @@ onUnmounted(() => {
     width: 100%;
     text-align: center;
     padding: 14px;
+    font-size: 15px;
   }
 
   .nav-actions {
+    display: none;
+  }
+
+  .wecom-isp-badge {
     display: none;
   }
 
