@@ -372,10 +372,20 @@
               <template #title><strong>💡 Web登录授权说明</strong></template>
               <div style="font-size: 12px; line-height: 1.7; margin-top: 4px">
                 <p>会话展示组件在普通浏览器中使用时，需要用户通过企微扫码登录。</p>
-                <p>请在服务商后台「登录授权」页面配置以下信息（与此处填写的值保持一致）。</p>
-                <p>配置路径：服务商后台 → 登录授权 → 可信域名 / 指令回调URL / Token / EncodingAESKey</p>
+                <p>请在服务商后台「登录授权」页面获取 SuiteID 和 Secret，并配置可信域名、Token、Key。</p>
+                <p><strong style="color:#E6A23C">注意：登录授权的 SuiteID/Secret 与应用的 Suite ID/Secret 不同！</strong></p>
               </div>
             </el-alert>
+            <el-form-item label="登录授权AppID">
+              <div style="display: flex; gap: 8px; width: 100%">
+                <el-input v-model="suiteConfig.webLoginAppId" placeholder="服务商后台「登录授权」页面的SuiteID（如: ww21d5ed18ba4402af）" />
+              </div>
+            </el-form-item>
+            <el-form-item label="登录授权Secret">
+              <div style="display: flex; gap: 8px; width: 100%">
+                <el-input v-model="suiteConfig.webLoginSecret" placeholder="服务商后台「登录授权」页面的Secret" show-password />
+              </div>
+            </el-form-item>
             <el-form-item label="可信域名">
               <el-input v-model="suiteConfig.webLoginRedirectDomain" placeholder="如: crm.yunkes.com（与服务商后台登录授权的可信域名一致）" />
             </el-form-item>
@@ -399,7 +409,8 @@
             </el-form-item>
             <el-form-item>
               <el-button v-permission="'wecom-management:suite:edit'" type="primary" @click="handleSaveConfig" :loading="saving">保存Web登录配置</el-button>
-              <el-tag v-if="suiteConfig.webLoginToken" type="success" size="small" style="margin-left: 12px">已配置 ✓</el-tag>
+              <el-button :loading="webLoginTesting" @click="testWebLoginConnection">测试连接</el-button>
+              <el-tag v-if="suiteConfig.webLoginToken && suiteConfig.webLoginAppId" type="success" size="small" style="margin-left: 12px">已配置 ✓</el-tag>
               <el-tag v-else type="info" size="small" style="margin-left: 12px">未配置</el-tag>
             </el-form-item>
 
@@ -1171,7 +1182,8 @@ const suiteConfig = ref<any>({
   callbackToken: '', callbackEncodingAesKey: '',
   chatArchiveRsaPublicKey: '', chatArchiveRsaPrivateKey: '',
   isEnabled: true, mpAppId: '', mpEnabled: false,
-  webLoginToken: '', webLoginEncodingAesKey: '', webLoginRedirectDomain: ''
+  webLoginToken: '', webLoginEncodingAesKey: '', webLoginRedirectDomain: '',
+  webLoginAppId: '', webLoginSecret: ''
 })
 const suiteConfigList = ref<any[]>([])
 const currentConfigId = ref<number | null>(null)
@@ -1185,6 +1197,36 @@ const webLoginCallbackUrl = computed(() => {
   const protocol = domain.startsWith('http') ? '' : 'https://'
   return `${protocol}${domain}/api/v1/wecom/web-login/callback`
 })
+
+// Web登录测试连接
+const webLoginTesting = ref(false)
+const testWebLoginConnection = async () => {
+  if (!suiteConfig.value.webLoginAppId) {
+    ElMessage.warning('请先填写登录授权AppID')
+    return
+  }
+  if (!suiteConfig.value.webLoginSecret || suiteConfig.value.webLoginSecret === '******') {
+    ElMessage.warning('请先填写登录授权Secret（保存后需重新输入明文Secret才能测试）')
+    return
+  }
+  webLoginTesting.value = true
+  try {
+    const res = await request.post('/wecom-management/suite/test-web-login', {
+      appId: suiteConfig.value.webLoginAppId,
+      secret: suiteConfig.value.webLoginSecret
+    })
+    if (res.data?.connected) {
+      ElMessage.success('✅ Web登录配置验证成功！AppID和Secret有效')
+    } else {
+      ElMessage.error(res.data?.message || '连接失败，请检查AppID和Secret')
+    }
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.message || e?.message || '测试失败')
+  } finally {
+    webLoginTesting.value = false
+  }
+}
+
 const rsaPublicKeyInput = ref('')
 const showSuiteSecret = ref(false)
 const showProviderSecret = ref(false)

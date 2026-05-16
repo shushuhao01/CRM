@@ -40,7 +40,7 @@ router.get('/web-login/config', async (req: Request, res: Response) => {
     res.json({
       success: true,
       data: {
-        appId: config.suiteId,  // 第三方应用用 suiteId 作为 appid
+        appId: config.webLoginAppId || config.suiteId,  // 优先用登录授权专用AppID
         redirectDomain: config.webLoginRedirectDomain || config.redirectDomain || '',
         loginType: 'ServiceApp'  // 第三方应用
       }

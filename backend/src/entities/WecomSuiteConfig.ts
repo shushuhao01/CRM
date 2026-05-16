@@ -92,6 +92,12 @@ export class WecomSuiteConfig {
   @Column({ name: 'web_login_redirect_domain', type: 'varchar', length: 255, nullable: true, comment: 'Web登录可信域名(如: crm.yunkes.com)' })
   webLoginRedirectDomain: string;
 
+  @Column({ name: 'web_login_appid', type: 'varchar', length: 100, nullable: true, comment: 'Web登录授权AppID(服务商后台登录授权页面的SuiteID)' })
+  webLoginAppId: string;
+
+  @Column({ name: 'web_login_secret', type: 'varchar', length: 255, nullable: true, comment: 'Web登录授权Secret(服务商后台登录授权页面的Secret)' })
+  webLoginSecret: string;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 

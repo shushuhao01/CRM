@@ -3638,7 +3638,9 @@ router.get('/suite/config', async (req: Request, res: Response) => {
         // Web登录授权配置
         webLoginToken: config.webLoginToken || '',
         webLoginEncodingAesKey: config.webLoginEncodingAesKey || '',
-        webLoginRedirectDomain: config.webLoginRedirectDomain || ''
+        webLoginRedirectDomain: config.webLoginRedirectDomain || '',
+        webLoginAppId: config.webLoginAppId || '',
+        webLoginSecret: config.webLoginSecret ? '******' : ''
       };
     }
 
@@ -3684,7 +3686,8 @@ router.put('/suite/config', async (req: Request, res: Response) => {
       appName, appDescription, appStatus, permissions, isEnabled,
       chatArchiveRsaPublicKey, chatArchiveRsaPrivateKey,
       mpAppId, mpAppSecret, mpFormSecret, mpEnabled, mpConfig,
-      webLoginToken, webLoginEncodingAesKey, webLoginRedirectDomain
+      webLoginToken, webLoginEncodingAesKey, webLoginRedirectDomain,
+      webLoginAppId, webLoginSecret
     } = req.body;
 
     let config: WecomSuiteConfig | null = null;
@@ -3721,6 +3724,8 @@ router.put('/suite/config', async (req: Request, res: Response) => {
     if (webLoginToken !== undefined) config.webLoginToken = webLoginToken;
     if (webLoginEncodingAesKey !== undefined) config.webLoginEncodingAesKey = webLoginEncodingAesKey;
     if (webLoginRedirectDomain !== undefined) config.webLoginRedirectDomain = webLoginRedirectDomain;
+    if (webLoginAppId !== undefined) config.webLoginAppId = webLoginAppId;
+    if (webLoginSecret && webLoginSecret !== '******') config.webLoginSecret = webLoginSecret;
 
     await repo.save(config);
 
@@ -3776,6 +3781,71 @@ router.get('/suite/secrets', async (_req: Request, res: Response) => {
   } catch (error: any) {
     log.error('[Admin Suite] Get secrets error:', error);
     res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// 测试Web登录授权连接
+router.post('/suite/test-web-login', async (req: Request, res: Response) => {
+  if (!checkPermission(req, res, 'wecom-management:config:edit')) return;
+  try {
+    const { appId, secret } = req.body;
+    if (!appId) return res.json({ success: true, data: { connected: false, message: '请填写登录授权AppID' } });
+    if (!secret || secret === '******') return res.json({ success: true, data: { connected: false, message: '请填写登录授权Secret（明文）' } });
+
+    // 用登录授权的 AppID + Secret 获取 suite_access_token 来验证凭证有效性
+    // 登录授权的验证方式：调用 get_provider_token（因为登录授权用的是服务商级别凭证）
+    // 或者直接用 appId + secret 调用 get_suite_token（如果它是 suite 类型）
+    const axios = (await import('axios')).default;
+
+    // 尝试方式1：作为 provider 凭证验证
+    const repo = AppDataSource.getRepository(WecomSuiteConfig);
+    const config = await repo.findOne({ where: {}, order: { id: 'ASC' } });
+    const providerCorpId = config?.providerCorpId;
+
+    if (providerCorpId) {
+      // 用 provider_corpid + 登录授权secret 获取 provider_token
+      const result = await axios.post('https://qyapi.weixin.qq.com/cgi-bin/service/get_provider_token', {
+        corpid: providerCorpId,
+        provider_secret: secret
+      }, { timeout: 10000 });
+
+      if (result.data?.provider_access_token) {
+        return res.json({
+          success: true,
+          data: {
+            connected: true,
+            message: '连接成功！登录授权凭证有效',
+            tokenPreview: result.data.provider_access_token.substring(0, 10) + '...',
+            expiresIn: result.data.expires_in
+          }
+        });
+      }
+
+      // 如果 provider_token 方式失败，可能 secret 不是 provider_secret
+      const errcode = result.data?.errcode;
+      if (errcode) {
+        return res.json({
+          success: true,
+          data: {
+            connected: false,
+            message: `验证失败: ${result.data.errmsg || '未知错误'} (errcode: ${errcode})`,
+            hint: errcode === 40001 ? '请确认Secret是否正确' : ''
+          }
+        });
+      }
+    }
+
+    // 方式2：尝试作为 suite 凭证（需要 suite_ticket）
+    res.json({
+      success: true,
+      data: {
+        connected: false,
+        message: '无法验证：需要服务商CorpID配合验证，请确保「应用配置」Tab中已填写服务商CorpID'
+      }
+    });
+  } catch (error: any) {
+    log.error('[Admin Suite] Test web login error:', error.message);
+    res.json({ success: true, data: { connected: false, message: `测试异常: ${error.message}` } });
   }
 });
 
