@@ -668,6 +668,11 @@ async function initWithNewSdk(retryCount = 0) {
       localStorage.setItem('wecom_sidebar_last_external_id', uid)
       console.log('[Sidebar] ✅ 获取外部联系人成功:', uid)
       contactSuccess = true
+      // ★ 静默回传客户头像（如果JSSDK返回了avatar字段）
+      const avatarUrl = contactRes?.avatar || contactRes?.result?.avatar
+      if (avatarUrl && sidebarToken.value) {
+        syncCustomerAvatar(uid, avatarUrl)
+      }
       // ★ 如果已经处于detail状态（token缓存快速进入），只刷新客户数据
       if (pageState.value === 'detail' && sidebarToken.value) {
         await loadCustomerDetail()
@@ -1074,6 +1079,20 @@ function loadWecomJsSdk(): Promise<void> {
       '2. 侧边栏 URL 是否通过企微客户端打开'
     )
   })()
+}
+
+// ==================== 静默同步客户头像 ====================
+
+function syncCustomerAvatar(extUserId: string, avatar: string) {
+  // 静默回传，不阻塞主流程，不处理错误
+  import('axios').then(({ default: axios }) => {
+    axios.post(`${window.location.origin}/api/v1/wecom/sidebar/sync-avatar`, {
+      externalUserId: extUserId,
+      avatar
+    }, {
+      headers: { Authorization: `Bearer ${sidebarToken.value}` }
+    }).catch(() => {})
+  }).catch(() => {})
 }
 
 // ==================== 绑定检查 ====================

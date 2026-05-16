@@ -19,7 +19,7 @@
             @click="selectMember(member)"
           >
             <div class="member-card-avatar">
-              <img referrerpolicy="no-referrer" v-if="member.avatar" :src="member.avatar" class="avatar-img" />
+              <img referrerpolicy="no-referrer" v-if="isValidAvatar(member.avatar)" :src="member.avatar" class="avatar-img" />
               <span v-else class="avatar-letter">{{ (member.name || member.wecomUserId).charAt(0) }}</span>
             </div>
             <div class="member-card-info">
@@ -110,7 +110,7 @@
                 <span v-if="isWechatCustomer(selectedConv)" class="msg-header-tag tag-wechat">@微信</span>
                 <span v-else-if="isCorpCustomer(selectedConv)" class="msg-header-tag tag-corp">@{{ getCorpShortName(selectedConv) }}</span>
                 <el-tag v-if="(selectedConv as any).agreed === true" type="success" size="small">已同意存档</el-tag>
-                <el-tag v-else-if="(selectedConv as any).agreed === false" type="danger" size="small">未同意存档</el-tag>
+                <el-tag v-else-if="(selectedConv as any).agreed === false" type="warning" size="small">客户未同意</el-tag>
                 <el-tag v-else type="info" size="small">存档状态未知</el-tag>
               </div>
             </div>
@@ -234,9 +234,8 @@
 
             <el-empty v-if="messages.length === 0 && !msgLoading" :image-size="50">
               <template #description>
-                <p v-if="(selectedConv as any).agreed === true">已同意存档，请点击同步按钮拉取消息</p>
-                <p v-else-if="(selectedConv as any).agreed === false">客户未同意会话存档</p>
-                <p v-else>暂无消息</p>
+                <p v-if="(selectedConv as any).agreed === false">客户未同意存档，仅可查看成员发送的消息，请点击同步拉取</p>
+                <p v-else>暂无消息，请点击顶部同步按钮拉取聊天记录</p>
               </template>
             </el-empty>
           </div>
@@ -450,10 +449,20 @@ const fetchArchiveMembers = async () => {
   finally { memberLoading.value = false }
 }
 
+/** 判断头像URL是否为有效的真实头像（过滤企微默认占位头像） */
+const isValidAvatar = (url: string | undefined | null): boolean => {
+  if (!url) return false
+  // 企微默认头像URL包含这些路径，不是用户真实头像
+  if (url.includes('/node/wwmng/wwmng/style/')) return false
+  if (url.includes('/wwcdn.weixin.qq.com/node/wework/images/')) return false
+  // 有效的真实头像通常来自 p.qlogo.cn 或 wx.qlogo.cn 或 wework.qpic.cn
+  return true
+}
+
 const selectMember = (member: any) => {
   selectedMemberId.value = member.wecomUserId
   selectedMemberName.value = member.name || member.wecomUserId
-  selectedMemberAvatar.value = member.avatar || ''
+  selectedMemberAvatar.value = isValidAvatar(member.avatar) ? member.avatar : ''
   selectedConv.value = null
   messages.value = []
   convPage.value = 1

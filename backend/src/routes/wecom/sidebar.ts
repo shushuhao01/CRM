@@ -1143,6 +1143,37 @@ router.get('/sidebar/search-customers', authenticateSidebarToken, async (req: Re
 });
 
 /**
+ * 侧边栏 - 静默同步客户头像
+ * 前端通过 JSSDK 获取到客户头像 URL 后回传保存
+ */
+router.post('/sidebar/sync-avatar', authenticateSidebarToken, async (req: Request, res: Response) => {
+  try {
+    const { externalUserId, avatar } = req.body;
+    if (!externalUserId || !avatar) {
+      return res.json({ success: true });
+    }
+    // 过滤默认占位头像
+    if (avatar.includes('/node/wwmng/wwmng/style/') || avatar.includes('/wework/images/')) {
+      return res.json({ success: true });
+    }
+    const sidebarUser = (req as any).sidebarUser;
+    const tenantId = sidebarUser?.tenantId;
+    const { WecomCustomer } = await import('../../entities/WecomCustomer');
+    const customerRepo = AppDataSource.getRepository(WecomCustomer);
+    const customer = await customerRepo.findOne({
+      where: { externalUserId, ...(tenantId ? { tenantId } : {}) }
+    });
+    if (customer && (!customer.avatar || customer.avatar !== avatar)) {
+      customer.avatar = avatar;
+      await customerRepo.save(customer);
+    }
+    res.json({ success: true });
+  } catch {
+    res.json({ success: true }); // 静默失败，不影响侧边栏正常使用
+  }
+});
+
+/**
  * 侧边栏 - 关联CRM客户
  * 将企微客户关联到CRM客户
  * 关联唯一性规则：

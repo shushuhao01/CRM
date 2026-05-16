@@ -567,11 +567,16 @@ export class WecomApiService {
    */
   static async getPaymentList(accessToken: string, beginTime: number, endTime: number, cursor?: string): Promise<any> {
     try {
-      const response = await axios.post(`${WECOM_API_BASE}/externalpay/get_bill_list?access_token=${accessToken}`, {
+      const body: any = {
         begin_time: beginTime,
-        end_time: endTime,
-        cursor: cursor || ''
-      });
+        end_time: endTime
+      };
+      // cursor 只在有值时传递，首次调用不传
+      if (cursor) body.cursor = cursor;
+
+      log.info(`[WecomApi] getPaymentList: begin_time=${beginTime}, end_time=${endTime}, cursor=${cursor || '(首次)'}`);
+
+      const response = await axios.post(`${WECOM_API_BASE}/externalpay/get_bill_list?access_token=${accessToken}`, body);
 
       if (response.data.errcode === 0) {
         return {
@@ -579,7 +584,7 @@ export class WecomApiService {
           nextCursor: response.data.next_cursor
         };
       } else {
-        throw new Error(`获取收款记录失败: ${response.data.errmsg}`);
+        throw new Error(`获取收款记录失败(${response.data.errcode}): ${response.data.errmsg}`);
       }
     } catch (error: any) {
       log.error('[WecomApi] getPaymentList error:', error.message);

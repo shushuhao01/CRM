@@ -24,7 +24,7 @@ export class WecomUserBinding {
   @Column({ name: 'wecom_user_name', type: 'varchar', length: 100, nullable: true, comment: '企微成员姓名' })
   wecomUserName: string;
 
-  @Column({ name: 'wecom_avatar', type: 'varchar', length: 255, nullable: true, comment: '企微成员头像' })
+  @Column({ name: 'wecom_avatar', type: 'varchar', length: 1000, nullable: true, comment: '企微成员头像' })
   wecomAvatar: string;
 
   @Column({ name: 'wecom_department_ids', type: 'varchar', length: 500, nullable: true, comment: '企微部门ID列表(逗号分隔)' })

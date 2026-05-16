@@ -23,9 +23,6 @@
               <div class="tree-toolbar">
                 <el-input v-model="deptSearch" placeholder="搜索部门/成员" prefix-icon="Search" clearable size="small" @input="handleDeptSearch" />
                 <el-button type="primary" size="small" :loading="syncingAll" @click="handleSyncAll">同步组织架构</el-button>
-                <el-tooltip content="清理名称与ID同值的脏数据，并从企微通讯录API重新拉取名称" placement="top">
-                  <el-button size="small" :loading="repairing" @click="handleRepairNames">修复名称</el-button>
-                </el-tooltip>
               </div>
               <el-tree
                 :key="treeKey"

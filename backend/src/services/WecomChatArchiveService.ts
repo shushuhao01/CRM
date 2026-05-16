@@ -148,11 +148,17 @@ export class WecomChatArchiveService {
           if (msgResult.savedCount > 0) {
             log.info(`[ChatArchive] Step6完成: 拉取并保存 ${msgResult.savedCount} 条实际消息`);
           } else {
-            log.info(`[ChatArchive] Step6完成: 无新消息`);
+            log.info(`[ChatArchive] Step6完成: 无新消息（可能游标已到最新位置）`);
           }
         } catch (e: any) {
           log.warn(`[ChatArchive] Step6失败: 拉取实际消息出错: ${e.message}`);
-          // 不影响整体同步结果
+          result.errors++;
+          // 将错误信息附加到结果中，让前端能看到
+          if (e.message.includes('RSA私钥')) {
+            result.message += ' ⚠️ 消息拉取失败：未配置RSA私钥，请在管理后台「服务商应用管理」中配置会话存档RSA私钥。';
+          } else {
+            result.message += ` ⚠️ 消息拉取失败：${e.message}`;
+          }
         }
       }
 
@@ -225,18 +231,29 @@ export class WecomChatArchiveService {
         const agreeMap: Map<string, boolean> = new Map();
         try {
           const agreeResult = await WecomApiService.checkSingleAgree(chatAccessToken, checkInfo);
-          for (const item of agreeResult) {
-            // 判断同意状态：agree_status 为 "Agree" 或 "Default_Agree" 表示已同意
-            // status_change_time > 0 且无 agree_status 字段时也视为已同意（兼容旧版API返回）
-            const isAgreed = item.agree_status === 'Agree' || item.agree_status === 'Default_Agree'
-              || (!item.agree_status && item.status_change_time > 0);
-            if (isAgreed) {
+          if (agreeResult.length > 0) {
+            for (const item of agreeResult) {
+              // 判断同意状态：agree_status 为 "Agree" 或 "Default_Agree" 表示已同意
+              // status_change_time > 0 且无 agree_status 字段时也视为已同意（兼容旧版API返回）
+              // 只有明确 "Disagree" 才标记为未同意
               const extId = item.exteranalopenid || item.userid_list?.[0] || '';
-              if (extId) {
+              if (!extId) continue;
+
+              if (item.agree_status === 'Disagree') {
+                agreeMap.set(extId, false);
+              } else {
+                // Agree / Default_Agree / 无明确状态但有时间戳 → 视为已同意
                 agreeMap.set(extId, true);
                 agreedCount++;
               }
             }
+          } else if (config.authType === 'third_party') {
+            // 第三方模式下接口返回空数组，默认标记为已同意
+            for (const extId of sampleExternal) {
+              agreeMap.set(extId, true);
+              agreedCount++;
+            }
+            log.info(`[ChatArchive] 第三方模式: checkSingleAgree 返回空结果，默认标记 ${sampleExternal.length} 个客户为已同意`);
           }
         } catch (e: any) {
           log.warn(`[ChatArchive] 检查成员 ${userId} 同意状态失败:`, e.message);
