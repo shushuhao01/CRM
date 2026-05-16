@@ -759,7 +759,7 @@ export class WecomApiService {
       log.info(`[WecomApi] getChatMsgData: cursor=${cursor || '(首次)'}, limit=${limit}`);
 
       const response = await axios.post(
-        `${WECOM_API_BASE}/chatdata/get_msg_data?access_token=${accessToken}`,
+        `${WECOM_API_BASE}/chatdata/get_chatdata?access_token=${accessToken}`,
         body
       );
 
