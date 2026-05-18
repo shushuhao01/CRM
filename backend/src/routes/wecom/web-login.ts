@@ -268,136 +268,163 @@ router.post('/web-login/get-login-info', async (req: Request, res: Response) => 
 
     // 获取配置
     const repo = AppDataSource.getRepository(WecomSuiteConfig);
-    const config = await repo.findOne({ where: {}, order: { id: 'ASC' } });
+    const configs = await repo.find({ order: { id: 'ASC' }, take: 1 });
+    const config = configs[0] || null;
 
     if (!config?.providerCorpId || !config?.providerSecret) {
       return res.status(400).json({ success: false, message: '服务商配置不完整（需要CorpID和ProviderSecret）' });
     }
 
     const axios = (await import('axios')).default;
-
-    // 方式1（推荐）：用 suite_access_token + getuserinfo3rd
-    // 需要 webLoginAppId(登录授权SuiteID) + webLoginSecret(登录授权Secret) + suite_ticket
     const loginAppId = config.webLoginAppId;
     const loginSecret = config.webLoginSecret;
 
-    if (loginAppId && loginSecret) {
-      // 尝试获取 suite_access_token
-      // suite_ticket 可能存储在 system_config 表或 wecom_suite_configs 表
-      let suiteTicket = '';
+    // ========== 获取 suite_access_token ==========
+    // 优先级：1. 登录授权专用ticket  2. 主应用ticket（同一服务商下可能通用）
+    let suiteToken = '';
+    let suiteTicket = '';
 
-      // 先从 system_config 查找（可能登录授权的回调也会推送 ticket）
+    // 来源1：从 system_config 查找登录授权专用 ticket
+    if (loginAppId) {
       try {
         const ticketRows = await AppDataSource.query(
           "SELECT config_value FROM system_config WHERE config_key = ? LIMIT 1",
           [`suite_ticket_${loginAppId}`]
         );
-        if (ticketRows.length > 0) {
-          suiteTicket = ticketRows[0].config_value || '';
+        if (ticketRows.length > 0 && ticketRows[0].config_value) {
+          suiteTicket = ticketRows[0].config_value;
+          log.info(`[WecomWebLogin] 找到登录授权专用ticket: len=${suiteTicket.length}`);
         }
       } catch { /* ignore */ }
+    }
 
-      // 如果没有独立的 ticket，尝试用主应用的 suite_ticket
-      if (!suiteTicket && config.suiteTicket) {
-        // 注意：主应用的 suite_ticket 可能不适用于登录授权的 SuiteID
-        // 但如果登录授权 SuiteID 和主应用 SuiteID 相同，则可以复用
-        if (config.suiteId === loginAppId) {
-          suiteTicket = config.suiteTicket;
+    // 来源2：主应用的 suite_ticket
+    if (!suiteTicket && config.suiteTicket) {
+      suiteTicket = config.suiteTicket;
+      log.info(`[WecomWebLogin] 使用主应用ticket: len=${suiteTicket.length}`);
+    }
+
+    // 来源3：从 system_config 查找主应用 ticket
+    if (!suiteTicket && config.suiteId) {
+      try {
+        const ticketRows = await AppDataSource.query(
+          "SELECT config_value FROM system_config WHERE config_key IN (?, ?) ORDER BY updated_at DESC LIMIT 1",
+          [`suite_ticket_${config.suiteId}`, 'wecom_suite_ticket']
+        );
+        if (ticketRows.length > 0 && ticketRows[0].config_value) {
+          suiteTicket = ticketRows[0].config_value;
+          log.info(`[WecomWebLogin] 从system_config找到ticket: len=${suiteTicket.length}`);
         }
+      } catch { /* ignore */ }
+    }
+
+    // 尝试获取 suite_access_token
+    if (suiteTicket && loginAppId && loginSecret) {
+      const cleanTicket = suiteTicket.replace(/[\s\r\n\t]+/g, '').trim();
+      try {
+        const suiteTokenRes = await axios.post('https://qyapi.weixin.qq.com/cgi-bin/service/get_suite_token', {
+          suite_id: loginAppId,
+          suite_secret: loginSecret,
+          suite_ticket: cleanTicket
+        }, { timeout: 10000 });
+
+        if (suiteTokenRes.data?.suite_access_token) {
+          suiteToken = suiteTokenRes.data.suite_access_token;
+          log.info(`[WecomWebLogin] 获取suite_access_token成功(登录授权SuiteID)`);
+        } else {
+          log.warn(`[WecomWebLogin] get_suite_token(登录授权)失败: ${JSON.stringify(suiteTokenRes.data)}`);
+        }
+      } catch (e: any) {
+        log.warn(`[WecomWebLogin] get_suite_token(登录授权)异常: ${e.message}`);
       }
+    }
 
-      if (suiteTicket) {
-        try {
-          // 获取 suite_access_token
-          const suiteTokenRes = await axios.post('https://qyapi.weixin.qq.com/cgi-bin/service/get_suite_token', {
-            suite_id: loginAppId,
-            suite_secret: loginSecret,
-            suite_ticket: suiteTicket.replace(/[\s\r\n\t]+/g, '').trim()
-          }, { timeout: 10000 });
+    // 如果登录授权SuiteID获取失败，尝试用主应用的 suite_access_token
+    if (!suiteToken && suiteTicket && config.suiteId && config.suiteSecret) {
+      const cleanTicket = suiteTicket.replace(/[\s\r\n\t]+/g, '').trim();
+      try {
+        const suiteTokenRes = await axios.post('https://qyapi.weixin.qq.com/cgi-bin/service/get_suite_token', {
+          suite_id: config.suiteId,
+          suite_secret: config.suiteSecret,
+          suite_ticket: cleanTicket
+        }, { timeout: 10000 });
 
-          if (suiteTokenRes.data?.suite_access_token) {
-            const suiteToken = suiteTokenRes.data.suite_access_token;
+        if (suiteTokenRes.data?.suite_access_token) {
+          suiteToken = suiteTokenRes.data.suite_access_token;
+          log.info(`[WecomWebLogin] 获取suite_access_token成功(主应用SuiteID)`);
+        } else {
+          log.warn(`[WecomWebLogin] get_suite_token(主应用)失败: ${JSON.stringify(suiteTokenRes.data)}`);
+        }
+      } catch (e: any) {
+        log.warn(`[WecomWebLogin] get_suite_token(主应用)异常: ${e.message}`);
+      }
+    }
 
-            // 用新接口获取用户身份
-            const userRes = await axios.get(
-              `https://qyapi.weixin.qq.com/cgi-bin/service/auth/getuserinfo3rd?suite_access_token=${suiteToken}&code=${authCode}`,
-              { timeout: 10000 }
-            );
+    // 也尝试通过已有的 WecomTokenService 获取
+    if (!suiteToken && config.suiteId) {
+      try {
+        const { WecomTokenService } = await import('../../services/wecom/WecomTokenService');
+        suiteToken = await WecomTokenService.getSuiteAccessToken(config.suiteId);
+        if (suiteToken) {
+          log.info(`[WecomWebLogin] 通过WecomTokenService获取suite_access_token成功`);
+        }
+      } catch (e: any) {
+        log.warn(`[WecomWebLogin] WecomTokenService获取失败: ${e.message}`);
+      }
+    }
 
-            if (userRes.data?.errcode === 0 || !userRes.data?.errcode) {
-              log.info(`[WecomWebLogin] getuserinfo3rd成功: corpid=${userRes.data.corpid}, userid=${userRes.data.userid}`);
-              return res.json({
-                success: true,
-                data: {
-                  corpId: userRes.data.corpid || '',
-                  corpName: '',
-                  openUserId: userRes.data.open_userid || '',
-                  userId: userRes.data.userid || '',
-                  userName: '',
-                  avatar: ''
-                }
-              });
+    // ========== 用 suite_access_token 调用 getuserinfo3rd ==========
+    if (suiteToken) {
+      try {
+        const userRes = await axios.get(
+          `https://qyapi.weixin.qq.com/cgi-bin/service/auth/getuserinfo3rd?suite_access_token=${suiteToken}&code=${encodeURIComponent(authCode)}`,
+          { timeout: 10000 }
+        );
+
+        log.info(`[WecomWebLogin] getuserinfo3rd响应: ${JSON.stringify(userRes.data)}`);
+
+        if (!userRes.data?.errcode || userRes.data.errcode === 0) {
+          return res.json({
+            success: true,
+            data: {
+              corpId: userRes.data.corpid || '',
+              corpName: '',
+              openUserId: userRes.data.open_userid || '',
+              userId: userRes.data.userid || '',
+              userName: '',
+              avatar: ''
             }
-
-            log.warn(`[WecomWebLogin] getuserinfo3rd失败: ${JSON.stringify(userRes.data)}`);
-            // 如果新接口失败，继续尝试旧接口
-          } else {
-            log.warn(`[WecomWebLogin] get_suite_token失败: ${JSON.stringify(suiteTokenRes.data)}`);
-          }
-        } catch (e: any) {
-          log.warn(`[WecomWebLogin] 新接口方式失败: ${e.message}`);
+          });
         }
-      } else {
-        log.info('[WecomWebLogin] 无suite_ticket，跳过getuserinfo3rd，尝试旧接口');
+
+        // 如果是 40029，说明 code 已过期或被消费
+        if (userRes.data.errcode === 40029) {
+          return res.json({
+            success: false,
+            message: `获取用户身份失败: ${userRes.data.errmsg} (${userRes.data.errcode})`
+          });
+        }
+
+        log.warn(`[WecomWebLogin] getuserinfo3rd失败: errcode=${userRes.data.errcode}, errmsg=${userRes.data.errmsg}`);
+      } catch (e: any) {
+        log.error(`[WecomWebLogin] getuserinfo3rd请求异常: ${e.message}`);
       }
-    }
-
-    // 方式2（降级）：用 provider_access_token + get_login_info（旧接口）
-    log.info('[WecomWebLogin] 尝试旧接口 get_login_info...');
-
-    const tokenRes = await axios.post('https://qyapi.weixin.qq.com/cgi-bin/service/get_provider_token', {
-      corpid: config.providerCorpId,
-      provider_secret: config.providerSecret
-    }, { timeout: 10000 });
-
-    if (!tokenRes.data?.provider_access_token) {
-      log.error('[WecomWebLogin] 获取provider_token失败:', tokenRes.data);
-      return res.status(500).json({ success: false, message: '获取服务商Token失败' });
-    }
-
-    const providerToken = tokenRes.data.provider_access_token;
-
-    // 旧接口用 auth_code 参数
-    const loginRes = await axios.post(
-      `https://qyapi.weixin.qq.com/cgi-bin/service/get_login_info?access_token=${providerToken}`,
-      { auth_code: authCode }
-    );
-
-    if (loginRes.data?.errcode && loginRes.data.errcode !== 0) {
-      log.error('[WecomWebLogin] get_login_info失败:', loginRes.data);
+    } else {
+      log.error('[WecomWebLogin] 无法获取suite_access_token，所有方式均失败');
       return res.json({
         success: false,
-        message: `获取用户身份失败: ${loginRes.data.errmsg} (${loginRes.data.errcode})`
+        message: '无法获取suite_access_token。请确保：1.登录授权回调URL已配置且能接收ticket推送 2.主应用suite_ticket有效'
       });
     }
 
-    const { corp_info, user_info } = loginRes.data;
-    log.info(`[WecomWebLogin] 登录成功(旧接口): corpId=${corp_info?.corpid}, userId=${user_info?.open_userid || user_info?.userid}`);
-
+    // 所有方式都失败
     res.json({
-      success: true,
-      data: {
-        corpId: corp_info?.corpid || '',
-        corpName: corp_info?.corp_full_name || '',
-        openUserId: user_info?.open_userid || '',
-        userId: user_info?.userid || '',
-        userName: user_info?.name || '',
-        avatar: user_info?.avatar || ''
-      }
+      success: false,
+      message: '获取用户身份失败，请检查后端日志'
     });
   } catch (error: any) {
     log.error('[WecomWebLogin] get-login-info error:', error.message);
-    res.status(500).json({ success: false, message: '获取登录用户身份失败' });
+    res.status(500).json({ success: false, message: '获取登录用户身份失败: ' + error.message });
   }
 });
 
