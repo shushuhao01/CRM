@@ -128,7 +128,7 @@
           <div class="msg-panel-body" ref="chatMessagesRef" v-loading="msgLoading">
             <!-- 模式A: 企微会话展示组件渲染（需要企微登录） -->
             <template v-if="renderMode === 'wecom'">
-              <WecomLoginGuard :config-id="configId">
+              <WecomLoginGuard :config-id="configId" @login-success="onWecomLoginSuccess">
                 <WecomMessageRenderer
                   :msg-list="messageKeys"
                   :loading="msgLoading"
@@ -359,7 +359,13 @@ const fetchMessageKeys = async () => {
 /** 企微组件渲染错误处理 */
 const handleWecomRenderError = (error: any) => {
   console.warn('企微组件渲染错误，切换回气泡模式:', error)
-  // 不自动切换，让用户手动选择
+}
+
+/** 企微登录成功后，获取消息密钥 */
+const onWecomLoginSuccess = () => {
+  if (selectedConv.value) {
+    fetchMessageKeys()
+  }
 }
 const userStore = useUserStore()
 const currentUser = computed(() => userStore.currentUser)

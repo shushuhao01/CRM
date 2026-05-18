@@ -75,8 +75,16 @@ export function useWecomOpenData() {
     wecomAgentId.value = agentId
 
     try {
-      // 动态导入 @wecom/jssdk - 解构需要的函数
-      const { register, initOpenData, createOpenDataFrameFactory } = await import('@wecom/jssdk')
+      // 动态导入 @wecom/jssdk
+      const wwModule = await import('@wecom/jssdk')
+      const register = wwModule.register
+      const initOpenData = wwModule.initOpenData
+      const createOpenDataFrameFactory = wwModule.createOpenDataFrameFactory
+
+      if (typeof register !== 'function') {
+        throw new Error(`register 不是函数，类型: ${typeof register}，模块keys: ${Object.keys(wwModule).slice(0, 10).join(',')}`)
+      }
+
       wwInstance = { register, initOpenData, createOpenDataFrameFactory }
 
       // 注册应用
@@ -129,21 +137,24 @@ export function useWecomOpenData() {
     wecomUserName.value = loginInfo.userName
 
     // 获取 agentId（从后端配置中获取）
-    // 这里需要根据 corpId 查找对应的 agentId
-    const configRes: any = await request.get('/wecom/configs', { showError: false } as any)
-    const configs = Array.isArray(configRes) ? configRes : []
-    const matchConfig = configs.find((c: any) => c.corpId === loginInfo.corpId)
+    try {
+      const configRes: any = await request.get('/wecom/configs', { showError: false } as any)
+      const configs = Array.isArray(configRes) ? configRes : (configRes?.list || [])
+      const matchConfig = configs.find((c: any) => c.corpId === loginInfo.corpId)
 
-    if (!matchConfig?.agentId) {
-      // 如果没有 agentId，尝试从 auth_scope 中获取
-      wecomLoginState.value = 'idle'
-      ElMessage.warning('未找到该企业的应用配置，请确认企业已授权')
-      return false
+      if (matchConfig?.agentId) {
+        // 初始化SDK
+        const success = await initWecomSdk(loginInfo.corpId, matchConfig.agentId)
+        return success
+      }
+    } catch (e: any) {
+      console.warn('[useWecomOpenData] 获取企业配置失败:', e.message)
     }
 
-    // 初始化SDK
-    const success = await initWecomSdk(loginInfo.corpId, matchConfig.agentId)
-    return success
+    // 如果没有 agentId，仍然标记为 ready（降级为气泡模式）
+    wecomLoginState.value = 'ready'
+    ElMessage.success('企微登录成功（降级模式）')
+    return true
   }
 
   /**
