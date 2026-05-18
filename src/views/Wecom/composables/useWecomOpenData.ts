@@ -53,10 +53,11 @@ export function useWecomOpenData() {
 
   /**
    * 获取 JS-SDK 签名（支持 config 和 agent_config 两种类型）
+   * ★ 使用 sidebar/sign 接口（与侧边栏一致，已验证可正常工作）
    */
   const getJsSdkSign = async (url: string, type: 'config' | 'agent_config') => {
     try {
-      const res: any = await request.post('/wecom/web-login/agent-config-sign', {
+      const res: any = await request.post('/wecom/sidebar/sign', {
         corpId: wecomCorpId.value,
         url,
         type
@@ -306,6 +307,43 @@ export function useWecomOpenData() {
   }
 
   /**
+   * 从后端配置直接初始化SDK（企微客户端内使用，无需扫码登录）
+   * @param configId 企微配置ID
+   */
+  const initFromConfig = async (configId?: number | null) => {
+    try {
+      wecomLoginState.value = 'logging'
+      const configRes: any = await request.get('/wecom/configs', { showError: false } as any)
+      const configs = Array.isArray(configRes) ? configRes : (configRes?.data || configRes?.list || [])
+
+      let config: any = null
+      if (configId) {
+        config = configs.find((c: any) => c.id === configId)
+      }
+      if (!config) {
+        config = configs.find((c: any) => c.agentId && c.isEnabled)
+      }
+      if (!config) {
+        config = configs[0]
+      }
+
+      if (!config?.corpId || !config?.agentId) {
+        console.warn('[useWecomOpenData] initFromConfig: 无有效配置', config)
+        wecomLoginState.value = 'idle'
+        return false
+      }
+
+      console.log(`[useWecomOpenData] initFromConfig: corpId=${config.corpId}, agentId=${config.agentId}, suiteId=${config.suiteId || '(无)'}`)
+      const success = await initWecomSdk(config.corpId, config.agentId, config.suiteId || undefined)
+      return success
+    } catch (e: any) {
+      console.error('[useWecomOpenData] initFromConfig失败:', e.message)
+      wecomLoginState.value = 'idle'
+      return false
+    }
+  }
+
+  /**
    * 重置状态（退出登录）
    */
   const resetWecomState = () => {
@@ -332,6 +370,7 @@ export function useWecomOpenData() {
     getLoginConfig,
     getLoginInfo,
     initWecomSdk,
+    initFromConfig,
     handleLoginSuccess,
     createMessageFrame,
     updateFrameData,

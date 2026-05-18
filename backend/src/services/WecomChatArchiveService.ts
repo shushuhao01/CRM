@@ -868,8 +868,9 @@ export class WecomChatArchiveService {
           }
         } catch { /* ignore */ }
 
-        // 补充判断：如果有实际消息记录（非meta），说明客户已同意存档
-        // 企微规则：只有客户同意后才能拉取到消息
+        // ★ 补充判断：通过消息方向判断客户是否同意
+        // 企微规则：客户未同意时，仍可拉取员工发出的消息（单边存档）
+        // 只有客户发出的消息（from_user_id = 外部联系人ID）才能证明客户已同意
         try {
           const extIds = Array.from(externalUserIds).filter(id => !agreedStatusMap.has(id) || agreedStatusMap.get(id) === false);
           if (extIds.length > 0) {
@@ -883,29 +884,18 @@ export class WecomChatArchiveService {
               msgWhere += ' AND wecom_config_id = ?';
               msgParams.push(configId);
             }
-            // 查找有实际消息的外部联系人
-            const likeConditions = extIds.map(() => 'from_user_id = ? OR to_user_ids LIKE ?').join(' OR ');
-            const likeParams = extIds.flatMap(id => [id, `%${id}%`]);
+            // ★ 只查找外部联系人作为发送者的消息（客户发出=已同意）
+            // 员工发给客户的消息（客户在to_user_ids中）不能证明客户同意
+            const fromConditions = extIds.map(() => 'from_user_id = ?').join(' OR ');
             const msgRecords = await AppDataSource.query(
-              `SELECT DISTINCT from_user_id, to_user_ids FROM wecom_chat_records WHERE ${msgWhere} AND (${likeConditions}) LIMIT 200`,
-              [...msgParams, ...likeParams]
+              `SELECT DISTINCT from_user_id FROM wecom_chat_records WHERE ${msgWhere} AND (${fromConditions}) LIMIT 200`,
+              [...msgParams, ...extIds]
             );
             for (const rec of msgRecords) {
-              // 找到涉及的外部联系人ID
               const fromId = rec.from_user_id || '';
               if (fromId.startsWith('wm') || fromId.startsWith('wo')) {
                 agreedStatusMap.set(fromId, true);
               }
-              try {
-                const toIds = typeof rec.to_user_ids === 'string' ? JSON.parse(rec.to_user_ids) : rec.to_user_ids;
-                if (Array.isArray(toIds)) {
-                  for (const id of toIds) {
-                    if (id && (id.startsWith('wm') || id.startsWith('wo'))) {
-                      agreedStatusMap.set(id, true);
-                    }
-                  }
-                }
-              } catch { /* ignore */ }
             }
           }
         } catch { /* ignore */ }
@@ -966,14 +956,16 @@ export class WecomChatArchiveService {
           memberAvatar = memberAvatarMap.get(memberId) || '';
         }
 
-        // 从 meta 记录中获取同意状态（来自 checkSingleAgree API 的实际结果）
+        // 从 meta 记录 / 消息方向判断同意状态
         let agreed: boolean | null = null;
         if (externalId && agreedStatusMap.has(externalId)) {
           agreed = agreedStatusMap.get(externalId)!;
         }
-        // 补充判断：如果有实际消息记录（非meta），说明客户已同意存档
-        // 企微规则：只有客户同意后才能拉取到该客户的双向消息
-        if (agreed !== true && item.msgCount > 0) {
+        // ★ 有消息但 agreed 仍为 null/false：
+        // - 客户未同意时，员工的单边消息仍会被存档（agreed 保持 false/null）
+        // - 只有检测到客户发出的消息(from_user_id=外部ID)才置为 true（上面已处理）
+        // - 第三方数据专区模式特殊：API 完全不返回未同意客户的消息，有消息=已同意
+        if (agreed === null && item.msgCount > 0 && isThirdPartyMode) {
           agreed = true;
         }
 

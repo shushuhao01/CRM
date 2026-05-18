@@ -110,7 +110,7 @@
                 <span v-if="isWechatCustomer(selectedConv)" class="msg-header-tag tag-wechat">@微信</span>
                 <span v-else-if="isCorpCustomer(selectedConv)" class="msg-header-tag tag-corp">@{{ getCorpShortName(selectedConv) }}</span>
                 <el-tag v-if="(selectedConv as any).agreed === true" type="success" size="small">已同意存档</el-tag>
-                <el-tag v-else-if="(selectedConv as any).agreed === false" type="warning" size="small">客户未同意</el-tag>
+                <el-tag v-else-if="(selectedConv as any).agreed === false" type="warning" size="small">客户未同意（仅员工消息）</el-tag>
                 <el-tag v-else type="info" size="small">存档状态未知</el-tag>
               </div>
             </div>
@@ -126,16 +126,34 @@
 
           <!-- 消息列表 -->
           <div class="msg-panel-body" ref="chatMessagesRef" v-loading="msgLoading">
-            <!-- 模式A: 企微会话展示组件渲染（需要企微登录） -->
+            <!-- 模式A: 企微会话展示组件渲染 -->
             <template v-if="renderMode === 'wecom'">
-              <WecomLoginGuard :config-id="configId" @login-success="onWecomLoginSuccess">
+              <!-- 非企微客户端：提示去企微打开 -->
+              <div v-if="!isInWecomClient" class="wecom-redirect-prompt">
+                <el-icon :size="48" color="#1890ff"><Connection /></el-icon>
+                <h3>请在企业微信中打开</h3>
+                <p>会话存档组件模式需要在企业微信客户端内使用，这是企业微信官方要求。</p>
+                <el-button type="primary" @click="openInWecom">在企业微信中打开</el-button>
+                <p class="sub-tip">或切换为「气泡模式」直接查看消息内容</p>
+              </div>
+              <!-- 企微客户端：SDK初始化中 -->
+              <div v-else-if="sdkInitializing" class="wecom-sdk-loading">
+                <el-icon class="is-loading" :size="32"><Loading /></el-icon>
+                <p>正在初始化企微SDK...</p>
+              </div>
+              <!-- SDK已就绪：渲染消息 -->
+              <template v-else-if="isWecomReady">
                 <WecomMessageRenderer
                   :msg-list="messageKeys"
                   :loading="msgLoading"
                   @load-more="loadMoreMessages"
                   @error="handleWecomRenderError"
                 />
-              </WecomLoginGuard>
+              </template>
+              <!-- SDK初始化失败：自动降级提示 -->
+              <div v-else class="wecom-sdk-fallback">
+                <p>企微SDK初始化失败，已自动切换为气泡模式</p>
+              </div>
             </template>
 
             <!-- 模式B: 传统气泡渲染（现有逻辑） -->
@@ -312,7 +330,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, watch } from 'vue'
-import { Search, Refresh, InfoFilled, WarningFilled, Microphone, VideoCamera, Document, Link, Grid, Location, User } from '@element-plus/icons-vue'
+import { Search, Refresh, InfoFilled, WarningFilled, Microphone, VideoCamera, Document, Link, Grid, Location, User, Connection, Loading } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { createAuditMark, getSensitiveWords } from '@/api/wecom'
 import { getConversationList, getConversationMessages, getArchiveSeats, getMessageKeys } from '@/api/wecom'
@@ -320,8 +338,8 @@ import { formatConvTime, formatMsgTimeShort, getMsgTypeText, getTextContent, get
 import type { Conversation, ConvMessage } from '../types'
 import { useUserStore } from '@/stores/user'
 import api from '@/utils/request'
-import WecomLoginGuard from './WecomLoginGuard.vue'
 import WecomMessageRenderer from './WecomMessageRenderer.vue'
+import { useWecomOpenData } from '../composables/useWecomOpenData'
 
 defineOptions({ name: 'ConversationView' })
 
@@ -329,11 +347,40 @@ const props = defineProps<{ configId: number | null }>()
 const emit = defineEmits<{ (e: 'audit', record: ConvMessage): void }>()
 
 // ==================== 渲染模式切换 ====================
-// ★ 默认 bubble 模式（不依赖SDK，任何浏览器都能工作）
-// 仅在企微客户端内才默认 wecom 模式（OpenData组件渲染）
+// ★ 企微客户端内默认 wecom 模式（OpenData组件渲染）
+// 普通浏览器默认 bubble 模式（不依赖SDK）
 const isInWecomClient = /wxwork|WeCom/i.test(navigator.userAgent)
 const renderMode = ref<'bubble' | 'wecom'>(isInWecomClient ? 'wecom' : 'bubble')
 const messageKeys = ref<Array<{ msgid: string; secretKey: string }>>([])
+
+// ==================== 企微SDK状态 ====================
+const { isWecomReady, initFromConfig } = useWecomOpenData()
+const sdkInitializing = ref(false)
+const sdkInitDone = ref(false)
+
+/** 在企微客户端内自动初始化SDK（无需扫码） */
+const autoInitSdk = async () => {
+  if (!isInWecomClient || sdkInitDone.value) return
+  sdkInitializing.value = true
+  try {
+    const success = await initFromConfig(props.configId)
+    if (!success) {
+      // SDK初始化失败，自动降级为气泡模式
+      renderMode.value = 'bubble'
+    } else if (selectedConv.value) {
+      fetchMessageKeys()
+    }
+  } finally {
+    sdkInitializing.value = false
+    sdkInitDone.value = true
+  }
+}
+
+/** 跳转到企业微信客户端 */
+const openInWecom = () => {
+  // 企微内置浏览器协议
+  window.location.href = `wxwork://message`
+}
 
 /** 获取消息密钥列表（企微组件模式用） */
 const fetchMessageKeys = async () => {
@@ -365,12 +412,6 @@ const handleWecomRenderError = (error: any) => {
   renderMode.value = 'bubble'
 }
 
-/** 企微登录成功后，获取消息密钥 */
-const onWecomLoginSuccess = () => {
-  if (selectedConv.value) {
-    fetchMessageKeys()
-  }
-}
 const userStore = useUserStore()
 const currentUser = computed(() => userStore.currentUser)
 const isAdminRole = computed(() => ['super_admin', 'admin'].includes(currentUser.value?.role || ''))
@@ -727,7 +768,14 @@ watch(renderMode, (mode) => {
   }
 })
 
-onMounted(() => { fetchArchiveMembers(); loadSensitiveWords() })
+onMounted(() => {
+  fetchArchiveMembers()
+  loadSensitiveWords()
+  // 企微客户端内自动初始化SDK（无需扫码）
+  if (isInWecomClient && renderMode.value === 'wecom') {
+    autoInitSdk()
+  }
+})
 
 // 暴露方法给父组件调用
 defineExpose({ fetchConversations, fetchArchiveMembers })
@@ -847,4 +895,13 @@ defineExpose({ fetchConversations, fetchArchiveMembers })
 
 .empty-conv { padding: 40px 0; }
 .conv-loading-more { text-align: center; padding: 12px; font-size: 12px; color: #9ca3af; }
+
+/* 企微跳转提示 */
+.wecom-redirect-prompt { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; padding: 40px; text-align: center; }
+.wecom-redirect-prompt h3 { margin: 16px 0 8px; font-size: 18px; color: #1f2937; }
+.wecom-redirect-prompt p { color: #6b7280; font-size: 14px; margin-bottom: 16px; }
+.wecom-redirect-prompt .sub-tip { margin-top: 12px; font-size: 12px; color: #9ca3af; }
+.wecom-sdk-loading { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; gap: 12px; color: #6b7280; }
+.wecom-sdk-fallback { display: flex; align-items: center; justify-content: center; height: 60px; color: #e6a23c; font-size: 13px; }
 </style>
+
