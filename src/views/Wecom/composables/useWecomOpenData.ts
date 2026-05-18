@@ -89,22 +89,18 @@ export function useWecomOpenData() {
 
       wwInstance = { register, initOpenData, createOpenDataFrameFactory }
 
-      // ★ 使用 Promise 等待 agentConfig 完成（register 返回不代表 agentConfig 完成）
-      let agentConfigResolve: (() => void) | null = null
-      let agentConfigError: string | null = null
-      const agentConfigPromise = new Promise<void>((resolve) => {
-        agentConfigResolve = resolve
-      })
-
-      // 注册应用（第三方应用需要同时提供 getConfigSignature 和 getAgentConfigSignature）
+      // ★ 注册应用（第三方应用需要同时提供 getConfigSignature 和 getAgentConfigSignature）
+      // 注意：@wecom/jssdk v2.4.0 中 register() 返回 ≠ agentConfig 完成
+      // agentConfig 是惰性触发的，会在首次调用需要 agent 权限的 API（如 initOpenData）时触发
       console.log(`[useWecomOpenData] ww.register 开始: corpId=${corpId}, agentId=${agentId}, url=${window.location.href.split('#')[0].substring(0, 80)}`)
       await register({
         corpId,
         agentId,
         jsApiList: ['selectExternalContact', 'shareAppMessage', 'wwapp.invokeJsApiByCallInfo'],
-        async getConfigSignature() {
-          const url = window.location.href.split('#')[0]
-          console.log('[useWecomOpenData] getConfigSignature called, url:', url.substring(0, 80))
+        async getConfigSignature(signUrl?: string) {
+          // ★ 必须使用 SDK 传入的 url（SDK内部会规范化），否则签名验证失败
+          const url = signUrl || window.location.href.split('#')[0]
+          console.log('[useWecomOpenData] getConfigSignature called, url:', url.substring(0, 100))
           const signData = await getJsSdkSign(url, 'config')
           if (!signData) throw new Error('获取config签名失败')
           return {
@@ -113,9 +109,10 @@ export function useWecomOpenData() {
             signature: String(signData.signature)
           }
         },
-        async getAgentConfigSignature() {
-          const url = window.location.href.split('#')[0]
-          console.log('[useWecomOpenData] getAgentConfigSignature called, url:', url.substring(0, 80))
+        async getAgentConfigSignature(signUrl?: string) {
+          // ★ 必须使用 SDK 传入的 url（SDK内部会规范化），否则签名验证失败
+          const url = signUrl || window.location.href.split('#')[0]
+          console.log('[useWecomOpenData] getAgentConfigSignature called, url:', url.substring(0, 100))
           const signData = await getJsSdkSign(url, 'agent_config')
           if (!signData) throw new Error('获取agent_config签名失败')
           console.log('[useWecomOpenData] getAgentConfigSignature 签名数据:', JSON.stringify({
@@ -135,38 +132,21 @@ export function useWecomOpenData() {
         },
         onConfigFail(res: any) {
           console.error('[useWecomOpenData] ❌ onConfigFail:', JSON.stringify(res))
-          agentConfigError = `config:fail ${JSON.stringify(res)}`
-          agentConfigResolve?.()
         },
         onAgentConfigSuccess(res: any) {
           console.log('[useWecomOpenData] ✅ onAgentConfigSuccess:', JSON.stringify(res))
-          agentConfigResolve?.()
         },
         onAgentConfigFail(res: any) {
           console.error('[useWecomOpenData] ❌ onAgentConfigFail:', JSON.stringify(res))
-          agentConfigError = `agentConfig:fail ${JSON.stringify(res)}`
-          agentConfigResolve?.()
         }
       })
 
-      console.log('[useWecomOpenData] ww.register 返回, 等待 agentConfig 完成...')
+      console.log('[useWecomOpenData] ww.register 返回成功（config阶段通过）')
 
-      // 设置超时防止永远挂起
-      const timeout = setTimeout(() => {
-        if (!agentConfigError) agentConfigError = 'agentConfig超时(15s)'
-        agentConfigResolve?.()
-      }, 15000)
-
-      await agentConfigPromise
-      clearTimeout(timeout)
-
-      if (agentConfigError) {
-        throw new Error(agentConfigError)
-      }
-
-      // 初始化 OpenData
-      console.log('[useWecomOpenData] agentConfig成功, 初始化 OpenData...')
+      // ★ 初始化 OpenData（会触发 agentConfig 惰性签名）
+      console.log('[useWecomOpenData] 调用 initOpenData()...')
       await initOpenData()
+      console.log('[useWecomOpenData] ✅ initOpenData 成功')
 
       // 创建工厂
       openDataFactory = createOpenDataFrameFactory()

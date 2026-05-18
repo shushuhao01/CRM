@@ -252,8 +252,8 @@
 
             <el-empty v-if="messages.length === 0 && !msgLoading" :image-size="50">
               <template #description>
-                <p v-if="(selectedConv as any).agreed === false">客户未同意存档，仅可查看成员发送的消息，请点击同步拉取</p>
-                <p v-else>暂无消息，请点击顶部同步按钮拉取聊天记录</p>
+                <p>暂无消息记录，请点击页面顶部「同步」按钮拉取聊天记录</p>
+                <p style="font-size: 12px; color: #909399; margin-top: 4px;">同步后即可查看成员与客户的历史消息</p>
               </template>
             </el-empty>
             </template><!-- 传统气泡渲染结束 -->

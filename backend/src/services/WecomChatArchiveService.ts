@@ -126,39 +126,53 @@ export class WecomChatArchiveService {
         }
       }
 
-      if (externalAccessToken) {
-        log.info(`[ChatArchive] Step5: 开始同步会话元数据, permitUsers=${permitUserIds.length}`);
-        const convResult = await this.syncConversationMetadata(config, externalAccessToken, accessToken, permitUserIds);
-        result.newConversations = convResult.newConversations;
-        result.agreedUsers = convResult.agreedCount;
-        result.syncedRecords = convResult.syncedRecords;
-        log.info(`[ChatArchive] Step5完成: newConversations=${convResult.newConversations}, agreedCount=${convResult.agreedCount}, syncedRecords=${convResult.syncedRecords}`);
-      } else {
-        log.warn('[ChatArchive] 无externalToken，仅做同意状态抽样检查');
-        // 仅做同意状态抽样检查
-        result.agreedUsers = await this.checkAgreeStatus(accessToken, config, permitUserIds);
-      }
-
-      // Step 6: 第三方模式 - 通过专区接口拉取实际聊天消息
+      // ★ 第三方模式优化：优先拉取实际消息（快速，游标增量），然后轻量补充客户名称
+      // 避免遍历所有外部联系人（可能上万），只处理有实际消息的会话
       if (config.authType === 'third_party') {
-        log.info(`[ChatArchive] Step6: 第三方模式 - 开始拉取实际聊天消息...`);
+        // Step 5: 拉取实际聊天消息（数据专区API，游标增量，快速）
+        log.info(`[ChatArchive] Step5: 第三方模式 - 拉取实际聊天消息（游标增量）...`);
         try {
           const msgResult = await this.syncChatMessages(config, accessToken);
           result.syncedRecords += msgResult.savedCount;
           if (msgResult.savedCount > 0) {
-            log.info(`[ChatArchive] Step6完成: 拉取并保存 ${msgResult.savedCount} 条实际消息`);
+            log.info(`[ChatArchive] Step5完成: 拉取并保存 ${msgResult.savedCount} 条实际消息`);
           } else {
-            log.info(`[ChatArchive] Step6完成: 无新消息（可能游标已到最新位置）`);
+            log.info(`[ChatArchive] Step5完成: 无新消息（游标已到最新位置）`);
           }
         } catch (e: any) {
-          log.warn(`[ChatArchive] Step6失败: 拉取实际消息出错: ${e.message}`);
+          log.warn(`[ChatArchive] Step5失败: 拉取实际消息出错: ${e.message}`);
           result.errors++;
-          // 将错误信息附加到结果中，让前端能看到
           if (e.message.includes('RSA私钥')) {
             result.message += ' ⚠️ 消息拉取失败：未配置RSA私钥，请在管理后台「服务商应用管理」中配置会话存档RSA私钥。';
           } else {
             result.message += ` ⚠️ 消息拉取失败：${e.message}`;
           }
+        }
+
+        // Step 6: 轻量补充客户名称（仅处理有消息但名称为空的联系人）
+        if (externalAccessToken) {
+          log.info(`[ChatArchive] Step6: 轻量补充客户名称...`);
+          try {
+            const enrichCount = await this.enrichContactNames(config, externalAccessToken);
+            if (enrichCount > 0) {
+              log.info(`[ChatArchive] Step6完成: 补充了 ${enrichCount} 个联系人名称`);
+            }
+          } catch (e: any) {
+            log.warn(`[ChatArchive] Step6: 补充客户名称出错(非致命): ${e.message}`);
+          }
+        }
+      } else {
+        // 自建应用模式：保持原有的会话元数据同步逻辑
+        if (externalAccessToken) {
+          log.info(`[ChatArchive] Step5: 开始同步会话元数据, permitUsers=${permitUserIds.length}`);
+          const convResult = await this.syncConversationMetadata(config, externalAccessToken, accessToken, permitUserIds);
+          result.newConversations = convResult.newConversations;
+          result.agreedUsers = convResult.agreedCount;
+          result.syncedRecords = convResult.syncedRecords;
+          log.info(`[ChatArchive] Step5完成: newConversations=${convResult.newConversations}, agreedCount=${convResult.agreedCount}, syncedRecords=${convResult.syncedRecords}`);
+        } else {
+          log.warn('[ChatArchive] 无externalToken，仅做同意状态抽样检查');
+          result.agreedUsers = await this.checkAgreeStatus(accessToken, config, permitUserIds);
         }
       }
 
@@ -372,7 +386,10 @@ export class WecomChatArchiveService {
                 log.warn(`[ChatArchive] 获取外部联系人 ${extUserId} 详情失败: ${detailErr.message}`);
               }
             }
-            const isAgreed = agreeMap.get(extUserId) || false;
+            // ★ 第三方应用默认视为已同意（checkSingleAgree对第三方常不可用）
+            const isAgreed = agreeMap.has(extUserId)
+              ? !!agreeMap.get(extUserId)
+              : (config.authType === 'third_party' ? true : false);
 
             // 创建会话元数据记录
             const metaRecord = chatRecordRepo.create({
@@ -516,6 +533,86 @@ export class WecomChatArchiveService {
   }
 
   /**
+   * 轻量级客户名称补充（第三方模式专用）
+   * 只处理有实际消息记录但 wecom_customers 表中没有名称的外部联系人
+   * 避免遍历全部外部联系人列表（可能上万），只补充缺失的
+   */
+  private static async enrichContactNames(config: WecomConfig, externalAccessToken: string): Promise<number> {
+    let enriched = 0;
+    const maxEnrich = 50; // 每次最多补充50个，避免API限流
+
+    try {
+      // 查找有消息记录但本地没有客户名称的外部联系人
+      const missingNames = await AppDataSource.query(`
+        SELECT DISTINCT ext_id FROM (
+          SELECT from_user_id AS ext_id FROM wecom_chat_records
+          WHERE wecom_config_id = ? AND msg_type != 'meta'
+            AND (from_user_id LIKE 'wm%' OR from_user_id LIKE 'wo%')
+          UNION
+          SELECT JSON_UNQUOTE(JSON_EXTRACT(to_user_ids, '$[0]')) AS ext_id FROM wecom_chat_records
+          WHERE wecom_config_id = ? AND msg_type != 'meta'
+            AND (to_user_ids LIKE '%wm%' OR to_user_ids LIKE '%wo%')
+        ) AS t
+        WHERE ext_id IS NOT NULL AND ext_id != ''
+          AND ext_id NOT IN (
+            SELECT external_user_id FROM wecom_customers
+            WHERE wecom_config_id = ? AND name IS NOT NULL AND name != ''
+          )
+        LIMIT ?
+      `, [config.id, config.id, config.id, maxEnrich]);
+
+      if (!missingNames || missingNames.length === 0) return 0;
+
+      log.info(`[ChatArchive] enrichContactNames: 需要补充 ${missingNames.length} 个联系人名称`);
+
+      const customerRepo = AppDataSource.getRepository(WecomCustomer);
+
+      for (const row of missingNames) {
+        const extId = row.ext_id;
+        if (!extId) continue;
+        try {
+          const detailResp = await WecomApiService.getExternalContactDetail(externalAccessToken, extId);
+          if (detailResp?.external_contact) {
+            const ext = detailResp.external_contact;
+            const followUser = (detailResp.follow_user || [])[0];
+            const remark = followUser?.remark || '';
+            const name = remark ? (ext.name ? `${remark}(${ext.name})` : remark) : (ext.name || extId);
+            const avatar = ext.avatar || '';
+
+            // 更新或创建客户记录
+            const existing = await customerRepo.findOne({ where: { wecomConfigId: config.id, externalUserId: extId } });
+            if (existing) {
+              if (!existing.name || existing.name === extId) existing.name = name;
+              if (!existing.avatar && avatar) existing.avatar = avatar;
+              await customerRepo.save(existing);
+            } else {
+              await customerRepo.save(customerRepo.create({
+                tenantId: config.tenantId,
+                wecomConfigId: config.id,
+                externalUserId: extId,
+                name,
+                avatar,
+                type: ext.type || 1
+              }));
+            }
+            enriched++;
+          }
+        } catch (e: any) {
+          log.warn(`[ChatArchive] enrichContactNames: 获取 ${extId} 详情失败: ${e.message}`);
+        }
+        // 每个API调用间隔100ms，避免限流
+        if (enriched < missingNames.length - 1) {
+          await new Promise(r => setTimeout(r, 100));
+        }
+      }
+    } catch (e: any) {
+      log.warn(`[ChatArchive] enrichContactNames error:`, e.message);
+    }
+
+    return enriched;
+  }
+
+  /**
    * RSA解密消息内容
    * 使用配置中的RSA私钥解密企微加密的消息
    */
@@ -644,7 +741,7 @@ export class WecomChatArchiveService {
         cr.to_user_ids AS toUserIds,
         cr.room_id AS roomId,
         MAX(cr.msg_time) AS lastMsgTime,
-        COUNT(*) AS msgCount,
+        SUM(CASE WHEN cr.msg_type != 'meta' THEN 1 ELSE 0 END) AS msgCount,
         (SELECT cr2.content FROM wecom_chat_records cr2
          WHERE cr2.from_user_id = cr.from_user_id AND cr2.to_user_ids = cr.to_user_ids AND cr2.wecom_config_id = cr.wecom_config_id
          ORDER BY cr2.msg_time DESC LIMIT 1) AS lastContent,
@@ -812,6 +909,17 @@ export class WecomChatArchiveService {
         } catch { /* ignore */ }
       }
 
+      // ★ 判断当前配置是否为第三方模式（一次性查询，避免循环内重复查询）
+      let isThirdPartyMode = false;
+      if (configId) {
+        try {
+          const cfgCheck = await AppDataSource.query(
+            'SELECT auth_type FROM wecom_configs WHERE id = ? LIMIT 1', [configId]
+          );
+          isThirdPartyMode = cfgCheck?.[0]?.auth_type === 'third_party';
+        } catch { /* ignore */ }
+      }
+
       // 后处理：用备注+昵称作为 customerName，附带头像
       const list = rawList.map((item: any) => {
         let customerName = '';
@@ -876,6 +984,10 @@ export class WecomChatArchiveService {
         // （因为企业已通过数据专区授权，能拉到消息说明客户已同意存档）
         if (agreed === null && item.msgCount > 0) {
           agreed = true;
+        }
+        // ★ 第三方模式：checkSingleAgree API 不可用，不应标记客户为"未同意"
+        if (agreed === false && isThirdPartyMode) {
+          agreed = true; // 第三方模式默认已同意
         }
 
         return { ...item, customerName, customerAvatar, memberAvatar, agreed };
