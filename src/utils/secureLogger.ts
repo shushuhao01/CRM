@@ -449,13 +449,16 @@ let _originalConsole: {
 export function enableGlobalSecureConsole(): void {
   if (_originalConsole) return
 
+  // ★ 使用间接引用获取原始 console 对象
+  // esbuild 的 drop: ['console'] 只匹配字面量 console.xxx，不匹配间接引用
+  const _nativeConsole = globalThis['console'] as Console
   _originalConsole = {
-    log: console.log.bind(console),
-    info: console.info.bind(console),
-    warn: console.warn.bind(console),
-    error: console.error.bind(console),
-    debug: console.debug.bind(console),
-    table: console.table.bind(console)
+    log: _nativeConsole.log.bind(_nativeConsole),
+    info: _nativeConsole.info.bind(_nativeConsole),
+    warn: _nativeConsole.warn.bind(_nativeConsole),
+    error: _nativeConsole.error.bind(_nativeConsole),
+    debug: _nativeConsole.debug.bind(_nativeConsole),
+    table: _nativeConsole.table.bind(_nativeConsole)
   }
 
   console.log = (...args: unknown[]) => {

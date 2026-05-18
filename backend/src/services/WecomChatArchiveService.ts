@@ -235,8 +235,9 @@ export class WecomChatArchiveService {
         log.info(`[ChatArchive] 成员 ${userId} 外部联系人数量: ${externalUserIds.length}`);
         if (externalUserIds.length === 0) continue;
 
-        // 检查该成员与外部联系人的同意状态（批量，最多取20个）
-        const sampleExternal = externalUserIds.slice(0, 20);
+        // 检查该成员与外部联系人的同意状态（批量，与 limitedExternal 范围一致）
+        const limitedExternal = externalUserIds.slice(0, 50);
+        const sampleExternal = limitedExternal;
         const checkInfo = sampleExternal.map((extId: string) => ({
           userid: userId,
           exteranalopenid: extId
@@ -262,30 +263,20 @@ export class WecomChatArchiveService {
               }
             }
           } else if (config.authType === 'third_party') {
-            // 第三方模式下接口返回空数组，默认标记为已同意
-            for (const extId of sampleExternal) {
-              agreeMap.set(extId, true);
-              agreedCount++;
-            }
-            log.info(`[ChatArchive] 第三方模式: checkSingleAgree 返回空结果，默认标记 ${sampleExternal.length} 个客户为已同意`);
+            // 第三方模式下接口返回空数组，不做默认标记（保持为null=未知）
+            log.info(`[ChatArchive] 第三方模式: checkSingleAgree 返回空结果，${sampleExternal.length} 个客户同意状态未知`);
           }
         } catch (e: any) {
           log.warn(`[ChatArchive] 检查成员 ${userId} 同意状态失败:`, e.message);
           // 如果 checkSingleAgree 接口失败（第三方模式可能无权限），
           // 则通过检查是否有实际聊天记录来推断同意状态
           if (config.authType === 'third_party') {
-            // 第三方模式下，如果能拉取到消息，说明客户已同意
-            // 将所有外部联系人默认标记为已同意（后续通过实际消息验证）
-            for (const extId of sampleExternal) {
-              agreeMap.set(extId, true);
-              agreedCount++;
-            }
-            log.info(`[ChatArchive] 第三方模式: checkSingleAgree 不可用，默认标记 ${sampleExternal.length} 个客户为已同意`);
+            // 第三方模式下 checkSingleAgree 失败，不做默认标记
+            log.info(`[ChatArchive] 第三方模式: checkSingleAgree 不可用，${sampleExternal.length} 个客户同意状态未知`);
           }
         }
 
         // 为每个外部联系人生成/更新会话元数据记录
-        const limitedExternal = externalUserIds.slice(0, 50); // 每成员最多50个外部联系人
         for (const extUserId of limitedExternal) {
           try {
             // 唯一标识：成员ID + 外部联系人ID 作为 msgId
@@ -386,10 +377,8 @@ export class WecomChatArchiveService {
                 log.warn(`[ChatArchive] 获取外部联系人 ${extUserId} 详情失败: ${detailErr.message}`);
               }
             }
-            // ★ 第三方应用默认视为已同意（checkSingleAgree对第三方常不可用）
-            const isAgreed = agreeMap.has(extUserId)
-              ? !!agreeMap.get(extUserId)
-              : (config.authType === 'third_party' ? true : false);
+            // 使用 checkSingleAgree API 的实际返回结果
+            const isAgreed = agreeMap.has(extUserId) ? !!agreeMap.get(extUserId) : false;
 
             // 创建会话元数据记录
             const metaRecord = chatRecordRepo.create({
@@ -909,17 +898,6 @@ export class WecomChatArchiveService {
         } catch { /* ignore */ }
       }
 
-      // ★ 判断当前配置是否为第三方模式（一次性查询，避免循环内重复查询）
-      let isThirdPartyMode = false;
-      if (configId) {
-        try {
-          const cfgCheck = await AppDataSource.query(
-            'SELECT auth_type FROM wecom_configs WHERE id = ? LIMIT 1', [configId]
-          );
-          isThirdPartyMode = cfgCheck?.[0]?.auth_type === 'third_party';
-        } catch { /* ignore */ }
-      }
-
       // 后处理：用备注+昵称作为 customerName，附带头像
       const list = rawList.map((item: any) => {
         let customerName = '';
@@ -975,19 +953,15 @@ export class WecomChatArchiveService {
           memberAvatar = memberAvatarMap.get(memberId) || '';
         }
 
-        // 从 meta 记录中获取同意状态
+        // 从 meta 记录中获取同意状态（来自 checkSingleAgree API 的实际结果）
         let agreed: boolean | null = null;
         if (externalId && agreedStatusMap.has(externalId)) {
           agreed = agreedStatusMap.get(externalId)!;
         }
-        // 第三方模式下，如果有实际消息记录但无明确同意状态，默认视为已同意
-        // （因为企业已通过数据专区授权，能拉到消息说明客户已同意存档）
-        if (agreed === null && item.msgCount > 0) {
+        // 补充判断：如果有实际消息记录（非meta），说明客户已同意存档
+        // 企微规则：只有客户同意后才能拉取到该客户的双向消息
+        if (agreed !== true && item.msgCount > 0) {
           agreed = true;
-        }
-        // ★ 第三方模式：checkSingleAgree API 不可用，不应标记客户为"未同意"
-        if (agreed === false && isThirdPartyMode) {
-          agreed = true; // 第三方模式默认已同意
         }
 
         return { ...item, customerName, customerAvatar, memberAvatar, agreed };
