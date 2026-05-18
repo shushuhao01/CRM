@@ -89,7 +89,15 @@ export function useWecomOpenData() {
 
       wwInstance = { register, initOpenData, createOpenDataFrameFactory }
 
+      // ★ 使用 Promise 等待 agentConfig 完成（register 返回不代表 agentConfig 完成）
+      let agentConfigResolve: (() => void) | null = null
+      let agentConfigError: string | null = null
+      const agentConfigPromise = new Promise<void>((resolve) => {
+        agentConfigResolve = resolve
+      })
+
       // 注册应用（第三方应用需要同时提供 getConfigSignature 和 getAgentConfigSignature）
+      console.log(`[useWecomOpenData] ww.register 开始: corpId=${corpId}, agentId=${agentId}, url=${window.location.href.split('#')[0].substring(0, 80)}`)
       await register({
         corpId,
         agentId,
@@ -110,21 +118,61 @@ export function useWecomOpenData() {
           console.log('[useWecomOpenData] getAgentConfigSignature called, url:', url.substring(0, 80))
           const signData = await getJsSdkSign(url, 'agent_config')
           if (!signData) throw new Error('获取agent_config签名失败')
+          console.log('[useWecomOpenData] getAgentConfigSignature 签名数据:', JSON.stringify({
+            timestamp: signData.timestamp,
+            nonceStr: signData.nonceStr,
+            sigPrefix: String(signData.signature).substring(0, 16),
+            agentId: signData.agentId
+          }))
           return {
             timestamp: Number(signData.timestamp),
             nonceStr: String(signData.nonceStr),
             signature: String(signData.signature)
           }
+        },
+        onConfigSuccess(res: any) {
+          console.log('[useWecomOpenData] ✅ onConfigSuccess:', JSON.stringify(res))
+        },
+        onConfigFail(res: any) {
+          console.error('[useWecomOpenData] ❌ onConfigFail:', JSON.stringify(res))
+          agentConfigError = `config:fail ${JSON.stringify(res)}`
+          agentConfigResolve?.()
+        },
+        onAgentConfigSuccess(res: any) {
+          console.log('[useWecomOpenData] ✅ onAgentConfigSuccess:', JSON.stringify(res))
+          agentConfigResolve?.()
+        },
+        onAgentConfigFail(res: any) {
+          console.error('[useWecomOpenData] ❌ onAgentConfigFail:', JSON.stringify(res))
+          agentConfigError = `agentConfig:fail ${JSON.stringify(res)}`
+          agentConfigResolve?.()
         }
       })
 
+      console.log('[useWecomOpenData] ww.register 返回, 等待 agentConfig 完成...')
+
+      // 设置超时防止永远挂起
+      const timeout = setTimeout(() => {
+        if (!agentConfigError) agentConfigError = 'agentConfig超时(15s)'
+        agentConfigResolve?.()
+      }, 15000)
+
+      await agentConfigPromise
+      clearTimeout(timeout)
+
+      if (agentConfigError) {
+        throw new Error(agentConfigError)
+      }
+
       // 初始化 OpenData
+      console.log('[useWecomOpenData] agentConfig成功, 初始化 OpenData...')
       await initOpenData()
 
       // 创建工厂
       openDataFactory = createOpenDataFrameFactory()
 
       wecomLoginState.value = 'ready'
+      console.log('[useWecomOpenData] ✅ SDK初始化完成')
       return true
     } catch (e: any) {
       const errMsg = e?.message || e?.errMsg || (typeof e === 'string' ? e : JSON.stringify(e))

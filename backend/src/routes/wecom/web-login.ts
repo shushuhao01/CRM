@@ -14,6 +14,8 @@
 import { Router, Request, Response } from 'express';
 import { AppDataSource } from '../../config/database';
 import { WecomSuiteConfig } from '../../entities/WecomSuiteConfig';
+import { WecomConfig } from '../../entities/WecomConfig';
+import WecomApiService from '../../services/WecomApiService';
 import { log } from '../../config/logger';
 import * as crypto from 'crypto';
 
@@ -495,66 +497,81 @@ router.post('/web-login/agent-config-sign', async (req: Request, res: Response) 
       return res.status(400).json({ success: false, message: 'type 参数无效，需为 config 或 agent_config' });
     }
 
-    // 获取该企业的 corp_access_token（通过 permanent_code）
     const { WecomTokenService } = await import('../../services/wecom/WecomTokenService');
 
-    // 查找该 corpId 对应的 wecom_config
-    const configRows = await AppDataSource.query(
-      'SELECT id, agent_id FROM wecom_configs WHERE corp_id = ? AND is_enabled = 1 LIMIT 1',
-      [corpId]
-    );
+    // ★ 加载完整的 WecomConfig 实体（与侧边栏签名端点一致）
+    const configRepo = AppDataSource.getRepository(WecomConfig);
+    const config = await configRepo.findOne({ where: { corpId, isEnabled: true } });
 
-    if (!configRows.length) {
-      return res.status(404).json({ success: false, message: '未找到该企业的配置' });
+    if (!config) {
+      return res.status(404).json({ success: false, message: `未找到corpId=${corpId}的企微配置` });
     }
 
-    const configId = configRows[0].id;
-    const agentId = configRows[0].agent_id;
+    log.info(`[WecomWebLogin] /sign: configId=${config.id}, corpId=${config.corpId}, authType=${config.authType}, agentId=${config.agentId || '(空)'}, type=${type}`);
 
-    if (!agentId) {
-      return res.status(400).json({ success: false, message: '该企业未配置 agentId' });
+    // ★ 第三方应用：自动校验和修正 agentId（从企微API获取最新值）
+    if (config.authType === 'third_party' && config.suiteId && config.permanentCode) {
+      try {
+        const suiteToken = await WecomTokenService.getSuiteAccessToken(config.suiteId);
+        const axios = (await import('axios')).default;
+        const authInfoRes = await axios.post(
+          `https://qyapi.weixin.qq.com/cgi-bin/service/get_auth_info?suite_access_token=${suiteToken}`,
+          { auth_corpid: config.corpId, permanent_code: config.permanentCode }
+        );
+        if (!authInfoRes.data?.errcode || authInfoRes.data.errcode === 0) {
+          const agents = authInfoRes.data?.auth_info?.agent || [];
+          const apiAgentId = agents[0]?.agentid;
+          log.info(`[WecomWebLogin] /sign get_auth_info: agents数量=${agents.length}, apiAgentId=${apiAgentId || '(空)'}, DB agentId=${config.agentId || '(空)'}`);
+          if (apiAgentId && String(apiAgentId) !== String(config.agentId || '')) {
+            log.info(`[WecomWebLogin] /sign agentId需要更新: DB=${config.agentId || 'NULL'} → API=${apiAgentId}`);
+            await AppDataSource.query(
+              'UPDATE wecom_configs SET agent_id = ?, updated_at = NOW() WHERE id = ?',
+              [apiAgentId, config.id]
+            );
+            config.agentId = apiAgentId;
+          }
+        } else {
+          log.warn(`[WecomWebLogin] /sign get_auth_info失败: errcode=${authInfoRes.data?.errcode}, errmsg=${authInfoRes.data?.errmsg}`);
+        }
+      } catch (e: any) {
+        log.warn(`[WecomWebLogin] /sign agentId校验跳过: ${e.message}`);
+      }
     }
 
-    // 获取 corp_access_token
-    const accessToken = await WecomTokenService.getAccessTokenByConfigId(configId, 'corp');
-
-    // 获取 jsapi_ticket
-    // config 类型：普通企业级 jsapi_ticket
-    // agent_config 类型：应用级 jsapi_ticket
-    const axios = (await import('axios')).default;
-    const ticketUrl = type === 'config'
-      ? `https://qyapi.weixin.qq.com/cgi-bin/get_jsapi_ticket?access_token=${accessToken}`
-      : `https://qyapi.weixin.qq.com/cgi-bin/ticket/get?access_token=${accessToken}&type=agent_config`;
-
-    const ticketRes = await axios.get(ticketUrl);
-
-    if (ticketRes.data?.errcode && ticketRes.data.errcode !== 0) {
-      log.error(`[WecomWebLogin] 获取${type}_ticket失败:`, ticketRes.data);
-      return res.status(500).json({ success: false, message: `获取${type}签名票据失败: ${ticketRes.data?.errmsg || ''}` });
+    if (!config.agentId) {
+      return res.status(400).json({ success: false, message: '该企业未配置 agentId，请在CRM企微管理页面刷新授权信息' });
     }
 
-    const ticket = ticketRes.data.ticket;
-    const timestamp = Math.floor(Date.now() / 1000);
-    const nonceStr = crypto.randomBytes(8).toString('hex');
+    // ★ 使用 WecomTokenService 获取 access_token（与侧边栏一致，支持缓存和第三方模式）
+    const accessToken = await WecomTokenService.getAccessToken(config);
+
+    // ★ 使用 WecomApiService 获取 jsapi_ticket（带缓存，避免频繁调用API）
+    let ticket: string;
+    if (type === 'config') {
+      ticket = await WecomApiService.getJsSdkTicket(accessToken);
+    } else {
+      ticket = await WecomApiService.getAgentJsSdkTicket(accessToken);
+    }
 
     // 生成签名
-    const signStr = `jsapi_ticket=${ticket}&noncestr=${nonceStr}&timestamp=${timestamp}&url=${url}`;
-    const signature = crypto.createHash('sha1').update(signStr).digest('hex');
+    const timestamp = Math.floor(Date.now() / 1000);
+    const nonceStr = crypto.randomBytes(8).toString('hex');
+    const signature = WecomApiService.generateJsSdkSignature(ticket, nonceStr, timestamp, url);
 
-    log.info(`[WecomWebLogin] /agent-config-sign: type=${type}, corpId=${corpId}, agentId=${agentId}, url=${url.substring(0, 80)}, sig=${signature.substring(0, 16)}...`);
+    log.info(`[WecomWebLogin] /sign完成: type=${type}, corpId=${corpId}, agentId=${config.agentId}, url=${url.substring(0, 80)}, ticket前缀=${ticket.substring(0, 20)}, sig=${signature.substring(0, 16)}`);
 
     res.json({
       success: true,
       data: {
         corpId,
-        agentId,
+        agentId: config.agentId,
         timestamp,
         nonceStr,
         signature
       }
     });
   } catch (error: any) {
-    log.error('[WecomWebLogin] agent-config-sign error:', error.message);
+    log.error('[WecomWebLogin] agent-config-sign error:', error.message, error.stack?.substring(0, 300));
     res.status(500).json({ success: false, message: '生成签名失败: ' + error.message });
   }
 });
