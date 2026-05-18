@@ -67,16 +67,17 @@ const initLoginComponent = async () => {
   await new Promise(r => setTimeout(r, 100))
 
   try {
-    // 使用 @wecom/jssdk 的 createWWLogin
-    const { createWWLogin } = await import('@wecom/jssdk')
+    // 使用 @wecom/jssdk 的 createWWLoginPanel
+    const { createWWLoginPanel, WWLoginType } = await import('@wecom/jssdk')
 
-    createWWLogin({
+    createWWLoginPanel({
       el: '#wecom-login-container',
       params: {
-        login_type: 'ServiceApp',
+        login_type: 'ServiceApp' as any,
         appid: config.appId,
-        redirect_uri: encodeURIComponent(window.location.href.split('?')[0]),
+        redirect_uri: window.location.href.split('?')[0],
         state: 'chat_archive_login',
+        redirect_type: 'callback' as any,
       },
       onLoginSuccess: async ({ code }: { code: string }) => {
         const success = await handleLoginSuccess(code)

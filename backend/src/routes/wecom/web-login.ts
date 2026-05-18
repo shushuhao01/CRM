@@ -27,11 +27,17 @@ const router = Router();
 router.get('/web-login/config', async (req: Request, res: Response) => {
   try {
     const repo = AppDataSource.getRepository(WecomSuiteConfig);
-    const config = await repo.findOne({ where: {}, order: { id: 'ASC' } });
+    const configs = await repo.find({ order: { id: 'ASC' }, take: 1 });
+    const config = configs[0] || null;
 
     if (!config || !config.suiteId) {
       return res.json({
-        success: false,
+        success: true,
+        data: {
+          appId: '',
+          redirectDomain: '',
+          loginType: 'ServiceApp'
+        },
         message: '服务商应用未配置'
       });
     }
@@ -41,7 +47,7 @@ router.get('/web-login/config', async (req: Request, res: Response) => {
       success: true,
       data: {
         appId: config.webLoginAppId || config.suiteId,  // 优先用登录授权专用AppID
-        redirectDomain: config.webLoginRedirectDomain || config.redirectDomain || '',
+        redirectDomain: config.webLoginRedirectDomain || (config as any).redirectDomain || '',
         loginType: 'ServiceApp'  // 第三方应用
       }
     });

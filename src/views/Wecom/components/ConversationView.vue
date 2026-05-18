@@ -329,7 +329,7 @@ const props = defineProps<{ configId: number | null }>()
 const emit = defineEmits<{ (e: 'audit', record: ConvMessage): void }>()
 
 // ==================== 渲染模式切换 ====================
-const renderMode = ref<'bubble' | 'wecom'>('bubble')
+const renderMode = ref<'bubble' | 'wecom'>('wecom')
 const messageKeys = ref<Array<{ msgid: string; secretKey: string }>>([])
 
 /** 获取消息密钥列表（企微组件模式用） */

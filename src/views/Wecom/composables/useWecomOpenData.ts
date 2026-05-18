@@ -32,7 +32,8 @@ export function useWecomOpenData() {
   const getLoginConfig = async () => {
     try {
       const res: any = await request.get('/wecom/web-login/config', { showError: false } as any)
-      return res
+      // request 工具自动解包 response.data.data，所以 res 就是 { appId, redirectDomain, loginType }
+      return res || null
     } catch {
       return null
     }
