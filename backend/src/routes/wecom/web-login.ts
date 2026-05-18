@@ -226,30 +226,60 @@ router.post('/web-login/callback', async (req: Request, res: Response) => {
 
       if (ticket && suiteId) {
         log.info(`[WecomWebLogin] 收到suite_ticket推送: suiteId=${suiteId}, ticketLen=${ticket.length}`);
-        // 存储到 system_config 表
+
+        // 验证 ticket 有效性：用它去获取 suite_access_token，成功才存储
+        let ticketValid = false;
         try {
-          const configKey = `suite_ticket_${suiteId}`;
-          // system_config 表: id=VARCHAR(36), 唯一索引=(config_key, tenant_id)
-          // 先尝试更新，如果不存在则插入
-          const existing = await AppDataSource.query(
-            `SELECT id FROM system_config WHERE config_key = ? AND tenant_id IS NULL LIMIT 1`,
-            [configKey]
-          );
-          if (existing.length > 0) {
-            await AppDataSource.query(
-              `UPDATE system_config SET config_value = ?, updated_at = NOW() WHERE config_key = ? AND tenant_id IS NULL`,
-              [ticket, configKey]
-            );
+          const loginSecret = config.webLoginSecret;
+          if (loginSecret && suiteId === (config.webLoginAppId || '')) {
+            const axios = (await import('axios')).default;
+            const cleanTicket = ticket.replace(/[\s\r\n\t]+/g, '').trim();
+            const verifyRes = await axios.post('https://qyapi.weixin.qq.com/cgi-bin/service/get_suite_token', {
+              suite_id: suiteId,
+              suite_secret: loginSecret,
+              suite_ticket: cleanTicket
+            }, { timeout: 8000 });
+
+            if (verifyRes.data?.suite_access_token) {
+              ticketValid = true;
+              log.info(`[WecomWebLogin] ticket验证通过，suite_access_token获取成功`);
+            } else {
+              log.warn(`[WecomWebLogin] ticket验证失败: ${JSON.stringify(verifyRes.data)}`);
+            }
           } else {
-            const { v4: uuidv4 } = await import('uuid');
-            await AppDataSource.query(
-              `INSERT INTO system_config (id, config_key, config_value, config_type, tenant_id, created_at, updated_at) VALUES (?, ?, ?, 'string', NULL, NOW(), NOW())`,
-              [uuidv4(), configKey, ticket]
-            );
+            // 没有 Secret 或 SuiteID 不匹配，直接存储（后续使用时再验证）
+            ticketValid = true;
+            log.info(`[WecomWebLogin] 无法验证ticket（Secret未配置或SuiteID不匹配），直接存储`);
           }
-          log.info(`[WecomWebLogin] suite_ticket已存储: key=${configKey}, ticketLen=${ticket.length}`);
         } catch (e: any) {
-          log.error(`[WecomWebLogin] 存储suite_ticket失败: ${e.message}`);
+          // 验证请求异常，仍然存储（避免网络抖动导致丢失）
+          ticketValid = true;
+          log.warn(`[WecomWebLogin] ticket验证请求异常，仍存储: ${e.message}`);
+        }
+
+        if (ticketValid) {
+          try {
+            const configKey = `suite_ticket_${suiteId}`;
+            const existing = await AppDataSource.query(
+              `SELECT id FROM system_config WHERE config_key = ? AND tenant_id IS NULL LIMIT 1`,
+              [configKey]
+            );
+            if (existing.length > 0) {
+              await AppDataSource.query(
+                `UPDATE system_config SET config_value = ?, updated_at = NOW() WHERE config_key = ? AND tenant_id IS NULL`,
+                [ticket, configKey]
+              );
+            } else {
+              const { v4: uuidv4 } = await import('uuid');
+              await AppDataSource.query(
+                `INSERT INTO system_config (id, config_key, config_value, config_type, tenant_id, created_at, updated_at) VALUES (?, ?, ?, 'string', NULL, NOW(), NOW())`,
+                [uuidv4(), configKey, ticket]
+              );
+            }
+            log.info(`[WecomWebLogin] suite_ticket已存储: key=${configKey}, ticketLen=${ticket.length}`);
+          } catch (e: any) {
+            log.error(`[WecomWebLogin] 存储suite_ticket失败: ${e.message}`);
+          }
         }
       }
     } else {

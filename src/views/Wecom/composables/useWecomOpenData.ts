@@ -75,12 +75,12 @@ export function useWecomOpenData() {
     wecomAgentId.value = agentId
 
     try {
-      // 动态导入 @wecom/jssdk
-      const { default: ww } = await import('@wecom/jssdk')
-      wwInstance = ww
+      // 动态导入 @wecom/jssdk - 解构需要的函数
+      const { register, initOpenData, createOpenDataFrameFactory } = await import('@wecom/jssdk')
+      wwInstance = { register, initOpenData, createOpenDataFrameFactory }
 
       // 注册应用
-      await ww.register({
+      await register({
         corpId,
         agentId,
         jsApiList: ['selectExternalContact', 'shareAppMessage', 'wwapp.invokeJsApiByCallInfo'],
@@ -97,10 +97,10 @@ export function useWecomOpenData() {
       })
 
       // 初始化 OpenData
-      await ww.initOpenData()
+      await initOpenData()
 
       // 创建工厂
-      openDataFactory = ww.createOpenDataFrameFactory()
+      openDataFactory = createOpenDataFrameFactory()
 
       wecomLoginState.value = 'ready'
       return true
