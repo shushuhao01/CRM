@@ -72,7 +72,7 @@ export function useWecomOpenData() {
    * 初始化企微SDK（ww.register + ww.initOpenData）
    * 需要在企微扫码登录成功后调用
    */
-  const initWecomSdk = async (corpId: string, agentId: number) => {
+  const initWecomSdk = async (corpId: string, agentId: number, suiteId?: string) => {
     wecomCorpId.value = corpId
     wecomAgentId.value = agentId
 
@@ -92,10 +92,11 @@ export function useWecomOpenData() {
       // ★ 注册应用（第三方应用需要同时提供 getConfigSignature 和 getAgentConfigSignature）
       // 注意：@wecom/jssdk v2.4.0 中 register() 返回 ≠ agentConfig 完成
       // agentConfig 是惰性触发的，会在首次调用需要 agent 权限的 API（如 initOpenData）时触发
-      console.log(`[useWecomOpenData] ww.register 开始: corpId=${corpId}, agentId=${agentId}, url=${window.location.href.split('#')[0].substring(0, 80)}`)
+      console.log(`[useWecomOpenData] ww.register 开始: corpId=${corpId}, agentId=${agentId}, suiteId=${suiteId || '(无)'}, url=${window.location.href.split('#')[0].substring(0, 80)}`)
       await register({
         corpId,
         agentId,
+        ...(suiteId ? { suiteId } : {}),
         jsApiList: ['selectExternalContact', 'shareAppMessage', 'wwapp.invokeJsApiByCallInfo'],
         async getConfigSignature(signUrl?: string) {
           // ★ 必须使用 SDK 传入的 url（SDK内部会规范化），否则签名验证失败
@@ -157,7 +158,12 @@ export function useWecomOpenData() {
     } catch (e: any) {
       const errMsg = e?.message || e?.errMsg || (typeof e === 'string' ? e : JSON.stringify(e))
       console.error('[useWecomOpenData] SDK初始化失败:', errMsg, e)
-      ElMessage.error('企微SDK初始化失败: ' + errMsg)
+      const isInWecom = /wxwork|WeCom/i.test(navigator.userAgent)
+      if (isInWecom) {
+        ElMessage.error('企微SDK初始化失败: ' + errMsg)
+      } else {
+        ElMessage.warning('企微组件模式不可用，已切换为气泡模式查看消息')
+      }
       wecomLoginState.value = 'expired'
       return false
     }
@@ -186,8 +192,8 @@ export function useWecomOpenData() {
       const matchConfig = configs.find((c: any) => c.corpId === loginInfo.corpId)
 
       if (matchConfig?.agentId) {
-        // 初始化SDK
-        const success = await initWecomSdk(loginInfo.corpId, matchConfig.agentId)
+        // 初始化SDK（第三方应用必须传 suiteId）
+        const success = await initWecomSdk(loginInfo.corpId, matchConfig.agentId, matchConfig.suiteId || undefined)
         return success
       }
     } catch (e: any) {

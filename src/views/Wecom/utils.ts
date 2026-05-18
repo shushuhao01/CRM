@@ -46,19 +46,31 @@ export const getMsgTypeText = (type: string): string => {
   return map[type] || type
 }
 
-/** 提取文本消息内容（兼容 JSON 字符串和对象） */
+/** 提取文本消息内容（兼容 JSON 字符串和对象，支持企微解密明文格式） */
 export const getTextContent = (content: any): string => {
   if (typeof content === 'string') {
     try {
       const parsed = JSON.parse(content)
-      return parsed.text || parsed.content || content
+      return extractText(parsed)
     } catch {
       return content
     }
   }
-  if (content?.text) return content.text
-  if (content?.content) return content.content
-  return JSON.stringify(content)
+  return extractText(content)
+}
+
+/** 从解析后的对象中提取文本（支持企微格式 {text:{content:"..."}} 和简单格式） */
+function extractText(obj: any): string {
+  if (!obj) return ''
+  // 企微解密格式: { text: { content: "hello" } }
+  if (obj.text && typeof obj.text === 'object' && obj.text.content) return obj.text.content
+  // 简单格式: { text: "hello" }
+  if (typeof obj.text === 'string') return obj.text
+  // 通用格式: { content: "hello" }
+  if (typeof obj.content === 'string') return obj.content
+  // 加密占位格式: { type: 'encrypted', ... }
+  if (obj.type === 'encrypted') return '[消息待解密，请重新同步]'
+  return JSON.stringify(obj)
 }
 
 /** 获取 meta 类型消息的摘要文字 */

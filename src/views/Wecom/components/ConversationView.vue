@@ -329,7 +329,10 @@ const props = defineProps<{ configId: number | null }>()
 const emit = defineEmits<{ (e: 'audit', record: ConvMessage): void }>()
 
 // ==================== 渲染模式切换 ====================
-const renderMode = ref<'bubble' | 'wecom'>('wecom')
+// ★ 默认 bubble 模式（不依赖SDK，任何浏览器都能工作）
+// 仅在企微客户端内才默认 wecom 模式（OpenData组件渲染）
+const isInWecomClient = /wxwork|WeCom/i.test(navigator.userAgent)
+const renderMode = ref<'bubble' | 'wecom'>(isInWecomClient ? 'wecom' : 'bubble')
 const messageKeys = ref<Array<{ msgid: string; secretKey: string }>>([])
 
 /** 获取消息密钥列表（企微组件模式用） */
@@ -356,9 +359,10 @@ const fetchMessageKeys = async () => {
   }
 }
 
-/** 企微组件渲染错误处理 */
+/** 企微组件渲染错误处理：自动降级到气泡模式 */
 const handleWecomRenderError = (error: any) => {
-  console.warn('企微组件渲染错误，切换回气泡模式:', error)
+  console.warn('企微组件渲染错误，自动切换回气泡模式:', error)
+  renderMode.value = 'bubble'
 }
 
 /** 企微登录成功后，获取消息密钥 */

@@ -828,6 +828,16 @@ export class WecomChatArchiveService {
 
       // 批量查询同意状态（从 meta 记录的 content 中提取 agreed 字段）
       const agreedStatusMap = new Map<string, boolean>();
+      // 检查是否为第三方模式（第三方模式下 meta 的 agreed=false 不可靠）
+      let isThirdPartyMode = false;
+      if (configId) {
+        try {
+          const cfgRow = await AppDataSource.query(
+            'SELECT auth_type FROM wecom_configs WHERE id = ? LIMIT 1', [configId]
+          );
+          isThirdPartyMode = cfgRow?.[0]?.auth_type === 'third_party';
+        } catch { /* ignore */ }
+      }
       if (externalUserIds.size > 0) {
         try {
           let metaWhere = "msg_type = 'meta' AND content LIKE '%conversation_meta%'";
@@ -849,6 +859,9 @@ export class WecomChatArchiveService {
               const toIds = typeof meta.to_user_ids === 'string' ? JSON.parse(meta.to_user_ids) : meta.to_user_ids;
               const content = typeof meta.content === 'string' ? JSON.parse(meta.content) : meta.content;
               if (Array.isArray(toIds) && toIds.length > 0 && content?.agreed !== undefined) {
+                // ★ 第三方模式下 meta 的 agreed=false 不可靠（syncConversationMetadata已不调用）
+                // 只信任明确的 agreed=true；false 忽略，由消息判断逻辑决定
+                if (isThirdPartyMode && !content.agreed) continue;
                 agreedStatusMap.set(toIds[0], !!content.agreed);
               }
             } catch { /* ignore */ }
@@ -1217,7 +1230,22 @@ export class WecomChatArchiveService {
 
     // 获取上次拉取的游标位置
     let cursor = await this.getSyncCursor(config.id, config.tenantId);
-    log.info(`[ChatArchive] syncChatMessages: 开始拉取, configId=${config.id}, cursor=${cursor || '(首次)'}`);
+
+    // ★ 如果有旧的未解密记录（type:encrypted），重置游标以触发完整解密
+    if (cursor) {
+      try {
+        const encryptedCount = await AppDataSource.query(
+          `SELECT COUNT(*) as cnt FROM wecom_chat_records WHERE wecom_config_id = ? AND msg_type != 'meta' AND content LIKE '%"type":"encrypted"%' LIMIT 1`,
+          [config.id]
+        );
+        if (encryptedCount?.[0]?.cnt > 0) {
+          log.info(`[ChatArchive] syncChatMessages: 发现 ${encryptedCount[0].cnt} 条旧加密记录，重置游标以重新解密`);
+          cursor = '';
+        }
+      } catch { /* ignore */ }
+    }
+
+    log.info(`[ChatArchive] syncChatMessages: 开始拉取, configId=${config.id}, cursor=${cursor || '(首次/重置)'}`);
 
     // 获取用户名称映射
     const userNameMap = await this.getUserNameMap(config);
@@ -1251,21 +1279,51 @@ export class WecomChatArchiveService {
 
         if (chatdata.length === 0) break;
 
-        // 处理每条消息：只存储元数据 + RSA解密后的 secretKey（不解密消息明文）
+        // 处理每条消息：RSA解密密钥 + AES解密明文
         for (const item of chatdata) {
           try {
             // 检查是否已存在（去重）
             const existing = await chatRecordRepo.findOne({
               where: { corpId: config.corpId, msgId: item.msgid }
             });
-            if (existing) continue;
+            if (existing) {
+              // 如果旧记录是加密占位格式，尝试解密更新
+              try {
+                const oldContent = typeof existing.content === 'string' ? JSON.parse(existing.content) : existing.content;
+                if (oldContent?.type === 'encrypted' && item.encrypt_random_key && item.encrypt_chat_msg) {
+                  const sk = this.rsaDecrypt(rsaPrivateKey, item.encrypt_random_key);
+                  if (sk) {
+                    const plaintext = this.aesDecrypt(sk, item.encrypt_chat_msg);
+                    if (plaintext) {
+                      existing.content = plaintext;
+                      await chatRecordRepo.save(existing);
+                      savedCount++;
+                    }
+                  }
+                }
+              } catch { /* ignore update error */ }
+              continue;
+            }
 
-            // RSA解密 encrypt_random_key → 得到 secretKey（供前端会话展示组件使用）
+            // RSA解密 encrypt_random_key → 得到 secretKey
             let secretKey = '';
             if (item.encrypt_random_key) {
               secretKey = this.rsaDecrypt(rsaPrivateKey, item.encrypt_random_key) || '';
               if (!secretKey) {
                 log.warn(`[ChatArchive] RSA解密失败, msgid=${item.msgid}`);
+              }
+            }
+
+            // ★ AES解密 encrypt_chat_msg → 得到消息明文（使竞品一样可在浏览器直接显示）
+            let decryptedContent: any = null;
+            if (secretKey && item.encrypt_chat_msg) {
+              const plaintext = this.aesDecrypt(secretKey, item.encrypt_chat_msg);
+              if (plaintext) {
+                try {
+                  decryptedContent = JSON.parse(plaintext);
+                } catch {
+                  decryptedContent = { text: { content: plaintext } };
+                }
               }
             }
 
@@ -1307,7 +1365,16 @@ export class WecomChatArchiveService {
             };
             const msgTypeStr = msgTypeMap[msgTypeNum] || `type_${msgTypeNum}`;
 
-            // 保存到数据库（不含消息明文，只有元数据 + secretKey）
+            // 保存到数据库：优先存储解密后的明文内容，解密失败时存密钥备用
+            const contentToStore = decryptedContent
+              ? JSON.stringify(decryptedContent)
+              : JSON.stringify({
+                  type: 'encrypted',
+                  secretKey: secretKey,
+                  publicKeyVer: item.publickey_ver || 1,
+                  msgtype: msgTypeStr
+                });
+
             const record = chatRecordRepo.create({
               tenantId: config.tenantId,
               wecomConfigId: config.id,
@@ -1320,12 +1387,7 @@ export class WecomChatArchiveService {
               toUserIds: JSON.stringify(toUserIds),
               roomId: chatId || null,
               msgTime: sendTime * 1000, // 转为毫秒时间戳
-              content: JSON.stringify({
-                type: 'encrypted',
-                secretKey: secretKey,
-                publicKeyVer: item.publickey_ver || 1,
-                msgtype: msgTypeStr
-              }),
+              content: contentToStore,
               mediaKey: null,
               isSensitive: false,
               senderType,
