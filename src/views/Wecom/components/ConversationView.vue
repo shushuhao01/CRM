@@ -116,8 +116,8 @@
             </div>
             <div class="msg-header-right">
               <el-radio-group v-model="renderMode" size="small" style="margin-right: 8px">
-                <el-radio-button value="bubble">气泡模式</el-radio-button>
-                <el-radio-button value="wecom">企微组件</el-radio-button>
+                <el-radio-button label="bubble">气泡模式</el-radio-button>
+                <el-radio-button label="wecom">企微组件</el-radio-button>
               </el-radio-group>
               <span class="msg-header-count">共 {{ msgTotal }} 条</span>
               <el-button link size="small" @click="refreshMessages"><el-icon><Refresh /></el-icon></el-button>
