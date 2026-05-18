@@ -229,11 +229,25 @@ router.post('/web-login/callback', async (req: Request, res: Response) => {
         // 存储到 system_config 表
         try {
           const configKey = `suite_ticket_${suiteId}`;
-          await AppDataSource.query(
-            `INSERT INTO system_config (config_key, config_value, updated_at) VALUES (?, ?, NOW()) ON DUPLICATE KEY UPDATE config_value = VALUES(config_value), updated_at = NOW()`,
-            [configKey, ticket]
+          // system_config 表: id=VARCHAR(36), 唯一索引=(config_key, tenant_id)
+          // 先尝试更新，如果不存在则插入
+          const existing = await AppDataSource.query(
+            `SELECT id FROM system_config WHERE config_key = ? AND tenant_id IS NULL LIMIT 1`,
+            [configKey]
           );
-          log.info(`[WecomWebLogin] suite_ticket已存储: key=${configKey}`);
+          if (existing.length > 0) {
+            await AppDataSource.query(
+              `UPDATE system_config SET config_value = ?, updated_at = NOW() WHERE config_key = ? AND tenant_id IS NULL`,
+              [ticket, configKey]
+            );
+          } else {
+            const { v4: uuidv4 } = await import('uuid');
+            await AppDataSource.query(
+              `INSERT INTO system_config (id, config_key, config_value, config_type, tenant_id, created_at, updated_at) VALUES (?, ?, ?, 'string', NULL, NOW(), NOW())`,
+              [uuidv4(), configKey, ticket]
+            );
+          }
+          log.info(`[WecomWebLogin] suite_ticket已存储: key=${configKey}, ticketLen=${ticket.length}`);
         } catch (e: any) {
           log.error(`[WecomWebLogin] 存储suite_ticket失败: ${e.message}`);
         }
