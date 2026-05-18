@@ -43,10 +43,24 @@ router.get('/web-login/config', async (req: Request, res: Response) => {
     }
 
     // 返回前端初始化登录组件所需的信息（不含敏感数据）
+    // 登录组件的 appid 必须是「登录授权」页面的 SuiteID，不是应用的 Suite ID
+    const loginAppId = config.webLoginAppId || '';
+    if (!loginAppId) {
+      return res.json({
+        success: true,
+        data: {
+          appId: '',
+          redirectDomain: '',
+          loginType: 'ServiceApp'
+        },
+        message: '登录授权AppID未配置，请在管理后台「Web登录授权配置」中填写登录授权SuiteID'
+      });
+    }
+
     res.json({
       success: true,
       data: {
-        appId: config.webLoginAppId || config.suiteId,  // 优先用登录授权专用AppID
+        appId: loginAppId,
         redirectDomain: config.webLoginRedirectDomain || (config as any).redirectDomain || '',
         loginType: 'ServiceApp'  // 第三方应用
       }

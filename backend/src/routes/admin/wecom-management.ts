@@ -3790,7 +3790,7 @@ router.post('/suite/test-web-login', async (req: Request, res: Response) => {
   try {
     const { appId } = req.body;
 
-    // 从数据库读取配置（不依赖前端传 Secret）
+    // 从数据库读取配置
     const repo = AppDataSource.getRepository(WecomSuiteConfig);
     const config = await repo.findOne({ where: {}, order: { id: 'ASC' } });
 
@@ -3798,77 +3798,76 @@ router.post('/suite/test-web-login', async (req: Request, res: Response) => {
     const loginSecret = config?.webLoginSecret;
     const providerCorpId = config?.providerCorpId;
     const providerSecret = config?.providerSecret;
+    const webLoginToken = config?.webLoginToken;
+    const webLoginAesKey = config?.webLoginEncodingAesKey;
+    const redirectDomain = config?.webLoginRedirectDomain;
 
-    if (!loginAppId) return res.json({ success: true, data: { connected: false, message: '请先填写并保存登录授权AppID' } });
-    if (!loginSecret) return res.json({ success: true, data: { connected: false, message: '请先填写并保存登录授权Secret' } });
-    if (!providerCorpId) return res.json({ success: true, data: { connected: false, message: '请先在应用配置Tab中填写服务商CorpID' } });
+    // 检查必要配置
+    const issues: string[] = [];
+    if (!loginAppId) issues.push('登录授权AppID未填写');
+    if (!loginSecret) issues.push('登录授权Secret未填写');
+    if (!providerCorpId) issues.push('服务商CorpID未填写（应用配置Tab）');
+    if (!providerSecret) issues.push('服务商Secret未填写（应用配置Tab）');
+    if (!webLoginToken) issues.push('Token未填写');
+    if (!webLoginAesKey) issues.push('EncodingAESKey未填写');
+    if (!redirectDomain) issues.push('可信域名未填写');
+
+    if (issues.length > 0) {
+      return res.json({ success: true, data: { connected: false, message: '配置不完整: ' + issues.join('、') } });
+    }
+
+    // 格式检查
+    if (!loginAppId!.startsWith('ww')) {
+      return res.json({ success: true, data: { connected: false, message: '登录授权AppID格式错误，应以ww开头（来自服务商后台「登录授权」页面的SuiteID）' } });
+    }
 
     const axios = (await import('axios')).default;
 
-    // 登录授权的Secret本质上就是provider_secret
-    // 先用 webLoginSecret 尝试获取 provider_token
-    let result = await axios.post('https://qyapi.weixin.qq.com/cgi-bin/service/get_provider_token', {
+    // 用 providerCorpId + providerSecret 获取 provider_access_token（验证服务商凭证有效性）
+    const result = await axios.post('https://qyapi.weixin.qq.com/cgi-bin/service/get_provider_token', {
       corpid: providerCorpId,
-      provider_secret: loginSecret
+      provider_secret: providerSecret
     }, { timeout: 10000 });
 
-    // 如果 webLoginSecret 失败且 providerSecret 存在且不同，用 providerSecret 再试
-    if (result.data?.errcode && result.data.errcode !== 0 && providerSecret && providerSecret !== loginSecret) {
-      log.info('[Admin Suite] webLoginSecret验证失败，尝试用providerSecret验证...');
-      const result2 = await axios.post('https://qyapi.weixin.qq.com/cgi-bin/service/get_provider_token', {
-        corpid: providerCorpId,
-        provider_secret: providerSecret
-      }, { timeout: 10000 });
-
-      if (result2.data?.provider_access_token) {
-        return res.json({
-          success: true,
-          data: {
-            connected: false,
-            message: '登录授权Secret无效（但服务商Secret有效）。提示：登录授权页面的Secret应与服务商通用开发参数的Secret相同，请确认是否复制正确。',
-            hint: 'webLoginSecret与providerSecret不一致，且webLoginSecret无法通过验证'
-          }
-        });
-      }
-    }
-
-    if (result.data?.provider_access_token) {
-      // 验证成功，额外检查回调URL是否可达
-      let callbackStatus = '';
-      try {
-        const domain = config?.webLoginRedirectDomain || '';
-        if (domain) {
-          const callbackUrl = `https://${domain.replace(/^https?:\/\//, '')}/api/v1/wecom/web-login/callback`;
-          const checkRes = await axios.get(callbackUrl, { timeout: 5000, params: { msg_signature: 'test', timestamp: '1234567890', nonce: 'test' } });
-          callbackStatus = '回调URL可达 ✓';
-        }
-      } catch (e: any) {
-        callbackStatus = `回调URL检测: ${e.response?.status || e.code || '不可达'}`;
-      }
-
+    if (!result.data?.provider_access_token) {
+      const errcode = result.data?.errcode;
       return res.json({
         success: true,
         data: {
-          connected: true,
-          message: `连接成功！登录授权凭证有效。${callbackStatus}`,
-          tokenPreview: result.data.provider_access_token.substring(0, 10) + '...',
-          expiresIn: result.data.expires_in
+          connected: false,
+          message: `服务商凭证验证失败: ${result.data?.errmsg || ''} (errcode: ${errcode})。请检查应用配置Tab中的服务商CorpID和Secret`
         }
       });
     }
 
-    const errcode = result.data?.errcode;
-    const errHints: Record<number, string> = {
-      40001: 'Secret无效。登录授权的Secret应与服务商「通用开发参数」的provider_secret相同，请到服务商后台确认',
-      40013: 'CorpID无效，请检查应用配置Tab中的服务商CorpID',
-      40091: '请确认Secret来源正确（应来自服务商后台「登录授权」页面）'
-    };
+    // 服务商凭证有效，检查回调URL可达性
+    let callbackStatus = '未检测';
+    try {
+      const domain = redirectDomain!.replace(/^https?:\/\//, '');
+      const callbackUrl = `https://${domain}/api/v1/wecom/web-login/callback`;
+      await axios.get(callbackUrl, { timeout: 5000, params: { msg_signature: 'test', timestamp: '1234567890', nonce: 'test' } });
+      callbackStatus = '可达 ✓';
+    } catch (e: any) {
+      if (e.response?.status === 403) {
+        callbackStatus = '可达（签名验证正常拒绝） ✓';
+      } else if (e.response?.status === 500) {
+        callbackStatus = '可达（服务端处理异常，请检查Token/AESKey配置）';
+      } else {
+        callbackStatus = `不可达: ${e.code || e.response?.status || '超时'}`;
+      }
+    }
 
     res.json({
       success: true,
       data: {
-        connected: false,
-        message: `验证失败: ${result.data?.errmsg || ''} (errcode: ${errcode})${errHints[errcode] ? ' - ' + errHints[errcode] : ''}`
+        connected: true,
+        message: `Web登录配置验证成功！凭证有效。回调URL: ${callbackStatus}`,
+        details: {
+          providerToken: '有效 ✓',
+          loginAppId: loginAppId,
+          callbackUrl: callbackStatus,
+          note: '登录授权Secret将在用户实际扫码登录时验证'
+        }
       }
     });
   } catch (error: any) {
