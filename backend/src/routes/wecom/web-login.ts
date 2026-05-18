@@ -59,10 +59,11 @@ router.get('/web-login/config', async (req: Request, res: Response) => {
 router.get('/web-login/callback', async (req: Request, res: Response) => {
   try {
     const { msg_signature, timestamp, nonce, echostr } = req.query;
-    log.info(`[WecomWebLogin] URL verify: timestamp=${timestamp}, nonce=${nonce}`);
+    log.info(`[WecomWebLogin] URL verify request: msg_signature=${msg_signature}, timestamp=${timestamp}, nonce=${nonce}, echostr_len=${(echostr as string || '').length}`);
 
     if (!echostr) {
-      return res.send('ok');
+      log.warn('[WecomWebLogin] 无echostr参数，返回success');
+      return res.send('success');
     }
 
     // 获取配置的 Token 和 EncodingAESKey
@@ -70,24 +71,28 @@ router.get('/web-login/callback', async (req: Request, res: Response) => {
     const config = await repo.findOne({ where: {}, order: { id: 'ASC' } });
 
     if (!config?.webLoginToken || !config?.webLoginEncodingAesKey) {
-      log.warn('[WecomWebLogin] Web登录Token/AESKey未配置');
-      return res.send('ok');
+      log.error('[WecomWebLogin] Web登录Token/AESKey未配置，无法验证回调URL');
+      return res.status(500).send('config missing');
     }
 
-    // 验签并解密 echostr
     const token = config.webLoginToken;
     const encodingAesKey = config.webLoginEncodingAesKey;
 
-    // 验证签名
+    log.info(`[WecomWebLogin] 使用Token: ${token.substring(0, 6)}..., AESKey长度: ${encodingAesKey.length}`);
+
+    // 验证签名: SHA1(sort([token, timestamp, nonce, echostr]))
     const sortedArr = [token, timestamp as string, nonce as string, echostr as string].sort();
     const sha1 = crypto.createHash('sha1').update(sortedArr.join('')).digest('hex');
 
     if (sha1 !== msg_signature) {
-      log.warn('[WecomWebLogin] 签名验证失败');
+      log.error(`[WecomWebLogin] 签名验证失败! 计算值=${sha1}, 期望值=${msg_signature}`);
+      log.error(`[WecomWebLogin] 排序后数组: [${sortedArr.map(s => s.substring(0, 20) + '...').join(', ')}]`);
       return res.status(403).send('signature mismatch');
     }
 
-    // 解密 echostr（AES解密）
+    log.info('[WecomWebLogin] 签名验证通过，开始解密echostr');
+
+    // 解密 echostr（AES-256-CBC解密）
     const aesKey = Buffer.from(encodingAesKey + '=', 'base64');
     const iv = aesKey.subarray(0, 16);
     const decipher = crypto.createDecipheriv('aes-256-cbc', aesKey, iv);
@@ -98,33 +103,102 @@ router.get('/web-login/callback', async (req: Request, res: Response) => {
 
     // 去除PKCS7填充
     const padLen = decrypted[decrypted.length - 1];
+    if (padLen < 1 || padLen > 32) {
+      log.error(`[WecomWebLogin] PKCS7填充异常: padLen=${padLen}`);
+      return res.status(500).send('decrypt error');
+    }
     decrypted = decrypted.subarray(0, decrypted.length - padLen);
 
     // 提取明文（跳过16字节随机串 + 4字节消息长度）
     const msgLen = decrypted.readUInt32BE(16);
     const echoStrDecrypted = decrypted.subarray(20, 20 + msgLen).toString('utf8');
 
-    log.info('[WecomWebLogin] URL验证成功');
+    log.info(`[WecomWebLogin] URL验证成功，返回明文(长度=${echoStrDecrypted.length}): ${echoStrDecrypted.substring(0, 20)}...`);
     res.send(echoStrDecrypted);
   } catch (error: any) {
-    log.error('[WecomWebLogin] URL verify error:', error.message);
-    res.send('ok');
+    log.error('[WecomWebLogin] URL verify error:', error.message, error.stack);
+    res.status(500).send('error');
   }
 });
 
 /**
  * Web 登录指令回调 - POST（接收登录指令事件）
  * POST /api/v1/wecom/web-login/callback
+ * 企微推送 suite_ticket 或其他事件时调用
  */
 router.post('/web-login/callback', async (req: Request, res: Response) => {
   try {
-    log.info('[WecomWebLogin] 收到登录指令回调:', JSON.stringify(req.body).substring(0, 200));
-    // 登录指令回调目前主要用于企微管理端单点登录场景
-    // Web登录组件方式主要通过 redirect_uri + code 工作，此回调为备用
-    res.json({ errcode: 0, errmsg: 'ok' });
+    const { msg_signature, timestamp, nonce } = req.query;
+    const body = req.body;
+    log.info(`[WecomWebLogin] POST回调: timestamp=${timestamp}, nonce=${nonce}, bodyType=${typeof body}`);
+
+    // 获取配置
+    const repo = AppDataSource.getRepository(WecomSuiteConfig);
+    const config = await repo.findOne({ where: {}, order: { id: 'ASC' } });
+
+    if (!config?.webLoginToken || !config?.webLoginEncodingAesKey) {
+      log.warn('[WecomWebLogin] POST回调: Token/AESKey未配置');
+      return res.send('success');
+    }
+
+    // 从XML body中提取 Encrypt 字段
+    let encryptMsg = '';
+    if (typeof body === 'string') {
+      const match = body.match(/<Encrypt><!\[CDATA\[(.*?)\]\]><\/Encrypt>/s);
+      if (match) encryptMsg = match[1];
+      if (!encryptMsg) {
+        const match2 = body.match(/<Encrypt>(.*?)<\/Encrypt>/s);
+        if (match2) encryptMsg = match2[1];
+      }
+    } else if (body?.xml?.Encrypt) {
+      encryptMsg = Array.isArray(body.xml.Encrypt) ? body.xml.Encrypt[0] : body.xml.Encrypt;
+    } else if (body?.Encrypt) {
+      encryptMsg = body.Encrypt;
+    }
+
+    if (!encryptMsg) {
+      log.warn('[WecomWebLogin] POST回调: 未找到Encrypt字段');
+      return res.send('success');
+    }
+
+    const token = config.webLoginToken;
+    const encodingAesKey = config.webLoginEncodingAesKey;
+
+    // 验证签名
+    const sortedArr = [token, timestamp as string, nonce as string, encryptMsg].sort();
+    const sha1 = crypto.createHash('sha1').update(sortedArr.join('')).digest('hex');
+
+    if (sha1 !== msg_signature) {
+      log.warn(`[WecomWebLogin] POST回调签名验证失败: 计算=${sha1}, 期望=${msg_signature}`);
+      return res.send('success');
+    }
+
+    // 解密消息体
+    const aesKey = Buffer.from(encodingAesKey + '=', 'base64');
+    const iv = aesKey.subarray(0, 16);
+    const decipher = crypto.createDecipheriv('aes-256-cbc', aesKey, iv);
+    decipher.setAutoPadding(false);
+
+    let decrypted = Buffer.concat([
+      decipher.update(Buffer.from(encryptMsg, 'base64')),
+      decipher.final()
+    ]);
+
+    // 去除PKCS7填充
+    const padLen = decrypted[decrypted.length - 1];
+    decrypted = decrypted.subarray(0, decrypted.length - padLen);
+
+    // 提取明文
+    const msgLen = decrypted.readUInt32BE(16);
+    const msgContent = decrypted.subarray(20, 20 + msgLen).toString('utf8');
+
+    log.info(`[WecomWebLogin] POST回调解密成功: ${msgContent.substring(0, 300)}`);
+
+    // 企微要求回调必须返回字符串 "success"
+    res.send('success');
   } catch (error: any) {
-    log.error('[WecomWebLogin] Callback error:', error.message);
-    res.json({ errcode: 0, errmsg: 'ok' });
+    log.error('[WecomWebLogin] POST Callback error:', error.message, error.stack);
+    res.send('success');
   }
 });
 
