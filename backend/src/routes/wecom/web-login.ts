@@ -473,17 +473,26 @@ router.post('/web-login/get-login-info', async (req: Request, res: Response) => 
 });
 
 /**
- * 获取 agentConfig 签名（会话展示组件需要）
+ * 获取 JS-SDK 签名（会话展示组件需要）
  * POST /api/v1/wecom/web-login/agent-config-sign
  *
- * 前端 ww.register 时需要 getAgentConfigSignature 回调
- * 此接口为其提供签名数据
+ * 前端 ww.register 时需要 getConfigSignature 和 getAgentConfigSignature 两个回调
+ * 此接口通过 type 参数区分：
+ *   - type='config'       → 企业级 jsapi_ticket 签名（wx.config 用）
+ *   - type='agent_config'  → 应用级 jsapi_ticket 签名（wx.agentConfig 用）
+ * 默认 agent_config，保持向后兼容
  */
 router.post('/web-login/agent-config-sign', async (req: Request, res: Response) => {
   try {
-    const { corpId, url } = req.body;
+    const { corpId, url: rawUrl, type: signType } = req.body;
+    const url = (rawUrl || '').split('#')[0].replace(/\s+$/, '');
+    const type = signType || 'agent_config';
+
     if (!corpId || !url) {
       return res.status(400).json({ success: false, message: '缺少 corpId 或 url' });
+    }
+    if (!['config', 'agent_config'].includes(type)) {
+      return res.status(400).json({ success: false, message: 'type 参数无效，需为 config 或 agent_config' });
     }
 
     // 获取该企业的 corp_access_token（通过 permanent_code）
@@ -509,15 +518,19 @@ router.post('/web-login/agent-config-sign', async (req: Request, res: Response) 
     // 获取 corp_access_token
     const accessToken = await WecomTokenService.getAccessTokenByConfigId(configId, 'corp');
 
-    // 获取 jsapi_ticket（agent级别）
+    // 获取 jsapi_ticket
+    // config 类型：普通企业级 jsapi_ticket
+    // agent_config 类型：应用级 jsapi_ticket
     const axios = (await import('axios')).default;
-    const ticketRes = await axios.get(
-      `https://qyapi.weixin.qq.com/cgi-bin/ticket/get?access_token=${accessToken}&type=agent_config`
-    );
+    const ticketUrl = type === 'config'
+      ? `https://qyapi.weixin.qq.com/cgi-bin/get_jsapi_ticket?access_token=${accessToken}`
+      : `https://qyapi.weixin.qq.com/cgi-bin/ticket/get?access_token=${accessToken}&type=agent_config`;
+
+    const ticketRes = await axios.get(ticketUrl);
 
     if (ticketRes.data?.errcode && ticketRes.data.errcode !== 0) {
-      log.error('[WecomWebLogin] 获取agent_ticket失败:', ticketRes.data);
-      return res.status(500).json({ success: false, message: '获取签名票据失败' });
+      log.error(`[WecomWebLogin] 获取${type}_ticket失败:`, ticketRes.data);
+      return res.status(500).json({ success: false, message: `获取${type}签名票据失败: ${ticketRes.data?.errmsg || ''}` });
     }
 
     const ticket = ticketRes.data.ticket;
@@ -527,6 +540,8 @@ router.post('/web-login/agent-config-sign', async (req: Request, res: Response) 
     // 生成签名
     const signStr = `jsapi_ticket=${ticket}&noncestr=${nonceStr}&timestamp=${timestamp}&url=${url}`;
     const signature = crypto.createHash('sha1').update(signStr).digest('hex');
+
+    log.info(`[WecomWebLogin] /agent-config-sign: type=${type}, corpId=${corpId}, agentId=${agentId}, url=${url.substring(0, 80)}, sig=${signature.substring(0, 16)}...`);
 
     res.json({
       success: true,

@@ -52,16 +52,18 @@ export function useWecomOpenData() {
   }
 
   /**
-   * 获取 agentConfig 签名
+   * 获取 JS-SDK 签名（支持 config 和 agent_config 两种类型）
    */
-  const getAgentConfigSignature = async (url: string) => {
+  const getJsSdkSign = async (url: string, type: 'config' | 'agent_config') => {
     try {
       const res: any = await request.post('/wecom/web-login/agent-config-sign', {
         corpId: wecomCorpId.value,
-        url
+        url,
+        type
       })
       return res
-    } catch {
+    } catch (e: any) {
+      console.error(`[useWecomOpenData] 获取${type}签名失败:`, e?.message || e)
       return null
     }
   }
@@ -87,19 +89,31 @@ export function useWecomOpenData() {
 
       wwInstance = { register, initOpenData, createOpenDataFrameFactory }
 
-      // 注册应用
+      // 注册应用（第三方应用需要同时提供 getConfigSignature 和 getAgentConfigSignature）
       await register({
         corpId,
         agentId,
         jsApiList: ['selectExternalContact', 'shareAppMessage', 'wwapp.invokeJsApiByCallInfo'],
+        async getConfigSignature() {
+          const url = window.location.href.split('#')[0]
+          console.log('[useWecomOpenData] getConfigSignature called, url:', url.substring(0, 80))
+          const signData = await getJsSdkSign(url, 'config')
+          if (!signData) throw new Error('获取config签名失败')
+          return {
+            timestamp: Number(signData.timestamp),
+            nonceStr: String(signData.nonceStr),
+            signature: String(signData.signature)
+          }
+        },
         async getAgentConfigSignature() {
           const url = window.location.href.split('#')[0]
-          const signData = await getAgentConfigSignature(url)
-          if (!signData) throw new Error('获取签名失败')
+          console.log('[useWecomOpenData] getAgentConfigSignature called, url:', url.substring(0, 80))
+          const signData = await getJsSdkSign(url, 'agent_config')
+          if (!signData) throw new Error('获取agent_config签名失败')
           return {
-            timestamp: signData.timestamp,
-            nonceStr: signData.nonceStr,
-            signature: signData.signature
+            timestamp: Number(signData.timestamp),
+            nonceStr: String(signData.nonceStr),
+            signature: String(signData.signature)
           }
         }
       })
@@ -113,8 +127,9 @@ export function useWecomOpenData() {
       wecomLoginState.value = 'ready'
       return true
     } catch (e: any) {
-      console.error('[useWecomOpenData] SDK初始化失败:', e)
-      ElMessage.error('企微SDK初始化失败: ' + (e.message || ''))
+      const errMsg = e?.message || e?.errMsg || (typeof e === 'string' ? e : JSON.stringify(e))
+      console.error('[useWecomOpenData] SDK初始化失败:', errMsg, e)
+      ElMessage.error('企微SDK初始化失败: ' + errMsg)
       wecomLoginState.value = 'expired'
       return false
     }
