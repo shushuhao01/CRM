@@ -306,12 +306,79 @@
         <li><strong>AI 助手</strong>：根据当前对话内容，AI 实时推荐话术或生成回复建议。</li>
         <li><strong>话术快捷发送</strong>：浏览话术库，一键将话术内容发送到聊天窗口。</li>
         <li><strong>客户跟进记录</strong>：直接在侧边栏记录跟进备注，自动关联到 CRM 客户档案。</li>
+        <li><strong>资料收集</strong>：通过微信小程序卡片向客户收集资料（详见下方专题介绍）。</li>
         <li><strong>授权码管理</strong>：侧边栏应用的授权码管理，用于验证员工绑定。</li>
       </ul>
 
       <el-alert type="info" :closable="false">
         <template #title>侧边栏预览</template>
         <span>管理员可在系统中预览侧边栏效果（SidebarPreview 功能），无需在企业微信端验证即可查看布局和功能。</span>
+      </el-alert>
+    </el-card>
+
+    <!-- 侧边栏 - 资料收集 -->
+    <el-card id="wecom-sidebar-collect" class="section-card">
+      <template #header><h2>📋 9.1 侧边栏内置应用 — 资料收集（小程序）</h2></template>
+      <p>「资料收集」是企微侧边栏的内置 H5 应用，员工在与客户聊天时，可一键发送微信小程序卡片或 H5 链接给客户，客户打开后填写姓名、手机号、地址等资料，提交后自动录入 CRM 系统。全程链接签名加密，确保客户资料安全不泄露。</p>
+
+      <h3>功能流程</h3>
+      <el-steps :active="5" finish-status="success" direction="vertical" style="margin: 16px 0;">
+        <el-step title="员工打开侧边栏" description="在企业微信与客户聊天时，点击侧边栏「资料收集」Tab" />
+        <el-step title="生成签名卡片" description="系统自动为当前客户生成带有 MD5 签名的小程序卡片（含租户ID、员工ID、时间戳、签名）" />
+        <el-step title="发送给客户" description="点击「发送」按钮，通过企微 JS-SDK 将小程序卡片发送到聊天窗口（发送失败时自动降级为 H5 图文链接）" />
+        <el-step title="客户填写资料" description="客户点击卡片打开微信小程序表单页，填写姓名、手机号、地址等信息（支持微信手机号一键授权）" />
+        <el-step title="数据自动入库" description="提交后资料自动写入 CRM 客户数据库，标记来源为「小程序提交」，并关联到对应销售员工" />
+      </el-steps>
+
+      <h3>核心特性</h3>
+      <el-descriptions :column="1" border style="margin: 16px 0;">
+        <el-descriptions-item label="发送方式">
+          <strong>小程序卡片（优先）</strong>：通过微信小程序卡片发送，客户体验更流畅、可信度更高。<br/>
+          <strong>H5 图文链接（降级）</strong>：当小程序卡片发送失败时，自动降级为 H5 网页链接（wecom-form.html），确保功能可用性。
+        </el-descriptions-item>
+        <el-descriptions-item label="链接安全机制">
+          每次发送均生成唯一签名：<code>MD5(租户ID + 员工ID + 时间戳 + 密钥)</code>，后端严格校验签名合法性，链接默认 7 天有效期，过期自动失效，防止链接被滥用。
+        </el-descriptions-item>
+        <el-descriptions-item label="手机号获取">
+          支持微信手机号一键授权获取（需配置小程序 AppID/AppSecret），客户无需手动输入手机号，准确率更高。
+        </el-descriptions-item>
+        <el-descriptions-item label="数据归属">
+          客户提交的资料自动关联到发送卡片的销售员工（salesPersonId），并尝试匹配企微外部联系人 externalUserId，实现 CRM 客户与企微客户的数据打通。
+        </el-descriptions-item>
+        <el-descriptions-item label="自定义字段">
+          表单支持自定义扩展字段（customFields），企业可根据业务需要增加收集项。
+        </el-descriptions-item>
+      </el-descriptions>
+
+      <h3>操作入口</h3>
+      <el-table :data="collectEntries" border style="margin: 12px 0;">
+        <el-table-column prop="entry" label="入口位置" width="200" />
+        <el-table-column prop="desc" label="说明" />
+      </el-table>
+
+      <h3>管理与统计</h3>
+      <ul class="feature-list">
+        <li><strong>发送记录</strong>：系统记录每次卡片发送日志（mp_card_send_logs），包括发送时间、发送员工、目标客户等。</li>
+        <li><strong>收集统计</strong>：查看已发送卡片数量、客户已填写数量、填写率等统计数据。</li>
+        <li><strong>收集记录</strong>：查看所有已提交的客户资料明细，敏感信息（姓名、手机号、地址）脱敏展示。</li>
+        <li><strong>收集状态</strong>：实时查询当前客户是否已发卡、是否已填写，避免重复发送。</li>
+      </ul>
+
+      <h3>配置管理</h3>
+      <ul class="feature-list">
+        <li><strong>卡片标题与封面</strong>：管理员可在「企微管理 → 侧边栏」中自定义小程序卡片标题和封面图片，提升品牌形象。</li>
+        <li><strong>小程序配置</strong>：在管理后台（SuiteApp）配置小程序 AppID、AppSecret 和签名密钥（mpFormSecret），支持随机生成密钥。</li>
+        <li><strong>租户级配置</strong>：每个租户可独立配置卡片样式、字段规则等，互不影响。</li>
+      </ul>
+
+      <el-alert type="warning" :closable="false" style="margin-top: 12px;">
+        <template #title>安全说明</template>
+        <span>资料收集全链路安全保障：链接签名防伪造、时间戳防重放、有效期防过期、后端验签防篡改、敏感数据脱敏展示。客户提交的手机号通过微信官方 API 服务端解密获取，不经过前端，确保隐私安全。</span>
+      </el-alert>
+
+      <el-alert type="info" :closable="false" style="margin-top: 12px;">
+        <template #title>前提条件</template>
+        <span>使用资料收集功能需要：① 已完成企微第三方应用授权或自建应用配置；② 管理后台已配置小程序 AppID 和 AppSecret；③ 员工已完成侧边栏账号绑定。</span>
       </el-alert>
     </el-card>
 
@@ -417,6 +484,13 @@ const configFeatures = [
   { feature: '启用/禁用开关', desc: '每个企微配置可独立开启或关闭，关闭后相关功能暂停使用' },
   { feature: 'API 诊断', desc: '内置 API 连通性诊断工具，快速排查接口配置问题' },
   { feature: '多企业支持', desc: '按套餐配额可同时接入多个企业微信，统一在系统中管理' },
+]
+
+const collectEntries = [
+  { entry: '企微侧边栏', desc: '在与客户聊天的侧边栏中，切换到「资料收集」Tab，点击发送按钮即可（路径：/wecom-sidebar?tab=mp-collect）' },
+  { entry: 'H5 企微工作台', desc: '在企微工作台 H5 应用中，进入「客户资料收集」页面，选择客户后发送卡片（路径：/h5/#/app/mp-collect）' },
+  { entry: 'CRM 客户详情', desc: '在 H5 客户详情页中，也支持向当前客户发送资料收集卡片' },
+  { entry: '管理员配置', desc: '在 CRM 系统「企微管理 → 侧边栏」中，可配置资料收集卡片的标题、封面、启用状态等' },
 ]
 
 const groupStats = [

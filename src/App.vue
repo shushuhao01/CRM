@@ -613,7 +613,7 @@ onMounted(async () => {
   // 🔥 公开页面（如公开帮助中心）不需要初始化这些需要认证的服务
   const currentPath = window.location.pathname
   const isPublicPage = publicPages.some(path => currentPath.startsWith(path))
-  if (isPublicPage && !userStore.token) {
+  if (isPublicPage) {
     console.log('[App] 公开页面，跳过需要认证的初始化')
     return
   }

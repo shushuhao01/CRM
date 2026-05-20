@@ -53,11 +53,11 @@ export function useWecomOpenData() {
 
   /**
    * 获取 JS-SDK 签名（支持 config 和 agent_config 两种类型）
-   * ★ 使用 sidebar/sign 接口（与侧边栏一致，已验证可正常工作）
+   * ★ 使用 web-login/agent-config-sign 接口（无referer限制，适用于CRM主系统页面）
    */
   const getJsSdkSign = async (url: string, type: 'config' | 'agent_config') => {
     try {
-      const res: any = await request.post('/wecom/sidebar/sign', {
+      const res: any = await request.post('/wecom/web-login/agent-config-sign', {
         corpId: wecomCorpId.value,
         url,
         type

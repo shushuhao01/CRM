@@ -81,6 +81,7 @@
             <el-menu-item index="wecom-ai-assistant">AI助手</el-menu-item>
             <el-menu-item index="wecom-payment">对外收款</el-menu-item>
             <el-menu-item index="wecom-sidebar">企微侧边栏</el-menu-item>
+            <el-menu-item index="wecom-sidebar-collect">侧边栏-资料收集</el-menu-item>
           </el-sub-menu>
 
           <!-- 通话管理指南 -->
@@ -271,6 +272,7 @@ const helpContentComponents: Record<string, any> = {
   'wecom-ai-assistant': defineAsyncComponent(() => import('@/components/HelpContent/ModuleWecom.vue')),
   'wecom-payment': defineAsyncComponent(() => import('@/components/HelpContent/ModuleWecom.vue')),
   'wecom-sidebar': defineAsyncComponent(() => import('@/components/HelpContent/ModuleWecom.vue')),
+  'wecom-sidebar-collect': defineAsyncComponent(() => import('@/components/HelpContent/ModuleWecom.vue')),
 
   // 角色权限
   'role-overview': defineAsyncComponent(() => import('@/components/HelpContent/RoleOverview.vue')),
@@ -684,6 +686,13 @@ const mockSearchResults = [
     excerpt: '嵌入企业微信客户端的CRM插件，实时客户信息，快捷下单，AI话术推荐，跟进记录...',
     category: '企微管理',
     content: '企微侧边栏 WecomSidebar 侧边栏 快捷下单 AI助手 话术发送 跟进记录 客户信息 授权码 侧边栏预览 可信域名 JS-SDK'
+  },
+  {
+    id: 'wecom-sidebar-collect',
+    title: '侧边栏-资料收集（小程序）',
+    excerpt: '通过微信小程序卡片向客户收集资料，客户自助填写姓名手机号地址等信息，全程签名加密，数据自动入库CRM...',
+    category: '企微管理',
+    content: '资料收集 小程序 MpCollect 卡片发送 客户自助填写 签名加密 MD5 手机号授权 微信小程序 H5降级 wecom-form 表单 自定义字段 发送记录 收集统计'
   },
 
   // 角色权限

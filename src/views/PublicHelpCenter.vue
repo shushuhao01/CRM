@@ -42,7 +42,7 @@
           </div>
           <el-menu
             :default-active="activeMenuItem"
-            :default-openeds="['project', 'modules', 'roles', 'app', 'deployment', 'faq']"
+            :default-openeds="['project', 'modules', 'wecom', 'roles', 'app', 'deployment', 'faq']"
             @select="handleMenuSelect"
             class="help-menu"
           >
@@ -76,6 +76,25 @@
               <el-menu-item index="module-finance">财务管理</el-menu-item>
               <el-menu-item index="module-product">商品管理</el-menu-item>
               <el-menu-item index="module-system">系统管理</el-menu-item>
+            </el-sub-menu>
+
+            <!-- 企微管理 -->
+            <el-sub-menu index="wecom">
+              <template #title>
+                <el-icon><ChatDotSquare /></el-icon>
+                <span>企微管理</span>
+              </template>
+              <el-menu-item index="wecom-overview">企微模块概述</el-menu-item>
+              <el-menu-item index="wecom-config">企微授权配置</el-menu-item>
+              <el-menu-item index="wecom-customer">企业客户管理</el-menu-item>
+              <el-menu-item index="wecom-contact-way">活码管理</el-menu-item>
+              <el-menu-item index="wecom-acquisition">获客助手</el-menu-item>
+              <el-menu-item index="wecom-group">客户群管理</el-menu-item>
+              <el-menu-item index="wecom-chat-archive">会话存档</el-menu-item>
+              <el-menu-item index="wecom-ai-assistant">AI助手</el-menu-item>
+              <el-menu-item index="wecom-payment">对外收款</el-menu-item>
+              <el-menu-item index="wecom-sidebar">企微侧边栏</el-menu-item>
+              <el-menu-item index="wecom-sidebar-collect">侧边栏-资料收集</el-menu-item>
             </el-sub-menu>
 
             <!-- 角色权限 -->
@@ -192,7 +211,7 @@
 <script setup lang="ts">
 import { ref, computed, defineAsyncComponent, onMounted, reactive } from 'vue'
 import { useRouter } from 'vue-router'
-import { Search, InfoFilled, Grid, UserFilled, Iphone, Setting, QuestionFilled } from '@element-plus/icons-vue'
+import { Search, InfoFilled, Grid, UserFilled, Iphone, Setting, QuestionFilled, ChatDotSquare } from '@element-plus/icons-vue'
 
 const router = useRouter()
 
@@ -256,6 +275,17 @@ const helpContentComponents: Record<string, any> = {
   'module-finance': defineAsyncComponent(() => import('@/components/HelpContent/ModuleFinance.vue')),
   'module-product': defineAsyncComponent(() => import('@/components/HelpContent/ModuleProduct.vue')),
   'module-system': defineAsyncComponent(() => import('@/components/HelpContent/ModuleSystem.vue')),
+  'wecom-overview': defineAsyncComponent(() => import('@/components/HelpContent/ModuleWecom.vue')),
+  'wecom-config': defineAsyncComponent(() => import('@/components/HelpContent/ModuleWecom.vue')),
+  'wecom-customer': defineAsyncComponent(() => import('@/components/HelpContent/ModuleWecom.vue')),
+  'wecom-contact-way': defineAsyncComponent(() => import('@/components/HelpContent/ModuleWecom.vue')),
+  'wecom-acquisition': defineAsyncComponent(() => import('@/components/HelpContent/ModuleWecom.vue')),
+  'wecom-group': defineAsyncComponent(() => import('@/components/HelpContent/ModuleWecom.vue')),
+  'wecom-chat-archive': defineAsyncComponent(() => import('@/components/HelpContent/ModuleWecom.vue')),
+  'wecom-ai-assistant': defineAsyncComponent(() => import('@/components/HelpContent/ModuleWecom.vue')),
+  'wecom-payment': defineAsyncComponent(() => import('@/components/HelpContent/ModuleWecom.vue')),
+  'wecom-sidebar': defineAsyncComponent(() => import('@/components/HelpContent/ModuleWecom.vue')),
+  'wecom-sidebar-collect': defineAsyncComponent(() => import('@/components/HelpContent/ModuleWecom.vue')),
   'role-overview': defineAsyncComponent(() => import('@/components/HelpContent/RoleOverview.vue')),
   'role-super-admin': defineAsyncComponent(() => import('@/components/HelpContent/RoleSuperAdmin.vue')),
   'role-admin': defineAsyncComponent(() => import('@/components/HelpContent/RoleAdmin.vue')),

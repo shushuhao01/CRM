@@ -132,9 +132,10 @@
               <div v-if="!isInWecomClient" class="wecom-redirect-prompt">
                 <el-icon :size="48" color="#1890ff"><Connection /></el-icon>
                 <h3>请在企业微信中打开</h3>
-                <p>会话存档组件模式需要在企业微信客户端内使用，这是企业微信官方要求。</p>
-                <el-button type="primary" @click="openInWecom">在企业微信中打开</el-button>
-                <p class="sub-tip">或切换为「气泡模式」直接查看消息内容</p>
+                <p>会话存档的件模式需要在企业微信客户端内使用，这是企业微信官方要求。</p>
+                <p>点击下方按钮将自动跳转到企业微信客户端打开当前页面。</p>
+                <el-button type="primary" size="large" @click="openInWecom">去企业微信中打开</el-button>
+                <p class="sub-tip">如未自动跳转，请手动在企业微信工作台中打开本系统</p>
               </div>
               <!-- 企微客户端：SDK初始化中 -->
               <div v-else-if="sdkInitializing" class="wecom-sdk-loading">
@@ -376,10 +377,10 @@ const autoInitSdk = async () => {
   }
 }
 
-/** 跳转到企业微信客户端 */
+/** 跳转到企业微信客户端打开当前页面 */
 const openInWecom = () => {
-  // 企微内置浏览器协议
-  window.location.href = `wxwork://message`
+  const currentUrl = window.location.href
+  window.location.href = `wxwork://openurl?url=${encodeURIComponent(currentUrl)}`
 }
 
 /** 获取消息密钥列表（企微组件模式用） */

@@ -74,6 +74,7 @@ const faqs = reactive([
   { q: '如何升级或续费套餐？', a: '在"续费与增购"Tab中可以对现有套餐进行续费，也可以增购会话存档席位或AI调用额度。', open: false },
   { q: '数据安全如何保障？', a: '所有数据均使用AES-256加密存储，API Key加密保存，调用日志脱敏处理。企业数据完全隔离，符合企业级安全标准。', open: false },
   { q: '服务商授权和自建应用有什么区别？', a: '服务商授权（扫码安装）更简单快捷，适合大多数企业；自建应用需要在企微后台手动创建应用并配置参数，适合有技术团队的企业或需要更高自定义需求的场景。', open: false },
+  { q: '侧边栏资料收集功能怎么用？', a: '在企微侧边栏点击「资料收集」Tab，系统自动生成带签名的小程序卡片，发送给客户后客户打开填写资料即可自动入库CRM。全程链接签名加密（MD5签名+时间戳+有效期），确保资料安全。需先在管理后台配置小程序AppID/AppSecret。', open: false },
 ])
 
 const docs = [
@@ -82,6 +83,7 @@ const docs = [
   { icon: '🤖', title: 'AI助手指南', desc: 'AI质检/标签/话术配置', url: '', ready: false },
   { icon: '📊', title: '获客助手教程', desc: '获客链接/数据分析', url: '', ready: false },
   { icon: '💬', title: '会话存档配置', desc: '存档开通/质检/搜索', url: '', ready: false },
+  { icon: '📋', title: '资料收集指南', desc: '小程序卡片收集客户资料', url: '', ready: false },
   { icon: '🔧', title: 'API开发文档', desc: '开放接口说明', url: '', ready: false },
 ]
 
