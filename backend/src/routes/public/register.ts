@@ -103,7 +103,7 @@ router.post('/', async (req: Request, res: Response) => {
     // 获取套餐信息
     let packageId = null
     let maxUsers = 3
-    let expireDays = 7
+    let expireDays = 14
     let isFree = true
     let packagePrice = 0
     let isCommunity = false
@@ -212,7 +212,7 @@ router.post('/', async (req: Request, res: Response) => {
     // 🔥 注册成功后，发送邮件和短信通知给用户（免费和付费都发送，包含完整授权码信息）
     {
       const expireDateStr = expireDate ? expireDate.toISOString().split('T')[0] : ''
-      const packageLabel = isFree ? '7天免费试用' : '付费套餐（待支付）'
+      const packageLabel = isFree ? `${expireDays}天免费试用` : '付费套餐（待支付）'
       // 异步发送，不阻塞响应
       ;(async () => {
         const notifyResults: string[] = []
@@ -314,7 +314,7 @@ router.post('/', async (req: Request, res: Response) => {
                 if (isFree) {
                   emailBodyContent = `
             <p style="font-size:14px;line-height:1.8;color:#333;margin:0 0 20px;">
-              您的7天免费试用账号已成功开通。以下是您的账号信息，请妥善保管：
+              您的${expireDays}天免费试用账号已成功开通。以下是您的账号信息，请妥善保管：
             </p>
             <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8f9fa;border-radius:8px;padding:20px;margin-bottom:20px;">
               <tr><td style="padding:8px 16px;font-size:14px;color:#606266;">套餐名称</td><td style="padding:8px 16px;font-size:14px;color:#303133;font-weight:500;">${packageLabel}</td></tr>

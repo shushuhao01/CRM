@@ -34,7 +34,7 @@
     <section class="cta-section">
       <div class="container">
         <h2>立即体验全部功能</h2>
-        <p>7天免费试用，无需信用卡</p>
+        <p>{{ trialDays }}天免费试用，无需信用卡</p>
         <router-link to="/register?plan=FREE_TRIAL" class="btn btn-white btn-lg">免费试用</router-link>
       </div>
     </section>
@@ -42,6 +42,16 @@
 </template>
 
 <script setup lang="ts">
+import { ref, computed, onMounted } from 'vue'
+import { getPackages, type Package } from '@/api/packages'
+
+const packagesData = ref<Package[]>([])
+const trialDays = computed(() => {
+  const trial = packagesData.value.find(p => p.code === 'FREE_TRIAL' || p.is_trial)
+  return trial?.duration_days || 14
+})
+onMounted(() => { getPackages().then(d => { packagesData.value = d }).catch(() => {}) })
+
 const features = [
   {
     tag: '核心功能',

@@ -48,6 +48,8 @@ router.get('/', async (_req: Request, res: Response) => {
           websiteUrl: SITE_CONFIG.WEBSITE_URL,
           adminUrl: SITE_CONFIG.ADMIN_URL,
           renewUrl: SITE_CONFIG.RENEW_URL,
+          // 演示视频列表
+          demoVideos: websiteConfig.demoVideos || [],
         }
       });
     } else {

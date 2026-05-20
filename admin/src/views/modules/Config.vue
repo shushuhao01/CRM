@@ -95,6 +95,7 @@ const form = reactive({
   websiteConfig: {
     customerServiceUrl: '', serviceQRCode: '', servicePhone: '', serviceEmail: '',
     workingHours: '周一至周五 9:00-18:00', brandSlogan: '',
+    demoVideos: [] as Array<{ url: string; title: string; description?: string; thumbnail?: string; duration?: string; size?: number }>,
   },
   // 用户协议
   userAgreement: '', privacyPolicy: '',

@@ -5,12 +5,12 @@
       <div class="register-info">
         <div class="info-content">
           <h1>开启智能销售之旅</h1>
-          <p>注册即可免费试用7天，体验全部功能</p>
+          <p>注册即可免费试用{{ trialDays }}天，体验全部功能</p>
 
           <div class="benefits">
             <div class="benefit-item">
               <span class="benefit-icon">✓</span>
-              <span>7天免费试用</span>
+              <span>{{ trialDays }}天免费试用</span>
             </div>
             <div class="benefit-item">
               <span class="benefit-icon">✓</span>
@@ -439,7 +439,7 @@
             <div class="signing-area">
               <div class="signing-header">
                 <h3>🔄 {{ isTrialSigning ? '设置自动续费签约' : '订阅签约' }}</h3>
-                <p v-if="isTrialSigning">完成签约后，7天试用到期将自动续费为「{{ signingTargetPkgName }}」套餐（¥{{ signingTargetPkgPrice }}/月）</p>
+                <p v-if="isTrialSigning">完成签约后，{{ trialDays }}天试用到期将自动续费为「{{ signingTargetPkgName }}」套餐（¥{{ signingTargetPkgPrice }}/月）</p>
                 <p v-else>完成签约授权后，系统将自动为您开通「{{ signingTargetPkgName }}」套餐（¥{{ signingTargetPkgPrice }}/{{ billingCycle === 'yearly' ? '年' : '月' }}），首期立即扣款</p>
               </div>
 
@@ -462,7 +462,7 @@
                 <div class="signing-notice">
                   <p>📋 签约说明：</p>
                   <ul v-if="isTrialSigning">
-                    <li>签约后不会立即扣费，仅在7天试用期结束后自动扣款</li>
+                    <li>签约后不会立即扣费，仅在{{ trialDays }}天试用期结束后自动扣款</li>
                     <li>试用期内可随时在会员中心取消自动续费</li>
                     <li>首次扣款金额：¥{{ signingTargetPkgPrice }}/月</li>
                   </ul>
@@ -479,7 +479,7 @@
                   </button>
                 </div>
                 <p v-if="isTrialSigning" class="skip-signing-link" @click="skipTrialSigning">
-                  跳过签约，直接开始7天试用 →
+                  跳过签约，直接开始{{ trialDays }}天试用 →
                 </p>
               </div>
 
@@ -521,7 +521,7 @@
                 <div class="signing-success-info">
                   <div class="success-check">🎉</div>
                   <h4>签约成功！</h4>
-                  <p v-if="isTrialSigning">自动续费已设置，7天试用期结束后将自动续费为「{{ signingTargetPkgName }}」套餐。</p>
+                  <p v-if="isTrialSigning">自动续费已设置，{{ trialDays }}天试用期结束后将自动续费为「{{ signingTargetPkgName }}」套餐。</p>
                   <p v-else>订阅已开通，「{{ signingTargetPkgName }}」套餐首期将自动扣款。</p>
                   <p class="success-sub">可随时在会员中心取消自动续费。</p>
                 </div>
@@ -1117,6 +1117,11 @@ const signingStatus = ref<'idle' | 'waiting' | 'success' | 'paying' | 'pay-waiti
 // 套餐数据（从API加载）
 const packagesData = ref<Package[]>([])
 
+const trialDays = computed(() => {
+  const trial = packagesData.value.find(p => p.code === 'FREE_TRIAL' || p.is_trial)
+  return trial?.duration_days || 14
+})
+
 // 签约模式下目标套餐是否免费试用
 const isTrialSigning = computed(() => selectedPlan.value === 'FREE_TRIAL')
 
@@ -1355,7 +1360,7 @@ const getPlanName = (plan: string) => {
   }
   // 兜底硬编码
   const names: Record<string, string> = {
-    FREE_TRIAL: '7天免费试用',
+    FREE_TRIAL: '免费试用',
     basic: 'SaaS云端版 - 基础版',
     pro: 'SaaS云端版 - 专业版',
     enterprise: 'SaaS云端版 - 企业版',
@@ -1961,9 +1966,9 @@ const cancelSigning = () => {
   paymentMethod.value = 'wechat'
 }
 
-// 免费试用跳过签约，直接开始7天试用
+// 免费试用跳过签约，直接开始试用
 const skipTrialSigning = () => {
-  if (!confirm('确认跳过签约？\n\n跳过后将直接开始7天免费试用。\n⚠ 试用到期后如不续费，服务将自动停止。\n\n您可以之后在会员中心随时设置自动续费。')) {
+  if (!confirm(`确认跳过签约？\n\n跳过后将直接开始${trialDays.value}天免费试用。\n⚠ 试用到期后如不续费，服务将自动停止。\n\n您可以之后在会员中心随时设置自动续费。`)) {
     return
   }
   if (signingCheckTimer) clearInterval(signingCheckTimer)

@@ -86,6 +86,47 @@
       </el-col>
     </el-row>
 
+    <el-divider content-position="left">演示视频管理</el-divider>
+    <el-alert type="info" :closable="false" style="margin-bottom: 16px">
+      <template #title>
+        管理官网首页「观看演示」按钮弹出的视频列表。支持上传多个视频，访客点击后可选择播放。
+      </template>
+    </el-alert>
+
+    <div style="margin-bottom: 12px">
+      <el-button type="primary" size="small" @click="triggerVideoUpload" :loading="videoUploading">
+        <el-icon><Upload /></el-icon> 上传视频
+      </el-button>
+      <span style="font-size: 12px; color: #909399; margin-left: 8px">支持 mp4/webm/mov 格式，单个最大 500MB</span>
+      <input ref="videoFileInput" type="file" accept="video/mp4,video/webm,video/quicktime,video/ogg" style="display: none" @change="handleVideoFileSelect" />
+    </div>
+
+    <div v-if="form.websiteConfig.demoVideos && form.websiteConfig.demoVideos.length > 0" class="video-list">
+      <div v-for="(video, idx) in form.websiteConfig.demoVideos" :key="idx" class="video-item">
+        <div class="video-item-thumb">
+          <video v-if="video.url" :src="video.url" preload="metadata" style="width: 100%; height: 100%; object-fit: cover; border-radius: 6px"></video>
+          <div v-else class="thumb-empty">无缩略图</div>
+        </div>
+        <div class="video-item-info">
+          <el-input v-model="video.title" size="small" placeholder="视频标题" style="margin-bottom: 6px" />
+          <el-input v-model="video.description" size="small" placeholder="简短描述（可选）" style="margin-bottom: 6px" />
+          <div class="video-item-meta">
+            <span v-if="video.size" style="color: #909399; font-size: 12px">{{ formatFileSize(video.size) }}</span>
+            <span v-if="video.duration" style="color: #909399; font-size: 12px; margin-left: 8px">{{ video.duration }}</span>
+            <code style="font-size: 11px; color: #c0c4cc; margin-left: 8px; word-break: break-all">{{ video.url }}</code>
+          </div>
+        </div>
+        <div class="video-item-actions">
+          <el-button type="danger" size="small" text @click="handleDeleteVideo(idx)">
+            <el-icon><Delete /></el-icon> 删除
+          </el-button>
+        </div>
+      </div>
+    </div>
+    <div v-else style="color: #c0c4cc; font-size: 13px; padding: 20px; text-align: center; border: 1px dashed #dcdfe6; border-radius: 8px">
+      暂无演示视频，请点击上方按钮上传
+    </div>
+
     <!-- 预览 -->
     <el-divider content-position="left">官网底部预览</el-divider>
     <div class="copyright-preview">
@@ -105,13 +146,16 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { Upload, Delete } from '@element-plus/icons-vue'
 import { adminApi } from '@/api/admin'
+import request from '@/api/request'
 
-defineProps<{ form: any }>()
+const props = defineProps<{ form: any }>()
 
 const fileInput = ref<HTMLInputElement>()
+const videoFileInput = ref<HTMLInputElement>()
+const videoUploading = ref(false)
 
 const triggerUpload = () => { fileInput.value?.click() }
 
@@ -137,6 +181,73 @@ const handleFileSelect = async (event: Event) => {
   input.value = ''
 }
 
+const formatFileSize = (bytes: number) => {
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
+  if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
+  return (bytes / (1024 * 1024 * 1024)).toFixed(1) + ' GB'
+}
+
+const triggerVideoUpload = () => { videoFileInput.value?.click() }
+
+const handleVideoFileSelect = async (event: Event) => {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+  input.value = ''
+
+  const allowedTypes = ['video/mp4', 'video/webm', 'video/ogg', 'video/quicktime']
+  if (!allowedTypes.includes(file.type)) {
+    ElMessage.error('仅支持 mp4、webm、ogg、mov 格式视频')
+    return
+  }
+  if (file.size > 500 * 1024 * 1024) {
+    ElMessage.error('视频大小不能超过 500MB')
+    return
+  }
+
+  videoUploading.value = true
+  try {
+    const formData = new FormData()
+    formData.append('file', file)
+    const res: any = await request.post('/upload/video', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 600000,
+    })
+    if (res.success && res.data?.url) {
+      if (!props.form.websiteConfig.demoVideos) {
+        props.form.websiteConfig.demoVideos = []
+      }
+      props.form.websiteConfig.demoVideos.push({
+        url: res.data.url,
+        title: file.name.replace(/\.[^.]+$/, ''),
+        description: '',
+        thumbnail: '',
+        duration: '',
+        size: res.data.size || file.size,
+      })
+      ElMessage.success('视频上传成功，请填写标题后保存配置')
+    } else {
+      ElMessage.error(res.message || '上传失败')
+    }
+  } catch (e: any) {
+    ElMessage.error(e?.message || '视频上传失败')
+  }
+  videoUploading.value = false
+}
+
+const handleDeleteVideo = async (idx: number) => {
+  const video = props.form.websiteConfig.demoVideos?.[idx]
+  if (!video) return
+  try {
+    await ElMessageBox.confirm(`确定删除视频「${video.title || '未命名'}」？`, '删除确认', { type: 'warning' })
+  } catch { return }
+  try {
+    await request.delete('/upload/video', { params: { url: video.url } })
+  } catch { /* 即使服务器删除失败也移除配置 */ }
+  props.form.websiteConfig.demoVideos.splice(idx, 1)
+  ElMessage.success('视频已删除，请保存配置')
+}
+
 const emit = defineEmits<{
   'update-service-qrcode': [url: string]
 }>()
@@ -155,5 +266,18 @@ const emit = defineEmits<{
     p { margin: 5px 0; }
   }
 }
+.video-list { display: flex; flex-direction: column; gap: 10px; }
+.video-item {
+  display: flex; gap: 12px; padding: 12px; background: #fafbfc; border: 1px solid #ebeef5;
+  border-radius: 8px; align-items: center;
+}
+.video-item-thumb {
+  width: 120px; height: 68px; flex-shrink: 0; background: #000; border-radius: 6px; overflow: hidden;
+  display: flex; align-items: center; justify-content: center;
+}
+.thumb-empty { color: #909399; font-size: 12px; }
+.video-item-info { flex: 1; min-width: 0; }
+.video-item-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; }
+.video-item-actions { flex-shrink: 0; }
 </style>
 

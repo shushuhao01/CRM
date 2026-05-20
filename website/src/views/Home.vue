@@ -29,12 +29,12 @@
           </p>
           <div class="hero-actions">
             <router-link to="/register?plan=FREE_TRIAL" class="btn btn-primary btn-lg">
-              <span>免费试用 7 天</span>
+              <span>免费试用 {{ trialDays }} 天</span>
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M5 12h14M12 5l7 7-7 7"/>
               </svg>
             </router-link>
-            <a href="javascript:;" class="btn btn-white btn-lg" @click="showVideoModal = true">
+            <a href="javascript:;" class="btn btn-white btn-lg" @click="openDemoVideos">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
                 <polygon points="5,3 19,12 5,21"/>
               </svg>
@@ -95,23 +95,60 @@
     <!-- 图片预览弹窗 -->
     <ImagePreview v-model:visible="previewVisible" :src="previewImage" />
 
-    <!-- 视频播放弹窗 -->
+    <!-- 演示视频弹窗 -->
     <Teleport to="body">
-      <div v-if="showVideoModal" class="video-modal" @click="closeVideoModal">
+      <!-- 视频列表弹窗 -->
+      <div v-if="showVideoModal && !currentVideo" class="video-modal" @click="closeVideoModal">
+        <div class="video-list-content" @click.stop>
+          <div class="video-list-header">
+            <h3>产品演示视频</h3>
+            <button class="close-btn" @click="closeVideoModal">✕</button>
+          </div>
+          <div v-if="demoVideos.length === 0" class="video-empty">
+            <p>暂无演示视频</p>
+          </div>
+          <div v-else class="video-grid">
+            <div v-for="video in demoVideos" :key="video.url" class="video-card" @click="playVideo(video)">
+              <div class="video-thumb">
+                <img v-if="video.thumbnail" :src="video.thumbnail" :alt="video.title" />
+                <div v-else class="thumb-placeholder">
+                  <svg width="48" height="48" viewBox="0 0 24 24" fill="rgba(255,255,255,0.8)"><polygon points="5,3 19,12 5,21"/></svg>
+                </div>
+                <div class="play-overlay">
+                  <svg width="40" height="40" viewBox="0 0 24 24" fill="#fff"><polygon points="5,3 19,12 5,21"/></svg>
+                </div>
+                <span v-if="video.duration" class="video-duration">{{ video.duration }}</span>
+              </div>
+              <div class="video-info">
+                <h4>{{ video.title }}</h4>
+                <p v-if="video.description" class="video-desc">{{ video.description }}</p>
+                <div class="video-meta">
+                  <span v-if="video.size">{{ formatFileSize(video.size) }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <!-- 视频播放弹窗 -->
+      <div v-if="showVideoModal && currentVideo" class="video-modal" @click="closeVideoModal">
         <div class="video-content" @click.stop>
-          <button class="close-btn" @click="closeVideoModal">✕</button>
+          <div class="video-player-header">
+            <button class="back-btn" @click="currentVideo = null">← 返回列表</button>
+            <button class="close-btn" @click="closeVideoModal">✕</button>
+          </div>
           <div class="video-wrapper">
             <video
               ref="videoRef"
               controls
               autoplay
-              :poster="videoPoster"
+              :poster="currentVideo.thumbnail || '/images/dashboard.png'"
             >
-              <source :src="videoSrc" type="video/mp4">
+              <source :src="currentVideo.url" type="video/mp4">
               您的浏览器不支持视频播放
             </video>
           </div>
-          <p class="video-tip">云客CRM 产品演示视频</p>
+          <p class="video-tip">{{ currentVideo.title }}</p>
         </div>
       </div>
     </Teleport>
@@ -572,7 +609,7 @@
           <p>立即联系我们，体验智能销售管理的魅力</p>
           <div class="cta-actions">
             <router-link to="/register?plan=FREE_TRIAL" class="btn btn-white btn-lg">
-              免费试用 7 天
+              免费试用 {{ trialDays }} 天
             </router-link>
             <a :href="wechatServiceUrl" target="_blank" class="btn btn-outline-white btn-lg">
               预约演示
@@ -596,16 +633,50 @@ const previewImage = ref('')
 const showVideoModal = ref(false)
 const videoRef = ref<HTMLVideoElement | null>(null)
 
-// 视频配置 - 录制好视频后放到 website/public/videos/demo.mp4
-const videoSrc = '/videos/demo.mp4'
-const videoPoster = '/images/dashboard.png'
+// 演示视频列表（从后端配置读取）
+interface DemoVideo {
+  url: string
+  title: string
+  description?: string
+  thumbnail?: string
+  duration?: string
+  size?: number
+}
+const demoVideos = ref<DemoVideo[]>([])
+const currentVideo = ref<DemoVideo | null>(null)
+
+const formatFileSize = (bytes: number) => {
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
+  if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
+  return (bytes / (1024 * 1024 * 1024)).toFixed(1) + ' GB'
+}
+
+const openDemoVideos = () => {
+  if (demoVideos.value.length === 1) {
+    currentVideo.value = demoVideos.value[0]
+  } else {
+    currentVideo.value = null
+  }
+  showVideoModal.value = true
+  document.body.style.overflow = 'hidden'
+}
+
+const playVideo = (video: DemoVideo) => {
+  currentVideo.value = video
+}
 
 // 动态客服链接
-const websiteConfig = ref<Partial<WebsiteConfig>>({})
+const websiteConfig = ref<Partial<WebsiteConfig & { demoVideos?: DemoVideo[] }>>({})
 const wechatServiceUrl = computed(() => websiteConfig.value.customerServiceUrl || 'https://work.weixin.qq.com/kfid/kfc461ca9f5b45c8d25')
 
 // 套餐数据
 const packagesData = ref<Package[]>([])
+
+// 免费试用天数（从 FREE_TRIAL 套餐动态读取，兜底14天）
+const trialDays = computed(() => {
+  const trial = packagesData.value.find(p => p.code === 'FREE_TRIAL' || p.is_trial)
+  return trial?.duration_days || 14
+})
 
 // SaaS最低月价（排除免费试用，有付费套餐取最低价，兜底99）
 const saasMinPrice = computed(() => {
@@ -634,8 +705,8 @@ const openPreview = (src: string) => {
 
 const closeVideoModal = () => {
   showVideoModal.value = false
+  currentVideo.value = null
   document.body.style.overflow = ''
-  // 停止视频播放
   if (videoRef.value) {
     videoRef.value.pause()
   }
@@ -651,9 +722,14 @@ const handleKeydown = (e: KeyboardEvent) => {
 onMounted(() => {
   window.addEventListener('keydown', handleKeydown)
 
-  // 加载官网配置
+  // 加载官网配置（含演示视频列表）
   getWebsiteConfig().then(data => {
     websiteConfig.value = data
+    if ((data as any).demoVideos?.length) {
+      demoVideos.value = (data as any).demoVideos
+    } else {
+      demoVideos.value = [{ url: '/videos/demo.mp4', title: '云客CRM 产品演示', thumbnail: '/images/dashboard.png' }]
+    }
   })
 
   // 加载套餐数据
@@ -1623,10 +1699,184 @@ onUnmounted(() => {
   }
 }
 
+.video-player-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+
+  .back-btn {
+    background: rgba(255, 255, 255, 0.15);
+    color: #fff;
+    border: none;
+    padding: 6px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: background 0.2s;
+    &:hover { background: rgba(255, 255, 255, 0.25); }
+  }
+
+  .close-btn {
+    position: static;
+    width: 36px;
+    height: 36px;
+  }
+}
+
 .video-tip {
   text-align: center;
   color: rgba(255, 255, 255, 0.7);
   margin-top: 16px;
   font-size: 14px;
+}
+
+// 视频列表弹窗
+.video-list-content {
+  width: 100%;
+  max-width: 800px;
+  max-height: 80vh;
+  overflow-y: auto;
+  background: #fff;
+  border-radius: 16px;
+  padding: 24px;
+}
+
+.video-list-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+
+  h3 {
+    font-size: 20px;
+    font-weight: 600;
+    color: #1d1d1f;
+    margin: 0;
+  }
+
+  .close-btn {
+    position: static;
+    background: #f5f5f7;
+    color: #333;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    border: none;
+    font-size: 18px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    &:hover { background: #e8e8ed; }
+  }
+}
+
+.video-empty {
+  text-align: center;
+  padding: 60px 20px;
+  color: #86868b;
+  font-size: 15px;
+}
+
+.video-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 16px;
+}
+
+.video-card {
+  cursor: pointer;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #f5f5f7;
+  transition: transform 0.2s, box-shadow 0.2s;
+
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+    .play-overlay { opacity: 1; }
+  }
+}
+
+.video-thumb {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16/9;
+  background: #1d1d1f;
+  overflow: hidden;
+
+  img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .thumb-placeholder {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  }
+}
+
+.play-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.video-duration {
+  position: absolute;
+  bottom: 6px;
+  right: 6px;
+  background: rgba(0, 0, 0, 0.7);
+  color: #fff;
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.video-info {
+  padding: 10px 12px 12px;
+
+  h4 {
+    font-size: 14px;
+    font-weight: 500;
+    color: #1d1d1f;
+    margin: 0 0 4px;
+    line-height: 1.4;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+}
+
+.video-desc {
+  font-size: 12px;
+  color: #86868b;
+  margin: 0 0 4px;
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.video-meta {
+  font-size: 12px;
+  color: #86868b;
+
+  span + span::before {
+    content: ' · ';
+  }
 }
 </style>

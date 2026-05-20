@@ -337,13 +337,30 @@ cd ..
 6. 在 `#SSL-END` 后添加：
 
 ```nginx
-    client_max_body_size 50m;
+    # 管理后台支持视频上传，限制放大到 512MB
+    client_max_body_size 512m;
 
     # 企业微信/微信验证文件（必须在 try_files 之前，否则会被回退到 index.html 导致 404）
     # root 指向项目根目录，确保验证文件不会因前端 dist 重建而丢失
     location ~* ^/(WW_verify_|MP_verify_).*\.txt$ {
         root /www/wwwroot/CRM;
         default_type text/plain;
+    }
+
+    # 视频上传专用（大文件+长超时，必须放在通用 /api/ 之前）
+    location /api/v1/admin/upload/video {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_buffering off;
+        proxy_request_buffering off;
+        client_max_body_size 512m;
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 600s;
+        proxy_read_timeout 600s;
     }
 
     # API 反向代理（管理后台 API 前缀 /api/v1/admin）
@@ -355,6 +372,9 @@ cd ..
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_buffering off;
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 300s;
+        proxy_read_timeout 300s;
     }
 
     # WebSocket（管理后台实时通知）

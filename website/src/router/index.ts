@@ -41,7 +41,7 @@ const routes = [
     path: '/register',
     name: 'Register',
     component: () => import('@/views/Register.vue'),
-    meta: { title: '免费注册 - 云客CRM', description: '立即注册体验云客CRM，免费试用7天' }
+    meta: { title: '免费注册 - 云客CRM', description: '立即注册体验云客CRM，免费试用14天' }
   },
   {
     path: '/pay-success',

@@ -778,15 +778,16 @@ const getLinkTitle = (content: string) => { try { const c = JSON.parse(content);
 const getWeappTitle = (content: string) => { try { const c = JSON.parse(content); return c?.weapp?.title || c?.weapp?.displayname || '' } catch { return '' } }
 
 // ==================== 生命周期 ====================
-watch(() => props.configId, () => { fetchArchiveMembers() }, { immediate: true })
-
-onMounted(() => {
+watch(() => props.configId, (newId) => {
   fetchArchiveMembers()
-  loadSensitiveWords()
-  // 企微客户端内自动初始化SDK（无需扫码）
-  if (isInWecomClient && renderMode.value === 'wecom') {
+  // configId 从父组件传来后，在企微客户端内自动初始化SDK
+  if (newId && isInWecomClient && !sdkInitDone.value) {
     autoInitSdk()
   }
+}, { immediate: true })
+
+onMounted(() => {
+  loadSensitiveWords()
 })
 
 // 暴露方法给父组件调用

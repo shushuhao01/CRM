@@ -383,9 +383,9 @@
       <div class="container">
         <div class="cta-content">
           <h2>找到适合您的解决方案</h2>
-          <p>联系我们，获取专属行业方案，7天免费体验全部功能</p>
+          <p>联系我们，获取专属行业方案，{{ trialDays }}天免费体验全部功能</p>
           <div class="cta-actions">
-            <router-link to="/register?plan=FREE_TRIAL" class="btn btn-white btn-lg">免费试用 7 天</router-link>
+            <router-link to="/register?plan=FREE_TRIAL" class="btn btn-white btn-lg">免费试用 {{ trialDays }} 天</router-link>
             <a :href="wechatServiceUrl" target="_blank" class="btn btn-outline-white btn-lg">联系销售</a>
           </div>
           <p class="cta-note">免费注册 · 无需信用卡 · 专属行业顾问</p>
@@ -398,12 +398,20 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { getWebsiteConfig, type WebsiteConfig } from '@/api/website-config'
+import { getPackages, type Package } from '@/api/packages'
 
 const config = ref<Partial<WebsiteConfig>>({})
 const wechatServiceUrl = computed(() => config.value.customerServiceUrl || 'https://work.weixin.qq.com/kfid/kfc461ca9f5b45c8d25')
 
+const packagesData = ref<Package[]>([])
+const trialDays = computed(() => {
+  const trial = packagesData.value.find(p => p.code === 'FREE_TRIAL' || p.is_trial)
+  return trial?.duration_days || 14
+})
+
 onMounted(async () => {
   config.value = await getWebsiteConfig()
+  getPackages().then(d => { packagesData.value = d }).catch(() => {})
 })
 </script>
 

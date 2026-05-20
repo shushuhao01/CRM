@@ -3,7 +3,7 @@
     <div class="success-container">
       <div class="success-icon">🎉</div>
       <h1>{{ isTrial ? '注册成功！' : (isBankTransfer ? (bankOrderPaid ? '购买成功！' : '转账订单已提交！') : '购买成功！') }}</h1>
-      <p class="success-desc">{{ isTrial ? '您的7天免费试用已开通' : (isBankTransfer ? (bankOrderPaid ? '转账已确认到账，您的账号已开通' : '请完成对公转账，我们将在确认到账后为您开通账号') : '感谢您选择云客CRM，您的账号已开通') }}</p>
+      <p class="success-desc">{{ isTrial ? `您的${trialDays}天免费试用已开通` : (isBankTransfer ? (bankOrderPaid ? '转账已确认到账，您的账号已开通' : '请完成对公转账，我们将在确认到账后为您开通账号') : '感谢您选择云客CRM，您的账号已开通') }}</p>
 
       <!-- 对公转账：已到账确认 → 显示授权信息 -->
       <div v-if="isBankTransfer && bankOrderPaid" class="info-card">
@@ -229,7 +229,7 @@
           </div>
           <div class="info-item" v-if="isTrial">
             <span class="info-label">试用期限</span>
-            <span class="info-value">7天</span>
+            <span class="info-value">{{ trialDays }}天</span>
           </div>
         </div>
 
@@ -1906,6 +1906,7 @@ const maxUsers = computed(() => {
 
 // 判断是否为免费试用
 const isTrial = computed(() => plan.value === 'FREE_TRIAL' || plan.value === 'free')
+const trialDays = ref(14)
 
 // 版本下载相关计算
 const hasVersionDownload = computed(() => {

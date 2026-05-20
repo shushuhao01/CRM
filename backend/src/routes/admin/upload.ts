@@ -18,7 +18,7 @@ if (!fs.existsSync(uploadBaseDir)) {
 }
 
 // 🔒 允许的上传类别白名单 — 防止路径穿越攻击
-const ALLOWED_CATEGORIES = ['general', 'image', 'cert', 'version', 'logo', 'qrcode'];
+const ALLOWED_CATEGORIES = ['general', 'image', 'cert', 'version', 'logo', 'qrcode', 'video'];
 
 /**
  * 获取安全的上传类别（白名单校验 + 路径穿越防护）
@@ -61,6 +61,13 @@ const fileFilter = (req: Request, file: Express.Multer.File, cb: multer.FileFilt
     } else {
       cb(new Error('仅支�?jpg、png、gif、webp、svg 格式图片'));
     }
+  } else if (category === 'video') {
+    const allowedTypes = ['video/mp4', 'video/webm', 'video/ogg', 'video/quicktime'];
+    if (allowedTypes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('仅支持 mp4、webm、ogg、mov 格式视频'));
+    }
   } else if (category === 'cert') {
     // 证书文件
     const allowedExts = ['.pem', '.crt', '.key', '.p12', '.pfx'];
@@ -99,6 +106,57 @@ const versionUpload = multer({
   fileFilter,
   limits: {
     fileSize: 200 * 1024 * 1024 // 200MB
+  }
+});
+
+// 视频上传（支持大文件，最大500MB）
+const videoUpload = multer({
+  storage,
+  fileFilter,
+  limits: { fileSize: 500 * 1024 * 1024 }
+});
+
+router.post('/video', videoUpload.single('file'), async (req: Request, res: Response) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: '请选择要上传的视频文件' });
+    }
+
+    const relativePath = `/uploads/admin/video/${req.file.filename}`;
+
+    res.json({
+      success: true,
+      message: '视频上传成功',
+      data: {
+        url: relativePath,
+        filename: req.file.filename,
+        originalname: req.file.originalname,
+        size: req.file.size,
+        mimetype: req.file.mimetype
+      }
+    });
+  } catch (error: any) {
+    log.error('[Admin Upload] Video upload failed:', error);
+    res.status(500).json({ success: false, message: error.message || '视频上传失败' });
+  }
+});
+
+// 视频删除
+router.delete('/video', async (req: Request, res: Response) => {
+  try {
+    const url = req.query.url as string;
+    if (!url || !url.startsWith('/uploads/admin/video/')) {
+      return res.status(400).json({ success: false, message: '无效的视频路径' });
+    }
+    const filePath = path.join(process.cwd(), url);
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+      log.info(`[Admin Upload] Video deleted: ${url}`);
+    }
+    res.json({ success: true, message: '视频删除成功' });
+  } catch (error: any) {
+    log.error('[Admin Upload] Video delete failed:', error);
+    res.status(500).json({ success: false, message: error.message || '视频删除失败' });
   }
 });
 

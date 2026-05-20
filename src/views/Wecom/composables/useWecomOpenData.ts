@@ -357,30 +357,26 @@ export function useWecomOpenData() {
   const initFromConfig = async (configId?: number | null) => {
     wecomLoginState.value = 'logging'
 
-    let configRes: any
+    let config: any = null
+
     try {
-      configRes = await request.get('/wecom/configs', { showError: false } as any)
+      if (configId) {
+        // 有configId时请求单个配置，避免与父组件的列表请求冲突被取消
+        config = await request.get(`/wecom/configs/${configId}`, { showError: false } as any)
+      } else {
+        // 无configId时请求列表，取第一个可用配置
+        const configRes: any = await request.get('/wecom/configs', { showError: false } as any)
+        const configs = Array.isArray(configRes) ? configRes : (configRes?.data || configRes?.list || [])
+        config = configs.find((c: any) => c.agentId && c.isEnabled) || configs[0]
+      }
     } catch (e: any) {
       wecomLoginState.value = 'idle'
-      throw new Error('获取企微配置列表失败: ' + (e?.message || '网络错误'))
-    }
-
-    const configs = Array.isArray(configRes) ? configRes : (configRes?.data || configRes?.list || [])
-
-    let config: any = null
-    if (configId) {
-      config = configs.find((c: any) => c.id === configId)
-    }
-    if (!config) {
-      config = configs.find((c: any) => c.agentId && c.isEnabled)
-    }
-    if (!config) {
-      config = configs[0]
+      throw new Error('获取企微配置失败: ' + (e?.message || '网络错误'))
     }
 
     if (!config?.corpId || !config?.agentId) {
       wecomLoginState.value = 'idle'
-      throw new Error(`无有效的企微配置（共${configs.length}条配置，corpId=${config?.corpId || '空'}, agentId=${config?.agentId || '空'}）`)
+      throw new Error(`无有效的企微配置（corpId=${config?.corpId || '空'}, agentId=${config?.agentId || '空'}）`)
     }
 
     console.log(`[useWecomOpenData] initFromConfig: corpId=${config.corpId}, agentId=${config.agentId}, suiteId=${config.suiteId || '(无)'}`)
