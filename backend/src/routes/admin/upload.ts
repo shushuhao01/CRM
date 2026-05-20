@@ -116,7 +116,10 @@ const videoUpload = multer({
   limits: { fileSize: 500 * 1024 * 1024 }
 });
 
-router.post('/video', videoUpload.single('file'), async (req: Request, res: Response) => {
+router.post('/video', (req: Request, _res: Response, next: Function) => {
+  req.query.category = 'video';
+  next();
+}, videoUpload.single('file'), async (req: Request, res: Response) => {
   try {
     if (!req.file) {
       return res.status(400).json({ success: false, message: '请选择要上传的视频文件' });

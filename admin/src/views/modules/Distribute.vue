@@ -198,6 +198,16 @@
           </el-form-item>
           <el-form-item label="AccessKey Secret">
             <el-input v-model="storageForm.secretKey" type="password" show-password placeholder="请输入AccessKey Secret" />
+            <div style="margin-top: 4px">
+              <el-button v-if="!showStorageSecret" text size="small" @click="revealSecret('storage')">
+                👁️ 查看实际值
+              </el-button>
+              <template v-else>
+                <el-button text size="small" @click="showStorageSecret = false; storageForm.secretKey = '******'">🙈 隐藏</el-button>
+                <el-button text size="small" @click="copyToClipboard(storageForm.secretKey)">📋 复制</el-button>
+              </template>
+              <span style="font-size: 11px; color: #909399; margin-left: 8px">保存后密钥仅显示掩码</span>
+            </div>
           </el-form-item>
           <el-form-item label="Bucket名称">
             <el-input v-model="storageForm.bucketName" placeholder="请输入Bucket名称" />
@@ -326,6 +336,16 @@
         </el-form-item>
         <el-form-item label="SecretKey">
           <el-input v-model="smsForm.secretKey" type="password" show-password placeholder="请输入SecretKey" />
+          <div style="margin-top: 4px">
+            <el-button v-if="!showSmsSecret" text size="small" @click="revealSecret('sms')">
+              👁️ 查看实际值
+            </el-button>
+            <template v-else>
+              <el-button text size="small" @click="showSmsSecret = false; smsForm.secretKey = '******'">🙈 隐藏</el-button>
+              <el-button text size="small" @click="copyToClipboard(smsForm.secretKey)">📋 复制</el-button>
+            </template>
+            <span style="font-size: 11px; color: #909399; margin-left: 8px">保存后密钥仅显示掩码</span>
+          </div>
         </el-form-item>
         <el-form-item label="短信签名">
           <el-input v-model="smsForm.signName" placeholder="需在服务商平台审核通过" />
@@ -513,6 +533,38 @@ const smsForm = reactive({
 // 表单映射
 const formMap: Record<string, any> = { security: securityForm, storage: storageForm, email: emailForm, call: callForm, sms: smsForm }
 
+// 密钥查看状态
+const showStorageSecret = ref(false)
+const showSmsSecret = ref(false)
+
+const revealSecret = async (type: 'storage' | 'sms') => {
+  try {
+    const res = await request.get('/system-config/distribute-secrets') as any
+    if (res.success && res.data) {
+      if (type === 'storage' && res.data.storageSecretKey) {
+        storageForm.secretKey = res.data.storageSecretKey
+        showStorageSecret.value = true
+      } else if (type === 'sms' && res.data.smsSecretKey) {
+        smsForm.secretKey = res.data.smsSecretKey
+        showSmsSecret.value = true
+      } else {
+        ElMessage.warning('未找到已保存的密钥，请先保存配置')
+      }
+    }
+  } catch {
+    ElMessage.error('获取密钥失败')
+  }
+}
+
+const copyToClipboard = (text: string) => {
+  if (text && text !== '******') {
+    navigator.clipboard.writeText(text)
+    ElMessage.success('已复制到剪贴板')
+  } else {
+    ElMessage.warning('请先点击查看实际值')
+  }
+}
+
 // ==================== 配置卡片 ====================
 const distributeItems = reactive<DistributeItem[]>([
   { key: 'security', name: '安全策略', description: '密码策略、登录安全、失败锁定、会话超时等', icon: markRaw(Key), gradient: 'linear-gradient(135deg, #f56c6c 0%, #f89898 100%)', enabled: false, configured: false, loading: false },
@@ -561,6 +613,8 @@ const loadDistributeConfig = async () => {
 const openEditDialog = (item: DistributeItem) => {
   editingItem.value = item
   editingKey.value = item.key
+  showStorageSecret.value = false
+  showSmsSecret.value = false
   showEditDialog.value = true
 }
 

@@ -97,6 +97,30 @@ router.get('/system-config', async (_req: Request, res: Response) => {
   }
 })
 
+// 获取配置下发中敏感密钥的真实值（SMS / Storage SecretKey）
+router.get('/system-config/distribute-secrets', async (_req: Request, res: Response) => {
+  try {
+    const result = await AppDataSource.query(
+      `SELECT config_value FROM system_config WHERE config_key = 'admin_system_config' LIMIT 1`
+    ).catch(() => []);
+    if (result && result.length > 0) {
+      const data = JSON.parse(result[0].config_value || '{}');
+      res.json({
+        success: true,
+        data: {
+          smsSecretKey: data.distributedConfig?.sms?.secretKey || '',
+          storageSecretKey: data.distributedConfig?.storage?.secretKey || '',
+        }
+      });
+    } else {
+      res.json({ success: true, data: { smsSecretKey: '', storageSecretKey: '' } });
+    }
+  } catch (error) {
+    log.error('获取配置密钥失败:', error);
+    res.status(500).json({ success: false, message: '获取密钥失败' });
+  }
+});
+
 // 保存管理后台系统配置（需要管理员认证）
 router.post('/system-config', async (req: Request, res: Response) => {
   try {

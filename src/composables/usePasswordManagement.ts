@@ -26,6 +26,13 @@ export function usePasswordManagement() {
     const user = userStore.user
     if (!user) return
 
+    // 🔥 从企微H5工作台跳转过来的session，用户数据不含密码相关字段，跳过密码检查
+    // 判断依据：正常CRM登录的用户对象一定有 passwordLastChanged 字段（即使值为null），
+    // 而H5 sidebar token 恢复的用户对象完全没有这个属性
+    if (!('passwordLastChanged' in user) && !('isDefaultPassword' in user) && !('forcePasswordChange' in user)) {
+      return
+    }
+
     // 🔥 密码状态完全由后端数据库决定，不再操作本地 localStorage('users')
 
     // 检查是否为默认密码
