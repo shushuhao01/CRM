@@ -128,7 +128,7 @@ router.post('/chat-records/sync', authenticateToken, requireAdmin, async (req: R
     const hasPrivateKey = !!(config.chatArchivePrivateKey || globalRsaKey);
     res.json({
       success: true, message: result.message,
-      data: { configId: result.configId, configName: result.configName, permitUsers: result.permitUsers, agreedUsers: result.agreedUsers, syncedRecords: result.syncedRecords, newConversations: result.newConversations, errors: result.errors, sdkRequired: result.sdkRequired, mode: result.mode, hasPrivateKey }
+      data: { configId: result.configId, configName: result.configName, permitUsers: result.permitUsers, agreedUsers: result.agreedUsers, syncedRecords: result.syncedRecords, newConversations: result.newConversations, enrichedContacts: (result as any).enrichedContacts || 0, errors: result.errors, sdkRequired: result.sdkRequired, mode: result.mode, hasPrivateKey }
     });
   } catch (error: any) {
     log.error('[Wecom] Sync chat records error:', error.message, error.stack);

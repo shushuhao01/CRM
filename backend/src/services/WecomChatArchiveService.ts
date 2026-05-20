@@ -154,6 +154,7 @@ export class WecomChatArchiveService {
           log.info(`[ChatArchive] Step6: 轻量补充客户名称...`);
           try {
             const enrichCount = await this.enrichContactNames(config, externalAccessToken);
+            (result as any).enrichedContacts = enrichCount;
             if (enrichCount > 0) {
               log.info(`[ChatArchive] Step6完成: 补充了 ${enrichCount} 个联系人名称`);
             }

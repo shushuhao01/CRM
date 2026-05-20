@@ -107,34 +107,39 @@
           <div v-if="demoVideos.length === 0" class="video-empty">
             <p>暂无演示视频</p>
           </div>
-          <div v-else class="video-grid">
-            <div v-for="video in demoVideos" :key="video.url" class="video-card" @click="playVideo(video)">
-              <div class="video-thumb">
-                <img v-if="video.thumbnail" :src="video.thumbnail" :alt="video.title" />
-                <div v-else class="thumb-placeholder">
-                  <svg width="48" height="48" viewBox="0 0 24 24" fill="rgba(255,255,255,0.8)"><polygon points="5,3 19,12 5,21"/></svg>
+          <template v-else>
+            <div class="video-grid">
+              <div v-for="video in pagedDemoVideos" :key="video.url" class="video-card" @click="playVideo(video)">
+                <div class="video-thumb">
+                  <video :src="video.url + '#t=0.5'" preload="metadata" muted style="width:100%;height:100%;object-fit:cover"></video>
+                  <div class="play-overlay">
+                    <svg width="40" height="40" viewBox="0 0 24 24" fill="#fff"><polygon points="5,3 19,12 5,21"/></svg>
+                  </div>
+                  <span v-if="video.duration" class="video-duration">{{ video.duration }}</span>
                 </div>
-                <div class="play-overlay">
-                  <svg width="40" height="40" viewBox="0 0 24 24" fill="#fff"><polygon points="5,3 19,12 5,21"/></svg>
-                </div>
-                <span v-if="video.duration" class="video-duration">{{ video.duration }}</span>
-              </div>
-              <div class="video-info">
-                <h4>{{ video.title }}</h4>
-                <p v-if="video.description" class="video-desc">{{ video.description }}</p>
-                <div class="video-meta">
-                  <span v-if="video.size">{{ formatFileSize(video.size) }}</span>
+                <div class="video-info">
+                  <h4>{{ video.title }}</h4>
+                  <p v-if="video.description" class="video-desc">{{ video.description }}</p>
+                  <div class="video-meta">
+                    <span v-if="video.size">{{ formatFileSize(video.size) }}</span>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
+            <div v-if="demoVideos.length > demoPageSize" class="video-pagination">
+              <button :disabled="demoPage <= 1" @click="demoPage--">&lsaquo; 上一页</button>
+              <span>{{ demoPage }} / {{ Math.ceil(demoVideos.length / demoPageSize) }}</span>
+              <button :disabled="demoPage >= Math.ceil(demoVideos.length / demoPageSize)" @click="demoPage++">&rsaquo; 下一页</button>
+            </div>
+          </template>
         </div>
       </div>
       <!-- 视频播放弹窗 -->
       <div v-if="showVideoModal && currentVideo" class="video-modal" @click="closeVideoModal">
         <div class="video-content" @click.stop>
           <div class="video-player-header">
-            <button class="back-btn" @click="currentVideo = null">← 返回列表</button>
+            <button v-if="demoVideos.length > 1" class="back-btn" @click="currentVideo = null">← 返回列表</button>
+            <span v-else></span>
             <button class="close-btn" @click="closeVideoModal">✕</button>
           </div>
           <div class="video-wrapper">
@@ -142,7 +147,6 @@
               ref="videoRef"
               controls
               autoplay
-              :poster="currentVideo.thumbnail || '/images/dashboard.png'"
             >
               <source :src="currentVideo.url" type="video/mp4">
               您的浏览器不支持视频播放
@@ -633,7 +637,7 @@ const previewImage = ref('')
 const showVideoModal = ref(false)
 const videoRef = ref<HTMLVideoElement | null>(null)
 
-// 演示视频列表（从后端配置读取）
+// 演示视频列表（从后端配置读取，已过滤仅启用+首选排第一）
 interface DemoVideo {
   url: string
   title: string
@@ -641,9 +645,17 @@ interface DemoVideo {
   thumbnail?: string
   duration?: string
   size?: number
+  isPrimary?: boolean
 }
 const demoVideos = ref<DemoVideo[]>([])
 const currentVideo = ref<DemoVideo | null>(null)
+const demoPage = ref(1)
+const demoPageSize = 3
+
+const pagedDemoVideos = computed(() => {
+  const start = (demoPage.value - 1) * demoPageSize
+  return demoVideos.value.slice(start, start + demoPageSize)
+})
 
 const formatFileSize = (bytes: number) => {
   if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
@@ -652,10 +664,12 @@ const formatFileSize = (bytes: number) => {
 }
 
 const openDemoVideos = () => {
-  if (demoVideos.value.length === 1) {
-    currentVideo.value = demoVideos.value[0]
+  demoPage.value = 1
+  if (demoVideos.value.length <= 1) {
+    currentVideo.value = demoVideos.value[0] || null
   } else {
-    currentVideo.value = null
+    const primary = demoVideos.value.find(v => v.isPrimary)
+    currentVideo.value = primary || null
   }
   showVideoModal.value = true
   document.body.style.overflow = 'hidden'
@@ -722,14 +736,10 @@ const handleKeydown = (e: KeyboardEvent) => {
 onMounted(() => {
   window.addEventListener('keydown', handleKeydown)
 
-  // 加载官网配置（含演示视频列表）
+  // 加载官网配置（含演示视频列表，已由后端过滤仅启用+首选排第一）
   getWebsiteConfig().then(data => {
     websiteConfig.value = data
-    if ((data as any).demoVideos?.length) {
-      demoVideos.value = (data as any).demoVideos
-    } else {
-      demoVideos.value = [{ url: '/videos/demo.mp4', title: '云客CRM 产品演示', thumbnail: '/images/dashboard.png' }]
-    }
+    demoVideos.value = (data as any).demoVideos || []
   })
 
   // 加载套餐数据
@@ -1877,6 +1887,35 @@ onUnmounted(() => {
 
   span + span::before {
     content: ' · ';
+  }
+}
+
+.video-pagination {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 16px;
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid #f0f0f0;
+
+  button {
+    background: #f5f5f7;
+    border: none;
+    padding: 6px 14px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    color: #1d1d1f;
+    transition: background 0.2s;
+
+    &:hover:not(:disabled) { background: #e8e8ed; }
+    &:disabled { opacity: 0.4; cursor: not-allowed; }
+  }
+
+  span {
+    font-size: 13px;
+    color: #86868b;
   }
 }
 </style>

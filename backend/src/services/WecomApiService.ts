@@ -741,13 +741,24 @@ export class WecomApiService {
    * @param limit 每次拉取条数，最大1000
    * @returns 加密的消息列表和下次拉取的游标
    */
-  static async getChatMsgData(accessToken: string, cursor: string = '', limit: number = 100): Promise<{
+  /**
+   * 数据与智能专区 sync_msg 接口
+   * 文档: https://developer.work.weixin.qq.com/document/path/101365
+   * 返回 msg_list 包含 msgid、sender、receiver_list、send_time、msgtype、service_encrypt_info
+   */
+  static async getChatMsgData(accessToken: string, cursor: string = '', limit: number = 200): Promise<{
     chatdata: Array<{
       seq: number;
       msgid: string;
       publickey_ver: number;
       encrypt_random_key: string;
       encrypt_chat_msg: string;
+      sender_type: number;
+      sender_id: string;
+      receiver_list: Array<{ type: number; id: string }>;
+      send_time: number;
+      msgtype: number;
+      chatid?: string;
     }>;
     has_more: boolean;
     next_cursor: string;
@@ -764,9 +775,25 @@ export class WecomApiService {
       );
 
       if (response.data.errcode === 0) {
-        const chatdata = response.data.chatdata || [];
+        const msgList = response.data.msg_list || [];
         const hasMore = response.data.has_more === 1 || response.data.has_more === true;
         const nextCursor = response.data.next_cursor || '';
+
+        // 将数据与智能专区的 msg_list 格式适配为内部统一格式
+        const chatdata = msgList.map((msg: any, idx: number) => ({
+          seq: idx,
+          msgid: msg.msgid || '',
+          publickey_ver: msg.service_encrypt_info?.public_key_ver || 1,
+          encrypt_random_key: msg.service_encrypt_info?.encrypted_secret_key || '',
+          encrypt_chat_msg: '',
+          sender_type: msg.sender?.type || 0,
+          sender_id: msg.sender?.id || '',
+          receiver_list: msg.receiver_list || [],
+          send_time: msg.send_time || 0,
+          msgtype: msg.msgtype || 0,
+          chatid: msg.chatid || '',
+        }));
+
         log.info(`[WecomApi] getChatMsgData: 获取 ${chatdata.length} 条消息, hasMore=${hasMore}`);
         return { chatdata, has_more: hasMore, next_cursor: nextCursor };
       } else {

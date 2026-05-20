@@ -557,18 +557,17 @@ const handleSync = async () => {
   syncing.value = true
   try {
     const res: any = await syncChatRecords(selectedConfigId.value)
-    // res 是后端返回的 data 字段（经过响应拦截器解包）
-    // 构建详细的同步结果消息
     let msg = '同步完成'
     if (res) {
       const parts: string[] = []
-      if (res.permitUsers !== undefined) parts.push(`开通成员: ${res.permitUsers}人`)
-      if (res.newConversations) parts.push(`新增会话: ${res.newConversations}`)
-      if (res.syncedRecords) parts.push(`更新记录: ${res.syncedRecords}`)
-      if (res.agreedUsers) parts.push(`已同意存档: ${res.agreedUsers}`)
+      if (res.permitUsers !== undefined) parts.push(`存档成员${res.permitUsers}人`)
+      if (res.syncedRecords) parts.push(`新增${res.syncedRecords}条消息`)
+      if (res.enrichedContacts) parts.push(`更新${res.enrichedContacts}个联系人`)
+      if (res.newConversations) parts.push(`新增${res.newConversations}条会话`)
+      if (res.agreedUsers) parts.push(`${res.agreedUsers}人已同意存档`)
       if (parts.length > 0) msg = parts.join('，')
       else if (res.permitUsers === 0) msg = '没有开通会话存档的成员'
-      else if (res.permitUsers > 0 && !res.newConversations && !res.syncedRecords) msg = `${res.permitUsers}个开通成员，但未获取到会话数据（可能需要检查外部联系人权限）`
+      else if (res.permitUsers > 0 && !res.syncedRecords) msg = `${res.permitUsers}个存档成员，暂无新消息`
     }
     ElMessage.success(msg)
     if (activeTab.value === 'records') {

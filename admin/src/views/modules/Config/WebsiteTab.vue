@@ -89,41 +89,75 @@
     <el-divider content-position="left">演示视频管理</el-divider>
     <el-alert type="info" :closable="false" style="margin-bottom: 16px">
       <template #title>
-        管理官网首页「观看演示」按钮弹出的视频列表。支持上传多个视频，访客点击后可选择播放。
+        管理官网首页「观看演示」按钮弹出的视频列表。启用的视频会显示在官网，标为「首选」的视频在仅有一个视频时自动播放。
       </template>
     </el-alert>
 
-    <div style="margin-bottom: 12px">
-      <el-button type="primary" size="small" @click="triggerVideoUpload" :loading="videoUploading">
-        <el-icon><Upload /></el-icon> 上传视频
-      </el-button>
-      <span style="font-size: 12px; color: #909399; margin-left: 8px">支持 mp4/webm/mov 格式，单个最大 500MB</span>
-      <input ref="videoFileInput" type="file" accept="video/mp4,video/webm,video/quicktime,video/ogg" style="display: none" @change="handleVideoFileSelect" />
-    </div>
-
-    <div v-if="form.websiteConfig.demoVideos && form.websiteConfig.demoVideos.length > 0" class="video-list">
-      <div v-for="(video, idx) in form.websiteConfig.demoVideos" :key="idx" class="video-item">
-        <div class="video-item-thumb">
-          <video v-if="video.url" :src="video.url" preload="metadata" style="width: 100%; height: 100%; object-fit: cover; border-radius: 6px"></video>
-          <div v-else class="thumb-empty">无缩略图</div>
-        </div>
-        <div class="video-item-info">
-          <el-input v-model="video.title" size="small" placeholder="视频标题" style="margin-bottom: 6px" />
-          <el-input v-model="video.description" size="small" placeholder="简短描述（可选）" style="margin-bottom: 6px" />
-          <div class="video-item-meta">
-            <span v-if="video.size" style="color: #909399; font-size: 12px">{{ formatFileSize(video.size) }}</span>
-            <span v-if="video.duration" style="color: #909399; font-size: 12px; margin-left: 8px">{{ video.duration }}</span>
-            <code style="font-size: 11px; color: #c0c4cc; margin-left: 8px; word-break: break-all">{{ video.url }}</code>
-          </div>
-        </div>
-        <div class="video-item-actions">
-          <el-button type="danger" size="small" text @click="handleDeleteVideo(idx)">
-            <el-icon><Delete /></el-icon> 删除
-          </el-button>
-        </div>
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px">
+      <div style="display: flex; align-items: center; gap: 8px">
+        <el-button type="primary" size="small" @click="triggerVideoUpload" :loading="videoUploading">
+          <el-icon><Upload /></el-icon> 上传视频
+        </el-button>
+        <span style="font-size: 12px; color: #909399">mp4/webm/mov，最大 500MB</span>
+        <input ref="videoFileInput" type="file" accept="video/mp4,video/webm,video/quicktime,video/ogg" style="display: none" @change="handleVideoFileSelect" />
+      </div>
+      <div style="font-size: 12px; color: #909399">
+        共 {{ allVideos.length }} 个视频，{{ allVideos.filter((v: any) => v.enabled !== false).length }} 个启用
       </div>
     </div>
-    <div v-else style="color: #c0c4cc; font-size: 13px; padding: 20px; text-align: center; border: 1px dashed #dcdfe6; border-radius: 8px">
+
+    <!-- 视频列表（表格形式） -->
+    <el-table v-if="allVideos.length > 0" :data="pagedVideos" size="small" stripe style="margin-bottom: 12px" row-key="url">
+      <el-table-column label="封面" width="130" align="center">
+        <template #default="{ row }">
+          <div class="video-cover-cell">
+            <video
+              :src="row.url + '#t=0.5'"
+              preload="metadata"
+              muted
+              class="video-cover-preview"
+              @loadeddata="(e: Event) => handleVideoLoaded(e, row)"
+            ></video>
+            <div class="video-cover-play">▶</div>
+          </div>
+        </template>
+      </el-table-column>
+      <el-table-column label="视频信息" min-width="220">
+        <template #default="{ row }">
+          <el-input v-model="row.title" size="small" placeholder="视频标题" style="margin-bottom: 4px; font-weight: 500" />
+          <el-input v-model="row.description" size="small" placeholder="简短描述（可选）" />
+          <div style="margin-top: 4px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap">
+            <span v-if="row.size" style="color: #909399; font-size: 11px">{{ formatFileSize(row.size) }}</span>
+            <el-tag v-if="row.isPrimary" type="warning" size="small" effect="dark">首选播放</el-tag>
+          </div>
+        </template>
+      </el-table-column>
+      <el-table-column label="状态" width="80" align="center">
+        <template #default="{ row }">
+          <el-switch v-model="row.enabled" size="small" :active-value="true" :inactive-value="false" />
+        </template>
+      </el-table-column>
+      <el-table-column label="操作" width="160" align="center">
+        <template #default="{ row, $index }">
+          <el-button v-if="!row.isPrimary" type="warning" link size="small" @click="setPrimaryVideo(videoPageOffset + $index)">设为首选</el-button>
+          <el-tag v-else type="warning" size="small" effect="light">已首选</el-tag>
+          <el-button type="danger" link size="small" @click="handleDeleteVideo(videoPageOffset + $index)">删除</el-button>
+        </template>
+      </el-table-column>
+    </el-table>
+
+    <!-- 分页 -->
+    <div v-if="allVideos.length > videoPageSize" style="display: flex; justify-content: flex-end; margin-bottom: 12px">
+      <el-pagination
+        v-model:current-page="videoPage"
+        :page-size="videoPageSize"
+        :total="allVideos.length"
+        layout="total, prev, pager, next"
+        small
+      />
+    </div>
+
+    <div v-if="allVideos.length === 0" style="color: #c0c4cc; font-size: 13px; padding: 24px; text-align: center; border: 1px dashed #dcdfe6; border-radius: 8px">
       暂无演示视频，请点击上方按钮上传
     </div>
 
@@ -145,7 +179,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Upload, Delete } from '@element-plus/icons-vue'
 import { adminApi } from '@/api/admin'
@@ -187,6 +221,32 @@ const formatFileSize = (bytes: number) => {
   return (bytes / (1024 * 1024 * 1024)).toFixed(1) + ' GB'
 }
 
+// ==================== 视频管理 ====================
+
+const videoPage = ref(1)
+const videoPageSize = 3
+
+const allVideos = computed(() => props.form.websiteConfig.demoVideos || [])
+
+const videoPageOffset = computed(() => (videoPage.value - 1) * videoPageSize)
+
+const pagedVideos = computed(() => {
+  const start = videoPageOffset.value
+  return allVideos.value.slice(start, start + videoPageSize)
+})
+
+const handleVideoLoaded = (e: Event, row: any) => {
+  const video = e.target as HTMLVideoElement
+  if (video && !row.duration) {
+    const dur = video.duration
+    if (dur && isFinite(dur)) {
+      const m = Math.floor(dur / 60)
+      const s = Math.floor(dur % 60)
+      row.duration = `${m}:${s.toString().padStart(2, '0')}`
+    }
+  }
+}
+
 const triggerVideoUpload = () => { videoFileInput.value?.click() }
 
 const handleVideoFileSelect = async (event: Event) => {
@@ -217,14 +277,18 @@ const handleVideoFileSelect = async (event: Event) => {
       if (!props.form.websiteConfig.demoVideos) {
         props.form.websiteConfig.demoVideos = []
       }
-      props.form.websiteConfig.demoVideos.push({
+      const isFirst = props.form.websiteConfig.demoVideos.length === 0
+      props.form.websiteConfig.demoVideos.unshift({
         url: res.data.url,
         title: file.name.replace(/\.[^.]+$/, ''),
         description: '',
         thumbnail: '',
         duration: '',
         size: res.data.size || file.size,
+        enabled: true,
+        isPrimary: isFirst,
       })
+      videoPage.value = 1
       ElMessage.success('视频上传成功，请填写标题后保存配置')
     } else {
       ElMessage.error(res.message || '上传失败')
@@ -235,16 +299,30 @@ const handleVideoFileSelect = async (event: Event) => {
   videoUploading.value = false
 }
 
+const setPrimaryVideo = (idx: number) => {
+  const videos = props.form.websiteConfig.demoVideos
+  if (!videos) return
+  videos.forEach((v: any, i: number) => { v.isPrimary = i === idx })
+  ElMessage.success('已设为首选播放视频，请保存配置')
+}
+
 const handleDeleteVideo = async (idx: number) => {
   const video = props.form.websiteConfig.demoVideos?.[idx]
   if (!video) return
   try {
-    await ElMessageBox.confirm(`确定删除视频「${video.title || '未命名'}」？`, '删除确认', { type: 'warning' })
+    await ElMessageBox.confirm(`确定删除视频「${video.title || '未命名'}」？删除后服务器文件也会移除。`, '删除确认', { type: 'warning' })
   } catch { return }
   try {
     await request.delete('/upload/video', { params: { url: video.url } })
   } catch { /* 即使服务器删除失败也移除配置 */ }
+  const wasPrimary = video.isPrimary
   props.form.websiteConfig.demoVideos.splice(idx, 1)
+  if (wasPrimary && props.form.websiteConfig.demoVideos.length > 0) {
+    props.form.websiteConfig.demoVideos[0].isPrimary = true
+  }
+  if (videoPage.value > 1 && videoPageOffset.value >= allVideos.value.length) {
+    videoPage.value = Math.max(1, videoPage.value - 1)
+  }
   ElMessage.success('视频已删除，请保存配置')
 }
 
@@ -266,18 +344,17 @@ const emit = defineEmits<{
     p { margin: 5px 0; }
   }
 }
-.video-list { display: flex; flex-direction: column; gap: 10px; }
-.video-item {
-  display: flex; gap: 12px; padding: 12px; background: #fafbfc; border: 1px solid #ebeef5;
-  border-radius: 8px; align-items: center;
+.video-cover-cell {
+  position: relative; width: 110px; height: 62px; background: #000; border-radius: 6px;
+  overflow: hidden; margin: 0 auto; cursor: default;
 }
-.video-item-thumb {
-  width: 120px; height: 68px; flex-shrink: 0; background: #000; border-radius: 6px; overflow: hidden;
-  display: flex; align-items: center; justify-content: center;
+.video-cover-preview {
+  width: 100%; height: 100%; object-fit: cover; display: block;
 }
-.thumb-empty { color: #909399; font-size: 12px; }
-.video-item-info { flex: 1; min-width: 0; }
-.video-item-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; }
-.video-item-actions { flex-shrink: 0; }
+.video-cover-play {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  background: rgba(0,0,0,0.25); color: #fff; font-size: 20px; opacity: 0; transition: opacity 0.2s;
+}
+.video-cover-cell:hover .video-cover-play { opacity: 1; }
 </style>
 
