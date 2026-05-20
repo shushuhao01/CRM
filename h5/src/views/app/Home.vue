@@ -173,6 +173,14 @@ async function loadActivities() {
 
 /** 跳转到主CRM系统的会话存档页（同域，保持在企微内置浏览器中） */
 function openChatArchive() {
+  const h5Token = localStorage.getItem('h5_token')
+  if (h5Token) {
+    localStorage.setItem('auth_token', h5Token)
+    if (authStore.user) {
+      localStorage.setItem('user', JSON.stringify(authStore.user))
+      localStorage.setItem('user_info', JSON.stringify(authStore.user))
+    }
+  }
   window.location.href = window.location.origin + '/wecom/chat-archive'
 }
 

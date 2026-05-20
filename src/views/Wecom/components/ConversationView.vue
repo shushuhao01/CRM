@@ -129,11 +129,11 @@
               <div v-if="!isInWecomClient" class="wecom-redirect-prompt">
                 <el-icon :size="48" color="#1890ff"><Connection /></el-icon>
                 <h3>请在企业微信中打开</h3>
-                <p>根据企业微信规则，会话存档内容需要在企业微信内置浏览器中才能查看。</p>
+                <p>根据企业微信规则，会话存档内容需要在企业微信内置浏览器中才能查看。<br/>请按以下步骤操作：</p>
                 <div class="wecom-guide-steps">
                   <div class="guide-step">
                     <span class="step-num">1</span>
-                    <span>打开<strong>企业微信</strong>客户端，进入底部<strong>「工作台」</strong></span>
+                    <span>打开<strong>企业微信</strong>客户端，点击底部<strong>「工作台」</strong></span>
                   </div>
                   <div class="guide-step">
                     <span class="step-num">2</span>
@@ -141,11 +141,9 @@
                   </div>
                   <div class="guide-step">
                     <span class="step-num">3</span>
-                    <span>在H5首页点击<strong>「会话存档」</strong>快捷入口即可进入</span>
+                    <span>在首页点击<strong>「会话存档」</strong>快捷入口即可查看聊天记录</span>
                   </div>
                 </div>
-                <el-button type="primary" @click="openWecomClient">打开企业微信</el-button>
-                <p class="sub-tip">注意：请从企微工作台打开应用，聊天窗口粘贴链接会打开系统浏览器而非内置浏览器</p>
               </div>
               <!-- 企微客户端：SDK初始化中 -->
               <div v-else-if="sdkInitializing" class="wecom-sdk-loading">
@@ -385,24 +383,19 @@ const autoInitSdk = async () => {
   sdkInitializing.value = true
   sdkInitError.value = ''
   try {
-    const success = await initFromConfig(props.configId)
-    if (!success) {
-      sdkInitError.value = '企微SDK初始化失败，请检查企微应用配置（可信域名、agentId等）'
-    } else if (selectedConv.value) {
+    await initFromConfig(props.configId)
+    if (selectedConv.value) {
       fetchMessageKeys()
     }
   } catch (e: any) {
     sdkInitError.value = e?.message || 'SDK初始化异常'
+    console.error('[ConversationView] SDK初始化失败:', sdkInitError.value)
   } finally {
     sdkInitializing.value = false
     sdkInitDone.value = true
   }
 }
 
-/** 打开企业微信客户端 */
-const openWecomClient = () => {
-  window.location.href = 'wxwork://'
-}
 
 
 /** 获取消息密钥列表（企微组件模式用） */
