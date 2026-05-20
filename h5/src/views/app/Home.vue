@@ -47,9 +47,9 @@
           <div class="shortcut-icon si-blue"><van-icon name="friends-o" /></div>
           <span>客户</span>
         </div>
-        <div class="shortcut-item" @click="$router.push('/app/stats')">
-          <div class="shortcut-icon si-purple"><van-icon name="chart-trending-o" /></div>
-          <span>报表</span>
+        <div class="shortcut-item" @click="openChatArchive">
+          <div class="shortcut-icon si-teal"><van-icon name="records-o" /></div>
+          <span>会话存档</span>
         </div>
         <div class="shortcut-item" @click="$router.push('/app/scripts')">
           <div class="shortcut-icon si-orange"><van-icon name="chat-o" /></div>
@@ -171,6 +171,11 @@ async function loadActivities() {
   }
 }
 
+/** 跳转到主CRM系统的会话存档页（同域，保持在企微内置浏览器中） */
+function openChatArchive() {
+  window.location.href = window.location.origin + '/wecom/chat-archive'
+}
+
 onMounted(() => {
   loadData()
   loadActivities()
@@ -228,6 +233,7 @@ onMounted(() => {
 .si-orange { background: #fff7ed; color: #f59e0b; }
 .si-pink { background: #fdf2f8; color: #ec4899; }
 .si-purple { background: #f5f3ff; color: #8b5cf6; }
+.si-teal { background: #f0fdfa; color: #14b8a6; }
 .stat-card .stat-value {
   font-size: 22px; font-weight: 700; color: #1f2937; line-height: 1.2;
 }

@@ -115,10 +115,7 @@
               </div>
             </div>
             <div class="msg-header-right">
-              <el-radio-group v-model="renderMode" size="small" style="margin-right: 8px">
-                <el-radio-button label="bubble">气泡模式</el-radio-button>
-                <el-radio-button label="wecom">企微组件</el-radio-button>
-              </el-radio-group>
+              <!-- 气泡模式已隐藏，统一使用企微组件模式 -->
               <span class="msg-header-count">共 {{ msgTotal }} 条</span>
               <el-button link size="small" @click="refreshMessages"><el-icon><Refresh /></el-icon></el-button>
             </div>
@@ -128,14 +125,27 @@
           <div class="msg-panel-body" ref="chatMessagesRef" v-loading="msgLoading">
             <!-- 模式A: 企微会话展示组件渲染 -->
             <template v-if="renderMode === 'wecom'">
-              <!-- 非企微客户端：提示去企微打开 -->
+              <!-- 非企微客户端：引导去企微工作台打开 -->
               <div v-if="!isInWecomClient" class="wecom-redirect-prompt">
                 <el-icon :size="48" color="#1890ff"><Connection /></el-icon>
                 <h3>请在企业微信中打开</h3>
-                <p>会话存档的件模式需要在企业微信客户端内使用，这是企业微信官方要求。</p>
-                <p>点击下方按钮将自动跳转到企业微信客户端打开当前页面。</p>
-                <el-button type="primary" size="large" @click="openInWecom">去企业微信中打开</el-button>
-                <p class="sub-tip">如未自动跳转，请手动在企业微信工作台中打开本系统</p>
+                <p>根据企业微信规则，会话存档内容需要在企业微信内置浏览器中才能查看。</p>
+                <div class="wecom-guide-steps">
+                  <div class="guide-step">
+                    <span class="step-num">1</span>
+                    <span>打开<strong>企业微信</strong>客户端，进入底部<strong>「工作台」</strong></span>
+                  </div>
+                  <div class="guide-step">
+                    <span class="step-num">2</span>
+                    <span>在工作台中找到并打开<strong>「云客CRM」</strong>应用</span>
+                  </div>
+                  <div class="guide-step">
+                    <span class="step-num">3</span>
+                    <span>在H5首页点击<strong>「会话存档」</strong>快捷入口即可进入</span>
+                  </div>
+                </div>
+                <el-button type="primary" @click="openWecomClient">打开企业微信</el-button>
+                <p class="sub-tip">注意：请从企微工作台打开应用，聊天窗口粘贴链接会打开系统浏览器而非内置浏览器</p>
               </div>
               <!-- 企微客户端：SDK初始化中 -->
               <div v-else-if="sdkInitializing" class="wecom-sdk-loading">
@@ -151,9 +161,18 @@
                   @error="handleWecomRenderError"
                 />
               </template>
-              <!-- SDK初始化失败：自动降级提示 -->
+              <!-- SDK初始化失败 -->
               <div v-else class="wecom-sdk-fallback">
-                <p>企微SDK初始化失败，已自动切换为气泡模式</p>
+                <el-icon :size="40" color="#e6a23c"><WarningFilled /></el-icon>
+                <h4>企微SDK初始化失败</h4>
+                <p v-if="sdkInitError" class="sdk-error-detail">{{ sdkInitError }}</p>
+                <p>请检查以下配置：</p>
+                <ul class="sdk-check-list">
+                  <li>企微应用的「可信域名」是否包含当前网站域名</li>
+                  <li>企微应用的 agentId 是否正确配置</li>
+                  <li>是否在企业微信客户端内打开（非普通浏览器）</li>
+                </ul>
+                <el-button size="small" @click="autoInitSdk">重试初始化</el-button>
               </div>
             </template>
 
@@ -347,11 +366,10 @@ defineOptions({ name: 'ConversationView' })
 const props = defineProps<{ configId: number | null }>()
 const emit = defineEmits<{ (e: 'audit', record: ConvMessage): void }>()
 
-// ==================== 渲染模式切换 ====================
-// ★ 企微客户端内默认 wecom 模式（OpenData组件渲染）
-// 普通浏览器默认 bubble 模式（不依赖SDK）
+// ==================== 渲染模式 ====================
+// ★ 统一使用企微组件模式，非企微客户端显示跳转引导
 const isInWecomClient = /wxwork|WeCom/i.test(navigator.userAgent)
-const renderMode = ref<'bubble' | 'wecom'>(isInWecomClient ? 'wecom' : 'bubble')
+const renderMode = ref<'bubble' | 'wecom'>('wecom')
 const messageKeys = ref<Array<{ msgid: string; secretKey: string }>>([])
 
 // ==================== 企微SDK状态 ====================
@@ -359,29 +377,33 @@ const { isWecomReady, initFromConfig } = useWecomOpenData()
 const sdkInitializing = ref(false)
 const sdkInitDone = ref(false)
 
+const sdkInitError = ref('')
+
 /** 在企微客户端内自动初始化SDK（无需扫码） */
 const autoInitSdk = async () => {
   if (!isInWecomClient || sdkInitDone.value) return
   sdkInitializing.value = true
+  sdkInitError.value = ''
   try {
     const success = await initFromConfig(props.configId)
     if (!success) {
-      // SDK初始化失败，自动降级为气泡模式
-      renderMode.value = 'bubble'
+      sdkInitError.value = '企微SDK初始化失败，请检查企微应用配置（可信域名、agentId等）'
     } else if (selectedConv.value) {
       fetchMessageKeys()
     }
+  } catch (e: any) {
+    sdkInitError.value = e?.message || 'SDK初始化异常'
   } finally {
     sdkInitializing.value = false
     sdkInitDone.value = true
   }
 }
 
-/** 跳转到企业微信客户端打开当前页面 */
-const openInWecom = () => {
-  const currentUrl = window.location.href
-  window.location.href = `wxwork://openurl?url=${encodeURIComponent(currentUrl)}`
+/** 打开企业微信客户端 */
+const openWecomClient = () => {
+  window.location.href = 'wxwork://'
 }
+
 
 /** 获取消息密钥列表（企微组件模式用） */
 const fetchMessageKeys = async () => {
@@ -407,10 +429,11 @@ const fetchMessageKeys = async () => {
   }
 }
 
-/** 企微组件渲染错误处理：自动降级到气泡模式 */
+/** 企微组件渲染错误处理 */
 const handleWecomRenderError = (error: any) => {
-  console.warn('企微组件渲染错误，自动切换回气泡模式:', error)
-  renderMode.value = 'bubble'
+  console.warn('企微组件渲染错误:', error)
+  sdkInitError.value = error?.message || error?.detail?.errMsg || '企微组件渲染异常'
+  ElMessage.warning('企微组件渲染失败: ' + sdkInitError.value)
 }
 
 const userStore = useUserStore()
@@ -686,8 +709,8 @@ const selectConversation = async (conv: Conversation) => {
   messages.value = []
   messageKeys.value = []
   await fetchMessages()
-  // 企微组件模式下同时获取消息密钥
-  if (renderMode.value === 'wecom') {
+  // 企微组件模式获取消息密钥
+  if (isInWecomClient && isWecomReady.value) {
     await fetchMessageKeys()
   }
 }
@@ -763,11 +786,6 @@ const getWeappTitle = (content: string) => { try { const c = JSON.parse(content)
 
 // ==================== 生命周期 ====================
 watch(() => props.configId, () => { fetchArchiveMembers() }, { immediate: true })
-watch(renderMode, (mode) => {
-  if (mode === 'wecom' && selectedConv.value) {
-    fetchMessageKeys()
-  }
-})
 
 onMounted(() => {
   fetchArchiveMembers()
@@ -902,7 +920,15 @@ defineExpose({ fetchConversations, fetchArchiveMembers })
 .wecom-redirect-prompt h3 { margin: 16px 0 8px; font-size: 18px; color: #1f2937; }
 .wecom-redirect-prompt p { color: #6b7280; font-size: 14px; margin-bottom: 16px; }
 .wecom-redirect-prompt .sub-tip { margin-top: 12px; font-size: 12px; color: #9ca3af; }
+.wecom-guide-steps { display: flex; flex-direction: column; gap: 12px; margin: 16px 0 20px; text-align: left; background: #f8fafc; border-radius: 8px; padding: 16px 20px; }
+.guide-step { display: flex; align-items: center; gap: 10px; font-size: 14px; color: #374151; }
+.guide-step strong { color: #1890ff; }
+.step-num { width: 24px; height: 24px; border-radius: 50%; background: #1890ff; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; flex-shrink: 0; }
 .wecom-sdk-loading { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; gap: 12px; color: #6b7280; }
-.wecom-sdk-fallback { display: flex; align-items: center; justify-content: center; height: 60px; color: #e6a23c; font-size: 13px; }
+.wecom-sdk-fallback { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; gap: 10px; padding: 40px; text-align: center; color: #6b7280; }
+.wecom-sdk-fallback h4 { font-size: 16px; color: #1f2937; margin: 4px 0; }
+.wecom-sdk-fallback .sdk-error-detail { font-size: 12px; color: #e6a23c; background: #fdf6ec; padding: 6px 12px; border-radius: 4px; max-width: 400px; word-break: break-all; }
+.sdk-check-list { text-align: left; font-size: 13px; color: #6b7280; line-height: 2; padding-left: 20px; margin: 8px 0; }
+.sdk-check-list li { list-style: disc; }
 </style>
 
