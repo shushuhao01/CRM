@@ -163,6 +163,83 @@ router.post('/chat-records/sync', authenticateToken, requireAdmin, async (req: R
   }
 });
 
+// ==================== 诊断：直接测试sync_msg API ====================
+
+router.post('/chat-records/diagnose', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const { configId } = req.body;
+    if (!configId) return res.status(400).json({ success: false, message: '请选择企微配置' });
+    const configRepo = getTenantRepo(WecomConfig);
+    const config = await configRepo.findOne({ where: { id: configId, isEnabled: true } });
+    if (!config) return res.status(404).json({ success: false, message: '企微配置不存在' });
+
+    const { WecomTokenService } = await import('../../services/wecom/WecomTokenService');
+    const { default: axios } = await import('axios');
+
+    // Step1: 获取token
+    const token = await WecomTokenService.getAccessToken(config, 'chat');
+    const tokenInfo = { len: token.length, prefix: token.substring(0, 10) + '...' };
+
+    // Step2: 查询当前保存的游标
+    const { TenantSettings } = await import('../../entities/TenantSettings');
+    const settingsRepo = AppDataSource.getRepository(TenantSettings);
+    const cursorSetting = await settingsRepo.findOne({
+      where: { tenantId: config.tenantId, settingKey: `wecom_chat_archive_cursor_${config.id}` }
+    });
+    const savedCursor = cursorSetting?.settingValue ? JSON.parse(cursorSetting.settingValue)?.cursor || '' : '';
+
+    // Step3: 调用sync_msg（不带cursor从头拉）
+    const rawResponse = await axios.post(
+      `https://qyapi.weixin.qq.com/cgi-bin/chatdata/sync_msg?access_token=${token}`,
+      { limit: 10 }
+    );
+
+    // Step4: 也尝试带cursor调用
+    let cursorResponse: any = null;
+    if (savedCursor) {
+      try {
+        const r2 = await axios.post(
+          `https://qyapi.weixin.qq.com/cgi-bin/chatdata/sync_msg?access_token=${token}`,
+          { cursor: savedCursor, limit: 10 }
+        );
+        cursorResponse = { errcode: r2.data.errcode, errmsg: r2.data.errmsg, msg_list_len: r2.data.msg_list?.length ?? null, has_more: r2.data.has_more };
+      } catch (e: any) { cursorResponse = { error: e.message }; }
+    }
+
+    // Step5: 检查DB中已有的记录数
+    const dbCount = await AppDataSource.query(
+      `SELECT COUNT(*) as cnt FROM wecom_chat_records WHERE wecom_config_id = ? AND msg_type != 'meta'`, [configId]
+    );
+
+    res.json({
+      success: true,
+      data: {
+        config: { id: config.id, corpId: config.corpId, authType: config.authType, hasChatSecret: !!config.chatArchiveSecret },
+        token: tokenInfo,
+        savedCursor: savedCursor || '(无，将从头拉取)',
+        noCursorCall: {
+          errcode: rawResponse.data.errcode,
+          errmsg: rawResponse.data.errmsg,
+          msg_list_count: rawResponse.data.msg_list?.length ?? null,
+          has_more: rawResponse.data.has_more,
+          next_cursor: rawResponse.data.next_cursor ? rawResponse.data.next_cursor.substring(0, 20) + '...' : '',
+          first_msg: rawResponse.data.msg_list?.[0] ? {
+            msgid: rawResponse.data.msg_list[0].msgid,
+            sender: rawResponse.data.msg_list[0].sender,
+            send_time: rawResponse.data.msg_list[0].send_time,
+            msgtype: rawResponse.data.msg_list[0].msgtype,
+            chatid: rawResponse.data.msg_list[0].chatid || null
+          } : null
+        },
+        withCursorCall: cursorResponse,
+        dbRecordCount: parseInt(dbCount[0]?.cnt) || 0
+      }
+    });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 // ==================== 统计 ====================
 
 router.get('/chat-archive/stats', authenticateToken, async (req: Request, res: Response) => {

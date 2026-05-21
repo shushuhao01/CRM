@@ -384,6 +384,10 @@ export const syncChatRecords = (configId: number) => {
   return request.post('/wecom/chat-records/sync', { configId })
 }
 
+export const diagnoseChatRecords = (configId: number) => {
+  return request.post('/wecom/chat-records/diagnose', { configId })
+}
+
 /** 获取会话存档统计信息 */
 export const getChatArchiveStats = (configId: number) => {
   return request.get('/wecom/chat-archive/stats', { params: { configId }, showError: false } as any)

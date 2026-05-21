@@ -60,6 +60,9 @@
             <el-button type="success" :loading="syncing" @click="handleSync" :disabled="!selectedConfigId">
               <el-icon><Refresh /></el-icon> 同步
             </el-button>
+            <el-button type="warning" size="small" @click="handleDiagnose" :disabled="!selectedConfigId" :loading="diagnosing">
+              诊断
+            </el-button>
           </template>
         </WecomHeader>
       </template>
@@ -250,8 +253,8 @@
 defineOptions({ name: 'WecomChatArchive' })
 import { ref, computed, onMounted } from 'vue'
 import { Document, Refresh, Search, Lock, ShoppingCart, ChatLineSquare, InfoFilled } from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
-import { getWecomConfigs, getChatArchiveStatus, getChatRecords, syncChatRecords, getArchiveSeats, getWecomDepartments, getWecomUsers } from '@/api/wecom'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { getWecomConfigs, getChatArchiveStatus, getChatRecords, syncChatRecords, diagnoseChatRecords, getArchiveSeats, getWecomDepartments, getWecomUsers } from '@/api/wecom'
 import { formatMsgTime, getMsgTypeText, getTextContent, getMetaSummary, getMetaAgreed, formatToUsers } from './utils'
 import type { ArchiveStatus, ChatRecord } from './types'
 import { useWecomDemo, DEMO_CONFIGS } from './composables/useWecomDemo'
@@ -599,6 +602,41 @@ const handleSync = async () => {
     syncing.value = false
   }
 }
+
+const diagnosing = ref(false)
+const handleDiagnose = async () => {
+  if (!selectedConfigId.value) return
+  diagnosing.value = true
+  try {
+    const res: any = await diagnoseChatRecords(selectedConfigId.value)
+    const d = res
+    const info = [
+      `【诊断结果】`,
+      `企微配置: corpId=${d.config?.corpId}, authType=${d.config?.authType}, hasChatSecret=${d.config?.hasChatSecret}`,
+      `Token: ${d.token?.prefix} (len=${d.token?.len})`,
+      `已保存游标: ${d.savedCursor}`,
+      ``,
+      `--- 无游标调用 sync_msg ---`,
+      `errcode: ${d.noCursorCall?.errcode}`,
+      `errmsg: ${d.noCursorCall?.errmsg}`,
+      `msg_list数量: ${d.noCursorCall?.msg_list_count}`,
+      `has_more: ${d.noCursorCall?.has_more}`,
+      `next_cursor: ${d.noCursorCall?.next_cursor || '(空)'}`,
+      d.noCursorCall?.first_msg ? `首条消息: sender=${JSON.stringify(d.noCursorCall.first_msg.sender)}, time=${d.noCursorCall.first_msg.send_time}, type=${d.noCursorCall.first_msg.msgtype}` : '首条消息: 无',
+      ``,
+      `--- 带游标调用 ---`,
+      d.withCursorCall ? `errcode=${d.withCursorCall.errcode}, msg_list=${d.withCursorCall.msg_list_len}` : '(未保存游标，跳过)',
+      ``,
+      `数据库已有记录数: ${d.dbRecordCount}`
+    ].join('\n')
+    ElMessageBox.alert(info, 'sync_msg 诊断', { confirmButtonText: '确定', customStyle: { whiteSpace: 'pre-wrap', fontFamily: 'monospace', fontSize: '12px' } })
+  } catch (e: any) {
+    ElMessage.error('诊断失败: ' + (e?.message || '未知错误'))
+  } finally {
+    diagnosing.value = false
+  }
+}
+
 
 const handleAudit = (row: ChatRecord) => {
   auditDialogRef.value?.open(row)

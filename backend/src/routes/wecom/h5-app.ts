@@ -1360,8 +1360,10 @@ router.post('/mp-generate-card', authenticateSidebarToken, async (req: Request, 
       }
     } catch { /* ignore */ }
 
-    const defaultImgUrl = `${req.protocol}://${req.get('host')}/form-cover.png`;
+    const host = req.get('host') || req.hostname || 'crm.yunkes.com';
+    const defaultImgUrl = `https://${host}/form-cover.png`;
     if (!imageUrl) imageUrl = defaultImgUrl;
+    if (imageUrl && imageUrl.startsWith('http://')) imageUrl = imageUrl.replace('http://', 'https://');
 
     res.json({ success: true, data: { sign, appId, title: cardTitle, imageUrl, cardTitle, cardCoverUrl, useMiniprogram, pagePath } });
   } catch (error: any) {

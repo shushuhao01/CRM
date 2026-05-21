@@ -1440,6 +1440,7 @@ async function trySendCard(payload: any): Promise<'sent' | 'cancel' | 'failed'> 
   debugInfo.push(`[trySendCard] ww=${!!ww}, ww.sendChat=${typeof ww?.sendChatMessage}, wx=${!!wx}, wx.invoke=${typeof wx?.invoke}`)
   debugInfo.push(`[trySendCard] msgtype=${payload?.msgtype}, appid=${payload?.miniprogram?.appid || 'N/A'}, page=${payload?.miniprogram?.page?.substring(0, 50) || 'N/A'}`)
   debugInfo.push(`[trySendCard] link=${payload?.news?.link?.substring(0, 60) || 'N/A'}`)
+  debugInfo.push(`[trySendCard] imgUrl=${payload?.miniprogram?.imgUrl?.substring(0, 60) || payload?.news?.imgUrl?.substring(0, 60) || 'N/A'}`)
 
   // 方式1：新版SDK ww.sendChatMessage
   if (ww && typeof ww.sendChatMessage === 'function') {
@@ -1507,7 +1508,10 @@ async function preGenerateFormCard() {
 
     const mpAppId = data.appId || ''
     const title = data.title || '请填写您的个人资料'
-    const imgUrl = data.imageUrl || `${window.location.origin}/form-cover.png`
+    let imgUrl = data.imageUrl
+      ? (data.imageUrl.startsWith('http') ? data.imageUrl : `${window.location.origin}${data.imageUrl}`)
+      : `${window.location.origin}/form-cover.png`
+    imgUrl = imgUrl.replace(/^http:\/\//, 'https://')
     const sign = data.sign || ''
     const basePage = data.pagePath || 'pages/form/form'
     const mpPage = `${basePage.replace(/^\//, '')}?tenantId=${tenantId}&memberId=${memberId}&ts=${ts}&sign=${sign}&externalUserId=${extUserId}`

@@ -214,9 +214,10 @@ const generateCard = async (showMsg = true) => {
       // API可能不存在，使用预设配置
     }
 
-    const imgUrl = data.imageUrl
+    let imgUrl = data.imageUrl
       ? (data.imageUrl.startsWith('http') ? data.imageUrl : `${window.location.origin}${data.imageUrl}`)
       : defaultImgUrl
+    imgUrl = imgUrl.replace(/^http:\/\//, 'https://')
     const title = data.title || defaultTitle
 
     const mpAppId = data.appId || ''
@@ -267,6 +268,7 @@ async function trySend(payload: any): Promise<'sent' | 'cancel' | 'failed'> {
   const debugInfo: string[] = []
   debugInfo.push(`[trySend] ww=${!!ww}, ww.sendChat=${typeof ww?.sendChatMessage}, wx=${!!wx}, wx.invoke=${typeof wx?.invoke}`)
   debugInfo.push(`[trySend] payload.msgtype=${payload?.msgtype}, appid=${payload?.miniprogram?.appid || 'N/A'}`)
+  debugInfo.push(`[trySend] imgUrl=${payload?.miniprogram?.imgUrl?.substring(0, 60) || payload?.news?.imgUrl?.substring(0, 60) || 'N/A'}`)
 
   // 方式1：新版SDK ww.sendChatMessage
   if (ww && typeof ww.sendChatMessage === 'function') {
