@@ -146,7 +146,26 @@ async function ensureSubscriptionColumns(): Promise<boolean> {
         `ALTER TABLE tenant_packages ADD COLUMN subscription_discount_rate DECIMAL(5,2) DEFAULT 0.00 COMMENT '订阅优惠折扣率（百分比）'`
       )
     }
-    log.info('[packages] ✅ 订阅字段添加成功（含subscription_billing_cycle）')
+    // 每个套餐按周期配置独立的微信委托代扣计划ID（JSON格式：{"monthly":"plan_xxx","yearly":"plan_yyy"}）
+    // 适配微信"不高于"模式1000元/次限制，超限周期不配置planId则自动禁用该周期的代扣
+    const planIdCols = await AppDataSource.query(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'tenant_packages' AND COLUMN_NAME IN ('wechat_plan_id', 'wechat_plan_ids')`
+    )
+    const planIdColNames = planIdCols.map((c: any) => c.COLUMN_NAME)
+    if (!planIdColNames.includes('wechat_plan_ids')) {
+      await AppDataSource.query(
+        `ALTER TABLE tenant_packages ADD COLUMN wechat_plan_ids TEXT DEFAULT NULL COMMENT '微信委托代扣计划ID（JSON: {"monthly":"planId","yearly":"planId"}，留空使用全局配置）'`
+      )
+      log.info('[packages] ✅ 已添加 wechat_plan_ids 字段')
+      // 迁移旧的单字段数据
+      if (planIdColNames.includes('wechat_plan_id')) {
+        await AppDataSource.query(
+          `UPDATE tenant_packages SET wechat_plan_ids = CONCAT('{"monthly":"', wechat_plan_id, '"}') WHERE wechat_plan_id IS NOT NULL AND wechat_plan_id != ''`
+        ).catch(() => {})
+      }
+    }
+    log.info('[packages] ✅ 订阅字段添加成功（含subscription_billing_cycle, wechat_plan_ids）')
     subscriptionColumnsExist = true
     await ensureSubscriptionTables()
     return true
@@ -440,6 +459,9 @@ router.get('/', async (req: Request, res: Response) => {
       subscription_channels: pkg.subscription_channels || 'all',
       subscription_billing_cycle: pkg.subscription_billing_cycle || 'monthly',
       subscription_discount_rate: Number(pkg.subscription_discount_rate) || 0,
+      wechat_plan_ids: (() => {
+        try { return pkg.wechat_plan_ids ? JSON.parse(pkg.wechat_plan_ids) : {} } catch { return {} }
+      })(),
       user_limit_mode: pkg.user_limit_mode || 'total',
       max_online_seats: Number(pkg.max_online_seats) || 0
     }))
@@ -462,6 +484,7 @@ router.post('/', async (req: Request, res: Response) => {
       name, code, type, description, price, original_price,
       billing_cycle, yearly_discount_rate, yearly_bonus_months, yearly_price,
       subscription_enabled, subscription_channels, subscription_billing_cycle, subscription_discount_rate,
+      wechat_plan_ids,
       duration_days, max_users, max_storage_gb,
       user_limit_mode, max_online_seats,
       features, feature_details, modules, is_trial, is_recommended, is_visible, sort_order
@@ -478,6 +501,8 @@ router.post('/', async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, message: '套餐代码已存在' })
     }
 
+    const planIdsJson = wechat_plan_ids && typeof wechat_plan_ids === 'object' ? JSON.stringify(wechat_plan_ids) : (wechat_plan_ids || null)
+
     let insertSql: string
     let insertParams: any[]
 
@@ -485,16 +510,16 @@ router.post('/', async (req: Request, res: Response) => {
       insertSql = `INSERT INTO tenant_packages
        (name, code, type, description, price, original_price, billing_cycle,
         yearly_discount_rate, yearly_bonus_months, yearly_price,
-        ${hasSub ? 'subscription_enabled, subscription_channels, subscription_billing_cycle, subscription_discount_rate,' : ''}
+        ${hasSub ? 'subscription_enabled, subscription_channels, subscription_billing_cycle, subscription_discount_rate, wechat_plan_ids,' : ''}
         ${hasSeat ? 'user_limit_mode, max_online_seats,' : ''}
         duration_days, max_users, max_storage_gb, features, feature_details, modules, is_trial,
         is_recommended, is_visible, sort_order, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ${hasSub ? '?, ?, ?, ?,' : ''} ${hasSeat ? '?, ?,' : ''} ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ${hasSub ? '?, ?, ?, ?, ?,' : ''} ${hasSeat ? '?, ?,' : ''} ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`
       insertParams = [
         name, code, type, description || '', price || 0, original_price || price || 0,
         billing_cycle || 'monthly',
         yearly_discount_rate || 0, yearly_bonus_months || 0, yearly_price || null,
-        ...(hasSub ? [subscription_enabled ? 1 : 0, subscription_channels || 'all', subscription_billing_cycle || 'monthly', subscription_discount_rate || 0] : []),
+        ...(hasSub ? [subscription_enabled ? 1 : 0, subscription_channels || 'all', subscription_billing_cycle || 'monthly', subscription_discount_rate || 0, planIdsJson] : []),
         ...(hasSeat ? [user_limit_mode || 'total', max_online_seats || 0] : []),
         duration_days || 30, max_users || 10,
         max_storage_gb || 5, JSON.stringify(features || []), feature_details ? JSON.stringify(feature_details) : null, JSON.stringify(modules || []),
@@ -537,10 +562,13 @@ router.put('/:id', async (req: Request, res: Response) => {
       name, description, price, original_price, billing_cycle,
       yearly_discount_rate, yearly_bonus_months, yearly_price,
       subscription_enabled, subscription_channels, subscription_billing_cycle, subscription_discount_rate,
+      wechat_plan_ids,
       user_limit_mode, max_online_seats,
       duration_days, max_users, max_storage_gb, features, feature_details, modules,
       is_trial, is_recommended, is_visible, sort_order, status
     } = req.body
+
+    const planIdsJson = wechat_plan_ids && typeof wechat_plan_ids === 'object' ? JSON.stringify(wechat_plan_ids) : (wechat_plan_ids || null)
 
     let updateSql: string
     let updateParams: any[]
@@ -549,7 +577,7 @@ router.put('/:id', async (req: Request, res: Response) => {
       updateSql = `UPDATE tenant_packages SET
        name = ?, description = ?, price = ?, original_price = ?,
        billing_cycle = ?, yearly_discount_rate = ?, yearly_bonus_months = ?, yearly_price = ?,
-       ${hasSub ? 'subscription_enabled = ?, subscription_channels = ?, subscription_billing_cycle = ?, subscription_discount_rate = ?,' : ''}
+       ${hasSub ? 'subscription_enabled = ?, subscription_channels = ?, subscription_billing_cycle = ?, subscription_discount_rate = ?, wechat_plan_ids = ?,' : ''}
        ${hasSeat ? 'user_limit_mode = ?, max_online_seats = ?,' : ''}
        duration_days = ?, max_users = ?,
        max_storage_gb = ?, features = ?, feature_details = ?, modules = ?, is_trial = ?,
@@ -558,7 +586,7 @@ router.put('/:id', async (req: Request, res: Response) => {
       updateParams = [
         name, description, price, original_price, billing_cycle,
         yearly_discount_rate || 0, yearly_bonus_months || 0, yearly_price || null,
-        ...(hasSub ? [subscription_enabled ? 1 : 0, subscription_channels || 'all', subscription_billing_cycle || 'monthly', subscription_discount_rate || 0] : []),
+        ...(hasSub ? [subscription_enabled ? 1 : 0, subscription_channels || 'all', subscription_billing_cycle || 'monthly', subscription_discount_rate || 0, planIdsJson] : []),
         ...(hasSeat ? [user_limit_mode || 'total', max_online_seats || 0] : []),
         duration_days, max_users, max_storage_gb,
         JSON.stringify(features || []), feature_details ? JSON.stringify(feature_details) : null, JSON.stringify(modules || []), is_trial ? 1 : 0,

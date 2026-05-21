@@ -511,6 +511,7 @@ const form = reactive({
   subscription_channels: 'all' as 'wechat' | 'alipay' | 'all',
   subscription_billing_cycle: 'monthly' as 'monthly' | 'yearly' | 'both',
   subscription_discount_rate: 0,
+  wechat_plan_ids: { monthly: '', yearly: '' } as Record<string, string>,
   is_trial: false,
   is_recommended: false,
   is_visible: true,
@@ -676,7 +677,7 @@ const resetForm = () => {
     max_storage_gb: isCommunity ? 2 : (isPrivate ? 0 : 5),
     features: isCommunity ? ['客户管理', '订单管理', '物流管理', '售后管理', '数据看板', '3用户上限', '社区支持'] : [''],
     modules: isCommunity ? [...communityDefaultModules] : [],
-    subscription_enabled: false, subscription_channels: 'all', subscription_billing_cycle: 'monthly', subscription_discount_rate: 0,
+    subscription_enabled: false, subscription_channels: 'all', subscription_billing_cycle: 'monthly', subscription_discount_rate: 0, wechat_plan_ids: { monthly: '', yearly: '' },
     is_trial: false, is_recommended: false, is_visible: true,
     sort_order: 0, status: true
   })
@@ -703,6 +704,10 @@ const handleEdit = (pkg: Package) => {
     subscription_channels: pkg.subscription_channels || 'all',
     subscription_billing_cycle: pkg.subscription_billing_cycle || 'monthly',
     subscription_discount_rate: Number(pkg.subscription_discount_rate) || 0,
+    wechat_plan_ids: (() => {
+      const ids = pkg.wechat_plan_ids || {}
+      return { monthly: ids.monthly || '', yearly: ids.yearly || '' }
+    })(),
     user_limit_mode: pkg.user_limit_mode || 'total',
     max_online_seats: Number(pkg.max_online_seats) || 5
   })

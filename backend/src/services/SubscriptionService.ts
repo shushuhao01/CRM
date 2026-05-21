@@ -122,9 +122,9 @@ export class SubscriptionService {
       }
     }
 
-    // 查询套餐信息
+    // 查询套餐信息（含套餐级微信代扣计划ID）
     const pkgs = await AppDataSource.query(
-      'SELECT id, price, name, subscription_enabled, subscription_channels, subscription_discount_rate FROM tenant_packages WHERE id = ?',
+      'SELECT id, price, name, subscription_enabled, subscription_channels, subscription_discount_rate, wechat_plan_ids FROM tenant_packages WHERE id = ?',
       [params.packageId]
     );
     if (pkgs.length === 0) throw new Error('套餐不存在');
@@ -183,7 +183,13 @@ export class SubscriptionService {
 
     try {
       if (params.channel === 'wechat') {
-        const result = await this.createWechatContract(subscriptionId, params.tenantId, pkg.name, amount, params.billingCycle);
+        // 解析套餐级按周期配置的planId
+        let cyclePlanId: string | undefined;
+        try {
+          const planIds = pkg.wechat_plan_ids ? JSON.parse(pkg.wechat_plan_ids) : {};
+          cyclePlanId = planIds[params.billingCycle] || undefined;
+        } catch { /* JSON解析失败则忽略 */ }
+        const result = await this.createWechatContract(subscriptionId, params.tenantId, pkg.name, amount, params.billingCycle, cyclePlanId);
         signUrl = result.signUrl;
         signType = result.signType;
         // 保存微信计划编号
@@ -239,7 +245,8 @@ export class SubscriptionService {
     tenantId: string,
     packageName: string,
     amount: number,
-    billingCycle: string
+    billingCycle: string,
+    packagePlanId?: string
   ): Promise<{ signUrl: string; signType: string; planId?: string }> {
     const config = await this.getWechatConfig();
 
@@ -249,10 +256,12 @@ export class SubscriptionService {
 
     const privateKey = await this.resolvePrivateKey(config.keyPem);
 
-    // 代扣计划编号：优先使用商户平台预创建的计划ID，未配置则动态生成（仅开发测试用）
-    const planId = config.pappayPlanId || `PLAN_${billingCycle.toUpperCase()}_${Date.now()}`;
-    if (!config.pappayPlanId) {
-      log.warn('[Subscription] 未配置微信委托代扣计划ID(pappayPlanId)，使用临时生成的planId，正式环境请在管理后台配置');
+    // 代扣计划编号优先级：套餐级planId > 全局配置planId > 临时生成（仅开发测试用）
+    const planId = packagePlanId || config.pappayPlanId || `PLAN_${billingCycle.toUpperCase()}_${Date.now()}`;
+    if (!packagePlanId && !config.pappayPlanId) {
+      log.warn('[Subscription] 未配置微信委托代扣计划ID，使用临时生成的planId，正式环境请在套餐或支付配置中填写');
+    } else if (packagePlanId) {
+      log.info(`[Subscription] 使用套餐级计划ID: ${packagePlanId}`);
     }
 
     const requestData = {

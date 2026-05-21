@@ -72,6 +72,9 @@ router.get('/', async (req: Request, res: Response) => {
         subscription_channels: pkg.subscription_channels || 'all',
         subscription_billing_cycle: pkg.subscription_billing_cycle || 'monthly',
         subscription_discount_rate: Number(pkg.subscription_discount_rate) || 0,
+        wechat_plan_ids: (() => {
+          try { return pkg.wechat_plan_ids ? JSON.parse(pkg.wechat_plan_ids) : {} } catch { return {} }
+        })(),
         user_limit_mode: pkg.user_limit_mode || 'total',
         max_online_seats: Number(pkg.max_online_seats) || 0,
         modules: typeof pkg.modules === 'string' ? JSON.parse(pkg.modules) : (pkg.modules || [])

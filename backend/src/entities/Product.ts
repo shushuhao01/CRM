@@ -37,8 +37,23 @@ export class Product {
   @Column({ name: 'min_stock', type: 'int', default: 0, comment: '最小库存' })
   minStock: number
 
+  @Column({ name: 'max_stock', type: 'int', default: 0, comment: '最高库存' })
+  maxStock: number
+
   @Column({ type: 'varchar', length: 20, default: '件', comment: '单位' })
   unit: string
+
+  @Column({ type: 'varchar', length: 100, nullable: true, comment: '商品品牌' })
+  brand?: string
+
+  @Column({ type: 'varchar', length: 200, nullable: true, comment: '商品规格' })
+  specification?: string
+
+  @Column({ type: 'decimal', precision: 10, scale: 2, default: 0, comment: '商品重量(kg)' })
+  weight: number
+
+  @Column({ type: 'varchar', length: 100, nullable: true, comment: '商品尺寸' })
+  dimensions?: string
 
   @Column({ type: 'json', nullable: true, comment: '规格参数' })
   specifications?: Record<string, any>

@@ -61,7 +61,10 @@ router.use('/packages', requireSaaSMode);
 router.use('/payment/create', requireSaaSMode);
 router.use('/payment/close', requireSaaSMode);
 router.use('/member', requireSaaSMode);
-router.use('/subscription', requireSaaSMode);
+// ⚠️ 订阅接口：仅对写操作保护；签约/扣款回调由微信/支付宝服务器调用，必须绕过SaaS守卫
+router.use('/subscription/create', requireSaaSMode);
+router.use('/subscription/cancel', requireSaaSMode);
+router.use('/subscription/status', requireSaaSMode);
 router.use('/capacity', requireSaaSMode);
 
 // 注册相关接口（带专用限流）

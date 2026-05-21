@@ -443,18 +443,18 @@ export class ProductController {
           name: p.name,
           categoryId: p.categoryId,
           categoryName: p.categoryName || p.category?.name || '',
-          brand: '',
-          specification: '',
+          brand: p.brand || '',
+          specification: p.specification || '',
           unit: p.unit || '件',
-          weight: 0,
-          dimensions: '',
+          weight: Number(p.weight) || 0,
+          dimensions: p.dimensions || '',
           description: p.description || '',
           price: Number(p.price),
           costPrice: Number(p.costPrice) || 0,
           marketPrice: Number(p.price),
           stock: stock,
           minStock: p.minStock || 0,
-          maxStock: 0,
+          maxStock: p.maxStock || 0,
           salesCount: salesCountMap[p.id] || 0, // 🔥 使用统计的销量
           status: p.status,
           isRecommended: !!p.isRecommended,
@@ -552,7 +552,12 @@ export class ProductController {
           costPrice: Number(product.costPrice) || 0,
           stock: stock,
           minStock: product.minStock || 0,
+          maxStock: product.maxStock || 0,
           unit: product.unit || '件',
+          brand: product.brand || '',
+          specification: product.specification || '',
+          weight: Number(product.weight) || 0,
+          dimensions: product.dimensions || '',
           status: product.status,
           isRecommended: !!product.isRecommended,
           isNew: !!product.isNew,
@@ -637,7 +642,12 @@ export class ProductController {
         costPrice: Number(productData.costPrice) || 0,
         stock: Number(productData.stock) || 0,
         minStock: Number(productData.minStock) || 0,
+        maxStock: Number(productData.maxStock) || 0,
         unit: productData.unit || '件',
+        brand: productData.brand || '',
+        specification: productData.specification || '',
+        weight: Number(productData.weight) || 0,
+        dimensions: productData.dimensions || '',
         images: productData.images || (productData.image ? [productData.image] : []),
         status: productData.status || 'active',
         isRecommended: !!productData.isRecommended,
@@ -724,7 +734,12 @@ export class ProductController {
       if (updates.costPrice !== undefined) product.costPrice = Number(updates.costPrice)
       if (updates.stock !== undefined) product.stock = Number(updates.stock)
       if (updates.minStock !== undefined) product.minStock = Number(updates.minStock)
+      if (updates.maxStock !== undefined) product.maxStock = Number(updates.maxStock)
       if (updates.unit !== undefined) product.unit = updates.unit
+      if (updates.brand !== undefined) product.brand = updates.brand
+      if (updates.specification !== undefined) product.specification = updates.specification
+      if (updates.weight !== undefined) product.weight = Number(updates.weight)
+      if (updates.dimensions !== undefined) product.dimensions = updates.dimensions
       if (updates.status !== undefined) product.status = updates.status
       if (updates.isRecommended !== undefined) product.isRecommended = !!updates.isRecommended
       if (updates.isNew !== undefined) product.isNew = !!updates.isNew

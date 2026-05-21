@@ -339,6 +339,26 @@
                 <el-input-number v-model="form.subscription_discount_rate" :min="0" :max="50" :precision="1" style="width: 140px" />
                 <span style="margin-left: 8px; color: #909399;">%（如10表示9折，0表示无优惠）</span>
               </el-form-item>
+              <el-form-item label="微信代扣模板ID">
+                <div class="plan-ids-grid">
+                  <div v-if="form.subscription_billing_cycle === 'monthly' || form.subscription_billing_cycle === 'both'" class="plan-id-row">
+                    <span class="plan-id-label">月付模板ID</span>
+                    <el-input v-model="form.wechat_plan_ids.monthly" placeholder="留空使用全局配置" clearable size="small" style="flex:1" />
+                    <el-tag v-if="form.price > 1000" type="warning" size="small" effect="plain">月付¥{{ form.price }} 超1000元限额</el-tag>
+                    <el-tag v-else type="success" size="small" effect="plain">月付¥{{ form.price }}</el-tag>
+                  </div>
+                  <div v-if="form.subscription_billing_cycle === 'yearly' || form.subscription_billing_cycle === 'both'" class="plan-id-row">
+                    <span class="plan-id-label">年付模板ID</span>
+                    <el-input v-model="form.wechat_plan_ids.yearly" placeholder="留空使用全局配置" clearable size="small" style="flex:1" />
+                    <el-tag v-if="computedYearlySubPrice > 1000" type="warning" size="small" effect="plain">年付¥{{ computedYearlySubPrice }} 超1000元限额</el-tag>
+                    <el-tag v-else type="success" size="small" effect="plain">年付¥{{ computedYearlySubPrice }}</el-tag>
+                  </div>
+                </div>
+                <div style="color: #909399; font-size: 12px; margin-top: 6px; line-height: 1.7;">
+                  ⚠️ 微信委托代扣每笔限额 <strong style="color:#E6A23C">≤1000元</strong>，超限的周期需使用"固定金额(为)"模板单独创建。<br/>
+                  留空时使用"支付配置→委托代扣计划ID"中的全局ID。超限且无独立模板的周期将自动禁用代扣。
+                </div>
+              </el-form-item>
               <!-- 订阅价格预览 -->
               <el-form-item label="价格预览">
                 <div class="price-preview">
@@ -471,6 +491,7 @@ const form = reactive({
   subscription_channels: 'all' as 'wechat' | 'alipay' | 'all',
   subscription_billing_cycle: 'monthly' as 'monthly' | 'yearly' | 'both',
   subscription_discount_rate: 0,
+  wechat_plan_ids: { monthly: '', yearly: '' } as Record<string, string>,
   duration_days: 30,
   max_users: 10,
   max_storage_gb: 5,
@@ -562,6 +583,15 @@ const computedSubscriptionPrice = computed(() => {
   return form.price
 })
 
+// 年付订阅价格
+const computedYearlySubPrice = computed(() => {
+  let yearlyBase = form.yearly_price || (form.price * 12)
+  if (form.subscription_discount_rate > 0) {
+    yearlyBase = yearlyBase * (1 - form.subscription_discount_rate / 100)
+  }
+  return Math.round(yearlyBase)
+})
+
 // 卡片展示辅助方法
 const hasYearlyPromo = (pkg: Package) => {
   return (pkg.yearly_bonus_months > 0) || (pkg.yearly_discount_rate > 0) || (pkg.yearly_price && Number(pkg.yearly_price) > 0)
@@ -621,7 +651,7 @@ const resetForm = () => {
     name: '', code: '', type: activeTab.value, description: '',
     price: 0, billing_cycle: isPrivate ? 'once' : 'monthly',
     yearly_discount_rate: 0, yearly_bonus_months: 0, yearly_price: null,
-    subscription_enabled: false, subscription_channels: 'all', subscription_billing_cycle: 'monthly', subscription_discount_rate: 0,
+    subscription_enabled: false, subscription_channels: 'all', subscription_billing_cycle: 'monthly', subscription_discount_rate: 0, wechat_plan_ids: { monthly: '', yearly: '' },
     user_limit_mode: 'total', max_online_seats: 0,
     duration_days: isPrivate ? 36500 : 30,
     max_users: isPrivate ? 50 : 10, max_storage_gb: isPrivate ? 0 : 5,
@@ -651,6 +681,10 @@ const handleEdit = (pkg: Package) => {
     subscription_channels: pkg.subscription_channels || 'all',
     subscription_billing_cycle: pkg.subscription_billing_cycle || 'monthly',
     subscription_discount_rate: Number(pkg.subscription_discount_rate) || 0,
+    wechat_plan_ids: (() => {
+      const ids = pkg.wechat_plan_ids || {}
+      return { monthly: ids.monthly || '', yearly: ids.yearly || '' }
+    })(),
     user_limit_mode: pkg.user_limit_mode || 'total',
     max_online_seats: Number(pkg.max_online_seats) || 0,
     modules: pkg.modules?.length ? [...pkg.modules] : [],
@@ -811,6 +845,22 @@ onMounted(() => {
   color: #d97706;
   font-size: 12px;
   margin-top: 4px;
+}
+.plan-ids-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.plan-id-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.plan-id-label {
+  min-width: 80px;
+  font-size: 13px;
+  color: #606266;
+  font-weight: 500;
 }
 .feature-input {
   display: flex;
