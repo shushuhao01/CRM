@@ -129,6 +129,44 @@ export class WecomChatArchiveService {
       // ★ 第三方模式优化：优先拉取实际消息（快速，游标增量），然后轻量补充客户名称
       // 避免遍历所有外部联系人（可能上万），只处理有实际消息的会话
       if (config.authType === 'third_party') {
+        // Step 4.5: 确保已向企微设置RSA公钥（未设置公钥时消息不会被存档）
+        try {
+          const { WecomSuiteConfig } = await import('../entities/WecomSuiteConfig');
+          const suiteRepo = AppDataSource.getRepository(WecomSuiteConfig);
+          const suiteConfig = await suiteRepo.findOne({ where: {}, order: { id: 'ASC' } });
+          const rsaPrivateKey = suiteConfig?.chatArchiveRsaPrivateKey;
+          const rsaPublicKey = suiteConfig?.chatArchiveRsaPublicKey;
+
+          if (rsaPublicKey) {
+            // 检查是否已设置过公钥（通过标记避免每次同步都调用）
+            const pubKeySetFlag = `chat_pubkey_set_${config.id}`;
+            const alreadySet = await AppDataSource.query(
+              `SELECT config_value FROM system_configs WHERE config_key = ? AND config_group = 'chat_archive' LIMIT 1`,
+              [pubKeySetFlag]
+            ).catch(() => []);
+
+            if (!alreadySet?.length || alreadySet[0]?.config_value !== 'true') {
+              log.info(`[ChatArchive] Step4.5: 首次同步，向企微设置RSA公钥...`);
+              const pubKeyVer = 1;
+              await WecomApiService.setChatDataPublicKey(accessToken, rsaPublicKey, pubKeyVer);
+              // 标记已设置
+              await AppDataSource.query(
+                `INSERT INTO system_configs (id, config_key, config_group, config_value, is_enabled, created_at, updated_at)
+                 VALUES (UUID(), ?, 'chat_archive', 'true', 1, NOW(), NOW())
+                 ON DUPLICATE KEY UPDATE config_value = 'true', updated_at = NOW()`,
+                [pubKeySetFlag]
+              ).catch(() => {});
+              log.info(`[ChatArchive] Step4.5完成: RSA公钥已设置到企微`);
+              result.message += ' ✅ 首次设置公钥成功，消息将在下次同步时可拉取（企微需要时间开始存档）。';
+            }
+          } else if (!rsaPrivateKey) {
+            log.warn('[ChatArchive] Step4.5: 服务商未配置RSA密钥对');
+            result.message += ' ⚠️ 平台未配置RSA密钥对，请管理员在后台配置后重试。';
+          }
+        } catch (e: any) {
+          log.warn(`[ChatArchive] Step4.5: 设置公钥出错(非致命): ${e.message}`);
+        }
+
         // Step 5: 拉取实际聊天消息（数据专区API，游标增量，快速）
         log.info(`[ChatArchive] Step5: 第三方模式 - 拉取实际聊天消息（游标增量）...`);
         try {

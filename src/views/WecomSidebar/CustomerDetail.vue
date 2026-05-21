@@ -1444,10 +1444,9 @@ async function trySendCard(payload: any): Promise<'sent' | 'cancel' | 'failed'> 
       return 'sent'
     } catch (e: any) {
       if (/cancel/i.test(e?.message || e?.errMsg || '')) return 'cancel'
-      console.warn('[CustomerDetail] ww.sendChatMessage失败:', e?.message || e?.errMsg || JSON.stringify(e), 'payload.msgtype=', payload?.msgtype)
+      console.warn('[CustomerDetail] ww.sendChatMessage失败:', e?.message || e?.errMsg || JSON.stringify(e),
+        'payload:', JSON.stringify({ msgtype: payload?.msgtype, appid: payload?.miniprogram?.appid, page: payload?.miniprogram?.page?.substring(0, 60) }))
     }
-    // ★ ww存在时不再尝试wx.invoke：在ww模式下wx未经过config/agentConfig，
-    //   wx.invoke的回调可能永远不触发，导致Promise挂起、按钮永久失效
     return 'failed'
   }
 
@@ -1500,7 +1499,8 @@ async function preGenerateFormCard() {
     const title = data.title || '请填写您的个人资料'
     const imgUrl = data.imageUrl || `${window.location.origin}/form-cover.png`
     const sign = data.sign || ''
-    const mpPage = data.path || `/pages/form/form?tenantId=${tenantId}&memberId=${memberId}&ts=${ts}&sign=${sign}&externalUserId=${extUserId}`
+    const basePage = data.pagePath || 'pages/form/form'
+    const mpPage = `${basePage.replace(/^\//, '')}?tenantId=${tenantId}&memberId=${memberId}&ts=${ts}&sign=${sign}&externalUserId=${extUserId}`
     const h5Url = `${window.location.origin}/wecom-form.html?tenantId=${tenantId}&memberId=${memberId}&ts=${ts}&sign=${sign}&externalUserId=${extUserId}&appId=${mpAppId}`
 
     const mpPayload = mpAppId ? { msgtype: 'miniprogram', miniprogram: { appid: mpAppId, title, imgUrl, page: mpPage } } : null
@@ -1541,7 +1541,9 @@ async function handleSendFormCard() {
   if (sendingFormCard.value) return
   sendingFormCard.value = true
   try {
-    // 如果还没预生成，先同步准备一个降级payload（不做API调用）
+    // ★ 不在此处await sdkReady！等待会打断用户手势链导致企微SDK拒绝sendChatMessage
+    // SidebarCollect的handleSend也不等待sdkReady，保持一致
+
     if (!preGeneratedCardPayload.value) {
       await preGenerateFormCard()
     }
@@ -1551,9 +1553,9 @@ async function handleSendFormCard() {
       return
     }
 
-    console.log('[CustomerDetail] SDK状态:', { ww: !!(window as any).ww, wwSendChat: typeof (window as any).ww?.sendChatMessage })
+    console.log('[CustomerDetail] 发送卡片, SDK状态:', { ww: !!(window as any).ww, wwSendChat: typeof (window as any).ww?.sendChatMessage, msgtype: preGeneratedCardPayload.value?.msgtype })
 
-    // 第一步：尝试发送预生成的主payload（无异步API，保持用户手势链）
+    // 第一步：尝试发送预生成的主payload（无异步等待，保持用户手势链）
     let result = await trySendCard(preGeneratedCardPayload.value)
     let degraded = false
 
@@ -1565,15 +1567,6 @@ async function handleSendFormCard() {
       result = await trySendCard(fallbackCardPayload.value)
       if (result === 'cancel') { ElMessage.info('已取消发送'); sendingFormCard.value = false; return }
       if (result === 'sent') degraded = true
-    }
-
-    // 第三步：如果仍然失败，等待2秒后重试一次
-    if (result === 'failed') {
-      console.warn('[CustomerDetail] 首次发送失败，等待2秒后重试...')
-      await new Promise(r => setTimeout(r, 2000))
-      result = await trySendCard(fallbackCardPayload.value || preGeneratedCardPayload.value)
-      if (result === 'cancel') { ElMessage.info('已取消发送'); sendingFormCard.value = false; return }
-      if (result === 'sent' && preGeneratedCardPayload.value.msgtype === 'miniprogram') degraded = true
     }
 
     if (result === 'sent') {

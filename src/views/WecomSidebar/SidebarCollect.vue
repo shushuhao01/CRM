@@ -220,7 +220,8 @@ const generateCard = async (showMsg = true) => {
     const title = data.title || defaultTitle
 
     const mpAppId = data.appId || ''
-    const mpPage = data.path || `/pages/form/form?tenantId=${tenantId}&memberId=${memberId}&ts=${ts}&sign=${data.sign || ''}&externalUserId=${extUserId}`
+    const basePage = data.pagePath || 'pages/form/form'
+    const mpPage = `${basePage.replace(/^\//, '')}?tenantId=${tenantId}&memberId=${memberId}&ts=${ts}&sign=${data.sign || ''}&externalUserId=${extUserId}`
     const h5FormUrl = `${window.location.origin}/wecom-form.html?tenantId=${tenantId}&memberId=${memberId}&ts=${ts}&sign=${data.sign || ''}&externalUserId=${extUserId}&appId=${mpAppId}`
 
     // 根据用户选择的发送模式构建主payload
@@ -271,10 +272,9 @@ async function trySend(payload: any): Promise<'sent' | 'cancel' | 'failed'> {
       return 'sent'
     } catch (e: any) {
       if (/cancel/i.test(e?.message || e?.errMsg || '')) return 'cancel'
-      console.warn('[Collect] ww.sendChatMessage失败:', e?.message)
+      console.warn('[Collect] ww.sendChatMessage失败:', e?.message || e?.errMsg || JSON.stringify(e),
+        'payload:', JSON.stringify({ msgtype: payload?.msgtype, appid: payload?.miniprogram?.appid, page: payload?.miniprogram?.page?.substring(0, 60) }))
     }
-    // ★ ww存在时不再尝试wx.invoke：在ww模式下wx未经过config/agentConfig，
-    //   wx.invoke的回调可能永远不触发，导致Promise挂起
     return 'failed'
   }
 
@@ -321,13 +321,9 @@ const handleSend = async () => {
       if (result === 'sent') degraded = true
     }
 
-    // 第三步：如果仍然失败，等待SDK就绪后重试一次（处理SDK初始化时序问题）
+    // 如果miniprogram和news都失败了，不再延时重试（延时会导致用户手势过期）
     if (result === 'failed') {
-      console.warn('[Collect] 首次发送失败，等待2秒后重试...')
-      await new Promise(r => setTimeout(r, 2000))
-      result = await trySend(fallbackPayload.value || preGeneratedPayload.value)
-      if (result === 'cancel') { ElMessage.info('已取消发送'); sending.value = false; return }
-      if (result === 'sent' && preGeneratedPayload.value.msgtype === 'miniprogram') degraded = true
+      console.warn('[Collect] 发送失败, payload:', preGeneratedPayload.value?.msgtype)
     }
 
     if (result === 'sent') {

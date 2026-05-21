@@ -1318,6 +1318,7 @@ router.post('/mp-generate-card', authenticateSidebarToken, async (req: Request, 
     } catch { /* ignore */ }
 
     // 第2层：读取租户级配置 miniprogram_config（覆盖全局）
+    let pagePath = '';
     try {
       const { TenantSettings } = await import('../../entities/TenantSettings');
       const settingsRepo = AppDataSource.getRepository(TenantSettings);
@@ -1327,6 +1328,7 @@ router.post('/mp-generate-card', authenticateSidebarToken, async (req: Request, 
         if (config.cardTitle) cardTitle = config.cardTitle;
         if (config.cardCoverUrl) cardCoverUrl = config.cardCoverUrl;
         if (config.appId) appId = config.appId;
+        if (config.pagePath) pagePath = config.pagePath;
       }
     } catch { /* ignore */ }
 
@@ -1339,6 +1341,7 @@ router.post('/mp-generate-card', authenticateSidebarToken, async (req: Request, 
         const val = tenantMpSetting.getValue ? tenantMpSetting.getValue() : (typeof tenantMpSetting.settingValue === 'string' ? JSON.parse(tenantMpSetting.settingValue) : tenantMpSetting.settingValue);
         if (val?.mpCardTitle) cardTitle = val.mpCardTitle;
         if (val?.mpCardCoverUrl) cardCoverUrl = val.mpCardCoverUrl;
+        if (val?.mpPagePath) pagePath = val.mpPagePath;
       }
     } catch { /* ignore */ }
 
@@ -1360,7 +1363,7 @@ router.post('/mp-generate-card', authenticateSidebarToken, async (req: Request, 
     const defaultImgUrl = `${req.protocol}://${req.get('host')}/form-cover.png`;
     if (!imageUrl) imageUrl = defaultImgUrl;
 
-    res.json({ success: true, data: { sign, appId, title: cardTitle, imageUrl, cardTitle, cardCoverUrl, useMiniprogram } });
+    res.json({ success: true, data: { sign, appId, title: cardTitle, imageUrl, cardTitle, cardCoverUrl, useMiniprogram, pagePath } });
   } catch (error: any) {
     log.error('[H5 App] mp-generate-card error:', error.message);
     res.status(500).json({ success: false, message: '生成卡片失败' });

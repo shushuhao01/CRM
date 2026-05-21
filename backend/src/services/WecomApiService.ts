@@ -620,6 +620,28 @@ export class WecomApiService {
   }
 
   /**
+   * 【数据与智能专区】设置公钥（第三方应用必须调用此接口后消息才开始存档）
+   * 参考: https://developer.work.weixin.qq.com/document/path/101349
+   */
+  static async setChatDataPublicKey(accessToken: string, publicKey: string, publicKeyVer: number = 1): Promise<void> {
+    try {
+      log.info(`[WecomApi] setChatDataPublicKey: 设置公钥, ver=${publicKeyVer}, keyLen=${publicKey.length}`);
+      const response = await axios.post(
+        `${WECOM_API_BASE}/chatdata/set_public_key?access_token=${accessToken}`,
+        { public_key: publicKey, public_key_ver: publicKeyVer }
+      );
+      if (response.data.errcode === 0) {
+        log.info('[WecomApi] setChatDataPublicKey: 公钥设置成功');
+      } else {
+        throw new Error(`设置公钥失败(${response.data.errcode}): ${response.data.errmsg}`);
+      }
+    } catch (error: any) {
+      log.error('[WecomApi] setChatDataPublicKey error:', error.message);
+      throw error;
+    }
+  }
+
+  /**
    * 【数据与智能专区】获取授权存档的成员列表
    * 第三方服务商应用使用此接口替代 getPermitUserList
    * 参考: https://developer.work.weixin.qq.com/document/path/99846
