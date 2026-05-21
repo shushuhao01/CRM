@@ -1447,7 +1447,7 @@ async function trySendCard(payload: any): Promise<'sent' | 'cancel' | 'failed'> 
       console.warn('[CustomerDetail] ww.sendChatMessage失败:', e?.message || e?.errMsg || JSON.stringify(e),
         'payload:', JSON.stringify({ msgtype: payload?.msgtype, appid: payload?.miniprogram?.appid, page: payload?.miniprogram?.page?.substring(0, 60) }))
     }
-    return 'failed'
+    // ww失败后fall through尝试wx.invoke（7c77f40验证：miniprogram通过wx.invoke可发送成功）
   }
 
   // 方式2：旧版SDK wx.invoke（仅在ww不可用时使用，加超时防止挂起）

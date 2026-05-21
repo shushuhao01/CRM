@@ -172,42 +172,36 @@ async function loadActivities() {
 }
 
 /** 跳转到主CRM系统的会话存档页（同域，保持在企微内置浏览器中） */
-async function openChatArchive() {
+function openChatArchive() {
   const h5Token = localStorage.getItem('h5_token')
-  if (!h5Token) {
-    return
-  }
+  if (!h5Token) return
 
-  try {
-    const { default: axios } = await import('axios')
-    const res: any = await axios.post('/api/v1/wecom/h5/exchange-token', {}, {
-      headers: { Authorization: `Bearer ${h5Token}` }
-    })
-    const data = res?.data?.data
-    if (data?.token) {
-      localStorage.setItem('auth_token', data.token)
-      if (data.refreshToken) localStorage.setItem('refresh_token', data.refreshToken)
-      const expiryTime = Date.now() + (7 * 24 * 60 * 60 * 1000)
-      localStorage.setItem('token_expiry', expiryTime.toString())
-      if (data.user) {
-        localStorage.setItem('user', JSON.stringify(data.user))
-        localStorage.setItem('user_info', JSON.stringify(data.user))
-      }
-      window.location.href = window.location.origin + '/wecom/chat-archive'
-      return
-    }
-  } catch (e: any) {
-    console.warn('[Home] exchange-token失败，降级直接跳转:', e?.message)
-  }
-
-  // 降级：直接拷贝h5_token（兼容旧逻辑）
   localStorage.setItem('auth_token', h5Token)
-  const expiryTime = Date.now() + (7 * 24 * 60 * 60 * 1000)
-  localStorage.setItem('token_expiry', expiryTime.toString())
-  if (authStore.user) {
-    localStorage.setItem('user', JSON.stringify(authStore.user))
-    localStorage.setItem('user_info', JSON.stringify(authStore.user))
+  localStorage.setItem('token_expiry', (Date.now() + 7 * 24 * 60 * 60 * 1000).toString())
+
+  // 用户数据：优先从Pinia store读取，兜底从token中解析
+  let userData = authStore.user
+  if (!userData) {
+    try {
+      const parts = h5Token.split('.')
+      if (parts.length === 3) {
+        const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')))
+        userData = {
+          id: payload.userId || payload.crmUserId || '',
+          name: payload.crmUserName || payload.username || '',
+          username: payload.username || '',
+          role: payload.role || 'admin',
+          tenantId: payload.tenantId || ''
+        }
+      }
+    } catch { /* ignore parse error */ }
   }
+
+  if (userData) {
+    localStorage.setItem('user', JSON.stringify(userData))
+    localStorage.setItem('user_info', JSON.stringify(userData))
+  }
+
   window.location.href = window.location.origin + '/wecom/chat-archive'
 }
 

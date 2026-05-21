@@ -275,10 +275,10 @@ async function trySend(payload: any): Promise<'sent' | 'cancel' | 'failed'> {
       console.warn('[Collect] ww.sendChatMessage失败:', e?.message || e?.errMsg || JSON.stringify(e),
         'payload:', JSON.stringify({ msgtype: payload?.msgtype, appid: payload?.miniprogram?.appid, page: payload?.miniprogram?.page?.substring(0, 60) }))
     }
-    return 'failed'
+    // ww失败后fall through尝试wx.invoke（7c77f40验证：miniprogram卡片通过wx.invoke可以发送成功）
   }
 
-  // 方式2：旧版SDK wx.invoke（仅在ww不可用时使用，加超时防止挂起）
+  // 方式2：wx.invoke（ww失败或不存在时尝试，加超时防止挂起）
   if (wx && typeof wx.invoke === 'function') {
     try {
       await new Promise<void>((resolve, reject) => {

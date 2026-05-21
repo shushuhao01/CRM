@@ -141,46 +141,58 @@ export class WecomChatArchiveService {
             // 检查是否已设置过公钥（使用TenantSettings持久化标记，避免每次同步都调用）
             const pubKeySettingKey = `chat_pubkey_set_${config.id}`;
             let alreadySet = false;
+            const { TenantSettings } = await import('../entities/TenantSettings');
+            const settingsRepo = AppDataSource.getRepository(TenantSettings);
+
             try {
-              const { TenantSettings } = await import('../entities/TenantSettings');
-              const settingsRepo = AppDataSource.getRepository(TenantSettings);
               const existing = await settingsRepo.findOne({
                 where: { tenantId: config.tenantId, settingKey: pubKeySettingKey }
               });
-              if (existing) {
-                const val = typeof existing.settingValue === 'string' ? JSON.parse(existing.settingValue) : existing.settingValue;
-                alreadySet = val?.set === true;
+              if (existing && existing.settingValue) {
+                try {
+                  const val = JSON.parse(existing.settingValue);
+                  alreadySet = val?.set === true;
+                } catch {
+                  alreadySet = existing.settingValue === 'true';
+                }
               }
-            } catch { /* 查询失败视为未设置 */ }
+              log.info(`[ChatArchive] Step4.5: 公钥标记查询结果: alreadySet=${alreadySet}, existing=${!!existing}`);
+            } catch (queryErr: any) {
+              log.warn(`[ChatArchive] Step4.5: 查询公钥标记失败: ${queryErr.message}`);
+            }
 
             if (!alreadySet) {
               log.info(`[ChatArchive] Step4.5: 首次同步，向企微设置RSA公钥...`);
               const pubKeyVer = 1;
               await WecomApiService.setChatDataPublicKey(accessToken, rsaPublicKey, pubKeyVer);
-              // 持久化标记：公钥已设置
+
+              // 持久化标记：公钥已设置（必须正确设置id，TenantSettings的id是手动UUID）
               try {
-                const { TenantSettings } = await import('../entities/TenantSettings');
-                const settingsRepo = AppDataSource.getRepository(TenantSettings);
+                const { v4: uuidv4 } = await import('uuid');
                 const existing = await settingsRepo.findOne({
                   where: { tenantId: config.tenantId, settingKey: pubKeySettingKey }
                 });
                 if (existing) {
                   existing.settingValue = JSON.stringify({ set: true, setAt: new Date().toISOString(), configId: config.id });
+                  existing.settingType = 'json';
                   await settingsRepo.save(existing);
+                  log.info(`[ChatArchive] Step4.5: 更新已有标记记录成功`);
                 } else {
-                  await settingsRepo.save(settingsRepo.create({
-                    tenantId: config.tenantId,
-                    settingKey: pubKeySettingKey,
-                    settingValue: JSON.stringify({ set: true, setAt: new Date().toISOString(), configId: config.id })
-                  } as any));
+                  const newSetting = new TenantSettings();
+                  newSetting.id = uuidv4();
+                  newSetting.tenantId = config.tenantId;
+                  newSetting.settingKey = pubKeySettingKey;
+                  newSetting.settingValue = JSON.stringify({ set: true, setAt: new Date().toISOString(), configId: config.id });
+                  newSetting.settingType = 'json';
+                  await settingsRepo.save(newSetting);
+                  log.info(`[ChatArchive] Step4.5: 新建标记记录成功, id=${newSetting.id}`);
                 }
-                log.info(`[ChatArchive] Step4.5完成: RSA公钥已设置到企微，标记已持久化`);
               } catch (saveErr: any) {
-                log.warn(`[ChatArchive] Step4.5: 公钥已上传但标记保存失败: ${saveErr.message}`);
+                log.error(`[ChatArchive] Step4.5: 公钥已上传但标记保存失败！: ${saveErr.message}`, saveErr.stack);
               }
               result.message += ' ✅ 首次设置公钥成功，企微需要约5-10分钟开始存档新消息，之后再同步即可获取聊天记录。';
             } else {
-              log.info(`[ChatArchive] Step4.5: 公钥已设置（跳过），继续拉取消息...`);
+              log.info(`[ChatArchive] Step4.5: 公钥已设置（跳过上传），继续拉取消息...`);
             }
           } else if (!rsaPrivateKey) {
             log.warn('[ChatArchive] Step4.5: 服务商未配置RSA密钥对');
