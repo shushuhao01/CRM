@@ -264,38 +264,47 @@ const generateCard = async (showMsg = true) => {
 async function trySend(payload: any): Promise<'sent' | 'cancel' | 'failed'> {
   const ww = (window as any).ww
   const wx = (window as any).wx || (window as any).jWeixin
+  const debugInfo: string[] = []
+  debugInfo.push(`[trySend] ww=${!!ww}, ww.sendChat=${typeof ww?.sendChatMessage}, wx=${!!wx}, wx.invoke=${typeof wx?.invoke}`)
+  debugInfo.push(`[trySend] payload.msgtype=${payload?.msgtype}, appid=${payload?.miniprogram?.appid || 'N/A'}`)
 
   // 方式1：新版SDK ww.sendChatMessage
   if (ww && typeof ww.sendChatMessage === 'function') {
     try {
+      debugInfo.push('[trySend] 尝试ww.sendChatMessage...')
       await ww.sendChatMessage(payload)
       return 'sent'
     } catch (e: any) {
       if (/cancel/i.test(e?.message || e?.errMsg || '')) return 'cancel'
-      console.warn('[Collect] ww.sendChatMessage失败:', e?.message || e?.errMsg || JSON.stringify(e),
-        'payload:', JSON.stringify({ msgtype: payload?.msgtype, appid: payload?.miniprogram?.appid, page: payload?.miniprogram?.page?.substring(0, 60) }))
+      debugInfo.push(`[trySend] ww失败: ${e?.message || e?.errMsg || JSON.stringify(e)}`)
     }
-    // ww失败后fall through尝试wx.invoke（7c77f40验证：miniprogram卡片通过wx.invoke可以发送成功）
   }
 
-  // 方式2：wx.invoke（ww失败或不存在时尝试，加超时防止挂起）
+  // 方式2：wx.invoke（ww失败后fallback）
   if (wx && typeof wx.invoke === 'function') {
     try {
+      debugInfo.push('[trySend] 尝试wx.invoke...')
       await new Promise<void>((resolve, reject) => {
-        const timer = setTimeout(() => reject(new Error('wx.invoke timeout')), 5000)
+        const timer = setTimeout(() => reject(new Error('wx.invoke 5秒超时')), 5000)
         wx.invoke('sendChatMessage', payload, (res: any) => {
           clearTimeout(timer)
+          debugInfo.push(`[trySend] wx.invoke回调: ${JSON.stringify(res)}`)
           if (res?.err_msg?.indexOf('ok') > -1) resolve()
           else if (/cancel/i.test(res?.err_msg || '')) reject(new Error('cancel'))
-          else reject(new Error(res?.err_msg || 'failed'))
+          else reject(new Error(res?.err_msg || 'unknown'))
         })
       })
       return 'sent'
     } catch (e: any) {
       if (/cancel/i.test(e?.message || '')) return 'cancel'
-      console.warn('[Collect] wx.invoke失败:', e?.message)
+      debugInfo.push(`[trySend] wx.invoke失败: ${e?.message}`)
     }
   }
+
+  // ★ 调试弹窗：显示完整错误链
+  console.error('[Collect] 发送失败调试:', debugInfo.join('\n'))
+  try { document.title = debugInfo.join(' | ') } catch {}
+  alert('【调试】发送失败详情:\n' + debugInfo.join('\n'))
   return 'failed'
 }
 

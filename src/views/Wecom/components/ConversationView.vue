@@ -80,6 +80,8 @@
                 <span class="conv-card-name">{{ getConvDisplayName(conv) }}</span>
                 <span class="conv-card-tag tag-wechat" v-if="isWechatCustomer(conv)">@微信</span>
                 <span class="conv-card-tag tag-corp" v-else-if="isCorpCustomer(conv)">@{{ getCorpShortName(conv) }}</span>
+                <span class="conv-card-tag tag-group-internal" v-if="conv.roomId && !isExternalGroup(conv)">内部群</span>
+                <span class="conv-card-tag tag-group-external" v-else-if="conv.roomId && isExternalGroup(conv)">外部群</span>
                 <span class="conv-card-time">{{ conv.lastMsgTime ? formatConvTime(conv.lastMsgTime) : '' }}</span>
               </div>
               <div class="conv-card-bottom">
@@ -216,12 +218,15 @@
 
                 <div class="msg-content-wrap" :class="{ 'msg-content-self': isSelfMsg(msg) }">
                   <div class="msg-sender-line" v-if="!isSelfMsg(msg)">
-                    <span class="msg-sender-name">{{ getConvDisplayName(selectedConv) }}</span>
+                    <span class="msg-sender-name">{{ msg.fromUserName || getConvDisplayName(selectedConv) }}</span>
+                    <span class="msg-sender-badge badge-external" v-if="msg.senderType === 2 || isExternalUserId(msg.fromUserId)">外部</span>
+                    <span class="msg-sender-badge badge-staff" v-else-if="selectedConv?.roomId">员工</span>
                     <span class="msg-time">{{ formatMsgTimeShort(msg.msgTime) }}</span>
                   </div>
                   <div class="msg-sender-line msg-sender-self" v-else>
                     <span class="msg-time">{{ formatMsgTimeShort(msg.msgTime) }}</span>
                     <span class="msg-sender-name">{{ selectedMemberName || msg.fromUserName || msg.fromUserId }}</span>
+                    <span class="msg-sender-badge badge-staff">员工</span>
                   </div>
 
                   <!-- 消息气泡 -->
@@ -637,6 +642,22 @@ const getCorpShortName = (conv: Conversation) => {
   return name.length > 4 ? name.substring(0, 4) + '..' : name
 }
 
+const isExternalUserId = (id: string) => {
+  return id && (id.startsWith('wm') || id.startsWith('wo'))
+}
+
+const isExternalGroup = (conv: Conversation) => {
+  if (!conv.roomId) return false
+  try {
+    const toIds = typeof conv.toUserIds === 'string' ? JSON.parse(conv.toUserIds) : conv.toUserIds
+    if (Array.isArray(toIds)) {
+      return toIds.some((id: string) => id && (id.startsWith('wm') || id.startsWith('wo')))
+    }
+  } catch { /* ignore */ }
+  const fromId = (conv as any).fromUserId || ''
+  return fromId.startsWith('wm') || fromId.startsWith('wo')
+}
+
 const getConvPreview = (conv: Conversation) => {
   if (!conv.lastContent) return ''
   const type = conv.lastMsgType
@@ -837,6 +858,11 @@ defineExpose({ fetchConversations, fetchArchiveMembers })
 .conv-card-tag { font-size: 10px; padding: 0 4px; border-radius: 3px; white-space: nowrap; }
 .tag-wechat { color: #07c160; }
 .tag-corp { color: #e6a23c; }
+.tag-group-internal { color: #409eff; background: #ecf5ff; }
+.tag-group-external { color: #e6a23c; background: #fdf6ec; }
+.msg-sender-badge { font-size: 10px; padding: 1px 4px; border-radius: 3px; margin-left: 4px; }
+.badge-staff { color: #409eff; background: #ecf5ff; }
+.badge-external { color: #e6a23c; background: #fdf6ec; }
 .conv-card-time { margin-left: auto; font-size: 11px; color: #9ca3af; white-space: nowrap; }
 .conv-card-bottom { display: flex; align-items: center; margin-top: 4px; }
 .conv-card-preview { font-size: 12px; color: #9ca3af; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; }

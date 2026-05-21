@@ -840,7 +840,7 @@ export class WecomChatArchiveService {
       }
 
       // 批量查询客户备注、昵称和头像
-      const customerInfoMap = new Map<string, { remark: string; name: string; avatar: string }>();
+      const customerInfoMap = new Map<string, { remark: string; name: string; avatar: string; corpName: string }>();
       if (externalUserIds.size > 0) {
         try {
           let customerWhere = 'external_user_id IN (' + Array.from(externalUserIds).map(() => '?').join(',') + ')';
@@ -854,11 +854,11 @@ export class WecomChatArchiveService {
             customerParams.push(configId);
           }
           const customers = await AppDataSource.query(
-            `SELECT external_user_id, remark, name, avatar FROM wecom_customers WHERE ${customerWhere}`,
+            `SELECT external_user_id, remark, name, avatar, corp_name FROM wecom_customers WHERE ${customerWhere}`,
             customerParams
           );
           for (const c of customers) {
-            customerInfoMap.set(c.external_user_id, { remark: c.remark || '', name: c.name || '', avatar: c.avatar || '' });
+            customerInfoMap.set(c.external_user_id, { remark: c.remark || '', name: c.name || '', avatar: c.avatar || '', corpName: c.corp_name || '' });
           }
         } catch (e: any) {
           log.warn('[ChatArchive] 批量查询客户名称失败:', e.message);
@@ -1043,7 +1043,13 @@ export class WecomChatArchiveService {
           agreed = true;
         }
 
-        return { ...item, customerName, customerAvatar, memberAvatar, agreed };
+        // 企业名称（企微联系人所属企业）
+        let corpName = '';
+        if (externalId && customerInfoMap.has(externalId)) {
+          corpName = customerInfoMap.get(externalId)!.corpName || '';
+        }
+
+        return { ...item, customerName, customerAvatar, memberAvatar, agreed, corpName };
       });
 
       return { list, total };
@@ -1093,7 +1099,8 @@ export class WecomChatArchiveService {
              from_user_id AS fromUserId, from_user_name AS fromUserName,
              to_user_ids AS toUserIds, room_id AS roomId,
              msg_time AS msgTime, content, media_url AS mediaUrl,
-             is_sensitive AS isSensitive, audit_remark AS auditRemark
+             is_sensitive AS isSensitive, audit_remark AS auditRemark,
+             sender_type AS senderType
       FROM wecom_chat_records ${where}
       ORDER BY msg_time ASC
       LIMIT ? OFFSET ?
