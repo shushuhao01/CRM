@@ -574,11 +574,17 @@ const handleSync = async () => {
         msg = `${res.permitUsers}个存档成员，暂无新消息`
       }
 
-      // 公钥状态和提示
+      // 公钥状态和详细提示
       if (res.pubKeyStatus === 'not_set') {
         ElMessage.warning('公钥尚未上传至企微，本次同步将自动设置。请等待5-10分钟后再次同步获取消息。')
       } else if (res.permitUsers > 0 && !res.syncedRecords && res.pubKeyStatus === 'set') {
-        msg += '（提示：公钥已设置，企微仅存档设置公钥后的新消息，请确认存档成员已产生新的聊天记录后再同步）'
+        if (res.totalFetched === 0) {
+          msg += '（API返回0条消息，企微可能尚未开始存档或存档范围配置有误）'
+        } else if (res.totalFetched > 0) {
+          msg += `（拉取${res.totalFetched}条均已入库，无新增）`
+        } else {
+          msg += '（公钥已设置，请确认存档成员有新聊天记录后再同步）'
+        }
       }
     }
     ElMessage.success(msg)

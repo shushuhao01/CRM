@@ -42,7 +42,7 @@
             <span class="conv-header-name">{{ selectedMemberName }} 的会话</span>
           </div>
           <div v-else class="conv-header-placeholder">请选择员工</div>
-          <!-- TAB: 员工/客户/群聊 -->
+          <!-- TAB: 员工/客户/群聊 + 刷新按钮 -->
           <div class="conv-tabs">
             <div class="conv-tab" :class="{ active: convTab === 'staff' }" @click="switchConvTab('staff')">
               <span>员工</span>
@@ -55,6 +55,9 @@
             <div class="conv-tab" :class="{ active: convTab === 'group' }" @click="switchConvTab('group')">
               <span>群聊</span>
               <span class="tab-count" v-if="convTabCounts.group">{{ convTabCounts.group }}</span>
+            </div>
+            <div class="conv-tab-refresh" @click="handleRefreshConversations" title="刷新当前成员的会话列表">
+              <el-icon :class="{ 'is-loading': convLoading }"><Refresh /></el-icon>
             </div>
           </div>
           <!-- 搜索 -->
@@ -617,6 +620,15 @@ const switchConvTab = (tab: 'staff' | 'customer' | 'group') => {
   fetchConversations()
 }
 
+const handleRefreshConversations = async () => {
+  if (convLoading.value) return
+  convPage.value = 1
+  selectedConv.value = null
+  messages.value = []
+  await fetchConversations()
+  ElMessage.success('会话列表已刷新')
+}
+
 const getConvKey = (conv: Conversation) => `${conv.fromUserId}-${conv.roomId || getFirstToUser(conv.toUserIds)}`
 
 const getConvDisplayName = (conv: Conversation) => (conv as any).customerName || conv.fromUserName || conv.fromUserId || '未知'
@@ -846,6 +858,8 @@ defineExpose({ fetchConversations, fetchArchiveMembers })
 .conv-tab.active { color: #07c160; border-bottom-color: #07c160; font-weight: 600; }
 .tab-count { font-size: 10px; background: #f0f0f0; border-radius: 8px; padding: 0 5px; min-width: 16px; }
 .conv-tab.active .tab-count { background: #e6f7ef; color: #07c160; }
+.conv-tab-refresh { display: flex; align-items: center; justify-content: center; width: 28px; cursor: pointer; color: #9ca3af; transition: color .2s; }
+.conv-tab-refresh:hover { color: #07c160; }
 
 .panel-conv-list { flex: 1; overflow-y: auto; }
 .conv-card { display: flex; align-items: center; gap: 10px; padding: 10px 12px; cursor: pointer; border-bottom: 1px solid #fafafa; transition: background .15s; }

@@ -152,6 +152,7 @@ router.post('/chat-records/sync', authenticateToken, requireAdmin, async (req: R
         permitUsers: result.permitUsers, agreedUsers: result.agreedUsers,
         syncedRecords: result.syncedRecords, newConversations: result.newConversations,
         enrichedContacts: (result as any).enrichedContacts || 0,
+        totalFetched: (result as any).totalFetched || 0,
         errors: result.errors, sdkRequired: result.sdkRequired, mode: result.mode,
         hasPrivateKey, pubKeyStatus
       }

@@ -789,20 +789,25 @@ export class WecomApiService {
       const body: any = { limit };
       if (cursor) body.cursor = cursor;
 
-      log.info(`[WecomApi] getChatMsgData: cursor=${cursor || '(首次)'}, limit=${limit}`);
+      log.info(`[WecomApi] getChatMsgData: cursor=${cursor || '(首次)'}, limit=${limit}, tokenLen=${accessToken?.length}`);
 
       const response = await axios.post(
         `${WECOM_API_BASE}/chatdata/sync_msg?access_token=${accessToken}`,
         body
       );
 
+      // ★ 调试日志：记录完整的API响应（临时，定位问题后移除）
+      log.info(`[WecomApi] getChatMsgData 原始响应: errcode=${response.data.errcode}, errmsg=${response.data.errmsg}, msg_list_len=${response.data.msg_list?.length ?? 'null'}, has_more=${response.data.has_more}, next_cursor=${response.data.next_cursor || 'empty'}`);
+      if (response.data.msg_list?.length > 0) {
+        const sample = response.data.msg_list[0];
+        log.info(`[WecomApi] getChatMsgData 首条消息样本: msgid=${sample.msgid}, sender=${JSON.stringify(sample.sender)}, send_time=${sample.send_time}, msgtype=${sample.msgtype}`);
+      }
+
       if (response.data.errcode === 0) {
         const msgList = response.data.msg_list || [];
         const hasMore = response.data.has_more === 1 || response.data.has_more === true;
         const nextCursor = response.data.next_cursor || '';
 
-        // 将数据与智能专区的 msg_list 格式适配为内部统一格式
-        // ★ 保留原始嵌套 sender 对象（syncChatMessages 通过 item.sender.id 访问）
         const chatdata = msgList.map((msg: any, idx: number) => ({
           seq: idx,
           msgid: msg.msgid || '',

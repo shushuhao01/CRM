@@ -207,13 +207,17 @@ export class WecomChatArchiveService {
         try {
           const msgResult = await this.syncChatMessages(config, accessToken);
           result.syncedRecords += msgResult.savedCount;
+          (result as any).totalFetched = msgResult.totalFetched;
           if (msgResult.savedCount > 0) {
-            log.info(`[ChatArchive] Step5完成: 拉取并保存 ${msgResult.savedCount} 条实际消息`);
+            log.info(`[ChatArchive] Step5完成: 拉取 ${msgResult.totalFetched} 条, 新保存 ${msgResult.savedCount} 条`);
+          } else if (msgResult.totalFetched > 0) {
+            log.info(`[ChatArchive] Step5完成: 拉取 ${msgResult.totalFetched} 条(均已存在), 无新增`);
           } else {
-            log.info(`[ChatArchive] Step5完成: 无新消息（游标已到最新位置）`);
+            log.info(`[ChatArchive] Step5完成: API返回0条消息（请检查后端日志 access.log 中 [WecomApi] getChatMsgData 的详细响应）`);
+            result.message += ' ℹ️ sync_msg返回0条，请查看服务器日志定位原因。';
           }
         } catch (e: any) {
-          log.warn(`[ChatArchive] Step5失败: 拉取实际消息出错: ${e.message}`);
+          log.error(`[ChatArchive] Step5失败: ${e.message}`, e.stack);
           result.errors++;
           if (e.message.includes('RSA私钥')) {
             result.message += ' ⚠️ 消息拉取失败：未配置RSA私钥，请在管理后台「服务商应用管理」中配置会话存档RSA私钥。';
@@ -1318,7 +1322,7 @@ export class WecomChatArchiveService {
       } catch { /* ignore */ }
     }
 
-    log.info(`[ChatArchive] syncChatMessages: 开始拉取, configId=${config.id}, cursor=${cursor || '(首次/重置)'}`);
+    log.info(`[ChatArchive] syncChatMessages: 开始拉取, configId=${config.id}, corpId=${config.corpId}, cursor=${cursor || '(首次/重置)'}, hasPrivateKey=${!!rsaPrivateKey}, keyLen=${rsaPrivateKey?.length}`);
 
     // 获取用户名称映射
     const userNameMap = await this.getUserNameMap(config);
