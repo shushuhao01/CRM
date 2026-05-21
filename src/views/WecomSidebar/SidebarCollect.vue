@@ -303,10 +303,7 @@ async function trySend(payload: any): Promise<'sent' | 'cancel' | 'failed'> {
     }
   }
 
-  // ★ 调试弹窗：显示完整错误链
-  console.error('[Collect] 发送失败调试:', debugInfo.join('\n'))
-  try { document.title = debugInfo.join(' | ') } catch {}
-  alert('【调试】发送失败详情:\n' + debugInfo.join('\n'))
+  console.error('[Collect] 发送失败:', debugInfo.join('\n'))
   return 'failed'
 }
 

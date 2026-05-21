@@ -108,6 +108,22 @@ router.post('/mock-sign', async (req: Request, res: Response) => {
 // ==================== 签约回调 ====================
 
 /**
+ * 回调端点可达性验证（GET）— 浏览器或微信商户平台验证 URL 时使用
+ */
+router.get('/sign-notify/wechat', (_req: Request, res: Response) => {
+  res.json({ code: 'SUCCESS', message: '微信签约回调端点正常（此接口仅接受POST请求）' });
+});
+router.get('/sign-notify/alipay', (_req: Request, res: Response) => {
+  res.json({ code: 'SUCCESS', message: '支付宝签约回调端点正常（此接口仅接受POST请求）' });
+});
+router.get('/deduct-notify/wechat', (_req: Request, res: Response) => {
+  res.json({ code: 'SUCCESS', message: '微信扣款回调端点正常（此接口仅接受POST请求）' });
+});
+router.get('/deduct-notify/alipay', (_req: Request, res: Response) => {
+  res.json({ code: 'SUCCESS', message: '支付宝扣款回调端点正常（此接口仅接受POST请求）' });
+});
+
+/**
  * 微信签约结果回调
  * POST /api/v1/public/subscription/sign-notify/wechat
  */
