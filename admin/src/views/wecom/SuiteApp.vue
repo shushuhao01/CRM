@@ -1323,11 +1323,14 @@ const fetchConfig = async () => {
   try {
     const res: any = await getSuiteConfig()
     const data = res?.data || res
-    // 加载列表
     const list = res?.list || []
     if (list.length > 0) {
       suiteConfigList.value = list
-      if (!currentConfigId.value) currentConfigId.value = list[0].id
+      // 以数据库为准：默认选中 isEnabled=true 的应用
+      if (!currentConfigId.value) {
+        const enabled = list.find((c: any) => c.isEnabled)
+        currentConfigId.value = enabled ? enabled.id : list[0].id
+      }
       const current = list.find((c: any) => c.id === currentConfigId.value) || list[0]
       Object.assign(suiteConfig.value, current)
     } else if (data && typeof data === 'object') {
@@ -1340,11 +1343,18 @@ const fetchConfig = async () => {
   } catch { /* ignore */ }
 }
 
-function handleSwitchConfig(id: number) {
+async function handleSwitchConfig(id: number) {
   const item = suiteConfigList.value.find(c => c.id === id)
   if (item) {
     currentConfigId.value = id
     Object.assign(suiteConfig.value, item)
+    // 切换即启用：立即更新数据库，当前选中的应用启用，其他禁用
+    try {
+      await saveSuiteConfig({ id, isEnabled: true })
+      // 更新本地列表状态
+      suiteConfigList.value.forEach(c => { c.isEnabled = (c.id === id) })
+      ElMessage.success(`已切换为「${item.appName || '未命名'}」并启用`)
+    } catch { /* ignore */ }
   }
 }
 
@@ -1380,15 +1390,13 @@ async function handleDeleteConfig() {
 const handleSaveConfig = async () => {
   saving.value = true
   try {
-    const payload = { ...suiteConfig.value }
-    // 带上当前配置ID（更新时需要）
+    const payload = { ...suiteConfig.value, isEnabled: true }
     if (currentConfigId.value) payload.id = currentConfigId.value
     if (rsaPublicKeyInput.value) payload.chatArchiveRsaPublicKey = rsaPublicKeyInput.value
     if (rsaPrivateKeyInput.value) payload.chatArchiveRsaPrivateKey = rsaPrivateKeyInput.value
     const saveRes: any = await saveSuiteConfig(payload)
-    // 如果是新增，更新当前ID
     if (saveRes?.data?.id) currentConfigId.value = saveRes.data.id
-    ElMessage.success('配置已保存')
+    ElMessage.success('配置已保存，当前应用已启用（其他应用已自动禁用）')
     rsaPublicKeyInput.value = ''
     rsaPrivateKeyInput.value = ''
     showRsaPublicKeyInput.value = false

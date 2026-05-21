@@ -478,12 +478,22 @@ router.get('/callback/auth-url', authenticateToken, async (req: Request, res: Re
 
     try {
       const suiteRows = await AppDataSource.query(
-        `SELECT suite_id, suite_secret, suite_ticket FROM wecom_suite_configs ORDER BY id ASC LIMIT 1`
+        `SELECT suite_id, suite_secret, suite_ticket FROM wecom_suite_configs WHERE is_enabled = 1 ORDER BY id DESC LIMIT 1`
       );
       if (suiteRows?.[0]) {
         suiteId = clean(suiteRows[0].suite_id);
         suiteSecret = clean(suiteRows[0].suite_secret);
         suiteTicket = clean(suiteRows[0].suite_ticket);
+      }
+      if (!suiteId) {
+        const fallbackRows = await AppDataSource.query(
+          `SELECT suite_id, suite_secret, suite_ticket FROM wecom_suite_configs ORDER BY id ASC LIMIT 1`
+        );
+        if (fallbackRows?.[0]) {
+          suiteId = clean(fallbackRows[0].suite_id);
+          suiteSecret = clean(fallbackRows[0].suite_secret);
+          suiteTicket = clean(fallbackRows[0].suite_ticket);
+        }
       }
     } catch (e) {
       log.warn('[Wecom Auth] Read wecom_suite_configs error:', e);
@@ -672,12 +682,22 @@ router.get('/callback/auth-callback', async (req: Request, res: Response) => {
     if (!suiteId || !suiteSecret || !suiteTicket) {
       try {
         const suiteRows = await AppDataSource.query(
-          `SELECT suite_id, suite_secret, suite_ticket FROM wecom_suite_configs ORDER BY id ASC LIMIT 1`
+          `SELECT suite_id, suite_secret, suite_ticket FROM wecom_suite_configs WHERE is_enabled = 1 ORDER BY id DESC LIMIT 1`
         );
         if (suiteRows?.[0]) {
           suiteId = suiteId || suiteRows[0].suite_id || '';
           suiteSecret = suiteSecret || suiteRows[0].suite_secret || '';
           suiteTicket = suiteTicket || suiteRows[0].suite_ticket || '';
+        }
+        if (!suiteId) {
+          const fallback = await AppDataSource.query(
+            `SELECT suite_id, suite_secret, suite_ticket FROM wecom_suite_configs ORDER BY id ASC LIMIT 1`
+          );
+          if (fallback?.[0]) {
+            suiteId = suiteId || fallback[0].suite_id || '';
+            suiteSecret = suiteSecret || fallback[0].suite_secret || '';
+            suiteTicket = suiteTicket || fallback[0].suite_ticket || '';
+          }
         }
       } catch (e) {
         log.warn('[Wecom Auth] Read wecom_suite_configs error:', e);

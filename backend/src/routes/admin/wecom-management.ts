@@ -3729,6 +3729,19 @@ router.put('/suite/config', async (req: Request, res: Response) => {
 
     await repo.save(config);
 
+    // 启用当前应用时，自动禁用其他应用（同一时间只能有一个活跃应用）
+    if (config.isEnabled && config.id) {
+      try {
+        await AppDataSource.query(
+          `UPDATE wecom_suite_configs SET is_enabled = 0 WHERE id != ?`,
+          [config.id]
+        );
+        log.info(`[Admin Suite] 已启用应用 id=${config.id}，其他应用已自动禁用`);
+      } catch (e: any) {
+        log.warn('[Admin Suite] 禁用其他应用失败(非致命):', e.message);
+      }
+    }
+
     // 同步 suite_secret 到 system_config 表
     if (config.suiteId && config.suiteSecret) {
       try {
