@@ -371,13 +371,48 @@ router.post('/sidebar/bind-account', sidebarAuthLimiter, async (req: Request, re
     if (!valid) return res.status(401).json({ success: false, message: '用户名或密码错误' });
 
     let bindingData: any = null;
-    if (wecomUserId && resolvedCorpId && configId) {
+    if (configId) {
       const bindingRepo = AppDataSource.getRepository(WecomUserBinding);
-      let binding = await bindingRepo.findOne({ where: { wecomUserId, corpId: resolvedCorpId, wecomConfigId: configId } });
-      if (binding) { binding.crmUserId = user.id; binding.crmUserName = user.name || user.username; binding.isEnabled = true; }
-      else { binding = bindingRepo.create({ tenantId, wecomConfigId: configId, corpId: resolvedCorpId, wecomUserId, crmUserId: user.id, crmUserName: user.name || user.username, bindOperator: 'sidebar', isEnabled: true }); }
+      let resolvedWecomUserId = wecomUserId || '';
+
+      // wecomUserId 为空时（SDK 未获取到），尝试通过 CRM 用户姓名匹配已有的企微成员
+      if (!resolvedWecomUserId) {
+        const matchByName = await bindingRepo.findOne({
+          where: { wecomConfigId: configId, wecomUserName: user.name || '', isEnabled: true }
+        });
+        if (matchByName?.wecomUserId) {
+          resolvedWecomUserId = matchByName.wecomUserId;
+          log.info(`[Sidebar] 通过姓名匹配到企微成员: ${user.name} → ${resolvedWecomUserId}`);
+        }
+      }
+
+      // 查找或创建绑定记录
+      let binding: any = null;
+      if (resolvedWecomUserId) {
+        binding = await bindingRepo.findOne({ where: { wecomUserId: resolvedWecomUserId, corpId: resolvedCorpId, wecomConfigId: configId } });
+      }
+      if (!binding) {
+        // 也检查是否该 CRM 用户已有绑定（避免重复）
+        binding = await bindingRepo.findOne({ where: { crmUserId: user.id, wecomConfigId: configId } });
+      }
+      if (binding) {
+        binding.crmUserId = user.id;
+        binding.crmUserName = user.name || user.username;
+        binding.isEnabled = true;
+        if (resolvedWecomUserId && !binding.wecomUserId) binding.wecomUserId = resolvedWecomUserId;
+        if (resolvedCorpId && !binding.corpId) binding.corpId = resolvedCorpId;
+      } else {
+        binding = bindingRepo.create({
+          tenantId, wecomConfigId: configId, corpId: resolvedCorpId,
+          wecomUserId: resolvedWecomUserId || `sidebar_${user.id}`,
+          wecomUserName: user.name || user.username,
+          crmUserId: user.id, crmUserName: user.name || user.username,
+          bindOperator: 'sidebar', isEnabled: true
+        });
+      }
       await bindingRepo.save(binding);
-      bindingData = { id: binding.id, wecomUserId, crmUserId: user.id, crmUserName: user.name || user.username };
+      bindingData = { id: binding.id, wecomUserId: binding.wecomUserId, crmUserId: user.id, crmUserName: user.name || user.username };
+      log.info(`[Sidebar] 绑定记录已创建/更新: binding=${binding.id}, wecomUserId=${binding.wecomUserId}, crmUser=${user.username}`);
     }
 
     const { JwtConfig } = await import('../../config/jwt');
@@ -602,6 +637,67 @@ router.get('/sidebar/customer-detail', authenticateSidebarToken, async (req: Req
   } catch (error: any) {
     log.error('[Wecom Sidebar] Customer detail error:', error.message);
     res.status(500).json({ success: false, message: '获取客户详情失败' });
+  }
+});
+
+/**
+ * 侧边栏：单个客户即时同步（从企微API拉取并写入本地）
+ * POST /api/v1/wecom/sidebar/sync-single-customer
+ */
+router.post('/sidebar/sync-single-customer', authenticateSidebarToken, async (req: Request, res: Response) => {
+  try {
+    const { externalUserId } = req.body;
+    if (!externalUserId) return res.status(400).json({ success: false, message: '缺少externalUserId' });
+
+    const sidebarUser = (req as any).sidebarUser;
+    const tenantId = sidebarUser?.tenantId;
+    const wecomUserId = sidebarUser?.wecomUserId;
+    if (!tenantId) return res.status(400).json({ success: false, message: '租户信息不完整' });
+
+    // 查找租户启用的企微配置
+    const configRepo = AppDataSource.getRepository(WecomConfig);
+    const config = await configRepo.findOne({ where: { tenantId, isEnabled: true } });
+    if (!config) return res.status(400).json({ success: false, message: '未找到启用的企微配置' });
+
+    // 获取 external token 调企微 API
+    const accessToken = await WecomApiService.getAccessTokenByConfigId(config.id, 'external');
+    const { default: axios } = await import('axios');
+    const extRes = await axios.get(`https://qyapi.weixin.qq.com/cgi-bin/externalcontact/get`, {
+      params: { access_token: accessToken, external_userid: externalUserId }
+    });
+
+    if (extRes.data.errcode !== 0) {
+      return res.status(400).json({ success: false, message: `企微API错误: ${extRes.data.errmsg || extRes.data.errcode}` });
+    }
+
+    const extContact = extRes.data.external_contact || {};
+    const followUsers = extRes.data.follow_user || [];
+    const followInfo = followUsers.find((f: any) => f.userid === wecomUserId) || followUsers[0] || {};
+
+    // 写入或更新 WecomCustomer
+    const wecomCustomerRepo = AppDataSource.getRepository(WecomCustomer);
+    let customer = await wecomCustomerRepo.findOne({ where: { externalUserId: String(externalUserId), tenantId } });
+    if (!customer) {
+      customer = wecomCustomerRepo.create({ tenantId, wecomConfigId: config.id, externalUserId: String(externalUserId) });
+    }
+    customer.name = extContact.name || customer.name || '';
+    customer.avatar = extContact.avatar || customer.avatar || '';
+    customer.type = extContact.type || 1;
+    customer.gender = extContact.gender || 0;
+    customer.corpName = extContact.corp_name || '';
+    customer.position = extContact.position || '';
+    customer.followUserId = followInfo.userid || wecomUserId || '';
+    customer.followUserName = followInfo.remark || followInfo.userid || '';
+    customer.addTime = followInfo.createtime ? new Date(followInfo.createtime * 1000) : new Date();
+    customer.addWay = followInfo.add_way || 0;
+    customer.status = 'active';
+    await wecomCustomerRepo.save(customer);
+
+    log.info(`[Sidebar] 单客户同步成功: ${externalUserId} → ${customer.name}`);
+    res.json({ success: true, message: '同步成功' });
+  } catch (error: any) {
+    log.error('[Sidebar] sync-single-customer error:', error.message);
+    res.status(500).json({ success: false, message: error.message || '同步失败' });
   }
 });
 

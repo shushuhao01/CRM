@@ -128,13 +128,7 @@
           加载客户信息...
         </div>
 
-        <!-- 未找到客户 -->
-        <div v-else-if="!customerData.found" class="preview-card" style="text-align:center;padding:30px">
-          <div style="font-size:36px;margin-bottom:8px">🔍</div>
-          <div style="font-size:13px;color:#909399">该外部联系人尚未同步到CRM系统</div>
-        </div>
-
-        <!-- 客户信息展示 -->
+        <!-- 客户信息展示（found=true 正常展示；found=false 也展示完整卡片结构，数据为空即可） -->
         <template v-else>
           <!-- 客户头部卡片 -->
           <div class="preview-card">
@@ -144,7 +138,11 @@
                 <span v-else style="font-size:36px">👤</span>
               </span>
               <div>
-                <div class="customer-name">{{ customerData.wecomCustomer?.name || customerData.crmCustomer?.name || '未知客户' }}</div>
+                <div class="customer-name">
+                  {{ customerData.wecomCustomer?.name || customerData.crmCustomer?.name || '外部联系人' }}
+                  <span v-if="!customerData.found" style="display:inline-block;font-size:10px;background:#f0f0f0;color:#909399;padding:1px 6px;border-radius:3px;margin-left:6px;vertical-align:middle">未同步</span>
+                  <span v-else-if="customerData.wecomCustomer?.status === 'deleted'" style="display:inline-block;font-size:10px;background:#FDE2E2;color:#F56C6C;padding:1px 6px;border-radius:3px;margin-left:6px;vertical-align:middle">已删除</span>
+                </div>
                 <div class="customer-company" v-if="customerData.wecomCustomer?.corpName">{{ customerData.wecomCustomer.corpName }}</div>
                 <div class="customer-follow" v-if="customerData.wecomCustomer?.followUserName">跟进人: {{ customerData.wecomCustomer.followUserName }}</div>
               </div>

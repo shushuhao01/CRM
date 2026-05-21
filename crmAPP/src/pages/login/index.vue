@@ -3,6 +3,14 @@
     <!-- 顶部装饰 -->
     <view class="header">
       <view class="header-bg" />
+      <!-- 右上角模式切换：只显示可切换到的目标模式 -->
+      <view
+        class="mode-switch"
+        :class="{ tapped: modeSwitchTapped }"
+        @tap="switchMode"
+      >
+        <text class="mode-switch-text">切换{{ loginMode === 'saas' ? '私有部署' : 'SaaS' }}</text>
+      </view>
     </view>
 
     <!-- Logo区域 -->
@@ -14,6 +22,17 @@
     <!-- 登录表单 -->
     <view class="form-section">
       <view class="input-group">
+        <!-- SaaS模式：租户编码输入框 -->
+        <view v-if="loginMode === 'saas'" class="input-item">
+          <text class="icon">🏢</text>
+          <input
+            v-model="tenantCode"
+            placeholder="请输入租户编码"
+            placeholder-class="placeholder"
+            :disabled="isLoading"
+          />
+        </view>
+
         <view class="input-item">
           <text class="icon">👤</text>
           <input
@@ -89,6 +108,15 @@ import { setEncryptedStorage, getEncryptedStorage } from '@/utils/crypto'
 const serverStore = useServerStore()
 const userStore = useUserStore()
 
+const loginMode = ref<'saas' | 'private'>(uni.getStorageSync('loginMode') || 'saas')
+const tenantCode = ref(uni.getStorageSync('savedTenantCode') || '')
+const modeSwitchTapped = ref(false)
+
+const switchMode = () => {
+  modeSwitchTapped.value = true
+  setTimeout(() => { modeSwitchTapped.value = false }, 300)
+  loginMode.value = loginMode.value === 'saas' ? 'private' : 'saas'
+}
 const username = ref('')
 const password = ref('')
 const rememberPassword = ref(true)
@@ -96,7 +124,9 @@ const agreedToTerms = ref(false)
 const isLoading = ref(false)
 
 const canLogin = computed(() => {
-  return username.value.trim() && password.value.trim() && agreedToTerms.value && !isLoading.value
+  const base = username.value.trim() && password.value.trim() && agreedToTerms.value && !isLoading.value
+  if (loginMode.value === 'saas') return base && tenantCode.value.trim()
+  return base
 })
 
 onMounted(() => {
@@ -152,7 +182,7 @@ const handleLogin = async () => {
     // 获取设备信息
     const systemInfo = uni.getSystemInfoSync()
 
-    const result = await login({
+    const loginData: any = {
       username: username.value,
       password: password.value,
       deviceInfo: {
@@ -163,13 +193,21 @@ const handleLogin = async () => {
         osVersion: systemInfo.system || '',
         appVersion: APP_VERSION
       }
-    })
+    }
+    if (loginMode.value === 'saas' && tenantCode.value.trim()) {
+      loginData.tenantCode = tenantCode.value.trim()
+    }
+
+    const result = await login(loginData)
 
     // 保存登录信息
     userStore.setLoginInfo(result)
 
-
-    // 记住密码（使用加密存储）
+    // 记住密码和模式（使用加密存储）
+    uni.setStorageSync('loginMode', loginMode.value)
+    if (loginMode.value === 'saas') {
+      uni.setStorageSync('savedTenantCode', tenantCode.value)
+    }
     if (rememberPassword.value) {
       uni.setStorageSync('savedUsername', username.value)
       setEncryptedStorage('savedPassword', password.value)
@@ -307,6 +345,27 @@ const checkRecordingOnLogin = async () => {
       height: 400rpx;
       background: linear-gradient(135deg, #6EE7B7 0%, #34D399 100%);
       border-radius: 0 0 60rpx 60rpx;
+    }
+
+    .mode-switch {
+      position: absolute;
+      top: 100rpx;
+      right: 32rpx;
+      z-index: 10;
+      background: rgba(255, 255, 255, 0.2);
+      border-radius: 24rpx;
+      padding: 10rpx 24rpx;
+      transition: all 0.3s ease;
+
+      &:active, &.tapped {
+        background: rgba(255, 255, 255, 0.45);
+        transform: scale(0.95);
+      }
+    }
+
+    .mode-switch-text {
+      font-size: 24rpx;
+      color: rgba(255, 255, 255, 0.9);
     }
   }
 

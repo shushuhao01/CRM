@@ -28,7 +28,7 @@ router.get('/ping', (req: Request, res: Response) => {
 router.post('/login', async (req: Request, res: Response) => {
   const startTime = Date.now()
   try {
-    const { username, password, tenantId, deviceInfo: _deviceInfo } = req.body
+    const { username, password, tenantId: rawTenantId, tenantCode, deviceInfo: _deviceInfo } = req.body
 
     if (!username || !password) {
       return res.status(400).json({
@@ -38,7 +38,18 @@ router.post('/login', async (req: Request, res: Response) => {
       })
     }
 
-    // 🔥 安全修复：SaaS模式下强制要求租户编码，防止跨租户登录
+    // 解析租户：支持 tenantCode（短编码）或 tenantId（UUID）
+    let tenantId = rawTenantId || ''
+    if (!tenantId && tenantCode) {
+      const tenantRows = await AppDataSource.query(
+        'SELECT id, name FROM tenants WHERE code = ? AND deleted_at IS NULL LIMIT 1', [tenantCode]
+      )
+      if (tenantRows.length === 0) {
+        return res.status(400).json({ success: false, message: '租户编码不存在', code: 'INVALID_TENANT' })
+      }
+      tenantId = tenantRows[0].id
+    }
+
     if (deployConfig.isSaaS() && !tenantId) {
       return res.status(400).json({
         success: false,
@@ -52,7 +63,6 @@ router.post('/login', async (req: Request, res: Response) => {
        FROM users WHERE username = ? AND status = 'active'`
     const queryParams: any[] = [username]
 
-    // SaaS模式：按租户过滤
     if (tenantId) {
       userQuery += ` AND tenant_id = ?`
       queryParams.push(tenantId)

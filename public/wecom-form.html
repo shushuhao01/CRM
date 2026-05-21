@@ -42,7 +42,8 @@ input,textarea,select,button{font-family:inherit;font-size:inherit}
 .form-item{margin-bottom:16px}
 .form-label{font-size:13px;color:#4e5969;margin-bottom:6px;font-weight:500;display:flex;align-items:center;gap:2px}
 .required{color:#f5222d}
-.form-input{width:100%;height:42px;padding:0 14px;border:1px solid #e5e6eb;border-radius:8px;font-size:14px;color:#1d2129;background:#fafbfc;outline:none;transition:border-color .2s,box-shadow .2s}
+.form-input{width:100%;height:42px;padding:0 14px;border:1px solid #e5e6eb;border-radius:8px;font-size:14px;color:#1d2129;background:#fafbfc;outline:none;transition:border-color .2s,box-shadow .2s;box-sizing:border-box}
+.addr-select{flex:1;min-width:0;font-size:13px;padding:0 6px;height:40px;text-overflow:ellipsis}
 .form-input:focus{border-color:#409eff;box-shadow:0 0 0 2px rgba(64,158,255,.1);background:#fff}
 .form-input::placeholder{color:#c0c4cc}
 .form-textarea{width:100%;min-height:60px;padding:10px 14px;border:1px solid #e5e6eb;border-radius:8px;font-size:14px;color:#1d2129;background:#fafbfc;resize:vertical;outline:none;line-height:1.6}
@@ -158,7 +159,19 @@ select.form-input{appearance:auto;-webkit-appearance:auto}
       </div>
       <div id="collapsedFieldsContainer" style="display:none"></div>
     </div>
-    <!-- 备注（如果remark字段已在配置中，会通过renderFields渲染；否则作为默认显示） -->
+    <!-- 补充信息（自定义字段） -->
+    <div class="form-section" id="customFieldsSection" style="display:none">
+      <div class="section-title"><div class="section-title-bar" style="background:#67c23a"></div><span>补充信息</span></div>
+      <div id="customFieldsVisible"></div>
+      <div id="customFieldsCollapsed" style="display:none">
+        <div class="section-title expand-header" onclick="toggleCustomCollapsed()" style="padding:8px 0 0">
+          <div style="display:flex;align-items:center;gap:6px"><span style="font-size:13px;color:#909399">选填项</span></div>
+          <span class="expand-hint"><span id="customExpandText">展开</span><span class="expand-icon" id="customExpandIcon">▶</span></span>
+        </div>
+        <div id="customFieldsCollapsedContainer" style="display:none"></div>
+      </div>
+    </div>
+    <!-- 备注（始终显示） -->
     <div class="form-section" id="remarkSection">
       <div class="section-title"><div class="section-title-bar" style="background:#909399"></div><span>备注</span></div>
       <div class="form-item"><textarea id="field_remark" class="form-textarea" placeholder="如有其他需要说明的，请在此填写" maxlength="500"></textarea></div>
@@ -271,30 +284,31 @@ function loadFormConfig() {
     var rawCustom = data.customFields || [];
     var ADDRESS_KEYS = ['address','province','city','district','street','detailAddress'];
 
-    // ★ 按租户配置分区：mpCollapsed=true → 折叠区，其他 → 基本信息区
-    // 规则：必填字段在基本信息区，启用但非必填且mpCollapsed的在折叠区
+    // ★ 分区规则：必填→基本信息，非必填→更多信息（折叠），备注独立，自定义字段独立
     var visible = [], collapsed = [], addressHandled = false;
     for (var i = 0; i < builtinFields.length; i++) {
       var f = builtinFields[i];
+      // 备注字段不参与分组，始终在独立备注区显示
+      if (f.key === 'remark') continue;
       if (ADDRESS_KEYS.indexOf(f.key) >= 0) {
         if (!addressHandled) {
           addressHandled = true;
           var addrRequired = builtinFields.filter(function(b){return ADDRESS_KEYS.indexOf(b.key)>=0}).some(function(a){return a.mpRequired});
-          var addrCollapsed = !addrRequired && builtinFields.filter(function(b){return ADDRESS_KEYS.indexOf(b.key)>=0}).some(function(a){return a.mpCollapsed});
           var addrField = { key: 'province', label: '收货地址', mpRequired: addrRequired };
-          if (addrCollapsed) collapsed.push(addrField); else visible.push(addrField);
+          if (addrRequired) visible.push(addrField); else collapsed.push(addrField);
         }
         continue;
       }
       var field = { key: f.key, label: f.label, mpRequired: !!f.mpRequired };
-      if (f.mpCollapsed && !f.mpRequired) collapsed.push(field); else visible.push(field);
+      // 必填→基本信息区，非必填→折叠区
+      if (f.mpRequired) visible.push(field); else collapsed.push(field);
     }
 
-    // ★ 自定义字段也按 mpCollapsed 分区（不再独立区域）
+    // ★ 自定义字段独立区域，按必填/非必填分组
     var visibleCustom = [], collapsedCustom = [];
     for (var j = 0; j < rawCustom.length; j++) {
       var cf = rawCustom[j];
-      if (cf.mpCollapsed && !cf.mpRequired) collapsedCustom.push(cf); else visibleCustom.push(cf);
+      if (cf.mpRequired) visibleCustom.push(cf); else collapsedCustom.push(cf);
     }
 
     formConfig.visibleFields = visible;
@@ -313,27 +327,35 @@ function loadFormConfig() {
 
 // ===== 渲染表单 =====
 function renderForm() {
+  // ① 基本信息区：必填的内置字段
   renderFields('visibleFieldsContainer', formConfig.visibleFields);
-  // ★ 非折叠自定义字段追加到基本信息区
-  if (formConfig.customFields.length > 0) {
-    renderCustomFieldsTo('visibleFieldsContainer', formConfig.customFields);
-  }
-  // ★ 折叠区：内置折叠字段 + 折叠自定义字段
-  var hasCollapsed = formConfig.collapsedFields.length > 0 || formConfig.collapsedCustomFields.length > 0;
-  if (hasCollapsed) {
+
+  // ② 更多信息（选填）折叠区：非必填的内置字段
+  if (formConfig.collapsedFields.length > 0) {
     document.getElementById('collapsedSection').style.display = '';
     renderFields('collapsedFieldsContainer', formConfig.collapsedFields);
-    if (formConfig.collapsedCustomFields.length > 0) {
-      renderCustomFieldsTo('collapsedFieldsContainer', formConfig.collapsedCustomFields);
+  }
+
+  // ③ 补充信息区（自定义字段）：必填直接显示，非必填折叠
+  var hasCustom = formConfig.customFields.length > 0 || formConfig.collapsedCustomFields.length > 0;
+  if (hasCustom) {
+    var customSection = document.getElementById('customFieldsSection');
+    if (customSection) {
+      customSection.style.display = '';
+      if (formConfig.customFields.length > 0) {
+        renderCustomFieldsTo('customFieldsVisible', formConfig.customFields);
+      }
+      if (formConfig.collapsedCustomFields.length > 0) {
+        var customCollapsedWrap = document.getElementById('customFieldsCollapsed');
+        if (customCollapsedWrap) {
+          customCollapsedWrap.style.display = '';
+          renderCustomFieldsTo('customFieldsCollapsedContainer', formConfig.collapsedCustomFields);
+        }
+      }
     }
   }
-  // ★ 备注：如果remark已在配置字段中渲染，隐藏独立备注区（避免重复）
-  var allBuiltinKeys = formConfig.visibleFields.concat(formConfig.collapsedFields).map(function(f){return f.key});
-  var remarkInConfig = allBuiltinKeys.indexOf('remark') >= 0;
-  if (remarkInConfig) {
-    var remarkSec = document.getElementById('remarkSection');
-    if (remarkSec) remarkSec.style.display = 'none';
-  }
+
+  // ④ 备注区始终显示（已从分组逻辑中排除remark字段，不会重复）
   document.getElementById('loadingPage').style.display = 'none';
   document.getElementById('formPage').style.display = '';
 }
@@ -355,9 +377,9 @@ function renderFields(containerId, fields) {
       html += '<div class="form-item"><div class="form-label">' + f.label + req + '</div><input class="form-input" id="field_birthday" type="date"></div>';
     } else if (f.key === 'province') {
       html += '<div class="form-item"><div class="form-label">收货地址' + req + '</div>'
-        + '<div style="display:flex;gap:6px;margin-bottom:8px"><select class="form-input" id="field_province" onchange="onProvinceChange()" style="flex:1"><option value="">省份</option></select>'
-        + '<select class="form-input" id="field_city" onchange="onCityChange()" style="flex:1"><option value="">城市</option></select>'
-        + '<select class="form-input" id="field_district" onchange="onDistrictChange()" style="flex:1"><option value="">区县</option></select></div>'
+        + '<div style="display:flex;gap:4px;margin-bottom:8px;flex-wrap:wrap"><select class="form-input addr-select" id="field_province" onchange="onProvinceChange()"><option value="">请选择省/市</option></select>'
+        + '<select class="form-input addr-select" id="field_city" onchange="onCityChange()"><option value="">请选择市/区</option></select>'
+        + '<select class="form-input addr-select" id="field_district" onchange="onDistrictChange()"><option value="">请选择区/县</option></select></div>'
         + '<select class="form-input" id="field_street" style="margin-bottom:8px;display:none"><option value="">选择街道/乡镇</option></select>'
         + '<input class="form-input" id="field_detailAddress" placeholder="详细地址（门牌号、楼层等）">'
         + '</div>';
@@ -418,6 +440,13 @@ function toggleCollapsed() {
   document.getElementById('collapsedFieldsContainer').style.display = showCollapsed ? '' : 'none';
   document.getElementById('expandText').textContent = showCollapsed ? '收起' : '展开更多';
   document.getElementById('expandIcon').className = 'expand-icon' + (showCollapsed ? ' expanded' : '');
+}
+var showCustomCollapsed = false;
+function toggleCustomCollapsed() {
+  showCustomCollapsed = !showCustomCollapsed;
+  document.getElementById('customFieldsCollapsedContainer').style.display = showCustomCollapsed ? '' : 'none';
+  document.getElementById('customExpandText').textContent = showCustomCollapsed ? '收起' : '展开';
+  document.getElementById('customExpandIcon').className = 'expand-icon' + (showCustomCollapsed ? ' expanded' : '');
 }
 
 // ===== 地址联动（使用系统地址数据包） =====

@@ -101,10 +101,33 @@ export class WecomApiService {
       const response = await axios.get(`${WECOM_API_BASE}/department/list`, { params });
 
       if (response.data.errcode === 0) {
-        return response.data.department || [];
+        const depts = response.data.department || [];
+        if (depts.length > 0) return depts;
+        // 企微已废弃第三方应用的 /department/list，降级到 /department/simplelist
+        log.info('[WecomApi] department/list 返回空数组，尝试 department/simplelist ...');
+      } else if (response.data.errcode === 60011 || response.data.errcode === 60123) {
+        log.warn(`[WecomApi] department/list 权限不足(${response.data.errcode})，尝试 simplelist ...`);
       } else {
-        throw new Error(`获取部门列表失败: ${response.data.errmsg}`);
+        throw new Error(`获取部门列表失败: ${response.data.errmsg} (${response.data.errcode})`);
       }
+
+      // 降级：使用 /department/simplelist（2022年后第三方应用推荐接口）
+      const simpleParams: any = { access_token: accessToken };
+      if (departmentId !== undefined) simpleParams.id = departmentId;
+      const simpleRes = await axios.get(`${WECOM_API_BASE}/department/simplelist`, { params: simpleParams });
+      if (simpleRes.data.errcode === 0) {
+        const simpleDepts = simpleRes.data.department_id || [];
+        log.info(`[WecomApi] department/simplelist 返回 ${simpleDepts.length} 个部门`);
+        // simplelist 只返回 {id, parentid, order}，需要用 /department/get 补充名称
+        const fullDepts: any[] = [];
+        for (const sd of simpleDepts) {
+          const detail = await this.getDepartmentDetail(accessToken, sd.id);
+          fullDepts.push(detail || { id: sd.id, name: `部门${sd.id}`, parentid: sd.parentid, order: sd.order });
+        }
+        return fullDepts;
+      }
+      log.warn('[WecomApi] department/simplelist 也失败:', simpleRes.data.errmsg);
+      return [];
     } catch (error: any) {
       log.error('[WecomApi] getDepartmentList error:', error.message);
       throw error;
@@ -565,16 +588,16 @@ export class WecomApiService {
   /**
    * 获取对外收款记录
    */
-  static async getPaymentList(accessToken: string, beginTime: number, endTime: number, cursor?: string): Promise<any> {
+  static async getPaymentList(accessToken: string, beginTime: number, endTime: number, cursor?: string, limit: number = 100): Promise<any> {
     try {
       const body: any = {
         begin_time: beginTime,
-        end_time: endTime
+        end_time: endTime,
+        limit: Math.min(limit, 1000)
       };
-      // cursor 只在有值时传递，首次调用不传
       if (cursor) body.cursor = cursor;
 
-      log.info(`[WecomApi] getPaymentList: begin_time=${beginTime}, end_time=${endTime}, cursor=${cursor || '(首次)'}`);
+      log.info(`[WecomApi] getPaymentList: begin_time=${beginTime}, end_time=${endTime}, limit=${body.limit}, cursor=${cursor || '(首次)'}`);
 
       const response = await axios.post(`${WECOM_API_BASE}/externalpay/get_bill_list?access_token=${accessToken}`, body);
 

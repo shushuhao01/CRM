@@ -180,16 +180,22 @@ router.post('/payments/sync', authenticateToken, requireAdmin, async (req: Reque
     if (!config) return res.status(404).json({ success: false, message: '企微配置不存在或已禁用' });
 
     const endTime = endDate ? Math.floor(new Date(endDate).getTime() / 1000) : Math.floor(Date.now() / 1000);
-    // 默认同步最近90天的记录（企微API对外收款接口限制查询范围）
-    const beginTime = startDate ? Math.floor(new Date(startDate).getTime() / 1000) : endTime - 90 * 24 * 3600;
+    // 企微 get_bill_list 接口限制：单次查询范围不超过30天
+    const MAX_RANGE = 30 * 24 * 3600;
+    const requestedBeginTime = startDate ? Math.floor(new Date(startDate).getTime() / 1000) : endTime - MAX_RANGE;
 
     const accessToken = await WecomApiService.getAccessTokenByConfigId(configId, 'payment');
     const paymentRepo = getTenantRepo(WecomPaymentRecord);
     let syncCount = 0;
-    let cursor = '';
+
+    // 按30天分段查询（避免超限报40058）
+    let segEnd = endTime;
+    while (segEnd > requestedBeginTime) {
+      const segBegin = Math.max(segEnd - MAX_RANGE, requestedBeginTime);
+      let cursor = '';
 
     do {
-      const result = await WecomApiService.getPaymentList(accessToken, beginTime, endTime, cursor);
+      const result = await WecomApiService.getPaymentList(accessToken, segBegin, segEnd, cursor);
       const billList = result.billList || [];
 
       for (const bill of billList) {
@@ -224,6 +230,9 @@ router.post('/payments/sync', authenticateToken, requireAdmin, async (req: Reque
 
       cursor = result.nextCursor || '';
     } while (cursor);
+
+      segEnd = segBegin;
+    }
 
     res.json({ success: true, message: `同步完成，共同步 ${syncCount} 条收款记录` });
   } catch (error: any) {

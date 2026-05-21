@@ -154,7 +154,14 @@ router.get('/form-config', validateMpSign, async (req: Request, res: Response) =
           birthday: '生日', medicalHistory: '疾病史', improvementGoals: '改善问题',
           address: '收货地址', province: '省份', city: '城市',
           district: '区县', street: '街道', detailAddress: '详细地址',
-          remark: '备注'
+          remark: '备注',
+          fanAcquisitionTime: '粉丝获取时间', wecomExternalUserId: '企微外部联系人ID',
+          level: '客户等级', source: '客户来源', status: '客户状态',
+          tags: '标签', salesPerson: '跟进人', followStatus: '跟进状态',
+          starRating: '星级评分', finalScore: '综合评分',
+          orderCount: '订单数', totalAmount: '累计消费',
+          lastOrderTime: '最后购买时间', company: '公司名称',
+          position: '职位', industry: '行业', notes: '备注信息'
         };
 
         for (const [key, vis] of Object.entries(fieldVis) as any[]) {

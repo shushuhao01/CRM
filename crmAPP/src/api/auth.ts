@@ -12,6 +12,7 @@ interface LoginResponse {
 export const login = (data: {
   username: string
   password: string
+  tenantCode?: string
   deviceInfo?: Partial<DeviceInfo>
 }): Promise<LoginResponse> => {
   return request({

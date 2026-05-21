@@ -161,6 +161,8 @@ Page({
       let addressHandled = false
 
       for (const f of builtinFields) {
+        // 备注字段独立区域，不参与分组
+        if (f.key === 'remark') continue
         // 地址子字段统一合并为一条
         if (ADDRESS_KEYS.includes(f.key)) {
           if (!addressHandled) {
