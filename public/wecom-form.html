@@ -158,16 +158,12 @@ select.form-input{appearance:auto;-webkit-appearance:auto}
       </div>
       <div id="collapsedFieldsContainer" style="display:none"></div>
     </div>
-    <!-- 备注 -->
-    <div class="form-section">
+    <!-- 备注（如果remark字段已在配置中，会通过renderFields渲染；否则作为默认显示） -->
+    <div class="form-section" id="remarkSection">
       <div class="section-title"><div class="section-title-bar" style="background:#909399"></div><span>备注</span></div>
       <div class="form-item"><textarea id="field_remark" class="form-textarea" placeholder="如有其他需要说明的，请在此填写" maxlength="500"></textarea></div>
     </div>
-    <!-- 自定义字段 -->
-    <div class="form-section" id="customFieldsSection" style="display:none">
-      <div class="section-title"><div class="section-title-bar" style="background:#67c23a"></div><span>补充信息</span></div>
-      <div id="customFieldsContainer"></div>
-    </div>
+    <!-- 自定义字段已整合到基本信息区和折叠区 -->
   </div>
 
   <!-- 协议 -->
@@ -219,7 +215,7 @@ select.form-input{appearance:auto;-webkit-appearance:auto}
 <script>
 // ===== 全局状态 =====
 var params = {};
-var formConfig = { visibleFields: [], collapsedFields: [], customFields: [] };
+var formConfig = { visibleFields: [], collapsedFields: [], customFields: [], collapsedCustomFields: [] };
 var formData = {};
 var customFormData = {};
 var agreedPrivacy = false;
@@ -275,6 +271,8 @@ function loadFormConfig() {
     var rawCustom = data.customFields || [];
     var ADDRESS_KEYS = ['address','province','city','district','street','detailAddress'];
 
+    // ★ 按租户配置分区：mpCollapsed=true → 折叠区，其他 → 基本信息区
+    // 规则：必填字段在基本信息区，启用但非必填且mpCollapsed的在折叠区
     var visible = [], collapsed = [], addressHandled = false;
     for (var i = 0; i < builtinFields.length; i++) {
       var f = builtinFields[i];
@@ -282,18 +280,27 @@ function loadFormConfig() {
         if (!addressHandled) {
           addressHandled = true;
           var addrRequired = builtinFields.filter(function(b){return ADDRESS_KEYS.indexOf(b.key)>=0}).some(function(a){return a.mpRequired});
+          var addrCollapsed = !addrRequired && builtinFields.filter(function(b){return ADDRESS_KEYS.indexOf(b.key)>=0}).some(function(a){return a.mpCollapsed});
           var addrField = { key: 'province', label: '收货地址', mpRequired: addrRequired };
-          if (addrRequired) visible.push(addrField); else collapsed.push(addrField);
+          if (addrCollapsed) collapsed.push(addrField); else visible.push(addrField);
         }
         continue;
       }
       var field = { key: f.key, label: f.label, mpRequired: !!f.mpRequired };
-      if (f.mpRequired) visible.push(field); else collapsed.push(field);
+      if (f.mpCollapsed && !f.mpRequired) collapsed.push(field); else visible.push(field);
+    }
+
+    // ★ 自定义字段也按 mpCollapsed 分区（不再独立区域）
+    var visibleCustom = [], collapsedCustom = [];
+    for (var j = 0; j < rawCustom.length; j++) {
+      var cf = rawCustom[j];
+      if (cf.mpCollapsed && !cf.mpRequired) collapsedCustom.push(cf); else visibleCustom.push(cf);
     }
 
     formConfig.visibleFields = visible;
     formConfig.collapsedFields = collapsed;
-    formConfig.customFields = rawCustom;
+    formConfig.customFields = visibleCustom;
+    formConfig.collapsedCustomFields = collapsedCustom;
 
     if (data.tenantCode) document.getElementById('tenantCodeDisplay').textContent = data.tenantCode;
     renderForm();
@@ -307,13 +314,25 @@ function loadFormConfig() {
 // ===== 渲染表单 =====
 function renderForm() {
   renderFields('visibleFieldsContainer', formConfig.visibleFields);
-  if (formConfig.collapsedFields.length > 0) {
+  // ★ 非折叠自定义字段追加到基本信息区
+  if (formConfig.customFields.length > 0) {
+    renderCustomFieldsTo('visibleFieldsContainer', formConfig.customFields);
+  }
+  // ★ 折叠区：内置折叠字段 + 折叠自定义字段
+  var hasCollapsed = formConfig.collapsedFields.length > 0 || formConfig.collapsedCustomFields.length > 0;
+  if (hasCollapsed) {
     document.getElementById('collapsedSection').style.display = '';
     renderFields('collapsedFieldsContainer', formConfig.collapsedFields);
+    if (formConfig.collapsedCustomFields.length > 0) {
+      renderCustomFieldsTo('collapsedFieldsContainer', formConfig.collapsedCustomFields);
+    }
   }
-  if (formConfig.customFields.length > 0) {
-    document.getElementById('customFieldsSection').style.display = '';
-    renderCustomFields();
+  // ★ 备注：如果remark已在配置字段中渲染，隐藏独立备注区（避免重复）
+  var allBuiltinKeys = formConfig.visibleFields.concat(formConfig.collapsedFields).map(function(f){return f.key});
+  var remarkInConfig = allBuiltinKeys.indexOf('remark') >= 0;
+  if (remarkInConfig) {
+    var remarkSec = document.getElementById('remarkSection');
+    if (remarkSec) remarkSec.style.display = 'none';
   }
   document.getElementById('loadingPage').style.display = 'none';
   document.getElementById('formPage').style.display = '';
@@ -350,6 +369,10 @@ function renderFields(containerId, fields) {
       html += '<div class="form-item"><div class="form-label">' + f.label + req + '</div><input class="form-input" id="field_height" type="number" step="0.1" placeholder="请输入身高(cm)"></div>';
     } else if (f.key === 'weight') {
       html += '<div class="form-item"><div class="form-label">' + f.label + req + '</div><input class="form-input" id="field_weight" type="number" step="0.1" placeholder="请输入体重(kg)"></div>';
+    } else if (f.key === 'remark' || f.key === 'medicalHistory' || f.key === 'improvementGoals') {
+      html += '<div class="form-item"><div class="form-label">' + f.label + req + '</div><textarea class="form-textarea" id="field_' + f.key + '" placeholder="请输入' + f.label + '" maxlength="500"></textarea></div>';
+    } else if (f.key === 'fanAcquisitionTime') {
+      html += '<div class="form-item"><div class="form-label">' + f.label + req + '</div><input class="form-input" id="field_fanAcquisitionTime" type="date"></div>';
     } else {
       html += '<div class="form-item"><div class="form-label">' + f.label + req + '</div><input class="form-input" id="field_' + f.key + '" placeholder="请输入' + f.label + '"></div>';
     }
@@ -359,10 +382,10 @@ function renderFields(containerId, fields) {
   if (document.getElementById('field_province')) loadProvinces();
 }
 
-function renderCustomFields() {
+function renderCustomFieldsTo(containerId, fields) {
   var html = '';
-  for (var i = 0; i < formConfig.customFields.length; i++) {
-    var f = formConfig.customFields[i];
+  for (var i = 0; i < fields.length; i++) {
+    var f = fields[i];
     var req = f.mpRequired ? '<span class="required">*</span>' : '';
     if (f.fieldType === 'select' || f.fieldType === 'radio') {
       var opts = '<option value="">请选择' + f.fieldName + '</option>';
@@ -375,7 +398,8 @@ function renderCustomFields() {
       html += '<div class="form-item"><div class="form-label">' + f.fieldName + req + '</div><input class="form-input" id="custom_' + f.fieldKey + '" type="' + inputType + '" placeholder="' + (f.placeholder || '请输入' + f.fieldName) + '"></div>';
     }
   }
-  document.getElementById('customFieldsContainer').innerHTML = html;
+  // 追加到容器（不覆盖已有内容）
+  document.getElementById(containerId).innerHTML += html;
 }
 
 // ===== 性别选择 =====
@@ -689,8 +713,9 @@ function collectFormData() {
   formData.gender = genderMap[selectedGender] || selectedGender || '';
 
   customFormData = {};
-  for (var j = 0; j < formConfig.customFields.length; j++) {
-    var cf = formConfig.customFields[j];
+  var allCustomFields = formConfig.customFields.concat(formConfig.collapsedCustomFields || []);
+  for (var j = 0; j < allCustomFields.length; j++) {
+    var cf = allCustomFields[j];
     customFormData[cf.fieldKey] = getVal('custom_' + cf.fieldKey);
   }
 }
@@ -715,8 +740,9 @@ function validateForm() {
   if (formData.age && (isNaN(formData.age) || Number(formData.age) < 1 || Number(formData.age) > 150)) { showToast('请输入正确的年龄'); return false; }
   if (formData.height && (isNaN(formData.height) || Number(formData.height) <= 0 || Number(formData.height) > 300)) { showToast('请输入正确的身高'); return false; }
   if (formData.weight && (isNaN(formData.weight) || Number(formData.weight) <= 0 || Number(formData.weight) > 500)) { showToast('请输入正确的体重'); return false; }
-  for (var j = 0; j < formConfig.customFields.length; j++) {
-    var cf = formConfig.customFields[j];
+  var allCF = formConfig.customFields.concat(formConfig.collapsedCustomFields || []);
+  for (var j = 0; j < allCF.length; j++) {
+    var cf = allCF[j];
     if (cf.mpRequired && !customFormData[cf.fieldKey]) { showToast('请填写' + cf.fieldName); return false; }
   }
   return true;

@@ -110,20 +110,42 @@ router.get('/form-config', validateMpSign, async (req: Request, res: Response) =
       if (user) memberName = user.name || user.username || '顾问';
     } catch { /* ignore */ }
 
-    // 获取字段配置
-    const fieldConfigSetting = await settingsRepo.findOne({
-      where: { tenantId, settingKey: 'customer_field_config' }
-    });
+    // 获取字段配置：优先从 system_configs 读取（CRM客户设置保存的位置），兜底 tenant_settings
+    let fieldConfig: any = null;
+
+    try {
+      const { SystemConfig } = await import('../../entities/SystemConfig');
+      const sysConfigRepo = AppDataSource.getRepository(SystemConfig);
+      const sysConfigRow = await sysConfigRepo.findOne({
+        where: { tenantId, configKey: 'customerFieldConfig', configGroup: 'customer_settings' }
+      });
+      if (sysConfigRow) {
+        const rawVal = sysConfigRow.configValue;
+        fieldConfig = typeof rawVal === 'string' ? JSON.parse(rawVal) : rawVal;
+      }
+    } catch (e) {
+      log.warn('[小程序] 从system_configs读取字段配置失败，尝试tenant_settings:', (e as any)?.message);
+    }
+
+    // 兜底：从 tenant_settings 读取（旧数据兼容）
+    if (!fieldConfig) {
+      const fieldConfigSetting = await settingsRepo.findOne({
+        where: { tenantId, settingKey: 'customer_field_config' }
+      });
+      if (fieldConfigSetting) {
+        fieldConfig = typeof fieldConfigSetting.settingValue === 'string'
+          ? JSON.parse(fieldConfigSetting.settingValue)
+          : fieldConfigSetting.settingValue;
+      }
+    }
 
     let builtinFields: any[] = [];
     let customFields: any[] = [];
     let phoneAuthEnabled = true;
 
-    if (fieldConfigSetting) {
+    if (fieldConfig) {
       try {
-        const config = typeof fieldConfigSetting.settingValue === 'string'
-          ? JSON.parse(fieldConfigSetting.settingValue)
-          : fieldConfigSetting.settingValue;
+        const config = fieldConfig;
 
         const fieldVis = config.fieldVisibility || {};
         const FIELD_LABELS: Record<string, string> = {

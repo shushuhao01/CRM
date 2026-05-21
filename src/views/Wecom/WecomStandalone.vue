@@ -37,7 +37,7 @@
           <h3>功能未开通</h3>
           <p>当前企微套餐不包含「{{ currentLockedLabel }}」功能，请升级套餐后使用</p>
           <div class="upgrade-actions">
-            <el-button @click="activeTab = 'config'">返回</el-button>
+            <el-button @click="activeTab = visibleMenuItems[0]?.name || 'address-book'">返回</el-button>
             <el-button type="primary" @click="goToPackageTab">查看套餐</el-button>
           </div>
         </div>
@@ -68,36 +68,36 @@ const tenantPackage = ref<any>(null)
 // 向子组件提供独立窗口标识，用于隐藏 demo banner 等
 provide('isWecomStandalone', true)
 
-// 异步加载各企微页面组件
+// 异步加载各企微页面组件（与CRM主菜单保持一致）
 const componentMap: Record<string, ReturnType<typeof defineAsyncComponent>> = {
-  'config': defineAsyncComponent(() => import('./Config.vue')),
   'address-book': defineAsyncComponent(() => import('./AddressBook.vue')),
   'customer': defineAsyncComponent(() => import('./Customer.vue')),
   'customer-group': defineAsyncComponent(() => import('./CustomerGroup.vue')),
   'acquisition': defineAsyncComponent(() => import('./Acquisition.vue')),
   'contact-way': defineAsyncComponent(() => import('./ContactWay.vue')),
   'chat-archive': defineAsyncComponent(() => import('./ChatArchive.vue')),
+  'service': defineAsyncComponent(() => import('./Service.vue')),
   // AI助手暂停开发
   // 'ai-assistant': defineAsyncComponent(() => import('./AiAssistant.vue')),
-  'service': defineAsyncComponent(() => import('./Service.vue')),
   'sidebar': defineAsyncComponent(() => import('./Sidebar.vue')),
   'payment': defineAsyncComponent(() => import('./Payment.vue')),
+  'config': defineAsyncComponent(() => import('./Config.vue')),
 }
 
-// 全量菜单定义（与独立窗口 componentMap 对应）
+// 全量菜单定义（顺序、名称与 config/menu.ts 中的 wecom children 保持一致）
 const allMenuItems = [
-  { name: 'config', label: '企微授权', icon: '⚙️', configId: 'wecom-config' },
   { name: 'address-book', label: '通讯录', icon: '📒', configId: 'wecom-address-book' },
-  { name: 'customer', label: '企业客户', icon: '👥', configId: 'wecom-customer' },
+  { name: 'customer', label: '企微客户', icon: '👥', configId: 'wecom-customer' },
   { name: 'customer-group', label: '客户群', icon: '👨‍👩‍👧‍👦', configId: 'wecom-customer-group' },
   { name: 'acquisition', label: '获客助手', icon: '🎯', configId: 'wecom-acquisition' },
-  { name: 'contact-way', label: '渠道活码', icon: '📎', configId: 'wecom-contact-way' },
+  { name: 'contact-way', label: '活码管理', icon: '📎', configId: 'wecom-contact-way' },
   { name: 'chat-archive', label: '会话存档', icon: '💬', configId: 'wecom-chat-archive' },
+  { name: 'service', label: '微信客服', icon: '🎧', configId: 'wecom-service' },
   // AI助手暂停开发
   // { name: 'ai-assistant', label: 'AI助手', icon: '🤖', configId: 'wecom-ai-assistant' },
-  { name: 'service', label: '微信客服', icon: '🎧', configId: 'wecom-service' },
   { name: 'sidebar', label: '侧边栏', icon: '📱', configId: 'wecom-sidebar' },
   { name: 'payment', label: '对外收款', icon: '💰', configId: 'wecom-payment' },
+  { name: 'config', label: '企微授权', icon: '⚙️', configId: 'wecom-config' },
 ]
 
 // 根据当前用户角色权限过滤菜单（复用 CRM 主应用的 config/menu.ts 配置）
@@ -123,7 +123,7 @@ const visibleMenuItems = computed(() => {
   })
 })
 
-const activeTab = ref('config')
+const activeTab = ref('address-book')
 
 const currentComponent = computed(() => {
   return componentMap[activeTab.value] || componentMap['config']

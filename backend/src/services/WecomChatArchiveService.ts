@@ -1224,15 +1224,15 @@ export class WecomChatArchiveService {
     // 获取上次拉取的游标位置
     let cursor = await this.getSyncCursor(config.id, config.tenantId);
 
-    // ★ 如果有旧的未解密记录（type:encrypted），重置游标以触发完整解密
+    // ★ 如果有旧的未解密记录或空fromUserId记录（旧bug），重置游标以触发完整修复
     if (cursor) {
       try {
-        const encryptedCount = await AppDataSource.query(
-          `SELECT COUNT(*) as cnt FROM wecom_chat_records WHERE wecom_config_id = ? AND msg_type != 'meta' AND content LIKE '%"type":"encrypted"%' LIMIT 1`,
+        const badRecordCount = await AppDataSource.query(
+          `SELECT COUNT(*) as cnt FROM wecom_chat_records WHERE wecom_config_id = ? AND msg_type != 'meta' AND (content LIKE '%"type":"encrypted"%' OR from_user_id = '' OR from_user_id IS NULL) LIMIT 1`,
           [config.id]
         );
-        if (encryptedCount?.[0]?.cnt > 0) {
-          log.info(`[ChatArchive] syncChatMessages: 发现 ${encryptedCount[0].cnt} 条旧加密记录，重置游标以重新解密`);
+        if (badRecordCount?.[0]?.cnt > 0) {
+          log.info(`[ChatArchive] syncChatMessages: 发现 ${badRecordCount[0].cnt} 条需修复的记录（加密/空发送者），重置游标`);
           cursor = '';
         }
       } catch { /* ignore */ }
@@ -1272,57 +1272,24 @@ export class WecomChatArchiveService {
 
         if (chatdata.length === 0) break;
 
-        // 处理每条消息：RSA解密密钥 + AES解密明文
+        // 消息类型映射（数字→字符串）
+        const msgTypeMap: Record<number, string> = {
+          0: 'unknown', 1: 'text', 2: 'image', 3: 'emotion', 4: 'link',
+          5: 'weapp', 6: 'voice', 7: 'video', 8: 'file', 9: 'card',
+          10: 'chatrecord', 11: 'video_account', 12: 'calendar',
+          13: 'redpacket', 14: 'location', 15: 'meeting', 16: 'todo',
+          17: 'vote', 18: 'doc', 19: 'news', 20: 'mixed',
+          21: 'audio_archive', 22: 'call', 23: 'wedisk_file',
+          24: 'agree', 25: 'disagree', 26: 'group_solitaire',
+          27: 'markdown', 28: 'note'
+        };
+
+        // 处理每条消息：获取消息体 + RSA解密密钥 + AES解密明文
         for (const item of chatdata) {
           try {
-            // 检查是否已存在（去重）
-            const existing = await chatRecordRepo.findOne({
-              where: { corpId: config.corpId, msgId: item.msgid }
-            });
-            if (existing) {
-              // 如果旧记录是加密占位格式，尝试解密更新
-              try {
-                const oldContent = typeof existing.content === 'string' ? JSON.parse(existing.content) : existing.content;
-                if (oldContent?.type === 'encrypted' && item.encrypt_random_key && item.encrypt_chat_msg) {
-                  const sk = this.rsaDecrypt(rsaPrivateKey, item.encrypt_random_key);
-                  if (sk) {
-                    const plaintext = this.aesDecrypt(sk, item.encrypt_chat_msg);
-                    if (plaintext) {
-                      existing.content = plaintext;
-                      await chatRecordRepo.save(existing);
-                      savedCount++;
-                    }
-                  }
-                }
-              } catch { /* ignore update error */ }
-              continue;
-            }
-
-            // RSA解密 encrypt_random_key → 得到 secretKey
-            let secretKey = '';
-            if (item.encrypt_random_key) {
-              secretKey = this.rsaDecrypt(rsaPrivateKey, item.encrypt_random_key) || '';
-              if (!secretKey) {
-                log.warn(`[ChatArchive] RSA解密失败, msgid=${item.msgid}`);
-              }
-            }
-
-            // ★ AES解密 encrypt_chat_msg → 得到消息明文（使竞品一样可在浏览器直接显示）
-            let decryptedContent: any = null;
-            if (secretKey && item.encrypt_chat_msg) {
-              const plaintext = this.aesDecrypt(secretKey, item.encrypt_chat_msg);
-              if (plaintext) {
-                try {
-                  decryptedContent = JSON.parse(plaintext);
-                } catch {
-                  decryptedContent = { text: { content: plaintext } };
-                }
-              }
-            }
-
             // 从 sync_msg 返回的元数据中提取信息
             const msgData = item as any;
-            const sender = msgData.sender || {};
+            const sender = msgData.sender || { type: 0, id: '' };
             const receiverList = msgData.receiver_list || [];
             const sendTime = msgData.send_time || Math.floor(Date.now() / 1000);
             const msgTypeNum = msgData.msgtype !== undefined ? Number(msgData.msgtype) : -1;
@@ -1344,19 +1311,72 @@ export class WecomChatArchiveService {
             // 接收者列表
             const toUserIds = receiverList.map((r: any) => r.id).filter(Boolean);
             const receiverType = chatId ? 3 : (receiverList.some((r: any) => r.type === 2) ? 2 : 1);
-
-            // 消息类型映射（数字→字符串）
-            const msgTypeMap: Record<number, string> = {
-              0: 'unknown', 1: 'text', 2: 'image', 3: 'emotion', 4: 'link',
-              5: 'weapp', 6: 'voice', 7: 'video', 8: 'file', 9: 'card',
-              10: 'chatrecord', 11: 'video_account', 12: 'calendar',
-              13: 'redpacket', 14: 'location', 15: 'meeting', 16: 'todo',
-              17: 'vote', 18: 'doc', 19: 'news', 20: 'mixed',
-              21: 'audio_archive', 22: 'call', 23: 'wedisk_file',
-              24: 'agree', 25: 'disagree', 26: 'group_solitaire',
-              27: 'markdown', 28: 'note'
-            };
             const msgTypeStr = msgTypeMap[msgTypeNum] || `type_${msgTypeNum}`;
+
+            // 检查是否已存在（去重）
+            const existing = await chatRecordRepo.findOne({
+              where: { corpId: config.corpId, msgId: item.msgid }
+            });
+            if (existing) {
+              // 如果旧记录是加密占位格式，尝试获取消息体并解密更新
+              try {
+                const oldContent = typeof existing.content === 'string' ? JSON.parse(existing.content) : existing.content;
+                if (oldContent?.type === 'encrypted' && item.encrypt_random_key) {
+                  const sk = this.rsaDecrypt(rsaPrivateKey, item.encrypt_random_key);
+                  if (sk) {
+                    // ★ 调用 get_msg_body 获取加密消息体
+                    try {
+                      const msgBody = await WecomApiService.getMsgBody(chatAccessToken, item.msgid);
+                      if (msgBody.encrypted_msg_body) {
+                        const plaintext = this.aesDecrypt(sk, msgBody.encrypted_msg_body);
+                        if (plaintext) {
+                          existing.content = plaintext;
+                          // 补充缺失的发送者信息
+                          if (!existing.fromUserId && fromUserId) existing.fromUserId = fromUserId;
+                          if (!existing.fromUserName && fromUserName) existing.fromUserName = fromUserName;
+                          await chatRecordRepo.save(existing);
+                          savedCount++;
+                        }
+                      }
+                    } catch { /* get_msg_body 失败不阻塞 */ }
+                  }
+                }
+              } catch { /* ignore update error */ }
+              continue;
+            }
+
+            // RSA解密 encrypt_random_key → 得到 secretKey
+            let secretKey = '';
+            if (item.encrypt_random_key) {
+              secretKey = this.rsaDecrypt(rsaPrivateKey, item.encrypt_random_key) || '';
+              if (!secretKey) {
+                log.warn(`[ChatArchive] RSA解密失败, msgid=${item.msgid}`);
+              }
+            }
+
+            // ★ 调用 get_msg_body API 获取加密消息体（sync_msg 只返回元数据，不含消息体）
+            let encryptedMsgBody = '';
+            if (secretKey) {
+              try {
+                const msgBody = await WecomApiService.getMsgBody(chatAccessToken, item.msgid);
+                encryptedMsgBody = msgBody.encrypted_msg_body || '';
+              } catch (bodyErr: any) {
+                log.debug(`[ChatArchive] 获取消息体失败 msgid=${item.msgid}: ${bodyErr.message}`);
+              }
+            }
+
+            // AES解密 encrypted_msg_body → 得到消息明文
+            let decryptedContent: any = null;
+            if (secretKey && encryptedMsgBody) {
+              const plaintext = this.aesDecrypt(secretKey, encryptedMsgBody);
+              if (plaintext) {
+                try {
+                  decryptedContent = JSON.parse(plaintext);
+                } catch {
+                  decryptedContent = { text: { content: plaintext } };
+                }
+              }
+            }
 
             // 保存到数据库：优先存储解密后的明文内容，解密失败时存密钥备用
             const contentToStore = decryptedContent
@@ -1399,9 +1419,9 @@ export class WecomChatArchiveService {
           await this.saveSyncCursor(config.id, cursor, config.tenantId);
         }
 
-        // 批间延迟，避免API限流
+        // 批间延迟，避免API限流（get_msg_body 已逐条调用，增加间隔）
         if (hasMore) {
-          await new Promise(r => setTimeout(r, 200));
+          await new Promise(r => setTimeout(r, 500));
         }
       } catch (e: any) {
         log.error(`[ChatArchive] syncChatMessages batch ${batchCount} error:`, e.message);

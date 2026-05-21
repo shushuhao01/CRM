@@ -353,6 +353,8 @@ const boundUser = ref<any>(null)
 const customerData = ref<any>(null)
 const refreshingData = ref(false)
 const sendingFormCard = ref(false)
+const preGeneratedCardPayload = ref<any>(null)
+const fallbackCardPayload = ref<any>(null)
 const collectStatus = ref<any>(null)
 const showLinkDialog = ref(false)
 const linkKeyword = ref('')
@@ -421,6 +423,7 @@ onMounted(async () => {
       externalUserId.value = cachedEid
       loadCustomerDetail()
       loadCollectStatus()
+      preGenerateFormCard()
     }
 
     // 异步初始化SDK获取最新externalUserId（如果客户切换了会刷新数据）
@@ -1224,6 +1227,8 @@ async function loadCustomerDetail() {
   try {
     const res: any = await getSidebarCustomerDetail(externalUserId.value, sidebarToken.value)
     customerData.value = res || { found: false }
+    // ★ 客户数据加载后异步预生成卡片payload（确保任何入口都能触发预生成）
+    if (!preGeneratedCardPayload.value) preGenerateFormCard()
   } catch (e: any) {
     console.error('[Sidebar] Load customer error:', e)
     if (e?.response?.status === 401) {
@@ -1467,10 +1472,8 @@ async function trySendCard(payload: any): Promise<'sent' | 'cancel' | 'failed'> 
   return 'failed'
 }
 
-/** 转发填写资料卡片（完全对齐SidebarCollect的发送逻辑，不等待sdkReady） */
-async function handleSendFormCard() {
-  if (sendingFormCard.value) return
-  sendingFormCard.value = true
+/** ★ 预生成卡片payload（页面加载时调用，避免点击时异步API打断用户手势链） */
+async function preGenerateFormCard() {
   try {
     let tenantId = '', memberId = ''
     if (sidebarToken.value) {
@@ -1483,7 +1486,6 @@ async function handleSendFormCard() {
     const ts = Date.now().toString()
     const extUserId = externalUserId.value || localStorage.getItem('wecom_sidebar_last_external_id') || ''
 
-    // 调用后端生成卡片（使用侧边栏token认证的API）
     const { default: axios } = await import('axios')
     const baseUrl = `${window.location.origin}/api/v1/wecom/h5/app`
     let data: any = {}
@@ -1501,43 +1503,77 @@ async function handleSendFormCard() {
     const mpPage = data.path || `/pages/form/form?tenantId=${tenantId}&memberId=${memberId}&ts=${ts}&sign=${sign}&externalUserId=${extUserId}`
     const h5Url = `${window.location.origin}/wecom-form.html?tenantId=${tenantId}&memberId=${memberId}&ts=${ts}&sign=${sign}&externalUserId=${extUserId}&appId=${mpAppId}`
 
-    console.log('[CustomerDetail] 卡片参数:', { mpAppId: mpAppId || '(空-不发小程序)', title, imgUrl: imgUrl?.substring(0, 60), sign: sign?.substring(0, 8) })
-    console.log('[CustomerDetail] SDK状态:', { ww: !!(window as any).ww, wwSendChat: typeof (window as any).ww?.sendChatMessage })
-
-    // 构建payload（和资料收集tab完全一致）
     const mpPayload = mpAppId ? { msgtype: 'miniprogram', miniprogram: { appid: mpAppId, title, imgUrl, page: mpPage } } : null
     const newsPayload = { msgtype: 'news', news: { link: h5Url, title, desc: '点击填写您的基本资料，方便我们为您提供更好的服务', imgUrl } }
 
-    // ★ 读取用户选择的发送模式（和收集资料tab共用持久化配置）
     const userMode = localStorage.getItem('wecom_collect_send_mode') || 'miniprogram'
-    let primaryPayload: any
     if (userMode === 'miniprogram' && mpPayload) {
-      primaryPayload = mpPayload
+      preGeneratedCardPayload.value = mpPayload
     } else {
-      primaryPayload = newsPayload
+      preGeneratedCardPayload.value = newsPayload
+    }
+    fallbackCardPayload.value = newsPayload
+    console.log('[CustomerDetail] 卡片预生成完成:', { msgtype: preGeneratedCardPayload.value?.msgtype })
+  } catch (e: any) {
+    console.warn('[CustomerDetail] 预生成卡片失败:', e?.message)
+    // 降级：使用news类型
+    let tenantId = '', memberId = ''
+    if (sidebarToken.value) {
+      const p = decodeJwtPayload(sidebarToken.value)
+      if (p) { tenantId = p.tenantId || ''; memberId = p.userId || p.id || '' }
+    }
+    const extUserId = externalUserId.value || localStorage.getItem('wecom_sidebar_last_external_id') || ''
+    preGeneratedCardPayload.value = {
+      msgtype: 'news',
+      news: {
+        link: `${window.location.origin}/wecom-form.html?tenantId=${tenantId}&memberId=${memberId}&externalUserId=${extUserId}`,
+        title: '请填写您的个人资料',
+        desc: '点击填写您的基本资料，方便我们为您提供更好的服务',
+        imgUrl: `${window.location.origin}/form-cover.png`
+      }
+    }
+    fallbackCardPayload.value = preGeneratedCardPayload.value
+  }
+}
+
+/** 转发填写资料卡片（★ 使用预生成的payload，点击时不再做异步API调用） */
+async function handleSendFormCard() {
+  if (sendingFormCard.value) return
+  sendingFormCard.value = true
+  try {
+    // 如果还没预生成，先同步准备一个降级payload（不做API调用）
+    if (!preGeneratedCardPayload.value) {
+      await preGenerateFormCard()
+    }
+    if (!preGeneratedCardPayload.value) {
+      ElMessage.warning('卡片生成失败')
+      sendingFormCard.value = false
+      return
     }
 
-    // 第一步：尝试发送主payload（和SidebarCollect一致：直接发，不等sdkReady）
-    let result = await trySendCard(primaryPayload)
+    console.log('[CustomerDetail] SDK状态:', { ww: !!(window as any).ww, wwSendChat: typeof (window as any).ww?.sendChatMessage })
+
+    // 第一步：尝试发送预生成的主payload（无异步API，保持用户手势链）
+    let result = await trySendCard(preGeneratedCardPayload.value)
     let degraded = false
 
     if (result === 'cancel') { ElMessage.info('已取消发送'); sendingFormCard.value = false; return }
 
     // 第二步：如果主payload是miniprogram且失败了，降级为news
-    if (result === 'failed' && primaryPayload.msgtype === 'miniprogram') {
+    if (result === 'failed' && preGeneratedCardPayload.value.msgtype === 'miniprogram' && fallbackCardPayload.value) {
       console.log('[CustomerDetail] miniprogram发送失败，降级为news卡片')
-      result = await trySendCard(newsPayload)
+      result = await trySendCard(fallbackCardPayload.value)
       if (result === 'cancel') { ElMessage.info('已取消发送'); sendingFormCard.value = false; return }
       if (result === 'sent') degraded = true
     }
 
-    // 第三步：如果仍然失败，等待2秒后重试一次（和SidebarCollect一致）
+    // 第三步：如果仍然失败，等待2秒后重试一次
     if (result === 'failed') {
       console.warn('[CustomerDetail] 首次发送失败，等待2秒后重试...')
       await new Promise(r => setTimeout(r, 2000))
-      result = await trySendCard(newsPayload)
+      result = await trySendCard(fallbackCardPayload.value || preGeneratedCardPayload.value)
       if (result === 'cancel') { ElMessage.info('已取消发送'); sendingFormCard.value = false; return }
-      if (result === 'sent' && primaryPayload.msgtype === 'miniprogram') degraded = true
+      if (result === 'sent' && preGeneratedCardPayload.value.msgtype === 'miniprogram') degraded = true
     }
 
     if (result === 'sent') {
@@ -1555,14 +1591,24 @@ async function handleSendFormCard() {
       }
     }
 
-    // 记录发送日志
+    // 记录发送日志（异步，不影响用户体验）
     try {
-      await axios.post(`${baseUrl}/mp-log-send`, {
-        tenantId, memberId, ts, externalUserId: extUserId
+      let tenantId = '', memberId = ''
+      if (sidebarToken.value) {
+        const p = decodeJwtPayload(sidebarToken.value)
+        if (p) { tenantId = p.tenantId || ''; memberId = p.userId || p.id || '' }
+      }
+      const { default: axios } = await import('axios')
+      const baseUrl = `${window.location.origin}/api/v1/wecom/h5/app`
+      const extUserId = externalUserId.value || localStorage.getItem('wecom_sidebar_last_external_id') || ''
+      axios.post(`${baseUrl}/mp-log-send`, {
+        tenantId, memberId, ts: Date.now().toString(), externalUserId: extUserId
       }, { headers: { Authorization: `Bearer ${sidebarToken.value}` } }).catch(() => {})
     } catch { /* ignore */ }
 
     await loadCollectStatus()
+    // ★ 发送后重新预生成下一次的payload
+    preGenerateFormCard()
   } catch (e: any) {
     console.error('[CustomerDetail] handleSendFormCard异常:', e)
     ElMessage.warning(e?.message || '发送失败')

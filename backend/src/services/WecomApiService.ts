@@ -780,12 +780,14 @@ export class WecomApiService {
         const nextCursor = response.data.next_cursor || '';
 
         // 将数据与智能专区的 msg_list 格式适配为内部统一格式
+        // ★ 保留原始嵌套 sender 对象（syncChatMessages 通过 item.sender.id 访问）
         const chatdata = msgList.map((msg: any, idx: number) => ({
           seq: idx,
           msgid: msg.msgid || '',
           publickey_ver: msg.service_encrypt_info?.public_key_ver || 1,
           encrypt_random_key: msg.service_encrypt_info?.encrypted_secret_key || '',
           encrypt_chat_msg: '',
+          sender: msg.sender || { type: 0, id: '' },
           sender_type: msg.sender?.type || 0,
           sender_id: msg.sender?.id || '',
           receiver_list: msg.receiver_list || [],
@@ -801,6 +803,44 @@ export class WecomApiService {
       }
     } catch (error: any) {
       log.error('[WecomApi] getChatMsgData error:', error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * 【数据与智能专区】获取消息体
+   * 文档: https://developer.work.weixin.qq.com/document/path/101366
+   * sync_msg 只返回元数据，实际消息体需通过此接口逐条获取
+   *
+   * @param accessToken chat类型的access_token
+   * @param msgid 消息ID
+   * @returns 加密的消息体和公钥版本
+   */
+  static async getMsgBody(accessToken: string, msgid: string): Promise<{
+    encrypted_msg_body: string;
+    public_key_ver: number;
+  }> {
+    try {
+      const response = await axios.post(
+        `${WECOM_API_BASE}/chatdata/get_msg_body?access_token=${accessToken}`,
+        { msgid }
+      );
+
+      if (response.data.errcode === 0) {
+        return {
+          encrypted_msg_body: response.data.encrypted_msg_body || '',
+          public_key_ver: response.data.public_key_ver || 1
+        };
+      } else {
+        throw new Error(`获取消息体失败(${response.data.errcode}): ${response.data.errmsg}`);
+      }
+    } catch (error: any) {
+      // 非致命错误：某些消息类型可能不支持获取消息体
+      if (error.message?.includes('获取消息体失败')) {
+        log.debug(`[WecomApi] getMsgBody ${msgid}: ${error.message}`);
+      } else {
+        log.warn(`[WecomApi] getMsgBody ${msgid} error: ${error.message}`);
+      }
       throw error;
     }
   }
