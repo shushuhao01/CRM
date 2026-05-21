@@ -126,9 +126,35 @@ router.post('/chat-records/sync', authenticateToken, requireAdmin, async (req: R
     const result = await WecomChatArchiveService.syncChatRecords(config, true);
     const globalRsaKey = await getGlobalRsaPrivateKey();
     const hasPrivateKey = !!(config.chatArchivePrivateKey || globalRsaKey);
+
+    // 检查公钥是否已设置（使用TenantSettings）
+    let pubKeyStatus = 'unknown';
+    if (config.authType === 'third_party') {
+      try {
+        const { TenantSettings } = await import('../../entities/TenantSettings');
+        const settingsRepo = AppDataSource.getRepository(TenantSettings);
+        const pubKeySetting = await settingsRepo.findOne({
+          where: { tenantId: config.tenantId, settingKey: `chat_pubkey_set_${config.id}` }
+        });
+        if (pubKeySetting) {
+          const val = typeof pubKeySetting.settingValue === 'string' ? JSON.parse(pubKeySetting.settingValue) : pubKeySetting.settingValue;
+          pubKeyStatus = val?.set === true ? 'set' : 'not_set';
+        } else {
+          pubKeyStatus = 'not_set';
+        }
+      } catch { pubKeyStatus = 'unknown'; }
+    }
+
     res.json({
       success: true, message: result.message,
-      data: { configId: result.configId, configName: result.configName, permitUsers: result.permitUsers, agreedUsers: result.agreedUsers, syncedRecords: result.syncedRecords, newConversations: result.newConversations, enrichedContacts: (result as any).enrichedContacts || 0, errors: result.errors, sdkRequired: result.sdkRequired, mode: result.mode, hasPrivateKey }
+      data: {
+        configId: result.configId, configName: result.configName,
+        permitUsers: result.permitUsers, agreedUsers: result.agreedUsers,
+        syncedRecords: result.syncedRecords, newConversations: result.newConversations,
+        enrichedContacts: (result as any).enrichedContacts || 0,
+        errors: result.errors, sdkRequired: result.sdkRequired, mode: result.mode,
+        hasPrivateKey, pubKeyStatus
+      }
     });
   } catch (error: any) {
     log.error('[Wecom] Sync chat records error:', error.message, error.stack);

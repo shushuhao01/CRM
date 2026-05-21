@@ -565,9 +565,21 @@ const handleSync = async () => {
       if (res.enrichedContacts) parts.push(`更新${res.enrichedContacts}个联系人`)
       if (res.newConversations) parts.push(`新增${res.newConversations}条会话`)
       if (res.agreedUsers) parts.push(`${res.agreedUsers}人已同意存档`)
-      if (parts.length > 0) msg = parts.join('，')
-      else if (res.permitUsers === 0) msg = '没有开通会话存档的成员'
-      else if (res.permitUsers > 0 && !res.syncedRecords) msg = `${res.permitUsers}个存档成员，暂无新消息`
+
+      if (parts.length > 0) {
+        msg = parts.join('，')
+      } else if (res.permitUsers === 0) {
+        msg = '没有开通会话存档的成员'
+      } else if (res.permitUsers > 0 && !res.syncedRecords) {
+        msg = `${res.permitUsers}个存档成员，暂无新消息`
+      }
+
+      // 公钥状态和提示
+      if (res.pubKeyStatus === 'not_set') {
+        ElMessage.warning('公钥尚未上传至企微，本次同步将自动设置。请等待5-10分钟后再次同步获取消息。')
+      } else if (res.permitUsers > 0 && !res.syncedRecords && res.pubKeyStatus === 'set') {
+        msg += '（提示：公钥已设置，企微仅存档设置公钥后的新消息，请确认存档成员已产生新的聊天记录后再同步）'
+      }
     }
     ElMessage.success(msg)
     if (activeTab.value === 'records') {

@@ -138,26 +138,49 @@ export class WecomChatArchiveService {
           const rsaPublicKey = suiteConfig?.chatArchiveRsaPublicKey;
 
           if (rsaPublicKey) {
-            // 检查是否已设置过公钥（通过标记避免每次同步都调用）
-            const pubKeySetFlag = `chat_pubkey_set_${config.id}`;
-            const alreadySet = await AppDataSource.query(
-              `SELECT config_value FROM system_configs WHERE config_key = ? AND config_group = 'chat_archive' LIMIT 1`,
-              [pubKeySetFlag]
-            ).catch(() => []);
+            // 检查是否已设置过公钥（使用TenantSettings持久化标记，避免每次同步都调用）
+            const pubKeySettingKey = `chat_pubkey_set_${config.id}`;
+            let alreadySet = false;
+            try {
+              const { TenantSettings } = await import('../entities/TenantSettings');
+              const settingsRepo = AppDataSource.getRepository(TenantSettings);
+              const existing = await settingsRepo.findOne({
+                where: { tenantId: config.tenantId, settingKey: pubKeySettingKey }
+              });
+              if (existing) {
+                const val = typeof existing.settingValue === 'string' ? JSON.parse(existing.settingValue) : existing.settingValue;
+                alreadySet = val?.set === true;
+              }
+            } catch { /* 查询失败视为未设置 */ }
 
-            if (!alreadySet?.length || alreadySet[0]?.config_value !== 'true') {
+            if (!alreadySet) {
               log.info(`[ChatArchive] Step4.5: 首次同步，向企微设置RSA公钥...`);
               const pubKeyVer = 1;
               await WecomApiService.setChatDataPublicKey(accessToken, rsaPublicKey, pubKeyVer);
-              // 标记已设置
-              await AppDataSource.query(
-                `INSERT INTO system_configs (id, config_key, config_group, config_value, is_enabled, created_at, updated_at)
-                 VALUES (UUID(), ?, 'chat_archive', 'true', 1, NOW(), NOW())
-                 ON DUPLICATE KEY UPDATE config_value = 'true', updated_at = NOW()`,
-                [pubKeySetFlag]
-              ).catch(() => {});
-              log.info(`[ChatArchive] Step4.5完成: RSA公钥已设置到企微`);
-              result.message += ' ✅ 首次设置公钥成功，消息将在下次同步时可拉取（企微需要时间开始存档）。';
+              // 持久化标记：公钥已设置
+              try {
+                const { TenantSettings } = await import('../entities/TenantSettings');
+                const settingsRepo = AppDataSource.getRepository(TenantSettings);
+                const existing = await settingsRepo.findOne({
+                  where: { tenantId: config.tenantId, settingKey: pubKeySettingKey }
+                });
+                if (existing) {
+                  existing.settingValue = JSON.stringify({ set: true, setAt: new Date().toISOString(), configId: config.id });
+                  await settingsRepo.save(existing);
+                } else {
+                  await settingsRepo.save(settingsRepo.create({
+                    tenantId: config.tenantId,
+                    settingKey: pubKeySettingKey,
+                    settingValue: JSON.stringify({ set: true, setAt: new Date().toISOString(), configId: config.id })
+                  } as any));
+                }
+                log.info(`[ChatArchive] Step4.5完成: RSA公钥已设置到企微，标记已持久化`);
+              } catch (saveErr: any) {
+                log.warn(`[ChatArchive] Step4.5: 公钥已上传但标记保存失败: ${saveErr.message}`);
+              }
+              result.message += ' ✅ 首次设置公钥成功，企微需要约5-10分钟开始存档新消息，之后再同步即可获取聊天记录。';
+            } else {
+              log.info(`[ChatArchive] Step4.5: 公钥已设置（跳过），继续拉取消息...`);
             }
           } else if (!rsaPrivateKey) {
             log.warn('[ChatArchive] Step4.5: 服务商未配置RSA密钥对');

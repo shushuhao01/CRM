@@ -571,4 +571,56 @@ router.post('/register', h5RegisterLimiter, async (req: Request, res: Response) 
   }
 });
 
+// ==================== Token 交换（H5→主CRM免登） ====================
+
+/**
+ * POST /h5/exchange-token
+ * 将 h5_token(sidebar类型) 交换为主CRM可用的完整token
+ * 用于从H5工作台跳转到主CRM系统时实现免登
+ */
+router.post('/exchange-token', authenticateSidebarToken, async (req: Request, res: Response) => {
+  try {
+    const user = (req as any).currentUser;
+    if (!user) {
+      return res.status(401).json({ success: false, message: 'token无效' });
+    }
+
+    const { JwtConfig } = await import('../../config/jwt');
+    const payload = (req as any).user;
+
+    const newToken = JwtConfig.generateAccessToken({
+      userId: user.id,
+      username: user.username,
+      role: user.role,
+      tenantId: payload.tenantId || user.tenantId || '',
+      type: 'crm'
+    } as any);
+
+    const refreshToken = JwtConfig.generateRefreshToken({
+      userId: user.id,
+      tenantId: payload.tenantId || user.tenantId || ''
+    } as any);
+
+    res.json({
+      success: true,
+      data: {
+        token: newToken,
+        refreshToken,
+        user: {
+          id: user.id,
+          name: user.name || user.username,
+          username: user.username,
+          avatar: user.avatar || '',
+          role: user.role,
+          tenantId: payload.tenantId || user.tenantId || '',
+          permissions: user.permissions || []
+        }
+      }
+    });
+  } catch (error: any) {
+    log.error('[H5 Auth] exchange-token error:', error.message);
+    res.status(500).json({ success: false, message: 'token交换失败' });
+  }
+});
+
 export default router;
