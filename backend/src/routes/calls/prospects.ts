@@ -154,7 +154,7 @@ router.get('/prospects', async (req: Request, res: Response) => {
             );
             const custFollowMap = new Map(custFollowUps.map((f: any) => [f.customer_id, f]));
             customerAsProspects.forEach((p: any) => {
-              const fu = custFollowMap.get(p.id);
+              const fu: any = custFollowMap.get(p.id);
               if (fu) {
                 p.lastFollowUpContent = fu.content || '';
                 if (fu.remark) p.remark = fu.remark;
