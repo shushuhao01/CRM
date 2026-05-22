@@ -224,8 +224,8 @@
             </span>
           </div>
           <div class="info-item">
-            <span class="info-label">最大用户数</span>
-            <span class="info-value">{{ maxUsers }}人</span>
+            <span class="info-label">{{ userLimitLabel }}</span>
+            <span class="info-value">{{ userLimitValue }}</span>
           </div>
           <div class="info-item" v-if="isTrial">
             <span class="info-label">试用期限</span>
@@ -1893,15 +1893,30 @@ onUnmounted(() => {
 
 const maxUsers = computed(() => {
   const users: Record<string, string> = {
-    'FREE_TRIAL': '3',
-    'basic': '10',
-    'pro': '50',
-    'enterprise': '200',
+    'FREE_TRIAL': '5',
+    'basic': '5',
+    'pro': '10',
+    'enterprise': '50',
     'private-standard': '50',
     'private-pro': '200',
     'private-enterprise': '不限'
   }
   return users[plan.value] || '10'
+})
+
+const userLimitMode = computed(() => getParam('userLimitMode', ''))
+const maxOnlineSeats = computed(() => getParam('maxOnlineSeats', ''))
+
+const userLimitLabel = computed(() => {
+  if (userLimitMode.value === 'online') return '最大在线席位'
+  return '最大用户数'
+})
+
+const userLimitValue = computed(() => {
+  if (userLimitMode.value === 'online') {
+    return (maxOnlineSeats.value || maxUsers.value) + '人'
+  }
+  return maxUsers.value + '人'
 })
 
 // 判断是否为免费试用

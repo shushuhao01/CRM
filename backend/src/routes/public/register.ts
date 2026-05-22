@@ -197,13 +197,16 @@ router.post('/', async (req: Request, res: Response) => {
       data: {
         tenantId,
         tenantCode,
-        licenseKey: isFree ? licenseKey : null, // � 付费套餐支付前不暴露授权码
+        licenseKey: isFree ? licenseKey : null,
         expireDate: expireDate ? expireDate.toISOString().split('T')[0] : null,
         needPay: !isFree,
         memberToken,
         adminUsername: adminAccount?.username || null,
         adminPassword: adminAccount?.password || null,
-        memberPasswordIsDefault
+        memberPasswordIsDefault,
+        userLimitMode: finalLimitMode,
+        maxOnlineSeats: pkgMaxOnlineSeats,
+        maxUsers
       },
       message: isFree ? '注册成功' : '注册成功，请完成支付'
     })

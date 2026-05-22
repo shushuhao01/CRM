@@ -1662,7 +1662,9 @@ const handleSubmitInfo = async () => {
               licenseKey: data.data.licenseKey,
               adminUsername: data.data.adminUsername || '',
               adminPassword: data.data.adminPassword || '',
-              memberPwdDefault: data.data.memberPasswordIsDefault ? '1' : '0'
+              memberPwdDefault: data.data.memberPasswordIsDefault ? '1' : '0',
+              userLimitMode: data.data.userLimitMode || '',
+              maxOnlineSeats: String(data.data.maxOnlineSeats || '')
             }
           })
         }
@@ -2150,7 +2152,6 @@ const handleSkipSigningBankDone = () => {
 
 // 跳转成功页
 const goToSuccess = () => {
-  // 如果是付费成功（签约取消后付费），使用签约目标套餐的plan key
   const planForSuccess = signingStatus.value === 'pay-success' && isTrialSigning.value
     ? autoRenewPlanKey.value
     : selectedPlan.value
@@ -2163,7 +2164,9 @@ const goToSuccess = () => {
       tenantCode: registeredTenant.value?.tenantCode,
       licenseKey: registeredTenant.value?.licenseKey,
       adminUsername: registeredTenant.value?.adminUsername || '',
-      adminPassword: registeredTenant.value?.adminPassword || ''
+      adminPassword: registeredTenant.value?.adminPassword || '',
+      userLimitMode: registeredTenant.value?.userLimitMode || '',
+      maxOnlineSeats: String(registeredTenant.value?.maxOnlineSeats || '')
     }
   })
 }
