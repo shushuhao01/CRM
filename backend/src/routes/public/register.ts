@@ -78,7 +78,7 @@ router.post('/send-code', async (req: Request, res: Response) => {
 // 注册租户（无论免费还是付费，都在注册时生成授权码，确保成功页显示完整授权码）
 router.post('/', async (req: Request, res: Response) => {
   try {
-    const { companyName, contactName, phone, code, email, packageCode, password, autoRenew, autoRenewPackage } = req.body
+    const { companyName, contactName, phone, code, email, packageCode, password, autoRenew, autoRenewPackage, userLimitMode } = req.body
 
     // 验证必填字段
     if (!companyName || !contactName || !phone || !code) {
@@ -108,16 +108,21 @@ router.post('/', async (req: Request, res: Response) => {
     let packagePrice = 0
     let isCommunity = false
 
+    let pkgUserLimitMode = 'total'
+    let pkgMaxOnlineSeats = 5
+
     if (packageCode) {
       const packages = await AppDataSource.query(
-        'SELECT id, max_users, duration_days, price, type FROM tenant_packages WHERE code = ? AND status = 1',
+        'SELECT id, max_users, max_online_seats, user_limit_mode, duration_days, price, type FROM tenant_packages WHERE code = ? AND status = 1',
         [packageCode]
       )
       if (packages && packages.length > 0) {
         packageId = packages[0].id
         maxUsers = packages[0].max_users || 3
-        expireDays = packages[0].duration_days || 7  // 防止NULL覆盖默认值
-        packagePrice = Number(packages[0].price) || 0  // 🔥 MySQL返回字符串"0.00"，必须转数字
+        pkgMaxOnlineSeats = packages[0].max_online_seats || 5
+        pkgUserLimitMode = packages[0].user_limit_mode || 'total'
+        expireDays = packages[0].duration_days || 7
+        packagePrice = Number(packages[0].price) || 0
         isFree = packagePrice === 0
         isCommunity = packages[0].type === 'community'
       }
@@ -135,11 +140,14 @@ router.post('/', async (req: Request, res: Response) => {
     // 计算到期时间（免费套餐立即生效，付费套餐支付后生效）
     const expireDate = isFree ? new Date(Date.now() + expireDays * 24 * 60 * 60 * 1000) : null
 
+    // 确定最终的用户限制模式：前端传入（双模式套餐选择）> 套餐配置
+    const finalLimitMode = userLimitMode || (pkgUserLimitMode === 'both' ? 'online' : pkgUserLimitMode)
+
     await AppDataSource.query(
       `INSERT INTO tenants
-       (id, name, code, license_key, license_status, package_id, contact, phone, email, max_users, expire_date, status, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', NOW())`,
-      [tenantId, companyName, tenantCode, licenseKey, licenseStatus, packageId, contactName, phone, email || null, maxUsers, expireDate]
+       (id, name, code, license_key, license_status, package_id, contact, phone, email, max_users, max_online_seats, user_limit_mode, expire_date, status, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', NOW())`,
+      [tenantId, companyName, tenantCode, licenseKey, licenseStatus, packageId, contactName, phone, email || null, maxUsers, pkgMaxOnlineSeats, finalLimitMode, expireDate]
     )
 
     // 会员中心密码：用户填了用用户的，没填则默认 Aa123456

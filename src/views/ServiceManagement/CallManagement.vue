@@ -122,8 +122,8 @@
         </el-table-column>
         <el-table-column prop="status" label="外呼状态" width="90">
           <template #default="{ row }">
-            <el-tag :type="getOutboundStatusType(row.status)">
-              {{ getOutboundStatusText(row.status) }}
+            <el-tag :type="row.callCount > 0 ? 'success' : 'warning'">
+              {{ row.callCount > 0 ? '已外呼' : '待外呼' }}
             </el-tag>
           </template>
         </el-table-column>
@@ -1108,11 +1108,11 @@ const loadOutboundList = async () => {
       mappedList = mappedList.filter((item: any) => item._source === filterForm.dataSource)
     }
 
-    // 外呼状态前端筛选（已外呼 = 非 pending 的所有状态）
+    // 外呼状态前端筛选（通过callCount判断是否真的打过电话）
     if (filterForm.status === 'pending') {
-      mappedList = mappedList.filter((item: any) => item.status === 'pending')
+      mappedList = mappedList.filter((item: any) => !item.callCount || item.callCount === 0)
     } else if (filterForm.status === 'called') {
-      mappedList = mappedList.filter((item: any) => item.status !== 'pending')
+      mappedList = mappedList.filter((item: any) => item.callCount > 0)
     }
 
     pagination.total = mappedList.length
