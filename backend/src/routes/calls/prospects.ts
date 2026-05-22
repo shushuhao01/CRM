@@ -49,6 +49,41 @@ router.get('/prospects', async (req: Request, res: Response) => {
     const total = await qb.getCount();
     const list = await qb.skip((Number(page) - 1) * Number(pageSize)).take(Number(pageSize)).getMany();
 
+    // 为每条记录附带最新跟进内容和最新备注
+    if (list.length > 0) {
+      try {
+        // 收集所有可能的ID（prospect ID + converted customer ID）
+        const allIds: string[] = [];
+        const idToProspect = new Map<string, any>();
+        list.forEach(p => {
+          allIds.push(p.id);
+          idToProspect.set(p.id, p);
+          if (p.convertedCustomerId) {
+            allIds.push(p.convertedCustomerId);
+            idToProspect.set(p.convertedCustomerId, p);
+          }
+        });
+
+        if (allIds.length > 0) {
+          const followUps = await AppDataSource.query(
+            `SELECT f.customer_id, f.content, f.remark, f.created_at FROM follow_up_records f
+             WHERE f.customer_id IN (${allIds.map(() => '?').join(',')})
+             AND f.created_at = (SELECT MAX(f2.created_at) FROM follow_up_records f2 WHERE f2.customer_id = f.customer_id)`,
+            allIds
+          );
+          followUps.forEach((f: any) => {
+            const prospect = idToProspect.get(f.customer_id);
+            if (prospect) {
+              prospect.lastFollowUpContent = f.content || '';
+              if (f.remark) {
+                prospect.remark = f.remark;
+              }
+            }
+          });
+        }
+      } catch {}
+    }
+
     // 如果请求包含客户列表数据，将客户列表中未在外呼名单的客户也加入
     if (includeCustomers === 'true' && req.query.recycled !== 'true') {
       try {
@@ -106,6 +141,27 @@ router.get('/prospects', async (req: Request, res: Response) => {
             createdAt: c.createdAt,
             updatedAt: c.updatedAt
           }));
+
+        // 为客户列表数据也查询最新跟进
+        if (customerAsProspects.length > 0) {
+          try {
+            const custIds = customerAsProspects.map((c: any) => c.id);
+            const custFollowUps = await AppDataSource.query(
+              `SELECT f.customer_id, f.content, f.remark, f.created_at FROM follow_up_records f
+               WHERE f.customer_id IN (${custIds.map(() => '?').join(',')})
+               AND f.created_at = (SELECT MAX(f2.created_at) FROM follow_up_records f2 WHERE f2.customer_id = f.customer_id)`,
+              custIds
+            );
+            const custFollowMap = new Map(custFollowUps.map((f: any) => [f.customer_id, f]));
+            customerAsProspects.forEach((p: any) => {
+              const fu = custFollowMap.get(p.id);
+              if (fu) {
+                p.lastFollowUpContent = fu.content || '';
+                if (fu.remark) p.remark = fu.remark;
+              }
+            });
+          } catch {}
+        }
 
         res.json({
           success: true,

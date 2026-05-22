@@ -26,7 +26,14 @@
               </span>
               <span class="contact-item">
                 <el-icon><User /></el-icon>
-                {{ currentCustomer.salesPerson || '未分配' }}
+                {{ currentCustomer.assignedName || currentCustomer.createdByName || currentCustomer.salesPerson || '未分配' }}
+              </span>
+              <span class="contact-item">
+                <el-tooltip v-if="currentCustomer._source === 'customer'" content="自建客户已存在客户列表，无需转入" placement="top">
+                  <el-tag type="info" size="small">自建客户</el-tag>
+                </el-tooltip>
+                <el-tag v-else-if="currentCustomer._prospectStatus === 'converted'" type="success" size="small">已转入客户列表</el-tag>
+                <el-tag v-else type="warning" size="small">未转入客户列表</el-tag>
               </span>
             </div>
           </div>
@@ -183,6 +190,12 @@
                   <el-tag v-for="tag in row.callTags.slice(0, 2)" :key="tag" type="info" style="margin-right: 4px;">{{ tag }}</el-tag>
                   <span v-if="row.callTags.length > 2" style="color: #909399; font-size: 12px;">+{{ row.callTags.length - 2 }}</span>
                 </template>
+                <span v-else style="color: #c0c4cc;">-</span>
+              </template>
+            </el-table-column>
+            <el-table-column prop="remark" label="备注" min-width="100" show-overflow-tooltip>
+              <template #default="{ row }">
+                <span v-if="row.remark">{{ row.remark }}</span>
                 <span v-else style="color: #c0c4cc;">-</span>
               </template>
             </el-table-column>

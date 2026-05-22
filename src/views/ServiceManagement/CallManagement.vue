@@ -152,6 +152,21 @@
             </template>
           </template>
         </el-table-column>
+        <el-table-column prop="convertStatus" label="转入状态" width="85">
+          <template #default="{ row }">
+            <el-tooltip v-if="row._source === 'customer'" content="自建客户已存在客户列表，无需转入" placement="top">
+              <span class="text-muted">-</span>
+            </el-tooltip>
+            <el-tag v-else-if="row._prospectStatus === 'converted'" type="success" size="small">已转入</el-tag>
+            <el-tag v-else type="info" size="small">未转入</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="remark" label="备注" min-width="100" show-overflow-tooltip>
+          <template #default="{ row }">
+            <span v-if="row.remark">{{ row.remark }}</span>
+            <span v-else class="text-muted">-</span>
+          </template>
+        </el-table-column>
         <el-table-column label="操作" min-width="210" fixed="right">
           <template #default="{ row }">
             <div class="action-cell">
@@ -840,10 +855,10 @@ const loadCustomerDetailData = async (customerId: string) => {
       content: followup.content || followup.description || '',
       customerIntent: followup.customerIntent || followup.customer_intent || null,
       callTags: followup.callTags || followup.call_tags || [],
+      remark: followup.remark || followup.notes || '',
       nextPlan: formatDateTime(followup.nextFollowUp || followup.nextTime || followup.nextPlanTime || followup.next_follow_up_date),
-      operator: followup.createdByName || followup.author || followup.operatorName || followup.user_name || '未知',
+      operator: getCreatorName(followup.createdBy || followup.created_by) || followup.createdByName || followup.author || followup.operatorName || '未知',
       createTime: formatDateTime(followup.createdAt || followup.createTime || followup.created_at),
-      // 保留原始数据用于详情查看
       _raw: followup
     }))
 
@@ -1073,7 +1088,7 @@ const loadOutboundList = async () => {
       customerLevel: 'normal',
       lastCallTime: p.lastCallTime ? formatDateTime(p.lastCallTime) : '暂无记录',
       callCount: p.callCount || 0,
-      lastFollowUp: p.remark || '',
+      lastFollowUp: p.lastFollowUpContent || '',
       callTags: p.tags || [],
       status: p.status || 'pending',
       _prospectStatus: p.status,
@@ -1502,10 +1517,15 @@ const resetQuickFollowUpForm = () => {
 }
 
 const submitQuickFollowUp = async () => {
-  if (!quickFollowUpFormRef.value) return
-
   try {
-    await quickFollowUpFormRef.value.validate()
+    // 表单验证（ref可能在子组件中，跳过null情况直接验证数据）
+    if (quickFollowUpFormRef.value) {
+      await quickFollowUpFormRef.value.validate()
+    } else {
+      // 手动验证必填字段
+      if (!quickFollowUpForm.type) { ElMessage.warning('请选择跟进类型'); return }
+      if (!quickFollowUpForm.content) { ElMessage.warning('请输入跟进内容'); return }
+    }
     quickFollowUpSubmitting.value = true
 
     // 验证currentCustomer
@@ -1523,7 +1543,7 @@ const submitQuickFollowUp = async () => {
 
     // 准备跟进记录数据
     const followUpData: any = {
-      callId: '', // 如果有关联的通话记录ID，可以在这里设置
+      callId: '',
       customerId: currentCustomer.value.id,
       customerName: currentCustomer.value.name || currentCustomer.value.customerName || '',
       type: quickFollowUpForm.type,
@@ -1531,8 +1551,9 @@ const submitQuickFollowUp = async () => {
       customerIntent: quickFollowUpForm.intention || null,
       callTags: quickFollowUpForm.callTags.length > 0 ? quickFollowUpForm.callTags : null,
       nextFollowUpDate: quickFollowUpForm.nextFollowTime || null,
-      priority: 'medium', // 默认中等优先级
-      status: 'pending' // 默认待跟进状态
+      remark: quickFollowUpForm.remark || null,
+      priority: 'medium',
+      status: 'pending'
     }
 
     console.log('[CallManagement] 提交跟进记录数据:', followUpData)

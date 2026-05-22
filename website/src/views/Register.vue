@@ -1509,6 +1509,16 @@ watch(() => selectedPlan.value, (plan) => {
       form.autoRenewPackage = renewablePlans.value[0].code
     }
   }
+}, { immediate: true })
+
+// 套餐数据加载完后，如果当前选的是免费试用且有可续费套餐，自动勾选
+watch(() => renewablePlans.value.length, (len) => {
+  if (len > 0 && selectedPlan.value === 'FREE_TRIAL') {
+    form.autoRenew = true
+    if (!form.autoRenewPackage) {
+      form.autoRenewPackage = renewablePlans.value[0].code
+    }
+  }
 })
 
 const getMonthlyPrice = (plan: string) => {

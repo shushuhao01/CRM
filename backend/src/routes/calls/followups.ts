@@ -91,7 +91,8 @@ router.post('/followups', async (req: Request, res: Response) => {
       callTags,
       nextFollowUpDate,
       priority = 'medium',
-      status = 'pending'
+      status = 'pending',
+      remark
     } = req.body;
 
     log.info('[Calls] 创建跟进记录请求:', {
@@ -142,6 +143,7 @@ router.post('/followups', async (req: Request, res: Response) => {
       nextFollowUp: nextFollowUpDate ? new Date(nextFollowUpDate) : null,
       priority,
       status,
+      remark: remark || null,
       createdBy: userId,
       createdByName: userName
     });
@@ -159,6 +161,28 @@ router.post('/followups', async (req: Request, res: Response) => {
       [savedFollowUp.id, ...tVerify.params]
     );
     log.info('[Calls] 验证保存的记录:', verifyRecord);
+
+    // 如果设置了下次跟进时间，创建系统通知提醒
+    if (nextFollowUpDate) {
+      try {
+        const tenantId = (req as any).tenantId || currentUser?.tenantId || null;
+        const notifId = uuidv4();
+        const followDate = new Date(nextFollowUpDate);
+        const dateStr = `${followDate.getFullYear()}-${String(followDate.getMonth() + 1).padStart(2, '0')}-${String(followDate.getDate()).padStart(2, '0')} ${String(followDate.getHours()).padStart(2, '0')}:${String(followDate.getMinutes()).padStart(2, '0')}`;
+        await AppDataSource.query(
+          `INSERT INTO notifications (id, tenant_id, user_id, type, title, content, category, priority, related_id, related_type, action_url, icon, color)
+           VALUES (?, ?, ?, 'follow_up_reminder', ?, ?, 'task', 'normal', ?, 'follow_up', '/service-management/call', 'Bell', '#409eff')`,
+          [
+            notifId, tenantId, userId,
+            `跟进提醒：${customerName || '客户'}`,
+            `您有一条待跟进任务，计划跟进时间：${dateStr}。客户：${customerName || '未知'}，跟进内容：${content?.substring(0, 50) || ''}`,
+            savedFollowUp.id, 'follow_up'
+          ]
+        );
+      } catch (notifErr: any) {
+        log.warn('[Calls] 创建跟进通知失败（不影响主流程）:', notifErr.message);
+      }
+    }
 
     res.status(201).json({
       success: true,

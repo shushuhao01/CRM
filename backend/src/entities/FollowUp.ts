@@ -62,6 +62,9 @@ export class FollowUp {
   })
   status: string;
 
+  @Column({ type: 'text', nullable: true, comment: '备注' })
+  remark: string;
+
   @Column({ name: 'user_id', length: 50 })
   createdBy: string;
 

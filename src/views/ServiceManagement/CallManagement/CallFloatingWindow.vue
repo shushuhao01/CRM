@@ -41,7 +41,7 @@
     <template #footer>
       <div class="dialog-footer">
         <el-button @click="$emit('update:quickFollowUpVisible', false)">取消</el-button>
-        <el-button type="primary" @click="$emit('submit-follow-up')" :loading="quickFollowUpSubmitting">保存跟进</el-button>
+        <el-button type="primary" @click="handleSubmitFollowUp" :loading="quickFollowUpSubmitting">保存跟进</el-button>
       </div>
     </template>
   </el-dialog>
@@ -174,7 +174,7 @@ const props = defineProps<{
   savingNotes: boolean
 }>()
 
-defineEmits<{
+const emit = defineEmits<{
   'update:quickFollowUpVisible': [value: boolean]
   'update:incomingCallVisible': [value: boolean]
   'update:callNotes': [value: string]
@@ -193,6 +193,17 @@ defineEmits<{
 
 const quickFollowUpFormRef = ref()
 const callWindowRef = ref<HTMLElement | null>(null)
+
+const handleSubmitFollowUp = async () => {
+  if (quickFollowUpFormRef.value) {
+    try {
+      await quickFollowUpFormRef.value.validate()
+    } catch {
+      return
+    }
+  }
+  emit('submit-follow-up')
+}
 
 // 拖动逻辑（浮动窗口内部管理）
 const isDragging = ref(false)
