@@ -441,13 +441,14 @@ export const menuConfig: MenuItem[] = [
         roles: ['super_admin', 'admin', 'department_manager', 'sales_staff'],
         permissions: ['wecom:chat', 'wecom.chat_archive']
       },
-      {
-        id: 'wecom-service',
-        title: '微信客服',
-        path: '/wecom/service',
-        roles: ['super_admin', 'admin'],
-        permissions: ['wecom:service']
-      },
+      // 微信客服 - 暂停开发，后续版本恢复
+      // {
+      //   id: 'wecom-service',
+      //   title: '微信客服',
+      //   path: '/wecom/service',
+      //   roles: ['super_admin', 'admin'],
+      //   permissions: ['wecom:service']
+      // },
       // AI助手暂停开发，后续版本恢复
       // {
       //   id: 'wecom-ai-assistant',
