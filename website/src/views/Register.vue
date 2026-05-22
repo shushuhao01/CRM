@@ -57,7 +57,7 @@
           <div class="step-line" :class="{ active: step > 2 }"></div>
           <div class="step" :class="{ active: step >= 3 }">
             <span class="step-num">3</span>
-            <span class="step-text">{{ planType === 'community' ? '完成注册' : (selectedPlan === 'FREE_TRIAL' ? (form.autoRenew ? '签约授权' : '完成注册') : (subscriptionChecked && currentPkgSubscriptionEnabled ? '签约支付' : '完成支付')) }}</span>
+            <span class="step-text">{{ planType === 'community' ? '完成注册' : (selectedPlan === 'FREE_TRIAL' ? (form.autoRenew ? '签约授权' : '完成注册') : (subscriptionChecked && currentPkgSubscriptionCycleMatch ? '签约支付' : '完成支付')) }}</span>
           </div>
         </div>
 
@@ -130,6 +130,40 @@
               </div>
             </div>
 
+            <!-- 免费试用：到期自动续费选项（步骤1中展示，仅当有支持订阅的套餐时显示） -->
+            <div v-if="planType === 'saas' && selectedPlan === 'FREE_TRIAL' && renewablePlans.length > 0" class="auto-renew-section" style="margin-top: 16px; margin-bottom: 24px;">
+              <label class="checkbox-label auto-renew-label">
+                <input type="checkbox" v-model="form.autoRenew" />
+                <span class="renew-text">
+                  <svg class="renew-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                  试用到期后自动续费
+                  <span class="renew-highlight">（推荐，试用期内可随时取消）</span>
+                </span>
+              </label>
+              <div v-if="form.autoRenew" class="auto-renew-options">
+                <p class="renew-desc">试用到期自动续费套餐：</p>
+                <div class="renew-plan-options">
+                  <label v-for="pkg in renewablePlans" :key="pkg.code"
+                    class="renew-plan-option" :class="{ selected: form.autoRenewPackage === pkg.code }">
+                    <input type="radio" v-model="form.autoRenewPackage" :value="pkg.code" />
+                    <div class="plan-main">
+                      <span class="plan-name">{{ pkg.name }}</span>
+                      <span class="plan-benefits">
+                        {{ pkg.max_users }}用户 · {{ pkg.max_storage_gb }}GB存储
+                      </span>
+                    </div>
+                    <span class="plan-price">
+                      {{ pkg.subscription_enabled && pkg.subscription_discount_rate > 0
+                        ? '¥' + (pkg.price * (1 - pkg.subscription_discount_rate / 100)).toFixed(0) + '/月'
+                        : '¥' + pkg.price + '/月' }}
+                    </span>
+                    <span v-if="pkg.subscription_enabled && pkg.subscription_discount_rate > 0" class="sub-tag">订阅优惠</span>
+                  </label>
+                </div>
+                <p class="renew-tip">⚠ 试用期内可在会员中心取消，不取消则到期自动扣费</p>
+              </div>
+            </div>
+
             <!-- 月付/年付切换（仅SaaS套餐且非免费试用时显示） -->
             <div v-if="planType === 'saas' && selectedPlan !== 'FREE_TRIAL'" class="billing-toggle">
               <div class="billing-options">
@@ -180,8 +214,8 @@
               </div>
             </div>
 
-            <!-- 订阅自动续费选项（仅SaaS付费套餐支持订阅时显示） -->
-            <div v-if="planType === 'saas' && selectedPlan !== 'FREE_TRIAL' && currentPkgSubscriptionEnabled" class="subscription-auto-renew">
+            <!-- 订阅自动续费选项（仅SaaS付费套餐支持订阅且当前周期匹配时显示） -->
+            <div v-if="planType === 'saas' && selectedPlan !== 'FREE_TRIAL' && currentPkgSubscriptionEnabled && currentPkgSubscriptionCycleMatch" class="subscription-auto-renew">
               <label class="subscription-check-wrapper" :class="{ checked: subscriptionChecked }">
                 <input type="checkbox" v-model="subscriptionChecked" />
                 <span class="subscription-checkbox-indicator">
@@ -350,45 +384,7 @@
                 用于登录会员中心管理订阅、查看账单。不填写将使用初始密码 <strong>Aa123456</strong>，建议登录后修改
               </p>
             </div>
-            <!-- 免费试用：到期自动续费选项（仅当有支持订阅的套餐时显示） -->
-            <div v-if="selectedPlan === 'FREE_TRIAL' && renewablePlans.length > 0" class="auto-renew-section">
-              <label class="checkbox-label auto-renew-label">
-                <input type="checkbox" v-model="form.autoRenew" />
-                <span class="renew-text">
-                  <svg class="renew-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
-                  试用到期后自动续费
-                  <span class="renew-highlight">（推荐，试用期内可随时取消）</span>
-                </span>
-              </label>
-              <div v-if="form.autoRenew" class="auto-renew-options">
-                <p class="renew-desc">试用到期自动续费套餐：</p>
-                <div class="renew-plan-options">
-                  <label v-for="pkg in renewablePlans" :key="pkg.code"
-                    class="renew-plan-option" :class="{ selected: form.autoRenewPackage === pkg.code }">
-                    <input type="radio" v-model="form.autoRenewPackage" :value="pkg.code" />
-                    <div class="plan-main">
-                      <span class="plan-name">{{ pkg.name }}</span>
-                      <span class="plan-benefits">
-                        {{ pkg.max_users }}用户 · {{ pkg.max_storage_gb }}GB存储
-                        <span v-if="pkg.features && pkg.features.length > 0" class="features-trigger" @mouseenter="hoveredPkg = pkg.code" @mouseleave="hoveredPkg = ''">
-                          · 更多 ▾
-                          <div v-if="hoveredPkg === pkg.code" class="features-tooltip">
-                            <div v-for="(f, i) in pkg.features" :key="i" class="feature-item">✓ {{ f }}</div>
-                          </div>
-                        </span>
-                      </span>
-                    </div>
-                    <span class="plan-price">
-                      {{ pkg.subscription_enabled && pkg.subscription_discount_rate > 0
-                        ? '¥' + (pkg.price * (1 - pkg.subscription_discount_rate / 100)).toFixed(0) + '/月'
-                        : '¥' + pkg.price + '/月' }}
-                    </span>
-                    <span v-if="pkg.subscription_enabled && pkg.subscription_discount_rate > 0" class="sub-tag">订阅优惠</span>
-                  </label>
-                </div>
-                <p class="renew-tip">⚠ 试用期内可在会员中心取消，不取消则到期自动扣费</p>
-              </div>
-            </div>
+            <!-- 免费试用自动续费选项已移至步骤1 -->
             <div class="form-group">
               <label class="checkbox-label">
                 <input type="checkbox" v-model="form.agree" required />
@@ -409,12 +405,12 @@
 
           <!-- ===== 签约模式（免费试用+自动续费） ===== -->
           <div v-if="signingMode" class="signing-section">
-            <!-- 注册成功提示 -->
+            <!-- 注册成功提示 - 签约完成后才显示授权信息 -->
             <div class="register-success-banner">
               <div class="success-icon">✅</div>
               <div class="success-content">
-                <h3>账号已创建成功！</h3>
-                <div class="success-details">
+                <h3>账号已创建成功！{{ signingStatus === 'idle' || signingStatus === 'pending' ? '请完成下方签约' : '' }}</h3>
+                <div v-if="signingStatus === 'success'" class="success-details">
                   <div class="detail-item">
                     <span class="detail-label">租户编码</span>
                     <span class="detail-value">{{ registeredTenant?.tenantCode }}</span>
@@ -432,6 +428,7 @@
                     <span class="detail-value" style="color: #e6a23c;">初始密码：Aa123456（请登录后修改）</span>
                   </div>
                 </div>
+                <p v-else style="color: #909399; font-size: 13px; margin-top: 8px;">完成签约后将显示授权信息</p>
               </div>
             </div>
 
@@ -815,8 +812,8 @@
             </div>
 
             <div class="payment-methods">
-              <!-- 订阅/正常支付切换（仅当套餐支持订阅时显示） -->
-              <div v-if="currentPkgSubscriptionEnabled && planType === 'saas' && selectedPlan !== 'FREE_TRIAL'" class="pay-mode-toggle">
+              <!-- 订阅/正常支付切换（仅当套餐支持订阅且周期匹配时显示） -->
+              <div v-if="currentPkgSubscriptionEnabled && currentPkgSubscriptionCycleMatch && planType === 'saas' && selectedPlan !== 'FREE_TRIAL'" class="pay-mode-toggle">
                 <h4>支付模式</h4>
                 <div class="pay-mode-options">
                   <label class="pay-mode-option" :class="{ active: payMode === 'subscription' }">
@@ -1172,8 +1169,8 @@ const form = reactive({
   code: '',
   email: '',
   password: '',
-  autoRenew: true,
-  autoRenewPackage: 'SAAS_BASIC',
+  autoRenew: false,
+  autoRenewPackage: '',
   agree: false
 })
 
@@ -1441,6 +1438,14 @@ const getPrivateDisplayPrice = (plan: string): string => {
 const currentPkg = computed(() => getPackageByPlan(selectedPlan.value))
 const currentPkgSubscriptionEnabled = computed(() => Boolean(currentPkg.value?.subscription_enabled))
 const currentPkgSubscriptionChannels = computed(() => currentPkg.value?.subscription_channels || 'all')
+const currentPkgSubscriptionBillingCycle = computed(() => currentPkg.value?.subscription_billing_cycle || 'monthly')
+// 判断当前选择的付费周期是否匹配套餐的订阅周期
+const currentPkgSubscriptionCycleMatch = computed(() => {
+  if (!currentPkgSubscriptionEnabled.value) return false
+  const cycle = currentPkgSubscriptionBillingCycle.value
+  if (cycle === 'both') return true
+  return cycle === billingCycle.value
+})
 const currentPkgSubscriptionDiscountRate = computed(() => Number(currentPkg.value?.subscription_discount_rate) || 0)
 const subscriptionPrice = computed(() => {
   const monthly = getMonthlyPrice(selectedPlan.value)
@@ -1474,13 +1479,36 @@ watch(subscriptionChecked, (val) => {
 
 // 套餐订阅支持状态变化时（切换套餐），自动重置订阅勾选
 watch(currentPkgSubscriptionEnabled, (enabled) => {
-  subscriptionChecked.value = enabled
-  payMode.value = enabled ? 'subscription' : 'normal'
+  if (enabled && currentPkgSubscriptionCycleMatch.value) {
+    subscriptionChecked.value = true
+    payMode.value = 'subscription'
+  } else {
+    subscriptionChecked.value = false
+    payMode.value = 'normal'
+  }
+})
+
+// 切换月付/年付时，检查订阅周期是否匹配
+watch(() => billingCycle.value, () => {
+  if (!currentPkgSubscriptionCycleMatch.value) {
+    subscriptionChecked.value = false
+    payMode.value = 'normal'
+  }
 })
 
 // 免费试用到期可续费的套餐列表
 const renewablePlans = computed(() => {
   return packagesData.value.filter(p => p.type === 'saas' && !p.is_trial && Number(p.price) > 0 && p.subscription_enabled)
+})
+
+// 选中免费试用时，自动勾选自动续费并默认选第一个可续费套餐
+watch(() => selectedPlan.value, (plan) => {
+  if (plan === 'FREE_TRIAL' && renewablePlans.value.length > 0) {
+    form.autoRenew = true
+    if (!form.autoRenewPackage) {
+      form.autoRenewPackage = renewablePlans.value[0].code
+    }
+  }
 })
 
 const getMonthlyPrice = (plan: string) => {
@@ -1629,8 +1657,8 @@ const handleSubmitInfo = async () => {
           })
         }
       } else {
-        // 付费套餐：如果勾选了订阅，先走签约流程
-        if (subscriptionChecked.value && currentPkgSubscriptionEnabled.value && planType.value === 'saas') {
+        // 付费套餐：如果勾选了订阅且周期匹配，先走签约流程
+        if (subscriptionChecked.value && currentPkgSubscriptionEnabled.value && currentPkgSubscriptionCycleMatch.value && planType.value === 'saas') {
           signingMode.value = true
           signingStatus.value = 'idle'
         }
@@ -1649,7 +1677,7 @@ const handleSubmitInfo = async () => {
 // 创建支付订单
 const handleCreatePayment = async () => {
   // 如果在步骤3切换到订阅模式但signingMode为false，重新进入签约流程
-  if (payMode.value === 'subscription' && currentPkgSubscriptionEnabled.value && !signingMode.value) {
+  if (payMode.value === 'subscription' && currentPkgSubscriptionEnabled.value && currentPkgSubscriptionCycleMatch.value && !signingMode.value) {
     signingMode.value = true
     signingStatus.value = 'idle'
     return

@@ -432,7 +432,7 @@ router.post('/', async (req: Request, res: Response) => {
  */
 router.post('/subscribe', async (req: Request, res: Response) => {
   try {
-    const { tenantId, packageCode, channel } = req.body
+    const { tenantId, packageCode, channel, billingCycle } = req.body
 
     if (!tenantId || !packageCode || !channel) {
       return res.status(400).json({ code: 400, message: '参数不完整' })
@@ -477,7 +477,7 @@ router.post('/subscribe', async (req: Request, res: Response) => {
       tenantId,
       packageId: pkgs[0].id,
       channel: channel as 'wechat' | 'alipay',
-      billingCycle: 'monthly'
+      billingCycle: (billingCycle === 'yearly' ? 'yearly' : 'monthly') as 'monthly' | 'yearly'
     })
 
     log.info(`[Register] 免费试用用户签约发起成功: tenant=${tenantId}, channel=${channel}, subscription=${result.subscriptionId}`)
