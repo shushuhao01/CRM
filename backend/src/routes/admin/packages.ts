@@ -120,6 +120,19 @@ async function ensureSubscriptionColumns(): Promise<boolean> {
        AND COLUMN_NAME IN ('subscription_enabled', 'subscription_channels', 'subscription_discount_rate', 'subscription_billing_cycle')`
     )
     if (columns.length >= 4) {
+      // 4个基础订阅列已存在，但还需检查wechat_plan_ids是否存在
+      try {
+        const planIdCols = await AppDataSource.query(
+          `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+           WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'tenant_packages' AND COLUMN_NAME = 'wechat_plan_ids'`
+        )
+        if (planIdCols.length === 0) {
+          await AppDataSource.query(
+            `ALTER TABLE tenant_packages ADD COLUMN wechat_plan_ids TEXT DEFAULT NULL COMMENT '微信委托代扣计划ID'`
+          )
+          log.info('[packages] ✅ 补充添加 wechat_plan_ids 字段')
+        }
+      } catch { /* ignore */ }
       subscriptionColumnsExist = true
       await ensureSubscriptionTables()
       return true
