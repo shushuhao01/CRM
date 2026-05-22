@@ -48,6 +48,9 @@ export class Customer {
   @Column({ name: 'id_card', length: 255, nullable: true, comment: '身份证号' })
   idCard?: string;
 
+  @Column({ name: 'bank_cards', type: 'json', nullable: true, comment: '银行卡信息' })
+  bankCards?: Array<{ bank: string; cardNo: string }>;
+
   @Column({ type: 'decimal', precision: 5, scale: 1, nullable: true, comment: '身高(cm)' })
   height?: number;
 

@@ -5,6 +5,7 @@ import { registerRecordingsRoutes } from './recordings';
 import { registerFollowupsRoutes } from './followups';
 import { registerConfigRoutes } from './config';
 import { registerTasksRoutes } from './tasks';
+import { registerProspectsRoutes } from './prospects';
 
 const router = Router();
 
@@ -16,5 +17,6 @@ registerRecordingsRoutes(router);
 registerFollowupsRoutes(router);
 registerConfigRoutes(router);
 registerTasksRoutes(router);
+registerProspectsRoutes(router);
 
 export default router;

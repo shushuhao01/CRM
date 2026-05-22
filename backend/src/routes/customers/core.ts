@@ -352,6 +352,8 @@ router.get('/', async (req: Request, res: Response) => {
         fanAcquisitionTime: formatDate(customer.fanAcquisitionTime),
         customFields: customer.customFields || null,
         wecomExternalUserid: customer.wecomExternalUserid || '',
+        idCard: customer.idCard || '',
+        bankCards: customer.bankCards || [],
         shareInfo // 🔥 添加分享信息
       };
     });
@@ -565,6 +567,8 @@ router.post('/batch-import', async (req: Request, res: Response) => {
           otherGoals: item.otherGoals || null,
           fanAcquisitionTime: item.fanAcquisitionTime ? new Date(item.fanAcquisitionTime) : null,
           birthday: item.birthday ? new Date(item.birthday) : null,
+          idCard: item.idCard || null,
+          bankCards: item.bankCards || null,
           customFields: item.customFields || null,
           wecomExternalUserid: item.wecomExternalUserid || null,
           orderCount: 0,
@@ -817,6 +821,8 @@ router.get('/:id', async (req: Request, res: Response) => {
       fanAcquisitionTime: formatDate(customer.fanAcquisitionTime),
       customFields: customer.customFields || null,
       wecomExternalUserid: customer.wecomExternalUserid || '',
+      idCard: customer.idCard || '',
+      bankCards: customer.bankCards || [],
       starRating: (customer as any).starRating || 0,
       finalScore: (customer as any).finalScore || 0
     };
@@ -846,7 +852,8 @@ router.post('/', async (req: Request, res: Response) => {
       age, gender, height, weight, wechat, wechatId,
       province, city, district, street, detailAddress, overseasAddress,
       medicalHistory, improvementGoals, otherGoals, fanAcquisitionTime,
-      status, salesPersonId, createdBy, customFields, wecomExternalUserid, birthday
+      status, salesPersonId, createdBy, customFields, wecomExternalUserid, birthday,
+      idCard, bankCards
     } = req.body;
 
     log.info('[创建客户] 收到请求数据:', JSON.stringify(req.body));
@@ -932,6 +939,8 @@ router.post('/', async (req: Request, res: Response) => {
       otherGoals: otherGoals || null,
       fanAcquisitionTime: fanAcquisitionTime ? new Date(fanAcquisitionTime) : null,
       birthday: birthday ? new Date(birthday) : null,
+      idCard: idCard || null,
+      bankCards: bankCards || null,
       customFields: customFields || null,
       wecomExternalUserid: wecomExternalUserid || null,
       orderCount: 0,
@@ -1104,7 +1113,7 @@ router.put('/:id', async (req: Request, res: Response) => {
       age, gender, height, weight, wechat, wechatId, birthday,
       province, city, district, street, detailAddress, overseasAddress,
       medicalHistory, improvementGoals, otherGoals, fanAcquisitionTime, otherPhones,
-      customFields, starRating, finalScore
+      customFields, starRating, finalScore, idCard, bankCards
     } = req.body;
 
     // 字段中文名映射
@@ -1183,6 +1192,8 @@ router.put('/:id', async (req: Request, res: Response) => {
     if (fanAcquisitionTime !== undefined) { trackChange('fanAcquisitionTime', customer.fanAcquisitionTime, fanAcquisitionTime); customer.fanAcquisitionTime = fanAcquisitionTime ? new Date(fanAcquisitionTime) : undefined; }
     if (otherPhones !== undefined) { trackChange('otherPhones', customer.otherPhones, otherPhones); customer.otherPhones = otherPhones; }
     if (customFields !== undefined) { customer.customFields = customFields; }
+    if (idCard !== undefined) { trackChange('idCard', customer.idCard, idCard); customer.idCard = idCard; }
+    if (bankCards !== undefined) { trackChange('bankCards', customer.bankCards, bankCards); customer.bankCards = bankCards; }
     if (starRating !== undefined) {
       trackChange('starRating', (customer as any).starRating, starRating);
       (customer as any).starRating = starRating;

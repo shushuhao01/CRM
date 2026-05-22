@@ -17,6 +17,7 @@ import { LogisticsStatus } from '../entities/LogisticsStatus';
 import { RejectionReason } from '../entities/RejectionReason';
 import { ImprovementGoal } from '../entities/ImprovementGoal';
 import { Call } from '../entities/Call';
+import { CallProspect } from '../entities/CallProspect';
 import { Message } from '../entities/Message';
 import { PerformanceMetric } from '../entities/PerformanceMetric';
 import { Notification } from '../entities/Notification';
@@ -177,7 +178,7 @@ const entities = [
   WecomAiLog, WecomSidebarAuthCode, WecomDepartmentMapping,
   WecomGroupWelcome, WecomAntiSpamRule, WecomGroupBroadcast,
   WecomSuiteConfig, WecomSuiteCallbackLog, WecomSuiteAuthLink, WecomNotificationTemplate,
-  UserSession
+  UserSession, CallProspect
 ];
 
 // ==================== MySQL 数据库配置 ====================

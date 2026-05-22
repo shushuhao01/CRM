@@ -248,6 +248,37 @@
                 />
               </el-form-item>
             </el-col>
+            <el-col :span="8" v-if="customerFieldConfigStore.isFieldEnabled('idCard')">
+              <el-form-item label="身份证号" prop="idCard">
+                <el-input
+                  v-model="customerForm.idCard"
+                  placeholder="请输入身份证号"
+                  clearable
+                  maxlength="18"
+                  style="width: 200px;"
+                />
+              </el-form-item>
+            </el-col>
+          </el-row>
+
+          <!-- 银行卡信息 -->
+          <el-row :gutter="20" v-if="customerFieldConfigStore.isFieldEnabled('bankCards')">
+            <el-col :span="24">
+              <el-form-item label="银行卡">
+                <div class="bank-cards-section">
+                  <div v-for="(card, index) in customerForm.bankCards" :key="index" class="bank-card-item">
+                    <el-select v-model="card.bank" placeholder="选择银行" filterable allow-create style="width:160px;">
+                      <el-option v-for="b in commonBanks" :key="b" :label="b" :value="b" />
+                    </el-select>
+                    <el-input v-model="card.cardNo" placeholder="请输入卡号" style="width:220px; margin-left:8px;" maxlength="25" />
+                    <el-button type="danger" :icon="Delete" circle size="small" style="margin-left:8px;" @click="removeBankCard(index)" />
+                  </div>
+                  <el-button type="primary" plain size="small" @click="addBankCard">
+                    <el-icon><Plus /></el-icon> 添加银行卡
+                  </el-button>
+                </div>
+              </el-form-item>
+            </el-col>
           </el-row>
 
           <!-- 自定义字段区域 -->
@@ -698,7 +729,7 @@
 import { ref, reactive, onMounted, computed, nextTick, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Warning, InfoFilled, Setting, Location, Check, Phone, LocationFilled, Iphone, CircleClose } from '@element-plus/icons-vue'
+import { Warning, InfoFilled, Setting, Location, Check, Phone, LocationFilled, Iphone, CircleClose, Delete, Plus } from '@element-plus/icons-vue'
 import type { FormInstance, FormRules } from 'element-plus'
 import { useUserStore } from '@/stores/user'
 import { useAppStore } from '@/stores/app'
@@ -763,6 +794,23 @@ const customerVerifyResult = ref<{
 // 禁用未来日期（进粉时间不能选择未来）
 const disableFutureDate = (time: Date) => {
   return time.getTime() > Date.now()
+}
+
+// 常见银行列表
+const commonBanks = [
+  '中国工商银行', '中国建设银行', '中国农业银行', '中国银行',
+  '交通银行', '招商银行', '中国邮政储蓄银行', '中信银行',
+  '中国光大银行', '华夏银行', '中国民生银行', '平安银行',
+  '兴业银行', '广发银行', '浦发银行', '北京银行',
+  '上海银行', '宁波银行', '南京银行', '江苏银行'
+]
+
+const addBankCard = () => {
+  customerForm.bankCards.push({ bank: '', cardNo: '' })
+}
+
+const removeBankCard = (index: number) => {
+  customerForm.bankCards.splice(index, 1)
 }
 
 // 判断是否为编辑模式
@@ -873,7 +921,9 @@ const customerForm = reactive({
   remark: '',          // 备注
   customFields: {} as Record<string, any>,  // 自定义字段
   wecomExternalUserid: '',  // 企微UserID
-  birthday: ''  // 客户生日
+  birthday: '',  // 客户生日
+  idCard: '',  // 身份证号
+  bankCards: [] as Array<{ bank: string; cardNo: string }>  // 银行卡
 })
 
 // 地址数据
@@ -1703,7 +1753,9 @@ const handleSubmit = async () => {
         otherGoals: customerForm.otherGoals,
         customFields: customerForm.customFields,
         wecomExternalUserid: customerForm.wecomExternalUserid || undefined,
-        birthday: customerForm.birthday || undefined
+        birthday: customerForm.birthday || undefined,
+        idCard: customerForm.idCard || undefined,
+        bankCards: customerForm.bankCards?.length > 0 ? customerForm.bankCards.filter(c => c.bank && c.cardNo) : undefined
       }
 
       console.log('准备保存的客户数据:', customerData)

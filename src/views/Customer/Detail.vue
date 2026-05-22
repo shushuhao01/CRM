@@ -153,6 +153,22 @@
             </div>
           </div>
 
+          <!-- 身份证号和银行卡 -->
+          <div class="customer-info-row" v-if="customerFieldConfigStore.isFieldEnabled('idCard') || customerFieldConfigStore.isFieldEnabled('bankCards')">
+            <div class="info-item" v-if="customerFieldConfigStore.isFieldEnabled('idCard')">
+              <span class="field-label">身份证号</span>
+              <span class="field-value">{{ customerInfo.idCard ? displaySensitiveInfoNew(customerInfo.idCard, SensitiveInfoType.ID_CARD) : '暂无' }}</span>
+            </div>
+            <div class="info-item flex-item-wide" v-if="customerFieldConfigStore.isFieldEnabled('bankCards') && customerInfo.bankCards?.length">
+              <span class="field-label">银行卡</span>
+              <span class="field-value">
+                <span v-for="(card, idx) in customerInfo.bankCards" :key="idx" style="margin-right:12px;">
+                  {{ card.bank }} {{ displaySensitiveInfoNew(card.cardNo, SensitiveInfoType.BANK_ACCOUNT) }}
+                </span>
+              </span>
+            </div>
+          </div>
+
           <!-- 第五行：创建时间、客户来源、微信号、邮箱 -->
           <div class="customer-info-row create-time-row">
             <div class="info-item">
@@ -3126,12 +3142,39 @@ const loadCustomerLogs = async () => {
     const result = response?.data || response || { list: [], hasMore: false }
     const rawList = result.list || []
     // 确保detail字段被解析为对象
-    customerLogs.value = rawList.map((item: any) => {
+    let logs = rawList.map((item: any) => {
       if (item.detail && typeof item.detail === 'string') {
         try { item.detail = JSON.parse(item.detail) } catch { item.detail = null }
       }
       return item
     })
+
+    // 合并外呼名单日志（如果该客户来源为外呼转入）
+    if (customerInfo.value?.source === '外呼转入') {
+      try {
+        const { prospectApi } = await import('@/api/callProspect')
+        // 通过客户ID查找对应的prospect记录日志
+        const prospectRes: any = await prospectApi.getList({ keyword: customerInfo.value.phone, recycled: undefined } as any)
+        const prospectData = prospectRes?.data || prospectRes
+        const prospect = (prospectData?.list || []).find((p: any) => p.convertedCustomerId === customerId || p.phone === customerInfo.value?.phone)
+        if (prospect?.id) {
+          const logRes: any = await prospectApi.getLogs(prospect.id)
+          const prospectLogs = (logRes?.data || []).map((l: any) => ({
+            id: l.id,
+            logType: l.log_type || l.logType || 'other',
+            content: l.content,
+            operatorName: l.operator_name || l.operatorName || '',
+            createdAt: l.created_at || l.createdAt,
+            detail: null
+          }))
+          logs = [...logs, ...prospectLogs]
+        }
+      } catch { }
+    }
+
+    // 按时间倒序排列
+    logs.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    customerLogs.value = logs
     logsHasMore.value = result.hasMore || false
     logsOffset.value = customerLogs.value.length
   } catch (error) {
@@ -3287,7 +3330,9 @@ const loadCustomerDetail = async () => {
       afterSalesAmount: customer.afterSalesAmount || 0,
       totalAmount: customer.totalAmount || 0,
       orderCount: customer.orderCount || 0,
-      lastOrderTime: customer.lastOrderTime || ''
+      lastOrderTime: customer.lastOrderTime || '',
+      idCard: customer.idCard || customer.id_card || '',
+      bankCards: customer.bankCards || customer.bank_cards || []
     }
 
     // 客户统计数据将通过 calculateCustomerStats() 方法实时计算

@@ -261,6 +261,7 @@ import { displaySensitiveInfoNew, SensitiveInfoType } from '@/utils/sensitiveInf
 import { formatDateTime } from '@/utils/dateFormat'
 import * as dataApi from '@/api/data'
 import type { RecycleItem } from '@/api/data'
+import { prospectApi } from '@/api/callProspect'
 
 // 使用数据存储
 const dataStore = useDataStore()
@@ -286,24 +287,74 @@ const deletedByUsers = ref([
   { id: 'user3', name: '张组长' }
 ])
 
-// 加载回收站数据
+// 加载回收站数据（含外呼名单回收站）
 const loadRecycleData = async () => {
   try {
     loading.value = true
-    const response = await dataApi.getRecycleList({
-      page: currentPage.value,
-      pageSize: pageSize.value,
-      keyword: searchKeyword.value || undefined,
-      deleteTimeFilter: deleteTimeFilter.value as any || undefined,
-      deletedBy: deletedByFilter.value || undefined
-    })
 
-    recycleData.value = response.list || []
-    totalCount.value = response.total || 0
+    // 并行加载原始回收站数据和外呼名单回收站数据
+    const [dataResponse, prospectResponse] = await Promise.all([
+      dataApi.getRecycleList({
+        page: currentPage.value,
+        pageSize: pageSize.value,
+        keyword: searchKeyword.value || undefined,
+        deleteTimeFilter: deleteTimeFilter.value as any || undefined,
+        deletedBy: deletedByFilter.value || undefined
+      }).catch(() => ({ list: [], total: 0, summary: null })),
+      prospectApi.getList({
+        page: currentPage.value,
+        pageSize: pageSize.value,
+        keyword: searchKeyword.value || undefined,
+        recycled: 'true' as any
+      }).catch(() => ({ data: { list: [], total: 0 } }))
+    ])
+
+    // 处理原始回收站数据
+    const originalList = dataResponse.list || []
+
+    // 处理外呼名单回收站数据
+    const prospectData = (prospectResponse as any)?.data || prospectResponse
+    const prospectList = (prospectData?.list || []).map((p: any) => ({
+      id: p.id,
+      customerName: p.name,
+      phone: p.phone,
+      orderAmount: 0,
+      orderDate: '',
+      deletedAt: p.deletedAt,
+      deletedBy: p.createdBy || '',
+      deletedByName: p.assignedName || '系统',
+      deleteReason: '外呼名单删除',
+      expiresAt: p.deletedAt ? new Date(new Date(p.deletedAt).getTime() + 30 * 24 * 60 * 60 * 1000).toISOString() : '',
+      _isProspect: true,
+      _prospectId: p.id
+    }))
+
+    // 合并两个数据源
+    recycleData.value = [...originalList, ...prospectList]
+    totalCount.value = (dataResponse.total || 0) + (prospectData?.total || 0)
 
     // 更新汇总数据
-    if (response.summary) {
-      summaryDataFromApi.value = response.summary
+    const prospectTotal = prospectData?.total || 0
+    if (dataResponse.summary) {
+      summaryDataFromApi.value = {
+        totalCount: (dataResponse.summary.totalCount || 0) + prospectTotal,
+        recentCount: (dataResponse.summary.recentCount || 0) + prospectList.filter((p: any) => {
+          const deletedAt = new Date(p.deletedAt)
+          const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
+          return deletedAt >= sevenDaysAgo
+        }).length,
+        expiringSoonCount: dataResponse.summary.expiringSoonCount || 0
+      }
+    } else {
+      summaryDataFromApi.value = {
+        totalCount: prospectTotal,
+        recentCount: prospectList.filter((p: any) => {
+          const deletedAt = new Date(p.deletedAt)
+          const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
+          return deletedAt >= sevenDaysAgo
+        }).length,
+        expiringSoonCount: 0
+      }
     }
   } catch (error) {
     console.error('加载回收站数据失败:', error)
@@ -430,17 +481,30 @@ const confirmRestore = async () => {
   try {
     loading.value = true
 
-    // 调用真实API恢复数据
-    const dataIds = selectedItems.value.map(item => item.id)
-    const result = await dataApi.restoreData(dataIds)
+    // 分离外呼名单和原始资料
+    const prospectItems = selectedItems.value.filter((item: any) => item._isProspect)
+    const dataItems = selectedItems.value.filter((item: any) => !item._isProspect)
 
-    if (result.success) {
-      ElMessage.success(`成功恢复 ${selectedItems.value.length} 条记录`)
-      // 重新加载数据
-      await loadRecycleData()
-    } else {
-      ElMessage.error(result.message || '恢复失败')
+    let successCount = 0
+
+    // 恢复外呼名单
+    if (prospectItems.length > 0) {
+      const prospectIds = prospectItems.map(item => item.id)
+      await prospectApi.restore(prospectIds)
+      successCount += prospectItems.length
     }
+
+    // 恢复原始资料
+    if (dataItems.length > 0) {
+      const dataIds = dataItems.map(item => item.id)
+      const result = await dataApi.restoreData(dataIds)
+      if (result.success) {
+        successCount += dataItems.length
+      }
+    }
+
+    ElMessage.success(`成功恢复 ${successCount} 条记录`)
+    await loadRecycleData()
 
     restoreDialogVisible.value = false
     selectedItems.value = []
@@ -469,17 +533,30 @@ const confirmPermanentDelete = async () => {
   try {
     loading.value = true
 
-    // 调用真实API永久删除数据
-    const dataIds = selectedItems.value.map(item => item.id)
-    const result = await dataApi.permanentDeleteData(dataIds)
+    // 分离外呼名单和原始资料
+    const prospectItems = selectedItems.value.filter((item: any) => item._isProspect)
+    const dataItems = selectedItems.value.filter((item: any) => !item._isProspect)
 
-    if (result.success) {
-      ElMessage.success(`成功删除 ${selectedItems.value.length} 条记录`)
-      // 重新加载数据
-      await loadRecycleData()
-    } else {
-      ElMessage.error(result.message || '删除失败')
+    let successCount = 0
+
+    // 永久删除外呼名单
+    if (prospectItems.length > 0) {
+      const prospectIds = prospectItems.map(item => item.id)
+      await prospectApi.batchDelete(prospectIds, true)
+      successCount += prospectItems.length
     }
+
+    // 永久删除原始资料
+    if (dataItems.length > 0) {
+      const dataIds = dataItems.map(item => item.id)
+      const result = await dataApi.permanentDeleteData(dataIds)
+      if (result.success) {
+        successCount += dataItems.length
+      }
+    }
+
+    ElMessage.success(`成功删除 ${successCount} 条记录`)
+    await loadRecycleData()
 
     deleteDialogVisible.value = false
     selectedItems.value = []

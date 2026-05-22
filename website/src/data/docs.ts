@@ -87,6 +87,17 @@ export const docCategories: DocCategory[] = [
     ]
   },
   {
+    key: 'call',
+    title: '通话管理',
+    items: [
+      { key: 'intro', title: '通话管理介绍' },
+      { key: 'prospect', title: '外呼名单导入与管理' },
+      { key: 'config', title: '呼出配置' },
+      { key: 'records', title: '通话记录与录音' },
+      { key: 'agent', title: '坐席状态管理' }
+    ]
+  },
+  {
     key: 'sms',
     title: '短信管理',
     items: [

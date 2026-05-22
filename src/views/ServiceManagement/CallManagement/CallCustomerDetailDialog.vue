@@ -59,6 +59,7 @@
             <el-tab-pane label="售后记录" name="aftersales" />
             <el-tab-pane label="通话记录" name="calls" />
             <el-tab-pane label="跟进记录" name="followups" />
+            <el-tab-pane label="客户日志" name="logs" />
           </el-tabs>
           <div class="tabs-actions">
             <el-button v-if="activeTab === 'orders'" type="primary" size="small" @click="$emit('create-order')">新建订单</el-button>
@@ -200,12 +201,48 @@
               :page-sizes="[10, 20, 50]" :total="detailPagination.followups.total" layout="total, sizes, prev, pager, next" />
           </div>
         </div>
+
+        <!-- 客户日志 -->
+        <div v-show="activeTab === 'logs'" class="tab-content">
+          <div class="customer-logs-timeline">
+            <el-timeline v-if="customerLogs.length > 0">
+              <el-timeline-item
+                v-for="log in customerLogs"
+                :key="log.id"
+                :timestamp="log.time"
+                :type="getLogType(log.action)"
+                placement="top"
+              >
+                <div class="log-content">
+                  <span class="log-action">{{ getLogActionText(log.action) }}</span>
+                  <span class="log-detail">{{ log.detail }}</span>
+                  <span v-if="log.operator" class="log-operator">操作人: {{ log.operator }}</span>
+                </div>
+              </el-timeline-item>
+            </el-timeline>
+            <el-empty v-else description="暂无客户日志" :image-size="80" />
+          </div>
+        </div>
       </div>
     </div>
+
+    <template #footer>
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <div>
+          <el-button v-if="currentCustomer?._prospectStatus === 'converted'" type="success" disabled>已转入客户</el-button>
+          <el-button v-else-if="currentCustomer?._prospectId" type="warning" @click="handleConvert" :loading="converting">
+            转入客户列表
+          </el-button>
+        </div>
+        <el-button @click="$emit('update:visible', false)">关闭</el-button>
+      </div>
+    </template>
   </el-dialog>
 </template>
 
 <script setup lang="ts">
+import { ref, computed, watch } from 'vue'
+import { ElMessage } from 'element-plus'
 import { Phone, User, VideoPlay, Download } from '@element-plus/icons-vue'
 import { displaySensitiveInfoNew, SensitiveInfoType } from '@/utils/sensitiveInfo'
 import { getOrderStatusText as getOrderStatusTextFromConfig, getOrderStatusTagType } from '@/utils/orderStatusConfig'
@@ -214,8 +251,11 @@ import {
   getAftersalesStatusText, getAftersalesStatusType,
   getFollowUpTypeLabel, getIntentType, getIntentLabel
 } from './helpers'
+import { prospectApi } from '@/api/callProspect'
+import { customerDetailApi } from '@/api/customerDetail'
+import { formatDateTime } from '@/utils/dateFormat'
 
-defineProps<{
+const props = defineProps<{
   visible: boolean
   currentCustomer: any
   activeTab: string
@@ -231,7 +271,150 @@ defineProps<{
   paginatedAftersales: any[]
 }>()
 
-defineEmits<{
+// 客户日志 - 从API和本地数据合成
+const apiLogs = ref<any[]>([])
+
+// 当切换到日志TAB或弹窗打开时加载日志
+watch(() => [props.visible, props.activeTab], async ([visible, tab]) => {
+  if (visible && tab === 'logs') {
+    const customer = props.currentCustomer
+    if (!customer) return
+    apiLogs.value = []
+
+    try {
+      // 如果已转入客户列表，优先从客户日志API加载
+      const convertedId = customer._convertedCustomerId
+      if (convertedId) {
+        const res: any = await customerDetailApi.getCustomerLogs(convertedId, 0, 50)
+        const list = res?.list || res?.data?.list || []
+        apiLogs.value = list.map((l: any) => ({
+          id: l.id,
+          action: l.logType || l.log_type || 'other',
+          detail: l.content,
+          time: formatDateTime(l.createdAt || l.created_at),
+          operator: l.operatorName || l.operator_name || ''
+        }))
+      }
+
+      // 同时加载外呼名单日志（两种来源合并）
+      if (customer._prospectId) {
+        const res: any = await prospectApi.getLogs(customer._prospectId)
+        const prospectLogs = (res?.data || []).map((l: any) => ({
+          id: l.id,
+          action: l.log_type || l.logType,
+          detail: l.content,
+          time: formatDateTime(l.created_at || l.createdAt),
+          operator: l.operator_name || l.operatorName || ''
+        }))
+        apiLogs.value = [...apiLogs.value, ...prospectLogs]
+      }
+    } catch {
+      apiLogs.value = []
+    }
+  }
+}, { immediate: true })
+
+const customerLogs = computed(() => {
+  const logs: any[] = [...apiLogs.value]
+  const customer = props.currentCustomer
+  if (!customer) return logs
+
+  // 如果API没返回数据，生成本地日志
+  if (apiLogs.value.length === 0) {
+    if (customer.createdAt || customer.createTime) {
+      logs.push({
+        id: 'created',
+        action: 'import',
+        detail: `客户「${customer.customerName || customer.name}」被录入系统`,
+        time: formatDateTime(customer.createdAt || customer.createTime),
+        operator: customer.createdByName || customer.salesPerson || ''
+      })
+    }
+
+    if (customer.assignedName) {
+      logs.push({
+        id: 'assigned',
+        action: 'assign',
+        detail: `分配给 ${customer.assignedName}`,
+        time: customer.assignedAt ? formatDateTime(customer.assignedAt) : formatDateTime(customer.updatedAt || customer.createdAt || ''),
+        operator: ''
+      })
+    }
+
+    if (customer._prospectStatus === 'converted') {
+      logs.push({
+        id: 'converted',
+        action: 'convert',
+        detail: '已转入客户列表',
+        time: customer.convertedAt ? formatDateTime(customer.convertedAt) : '',
+        operator: ''
+      })
+    }
+  }
+
+  // 通话日志
+  if (props.customerCalls?.length) {
+    props.customerCalls.slice(0, 5).forEach((call: any, idx: number) => {
+      logs.push({
+        id: `call_${idx}`,
+        action: 'call',
+        detail: `${call.callType === 'outbound' ? '外呼' : '来电'} - ${call.duration || '0秒'} - ${getCallStatusText(call.status)}`,
+        time: call.startTime,
+        operator: call.operator || ''
+      })
+    })
+  }
+
+  // 跟进日志
+  if (props.customerFollowups?.length) {
+    props.customerFollowups.slice(0, 5).forEach((fu: any, idx: number) => {
+      logs.push({
+        id: `followup_${idx}`,
+        action: 'followup',
+        detail: fu.content || '跟进记录',
+        time: fu.createTime,
+        operator: fu.operator || ''
+      })
+    })
+  }
+
+  // 按时间倒序
+  return logs.sort((a, b) => {
+    if (!a.time) return 1
+    if (!b.time) return -1
+    return new Date(b.time).getTime() - new Date(a.time).getTime()
+  })
+})
+
+const getLogType = (action: string) => {
+  const map: Record<string, string> = {
+    'import': 'primary',
+    'assign': 'warning',
+    'convert': 'success',
+    'call': '',
+    'followup': 'primary',
+    'edit': 'info',
+    'delete': 'danger',
+    'restore': 'success'
+  }
+  return map[action] || ''
+}
+
+const getLogActionText = (action: string) => {
+  const map: Record<string, string> = {
+    'import': '录入',
+    'assign': '分配',
+    'convert': '转入',
+    'call': '通话',
+    'followup': '跟进',
+    'edit': '编辑',
+    'delete': '删除',
+    'restore': '恢复'
+  }
+  return map[action] || action
+}
+
+const emit = defineEmits<{
   'update:visible': [value: boolean]
   'update:activeTab': [value: string]
   'create-order': []
@@ -244,7 +427,25 @@ defineEmits<{
   'view-followup': [row: any]
   'play-recording': [row: any]
   'download-recording': [row: any]
+  'converted': []
 }>()
+
+const converting = ref(false)
+const handleConvert = async () => {
+  const pid = props.currentCustomer?._prospectId
+  if (!pid) return
+  converting.value = true
+  try {
+    const res: any = await prospectApi.convert([pid])
+    ElMessage.success(res?.message || '转入成功')
+    emit('converted')
+    emit('update:visible', false)
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.message || '转入失败')
+  } finally {
+    converting.value = false
+  }
+}
 </script>
 
 <style scoped>
@@ -278,6 +479,12 @@ defineEmits<{
 .tab-content :deep(.el-table td.el-table__cell) { padding: 14px 0; font-size: 14px; }
 .tab-content :deep(.el-empty) { padding: 60px 0; }
 .tab-pagination { margin-top: 20px; display: flex; justify-content: center; }
+
+.customer-logs-timeline { padding: 8px 0; }
+.customer-logs-timeline .log-content { display: flex; flex-direction: column; gap: 4px; }
+.customer-logs-timeline .log-action { font-weight: 600; color: #303133; font-size: 14px; }
+.customer-logs-timeline .log-detail { color: #606266; font-size: 13px; }
+.customer-logs-timeline .log-operator { color: #909399; font-size: 12px; }
 
 @media (max-width: 768px) {
   .customer-detail { padding: 12px; }

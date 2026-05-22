@@ -229,7 +229,9 @@ const fieldMap: Record<string, string> = {
   '详细地址': 'detailAddress',
   '境外地址': 'overseasAddress',
   '公司名称': 'company',
-  '企微UserID': 'wecomExternalUserid'
+  '企微UserID': 'wecomExternalUserid',
+  '身份证号': 'idCard',
+  '银行卡': 'bankCards'
 }
 
 // 下载导入模板
@@ -240,7 +242,7 @@ const downloadTemplate = () => {
       '客户姓名', '手机号', '性别', '年龄', '身高(cm)', '体重(kg)',
       '邮箱', '微信号', '进粉时间', '疾病史', '改善问题',
       '客户等级', '客户来源', '客户状态', '客户标签', '客户备注',
-      '客户生日', '收货地址(整体)', '省份', '城市', '区县', '街道', '详细地址',
+      '客户生日', '身份证号', '银行卡', '收货地址(整体)', '省份', '城市', '区县', '街道', '详细地址',
       '境外地址', '公司名称', '企微UserID'
     ]
 
@@ -256,7 +258,8 @@ const downloadTemplate = () => {
       '张三', '13800138000', '男', '30', '170', '65',
       'zhangsan@example.com', 'wx_zhangsan', '2026-01-01', '无', '改善睡眠',
       '铜牌客户', '线上推广', '正常', '新客户', '备注信息',
-      '1990-01-01', '广东省深圳市南山区xx街道xx号', '广东省', '深圳市', '南山区', 'xx街道', 'xx号',
+      '1990-01-01', '440106199001011234', '中国工商银行:6222021234567890123',
+      '广东省深圳市南山区xx街道xx号', '广东省', '深圳市', '南山区', 'xx街道', 'xx号',
       '', 'xx公司', ''
     ]
     // 填充自定义字段示例
@@ -434,6 +437,18 @@ const confirmImport = async () => {
       // 改善问题处理
       if (baseData.improvementGoals && typeof baseData.improvementGoals === 'string') {
         baseData.improvementGoals = baseData.improvementGoals.split(/[,，]/).map((t: string) => t.trim()).filter(Boolean)
+      }
+
+      // 银行卡处理：格式 "银行名称:卡号" 或 "银行名称:卡号,银行名称:卡号"
+      if (baseData.bankCards && typeof baseData.bankCards === 'string') {
+        const cards = baseData.bankCards.split(/[,，]/).map((item: string) => {
+          const parts = item.trim().split(/[:：]/)
+          if (parts.length >= 2) {
+            return { bank: parts[0].trim(), cardNo: parts.slice(1).join(':').trim() }
+          }
+          return null
+        }).filter(Boolean)
+        baseData.bankCards = cards.length > 0 ? cards : null
       }
 
       return {

@@ -37,10 +37,11 @@
 
     <!-- 筛选器和搜索栏 -->
     <CallFilterBar
-      v-model:filterForm="filterForm"
+      :filterForm="filterForm"
       v-model:searchKeyword="searchKeyword"
       :canViewSalesPersonFilter="canViewSalesPersonFilter"
       :salesPersonList="salesPersonList"
+      @update:filterForm="handleFilterFormUpdate"
       @search="handleSearch"
       @reset="resetFilter"
     />
@@ -51,6 +52,18 @@
         <div class="table-header">
           <span>呼出列表</span>
           <div class="table-actions">
+            <el-button v-if="canManage" type="success" @click="showImportDialog = true">
+              <el-icon style="margin-right: 4px;"><Upload /></el-icon>导入资料
+            </el-button>
+            <el-button v-if="selectedRows.length > 0 && canAssign" type="primary" plain @click="handleBatchAssignClick">
+              批量分配 ({{ selectedRows.length }})
+            </el-button>
+            <el-button v-if="selectedRows.length > 0" type="warning" @click="handleBatchConvert">
+              批量转入客户 ({{ selectedRows.length }})
+            </el-button>
+            <el-button v-if="selectedRows.length > 0 && canDelete" type="danger" plain @click="handleBatchDelete">
+              批量删除 ({{ selectedRows.length }})
+            </el-button>
             <el-button type="primary" :icon="Phone" @click="openOutboundDialog">发起外呼</el-button>
             <el-button :icon="Refresh" @click="refreshData" :loading="refreshLoading">刷新数据</el-button>
             <el-button type="primary" :icon="Phone" @click="showCallRecordsDialog">通话记录</el-button>
@@ -66,7 +79,13 @@
         @selection-change="handleSelectionChange"
       >
         <el-table-column type="selection" width="55" />
-        <el-table-column prop="customerName" label="客户姓名" width="120" />
+        <el-table-column prop="customerName" label="客户姓名" min-width="140">
+          <template #default="{ row }">
+            <el-tag v-if="row._source === 'customer'" type="success" size="small" style="margin-right:6px;">自建</el-tag>
+            <el-tag v-else type="warning" size="small" style="margin-right:6px;">导入</el-tag>
+            <span>{{ row.customerName }}</span>
+          </template>
+        </el-table-column>
         <el-table-column prop="phone" label="电话号码" width="140">
           <template #default="{ row }">
             <span
@@ -84,14 +103,14 @@
           </template>
         </el-table-column>
         <el-table-column prop="lastCallTime" label="最后通话" width="160" />
-        <el-table-column prop="callCount" label="通话次数" width="100" />
-        <el-table-column prop="lastFollowUp" label="最新跟进" min-width="150" show-overflow-tooltip>
+        <el-table-column prop="callCount" label="通话次数" width="90" />
+        <el-table-column prop="lastFollowUp" label="最新跟进" min-width="120" show-overflow-tooltip>
           <template #default="{ row }">
             <span v-if="row.lastFollowUp">{{ row.lastFollowUp }}</span>
             <span v-else class="text-muted">暂无记录</span>
           </template>
         </el-table-column>
-        <el-table-column prop="callTags" label="通话标签" min-width="120">
+        <el-table-column prop="callTags" label="通话标签" min-width="100">
           <template #default="{ row }">
             <template v-if="row.callTags && row.callTags.length > 0">
               <el-tag v-for="tag in row.callTags" :key="tag" size="small" type="info" style="margin-right: 4px;">
@@ -101,21 +120,56 @@
             <span v-else class="text-muted">-</span>
           </template>
         </el-table-column>
-        <el-table-column prop="status" label="状态" width="100">
+        <el-table-column prop="status" label="外呼状态" width="90">
           <template #default="{ row }">
-            <el-tag :type="getStatusType(row.status)">
-              {{ getStatusText(row.status) }}
+            <el-tag :type="getOutboundStatusType(row.status)">
+              {{ getOutboundStatusText(row.status) }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="salesPerson" label="负责人" width="100" />
-        <el-table-column prop="remark" label="备注" min-width="150" show-overflow-tooltip />
-        <el-table-column label="操作" width="220" fixed="right">
+        <el-table-column prop="createdByName" label="创建人" width="90" />
+        <el-table-column prop="assignStatus" label="分配状态" width="90">
           <template #default="{ row }">
-            <span class="action-link" @click="handleCall(row)">外呼</span>
-            <span class="action-link" @click="handleViewDetail(row)">详情</span>
-            <span class="action-link" @click="handleAddFollowUp(row)">跟进</span>
-            <span class="action-link" @click="handleCreateOrder(row)">下单</span>
+            <template v-if="row._source === 'customer'">
+              <el-tag v-if="row._isShared" type="success" size="small">已分享</el-tag>
+              <el-tag v-else type="info" size="small">-</el-tag>
+            </template>
+            <template v-else>
+              <el-tag v-if="row.assignedTo" type="success" size="small">已分配</el-tag>
+              <el-tag v-else type="info" size="small">未分配</el-tag>
+            </template>
+          </template>
+        </el-table-column>
+        <el-table-column prop="assignedName" label="被分配人" width="90">
+          <template #default="{ row }">
+            <template v-if="row._source === 'customer'">
+              <span v-if="row._sharedToName">{{ row._sharedToName }}</span>
+              <span v-else class="text-muted">-</span>
+            </template>
+            <template v-else>
+              <span v-if="row.assignedName">{{ row.assignedName }}</span>
+              <span v-else class="text-muted">-</span>
+            </template>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" min-width="210" fixed="right">
+          <template #default="{ row }">
+            <div class="action-cell">
+              <span class="action-link" @click="handleCall(row)">外呼</span>
+              <span class="action-link" @click="handleViewDetail(row)">详情</span>
+              <span class="action-link" @click="handleAddFollowUp(row)">跟进</span>
+              <el-dropdown v-if="row._source === 'import'" trigger="click" @command="(cmd: string) => handleMoreAction(cmd, row)">
+                <span class="action-link" style="color:#409eff">更多<el-icon style="margin-left:2px;vertical-align:middle"><ArrowDown /></el-icon></span>
+                <template #dropdown>
+                  <el-dropdown-menu>
+                    <el-dropdown-item v-if="canAssign" command="assign">分配</el-dropdown-item>
+                    <el-dropdown-item v-if="row._prospectStatus !== 'converted'" command="convert">转入客户列表</el-dropdown-item>
+                    <el-dropdown-item v-if="row._prospectStatus === 'converted'" disabled>已转入客户列表</el-dropdown-item>
+                    <el-dropdown-item v-if="canDelete && row._prospectStatus !== 'converted'" command="delete" divided style="color:#f56c6c">删除</el-dropdown-item>
+                  </el-dropdown-menu>
+                </template>
+              </el-dropdown>
+            </div>
           </template>
         </el-table-column>
       </el-table>
@@ -249,6 +303,46 @@
     <!-- 呼出配置弹窗 - 新组件 -->
     <CallConfigDialog v-model="showNewCallConfigDialog" />
 
+    <!-- 导入外呼名单弹窗 -->
+    <ProspectImportDialog v-model="showImportDialog" @imported="loadOutboundList" />
+
+    <!-- 批量分配弹窗 -->
+    <el-dialog v-model="showAssignDialog" title="批量分配外呼资料" width="400px" align-center>
+      <p style="margin-bottom: 12px;">将选中的 <strong>{{ selectedRows.length }}</strong> 条外呼资料分配给：</p>
+      <el-select v-model="assignTargetUser" placeholder="选择成员" style="width: 100%;" filterable>
+        <el-option v-for="m in salesPersonList" :key="m.id" :value="m.id" :label="m.name || m.username">
+          <span>{{ m.name || m.username }}</span>
+          <span v-if="m.department" style="float:right; color:#909399; font-size:12px;">{{ m.department }}</span>
+        </el-option>
+      </el-select>
+      <template #footer>
+        <el-button @click="showAssignDialog = false">取消</el-button>
+        <el-button type="primary" @click="handleBatchAssignConfirm" :disabled="!assignTargetUser">确认分配</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 单个分配弹窗 -->
+    <el-dialog v-model="showSingleAssignDialog" title="分配外呼资料" width="400px" align-center>
+      <p style="margin-bottom: 12px;">请选择分配给的成员或用户名或ID</p>
+      <el-select
+        v-model="singleAssignTargetUser"
+        placeholder="输入成员用户名"
+        style="width: 100%;"
+        filterable
+        :filter-method="filterMembers"
+        @visible-change="handleAssignDropdownVisible"
+      >
+        <el-option v-for="m in filteredSalesPersonList" :key="m.id" :value="m.id" :label="m.name || m.username">
+          <span>{{ m.name || m.username }}</span>
+          <span v-if="m.department" style="float:right; color:#909399; font-size:12px;">{{ m.department }}</span>
+        </el-option>
+      </el-select>
+      <template #footer>
+        <el-button @click="showSingleAssignDialog = false">取消</el-button>
+        <el-button type="primary" @click="handleSingleAssignConfirm" :disabled="!singleAssignTargetUser">确认分配</el-button>
+      </template>
+    </el-dialog>
+
   </div>
 </template>
 
@@ -288,13 +382,17 @@ import {
   Loading,
   InfoFilled,
   Minus,
-  FullScreen
+  FullScreen,
+  Upload,
+  ArrowDown
 } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { displaySensitiveInfoNew, SensitiveInfoType } from '@/utils/sensitiveInfo'
 import { formatDateTime } from '@/utils/dateFormat'
 import { customerDetailApi } from '@/api/customerDetail'
 import CallConfigDialog from '@/components/Call/CallConfigDialog.vue'
+import ProspectImportDialog from './CallManagement/ProspectImportDialog.vue'
+import { prospectApi } from '@/api/callProspect'
 // 已拆分的子组件（可逐步替换内联模板）
 import CallStatsCards from './CallManagement/CallStatsCards.vue'
 import CallFilterBar from './CallManagement/CallFilterBar.vue'
@@ -403,6 +501,15 @@ const stopDrag = () => {
 
 // 呼出配置相关
 const showNewCallConfigDialog = ref(false) // 新版呼出配置弹窗
+const showImportDialog = ref(false) // 导入外呼名单弹窗
+const showAssignDialog = ref(false) // 分配弹窗
+const assignTargetUser = ref('') // 分配目标用户ID
+
+// 角色权限控制
+const currentRole = computed(() => userStore.currentUser?.role || '')
+const canDelete = computed(() => ['super_admin', 'admin'].includes(currentRole.value))
+const canAssign = computed(() => ['super_admin', 'admin', 'department_manager'].includes(currentRole.value))
+const canManage = computed(() => ['super_admin', 'admin', 'department_manager'].includes(currentRole.value))
 const statistics = reactive({
   todayCalls: 0,
   totalDuration: 0,
@@ -415,7 +522,8 @@ const filterForm = reactive({
   status: '',
   customerLevel: '',
   dateRange: [],
-  salesPerson: ''
+  salesPerson: '',
+  dataSource: ''
 })
 
 // 分页数据
@@ -942,100 +1050,65 @@ const loadOutboundList = async () => {
   try {
     loading.value = true
 
-    // 🔥 修复：直接调用API，传递分页参数，实现后端分页
-    const { customerApi } = await import('@/api/customer')
-    console.log(`[通话管理] 🚀 加载客户, 页码: ${pagination.currentPage}, 每页: ${pagination.pageSize}`)
-
-    const response = await customerApi.getList({
+    const response: any = await prospectApi.getList({
       page: pagination.currentPage,
       pageSize: pagination.pageSize,
-      keyword: searchKeyword.value || undefined
-    })
+      keyword: searchKeyword.value || undefined,
+      includeCustomers: 'true'
+    } as any)
 
-    if (!response || !response.data) {
-      console.log('[通话管理] API无数据')
+    const data = response?.data || response
+    if (!data?.list) {
       outboundList.value = []
       pagination.total = 0
       return
     }
 
-    const { list: customers, total } = response.data
-    console.log(`[通话管理] API返回客户数量: ${customers?.length || 0}, 总数: ${total}`)
-
-    // 🔥 更新分页总数（使用后端返回的total）
-    pagination.total = total || 0
-
-    // 转换为呼出列表格式，并异步加载每个客户的跟进和通话数据
-    const convertedList = await Promise.all((customers || []).map(async (customer: any) => {
-      // 尝试获取客户的最新跟进记录和通话记录
-      let lastFollowUp = ''
-      let callTags: string[] = []
-      let lastCallTime = customer.lastServiceDate || '暂无记录'
-      let callCount = 0
-
-      try {
-        // 获取跟进记录
-        const followupsRes = await customerDetailApi.getCustomerFollowUps(customer.id)
-        if (followupsRes.success && followupsRes.data && followupsRes.data.length > 0) {
-          const latestFollowup = followupsRes.data[0]
-          lastFollowUp = latestFollowup.content ? (latestFollowup.content.length > 20 ? latestFollowup.content.substring(0, 20) + '...' : latestFollowup.content) : ''
-        }
-
-        // 获取通话记录
-        const callsRes = await customerDetailApi.getCustomerCalls(customer.id)
-        if (callsRes.success && callsRes.data) {
-          callCount = callsRes.data.length
-          if (callsRes.data.length > 0) {
-            const latestCall = callsRes.data[0]
-            lastCallTime = formatDateTime(latestCall.startTime || latestCall.createdAt)
-            // 从最新通话记录获取通话标签
-            if (latestCall.callTags && latestCall.callTags.length > 0) {
-              callTags = latestCall.callTags
-            } else {
-              // 查找之前有标签的通话
-              for (const call of callsRes.data) {
-                if (call.callTags && call.callTags.length > 0) {
-                  callTags = call.callTags
-                  break
-                }
-              }
-            }
-          }
-        }
-      } catch (e) {
-        // 忽略单个客户数据加载失败
-      }
-
-      return {
-        id: customer.id,
-        customerName: customer.name,
-        phone: customer.phone,
-        customerPhone: customer.phone,
-        company: customer.company || '未填写',
-        customerLevel: customer.level,
-        lastCallTime,
-        callCount,
-        lastFollowUp,
-        callTags,
-        status: callCount > 0 ? 'connected' : 'pending',
-        salesPerson: customer.salesPersonName || userStore.currentUser?.name || '当前用户',
-        remark: customer.remarks || '',
-        address: customer.address || '',
-        province: customer.province || '',
-        city: customer.city || '',
-        district: customer.district || '',
-        street: customer.street || '',
-        detailAddress: customer.detailAddress || ''
-      }
+    let mappedList = (data.list || []).map((p: any) => ({
+      id: p.id,
+      customerName: p.name,
+      phone: p.phone,
+      customerPhone: p.phone,
+      company: p.company || '',
+      customerLevel: 'normal',
+      lastCallTime: p.lastCallTime ? formatDateTime(p.lastCallTime) : '暂无记录',
+      callCount: p.callCount || 0,
+      lastFollowUp: p.remark || '',
+      callTags: p.tags || [],
+      status: p.status || 'pending',
+      _prospectStatus: p.status,
+      _prospectId: p.id,
+      _convertedCustomerId: p.convertedCustomerId,
+      _source: p.source === 'customer' ? 'customer' : ((p.source === 'manual' || p.source === 'excel') ? 'import' : (p.convertedCustomerId ? 'customer' : 'import')),
+      _isShared: false,
+      _sharedToName: '',
+      assignedTo: p.assignedTo || '',
+      assignedName: p.assignedName || '',
+      createdByName: getCreatorName(p.createdBy || p.created_by) || p.createdByName || p.created_by_name || '',
+      remark: p.remark || '',
     }))
 
-    // 更新呼出列表数据
-    outboundList.value = convertedList
-    console.log(`[通话管理] ✅ 加载完成: ${convertedList.length} 条, 总数: ${pagination.total}`)
+    // 前端筛选
+    if (filterForm.dataSource) {
+      mappedList = mappedList.filter((item: any) => item._source === filterForm.dataSource)
+    }
 
-  } catch (error) {
+    // 外呼状态前端筛选（已外呼 = 非 pending 的所有状态）
+    if (filterForm.status === 'pending') {
+      mappedList = mappedList.filter((item: any) => item.status === 'pending')
+    } else if (filterForm.status === 'called') {
+      mappedList = mappedList.filter((item: any) => item.status !== 'pending')
+    }
+
+    pagination.total = mappedList.length
+    outboundList.value = mappedList
+
+  } catch (error: any) {
     console.error('加载呼出列表失败:', error)
-    ElMessage.error('加载呼出列表失败')
+    // 如果是401未授权（退出登录）或页面已离开，不显示错误提示
+    if (error?.response?.status !== 401 && router.currentRoute.value.path.includes('call')) {
+      ElMessage.error('加载呼出列表失败')
+    }
     outboundList.value = []
     pagination.total = 0
   } finally {
@@ -1043,8 +1116,14 @@ const loadOutboundList = async () => {
   }
 }
 
+// 筛选表单更新
+const handleFilterFormUpdate = (newForm: any) => {
+  Object.assign(filterForm, newForm)
+  pagination.currentPage = 1
+  loadOutboundList()
+}
+
 const handleSearch = async () => {
-  // 🔥 修复：搜索时重置到第一页，然后调用API重新加载数据
   pagination.currentPage = 1
   await loadOutboundList()
 }
@@ -1055,13 +1134,199 @@ const resetFilter = () => {
     status: '',
     customerLevel: '',
     dateRange: [],
-    salesPerson: ''
+    salesPerson: '',
+    dataSource: ''
   })
   loadOutboundList()
 }
 
 const handleSelectionChange = (selection: any[]) => {
   selectedRows.value = selection
+}
+
+// 单个转入客户
+const handleConvertSingle = async (row: any) => {
+  try {
+    await ElMessageBox.confirm(`确定将「${row.customerName}」转入客户列表？转入后该客户将成为正式客户，支持下单和分享操作。`, '转入客户', { type: 'info' })
+    const res: any = await prospectApi.convert([row._prospectId || row.id])
+    const data = res?.data || {}
+    if (data.converted > 0) {
+      ElMessage.success(`「${row.customerName}」已成功转入客户列表，可在客户管理中查看`)
+    } else if (data.skipped > 0) {
+      ElMessage.warning(`「${row.customerName}」已存在于客户列表中，已自动关联`)
+    } else if (data.failed > 0) {
+      ElMessage.error(`「${row.customerName}」转入失败，请检查数据后重试`)
+    } else {
+      ElMessage.success(`「${row.customerName}」已成功转入客户列表`)
+    }
+    loadOutboundList()
+  } catch (e: any) {
+    if (e !== 'cancel') ElMessage.error(e?.response?.data?.message || e?.message || '转入失败')
+  }
+}
+
+// 批量转入客户
+const handleBatchConvert = async () => {
+  if (!selectedRows.value.length) return
+  // 过滤掉客户列表客户和已转入的
+  const customerItems = selectedRows.value.filter((r: any) => r._source === 'customer')
+  if (customerItems.length > 0) {
+    ElMessage.warning('选中的记录中包含客户列表的客户，已在客户列表中无需再转入，请取消勾选。')
+    return
+  }
+  const validItems = selectedRows.value.filter((r: any) => r._prospectStatus !== 'converted')
+  if (!validItems.length) {
+    ElMessage.warning('选中的记录已全部转入客户列表')
+    return
+  }
+  try {
+    await ElMessageBox.confirm(`确定将选中的 ${validItems.length} 条记录转入客户列表？`, '批量转入', { type: 'info' })
+    const ids = validItems.map(r => r._prospectId || r.id)
+    const res: any = await prospectApi.convert(ids)
+    ElMessage.success(res?.message || '转入完成')
+    selectedRows.value = []
+    loadOutboundList()
+  } catch (e: any) {
+    if (e !== 'cancel') ElMessage.error(e?.response?.data?.message || e?.message || '转入失败')
+  }
+}
+
+// 删除外呼名单记录
+const handleDeleteProspect = async (row: any) => {
+  try {
+    await ElMessageBox.confirm(`确定删除「${row.customerName}」？`, '删除确认', { type: 'warning' })
+    await prospectApi.delete(row._prospectId || row.id)
+    ElMessage.success('已删除')
+    loadOutboundList()
+  } catch (e: any) {
+    if (e !== 'cancel') ElMessage.error(e?.message || '删除失败')
+  }
+}
+
+// 批量分配点击 - 校验是否包含客户列表客户
+const handleBatchAssignClick = () => {
+  const customerItems = selectedRows.value.filter((r: any) => r._source === 'customer')
+  if (customerItems.length > 0) {
+    ElMessage.warning('选中的记录中包含客户列表的客户，客户列表客户不支持分配操作，请取消勾选。如需分配请通过客户列表的分享功能。')
+    return
+  }
+  showAssignDialog.value = true
+}
+
+// 批量删除
+const handleBatchDelete = async () => {
+  if (!selectedRows.value.length) return
+  // 校验是否包含客户列表客户
+  const customerItems = selectedRows.value.filter((r: any) => r._source === 'customer')
+  if (customerItems.length > 0) {
+    ElMessage.warning('选中的记录中包含客户列表的客户，客户列表客户不支持删除操作，请取消勾选。')
+    return
+  }
+  // 校验是否包含已转入客户列表的
+  const convertedItems = selectedRows.value.filter((r: any) => r._prospectStatus === 'converted')
+  if (convertedItems.length > 0) {
+    ElMessage.warning('选中的记录中包含已转入客户列表的客户，不支持删除操作，请取消勾选。')
+    return
+  }
+  try {
+    await ElMessageBox.confirm(`确定删除选中的 ${selectedRows.value.length} 条记录？`, '批量删除', { type: 'warning' })
+    const ids = selectedRows.value.map(r => r._prospectId || r.id)
+    await prospectApi.batchDelete(ids)
+    ElMessage.success('批量删除成功')
+    selectedRows.value = []
+    loadOutboundList()
+  } catch (e: any) {
+    if (e !== 'cancel') ElMessage.error(e?.message || '删除失败')
+  }
+}
+
+// 单个分配
+const showSingleAssignDialog = ref(false)
+const singleAssignTargetUser = ref('')
+const singleAssignRow = ref<any>(null)
+const filteredSalesPersonList = ref<any[]>([])
+
+const filterMembers = (query: string) => {
+  if (!query) {
+    filteredSalesPersonList.value = salesPersonList.value || []
+  } else {
+    const keyword = query.toLowerCase()
+    filteredSalesPersonList.value = (salesPersonList.value || []).filter((m: any) =>
+      (m.name && m.name.toLowerCase().includes(keyword)) ||
+      (m.username && m.username.toLowerCase().includes(keyword)) ||
+      (m.id && m.id.toLowerCase().includes(keyword))
+    )
+  }
+}
+
+const handleAssignDropdownVisible = (visible: boolean) => {
+  if (visible) {
+    filteredSalesPersonList.value = salesPersonList.value || []
+  }
+}
+
+const handleAssignSingle = (row: any) => {
+  const members = salesPersonList.value || []
+  if (!members.length) {
+    ElMessage.warning('暂无可分配的成员')
+    return
+  }
+  singleAssignRow.value = row
+  singleAssignTargetUser.value = ''
+  filteredSalesPersonList.value = members
+  showSingleAssignDialog.value = true
+}
+
+const handleSingleAssignConfirm = async () => {
+  if (!singleAssignTargetUser.value || !singleAssignRow.value) return
+  try {
+    const members = salesPersonList.value || []
+    const member = members.find((m: any) => m.id === singleAssignTargetUser.value)
+    const assignName = member?.name || member?.username || singleAssignTargetUser.value
+    const row = singleAssignRow.value
+    await prospectApi.batchAssign([row._prospectId || row.id], singleAssignTargetUser.value, assignName)
+    ElMessage.success(`已分配给 ${assignName}`)
+    showSingleAssignDialog.value = false
+    singleAssignTargetUser.value = ''
+    singleAssignRow.value = null
+    loadOutboundList()
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.message || e?.message || '分配失败')
+  }
+}
+
+// 更多操作处理
+const handleMoreAction = (command: string, row: any) => {
+  switch (command) {
+    case 'assign':
+      handleAssignSingle(row)
+      break
+    case 'convert':
+      handleConvertSingle(row)
+      break
+    case 'delete':
+      handleDeleteProspect(row)
+      break
+  }
+}
+
+// 批量分配弹窗确认
+const handleBatchAssignConfirm = async () => {
+  if (!assignTargetUser.value || !selectedRows.value.length) return
+  try {
+    const members = salesPersonList.value || []
+    const member = members.find((m: any) => m.id === assignTargetUser.value)
+    const assignName = member?.name || member?.username || assignTargetUser.value
+    const ids = selectedRows.value.map(r => r._prospectId || r.id)
+    await prospectApi.batchAssign(ids, assignTargetUser.value, assignName)
+    ElMessage.success(`已分配 ${ids.length} 条给 ${assignName}`)
+    showAssignDialog.value = false
+    assignTargetUser.value = ''
+    selectedRows.value = []
+    loadOutboundList()
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.message || e?.message || '分配失败')
+  }
 }
 
 // 显示通话记录弹窗
@@ -1416,9 +1681,15 @@ const handleCall = (row: any) => {
 }
 
 const goCustomerDetail = (row: any) => {
-  const customerId = row.id || row.customerId
-  if (customerId) {
-    safeNavigator.push({ path: `/customer/detail/${customerId}` })
+  if (row._convertedCustomerId) {
+    safeNavigator.push({ path: `/customer/detail/${row._convertedCustomerId}` })
+  } else if (row._prospectId) {
+    handleViewDetail(row)
+  } else {
+    const customerId = row.id || row.customerId
+    if (customerId) {
+      safeNavigator.push({ path: `/customer/detail/${customerId}` })
+    }
   }
 }
 
@@ -1465,17 +1736,35 @@ const handleAddFollowUp = async (row: any) => {
 }
 
 const handleCreateOrder = (row?: any) => {
-  // 如果有传入row参数，使用row的数据；否则使用currentCustomer
   const customer = row || currentCustomer.value
   if (!customer) {
     ElMessage.warning('请先选择客户')
     return
   }
 
-  console.log('[通话管理] 新建订单，客户信息:', customer)
+  // 如果是导入资料且未转入客户列表，提示需先转入
+  if (customer._prospectStatus && customer._prospectStatus !== 'converted' && !customer._convertedCustomerId) {
+    ElMessageBox.confirm(
+      '该客户是导入资料，需先转入客户列表才可以下单。是否立即转入？',
+      '提示',
+      { confirmButtonText: '立即转入', cancelButtonText: '取消', type: 'warning' }
+    ).then(async () => {
+      try {
+        const res: any = await prospectApi.convert([customer._prospectId || customer.id])
+        ElMessage.success(res?.message || '转入成功，现在可以创建订单')
+        loadOutboundList()
+        // 转入后重新获取详情
+        if (customer._prospectId || customer.id) {
+          await loadCustomerDetailData(customer._prospectId || customer.id)
+        }
+      } catch (e: any) {
+        ElMessage.error(e?.response?.data?.message || '转入失败')
+      }
+    }).catch(() => {})
+    return
+  }
 
-  // 🔥 修复：确保正确获取客户ID和其他信息
-  const customerId = customer.id || customer.customerId
+  const customerId = customer._convertedCustomerId || customer.id || customer.customerId
   const customerName = customer.customerName || customer.name
   const customerPhone = customer.phone || customer.customerPhone
   const customerAddress = customer.address || customer.detailAddress || ''
@@ -1485,9 +1774,6 @@ const handleCreateOrder = (row?: any) => {
     return
   }
 
-  console.log('[通话管理] 跳转参数:', { customerId, customerName, customerPhone, customerAddress })
-
-  // 跳转到新增订单页面，并传递客户信息
   safeNavigator.push({
     name: 'OrderAdd',
     query: {
@@ -1495,7 +1781,7 @@ const handleCreateOrder = (row?: any) => {
       customerName,
       customerPhone,
       customerAddress,
-      source: 'call_management' // 标识来源
+      source: 'call_management'
     }
   })
 }
@@ -1534,7 +1820,10 @@ const getLevelText = (level: string) => {
 const getStatusType = (status: string) => {
   const statusMap: Record<string, string> = {
     'pending': 'warning',
+    'called': 'primary',
     'connected': 'success',
+    'converted': 'success',
+    'invalid': 'info',
     'no_answer': 'info',
     'busy': 'warning',
     'failed': 'danger'
@@ -1545,12 +1834,35 @@ const getStatusType = (status: string) => {
 const getStatusText = (status: string) => {
   const statusMap: Record<string, string> = {
     'pending': '待外呼',
+    'called': '已外呼',
     'connected': '已接通',
+    'converted': '已转客户',
+    'invalid': '无效',
     'no_answer': '未接听',
     'busy': '忙线',
     'failed': '失败'
   }
   return statusMap[status] || '未知'
+}
+
+// 外呼状态（简化：待外呼 / 已外呼）
+const getOutboundStatusType = (status: string) => {
+  if (status === 'pending') return 'warning'
+  if (status === 'called' || status === 'connected' || status === 'converted') return 'success'
+  return 'info'
+}
+
+// 通过用户ID查找成员姓名
+const getCreatorName = (userId: string | null | undefined): string => {
+  if (!userId) return ''
+  const user = userStore.users?.find((u: any) => u.id === userId)
+  return user?.realName || user?.name || user?.username || ''
+}
+
+const getOutboundStatusText = (status: string) => {
+  if (status === 'pending') return '待外呼'
+  if (status === 'called' || status === 'connected' || status === 'no_answer' || status === 'busy' || status === 'failed' || status === 'converted') return '已外呼'
+  return '待外呼'
 }
 
 // 通话状态相关辅助函数
@@ -2646,7 +2958,8 @@ const salesPersonList = computed(() => {
     })
     .map((u: any) => ({
       id: u.id,
-      name: u.realName || u.name || u.username
+      name: u.realName || u.name || u.username,
+      department: u.departmentName || u.department || ''
     }))
 })
 
@@ -3729,6 +4042,13 @@ onUnmounted(() => {
   font-weight: 600;
 }
 
+/* 操作区单元格对齐 */
+.action-cell {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+}
+
 /* 操作区文字链接样式 */
 .action-link {
   color: #409eff;
@@ -3737,6 +4057,9 @@ onUnmounted(() => {
   margin-right: 12px;
   text-decoration: none;
   transition: color 0.3s ease;
+  display: inline-flex;
+  align-items: center;
+  line-height: 1;
 }
 
 .action-link:hover {
@@ -3746,6 +4069,11 @@ onUnmounted(() => {
 
 .action-link:last-child {
   margin-right: 0;
+}
+
+.action-cell .el-dropdown {
+  display: inline-flex;
+  align-items: center;
 }
 
 /* 通话记录操作区样式 */

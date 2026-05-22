@@ -210,6 +210,7 @@ CREATE TABLE `customers` (
   `age` INT NULL COMMENT '年龄',
   `birthday` DATE COMMENT '生日',
   `id_card` VARCHAR(255) COMMENT '身份证号（加密）',
+  `bank_cards` JSON NULL COMMENT '银行卡信息（JSON数组，每项含bank银行名称和cardNo卡号）',
   `height` DECIMAL(5,1) NULL COMMENT '身高(cm)',
   `weight` DECIMAL(5,1) NULL COMMENT '体重(kg)',
   `address` TEXT COMMENT '完整地址',
@@ -802,6 +803,36 @@ ON DUPLICATE KEY UPDATE `configValue` = VALUES(`configValue`), `updatedAt` = CUR
 -- =============================================
 -- 通话管理模块表
 -- =============================================
+
+-- 15.5 外呼名单表
+CREATE TABLE IF NOT EXISTS `call_prospects` (
+  `id` VARCHAR(36) PRIMARY KEY,
+  `tenant_id` VARCHAR(36) NULL COMMENT '租户ID',
+  `name` VARCHAR(100) NOT NULL COMMENT '姓名',
+  `phone` VARCHAR(20) NOT NULL COMMENT '手机号',
+  `gender` VARCHAR(10) NULL COMMENT '性别',
+  `company` VARCHAR(200) NULL COMMENT '公司',
+  `remark` TEXT NULL COMMENT '备注',
+  `source` VARCHAR(50) NULL COMMENT '来源：manual/excel/other',
+  `tags` JSON NULL COMMENT '标签',
+  `status` VARCHAR(20) DEFAULT 'pending' COMMENT '状态：pending/called/converted/invalid',
+  `call_count` INT DEFAULT 0 COMMENT '外呼次数',
+  `last_call_time` DATETIME NULL COMMENT '最后外呼时间',
+  `last_call_status` VARCHAR(20) NULL COMMENT '最后外呼结果',
+  `assigned_to` VARCHAR(36) NULL COMMENT '分配给销售员ID',
+  `assigned_name` VARCHAR(100) NULL COMMENT '分配给姓名',
+  `converted_customer_id` VARCHAR(36) NULL COMMENT '转入后的客户ID',
+  `converted_at` DATETIME NULL COMMENT '转入时间',
+  `import_batch_id` VARCHAR(36) NULL COMMENT '导入批次号',
+  `created_by` VARCHAR(36) NULL COMMENT '创建人ID',
+  `created_by_name` VARCHAR(100) NULL COMMENT '创建人姓名',
+  `deleted_at` DATETIME NULL COMMENT '删除时间（软删除）',
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY `uk_tenant_phone` (`tenant_id`, `phone`),
+  KEY `idx_tenant_status` (`tenant_id`, `status`),
+  KEY `idx_tenant_assigned` (`tenant_id`, `assigned_to`)
+) COMMENT='外呼名单表';
 
 -- 16. 通话记录表
 DROP TABLE IF EXISTS `call_records`;
@@ -3721,6 +3752,7 @@ CREATE TABLE IF NOT EXISTS `tenant_packages` (
   `subscription_channels` VARCHAR(50) DEFAULT 'all' COMMENT '订阅渠道：wechat/alipay/all',
   `subscription_billing_cycle` VARCHAR(20) DEFAULT 'monthly' COMMENT '订阅计费周期：monthly/yearly/both',
   `subscription_discount_rate` DECIMAL(5,2) DEFAULT 0.00 COMMENT '订阅优惠折扣率（0-100）',
+  `wechat_plan_ids` TEXT DEFAULT NULL COMMENT '微信委托代扣计划ID',
   `features` JSON COMMENT '功能特性列表',
   `feature_details` JSON NULL COMMENT '功能特性详情(对比表用，JSON对象)',
   `modules` JSON NULL COMMENT '授权模块ID列表（JSON数组）',
@@ -5580,6 +5612,26 @@ CREATE TABLE IF NOT EXISTS `customer_logs` (
   INDEX `idx_customer_logs_type` (`log_type`),
   INDEX `idx_customer_logs_operator` (`operator_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='客户操作日志表（审计追踪）';
+
+-- 外呼名单操作日志表（通话管理客户动态）
+DROP TABLE IF EXISTS `prospect_logs`;
+CREATE TABLE IF NOT EXISTS `prospect_logs` (
+  `id` VARCHAR(50) PRIMARY KEY COMMENT '日志ID',
+  `tenant_id` VARCHAR(36) NULL COMMENT '租户ID',
+  `prospect_id` VARCHAR(50) NOT NULL COMMENT '外呼名单ID',
+  `customer_id` VARCHAR(50) NULL COMMENT '关联客户ID（转入后）',
+  `log_type` VARCHAR(30) NOT NULL COMMENT '操作类型: import/assign/convert/call/followup/edit/delete/restore',
+  `content` TEXT NOT NULL COMMENT '日志内容描述',
+  `detail` JSON NULL COMMENT '详细变更数据(JSON)',
+  `operator_id` VARCHAR(50) NULL COMMENT '操作人ID',
+  `operator_name` VARCHAR(100) NULL COMMENT '操作人姓名',
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  INDEX `idx_prospect_logs_tenant` (`tenant_id`),
+  INDEX `idx_prospect_logs_prospect_time` (`prospect_id`, `created_at` DESC),
+  INDEX `idx_prospect_logs_type` (`log_type`),
+  INDEX `idx_prospect_logs_operator` (`operator_id`),
+  INDEX `idx_prospect_logs_customer` (`customer_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='外呼名单操作日志表（通话管理客户动态）';
 
 -- =============================================
 -- 虚拟商品功能相关表 (v1.8.0)

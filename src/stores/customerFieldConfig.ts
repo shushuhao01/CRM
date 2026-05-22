@@ -58,6 +58,8 @@ export const BUILTIN_FIELDS = [
   { key: 'salesPerson', label: '负责销售', alwaysEnabled: false },
   { key: 'remark', label: '客户备注', alwaysEnabled: false },
   { key: 'birthday', label: '客户生日', alwaysEnabled: false },
+  { key: 'idCard', label: '身份证号', alwaysEnabled: false },
+  { key: 'bankCards', label: '银行卡', alwaysEnabled: false },
   { key: 'address', label: '收货地址(整体)', alwaysEnabled: false },
   { key: 'province', label: '省份', alwaysEnabled: false },
   { key: 'city', label: '城市', alwaysEnabled: false },

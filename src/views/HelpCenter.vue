@@ -98,6 +98,7 @@
             <el-menu-item index="call-inbound-guide">呼入功能与来电弹窗</el-menu-item>
             <el-menu-item index="call-sip-pbx-guide">SIP/PBX呼入对接</el-menu-item>
             <el-menu-item index="call-agent-status-guide">坐席状态管理</el-menu-item>
+            <el-menu-item index="call-prospect-guide">外呼名单导入与管理</el-menu-item>
           </el-sub-menu>
 
           <!-- 物流配置指南 -->
@@ -452,6 +453,13 @@ const mockSearchResults = [
     excerpt: '坐席就绪/忙碌状态切换、来电分配策略、坐席监控...',
     category: '通话管理指南',
     content: '坐席状态 就绪 忙碌 离线 状态切换 来电分配 坐席监控 agent status ready busy'
+  },
+  {
+    id: 'call-prospect-guide',
+    title: '外呼名单导入与管理',
+    excerpt: '外呼名单单个录入、批量导入Excel、手机号查重验证、分配成员、转入客户列表、回收站管理...',
+    category: '通话管理指南',
+    content: '外呼名单 导入资料 批量导入 单个录入 手机号验证 查重 分配 转入客户列表 回收站 删除恢复 客户日志 数据来源筛选'
   },
 
   // 项目介绍
