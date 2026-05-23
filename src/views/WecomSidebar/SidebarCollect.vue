@@ -221,8 +221,20 @@ const generateCard = async (showMsg = true) => {
     const title = data.title || defaultTitle
 
     const mpAppId = data.appId || ''
-    const mpPage = `/pages/index/index?tenantId=${tenantId}&memberId=${memberId}&ts=${ts}&sign=${data.sign || ''}&externalUserId=${extUserId}`
     const h5FormUrl = `${window.location.origin}/wecom-form.html?tenantId=${tenantId}&memberId=${memberId}&ts=${ts}&sign=${data.sign || ''}&externalUserId=${extUserId}&appId=${mpAppId}`
+
+    // 创建短令牌，避免手机端页面路径过长导致"页面不存在"
+    let mpPage = `/pages/index/index?tenantId=${tenantId}&memberId=${memberId}&ts=${ts}&sign=${data.sign || ''}&externalUserId=${extUserId}`
+    try {
+      const tokenRes: any = await axios.post(`${window.location.origin}/api/v1/mp/create-card-token`, {
+        tenantId, memberId, ts, sign: data.sign || '', externalUserId: extUserId
+      })
+      const token = tokenRes?.data?.data?.token
+      if (token) {
+        mpPage = `/pages/index/index?t=${token}`
+        console.log('[Collect] 使用短令牌:', token)
+      }
+    } catch { /* 令牌创建失败时使用完整路径降级 */ }
 
     console.log('[Collect] 小程序卡片路径:', mpPage)
     // 根据用户选择的发送模式构建主payload

@@ -1281,4 +1281,52 @@ router.post('/callback', async (req: Request, res: Response) => {
   }
 });
 
+// ==================== 小程序卡片短令牌 ====================
+// 解决手机端页面路径过长导致"页面不存在"的问题
+// 前端生成卡片时先创建短令牌，小程序打开后用令牌换取完整参数
+
+const cardTokenStore = new Map<string, { params: any; expiresAt: number }>();
+
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, val] of cardTokenStore) {
+    if (now > val.expiresAt) cardTokenStore.delete(key);
+  }
+}, 3600_000);
+
+router.post('/create-card-token', async (req: Request, res: Response) => {
+  try {
+    const { tenantId, memberId, ts, sign, externalUserId } = req.body;
+    if (!tenantId || !memberId || !ts || !sign) {
+      return res.status(400).json({ success: false, message: '缺少参数' });
+    }
+    const token = crypto.randomBytes(6).toString('base64url');
+    const ttl = 8 * 86400_000;
+    cardTokenStore.set(token, {
+      params: { tenantId, memberId, ts, sign, externalUserId: externalUserId || '' },
+      expiresAt: Date.now() + ttl
+    });
+    log.info(`[MP Token] 创建令牌: ${token}, tenant=${tenantId}`);
+    res.json({ success: true, data: { token } });
+  } catch (error: any) {
+    log.error('[MP Token] create error:', error.message);
+    res.status(500).json({ success: false, message: '创建令牌失败' });
+  }
+});
+
+router.get('/resolve-card-token', async (req: Request, res: Response) => {
+  try {
+    const token = req.query.token as string;
+    if (!token) return res.status(400).json({ success: false, message: '缺少token' });
+    const entry = cardTokenStore.get(token);
+    if (!entry || Date.now() > entry.expiresAt) {
+      return res.status(404).json({ success: false, message: '令牌无效或已过期', code: 'TOKEN_EXPIRED' });
+    }
+    res.json({ success: true, data: entry.params });
+  } catch (error: any) {
+    log.error('[MP Token] resolve error:', error.message);
+    res.status(500).json({ success: false, message: '解析令牌失败' });
+  }
+});
+
 export default router;

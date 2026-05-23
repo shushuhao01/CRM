@@ -72,10 +72,18 @@ function getAddressStreets(params) {
   return request(`/address-streets?province=${encodeURIComponent(province)}&city=${encodeURIComponent(city)}&district=${encodeURIComponent(district)}`)
 }
 
+/**
+ * 解析卡片短令牌，获取完整参数
+ */
+function resolveCardToken(token) {
+  return request('/resolve-card-token?token=' + encodeURIComponent(token))
+}
+
 module.exports = {
   request,
   getFormConfig,
   submitCustomer,
   getPhone,
-  getAddressStreets
+  getAddressStreets,
+  resolveCardToken
 }

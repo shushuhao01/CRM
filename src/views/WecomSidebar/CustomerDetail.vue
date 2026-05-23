@@ -1508,8 +1508,16 @@ async function preGenerateFormCard() {
       : `${window.location.origin}/form-cover.png`
     imgUrl = imgUrl.replace(/^http:\/\//, 'https://')
     const sign = data.sign || ''
-    const mpPage = `/pages/index/index?tenantId=${tenantId}&memberId=${memberId}&ts=${ts}&sign=${sign}&externalUserId=${extUserId}`
     const h5Url = `${window.location.origin}/wecom-form.html?tenantId=${tenantId}&memberId=${memberId}&ts=${ts}&sign=${sign}&externalUserId=${extUserId}&appId=${mpAppId}`
+
+    let mpPage = `/pages/index/index?tenantId=${tenantId}&memberId=${memberId}&ts=${ts}&sign=${sign}&externalUserId=${extUserId}`
+    try {
+      const tokenRes: any = await axios.post(`${window.location.origin}/api/v1/mp/create-card-token`, {
+        tenantId, memberId, ts, sign, externalUserId: extUserId
+      })
+      const tk = tokenRes?.data?.data?.token
+      if (tk) mpPage = `/pages/index/index?t=${tk}`
+    } catch { /* 降级使用完整路径 */ }
 
     const mpPayload = mpAppId ? { msgtype: 'miniprogram', miniprogram: { appid: mpAppId, title, imgUrl, page: mpPage } } : null
     const newsPayload = { msgtype: 'news', news: { link: h5Url, title, desc: '点击填写您的基本资料，方便我们为您提供更好的服务', imgUrl } }
