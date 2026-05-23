@@ -1365,7 +1365,8 @@ router.post('/mp-generate-card', authenticateSidebarToken, async (req: Request, 
     if (!imageUrl) imageUrl = defaultImgUrl;
     if (imageUrl && imageUrl.startsWith('http://')) imageUrl = imageUrl.replace('http://', 'https://');
 
-    res.json({ success: true, data: { sign, appId, title: cardTitle, imageUrl, cardTitle, cardCoverUrl, useMiniprogram, pagePath } });
+    const finalPagePath = pagePath || 'pages/form/form';
+    res.json({ success: true, data: { sign, appId, title: cardTitle, imageUrl, cardTitle, cardCoverUrl, useMiniprogram, pagePath: finalPagePath } });
   } catch (error: any) {
     log.error('[H5 App] mp-generate-card error:', error.message);
     res.status(500).json({ success: false, message: '生成卡片失败' });

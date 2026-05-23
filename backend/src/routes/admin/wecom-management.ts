@@ -5549,11 +5549,12 @@ router.put('/suite/mp-config', async (req: Request, res: Response) => {
       config = repo.create({});
     }
 
-    const { mpAppId, mpAppSecret, mpFormSecret, mpCallbackToken, mpCallbackEncodingAesKey, mpCardTitle, mpCardCoverUrl, mpPosterUrl, mpLinkExpireDays } = req.body;
+    const { mpAppId, mpAppSecret, mpFormSecret, mpCallbackToken, mpCallbackEncodingAesKey, mpCardTitle, mpCardCoverUrl, mpPosterUrl, mpLinkExpireDays, mpEnabled } = req.body;
 
     if (mpAppId !== undefined) config.mpAppId = mpAppId;
     if (mpAppSecret && mpAppSecret !== '******') config.mpAppSecret = mpAppSecret;
     if (mpFormSecret !== undefined) config.mpFormSecret = mpFormSecret;
+    if (mpEnabled !== undefined) config.mpEnabled = mpEnabled;
     if (mpCallbackToken !== undefined) config.mpCallbackToken = mpCallbackToken;
     if (mpCallbackEncodingAesKey !== undefined) config.mpCallbackEncodingAesKey = mpCallbackEncodingAesKey;
 

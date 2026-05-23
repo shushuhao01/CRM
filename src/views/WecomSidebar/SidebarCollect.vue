@@ -221,8 +221,9 @@ const generateCard = async (showMsg = true) => {
     const title = data.title || defaultTitle
 
     const mpAppId = data.appId || ''
-    const basePage = data.pagePath || 'pages/form/form'
-    const mpPage = `${basePage.replace(/^\//, '')}?tenantId=${tenantId}&memberId=${memberId}&ts=${ts}&sign=${data.sign || ''}&externalUserId=${extUserId}`
+    const rawPage = data.pagePath || 'pages/form/form'
+    const basePage = '/' + rawPage.replace(/^\//, '').replace(/\.html$/, '') + '.html'
+    const mpPage = `${basePage}?tenantId=${tenantId}&memberId=${memberId}&ts=${ts}&sign=${data.sign || ''}&externalUserId=${extUserId}`
     const h5FormUrl = `${window.location.origin}/wecom-form.html?tenantId=${tenantId}&memberId=${memberId}&ts=${ts}&sign=${data.sign || ''}&externalUserId=${extUserId}&appId=${mpAppId}`
 
     // 根据用户选择的发送模式构建主payload

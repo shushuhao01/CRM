@@ -570,6 +570,10 @@
             </div>
           </el-alert>
           <el-form :model="mpConfig" label-width="140px" style="max-width: 700px">
+            <el-form-item label="启用小程序资料收集">
+              <el-switch v-model="mpConfig.mpEnabled" />
+              <span style="margin-left: 12px; font-size: 12px; color: #909399">{{ mpConfig.mpEnabled ? '已启用，侧边栏可发送小程序卡片收集客户资料' : '未启用' }}</span>
+            </el-form-item>
             <el-divider content-position="left">小程序凭证</el-divider>
             <el-form-item label="小程序 AppID">
               <div style="display: flex; gap: 8px; width: 100%">
@@ -1953,6 +1957,7 @@ const mpSaving = ref(false)
 const showMpAppSecret = ref(false)
 const mpConfig = ref<any>({
   mpAppId: '', mpAppSecret: '', mpFormSecret: '',
+  mpEnabled: false,
   mpCallbackToken: '', mpCallbackEncodingAesKey: '',
   mpCardTitle: '', mpCardCoverUrl: '', mpPosterUrl: '',
   mpLinkExpireDays: 7
