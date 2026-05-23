@@ -12,10 +12,13 @@ Page({
     // 有完整参数 → 直接跳转到表单页
     if (params.tenantId && params.memberId && params.ts && params.sign) {
       this.setData({ redirecting: true })
-      const query = 'tenantId=' + encodeURIComponent(params.tenantId) +
+      var query = 'tenantId=' + encodeURIComponent(params.tenantId) +
         '&memberId=' + encodeURIComponent(params.memberId) +
         '&ts=' + encodeURIComponent(params.ts) +
         '&sign=' + encodeURIComponent(params.sign)
+      if (params.externalUserId) {
+        query += '&externalUserId=' + encodeURIComponent(params.externalUserId)
+      }
       wx.redirectTo({
         url: '/pages/form/form?' + query,
         fail: function (err) {

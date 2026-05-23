@@ -221,11 +221,10 @@ const generateCard = async (showMsg = true) => {
     const title = data.title || defaultTitle
 
     const mpAppId = data.appId || ''
-    const rawPage = data.pagePath || 'pages/form/form'
-    const basePage = '/' + rawPage.replace(/^\//, '').replace(/\.html$/, '') + '.html'
-    const mpPage = `${basePage}?tenantId=${tenantId}&memberId=${memberId}&ts=${ts}&sign=${data.sign || ''}&externalUserId=${extUserId}`
+    const mpPage = `/pages/index/index?tenantId=${tenantId}&memberId=${memberId}&ts=${ts}&sign=${data.sign || ''}&externalUserId=${extUserId}`
     const h5FormUrl = `${window.location.origin}/wecom-form.html?tenantId=${tenantId}&memberId=${memberId}&ts=${ts}&sign=${data.sign || ''}&externalUserId=${extUserId}&appId=${mpAppId}`
 
+    console.log('[Collect] 小程序卡片路径:', mpPage)
     // 根据用户选择的发送模式构建主payload
     const mpPayloadObj = mpAppId ? { msgtype: 'miniprogram', miniprogram: { appid: mpAppId, title, imgUrl, page: mpPage } } : null
     const newsPayloadObj = { msgtype: 'news', news: { link: h5FormUrl, title, desc: '点击填写您的基本资料，方便我们为您提供更好的服务', imgUrl } }

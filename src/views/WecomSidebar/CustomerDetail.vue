@@ -1508,9 +1508,7 @@ async function preGenerateFormCard() {
       : `${window.location.origin}/form-cover.png`
     imgUrl = imgUrl.replace(/^http:\/\//, 'https://')
     const sign = data.sign || ''
-    const rawPage = data.pagePath || 'pages/form/form'
-    const basePage = '/' + rawPage.replace(/^\//, '').replace(/\.html$/, '') + '.html'
-    const mpPage = `${basePage}?tenantId=${tenantId}&memberId=${memberId}&ts=${ts}&sign=${sign}&externalUserId=${extUserId}`
+    const mpPage = `/pages/index/index?tenantId=${tenantId}&memberId=${memberId}&ts=${ts}&sign=${sign}&externalUserId=${extUserId}`
     const h5Url = `${window.location.origin}/wecom-form.html?tenantId=${tenantId}&memberId=${memberId}&ts=${ts}&sign=${sign}&externalUserId=${extUserId}&appId=${mpAppId}`
 
     const mpPayload = mpAppId ? { msgtype: 'miniprogram', miniprogram: { appid: mpAppId, title, imgUrl, page: mpPage } } : null
