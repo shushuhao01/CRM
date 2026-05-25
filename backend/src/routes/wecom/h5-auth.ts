@@ -580,25 +580,45 @@ router.post('/register', h5RegisterLimiter, async (req: Request, res: Response) 
  */
 router.post('/exchange-token', authenticateSidebarToken, async (req: Request, res: Response) => {
   try {
-    const user = (req as any).currentUser;
+    const sidebarUser = (req as any).sidebarUser;
+    if (!sidebarUser || !sidebarUser.crmUserId) {
+      return res.status(401).json({ success: false, message: 'sidebar token无效或缺少用户信息' });
+    }
+
+    const dataSource = AppDataSource;
+    if (!dataSource?.isInitialized) {
+      return res.status(500).json({ success: false, message: '数据库未就绪' });
+    }
+
+    const { User } = await import('../../entities/User');
+    const userRepo = dataSource.getRepository(User);
+    const where: any = { id: sidebarUser.crmUserId };
+    if (sidebarUser.tenantId) {
+      where.tenantId = sidebarUser.tenantId;
+    }
+    const user = await userRepo.findOne({ where });
+
     if (!user) {
-      return res.status(401).json({ success: false, message: 'token无效' });
+      return res.status(401).json({ success: false, message: '关联CRM用户不存在' });
+    }
+
+    if (user.status !== 'active') {
+      return res.status(401).json({ success: false, message: '用户账户已被禁用' });
     }
 
     const { JwtConfig } = await import('../../config/jwt');
-    const payload = (req as any).user;
 
     const newToken = JwtConfig.generateAccessToken({
       userId: user.id,
       username: user.username,
-      role: user.role,
-      tenantId: payload.tenantId || user.tenantId || '',
-      type: 'crm'
+      role: user.roleId || user.role,
+      departmentId: user.departmentId,
+      tenantId: sidebarUser.tenantId || user.tenantId || ''
     } as any);
 
     const refreshToken = JwtConfig.generateRefreshToken({
       userId: user.id,
-      tenantId: payload.tenantId || user.tenantId || ''
+      tenantId: sidebarUser.tenantId || user.tenantId || ''
     } as any);
 
     res.json({
@@ -611,9 +631,10 @@ router.post('/exchange-token', authenticateSidebarToken, async (req: Request, re
           name: user.name || user.username,
           username: user.username,
           avatar: user.avatar || '',
-          role: user.role,
-          tenantId: payload.tenantId || user.tenantId || '',
-          permissions: user.permissions || []
+          role: user.roleId || user.role,
+          tenantId: sidebarUser.tenantId || user.tenantId || '',
+          permissions: (user as any).permissions || [],
+          departmentId: user.departmentId || ''
         }
       }
     });

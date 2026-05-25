@@ -172,14 +172,39 @@ async function loadActivities() {
 }
 
 /** 跳转到主CRM系统的会话存档页（同域，保持在企微内置浏览器中） */
-function openChatArchive() {
+async function openChatArchive() {
   const h5Token = localStorage.getItem('h5_token')
   if (!h5Token) return
 
+  try {
+    const resp = await fetch('/api/v1/wecom/h5/exchange-token', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${h5Token}`
+      }
+    })
+    const result = await resp.json()
+
+    if (result.success && result.data) {
+      const { token, refreshToken, user } = result.data
+      localStorage.setItem('auth_token', token)
+      localStorage.setItem('refresh_token', refreshToken)
+      localStorage.setItem('token_expiry', (Date.now() + 7 * 24 * 60 * 60 * 1000).toString())
+      if (user) {
+        localStorage.setItem('user', JSON.stringify(user))
+        localStorage.setItem('user_info', JSON.stringify(user))
+      }
+      window.location.href = window.location.origin + '/wecom/chat-archive'
+      return
+    }
+  } catch (e) {
+    console.warn('[Home] exchange-token failed, using fallback:', e)
+  }
+
+  // Fallback: 直接复制sidebar token（兼容旧版后端）
   localStorage.setItem('auth_token', h5Token)
   localStorage.setItem('token_expiry', (Date.now() + 7 * 24 * 60 * 60 * 1000).toString())
-
-  // 用户数据：优先从Pinia store读取，兜底从token中解析
   let userData = authStore.user
   if (!userData) {
     try {
@@ -194,14 +219,12 @@ function openChatArchive() {
           tenantId: payload.tenantId || ''
         }
       }
-    } catch { /* ignore parse error */ }
+    } catch { /* ignore */ }
   }
-
   if (userData) {
     localStorage.setItem('user', JSON.stringify(userData))
     localStorage.setItem('user_info', JSON.stringify(userData))
   }
-
   window.location.href = window.location.origin + '/wecom/chat-archive'
 }
 

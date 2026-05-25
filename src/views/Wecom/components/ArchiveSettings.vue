@@ -158,23 +158,21 @@
             <h3 class="block-title">👥 生效范围</h3>
             <p class="block-desc">选择会话存档生效的成员，聊天会话、消息记录、数据统计均以此范围为准。</p>
           </div>
-          <el-button type="primary" plain size="small" @click="loadScopeTree" :loading="scopeLoading">
-            <el-icon><Refresh /></el-icon>
-            {{ scopeTree.length > 0 ? '刷新成员' : '选择生效成员' }}
+          <el-button type="primary" @click="openScopeDialog" :loading="scopeLoading">
+            <el-icon><Edit /></el-icon> 编辑生效范围
           </el-button>
         </div>
 
         <!-- 额度提示 -->
         <div class="quota-bar">
           <div class="quota-info">
-            <span>已选 <strong>{{ scopeSelectedCount }}</strong> 人</span>
+            <span>已生效 <strong>{{ enabledMemberList.length }}</strong> 人</span>
             <span class="quota-sep">/</span>
             <span>套餐额度 <strong>{{ settings.maxUsers }}</strong> 人</span>
-            <el-tag v-if="settings.maxUsers > 0 && scopeSelectedCount > settings.maxUsers" type="danger" size="small" style="margin-left: 8px">超出额度</el-tag>
           </div>
           <el-progress
-            :percentage="settings.maxUsers > 0 ? Math.min(100, Math.round(scopeSelectedCount / settings.maxUsers * 100)) : 0"
-            :color="scopeSelectedCount > settings.maxUsers ? '#f56c6c' : '#409eff'"
+            :percentage="settings.maxUsers > 0 ? Math.min(100, Math.round(enabledMemberList.length / settings.maxUsers * 100)) : 0"
+            :color="enabledMemberList.length > settings.maxUsers ? '#f56c6c' : '#409eff'"
             :stroke-width="8"
             style="width: 200px"
           />
@@ -186,44 +184,126 @@
           </el-alert>
         </template>
         <template v-else>
-          <!-- 操作提示 -->
-          <el-alert v-if="scopeTree.length === 0 && !scopeLoading" type="info" :closable="false" style="margin-bottom: 12px">
-            <template #title>点击右上角「选择生效成员」加载企微已授权会话存档范围内的成员列表</template>
-            <p style="margin: 4px 0 0; font-size: 12px">
-              加载的成员来自企业微信中已授权会话存档的人员范围。选中后不超过您购买的CRM套餐席位数量即可生效。
-            </p>
-          </el-alert>
-
-          <!-- 成员树 -->
-          <div v-if="scopeTree.length > 0" class="scope-tree-area">
-            <el-tree
-              ref="scopeTreeRef"
-              :data="scopeTree"
-              show-checkbox
-              node-key="nodeId"
-              :default-checked-keys="scopeCheckedKeys"
-              :props="{ label: 'label', children: 'children' }"
-              @check="onScopeCheck"
-              style="max-height: 360px; overflow-y: auto; border: 1px solid #ebeef5; border-radius: 6px; padding: 8px"
-            />
-            <div style="margin-top: 12px; display: flex; gap: 8px; align-items: center">
-              <el-button type="primary" :loading="scopeSaving" @click="handleSaveScope" :disabled="settings.maxUsers > 0 && scopeSelectedCount > settings.maxUsers">
-                确定生效（{{ scopeSelectedCount }}人）
-              </el-button>
-              <span v-if="settings.maxUsers > 0 && scopeSelectedCount > settings.maxUsers" class="field-hint" style="color: #f56c6c; line-height: 32px">
-                已选人数超出套餐额度，请减少选择或增购席位
-              </span>
-              <span v-else-if="scopeSelectedCount > 0" class="field-hint" style="color: #67c23a; line-height: 32px">
-                ✅ 选中 {{ scopeSelectedCount }} 人，未超出套餐额度
-              </span>
+          <!-- 已生效成员列表 -->
+          <div v-if="enabledMemberList.length > 0" class="scope-member-list">
+            <div class="member-list-header">
+              <span class="member-list-title">当前生效成员（{{ enabledMemberList.length }}人）</span>
+            </div>
+            <div class="member-list-body">
+              <div v-for="m in pagedEnabledMembers" :key="m.wecomUserId" class="member-item">
+                <div class="member-avatar">
+                  <img v-if="m.avatar" :src="m.avatar" class="avatar-img" />
+                  <span v-else class="avatar-text">{{ (m.name || m.wecomUserId).slice(-1) }}</span>
+                </div>
+                <div class="member-info">
+                  <span class="member-name">{{ m.name || m.wecomUserName || m.wecomUserId }}</span>
+                  <span class="member-id">{{ m.wecomUserId }}</span>
+                </div>
+                <el-button type="danger" link size="small" @click="handleRemoveMember(m)">
+                  <el-icon><Delete /></el-icon> 移除
+                </el-button>
+              </div>
+            </div>
+            <!-- 分页 -->
+            <div class="member-list-footer">
+              <el-pagination
+                v-model:current-page="memberPage"
+                :page-size="memberPageSize"
+                :total="enabledMemberList.length"
+                layout="total, prev, pager, next"
+                small
+                background
+              />
             </div>
           </div>
-          <div v-else-if="scopeLoading" class="scope-empty">
-            <el-icon class="is-loading" :size="24" color="#409eff"><Loading /></el-icon>
-            <p style="margin-top: 8px">正在加载企微授权成员列表...</p>
+          <!-- 无成员时 -->
+          <div v-else class="scope-empty">
+            <el-empty description="暂无生效成员" :image-size="64">
+              <el-button type="primary" @click="openScopeDialog">选择生效成员</el-button>
+            </el-empty>
           </div>
         </template>
       </div>
+
+      <!-- ==================== 生效范围弹窗 ==================== -->
+      <el-dialog
+        v-model="scopeDialogVisible"
+        title="选择生效范围"
+        width="640px"
+        :close-on-click-modal="false"
+        destroy-on-close
+      >
+        <div class="scope-dialog-content">
+          <!-- 弹窗顶部额度信息 -->
+          <div class="dialog-quota-bar">
+            <div class="dialog-quota-left">
+              <span>已选 <strong :class="{ 'over-limit': dialogSelectedCount > settings.maxUsers && settings.maxUsers > 0 }">{{ dialogSelectedCount }}</strong> 人</span>
+              <span class="quota-sep">/</span>
+              <span>套餐额度 <strong>{{ settings.maxUsers }}</strong> 人</span>
+            </div>
+            <el-tag v-if="settings.maxUsers > 0 && dialogSelectedCount > settings.maxUsers" type="danger" size="small">
+              超出额度，无法保存
+            </el-tag>
+            <el-tag v-else-if="dialogSelectedCount > 0" type="success" size="small">
+              未超出额度
+            </el-tag>
+          </div>
+          <!-- 搜索 -->
+          <el-input
+            v-model="dialogSearch"
+            placeholder="搜索成员姓名或ID..."
+            clearable
+            :prefix-icon="Search"
+            style="margin-bottom: 12px"
+          />
+          <!-- 全选/反选 -->
+          <div class="dialog-actions">
+            <el-checkbox v-model="dialogSelectAll" :indeterminate="dialogIndeterminate" @change="handleDialogSelectAll">
+              全选（{{ filteredDialogMembers.length }}人）
+            </el-checkbox>
+          </div>
+          <!-- 成员列表 -->
+          <div class="dialog-member-list" v-loading="dialogLoading">
+            <el-checkbox-group v-model="dialogCheckedIds">
+              <div v-for="m in pagedDialogMembers" :key="m.wecomUserId" class="dialog-member-item">
+                <el-checkbox :label="m.wecomUserId" :value="m.wecomUserId">
+                  <div class="dialog-member-row">
+                    <div class="member-avatar sm">
+                      <img v-if="m.avatar" :src="m.avatar" class="avatar-img" />
+                      <span v-else class="avatar-text">{{ (m.name || m.wecomUserId).slice(-1) }}</span>
+                    </div>
+                    <span class="dialog-member-name">{{ m.name || m.wecomUserName || m.wecomUserId }}</span>
+                    <span class="dialog-member-id">{{ m.wecomUserId }}</span>
+                  </div>
+                </el-checkbox>
+              </div>
+            </el-checkbox-group>
+            <el-empty v-if="filteredDialogMembers.length === 0 && !dialogLoading" description="没有找到匹配的成员" :image-size="48" />
+          </div>
+          <!-- 弹窗内分页 -->
+          <div class="dialog-pagination" v-if="filteredDialogMembers.length > dialogPageSize">
+            <el-pagination
+              v-model:current-page="dialogPage"
+              :page-size="dialogPageSize"
+              :total="filteredDialogMembers.length"
+              layout="prev, pager, next"
+              small
+              background
+            />
+          </div>
+        </div>
+        <template #footer>
+          <el-button @click="scopeDialogVisible = false">取消</el-button>
+          <el-button
+            type="primary"
+            :loading="scopeSaving"
+            :disabled="settings.maxUsers > 0 && dialogSelectedCount > settings.maxUsers"
+            @click="handleDialogSave"
+          >
+            确定保存（{{ dialogSelectedCount }}人）
+          </el-button>
+        </template>
+      </el-dialog>
 
       <!-- ==================== 第四区：数据可见范围 ==================== -->
       <div class="section-card">
@@ -315,9 +395,9 @@
 <script setup lang="ts">
 defineOptions({ name: 'ArchiveSettings' })
 import { ref, reactive, computed, watch, onMounted } from 'vue'
-import { ElMessage, ElTree } from 'element-plus'
-import { Refresh, Loading, CopyDocument } from '@element-plus/icons-vue'
-import { getArchiveSettings, updateArchiveSettings, getArchiveSeats, getArchiveSeatWecomTree, updateArchiveSeatMembers, getArchiveRsaPublicKey } from '@/api/wecom'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { Refresh, Loading, CopyDocument, Edit, Delete, Search } from '@element-plus/icons-vue'
+import { getArchiveSettings, updateArchiveSettings, getArchiveSeats, updateArchiveSeatMembers, getArchiveRsaPublicKey } from '@/api/wecom'
 import request from '@/utils/request'
 
 const props = defineProps<{
@@ -457,88 +537,163 @@ const form = reactive({
 // ==================== 生效范围 ====================
 const scopeLoading = ref(false)
 const scopeSaving = ref(false)
-const scopeTree = ref<any[]>([])
-const scopeCheckedKeys = ref<string[]>([])
-const scopeTreeRef = ref<InstanceType<typeof ElTree> | null>(null)
-const scopeSelectedCount = ref(0)
-const seatMembers = ref<any[]>([])
+const allMembers = ref<any[]>([])
+const memberPage = ref(1)
+const memberPageSize = 10
 
-const loadScopeTree = async () => {
+const enabledMemberList = computed(() => allMembers.value.filter(m => m.isEnabled))
+const pagedEnabledMembers = computed(() => {
+  const start = (memberPage.value - 1) * memberPageSize
+  return enabledMemberList.value.slice(start, start + memberPageSize)
+})
+
+const loadMembers = async () => {
   if (!props.configId) return
   scopeLoading.value = true
   try {
-    const [treeRes, seatRes]: any[] = await Promise.all([
-      getArchiveSeatWecomTree(props.configId),
-      getArchiveSeats(props.configId)
-    ])
-    const treeData = treeRes?.data || treeRes
-    const seatData = seatRes?.data || seatRes
-
-    if (seatData?.members) {
-      seatMembers.value = seatData.members
+    const res: any = await getArchiveSeats(props.configId)
+    const data = res?.data || res
+    if (data?.members) {
+      allMembers.value = data.members
     }
-
-    // 构建树数据
-    if (treeData?.tree) {
-      const checkedKeys: string[] = []
-      const transform = (nodes: any[]): any[] => {
-        return nodes.map((n: any) => {
-          const children: any[] = []
-          // 子部门
-          if (n.children?.length) {
-            children.push(...transform(n.children))
-          }
-          // 成员节点
-          if (n.members?.length) {
-            for (const m of n.members) {
-              const nodeId = `user_${m.wecomUserId}`
-              children.push({ nodeId, label: m.name || m.wecomUserId, isUser: true, wecomUserId: m.wecomUserId })
-              if (m.isSelected) checkedKeys.push(nodeId)
-            }
-          }
-          return { nodeId: `dept_${n.id}`, label: n.name, children }
-        })
-      }
-      scopeTree.value = transform(treeData.tree)
-      scopeCheckedKeys.value = checkedKeys
-      scopeSelectedCount.value = checkedKeys.length
-    }
+    if (data?.maxUsers !== undefined) settings.maxUsers = data.maxUsers
+    if (data?.usedUsers !== undefined) settings.usedUsers = data.usedUsers
   } catch (e: any) {
-    ElMessage.error(e?.message || '加载成员失败')
+    console.error('[ArchiveSettings] Load members error:', e)
   } finally {
     scopeLoading.value = false
   }
 }
 
-const onScopeCheck = () => {
-  if (!scopeTreeRef.value) return
-  const checked = scopeTreeRef.value.getCheckedNodes(true) as any[]
-  const users = checked.filter((n: any) => n.isUser)
-  scopeSelectedCount.value = users.length
+const handleRemoveMember = async (member: any) => {
+  try {
+    await ElMessageBox.confirm(`确定移除「${member.name || member.wecomUserId}」的存档生效权限？`, '移除成员', {
+      type: 'warning',
+      confirmButtonText: '确定移除',
+      cancelButtonText: '取消'
+    })
+  } catch { return }
+
+  if (!props.configId) return
+  scopeSaving.value = true
+  try {
+    const remaining = enabledMemberList.value
+      .filter(m => m.wecomUserId !== member.wecomUserId)
+    await updateArchiveSeatMembers({
+      configId: props.configId,
+      members: remaining.map((m: any) => ({
+        wecomUserId: m.wecomUserId,
+        wecomUserName: m.name || m.wecomUserName,
+        isEnabled: true
+      }))
+    })
+    const target = allMembers.value.find(m => m.wecomUserId === member.wecomUserId)
+    if (target) target.isEnabled = false
+    settings.usedUsers = remaining.length
+    ElMessage.success('已移除')
+  } catch (e: any) {
+    ElMessage.error(e?.message || '移除失败')
+  } finally {
+    scopeSaving.value = false
+  }
 }
 
-const handleSaveScope = async () => {
-  if (!props.configId || !scopeTreeRef.value) return
-  const checked = scopeTreeRef.value.getCheckedNodes(true) as any[]
-  const users = checked.filter((n: any) => n.isUser)
+// ==================== 生效范围弹窗 ====================
+const scopeDialogVisible = ref(false)
+const dialogLoading = ref(false)
+const dialogSearch = ref('')
+const dialogCheckedIds = ref<string[]>([])
+const dialogPage = ref(1)
+const dialogPageSize = 20
+const dialogSelectAll = ref(false)
+const dialogIndeterminate = ref(false)
 
-  if (settings.maxUsers > 0 && users.length > settings.maxUsers) {
-    ElMessage.error(`已选 ${users.length} 人，超出套餐额度 ${settings.maxUsers} 人`)
+const filteredDialogMembers = computed(() => {
+  const kw = dialogSearch.value.trim().toLowerCase()
+  if (!kw) return allMembers.value
+  return allMembers.value.filter(m =>
+    (m.name || '').toLowerCase().includes(kw) ||
+    (m.wecomUserName || '').toLowerCase().includes(kw) ||
+    (m.wecomUserId || '').toLowerCase().includes(kw)
+  )
+})
+
+const pagedDialogMembers = computed(() => {
+  const start = (dialogPage.value - 1) * dialogPageSize
+  return filteredDialogMembers.value.slice(start, start + dialogPageSize)
+})
+
+const dialogSelectedCount = computed(() => dialogCheckedIds.value.length)
+
+watch(dialogCheckedIds, (ids) => {
+  const total = filteredDialogMembers.value.length
+  if (total === 0) {
+    dialogSelectAll.value = false
+    dialogIndeterminate.value = false
+  } else if (ids.length === total) {
+    dialogSelectAll.value = true
+    dialogIndeterminate.value = false
+  } else if (ids.length > 0) {
+    dialogSelectAll.value = false
+    dialogIndeterminate.value = true
+  } else {
+    dialogSelectAll.value = false
+    dialogIndeterminate.value = false
+  }
+})
+
+watch(dialogSearch, () => { dialogPage.value = 1 })
+
+const handleDialogSelectAll = (val: any) => {
+  if (val) {
+    dialogCheckedIds.value = filteredDialogMembers.value.map(m => m.wecomUserId)
+  } else {
+    dialogCheckedIds.value = []
+  }
+}
+
+const openScopeDialog = async () => {
+  if (!props.configId) return
+  scopeDialogVisible.value = true
+  dialogSearch.value = ''
+  dialogPage.value = 1
+
+  if (allMembers.value.length === 0) {
+    dialogLoading.value = true
+    await loadMembers()
+    dialogLoading.value = false
+  }
+  dialogCheckedIds.value = enabledMemberList.value.map(m => m.wecomUserId)
+}
+
+const handleDialogSave = async () => {
+  if (!props.configId) return
+  const selectedIds = new Set(dialogCheckedIds.value)
+  const enabledCount = selectedIds.size
+
+  if (settings.maxUsers > 0 && enabledCount > settings.maxUsers) {
+    ElMessage.error(`已选 ${enabledCount} 人，超出套餐额度 ${settings.maxUsers} 人，请减少选择`)
     return
   }
 
   scopeSaving.value = true
   try {
-    await updateArchiveSeatMembers({
-      configId: props.configId,
-      members: users.map((u: any) => ({
-        wecomUserId: u.wecomUserId,
-        wecomUserName: u.label,
+    const members = allMembers.value
+      .filter(m => selectedIds.has(m.wecomUserId))
+      .map(m => ({
+        wecomUserId: m.wecomUserId,
+        wecomUserName: m.name || m.wecomUserName || '',
         isEnabled: true
       }))
-    })
-    ElMessage.success('生效范围已保存')
-    settings.usedUsers = users.length
+    await updateArchiveSeatMembers({ configId: props.configId, members })
+    // 更新本地状态
+    for (const m of allMembers.value) {
+      m.isEnabled = selectedIds.has(m.wecomUserId)
+    }
+    settings.usedUsers = enabledCount
+    memberPage.value = 1
+    scopeDialogVisible.value = false
+    ElMessage.success(`生效范围已保存，共 ${enabledCount} 人`)
   } catch (e: any) {
     ElMessage.error(e?.message || '保存失败')
   } finally {
@@ -610,11 +765,17 @@ const formatDate = (d: string | null | undefined) => {
 }
 
 watch(() => props.configId, (val) => {
-  if (val) fetchSettings()
+  if (val) {
+    fetchSettings()
+    loadMembers()
+  }
 })
 
 onMounted(() => {
-  if (props.configId) fetchSettings()
+  if (props.configId) {
+    fetchSettings()
+    loadMembers()
+  }
   fetchRsaPublicKey()
 })
 
@@ -679,13 +840,71 @@ defineExpose({ fetchSettings })
 .quota-info { font-size: 13px; color: #606266; display: flex; align-items: center; gap: 4px; }
 .quota-sep { color: #c0c4cc; margin: 0 2px; }
 
-/* 成员树区域 */
-.scope-tree-area { margin-top: 8px; }
-.scope-empty {
-  padding: 24px; text-align: center; color: #909399; font-size: 13px;
-  background: #fafafa; border-radius: 6px; border: 1px dashed #dcdfe6;
-  p { margin: 0; }
+/* 成员列表区域 */
+.scope-member-list {
+  border: 1px solid #ebeef5; border-radius: 8px; overflow: hidden;
 }
+.member-list-header {
+  padding: 10px 16px; background: #f5f7fa; border-bottom: 1px solid #ebeef5;
+  display: flex; justify-content: space-between; align-items: center;
+}
+.member-list-title { font-size: 13px; font-weight: 500; color: #606266; }
+.member-list-body { padding: 4px 0; }
+.member-item {
+  display: flex; align-items: center; gap: 12px; padding: 10px 16px;
+  transition: background 0.15s;
+  &:hover { background: #f9fafb; }
+  &:not(:last-child) { border-bottom: 1px solid #f2f3f5; }
+}
+.member-avatar {
+  width: 36px; height: 36px; border-radius: 50%; overflow: hidden;
+  flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+  background: #409eff; color: #fff; font-size: 14px; font-weight: 500;
+  &.sm { width: 28px; height: 28px; font-size: 12px; }
+  .avatar-img { width: 100%; height: 100%; object-fit: cover; }
+  .avatar-text { line-height: 1; }
+}
+.member-info { flex: 1; min-width: 0; }
+.member-name { font-size: 14px; color: #303133; display: block; font-weight: 500; }
+.member-id { font-size: 12px; color: #909399; display: block; margin-top: 2px; }
+.member-list-footer {
+  padding: 10px 16px; border-top: 1px solid #ebeef5; background: #fafbfc;
+  display: flex; justify-content: flex-end;
+}
+
+.scope-empty {
+  padding: 32px; text-align: center; color: #909399; font-size: 13px;
+  background: #fafafa; border-radius: 6px; border: 1px dashed #dcdfe6;
+}
+
+/* 弹窗内样式 */
+.scope-dialog-content { max-height: 520px; display: flex; flex-direction: column; }
+.dialog-quota-bar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 14px; background: #f5f7fa; border-radius: 6px; margin-bottom: 12px;
+  font-size: 13px; color: #606266;
+  strong.over-limit { color: #f56c6c; }
+}
+.dialog-quota-left { display: flex; align-items: center; gap: 4px; }
+.dialog-actions {
+  display: flex; align-items: center; margin-bottom: 8px; padding: 0 4px;
+  font-size: 13px;
+}
+.dialog-member-list {
+  flex: 1; overflow-y: auto; max-height: 340px;
+  border: 1px solid #ebeef5; border-radius: 6px; padding: 4px 0;
+}
+.dialog-member-item {
+  padding: 8px 14px;
+  &:hover { background: #f5f7fa; }
+  :deep(.el-checkbox__label) { display: flex; align-items: center; }
+}
+.dialog-member-row {
+  display: flex; align-items: center; gap: 10px;
+}
+.dialog-member-name { font-size: 14px; color: #303133; font-weight: 500; }
+.dialog-member-id { font-size: 12px; color: #909399; margin-left: 4px; }
+.dialog-pagination { padding-top: 12px; display: flex; justify-content: center; }
 
 /* 可见范围 */
 .visibility-group {
