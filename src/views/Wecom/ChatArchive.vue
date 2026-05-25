@@ -564,9 +564,13 @@ const handleSync = async () => {
     if (res) {
       const parts: string[] = []
       if (res.permitUsers !== undefined) parts.push(`存档成员${res.permitUsers}人`)
-      if (res.syncedRecords) parts.push(`新增${res.syncedRecords}条消息`)
+      // 区分真实消息和元数据
+      const realMsgCount = res.totalFetched > 0 ? (res.syncedRecords - (res.metaRecords || 0)) : 0
+      const metaCount = res.metaRecords || res.newConversations || 0
+      if (realMsgCount > 0) parts.push(`新增${realMsgCount}条聊天记录`)
+      if (metaCount > 0) parts.push(`加载${metaCount}条会话`)
+      if (!realMsgCount && !metaCount && res.syncedRecords > 0) parts.push(`更新${res.syncedRecords}条记录`)
       if (res.enrichedContacts) parts.push(`更新${res.enrichedContacts}个联系人`)
-      if (res.newConversations) parts.push(`新增${res.newConversations}条会话`)
       if (res.agreedUsers) parts.push(`${res.agreedUsers}人已同意存档`)
 
       if (parts.length > 0) {
@@ -582,12 +586,29 @@ const handleSync = async () => {
         ElMessage.warning('公钥尚未上传至企微，本次同步将自动设置。请等待5-10分钟后再次同步获取消息。')
       } else if (res.permitUsers > 0 && !res.syncedRecords && res.pubKeyStatus === 'set') {
         if (res.totalFetched === 0) {
-          msg += '（API返回0条消息，企微可能尚未开始存档或存档范围配置有误）'
+          msg += '（API返回0条，请检查管理后台「消息体能力ID」是否已配置为invoke_get_msg_body）'
         } else if (res.totalFetched > 0) {
           msg += `（拉取${res.totalFetched}条均已入库，无新增）`
         } else {
           msg += '（公钥已设置，请确认存档成员有新聊天记录后再同步）'
         }
+      }
+
+      // 首次同步引导：提示用户去设置生效范围
+      if (res.permitUsers > 0 && res.mode === 'chatdata_zone') {
+        setTimeout(() => {
+          if (res.totalFetched === 0 && res.metaRecords > 0) {
+            ElMessage.warning({
+              message: 'sync_msg未返回真实消息，当前仅加载了客户列表元数据。请检查：1）管理后台专区能力ID是否正确配置 2）公钥上传后需等待5-10分钟',
+              duration: 8000
+            })
+          } else if (realMsgCount === 0 && metaCount > 0) {
+            ElMessage.info({
+              message: '提示：当前加载的为客户会话列表，员工和群聊记录需要sync_msg正确返回消息后才会显示。',
+              duration: 6000
+            })
+          }
+        }, 1500)
       }
     }
     ElMessage.success(msg)

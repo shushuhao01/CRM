@@ -969,6 +969,7 @@ export class WecomApiService {
 
     const rawResult = await this.syncCallProgram(accessToken, programId, abilityId, 'sync_msg', {
       cursor,
+      token: '',
       limit
     });
 

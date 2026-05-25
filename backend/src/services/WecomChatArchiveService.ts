@@ -1404,6 +1404,8 @@ export class WecomChatArchiveService {
     const zoneAbilityId = suiteConfig?.zoneAbilityId;
     // ★ 优先使用专门的 sync_msg 能力ID（如 invoke_sync_msg），否则回退到通用能力ID
     const zoneSyncMsgAbilityId = suiteConfig?.zoneSyncMsgAbilityId || zoneAbilityId;
+    // ★ get_msg_body 使用独立能力ID（如 invoke_get_msg_body），否则回退到 sync_msg 的能力ID
+    const zoneGetMsgBodyAbilityId = suiteConfig?.zoneGetMsgBodyAbilityId || zoneSyncMsgAbilityId;
     const useZoneProxy = !!(zoneProgramId && zoneSyncMsgAbilityId && config.authType === 'third_party');
 
     if (!rsaPrivateKey) {
@@ -1525,7 +1527,7 @@ export class WecomChatArchiveService {
                   if (sk) {
                     try {
                       const msgBody = useZoneProxy
-                        ? await WecomApiService.getMsgBodyViaZone(chatAccessToken, zoneProgramId!, zoneSyncMsgAbilityId!, item.msgid)
+                        ? await WecomApiService.getMsgBodyViaZone(chatAccessToken, zoneProgramId!, zoneGetMsgBodyAbilityId!, item.msgid)
                         : await WecomApiService.getMsgBody(chatAccessToken, item.msgid);
                       if (msgBody.encrypted_msg_body) {
                         const plaintext = this.aesDecrypt(sk, msgBody.encrypted_msg_body);
@@ -1557,7 +1559,7 @@ export class WecomChatArchiveService {
             if (secretKey) {
               try {
                 const msgBody = useZoneProxy
-                  ? await WecomApiService.getMsgBodyViaZone(chatAccessToken, zoneProgramId!, zoneSyncMsgAbilityId!, item.msgid)
+                  ? await WecomApiService.getMsgBodyViaZone(chatAccessToken, zoneProgramId!, zoneGetMsgBodyAbilityId!, item.msgid)
                   : await WecomApiService.getMsgBody(chatAccessToken, item.msgid);
                 encryptedMsgBody = msgBody.encrypted_msg_body || '';
               } catch (bodyErr: any) {

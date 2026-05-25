@@ -178,11 +178,14 @@
             <el-form-item label="专区程序ID">
               <el-input v-model="suiteConfig.zoneProgramId" placeholder="program_id（企微服务商后台分配）" />
             </el-form-item>
-            <el-form-item label="专区能力ID（通用）">
+            <el-form-item label="通用能力ID">
               <el-input v-model="suiteConfig.zoneAbilityId" placeholder="ability_id（专区程序默认能力ID，如 chat_analysis）" />
             </el-form-item>
             <el-form-item label="会话记录能力ID">
               <el-input v-model="suiteConfig.zoneSyncMsgAbilityId" placeholder="可选，获取会话记录专用（如 invoke_sync_msg），为空则使用上方通用能力ID" />
+            </el-form-item>
+            <el-form-item label="消息体能力ID">
+              <el-input v-model="suiteConfig.zoneGetMsgBodyAbilityId" placeholder="可选，获取消息体专用（如 invoke_get_msg_body），为空则使用上方会话记录能力ID" />
             </el-form-item>
 
             <el-form-item>
@@ -1202,7 +1205,7 @@ const suiteConfig = ref<any>({
   appStatus: '', permissions: [], redirectDomain: '', appType: 'web',
   callbackToken: '', callbackEncodingAesKey: '',
   chatArchiveRsaPublicKey: '', chatArchiveRsaPrivateKey: '',
-  zoneProgramId: '', zoneAbilityId: '', zoneSyncMsgAbilityId: '',
+  zoneProgramId: '', zoneAbilityId: '', zoneSyncMsgAbilityId: '', zoneGetMsgBodyAbilityId: '',
   isEnabled: true, mpAppId: '', mpEnabled: false,
   webLoginToken: '', webLoginEncodingAesKey: '', webLoginRedirectDomain: '',
   webLoginAppId: '', webLoginSecret: ''

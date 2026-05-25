@@ -5886,6 +5886,7 @@ CREATE TABLE IF NOT EXISTS `wecom_suite_configs` (
   `zone_program_id` VARCHAR(100) DEFAULT NULL COMMENT '数据与智能专区程序ID',
   `zone_ability_id` VARCHAR(100) DEFAULT NULL COMMENT '专区程序能力ID（sync_msg等共用，通过func路由）',
   `zone_sync_msg_ability_id` VARCHAR(100) DEFAULT NULL COMMENT '获取会话记录专用能力ID（如invoke_sync_msg，为空则使用zone_ability_id）',
+  `zone_get_msg_body_ability_id` VARCHAR(100) DEFAULT NULL COMMENT '获取消息体专用能力ID（如invoke_get_msg_body，为空则使用zone_sync_msg_ability_id）',
   `is_enabled` TINYINT(1) DEFAULT 0 COMMENT '是否启用',
   `mp_app_id` VARCHAR(50) DEFAULT NULL COMMENT '关联的微信小程序AppID',
   `mp_app_secret` VARCHAR(255) DEFAULT NULL COMMENT '微信小程序AppSecret(加密存储)',
