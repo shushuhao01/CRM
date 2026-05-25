@@ -584,27 +584,31 @@ const handleSync = async () => {
       // 公钥状态和详细提示
       if (res.pubKeyStatus === 'not_set') {
         ElMessage.warning('公钥尚未上传至企微，本次同步将自动设置。请等待5-10分钟后再次同步获取消息。')
-      } else if (res.permitUsers > 0 && !res.syncedRecords && res.pubKeyStatus === 'set') {
-        if (res.totalFetched === 0) {
-          msg += '（API返回0条，请检查管理后台「消息体能力ID」是否已配置为invoke_get_msg_body）'
-        } else if (res.totalFetched > 0) {
-          msg += `（拉取${res.totalFetched}条均已入库，无新增）`
-        } else {
-          msg += '（公钥已设置，请确认存档成员有新聊天记录后再同步）'
-        }
+      }
+
+      // sync_msg 状态详细提示
+      if (res.syncMsgStatus === 'error') {
+        setTimeout(() => {
+          ElMessage.error({
+            message: `sync_msg调用失败：${res.syncMsgError || '未知错误'}。请点击"诊断"按钮查看详情。`,
+            duration: 10000
+          })
+        }, 500)
+      } else if (res.syncMsgStatus === 'empty') {
+        setTimeout(() => {
+          ElMessage.warning({
+            message: 'sync_msg返回0条消息。请点击「诊断」按钮查看专区程序的实际响应。可能原因：1）专区程序未正确配置SDK接口权限(sync_msg) 2）企业未在企微后台开启会话存档 3）公钥上传后尚无新消息被存档',
+            duration: 12000
+          })
+        }, 500)
       }
 
       // 首次同步引导：提示用户去设置生效范围
       if (res.permitUsers > 0 && res.mode === 'chatdata_zone') {
         setTimeout(() => {
-          if (res.totalFetched === 0 && res.metaRecords > 0) {
-            ElMessage.warning({
-              message: 'sync_msg未返回真实消息，当前仅加载了客户列表元数据。请检查：1）管理后台专区能力ID是否正确配置 2）公钥上传后需等待5-10分钟',
-              duration: 8000
-            })
-          } else if (realMsgCount === 0 && metaCount > 0) {
+          if (realMsgCount === 0 && metaCount > 0 && !res.syncMsgError) {
             ElMessage.info({
-              message: '提示：当前加载的为客户会话列表，员工和群聊记录需要sync_msg正确返回消息后才会显示。',
+              message: '当前加载的仅为客户会话列表元数据，员工和群聊需sync_msg正确返回才会显示。',
               duration: 6000
             })
           }
@@ -633,26 +637,56 @@ const handleDiagnose = async () => {
   try {
     const res: any = await diagnoseChatRecords(selectedConfigId.value)
     const d = res
-    const info = [
+    const lines = [
       `【诊断结果】`,
-      `企微配置: corpId=${d.config?.corpId}, authType=${d.config?.authType}, hasChatSecret=${d.config?.hasChatSecret}`,
+      `企微配置: corpId=${d.config?.corpId}, authType=${d.config?.authType}`,
       `Token: ${d.token?.prefix} (len=${d.token?.len})`,
       `已保存游标: ${d.savedCursor}`,
-      ``,
-      `--- 无游标调用 sync_msg ---`,
-      `errcode: ${d.noCursorCall?.errcode}`,
-      `errmsg: ${d.noCursorCall?.errmsg}`,
-      `msg_list数量: ${d.noCursorCall?.msg_list_count}`,
-      `has_more: ${d.noCursorCall?.has_more}`,
-      `next_cursor: ${d.noCursorCall?.next_cursor || '(空)'}`,
-      d.noCursorCall?.first_msg ? `首条消息: sender=${JSON.stringify(d.noCursorCall.first_msg.sender)}, time=${d.noCursorCall.first_msg.send_time}, type=${d.noCursorCall.first_msg.msgtype}` : '首条消息: 无',
-      ``,
-      `--- 带游标调用 ---`,
-      d.withCursorCall ? `errcode=${d.withCursorCall.errcode}, msg_list=${d.withCursorCall.msg_list_len}` : '(未保存游标，跳过)',
-      ``,
-      `数据库已有记录数: ${d.dbRecordCount}`
-    ].join('\n')
-    ElMessageBox.alert(info, 'sync_msg 诊断', { confirmButtonText: '确定', customStyle: { whiteSpace: 'pre-wrap', fontFamily: 'monospace', fontSize: '12px' } })
+      ``
+    ]
+
+    if (d.zoneCall) {
+      lines.push(`===== 专区程序调用 sync_call_program =====`)
+      lines.push(`平台响应码: ${d.zoneCall.platform_errcode}`)
+      lines.push(`平台消息: ${d.zoneCall.platform_errmsg}`)
+      lines.push(`使用ability_id: ${d.zoneCall.ability_id_used}`)
+      lines.push(`get_msg_body ability: ${d.zoneCall.get_msg_body_ability}`)
+      if (d.zoneCall.error) {
+        lines.push(`❌ 错误: ${d.zoneCall.error}`)
+        if (d.zoneCall.response) lines.push(`响应: ${JSON.stringify(d.zoneCall.response)}`)
+      }
+      if (d.zoneCall.parsed) {
+        lines.push(`--- 专区程序返回内容 ---`)
+        lines.push(`errcode: ${d.zoneCall.parsed.errcode}`)
+        lines.push(`errmsg: ${d.zoneCall.parsed.errmsg}`)
+        lines.push(`msg_list数量: ${d.zoneCall.parsed.msg_list_count}`)
+        lines.push(`has_more: ${d.zoneCall.parsed.has_more}`)
+        lines.push(`keys: ${d.zoneCall.parsed.keys}`)
+        lines.push(`原始前200字符: ${d.zoneCall.parsed.first_100_chars}`)
+      }
+      lines.push(`response_data长度: ${d.zoneCall.response_data_len}`)
+      lines.push(``)
+    }
+
+    if (d.directCall) {
+      lines.push(`===== 直接HTTP调用 sync_msg =====`)
+      lines.push(`errcode: ${d.directCall.errcode}`)
+      lines.push(`errmsg: ${d.directCall.errmsg}`)
+      if (d.directCall.msg_list_count !== undefined) {
+        lines.push(`msg_list数量: ${d.directCall.msg_list_count}`)
+      }
+      if (d.directCall.note) lines.push(`说明: ${d.directCall.note}`)
+      lines.push(``)
+    }
+
+    lines.push(`===== 数据库 =====`)
+    lines.push(`真实消息记录: ${d.dbRecordCount}`)
+    lines.push(`元数据记录: ${d.dbMetaCount ?? 'N/A'}`)
+
+    ElMessageBox.alert(lines.join('\n'), '会话存档诊断', {
+      confirmButtonText: '确定',
+      customStyle: { whiteSpace: 'pre-wrap', fontFamily: 'monospace', fontSize: '12px' }
+    })
   } catch (e: any) {
     ElMessage.error('诊断失败: ' + (e?.message || '未知错误'))
   } finally {

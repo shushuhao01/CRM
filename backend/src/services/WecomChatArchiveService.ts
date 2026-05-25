@@ -147,6 +147,8 @@ export class WecomChatArchiveService {
 
       // ★ 第三方模式优化：优先拉取实际消息（快速，游标增量），然后轻量补充客户名称
       // 如果消息拉取失败（如48002 API forbidden），回退到元数据模式生成会话列表
+      let syncMsgError = '';
+      let syncMsgZeroRecords = false;
       if (config.authType === 'third_party') {
         // Step 4.5: 确保已向企微设置RSA公钥（未设置公钥时消息不会被存档）
         try {
@@ -221,7 +223,6 @@ export class WecomChatArchiveService {
 
         // Step 5: 拉取实际聊天消息（数据专区API，游标增量，快速）
         let syncMsgFailed = false;
-        let syncMsgZeroRecords = false;
         log.info(`[ChatArchive] Step5: 第三方模式 - 拉取实际聊天消息（游标增量）...`);
         try {
           const msgResult = await this.syncChatMessages(config, accessToken);
@@ -237,24 +238,17 @@ export class WecomChatArchiveService {
           }
         } catch (e: any) {
           syncMsgFailed = true;
+          syncMsgError = e.message;
           log.error(`[ChatArchive] Step5失败: ${e.message}`, e.stack);
           result.errors++;
-          if (e.message.includes('RSA私钥')) {
-            result.message += ' ⚠️ 消息拉取失败：未配置RSA私钥，请在管理后台「服务商应用管理」中配置会话存档RSA私钥。';
-          } else if (e.message.includes('48002') || e.message.includes('api forbidden')) {
-            result.message += ' ⚠️ sync_msg接口返回48002(api forbidden)，可能原因：1)企微管理后台未开通会话存档 2)数据与智能专区未正确授权 3)专区程序未部署。正在回退到外部联系人模式生成会话列表...';
-          } else {
-            result.message += ` ⚠️ 消息拉取失败：${e.message}`;
-          }
         }
+        (result as any).syncMsgStatus = syncMsgFailed ? 'error' : (syncMsgZeroRecords ? 'empty' : 'ok');
+        (result as any).syncMsgError = syncMsgError;
 
         // ★ Step 5.5: 回退机制 —— 当 sync_msg 失败或返回0条时，使用外部联系人生成会话元数据
         // 确保用户至少能看到存档成员的客户列表和群聊列表
         if ((syncMsgFailed || syncMsgZeroRecords) && externalAccessToken) {
           log.info(`[ChatArchive] Step5.5: sync_msg ${syncMsgFailed ? '失败' : '返回0条'}，回退到外部联系人元数据模式...`);
-          if (syncMsgZeroRecords && !syncMsgFailed) {
-            result.message += ' ⚠️ sync_msg返回0条消息。可能原因：1)专区程序能力ID配置不匹配(建议在服务商后台为sync_msg单独创建invoke_sync_msg能力) 2)5天内无新消息 3)响应格式不兼容。已回退到外部联系人模式。';
-          }
           try {
             const convResult = await this.syncConversationMetadata(config, externalAccessToken, accessToken, permitUserIds);
             result.newConversations = convResult.newConversations;
@@ -303,13 +297,21 @@ export class WecomChatArchiveService {
       parts.push(`${permitUserIds.length}个开通成员`);
       if (result.agreedUsers > 0) parts.push(`${result.agreedUsers}个已同意存档`);
       if (result.newConversations > 0) parts.push(`新增${result.newConversations}条会话记录`);
-      if (result.syncedRecords > 0) parts.push(`更新${result.syncedRecords}条元数据`);
+      if (result.syncedRecords > 0) parts.push(`更新${result.syncedRecords}条记录`);
 
       result.sdkRequired = config.authType !== 'third_party';
       result.mode = config.authType === 'third_party' ? 'chatdata_zone' : 'http_api';
-      result.message = config.authType === 'third_party'
+      let baseMsg = config.authType === 'third_party'
         ? `专区模式同步完成：${parts.join('，')}。`
         : `HTTP API同步完成：${parts.join('，')}。实际消息内容拉取需部署Finance SDK。`;
+
+      // 保留 Step5 的警告到 result.message
+      if (syncMsgError) {
+        baseMsg += ` ⚠️ sync_msg错误：${syncMsgError}`;
+      } else if (syncMsgZeroRecords) {
+        baseMsg += ' ⚠️ sync_msg返回0条消息（请点击"诊断"按钮查看详细原因）';
+      }
+      result.message = baseMsg;
 
       log.info(`[ChatArchive] 配置 ${config.name} 同步完成: ${result.message}`);
       return result;

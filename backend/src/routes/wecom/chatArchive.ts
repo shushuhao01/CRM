@@ -153,6 +153,9 @@ router.post('/chat-records/sync', authenticateToken, requireAdmin, async (req: R
         syncedRecords: result.syncedRecords, newConversations: result.newConversations,
         enrichedContacts: (result as any).enrichedContacts || 0,
         totalFetched: (result as any).totalFetched || 0,
+        metaRecords: (result as any).metaRecords || 0,
+        syncMsgStatus: (result as any).syncMsgStatus || 'unknown',
+        syncMsgError: (result as any).syncMsgError || '',
         errors: result.errors, sdkRequired: result.sdkRequired, mode: result.mode,
         hasPrivateKey, pubKeyStatus
       }
@@ -188,27 +191,89 @@ router.post('/chat-records/diagnose', authenticateToken, requireAdmin, async (re
     });
     const savedCursor = cursorSetting?.settingValue ? JSON.parse(cursorSetting.settingValue)?.cursor || '' : '';
 
-    // Step3: 调用sync_msg（不带cursor从头拉）
-    const rawResponse = await axios.post(
-      `https://qyapi.weixin.qq.com/cgi-bin/chatdata/sync_msg?access_token=${token}`,
-      { limit: 10 }
-    );
+    // Step3: 第三方模式通过专区程序测试sync_msg
+    let zoneCallResult: any = null;
+    let directCallResult: any = null;
 
-    // Step4: 也尝试带cursor调用
-    let cursorResponse: any = null;
-    if (savedCursor) {
+    if (config.authType === 'third_party') {
+      const { WecomSuiteConfig } = await import('../../entities/WecomSuiteConfig');
+      const suiteRepo = AppDataSource.getRepository(WecomSuiteConfig);
+      const suiteConfig = await suiteRepo.findOne({ where: {}, order: { id: 'ASC' } });
+      const zoneProgramId = suiteConfig?.zoneProgramId;
+      const zoneSyncMsgAbilityId = suiteConfig?.zoneSyncMsgAbilityId || suiteConfig?.zoneAbilityId;
+      const zoneGetMsgBodyAbilityId = (suiteConfig as any)?.zoneGetMsgBodyAbilityId || zoneSyncMsgAbilityId;
+
+      if (zoneProgramId && zoneSyncMsgAbilityId) {
+        try {
+          const requestData = JSON.stringify({
+            input: { func: 'sync_msg', func_req: { cursor: '', token: '', limit: 5 } }
+          });
+          const zoneResp = await axios.post(
+            `https://qyapi.weixin.qq.com/cgi-bin/chatdata/sync_call_program?access_token=${token}`,
+            { program_id: zoneProgramId, ability_id: zoneSyncMsgAbilityId, request_data: requestData }
+          );
+          const rawData = zoneResp.data;
+          let parsedResponseData: any = null;
+          if (rawData.errcode === 0 && rawData.response_data) {
+            try { parsedResponseData = JSON.parse(rawData.response_data); } catch { parsedResponseData = rawData.response_data; }
+          }
+          zoneCallResult = {
+            platform_errcode: rawData.errcode,
+            platform_errmsg: rawData.errmsg,
+            response_data_len: rawData.response_data?.length || 0,
+            parsed: parsedResponseData ? {
+              errcode: parsedResponseData.errcode ?? parsedResponseData.output?.errcode,
+              errmsg: parsedResponseData.errmsg ?? parsedResponseData.output?.errmsg,
+              msg_list_count: (parsedResponseData.msg_list || parsedResponseData.output?.msg_list)?.length ?? 'null',
+              has_more: parsedResponseData.has_more ?? parsedResponseData.output?.has_more,
+              keys: Object.keys(parsedResponseData).join(','),
+              first_100_chars: JSON.stringify(parsedResponseData).substring(0, 200)
+            } : null,
+            ability_id_used: zoneSyncMsgAbilityId,
+            get_msg_body_ability: zoneGetMsgBodyAbilityId
+          };
+        } catch (e: any) {
+          zoneCallResult = { error: e.message, response: e.response?.data };
+        }
+      } else {
+        zoneCallResult = { error: '未配置专区程序ID或能力ID', zoneProgramId, zoneSyncMsgAbilityId };
+      }
+
+      // 直接调用（预期返回48002）
       try {
-        const r2 = await axios.post(
+        const r = await axios.post(
           `https://qyapi.weixin.qq.com/cgi-bin/chatdata/sync_msg?access_token=${token}`,
-          { cursor: savedCursor, limit: 10 }
+          { limit: 5 }
         );
-        cursorResponse = { errcode: r2.data.errcode, errmsg: r2.data.errmsg, msg_list_len: r2.data.msg_list?.length ?? null, has_more: r2.data.has_more };
-      } catch (e: any) { cursorResponse = { error: e.message }; }
+        directCallResult = { errcode: r.data.errcode, errmsg: r.data.errmsg, note: '第三方应用直接调用预期返回48002' };
+      } catch (e: any) { directCallResult = { error: e.message }; }
+    } else {
+      // 自建模式直接调用
+      try {
+        const rawResponse = await axios.post(
+          `https://qyapi.weixin.qq.com/cgi-bin/chatdata/sync_msg?access_token=${token}`,
+          { limit: 10 }
+        );
+        directCallResult = {
+          errcode: rawResponse.data.errcode,
+          errmsg: rawResponse.data.errmsg,
+          msg_list_count: rawResponse.data.msg_list?.length ?? null,
+          has_more: rawResponse.data.has_more,
+          first_msg: rawResponse.data.msg_list?.[0] ? {
+            sender: rawResponse.data.msg_list[0].sender,
+            send_time: rawResponse.data.msg_list[0].send_time,
+            msgtype: rawResponse.data.msg_list[0].msgtype
+          } : null
+        };
+      } catch (e: any) { directCallResult = { error: e.message }; }
     }
 
-    // Step5: 检查DB中已有的记录数
+    // Step4: 检查DB中已有的记录数
     const dbCount = await AppDataSource.query(
       `SELECT COUNT(*) as cnt FROM wecom_chat_records WHERE wecom_config_id = ? AND msg_type != 'meta'`, [configId]
+    );
+    const metaCount = await AppDataSource.query(
+      `SELECT COUNT(*) as cnt FROM wecom_chat_records WHERE wecom_config_id = ? AND msg_type = 'meta'`, [configId]
     );
 
     res.json({
@@ -217,22 +282,12 @@ router.post('/chat-records/diagnose', authenticateToken, requireAdmin, async (re
         config: { id: config.id, corpId: config.corpId, authType: config.authType, hasChatSecret: !!config.chatArchiveSecret },
         token: tokenInfo,
         savedCursor: savedCursor || '(无，将从头拉取)',
-        noCursorCall: {
-          errcode: rawResponse.data.errcode,
-          errmsg: rawResponse.data.errmsg,
-          msg_list_count: rawResponse.data.msg_list?.length ?? null,
-          has_more: rawResponse.data.has_more,
-          next_cursor: rawResponse.data.next_cursor ? rawResponse.data.next_cursor.substring(0, 20) + '...' : '',
-          first_msg: rawResponse.data.msg_list?.[0] ? {
-            msgid: rawResponse.data.msg_list[0].msgid,
-            sender: rawResponse.data.msg_list[0].sender,
-            send_time: rawResponse.data.msg_list[0].send_time,
-            msgtype: rawResponse.data.msg_list[0].msgtype,
-            chatid: rawResponse.data.msg_list[0].chatid || null
-          } : null
-        },
-        withCursorCall: cursorResponse,
-        dbRecordCount: parseInt(dbCount[0]?.cnt) || 0
+        noCursorCall: zoneCallResult || directCallResult,
+        withCursorCall: directCallResult,
+        dbRecordCount: parseInt(dbCount[0]?.cnt) || 0,
+        dbMetaCount: parseInt(metaCount[0]?.cnt) || 0,
+        zoneCall: zoneCallResult,
+        directCall: directCallResult
       }
     });
   } catch (error: any) {

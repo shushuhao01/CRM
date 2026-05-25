@@ -925,10 +925,11 @@ export class WecomApiService {
         }
       );
 
-      log.info(`[WecomApi] syncCallProgram(${func}) 原始响应: errcode=${response.data.errcode}, errmsg=${response.data.errmsg}, response_data_len=${response.data.response_data?.length || 0}`);
+      const respData = response.data;
+      log.info(`[WecomApi] syncCallProgram(${func}) 原始响应: errcode=${respData.errcode}, errmsg=${respData.errmsg}, response_data_len=${respData.response_data?.length || 0}, response_data_first200=${String(respData.response_data || '').substring(0, 200)}`);
 
-      if (response.data.errcode === 0) {
-        const responseData = response.data.response_data;
+      if (respData.errcode === 0) {
+        const responseData = respData.response_data;
         if (responseData) {
           try {
             const parsed = JSON.parse(responseData);
@@ -942,7 +943,8 @@ export class WecomApiService {
         log.warn(`[WecomApi] syncCallProgram(${func}) response_data为空`);
         return {};
       } else {
-        throw new Error(`专区程序调用失败(${response.data.errcode}): ${response.data.errmsg}`);
+        log.error(`[WecomApi] syncCallProgram(${func}) 平台返回错误: errcode=${respData.errcode}, errmsg=${respData.errmsg}, full_response=${JSON.stringify(respData).substring(0, 500)}`);
+        throw new Error(`专区程序调用失败(${respData.errcode}): ${respData.errmsg}`);
       }
     } catch (error: any) {
       log.error(`[WecomApi] syncCallProgram(${func}) error:`, error.message);
@@ -967,11 +969,30 @@ export class WecomApiService {
   }> {
     log.info(`[WecomApi] getChatMsgDataViaZone: cursor=${cursor || '(首次)'}, limit=${limit}, abilityId=${abilityId}`);
 
-    const rawResult = await this.syncCallProgram(accessToken, programId, abilityId, 'sync_msg', {
+    let rawResult = await this.syncCallProgram(accessToken, programId, abilityId, 'sync_msg', {
       cursor,
       token: '',
       limit
     });
+
+    // ★ 如果首次拉取返回空，尝试带 begin_time 从最近24小时重拉
+    const firstResult = rawResult;
+    const firstMsgList = rawResult?.msg_list || rawResult?.output?.msg_list;
+    if ((!firstMsgList || firstMsgList.length === 0) && !cursor) {
+      const beginTime = Math.floor(Date.now() / 1000) - 86400; // 24小时前
+      log.info(`[WecomApi] getChatMsgDataViaZone: 首次拉取0条，尝试带begin_time=${beginTime}重拉`);
+      try {
+        rawResult = await this.syncCallProgram(accessToken, programId, abilityId, 'sync_msg', {
+          cursor: '',
+          token: '',
+          limit,
+          begin_time: beginTime
+        });
+      } catch (retryErr: any) {
+        log.warn(`[WecomApi] getChatMsgDataViaZone: begin_time重拉失败: ${retryErr.message}`);
+        rawResult = firstResult;
+      }
+    }
 
     // ★ 兼容多种响应格式：
     // 1. 直接格式: {errcode, msg_list, has_more, next_cursor}
