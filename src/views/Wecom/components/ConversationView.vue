@@ -528,21 +528,24 @@ const deptMemberCrmIds = ref<string[]>([])
 const archiveVisibility = ref<'self' | 'department' | 'all'>('all')
 
 const visibleArchiveMembers = computed(() => {
-  // 超级管理员始终可见所有
-  if (isAdminRole.value) return archiveMembers.value
+  // 第一层过滤：只显示生效范围内的成员（isEnabled=true）
+  const enabledMembers = archiveMembers.value.filter((m: any) => m.isEnabled !== false)
+
+  // 超级管理员可见所有已启用成员
+  if (isAdminRole.value) return enabledMembers
 
   // 根据存档设置的数据可见范围过滤
   const vis = archiveVisibility.value
 
-  if (vis === 'all') return archiveMembers.value
+  if (vis === 'all') return enabledMembers
 
   if (vis === 'department' || isManagerRole.value) {
-    return archiveMembers.value.filter((m: any) => m.crmUserId && deptMemberCrmIds.value.includes(m.crmUserId))
+    return enabledMembers.filter((m: any) => m.crmUserId && deptMemberCrmIds.value.includes(m.crmUserId))
   }
 
   // vis === 'self'：仅自己
   const myId = currentUser.value?.id
-  return archiveMembers.value.filter((m: any) => m.crmUserId === myId)
+  return enabledMembers.filter((m: any) => m.crmUserId === myId)
 })
 
 const filteredMembers = computed(() => {

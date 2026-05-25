@@ -63,6 +63,9 @@ export class WecomSuiteConfig {
   @Column({ name: 'zone_ability_id', type: 'varchar', length: 100, nullable: true, comment: '专区程序能力ID（sync_msg等共用，通过func路由）' })
   zoneAbilityId: string;
 
+  @Column({ name: 'zone_sync_msg_ability_id', type: 'varchar', length: 100, nullable: true, comment: '获取会话记录专用能力ID（如invoke_sync_msg，为空则使用zoneAbilityId）' })
+  zoneSyncMsgAbilityId: string;
+
   @Column({ name: 'is_enabled', type: 'boolean', default: false })
   isEnabled: boolean;
 

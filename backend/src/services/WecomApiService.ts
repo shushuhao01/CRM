@@ -913,7 +913,7 @@ export class WecomApiService {
       input: { func, func_req: funcReq }
     });
 
-    log.info(`[WecomApi] syncCallProgram: func=${func}, programId=${programId}, abilityId=${abilityId}`);
+    log.info(`[WecomApi] syncCallProgram: func=${func}, programId=${programId}, abilityId=${abilityId}, requestData_len=${requestData.length}`);
 
     try {
       const response = await axios.post(
@@ -925,15 +925,21 @@ export class WecomApiService {
         }
       );
 
+      log.info(`[WecomApi] syncCallProgram(${func}) 原始响应: errcode=${response.data.errcode}, errmsg=${response.data.errmsg}, response_data_len=${response.data.response_data?.length || 0}`);
+
       if (response.data.errcode === 0) {
         const responseData = response.data.response_data;
         if (responseData) {
           try {
-            return JSON.parse(responseData);
-          } catch {
+            const parsed = JSON.parse(responseData);
+            log.info(`[WecomApi] syncCallProgram(${func}) 解析成功: keys=${Object.keys(parsed).join(',')}, type=${typeof parsed}`);
+            return parsed;
+          } catch (parseErr: any) {
+            log.warn(`[WecomApi] syncCallProgram(${func}) response_data JSON解析失败: ${parseErr.message}, 前100字符: ${String(responseData).substring(0, 100)}`);
             return responseData;
           }
         }
+        log.warn(`[WecomApi] syncCallProgram(${func}) response_data为空`);
         return {};
       } else {
         throw new Error(`专区程序调用失败(${response.data.errcode}): ${response.data.errmsg}`);
@@ -959,20 +965,44 @@ export class WecomApiService {
     has_more: boolean;
     next_cursor: string;
   }> {
-    log.info(`[WecomApi] getChatMsgDataViaZone: cursor=${cursor || '(首次)'}, limit=${limit}`);
+    log.info(`[WecomApi] getChatMsgDataViaZone: cursor=${cursor || '(首次)'}, limit=${limit}, abilityId=${abilityId}`);
 
-    const result = await this.syncCallProgram(accessToken, programId, abilityId, 'sync_msg', {
+    const rawResult = await this.syncCallProgram(accessToken, programId, abilityId, 'sync_msg', {
       cursor,
       limit
     });
 
+    // ★ 兼容多种响应格式：
+    // 1. 直接格式: {errcode, msg_list, has_more, next_cursor}
+    // 2. output包装: {output: {errcode, msg_list, has_more, next_cursor}}
+    // 3. Python demo包装: {output: "{JSON string}"}
+    let result = rawResult;
+    if (rawResult.output !== undefined) {
+      if (typeof rawResult.output === 'string') {
+        try {
+          result = JSON.parse(rawResult.output);
+        } catch {
+          result = rawResult;
+        }
+      } else if (typeof rawResult.output === 'object') {
+        result = rawResult.output;
+      }
+    }
+
+    log.info(`[WecomApi] getChatMsgDataViaZone 解析后: errcode=${result.errcode}, msg_list_len=${result.msg_list?.length ?? 'null'}, has_more=${result.has_more}, keys=${Object.keys(result).join(',')}`);
+
     if (result.errcode && result.errcode !== 0) {
-      throw new Error(`专区sync_msg失败(${result.errcode}): ${result.errmsg}`);
+      throw new Error(`专区sync_msg失败(${result.errcode}): ${result.errmsg || '未知错误'}`);
     }
 
     const msgList = result.msg_list || [];
     const hasMore = result.has_more === 1 || result.has_more === true;
     const nextCursor = result.next_cursor || '';
+
+    if (msgList.length > 0) {
+      const sample = msgList[0];
+      log.info(`[WecomApi] getChatMsgDataViaZone 首条消息: msgid=${sample.msgid}, sender=${JSON.stringify(sample.sender)}, send_time=${sample.send_time}, msgtype=${sample.msgtype}, has_encrypt_info=${!!sample.service_encrypt_info}`);
+    }
 
     const chatdata = msgList.map((msg: any, idx: number) => ({
       seq: idx,
@@ -1006,12 +1036,22 @@ export class WecomApiService {
     encrypted_msg_body: string;
     public_key_ver: number;
   }> {
-    const result = await this.syncCallProgram(accessToken, programId, abilityId, 'get_msg_body', {
+    const rawResult = await this.syncCallProgram(accessToken, programId, abilityId, 'get_msg_body', {
       msgid
     });
 
+    // ★ 兼容 output 包装层
+    let result = rawResult;
+    if (rawResult.output !== undefined) {
+      if (typeof rawResult.output === 'string') {
+        try { result = JSON.parse(rawResult.output); } catch { result = rawResult; }
+      } else if (typeof rawResult.output === 'object') {
+        result = rawResult.output;
+      }
+    }
+
     if (result.errcode && result.errcode !== 0) {
-      throw new Error(`专区get_msg_body失败(${result.errcode}): ${result.errmsg}`);
+      throw new Error(`专区get_msg_body失败(${result.errcode}): ${result.errmsg || '未知错误'}`);
     }
 
     return {

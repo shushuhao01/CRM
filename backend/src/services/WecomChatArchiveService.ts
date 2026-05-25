@@ -252,10 +252,14 @@ export class WecomChatArchiveService {
         // 确保用户至少能看到存档成员的客户列表和群聊列表
         if ((syncMsgFailed || syncMsgZeroRecords) && externalAccessToken) {
           log.info(`[ChatArchive] Step5.5: sync_msg ${syncMsgFailed ? '失败' : '返回0条'}，回退到外部联系人元数据模式...`);
+          if (syncMsgZeroRecords && !syncMsgFailed) {
+            result.message += ' ⚠️ sync_msg返回0条消息。可能原因：1)专区程序能力ID配置不匹配(建议在服务商后台为sync_msg单独创建invoke_sync_msg能力) 2)5天内无新消息 3)响应格式不兼容。已回退到外部联系人模式。';
+          }
           try {
             const convResult = await this.syncConversationMetadata(config, externalAccessToken, accessToken, permitUserIds);
             result.newConversations = convResult.newConversations;
             result.agreedUsers = convResult.agreedCount;
+            (result as any).metaRecords = convResult.syncedRecords;
             result.syncedRecords += convResult.syncedRecords;
             log.info(`[ChatArchive] Step5.5完成: newConversations=${convResult.newConversations}, agreedCount=${convResult.agreedCount}, syncedRecords=${convResult.syncedRecords}`);
             if (convResult.newConversations > 0) {
@@ -618,17 +622,27 @@ export class WecomChatArchiveService {
         if (b.crm_user_id) crmBindingMap.set(b.wecom_user_id, b.crm_user_id);
       }
 
+      // 检查是否已有启用的成员（判断是否已配置生效范围）
+      const enabledCountResult = await AppDataSource.query(
+        `SELECT COUNT(*) as cnt FROM wecom_archive_members WHERE tenant_id = ? AND is_enabled = 1`,
+        [tenantId]
+      ).catch(() => [{ cnt: 0 }]);
+      const hasEnabledMembers = parseInt(enabledCountResult[0]?.cnt || '0') > 0;
+
       let addedCount = 0;
       for (const userId of userIds) {
         if (existingSet.has(userId)) continue;
         const userName = userNameMap.get(userId) || userId;
         const crmUserId = crmBindingMap.get(userId) || null;
+        // 新成员默认不启用（需管理员在"生效范围"中手动启用）
+        // 如果尚未配置过生效范围（无任何已启用成员），则自动启用以保持向后兼容
+        const defaultEnabled = hasEnabledMembers ? 0 : 1;
         try {
           await AppDataSource.query(
             `INSERT INTO wecom_archive_members (tenant_id, wecom_user_id, wecom_user_name, crm_user_id, is_enabled, created_at, updated_at)
-             VALUES (?, ?, ?, ?, 1, NOW(), NOW())
+             VALUES (?, ?, ?, ?, ?, NOW(), NOW())
              ON DUPLICATE KEY UPDATE wecom_user_name = VALUES(wecom_user_name), updated_at = NOW()`,
-            [tenantId, userId, userName, crmUserId]
+            [tenantId, userId, userName, crmUserId, defaultEnabled]
           );
           addedCount++;
         } catch (insertErr: any) {
@@ -636,7 +650,7 @@ export class WecomChatArchiveService {
         }
       }
       if (addedCount > 0) {
-        log.info(`[ChatArchive] 新增 ${addedCount} 个存档成员到 wecom_archive_members`);
+        log.info(`[ChatArchive] 新增 ${addedCount} 个存档成员到 wecom_archive_members (默认${hasEnabledMembers ? '未启用' : '已启用'})`);
       }
     } catch (e: any) {
       log.warn('[ChatArchive] 同步 archive_members 失败:', e.message);
@@ -1388,7 +1402,9 @@ export class WecomChatArchiveService {
     const rsaPrivateKey = suiteConfig?.chatArchiveRsaPrivateKey;
     const zoneProgramId = suiteConfig?.zoneProgramId;
     const zoneAbilityId = suiteConfig?.zoneAbilityId;
-    const useZoneProxy = !!(zoneProgramId && zoneAbilityId && config.authType === 'third_party');
+    // ★ 优先使用专门的 sync_msg 能力ID（如 invoke_sync_msg），否则回退到通用能力ID
+    const zoneSyncMsgAbilityId = suiteConfig?.zoneSyncMsgAbilityId || zoneAbilityId;
+    const useZoneProxy = !!(zoneProgramId && zoneSyncMsgAbilityId && config.authType === 'third_party');
 
     if (!rsaPrivateKey) {
       log.warn('[ChatArchive] syncChatMessages: 服务商未配置RSA私钥，无法解密消息。请平台管理员在「服务商应用管理」中配置RSA密钥对');
@@ -1399,7 +1415,7 @@ export class WecomChatArchiveService {
       log.warn('[ChatArchive] syncChatMessages: 第三方模式未配置专区程序ID，sync_msg需要通过专区程序调用。请在管理后台「服务商应用管理」中配置专区程序ID和能力ID');
     }
 
-    log.info(`[ChatArchive] syncChatMessages: useZoneProxy=${useZoneProxy}, zoneProgramId=${zoneProgramId || '(无)'}, zoneAbilityId=${zoneAbilityId || '(无)'}`);
+    log.info(`[ChatArchive] syncChatMessages: useZoneProxy=${useZoneProxy}, zoneProgramId=${zoneProgramId || '(无)'}, zoneAbilityId=${zoneAbilityId || '(无)'}, zoneSyncMsgAbilityId=${zoneSyncMsgAbilityId || '(无)'}`);
 
     // 获取上次拉取的游标位置
     let cursor = await this.getSyncCursor(config.id, config.tenantId);
@@ -1446,7 +1462,7 @@ export class WecomChatArchiveService {
       try {
         // 第三方模式通过专区程序代理调用，自建模式直接HTTP调用
         const result = useZoneProxy
-          ? await WecomApiService.getChatMsgDataViaZone(chatAccessToken, zoneProgramId!, zoneAbilityId!, cursor, 200)
+          ? await WecomApiService.getChatMsgDataViaZone(chatAccessToken, zoneProgramId!, zoneSyncMsgAbilityId!, cursor, 200)
           : await WecomApiService.getChatMsgData(chatAccessToken, cursor, 200);
         const chatdata = result.chatdata;
         hasMore = result.has_more;
@@ -1509,13 +1525,12 @@ export class WecomChatArchiveService {
                   if (sk) {
                     try {
                       const msgBody = useZoneProxy
-                        ? await WecomApiService.getMsgBodyViaZone(chatAccessToken, zoneProgramId!, zoneAbilityId!, item.msgid)
+                        ? await WecomApiService.getMsgBodyViaZone(chatAccessToken, zoneProgramId!, zoneSyncMsgAbilityId!, item.msgid)
                         : await WecomApiService.getMsgBody(chatAccessToken, item.msgid);
                       if (msgBody.encrypted_msg_body) {
                         const plaintext = this.aesDecrypt(sk, msgBody.encrypted_msg_body);
                         if (plaintext) {
                           existing.content = plaintext;
-                          // 补充缺失的发送者信息
                           if (!existing.fromUserId && fromUserId) existing.fromUserId = fromUserId;
                           if (!existing.fromUserName && fromUserName) existing.fromUserName = fromUserName;
                           await chatRecordRepo.save(existing);
@@ -1542,7 +1557,7 @@ export class WecomChatArchiveService {
             if (secretKey) {
               try {
                 const msgBody = useZoneProxy
-                  ? await WecomApiService.getMsgBodyViaZone(chatAccessToken, zoneProgramId!, zoneAbilityId!, item.msgid)
+                  ? await WecomApiService.getMsgBodyViaZone(chatAccessToken, zoneProgramId!, zoneSyncMsgAbilityId!, item.msgid)
                   : await WecomApiService.getMsgBody(chatAccessToken, item.msgid);
                 encryptedMsgBody = msgBody.encrypted_msg_body || '';
               } catch (bodyErr: any) {
