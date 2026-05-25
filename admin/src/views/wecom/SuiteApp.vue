@@ -168,6 +168,20 @@
               </div>
             </el-form-item>
 
+            <el-divider content-position="left">数据与智能专区程序</el-divider>
+            <el-alert type="info" :closable="false" style="margin-bottom: 12px">
+              <div style="font-size: 12px; line-height: 1.8">
+                第三方应用需通过专区程序拉取会话存档消息。请在企微服务商后台创建专区程序后，将分配的程序ID和能力ID填写到下方。
+                未配置时，会话存档将使用外部联系人元数据模式（仅显示会话列表，不含聊天内容）。
+              </div>
+            </el-alert>
+            <el-form-item label="专区程序ID">
+              <el-input v-model="suiteConfig.zoneProgramId" placeholder="program_id（企微服务商后台分配）" />
+            </el-form-item>
+            <el-form-item label="专区能力ID">
+              <el-input v-model="suiteConfig.zoneAbilityId" placeholder="ability_id（专区程序关联的能力ID）" />
+            </el-form-item>
+
             <el-form-item>
               <el-button v-permission="'wecom-management:suite:edit'" type="primary" @click="handleSaveConfig" :loading="saving">保存配置</el-button>
               <el-button v-permission="'wecom-management:suite:edit'" @click="handleTestSuiteConnection" :loading="testingConnection">测试连接</el-button>
@@ -1185,6 +1199,7 @@ const suiteConfig = ref<any>({
   appStatus: '', permissions: [], redirectDomain: '', appType: 'web',
   callbackToken: '', callbackEncodingAesKey: '',
   chatArchiveRsaPublicKey: '', chatArchiveRsaPrivateKey: '',
+  zoneProgramId: '', zoneAbilityId: '',
   isEnabled: true, mpAppId: '', mpEnabled: false,
   webLoginToken: '', webLoginEncodingAesKey: '', webLoginRedirectDomain: '',
   webLoginAppId: '', webLoginSecret: ''

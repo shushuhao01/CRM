@@ -895,6 +895,131 @@ export class WecomApiService {
     }
   }
 
+  // ==================== 专区程序代理调用 ====================
+
+  /**
+   * 【数据与智能专区】同步调用专区程序
+   * 文档: https://developer.work.weixin.qq.com/document/path/101356
+   * 外部应用通过此接口调用运行在安全沙箱中的专区程序
+   */
+  static async syncCallProgram(
+    accessToken: string,
+    programId: string,
+    abilityId: string,
+    func: string,
+    funcReq: Record<string, any>
+  ): Promise<any> {
+    const requestData = JSON.stringify({
+      input: { func, func_req: funcReq }
+    });
+
+    log.info(`[WecomApi] syncCallProgram: func=${func}, programId=${programId}, abilityId=${abilityId}`);
+
+    try {
+      const response = await axios.post(
+        `${WECOM_API_BASE}/chatdata/sync_call_program?access_token=${accessToken}`,
+        {
+          program_id: programId,
+          ability_id: abilityId,
+          request_data: requestData
+        }
+      );
+
+      if (response.data.errcode === 0) {
+        const responseData = response.data.response_data;
+        if (responseData) {
+          try {
+            return JSON.parse(responseData);
+          } catch {
+            return responseData;
+          }
+        }
+        return {};
+      } else {
+        throw new Error(`专区程序调用失败(${response.data.errcode}): ${response.data.errmsg}`);
+      }
+    } catch (error: any) {
+      log.error(`[WecomApi] syncCallProgram(${func}) error:`, error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * 通过专区程序代理调用 sync_msg（第三方应用必须使用此路径）
+   * 专区程序内部通过 specsdkinvoke.invoke("sync_msg") 执行实际的消息拉取
+   */
+  static async getChatMsgDataViaZone(
+    accessToken: string,
+    programId: string,
+    abilityId: string,
+    cursor: string = '',
+    limit: number = 200
+  ): Promise<{
+    chatdata: Array<any>;
+    has_more: boolean;
+    next_cursor: string;
+  }> {
+    log.info(`[WecomApi] getChatMsgDataViaZone: cursor=${cursor || '(首次)'}, limit=${limit}`);
+
+    const result = await this.syncCallProgram(accessToken, programId, abilityId, 'sync_msg', {
+      cursor,
+      limit
+    });
+
+    if (result.errcode && result.errcode !== 0) {
+      throw new Error(`专区sync_msg失败(${result.errcode}): ${result.errmsg}`);
+    }
+
+    const msgList = result.msg_list || [];
+    const hasMore = result.has_more === 1 || result.has_more === true;
+    const nextCursor = result.next_cursor || '';
+
+    const chatdata = msgList.map((msg: any, idx: number) => ({
+      seq: idx,
+      msgid: msg.msgid || '',
+      publickey_ver: msg.service_encrypt_info?.public_key_ver || 1,
+      encrypt_random_key: msg.service_encrypt_info?.encrypted_secret_key || '',
+      encrypt_chat_msg: '',
+      sender: msg.sender || { type: 0, id: '' },
+      sender_type: msg.sender?.type || 0,
+      sender_id: msg.sender?.id || '',
+      receiver_list: msg.receiver_list || [],
+      send_time: msg.send_time || 0,
+      msgtype: msg.msgtype || 0,
+      chatid: msg.chatid || '',
+    }));
+
+    log.info(`[WecomApi] getChatMsgDataViaZone: 获取 ${chatdata.length} 条消息, hasMore=${hasMore}`);
+    return { chatdata, has_more: hasMore, next_cursor: nextCursor };
+  }
+
+  /**
+   * 通过专区程序代理调用 get_msg_body（第三方应用必须使用此路径）
+   * 专区程序内部通过 specsdkinvoke.invoke("get_msg_body") 获取加密消息体
+   */
+  static async getMsgBodyViaZone(
+    accessToken: string,
+    programId: string,
+    abilityId: string,
+    msgid: string
+  ): Promise<{
+    encrypted_msg_body: string;
+    public_key_ver: number;
+  }> {
+    const result = await this.syncCallProgram(accessToken, programId, abilityId, 'get_msg_body', {
+      msgid
+    });
+
+    if (result.errcode && result.errcode !== 0) {
+      throw new Error(`专区get_msg_body失败(${result.errcode}): ${result.errmsg}`);
+    }
+
+    return {
+      encrypted_msg_body: result.encrypted_msg_body || '',
+      public_key_ver: result.public_key_ver || 1
+    };
+  }
+
   // ==================== JS-SDK 相关 ====================
 
   /**

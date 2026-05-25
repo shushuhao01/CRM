@@ -14,7 +14,9 @@ function parseQuery(options) {
     tenantId: options.tenantId || '',
     memberId: options.memberId || '',
     ts: options.ts || '',
-    sign: options.sign || ''
+    sign: options.sign || '',
+    t: options.t || '',
+    externalUserId: options.externalUserId || ''
   }
 
   // 如果有 scene 参数（小程序码扫描进入），解码并解析

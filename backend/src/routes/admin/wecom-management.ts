@@ -3632,6 +3632,8 @@ router.get('/suite/config', async (req: Request, res: Response) => {
         permissions: config.permissions ? JSON.parse(config.permissions) : [],
         chatArchiveRsaPublicKey: config.chatArchiveRsaPublicKey || '',
         chatArchiveRsaPrivateKey: config.chatArchiveRsaPrivateKey ? '******' : '',
+        zoneProgramId: config.zoneProgramId || '',
+        zoneAbilityId: config.zoneAbilityId || '',
         isEnabled: config.isEnabled,
         mpAppId: config.mpAppId || '',
         mpEnabled: config.mpEnabled || false,
@@ -3685,6 +3687,7 @@ router.put('/suite/config', async (req: Request, res: Response) => {
       callbackToken, callbackEncodingAesKey, redirectDomain, appType,
       appName, appDescription, appStatus, permissions, isEnabled,
       chatArchiveRsaPublicKey, chatArchiveRsaPrivateKey,
+      zoneProgramId, zoneAbilityId,
       mpAppId, mpAppSecret, mpFormSecret, mpEnabled, mpConfig,
       webLoginToken, webLoginEncodingAesKey, webLoginRedirectDomain,
       webLoginAppId, webLoginSecret
@@ -3715,6 +3718,8 @@ router.put('/suite/config', async (req: Request, res: Response) => {
     if (permissions !== undefined) config.permissions = JSON.stringify(Array.isArray(permissions) ? permissions : []);
     if (chatArchiveRsaPublicKey !== undefined) config.chatArchiveRsaPublicKey = chatArchiveRsaPublicKey;
     if (chatArchiveRsaPrivateKey && chatArchiveRsaPrivateKey !== '******') config.chatArchiveRsaPrivateKey = chatArchiveRsaPrivateKey;
+    if (zoneProgramId !== undefined) config.zoneProgramId = zoneProgramId;
+    if (zoneAbilityId !== undefined) config.zoneAbilityId = zoneAbilityId;
     if (mpAppId !== undefined) config.mpAppId = mpAppId;
     if (mpAppSecret && mpAppSecret !== '******') config.mpAppSecret = mpAppSecret;
     if (mpFormSecret !== undefined) config.mpFormSecret = mpFormSecret;

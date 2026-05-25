@@ -57,6 +57,12 @@ export class WecomSuiteConfig {
   @Column({ name: 'chat_archive_rsa_private_key', type: 'text', nullable: true, comment: '会话存档RSA私钥(服务商级别，所有授权企业共用)' })
   chatArchiveRsaPrivateKey: string;
 
+  @Column({ name: 'zone_program_id', type: 'varchar', length: 100, nullable: true, comment: '数据与智能专区程序ID' })
+  zoneProgramId: string;
+
+  @Column({ name: 'zone_ability_id', type: 'varchar', length: 100, nullable: true, comment: '专区程序能力ID（sync_msg等共用，通过func路由）' })
+  zoneAbilityId: string;
+
   @Column({ name: 'is_enabled', type: 'boolean', default: false })
   isEnabled: boolean;
 

@@ -311,6 +311,33 @@ def handle_sync_msg(func_req):
         return {"errcode": -1, "errmsg": str(e)}
 
 
+def handle_get_msg_body(func_req):
+    """
+    处理 get_msg_body - 获取消息体
+    通过专区SDK获取指定消息的加密消息体
+    """
+    msgid = func_req.get("msgid", "")
+
+    if not msgid:
+        return {"errcode": -1, "errmsg": "缺少msgid参数"}
+
+    if not SDK_AVAILABLE:
+        return {
+            "errcode": -1,
+            "errmsg": "专区SDK未加载，无法获取消息体。请确保SDK已正确放置。"
+        }
+
+    try:
+        req_data = json.dumps({"msgid": msgid})
+        resp = specsdkinvoke.invoke("get_msg_body", req_data)
+        result = json.loads(resp)
+        log_info(f"get_msg_body 成功: msgid={msgid}")
+        return result
+    except Exception as e:
+        log_error(f"get_msg_body 失败: msgid={msgid}, error={e}")
+        return {"errcode": -1, "errmsg": str(e)}
+
+
 def handle_chat_analysis(func_req):
     """
     处理 chat_analysis - 会话智能分析
@@ -483,7 +510,7 @@ class ZoneProgramHandler(BaseHTTPRequestHandler):
             "service": "yunke-crm-analysis",
             "version": "2.0.0",
             "sdk_available": SDK_AVAILABLE,
-            "capabilities": ["sync_msg", "chat_analysis", "do_async_job"],
+            "capabilities": ["sync_msg", "get_msg_body", "chat_analysis", "do_async_job"],
             "timestamp": int(time.time())
         })
 
@@ -500,6 +527,8 @@ class ZoneProgramHandler(BaseHTTPRequestHandler):
 
         if func == "sync_msg":
             return handle_sync_msg(func_req)
+        elif func == "get_msg_body":
+            return handle_get_msg_body(func_req)
         elif func == "chat_analysis":
             return handle_chat_analysis(func_req)
         elif func == "do_async_job":
@@ -613,7 +642,7 @@ def main():
     log_info("=" * 60)
     log_info(f"监听地址: {host}:{port}")
     log_info(f"专区SDK状态: {'已加载' if SDK_AVAILABLE else '未加载（本地调试模式）'}")
-    log_info(f"已注册能力: sync_msg, chat_analysis, do_async_job")
+    log_info(f"已注册能力: sync_msg, get_msg_body, chat_analysis, do_async_job")
     log_info("=" * 60)
 
     server = HTTPServer((host, port), ZoneProgramHandler)

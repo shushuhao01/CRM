@@ -594,6 +594,8 @@ const handleSync = async () => {
     if (activeTab.value === 'records') {
       fetchList()
     } else {
+      // 同步后刷新存档成员列表和会话列表
+      await conversationViewRef.value?.fetchArchiveMembers()
       conversationViewRef.value?.fetchConversations()
     }
   } catch (e: any) {

@@ -92,9 +92,28 @@ export class WecomChatArchiveService {
       if (config.authType === 'third_party') {
         // 第三方服务商模式：使用数据与智能专区接口
         log.info(`[ChatArchive] Step2: 第三方模式 - 调用专区 getChatDataAuthUserList...`);
-        const authUsers = await WecomApiService.getChatDataAuthUserList(accessToken);
-        permitUserIds = authUsers.map(u => u.userid);
-        log.info(`[ChatArchive] Step2完成: 专区授权成员: ${permitUserIds.length} 人, IDs: ${permitUserIds.slice(0, 10).join(',')}`);
+        try {
+          const authUsers = await WecomApiService.getChatDataAuthUserList(accessToken);
+          permitUserIds = authUsers.map(u => u.userid);
+          log.info(`[ChatArchive] Step2完成: 专区授权成员: ${permitUserIds.length} 人, IDs: ${permitUserIds.slice(0, 10).join(',')}`);
+        } catch (step2Err: any) {
+          log.warn(`[ChatArchive] Step2: getChatDataAuthUserList 失败: ${step2Err.message}`);
+          // 回退：从本地 wecom_archive_members 表获取已知成员
+          try {
+            const localMembers = await AppDataSource.query(
+              `SELECT wecom_user_id FROM wecom_archive_members WHERE tenant_id = ? AND is_enabled = 1`,
+              [config.tenantId || '']
+            );
+            permitUserIds = localMembers.map((m: any) => m.wecom_user_id).filter(Boolean);
+            if (permitUserIds.length > 0) {
+              log.info(`[ChatArchive] Step2回退: 从本地获取 ${permitUserIds.length} 个存档成员`);
+              result.message += ` ⚠️ 专区成员列表接口失败(${step2Err.message})，使用本地缓存的${permitUserIds.length}个成员继续同步。`;
+            }
+          } catch { /* ignore */ }
+          if (permitUserIds.length === 0) {
+            throw step2Err;
+          }
+        }
       } else {
         // 自建应用模式：使用传统 msgaudit 接口
         log.info(`[ChatArchive] Step2: 自建模式 - 调用 getPermitUserList...`);
@@ -127,7 +146,7 @@ export class WecomChatArchiveService {
       }
 
       // ★ 第三方模式优化：优先拉取实际消息（快速，游标增量），然后轻量补充客户名称
-      // 避免遍历所有外部联系人（可能上万），只处理有实际消息的会话
+      // 如果消息拉取失败（如48002 API forbidden），回退到元数据模式生成会话列表
       if (config.authType === 'third_party') {
         // Step 4.5: 确保已向企微设置RSA公钥（未设置公钥时消息不会被存档）
         try {
@@ -138,7 +157,6 @@ export class WecomChatArchiveService {
           const rsaPublicKey = suiteConfig?.chatArchiveRsaPublicKey;
 
           if (rsaPublicKey) {
-            // 检查是否已设置过公钥（使用TenantSettings持久化标记，避免每次同步都调用）
             const pubKeySettingKey = `chat_pubkey_set_${config.id}`;
             let alreadySet = false;
             const { TenantSettings } = await import('../entities/TenantSettings');
@@ -166,7 +184,6 @@ export class WecomChatArchiveService {
               const pubKeyVer = 1;
               await WecomApiService.setChatDataPublicKey(accessToken, rsaPublicKey, pubKeyVer);
 
-              // 持久化标记：公钥已设置（必须正确设置id，TenantSettings的id是手动UUID）
               try {
                 const { v4: uuidv4 } = await import('uuid');
                 const existing = await settingsRepo.findOne({
@@ -203,6 +220,8 @@ export class WecomChatArchiveService {
         }
 
         // Step 5: 拉取实际聊天消息（数据专区API，游标增量，快速）
+        let syncMsgFailed = false;
+        let syncMsgZeroRecords = false;
         log.info(`[ChatArchive] Step5: 第三方模式 - 拉取实际聊天消息（游标增量）...`);
         try {
           const msgResult = await this.syncChatMessages(config, accessToken);
@@ -213,16 +232,37 @@ export class WecomChatArchiveService {
           } else if (msgResult.totalFetched > 0) {
             log.info(`[ChatArchive] Step5完成: 拉取 ${msgResult.totalFetched} 条(均已存在), 无新增`);
           } else {
-            log.info(`[ChatArchive] Step5完成: API返回0条消息（请检查后端日志 access.log 中 [WecomApi] getChatMsgData 的详细响应）`);
-            result.message += ' ℹ️ sync_msg返回0条，请查看服务器日志定位原因。';
+            syncMsgZeroRecords = true;
+            log.info(`[ChatArchive] Step5完成: API返回0条消息，将回退到外部联系人元数据模式`);
           }
         } catch (e: any) {
+          syncMsgFailed = true;
           log.error(`[ChatArchive] Step5失败: ${e.message}`, e.stack);
           result.errors++;
           if (e.message.includes('RSA私钥')) {
             result.message += ' ⚠️ 消息拉取失败：未配置RSA私钥，请在管理后台「服务商应用管理」中配置会话存档RSA私钥。';
+          } else if (e.message.includes('48002') || e.message.includes('api forbidden')) {
+            result.message += ' ⚠️ sync_msg接口返回48002(api forbidden)，可能原因：1)企微管理后台未开通会话存档 2)数据与智能专区未正确授权 3)专区程序未部署。正在回退到外部联系人模式生成会话列表...';
           } else {
             result.message += ` ⚠️ 消息拉取失败：${e.message}`;
+          }
+        }
+
+        // ★ Step 5.5: 回退机制 —— 当 sync_msg 失败或返回0条时，使用外部联系人生成会话元数据
+        // 确保用户至少能看到存档成员的客户列表和群聊列表
+        if ((syncMsgFailed || syncMsgZeroRecords) && externalAccessToken) {
+          log.info(`[ChatArchive] Step5.5: sync_msg ${syncMsgFailed ? '失败' : '返回0条'}，回退到外部联系人元数据模式...`);
+          try {
+            const convResult = await this.syncConversationMetadata(config, externalAccessToken, accessToken, permitUserIds);
+            result.newConversations = convResult.newConversations;
+            result.agreedUsers = convResult.agreedCount;
+            result.syncedRecords += convResult.syncedRecords;
+            log.info(`[ChatArchive] Step5.5完成: newConversations=${convResult.newConversations}, agreedCount=${convResult.agreedCount}, syncedRecords=${convResult.syncedRecords}`);
+            if (convResult.newConversations > 0) {
+              result.message += ` 通过外部联系人模式新增${convResult.newConversations}条会话记录。`;
+            }
+          } catch (fallbackErr: any) {
+            log.warn(`[ChatArchive] Step5.5: 外部联系人元数据回退也失败: ${fallbackErr.message}`);
           }
         }
 
@@ -538,11 +578,13 @@ export class WecomChatArchiveService {
   }
 
   /**
-   * 保存开通会话存档的成员信息
+   * 保存开通会话存档的成员信息（同时更新 archive_settings 和 archive_members 表）
    */
   private static async savePermitUsers(config: WecomConfig, userIds: string[]): Promise<void> {
+    const tenantId = config.tenantId || '';
+
+    // 1. 更新 archive_settings 表（席位统计）
     try {
-      const tenantId = config.tenantId || '';
       await AppDataSource.query(
         `INSERT INTO wecom_archive_settings (tenant_id, max_users, used_users, status)
          VALUES (?, ?, ?, 'active')
@@ -553,6 +595,51 @@ export class WecomChatArchiveService {
       });
     } catch (e: any) {
       log.warn('[ChatArchive] 保存开通成员信息失败:', e.message);
+    }
+
+    // 2. 同步到 wecom_archive_members 表（确保前端能显示存档成员列表）
+    try {
+      const userNameMap = await this.getUserNameMap(config);
+
+      // 查询已有的 archive_members
+      const existingMembers = await AppDataSource.query(
+        `SELECT wecom_user_id FROM wecom_archive_members WHERE tenant_id = ?`,
+        [tenantId]
+      );
+      const existingSet = new Set(existingMembers.map((m: any) => m.wecom_user_id));
+
+      // 查询 CRM 用户绑定（用于关联 crmUserId）
+      const bindingRows = await AppDataSource.query(
+        `SELECT wecom_user_id, crm_user_id FROM wecom_user_bindings WHERE wecom_config_id = ? AND tenant_id = ?`,
+        [config.id, tenantId]
+      ).catch(() => []);
+      const crmBindingMap = new Map<string, string>();
+      for (const b of bindingRows) {
+        if (b.crm_user_id) crmBindingMap.set(b.wecom_user_id, b.crm_user_id);
+      }
+
+      let addedCount = 0;
+      for (const userId of userIds) {
+        if (existingSet.has(userId)) continue;
+        const userName = userNameMap.get(userId) || userId;
+        const crmUserId = crmBindingMap.get(userId) || null;
+        try {
+          await AppDataSource.query(
+            `INSERT INTO wecom_archive_members (tenant_id, wecom_user_id, wecom_user_name, crm_user_id, is_enabled, created_at, updated_at)
+             VALUES (?, ?, ?, ?, 1, NOW(), NOW())
+             ON DUPLICATE KEY UPDATE wecom_user_name = VALUES(wecom_user_name), updated_at = NOW()`,
+            [tenantId, userId, userName, crmUserId]
+          );
+          addedCount++;
+        } catch (insertErr: any) {
+          log.warn(`[ChatArchive] 插入 archive_member ${userId} 失败:`, insertErr.message);
+        }
+      }
+      if (addedCount > 0) {
+        log.info(`[ChatArchive] 新增 ${addedCount} 个存档成员到 wecom_archive_members`);
+      }
+    } catch (e: any) {
+      log.warn('[ChatArchive] 同步 archive_members 失败:', e.message);
     }
   }
 
@@ -1294,16 +1381,25 @@ export class WecomChatArchiveService {
     let savedCount = 0;
     let totalFetched = 0;
 
-    // 获取RSA私钥（服务商级别）
+    // 获取RSA私钥和专区程序配置（服务商级别）
     const { WecomSuiteConfig } = await import('../entities/WecomSuiteConfig');
     const suiteRepo = AppDataSource.getRepository(WecomSuiteConfig);
     const suiteConfig = await suiteRepo.findOne({ where: {}, order: { id: 'ASC' } });
     const rsaPrivateKey = suiteConfig?.chatArchiveRsaPrivateKey;
+    const zoneProgramId = suiteConfig?.zoneProgramId;
+    const zoneAbilityId = suiteConfig?.zoneAbilityId;
+    const useZoneProxy = !!(zoneProgramId && zoneAbilityId && config.authType === 'third_party');
 
     if (!rsaPrivateKey) {
       log.warn('[ChatArchive] syncChatMessages: 服务商未配置RSA私钥，无法解密消息。请平台管理员在「服务商应用管理」中配置RSA密钥对');
       throw new Error('平台尚未配置消息解密密钥，请联系平台管理员在管理后台配置（租户无需操作）');
     }
+
+    if (config.authType === 'third_party' && !useZoneProxy) {
+      log.warn('[ChatArchive] syncChatMessages: 第三方模式未配置专区程序ID，sync_msg需要通过专区程序调用。请在管理后台「服务商应用管理」中配置专区程序ID和能力ID');
+    }
+
+    log.info(`[ChatArchive] syncChatMessages: useZoneProxy=${useZoneProxy}, zoneProgramId=${zoneProgramId || '(无)'}, zoneAbilityId=${zoneAbilityId || '(无)'}`);
 
     // 获取上次拉取的游标位置
     let cursor = await this.getSyncCursor(config.id, config.tenantId);
@@ -1348,7 +1444,10 @@ export class WecomChatArchiveService {
     while (hasMore && batchCount < maxBatches) {
       batchCount++;
       try {
-        const result = await WecomApiService.getChatMsgData(chatAccessToken, cursor, 200);
+        // 第三方模式通过专区程序代理调用，自建模式直接HTTP调用
+        const result = useZoneProxy
+          ? await WecomApiService.getChatMsgDataViaZone(chatAccessToken, zoneProgramId!, zoneAbilityId!, cursor, 200)
+          : await WecomApiService.getChatMsgData(chatAccessToken, cursor, 200);
         const chatdata = result.chatdata;
         hasMore = result.has_more;
         cursor = result.next_cursor;
@@ -1408,9 +1507,10 @@ export class WecomChatArchiveService {
                 if (oldContent?.type === 'encrypted' && item.encrypt_random_key) {
                   const sk = this.rsaDecrypt(rsaPrivateKey, item.encrypt_random_key);
                   if (sk) {
-                    // ★ 调用 get_msg_body 获取加密消息体
                     try {
-                      const msgBody = await WecomApiService.getMsgBody(chatAccessToken, item.msgid);
+                      const msgBody = useZoneProxy
+                        ? await WecomApiService.getMsgBodyViaZone(chatAccessToken, zoneProgramId!, zoneAbilityId!, item.msgid)
+                        : await WecomApiService.getMsgBody(chatAccessToken, item.msgid);
                       if (msgBody.encrypted_msg_body) {
                         const plaintext = this.aesDecrypt(sk, msgBody.encrypted_msg_body);
                         if (plaintext) {
@@ -1438,11 +1538,12 @@ export class WecomChatArchiveService {
               }
             }
 
-            // ★ 调用 get_msg_body API 获取加密消息体（sync_msg 只返回元数据，不含消息体）
             let encryptedMsgBody = '';
             if (secretKey) {
               try {
-                const msgBody = await WecomApiService.getMsgBody(chatAccessToken, item.msgid);
+                const msgBody = useZoneProxy
+                  ? await WecomApiService.getMsgBodyViaZone(chatAccessToken, zoneProgramId!, zoneAbilityId!, item.msgid)
+                  : await WecomApiService.getMsgBody(chatAccessToken, item.msgid);
                 encryptedMsgBody = msgBody.encrypted_msg_body || '';
               } catch (bodyErr: any) {
                 log.debug(`[ChatArchive] 获取消息体失败 msgid=${item.msgid}: ${bodyErr.message}`);

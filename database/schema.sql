@@ -5883,6 +5883,8 @@ CREATE TABLE IF NOT EXISTS `wecom_suite_configs` (
   `permissions` TEXT DEFAULT NULL COMMENT '权限范围(JSON)',
   `chat_archive_rsa_public_key` TEXT DEFAULT NULL COMMENT '会话存档RSA公钥(租户复制到企微后台加密密钥处)',
   `chat_archive_rsa_private_key` TEXT DEFAULT NULL COMMENT '会话存档RSA私钥(服务商级别，所有授权企业共用)',
+  `zone_program_id` VARCHAR(100) DEFAULT NULL COMMENT '数据与智能专区程序ID',
+  `zone_ability_id` VARCHAR(100) DEFAULT NULL COMMENT '专区程序能力ID（sync_msg等共用，通过func路由）',
   `is_enabled` TINYINT(1) DEFAULT 0 COMMENT '是否启用',
   `mp_app_id` VARCHAR(50) DEFAULT NULL COMMENT '关联的微信小程序AppID',
   `mp_app_secret` VARCHAR(255) DEFAULT NULL COMMENT '微信小程序AppSecret(加密存储)',
@@ -6060,6 +6062,8 @@ CREATE TABLE IF NOT EXISTS `wecom_chat_audit_marks` (
   INDEX `idx_audit_marks_config` (`wecom_config_id`),
   INDEX `idx_audit_marks_status` (`status`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='会话存档风险审计标记表';
+
+-- 52. [v4.3.1] wecom_suite_configs 新增 zone_program_id / zone_ability_id（数据与智能专区程序配置）
 
 -- CRM数据库初始化完成
 -- 预设账号：

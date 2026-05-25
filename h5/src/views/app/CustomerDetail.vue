@@ -158,7 +158,7 @@ async function sendFormCard() {
     const cardData = res?.data?.data || res?.data || {}
     const { sign, appId, cardTitle } = cardData
 
-    const path = `/pages/index/index?tenantId=${tenantId}&memberId=${memberId}&ts=${ts}&sign=${sign}`
+    const path = `pages/index/index?tenantId=${tenantId}&memberId=${memberId}&ts=${ts}&sign=${sign}`
 
     if (typeof (window as any).wx !== 'undefined' && (window as any).wx.invoke) {
       (window as any).wx.invoke('sendChatMessage', {
