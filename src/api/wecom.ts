@@ -1048,6 +1048,7 @@ export const getMessageKeys = (params: {
   configId?: number
   fromUserId: string
   toUserId: string
+  roomId?: string
   page?: number
   pageSize?: number
 }) => {

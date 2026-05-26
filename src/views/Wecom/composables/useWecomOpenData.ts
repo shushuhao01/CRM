@@ -1,418 +1,344 @@
 /**
  * 企微会话展示组件 composable
- * 封装 @wecom/jssdk 的初始化、登录态管理、OpenDataFrame 工厂
+ * 基于官方文档: https://developer.work.weixin.qq.com/document/path/100050
  *
- * 使用方式：
- * 1. 页面引入 useWecomOpenData()
- * 2. 调用 initWecomSdk() 初始化
- * 3. 检查 isWecomReady 状态
- * 4. 使用 createMessageFrame() 渲染消息
+ * 初始化流程:
+ * 1. ww.register({ corpId, agentId, getConfigSignature, getAgentConfigSignature })
+ * 2. await ww.initOpenData()
+ * 3. factory = ww.createOpenDataFrameFactory()
+ * 4. factory.createOpenDataFrame({ el, template, data: { msgList } })
  */
 import { ref, computed } from 'vue'
 import { ElMessage } from 'element-plus'
 import request from '@/utils/request'
 
-/** 加载企微SDK CDN脚本（与侧边栏使用相同CDN源） */
-function loadWecomSdkScript(): Promise<void> {
-  const CDN_LIST = [
-    '/api/v1/wecom/sdk/wecom-jssdk-2.4.0.js',
-    'https://wwcdn.weixin.qq.com/node/open/js/wecom-jssdk-2.4.0.js',
-  ]
-
-  return new Promise<void>((resolve) => {
-    let loaded = false
-    const tryLoad = (idx: number) => {
-      if (idx >= CDN_LIST.length || loaded) { resolve(); return }
-      const s = document.createElement('script')
-      s.src = CDN_LIST[idx]
-      s.async = true
-      const timer = setTimeout(() => { s.onerror?.(new Event('timeout')); }, 8000)
-      s.onload = () => {
-        clearTimeout(timer)
-        setTimeout(() => {
-          const w = window as any
-          if (w.ww && typeof w.ww.register === 'function') {
-            loaded = true
-            resolve()
-          } else {
-            tryLoad(idx + 1)
-          }
-        }, 200)
-      }
-      s.onerror = () => { clearTimeout(timer); tryLoad(idx + 1) }
-      document.head.appendChild(s)
-    }
-    tryLoad(0)
-  })
-}
-
 // 企微SDK登录状态
-const wecomLoginState = ref<'idle' | 'logging' | 'ready' | 'expired'>('idle')
+const wecomLoginState = ref<'idle' | 'logging' | 'ready' | 'failed'>('idle')
 const wecomCorpId = ref('')
 const wecomAgentId = ref<number | null>(null)
-const wecomUserId = ref('')
-const wecomUserName = ref('')
-let wwInstance: any = null
+const initError = ref('')
 let openDataFactory: any = null
 
 export function useWecomOpenData() {
   const isWecomReady = computed(() => wecomLoginState.value === 'ready')
-  const isWecomLogging = computed(() => wecomLoginState.value === 'logging')
-  const needWecomLogin = computed(() => wecomLoginState.value === 'idle' || wecomLoginState.value === 'expired')
+  const isWecomFailed = computed(() => wecomLoginState.value === 'failed')
 
   /**
-   * 获取Web登录配置（suiteId等）
-   */
-  const getLoginConfig = async () => {
-    try {
-      const res: any = await request.get('/wecom/web-login/config', { showError: false } as any)
-      // request 工具自动解包 response.data.data，所以 res 就是 { appId, redirectDomain, loginType }
-      return res || null
-    } catch {
-      return null
-    }
-  }
-
-  /**
-   * 用 auth_code 换取用户身份
-   */
-  const getLoginInfo = async (authCode: string) => {
-    try {
-      const res: any = await request.post('/wecom/web-login/get-login-info', { authCode })
-      return res
-    } catch {
-      return null
-    }
-  }
-
-  /**
-   * 获取 JS-SDK 签名（支持 config 和 agent_config 两种类型）
-   * ★ 使用 web-login/agent-config-sign 接口（无referer限制，适用于CRM主系统页面）
+   * 获取 JS-SDK 签名
    */
   const getJsSdkSign = async (url: string, type: 'config' | 'agent_config') => {
-    try {
-      console.log(`[useWecomOpenData] 请求${type}签名: corpId=${wecomCorpId.value}, url=${url.substring(0, 80)}`)
-      const res: any = await request.post('/wecom/web-login/agent-config-sign', {
-        corpId: wecomCorpId.value,
-        url,
-        type
-      })
-      console.log(`[useWecomOpenData] ${type}签名成功:`, res ? 'OK' : '空响应')
-      return res
-    } catch (e: any) {
-      const detail = e?.response?.data?.message || e?.message || e
-      console.error(`[useWecomOpenData] 获取${type}签名失败:`, detail)
-      throw new Error(`获取${type}签名失败: ${detail}`)
+    const res: any = await request.post('/wecom/web-login/agent-config-sign', {
+      corpId: wecomCorpId.value,
+      url,
+      type
+    })
+    if (!res?.signature) {
+      throw new Error(`${type}签名接口返回无效: ${JSON.stringify(res).substring(0, 100)}`)
+    }
+    return res
+  }
+
+  /**
+   * 加载企微 JS-SDK（CDN或npm）
+   */
+  const loadSdk = async (): Promise<{ register: any; initOpenData: any; createOpenDataFrameFactory: any }> => {
+    const w = window as any
+
+    // ★ 企微内置浏览器中 window.ww 应该已经存在
+    if (w.ww && typeof w.ww.register === 'function') {
+      console.log('[WecomSDK] 检测到原生 window.ww 对象')
+      return {
+        register: w.ww.register.bind(w.ww),
+        initOpenData: w.ww.initOpenData?.bind(w.ww),
+        createOpenDataFrameFactory: w.ww.createOpenDataFrameFactory?.bind(w.ww)
+      }
+    }
+
+    // 企微内置浏览器没有 ww 对象时，加载 CDN 脚本
+    console.log('[WecomSDK] window.ww 不存在，尝试加载CDN...')
+    const cdnUrls = [
+      'https://wwcdn.weixin.qq.com/node/open/js/wecom-jssdk-2.4.0.js',
+      '/api/v1/wecom/sdk/wecom-jssdk-2.4.0.js'
+    ]
+
+    for (const url of cdnUrls) {
+      try {
+        await new Promise<void>((resolve, reject) => {
+          const s = document.createElement('script')
+          s.src = url
+          s.async = true
+          const timer = setTimeout(() => reject(new Error('timeout')), 8000)
+          s.onload = () => { clearTimeout(timer); resolve() }
+          s.onerror = () => { clearTimeout(timer); reject(new Error('load failed')) }
+          document.head.appendChild(s)
+        })
+        // 等待 ww 对象挂载
+        await new Promise(r => setTimeout(r, 300))
+        if (w.ww && typeof w.ww.register === 'function') {
+          console.log(`[WecomSDK] CDN加载成功: ${url}`)
+          return {
+            register: w.ww.register.bind(w.ww),
+            initOpenData: w.ww.initOpenData?.bind(w.ww),
+            createOpenDataFrameFactory: w.ww.createOpenDataFrameFactory?.bind(w.ww)
+          }
+        }
+      } catch { /* try next */ }
+    }
+
+    // 最后降级使用 npm 包
+    console.log('[WecomSDK] CDN失败，尝试 npm @wecom/jssdk...')
+    const wwModule = await import('@wecom/jssdk')
+    return {
+      register: wwModule.register,
+      initOpenData: (wwModule as any).initOpenData,
+      createOpenDataFrameFactory: (wwModule as any).createOpenDataFrameFactory
     }
   }
 
   /**
-   * 初始化企微SDK（ww.register + ww.initOpenData）
-   * 需要在企微扫码登录成功后调用
+   * 初始化企微SDK
+   * 严格按照官方文档流程:
+   * 1. register (config + agentConfig)
+   * 2. initOpenData
+   * 3. createOpenDataFrameFactory
    */
   const initWecomSdk = async (corpId: string, agentId: number, suiteId?: string) => {
+    if (wecomLoginState.value === 'ready') return true
+    if (wecomLoginState.value === 'logging') return false
+
+    wecomLoginState.value = 'logging'
     wecomCorpId.value = corpId
     wecomAgentId.value = agentId
+    initError.value = ''
 
     try {
-      // ★ 优先使用企微内置浏览器预置的 window.ww 全局对象（与侧边栏一致）
-      // npm 包 import('@wecom/jssdk') 在企微内置浏览器中可能与原生 ww 对象冲突
-      const w = window as any
-      let register: any, initOpenData: any, createOpenDataFrameFactory: any
-
-      if (w.ww && typeof w.ww.register === 'function') {
-        console.log('[useWecomOpenData] 使用企微内置浏览器原生 ww 对象')
-        register = w.ww.register.bind(w.ww)
-        initOpenData = w.ww.initOpenData?.bind(w.ww)
-        createOpenDataFrameFactory = w.ww.createOpenDataFrameFactory?.bind(w.ww)
-      } else {
-        // 非企微环境或原生ww不存在，尝试加载CDN脚本
-        console.log('[useWecomOpenData] 原生ww不存在，尝试加载SDK脚本...')
-        await loadWecomSdkScript()
-        if (w.ww && typeof w.ww.register === 'function') {
-          console.log('[useWecomOpenData] CDN加载成功，使用 window.ww')
-          register = w.ww.register.bind(w.ww)
-          initOpenData = w.ww.initOpenData?.bind(w.ww)
-          createOpenDataFrameFactory = w.ww.createOpenDataFrameFactory?.bind(w.ww)
-        } else {
-          // 最后降级使用 npm 包
-          console.log('[useWecomOpenData] CDN加载失败，降级使用 npm @wecom/jssdk')
-          const wwModule = await import('@wecom/jssdk')
-          register = wwModule.register
-          initOpenData = wwModule.initOpenData
-          createOpenDataFrameFactory = wwModule.createOpenDataFrameFactory
-        }
-      }
+      const { register, initOpenData, createOpenDataFrameFactory } = await loadSdk()
 
       if (typeof register !== 'function') {
-        throw new Error('无法加载企微JS-SDK：register函数不可用')
+        throw new Error('企微JS-SDK不可用: register函数未找到')
+      }
+      if (typeof createOpenDataFrameFactory !== 'function') {
+        throw new Error('企微JS-SDK不可用: createOpenDataFrameFactory函数未找到')
       }
 
-      wwInstance = { register, initOpenData, createOpenDataFrameFactory }
+      const currentUrl = window.location.href.split('#')[0]
+      console.log(`[WecomSDK] register开始: corpId=${corpId}, agentId=${agentId}, suiteId=${suiteId || '无'}, url=${currentUrl.substring(0, 100)}`)
 
-      // ★ 注册应用（第三方应用需要同时提供 getConfigSignature 和 getAgentConfigSignature）
-      // 注意：@wecom/jssdk v2.4.0 中 register() 返回 ≠ agentConfig 完成
-      // agentConfig 是惰性触发的，会在首次调用需要 agent 权限的 API（如 initOpenData）时触发
-      console.log(`[useWecomOpenData] ww.register 开始: corpId=${corpId}, agentId=${agentId}, suiteId=${suiteId || '(无)'}, url=${window.location.href.split('#')[0].substring(0, 80)}`)
+      // ★ 第1步: ww.register - 初始化应用信息
       await register({
         corpId,
         agentId,
         ...(suiteId ? { suiteId } : {}),
         jsApiList: ['selectExternalContact', 'shareAppMessage', 'wwapp.invokeJsApiByCallInfo'],
         async getConfigSignature(signUrl?: string) {
-          const url = signUrl || window.location.href.split('#')[0]
-          console.log('[useWecomOpenData] getConfigSignature called, url:', url.substring(0, 100))
-          const signData = await getJsSdkSign(url, 'config')
-          return {
-            timestamp: Number(signData.timestamp),
-            nonceStr: String(signData.nonceStr),
-            signature: String(signData.signature)
-          }
+          const url = signUrl || currentUrl
+          console.log('[WecomSDK] getConfigSignature:', url.substring(0, 80))
+          const data = await getJsSdkSign(url, 'config')
+          return { timestamp: Number(data.timestamp), nonceStr: String(data.nonceStr), signature: String(data.signature) }
         },
         async getAgentConfigSignature(signUrl?: string) {
-          const url = signUrl || window.location.href.split('#')[0]
-          console.log('[useWecomOpenData] getAgentConfigSignature called, url:', url.substring(0, 100))
-          const signData = await getJsSdkSign(url, 'agent_config')
-          return {
-            timestamp: Number(signData.timestamp),
-            nonceStr: String(signData.nonceStr),
-            signature: String(signData.signature)
-          }
+          const url = signUrl || currentUrl
+          console.log('[WecomSDK] getAgentConfigSignature:', url.substring(0, 80))
+          const data = await getJsSdkSign(url, 'agent_config')
+          return { timestamp: Number(data.timestamp), nonceStr: String(data.nonceStr), signature: String(data.signature) }
         },
-        onConfigSuccess(res: any) {
-          console.log('[useWecomOpenData] ✅ onConfigSuccess:', JSON.stringify(res))
-        },
-        onConfigFail(res: any) {
-          console.error('[useWecomOpenData] ❌ onConfigFail:', JSON.stringify(res))
-        },
-        onAgentConfigSuccess(res: any) {
-          console.log('[useWecomOpenData] ✅ onAgentConfigSuccess:', JSON.stringify(res))
-        },
-        onAgentConfigFail(res: any) {
-          console.error('[useWecomOpenData] ❌ onAgentConfigFail:', JSON.stringify(res))
-        }
+        onConfigSuccess() { console.log('[WecomSDK] ✅ config成功') },
+        onConfigFail(err: any) { console.error('[WecomSDK] ❌ config失败:', JSON.stringify(err)) },
+        onAgentConfigSuccess() { console.log('[WecomSDK] ✅ agentConfig成功') },
+        onAgentConfigFail(err: any) { console.error('[WecomSDK] ❌ agentConfig失败:', JSON.stringify(err)) }
       })
 
-      console.log('[useWecomOpenData] ww.register 返回成功（config阶段通过）')
+      console.log('[WecomSDK] register完成')
 
-      // ★ 初始化 OpenData（会触发 agentConfig 惰性签名）
-      console.log('[useWecomOpenData] 调用 initOpenData()...')
-      await initOpenData()
-      console.log('[useWecomOpenData] ✅ initOpenData 成功')
+      // ★ 第2步: initOpenData - 确保会话组件初始化成功
+      if (typeof initOpenData === 'function') {
+        console.log('[WecomSDK] 调用 initOpenData...')
+        await initOpenData()
+        console.log('[WecomSDK] ✅ initOpenData成功')
+      } else {
+        console.warn('[WecomSDK] initOpenData不可用，跳过（部分版本可能不需要）')
+      }
 
-      // 创建工厂
+      // ★ 第3步: 创建展示组件工厂
       openDataFactory = createOpenDataFrameFactory()
+      if (!openDataFactory) {
+        throw new Error('createOpenDataFrameFactory返回空值')
+      }
 
+      console.log('[WecomSDK] ✅ SDK初始化完成，工厂对象已创建')
       wecomLoginState.value = 'ready'
-      console.log('[useWecomOpenData] ✅ SDK初始化完成')
       return true
     } catch (e: any) {
-      const errMsg = e?.message || e?.errMsg || (typeof e === 'string' ? e : JSON.stringify(e))
-      console.error('[useWecomOpenData] SDK初始化失败:', errMsg, e)
-      wecomLoginState.value = 'expired'
-      throw new Error(errMsg)
+      const msg = e?.message || e?.errMsg || JSON.stringify(e)
+      initError.value = msg
+      wecomLoginState.value = 'failed'
+      console.error('[WecomSDK] 初始化失败:', msg, e)
+      return false
     }
   }
 
   /**
-   * 处理企微扫码登录成功
+   * 从后端配置自动初始化SDK（企微客户端内使用）
    */
-  const handleLoginSuccess = async (code: string) => {
-    wecomLoginState.value = 'logging'
-    const loginInfo = await getLoginInfo(code)
-    if (!loginInfo) {
-      wecomLoginState.value = 'idle'
-      ElMessage.error('企微登录失败')
-      return false
-    }
-
-    wecomCorpId.value = loginInfo.corpId
-    wecomUserId.value = loginInfo.openUserId || loginInfo.userId
-    wecomUserName.value = loginInfo.userName
-
-    // 获取 agentId（从后端配置中获取）
+  const initFromConfig = async (configId?: number | null) => {
+    let config: any = null
     try {
-      const configRes: any = await request.get('/wecom/configs', { showError: false } as any)
-      const configs = Array.isArray(configRes) ? configRes : (configRes?.list || [])
-      const matchConfig = configs.find((c: any) => c.corpId === loginInfo.corpId)
-
-      if (matchConfig?.agentId) {
-        // 初始化SDK（第三方应用必须传 suiteId）
-        const success = await initWecomSdk(loginInfo.corpId, matchConfig.agentId, matchConfig.suiteId || undefined)
-        return success
+      if (configId) {
+        config = await request.get(`/wecom/configs/${configId}`, { showError: false } as any)
+      } else {
+        const configRes: any = await request.get('/wecom/configs', { showError: false } as any)
+        const configs = Array.isArray(configRes) ? configRes : (configRes?.data || configRes?.list || [])
+        config = configs.find((c: any) => c.agentId && c.isEnabled) || configs[0]
       }
     } catch (e: any) {
-      console.warn('[useWecomOpenData] 获取企业配置失败:', e.message)
+      throw new Error('获取企微配置失败: ' + (e?.message || '网络错误'))
     }
 
-    // 如果没有 agentId，仍然标记为 ready（降级为气泡模式）
-    wecomLoginState.value = 'ready'
-    ElMessage.success('企微登录成功（降级模式）')
-    return true
+    if (!config?.corpId) {
+      throw new Error('企微配置缺少corpId')
+    }
+    if (!config?.agentId) {
+      throw new Error(`企微配置缺少agentId（corpId=${config.corpId}）`)
+    }
+
+    console.log(`[WecomSDK] initFromConfig: corpId=${config.corpId}, agentId=${config.agentId}, suiteId=${config.suiteId || '无'}`)
+    return await initWecomSdk(config.corpId, config.agentId, config.suiteId || undefined)
   }
 
   /**
    * 创建消息渲染帧
-   * @param el 容器元素
-   * @param msgList 消息列表 [{msgid, secretKey}]
+   * 严格按照官方模板格式使用 ww-open-message 组件
    */
-  const createMessageFrame = (el: HTMLElement | string, msgList: Array<{msgid: string; secretKey: string}>, options?: {
+  const createMessageFrame = (el: HTMLElement | string, msgList: Array<{ msgid: string; secretKey: string }>, options?: {
     onError?: (error: any) => void
     onMounted?: () => void
-    onModal?: (event: any) => boolean
   }) => {
     if (!openDataFactory) {
-      console.warn('[useWecomOpenData] OpenData工厂未初始化')
+      console.error('[WecomSDK] 工厂未初始化，无法创建消息帧')
       return null
     }
 
-    const instance = openDataFactory.createOpenDataFrame({
-      el,
-      template: `
-        <scroll-view scroll-y="{{true}}" class="msg-scroll-view" bindscrolltoupper="onScrollTop">
-          <view wx:for="{{data.msgList}}" wx:key="msgid" class="msg-item">
-            <ww-open-message
-              message-id="{{item.msgid}}"
-              secret-key="{{item.secretKey}}"
-              open-type="viewMessage"
-              binderror="onMsgError"
-            />
-          </view>
-          <view wx:if="{{data.msgList.length === 0}}" class="empty-tip">
-            暂无消息
-          </view>
-        </scroll-view>
-      `,
-      style: `
-        .msg-scroll-view {
-          height: 100%;
-          overflow: auto;
-          padding: 12px;
-        }
-        .msg-item {
-          margin-bottom: 8px;
-        }
-        .empty-tip {
-          text-align: center;
-          color: #909399;
-          padding: 40px 0;
-          font-size: 14px;
-        }
-      `,
-      data: { msgList },
-      methods: {
-        onScrollTop() {
-          // 滚动到顶部，可触发加载更多历史消息
-        },
-        onMsgError(event: any) {
-          console.warn('[WecomOpenData] 消息渲染错误:', event)
-          options?.onError?.(event)
-        }
-      },
-      handleModal(event: any) {
-        if (options?.onModal) {
-          return options.onModal(event)
-        }
-        // 默认：创建 iframe 预览
-        const iframe = document.createElement('iframe')
-        iframe.src = event.modalUrl
-        iframe.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:80vw;height:80vh;z-index:9999;border:none;border-radius:8px;box-shadow:0 8px 32px rgba(0,0,0,0.3);'
-        const mask = document.createElement('div')
-        mask.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:9998;'
-        mask.onclick = () => { document.body.removeChild(iframe); document.body.removeChild(mask) }
-        document.body.appendChild(mask)
-        document.body.appendChild(iframe)
-        return false // 阻止默认行为
-      },
-      handleMounted() {
-        options?.onMounted?.()
-      },
-      error(error: any) {
-        console.error('[WecomOpenData] Frame error:', error)
-        // 检查是否是登录态过期
-        if (error?.detail?.errCode === 42006 || error?.detail?.errCode === 42003 || error?.detail?.errCode === 40029) {
-          wecomLoginState.value = 'expired'
-          ElMessage.warning('企微登录态已过期，请重新扫码登录')
-        }
-        options?.onError?.(error)
-      }
-    })
+    console.log(`[WecomSDK] createMessageFrame: el=${typeof el === 'string' ? el : 'HTMLElement'}, msgCount=${msgList.length}`)
 
-    return instance
+    try {
+      const instance = openDataFactory.createOpenDataFrame({
+        el,
+        template: `
+          <scroll-view scroll-y="{{true}}" class="msg-scroll-view">
+            <view wx:for="{{data.msgList}}" wx:key="msgid" class="msg-item">
+              <ww-suspense>
+                <ww-open-message
+                  message-id="{{item.msgid}}"
+                  secret-key="{{item.secretKey}}"
+                  open-type="viewMessage"
+                  binderror="onMsgError"
+                />
+                <block wx:slot="fallback">
+                  <view class="msg-loading">消息加载中...</view>
+                </block>
+              </ww-suspense>
+            </view>
+            <view wx:if="{{data.msgList.length === 0}}" class="empty-tip">
+              暂无消息
+            </view>
+          </scroll-view>
+        `,
+        style: `
+          .msg-scroll-view {
+            height: 100%;
+            overflow: auto;
+            padding: 12px;
+          }
+          .msg-item {
+            margin-bottom: 4px;
+          }
+          .msg-loading {
+            padding: 8px 12px;
+            color: #909399;
+            font-size: 13px;
+          }
+          .empty-tip {
+            text-align: center;
+            color: #909399;
+            padding: 40px 0;
+            font-size: 14px;
+          }
+        `,
+        data: { msgList },
+        methods: {
+          onMsgError(event: any) {
+            console.warn('[WecomSDK] ww-open-message binderror:', event)
+            options?.onError?.(event)
+          }
+        },
+        handleModal(event: any) {
+          // 企微内置浏览器中默认会打开新窗口预览
+          // 这里创建 iframe 弹窗作为自定义预览
+          const iframe = document.createElement('iframe')
+          iframe.src = event.modalUrl
+          const w = event.modalSize?.width || 800
+          const h = event.modalSize?.height || 600
+          iframe.style.cssText = `position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:${Math.min(w, window.innerWidth * 0.9)}px;height:${Math.min(h, window.innerHeight * 0.85)}px;z-index:9999;border:none;border-radius:8px;box-shadow:0 8px 32px rgba(0,0,0,0.3);`
+          const mask = document.createElement('div')
+          mask.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:9998;cursor:pointer;'
+          mask.onclick = () => { document.body.removeChild(iframe); document.body.removeChild(mask) }
+          document.body.appendChild(mask)
+          document.body.appendChild(iframe)
+          return false
+        },
+        handleMounted() {
+          console.log('[WecomSDK] ✅ 消息帧挂载成功')
+          options?.onMounted?.()
+        },
+        error(error: any) {
+          console.error('[WecomSDK] 消息帧错误:', error)
+          const errCode = error?.detail?.errCode
+          if (errCode === 42006 || errCode === 42003 || errCode === 40029) {
+            initError.value = '登录态已过期，请刷新页面'
+            wecomLoginState.value = 'failed'
+            ElMessage.warning('企微登录态已过期，请刷新页面重试')
+          }
+          options?.onError?.(error)
+        }
+      })
+
+      return instance
+    } catch (e: any) {
+      console.error('[WecomSDK] createOpenDataFrame异常:', e)
+      options?.onError?.(e)
+      return null
+    }
   }
 
   /**
    * 更新消息帧数据
    */
-  const updateFrameData = (instance: any, msgList: Array<{msgid: string; secretKey: string}>) => {
+  const updateFrameData = (instance: any, msgList: Array<{ msgid: string; secretKey: string }>) => {
     if (instance) {
       instance.setData({ msgList })
     }
   }
 
   /**
-   * 从后端配置直接初始化SDK（企微客户端内使用，无需扫码登录）
-   * @param configId 企微配置ID
-   */
-  const initFromConfig = async (configId?: number | null) => {
-    wecomLoginState.value = 'logging'
-
-    let config: any = null
-
-    try {
-      if (configId) {
-        // 有configId时请求单个配置，避免与父组件的列表请求冲突被取消
-        config = await request.get(`/wecom/configs/${configId}`, { showError: false } as any)
-      } else {
-        // 无configId时请求列表，取第一个可用配置
-        const configRes: any = await request.get('/wecom/configs', { showError: false } as any)
-        const configs = Array.isArray(configRes) ? configRes : (configRes?.data || configRes?.list || [])
-        config = configs.find((c: any) => c.agentId && c.isEnabled) || configs[0]
-      }
-    } catch (e: any) {
-      wecomLoginState.value = 'idle'
-      throw new Error('获取企微配置失败: ' + (e?.message || '网络错误'))
-    }
-
-    if (!config?.corpId || !config?.agentId) {
-      wecomLoginState.value = 'idle'
-      throw new Error(`无有效的企微配置（corpId=${config?.corpId || '空'}, agentId=${config?.agentId || '空'}）`)
-    }
-
-    console.log(`[useWecomOpenData] initFromConfig: corpId=${config.corpId}, agentId=${config.agentId}, suiteId=${config.suiteId || '(无)'}`)
-    await initWecomSdk(config.corpId, config.agentId, config.suiteId || undefined)
-    return true
-  }
-
-  /**
-   * 重置状态（退出登录）
+   * 重置状态（允许重新初始化）
    */
   const resetWecomState = () => {
     wecomLoginState.value = 'idle'
     wecomCorpId.value = ''
     wecomAgentId.value = null
-    wecomUserId.value = ''
-    wecomUserName.value = ''
-    wwInstance = null
+    initError.value = ''
     openDataFactory = null
   }
 
   return {
-    // 状态
     wecomLoginState,
     isWecomReady,
-    isWecomLogging,
-    needWecomLogin,
+    isWecomFailed,
+    initError,
     wecomCorpId,
     wecomAgentId,
-    wecomUserId,
-    wecomUserName,
-    // 方法
-    getLoginConfig,
-    getLoginInfo,
     initWecomSdk,
     initFromConfig,
-    handleLoginSuccess,
     createMessageFrame,
     updateFrameData,
     resetWecomState

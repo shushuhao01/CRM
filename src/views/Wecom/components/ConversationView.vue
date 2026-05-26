@@ -120,18 +120,26 @@
               </div>
             </div>
             <div class="msg-header-right">
-              <el-tooltip v-if="!isInWecomClient" content="消息详细内容需在企业微信客户端中查看" placement="top">
-                <el-tag type="info" size="small" effect="plain">概览模式</el-tag>
-              </el-tooltip>
+              <template v-if="sdkInitializing">
+                <el-tag type="warning" size="small" effect="plain"><el-icon class="is-loading"><Loading /></el-icon> SDK初始化中</el-tag>
+              </template>
+              <template v-else-if="isWecomFailed">
+                <el-tooltip :content="sdkInitError || 'SDK初始化失败'" placement="top">
+                  <el-tag type="danger" size="small" effect="plain" @click="autoInitSdk" style="cursor:pointer">初始化失败(点击重试)</el-tag>
+                </el-tooltip>
+              </template>
+              <template v-else-if="isWecomReady">
+                <el-tag type="success" size="small" effect="plain">SDK就绪</el-tag>
+              </template>
               <span class="msg-header-count">共 {{ msgTotal }} 条</span>
               <el-button link size="small" @click="refreshMessages"><el-icon><Refresh /></el-icon></el-button>
             </div>
           </div>
 
           <!-- 消息列表 -->
-          <div class="msg-panel-body" ref="chatMessagesRef" v-loading="msgLoading">
-            <!-- ★ 企微SDK富渲染模式：仅当SDK就绪 且 有有效messageKeys 时使用 -->
-            <template v-if="isInWecomClient && isWecomReady && messageKeys.length > 0 && renderMode === 'wecom'">
+          <div class="msg-panel-body" ref="chatMessagesRef" v-loading="msgLoading || sdkInitializing">
+            <!-- ★ 企微原生会话展示组件模式（主要模式） -->
+            <template v-if="isWecomReady && messageKeys.length > 0">
               <WecomMessageRenderer
                 :msg-list="messageKeys"
                 :loading="msgLoading"
@@ -140,8 +148,28 @@
               />
             </template>
 
-            <!-- ★ 通用气泡模式：始终可用，显示消息元数据（发送者、类型、时间） -->
+            <!-- SDK就绪但无密钥数据 -->
+            <template v-else-if="isWecomReady && messageKeys.length === 0 && !msgLoading">
+              <el-empty :image-size="50">
+                <template #description>
+                  <p>暂无可渲染的消息（密钥为空）</p>
+                  <p style="font-size:12px;color:#909399">请先点击「同步」按钮拉取聊天记录</p>
+                </template>
+              </el-empty>
+            </template>
+
+            <!-- SDK未就绪时的降级显示（仅作为诊断信息，非主要功能） -->
             <template v-else>
+            <div v-if="isWecomFailed" class="sdk-hint-bar">
+              <el-alert type="warning" :closable="false" show-icon>
+                <template #title>
+                  会话展示组件初始化失败：{{ sdkInitError || '未知错误' }}
+                </template>
+                <template #default>
+                  <el-button size="small" type="primary" @click="autoInitSdk" style="margin-top:6px">重新初始化</el-button>
+                </template>
+              </el-alert>
+            </div>
             <div v-if="msgTotal > messages.length" class="load-more-bar">
               <el-button link type="primary" size="small" @click="loadMoreMessages" :loading="msgLoadingMore">加载更早消息</el-button>
             </div>
@@ -334,57 +362,61 @@ const props = defineProps<{ configId: number | null }>()
 const emit = defineEmits<{ (e: 'audit', record: ConvMessage): void }>()
 
 // ==================== 渲染模式 ====================
-// ★ 统一使用企微组件模式，非企微客户端显示跳转引导
-const isInWecomClient = /wxwork|WeCom/i.test(navigator.userAgent)
+const isInWecomClient = /wxwork|WeCom/i.test(navigator.userAgent) || !!(window as any).wx?.invoke
 const renderMode = ref<'bubble' | 'wecom'>('wecom')
 const messageKeys = ref<Array<{ msgid: string; secretKey: string }>>([])
 
 // ==================== 企微SDK状态 ====================
-const { isWecomReady, initFromConfig } = useWecomOpenData()
+const { isWecomReady, isWecomFailed, initError, initFromConfig, resetWecomState } = useWecomOpenData()
 const sdkInitializing = ref(false)
 const sdkInitDone = ref(false)
 
-const sdkInitError = ref('')
+const sdkInitError = computed(() => initError.value)
 
-/** 在企微客户端内自动初始化SDK（无需扫码） */
+/** 初始化企微SDK（自动从配置加载） */
 const autoInitSdk = async () => {
-  if (!isInWecomClient || sdkInitDone.value) return
+  if (sdkInitializing.value || isWecomReady.value) return
+  // 允许重试：如果之前失败了，重置状态
+  if (isWecomFailed.value) {
+    resetWecomState()
+  }
   sdkInitializing.value = true
-  sdkInitError.value = ''
   try {
-    await initFromConfig(props.configId)
-    if (selectedConv.value) {
-      fetchMessageKeys()
+    const success = await initFromConfig(props.configId)
+    sdkInitDone.value = true
+    if (success && selectedConv.value) {
+      await fetchMessageKeys()
     }
+    console.log('[ConversationView] SDK初始化结果:', success, 'messageKeys:', messageKeys.value.length)
   } catch (e: any) {
-    sdkInitError.value = e?.message || 'SDK初始化异常'
-    console.error('[ConversationView] SDK初始化失败:', sdkInitError.value)
+    console.error('[ConversationView] SDK初始化异常:', e?.message)
   } finally {
     sdkInitializing.value = false
-    sdkInitDone.value = true
   }
 }
 
 
 
-/** 获取消息密钥列表（企微组件模式用） */
+/** 获取消息密钥列表（ww-open-message 渲染用） */
 const fetchMessageKeys = async () => {
   if (!selectedConv.value || !props.configId) return
   try {
     const fromUserId = selectedConv.value.fromUserId || ''
     const toUserId = getFirstToUser(selectedConv.value.toUserIds) || ''
+    const roomId = selectedConv.value.roomId || ''
     const res: any = await getMessageKeys({
       configId: props.configId,
       fromUserId,
       toUserId,
-      pageSize: 100
+      ...(roomId ? { roomId } : {}),
+      pageSize: 200
     })
     if (res?.list) {
-      messageKeys.value = res.list.map((item: any) => ({
-        msgid: item.msgid,
-        secretKey: item.secretKey
-      }))
+      messageKeys.value = res.list
+        .filter((item: any) => item.msgid && item.secretKey)
+        .map((item: any) => ({ msgid: item.msgid, secretKey: item.secretKey }))
     }
+    console.log(`[ConversationView] fetchMessageKeys: ${messageKeys.value.length} keys loaded`)
   } catch (e) {
     console.warn('获取消息密钥失败:', e)
     messageKeys.value = []
@@ -393,9 +425,9 @@ const fetchMessageKeys = async () => {
 
 /** 企微组件渲染错误处理 */
 const handleWecomRenderError = (error: any) => {
-  console.warn('企微组件渲染错误:', error)
-  sdkInitError.value = error?.message || error?.detail?.errMsg || '企微组件渲染异常'
-  ElMessage.warning('企微组件渲染失败: ' + sdkInitError.value)
+  const msg = error?.message || error?.detail?.errMsg || '企微组件渲染异常'
+  console.warn('企微组件渲染错误:', msg, error)
+  ElMessage.warning('消息渲染异常: ' + msg)
 }
 
 const userStore = useUserStore()
@@ -699,10 +731,8 @@ const selectConversation = async (conv: Conversation) => {
   messages.value = []
   messageKeys.value = []
   await fetchMessages()
-  // 企微组件模式获取消息密钥
-  if (isInWecomClient && isWecomReady.value) {
-    await fetchMessageKeys()
-  }
+  // 始终预取消息密钥（SDK就绪时渲染原生会话展示组件）
+  await fetchMessageKeys()
 }
 
 // ==================== 消息 ====================
@@ -777,8 +807,8 @@ const getWeappTitle = (content: string) => { try { const c = JSON.parse(content)
 // ==================== 生命周期 ====================
 watch(() => props.configId, (newId) => {
   fetchArchiveMembers()
-  // configId 从父组件传来后，在企微客户端内自动初始化SDK
-  if (newId && isInWecomClient && !sdkInitDone.value) {
+  // configId 从父组件传来后，自动初始化企微SDK（尝试使用原生会话展示组件）
+  if (newId && !isWecomReady.value && !sdkInitializing.value) {
     autoInitSdk()
   }
 }, { immediate: true })
@@ -917,9 +947,13 @@ defineExpose({ fetchConversations, fetchArchiveMembers, selectMemberById, jumpTo
 .context-menu-item:hover { background: #F3F4F6; color: #EF4444; }
 .mark-msg-preview { background: #F9FAFB; border-radius: 6px; padding: 8px 12px; font-size: 13px; color: #4B5563; max-height: 80px; overflow: auto; }
 
+/* SDK提示 */
+.sdk-hint-bar { margin-bottom: 12px; }
+.sdk-hint-bar .el-alert { font-size: 12px; padding: 6px 12px; }
+
 /* 消息行 */
 .msg-row { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 16px; }
-.msg-row-self { flex-direction: row-reverse; }
+.msg-row-self { justify-content: flex-end; }
 .msg-avatar-wrap { flex-shrink: 0; }
 .msg-avatar-img { width: 34px; height: 34px; border-radius: 4px; object-fit: cover; }
 .msg-avatar-text { width: 34px; height: 34px; border-radius: 4px; background: #c8c9cc; display: flex; align-items: center; justify-content: center; font-size: 13px; color: #fff; font-weight: 500; }

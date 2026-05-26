@@ -20,8 +20,7 @@
     <!-- 渲染错误提示 -->
     <div v-if="renderError" class="renderer-error">
       <el-alert type="warning" :closable="false">
-        <template #title>消息渲染异常</template>
-        {{ renderError }}
+        <template #title>消息渲染异常: {{ renderError }}</template>
       </el-alert>
     </div>
   </div>
@@ -46,54 +45,40 @@ const { isWecomReady, createMessageFrame, updateFrameData } = useWecomOpenData()
 
 const containerRef = ref<HTMLElement | null>(null)
 const renderError = ref('')
-const frameContainerId = `wecom-msg-frame-${Date.now()}`
+const frameContainerId = `wecom-msg-frame-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
 let frameInstance: any = null
 
-/**
- * 初始化或更新消息帧
- */
 const renderMessages = async () => {
   if (!isWecomReady.value || !props.msgList.length) return
 
   await nextTick()
 
   if (frameInstance) {
-    // 更新已有帧的数据
     updateFrameData(frameInstance, props.msgList)
   } else {
-    // 创建新帧
     frameInstance = createMessageFrame(`#${frameContainerId}`, props.msgList, {
       onError: (error) => {
-        renderError.value = error?.detail?.errMsg || '消息渲染失败'
+        renderError.value = error?.detail?.errMsg || error?.message || '渲染失败'
         emit('error', error)
       },
       onMounted: () => {
         renderError.value = ''
-      },
-      onModal: (event) => {
-        // 创建预览弹窗
-        const iframe = document.createElement('iframe')
-        iframe.src = event.modalUrl
-        const width = event.modalSize?.width || 800
-        const height = event.modalSize?.height || 600
-        iframe.style.cssText = `position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:${Math.min(width, window.innerWidth * 0.9)}px;height:${Math.min(height, window.innerHeight * 0.9)}px;z-index:9999;border:none;border-radius:8px;box-shadow:0 8px 32px rgba(0,0,0,0.3);`
-        const mask = document.createElement('div')
-        mask.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:9998;cursor:pointer;'
-        mask.onclick = () => { document.body.removeChild(iframe); document.body.removeChild(mask) }
-        document.body.appendChild(mask)
-        document.body.appendChild(iframe)
-        return false
+        console.log('[WecomMessageRenderer] 消息渲染成功')
       }
     })
+    if (!frameInstance) {
+      renderError.value = '创建消息帧失败'
+      emit('error', new Error('createMessageFrame returned null'))
+    }
   }
 }
 
-// 监听消息列表变化
-watch(() => props.msgList, () => {
-  renderMessages()
+watch(() => props.msgList, (newList, oldList) => {
+  if (newList.length > 0 && JSON.stringify(newList) !== JSON.stringify(oldList)) {
+    renderMessages()
+  }
 }, { deep: true })
 
-// 监听SDK就绪状态
 watch(isWecomReady, (ready) => {
   if (ready && props.msgList.length) {
     renderMessages()
