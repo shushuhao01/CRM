@@ -68,14 +68,23 @@ function extractText(obj: any): string {
   if (typeof obj.text === 'string') return obj.text
   // 通用格式: { content: "hello" }
   if (typeof obj.content === 'string') return obj.content
+  // 消息类型中文映射（前端兜底，用于旧记录没有 msgTypeDesc 的情况）
+  const msgTypeCnMap: Record<string, string> = {
+    text: '文本消息', image: '图片', emotion: '表情', link: '链接',
+    weapp: '小程序', voice: '语音', video: '视频', file: '文件',
+    card: '名片', chatrecord: '聊天记录', location: '位置',
+    agree: '同意会话存档', disagree: '不同意会话存档', call: '音视频通话',
+    redpacket: '红包', meeting: '快速会议', todo: '待办', vote: '投票',
+    doc: '在线文档', mixed: '图文混合', note: '笔记', unknown: '消息'
+  }
   // 企微专区消息格式：存储了 secretKey + 消息类型描述
-  // 根据企微安全机制，消息明文需通过企微客户端的「会话展示组件」查看
   if (obj.secretKey !== undefined) {
-    return obj.msgTypeDesc ? `[${obj.msgTypeDesc}]` : `[${obj.msgtype || '消息'}]`
+    if (obj.msgTypeDesc && obj.msgTypeDesc !== obj.msgtype) return `[${obj.msgTypeDesc}]`
+    return `[${msgTypeCnMap[obj.msgtype] || obj.msgtype || '消息'}]`
   }
   // 旧版加密占位格式（兼容）
   if (obj.type === 'encrypted') {
-    return obj.msgtype ? `[${obj.msgtype}]` : '[需在企微客户端查看]'
+    return `[${msgTypeCnMap[obj.msgtype] || obj.msgtype || '需在企微客户端查看'}]`
   }
   return JSON.stringify(obj)
 }

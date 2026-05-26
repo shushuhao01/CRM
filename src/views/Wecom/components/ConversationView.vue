@@ -130,29 +130,17 @@
 
           <!-- 消息列表 -->
           <div class="msg-panel-body" ref="chatMessagesRef" v-loading="msgLoading">
-            <!-- 企微客户端：使用会话展示组件 -->
-            <template v-if="isInWecomClient && renderMode === 'wecom'">
-              <div v-if="sdkInitializing" class="wecom-sdk-loading">
-                <el-icon class="is-loading" :size="32"><Loading /></el-icon>
-                <p>正在初始化企微SDK...</p>
-              </div>
-              <template v-else-if="isWecomReady">
-                <WecomMessageRenderer
-                  :msg-list="messageKeys"
-                  :loading="msgLoading"
-                  @load-more="loadMoreMessages"
-                  @error="handleWecomRenderError"
-                />
-              </template>
-              <div v-else class="wecom-sdk-fallback">
-                <el-icon :size="40" color="#e6a23c"><WarningFilled /></el-icon>
-                <h4>企微SDK初始化失败</h4>
-                <p v-if="sdkInitError" class="sdk-error-detail">{{ sdkInitError }}</p>
-                <el-button size="small" @click="autoInitSdk">重试初始化</el-button>
-              </div>
+            <!-- ★ 企微SDK富渲染模式：仅当SDK就绪 且 有有效messageKeys 时使用 -->
+            <template v-if="isInWecomClient && isWecomReady && messageKeys.length > 0 && renderMode === 'wecom'">
+              <WecomMessageRenderer
+                :msg-list="messageKeys"
+                :loading="msgLoading"
+                @load-more="loadMoreMessages"
+                @error="handleWecomRenderError"
+              />
             </template>
 
-            <!-- 普通浏览器：气泡模式展示消息元数据（发送者、类型、时间） -->
+            <!-- ★ 通用气泡模式：始终可用，显示消息元数据（发送者、类型、时间） -->
             <template v-else>
             <div v-if="msgTotal > messages.length" class="load-more-bar">
               <el-button link type="primary" size="small" @click="loadMoreMessages" :loading="msgLoadingMore">加载更早消息</el-button>

@@ -979,9 +979,9 @@ export class WecomChatArchiveService {
     pageSize?: number;
   }): Promise<{ list: any[]; total: number }> {
     const { tenantId, configId, userId, keyword, page = 1, pageSize = 50 } = params;
-    const offset = (page - 1) * pageSize;
 
-    let where = "WHERE 1=1";
+    // ★ 排除 meta 记录，只显示有真实消息的会话
+    let where = "WHERE cr.msg_type != 'meta'";
     const queryParams: any[] = [];
 
     if (tenantId) {
@@ -993,7 +993,6 @@ export class WecomChatArchiveService {
       queryParams.push(configId);
     }
     if (userId) {
-      // 支持多个userId（逗号分隔）
       const userIds = userId.split(',').map(s => s.trim()).filter(Boolean);
       if (userIds.length === 1) {
         where += ' AND (cr.from_user_id = ? OR cr.to_user_ids LIKE ?)';
@@ -1010,11 +1009,7 @@ export class WecomChatArchiveService {
       queryParams.push(`%${keyword}%`);
     }
 
-    const countSql = `
-      SELECT COUNT(DISTINCT CONCAT(cr.from_user_id, '-', SUBSTRING_INDEX(REPLACE(REPLACE(cr.to_user_ids, '["', ''), '"]', ''), '","', 1))) as total
-      FROM wecom_chat_records cr ${where}
-    `;
-
+    // 取出所有会话方向的记录，在应用层合并双向
     const listSql = `
       SELECT
         cr.from_user_id AS fromUserId,
@@ -1022,25 +1017,92 @@ export class WecomChatArchiveService {
         cr.to_user_ids AS toUserIds,
         cr.room_id AS roomId,
         MAX(cr.msg_time) AS lastMsgTime,
-        SUM(CASE WHEN cr.msg_type != 'meta' THEN 1 ELSE 0 END) AS msgCount,
-        (SELECT cr2.content FROM wecom_chat_records cr2
-         WHERE cr2.from_user_id = cr.from_user_id AND cr2.to_user_ids = cr.to_user_ids AND cr2.wecom_config_id = cr.wecom_config_id
-         ORDER BY cr2.msg_time DESC LIMIT 1) AS lastContent,
-        (SELECT cr2.msg_type FROM wecom_chat_records cr2
-         WHERE cr2.from_user_id = cr.from_user_id AND cr2.to_user_ids = cr.to_user_ids AND cr2.wecom_config_id = cr.wecom_config_id
-         ORDER BY cr2.msg_time DESC LIMIT 1) AS lastMsgType
+        COUNT(*) AS msgCount
       FROM wecom_chat_records cr
       ${where}
-      GROUP BY cr.from_user_id, cr.from_user_name, cr.to_user_ids, cr.room_id, cr.wecom_config_id
+      GROUP BY cr.from_user_id, cr.to_user_ids, cr.room_id
       ORDER BY lastMsgTime DESC
-      LIMIT ? OFFSET ?
+      LIMIT 200
     `;
 
     try {
-      const countResult = await AppDataSource.query(countSql, queryParams);
-      const total = countResult[0]?.total || 0;
+      const dirList = await AppDataSource.query(listSql, queryParams);
 
-      const rawList = await AppDataSource.query(listSql, [...queryParams, pageSize, offset]);
+      // ★ 应用层合并双向会话：A→B 和 B→A 归并为一条
+      const convMap = new Map<string, any>();
+      for (const item of dirList) {
+        const fromId = item.fromUserId || '';
+        const toId = this.extractFirstToUser(item.toUserIds);
+        const roomId = item.roomId || '';
+
+        // 生成会话唯一键（双向归一）
+        let convKey: string;
+        if (roomId) {
+          convKey = `room:${roomId}`;
+        } else {
+          const ids = [fromId, toId].sort();
+          convKey = `${ids[0]}|${ids[1]}`;
+        }
+
+        if (convMap.has(convKey)) {
+          const existing = convMap.get(convKey)!;
+          existing.msgCount += parseInt(item.msgCount) || 0;
+          if (item.lastMsgTime > existing.lastMsgTime) {
+            existing.lastMsgTime = item.lastMsgTime;
+            existing.fromUserId = item.fromUserId;
+            existing.fromUserName = item.fromUserName;
+            existing.toUserIds = item.toUserIds;
+          }
+        } else {
+          convMap.set(convKey, {
+            fromUserId: item.fromUserId,
+            fromUserName: item.fromUserName,
+            toUserIds: item.toUserIds,
+            roomId: roomId || null,
+            lastMsgTime: item.lastMsgTime,
+            msgCount: parseInt(item.msgCount) || 0,
+            convKey
+          });
+        }
+      }
+
+      // 排序并分页
+      const merged = Array.from(convMap.values()).sort((a, b) => b.lastMsgTime - a.lastMsgTime);
+      const total = merged.length;
+      const offset = (page - 1) * pageSize;
+      const paged = merged.slice(offset, offset + pageSize);
+
+      // 获取每个会话的最新消息内容
+      for (const conv of paged) {
+        try {
+          const fromId = conv.fromUserId;
+          const toId = this.extractFirstToUser(conv.toUserIds);
+          let lastMsgSql: string;
+          let lastMsgParams: any[];
+          if (conv.roomId) {
+            lastMsgSql = `SELECT content, msg_type AS msgType FROM wecom_chat_records
+              WHERE room_id = ? AND msg_type != 'meta' ${tenantId ? 'AND tenant_id = ?' : ''} ${configId ? 'AND wecom_config_id = ?' : ''}
+              ORDER BY msg_time DESC LIMIT 1`;
+            lastMsgParams = [conv.roomId];
+          } else {
+            lastMsgSql = `SELECT content, msg_type AS msgType FROM wecom_chat_records
+              WHERE msg_type != 'meta'
+              AND ((from_user_id = ? AND to_user_ids LIKE ?) OR (from_user_id = ? AND to_user_ids LIKE ?))
+              ${tenantId ? 'AND tenant_id = ?' : ''} ${configId ? 'AND wecom_config_id = ?' : ''}
+              ORDER BY msg_time DESC LIMIT 1`;
+            lastMsgParams = [fromId, `%${toId}%`, toId, `%${fromId}%`];
+          }
+          if (tenantId) lastMsgParams.push(tenantId);
+          if (configId) lastMsgParams.push(configId);
+          const lastMsgRows = await AppDataSource.query(lastMsgSql, lastMsgParams);
+          if (lastMsgRows.length > 0) {
+            conv.lastContent = lastMsgRows[0].content;
+            conv.lastMsgType = lastMsgRows[0].msgType;
+          }
+        } catch { /* ignore */ }
+      }
+
+      const rawList = paged;
 
       // 收集所有外部联系人ID，批量从 wecom_customers 表查找备注和昵称
       const externalUserIds = new Set<string>();
@@ -1447,6 +1509,18 @@ export class WecomChatArchiveService {
   private static safeParseJson(str: any, fallback: any): any {
     if (!str || typeof str !== 'string') return fallback;
     try { return JSON.parse(str); } catch { return fallback; }
+  }
+
+  private static extractFirstToUser(toUserIds: any): string {
+    if (Array.isArray(toUserIds) && toUserIds.length > 0) return toUserIds[0];
+    if (typeof toUserIds === 'string') {
+      try {
+        const parsed = JSON.parse(toUserIds);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed[0];
+      } catch { /* ignore */ }
+      return toUserIds;
+    }
+    return '';
   }
 
   // ==================== 第三方模式：专区接口拉取实际消息 ====================
