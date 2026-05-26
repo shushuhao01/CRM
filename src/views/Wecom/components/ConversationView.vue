@@ -120,7 +120,9 @@
               </div>
             </div>
             <div class="msg-header-right">
-              <!-- 气泡模式已隐藏，统一使用企微组件模式 -->
+              <el-tooltip v-if="!isInWecomClient" content="消息详细内容需在企业微信客户端中查看" placement="top">
+                <el-tag type="info" size="small" effect="plain">概览模式</el-tag>
+              </el-tooltip>
               <span class="msg-header-count">共 {{ msgTotal }} 条</span>
               <el-button link size="small" @click="refreshMessages"><el-icon><Refresh /></el-icon></el-button>
             </div>
@@ -128,34 +130,12 @@
 
           <!-- 消息列表 -->
           <div class="msg-panel-body" ref="chatMessagesRef" v-loading="msgLoading">
-            <!-- 模式A: 企微会话展示组件渲染 -->
-            <template v-if="renderMode === 'wecom'">
-              <!-- 非企微客户端：引导去企微工作台打开 -->
-              <div v-if="!isInWecomClient" class="wecom-redirect-prompt">
-                <el-icon :size="48" color="#1890ff"><Connection /></el-icon>
-                <h3>请在企业微信中打开</h3>
-                <p>根据企业微信规则，会话存档内容需要在企业微信内置浏览器中才能查看。<br/>请按以下步骤操作：</p>
-                <div class="wecom-guide-steps">
-                  <div class="guide-step">
-                    <span class="step-num">1</span>
-                    <span>打开<strong>企业微信</strong>客户端，点击底部<strong>「工作台」</strong></span>
-                  </div>
-                  <div class="guide-step">
-                    <span class="step-num">2</span>
-                    <span>在工作台中找到并打开<strong>「云客CRM」</strong>应用</span>
-                  </div>
-                  <div class="guide-step">
-                    <span class="step-num">3</span>
-                    <span>在首页点击<strong>「会话存档」</strong>快捷入口即可查看聊天记录</span>
-                  </div>
-                </div>
-              </div>
-              <!-- 企微客户端：SDK初始化中 -->
-              <div v-else-if="sdkInitializing" class="wecom-sdk-loading">
+            <!-- 企微客户端：使用会话展示组件 -->
+            <template v-if="isInWecomClient && renderMode === 'wecom'">
+              <div v-if="sdkInitializing" class="wecom-sdk-loading">
                 <el-icon class="is-loading" :size="32"><Loading /></el-icon>
                 <p>正在初始化企微SDK...</p>
               </div>
-              <!-- SDK已就绪：渲染消息 -->
               <template v-else-if="isWecomReady">
                 <WecomMessageRenderer
                   :msg-list="messageKeys"
@@ -164,22 +144,15 @@
                   @error="handleWecomRenderError"
                 />
               </template>
-              <!-- SDK初始化失败 -->
               <div v-else class="wecom-sdk-fallback">
                 <el-icon :size="40" color="#e6a23c"><WarningFilled /></el-icon>
                 <h4>企微SDK初始化失败</h4>
                 <p v-if="sdkInitError" class="sdk-error-detail">{{ sdkInitError }}</p>
-                <p>请检查以下配置：</p>
-                <ul class="sdk-check-list">
-                  <li>企微应用的「可信域名」是否包含当前网站域名</li>
-                  <li>企微应用的 agentId 是否正确配置</li>
-                  <li>是否在企业微信客户端内打开（非普通浏览器）</li>
-                </ul>
                 <el-button size="small" @click="autoInitSdk">重试初始化</el-button>
               </div>
             </template>
 
-            <!-- 模式B: 传统气泡渲染（现有逻辑） -->
+            <!-- 普通浏览器：气泡模式展示消息元数据（发送者、类型、时间） -->
             <template v-else>
             <div v-if="msgTotal > messages.length" class="load-more-bar">
               <el-button link type="primary" size="small" @click="loadMoreMessages" :loading="msgLoadingMore">加载更早消息</el-button>
@@ -826,8 +799,44 @@ onMounted(() => {
   loadSensitiveWords()
 })
 
+// ==================== 外部调用方法（搜索跳转） ====================
+/** 根据 wecomUserId 选中某个存档成员 */
+const selectMemberById = (wecomUserId: string) => {
+  const member = archiveMembers.value.find((m: any) => m.wecomUserId === wecomUserId)
+  if (member) {
+    selectMember(member)
+  }
+}
+
+/** 跳转到指定会话（用于全局搜索） */
+const jumpToConversation = async (type: 'customer' | 'staff' | 'group', memberId: string, peerId: string) => {
+  // 先选中成员
+  const member = archiveMembers.value.find((m: any) => m.wecomUserId === memberId)
+  if (member) {
+    selectedMemberId.value = member.wecomUserId
+    selectedMemberName.value = member.name || member.wecomUserId
+    selectedMemberAvatar.value = isValidAvatar(member.avatar) ? member.avatar : ''
+  }
+  // 切换 tab
+  if (type === 'group') convTab.value = 'group'
+  else if (type === 'customer') convTab.value = 'customer'
+  else convTab.value = 'staff'
+  // 刷新会话列表
+  convPage.value = 1
+  await fetchConversations()
+  // 尝试在列表中找到目标会话并选中
+  const targetConv = conversations.value.find((c: any) => {
+    if (type === 'group') return c.roomId === peerId
+    const toId = getFirstToUser(c.toUserIds) || ''
+    return toId === peerId || c.fromUserId === peerId
+  })
+  if (targetConv) {
+    selectConversation(targetConv)
+  }
+}
+
 // 暴露方法给父组件调用
-defineExpose({ fetchConversations, fetchArchiveMembers })
+defineExpose({ fetchConversations, fetchArchiveMembers, selectMemberById, jumpToConversation })
 </script>
 
 <style scoped>

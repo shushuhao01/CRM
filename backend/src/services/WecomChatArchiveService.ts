@@ -264,18 +264,39 @@ export class WecomChatArchiveService {
           }
         }
 
-        // Step 6: 轻量补充客户名称（仅处理有消息但名称为空的联系人）
+        // Step 5.8: 通过专区API获取准确的会话同意状态
+        try {
+          const agreeCount = await this.syncAgreeStatusViaZone(config, accessToken);
+          if (agreeCount > 0) {
+            result.agreedUsers = agreeCount;
+            log.info(`[ChatArchive] Step5.8完成: 获取到 ${agreeCount} 个客户的同意状态`);
+          }
+        } catch (e: any) {
+          log.debug(`[ChatArchive] Step5.8: 获取同意状态失败(非致命，使用推断): ${e.message}`);
+        }
+
+        // Step 6: 轻量补充客户名称和头像（仅处理有消息但名称为空的联系人）
         if (externalAccessToken) {
-          log.info(`[ChatArchive] Step6: 轻量补充客户名称...`);
+          log.info(`[ChatArchive] Step6: 轻量补充客户名称和头像...`);
           try {
             const enrichCount = await this.enrichContactNames(config, externalAccessToken);
             (result as any).enrichedContacts = enrichCount;
             if (enrichCount > 0) {
-              log.info(`[ChatArchive] Step6完成: 补充了 ${enrichCount} 个联系人名称`);
+              log.info(`[ChatArchive] Step6完成: 补充了 ${enrichCount} 个联系人名称/头像`);
             }
           } catch (e: any) {
             log.warn(`[ChatArchive] Step6: 补充客户名称出错(非致命): ${e.message}`);
           }
+        }
+
+        // Step 6.5: 补充存档成员（内部员工）的头像
+        try {
+          const memberAvatarCount = await this.enrichMemberAvatars(config, accessToken, permitUserIds);
+          if (memberAvatarCount > 0) {
+            log.info(`[ChatArchive] Step6.5完成: 补充了 ${memberAvatarCount} 个员工头像`);
+          }
+        } catch (e: any) {
+          log.debug(`[ChatArchive] Step6.5: 补充员工头像出错(非致命): ${e.message}`);
         }
       } else {
         // 自建应用模式：保持原有的会话元数据同步逻辑
@@ -709,11 +730,11 @@ export class WecomChatArchiveService {
    */
   private static async enrichContactNames(config: WecomConfig, externalAccessToken: string): Promise<number> {
     let enriched = 0;
-    const maxEnrich = 50; // 每次最多补充50个，避免API限流
+    const maxEnrich = 50;
 
     try {
-      // 查找有消息记录但本地没有客户名称的外部联系人
-      const missingNames = await AppDataSource.query(`
+      // 查找有消息记录但缺少名称或头像的外部联系人
+      const needsEnrich = await AppDataSource.query(`
         SELECT DISTINCT ext_id FROM (
           SELECT from_user_id AS ext_id FROM wecom_chat_records
           WHERE wecom_config_id = ? AND msg_type != 'meta'
@@ -724,20 +745,23 @@ export class WecomChatArchiveService {
             AND (to_user_ids LIKE '%wm%' OR to_user_ids LIKE '%wo%')
         ) AS t
         WHERE ext_id IS NOT NULL AND ext_id != ''
-          AND ext_id NOT IN (
-            SELECT external_user_id FROM wecom_customers
-            WHERE wecom_config_id = ? AND name IS NOT NULL AND name != ''
+          AND (
+            ext_id NOT IN (
+              SELECT external_user_id FROM wecom_customers
+              WHERE wecom_config_id = ? AND name IS NOT NULL AND name != ''
+                AND avatar IS NOT NULL AND avatar != ''
+            )
           )
         LIMIT ?
       `, [config.id, config.id, config.id, maxEnrich]);
 
-      if (!missingNames || missingNames.length === 0) return 0;
+      if (!needsEnrich || needsEnrich.length === 0) return 0;
 
-      log.info(`[ChatArchive] enrichContactNames: 需要补充 ${missingNames.length} 个联系人名称`);
+      log.info(`[ChatArchive] enrichContactNames: 需要补充 ${needsEnrich.length} 个联系人信息(名称/头像)`);
 
       const customerRepo = AppDataSource.getRepository(WecomCustomer);
 
-      for (const row of missingNames) {
+      for (const row of needsEnrich) {
         const extId = row.ext_id;
         if (!extId) continue;
         try {
@@ -746,23 +770,41 @@ export class WecomChatArchiveService {
             const ext = detailResp.external_contact;
             const followUser = (detailResp.follow_user || [])[0];
             const remark = followUser?.remark || '';
-            const name = remark ? (ext.name ? `${remark}(${ext.name})` : remark) : (ext.name || extId);
+            const displayName = ext.name || '';
             const avatar = ext.avatar || '';
+            const corpName = ext.corp_name || '';
 
-            // 更新或创建客户记录
             const existing = await customerRepo.findOne({ where: { wecomConfigId: config.id, externalUserId: extId } });
             if (existing) {
-              if (!existing.name || existing.name === extId) existing.name = name;
-              if (!existing.avatar && avatar) existing.avatar = avatar;
+              // 补充缺失信息
+              if (!existing.name || existing.name === extId) {
+                existing.name = displayName;
+              }
+              if (remark && !existing.remark) {
+                existing.remark = remark;
+              }
+              if (avatar && (!existing.avatar || existing.avatar === '')) {
+                existing.avatar = avatar;
+              }
+              if (corpName && !existing.corpName) {
+                existing.corpName = corpName;
+              }
               await customerRepo.save(existing);
             } else {
               await customerRepo.save(customerRepo.create({
                 tenantId: config.tenantId,
                 wecomConfigId: config.id,
+                corpId: config.corpId,
                 externalUserId: extId,
-                name,
+                name: displayName,
+                remark,
                 avatar,
-                type: ext.type || 1
+                corpName,
+                type: ext.type || 1,
+                gender: ext.gender || 0,
+                followUserId: followUser?.userid || '',
+                followUserName: followUser?.name || '',
+                status: 'normal'
               }));
             }
             enriched++;
@@ -770,13 +812,82 @@ export class WecomChatArchiveService {
         } catch (e: any) {
           log.warn(`[ChatArchive] enrichContactNames: 获取 ${extId} 详情失败: ${e.message}`);
         }
-        // 每个API调用间隔100ms，避免限流
-        if (enriched < missingNames.length - 1) {
+        if (enriched < needsEnrich.length - 1) {
           await new Promise(r => setTimeout(r, 100));
         }
       }
     } catch (e: any) {
       log.warn(`[ChatArchive] enrichContactNames error:`, e.message);
+    }
+
+    return enriched;
+  }
+
+  /**
+   * 补充存档成员（内部员工）的头像
+   * 从企微通讯录API获取头像URL并存入 wecom_user_bindings 表
+   */
+  private static async enrichMemberAvatars(config: WecomConfig, accessToken: string, memberIds: string[]): Promise<number> {
+    let enriched = 0;
+    const maxEnrich = 30;
+
+    try {
+      // 找出没有头像的成员
+      const noAvatarMembers = await AppDataSource.query(`
+        SELECT am.wecom_user_id
+        FROM wecom_archive_members am
+        LEFT JOIN wecom_user_bindings ub ON am.wecom_user_id = ub.wecom_user_id
+        WHERE am.tenant_id = ? AND am.is_enabled = 1
+          AND (ub.wecom_avatar IS NULL OR ub.wecom_avatar = '' OR ub.id IS NULL)
+        LIMIT ?
+      `, [config.tenantId || '', maxEnrich]);
+
+      if (!noAvatarMembers || noAvatarMembers.length === 0) return 0;
+
+      log.info(`[ChatArchive] enrichMemberAvatars: 需要补充 ${noAvatarMembers.length} 个员工头像`);
+
+      for (const row of noAvatarMembers) {
+        const userId = row.wecom_user_id;
+        if (!userId) continue;
+        try {
+          const userDetail = await WecomApiService.getUserDetail(accessToken, userId);
+          if (userDetail) {
+            const avatar = userDetail.avatar || userDetail.thumb_avatar || '';
+            const userName = userDetail.name || '';
+
+            if (avatar) {
+              // 更新 wecom_user_bindings
+              const existingBinding = await AppDataSource.query(
+                `SELECT id FROM wecom_user_bindings WHERE wecom_user_id = ? AND tenant_id = ? LIMIT 1`,
+                [userId, config.tenantId || '']
+              );
+
+              if (existingBinding.length > 0) {
+                await AppDataSource.query(
+                  `UPDATE wecom_user_bindings SET wecom_avatar = ?, updated_at = NOW() WHERE id = ?`,
+                  [avatar, existingBinding[0].id]
+                );
+              } else {
+                // 如果 binding 不存在，创建一条
+                await AppDataSource.query(
+                  `INSERT INTO wecom_user_bindings (tenant_id, wecom_config_id, corp_id, wecom_user_id, wecom_user_name, wecom_avatar, crm_user_id, is_enabled, created_at, updated_at)
+                   VALUES (?, ?, ?, ?, ?, ?, '', 1, NOW(), NOW())
+                   ON DUPLICATE KEY UPDATE wecom_avatar = VALUES(wecom_avatar), wecom_user_name = VALUES(wecom_user_name), updated_at = NOW()`,
+                  [config.tenantId || '', config.id, config.corpId, userId, userName, avatar]
+                );
+              }
+              enriched++;
+            }
+          }
+        } catch (e: any) {
+          log.debug(`[ChatArchive] enrichMemberAvatars: 获取 ${userId} 详情失败: ${e.message}`);
+        }
+        if (enriched < noAvatarMembers.length - 1) {
+          await new Promise(r => setTimeout(r, 100));
+        }
+      }
+    } catch (e: any) {
+      log.warn(`[ChatArchive] enrichMemberAvatars error:`, e.message);
     }
 
     return enriched;
@@ -1487,7 +1598,7 @@ export class WecomChatArchiveService {
           27: 'markdown', 28: 'note'
         };
 
-        // 处理每条消息：获取消息体 + RSA解密密钥 + AES解密明文
+        // 处理每条消息：RSA解密密钥 → 存储元数据 + secretKey（消息明文需通过前端会话展示组件查看）
         for (const item of chatdata) {
           try {
             // 从 sync_msg 返回的元数据中提取信息
@@ -1521,76 +1632,48 @@ export class WecomChatArchiveService {
               where: { corpId: config.corpId, msgId: item.msgid }
             });
             if (existing) {
-              // 如果旧记录是加密占位格式，尝试获取消息体并解密更新
-              try {
-                const oldContent = typeof existing.content === 'string' ? JSON.parse(existing.content) : existing.content;
-                if (oldContent?.type === 'encrypted' && item.encrypt_random_key) {
-                  const sk = this.rsaDecrypt(rsaPrivateKey, item.encrypt_random_key);
-                  if (sk) {
-                    try {
-                      const msgBody = useZoneProxy
-                        ? await WecomApiService.getMsgBodyViaZone(chatAccessToken, zoneProgramId!, zoneGetMsgBodyAbilityId!, item.msgid)
-                        : await WecomApiService.getMsgBody(chatAccessToken, item.msgid);
-                      if (msgBody.encrypted_msg_body) {
-                        const plaintext = this.aesDecrypt(sk, msgBody.encrypted_msg_body);
-                        if (plaintext) {
-                          existing.content = plaintext;
-                          if (!existing.fromUserId && fromUserId) existing.fromUserId = fromUserId;
-                          if (!existing.fromUserName && fromUserName) existing.fromUserName = fromUserName;
-                          await chatRecordRepo.save(existing);
-                          savedCount++;
-                        }
-                      }
-                    } catch { /* get_msg_body 失败不阻塞 */ }
-                  }
-                }
-              } catch { /* ignore update error */ }
+              // 如果旧记录缺少关键信息（发送者为空），更新补充
+              if ((!existing.fromUserId || existing.fromUserId === '') && fromUserId) {
+                existing.fromUserId = fromUserId;
+                existing.fromUserName = fromUserName;
+                existing.senderType = senderType;
+                existing.receiverType = receiverType;
+                if (chatId && !existing.roomId) existing.roomId = chatId;
+                await chatRecordRepo.save(existing);
+                savedCount++;
+              }
               continue;
             }
 
-            // RSA解密 encrypt_random_key → 得到 secretKey
+            // RSA解密 encrypted_secret_key → 得到 secretKey
+            // ★ 根据企微官方文档：sync_msg 不返回消息体明文，只返回 encrypted_secret_key
+            // 消息内容只能通过前端「会话展示组件」传入 msgid + secretKey 来渲染
             let secretKey = '';
             if (item.encrypt_random_key) {
               secretKey = this.rsaDecrypt(rsaPrivateKey, item.encrypt_random_key) || '';
               if (!secretKey) {
-                log.warn(`[ChatArchive] RSA解密失败, msgid=${item.msgid}`);
+                log.warn(`[ChatArchive] RSA解密失败, msgid=${item.msgid}, keyLen=${item.encrypt_random_key?.length}`);
               }
             }
 
-            let encryptedMsgBody = '';
-            if (secretKey) {
-              try {
-                const msgBody = useZoneProxy
-                  ? await WecomApiService.getMsgBodyViaZone(chatAccessToken, zoneProgramId!, zoneGetMsgBodyAbilityId!, item.msgid)
-                  : await WecomApiService.getMsgBody(chatAccessToken, item.msgid);
-                encryptedMsgBody = msgBody.encrypted_msg_body || '';
-              } catch (bodyErr: any) {
-                log.debug(`[ChatArchive] 获取消息体失败 msgid=${item.msgid}: ${bodyErr.message}`);
-              }
-            }
+            // 根据消息类型生成可在普通浏览器中显示的内容描述
+            const msgTypeDescMap: Record<string, string> = {
+              text: '文本消息', image: '图片', emotion: '表情', link: '链接',
+              weapp: '小程序', voice: '语音', video: '视频', file: '文件',
+              card: '名片', chatrecord: '聊天记录', location: '位置',
+              agree: '同意会话存档', disagree: '不同意会话存档', call: '音视频通话',
+              redpacket: '红包', meeting: '快速会议', todo: '待办', vote: '投票',
+              doc: '在线文档', mixed: '图文混合', note: '笔记'
+            };
 
-            // AES解密 encrypted_msg_body → 得到消息明文
-            let decryptedContent: any = null;
-            if (secretKey && encryptedMsgBody) {
-              const plaintext = this.aesDecrypt(secretKey, encryptedMsgBody);
-              if (plaintext) {
-                try {
-                  decryptedContent = JSON.parse(plaintext);
-                } catch {
-                  decryptedContent = { text: { content: plaintext } };
-                }
-              }
-            }
-
-            // 保存到数据库：优先存储解密后的明文内容，解密失败时存密钥备用
-            const contentToStore = decryptedContent
-              ? JSON.stringify(decryptedContent)
-              : JSON.stringify({
-                  type: 'encrypted',
-                  secretKey: secretKey,
-                  publicKeyVer: item.publickey_ver || 1,
-                  msgtype: msgTypeStr
-                });
+            // 存储格式：secretKey 用于前端会话展示组件，msgtype 用于普通浏览器显示
+            const contentToStore = JSON.stringify({
+              secretKey: secretKey || '',
+              msgid: item.msgid,
+              msgtype: msgTypeStr,
+              msgTypeDesc: msgTypeDescMap[msgTypeStr] || msgTypeStr,
+              publicKeyVer: item.publickey_ver || 1
+            });
 
             const record = chatRecordRepo.create({
               tenantId: config.tenantId,
@@ -1623,9 +1706,9 @@ export class WecomChatArchiveService {
           await this.saveSyncCursor(config.id, cursor, config.tenantId);
         }
 
-        // 批间延迟，避免API限流（get_msg_body 已逐条调用，增加间隔）
+        // 批间延迟，避免API限流
         if (hasMore) {
-          await new Promise(r => setTimeout(r, 500));
+          await new Promise(r => setTimeout(r, 300));
         }
       } catch (e: any) {
         log.error(`[ChatArchive] syncChatMessages batch ${batchCount} error:`, e.message);
@@ -1635,6 +1718,116 @@ export class WecomChatArchiveService {
 
     log.info(`[ChatArchive] syncChatMessages 完成: 共拉取 ${totalFetched} 条, 保存 ${savedCount} 条新消息`);
     return { savedCount, totalFetched };
+  }
+
+  /**
+   * 通过专区程序 get_agree_status_single 获取客户同意会话存档的准确状态
+   * 并更新到 chat_records 的 meta 记录中，供 getConversationList 读取
+   */
+  private static async syncAgreeStatusViaZone(config: WecomConfig, accessToken: string): Promise<number> {
+    const { WecomSuiteConfig } = await import('../entities/WecomSuiteConfig');
+    const suiteRepo = AppDataSource.getRepository(WecomSuiteConfig);
+    const suiteConfig = await suiteRepo.findOne({ where: {}, order: { id: 'ASC' } });
+    const zoneProgramId = suiteConfig?.zoneProgramId;
+    const zoneAbilityId = suiteConfig?.zoneSyncMsgAbilityId || suiteConfig?.zoneAbilityId;
+
+    if (!zoneProgramId || !zoneAbilityId) return 0;
+
+    // 获取所有需要检查同意状态的 内部成员 → 外部联系人 关系
+    const pairs = await AppDataSource.query(
+      `SELECT DISTINCT cr.from_user_id as staffId, 
+              SUBSTRING_INDEX(REPLACE(REPLACE(cr.to_user_ids, '["', ''), '"]', ''), '","', 1) as extId
+       FROM wecom_chat_records cr
+       WHERE cr.wecom_config_id = ? AND cr.msg_type != 'meta' AND cr.room_id IS NULL
+         AND cr.from_user_id NOT LIKE 'wm%' AND cr.from_user_id NOT LIKE 'wo%'
+         AND cr.to_user_ids LIKE '%wm%'
+       LIMIT 100`,
+      [config.id]
+    );
+
+    if (pairs.length === 0) return 0;
+
+    // 构建查询参数
+    const items = pairs
+      .filter((p: any) => p.staffId && p.extId && (p.extId.startsWith('wm') || p.extId.startsWith('wo')))
+      .map((p: any) => ({ userid: p.staffId, external_userid: p.extId }));
+
+    if (items.length === 0) return 0;
+
+    log.info(`[ChatArchive] syncAgreeStatusViaZone: 查询 ${items.length} 个会话的同意状态`);
+
+    try {
+      const rawResult = await WecomApiService.syncCallProgram(
+        accessToken, zoneProgramId, zoneAbilityId,
+        'get_agree_status_single', { item: items.slice(0, 100) }
+      );
+
+      let result = rawResult;
+      if (rawResult?.output) {
+        result = typeof rawResult.output === 'string' ? JSON.parse(rawResult.output) : rawResult.output;
+      }
+
+      if (result.errcode && result.errcode !== 0) {
+        log.warn(`[ChatArchive] get_agree_status_single 失败: ${result.errcode} ${result.errmsg}`);
+        return 0;
+      }
+
+      const agreeInfo = result.agreeinfo || [];
+      let agreedCount = 0;
+
+      // 将同意状态存入数据库（更新现有 meta 记录或创建新的）
+      const chatRecordRepo = AppDataSource.getRepository(WecomChatRecord);
+      for (const info of agreeInfo) {
+        const extId = info.external_userid;
+        const agreed = info.agree_status === 'Agree';
+        if (agreed) agreedCount++;
+
+        // 查找该客户的 meta 记录
+        const existingMeta = await chatRecordRepo.findOne({
+          where: { corpId: config.corpId, msgType: 'meta', toUserIds: JSON.stringify([extId]) }
+        });
+
+        if (existingMeta) {
+          try {
+            const content = typeof existingMeta.content === 'string' ? JSON.parse(existingMeta.content) : (existingMeta.content || {});
+            content.agreed = agreed;
+            content.agreeStatusTime = info.status_change_time;
+            content.agreeSource = 'zone_api';
+            existingMeta.content = JSON.stringify(content);
+            await chatRecordRepo.save(existingMeta);
+          } catch { /* ignore */ }
+        } else {
+          // 创建新的 meta 记录
+          const meta = chatRecordRepo.create({
+            tenantId: config.tenantId,
+            wecomConfigId: config.id,
+            corpId: config.corpId,
+            msgId: `agree_meta_${extId}_${Date.now()}`,
+            msgType: 'meta',
+            action: 'send',
+            fromUserId: info.userid || '',
+            fromUserName: '',
+            toUserIds: JSON.stringify([extId]),
+            roomId: null,
+            msgTime: (info.status_change_time || Math.floor(Date.now() / 1000)) * 1000,
+            content: JSON.stringify({
+              type: 'conversation_meta',
+              agreed,
+              agreeStatusTime: info.status_change_time,
+              agreeSource: 'zone_api'
+            }),
+            isSensitive: false
+          });
+          await chatRecordRepo.save(meta);
+        }
+      }
+
+      log.info(`[ChatArchive] syncAgreeStatusViaZone: 获取 ${agreeInfo.length} 条记录, ${agreedCount} 个已同意`);
+      return agreedCount;
+    } catch (e: any) {
+      log.warn(`[ChatArchive] syncAgreeStatusViaZone 异常: ${e.message}`);
+      return 0;
+    }
   }
 
   /**

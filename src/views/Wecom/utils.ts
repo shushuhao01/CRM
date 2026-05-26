@@ -68,8 +68,15 @@ function extractText(obj: any): string {
   if (typeof obj.text === 'string') return obj.text
   // 通用格式: { content: "hello" }
   if (typeof obj.content === 'string') return obj.content
-  // 加密占位格式: { type: 'encrypted', ... }
-  if (obj.type === 'encrypted') return '[消息待解密，请重新同步]'
+  // 企微专区消息格式：存储了 secretKey + 消息类型描述
+  // 根据企微安全机制，消息明文需通过企微客户端的「会话展示组件」查看
+  if (obj.secretKey !== undefined) {
+    return obj.msgTypeDesc ? `[${obj.msgTypeDesc}]` : `[${obj.msgtype || '消息'}]`
+  }
+  // 旧版加密占位格式（兼容）
+  if (obj.type === 'encrypted') {
+    return obj.msgtype ? `[${obj.msgtype}]` : '[需在企微客户端查看]'
+  }
   return JSON.stringify(obj)
 }
 

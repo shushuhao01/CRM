@@ -84,6 +84,62 @@
         </div>
       </div>
 
+      <!-- 综合搜索栏 -->
+      <div class="global-search-bar">
+        <el-input
+          v-model="globalSearchKeyword"
+          placeholder="搜索成员、客户、群聊、聊天内容..."
+          clearable
+          @keyup.enter="handleGlobalSearch"
+          @clear="handleClearGlobalSearch"
+          class="global-search-input"
+          prefix-icon="Search"
+        />
+        <el-button type="primary" @click="handleGlobalSearch" :loading="globalSearching">搜索</el-button>
+        <!-- 搜索结果下拉面板 -->
+        <div v-if="globalSearchResults && globalSearchVisible" class="global-search-results" v-click-outside="handleCloseSearchPanel">
+          <div v-if="globalSearchResults.members?.length" class="search-group">
+            <div class="search-group-title">存档成员</div>
+            <div v-for="item in globalSearchResults.members" :key="'m-' + item.wecomUserId" class="search-result-item" @click="jumpToMember(item)">
+              <span class="result-avatar result-avatar-staff">{{ (item.name || item.wecomUserId).charAt(0) }}</span>
+              <span class="result-name">{{ item.name || item.wecomUserId }}</span>
+              <el-tag size="small" type="info">员工</el-tag>
+            </div>
+          </div>
+          <div v-if="globalSearchResults.customers?.length" class="search-group">
+            <div class="search-group-title">客户</div>
+            <div v-for="item in globalSearchResults.customers" :key="'c-' + item.id" class="search-result-item" @click="jumpToCustomerConv(item)">
+              <span class="result-avatar result-avatar-customer">{{ (item.name || item.externalUserId || '?').charAt(0) }}</span>
+              <span class="result-name">{{ item.remark || item.name || item.externalUserId }}</span>
+              <span class="result-sub" v-if="item.remark && item.name">({{ item.name }})</span>
+              <el-tag size="small" type="success">客户</el-tag>
+            </div>
+          </div>
+          <div v-if="globalSearchResults.groups?.length" class="search-group">
+            <div class="search-group-title">群聊</div>
+            <div v-for="item in globalSearchResults.groups" :key="'g-' + item.roomId" class="search-result-item" @click="jumpToGroupConv(item)">
+              <span class="result-avatar result-avatar-group">群</span>
+              <span class="result-name">{{ item.roomName || item.roomId }}</span>
+              <el-tag size="small" type="warning">群聊</el-tag>
+            </div>
+          </div>
+          <div v-if="globalSearchResults.messages?.length" class="search-group">
+            <div class="search-group-title">聊天内容</div>
+            <div v-for="item in globalSearchResults.messages" :key="'msg-' + item.id" class="search-result-item" @click="jumpToMessage(item)">
+              <span class="result-avatar result-avatar-msg">💬</span>
+              <div class="result-msg-info">
+                <span class="result-name">{{ item.fromUserName || item.fromUserId }}</span>
+                <span class="result-preview">{{ item.contentPreview }}</span>
+              </div>
+              <span class="result-time">{{ item.sendTimeStr }}</span>
+            </div>
+          </div>
+          <div v-if="isSearchEmpty" class="search-empty">
+            <el-empty description="未找到匹配结果" :image-size="40" />
+          </div>
+        </div>
+      </div>
+
       <!-- V4.0 7 Tab 结构 — 聊天会话放第一位 -->
       <el-tabs v-model="activeTab" @tab-change="handleTabChange">
         <!-- Tab 1: 聊天会话 (原Tab2，现放第一位) -->
@@ -251,9 +307,9 @@
 
 <script setup lang="ts">
 defineOptions({ name: 'WecomChatArchive' })
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, nextTick } from 'vue'
 import { Document, Refresh, Search, Lock, ShoppingCart, ChatLineSquare, InfoFilled } from '@element-plus/icons-vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage, ElMessageBox, ClickOutside as vClickOutside } from 'element-plus'
 import { getWecomConfigs, getChatArchiveStatus, getChatRecords, syncChatRecords, diagnoseChatRecords, getArchiveSeats, getWecomDepartments, getWecomUsers } from '@/api/wecom'
 import { formatMsgTime, getMsgTypeText, getTextContent, getMetaSummary, getMetaAgreed, formatToUsers } from './utils'
 import type { ArchiveStatus, ChatRecord } from './types'
@@ -293,6 +349,75 @@ const loading = ref(false)
 const syncing = ref(false)
 const configList = ref<any[]>([])
 const selectedConfigId = ref<number | null>(null)
+
+// 综合搜索
+const globalSearchKeyword = ref('')
+const globalSearching = ref(false)
+const globalSearchVisible = ref(false)
+const globalSearchResults = ref<any>(null)
+const isSearchEmpty = computed(() => {
+  if (!globalSearchResults.value) return false
+  const r = globalSearchResults.value
+  return !r.members?.length && !r.customers?.length && !r.groups?.length && !r.messages?.length
+})
+
+const handleGlobalSearch = async () => {
+  const kw = globalSearchKeyword.value.trim()
+  if (!kw || !selectedConfigId.value) return
+  globalSearching.value = true
+  globalSearchVisible.value = true
+  try {
+    const { data } = await api.post('/wecom/chat-archive/global-search', {
+      configId: selectedConfigId.value,
+      keyword: kw,
+      limit: 10
+    })
+    globalSearchResults.value = data.data || data
+  } catch (e: any) {
+    globalSearchResults.value = { members: [], customers: [], groups: [], messages: [] }
+  } finally {
+    globalSearching.value = false
+  }
+}
+const handleClearGlobalSearch = () => {
+  globalSearchResults.value = null
+  globalSearchVisible.value = false
+}
+const handleCloseSearchPanel = () => {
+  globalSearchVisible.value = false
+}
+const jumpToMember = (item: any) => {
+  globalSearchVisible.value = false
+  activeTab.value = 'conversations'
+  nextTick(() => {
+    const convView = conversationViewRef.value as any
+    if (convView?.selectMemberById) convView.selectMemberById(item.wecomUserId)
+  })
+}
+const jumpToCustomerConv = (item: any) => {
+  globalSearchVisible.value = false
+  activeTab.value = 'conversations'
+  nextTick(() => {
+    const convView = conversationViewRef.value as any
+    if (convView?.jumpToConversation) convView.jumpToConversation('customer', item.memberId, item.externalUserId)
+  })
+}
+const jumpToGroupConv = (item: any) => {
+  globalSearchVisible.value = false
+  activeTab.value = 'conversations'
+  nextTick(() => {
+    const convView = conversationViewRef.value as any
+    if (convView?.jumpToConversation) convView.jumpToConversation('group', item.memberId, item.roomId)
+  })
+}
+const jumpToMessage = (item: any) => {
+  globalSearchVisible.value = false
+  activeTab.value = 'conversations'
+  nextTick(() => {
+    const convView = conversationViewRef.value as any
+    if (convView?.jumpToConversation) convView.jumpToConversation(item.convType || 'customer', item.memberId, item.peerId)
+  })
+}
 const selectedAuthType = computed(() => {
   const cfg = configList.value.find((c: any) => c.id === selectedConfigId.value)
   return cfg?.authType || cfg?.authMode || 'third_party'
@@ -836,5 +961,117 @@ onMounted(() => {
 .demo-lock-info p { color: #909399; margin-bottom: 16px; }
 .demo-features { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin-bottom: 20px; }
 .demo-features span { background: #f5f7fa; padding: 4px 10px; border-radius: 6px; font-size: 13px; }
+
+/* 综合搜索栏 */
+.global-search-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  position: relative;
+
+  .global-search-input {
+    flex: 1;
+    max-width: 420px;
+  }
+}
+
+.global-search-results {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  max-width: 600px;
+  max-height: 420px;
+  overflow-y: auto;
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.12);
+  border: 1px solid #e4e7ed;
+  z-index: 2000;
+  padding: 8px 0;
+}
+
+.search-group {
+  padding: 4px 0;
+  & + .search-group {
+    border-top: 1px solid #f0f0f0;
+  }
+}
+
+.search-group-title {
+  padding: 6px 16px 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #909399;
+  text-transform: uppercase;
+}
+
+.search-result-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 16px;
+  cursor: pointer;
+  transition: background 0.15s;
+
+  &:hover {
+    background: #f5f7fa;
+  }
+}
+
+.result-avatar {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 600;
+  color: #fff;
+  flex-shrink: 0;
+}
+.result-avatar-staff { background: #409eff; }
+.result-avatar-customer { background: #67c23a; }
+.result-avatar-group { background: #e6a23c; }
+.result-avatar-msg { background: #909399; font-size: 14px; }
+
+.result-name {
+  font-size: 14px;
+  color: #303133;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.result-sub {
+  font-size: 12px;
+  color: #909399;
+}
+.result-preview {
+  font-size: 12px;
+  color: #909399;
+  margin-left: 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 200px;
+}
+.result-time {
+  font-size: 11px;
+  color: #c0c4cc;
+  flex-shrink: 0;
+}
+.result-msg-info {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  overflow: hidden;
+}
+
+.search-empty {
+  padding: 12px;
+}
 </style>
 

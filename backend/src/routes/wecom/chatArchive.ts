@@ -206,7 +206,7 @@ router.post('/chat-records/diagnose', authenticateToken, requireAdmin, async (re
       if (zoneProgramId && zoneSyncMsgAbilityId) {
         try {
           const requestData = JSON.stringify({
-            input: { func: 'sync_msg', func_req: { cursor: '', token: '', limit: 5 } }
+            input: { func: 'sync_msg', func_req: { limit: 5 } }
           });
           const zoneResp = await axios.post(
             `https://qyapi.weixin.qq.com/cgi-bin/chatdata/sync_call_program?access_token=${token}`,
@@ -777,6 +777,102 @@ router.get('/chat-archive/audit-marks/stats', authenticateToken, async (req: Req
   } catch (error: any) {
     log.error('[Wecom] Get audit stats error:', error.message);
     res.status(500).json({ success: false, message: '获取审计统计失败' });
+  }
+});
+
+// ==================== 综合搜索 ====================
+router.post('/chat-archive/global-search', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const { configId, keyword, limit = 10 } = req.body;
+    if (!keyword || !configId) {
+      return res.json({ success: true, data: { members: [], customers: [], groups: [], messages: [] } });
+    }
+    const { getCurrentTenantId } = await import('../../utils/tenantContext');
+    const tenantId = getCurrentTenantId();
+    const kw = `%${keyword}%`;
+    const maxResults = Math.min(Number(limit) || 10, 20);
+
+    // 1. 搜索存档成员
+    const memberRows = await AppDataSource.query(
+      `SELECT wecom_user_id as wecomUserId, wecom_user_name as name
+       FROM wecom_archive_members
+       WHERE tenant_id = ? AND is_enabled = 1
+         AND (wecom_user_name LIKE ? OR wecom_user_id LIKE ?)
+       LIMIT ?`,
+      [tenantId, kw, kw, maxResults]
+    );
+
+    // 2. 搜索客户（外部联系人）
+    const customerRows = await AppDataSource.query(
+      `SELECT id, external_user_id as externalUserId, name, avatar, remark, corp_name as corpName, follow_user_id as memberId
+       FROM wecom_customers
+       WHERE wecom_config_id = ? AND tenant_id = ?
+         AND (name LIKE ? OR remark LIKE ? OR external_user_id LIKE ? OR corp_name LIKE ?)
+       LIMIT ?`,
+      [configId, tenantId, kw, kw, kw, kw, maxResults]
+    );
+
+    // 3. 搜索群聊（从 chat_records 中找到有 roomId 的记录）
+    const groupRows = await AppDataSource.query(
+      `SELECT DISTINCT room_id as roomId, from_user_id as memberId
+       FROM wecom_chat_records
+       WHERE wecom_config_id = ? AND tenant_id = ? AND room_id IS NOT NULL AND room_id != ''
+         AND room_id LIKE ?
+       LIMIT ?`,
+      [configId, tenantId, kw, maxResults]
+    );
+
+    // 4. 搜索聊天内容
+    const msgRows = await AppDataSource.query(
+      `SELECT id, from_user_id as fromUserId, from_user_name as fromUserName, content as contentRaw,
+              msg_type as msgType, msg_time as msgTime, room_id as roomId, to_user_ids as toUserIds
+       FROM wecom_chat_records
+       WHERE wecom_config_id = ? AND tenant_id = ? AND msg_type = 'text'
+         AND content LIKE ?
+       ORDER BY msg_time DESC
+       LIMIT ?`,
+      [configId, tenantId, kw, maxResults]
+    );
+
+    // 处理消息结果
+    const messages = msgRows.map((row: any) => {
+      let contentPreview = '';
+      try {
+        const parsed = JSON.parse(row.contentRaw);
+        contentPreview = (parsed?.text?.content || parsed?.content || row.contentRaw || '').substring(0, 50);
+      } catch {
+        contentPreview = (row.contentRaw || '').substring(0, 50);
+      }
+      const toIds = safeJsonParse(row.toUserIds, []);
+      const peerId = row.roomId || (Array.isArray(toIds) && toIds.length > 0 ? toIds[0] : '');
+      let convType: 'customer' | 'staff' | 'group' = 'staff';
+      if (row.roomId) convType = 'group';
+      else if (peerId && (peerId.startsWith('wm') || peerId.startsWith('wo'))) convType = 'customer';
+
+      return {
+        id: row.id,
+        fromUserId: row.fromUserId,
+        fromUserName: row.fromUserName,
+        contentPreview,
+        sendTimeStr: row.msgTime ? new Date(Number(row.msgTime)).toLocaleString('zh-CN') : '',
+        memberId: row.fromUserId?.startsWith('wm') || row.fromUserId?.startsWith('wo') ? peerId : row.fromUserId,
+        peerId: row.fromUserId?.startsWith('wm') || row.fromUserId?.startsWith('wo') ? row.fromUserId : peerId,
+        convType
+      };
+    });
+
+    res.json({
+      success: true,
+      data: {
+        members: memberRows || [],
+        customers: customerRows || [],
+        groups: groupRows.map((g: any) => ({ roomId: g.roomId, roomName: g.roomId, memberId: g.memberId })),
+        messages
+      }
+    });
+  } catch (error: any) {
+    log.error('[Wecom] Global search error:', error.message);
+    res.status(500).json({ success: false, message: '搜索失败' });
   }
 });
 

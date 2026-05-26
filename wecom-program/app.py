@@ -107,15 +107,20 @@ def handle_sync_msg(corpid, agentid, ability_id, job_info, func_req):
         return json.dumps({"errcode": -1, "errmsg": f"sync_msg调用失败: {str(e)}"})
 
 
-def handle_get_msg_body(corpid, agentid, ability_id, job_info, func_req):
+## get_msg_body 已移除：根据企微官方文档，Zone SDK 不提供获取消息明文的接口。
+## 消息内容只能通过前端「会话展示组件」渲染（传入 msgid + secretKey）。
+
+
+def handle_get_agree_status(corpid, agentid, ability_id, job_info, func_req, is_room=False):
     """
-    处理 get_msg_body - 通过SDK获取消息体内容
-    SDK接口: ChatDataSDK(corpid, agentid, ability_id, job_info).get_msg_body(req)
+    获取会话同意情况
+    单聊: ChatDataSDK(...).get_agree_status_single(req)
+    群聊: ChatDataSDK(...).get_agree_status_room(req)
     """
     if not SDK_AVAILABLE:
         return json.dumps({
             "errcode": -1,
-            "errmsg": "SDK未加载，无法调用get_msg_body"
+            "errmsg": "SDK未加载，无法调用get_agree_status"
         })
 
     try:
@@ -125,16 +130,50 @@ def handle_get_msg_body(corpid, agentid, ability_id, job_info, func_req):
         else:
             req_str = str(func_req)
 
-        log_info(f"get_msg_body: corpid={corpid}, ability_id={ability_id}, req={req_str[:100]}")
+        api_name = "get_agree_status_room" if is_room else "get_agree_status_single"
+        log_info(f"{api_name}: corpid={corpid}, ability_id={ability_id}, req={req_str[:200]}")
 
         sdk = ChatDataSDK(corpid, agentid, ability_id, job_info)
-        result = sdk.get_msg_body(req_str)
+        if is_room:
+            result = sdk.get_agree_status_room(req_str)
+        else:
+            result = sdk.get_agree_status_single(req_str)
 
-        log_info(f"get_msg_body 成功: result_len={len(result) if result else 0}")
+        log_info(f"{api_name} 成功: result_len={len(result) if result else 0}")
         return result
     except Exception as e:
-        log_error(f"get_msg_body 异常: {e}")
-        return json.dumps({"errcode": -1, "errmsg": f"get_msg_body调用失败: {str(e)}"})
+        log_error(f"{api_name} 异常: {e}")
+        return json.dumps({"errcode": -1, "errmsg": f"{api_name}调用失败: {str(e)}"})
+
+
+def handle_get_group_chat(corpid, agentid, ability_id, job_info, func_req):
+    """
+    获取内部群信息
+    SDK接口: ChatDataSDK(...).get_group_chat(req)
+    """
+    if not SDK_AVAILABLE:
+        return json.dumps({
+            "errcode": -1,
+            "errmsg": "SDK未加载，无法调用get_group_chat"
+        })
+
+    try:
+        if isinstance(func_req, dict):
+            clean_req = {k: v for k, v in func_req.items() if v != '' and v is not None}
+            req_str = json.dumps(clean_req)
+        else:
+            req_str = str(func_req)
+
+        log_info(f"get_group_chat: corpid={corpid}, ability_id={ability_id}, req={req_str[:100]}")
+
+        sdk = ChatDataSDK(corpid, agentid, ability_id, job_info)
+        result = sdk.get_group_chat(req_str)
+
+        log_info(f"get_group_chat 成功: result_len={len(result) if result else 0}")
+        return result
+    except Exception as e:
+        log_error(f"get_group_chat 异常: {e}")
+        return json.dumps({"errcode": -1, "errmsg": f"get_group_chat调用失败: {str(e)}"})
 
 
 def handle_chat_analysis(func_req):
@@ -183,13 +222,17 @@ def dispatch_request(corpid, agentid, ability_id, job_info, data_str):
 
     if func == "sync_msg":
         return handle_sync_msg(corpid, agentid, ability_id, job_info, func_req)
-    elif func == "get_msg_body":
-        return handle_get_msg_body(corpid, agentid, ability_id, job_info, func_req)
+    elif func == "get_agree_status_single":
+        return handle_get_agree_status(corpid, agentid, ability_id, job_info, func_req, is_room=False)
+    elif func == "get_agree_status_room":
+        return handle_get_agree_status(corpid, agentid, ability_id, job_info, func_req, is_room=True)
+    elif func == "get_group_chat":
+        return handle_get_group_chat(corpid, agentid, ability_id, job_info, func_req)
     elif func == "chat_analysis":
         return handle_chat_analysis(func_req)
     else:
-        log_warn(f"未知func: {func}, 尝试作为sync_msg处理")
-        return handle_sync_msg(corpid, agentid, ability_id, job_info, func_req or data)
+        log_warn(f"未知func: {func}")
+        return json.dumps({"errcode": -1, "errmsg": f"不支持的接口: {func}"})
 
 
 # ==================== HTTP 服务 ====================
@@ -333,7 +376,7 @@ class ZoneProgramHandler(BaseHTTPRequestHandler):
             "sdk_available": SDK_AVAILABLE,
             "sdk_module": "wwspecapisdk",
             "python_version": sys.version,
-            "capabilities": ["sync_msg", "get_msg_body", "chat_analysis"],
+            "capabilities": ["sync_msg", "get_agree_status_single", "get_agree_status_room", "get_group_chat", "chat_analysis"],
             "timestamp": int(time.time())
         }
         if not SDK_AVAILABLE:
@@ -367,10 +410,10 @@ def main():
     else:
         log_warn("专区SDK状态: 未加载")
         log_warn(f"导入错误: {_import_error or 'unknown'}")
-        log_warn("sync_msg/get_msg_body 将不可用")
+        log_warn("sync_msg/get_agree_status 等SDK接口将不可用")
         log_warn("请下载SDK: https://developer.work.weixin.qq.com/document/path/100247")
 
-    log_info(f"已注册能力: sync_msg, get_msg_body, chat_analysis")
+    log_info(f"已注册能力: sync_msg, get_agree_status_single, get_agree_status_room, get_group_chat, chat_analysis")
     log_info("=" * 60)
 
     server = HTTPServer((host, port), ZoneProgramHandler)
