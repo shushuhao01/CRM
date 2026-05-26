@@ -88,8 +88,14 @@ def handle_sync_msg(corpid, agentid, ability_id, job_info, func_req):
         })
 
     try:
-        req_str = json.dumps(func_req) if isinstance(func_req, dict) else str(func_req)
-        log_info(f"sync_msg: corpid={corpid}, agentid={agentid}, ability_id={ability_id}, req_len={len(req_str)}")
+        # 过滤空字符串字段（企微SDK要求cursor/token若提供则不能为空）
+        if isinstance(func_req, dict):
+            clean_req = {k: v for k, v in func_req.items() if v != '' and v is not None}
+            req_str = json.dumps(clean_req)
+        else:
+            req_str = str(func_req)
+
+        log_info(f"sync_msg: corpid={corpid}, agentid={agentid}, ability_id={ability_id}, req={req_str[:200]}")
 
         sdk = ChatDataSDK(corpid, agentid, ability_id, job_info)
         result = sdk.sync_msg(req_str)
@@ -113,8 +119,13 @@ def handle_get_msg_body(corpid, agentid, ability_id, job_info, func_req):
         })
 
     try:
-        req_str = json.dumps(func_req) if isinstance(func_req, dict) else str(func_req)
-        log_info(f"get_msg_body: corpid={corpid}, ability_id={ability_id}")
+        if isinstance(func_req, dict):
+            clean_req = {k: v for k, v in func_req.items() if v != '' and v is not None}
+            req_str = json.dumps(clean_req)
+        else:
+            req_str = str(func_req)
+
+        log_info(f"get_msg_body: corpid={corpid}, ability_id={ability_id}, req={req_str[:100]}")
 
         sdk = ChatDataSDK(corpid, agentid, ability_id, job_info)
         result = sdk.get_msg_body(req_str)

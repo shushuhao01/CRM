@@ -969,13 +969,13 @@ export class WecomApiService {
   }> {
     log.info(`[WecomApi] getChatMsgDataViaZone: cursor=${cursor || '(首次)'}, limit=${limit}, abilityId=${abilityId}`);
 
-    let rawResult = await this.syncCallProgram(accessToken, programId, abilityId, 'sync_msg', {
-      cursor,
-      token: '',
-      limit
-    });
+    // 构建请求参数：空字符串字段不传（企微SDK要求cursor若提供则不能为空）
+    const syncReq: Record<string, any> = { limit };
+    if (cursor) syncReq.cursor = cursor;
 
-    // ★ 如果首次拉取返回空，尝试带 begin_time 从最近24小时重拉
+    let rawResult = await this.syncCallProgram(accessToken, programId, abilityId, 'sync_msg', syncReq);
+
+    // 如果首次拉取返回空，尝试带 begin_time 从最近24小时重拉
     const firstResult = rawResult;
     const firstMsgList = rawResult?.msg_list || rawResult?.output?.msg_list;
     if ((!firstMsgList || firstMsgList.length === 0) && !cursor) {
@@ -983,8 +983,6 @@ export class WecomApiService {
       log.info(`[WecomApi] getChatMsgDataViaZone: 首次拉取0条，尝试带begin_time=${beginTime}重拉`);
       try {
         rawResult = await this.syncCallProgram(accessToken, programId, abilityId, 'sync_msg', {
-          cursor: '',
-          token: '',
           limit,
           begin_time: beginTime
         });
