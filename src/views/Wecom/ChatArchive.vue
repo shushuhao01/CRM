@@ -806,12 +806,22 @@ const handleDiagnose = async () => {
 
     lines.push(`===== 数据库 =====`)
     lines.push(`真实消息记录: ${d.dbRecordCount}`)
+    lines.push(`含有效secretKey: ${d.dbWithSecretKey ?? '未知'}`)
     lines.push(`元数据记录: ${d.dbMetaCount ?? 'N/A'}`)
+    if (d.firstMsgKeyInfo) {
+      lines.push(``)
+      lines.push(`===== 首条消息密钥字段诊断 =====`)
+      lines.push(`has_service_encrypt_info: ${d.firstMsgKeyInfo.has_service_encrypt_info}`)
+      lines.push(`has_encrypt_random_key: ${d.firstMsgKeyInfo.has_encrypt_random_key}`)
+      lines.push(`has_encrypted_secret_key: ${d.firstMsgKeyInfo.has_encrypted_secret_key}`)
+      lines.push(`消息字段: ${d.firstMsgKeyInfo.msg_keys}`)
+    }
 
     ElMessageBox.alert(lines.join('\n'), '会话存档诊断', {
       confirmButtonText: '确定',
-      customStyle: { whiteSpace: 'pre-wrap', fontFamily: 'monospace', fontSize: '12px' }
-    })
+      customClass: 'diagnose-message-box',
+      dangerouslyUseHTMLString: false
+    }).catch(() => { /* 用户关闭弹窗 */ })
   } catch (e: any) {
     ElMessage.error('诊断失败: ' + (e?.message || '未知错误'))
   } finally {
@@ -1072,6 +1082,19 @@ onMounted(() => {
 
 .search-empty {
   padding: 12px;
+}
+</style>
+
+<style lang="scss">
+.diagnose-message-box {
+  .el-message-box__message {
+    white-space: pre-wrap;
+    font-family: 'Consolas', 'Monaco', monospace;
+    font-size: 12px;
+    line-height: 1.6;
+    max-height: 60vh;
+    overflow-y: auto;
+  }
 }
 </style>
 

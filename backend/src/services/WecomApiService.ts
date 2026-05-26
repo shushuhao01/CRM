@@ -1021,23 +1021,36 @@ export class WecomApiService {
 
     if (msgList.length > 0) {
       const sample = msgList[0];
-      log.info(`[WecomApi] getChatMsgDataViaZone 首条消息: msgid=${sample.msgid}, sender=${JSON.stringify(sample.sender)}, send_time=${sample.send_time}, msgtype=${sample.msgtype}, has_encrypt_info=${!!sample.service_encrypt_info}`);
+      log.info(`[WecomApi] getChatMsgDataViaZone 首条消息: msgid=${sample.msgid}, sender=${JSON.stringify(sample.sender)}, send_time=${sample.send_time}, msgtype=${sample.msgtype}, has_encrypt_info=${!!sample.service_encrypt_info}, raw_keys=${Object.keys(sample).join(',')}`);
+      if (sample.service_encrypt_info) {
+        log.info(`[WecomApi] service_encrypt_info keys: ${Object.keys(sample.service_encrypt_info).join(',')}, keyLen=${sample.service_encrypt_info?.encrypted_secret_key?.length || 0}`);
+      }
     }
 
-    const chatdata = msgList.map((msg: any, idx: number) => ({
-      seq: idx,
-      msgid: msg.msgid || '',
-      publickey_ver: msg.service_encrypt_info?.public_key_ver || 1,
-      encrypt_random_key: msg.service_encrypt_info?.encrypted_secret_key || '',
-      encrypt_chat_msg: '',
-      sender: msg.sender || { type: 0, id: '' },
-      sender_type: msg.sender?.type || 0,
-      sender_id: msg.sender?.id || '',
-      receiver_list: msg.receiver_list || [],
-      send_time: msg.send_time || 0,
-      msgtype: msg.msgtype || 0,
-      chatid: msg.chatid || '',
-    }));
+    const chatdata = msgList.map((msg: any, idx: number) => {
+      // ★ 兼容多种密钥字段位置：
+      // 1. 标准Zone SDK格式: msg.service_encrypt_info.encrypted_secret_key
+      // 2. 直接API格式: msg.encrypt_random_key
+      // 3. 可能的变体: msg.encrypted_secret_key
+      const encryptKey = msg.service_encrypt_info?.encrypted_secret_key
+        || msg.encrypt_random_key
+        || msg.encrypted_secret_key
+        || '';
+      return {
+        seq: idx,
+        msgid: msg.msgid || '',
+        publickey_ver: msg.service_encrypt_info?.public_key_ver || msg.publickey_ver || 1,
+        encrypt_random_key: encryptKey,
+        encrypt_chat_msg: msg.encrypt_chat_msg || '',
+        sender: msg.sender || { type: 0, id: '' },
+        sender_type: msg.sender?.type || 0,
+        sender_id: msg.sender?.id || '',
+        receiver_list: msg.receiver_list || [],
+        send_time: msg.send_time || 0,
+        msgtype: msg.msgtype || 0,
+        chatid: msg.chatid || '',
+      };
+    });
 
     log.info(`[WecomApi] getChatMsgDataViaZone: 获取 ${chatdata.length} 条消息, hasMore=${hasMore}`);
     return { chatdata, has_more: hasMore, next_cursor: nextCursor };

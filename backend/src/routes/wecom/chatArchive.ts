@@ -275,6 +275,27 @@ router.post('/chat-records/diagnose', authenticateToken, requireAdmin, async (re
     const metaCount = await AppDataSource.query(
       `SELECT COUNT(*) as cnt FROM wecom_chat_records WHERE wecom_config_id = ? AND msg_type = 'meta'`, [configId]
     );
+    // ★ 检查有多少条记录有有效的 secretKey
+    const withKeyCount = await AppDataSource.query(
+      `SELECT COUNT(*) as cnt FROM wecom_chat_records WHERE wecom_config_id = ? AND msg_type != 'meta' AND content LIKE '%"secretKey":"_%'`, [configId]
+    );
+    // 查看诊断返回的第一条消息的密钥字段
+    let firstMsgKeyInfo: any = null;
+    if (zoneCallResult?.parsed?.msg_list_count > 0) {
+      try {
+        const rawData = zoneCallResult.parsed.first_100_chars;
+        const parsed = JSON.parse(rawData.length > 200 ? rawData : JSON.stringify(zoneCallResult.parsed));
+        if (parsed.msg_list?.[0]) {
+          const msg = parsed.msg_list[0];
+          firstMsgKeyInfo = {
+            has_service_encrypt_info: !!msg.service_encrypt_info,
+            has_encrypt_random_key: !!msg.encrypt_random_key,
+            has_encrypted_secret_key: !!msg.encrypted_secret_key,
+            msg_keys: Object.keys(msg).join(',')
+          };
+        }
+      } catch { /* ignore parse error */ }
+    }
 
     res.json({
       success: true,
@@ -282,10 +303,10 @@ router.post('/chat-records/diagnose', authenticateToken, requireAdmin, async (re
         config: { id: config.id, corpId: config.corpId, authType: config.authType, hasChatSecret: !!config.chatArchiveSecret },
         token: tokenInfo,
         savedCursor: savedCursor || '(无，将从头拉取)',
-        noCursorCall: zoneCallResult || directCallResult,
-        withCursorCall: directCallResult,
         dbRecordCount: parseInt(dbCount[0]?.cnt) || 0,
         dbMetaCount: parseInt(metaCount[0]?.cnt) || 0,
+        dbWithSecretKey: parseInt(withKeyCount[0]?.cnt) || 0,
+        firstMsgKeyInfo,
         zoneCall: zoneCallResult,
         directCall: directCallResult
       }
