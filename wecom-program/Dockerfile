@@ -3,8 +3,8 @@ FROM python:3.12-slim
 ENV TZ=Asia/Shanghai
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
-# SDK requires pycryptodome
-RUN pip3 install --no-cache-dir pycryptodome
+# SDK dependencies: pycryptodome (加解密) + requests (网络通信)
+RUN pip3 install --no-cache-dir pycryptodome requests
 
 RUN mkdir -p /usr/local/wwspecdemo/sdk
 
