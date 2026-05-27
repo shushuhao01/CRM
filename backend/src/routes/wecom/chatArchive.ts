@@ -432,6 +432,65 @@ router.get('/chat-archive/stats', authenticateToken, async (req: Request, res: R
   }
 });
 
+// ==================== 头像实时测试 ====================
+router.post('/chat-archive/test-avatar', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const { configId } = req.body;
+    if (!configId) return res.status(400).json({ success: false, message: '请选择企微配置' });
+    const configRepo = getTenantRepo(WecomConfig);
+    const config = await configRepo.findOne({ where: { id: configId, isEnabled: true } });
+    if (!config) return res.status(404).json({ success: false, message: '配置不存在' });
+
+    const { getCurrentTenantId } = await import('../../utils/tenantContext');
+    const tenantId = getCurrentTenantId();
+    const results: any[] = [];
+
+    // 测试1个员工
+    const staffRow = await AppDataSource.query(
+      `SELECT DISTINCT from_user_id AS uid FROM wecom_chat_records WHERE wecom_config_id = ? AND msg_type != 'meta' AND from_user_id NOT LIKE 'wm%' AND from_user_id NOT LIKE 'wo%' LIMIT 1`,
+      [configId]
+    );
+    if (staffRow[0]?.uid) {
+      try {
+        const token = await WecomApiService.getAccessTokenByConfigId(configId, 'chat');
+        const detail = await WecomApiService.getUserDetail(token, staffRow[0].uid);
+        results.push({ type: 'staff', userId: staffRow[0].uid, name: detail?.name || '(null)', avatar: detail?.avatar || '(空)', thumb_avatar: detail?.thumb_avatar || '(空)', errcode: detail ? 0 : 'null_response' });
+      } catch (e: any) {
+        results.push({ type: 'staff', userId: staffRow[0].uid, error: e.message });
+      }
+    }
+
+    // 测试1个客户
+    const custRow = await AppDataSource.query(
+      `SELECT DISTINCT from_user_id AS uid FROM wecom_chat_records WHERE wecom_config_id = ? AND msg_type != 'meta' AND (from_user_id LIKE 'wm%' OR from_user_id LIKE 'wo%') LIMIT 1`,
+      [configId]
+    );
+    if (custRow[0]?.uid) {
+      try {
+        const extToken = await WecomApiService.getAccessTokenByConfigId(configId, 'external');
+        const detail = await WecomApiService.getExternalContactDetail(extToken, custRow[0].uid);
+        const ext = detail?.external_contact;
+        results.push({ type: 'customer', userId: custRow[0].uid.substring(0, 20), name: ext?.name || '(null)', avatar: ext?.avatar || '(空)', gender: ext?.gender, type_val: ext?.type });
+      } catch (e: any) {
+        results.push({ type: 'customer', userId: custRow[0].uid.substring(0, 20), error: e.message });
+      }
+    }
+
+    // DB统计
+    const dbStats = await AppDataSource.query(
+      `SELECT (SELECT COUNT(*) FROM wecom_user_bindings WHERE tenant_id = ? AND wecom_avatar IS NOT NULL AND wecom_avatar != '') as staff_avatar,
+              (SELECT COUNT(*) FROM wecom_user_bindings WHERE tenant_id = ?) as staff_total,
+              (SELECT COUNT(*) FROM wecom_customers WHERE tenant_id = ? AND avatar IS NOT NULL AND avatar != '') as cust_avatar,
+              (SELECT COUNT(*) FROM wecom_customers WHERE tenant_id = ?) as cust_total`,
+      [tenantId, tenantId, tenantId, tenantId]
+    );
+
+    res.json({ success: true, data: { api_test: results, db: dbStats[0] || {} } });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 // ==================== 会话列表与消息 ====================
 
 router.get('/conversations', authenticateToken, async (req: Request, res: Response) => {

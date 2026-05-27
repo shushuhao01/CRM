@@ -862,6 +862,26 @@ const handleDiagnose = async () => {
       }
     }
 
+    // 实时调用API测试头像
+    try {
+      const avatarTest = await api.post('/wecom/chat-archive/test-avatar', { configId: selectedConfigId.value })
+      const at = avatarTest?.data?.data || avatarTest?.data || {}
+      if (at.api_test?.length) {
+        lines.push(``)
+        lines.push(`===== 头像API实时测试 =====`)
+        at.api_test.forEach((t: any) => {
+          if (t.error) {
+            lines.push(`${t.type}(${t.userId}): 错误=${t.error}`)
+          } else {
+            lines.push(`${t.type}(${t.userId}): name=${t.name}, avatar=${t.avatar}${t.thumb_avatar ? ', thumb=' + t.thumb_avatar : ''}`)
+          }
+        })
+      }
+      if (at.db) {
+        lines.push(`DB汇总: 员工${at.db.staff_avatar}/${at.db.staff_total}有头像, 客户${at.db.cust_avatar}/${at.db.cust_total}有头像`)
+      }
+    } catch { /* non-critical */ }
+
     ElMessageBox.alert(lines.join('\n'), '会话存档诊断', {
       confirmButtonText: '确定',
       customClass: 'diagnose-message-box',

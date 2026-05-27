@@ -846,21 +846,21 @@ export class WecomChatArchiveService {
     const maxEnrich = 200;
 
     try {
-      // 从消息记录和存档成员表中找出没有头像的员工 ID
+      // 从消息记录和存档成员表中找出缺头像或缺名字的员工 ID
       const noAvatarMembers = await AppDataSource.query(`
         SELECT DISTINCT uid AS wecom_user_id FROM (
           SELECT am.wecom_user_id AS uid
           FROM wecom_archive_members am
           LEFT JOIN wecom_user_bindings ub ON am.wecom_user_id = ub.wecom_user_id AND ub.tenant_id = am.tenant_id
           WHERE am.tenant_id = ? AND am.is_enabled = 1
-            AND (ub.wecom_avatar IS NULL OR ub.wecom_avatar = '' OR ub.id IS NULL)
+            AND (ub.wecom_avatar IS NULL OR ub.wecom_avatar = '' OR ub.wecom_user_name IS NULL OR ub.wecom_user_name = '' OR ub.id IS NULL)
           UNION
           SELECT DISTINCT cr.from_user_id AS uid
           FROM wecom_chat_records cr
           LEFT JOIN wecom_user_bindings ub2 ON cr.from_user_id = ub2.wecom_user_id AND ub2.tenant_id = cr.tenant_id
           WHERE cr.wecom_config_id = ? AND cr.msg_type != 'meta'
             AND cr.from_user_id NOT LIKE 'wm%' AND cr.from_user_id NOT LIKE 'wo%'
-            AND (ub2.wecom_avatar IS NULL OR ub2.wecom_avatar = '' OR ub2.id IS NULL)
+            AND (ub2.wecom_avatar IS NULL OR ub2.wecom_avatar = '' OR ub2.wecom_user_name IS NULL OR ub2.wecom_user_name = '' OR ub2.id IS NULL)
         ) AS t
         LIMIT ?
       `, [config.tenantId || '', config.id, maxEnrich]);
@@ -1043,8 +1043,8 @@ export class WecomChatArchiveService {
       }
     }
     if (keyword) {
-      where += ' AND cr.content LIKE ?';
-      queryParams.push(`%${keyword}%`);
+      where += ' AND (cr.from_user_name LIKE ? OR cr.from_user_id LIKE ? OR cr.room_id LIKE ?)';
+      queryParams.push(`%${keyword}%`, `%${keyword}%`, `%${keyword}%`);
     }
 
     // 取出所有会话方向的记录，在应用层合并双向

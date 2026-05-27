@@ -32,10 +32,6 @@
       </el-alert>
     </div>
 
-    <!-- 调试信息（仅开发或有错误时显示） -->
-    <div v-if="debugInfo && !loading" class="renderer-debug">
-      <span>{{ debugInfo }}</span>
-    </div>
   </div>
 </template>
 

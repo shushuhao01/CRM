@@ -242,7 +242,7 @@ import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { Search, Refresh, InfoFilled, WarningFilled, Microphone, VideoCamera, Document, Link, Grid, Location, User, Connection, Loading } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { createAuditMark, getSensitiveWords } from '@/api/wecom'
-import { getConversationList, getConversationMessages, getArchiveSeats, getMessageKeys } from '@/api/wecom'
+import { getConversationList, getConversationMessages, getArchiveSeats, getMessageKeys, syncChatRecords } from '@/api/wecom'
 import { formatConvTime, formatMsgTimeShort, getMsgTypeText, getTextContent, getFirstToUser, getDateDividerText } from '../utils'
 import type { Conversation, ConvMessage } from '../types'
 import { useUserStore } from '@/stores/user'
@@ -310,17 +310,19 @@ const fetchMessageKeys = async () => {
     console.log('[ConversationView] fetchMessageKeys response:', JSON.stringify(res).slice(0, 300))
 
     const rawList = res?.list || res?.data?.list || []
+    const curMemberId = selectedMemberId.value || ''
     messageKeys.value = rawList
       .filter((item: any) => item.msgid && item.secretKey)
       .map((item: any) => {
         const t = item.msgTime ? new Date(Number(item.msgTime)) : null
         const timeStr = t ? `${(t.getMonth()+1).toString().padStart(2,'0')}/${t.getDate().toString().padStart(2,'0')} ${t.getHours().toString().padStart(2,'0')}:${t.getMinutes().toString().padStart(2,'0')}` : ''
         const name = item.fromUserName || item.fromUserId || ''
+        const fid = item.fromUserId || ''
         return {
           msgid: item.msgid,
           secretKey: item.secretKey,
           fromUserName: name,
-          isSelf: item.isSelf ?? true,
+          isSelf: fid === curMemberId,
           timeStr,
           msgType: item.msgType || '',
           avatarLetter: name.charAt(0).toUpperCase() || '?',
@@ -529,11 +531,19 @@ const switchConvTab = (tab: 'staff' | 'customer' | 'group') => {
 
 const handleRefreshConversations = async () => {
   if (convLoading.value) return
+  convLoading.value = true
+  try {
+    if (props.configId) {
+      await syncChatRecords(props.configId)
+    }
+  } catch { /* non-critical */ }
   convPage.value = 1
   selectedConv.value = null
   messages.value = []
+  messageKeys.value = []
   await fetchConversations()
-  ElMessage.success('会话列表已刷新')
+  convLoading.value = false
+  ElMessage.success('已同步并刷新会话列表')
 }
 
 const getConvKey = (conv: Conversation) => `${conv.fromUserId}-${conv.roomId || getFirstToUser(conv.toUserIds)}`
@@ -695,10 +705,17 @@ const fetchMessages = async () => {
 
 const loadMoreMessages = () => { msgLoadingMore.value = true; msgPage.value++; fetchMessages() }
 const refreshMessages = async () => {
+  msgLoading.value = true
+  try {
+    if (props.configId) {
+      await syncChatRecords(props.configId)
+    }
+  } catch { /* non-critical */ }
   msgPage.value = 1
   messages.value = []
   messageKeys.value = []
   await Promise.all([fetchMessages(), fetchMessageKeys()])
+  msgLoading.value = false
 }
 
 // ==================== 辅助方法 ====================
@@ -779,7 +796,7 @@ defineExpose({ fetchConversations, fetchArchiveMembers, selectMemberById, jumpTo
 
 /* 第一栏：员工列表 */
 .panel-members { width: 180px; flex-shrink: 0; border-right: 1px solid #f0f0f0; display: flex; flex-direction: column; background: #fafbfc; }
-.panel-members-header { padding: 12px; border-bottom: 1px solid #f0f0f0; }
+.panel-members-header { padding: 10px; border-bottom: 1px solid #f0f0f0; overflow: hidden; }
 .members-title { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; font-size: 13px; font-weight: 600; color: #1f2937; }
 .members-count { font-size: 11px; color: #9ca3af; font-weight: 400; }
 .panel-members-list { flex: 1; overflow-y: auto; padding: 4px 0; }
