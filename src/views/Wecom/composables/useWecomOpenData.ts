@@ -210,7 +210,7 @@ export function useWecomOpenData() {
    * 严格按照官方文档模板使用 ww-open-message 组件
    * 参考: https://developer.work.weixin.qq.com/document/path/100049
    */
-  const createMessageFrame = (el: HTMLElement | string, msgList: Array<{ msgid: string; secretKey: string }>, options?: {
+  const createMessageFrame = (el: HTMLElement | string, msgList: Array<{ msgid: string; secretKey: string; fromUserName?: string; isSelf?: boolean; timeStr?: string; avatarLetter?: string; avatar?: string }>, options?: {
     onError?: (error: any) => void
     onMounted?: () => void
   }) => {
@@ -226,37 +226,50 @@ export function useWecomOpenData() {
     }
 
     try {
-      // 严格按照官方文档示例构建（不使用scroll-view/ww-suspense等非必需组件）
       const instance = openDataFactory.createOpenDataFrame({
         el,
         template: `
-          <view
-            wx:for="{{data.msgList}}"
-            wx:key="msgid"
-            class="msg"
-            data-index="{{index}}"
-          >
-            <ww-open-message
-              message-id="{{item.msgid}}"
-              secret-key="{{item.secretKey}}"
-              open-type="viewMessage"
-              binderror="onMsgError"
-            />
+          <view wx:for="{{data.msgList}}" wx:key="msgid" class="msg-row {{item.isSelf ? 'msg-self' : 'msg-other'}}" data-index="{{index}}">
+            <view class="msg-meta {{item.isSelf ? 'meta-self' : 'meta-other'}}">
+              <view class="msg-avatar {{item.isSelf ? 'avatar-self' : 'avatar-other'}}">
+                <image wx:if="{{item.avatar}}" src="{{item.avatar}}" class="avatar-img" mode="aspectFill" />
+                <text wx:else class="avatar-text">{{item.avatarLetter || '?'}}</text>
+              </view>
+              <view class="meta-info">
+                <text class="msg-name">{{item.fromUserName || '未知'}}</text>
+                <text class="msg-time">{{item.timeStr || ''}}</text>
+              </view>
+            </view>
+            <view class="msg-bubble {{item.isSelf ? 'bubble-self' : 'bubble-other'}}">
+              <ww-open-message
+                message-id="{{item.msgid}}"
+                secret-key="{{item.secretKey}}"
+                open-type="viewMessage"
+                binderror="onMsgError"
+              />
+            </view>
           </view>
-          <view wx:if="{{data.msgList.length === 0}}" class="empty-tip">
-            暂无消息
-          </view>
+          <view wx:if="{{data.msgList.length === 0}}" class="empty-tip">暂无消息</view>
         `,
         style: `
-          .msg {
-            margin-bottom: 4px;
-          }
-          .empty-tip {
-            text-align: center;
-            color: #909399;
-            padding: 40px 0;
-            font-size: 14px;
-          }
+          .msg-row { margin-bottom: 16px; padding: 0 12px; }
+          .msg-self { display: flex; flex-direction: column; align-items: flex-end; }
+          .msg-other { display: flex; flex-direction: column; align-items: flex-start; }
+          .msg-meta { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+          .meta-self { flex-direction: row-reverse; }
+          .msg-avatar { width: 36px; height: 36px; border-radius: 6px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; overflow: hidden; }
+          .avatar-img { width: 36px; height: 36px; border-radius: 6px; }
+          .avatar-text { font-size: 14px; color: #fff; font-weight: 600; }
+          .avatar-self { background: #95ec69; }
+          .avatar-other { background: #409eff; }
+          .meta-info { display: flex; align-items: center; gap: 6px; }
+          .meta-self .meta-info { flex-direction: row-reverse; }
+          .msg-name { font-size: 12px; color: #606266; font-weight: 500; }
+          .msg-time { font-size: 11px; color: #c0c4cc; }
+          .msg-bubble { max-width: 75%; border-radius: 8px; overflow: hidden; }
+          .bubble-self { background: #95ec69; border-radius: 8px 2px 8px 8px; }
+          .bubble-other { background: #fff; border: 1px solid #e8e8e8; border-radius: 2px 8px 8px 8px; }
+          .empty-tip { text-align: center; color: #909399; padding: 40px 0; font-size: 14px; }
         `,
         data: { msgList },
         methods: {
@@ -311,7 +324,7 @@ export function useWecomOpenData() {
   /**
    * 更新消息帧数据
    */
-  const updateFrameData = (instance: any, msgList: Array<{ msgid: string; secretKey: string }>) => {
+  const updateFrameData = (instance: any, msgList: Array<{ msgid: string; secretKey: string; [key: string]: any }>) => {
     if (instance) {
       instance.setData({ msgList })
     }

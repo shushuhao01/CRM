@@ -45,7 +45,7 @@ import { Loading } from '@element-plus/icons-vue'
 import { useWecomOpenData } from '../composables/useWecomOpenData'
 
 const props = defineProps<{
-  msgList: Array<{ msgid: string; secretKey: string }>
+  msgList: Array<{ msgid: string; secretKey: string; fromUserName?: string; isSelf?: boolean; timeStr?: string; msgType?: string; avatarLetter?: string; avatar?: string }>
   loading?: boolean
 }>()
 
@@ -138,14 +138,24 @@ onBeforeUnmount(() => {
 <style scoped lang="scss">
 .wecom-message-renderer {
   height: 100%;
-  position: relative;
+  width: 100%;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 .frame-container {
   flex: 1;
-  min-height: 300px;
+  width: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.frame-container :deep(iframe) {
+  width: 100% !important;
+  height: 100% !important;
+  border: none !important;
+  display: block;
 }
 
 .renderer-loading {
@@ -167,6 +177,7 @@ onBeforeUnmount(() => {
 
 .renderer-error {
   padding: 12px;
+  flex-shrink: 0;
 }
 
 .renderer-debug {
@@ -176,5 +187,15 @@ onBeforeUnmount(() => {
   font-size: 11px;
   color: #c0c4cc;
   pointer-events: none;
+}
+</style>
+
+<style lang="scss">
+/* Global: SDK iframe 无 data-v scoping，需全局穿透 */
+.frame-container iframe {
+  width: 100% !important;
+  height: 100% !important;
+  border: none !important;
+  display: block;
 }
 </style>

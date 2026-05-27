@@ -480,28 +480,84 @@ router.get('/conversations/message-keys', authenticateToken, async (req: Request
       queryParams.push(fromUserId, `%${fromUserId}%`);
     }
 
-    // 查询消息列表（只查需要的字段）
     const records = await AppDataSource.query(
-      `SELECT msg_id, content, msg_time
+      `SELECT msg_id, content, msg_time, from_user_id, from_user_name, msg_type, sender_type
        FROM wecom_chat_records ${where}
        ORDER BY msg_time ASC
        LIMIT ?`,
       [...queryParams, ps]
     );
 
-    // 提取 msgid + secretKey
-    const list: Array<{msgid: string; secretKey: string; msgTime: any}> = [];
+    // 收集所有 from_user_id 用于批量查头像
+    const staffIds = new Set<string>();
+    const externalIds = new Set<string>();
+    for (const r of records) {
+      const fid = r.from_user_id || '';
+      if (fid.startsWith('wm') || fid.startsWith('wo')) {
+        externalIds.add(fid);
+      } else if (fid) {
+        staffIds.add(fid);
+      }
+    }
+
+    // 批量查员工头像 (wecom_user_bindings)
+    const avatarMap: Record<string, string> = {};
+    if (staffIds.size > 0) {
+      const placeholders = [...staffIds].map(() => '?').join(',');
+      const staffRows = await AppDataSource.query(
+        `SELECT wecom_user_id, wecom_avatar, wecom_user_name
+         FROM wecom_user_bindings
+         WHERE wecom_user_id IN (${placeholders}) AND tenant_id = ?
+         LIMIT ${staffIds.size}`,
+        [...staffIds, tenantId]
+      );
+      for (const s of staffRows) {
+        if (s.wecom_avatar) avatarMap[s.wecom_user_id] = s.wecom_avatar;
+      }
+    }
+
+    // 批量查客户头像 (wecom_customers)
+    if (externalIds.size > 0) {
+      const placeholders = [...externalIds].map(() => '?').join(',');
+      const custRows = await AppDataSource.query(
+        `SELECT external_user_id, avatar, name, remark
+         FROM wecom_customers
+         WHERE external_user_id IN (${placeholders}) AND tenant_id = ?
+         LIMIT ${externalIds.size}`,
+        [...externalIds, tenantId]
+      );
+      for (const c of custRows) {
+        if (c.avatar) avatarMap[c.external_user_id] = c.avatar;
+        if (!avatarMap[`name:${c.external_user_id}`]) {
+          avatarMap[`name:${c.external_user_id}`] = c.remark || c.name || '';
+        }
+      }
+    }
+
+    const list: Array<any> = [];
     for (const r of records) {
       try {
         const content = typeof r.content === 'string' ? JSON.parse(r.content) : r.content;
         const sk = content?.secretKey;
         if (sk && r.msg_id) {
-          list.push({ msgid: r.msg_id, secretKey: sk, msgTime: r.msg_time });
+          const fid = r.from_user_id || '';
+          const isSelf = !fid.startsWith('wm') && !fid.startsWith('wo');
+          const displayName = avatarMap[`name:${fid}`] || r.from_user_name || fid;
+          list.push({
+            msgid: r.msg_id,
+            secretKey: sk,
+            msgTime: r.msg_time,
+            fromUserId: fid,
+            fromUserName: displayName,
+            msgType: r.msg_type || content?.msgtype || '',
+            isSelf,
+            avatar: avatarMap[fid] || '',
+          });
         }
-      } catch { /* skip unparseable */ }
+      } catch { /* skip */ }
     }
 
-    log.info(`[Wecom] message-keys: 查询到${records.length}条记录, 有效secretKey=${list.length}条, from=${fromUserId}, to=${toUserId}, room=${roomId || '无'}`);
+    log.info(`[Wecom] message-keys: ${records.length}条记录, 有效=${list.length}条, 有头像=${Object.keys(avatarMap).filter(k => !k.startsWith('name:')).length}个`);
 
     res.json({
       success: true,
@@ -896,16 +952,16 @@ router.post('/chat-archive/global-search', authenticateToken, async (req: Reques
       [configId, tenantId, kw, maxResults]
     );
 
-    // 4. 搜索聊天内容
+    // 4. 搜索聊天记录 (按发送人名称/ID 或消息内容)
     const msgRows = await AppDataSource.query(
       `SELECT id, from_user_id as fromUserId, from_user_name as fromUserName, content as contentRaw,
               msg_type as msgType, msg_time as msgTime, room_id as roomId, to_user_ids as toUserIds
        FROM wecom_chat_records
-       WHERE wecom_config_id = ? AND tenant_id = ? AND msg_type = 'text'
-         AND content LIKE ?
+       WHERE wecom_config_id = ? AND tenant_id = ? AND msg_type != 'meta'
+         AND (from_user_name LIKE ? OR from_user_id LIKE ? OR content LIKE ?)
        ORDER BY msg_time DESC
        LIMIT ?`,
-      [configId, tenantId, kw, maxResults]
+      [configId, tenantId, kw, kw, kw, maxResults]
     );
 
     // 处理消息结果

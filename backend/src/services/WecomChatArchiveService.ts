@@ -289,14 +289,16 @@ export class WecomChatArchiveService {
           }
         }
 
-        // Step 6.5: 补充存档成员（内部员工）的头像
+        // Step 6.5: 补充存档成员（内部员工）的头像和名称
         try {
+          log.info(`[ChatArchive] Step6.5: 补充员工头像和名称...`);
           const memberAvatarCount = await this.enrichMemberAvatars(config, accessToken, permitUserIds);
+          (result as any).enrichedMembers = memberAvatarCount;
           if (memberAvatarCount > 0) {
-            log.info(`[ChatArchive] Step6.5完成: 补充了 ${memberAvatarCount} 个员工头像`);
+            log.info(`[ChatArchive] Step6.5完成: 补充了 ${memberAvatarCount} 个员工头像/名称`);
           }
         } catch (e: any) {
-          log.debug(`[ChatArchive] Step6.5: 补充员工头像出错(非致命): ${e.message}`);
+          log.warn(`[ChatArchive] Step6.5: 补充员工头像出错(非致命): ${e.message}`);
         }
       } else {
         // 自建应用模式：保持原有的会话元数据同步逻辑
@@ -730,7 +732,7 @@ export class WecomChatArchiveService {
    */
   private static async enrichContactNames(config: WecomConfig, externalAccessToken: string): Promise<number> {
     let enriched = 0;
-    const maxEnrich = 50;
+    const maxEnrich = 200;
 
     try {
       // 查找有消息记录但缺少名称或头像的外部联系人
@@ -776,7 +778,6 @@ export class WecomChatArchiveService {
 
             const existing = await customerRepo.findOne({ where: { wecomConfigId: config.id, externalUserId: extId } });
             if (existing) {
-              // 补充缺失信息
               if (!existing.name || existing.name === extId) {
                 existing.name = displayName;
               }
@@ -808,6 +809,19 @@ export class WecomChatArchiveService {
               }));
             }
             enriched++;
+
+            // 同步更新聊天记录表中该联系人的 from_user_name
+            const bestName = remark || displayName;
+            if (bestName) {
+              try {
+                await AppDataSource.query(
+                  `UPDATE wecom_chat_records SET from_user_name = ?
+                   WHERE wecom_config_id = ? AND from_user_id = ?
+                     AND (from_user_name IS NULL OR from_user_name = '' OR from_user_name = ?)`,
+                  [bestName, config.id, extId, extId]
+                );
+              } catch { /* non-critical */ }
+            }
           }
         } catch (e: any) {
           log.warn(`[ChatArchive] enrichContactNames: 获取 ${extId} 详情失败: ${e.message}`);
@@ -829,18 +843,27 @@ export class WecomChatArchiveService {
    */
   private static async enrichMemberAvatars(config: WecomConfig, accessToken: string, memberIds: string[]): Promise<number> {
     let enriched = 0;
-    const maxEnrich = 30;
+    const maxEnrich = 200;
 
     try {
-      // 找出没有头像的成员
+      // 从消息记录和存档成员表中找出没有头像的员工 ID
       const noAvatarMembers = await AppDataSource.query(`
-        SELECT am.wecom_user_id
-        FROM wecom_archive_members am
-        LEFT JOIN wecom_user_bindings ub ON am.wecom_user_id = ub.wecom_user_id
-        WHERE am.tenant_id = ? AND am.is_enabled = 1
-          AND (ub.wecom_avatar IS NULL OR ub.wecom_avatar = '' OR ub.id IS NULL)
+        SELECT DISTINCT uid AS wecom_user_id FROM (
+          SELECT am.wecom_user_id AS uid
+          FROM wecom_archive_members am
+          LEFT JOIN wecom_user_bindings ub ON am.wecom_user_id = ub.wecom_user_id AND ub.tenant_id = am.tenant_id
+          WHERE am.tenant_id = ? AND am.is_enabled = 1
+            AND (ub.wecom_avatar IS NULL OR ub.wecom_avatar = '' OR ub.id IS NULL)
+          UNION
+          SELECT DISTINCT cr.from_user_id AS uid
+          FROM wecom_chat_records cr
+          LEFT JOIN wecom_user_bindings ub2 ON cr.from_user_id = ub2.wecom_user_id AND ub2.tenant_id = cr.tenant_id
+          WHERE cr.wecom_config_id = ? AND cr.msg_type != 'meta'
+            AND cr.from_user_id NOT LIKE 'wm%' AND cr.from_user_id NOT LIKE 'wo%'
+            AND (ub2.wecom_avatar IS NULL OR ub2.wecom_avatar = '' OR ub2.id IS NULL)
+        ) AS t
         LIMIT ?
-      `, [config.tenantId || '', maxEnrich]);
+      `, [config.tenantId || '', config.id, maxEnrich]);
 
       if (!noAvatarMembers || noAvatarMembers.length === 0) return 0;
 
@@ -855,20 +878,23 @@ export class WecomChatArchiveService {
             const avatar = userDetail.avatar || userDetail.thumb_avatar || '';
             const userName = userDetail.name || '';
 
-            if (avatar) {
-              // 更新 wecom_user_bindings
+            if (avatar || userName) {
               const existingBinding = await AppDataSource.query(
                 `SELECT id FROM wecom_user_bindings WHERE wecom_user_id = ? AND tenant_id = ? LIMIT 1`,
                 [userId, config.tenantId || '']
               );
 
               if (existingBinding.length > 0) {
+                const sets: string[] = [];
+                const vals: any[] = [];
+                if (avatar) { sets.push('wecom_avatar = ?'); vals.push(avatar); }
+                if (userName) { sets.push('wecom_user_name = ?'); vals.push(userName); }
+                sets.push('updated_at = NOW()');
                 await AppDataSource.query(
-                  `UPDATE wecom_user_bindings SET wecom_avatar = ?, updated_at = NOW() WHERE id = ?`,
-                  [avatar, existingBinding[0].id]
+                  `UPDATE wecom_user_bindings SET ${sets.join(', ')} WHERE id = ?`,
+                  [...vals, existingBinding[0].id]
                 );
               } else {
-                // 如果 binding 不存在，创建一条
                 await AppDataSource.query(
                   `INSERT INTO wecom_user_bindings (tenant_id, wecom_config_id, corp_id, wecom_user_id, wecom_user_name, wecom_avatar, crm_user_id, is_enabled, created_at, updated_at)
                    VALUES (?, ?, ?, ?, ?, ?, '', 1, NOW(), NOW())
@@ -876,11 +902,23 @@ export class WecomChatArchiveService {
                   [config.tenantId || '', config.id, config.corpId, userId, userName, avatar]
                 );
               }
+
+              // 同步更新聊天记录表中该员工的 from_user_name
+              if (userName) {
+                try {
+                  await AppDataSource.query(
+                    `UPDATE wecom_chat_records SET from_user_name = ?
+                     WHERE wecom_config_id = ? AND from_user_id = ?
+                       AND (from_user_name IS NULL OR from_user_name = '' OR from_user_name = ?)`,
+                    [userName, config.id, userId, userId]
+                  );
+                } catch { /* non-critical */ }
+              }
               enriched++;
             }
           }
         } catch (e: any) {
-          log.debug(`[ChatArchive] enrichMemberAvatars: 获取 ${userId} 详情失败: ${e.message}`);
+          log.warn(`[ChatArchive] enrichMemberAvatars: 获取 ${userId} 详情失败: ${e.message}`);
         }
         if (enriched < noAvatarMembers.length - 1) {
           await new Promise(r => setTimeout(r, 100));

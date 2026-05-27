@@ -84,64 +84,63 @@
         </div>
       </div>
 
-      <!-- 综合搜索栏 -->
-      <div class="global-search-bar">
-        <el-input
-          v-model="globalSearchKeyword"
-          placeholder="搜索成员、客户、群聊、聊天内容..."
-          clearable
-          @keyup.enter="handleGlobalSearch"
-          @clear="handleClearGlobalSearch"
-          class="global-search-input"
-          prefix-icon="Search"
-        />
-        <el-button type="primary" @click="handleGlobalSearch" :loading="globalSearching">搜索</el-button>
-        <!-- 搜索结果下拉面板 -->
-        <div v-if="globalSearchResults && globalSearchVisible" class="global-search-results" v-click-outside="handleCloseSearchPanel">
-          <div v-if="globalSearchResults.members?.length" class="search-group">
-            <div class="search-group-title">存档成员</div>
-            <div v-for="item in globalSearchResults.members" :key="'m-' + item.wecomUserId" class="search-result-item" @click="jumpToMember(item)">
-              <span class="result-avatar result-avatar-staff">{{ (item.name || item.wecomUserId).charAt(0) }}</span>
-              <span class="result-name">{{ item.name || item.wecomUserId }}</span>
-              <el-tag size="small" type="info">员工</el-tag>
-            </div>
-          </div>
-          <div v-if="globalSearchResults.customers?.length" class="search-group">
-            <div class="search-group-title">客户</div>
-            <div v-for="item in globalSearchResults.customers" :key="'c-' + item.id" class="search-result-item" @click="jumpToCustomerConv(item)">
-              <span class="result-avatar result-avatar-customer">{{ (item.name || item.externalUserId || '?').charAt(0) }}</span>
-              <span class="result-name">{{ item.remark || item.name || item.externalUserId }}</span>
-              <span class="result-sub" v-if="item.remark && item.name">({{ item.name }})</span>
-              <el-tag size="small" type="success">客户</el-tag>
-            </div>
-          </div>
-          <div v-if="globalSearchResults.groups?.length" class="search-group">
-            <div class="search-group-title">群聊</div>
-            <div v-for="item in globalSearchResults.groups" :key="'g-' + item.roomId" class="search-result-item" @click="jumpToGroupConv(item)">
-              <span class="result-avatar result-avatar-group">群</span>
-              <span class="result-name">{{ item.roomName || item.roomId }}</span>
-              <el-tag size="small" type="warning">群聊</el-tag>
-            </div>
-          </div>
-          <div v-if="globalSearchResults.messages?.length" class="search-group">
-            <div class="search-group-title">聊天内容</div>
-            <div v-for="item in globalSearchResults.messages" :key="'msg-' + item.id" class="search-result-item" @click="jumpToMessage(item)">
-              <span class="result-avatar result-avatar-msg">💬</span>
-              <div class="result-msg-info">
-                <span class="result-name">{{ item.fromUserName || item.fromUserId }}</span>
-                <span class="result-preview">{{ item.contentPreview }}</span>
+      <!-- V4.0 7 Tab 结构 + 右侧搜索 -->
+      <div class="tabs-with-search">
+        <div class="global-search-bar">
+          <el-input
+            v-model="globalSearchKeyword"
+            placeholder="搜索成员、客户、群聊..."
+            clearable
+            @keyup.enter="handleGlobalSearch"
+            @clear="handleClearGlobalSearch"
+            class="global-search-input"
+            prefix-icon="Search"
+            size="default"
+          />
+          <el-button type="primary" @click="handleGlobalSearch" :loading="globalSearching" size="default">搜索</el-button>
+          <div v-if="globalSearchResults && globalSearchVisible" class="global-search-results" v-click-outside="handleCloseSearchPanel">
+            <div v-if="globalSearchResults.members?.length" class="search-group">
+              <div class="search-group-title">存档成员</div>
+              <div v-for="item in globalSearchResults.members" :key="'m-' + item.wecomUserId" class="search-result-item" @click="jumpToMember(item)">
+                <span class="result-avatar result-avatar-staff">{{ (item.name || item.wecomUserId).charAt(0) }}</span>
+                <span class="result-name">{{ item.name || item.wecomUserId }}</span>
+                <el-tag size="small" type="info">员工</el-tag>
               </div>
-              <span class="result-time">{{ item.sendTimeStr }}</span>
             </div>
-          </div>
-          <div v-if="isSearchEmpty" class="search-empty">
-            <el-empty description="未找到匹配结果" :image-size="40" />
+            <div v-if="globalSearchResults.customers?.length" class="search-group">
+              <div class="search-group-title">客户</div>
+              <div v-for="item in globalSearchResults.customers" :key="'c-' + item.id" class="search-result-item" @click="jumpToCustomerConv(item)">
+                <span class="result-avatar result-avatar-customer">{{ (item.name || item.externalUserId || '?').charAt(0) }}</span>
+                <span class="result-name">{{ item.remark || item.name || item.externalUserId }}</span>
+                <span class="result-sub" v-if="item.remark && item.name">({{ item.name }})</span>
+                <el-tag size="small" type="success">客户</el-tag>
+              </div>
+            </div>
+            <div v-if="globalSearchResults.groups?.length" class="search-group">
+              <div class="search-group-title">群聊</div>
+              <div v-for="item in globalSearchResults.groups" :key="'g-' + item.roomId" class="search-result-item" @click="jumpToGroupConv(item)">
+                <span class="result-avatar result-avatar-group">群</span>
+                <span class="result-name">{{ item.roomName || item.roomId }}</span>
+                <el-tag size="small" type="warning">群聊</el-tag>
+              </div>
+            </div>
+            <div v-if="globalSearchResults.messages?.length" class="search-group">
+              <div class="search-group-title">聊天内容</div>
+              <div v-for="item in globalSearchResults.messages" :key="'msg-' + item.id" class="search-result-item" @click="jumpToMessage(item)">
+                <span class="result-avatar result-avatar-msg">M</span>
+                <div class="result-msg-info">
+                  <span class="result-name">{{ item.fromUserName || item.fromUserId }}</span>
+                  <span class="result-preview">{{ item.contentPreview }}</span>
+                </div>
+                <span class="result-time">{{ item.sendTimeStr }}</span>
+              </div>
+            </div>
+            <div v-if="isSearchEmpty" class="search-empty">
+              <el-empty description="未找到匹配结果" :image-size="40" />
+            </div>
           </div>
         </div>
-      </div>
-
-      <!-- V4.0 7 Tab 结构 — 聊天会话放第一位 -->
-      <el-tabs v-model="activeTab" @tab-change="handleTabChange">
+        <el-tabs v-model="activeTab" @tab-change="handleTabChange" class="archive-tabs">
         <!-- Tab 1: 聊天会话 (原Tab2，现放第一位) -->
         <el-tab-pane label="聊天会话" name="conversations">
           <ConversationView
@@ -280,7 +279,8 @@
         <el-tab-pane v-if="isAdminRole" label="套餐与配额" name="purchase">
           <PackagePurchaseTab type="archive" />
         </el-tab-pane>
-      </el-tabs>
+        </el-tabs>
+      </div>
     </el-card>
 
     <!-- 质检弹窗 -->
@@ -1002,26 +1002,39 @@ onMounted(() => {
 .demo-features { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin-bottom: 20px; }
 .demo-features span { background: #f5f7fa; padding: 4px 10px; border-radius: 6px; font-size: 13px; }
 
-/* 综合搜索栏 */
+/* Tab + 搜索并排布局 */
+.tabs-with-search {
+  position: relative;
+}
+
 .global-search-bar {
+  position: absolute;
+  top: 0;
+  right: 0;
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-bottom: 12px;
-  position: relative;
+  gap: 6px;
+  z-index: 10;
+  height: 40px;
 
   .global-search-input {
-    flex: 1;
-    max-width: 420px;
+    width: 220px;
   }
+}
+
+.archive-tabs :deep(.el-tabs__header) {
+  margin-bottom: 0;
+}
+
+.archive-tabs :deep(.el-tabs__nav-wrap) {
+  padding-right: 320px;
 }
 
 .global-search-results {
   position: absolute;
   top: 100%;
-  left: 0;
   right: 0;
-  max-width: 600px;
+  width: 420px;
   max-height: 420px;
   overflow-y: auto;
   background: #fff;

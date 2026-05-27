@@ -258,7 +258,7 @@ const emit = defineEmits<{ (e: 'audit', record: ConvMessage): void }>()
 // ==================== 渲染模式 ====================
 const isInWecomClient = /wxwork|WeCom/i.test(navigator.userAgent) || !!(window as any).wx?.invoke
 const renderMode = ref<'bubble' | 'wecom'>('wecom')
-const messageKeys = ref<Array<{ msgid: string; secretKey: string }>>([])
+const messageKeys = ref<Array<{ msgid: string; secretKey: string; fromUserName?: string; isSelf?: boolean; timeStr?: string; msgType?: string; avatarLetter?: string; avatar?: string }>>([])
 
 // ==================== 企微SDK状态 ====================
 const { isWecomReady, isWecomFailed, initError, initFromConfig, resetWecomState } = useWecomOpenData()
@@ -309,15 +309,24 @@ const fetchMessageKeys = async () => {
     const res: any = await getMessageKeys(params)
     console.log('[ConversationView] fetchMessageKeys response:', JSON.stringify(res).slice(0, 300))
 
-    if (res?.list) {
-      messageKeys.value = res.list
-        .filter((item: any) => item.msgid && item.secretKey)
-        .map((item: any) => ({ msgid: item.msgid, secretKey: item.secretKey }))
-    } else if (res?.data?.list) {
-      messageKeys.value = res.data.list
-        .filter((item: any) => item.msgid && item.secretKey)
-        .map((item: any) => ({ msgid: item.msgid, secretKey: item.secretKey }))
-    }
+    const rawList = res?.list || res?.data?.list || []
+    messageKeys.value = rawList
+      .filter((item: any) => item.msgid && item.secretKey)
+      .map((item: any) => {
+        const t = item.msgTime ? new Date(Number(item.msgTime)) : null
+        const timeStr = t ? `${(t.getMonth()+1).toString().padStart(2,'0')}/${t.getDate().toString().padStart(2,'0')} ${t.getHours().toString().padStart(2,'0')}:${t.getMinutes().toString().padStart(2,'0')}` : ''
+        const name = item.fromUserName || item.fromUserId || ''
+        return {
+          msgid: item.msgid,
+          secretKey: item.secretKey,
+          fromUserName: name,
+          isSelf: item.isSelf ?? true,
+          timeStr,
+          msgType: item.msgType || '',
+          avatarLetter: name.charAt(0).toUpperCase() || '?',
+          avatar: item.avatar || '',
+        }
+      })
     console.log(`[ConversationView] fetchMessageKeys: ${messageKeys.value.length} keys loaded`)
   } catch (e: any) {
     console.warn('[ConversationView] 获取消息密钥失败:', e?.message || e, e?.response?.data)
@@ -829,7 +838,8 @@ defineExpose({ fetchConversations, fetchArchiveMembers, selectMemberById, jumpTo
 .msg-header-right { display: flex; align-items: center; gap: 8px; }
 .msg-header-count { font-size: 12px; color: #9ca3af; }
 
-.msg-panel-body { flex: 1; overflow-y: auto; padding: 16px; }
+.msg-panel-body { flex: 1; overflow: hidden; padding: 0; display: flex; flex-direction: column; }
+.msg-panel-body .key-diagnose-panel { padding: 16px; }
 .msg-panel-empty { flex: 1; display: flex; align-items: center; justify-content: center; }
 
 .load-more-bar { text-align: center; margin-bottom: 12px; }
