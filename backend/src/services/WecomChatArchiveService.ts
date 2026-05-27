@@ -1983,62 +1983,128 @@ export class WecomChatArchiveService {
   }
 
   /**
-   * RSA解密 encrypt_random_key
-   * 企微使用 RSA/ECB/PKCS1Padding 加密，密文是 base64 编码
+   * 规范化 PEM 密钥格式：确保 header/body/footer 正确、body 每64字符一行
+   * 处理常见问题：字面量 \\n、\\r\\n、缺少换行、多余空格等
    */
-  static rsaDecrypt(privateKeyPem: string, encryptedBase64: string): string | null {
+  private static normalizePem(rawPem: string): string {
+    // 先处理字面量的 \\n → 真实换行
+    let trimmed = rawPem.trim()
+      .replace(/\\r\\n/g, '\n')
+      .replace(/\\n/g, '\n')
+      .replace(/\\r/g, '')
+      .replace(/\r\n/g, '\n')
+      .replace(/\r/g, '\n');
+
+    // 提取 header 和 footer
+    const headerMatch = trimmed.match(/(-----BEGIN [A-Z ]+-----)/);
+    const footerMatch = trimmed.match(/(-----END [A-Z ]+-----)/);
+    const header = headerMatch ? headerMatch[1] : '';
+    const footer = footerMatch ? footerMatch[1] : '';
+
+    // 提取纯 base64 body
+    let body = trimmed;
+    if (header) body = body.substring(body.indexOf(header) + header.length);
+    if (footer) body = body.substring(0, body.indexOf(footer));
+    body = body.replace(/[\s\r\n]+/g, '');
+
+    // 每 64 字符一行
+    const lines: string[] = [];
+    for (let i = 0; i < body.length; i += 64) {
+      lines.push(body.substring(i, i + 64));
+    }
+
+    if (header && footer) {
+      return `${header}\n${lines.join('\n')}\n${footer}`;
+    }
+    // 如果没有 header/footer，尝试两种格式
+    return lines.join('\n');
+  }
+
+  /**
+   * RSA解密 encrypted_secret_key / encrypt_random_key
+   * 企微使用 RSA/ECB/PKCS1Padding 加密，密文是 base64 编码
+   * 返回: { result, errors } — result 为解密结果（null 表示失败），errors 为每次尝试的错误信息
+   */
+  static rsaDecryptDetailed(privateKeyPem: string, encryptedBase64: string): { result: string | null; errors: string[] } {
     let b64 = encryptedBase64.replace(/-/g, '+').replace(/_/g, '/');
     const pad = b64.length % 4;
     if (pad) b64 += '='.repeat(4 - pad);
 
     const buffer = Buffer.from(b64, 'base64');
+    const errors: string[] = [];
 
-    const keyVariants: string[] = [];
-    let rawKey = privateKeyPem.trim();
+    errors.push(`密文base64长度=${encryptedBase64.length}, 解码后字节数=${buffer.length}`);
 
-    if (rawKey.startsWith('-----BEGIN')) {
-      keyVariants.push(rawKey);
+    // 规范化 PEM 密钥
+    const normalizedKey = this.normalizePem(privateKeyPem);
+
+    // 准备密钥变体
+    const keyVariants: Array<{ name: string; pem: string }> = [];
+
+    // 提取纯 body
+    const bodyOnly = normalizedKey.replace(/-----BEGIN [A-Z ]+-----/g, '').replace(/-----END [A-Z ]+-----/g, '').replace(/[\s\r\n]+/g, '');
+
+    if (normalizedKey.includes('BEGIN PRIVATE KEY')) {
+      keyVariants.push({ name: 'PKCS8(原始)', pem: normalizedKey });
+      // 也尝试 PKCS#1 header（虽然body格式不同，但Node.js有时能处理）
+      keyVariants.push({ name: 'PKCS1(转换header)', pem: `-----BEGIN RSA PRIVATE KEY-----\n${bodyOnly.match(/.{1,64}/g)?.join('\n')}\n-----END RSA PRIVATE KEY-----` });
+    } else if (normalizedKey.includes('BEGIN RSA PRIVATE KEY')) {
+      keyVariants.push({ name: 'PKCS1(原始)', pem: normalizedKey });
+      keyVariants.push({ name: 'PKCS8(转换header)', pem: `-----BEGIN PRIVATE KEY-----\n${bodyOnly.match(/.{1,64}/g)?.join('\n')}\n-----END PRIVATE KEY-----` });
     } else {
-      keyVariants.push(`-----BEGIN RSA PRIVATE KEY-----\n${rawKey}\n-----END RSA PRIVATE KEY-----`);
-      keyVariants.push(`-----BEGIN PRIVATE KEY-----\n${rawKey}\n-----END PRIVATE KEY-----`);
-    }
-
-    if (rawKey.includes('RSA PRIVATE KEY')) {
-      const body = rawKey.replace(/-----BEGIN RSA PRIVATE KEY-----/g, '').replace(/-----END RSA PRIVATE KEY-----/g, '').replace(/\s/g, '');
-      keyVariants.push(`-----BEGIN PRIVATE KEY-----\n${body}\n-----END PRIVATE KEY-----`);
-    } else if (rawKey.includes('PRIVATE KEY')) {
-      const body = rawKey.replace(/-----BEGIN PRIVATE KEY-----/g, '').replace(/-----END PRIVATE KEY-----/g, '').replace(/\s/g, '');
-      keyVariants.push(`-----BEGIN RSA PRIVATE KEY-----\n${body}\n-----END RSA PRIVATE KEY-----`);
+      // 裸密钥体
+      const formatted = bodyOnly.match(/.{1,64}/g)?.join('\n') || bodyOnly;
+      keyVariants.push({ name: 'PKCS8(包装)', pem: `-----BEGIN PRIVATE KEY-----\n${formatted}\n-----END PRIVATE KEY-----` });
+      keyVariants.push({ name: 'PKCS1(包装)', pem: `-----BEGIN RSA PRIVATE KEY-----\n${formatted}\n-----END RSA PRIVATE KEY-----` });
     }
 
     const paddings = [
-      { name: 'PKCS1', value: crypto.constants.RSA_PKCS1_PADDING },
+      { name: 'PKCS1v1.5', value: crypto.constants.RSA_PKCS1_PADDING },
       { name: 'OAEP_SHA1', value: crypto.constants.RSA_PKCS1_OAEP_PADDING },
     ];
 
-    const errors: string[] = [];
-    for (const keyStr of keyVariants) {
+    for (const kv of keyVariants) {
       for (const p of paddings) {
         try {
           const decrypted = crypto.privateDecrypt(
-            { key: keyStr, padding: p.value },
+            { key: kv.pem, padding: p.value },
             buffer
           );
-          // 判断解密结果是否为可打印字符串
           const isPrintable = decrypted.every(b => b >= 0x20 && b <= 0x7E);
-          if (isPrintable) {
-            return decrypted.toString('utf8');
-          }
-          // 含不可打印字符 → 使用 base64 编码传递
-          return decrypted.toString('base64');
+          const result = isPrintable ? decrypted.toString('utf8') : decrypted.toString('base64');
+          errors.push(`✅ ${kv.name}+${p.name}: 成功! 长度=${result.length}, 格式=${isPrintable ? 'UTF8' : 'Base64'}`);
+          return { result, errors };
         } catch (e: any) {
-          errors.push(`${p.name}/${keyStr.slice(0, 30)}: ${e.message}`);
+          errors.push(`❌ ${kv.name}+${p.name}: ${e.message}`);
         }
       }
     }
 
-    log.warn(`[ChatArchive] RSA解密全部失败(${errors.length}种组合): ${errors[0]}`);
-    return null;
+    // 最后尝试：直接用原始密钥字符串（不做任何规范化）
+    for (const p of paddings) {
+      try {
+        const decrypted = crypto.privateDecrypt(
+          { key: privateKeyPem, padding: p.value },
+          buffer
+        );
+        const isPrintable = decrypted.every(b => b >= 0x20 && b <= 0x7E);
+        const result = isPrintable ? decrypted.toString('utf8') : decrypted.toString('base64');
+        errors.push(`✅ 原始密钥+${p.name}: 成功!`);
+        return { result, errors };
+      } catch (e: any) {
+        errors.push(`❌ 原始密钥+${p.name}: ${e.message}`);
+      }
+    }
+
+    log.warn(`[ChatArchive] RSA解密全部失败(${errors.length}条): ${errors.filter(e => e.startsWith('❌')).map(e => e.slice(0, 80)).join(' | ')}`);
+    return { result: null, errors };
+  }
+
+  /**
+   * RSA解密（简化接口，兼容旧代码调用）
+   */
+  static rsaDecrypt(privateKeyPem: string, encryptedBase64: string): string | null {
+    return this.rsaDecryptDetailed(privateKeyPem, encryptedBase64).result;
   }
 
   /**

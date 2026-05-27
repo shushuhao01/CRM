@@ -235,23 +235,31 @@ router.post('/chat-records/diagnose', authenticateToken, requireAdmin, async (re
               send_time: m.send_time,
               rsa_decrypt_test: '未测试'
             };
-            // 实时RSA解密测试
+            // 实时RSA解密测试（使用详细版本，返回每步错误）
             if (encKey) {
               const rsaPrivateKey = suiteConfig?.chatArchiveRsaPrivateKey;
               if (rsaPrivateKey) {
                 try {
                   const { WecomChatArchiveService } = await import('../../services/WecomChatArchiveService');
-                  const decrypted = WecomChatArchiveService.rsaDecrypt(rsaPrivateKey, encKey);
+                  const { result: decrypted, errors: rsaErrors } = WecomChatArchiveService.rsaDecryptDetailed(rsaPrivateKey, encKey);
                   if (decrypted) {
-                    firstMsgStructure.rsa_decrypt_test = `成功! secretKey长度=${decrypted.length}, 预览=${decrypted.slice(0, 16)}...`;
+                    firstMsgStructure.rsa_decrypt_test = `成功! secretKey长度=${decrypted.length}, 预览=${decrypted.slice(0, 20)}...`;
                   } else {
-                    firstMsgStructure.rsa_decrypt_test = '解密返回null(所有padding+格式组合均失败)';
+                    firstMsgStructure.rsa_decrypt_test = '全部失败';
                   }
+                  firstMsgStructure.rsa_decrypt_details = rsaErrors;
                 } catch (rsaErr: any) {
                   firstMsgStructure.rsa_decrypt_test = `异常: ${rsaErr.message}`;
                 }
-                firstMsgStructure.private_key_format = rsaPrivateKey.trim().startsWith('-----BEGIN') ? rsaPrivateKey.trim().split('\n')[0] : '裸密钥体(无PEM头)';
-                firstMsgStructure.private_key_len = rsaPrivateKey.trim().length;
+                // 检测私钥格式细节
+                const keyTrimmed = rsaPrivateKey.trim();
+                const hasRealNewlines = keyTrimmed.includes('\n');
+                const hasLiteralNewlines = keyTrimmed.includes('\\n');
+                firstMsgStructure.private_key_format = keyTrimmed.startsWith('-----BEGIN') ? keyTrimmed.split(/[\r\n]/)[0] : '裸密钥体(无PEM头)';
+                firstMsgStructure.private_key_len = keyTrimmed.length;
+                firstMsgStructure.private_key_has_real_newlines = hasRealNewlines;
+                firstMsgStructure.private_key_has_literal_backslash_n = hasLiteralNewlines;
+                firstMsgStructure.private_key_first80 = keyTrimmed.slice(0, 80);
               } else {
                 firstMsgStructure.rsa_decrypt_test = '无RSA私钥配置';
               }

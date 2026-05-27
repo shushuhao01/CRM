@@ -801,7 +801,15 @@ const handleDiagnose = async () => {
         lines.push(`--- RSA实时解密测试 ---`)
         lines.push(`私钥格式: ${fm.private_key_format || '(未知)'}`)
         lines.push(`私钥长度: ${fm.private_key_len || 0}`)
+        lines.push(`私钥含真实换行: ${fm.private_key_has_real_newlines ?? '未知'}`)
+        lines.push(`私钥含字面\\n: ${fm.private_key_has_literal_backslash_n ?? '未知'}`)
+        lines.push(`私钥前80字符: ${fm.private_key_first80 || '(空)'}`)
         lines.push(`解密结果: ${fm.rsa_decrypt_test}`)
+        if (fm.rsa_decrypt_details?.length) {
+          for (const detail of fm.rsa_decrypt_details) {
+            lines.push(`  ${detail}`)
+          }
+        }
       }
       lines.push(`response_data长度: ${d.zoneCall.response_data_len}`)
       lines.push(``)
