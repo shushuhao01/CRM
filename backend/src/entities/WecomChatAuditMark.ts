@@ -18,7 +18,7 @@ export class WecomChatAuditMark {
   @Column({ name: 'chat_record_id', type: 'int', nullable: true, comment: '关联的消息记录ID' })
   chatRecordId: number;
 
-  @Column({ name: 'from_user_id', type: 'varchar', length: 100, comment: '消息发送者UserId' })
+  @Column({ name: 'from_user_id', type: 'varchar', length: 100, nullable: true, comment: '消息发送者UserId' })
   fromUserId: string;
 
   @Column({ name: 'to_user_id', type: 'varchar', length: 100, nullable: true, comment: '消息接收者' })
@@ -45,10 +45,10 @@ export class WecomChatAuditMark {
   @Column({ name: 'status', type: 'varchar', length: 20, default: 'pending', comment: '处理状态: pending/processing/resolved/dismissed' })
   status: string;
 
-  @Column({ name: 'operator_id', type: 'varchar', length: 50, comment: '标记操作人ID' })
+  @Column({ name: 'operator_id', type: 'varchar', length: 50, nullable: true, comment: '标记操作人ID' })
   operatorId: string;
 
-  @Column({ name: 'operator_name', type: 'varchar', length: 100, comment: '标记操作人名称' })
+  @Column({ name: 'operator_name', type: 'varchar', length: 100, nullable: true, comment: '标记操作人名称' })
   operatorName: string;
 
   @Column({ name: 'resolver_id', type: 'varchar', length: 50, nullable: true, comment: '处理人ID' })

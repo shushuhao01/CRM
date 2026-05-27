@@ -380,21 +380,51 @@
         </el-form>
       </div>
 
-      <!-- 质检人员选择弹窗 -->
-      <el-dialog v-model="auditDialogVisible" title="选择质检人员" width="500px" destroy-on-close>
-        <el-input v-model="auditSearch" placeholder="搜索成员" clearable size="small" prefix-icon="Search" style="margin-bottom: 12px" />
-        <div style="max-height: 360px; overflow-y: auto; border: 1px solid #f0f0f0; border-radius: 6px; padding: 8px" v-loading="auditUsersLoading">
-          <el-checkbox-group v-model="auditCheckedIds">
-            <div v-for="user in filteredCrmUsers" :key="user.id" style="padding: 6px 8px; display: flex; align-items: center; gap: 8px; border-bottom: 1px solid #fafafa">
-              <el-checkbox :label="String(user.id)" :value="String(user.id)">
-                <span style="font-size: 13px">{{ user.name || user.username }}</span>
-                <span style="font-size: 11px; color: #9ca3af; margin-left: 6px">{{ user.role === 'admin' ? '管理员' : user.role === 'super_admin' ? '超级管理员' : user.roleName || user.role || '' }}</span>
-              </el-checkbox>
+      <!-- 质检人员选择弹窗（部门树+成员） -->
+      <el-dialog v-model="auditDialogVisible" title="选择质检人员" width="560px" destroy-on-close>
+        <p style="font-size: 12px; color: #6b7280; margin: 0 0 12px">勾选的成员可查看「标记风险」按钮、「风险审计」和「敏感词管理」标签</p>
+        <el-input v-model="auditSearch" placeholder="搜索部门或成员" clearable size="small" prefix-icon="Search" style="margin-bottom: 10px" />
+        <div style="max-height: 380px; overflow-y: auto; border: 1px solid #eee; border-radius: 6px; padding: 4px 0" v-loading="auditUsersLoading">
+          <template v-if="auditDeptTree.length > 0">
+            <div v-for="dept in filteredDeptTree" :key="dept.id" class="audit-dept-group">
+              <div class="audit-dept-header" @click="dept._expanded = !dept._expanded">
+                <el-icon style="margin-right: 4px; transition: transform .2s" :style="{ transform: dept._expanded ? 'rotate(90deg)' : '' }"><ArrowRight /></el-icon>
+                <span style="font-weight: 500; font-size: 13px">{{ dept.name }}</span>
+                <span style="font-size: 11px; color: #9ca3af; margin-left: 6px">({{ (dept._users || []).length }}人)</span>
+              </div>
+              <div v-show="dept._expanded" style="padding-left: 24px">
+                <el-checkbox-group v-model="auditCheckedIds">
+                  <div v-for="u in (dept._users || [])" :key="u.id" class="audit-user-row">
+                    <el-checkbox :label="String(u.id)" :value="String(u.id)">
+                      <span style="font-size: 13px">{{ u.name || u.realName || u.username }}</span>
+                      <span style="font-size: 11px; color: #b0b0b0; margin-left: 4px">{{ formatRoleName(u.role) }}</span>
+                    </el-checkbox>
+                  </div>
+                </el-checkbox-group>
+                <div v-if="!(dept._users || []).length" style="font-size: 12px; color: #ccc; padding: 4px 0">暂无成员</div>
+              </div>
             </div>
-          </el-checkbox-group>
-          <el-empty v-if="filteredCrmUsers.length === 0 && !auditUsersLoading" description="暂无成员" :image-size="40" />
+          </template>
+          <div v-if="auditDeptTree.length > 0 && unassignedUsers.length > 0" class="audit-dept-group">
+            <div class="audit-dept-header" @click="unassignedExpanded = !unassignedExpanded">
+              <el-icon style="margin-right: 4px; transition: transform .2s" :style="{ transform: unassignedExpanded ? 'rotate(90deg)' : '' }"><ArrowRight /></el-icon>
+              <span style="font-weight: 500; font-size: 13px">未分配部门</span>
+              <span style="font-size: 11px; color: #9ca3af; margin-left: 6px">({{ unassignedUsers.length }}人)</span>
+            </div>
+            <div v-show="unassignedExpanded" style="padding-left: 24px">
+              <el-checkbox-group v-model="auditCheckedIds">
+                <div v-for="u in unassignedUsers" :key="u.id" class="audit-user-row">
+                  <el-checkbox :label="String(u.id)" :value="String(u.id)">
+                    <span style="font-size: 13px">{{ u.name || u.realName || u.username }}</span>
+                    <span style="font-size: 11px; color: #b0b0b0; margin-left: 4px">{{ formatRoleName(u.role) }}</span>
+                  </el-checkbox>
+                </div>
+              </el-checkbox-group>
+            </div>
+          </div>
+          <el-empty v-if="auditDeptTree.length === 0 && !auditUsersLoading" description="暂无部门数据，请先在系统管理中添加部门" :image-size="40" />
         </div>
-        <div style="margin-top: 8px; font-size: 12px; color: #6b7280">已选 {{ auditCheckedIds.length }} 人</div>
+        <div style="margin-top: 8px; font-size: 12px; color: #6b7280">已选 <b>{{ auditCheckedIds.length }}</b> 人</div>
         <template #footer>
           <el-button @click="auditDialogVisible = false">取消</el-button>
           <el-button type="primary" @click="confirmAuditMembers">确定</el-button>
@@ -431,7 +461,7 @@
 defineOptions({ name: 'ArchiveSettings' })
 import { ref, reactive, computed, watch, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Refresh, Loading, CopyDocument, Edit, Delete, Search } from '@element-plus/icons-vue'
+import { Refresh, Loading, CopyDocument, Edit, Delete, Search, ArrowRight } from '@element-plus/icons-vue'
 import { getArchiveSettings, updateArchiveSettings, getArchiveSeats, updateArchiveSeatMembers, getArchiveRsaPublicKey } from '@/api/wecom'
 import request from '@/utils/request'
 
@@ -574,28 +604,75 @@ const auditDialogVisible = ref(false)
 const auditSearch = ref('')
 const auditCheckedIds = ref<string[]>([])
 const crmUsers = ref<any[]>([])
+const auditDeptTree = ref<any[]>([])
 const auditUsersLoading = ref(false)
+const unassignedExpanded = ref(false)
 
-const loadCrmUsers = async () => {
+const loadCrmDeptAndUsers = async () => {
   auditUsersLoading.value = true
   try {
-    const res: any = await request.get('/users', { params: { pageSize: 500 } })
-    const data = res?.data?.list || res?.list || res?.data || []
-    crmUsers.value = Array.isArray(data) ? data : []
-  } catch { crmUsers.value = [] }
-  finally { auditUsersLoading.value = false }
+    const [deptRes, userRes]: any[] = await Promise.all([
+      request.get('/system/departments/tree'),
+      request.get('/users', { params: { limit: 500 } })
+    ])
+    const depts = deptRes?.data || deptRes || []
+    const users = userRes?.data?.items || userRes?.data?.users || userRes?.data || []
+    crmUsers.value = Array.isArray(users) ? users : []
+
+    const flattenDepts = (nodes: any[]): any[] => {
+      const result: any[] = []
+      for (const n of nodes) {
+        result.push({ ...n, _expanded: false, _users: [] })
+        if (n.children?.length) result.push(...flattenDepts(n.children))
+      }
+      return result
+    }
+    const flatDepts = flattenDepts(Array.isArray(depts) ? depts : [])
+    const assignedUserIds = new Set<string>()
+    for (const dept of flatDepts) {
+      dept._users = crmUsers.value.filter((u: any) => {
+        const match = String(u.departmentId) === String(dept.id)
+        if (match) assignedUserIds.add(String(u.id))
+        return match
+      })
+    }
+    auditDeptTree.value = flatDepts.filter((d: any) => (d._users || []).length > 0 || (d.children || []).length > 0)
+
+    // 未分配部门的用户由 computed 处理
+  } catch (e) {
+    console.error('[ArchiveSettings] loadCrmDeptAndUsers error:', e)
+    crmUsers.value = []
+    auditDeptTree.value = []
+  } finally { auditUsersLoading.value = false }
 }
 
-const filteredCrmUsers = computed(() => {
-  const kw = auditSearch.value.trim().toLowerCase()
-  if (!kw) return crmUsers.value
-  return crmUsers.value.filter((u: any) =>
-    (u.name || '').toLowerCase().includes(kw) || (u.username || '').toLowerCase().includes(kw)
-  )
+const unassignedUsers = computed(() => {
+  const assignedIds = new Set<string>()
+  for (const dept of auditDeptTree.value) {
+    for (const u of (dept._users || [])) assignedIds.add(String(u.id))
+  }
+  return crmUsers.value.filter((u: any) => !assignedIds.has(String(u.id)))
 })
 
+const filteredDeptTree = computed(() => {
+  const kw = auditSearch.value.trim().toLowerCase()
+  if (!kw) return auditDeptTree.value
+  return auditDeptTree.value.filter((dept: any) => {
+    const nameMatch = (dept.name || '').toLowerCase().includes(kw)
+    const userMatch = (dept._users || []).some((u: any) =>
+      (u.name || '').toLowerCase().includes(kw) || (u.realName || '').toLowerCase().includes(kw) || (u.username || '').toLowerCase().includes(kw)
+    )
+    return nameMatch || userMatch
+  }).map((dept: any) => ({ ...dept, _expanded: true }))
+})
+
+const formatRoleName = (role: string) => {
+  const map: Record<string, string> = { super_admin: '超级管理员', admin: '管理员', manager: '经理', department_manager: '部门经理', sales: '销售', customer_service: '客服', finance: '财务' }
+  return map[role] || role || ''
+}
+
 const openAuditMemberDialog = async () => {
-  if (crmUsers.value.length === 0) await loadCrmUsers()
+  if (crmUsers.value.length === 0) await loadCrmDeptAndUsers()
   auditCheckedIds.value = [...form.auditMembers]
   auditSearch.value = ''
   auditDialogVisible.value = true
@@ -612,7 +689,7 @@ const removeAuditMember = (userId: string) => {
 
 const getAuditMemberName = (userId: string) => {
   const user = crmUsers.value.find((u: any) => String(u.id) === String(userId))
-  return user?.name || user?.username || userId
+  return user?.name || user?.realName || user?.username || userId
 }
 
 // ==================== 生效范围 ====================
@@ -860,7 +937,7 @@ onMounted(() => {
     loadMembers()
   }
   fetchRsaPublicKey()
-  loadCrmUsers()
+  loadCrmDeptAndUsers()
 })
 
 defineExpose({ fetchSettings })
@@ -1014,5 +1091,19 @@ defineExpose({ fetchSettings })
 .save-bar {
   padding: 16px 0; display: flex; gap: 10px;
   border-top: 1px solid #ebeef5; margin-top: 8px;
+}
+
+/* 质检人员选择器 */
+.audit-dept-group { margin-bottom: 2px; }
+.audit-dept-header {
+  display: flex; align-items: center; padding: 6px 10px; cursor: pointer;
+  border-radius: 4px; font-size: 13px; color: #303133;
+  &:hover { background: #f5f7fa; }
+}
+.audit-user-row {
+  padding: 4px 0; border-bottom: 1px solid #fafafa;
+}
+.audit-member-tags {
+  display: flex; flex-wrap: wrap; gap: 2px; padding: 4px 0;
 }
 </style>

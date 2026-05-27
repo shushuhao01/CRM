@@ -766,9 +766,22 @@ const handleSync = async () => {
     if (activeTab.value === 'records') {
       fetchList()
     } else {
-      // 同步后刷新存档成员列表和会话列表
       await conversationViewRef.value?.fetchArchiveMembers()
       conversationViewRef.value?.fetchConversations()
+      // 首次同步后检查：如果有存档成员但没有已启用的成员，提示去设置生效范围
+      const allM = conversationViewRef.value?.archiveMembers || []
+      const visibleM = conversationViewRef.value?.visibleArchiveMembers || []
+      if (allM.length > 0 && visibleM.length === 0) {
+        setTimeout(() => {
+          ElMessageBox.confirm(
+            `已同步 ${allM.length} 个存档成员，请到「存档设置」→「生效范围」中选择需要查看存档的成员，避免超出套餐席位限制。`,
+            '请先设置生效范围',
+            { confirmButtonText: '前往设置', cancelButtonText: '稍后再说', type: 'info' }
+          ).then(() => {
+            activeTab.value = 'settings'
+          }).catch(() => { /* 用户取消 */ })
+        }, 500)
+      }
     }
   } catch (e: any) {
     ElMessage.error(e?.message || '同步失败')

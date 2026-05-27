@@ -27,7 +27,19 @@
               <div class="member-card-time" v-if="member.lastActiveTime">{{ formatShortTime(member.lastActiveTime) }}</div>
             </div>
           </div>
-          <el-empty v-if="filteredMembers.length === 0 && !memberLoading" description="暂无存档员工" :image-size="40" />
+          <div v-if="filteredMembers.length === 0 && !memberLoading" class="no-members-hint">
+            <el-empty :image-size="36" description="">
+              <template #description>
+                <div style="font-size: 12px; color: #909399; line-height: 1.6">
+                  <template v-if="archiveMembers.length > 0 && visibleArchiveMembers.length === 0">
+                    <p>已同步 {{ archiveMembers.length }} 个成员</p>
+                    <p>请到「存档设置」→「生效范围」<br/>选择需要查看存档的成员</p>
+                  </template>
+                  <template v-else>暂无存档员工</template>
+                </div>
+              </template>
+            </el-empty>
+          </div>
         </div>
       </div>
 
@@ -819,7 +831,7 @@ const jumpToConversation = async (type: 'customer' | 'staff' | 'group', memberId
 }
 
 // 暴露方法给父组件调用
-defineExpose({ fetchConversations, fetchArchiveMembers, selectMemberById, jumpToConversation })
+defineExpose({ fetchConversations, fetchArchiveMembers, selectMemberById, jumpToConversation, archiveMembers, visibleArchiveMembers })
 </script>
 
 <style scoped>

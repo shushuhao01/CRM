@@ -989,8 +989,9 @@ router.post('/chat-archive/audit-marks', authenticateToken, async (req: Request,
     await repo.save(mark);
     res.json({ success: true, data: mark, message: '风险标记已创建' });
   } catch (error: any) {
-    log.error('[Wecom] Create audit mark error:', error.message);
-    res.status(500).json({ success: false, message: '创建风险标记失败' });
+    log.error('[Wecom] Create audit mark error:', error.message, error.stack);
+    log.error('[Wecom] Create audit mark body:', JSON.stringify(req.body));
+    res.status(500).json({ success: false, message: `创建风险标记失败: ${error.message}` });
   }
 });
 
