@@ -33,9 +33,28 @@
                 <div style="font-size: 12px; color: #909399; line-height: 1.6">
                   <template v-if="archiveMembers.length > 0 && visibleArchiveMembers.length === 0">
                     <p>已同步 {{ archiveMembers.length }} 个成员</p>
-                    <p>请到「存档设置」→「生效范围」<br/>选择需要查看存档的成员</p>
+                    <p v-if="isAdminRole">请到「存档设置」→「生效范围」<br/>选择需要查看存档的成员</p>
+                    <template v-else>
+                      <p>您当前无法查看存档员工，请检查：</p>
+                      <p>1. 请联系管理员确认「数据可见范围」是否授权给您</p>
+                      <p>2. 请确认您已绑定企业微信账户</p>
+                      <p style="color:#b0b0b0">完成以上操作后，点击顶部「同步」按钮刷新数据</p>
+                    </template>
                   </template>
-                  <template v-else>暂无存档员工</template>
+                  <template v-else-if="archiveMembers.length === 0">
+                    <template v-if="isAdminRole">
+                      <p>暂无存档员工</p>
+                      <p>请点击顶部「同步」按钮拉取数据</p>
+                    </template>
+                    <template v-else>
+                      <p>暂无存档员工，请检查：</p>
+                      <p>1. 管理员是否已同步并设置生效范围</p>
+                      <p>2. 您是否已绑定企业微信账户</p>
+                      <p>3. 管理员是否授权了数据可见范围</p>
+                      <p style="color:#b0b0b0">完成以上操作后刷新页面即可</p>
+                    </template>
+                  </template>
+                  <template v-else>暂无匹配结果</template>
                 </div>
               </template>
             </el-empty>
@@ -472,26 +491,33 @@ const selectedMemberAvatar = ref('')
 const deptMemberCrmIds = ref<string[]>([])
 
 const archiveVisibility = ref<'self' | 'department' | 'all'>('all')
+const auditMemberIds = ref<string[]>([])
+
+const isCurrentUserAuditor = computed(() => {
+  const myId = String(currentUser.value?.id || '')
+  return myId && auditMemberIds.value.includes(myId)
+})
 
 const visibleArchiveMembers = computed(() => {
-  // 第一层过滤：只显示生效范围内的成员（isEnabled=true）
   const enabledMembers = archiveMembers.value.filter((m: any) => m.isEnabled !== false)
 
-  // 超级管理员可见所有已启用成员
-  if (isAdminRole.value) return enabledMembers
+  // 管理员或质检员：可查看全部数据
+  if (isAdminRole.value || isCurrentUserAuditor.value) return enabledMembers
 
-  // 根据存档设置的数据可见范围过滤
   const vis = archiveVisibility.value
 
   if (vis === 'all') return enabledMembers
 
-  if (vis === 'department' || isManagerRole.value) {
-    return enabledMembers.filter((m: any) => m.crmUserId && deptMemberCrmIds.value.includes(m.crmUserId))
+  if (isManagerRole.value) {
+    return enabledMembers.filter((m: any) => m.crmUserId && deptMemberCrmIds.value.includes(String(m.crmUserId)))
   }
 
-  // vis === 'self'：仅自己
-  const myId = currentUser.value?.id
-  return enabledMembers.filter((m: any) => m.crmUserId === myId)
+  if (vis === 'department') {
+    return enabledMembers.filter((m: any) => m.crmUserId && deptMemberCrmIds.value.includes(String(m.crmUserId)))
+  }
+
+  const myId = String(currentUser.value?.id || '')
+  return enabledMembers.filter((m: any) => String(m.crmUserId) === myId)
 })
 
 const filteredMembers = computed(() => {
@@ -504,15 +530,14 @@ const filteredMembers = computed(() => {
 
 const loadScopeMembers = async () => {
   if (isAdminRole.value) return
-  if (isManagerRole.value) {
-    try {
-      const res = (await api.get('/users/department-members')) as any
-      const members = res?.data || res || []
-      deptMemberCrmIds.value = members.map((m: any) => m.userId || m.id).filter(Boolean)
-      const myId = currentUser.value?.id
-      if (myId && !deptMemberCrmIds.value.includes(myId)) deptMemberCrmIds.value.push(myId)
-    } catch { deptMemberCrmIds.value = [] }
-  }
+  // 加载同部门成员 CRM ID（部门经理和 department 可见模式都需要）
+  try {
+    const res = (await api.get('/users/department-members')) as any
+    const members = res?.data || res || []
+    deptMemberCrmIds.value = members.map((m: any) => String(m.userId || m.id)).filter(Boolean)
+    const myId = String(currentUser.value?.id || '')
+    if (myId && !deptMemberCrmIds.value.includes(myId)) deptMemberCrmIds.value.push(myId)
+  } catch { deptMemberCrmIds.value = [] }
 }
 
 const fetchArchiveMembers = async () => {
@@ -524,6 +549,8 @@ const fetchArchiveMembers = async () => {
     const data = seatRes?.data || seatRes
     archiveMembers.value = data?.members || []
     archiveVisibility.value = data?.visibility || 'all'
+    const rawAudit = data?.auditMembers || []
+    auditMemberIds.value = Array.isArray(rawAudit) ? rawAudit.map(String) : []
   } catch { archiveMembers.value = [] }
   finally { memberLoading.value = false }
 }

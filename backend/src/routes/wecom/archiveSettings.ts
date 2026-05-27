@@ -367,8 +367,27 @@ router.post('/chat-archive/refresh-auth-status', authenticateToken, requireAdmin
         log.warn('[ArchiveSettings] 检查数据与智能专区权限失败:', e.message);
       }
     } else if (hasSecret && config.authType !== 'third_party') {
-      // 自建应用：直接检查 chatArchiveSecret 是否配置
       dataApiAuthorized = !!config.chatArchiveSecret;
+    }
+
+    // ★ 额外检测：如果已有成功同步的聊天记录，说明数据专区权限已通过
+    if (!dataApiAuthorized) {
+      try {
+        const recordCount = await AppDataSource.query(
+          `SELECT COUNT(*) as cnt FROM wecom_chat_records WHERE tenant_id = ? LIMIT 1`,
+          [tenantId]
+        ).catch(() => [{ cnt: 0 }]);
+        if (parseInt(recordCount[0]?.cnt || '0') > 0) {
+          dataApiAuthorized = true;
+          config.dataApiStatus = 1;
+          await configRepo.save(config);
+          log.info(`[ArchiveSettings] 已有同步记录，数据专区权限视为已通过`);
+        }
+      } catch { /* ignore */ }
+    }
+    // ★ 如果config已标记dataApiStatus=1（之前检测通过过），保持通过状态
+    if (!dataApiAuthorized && config.dataApiStatus === 1) {
+      dataApiAuthorized = true;
     }
 
     // 3. 检查是否已购买VAS（从tenant表和payment_orders表检查）

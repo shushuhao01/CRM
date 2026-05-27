@@ -845,17 +845,30 @@ const handleRepairNames = async () => {
 const handleSyncAll = async () => {
   if (!selectedConfigId.value) { ElMessage.warning('请先选择企微配置'); return }
   syncingAll.value = true
+  let deptResult = ''
+  let memberResult = ''
   try {
-    // 先同步部门
     try {
-      await syncWecomDepartments(selectedConfigId.value)
+      const deptRes: any = await syncWecomDepartments(selectedConfigId.value)
+      deptResult = deptRes?.message || '部门同步完成'
     } catch (e: any) {
-      console.warn('[AddressBook] 同步部门失败，继续尝试同步成员:', e?.message)
+      deptResult = e?.message || '部门同步失败'
+      console.warn('[AddressBook] 同步部门失败:', e?.message)
     }
-    // 再同步成员（后端会自动处理无部门的情况）
-    await syncWecomMembers(selectedConfigId.value)
-    ElMessage.success('组织架构同步完成')
+    try {
+      const memberRes: any = await syncWecomMembers(selectedConfigId.value)
+      memberResult = memberRes?.message || '成员同步完成'
+    } catch (e: any) {
+      memberResult = e?.message || '成员同步失败'
+    }
     reloadMixedTree()
+    if (memberResult.includes('失败') && deptResult.includes('失败')) {
+      ElMessage.error({ message: memberResult, duration: 8000 })
+    } else if (memberResult.includes('失败') || deptResult.includes('失败')) {
+      ElMessage.warning({ message: `${deptResult}；${memberResult}`, duration: 6000 })
+    } else {
+      ElMessage.success('组织架构同步完成')
+    }
   } catch (e: any) {
     ElMessage.error(e?.message || '同步失败')
   } finally {

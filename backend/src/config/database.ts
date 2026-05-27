@@ -127,6 +127,7 @@ import { WecomSuiteCallbackLog } from '../entities/WecomSuiteCallbackLog';
 import { WecomSuiteAuthLink } from '../entities/WecomSuiteAuthLink';
 import { WecomNotificationTemplate } from '../entities/WecomNotificationTemplate';
 import { UserSession } from '../entities/UserSession';
+import { WecomChatAuditMark } from '../entities/WecomChatAuditMark';
 import { log } from './logger';
 
 // ==================== 环境配置智能加载 ====================
@@ -178,7 +179,7 @@ const entities = [
   WecomAiLog, WecomSidebarAuthCode, WecomDepartmentMapping,
   WecomGroupWelcome, WecomAntiSpamRule, WecomGroupBroadcast,
   WecomSuiteConfig, WecomSuiteCallbackLog, WecomSuiteAuthLink, WecomNotificationTemplate,
-  UserSession, CallProspect
+  UserSession, CallProspect, WecomChatAuditMark
 ];
 
 // ==================== MySQL 数据库配置 ====================

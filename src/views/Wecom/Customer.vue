@@ -21,35 +21,41 @@
       </template>
     </el-alert>
 
-    <!-- V4统计卡片 -->
+    <!-- 统计卡片 -->
     <div class="v4-stats-row">
       <div class="v4-stat-card">
         <div class="stat-icon" style="background: #EEF2FF; color: #4C6EF5">📈</div>
         <div class="stat-body">
           <div class="stat-num primary">{{ displayStats.todayAdd }}</div>
           <div class="stat-label">今日进粉</div>
-          <div class="stat-trend" v-if="displayStats.yesterdayAdd !== undefined">{{ displayStats.todayAdd >= displayStats.yesterdayAdd ? '↑' : '↓' }} 较昨日{{ displayStats.yesterdayAdd }}</div>
         </div>
       </div>
       <div class="v4-stat-card">
         <div class="stat-icon" style="background: #ECFDF5; color: #10B981">👥</div>
         <div class="stat-body">
           <div class="stat-num success">{{ displayStats.totalAdd }}</div>
-          <div class="stat-label">累计进粉</div>
+          <div class="stat-label">累计客户</div>
         </div>
       </div>
       <div class="v4-stat-card">
         <div class="stat-icon" style="background: #FEF2F2; color: #EF4444">🚫</div>
         <div class="stat-body">
           <div class="stat-num danger">{{ displayStats.deleted }}</div>
-          <div class="stat-label">删除客户</div>
+          <div class="stat-label">已删除</div>
         </div>
       </div>
       <div class="v4-stat-card">
-        <div class="stat-icon" style="background: #FFFBEB; color: #F59E0B">🎯</div>
+        <div class="stat-icon" style="background: #FFF7ED; color: #F97316">⚠️</div>
         <div class="stat-body">
-          <div class="stat-num warning">{{ displayStats.dealt }}</div>
-          <div class="stat-label">成交客户</div>
+          <div class="stat-num" style="color: #F97316">{{ displayStats.blocked }}</div>
+          <div class="stat-label">被拉黑</div>
+        </div>
+      </div>
+      <div class="v4-stat-card">
+        <div class="stat-icon" style="background: #F0FDF4; color: #22C55E">🟢</div>
+        <div class="stat-body">
+          <div class="stat-num" style="color: #22C55E">{{ displayStats.active }}</div>
+          <div class="stat-label">活跃客户</div>
         </div>
       </div>
     </div>
@@ -63,31 +69,33 @@
       </el-badge>
     </div>
 
+    <!-- 绑定成员信息 -->
+    <div v-if="boundMembers.length > 0 && !isDemoMode" class="bound-members-bar">
+      <span style="color: #606266; font-size: 13px">绑定企微账户 ({{ boundMembers.length }}人)：</span>
+      <el-tag v-for="m in boundMembers.slice(0, 8)" :key="m.id" size="small" type="info" style="margin: 0 4px 4px 0">
+        {{ m.wecomUserName || m.crmUserName || m.wecomUserId }}
+      </el-tag>
+      <span v-if="boundMembers.length > 8" style="color: #909399; font-size: 12px">+{{ boundMembers.length - 8 }}人</span>
+    </div>
+
     <!-- 同步结果反馈条 -->
     <el-alert
       v-if="syncResult"
-      :type="syncResult.quotaRemaining < 100 ? 'warning' : 'success'"
+      type="success"
       :closable="true"
-      style="margin-bottom: 16px"
+      style="margin-bottom: 12px"
       @close="syncResult = null"
     >
       <template #title>
-        <span>上次同步：{{ syncResult.message }}</span>
+        <span>{{ syncResult.message }}</span>
       </template>
       <template #default>
         <div class="sync-result-detail">
-          <span>已同步 <strong>{{ syncResult.syncCount }}</strong> 个客户</span>
-          <el-divider direction="vertical" />
-          <span>客户总量 <strong>{{ syncResult.totalCustomers }}</strong> / {{ syncResult.customerLimit }}</span>
-          <el-divider direction="vertical" />
-          <span>剩余配额 <strong>{{ syncResult.quotaRemaining }}</strong></span>
-          <el-divider direction="vertical" />
-          <span>绑定成员 <strong>{{ syncResult.bindingsUsed }}</strong> 人</span>
-          <el-divider direction="vertical" />
-          <span v-if="syncCooldown > 0" style="color: #e6a23c">
-            ⏳ 自动同步冷却中（{{ syncCooldown }}分钟后）
-          </span>
-          <span v-else style="color: #67c23a">✅ 可再次同步</span>
+          <span>同步成员 <strong>{{ syncResult.bindingsUsed }}</strong> 人</span>
+          <template v-if="syncResult.bindingNames">
+            <el-divider direction="vertical" />
+            <span style="color: #606266">{{ syncResult.bindingNames }}</span>
+          </template>
         </div>
       </template>
     </el-alert>
@@ -104,6 +112,7 @@
             <el-select v-model="query.status" placeholder="客户状态" clearable style="width: 120px" @change="handleSearch">
               <el-option label="正常" value="normal" />
               <el-option label="已删除" value="deleted" />
+              <el-option label="被拉黑" value="blocked" />
             </el-select>
             <el-select v-model="query.departmentId" placeholder="部门" clearable style="width: 140px" @change="handleDepartmentChange">
               <el-option v-for="d in departmentList" :key="d.id" :label="d.name" :value="d.id" />
@@ -133,7 +142,7 @@
         <el-icon><Filter /></el-icon>
         <span>筛选结果：共 <strong>{{ displayTotal }}</strong> 条记录</span>
         <template v-if="query.keyword"><el-tag size="small" closable @close="query.keyword = ''; handleSearch()">关键词: {{ query.keyword }}</el-tag></template>
-        <template v-if="query.status"><el-tag size="small" closable @close="query.status = ''; handleSearch()">状态: {{ query.status === 'normal' ? '正常' : '已删除' }}</el-tag></template>
+        <template v-if="query.status"><el-tag size="small" closable @close="query.status = ''; handleSearch()">状态: {{ { normal: '正常', deleted: '已删除', blocked: '被拉黑' }[query.status] || query.status }}</el-tag></template>
         <template v-if="query.departmentId"><el-tag size="small" closable @close="query.departmentId = null; handleSearch()">部门: {{ departmentList.find(d => d.id === query.departmentId)?.name || query.departmentId }}</el-tag></template>
         <template v-if="query.followUserId"><el-tag size="small" closable @close="query.followUserId = ''; handleSearch()">成员: {{ memberList.find(m => (m.userId || m.wecomUserId) === query.followUserId)?.name || query.followUserId }}</el-tag></template>
         <template v-if="query.startDate"><el-tag size="small" closable @close="dateRange = []; handleSearch()">日期: {{ query.startDate }} ~ {{ query.endDate }}</el-tag></template>
@@ -213,17 +222,17 @@
         </el-table-column>
         <el-table-column label="活跃度" width="80">
           <template #default="{ row }">
-            <el-tag v-if="row.activeDays7d >= 5" type="success" size="small">活跃</el-tag>
-            <el-tag v-else-if="row.activeDays7d >= 2" type="warning" size="small">一般</el-tag>
+            <el-tag v-if="row.activityStatus === 'active'" type="success" size="small">活跃</el-tag>
+            <el-tag v-else-if="row.activityStatus === 'normal'" type="warning" size="small">一般</el-tag>
             <el-tag v-else type="info" size="small">沉默</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="消息统计" width="130">
+        <el-table-column label="消息统计" width="120">
           <template #default="{ row }">
-            <el-tooltip :content="`发送: ${row.msgSentCount ?? row.chatSentCount ?? 0}条 / 接收: ${row.msgRecvCount ?? row.chatRecvCount ?? 0}条`" placement="top" :show-after="300">
-              <span style="font-size: 12px">
-                ↑ <strong>{{ row.msgSentCount ?? row.chatSentCount ?? 0 }}</strong>
-                ↓ <strong>{{ row.msgRecvCount ?? row.chatRecvCount ?? 0 }}</strong>
+            <el-tooltip :content="`客户发送: ${row.msgSentCount ?? row.chatSentCount ?? 0}条 / 员工发送: ${row.msgRecvCount ?? row.chatRecvCount ?? 0}条`" placement="top" :show-after="300">
+              <span style="font-size: 12px; display: inline-flex; gap: 6px">
+                <span style="color: #409eff">客<strong>{{ row.msgSentCount ?? row.chatSentCount ?? 0 }}</strong></span>
+                <span style="color: #67c23a">员<strong>{{ row.msgRecvCount ?? row.chatRecvCount ?? 0 }}</strong></span>
               </span>
             </el-tooltip>
           </template>
@@ -342,7 +351,7 @@ const syncingTags = ref(false)
 const configList = ref<any[]>([])
 const customerList = ref<any[]>([])
 const total = ref(0)
-const stats = ref({ todayAdd: 0, totalAdd: 0, deleted: 0, dealt: 0, yesterdayAdd: 0 })
+const stats = ref({ todayAdd: 0, totalAdd: 0, deleted: 0, blocked: 0, active: 0 })
 const dateRange = ref<string[]>([])
 
 /** 显示的配置选项 */
@@ -379,18 +388,16 @@ const displayCustomers = computed(() => {
 /** 显示的统计数据（示例模式下根据筛选结果动态计算） */
 const displayStats = computed(() => {
   if (!isDemoMode.value) return stats.value
-  // 是否有任何筛选条件
   const hasFilter = query.value.keyword || query.value.status || query.value.startDate || query.value.endDate
   if (!hasFilter) return DEMO_CUSTOMER_STATS
-  // 有筛选条件时，根据 displayCustomers 动态计算统计
   const filtered = displayCustomers.value as any[]
   const today = new Date().toISOString().slice(0, 10)
   return {
     todayAdd: filtered.filter(c => c.addTime && c.addTime.startsWith(today) && c.status === 'normal').length,
     totalAdd: filtered.filter(c => c.status === 'normal').length,
-    deleted: filtered.filter(c => c.status === 'deleted').length,
-    dealt: filtered.filter(c => c.isDealt).length,
-    yesterdayAdd: 0
+    deleted: filtered.filter(c => c.status === 'deleted' || c.status === 'deleted_by_employee').length,
+    blocked: filtered.filter(c => c.status === 'blocked').length,
+    active: filtered.filter(c => c.activityStatus === 'active').length
   }
 })
 
@@ -402,8 +409,6 @@ const displayTotal = computed(() => {
 
 // 同步结果反馈
 const syncResult = ref<any>(null)
-const syncCooldown = ref(0)
-let cooldownTimer: ReturnType<typeof setInterval> | null = null
 
 const query = ref({
   configId: null as number | null,
@@ -420,6 +425,7 @@ const query = ref({
 // 部门与成员筛选数据
 const departmentList = ref<any[]>([])
 const memberList = ref<any[]>([])
+const boundMembers = ref<any[]>([])
 
 // CRM关联弹窗
 const linkDialogVisible = ref(false)
@@ -472,13 +478,12 @@ const formatDate = (date: string) => date ? formatDateTime(date) : '-'
 
 /** 状态标签类型 */
 const getStatusTagType = (status: string) => {
-  const map: Record<string, string> = { normal: 'success', deleted: 'danger', inactive: 'warning', blocked: 'info' }
+  const map: Record<string, string> = { normal: 'success', deleted: 'danger', blocked: 'warning', deleted_by_employee: 'danger' }
   return (map[status] || 'info') as any
 }
 
-/** 状态文案映射 */
 const getStatusLabel = (status: string) => {
-  const map: Record<string, string> = { normal: '正常', deleted: '已删除', inactive: '已停用', blocked: '已拉黑' }
+  const map: Record<string, string> = { normal: '正常', deleted: '已删除', blocked: '被拉黑', deleted_by_employee: '员工删除' }
   return map[status] || status || '未知'
 }
 
@@ -533,24 +538,29 @@ const handleConfigChange = () => {
   handleSearch()
 }
 
-/** 获取部门和成员列表 */
+/** 获取部门和成员列表 + 绑定成员 */
 const fetchDepartmentsAndMembers = async () => {
   if (!query.value.configId) {
     departmentList.value = []
     memberList.value = []
+    boundMembers.value = []
     return
   }
   try {
-    const [deptRes, userRes] = await Promise.all([
+    const [deptRes, userRes, bindRes] = await Promise.all([
       getWecomDepartments(query.value.configId),
-      getWecomUsers(query.value.configId)
+      getWecomUsers(query.value.configId),
+      getWecomBindings({ configId: query.value.configId }).catch(() => [])
     ])
     departmentList.value = Array.isArray(deptRes) ? deptRes : (deptRes as any)?.data || []
     memberList.value = Array.isArray(userRes) ? userRes : (userRes as any)?.data || []
+    const bindings = Array.isArray(bindRes) ? bindRes : (bindRes as any)?.data || []
+    boundMembers.value = bindings.filter((b: any) => b.isEnabled !== false)
   } catch (e) {
     console.error('[WecomCustomer] Fetch departments/members error:', e)
     departmentList.value = []
     memberList.value = []
+    boundMembers.value = []
   }
 }
 
@@ -675,15 +685,9 @@ const handleSync = async () => {
     ElMessage.success(message)
     syncResult.value = {
       message,
-      syncCount: data?.syncCount || 0,
-      totalCustomers: data?.totalCustomers || 0,
-      customerLimit: data?.customerLimit || 5000,
-      quotaRemaining: data?.quotaRemaining ?? 5000,
       bindingsUsed: data?.bindingsUsed || 0,
-      cooldownMinutes: data?.cooldownMinutes || 60
+      bindingNames: data?.bindingNames || ''
     }
-    startCooldownTimer(syncResult.value.cooldownMinutes)
-    // 立即刷新列表（显示已有数据），然后定时轮询刷新（同步在后台进行）
     fetchList()
     fetchStats()
     startSyncPolling()
@@ -717,17 +721,6 @@ const startSyncPolling = () => {
   }, 5000)
 }
 
-const startCooldownTimer = (minutes: number) => {
-  syncCooldown.value = minutes
-  if (cooldownTimer) clearInterval(cooldownTimer)
-  cooldownTimer = setInterval(() => {
-    syncCooldown.value--
-    if (syncCooldown.value <= 0) {
-      syncCooldown.value = 0
-      if (cooldownTimer) { clearInterval(cooldownTimer); cooldownTimer = null }
-    }
-  }, 60000)
-}
 
 const handleSyncTags = async () => {
   if (isDemoMode.value) {
@@ -918,6 +911,7 @@ onUnmounted(() => {
   background: #EEF2FF; border-radius: 8px; font-size: 13px; color: #4C6EF5;
   strong { color: #1F2937; }
 }
+.bound-members-bar { display: flex; align-items: center; flex-wrap: wrap; padding: 8px 12px; background: #F0F9FF; border-radius: 8px; margin-bottom: 12px; gap: 4px; }
 .sync-result-detail { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; font-size: 13px; color: #4B5563; margin-top: 4px; }
 .sync-result-detail strong { color: #4C6EF5; }
 .auto-match-float {

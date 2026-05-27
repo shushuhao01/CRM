@@ -185,7 +185,11 @@
         </template>
         <template v-else>
           <!-- 已生效成员列表 -->
-          <div v-if="enabledMemberList.length > 0" class="scope-member-list">
+          <div v-if="scopeLoading" style="padding: 20px; text-align: center">
+            <el-icon class="is-loading" :size="20"><Loading /></el-icon>
+            <span style="margin-left: 8px; color: #909399; font-size: 13px">加载成员列表...</span>
+          </div>
+          <div v-else-if="enabledMemberList.length > 0" class="scope-member-list">
             <div class="member-list-header">
               <span class="member-list-title">当前生效成员（{{ enabledMemberList.length }}人）</span>
             </div>
@@ -218,7 +222,11 @@
           </div>
           <!-- 无成员时 -->
           <div v-else class="scope-empty">
-            <el-empty description="暂无生效成员" :image-size="64">
+            <el-empty :image-size="64">
+              <template #description>
+                <span v-if="allMembers.length > 0">已同步 {{ allMembers.length }} 个存档成员，请选择需要生效的成员</span>
+                <span v-else>暂无生效成员，请先在「聊天会话」中同步存档成员</span>
+              </template>
               <el-button type="primary" @click="openScopeDialog">选择生效成员</el-button>
             </el-empty>
           </div>
@@ -369,11 +377,23 @@
                 <el-button size="small" type="primary" plain @click="openAuditMemberDialog">选择质检人员</el-button>
                 <span class="field-hint">可查看「标记风险」按钮、「风险审计」和「敏感词管理」的CRM成员</span>
               </div>
-              <div v-if="form.auditMembers.length > 0" class="audit-member-tags">
-                <el-tag v-for="uid in form.auditMembers" :key="uid" closable size="small" @close="removeAuditMember(uid)" style="margin: 2px 4px 2px 0">
-                  {{ getAuditMemberName(uid) }}
-                </el-tag>
-              </div>
+              <template v-if="form.auditMembers.length > 0">
+                <div class="audit-member-tags">
+                  <el-tag v-for="uid in pagedAuditMembers" :key="uid" :closable="!adminUserIds.includes(uid)" size="small" @close="removeAuditMember(uid)" style="margin: 2px 4px 2px 0">
+                    {{ getAuditMemberName(uid) }}{{ adminUserIds.includes(uid) ? '(默认)' : '' }}
+                  </el-tag>
+                </div>
+                <el-pagination
+                  v-if="form.auditMembers.length > auditPageSize"
+                  v-model:current-page="auditMemberPage"
+                  :page-size="auditPageSize"
+                  :total="form.auditMembers.length"
+                  layout="total, prev, pager, next"
+                  small
+                  background
+                  style="margin-top: 8px"
+                />
+              </template>
               <div v-else style="font-size: 12px; color: #9ca3af">未设置时仅管理员可见</div>
             </div>
           </el-form-item>
@@ -382,7 +402,7 @@
 
       <!-- 质检人员选择弹窗（部门树+成员） -->
       <el-dialog v-model="auditDialogVisible" title="选择质检人员" width="560px" destroy-on-close>
-        <p style="font-size: 12px; color: #6b7280; margin: 0 0 12px">勾选的成员可查看「标记风险」按钮、「风险审计」和「敏感词管理」标签</p>
+        <p style="font-size: 12px; color: #6b7280; margin: 0 0 12px">勾选的成员可查看「标记风险」按钮、「风险审计」和「敏感词管理」标签。管理员默认勾选。</p>
         <el-input v-model="auditSearch" placeholder="搜索部门或成员" clearable size="small" prefix-icon="Search" style="margin-bottom: 10px" />
         <div style="max-height: 380px; overflow-y: auto; border: 1px solid #eee; border-radius: 6px; padding: 4px 0" v-loading="auditUsersLoading">
           <template v-if="auditDeptTree.length > 0">
@@ -395,36 +415,19 @@
               <div v-show="dept._expanded" style="padding-left: 24px">
                 <el-checkbox-group v-model="auditCheckedIds">
                   <div v-for="u in (dept._users || [])" :key="u.id" class="audit-user-row">
-                    <el-checkbox :label="String(u.id)" :value="String(u.id)">
+                    <el-checkbox :label="String(u.id)" :value="String(u.id)" :disabled="isAdminUser(u)">
                       <span style="font-size: 13px">{{ u.name || u.realName || u.username }}</span>
                       <span style="font-size: 11px; color: #b0b0b0; margin-left: 4px">{{ formatRoleName(u.role) }}</span>
+                      <span v-if="isAdminUser(u)" style="font-size: 10px; color: #409eff; margin-left: 4px">(默认)</span>
                     </el-checkbox>
                   </div>
                 </el-checkbox-group>
-                <div v-if="!(dept._users || []).length" style="font-size: 12px; color: #ccc; padding: 4px 0">暂无成员</div>
               </div>
             </div>
           </template>
-          <div v-if="auditDeptTree.length > 0 && unassignedUsers.length > 0" class="audit-dept-group">
-            <div class="audit-dept-header" @click="unassignedExpanded = !unassignedExpanded">
-              <el-icon style="margin-right: 4px; transition: transform .2s" :style="{ transform: unassignedExpanded ? 'rotate(90deg)' : '' }"><ArrowRight /></el-icon>
-              <span style="font-weight: 500; font-size: 13px">未分配部门</span>
-              <span style="font-size: 11px; color: #9ca3af; margin-left: 6px">({{ unassignedUsers.length }}人)</span>
-            </div>
-            <div v-show="unassignedExpanded" style="padding-left: 24px">
-              <el-checkbox-group v-model="auditCheckedIds">
-                <div v-for="u in unassignedUsers" :key="u.id" class="audit-user-row">
-                  <el-checkbox :label="String(u.id)" :value="String(u.id)">
-                    <span style="font-size: 13px">{{ u.name || u.realName || u.username }}</span>
-                    <span style="font-size: 11px; color: #b0b0b0; margin-left: 4px">{{ formatRoleName(u.role) }}</span>
-                  </el-checkbox>
-                </div>
-              </el-checkbox-group>
-            </div>
-          </div>
-          <el-empty v-if="auditDeptTree.length === 0 && !auditUsersLoading" description="暂无部门数据，请先在系统管理中添加部门" :image-size="40" />
+          <el-empty v-if="auditDeptTree.length === 0 && !auditUsersLoading" description="暂无成员数据" :image-size="40" />
         </div>
-        <div style="margin-top: 8px; font-size: 12px; color: #6b7280">已选 <b>{{ auditCheckedIds.length }}</b> 人</div>
+        <div style="margin-top: 8px; font-size: 12px; color: #6b7280">已选 <b>{{ auditCheckedIds.length }}</b> 人（含默认管理员）</div>
         <template #footer>
           <el-button @click="auditDialogVisible = false">取消</el-button>
           <el-button type="primary" @click="confirmAuditMembers">确定</el-button>
@@ -606,39 +609,42 @@ const auditCheckedIds = ref<string[]>([])
 const crmUsers = ref<any[]>([])
 const auditDeptTree = ref<any[]>([])
 const auditUsersLoading = ref(false)
-const unassignedExpanded = ref(false)
+const auditMemberPage = ref(1)
+const auditPageSize = 5
+const pagedAuditMembers = computed(() => {
+  const start = (auditMemberPage.value - 1) * auditPageSize
+  return form.auditMembers.slice(start, start + auditPageSize)
+})
 
 const loadCrmDeptAndUsers = async () => {
   auditUsersLoading.value = true
   try {
-    const [deptRes, userRes]: any[] = await Promise.all([
-      request.get('/system/departments/tree'),
-      request.get('/users', { params: { limit: 500 } })
-    ])
-    const depts = deptRes?.data || deptRes || []
-    const users = userRes?.data?.items || userRes?.data?.users || userRes?.data || []
-    crmUsers.value = Array.isArray(users) ? users : []
+    // 分页加载所有用户（后端limit最大100）
+    let allUsers: any[] = []
+    let page = 1
+    const limit = 100
+    while (true) {
+      const res: any = await request.get('/users', { params: { page, limit } })
+      const items = res?.data?.items || res?.data?.users || res?.data || []
+      const list = Array.isArray(items) ? items : []
+      allUsers = allUsers.concat(list)
+      const total = res?.data?.total || 0
+      if (allUsers.length >= total || list.length < limit) break
+      page++
+    }
+    crmUsers.value = allUsers
 
-    const flattenDepts = (nodes: any[]): any[] => {
-      const result: any[] = []
-      for (const n of nodes) {
-        result.push({ ...n, _expanded: false, _users: [] })
-        if (n.children?.length) result.push(...flattenDepts(n.children))
+    // 按 departmentName 分组构建部门树
+    const deptMap = new Map<string, any>()
+    for (const u of crmUsers.value) {
+      const deptName = u.departmentName || '未分配部门'
+      const deptId = u.departmentId || '__unassigned__'
+      if (!deptMap.has(String(deptId))) {
+        deptMap.set(String(deptId), { id: deptId, name: deptName, _expanded: false, _users: [] })
       }
-      return result
+      deptMap.get(String(deptId))._users.push(u)
     }
-    const flatDepts = flattenDepts(Array.isArray(depts) ? depts : [])
-    const assignedUserIds = new Set<string>()
-    for (const dept of flatDepts) {
-      dept._users = crmUsers.value.filter((u: any) => {
-        const match = String(u.departmentId) === String(dept.id)
-        if (match) assignedUserIds.add(String(u.id))
-        return match
-      })
-    }
-    auditDeptTree.value = flatDepts.filter((d: any) => (d._users || []).length > 0 || (d.children || []).length > 0)
-
-    // 未分配部门的用户由 computed 处理
+    auditDeptTree.value = Array.from(deptMap.values()).filter(d => d._users.length > 0)
   } catch (e) {
     console.error('[ArchiveSettings] loadCrmDeptAndUsers error:', e)
     crmUsers.value = []
@@ -646,13 +652,6 @@ const loadCrmDeptAndUsers = async () => {
   } finally { auditUsersLoading.value = false }
 }
 
-const unassignedUsers = computed(() => {
-  const assignedIds = new Set<string>()
-  for (const dept of auditDeptTree.value) {
-    for (const u of (dept._users || [])) assignedIds.add(String(u.id))
-  }
-  return crmUsers.value.filter((u: any) => !assignedIds.has(String(u.id)))
-})
 
 const filteredDeptTree = computed(() => {
   const kw = auditSearch.value.trim().toLowerCase()
@@ -671,19 +670,31 @@ const formatRoleName = (role: string) => {
   return map[role] || role || ''
 }
 
+const isAdminUser = (u: any) => u.role === 'admin' || u.role === 'super_admin'
+
+const adminUserIds = computed(() =>
+  crmUsers.value.filter(u => isAdminUser(u)).map(u => String(u.id))
+)
+
 const openAuditMemberDialog = async () => {
   if (crmUsers.value.length === 0) await loadCrmDeptAndUsers()
-  auditCheckedIds.value = [...form.auditMembers]
+  const merged = new Set([...form.auditMembers, ...adminUserIds.value])
+  auditCheckedIds.value = [...merged]
   auditSearch.value = ''
   auditDialogVisible.value = true
 }
 
 const confirmAuditMembers = () => {
-  form.auditMembers = [...auditCheckedIds.value]
+  const merged = new Set([...auditCheckedIds.value, ...adminUserIds.value])
+  form.auditMembers = [...merged]
   auditDialogVisible.value = false
 }
 
 const removeAuditMember = (userId: string) => {
+  if (adminUserIds.value.includes(userId)) {
+    ElMessage.warning('管理员为默认质检人员，不可移除')
+    return
+  }
   form.auditMembers = form.auditMembers.filter(id => id !== userId)
 }
 
@@ -883,6 +894,9 @@ const fetchSettings = async () => {
       form.visibility = res.visibility || 'all'
       form.rsaPublicKey = res.rsaPublicKey || ''
       try { form.auditMembers = typeof res.auditMembers === 'string' ? JSON.parse(res.auditMembers || '[]') : (res.auditMembers || []) } catch { form.auditMembers = [] }
+      if (form.auditMembers.length > 0 && crmUsers.value.length === 0) {
+        loadCrmDeptAndUsers()
+      }
     }
   } catch (e) {
     console.error('[ArchiveSettings] Fetch error:', e)
@@ -931,13 +945,16 @@ watch(() => props.configId, (val) => {
   }
 })
 
-onMounted(() => {
+onMounted(async () => {
   if (props.configId) {
-    fetchSettings()
+    await fetchSettings()
     loadMembers()
+    // SaaS 模式下自动自检授权状态
+    if (isSaas.value && settings.status !== 'active') {
+      handleRefreshAuthStatus()
+    }
   }
   fetchRsaPublicKey()
-  loadCrmDeptAndUsers()
 })
 
 defineExpose({ fetchSettings })

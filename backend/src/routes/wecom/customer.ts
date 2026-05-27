@@ -47,14 +47,35 @@ router.get('/customers/stats', authenticateToken, async (req: Request, res: Resp
       .getCount();
 
     const deleted = await queryBuilder.clone()
-      .andWhere('c.status = :status', { status: 'deleted' })
+      .andWhere('c.status IN (:...statuses)', { statuses: ['deleted', 'deleted_by_employee'] })
       .getCount();
 
-    const dealt = await queryBuilder.clone()
-      .andWhere('c.is_dealt = :isDealt', { isDealt: true })
+    const blocked = await queryBuilder.clone()
+      .andWhere('c.status = :status', { status: 'blocked' })
       .getCount();
 
-    res.json({ success: true, data: { todayAdd, totalAdd, deleted, dealt } });
+    // 活跃客户统计：基于会话存档中客户最近3天内主动发过消息
+    let active = 0;
+    try {
+      const { WecomChatRecord } = await import('../../entities/WecomChatRecord');
+      const chatRepo = getTenantRepo(WecomChatRecord);
+      const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
+      const normalCustomers = await queryBuilder.clone()
+        .andWhere('c.status = :status', { status: 'normal' })
+        .select(['c.externalUserId'])
+        .getMany();
+      const extIds = normalCustomers.map(c => c.externalUserId).filter(Boolean);
+      if (extIds.length > 0) {
+        const activeResult = await chatRepo.createQueryBuilder('r')
+          .select('COUNT(DISTINCT r.from_user_id)', 'cnt')
+          .where('r.from_user_id IN (:...uids)', { uids: extIds })
+          .andWhere('r.msg_time >= :since', { since: threeDaysAgo })
+          .getRawOne();
+        active = parseInt(activeResult?.cnt) || 0;
+      }
+    } catch { /* ignore */ }
+
+    res.json({ success: true, data: { todayAdd, totalAdd, deleted, blocked, active } });
   } catch (error: any) {
     log.error('[Wecom] Get customer stats error:', error);
     res.status(500).json({ success: false, message: '获取统计数据失败' });
@@ -67,12 +88,48 @@ router.get('/customers/stats', authenticateToken, async (req: Request, res: Resp
 router.get('/customers', authenticateToken, async (req: Request, res: Response) => {
   try {
     const { configId, status, followUserId, keyword, startDate, endDate, page = 1, pageSize = 20 } = req.query;
+    const user = (req as any).user || (req as any).currentUser;
+    const userRole = user?.role || '';
+    const userId = user?.userId || String(user?.id || '');
     const customerRepo = getTenantRepo(WecomCustomer);
     const queryBuilder = customerRepo.createQueryBuilder('c');
 
     if (configId) queryBuilder.andWhere('c.wecom_config_id = :configId', { configId: parseInt(configId as string) });
     if (status) queryBuilder.andWhere('c.status = :status', { status });
     if (followUserId) queryBuilder.andWhere('c.follow_user_id = :followUserId', { followUserId });
+
+    // 角色范围过滤：非管理员只能看到自己范围的客户
+    const isAdmin = ['super_admin', 'admin'].includes(userRole);
+    const isManager = ['manager', 'department_manager'].includes(userRole);
+    if (!isAdmin && !followUserId) {
+      const bindingRepo = getTenantRepo(WecomUserBinding);
+      if (isManager) {
+        const { AppDataSource } = await import('../../config/database');
+        const deptUsers = await AppDataSource.query(
+          `SELECT id FROM users WHERE department_id = (SELECT department_id FROM users WHERE id = ?) AND tenant_id = (SELECT tenant_id FROM users WHERE id = ?)`,
+          [userId, userId]
+        ).catch(() => []);
+        const deptUserIds = new Set(deptUsers.map((u: any) => String(u.id)));
+        deptUserIds.add(userId);
+        const deptBindings = await bindingRepo.find({ where: { isEnabled: true } });
+        const allowedWecomUserIds = deptBindings
+          .filter(b => b.crmUserId && deptUserIds.has(String(b.crmUserId)))
+          .map(b => b.wecomUserId);
+        if (allowedWecomUserIds.length > 0) {
+          queryBuilder.andWhere('c.follow_user_id IN (:...allowedIds)', { allowedIds: allowedWecomUserIds });
+        } else {
+          queryBuilder.andWhere('1 = 0');
+        }
+      } else {
+        const myBindings = await bindingRepo.find({ where: { crmUserId: userId as any, isEnabled: true } });
+        const myWecomUserIds = myBindings.map(b => b.wecomUserId);
+        if (myWecomUserIds.length > 0) {
+          queryBuilder.andWhere('c.follow_user_id IN (:...myIds)', { myIds: myWecomUserIds });
+        } else {
+          queryBuilder.andWhere('1 = 0');
+        }
+      }
+    }
     if (keyword) {
       // 支持搜索：客户名、备注、UserID、手机号、跟进人、关联的CRM客户名
       const kw = `%${keyword}%`;
@@ -162,32 +219,34 @@ router.get('/customers', authenticateToken, async (req: Request, res: Response) 
       } catch { /* ignore */ }
     }
 
-    // 批量获取消息统计（发送+接收）
-    let msgStatsMap: Record<string, { sent: number; recv: number }> = {};
+    // 批量获取消息统计（客户发送+员工发送）+ 客户最后主动发消息时间（用于活跃度）
+    let msgStatsMap: Record<string, { sent: number; recv: number; lastCustomerMsgTime: Date | null }> = {};
     if (customers.length > 0) {
       try {
         const { WecomChatRecord } = await import('../../entities/WecomChatRecord');
         const chatRepo = getTenantRepo(WecomChatRecord);
         const externalUserIds = customers.map(c => c.externalUserId).filter(Boolean);
         if (externalUserIds.length > 0) {
-          // 发送统计：批量按from_user_id分组
+          // 客户主动发送消息统计 + 最后消息时间
           const sentStats = await chatRepo.createQueryBuilder('r')
             .select('r.from_user_id', 'uid')
             .addSelect('COUNT(*)', 'cnt')
+            .addSelect('MAX(r.msg_time)', 'lastTime')
             .where('r.from_user_id IN (:...uids)', { uids: externalUserIds })
             .groupBy('r.from_user_id')
             .getRawMany();
           for (const s of sentStats) {
-            if (!msgStatsMap[s.uid]) msgStatsMap[s.uid] = { sent: 0, recv: 0 };
+            if (!msgStatsMap[s.uid]) msgStatsMap[s.uid] = { sent: 0, recv: 0, lastCustomerMsgTime: null };
             msgStatsMap[s.uid].sent = parseInt(s.cnt) || 0;
+            msgStatsMap[s.uid].lastCustomerMsgTime = s.lastTime ? new Date(s.lastTime) : null;
           }
-          // 接收统计：逐个LIKE查询（to_user_ids存储格式不定）
+          // 员工发送给客户的消息统计
           for (const uid of externalUserIds) {
             const recv = await chatRepo.createQueryBuilder('r')
               .where('r.to_user_ids LIKE :uid', { uid: `%${uid}%` })
               .getCount();
             if (recv > 0) {
-              if (!msgStatsMap[uid]) msgStatsMap[uid] = { sent: 0, recv: 0 };
+              if (!msgStatsMap[uid]) msgStatsMap[uid] = { sent: 0, recv: 0, lastCustomerMsgTime: null };
               msgStatsMap[uid].recv = recv;
             }
           }
@@ -196,6 +255,9 @@ router.get('/customers', authenticateToken, async (req: Request, res: Response) 
         log.warn('[Wecom] Message stats query error:', msgErr.message);
       }
     }
+
+    const now = Date.now();
+    const DAY_MS = 24 * 60 * 60 * 1000;
 
     const list = customers.map(c => {
       const item: any = { ...c };
@@ -208,7 +270,6 @@ router.get('/customers', authenticateToken, async (req: Request, res: Response) 
           }
         } catch { /* keep original */ }
       }
-      // 如果tagNames为空但tagIds有值，通过映射生成tagNames
       if (!c.tagNames && c.tagIds && tagNameMap) {
         try {
           const ids = JSON.parse(c.tagIds);
@@ -217,15 +278,29 @@ router.get('/customers', authenticateToken, async (req: Request, res: Response) 
           }
         } catch { /* keep original */ }
       }
-      // 补充CRM客户名称
       if (c.crmCustomerId && crmNameMap[c.crmCustomerId]) {
         item.crmCustomerName = crmNameMap[c.crmCustomerId];
       }
-      // 补充消息统计
+      // 消息统计 + 活跃度
       const msgStat = msgStatsMap[c.externalUserId];
       if (msgStat) {
         item.msgSentCount = msgStat.sent;
         item.msgRecvCount = msgStat.recv;
+        // 活跃度：基于客户最后一次主动发消息的时间
+        if (msgStat.lastCustomerMsgTime) {
+          const daysSince = (now - msgStat.lastCustomerMsgTime.getTime()) / DAY_MS;
+          if (daysSince <= 3) {
+            item.activityStatus = 'active';
+          } else if (daysSince <= 7) {
+            item.activityStatus = 'normal';
+          } else {
+            item.activityStatus = 'silent';
+          }
+        } else {
+          item.activityStatus = 'silent';
+        }
+      } else {
+        item.activityStatus = 'silent';
       }
       return item;
     });
@@ -241,10 +316,13 @@ router.get('/customers', authenticateToken, async (req: Request, res: Response) 
  * 同步企微客户数据
  * 采用异步模式：立即返回响应，后台执行同步，避免网关超时
  */
-router.post('/customers/sync', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+router.post('/customers/sync', authenticateToken, async (req: Request, res: Response) => {
   try {
     const { configId } = req.body;
-    log.info('[Wecom] Sync customers request, configId:', configId);
+    const user = (req as any).user || (req as any).currentUser;
+    const userRole = user?.role || '';
+    const userId = user?.userId || String(user?.id || '');
+    log.info(`[Wecom] Sync customers request, configId=${configId}, role=${userRole}, userId=${userId}`);
 
     if (!configId) {
       return res.status(400).json({ success: false, message: '请选择企微配置' });
@@ -257,17 +335,43 @@ router.post('/customers/sync', authenticateToken, requireAdmin, async (req: Requ
     }
 
     const bindingRepo = getTenantRepo(WecomUserBinding);
-    const bindings = await bindingRepo.find({ where: { wecomConfigId: configId, isEnabled: true } });
+    let bindings = await bindingRepo.find({ where: { wecomConfigId: configId, isEnabled: true } });
 
     if (bindings.length === 0) {
-      return res.status(400).json({ success: false, message: '没有绑定的成员，请先在企微联动中绑定成员' });
+      return res.status(400).json({ success: false, message: '没有绑定的成员，请先在通讯录中绑定成员' });
     }
 
-    // 立即返回响应，避免网关超时
+    // 根据角色过滤同步范围
+    const isAdmin = ['super_admin', 'admin'].includes(userRole);
+    const isManager = ['manager', 'department_manager'].includes(userRole);
+
+    if (!isAdmin) {
+      if (isManager) {
+        // 部门经理：同步本部门绑定成员的客户
+        const { AppDataSource } = await import('../../config/database');
+        const deptUsers = await AppDataSource.query(
+          `SELECT id FROM users WHERE department_id = (SELECT department_id FROM users WHERE id = ?) AND tenant_id = (SELECT tenant_id FROM users WHERE id = ?)`,
+          [userId, userId]
+        ).catch(() => []);
+        const deptUserIds = new Set(deptUsers.map((u: any) => String(u.id)));
+        deptUserIds.add(userId);
+        bindings = bindings.filter(b => b.crmUserId && deptUserIds.has(String(b.crmUserId)));
+      } else {
+        // 普通销售：仅同步自己绑定的企微账户的客户
+        bindings = bindings.filter(b => String(b.crmUserId) === userId);
+      }
+
+      if (bindings.length === 0) {
+        return res.status(400).json({ success: false, message: '您尚未绑定企业微信账户，请先完成绑定后再同步' });
+      }
+    }
+
+    const bindingNames = bindings.map(b => b.wecomUserName || b.wecomUserId).join('、');
+
     res.json({
       success: true,
-      message: `同步任务已启动，正在后台同步 ${bindings.length} 个成员的客户数据，请稍后刷新查看结果`,
-      data: { status: 'running', bindingsCount: bindings.length, syncCount: 0, totalCustomers: 0, customerLimit: 5000, bindingsUsed: bindings.length }
+      message: `同步任务已启动，正在同步 ${bindings.length} 个成员的客户数据`,
+      data: { status: 'running', bindingsCount: bindings.length, bindingsUsed: bindings.length, bindingNames }
     });
 
     // 后台异步执行同步
@@ -352,17 +456,22 @@ router.post('/customers/sync', authenticateToken, requireAdmin, async (req: Requ
           }
         }
 
-        // 检测被删除的客户：本地有但企微API不再返回的客户标记为 deleted
+        // 检测被删除/拉黑的客户
         let deletedCount = 0;
+        let blockedCount = 0;
         if (syncedExternalUserIds.size > 0) {
           const localCustomers = await customerRepo.find({
-            where: { wecomConfigId: configId, status: 'normal' as any },
-            select: ['id', 'externalUserId']
+            where: { wecomConfigId: configId },
+            select: ['id', 'externalUserId', 'status']
           });
           for (const local of localCustomers) {
-            if (!syncedExternalUserIds.has(local.externalUserId)) {
+            if (local.status === 'normal' && !syncedExternalUserIds.has(local.externalUserId)) {
+              // 本地正常但 API 不再返回 = 被删除（员工删除或客户删除）
               await customerRepo.update(local.id, { status: 'deleted' as any, deleteTime: new Date() } as any);
               deletedCount++;
+            } else if ((local.status === 'deleted' || local.status === 'blocked') && syncedExternalUserIds.has(local.externalUserId)) {
+              // 之前标记删除但现在又出现了 = 恢复正常
+              await customerRepo.update(local.id, { status: 'normal' as any, deleteTime: null } as any);
             }
           }
           if (deletedCount > 0) {
@@ -370,7 +479,7 @@ router.post('/customers/sync', authenticateToken, requireAdmin, async (req: Requ
           }
         }
 
-        log.info(`[Wecom] Async customer sync completed: ${syncCount} synced, ${deletedCount} deleted`);
+        log.info(`[Wecom] Async customer sync completed: ${syncCount} synced, ${deletedCount} deleted, ${blockedCount} blocked`);
       } catch (error: any) {
         log.error('[Wecom] Async sync customers error:', error.message, error.stack);
       }
@@ -616,8 +725,7 @@ router.get('/customers/:id/detail', authenticateToken, async (req: Request, res:
           recvCount,
           totalCount: sentCount + recvCount,
           lastMsgTime: lastMsg ? lastMsg.msgTime : null,
-          lastMsgType: lastMsg ? lastMsg.msgType : null,
-          activeDays7d: customer.activeDays7d || 0
+          lastMsgType: lastMsg ? lastMsg.msgType : null
         },
         crmCustomer: crmCustomer ? {
           id: crmCustomer.id,

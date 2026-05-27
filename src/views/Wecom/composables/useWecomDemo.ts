@@ -88,7 +88,7 @@ export const DEMO_CUSTOMERS = [
 ]
 
 /** 客户统计 示例 */
-export const DEMO_CUSTOMER_STATS = { todayAdd: 12, totalAdd: 386, deleted: 23, dealt: 158, yesterdayAdd: 8 }
+export const DEMO_CUSTOMER_STATS = { todayAdd: 12, totalAdd: 386, deleted: 23, blocked: 5, active: 128 }
 
 /** 客户群 示例 */
 export const DEMO_GROUPS = [

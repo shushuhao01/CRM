@@ -15,8 +15,8 @@
             <div class="remark-name">{{ detail.customer.remark || detail.customer.name }}</div>
             <div class="nick-name">{{ detail.customer.nickname || detail.customer.name || '-' }}</div>
             <div class="meta">
-              <el-tag size="small" :type="detail.customer.status === 'normal' ? 'success' : 'danger'">
-                {{ detail.customer.status === 'normal' ? '正常' : '已删除' }}
+              <el-tag size="small" :type="{ normal: 'success', deleted: 'danger', blocked: 'warning' }[detail.customer.status] || 'info'">
+                {{ { normal: '正常', deleted: '已删除', blocked: '被拉黑', deleted_by_employee: '员工删除' }[detail.customer.status] || detail.customer.status }}
               </el-tag>
               <el-tag v-if="detail.customer.isDealt" size="small" type="warning">已成交</el-tag>
             </div>
@@ -72,24 +72,24 @@
           <el-row :gutter="12">
             <el-col :span="8">
               <div class="stat-item">
-                <div class="stat-num">{{ detail.messageStats.sentCount }}</div>
-                <div class="stat-label">发送消息</div>
+                <div class="stat-num" style="color: #409eff">{{ detail.messageStats?.sentCount ?? 0 }}</div>
+                <div class="stat-label">客户发送</div>
               </div>
             </el-col>
             <el-col :span="8">
               <div class="stat-item">
-                <div class="stat-num">{{ detail.messageStats.recvCount }}</div>
-                <div class="stat-label">接收消息</div>
+                <div class="stat-num" style="color: #67c23a">{{ detail.messageStats?.recvCount ?? 0 }}</div>
+                <div class="stat-label">员工发送</div>
               </div>
             </el-col>
             <el-col :span="8">
               <div class="stat-item">
-                <div class="stat-num">{{ detail.messageStats.activeDays7d }}</div>
-                <div class="stat-label">近7天活跃</div>
+                <div class="stat-num" style="color: #909399">{{ (detail.messageStats?.sentCount ?? 0) + (detail.messageStats?.recvCount ?? 0) }}</div>
+                <div class="stat-label">总消息</div>
               </div>
             </el-col>
           </el-row>
-          <div v-if="detail.messageStats.lastMsgTime" class="last-msg">
+          <div v-if="detail.messageStats?.lastMsgTime" class="last-msg">
             最后消息: {{ formatMsgTime(detail.messageStats.lastMsgTime) }}
           </div>
         </el-card>
@@ -220,9 +220,15 @@ const fetchDetail = async (id: number) => {
   loading.value = true
   try {
     const res: any = await getWecomCustomerDetail(id)
+    if (res) {
+      if (!res.messageStats) res.messageStats = { sentCount: 0, recvCount: 0, totalCount: 0, lastMsgTime: null, activeDays7d: 0 }
+      if (!res.followRecords) res.followRecords = []
+      if (!res.customer) res.customer = {}
+    }
     detail.value = res || null
-  } catch (e) {
+  } catch (e: any) {
     console.error('[CustomerDetailDrawer] Fetch error:', e)
+    ElMessage.error(e?.message || '获取客户详情失败')
     detail.value = null
   } finally {
     loading.value = false

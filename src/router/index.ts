@@ -571,7 +571,7 @@ const router = createRouter({
       path: '/wecom/address-book',
       name: 'WecomAddressBook',
       component: () => import('../views/Wecom/AddressBook.vue'),
-      meta: { title: '通讯录', requiresAuth: true }
+      meta: { title: '通讯录', requiresAuth: true, roles: ['super_admin', 'admin'] }
     },
     {
       path: '/wecom/customer',

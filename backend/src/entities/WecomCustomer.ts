@@ -67,7 +67,7 @@ export class WecomCustomer {
   @Column({ name: 'tag_ids', type: 'text', nullable: true, comment: '客户标签ID列表(JSON)' })
   tagIds: string;
 
-  @Column({ type: 'varchar', length: 20, default: 'normal', comment: '状态: normal/deleted' })
+  @Column({ type: 'varchar', length: 20, default: 'normal', comment: '状态: normal/deleted/blocked/deleted_by_employee' })
   status: string;
 
   @Column({ name: 'delete_time', type: 'datetime', nullable: true, comment: '删除时间' })

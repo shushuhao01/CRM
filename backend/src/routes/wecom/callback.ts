@@ -375,10 +375,13 @@ async function handleExternalContactChange(config: WecomConfig, changeType: stri
     if (extUserId) {
       try {
         const customerRepo = AppDataSource.getRepository(WecomCustomer);
+        // del_follow_user = 员工主动删除客户, del_external_contact = 客户删除员工
+        const deleteStatus = changeType === 'del_follow_user' ? 'deleted_by_employee' : 'deleted';
         await customerRepo.update(
           { externalUserId: extUserId, wecomConfigId: config.id },
-          { status: 'deleted', deleteTime: new Date() as any }
+          { status: deleteStatus, deleteTime: new Date() as any }
         );
+        log.info(`[Wecom Callback] Customer ${extUserId} marked as ${deleteStatus}`);
       } catch (e: any) {
         log.warn('[Wecom Callback] Mark contact deleted failed:', e.message);
       }

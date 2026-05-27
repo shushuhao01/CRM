@@ -96,18 +96,24 @@ router.get('/chat-archive/seats', authenticateToken, async (req: Request, res: R
           // ★ 补充部门信息和头像（从 wecom_user_bindings 获取）
           let departmentIds = '';
           let avatar = '';
+          let crmUserId = m.crmUserId || null;
           try {
             const { AppDataSource } = await import('../../config/database');
             const bindingRows = await AppDataSource.query(
-              'SELECT wecom_department_ids, wecom_avatar FROM wecom_user_bindings WHERE wecom_user_id = ? LIMIT 1',
+              'SELECT wecom_department_ids, wecom_avatar, crm_user_id FROM wecom_user_bindings WHERE wecom_user_id = ? LIMIT 1',
               [m.wecomUserId]
             );
             if (bindingRows.length > 0) {
-              if (bindingRows[0].wecom_department_ids) {
-                departmentIds = bindingRows[0].wecom_department_ids;
-              }
-              if (bindingRows[0].wecom_avatar) {
-                avatar = bindingRows[0].wecom_avatar;
+              if (bindingRows[0].wecom_department_ids) departmentIds = bindingRows[0].wecom_department_ids;
+              if (bindingRows[0].wecom_avatar) avatar = bindingRows[0].wecom_avatar;
+              // 实时同步 crmUserId（从绑定表获取最新值）
+              if (bindingRows[0].crm_user_id && !crmUserId) {
+                crmUserId = bindingRows[0].crm_user_id;
+                // 回写到 archive_members
+                AppDataSource.query(
+                  'UPDATE wecom_archive_members SET crm_user_id = ? WHERE id = ?',
+                  [crmUserId, m.id]
+                ).catch(() => {});
               }
             }
           } catch { /* ignore */ }
@@ -117,7 +123,7 @@ router.get('/chat-archive/seats', authenticateToken, async (req: Request, res: R
             wecomUserName: m.wecomUserName,
             name: m.wecomUserName || m.wecomUserId,
             avatar,
-            crmUserId: m.crmUserId,
+            crmUserId,
             isEnabled: m.isEnabled,
             departmentIds,
             createdAt: m.createdAt
@@ -125,7 +131,8 @@ router.get('/chat-archive/seats', authenticateToken, async (req: Request, res: R
         })),
         expireDate: setting?.expireDate || null,
         status: maxUsers > 0 ? 'active' : (setting?.status || 'inactive'),
-        visibility: setting?.visibility || 'all'
+        visibility: setting?.visibility || 'all',
+        auditMembers: setting?.auditMembers ? (() => { try { return JSON.parse(setting.auditMembers); } catch { return []; } })() : []
       }
     });
   } catch (error: any) {

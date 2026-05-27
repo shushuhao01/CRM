@@ -490,13 +490,14 @@ router.post('/address-book/sync-members', authenticateToken, requireAdmin, async
             `https://qyapi.weixin.qq.com/cgi-bin/externalcontact/get_follow_user_list?access_token=${externalToken}`
           );
           if (followResp.data.errcode === 0 && followResp.data.follow_user) {
-            // follow_user 是配置了客户联系功能的成员userid列表
             const followUsers: string[] = followResp.data.follow_user;
             log.info(`[AddressBook] 通过客户联系API获取到 ${followUsers.length} 个内部成员`);
+            // 使用本地根部门 ID（而非硬编码 1），确保成员归属到正确的部门
+            const localRootDeptId = localDepts.find(d => !d.wecomParentId || d.wecomParentId === 0)?.wecomDeptId || rootDeptId;
             users = followUsers.map(uid => ({
               userid: uid,
-              name: '', // 名称后续通过 /user/get 补充
-              department: [1],
+              name: '',
+              department: [localRootDeptId],
               status: 1
             }));
 
@@ -531,7 +532,9 @@ router.post('/address-book/sync-members', authenticateToken, requireAdmin, async
           // 给出更友好的错误提示
           return res.status(400).json({
             success: false,
-            message: '通讯录同步失败：当前企微应用没有通讯录API权限。\n\n解决方案：\n1. 如果是第三方应用，请在企微管理后台「应用管理→第三方应用」中为该应用授权「通讯录」权限\n2. 或者在企微配置中填写独立的「通讯录同步Secret」（需要在企微后台「管理工具→通讯录同步」中获取）'
+            message: config.authType === 'third_party'
+              ? '同步失败：未获取到组织架构权限。请在企业微信中打开「管理后台」→「应用管理」→「云客CRM」→「权限范围」，授权「组织架构信息」权限后重试。'
+              : '同步失败：通讯录API权限不足。请在企微后台「管理工具→通讯录同步」中获取通讯录Secret，并填写到CRM的企微配置中。'
           });
         }
       } else {
