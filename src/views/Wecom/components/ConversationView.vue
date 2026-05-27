@@ -160,15 +160,12 @@
               </div>
               <!-- SDK就绪但密钥为空 -->
               <div v-else-if="isWecomReady && messageKeys.length === 0 && msgTotal > 0" class="key-diagnose-panel">
-                <el-result icon="info" title="消息密钥为空，无法显示聊天内容">
+                <el-result icon="info" title="正在处理消息密钥">
                   <template #extra>
                     <div style="text-align:left;font-size:13px;color:#606266;line-height:2;max-width:400px">
-                      <p><strong>可能原因：</strong></p>
-                      <p>1. 企微后台未上传RSA加密公钥</p>
-                      <p style="color:#909399;padding-left:16px">→ 企微管理后台「管理工具 → 会话内容存档 → 加密公钥」</p>
-                      <p>2. 上传公钥后的新消息才会包含加密密钥</p>
-                      <p style="color:#909399;padding-left:16px">→ 上传后发送新消息，再点击「同步」</p>
-                      <p>3. 请点击页面右上角「诊断」按钮查看详细信息</p>
+                      <p>消息已同步但密钥尚未解密成功，请尝试：</p>
+                      <p>1. 点击「同步」重新拉取并解密消息</p>
+                      <p>2. 点击页面右上角「诊断」按钮查看RSA解密测试结果</p>
                     </div>
                   </template>
                 </el-result>

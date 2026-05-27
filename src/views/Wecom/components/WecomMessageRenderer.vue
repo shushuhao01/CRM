@@ -19,9 +19,22 @@
 
     <!-- 渲染错误提示 -->
     <div v-if="renderError" class="renderer-error">
-      <el-alert type="warning" :closable="false">
-        <template #title>消息渲染异常: {{ renderError }}</template>
+      <el-alert type="warning" :closable="false" show-icon>
+        <template #title>
+          <span>消息渲染异常: {{ renderError }}</span>
+        </template>
+        <template #default>
+          <div style="font-size:12px;color:#909399;margin-top:4px">
+            <p>已加载 {{ msgList.length }} 条密钥，首条 msgid: {{ msgList[0]?.msgid?.slice(0, 20) }}...</p>
+            <p v-for="err in errorDetails" :key="err" style="margin-top:2px">{{ err }}</p>
+          </div>
+        </template>
       </el-alert>
+    </div>
+
+    <!-- 调试信息（仅开发或有错误时显示） -->
+    <div v-if="debugInfo && !loading" class="renderer-debug">
+      <span>{{ debugInfo }}</span>
     </div>
   </div>
 </template>
@@ -45,29 +58,54 @@ const { isWecomReady, createMessageFrame, updateFrameData } = useWecomOpenData()
 
 const containerRef = ref<HTMLElement | null>(null)
 const renderError = ref('')
+const errorDetails = ref<string[]>([])
+const debugInfo = ref('')
 const frameContainerId = `wecom-msg-frame-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
 let frameInstance: any = null
+let mountedSuccessfully = false
 
 const renderMessages = async () => {
   if (!isWecomReady.value || !props.msgList.length) return
 
   await nextTick()
 
-  if (frameInstance) {
-    updateFrameData(frameInstance, props.msgList)
+  const container = document.getElementById(frameContainerId)
+  if (!container) {
+    renderError.value = `容器元素 #${frameContainerId} 未找到`
+    return
+  }
+
+  debugInfo.value = `渲染中: ${props.msgList.length}条消息, 容器=${container.offsetWidth}x${container.offsetHeight}`
+
+  if (frameInstance && mountedSuccessfully) {
+    try {
+      updateFrameData(frameInstance, props.msgList)
+      debugInfo.value = `更新: ${props.msgList.length}条消息`
+    } catch (e: any) {
+      renderError.value = `更新消息数据失败: ${e.message}`
+    }
   } else {
-    frameInstance = createMessageFrame(`#${frameContainerId}`, props.msgList, {
-      onError: (error) => {
-        renderError.value = error?.detail?.errMsg || error?.message || '渲染失败'
+    frameInstance = null
+    mountedSuccessfully = false
+    container.innerHTML = ''
+
+    frameInstance = createMessageFrame(container, props.msgList, {
+      onError: (error: any) => {
+        const errMsg = error?.detail?.errMsg || error?.detail?.errCode || error?.message || JSON.stringify(error)
+        renderError.value = errMsg
+        errorDetails.value.push(`[${new Date().toLocaleTimeString()}] ${errMsg}`)
+        if (errorDetails.value.length > 5) errorDetails.value.shift()
         emit('error', error)
       },
       onMounted: () => {
+        mountedSuccessfully = true
         renderError.value = ''
-        console.log('[WecomMessageRenderer] 消息渲染成功')
+        debugInfo.value = `渲染成功: ${props.msgList.length}条消息`
+        console.log('[WecomMessageRenderer] 消息帧挂载成功')
       }
     })
     if (!frameInstance) {
-      renderError.value = '创建消息帧失败'
+      renderError.value = '创建消息帧失败（factory.createOpenDataFrame 返回空）'
       emit('error', new Error('createMessageFrame returned null'))
     }
   }
@@ -93,6 +131,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   frameInstance = null
+  mountedSuccessfully = false
 })
 </script>
 
@@ -100,10 +139,12 @@ onBeforeUnmount(() => {
 .wecom-message-renderer {
   height: 100%;
   position: relative;
+  display: flex;
+  flex-direction: column;
 }
 
 .frame-container {
-  height: 100%;
+  flex: 1;
   min-height: 300px;
 }
 
@@ -126,5 +167,14 @@ onBeforeUnmount(() => {
 
 .renderer-error {
   padding: 12px;
+}
+
+.renderer-debug {
+  position: absolute;
+  bottom: 4px;
+  right: 8px;
+  font-size: 11px;
+  color: #c0c4cc;
+  pointer-events: none;
 }
 </style>

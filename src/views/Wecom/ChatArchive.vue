@@ -797,8 +797,11 @@ const handleDiagnose = async () => {
         lines.push(`has_service_encrypt_info: ${fm.has_service_encrypt_info}`)
         lines.push(`service_encrypt_info字段: ${fm.service_encrypt_info_keys}`)
         lines.push(`encrypted_secret_key长度: ${fm.encrypted_secret_key_len}`)
-        lines.push(`has_encrypt_random_key: ${fm.has_encrypt_random_key}`)
-        lines.push(`encrypt_random_key长度: ${fm.encrypt_random_key_len}`)
+        lines.push(`encrypted_secret_key预览: ${fm.encrypted_secret_key_preview || '(无)'}`)
+        lines.push(`--- RSA实时解密测试 ---`)
+        lines.push(`私钥格式: ${fm.private_key_format || '(未知)'}`)
+        lines.push(`私钥长度: ${fm.private_key_len || 0}`)
+        lines.push(`解密结果: ${fm.rsa_decrypt_test}`)
       }
       lines.push(`response_data长度: ${d.zoneCall.response_data_len}`)
       lines.push(``)

@@ -217,23 +217,45 @@ router.post('/chat-records/diagnose', authenticateToken, requireAdmin, async (re
           if (rawData.errcode === 0 && rawData.response_data) {
             try { parsedResponseData = JSON.parse(rawData.response_data); } catch { parsedResponseData = rawData.response_data; }
           }
-          // 解析第一条消息的完整结构（诊断密钥字段）
+          // 解析第一条消息的完整结构（诊断密钥字段）+ 实时RSA解密测试
           let firstMsgStructure: any = null;
           const msgList = parsedResponseData?.msg_list || parsedResponseData?.output?.msg_list;
           if (Array.isArray(msgList) && msgList.length > 0) {
             const m = msgList[0];
+            const encKey = m.service_encrypt_info?.encrypted_secret_key || '';
             firstMsgStructure = {
               msgid: m.msgid,
               raw_keys: Object.keys(m).join(','),
               has_service_encrypt_info: !!m.service_encrypt_info,
               service_encrypt_info_keys: m.service_encrypt_info ? Object.keys(m.service_encrypt_info).join(',') : '(无)',
-              encrypted_secret_key_len: m.service_encrypt_info?.encrypted_secret_key?.length || 0,
-              has_encrypt_random_key: !!m.encrypt_random_key,
-              encrypt_random_key_len: m.encrypt_random_key?.length || 0,
+              encrypted_secret_key_len: encKey.length,
+              encrypted_secret_key_preview: encKey.slice(0, 40) + (encKey.length > 40 ? '...' : ''),
               sender: m.sender,
               msgtype: m.msgtype,
-              send_time: m.send_time
+              send_time: m.send_time,
+              rsa_decrypt_test: '未测试'
             };
+            // 实时RSA解密测试
+            if (encKey) {
+              const rsaPrivateKey = suiteConfig?.chatArchiveRsaPrivateKey;
+              if (rsaPrivateKey) {
+                try {
+                  const { WecomChatArchiveService } = await import('../../services/WecomChatArchiveService');
+                  const decrypted = WecomChatArchiveService.rsaDecrypt(rsaPrivateKey, encKey);
+                  if (decrypted) {
+                    firstMsgStructure.rsa_decrypt_test = `成功! secretKey长度=${decrypted.length}, 预览=${decrypted.slice(0, 16)}...`;
+                  } else {
+                    firstMsgStructure.rsa_decrypt_test = '解密返回null(所有padding+格式组合均失败)';
+                  }
+                } catch (rsaErr: any) {
+                  firstMsgStructure.rsa_decrypt_test = `异常: ${rsaErr.message}`;
+                }
+                firstMsgStructure.private_key_format = rsaPrivateKey.trim().startsWith('-----BEGIN') ? rsaPrivateKey.trim().split('\n')[0] : '裸密钥体(无PEM头)';
+                firstMsgStructure.private_key_len = rsaPrivateKey.trim().length;
+              } else {
+                firstMsgStructure.rsa_decrypt_test = '无RSA私钥配置';
+              }
+            }
           }
           zoneCallResult = {
             platform_errcode: rawData.errcode,

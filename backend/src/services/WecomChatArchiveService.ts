@@ -1609,19 +1609,19 @@ export class WecomChatArchiveService {
     // 获取上次拉取的游标位置
     let cursor = await this.getSyncCursor(config.id, config.tenantId);
 
-    // ★ 仅在有 encrypted 格式的旧记录或空 fromUserId 时重置游标（一次性修复）
-    // 不再因为 secretKey 为空就重置，避免无限循环（Zone SDK 可能不返回加密密钥）
+    // ★ 需要重新处理的情况：旧加密格式、空发送者、空secretKey
     if (cursor) {
       try {
         const badRecordCount = await AppDataSource.query(
           `SELECT COUNT(*) as cnt FROM wecom_chat_records WHERE wecom_config_id = ? AND msg_type != 'meta' AND (
             content LIKE '%"type":"encrypted"%'
             OR (from_user_id = '' OR from_user_id IS NULL)
+            OR (content LIKE '%"secretKey":""%' AND content NOT LIKE '%"secretKey":"__%')
           )`,
           [config.id]
         );
         if (badRecordCount?.[0]?.cnt > 0) {
-          log.info(`[ChatArchive] syncChatMessages: 发现 ${badRecordCount[0].cnt} 条需修复的记录（旧加密格式/空发送者），重置游标`);
+          log.info(`[ChatArchive] syncChatMessages: 发现 ${badRecordCount[0].cnt} 条需修复的记录（旧加密格式/空发送者/空密钥），重置游标重新处理`);
           cursor = '';
         }
       } catch { /* ignore */ }
@@ -1668,9 +1668,7 @@ export class WecomChatArchiveService {
           log.info(`[ChatArchive] 批次${batchCount}: ${chatdata.length}条消息, 其中${withKey}条有encrypt_random_key`);
           if (withKey === 0 && chatdata.length > 0) {
             const sample = chatdata[0];
-            log.warn(`[ChatArchive] ★★★ 首条消息无加密密钥! 字段列表: ${Object.keys(sample).join(',')}, encrypt_random_key="${sample.encrypt_random_key || '(空)'}", msgid=${sample.msgid}`);
-            log.warn(`[ChatArchive] ★★★ 这意味着Zone SDK sync_msg返回的消息中没有 service_encrypt_info.encrypted_secret_key！`);
-            log.warn(`[ChatArchive] ★★★ 请检查: 1)RSA公钥是否已上传到企微后台 2)会话存档权限是否开启 3)Zone程序是否使用了正确的ability_id`);
+            log.warn(`[ChatArchive] 批次消息均无加密密钥, 字段: ${Object.keys(sample).join(',')}, encrypt_random_key="${sample.encrypt_random_key || '(空)'}", msgid=${sample.msgid}`);
           } else if (withKey > 0) {
             const sample = chatdata[0];
             log.info(`[ChatArchive] ✓ 首条消息密钥: encrypt_random_key长度=${sample.encrypt_random_key?.length}, 前30字符="${(sample.encrypt_random_key || '').slice(0, 30)}..."`);
@@ -1736,20 +1734,22 @@ export class WecomChatArchiveService {
             const receiverType = chatId ? 3 : (receiverList.some((r: any) => r.type === 2) ? 2 : 1);
             const msgTypeStr = msgTypeMap[msgTypeNum] || `type_${msgTypeNum}`;
 
-            // RSA解密
+            // RSA解密 encrypted_secret_key（专区SDK）或 encrypt_random_key（标准API）
             let secretKey = '';
-            if (item.encrypt_random_key) {
+            const encryptedKey = item.service_encrypt_info?.encrypted_secret_key || item.encrypt_random_key || '';
+            if (encryptedKey) {
               if (savedCount + newRecords.length < 3) {
-                log.info(`[ChatArchive] RSA解密尝试: msgid=${item.msgid}, keyLen=${item.encrypt_random_key.length}, keyPreview=${item.encrypt_random_key.slice(0, 40)}...`);
+                const source = item.service_encrypt_info?.encrypted_secret_key ? 'service_encrypt_info' : 'encrypt_random_key';
+                log.info(`[ChatArchive] RSA解密尝试: msgid=${item.msgid}, source=${source}, keyLen=${encryptedKey.length}, keyPreview=${encryptedKey.slice(0, 40)}...`);
               }
-              secretKey = this.rsaDecrypt(rsaPrivateKey, item.encrypt_random_key) || '';
+              secretKey = this.rsaDecrypt(rsaPrivateKey, encryptedKey) || '';
               if (!secretKey && savedCount + newRecords.length < 3) {
-                log.warn(`[ChatArchive] RSA解密失败, msgid=${item.msgid}, keyLen=${item.encrypt_random_key?.length}`);
+                log.warn(`[ChatArchive] RSA解密失败, msgid=${item.msgid}, keyLen=${encryptedKey.length}`);
               } else if (secretKey && savedCount + newRecords.length < 3) {
-                log.info(`[ChatArchive] RSA解密成功: msgid=${item.msgid}, secretKeyLen=${secretKey.length}`);
+                log.info(`[ChatArchive] RSA解密成功: msgid=${item.msgid}, secretKeyLen=${secretKey.length}, secretKeyPreview=${secretKey.slice(0, 16)}...`);
               }
             } else if (savedCount + newRecords.length < 5) {
-              log.warn(`[ChatArchive] 消息无encrypt_random_key: msgid=${item.msgid}, fields=${Object.keys(item).join(',')}`);
+              log.warn(`[ChatArchive] 消息无加密密钥: msgid=${item.msgid}, fields=${Object.keys(item).join(',')}, has_service_encrypt_info=${!!item.service_encrypt_info}`);
             }
 
             // 检查是否已存在
@@ -1794,7 +1794,7 @@ export class WecomChatArchiveService {
               msgid: item.msgid,
               msgtype: msgTypeStr,
               msgTypeDesc: msgTypeDescMap[msgTypeStr] || msgTypeStr,
-              publicKeyVer: item.publickey_ver || 1
+              publicKeyVer: item.service_encrypt_info?.public_key_ver || item.publickey_ver || 1
             });
 
             newRecords.push({
@@ -1866,8 +1866,7 @@ export class WecomChatArchiveService {
       const stats = keyStats?.[0] || {};
       log.info(`[ChatArchive] syncChatMessages 完成: 拉取${totalFetched}条, 新存储${savedCount}条 | DB统计: 总${stats.total}条, 有密钥${stats.with_key}条, 空密钥${stats.empty_key}条`);
       if (parseInt(stats.empty_key) > 0 && parseInt(stats.with_key) === 0) {
-        log.warn(`[ChatArchive] ★★★ 所有消息的secretKey均为空！可能原因: Zone SDK sync_msg未返回service_encrypt_info.encrypted_secret_key`);
-        log.warn(`[ChatArchive] ★★★ 请确认: 1)已在企微后台上传RSA公钥 2)会话存档已开启 3)ability_id配置正确`);
+        log.warn(`[ChatArchive] ★★★ 所有消息secretKey均为空! RSA解密可能失败, 请运行诊断检查RSA解密测试结果`);
       }
     } catch { /* stats query failed, ignore */ }
     return { savedCount, totalFetched };
@@ -1987,27 +1986,59 @@ export class WecomChatArchiveService {
    * RSA解密 encrypt_random_key
    * 企微使用 RSA/ECB/PKCS1Padding 加密，密文是 base64 编码
    */
-  private static rsaDecrypt(privateKeyPem: string, encryptedBase64: string): string | null {
-    try {
-      // 确保私钥格式正确
-      let key = privateKeyPem.trim();
-      if (!key.startsWith('-----BEGIN')) {
-        key = `-----BEGIN RSA PRIVATE KEY-----\n${key}\n-----END RSA PRIVATE KEY-----`;
-      }
+  static rsaDecrypt(privateKeyPem: string, encryptedBase64: string): string | null {
+    let b64 = encryptedBase64.replace(/-/g, '+').replace(/_/g, '/');
+    const pad = b64.length % 4;
+    if (pad) b64 += '='.repeat(4 - pad);
 
-      const buffer = Buffer.from(encryptedBase64, 'base64');
-      const decrypted = crypto.privateDecrypt(
-        {
-          key,
-          padding: crypto.constants.RSA_PKCS1_PADDING
-        },
-        buffer
-      );
-      return decrypted.toString('utf8');
-    } catch (e: any) {
-      log.warn('[ChatArchive] RSA解密失败:', e.message);
-      return null;
+    const buffer = Buffer.from(b64, 'base64');
+
+    const keyVariants: string[] = [];
+    let rawKey = privateKeyPem.trim();
+
+    if (rawKey.startsWith('-----BEGIN')) {
+      keyVariants.push(rawKey);
+    } else {
+      keyVariants.push(`-----BEGIN RSA PRIVATE KEY-----\n${rawKey}\n-----END RSA PRIVATE KEY-----`);
+      keyVariants.push(`-----BEGIN PRIVATE KEY-----\n${rawKey}\n-----END PRIVATE KEY-----`);
     }
+
+    if (rawKey.includes('RSA PRIVATE KEY')) {
+      const body = rawKey.replace(/-----BEGIN RSA PRIVATE KEY-----/g, '').replace(/-----END RSA PRIVATE KEY-----/g, '').replace(/\s/g, '');
+      keyVariants.push(`-----BEGIN PRIVATE KEY-----\n${body}\n-----END PRIVATE KEY-----`);
+    } else if (rawKey.includes('PRIVATE KEY')) {
+      const body = rawKey.replace(/-----BEGIN PRIVATE KEY-----/g, '').replace(/-----END PRIVATE KEY-----/g, '').replace(/\s/g, '');
+      keyVariants.push(`-----BEGIN RSA PRIVATE KEY-----\n${body}\n-----END RSA PRIVATE KEY-----`);
+    }
+
+    const paddings = [
+      { name: 'PKCS1', value: crypto.constants.RSA_PKCS1_PADDING },
+      { name: 'OAEP_SHA1', value: crypto.constants.RSA_PKCS1_OAEP_PADDING },
+    ];
+
+    const errors: string[] = [];
+    for (const keyStr of keyVariants) {
+      for (const p of paddings) {
+        try {
+          const decrypted = crypto.privateDecrypt(
+            { key: keyStr, padding: p.value },
+            buffer
+          );
+          // 判断解密结果是否为可打印字符串
+          const isPrintable = decrypted.every(b => b >= 0x20 && b <= 0x7E);
+          if (isPrintable) {
+            return decrypted.toString('utf8');
+          }
+          // 含不可打印字符 → 使用 base64 编码传递
+          return decrypted.toString('base64');
+        } catch (e: any) {
+          errors.push(`${p.name}/${keyStr.slice(0, 30)}: ${e.message}`);
+        }
+      }
+    }
+
+    log.warn(`[ChatArchive] RSA解密全部失败(${errors.length}种组合): ${errors[0]}`);
+    return null;
   }
 
   /**

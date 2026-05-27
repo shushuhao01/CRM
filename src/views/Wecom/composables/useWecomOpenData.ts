@@ -207,7 +207,8 @@ export function useWecomOpenData() {
 
   /**
    * 创建消息渲染帧
-   * 严格按照官方模板格式使用 ww-open-message 组件
+   * 严格按照官方文档模板使用 ww-open-message 组件
+   * 参考: https://developer.work.weixin.qq.com/document/path/100049
    */
   const createMessageFrame = (el: HTMLElement | string, msgList: Array<{ msgid: string; secretKey: string }>, options?: {
     onError?: (error: any) => void
@@ -219,43 +220,36 @@ export function useWecomOpenData() {
     }
 
     console.log(`[WecomSDK] createMessageFrame: el=${typeof el === 'string' ? el : 'HTMLElement'}, msgCount=${msgList.length}`)
+    if (msgList.length > 0) {
+      const sample = msgList[0]
+      console.log(`[WecomSDK] 首条: msgid=${sample.msgid?.slice(0, 30)}, secretKey长度=${sample.secretKey?.length}, secretKey前16=${sample.secretKey?.slice(0, 16)}`)
+    }
 
     try {
+      // 严格按照官方文档示例构建（不使用scroll-view/ww-suspense等非必需组件）
       const instance = openDataFactory.createOpenDataFrame({
         el,
         template: `
-          <scroll-view scroll-y="{{true}}" class="msg-scroll-view">
-            <view wx:for="{{data.msgList}}" wx:key="msgid" class="msg-item">
-              <ww-suspense>
-                <ww-open-message
-                  message-id="{{item.msgid}}"
-                  secret-key="{{item.secretKey}}"
-                  open-type="viewMessage"
-                  binderror="onMsgError"
-                />
-                <block wx:slot="fallback">
-                  <view class="msg-loading">消息加载中...</view>
-                </block>
-              </ww-suspense>
-            </view>
-            <view wx:if="{{data.msgList.length === 0}}" class="empty-tip">
-              暂无消息
-            </view>
-          </scroll-view>
+          <view
+            wx:for="{{data.msgList}}"
+            wx:key="msgid"
+            class="msg"
+            data-index="{{index}}"
+          >
+            <ww-open-message
+              message-id="{{item.msgid}}"
+              secret-key="{{item.secretKey}}"
+              open-type="viewMessage"
+              binderror="onMsgError"
+            />
+          </view>
+          <view wx:if="{{data.msgList.length === 0}}" class="empty-tip">
+            暂无消息
+          </view>
         `,
         style: `
-          .msg-scroll-view {
-            height: 100%;
-            overflow: auto;
-            padding: 12px;
-          }
-          .msg-item {
+          .msg {
             margin-bottom: 4px;
-          }
-          .msg-loading {
-            padding: 8px 12px;
-            color: #909399;
-            font-size: 13px;
           }
           .empty-tip {
             text-align: center;
@@ -267,13 +261,17 @@ export function useWecomOpenData() {
         data: { msgList },
         methods: {
           onMsgError(event: any) {
-            console.warn('[WecomSDK] ww-open-message binderror:', event)
+            console.warn('[WecomSDK] ww-open-message binderror:', JSON.stringify(event?.detail || event))
             options?.onError?.(event)
           }
         },
         handleModal(event: any) {
-          // 企微内置浏览器中默认会打开新窗口预览
-          // 这里创建 iframe 弹窗作为自定义预览
+          // 企微内置浏览器：不阻止默认行为，让SDK自动打开新窗口预览
+          // 外部浏览器：创建 iframe 弹窗预览
+          const isWecomBrowser = /wxwork|WeCom/i.test(navigator.userAgent)
+          if (isWecomBrowser) {
+            return true // 使用默认行为
+          }
           const iframe = document.createElement('iframe')
           iframe.src = event.modalUrl
           const w = event.modalSize?.width || 800
