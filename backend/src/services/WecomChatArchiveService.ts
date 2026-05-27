@@ -2308,7 +2308,7 @@ export class WecomChatArchiveService {
     const { WecomApiService } = await import('./WecomApiService');
     let chatAccessToken: string;
     try {
-      chatAccessToken = await WecomApiService.getChatAccessToken(config);
+      chatAccessToken = await WecomApiService.getAccessTokenByConfigId(config.id, 'chat');
     } catch (e: any) {
       log.error('[ChatArchive] fetchPlainTexts: 获取accessToken失败:', e.message);
       return 0;
