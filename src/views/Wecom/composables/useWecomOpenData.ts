@@ -233,13 +233,13 @@ export function useWecomOpenData() {
             <view class="av">
               <image wx:if="{{item.avatar}}" src="{{item.avatar}}" class="av-img" mode="aspectFill" />
               <view wx:else class="av-fb" style="background:{{item.avatarBg || '#c8c9cc'}}">
-                <text class="av-tx">{{item.avatarLetter || '?'}}</text>
+                <view class="av-tx">{{item.avatarLetter}}</view>
               </view>
             </view>
             <view class="bd">
               <view class="hd">
-                <text class="hd-n">{{item.fromUserName}}</text>
-                <text class="hd-t">{{item.timeStr}}</text>
+                <view class="hd-n">{{item.fromUserName}}</view>
+                <view class="hd-t">{{item.timeStr}}</view>
               </view>
               <view wx:if="{{item.msgType === 'text'}}" class="bbl {{item.isSelf ? 'bbl-r' : 'bbl-l'}}">
                 <ww-open-message message-id="{{item.msgid}}" secret-key="{{item.secretKey}}" open-type="viewMessage" binderror="onMsgError" />
@@ -257,17 +257,17 @@ export function useWecomOpenData() {
           .R .av{float:right;margin-left:8px}
           .av{width:36px;height:36px}
           .av-img{width:36px;height:36px;border-radius:4px}
-          .av-fb{width:36px;height:36px;border-radius:4px;overflow:hidden;text-align:center}
-          .av-tx{line-height:36px;color:#fff;font-size:16px;font-weight:bold}
+          .av-fb{width:36px;height:36px;border-radius:4px;text-align:center;line-height:36px;color:#fff;font-size:16px;font-weight:bold}
+          .av-tx{width:36px;height:36px;line-height:36px;text-align:center;color:#fff;font-size:16px;font-weight:bold}
           .bd{overflow:hidden}
           .L .bd{margin-right:50px}
           .R .bd{margin-left:50px}
-          .hd{padding:0 2px 4px;height:18px;line-height:18px}
+          .hd{padding:0 2px 3px;overflow:hidden}
           .L .hd{text-align:left}
           .R .hd{text-align:right}
-          .hd-n{font-size:12px;color:#555}
-          .hd-t{font-size:11px;color:#999;margin-left:8px}
-          .R .hd-t{margin-left:0;margin-right:8px}
+          .hd-n{display:inline-block;font-size:12px;color:#333;line-height:20px;max-width:60%;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;vertical-align:middle}
+          .hd-t{display:inline-block;font-size:11px;color:#888;line-height:20px;margin-left:6px;vertical-align:middle}
+          .R .hd-t{margin-left:0;margin-right:6px}
           .bbl{position:relative;display:inline-block;padding:9px 12px;line-height:1.5;font-size:14px;word-break:break-all;max-width:100%;box-sizing:border-box}
           .bbl-l{background:#f4f4f4;border-radius:0 6px 6px 6px;text-align:left}
           .bbl-l:before{content:'';position:absolute;top:10px;left:-6px;border-top:5px solid transparent;border-bottom:5px solid transparent;border-right:6px solid #f4f4f4}

@@ -70,6 +70,7 @@ router.put('/sensitive-words', authenticateToken, requireAdmin, async (req: Requ
 
 /**
  * 使用敏感词扫描聊天记录并自动标记
+ * 流程：1. 获取待扫描的文本消息 → 2. 对无明文的消息调用 get_msg_body 获取并解密 → 3. 用敏感词正则匹配明文
  */
 router.post('/sensitive-words/scan', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
   try {
@@ -91,24 +92,69 @@ router.post('/sensitive-words/scan', authenticateToken, requireAdmin, async (req
     const recordRepo = getTenantRepo(WecomChatRecord);
     const queryBuilder = recordRepo.createQueryBuilder('r')
       .where('r.is_sensitive = :isSensitive', { isSensitive: false })
-      .andWhere('r.msg_type IN (:...types)', { types: ['text', 'meta'] });
+      .andWhere('r.msg_type IN (:...types)', { types: ['text', 'link', 'weapp', 'card'] });
 
     if (configId) queryBuilder.andWhere('r.wecom_config_id = :configId', { configId });
 
     const records = await queryBuilder.take(5000).getMany();
-    let markedCount = 0;
+    log.info(`[Wecom] 敏感词扫描: 待扫描 ${records.length} 条记录, 敏感词 ${words.length} 个`);
 
+    // 第一步：对没有明文(plainText)的消息，尝试获取消息体并解密
+    const needPlainText = records.filter(r => {
+      try {
+        const c = JSON.parse(r.content || '{}');
+        return !c.plainText && c.secretKey;
+      } catch { return false; }
+    });
+
+    let decryptedCount = 0;
+    if (needPlainText.length > 0 && configId) {
+      try {
+        const { WecomConfig } = await import('../../entities/WecomConfig');
+        const configRepo = AppDataSource.getRepository(WecomConfig);
+        const config = await configRepo.findOne({ where: { id: parseInt(configId), isEnabled: true } });
+        if (config) {
+          const { WecomChatArchiveService } = await import('../../services/WecomChatArchiveService');
+          decryptedCount = await WecomChatArchiveService.fetchAndStorePlainTexts(config, needPlainText, 200);
+          log.info(`[Wecom] 敏感词扫描: 获取消息明文 ${decryptedCount}/${needPlainText.length} 条`);
+          if (decryptedCount > 0) {
+            const refreshed = await queryBuilder.take(5000).getMany();
+            records.length = 0;
+            records.push(...refreshed);
+          }
+        }
+      } catch (e: any) {
+        log.warn(`[Wecom] 获取消息明文失败(非致命): ${e.message}`);
+      }
+    }
+
+    // 第二步：用敏感词匹配明文或原始content
+    let markedCount = 0;
     for (const record of records) {
-      const content = record.content || '';
-      if (regex.test(content)) {
+      let textToScan = '';
+      try {
+        const contentObj = JSON.parse(record.content || '{}');
+        textToScan = contentObj.plainText || '';
+        if (!textToScan) {
+          textToScan = contentObj.text || contentObj.content || contentObj.summary || contentObj.title || '';
+        }
+      } catch {
+        textToScan = record.content || '';
+      }
+      if (!textToScan) continue;
+
+      if (regex.test(textToScan)) {
         record.isSensitive = true;
-        record.auditRemark = '[自动检测] 包含敏感词';
+        const matched = words.filter(w => textToScan.toLowerCase().includes(w.toLowerCase()));
+        record.auditRemark = `[自动检测] 包含敏感词: ${matched.slice(0, 5).join(', ')}`;
         await recordRepo.save(record);
         markedCount++;
       }
     }
 
-    res.json({ success: true, message: `扫描完成：检查 ${records.length} 条，标记 ${markedCount} 条`, data: { scanned: records.length, marked: markedCount } });
+    const msg = `扫描完成：检查 ${records.length} 条，获取明文 ${decryptedCount} 条，标记敏感 ${markedCount} 条`;
+    log.info(`[Wecom] ${msg}`);
+    res.json({ success: true, message: msg, data: { scanned: records.length, marked: markedCount, decrypted: decryptedCount } });
   } catch (error: any) {
     log.error('[Wecom] Scan sensitive words error:', error.message);
     res.status(500).json({ success: false, message: '敏感词扫描失败' });
@@ -193,8 +239,7 @@ router.get('/sensitive-words/hit-records', authenticateToken, async (req: Reques
 
     const recordRepo = getTenantRepo(WecomChatRecord);
     const qb = recordRepo.createQueryBuilder('r')
-      .where('r.is_sensitive = :s', { s: true })
-      .andWhere('r.msg_type IN (:...types)', { types: ['text', 'meta'] });
+      .where('r.is_sensitive = :s', { s: true });
     if (configId) qb.andWhere('r.wecom_config_id = :configId', { configId: parseInt(configId as string) });
     if (startDate) qb.andWhere('r.msg_time >= :ts1', { ts1: new Date(startDate as string).getTime() });
     if (endDate) qb.andWhere('r.msg_time <= :ts2', { ts2: new Date(endDate as string).getTime() + 86400000 });

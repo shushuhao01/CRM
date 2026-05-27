@@ -200,7 +200,13 @@ const parseContent = (content: string) => {
   if (!content) return '-'
   try {
     const obj = JSON.parse(content)
-    return obj.text || obj.content || obj.summary || (typeof obj === 'string' ? obj : JSON.stringify(obj))
+    if (obj.plainText) {
+      try {
+        const plain = JSON.parse(obj.plainText)
+        return plain.text?.content || plain.content || plain.text || obj.plainText
+      } catch { return obj.plainText }
+    }
+    return obj.text || obj.content || obj.summary || obj.msgTypeDesc || (typeof obj === 'string' ? obj : '-')
   } catch { return content }
 }
 
@@ -289,7 +295,10 @@ const scanSensitiveWordsHandler = async () => {
     const res: any = await scanChatRecordsForSensitiveWords(props.configId || undefined)
     const data = res?.data || res
     scanResult.value = { scanned: data?.scanned || 0, marked: data?.marked || 0 }
-    ElMessage.success(data?.message || res?.message || '扫描完成')
+    const decrypted = data?.decrypted || 0
+    let msg = data?.message || res?.message || '扫描完成'
+    if (decrypted > 0) msg += `（已获取 ${decrypted} 条消息明文）`
+    ElMessage.success(msg)
     fetchHitRecords()
     fetchTriggerStats()
   } catch (e: any) { ElMessage.error(e?.message || '扫描失败') }

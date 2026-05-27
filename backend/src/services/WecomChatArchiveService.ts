@@ -1151,8 +1151,8 @@ export class WecomChatArchiveService {
             toIds.forEach((id: string) => { if (id) externalUserIds.add(id); });
           }
         } catch { /* ignore */ }
-        // fromUserId 也可能是外部客户（客户发给员工的消息）
-        if (item.fromUserId && item.fromUserId.startsWith('wm')) {
+        // fromUserId 也可能是外部客户（客户发给员工的消息，wm或wo开头）
+        if (item.fromUserId && (item.fromUserId.startsWith('wm') || item.fromUserId.startsWith('wo'))) {
           externalUserIds.add(item.fromUserId);
         }
       }
@@ -1380,6 +1380,13 @@ export class WecomChatArchiveService {
           }
           customerAvatar = info.avatar || '';
         }
+        // 回退：如果客户表没有记录，尝试从 chat_records 中的 from_user_name 获取
+        if (!customerName && externalId) {
+          const fName = item.fromUserName || '';
+          if (fName && fName !== item.fromUserId && !fName.startsWith('wm') && !fName.startsWith('wo')) {
+            customerName = fName;
+          }
+        }
 
         // 获取员工头像
         if (memberId && memberAvatarMap.has(memberId)) {
@@ -1486,18 +1493,30 @@ export class WecomChatArchiveService {
   /**
    * 获取会话存档统计信息
    */
-  static async getArchiveStats(config: WecomConfig): Promise<any> {
+  static async getArchiveStats(config: WecomConfig, options?: { startDate?: string; endDate?: string }): Promise<any> {
     try {
       const configId = config.id;
 
-      // 基础计数
+      // 构建日期过滤条件
+      let dateFilter = '';
+      const dateParams: any[] = [];
+      if (options?.startDate) {
+        dateFilter += ' AND msg_time >= UNIX_TIMESTAMP(?) * 1000';
+        dateParams.push(options.startDate + ' 00:00:00');
+      }
+      if (options?.endDate) {
+        dateFilter += ' AND msg_time <= UNIX_TIMESTAMP(?) * 1000';
+        dateParams.push(options.endDate + ' 23:59:59');
+      }
+
+      // 基础计数（受日期筛选影响）
       const totalRecords = await AppDataSource.query(
-        `SELECT COUNT(*) as cnt FROM wecom_chat_records WHERE wecom_config_id = ? AND msg_type != 'meta'`, [configId]
+        `SELECT COUNT(*) as cnt FROM wecom_chat_records WHERE wecom_config_id = ? AND msg_type != 'meta'${dateFilter}`, [configId, ...dateParams]
       );
       const totalMsgs = parseInt(totalRecords[0]?.cnt) || 0;
 
       const convResult = await AppDataSource.query(
-        `SELECT COUNT(DISTINCT CONCAT(from_user_id, '-', to_user_ids)) as cnt FROM wecom_chat_records WHERE wecom_config_id = ?`, [configId]
+        `SELECT COUNT(DISTINCT CONCAT(from_user_id, '-', to_user_ids)) as cnt FROM wecom_chat_records WHERE wecom_config_id = ? AND msg_type != 'meta'${dateFilter}`, [configId, ...dateParams]
       );
       const conversationCount = parseInt(convResult[0]?.cnt) || 0;
 
@@ -1506,22 +1525,20 @@ export class WecomChatArchiveService {
       );
       const agreedConversations = parseInt(agreedResult[0]?.cnt) || 0;
 
-      // 敏感消息数
       const sensitiveResult = await AppDataSource.query(
-        `SELECT COUNT(*) as cnt FROM wecom_chat_records WHERE wecom_config_id = ? AND is_sensitive = 1`, [configId]
+        `SELECT COUNT(*) as cnt FROM wecom_chat_records WHERE wecom_config_id = ? AND is_sensitive = 1${dateFilter}`, [configId, ...dateParams]
       );
       const sensitiveCount = parseInt(sensitiveResult[0]?.cnt) || 0;
 
-      // 近7天趋势
+      // 趋势（根据日期范围动态）
       const trendRows = await AppDataSource.query(
         `SELECT DATE(FROM_UNIXTIME(msg_time/1000)) as dateLabel,
                 COUNT(*) as msgCount,
                 COUNT(DISTINCT CONCAT(from_user_id, '-', to_user_ids)) as convCount
          FROM wecom_chat_records
-         WHERE wecom_config_id = ? AND msg_type != 'meta'
-           AND msg_time >= UNIX_TIMESTAMP(DATE_SUB(CURDATE(), INTERVAL 7 DAY)) * 1000
+         WHERE wecom_config_id = ? AND msg_type != 'meta'${dateFilter}
          GROUP BY dateLabel ORDER BY dateLabel ASC`,
-        [configId]
+        [configId, ...dateParams]
       ).catch(() => []);
       const trend = trendRows.map((r: any) => ({
         dateLabel: r.dateLabel ? new Date(r.dateLabel).toISOString().slice(5, 10) : '',
@@ -1529,35 +1546,37 @@ export class WecomChatArchiveService {
         convCount: parseInt(r.convCount) || 0
       }));
 
-      // 消息类型分布
+      // 消息类型分布（受日期筛选影响）
       const typeRows = await AppDataSource.query(
         `SELECT msg_type as type, COUNT(*) as count FROM wecom_chat_records
-         WHERE wecom_config_id = ? AND msg_type NOT IN ('meta', 'agree', 'disagree')
+         WHERE wecom_config_id = ? AND msg_type NOT IN ('meta', 'agree', 'disagree')${dateFilter}
          GROUP BY msg_type ORDER BY count DESC`,
-        [configId]
+        [configId, ...dateParams]
       ).catch(() => []);
       const typeDistribution = typeRows.map((r: any) => ({
         type: r.type, count: parseInt(r.count) || 0
       }));
 
-      // 成员排行（按发送消息数）
+      // 成员排行：只显示内部员工（排除wm/wo开头的外部联系人）
       const memberRows = await AppDataSource.query(
         `SELECT from_user_id as userId, from_user_name as userName,
                 COUNT(*) as msgCount,
                 COUNT(DISTINCT CONCAT(from_user_id, '-', to_user_ids)) as convCount
          FROM wecom_chat_records
          WHERE wecom_config_id = ? AND msg_type != 'meta'
+           AND from_user_id NOT LIKE 'wm%' AND from_user_id NOT LIKE 'wo%' AND from_user_id NOT LIKE 'wb%'${dateFilter}
          GROUP BY from_user_id, from_user_name
-         ORDER BY msgCount DESC LIMIT 20`,
-        [configId]
+         ORDER BY msgCount DESC LIMIT 50`,
+        [configId, ...dateParams]
       ).catch(() => []);
+      const maxMsg = memberRows.length > 0 ? parseInt(memberRows[0]?.msgCount) || 1 : 1;
       const memberRanking = memberRows.map((r: any) => ({
         userName: r.userName || r.userId,
         userId: r.userId,
         msgCount: parseInt(r.msgCount) || 0,
         convCount: parseInt(r.convCount) || 0,
         avgResponse: 0,
-        activePercent: 0
+        activePercent: Math.round(((parseInt(r.msgCount) || 0) / maxMsg) * 100)
       }));
 
       const lastSync = lastArchiveSyncMap.get(configId);
@@ -2207,6 +2226,127 @@ export class WecomChatArchiveService {
    */
   static rsaDecrypt(privateKeyPem: string, encryptedBase64: string): string | null {
     return this.rsaDecryptDetailed(privateKeyPem, encryptedBase64).result;
+  }
+
+  /**
+   * 从 protobuf 格式的 secretKey 中提取原始 AES 密钥字节
+   * secretKey 格式: protobuf { field1(version)=1, field2(algo)=1, field3(key_bytes)=<N bytes> }
+   */
+  private static extractAesKeyFromProtobuf(secretKeyBase64: string): Buffer | null {
+    try {
+      const buf = Buffer.from(secretKeyBase64, 'base64');
+      let offset = 0;
+      while (offset < buf.length) {
+        if (offset >= buf.length) break;
+        const tag = buf[offset++];
+        const fieldNum = tag >> 3;
+        const wireType = tag & 0x07;
+        if (wireType === 0) {
+          while (offset < buf.length && buf[offset] & 0x80) offset++;
+          offset++;
+        } else if (wireType === 2) {
+          let len = 0;
+          let shift = 0;
+          let b: number;
+          do { b = buf[offset++]; len |= (b & 0x7f) << shift; shift += 7; } while (b & 0x80);
+          if (fieldNum === 3 && len >= 32) {
+            return buf.subarray(offset, offset + len);
+          }
+          offset += len;
+        } else {
+          break;
+        }
+      }
+      return null;
+    } catch { return null; }
+  }
+
+  /**
+   * 使用 secretKey 解密 encrypted_msg_body，获取消息明文
+   * secretKey 是 protobuf 编码（包含 AES 密钥），encrypted_msg_body 是 base64 编码的 AES-GCM 密文
+   */
+  static decryptMsgBody(secretKeyBase64: string, encryptedMsgBodyBase64: string): string | null {
+    if (!secretKeyBase64 || !encryptedMsgBodyBase64) return null;
+    const keyBytes = this.extractAesKeyFromProtobuf(secretKeyBase64);
+    if (!keyBytes || keyBytes.length < 32) {
+      return this.aesDecrypt(secretKeyBase64, encryptedMsgBodyBase64);
+    }
+    const aesKey = keyBytes.subarray(0, 32);
+    try {
+      const encBuf = Buffer.from(encryptedMsgBodyBase64, 'base64');
+      if (encBuf.length < 28) return null;
+      const nonce = encBuf.subarray(0, 12);
+      const gcmTag = encBuf.subarray(encBuf.length - 16);
+      const ciphertext = encBuf.subarray(12, encBuf.length - 16);
+      const decipher = crypto.createDecipheriv('aes-256-gcm', aesKey, nonce);
+      decipher.setAuthTag(gcmTag);
+      let decrypted = decipher.update(ciphertext);
+      decrypted = Buffer.concat([decrypted, decipher.final()]);
+      return decrypted.toString('utf8');
+    } catch {
+      return this.aesDecrypt(secretKeyBase64, encryptedMsgBodyBase64);
+    }
+  }
+
+  /**
+   * 批量获取消息明文（通过专区 get_msg_body 接口）
+   * 对于没有 plainText 的文本消息，逐条获取并解密存入数据库
+   */
+  static async fetchAndStorePlainTexts(config: WecomConfig, records: WecomChatRecord[], batchSize = 50): Promise<number> {
+    const { WecomSuiteConfig } = await import('../entities/WecomSuiteConfig');
+    const suiteRepo = AppDataSource.getRepository(WecomSuiteConfig);
+    const suiteConfig = await suiteRepo.findOne({ where: {}, order: { id: 'ASC' } });
+    if (!suiteConfig) return 0;
+
+    const zoneProgramId = suiteConfig.zoneProgramId;
+    const zoneGetMsgBodyAbilityId = suiteConfig.zoneGetMsgBodyAbilityId || suiteConfig.zoneSyncMsgAbilityId || suiteConfig.zoneAbilityId;
+    if (!zoneProgramId || !zoneGetMsgBodyAbilityId) {
+      log.warn('[ChatArchive] fetchPlainTexts: 未配置专区程序或get_msg_body能力ID');
+      return 0;
+    }
+
+    const { WecomApiService } = await import('./WecomApiService');
+    let chatAccessToken: string;
+    try {
+      chatAccessToken = await WecomApiService.getChatAccessToken(config);
+    } catch (e: any) {
+      log.error('[ChatArchive] fetchPlainTexts: 获取accessToken失败:', e.message);
+      return 0;
+    }
+
+    let decryptedCount = 0;
+    const toProcess = records.slice(0, batchSize);
+
+    for (const record of toProcess) {
+      try {
+        let contentObj: any = {};
+        try { contentObj = JSON.parse(record.content || '{}'); } catch { continue; }
+        if (contentObj.plainText) continue;
+        const secretKey = contentObj.secretKey;
+        if (!secretKey) continue;
+
+        const bodyResult = await WecomApiService.getMsgBodyViaZone(
+          chatAccessToken, zoneProgramId, zoneGetMsgBodyAbilityId, record.msgId
+        );
+
+        if (bodyResult.encrypted_msg_body) {
+          const plainText = this.decryptMsgBody(secretKey, bodyResult.encrypted_msg_body);
+          if (plainText) {
+            contentObj.plainText = plainText;
+            await AppDataSource.query(
+              `UPDATE wecom_chat_records SET content = ? WHERE id = ?`,
+              [JSON.stringify(contentObj), record.id]
+            );
+            decryptedCount++;
+          }
+        }
+      } catch (e: any) {
+        log.debug(`[ChatArchive] fetchPlainText failed for ${record.msgId}: ${e.message}`);
+      }
+    }
+
+    log.info(`[ChatArchive] fetchPlainTexts: 处理 ${toProcess.length} 条, 成功解密 ${decryptedCount} 条`);
+    return decryptedCount;
   }
 
   /**

@@ -420,8 +420,9 @@ router.get('/chat-archive/stats', authenticateToken, async (req: Request, res: R
     const configRepo = getTenantRepo(WecomConfig);
     const config = await configRepo.findOne({ where: { id: parseInt(configId as string), isEnabled: true } });
     if (!config) return res.status(404).json({ success: false, message: '企微配置不存在' });
+    const { startDate, endDate } = req.query as { startDate?: string; endDate?: string };
     const { WecomChatArchiveService } = await import('../../services/WecomChatArchiveService');
-    const stats = await WecomChatArchiveService.getArchiveStats(config);
+    const stats = await WecomChatArchiveService.getArchiveStats(config, { startDate, endDate });
     const globalRsaKey = await getGlobalRsaPrivateKey();
     const hasSecret = config.authType === 'third_party' ? !!config.permanentCode : !!config.chatArchiveSecret;
     const hasPrivateKey = !!(config.chatArchivePrivateKey || globalRsaKey);
@@ -649,8 +650,15 @@ router.get('/conversations/message-keys', authenticateToken, async (req: Request
     }
 
     const avatarCount = Object.keys(avatarMap).filter(k => !k.startsWith('name:')).length;
+    const nameCount = Object.keys(avatarMap).filter(k => k.startsWith('name:')).length;
     const withAvatar = list.filter(m => m.avatar).length;
-    log.info(`[Wecom] message-keys: ${records.length}条, 有效=${list.length}条, DB有头像=${avatarCount}个, 消息带头像=${withAvatar}条, 员工IDs=${staffIds.size}, 客户IDs=${externalIds.size}`);
+    const withName = list.filter(m => m.fromUserName && m.fromUserName !== m.fromUserId).length;
+    const withTime = list.filter(m => m.msgTime).length;
+    log.info(`[Wecom] message-keys: ${records.length}条, 有效=${list.length}条, 有名称=${withName}条(nameMap=${nameCount}), 有时间=${withTime}条, 有头像=${withAvatar}条`);
+    if (list.length > 0) {
+      const s = list[0];
+      log.info(`[Wecom] message-keys sample[0]: fid=${s.fromUserId}, name="${s.fromUserName}", time=${s.msgTime}, type=${s.msgType}`);
+    }
 
     res.json({
       success: true,

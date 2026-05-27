@@ -389,8 +389,8 @@ export const diagnoseChatRecords = (configId: number) => {
 }
 
 /** 获取会话存档统计信息 */
-export const getChatArchiveStats = (configId: number) => {
-  return request.get('/wecom/chat-archive/stats', { params: { configId }, showError: false } as any)
+export const getChatArchiveStats = (configId: number, params?: { startDate?: string; endDate?: string }) => {
+  return request.get('/wecom/chat-archive/stats', { params: { configId, ...params }, showError: false } as any)
 }
 
 /** 质检标记会话记录 */

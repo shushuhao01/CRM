@@ -132,12 +132,15 @@
                 <el-tag type="success" size="small" effect="plain">SDK就绪</el-tag>
               </template>
               <span class="msg-header-count">共 {{ msgTotal }} 条</span>
+              <el-button v-if="isAdminRole || isManagerRole" type="danger" size="small" plain @click="openMarkRiskForConv" title="标记当前会话风险">
+                <el-icon style="margin-right:2px"><WarningFilled /></el-icon>标记风险
+              </el-button>
               <el-button link size="small" @click="refreshMessages"><el-icon><Refresh /></el-icon></el-button>
             </div>
           </div>
 
           <!-- 消息列表 -->
-          <div class="msg-panel-body" ref="chatMessagesRef" v-loading="msgLoading || sdkInitializing">
+          <div class="msg-panel-body" ref="chatMessagesRef" v-loading="msgLoading || sdkInitializing" @contextmenu.prevent="showPanelContextMenu">
             <!-- ★ 企微原生会话展示组件（密钥可用时，正式模式） -->
             <template v-if="isWecomReady && messageKeys.length > 0">
               <WecomMessageRenderer
@@ -200,8 +203,8 @@
     <!-- 标记风险弹窗 -->
     <el-dialog v-model="markRiskVisible" title="标记风险" width="480px" destroy-on-close>
       <el-form label-width="80px">
-        <el-form-item label="消息内容">
-          <div class="mark-msg-preview">{{ markRiskMsg?.content ? getTextContent(markRiskMsg.content) : '[非文本消息]' }}</div>
+        <el-form-item label="会话">
+          <div class="mark-msg-preview">{{ selectedConv ? getConvDisplayName(selectedConv) : '-' }} ({{ markRiskMsg?.fromUserId }})</div>
         </el-form-item>
         <el-form-item label="风险类型" required>
           <el-select v-model="markRiskForm.riskType" placeholder="选择风险类型" style="width: 100%">
@@ -231,9 +234,16 @@
     </el-dialog>
 
     <!-- 右键菜单 -->
-    <div v-if="contextMenuVisible" class="msg-context-menu" :style="contextMenuStyle" @mouseleave="contextMenuVisible = false">
-      <div class="context-menu-item" @click="openMarkRisk">标记风险</div>
-    </div>
+    <Teleport to="body">
+      <div v-if="contextMenuVisible" class="msg-context-menu" :style="contextMenuStyle" @click.stop @mouseleave="contextMenuVisible = false">
+        <div class="context-menu-item" @click="openMarkRiskForConv">
+          <el-icon :size="14" color="#EF4444" style="margin-right:6px"><WarningFilled /></el-icon>标记风险
+        </div>
+        <div class="context-menu-item" @click="refreshMessages; contextMenuVisible = false">
+          <el-icon :size="14" color="#409eff" style="margin-right:6px"><Refresh /></el-icon>刷新消息
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 
@@ -387,16 +397,25 @@ const contextMenuVisible = ref(false)
 const contextMenuStyle = ref({ top: '0px', left: '0px' })
 const contextMenuMsg = ref<any>(null)
 
-const showMsgContextMenu = (e: MouseEvent, msg: any) => {
+const showPanelContextMenu = (e: MouseEvent) => {
   if (!isAdminRole.value && !isManagerRole.value) return
-  contextMenuMsg.value = msg
+  if (!selectedConv.value) return
+  e.preventDefault()
   contextMenuStyle.value = { top: e.clientY + 'px', left: e.clientX + 'px' }
   contextMenuVisible.value = true
 }
 
-const openMarkRisk = () => {
+const openMarkRiskForConv = () => {
   contextMenuVisible.value = false
-  markRiskMsg.value = contextMenuMsg.value
+  if (!selectedConv.value) { ElMessage.warning('请先选择一个会话'); return }
+  markRiskMsg.value = {
+    id: null,
+    fromUserId: selectedConv.value.fromUserId || '',
+    toUserId: getFirstToUser(selectedConv.value.toUserIds) || '',
+    msgType: 'conversation',
+    content: '',
+    msgTime: selectedConv.value.lastMsgTime || Date.now(),
+  }
   markRiskForm.riskType = ''
   markRiskForm.riskLevel = 'medium'
   markRiskForm.remark = ''
@@ -409,13 +428,14 @@ const submitMarkRisk = async () => {
   markRiskSubmitting.value = true
   try {
     const msg = markRiskMsg.value
+    const convName = selectedConv.value ? getConvDisplayName(selectedConv.value) : ''
     await createAuditMark({
       wecomConfigId: props.configId,
-      chatRecordId: msg.id,
+      chatRecordId: msg.id || null,
       fromUserId: msg.fromUserId,
-      toUserId: selectedConv.value ? getFirstToUser(selectedConv.value) : '',
-      msgContent: msg.msgType === 'text' ? getTextContent(msg.content) : `[${msg.msgType}]`,
-      msgType: msg.msgType,
+      toUserId: msg.toUserId || (selectedConv.value ? getFirstToUser(selectedConv.value.toUserIds) : ''),
+      msgContent: convName ? `[会话] ${convName}` : `[${msg.msgType}]`,
+      msgType: msg.msgType || 'conversation',
       msgTime: msg.msgTime,
       riskType: markRiskForm.riskType,
       riskLevel: markRiskForm.riskLevel,
@@ -565,8 +585,9 @@ const getConvAvatarLetter = (conv: Conversation) => getConvDisplayName(conv).cha
 
 const getAvatarColorClass = (conv: Conversation) => {
   if (conv.roomId) return 'avatar-group'
-  const id = getFirstToUser(conv.toUserIds) || conv.fromUserId || ''
-  if (id.startsWith('wm') || id.startsWith('wo')) return 'avatar-customer'
+  const toId = getFirstToUser(conv.toUserIds) || ''
+  const fromId = conv.fromUserId || ''
+  if (toId.startsWith('wm') || toId.startsWith('wo') || fromId.startsWith('wm') || fromId.startsWith('wo')) return 'avatar-customer'
   return 'avatar-staff'
 }
 
@@ -887,9 +908,7 @@ defineExpose({ fetchConversations, fetchArchiveMembers, selectMemberById, jumpTo
 .highlight-danger { background: #FEE2E2; border: 1px solid #EF4444; border-radius: 8px; padding: 8px 16px; color: #991B1B; font-size: 13px; font-weight: 500; }
 .highlight-warning .notice-text strong, .highlight-danger .notice-text strong { font-weight: 700; }
 .sensitive-word-hl { background: #FEE2E2; color: #DC2626; font-weight: 700; padding: 1px 3px; border-radius: 3px; border-bottom: 2px solid #EF4444; }
-.msg-context-menu { position: fixed; z-index: 3000; background: #fff; border: 1px solid #E5E7EB; border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.12); padding: 4px 0; min-width: 120px; }
-.context-menu-item { padding: 8px 16px; font-size: 13px; color: #374151; cursor: pointer; transition: all 0.15s; }
-.context-menu-item:hover { background: #F3F4F6; color: #EF4444; }
+.mark-risk-btn { margin-left: 4px; }
 .mark-msg-preview { background: #F9FAFB; border-radius: 6px; padding: 8px 12px; font-size: 13px; color: #4B5563; max-height: 80px; overflow: auto; }
 
 /* 密钥诊断面板 */
@@ -922,9 +941,9 @@ defineExpose({ fetchConversations, fetchArchiveMembers, selectMemberById, jumpTo
 /* 通用头像 */
 .avatar-img { width: 100%; height: 100%; object-fit: cover; }
 .avatar-letter { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 14px; color: #fff; font-weight: 500; background: #c8c9cc; }
-.avatar-customer { background: #07c160; }
-.avatar-staff { background: #409eff; }
-.avatar-group { background: #e6a23c; }
+.avatar-letter.avatar-customer { background: #07c160 !important; }
+.avatar-letter.avatar-staff { background: #409eff !important; }
+.avatar-letter.avatar-group { background: #e6a23c !important; }
 
 .empty-conv { padding: 40px 0; }
 .conv-loading-more { text-align: center; padding: 12px; font-size: 12px; color: #9ca3af; }
@@ -944,5 +963,12 @@ defineExpose({ fetchConversations, fetchArchiveMembers, selectMemberById, jumpTo
 .wecom-sdk-fallback .sdk-error-detail { font-size: 12px; color: #e6a23c; background: #fdf6ec; padding: 6px 12px; border-radius: 4px; max-width: 400px; word-break: break-all; }
 .sdk-check-list { text-align: left; font-size: 13px; color: #6b7280; line-height: 2; padding-left: 20px; margin: 8px 0; }
 .sdk-check-list li { list-style: disc; }
+</style>
+
+<style>
+.msg-context-menu { position: fixed; z-index: 9999; background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,0.14); padding: 6px 0; min-width: 140px; }
+.msg-context-menu .context-menu-item { padding: 9px 16px; font-size: 13px; color: #374151; cursor: pointer; transition: all 0.15s; display: flex; align-items: center; }
+.msg-context-menu .context-menu-item:hover { background: #f3f4f6; }
+.msg-context-menu .context-menu-item:first-child:hover { color: #ef4444; }
 </style>
 
