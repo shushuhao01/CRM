@@ -466,10 +466,16 @@ const showPanelContextMenu = (e: MouseEvent) => {
 const openMarkRiskForConv = () => {
   contextMenuVisible.value = false
   if (!selectedConv.value) { ElMessage.warning('请先选择一个会话'); return }
+  // fromUserId 使用当前选中的存档员工（而非会话中最后一条消息的发送者）
+  const memberId = selectedMemberId.value || selectedConv.value.fromUserId || ''
+  const toIds = selectedConv.value.toUserIds
+  const firstTo = getFirstToUser(toIds)
+  // toUserId：如果会话对象是外部联系人则取对方 ID
+  const externalId = firstTo || (selectedConv.value.fromUserId?.startsWith('wm') || selectedConv.value.fromUserId?.startsWith('wo') ? selectedConv.value.fromUserId : '')
   markRiskMsg.value = {
     id: null,
-    fromUserId: selectedConv.value.fromUserId || '',
-    toUserId: getFirstToUser(selectedConv.value.toUserIds) || '',
+    fromUserId: memberId,
+    toUserId: externalId,
     msgType: 'conversation',
     content: '',
     msgTime: selectedConv.value.lastMsgTime || Date.now(),

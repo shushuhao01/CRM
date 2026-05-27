@@ -959,13 +959,15 @@ router.get('/chat-archive/audit-marks', authenticateToken, async (req: Request, 
     const ps = parseInt(pageSize as string) || 20;
     const list = await qb.orderBy('m.created_at', 'DESC').skip((p - 1) * ps).take(ps).getMany();
 
-    // 丰富发送者姓名：从 wecom_user_bindings 查找企微成员名称
+    // 丰富发送者姓名：从多个来源查找
     const senderIds = [...new Set(list.map(m => m.fromUserId).filter(Boolean))];
     const senderNameMap = new Map<string, string>();
     if (senderIds.length > 0) {
+      const cfgId = configId ? parseInt(configId as string) : null;
+
+      // 1. 从 wecom_user_bindings 查找企微成员名称
       const { WecomUserBinding } = await import('../../entities/WecomUserBinding');
       const bindingRepo = AppDataSource.getRepository(WecomUserBinding);
-      const cfgId = configId ? parseInt(configId as string) : null;
       const bindingQb = bindingRepo.createQueryBuilder('b')
         .where('b.wecom_user_id IN (:...ids)', { ids: senderIds });
       if (cfgId) bindingQb.andWhere('b.wecom_config_id = :cfgId', { cfgId });
@@ -975,6 +977,39 @@ router.get('/chat-archive/audit-marks', authenticateToken, async (req: Request, 
         if (b.wecomUserName && b.wecomUserName.trim()) {
           senderNameMap.set(b.wecomUserId, b.wecomUserName.trim());
         }
+      }
+
+      // 2. 对于 wm/wo 开头的外部联系人 ID，从 wecom_customers 查找名称
+      const externalIds = senderIds.filter(id => (id.startsWith('wm') || id.startsWith('wo')) && !senderNameMap.has(id));
+      if (externalIds.length > 0) {
+        try {
+          const { WecomCustomer } = await import('../../entities/WecomCustomer');
+          const custRepo = AppDataSource.getRepository(WecomCustomer);
+          const custQb = custRepo.createQueryBuilder('c')
+            .where('c.external_user_id IN (:...ids)', { ids: externalIds })
+            .select(['c.externalUserId', 'c.name', 'c.remark']);
+          if (tenantId) custQb.andWhere('c.tenant_id = :tenantId', { tenantId });
+          const customers = await custQb.getMany();
+          for (const c of customers) {
+            const name = c.remark || c.name;
+            if (name && name.trim()) senderNameMap.set(c.externalUserId, name.trim());
+          }
+        } catch { /* skip */ }
+      }
+
+      // 3. 对于仍未找到名称的非外部ID，尝试用 CRM 用户名（可能是 sidebar 绑定的员工）
+      const unresolvedIds = senderIds.filter(id => !senderNameMap.has(id) && !id.startsWith('wm') && !id.startsWith('wo'));
+      if (unresolvedIds.length > 0) {
+        try {
+          // 检查是否有 CRM 绑定关系
+          const crmBindings = await bindingRepo.createQueryBuilder('b')
+            .where('b.wecom_user_id IN (:...ids)', { ids: unresolvedIds })
+            .getMany();
+          for (const b of crmBindings) {
+            const name = b.crmUserName || b.wecomUserName;
+            if (name && name.trim()) senderNameMap.set(b.wecomUserId, name.trim());
+          }
+        } catch { /* skip */ }
       }
     }
 

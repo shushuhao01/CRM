@@ -154,14 +154,7 @@
         <el-table-column label="客户信息" min-width="200">
           <template #default="{ row }">
             <div class="customer-info">
-              <div style="position: relative">
-                <el-avatar :src="row.avatar" :size="40">{{ (row.remark || row.name)?.charAt(0) }}</el-avatar>
-                <el-tooltip v-if="customerRiskMap[row.externalUserId]" :content="`该客户有 ${customerRiskMap[row.externalUserId]} 条风险标记`" placement="top">
-                  <span class="customer-risk-icon">
-                    <svg viewBox="0 0 16 16" width="14" height="14"><path d="M8 1.5L1 14h14L8 1.5z" fill="#FEE2E2" stroke="#F87171" stroke-width="1"/><text x="8" y="12" text-anchor="middle" font-size="9" font-weight="bold" fill="#EF4444">!</text></svg>
-                  </span>
-                </el-tooltip>
-              </div>
+              <el-avatar :src="row.avatar" :size="40">{{ (row.remark || row.name)?.charAt(0) }}</el-avatar>
               <div class="info-text">
                 <el-tooltip :content="row.remark || row.name || '-'" placement="top" :show-after="500" :disabled="!row.remark && !row.name">
                   <div class="remark-name">{{ row.remark || row.name || '-' }}</div>
@@ -217,6 +210,13 @@
               </template>
               <span v-else>-</span>
             </template>
+          </template>
+        </el-table-column>
+        <el-table-column label="" width="36" align="center" v-if="Object.keys(customerRiskMap).length > 0">
+          <template #default="{ row }">
+            <el-tooltip v-if="customerRiskMap[row.externalUserId]" :content="`该客户有 ${customerRiskMap[row.externalUserId]} 条风险标记`" placement="top">
+              <el-icon class="customer-risk-icon" :size="15"><WarningFilled /></el-icon>
+            </el-tooltip>
           </template>
         </el-table-column>
         <el-table-column label="消息统计" width="120">
@@ -333,7 +333,7 @@ import {
   syncWecomTagsToCustomers, getWecomDepartments, getWecomUsers
 } from '@/api/wecom'
 import { formatDateTime } from '@/utils/date'
-import { Filter } from '@element-plus/icons-vue'
+import { Filter, WarningFilled } from '@element-plus/icons-vue'
 import CustomerDetailDrawer from './components/CustomerDetailDrawer.vue'
 import WecomHeader from './components/WecomHeader.vue'
 import WecomDemoBanner from './components/WecomDemoBanner.vue'
@@ -886,8 +886,8 @@ const checkUserBinding = async () => {
       bindingChecked.value = true
       return
     }
-    const res = await getWecomBindings({ crmUserId: String(crmUserId) })
-    const bindings = res?.data?.data || res?.data || []
+    const res: any = await getWecomBindings({ crmUserId: String(crmUserId) })
+    const bindings = Array.isArray(res) ? res : (res?.data || res?.list || [])
     userHasBinding.value = Array.isArray(bindings) && bindings.length > 0
   } catch {
     userHasBinding.value = false
@@ -906,7 +906,7 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
-  if (cooldownTimer) { clearInterval(cooldownTimer); cooldownTimer = null }
+  if (syncPollTimer) { clearInterval(syncPollTimer); syncPollTimer = null }
 })
 </script>
 
@@ -934,11 +934,7 @@ onUnmounted(() => {
 .v4-stat-card .stat-trend.down { color: #EF4444; }
 
 .customer-info { display: flex; align-items: center; gap: 10px; }
-.customer-risk-icon {
-  position: absolute; top: -3px; right: -3px;
-  display: flex; cursor: default;
-  filter: drop-shadow(0 1px 1px rgba(0,0,0,0.1));
-}
+.customer-risk-icon { color: #F56C6C; opacity: 0.7; cursor: default; }
 .info-text { overflow: hidden; }
 .info-text .remark-name { font-weight: 600; font-size: 14px; color: #1F2937; line-height: 1.4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .info-text .nick-name { font-size: 12px; color: #9CA3AF; line-height: 1.4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

@@ -7,7 +7,13 @@ import vueDevTools from 'vite-plugin-vue-devtools'
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({
   plugins: [
-    vue(),
+    vue({
+      template: {
+        compilerOptions: {
+          isCustomElement: (tag) => tag === 'ww-open-data',
+        },
+      },
+    }),
     // vueDevTools(), // 暂时禁用以解决解析问题
   ],
   // 仅生产构建时移除 console/debugger，开发模式保留
