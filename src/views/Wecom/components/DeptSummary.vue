@@ -6,7 +6,16 @@
         <el-icon :size="32" color="#4C6EF5"><OfficeBuilding /></el-icon>
       </div>
       <div class="header-info">
-        <div class="header-name">{{ data.deptName || '-' }}</div>
+        <div class="header-name">
+          <WwOpenData
+            v-if="isDeptNameMissing"
+            type="departmentName"
+            :openid="String(data.wecomDeptId || props.deptId)"
+            :corpid="corpId"
+            :fallback="data.deptName || '-'"
+          />
+          <template v-else>{{ data.deptName || '-' }}</template>
+        </div>
         <div class="header-meta">
           <span>企微部门ID: <code>{{ data.wecomDeptId }}</code></span>
           <el-divider direction="vertical" />
@@ -157,11 +166,22 @@
 import { ref, computed, watch } from 'vue'
 import { OfficeBuilding, User, ChatDotRound, Money, Message, Avatar, ArrowRight } from '@element-plus/icons-vue'
 import { getWecomDeptSummary } from '@/api/wecomAddressBook'
+import WwOpenData from './WwOpenData.vue'
+import request from '@/utils/request'
 
 const props = defineProps<{
   deptId: number
   configId: number
 }>()
+
+const corpId = ref('')
+const isDeptNameMissing = computed(() => {
+  const name = data.value.deptName
+  if (!name) return true
+  if (String(name).trim() === String(data.value.wecomDeptId || props.deptId)) return true
+  if (/^部门\s*\d+$/.test(String(name).trim())) return true
+  return false
+})
 
 defineEmits(['select-member'])
 
@@ -181,9 +201,18 @@ const formatAmount = (cents: number | undefined) => {
   return (cents / 100).toFixed(2)
 }
 
+const fetchCorpId = async () => {
+  if (corpId.value || !props.configId) return
+  try {
+    const cfg: any = await request.get(`/wecom/configs/${props.configId}`)
+    corpId.value = cfg?.corpId || ''
+  } catch { /* ignore */ }
+}
+
 const fetchSummary = async () => {
   if (!props.deptId || !props.configId) return
   loading.value = true
+  fetchCorpId()
   try {
     const res: any = await getWecomDeptSummary(props.deptId, props.configId)
     data.value = res || {}

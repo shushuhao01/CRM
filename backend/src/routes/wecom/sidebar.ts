@@ -375,31 +375,68 @@ router.post('/sidebar/bind-account', sidebarAuthLimiter, async (req: Request, re
       const bindingRepo = AppDataSource.getRepository(WecomUserBinding);
       let resolvedWecomUserId = wecomUserId || '';
 
-      // wecomUserId 为空时（SDK 未获取到），尝试通过 CRM 用户姓名匹配已有的企微成员
+      // wecomUserId 为空时，尝试多种方式匹配
       if (!resolvedWecomUserId) {
+        // 1. 通过 CRM 用户姓名匹配已有的企微成员（通讯录同步时创建的未绑定记录）
         const matchByName = await bindingRepo.findOne({
           where: { wecomConfigId: configId, wecomUserName: user.name || '', isEnabled: true }
         });
-        if (matchByName?.wecomUserId) {
+        if (matchByName?.wecomUserId && !matchByName.wecomUserId.startsWith('sidebar_')) {
           resolvedWecomUserId = matchByName.wecomUserId;
           log.info(`[Sidebar] 通过姓名匹配到企微成员: ${user.name} → ${resolvedWecomUserId}`);
+        }
+
+        // 2. 如果该 CRM 用户已有旧绑定（如 sidebar_xxx），获取其 id 备用
+        if (!resolvedWecomUserId) {
+          const existingByCrm = await bindingRepo.findOne({ where: { crmUserId: user.id, wecomConfigId: configId } });
+          if (existingByCrm?.wecomUserId && !existingByCrm.wecomUserId.startsWith('sidebar_')) {
+            resolvedWecomUserId = existingByCrm.wecomUserId;
+            log.info(`[Sidebar] 通过CRM用户ID找到已有绑定: ${existingByCrm.wecomUserId}`);
+          }
         }
       }
 
       // 查找或创建绑定记录
       let binding: any = null;
-      if (resolvedWecomUserId) {
-        binding = await bindingRepo.findOne({ where: { wecomUserId: resolvedWecomUserId, corpId: resolvedCorpId, wecomConfigId: configId } });
+
+      // 优先用真实 wecomUserId 查找（通讯录同步创建的记录）
+      if (resolvedWecomUserId && !resolvedWecomUserId.startsWith('sidebar_')) {
+        binding = await bindingRepo.findOne({ where: { wecomUserId: resolvedWecomUserId, wecomConfigId: configId } });
       }
+
+      // 再查找该 CRM 用户是否已有绑定
       if (!binding) {
-        // 也检查是否该 CRM 用户已有绑定（避免重复）
         binding = await bindingRepo.findOne({ where: { crmUserId: user.id, wecomConfigId: configId } });
       }
+
+      // 如果找到了旧的 sidebar_xxx 绑定，且现在有了真实的 wecomUserId，还需清理
+      if (binding && resolvedWecomUserId && !resolvedWecomUserId.startsWith('sidebar_') && binding.wecomUserId.startsWith('sidebar_')) {
+        // 检查真实 wecomUserId 是否已有另一条记录（通讯录同步创建的）
+        const syncBinding = await bindingRepo.findOne({ where: { wecomUserId: resolvedWecomUserId, wecomConfigId: configId } });
+        if (syncBinding && syncBinding.id !== binding.id) {
+          // 将 CRM 用户信息合并到通讯录同步记录上，删除旧的 sidebar 记录
+          syncBinding.crmUserId = user.id;
+          syncBinding.crmUserName = user.name || user.username;
+          syncBinding.isEnabled = true;
+          syncBinding.bindOperator = 'sidebar';
+          if (resolvedCorpId && !syncBinding.corpId) syncBinding.corpId = resolvedCorpId;
+          await bindingRepo.save(syncBinding);
+          await bindingRepo.remove(binding);
+          binding = syncBinding;
+          log.info(`[Sidebar] 合并旧sidebar绑定到通讯录同步记录: ${binding.wecomUserId}`);
+        } else {
+          // 直接更新旧记录的 wecomUserId
+          binding.wecomUserId = resolvedWecomUserId;
+        }
+      }
+
       if (binding) {
         binding.crmUserId = user.id;
         binding.crmUserName = user.name || user.username;
         binding.isEnabled = true;
-        if (resolvedWecomUserId && !binding.wecomUserId) binding.wecomUserId = resolvedWecomUserId;
+        if (resolvedWecomUserId && !resolvedWecomUserId.startsWith('sidebar_')) {
+          binding.wecomUserId = resolvedWecomUserId;
+        }
         if (resolvedCorpId && !binding.corpId) binding.corpId = resolvedCorpId;
       } else {
         binding = bindingRepo.create({
@@ -416,7 +453,8 @@ router.post('/sidebar/bind-account', sidebarAuthLimiter, async (req: Request, re
     }
 
     const { JwtConfig } = await import('../../config/jwt');
-    const token = JwtConfig.generateAccessToken({ type: 'sidebar', userId: user.id, username: user.username, role: user.role, wecomUserId: wecomUserId || '', crmUserId: user.id, crmUserName: user.name || user.username, tenantId, corpId: resolvedCorpId } as any);
+    const finalWecomUserId = bindingData?.wecomUserId || wecomUserId || '';
+    const token = JwtConfig.generateAccessToken({ type: 'sidebar', userId: user.id, username: user.username, role: user.role, wecomUserId: finalWecomUserId, crmUserId: user.id, crmUserName: user.name || user.username, tenantId, corpId: resolvedCorpId } as any);
 
     res.json({ success: true, data: { token, user: { id: user.id, name: user.name, username: user.username, avatar: user.avatar }, binding: bindingData }, message: '绑定成功' });
   } catch (error: any) {

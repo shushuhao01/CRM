@@ -177,7 +177,16 @@
         <el-table-column label="跟进人" width="120">
           <template #default="{ row }">
             <el-tooltip :content="getFollowUserTooltip(row)" placement="top" :show-after="300" raw-content>
-              <span style="cursor: default">{{ getFollowUserDisplay(row) }}</span>
+              <span style="cursor: default">
+                <WwOpenData
+                  v-if="isFollowUserNameMissing(row)"
+                  type="userName"
+                  :openid="row.followUserId"
+                  :corpid="currentCorpId"
+                  :fallback="getFollowUserDisplay(row)"
+                />
+                <template v-else>{{ getFollowUserDisplay(row) }}</template>
+              </span>
             </el-tooltip>
           </template>
         </el-table-column>
@@ -321,6 +330,7 @@ import { Filter } from '@element-plus/icons-vue'
 import CustomerDetailDrawer from './components/CustomerDetailDrawer.vue'
 import WecomHeader from './components/WecomHeader.vue'
 import WecomDemoBanner from './components/WecomDemoBanner.vue'
+import WwOpenData from './components/WwOpenData.vue'
 import { useWecomDemo, DEMO_CUSTOMERS, DEMO_CUSTOMER_STATS, DEMO_CUSTOMER_DETAIL, DEMO_CRM_CUSTOMER_OPTIONS, DEMO_CONFIGS } from './composables/useWecomDemo'
 import { getLastSelectedConfigId, saveSelectedConfigId } from './composables/useWecomConfig'
 import { getAutoMatchCount } from '@/api/wecomAddressBook'
@@ -352,6 +362,19 @@ const customerList = ref<any[]>([])
 const total = ref(0)
 const stats = ref({ todayAdd: 0, totalAdd: 0, deleted: 0, blocked: 0, active: 0 })
 const dateRange = ref<string[]>([])
+
+/** 当前企微配置的 corpId */
+const currentCorpId = computed(() => {
+  const cfg = configList.value.find(c => c.id === query.value.configId)
+  return cfg?.corpId || ''
+})
+
+/** 判断跟进人名称是否缺失（需要通过 ww-open-data 展示） */
+const isFollowUserNameMissing = (row: any) => {
+  if (!row.followUserId) return false
+  const display = getFollowUserDisplay(row)
+  return display === row.followUserId
+}
 
 /** 显示的配置选项 */
 const displayConfigs = computed(() => {

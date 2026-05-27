@@ -7,7 +7,16 @@
       </el-avatar>
       <div class="header-info">
         <div class="header-name">
-          <span class="name-text">{{ profile.wecomUserName || '-' }}</span>
+          <span class="name-text">
+            <WwOpenData
+              v-if="isNameMissing"
+              type="userName"
+              :openid="profile.wecomUserId || props.wecomUserId"
+              :corpid="corpId"
+              :fallback="profile.wecomUserName || '-'"
+            />
+            <template v-else>{{ profile.wecomUserName || '-' }}</template>
+          </span>
           <el-tag :type="profile.isEnabled ? 'success' : 'danger'" size="small">
             {{ profile.isEnabled ? '在职' : '离职' }}
           </el-tag>
@@ -171,10 +180,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Link, CircleCheckFilled, WarningFilled, DataAnalysis, ChatDotRound, Money } from '@element-plus/icons-vue'
 import { getWecomMemberProfile, bindMemberCrm } from '@/api/wecomAddressBook'
+import WwOpenData from './WwOpenData.vue'
 import request from '@/utils/request'
 
 const props = defineProps<{
@@ -186,6 +196,14 @@ const emit = defineEmits(['refresh'])
 
 const loading = ref(false)
 const profile = ref<any>({})
+const corpId = ref('')
+
+const isNameMissing = computed(() => {
+  const name = profile.value.wecomUserName
+  if (!name) return true
+  if (name === profile.value.wecomUserId || name === props.wecomUserId) return true
+  return false
+})
 
 const showBindDialog = ref(false)
 const bindForm = ref({ crmUserId: '', crmUserName: '' })
@@ -198,9 +216,18 @@ const formatAmount = (cents: number | undefined) => {
   return (cents / 100).toFixed(2)
 }
 
+const fetchCorpId = async () => {
+  if (corpId.value || !props.configId) return
+  try {
+    const cfg: any = await request.get(`/wecom/configs/${props.configId}`)
+    corpId.value = cfg?.corpId || ''
+  } catch { /* ignore */ }
+}
+
 const fetchProfile = async () => {
   if (!props.wecomUserId || !props.configId) return
   loading.value = true
+  fetchCorpId()
   try {
     const res: any = await getWecomMemberProfile(props.wecomUserId, props.configId)
     profile.value = res || {}

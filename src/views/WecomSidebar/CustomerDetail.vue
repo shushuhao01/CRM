@@ -657,6 +657,38 @@ async function initWithNewSdk(retryCount = 0) {
     return
   }
 
+  // ★ 获取当前企微成员的 userid（用于绑定CRM账户）
+  try {
+    console.log('[Sidebar] 调用 ww.getContext() 获取当前成员userid...')
+    const ctxRes: any = await ww.getContext()
+    console.log('[Sidebar] getContext 响应:', JSON.stringify(ctxRes))
+    const uid = ctxRes?.userId || ctxRes?.result?.userId || ctxRes?.entry?.userId
+    if (uid) {
+      wecomUserId.value = uid
+      console.log('[Sidebar] ✅ 获取当前成员userid:', uid)
+    }
+  } catch (e: any) {
+    console.warn('[Sidebar] getContext 失败（可能不在企微环境）:', e?.message || e)
+    // 尝试通过 WeixinJSBridge 获取
+    try {
+      const w = window as any
+      if (w.WeixinJSBridge) {
+        const bridgeCtx = await new Promise<any>((resolve, reject) => {
+          w.WeixinJSBridge.invoke('getContext', {}, (res: any) => {
+            if (res.err_msg?.includes(':ok')) resolve(res)
+            else reject(new Error(res.err_msg || 'bridge getContext failed'))
+          })
+        })
+        if (bridgeCtx?.userId) {
+          wecomUserId.value = bridgeCtx.userId
+          console.log('[Sidebar] ✅ Bridge getContext 获取成员userid:', bridgeCtx.userId)
+        }
+      }
+    } catch (bridgeErr: any) {
+      console.warn('[Sidebar] Bridge getContext也失败:', bridgeErr?.message)
+    }
+  }
+
   // ★ 直接调用 getCurExternalContact（SDK会惰性触发agentConfig）
   let contactSuccess = false
   try {
@@ -835,7 +867,19 @@ async function initWithLegacySdk() {
         success: () => {
           console.log('[Sidebar] ✅ agentConfig success')
           sessionStorage.removeItem('sidebar_92002_retried')
-          getCurExternalContact(wx)
+          // 获取当前成员 userid
+          try {
+            wx.invoke('getContext', {}, (ctxRes: any) => {
+              console.log('[Sidebar] legacy getContext:', JSON.stringify(ctxRes))
+              if (ctxRes.err_msg?.includes(':ok') && ctxRes.userId) {
+                wecomUserId.value = ctxRes.userId
+                console.log('[Sidebar] ✅ legacy getContext 获取成员userid:', ctxRes.userId)
+              }
+              getCurExternalContact(wx)
+            })
+          } catch {
+            getCurExternalContact(wx)
+          }
         },
         fail: async (err: any) => {
           console.error('[Sidebar] ❌ agentConfig fail:', JSON.stringify(err))

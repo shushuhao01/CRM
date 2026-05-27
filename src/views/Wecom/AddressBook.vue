@@ -41,7 +41,16 @@
                   <span class="mixed-tree-node" :class="{ 'is-member': data.nodeType === 'member' }">
                     <template v-if="data.nodeType === 'dept'">
                       <el-icon style="color: #F59E0B; margin-right: 4px"><FolderOpened /></el-icon>
-                      <span class="node-label">{{ formatDeptLabel(data) }}</span>
+                      <span class="node-label">
+                        <WwOpenData
+                          v-if="isDeptNameMissing(data)"
+                          type="departmentName"
+                          :openid="String(data.wecomDeptId)"
+                          :corpid="currentCorpId"
+                          :fallback="formatDeptLabel(data)"
+                        />
+                        <template v-else>{{ formatDeptLabel(data) }}</template>
+                      </span>
                       <span class="node-count">({{ data.memberCount || 0 }}人)</span>
                       <el-tag v-if="data.crmDeptName" type="success" size="small" style="margin-left: 4px">已映射</el-tag>
                     </template>
@@ -49,7 +58,16 @@
                       <el-avatar :size="22" :src="data.wecomAvatar" style="margin-right: 6px; flex-shrink: 0">
                         {{ getMemberInitial(data) }}
                       </el-avatar>
-                      <span class="node-label">{{ formatMemberLabel(data) }}</span>
+                      <span class="node-label">
+                        <WwOpenData
+                          v-if="isMemberNameMissing(data)"
+                          type="userName"
+                          :openid="data.wecomUserId"
+                          :corpid="currentCorpId"
+                          :fallback="formatMemberLabel(data)"
+                        />
+                        <template v-else>{{ formatMemberLabel(data) }}</template>
+                      </span>
                       <span class="node-account" v-if="data.wecomUserId && data.label !== data.wecomUserId">({{ shortenUserId(data.wecomUserId) }})</span>
                       <el-tag v-if="data.crmUserName" type="success" size="small" style="margin-left: 4px">{{ data.crmUserName }}</el-tag>
                       <el-tag v-else type="info" size="small" style="margin-left: 4px">未绑定</el-tag>
@@ -103,8 +121,8 @@
                 <div class="member-info">
                   <el-avatar :size="28" :src="row.wecomAvatar">{{ (row.wecomUserName || '?')[0] }}</el-avatar>
                   <div style="display: flex; flex-direction: column; line-height: 1.4">
-                    <span style="font-weight: 500">{{ row.wecomUserName || row.wecomUserId }}</span>
-                    <span v-if="row.wecomUserName" class="monospace-text" style="font-size: 11px">{{ row.wecomUserId }}</span>
+                    <span style="font-weight: 500">{{ row.wecomUserName || (row.wecomUserId?.startsWith('sidebar_') ? row.crmUserName || '侧边栏用户' : row.wecomUserId) }}</span>
+                    <span v-if="row.wecomUserId && !row.wecomUserId.startsWith('sidebar_')" class="monospace-text" style="font-size: 11px">{{ row.wecomUserId }}</span>
                   </div>
                 </div>
               </template>
@@ -118,6 +136,15 @@
             <el-table-column label="部门" min-width="120">
               <template #default="{ row }">
                 <span>{{ resolveDeptNames(row.wecomDepartmentIds) }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="绑定来源" width="100">
+              <template #default="{ row }">
+                <el-tag
+                  :type="row.bindOperator === 'sidebar' ? 'success' : row.bindOperator === 'sync' ? 'info' : 'warning'"
+                  size="small"
+                  effect="plain"
+                >{{ formatBindOperator(row.bindOperator) }}</el-tag>
               </template>
             </el-table-column>
             <el-table-column label="绑定时间" min-width="150">
@@ -374,7 +401,9 @@ import WecomHeader from './components/WecomHeader.vue'
 import WecomDemoBanner from './components/WecomDemoBanner.vue'
 import MemberProfile from './components/MemberProfile.vue'
 import DeptSummary from './components/DeptSummary.vue'
+import WwOpenData from './components/WwOpenData.vue'
 import { useWecomDemo } from './composables/useWecomDemo'
+import { useWecomOpenData } from './composables/useWecomOpenData'
 import { getLastSelectedConfigId, saveSelectedConfigId } from './composables/useWecomConfig'
 import { getWecomConfigs, createWecomBinding, batchCreateWecomBindings } from '@/api/wecom'
 import {
@@ -399,6 +428,29 @@ const isAdminRole = computed(() => ['super_admin', 'admin'].includes(userStore.c
 const selectedConfigId = ref<number>()
 const configs = ref<any[]>([])
 const activeTab = ref('organization')
+
+// 当前企微配置的 corpId，用于 ww-open-data 组件
+const currentCorpId = computed(() => {
+  const cfg = configs.value.find(c => c.id === selectedConfigId.value)
+  return cfg?.corpId || ''
+})
+
+/** 判断部门名称是否缺失（需要通过 ww-open-data 展示） */
+const isDeptNameMissing = (data: any) => {
+  const name = data.label || data.wecomDeptName
+  if (!name) return true
+  if (String(name).trim() === String(data.wecomDeptId)) return true
+  if (/^部门\s*\d+$/.test(String(name).trim())) return true
+  return false
+}
+
+/** 判断成员名称是否缺失 */
+const isMemberNameMissing = (data: any) => {
+  const name = data.wecomUserName || data.label
+  if (!name) return true
+  if (name === data.wecomUserId) return true
+  return false
+}
 
 
 // ==================== Tab1: 组织架构（混合树） ====================
@@ -757,6 +809,11 @@ const crmDepts = ref<any[]>([])
 // ==================== 方法实现 ====================
 const formatDate = (date: string) => date ? formatDateTime(date) : '-'
 
+const formatBindOperator = (op: string) => {
+  const map: Record<string, string> = { sidebar: '侧边栏', sync: '通讯录同步', h5_app: 'H5应用', admin: '管理员' }
+  return map[op] || op || '手动'
+}
+
 const maskPhone = (phone: string) => {
   if (!phone || phone.length < 7) return phone || '-'
   return phone.slice(0, 3) + '****' + phone.slice(-4)
@@ -793,6 +850,7 @@ const handleConfigChange = async (id: number) => {
   reloadMixedTree()
   fetchBindings()
   fetchAutoMatchCount()
+  tryInitWecomSdk()
 }
 
 const handleDeptSearch = () => {
@@ -1149,6 +1207,16 @@ watch(activeTab, (tab) => {
   if (tab === 'sync-settings') { fetchSyncSettings(); loadDeptNameList() }
   if (tab === 'sync-logs') fetchSyncLogs()
 })
+
+const { initFromConfig: initWecomOpenDataSdk } = useWecomOpenData()
+
+const tryInitWecomSdk = async () => {
+  try {
+    await initWecomOpenDataSdk(selectedConfigId.value || null)
+  } catch {
+    console.log('[AddressBook] 企微SDK初始化失败（非企微环境），通讯录组件将使用降级显示')
+  }
+}
 
 onMounted(() => {
   fetchConfigs()

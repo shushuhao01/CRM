@@ -619,32 +619,57 @@ const pagedAuditMembers = computed(() => {
 const loadCrmDeptAndUsers = async () => {
   auditUsersLoading.value = true
   try {
-    // 分页加载所有用户（后端limit最大100）
     let allUsers: any[] = []
     let page = 1
     const limit = 100
     while (true) {
       const res: any = await request.get('/users', { params: { page, limit } })
-      const items = res?.data?.items || res?.data?.users || res?.data || []
+      const items = res?.items || res?.users || res?.data?.items || res?.data?.users || res?.data || []
       const list = Array.isArray(items) ? items : []
       allUsers = allUsers.concat(list)
-      const total = res?.data?.total || 0
+      const total = res?.total || res?.data?.total || 0
       if (allUsers.length >= total || list.length < limit) break
       page++
     }
     crmUsers.value = allUsers
 
-    // 按 departmentName 分组构建部门树
+    // 从后端获取 CRM 部门列表
+    let crmDepts: any[] = []
+    try {
+      const deptRes: any = await request.get('/system/departments')
+      const deptData = deptRes?.departments || deptRes?.items || deptRes?.data || deptRes
+      crmDepts = Array.isArray(deptData) ? deptData : []
+    } catch { /* ignore */ }
+
+    // 构建部门ID→名称映射
+    const deptNameById = new Map<string, string>()
+    for (const d of crmDepts) {
+      if (d.id && d.name) deptNameById.set(String(d.id), d.name)
+    }
+
+    // 按 departmentId 分组构建部门树
     const deptMap = new Map<string, any>()
     for (const u of crmUsers.value) {
-      const deptName = u.departmentName || '未分配部门'
       const deptId = u.departmentId || '__unassigned__'
+      const deptName = deptNameById.get(String(deptId)) || u.departmentName || '未分配部门'
       if (!deptMap.has(String(deptId))) {
         deptMap.set(String(deptId), { id: deptId, name: deptName, _expanded: false, _users: [] })
       }
       deptMap.get(String(deptId))._users.push(u)
     }
-    auditDeptTree.value = Array.from(deptMap.values()).filter(d => d._users.length > 0)
+
+    // 添加没有成员的部门（空部门也需要展示）
+    for (const d of crmDepts) {
+      if (!deptMap.has(String(d.id))) {
+        deptMap.set(String(d.id), { id: d.id, name: d.name, _expanded: false, _users: [] })
+      }
+    }
+
+    auditDeptTree.value = Array.from(deptMap.values()).sort((a, b) => {
+      if (a.id === '__unassigned__') return 1
+      if (b.id === '__unassigned__') return -1
+      return (a.name || '').localeCompare(b.name || '')
+    })
   } catch (e) {
     console.error('[ArchiveSettings] loadCrmDeptAndUsers error:', e)
     crmUsers.value = []
@@ -938,23 +963,24 @@ const formatDate = (d: string | null | undefined) => {
   try { return new Date(d).toLocaleDateString('zh-CN') } catch { return String(d) }
 }
 
-watch(() => props.configId, (val) => {
+watch(() => props.configId, async (val) => {
   if (val) {
-    fetchSettings()
-    loadMembers()
+    await fetchSettings()
+    await loadMembers()
   }
 })
 
 onMounted(async () => {
   if (props.configId) {
     await fetchSettings()
-    loadMembers()
+    await loadMembers()
     // SaaS 模式下自动自检授权状态
     if (isSaas.value && settings.status !== 'active') {
       handleRefreshAuthStatus()
     }
   }
   fetchRsaPublicKey()
+  loadCrmDeptAndUsers()
 })
 
 defineExpose({ fetchSettings })
