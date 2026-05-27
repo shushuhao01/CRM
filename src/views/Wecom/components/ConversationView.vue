@@ -548,7 +548,10 @@ const handleRefreshConversations = async () => {
 
 const getConvKey = (conv: Conversation) => `${conv.fromUserId}-${conv.roomId || getFirstToUser(conv.toUserIds)}`
 
-const getConvDisplayName = (conv: Conversation) => (conv as any).customerName || conv.fromUserName || conv.fromUserId || '未知'
+const getConvDisplayName = (conv: Conversation) => {
+  if (conv.roomId) return (conv as any).roomName || conv.roomId || '群聊'
+  return (conv as any).customerName || conv.fromUserName || conv.fromUserId || '未知'
+}
 
 const getConvAvatarLetter = (conv: Conversation) => getConvDisplayName(conv).charAt(0).toUpperCase()
 

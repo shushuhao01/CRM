@@ -229,49 +229,53 @@ export function useWecomOpenData() {
       const instance = openDataFactory.createOpenDataFrame({
         el,
         template: `
-          <view wx:for="{{data.msgList}}" wx:key="msgid" class="msg-item {{item.isSelf ? 'self' : 'other'}}" data-index="{{index}}">
-            <view class="avatar-col">
+          <view wx:for="{{data.msgList}}" wx:key="msgid" class="msg {{item.isSelf ? 'R' : 'L'}}" data-index="{{index}}">
+            <view class="av">
               <image wx:if="{{item.avatar}}" src="{{item.avatar}}" class="av-img" mode="aspectFill" />
-              <view wx:else class="av-letter">
-                <text class="av-txt">{{item.avatarLetter || '?'}}</text>
-              </view>
+              <text wx:else class="av-fb">{{item.avatarLetter || '?'}}</text>
             </view>
-            <view class="body-col">
-              <view class="info-row">
-                <text class="nick">{{item.fromUserName || ''}}</text>
-                <text class="time">{{item.timeStr || ''}}</text>
+            <view class="bd">
+              <view class="hd">
+                <text class="hd-name">{{item.fromUserName || ''}}</text>
+                <text class="hd-time">{{item.timeStr || ''}}</text>
               </view>
               <view wx:if="{{item.msgType === 'text'}}" class="bbl {{item.isSelf ? 'bbl-r' : 'bbl-l'}}">
                 <ww-open-message message-id="{{item.msgid}}" secret-key="{{item.secretKey}}" open-type="viewMessage" binderror="onMsgError" />
               </view>
-              <view wx:else class="media-wrap">
+              <view wx:else class="media">
                 <ww-open-message message-id="{{item.msgid}}" secret-key="{{item.secretKey}}" open-type="viewMessage" binderror="onMsgError" />
               </view>
             </view>
           </view>
-          <view wx:if="{{data.msgList.length === 0}}" class="empty-tip">暂无消息</view>
+          <view wx:if="{{data.msgList.length === 0}}" class="empty">暂无消息</view>
         `,
         style: `
-          .msg-item{display:flex;margin:0 16px 16px;gap:8px;align-items:flex-start}
-          .msg-item.self{flex-direction:row-reverse}
-          .avatar-col{flex-shrink:0;width:36px;height:36px;margin-top:2px}
-          .av-img{width:36px;height:36px;border-radius:4px;display:block}
-          .av-letter{width:36px;height:36px;border-radius:4px;display:flex;align-items:center;justify-content:center;background:#c8c9cc}
-          .av-txt{font-size:15px;color:#fff;font-weight:600}
-          .body-col{max-width:70%;display:flex;flex-direction:column}
-          .self .body-col{align-items:flex-end}
-          .other .body-col{align-items:flex-start}
-          .info-row{display:flex;align-items:center;gap:6px;margin-bottom:2px}
-          .self .info-row{flex-direction:row-reverse}
-          .nick{font-size:12px;color:#888}
-          .time{font-size:11px;color:#bbb}
-          .bbl{position:relative;padding:9px 12px;line-height:1.5;font-size:14px;word-break:break-all}
-          .bbl-l{background:#f4f4f4;border-radius:0 6px 6px 6px;margin-left:8px}
-          .bbl-l::before{content:'';position:absolute;top:10px;left:-6px;border-top:5px solid transparent;border-bottom:5px solid transparent;border-right:6px solid #f4f4f4}
-          .bbl-r{background:#95ec69;border-radius:6px 0 6px 6px;margin-right:8px}
-          .bbl-r::after{content:'';position:absolute;top:10px;right:-6px;border-top:5px solid transparent;border-bottom:5px solid transparent;border-left:6px solid #95ec69}
-          .media-wrap{max-width:100%;border-radius:4px;overflow:hidden}
-          .empty-tip{text-align:center;color:#909399;padding:60px 0;font-size:14px}
+          .msg{overflow:hidden;margin:0 12px 14px;padding:0}
+          .L .av{float:left;margin-right:8px}
+          .R .av{float:right;margin-left:8px}
+          .av{width:36px;height:36px}
+          .av-img{width:36px;height:36px;border-radius:4px}
+          .av-fb{display:block;width:36px;height:36px;line-height:36px;text-align:center;border-radius:4px;background:#c8c9cc;color:#fff;font-size:15px;font-weight:bold}
+          .bd{overflow:hidden}
+          .L .bd{margin-right:50px}
+          .R .bd{margin-left:50px}
+          .hd{margin-bottom:3px;line-height:16px;overflow:hidden}
+          .L .hd{text-align:left}
+          .R .hd{text-align:right}
+          .hd-name{font-size:12px;color:#666}
+          .hd-time{font-size:11px;color:#999;margin-left:6px}
+          .R .hd-time{margin-left:0;margin-right:6px}
+          .bbl{position:relative;display:inline-block;padding:9px 12px;line-height:1.5;font-size:14px;word-break:break-all;max-width:100%;box-sizing:border-box}
+          .bbl-l{background:#f4f4f4;border-radius:0 6px 6px 6px;text-align:left}
+          .bbl-l:before{content:'';position:absolute;top:10px;left:-6px;border-top:5px solid transparent;border-bottom:5px solid transparent;border-right:6px solid #f4f4f4}
+          .bbl-r{background:#95ec69;border-radius:6px 0 6px 6px;text-align:left}
+          .bbl-r:after{content:'';position:absolute;top:10px;right:-6px;border-top:5px solid transparent;border-bottom:5px solid transparent;border-left:6px solid #95ec69}
+          .L .bbl{float:left}
+          .R .bbl{float:right}
+          .media{overflow:hidden;border-radius:4px;max-width:100%}
+          .L .media{float:left}
+          .R .media{float:right}
+          .empty{text-align:center;color:#999;padding:60px 0;font-size:14px}
         `,
         data: { msgList },
         methods: {
