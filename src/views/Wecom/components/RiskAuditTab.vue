@@ -58,14 +58,19 @@
           <span class="msg-preview">{{ row.msgContent || '[非文本消息]' }}</span>
         </template>
       </el-table-column>
-      <el-table-column label="发送者" width="100">
-        <template #default="{ row }">{{ row.fromUserId }}</template>
+      <el-table-column label="发送者" width="120">
+        <template #default="{ row }">
+          <el-tooltip v-if="row.fromUserName" :content="row.fromUserId" placement="top" :show-after="300">
+            <span>{{ row.fromUserName }}</span>
+          </el-tooltip>
+          <span v-else class="sender-id">{{ row.fromUserId || '-' }}</span>
+        </template>
       </el-table-column>
       <el-table-column label="审计备注" min-width="160" show-overflow-tooltip>
         <template #default="{ row }">{{ row.remark || '-' }}</template>
       </el-table-column>
       <el-table-column label="标记人" width="100">
-        <template #default="{ row }">{{ row.operatorName }}</template>
+        <template #default="{ row }">{{ row.operatorName || '-' }}</template>
       </el-table-column>
       <el-table-column label="标记时间" width="160">
         <template #default="{ row }">{{ formatDate(row.createdAt) }}</template>
@@ -235,6 +240,7 @@ onMounted(() => { fetchList(); fetchStats() })
 .audit-filter-bar { display: flex; gap: 8px; margin-bottom: 16px; align-items: center; flex-wrap: wrap; }
 .count-label { font-size: 13px; color: #9CA3AF; }
 .msg-preview { font-size: 13px; color: #4B5563; }
+.sender-id { font-size: 12px; color: #9CA3AF; font-family: monospace; word-break: break-all; }
 .pagination-bar { display: flex; justify-content: space-between; align-items: center; margin-top: 16px; padding: 8px 0; }
 .page-total { font-size: 13px; color: #9CA3AF; }
 </style>

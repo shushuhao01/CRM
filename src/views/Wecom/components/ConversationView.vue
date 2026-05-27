@@ -148,6 +148,12 @@
                 <el-tag v-if="(selectedConv as any).agreed === true" type="success" size="small">已同意存档</el-tag>
                 <el-tag v-else-if="(selectedConv as any).agreed === false" type="warning" size="small">客户未同意（仅员工消息）</el-tag>
                 <el-tag v-else type="info" size="small">存档状态未知</el-tag>
+                <el-tooltip v-if="convHasRisk" :content="`该会话已被标记 ${convRiskCount} 条风险记录`" placement="top">
+                  <span class="conv-risk-badge">
+                    <el-icon :size="14" color="#F56C6C"><WarningFilled /></el-icon>
+                    <span>风险{{ convRiskCount > 1 ? `(${convRiskCount})` : '' }}</span>
+                  </span>
+                </el-tooltip>
               </div>
             </div>
             <div class="msg-header-right">
@@ -282,7 +288,7 @@
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { Search, Refresh, InfoFilled, WarningFilled, Microphone, VideoCamera, Document, Link, Grid, Location, User, Connection, Loading } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
-import { createAuditMark, getSensitiveWords } from '@/api/wecom'
+import { createAuditMark, getAuditMarks, getSensitiveWords } from '@/api/wecom'
 import { getConversationList, getConversationMessages, getArchiveSeats, getMessageKeys, syncChatRecords } from '@/api/wecom'
 import { formatConvTime, formatMsgTimeShort, getMsgTypeText, getTextContent, getFirstToUser, getDateDividerText } from '../utils'
 import type { Conversation, ConvMessage } from '../types'
@@ -419,6 +425,27 @@ const highlightSensitiveWords = (text: string): string => {
   return result
 }
 
+// ==================== 会话风险状态 ====================
+const convHasRisk = ref(false)
+const convRiskCount = ref(0)
+
+const checkConvRiskStatus = async () => {
+  convHasRisk.value = false
+  convRiskCount.value = 0
+  if (!props.configId || !selectedConv.value) return
+  try {
+    const fromId = selectedConv.value.fromUserId || ''
+    const toId = getFirstToUser(selectedConv.value.toUserIds) || ''
+    if (!fromId) return
+    const res: any = await api.get('/wecom/chat-archive/audit-marks/check', {
+      params: { configId: props.configId, fromUserId: fromId, toUserId: toId }
+    })
+    const data = res?.data || res
+    convHasRisk.value = !!(data?.hasRisk)
+    convRiskCount.value = data?.count || 0
+  } catch { /* ignore */ }
+}
+
 // ==================== 标记风险 ====================
 const markRiskVisible = ref(false)
 const markRiskMsg = ref<any>(null)
@@ -474,6 +501,7 @@ const submitMarkRisk = async () => {
     })
     ElMessage.success('风险标记已提交')
     markRiskVisible.value = false
+    checkConvRiskStatus()
   } catch (e: any) {
     ElMessage.error(e?.response?.data?.message || '标记失败')
   } finally {
@@ -723,8 +751,8 @@ const selectConversation = async (conv: Conversation) => {
   messages.value = []
   messageKeys.value = []
   await fetchMessages()
-  // 始终预取消息密钥（SDK就绪时渲染原生会话展示组件）
   await fetchMessageKeys()
+  checkConvRiskStatus()
 }
 
 // ==================== 消息 ====================
@@ -929,6 +957,12 @@ defineExpose({ fetchConversations, fetchArchiveMembers, selectMemberById, jumpTo
 .msg-header-tag.tag-wechat { color: #07c160; }
 .msg-header-tag.tag-corp { color: #e6a23c; }
 .msg-header-right { display: flex; align-items: center; gap: 8px; }
+.conv-risk-badge {
+  display: inline-flex; align-items: center; gap: 2px;
+  font-size: 12px; color: #F56C6C; font-weight: 500;
+  background: #FEF0F0; border: 1px solid #FDE2E2; border-radius: 4px;
+  padding: 1px 6px; cursor: default;
+}
 .msg-header-count { font-size: 12px; color: #9ca3af; }
 
 .msg-panel-body { flex: 1; overflow: hidden; padding: 0; display: flex; flex-direction: column; }

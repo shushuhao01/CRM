@@ -959,7 +959,46 @@ router.get('/chat-archive/audit-marks', authenticateToken, async (req: Request, 
     const ps = parseInt(pageSize as string) || 20;
     const list = await qb.orderBy('m.created_at', 'DESC').skip((p - 1) * ps).take(ps).getMany();
 
-    res.json({ success: true, data: { list, total, page: p, pageSize: ps } });
+    // 丰富发送者姓名：从 wecom_user_bindings 查找企微成员名称
+    const senderIds = [...new Set(list.map(m => m.fromUserId).filter(Boolean))];
+    const senderNameMap = new Map<string, string>();
+    if (senderIds.length > 0) {
+      const { WecomUserBinding } = await import('../../entities/WecomUserBinding');
+      const bindingRepo = AppDataSource.getRepository(WecomUserBinding);
+      const cfgId = configId ? parseInt(configId as string) : null;
+      const bindingQb = bindingRepo.createQueryBuilder('b')
+        .where('b.wecom_user_id IN (:...ids)', { ids: senderIds });
+      if (cfgId) bindingQb.andWhere('b.wecom_config_id = :cfgId', { cfgId });
+      if (tenantId) bindingQb.andWhere('b.tenant_id = :tenantId', { tenantId });
+      const bindings = await bindingQb.getMany();
+      for (const b of bindings) {
+        if (b.wecomUserName && b.wecomUserName.trim()) {
+          senderNameMap.set(b.wecomUserId, b.wecomUserName.trim());
+        }
+      }
+    }
+
+    // 丰富标记人姓名：确保使用 CRM 用户真实姓名
+    const operatorIds = [...new Set(list.map(m => m.operatorId).filter(Boolean))];
+    const operatorNameMap = new Map<string, string>();
+    if (operatorIds.length > 0) {
+      const { User } = await import('../../entities/User');
+      const userRepo = AppDataSource.getRepository(User);
+      for (const opId of operatorIds) {
+        try {
+          const u = await userRepo.findOne({ where: { id: opId } });
+          if (u?.name) operatorNameMap.set(opId, u.name);
+        } catch { /* skip */ }
+      }
+    }
+
+    const enrichedList = list.map(m => ({
+      ...m,
+      fromUserName: senderNameMap.get(m.fromUserId) || '',
+      operatorName: operatorNameMap.get(m.operatorId) || m.operatorName || '',
+    }));
+
+    res.json({ success: true, data: { list: enrichedList, total, page: p, pageSize: ps } });
   } catch (error: any) {
     log.error('[Wecom] Get audit marks error:', error.message);
     res.status(500).json({ success: false, message: '获取审计记录失败' });
@@ -970,7 +1009,8 @@ router.post('/chat-archive/audit-marks', authenticateToken, async (req: Request,
   try {
     const { getCurrentTenantId } = await import('../../utils/tenantContext');
     const tenantId = getCurrentTenantId();
-    const user = (req as any).user || (req as any).currentUser;
+    const crmUser = (req as any).currentUser;
+    const jwtUser = (req as any).user;
     const { wecomConfigId, chatRecordId, fromUserId, toUserId, msgContent, msgType, msgTime, riskType, riskLevel, remark } = req.body;
 
     if (!wecomConfigId || !riskType) {
@@ -983,8 +1023,8 @@ router.post('/chat-archive/audit-marks', authenticateToken, async (req: Request,
       msgContent, msgType, msgTime,
       riskType, riskLevel: riskLevel || 'medium', remark: remark || '',
       status: 'pending',
-      operatorId: user?.userId || String(user?.id || ''),
-      operatorName: user?.name || user?.username || '审计员',
+      operatorId: crmUser?.id || jwtUser?.userId || String(jwtUser?.id || ''),
+      operatorName: crmUser?.name || jwtUser?.name || jwtUser?.username || '审计员',
     });
     await repo.save(mark);
     res.json({ success: true, data: mark, message: '风险标记已创建' });
@@ -1001,14 +1041,15 @@ router.put('/chat-archive/audit-marks/:id', authenticateToken, async (req: Reque
     const mark = await repo.findOne({ where: { id: parseInt(req.params.id) } });
     if (!mark) return res.status(404).json({ success: false, message: '审计记录不存在' });
 
-    const user = (req as any).user || (req as any).currentUser;
+    const crmUser = (req as any).currentUser;
+    const jwtUser = (req as any).user;
     const { status, resolveRemark } = req.body;
 
     if (status) {
       mark.status = status;
       if (status === 'resolved' || status === 'dismissed') {
-        mark.resolverId = user?.userId || String(user?.id || '');
-        mark.resolverName = user?.name || user?.username || '';
+        mark.resolverId = crmUser?.id || jwtUser?.userId || String(jwtUser?.id || '');
+        mark.resolverName = crmUser?.name || jwtUser?.name || jwtUser?.username || '';
         mark.resolveRemark = resolveRemark || '';
         mark.resolvedAt = new Date();
       }
@@ -1021,6 +1062,61 @@ router.put('/chat-archive/audit-marks/:id', authenticateToken, async (req: Reque
   } catch (error: any) {
     log.error('[Wecom] Update audit mark error:', error.message);
     res.status(500).json({ success: false, message: '更新审计记录失败' });
+  }
+});
+
+router.get('/chat-archive/audit-marks/check', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const { configId, fromUserId, toUserId } = req.query;
+    const { getCurrentTenantId } = await import('../../utils/tenantContext');
+    const tenantId = getCurrentTenantId();
+    const repo = AppDataSource.getRepository(WecomChatAuditMark);
+    const qb = repo.createQueryBuilder('m');
+    if (tenantId) qb.andWhere('m.tenant_id = :tenantId', { tenantId });
+    if (configId) qb.andWhere('m.wecom_config_id = :configId', { configId: parseInt(configId as string) });
+    if (fromUserId) qb.andWhere('(m.from_user_id = :fid OR m.to_user_id = :fid)', { fid: String(fromUserId) });
+    if (toUserId) qb.andWhere('(m.from_user_id = :tid OR m.to_user_id = :tid)', { tid: String(toUserId) });
+    qb.andWhere('m.status != :dismissed', { dismissed: 'dismissed' });
+
+    const count = await qb.getCount();
+    res.json({ success: true, data: { hasRisk: count > 0, count } });
+  } catch (error: any) {
+    res.json({ success: true, data: { hasRisk: false, count: 0 } });
+  }
+});
+
+router.get('/chat-archive/audit-marks/risk-users', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const { configId } = req.query;
+    const { getCurrentTenantId } = await import('../../utils/tenantContext');
+    const tenantId = getCurrentTenantId();
+    const repo = AppDataSource.getRepository(WecomChatAuditMark);
+    const qb = repo.createQueryBuilder('m')
+      .select('m.from_user_id', 'userId')
+      .addSelect('COUNT(*)', 'count');
+    if (tenantId) qb.andWhere('m.tenant_id = :tenantId', { tenantId });
+    if (configId) qb.andWhere('m.wecom_config_id = :configId', { configId: parseInt(configId as string) });
+    qb.andWhere('m.status != :dismissed', { dismissed: 'dismissed' });
+    qb.groupBy('m.from_user_id');
+    const results = await qb.getRawMany();
+
+    const toQb = repo.createQueryBuilder('m')
+      .select('m.to_user_id', 'userId')
+      .addSelect('COUNT(*)', 'count');
+    if (tenantId) toQb.andWhere('m.tenant_id = :tenantId', { tenantId });
+    if (configId) toQb.andWhere('m.wecom_config_id = :configId', { configId: parseInt(configId as string) });
+    toQb.andWhere('m.status != :dismissed', { dismissed: 'dismissed' });
+    toQb.andWhere('m.to_user_id IS NOT NULL').andWhere("m.to_user_id != ''");
+    toQb.groupBy('m.to_user_id');
+    const toResults = await toQb.getRawMany();
+
+    const riskMap: Record<string, number> = {};
+    for (const r of [...results, ...toResults]) {
+      if (r.userId) riskMap[r.userId] = (riskMap[r.userId] || 0) + parseInt(r.count);
+    }
+    res.json({ success: true, data: riskMap });
+  } catch (error: any) {
+    res.json({ success: true, data: {} });
   }
 });
 

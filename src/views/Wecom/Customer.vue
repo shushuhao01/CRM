@@ -154,7 +154,14 @@
         <el-table-column label="客户信息" min-width="200">
           <template #default="{ row }">
             <div class="customer-info">
-              <el-avatar :src="row.avatar" :size="40">{{ (row.remark || row.name)?.charAt(0) }}</el-avatar>
+              <div style="position: relative">
+                <el-avatar :src="row.avatar" :size="40">{{ (row.remark || row.name)?.charAt(0) }}</el-avatar>
+                <el-tooltip v-if="customerRiskMap[row.externalUserId]" :content="`该客户有 ${customerRiskMap[row.externalUserId]} 条风险标记`" placement="top">
+                  <span class="customer-risk-icon">
+                    <svg viewBox="0 0 16 16" width="14" height="14"><path d="M8 1.5L1 14h14L8 1.5z" fill="#FEE2E2" stroke="#F87171" stroke-width="1"/><text x="8" y="12" text-anchor="middle" font-size="9" font-weight="bold" fill="#EF4444">!</text></svg>
+                  </span>
+                </el-tooltip>
+              </div>
               <div class="info-text">
                 <el-tooltip :content="row.remark || row.name || '-'" placement="top" :show-after="500" :disabled="!row.remark && !row.name">
                   <div class="remark-name">{{ row.remark || row.name || '-' }}</div>
@@ -335,6 +342,7 @@ import { useWecomDemo, DEMO_CUSTOMERS, DEMO_CUSTOMER_STATS, DEMO_CUSTOMER_DETAIL
 import { getLastSelectedConfigId, saveSelectedConfigId } from './composables/useWecomConfig'
 import { getAutoMatchCount } from '@/api/wecomAddressBook'
 import { getWecomBindings } from '@/api/wecom'
+import request from '@/utils/request'
 import { useUserStore } from '@/stores/user'
 
 const { isDemoMode } = useWecomDemo()
@@ -543,6 +551,7 @@ const fetchConfigs = async () => {
       fetchDepartmentsAndMembers()
       fetchList()
       fetchStats()
+      fetchCustomerRiskMap()
     }
   } catch (e) {
     console.error('[WecomCustomer] Fetch configs error:', e)
@@ -602,6 +611,17 @@ const filteredMembers = computed(() => {
   })
 })
 
+// 客户风险标记映射 { externalUserId: riskCount }
+const customerRiskMap = ref<Record<string, number>>({})
+
+const fetchCustomerRiskMap = async () => {
+  if (isDemoMode.value || !query.value.configId) return
+  try {
+    const res: any = await request.get('/wecom/chat-archive/audit-marks/risk-users', { params: { configId: query.value.configId } })
+    customerRiskMap.value = res?.data || res || {}
+  } catch { customerRiskMap.value = {} }
+}
+
 const fetchList = async () => {
   if (isDemoMode.value) return
   loading.value = true
@@ -650,6 +670,7 @@ const handleSearch = () => {
   query.value.page = 1
   fetchList()
   fetchStats()
+  fetchCustomerRiskMap()
 }
 
 /** 是否有活跃的筛选条件 */
@@ -913,6 +934,11 @@ onUnmounted(() => {
 .v4-stat-card .stat-trend.down { color: #EF4444; }
 
 .customer-info { display: flex; align-items: center; gap: 10px; }
+.customer-risk-icon {
+  position: absolute; top: -3px; right: -3px;
+  display: flex; cursor: default;
+  filter: drop-shadow(0 1px 1px rgba(0,0,0,0.1));
+}
 .info-text { overflow: hidden; }
 .info-text .remark-name { font-weight: 600; font-size: 14px; color: #1F2937; line-height: 1.4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .info-text .nick-name { font-size: 12px; color: #9CA3AF; line-height: 1.4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
