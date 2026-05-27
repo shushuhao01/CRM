@@ -132,7 +132,7 @@
                 <el-tag type="success" size="small" effect="plain">SDK就绪</el-tag>
               </template>
               <span class="msg-header-count">共 {{ msgTotal }} 条</span>
-              <el-button v-if="isAdminRole || isManagerRole" type="danger" size="small" plain @click="openMarkRiskForConv" title="标记当前会话风险">
+              <el-button v-if="props.canAudit" type="danger" size="small" plain @click="openMarkRiskForConv" title="标记当前会话风险">
                 <el-icon style="margin-right:2px"><WarningFilled /></el-icon>标记风险
               </el-button>
               <el-button link size="small" @click="refreshMessages"><el-icon><Refresh /></el-icon></el-button>
@@ -262,7 +262,7 @@ import { useWecomOpenData } from '../composables/useWecomOpenData'
 
 defineOptions({ name: 'ConversationView' })
 
-const props = defineProps<{ configId: number | null }>()
+const props = defineProps<{ configId: number | null; canAudit?: boolean }>()
 const emit = defineEmits<{ (e: 'audit', record: ConvMessage): void }>()
 
 // ==================== 渲染模式 ====================
@@ -398,7 +398,7 @@ const contextMenuStyle = ref({ top: '0px', left: '0px' })
 const contextMenuMsg = ref<any>(null)
 
 const showPanelContextMenu = (e: MouseEvent) => {
-  if (!isAdminRole.value && !isManagerRole.value) return
+  if (!props.canAudit) return
   if (!selectedConv.value) return
   e.preventDefault()
   contextMenuStyle.value = { top: e.clientY + 'px', left: e.clientX + 'px' }

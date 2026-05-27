@@ -209,6 +209,13 @@ router.get('/sensitive-words/trigger-stats', authenticateToken, async (req: Requ
       }
     }
 
+    // 确保所有已保存的敏感词都出现在列表中（即使触发次数为0）
+    for (const w of words) {
+      if (!wordCountMap.has(w)) {
+        wordCountMap.set(w, { count: 0, lastTime: 0 });
+      }
+    }
+
     const allStats = Array.from(wordCountMap.entries())
       .map(([word, data]) => ({
         word,
@@ -247,7 +254,44 @@ router.get('/sensitive-words/hit-records', authenticateToken, async (req: Reques
     const total = await qb.getCount();
     const p = parseInt(page as string) || 1;
     const ps = parseInt(pageSize as string) || 10;
-    const list = await qb.orderBy('r.msg_time', 'DESC').skip((p - 1) * ps).take(ps).getMany();
+    const records = await qb.orderBy('r.msg_time', 'DESC').skip((p - 1) * ps).take(ps).getMany();
+
+    // 富化发送方/接收方名称
+    const userIds = new Set<string>();
+    for (const r of records) {
+      if (r.fromUserId) userIds.add(r.fromUserId);
+      try {
+        const toIds = JSON.parse(r.toUserIds || '[]');
+        if (Array.isArray(toIds)) toIds.forEach((id: string) => { if (id) userIds.add(id); });
+      } catch { /* ignore */ }
+    }
+
+    const nameMap = new Map<string, string>();
+    if (userIds.size > 0) {
+      const uidArr = Array.from(userIds);
+      try {
+        const members = await AppDataSource.query(
+          `SELECT wecom_user_id, name FROM wecom_user_bindings WHERE wecom_user_id IN (${uidArr.map(() => '?').join(',')})`, uidArr
+        );
+        for (const m of members) { if (m.name) nameMap.set(m.wecom_user_id, m.name); }
+      } catch { /* ignore */ }
+      try {
+        const customers = await AppDataSource.query(
+          `SELECT external_user_id, remark, name FROM wecom_customers WHERE external_user_id IN (${uidArr.map(() => '?').join(',')})`, uidArr
+        );
+        for (const c of customers) { nameMap.set(c.external_user_id, c.remark || c.name || c.external_user_id); }
+      } catch { /* ignore */ }
+    }
+
+    const list = records.map((r: any) => {
+      const fromName = r.fromUserName && r.fromUserName !== r.fromUserId ? r.fromUserName : (nameMap.get(r.fromUserId) || r.fromUserId);
+      let toName = '';
+      try {
+        const toIds = JSON.parse(r.toUserIds || '[]');
+        toName = Array.isArray(toIds) ? toIds.map((id: string) => nameMap.get(id) || id).join(', ') : r.toUserIds;
+      } catch { toName = r.toUserIds || ''; }
+      return { ...r, fromUserName: fromName, toUserName: toName };
+    });
 
     res.json({ success: true, data: { list, total, page: p, pageSize: ps } });
   } catch (error: any) {

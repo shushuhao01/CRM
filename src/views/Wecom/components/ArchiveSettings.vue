@@ -363,8 +363,43 @@
               <span class="field-hint">开启后新消息自动触发敏感词和质检规则</span>
             </div>
           </el-form-item>
+          <el-form-item label="质检人员">
+            <div>
+              <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px">
+                <el-button size="small" type="primary" plain @click="openAuditMemberDialog">选择质检人员</el-button>
+                <span class="field-hint">可查看「标记风险」按钮、「风险审计」和「敏感词管理」的CRM成员</span>
+              </div>
+              <div v-if="form.auditMembers.length > 0" class="audit-member-tags">
+                <el-tag v-for="uid in form.auditMembers" :key="uid" closable size="small" @close="removeAuditMember(uid)" style="margin: 2px 4px 2px 0">
+                  {{ getAuditMemberName(uid) }}
+                </el-tag>
+              </div>
+              <div v-else style="font-size: 12px; color: #9ca3af">未设置时仅管理员可见</div>
+            </div>
+          </el-form-item>
         </el-form>
       </div>
+
+      <!-- 质检人员选择弹窗 -->
+      <el-dialog v-model="auditDialogVisible" title="选择质检人员" width="500px" destroy-on-close>
+        <el-input v-model="auditSearch" placeholder="搜索成员" clearable size="small" prefix-icon="Search" style="margin-bottom: 12px" />
+        <div style="max-height: 360px; overflow-y: auto; border: 1px solid #f0f0f0; border-radius: 6px; padding: 8px" v-loading="auditUsersLoading">
+          <el-checkbox-group v-model="auditCheckedIds">
+            <div v-for="user in filteredCrmUsers" :key="user.id" style="padding: 6px 8px; display: flex; align-items: center; gap: 8px; border-bottom: 1px solid #fafafa">
+              <el-checkbox :label="String(user.id)" :value="String(user.id)">
+                <span style="font-size: 13px">{{ user.name || user.username }}</span>
+                <span style="font-size: 11px; color: #9ca3af; margin-left: 6px">{{ user.role === 'admin' ? '管理员' : user.role === 'super_admin' ? '超级管理员' : user.roleName || user.role || '' }}</span>
+              </el-checkbox>
+            </div>
+          </el-checkbox-group>
+          <el-empty v-if="filteredCrmUsers.length === 0 && !auditUsersLoading" description="暂无成员" :image-size="40" />
+        </div>
+        <div style="margin-top: 8px; font-size: 12px; color: #6b7280">已选 {{ auditCheckedIds.length }} 人</div>
+        <template #footer>
+          <el-button @click="auditDialogVisible = false">取消</el-button>
+          <el-button type="primary" @click="confirmAuditMembers">确定</el-button>
+        </template>
+      </el-dialog>
 
       <!-- ==================== 第六区：存储设置（仅私有部署） ==================== -->
       <div v-if="!isSaas" class="section-card">
@@ -531,8 +566,54 @@ const form = reactive({
   mediaStorage: 'local',
   autoInspect: false,
   visibility: 'all',
-  rsaPublicKey: ''
+  rsaPublicKey: '',
+  auditMembers: [] as string[],
 })
+
+const auditDialogVisible = ref(false)
+const auditSearch = ref('')
+const auditCheckedIds = ref<string[]>([])
+const crmUsers = ref<any[]>([])
+const auditUsersLoading = ref(false)
+
+const loadCrmUsers = async () => {
+  auditUsersLoading.value = true
+  try {
+    const res: any = await request.get('/users', { params: { pageSize: 500 } })
+    const data = res?.data?.list || res?.list || res?.data || []
+    crmUsers.value = Array.isArray(data) ? data : []
+  } catch { crmUsers.value = [] }
+  finally { auditUsersLoading.value = false }
+}
+
+const filteredCrmUsers = computed(() => {
+  const kw = auditSearch.value.trim().toLowerCase()
+  if (!kw) return crmUsers.value
+  return crmUsers.value.filter((u: any) =>
+    (u.name || '').toLowerCase().includes(kw) || (u.username || '').toLowerCase().includes(kw)
+  )
+})
+
+const openAuditMemberDialog = async () => {
+  if (crmUsers.value.length === 0) await loadCrmUsers()
+  auditCheckedIds.value = [...form.auditMembers]
+  auditSearch.value = ''
+  auditDialogVisible.value = true
+}
+
+const confirmAuditMembers = () => {
+  form.auditMembers = [...auditCheckedIds.value]
+  auditDialogVisible.value = false
+}
+
+const removeAuditMember = (userId: string) => {
+  form.auditMembers = form.auditMembers.filter(id => id !== userId)
+}
+
+const getAuditMemberName = (userId: string) => {
+  const user = crmUsers.value.find((u: any) => String(u.id) === String(userId))
+  return user?.name || user?.username || userId
+}
 
 // ==================== 生效范围 ====================
 const scopeLoading = ref(false)
@@ -724,6 +805,7 @@ const fetchSettings = async () => {
       form.autoInspect = !!res.autoInspect
       form.visibility = res.visibility || 'all'
       form.rsaPublicKey = res.rsaPublicKey || ''
+      try { form.auditMembers = typeof res.auditMembers === 'string' ? JSON.parse(res.auditMembers || '[]') : (res.auditMembers || []) } catch { form.auditMembers = [] }
     }
   } catch (e) {
     console.error('[ArchiveSettings] Fetch error:', e)
@@ -743,6 +825,7 @@ const handleSave = async () => {
       retentionDays: form.retentionDays,
       autoInspect: form.autoInspect,
       visibility: form.visibility,
+      auditMembers: form.auditMembers,
     }
     // 仅私有部署模式才传这些
     if (!isSaas.value) {
@@ -777,6 +860,7 @@ onMounted(() => {
     loadMembers()
   }
   fetchRsaPublicKey()
+  loadCrmUsers()
 })
 
 defineExpose({ fetchSettings })

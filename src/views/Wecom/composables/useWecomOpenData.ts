@@ -262,11 +262,11 @@ export function useWecomOpenData() {
           .bd{overflow:hidden}
           .L .bd{margin-right:50px}
           .R .bd{margin-left:50px}
-          .hd{padding:0 2px 3px;overflow:hidden}
+          .hd{padding:0 2px 2px;overflow:hidden;margin-top:-1px}
           .L .hd{text-align:left}
           .R .hd{text-align:right}
-          .hd-n{display:inline-block;font-size:12px;color:#333;line-height:20px;max-width:60%;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;vertical-align:middle}
-          .hd-t{display:inline-block;font-size:11px;color:#888;line-height:20px;margin-left:6px;vertical-align:middle}
+          .hd-n{display:inline-block;font-size:12px;color:#333;line-height:15px;max-width:60%;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;vertical-align:top}
+          .hd-t{display:inline-block;font-size:11px;color:#888;line-height:15px;margin-left:6px;vertical-align:top}
           .R .hd-t{margin-left:0;margin-right:6px}
           .bbl{position:relative;display:inline-block;padding:9px 12px;line-height:1.5;font-size:14px;word-break:break-all;max-width:100%;box-sizing:border-box}
           .bbl-l{background:#f4f4f4;border-radius:0 6px 6px 6px;text-align:left}

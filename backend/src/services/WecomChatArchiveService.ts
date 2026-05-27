@@ -228,10 +228,11 @@ export class WecomChatArchiveService {
           const msgResult = await this.syncChatMessages(config, accessToken);
           result.syncedRecords += msgResult.savedCount;
           (result as any).totalFetched = msgResult.totalFetched;
+          (result as any).batchDetails = msgResult.batchDetails;
           if (msgResult.savedCount > 0) {
-            log.info(`[ChatArchive] Step5完成: 拉取 ${msgResult.totalFetched} 条, 新保存 ${msgResult.savedCount} 条`);
+            log.info(`[ChatArchive] Step5完成: 拉取 ${msgResult.totalFetched} 条, 新保存 ${msgResult.savedCount} 条 [${msgResult.batchDetails}]`);
           } else if (msgResult.totalFetched > 0) {
-            log.info(`[ChatArchive] Step5完成: 拉取 ${msgResult.totalFetched} 条(均已存在), 无新增`);
+            log.info(`[ChatArchive] Step5完成: 拉取 ${msgResult.totalFetched} 条(均已存在), 无新增 [${msgResult.batchDetails}]`);
           } else {
             syncMsgZeroRecords = true;
             log.info(`[ChatArchive] Step5完成: API返回0条消息，将回退到外部联系人元数据模式`);
@@ -1674,7 +1675,7 @@ export class WecomChatArchiveService {
    * 前端通过「会话展示组件」(ww-open-message) 传入 msgid + secretKey 来渲染消息内容。
    * 后端只存储元数据（发送者、接收者、时间、消息类型）和解密后的 secretKey。
    */
-  static async syncChatMessages(config: WecomConfig, chatAccessToken: string): Promise<{ savedCount: number; totalFetched: number }> {
+  static async syncChatMessages(config: WecomConfig, chatAccessToken: string): Promise<{ savedCount: number; totalFetched: number; batchDetails?: string }> {
     let savedCount = 0;
     let totalFetched = 0;
 
@@ -1744,7 +1745,8 @@ export class WecomChatArchiveService {
     const chatRecordRepo = AppDataSource.getRepository(WecomChatRecord);
     let hasMore = true;
     let batchCount = 0;
-    const maxBatches = 20; // 每次同步最多拉取20批×200条=4000条
+    const maxBatches = 20;
+    const batchLog: string[] = [];
 
     while (hasMore && batchCount < maxBatches) {
       batchCount++;
@@ -1938,6 +1940,7 @@ export class WecomChatArchiveService {
         if (cursor) {
           await this.saveSyncCursor(config.id, cursor, config.tenantId);
         }
+        batchLog.push(`B${batchCount}:${chatdata.length}条/${newRecords.length}新`);
 
         // 批间延迟缩短至100ms（企微API限流通常是分钟级，不需要300ms）
         if (hasMore) {
@@ -1945,6 +1948,12 @@ export class WecomChatArchiveService {
         }
       } catch (e: any) {
         log.error(`[ChatArchive] syncChatMessages batch ${batchCount} error:`, e.message);
+        // 重试一次而不是立即中断
+        if (batchCount <= 1) {
+          log.info(`[ChatArchive] 首批失败，等待2秒后重试...`);
+          await new Promise(r => setTimeout(r, 2000));
+          continue;
+        }
         break;
       }
     }
@@ -1965,7 +1974,7 @@ export class WecomChatArchiveService {
         log.warn(`[ChatArchive] ★★★ 所有消息secretKey均为空! RSA解密可能失败, 请运行诊断检查RSA解密测试结果`);
       }
     } catch { /* stats query failed, ignore */ }
-    return { savedCount, totalFetched };
+    return { savedCount, totalFetched, batchDetails: batchLog.join(', ') || '(无批次)' };
   }
 
   /**

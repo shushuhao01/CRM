@@ -135,7 +135,7 @@ router.get('/chat-archive/settings', authenticateToken, async (req: Request, res
 /** 更新存档设置 */
 router.put('/chat-archive/settings', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
   try {
-    const { configId, fetchInterval, fetchMode, retentionDays, mediaStorage, autoInspect, memberScope, rsaPublicKey, visibility } = req.body;
+    const { configId, fetchInterval, fetchMode, retentionDays, mediaStorage, autoInspect, memberScope, rsaPublicKey, visibility, auditMembers } = req.body;
     if (!configId) return res.status(400).json({ success: false, message: '请选择企微配置' });
 
     const configRepo = getTenantRepo(WecomConfig);
@@ -176,6 +176,9 @@ router.put('/chat-archive/settings', authenticateToken, requireAdmin, async (req
       setting.memberScope = typeof memberScope === 'string' ? memberScope : JSON.stringify(memberScope);
     }
     if (rsaPublicKey !== undefined) setting.rsaPublicKey = rsaPublicKey;
+    if (auditMembers !== undefined) {
+      setting.auditMembers = typeof auditMembers === 'string' ? auditMembers : JSON.stringify(auditMembers);
+    }
     if (visibility !== undefined) {
       if (!['self', 'department', 'all'].includes(visibility)) {
         return res.status(400).json({ success: false, message: '可见性设置不合法' });

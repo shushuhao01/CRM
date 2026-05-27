@@ -39,6 +39,9 @@ export class WecomArchiveSetting {
   @Column({ name: 'visibility', type: 'varchar', length: 20, default: 'all', comment: '成员可见性: self/department/all' })
   visibility: string;
 
+  @Column({ name: 'audit_members', type: 'text', nullable: true, comment: '质检审计可见成员(JSON数组,CRM用户ID列表)' })
+  auditMembers: string;
+
   @Column({ name: 'max_users', type: 'int', default: 0, comment: '购买的最大席位数' })
   maxUsers: number;
 

@@ -146,12 +146,13 @@
           <ConversationView
             ref="conversationViewRef"
             :config-id="selectedConfigId"
+            :can-audit="canAudit"
             @audit="(row: any) => handleAudit(row as ChatRecord)"
           />
         </el-tab-pane>
 
-        <!-- Tab 2: 消息记录 (仅管理员可见) -->
-        <el-tab-pane v-if="isAdminRole" label="消息记录" name="records">
+        <!-- Tab 2: 消息记录 (暂时隐藏) -->
+        <el-tab-pane v-if="false" label="消息记录" name="records">
           <div class="tab-toolbar">
             <el-input v-model="query.keyword" placeholder="搜索内容" clearable style="width: 180px" @keyup.enter="handleSearch" prefix-icon="Search" />
             <el-select v-model="query.msgType" placeholder="消息类型" clearable style="width: 120px" @change="handleSearch">
@@ -256,13 +257,13 @@
           <AiInspect :config-id="selectedConfigId" :is-demo-mode="isDemoMode" />
         </el-tab-pane> -->
 
-        <!-- Tab: 风险审计（管理员可见） -->
-        <el-tab-pane v-if="isAdminRole" label="风险审计" name="risk-audit">
+        <!-- Tab: 风险审计（质检人员可见） -->
+        <el-tab-pane v-if="canAudit" label="风险审计" name="risk-audit">
           <RiskAuditTab :config-id="selectedConfigId" @gotoConversation="handleGotoConversation" />
         </el-tab-pane>
 
-        <!-- Tab 6: 敏感词管理（仅管理员可见） -->
-        <el-tab-pane v-if="isAdminRole" label="敏感词管理" name="sensitive">
+        <!-- Tab 6: 敏感词管理（质检人员可见） -->
+        <el-tab-pane v-if="canAudit" label="敏感词管理" name="sensitive">
           <SensitiveWordManager
             ref="sensitiveWordManagerRef"
             :config-id="selectedConfigId"
@@ -310,7 +311,7 @@ defineOptions({ name: 'WecomChatArchive' })
 import { ref, computed, onMounted, nextTick } from 'vue'
 import { Document, Refresh, Search, Lock, ShoppingCart, ChatLineSquare, InfoFilled } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox, ClickOutside as vClickOutside } from 'element-plus'
-import { getWecomConfigs, getChatArchiveStatus, getChatRecords, syncChatRecords, diagnoseChatRecords, getArchiveSeats, getWecomDepartments, getWecomUsers } from '@/api/wecom'
+import { getWecomConfigs, getChatArchiveStatus, getChatRecords, syncChatRecords, diagnoseChatRecords, getArchiveSeats, getWecomDepartments, getWecomUsers, getArchiveSettings } from '@/api/wecom'
 import { formatMsgTime, getMsgTypeText, getTextContent, getMetaSummary, getMetaAgreed, formatToUsers } from './utils'
 import type { ArchiveStatus, ChatRecord } from './types'
 import { useWecomDemo, DEMO_CONFIGS } from './composables/useWecomDemo'
@@ -344,6 +345,14 @@ const currentUserRole = computed(() => currentUser.value?.role || '')
 const isAdminRole = computed(() => ['super_admin', 'admin'].includes(currentUserRole.value))
 const isManagerRole = computed(() => ['department_manager', 'manager'].includes(currentUserRole.value))
 const deptMemberCrmIds = ref<string[]>([])
+const auditMemberIds = ref<string[]>([])
+
+const canAudit = computed(() => {
+  if (isAdminRole.value) return true
+  if (auditMemberIds.value.length === 0) return false
+  const myId = String(currentUser.value?.id || '')
+  return auditMemberIds.value.includes(myId)
+})
 
 const loading = ref(false)
 const syncing = ref(false)
@@ -527,10 +536,22 @@ const fetchConfigs = async () => {
       fetchList()
       fetchSeatInfo()
       fetchDeptAndMembers()
+      loadAuditMembers()
     }
   } catch {
     // 静默处理
   }
+}
+
+const loadAuditMembers = async () => {
+  if (!selectedConfigId.value) return
+  try {
+    const res: any = await getArchiveSettings(selectedConfigId.value)
+    const raw = res?.auditMembers || res?.data?.auditMembers
+    if (raw) {
+      auditMemberIds.value = typeof raw === 'string' ? JSON.parse(raw) : (Array.isArray(raw) ? raw : [])
+    }
+  } catch { auditMemberIds.value = [] }
 }
 
 const fetchList = async () => {
@@ -705,6 +726,7 @@ const handleSync = async () => {
       } else if (res.permitUsers > 0 && !res.syncedRecords) {
         msg = `${res.permitUsers}个存档成员，暂无新消息`
       }
+      if (res.batchDetails) msg += ` [${res.batchDetails}]`
 
       // 公钥状态和详细提示
       if (res.pubKeyStatus === 'not_set') {
@@ -812,6 +834,17 @@ const handleDiagnose = async () => {
         }
       }
       lines.push(`response_data长度: ${d.zoneCall.response_data_len}`)
+      lines.push(``)
+    }
+
+    if (d.cursorTest) {
+      lines.push(`===== 游标位置测试（从保存游标拉取） =====`)
+      lines.push(`从游标获取消息数: ${d.cursorTest.msg_count ?? '未知'}`)
+      lines.push(`has_more: ${d.cursorTest.has_more ?? '未知'}`)
+      if (d.cursorTest.first_msg_time) lines.push(`首条消息时间: ${d.cursorTest.first_msg_time}`)
+      if (d.cursorTest.last_msg_time) lines.push(`末条消息时间: ${d.cursorTest.last_msg_time}`)
+      if (d.cursorTest.note) lines.push(`说明: ${d.cursorTest.note}`)
+      if (d.cursorTest.error) lines.push(`❌ 错误: ${d.cursorTest.error}`)
       lines.push(``)
     }
 

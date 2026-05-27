@@ -156,6 +156,7 @@ router.post('/chat-records/sync', authenticateToken, requireAdmin, async (req: R
         metaRecords: (result as any).metaRecords || 0,
         syncMsgStatus: (result as any).syncMsgStatus || 'unknown',
         syncMsgError: (result as any).syncMsgError || '',
+        batchDetails: (result as any).batchDetails || '',
         errors: result.errors, sdkRequired: result.sdkRequired, mode: result.mode,
         hasPrivateKey, pubKeyStatus
       }
@@ -194,6 +195,7 @@ router.post('/chat-records/diagnose', authenticateToken, requireAdmin, async (re
     // Step3: 第三方模式通过专区程序测试sync_msg
     let zoneCallResult: any = null;
     let directCallResult: any = null;
+    let cursorTestResult: any = null;
 
     if (config.authType === 'third_party') {
       const { WecomSuiteConfig } = await import('../../entities/WecomSuiteConfig');
@@ -286,6 +288,37 @@ router.post('/chat-records/diagnose', authenticateToken, requireAdmin, async (re
         }
       } else {
         zoneCallResult = { error: '未配置专区程序ID或能力ID', zoneProgramId, zoneSyncMsgAbilityId };
+      }
+
+      // ★ 额外测试：用保存的游标调用，检查是否能获取到最新消息
+      let cursorTestResult: any = null;
+      if (savedCursor && zoneProgramId && zoneSyncMsgAbilityId) {
+        try {
+          const cursorReqData = JSON.stringify({
+            input: { func: 'sync_msg', func_req: { limit: 10, cursor: savedCursor } }
+          });
+          const cursorResp = await axios.post(
+            `https://qyapi.weixin.qq.com/cgi-bin/chatdata/sync_call_program?access_token=${token}`,
+            { program_id: zoneProgramId, ability_id: zoneSyncMsgAbilityId, request_data: cursorReqData }
+          );
+          const cursorRawData = cursorResp.data;
+          if (cursorRawData.errcode === 0 && cursorRawData.response_data) {
+            const parsed = JSON.parse(cursorRawData.response_data);
+            const cMsgList = parsed?.msg_list || parsed?.output?.msg_list || [];
+            cursorTestResult = {
+              msg_count: cMsgList.length,
+              has_more: parsed?.has_more ?? parsed?.output?.has_more,
+              next_cursor: parsed?.next_cursor || parsed?.output?.next_cursor || '',
+              first_msg_time: cMsgList[0]?.send_time ? new Date(cMsgList[0].send_time * 1000).toISOString() : null,
+              last_msg_time: cMsgList.length > 0 ? new Date((cMsgList[cMsgList.length - 1]?.send_time || 0) * 1000).toISOString() : null,
+              note: cMsgList.length === 0 ? '游标位置已是最新,无更多消息(这可能是新消息尚未入库延迟)' : `从游标位置可获取${cMsgList.length}条消息`
+            };
+          } else {
+            cursorTestResult = { error: `errcode=${cursorRawData.errcode}: ${cursorRawData.errmsg}` };
+          }
+        } catch (e: any) {
+          cursorTestResult = { error: e.message };
+        }
       }
 
       // 直接调用（预期返回48002）
@@ -403,6 +436,7 @@ router.post('/chat-records/diagnose', authenticateToken, requireAdmin, async (re
         sampleContent,
         avatarDiag,
         zoneCall: zoneCallResult,
+        cursorTest: cursorTestResult,
         directCall: directCallResult
       }
     });

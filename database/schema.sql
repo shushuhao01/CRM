@@ -4055,6 +4055,7 @@ CREATE TABLE IF NOT EXISTS `wecom_archive_settings` (
   `member_scope` TEXT NULL COMMENT '存档成员范围(JSON)',
   `rsa_public_key` TEXT NULL COMMENT 'RSA公钥',
   `visibility` VARCHAR(20) DEFAULT 'all' COMMENT '成员可见性: self/department/all',
+  `audit_members` TEXT NULL COMMENT '质检审计可见成员(JSON数组,CRM用户ID列表)',
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
   `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   UNIQUE KEY `uk_tenant_id` (`tenant_id`),
