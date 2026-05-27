@@ -217,6 +217,24 @@ router.post('/chat-records/diagnose', authenticateToken, requireAdmin, async (re
           if (rawData.errcode === 0 && rawData.response_data) {
             try { parsedResponseData = JSON.parse(rawData.response_data); } catch { parsedResponseData = rawData.response_data; }
           }
+          // 解析第一条消息的完整结构（诊断密钥字段）
+          let firstMsgStructure: any = null;
+          const msgList = parsedResponseData?.msg_list || parsedResponseData?.output?.msg_list;
+          if (Array.isArray(msgList) && msgList.length > 0) {
+            const m = msgList[0];
+            firstMsgStructure = {
+              msgid: m.msgid,
+              raw_keys: Object.keys(m).join(','),
+              has_service_encrypt_info: !!m.service_encrypt_info,
+              service_encrypt_info_keys: m.service_encrypt_info ? Object.keys(m.service_encrypt_info).join(',') : '(无)',
+              encrypted_secret_key_len: m.service_encrypt_info?.encrypted_secret_key?.length || 0,
+              has_encrypt_random_key: !!m.encrypt_random_key,
+              encrypt_random_key_len: m.encrypt_random_key?.length || 0,
+              sender: m.sender,
+              msgtype: m.msgtype,
+              send_time: m.send_time
+            };
+          }
           zoneCallResult = {
             platform_errcode: rawData.errcode,
             platform_errmsg: rawData.errmsg,
@@ -229,6 +247,7 @@ router.post('/chat-records/diagnose', authenticateToken, requireAdmin, async (re
               keys: Object.keys(parsedResponseData).join(','),
               first_100_chars: JSON.stringify(parsedResponseData).substring(0, 200)
             } : null,
+            firstMsgStructure,
             ability_id_used: zoneSyncMsgAbilityId,
             get_msg_body_ability: zoneGetMsgBodyAbilityId
           };
@@ -275,27 +294,41 @@ router.post('/chat-records/diagnose', authenticateToken, requireAdmin, async (re
     const metaCount = await AppDataSource.query(
       `SELECT COUNT(*) as cnt FROM wecom_chat_records WHERE wecom_config_id = ? AND msg_type = 'meta'`, [configId]
     );
-    // ★ 检查有多少条记录有有效的 secretKey
+    // ★ 正确统计 secretKey：排除空值 "secretKey":""
     const withKeyCount = await AppDataSource.query(
-      `SELECT COUNT(*) as cnt FROM wecom_chat_records WHERE wecom_config_id = ? AND msg_type != 'meta' AND content LIKE '%"secretKey":"_%'`, [configId]
+      `SELECT COUNT(*) as cnt FROM wecom_chat_records WHERE wecom_config_id = ? AND msg_type != 'meta' AND content LIKE '%"secretKey":"%' AND content NOT LIKE '%"secretKey":""%'`, [configId]
     );
-    // 查看诊断返回的第一条消息的密钥字段
-    let firstMsgKeyInfo: any = null;
-    if (zoneCallResult?.parsed?.msg_list_count > 0) {
-      try {
-        const rawData = zoneCallResult.parsed.first_100_chars;
-        const parsed = JSON.parse(rawData.length > 200 ? rawData : JSON.stringify(zoneCallResult.parsed));
-        if (parsed.msg_list?.[0]) {
-          const msg = parsed.msg_list[0];
-          firstMsgKeyInfo = {
-            has_service_encrypt_info: !!msg.service_encrypt_info,
-            has_encrypt_random_key: !!msg.encrypt_random_key,
-            has_encrypted_secret_key: !!msg.encrypted_secret_key,
-            msg_keys: Object.keys(msg).join(',')
+    const emptyKeyCount = await AppDataSource.query(
+      `SELECT COUNT(*) as cnt FROM wecom_chat_records WHERE wecom_config_id = ? AND msg_type != 'meta' AND content LIKE '%"secretKey":""%'`, [configId]
+    );
+
+    // 采样一条实际记录的 content 字段，方便诊断
+    let sampleContent: any = null;
+    try {
+      const sampleRows = await AppDataSource.query(
+        `SELECT msg_id, content, from_user_id, to_user_ids FROM wecom_chat_records WHERE wecom_config_id = ? AND msg_type != 'meta' ORDER BY msg_time DESC LIMIT 1`, [configId]
+      );
+      if (sampleRows?.[0]) {
+        const row = sampleRows[0];
+        sampleContent = {
+          msg_id: row.msg_id,
+          from_user_id: row.from_user_id,
+          to_user_ids: row.to_user_ids,
+          content_raw: (row.content || '').slice(0, 300),
+          content_parsed: null
+        };
+        try {
+          const parsed = JSON.parse(row.content);
+          sampleContent.content_parsed = {
+            hasSecretKey: 'secretKey' in parsed,
+            secretKeyLength: (parsed.secretKey || '').length,
+            secretKeyPreview: (parsed.secretKey || '').slice(0, 20) + (parsed.secretKey?.length > 20 ? '...' : ''),
+            msgtype: parsed.msgtype,
+            msgid: parsed.msgid
           };
-        }
-      } catch { /* ignore parse error */ }
-    }
+        } catch { /* not JSON */ }
+      }
+    } catch { /* ignore */ }
 
     res.json({
       success: true,
@@ -306,7 +339,8 @@ router.post('/chat-records/diagnose', authenticateToken, requireAdmin, async (re
         dbRecordCount: parseInt(dbCount[0]?.cnt) || 0,
         dbMetaCount: parseInt(metaCount[0]?.cnt) || 0,
         dbWithSecretKey: parseInt(withKeyCount[0]?.cnt) || 0,
-        firstMsgKeyInfo,
+        dbEmptySecretKey: parseInt(emptyKeyCount[0]?.cnt) || 0,
+        sampleContent,
         zoneCall: zoneCallResult,
         directCall: directCallResult
       }
@@ -380,24 +414,18 @@ router.get('/conversations/messages', authenticateToken, async (req: Request, re
 /**
  * 获取消息密钥列表（供会话展示组件使用）
  * GET /api/v1/wecom/conversations/message-keys
- * 返回 msgid + secretKey 列表，前端传给 ww-open-message 组件渲染
+ * 复用 getConversationMessages 的查询逻辑，返回 msgid + secretKey
  */
 router.get('/conversations/message-keys', authenticateToken, async (req: Request, res: Response) => {
   try {
-    const { configId, fromUserId, toUserId, roomId, page = '1', pageSize = '50' } = req.query;
+    const { configId, fromUserId, toUserId, roomId, pageSize = '200' } = req.query;
     const { getCurrentTenantId } = await import('../../utils/tenantContext');
     const tenantId = getCurrentTenantId();
 
-    if (!fromUserId || !toUserId) {
-      return res.status(400).json({ success: false, message: '请指定发送方和接收方' });
-    }
+    const ps = Math.min(parseInt(pageSize as string) || 200, 500);
 
-    const p = parseInt(page as string) || 1;
-    const ps = parseInt(pageSize as string) || 50;
-    const offset = (p - 1) * ps;
-
-    // 查询条件：排除 meta 类型，只返回有 secretKey 的实际消息
-    let where = "WHERE msg_type != 'meta' AND content LIKE '%\"secretKey\"%'";
+    // 构建与 getConversationMessages 完全相同的查询条件
+    let where = "WHERE msg_type != 'meta'";
     const queryParams: any[] = [];
 
     if (tenantId) {
@@ -405,54 +433,49 @@ router.get('/conversations/message-keys', authenticateToken, async (req: Request
       queryParams.push(tenantId);
     }
     if (configId) {
-      where += ' AND wecom_config_id = ?';
-      queryParams.push(parseInt(configId as string));
+      const cid = parseInt(configId as string);
+      if (!isNaN(cid)) {
+        where += ' AND wecom_config_id = ?';
+        queryParams.push(cid);
+      }
     }
     if (roomId) {
       where += ' AND room_id = ?';
       queryParams.push(roomId);
-    } else {
+    } else if (fromUserId && toUserId) {
       where += ' AND ((from_user_id = ? AND to_user_ids LIKE ?) OR (from_user_id = ? AND to_user_ids LIKE ?))';
       queryParams.push(fromUserId, `%${toUserId}%`, toUserId, `%${fromUserId}%`);
+    } else if (fromUserId) {
+      where += ' AND (from_user_id = ? OR to_user_ids LIKE ?)';
+      queryParams.push(fromUserId, `%${fromUserId}%`);
     }
 
-    // 总数
-    const countResult = await AppDataSource.query(
-      `SELECT COUNT(*) as total FROM wecom_chat_records ${where}`, queryParams
-    );
-    const total = countResult[0]?.total || 0;
-
-    // 查询消息列表
+    // 查询消息列表（只查需要的字段）
     const records = await AppDataSource.query(
-      `SELECT msg_id, content, msg_type, from_user_id, to_user_ids, msg_time, from_user_name
+      `SELECT msg_id, content, msg_time
        FROM wecom_chat_records ${where}
        ORDER BY msg_time ASC
-       LIMIT ? OFFSET ?`,
-      [...queryParams, ps, offset]
+       LIMIT ?`,
+      [...queryParams, ps]
     );
 
     // 提取 msgid + secretKey
-    const list = records.map((r: any) => {
-      let secretKey = '';
+    const list: Array<{msgid: string; secretKey: string; msgTime: any}> = [];
+    for (const r of records) {
       try {
         const content = typeof r.content === 'string' ? JSON.parse(r.content) : r.content;
-        secretKey = content?.secretKey || '';
-      } catch { /* ignore */ }
+        const sk = content?.secretKey;
+        if (sk && r.msg_id) {
+          list.push({ msgid: r.msg_id, secretKey: sk, msgTime: r.msg_time });
+        }
+      } catch { /* skip unparseable */ }
+    }
 
-      return {
-        msgid: r.msg_id,
-        secretKey,
-        msgType: r.msg_type,
-        fromUserId: r.from_user_id,
-        fromUserName: r.from_user_name,
-        toUserIds: r.to_user_ids,
-        msgTime: r.msg_time
-      };
-    }).filter((item: any) => item.secretKey); // 只返回有 secretKey 的记录
+    log.info(`[Wecom] message-keys: 查询到${records.length}条记录, 有效secretKey=${list.length}条, from=${fromUserId}, to=${toUserId}, room=${roomId || '无'}`);
 
     res.json({
       success: true,
-      data: { list, total, page: p, pageSize: ps }
+      data: { list, total: list.length }
     });
   } catch (error: any) {
     log.error('[Wecom] 获取消息密钥列表失败:', error.message);

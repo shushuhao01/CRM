@@ -138,7 +138,7 @@
 
           <!-- 消息列表 -->
           <div class="msg-panel-body" ref="chatMessagesRef" v-loading="msgLoading || sdkInitializing">
-            <!-- ★ 企微原生会话展示组件模式（主要模式） -->
+            <!-- ★ 企微原生会话展示组件（密钥可用时，正式模式） -->
             <template v-if="isWecomReady && messageKeys.length > 0">
               <WecomMessageRenderer
                 :msg-list="messageKeys"
@@ -148,148 +148,45 @@
               />
             </template>
 
-            <!-- SDK就绪但无密钥数据 -->
-            <template v-else-if="isWecomReady && messageKeys.length === 0 && !msgLoading">
-              <el-empty :image-size="50">
-                <template #description>
-                  <p>暂无可渲染的消息（密钥为空）</p>
-                  <p style="font-size:12px;color:#909399">请先点击「同步」按钮拉取聊天记录</p>
-                </template>
-              </el-empty>
-            </template>
-
-            <!-- SDK未就绪时的降级显示（仅作为诊断信息，非主要功能） -->
+            <!-- 密钥为空 或 SDK未就绪：显示问题提示 -->
             <template v-else>
-            <div v-if="isWecomFailed" class="sdk-hint-bar">
-              <el-alert type="warning" :closable="false" show-icon>
-                <template #title>
-                  会话展示组件初始化失败：{{ sdkInitError || '未知错误' }}
-                </template>
-                <template #default>
-                  <el-button size="small" type="primary" @click="autoInitSdk" style="margin-top:6px">重新初始化</el-button>
-                </template>
-              </el-alert>
-            </div>
-            <div v-if="msgTotal > messages.length" class="load-more-bar">
-              <el-button link type="primary" size="small" @click="loadMoreMessages" :loading="msgLoadingMore">加载更早消息</el-button>
-            </div>
-
-            <template v-for="(msg, idx) in messages" :key="msg.id">
-              <!-- 日期分割线 -->
-              <div v-if="showDateDivider(idx)" class="date-divider">
-                <span>{{ getDateDividerText(msg.msgTime) }}</span>
+              <!-- SDK初始化失败 -->
+              <div v-if="isWecomFailed" class="key-diagnose-panel">
+                <el-result icon="warning" title="会话组件初始化失败" :sub-title="sdkInitError || '请确认在企业微信客户端内打开'">
+                  <template #extra>
+                    <el-button type="primary" @click="autoInitSdk">重新初始化</el-button>
+                  </template>
+                </el-result>
               </div>
-
-              <!-- 撤回消息 - 高亮警示 -->
-              <div v-if="msg.action === 'recall' || msg.msgType === 'revoke'" class="msg-system-notice recall-notice highlight-warning">
-                <el-icon><WarningFilled /></el-icon>
-                <span class="notice-text">{{ msg.fromUserName || msg.fromUserId }} <strong>撤回</strong>了一条消息</span>
-                <el-tag type="warning" size="small" effect="dark" style="margin-left: 6px">撤回</el-tag>
+              <!-- SDK就绪但密钥为空 -->
+              <div v-else-if="isWecomReady && messageKeys.length === 0 && msgTotal > 0" class="key-diagnose-panel">
+                <el-result icon="info" title="消息密钥为空，无法显示聊天内容">
+                  <template #extra>
+                    <div style="text-align:left;font-size:13px;color:#606266;line-height:2;max-width:400px">
+                      <p><strong>可能原因：</strong></p>
+                      <p>1. 企微后台未上传RSA加密公钥</p>
+                      <p style="color:#909399;padding-left:16px">→ 企微管理后台「管理工具 → 会话内容存档 → 加密公钥」</p>
+                      <p>2. 上传公钥后的新消息才会包含加密密钥</p>
+                      <p style="color:#909399;padding-left:16px">→ 上传后发送新消息，再点击「同步」</p>
+                      <p>3. 请点击页面右上角「诊断」按钮查看详细信息</p>
+                    </div>
+                  </template>
+                </el-result>
               </div>
-
-              <!-- 删除消息 - 高亮警示 -->
-              <div v-else-if="msg.action === 'delete_chat_record' || msg.msgType === 'delete'" class="msg-system-notice delete-notice highlight-danger">
-                <el-icon><WarningFilled /></el-icon>
-                <span class="notice-text">{{ msg.fromUserName || msg.fromUserId }} <strong>删除</strong>了一条消息</span>
-                <el-tag type="danger" size="small" effect="dark" style="margin-left: 6px">删除</el-tag>
+              <!-- 尚无消息记录 -->
+              <div v-else-if="msgTotal === 0 && !msgLoading" class="key-diagnose-panel">
+                <el-empty :image-size="50">
+                  <template #description>
+                    <p>暂无消息记录</p>
+                    <p style="font-size:12px;color:#909399">请点击「同步」按钮拉取聊天记录</p>
+                  </template>
+                </el-empty>
               </div>
-
-              <!-- 同意存档系统消息 -->
-              <div v-else-if="msg.msgType === 'agree' || msg.msgType === 'disagree'" class="msg-system-notice agree-notice">
-                <el-icon><InfoFilled /></el-icon>
-                <span>{{ msg.msgType === 'agree' ? '对方已同意会话存档' : '对方不同意会话存档' }}</span>
-              </div>
-
-              <!-- 普通消息 -->
-              <div v-else class="msg-row" :class="{ 'msg-row-self': isSelfMsg(msg) }">
-                <!-- 对方头像 -->
-                <div class="msg-avatar-wrap" v-if="!isSelfMsg(msg)">
-                  <img referrerpolicy="no-referrer" v-if="(selectedConv as any)?.customerAvatar" :src="(selectedConv as any).customerAvatar" class="msg-avatar-img" />
-                  <span v-else class="msg-avatar-text">{{ getConvDisplayName(selectedConv).charAt(0) }}</span>
-                </div>
-
-                <div class="msg-content-wrap" :class="{ 'msg-content-self': isSelfMsg(msg) }">
-                  <div class="msg-sender-line" v-if="!isSelfMsg(msg)">
-                    <span class="msg-sender-name">{{ msg.fromUserName || getConvDisplayName(selectedConv) }}</span>
-                    <span class="msg-sender-badge badge-external" v-if="msg.senderType === 2 || isExternalUserId(msg.fromUserId)">外部</span>
-                    <span class="msg-sender-badge badge-staff" v-else-if="selectedConv?.roomId">员工</span>
-                    <span class="msg-time">{{ formatMsgTimeShort(msg.msgTime) }}</span>
-                  </div>
-                  <div class="msg-sender-line msg-sender-self" v-else>
-                    <span class="msg-time">{{ formatMsgTimeShort(msg.msgTime) }}</span>
-                    <span class="msg-sender-name">{{ selectedMemberName || msg.fromUserName || msg.fromUserId }}</span>
-                    <span class="msg-sender-badge badge-staff">员工</span>
-                  </div>
-
-                  <!-- 消息气泡 -->
-                  <div class="msg-bubble" :class="{ 'bubble-self': isSelfMsg(msg), 'bubble-sensitive': msg.isSensitive }" @contextmenu.prevent="showMsgContextMenu($event, msg)">
-                    <!-- 文本（敏感词高亮） -->
-                    <template v-if="msg.msgType === 'text'">
-                      <span v-if="msg.isSensitive" v-html="highlightSensitiveWords(getTextContent(msg.content))" />
-                      <span v-else>{{ getTextContent(msg.content) }}</span>
-                    </template>
-                    <!-- 图片 -->
-                    <template v-else-if="msg.msgType === 'image'">
-                      <el-image v-if="msg.mediaUrl || getImageUrl(msg.content)" :src="msg.mediaUrl || getImageUrl(msg.content)" :preview-src-list="[msg.mediaUrl || getImageUrl(msg.content)]" fit="contain" style="max-width:220px;max-height:220px;border-radius:4px" />
-                      <span v-else class="msg-type-placeholder">[图片]</span>
-                    </template>
-                    <!-- 语音 -->
-                    <template v-else-if="msg.msgType === 'voice'">
-                      <div class="msg-voice"><el-icon><Microphone /></el-icon> <span>语音消息</span></div>
-                    </template>
-                    <!-- 视频 -->
-                    <template v-else-if="msg.msgType === 'video'">
-                      <div class="msg-video"><el-icon><VideoCamera /></el-icon> <span>视频消息</span></div>
-                    </template>
-                    <!-- 文件 -->
-                    <template v-else-if="msg.msgType === 'file'">
-                      <div class="msg-file"><el-icon><Document /></el-icon> <span>{{ getFileName(msg.content) || '文件' }}</span></div>
-                    </template>
-                    <!-- 链接 -->
-                    <template v-else-if="msg.msgType === 'link'">
-                      <div class="msg-link">
-                        <el-icon><Link /></el-icon>
-                        <span>{{ getLinkTitle(msg.content) || '链接消息' }}</span>
-                      </div>
-                    </template>
-                    <!-- 小程序 -->
-                    <template v-else-if="msg.msgType === 'weapp'">
-                      <div class="msg-weapp"><el-icon><Grid /></el-icon> <span>{{ getWeappTitle(msg.content) || '小程序' }}</span></div>
-                    </template>
-                    <!-- 位置 -->
-                    <template v-else-if="msg.msgType === 'location'">
-                      <div class="msg-location"><el-icon><Location /></el-icon> <span>位置消息</span></div>
-                    </template>
-                    <!-- 表情 -->
-                    <template v-else-if="msg.msgType === 'emotion'">
-                      <span class="msg-type-placeholder">[表情]</span>
-                    </template>
-                    <!-- 名片 -->
-                    <template v-else-if="msg.msgType === 'card'">
-                      <div class="msg-card"><el-icon><User /></el-icon> <span>名片消息</span></div>
-                    </template>
-                    <!-- 其他 -->
-                    <template v-else>
-                      <span class="msg-type-placeholder">[{{ getMsgTypeLabel(msg.msgType) }}]</span>
-                    </template>
-                  </div>
-                </div>
-
-                <!-- 自己头像 -->
-                <div class="msg-avatar-wrap" v-if="isSelfMsg(msg)">
-                  <img referrerpolicy="no-referrer" v-if="(selectedConv as any)?.memberAvatar || selectedMemberAvatar" :src="(selectedConv as any)?.memberAvatar || selectedMemberAvatar" class="msg-avatar-img msg-avatar-self" />
-                  <span v-else class="msg-avatar-text msg-avatar-text-self">{{ (selectedMemberName || 'M').charAt(0) }}</span>
-                </div>
+              <!-- SDK初始化中 -->
+              <div v-else-if="sdkInitializing" class="key-diagnose-panel">
+                <el-result icon="info" title="正在初始化会话组件..." sub-title="请稍候" />
               </div>
             </template>
-
-            <el-empty v-if="messages.length === 0 && !msgLoading" :image-size="50">
-              <template #description>
-                <p>暂无消息记录，请点击页面顶部「同步」按钮拉取聊天记录</p>
-                <p style="font-size: 12px; color: #909399; margin-top: 4px;">同步后即可查看成员与客户的历史消息</p>
-              </template>
-            </el-empty>
-            </template><!-- 传统气泡渲染结束 -->
           </div>
         </template>
 
@@ -399,26 +296,34 @@ const autoInitSdk = async () => {
 
 /** 获取消息密钥列表（ww-open-message 渲染用） */
 const fetchMessageKeys = async () => {
-  if (!selectedConv.value || !props.configId) return
+  if (!selectedConv.value) return
   try {
     const fromUserId = selectedConv.value.fromUserId || ''
     const toUserId = getFirstToUser(selectedConv.value.toUserIds) || ''
     const roomId = selectedConv.value.roomId || ''
-    const res: any = await getMessageKeys({
-      configId: props.configId,
-      fromUserId,
-      toUserId,
-      ...(roomId ? { roomId } : {}),
-      pageSize: 200
-    })
+    const params: any = { pageSize: 200 }
+    if (props.configId) params.configId = props.configId
+    if (fromUserId) params.fromUserId = fromUserId
+    if (toUserId) params.toUserId = toUserId
+    if (roomId) params.roomId = roomId
+
+    console.log('[ConversationView] fetchMessageKeys params:', JSON.stringify(params))
+
+    const res: any = await getMessageKeys(params)
+    console.log('[ConversationView] fetchMessageKeys response:', JSON.stringify(res).slice(0, 300))
+
     if (res?.list) {
       messageKeys.value = res.list
         .filter((item: any) => item.msgid && item.secretKey)
         .map((item: any) => ({ msgid: item.msgid, secretKey: item.secretKey }))
+    } else if (res?.data?.list) {
+      messageKeys.value = res.data.list
+        .filter((item: any) => item.msgid && item.secretKey)
+        .map((item: any) => ({ msgid: item.msgid, secretKey: item.secretKey }))
     }
     console.log(`[ConversationView] fetchMessageKeys: ${messageKeys.value.length} keys loaded`)
-  } catch (e) {
-    console.warn('获取消息密钥失败:', e)
+  } catch (e: any) {
+    console.warn('[ConversationView] 获取消息密钥失败:', e?.message || e, e?.response?.data)
     messageKeys.value = []
   }
 }
@@ -947,9 +852,10 @@ defineExpose({ fetchConversations, fetchArchiveMembers, selectMemberById, jumpTo
 .context-menu-item:hover { background: #F3F4F6; color: #EF4444; }
 .mark-msg-preview { background: #F9FAFB; border-radius: 6px; padding: 8px 12px; font-size: 13px; color: #4B5563; max-height: 80px; overflow: auto; }
 
-/* SDK提示 */
-.sdk-hint-bar { margin-bottom: 12px; }
-.sdk-hint-bar .el-alert { font-size: 12px; padding: 6px 12px; }
+/* 密钥诊断面板 */
+.key-diagnose-panel { display: flex; align-items: center; justify-content: center; height: 100%; min-height: 200px; }
+.key-diagnose-panel .el-result { padding: 20px; }
+.key-diagnose-panel .el-result__subtitle { margin-top: 8px; }
 
 /* 消息行 */
 .msg-row { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 16px; }

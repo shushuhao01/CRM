@@ -1046,8 +1046,8 @@ export const getWecomAgentConfigSign = (data: { corpId: string; url: string }) =
 /** 获取消息密钥列表（用于会话展示组件渲染） */
 export const getMessageKeys = (params: {
   configId?: number
-  fromUserId: string
-  toUserId: string
+  fromUserId?: string
+  toUserId?: string
   roomId?: string
   page?: number
   pageSize?: number

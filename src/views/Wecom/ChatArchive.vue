@@ -789,6 +789,17 @@ const handleDiagnose = async () => {
         lines.push(`keys: ${d.zoneCall.parsed.keys}`)
         lines.push(`原始前200字符: ${d.zoneCall.parsed.first_100_chars}`)
       }
+      if (d.zoneCall.firstMsgStructure) {
+        const fm = d.zoneCall.firstMsgStructure
+        lines.push(`--- 首条消息密钥诊断 ---`)
+        lines.push(`msgid: ${fm.msgid}`)
+        lines.push(`消息字段: ${fm.raw_keys}`)
+        lines.push(`has_service_encrypt_info: ${fm.has_service_encrypt_info}`)
+        lines.push(`service_encrypt_info字段: ${fm.service_encrypt_info_keys}`)
+        lines.push(`encrypted_secret_key长度: ${fm.encrypted_secret_key_len}`)
+        lines.push(`has_encrypt_random_key: ${fm.has_encrypt_random_key}`)
+        lines.push(`encrypt_random_key长度: ${fm.encrypt_random_key_len}`)
+      }
       lines.push(`response_data长度: ${d.zoneCall.response_data_len}`)
       lines.push(``)
     }
@@ -806,15 +817,23 @@ const handleDiagnose = async () => {
 
     lines.push(`===== 数据库 =====`)
     lines.push(`真实消息记录: ${d.dbRecordCount}`)
-    lines.push(`含有效secretKey: ${d.dbWithSecretKey ?? '未知'}`)
+    lines.push(`含有效secretKey(非空): ${d.dbWithSecretKey ?? '未知'}`)
+    lines.push(`secretKey为空的记录: ${d.dbEmptySecretKey ?? '未知'}`)
     lines.push(`元数据记录: ${d.dbMetaCount ?? 'N/A'}`)
-    if (d.firstMsgKeyInfo) {
+    if (d.sampleContent) {
       lines.push(``)
-      lines.push(`===== 首条消息密钥字段诊断 =====`)
-      lines.push(`has_service_encrypt_info: ${d.firstMsgKeyInfo.has_service_encrypt_info}`)
-      lines.push(`has_encrypt_random_key: ${d.firstMsgKeyInfo.has_encrypt_random_key}`)
-      lines.push(`has_encrypted_secret_key: ${d.firstMsgKeyInfo.has_encrypted_secret_key}`)
-      lines.push(`消息字段: ${d.firstMsgKeyInfo.msg_keys}`)
+      lines.push(`===== 最新一条记录采样 =====`)
+      lines.push(`msg_id: ${d.sampleContent.msg_id}`)
+      lines.push(`from_user_id: ${d.sampleContent.from_user_id}`)
+      lines.push(`to_user_ids: ${d.sampleContent.to_user_ids}`)
+      if (d.sampleContent.content_parsed) {
+        const cp = d.sampleContent.content_parsed
+        lines.push(`secretKey长度: ${cp.secretKeyLength}`)
+        lines.push(`secretKey预览: ${cp.secretKeyPreview || '(空)'}`)
+        lines.push(`msgtype: ${cp.msgtype}`)
+      } else {
+        lines.push(`content原始(前200): ${(d.sampleContent.content_raw || '').slice(0, 200)}`)
+      }
     }
 
     ElMessageBox.alert(lines.join('\n'), '会话存档诊断', {
