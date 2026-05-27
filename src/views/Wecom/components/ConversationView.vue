@@ -694,7 +694,12 @@ const fetchMessages = async () => {
 }
 
 const loadMoreMessages = () => { msgLoadingMore.value = true; msgPage.value++; fetchMessages() }
-const refreshMessages = () => { msgPage.value = 1; messages.value = []; fetchMessages() }
+const refreshMessages = async () => {
+  msgPage.value = 1
+  messages.value = []
+  messageKeys.value = []
+  await Promise.all([fetchMessages(), fetchMessageKeys()])
+}
 
 // ==================== 辅助方法 ====================
 const formatShortTime = (ts: number | string) => {

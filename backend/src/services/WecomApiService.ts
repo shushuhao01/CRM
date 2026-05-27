@@ -206,14 +206,10 @@ export class WecomApiService {
         params: { access_token: accessToken, userid }
       });
       if (response.data.errcode === 0) {
-        // 统一头像字段：优先 avatar，其次 thumb_avatar
         if (!response.data.avatar && response.data.thumb_avatar) {
           response.data.avatar = response.data.thumb_avatar;
         }
-        // 调试日志：记录返回的头像字段
-        if (response.data.avatar || response.data.thumb_avatar) {
-          log.info(`[WecomApi] getUserDetail(${userid.substring(0, 12)}...): avatar=${response.data.avatar ? 'YES' : 'NO'}, thumb_avatar=${response.data.thumb_avatar ? 'YES' : 'NO'}`);
-        }
+        log.info(`[WecomApi] getUserDetail(${userid.substring(0, 12)}...): name=${response.data.name || '(empty)'}, avatar=${response.data.avatar ? 'YES' : 'NO'}, thumb=${response.data.thumb_avatar ? 'YES' : 'NO'}`);
         return response.data;
       }
       // 60111=userid不存在 / 60020=IP白名单 / 60011=权限不足 — 不抛错，返回 null
@@ -255,9 +251,13 @@ export class WecomApiService {
       });
 
       if (response.data.errcode === 0) {
+        const ext = response.data.external_contact;
+        if (ext) {
+          log.info(`[WecomApi] getExternalContactDetail(${externalUserId.substring(0, 16)}...): name=${ext.name || '(empty)'}, avatar=${ext.avatar ? 'YES(' + ext.avatar.substring(0, 40) + '...)' : 'NO'}`);
+        }
         return response.data;
       } else {
-        throw new Error(`获取外部联系人详情失败: ${response.data.errmsg}`);
+        throw new Error(`获取外部联系人详情失败: ${response.data.errmsg} (${response.data.errcode})`);
       }
     } catch (error: any) {
       log.error('[WecomApi] getExternalContactDetail error:', error.message);

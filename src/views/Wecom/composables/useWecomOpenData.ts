@@ -229,47 +229,51 @@ export function useWecomOpenData() {
       const instance = openDataFactory.createOpenDataFrame({
         el,
         template: `
-          <view wx:for="{{data.msgList}}" wx:key="msgid" class="msg-row {{item.isSelf ? 'msg-self' : 'msg-other'}}" data-index="{{index}}">
-            <view class="msg-meta {{item.isSelf ? 'meta-self' : 'meta-other'}}">
-              <view class="msg-avatar {{item.isSelf ? 'avatar-self' : 'avatar-other'}}">
-                <image wx:if="{{item.avatar}}" src="{{item.avatar}}" class="avatar-img" mode="aspectFill" />
-                <text wx:else class="avatar-text">{{item.avatarLetter || '?'}}</text>
-              </view>
-              <view class="meta-info">
-                <text class="msg-name">{{item.fromUserName || '未知'}}</text>
-                <text class="msg-time">{{item.timeStr || ''}}</text>
+          <view wx:for="{{data.msgList}}" wx:key="msgid" class="msg-item {{item.isSelf ? 'self' : 'other'}}" data-index="{{index}}">
+            <view class="avatar-col">
+              <image wx:if="{{item.avatar}}" src="{{item.avatar}}" class="avatar-img" mode="aspectFill" />
+              <view wx:else class="avatar-fb {{item.isSelf ? 'fb-g' : 'fb-b'}}">
+                <text class="fb-txt">{{item.avatarLetter || '?'}}</text>
               </view>
             </view>
-            <view class="msg-bubble {{item.isSelf ? 'bubble-self' : 'bubble-other'}}">
-              <ww-open-message
-                message-id="{{item.msgid}}"
-                secret-key="{{item.secretKey}}"
-                open-type="viewMessage"
-                binderror="onMsgError"
-              />
+            <view class="body-col">
+              <view class="info-row">
+                <text class="sender-name">{{item.fromUserName || ''}}</text>
+                <text class="send-time">{{item.timeStr || ''}}</text>
+              </view>
+              <view wx:if="{{item.msgType === 'text'}}" class="bubble {{item.isSelf ? 'bbl-r' : 'bbl-l'}}">
+                <ww-open-message message-id="{{item.msgid}}" secret-key="{{item.secretKey}}" open-type="viewMessage" binderror="onMsgError" />
+              </view>
+              <view wx:else class="media-wrap">
+                <ww-open-message message-id="{{item.msgid}}" secret-key="{{item.secretKey}}" open-type="viewMessage" binderror="onMsgError" />
+              </view>
             </view>
           </view>
           <view wx:if="{{data.msgList.length === 0}}" class="empty-tip">暂无消息</view>
         `,
         style: `
-          .msg-row { margin-bottom: 16px; padding: 0 12px; }
-          .msg-self { display: flex; flex-direction: column; align-items: flex-end; }
-          .msg-other { display: flex; flex-direction: column; align-items: flex-start; }
-          .msg-meta { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
-          .meta-self { flex-direction: row-reverse; }
-          .msg-avatar { width: 36px; height: 36px; border-radius: 6px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; overflow: hidden; }
-          .avatar-img { width: 36px; height: 36px; border-radius: 6px; }
-          .avatar-text { font-size: 14px; color: #fff; font-weight: 600; }
-          .avatar-self { background: #95ec69; }
-          .avatar-other { background: #409eff; }
-          .meta-info { display: flex; align-items: center; gap: 6px; }
-          .meta-self .meta-info { flex-direction: row-reverse; }
-          .msg-name { font-size: 12px; color: #606266; font-weight: 500; }
-          .msg-time { font-size: 11px; color: #c0c4cc; }
-          .msg-bubble { max-width: 75%; border-radius: 8px; overflow: hidden; }
-          .bubble-self { background: #95ec69; border-radius: 8px 2px 8px 8px; }
-          .bubble-other { background: #fff; border: 1px solid #e8e8e8; border-radius: 2px 8px 8px 8px; }
-          .empty-tip { text-align: center; color: #909399; padding: 40px 0; font-size: 14px; }
+          .msg-item { display:flex; margin:0 16px 20px; gap:10px; align-items:flex-start; }
+          .msg-item.self { flex-direction:row-reverse; }
+          .avatar-col { flex-shrink:0; width:40px; height:40px; margin-top:20px; }
+          .avatar-img { width:40px; height:40px; border-radius:4px; display:block; }
+          .avatar-fb { width:40px; height:40px; border-radius:4px; display:flex; align-items:center; justify-content:center; }
+          .fb-txt { font-size:16px; color:#fff; font-weight:600; }
+          .fb-g { background:#07c160; }
+          .fb-b { background:#409eff; }
+          .body-col { max-width:70%; display:flex; flex-direction:column; }
+          .self .body-col { align-items:flex-end; }
+          .other .body-col { align-items:flex-start; }
+          .info-row { display:flex; align-items:center; gap:8px; margin-bottom:4px; }
+          .self .info-row { flex-direction:row-reverse; }
+          .sender-name { font-size:12px; color:#999; }
+          .send-time { font-size:11px; color:#bbb; }
+          .bubble { position:relative; padding:10px 14px; line-height:1.6; font-size:15px; word-break:break-all; }
+          .bbl-l { background:#fff; border-radius:4px; box-shadow:0 1px 2px rgba(0,0,0,0.08); margin-left:6px; }
+          .bbl-l::before { content:''; position:absolute; top:12px; left:-6px; width:0; height:0; border-top:6px solid transparent; border-bottom:6px solid transparent; border-right:6px solid #fff; }
+          .bbl-r { background:#95ec69; border-radius:4px; margin-right:6px; }
+          .bbl-r::after { content:''; position:absolute; top:12px; right:-6px; width:0; height:0; border-top:6px solid transparent; border-bottom:6px solid transparent; border-left:6px solid #95ec69; }
+          .media-wrap { max-width:100%; border-radius:6px; overflow:hidden; }
+          .empty-tip { text-align:center; color:#909399; padding:60px 0; font-size:14px; }
         `,
         data: { msgList },
         methods: {

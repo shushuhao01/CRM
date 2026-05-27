@@ -89,7 +89,7 @@
         <div class="global-search-bar">
           <el-input
             v-model="globalSearchKeyword"
-            placeholder="搜索成员、客户、群聊..."
+            placeholder="搜索成员、客户名称..."
             clearable
             @keyup.enter="handleGlobalSearch"
             @clear="handleClearGlobalSearch"
@@ -844,6 +844,21 @@ const handleDiagnose = async () => {
         lines.push(`msgtype: ${cp.msgtype}`)
       } else {
         lines.push(`content原始(前200): ${(d.sampleContent.content_raw || '').slice(0, 200)}`)
+      }
+    }
+    if (d.avatarDiag) {
+      const a = d.avatarDiag
+      lines.push(``)
+      lines.push(`===== 头像诊断 =====`)
+      lines.push(`员工绑定: ${a.staff_total}条, 有头像: ${a.staff_with_avatar}条`)
+      lines.push(`客户记录: ${a.customer_total}条, 有头像: ${a.customer_with_avatar}条`)
+      if (a.sample_staff?.length) {
+        lines.push(`--- 员工采样 ---`)
+        a.sample_staff.forEach((s: any) => lines.push(`  ${s.id}: ${s.name || '(无名)'}, 头像=${s.avatar}`))
+      }
+      if (a.sample_customers?.length) {
+        lines.push(`--- 客户采样 ---`)
+        a.sample_customers.forEach((c: any) => lines.push(`  ${c.id}...: ${c.name || '(无名)'}, 头像=${c.avatar}`))
       }
     }
 

@@ -360,6 +360,36 @@ router.post('/chat-records/diagnose', authenticateToken, requireAdmin, async (re
       }
     } catch { /* ignore */ }
 
+    // 头像诊断
+    let avatarDiag: any = {};
+    try {
+      const tid = config.tenantId || '';
+      const staffAvatarCount = await AppDataSource.query(
+        `SELECT COUNT(*) as total, SUM(CASE WHEN wecom_avatar IS NOT NULL AND wecom_avatar != '' THEN 1 ELSE 0 END) as hasAvatar FROM wecom_user_bindings WHERE tenant_id = ?`,
+        [tid]
+      );
+      const custAvatarCount = await AppDataSource.query(
+        `SELECT COUNT(*) as total, SUM(CASE WHEN avatar IS NOT NULL AND avatar != '' THEN 1 ELSE 0 END) as hasAvatar FROM wecom_customers WHERE wecom_config_id = ? AND tenant_id = ?`,
+        [configId, tid]
+      );
+      const sampleCust = await AppDataSource.query(
+        `SELECT external_user_id, name, avatar FROM wecom_customers WHERE wecom_config_id = ? AND tenant_id = ? ORDER BY id DESC LIMIT 3`,
+        [configId, tid]
+      );
+      const sampleStaff = await AppDataSource.query(
+        `SELECT wecom_user_id, wecom_user_name, wecom_avatar FROM wecom_user_bindings WHERE tenant_id = ? ORDER BY id DESC LIMIT 3`,
+        [tid]
+      );
+      avatarDiag = {
+        staff_total: parseInt(staffAvatarCount[0]?.total) || 0,
+        staff_with_avatar: parseInt(staffAvatarCount[0]?.hasAvatar) || 0,
+        customer_total: parseInt(custAvatarCount[0]?.total) || 0,
+        customer_with_avatar: parseInt(custAvatarCount[0]?.hasAvatar) || 0,
+        sample_customers: sampleCust.map((c: any) => ({ id: c.external_user_id?.substring(0, 16), name: c.name, avatar: c.avatar ? c.avatar.substring(0, 50) + '...' : '(空)' })),
+        sample_staff: sampleStaff.map((s: any) => ({ id: s.wecom_user_id, name: s.wecom_user_name, avatar: s.wecom_avatar ? s.wecom_avatar.substring(0, 50) + '...' : '(空)' })),
+      };
+    } catch { /* ignore */ }
+
     res.json({
       success: true,
       data: {
@@ -371,6 +401,7 @@ router.post('/chat-records/diagnose', authenticateToken, requireAdmin, async (re
         dbWithSecretKey: parseInt(withKeyCount[0]?.cnt) || 0,
         dbEmptySecretKey: parseInt(emptyKeyCount[0]?.cnt) || 0,
         sampleContent,
+        avatarDiag,
         zoneCall: zoneCallResult,
         directCall: directCallResult
       }
@@ -513,6 +544,7 @@ router.get('/conversations/message-keys', authenticateToken, async (req: Request
       );
       for (const s of staffRows) {
         if (s.wecom_avatar) avatarMap[s.wecom_user_id] = s.wecom_avatar;
+        if (s.wecom_user_name) avatarMap[`name:${s.wecom_user_id}`] = s.wecom_user_name;
       }
     }
 
@@ -557,7 +589,9 @@ router.get('/conversations/message-keys', authenticateToken, async (req: Request
       } catch { /* skip */ }
     }
 
-    log.info(`[Wecom] message-keys: ${records.length}条记录, 有效=${list.length}条, 有头像=${Object.keys(avatarMap).filter(k => !k.startsWith('name:')).length}个`);
+    const avatarCount = Object.keys(avatarMap).filter(k => !k.startsWith('name:')).length;
+    const withAvatar = list.filter(m => m.avatar).length;
+    log.info(`[Wecom] message-keys: ${records.length}条, 有效=${list.length}条, DB有头像=${avatarCount}个, 消息带头像=${withAvatar}条, 员工IDs=${staffIds.size}, 客户IDs=${externalIds.size}`);
 
     res.json({
       success: true,
@@ -922,14 +956,23 @@ router.post('/chat-archive/global-search', authenticateToken, async (req: Reques
     const kw = `%${keyword}%`;
     const maxResults = Math.min(Number(limit) || 10, 20);
 
-    // 1. 搜索存档成员
+    log.info(`[Wecom] global-search: keyword="${keyword}", configId=${configId}, tenantId=${tenantId}`);
+
+    // 1. 搜索存档成员 (从 archive_members + user_bindings 两个表查)
     const memberRows = await AppDataSource.query(
-      `SELECT wecom_user_id as wecomUserId, wecom_user_name as name
-       FROM wecom_archive_members
-       WHERE tenant_id = ? AND is_enabled = 1
-         AND (wecom_user_name LIKE ? OR wecom_user_id LIKE ?)
+      `SELECT DISTINCT uid AS wecomUserId, uname AS name FROM (
+         SELECT wecom_user_id AS uid, wecom_user_name AS uname
+         FROM wecom_archive_members
+         WHERE tenant_id = ? AND is_enabled = 1
+           AND (wecom_user_name LIKE ? OR wecom_user_id LIKE ?)
+         UNION
+         SELECT wecom_user_id AS uid, wecom_user_name AS uname
+         FROM wecom_user_bindings
+         WHERE tenant_id = ?
+           AND (wecom_user_name LIKE ? OR wecom_user_id LIKE ?)
+       ) AS t
        LIMIT ?`,
-      [tenantId, kw, kw, maxResults]
+      [tenantId, kw, kw, tenantId, kw, kw, maxResults]
     );
 
     // 2. 搜索客户（外部联系人）
@@ -952,16 +995,16 @@ router.post('/chat-archive/global-search', authenticateToken, async (req: Reques
       [configId, tenantId, kw, maxResults]
     );
 
-    // 4. 搜索聊天记录 (按发送人名称/ID 或消息内容)
+    // 4. 搜索聊天记录 (按发送人名称/ID搜索，content是加密JSON无法搜明文)
     const msgRows = await AppDataSource.query(
       `SELECT id, from_user_id as fromUserId, from_user_name as fromUserName, content as contentRaw,
               msg_type as msgType, msg_time as msgTime, room_id as roomId, to_user_ids as toUserIds
        FROM wecom_chat_records
        WHERE wecom_config_id = ? AND tenant_id = ? AND msg_type != 'meta'
-         AND (from_user_name LIKE ? OR from_user_id LIKE ? OR content LIKE ?)
+         AND (from_user_name LIKE ? OR from_user_id LIKE ?)
        ORDER BY msg_time DESC
        LIMIT ?`,
-      [configId, tenantId, kw, kw, kw, maxResults]
+      [configId, tenantId, kw, kw, maxResults]
     );
 
     // 处理消息结果
@@ -991,6 +1034,8 @@ router.post('/chat-archive/global-search', authenticateToken, async (req: Reques
       };
     });
 
+    log.info(`[Wecom] global-search results: members=${(memberRows||[]).length}, customers=${(customerRows||[]).length}, groups=${(groupRows||[]).length}, messages=${messages.length}`);
+
     res.json({
       success: true,
       data: {
@@ -1001,7 +1046,7 @@ router.post('/chat-archive/global-search', authenticateToken, async (req: Reques
       }
     });
   } catch (error: any) {
-    log.error('[Wecom] Global search error:', error.message);
+    log.error('[Wecom] Global search error:', error.message, error.stack?.split('\n')[1]);
     res.status(500).json({ success: false, message: '搜索失败' });
   }
 });
