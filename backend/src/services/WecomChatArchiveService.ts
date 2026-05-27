@@ -2021,9 +2021,36 @@ export class WecomChatArchiveService {
   }
 
   /**
+   * 使用 RSA_NO_PADDING 原始解密 + 手动剥离 PKCS#1 v1.5 填充
+   * 适用于 OpenSSL 3.0+ / Node.js 17+ 禁用了 RSA_PKCS1_PADDING 的场景
+   */
+  private static rsaDecryptWithManualPkcs1(keyPem: string, cipherBuffer: Buffer): Buffer | null {
+    const rawDecrypted = crypto.privateDecrypt(
+      { key: keyPem, padding: crypto.constants.RSA_NO_PADDING },
+      cipherBuffer
+    );
+    // PKCS#1 v1.5 type 2 (encryption): 0x00 0x02 <non-zero padding bytes> 0x00 <message>
+    if (rawDecrypted.length < 11 || rawDecrypted[0] !== 0x00 || rawDecrypted[1] !== 0x02) {
+      return null;
+    }
+    let idx = 2;
+    while (idx < rawDecrypted.length && rawDecrypted[idx] !== 0x00) {
+      idx++;
+    }
+    if (idx >= rawDecrypted.length || idx < 10) {
+      return null; // padding too short or no 0x00 separator found
+    }
+    return rawDecrypted.subarray(idx + 1);
+  }
+
+  /**
    * RSA解密 encrypted_secret_key / encrypt_random_key
    * 企微使用 RSA/ECB/PKCS1Padding 加密，密文是 base64 编码
-   * 返回: { result, errors } — result 为解密结果（null 表示失败），errors 为每次尝试的错误信息
+   *
+   * OpenSSL 3.0+ 禁用了 RSA_PKCS1_PADDING 用于 privateDecrypt，
+   * 所以使用 RSA_NO_PADDING + 手动 PKCS#1 v1.5 unpadding 作为兼容方案。
+   *
+   * 返回: { result, errors }
    */
   static rsaDecryptDetailed(privateKeyPem: string, encryptedBase64: string): { result: string | null; errors: string[] } {
     let b64 = encryptedBase64.replace(/-/g, '+').replace(/_/g, '/');
@@ -2040,24 +2067,38 @@ export class WecomChatArchiveService {
 
     // 准备密钥变体
     const keyVariants: Array<{ name: string; pem: string }> = [];
-
-    // 提取纯 body
     const bodyOnly = normalizedKey.replace(/-----BEGIN [A-Z ]+-----/g, '').replace(/-----END [A-Z ]+-----/g, '').replace(/[\s\r\n]+/g, '');
 
     if (normalizedKey.includes('BEGIN PRIVATE KEY')) {
       keyVariants.push({ name: 'PKCS8(原始)', pem: normalizedKey });
-      // 也尝试 PKCS#1 header（虽然body格式不同，但Node.js有时能处理）
       keyVariants.push({ name: 'PKCS1(转换header)', pem: `-----BEGIN RSA PRIVATE KEY-----\n${bodyOnly.match(/.{1,64}/g)?.join('\n')}\n-----END RSA PRIVATE KEY-----` });
     } else if (normalizedKey.includes('BEGIN RSA PRIVATE KEY')) {
       keyVariants.push({ name: 'PKCS1(原始)', pem: normalizedKey });
       keyVariants.push({ name: 'PKCS8(转换header)', pem: `-----BEGIN PRIVATE KEY-----\n${bodyOnly.match(/.{1,64}/g)?.join('\n')}\n-----END PRIVATE KEY-----` });
     } else {
-      // 裸密钥体
       const formatted = bodyOnly.match(/.{1,64}/g)?.join('\n') || bodyOnly;
       keyVariants.push({ name: 'PKCS8(包装)', pem: `-----BEGIN PRIVATE KEY-----\n${formatted}\n-----END PRIVATE KEY-----` });
       keyVariants.push({ name: 'PKCS1(包装)', pem: `-----BEGIN RSA PRIVATE KEY-----\n${formatted}\n-----END RSA PRIVATE KEY-----` });
     }
 
+    // ★ 方案1: RSA_NO_PADDING + 手动 PKCS#1 v1.5 unpadding（兼容 OpenSSL 3.0+）
+    for (const kv of keyVariants) {
+      try {
+        const messageBuffer = this.rsaDecryptWithManualPkcs1(kv.pem, buffer);
+        if (messageBuffer && messageBuffer.length > 0) {
+          const isPrintable = messageBuffer.every(b => b >= 0x20 && b <= 0x7E);
+          const result = isPrintable ? messageBuffer.toString('utf8') : messageBuffer.toString('base64');
+          errors.push(`✅ ${kv.name}+NO_PADDING手动PKCS1: 成功! 长度=${result.length}, 原始字节=${messageBuffer.length}, 格式=${isPrintable ? 'UTF8' : 'Base64'}`);
+          return { result, errors };
+        } else {
+          errors.push(`⚠️ ${kv.name}+NO_PADDING手动PKCS1: 解密成功但PKCS1填充格式不匹配`);
+        }
+      } catch (e: any) {
+        errors.push(`❌ ${kv.name}+NO_PADDING手动PKCS1: ${e.message}`);
+      }
+    }
+
+    // ★ 方案2: 标准 API（旧版 OpenSSL/Node.js 可用）
     const paddings = [
       { name: 'PKCS1v1.5', value: crypto.constants.RSA_PKCS1_PADDING },
       { name: 'OAEP_SHA1', value: crypto.constants.RSA_PKCS1_OAEP_PADDING },
@@ -2072,27 +2113,11 @@ export class WecomChatArchiveService {
           );
           const isPrintable = decrypted.every(b => b >= 0x20 && b <= 0x7E);
           const result = isPrintable ? decrypted.toString('utf8') : decrypted.toString('base64');
-          errors.push(`✅ ${kv.name}+${p.name}: 成功! 长度=${result.length}, 格式=${isPrintable ? 'UTF8' : 'Base64'}`);
+          errors.push(`✅ ${kv.name}+${p.name}: 成功! 长度=${result.length}`);
           return { result, errors };
         } catch (e: any) {
           errors.push(`❌ ${kv.name}+${p.name}: ${e.message}`);
         }
-      }
-    }
-
-    // 最后尝试：直接用原始密钥字符串（不做任何规范化）
-    for (const p of paddings) {
-      try {
-        const decrypted = crypto.privateDecrypt(
-          { key: privateKeyPem, padding: p.value },
-          buffer
-        );
-        const isPrintable = decrypted.every(b => b >= 0x20 && b <= 0x7E);
-        const result = isPrintable ? decrypted.toString('utf8') : decrypted.toString('base64');
-        errors.push(`✅ 原始密钥+${p.name}: 成功!`);
-        return { result, errors };
-      } catch (e: any) {
-        errors.push(`❌ 原始密钥+${p.name}: ${e.message}`);
       }
     }
 
