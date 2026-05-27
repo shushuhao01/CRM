@@ -1293,6 +1293,44 @@ export class WecomChatArchiveService {
         } catch { /* ignore */ }
       }
 
+      // ★ 为群聊生成 roomName（从群内成员名称组合）
+      const roomIds = rawList.filter((c: any) => c.roomId).map((c: any) => c.roomId);
+      const roomNameMap = new Map<string, string>();
+      if (roomIds.length > 0) {
+        try {
+          for (const rid of roomIds) {
+            let roomWhere = "room_id = ? AND msg_type != 'meta'";
+            const roomParams: any[] = [rid];
+            if (tenantId) { roomWhere += ' AND tenant_id = ?'; roomParams.push(tenantId); }
+            if (configId) { roomWhere += ' AND wecom_config_id = ?'; roomParams.push(configId); }
+            const memberRows = await AppDataSource.query(
+              `SELECT DISTINCT from_user_id AS uid FROM wecom_chat_records WHERE ${roomWhere} LIMIT 10`,
+              roomParams
+            );
+            const uids = memberRows.map((r: any) => r.uid).filter(Boolean);
+            if (uids.length === 0) continue;
+            const names: string[] = [];
+            for (const uid of uids) {
+              if (uid.startsWith('wm') || uid.startsWith('wo')) {
+                const ci = customerInfoMap.get(uid);
+                if (ci) names.push(ci.remark || ci.name || uid.substring(0, 8));
+                else names.push(uid.substring(0, 8));
+              } else {
+                const bindRow = await AppDataSource.query(
+                  `SELECT wecom_user_name FROM wecom_user_bindings WHERE wecom_user_id = ? LIMIT 1`, [uid]
+                );
+                names.push(bindRow?.[0]?.wecom_user_name || uid);
+              }
+              if (names.length >= 3) break;
+            }
+            const suffix = uids.length > 3 ? `等${uids.length}人` : '';
+            roomNameMap.set(rid, names.join('、') + suffix);
+          }
+        } catch (e: any) {
+          log.warn('[ChatArchive] 生成群名失败:', e.message);
+        }
+      }
+
       // 后处理：用备注+昵称作为 customerName，附带头像
       const list = rawList.map((item: any) => {
         let customerName = '';
@@ -1367,7 +1405,8 @@ export class WecomChatArchiveService {
           corpName = customerInfoMap.get(externalId)!.corpName || '';
         }
 
-        return { ...item, customerName, customerAvatar, memberAvatar, agreed, corpName };
+        const roomName = item.roomId ? (roomNameMap.get(item.roomId) || '') : '';
+        return { ...item, customerName, customerAvatar, memberAvatar, agreed, corpName, roomName };
       });
 
       return { list, total };

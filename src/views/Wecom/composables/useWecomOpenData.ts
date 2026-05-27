@@ -210,7 +210,7 @@ export function useWecomOpenData() {
    * 严格按照官方文档模板使用 ww-open-message 组件
    * 参考: https://developer.work.weixin.qq.com/document/path/100049
    */
-  const createMessageFrame = (el: HTMLElement | string, msgList: Array<{ msgid: string; secretKey: string; fromUserName?: string; isSelf?: boolean; timeStr?: string; avatarLetter?: string; avatar?: string }>, options?: {
+  const createMessageFrame = (el: HTMLElement | string, msgList: Array<{ msgid: string; secretKey: string; fromUserName?: string; isSelf?: boolean; timeStr?: string; avatarLetter?: string; avatar?: string; avatarBg?: string; [key: string]: any }>, options?: {
     onError?: (error: any) => void
     onMounted?: () => void
   }) => {
@@ -232,12 +232,14 @@ export function useWecomOpenData() {
           <view wx:for="{{data.msgList}}" wx:key="msgid" class="msg {{item.isSelf ? 'R' : 'L'}}" data-index="{{index}}">
             <view class="av">
               <image wx:if="{{item.avatar}}" src="{{item.avatar}}" class="av-img" mode="aspectFill" />
-              <text wx:else class="av-fb">{{item.avatarLetter || '?'}}</text>
+              <view wx:else class="av-fb" style="background:{{item.avatarBg || '#c8c9cc'}}">
+                <text class="av-tx">{{item.avatarLetter || '?'}}</text>
+              </view>
             </view>
             <view class="bd">
               <view class="hd">
-                <text class="hd-name">{{item.fromUserName || ''}}</text>
-                <text class="hd-time">{{item.timeStr || ''}}</text>
+                <text class="hd-n">{{item.fromUserName}}</text>
+                <text class="hd-t">{{item.timeStr}}</text>
               </view>
               <view wx:if="{{item.msgType === 'text'}}" class="bbl {{item.isSelf ? 'bbl-r' : 'bbl-l'}}">
                 <ww-open-message message-id="{{item.msgid}}" secret-key="{{item.secretKey}}" open-type="viewMessage" binderror="onMsgError" />
@@ -250,21 +252,22 @@ export function useWecomOpenData() {
           <view wx:if="{{data.msgList.length === 0}}" class="empty">暂无消息</view>
         `,
         style: `
-          .msg{overflow:hidden;margin:0 12px 14px;padding:0}
+          .msg{overflow:hidden;margin:0 12px 16px;padding:0}
           .L .av{float:left;margin-right:8px}
           .R .av{float:right;margin-left:8px}
           .av{width:36px;height:36px}
           .av-img{width:36px;height:36px;border-radius:4px}
-          .av-fb{display:block;width:36px;height:36px;line-height:36px;text-align:center;border-radius:4px;background:#c8c9cc;color:#fff;font-size:15px;font-weight:bold}
+          .av-fb{width:36px;height:36px;border-radius:4px;overflow:hidden;text-align:center}
+          .av-tx{line-height:36px;color:#fff;font-size:16px;font-weight:bold}
           .bd{overflow:hidden}
           .L .bd{margin-right:50px}
           .R .bd{margin-left:50px}
-          .hd{margin-bottom:3px;line-height:16px;overflow:hidden}
+          .hd{padding:0 2px 4px;height:18px;line-height:18px}
           .L .hd{text-align:left}
           .R .hd{text-align:right}
-          .hd-name{font-size:12px;color:#666}
-          .hd-time{font-size:11px;color:#999;margin-left:6px}
-          .R .hd-time{margin-left:0;margin-right:6px}
+          .hd-n{font-size:12px;color:#555}
+          .hd-t{font-size:11px;color:#999;margin-left:8px}
+          .R .hd-t{margin-left:0;margin-right:8px}
           .bbl{position:relative;display:inline-block;padding:9px 12px;line-height:1.5;font-size:14px;word-break:break-all;max-width:100%;box-sizing:border-box}
           .bbl-l{background:#f4f4f4;border-radius:0 6px 6px 6px;text-align:left}
           .bbl-l:before{content:'';position:absolute;top:10px;left:-6px;border-top:5px solid transparent;border-bottom:5px solid transparent;border-right:6px solid #f4f4f4}

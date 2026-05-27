@@ -41,7 +41,7 @@ import { Loading } from '@element-plus/icons-vue'
 import { useWecomOpenData } from '../composables/useWecomOpenData'
 
 const props = defineProps<{
-  msgList: Array<{ msgid: string; secretKey: string; fromUserName?: string; isSelf?: boolean; timeStr?: string; msgType?: string; avatarLetter?: string; avatar?: string }>
+  msgList: Array<{ msgid: string; secretKey: string; fromUserName?: string; isSelf?: boolean; timeStr?: string; msgType?: string; avatarLetter?: string; avatar?: string; avatarBg?: string; [key: string]: any }>
   loading?: boolean
 }>()
 

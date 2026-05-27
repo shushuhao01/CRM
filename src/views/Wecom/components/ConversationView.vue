@@ -61,7 +61,7 @@
             </div>
           </div>
           <!-- 搜索 -->
-          <el-input v-model="convSearch" placeholder="搜索会话" clearable size="small" prefix-icon="Search" style="margin: 8px 12px 4px;" @keyup.enter="fetchConversations" @clear="fetchConversations" />
+          <el-input v-model="convSearch" placeholder="搜索会话" clearable size="small" prefix-icon="Search" style="margin: 8px 12px 4px; width: calc(100% - 24px); box-sizing: border-box;" @keyup.enter="fetchConversations" @clear="fetchConversations" />
         </div>
         <div class="panel-conv-list" ref="convListRef" v-loading="convLoading" @scroll="handleConvScroll">
           <div v-if="conversations.length === 0 && !convLoading" class="empty-conv">
@@ -258,7 +258,7 @@ const emit = defineEmits<{ (e: 'audit', record: ConvMessage): void }>()
 // ==================== 渲染模式 ====================
 const isInWecomClient = /wxwork|WeCom/i.test(navigator.userAgent) || !!(window as any).wx?.invoke
 const renderMode = ref<'bubble' | 'wecom'>('wecom')
-const messageKeys = ref<Array<{ msgid: string; secretKey: string; fromUserName?: string; isSelf?: boolean; timeStr?: string; msgType?: string; avatarLetter?: string; avatar?: string }>>([])
+const messageKeys = ref<Array<{ msgid: string; secretKey: string; fromUserName?: string; isSelf?: boolean; timeStr?: string; msgType?: string; avatarLetter?: string; avatar?: string; avatarBg?: string }>>([])
 
 // ==================== 企微SDK状态 ====================
 const { isWecomReady, isWecomFailed, initError, initFromConfig, resetWecomState } = useWecomOpenData()
@@ -311,6 +311,7 @@ const fetchMessageKeys = async () => {
 
     const rawList = res?.list || res?.data?.list || []
     const curMemberId = selectedMemberId.value || ''
+    const isGroupConv = !!(selectedConv.value?.roomId)
     messageKeys.value = rawList
       .filter((item: any) => item.msgid && item.secretKey)
       .map((item: any) => {
@@ -318,15 +319,22 @@ const fetchMessageKeys = async () => {
         const timeStr = t ? `${(t.getMonth()+1).toString().padStart(2,'0')}/${t.getDate().toString().padStart(2,'0')} ${t.getHours().toString().padStart(2,'0')}:${t.getMinutes().toString().padStart(2,'0')}` : ''
         const name = item.fromUserName || item.fromUserId || ''
         const fid = item.fromUserId || ''
+        const isSelf = fid === curMemberId
+        const isExternal = fid.startsWith('wm') || fid.startsWith('wo')
+        let avatarBg = '#409eff'
+        if (isExternal) avatarBg = '#07c160'
+        else if (isGroupConv && !isSelf) avatarBg = '#e6a23c'
+        else if (isSelf) avatarBg = '#409eff'
         return {
           msgid: item.msgid,
           secretKey: item.secretKey,
           fromUserName: name,
-          isSelf: fid === curMemberId,
+          isSelf,
           timeStr,
           msgType: item.msgType || '',
           avatarLetter: name.charAt(0).toUpperCase() || '?',
           avatar: item.avatar || '',
+          avatarBg,
         }
       })
     console.log(`[ConversationView] fetchMessageKeys: ${messageKeys.value.length} keys loaded`)
@@ -813,7 +821,7 @@ defineExpose({ fetchConversations, fetchArchiveMembers, selectMemberById, jumpTo
 
 /* 第二栏：会话列表 */
 .panel-conversations { width: 280px; flex-shrink: 0; border-right: 1px solid #f0f0f0; display: flex; flex-direction: column; }
-.panel-conv-header { border-bottom: 1px solid #f0f0f0; }
+.panel-conv-header { border-bottom: 1px solid #f0f0f0; overflow: hidden; }
 .conv-header-member { display: flex; align-items: center; gap: 8px; padding: 10px 12px 6px; }
 .conv-header-avatar { width: 28px; height: 28px; border-radius: 4px; overflow: hidden; flex-shrink: 0; background: #67c23a; display: flex; align-items: center; justify-content: center; }
 .conv-header-name { font-size: 13px; font-weight: 600; color: #1f2937; }
