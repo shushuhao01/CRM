@@ -327,13 +327,30 @@ router.post('/address-book/sync-departments', authenticateToken, requireAdmin, a
     if (missingNameDepts.length > 0) {
       const limit = Math.min(missingNameDepts.length, 100);
       log.info(`[AddressBook] ${missingNameDepts.length} 个部门名称缺失，尝试通过 /department/get 逐个补充（处理前 ${limit} 个）`);
+
+      // 先用当前 token 试，如果第一个就失败，尝试用 corp token
+      let detailToken = accessToken;
       let enriched = 0;
       for (let i = 0; i < limit; i++) {
         const dept = missingNameDepts[i];
-        const detail = await WecomApiService.getDepartmentDetail(accessToken, dept.id);
+        const detail = await WecomApiService.getDepartmentDetail(detailToken, dept.id);
         if (detail && isValidName(detail.name, dept.id)) {
           dept.name = detail.name;
           enriched++;
+        } else if (i === 0 && detailToken === accessToken) {
+          // 第一个就没返回有效名称，尝试换 corp token
+          try {
+            const corpToken = await WecomApiService.getAccessTokenByConfigId(configId, 'corp');
+            if (corpToken !== accessToken) {
+              const retry = await WecomApiService.getDepartmentDetail(corpToken, dept.id);
+              if (retry && isValidName(retry.name, dept.id)) {
+                dept.name = retry.name;
+                detailToken = corpToken;
+                enriched++;
+                log.info('[AddressBook] 切换到 corp token 获取部门名称成功');
+              }
+            }
+          } catch { /* ignore */ }
         }
         if (i % 20 === 19) await new Promise(r => setTimeout(r, 100));
       }
@@ -445,19 +462,29 @@ router.post('/address-book/sync-members', authenticateToken, requireAdmin, async
       where: { tenantId, wecomConfigId: configId }
     });
 
-    // 如果本地没有部门数据，自动先同步部门（避免用户需要手动分两步操作）
+    // 如果本地没有部门数据，自动先同步部门
     if (localDepts.length === 0) {
       log.info('[AddressBook] sync-members: 本地无部门数据，自动先同步部门...');
       try {
         const departments = await WecomApiService.getDepartmentList(accessToken);
         if (departments.length > 0) {
           for (const dept of departments) {
-            const apiNameValid = isValidName(dept.name, dept.id);
+            let deptName = dept.name;
+            const apiNameValid = isValidName(deptName, dept.id);
+            // 名称缺失时，用 /department/get 单独获取
+            if (!apiNameValid) {
+              try {
+                const detail = await WecomApiService.getDepartmentDetail(accessToken, dept.id);
+                if (detail && isValidName(detail.name, dept.id)) {
+                  deptName = detail.name;
+                }
+              } catch { /* ignore */ }
+            }
             const mapping = deptRepo.create({
               tenantId,
               wecomConfigId: configId,
               wecomDeptId: dept.id,
-              wecomDeptName: apiNameValid ? String(dept.name).trim() : '',
+              wecomDeptName: isValidName(deptName, dept.id) ? String(deptName).trim() : '',
               wecomParentId: dept.parentid || 0,
               memberCount: 0,
               lastSyncTime: new Date()
@@ -469,6 +496,21 @@ router.post('/address-book/sync-members', authenticateToken, requireAdmin, async
         }
       } catch (e: any) {
         log.warn('[AddressBook] 自动同步部门失败:', e.message);
+        // 部门同步失败，创建默认根部门
+        if (localDepts.length === 0) {
+          const defaultDept = deptRepo.create({
+            tenantId,
+            wecomConfigId: configId,
+            wecomDeptId: 1,
+            wecomDeptName: config.name || '企业',
+            wecomParentId: 0,
+            memberCount: 0,
+            lastSyncTime: new Date()
+          });
+          await deptRepo.save(defaultDept);
+          localDepts = [defaultDept];
+          log.info('[AddressBook] 已创建默认根部门');
+        }
       }
     }
 
@@ -478,10 +520,14 @@ router.post('/address-book/sync-members', authenticateToken, requireAdmin, async
 
     try {
       users = await WecomApiService.getDepartmentUsers(accessToken, rootDeptId, true);
+      // 如果返回0个成员但本地有已绑定的成员，说明可能权限不足导致API没返回用户
+      // 尝试降级方案获取
+      if (users.length === 0) {
+        log.warn('[AddressBook] getDepartmentUsers 返回0个成员，尝试降级方案获取成员列表...');
+        throw new Error('empty result, fallback to externalcontact (60011)');
+      }
     } catch (e: any) {
-      // 60011 = 无权限访问通讯录，第三方应用常见
-      // 尝试降级方案：用 external token 通过 /externalcontact/get_follow_user_list 获取内部成员
-      if (e.message?.includes('60011') || e.message?.includes('no privilege')) {
+      if (e.message?.includes('60011') || e.message?.includes('no privilege') || e.message?.includes('empty result')) {
         log.warn('[AddressBook] 通讯录API无权限(60011)，尝试通过客户联系API获取内部成员列表...');
         try {
           const externalToken = await WecomApiService.getAccessTokenByConfigId(configId, 'external');

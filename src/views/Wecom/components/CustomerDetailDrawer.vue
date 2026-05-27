@@ -196,37 +196,37 @@ const parsedTags = computed(() => {
   }
 })
 
-watch(() => props.customerId, async (newId) => {
-  if (newId && props.modelValue) {
-    if (props.demoData) {
-      detail.value = props.demoData
-    } else {
-      await fetchDetail(newId)
-    }
-  }
-})
+let fetchTimer: ReturnType<typeof setTimeout> | null = null
 
-watch(() => props.modelValue, async (show) => {
-  if (show && props.customerId) {
-    if (props.demoData) {
-      detail.value = props.demoData
-    } else {
-      await fetchDetail(props.customerId)
+const triggerFetch = () => {
+  if (fetchTimer) clearTimeout(fetchTimer)
+  fetchTimer = setTimeout(() => {
+    if (props.modelValue && props.customerId) {
+      if (props.demoData) {
+        detail.value = props.demoData
+      } else {
+        fetchDetail(props.customerId)
+      }
     }
-  }
-})
+  }, 50)
+}
+
+watch(() => props.customerId, triggerFetch)
+watch(() => props.modelValue, triggerFetch)
 
 const fetchDetail = async (id: number) => {
   loading.value = true
   try {
     const res: any = await getWecomCustomerDetail(id)
     if (res) {
-      if (!res.messageStats) res.messageStats = { sentCount: 0, recvCount: 0, totalCount: 0, lastMsgTime: null, activeDays7d: 0 }
+      if (!res.messageStats) res.messageStats = { sentCount: 0, recvCount: 0, totalCount: 0, lastMsgTime: null }
       if (!res.followRecords) res.followRecords = []
       if (!res.customer) res.customer = {}
     }
     detail.value = res || null
   } catch (e: any) {
+    // 忽略请求被取消的错误（重复请求去重导致）
+    if (e?.message === 'canceled' || e?.code === 'ERR_CANCELED') return
     console.error('[CustomerDetailDrawer] Fetch error:', e)
     ElMessage.error(e?.message || '获取客户详情失败')
     detail.value = null

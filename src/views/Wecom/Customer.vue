@@ -203,21 +203,14 @@
             </template>
           </template>
         </el-table-column>
-        <!-- V4.0: 渠道来源列 -->
-        <el-table-column label="渠道来源" width="110">
+        <el-table-column label="消息统计" width="120">
           <template #default="{ row }">
-            <el-tag v-if="row.state" size="small" type="info" class="channel-tag">{{ row.state }}</el-tag>
-            <span v-else style="color: #C0C4CC">-</span>
-          </template>
-        </el-table-column>
-        <!-- CRM关联：显示客户名(超链接) -->
-        <el-table-column label="CRM关联" width="160">
-          <template #default="{ row }">
-            <template v-if="row.crmCustomerId">
-              <a class="crm-link" @click.prevent="goToCrmCustomer(row.crmCustomerId)">{{ row.crmCustomerName || '已关联' }}</a>
-              <el-button link type="danger" size="small" style="margin-left: 4px" @click="handleUnlink(row)">解除</el-button>
-            </template>
-            <el-button v-else link type="primary" size="small" @click="openLinkDialog(row)">关联CRM客户</el-button>
+            <el-tooltip :content="`客户发送: ${row.msgSentCount ?? row.chatSentCount ?? 0}条 / 员工发送: ${row.msgRecvCount ?? row.chatRecvCount ?? 0}条`" placement="top" :show-after="300">
+              <span style="font-size: 12px; display: inline-flex; gap: 6px">
+                <span style="color: #409eff">客<strong>{{ row.msgSentCount ?? row.chatSentCount ?? 0 }}</strong></span>
+                <span style="color: #67c23a">员<strong>{{ row.msgRecvCount ?? row.chatRecvCount ?? 0 }}</strong></span>
+              </span>
+            </el-tooltip>
           </template>
         </el-table-column>
         <el-table-column label="活跃度" width="80">
@@ -227,14 +220,20 @@
             <el-tag v-else type="info" size="small">沉默</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="消息统计" width="120">
+        <el-table-column label="渠道来源" width="110">
           <template #default="{ row }">
-            <el-tooltip :content="`客户发送: ${row.msgSentCount ?? row.chatSentCount ?? 0}条 / 员工发送: ${row.msgRecvCount ?? row.chatRecvCount ?? 0}条`" placement="top" :show-after="300">
-              <span style="font-size: 12px; display: inline-flex; gap: 6px">
-                <span style="color: #409eff">客<strong>{{ row.msgSentCount ?? row.chatSentCount ?? 0 }}</strong></span>
-                <span style="color: #67c23a">员<strong>{{ row.msgRecvCount ?? row.chatRecvCount ?? 0 }}</strong></span>
-              </span>
-            </el-tooltip>
+            <el-tag v-if="row.state" size="small" type="info" class="channel-tag">{{ row.state }}</el-tag>
+            <span v-else style="color: #C0C4CC">-</span>
+          </template>
+        </el-table-column>
+        <!-- CRM关联 -->
+        <el-table-column label="CRM关联" width="160">
+          <template #default="{ row }">
+            <template v-if="row.crmCustomerId">
+              <a class="crm-link" @click.prevent="goToCrmCustomer(row.crmCustomerId)">{{ row.crmCustomerName || '已关联' }}</a>
+              <el-button link type="danger" size="small" style="margin-left: 4px" @click="handleUnlink(row)">解除</el-button>
+            </template>
+            <el-button v-else link type="primary" size="small" @click="openLinkDialog(row)">关联CRM客户</el-button>
           </template>
         </el-table-column>
         <el-table-column label="操作" width="80" fixed="right">

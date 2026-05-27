@@ -248,8 +248,8 @@ service.interceptors.response.use(
       return Promise.reject(error)
     }
 
-    // 请求被取消
-    if (axios.isCancel(error)) {
+    // 请求被取消（CancelToken 或 AbortController）
+    if (axios.isCancel(error) || error.code === 'ERR_CANCELED' || error.name === 'AbortError' || error.message === 'canceled') {
       console.log('Request canceled:', error.message)
       return Promise.reject(error)
     }

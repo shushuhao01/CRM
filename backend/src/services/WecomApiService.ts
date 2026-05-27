@@ -155,40 +155,91 @@ export class WecomApiService {
   }
 
   /**
+   * 获取单个部门的直属成员列表（官方API /user/list 不支持 fetch_child）
+   */
+  private static async getDepartmentDirectUsers(accessToken: string, departmentId: number): Promise<any[]> {
+    const response = await axios.get(`${WECOM_API_BASE}/user/list`, {
+      params: {
+        access_token: accessToken,
+        department_id: departmentId
+      }
+    });
+
+    if (response.data.errcode === 0) {
+      return response.data.userlist || [];
+    }
+
+    const errorHints: Record<number, string> = {
+      60020: '访问IP不在白名单，请在企微后台添加服务器IP到可信IP',
+      60011: '无权限访问，请检查通讯录Secret权限配置',
+      40014: 'access_token无效或过期',
+      40001: 'secret无效',
+      41001: '缺少access_token参数',
+      60028: '不允许修改第三方应用的成员'
+    };
+    const hint = errorHints[response.data.errcode] || '';
+    throw new Error(`获取成员列表失败: ${response.data.errmsg} (errcode: ${response.data.errcode})${hint ? ' - ' + hint : ''}`);
+  }
+
+  /**
    * 获取部门成员列表
+   * 官方文档明确：/user/list 不支持 fetch_child 参数
+   * 需递归获取子部门成员：先获取部门列表，再逐部门调用 /user/list
    */
   static async getDepartmentUsers(accessToken: string, departmentId: number, fetchChild: boolean = false): Promise<any[]> {
     try {
       log.info(`[WecomApi] getDepartmentUsers: departmentId=${departmentId}, fetchChild=${fetchChild}`);
-      log.info(`[WecomApi] Using access_token: ${accessToken.substring(0, 20)}...`);
 
-      const response = await axios.get(`${WECOM_API_BASE}/user/list`, {
-        params: {
-          access_token: accessToken,
-          department_id: departmentId,
-          fetch_child: fetchChild ? 1 : 0
-        }
-      });
-
-      log.info('[WecomApi] getDepartmentUsers response errcode:', response.data.errcode, 'count:', (response.data.userlist || []).length);
-
-      if (response.data.errcode === 0) {
-        const users = response.data.userlist || [];
-        log.info(`[WecomApi] Got ${users.length} users`);
+      if (!fetchChild) {
+        const users = await this.getDepartmentDirectUsers(accessToken, departmentId);
+        log.info(`[WecomApi] Got ${users.length} direct users from dept ${departmentId}`);
         return users;
-      } else {
-        // 常见错误码说明
-        const errorHints: Record<number, string> = {
-          60020: '访问IP不在白名单，请在企微后台添加服务器IP到可信IP',
-          60011: '无权限访问，请检查通讯录Secret权限配置',
-          40014: 'access_token无效或过期',
-          40001: 'secret无效',
-          41001: '缺少access_token参数',
-          60028: '不允许修改第三方应用的成员'
-        };
-        const hint = errorHints[response.data.errcode] || '';
-        throw new Error(`获取成员列表失败: ${response.data.errmsg} (errcode: ${response.data.errcode})${hint ? ' - ' + hint : ''}`);
       }
+
+      // fetchChild=true: 递归获取所有子部门的成员
+      // 1. 获取该部门及其所有子部门ID列表
+      let deptIds: number[] = [departmentId];
+      try {
+        const depts = await this.getDepartmentList(accessToken, departmentId);
+        if (depts.length > 0) {
+          deptIds = depts.map((d: any) => d.id);
+          if (!deptIds.includes(departmentId)) {
+            deptIds.unshift(departmentId);
+          }
+        }
+      } catch (e: any) {
+        log.warn(`[WecomApi] 获取子部门列表失败(${e.message})，仅获取根部门成员`);
+      }
+
+      log.info(`[WecomApi] 递归获取 ${deptIds.length} 个部门的成员...`);
+
+      // 2. 逐部门获取成员，合并去重
+      const allUsers: any[] = [];
+      const seenUserIds = new Set<string>();
+
+      for (const deptId of deptIds) {
+        try {
+          const users = await this.getDepartmentDirectUsers(accessToken, deptId);
+          for (const u of users) {
+            if (!seenUserIds.has(u.userid)) {
+              seenUserIds.add(u.userid);
+              allUsers.push(u);
+            }
+          }
+        } catch (e: any) {
+          if (e.message?.includes('60011') || e.message?.includes('no privilege')) {
+            throw e;
+          }
+          log.warn(`[WecomApi] 获取部门${deptId}成员失败: ${e.message}`);
+        }
+        // 限速：每20个部门暂停100ms
+        if (deptIds.indexOf(deptId) % 20 === 19) {
+          await new Promise(r => setTimeout(r, 100));
+        }
+      }
+
+      log.info(`[WecomApi] 递归获取完成：共 ${allUsers.length} 个不重复成员（遍历 ${deptIds.length} 个部门）`);
+      return allUsers;
     } catch (error: any) {
       log.error('[WecomApi] getDepartmentUsers error:', error.message);
       throw error;
