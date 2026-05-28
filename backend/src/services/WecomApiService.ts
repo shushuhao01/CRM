@@ -155,9 +155,11 @@ export class WecomApiService {
   }
 
   /**
-   * 获取单个部门的直属成员列表（官方API /user/list 不支持 fetch_child）
+   * 获取单个部门的直属成员列表
+   * 优先使用 /user/list（返回详细信息），失败或为空时尝试 /user/simplelist
    */
   private static async getDepartmentDirectUsers(accessToken: string, departmentId: number): Promise<any[]> {
+    // 1. 尝试 /user/list（获取部门成员详情）
     const response = await axios.get(`${WECOM_API_BASE}/user/list`, {
       params: {
         access_token: accessToken,
@@ -166,7 +168,38 @@ export class WecomApiService {
     });
 
     if (response.data.errcode === 0) {
-      return response.data.userlist || [];
+      const userlist = response.data.userlist || [];
+      if (userlist.length > 0) {
+        log.info(`[WecomApi] /user/list dept=${departmentId} → ${userlist.length} 个成员`);
+        return userlist;
+      }
+      // /user/list 返回空（errcode=0但userlist为空），尝试 /user/simplelist
+      log.info(`[WecomApi] /user/list dept=${departmentId} → 0个成员(errcode=0)，尝试 simplelist...`);
+      try {
+        const simpleResp = await axios.get(`${WECOM_API_BASE}/user/simplelist`, {
+          params: { access_token: accessToken, department_id: departmentId }
+        });
+        if (simpleResp.data.errcode === 0 && simpleResp.data.userlist?.length > 0) {
+          log.info(`[WecomApi] /user/simplelist dept=${departmentId} → ${simpleResp.data.userlist.length} 个成员`);
+          return simpleResp.data.userlist;
+        }
+        log.info(`[WecomApi] /user/simplelist dept=${departmentId} → ${simpleResp.data.userlist?.length || 0}个成员 (errcode=${simpleResp.data.errcode})`);
+      } catch (e: any) {
+        log.warn(`[WecomApi] /user/simplelist dept=${departmentId} 异常: ${e.message}`);
+      }
+      return [];
+    }
+
+    // /user/list 报错，先尝试 /user/simplelist
+    if (response.data.errcode === 60011) {
+      try {
+        const simpleResp = await axios.get(`${WECOM_API_BASE}/user/simplelist`, {
+          params: { access_token: accessToken, department_id: departmentId }
+        });
+        if (simpleResp.data.errcode === 0) {
+          return simpleResp.data.userlist || [];
+        }
+      } catch { /* simplelist 也失败 */ }
     }
 
     const errorHints: Record<number, string> = {
@@ -268,12 +301,15 @@ export class WecomApiService {
     let successCount = 0;
     let failCount = 0;
 
-    log.info(`[WecomApi] 按已知部门ID列表获取成员，共 ${deptIds.length} 个部门...`);
+    log.info(`[WecomApi] 按已知部门ID列表获取成员，共 ${deptIds.length} 个部门: [${deptIds.join(',')}]`);
 
     for (let i = 0; i < deptIds.length; i++) {
       const deptId = deptIds[i];
       try {
         const users = await this.getDepartmentDirectUsers(accessToken, deptId);
+        if (users.length > 0) {
+          log.info(`[WecomApi] 部门${deptId}获取到 ${users.length} 个成员: [${users.map((u: any) => u.userid).join(',')}]`);
+        }
         for (const u of users) {
           if (!seenUserIds.has(u.userid)) {
             seenUserIds.add(u.userid);
@@ -296,6 +332,37 @@ export class WecomApiService {
 
     log.info(`[WecomApi] 按部门ID列表获取完成：${allUsers.length} 个不重复成员（成功 ${successCount}/${deptIds.length} 个部门，失败 ${failCount}）`);
     return allUsers;
+  }
+
+  /**
+   * 通过 POST /user/list_id 获取全量成员ID列表（仅通讯录同步Secret可用）
+   * 返回 { userid, department }[] 数组
+   */
+  static async getAllMemberIdsByListId(accessToken: string): Promise<{ userid: string; department: number }[]> {
+    const allMembers: { userid: string; department: number }[] = [];
+    let cursor = '';
+    let hasMore = true;
+
+    while (hasMore) {
+      const body: any = { limit: 10000 };
+      if (cursor) body.cursor = cursor;
+
+      const response = await axios.post(`${WECOM_API_BASE}/user/list_id?access_token=${accessToken}`, body);
+      if (response.data.errcode !== 0) {
+        throw new Error(`/user/list_id failed: ${response.data.errmsg} (errcode: ${response.data.errcode})`);
+      }
+
+      const deptUsers = response.data.dept_user || [];
+      for (const item of deptUsers) {
+        allMembers.push({ userid: item.userid, department: item.department });
+      }
+
+      cursor = response.data.next_cursor || '';
+      hasMore = !!cursor;
+    }
+
+    log.info(`[WecomApi] /user/list_id 获取到 ${allMembers.length} 条成员-部门记录`);
+    return allMembers;
   }
 
   /**

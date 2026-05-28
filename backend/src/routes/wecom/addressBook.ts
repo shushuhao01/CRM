@@ -555,11 +555,18 @@ router.post('/address-book/sync-members', authenticateToken, requireAdmin, async
       tokenType = 'corp';
     }
 
-    // 获取所有本地部门
+    // 获取所有本地部门（兼容 tenantId 可能为空的情况）
     const deptRepo = AppDataSource.getRepository(WecomDepartmentMapping);
     let localDepts = await deptRepo.find({
       where: { tenantId, wecomConfigId: configId }
     });
+    // 如果按 tenantId 查不到，尝试仅按 configId 查找
+    if (localDepts.length === 0 && tenantId) {
+      localDepts = await deptRepo.find({ where: { wecomConfigId: configId } });
+      if (localDepts.length > 0) {
+        log.warn(`[AddressBook] sync-members: 按tenantId=${tenantId}查到0部门，但按configId查到${localDepts.length}部门(可能tenantId不匹配)`);
+      }
+    }
 
     // 如果本地没有部门数据，自动先同步部门
     if (localDepts.length === 0) {
@@ -621,7 +628,9 @@ router.post('/address-book/sync-members', authenticateToken, requireAdmin, async
     try {
       // 优先使用本地已同步的部门ID列表逐部门获取成员（比BFS发现更准确，因为sync-departments已获取全部）
       if (allLocalDeptIds.length > 1) {
-        log.info(`[AddressBook] 使用本地已同步的 ${allLocalDeptIds.length} 个部门ID获取成员（token类型: ${tokenType}）...`);
+        const deptNames = localDepts.map(d => `${d.wecomDeptId}(${d.wecomDeptName || '?'})`).join(', ');
+        log.info(`[AddressBook] 使用本地已同步的 ${allLocalDeptIds.length} 个部门ID获取成员（token类型: ${tokenType}，authType: ${config.authType}）`);
+        log.info(`[AddressBook] 部门列表: [${deptNames}]`);
         users = await WecomApiService.getDepartmentUsersByIds(accessToken, allLocalDeptIds);
 
         // 如果 contact token 获取了0个成员或很少，尝试用 corp token 重试
@@ -640,9 +649,43 @@ router.post('/address-book/sync-members', authenticateToken, requireAdmin, async
         users = await WecomApiService.getDepartmentUsers(accessToken, rootDeptId, true);
       }
 
-      // 如果返回0个成员，说明可能权限不足导致API没返回用户
+      // 如果通过逐部门/user/list获取的成员为0或很少，尝试 /user/list_id（通讯录同步Secret）
       if (users.length === 0) {
-        log.warn('[AddressBook] getDepartmentUsers 返回0个成员，尝试降级方案获取成员列表...');
+        log.warn('[AddressBook] /user/list 逐部门获取0成员，尝试 /user/list_id (通讯录同步Secret)...');
+        // /user/list_id 仅支持"通讯录同步secret"调用，尝试获取 contact token
+        let listIdToken = accessToken;
+        if (tokenType !== 'contact') {
+          try {
+            listIdToken = await WecomApiService.getAccessTokenByConfigId(configId, 'contact');
+          } catch { /* 使用原token */ }
+        }
+        try {
+          const listIdMembers = await WecomApiService.getAllMemberIdsByListId(listIdToken);
+          if (listIdMembers.length > 0) {
+            log.info(`[AddressBook] /user/list_id 获取到 ${listIdMembers.length} 条记录，开始构建成员列表...`);
+            const userDeptMap = new Map<string, number[]>();
+            for (const item of listIdMembers) {
+              if (!userDeptMap.has(item.userid)) {
+                userDeptMap.set(item.userid, []);
+              }
+              userDeptMap.get(item.userid)!.push(item.department);
+            }
+            users = Array.from(userDeptMap.entries()).map(([userid, depts]) => ({
+              userid,
+              name: '',
+              department: depts,
+              status: 1
+            }));
+            log.info(`[AddressBook] /user/list_id 转换为 ${users.length} 个不重复成员`);
+          }
+        } catch (listIdErr: any) {
+          log.warn(`[AddressBook] /user/list_id 不可用: ${listIdErr.message}`);
+        }
+      }
+
+      // 如果仍然为0，尝试降级方案
+      if (users.length === 0) {
+        log.warn('[AddressBook] 所有方式获取0成员，尝试降级方案获取成员列表...');
         throw new Error('empty result, fallback to externalcontact (60011)');
       }
     } catch (e: any) {
@@ -973,10 +1016,28 @@ router.post('/address-book/sync-members', authenticateToken, requireAdmin, async
       });
     }
 
+    // 统计每个部门的成员分布
+    const deptDistribution: Record<string, number> = {};
+    for (const user of users) {
+      const depts = user.department || [];
+      for (const d of depts) {
+        const key = String(d);
+        deptDistribution[key] = (deptDistribution[key] || 0) + 1;
+      }
+    }
+
     res.json({
       success: true,
       message: `同步完成：${users.length} 个成员（新增 ${createdCount}，更新 ${updatedCount}）`,
-      data: { total: users.length, created: createdCount, updated: updatedCount }
+      data: {
+        total: users.length,
+        created: createdCount,
+        updated: updatedCount,
+        tokenType,
+        authType: config.authType,
+        deptCount: allLocalDeptIds.length,
+        deptDistribution
+      }
     });
   } catch (error: any) {
     log.error('[AddressBook] Sync members error:', error.message);
@@ -1981,6 +2042,124 @@ router.post('/address-book/repair-names', authenticateToken, requireAdmin, async
     });
   } catch (error: any) {
     log.error('[AddressBook] repair-names error:', error.message);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// ==================== 诊断接口：检测指定部门的API获取情况 ====================
+router.get('/address-book/diagnose-dept/:deptId', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const { configId } = req.query;
+    const deptId = Number(req.params.deptId);
+    if (!configId) return res.json({ success: false, message: '缺少configId参数' });
+
+    const configRepo = AppDataSource.getRepository(WecomConfig);
+    const config = await configRepo.findOne({ where: { id: Number(configId), isEnabled: true } });
+    if (!config) return res.json({ success: false, message: '配置不存在' });
+
+    const results: any = {
+      deptId,
+      authType: config.authType,
+      corpId: config.corpId,
+      suiteId: config.suiteId,
+      hasContactSecret: !!config.contactSecret,
+      hasPermanentCode: !!config.permanentCode,
+      attempts: []
+    };
+    const { default: axios } = await import('axios');
+
+    // 获取token（第三方应用只有一种token）
+    let token: string;
+    try {
+      token = await WecomApiService.getAccessTokenByConfigId(Number(configId), 'corp');
+    } catch (e: any) {
+      return res.json({ success: false, message: `获取token失败: ${e.message}`, data: results });
+    }
+
+    // 测试 /user/list
+    try {
+      const listResp = await axios.get(`https://qyapi.weixin.qq.com/cgi-bin/user/list`, {
+        params: { access_token: token, department_id: deptId }
+      });
+      results.attempts.push({
+        api: '/user/list',
+        errcode: listResp.data.errcode,
+        errmsg: listResp.data.errmsg,
+        userCount: listResp.data.userlist?.length || 0,
+        users: (listResp.data.userlist || []).map((u: any) => ({
+          userid: u.userid,
+          name: u.name,
+          department: u.department,
+          open_userid: u.open_userid,
+          status: u.status
+        }))
+      });
+    } catch (e: any) {
+      results.attempts.push({ api: '/user/list', error: e.message });
+    }
+
+    // 测试 /user/simplelist
+    try {
+      const simpleResp = await axios.get(`https://qyapi.weixin.qq.com/cgi-bin/user/simplelist`, {
+        params: { access_token: token, department_id: deptId }
+      });
+      results.attempts.push({
+        api: '/user/simplelist',
+        errcode: simpleResp.data.errcode,
+        errmsg: simpleResp.data.errmsg,
+        userCount: simpleResp.data.userlist?.length || 0,
+        users: (simpleResp.data.userlist || []).map((u: any) => ({
+          userid: u.userid,
+          name: u.name,
+          department: u.department,
+          open_userid: u.open_userid
+        }))
+      });
+    } catch (e: any) {
+      results.attempts.push({ api: '/user/simplelist', error: e.message });
+    }
+
+    // 测试根部门(ID=1)
+    if (deptId !== 1) {
+      try {
+        const rootResp = await axios.get(`https://qyapi.weixin.qq.com/cgi-bin/user/simplelist`, {
+          params: { access_token: token, department_id: 1 }
+        });
+        results.rootDeptTest = {
+          api: '/user/simplelist?department_id=1',
+          errcode: rootResp.data.errcode,
+          errmsg: rootResp.data.errmsg,
+          userCount: rootResp.data.userlist?.length || 0,
+          users: (rootResp.data.userlist || []).slice(0, 10).map((u: any) => ({
+            userid: u.userid,
+            name: u.name,
+            department: u.department
+          }))
+        };
+      } catch (e: any) {
+        results.rootDeptTest = { error: e.message };
+      }
+    }
+
+    // 显示本地数据库中该部门的成员记录
+    const bindingRepo = AppDataSource.getRepository(WecomUserBinding);
+    const deptIdStr = String(deptId);
+    const localMembers = await bindingRepo.createQueryBuilder('b')
+      .where('b.wecom_config_id = :configId', { configId: Number(configId) })
+      .andWhere(
+        '(b.wecom_department_ids = :deptId OR b.wecom_department_ids LIKE :startWith OR b.wecom_department_ids LIKE :endWith OR b.wecom_department_ids LIKE :middle)',
+        { deptId: deptIdStr, startWith: `${deptIdStr},%`, endWith: `%,${deptIdStr}`, middle: `%,${deptIdStr},%` }
+      )
+      .getMany();
+    results.localDbMembers = localMembers.map(m => ({
+      wecomUserId: m.wecomUserId,
+      wecomUserName: m.wecomUserName,
+      wecomDepartmentIds: m.wecomDepartmentIds,
+      isEnabled: m.isEnabled
+    }));
+
+    res.json({ success: true, data: results });
+  } catch (error: any) {
     res.status(500).json({ success: false, message: error.message });
   }
 });

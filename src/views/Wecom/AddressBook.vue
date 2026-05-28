@@ -916,6 +916,17 @@ const handleSyncAll = async () => {
     try {
       const memberRes: any = await syncWecomMembers(selectedConfigId.value)
       memberResult = memberRes?.message || '成员同步完成'
+      if (memberRes?.data) {
+        const d = memberRes.data
+        console.log('[AddressBook] 成员同步详情:', JSON.stringify(d, null, 2))
+        if (d.deptDistribution) {
+          const deptInfo = Object.entries(d.deptDistribution).map(([k, v]) => `部门${k}:${v}人`).join(', ')
+          console.log('[AddressBook] 成员部门分布:', deptInfo)
+        }
+        if (d.total === 0) {
+          memberResult += `\n提示：API返回0成员，可能需要在企微后台确认应用可见范围是否包含对应部门的成员`
+        }
+      }
     } catch (e: any) {
       memberResult = e?.message || '成员同步失败'
     }
@@ -925,7 +936,7 @@ const handleSyncAll = async () => {
     } else if (memberResult.includes('失败') || deptResult.includes('失败')) {
       ElMessage.warning({ message: `${deptResult}；${memberResult}`, duration: 6000 })
     } else {
-      ElMessage.success('组织架构同步完成')
+      ElMessage.success({ message: memberResult || '组织架构同步完成', duration: 5000 })
     }
   } catch (e: any) {
     ElMessage.error(e?.message || '同步失败')
