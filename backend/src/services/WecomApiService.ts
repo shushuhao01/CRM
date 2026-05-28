@@ -197,14 +197,20 @@ export class WecomApiService {
       }
 
       // fetchChild=true: 递归获取所有子部门的成员
-      // 1. 获取该部门及其所有子部门ID列表
+      // 1. BFS递归获取该部门及所有后代部门ID列表
       let deptIds: number[] = [departmentId];
       try {
-        const depts = await this.getDepartmentList(accessToken, departmentId);
-        if (depts.length > 0) {
-          deptIds = depts.map((d: any) => d.id);
-          if (!deptIds.includes(departmentId)) {
-            deptIds.unshift(departmentId);
+        const queue = [departmentId];
+        const seen = new Set<number>([departmentId]);
+        while (queue.length > 0) {
+          const parentId = queue.shift()!;
+          const children = await this.getDepartmentList(accessToken, parentId);
+          for (const child of children) {
+            if (!seen.has(child.id)) {
+              seen.add(child.id);
+              deptIds.push(child.id);
+              queue.push(child.id);
+            }
           }
         }
       } catch (e: any) {

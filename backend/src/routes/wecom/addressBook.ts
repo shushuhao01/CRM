@@ -327,14 +327,17 @@ router.post('/address-book/sync-departments', authenticateToken, requireAdmin, a
         } catch { /* root获取失败不影响 */ }
       }
 
-      // 3. 对每个已获取的部门，递归获取其子部门
-      for (const dept of [...departments]) {
+      // 3. 递归获取所有子部门（BFS队列方式，确保多层级子部门都能获取到）
+      const queue = [...departments];
+      while (queue.length > 0) {
+        const dept = queue.shift()!;
         try {
           const subDepts = await WecomApiService.getDepartmentList(accessToken, dept.id);
           for (const sd of subDepts) {
             if (!knownIds.has(sd.id)) {
               departments.push(sd);
               knownIds.add(sd.id);
+              queue.push(sd);
             }
           }
         } catch { /* 子部门获取失败不影响 */ }
@@ -352,14 +355,17 @@ router.post('/address-book/sync-departments', authenticateToken, requireAdmin, a
                 knownIds.add(cd.id);
               }
             }
-            // 也用corp token递归获取子部门
-            for (const dept of [...departments]) {
+            // 递归获取子部门（BFS）
+            const corpQueue = [...departments];
+            while (corpQueue.length > 0) {
+              const dept = corpQueue.shift()!;
               try {
                 const subDepts = await WecomApiService.getDepartmentList(corpToken, dept.id);
                 for (const sd of subDepts) {
                   if (!knownIds.has(sd.id)) {
                     departments.push(sd);
                     knownIds.add(sd.id);
+                    corpQueue.push(sd);
                   }
                 }
               } catch { /* ignore */ }
@@ -1445,17 +1451,23 @@ router.get('/address-book/member/:wecomUserId/profile', authenticateToken, async
 
     // 1. 基本信息（从绑定表）
     const bindingRepo = AppDataSource.getRepository(WecomUserBinding);
-    const binding = await bindingRepo.findOne({
-      where: { tenantId, wecomConfigId: Number(configId), wecomUserId }
+    let binding = await bindingRepo.findOne({
+      where: { wecomConfigId: Number(configId), wecomUserId }
     });
+    // tenantId 兼容查询
+    if (!binding && tenantId) {
+      binding = await bindingRepo.findOne({
+        where: { tenantId, wecomConfigId: Number(configId), wecomUserId }
+      });
+    }
     if (!binding) {
       return res.status(404).json({ success: false, message: '成员不存在' });
     }
 
-    // 1.1 如果本地名称缺失，实时通过 /user/get 补充
-    if (!isValidName(binding.wecomUserName, binding.wecomUserId) && configId) {
+    // 1.1 如果本地名称或头像缺失，实时通过 /user/get 补充
+    const needEnrich = !isValidName(binding.wecomUserName, binding.wecomUserId) || !binding.wecomAvatar;
+    if (needEnrich && configId) {
       try {
-        // 优先尝试 contact token，失败则 fallback 到 corp token（第三方应用常用）
         let accessToken: string;
         try {
           accessToken = await WecomApiService.getAccessTokenByConfigId(Number(configId), 'contact');
@@ -1464,11 +1476,14 @@ router.get('/address-book/member/:wecomUserId/profile', authenticateToken, async
           accessToken = await WecomApiService.getAccessTokenByConfigId(Number(configId), 'corp');
         }
         const detail = await WecomApiService.getUserDetail(accessToken, wecomUserId);
-        if (detail && isValidName(detail.name, wecomUserId)) {
-          binding.wecomUserName = String(detail.name).trim();
+        if (detail) {
+          if (isValidName(detail.name, wecomUserId)) {
+            binding.wecomUserName = String(detail.name).trim();
+          }
           if (detail.avatar) binding.wecomAvatar = detail.avatar;
+          if (detail.thumb_avatar && !binding.wecomAvatar) binding.wecomAvatar = detail.thumb_avatar;
           await bindingRepo.save(binding).catch(() => {});
-          log.info(`[AddressBook] Enriched member name via /user/get: ${wecomUserId.substring(0, 12)}... → ${binding.wecomUserName}`);
+          log.info(`[AddressBook] Enriched member via /user/get: ${wecomUserId.substring(0, 12)}... name=${binding.wecomUserName}, avatar=${binding.wecomAvatar ? 'YES' : 'NO'}`);
         }
       } catch (e: any) {
         log.warn(`[AddressBook] /user/get enrich failed for ${wecomUserId.substring(0, 12)}...:`, e.message);

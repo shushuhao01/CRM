@@ -463,11 +463,25 @@ const checkConvRiskStatus = async () => {
   convRiskAllResolved.value = false
   if (!props.configId || !selectedConv.value) return
   try {
-    const fromId = selectedMemberId.value || selectedConv.value.fromUserId || ''
+    // 从会话中确定外部联系人ID
     const toId = getFirstToUser(selectedConv.value.toUserIds) || ''
-    if (!fromId) return
+    const fromId = selectedConv.value.fromUserId || ''
+    const externalId = (toId.startsWith('wm') || toId.startsWith('wo')) ? toId
+      : (fromId.startsWith('wm') || fromId.startsWith('wo')) ? fromId : toId
+    if (!externalId) return
+
+    // 先尝试从已加载的 riskMap 获取（更准确）
+    const riskInfo = convRiskUserMap.value[externalId]
+    if (riskInfo) {
+      convHasRisk.value = true
+      convRiskCount.value = riskInfo.active + riskInfo.resolved
+      convRiskAllResolved.value = riskInfo.active === 0
+      return
+    }
+
+    // riskMap 中没有，调用 check API 确认
     const res: any = await api.get('/wecom/chat-archive/audit-marks/check', {
-      params: { configId: props.configId, fromUserId: fromId, toUserId: toId }
+      params: { configId: props.configId, fromUserId: selectedMemberId.value || fromId, toUserId: externalId }
     })
     const data = res?.data || res
     convHasRisk.value = !!(data?.hasRisk)
