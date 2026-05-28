@@ -136,21 +136,29 @@ export function useWecomOpenData() {
         ...(suiteId ? { suiteId } : {}),
         jsApiList: ['selectExternalContact', 'shareAppMessage', 'wwapp.invokeJsApiByCallInfo'],
         async getConfigSignature(signUrl?: string) {
-          const url = signUrl || currentUrl
-          console.log('[WecomSDK] getConfigSignature:', url.substring(0, 80))
-          const data = await getJsSdkSign(url, 'config')
-          return { timestamp: Number(data.timestamp), nonceStr: String(data.nonceStr), signature: String(data.signature) }
+          try {
+            const url = signUrl || currentUrl
+            const data = await getJsSdkSign(url, 'config')
+            return { timestamp: Number(data.timestamp), nonceStr: String(data.nonceStr), signature: String(data.signature) }
+          } catch (e: any) {
+            console.warn('[WecomSDK] getConfigSignature失败:', e?.message)
+            return { timestamp: 0, nonceStr: '', signature: '' }
+          }
         },
         async getAgentConfigSignature(signUrl?: string) {
-          const url = signUrl || currentUrl
-          console.log('[WecomSDK] getAgentConfigSignature:', url.substring(0, 80))
-          const data = await getJsSdkSign(url, 'agent_config')
-          return { timestamp: Number(data.timestamp), nonceStr: String(data.nonceStr), signature: String(data.signature) }
+          try {
+            const url = signUrl || currentUrl
+            const data = await getJsSdkSign(url, 'agent_config')
+            return { timestamp: Number(data.timestamp), nonceStr: String(data.nonceStr), signature: String(data.signature) }
+          } catch (e: any) {
+            console.warn('[WecomSDK] getAgentConfigSignature失败:', e?.message)
+            return { timestamp: 0, nonceStr: '', signature: '' }
+          }
         },
         onConfigSuccess() { console.log('[WecomSDK] ✅ config成功') },
-        onConfigFail(err: any) { console.error('[WecomSDK] ❌ config失败:', JSON.stringify(err)) },
+        onConfigFail(err: any) { console.warn('[WecomSDK] ❌ config失败:', JSON.stringify(err)) },
         onAgentConfigSuccess() { console.log('[WecomSDK] ✅ agentConfig成功') },
-        onAgentConfigFail(err: any) { console.error('[WecomSDK] ❌ agentConfig失败:', JSON.stringify(err)) }
+        onAgentConfigFail(err: any) { console.warn('[WecomSDK] ❌ agentConfig失败:', JSON.stringify(err)) }
       })
 
       console.log('[WecomSDK] register完成')

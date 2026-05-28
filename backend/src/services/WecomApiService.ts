@@ -403,7 +403,7 @@ export class WecomApiService {
       if (response.data.errcode === 0) {
         return response.data.external_userid || [];
       } else {
-        throw new Error(`获取外部联系人列表失败: ${response.data.errmsg}`);
+        throw new Error(`获取外部联系人列表失败: ${response.data.errmsg} (${response.data.errcode})`);
       }
     } catch (error: any) {
       log.error('[WecomApi] getExternalContactList error:', error.message);

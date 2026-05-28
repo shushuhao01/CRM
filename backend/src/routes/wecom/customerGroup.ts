@@ -204,7 +204,14 @@ router.post('/customer-groups/sync', authenticateToken, requireAdmin, async (req
       );
 
       if (resp.data.errcode !== 0) {
-        throw new Error(`获取群列表失败: ${resp.data.errmsg} (${resp.data.errcode})`);
+        const errcode = resp.data.errcode;
+        if (errcode === 701008) {
+          return res.status(400).json({
+            success: false,
+            message: '该企业成员未开通「客户联系」功能许可证（错误码701008）。请在企业微信管理后台「我的企业 → 许可管理」中为成员购买并激活许可证后重试。'
+          });
+        }
+        throw new Error(`获取群列表失败: ${resp.data.errmsg} (${errcode})`);
       }
 
       const chatList = resp.data.group_chat_list || [];

@@ -407,10 +407,13 @@ router.post('/customers/sync', authenticateToken, async (req: Request, res: Resp
 
     // 收集本次同步到的所有 externalUserId，用于后续检测被删除的客户
     const syncedExternalUserIds = new Set<string>();
+    let licenseError = '';
+    let consecutiveErrors = 0;
 
     for (const binding of bindings) {
       try {
         const externalUserIds = await WecomApiService.getExternalContactList(accessToken, binding.wecomUserId);
+        consecutiveErrors = 0;
         log.info(`[Wecom] Member ${binding.wecomUserId}: ${externalUserIds.length} external contacts`);
 
         // 分批处理，每批5个并发，避免企微API限流
@@ -460,7 +463,23 @@ router.post('/customers/sync', authenticateToken, async (req: Request, res: Resp
           }
         }
       } catch (e: any) {
-        log.error(`[Wecom] Sync user ${binding.wecomUserId} customers error:`, e.message);
+        const errMsg = e.message || '';
+        log.error(`[Wecom] Sync user ${binding.wecomUserId} customers error:`, errMsg);
+        // 检测许可证/权限错误 - 此类错误所有成员都会失败，直接中断
+        if (errMsg.includes('701008') || errMsg.includes('no license')) {
+          licenseError = '该企业成员未开通「客户联系」功能许可证（错误码701008）。请在企业微信管理后台为成员开通相关许可证后重试。';
+          log.warn(`[Wecom] License error detected (701008), stopping sync`);
+          break;
+        }
+        if (errMsg.includes('84061') || errMsg.includes('not external contact')) {
+          consecutiveErrors++;
+        } else {
+          consecutiveErrors++;
+        }
+        if (consecutiveErrors >= 3 && syncCount === 0) {
+          licenseError = `同步失败：前 ${consecutiveErrors} 个成员均获取客户列表失败 (${errMsg.substring(0, 80)})`;
+          break;
+        }
       }
     }
 
@@ -485,11 +504,19 @@ router.post('/customers/sync', authenticateToken, async (req: Request, res: Resp
       }
     }
 
-    log.info(`[Wecom] Customer sync completed: ${syncCount} synced, ${deletedCount} deleted, ${blockedCount} blocked`);
+    log.info(`[Wecom] Customer sync completed: ${syncCount} synced, ${deletedCount} deleted, ${blockedCount} blocked, licenseError=${licenseError || 'none'}`);
+
+    if (licenseError && syncCount === 0) {
+      return res.json({
+        success: false,
+        message: licenseError,
+        data: { status: 'error', syncCount: 0, deletedCount: 0, bindingsUsed: bindings.length, bindingNames, errorType: 'license' }
+      });
+    }
 
     res.json({
       success: true,
-      message: `已同步 ${syncCount} 个客户${deletedCount > 0 ? `，${deletedCount} 个已删除` : ''}`,
+      message: `已同步 ${syncCount} 个客户${deletedCount > 0 ? `，${deletedCount} 个已删除` : ''}${licenseError ? '（部分成员许可证异常）' : ''}`,
       data: { status: 'completed', syncCount, deletedCount, bindingsUsed: bindings.length, bindingNames }
     });
   } catch (error: any) {

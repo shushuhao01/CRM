@@ -11,6 +11,7 @@ import request from '@/utils/request'
 
 const sdkState = ref<'idle' | 'loading' | 'ready' | 'failed'>('idle')
 const errorMsg = ref('')
+let currentInitCorpId = ''
 
 let initPromise: Promise<boolean> | null = null
 
@@ -40,9 +41,16 @@ export function useWwOpenDataSdk() {
    * @param agentId 应用agentId (外部浏览器需要)
    */
   const initSdk = async (corpId: string, agentId?: number | string): Promise<boolean> => {
+    // 如果 corpId 变化了，需要重新初始化（切换主体）
+    if (currentInitCorpId && currentInitCorpId !== corpId) {
+      sdkState.value = 'idle'
+      initPromise = null
+      currentInitCorpId = ''
+    }
     if (sdkState.value === 'ready') return true
     if (initPromise) return initPromise
 
+    currentInitCorpId = corpId
     initPromise = _doInit(corpId, agentId).catch(() => {
       initPromise = null
       return false

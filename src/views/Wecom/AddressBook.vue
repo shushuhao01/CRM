@@ -855,8 +855,12 @@ const maskPhone = (phone: string) => {
   return phone.slice(0, 3) + '****' + phone.slice(-4)
 }
 
-/** 是否显示名称缺失提示（树有数据但大部分名称缺失） */
+/** 是否在企业微信客户端内 */
+const isInWecomClient = /wxwork|WeCom|MicroMessenger/i.test(navigator.userAgent)
+
+/** 是否显示名称缺失提示（仅在外部浏览器中且名称缺失时才提示） */
 const showNameMissingNotice = computed(() => {
+  if (isInWecomClient) return false
   if (mixedTreeData.value.length === 0) return false
   if (wwOpenDataReady.value) return false
   const rootNodes = mixedTreeData.value.filter((n: any) => n.nodeType === 'dept')

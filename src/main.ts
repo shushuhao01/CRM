@@ -182,15 +182,33 @@ const handleDynamicImportError = () => {
   }
 }
 
+// 非关键SDK/第三方库错误关键词（不弹出错误提示，仅console.warn）
+const NON_CRITICAL_ERROR_KEYWORDS = [
+  'WecomSDK', 'WWOpenData', 'wx.config', 'agentConfig', 'jssdk', 'jwxwork',
+  'jweixin', 'ww.register', 'SDK加载失败', 'SDK不可用', 'config签名',
+  'initOpenData', 'createOpenDataFrame', '@wecom/', 'wecom-jssdk',
+  'ResizeObserver', 'Script error', 'Non-Error promise rejection',
+  'Cannot read properties of null', 'Cannot read properties of undefined',
+  'registerFromWorker', 'getConfigSignature', 'getAgentConfigSignature'
+]
+
 // 全局错误处理器
 const globalErrorHandler = (error: Error, instance?: any, info?: string) => {
-  console.error('全局错误:', error, info)
+  const msg = error?.message || String(error) || ''
 
   // 🔥 检查是否是动态导入失败
   if (isDynamicImportError(error)) {
     handleDynamicImportError()
     return
   }
+
+  // 静默处理非关键错误（SDK初始化、第三方库、ResizeObserver等）
+  if (NON_CRITICAL_ERROR_KEYWORDS.some(k => msg.includes(k))) {
+    console.warn('[非关键错误已静默]', msg)
+    return
+  }
+
+  console.error('全局错误:', error, info)
 
   // 避免在错误处理中再次触发错误
   try {

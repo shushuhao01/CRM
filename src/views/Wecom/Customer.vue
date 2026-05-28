@@ -760,8 +760,13 @@ const handleSync = async () => {
   try {
     const res: any = await syncWecomCustomers(query.value.configId)
     const data = res?.data || res
+    const success = res?.success !== false && data?.success !== false
     const message = data?.message || res?.message || '同步完成'
-    ElMessage.success(message)
+    if (success) {
+      ElMessage.success(message)
+    } else {
+      ElMessage.error(message)
+    }
     syncResult.value = {
       message,
       syncCount: data?.syncCount || 0,
