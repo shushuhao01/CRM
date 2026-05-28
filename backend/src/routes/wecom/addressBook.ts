@@ -613,14 +613,34 @@ router.post('/address-book/sync-members', authenticateToken, requireAdmin, async
       }
     }
 
-    // 从根部门递归获取所有成员（fetch_child=true）
+    // 从已同步的部门列表中获取所有部门ID，逐部门获取成员
     const rootDeptId = localDepts.find(d => !d.wecomParentId || d.wecomParentId === 0)?.wecomDeptId || 1;
+    const allLocalDeptIds = localDepts.map(d => d.wecomDeptId).filter(id => id > 0);
     let users: any[] = [];
 
     try {
-      users = await WecomApiService.getDepartmentUsers(accessToken, rootDeptId, true);
-      // 如果返回0个成员但本地有已绑定的成员，说明可能权限不足导致API没返回用户
-      // 尝试降级方案获取
+      // 优先使用本地已同步的部门ID列表逐部门获取成员（比BFS发现更准确，因为sync-departments已获取全部）
+      if (allLocalDeptIds.length > 1) {
+        log.info(`[AddressBook] 使用本地已同步的 ${allLocalDeptIds.length} 个部门ID获取成员（token类型: ${tokenType}）...`);
+        users = await WecomApiService.getDepartmentUsersByIds(accessToken, allLocalDeptIds);
+
+        // 如果 contact token 获取了0个成员或很少，尝试用 corp token 重试
+        if (users.length === 0 && tokenType !== 'corp') {
+          try {
+            const corpToken = await WecomApiService.getAccessTokenByConfigId(configId, 'corp');
+            log.info('[AddressBook] contact token获取0成员，尝试corp token...');
+            users = await WecomApiService.getDepartmentUsersByIds(corpToken, allLocalDeptIds);
+            if (users.length > 0) {
+              accessToken = corpToken;
+              tokenType = 'corp';
+            }
+          } catch { /* corp token 不可用 */ }
+        }
+      } else {
+        users = await WecomApiService.getDepartmentUsers(accessToken, rootDeptId, true);
+      }
+
+      // 如果返回0个成员，说明可能权限不足导致API没返回用户
       if (users.length === 0) {
         log.warn('[AddressBook] getDepartmentUsers 返回0个成员，尝试降级方案获取成员列表...');
         throw new Error('empty result, fallback to externalcontact (60011)');
@@ -699,10 +719,37 @@ router.post('/address-book/sync-members', authenticateToken, requireAdmin, async
     }
 
     log.info(`[AddressBook] Synced ${users.length} members from WeCom API`);
-    // 调试日志：打印前5个成员的原始数据，确认API是否返回了name字段
+    // 调试日志：打印前5个成员的原始数据，确认API是否返回了name字段和department
     if (users.length > 0) {
       const sample = users.slice(0, 5).map((u: any) => ({ userid: u.userid, name: u.name, department: u.department, status: u.status }));
       log.info(`[AddressBook][DEBUG] User API sample data: ${JSON.stringify(sample)}`);
+    }
+
+    // 对部门信息缺失的成员，通过 /user/get 补充真实部门
+    const missingDeptUsers = users.filter((u: any) => !u.department || !Array.isArray(u.department) || u.department.length === 0);
+    if (missingDeptUsers.length > 0) {
+      log.info(`[AddressBook] ${missingDeptUsers.length} 个成员部门信息缺失，尝试通过 /user/get 补充部门...`);
+      let deptEnriched = 0;
+      let enrichToken = accessToken;
+      // 尝试获取 corp token（通常对 /user/get 有更好的权限）
+      try {
+        const corpToken = await WecomApiService.getAccessTokenByConfigId(configId, 'corp');
+        if (corpToken) enrichToken = corpToken;
+      } catch { /* 保持原token */ }
+      for (const u of missingDeptUsers.slice(0, 100)) {
+        try {
+          const detail = await WecomApiService.getUserDetail(enrichToken, u.userid);
+          if (detail && detail.department && Array.isArray(detail.department) && detail.department.length > 0) {
+            u.department = detail.department;
+            if (detail.name && isValidName(detail.name, u.userid)) u.name = detail.name;
+            if (detail.avatar) u.avatar = detail.avatar;
+            deptEnriched++;
+          }
+        } catch { /* skip */ }
+      }
+      if (deptEnriched > 0) {
+        log.info(`[AddressBook] 通过 /user/get 补充了 ${deptEnriched} 个成员的部门信息`);
+      }
     }
 
     // 第三方授权应用 /user/list 常常只返回 userid，name 为空
@@ -891,6 +938,28 @@ router.post('/address-book/sync-members', authenticateToken, requireAdmin, async
       if (dept.memberCount !== actualCount) {
         dept.memberCount = actualCount;
         await deptRepo.save(dept);
+      }
+    }
+
+    // 将 wecomDepartmentIds 为空的成员自动归入根部门
+    const rootDept = allLocalDepts.find(d => !d.wecomParentId || d.wecomParentId === 0);
+    if (rootDept) {
+      let orphanFixQuery = bindingRepo.createQueryBuilder('b')
+        .where('b.wecom_config_id = :configId', { configId })
+        .andWhere("(b.wecom_department_ids IS NULL OR b.wecom_department_ids = '')");
+      if (tenantId) {
+        orphanFixQuery = orphanFixQuery.andWhere('(b.tenant_id = :tenantId OR b.tenant_id IS NULL)', { tenantId });
+      }
+      const orphans = await orphanFixQuery.getMany();
+      if (orphans.length > 0) {
+        const rootDeptIdStr = String(rootDept.wecomDeptId);
+        for (const o of orphans) {
+          o.wecomDepartmentIds = rootDeptIdStr;
+          await bindingRepo.save(o).catch(() => {});
+        }
+        rootDept.memberCount = (rootDept.memberCount || 0) + orphans.length;
+        await deptRepo.save(rootDept);
+        log.info(`[AddressBook] 将 ${orphans.length} 个无部门成员自动归入根部门 ${rootDept.wecomDeptId}`);
       }
     }
 
@@ -1237,22 +1306,26 @@ router.get('/address-book/dept/:deptId/children', authenticateToken, async (req:
       .orderBy('b.wecom_user_name', 'ASC')
       .getMany();
 
-    // 如果当前部门无成员且是根部门（无子部门或无父部门），把 wecomDepartmentIds 为空的成员也归入根部门
-    if (members.length === 0 && childDepts.length === 0) {
+    // 检查当前部门是否为根部门（没有父部门的部门视为根）
+    const currentDept = await deptRepo.findOne({ where: { wecomConfigId: Number(configId), wecomDeptId: parentDeptId } });
+    const isRootDept = !currentDept || !currentDept.wecomParentId || currentDept.wecomParentId === 0;
+
+    // 对于根部门或没有成员且没有子部门的部门，把 wecomDepartmentIds 为空的成员归入
+    if (isRootDept || (members.length === 0 && childDepts.length === 0)) {
       let orphanQuery = bindingRepo.createQueryBuilder('b')
         .where('b.wecom_config_id = :configId', { configId: Number(configId) })
         .andWhere("(b.wecom_department_ids IS NULL OR b.wecom_department_ids = '')");
       if (tenantId) {
         orphanQuery = orphanQuery.andWhere('(b.tenant_id = :tenantId OR b.tenant_id IS NULL)', { tenantId });
       }
-      members = await orphanQuery.orderBy('b.wecom_user_name', 'ASC').getMany();
-      // 自动修复：将这些孤立成员归入当前部门
-      if (members.length > 0) {
-        for (const m of members) {
+      const orphans = await orphanQuery.orderBy('b.wecom_user_name', 'ASC').getMany();
+      if (orphans.length > 0) {
+        for (const m of orphans) {
           m.wecomDepartmentIds = deptIdStr;
           bindingRepo.save(m).catch(() => {});
         }
-        log.info(`[AddressBook] 自动修复 ${members.length} 个无部门成员，归入部门 ${parentDeptId}`);
+        members = [...members, ...orphans];
+        log.info(`[AddressBook] 自动修复 ${orphans.length} 个无部门成员，归入部门 ${parentDeptId}`);
       }
     }
 

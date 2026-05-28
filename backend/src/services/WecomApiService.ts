@@ -219,11 +219,14 @@ export class WecomApiService {
 
       log.info(`[WecomApi] 递归获取 ${deptIds.length} 个部门的成员...`);
 
-      // 2. 逐部门获取成员，合并去重
+      // 2. 逐部门获取成员，合并去重（60011不再立即中断，而是跳过该部门继续尝试其他）
       const allUsers: any[] = [];
       const seenUserIds = new Set<string>();
+      let successCount = 0;
+      let failCount = 0;
 
-      for (const deptId of deptIds) {
+      for (let i = 0; i < deptIds.length; i++) {
+        const deptId = deptIds[i];
         try {
           const users = await this.getDepartmentDirectUsers(accessToken, deptId);
           for (const u of users) {
@@ -232,24 +235,67 @@ export class WecomApiService {
               allUsers.push(u);
             }
           }
+          successCount++;
         } catch (e: any) {
-          if (e.message?.includes('60011') || e.message?.includes('no privilege')) {
+          failCount++;
+          // 如果前3个部门全部失败且都是权限问题，说明token完全没权限，抛出错误
+          if (failCount >= 3 && successCount === 0 && i < 5 &&
+              (e.message?.includes('60011') || e.message?.includes('no privilege'))) {
             throw e;
           }
           log.warn(`[WecomApi] 获取部门${deptId}成员失败: ${e.message}`);
         }
         // 限速：每20个部门暂停100ms
-        if (deptIds.indexOf(deptId) % 20 === 19) {
+        if (i % 20 === 19) {
           await new Promise(r => setTimeout(r, 100));
         }
       }
 
-      log.info(`[WecomApi] 递归获取完成：共 ${allUsers.length} 个不重复成员（遍历 ${deptIds.length} 个部门）`);
+      log.info(`[WecomApi] 递归获取完成：共 ${allUsers.length} 个不重复成员（遍历 ${deptIds.length} 个部门，成功 ${successCount}，失败 ${failCount}）`);
       return allUsers;
     } catch (error: any) {
       log.error('[WecomApi] getDepartmentUsers error:', error.message);
       throw error;
     }
+  }
+
+  /**
+   * 根据已知部门ID列表逐个获取成员（无需BFS发现部门，用于本地已有完整部门列表时）
+   */
+  static async getDepartmentUsersByIds(accessToken: string, deptIds: number[]): Promise<any[]> {
+    const allUsers: any[] = [];
+    const seenUserIds = new Set<string>();
+    let successCount = 0;
+    let failCount = 0;
+
+    log.info(`[WecomApi] 按已知部门ID列表获取成员，共 ${deptIds.length} 个部门...`);
+
+    for (let i = 0; i < deptIds.length; i++) {
+      const deptId = deptIds[i];
+      try {
+        const users = await this.getDepartmentDirectUsers(accessToken, deptId);
+        for (const u of users) {
+          if (!seenUserIds.has(u.userid)) {
+            seenUserIds.add(u.userid);
+            allUsers.push(u);
+          }
+        }
+        successCount++;
+      } catch (e: any) {
+        failCount++;
+        if (failCount >= 3 && successCount === 0 && i < 5 &&
+            (e.message?.includes('60011') || e.message?.includes('no privilege'))) {
+          throw e;
+        }
+        log.warn(`[WecomApi] 获取部门${deptId}成员失败: ${e.message}`);
+      }
+      if (i % 20 === 19) {
+        await new Promise(r => setTimeout(r, 100));
+      }
+    }
+
+    log.info(`[WecomApi] 按部门ID列表获取完成：${allUsers.length} 个不重复成员（成功 ${successCount}/${deptIds.length} 个部门，失败 ${failCount}）`);
+    return allUsers;
   }
 
   /**
