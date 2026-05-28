@@ -72,10 +72,19 @@
     <!-- 绑定成员信息 -->
     <div v-if="boundMembers.length > 0 && !isDemoMode" class="bound-members-bar">
       <span style="color: #606266; font-size: 13px">绑定企微账户 ({{ boundMembers.length }}人)：</span>
-      <el-tag v-for="m in boundMembers.slice(0, 8)" :key="m.id" size="small" type="info" style="margin: 0 4px 4px 0">
-        {{ m.wecomUserName || m.crmUserName || m.wecomUserId }}
+      <el-tag v-for="m in boundMembers.slice(0, 10)" :key="m.id" size="small" type="info" style="margin: 0 4px 4px 0">
+        {{ formatMemberName(m) }}
       </el-tag>
-      <span v-if="boundMembers.length > 8" style="color: #909399; font-size: 12px">+{{ boundMembers.length - 8 }}人</span>
+      <el-tooltip v-if="boundMembers.length > 10" placement="bottom" :show-after="200">
+        <template #content>
+          <div style="max-width: 360px; line-height: 1.8">
+            <span v-for="(m, idx) in boundMembers.slice(10)" :key="m.id">
+              {{ formatMemberName(m) }}<span v-if="idx < boundMembers.length - 11">、</span>
+            </span>
+          </div>
+        </template>
+        <el-tag size="small" type="info" style="margin: 0 4px 4px 0; cursor: pointer">+{{ boundMembers.length - 10 }}人</el-tag>
+      </el-tooltip>
     </div>
 
     <!-- 同步结果反馈条 -->
@@ -94,7 +103,15 @@
           <span>同步成员 <strong>{{ syncResult.bindingsUsed }}</strong> 人</span>
           <template v-if="syncResult.bindingNames">
             <el-divider direction="vertical" />
-            <span style="color: #606266">{{ syncResult.bindingNames }}</span>
+            <el-tooltip v-if="syncResult.bindingNames.split('、').length > 10" placement="bottom" :show-after="200">
+              <template #content>
+                <div style="max-width: 360px; line-height: 1.8">{{ syncResult.bindingNames }}</div>
+              </template>
+              <span style="color: #606266; cursor: pointer">
+                {{ syncResult.bindingNames.split('、').slice(0, 10).join('、') }}...等{{ syncResult.bindingNames.split('、').length }}人
+              </span>
+            </el-tooltip>
+            <span v-else style="color: #606266">{{ syncResult.bindingNames }}</span>
           </template>
         </div>
       </template>
@@ -355,6 +372,15 @@ const isAdminRole = computed(() => ['super_admin', 'admin'].includes(userStore.c
 const userHasBinding = ref(true) // 默认true，管理员或检查通过后才会为false
 const bindingChecked = ref(false)
 
+/** 格式化成员名称：优先姓名，open_userid格式截短 */
+const formatMemberName = (m: any) => {
+  const name = m.wecomUserName || m.crmUserName
+  if (name && !/^wo[a-zA-Z0-9_-]{20,}$/.test(name)) return name
+  const uid = m.wecomUserId || ''
+  if (/^wo[a-zA-Z0-9_-]{20,}$/.test(uid)) return uid.slice(0, 10) + '...'
+  return uid || '-'
+}
+
 // V4.0: 自动匹配待确认数量
 const autoMatchCount = ref(0)
 
@@ -381,7 +407,9 @@ const currentCorpId = computed(() => {
 const isFollowUserNameMissing = (row: any) => {
   if (!row.followUserId) return false
   const display = getFollowUserDisplay(row)
-  return display === row.followUserId
+  if (display === row.followUserId) return true
+  if (/^wo[a-zA-Z0-9_-]{20,}$/.test(display)) return true
+  return false
 }
 
 /** 显示的配置选项 */
@@ -693,13 +721,21 @@ const clearFilters = () => {
 /** 获取跟进人显示名（企微成员姓名） */
 const getFollowUserDisplay = (row: any) => {
   // 优先返回后端已解析的名称
-  if (row.followUserName && row.followUserName !== row.followUserId) return row.followUserName
+  if (row.followUserName && row.followUserName !== row.followUserId && !/^wo[a-zA-Z0-9_-]{20,}$/.test(row.followUserName)) {
+    return row.followUserName
+  }
   // 从本地成员列表匹配
   if (row.followUserId && memberList.value.length > 0) {
     const member = memberList.value.find((m: any) => m.userId === row.followUserId || m.wecomUserId === row.followUserId)
-    if (member) return member.name || member.wecomUserName || row.followUserId
+    if (member) {
+      const name = member.name || member.wecomUserName
+      if (name && !/^wo[a-zA-Z0-9_-]{20,}$/.test(name)) return name
+    }
   }
-  return row.followUserName || row.followUserId || '-'
+  // open_userid 格式截短
+  const uid = row.followUserName || row.followUserId || ''
+  if (/^wo[a-zA-Z0-9_-]{20,}$/.test(uid)) return uid.slice(0, 10) + '...'
+  return uid || '-'
 }
 
 /** 获取跟进人tooltip内容 */

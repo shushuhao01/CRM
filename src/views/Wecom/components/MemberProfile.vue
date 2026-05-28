@@ -25,8 +25,20 @@
           <span class="meta-item">企微ID: <code>{{ profile.wecomUserId }}</code></span>
         </div>
         <div class="header-meta">
-          <span class="meta-item" v-if="profile.departments?.length">
-            部门: {{ profile.departments.join(' / ') }}
+          <span class="meta-item" v-if="profile.departmentIds?.length || profile.departments?.length">
+            部门:
+            <template v-if="profile.departmentIds?.length">
+              <template v-for="(deptId, idx) in profile.departmentIds" :key="deptId">
+                <WwOpenData
+                  type="departmentName"
+                  :openid="String(deptId)"
+                  :corpid="corpId"
+                  :fallback="profile.departments?.[idx] || `部门${deptId}`"
+                />
+                <span v-if="idx < profile.departmentIds.length - 1"> / </span>
+              </template>
+            </template>
+            <template v-else>{{ profile.departments.join(' / ') }}</template>
           </span>
         </div>
       </div>
@@ -202,6 +214,7 @@ const isNameMissing = computed(() => {
   const name = profile.value.wecomUserName
   if (!name) return true
   if (name === profile.value.wecomUserId || name === props.wecomUserId) return true
+  if (/^wo[a-zA-Z0-9_-]{20,}$/.test(name)) return true
   return false
 })
 

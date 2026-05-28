@@ -119,10 +119,19 @@
             <el-table-column prop="wecomUserName" label="企微成员" min-width="160">
               <template #default="{ row }">
                 <div class="member-info">
-                  <el-avatar :size="28" :src="row.wecomAvatar">{{ (row.wecomUserName || '?')[0] }}</el-avatar>
+                  <el-avatar :size="28" :src="row.wecomAvatar">{{ getMemberInitial(row) }}</el-avatar>
                   <div style="display: flex; flex-direction: column; line-height: 1.4">
-                    <span style="font-weight: 500">{{ row.wecomUserName || (row.wecomUserId?.startsWith('sidebar_') ? row.crmUserName || '侧边栏用户' : row.wecomUserId) }}</span>
-                    <span v-if="row.wecomUserId && !row.wecomUserId.startsWith('sidebar_')" class="monospace-text" style="font-size: 11px">{{ row.wecomUserId }}</span>
+                    <span style="font-weight: 500">
+                      <WwOpenData
+                        v-if="isMemberNameMissing(row)"
+                        type="userName"
+                        :openid="row.wecomUserId"
+                        :corpid="currentCorpId"
+                        :fallback="formatMemberLabel(row)"
+                      />
+                      <template v-else>{{ row.wecomUserName || (row.wecomUserId?.startsWith('sidebar_') ? row.crmUserName || '侧边栏用户' : row.wecomUserId) }}</template>
+                    </span>
+                    <span v-if="row.wecomUserId && !row.wecomUserId.startsWith('sidebar_')" class="monospace-text" style="font-size: 11px">{{ shortenUserId(row.wecomUserId) }}</span>
                   </div>
                 </div>
               </template>
@@ -135,7 +144,7 @@
             </el-table-column>
             <el-table-column label="部门" min-width="120">
               <template #default="{ row }">
-                <span>{{ resolveDeptNames(row.wecomDepartmentIds) }}</span>
+                <span>{{ row.department || resolveDeptNames(row.wecomDepartmentIds) }}</span>
               </template>
             </el-table-column>
             <el-table-column label="绑定来源" width="100">
@@ -404,6 +413,7 @@ import DeptSummary from './components/DeptSummary.vue'
 import WwOpenData from './components/WwOpenData.vue'
 import { useWecomDemo } from './composables/useWecomDemo'
 import { useWecomOpenData } from './composables/useWecomOpenData'
+import { useWwOpenDataSdk } from './composables/useWwOpenDataSdk'
 import { getLastSelectedConfigId, saveSelectedConfigId } from './composables/useWecomConfig'
 import { getWecomConfigs, createWecomBinding, batchCreateWecomBindings } from '@/api/wecom'
 import {
@@ -439,8 +449,12 @@ const currentCorpId = computed(() => {
 const isDeptNameMissing = (data: any) => {
   const name = data.label || data.wecomDeptName
   if (!name) return true
+  // 名称等于纯数字ID
   if (String(name).trim() === String(data.wecomDeptId)) return true
+  // 名称是"部门X"这种占位格式
   if (/^部门\s*\d+$/.test(String(name).trim())) return true
+  // 名称纯数字（可能是ID）
+  if (/^\d+$/.test(String(name).trim())) return true
   return false
 }
 
@@ -449,6 +463,8 @@ const isMemberNameMissing = (data: any) => {
   const name = data.wecomUserName || data.label
   if (!name) return true
   if (name === data.wecomUserId) return true
+  // open_userid 格式（wo开头的长字符串）
+  if (/^wo[a-zA-Z0-9_-]{20,}$/.test(name)) return true
   return false
 }
 
@@ -548,6 +564,10 @@ const loadMixedTreeNode = async (node: any, resolve: (data: any[]) => void) => {
       }))
       mixedTreeData.value = rootNodes
       resolve(rootNodes)
+      // 根节点加载后，延迟绑定 ww-open-data 元素
+      if (wwOpenDataReady.value) {
+        setTimeout(() => wwBindAll(), 300)
+      }
     } catch {
       resolve([])
     }
@@ -561,6 +581,10 @@ const loadMixedTreeNode = async (node: any, resolve: (data: any[]) => void) => {
       const res: any = await getWecomDeptChildren(nodeData.wecomDeptId, selectedConfigId.value!)
       const children = Array.isArray(res) ? res : []
       resolve(children)
+      // 新节点加载后，延迟绑定 ww-open-data 元素
+      if (wwOpenDataReady.value) {
+        setTimeout(() => wwBindAll(), 300)
+      }
     } catch {
       resolve([])
     }
@@ -821,18 +845,36 @@ const maskPhone = (phone: string) => {
 
 /** 格式化部门树节点标签：优先显示部门名称 */
 const formatDeptLabel = (data: any) => {
-  return data.label || data.wecomDeptName || ('部门 ' + data.wecomDeptId)
+  const name = data.label || data.wecomDeptName
+  // 如果名称就是纯数字ID，加前缀显示
+  if (!name || /^\d+$/.test(String(name).trim())) {
+    return `部门${data.wecomDeptId}`
+  }
+  if (/^部门\s*\d+$/.test(String(name).trim())) return name
+  return name
 }
 
 /** 格式化成员树节点标签：显示姓名 */
 const formatMemberLabel = (data: any) => {
-  return data.wecomUserName || data.label || data.wecomUserId || '-'
+  const name = data.wecomUserName || data.label
+  if (!name || name === data.wecomUserId) {
+    // open_userid 格式（wo开头长字符串）：截短显示
+    const uid = data.wecomUserId || ''
+    if (/^wo[a-zA-Z0-9_-]{20,}$/.test(uid)) {
+      return `成员(${uid.slice(0, 8)}...)`
+    }
+    return uid || '-'
+  }
+  return name
 }
 
 /** 获取成员首字符用于头像fallback */
 const getMemberInitial = (data: any) => {
-  const name = data.wecomUserName || data.label || data.wecomUserId || '?'
-  return name.charAt(0)
+  const name = data.wecomUserName || data.label || ''
+  if (name && name !== data.wecomUserId && !/^wo[a-zA-Z0-9_-]{20,}$/.test(name)) {
+    return name.charAt(0)
+  }
+  return '👤'
 }
 
 /** 截短过长的UserId用于树节点展示 */
@@ -1214,24 +1256,51 @@ const fetchConfigs = async () => {
 
 // 切换Tab时自动加载数据
 watch(activeTab, (tab) => {
+  if (tab === 'binding') fetchBindings()
   if (tab === 'auto-match') fetchAutoMatchList()
   if (tab === 'sync-settings') { fetchSyncSettings(); loadDeptNameList() }
   if (tab === 'sync-logs') fetchSyncLogs()
 })
 
 const { initFromConfig: initWecomOpenDataSdk } = useWecomOpenData()
+const { initFromConfig: initWwOpenData, isReady: wwOpenDataReady, bindAll: wwBindAll } = useWwOpenDataSdk()
 
 const tryInitWecomSdk = async () => {
+  // 初始化通讯录展示组件 SDK（jwxwork-1.0.0.js）
+  try {
+    const ok = await initWwOpenData(selectedConfigId.value || null)
+    if (ok) {
+      console.log('[AddressBook] ✅ 通讯录展示组件SDK初始化成功')
+      // SDK 就绪后重新绑定所有 ww-open-data 元素
+      setTimeout(() => wwBindAll(), 500)
+    } else {
+      console.log('[AddressBook] 通讯录展示组件SDK未就绪（非企微环境），使用降级显示')
+    }
+  } catch (e: any) {
+    console.log('[AddressBook] 通讯录展示组件SDK初始化失败:', e?.message || '未知错误')
+  }
+  // 同时初始化会话存档SDK（用于消息展示组件）
   try {
     await initWecomOpenDataSdk(selectedConfigId.value || null)
   } catch {
-    console.log('[AddressBook] 企微SDK初始化失败（非企微环境），通讯录组件将使用降级显示')
+    // 会话存档SDK初始化失败不影响通讯录展示
   }
 }
 
-onMounted(() => {
-  fetchConfigs()
+// SDK 就绪后，刷新已渲染的 ww-open-data 元素
+watch(wwOpenDataReady, (ready) => {
+  if (ready && mixedTreeData.value.length > 0) {
+    setTimeout(() => wwBindAll(), 300)
+  }
+})
+
+onMounted(async () => {
+  await fetchConfigs()
   fetchAutoMatchCount()
+  // 初始化企微SDK（用于通讯录展示组件 ww-open-data）
+  if (selectedConfigId.value) {
+    tryInitWecomSdk()
+  }
 })
 </script>
 

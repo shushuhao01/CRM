@@ -334,11 +334,27 @@ router.post('/customers/sync', authenticateToken, async (req: Request, res: Resp
       return res.status(404).json({ success: false, message: '企微配置不存在或已禁用' });
     }
 
-    const bindingRepo = getTenantRepo(WecomUserBinding);
-    let bindings = await bindingRepo.find({ where: { wecomConfigId: configId, isEnabled: true } });
+    // 使用 QueryBuilder 支持 tenant_id IS NULL 的成员（同步时可能未写入 tenantId）
+    const { AppDataSource: DS } = await import('../../config/database');
+    const bindingRepo = DS.getRepository(WecomUserBinding);
+    const tenantId = (req as any).tenantId || (req as any).user?.tenantId;
+    let bindings = await bindingRepo.createQueryBuilder('b')
+      .where('b.wecom_config_id = :configId', { configId: Number(configId) })
+      .andWhere('b.is_enabled = :enabled', { enabled: true })
+      .andWhere(tenantId ? '(b.tenant_id = :tenantId OR b.tenant_id IS NULL)' : '1=1', { tenantId })
+      .getMany();
+
+    // 修复 NULL tenantId
+    if (tenantId) {
+      const nullTenants = bindings.filter(b => !b.tenantId);
+      if (nullTenants.length > 0) {
+        for (const b of nullTenants) b.tenantId = tenantId;
+        bindingRepo.save(nullTenants).catch(() => {});
+      }
+    }
 
     if (bindings.length === 0) {
-      return res.status(400).json({ success: false, message: '没有绑定的成员，请先在通讯录中绑定成员' });
+      return res.status(400).json({ success: false, message: '没有绑定的成员，请先在通讯录中同步成员' });
     }
 
     // 根据角色过滤同步范围

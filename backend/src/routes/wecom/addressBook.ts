@@ -1272,13 +1272,26 @@ router.get('/address-book/bindings', authenticateToken, async (req: Request, res
 
     if (!tenantId) return res.status(403).json({ success: false, message: '租户上下文缺失' });
     const bindingRepo = AppDataSource.getRepository(WecomUserBinding);
-    const where: any = { tenantId };
-    if (configId) where.wecomConfigId = Number(configId);
 
-    const [allBindings, total] = await bindingRepo.findAndCount({
-      where,
-      order: { createdAt: 'DESC' }
-    });
+    // 使用 QueryBuilder 支持 tenant_id IS NULL 的情况（同步时可能未写入 tenantId）
+    let qb = bindingRepo.createQueryBuilder('b')
+      .where('(b.tenant_id = :tenantId OR b.tenant_id IS NULL)', { tenantId });
+    if (configId) {
+      qb = qb.andWhere('b.wecom_config_id = :configId', { configId: Number(configId) });
+    }
+    qb = qb.orderBy('b.created_at', 'DESC');
+
+    const allBindings = await qb.getMany();
+    const total = allBindings.length;
+
+    // 顺便修复 tenantId 为 NULL 的记录
+    const nullTenantBindings = allBindings.filter(b => !b.tenantId);
+    if (nullTenantBindings.length > 0) {
+      for (const b of nullTenantBindings) {
+        b.tenantId = tenantId;
+      }
+      bindingRepo.save(nullTenantBindings).catch(() => {});
+    }
 
     const bound = allBindings.filter(b => b.crmUserId && b.crmUserId !== '').length;
     const anomaly = allBindings.filter(b => !b.isEnabled).length;
@@ -1731,6 +1744,7 @@ router.get('/address-book/member/:wecomUserId/profile', authenticateToken, async
         wecomAvatar: binding.wecomAvatar,
         isEnabled: binding.isEnabled,
         departments: deptNames,
+        departmentIds: deptIds,
         wecomDepartmentIds: binding.wecomDepartmentIds,
         // CRM绑定
         crmUserId: binding.crmUserId,
