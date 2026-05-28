@@ -578,7 +578,7 @@ export class WecomApiService {
    */
   static async getAcquisitionQuota(accessToken: string): Promise<{ total: number; balance: number; quotaList: any[] }> {
     try {
-      const response = await axios.get(`${WECOM_API_BASE}/externalcontact/customer_acquisition/quota?access_token=${accessToken}`);
+      const response = await axios.get(`${WECOM_API_BASE}/externalcontact/customer_acquisition_quota?access_token=${accessToken}`);
       if (response.data.errcode === 0) {
         return {
           total: response.data.total || 0,
@@ -619,6 +619,7 @@ export class WecomApiService {
   static async addContactWay(accessToken: string, params: {
     type: number; scene: number; style?: number; remark?: string; skipVerify?: boolean;
     state?: string; userIds?: string[]; partyIds?: number[]; isExclusive?: boolean;
+    conclusions?: { text?: { content: string }; image?: { media_id: string }; link?: { title: string; picurl?: string; desc?: string; url: string }; miniprogram?: any };
   }): Promise<{ config_id: string; qr_code: string }> {
     try {
       const body: any = {
@@ -632,6 +633,7 @@ export class WecomApiService {
       if (params.isExclusive !== undefined) body.is_exclusive = params.isExclusive;
       if (params.userIds?.length) body.user = params.userIds;
       if (params.partyIds?.length) body.party = params.partyIds;
+      if (params.conclusions) body.conclusions = params.conclusions;
       const response = await axios.post(`${WECOM_API_BASE}/externalcontact/add_contact_way?access_token=${accessToken}`, body);
       if (response.data.errcode === 0) {
         return { config_id: response.data.config_id, qr_code: response.data.qr_code };
@@ -649,6 +651,7 @@ export class WecomApiService {
   static async updateContactWay(accessToken: string, configId: string, params: {
     remark?: string; skipVerify?: boolean; style?: number; state?: string;
     userIds?: string[]; partyIds?: number[];
+    conclusions?: { text?: { content: string }; image?: { media_id: string }; link?: { title: string; picurl?: string; desc?: string; url: string }; miniprogram?: any } | null;
   }): Promise<void> {
     try {
       const body: any = { config_id: configId };
@@ -658,6 +661,7 @@ export class WecomApiService {
       if (params.state !== undefined) body.state = params.state;
       if (params.userIds?.length) body.user = params.userIds;
       if (params.partyIds?.length) body.party = params.partyIds;
+      if (params.conclusions !== undefined) body.conclusions = params.conclusions || {};
       const response = await axios.post(`${WECOM_API_BASE}/externalcontact/update_contact_way?access_token=${accessToken}`, body);
       if (response.data.errcode !== 0) {
         throw new Error(`更新活码失败: ${response.data.errmsg} (${response.data.errcode})`);

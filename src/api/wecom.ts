@@ -445,6 +445,21 @@ export const getAcquisitionLinkLogs = (linkId: number, params?: any) => {
   return request.get(`/wecom/acquisition-links/${linkId}/logs`, { params, showError: false } as any)
 }
 
+/** 活码详情-客户列表 */
+export const getContactWayCustomers = (id: number, params?: any) => {
+  return request.get(`/wecom/contact-way/${id}/customers`, { params, showError: false } as any)
+}
+
+/** 活码详情-开口统计 */
+export const getContactWayStats = (id: number, params?: any) => {
+  return request.get(`/wecom/contact-way/${id}/stats`, { params, showError: false } as any)
+}
+
+/** 活码详情-画像/漏斗 */
+export const getContactWayPortrait = (id: number, params?: any) => {
+  return request.get(`/wecom/contact-way/${id}/portrait`, { params, showError: false } as any)
+}
+
 /** 获客链接智能规则-获取 */
 export const getAcquisitionSmartRules = (linkId: number) => {
   return request.get(`/wecom/acquisition-links/${linkId}/smart-rules`, { showError: false } as any)
@@ -811,6 +826,14 @@ export const editAcquisitionTag = (id: string, data: { configId: number; name: s
 /** 删除标签/标签组 */
 export const deleteAcquisitionTags = (data: { configId: number; tagIds?: string[]; groupIds?: string[] }) => {
   return request.delete('/wecom/acquisition-tags', { data } as any)
+}
+
+/** 按标签查看客户列表 */
+export const getAcquisitionTagCustomers = (params: {
+  configId: number; tagName?: string; startDate?: string; endDate?: string;
+  followUser?: string; linkName?: string; page?: number; pageSize?: number
+}) => {
+  return request.get('/wecom/acquisition-tag-customers', { params, showError: false } as any)
 }
 
 // ==================== Phase 5: 微信客服增强 ====================

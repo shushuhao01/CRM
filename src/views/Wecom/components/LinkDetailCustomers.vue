@@ -23,12 +23,20 @@
 
     <!-- 客户表格 -->
     <el-table :data="customerList" v-loading="loading" stripe>
-      <el-table-column label="客户" min-width="160">
+      <el-table-column label="客户" min-width="180">
         <template #default="{ row }">
           <div class="customer-cell">
-            <el-avatar :size="32" :src="row.avatar">{{ row.name?.charAt(0) }}</el-avatar>
-            <span class="customer-name">{{ row.name }}</span>
+            <el-avatar :size="32" :src="row.avatar">{{ (row.remark || row.nickname || row.name || '?').charAt(0) }}</el-avatar>
+            <div class="customer-info">
+              <span class="customer-name">{{ row.remark || row.name }}</span>
+              <span v-if="row.nickname && row.nickname !== row.name" class="customer-nickname">{{ row.nickname }}</span>
+            </div>
           </div>
+        </template>
+      </el-table-column>
+      <el-table-column label="客户ID" width="140">
+        <template #default="{ row }">
+          <span style="color: #9CA3AF; font-size: 12px">{{ row.externalUserId }}</span>
         </template>
       </el-table-column>
       <el-table-column label="添加时间" width="160">
@@ -75,13 +83,14 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, watch, onMounted } from 'vue'
-import { getAcquisitionLinkCustomers } from '@/api/wecom'
+import { getAcquisitionLinkCustomers, getContactWayCustomers } from '@/api/wecom'
 import type { AcquisitionLinkCustomer } from '../types'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   linkId: number
   isDemoMode: boolean
-}>()
+  type?: 'acquisition' | 'contactway'
+}>(), { type: 'acquisition' })
 
 const loading = ref(false)
 const currentPage = ref(1)
@@ -104,15 +113,18 @@ const fetchData = async () => {
   if (props.isDemoMode) return
   loading.value = true
   try {
-    const res: any = await getAcquisitionLinkCustomers(props.linkId, {
+    const params = {
       status: filters.status || undefined,
       dateRange: filters.dateRange || undefined,
       followUser: filters.followUser || undefined,
       page: currentPage.value,
       pageSize
-    })
+    }
+    const res: any = props.type === 'contactway'
+      ? await getContactWayCustomers(props.linkId, params)
+      : await getAcquisitionLinkCustomers(props.linkId, params)
     const data = res?.data || res
-    customerList.value = data?.customers || []
+    customerList.value = data?.customers || data?.list || []
     total.value = data?.total || customerList.value.length
   } catch (e) {
     console.error('[LinkDetailCustomers] Fetch error:', e)
@@ -137,6 +149,8 @@ watch(() => props.linkId, () => {
 .filter-bar { display: flex; gap: 10px; margin-bottom: 16px; align-items: center; flex-wrap: wrap; }
 .result-count { font-size: 13px; color: #9CA3AF; }
 .customer-cell { display: flex; align-items: center; gap: 10px; }
-.customer-name { font-weight: 600; color: #1F2937; }
+.customer-info { display: flex; flex-direction: column; }
+.customer-name { font-weight: 600; color: #1F2937; font-size: 14px; }
+.customer-nickname { font-size: 12px; color: #9CA3AF; margin-top: 2px; }
 .pagination-bar { display: flex; justify-content: flex-end; margin-top: 16px; }
 </style>

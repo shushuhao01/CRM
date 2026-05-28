@@ -22,6 +22,24 @@ function safeJsonParse<T>(str: string | null | undefined, fallback: T): T {
   }
 }
 
+/** Unix时间戳(秒) -> 北京时间字符串 */
+function timestampToBJ(ts: number): string {
+  if (!ts) return '-';
+  const d = new Date(ts * 1000);
+  const offset = 8 * 60; // UTC+8
+  const bjTime = new Date(d.getTime() + offset * 60000);
+  return bjTime.toISOString().replace('T', ' ').slice(0, 16);
+}
+
+/** Date对象或ISO字符串 -> 北京时间字符串 */
+function dateToBJ(d: Date | string | null): string {
+  if (!d) return '-';
+  const dt = new Date(d);
+  const offset = 8 * 60;
+  const bjTime = new Date(dt.getTime() + offset * 60000);
+  return bjTime.toISOString().replace('T', ' ').slice(0, 19);
+}
+
 /**
  * 判断当前用户是否为管理员角色
  */
@@ -49,11 +67,28 @@ router.get('/acquisition-links', authenticateToken, async (req: Request, res: Re
     const linkRepo = getTenantRepo(WecomAcquisitionLink);
     const where: any = {};
     if (configId) where.wecomConfigId = parseInt(configId as string);
-    // 数据范围过滤：经理只看自己创建的
     const creatorFilter = getCreatorFilter(req);
     if (creatorFilter) where.createdBy = creatorFilter;
     const links = await linkRepo.find({ where, order: { createdAt: 'DESC' } });
-    res.json({ success: true, data: links });
+
+    // 为每个链接计算今日数据（从 dailyStats 取今日条目）
+    const today = new Date().toISOString().split('T')[0];
+    const enrichedLinks = links.map(link => {
+      const ds: Array<{ date: string; add?: number; loss?: number; click?: number }> = safeJsonParse(link.dailyStats, []);
+      const todayEntry = ds.find(d => d.date === today);
+      const conversionRate = (link.clickCount || 0) > 0
+        ? parseFloat((((link.addCount || 0) / (link.clickCount || 1)) * 100).toFixed(1))
+        : 0;
+      return {
+        ...link,
+        todayAdd: todayEntry?.add || 0,
+        todayLoss: todayEntry?.loss || 0,
+        todayClick: todayEntry?.click || 0,
+        conversionRate
+      };
+    });
+
+    res.json({ success: true, data: enrichedLinks });
   } catch (error: any) {
     log.error('[Wecom] Get acquisition links error:', error);
     res.status(500).json({ success: false, message: '获取获客链接失败' });
@@ -202,7 +237,11 @@ router.post('/acquisition-links', authenticateToken, requireManagerOrAdmin, asyn
       log.warn(`[Acquisition] ${invalidIds.length} userIds could not be resolved, using ${resolvedUserIds.length} valid ones`);
     }
 
-    const linkData = await WecomApiService.createAcquisitionLink(accessToken, linkName, resolvedUserIds, { departmentIds });
+    const { skipVerify } = req.body;
+    const linkData = await WecomApiService.createAcquisitionLink(accessToken, linkName, resolvedUserIds, {
+      departmentIds,
+      skipVerify: skipVerify !== undefined ? skipVerify : true
+    });
 
     const linkRepo = getTenantRepo(WecomAcquisitionLink);
     const currentUser = (req as any).currentUser;
@@ -284,6 +323,7 @@ router.put('/acquisition-links/:id', authenticateToken, requireManagerOrAdmin, a
 
 /**
  * 同步获客链接统计数据
+ * 通过 customer_acquisition/customer 接口获取真实客户数据来计算统计
  */
 router.post('/acquisition-links/sync-stats', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
   try {
@@ -295,20 +335,66 @@ router.post('/acquisition-links/sync-stats', authenticateToken, requireAdmin, as
     if (links.length === 0) return res.json({ success: true, message: '暂无获客链接', data: { updated: 0 } });
 
     const accessToken = await WecomApiService.getAccessTokenByConfigId(configId, 'external');
+    const axios = (await import('axios')).default;
     let updated = 0;
 
     for (const link of links) {
       if (!link.linkId) continue;
       try {
+        // 获取链接基本信息（url等）
         const detail = await WecomApiService.getAcquisitionLinkDetail(accessToken, link.linkId);
-        if (detail) {
-          if (detail.click_count !== undefined) link.clickCount = detail.click_count;
-          if (detail.create_count !== undefined) link.addCount = detail.create_count;
-          if (detail.delete_count !== undefined) link.lossCount = detail.delete_count;
-          if (detail.url && !link.linkUrl) link.linkUrl = detail.url;
-          await linkRepo.save(link);
-          updated++;
+        if (detail?.url && !link.linkUrl) link.linkUrl = detail.url;
+        if (detail?.link_name && !link.linkName) link.linkName = detail.link_name;
+
+        // 从 customer_acquisition/customer 获取真实客户列表来统计
+        let allCustomers: any[] = [];
+        let cursor = '';
+        let hasMore = true;
+        while (hasMore) {
+          const customerResp = await axios.post(
+            'https://qyapi.weixin.qq.com/cgi-bin/externalcontact/customer_acquisition/customer',
+            { link_id: link.linkId, limit: 1000, cursor: cursor || undefined },
+            { params: { access_token: accessToken } }
+          );
+          if (customerResp.data?.errcode === 0 && customerResp.data?.customer_list) {
+            allCustomers = allCustomers.concat(customerResp.data.customer_list);
+            cursor = customerResp.data.next_cursor || '';
+            hasMore = !!cursor;
+          } else {
+            hasMore = false;
+          }
         }
+
+        const addCount = allCustomers.length;
+        const talkedCount = allCustomers.filter((c: any) => c.chat_status === 1).length;
+        const previousAdd = link.addCount || 0;
+        const lossCount = previousAdd > addCount ? previousAdd - addCount : (link.lossCount || 0);
+
+        link.addCount = addCount;
+        link.lossCount = lossCount;
+        link.clickCount = link.clickCount || 0;
+
+        // 记录今日每日统计快照到 dailyStats
+        const today = new Date().toISOString().split('T')[0];
+        const dailyStats: Array<{ date: string; add: number; loss: number; talked: number }> = safeJsonParse(link.dailyStats, []);
+        const todayIdx = dailyStats.findIndex(d => d.date === today);
+        const todayEntry = { date: today, add: addCount - (previousAdd - (lossCount - (link.lossCount || 0))), loss: lossCount > (link.lossCount || 0) ? lossCount - (link.lossCount || 0) : 0, talked: talkedCount };
+        // 简化：今日新增 = 当前总量 - 昨日记录的总量
+        const prevDayEntry = dailyStats.length > 0 ? dailyStats[dailyStats.length - 1] : null;
+        const todayNewAdd = prevDayEntry ? Math.max(0, addCount - previousAdd) : addCount;
+        const todayNewLoss = prevDayEntry ? Math.max(0, lossCount - (link.lossCount || 0)) : 0;
+        const snapshot = { date: today, add: todayNewAdd, loss: todayNewLoss, talked: talkedCount };
+        if (todayIdx >= 0) {
+          dailyStats[todayIdx] = snapshot;
+        } else {
+          dailyStats.push(snapshot);
+        }
+        // 保留最近90天数据
+        const cutoff = new Date(Date.now() - 90 * 86400000).toISOString().split('T')[0];
+        link.dailyStats = JSON.stringify(dailyStats.filter(d => d.date >= cutoff));
+
+        await linkRepo.save(link);
+        updated++;
       } catch (syncErr: any) {
         log.warn(`[Acquisition] Sync link ${link.linkId} error:`, syncErr.message);
       }
@@ -649,13 +735,23 @@ router.get('/acquisition-overview', authenticateToken, async (req: Request, res:
       totalClicks
     };
 
+    // 从 dailyStats 汇总已开口数据（talked字段由sync-stats写入）
+    let totalTalked = 0;
+    for (const link of links) {
+      const ds: Array<{ date: string; talked?: number }> = safeJsonParse(link.dailyStats, []);
+      const latest = ds.length > 0 ? ds[ds.length - 1] : null;
+      if (latest?.talked) totalTalked += latest.talked;
+    }
+    // 如果没有 talked 数据，使用比例估算
+    if (totalTalked === 0 && totalAdds > 0) totalTalked = Math.round(totalAdds * 0.72);
+
     const funnel = [
       { name: '点击链接', count: totalClicks, percent: 100 },
       { name: '成功添加', count: totalAdds, percent: totalClicks > 0 ? parseFloat(((totalAdds / totalClicks) * 100).toFixed(1)) : 0 },
-      { name: '首次开口', count: Math.round(totalAdds * 0.72), percent: totalClicks > 0 ? parseFloat(((totalAdds * 0.72 / totalClicks) * 100).toFixed(1)) : 0 },
-      { name: '有效沟通', count: Math.round(totalAdds * 0.43), percent: totalClicks > 0 ? parseFloat(((totalAdds * 0.43 / totalClicks) * 100).toFixed(1)) : 0 },
-      { name: '关联CRM', count: Math.round(totalAdds * 0.27), percent: totalClicks > 0 ? parseFloat(((totalAdds * 0.27 / totalClicks) * 100).toFixed(1)) : 0 },
-      { name: '成交', count: Math.round(totalAdds * 0.11), percent: totalClicks > 0 ? parseFloat(((totalAdds * 0.11 / totalClicks) * 100).toFixed(1)) : 0 },
+      { name: '首次开口', count: totalTalked, percent: totalClicks > 0 ? parseFloat(((totalTalked / totalClicks) * 100).toFixed(1)) : 0 },
+      { name: '有效沟通', count: Math.round(totalTalked * 0.6), percent: totalClicks > 0 ? parseFloat(((totalTalked * 0.6 / totalClicks) * 100).toFixed(1)) : 0 },
+      { name: '关联CRM', count: Math.round(totalTalked * 0.37), percent: totalClicks > 0 ? parseFloat(((totalTalked * 0.37 / totalClicks) * 100).toFixed(1)) : 0 },
+      { name: '成交', count: Math.round(totalTalked * 0.15), percent: totalClicks > 0 ? parseFloat(((totalTalked * 0.15 / totalClicks) * 100).toFixed(1)) : 0 },
     ];
 
     const linkRanking = links.slice(0, 10).map(l => ({
@@ -979,15 +1075,32 @@ router.get('/acquisition-member-ranking', authenticateToken, async (req: Request
     const ps = parseInt(pageSize as string) || 10;
     const paged = members.slice((p - 1) * ps, p * ps);
 
-    // Enrich with computed fields
-    const result = paged.map((m, idx) => ({
-      ...m,
-      rank: (p - 1) * ps + idx + 1,
-      talkRate: parseFloat((Math.random() * 30 + 50).toFixed(1)),
-      effectiveCount: Math.round(m.addCount * 0.6),
-      conversionRate: parseFloat((Math.random() * 20 + 15).toFixed(1)),
-      avgResponseMinutes: parseFloat((Math.random() * 6 + 1).toFixed(1)),
-    }));
+    // 从 dailyStats 中提取按成员的 talked 数据
+    const talkedPerUser: Record<string, number> = {};
+    for (const link of links) {
+      const ds: Array<{ date: string; talked?: number }> = safeJsonParse(link.dailyStats, []);
+      const latestEntry = ds.length > 0 ? ds[ds.length - 1] : null;
+      if (latestEntry?.talked) {
+        const linkUserIds: string[] = safeJsonParse(link.userIds, []);
+        const perUser = linkUserIds.length > 0 ? Math.floor(latestEntry.talked / linkUserIds.length) : 0;
+        for (const uid of linkUserIds) {
+          talkedPerUser[uid] = (talkedPerUser[uid] || 0) + perUser;
+        }
+      }
+    }
+
+    const result = paged.map((m, idx) => {
+      const talked = talkedPerUser[m.userId] || 0;
+      return {
+        ...m,
+        rank: (p - 1) * ps + idx + 1,
+        talkedCount: talked,
+        talkRate: m.addCount > 0 ? parseFloat(((talked / m.addCount) * 100).toFixed(1)) : 0,
+        effectiveCount: 0,
+        conversionRate: 0,
+        avgResponseMinutes: 0,
+      };
+    });
 
     res.json({ success: true, data: { members: result, total, page: p, pageSize: ps } });
   } catch (error: any) {
@@ -1048,7 +1161,6 @@ router.get('/acquisition-links/:id/customers', authenticateToken, async (req: Re
 
     const { status, dateRange, followUser, page = '1', pageSize = '20' } = req.query;
 
-    // 从企微API获取通过该链接添加的客户
     let customers: any[] = [];
     try {
       const accessToken = await WecomApiService.getAccessTokenByConfigId(link.wecomConfigId, 'external');
@@ -1060,17 +1172,60 @@ router.get('/acquisition-links/:id/customers', authenticateToken, async (req: Re
 
       if (resp.data?.customer_list) {
         const userIds: string[] = safeJsonParse(link.userIds, []);
-        customers = resp.data.customer_list.map((c: any, idx: number) => ({
-          id: idx + 1,
-          name: c.external_userid || `客户${idx + 1}`,
-          externalUserId: c.external_userid,
-          avatar: '',
-          addTime: c.create_time ? new Date(c.create_time * 1000).toISOString().replace('T', ' ').slice(0, 16) : '-',
-          talkStatus: c.chat_status === 1 ? 'talked' : c.state === 2 ? 'lost' : 'not_talked',
-          talkCount: c.chat_cnt || 0,
-          talkTime: c.first_chat_time ? new Date(c.first_chat_time * 1000).toISOString().replace('T', ' ').slice(0, 16) : undefined,
-          followUser: c.userid || (userIds.length > 0 ? userIds[idx % userIds.length] : '-')
-        }));
+        const rawList = resp.data.customer_list;
+
+        // 批量获取客户备注和昵称（通过 externalcontact/get）
+        const enrichedCustomers: any[] = [];
+        for (const c of rawList) {
+          let customerName = '';
+          let customerAvatar = '';
+          let customerNickname = '';
+          let customerRemark = '';
+          let addMethod = '';
+          let addTimeFromDetail = '';
+
+          if (c.external_userid && c.userid) {
+            try {
+              const detailResp = await axios.get('https://qyapi.weixin.qq.com/cgi-bin/externalcontact/get', {
+                params: { access_token: accessToken, external_userid: c.external_userid }
+              });
+              if (detailResp.data?.errcode === 0) {
+                const extContact = detailResp.data.external_contact || {};
+                customerNickname = extContact.name || '';
+                customerAvatar = extContact.avatar || '';
+                const followInfo = (detailResp.data.follow_user || []).find((f: any) => f.userid === c.userid);
+                if (followInfo) {
+                  customerRemark = followInfo.remark || '';
+                  addMethod = followInfo.add_way !== undefined ? String(followInfo.add_way) : '';
+                  if (followInfo.createtime) {
+                    addTimeFromDetail = timestampToBJ(followInfo.createtime);
+                  }
+                }
+              }
+            } catch (detailErr: any) {
+              log.debug(`[Acquisition] Get customer detail failed for ${c.external_userid}:`, detailErr.message);
+            }
+          }
+
+          customerName = customerRemark || customerNickname || c.external_userid;
+          const idx = enrichedCustomers.length;
+          enrichedCustomers.push({
+            id: idx + 1,
+            name: customerName,
+            nickname: customerNickname,
+            remark: customerRemark,
+            externalUserId: c.external_userid,
+            avatar: customerAvatar,
+            addTime: addTimeFromDetail || (c.create_time ? timestampToBJ(c.create_time) : '-'),
+            addMethod,
+            talkStatus: c.chat_status === 1 ? 'talked' : c.chat_status === 2 ? 'unknown' : 'not_talked',
+            talkCount: c.chat_cnt || 0,
+            talkTime: c.first_chat_time ? timestampToBJ(c.first_chat_time) : undefined,
+            followUser: c.userid || (userIds.length > 0 ? userIds[idx % userIds.length] : '-'),
+            state: c.state || ''
+          });
+        }
+        customers = enrichedCustomers;
       }
     } catch (apiErr: any) {
       log.warn('[Acquisition] Fetch link customers from API:', apiErr.message);
@@ -1094,7 +1249,7 @@ router.get('/acquisition-links/:id/customers', authenticateToken, async (req: Re
 });
 
 /**
- * 获客链接详情-开口统计
+ * 获客链接详情-开口统计（基于真实客户数据计算）
  */
 router.get('/acquisition-links/:id/stats', authenticateToken, async (req: Request, res: Response) => {
   try {
@@ -1102,43 +1257,55 @@ router.get('/acquisition-links/:id/stats', authenticateToken, async (req: Reques
     const link = await linkRepo.findOne({ where: { id: parseInt(req.params.id) } });
     if (!link) return res.status(404).json({ success: false, message: '链接不存在' });
 
-    const addCount = link.addCount || 0;
-    const talked = Math.round(addCount * 0.72);
+    // 从企微API获取客户列表以计算真实开口率
+    let allCustomers: any[] = [];
+    try {
+      const accessToken = await WecomApiService.getAccessTokenByConfigId(link.wecomConfigId, 'external');
+      const axios = (await import('axios')).default;
+      let cursor = '';
+      let hasMore = true;
+      while (hasMore) {
+        const resp = await axios.post(
+          'https://qyapi.weixin.qq.com/cgi-bin/externalcontact/customer_acquisition/customer',
+          { link_id: link.linkId, limit: 1000, cursor: cursor || undefined },
+          { params: { access_token: accessToken } }
+        );
+        if (resp.data?.errcode === 0 && resp.data?.customer_list) {
+          allCustomers = allCustomers.concat(resp.data.customer_list);
+          cursor = resp.data.next_cursor || '';
+          hasMore = !!cursor;
+        } else {
+          hasMore = false;
+        }
+      }
+    } catch (apiErr: any) {
+      log.warn('[Acquisition] Get customers for stats:', apiErr.message);
+    }
+
+    const addCount = allCustomers.length || link.addCount || 0;
+    const talked = allCustomers.filter((c: any) => c.chat_status === 1).length;
     const talkRate = addCount > 0 ? parseFloat(((talked / addCount) * 100).toFixed(1)) : 0;
-    const avgTalkMinutes = 4.2;
 
-    const timeDistribution = [
-      { label: '<1分钟', count: Math.round(talked * 0.40) },
-      { label: '1-5分钟', count: Math.round(talked * 0.29) },
-      { label: '5-30分钟', count: Math.round(talked * 0.18) },
-      { label: '30分-1时', count: Math.round(talked * 0.09) },
-      { label: '>1小时', count: Math.round(talked * 0.04) },
-    ];
-
-    const depthDistribution = [
-      { label: '1句', count: Math.round(talked * 0.16) },
-      { label: '2-3句', count: Math.round(talked * 0.31) },
-      { label: '4-5句', count: Math.round(talked * 0.25) },
-      { label: '6-10句', count: Math.round(talked * 0.20) },
-      { label: '10句以上', count: Math.round(talked * 0.08) },
-    ];
-
+    // 按跟进人分组统计
     const userIds: string[] = safeJsonParse(link.userIds, []);
-    const memberRanking = userIds.map(uid => {
-      const memberAdd = Math.round(addCount / Math.max(userIds.length, 1));
-      const memberTalked = Math.round(memberAdd * 0.72);
-      return {
-        name: uid,
-        userId: uid,
-        addCount: memberAdd,
-        talkedCount: memberTalked,
-        talkRate: memberAdd > 0 ? parseFloat(((memberTalked / memberAdd) * 100).toFixed(1)) : 0,
-        avgMinutes: parseFloat((Math.random() * 3 + 2).toFixed(1)),
-        avgSentences: parseFloat((Math.random() * 5 + 3).toFixed(1)),
-      };
-    });
+    const memberMap: Record<string, { add: number; talked: number }> = {};
+    for (const uid of userIds) memberMap[uid] = { add: 0, talked: 0 };
+    for (const c of allCustomers) {
+      const uid = c.userid || '';
+      if (!memberMap[uid]) memberMap[uid] = { add: 0, talked: 0 };
+      memberMap[uid].add++;
+      if (c.chat_status === 1) memberMap[uid].talked++;
+    }
 
-    res.json({ success: true, data: { totalAdd: addCount, talked, talkRate, avgTalkMinutes, timeDistribution, depthDistribution, memberRanking } });
+    const memberRanking = Object.entries(memberMap).map(([uid, stats]) => ({
+      name: uid,
+      userId: uid,
+      addCount: stats.add,
+      talkedCount: stats.talked,
+      talkRate: stats.add > 0 ? parseFloat(((stats.talked / stats.add) * 100).toFixed(1)) : 0,
+    })).sort((a, b) => b.addCount - a.addCount);
+
+    res.json({ success: true, data: { totalAdd: addCount, talked, talkRate, memberRanking } });
   } catch (error: any) {
     log.error('[Wecom] Get link stats error:', error);
     res.status(500).json({ success: false, message: '获取开口统计失败' });
@@ -1157,30 +1324,31 @@ router.get('/acquisition-links/:id/funnel', authenticateToken, async (req: Reque
     const clicks = link.clickCount || 0;
     const adds = link.addCount || 0;
     const loss = link.lossCount || 0;
-    const talked = Math.round(adds * 0.72);
-    const effective = Math.round(adds * 0.43);
-    const linked = Math.round(adds * 0.27);
-    const closed = Math.round(adds * 0.11);
 
+    // 从 dailyStats 获取最近一次同步的 talked 数据
+    const dailyStats: Array<{ date: string; talked?: number }> = safeJsonParse(link.dailyStats, []);
+    const latestEntry = dailyStats.length > 0 ? dailyStats[dailyStats.length - 1] : null;
+    const talked = latestEntry?.talked || 0;
+
+    // 基于真实数据计算后续阶段（无法通过API获取的用比例估算但标注）
+    const base = Math.max(adds, 1);
     const funnelLevels = [
       { name: '点击链接', count: clicks, percent: 100, lossCount: 0 },
-      { name: '成功添加', count: adds, percent: clicks > 0 ? parseFloat(((adds / clicks) * 100).toFixed(1)) : 0, lossCount: clicks - adds },
-      { name: '首次开口', count: talked, percent: clicks > 0 ? parseFloat(((talked / clicks) * 100).toFixed(1)) : 0, lossCount: adds - talked },
-      { name: '有效沟通(≥5句)', count: effective, percent: clicks > 0 ? parseFloat(((effective / clicks) * 100).toFixed(1)) : 0, lossCount: talked - effective },
-      { name: '关联CRM', count: linked, percent: clicks > 0 ? parseFloat(((linked / clicks) * 100).toFixed(1)) : 0, lossCount: effective - linked },
-      { name: '成交', count: closed, percent: clicks > 0 ? parseFloat(((closed / clicks) * 100).toFixed(1)) : 0, lossCount: linked - closed },
+      { name: '成功添加', count: adds, percent: clicks > 0 ? parseFloat(((adds / clicks) * 100).toFixed(1)) : (adds > 0 ? 100 : 0), lossCount: Math.max(clicks - adds, 0) },
+      { name: '首次开口', count: talked, percent: adds > 0 ? parseFloat(((talked / base) * 100).toFixed(1)) : 0, lossCount: Math.max(adds - talked, 0) },
+      { name: '有效沟通(≥5句)', count: 0, percent: 0, lossCount: 0 },
+      { name: '关联CRM', count: 0, percent: 0, lossCount: 0 },
+      { name: '成交', count: 0, percent: 0, lossCount: 0 },
     ];
 
-    const convRate = clicks > 0 ? parseFloat(((adds / clicks) * 100).toFixed(1)) : 0;
+    const convRate = clicks > 0 ? parseFloat(((adds / clicks) * 100).toFixed(1)) : (adds > 0 ? 100 : 0);
     const talkRate = adds > 0 ? parseFloat(((talked / adds) * 100).toFixed(1)) : 0;
-    const effectiveRate = talked > 0 ? parseFloat(((effective / talked) * 100).toFixed(1)) : 0;
-    const closeRate = clicks > 0 ? parseFloat(((closed / clicks) * 100).toFixed(1)) : 0;
 
     const warnings = [
-      { label: '点击→添加转化率', desc: `${convRate}%，${convRate < 30 ? '低于行业均值30%，建议优化欢迎语和头像' : '高于行业均值30%'}`, level: convRate >= 30 ? 'ok' : 'warn' },
-      { label: '开口率', desc: `${talkRate}%，${talkRate >= 65 ? '高于行业均值65%' : '低于行业均值65%，建议优化开场白'}`, level: talkRate >= 65 ? 'ok' : 'warn' },
-      { label: '有效沟通率', desc: `${effectiveRate}%，${effectiveRate >= 40 ? '处于正常范围' : '偏低，建议优化沟通话术'}`, level: effectiveRate >= 40 ? 'ok' : 'warn' },
-      { label: '成交转化率', desc: `${closeRate}%，${closeRate >= 5 ? '达标' : '低于目标5%，建议跟进话术优化'}`, level: closeRate >= 5 ? 'ok' : 'warn' },
+      { label: '点击→添加转化率', desc: convRate > 0 ? `${convRate}%，${convRate < 30 ? '低于行业均值30%，建议优化欢迎语' : '表现良好'}` : '暂无点击数据', level: convRate >= 30 ? 'ok' : (convRate > 0 ? 'warn' : 'ok') },
+      { label: '开口率', desc: talkRate > 0 ? `${talkRate}%，${talkRate >= 65 ? '表现优秀' : '低于行业均值65%，建议优化开场白'}` : '暂无开口数据，请同步统计', level: talkRate >= 65 ? 'ok' : (talkRate > 0 ? 'warn' : 'ok') },
+      { label: '留存率', desc: adds > 0 ? `${((1 - loss / adds) * 100).toFixed(1)}%` : '暂无数据', level: adds > 0 && (1 - loss / adds) >= 0.7 ? 'ok' : 'warn' },
+      { label: '数据提示', desc: '有效沟通、关联CRM、成交数据需通过CRM业务数据补充', level: 'ok' },
     ];
 
     res.json({ success: true, data: { funnelLevels, warnings } });
@@ -1216,18 +1384,18 @@ router.get('/acquisition-links/:id/portrait', authenticateToken, async (req: Req
       { label: '留存率', value: adds > 0 ? `${((1 - loss / adds) * 100).toFixed(1)}%` : '100%', color: '#10B981' },
     ];
 
-    // 30日趋势
+    // 30日趋势（使用真实 dailyStats）
     const now = new Date();
     const trend = Array.from({ length: 30 }, (_, i) => {
       const d = new Date(now);
       d.setDate(now.getDate() - 29 + i);
       const ds = d.toISOString().split('T')[0];
-      const entry = dailyStats.find(s => s.date === ds);
+      const entry = dailyStats.find((s: any) => s.date === ds);
       return {
         date: ds,
         add: entry?.add || 0,
         loss: entry?.loss || 0,
-        talk: Math.round((entry?.add || 0) * 0.72)
+        talk: (entry as any)?.talked || 0
       };
     });
 
@@ -1259,19 +1427,18 @@ router.get('/acquisition-links/:id/logs', authenticateToken, async (req: Request
 
     const { page = '1', pageSize = '20' } = req.query;
 
-    // 根据链接的实际信息生成日志
     const logs: any[] = [];
     const userIds: string[] = safeJsonParse(link.userIds, []);
 
     logs.push({
-      time: link.createdAt ? new Date(link.createdAt).toISOString().replace('T', ' ').slice(0, 19) : '-',
+      time: dateToBJ(link.createdAt),
       operator: link.createdBy || '系统',
       content: `创建了获客链接「${link.linkName}」`
     });
 
     if (link.updatedAt && link.updatedAt !== link.createdAt) {
       logs.unshift({
-        time: new Date(link.updatedAt).toISOString().replace('T', ' ').slice(0, 19),
+        time: dateToBJ(link.updatedAt),
         operator: '系统',
         content: `获客链接「${link.linkName}」配置已更新`
       });
@@ -1285,7 +1452,7 @@ router.get('/acquisition-links/:id/logs', authenticateToken, async (req: Request
       if (rule.dailyLimitEnabled) parts.push(`每日上限${rule.dailyLimitPerUser}人`);
       if (rule.workTimeEnabled) parts.push(`工作时间${rule.workTimeStart}-${rule.workTimeEnd}`);
       logs.unshift({
-        time: rule.updatedAt ? new Date(rule.updatedAt).toISOString().replace('T', ' ').slice(0, 19) : '-',
+        time: dateToBJ(rule.updatedAt),
         operator: '系统',
         content: `智能上下线规则已配置：${parts.join('、') || '已启用'}`
       });
@@ -1424,6 +1591,99 @@ router.put('/contact-ways/:id/smart-rules', authenticateToken, requireManagerOrA
   } catch (error: any) {
     log.error('[Wecom] Save contact way smart rules error:', error);
     res.status(500).json({ success: false, message: '保存智能规则失败' });
+  }
+});
+
+/**
+ * 按标签查看客户列表（支持筛选、分页、导出）
+ */
+router.get('/acquisition-tag-customers', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const { configId, tagName, startDate, endDate, followUser, linkName, page = '1', pageSize = '10' } = req.query;
+    if (!configId) return res.status(400).json({ success: false, message: '请选择企微配置' });
+
+    const accessToken = await WecomApiService.getAccessTokenByConfigId(parseInt(configId as string), 'external');
+    const axios = (await import('axios')).default;
+
+    // 获取所有获客链接的客户
+    const linkRepo = getTenantRepo(WecomAcquisitionLink);
+    const links = await linkRepo.find({ where: { wecomConfigId: parseInt(configId as string) } });
+
+    let allCustomers: any[] = [];
+    for (const link of links) {
+      if (!link.linkId) continue;
+      // 如果有链接名称筛选
+      if (linkName && !link.linkName?.includes(linkName as string)) continue;
+
+      try {
+        const resp = await axios.post(
+          'https://qyapi.weixin.qq.com/cgi-bin/externalcontact/customer_acquisition/customer',
+          { link_id: link.linkId, limit: 1000 },
+          { params: { access_token: accessToken } }
+        );
+        if (resp.data?.errcode === 0 && resp.data?.customer_list) {
+          for (const c of resp.data.customer_list) {
+            allCustomers.push({ ...c, _linkName: link.linkName, _linkId: link.id });
+          }
+        }
+      } catch { /* skip */ }
+    }
+
+    // 获取客户详情并筛选标签
+    let enrichedCustomers: any[] = [];
+    for (const c of allCustomers) {
+      try {
+        const detailResp = await axios.get('https://qyapi.weixin.qq.com/cgi-bin/externalcontact/get', {
+          params: { access_token: accessToken, external_userid: c.external_userid }
+        });
+        if (detailResp.data?.errcode === 0) {
+          const extContact = detailResp.data.external_contact || {};
+          const followInfo = (detailResp.data.follow_user || []).find((f: any) => f.userid === c.userid) || {};
+          const tags = followInfo.tag_id ? (followInfo.tag_id || []) : [];
+          const tagNames = followInfo.tags?.map((t: any) => t.tag_name || t.name) || [];
+
+          // 标签筛选
+          if (tagName && tagNames.length > 0 && !tagNames.some((tn: string) => tn.includes(tagName as string))) continue;
+          if (tagName && tagNames.length === 0) continue;
+
+          // 跟进人筛选
+          if (followUser && c.userid !== followUser) continue;
+
+          // 日期筛选
+          if (startDate && followInfo.createtime) {
+            const addDate = new Date(followInfo.createtime * 1000).toISOString().split('T')[0];
+            if (addDate < (startDate as string)) continue;
+          }
+          if (endDate && followInfo.createtime) {
+            const addDate = new Date(followInfo.createtime * 1000).toISOString().split('T')[0];
+            if (addDate > (endDate as string)) continue;
+          }
+
+          enrichedCustomers.push({
+            externalUserId: c.external_userid,
+            remark: followInfo.remark || '',
+            nickname: extContact.name || '',
+            avatar: extContact.avatar || '',
+            addTime: followInfo.createtime ? timestampToBJ(followInfo.createtime) : '-',
+            addMethod: followInfo.add_way !== undefined ? String(followInfo.add_way) : '-',
+            sourceLinkName: c._linkName || '-',
+            talkStatus: c.chat_status === 1 ? '已开口' : '未开口',
+            tags: tagNames,
+            followUser: c.userid || '-',
+          });
+        }
+      } catch { /* skip individual errors */ }
+    }
+
+    const total = enrichedCustomers.length;
+    const p = parseInt(page as string) || 1;
+    const ps = parseInt(pageSize as string) || 10;
+    const paged = enrichedCustomers.slice((p - 1) * ps, p * ps);
+
+    res.json({ success: true, data: { list: paged, total, page: p, pageSize: ps } });
+  } catch (error: any) {
+    log.error('[Wecom] Get tag customers error:', error);
+    res.status(500).json({ success: false, message: '获取标签客户列表失败' });
   }
 });
 

@@ -270,32 +270,6 @@ const quickOptions = [
   { label: '近30天', value: '30d' }, { label: '全部', value: 'all' }
 ]
 
-// Demo data - 根据范围生成动态数据
-const baseRanking = [
-  { userId: 'wang01', userName: '王销售', department: '销售部', baseAdd: 86, talkRate: 80.8, effRate: 0.6, convRate: 32.1, resp: 2.5, linkCount: 5, status: 'normal' },
-  { userId: 'chen02', userName: '陈经理', department: '销售部', baseAdd: 72, talkRate: 72.9, effRate: 0.53, convRate: 28.4, resp: 3.8, linkCount: 4, status: 'normal' },
-  { userId: 'zhang03', userName: '张客服', department: '客服部', baseAdd: 58, talkRate: 68.5, effRate: 0.52, convRate: 24.6, resp: 4.2, linkCount: 3, status: 'normal' },
-  { userId: 'li04', userName: '李主管', department: '销售部', baseAdd: 45, talkRate: 75.2, effRate: 0.62, convRate: 30.8, resp: 2.1, linkCount: 6, status: 'normal' },
-  { userId: 'zhao05', userName: '赵销售', department: '销售部', baseAdd: 38, talkRate: 65.0, effRate: 0.47, convRate: 22.1, resp: 5.5, linkCount: 2, status: 'abnormal' },
-  { userId: 'sun06', userName: '孙客服', department: '客服部', baseAdd: 32, talkRate: 62.3, effRate: 0.47, convRate: 18.5, resp: 6.2, linkCount: 3, status: 'normal' },
-  { userId: 'zhou07', userName: '周实习', department: '销售部', baseAdd: 22, talkRate: 55.0, effRate: 0.36, convRate: 12.0, resp: 8.1, linkCount: 1, status: 'normal' },
-  { userId: 'qian08', userName: '钱顾问', department: '客服部', baseAdd: 18, talkRate: 60.2, effRate: 0.44, convRate: 16.5, resp: 7.0, linkCount: 2, status: 'normal' },
-  { userId: 'wu09', userName: '吴专员', department: '销售部', baseAdd: 15, talkRate: 58.1, effRate: 0.40, convRate: 14.2, resp: 7.5, linkCount: 1, status: 'normal' },
-  { userId: 'zheng10', userName: '郑助理', department: '客服部', baseAdd: 12, talkRate: 52.0, effRate: 0.33, convRate: 10.5, resp: 9.0, linkCount: 1, status: 'normal' },
-  { userId: 'feng11', userName: '冯总监', department: '销售部', baseAdd: 10, talkRate: 85.0, effRate: 0.7, convRate: 35.0, resp: 1.8, linkCount: 4, status: 'normal' },
-  { userId: 'he12', userName: '何小妹', department: '客服部', baseAdd: 8, talkRate: 50.0, effRate: 0.3, convRate: 8.5, resp: 10.2, linkCount: 1, status: 'normal' },
-]
-const rfMap: Record<string, number> = { today: 0.08, yesterday: 0.07, week: 0.35, month: 1, lastMonth: 0.9, '7d': 0.25, '30d': 1, all: 3.5 }
-const getDemoRanking = (range: string) => {
-  const f = rfMap[range] || 1
-  return baseRanking.map((m, i) => ({
-    rank: i + 1, userId: m.userId, userName: m.userName, department: m.department,
-    addCount: Math.round(m.baseAdd * f), talkRate: m.talkRate,
-    effectiveCount: Math.round(m.baseAdd * f * m.effRate),
-    conversionRate: m.convRate, avgResponseMinutes: m.resp,
-    linkCount: m.linkCount, status: m.status,
-  }))
-}
 
 const setRange = (val: string) => {
   quickRange.value = val

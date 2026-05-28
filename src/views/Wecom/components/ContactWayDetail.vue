@@ -18,7 +18,7 @@
           <div class="info-item"><span class="label">渠道标识</span><span class="value">{{ contactWay.state || '-' }}</span></div>
           <div class="info-item"><span class="label">分配模式</span><span class="value">{{ weightModeText }}</span></div>
           <div class="info-item"><span class="label">接待人</span><span class="value">{{ formatUserIds(contactWay.userIds) }}</span></div>
-          <div class="info-item"><span class="label">创建时间</span><span class="value">{{ contactWay.createdAt || '-' }}</span></div>
+          <div class="info-item"><span class="label">创建时间</span><span class="value">{{ formatBJTime(contactWay.createdAt) }}</span></div>
           <div class="info-item">
             <span class="label">二维码</span>
             <span class="value qr-link" v-if="contactWay.qrCode">点击下载</span>
@@ -48,19 +48,19 @@
         </div>
       </div>
 
-      <!-- 内部4Tab（复用获客链接详情组件） -->
+      <!-- 内部4Tab -->
       <el-tabs v-model="detailTab">
         <el-tab-pane label="添加客户" name="customers">
-          <LinkDetailCustomers :link-id="contactWay.id" :is-demo-mode="isDemoMode" />
+          <LinkDetailCustomers :link-id="contactWay.id" :is-demo-mode="isDemoMode" type="contactway" />
         </el-tab-pane>
         <el-tab-pane label="开口统计" name="talk-stats">
-          <LinkDetailTalkStats :link-id="contactWay.id" :is-demo-mode="isDemoMode" />
+          <LinkDetailTalkStats :link-id="contactWay.id" :is-demo-mode="isDemoMode" type="contactway" />
         </el-tab-pane>
         <el-tab-pane label="数据趋势" name="trend">
-          <LinkDetailPortrait :link-id="contactWay.id" :is-demo-mode="isDemoMode" />
+          <LinkDetailPortrait :link-id="contactWay.id" :is-demo-mode="isDemoMode" type="contactway" />
         </el-tab-pane>
         <el-tab-pane label="画像分析" name="portrait">
-          <LinkDetailFunnel :link-id="contactWay.id" :is-demo-mode="isDemoMode" />
+          <LinkDetailFunnel :link-id="contactWay.id" :is-demo-mode="isDemoMode" type="contactway" />
         </el-tab-pane>
       </el-tabs>
     </div>
@@ -82,6 +82,13 @@ defineEmits(['close'])
 const { isDemoMode } = useWecomDemo()
 const visible = ref(true)
 const detailTab = ref('customers')
+
+const formatBJTime = (dateStr: string) => {
+  if (!dateStr) return '-'
+  const d = new Date(dateStr)
+  if (isNaN(d.getTime())) return dateStr
+  return d.toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', hour12: false }).replace(/\//g, '-')
+}
 
 const weightModeText = computed(() => {
   const map: Record<string, string> = { single: '单人', round_robin: '多人轮流', weighted: '多人权重' }

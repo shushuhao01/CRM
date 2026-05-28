@@ -329,9 +329,82 @@ async function handleExternalContactChange(config: WecomConfig, changeType: stri
     log.info('[Wecom Callback] New external contact added');
     const userId = extractXmlField(msgContent, 'UserID');
     const externalUserId = extractXmlField(msgContent, 'ExternalUserID');
+    const welcomeCode = extractXmlField(msgContent, 'WelcomeCode');
+    const state = extractXmlField(msgContent, 'State');
+
     if (userId && externalUserId) {
       try {
         const accessToken = await WecomApiService.getAccessTokenByConfigId(config.id, 'external');
+
+        // 发送欢迎语（如果有 welcomeCode）
+        if (welcomeCode) {
+          try {
+            let welcomeText = '';
+            // 查找获客链接的欢迎语配置
+            const { WecomAcquisitionLink } = await import('../../entities/WecomAcquisitionLink');
+            const linkRepo = AppDataSource.getRepository(WecomAcquisitionLink);
+            const links = await linkRepo.find({ where: { wecomConfigId: config.id } });
+            for (const link of links) {
+              let linkUserIds: string[] = [];
+              try { linkUserIds = JSON.parse(link.userIds || '[]'); } catch {}
+              if (linkUserIds.includes(userId) && link.welcomeMsg) {
+                welcomeText = link.welcomeMsg;
+                break;
+              }
+            }
+
+            // 如果没找到获客链接配置，查找活码欢迎语
+            if (!welcomeText) {
+              const { WecomContactWay } = await import('../../entities/WecomContactWay');
+              const cwRepo = AppDataSource.getRepository(WecomContactWay);
+              const contactWays = await cwRepo.find({ where: { wecomConfigId: config.id } });
+              for (const cw of contactWays) {
+                let cwUserIds: string[] = [];
+                try { cwUserIds = JSON.parse(cw.userIds || '[]'); } catch {}
+                if (cwUserIds.includes(userId) && cw.welcomeEnabled && cw.welcomeConfig) {
+                  try {
+                    const wc = JSON.parse(cw.welcomeConfig);
+                    welcomeText = wc.text || '';
+                  } catch {}
+                  break;
+                }
+              }
+            }
+
+            if (welcomeText) {
+              await axios.post(
+                `https://qyapi.weixin.qq.com/cgi-bin/externalcontact/send_welcome_msg?access_token=${accessToken}`,
+                { welcome_code: welcomeCode, text: { content: welcomeText } }
+              );
+              log.info(`[Wecom Callback] Sent welcome msg to ${externalUserId}`);
+            }
+          } catch (wErr: any) {
+            log.warn('[Wecom Callback] Send welcome msg failed:', wErr.message);
+          }
+        }
+
+        // 自动打标签（如果 state 匹配获客链接或活码的标签配置）
+        if (state) {
+          try {
+            const { WecomAcquisitionLink } = await import('../../entities/WecomAcquisitionLink');
+            const linkRepo = AppDataSource.getRepository(WecomAcquisitionLink);
+            const link = await linkRepo.findOne({ where: { wecomConfigId: config.id, state } as any });
+            if (link) {
+              let tagIds: string[] = [];
+              try { tagIds = JSON.parse(link.tagIds || '[]'); } catch {}
+              if (tagIds.length > 0) {
+                await axios.post(
+                  `https://qyapi.weixin.qq.com/cgi-bin/externalcontact/mark_tag?access_token=${accessToken}`,
+                  { userid: userId, external_userid: [externalUserId], add_tag: tagIds }
+                );
+                log.info(`[Wecom Callback] Auto-tagged ${externalUserId} with ${tagIds.length} tags`);
+              }
+            }
+          } catch (tagErr: any) {
+            log.warn('[Wecom Callback] Auto-tag failed:', tagErr.message);
+          }
+        }
+
         const contactDetail = await WecomApiService.getExternalContactDetail(accessToken, externalUserId);
         if (contactDetail?.external_contact) {
           const ec = contactDetail.external_contact;

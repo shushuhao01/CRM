@@ -183,6 +183,10 @@
             </div>
           </el-form-item>
         </template>
+        <el-form-item label="客户添加时">
+          <el-checkbox v-model="form.skipVerify">免验证</el-checkbox>
+          <div class="form-tip">开启后客户通过此链接添加成员时无需验证即可通过</div>
+        </el-form-item>
       </el-form>
     </div>
 
@@ -196,6 +200,7 @@
           {{ form.userWeights.map(u => getMemberName(u.userId)).join('、') || '-' }}
         </el-descriptions-item>
         <el-descriptions-item label="自动建群">{{ form.autoGroupEnabled ? '开启' : '关闭' }}</el-descriptions-item>
+        <el-descriptions-item label="免验证">{{ form.skipVerify ? '是' : '否' }}</el-descriptions-item>
         <el-descriptions-item label="欢迎语">{{ form.welcomeEnabled ? '开启' : '关闭' }}</el-descriptions-item>
         <el-descriptions-item v-if="form.welcomeEnabled" label="欢迎语内容" :span="2">
           {{ form.welcomeMsg || '-' }}
@@ -388,7 +393,8 @@ const defaultForm = () => ({
   welcomeMediaContent: { imageUrl: '', linkTitle: '', linkUrl: '', linkDesc: '' },
   autoTagEnabled: false,
   autoTags: [] as string[],
-  channelTagEnabled: false
+  channelTagEnabled: false,
+  skipVerify: true
 })
 
 const form = reactive(defaultForm())
@@ -458,6 +464,7 @@ const handleSubmit = () => {
     linkName: form.linkName,
     state: form.state,
     assignMode: form.assignMode,
+    skipVerify: form.skipVerify,
     userIds: form.userWeights.map(u => u.userId),
     userWeights: form.assignMode === 'weighted'
       ? form.userWeights.map(u => ({ userId: u.userId, weight: u.weight }))

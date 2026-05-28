@@ -33,7 +33,7 @@
           </div>
           <div class="info-item">
             <span class="label">创建时间</span>
-            <span class="value">{{ link.createdAt }}</span>
+            <span class="value">{{ formatBJTime(link.createdAt) }}</span>
           </div>
           <div class="info-item">
             <span class="label">接待成员</span>
@@ -125,17 +125,24 @@ const { isDemoMode } = useWecomDemo()
 const detailTab = ref('customers')
 const drawerVisible = computed(() => props.visible)
 
+const formatBJTime = (dateStr: string) => {
+  if (!dateStr) return '-'
+  const d = new Date(dateStr)
+  if (isNaN(d.getTime())) return dateStr
+  return d.toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', hour12: false }).replace(/\//g, '-')
+}
+
 const conversionRate = computed(() => {
   const clicks = props.link?.clickCount || 0
   const adds = props.link?.addCount || 0
-  if (!clicks) return 0
+  if (!clicks) return adds > 0 ? 100 : 0
   return ((adds / clicks) * 100).toFixed(1)
 })
 
 const todayConversionRate = computed(() => {
   const clicks = props.link?.todayClick || 0
   const adds = props.link?.todayAdd || 0
-  if (!clicks) return 0
+  if (!clicks) return adds > 0 ? 100 : 0
   return ((adds / clicks) * 100).toFixed(1)
 })
 

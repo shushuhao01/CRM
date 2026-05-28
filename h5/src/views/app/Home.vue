@@ -43,21 +43,21 @@
     <div class="card">
       <div class="card-title">快捷入口</div>
       <div class="shortcut-grid">
-        <div class="shortcut-item" @click="$router.push('/app/customers')">
-          <div class="shortcut-icon si-blue"><van-icon name="friends-o" /></div>
-          <span>客户</span>
+        <div class="shortcut-item" @click="openCrmSystem">
+          <div class="shortcut-icon si-blue"><van-icon name="apps-o" /></div>
+          <span>CRM系统</span>
         </div>
         <div class="shortcut-item" @click="openChatArchive">
           <div class="shortcut-icon si-teal"><van-icon name="records-o" /></div>
           <span>会话存档</span>
         </div>
+        <div class="shortcut-item" @click="openMemberCenter">
+          <div class="shortcut-icon si-green"><van-icon name="contact-o" /></div>
+          <span>会员中心</span>
+        </div>
         <div class="shortcut-item" @click="$router.push('/app/scripts')">
           <div class="shortcut-icon si-orange"><van-icon name="chat-o" /></div>
           <span>话术</span>
-        </div>
-        <div class="shortcut-item" @click="$router.push('/app/profile')">
-          <div class="shortcut-icon si-green"><van-icon name="contact-o" /></div>
-          <span>我的</span>
         </div>
       </div>
     </div>
@@ -171,10 +171,26 @@ async function loadActivities() {
   }
 }
 
-/** 跳转到主CRM系统的会话存档页（同域，保持在企微内置浏览器中） */
-async function openChatArchive() {
+/** 跳转到CRM系统主页（同域免登录） */
+async function openCrmSystem() {
+  await exchangeTokenAndRedirect('/dashboard')
+}
+
+/** 跳转到会员中心（"我的"页面） */
+function openMemberCenter() {
+  window.location.href = window.location.origin + '/app/profile'
+}
+
+/** 通用 token 交换并跳转 */
+async function exchangeTokenAndRedirect(path: string) {
   const h5Token = localStorage.getItem('h5_token')
   if (!h5Token) return
+
+  // 以 /app/ 开头的路径直接路由跳转，不需要 token 交换
+  if (path.startsWith('/app/')) {
+    window.location.href = window.location.origin + path
+    return
+  }
 
   try {
     const resp = await fetch('/api/v1/wecom/h5/exchange-token', {
@@ -185,7 +201,6 @@ async function openChatArchive() {
       }
     })
     const result = await resp.json()
-
     if (result.success && result.data) {
       const { token, refreshToken, user } = result.data
       localStorage.setItem('auth_token', token)
@@ -195,14 +210,13 @@ async function openChatArchive() {
         localStorage.setItem('user', JSON.stringify(user))
         localStorage.setItem('user_info', JSON.stringify(user))
       }
-      window.location.href = window.location.origin + '/wecom/chat-archive'
+      window.location.href = window.location.origin + path
       return
     }
   } catch (e) {
     console.warn('[Home] exchange-token failed, using fallback:', e)
   }
 
-  // Fallback: 直接复制sidebar token（兼容旧版后端）
   localStorage.setItem('auth_token', h5Token)
   localStorage.setItem('token_expiry', (Date.now() + 7 * 24 * 60 * 60 * 1000).toString())
   let userData = authStore.user
@@ -225,7 +239,12 @@ async function openChatArchive() {
     localStorage.setItem('user', JSON.stringify(userData))
     localStorage.setItem('user_info', JSON.stringify(userData))
   }
-  window.location.href = window.location.origin + '/wecom/chat-archive'
+  window.location.href = window.location.origin + path
+}
+
+/** 跳转到主CRM系统的会话存档页 */
+async function openChatArchive() {
+  await exchangeTokenAndRedirect('/wecom/chat-archive')
 }
 
 onMounted(() => {

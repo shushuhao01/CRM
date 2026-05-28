@@ -56,12 +56,13 @@
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
-import { getAcquisitionLinkPortrait } from '@/api/wecom'
+import { getAcquisitionLinkPortrait, getContactWayPortrait } from '@/api/wecom'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   linkId: number
   isDemoMode: boolean
-}>()
+  type?: 'acquisition' | 'contactway'
+}>(), { type: 'acquisition' })
 
 const loading = ref(false)
 const trendRange = ref('30d')
@@ -92,7 +93,9 @@ const fetchData = async () => {
   if (props.isDemoMode) return
   loading.value = true
   try {
-    const res: any = await getAcquisitionLinkPortrait(props.linkId)
+    const res: any = props.type === 'contactway'
+      ? await getContactWayPortrait(props.linkId)
+      : await getAcquisitionLinkPortrait(props.linkId)
     const data = res?.data || res
     if (data) {
       coreMetrics.value = data.coreMetrics || []
