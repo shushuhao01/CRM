@@ -41,7 +41,7 @@ import customerRouter from './customer';
 import customerGroupRouter from './customerGroup';
 import acquisitionRouter from './acquisition';
 import serviceRouter from './service';
-import paymentRouter from './payment';
+// import paymentRouter from './payment'; // 对外收款 - 暂停开发
 import chatArchiveRouter from './chatArchive';
 import sensitiveWordsRouter from './sensitiveWords';
 import sensitiveWordGroupsRouter from './sensitiveWordGroups';
@@ -80,7 +80,7 @@ router.use('/', customerRouter);
 router.use('/', customerGroupRouter);
 router.use('/', acquisitionRouter);
 router.use('/', serviceRouter);
-router.use('/', paymentRouter);
+// router.use('/', paymentRouter); // 对外收款 - 暂停开发
 router.use('/', chatArchiveRouter);
 router.use('/', sensitiveWordsRouter);
 router.use('/', sensitiveWordGroupsRouter);

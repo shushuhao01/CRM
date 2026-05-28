@@ -740,8 +740,13 @@ export const clearSidebarCache = (corpId: string) => {
 }
 
 /** 侧边栏 - 绑定账号(登录)，支持tenantCode兜底（wecomUserId可能为空） */
-export const sidebarBindAccount = (data: { wecomUserId: string; corpId: string; tenantCode: string; username: string; password: string }) => {
+export const sidebarBindAccount = (data: { wecomUserId: string; corpId: string; tenantCode: string; username: string; password: string; authCode?: string }) => {
   return request.post('/wecom/sidebar/bind-account', data)
+}
+
+/** 侧边栏 - 通过OAuth2 code解析成员userid */
+export const sidebarResolveUserId = (code: string, corpId: string) => {
+  return request.get('/wecom/sidebar/resolve-userid', { params: { code, corpId }, showError: false } as any)
 }
 
 /** 侧边栏 - 验证绑定状态 */

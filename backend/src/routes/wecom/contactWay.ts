@@ -7,6 +7,7 @@ import { authenticateToken } from '../../middleware/auth';
 import { AppDataSource } from '../../config/database';
 import { WecomContactWay } from '../../entities/WecomContactWay';
 import { WecomConfig } from '../../entities/WecomConfig';
+import { WecomUserBinding } from '../../entities/WecomUserBinding';
 import { getCurrentTenantId } from '../../utils/tenantContext';
 import { log } from '../../config/logger';
 import WecomApiService from '../../services/WecomApiService';
@@ -196,22 +197,68 @@ router.get('/contact-way/channel-analysis', authenticateToken, async (req: Reque
   }
 });
 
-// 从企微同步活码列表
+// 从企微同步活码列表（调用list_contact_way + get_contact_way）
 router.post('/contact-way/sync', authenticateToken, async (req: Request, res: Response) => {
   try {
     const tenantId = getCurrentTenantId();
     const { configId } = req.body;
     if (!configId) return res.status(400).json({ success: false, message: '缺少configId参数' });
+
+    const accessToken = await WecomApiService.getAccessTokenByConfigId(configId, 'external');
     const repo = AppDataSource.getRepository(WecomContactWay);
-    const qb = repo.createQueryBuilder('cw');
-    qb.where('cw.tenantId = :tenantId', { tenantId });
-    qb.andWhere('cw.wecomConfigId = :configId', { configId });
-    const existing = await qb.getMany();
-    // TODO: Call WeChat Work API for real sync
-    res.json({ success: true, message: `同步完成，已更新 ${existing.length} 个活码`, data: { synced: existing.length } });
+
+    // 分页获取所有config_id
+    let allConfigIds: string[] = [];
+    let cursor = '';
+    do {
+      const result = await WecomApiService.listContactWay(accessToken, { cursor, limit: 100 });
+      allConfigIds = allConfigIds.concat(result.configIds);
+      cursor = result.nextCursor;
+    } while (cursor);
+
+    log.info(`[ContactWay] Sync: found ${allConfigIds.length} contact ways from WeChat Work API`);
+
+    let synced = 0;
+    let created = 0;
+    for (const apiConfigId of allConfigIds) {
+      try {
+        const detail = await WecomApiService.getContactWay(accessToken, apiConfigId);
+        if (!detail) continue;
+
+        let existing = await repo.findOne({ where: { configId: apiConfigId, tenantId } as any });
+        if (existing) {
+          existing.qrCode = detail.qr_code || existing.qrCode;
+          existing.userIds = JSON.stringify(detail.user || []);
+          existing.state = detail.state || existing.state;
+          existing.isEnabled = true;
+          await repo.save(existing);
+          synced++;
+        } else {
+          const newItem = repo.create({
+            tenantId,
+            wecomConfigId: configId,
+            configId: apiConfigId,
+            name: detail.remark || `活码_${apiConfigId.slice(-6)}`,
+            weightMode: (detail.user?.length || 0) > 1 ? 'round_robin' : 'single',
+            state: detail.state || '',
+            qrCode: detail.qr_code || '',
+            userIds: JSON.stringify(detail.user || []),
+            isEnabled: true,
+            skipVerify: detail.skip_verify ?? true,
+          });
+          await repo.save(newItem);
+          created++;
+          synced++;
+        }
+      } catch (e: any) {
+        log.warn(`[ContactWay] Sync item ${apiConfigId} failed:`, e.message);
+      }
+    }
+
+    res.json({ success: true, message: `同步完成：共 ${allConfigIds.length} 个活码，新增 ${created} 个，更新 ${synced - created} 个`, data: { synced, created, total: allConfigIds.length } });
   } catch (error: any) {
-    log.error('[ContactWay] Error:', error.message);
-    res.status(500).json({ success: false, message: '操作失败，请稍后重试' });
+    log.error('[ContactWay] Sync error:', error.message);
+    res.status(500).json({ success: false, message: `同步失败: ${error.message}` });
   }
 });
 
@@ -235,7 +282,7 @@ router.put('/contact-way/batch', authenticateToken, async (req: Request, res: Re
   }
 });
 
-// 批量删除活码
+// 批量删除活码（同时从企微API删除）
 router.post('/contact-way/batch-delete', authenticateToken, async (req: Request, res: Response) => {
   try {
     const tenantId = getCurrentTenantId();
@@ -246,7 +293,18 @@ router.post('/contact-way/batch-delete', authenticateToken, async (req: Request,
     for (const id of ids) {
       const where: any = { id, tenantId };
       const item = await repo.findOne({ where });
-      if (item) { await repo.remove(item); deleted++; }
+      if (item) {
+        if (item.configId && item.wecomConfigId) {
+          try {
+            const accessToken = await WecomApiService.getAccessTokenByConfigId(item.wecomConfigId, 'external');
+            await WecomApiService.delContactWay(accessToken, item.configId);
+          } catch (apiErr: any) {
+            log.warn(`[ContactWay] Batch delete API error for ${item.configId}:`, apiErr.message);
+          }
+        }
+        await repo.remove(item);
+        deleted++;
+      }
     }
     res.json({ success: true, message: `批量删除成功，已删除 ${deleted} 个`, data: { deleted } });
   } catch (error: any) {
@@ -367,25 +425,81 @@ router.post('/contact-way', authenticateToken, async (req: Request, res: Respons
       }
     }
 
-    const { wecomConfigId, name, weightMode, state, skipVerify, userIds, welcomeMsg, autoTags, userWeights, welcomeEnabled, autoTagEnabled } = req.body;
+    const { wecomConfigId, name, weightMode, state, skipVerify, isExclusive, userIds, welcomeMsg, autoTags, userWeights, welcomeEnabled, autoTagEnabled } = req.body;
 
     if (!wecomConfigId || !name || !userIds?.length) {
       return res.status(400).json({ success: false, message: '参数不完整：需要企微配置ID、活码名称和接待成员' });
     }
 
+    // 解析并校验 userIds - 确保是企微真实userid
+    const parsedUserIds: string[] = Array.isArray(userIds) ? userIds : JSON.parse(userIds || '[]');
+    const resolvedUserIds: string[] = [];
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const CRM_PREFIX_RE = /^(sidebar_|crm_|user_)/i;
+    const bindingRepo = AppDataSource.getRepository(WecomUserBinding);
+
+    for (const uid of parsedUserIds) {
+      // 跳过 sidebar_ 占位符
+      if (/^sidebar_/i.test(uid)) {
+        const crmId = uid.replace(/^sidebar_/i, '');
+        const binding = await bindingRepo.findOne({
+          where: [
+            { crmUserId: crmId, wecomConfigId: wecomConfigId },
+            { crmUserId: crmId }
+          ]
+        });
+        if (binding?.wecomUserId && !binding.wecomUserId.startsWith('sidebar_')) {
+          resolvedUserIds.push(binding.wecomUserId);
+          log.info(`[ContactWay] Resolved sidebar '${uid}' → '${binding.wecomUserId}'`);
+        } else {
+          log.warn(`[ContactWay] Cannot resolve sidebar '${uid}', skipping`);
+        }
+        continue;
+      }
+
+      const cleanId = uid.replace(/^(crm_|user_)/i, '');
+      if (UUID_RE.test(cleanId) || CRM_PREFIX_RE.test(uid)) {
+        const binding = await bindingRepo.findOne({
+          where: [
+            { crmUserId: uid, wecomConfigId: wecomConfigId },
+            { crmUserId: cleanId, wecomConfigId: wecomConfigId },
+            { crmUserId: uid },
+            { crmUserId: cleanId }
+          ]
+        });
+        if (binding?.wecomUserId && !binding.wecomUserId.startsWith('sidebar_')) {
+          resolvedUserIds.push(binding.wecomUserId);
+          log.info(`[ContactWay] Resolved CRM user '${uid}' → '${binding.wecomUserId}'`);
+        } else {
+          log.warn(`[ContactWay] Cannot resolve '${uid}', skipping`);
+        }
+      } else {
+        resolvedUserIds.push(uid);
+      }
+    }
+
+    if (resolvedUserIds.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: '无法创建活码：选择的成员均未绑定企业微信账户，请先在通讯录中完成成员绑定。'
+      });
+    }
+
     // 调用企微API创建「联系我」活码
+    // type: 1=单人, 2=多人；按照官方文档：type为1时user只能有一个
+    const contactType = resolvedUserIds.length === 1 ? 1 : 2;
     let apiConfigId = '';
     let qrCode = '';
     try {
       const accessToken = await WecomApiService.getAccessTokenByConfigId(wecomConfigId, 'external');
-      const parsedUserIds = Array.isArray(userIds) ? userIds : JSON.parse(userIds || '[]');
       const result = await WecomApiService.addContactWay(accessToken, {
-        type: 1,
+        type: contactType,
         scene: 2,
         skipVerify: skipVerify ?? true,
         state: state || '',
         remark: name,
-        userIds: parsedUserIds,
+        userIds: resolvedUserIds,
+        isExclusive: isExclusive || false,
       });
       apiConfigId = result.config_id;
       qrCode = result.qr_code;
@@ -403,13 +517,14 @@ router.post('/contact-way', authenticateToken, async (req: Request, res: Respons
       weightMode: weightMode || 'single',
       state: state || '',
       skipVerify: skipVerify ?? true,
-      userIds: Array.isArray(userIds) ? JSON.stringify(userIds) : userIds,
+      isExclusive: isExclusive || false,
+      userIds: JSON.stringify(resolvedUserIds),
       qrCode,
       welcomeConfig: welcomeMsg ? JSON.stringify({ text: welcomeMsg }) : null,
       welcomeEnabled: welcomeEnabled ?? false,
       autoTags: autoTags || null,
       userWeights: userWeights || null,
-      type: 1,
+      type: contactType,
       scene: 2,
       createdBy: currentUser?.id || null,
       createdByName: currentUser?.name || currentUser?.username || null
@@ -439,9 +554,34 @@ router.put('/contact-way/:id', authenticateToken, async (req: Request, res: Resp
     if (contactWay.configId && contactWay.wecomConfigId) {
       try {
         const accessToken = await WecomApiService.getAccessTokenByConfigId(contactWay.wecomConfigId, 'external');
-        const parsedUserIds = req.body.userIds
+        let parsedUserIds = req.body.userIds
           ? (Array.isArray(req.body.userIds) ? req.body.userIds : JSON.parse(req.body.userIds || '[]'))
           : undefined;
+
+        // 解析CRM ID为企微userid
+        if (parsedUserIds?.length) {
+          const resolvedIds: string[] = [];
+          const bindRepo = AppDataSource.getRepository(WecomUserBinding);
+          for (const uid of parsedUserIds) {
+            const cleanId = uid.replace(/^(sidebar_|crm_|user_)/i, '');
+            const isPlaceholder = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(cleanId) || /^(sidebar_|crm_|user_)/i.test(uid);
+            if (isPlaceholder) {
+              const binding = await bindRepo.findOne({
+                where: [
+                  { crmUserId: uid, wecomConfigId: contactWay.wecomConfigId },
+                  { crmUserId: cleanId, wecomConfigId: contactWay.wecomConfigId }
+                ]
+              });
+              if (binding?.wecomUserId && !binding.wecomUserId.startsWith('sidebar_')) {
+                resolvedIds.push(binding.wecomUserId);
+              }
+            } else {
+              resolvedIds.push(uid);
+            }
+          }
+          parsedUserIds = resolvedIds.length > 0 ? resolvedIds : undefined;
+        }
+
         await WecomApiService.updateContactWay(accessToken, contactWay.configId, {
           remark: req.body.name || contactWay.name,
           skipVerify: req.body.skipVerify,

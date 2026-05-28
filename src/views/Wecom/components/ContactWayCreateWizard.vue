@@ -36,6 +36,10 @@
           <el-switch v-model="form.skipVerify" active-text="是" inactive-text="否" />
           <div class="form-tip">开启后客户添加时无需验证直接通过</div>
         </el-form-item>
+        <el-form-item label="同客户排重">
+          <el-switch v-model="form.isExclusive" active-text="是" inactive-text="否" />
+          <div class="form-tip">开启后同一企业客户优先添加到同一个跟进人</div>
+        </el-form-item>
       </el-form>
     </div>
 
@@ -102,6 +106,7 @@
         <el-descriptions-item label="类型">{{ typeText(form.weightMode) }}</el-descriptions-item>
         <el-descriptions-item label="渠道标识">{{ form.state || '-' }}</el-descriptions-item>
         <el-descriptions-item label="跳过验证">{{ form.skipVerify ? '是' : '否' }}</el-descriptions-item>
+        <el-descriptions-item label="同客户排重">{{ form.isExclusive ? '是' : '否' }}</el-descriptions-item>
         <el-descriptions-item label="接待成员" :span="2">
           {{ form.userIds.map(id => getUserName(id)).join('、') || '-' }}
         </el-descriptions-item>
@@ -223,7 +228,8 @@ const defaultForm = () => ({
   name: '',
   weightMode: 'single' as string,
   state: '',
-  skipVerify: false,
+  skipVerify: true,
+  isExclusive: false,
   userIds: [] as string[],
   weights: {} as Record<string, number>,
   welcomeEnabled: false,
@@ -261,6 +267,7 @@ const handleSubmit = () => {
     weightMode: form.weightMode,
     state: form.state,
     skipVerify: form.skipVerify,
+    isExclusive: form.isExclusive,
     userIds: form.userIds,
     userWeights: weights ? JSON.stringify(weights) : undefined,
     welcomeMsg: form.welcomeEnabled ? form.welcomeMsg : '',
@@ -282,7 +289,8 @@ watch(() => props.editData, (data) => {
     form.name = data.name || ''
     form.weightMode = data.weightMode || 'single'
     form.state = data.state || ''
-    form.skipVerify = data.skipVerify ?? false
+    form.skipVerify = data.skipVerify ?? true
+    form.isExclusive = data.isExclusive ?? false
     try { form.userIds = JSON.parse(data.userIds || '[]') } catch { form.userIds = [] }
     form.welcomeMsg = data.welcomeMsg || ''
     form.welcomeEnabled = !!data.welcomeMsg || !!data.welcomeEnabled

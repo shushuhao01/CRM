@@ -47,6 +47,9 @@ export class WecomContactWay {
   @Column({ name: 'party_ids', type: 'text', nullable: true, comment: 'JSON 接待部门列表' })
   partyIds: string;
 
+  @Column({ name: 'is_exclusive', type: 'boolean', default: false, comment: '同一外部企业客户只能添加同一员工' })
+  isExclusive: boolean;
+
   @Column({ name: 'is_temp', type: 'boolean', default: false })
   isTemp: boolean;
 

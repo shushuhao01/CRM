@@ -10,10 +10,10 @@
       <template v-if="detail">
         <!-- 客户基本信息 -->
         <div class="customer-header">
-          <el-avatar :src="detail.customer.avatar" :size="56">{{ (detail.customer.remark || detail.customer.name)?.charAt(0) }}</el-avatar>
+          <el-avatar :src="detail.customer?.avatar" :size="56">{{ (detail.customer?.remark || detail.customer?.name || '?').charAt(0) }}</el-avatar>
           <div class="header-info">
-            <div class="remark-name">{{ detail.customer.remark || detail.customer.name }}</div>
-            <div class="nick-name">{{ detail.customer.nickname || detail.customer.name || '-' }}</div>
+            <div class="remark-name">{{ detail.customer?.remark || detail.customer?.name || '-' }}</div>
+            <div class="nick-name">{{ detail.customer?.nickname || detail.customer?.name || '-' }}</div>
             <div class="meta">
               <el-tag size="small" :type="{ normal: 'success', deleted: 'danger', blocked: 'warning' }[detail.customer.status] || 'info'">
                 {{ { normal: '正常', deleted: '已删除', blocked: '被拉黑', deleted_by_employee: '员工删除' }[detail.customer.status] || detail.customer.status }}
@@ -218,17 +218,16 @@ const fetchDetail = async (id: number) => {
   loading.value = true
   try {
     const res: any = await getWecomCustomerDetail(id)
-    if (res) {
-      if (!res.messageStats) res.messageStats = { sentCount: 0, recvCount: 0, totalCount: 0, lastMsgTime: null }
-      if (!res.followRecords) res.followRecords = []
-      if (!res.customer) res.customer = {}
+    const data = res?.data || res
+    if (data) {
+      if (!data.messageStats) data.messageStats = { sentCount: 0, recvCount: 0, totalCount: 0, lastMsgTime: null }
+      if (!data.followRecords) data.followRecords = []
+      if (!data.customer) data.customer = {}
     }
-    detail.value = res || null
+    detail.value = data || null
   } catch (e: any) {
-    // 忽略请求被取消的错误（重复请求去重导致）
     if (e?.message === 'canceled' || e?.code === 'ERR_CANCELED') return
-    console.error('[CustomerDetailDrawer] Fetch error:', e)
-    ElMessage.error(e?.message || '获取客户详情失败')
+    console.warn('[CustomerDetailDrawer] Fetch error:', e?.message || e)
     detail.value = null
   } finally {
     loading.value = false

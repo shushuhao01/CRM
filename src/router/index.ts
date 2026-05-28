@@ -621,12 +621,13 @@ const router = createRouter({
       component: () => import('../views/Wecom/Sidebar.vue'),
       meta: { title: '侧边栏', requiresAuth: true }
     },
-    {
-      path: '/wecom/payment',
-      name: 'WecomPayment',
-      component: () => import('../views/Wecom/Payment.vue'),
-      meta: { title: '对外收款', requiresAuth: true }
-    },
+    // 对外收款 - 暂停开发
+    // {
+    //   path: '/wecom/payment',
+    //   name: 'WecomPayment',
+    //   component: () => import('../views/Wecom/Payment.vue'),
+    //   meta: { title: '对外收款', requiresAuth: true }
+    // },
     {
       path: '/wecom/config',
       name: 'WecomConfig',
@@ -807,7 +808,7 @@ router.beforeEach(async (to, from, next) => {
     '/wecom/customer-group': 'customerGroup',
     '/wecom/contact-way': 'contactWay',
     '/wecom/sidebar': 'sidebar',
-    '/wecom/payment': 'payment',
+    // '/wecom/payment': 'payment', // 暂停开发
   }
   const requiredWecomPerm = wecomMenuPermissionMap[to.path]
   if (import.meta.env.DEV && to.path === '/wecom/sidebar') {

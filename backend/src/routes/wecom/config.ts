@@ -374,7 +374,8 @@ router.get('/configs/:id/users', authenticateToken, async (req: Request, res: Re
     // 优先从本地数据库获取（已同步的成员数据带有姓名）
     const bindingRepo = AppDataSource.getRepository(WecomUserBinding);
     const qb = bindingRepo.createQueryBuilder('b')
-      .where('b.wecom_config_id = :configId', { configId });
+      .where('b.wecom_config_id = :configId', { configId })
+      .andWhere("b.wecom_user_id NOT LIKE 'sidebar_%'");
 
     if (tenantId) {
       qb.andWhere('b.tenant_id = :tenantId', { tenantId });
@@ -661,20 +662,40 @@ router.post('/configs/:id/sync-contacts', authenticateToken, requireAdmin, async
         binding.isEnabled = user.status === 1;
         userUpdated++;
       } else {
-        binding = bindingRepo.create({
-          tenantId: tenantId || config.tenantId,
-          wecomConfigId: configId,
-          corpId: config.corpId,
-          wecomUserId,
-          wecomUserName: apiUserNameValid ? String(user.name).trim() : '',
-          wecomAvatar: user.avatar || '',
-          wecomDepartmentIds: deptIds,
-          crmUserId: '',
-          crmUserName: '',
-          isEnabled: user.status === 1,
-          bindOperator: 'sync'
-        });
-        userCreated++;
+        // 检查是否有 sidebar_ 占位绑定可以合并（通过姓名匹配）
+        const userName = apiUserNameValid ? String(user.name).trim() : '';
+        let sidebarBinding: any = null;
+        if (userName) {
+          sidebarBinding = await bindingRepo.findOne({
+            where: { wecomConfigId: configId, wecomUserName: userName, ...(tenantId ? { tenantId } : {}) }
+          });
+          if (sidebarBinding && sidebarBinding.wecomUserId.startsWith('sidebar_') && sidebarBinding.crmUserId) {
+            // 合并：将真实企微userid更新到已有的sidebar绑定记录
+            sidebarBinding.wecomUserId = wecomUserId;
+            sidebarBinding.wecomAvatar = user.avatar || sidebarBinding.wecomAvatar;
+            sidebarBinding.wecomDepartmentIds = deptIds;
+            sidebarBinding.isEnabled = user.status === 1;
+            binding = sidebarBinding;
+            userUpdated++;
+            log.info(`[Wecom] 合并sidebar绑定: ${userName} → ${wecomUserId} (crmUser: ${sidebarBinding.crmUserId})`);
+          }
+        }
+        if (!sidebarBinding || !sidebarBinding.crmUserId) {
+          binding = bindingRepo.create({
+            tenantId: tenantId || config.tenantId,
+            wecomConfigId: configId,
+            corpId: config.corpId,
+            wecomUserId,
+            wecomUserName: userName,
+            wecomAvatar: user.avatar || '',
+            wecomDepartmentIds: deptIds,
+            crmUserId: '',
+            crmUserName: '',
+            isEnabled: user.status === 1,
+            bindOperator: 'sync'
+          });
+          userCreated++;
+        }
       }
       await bindingRepo.save(binding);
     }

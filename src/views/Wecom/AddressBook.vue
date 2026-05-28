@@ -202,49 +202,7 @@
           ...
         </el-tab-pane> -->
 
-        <!-- Tab 3: 同步设置（仅管理员可见） -->
-        <el-tab-pane v-if="isAdminRole" label="同步设置" name="sync-settings">
-          <div class="sync-settings-container" v-loading="loadingSyncSettings">
-            <!-- 部门名称设置（第三方应用专用） -->
-            <div class="settings-section">
-              <div class="section-title-bar">
-                部门名称设置
-                <el-tag type="warning" size="small" style="margin-left: 8px">第三方应用限制</el-tag>
-              </div>
-              <el-alert
-                type="info"
-                :closable="false"
-                show-icon
-                style="margin-bottom: 16px"
-              >
-                <template #title>
-                  <span style="font-weight:500">为什么需要手动设置部门名称？</span>
-                </template>
-                <template #default>
-                  <p style="margin:4px 0;color:#606266">由于企业微信安全策略限制，第三方应用无法通过API获取部门名称（仅能获取部门ID）。请对照企业微信管理后台的组织架构，手动填写各部门的真实名称。</p>
-                </template>
-              </el-alert>
-              <div v-if="deptNameList.length > 0">
-                <div v-for="dept in deptNameList" :key="dept.id" class="dept-name-row">
-                  <span class="dept-name-id">ID: {{ dept.id }}</span>
-                  <el-input
-                    v-model="dept.editName"
-                    :placeholder="`请输入部门${dept.id}的名称`"
-                    size="small"
-                    style="width: 200px"
-                  />
-                  <span v-if="dept.currentName && dept.currentName !== String(dept.id)" class="dept-name-current">
-                    当前: {{ dept.currentName }}
-                  </span>
-                </div>
-                <el-button type="primary" size="small" style="margin-top: 12px" :loading="savingDeptNames" @click="handleSaveDeptNames">
-                  保存部门名称
-                </el-button>
-              </div>
-              <el-empty v-else description="暂无部门数据，请先同步组织架构" :image-size="40" />
-            </div>
-          </div>
-        </el-tab-pane>
+        <!-- Tab 3: 同步设置 - 已移除（改用通讯录展示组件后无需手动设置部门名称） -->
 
         <!-- Tab 5: 同步日志（仅管理员可见） -->
         <el-tab-pane v-if="isAdminRole" label="同步日志" name="sync-logs">
@@ -1282,7 +1240,7 @@ const fetchConfigs = async () => {
 watch(activeTab, (tab) => {
   if (tab === 'binding') fetchBindings()
   if (tab === 'auto-match') fetchAutoMatchList()
-  if (tab === 'sync-settings') { fetchSyncSettings(); loadDeptNameList() }
+  // if (tab === 'sync-settings') { fetchSyncSettings(); loadDeptNameList() } // 已移除
   if (tab === 'sync-logs') fetchSyncLogs()
 })
 

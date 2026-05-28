@@ -521,19 +521,26 @@ export class WecomApiService {
    */
   static async createAcquisitionLink(accessToken: string, linkName: string, userIds: string[], config?: any): Promise<any> {
     try {
-      const response = await axios.post(`${WECOM_API_BASE}/externalcontact/customer_acquisition/create_link?access_token=${accessToken}`, {
+      const body: any = {
         link_name: linkName,
         range: {
           user_list: userIds,
           department_list: config?.departmentIds || []
         },
-        skip_verify: config?.skipVerify || false
-      });
+        skip_verify: config?.skipVerify !== undefined ? config.skipVerify : true
+      };
+      log.info(`[WecomApi] createAcquisitionLink: name=${linkName}, users=${userIds.join(',')}`);
+      const response = await axios.post(`${WECOM_API_BASE}/externalcontact/customer_acquisition/create_link?access_token=${accessToken}`, body);
 
       if (response.data.errcode === 0) {
         return response.data.link;
       } else {
-        throw new Error(`创建获客链接失败: ${response.data.errmsg}`);
+        const errcode = response.data.errcode;
+        const errmsg = response.data.errmsg || '';
+        if (errcode === 60111) {
+          throw new Error(`创建获客链接失败: 成员userid无效或不在应用可见范围内 (${errmsg})`);
+        }
+        throw new Error(`创建获客链接失败: ${errmsg} (${errcode})`);
       }
     } catch (error: any) {
       log.error('[WecomApi] createAcquisitionLink error:', error.message);
@@ -611,7 +618,7 @@ export class WecomApiService {
    */
   static async addContactWay(accessToken: string, params: {
     type: number; scene: number; style?: number; remark?: string; skipVerify?: boolean;
-    state?: string; userIds?: string[]; partyIds?: number[];
+    state?: string; userIds?: string[]; partyIds?: number[]; isExclusive?: boolean;
   }): Promise<{ config_id: string; qr_code: string }> {
     try {
       const body: any = {
@@ -622,6 +629,7 @@ export class WecomApiService {
         state: params.state || '',
         remark: params.remark || '',
       };
+      if (params.isExclusive !== undefined) body.is_exclusive = params.isExclusive;
       if (params.userIds?.length) body.user = params.userIds;
       if (params.partyIds?.length) body.party = params.partyIds;
       const response = await axios.post(`${WECOM_API_BASE}/externalcontact/add_contact_way?access_token=${accessToken}`, body);
@@ -656,6 +664,48 @@ export class WecomApiService {
       }
     } catch (error: any) {
       log.error('[WecomApi] updateContactWay error:', error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * 获取企业已配置的「联系我」列表
+   */
+  static async listContactWay(accessToken: string, params?: {
+    startTime?: number; endTime?: number; cursor?: string; limit?: number;
+  }): Promise<{ configIds: string[]; nextCursor: string }> {
+    try {
+      const body: any = {};
+      if (params?.startTime) body.start_time = params.startTime;
+      if (params?.endTime) body.end_time = params.endTime;
+      if (params?.cursor) body.cursor = params.cursor;
+      if (params?.limit) body.limit = params.limit;
+      const response = await axios.post(`${WECOM_API_BASE}/externalcontact/list_contact_way?access_token=${accessToken}`, body);
+      if (response.data.errcode === 0) {
+        const configIds = (response.data.contact_way || []).map((c: any) => c.config_id);
+        return { configIds, nextCursor: response.data.next_cursor || '' };
+      }
+      throw new Error(`获取联系我列表失败: ${response.data.errmsg} (${response.data.errcode})`);
+    } catch (error: any) {
+      log.error('[WecomApi] listContactWay error:', error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * 获取企业已配置的「联系我」方式详情
+   */
+  static async getContactWay(accessToken: string, configId: string): Promise<any> {
+    try {
+      const response = await axios.post(`${WECOM_API_BASE}/externalcontact/get_contact_way?access_token=${accessToken}`, {
+        config_id: configId
+      });
+      if (response.data.errcode === 0) {
+        return response.data.contact_way;
+      }
+      throw new Error(`获取联系我详情失败: ${response.data.errmsg} (${response.data.errcode})`);
+    } catch (error: any) {
+      log.error('[WecomApi] getContactWay error:', error.message);
       throw error;
     }
   }

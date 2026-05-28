@@ -59,7 +59,7 @@ router.get('/customers/stats', authenticateToken, async (req: Request, res: Resp
     try {
       const { WecomChatRecord } = await import('../../entities/WecomChatRecord');
       const chatRepo = getTenantRepo(WecomChatRecord);
-      const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
+      const threeDaysAgoMs = Date.now() - 3 * 24 * 60 * 60 * 1000;
       const normalCustomers = await queryBuilder.clone()
         .andWhere('c.status = :status', { status: 'normal' })
         .select(['c.externalUserId'])
@@ -69,7 +69,7 @@ router.get('/customers/stats', authenticateToken, async (req: Request, res: Resp
         const activeResult = await chatRepo.createQueryBuilder('r')
           .select('COUNT(DISTINCT r.from_user_id)', 'cnt')
           .where('r.from_user_id IN (:...uids)', { uids: extIds })
-          .andWhere('r.msg_time >= :since', { since: threeDaysAgo })
+          .andWhere('r.msg_time >= :since', { since: threeDaysAgoMs })
           .getRawOne();
         active = parseInt(activeResult?.cnt) || 0;
       }
@@ -238,7 +238,9 @@ router.get('/customers', authenticateToken, async (req: Request, res: Response) 
           for (const s of sentStats) {
             if (!msgStatsMap[s.uid]) msgStatsMap[s.uid] = { sent: 0, recv: 0, lastCustomerMsgTime: null };
             msgStatsMap[s.uid].sent = parseInt(s.cnt) || 0;
-            msgStatsMap[s.uid].lastCustomerMsgTime = s.lastTime ? new Date(s.lastTime) : null;
+            // msg_time is bigint (epoch ms), MAX returns string in raw query
+            const ts = s.lastTime ? Number(s.lastTime) : 0;
+            msgStatsMap[s.uid].lastCustomerMsgTime = ts > 0 ? new Date(ts) : null;
           }
           // 员工发送给客户的消息统计
           for (const uid of externalUserIds) {

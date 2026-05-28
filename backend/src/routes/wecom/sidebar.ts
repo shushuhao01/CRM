@@ -322,7 +322,7 @@ router.get('/sidebar-builtin-config', authenticateToken, async (req: Request, re
  */
 router.post('/sidebar/bind-account', sidebarAuthLimiter, async (req: Request, res: Response) => {
   try {
-    const { wecomUserId, corpId, tenantCode, username, password } = req.body;
+    const { wecomUserId, corpId, tenantCode, username, password, authCode } = req.body;
     if (!username || !password) return res.status(400).json({ success: false, message: '请输入用户名和密码' });
     if (!tenantCode && !corpId) return res.status(400).json({ success: false, message: '请输入租户编码' });
 
@@ -375,18 +375,40 @@ router.post('/sidebar/bind-account', sidebarAuthLimiter, async (req: Request, re
       const bindingRepo = AppDataSource.getRepository(WecomUserBinding);
       let resolvedWecomUserId = wecomUserId || '';
 
-      // wecomUserId 为空时，尝试多种方式匹配
+      // wecomUserId 为空时，多种方式获取真实企微userid
       if (!resolvedWecomUserId) {
-        // 1. 通过 CRM 用户姓名匹配已有的企微成员（通讯录同步时创建的未绑定记录）
-        const matchByName = await bindingRepo.findOne({
-          where: { wecomConfigId: configId, wecomUserName: user.name || '', isEnabled: true }
-        });
-        if (matchByName?.wecomUserId && !matchByName.wecomUserId.startsWith('sidebar_')) {
-          resolvedWecomUserId = matchByName.wecomUserId;
-          log.info(`[Sidebar] 通过姓名匹配到企微成员: ${user.name} → ${resolvedWecomUserId}`);
+        // 方式0: 通过 OAuth2 授权码获取（最可靠 - 企微打开页面时自动附带code）
+        if (authCode) {
+          try {
+            const accessToken = await WecomApiService.getAccessTokenByConfigId(configId, 'corp');
+            const axios = (await import('axios')).default;
+            const oauthRes = await axios.get(`https://qyapi.weixin.qq.com/cgi-bin/user/getuserinfo?access_token=${accessToken}&code=${authCode}`);
+            if (oauthRes.data?.errcode === 0 && oauthRes.data?.UserId) {
+              resolvedWecomUserId = oauthRes.data.UserId;
+              log.info(`[Sidebar] ✅ 通过OAuth2 code获取到成员userid: ${resolvedWecomUserId}`);
+            } else if (oauthRes.data?.userid) {
+              resolvedWecomUserId = oauthRes.data.userid;
+              log.info(`[Sidebar] ✅ 通过OAuth2 code获取到成员userid: ${resolvedWecomUserId}`);
+            } else {
+              log.warn(`[Sidebar] OAuth2 code解析失败:`, oauthRes.data?.errmsg || oauthRes.data);
+            }
+          } catch (oauthErr: any) {
+            log.warn(`[Sidebar] OAuth2 code获取userid失败:`, oauthErr.message);
+          }
         }
 
-        // 2. 如果该 CRM 用户已有旧绑定（如 sidebar_xxx），获取其 id 备用
+        // 方式1: 通过 CRM 用户姓名匹配已有的企微成员（通讯录同步时创建的未绑定记录）
+        if (!resolvedWecomUserId) {
+          const matchByName = await bindingRepo.findOne({
+            where: { wecomConfigId: configId, wecomUserName: user.name || '', isEnabled: true }
+          });
+          if (matchByName?.wecomUserId && !matchByName.wecomUserId.startsWith('sidebar_')) {
+            resolvedWecomUserId = matchByName.wecomUserId;
+            log.info(`[Sidebar] 通过姓名匹配到企微成员: ${user.name} → ${resolvedWecomUserId}`);
+          }
+        }
+
+        // 方式2: 如果该 CRM 用户已有旧绑定（如 sidebar_xxx），获取其 id 备用
         if (!resolvedWecomUserId) {
           const existingByCrm = await bindingRepo.findOne({ where: { crmUserId: user.id, wecomConfigId: configId } });
           if (existingByCrm?.wecomUserId && !existingByCrm.wecomUserId.startsWith('sidebar_')) {
@@ -456,10 +478,47 @@ router.post('/sidebar/bind-account', sidebarAuthLimiter, async (req: Request, re
     const finalWecomUserId = bindingData?.wecomUserId || wecomUserId || '';
     const token = JwtConfig.generateAccessToken({ type: 'sidebar', userId: user.id, username: user.username, role: user.role, wecomUserId: finalWecomUserId, crmUserId: user.id, crmUserName: user.name || user.username, tenantId, corpId: resolvedCorpId } as any);
 
-    res.json({ success: true, data: { token, user: { id: user.id, name: user.name, username: user.username, avatar: user.avatar }, binding: bindingData }, message: '绑定成功' });
+    const isPlaceholder = finalWecomUserId.startsWith('sidebar_');
+    const message = isPlaceholder
+      ? '绑定成功（注意：未能获取企微真实ID，请管理员在通讯录中同步组织架构以完善绑定）'
+      : '绑定成功';
+
+    res.json({ success: true, data: { token, user: { id: user.id, name: user.name, username: user.username, avatar: user.avatar }, binding: bindingData, isPlaceholder }, message });
   } catch (error: any) {
     log.error('[Wecom Sidebar] Bind account error:', error.message);
     res.status(500).json({ success: false, message: '账号绑定失败' });
+  }
+});
+
+/**
+ * 通过 OAuth2 code 获取当前企微成员的userid
+ * 企微客户端打开侧边栏时，URL中会自动带有code参数
+ */
+router.get('/sidebar/resolve-userid', sidebarAuthLimiter, async (req: Request, res: Response) => {
+  try {
+    const { code, corpId } = req.query;
+    if (!code) return res.status(400).json({ success: false, message: '缺少code参数' });
+    if (!corpId) return res.status(400).json({ success: false, message: '缺少corpId参数' });
+
+    const configRepo = AppDataSource.getRepository(WecomConfig);
+    const config = await configRepo.findOne({ where: { corpId: String(corpId), isEnabled: true } });
+    if (!config) return res.status(400).json({ success: false, message: '未找到匹配的企微配置' });
+
+    const accessToken = await WecomApiService.getAccessTokenByConfigId(config.id, 'corp');
+    const axios = (await import('axios')).default;
+    const oauthRes = await axios.get(`https://qyapi.weixin.qq.com/cgi-bin/user/getuserinfo?access_token=${accessToken}&code=${String(code)}`);
+
+    const userId = oauthRes.data?.UserId || oauthRes.data?.userid || '';
+    if (userId) {
+      log.info(`[Sidebar] resolve-userid: code成功解析为 userid=${userId}`);
+      return res.json({ success: true, data: { userId } });
+    }
+
+    log.warn(`[Sidebar] resolve-userid: code解析失败:`, oauthRes.data?.errmsg || oauthRes.data);
+    return res.json({ success: false, message: oauthRes.data?.errmsg || 'code解析失败，可能已过期' });
+  } catch (error: any) {
+    log.error('[Sidebar] resolve-userid error:', error.message);
+    res.status(500).json({ success: false, message: '获取成员身份失败' });
   }
 });
 

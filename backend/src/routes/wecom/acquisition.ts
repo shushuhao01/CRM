@@ -9,6 +9,7 @@ import { getTenantRepo } from '../../utils/tenantRepo';
 import { AppDataSource } from '../../config/database';
 import { WecomConfig } from '../../entities/WecomConfig';
 import { WecomAcquisitionLink } from '../../entities/WecomAcquisitionLink';
+import { WecomUserBinding } from '../../entities/WecomUserBinding';
 import WecomApiService from '../../services/WecomApiService';
 import { log } from '../../config/logger';
 
@@ -126,7 +127,82 @@ router.post('/acquisition-links', authenticateToken, requireManagerOrAdmin, asyn
     }
 
     const accessToken = await WecomApiService.getAccessTokenByConfigId(wecomConfigId, 'contact');
-    const linkData = await WecomApiService.createAcquisitionLink(accessToken, linkName, userIds, { departmentIds });
+
+    // 将 userIds 解析为真实的企微 userid（过滤掉CRM内部ID如UUID格式）
+    const resolvedUserIds: string[] = [];
+    const invalidIds: string[] = [];
+    const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const CRM_ID_PATTERN = /^(sidebar_|crm_|user_)/i;
+
+    const bindingRepo = AppDataSource.getRepository(WecomUserBinding);
+    for (const uid of userIds) {
+      // 跳过 sidebar_ 前缀的占位符ID — 这些不是有效的企微userid
+      if (/^sidebar_/i.test(uid)) {
+        // 尝试通过去掉前缀后的CRM用户ID找到真实绑定
+        const crmId = uid.replace(/^sidebar_/i, '');
+        const binding = await bindingRepo.findOne({
+          where: [
+            { crmUserId: crmId, wecomConfigId: wecomConfigId },
+            { crmUserId: crmId }
+          ]
+        });
+        if (binding?.wecomUserId && !binding.wecomUserId.startsWith('sidebar_')) {
+          resolvedUserIds.push(binding.wecomUserId);
+          log.info(`[Acquisition] Resolved sidebar ID '${uid}' → wecom userid '${binding.wecomUserId}'`);
+        } else {
+          invalidIds.push(uid);
+          log.warn(`[Acquisition] Cannot resolve sidebar ID '${uid}' - no valid wecom binding found`);
+        }
+        continue;
+      }
+
+      const cleanId = uid.replace(/^(crm_|user_)/i, '');
+      if (UUID_PATTERN.test(cleanId) || CRM_ID_PATTERN.test(uid)) {
+        const binding = await bindingRepo.findOne({
+          where: [
+            { crmUserId: uid, wecomConfigId: wecomConfigId },
+            { crmUserId: cleanId, wecomConfigId: wecomConfigId },
+            { crmUserId: uid },
+            { crmUserId: cleanId }
+          ]
+        });
+        if (binding?.wecomUserId && !binding.wecomUserId.startsWith('sidebar_')) {
+          resolvedUserIds.push(binding.wecomUserId);
+          log.info(`[Acquisition] Resolved CRM user '${uid}' → wecom userid '${binding.wecomUserId}'`);
+        } else {
+          invalidIds.push(uid);
+          log.warn(`[Acquisition] Cannot resolve CRM user '${uid}' to wecom userid`);
+        }
+      } else if (/^\d+$/.test(uid)) {
+        const binding = await bindingRepo.findOne({
+          where: [
+            { crmUserId: uid, wecomConfigId: wecomConfigId },
+            { crmUserId: uid }
+          ]
+        });
+        if (binding?.wecomUserId && !binding.wecomUserId.startsWith('sidebar_')) {
+          resolvedUserIds.push(binding.wecomUserId);
+        } else {
+          resolvedUserIds.push(uid);
+        }
+      } else {
+        // 看起来是合法的企微userid（如 zhangsan, print1016 等），直接使用
+        resolvedUserIds.push(uid);
+      }
+    }
+
+    if (resolvedUserIds.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: `无法创建获客链接：选择的成员未绑定有效的企业微信账户。请先在「通讯录」中同步组织架构，确保成员拥有真实的企微userid后再创建链接。`
+      });
+    }
+
+    if (invalidIds.length > 0) {
+      log.warn(`[Acquisition] ${invalidIds.length} userIds could not be resolved, using ${resolvedUserIds.length} valid ones`);
+    }
+
+    const linkData = await WecomApiService.createAcquisitionLink(accessToken, linkName, resolvedUserIds, { departmentIds });
 
     const linkRepo = getTenantRepo(WecomAcquisitionLink);
     const currentUser = (req as any).currentUser;

@@ -464,13 +464,13 @@ export const menuConfig: MenuItem[] = [
         roles: ['super_admin', 'admin'],
         permissions: ['wecom:sidebar']
       },
-      {
-        id: 'wecom-payment',
-        title: '对外收款',
-        path: '/wecom/payment',
-        roles: ['super_admin', 'admin', 'department_manager', 'sales_staff'],
-        permissions: ['wecom:payment']
-      },
+      // {
+      //   id: 'wecom-payment',
+      //   title: '对外收款',
+      //   path: '/wecom/payment',
+      //   roles: ['super_admin', 'admin', 'department_manager', 'sales_staff'],
+      //   permissions: ['wecom:payment']
+      // },
       {
         id: 'wecom-config',
         title: '企微授权',

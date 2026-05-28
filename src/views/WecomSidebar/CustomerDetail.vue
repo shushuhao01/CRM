@@ -689,6 +689,27 @@ async function initWithNewSdk(retryCount = 0) {
     }
   }
 
+  // ★ 兜底方案: 如果getContext未获取到userid，尝试用URL中的OAuth2 code通过后端解析
+  if (!wecomUserId.value && corpId.value) {
+    const urlCode = new URLSearchParams(window.location.search).get('code')
+    if (urlCode) {
+      try {
+        console.log('[Sidebar] getContext未获取userid，尝试通过OAuth2 code解析...')
+        const { sidebarResolveUserId } = await import('@/api/wecom')
+        const resolveRes: any = await sidebarResolveUserId(urlCode, corpId.value)
+        const resolvedUid = resolveRes?.userId || resolveRes?.data?.userId
+        if (resolvedUid) {
+          wecomUserId.value = resolvedUid
+          console.log('[Sidebar] ✅ OAuth2 code解析成功，成员userid:', wecomUserId.value)
+        } else {
+          console.warn('[Sidebar] OAuth2 code解析未返回userId:', resolveRes)
+        }
+      } catch (resolveErr: any) {
+        console.warn('[Sidebar] OAuth2 code解析失败:', resolveErr?.message)
+      }
+    }
+  }
+
   // ★ 直接调用 getCurExternalContact（SDK会惰性触发agentConfig）
   let contactSuccess = false
   try {
@@ -1222,19 +1243,31 @@ async function handleLogin() {
 
   loginLoading.value = true
   try {
+    // 仅在wecomUserId仍为空时才传authCode（避免code已被消费后重复传递）
+    const authCode = !wecomUserId.value ? (new URLSearchParams(window.location.search).get('code') || '') : ''
     const res: any = await sidebarBindAccount({
       wecomUserId: wecomUserId.value,
       corpId: corpId.value,
       tenantCode: loginForm.value.tenantCode,
       username: loginForm.value.username,
-      password: loginForm.value.password
+      password: loginForm.value.password,
+      authCode: authCode || undefined
     })
     if (res?.token) {
       sidebarToken.value = res.token
       boundUser.value = res.user
       localStorage.setItem('wecom_sidebar_token', res.token)
       localStorage.setItem('wecom_sidebar_tenant_code', loginForm.value.tenantCode)
-      ElMessage.success('绑定成功')
+      // 更新wecomUserId（后端可能通过OAuth2/姓名匹配解析出了真实ID）
+      if (res?.binding?.wecomUserId && !res.binding.wecomUserId.startsWith('sidebar_')) {
+        wecomUserId.value = res.binding.wecomUserId
+        console.log('[Sidebar] 绑定后更新wecomUserId:', res.binding.wecomUserId)
+      }
+      if (res?.isPlaceholder) {
+        ElMessage.warning({ message: '绑定成功，但未获取到企微真实ID。请联系管理员同步通讯录以完善绑定。', duration: 5000 })
+      } else {
+        ElMessage.success('绑定成功')
+      }
       pageState.value = 'detail'
       await loadCustomerDetail()
       loadCollectStatus()

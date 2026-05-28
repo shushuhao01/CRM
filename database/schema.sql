@@ -4363,6 +4363,7 @@ CREATE TABLE IF NOT EXISTS `wecom_contact_ways` (
   `skip_verify` TINYINT(1) DEFAULT 1 COMMENT '跳过验证',
   `user_ids` TEXT NULL COMMENT '接待成员列表(JSON)',
   `party_ids` TEXT NULL COMMENT '接待部门列表(JSON)',
+  `is_exclusive` TINYINT(1) DEFAULT 0 COMMENT '同一外部企业客户只能添加同一员工',
   `is_temp` TINYINT(1) DEFAULT 0 COMMENT '是否临时活码',
   `qr_code` VARCHAR(500) NULL COMMENT '二维码链接',
   `welcome_enabled` TINYINT(1) DEFAULT 0,

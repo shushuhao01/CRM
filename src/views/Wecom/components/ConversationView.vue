@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="conv-view">
     <div class="conv-layout">
       <!-- 第一栏：存档员工列表 -->
@@ -195,9 +195,16 @@
             <template v-else>
               <!-- SDK初始化失败 -->
               <div v-if="isWecomFailed" class="key-diagnose-panel">
-                <el-result icon="warning" title="会话组件初始化失败" :sub-title="sdkInitError || '请确认在企业微信客户端内打开'">
+                <el-result icon="warning" :title="isInWecomClient ? '会话组件初始化失败' : '请在企业微信中查看'" :sub-title="isInWecomClient ? (sdkInitError || '请重试') : ''">
                   <template #extra>
-                    <el-button type="primary" @click="autoInitSdk">重新初始化</el-button>
+                    <div v-if="!isInWecomClient" style="text-align:center;font-size:13px;color:#606266;line-height:1.8;max-width:420px;margin:0 auto">
+                      <p style="margin-bottom:8px">会话存档消息展示组件为企业微信官方安全限制，<strong>仅支持在企业微信客户端内置浏览器</strong>中渲染消息内容。</p>
+                      <p>请按以下流程操作：</p>
+                      <p>1. 打开<strong>企业微信客户端</strong></p>
+                      <p>2. 进入<strong>云客CRM应用</strong>（工作台）</p>
+                      <p>3. 在首页点击<strong>「会话存档」</strong>即可查看完整消息</p>
+                    </div>
+                    <el-button v-if="isInWecomClient" type="primary" @click="autoInitSdk">重新初始化</el-button>
                   </template>
                 </el-result>
               </div>
@@ -395,10 +402,22 @@ const fetchMessageKeys = async () => {
 }
 
 /** 企微组件渲染错误处理 */
+const renderErrorShown = ref(false)
 const handleWecomRenderError = (error: any) => {
   const msg = error?.message || error?.detail?.errMsg || '企微组件渲染异常'
   console.warn('企微组件渲染错误:', msg, error)
-  ElMessage.warning('消息渲染异常: ' + msg)
+  if (renderErrorShown.value) return
+  renderErrorShown.value = true
+  if (!isInWecomClient && (msg.includes('missing session') || msg.includes('not support') || msg.includes('permission'))) {
+    ElMessage({
+      type: 'warning',
+      duration: 8000,
+      showClose: true,
+      message: '会话消息组件需在企业微信客户端内使用。请在企业微信中打开云客CRM，进入首页 → 会话存档查看消息内容。（企微安全限制，仅支持企微内置浏览器渲染）'
+    })
+  } else {
+    ElMessage.warning('消息渲染异常: ' + msg)
+  }
 }
 
 const userStore = useUserStore()
