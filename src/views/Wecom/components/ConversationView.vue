@@ -121,6 +121,9 @@
               <div class="conv-card-bottom">
                 <span class="conv-card-preview">{{ getConvPreview(conv) || '暂无消息' }}</span>
                 <div class="conv-card-stats">
+                  <el-tooltip v-if="getConvRiskCount(conv)" :content="`该客户有 ${getConvRiskCount(conv)} 条风险标记`" placement="top">
+                    <el-icon class="conv-risk-icon" :size="13"><WarningFilled /></el-icon>
+                  </el-tooltip>
                   <span class="stat-today" v-if="(conv as any).todayCount">今{{ (conv as any).todayCount }}</span>
                   <span class="stat-total">{{ conv.msgCount || 0 }}</span>
                 </div>
@@ -425,7 +428,24 @@ const highlightSensitiveWords = (text: string): string => {
   return result
 }
 
-// ==================== 会话风险状态 ====================
+// ==================== 会话列表风险标记 ====================
+const convRiskUserMap = ref<Record<string, number>>({})
+
+const fetchConvRiskMap = async () => {
+  if (!props.configId) return
+  try {
+    const res: any = await api.get('/wecom/chat-archive/audit-marks/risk-users', { params: { configId: props.configId } })
+    convRiskUserMap.value = res?.data || res || {}
+  } catch { convRiskUserMap.value = {} }
+}
+
+const getConvRiskCount = (conv: Conversation) => {
+  const toId = getFirstToUser(conv.toUserIds) || ''
+  const fromId = conv.fromUserId || ''
+  return (convRiskUserMap.value[toId] || 0) + (convRiskUserMap.value[fromId] || 0)
+}
+
+// ==================== 当前会话风险状态 ====================
 const convHasRisk = ref(false)
 const convRiskCount = ref(0)
 
@@ -602,6 +622,7 @@ const isValidAvatar = (url: string | undefined | null): boolean => {
 const selectMember = (member: any) => {
   selectedMemberId.value = member.wecomUserId
   selectedMemberName.value = member.name || member.wecomUserId
+  fetchConvRiskMap()
   selectedMemberAvatar.value = isValidAvatar(member.avatar) ? member.avatar : ''
   selectedConv.value = null
   messages.value = []
@@ -948,7 +969,8 @@ defineExpose({ fetchConversations, fetchArchiveMembers, selectMemberById, jumpTo
 .conv-card-time { margin-left: auto; font-size: 11px; color: #9ca3af; white-space: nowrap; }
 .conv-card-bottom { display: flex; align-items: center; margin-top: 4px; }
 .conv-card-preview { font-size: 12px; color: #9ca3af; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; }
-.conv-card-stats { display: flex; gap: 4px; margin-left: 6px; flex-shrink: 0; }
+.conv-card-stats { display: flex; gap: 4px; margin-left: 6px; flex-shrink: 0; align-items: center; }
+.conv-risk-icon { color: #F87171; opacity: 0.7; }
 .stat-today { font-size: 10px; color: #07c160; background: #e6f7ef; border-radius: 3px; padding: 0 4px; }
 .stat-total { font-size: 10px; color: #9ca3af; background: #f5f5f5; border-radius: 3px; padding: 0 4px; }
 

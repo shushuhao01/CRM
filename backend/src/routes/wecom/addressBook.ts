@@ -695,10 +695,18 @@ router.post('/address-book/sync-members', authenticateToken, requireAdmin, async
       const wecomUserId = user.userid;
       const deptIds = (user.department || []).join(',');
 
-      // 查找已有绑定
+      // 查找已有绑定（优先精确匹配，如果找不到则按 configId+wecomUserId 查找，兼容 tenantId 为空的旧数据）
       let binding = await bindingRepo.findOne({
         where: { wecomConfigId: configId, wecomUserId, tenantId }
       });
+      if (!binding) {
+        binding = await bindingRepo.findOne({
+          where: { wecomConfigId: configId, wecomUserId }
+        });
+        if (binding && tenantId && !binding.tenantId) {
+          binding.tenantId = tenantId;
+        }
+      }
 
       // user.name 仅当“可信”才覆盖（非空、非与 userid 相同）
       const apiUserNameValid = isValidName(user.name, wecomUserId);
@@ -731,7 +739,26 @@ router.post('/address-book/sync-members', authenticateToken, requireAdmin, async
         createdCount++;
       }
 
-      await bindingRepo.save(binding);
+      try {
+        await bindingRepo.save(binding);
+      } catch (saveErr: any) {
+        // 如果因唯一约束冲突导致保存失败，尝试通过 configId+wecomUserId 查找并更新
+        if (saveErr.message?.includes('Duplicate') || saveErr.code === 'ER_DUP_ENTRY') {
+          const existing = await bindingRepo.findOne({ where: { wecomConfigId: configId, wecomUserId } });
+          if (existing) {
+            existing.wecomDepartmentIds = deptIds;
+            existing.isEnabled = user.status === 1;
+            if (isValidName(user.name, wecomUserId)) existing.wecomUserName = String(user.name).trim();
+            if (user.avatar || user.thumb_avatar) existing.wecomAvatar = user.avatar || user.thumb_avatar;
+            if (tenantId && !existing.tenantId) existing.tenantId = tenantId;
+            await bindingRepo.save(existing).catch(() => {});
+            updatedCount++;
+            createdCount--;
+          }
+        } else {
+          log.warn(`[AddressBook] 保存绑定失败 (${wecomUserId}):`, saveErr.message);
+        }
+      }
     }
 
     // 更新部门成员计数 — 基于实际 wecom_user_bindings 记录重新计算
@@ -740,9 +767,12 @@ router.post('/address-book/sync-members', authenticateToken, requireAdmin, async
     const allLocalDepts = await deptRepo.find({ where: { tenantId, wecomConfigId: configId } });
     for (const dept of allLocalDepts) {
       const deptIdStr = String(dept.wecomDeptId);
-      const actualCount = await bindingRepo.createQueryBuilder('b')
-        .where('b.wecom_config_id = :configId', { configId })
-        .andWhere('b.tenant_id = :tenantId', { tenantId })
+      let countQuery = bindingRepo.createQueryBuilder('b')
+        .where('b.wecom_config_id = :configId', { configId });
+      if (tenantId) {
+        countQuery = countQuery.andWhere('(b.tenant_id = :tenantId OR b.tenant_id IS NULL)', { tenantId });
+      }
+      const actualCount = await countQuery
         .andWhere(
           '(b.wecom_department_ids = :deptId OR b.wecom_department_ids LIKE :startWith OR b.wecom_department_ids LIKE :endWith OR b.wecom_department_ids LIKE :middle)',
           { deptId: deptIdStr, startWith: `${deptIdStr},%`, endWith: `%,${deptIdStr}`, middle: `%,${deptIdStr},%` }
@@ -1078,21 +1108,43 @@ router.get('/address-book/dept/:deptId/children', authenticateToken, async (req:
     // 获取子部门
     const deptRepo = AppDataSource.getRepository(WecomDepartmentMapping);
     const childDepts = await deptRepo.find({
-      where: { tenantId, wecomConfigId: Number(configId), wecomParentId: parentDeptId }
+      where: { wecomConfigId: Number(configId), wecomParentId: parentDeptId }
     });
 
     // 获取直属成员
     const bindingRepo = AppDataSource.getRepository(WecomUserBinding);
     const deptIdStr = String(parentDeptId);
-    const members = await bindingRepo.createQueryBuilder('b')
-      .where('b.wecom_config_id = :configId', { configId: Number(configId) })
-      .andWhere('b.tenant_id = :tenantId', { tenantId })
+    let membersQuery = bindingRepo.createQueryBuilder('b')
+      .where('b.wecom_config_id = :configId', { configId: Number(configId) });
+    if (tenantId) {
+      membersQuery = membersQuery.andWhere('(b.tenant_id = :tenantId OR b.tenant_id IS NULL)', { tenantId });
+    }
+    let members = await membersQuery
       .andWhere(
         '(b.wecom_department_ids = :deptId OR b.wecom_department_ids LIKE :startWith OR b.wecom_department_ids LIKE :endWith OR b.wecom_department_ids LIKE :middle)',
         { deptId: deptIdStr, startWith: `${deptIdStr},%`, endWith: `%,${deptIdStr}`, middle: `%,${deptIdStr},%` }
       )
       .orderBy('b.wecom_user_name', 'ASC')
       .getMany();
+
+    // 如果当前部门无成员且是根部门（无子部门或无父部门），把 wecomDepartmentIds 为空的成员也归入根部门
+    if (members.length === 0 && childDepts.length === 0) {
+      let orphanQuery = bindingRepo.createQueryBuilder('b')
+        .where('b.wecom_config_id = :configId', { configId: Number(configId) })
+        .andWhere("(b.wecom_department_ids IS NULL OR b.wecom_department_ids = '')");
+      if (tenantId) {
+        orphanQuery = orphanQuery.andWhere('(b.tenant_id = :tenantId OR b.tenant_id IS NULL)', { tenantId });
+      }
+      members = await orphanQuery.orderBy('b.wecom_user_name', 'ASC').getMany();
+      // 自动修复：将这些孤立成员归入当前部门
+      if (members.length > 0) {
+        for (const m of members) {
+          m.wecomDepartmentIds = deptIdStr;
+          bindingRepo.save(m).catch(() => {});
+        }
+        log.info(`[AddressBook] 自动修复 ${members.length} 个无部门成员，归入部门 ${parentDeptId}`);
+      }
+    }
 
     // --- 名称补充：从 wecom_customer_groups.memberList 中提取名称 ---
     // 当第三方应用无通讯录权限(60011)时，部门名和成员名可能缺失

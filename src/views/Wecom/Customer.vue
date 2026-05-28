@@ -236,12 +236,6 @@
             <el-tag v-else type="info" size="small">沉默</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="渠道来源" width="110">
-          <template #default="{ row }">
-            <el-tag v-if="row.state" size="small" type="info" class="channel-tag">{{ row.state }}</el-tag>
-            <span v-else style="color: #C0C4CC">-</span>
-          </template>
-        </el-table-column>
         <!-- CRM关联 -->
         <el-table-column label="CRM关联" width="160">
           <template #default="{ row }">
@@ -250,6 +244,12 @@
               <el-button link type="danger" size="small" style="margin-left: 4px" @click="handleUnlink(row)">解除</el-button>
             </template>
             <el-button v-else link type="primary" size="small" @click="openLinkDialog(row)">关联CRM客户</el-button>
+          </template>
+        </el-table-column>
+        <el-table-column label="渠道来源" width="110">
+          <template #default="{ row }">
+            <el-tag v-if="row.state" size="small" type="info" class="channel-tag">{{ row.state }}</el-tag>
+            <span v-else style="color: #C0C4CC">-</span>
           </template>
         </el-table-column>
         <el-table-column label="操作" width="80" fixed="right">
