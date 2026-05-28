@@ -176,9 +176,9 @@ async function openCrmSystem() {
   await exchangeTokenAndRedirect('/dashboard')
 }
 
-/** 跳转到会员中心（"我的"页面） */
+/** 跳转到会员中心 */
 function openMemberCenter() {
-  window.location.href = window.location.origin + '/app/profile'
+  window.location.href = 'https://yunkes.com/member/login'
 }
 
 /** 通用 token 交换并跳转 */
