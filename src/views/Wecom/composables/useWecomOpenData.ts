@@ -87,11 +87,16 @@ export function useWecomOpenData() {
 
     // 最后降级使用 npm 包
     console.log('[WecomSDK] CDN失败，尝试 npm @wecom/jssdk...')
-    const wwModule = await import('@wecom/jssdk')
-    return {
-      register: wwModule.register,
-      initOpenData: (wwModule as any).initOpenData,
-      createOpenDataFrameFactory: (wwModule as any).createOpenDataFrameFactory
+    try {
+      const wwModule = await import('@wecom/jssdk')
+      return {
+        register: wwModule.register,
+        initOpenData: (wwModule as any).initOpenData,
+        createOpenDataFrameFactory: (wwModule as any).createOpenDataFrameFactory
+      }
+    } catch (e) {
+      console.warn('[WecomSDK] npm @wecom/jssdk 加载失败:', e)
+      throw new Error('企微JS-SDK加载失败：CDN和npm包均不可用')
     }
   }
 
@@ -191,14 +196,20 @@ export function useWecomOpenData() {
         config = configs.find((c: any) => c.agentId && c.isEnabled) || configs[0]
       }
     } catch (e: any) {
-      throw new Error('获取企微配置失败: ' + (e?.message || '网络错误'))
+      initError.value = '获取企微配置失败: ' + (e?.message || '网络错误')
+      wecomLoginState.value = 'failed'
+      return false
     }
 
     if (!config?.corpId) {
-      throw new Error('企微配置缺少corpId')
+      initError.value = '企微配置缺少corpId'
+      wecomLoginState.value = 'failed'
+      return false
     }
     if (!config?.agentId) {
-      throw new Error(`企微配置缺少agentId（corpId=${config.corpId}）`)
+      initError.value = `企微配置缺少agentId（corpId=${config.corpId}）`
+      wecomLoginState.value = 'failed'
+      return false
     }
 
     console.log(`[WecomSDK] initFromConfig: corpId=${config.corpId}, agentId=${config.agentId}, suiteId=${config.suiteId || '无'}`)

@@ -760,16 +760,16 @@ const handleSync = async () => {
   try {
     const res: any = await syncWecomCustomers(query.value.configId)
     const data = res?.data || res
-    const message = data?.message || res?.message || '同步任务已启动'
+    const message = data?.message || res?.message || '同步完成'
     ElMessage.success(message)
     syncResult.value = {
       message,
+      syncCount: data?.syncCount || 0,
       bindingsUsed: data?.bindingsUsed || 0,
       bindingNames: data?.bindingNames || ''
     }
     fetchList()
     fetchStats()
-    startSyncPolling()
   } catch (e: any) {
     const errMsg = e?.response?.data?.message || e?.message || '同步失败'
     if (e?.code === 'ECONNABORTED' || errMsg.includes('timeout')) {
@@ -783,23 +783,6 @@ const handleSync = async () => {
     syncing.value = false
   }
 }
-
-let syncPollTimer: ReturnType<typeof setInterval> | null = null
-const startSyncPolling = () => {
-  if (syncPollTimer) clearInterval(syncPollTimer)
-  let pollCount = 0
-  syncPollTimer = setInterval(() => {
-    pollCount++
-    fetchList()
-    fetchStats()
-    if (pollCount >= 6) {
-      if (syncPollTimer) clearInterval(syncPollTimer)
-      syncPollTimer = null
-      syncing.value = false
-    }
-  }, 5000)
-}
-
 
 const handleSyncTags = async () => {
   if (isDemoMode.value) {
@@ -942,7 +925,7 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
-  if (syncPollTimer) { clearInterval(syncPollTimer); syncPollTimer = null }
+  // cleanup
 })
 </script>
 

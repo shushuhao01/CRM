@@ -75,6 +75,18 @@
                   </span>
                 </template>
               </el-tree>
+              <!-- 名称缺失提示 -->
+              <el-alert
+                v-if="showNameMissingNotice"
+                type="info"
+                :closable="true"
+                show-icon
+                style="margin-bottom: 8px"
+              >
+                <template #title>
+                  <span style="font-size: 12px">第三方应用不返回部门/成员名称，此为企业微信安全限制。在企业微信客户端中打开本页面可自动显示真实名称。</span>
+                </template>
+              </el-alert>
               <el-empty v-if="!mixedTreeData.length && !loadingDepts && !syncingAll" description="暂无组织架构数据，请点击「同步组织架构」" :image-size="60" />
               <div v-if="syncingAll && !mixedTreeData.length" style="text-align: center; padding: 40px 0; color: #909399">
                 <el-icon class="is-loading" :size="24"><Loading /></el-icon>
@@ -842,6 +854,14 @@ const maskPhone = (phone: string) => {
   if (!phone || phone.length < 7) return phone || '-'
   return phone.slice(0, 3) + '****' + phone.slice(-4)
 }
+
+/** 是否显示名称缺失提示（树有数据但大部分名称缺失） */
+const showNameMissingNotice = computed(() => {
+  if (mixedTreeData.value.length === 0) return false
+  if (wwOpenDataReady.value) return false
+  const rootNodes = mixedTreeData.value.filter((n: any) => n.nodeType === 'dept')
+  return rootNodes.length > 0 && rootNodes.every((n: any) => isDeptNameMissing(n))
+})
 
 /** 格式化部门树节点标签：优先显示部门名称 */
 const formatDeptLabel = (data: any) => {

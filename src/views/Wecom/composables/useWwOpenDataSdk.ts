@@ -43,7 +43,10 @@ export function useWwOpenDataSdk() {
     if (sdkState.value === 'ready') return true
     if (initPromise) return initPromise
 
-    initPromise = _doInit(corpId, agentId)
+    initPromise = _doInit(corpId, agentId).catch(() => {
+      initPromise = null
+      return false
+    })
     return initPromise
   }
 

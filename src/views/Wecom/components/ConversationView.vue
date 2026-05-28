@@ -889,7 +889,21 @@ const getLinkTitle = (content: string) => { try { const c = JSON.parse(content);
 const getWeappTitle = (content: string) => { try { const c = JSON.parse(content); return c?.weapp?.title || c?.weapp?.displayname || '' } catch { return '' } }
 
 // ==================== 生命周期 ====================
-watch(() => props.configId, (newId) => {
+watch(() => props.configId, (newId, oldId) => {
+  // configId 变化时，清理旧状态防止数据残留
+  if (oldId && oldId !== newId) {
+    selectedMemberId.value = ''
+    selectedMemberName.value = ''
+    selectedMemberAvatar.value = ''
+    selectedConv.value = null
+    conversations.value = []
+    messages.value = []
+    messageKeys.value = []
+    convRiskUserMap.value = {}
+    // SDK 重新初始化（corpId 可能已变）
+    resetWecomState()
+    sdkInitDone.value = false
+  }
   fetchArchiveMembers()
   // configId 从父组件传来后，自动初始化企微SDK（尝试使用原生会话展示组件）
   if (newId && !isWecomReady.value && !sdkInitializing.value) {

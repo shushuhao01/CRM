@@ -61,11 +61,13 @@ const fallbackTitle = computed(() => {
 })
 
 const bindCurrentElement = async () => {
-  await nextTick()
-  const el = wrapperRef.value?.querySelector('ww-open-data')
-  if (el) {
-    sdkBindElement(el)
-  }
+  try {
+    await nextTick()
+    const el = wrapperRef.value?.querySelector('ww-open-data')
+    if (el) {
+      sdkBindElement(el)
+    }
+  } catch { /* 绑定失败静默处理，降级显示 fallback */ }
 }
 
 onMounted(() => {

@@ -239,6 +239,14 @@ window.addEventListener('unhandledrejection', (e) => {
     return
   }
 
+  // 静默处理非关键SDK初始化错误（不影响核心功能）
+  const sdkErrors = ['WecomSDK', 'WWOpenData', 'wx.config', 'agentConfig', 'jssdk', 'jwxwork', 'jweixin', 'ww.register', 'SDK加载失败', 'SDK不可用', 'config签名']
+  if (sdkErrors.some(k => errorMsg.includes(k))) {
+    console.warn('[SDK] 非关键错误已静默:', errorMsg)
+    e.preventDefault()
+    return
+  }
+
   console.error('未处理的Promise拒绝:', e.reason)
   globalErrorHandler(e.reason instanceof Error ? e.reason : new Error(String(e.reason)))
   e.preventDefault() // 阻止默认的错误处理
