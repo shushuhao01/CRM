@@ -121,8 +121,8 @@
               <div class="conv-card-bottom">
                 <span class="conv-card-preview">{{ getConvPreview(conv) || '暂无消息' }}</span>
                 <div class="conv-card-stats">
-                  <el-tooltip v-if="getConvRiskCount(conv)" :content="`该客户有 ${getConvRiskCount(conv)} 条风险标记`" placement="top">
-                    <el-icon class="conv-risk-icon" :size="13"><WarningFilled /></el-icon>
+                  <el-tooltip v-if="getConvRiskInfo(conv)" :content="getConvRiskInfo(conv)!.active > 0 ? `该客户有 ${getConvRiskInfo(conv)!.active} 条待处理风险` : `该客户风险已全部处理`" placement="top">
+                    <el-icon class="conv-risk-icon" :class="{ resolved: getConvRiskInfo(conv)!.active === 0 }" :size="13"><WarningFilled /></el-icon>
                   </el-tooltip>
                   <span class="stat-today" v-if="(conv as any).todayCount">今{{ (conv as any).todayCount }}</span>
                   <span class="stat-total">{{ conv.msgCount || 0 }}</span>
@@ -151,9 +151,9 @@
                 <el-tag v-if="(selectedConv as any).agreed === true" type="success" size="small">已同意存档</el-tag>
                 <el-tag v-else-if="(selectedConv as any).agreed === false" type="warning" size="small">客户未同意（仅员工消息）</el-tag>
                 <el-tag v-else type="info" size="small">存档状态未知</el-tag>
-                <el-tooltip v-if="convHasRisk" :content="`该会话已被标记 ${convRiskCount} 条风险记录`" placement="top">
-                  <span class="conv-risk-badge">
-                    <el-icon :size="14" color="#F56C6C"><WarningFilled /></el-icon>
+                <el-tooltip v-if="convHasRisk" :content="convRiskAllResolved ? `该会话 ${convRiskCount} 条风险已全部处理` : `该会话有 ${convRiskCount} 条风险待处理`" placement="top">
+                  <span class="conv-risk-badge" :class="{ resolved: convRiskAllResolved }">
+                    <el-icon :size="14"><WarningFilled /></el-icon>
                     <span>风险{{ convRiskCount > 1 ? `(${convRiskCount})` : '' }}</span>
                   </span>
                 </el-tooltip>
@@ -429,32 +429,37 @@ const highlightSensitiveWords = (text: string): string => {
 }
 
 // ==================== 会话列表风险标记 ====================
-const convRiskUserMap = ref<Record<string, number>>({})
+const convRiskUserMap = ref<Record<string, { active: number; resolved: number }>>({})
 
 const fetchConvRiskMap = async () => {
-  if (!props.configId) return
+  if (!props.configId || !selectedMemberId.value) return
   try {
-    const res: any = await api.get('/wecom/chat-archive/audit-marks/risk-users', { params: { configId: props.configId } })
+    const res: any = await api.get('/wecom/chat-archive/audit-marks/risk-users', {
+      params: { configId: props.configId, fromUserId: selectedMemberId.value }
+    })
     convRiskUserMap.value = res?.data || res || {}
   } catch { convRiskUserMap.value = {} }
 }
 
-const getConvRiskCount = (conv: Conversation) => {
+const getConvRiskInfo = (conv: Conversation): { active: number; resolved: number } | null => {
   const toId = getFirstToUser(conv.toUserIds) || ''
-  const fromId = conv.fromUserId || ''
-  return (convRiskUserMap.value[toId] || 0) + (convRiskUserMap.value[fromId] || 0)
+  const info = convRiskUserMap.value[toId]
+  if (!info || (info.active === 0 && info.resolved === 0)) return null
+  return info
 }
 
 // ==================== 当前会话风险状态 ====================
 const convHasRisk = ref(false)
 const convRiskCount = ref(0)
+const convRiskAllResolved = ref(false)
 
 const checkConvRiskStatus = async () => {
   convHasRisk.value = false
   convRiskCount.value = 0
+  convRiskAllResolved.value = false
   if (!props.configId || !selectedConv.value) return
   try {
-    const fromId = selectedConv.value.fromUserId || ''
+    const fromId = selectedMemberId.value || selectedConv.value.fromUserId || ''
     const toId = getFirstToUser(selectedConv.value.toUserIds) || ''
     if (!fromId) return
     const res: any = await api.get('/wecom/chat-archive/audit-marks/check', {
@@ -463,6 +468,7 @@ const checkConvRiskStatus = async () => {
     const data = res?.data || res
     convHasRisk.value = !!(data?.hasRisk)
     convRiskCount.value = data?.count || 0
+    convRiskAllResolved.value = convHasRisk.value && (data?.activeCount === 0)
   } catch { /* ignore */ }
 }
 
@@ -971,6 +977,7 @@ defineExpose({ fetchConversations, fetchArchiveMembers, selectMemberById, jumpTo
 .conv-card-preview { font-size: 12px; color: #9ca3af; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; }
 .conv-card-stats { display: flex; gap: 4px; margin-left: 6px; flex-shrink: 0; align-items: center; }
 .conv-risk-icon { color: #F87171; opacity: 0.7; }
+.conv-risk-icon.resolved { color: #9CA3AF; opacity: 0.6; }
 .stat-today { font-size: 10px; color: #07c160; background: #e6f7ef; border-radius: 3px; padding: 0 4px; }
 .stat-total { font-size: 10px; color: #9ca3af; background: #f5f5f5; border-radius: 3px; padding: 0 4px; }
 
@@ -990,6 +997,9 @@ defineExpose({ fetchConversations, fetchArchiveMembers, selectMemberById, jumpTo
   font-size: 12px; color: #F56C6C; font-weight: 500;
   background: #FEF0F0; border: 1px solid #FDE2E2; border-radius: 4px;
   padding: 1px 6px; cursor: default;
+}
+.conv-risk-badge.resolved {
+  color: #909399; background: #F4F4F5; border-color: #E0E0E0;
 }
 .msg-header-count { font-size: 12px; color: #9ca3af; }
 

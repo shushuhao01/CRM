@@ -214,8 +214,8 @@
         </el-table-column>
         <el-table-column label="" width="36" align="center" v-if="Object.keys(customerRiskMap).length > 0">
           <template #default="{ row }">
-            <el-tooltip v-if="customerRiskMap[row.externalUserId]" :content="`该客户有 ${customerRiskMap[row.externalUserId]} 条风险标记`" placement="top">
-              <el-icon class="customer-risk-icon" :size="15"><WarningFilled /></el-icon>
+            <el-tooltip v-if="customerRiskMap[row.externalUserId]" :content="customerRiskMap[row.externalUserId].active > 0 ? `该客户有 ${customerRiskMap[row.externalUserId].active} 条待处理风险` : `该客户风险已全部处理`" placement="top">
+              <el-icon class="customer-risk-icon" :class="{ resolved: customerRiskMap[row.externalUserId].active === 0 }" :size="15"><WarningFilled /></el-icon>
             </el-tooltip>
           </template>
         </el-table-column>
@@ -612,7 +612,7 @@ const filteredMembers = computed(() => {
 })
 
 // 客户风险标记映射 { externalUserId: riskCount }
-const customerRiskMap = ref<Record<string, number>>({})
+const customerRiskMap = ref<Record<string, { active: number; resolved: number }>>({})
 
 const fetchCustomerRiskMap = async () => {
   if (isDemoMode.value || !query.value.configId) return
@@ -935,6 +935,7 @@ onUnmounted(() => {
 
 .customer-info { display: flex; align-items: center; gap: 10px; }
 .customer-risk-icon { color: #F56C6C; opacity: 0.7; cursor: default; }
+.customer-risk-icon.resolved { color: #909399; opacity: 0.5; }
 .info-text { overflow: hidden; }
 .info-text .remark-name { font-weight: 600; font-size: 14px; color: #1F2937; line-height: 1.4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .info-text .nick-name { font-size: 12px; color: #9CA3AF; line-height: 1.4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

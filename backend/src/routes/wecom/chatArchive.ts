@@ -1114,40 +1114,45 @@ router.get('/chat-archive/audit-marks/check', authenticateToken, async (req: Req
     qb.andWhere('m.status != :dismissed', { dismissed: 'dismissed' });
 
     const count = await qb.getCount();
-    res.json({ success: true, data: { hasRisk: count > 0, count } });
+    const activeCount = await qb.clone().andWhere("m.status IN ('pending', 'processing')").getCount();
+    const resolvedCount = count - activeCount;
+    res.json({ success: true, data: { hasRisk: count > 0, count, activeCount, resolvedCount } });
   } catch (error: any) {
-    res.json({ success: true, data: { hasRisk: false, count: 0 } });
+    res.json({ success: true, data: { hasRisk: false, count: 0, activeCount: 0, resolvedCount: 0 } });
   }
 });
 
 router.get('/chat-archive/audit-marks/risk-users', authenticateToken, async (req: Request, res: Response) => {
   try {
-    const { configId } = req.query;
+    const { configId, fromUserId } = req.query;
     const { getCurrentTenantId } = await import('../../utils/tenantContext');
     const tenantId = getCurrentTenantId();
     const repo = AppDataSource.getRepository(WecomChatAuditMark);
+
+    // 查询有风险标记的外部联系人（toUserId），按状态分组
     const qb = repo.createQueryBuilder('m')
-      .select('m.from_user_id', 'userId')
+      .select('m.to_user_id', 'userId')
+      .addSelect('m.status', 'status')
       .addSelect('COUNT(*)', 'count');
     if (tenantId) qb.andWhere('m.tenant_id = :tenantId', { tenantId });
     if (configId) qb.andWhere('m.wecom_config_id = :configId', { configId: parseInt(configId as string) });
+    if (fromUserId) qb.andWhere('m.from_user_id = :fromUserId', { fromUserId });
+    qb.andWhere('m.to_user_id IS NOT NULL').andWhere("m.to_user_id != ''");
     qb.andWhere('m.status != :dismissed', { dismissed: 'dismissed' });
-    qb.groupBy('m.from_user_id');
+    qb.groupBy('m.to_user_id').addGroupBy('m.status');
     const results = await qb.getRawMany();
 
-    const toQb = repo.createQueryBuilder('m')
-      .select('m.to_user_id', 'userId')
-      .addSelect('COUNT(*)', 'count');
-    if (tenantId) toQb.andWhere('m.tenant_id = :tenantId', { tenantId });
-    if (configId) toQb.andWhere('m.wecom_config_id = :configId', { configId: parseInt(configId as string) });
-    toQb.andWhere('m.status != :dismissed', { dismissed: 'dismissed' });
-    toQb.andWhere('m.to_user_id IS NOT NULL').andWhere("m.to_user_id != ''");
-    toQb.groupBy('m.to_user_id');
-    const toResults = await toQb.getRawMany();
-
-    const riskMap: Record<string, number> = {};
-    for (const r of [...results, ...toResults]) {
-      if (r.userId) riskMap[r.userId] = (riskMap[r.userId] || 0) + parseInt(r.count);
+    // 构建风险映射：{ externalUserId: { active: N, resolved: N } }
+    const riskMap: Record<string, { active: number; resolved: number }> = {};
+    for (const r of results) {
+      if (!r.userId) continue;
+      if (!riskMap[r.userId]) riskMap[r.userId] = { active: 0, resolved: 0 };
+      const cnt = parseInt(r.count) || 0;
+      if (r.status === 'resolved') {
+        riskMap[r.userId].resolved += cnt;
+      } else {
+        riskMap[r.userId].active += cnt;
+      }
     }
     res.json({ success: true, data: riskMap });
   } catch (error: any) {
