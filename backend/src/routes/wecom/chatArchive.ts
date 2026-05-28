@@ -1124,34 +1124,39 @@ router.get('/chat-archive/audit-marks/check', authenticateToken, async (req: Req
 
 router.get('/chat-archive/audit-marks/risk-users', authenticateToken, async (req: Request, res: Response) => {
   try {
-    const { configId, fromUserId } = req.query;
+    const { configId } = req.query;
     const { getCurrentTenantId } = await import('../../utils/tenantContext');
     const tenantId = getCurrentTenantId();
     const repo = AppDataSource.getRepository(WecomChatAuditMark);
 
-    // 查询有风险标记的外部联系人（toUserId），按状态分组
+    // 获取所有非dismissed的审计标记
     const qb = repo.createQueryBuilder('m')
-      .select('m.to_user_id', 'userId')
-      .addSelect('m.status', 'status')
-      .addSelect('COUNT(*)', 'count');
+      .select(['m.from_user_id', 'm.to_user_id', 'm.status']);
     if (tenantId) qb.andWhere('m.tenant_id = :tenantId', { tenantId });
     if (configId) qb.andWhere('m.wecom_config_id = :configId', { configId: parseInt(configId as string) });
-    if (fromUserId) qb.andWhere('m.from_user_id = :fromUserId', { fromUserId });
-    qb.andWhere('m.to_user_id IS NOT NULL').andWhere("m.to_user_id != ''");
     qb.andWhere('m.status != :dismissed', { dismissed: 'dismissed' });
-    qb.groupBy('m.to_user_id').addGroupBy('m.status');
-    const results = await qb.getRawMany();
+    const marks = await qb.getRawMany();
 
-    // 构建风险映射：{ externalUserId: { active: N, resolved: N } }
+    // 构建风险映射：以外部联系人ID为key（wm/wo开头的ID视为外部联系人）
     const riskMap: Record<string, { active: number; resolved: number }> = {};
-    for (const r of results) {
-      if (!r.userId) continue;
-      if (!riskMap[r.userId]) riskMap[r.userId] = { active: 0, resolved: 0 };
-      const cnt = parseInt(r.count) || 0;
-      if (r.status === 'resolved') {
-        riskMap[r.userId].resolved += cnt;
+    for (const m of marks) {
+      // 识别外部联系人ID：优先 to_user_id，如果 from_user_id 以 wm/wo 开头也算
+      let externalId = '';
+      if (m.to_user_id && (m.to_user_id.startsWith('wm') || m.to_user_id.startsWith('wo'))) {
+        externalId = m.to_user_id;
+      } else if (m.from_user_id && (m.from_user_id.startsWith('wm') || m.from_user_id.startsWith('wo'))) {
+        externalId = m.from_user_id;
+      } else if (m.to_user_id) {
+        externalId = m.to_user_id;
+      } else if (m.from_user_id) {
+        externalId = m.from_user_id;
+      }
+      if (!externalId) continue;
+      if (!riskMap[externalId]) riskMap[externalId] = { active: 0, resolved: 0 };
+      if (m.status === 'resolved') {
+        riskMap[externalId].resolved++;
       } else {
-        riskMap[r.userId].active += cnt;
+        riskMap[externalId].active++;
       }
     }
     res.json({ success: true, data: riskMap });

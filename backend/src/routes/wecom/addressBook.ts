@@ -303,13 +303,31 @@ router.post('/address-book/sync-departments', authenticateToken, requireAdmin, a
       accessToken = await WecomApiService.getAccessTokenByConfigId(configId, 'corp');
     }
 
-    // 调用企微API获取部门列表（先不指定id获取全部，再递归确保子部门完整）
+    // 调用企微API获取部门列表
+    // 策略：多种方式尝试获取完整部门列表
     let departments: any[] = [];
     try {
+      // 1. 先尝试不带id获取（返回应用可见范围内所有部门）
       departments = await WecomApiService.getDepartmentList(accessToken);
       log.info(`[AddressBook] getDepartmentList(无id) 返回 ${departments.length} 个部门`);
-      // 对每个已获取的部门，尝试递归获取其子部门（确保子部门也被同步）
+
       const knownIds = new Set(departments.map((d: any) => d.id));
+
+      // 2. 尝试从根部门(id=1)获取完整列表（自建应用通常可以获取所有授权部门）
+      if (!knownIds.has(1)) {
+        try {
+          const rootDepts = await WecomApiService.getDepartmentList(accessToken, 1);
+          for (const rd of rootDepts) {
+            if (!knownIds.has(rd.id)) {
+              departments.push(rd);
+              knownIds.add(rd.id);
+            }
+          }
+          log.info(`[AddressBook] getDepartmentList(id=1) 补充后共 ${departments.length} 个部门`);
+        } catch { /* root获取失败不影响 */ }
+      }
+
+      // 3. 对每个已获取的部门，递归获取其子部门
       for (const dept of [...departments]) {
         try {
           const subDepts = await WecomApiService.getDepartmentList(accessToken, dept.id);
@@ -321,7 +339,37 @@ router.post('/address-book/sync-departments', authenticateToken, requireAdmin, a
           }
         } catch { /* 子部门获取失败不影响 */ }
       }
-      log.info(`[AddressBook] 递归补充后共 ${departments.length} 个部门`);
+
+      // 4. 如果corp token与当前token不同，也尝试用corp token获取更多部门
+      if (departments.length <= 1) {
+        try {
+          const corpToken = await WecomApiService.getAccessTokenByConfigId(configId, 'corp');
+          if (corpToken !== accessToken) {
+            const corpDepts = await WecomApiService.getDepartmentList(corpToken);
+            for (const cd of corpDepts) {
+              if (!knownIds.has(cd.id)) {
+                departments.push(cd);
+                knownIds.add(cd.id);
+              }
+            }
+            // 也用corp token递归获取子部门
+            for (const dept of [...departments]) {
+              try {
+                const subDepts = await WecomApiService.getDepartmentList(corpToken, dept.id);
+                for (const sd of subDepts) {
+                  if (!knownIds.has(sd.id)) {
+                    departments.push(sd);
+                    knownIds.add(sd.id);
+                  }
+                }
+              } catch { /* ignore */ }
+            }
+            log.info(`[AddressBook] corp token 补充后共 ${departments.length} 个部门`);
+          }
+        } catch { /* corp token 获取失败不影响 */ }
+      }
+
+      log.info(`[AddressBook] 最终获取到 ${departments.length} 个部门`);
     } catch (e: any) {
       // 60011 = 无权限访问通讯录
       if (e.message?.includes('60011') || e.message?.includes('no privilege')) {

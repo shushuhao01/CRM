@@ -432,10 +432,10 @@ const highlightSensitiveWords = (text: string): string => {
 const convRiskUserMap = ref<Record<string, { active: number; resolved: number }>>({})
 
 const fetchConvRiskMap = async () => {
-  if (!props.configId || !selectedMemberId.value) return
+  if (!props.configId) return
   try {
     const res: any = await api.get('/wecom/chat-archive/audit-marks/risk-users', {
-      params: { configId: props.configId, fromUserId: selectedMemberId.value }
+      params: { configId: props.configId }
     })
     convRiskUserMap.value = res?.data || res || {}
   } catch { convRiskUserMap.value = {} }
@@ -443,7 +443,11 @@ const fetchConvRiskMap = async () => {
 
 const getConvRiskInfo = (conv: Conversation): { active: number; resolved: number } | null => {
   const toId = getFirstToUser(conv.toUserIds) || ''
-  const info = convRiskUserMap.value[toId]
+  const fromId = conv.fromUserId || ''
+  // 外部联系人可能在 toUserIds 或 fromUserId 中
+  const externalId = (toId.startsWith('wm') || toId.startsWith('wo')) ? toId
+    : (fromId.startsWith('wm') || fromId.startsWith('wo')) ? fromId : toId
+  const info = convRiskUserMap.value[externalId]
   if (!info || (info.active === 0 && info.resolved === 0)) return null
   return info
 }
@@ -534,6 +538,7 @@ const submitMarkRisk = async () => {
     ElMessage.success('风险标记已提交')
     markRiskVisible.value = false
     checkConvRiskStatus()
+    fetchConvRiskMap()
   } catch (e: any) {
     ElMessage.error(e?.response?.data?.message || '标记失败')
   } finally {
