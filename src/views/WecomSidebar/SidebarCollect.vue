@@ -55,24 +55,24 @@
       </div>
       <div v-if="recordsLoading && !records.length" style="text-align:center;padding:12px 0;font-size:11px;color:#909399">加载中...</div>
       <template v-else-if="records.length">
-        <div v-for="rec in records" :key="rec.id">
-          <div class="mpc-record-row" @click="toggleExpand(rec.id)" style="cursor:pointer">
+        <div v-for="rec in records" :key="rec.id" class="mpc-record-item">
+          <div class="mpc-record-row" @click="toggleExpand(rec.id)">
             <div class="mpc-record-avatar">{{ (rec.name || '?')[0] }}</div>
-            <div class="mpc-record-info">
-              <div class="mpc-record-name">{{ rec.name || '-' }}</div>
+            <div class="mpc-record-body">
+              <div class="mpc-record-top">
+                <span class="mpc-record-name">{{ rec.name || '-' }}</span>
+                <span class="mpc-record-time">{{ rec.time }}</span>
+              </div>
               <div class="mpc-record-phone">{{ rec.maskedPhone || '未填手机号' }}</div>
               <div v-if="rec.address" class="mpc-record-address">{{ rec.address }}</div>
             </div>
-            <div class="mpc-record-time">{{ rec.time }}</div>
           </div>
-          <!-- 展开详情：在当前记录下方展开 -->
+          <!-- 展开详情：紧跟在当前记录下方 -->
           <div v-if="expandedId === rec.id" class="mpc-record-detail">
-            <template v-for="field in getFilledFields(rec)" :key="field.key">
-              <div class="mpc-detail-row">
-                <span class="mpc-detail-label">{{ field.label }}</span>
-                <span>{{ field.value }}</span>
-              </div>
-            </template>
+            <div v-for="field in getFilledFields(rec)" :key="field.key" class="mpc-detail-row">
+              <span class="mpc-detail-label">{{ field.label }}</span>
+              <span class="mpc-detail-value">{{ field.value }}</span>
+            </div>
             <div v-if="!getFilledFields(rec).length" class="mpc-detail-empty">无更多资料</div>
           </div>
         </div>
@@ -94,8 +94,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
-import { displaySensitiveInfo } from '@/utils/sensitiveInfo'
-import { SensitiveInfoType } from '@/services/permission'
+import { maskPhone } from '@/utils/sensitiveInfo'
 
 const props = defineProps<{
   sidebarToken: string
@@ -191,7 +190,7 @@ const loadRecords = async () => {
       id: r.id,
       name: r.name || '-',
       phone: r.phone || '',
-      maskedPhone: r.phone ? displaySensitiveInfo(r.phone, SensitiveInfoType.PHONE) : '',
+      maskedPhone: r.phone ? maskPhone(r.phone) : '',
       address: [r.province, r.city, r.district, r.street, r.detailAddress].filter(Boolean).join('') || '',
       gender: r.gender || '',
       email: r.email || '',
@@ -208,16 +207,16 @@ const loadRecords = async () => {
   recordsLoading.value = false
 }
 
-/** 获取记录中已填写的字段（排除默认显示的姓名/手机/地址） */
+/** 获取记录中已填写的字段（排除默认已显示的姓名/手机/地址） */
 const getFilledFields = (rec: any) => {
-  const fieldDefs: { key: string; label: string; sensitive?: SensitiveInfoType }[] = [
+  const fieldDefs: { key: string; label: string; mask?: (v: string) => string }[] = [
     { key: 'gender', label: '性别' },
     { key: 'age', label: '年龄' },
     { key: 'birthday', label: '生日' },
     { key: 'height', label: '身高' },
     { key: 'weight', label: '体重' },
-    { key: 'email', label: '邮箱', sensitive: SensitiveInfoType.EMAIL },
-    { key: 'wechat', label: '微信号', sensitive: SensitiveInfoType.WECHAT },
+    { key: 'email', label: '邮箱' },
+    { key: 'wechat', label: '微信号' },
     { key: 'remark', label: '备注' },
   ]
   return fieldDefs
@@ -225,7 +224,7 @@ const getFilledFields = (rec: any) => {
     .map(f => ({
       key: f.key,
       label: f.label,
-      value: f.sensitive ? displaySensitiveInfo(rec[f.key], f.sensitive) : rec[f.key]
+      value: f.mask ? f.mask(rec[f.key]) : String(rec[f.key])
     }))
 }
 
@@ -452,17 +451,20 @@ onMounted(() => {
 .mpc-records { margin: 0 10px 8px; background: #fff; border-radius: 10px; padding: 10px 12px; box-shadow: 0 1px 4px rgba(0,0,0,0.04); }
 .mpc-records-title { font-size: 11px; font-weight: 600; color: #6b7280; margin-bottom: 8px; }
 .mpc-refresh-btn { cursor: pointer; display: inline-flex; align-items: center; }
-.mpc-record-row { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid #f9fafb; }
-.mpc-record-row:last-child { border-bottom: none; }
-.mpc-record-avatar { width: 24px; height: 24px; border-radius: 50%; background: linear-gradient(135deg, #a7f3d0, #6ee7b7); color: #065f46; font-size: 11px; font-weight: 600; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-.mpc-record-info { flex: 1; min-width: 0; }
-.mpc-record-name { font-size: 11px; font-weight: 600; color: #1f2937; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.mpc-record-phone { font-size: 10px; color: #9ca3af; }
+.mpc-record-item { border-bottom: 1px solid #f5f5f5; }
+.mpc-record-item:last-child { border-bottom: none; }
+.mpc-record-row { display: flex; align-items: flex-start; gap: 8px; padding: 8px 0; cursor: pointer; }
+.mpc-record-avatar { width: 24px; height: 24px; border-radius: 50%; background: linear-gradient(135deg, #a7f3d0, #6ee7b7); color: #065f46; font-size: 11px; font-weight: 600; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 2px; }
+.mpc-record-body { flex: 1; min-width: 0; }
+.mpc-record-top { display: flex; align-items: center; justify-content: space-between; }
+.mpc-record-name { font-size: 12px; font-weight: 600; color: #1f2937; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mpc-record-time { font-size: 9px; color: #b0b8c1; white-space: nowrap; flex-shrink: 0; margin-left: 8px; }
+.mpc-record-phone { font-size: 10px; color: #6b7280; margin-top: 2px; }
 .mpc-record-address { font-size: 10px; color: #9ca3af; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.mpc-record-time { font-size: 9px; color: #d1d5db; white-space: nowrap; flex-shrink: 0; }
-.mpc-record-detail { padding: 6px 12px 8px 36px; font-size: 11px; background: #f9fafb; border-radius: 6px; margin: 2px 0 6px; }
-.mpc-detail-row { display: flex; gap: 8px; padding: 3px 0; }
+.mpc-record-detail { padding: 8px 12px; margin: 0 0 4px 32px; font-size: 11px; background: #f7f8fa; border-radius: 6px; border-left: 2px solid #22c55e; }
+.mpc-detail-row { display: flex; gap: 8px; padding: 3px 0; line-height: 1.5; }
 .mpc-detail-label { color: #909399; min-width: 42px; flex-shrink: 0; }
+.mpc-detail-value { color: #303133; word-break: break-all; }
 .mpc-detail-empty { color: #d1d5db; font-size: 10px; padding: 4px 0; }
 .mpc-empty { text-align: center; padding: 20px 10px; color: #d1d5db; font-size: 11px; }
 .mpc-empty svg { margin-bottom: 6px; }
