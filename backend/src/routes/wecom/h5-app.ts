@@ -1472,25 +1472,27 @@ router.get('/mp-collect-records', authenticateSidebarToken, async (req: Request,
       skip
     });
 
-    const maskedList = list.map((c: any) => ({
+    const rawList = list.map((c: any) => ({
       id: c.id,
-      name: c.name ? (c.name[0] + '**') : '-',
-      phone: c.phone ? c.phone.replace(/(\d{3})\d{4}(\d{4})/, '$1****$2') : '',
+      name: c.name || '',
+      phone: c.phone || '',
       gender: c.gender || '',
       province: c.province || '',
       city: c.city || '',
       district: c.district || '',
       street: c.street || '',
-      detailAddress: c.detailAddress ? (c.detailAddress.length > 6 ? c.detailAddress.substring(0, 6) + '***' : c.detailAddress) : '',
-      email: c.email ? c.email.replace(/(.{2}).*(@.*)/, '$1***$2') : '',
-      wechat: c.wechat ? (c.wechat.substring(0, 3) + '***') : '',
+      detailAddress: c.detailAddress || '',
+      email: c.email || '',
+      wechat: c.wechat || '',
       age: c.age || '',
       birthday: c.birthday || '',
-      remark: c.remark ? (c.remark.length > 20 ? c.remark.substring(0, 20) + '...' : c.remark) : '',
+      height: c.height || '',
+      weight: c.weight || '',
+      remark: c.remark || '',
       createdAt: c.createdAt
     }));
 
-    res.json({ success: true, data: { list: maskedList, total, page: parseInt(page, 10), pageSize: take } });
+    res.json({ success: true, data: { list: rawList, total, page: parseInt(page, 10), pageSize: take } });
   } catch (error: any) {
     log.error('[H5 App] mp-collect-records error:', error.message);
     res.json({ success: true, data: { list: [], total: 0 } });

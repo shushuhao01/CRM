@@ -280,6 +280,7 @@ import { Loading } from '@element-plus/icons-vue'
 import { getSidebarJsSdkConfig, getSidebarSign, clearSidebarCache, sidebarBindAccount, sidebarVerifyBinding, getSidebarCustomerDetail, refreshSidebarToken, getSuiteTicketDiagnostic } from '@/api/wecom'
 import { displaySensitiveInfo as displaySensitiveInfoNew } from '@/utils/sensitiveInfo'
 import { SensitiveInfoType } from '@/services/permission'
+import { useUserStore } from '@/stores/user'
 import SidebarScripts from './SidebarScripts.vue'
 import SidebarQuickOrder from './SidebarQuickOrder.vue'
 import SidebarPortrait from './SidebarPortrait.vue'
@@ -346,6 +347,20 @@ const loginLoading = ref(false)
 // 绑定信息
 const sidebarToken = ref('')
 const boundUser = ref<any>(null)
+const userStore = useUserStore()
+
+/** 从侧边栏token初始化userStore，使敏感信息权限系统生效 */
+function initUserStoreFromToken(token: string) {
+  const payload = decodeJwtPayload(token)
+  if (payload?.role && !userStore.currentUser) {
+    userStore.currentUser = {
+      id: payload.crmUserId || payload.userId || '',
+      username: payload.username || '',
+      name: payload.crmUserName || payload.username || '',
+      role: payload.role,
+    } as any
+  }
+}
 
 // 客户数据
 const customerData = ref<any>(null)
@@ -399,6 +414,7 @@ onMounted(async () => {
   if (cachedToken && !isTokenExpired(cachedToken)) {
     console.log('[Sidebar] 发现有效缓存token，直接进入已登录状态')
     sidebarToken.value = cachedToken
+    initUserStoreFromToken(cachedToken)
     const payload = decodeJwtPayload(cachedToken)
     if (payload) {
       boundUser.value = { name: payload.crmUserName || payload.username || '用户' }
@@ -1209,6 +1225,7 @@ async function checkBindingAndLoad() {
       const res: any = await sidebarVerifyBinding(wecomUserId.value, corpId.value)
       if (res?.bound) {
         sidebarToken.value = res.token
+        initUserStoreFromToken(res.token)
         boundUser.value = res.user
         localStorage.setItem('wecom_sidebar_token', res.token)
         pageState.value = 'detail'
@@ -1255,6 +1272,7 @@ async function handleLogin() {
     })
     if (res?.token) {
       sidebarToken.value = res.token
+      initUserStoreFromToken(res.token)
       boundUser.value = res.user
       localStorage.setItem('wecom_sidebar_token', res.token)
       localStorage.setItem('wecom_sidebar_tenant_code', loginForm.value.tenantCode)

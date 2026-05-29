@@ -665,9 +665,8 @@ router.get('/sidebar/customer-detail', authenticateSidebarToken, async (req: Req
       }
     }
 
-    const desensitizedPhone = crmCustomer && crmCustomer.phone && crmCustomer.phone.length >= 7
-      ? crmCustomer.phone.replace(/(\d{3})\d{4}(\d{4})/, '$1****$2')
-      : (crmCustomer?.phone ? '****' : null);
+    // 手机号不在后端掩码，由前端权限系统统一控制脱敏显示
+    const rawPhone = crmCustomer?.phone || null;
 
     // 添加方式映射
     const addWayMap: Record<number, string> = {
@@ -695,7 +694,7 @@ router.get('/sidebar/customer-detail', authenticateSidebarToken, async (req: Req
         },
         crmCustomer: crmCustomer ? {
           id: crmCustomer.id, name: crmCustomer.name,
-          phone: desensitizedPhone,
+          phone: rawPhone,
           gender: crmCustomer.gender,
           age: crmCustomer.age,
           height: crmCustomer.height ? Number(crmCustomer.height) : null,

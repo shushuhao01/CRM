@@ -55,18 +55,26 @@
       </div>
       <div v-if="recordsLoading && !records.length" style="text-align:center;padding:12px 0;font-size:11px;color:#909399">加载中...</div>
       <template v-else-if="records.length">
-        <div v-for="rec in records" :key="rec.id" class="mpc-record-row" @click="toggleExpand(rec.id)" style="cursor:pointer">
-          <div class="mpc-record-avatar">{{ (rec.name || '?')[0] }}</div>
-          <div class="mpc-record-info">
-            <div class="mpc-record-name">{{ rec.name }}</div>
-            <div class="mpc-record-phone">{{ rec.phone || '未填手机号' }}</div>
+        <div v-for="rec in records" :key="rec.id">
+          <div class="mpc-record-row" @click="toggleExpand(rec.id)" style="cursor:pointer">
+            <div class="mpc-record-avatar">{{ (rec.name || '?')[0] }}</div>
+            <div class="mpc-record-info">
+              <div class="mpc-record-name">{{ rec.name || '-' }}</div>
+              <div class="mpc-record-phone">{{ rec.maskedPhone || '未填手机号' }}</div>
+              <div v-if="rec.address" class="mpc-record-address">{{ rec.address }}</div>
+            </div>
+            <div class="mpc-record-time">{{ rec.time }}</div>
           </div>
-          <div class="mpc-record-time">{{ rec.time }}</div>
-        </div>
-        <!-- 展开详情 -->
-        <div v-for="rec in records" :key="'detail-'+rec.id" v-show="expandedId === rec.id" class="mpc-record-detail">
-          <div v-if="rec.gender" class="mpc-detail-row"><span class="mpc-detail-label">性别</span><span>{{ rec.gender }}</span></div>
-          <div v-if="rec.address" class="mpc-detail-row"><span class="mpc-detail-label">地区</span><span>{{ rec.address }}</span></div>
+          <!-- 展开详情：在当前记录下方展开 -->
+          <div v-if="expandedId === rec.id" class="mpc-record-detail">
+            <template v-for="field in getFilledFields(rec)" :key="field.key">
+              <div class="mpc-detail-row">
+                <span class="mpc-detail-label">{{ field.label }}</span>
+                <span>{{ field.value }}</span>
+              </div>
+            </template>
+            <div v-if="!getFilledFields(rec).length" class="mpc-detail-empty">无更多资料</div>
+          </div>
         </div>
         <!-- 翻页 -->
         <div v-if="recordsTotal > pageSize" style="display:flex;justify-content:space-between;align-items:center;padding:4px 0 2px;font-size:10px;color:#909399">
@@ -86,6 +94,8 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
+import { displaySensitiveInfo } from '@/utils/sensitiveInfo'
+import { SensitiveInfoType } from '@/services/permission'
 
 const props = defineProps<{
   sidebarToken: string
@@ -181,13 +191,42 @@ const loadRecords = async () => {
       id: r.id,
       name: r.name || '-',
       phone: r.phone || '',
-      address: [r.province, r.city, r.district].filter(Boolean).join(' ') || '',
+      maskedPhone: r.phone ? displaySensitiveInfo(r.phone, SensitiveInfoType.PHONE) : '',
+      address: [r.province, r.city, r.district, r.street, r.detailAddress].filter(Boolean).join('') || '',
       gender: r.gender || '',
+      email: r.email || '',
+      wechat: r.wechat || '',
+      age: r.age || '',
+      birthday: r.birthday || '',
+      height: r.height || '',
+      weight: r.weight || '',
+      remark: r.remark || '',
       time: r.createdAt ? new Date(r.createdAt).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : ''
     }))
     recordsTotal.value = rd.total || 0
   } catch { records.value = []; recordsTotal.value = 0 }
   recordsLoading.value = false
+}
+
+/** 获取记录中已填写的字段（排除默认显示的姓名/手机/地址） */
+const getFilledFields = (rec: any) => {
+  const fieldDefs: { key: string; label: string; sensitive?: SensitiveInfoType }[] = [
+    { key: 'gender', label: '性别' },
+    { key: 'age', label: '年龄' },
+    { key: 'birthday', label: '生日' },
+    { key: 'height', label: '身高' },
+    { key: 'weight', label: '体重' },
+    { key: 'email', label: '邮箱', sensitive: SensitiveInfoType.EMAIL },
+    { key: 'wechat', label: '微信号', sensitive: SensitiveInfoType.WECHAT },
+    { key: 'remark', label: '备注' },
+  ]
+  return fieldDefs
+    .filter(f => rec[f.key])
+    .map(f => ({
+      key: f.key,
+      label: f.label,
+      value: f.sensitive ? displaySensitiveInfo(rec[f.key], f.sensitive) : rec[f.key]
+    }))
 }
 
 const refreshRecords = async () => {
@@ -419,10 +458,12 @@ onMounted(() => {
 .mpc-record-info { flex: 1; min-width: 0; }
 .mpc-record-name { font-size: 11px; font-weight: 600; color: #1f2937; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mpc-record-phone { font-size: 10px; color: #9ca3af; }
+.mpc-record-address { font-size: 10px; color: #9ca3af; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mpc-record-time { font-size: 9px; color: #d1d5db; white-space: nowrap; flex-shrink: 0; }
-.mpc-record-detail { padding: 4px 32px 8px; font-size: 11px; }
-.mpc-detail-row { display: flex; gap: 8px; padding: 2px 0; }
-.mpc-detail-label { color: #909399; min-width: 36px; }
+.mpc-record-detail { padding: 6px 12px 8px 36px; font-size: 11px; background: #f9fafb; border-radius: 6px; margin: 2px 0 6px; }
+.mpc-detail-row { display: flex; gap: 8px; padding: 3px 0; }
+.mpc-detail-label { color: #909399; min-width: 42px; flex-shrink: 0; }
+.mpc-detail-empty { color: #d1d5db; font-size: 10px; padding: 4px 0; }
 .mpc-empty { text-align: center; padding: 20px 10px; color: #d1d5db; font-size: 11px; }
 .mpc-empty svg { margin-bottom: 6px; }
 </style>

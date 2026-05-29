@@ -110,11 +110,13 @@ export class SensitiveInfoProcessor {
     const cleanPhone = phone.replace(/\D/g, '')
 
     if (cleanPhone.length === 11) {
-      // 中国大陆手机号：显示前3位和后4位
+      // 中国大陆手机号：前3+****+后4 = 11位完整显示
       return cleanPhone.substring(0, 3) + '****' + cleanPhone.substring(7)
     } else if (cleanPhone.length >= 7) {
-      // 其他格式：使用默认配置
-      return SensitiveInfoProcessor.applyMask(cleanPhone, DEFAULT_MASK_CONFIGS[SensitiveInfoType.PHONE])
+      // 其他长度号码：前3+****+后4
+      return cleanPhone.substring(0, 3) + '****' + cleanPhone.substring(cleanPhone.length - 4)
+    } else if (cleanPhone.length >= 4) {
+      return cleanPhone.substring(0, 1) + '**' + cleanPhone.substring(cleanPhone.length - 1)
     }
 
     return phone
