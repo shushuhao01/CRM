@@ -113,8 +113,8 @@ dist-electron/
 dist_electron/
 out/
 
-# APP项目（独立仓库管理）
-crmAPP/
+# APP项目（已纳入主仓库管理，通过 crm-app remote 进行 subtree push）
+# crmAPP/
 
 # ==================== 文档目录（仅提交到备份仓库）====================
 # docs/ 和 重要文档/ 包含开发记录和重要文档，不提交主仓库和子仓库
