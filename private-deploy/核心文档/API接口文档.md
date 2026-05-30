@@ -1,8 +1,9 @@
 # CRM 系统 API 接口文档
 
-> 版本：1.8.0 | 更新日期：2026-05-05 | 接口总数：约 1400+  
+> 版本：1.8.0 | 更新日期：2026-05-30 | 接口总数：约 1,507+  
 > API 前缀：`/api/v1`（可通过环境变量 `API_PREFIX` 自定义）  
-> 认证方式：Bearer Token（JWT）| 部分公开接口无需认证
+> 认证方式：Bearer Token（JWT）| 部分公开接口无需认证  
+> 路由文件总数：164 | 实体文件：123 | 数据库表：190
 
 ---
 
@@ -37,6 +38,16 @@
 27. [其他模块](#27-其他模块)
 28. [管理后台 /admin](#28-管理后台-admin)
 29. [公开接口 /public](#29-公开接口-public)
+30. [通话线索 /calls/prospects](#30-通话线索-callsprospects)
+31. [外呼配置 /call-config](#31-外呼配置-call-config)
+32. [绩效报表 /performance-report](#32-绩效报表-performance-report)
+33. [权限管理扩展](#33-权限管理扩展)
+34. [企微H5应用 /wecom/h5](#34-企微h5应用-wecomh5)
+35. [企微扩展模块](#35-企微扩展模块)
+36. [会员企微服务 /public/member/wecom](#36-会员企微服务-publicmemberwecom)
+37. [会员短信额度 /public/member/sms-quota](#37-会员短信额度-publicmembersms-quota)
+38. [容量扩容 /public/capacity](#38-容量扩容-publiccapacity)
+39. [管理后台扩展模块](#39-管理后台扩展模块)
 
 ---
 
@@ -1295,6 +1306,679 @@ POST /api/v1/auth/login
 
 ---
 
+---
+
+## 30. 通话线索 /calls/prospects
+
+> 路由前缀：`/api/v1/calls/prospects`  
+> 源文件：`routes/calls/prospects.ts`  
+> 说明：电销潜客管理，支持导入、分配、转化为正式客户
+
+| 方法 | 路径 | 认证 | 说明 |
+|------|------|------|------|
+| GET | `/prospects` | ✅ | 潜客分页列表（含回收站/合并客户） |
+| POST | `/prospects` | ✅ | 创建潜客 |
+| PUT | `/prospects/:id` | ✅ | 更新潜客 |
+| DELETE | `/prospects/:id` | ✅ | 删除潜客（软删除） |
+| POST | `/prospects/batch-delete` | ✅ | 批量删除 |
+| POST | `/prospects/restore` | ✅ | 从回收站恢复 |
+| POST | `/prospects/check-phones` | ✅ | 批量校验手机号（查重） |
+| POST | `/prospects/batch-import` | ✅ | 批量导入潜客 |
+| POST | `/prospects/batch-assign` | ✅ | 批量分配给销售 |
+| POST | `/prospects/convert` | ✅ | 转化为正式客户 |
+| GET | `/prospects/:id/logs` | ✅ | 潜客操作日志 |
+
+---
+
+## 31. 外呼配置 /call-config
+
+> 路由前缀：`/api/v1/call-config`  
+> 源文件：`routes/callConfig.ts`  
+> 说明：外呼线路、工作手机、坐席状态的完整配置管理
+
+### 31.1 全局配置
+
+| 方法 | 路径 | 认证 | 说明 |
+|------|------|------|------|
+| GET | `/global` | ✅ | 获取全局外呼配置 |
+| PUT | `/global` | ✅ | 更新全局外呼配置 |
+
+### 31.2 线路管理
+
+| 方法 | 路径 | 认证 | 说明 |
+|------|------|------|------|
+| GET | `/lines` | ✅ | 外呼线路列表 |
+| POST | `/lines` | ✅ | 创建线路 |
+| PUT | `/lines/:id` | ✅ | 更新线路 |
+| DELETE | `/lines/:id` | ✅ | 删除线路 |
+| POST | `/lines/:id/test` | ✅ | 测试线路连通性 |
+| POST | `/lines/call` | ✅ | 通过线路发起呼叫 |
+
+### 31.3 用户线路分配
+
+| 方法 | 路径 | 认证 | 说明 |
+|------|------|------|------|
+| GET | `/assignments` | ✅ | 用户线路分配列表 |
+| POST | `/assignments` | ✅ | 创建线路分配 |
+| DELETE | `/assignments/:id` | ✅ | 删除线路分配 |
+| GET | `/my-lines` | ✅ | 当前用户可用线路 |
+| GET | `/preference` | ✅ | 外呼偏好设置 |
+| PUT | `/preference` | ✅ | 更新外呼偏好 |
+
+### 31.4 工作手机管理
+
+| 方法 | 路径 | 认证 | 说明 |
+|------|------|------|------|
+| GET | `/work-phones` | ✅ | 工作手机列表 |
+| POST | `/work-phones/qrcode` | ✅ | 生成绑定二维码 |
+| POST | `/work-phones/bind` | 无 | APP扫码绑定工作手机 |
+| GET | `/work-phones/bind-status/:connectionId` | ✅ | 查询绑定状态 |
+| DELETE | `/work-phones/:id` | ✅ | 解绑工作手机 |
+| PUT | `/work-phones/:id/primary` | ✅ | 设为主要手机 |
+| POST | `/work-phones/call` | ✅ | 通过工作手机发起呼叫 |
+
+### 31.5 坐席状态
+
+| 方法 | 路径 | 认证 | 说明 |
+|------|------|------|------|
+| GET | `/agent-status` | ✅ | 当前坐席状态 |
+| PUT | `/agent-status` | ✅ | 更新坐席状态 |
+| GET | `/agent-status/list` | ✅ | 坐席状态列表（管理员） |
+| POST | `/calls/:callId/end` | ✅ | 结束通话 |
+
+---
+
+## 32. 绩效报表 /performance-report
+
+> 路由前缀：`/api/v1/performance-report`  
+> 源文件：`routes/performanceReport.ts`  
+> 说明：自动化绩效报表配置与生成
+
+| 方法 | 路径 | 认证 | 说明 |
+|------|------|------|------|
+| GET | `/configs` | ✅ | 报表配置列表 |
+| POST | `/configs` | ✅ | 创建报表配置 |
+| PUT | `/configs/:id` | ✅ | 更新报表配置 |
+| DELETE | `/configs/:id` | ✅ | 删除报表配置 |
+| GET | `/types` | ✅ | 报表类型选项 |
+| POST | `/preview` | ✅ | 预览绩效数据 |
+| POST | `/configs/:id/test` | ✅ | 测试发送报表 |
+
+---
+
+## 33. 权限管理扩展
+
+### 33.1 客服权限 /customer-service-permissions
+
+> 路由前缀：`/api/v1/customer-service-permissions`  
+> 源文件：`routes/customerServicePermissions.ts`
+
+| 方法 | 路径 | 认证 | 说明 |
+|------|------|------|------|
+| GET | `/` | ✅ | 客服权限列表 |
+| GET | `/:userId` | ✅ | 指定用户客服权限 |
+| PUT | `/:userId` | ✅ | 更新用户客服权限 |
+| POST | `/batch` | ✅ | 批量设置客服权限 |
+| GET | `/config` | ✅ | 客服权限配置 |
+| PUT | `/config` | ✅ | 更新客服权限配置 |
+| GET | `/my` | ✅ | 我的客服权限 |
+| GET | `/departments` | ✅ | 部门客服权限 |
+| PUT | `/departments/:deptId` | ✅ | 更新部门客服权限 |
+
+### 33.2 敏感信息权限 /sensitive-info-permissions
+
+> 路由前缀：`/api/v1/sensitive-info-permissions`  
+> 源文件：`routes/sensitiveInfoPermissions.ts`
+
+| 方法 | 路径 | 认证 | 说明 |
+|------|------|------|------|
+| GET | `/` | ✅ | 敏感信息权限列表 |
+| PUT | `/:userId` | ✅ | 更新用户敏感信息权限 |
+| GET | `/my` | ✅ | 我的敏感信息权限 |
+
+---
+
+## 34. 企微H5应用 /wecom/h5
+
+> 路由前缀：`/api/v1/wecom/h5`  
+> 源文件：`routes/wecom/h5-auth.ts`、`routes/wecom/h5-app.ts`  
+> 说明：企微内H5工作台完整接口
+
+### 34.1 H5认证 /wecom/h5
+
+| 方法 | 路径 | 认证 | 说明 |
+|------|------|------|------|
+| POST | `/login` | 无 | H5登录（企微userId） |
+| POST | `/bind-account` | 无 | 绑定CRM账号 |
+| GET | `/current-user` | H5 | 当前用户信息 |
+| GET | `/jssdk-config` | H5 | JS-SDK签名配置 |
+| GET | `/agent-config` | H5 | Agent应用配置签名 |
+| POST | `/send-code` | 无 | 发送注册验证码 |
+| POST | `/register` | 无 | H5注册新租户 |
+| POST | `/exchange-token` | H5 | 交换Token（跨应用免登） |
+
+### 34.2 H5应用接口 /wecom/h5/app
+
+| 方法 | 路径 | 认证 | 说明 |
+|------|------|------|------|
+| GET | `/home` | H5 | 首页概览数据 |
+| GET | `/customers` | H5 | 客户列表 |
+| GET | `/customer/:id` | H5 | 客户详情 |
+| GET | `/stats` | H5 | 数据统计 |
+| GET | `/stats-detail` | H5 | 增强版统计详情（图表） |
+| GET | `/profile` | H5 | 个人信息 |
+| GET | `/activities` | H5 | 最近动态 |
+| GET | `/notifications` | H5 | 消息通知 |
+| GET | `/tenant-info` | H5 | 租户授权/套餐信息 |
+| GET | `/user-binding` | H5 | 企微成员↔CRM用户绑定 |
+| GET | `/crm-users` | H5 | 可绑定的CRM用户列表 |
+| POST | `/user-binding` | H5 | 创建成员绑定 |
+| DELETE | `/user-binding` | H5 | 解除成员绑定 |
+| GET | `/crm-customers` | H5 | 搜索CRM客户（用于关联） |
+| POST | `/bind-crm` | H5 | 绑定企微客户到CRM |
+| GET | `/script-categories` | H5 | 话术分类 |
+| GET | `/scripts` | H5 | 话术列表 |
+| GET | `/mp-collect-stats` | H5 | 资料采集统计 |
+| GET | `/mp-collect-records` | H5 | 资料采集记录 |
+| POST | `/mp-generate-card` | H5 | 生成小程序卡片 |
+| POST | `/mp-log-send` | H5 | 记录卡片发送日志 |
+| GET | `/mp-send-mode` | H5 | 获取发送模式 |
+| POST | `/mp-send-mode` | H5 | 设置发送模式 |
+| GET | `/mp-phone-quota` | H5 | 小程序手机号额度 |
+| POST | `/mp-phone-quota-purchase` | H5 | 购买手机号额度 |
+
+---
+
+## 35. 企微扩展模块
+
+> 以下为2026年5月后新增的企微子模块
+
+### 35.1 数据与智能专区 /wecom/zone
+
+> 源文件：`routes/wecom/zone.ts`
+
+| 方法 | 路径 | 认证 | 说明 |
+|------|------|------|------|
+| GET | `/zone/callback` | 无 | 专区回调验证（echostr） |
+| POST | `/zone/callback` | 无 | 专区事件接收（加密） |
+
+### 35.2 企微Web登录 /wecom/web-login
+
+> 源文件：`routes/wecom/web-login.ts`
+
+| 方法 | 路径 | 认证 | 说明 |
+|------|------|------|------|
+| GET | `/web-login/config` | 无 | Web登录配置 |
+| GET | `/web-login/callback` | 无 | Web登录回调（GET） |
+| POST | `/web-login/callback` | 无 | Web登录回调（POST） |
+| POST | `/web-login/get-login-info` | 无 | 获取登录用户信息 |
+| POST | `/web-login/agent-config-sign` | ✅ | Agent配置签名 |
+
+### 35.3 客户自动匹配 /wecom/customers/auto-match
+
+> 源文件：`routes/wecom/autoMatch.ts`
+
+| 方法 | 路径 | 认证 | 说明 |
+|------|------|------|------|
+| POST | `/customers/auto-match/run` | ✅ | 执行自动匹配 |
+| GET | `/customers/auto-match/pending` | ✅ | 待确认匹配列表 |
+| GET | `/customers/auto-match/count` | ✅ | 待匹配数量 |
+| POST | `/customers/auto-match/:id/confirm` | ✅ | 确认匹配 |
+| POST | `/customers/auto-match/:id/reject` | ✅ | 拒绝匹配 |
+
+### 35.4 群模板 /wecom/group-templates
+
+> 源文件：`routes/wecom/groupTemplate.ts`
+
+| 方法 | 路径 | 认证 | 说明 |
+|------|------|------|------|
+| GET | `/group-templates` | ✅ | 群模板列表 |
+| POST | `/group-templates` | ✅ | 创建群模板 |
+| PUT | `/group-templates/:id` | ✅ | 更新群模板 |
+| DELETE | `/group-templates/:id` | ✅ | 删除群模板 |
+
+### 35.5 客户会话轨迹 /wecom/timeline
+
+> 源文件：`routes/wecom/timeline.ts`
+
+| 方法 | 路径 | 认证 | 说明 |
+|------|------|------|------|
+| GET | `/timeline/:externalUserId` | ✅ | 客户完整会话轨迹 |
+
+### 35.6 敏感词分组 /wecom/sensitive-word-groups
+
+> 源文件：`routes/wecom/sensitiveWordGroups.ts`
+
+| 方法 | 路径 | 认证 | 说明 |
+|------|------|------|------|
+| GET | `/sensitive-word-groups` | ✅ | 分组列表 |
+| POST | `/sensitive-word-groups` | ✅ | 创建分组 |
+| PUT | `/sensitive-word-groups/:id` | ✅ | 更新分组 |
+| DELETE | `/sensitive-word-groups/:id` | ✅ | 删除分组 |
+
+### 35.7 防骚扰规则 /wecom/anti-spam-rules
+
+> 源文件：`routes/wecom/antiSpamRule.ts`
+
+| 方法 | 路径 | 认证 | 说明 |
+|------|------|------|------|
+| GET | `/anti-spam-rules` | ✅ | 规则列表 |
+| POST | `/anti-spam-rules` | ✅ | 创建规则 |
+| PUT | `/anti-spam-rules/:id` | ✅ | 更新规则 |
+| DELETE | `/anti-spam-rules/:id` | ✅ | 删除规则 |
+
+### 35.8 获客助手统计端点（暂停开发）
+
+> 源文件：`routes/wecom/acquisition.ts`（当前已注释未挂载）
+
+| 方法 | 路径 | 认证 | 说明 |
+|------|------|------|------|
+| GET | `/acquisition-overview` | ✅ | 获客数据总览 |
+| GET | `/acquisition-trend` | ✅ | 获客趋势数据 |
+| GET | `/acquisition-retention` | ✅ | 获客留存分析 |
+| GET | `/acquisition-member-ranking` | ✅ | 成员获客排行 |
+| POST | `/acquisition-links/sync-stats` | ✅ | 同步链接统计数据 |
+| GET | `/acquisition-links` | ✅ | 获客链接列表 |
+| POST | `/acquisition-links` | ✅ | 创建获客链接 |
+| PUT | `/acquisition-links/:id` | ✅ | 更新获客链接 |
+| DELETE | `/acquisition-links/:id` | ✅ | 删除获客链接 |
+| GET | `/acquisition-links/:id/customers` | ✅ | 链接客户列表 |
+| GET | `/acquisition-links/:id/stats` | ✅ | 链接统计数据 |
+| GET | `/acquisition-links/:id/portrait` | ✅ | 链接客户画像 |
+| GET | `/acquisition-links/:id/logs` | ✅ | 链接操作日志 |
+| GET | `/acquisition-smart-rules/:linkId` | ✅ | 智能上下线规则 |
+| POST | `/acquisition-smart-rules/:linkId` | ✅ | 保存智能规则 |
+
+### 35.9 活码管理统计端点（暂停开发）
+
+> 源文件：`routes/wecom/contactWay.ts`（当前已注释未挂载）
+
+| 方法 | 路径 | 认证 | 说明 |
+|------|------|------|------|
+| POST | `/contact-way/sync-stats` | ✅ | 从企微API同步统计 |
+| GET | `/contact-way/overview` | ✅ | 活码数据总览 |
+| GET | `/contact-way/trend` | ✅ | 活码趋势 |
+| GET | `/contact-way/ranking` | ✅ | 成员排行 |
+| GET | `/contact-way/channel-analysis` | ✅ | 渠道分析 |
+| POST | `/contact-way/sync` | ✅ | 同步活码 |
+| GET | `/contact-way` | ✅ | 活码列表 |
+| POST | `/contact-way` | ✅ | 创建活码 |
+| PUT | `/contact-way/:id` | ✅ | 更新活码 |
+| DELETE | `/contact-way/:id` | ✅ | 删除活码 |
+| GET | `/contact-way/:id/detail` | ✅ | 活码详情 |
+| GET | `/contact-way/:id/customers` | ✅ | 活码客户列表 |
+| GET | `/contact-way/:id/stats` | ✅ | 单码统计 |
+| GET | `/contact-way/:id/portrait` | ✅ | 客户画像 |
+| PUT | `/contact-way/batch` | ✅ | 批量更新 |
+| POST | `/contact-way/batch-delete` | ✅ | 批量删除 |
+
+### 35.10 聊天存档扩展
+
+> 以下端点补充到15.2节
+
+| 方法 | 路径 | 认证 | 说明 |
+|------|------|------|------|
+| GET | `/chat-archive/visibility-scope` | ✅ | 存档可见范围 |
+| POST | `/chat-archive/refresh-auth-status` | ✅ | 刷新存档授权状态 |
+| GET | `/chat-archive/rsa-public-key` | ✅ | RSA公钥 |
+
+---
+
+## 36. 会员企微服务 /public/member/wecom
+
+> 路由前缀：`/api/v1/public/member/wecom`  
+> 源文件：`routes/public/member-wecom.ts`  
+> 认证：会员Token（memberAuth）
+
+| 方法 | 路径 | 认证 | 说明 |
+|------|------|------|------|
+| GET | `/` | 会员 | 企微服务概览 |
+| POST | `/purchase` | 会员 | 购买企微服务 |
+| GET | `/order/:orderNo` | 会员 | 订单详情 |
+| GET | `/auth-info` | 会员 | 授权信息 |
+| GET | `/usage` | 会员 | 使用量统计 |
+| GET | `/orders` | 会员 | 订单列表 |
+| POST | `/renew` | 会员 | 续费服务 |
+| POST | `/upgrade` | 会员 | 升级套餐 |
+| GET | `/ai/packages` | 会员 | AI套餐列表 |
+| GET | `/ai/model-usage` | 会员 | AI模型使用量 |
+| GET | `/ai/usage-trend` | 会员 | AI使用趋势 |
+| POST | `/ai/orders` | 会员 | 创建AI订单 |
+
+---
+
+## 37. 会员短信额度 /public/member/sms-quota
+
+> 路由前缀：`/api/v1/public/member/sms-quota`  
+> 源文件：`routes/public/member-sms-quota.ts`  
+> 认证：会员Token（memberAuth）
+
+| 方法 | 路径 | 认证 | 说明 |
+|------|------|------|------|
+| GET | `/` | 会员 | 短信额度概览 |
+| GET | `/packages` | 会员 | 可购套餐列表 |
+| POST | `/purchase` | 会员 | 购买额度 |
+| GET | `/order/:orderNo` | 会员 | 订单详情 |
+| POST | `/simulate-pay/:orderNo` | 会员 | 模拟支付（测试） |
+| GET | `/bills` | 会员 | 消费账单 |
+
+---
+
+## 38. 容量扩容 /public/capacity
+
+> 路由前缀：`/api/v1/public/capacity`  
+> 源文件：`routes/public/capacity.ts`  
+> 认证：会员Token（memberAuth）
+
+| 方法 | 路径 | 认证 | 说明 |
+|------|------|------|------|
+| GET | `/prices` | 会员 | 扩容价格列表 |
+| GET | `/price` | 会员 | 扩容价格（单项） |
+| GET | `/my` | 会员 | 我的扩容信息 |
+| POST | `/order` | 会员 | 创建扩容订单 |
+
+---
+
+## 39. 管理后台扩展模块
+
+> 以下为管理后台（`/api/v1/admin`）中文档未覆盖的子模块
+
+### 39.1 管理后台仪表盘 /admin/dashboard
+
+> 源文件：`routes/admin/dashboard.ts`
+
+| 方法 | 路径 | 认证 | 说明 |
+|------|------|------|------|
+| GET | `/dashboard/overview` | ✅ | 管理面板总览 |
+| GET | `/dashboard/tenant-stats` | ✅ | 租户统计 |
+| GET | `/dashboard/revenue` | ✅ | 营收统计 |
+| GET | `/dashboard/growth` | ✅ | 增长趋势 |
+| GET | `/dashboard/recent-activities` | ✅ | 最近活动 |
+| GET | `/dashboard/alerts` | ✅ | 告警信息 |
+| GET | `/dashboard/system-health` | ✅ | 系统健康 |
+
+### 39.2 容量管理 /admin/capacity
+
+> 源文件：`routes/admin/capacity.ts`
+
+| 方法 | 路径 | 认证 | 说明 |
+|------|------|------|------|
+| GET | `/capacity/prices` | ✅ | 扩容价格配置 |
+| POST | `/capacity/prices` | ✅ | 创建价格 |
+| PUT | `/capacity/prices/:id` | ✅ | 更新价格 |
+| DELETE | `/capacity/prices/:id` | ✅ | 删除价格 |
+| GET | `/capacity/orders` | ✅ | 扩容订单列表 |
+
+### 39.3 移动应用管理 /admin/mobile-app-config
+
+> 源文件：`routes/admin/mobile-app-config.ts`
+
+| 方法 | 路径 | 认证 | 说明 |
+|------|------|------|------|
+| GET | `/mobile-app-config` | ✅ | APP配置列表 |
+| POST | `/mobile-app-config` | ✅ | 创建APP配置 |
+| PUT | `/mobile-app-config/:id` | ✅ | 更新APP配置 |
+| DELETE | `/mobile-app-config/:id` | ✅ | 删除APP配置 |
+| POST | `/mobile-app-config/:id/publish` | ✅ | 发布APP版本 |
+| GET | `/mobile-app-config/latest` | ✅ | 最新版本信息 |
+
+### 39.4 租户数据导出 /admin/tenants/:id/export
+
+> 源文件：`routes/admin/tenant-export.ts`
+
+| 方法 | 路径 | 认证 | 说明 |
+|------|------|------|------|
+| GET | `/tenants/:id/exportable-tables` | ✅ | 可导出数据表 |
+| POST | `/tenants/:id/export` | ✅ | 创建导出任务 |
+| GET | `/tenants/:id/export/:jobId` | ✅ | 导出任务状态 |
+| GET | `/tenants/:id/export/:jobId/download` | ✅ | 下载导出文件 |
+| GET | `/tenants/:id/export/history` | ✅ | 导出历史 |
+| DELETE | `/tenants/:id/export/:jobId` | ✅ | 删除导出文件 |
+
+### 39.5 租户数据导入 /admin/tenants/:id/import
+
+> 源文件：`routes/admin/tenant-import.ts`
+
+| 方法 | 路径 | 认证 | 说明 |
+|------|------|------|------|
+| POST | `/tenants/:id/import` | ✅ | 导入租户数据 |
+| GET | `/tenants/:id/import/:jobId` | ✅ | 导入任务状态 |
+
+### 39.6 短信额度管理 /admin/sms-quota
+
+> 源文件：`routes/admin/sms-quota.ts`
+
+| 方法 | 路径 | 认证 | 说明 |
+|------|------|------|------|
+| GET | `/sms-quota/packages` | ✅ | 额度套餐列表 |
+| POST | `/sms-quota/packages` | ✅ | 创建套餐 |
+| PUT | `/sms-quota/packages/:id` | ✅ | 更新套餐 |
+| DELETE | `/sms-quota/packages/:id` | ✅ | 删除套餐 |
+| PATCH | `/sms-quota/packages/:id/status` | ✅ | 启用/禁用套餐 |
+| GET | `/sms-quota/orders` | ✅ | 购买订单列表 |
+| GET | `/sms-quota/stats` | ✅ | 额度统计 |
+| GET | `/sms-quota/tenant/:tenantId` | ✅ | 租户额度详情 |
+| POST | `/sms-quota/grant` | ✅ | 手动赠送额度 |
+
+### 39.7 系统设置 /admin/system-settings
+
+> 源文件：`routes/admin/system-settings.ts`
+
+| 方法 | 路径 | 认证 | 说明 |
+|------|------|------|------|
+| GET | `/system-settings` | ✅ | 系统设置 |
+| PUT | `/system-settings` | ✅ | 更新系统设置 |
+| GET | `/system-settings/email` | ✅ | 邮件配置 |
+| PUT | `/system-settings/email` | ✅ | 更新邮件配置 |
+| POST | `/system-settings/email/test` | ✅ | 测试邮件发送 |
+
+### 39.8 私有客户管理 /admin/private-customers
+
+> 源文件：`routes/admin/private-customers.ts`
+
+| 方法 | 路径 | 认证 | 说明 |
+|------|------|------|------|
+| GET | `/private-customers` | ✅ | 私有客户列表 |
+| GET | `/private-customers/:id` | ✅ | 客户详情 |
+| POST | `/private-customers` | ✅ | 创建客户 |
+| PUT | `/private-customers/:id` | ✅ | 更新客户 |
+| DELETE | `/private-customers/:id` | ✅ | 删除客户 |
+| GET | `/private-customers/:id/deployments` | ✅ | 部署记录 |
+| POST | `/private-customers/:id/deployments` | ✅ | 创建部署 |
+| PUT | `/private-customers/:id/deployments/:did` | ✅ | 更新部署 |
+| GET | `/private-customers/stats` | ✅ | 客户统计 |
+
+### 39.9 操作日志 /admin/operation-logs
+
+> 源文件：`routes/admin/operation-logs.ts`
+
+| 方法 | 路径 | 认证 | 说明 |
+|------|------|------|------|
+| GET | `/operation-logs` | ✅ | 操作日志列表 |
+| GET | `/operation-logs/export` | ✅ | 导出日志 |
+| DELETE | `/operation-logs/cleanup` | ✅ | 清理过期日志 |
+
+### 39.10 文件上传 /admin/upload
+
+> 源文件：`routes/admin/upload.ts`
+
+| 方法 | 路径 | 认证 | 说明 |
+|------|------|------|------|
+| POST | `/upload/image` | ✅ | 上传图片 |
+| POST | `/upload/file` | ✅ | 上传文件 |
+| POST | `/upload/version-package` | ✅ | 上传版本包 |
+| DELETE | `/upload/file` | ✅ | 删除文件 |
+| GET | `/upload/config` | ✅ | 上传配置 |
+
+### 39.11 通知模板 /admin/notification-templates
+
+> 源文件：`routes/admin/notification-templates.ts`
+
+| 方法 | 路径 | 认证 | 说明 |
+|------|------|------|------|
+| GET | `/notification-templates` | ✅ | 模板列表 |
+| GET | `/notification-templates/:code` | ✅ | 按code获取模板 |
+| POST | `/notification-templates` | ✅ | 创建模板 |
+| PUT | `/notification-templates/:code` | ✅ | 更新模板 |
+| DELETE | `/notification-templates/:code` | ✅ | 删除模板 |
+| POST | `/notification-templates/:code/test` | ✅ | 测试模板 |
+| POST | `/notification-templates/:code/send` | ✅ | 发送通知 |
+
+### 39.12 企微管理完整端点 /admin/wecom-management（104个）
+
+> 源文件：`routes/admin/wecom-management.ts`  
+> 说明：更新原文档§28.6的概括性描述为完整清单
+
+#### 概览与VAS（13个）
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/overview` | 企微概览统计 |
+| GET | `/summary` | 管理摘要 |
+| PUT | `/toggle-archive-auth/:tenantId` | 切换存档授权 |
+| GET | `/vas-config` | VAS配置 |
+| PUT | `/vas-config` | 更新VAS配置 |
+| GET | `/chat-archive-overview` | 会话存档概览 |
+| PUT | `/chat-archive-settings/:tenantId` | 更新存档设置 |
+| DELETE | `/chat-archive-cleanup/:tenantId` | 清理存档数据 |
+| GET | `/vas-orders` | VAS订单列表 |
+| GET | `/vas-orders/:orderNo` | VAS订单详情 |
+| PUT | `/vas-orders/:orderNo/confirm-paid` | 确认付款 |
+| PUT | `/vas-orders/:orderNo/cancel` | 取消订单 |
+| POST | `/check-expired` | 检查过期授权 |
+
+#### 租户授权（11个）
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/tenant-auth` | 授权列表 |
+| GET | `/tenant-auth/:configId/detail` | 授权详情 |
+| POST | `/tenant-auth/:configId/refresh-auth` | 刷新授权 |
+| POST | `/tenant-auth/:configId/bind-tenant` | 绑定租户 |
+| GET | `/tenant-auth/:configId/logs` | 授权日志 |
+| GET | `/tenant-auth/:configId/log-auto-clean` | 日志清理配置 |
+| PUT | `/tenant-auth/:configId/log-auto-clean` | 更新清理配置 |
+| DELETE | `/tenant-auth/:configId/logs` | 删除日志 |
+| GET | `/tenant-auth/:configId/billing` | 计费信息 |
+| POST | `/tenant-auth/:configId/revoke` | 吊销授权 |
+| POST | `/tenant-auth/:configId/restore` | 恢复授权 |
+
+#### 套餐模板与配额（10个）
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/package-templates` | 套餐模板列表 |
+| POST | `/package-templates` | 创建模板 |
+| PUT | `/package-templates/:id` | 更新模板 |
+| DELETE | `/package-templates/:id` | 删除模板 |
+| GET | `/tenant-packages` | 租户套餐列表 |
+| PUT | `/tenant-packages/:tenantId` | 更新租户套餐 |
+| POST | `/tenant-packages/:tenantId/renew` | 续费 |
+| GET | `/quota-monitor` | 配额监控 |
+| GET | `/system-config` | 企微系统配置 |
+| PUT | `/system-config` | 更新系统配置 |
+
+#### AI管理（20个）
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/ai/usage-stats` | AI使用统计 |
+| GET | `/ai/usage-stats/top` | Top排行 |
+| GET | `/ai/usage-logs` | 使用日志 |
+| GET | `/ai/models` | 模型列表 |
+| POST | `/ai/models` | 创建模型 |
+| PUT | `/ai/models/:id` | 更新模型 |
+| DELETE | `/ai/models/:id` | 删除模型 |
+| POST | `/ai/models/:id/test` | 测试模型 |
+| GET | `/ai/tenant-quotas` | 租户AI配额 |
+| PUT | `/ai/tenant-quotas/:tenantId` | 更新配额 |
+| POST | `/ai/tenant-quotas/batch` | 批量更新 |
+| GET | `/ai/billing` | AI计费配置 |
+| PUT | `/ai/billing` | 更新计费 |
+| GET | `/ai/global-settings` | 全局设置 |
+| PUT | `/ai/global-settings` | 更新全局设置 |
+| GET | `/ai/usage-data` | 使用数据 |
+| PUT | `/ai/usage-data` | 更新使用数据 |
+| GET | `/ai/call-logs` | 调用日志 |
+| GET | `/pricing-config` | 定价配置 |
+| PUT | `/pricing-config` | 更新定价 |
+
+#### 采购与供应商（8个）
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/purchase-orders` | 采购订单列表 |
+| POST | `/purchase-orders/:id/fulfill` | 履约 |
+| POST | `/purchase-orders/:id/refund` | 退款 |
+| GET | `/purchase-cost` | 采购成本 |
+| PUT | `/purchase-cost` | 更新成本 |
+| GET | `/supplier-config` | 供应商配置 |
+| PUT | `/supplier-config` | 更新供应商 |
+| POST | `/supplier-config/test-connection` | 测试连接 |
+
+#### 套件Suite管理（32个）
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/suite/config` | 套件配置 |
+| PUT | `/suite/config` | 更新配置 |
+| DELETE | `/suite/config/:id` | 删除配置 |
+| GET | `/suite/secrets` | 套件密钥 |
+| POST | `/suite/test-web-login` | 测试Web登录 |
+| POST | `/suite/test-connection` | 测试连接 |
+| POST | `/suite/clear-cache` | 清除缓存 |
+| GET | `/suite/diagnostic` | 套件诊断 |
+| POST | `/suite/manual-ticket` | 手动ticket |
+| POST | `/suite/auth-link` | 创建授权链接 |
+| GET | `/suite/auth-links` | 授权链接列表 |
+| DELETE | `/suite/auth-links/:id` | 删除链接 |
+| GET | `/suite/auths` | 授权企业列表 |
+| GET | `/suite/auths/:id` | 授权企业详情 |
+| GET | `/suite/bindable-customers` | 可绑定客户 |
+| POST | `/suite/auths/:id/bind-tenant` | 绑定租户 |
+| DELETE | `/suite/auths/:id` | 删除授权 |
+| GET | `/suite/callback-logs` | 回调日志 |
+| DELETE | `/suite/callback-logs` | 清空日志 |
+| GET | `/suite/callback-logs/auto-clean` | 自动清理配置 |
+| PUT | `/suite/callback-logs/auto-clean` | 更新清理 |
+| GET | `/suite/notification-templates` | 通知模板列表 |
+| POST | `/suite/notification-templates` | 创建模板 |
+| PUT | `/suite/notification-templates/:id` | 更新模板 |
+| DELETE | `/suite/notification-templates/:id` | 删除模板 |
+| PATCH | `/suite/notification-templates/:id/toggle` | 切换状态 |
+| POST | `/suite/notification-templates/send` | 发送通知 |
+| GET | `/suite/mp-config` | 小程序配置 |
+| GET | `/suite/mp-secret` | 小程序Secret |
+| PUT | `/suite/mp-config` | 更新小程序配置 |
+| GET | `/suite/mp-test-connection` | 测试小程序连接 |
+| GET | `/suite/wxacode` | 生成小程序码 |
+
+#### 数据统计与审计（12个）
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/data-stats` | 数据统计概览 |
+| GET | `/data-stats/trends` | 数据趋势 |
+| GET | `/data-stats/rankings` | 数据排行 |
+| GET | `/data-stats/export` | 导出统计 |
+| GET | `/audit-log` | 审计日志 |
+| GET | `/audit-log/export` | 导出审计 |
+| GET | `/config-quotas` | 配置配额列表 |
+| PUT | `/config-quotas/:tenantId` | 更新配额 |
+| GET | `/acquisition-usage` | 获客用量（全） |
+| GET | `/acquisition-usage/:tenantId` | 单租户用量 |
+
+### 39.13 授权验证 /admin/verify
+
+> 源文件：`routes/admin/verify.ts`
+
+| 方法 | 路径 | 认证 | 说明 |
+|------|------|------|------|
+| POST | `/verify/license` | ✅ | 验证License |
+| POST | `/verify/heartbeat` | ✅ | License心跳 |
+
+---
+
 ## 附录
 
 ### A. WebSocket 实时通信
@@ -1345,6 +2029,11 @@ POST /api/v1/auth/login
 ---
 
 > **文档说明**  
-> 本文档基于源码自动提取生成，覆盖后端全部 **163 个路由文件、约 1400+ 个 API 接口**。  
+> 本文档基于源码自动提取生成，覆盖后端全部 **164 个路由文件、约 1,507+ 个 API 接口**。  
 > 各接口的详细请求/响应参数请参考对应源文件中的 Joi 验证规则和响应构造。  
 > 如需 Swagger/OpenAPI 格式文档，可基于本文档进一步集成 `swagger-jsdoc` 自动生成。
+>
+> **更新记录**  
+> - 2026-05-05：初版，约1400+接口  
+> - 2026-05-30：补全新增模块（通话线索、外呼配置、绩效报表、权限扩展、企微H5应用、企微扩展模块、会员企微/短信/容量、管理后台扩展等），接口数更新至1507+  
+> - 分析模型：Claude Opus 4.6 (Anthropic)
