@@ -1059,7 +1059,11 @@ watch(
 // 生命周期
 onMounted(async () => {
   // 加载用户数据(修复分配处理人获取不到用户的问题)
-  await userStore.loadUsers()
+  try {
+    await userStore.loadUsers()
+  } catch (e) {
+    console.warn('[ServiceList] 加载用户数据失败（非阻塞）:', e)
+  }
   // 加载售后数据
   loadData()
 })

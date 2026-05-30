@@ -195,13 +195,19 @@ service.interceptors.response.use(
               const deployMode = (localStorage.getItem('crm_deploy_mode') as 'private' | 'saas') || 'saas'
               showLicenseExpiredDialog({ deployMode })
             })
-          } else {
-            ElMessage.error('没有权限访问此资源')
+          } else if (config.showError !== false) {
+            appStore.showError({
+              title: config.errorTitle || '请求失败',
+              message: errorMessage,
+              type: 'error'
+            })
           }
           break
         }
         case 404:
-          ElMessage.error('请求的资源不存在')
+          if (config.showError !== false) {
+            ElMessage.error('请求的资源不存在')
+          }
           break
         case 429:
           ElMessage.warning('请求过于频繁，请稍后重试')

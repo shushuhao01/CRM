@@ -108,11 +108,12 @@ export class ApiService {
       (error) => {
         console.error('[API] 响应错误:', error)
 
-        // 检查是否为健康检查请求或token验证请求，如果是则不显示错误提示
+        // 检查是否为健康检查请求或token验证请求或静默请求，如果是则不显示错误提示
         const isHealthCheck = error.config?.metadata?.isHealthCheck
         const isTokenValidation = error.config?.metadata?.isTokenValidation
+        const isSilent = error.config?.metadata?.silent
 
-        if (!isHealthCheck && !isTokenValidation) {
+        if (!isHealthCheck && !isTokenValidation && !isSilent) {
           // 处理不同类型的错误
           if (error.response) {
             const { status, data } = error.response
@@ -124,8 +125,7 @@ export class ApiService {
                 break
               case 403: {
                 const respData403 = error.response?.data as any
-                // 如果是授权过期或资源配额限制，不显示通用错误（由 request.ts 的 licenseDialog 处理）
-                const skipCodes = ['LICENSE_EXPIRED_WRITE_BLOCKED', 'USER_LIMIT_EXCEEDED', 'STORAGE_LIMIT_EXCEEDED']
+                const skipCodes = ['LICENSE_EXPIRED_WRITE_BLOCKED', 'USER_LIMIT_EXCEEDED', 'STORAGE_LIMIT_EXCEEDED', 'INSUFFICIENT_PERMISSIONS']
                 if (!skipCodes.includes(respData403?.code)) {
                   ElMessage.error(respData403?.message || '没有权限访问该资源')
                 }

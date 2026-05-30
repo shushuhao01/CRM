@@ -66,7 +66,7 @@ export const serviceApi = {
     if (params.search) queryParams.search = params.search
     if (params.orderNumber) queryParams.orderNumber = params.orderNumber
 
-    const response = await api.get<ServiceListResponse>('/services', queryParams)
+    const response = await api.get<ServiceListResponse>('/services', { params: queryParams, showError: false })
     return response.data || response
   },
 

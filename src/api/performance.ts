@@ -501,7 +501,7 @@ export const getPerformanceShares = async (params?: PerformanceShareListParams):
   console.log('[Performance API] 获取业绩分享列表')
   try {
     // 🔥 request.get 返回的是 response.data.data，即直接的数据对象
-    const data = await request.get('/performance/shares', { params })
+    const data = await request.get('/performance/shares', { params, showError: false } as any)
 
     if (data) {
       return {

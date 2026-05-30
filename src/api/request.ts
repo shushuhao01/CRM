@@ -33,6 +33,7 @@ export interface RequestConfig {
   params?: RequestParams
   data?: RequestData
   timeout?: number
+  showError?: boolean
 }
 
 // ── 核心请求函数 ────────────────────────────────────────
@@ -51,13 +52,15 @@ export const request = async <T = unknown>(
     headers = {},
     params,
     data,
-    timeout
+    timeout,
+    showError
   } = config
 
-  const axiosConfig: AxiosRequestConfig = {
+  const axiosConfig: AxiosRequestConfig & { showError?: boolean } = {
     headers,
     params,
-    timeout
+    timeout,
+    ...(showError !== undefined && { showError })
   }
 
   // axios 响应拦截器成功时返回 response.data.data（已解包的内层数据）
@@ -94,8 +97,8 @@ export const request = async <T = unknown>(
 // ── 便捷方法（保持原接口不变）────────────────────────────
 
 export const api = {
-  get: <T = unknown>(endpoint: string, config?: { params?: RequestParams }) =>
-    request<T>(endpoint, { method: 'GET', params: config?.params }),
+  get: <T = unknown>(endpoint: string, config?: { params?: RequestParams; showError?: boolean }) =>
+    request<T>(endpoint, { method: 'GET', params: config?.params, showError: config?.showError }),
 
   post: <T = unknown>(endpoint: string, data?: RequestData) =>
     request<T>(endpoint, { method: 'POST', data }),
