@@ -228,7 +228,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
-import { getAcquisitionMemberRanking, getMemberLinks, updateAcquisitionLink } from '@/api/wecom'
+import { getAcquisitionMemberRanking, getMemberLinks, updateAcquisitionLink, syncAcquisitionLinkStats } from '@/api/wecom'
 
 const props = defineProps<{ configId: number | null; isDemoMode: boolean }>()
 
@@ -412,7 +412,30 @@ const departmentSummary = computed(() => {
 })
 
 watch(() => props.configId, () => { currentPage.value = 1; fetchRanking() })
-onMounted(() => fetchRanking())
+watch(() => quickRange.value, (newVal) => {
+  if (newVal === 'custom' && startDate.value && endDate.value) {
+    currentPage.value = 1
+    fetchRanking()
+  }
+})
+watch([() => startDate.value, () => endDate.value], () => {
+  if (quickRange.value === 'custom' && startDate.value && endDate.value) {
+    currentPage.value = 1
+    fetchRanking()
+  }
+})
+const autoSync = async () => {
+  if (!props.configId || props.isDemoMode) return
+  try {
+    await syncAcquisitionLinkStats(props.configId)
+    fetchRanking()
+  } catch { /* ignore sync errors */ }
+}
+
+onMounted(() => {
+  fetchRanking()
+  autoSync()
+})
 </script>
 
 <style scoped>

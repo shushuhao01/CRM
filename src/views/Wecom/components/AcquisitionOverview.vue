@@ -194,7 +194,7 @@ import { ref, computed, watch, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Download } from '@element-plus/icons-vue'
 import TrendLineChart from './TrendLineChart.vue'
-import { getAcquisitionOverview, getAcquisitionTrend } from '@/api/wecom'
+import { getAcquisitionOverview, getAcquisitionTrend, syncAcquisitionLinkStats } from '@/api/wecom'
 
 const props = defineProps<{ configId: number | null; isDemoMode: boolean }>()
 
@@ -546,9 +546,33 @@ watch(() => props.configId, () => {
   fetchTrendData()
 })
 
+watch(() => quickRange.value, (newVal) => {
+  if (newVal === 'custom' && startDate.value && endDate.value) {
+    fetchOverviewData()
+    fetchTrendData()
+  }
+})
+
+watch([() => startDate.value, () => endDate.value], () => {
+  if (quickRange.value === 'custom' && startDate.value && endDate.value) {
+    fetchOverviewData()
+    fetchTrendData()
+  }
+})
+
+const autoSync = async () => {
+  if (!props.configId || props.isDemoMode) return
+  try {
+    await syncAcquisitionLinkStats(props.configId)
+    fetchOverviewData()
+    fetchTrendData()
+  } catch { /* ignore sync errors */ }
+}
+
 onMounted(() => {
   fetchOverviewData()
   fetchTrendData()
+  autoSync()
 })
 </script>
 

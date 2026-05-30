@@ -39,7 +39,7 @@
             <el-time-select v-model="rules.workTimeEnd" :min-time="rules.workTimeStart" placeholder="结束" start="06:00" end="23:00" step="00:30" size="small" style="width: 100px" />
             <div class="weekday-checks">
               <el-checkbox-group v-model="rules.workDays" size="small">
-                <el-checkbox-button v-for="(d, i) in weekdayLabels" :key="i" :value="i + 1">{{ d }}</el-checkbox-button>
+                <el-checkbox-button v-for="(d, i) in weekdayLabels" :key="i" :label="i + 1">{{ d }}</el-checkbox-button>
               </el-checkbox-group>
             </div>
           </div>
@@ -104,7 +104,9 @@
           <div v-if="rules.deptQuotaEnabled" class="rule-detail">
             <div class="dept-quotas">
               <div v-for="(dq, idx) in rules.deptQuotas" :key="idx" class="dept-quota-row">
-                <el-input v-model="dq.deptName" placeholder="部门名称" size="small" style="width: 120px" />
+                <el-select v-model="dq.deptName" placeholder="选择部门" size="small" style="width: 160px" filterable>
+                  <el-option v-for="dept in departmentList" :key="dept.id" :label="dept.name" :value="dept.name" />
+                </el-select>
                 <span>每日最多</span>
                 <el-input-number v-model="dq.quota" :min="1" :max="999" size="small" style="width: 100px" />
                 <span>人</span>
@@ -127,13 +129,15 @@
 <script setup lang="ts">
 import { ref, reactive, computed, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import { getAcquisitionSmartRules, saveAcquisitionSmartRules } from '@/api/wecom'
+import { getAcquisitionSmartRules, saveAcquisitionSmartRules, getWecomDepartments, getContactWaySmartRules, saveContactWaySmartRules } from '@/api/wecom'
 import type { SmartOnlineRule } from '../types'
 
 const props = defineProps<{
   modelValue: boolean
   linkId: number | null
   isDemoMode: boolean
+  configId?: number | null
+  type?: 'acquisition' | 'contactway'
 }>()
 
 const emit = defineEmits(['update:modelValue', 'close', 'saved'])
@@ -169,8 +173,21 @@ const defaultRules = (): SmartOnlineRule => ({
 
 const rules = reactive(defaultRules())
 
+const departmentList = ref<Array<{ id: number; name: string }>>([])
+
 const addDeptQuota = () => {
   rules.deptQuotas.push({ deptName: '', quota: 50 })
+}
+
+const loadDepartments = async () => {
+  if (!props.configId) return
+  try {
+    const res: any = await getWecomDepartments(props.configId)
+    const data = res?.data || res
+    if (Array.isArray(data)) {
+      departmentList.value = data.map((d: any) => ({ id: d.id || d.departmentId, name: d.name || d.departmentName || `部门${d.id}` }))
+    }
+  } catch { /* ignore */ }
 }
 
 // 加载规则
@@ -180,8 +197,12 @@ watch(() => [props.modelValue, props.linkId], async ([show, linkId]) => {
     Object.assign(rules, defaultRules())
     return
   }
+  loadDepartments()
   try {
-    const res: any = await getAcquisitionSmartRules(linkId as number)
+    const isContactWay = props.type === 'contactway'
+    const res: any = isContactWay
+      ? await getContactWaySmartRules(linkId as number)
+      : await getAcquisitionSmartRules(linkId as number)
     const data = res?.data || res
     if (data) Object.assign(rules, data)
   } catch (e) {
@@ -199,7 +220,12 @@ const handleSave = async () => {
   if (!props.linkId) return
   saving.value = true
   try {
-    await saveAcquisitionSmartRules(props.linkId, { ...rules })
+    const isContactWay = props.type === 'contactway'
+    if (isContactWay) {
+      await saveContactWaySmartRules(props.linkId, { ...rules })
+    } else {
+      await saveAcquisitionSmartRules(props.linkId, { ...rules })
+    }
     ElMessage.success('智能规则已保存')
     emit('saved')
     emit('close')

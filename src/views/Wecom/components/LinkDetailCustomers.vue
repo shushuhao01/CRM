@@ -56,7 +56,8 @@
       </el-table-column>
       <el-table-column label="开口时间" width="160">
         <template #default="{ row }">
-          <span v-if="row.talkTime" style="color: #6B7280">{{ row.talkTime }}</span>
+          <span v-if="row.talkTime && row.talkTime !== '有开口记录'" style="color: #6B7280">{{ row.talkTime }}</span>
+          <el-tag v-else-if="row.talkStatus === 'talked'" type="success" size="small">有开口记录</el-tag>
           <span v-else style="color: #D1D5DB">-</span>
         </template>
       </el-table-column>
@@ -149,6 +150,8 @@ watch(() => props.linkId, () => {
 .filter-bar { display: flex; gap: 10px; margin-bottom: 16px; align-items: center; flex-wrap: wrap; }
 .result-count { font-size: 13px; color: #9CA3AF; }
 .customer-cell { display: flex; align-items: center; gap: 10px; }
+.customer-cell :deep(.el-avatar) { border-radius: 50% !important; width: 32px; height: 32px; flex-shrink: 0; }
+.customer-cell :deep(.el-avatar img) { border-radius: 50%; object-fit: cover; width: 100%; height: 100%; }
 .customer-info { display: flex; flex-direction: column; }
 .customer-name { font-weight: 600; color: #1F2937; font-size: 14px; }
 .customer-nickname { font-size: 12px; color: #9CA3AF; margin-top: 2px; }

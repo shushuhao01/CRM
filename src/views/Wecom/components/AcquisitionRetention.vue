@@ -95,7 +95,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue'
 import TrendLineChart from './TrendLineChart.vue'
-import { getAcquisitionRetention } from '@/api/wecom'
+import { getAcquisitionRetention, syncAcquisitionLinkStats } from '@/api/wecom'
 
 const props = defineProps<{ configId: number | null; isDemoMode: boolean }>()
 
@@ -335,8 +335,24 @@ const fetchRetentionData = async () => {
 
 watch(quickRange, () => fetchRetentionData())
 watch(() => props.configId, () => fetchRetentionData())
+watch([() => startDate.value, () => endDate.value], () => {
+  if (quickRange.value === 'custom' && startDate.value && endDate.value) {
+    fetchRetentionData()
+  }
+})
 
-onMounted(() => fetchRetentionData())
+const autoSync = async () => {
+  if (!props.configId || props.isDemoMode) return
+  try {
+    await syncAcquisitionLinkStats(props.configId)
+    fetchRetentionData()
+  } catch { /* ignore */ }
+}
+
+onMounted(() => {
+  fetchRetentionData()
+  autoSync()
+})
 
 const retClass = (rate: number) => rate < 0 ? 'ret-na' : rate >= 90 ? 'ret-green' : rate >= 70 ? 'ret-orange' : 'ret-red'
 const retClassText = (rate: number) => rate >= 90 ? 'text-green' : rate >= 70 ? 'text-orange' : 'text-red'

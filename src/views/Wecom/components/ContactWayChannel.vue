@@ -120,7 +120,7 @@
 
 <script setup lang="ts">
 import { ref, watch, onMounted } from 'vue'
-import { getContactWayChannelAnalysis } from '@/api/wecomContactWay'
+import { getContactWayChannelAnalysis, syncContactWayStats } from '@/api/wecomContactWay'
 
 const props = defineProps<{ configId: number | null }>()
 
@@ -188,7 +188,21 @@ const fetchData = async () => {
 }
 
 watch(() => props.configId, (val) => { if (val) { channelPage.value = 1; fetchData() } })
-onMounted(() => { if (props.configId) fetchData() })
+
+const autoSync = async () => {
+  if (!props.configId) return
+  try {
+    await syncContactWayStats(props.configId)
+    fetchData()
+  } catch { /* ignore */ }
+}
+
+onMounted(() => {
+  if (props.configId) {
+    fetchData()
+    autoSync()
+  }
+})
 </script>
 
 <style scoped>

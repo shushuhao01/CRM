@@ -291,6 +291,8 @@
       v-model="smartRulesVisible"
       :link-id="smartRulesLinkId"
       :is-demo-mode="isDemoMode"
+      :config-id="selectedConfigId"
+      type="acquisition"
       @close="smartRulesVisible = false"
       @saved="onSmartRulesSaved"
     />

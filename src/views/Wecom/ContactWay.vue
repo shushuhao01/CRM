@@ -192,6 +192,8 @@
       v-model="smartRulesVisible"
       :link-id="smartRulesLinkId"
       :is-demo-mode="false"
+      :config-id="selectedConfigId"
+      type="contactway"
       @close="smartRulesVisible = false"
       @saved="smartRulesVisible = false"
     />

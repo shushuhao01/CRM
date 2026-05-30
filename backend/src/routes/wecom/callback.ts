@@ -340,6 +340,7 @@ async function handleExternalContactChange(config: WecomConfig, changeType: stri
         if (welcomeCode) {
           try {
             let welcomeText = '';
+            let welcomeConfig: any = null;
             // 查找获客链接的欢迎语配置
             const { WecomAcquisitionLink } = await import('../../entities/WecomAcquisitionLink');
             const linkRepo = AppDataSource.getRepository(WecomAcquisitionLink);
@@ -349,6 +350,9 @@ async function handleExternalContactChange(config: WecomConfig, changeType: stri
               try { linkUserIds = JSON.parse(link.userIds || '[]'); } catch {}
               if (linkUserIds.includes(userId) && link.welcomeMsg) {
                 welcomeText = link.welcomeMsg;
+                if (link.welcomeConfig) {
+                  try { welcomeConfig = JSON.parse(link.welcomeConfig); } catch {}
+                }
                 break;
               }
             }
@@ -363,20 +367,48 @@ async function handleExternalContactChange(config: WecomConfig, changeType: stri
                 try { cwUserIds = JSON.parse(cw.userIds || '[]'); } catch {}
                 if (cwUserIds.includes(userId) && cw.welcomeEnabled && cw.welcomeConfig) {
                   try {
-                    const wc = JSON.parse(cw.welcomeConfig);
-                    welcomeText = wc.text || '';
+                    welcomeConfig = JSON.parse(cw.welcomeConfig);
+                    welcomeText = welcomeConfig?.text || '';
                   } catch {}
                   break;
                 }
               }
             }
 
-            if (welcomeText) {
+            if (welcomeText || welcomeConfig) {
+              const msgBody: any = { welcome_code: welcomeCode };
+              const textContent = welcomeConfig?.text || welcomeText;
+              if (textContent) {
+                msgBody.text = { content: textContent };
+              }
+
+              // 构建附件
+              if (welcomeConfig?.mediaType && welcomeConfig.mediaType !== 'none' && welcomeConfig.mediaContent) {
+                const mc = welcomeConfig.mediaContent;
+                const attachments: any[] = [];
+                if (welcomeConfig.mediaType === 'image' && mc.imageUrl) {
+                  attachments.push({ msgtype: 'image', image: { pic_url: mc.imageUrl } });
+                } else if (welcomeConfig.mediaType === 'link' && mc.linkUrl) {
+                  attachments.push({
+                    msgtype: 'link',
+                    link: { title: mc.linkTitle || '', url: mc.linkUrl, desc: mc.linkDesc || '' }
+                  });
+                } else if (welcomeConfig.mediaType === 'miniprogram' && mc.appId) {
+                  attachments.push({
+                    msgtype: 'miniprogram',
+                    miniprogram: { title: mc.title || '', appid: mc.appId, page: mc.pagePath || '' }
+                  });
+                }
+                if (attachments.length > 0) {
+                  msgBody.attachments = attachments;
+                }
+              }
+
               await axios.post(
                 `https://qyapi.weixin.qq.com/cgi-bin/externalcontact/send_welcome_msg?access_token=${accessToken}`,
-                { welcome_code: welcomeCode, text: { content: welcomeText } }
+                msgBody
               );
-              log.info(`[Wecom Callback] Sent welcome msg to ${externalUserId}`);
+              log.info(`[Wecom Callback] Sent welcome msg to ${externalUserId} (attachments: ${msgBody.attachments?.length || 0})`);
             }
           } catch (wErr: any) {
             log.warn('[Wecom Callback] Send welcome msg failed:', wErr.message);

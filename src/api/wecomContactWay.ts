@@ -82,3 +82,8 @@ export const batchUpdateContactWay = (ids: number[], data: { isEnabled?: boolean
 export const batchDeleteContactWay = (ids: number[]) => {
   return request.post('/wecom/contact-way/batch-delete', { ids })
 }
+
+/** 同步活码统计数据 */
+export const syncContactWayStats = (configId: number) => {
+  return request.post('/wecom/contact-way/sync-stats', { configId })
+}

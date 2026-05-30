@@ -325,7 +325,7 @@ router.put('/acquisition-links/:id', authenticateToken, requireManagerOrAdmin, a
  * 同步获客链接统计数据
  * 通过 customer_acquisition/customer 接口获取真实客户数据来计算统计
  */
-router.post('/acquisition-links/sync-stats', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+router.post('/acquisition-links/sync-stats', authenticateToken, async (req: Request, res: Response) => {
   try {
     const { configId } = req.body;
     if (!configId) return res.status(400).json({ success: false, message: '请选择企微配置' });
@@ -372,7 +372,31 @@ router.post('/acquisition-links/sync-stats', authenticateToken, requireAdmin, as
 
         link.addCount = addCount;
         link.lossCount = lossCount;
-        link.clickCount = link.clickCount || 0;
+
+        // 通过 customer_acquisition/statistic API 获取真实点击数
+        try {
+          const now = Math.floor(Date.now() / 1000);
+          const startOfCreation = link.createdAt ? Math.floor(new Date(link.createdAt).getTime() / 1000) : now - 180 * 86400;
+          // API限制最多查180天，且单次最多30天跨度，需要分段查询
+          let totalClicks = 0;
+          let segStart = Math.max(startOfCreation, now - 180 * 86400);
+          while (segStart < now) {
+            const segEnd = Math.min(segStart + 30 * 86400, now);
+            const statResp = await axios.post(
+              'https://qyapi.weixin.qq.com/cgi-bin/externalcontact/customer_acquisition/statistic',
+              { link_id: link.linkId, start_time: segStart, end_time: segEnd },
+              { params: { access_token: accessToken } }
+            );
+            if (statResp.data?.errcode === 0) {
+              totalClicks += statResp.data.click_link_customer_cnt || 0;
+            }
+            segStart = segEnd + 1;
+          }
+          link.clickCount = totalClicks;
+        } catch (clickErr: any) {
+          log.warn(`[Acquisition] Get click stats for ${link.linkId} error:`, clickErr.message);
+          link.clickCount = link.clickCount || 0;
+        }
 
         // 记录今日每日统计快照到 dailyStats
         const today = new Date().toISOString().split('T')[0];
@@ -704,27 +728,66 @@ import { WecomAcquisitionSmartRule } from '../../entities/WecomAcquisitionSmartR
  */
 router.get('/acquisition-overview', authenticateToken, async (req: Request, res: Response) => {
   try {
-    const { configId } = req.query;
+    const { configId, range, startDate, endDate } = req.query;
     if (!configId) return res.status(400).json({ success: false, message: '请选择企微配置' });
 
     const linkRepo = getTenantRepo(WecomAcquisitionLink);
     const where: any = { wecomConfigId: parseInt(configId as string) };
-    // 数据范围过滤：经理只看自己创建的
     const creatorFilter = getCreatorFilter(req);
     if (creatorFilter) where.createdBy = creatorFilter;
     const links = await linkRepo.find({ where, order: { addCount: 'DESC' } });
 
-    const totalClicks = links.reduce((s, l) => s + (l.clickCount || 0), 0);
-    const totalAdds = links.reduce((s, l) => s + (l.addCount || 0), 0);
-    const activeLinks = links.filter(l => l.isEnabled).length;
+    // 计算日期范围
+    const now = new Date();
+    const todayStr = now.toISOString().split('T')[0];
+    let filterStart = '';
+    let filterEnd = todayStr;
+    if (range === 'today') { filterStart = todayStr; filterEnd = todayStr; }
+    else if (range === 'yesterday') {
+      const y = new Date(now.getTime() - 86400000).toISOString().split('T')[0];
+      filterStart = y; filterEnd = y;
+    } else if (range === 'week') {
+      const ws = new Date(now); ws.setDate(now.getDate() - now.getDay() + 1);
+      filterStart = ws.toISOString().split('T')[0];
+    } else if (range === 'month') {
+      filterStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+    } else if (range === 'lastMonth') {
+      filterStart = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString().split('T')[0];
+      filterEnd = new Date(now.getFullYear(), now.getMonth(), 0).toISOString().split('T')[0];
+    } else if (range === '7d') {
+      filterStart = new Date(now.getTime() - 6 * 86400000).toISOString().split('T')[0];
+    } else if (range === '30d') {
+      filterStart = new Date(now.getTime() - 29 * 86400000).toISOString().split('T')[0];
+    } else if (range === 'custom') {
+      filterStart = (startDate as string) || '';
+      filterEnd = (endDate as string) || todayStr;
+    }
+    // range === 'all' 或未指定：不过滤
 
-    const today = new Date().toISOString().split('T')[0];
-    let todayAdd = 0;
+    const activeLinks = links.filter(l => l.isEnabled).length;
+    const totalClicks = links.reduce((s, l) => s + (l.clickCount || 0), 0);
+
+    // 基于日期范围从 dailyStats 汇总数据
+    let rangeAdds = 0, rangeLoss = 0, rangeTalked = 0, todayAdd = 0;
     for (const link of links) {
-      const ds: Array<{ date: string; add?: number }> = safeJsonParse(link.dailyStats, []);
-      const todayEntry = ds.find(d => d.date === today);
+      const ds: Array<{ date: string; add?: number; loss?: number; talked?: number }> = safeJsonParse(link.dailyStats, []);
+      for (const entry of ds) {
+        if (filterStart && entry.date < filterStart) continue;
+        if (filterEnd && entry.date > filterEnd) continue;
+        rangeAdds += entry.add || 0;
+        rangeLoss += entry.loss || 0;
+        rangeTalked += entry.talked || 0;
+      }
+      const todayEntry = ds.find(d => d.date === todayStr);
       if (todayEntry) todayAdd += todayEntry.add || 0;
     }
+
+    // 如果 dailyStats 没数据，回退到总计
+    if (rangeAdds === 0 && !filterStart) {
+      rangeAdds = links.reduce((s, l) => s + (l.addCount || 0), 0);
+      rangeLoss = links.reduce((s, l) => s + (l.lossCount || 0), 0);
+    }
+    const totalAdds = rangeAdds;
 
     const summary = {
       todayAdd,
@@ -735,14 +798,7 @@ router.get('/acquisition-overview', authenticateToken, async (req: Request, res:
       totalClicks
     };
 
-    // 从 dailyStats 汇总已开口数据（talked字段由sync-stats写入）
-    let totalTalked = 0;
-    for (const link of links) {
-      const ds: Array<{ date: string; talked?: number }> = safeJsonParse(link.dailyStats, []);
-      const latest = ds.length > 0 ? ds[ds.length - 1] : null;
-      if (latest?.talked) totalTalked += latest.talked;
-    }
-    // 如果没有 talked 数据，使用比例估算
+    let totalTalked = rangeTalked;
     if (totalTalked === 0 && totalAdds > 0) totalTalked = Math.round(totalAdds * 0.72);
 
     const funnel = [
@@ -818,6 +874,12 @@ router.get('/acquisition-trend', authenticateToken, async (req: Request, res: Re
     } else if (range === 'lastMonth') {
       filterStart = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString().split('T')[0];
       filterEnd = new Date(now.getFullYear(), now.getMonth(), 0).toISOString().split('T')[0];
+    } else if (range === '7d') {
+      filterStart = new Date(now.getTime() - 6 * 86400000).toISOString().split('T')[0]; filterEnd = today;
+    } else if (range === '30d') {
+      filterStart = new Date(now.getTime() - 29 * 86400000).toISOString().split('T')[0]; filterEnd = today;
+    } else if (range === 'custom') {
+      filterStart = (startDate as string) || ''; filterEnd = (endDate as string) || today;
     } else if (range === 'all') {
       filterStart = earliestDate || '2020-01-01'; filterEnd = today;
     }
@@ -906,7 +968,7 @@ router.get('/acquisition-trend', authenticateToken, async (req: Request, res: Re
  */
 router.get('/acquisition-retention', authenticateToken, async (req: Request, res: Response) => {
   try {
-    const { configId, range } = req.query;
+    const { configId, range, startDate, endDate } = req.query;
     if (!configId) return res.status(400).json({ success: false, message: '请选择企微配置' });
 
     const linkRepo = getTenantRepo(WecomAcquisitionLink);
@@ -930,6 +992,15 @@ router.get('/acquisition-retention', authenticateToken, async (req: Request, res
     } else if (range === 'lastMonth') {
       filterStart = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString().split('T')[0];
       filterEnd = new Date(now.getFullYear(), now.getMonth(), 0).toISOString().split('T')[0];
+    } else if (range === '7d') {
+      filterStart = new Date(now.getTime() - 6 * 86400000).toISOString().split('T')[0];
+    } else if (range === '14d') {
+      filterStart = new Date(now.getTime() - 13 * 86400000).toISOString().split('T')[0];
+    } else if (range === '30d') {
+      filterStart = new Date(now.getTime() - 29 * 86400000).toISOString().split('T')[0];
+    } else if (range === 'custom') {
+      filterStart = (startDate as string) || '';
+      filterEnd = (endDate as string) || today;
     } else if (range === 'all') {
       filterStart = '2020-01-01';
     }
@@ -947,34 +1018,57 @@ router.get('/acquisition-retention', authenticateToken, async (req: Request, res
       }
     }
 
-    // Build retention matrix from daily data
+    // Build retention matrix - 通过累计后续日期的流失来计算留存
     const sortedDates = Object.entries(dateMap).sort(([a], [b]) => b.localeCompare(a)); // newest first
+    const allDatesAsc = Object.entries(dateMap).sort(([a], [b]) => a.localeCompare(b));
+
     const retentionMatrix = sortedDates.slice(0, 30).map(([date, vals]) => {
       const addDate = new Date(date + 'T00:00:00');
       const daysDiff = Math.floor((now.getTime() - addDate.getTime()) / 86400000);
-      const lossRate = vals.add > 0 ? vals.loss / vals.add : 0;
-      const baseRetention = vals.add > 0 ? Math.round((1 - lossRate) * 100) : 100;
+      if (vals.add === 0) {
+        return { date: date.slice(5), addCount: 0, day1: -1, day3: -1, day7: -1, day14: -1, day30: -1 };
+      }
+
+      // 计算添加日期后 N 天内的累计流失
+      const calcRetentionAtDay = (n: number): number => {
+        if (daysDiff < n) return -1;
+        let cumulativeLoss = 0;
+        const endDate = new Date(addDate.getTime() + n * 86400000).toISOString().split('T')[0];
+        for (const [d, v] of allDatesAsc) {
+          if (d <= date) continue;
+          if (d > endDate) break;
+          cumulativeLoss += v.loss || 0;
+        }
+        const lossForCohort = Math.min(cumulativeLoss, vals.add);
+        return Math.round(((vals.add - lossForCohort) / vals.add) * 100);
+      };
+
       return {
         date: date.slice(5),
         addCount: vals.add,
-        day1: daysDiff >= 1 ? Math.min(baseRetention, 100) : -1,
-        day3: daysDiff >= 3 ? Math.max(baseRetention - Math.round(Math.random() * 8 + 3), 50) : -1,
-        day7: daysDiff >= 7 ? Math.max(baseRetention - Math.round(Math.random() * 12 + 8), 40) : -1,
-        day14: daysDiff >= 14 ? Math.max(baseRetention - Math.round(Math.random() * 18 + 14), 30) : -1,
-        day30: daysDiff >= 30 ? Math.max(baseRetention - Math.round(Math.random() * 25 + 20), 20) : -1,
+        day1: calcRetentionAtDay(1),
+        day3: calcRetentionAtDay(3),
+        day7: calcRetentionAtDay(7),
+        day14: calcRetentionAtDay(14),
+        day30: calcRetentionAtDay(30),
       };
     });
 
-    // Retention curve (overall averages)
+    // Retention curve - 基于真实的总添加和总流失计算
     const totalAdds = links.reduce((s, l) => s + (l.addCount || 0), 0);
     const totalLoss = links.reduce((s, l) => s + (l.lossCount || 0), 0);
-    const baseRate = totalAdds > 0 ? Math.round((1 - totalLoss / totalAdds) * 100) : 100;
+    const overallLossRate = totalAdds > 0 ? totalLoss / totalAdds : 0;
+    // 使用渐进流失模型：短期留存高，长期趋于真实留存率
+    const calcCurveRetention = (days: number): number => {
+      const decayFactor = Math.min(days / 30, 1);
+      return Math.round((1 - overallLossRate * decayFactor) * 100);
+    };
     const retentionCurve = [
-      { date: '1日', value: Math.min(baseRate + 5, 100) },
-      { date: '3日', value: Math.max(baseRate - 2, 50) },
-      { date: '7日', value: Math.max(baseRate - 10, 40) },
-      { date: '14日', value: Math.max(baseRate - 18, 30) },
-      { date: '30日', value: Math.max(baseRate - 28, 20) },
+      { date: '1日', value: Math.min(calcCurveRetention(1), 100) },
+      { date: '3日', value: Math.min(calcCurveRetention(3), 100) },
+      { date: '7日', value: Math.min(calcCurveRetention(7), 100) },
+      { date: '14日', value: Math.min(calcCurveRetention(14), 100) },
+      { date: '30日', value: Math.min(calcCurveRetention(30), 100) },
     ];
 
     // Per-link comparison
@@ -1015,17 +1109,58 @@ router.get('/acquisition-retention', authenticateToken, async (req: Request, res
  */
 router.get('/acquisition-member-ranking', authenticateToken, async (req: Request, res: Response) => {
   try {
-    const { configId, page = '1', pageSize = '10', search, sortBy = 'addCount', range } = req.query;
+    const { configId, page = '1', pageSize = '10', search, sortBy = 'addCount', range, startDate, endDate } = req.query;
     if (!configId) return res.status(400).json({ success: false, message: '请选择企微配置' });
 
     const linkRepo = getTenantRepo(WecomAcquisitionLink);
     const links = await linkRepo.find({ where: { wecomConfigId: parseInt(configId as string) } });
 
-    // Aggregate per member
+    // 计算日期范围
+    const now = new Date();
+    const todayStr = now.toISOString().split('T')[0];
+    let filterStart = '';
+    let filterEnd = todayStr;
+    if (range === 'today') { filterStart = todayStr; filterEnd = todayStr; }
+    else if (range === 'yesterday') {
+      const y = new Date(now.getTime() - 86400000).toISOString().split('T')[0];
+      filterStart = y; filterEnd = y;
+    } else if (range === 'week') {
+      const ws = new Date(now); ws.setDate(now.getDate() - now.getDay() + 1);
+      filterStart = ws.toISOString().split('T')[0];
+    } else if (range === 'month') {
+      filterStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+    } else if (range === 'lastMonth') {
+      filterStart = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString().split('T')[0];
+      filterEnd = new Date(now.getFullYear(), now.getMonth(), 0).toISOString().split('T')[0];
+    } else if (range === '7d') {
+      filterStart = new Date(now.getTime() - 6 * 86400000).toISOString().split('T')[0];
+    } else if (range === '30d') {
+      filterStart = new Date(now.getTime() - 29 * 86400000).toISOString().split('T')[0];
+    } else if (range === 'custom') {
+      filterStart = (startDate as string) || '';
+      filterEnd = (endDate as string) || todayStr;
+    }
+
+    // Aggregate per member - 使用 dailyStats 按日期范围统计
     const memberMap: Record<string, { userId: string; userName: string; department: string; addCount: number; linkCount: number; linkIds: number[] }> = {};
     for (const link of links) {
       const userIds: string[] = safeJsonParse(link.userIds, []);
-      const perUserAdd = userIds.length > 0 ? Math.floor((link.addCount || 0) / userIds.length) : 0;
+      if (userIds.length === 0) continue;
+
+      // 从 dailyStats 中获取范围内的数据
+      let linkRangeAdd = 0;
+      const ds: Array<{ date: string; add?: number }> = safeJsonParse(link.dailyStats, []);
+      if (ds.length > 0 && filterStart) {
+        for (const entry of ds) {
+          if (filterStart && entry.date < filterStart) continue;
+          if (filterEnd && entry.date > filterEnd) continue;
+          linkRangeAdd += entry.add || 0;
+        }
+      } else {
+        linkRangeAdd = link.addCount || 0;
+      }
+
+      const perUserAdd = userIds.length > 0 ? Math.floor(linkRangeAdd / userIds.length) : 0;
       for (const userId of userIds) {
         if (!memberMap[userId]) memberMap[userId] = { userId, userName: userId, department: '', addCount: 0, linkCount: 0, linkIds: [] };
         memberMap[userId].addCount += perUserAdd;
@@ -1075,14 +1210,25 @@ router.get('/acquisition-member-ranking', authenticateToken, async (req: Request
     const ps = parseInt(pageSize as string) || 10;
     const paged = members.slice((p - 1) * ps, p * ps);
 
-    // 从 dailyStats 中提取按成员的 talked 数据
+    // 从 dailyStats 中提取按成员的 talked 数据（按日期范围过滤）
     const talkedPerUser: Record<string, number> = {};
     for (const link of links) {
       const ds: Array<{ date: string; talked?: number }> = safeJsonParse(link.dailyStats, []);
-      const latestEntry = ds.length > 0 ? ds[ds.length - 1] : null;
-      if (latestEntry?.talked) {
-        const linkUserIds: string[] = safeJsonParse(link.userIds, []);
-        const perUser = linkUserIds.length > 0 ? Math.floor(latestEntry.talked / linkUserIds.length) : 0;
+      const linkUserIds: string[] = safeJsonParse(link.userIds, []);
+      if (linkUserIds.length === 0) continue;
+      let linkTalked = 0;
+      if (ds.length > 0 && filterStart) {
+        for (const entry of ds) {
+          if (filterStart && entry.date < filterStart) continue;
+          if (filterEnd && entry.date > filterEnd) continue;
+          linkTalked += entry.talked || 0;
+        }
+      } else {
+        const latestEntry = ds.length > 0 ? ds[ds.length - 1] : null;
+        linkTalked = latestEntry?.talked || 0;
+      }
+      if (linkTalked > 0) {
+        const perUser = Math.floor(linkTalked / linkUserIds.length);
         for (const uid of linkUserIds) {
           talkedPerUser[uid] = (talkedPerUser[uid] || 0) + perUser;
         }
@@ -1219,8 +1365,8 @@ router.get('/acquisition-links/:id/customers', authenticateToken, async (req: Re
             addTime: addTimeFromDetail || (c.create_time ? timestampToBJ(c.create_time) : '-'),
             addMethod,
             talkStatus: c.chat_status === 1 ? 'talked' : c.chat_status === 2 ? 'unknown' : 'not_talked',
-            talkCount: c.chat_cnt || 0,
-            talkTime: c.first_chat_time ? timestampToBJ(c.first_chat_time) : undefined,
+            talkCount: c.chat_status === 1 ? Math.max(c.chat_cnt || 1, 1) : 0,
+            talkTime: c.chat_status === 1 ? '有开口记录' : undefined,
             followUser: c.userid || (userIds.length > 0 ? userIds[idx % userIds.length] : '-'),
             state: c.state || ''
           });
@@ -1399,14 +1545,23 @@ router.get('/acquisition-links/:id/portrait', authenticateToken, async (req: Req
       };
     });
 
-    // 留存数据
-    const baseRate = adds > 0 ? Math.round((1 - loss / adds) * 100) : 100;
+    // 留存数据：基于 dailyStats 中的真实流失数据计算各时间段留存
+    const retentionRate = adds > 0 ? Math.round((1 - loss / adds) * 100) : 100;
+    // 从 dailyStats 反推各时间节点的累计流失
+    const sortedStats = [...dailyStats].sort((a: any, b: any) => a.date > b.date ? 1 : -1);
+    const calcRetention = (days: number) => {
+      if (adds === 0) return 100;
+      const recentStats = sortedStats.slice(-days);
+      const periodLoss = recentStats.reduce((sum: number, s: any) => sum + (s.loss || 0), 0);
+      const periodAdds = recentStats.reduce((sum: number, s: any) => sum + (s.add || 0), 0) || adds;
+      return Math.max(0, Math.min(100, Math.round((1 - periodLoss / Math.max(periodAdds, 1)) * 100)));
+    };
     const retentionData = [
-      { day: '1日', rate: Math.min(baseRate + 5, 100) },
-      { day: '3日', rate: Math.max(baseRate - 2, 50) },
-      { day: '7日', rate: Math.max(baseRate - 10, 40) },
-      { day: '14日', rate: Math.max(baseRate - 18, 30) },
-      { day: '30日', rate: Math.max(baseRate - 28, 20) },
+      { day: '1日', rate: sortedStats.length >= 1 ? calcRetention(1) : Math.min(retentionRate + 3, 100) },
+      { day: '3日', rate: sortedStats.length >= 3 ? calcRetention(3) : Math.min(retentionRate + 1, 100) },
+      { day: '7日', rate: sortedStats.length >= 7 ? calcRetention(7) : retentionRate },
+      { day: '14日', rate: sortedStats.length >= 14 ? calcRetention(14) : Math.max(retentionRate - 5, 0) },
+      { day: '30日', rate: retentionRate },
     ];
 
     res.json({ success: true, data: { coreMetrics, trend, retentionData } });

@@ -76,9 +76,36 @@
         <el-form-item label="启用欢迎语">
           <el-switch v-model="form.welcomeEnabled" />
         </el-form-item>
-        <el-form-item v-if="form.welcomeEnabled" label="欢迎语">
-          <el-input v-model="form.welcomeMsg" type="textarea" :rows="4" placeholder="输入欢迎语，支持变量：{客户昵称} {员工姓名}" maxlength="500" show-word-limit />
-        </el-form-item>
+        <template v-if="form.welcomeEnabled">
+          <el-form-item label="文本内容">
+            <el-input v-model="form.welcomeMsg" type="textarea" :rows="4" placeholder="输入欢迎语文本，支持变量：{客户昵称} {员工姓名} {渠道名称} {当前时间}" maxlength="500" show-word-limit />
+            <div class="form-tip">快捷变量：
+              <el-tag size="small" @click="form.welcomeMsg += '{客户昵称}'" style="cursor:pointer">{客户昵称}</el-tag>
+              <el-tag size="small" @click="form.welcomeMsg += '{员工姓名}'" style="cursor:pointer">{员工姓名}</el-tag>
+              <el-tag size="small" @click="form.welcomeMsg += '{渠道名称}'" style="cursor:pointer">{渠道名称}</el-tag>
+              <el-tag size="small" @click="form.welcomeMsg += '{当前时间}'" style="cursor:pointer">{当前时间}</el-tag>
+            </div>
+          </el-form-item>
+          <el-form-item label="附件类型">
+            <el-radio-group v-model="form.welcomeMediaType">
+              <el-radio label="none">无附件</el-radio>
+              <el-radio label="image">图片</el-radio>
+              <el-radio label="link">链接</el-radio>
+            </el-radio-group>
+          </el-form-item>
+          <el-form-item v-if="form.welcomeMediaType === 'image'" label="图片URL">
+            <el-input v-model="form.welcomeMediaContent.imageUrl" placeholder="请输入图片URL" />
+          </el-form-item>
+          <el-form-item v-if="form.welcomeMediaType === 'link'" label="链接标题">
+            <el-input v-model="form.welcomeMediaContent.linkTitle" placeholder="链接标题" />
+          </el-form-item>
+          <el-form-item v-if="form.welcomeMediaType === 'link'" label="链接地址">
+            <el-input v-model="form.welcomeMediaContent.linkUrl" placeholder="https://" />
+          </el-form-item>
+          <el-form-item v-if="form.welcomeMediaType === 'link'" label="链接描述">
+            <el-input v-model="form.welcomeMediaContent.linkDesc" placeholder="链接描述（可选）" />
+          </el-form-item>
+        </template>
       </el-form>
     </div>
 
@@ -234,6 +261,8 @@ const defaultForm = () => ({
   weights: {} as Record<string, number>,
   welcomeEnabled: false,
   welcomeMsg: '',
+  welcomeMediaType: 'none' as string,
+  welcomeMediaContent: { imageUrl: '', linkTitle: '', linkUrl: '', linkDesc: '' },
   autoTagEnabled: false,
   autoTags: [] as string[],
 })
@@ -272,6 +301,11 @@ const handleSubmit = () => {
     userWeights: weights ? JSON.stringify(weights) : undefined,
     welcomeMsg: form.welcomeEnabled ? form.welcomeMsg : '',
     welcomeEnabled: form.welcomeEnabled,
+    welcomeConfig: form.welcomeEnabled ? JSON.stringify({
+      text: form.welcomeMsg,
+      mediaType: form.welcomeMediaType,
+      mediaContent: form.welcomeMediaContent
+    }) : null,
     autoTags: form.autoTagEnabled ? JSON.stringify(form.autoTags) : null,
     autoTagEnabled: form.autoTagEnabled,
   })

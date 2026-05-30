@@ -140,7 +140,7 @@
 <script setup lang="ts">
 import { ref, watch, onMounted } from 'vue'
 import TrendLineChart from './TrendLineChart.vue'
-import { getContactWayOverview, getContactWayTrend, getContactWayRanking } from '@/api/wecomContactWay'
+import { getContactWayOverview, getContactWayTrend, getContactWayRanking, syncContactWayStats } from '@/api/wecomContactWay'
 
 const props = defineProps<{ configId: number | null }>()
 
@@ -268,7 +268,21 @@ const fetchAll = () => {
 const retClass = (rate: number) => rate >= 85 ? 'text-success' : rate >= 70 ? 'text-warning' : 'text-danger'
 
 watch(() => props.configId, (val) => { if (val) fetchAll() })
-onMounted(() => { if (props.configId) fetchAll() })
+
+const autoSync = async () => {
+  if (!props.configId) return
+  try {
+    await syncContactWayStats(props.configId)
+    fetchAll()
+  } catch { /* ignore sync errors */ }
+}
+
+onMounted(() => {
+  if (props.configId) {
+    fetchAll()
+    autoSync()
+  }
+})
 </script>
 
 <style scoped>
