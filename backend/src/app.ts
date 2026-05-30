@@ -424,7 +424,7 @@ const startServer = async () => {
 
       // 初始化 WebSocket 服务（异步）
       webSocketService.initialize(httpServer).then(() => {
-        global.webSocketService = webSocketService;
+        (global as any).webSocketService = webSocketService;
         if (webSocketService.isInitialized()) {
           logger.info(`📡 WebSocket 实时推送服务已启动`);
         }
