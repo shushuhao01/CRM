@@ -585,18 +585,20 @@ const router = createRouter({
       component: () => import('../views/Wecom/CustomerGroup.vue'),
       meta: { title: '客户群', requiresAuth: true }
     },
-    {
-      path: '/wecom/acquisition',
-      name: 'WecomAcquisition',
-      component: () => import('../views/Wecom/Acquisition.vue'),
-      meta: { title: '获客助手', requiresAuth: true }
-    },
-    {
-      path: '/wecom/contact-way',
-      name: 'WecomContactWay',
-      component: () => import('../views/Wecom/ContactWay.vue'),
-      meta: { title: '活码管理', requiresAuth: true }
-    },
+    // [暂停开发] 获客助手
+    // {
+    //   path: '/wecom/acquisition',
+    //   name: 'WecomAcquisition',
+    //   component: () => import('../views/Wecom/Acquisition.vue'),
+    //   meta: { title: '获客助手', requiresAuth: true }
+    // },
+    // [暂停开发] 活码管理
+    // {
+    //   path: '/wecom/contact-way',
+    //   name: 'WecomContactWay',
+    //   component: () => import('../views/Wecom/ContactWay.vue'),
+    //   meta: { title: '活码管理', requiresAuth: true }
+    // },
     {
       path: '/wecom/chat-archive',
       name: 'WecomChatArchive',

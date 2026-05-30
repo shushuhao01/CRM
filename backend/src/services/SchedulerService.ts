@@ -13,7 +13,7 @@ import { logisticsAutoSyncService } from './LogisticsAutoSyncService';
 import { wecomSyncScheduler } from './WecomSyncScheduler';
 import { onlineSeatService } from './OnlineSeatService';
 import { capacityService } from './CapacityService';
-import { smartOnlineScheduler } from './SmartOnlineScheduler';
+// import { smartOnlineScheduler } from './SmartOnlineScheduler'; // [暂停开发] 获客助手/活码管理
 
 import { log } from '../config/logger';
 export class SchedulerService {
@@ -118,15 +118,15 @@ export class SchedulerService {
       '扩容到期回退检查（每小时）'
     );
 
-    // 🔥 获客助手/活码智能上下线规则执行 - 每5分钟检查一次
-    this.scheduleTask(
-      'smart-online-check',
-      '*/5 * * * *', // 每5分钟
-      async () => {
-        await smartOnlineScheduler.runCheck();
-      },
-      '智能上下线规则检查（每5分钟）'
-    );
+    // [暂停开发] 获客助手/活码智能上下线规则执行
+    // this.scheduleTask(
+    //   'smart-online-check',
+    //   '*/5 * * * *',
+    //   async () => {
+    //     await smartOnlineScheduler.runCheck();
+    //   },
+    //   '智能上下线规则检查（每5分钟）'
+    // );
 
     // 如果是开发环境,可以设置更频繁的检查用于测试
     if (process.env.NODE_ENV !== 'production') {
@@ -212,9 +212,10 @@ export class SchedulerService {
         case 'capacity-expire-check':
           await capacityService.expireCapacityOrders();
           return true;
-        case 'smart-online-check':
-          await smartOnlineScheduler.runCheck();
-          return true;
+        // [暂停开发]
+        // case 'smart-online-check':
+        //   await smartOnlineScheduler.runCheck();
+        //   return true;
         default:
           log.error(`[Scheduler] 未知任务: ${name}`);
           return false;

@@ -420,20 +420,22 @@ export const menuConfig: MenuItem[] = [
         roles: ['super_admin', 'admin', 'department_manager'],
         permissions: ['wecom:group', 'wecom.customer_group']
       },
-      {
-        id: 'wecom-acquisition',
-        title: '获客助手',
-        path: '/wecom/acquisition',
-        roles: ['super_admin', 'admin', 'department_manager'],
-        permissions: ['wecom:acquisition']
-      },
-      {
-        id: 'wecom-contact-way',
-        title: '活码管理',
-        path: '/wecom/contact-way',
-        roles: ['super_admin', 'admin', 'department_manager'],
-        permissions: ['wecom:contact_way']
-      },
+      // [暂停开发] 获客助手
+      // {
+      //   id: 'wecom-acquisition',
+      //   title: '获客助手',
+      //   path: '/wecom/acquisition',
+      //   roles: ['super_admin', 'admin', 'department_manager'],
+      //   permissions: ['wecom:acquisition']
+      // },
+      // [暂停开发] 活码管理
+      // {
+      //   id: 'wecom-contact-way',
+      //   title: '活码管理',
+      //   path: '/wecom/contact-way',
+      //   roles: ['super_admin', 'admin', 'department_manager'],
+      //   permissions: ['wecom:contact_way']
+      // },
       {
         id: 'wecom-chat-archive',
         title: '会话存档',

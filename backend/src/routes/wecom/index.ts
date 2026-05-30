@@ -39,7 +39,7 @@ import configRouter from './config';
 import bindingRouter from './binding';
 import customerRouter from './customer';
 import customerGroupRouter from './customerGroup';
-import acquisitionRouter from './acquisition';
+// import acquisitionRouter from './acquisition'; // [暂停开发] 获客助手
 import serviceRouter from './service';
 // import paymentRouter from './payment'; // 对外收款 - 暂停开发
 import chatArchiveRouter from './chatArchive';
@@ -50,7 +50,7 @@ import qualityInspectionRouter from './qualityInspection';
 import archiveSettingsRouter from './archiveSettings';
 import seatManagementRouter from './seatManagement';
 // V4.0 新增路由
-import contactWayRouter from './contactWay';
+// import contactWayRouter from './contactWay'; // [暂停开发] 活码管理
 import aiAssistantRouter from './aiAssistant';
 import addressBookRouter from './addressBook';
 import autoMatchRouter from './autoMatch';
@@ -78,7 +78,7 @@ router.use('/', configRouter);
 router.use('/', bindingRouter);
 router.use('/', customerRouter);
 router.use('/', customerGroupRouter);
-router.use('/', acquisitionRouter);
+// router.use('/', acquisitionRouter); // [暂停开发] 获客助手
 router.use('/', serviceRouter);
 // router.use('/', paymentRouter); // 对外收款 - 暂停开发
 router.use('/', chatArchiveRouter);
@@ -89,7 +89,7 @@ router.use('/', qualityInspectionRouter);
 router.use('/', archiveSettingsRouter);
 router.use('/', seatManagementRouter);
 // V4.0 新增路由注册
-router.use('/', contactWayRouter);
+// router.use('/', contactWayRouter); // [暂停开发] 活码管理
 router.use('/', aiAssistantRouter);
 router.use('/', addressBookRouter);
 router.use('/', autoMatchRouter);
