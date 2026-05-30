@@ -8,9 +8,9 @@ import { checkUserLimit } from '../middleware/checkTenantLimits';
 const router = Router();
 const userController = new UserController();
 
-// 🔥 用户列表查看权限：管理员、经理、客服都可查看（客服需要在绩效数据等页面筛选用户）
+// 🔥 用户列表查看权限：所有角色都可查看（业绩排行/分配处理人等场景需要）
 const requireUserListAccess = requireRole([
-  'admin', 'super_admin', 'superadmin', 'manager', 'department_manager', 'customer_service'
+  'admin', 'super_admin', 'superadmin', 'manager', 'department_manager', 'customer_service', 'sales_staff'
 ]);
 
 // 获取用户列表验证规则

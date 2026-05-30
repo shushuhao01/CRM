@@ -607,11 +607,12 @@ export const useDepartmentStore = createPersistentStore('department', () => {
         console.warn('[DepartmentStore] 公共API失败，尝试管理员API:', publicApiError)
       }
 
-      // 如果公共API失败，尝试管理员API
+      // 如果公共API失败，尝试管理员API（静默，不弹toast）
       try {
-        const { getDepartmentList } = await import('@/api/department')
-        console.log('[DepartmentStore] 尝试管理员API获取部门数据')
-        const response = await getDepartmentList()
+        const service = (await import('@/utils/request')).default
+        console.log('[DepartmentStore] 尝试管理员API获取部门数据（静默）')
+        const rawData = await service.get('/system/departments', { showError: false } as any)
+        const response = { data: rawData }
 
         if (response && response.data) {
           const depts = Array.isArray(response.data) ? response.data : []
@@ -639,17 +640,9 @@ export const useDepartmentStore = createPersistentStore('department', () => {
     }
   }
 
-  // 获取部门统计数据（调用真实API，仅管理员可访问）
+  // 获取部门统计数据（所有登录用户可访问）
   const fetchDepartmentStats = async () => {
     try {
-      // 🔥 该接口后端限制为 requireAdmin，非管理员调用会返回403
-      const { useUserStore } = await import('@/stores/user')
-      const userStore = useUserStore()
-      const role = userStore.currentUser?.role
-      if (role !== 'super_admin' && role !== 'admin') {
-        console.log('[DepartmentStore] 非管理员角色，跳过部门统计API')
-        return
-      }
       const { getDepartmentStats } = await import('@/api/department')
       const response = await getDepartmentStats()
       console.log('[DepartmentStore] 统计API响应:', response)

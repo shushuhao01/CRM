@@ -1566,9 +1566,9 @@ router.get('/departments/tree', authenticateToken, requireAdmin, departmentContr
 /**
  * @route GET /api/v1/system/departments/stats
  * @desc 获取部门统计信息
- * @access Private (Admin)
+ * @access Private (All authenticated users)
  */
-router.get('/departments/stats', authenticateToken, requireAdmin, departmentController.getDepartmentStats.bind(departmentController));
+router.get('/departments/stats', authenticateToken, departmentController.getDepartmentStats.bind(departmentController));
 
 /**
  * @route GET /api/v1/system/departments/:id
