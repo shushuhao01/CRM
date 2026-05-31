@@ -9,17 +9,14 @@
  */
 
 import { TenantContextManager } from './tenantContext';
-import { deployConfig } from '../config/deploy';
 
 /**
  * 获取当前租户ID
- * SaaS模式返回 tenantId，私有模式返回 undefined
+ * 🔒 安全防护：无论部署模式，只要上下文中有 tenantId 就返回
+ * 防止配置错误降级时跨租户数据泄漏
  */
 export function getCurrentTenantIdSafe(): string | undefined {
-  if (deployConfig.isSaaS()) {
-    return TenantContextManager.getTenantId();
-  }
-  return undefined;
+  return TenantContextManager.getTenantId();
 }
 
 /**
@@ -131,10 +128,7 @@ export function setTenantOnEntities(entities: any[]): void {
  * 适用于需要明确区分"无租户"和"有租户"的场景（如额度管理）
  */
 export function getTenantIdOrNull(): string | null {
-  if (deployConfig.isSaaS()) {
-    return TenantContextManager.getTenantId() || null;
-  }
-  return null;
+  return TenantContextManager.getTenantId() || null;
 }
 
 /**

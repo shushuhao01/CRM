@@ -157,20 +157,17 @@ export const shouldFilterByTenant = (): boolean => {
 
 /**
  * 获取租户过滤条件
- * SaaS模式：返回 { tenant_id: tenantId } 或 { tenantId: tenantId }
- * 私有模式：返回 { tenant_id: null } 或 { tenantId: null }
+ * 🔒 安全防护：无论部署模式，上下文中有 tenantId 就按租户过滤
+ * 仅当确认无租户上下文且为私有模式时才查 tenant_id = NULL
  */
 export const getTenantFilter = (): Record<string, string | null> | {} => {
-  if (deployConfig.isSaaS()) {
-    const tenantId = TenantContextManager.getTenantId();
-    if (tenantId) {
-      // 返回两种命名方式，让TypeORM自动匹配
-      return { tenant_id: tenantId, tenantId: tenantId };
-    }
-    // SaaS模式但没有租户ID，返回空对象（不过滤）
-    return {};
-  } else {
-    // 私有部署模式：只查询 tenant_id = NULL 的数据
+  const tenantId = TenantContextManager.getTenantId();
+  if (tenantId) {
+    return { tenant_id: tenantId, tenantId: tenantId };
+  }
+  if (!deployConfig.isSaaS()) {
+    // 纯私有部署（无租户上下文）：查 tenant_id = NULL 的数据
     return { tenant_id: null, tenantId: null };
   }
+  return {};
 };

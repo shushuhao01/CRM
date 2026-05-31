@@ -119,10 +119,10 @@ export const authenticateToken = async (req: Request, res: Response, next: NextF
     req.currentUser = user;
 
     // 从JWT中提取tenantId并注入到请求对象，供租户上下文使用
-    // 🔒 安全守护：仅 SaaS 模式已验证时才注入租户上下文，防止私有部署绵过守卫
-    if (payload.tenantId && deployConfig.isSaaS()) {
+    // 🔒 安全防护：无论部署模式，JWT 中有 tenantId 就必须注入租户上下文
+    // 防止因配置错误降级为 private 模式时导致跨租户数据泄漏
+    if (payload.tenantId) {
       (req as any).tenantId = payload.tenantId;
-      // 同步更新AsyncLocalStorage中的租户上下文
       TenantContextManager.setContext({ tenantId: payload.tenantId, userId: payload.userId });
     }
 
@@ -257,8 +257,8 @@ export const optionalAuth = async (req: Request, res: Response, next: NextFuncti
         req.currentUser = result.user;
       }
 
-      // 🔥 与 authenticateToken 一致：设置租户上下文，确保 GET 路由也能获取租户信息
-      if (payload.tenantId && deployConfig.isSaaS()) {
+      // 🔒 与 authenticateToken 一致：JWT 有 tenantId 就注入，防止降级导致数据泄漏
+      if (payload.tenantId) {
         (req as any).tenantId = payload.tenantId;
         TenantContextManager.setContext({ tenantId: payload.tenantId, userId: payload.userId });
       }
@@ -303,8 +303,8 @@ export const authenticateSidebarToken = async (req: Request, res: Response, next
 
     (req as any).sidebarUser = payload as SidebarPayload;
 
-    // 注入租户上下文（🔒 仅 SaaS 模式已验证时才注入）
-    if (payload.tenantId && deployConfig.isSaaS()) {
+    // 🔒 注入租户上下文：JWT 有 tenantId 就注入，防止降级导致数据泄漏
+    if (payload.tenantId) {
       (req as any).tenantId = payload.tenantId;
       TenantContextManager.setContext({ tenantId: payload.tenantId, userId: payload.crmUserId });
     }

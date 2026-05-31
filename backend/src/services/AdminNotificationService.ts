@@ -38,6 +38,8 @@ export const EVENT_TYPES = {
   // v1.8.0 短信额度相关事件
   sms_quota_purchased: { label: '短信额度购买成功', level: 'info' as const, category: '短信管理' },
   sms_quota_refunded: { label: '短信额度退款', level: 'warning' as const, category: '短信管理' },
+  // v1.8.0 安全告警（仅通知平台运营方，不对租户可见）
+  tenant_isolation_alert: { label: '租户隔离异常告警', level: 'error' as const, category: '系统告警' },
 } as const
 
 export type EventType = keyof typeof EVENT_TYPES

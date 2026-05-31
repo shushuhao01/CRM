@@ -352,6 +352,32 @@ const startServer = async () => {
     printDeployConfig();
     logger.info(`✅ 部署模式确认: ${deployConfig.effectiveMode}`);
 
+    // 🔒 多租户安全检测：如果数据库存在多个租户数据但当前非 SaaS 模式，发出严重告警并通知运营方
+    try {
+      const { AppDataSource } = await import('./config/database');
+      const tenantRows = await AppDataSource.query(
+        `SELECT COUNT(DISTINCT tenant_id) AS cnt FROM users WHERE tenant_id IS NOT NULL`
+      );
+      const distinctTenants = tenantRows?.[0]?.cnt || 0;
+      if (distinctTenants > 1 && !deployConfig.isSaaS()) {
+        const alertMsg = `数据库存在 ${distinctTenants} 个租户的数据，但当前部署模式为 private！可能导致跨租户数据泄漏，请立即检查 .env 中 DEPLOY_MODE 和 SAAS_LICENSE_TOKEN 配置。系统已启用 JWT 兜底隔离，但需尽快修复。`;
+        logger.error('🚨🚨🚨 [安全告警] ' + alertMsg);
+        // 通过管理后台通知服务推送给运营方（企微/钉钉/邮件/短信，按已配置渠道）
+        try {
+          const { adminNotificationService } = await import('./services/AdminNotificationService');
+          await adminNotificationService.notify('tenant_isolation_alert', {
+            title: '🚨 紧急：租户数据隔离异常',
+            content: alertMsg,
+            extraData: { distinctTenants, currentMode: deployConfig.effectiveMode, configMode: deployConfig.mode }
+          });
+        } catch (notifyErr: any) {
+          logger.error('🚨 安全告警通知推送失败:', notifyErr.message);
+        }
+      }
+    } catch (_e) {
+      // 检测失败不阻塞启动
+    }
+
     // 🌐 打印中央服务器配置（私有部署时显示回调地址信息）
     const { printCentralServerConfig } = await import('./config/centralServer');
     printCentralServerConfig();

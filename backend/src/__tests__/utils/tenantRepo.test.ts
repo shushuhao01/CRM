@@ -57,14 +57,15 @@ describe('tenantRepo', () => {
       expect(result.params).toEqual(['tenant-001'])
     })
 
-    it('私有模式 → 空 SQL', () => {
+    it('私有模式有上下文 → 仍返回 SQL（安全兜底，防降级泄漏）', () => {
       ;(deployConfig.isSaaS as jest.Mock).mockReturnValue(false)
+      // getTenantId 仍返回 tenant-001（模拟降级但JWT仍携带tenantId的场景）
       const result = tenantSQL()
-      expect(result.sql).toBe('')
-      expect(result.params).toEqual([])
+      expect(result.sql).toBe(' AND tenant_id = ?')
+      expect(result.params).toEqual(['tenant-001'])
     })
 
-    it('SaaS模式但无租户上下文 → 空 SQL', () => {
+    it('无租户上下文 → 空 SQL', () => {
       ;(TenantContextManager.getTenantId as jest.Mock).mockReturnValue(undefined)
       const result = tenantSQL()
       expect(result.sql).toBe('')
@@ -87,11 +88,11 @@ describe('tenantRepo', () => {
       expect(result.params).toEqual(['tenant-001'])
     })
 
-    it('私有模式 → 空 SQL', () => {
+    it('私有模式有上下文 → 仍返回 WHERE（安全兜底）', () => {
       ;(deployConfig.isSaaS as jest.Mock).mockReturnValue(false)
       const result = tenantWHERE()
-      expect(result.sql).toBe('')
-      expect(result.params).toEqual([])
+      expect(result.sql).toBe('WHERE tenant_id = ?')
+      expect(result.params).toEqual(['tenant-001'])
     })
 
     it('无租户上下文 → 空 SQL', () => {

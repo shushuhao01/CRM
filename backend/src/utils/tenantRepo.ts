@@ -20,7 +20,6 @@
 import { Repository, FindManyOptions, FindOneOptions, FindOptionsWhere, DeepPartial, ObjectLiteral, SaveOptions, In } from 'typeorm';
 import { AppDataSource } from '../config/database';
 import { TenantContextManager } from './tenantContext';
-import { deployConfig } from '../config/deploy';
 
 // 需要租户隔离的实体表名列表
 const TENANT_ENTITIES = new Set([
@@ -96,12 +95,11 @@ function needsTenantIsolation(repository: Repository<any>): boolean {
 
 /**
  * 获取当前租户ID
+ * 🔒 安全防护：无论部署模式，只要 TenantContext 中有 tenantId 就返回
+ * 防止配置错误降级为 private 模式时跨租户数据泄漏
  */
 function getCurrentTenantId(): string | undefined {
-  if (deployConfig.isSaaS()) {
-    return TenantContextManager.getTenantId();
-  }
-  return undefined;
+  return TenantContextManager.getTenantId();
 }
 
 /**
