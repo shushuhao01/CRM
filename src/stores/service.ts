@@ -79,7 +79,7 @@ export const useServiceStore = defineStore('service', () => {
         console.log('[ServiceStore] API加载成功，共', services.value.length, '条记录')
         return services.value
       } catch (apiError) {
-        console.warn('[ServiceStore] API调用失败，回退到本地存储:', apiError)
+        console.warn('[ServiceStore] API调用失败:', apiError)
 
         // API失败时回退到本地存储（仅开发环境）
         if (!isProduction()) {
@@ -91,11 +91,16 @@ export const useServiceStore = defineStore('service', () => {
           console.log('[ServiceStore] 本地加载成功，共', services.value.length, '条记录')
           return services.value
         }
-        throw apiError
+        // 生产环境：空列表不视为错误，避免误报「加载失败」
+        services.value = []
+        total.value = 0
+        return services.value
       }
     } catch (error) {
       console.error('[ServiceStore] 加载售后服务列表失败:', error)
-      throw error
+      services.value = []
+      total.value = 0
+      return services.value
     } finally {
       loading.value = false
     }

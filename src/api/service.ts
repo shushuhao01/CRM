@@ -2,6 +2,7 @@
  * 售后服务API
  */
 import { api } from './request'
+import request from '@/utils/request'
 
 export interface AfterSalesServiceData {
   id: string
@@ -53,9 +54,34 @@ export interface ServiceListResponse {
   totalPages: number
 }
 
+/** 统一解析列表响应（兼容单层/双层 data 结构） */
+function normalizeServiceListResponse(raw: unknown): ServiceListResponse {
+  const empty: ServiceListResponse = { items: [], total: 0, page: 1, limit: 20, totalPages: 0 }
+  if (!raw || typeof raw !== 'object') return empty
+
+  const obj = raw as Record<string, unknown>
+  if (Array.isArray(obj.items)) {
+    return {
+      items: obj.items as AfterSalesServiceData[],
+      total: Number(obj.total) || 0,
+      page: Number(obj.page) || 1,
+      limit: Number(obj.limit) || 20,
+      totalPages: Number(obj.totalPages) || 0
+    }
+  }
+
+  const nested = obj.data
+  if (nested && typeof nested === 'object') {
+    return normalizeServiceListResponse(nested)
+  }
+
+  return empty
+}
+
 export const serviceApi = {
   /**
    * 获取售后服务列表
+   * 与 dashboard 一致：直接使用 @/utils/request，避免 api/request 双层包装导致解析失败
    */
   async getList(params: ServiceListParams = {}): Promise<ServiceListResponse> {
     const queryParams: Record<string, string | number | boolean | null | undefined> = {}
@@ -66,20 +92,10 @@ export const serviceApi = {
     if (params.search) queryParams.search = params.search
     if (params.orderNumber) queryParams.orderNumber = params.orderNumber
 
-    const response = await api.get<ServiceListResponse | { data?: ServiceListResponse }>('/services', {
-      params: queryParams,
-      showError: false
-    })
-    // api.get 返回 ApiResponse<T>，内层 data 才是 { items, total, ... }
-    const payload = (response as any)?.data ?? response
-    const inner = (payload as any)?.data ?? payload
-    return {
-      items: Array.isArray(inner?.items) ? inner.items : [],
-      total: inner?.total ?? 0,
-      page: inner?.page ?? 1,
-      limit: inner?.limit ?? 20,
-      totalPages: inner?.totalPages ?? 0
-    }
+    const raw = await request.get('/services', { params: queryParams, showError: false } as any)
+    const result = normalizeServiceListResponse(raw)
+    console.log('[ServiceAPI] 列表加载:', result.items.length, '条, total:', result.total)
+    return result
   },
 
   /**
