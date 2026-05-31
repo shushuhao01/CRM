@@ -467,6 +467,21 @@ export const useConfigStore = defineStore('config', () => {
    */
   const saveConfigToStorage = async (type: string, config: unknown) => {
     try {
+      // 非管理员用户不应保存系统配置到数据库，直接用localStorage
+      const userStr = localStorage.getItem('user')
+      let isAdmin = false
+      if (userStr) {
+        try {
+          const user = JSON.parse(userStr)
+          isAdmin = ['super_admin', 'admin', 'superadmin'].includes(user.role)
+        } catch { /* ignore */ }
+      }
+
+      if (!isAdmin) {
+        localStorage.setItem(`crm_config_${type}`, JSON.stringify(config))
+        return
+      }
+
       // 检测是否为生产环境
       const hostname = window.location.hostname
       const isProdEnv = (
@@ -478,22 +493,16 @@ export const useConfigStore = defineStore('config', () => {
         (!hostname.includes('localhost') && !hostname.includes('127.0.0.1'))
       )
 
-      // 检查是否已登录（有token）
       const token = localStorage.getItem('auth_token')
 
       if (isProdEnv && token) {
-        // 生产环境且已登录：调用API保存配置
-        console.log(`[ConfigStore] 生产环境：保存${type}配置到数据库`)
         try {
           const { api } = await import('@/api/request')
           await api.post('/system/settings', { type, config })
-          console.log(`[ConfigStore] ${type}配置保存到数据库成功`)
         } catch (_apiError) {
-          // 静默降级到localStorage，不打印错误
           localStorage.setItem(`crm_config_${type}`, JSON.stringify(config))
         }
       } else {
-        // 开发环境或未登录：使用localStorage
         localStorage.setItem(`crm_config_${type}`, JSON.stringify(config))
       }
     } catch (_error) {
