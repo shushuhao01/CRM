@@ -75,6 +75,8 @@ const logOperation = async (
  */
 router.get('/', authenticateToken, async (req: Request, res: Response) => {
   try {
+    const { log } = await import('../config/logger');
+    log.info(`[Services] GET /services - user: ${(req as any).user?.username}, role: ${(req as any).user?.role}`);
     const serviceRepository = getServiceRepository();
     const currentUser = (req as any).user;
     const { page = 1, limit = 20, status, serviceType, search, orderNumber } = req.query;
