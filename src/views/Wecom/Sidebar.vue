@@ -472,8 +472,8 @@
                       <span class="script-row__content">{{ row.content || '' }}</span>
                       <span v-if="getAttachments(row).length" class="script-row__att-badge" title="含附件">📎{{ getAttachments(row).length }}</span>
                       <span class="script-row__actions">
-                        <el-button type="primary" link size="small" @click.stop="openScriptDialog(row)">编辑</el-button>
-                        <el-button type="danger" link size="small" @click.stop="handleDeleteScript(row)">删除</el-button>
+                        <el-button v-if="isAdminUser || row.scope === 'personal'" type="primary" link size="small" @click.stop="openScriptDialog(row)">编辑</el-button>
+                        <el-button v-if="isAdminUser || row.scope === 'personal'" type="danger" link size="small" @click.stop="handleDeleteScript(row)">删除</el-button>
                         <el-button type="success" link size="small" @click.stop="handleCopyScriptContent(row)">复制</el-button>
                       </span>
                     </div>
