@@ -919,9 +919,18 @@ const loadData = async () => {
     await nextTick(() => {
       pagination.total = tableData.value.length
     })
-  } catch (error) {
-    console.error('加载数据失败:', error)
-    ElMessage.error('加载数据失败')
+  } catch (error: any) {
+    console.error('[售后订单] 加载失败:', error)
+    const status = error?.response?.status ?? error?.status
+    const msg = error?.message || ''
+    // 仅真实接口错误才提示；空数据由表格展示「暂无数据」
+    if (status >= 500) {
+      ElMessage.error(msg.includes('after_sales') ? '售后数据表未初始化，请联系管理员' : '服务器错误，请稍后重试')
+    } else if (status === 401 || status === 403) {
+      ElMessage.error('没有权限查看售后订单')
+    } else {
+      ElMessage.error('加载数据失败，请检查网络或联系管理员')
+    }
   } finally {
     tableLoading.value = false
   }

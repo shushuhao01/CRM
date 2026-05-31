@@ -66,8 +66,20 @@ export const serviceApi = {
     if (params.search) queryParams.search = params.search
     if (params.orderNumber) queryParams.orderNumber = params.orderNumber
 
-    const response = await api.get<ServiceListResponse>('/services', { params: queryParams, showError: false })
-    return response.data || response
+    const response = await api.get<ServiceListResponse | { data?: ServiceListResponse }>('/services', {
+      params: queryParams,
+      showError: false
+    })
+    // api.get 返回 ApiResponse<T>，内层 data 才是 { items, total, ... }
+    const payload = (response as any)?.data ?? response
+    const inner = (payload as any)?.data ?? payload
+    return {
+      items: Array.isArray(inner?.items) ? inner.items : [],
+      total: inner?.total ?? 0,
+      page: inner?.page ?? 1,
+      limit: inner?.limit ?? 20,
+      totalPages: inner?.totalPages ?? 0
+    }
   },
 
   /**

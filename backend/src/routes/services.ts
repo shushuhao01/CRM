@@ -75,31 +75,32 @@ const logOperation = async (
  */
 router.get('/', authenticateToken, async (req: Request, res: Response) => {
   try {
-    const { log } = await import('../config/logger');
-    log.info(`[Services] GET /services - user: ${(req as any).user?.username}, role: ${(req as any).user?.role}`);
+    const jwtUser = (req as any).user;
+    const dbUser = (req as any).currentUser;
+    const username = jwtUser?.username || dbUser?.username || 'unknown';
+    const role = (dbUser?.roleId || dbUser?.role || jwtUser?.role || '').toLowerCase();
+    const userId = dbUser?.id || jwtUser?.userId;
+    const departmentId = dbUser?.departmentId || jwtUser?.departmentId;
+
+    logger.info(`[Services] GET /services - user: ${username}, role: ${role}, userId: ${userId}`);
+
     const serviceRepository = getServiceRepository();
-    const currentUser = (req as any).user;
     const { page = 1, limit = 20, status, serviceType, search, orderNumber } = req.query;
 
     const queryBuilder = serviceRepository.createQueryBuilder('service');
 
     // 数据权限过滤
-    const role = currentUser?.role || '';
     const allowAllRoles = ['super_admin', 'superadmin', 'admin', 'service', 'customer_service'];
 
     if (!allowAllRoles.includes(role)) {
       if (role === 'manager' || role === 'department_manager') {
         // 经理看本部门的
-        if (currentUser?.departmentId) {
-          queryBuilder.andWhere('service.departmentId = :departmentId', {
-            departmentId: currentUser.departmentId
-          });
+        if (departmentId) {
+          queryBuilder.andWhere('service.departmentId = :departmentId', { departmentId });
         }
-      } else {
+      } else if (userId) {
         // 销售员只看自己创建的
-        queryBuilder.andWhere('service.createdById = :userId', {
-          userId: currentUser?.userId
-        });
+        queryBuilder.andWhere('service.createdById = :userId', { userId });
       }
     }
 
@@ -139,6 +140,19 @@ router.get('/', authenticateToken, async (req: Request, res: Response) => {
 
     const [services, total] = await queryBuilder.getManyAndCount();
 
+    const parseAttachments = (val: unknown): string[] => {
+      if (Array.isArray(val)) return val as string[];
+      if (typeof val === 'string') {
+        try {
+          const parsed = JSON.parse(val);
+          return Array.isArray(parsed) ? parsed : [];
+        } catch {
+          return [];
+        }
+      }
+      return [];
+    };
+
     // 格式化返回数据
     const formattedServices = services.map(service => ({
       id: service.id,
@@ -163,7 +177,7 @@ router.get('/', authenticateToken, async (req: Request, res: Response) => {
       assignedTo: service.assignedTo,
       assignedToId: service.assignedToId,
       remark: service.remark,
-      attachments: service.attachments || [],
+      attachments: parseAttachments(service.attachments),
       createdBy: service.createdBy,
       createdById: service.createdById,
       departmentId: service.departmentId,
@@ -180,15 +194,21 @@ router.get('/', authenticateToken, async (req: Request, res: Response) => {
         total,
         page: Number(page),
         limit: Number(limit),
-        totalPages: Math.ceil(total / Number(limit))
+        totalPages: Math.ceil(total / Number(limit)) || 0
       }
     });
-  } catch (error) {
-    logger.error('[Services] 获取售后服务列表失败:', error);
+  } catch (error: any) {
+    const errMsg = error?.message || String(error);
+    const errCode = error?.code || '';
+    logger.error('[Services] 获取售后服务列表失败:', { message: errMsg, code: errCode, stack: error?.stack });
+    const isTableMissing = errCode === 'ER_NO_SUCH_TABLE' || /after_sales_services/i.test(errMsg);
     res.status(500).json({
       success: false,
-      message: '获取售后服务列表失败',
-      error: error instanceof Error ? error.message : '未知错误'
+      message: isTableMissing
+        ? '售后数据表(after_sales_services)不存在，请在数据库执行 schema.sql 中的建表语句'
+        : '获取售后服务列表失败',
+      error: errMsg,
+      code: isTableMissing ? 'TABLE_NOT_FOUND' : 'QUERY_FAILED'
     });
   }
 });

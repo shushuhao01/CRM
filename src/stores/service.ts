@@ -73,8 +73,9 @@ export const useServiceStore = defineStore('service', () => {
       // 优先尝试调用API
       try {
         const response = await serviceApi.getList(params)
-        services.value = (response.items || []).map(mapApiToLocal)
-        total.value = response.total || 0
+        const items = Array.isArray(response?.items) ? response.items : []
+        services.value = items.map(mapApiToLocal)
+        total.value = response?.total ?? items.length
         console.log('[ServiceStore] API加载成功，共', services.value.length, '条记录')
         return services.value
       } catch (apiError) {
