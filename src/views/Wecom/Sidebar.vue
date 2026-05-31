@@ -61,7 +61,7 @@
 
       <!-- 应用分区 -->
       <el-tabs v-model="appTab">
-        <el-tab-pane v-if="isAdminUser" label="内置应用" name="builtin">
+        <el-tab-pane label="内置应用" name="builtin">
           <el-table :data="builtinApps" size="small" stripe>
             <el-table-column label="应用" min-width="180">
               <template #default="{ row }">
@@ -79,7 +79,7 @@
                 <code style="font-size: 12px; color: #606266">{{ row.path }}</code>
               </template>
             </el-table-column>
-            <el-table-column width="70" align="center">
+            <el-table-column v-if="isAdminUser" width="70" align="center">
               <template #default="{ row }">
                 <el-switch v-model="row.enabled" size="small" @change="handleSaveBuiltinApps" />
               </template>
@@ -591,8 +591,8 @@
         <div style="margin-bottom:12px">
           <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
             <el-input v-model="newScriptCatName" :placeholder="editingCatId ? '编辑分组名称' : '新分组名称'" style="flex:1" @keyup.enter="addScriptCategory" />
-            <el-select v-model="newScriptCatScope" style="width:120px" placeholder="类型">
-              <el-option label="🌐 公共" value="public" />
+            <el-select v-model="newScriptCatScope" style="width:120px" placeholder="类型" :disabled="!isAdminUser">
+              <el-option v-if="isAdminUser" label="🌐 公共" value="public" />
               <el-option label="👤 个人" value="personal" />
             </el-select>
             <el-button type="primary" @click="addScriptCategory">{{ editingCatId ? '保存' : '添加' }}</el-button>
@@ -633,8 +633,8 @@
           </el-table-column>
           <el-table-column label="操作" width="140">
             <template #default="{ row }">
-              <el-button type="primary" link size="small" @click="startEditCategory(row)">编辑</el-button>
-              <el-button type="danger" link size="small" @click="deleteScriptCategory(row)">删除</el-button>
+              <el-button v-if="isAdminUser || row.scope === 'personal'" type="primary" link size="small" @click="startEditCategory(row)">编辑</el-button>
+              <el-button v-if="isAdminUser || row.scope === 'personal'" type="danger" link size="small" @click="deleteScriptCategory(row)">删除</el-button>
             </template>
           </el-table-column>
         </el-table>
@@ -745,9 +745,9 @@ const currentId = ref<number | null>(null)
 const formRef = ref()
 const appTab = ref('')
 
-// Set default tab based on role
-watch(isAdminUser, (val) => {
-  if (!appTab.value) appTab.value = val ? 'builtin' : 'scripts'
+// Set default tab - 所有角色默认显示内置应用
+watch(isAdminUser, () => {
+  if (!appTab.value) appTab.value = 'builtin'
 }, { immediate: true })
 
 // 内置应用
@@ -1425,7 +1425,11 @@ const scriptEditData = ref<any>(null)
 const scriptDialogForm = ref<any>({ title: '', content: '', categoryId: null, scope: 'public', color: '', attachments: [] })
 const showScriptCategoryDialog = ref(false)
 const newScriptCatName = ref('')
-const newScriptCatScope = ref('public')
+const newScriptCatScope = computed({
+  get: () => isAdminUser.value ? (_newScriptCatScope.value || 'public') : 'personal',
+  set: (v: string) => { _newScriptCatScope.value = v }
+})
+const _newScriptCatScope = ref('')
 const newScriptCatColor = ref('')
 const editingCatId = ref<number | null>(null)
 const scriptCatColors = ['#07c160', '#1890ff', '#722ed1', '#eb2f96', '#fa8c16', '#52c41a', '#13c2c2', '#f5222d', '#faad14', '#2f54eb']

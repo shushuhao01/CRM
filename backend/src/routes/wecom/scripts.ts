@@ -135,10 +135,15 @@ router.post('/scripts/categories', authenticateToken, async (req: Request, res: 
     const { name, color, scope, sortOrder } = req.body;
     if (!name) return res.status(400).json({ success: false, message: '分组名称必填' });
 
+    // 非管理员强制 scope=personal，防止绕过前端直接创建公共分组
+    const userRole = ((req as any).currentUser?.role || (req as any).user?.role || '').toLowerCase();
+    const isAdmin = ['super_admin', 'superadmin', 'admin'].includes(userRole);
+    const finalScope = isAdmin ? (scope || 'public') : 'personal';
+
     const catRepo = AppDataSource.getRepository(WecomScriptCategory);
     const cat = catRepo.create({
       tenantId, name, color: color || null,
-      scope: scope || 'public', createdBy: userId,
+      scope: finalScope, createdBy: userId,
       sortOrder: sortOrder || 0
     });
     await catRepo.save(cat);
@@ -152,10 +157,26 @@ router.post('/scripts/categories', authenticateToken, async (req: Request, res: 
 router.put('/scripts/categories/:id', authenticateToken, async (req: Request, res: Response) => {
   try {
     const tenantId = getCurrentTenantId();
+    const userId = (req as any).currentUser?.id || (req as any).user?.userId;
+    const userRole = ((req as any).currentUser?.role || (req as any).user?.role || '').toLowerCase();
+    const isAdmin = ['super_admin', 'superadmin', 'admin'].includes(userRole);
+
     const catRepo = AppDataSource.getRepository(WecomScriptCategory);
     const cat = await catRepo.findOne({ where: { id: Number(req.params.id), tenantId } });
     if (!cat) return res.status(404).json({ success: false, message: '分组不存在' });
-    Object.assign(cat, req.body);
+
+    // 非管理员只能编辑自己的个人分组
+    if (!isAdmin && (cat.scope === 'public' || cat.createdBy !== userId)) {
+      return res.status(403).json({ success: false, message: '无权编辑此分组' });
+    }
+
+    const { name, color, scope, sortOrder } = req.body;
+    if (name !== undefined) cat.name = name;
+    if (color !== undefined) (cat as any).color = color;
+    if (sortOrder !== undefined) (cat as any).sortOrder = sortOrder;
+    // 非管理员不能把分组改为公共
+    if (scope !== undefined) (cat as any).scope = isAdmin ? scope : 'personal';
+
     await catRepo.save(cat);
     res.json({ success: true, data: cat });
   } catch (e: any) {
@@ -167,7 +188,19 @@ router.put('/scripts/categories/:id', authenticateToken, async (req: Request, re
 router.delete('/scripts/categories/:id', authenticateToken, async (req: Request, res: Response) => {
   try {
     const tenantId = getCurrentTenantId();
+    const userId = (req as any).currentUser?.id || (req as any).user?.userId;
+    const userRole = ((req as any).currentUser?.role || (req as any).user?.role || '').toLowerCase();
+    const isAdmin = ['super_admin', 'superadmin', 'admin'].includes(userRole);
+
     const catRepo = AppDataSource.getRepository(WecomScriptCategory);
+    const cat = await catRepo.findOne({ where: { id: Number(req.params.id), tenantId } });
+    if (!cat) return res.status(404).json({ success: false, message: '分组不存在' });
+
+    // 非管理员只能删除自己的个人分组
+    if (!isAdmin && (cat.scope === 'public' || cat.createdBy !== userId)) {
+      return res.status(403).json({ success: false, message: '无权删除此分组' });
+    }
+
     const scriptRepo = AppDataSource.getRepository(WecomScript);
     await scriptRepo.delete({ categoryId: Number(req.params.id), tenantId });
     await catRepo.delete({ id: Number(req.params.id), tenantId });
@@ -325,13 +358,18 @@ router.post('/scripts', authenticateToken, async (req: Request, res: Response) =
     if (!title && !content) return res.status(400).json({ success: false, message: '标题或内容至少填一项' });
 
     const user = (req as any).currentUser || (req as any).user;
+    // 非管理员强制 scope=personal
+    const userRole = (user?.role || '').toLowerCase();
+    const isAdmin = ['super_admin', 'superadmin', 'admin'].includes(userRole);
+    const finalScope = isAdmin ? (scope || 'public') : 'personal';
+
     const scriptRepo = AppDataSource.getRepository(WecomScript);
     const script = scriptRepo.create({
       tenantId, title: title || '', content: content || '',
       categoryId: categoryId || null, shortcut: shortcut || null,
       tags: typeof tags === 'string' ? tags : JSON.stringify(tags || []),
       attachments: typeof attachments === 'string' ? attachments : JSON.stringify(attachments || []),
-      scope: scope || 'public', createdBy: user?.id || user?.userId,
+      scope: finalScope, createdBy: user?.id || user?.userId,
       createdByName: user?.name || user?.username || '',
       color: color || null, sortOrder: sortOrder || 0
     });
@@ -391,19 +429,29 @@ router.put('/scripts/:id', authenticateToken, async (req: Request, res: Response
   try {
     await ensureScriptTables();
     const tenantId = getCurrentTenantId();
+    const user = (req as any).currentUser || (req as any).user;
+    const userId = user?.id || user?.userId;
+    const userRole = (user?.role || '').toLowerCase();
+    const isAdmin = ['super_admin', 'superadmin', 'admin'].includes(userRole);
+
     const scriptRepo = AppDataSource.getRepository(WecomScript);
     const script = await scriptRepo.findOne({ where: { id: Number(req.params.id), tenantId } });
     if (!script) return res.status(404).json({ success: false, message: '话术不存在' });
 
+    // 非管理员只能编辑自己创建的个人话术
+    if (!isAdmin && (script.scope === 'public' || script.createdBy !== userId)) {
+      return res.status(403).json({ success: false, message: '无权编辑此话术' });
+    }
+
     const { title, content, categoryId, shortcut, tags, scope, color, sortOrder, attachments } = req.body;
 
-    // 只构建明确要更新的字段，避免TypeORM save()对不存在的列生成SET
     const updateData: Record<string, any> = {};
     if (title !== undefined) updateData.title = title;
     if (content !== undefined) updateData.content = content;
     if (categoryId !== undefined) updateData.categoryId = categoryId;
     if (shortcut !== undefined) updateData.shortcut = shortcut;
-    if (scope !== undefined) updateData.scope = scope;
+    // 非管理员不能把话术设为公共
+    if (scope !== undefined) updateData.scope = isAdmin ? scope : 'personal';
     if (color !== undefined) updateData.color = color || null;
     if (sortOrder !== undefined) updateData.sortOrder = sortOrder;
     if (tags !== undefined) updateData.tags = typeof tags === 'string' ? tags : JSON.stringify(tags);
@@ -424,8 +472,21 @@ router.put('/scripts/:id', authenticateToken, async (req: Request, res: Response
 router.delete('/scripts/:id', authenticateToken, async (req: Request, res: Response) => {
   try {
     const tenantId = getCurrentTenantId();
+    const user = (req as any).currentUser || (req as any).user;
+    const userId = user?.id || user?.userId;
+    const userRole = (user?.role || '').toLowerCase();
+    const isAdmin = ['super_admin', 'superadmin', 'admin'].includes(userRole);
+
     const scriptRepo = AppDataSource.getRepository(WecomScript);
-    await scriptRepo.delete({ id: Number(req.params.id), tenantId });
+    const script = await scriptRepo.findOne({ where: { id: Number(req.params.id), tenantId } });
+    if (!script) return res.status(404).json({ success: false, message: '话术不存在' });
+
+    // 非管理员只能删除自己创建的个人话术
+    if (!isAdmin && (script.scope === 'public' || script.createdBy !== userId)) {
+      return res.status(403).json({ success: false, message: '无权删除此话术' });
+    }
+
+    await scriptRepo.delete({ id: script.id, tenantId });
     res.json({ success: true });
   } catch (e: any) {
     res.status(500).json({ success: false, message: e.message });
