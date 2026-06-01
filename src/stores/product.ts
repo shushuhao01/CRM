@@ -34,6 +34,7 @@ export interface Product {
   image: string
   images?: string[]
   specifications?: Record<string, any> // 规格参数
+  allowedDepartments?: string[] | null
   createdBy?: string // 创建人
   createTime: string
   updateTime?: string

@@ -289,7 +289,9 @@ export class ProductController {
         categoryId,
         status,
         lowStock,
-        productType
+        productType,
+        forOrder,
+        userDepartmentId
       } = req.query
 
       const productRepo = getProductRepository()
@@ -322,6 +324,14 @@ export class ProductController {
       // 低库存筛选
       if (lowStock === 'true') {
         queryBuilder.andWhere('product.stock <= product.minStock')
+      }
+
+      // 按部门过滤可下单商品（订单页面调用时传入）
+      if (forOrder === 'true' && userDepartmentId) {
+        queryBuilder.andWhere(
+          '(product.allowed_departments IS NULL OR JSON_CONTAINS(product.allowed_departments, :deptIdJson))',
+          { deptIdJson: JSON.stringify(String(userDepartmentId)) }
+        )
       }
 
       // 获取总数
@@ -469,6 +479,7 @@ export class ProductController {
           cardKeyTemplate: p.cardKeyTemplate || null,
           resourceLinkTemplate: p.resourceLinkTemplate || null,
           virtualContentEncrypt: !!p.virtualContentEncrypt,
+          allowedDepartments: p.allowedDepartments || null,
           createdBy: p.createdBy || '',
           createTime: p.createdAt?.toISOString() || '',
           updateTime: p.updatedAt?.toISOString() || ''
@@ -571,6 +582,7 @@ export class ProductController {
           cardKeyTemplate: product.cardKeyTemplate || null,
           resourceLinkTemplate: product.resourceLinkTemplate || null,
           virtualContentEncrypt: !!product.virtualContentEncrypt,
+          allowedDepartments: product.allowedDepartments || null,
           createdBy: product.createdBy || '',
           createTime: product.createdAt?.toISOString() || '',
           updateTime: product.updatedAt?.toISOString() || ''
@@ -658,6 +670,7 @@ export class ProductController {
         cardKeyTemplate: productData.cardKeyTemplate || null,
         resourceLinkTemplate: productData.resourceLinkTemplate || null,
         virtualContentEncrypt: !!productData.virtualContentEncrypt,
+        allowedDepartments: productData.allowedDepartments || null,
         createdBy
       })
 
@@ -753,6 +766,7 @@ export class ProductController {
       if (updates.cardKeyTemplate !== undefined) product.cardKeyTemplate = updates.cardKeyTemplate
       if (updates.resourceLinkTemplate !== undefined) product.resourceLinkTemplate = updates.resourceLinkTemplate
       if (updates.virtualContentEncrypt !== undefined) product.virtualContentEncrypt = !!updates.virtualContentEncrypt
+      if (updates.allowedDepartments !== undefined) product.allowedDepartments = updates.allowedDepartments
 
       await productRepo.save(product)
       log.info('[ProductController] 更新产品成功:', product.name, 'ID:', id)
@@ -783,6 +797,7 @@ export class ProductController {
           cardKeyTemplate: product.cardKeyTemplate || null,
           resourceLinkTemplate: product.resourceLinkTemplate || null,
           virtualContentEncrypt: !!product.virtualContentEncrypt,
+          allowedDepartments: product.allowedDepartments || null,
           createdBy: product.createdBy || '',
           createTime: product.createdAt?.toISOString() || '',
           updateTime: product.updatedAt?.toISOString() || ''

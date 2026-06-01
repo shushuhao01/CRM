@@ -373,57 +373,24 @@ const handleSubmit = async () => {
     loading.value = true
 
     if (props.isEdit && props.member) {
-      // 更新成员信息 - 直接更新localStorage中的crm_mock_users
-      const usersStr = localStorage.getItem('crm_mock_users')
-      if (usersStr) {
-        const users = JSON.parse(usersStr)
-        const userIndex = users.findIndex((u: unknown) => u.id === props.member!.userId)
-        if (userIndex !== -1) {
-          // 更新用户的职位信息（注意：这里是position字段，不是role）
-          users[userIndex].position = formData.position
-          users[userIndex].status = formData.status
-          // 保存回localStorage
-          localStorage.setItem('crm_mock_users', JSON.stringify(users))
-          console.log('[成员对话框] 已更新用户信息:', users[userIndex])
-        }
-      }
-
-      // 同步部门成员数
-      departmentStore.syncAllDepartmentMemberCounts()
+      // 编辑模式 - 调用API更新用户信息
+      const { userApiService } = await import('@/services/userApiService')
+      await userApiService.updateUser(props.member.userId, {
+        position: formData.position,
+        status: formData.status
+      })
     } else {
-      // 添加新成员（支持批量添加）- 直接更新localStorage中的crm_mock_users
-      const usersStr = localStorage.getItem('crm_mock_users')
-      if (usersStr) {
-        const users = JSON.parse(usersStr)
-
-        if (formData.userIds && formData.userIds.length > 0) {
-          // 批量添加多个用户
-          for (const userId of formData.userIds) {
-            const userIndex = users.findIndex((u: unknown) => u.id === userId)
-            if (userIndex !== -1) {
-              // 更新用户的部门信息和职位（注意：这里是position字段，不是role）
-              users[userIndex].departmentId = props.departmentId
-              users[userIndex].position = formData.position
-              users[userIndex].status = formData.status
-              console.log('[成员对话框] 已添加用户到部门:', users[userIndex].username)
-            }
-          }
+      // 添加新成员（支持批量） - 调用后端API
+      const { addDepartmentMember } = await import('@/api/department')
+      if (formData.userIds && formData.userIds.length > 0) {
+        for (const userId of formData.userIds) {
+          await addDepartmentMember(props.departmentId, userId, formData.position || '成员')
         }
-
-        // 保存回localStorage
-        localStorage.setItem('crm_mock_users', JSON.stringify(users))
       }
-
-      // 同步部门成员数
-      departmentStore.syncAllDepartmentMemberCounts()
     }
 
     ElMessage.success(props.isEdit ? '成员更新成功' : '成员添加成功')
-
-    // 关闭对话框
     handleClose()
-
-    // 触发成功事件，让父组件刷新列表
     emit('success')
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : '操作失败')

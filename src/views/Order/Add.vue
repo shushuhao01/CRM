@@ -1036,11 +1036,13 @@ const customerOptions = computed(() => {
 const productList = computed(() => {
   // 【批次204新增】读取价格优惠配置
   const priceConfig = JSON.parse(localStorage.getItem('crm_product_price_config') || '{}')
+  const currentDeptId = userStore.currentUser?.departmentId
 
   return productStore.products.filter(product =>
     product.status === 'active' &&
     !product.isDeleted &&
-    product.stock > 0
+    product.stock > 0 &&
+    (!product.allowedDepartments || product.allowedDepartments.length === 0 || (currentDeptId && product.allowedDepartments.includes(currentDeptId)))
   ).map(product => {
     // 【批次204新增】检查是否有优惠价格
     let finalPrice = product.price

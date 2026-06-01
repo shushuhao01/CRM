@@ -620,6 +620,17 @@ export class DepartmentController {
 
       log.info('[部门成员] 查询到用户数:', users.length);
 
+      const roleNameMap: Record<string, string> = {
+        'super_admin': '超级管理员',
+        'admin': '管理员',
+        'department_manager': '部门经理',
+        'sales_staff': '销售员',
+        'customer_service': '客服',
+        'finance': '财务',
+        'warehouse': '仓管',
+        'employee': '员工'
+      };
+
       const members = users.map((user: User) => ({
         id: user.id.toString(),
         userId: user.id.toString(),
@@ -628,8 +639,9 @@ export class DepartmentController {
         username: user.username,
         email: user.email,
         phone: user.phone,
-        position: user.position || user.role || '成员',
+        position: user.position || roleNameMap[user.role] || '成员',
         role: user.role,
+        roleName: roleNameMap[user.role] || user.role || '成员',
         status: user.status === 'active' ? 'active' : 'inactive',
         joinDate: user.createdAt.toISOString().split('T')[0],
         joinedAt: user.createdAt.toISOString(),
@@ -694,6 +706,9 @@ export class DepartmentController {
 
       const savedUser = await this.userRepository.save(user);
 
+      // 更新部门成员数量
+      await this.departmentRepository.increment({ id: departmentId }, 'memberCount', 1);
+
       const result = {
         id: savedUser.id.toString(),
         userId: savedUser.id.toString(),
@@ -728,8 +743,8 @@ export class DepartmentController {
   async removeDepartmentMember(req: Request, res: Response): Promise<void> {
     try {
       const { departmentId, userId } = req.params;
+      const { targetDepartmentId } = req.body || {};
 
-      // 检查用户是否存在且属于该部门
       const user = await this.userRepository.findOne({
         where: {
           id: userId,
@@ -745,14 +760,32 @@ export class DepartmentController {
         return;
       }
 
-      // 🔥 修复：将用户的部门ID和部门名称都设为null
-      user.departmentId = null;
-      user.departmentName = null;
+      if (targetDepartmentId) {
+        const targetDept = await this.departmentRepository.findOne({ where: { id: targetDepartmentId } });
+        if (!targetDept) {
+          res.status(400).json({
+            success: false,
+            message: '目标部门不存在'
+          });
+          return;
+        }
+        user.departmentId = targetDepartmentId;
+        user.departmentName = targetDept.name || null;
+
+        // 更新目标部门的成员数量 +1
+        await this.departmentRepository.increment({ id: targetDepartmentId }, 'memberCount', 1);
+      } else {
+        user.departmentId = null;
+        user.departmentName = null;
+      }
       await this.userRepository.save(user);
+
+      // 更新源部门的成员数量 -1
+      await this.departmentRepository.decrement({ id: departmentId }, 'memberCount', 1);
 
       res.json({
         success: true,
-        message: '移除部门成员成功'
+        message: targetDepartmentId ? '成员已转移至新部门' : '移除部门成员成功'
       });
     } catch (error) {
       log.error('移除部门成员失败:', error);

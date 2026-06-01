@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="order-edit-page">
     <!-- 页面标题 -->
     <div class="page-header">
@@ -989,11 +989,16 @@ const maxDiscountRate = computed(() => {
 
 // 过滤后的产品列表
 const filteredProducts = computed(() => {
+  const currentDeptId = userStore.currentUser?.departmentId
+  const deptFilter = (product: any) =>
+    !product.allowedDepartments || product.allowedDepartments.length === 0 || (currentDeptId && product.allowedDepartments.includes(currentDeptId))
+
   if (!productSearchKeyword.value) {
-    return productStore.products.filter(product => product.status === 'active')
+    return productStore.products.filter(product => product.status === 'active' && deptFilter(product))
   }
   return productStore.products.filter(product =>
     product.status === 'active' &&
+    deptFilter(product) &&
     (product.name.toLowerCase().includes(productSearchKeyword.value.toLowerCase()) ||
      product.code?.toLowerCase().includes(productSearchKeyword.value.toLowerCase()))
   )

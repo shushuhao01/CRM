@@ -287,7 +287,7 @@
           :show-pagination="true"
           :show-actions="true"
           :actions-width="350"
-          :page-size="20"
+          :page-size="10"
           :total="filteredDepartments.length"
           @column-settings-change="handleColumnSettingsChange"
         >
@@ -422,119 +422,105 @@
     <!-- 操作指南弹窗 -->
     <el-dialog
       v-model="guideDialogVisible"
-      title="部门管理与角色权限操作指南"
-      width="80%"
+      title="部门管理操作指南"
+      width="70%"
       :close-on-click-modal="false"
       class="guide-dialog"
     >
       <div class="guide-content">
         <div class="guide-section">
           <h3>📋 概述</h3>
-          <p>本指南将帮助您理解和使用CRM系统中的部门管理和角色权限功能，确保您能够高效地管理组织架构和权限分配。</p>
+          <p>部门管理用于构建和维护企业的组织架构。通过部门的层级结构，可以清晰地管理团队分工和人员归属关系。</p>
         </div>
 
         <div class="guide-section">
-          <h3>🏢 部门管理</h3>
+          <h3>🏢 核心概念</h3>
           <div class="guide-subsection">
-            <h4>基本概念</h4>
             <ul>
-              <li><strong>部门</strong>：组织的基本单位，用于划分不同的业务领域</li>
-              <li><strong>层级结构</strong>：支持多级部门嵌套，形成完整的组织架构</li>
-              <li><strong>部门负责人</strong>：每个部门可以指定一名或多名负责人</li>
+              <li><strong>部门</strong>：组织的基本单位，用于划分不同的业务团队</li>
+              <li><strong>层级结构</strong>：支持多级部门嵌套（如：公司 > 事业部 > 小组），形成完整的组织架构树</li>
+              <li><strong>部门负责人</strong>：每个部门可指定一名负责人，便于管理和沟通</li>
+              <li><strong>成员归属</strong>：每个成员必须归属于一个部门，确保组织架构完整</li>
             </ul>
           </div>
+        </div>
 
-          <div class="guide-subsection">
-            <h4>主要功能</h4>
-            <div class="feature-grid">
-              <div class="feature-item">
-                <h5>📋 查看部门列表</h5>
-                <ul>
-                  <li>卡片视图：以卡片形式展示部门信息</li>
-                  <li>表格视图：以表格形式展示详细数据</li>
-                  <li>搜索功能：按部门名称、编码搜索</li>
-                </ul>
-              </div>
-              <div class="feature-item">
-                <h5>⚙️ 部门操作</h5>
-                <ul>
-                  <li>新建部门：创建新的部门</li>
-                  <li>编辑部门：修改部门信息</li>
-                  <li>查看详情：点击"详情"按钮查看完整信息</li>
-                  <li>删除部门：删除不再需要的部门</li>
-                </ul>
-              </div>
+        <div class="guide-section">
+          <h3>⚙️ 功能说明</h3>
+          <div class="feature-grid">
+            <div class="feature-item">
+              <h5>📋 部门列表</h5>
+              <ul>
+                <li>表格视图展示所有部门及其层级关系</li>
+                <li>显示部门名称、编码、负责人、成员数等信息</li>
+                <li>支持按部门名称或编码搜索</li>
+              </ul>
+            </div>
+            <div class="feature-item">
+              <h5>➕ 新建部门</h5>
+              <ul>
+                <li>填写部门名称和编码（编码自动生成）</li>
+                <li>选择上级部门（不选则为顶级部门）</li>
+                <li>指定部门负责人（可选）</li>
+                <li>设置排序和启用状态</li>
+              </ul>
+            </div>
+            <div class="feature-item">
+              <h5>👥 成员管理</h5>
+              <ul>
+                <li>点击"成员配置"进入成员管理页面</li>
+                <li>添加成员、批量导入、编辑成员信息</li>
+                <li>移除成员时需指定转入的新部门</li>
+                <li>查看成员的在职天数、角色等详细信息</li>
+              </ul>
+            </div>
+            <div class="feature-item">
+              <h5>🔄 部门调整</h5>
+              <ul>
+                <li>编辑部门基本信息（名称、负责人等）</li>
+                <li>调整上下级关系（移动部门层级）</li>
+                <li>停用/启用部门</li>
+                <li>删除空部门（需先转移所有成员）</li>
+              </ul>
             </div>
           </div>
         </div>
 
         <div class="guide-section">
-          <h3>👥 角色权限管理</h3>
-          <div class="guide-subsection">
-            <h4>权限类型</h4>
-            <div class="permission-grid">
-              <div class="permission-item">
-                <h5>🔧 功能权限</h5>
-                <ul>
-                  <li>客户管理：客户信息的增删改查权限</li>
-                  <li>订单管理：订单处理和状态更新权限</li>
-                  <li>产品管理：产品信息维护权限</li>
-                  <li>数据分析：报表和统计数据查看权限</li>
-                </ul>
-              </div>
-              <div class="permission-item">
-                <h5>📊 数据权限</h5>
-                <ul>
-                  <li>全部数据：可以查看所有数据</li>
-                  <li>部门数据：只能查看本部门及下级部门数据</li>
-                  <li>个人数据：只能查看自己创建的数据</li>
-                </ul>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div class="guide-section">
-          <h3>📝 操作步骤</h3>
+          <h3>📝 常用操作步骤</h3>
           <div class="steps-grid">
             <div class="step-item">
-              <h5>1️⃣ 新建部门</h5>
+              <h5>1️⃣ 创建部门</h5>
               <ol>
-                <li>点击"新建部门"按钮</li>
-                <li>填写部门基本信息</li>
-                <li>选择上级部门（如果是子部门）</li>
-                <li>指定部门负责人</li>
-                <li>保存部门信息</li>
+                <li>点击右上角"新建部门"按钮</li>
+                <li>填写部门名称（编码自动生成）</li>
+                <li>选择上级部门和负责人</li>
+                <li>点击"创建"完成</li>
               </ol>
             </div>
             <div class="step-item">
-              <h5>2️⃣ 配置部门权限</h5>
+              <h5>2️⃣ 管理成员</h5>
               <ol>
-                <li>在部门列表中找到目标部门</li>
-                <li>点击"权限"按钮</li>
-                <li>选择要分配的角色</li>
-                <li>配置具体的功能权限</li>
-                <li>保存权限配置</li>
+                <li>在部门列表点击"成员配置"</li>
+                <li>点击"添加成员"选择人员加入</li>
+                <li>可编辑成员信息或调整角色</li>
+                <li>移除成员时选择新的归属部门</li>
               </ol>
             </div>
             <div class="step-item">
-              <h5>3️⃣ 管理部门成员</h5>
+              <h5>3️⃣ 调整架构</h5>
               <ol>
-                <li>点击部门的"成员"按钮</li>
-                <li>查看当前部门成员列表</li>
-                <li>添加新成员或移除现有成员</li>
-                <li>为成员分配具体角色</li>
-                <li>确认成员权限设置</li>
+                <li>编辑部门可更改上级部门</li>
+                <li>子部门会随父部门一起移动</li>
+                <li>调整后成员关系保持不变</li>
               </ol>
             </div>
             <div class="step-item">
-              <h5>4️⃣ 查看部门详情</h5>
+              <h5>4️⃣ 查看详情</h5>
               <ol>
                 <li>点击部门的"详情"按钮</li>
-                <li>查看部门的完整信息</li>
-                <li>查看部门的权限配置</li>
-                <li>查看部门成员列表</li>
-                <li>查看部门的业务数据统计</li>
+                <li>查看部门完整信息和统计</li>
+                <li>查看该部门下的成员列表</li>
               </ol>
             </div>
           </div>
@@ -542,50 +528,38 @@
 
         <div class="guide-section">
           <h3>⚠️ 注意事项</h3>
-          <div class="warning-grid">
-            <div class="warning-item">
-              <h5>🔒 权限管理</h5>
-              <ul>
-                <li>删除部门前，请确保已妥善处理部门下的所有成员</li>
-                <li>修改部门权限时，会影响该部门下所有成员的权限</li>
-                <li>建议定期审查部门权限配置，确保符合业务需求</li>
-              </ul>
-            </div>
-            <div class="warning-item">
-              <h5>🛡️ 数据安全</h5>
-              <ul>
-                <li>敏感数据的访问权限应严格控制</li>
-                <li>定期检查用户权限，及时回收不必要的权限</li>
-                <li>重要操作建议启用审批流程</li>
-              </ul>
-            </div>
-          </div>
+          <ul>
+            <li>删除部门前须将部门内成员全部转移至其他部门</li>
+            <li>每个成员必须归属一个部门，移除成员时需指定新部门</li>
+            <li>部门编码创建后建议不要随意修改，可能影响系统关联</li>
+            <li>组织架构调整建议在非工作高峰时段进行</li>
+          </ul>
         </div>
 
         <div class="guide-section">
           <h3>🆘 常见问题</h3>
           <div class="faq-list">
             <div class="faq-item">
-              <h5>Q: 如何快速找到特定部门？</h5>
-              <p>A: 使用搜索功能，输入部门名称或编码进行快速定位。</p>
+              <h5>Q: 如何快速找到某个部门？</h5>
+              <p>A: 使用页面顶部的搜索框，输入部门名称或编码即可快速定位。</p>
             </div>
             <div class="faq-item">
-              <h5>Q: 部门权限修改后多久生效？</h5>
-              <p>A: 权限修改后立即生效，用户下次登录或刷新页面即可看到新权限。</p>
+              <h5>Q: 移除成员后成员去了哪里？</h5>
+              <p>A: 移除时系统会要求您选择一个目标部门，成员将自动转入该部门。</p>
             </div>
             <div class="faq-item">
-              <h5>Q: 如何批量管理多个部门的权限？</h5>
-              <p>A: 可以通过上级部门统一配置权限，下级部门会自动继承。</p>
+              <h5>Q: 可以将部门从一个上级移到另一个上级吗？</h5>
+              <p>A: 可以。编辑部门信息，修改"上级部门"字段即可完成层级调整。</p>
             </div>
             <div class="faq-item">
-              <h5>Q: 误删部门怎么办？</h5>
-              <p>A: 请联系系统管理员进行数据恢复，建议删除前做好备份。</p>
+              <h5>Q: 部门的权限在哪里管理？</h5>
+              <p>A: 权限管理在"角色权限"模块中进行，部门仅负责组织架构层级管理。</p>
             </div>
           </div>
         </div>
 
         <div class="guide-footer">
-          <p>💡 <strong>提示</strong>：如需更多帮助，请联系系统管理员或查看详细的用户手册。</p>
+          <p>💡 <strong>提示</strong>：部门管理专注于组织架构，权限配置请前往"角色权限"模块操作。</p>
         </div>
       </div>
 
@@ -600,8 +574,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, nextTick } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, computed, onMounted, watch, nextTick } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { createSafeNavigator } from '@/utils/navigation'
 import {
@@ -632,6 +606,7 @@ import PermissionDialog from '@/components/Department/PermissionDialog.vue'
 import DynamicTable from '@/components/DynamicTable.vue'
 
 const router = useRouter()
+const route = useRoute()
 const safeNavigator = createSafeNavigator(router)
 const departmentStore = useDepartmentStore()
 
@@ -734,11 +709,16 @@ const handleFilter = () => {
   // 过滤逻辑已在计算属性中处理
 }
 
-const handleRefresh = () => {
+const handleRefresh = async () => {
   searchKeyword.value = ''
   statusFilter.value = ''
   levelFilter.value = ''
-  ElMessage.success('数据已刷新')
+  try {
+    await departmentStore.fetchDepartments()
+    ElMessage.success('数据已刷新')
+  } catch (error) {
+    ElMessage.error('刷新失败')
+  }
 }
 
 const handleAddDepartment = () => {
@@ -950,7 +930,7 @@ const tableColumns = computed(() => [
   {
     prop: 'statusSwitch',
     label: '启用状态',
-    width: 100,
+    width: 90,
     visible: true,
     sortable: false,
     showOverflowTooltip: false,
@@ -959,7 +939,7 @@ const tableColumns = computed(() => [
   {
     prop: 'name',
     label: '部门名称',
-    width: 200,
+    minWidth: 150,
     visible: true,
     sortable: false,
     showOverflowTooltip: true,
@@ -968,7 +948,7 @@ const tableColumns = computed(() => [
   {
     prop: 'code',
     label: '部门编码',
-    width: 120,
+    minWidth: 120,
     visible: true,
     sortable: true,
     showOverflowTooltip: false
@@ -976,7 +956,7 @@ const tableColumns = computed(() => [
   {
     prop: 'managerName',
     label: '部门负责人',
-    width: 120,
+    minWidth: 110,
     visible: true,
     sortable: false,
     showOverflowTooltip: false,
@@ -985,7 +965,7 @@ const tableColumns = computed(() => [
   {
     prop: 'memberCount',
     label: '成员数量',
-    width: 100,
+    width: 90,
     visible: true,
     sortable: true,
     showOverflowTooltip: false,
@@ -994,7 +974,7 @@ const tableColumns = computed(() => [
   {
     prop: 'level',
     label: '层级',
-    width: 80,
+    width: 70,
     visible: true,
     sortable: true,
     showOverflowTooltip: false,
@@ -1003,7 +983,7 @@ const tableColumns = computed(() => [
   {
     prop: 'status',
     label: '状态',
-    width: 100,
+    width: 80,
     visible: true,
     sortable: false,
     showOverflowTooltip: false,
@@ -1012,7 +992,7 @@ const tableColumns = computed(() => [
   {
     prop: 'updatedAt',
     label: '更新时间',
-    width: 180,
+    minWidth: 160,
     visible: true,
     sortable: true,
     showOverflowTooltip: false,
@@ -1026,6 +1006,13 @@ const handleColumnSettingsChange = (columns: unknown) => {
 }
 
 
+
+// 监听路由变化，从子页面返回时自动刷新部门数据
+watch(() => route.path, (newPath) => {
+  if (newPath === '/system/departments') {
+    departmentStore.fetchDepartments()
+  }
+})
 
 onMounted(async () => {
   try {

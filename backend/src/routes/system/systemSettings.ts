@@ -1473,6 +1473,15 @@ router.get('/my-departments', authenticateToken, async (req: Request, res: Respo
         : [];
       const managerMap = new Map(managers.map(m => [m.id, m.name || m.username]));
 
+      // 动态计算每个部门的真实成员数
+      const allUsers = await userRepository.find({ select: ['id', 'departmentId'] });
+      const deptMemberCounts: Record<string, number> = {};
+      allUsers.forEach(u => {
+        if (u.departmentId) {
+          deptMemberCounts[u.departmentId] = (deptMemberCounts[u.departmentId] || 0) + 1;
+        }
+      });
+
       return res.json({
         success: true,
         data: departments.map(dept => ({
@@ -1486,7 +1495,9 @@ router.get('/my-departments', authenticateToken, async (req: Request, res: Respo
           managerName: dept.managerId ? managerMap.get(dept.managerId) || null : null,
           sortOrder: dept.sortOrder,
           status: dept.status,
-          memberCount: dept.memberCount
+          memberCount: deptMemberCounts[dept.id] || 0,
+          createdAt: dept.createdAt,
+          updatedAt: dept.updatedAt
         }))
       });
     }
@@ -1646,6 +1657,13 @@ router.post('/departments/:departmentId/members', authenticateToken, requireAdmi
  * @access Private (Admin)
  */
 router.delete('/departments/:departmentId/members/:userId', authenticateToken, requireAdmin, departmentController.removeDepartmentMember.bind(departmentController));
+
+/**
+ * @route POST /api/v1/system/departments/:departmentId/members/:userId/transfer
+ * @desc 移除成员并转移至目标部门
+ * @access Private (Admin)
+ */
+router.post('/departments/:departmentId/members/:userId/transfer', authenticateToken, requireAdmin, departmentController.removeDepartmentMember.bind(departmentController));
 
 
 /**

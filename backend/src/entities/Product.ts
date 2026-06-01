@@ -69,6 +69,9 @@ export class Product {
   })
   status: 'active' | 'inactive'
 
+  @Column({ name: 'allowed_departments', type: 'json', nullable: true, comment: '可下单部门ID列表，NULL表示全部部门' })
+  allowedDepartments: string[] | null
+
   @Column({ name: 'is_recommended', type: 'tinyint', default: 0, comment: '是否推荐' })
   isRecommended: boolean
 

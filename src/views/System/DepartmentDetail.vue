@@ -102,15 +102,6 @@
                   <div class="stat-label">子部门</div>
                 </div>
               </div>
-              <div class="stat-item">
-                <div class="stat-icon permissions">
-                  <el-icon><Key /></el-icon>
-                </div>
-                <div class="stat-content">
-                  <div class="stat-number">{{ department?.permissions?.length || 0 }}</div>
-                  <div class="stat-label">权限数量</div>
-                </div>
-              </div>
             </div>
           </div>
         </el-col>
@@ -140,39 +131,6 @@
             <el-button size="small" type="primary" link>
               发送消息
             </el-button>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- 权限配置 -->
-    <div class="permissions-section">
-      <div class="section-card">
-        <div class="card-header">
-          <h3>部门权限</h3>
-          <el-icon class="header-icon"><Lock /></el-icon>
-        </div>
-        <div class="permissions-grid">
-          <div
-            v-for="(permissions, category) in groupedPermissions"
-            :key="category"
-            class="permission-category"
-          >
-            <div class="category-header">
-              <el-icon class="category-icon"><Setting /></el-icon>
-              <span class="category-name">{{ getCategoryName(category) }}</span>
-            </div>
-            <div class="permission-list">
-              <el-tag
-                v-for="permission in permissions"
-                :key="permission"
-                type="info"
-                size="small"
-                class="permission-tag"
-              >
-                {{ getPermissionName(permission) }}
-              </el-tag>
-            </div>
           </div>
         </div>
       </div>
@@ -223,12 +181,12 @@
           </div>
         </div>
         <el-table
-          :data="departmentMembers"
+          :data="paginatedMembers"
           style="width: 100%"
           v-loading="membersLoading"
         >
-          <el-table-column type="index" label="序号" width="60" />
-          <el-table-column prop="userName" label="姓名" width="180">
+          <el-table-column type="index" label="序号" min-width="60" :index="(index: number) => (memberCurrentPage - 1) * memberPageSize + index + 1" />
+          <el-table-column prop="userName" label="姓名" min-width="180">
             <template #default="{ row }">
               <div class="member-name-cell">
                 <el-avatar :size="32" class="member-avatar">
@@ -246,21 +204,32 @@
               </div>
             </template>
           </el-table-column>
-          <el-table-column prop="position" label="职位" width="150" />
-          <el-table-column prop="userId" label="用户ID" width="200" />
-          <el-table-column prop="joinDate" label="加入时间" width="180">
+          <el-table-column prop="username" label="用户名" min-width="130" />
+          <el-table-column prop="position" label="职位" min-width="120" />
+          <el-table-column prop="roleName" label="角色" min-width="120">
+            <template #default="{ row }">
+              <el-tag v-if="row.roleName" type="info" size="small">{{ row.roleName }}</el-tag>
+              <span v-else class="text-muted">-</span>
+            </template>
+          </el-table-column>
+          <el-table-column prop="joinDate" label="加入时间" min-width="160">
             <template #default="{ row }">
               {{ formatDateTime(row.joinDate) }}
             </template>
           </el-table-column>
-          <el-table-column prop="status" label="状态" width="100">
+          <el-table-column prop="status" label="状态" min-width="90">
             <template #default="{ row }">
               <el-tag :type="row.status === 'active' ? 'success' : 'danger'" size="small">
                 {{ row.status === 'active' ? '在职' : '离职' }}
               </el-tag>
             </template>
           </el-table-column>
-          <el-table-column label="操作" width="250" fixed="right">
+          <el-table-column label="在职天数" min-width="100">
+            <template #default="{ row }">
+              {{ calcWorkingDays(row.joinDate) }}
+            </template>
+          </el-table-column>
+          <el-table-column label="操作" min-width="220" fixed="right">
             <template #default="{ row }">
               <el-button type="primary" link size="small" @click="handleEditMember(row)">
                 <el-icon><Edit /></el-icon>
@@ -279,6 +248,16 @@
         </el-table>
         <div v-if="departmentMembers.length === 0 && !membersLoading" class="empty-members">
           <el-empty description="暂无成员数据" />
+        </div>
+        <div v-if="departmentMembers.length > 0" class="members-pagination">
+          <el-pagination
+            v-model:current-page="memberCurrentPage"
+            v-model:page-size="memberPageSize"
+            :page-sizes="[10, 20, 50]"
+            :total="departmentMembers.length"
+            layout="total, sizes, prev, pager, next, jumper"
+            background
+          />
         </div>
       </div>
     </div>
@@ -330,13 +309,51 @@
       :is-edit="true"
       @success="handleEditSuccess"
     />
+
+    <!-- 移除成员-选择归属部门弹窗 -->
+    <el-dialog
+      v-model="removeDialogVisible"
+      title="移除成员"
+      width="450px"
+      align-center
+      destroy-on-close
+    >
+      <div style="margin-bottom: 16px;">
+        <p style="margin-bottom: 8px; color: #606266;">
+          确定将成员 <strong>{{ removingMember?.userName }}</strong> 从当前部门移除？
+        </p>
+        <p style="color: #909399; font-size: 13px;">
+          移除后需为该成员指定新的归属部门，以确保组织架构完整。
+        </p>
+      </div>
+      <el-form label-width="100px">
+        <el-form-item label="转入部门" required>
+          <el-tree-select
+            v-model="transferDeptId"
+            :data="transferDeptOptions"
+            :props="{ label: 'name', value: 'id', children: 'children' }"
+            placeholder="请选择转入的部门"
+            clearable
+            check-strictly
+            :render-after-expand="false"
+            style="width: 100%"
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="removeDialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="confirmRemoveMember" :disabled="!transferDeptId" :loading="removeLoading">
+          确认移除
+        </el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus'
 import { createSafeNavigator } from '@/utils/navigation'
 import {
   ArrowLeft,
@@ -346,11 +363,8 @@ import {
   InfoFilled,
   DataAnalysis,
   Avatar,
-  Lock,
-  Setting,
   Collection,
   OfficeBuilding,
-  Key,
   Plus,
   Rank,
   Delete
@@ -368,6 +382,10 @@ const departmentStore = useDepartmentStore()
 const departmentId = ref(route.params.id as string)
 const editDialogVisible = ref(false)
 const membersLoading = ref(false)
+const removeDialogVisible = ref(false)
+const removingMember = ref<any>(null)
+const transferDeptId = ref('')
+const removeLoading = ref(false)
 
 // 移动成员相关
 const moveMemberDialogVisible = ref(false)
@@ -375,6 +393,8 @@ const movingMember = ref<any>(null)
 const targetDepartmentId = ref('')
 const movingLoading = ref(false)
 const departmentMembers = ref<unknown[]>([])
+const memberCurrentPage = ref(1)
+const memberPageSize = ref(10)
 
 // 计算属性
 const department = computed(() => {
@@ -391,20 +411,18 @@ const childDepartments = computed(() => {
   return departmentStore.departmentList.filter(dept => dept.parentId === departmentId.value)
 })
 
-const groupedPermissions = computed(() => {
-  if (!department.value?.permissions) return {}
-
-  const groups: Record<string, string[]> = {}
-  department.value.permissions.forEach(permission => {
-    const [category] = permission.split(':')
-    if (!groups[category]) {
-      groups[category] = []
-    }
-    groups[category].push(permission)
-  })
-
-  return groups
+const paginatedMembers = computed(() => {
+  const start = (memberCurrentPage.value - 1) * memberPageSize.value
+  return departmentMembers.value.slice(start, start + memberPageSize.value)
 })
+
+const calcWorkingDays = (joinDate: string) => {
+  if (!joinDate) return '-'
+  const join = new Date(joinDate)
+  if (isNaN(join.getTime())) return '-'
+  const diff = Math.floor((Date.now() - join.getTime()) / (1000 * 60 * 60 * 24))
+  return `${diff}天`
+}
 
 // 方法
 const goBack = () => {
@@ -435,7 +453,7 @@ const loadDepartmentMembers = async () => {
     console.log('[DepartmentDetail] 加载部门成员，部门ID:', departmentId.value)
     console.log('[DepartmentDetail] 当前部门信息:', department.value)
 
-    const members = departmentStore.getDepartmentMembers(departmentId.value)
+    const members = await departmentStore.fetchDepartmentMembers(departmentId.value)
     console.log('[DepartmentDetail] 获取到的成员数:', members.length)
     console.log('[DepartmentDetail] 成员列表:', members)
 
@@ -507,68 +525,46 @@ const confirmMoveMember = async () => {
   }
 }
 
-// 移除成员
+// 移除成员 - 打开选择归属部门弹窗
 const handleRemoveMember = async (member: unknown) => {
-  try {
-    await ElMessageBox.confirm(
-      `确定要将 ${member.userName} 从该部门移除吗？`,
-      '确认移除',
-      {
-        confirmButtonText: '确定',
-        cancelButtonText: '取消',
-        type: 'warning'
-      }
-    )
+  removingMember.value = member
+  transferDeptId.value = ''
+  removeDialogVisible.value = true
+  if (departmentStore.departments.length === 0) {
+    departmentStore.fetchDepartments()
+  }
+}
 
-    await departmentStore.removeDepartmentMember(departmentId.value, member.userId)
-    ElMessage.success('成员已移除')
+const transferDeptOptions = computed(() => {
+  const buildTree = (depts: any[], parentId: string | null = null): any[] => {
+    return depts
+      .filter(d => (d.parentId || null) === parentId && d.id !== departmentId.value)
+      .map(d => ({
+        id: d.id,
+        name: d.name,
+        children: buildTree(depts, d.id)
+      }))
+  }
+  return buildTree(departmentStore.departments)
+})
+
+const confirmRemoveMember = async () => {
+  if (!removingMember.value || !transferDeptId.value) return
+  removeLoading.value = true
+  try {
+    await departmentStore.removeDepartmentMember(
+      departmentId.value,
+      removingMember.value.userId,
+      transferDeptId.value
+    )
+    ElMessage.success('成员已转移至新部门')
+    removeDialogVisible.value = false
     loadDepartmentMembers()
   } catch (error) {
-    if (error !== 'cancel') {
-      console.error('移除成员失败:', error)
-      ElMessage.error('移除成员失败')
-    }
+    ElMessage.error('移除失败，请重试')
+  } finally {
+    removeLoading.value = false
   }
-}
-
-// formatDateTime 已从 @/utils/dateFormat 导入
-
-const getCategoryName = (category: string) => {
-  const categoryNames: Record<string, string> = {
-    customer: '客户管理',
-    order: '订单管理',
-    finance: '财务管理',
-    logistics: '物流管理',
-    service: '客服管理',
-    performance: '绩效管理',
-    system: '系统管理',
-    all: '全部权限'
-  }
-  return categoryNames[category] || category
-}
-
-const getPermissionName = (permission: string) => {
-  const permissionNames: Record<string, string> = {
-    'customer:read': '查看客户',
-    'customer:write': '编辑客户',
-    'customer:delete': '删除客户',
-    'order:read': '查看订单',
-    'order:write': '编辑订单',
-    'order:audit': '审核订单',
-    'order:delete': '删除订单',
-    'finance:read': '查看财务',
-    'finance:write': '编辑财务',
-    'logistics:read': '查看物流',
-    'logistics:write': '编辑物流',
-    'service:read': '查看客服',
-    'service:write': '编辑客服',
-    'performance:read': '查看绩效',
-    'performance:write': '编辑绩效',
-    'system:read': '查看系统',
-    'system:write': '编辑系统',
-    'all': '全部权限'
-  }
-  return permissionNames[permission] || permission
 }
 
 // 监听路由参数变化
@@ -669,7 +665,6 @@ onMounted(() => {
 
 .info-section,
 .manager-section,
-.permissions-section,
 .children-section {
   margin-bottom: 24px;
 }
@@ -781,10 +776,6 @@ onMounted(() => {
   background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
 }
 
-.stat-icon.permissions {
-  background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
-}
-
 .stat-content {
   flex: 1;
 }
@@ -842,46 +833,6 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   gap: 8px;
-}
-
-.permissions-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-  gap: 20px;
-}
-
-.permission-category {
-  border: 1px solid #e4e7ed;
-  border-radius: 8px;
-  padding: 16px;
-  background: #fafbfc;
-}
-
-.category-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 12px;
-}
-
-.category-icon {
-  color: #667eea;
-}
-
-.category-name {
-  font-weight: 600;
-  color: #303133;
-}
-
-.permission-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.permission-tag {
-  border-radius: 6px;
-  font-weight: 500;
 }
 
 .children-list {
@@ -983,6 +934,16 @@ onMounted(() => {
 
 .empty-members {
   padding: 40px 0;
+}
+
+.members-pagination {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 16px;
+}
+
+.text-muted {
+  color: #c0c4cc;
 }
 
 :deep(.el-table) {

@@ -288,6 +288,9 @@ export const useDepartmentStore = createPersistentStore('department', () => {
   const moveDepartment = async (id: string, newParentId: string | null, newSort: number) => {
     loading.value = true
     try {
+      const { moveDepartment: moveDepartmentAPI } = await import('@/api/department')
+      await moveDepartmentAPI(id, newParentId)
+
       const department = departments.value.find(dept => dept.id === id)
       if (department) {
         department.parentId = newParentId
@@ -295,6 +298,9 @@ export const useDepartmentStore = createPersistentStore('department', () => {
         department.level = newParentId ? (getDepartmentById(newParentId)?.level || 0) + 1 : 1
         department.updatedAt = new Date().toISOString()
       }
+    } catch (error) {
+      console.error('移动部门失败:', error)
+      throw error
     } finally {
       loading.value = false
     }
@@ -326,11 +332,11 @@ export const useDepartmentStore = createPersistentStore('department', () => {
   }
 
   // 移除部门成员
-  const removeDepartmentMember = async (departmentId: string, userId: string) => {
+  const removeDepartmentMember = async (departmentId: string, userId: string, targetDepartmentId?: string) => {
     loading.value = true
     try {
       const { removeDepartmentMember: removeDepartmentMemberAPI } = await import('@/api/department')
-      await removeDepartmentMemberAPI(departmentId, userId)
+      await removeDepartmentMemberAPI(departmentId, userId, targetDepartmentId)
 
       const index = members.value.findIndex(m => m.departmentId === departmentId && m.userId === userId)
       if (index !== -1) {
@@ -340,6 +346,14 @@ export const useDepartmentStore = createPersistentStore('department', () => {
         const dept = departments.value.find(d => d.id === departmentId)
         if (dept && dept.memberCount > 0) {
           dept.memberCount -= 1
+        }
+
+        // 如果有目标部门，增加目标部门的成员数量
+        if (targetDepartmentId) {
+          const targetDept = departments.value.find(d => d.id === targetDepartmentId)
+          if (targetDept) {
+            targetDept.memberCount = (targetDept.memberCount || 0) + 1
+          }
         }
 
         return true

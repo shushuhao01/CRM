@@ -76,9 +76,12 @@ export const addDepartmentMember = (departmentId: string, userId: string, role: 
 }
 
 /**
- * 移除部门成员
+ * 移除部门成员（可指定转入部门）
  */
-export const removeDepartmentMember = (departmentId: string, userId: string) => {
+export const removeDepartmentMember = (departmentId: string, userId: string, targetDepartmentId?: string) => {
+  if (targetDepartmentId) {
+    return api.post<void>(`/system/departments/${departmentId}/members/${userId}/transfer`, { targetDepartmentId })
+  }
   return api.delete<void>(`/system/departments/${departmentId}/members/${userId}`)
 }
 

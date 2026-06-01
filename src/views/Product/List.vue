@@ -357,6 +357,24 @@
           </el-tag>
         </template>
 
+        <template #column-allowedDepartments="{ row }">
+          <div class="dept-link" @click.stop="openDeptDialog(row)">
+            <template v-if="!row.allowedDepartments || row.allowedDepartments.length === 0">
+              <span>全部部门</span>
+            </template>
+            <template v-else>
+              <span>{{ row.allowedDepartments.slice(0, 2).map((d: string) => getDeptName(d)).join('、') }}</span>
+              <el-tooltip
+                v-if="row.allowedDepartments.length > 2"
+                :content="row.allowedDepartments.map((d: string) => getDeptName(d)).join('、')"
+                placement="top"
+              >
+                <span>等{{ row.allowedDepartments.length }}个部门</span>
+              </el-tooltip>
+            </template>
+          </div>
+        </template>
+
         <!-- 操作列 -->
         <template #table-actions="{ row }">
           <div class="action-buttons">
@@ -830,6 +848,46 @@
         </div>
       </template>
     </el-dialog>
+
+    <!-- 可下单部门选择弹窗 -->
+    <el-dialog
+      v-model="deptDialogVisible"
+      title="设置可下单部门"
+      width="500px"
+      @close="deptDialogVisible = false"
+    >
+      <div style="margin-bottom: 16px;">
+        <el-radio-group v-model="deptSelectMode" @change="handleDeptModeChange">
+          <el-radio label="all">全部部门（所有部门均可下单）</el-radio>
+          <el-radio label="specified">指定部门（仅勾选部门可见此商品）</el-radio>
+        </el-radio-group>
+      </div>
+      <div v-if="deptSelectMode === 'specified'" style="margin-top: 12px;">
+        <el-select
+          v-model="selectedDeptIds"
+          multiple
+          filterable
+          placeholder="请选择允许下单的部门"
+          style="width: 100%;"
+        >
+          <el-option
+            v-for="dept in allDepartments"
+            :key="dept.id"
+            :label="dept.name"
+            :value="dept.id"
+          />
+        </el-select>
+        <div v-if="selectedDeptIds.length > 0" style="margin-top: 8px; color: #909399; font-size: 12px;">
+          已选 {{ selectedDeptIds.length }} 个部门，未勾选的部门在新增/编辑订单时将无法看到此商品
+        </div>
+      </div>
+      <template #footer>
+        <div class="dialog-footer">
+          <el-button @click="deptDialogVisible = false">取消</el-button>
+          <el-button type="primary" @click="saveDeptSelection" :loading="deptSaving">保存</el-button>
+        </div>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -852,6 +910,7 @@ import {
 import { useConfigStore } from '@/stores/config'
 import { useNotificationStore } from '@/stores/notification'
 import { useProductStore } from '@/stores/product'
+import { useDepartmentStore } from '@/stores/department'
 import { productApi } from '@/api/product'
 import DynamicTable from '@/components/DynamicTable.vue'
 import { createSafeNavigator } from '@/utils/navigation'
@@ -902,6 +961,7 @@ const notificationStore = useNotificationStore()
 
 // 商品store
 const productStore = useProductStore()
+const departmentStore = useDepartmentStore()
 
 // 响应式数据
 const tableLoading = ref(false)
@@ -925,6 +985,14 @@ const categoryDialogVisible = ref(false)
 const priceDialogVisible = ref(false)
 const categoryFormDialogVisible = ref(false)
 const categoryFormMode = ref('add')
+
+// 可下单部门弹窗相关
+const deptDialogVisible = ref(false)
+const deptSelectMode = ref<'all' | 'specified'>('all')
+const selectedDeptIds = ref<string[]>([])
+const deptSaving = ref(false)
+const currentDeptProduct = ref<any>(null)
+const allDepartments = computed(() => departmentStore.departments)
 
 // 搜索表单
 const searchForm = reactive({
@@ -1147,6 +1215,15 @@ const tableColumns = computed(() => [
     visible: true,
     sortable: false,
     showOverflowTooltip: false
+  },
+  {
+    prop: 'allowedDepartments',
+    label: '可下单部门',
+    width: 160,
+    visible: true,
+    sortable: false,
+    showOverflowTooltip: false,
+    slotName: 'column-allowedDepartments'
   },
   {
     prop: 'createTime',
@@ -2450,6 +2527,11 @@ watch(() => route.path, (newPath, oldPath) => {
   }
 }, { immediate: false })
 
+// 监听商品数据变化，自动刷新列表
+watch(() => productStore.products, () => {
+  loadData()
+}, { deep: false })
+
 // 监听路由查询参数变化，用于处理新建商品后的刷新
 watch(() => route.query, (newQuery, oldQuery) => {
   if (route.path === '/product/list' && newQuery.refresh === 'true') {
@@ -2460,11 +2542,56 @@ watch(() => route.query, (newQuery, oldQuery) => {
   }
 }, { immediate: false })
 
+// 可下单部门 - 相关方法
+const getDeptName = (deptId: string): string => {
+  const dept = departmentStore.departments.find((d: any) => d.id === deptId)
+  return dept ? dept.name : deptId
+}
+
+const openDeptDialog = (row: any) => {
+  currentDeptProduct.value = row
+  if (row.allowedDepartments && row.allowedDepartments.length > 0) {
+    deptSelectMode.value = 'specified'
+    selectedDeptIds.value = [...row.allowedDepartments]
+  } else {
+    deptSelectMode.value = 'all'
+    selectedDeptIds.value = []
+  }
+  deptDialogVisible.value = true
+}
+
+const handleDeptModeChange = (val: string | number | boolean | undefined) => {
+  if (val === 'all') {
+    selectedDeptIds.value = []
+  }
+}
+
+const saveDeptSelection = async () => {
+  if (!currentDeptProduct.value) return
+  if (deptSelectMode.value === 'specified' && selectedDeptIds.value.length === 0) {
+    ElMessage.warning('请至少选择一个部门，或选择全部部门')
+    return
+  }
+  deptSaving.value = true
+  try {
+    const allowedDepartments = deptSelectMode.value === 'all' ? null : selectedDeptIds.value
+    await productApi.update(currentDeptProduct.value.id, { allowedDepartments })
+    ElMessage.success('可下单部门设置成功')
+    deptDialogVisible.value = false
+    await productStore.loadProducts()
+    loadData()
+  } catch (error) {
+    ElMessage.error('设置失败，请重试')
+  } finally {
+    deptSaving.value = false
+  }
+}
+
 // 生命周期钩子
 onMounted(async () => {
   // 【修复】始终从API获取最新商品数据，确保数据一致性
   try {
-    await productStore.loadProducts()
+    await productStore.loadProducts({ pageSize: 9999 })
     await productStore.loadCategories()
   } catch (error) {
     console.error('从API加载商品数据失败:', error)
@@ -2474,6 +2601,7 @@ onMounted(async () => {
     }
   }
   loadData()
+  departmentStore.fetchDepartments()
 })
 </script>
 
@@ -3086,5 +3214,16 @@ onMounted(async () => {
 .preview-section h4 {
   margin-bottom: 12px;
   color: #303133;
+}
+
+.dept-link {
+  cursor: pointer;
+  color: #409EFF;
+  font-size: 13px;
+}
+
+.dept-link:hover {
+  text-decoration: underline;
+  color: #337ecc;
 }
 </style>

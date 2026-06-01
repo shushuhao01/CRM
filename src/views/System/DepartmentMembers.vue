@@ -116,7 +116,7 @@
     <!-- 成员列表 -->
     <div class="table-section">
       <el-table
-        :data="filteredMembers"
+        :data="paginatedMembers"
         v-loading="departmentStore.loading"
         class="members-table"
       >
@@ -145,7 +145,7 @@
 
         <el-table-column prop="position" label="职位" width="120">
           <template #default="{ row }">
-            <el-tag type="info" size="small">{{ row.position || '-' }}</el-tag>
+            <el-tag type="info" size="small">{{ getPositionText(row.position, row.role) }}</el-tag>
           </template>
         </el-table-column>
 
@@ -195,20 +195,24 @@
               >
                 {{ row.status === 'active' ? '停用' : '启用' }}
               </el-button>
-              <el-popconfirm
-                title="确定要移除这个成员吗？"
-                @confirm="handleRemoveMember(row)"
-              >
-                <template #reference>
-                  <el-button size="small" type="danger" link>
+              <el-button size="small" type="danger" link @click="openRemoveDialog(row)">
                     移除
-                  </el-button>
-                </template>
-              </el-popconfirm>
+              </el-button>
             </div>
           </template>
         </el-table-column>
       </el-table>
+      <div class="pagination-container" style="margin-top: 16px; display: flex; justify-content: flex-end;">
+        <el-pagination
+          v-model:current-page="memberCurrentPage"
+          v-model:page-size="memberPageSize"
+          :page-sizes="[10, 20, 50]"
+          :total="filteredMembers.length"
+          layout="total, sizes, prev, pager, next"
+          @size-change="handleMemberSizeChange"
+          @current-change="handleMemberPageChange"
+        />
+      </div>
     </div>
 
     <!-- 添加/编辑成员弹窗 -->
@@ -226,6 +230,44 @@
       :department-id="departmentId"
       @success="handleBatchImportSuccess"
     />
+
+    <!-- 移除成员-选择归属部门弹窗 -->
+    <el-dialog
+      v-model="removeDialogVisible"
+      title="移除成员"
+      width="450px"
+      align-center
+      destroy-on-close
+    >
+      <div style="margin-bottom: 16px;">
+        <p style="margin-bottom: 8px; color: #606266;">
+          确定将成员 <strong>{{ removingMember?.userName }}</strong> 从当前部门移除？
+        </p>
+        <p style="color: #909399; font-size: 13px;">
+          移除后需为该成员指定新的归属部门，以确保组织架构完整。
+        </p>
+      </div>
+      <el-form label-width="100px">
+        <el-form-item label="转入部门" required>
+          <el-tree-select
+            v-model="transferDeptId"
+            :data="transferDeptOptions"
+            :props="{ label: 'name', value: 'id', children: 'children' }"
+            placeholder="请选择转入的部门"
+            clearable
+            check-strictly
+            :render-after-expand="false"
+            style="width: 100%"
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="removeDialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="confirmRemoveMember" :disabled="!transferDeptId" :loading="removeLoading">
+          确认移除
+        </el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -264,6 +306,13 @@ const memberDialogVisible = ref(false)
 const currentMember = ref<DepartmentMember | null>(null)
 const isEditMember = ref(false)
 const batchImportDialogVisible = ref(false)
+const removeDialogVisible = ref(false)
+const removingMember = ref<DepartmentMember | null>(null)
+const transferDeptId = ref('')
+const removeLoading = ref(false)
+const departmentMembersList = ref<DepartmentMember[]>([])
+const memberCurrentPage = ref(1)
+const memberPageSize = ref(10)
 
 // 计算属性
 const department = computed(() => {
@@ -271,7 +320,7 @@ const department = computed(() => {
 })
 
 const departmentMembers = computed(() => {
-  return departmentStore.getDepartmentMembers(departmentId.value)
+  return departmentMembersList.value
 })
 
 const activeMembers = computed(() => {
@@ -318,6 +367,11 @@ const filteredMembers = computed(() => {
   return members
 })
 
+const paginatedMembers = computed(() => {
+  const start = (memberCurrentPage.value - 1) * memberPageSize.value
+  return filteredMembers.value.slice(start, start + memberPageSize.value)
+})
+
 // 方法
 const goBack = () => {
   safeNavigator.push('/system/departments')
@@ -345,9 +399,29 @@ const getRoleText = (role: string) => {
     'admin': '管理员',
     'department_manager': '部门经理',
     'sales_staff': '销售员',
-    'customer_service': '客服'
+    'customer_service': '客服',
+    'finance': '财务',
+    'warehouse': '仓管',
+    'employee': '员工'
   }
   return textMap[role] || role || '-'
+}
+
+const getPositionText = (position: string, role?: string) => {
+  const positionMap: Record<string, string> = {
+    'super_admin': '超级管理员',
+    'admin': '管理员',
+    'department_manager': '部门经理',
+    'sales_staff': '销售员',
+    'customer_service': '客服',
+    'finance': '财务',
+    'warehouse': '仓管',
+    'employee': '员工'
+  }
+  if (position && positionMap[position]) return positionMap[position]
+  if (position && !position.match(/^[a-z_]+$/)) return position
+  if (role && positionMap[role]) return positionMap[role]
+  return position || '成员'
 }
 
 const calculateWorkDays = (joinDate: string) => {
@@ -366,11 +440,22 @@ const handleFilter = () => {
   // 过滤逻辑已在计算属性中处理
 }
 
-const handleRefresh = () => {
+const handleMemberSizeChange = () => {
+  memberCurrentPage.value = 1
+}
+const handleMemberPageChange = () => {}
+
+const handleRefresh = async () => {
   searchKeyword.value = ''
   statusFilter.value = ''
   positionFilter.value = ''
-  ElMessage.success('数据已刷新')
+  try {
+    const result = await departmentStore.fetchDepartmentMembers(departmentId.value)
+    departmentMembersList.value = result
+    ElMessage.success('数据已刷新')
+  } catch (error) {
+    ElMessage.error('刷新失败')
+  }
 }
 
 const handleAddMember = () => {
@@ -396,12 +481,45 @@ const handleToggleStatus = async (member: DepartmentMember) => {
   }
 }
 
-const handleRemoveMember = async (member: DepartmentMember) => {
+const transferDeptOptions = computed(() => {
+  const buildTree = (depts: any[], parentId: string | null = null): any[] => {
+    return depts
+      .filter(d => (d.parentId || null) === parentId && d.id !== departmentId.value)
+      .map(d => ({
+        id: d.id,
+        name: d.name,
+        children: buildTree(depts, d.id)
+      }))
+  }
+  return buildTree(departmentStore.departments)
+})
+
+const openRemoveDialog = (member: DepartmentMember) => {
+  removingMember.value = member
+  transferDeptId.value = ''
+  removeDialogVisible.value = true
+  if (departmentStore.departments.length === 0) {
+    departmentStore.fetchDepartments()
+  }
+}
+
+const confirmRemoveMember = async () => {
+  if (!removingMember.value || !transferDeptId.value) return
+  removeLoading.value = true
   try {
-    await departmentStore.removeDepartmentMember(member.id)
-    ElMessage.success('成员已移除')
+    await departmentStore.removeDepartmentMember(
+      departmentId.value,
+      removingMember.value.userId || removingMember.value.id,
+      transferDeptId.value
+    )
+    ElMessage.success('成员已转移至新部门')
+    removeDialogVisible.value = false
+    const result = await departmentStore.fetchDepartmentMembers(departmentId.value)
+    departmentMembersList.value = result
   } catch (error) {
-    ElMessage.error('移除失败')
+    ElMessage.error('移除失败，请重试')
+  } finally {
+    removeLoading.value = false
   }
 }
 
@@ -409,14 +527,18 @@ const handleBatchImport = () => {
   batchImportDialogVisible.value = true
 }
 
-const handleMemberDialogSuccess = () => {
+const handleMemberDialogSuccess = async () => {
   memberDialogVisible.value = false
   ElMessage.success(isEditMember.value ? '成员信息已更新' : '成员已添加')
+  const result = await departmentStore.fetchDepartmentMembers(departmentId.value)
+  departmentMembersList.value = result
 }
 
-const handleBatchImportSuccess = () => {
+const handleBatchImportSuccess = async () => {
   batchImportDialogVisible.value = false
   ElMessage.success('批量导入成功')
+  const result = await departmentStore.fetchDepartmentMembers(departmentId.value)
+  departmentMembersList.value = result
 }
 
 // 监听路由参数变化
@@ -440,7 +562,8 @@ onMounted(async () => {
   // 🔥 从API获取部门成员数据
   try {
     console.log('[部门成员] 加载部门成员数据, 部门ID:', departmentId.value)
-    await departmentStore.fetchDepartmentMembers(departmentId.value)
+    const result = await departmentStore.fetchDepartmentMembers(departmentId.value)
+    departmentMembersList.value = result
     console.log('[部门成员] 加载完成, 成员数:', departmentMembers.value.length)
   } catch (error) {
     console.error('[部门成员] 加载失败:', error)
