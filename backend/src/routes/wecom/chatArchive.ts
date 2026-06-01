@@ -1004,6 +1004,7 @@ router.get('/chat-archive/audit-marks', authenticateToken, async (req: Request, 
           // 检查是否有 CRM 绑定关系
           const crmBindings = await bindingRepo.createQueryBuilder('b')
             .where('b.wecom_user_id IN (:...ids)', { ids: unresolvedIds })
+            .andWhere(tenantId ? 'b.tenant_id = :tenantId' : '1=1', tenantId ? { tenantId } : {})
             .getMany();
           for (const b of crmBindings) {
             const name = b.crmUserName || b.wecomUserName;
@@ -1073,7 +1074,11 @@ router.post('/chat-archive/audit-marks', authenticateToken, async (req: Request,
 router.put('/chat-archive/audit-marks/:id', authenticateToken, async (req: Request, res: Response) => {
   try {
     const repo = AppDataSource.getRepository(WecomChatAuditMark);
-    const mark = await repo.findOne({ where: { id: parseInt(req.params.id) } });
+    const { getCurrentTenantId } = await import('../../utils/tenantContext');
+    const tenantId = getCurrentTenantId();
+    const where: any = { id: parseInt(req.params.id) };
+    if (tenantId) where.tenantId = tenantId;
+    const mark = await repo.findOne({ where });
     if (!mark) return res.status(404).json({ success: false, message: '审计记录不存在' });
 
     const crmUser = (req as any).currentUser;

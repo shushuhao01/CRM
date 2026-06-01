@@ -577,11 +577,15 @@ router.get('/sidebar/customer-detail', authenticateSidebarToken, async (req: Req
       const customerRepo = AppDataSource.getRepository(Customer);
       const orderRepo = AppDataSource.getRepository(Order);
 
-      crmCustomer = await customerRepo.findOne({ where: { id: wecomCustomer.crmCustomerId } });
+      const custWhere: any = { id: wecomCustomer.crmCustomerId };
+      if (tenantId) custWhere.tenantId = tenantId;
+      crmCustomer = await customerRepo.findOne({ where: custWhere });
       if (crmCustomer) {
         // 分页查询订单
+        const orderWhere: any = { customerId: crmCustomer.id };
+        if (tenantId) orderWhere.tenantId = tenantId;
         const [orderRows, total] = await orderRepo.findAndCount({
-          where: { customerId: crmCustomer.id },
+          where: orderWhere,
           order: { createdAt: 'DESC' },
           skip: (currentOrderPage - 1) * orderPageSize,
           take: orderPageSize,
@@ -591,13 +595,14 @@ router.get('/sidebar/customer-detail', authenticateSidebarToken, async (req: Req
         orderTotal = total;
 
         // 统计：直接从订单表聚合确保准确
-        const statsResult = await orderRepo
+        const statsQb = orderRepo
           .createQueryBuilder('o')
           .select('COUNT(o.id)', 'orderCount')
           .addSelect('COALESCE(SUM(COALESCE(o.finalAmount, o.totalAmount)), 0)', 'totalAmount')
           .addSelect('MAX(o.createdAt)', 'lastOrderTime')
-          .where('o.customerId = :customerId', { customerId: crmCustomer.id })
-          .getRawOne();
+          .where('o.customerId = :customerId', { customerId: crmCustomer.id });
+        if (tenantId) statsQb.andWhere('o.tenant_id = :tenantId', { tenantId });
+        const statsResult = await statsQb.getRawOne();
 
         stats = {
           orderCount: parseInt(statsResult?.orderCount || '0'),
@@ -2237,11 +2242,16 @@ router.get('/sidebar-config', async (req: Request, res: Response) => {
   }
 });
 
-/** GET /sidebar-list — 列出所有第三方配置（诊断用） */
-router.get('/sidebar-list', async (_req: Request, res: Response) => {
+/** GET /sidebar-list — 列出当前租户的第三方配置（诊断用，需认证） */
+router.get('/sidebar-list', authenticateSidebarToken, async (req: Request, res: Response) => {
   try {
+    const sidebarUser = (req as any).sidebarUser;
+    const tenantId = sidebarUser?.tenantId;
+    const where: any = { authType: 'third_party' };
+    if (tenantId) where.tenantId = tenantId;
+
     const configs = await AppDataSource.getRepository(WecomConfig).find({
-      where: { authType: 'third_party' },
+      where,
       order: { id: 'ASC' }
     });
     const list = configs.map(c => ({
@@ -2254,7 +2264,7 @@ router.get('/sidebar-list', async (_req: Request, res: Response) => {
       hasPermanentCode: !!c.permanentCode,
     }));
     res.type('text/plain; charset=utf-8').send(
-      '=== 所有第三方企微配置 ===\n' +
+      '=== 本租户第三方企微配置 ===\n' +
       list.map(c => `id=${c.id} | corpId=${c.corpId} | name=${c.name} | agentId=${c.agentId || '空'} | enabled=${c.isEnabled} | hasPermanentCode=${c.hasPermanentCode}`).join('\n') +
       '\n\n总计: ' + list.length + ' 条配置'
     );
@@ -2265,19 +2275,24 @@ router.get('/sidebar-list', async (_req: Request, res: Response) => {
 
 /**
  * GET /sidebar-fix-agent?corpId=xxx&agentId=yyy
- * 手动修正指定企业的 agentId
+ * 手动修正指定企业的 agentId（仅限当前租户）
  */
-router.get('/sidebar-fix-agent', async (req: Request, res: Response) => {
+router.get('/sidebar-fix-agent', authenticateSidebarToken, async (req: Request, res: Response) => {
   try {
+    const sidebarUser = (req as any).sidebarUser;
+    const tenantId = sidebarUser?.tenantId;
     const { corpId, agentId } = req.query;
     if (!corpId || !agentId) {
       return res.type('text/plain').send('用法: /sidebar-fix-agent?corpId=xxx&agentId=yyy');
     }
+    if (!tenantId) {
+      return res.type('text/plain').send('错误: 租户信息缺失');
+    }
     const result = await AppDataSource.query(
-      'UPDATE wecom_configs SET agent_id = ?, name = COALESCE(name, ?) WHERE corp_id = ?',
-      [String(agentId), '已修正', String(corpId)]
+      'UPDATE wecom_configs SET agent_id = ?, name = COALESCE(name, ?) WHERE corp_id = ? AND tenant_id = ?',
+      [String(agentId), '已修正', String(corpId), tenantId]
     );
-    const config = await AppDataSource.getRepository(WecomConfig).findOne({ where: { corpId: String(corpId) } });
+    const config = await AppDataSource.getRepository(WecomConfig).findOne({ where: { corpId: String(corpId), tenantId } });
     res.type('text/plain; charset=utf-8').send(
       `修复结果:\n` +
       `corpId: ${corpId}\n` +
@@ -2512,7 +2527,7 @@ router.post('/sidebar/orders', authenticateSidebarToken, async (req: Request, re
     if ((!customerName || !customerPhone) && customerId) {
       try {
         const { Customer } = await import('../../entities/Customer');
-        const cust = await AppDataSource.getRepository(Customer).findOne({ where: { id: customerId } });
+        const cust = await AppDataSource.getRepository(Customer).findOne({ where: { id: customerId, tenantId } });
         if (cust) { customerName = customerName || cust.name || ''; customerPhone = customerPhone || cust.phone || ''; }
       } catch { /* ignore */ }
     }

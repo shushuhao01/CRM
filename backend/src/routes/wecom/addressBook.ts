@@ -289,7 +289,7 @@ router.post('/address-book/sync-departments', authenticateToken, requireAdmin, a
 
     // 获取配置信息（用于判断应用类型）
     const configRepo = AppDataSource.getRepository(WecomConfig);
-    const config = await configRepo.findOne({ where: { id: configId, isEnabled: true } });
+    const config = await configRepo.findOne({ where: { id: configId, isEnabled: true, ...(tenantId ? { tenantId } : {}) } });
     if (!config) {
       return res.status(404).json({ success: false, message: '企微配置不存在或已禁用' });
     }
@@ -539,7 +539,7 @@ router.post('/address-book/sync-members', authenticateToken, requireAdmin, async
 
     // 获取配置信息
     const configRepo = AppDataSource.getRepository(WecomConfig);
-    const config = await configRepo.findOne({ where: { id: configId, isEnabled: true } });
+    const config = await configRepo.findOne({ where: { id: configId, isEnabled: true, ...(tenantId ? { tenantId } : {}) } });
     if (!config) {
       return res.status(404).json({ success: false, message: '企微配置不存在或已禁用' });
     }
@@ -2068,7 +2068,8 @@ router.get('/address-book/diagnose-dept/:deptId', authenticateToken, async (req:
     if (!configId) return res.json({ success: false, message: '缺少configId参数' });
 
     const configRepo = AppDataSource.getRepository(WecomConfig);
-    const config = await configRepo.findOne({ where: { id: Number(configId), isEnabled: true } });
+    const diagTenantId = getCurrentTenantId();
+    const config = await configRepo.findOne({ where: { id: Number(configId), isEnabled: true, ...(diagTenantId ? { tenantId: diagTenantId } : {}) } });
     if (!config) return res.json({ success: false, message: '配置不存在' });
 
     const results: any = {

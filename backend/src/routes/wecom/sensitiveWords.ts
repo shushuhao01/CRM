@@ -269,15 +269,18 @@ router.get('/sensitive-words/hit-records', authenticateToken, async (req: Reques
     const nameMap = new Map<string, string>();
     if (userIds.size > 0) {
       const uidArr = Array.from(userIds);
+      const tenantId = getCurrentTenantId();
+      const tenantCond = tenantId ? ' AND tenant_id = ?' : '';
+      const tenantParam = tenantId ? [tenantId] : [];
       try {
         const members = await AppDataSource.query(
-          `SELECT wecom_user_id, name FROM wecom_user_bindings WHERE wecom_user_id IN (${uidArr.map(() => '?').join(',')})`, uidArr
+          `SELECT wecom_user_id, name FROM wecom_user_bindings WHERE wecom_user_id IN (${uidArr.map(() => '?').join(',')})${tenantCond}`, [...uidArr, ...tenantParam]
         );
         for (const m of members) { if (m.name) nameMap.set(m.wecom_user_id, m.name); }
       } catch { /* ignore */ }
       try {
         const customers = await AppDataSource.query(
-          `SELECT external_user_id, remark, name FROM wecom_customers WHERE external_user_id IN (${uidArr.map(() => '?').join(',')})`, uidArr
+          `SELECT external_user_id, remark, name FROM wecom_customers WHERE external_user_id IN (${uidArr.map(() => '?').join(',')})${tenantCond}`, [...uidArr, ...tenantParam]
         );
         for (const c of customers) { nameMap.set(c.external_user_id, c.remark || c.name || c.external_user_id); }
       } catch { /* ignore */ }

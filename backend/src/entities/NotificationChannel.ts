@@ -94,6 +94,10 @@ export class NotificationLog {
   @Column({ name: 'error_message', type: 'text', nullable: true, comment: '错误信息' })
   errorMessage?: string;
 
+  @Column({ name: 'tenant_id', type: 'varchar', length: 36, nullable: true, comment: '租户ID' })
+  @Index()
+  tenantId?: string;
+
   @Column({ name: 'sent_at', type: 'timestamp', nullable: true, comment: '发送时间' })
   sentAt?: Date;
 

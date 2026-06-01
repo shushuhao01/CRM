@@ -12,6 +12,7 @@ import { getDataSource } from '../config/database';
 import { SystemMessage } from '../entities/SystemMessage';
 import { User } from '../entities/User';
 import { NotificationChannel, NotificationLog } from '../entities/NotificationChannel';
+import { TenantContextManager } from '../utils/tenantContext';
 import { v4 as uuidv4 } from 'uuid';
 
 import { log as logger } from '../config/logger';
@@ -117,6 +118,9 @@ class OrderNotificationService {
 
       const messageRepo = dataSource.getRepository(SystemMessage);
 
+      // 🔒 获取当前租户ID，确保消息写入带 tenant_id（否则按租户过滤时读不到）
+      const tenantId = TenantContextManager.getTenantId() || null;
+
       const messageId = uuidv4();
       const message = messageRepo.create({
         id: messageId,
@@ -124,6 +128,7 @@ class OrderNotificationService {
         title,
         content,
         targetUserId,
+        tenantId,
         priority: options?.priority || 'normal',
         category: options?.category || '订单通知',
         relatedId: options?.relatedId,
@@ -169,7 +174,7 @@ class OrderNotificationService {
   }
 
   /**
-   * 🔥 发送消息到所有配置的通知渠道（企业微信、钉钉、邮箱、短信等）
+   * 🔒 发送消息到当前租户配置的通知渠道（企业微信、钉钉、邮箱、短信等）
    */
   private async sendToAllChannels(type: string, title: string, content: string): Promise<void> {
     try {
@@ -183,10 +188,13 @@ class OrderNotificationService {
 
       const channelRepo = dataSource.getRepository(NotificationChannel);
 
-      // 查找所有启用的通知渠道
-      const channels = await channelRepo.find({
-        where: { isEnabled: 1 }
-      });
+      // 🔒 租户隔离：只查询当前租户的通知渠道，防止跨租户推送
+      const tenantId = TenantContextManager.getTenantId();
+      const where: any = { isEnabled: 1 };
+      if (tenantId) {
+        where.tenantId = tenantId;
+      }
+      const channels = await channelRepo.find({ where });
 
       logger.info(`[OrderNotification] 📋 找到 ${channels.length} 个启用的通知渠道`);
 
@@ -274,6 +282,7 @@ class OrderNotificationService {
           status: result.errcode === 0 ? 'success' : 'failed',
           response: JSON.stringify(result),
           errorMessage: result.errcode !== 0 ? result.errmsg : undefined,
+          tenantId: TenantContextManager.getTenantId() || undefined,
           sentAt: new Date()
         });
         await logRepo.save(log);
@@ -340,6 +349,7 @@ class OrderNotificationService {
           status: result.errcode === 0 ? 'success' : 'failed',
           response: JSON.stringify(result),
           errorMessage: result.errcode !== 0 ? result.errmsg : undefined,
+          tenantId: TenantContextManager.getTenantId() || undefined,
           sentAt: new Date()
         });
         await logRepo.save(log);
@@ -587,15 +597,17 @@ class OrderNotificationService {
 
       const messageRepo = dataSource.getRepository(SystemMessage);
 
-      // 🔥 修复：只创建一条消息记录，targetUserId 存储所有目标用户ID（逗号分隔）
-      // 这样每种通知只有一条记录，避免重复
+      // 🔒 获取当前租户ID，确保消息写入带 tenant_id
+      const tenantId = TenantContextManager.getTenantId() || null;
+
       const messageId = uuidv4();
       const message = messageRepo.create({
         id: messageId,
         type,
         title,
         content,
-        targetUserId: targetUserIds.join(','), // 多个用户ID用逗号分隔
+        targetUserId: targetUserIds.join(','),
+        tenantId,
         priority: options?.priority || 'normal',
         category: options?.category || '订单通知',
         relatedId: options?.relatedId,
@@ -644,7 +656,7 @@ class OrderNotificationService {
 
   /**
    * 获取指定角色的所有用户ID
-   * 🔥 修复：同时查询 status='active' 和 status=1 的用户（兼容不同的状态值）
+   * 🔒 租户隔离：只获取当前租户内的管理员
    */
   private async getUserIdsByRoles(roles: string[]): Promise<string[]> {
     try {
@@ -654,7 +666,6 @@ class OrderNotificationService {
         return [];
       }
 
-      // 🔥 检查数据源是否已初始化
       if (!dataSource.isInitialized) {
         logger.error('[OrderNotification] ❌ 数据库未初始化 (isInitialized=false)');
         return [];
@@ -662,31 +673,30 @@ class OrderNotificationService {
 
       const userRepo = dataSource.getRepository(User);
 
-      // 🔥 查询所有用户，不限制status，然后在代码中过滤
+      // 🔒 租户隔离：只查询当前租户的用户
+      const tenantId = TenantContextManager.getTenantId();
+
+      const where: any = {};
+      if (tenantId) {
+        where.tenantId = tenantId;
+      }
+
       const allUsers = await userRepo.find({
-        select: ['id', 'role', 'status', 'username', 'realName']
+        where,
+        select: ['id', 'role', 'status', 'username', 'realName', 'tenantId']
       });
 
-      logger.info(`[OrderNotification] 📋 数据库中共有 ${allUsers.length} 个用户`);
-      logger.info(`[OrderNotification] 📋 查找角色: ${roles.join(', ')}`);
-      logger.info(`[OrderNotification] 📋 所有用户角色: ${allUsers.map(u => `${u.username || u.realName}(${u.role}, status=${u.status})`).join(', ')}`);
+      logger.info(`[OrderNotification] 📋 租户 ${tenantId || '无'} 中共有 ${allUsers.length} 个用户，查找角色: ${roles.join(', ')}`);
 
-      // 🔥 过滤：角色匹配 且 状态为活跃（兼容 'active', 1, '1', true）
       const matchedUsers = allUsers.filter(u => {
         const roleMatch = roles.includes(u.role);
-        // 使用类型断言避免TypeScript类型检查错误
         const status = u.status as unknown;
         const statusActive = status === 'active' || status === 1 || status === '1' || status === true;
-
-        if (roleMatch) {
-          logger.info(`[OrderNotification] 👤 用户 ${u.username || u.realName} (ID: ${u.id}): role=${u.role}, status=${u.status}, statusActive=${statusActive}`);
-        }
-
         return roleMatch && statusActive;
       });
 
       const userIds = matchedUsers.map(u => u.id);
-      logger.info(`[OrderNotification] ✅ 匹配到 ${userIds.length} 个用户: ${userIds.join(', ')}`);
+      logger.info(`[OrderNotification] ✅ 匹配到 ${userIds.length} 个管理员: ${matchedUsers.map(u => u.username || u.realName).join(', ')}`);
 
       return userIds;
     } catch (error) {

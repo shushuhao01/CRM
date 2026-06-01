@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { CallProspect } from '../../entities/CallProspect';
 import { Customer } from '../../entities/Customer';
 import { getTenantRepo } from '../../utils/tenantRepo';
+import { TenantContextManager } from '../../utils/tenantContext';
 import { log } from '../../config/logger';
 import { v4 as uuidv4 } from 'uuid';
 import { AppDataSource } from '../../config/database';
@@ -65,11 +66,14 @@ router.get('/prospects', async (req: Request, res: Response) => {
         });
 
         if (allIds.length > 0) {
+          const tenantId = TenantContextManager.getTenantId();
+          const tenantCondition = tenantId ? ' AND f.tenant_id = ?' : '';
+          const params = tenantId ? [...allIds, tenantId] : allIds;
           const followUps = await AppDataSource.query(
             `SELECT f.customer_id, f.content, f.remark, f.created_at FROM follow_up_records f
-             WHERE f.customer_id IN (${allIds.map(() => '?').join(',')})
-             AND f.created_at = (SELECT MAX(f2.created_at) FROM follow_up_records f2 WHERE f2.customer_id = f.customer_id)`,
-            allIds
+             WHERE f.customer_id IN (${allIds.map(() => '?').join(',')})${tenantCondition}
+             AND f.created_at = (SELECT MAX(f2.created_at) FROM follow_up_records f2 WHERE f2.customer_id = f.customer_id${tenantCondition.replace('f.', 'f2.')})`,
+            tenantId ? [...allIds, tenantId, tenantId] : allIds
           );
           followUps.forEach((f: any) => {
             const prospect = idToProspect.get(f.customer_id);

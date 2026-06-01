@@ -35,9 +35,9 @@ export class RoleController {
       );
       if (tenantRoles.length > 0) return tenantRoles[0];
     }
-    // 回退：查找任意匹配（兼容默认共享角色）
+    // 回退：查找共享默认角色（tenant_id IS NULL 的系统预设角色）
     const roles = await dataSource.query(
-      `SELECT ${columns} FROM roles WHERE ${field} = ? LIMIT 1`, [value]
+      `SELECT ${columns} FROM roles WHERE ${field} = ? AND tenant_id IS NULL LIMIT 1`, [value]
     );
     return roles.length > 0 ? roles[0] : null;
   }

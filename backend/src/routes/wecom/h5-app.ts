@@ -226,7 +226,7 @@ router.get('/customer/:id', authenticateSidebarToken, async (req: Request, res: 
         const customerRepo = AppDataSource.getRepository(Customer);
         const orderRepo = AppDataSource.getRepository(Order);
 
-        const crmCustomer = await customerRepo.findOne({ where: { id: wecomCustomer.crmCustomerId } });
+        const crmCustomer = await customerRepo.findOne({ where: { id: wecomCustomer.crmCustomerId, ...(tenantId ? { tenantId } : {}) } });
         if (crmCustomer) {
           // 脱敏手机号
           const desensPhone = crmCustomer.phone && crmCustomer.phone.length >= 7
@@ -750,7 +750,7 @@ router.get('/profile', authenticateSidebarToken, async (req: Request, res: Respo
 
     const { User } = await import('../../entities/User');
     const userRepo = AppDataSource.getRepository(User);
-    const user = await userRepo.findOne({ where: { id: userId } });
+    const user = await userRepo.findOne({ where: { id: userId, tenantId } });
     if (!user) return res.json({ success: true, data: null });
 
     // 我的企微客户总数
@@ -765,7 +765,7 @@ router.get('/profile', authenticateSidebarToken, async (req: Request, res: Respo
       const { Department } = await import('../../entities/Department');
       const deptRepo = AppDataSource.getRepository(Department);
       if (user.departmentId) {
-        const dept = await deptRepo.findOne({ where: { id: user.departmentId } });
+        const dept = await deptRepo.findOne({ where: { id: user.departmentId, ...(tenantId ? { tenantId } : {}) } });
         if (dept) departmentName = dept.name;
       }
     } catch { /* ignore */ }

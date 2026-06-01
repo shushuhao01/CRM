@@ -150,7 +150,11 @@ export function getTenantRepo<Entity extends ObjectLiteral>(
 
   const tenantId = getCurrentTenantId();
   if (!tenantId) {
-    return repo; // 无租户上下文，直接返回（超管等场景）
+    // SaaS 模式下无租户上下文时记录警告，帮助排查潜在的隔离泄漏
+    if (process.env.DEPLOY_MODE === 'saas' && process.env.NODE_ENV !== 'test') {
+      console.warn(`[TenantRepo] ⚠️ SaaS模式下无租户上下文访问 ${repo.metadata.tableName}，数据未做隔离过滤`);
+    }
+    return repo;
   }
 
   // 🔥 性能优化：检查 Proxy 缓存，避免重复创建
