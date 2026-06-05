@@ -693,8 +693,12 @@ const performanceData = computed(() => {
 
   // 🔥 获取用户订单 - 使用新的业绩计算规则
   // 不再只统计审核通过的订单，而是根据状态和标记类型判断
+  const currentUserName = userStore.currentUser?.name
   let userOrders = orderStore.orders.filter(order => {
-    if (order.salesPersonId !== currentUserId) return false
+    // 🔥 修复：同时匹配salesPersonId和createdBy，避免漏统计
+    const isMyOrder = String(order.salesPersonId) === String(currentUserId) ||
+      (order.createdBy && currentUserName && order.createdBy === currentUserName)
+    if (!isMyOrder) return false
 
     // 🔥 统一的业绩计算规则
     const excludedStatuses = [
@@ -754,7 +758,7 @@ const performanceData = computed(() => {
           sharedOrderCount += sharedRatio
 
           // 🔥 如果是签收订单，也要扣除签收部分
-          if (shareOrder.status === 'delivered') {
+          if (['delivered', 'signed', 'completed'].includes(shareOrder.status)) {
             sharedSignedOrderCount += sharedRatio
             sharedSignedAmount += (share.orderAmount || 0) * sharedRatio
           }
@@ -781,7 +785,7 @@ const performanceData = computed(() => {
             receivedOrderCount += percentage
 
             // 🔥 如果原始订单是签收状态，也增加签收部分
-            if (originalOrder && originalOrder.status === 'delivered') {
+            if (originalOrder && ['delivered', 'signed', 'completed'].includes(originalOrder.status)) {
               receivedSignedOrderCount += percentage
               receivedSignedAmount += (share.orderAmount || 0) * percentage
             }
@@ -797,8 +801,8 @@ const performanceData = computed(() => {
   const netTotalSales = Math.max(0, originalTotalSales - sharedAmount + receivedAmount)
   const netTotalOrders = Math.max(0, originalTotalOrders - sharedOrderCount + receivedOrderCount)
 
-  // 计算签收业绩和签收订单数量
-  const signedOrders = userOrders.filter(order => order.status === 'delivered')
+  // 计算签收业绩和签收订单数量（delivered=实物已签收, signed=虚拟已签收, completed=已完成兼容）
+  const signedOrders = userOrders.filter(order => ['delivered', 'signed', 'completed'].includes(order.status))
   const originalSignedAmount = signedOrders.reduce((sum, order) => sum + order.totalAmount, 0)
   const originalSignedOrdersCount = signedOrders.length
 
@@ -1803,8 +1807,12 @@ const getSalesTrendData = () => {
   }
 
   // 🔥 获取当前用户的订单 - 使用新的业绩计算规则
+  const currentUserNameForTrend = userStore.currentUser?.name
   let userOrders = orderStore.orders.filter(order => {
-    if (order.salesPersonId !== currentUserId) return false
+    // 🔥 修复：同时匹配salesPersonId和createdBy，避免漏统计
+    const isMyOrder = String(order.salesPersonId) === String(currentUserId) ||
+      (order.createdBy && currentUserNameForTrend && order.createdBy === currentUserNameForTrend)
+    if (!isMyOrder) return false
     const excludedStatuses = ['pending_cancel', 'cancelled', 'audit_rejected', 'logistics_returned', 'logistics_cancelled', 'refunded']
     if (order.status === 'pending_transfer') return order.markType === 'normal'
     return !excludedStatuses.includes(order.status)
@@ -2097,8 +2105,12 @@ const getOrderStatusData = () => {
   }
 
   // 🔥 获取当前用户的订单 - 使用新的业绩计算规则
+  const currentUserNameForStatus = userStore.currentUser?.name
   let userOrders = orderStore.orders.filter(order => {
-    if (order.salesPersonId !== currentUserId) return false
+    // 🔥 修复：同时匹配salesPersonId和createdBy，避免漏统计
+    const isMyOrder = String(order.salesPersonId) === String(currentUserId) ||
+      (order.createdBy && currentUserNameForStatus && order.createdBy === currentUserNameForStatus)
+    if (!isMyOrder) return false
     const excludedStatuses = ['pending_cancel', 'cancelled', 'audit_rejected', 'logistics_returned', 'logistics_cancelled', 'refunded']
     if (order.status === 'pending_transfer') return order.markType === 'normal'
     return !excludedStatuses.includes(order.status)
@@ -2403,8 +2415,12 @@ const getProductSalesData = () => {
   }
 
   // 🔥 获取当前用户的订单 - 使用新的业绩计算规则
+  const currentUserNameForProduct = userStore.currentUser?.name
   let userOrders = orderStore.orders.filter(order => {
-    if (order.salesPersonId !== currentUserId) return false
+    // 🔥 修复：同时匹配salesPersonId和createdBy，避免漏统计
+    const isMyOrder = String(order.salesPersonId) === String(currentUserId) ||
+      (order.createdBy && currentUserNameForProduct && order.createdBy === currentUserNameForProduct)
+    if (!isMyOrder) return false
     const excludedStatuses = ['pending_cancel', 'cancelled', 'audit_rejected', 'logistics_returned', 'logistics_cancelled', 'refunded']
     if (order.status === 'pending_transfer') return order.markType === 'normal'
     return !excludedStatuses.includes(order.status)
@@ -2598,8 +2614,12 @@ const loadTableData = async () => {
 
       if (currentUserId) {
         // 🔥 获取用户订单 - 使用新的业绩计算规则
+        const currentUserNameForOrders = userStore.currentUser?.name
         let userOrders = orderStore.orders.filter(order => {
-          if (order.salesPersonId !== currentUserId) return false
+          // 🔥 修复：同时匹配salesPersonId和createdBy，避免漏统计
+          const isMyOrder = String(order.salesPersonId) === String(currentUserId) ||
+            (order.createdBy && currentUserNameForOrders && order.createdBy === currentUserNameForOrders)
+          if (!isMyOrder) return false
           const excludedStatuses = ['pending_cancel', 'cancelled', 'audit_rejected', 'logistics_returned', 'logistics_cancelled', 'refunded']
           if (order.status === 'pending_transfer') return order.markType === 'normal'
           return !excludedStatuses.includes(order.status)
@@ -2833,8 +2853,12 @@ const loadTableData = async () => {
 
       if (currentUserId) {
         // 🔥 获取用户订单 - 使用新的业绩计算规则
+        const currentUserNameForProducts = userStore.currentUser?.name
         let userOrders = orderStore.orders.filter(order => {
-          if (order.salesPersonId !== currentUserId) return false
+          // 🔥 修复：同时匹配salesPersonId和createdBy，避免漏统计
+          const isMyOrder = String(order.salesPersonId) === String(currentUserId) ||
+            (order.createdBy && currentUserNameForProducts && order.createdBy === currentUserNameForProducts)
+          if (!isMyOrder) return false
           const excludedStatuses = ['pending_cancel', 'cancelled', 'audit_rejected', 'logistics_returned', 'logistics_cancelled', 'refunded']
           if (order.status === 'pending_transfer') return order.markType === 'normal'
           return !excludedStatuses.includes(order.status)

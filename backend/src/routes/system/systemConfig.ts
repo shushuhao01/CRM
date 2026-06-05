@@ -460,6 +460,8 @@ router.post('/department-order-limits', authenticateToken, requireAdmin, async (
       maxSingleAmount,
       totalAmountEnabled,
       maxTotalAmount,
+      minOrderAmountEnabled,
+      minOrderAmount,
       isEnabled,
       remark
     } = req.body;
@@ -487,6 +489,8 @@ router.post('/department-order-limits', authenticateToken, requireAdmin, async (
       limit.maxSingleAmount = maxSingleAmount ?? 0;
       limit.totalAmountEnabled = totalAmountEnabled ?? false;
       limit.maxTotalAmount = maxTotalAmount ?? 0;
+      limit.minOrderAmountEnabled = minOrderAmountEnabled ?? false;
+      limit.minOrderAmount = minOrderAmount ?? 0;
       limit.isEnabled = isEnabled ?? true;
       limit.remark = remark;
       limit.updatedBy = currentUser?.id;
@@ -503,6 +507,8 @@ router.post('/department-order-limits', authenticateToken, requireAdmin, async (
         maxSingleAmount: maxSingleAmount ?? 0,
         totalAmountEnabled: totalAmountEnabled ?? false,
         maxTotalAmount: maxTotalAmount ?? 0,
+        minOrderAmountEnabled: minOrderAmountEnabled ?? false,
+        minOrderAmount: minOrderAmount ?? 0,
         isEnabled: isEnabled ?? true,
         remark,
         createdBy: currentUser?.id,

@@ -1316,10 +1316,10 @@ const applyShareOrderCountSplitting = (members: any[]) => {
     const creator = memberMap.get(String(share.createdById))
     if (creator) {
       creator.orderCount = (creator.orderCount || 0) - sharedRatio
-      if (orderStatus === 'shipped' || orderStatus === 'delivered') {
+      if (['shipped', 'delivered', 'signed', 'completed', 'rejected', 'rejected_returned', 'package_exception'].includes(orderStatus)) {
         creator.shipCount = (creator.shipCount || 0) - sharedRatio
       }
-      if (orderStatus === 'delivered') {
+      if (['delivered', 'signed', 'completed'].includes(orderStatus)) {
         creator.signCount = (creator.signCount || 0) - sharedRatio
       }
       if (orderStatus === 'shipped' && originalOrder?.logisticsStatus !== 'delivered') {
@@ -1328,7 +1328,7 @@ const applyShareOrderCountSplitting = (members: any[]) => {
       if (orderStatus === 'rejected' || orderStatus === 'rejected_returned') {
         creator.rejectCount = (creator.rejectCount || 0) - sharedRatio
       }
-      if (orderStatus === 'logistics_returned') {
+      if (orderStatus === 'refunded') {
         creator.returnCount = (creator.returnCount || 0) - sharedRatio
       }
     }
@@ -1339,10 +1339,10 @@ const applyShareOrderCountSplitting = (members: any[]) => {
       if (receiver) {
         const myRatio = (sm.percentage || 0) / 100
         receiver.orderCount = (receiver.orderCount || 0) + myRatio
-        if (orderStatus === 'shipped' || orderStatus === 'delivered') {
+        if (['shipped', 'delivered', 'signed', 'completed', 'rejected', 'rejected_returned', 'package_exception'].includes(orderStatus)) {
           receiver.shipCount = (receiver.shipCount || 0) + myRatio
         }
-        if (orderStatus === 'delivered') {
+        if (['delivered', 'signed', 'completed'].includes(orderStatus)) {
           receiver.signCount = (receiver.signCount || 0) + myRatio
         }
         if (orderStatus === 'shipped' && originalOrder?.logisticsStatus !== 'delivered') {
@@ -1351,7 +1351,7 @@ const applyShareOrderCountSplitting = (members: any[]) => {
         if (orderStatus === 'rejected' || orderStatus === 'rejected_returned') {
           receiver.rejectCount = (receiver.rejectCount || 0) + myRatio
         }
-        if (orderStatus === 'logistics_returned') {
+        if (orderStatus === 'refunded') {
           receiver.returnCount = (receiver.returnCount || 0) + myRatio
         }
       }
@@ -1685,11 +1685,11 @@ const memberList = computed(() => {
 
             // 按订单状态扣除金额和订单数
             const status = shareOrder.status
-            if (status === 'shipped' || status === 'delivered') {
+            if (['shipped', 'delivered', 'signed', 'completed', 'rejected', 'rejected_returned', 'package_exception'].includes(status)) {
               sharedShipAmount += (share.orderAmount || 0) * sharedRatio
               sharedShipCount += sharedRatio
             }
-            if (status === 'delivered') {
+            if (['delivered', 'signed', 'completed'].includes(status)) {
               sharedSignAmount += (share.orderAmount || 0) * sharedRatio
               sharedSignCount += sharedRatio
             }
@@ -1701,7 +1701,7 @@ const memberList = computed(() => {
               sharedRejectAmount += (share.orderAmount || 0) * sharedRatio
               sharedRejectCount += sharedRatio
             }
-            if (status === 'logistics_returned') {
+            if (status === 'refunded') {
               sharedReturnAmount += (share.orderAmount || 0) * sharedRatio
               sharedReturnCount += sharedRatio
             }
@@ -1721,11 +1721,11 @@ const memberList = computed(() => {
             )
             if (originalOrder) {
               const status = originalOrder.status
-              if (status === 'shipped' || status === 'delivered') {
+              if (['shipped', 'delivered', 'signed', 'completed', 'rejected', 'rejected_returned', 'package_exception'].includes(status)) {
                 receivedShipAmount += (share.orderAmount || 0) * myRatio
                 receivedShipCount += myRatio
               }
-              if (status === 'delivered') {
+              if (['delivered', 'signed', 'completed'].includes(status)) {
                 receivedSignAmount += (share.orderAmount || 0) * myRatio
                 receivedSignCount += myRatio
               }
@@ -1737,7 +1737,7 @@ const memberList = computed(() => {
                 receivedRejectAmount += (share.orderAmount || 0) * myRatio
                 receivedRejectCount += myRatio
               }
-              if (status === 'logistics_returned') {
+              if (status === 'refunded') {
                 receivedReturnAmount += (share.orderAmount || 0) * myRatio
                 receivedReturnCount += myRatio
               }
@@ -1753,9 +1753,9 @@ const memberList = computed(() => {
     const netOrderAmount = Math.max(0, orderAmount - sharedAmount + receivedAmount)
     const netOrderCount = Math.max(0, orderCount - sharedOrderCount + receivedOrderCount)
 
-    // 已发货订单（包括已发货和已签收）- 金额和订单数都受分享影响
+    // 已发货订单（所有已出库的订单：已发货、已签收、拒收、拒收退回等）- 金额和订单数都受分享影响
     const shippedOrders = userOrders.filter(order =>
-      order.status === 'shipped' || order.status === 'delivered'
+      ['shipped', 'delivered', 'signed', 'completed', 'rejected', 'rejected_returned', 'package_exception'].includes(order.status)
     )
     const rawShipCount = shippedOrders.length
     const rawShipAmount = shippedOrders.reduce((sum, order) => sum + order.totalAmount, 0)
@@ -1763,9 +1763,9 @@ const memberList = computed(() => {
     const shipAmount = Math.max(0, rawShipAmount - sharedShipAmount + receivedShipAmount)
     const shipRate = netOrderCount > 0 ? (shipCount / netOrderCount) * 100 : 0
 
-    // 已签收订单 - 金额和订单数都受分享影响
+    // 已签收订单（delivered=实物已签收, signed=虚拟已签收, completed=已完成兼容）- 金额和订单数都受分享影响
     const signedOrders = userOrders.filter(order =>
-      order.status === 'delivered'
+      ['delivered', 'signed', 'completed'].includes(order.status)
     )
     const rawSignCount = signedOrders.length
     const rawSignAmount = signedOrders.reduce((sum, order) => sum + order.totalAmount, 0)
@@ -1793,12 +1793,20 @@ const memberList = computed(() => {
     const rejectAmount = Math.max(0, rawRejectAmount - sharedRejectAmount + receivedRejectAmount)
     const rejectRate = netOrderCount > 0 ? (rejectCount / netOrderCount) * 100 : 0
 
-    // 退货订单 - 金额和订单数都受分享影响
-    const returnedOrders = userOrders.filter(order =>
-      order.status === 'logistics_returned'
-    )
+    // 退货订单（refunded=已退款）- 金额和订单数都受分享影响
+    // 🔥 修复：refunded在excludedStatuses中被排除，需要从orderStore.orders单独获取
+    const returnedOrders = orderStore.orders.filter(order => {
+      if (order.status !== 'refunded') return false
+      if (order.salesPersonId && user.id) {
+        if (String(order.salesPersonId) === String(user.id)) return true
+      }
+      if (order.createdBy && user.name) {
+        if (order.createdBy === user.name) return true
+      }
+      return false
+    })
     const rawReturnCount = returnedOrders.length
-    const rawReturnAmount = returnedOrders.reduce((sum, order) => sum + order.totalAmount, 0)
+    const rawReturnAmount = returnedOrders.reduce((sum, order) => sum + (order.totalAmount || 0), 0)
     const returnCount = Math.max(0, rawReturnCount - sharedReturnCount + receivedReturnCount)
     const returnAmount = Math.max(0, rawReturnAmount - sharedReturnAmount + receivedReturnAmount)
     const returnRate = netOrderCount > 0 ? (returnCount / netOrderCount) * 100 : 0
@@ -2622,17 +2630,20 @@ const showSummaryOrdersDialog = async (countType: string) => {
     const memberIds = memberList.value.map((m: TeamMember) => m.id)
 
     // 根据类型确定要查询的订单状态
+    // statusFilter: 单状态, statusListFilter: 多状态（逗号分隔）
     let statusFilter = ''
+    let statusListFilter = ''
     if (countType === 'shipCount') {
-      statusFilter = 'shipped'
+      // 发货单数包含所有已出库后的状态
+      statusListFilter = 'shipped,delivered,signed,completed,rejected,rejected_returned,package_exception'
     } else if (countType === 'signCount') {
-      statusFilter = 'delivered'
+      statusListFilter = 'delivered,signed,completed'
     } else if (countType === 'transitCount') {
-      statusFilter = 'shipped' // 在途也是已发货状态
+      statusFilter = 'shipped'
     } else if (countType === 'rejectCount') {
-      statusFilter = 'rejected'
+      statusListFilter = 'rejected,rejected_returned'
     } else if (countType === 'returnCount') {
-      statusFilter = 'logistics_returned'
+      statusFilter = 'refunded'
     }
 
     // 加载所有成员的订单
@@ -2650,8 +2661,10 @@ const showSummaryOrdersDialog = async (countType: string) => {
         params.endDate = dateRange.value[1]
       }
 
-      // 添加状态筛选
-      if (statusFilter) {
+      // 添加状态筛选（支持多状态）
+      if (statusListFilter) {
+        params.statusList = statusListFilter
+      } else if (statusFilter) {
         params.status = statusFilter
       }
 
@@ -2742,7 +2755,7 @@ const viewOrdersByType = async (member: TeamMember, columnProp: string) => {
     signCount: { label: '已签收订单', status: 'delivered' },
     transitCount: { label: '在途订单', status: 'shipped' },
     rejectCount: { label: '拒收订单', status: 'rejected' },
-    returnCount: { label: '退货订单', status: 'logistics_returned' }
+    returnCount: { label: '退货订单', status: 'refunded' }
   }
 
   const typeConfig = typeMap[columnProp]
@@ -2821,7 +2834,7 @@ const getReceivedSharedOrders = (memberId: string, existingOrderNos: Set<string>
 
     // 如果有状态筛选且能拿到原始订单状态，检查是否匹配（没有原始订单时不做状态筛选，视为匹配）
     if (statusFilter && originalOrder) {
-      if (statusFilter === 'shipped' && originalOrder.status !== 'shipped' && originalOrder.status !== 'delivered') return
+      if (statusFilter === 'shipped' && !['shipped', 'delivered', 'signed', 'completed', 'rejected', 'rejected_returned', 'package_exception'].includes(originalOrder.status)) return
       if (statusFilter === 'delivered' && originalOrder.status !== 'delivered') return
       if (statusFilter === 'rejected' && originalOrder.status !== 'rejected' && originalOrder.status !== 'rejected_returned') return
       if (statusFilter === 'logistics_returned' && originalOrder.status !== 'logistics_returned') return
@@ -2926,8 +2939,8 @@ const loadOrderTypeData = async (member: TeamMember, status?: string) => {
     // 状态筛选
     if (status) {
       memberOrders = memberOrders.filter((order: any) => {
-        if (status === 'shipped') return order.status === 'shipped' || order.status === 'delivered'
-        if (status === 'delivered') return order.status === 'delivered'
+        if (status === 'shipped') return ['shipped', 'delivered', 'signed', 'completed', 'rejected', 'rejected_returned', 'package_exception'].includes(order.status)
+        if (status === 'delivered') return ['delivered', 'signed', 'completed'].includes(order.status)
         if (status === 'rejected') return order.status === 'rejected' || order.status === 'rejected_returned'
         if (status === 'logistics_returned') return order.status === 'logistics_returned'
         if (status === 'transit') return order.status === 'shipped' && order.logisticsStatus !== 'delivered'

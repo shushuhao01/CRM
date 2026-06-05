@@ -759,6 +759,8 @@ import { createSafeNavigator } from '@/utils/navigation'
 import CustomFieldsCard from '@/components/Order/CustomFieldsCard.vue'
 import { customerDetailApi } from '@/api/customerDetail'
 import { getAddressLabel } from '@/utils/addressData'
+import { orderApi } from '@/api/order'
+import type { DepartmentLimitCheckResult } from '@/api/order'
 
 const route = useRoute()
 const router = useRouter()
@@ -821,6 +823,10 @@ const depositScreenshots = ref<string[]>([])
 const showZoomIcon = ref(-1)
 const selectedCustomer = ref<any>(null)
 const deliveryCollapsed = ref(false) // 配送信息默认展开
+
+// 🔥 部门下单限制检查
+const orderLimitResult = ref<DepartmentLimitCheckResult | null>(null)
+const orderLimitExceeded = ref(false)
 
 // 物流公司列表
 const expressCompanyList = ref<{ code: string; name: string; logo?: string }[]>([])
@@ -1179,6 +1185,11 @@ const loadOrderData = async () => {
       isLoadingOrder = true
       calculateSubtotal()
       isLoadingOrder = false
+
+      // 🔥 检查部门下单限制（正常订单）
+      if (order.customerId && order.markType !== 'reserved') {
+        checkDepartmentLimit(order.customerId)
+      }
     }
   } catch (error) {
     console.error('加载订单数据失败:', error)
@@ -1467,6 +1478,32 @@ const handlePhoneSelect = (phoneId: string | null) => {
   }
 }
 
+// 🔥 检查部门下单限制
+const checkDepartmentLimit = async (customerId: string) => {
+  try {
+    const response = await orderApi.checkDepartmentLimit(customerId)
+    const data = (response as any)?.data || response
+
+    if (data && data.hasLimit) {
+      orderLimitResult.value = data
+      const details = data.details
+      let exceeded = false
+      if (details) {
+        if (details.orderCountExceeded) exceeded = true
+        if (details.totalAmountExceeded) exceeded = true
+      }
+      orderLimitExceeded.value = exceeded
+    } else {
+      orderLimitResult.value = null
+      orderLimitExceeded.value = false
+    }
+  } catch (error) {
+    console.error('检查部门下单限制失败:', error)
+    orderLimitResult.value = null
+    orderLimitExceeded.value = false
+  }
+}
+
 // 🔥 同步客户地址到收货地址
 const syncCustomerAddress = () => {
   if (selectedCustomer.value) {
@@ -1659,6 +1696,21 @@ const saveOrder = () => {
     return
   }
 
+  // 🔥 检查最低下单金额限制
+  if (orderLimitResult.value?.hasLimit && orderLimitResult.value.details) {
+    const d = orderLimitResult.value.details
+    const currentAmount = orderForm.totalAmount || 0
+    if (d.minOrderAmountEnabled && d.minOrderAmount > 0 && currentAmount < d.minOrderAmount) {
+      const diff = (Number(d.minOrderAmount) - currentAmount).toFixed(2)
+      ElMessageBox.alert(
+        `当前订单金额 ¥${currentAmount.toFixed(2)}，低于最低下单金额 ¥${Number(d.minOrderAmount).toFixed(2)}，还差 ¥${diff}，请增加订单金额后再提交。`,
+        '未达到最低下单金额',
+        { confirmButtonText: '知道了', type: 'warning' }
+      )
+      return
+    }
+  }
+
   showConfirmDialog.value = true
 }
 
@@ -1666,6 +1718,22 @@ const saveOrder = () => {
 const confirmSaveOrder = async () => {
   saving.value = true
   try {
+    // 🔥 二次校验最低下单金额限制
+    if (orderLimitResult.value?.hasLimit && orderLimitResult.value.details) {
+      const d = orderLimitResult.value.details
+      const currentAmount = orderForm.totalAmount || 0
+      if (d.minOrderAmountEnabled && d.minOrderAmount > 0 && currentAmount < d.minOrderAmount) {
+        const diff = (Number(d.minOrderAmount) - currentAmount).toFixed(2)
+        ElMessageBox.alert(
+          `订单金额 ¥${currentAmount.toFixed(2)}，还差 ¥${diff} 才达到最低下单金额 ¥${Number(d.minOrderAmount).toFixed(2)}，无法保存订单。`,
+          '未达到最低下单金额',
+          { confirmButtonText: '知道了', type: 'error' }
+        )
+        saving.value = false
+        return
+      }
+    }
+
     // 🔥 修复：调用API保存到数据库
     const { orderApi } = await import('@/api/order')
 

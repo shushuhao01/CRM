@@ -19,8 +19,8 @@ const EXCLUDED_STATUSES = [
   'refunded'             // 已退款
 ]
 
-// 计入发货业绩的状态
-const SHIPPED_STATUSES = ['shipped', 'delivered', 'rejected', 'rejected_returned']
+// 计入发货业绩的状态（所有已出库的订单，不只是当前处于"已发货"状态的）
+const SHIPPED_STATUSES = ['shipped', 'delivered', 'signed', 'completed', 'rejected', 'rejected_returned', 'package_exception']
 
 // 计入签收业绩的状态
 const DELIVERED_STATUSES = ['delivered']

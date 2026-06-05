@@ -918,11 +918,11 @@ const viewOrdersByType = (row: any, columnProp: string) => {
     },
     shipCount: {
       label: '已发货订单',
-      filter: (order) => order.status === 'shipped' || order.status === 'delivered'
+      filter: (order) => ['shipped', 'delivered', 'signed', 'completed', 'rejected', 'rejected_returned', 'package_exception'].includes(order.status)
     },
     signCount: {
       label: '已签收订单',
-      filter: (order) => order.status === 'delivered'
+      filter: (order) => ['delivered', 'signed', 'completed'].includes(order.status)
     },
     transitCount: {
       label: '在途订单',
@@ -934,7 +934,7 @@ const viewOrdersByType = (row: any, columnProp: string) => {
     },
     returnCount: {
       label: '退货订单',
-      filter: (order) => order.status === 'logistics_returned' || order.status === 'after_sales_created'
+      filter: (order) => order.status === 'refunded'
     }
   }
 
@@ -1902,12 +1902,12 @@ const loadDepartmentData = () => {
     const orderCount = orders.length
     const orderAmount = orders.reduce((sum, order) => sum + order.totalAmount, 0)
 
-    const shippedOrders = orders.filter(order => order.status === 'shipped' || order.status === 'delivered')
+    const shippedOrders = orders.filter(order => ['shipped', 'delivered', 'signed', 'completed', 'rejected', 'rejected_returned', 'package_exception'].includes(order.status))
     const shipCount = shippedOrders.length
     const shipAmount = shippedOrders.reduce((sum, order) => sum + order.totalAmount, 0)
     const shipRate = orderCount > 0 ? parseFloat((shipCount / orderCount * 100).toFixed(1)) : 0
 
-    const signedOrders = orders.filter(order => order.status === 'delivered')
+    const signedOrders = orders.filter(order => ['delivered', 'signed', 'completed'].includes(order.status))
     const signCount = signedOrders.length
     const signAmount = signedOrders.reduce((sum, order) => sum + order.totalAmount, 0)
     const signRate = orderCount > 0 ? parseFloat((signCount / orderCount * 100).toFixed(1)) : 0
@@ -1922,9 +1922,19 @@ const loadDepartmentData = () => {
     const rejectAmount = rejectedOrders.reduce((sum, order) => sum + order.totalAmount, 0)
     const rejectRate = orderCount > 0 ? parseFloat((rejectCount / orderCount * 100).toFixed(1)) : 0
 
-    const returnedOrders = orders.filter(order => order.status === 'after_sales_created')
-    const returnCount = returnedOrders.length
-    const returnAmount = returnedOrders.reduce((sum, order) => sum + order.totalAmount, 0)
+    // 🔥 修复：退货使用refunded状态，需从orderStore.orders单独获取（因refunded已被excludedStatuses排除）
+    let refundedOrders = orderStore.orders.filter(order => order.status === 'refunded')
+    if (departmentId) {
+      const departmentUsers = userStore.users?.filter(u => u.departmentId === departmentId).map(u => u.id) || []
+      refundedOrders = refundedOrders.filter(order => departmentUsers.includes(order.salesPersonId))
+    }
+    if (dateRange.value && dateRange.value.length === 2 && dateRange.value[0] && dateRange.value[1]) {
+      refundedOrders = refundedOrders.filter(order =>
+        isOrderInDateRange(order.createTime, dateRange.value[0], dateRange.value[1])
+      )
+    }
+    const returnCount = refundedOrders.length
+    const returnAmount = refundedOrders.reduce((sum, order) => sum + order.totalAmount, 0)
     const returnRate = orderCount > 0 ? parseFloat((returnCount / orderCount * 100).toFixed(1)) : 0
 
     // 获取部门名称
@@ -1986,12 +1996,12 @@ const loadCompanyData = () => {
     const orderCount = orders.length
     const orderAmount = orders.reduce((sum, order) => sum + order.totalAmount, 0)
 
-    const shippedOrders = orders.filter(order => order.status === 'shipped' || order.status === 'delivered')
+    const shippedOrders = orders.filter(order => ['shipped', 'delivered', 'signed', 'completed', 'rejected', 'rejected_returned', 'package_exception'].includes(order.status))
     const shipCount = shippedOrders.length
     const shipAmount = shippedOrders.reduce((sum, order) => sum + order.totalAmount, 0)
     const shipRate = orderCount > 0 ? parseFloat((shipCount / orderCount * 100).toFixed(1)) : 0
 
-    const signedOrders = orders.filter(order => order.status === 'delivered')
+    const signedOrders = orders.filter(order => ['delivered', 'signed', 'completed'].includes(order.status))
     const signCount = signedOrders.length
     const signAmount = signedOrders.reduce((sum, order) => sum + order.totalAmount, 0)
     const signRate = orderCount > 0 ? parseFloat((signCount / orderCount * 100).toFixed(1)) : 0
@@ -2006,9 +2016,15 @@ const loadCompanyData = () => {
     const rejectAmount = rejectedOrders.reduce((sum, order) => sum + order.totalAmount, 0)
     const rejectRate = orderCount > 0 ? parseFloat((rejectCount / orderCount * 100).toFixed(1)) : 0
 
-    const returnedOrders = orders.filter(order => order.status === 'after_sales_created')
-    const returnCount = returnedOrders.length
-    const returnAmount = returnedOrders.reduce((sum, order) => sum + order.totalAmount, 0)
+    // 🔥 修复：退货使用refunded状态，需从orderStore.orders单独获取（因refunded已被excludedStatuses排除）
+    let refundedOrdersAll = orderStore.orders.filter(order => order.status === 'refunded')
+    if (dateRange.value && dateRange.value.length === 2 && dateRange.value[0] && dateRange.value[1]) {
+      refundedOrdersAll = refundedOrdersAll.filter(order =>
+        isOrderInDateRange(order.createTime, dateRange.value[0], dateRange.value[1])
+      )
+    }
+    const returnCount = refundedOrdersAll.length
+    const returnAmount = refundedOrdersAll.reduce((sum, order) => sum + order.totalAmount, 0)
     const returnRate = orderCount > 0 ? parseFloat((returnCount / orderCount * 100).toFixed(1)) : 0
 
     tableData.value = [{

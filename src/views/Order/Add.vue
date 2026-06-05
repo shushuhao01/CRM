@@ -62,14 +62,17 @@
               <div v-if="orderLimitResult?.hasLimit && orderLimitResult.details" class="limit-inline-hint" :class="{ 'is-exceeded': orderLimitExceeded }">
                 <span class="limit-dot"></span>
                 <template v-if="orderLimitExceeded">
-                  <span v-if="orderLimitResult.details.orderCountEnabled && orderLimitResult.details.orderCountExceeded">已下{{ orderLimitResult.details.orderCount }}/{{ orderLimitResult.details.maxOrderCount }}次 </span>
-                  <span v-if="orderLimitResult.details.totalAmountEnabled && orderLimitResult.details.totalAmountExceeded">累计¥{{ Number(orderLimitResult.details.totalAmount).toFixed(0) }}/¥{{ Number(orderLimitResult.details.maxTotalAmount).toFixed(0) }} </span>
-                  <span>超出限制</span>
+                  <span v-if="orderLimitResult.details.orderCountEnabled && orderLimitResult.details.orderCountExceeded">次数已满{{ orderLimitResult.details.orderCount }}/{{ orderLimitResult.details.maxOrderCount }}次 </span>
+                  <span v-if="orderLimitResult.details.totalAmountEnabled && orderLimitResult.details.totalAmountExceeded">累计超额¥{{ (Number(orderLimitResult.details.totalAmount) - Number(orderLimitResult.details.maxTotalAmount)).toFixed(0) }} </span>
+                  <span v-if="orderLimitResult.details.singleAmountEnabled && orderLimitResult.details.maxSingleAmount > 0 && (orderForm.totalAmount || 0) > orderLimitResult.details.maxSingleAmount">单笔超额¥{{ ((orderForm.totalAmount || 0) - Number(orderLimitResult.details.maxSingleAmount)).toFixed(0) }} </span>
+                  <span v-if="orderLimitResult.details.minOrderAmountEnabled && orderLimitResult.details.minOrderAmount > 0 && (orderForm.totalAmount || 0) < orderLimitResult.details.minOrderAmount">还差¥{{ (Number(orderLimitResult.details.minOrderAmount) - (orderForm.totalAmount || 0)).toFixed(0) }}达到最低¥{{ Number(orderLimitResult.details.minOrderAmount).toFixed(0) }} </span>
+                  <span>无法下单</span>
                 </template>
                 <template v-else>
                   <span v-if="orderLimitResult.details.orderCountEnabled">剩{{ orderLimitResult.details.maxOrderCount - orderLimitResult.details.orderCount }}次 </span>
-                  <span v-if="orderLimitResult.details.totalAmountEnabled">余¥{{ Number(orderLimitResult.details.remainingAmount).toFixed(0) }} </span>
-                  <span v-if="orderLimitResult.details.singleAmountEnabled">单笔≤¥{{ Number(orderLimitResult.details.maxSingleAmount).toFixed(0) }}</span>
+                  <span v-if="orderLimitResult.details.totalAmountEnabled">余额¥{{ Number(orderLimitResult.details.remainingAmount).toFixed(0) }} </span>
+                  <span v-if="orderLimitResult.details.singleAmountEnabled">单笔上限¥{{ Number(orderLimitResult.details.maxSingleAmount).toFixed(0) }} </span>
+                  <span v-if="orderLimitResult.details.minOrderAmountEnabled">起订¥{{ Number(orderLimitResult.details.minOrderAmount).toFixed(0) }}</span>
                 </template>
               </div>
             </el-form-item>
@@ -561,7 +564,7 @@
           </el-button>
           <span v-if="orderLimitExceeded" class="limit-exceeded-tip">
             <span class="limit-dot" style="background:#f56c6c"></span>
-            <span style="color: #f56c6c; font-size: 12px;">超出部门下单限制</span>
+            <span style="color: #f56c6c; font-size: 12px;">不满足部门下单限制条件</span>
           </span>
         </div>
       </el-card>
@@ -800,12 +803,36 @@
                 ¥{{ Number(orderLimitResult.details.maxSingleAmount).toFixed(2) }}
               </el-tag>
             </el-descriptions-item>
+            <el-descriptions-item v-if="(orderForm.totalAmount || 0) > orderLimitResult.details.maxSingleAmount" label="超出金额" :span="2">
+              <el-tag type="danger" size="default">
+                ¥{{ ((orderForm.totalAmount || 0) - Number(orderLimitResult.details.maxSingleAmount)).toFixed(2) }}
+              </el-tag>
+            </el-descriptions-item>
+          </template>
+
+          <!-- 最低下单金额 -->
+          <template v-if="orderLimitResult.details.minOrderAmountEnabled">
+            <el-descriptions-item label="当前订单金额" :span="1">
+              <el-tag :type="((orderForm.totalAmount || 0) < orderLimitResult.details.minOrderAmount) ? 'danger' : 'info'" size="default">
+                ¥{{ (orderForm.totalAmount || 0).toFixed(2) }}
+              </el-tag>
+            </el-descriptions-item>
+            <el-descriptions-item label="最低下单金额" :span="1">
+              <el-tag type="warning" size="default">
+                ¥{{ Number(orderLimitResult.details.minOrderAmount).toFixed(2) }}
+              </el-tag>
+            </el-descriptions-item>
+            <el-descriptions-item v-if="(orderForm.totalAmount || 0) < orderLimitResult.details.minOrderAmount" label="还需增加" :span="2">
+              <el-tag type="danger" size="default">
+                ¥{{ (Number(orderLimitResult.details.minOrderAmount) - (orderForm.totalAmount || 0)).toFixed(2) }}
+              </el-tag>
+            </el-descriptions-item>
           </template>
         </el-descriptions>
 
         <div v-if="orderLimitExceeded" style="margin-top: 16px; text-align: center;">
           <el-text type="danger" size="default" tag="b">
-            提交按钮已锁定，请联系管理员调整限制配置
+            不满足下单条件，请调整订单金额或联系管理员修改限制配置
           </el-text>
         </div>
       </div>
@@ -1364,7 +1391,7 @@ const checkDepartmentLimit = async (customerId: string) => {
   }
 }
 
-// 🔥 监听订单总额变化，实时检查单笔金额限制
+// 🔥 监听订单总额变化，实时检查单笔金额限制和最低下单金额限制
 watch(() => orderForm.totalAmount, (newAmount) => {
   if (orderLimitResult.value?.hasLimit && orderLimitResult.value.details) {
     const details = orderLimitResult.value.details
@@ -1381,6 +1408,10 @@ watch(() => orderForm.totalAmount, (newAmount) => {
       if (details.totalAmount + newAmount > details.maxTotalAmount) {
         exceeded = true
       }
+    }
+    // 检查最低下单金额限制
+    if (details.minOrderAmountEnabled && details.minOrderAmount > 0 && newAmount > 0 && newAmount < details.minOrderAmount) {
+      exceeded = true
     }
 
     orderLimitExceeded.value = exceeded
@@ -1807,18 +1838,40 @@ const handleSaveOrder = async () => {
       return
     }
 
-    // 🔥 实时检查单笔金额限制
+    // 🔥 实时检查单笔金额限制和最低下单金额限制
     if (orderLimitResult.value?.hasLimit && orderLimitResult.value.details) {
       const d = orderLimitResult.value.details
       const currentAmount = orderForm.totalAmount || 0
-      if (d.singleAmountEnabled && d.maxSingleAmount > 0 && currentAmount > d.maxSingleAmount) {
+      if (d.minOrderAmountEnabled && d.minOrderAmount > 0 && currentAmount < d.minOrderAmount) {
+        const diff = (Number(d.minOrderAmount) - currentAmount).toFixed(2)
         orderLimitExceeded.value = true
-        ElMessage.error(`当前订单金额 ¥${currentAmount.toFixed(2)} 超出单笔金额限制 ¥${d.maxSingleAmount.toFixed(2)}`)
+        ElMessageBox.alert(
+          `当前订单金额 ¥${currentAmount.toFixed(2)}，低于最低下单金额 ¥${Number(d.minOrderAmount).toFixed(2)}，还差 ¥${diff}，请增加订单金额后再提交。`,
+          '未达到最低下单金额',
+          { confirmButtonText: '知道了', type: 'warning' }
+        )
+        orderForm.totalAmount = currentAmount
+        return
+      }
+      if (d.singleAmountEnabled && d.maxSingleAmount > 0 && currentAmount > d.maxSingleAmount) {
+        const exceed = (currentAmount - Number(d.maxSingleAmount)).toFixed(2)
+        orderLimitExceeded.value = true
+        ElMessageBox.alert(
+          `当前订单金额 ¥${currentAmount.toFixed(2)}，超出单笔金额上限 ¥${Number(d.maxSingleAmount).toFixed(2)}，超出 ¥${exceed}，请减少订单金额。`,
+          '超出单笔金额限制',
+          { confirmButtonText: '知道了', type: 'warning' }
+        )
         return
       }
       if (d.totalAmountEnabled && d.maxTotalAmount > 0 && (d.totalAmount + currentAmount) > d.maxTotalAmount) {
+        const newTotal = (d.totalAmount + currentAmount).toFixed(2)
+        const exceed = (d.totalAmount + currentAmount - Number(d.maxTotalAmount)).toFixed(2)
         orderLimitExceeded.value = true
-        ElMessage.error(`累计金额将达到 ¥${(d.totalAmount + currentAmount).toFixed(2)}，超出限制 ¥${d.maxTotalAmount.toFixed(2)}`)
+        ElMessageBox.alert(
+          `本单后累计金额将达到 ¥${newTotal}，超出累计限额 ¥${Number(d.maxTotalAmount).toFixed(2)}，超出 ¥${exceed}，请联系管理员。`,
+          '超出累计金额限制',
+          { confirmButtonText: '知道了', type: 'warning' }
+        )
         return
       }
     }
@@ -1832,6 +1885,22 @@ const handleSaveOrder = async () => {
 const handleSubmitOrder = async () => {
   try {
     submitting.value = true
+
+    // 🔥 二次校验最低下单金额限制（防止确认弹窗中绕过）
+    if (orderLimitResult.value?.hasLimit && orderLimitResult.value.details) {
+      const d = orderLimitResult.value.details
+      const currentAmount = orderForm.totalAmount || 0
+      if (d.minOrderAmountEnabled && d.minOrderAmount > 0 && currentAmount < d.minOrderAmount) {
+        const diff = (Number(d.minOrderAmount) - currentAmount).toFixed(2)
+        ElMessageBox.alert(
+          `订单金额 ¥${currentAmount.toFixed(2)}，还差 ¥${diff} 才达到最低下单金额 ¥${Number(d.minOrderAmount).toFixed(2)}，无法提交订单，请返回增加订单金额。`,
+          '未达到最低下单金额',
+          { confirmButtonText: '知道了', type: 'error' }
+        )
+        submitting.value = false
+        return
+      }
+    }
 
     // 检查库存是否充足
     for (const product of orderForm.products) {

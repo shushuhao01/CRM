@@ -2697,48 +2697,60 @@ const beforeEmploymentStatusChange = async (row: UserData) => {
   const action = newStatus === 'active' ? '设为在职' : '设为离职'
 
   try {
-    // 确认操作
-    await ElMessageBox.confirm(
-      newStatus === 'resigned'
-        ? `确定要将用户 ${row.realName || row.username} 设为离职状态吗？离职后该账号将无法登录，但历史数据仍然可见。`
-        : `确定要将用户 ${row.realName || row.username} 设为在职状态吗？`,
-      `确认${action}`,
-      {
-        confirmButtonText: '确定',
-        cancelButtonText: '取消',
-        type: 'warning'
-      }
-    )
+    // 恢复在职时，检查用户当前是否处于禁用状态
+    let alsoEnableUser = false
+    if (newStatus === 'active' && row.status === 'inactive') {
+      await ElMessageBox.confirm(
+        `用户 ${row.realName || row.username} 当前账号处于禁用状态，是否同时启用账号并设为在职？`,
+        '账号已禁用',
+        {
+          confirmButtonText: '启用并设为在职',
+          cancelButtonText: '取消',
+          type: 'warning'
+        }
+      )
+      alsoEnableUser = true
+    } else {
+      await ElMessageBox.confirm(
+        newStatus === 'resigned'
+          ? `确定要将用户 ${row.realName || row.username} 设为离职状态吗？离职后该账号将无法登录，但历史数据仍然可见。`
+          : `确定要将用户 ${row.realName || row.username} 设为在职状态吗？`,
+        `确认${action}`,
+        {
+          confirmButtonText: '确定',
+          cancelButtonText: '取消',
+          type: 'warning'
+        }
+      )
+    }
 
-    // 设置加载状态
     row.employmentStatusLoading = true
 
-    // 调用API更新在职状态
+    // 如果需要同时启用用户
+    if (alsoEnableUser) {
+      await userApiService.updateUserStatus(row.id, 'active')
+      row.status = 'active'
+    }
+
     await userApiService.updateEmploymentStatus(row.id, newStatus)
 
-    // 如果设为离职，记录离职日期
     if (newStatus === 'resigned') {
       row.resignedDate = new Date().toISOString().split('T')[0]
     } else {
       row.resignedDate = undefined
     }
 
-    ElMessage.success(`${action}成功`)
-
-    // 更新统计数据
+    ElMessage.success(alsoEnableUser ? '已启用账号并设为在职' : `${action}成功`)
     await loadUserStats()
 
-    // 返回true允许状态切换
     return true
   } catch (error: unknown) {
     if (error !== 'cancel') {
       console.error('更新在职状态失败:', error)
       ElMessage.error(`${action}失败，请稍后重试`)
     }
-    // 返回false阻止状态切换
     return false
   } finally {
-    // 清除加载状态
     row.employmentStatusLoading = false
   }
 }

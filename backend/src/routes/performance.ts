@@ -520,8 +520,8 @@ router.get('/personal', async (req: Request, res: Response) => {
         signAmount += amount;
       }
 
-      // 发货业绩
-      if (['shipped', 'delivered', 'signed', 'completed', 'rejected', 'rejected_returned'].includes(order.status)) {
+      // 发货业绩（包含package_exception，因为包裹已出库）
+      if (['shipped', 'delivered', 'signed', 'completed', 'rejected', 'rejected_returned', 'package_exception'].includes(order.status)) {
         shipCount++;
         shipAmount += amount;
       }
@@ -580,10 +580,10 @@ router.get('/personal', async (req: Request, res: Response) => {
           // 🔥 订单数守恒：只调整金额，不调整订单数量
           orderAmount -= amt * ratio;
           const status = matchedOrder.status;
-          if (['shipped', 'delivered', 'rejected', 'rejected_returned'].includes(status)) {
+          if (['shipped', 'delivered', 'signed', 'completed', 'rejected', 'rejected_returned', 'package_exception'].includes(status)) {
             shipAmount -= amt * ratio;
           }
-          if (status === 'delivered') { signAmount -= amt * ratio; }
+          if (['delivered', 'signed', 'completed'].includes(status)) { signAmount -= amt * ratio; }
           if (['rejected', 'rejected_returned'].includes(status)) { rejectAmount -= amt * ratio; }
           if (status === 'refunded') { returnAmount -= amt * ratio; }
         }
@@ -621,10 +621,10 @@ router.get('/personal', async (req: Request, res: Response) => {
           // 🔥 订单数守恒：只调整金额，不调整订单数量
           orderAmount += amt * myRatio;
           const status = origOrder.status;
-          if (['shipped', 'delivered', 'rejected', 'rejected_returned'].includes(status)) {
+          if (['shipped', 'delivered', 'signed', 'completed', 'rejected', 'rejected_returned', 'package_exception'].includes(status)) {
             shipAmount += amt * myRatio;
           }
-          if (status === 'delivered') { signAmount += amt * myRatio; }
+          if (['delivered', 'signed', 'completed'].includes(status)) { signAmount += amt * myRatio; }
           if (['rejected', 'rejected_returned'].includes(status)) { rejectAmount += amt * myRatio; }
           if (status === 'refunded') { returnAmount += amt * myRatio; }
         }
@@ -724,8 +724,8 @@ router.get('/team', async (req: Request, res: Response) => {
     }
 
     // 获取部门成员列表 - 🔥 修复：departmentId为null时查询所有用户
-    // 🔥 修复：只查询启用状态(status='active')的用户，停用用户不显示在团队业绩中
-    let userCondition = ` WHERE u.status = 'active'`;
+    // 🔥 修复：查询 active 和 resigned 状态的用户（离职仍可见历史数据），禁用(inactive/locked)才隐藏
+    let userCondition = ` WHERE u.status IN ('active', 'resigned')`;
     if (departmentId) {
       userCondition += ` AND u.department_id = '${departmentId}'`;
     }
@@ -845,8 +845,8 @@ router.get('/team', async (req: Request, res: Response) => {
           signAmount += amount;
         }
 
-        // 发货业绩
-        if (['shipped', 'delivered', 'signed', 'completed', 'rejected', 'rejected_returned'].includes(order.status)) {
+        // 发货业绩（包含package_exception，因为包裹已出库）
+        if (['shipped', 'delivered', 'signed', 'completed', 'rejected', 'rejected_returned', 'package_exception'].includes(order.status)) {
           shipCount++;
           shipAmount += amount;
         }
@@ -886,10 +886,10 @@ router.get('/team', async (req: Request, res: Response) => {
 
           // 按订单状态扣除金额
           const status = matchedOrder.status;
-          if (['shipped', 'delivered', 'rejected', 'rejected_returned'].includes(status)) {
+          if (['shipped', 'delivered', 'signed', 'completed', 'rejected', 'rejected_returned', 'package_exception'].includes(status)) {
             shipAmount -= shareAmount * sharedRatio;
           }
-          if (status === 'delivered') {
+          if (['delivered', 'signed', 'completed'].includes(status)) {
             signAmount -= shareAmount * sharedRatio;
           }
           if (status === 'shipped') {
@@ -921,10 +921,10 @@ router.get('/team', async (req: Request, res: Response) => {
           orderAmount += shareAmount * myRatio;
 
           const status = originalOrder.status;
-          if (['shipped', 'delivered', 'rejected', 'rejected_returned'].includes(status)) {
+          if (['shipped', 'delivered', 'signed', 'completed', 'rejected', 'rejected_returned', 'package_exception'].includes(status)) {
             shipAmount += shareAmount * myRatio;
           }
-          if (status === 'delivered') {
+          if (['delivered', 'signed', 'completed'].includes(status)) {
             signAmount += shareAmount * myRatio;
           }
           if (status === 'shipped') {
@@ -1115,8 +1115,8 @@ router.get('/analysis/personal', async (req: Request, res: Response) => {
       `SELECT
          COUNT(*) as orderCount,
          SUM(total_amount) as orderAmount,
-         SUM(CASE WHEN status = 'shipped' THEN 1 ELSE 0 END) as shipCount,
-         SUM(CASE WHEN status = 'shipped' THEN total_amount ELSE 0 END) as shipAmount,
+         SUM(CASE WHEN status IN ('shipped', 'delivered', 'signed', 'completed', 'rejected', 'rejected_returned', 'package_exception') THEN 1 ELSE 0 END) as shipCount,
+         SUM(CASE WHEN status IN ('shipped', 'delivered', 'signed', 'completed', 'rejected', 'rejected_returned', 'package_exception') THEN total_amount ELSE 0 END) as shipAmount,
          SUM(CASE WHEN status IN ('delivered', 'signed', 'completed') THEN 1 ELSE 0 END) as signCount,
          SUM(CASE WHEN status IN ('delivered', 'signed', 'completed') THEN total_amount ELSE 0 END) as signAmount,
          SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END) as rejectCount,
@@ -1170,9 +1170,9 @@ router.get('/analysis/department', async (req: Request, res: Response) => {
       `SELECT
          COUNT(o.id) as orderCount,
          SUM(o.total_amount) as orderAmount,
-         SUM(CASE WHEN o.status = 'shipped' THEN 1 ELSE 0 END) as shipCount,
+         SUM(CASE WHEN o.status IN ('shipped', 'delivered', 'signed', 'completed', 'rejected', 'rejected_returned', 'package_exception') THEN 1 ELSE 0 END) as shipCount,
          SUM(CASE WHEN o.status IN ('delivered', 'signed', 'completed') THEN 1 ELSE 0 END) as signCount,
-         SUM(CASE WHEN o.status = 'cancelled' THEN 1 ELSE 0 END) as rejectCount,
+         SUM(CASE WHEN o.status IN ('rejected', 'rejected_returned') THEN 1 ELSE 0 END) as rejectCount,
          SUM(CASE WHEN o.status = 'refunded' THEN 1 ELSE 0 END) as returnCount
        FROM orders o
        JOIN users u ON (o.created_by = u.id OR o.created_by = u.username)
@@ -1216,9 +1216,9 @@ router.get('/analysis/company', async (_req: Request, res: Response) => {
       `SELECT
          COUNT(*) as orderCount,
          SUM(total_amount) as orderAmount,
-         SUM(CASE WHEN status = 'shipped' THEN 1 ELSE 0 END) as shipCount,
+         SUM(CASE WHEN status IN ('shipped', 'delivered', 'signed', 'completed', 'rejected', 'rejected_returned', 'package_exception') THEN 1 ELSE 0 END) as shipCount,
          SUM(CASE WHEN status IN ('delivered', 'signed', 'completed') THEN 1 ELSE 0 END) as signCount,
-         SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END) as rejectCount,
+         SUM(CASE WHEN status IN ('rejected', 'rejected_returned') THEN 1 ELSE 0 END) as rejectCount,
          SUM(CASE WHEN status = 'refunded' THEN 1 ELSE 0 END) as returnCount
        FROM orders WHERE 1=1${tComp.sql}`,
       [...tComp.params]
@@ -1316,10 +1316,10 @@ router.get('/analysis/metrics', async (req: Request, res: Response) => {
     const sql = `SELECT
        SUM(o.total_amount) as totalPerformance,
        COUNT(o.id) as totalOrders,
-       SUM(CASE WHEN o.status IN ('shipped', 'delivered') THEN 1 ELSE 0 END) as shipOrders,
-       SUM(CASE WHEN o.status IN ('shipped', 'delivered') THEN o.total_amount ELSE 0 END) as shipPerformance,
-       SUM(CASE WHEN o.status = 'delivered' THEN 1 ELSE 0 END) as signOrders,
-       SUM(CASE WHEN o.status = 'delivered' THEN o.total_amount ELSE 0 END) as signPerformance
+       SUM(CASE WHEN o.status IN ('shipped', 'delivered', 'signed', 'completed', 'rejected', 'rejected_returned', 'package_exception') THEN 1 ELSE 0 END) as shipOrders,
+       SUM(CASE WHEN o.status IN ('shipped', 'delivered', 'signed', 'completed', 'rejected', 'rejected_returned', 'package_exception') THEN o.total_amount ELSE 0 END) as shipPerformance,
+       SUM(CASE WHEN o.status IN ('delivered', 'signed', 'completed') THEN 1 ELSE 0 END) as signOrders,
+       SUM(CASE WHEN o.status IN ('delivered', 'signed', 'completed') THEN o.total_amount ELSE 0 END) as signPerformance
      FROM orders o
      ${joinClause}
      ${whereClause}`;

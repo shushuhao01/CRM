@@ -35,6 +35,13 @@ export class DepartmentOrderLimit {
   @Column({ name: 'max_total_amount', type: 'decimal', precision: 12, scale: 2, default: 0 })
   maxTotalAmount!: number;
 
+  // 最低下单金额限制
+  @Column({ name: 'min_order_amount_enabled', type: 'boolean', default: false })
+  minOrderAmountEnabled!: boolean;
+
+  @Column({ name: 'min_order_amount', type: 'decimal', precision: 12, scale: 2, default: 0 })
+  minOrderAmount!: number;
+
   // 配置状态
   @Column({ name: 'is_enabled', type: 'boolean', default: true })
   isEnabled!: boolean;

@@ -127,6 +127,10 @@ export class UserController {
       throw new BusinessError('账户已被禁用，请联系管理员', 'ACCOUNT_DISABLED');
     }
 
+    if (user.status === 'resigned' || user.employmentStatus === 'resigned') {
+      throw new BusinessError('该账号已离职，无法登录', 'ACCOUNT_RESIGNED');
+    }
+
     // 验证授权IP
     const clientIp = req.ip || req.socket?.remoteAddress || 'unknown';
     // 处理IPv6格式的本地地址
@@ -1169,6 +1173,18 @@ export class UserController {
     user.employmentStatus = employmentStatus;
     if (employmentStatus === 'resigned') {
       user.resignedAt = new Date();
+      // 启用状态(status)和离职状态(employmentStatus)完全独立
+      // 离职通过 employmentStatus 控制，登录时单独检查，不修改 status
+      // 如果当前 status 是之前被错误设为 'resigned' 的，恢复为 'active'
+      if (user.status === 'resigned') {
+        user.status = 'active';
+      }
+    } else if (employmentStatus === 'active') {
+      user.resignedAt = null;
+      // 恢复在职：如果 status 之前被错误设为 'resigned'，恢复为 'active'
+      if (user.status === 'resigned') {
+        user.status = 'active';
+      }
     }
 
     const updatedUser = await this.userRepository.save(user);

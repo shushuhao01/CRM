@@ -35,22 +35,31 @@
         </div>
 
         <div class="reminder-options">
-          <label class="checkbox-label">
-            <input
-              v-model="dontRemindToday"
-              type="checkbox"
-              :disabled="remainingDays <= 0"
-            />
-            今天不再提醒
-          </label>
-          <div v-if="!dontRemindToday" class="remind-later-section">
-            <span class="remind-label">或</span>
-            <select v-model="remindAfterDays" class="remind-select">
-              <option :value="7">7天后提醒我</option>
-              <option :value="15">15天后提醒我</option>
-              <option :value="30">30天后提醒我</option>
-            </select>
-            <button @click="remindAfterSelected" class="remind-after-btn">确定</button>
+          <div class="options-row">
+            <label class="checkbox-label">
+              <input
+                v-model="dontRemindToday"
+                type="checkbox"
+                :disabled="remainingDays <= 0"
+                @change="onCheckToday"
+              />
+              今天不再提醒
+            </label>
+            <div class="options-divider">或</div>
+            <div class="remind-later-inline">
+              <select
+                v-model="remindAfterDays"
+                class="remind-select"
+                :disabled="dontRemindToday"
+                :class="{ 'is-disabled': dontRemindToday }"
+                @change="onSelectDays"
+              >
+                <option :value="7">7天后提醒</option>
+                <option :value="15">15天后提醒</option>
+                <option :value="30">30天后提醒</option>
+              </select>
+            </div>
+            <button @click="handleConfirmRemindOption" class="remind-confirm-btn">确定</button>
           </div>
         </div>
       </div>
@@ -64,7 +73,7 @@ import { ref } from 'vue'
 interface Props {
   visible: boolean
   remainingDays: number
-  lastChanged?: Date
+  lastChanged?: Date | string | null
 }
 
 interface Emits {
@@ -79,16 +88,19 @@ const emit = defineEmits<Emits>()
 
 const dontRemindToday = ref(false)
 const remindAfterDays = ref(7)
+const remindMode = ref<'today' | 'days'>('days')
 
-const formatDate = (date?: Date): string => {
+const formatDate = (date?: Date | string | null): string => {
   if (!date) return '未知'
+  const d = date instanceof Date ? date : new Date(date)
+  if (isNaN(d.getTime())) return '未知'
   return new Intl.DateTimeFormat('zh-CN', {
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
     hour: '2-digit',
     minute: '2-digit'
-  }).format(date)
+  }).format(d)
 }
 
 const changePasswordNow = () => {
@@ -104,11 +116,32 @@ const remindLater = () => {
 const closeModal = () => {
   dontRemindToday.value = false
   remindAfterDays.value = 7
+  remindMode.value = 'days'
   emit('close')
 }
 
 const remindAfterSelected = () => {
   emit('remindAfterDays', remindAfterDays.value)
+  closeModal()
+}
+
+const onCheckToday = () => {
+  if (dontRemindToday.value) {
+    remindMode.value = 'today'
+  }
+}
+
+const onSelectDays = () => {
+  dontRemindToday.value = false
+  remindMode.value = 'days'
+}
+
+const handleConfirmRemindOption = () => {
+  if (dontRemindToday.value) {
+    emit('remindLater', true)
+  } else {
+    emit('remindAfterDays', remindAfterDays.value)
+  }
   closeModal()
 }
 </script>
@@ -249,16 +282,25 @@ const remindAfterSelected = () => {
 
 .reminder-options {
   border-top: 1px solid #eee;
-  padding-top: 16px;
+  padding-top: 14px;
+}
+
+.options-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: nowrap;
 }
 
 .checkbox-label {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 14px;
+  gap: 5px;
+  font-size: 13px;
   color: #666;
   cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .checkbox-label input[type="checkbox"] {
@@ -269,20 +311,18 @@ const remindAfterSelected = () => {
   cursor: not-allowed;
 }
 
-.remind-later-section {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 12px;
+.options-divider {
+  color: #bbb;
+  font-size: 12px;
+  flex-shrink: 0;
 }
 
-.remind-label {
-  color: #999;
-  font-size: 13px;
+.remind-later-inline {
+  flex-shrink: 0;
 }
 
 .remind-select {
-  padding: 6px 10px;
+  padding: 5px 8px;
   border: 1px solid #ddd;
   border-radius: 4px;
   font-size: 13px;
@@ -296,18 +336,26 @@ const remindAfterSelected = () => {
   border-color: #007bff;
 }
 
-.remind-after-btn {
-  padding: 6px 14px;
+.remind-select.is-disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  background: #f5f5f5;
+}
+
+.remind-confirm-btn {
+  padding: 5px 14px;
   background-color: #007bff;
   color: white;
   border: none;
   border-radius: 4px;
   font-size: 13px;
   cursor: pointer;
-  transition: background-color 0.3s;
+  transition: background-color 0.2s;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
-.remind-after-btn:hover {
+.remind-confirm-btn:hover {
   background-color: #0056b3;
 }
 </style>

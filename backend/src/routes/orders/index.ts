@@ -108,6 +108,9 @@ router.post('/check-department-limit', async (req: Request, res: Response) => {
         ? Math.max(0, Number(limit.maxTotalAmount) - totalAmount)
         : 0,
       totalAmountExceeded: limit.totalAmountEnabled && limit.maxTotalAmount > 0 && totalAmount >= Number(limit.maxTotalAmount),
+      // 最低下单金额
+      minOrderAmountEnabled: limit.minOrderAmountEnabled,
+      minOrderAmount: Number(limit.minOrderAmount),
     };
 
     const exceeded = !!(details.orderCountExceeded || details.totalAmountExceeded);

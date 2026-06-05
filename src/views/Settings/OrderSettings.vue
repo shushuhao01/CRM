@@ -296,6 +296,14 @@
             <el-tag v-else type="info" size="small">无限制</el-tag>
           </template>
         </el-table-column>
+        <el-table-column label="最低下单金额" width="180">
+          <template #default="{ row }">
+            <el-tag v-if="row.minOrderAmountEnabled" type="danger" size="small">
+              最低¥{{ row.minOrderAmount }}
+            </el-tag>
+            <el-tag v-else type="info" size="small">无限制</el-tag>
+          </template>
+        </el-table-column>
         <el-table-column prop="isEnabled" label="状态" width="100">
           <template #default="{ row }">
             <el-tag :type="row.isEnabled ? 'success' : 'danger'" size="small">
@@ -369,6 +377,20 @@
             :precision="2"
           />
           <span style="margin-left: 10px; color: #666;">元（同一客户在该部门累计订单金额）</span>
+        </el-form-item>
+
+        <el-divider content-position="left">最低下单金额限制</el-divider>
+        <el-form-item label="启用限制">
+          <el-switch v-model="departmentLimitForm.minOrderAmountEnabled" />
+        </el-form-item>
+        <el-form-item label="最低下单金额" v-if="departmentLimitForm.minOrderAmountEnabled">
+          <el-input-number
+            v-model="departmentLimitForm.minOrderAmount"
+            :min="0.01"
+            :max="9999999"
+            :precision="2"
+          />
+          <span style="margin-left: 10px; color: #666;">元（订单总额低于此金额将无法提交）</span>
         </el-form-item>
 
         <el-divider />
@@ -1345,6 +1367,8 @@ interface DepartmentLimit {
   maxSingleAmount: number
   totalAmountEnabled: boolean
   maxTotalAmount: number
+  minOrderAmountEnabled: boolean
+  minOrderAmount: number
   isEnabled: boolean
   remark?: string
 }
@@ -1369,6 +1393,8 @@ const departmentLimitForm = reactive<DepartmentLimit>({
   maxSingleAmount: 10000,
   totalAmountEnabled: false,
   maxTotalAmount: 50000,
+  minOrderAmountEnabled: false,
+  minOrderAmount: 100,
   isEnabled: true,
   remark: ''
 })
@@ -1440,6 +1466,8 @@ const addDepartmentLimit = () => {
     departmentLimitForm.maxSingleAmount = 10000
     departmentLimitForm.totalAmountEnabled = false
     departmentLimitForm.maxTotalAmount = 50000
+    departmentLimitForm.minOrderAmountEnabled = false
+    departmentLimitForm.minOrderAmount = 100
     departmentLimitForm.isEnabled = true
     departmentLimitForm.remark = ''
   }

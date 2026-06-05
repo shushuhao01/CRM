@@ -2550,6 +2550,10 @@ CREATE TABLE `department_order_limits` (
   `total_amount_enabled` BOOLEAN DEFAULT FALSE COMMENT '是否启用累计金额限制',
   `max_total_amount` DECIMAL(12,2) DEFAULT 0 COMMENT '同一客户累计最大金额（0表示无限制）',
 
+  -- 最低下单金额限制
+  `min_order_amount_enabled` BOOLEAN DEFAULT FALSE COMMENT '是否启用最低下单金额限制',
+  `min_order_amount` DECIMAL(12,2) DEFAULT 0 COMMENT '最低下单金额（订单总额低于此金额无法提交）',
+
   -- 配置状态
   `is_enabled` BOOLEAN DEFAULT TRUE COMMENT '配置是否启用',
   `remark` TEXT COMMENT '备注说明',

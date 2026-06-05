@@ -245,6 +245,7 @@ export const orderApi = {
     startDate?: string
     endDate?: string
     status?: string
+    statusList?: string
     page?: number
     pageSize?: number
   }) =>
@@ -254,6 +255,7 @@ export const orderApi = {
         startDate: params.startDate,
         endDate: params.endDate,
         status: params.status,
+        statusList: params.statusList,
         page: params.page || 1,
         pageSize: params.pageSize || 10
       }

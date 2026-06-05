@@ -15,7 +15,7 @@ import { log } from '../../config/logger';
 export interface OrderLimitCheckResult {
   allowed: boolean;
   message?: string;
-  limitType?: 'order_count' | 'single_amount' | 'total_amount';
+  limitType?: 'order_count' | 'single_amount' | 'total_amount' | 'min_order_amount';
 }
 
 // ========== 辅助函数 ==========
@@ -172,6 +172,17 @@ export const checkDepartmentOrderLimit = async (
           allowed: false,
           message: `该客户在本部门已下单${orderCount}次，已达到最大下单次数限制(${limit.maxOrderCount}次)，请联系管理员`,
           limitType: 'order_count'
+        };
+      }
+    }
+
+    // 检查最低下单金额限制
+    if (limit.minOrderAmountEnabled && limit.minOrderAmount > 0) {
+      if (orderAmount < Number(limit.minOrderAmount)) {
+        return {
+          allowed: false,
+          message: `订单金额¥${orderAmount.toFixed(2)}低于最低下单金额限制(¥${Number(limit.minOrderAmount).toFixed(2)})，请增加订单金额`,
+          limitType: 'min_order_amount'
         };
       }
     }
