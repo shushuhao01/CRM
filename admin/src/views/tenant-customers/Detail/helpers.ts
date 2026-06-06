@@ -75,8 +75,23 @@ export const getLicenseStatusText = (s: string): string => {
 }
 
 export const getRoleTagType = (role: string): string => {
-  const map: Record<string, string> = { admin: 'danger', '超级管理员': 'danger', manager: 'warning', '经理': 'warning', user: '', '员工': '' }
+  const map: Record<string, string> = { super_admin: 'danger', admin: 'danger', '超级管理员': 'danger', department_manager: 'warning', manager: 'warning', '经理': 'warning', sales_staff: '', sales: '', employee: '', user: '', customer_service: 'success', '员工': '' }
   return map[role] || ''
+}
+
+export const getRoleText = (role: string): string => {
+  const map: Record<string, string> = {
+    super_admin: '超级管理员',
+    admin: '管理员',
+    department_manager: '部门经理',
+    manager: '经理',
+    sales_staff: '销售专员',
+    sales: '销售员',
+    employee: '员工',
+    customer_service: '客服主管',
+    user: '普通用户'
+  }
+  return map[role] || role || '-'
 }
 
 export const getUserStatusType = (s: string): string => {

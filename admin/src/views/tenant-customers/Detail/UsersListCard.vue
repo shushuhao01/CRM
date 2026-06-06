@@ -27,7 +27,7 @@
       </el-table-column>
       <el-table-column label="角色" min-width="100">
         <template #default="{ row }">
-          <el-tag :type="getRoleTagType(row.role)" size="small">{{ row.role || '-' }}</el-tag>
+          <el-tag :type="getRoleTagType(row.role)" size="small">{{ getRoleText(row.role) }}</el-tag>
         </template>
       </el-table-column>
       <el-table-column label="最后登录" min-width="160">
@@ -49,7 +49,7 @@
 </template>
 
 <script setup lang="ts">
-import { formatDateTime, getRoleTagType, getUserStatusType, getUserStatusText } from './helpers'
+import { formatDateTime, getRoleTagType, getRoleText, getUserStatusType, getUserStatusText } from './helpers'
 
 defineProps<{
   users: any[]

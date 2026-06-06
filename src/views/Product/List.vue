@@ -2158,10 +2158,13 @@ const handleBatchRecommend = async () => {
 const confirmStockAdjust = async () => {
   try {
     await stockFormRef.value?.validate()
+  } catch {
+    return
+  }
 
+  try {
     stockLoading.value = true
 
-    // 更新商品库存
     const product = currentProduct.value
     const currentStock = product.stock
     const adjustQuantity = stockForm.quantity
@@ -2175,41 +2178,45 @@ const confirmStockAdjust = async () => {
       newStock = adjustQuantity
     }
 
-    // 确保库存不为负数
     const finalStock = Math.max(0, newStock)
 
-    // 更新store中的商品库存
-    productStore.updateProduct(product.id, { stock: finalStock })
+    const result = await productStore.updateProduct(product.id, { stock: finalStock })
+    if (!result) {
+      ElMessage.error('库存调整失败，请重试')
+      stockLoading.value = false
+      return
+    }
 
     ElMessage.success('库存调整成功')
 
-    // 发送消息提醒
-    const adjustType = stockForm.type === 'increase' ? '增加' : stockForm.type === 'decrease' ? '减少' : '设置'
-    notificationStore.addNotification({
-      type: 'PRODUCT_STOCK_ADJUSTED',
-      title: '库存调整',
-      content: `商品"${currentProduct.value.name}"库存已${adjustType} ${stockForm.quantity} 件`,
-      data: {
-        productId: currentProduct.value.id,
-        productName: currentProduct.value.name,
-        productCode: currentProduct.value.code,
-        adjustType: adjustType,
-        quantity: stockForm.quantity,
-        reason: stockForm.reason,
-        remark: stockForm.remark,
-        timestamp: new Date().toISOString()
-      },
-      link: `/product/detail/${currentProduct.value.id}`
-    })
+    try {
+      const adjustType = stockForm.type === 'increase' ? '增加' : stockForm.type === 'decrease' ? '减少' : '设置'
+      notificationStore.addNotification({
+        type: 'PRODUCT_STOCK_ADJUSTED',
+        title: '库存调整',
+        content: `商品"${product.name}"库存已${adjustType} ${stockForm.quantity} 件`,
+        data: {
+          productId: product.id,
+          productName: product.name,
+          productCode: product.code,
+          adjustType: adjustType,
+          quantity: stockForm.quantity,
+          reason: stockForm.reason,
+          remark: stockForm.remark,
+          timestamp: new Date().toISOString()
+        },
+        link: `/product/detail/${product.id}`
+      })
+    } catch (e) {
+      console.warn('发送库存调整通知失败（不影响调整结果）:', e)
+    }
 
-    // 1秒后自动关闭对话框并刷新数据
-    setTimeout(() => {
-      stockLoading.value = false
-      handleStockDialogClose()
-      loadData()
-    }, 1000)
+    stockLoading.value = false
+    handleStockDialogClose()
+    loadData()
   } catch (error) {
-    console.error('表单验证失败:', error)
+    console.error('库存调整失败:', error)
+    ElMessage.error('库存调整失败，请重试')
     stockLoading.value = false
   }
 }
@@ -2229,15 +2236,17 @@ const handleStockDialogClose = () => {
 const confirmPriceAdjust = async () => {
   try {
     await priceFormRef.value?.validate()
+  } catch {
+    return
+  }
 
+  try {
     stockLoading.value = true
 
-    // 更新商品价格
     const product = currentProduct.value
     const oldPrice = product.price
     const newPrice = priceForm.newPrice
 
-    // 🔥 修复：await 确保后端API调用成功
     const result = await productStore.updateProduct(product.id, { price: newPrice })
     if (!result) {
       ElMessage.error('改价失败，请重试')
@@ -2248,33 +2257,34 @@ const confirmPriceAdjust = async () => {
     ElMessage.success('改价成功')
 
     // 发送消息提醒
-    const priceChange = newPrice - oldPrice
-    const changeType = priceChange > 0 ? '上调' : '下调'
-    notificationStore.addNotification({
-      type: 'PRODUCT_PRICE_CHANGED',
-      title: '商品改价',
-      content: `商品"${product.name}"价格已${changeType}，从¥${oldPrice.toFixed(2)}调整为¥${newPrice.toFixed(2)}`,
-      data: {
-        productId: product.id,
-        productName: product.name,
-        productCode: product.code,
-        oldPrice: oldPrice,
-        newPrice: newPrice,
-        priceChange: priceChange,
-        changeType: changeType,
-        reason: priceForm.reason,
-        remark: priceForm.remark,
-        timestamp: new Date().toISOString()
-      },
-      link: `/product/detail/${product.id}`
-    })
+    try {
+      const priceChange = newPrice - oldPrice
+      const changeType = priceChange > 0 ? '上调' : '下调'
+      notificationStore.addNotification({
+        type: 'PRODUCT_PRICE_CHANGED',
+        title: '商品改价',
+        content: `商品"${product.name}"价格已${changeType}，从¥${oldPrice.toFixed(2)}调整为¥${newPrice.toFixed(2)}`,
+        data: {
+          productId: product.id,
+          productName: product.name,
+          productCode: product.code,
+          oldPrice: oldPrice,
+          newPrice: newPrice,
+          priceChange: priceChange,
+          changeType: changeType,
+          reason: priceForm.reason,
+          remark: priceForm.remark,
+          timestamp: new Date().toISOString()
+        },
+        link: `/product/detail/${product.id}`
+      })
+    } catch (e) {
+      console.warn('发送改价通知失败（不影响改价结果）:', e)
+    }
 
-    // 1秒后自动关闭对话框并刷新数据
-    setTimeout(() => {
-      stockLoading.value = false
-      handlePriceDialogClose()
-      loadData()
-    }, 1000)
+    stockLoading.value = false
+    handlePriceDialogClose()
+    loadData()
   } catch (error) {
     console.error('改价失败:', error)
     ElMessage.error('改价操作失败，请重试')

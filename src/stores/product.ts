@@ -204,9 +204,10 @@ export const useProductStore = createPersistentStore('product', () => {
       try {
         const serverProduct = await productApi.update(String(id), updates)
         if (serverProduct) {
-          products.value[index] = serverProduct
+          // 合并而非替换：保留本地已有字段，用服务器返回的字段覆盖
+          products.value[index] = { ...products.value[index], ...serverProduct }
           console.log('[ProductStore] 服务器更新商品成功:', serverProduct.name, 'ID:', id)
-          return serverProduct
+          return products.value[index]
         }
       } catch (error) {
         console.error('[ProductStore] 服务器更新商品失败，回退到本地存储:', error)
