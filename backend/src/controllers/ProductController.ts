@@ -162,33 +162,55 @@ export class ProductController {
    */
   static async createCategory(req: Request, res: Response): Promise<void> {
     try {
-      const { name, parentId, sortOrder, status, description } = req.body
+      const { name, code, parentId, sortOrder, sort, status, description } = req.body
       const categoryRepo = getCategoryRepository()
 
-      // 验证必填字段
       if (!name) {
-        res.status(400).json({
-          success: false,
-          message: '分类名称不能为空'
-        })
+        res.status(400).json({ success: false, message: '分类名称不能为空' })
         return
       }
 
-      // 生成分类ID
       const categoryId = generateId('cat_')
+      const level = (!parentId || parentId === '0') ? 1 : 2
 
-      // 创建新分类
+      // 自动编码：如果未填写code，则自动生成
+      let finalCode = code
+      if (!finalCode) {
+        const prefix = level === 1 ? 'C' : 'SC'
+        const count = await categoryRepo.count()
+        finalCode = `${prefix}${String(count + 1).padStart(3, '0')}`
+      }
+
+      // 排序处理：兼容 sortOrder 和 sort 参数
+      let finalSort = sortOrder !== undefined ? sortOrder : (sort !== undefined ? sort : 0)
+      if (finalSort > 0) {
+        const conflicting = await categoryRepo.find({
+          where: { sortOrder: finalSort },
+          order: { sortOrder: 'ASC' }
+        })
+        if (conflicting.length > 0) {
+          // 将>=该排序值的分类全部+1顺延
+          await categoryRepo.createQueryBuilder()
+            .update()
+            .set({ sortOrder: () => 'sort_order + 1' })
+            .where('sort_order >= :sort', { sort: finalSort })
+            .execute()
+        }
+      }
+
       const newCategory = categoryRepo.create({
         id: categoryId,
         name,
+        code: finalCode,
         parentId: parentId || undefined,
-        sortOrder: sortOrder || 0,
+        level,
+        sortOrder: finalSort,
         status: status || 'active',
         description
       })
 
       await categoryRepo.save(newCategory)
-      log.info('[ProductController] 创建分类成功:', newCategory.name, 'ID:', newCategory.id)
+      log.info('[ProductController] 创建分类成功:', newCategory.name, 'code:', finalCode, 'ID:', newCategory.id)
 
       res.status(201).json({
         success: true,
@@ -211,22 +233,32 @@ export class ProductController {
   static async updateCategory(req: Request, res: Response): Promise<void> {
     try {
       const { id } = req.params
-      const { name, parentId, sortOrder, status, description } = req.body
+      const { name, code, parentId, sortOrder, sort, status, description } = req.body
       const categoryRepo = getCategoryRepository()
 
       const category = await categoryRepo.findOne({ where: { id } })
       if (!category) {
-        res.status(404).json({
-          success: false,
-          message: '分类不存在'
-        })
+        res.status(404).json({ success: false, message: '分类不存在' })
         return
       }
 
-      // 更新分类信息
       if (name !== undefined) category.name = name
-      if (parentId !== undefined) category.parentId = parentId || undefined
-      if (sortOrder !== undefined) category.sortOrder = sortOrder
+      if (code !== undefined) category.code = code
+      if (parentId !== undefined) {
+        category.parentId = parentId || undefined
+        category.level = (!parentId || parentId === '0') ? 1 : 2
+      }
+      const newSort = sortOrder !== undefined ? sortOrder : sort
+      if (newSort !== undefined) {
+        if (newSort !== category.sortOrder && newSort > 0) {
+          await categoryRepo.createQueryBuilder()
+            .update()
+            .set({ sortOrder: () => 'sort_order + 1' })
+            .where('sort_order >= :sort AND id != :id', { sort: newSort, id })
+            .execute()
+        }
+        category.sortOrder = newSort
+      }
       if (status !== undefined) category.status = status
       if (description !== undefined) category.description = description
 

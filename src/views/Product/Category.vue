@@ -146,7 +146,7 @@
         <el-form-item label="分类编码" prop="code">
           <el-input
             v-model="categoryForm.code"
-            placeholder="请输入分类编码"
+            placeholder="选填，不填则自动生成编码"
             maxlength="20"
           />
         </el-form-item>
@@ -245,8 +245,7 @@ const formRules = {
     { min: 2, max: 50, message: '分类名称长度在 2 到 50 个字符', trigger: 'blur' }
   ],
   code: [
-    { required: true, message: '请输入分类编码', trigger: 'blur' },
-    { pattern: /^[A-Za-z0-9_-]+$/, message: '分类编码只能包含字母、数字、下划线和横线', trigger: 'blur' }
+    { pattern: /^[A-Za-z0-9_-]*$/, message: '分类编码只能包含字母、数字、下划线和横线', trigger: 'blur' }
   ],
   sort: [
     { required: true, message: '请输入排序值', trigger: 'blur' }
