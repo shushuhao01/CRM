@@ -12,8 +12,14 @@ export class ProductCategory {
   @Column({ length: 100, comment: '分类名称' })
   name: string
 
+  @Column({ length: 50, nullable: true, comment: '分类编码' })
+  code?: string
+
   @Column({ name: 'parent_id', type: 'varchar', length: 50, nullable: true, comment: '上级分类ID' })
   parentId?: string
+
+  @Column({ type: 'int', default: 1, comment: '层级：1=一级分类，2=二级分类' })
+  level: number
 
   @Column({ type: 'text', nullable: true, comment: '分类描述' })
   description?: string

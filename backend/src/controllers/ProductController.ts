@@ -18,12 +18,11 @@ function buildCategoryTree(categories: ProductCategory[]): any[] {
   const categoryMap = new Map<string, any>()
   const rootCategories: any[] = []
 
-  // 创建分类映射
+  // 创建分类映射（保留原始字段值）
   categories.forEach(category => {
     categoryMap.set(category.id, {
       ...category,
-      children: [],
-      productCount: 0
+      children: []
     })
   })
 
@@ -83,7 +82,33 @@ export class ProductController {
         order: { sortOrder: 'ASC', createdAt: 'ASC' }
       })
 
-      const tree = buildCategoryTree(categories)
+      // 统计每个分类下的商品数量（不含已删除，包含上架和下架的商品种类数）
+      const productRepo = getProductRepository()
+      const productCounts: Record<string, number> = {}
+      for (const cat of categories) {
+        const count = await productRepo.createQueryBuilder('product')
+          .where('product.categoryId = :catId', { catId: cat.id })
+          .andWhere('product.status != :deleted', { deleted: 'deleted' })
+          .getCount()
+        productCounts[cat.id] = count
+      }
+
+      // 构建树形结构并附加字段
+      const enrichedCategories = categories.map(cat => ({
+        id: cat.id,
+        name: cat.name,
+        code: cat.code || '',
+        parentId: cat.parentId || null,
+        level: cat.level || ((!cat.parentId || cat.parentId === '0') ? 1 : 2),
+        sort: cat.sortOrder || 0,
+        sortOrder: cat.sortOrder || 0,
+        status: cat.status,
+        description: cat.description || '',
+        productCount: productCounts[cat.id] || 0,
+        createTime: cat.createdAt ? new Date(cat.createdAt).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) : ''
+      }))
+
+      const tree = buildCategoryTree(enrichedCategories as any)
 
       res.json({
         success: true,

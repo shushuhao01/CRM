@@ -377,6 +377,7 @@
                   :auto-upload="false"
                   :on-change="handleImageChange"
                   :on-remove="handleImageRemove"
+                  :on-preview="handleImagePreview"
                   :before-upload="beforeImageUpload"
                   multiple
                   :limit="5"
@@ -527,6 +528,11 @@
       </div>
     </div>
   </div>
+
+  <!-- 图片预览弹窗 -->
+  <el-dialog v-model="imagePreviewVisible" title="图片预览" width="600px" append-to-body>
+    <img :src="imagePreviewUrl" alt="预览" style="width: 100%; display: block;" />
+  </el-dialog>
 </template>
 
 <script setup lang="ts">
@@ -740,6 +746,15 @@ const beforeImageUpload = (file: File) => {
     return false
   }
   return true
+}
+
+// 图片预览
+const imagePreviewVisible = ref(false)
+const imagePreviewUrl = ref('')
+
+const handleImagePreview = (file: UploadFile) => {
+  imagePreviewUrl.value = file.url || ''
+  imagePreviewVisible.value = true
 }
 
 /**
