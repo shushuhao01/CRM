@@ -63,11 +63,11 @@ export class Product {
 
   @Column({
     type: 'enum',
-    enum: ['active', 'inactive'],
+    enum: ['active', 'inactive', 'deleted'],
     default: 'active',
     comment: '状态'
   })
-  status: 'active' | 'inactive'
+  status: 'active' | 'inactive' | 'deleted'
 
   @Column({ name: 'allowed_departments', type: 'json', nullable: true, comment: '可下单部门ID列表，NULL表示全部部门' })
   allowedDepartments: string[] | null

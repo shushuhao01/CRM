@@ -397,7 +397,7 @@ CREATE TABLE `products` (
   `dimensions` VARCHAR(100) NULL COMMENT '商品尺寸',
   `specifications` JSON COMMENT '规格参数',
   `images` JSON COMMENT '产品图片',
-  `status` ENUM('active', 'inactive') DEFAULT 'active' COMMENT '状态',
+  `status` ENUM('active', 'inactive', 'deleted') DEFAULT 'active' COMMENT '状态',
   `allowed_departments` JSON DEFAULT NULL COMMENT '可下单部门ID列表，NULL表示全部部门',
   `product_type` VARCHAR(20) DEFAULT 'physical' COMMENT '商品类型: physical-普通商品, virtual-虚拟商品',
   `virtual_delivery_type` VARCHAR(20) DEFAULT NULL COMMENT '虚拟发货方式: none-无需发货, card_key-卡密发货, resource_link-网盘资源',

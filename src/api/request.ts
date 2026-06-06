@@ -109,6 +109,6 @@ export const api = {
   patch: <T = unknown>(endpoint: string, data?: RequestData) =>
     request<T>(endpoint, { method: 'PATCH', data }),
 
-  delete: <T = unknown>(endpoint: string) =>
-    request<T>(endpoint, { method: 'DELETE' })
+  delete: <T = unknown>(endpoint: string, config?: { showError?: boolean }) =>
+    request<T>(endpoint, { method: 'DELETE', showError: config?.showError })
 }

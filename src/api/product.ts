@@ -98,8 +98,12 @@ export const productApi = {
    */
   async delete(id: string): Promise<void> {
     try {
-      await api.delete(`/products/${id}`)
-    } catch (error) {
+      await api.delete(`/products/${id}`, { showError: false })
+    } catch (error: any) {
+      const status = error?.response?.status || error?.status
+      if (status === 404) {
+        return
+      }
       console.error('删除产品失败:', error)
       throw error
     }

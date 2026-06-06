@@ -72,20 +72,13 @@
     <!-- 搜索筛选区域 -->
     <el-card class="search-card">
       <el-form :model="searchForm" inline>
-        <el-form-item label="商品名称">
+        <el-form-item label="商品搜索">
           <el-input
-            v-model="searchForm.name"
-            placeholder="请输入商品名称"
+            v-model="searchForm.keyword"
+            placeholder="输入商品名称或编码搜索"
             clearable
-            style="width: 200px"
-          />
-        </el-form-item>
-        <el-form-item label="商品编码">
-          <el-input
-            v-model="searchForm.code"
-            placeholder="请输入商品编码"
-            clearable
-            style="width: 200px"
+            style="width: 260px"
+            :prefix-icon="Search"
           />
         </el-form-item>
         <el-form-item label="商品分类">
@@ -996,6 +989,7 @@ const allDepartments = computed(() => departmentStore.departments)
 
 // 搜索表单
 const searchForm = reactive({
+  keyword: '',
   name: '',
   code: '',
   categoryId: '',
@@ -1293,6 +1287,7 @@ const handleSearch = () => {
  */
 const handleReset = () => {
   Object.assign(searchForm, {
+    keyword: '',
     name: '',
     code: '',
     categoryId: '',
@@ -1524,8 +1519,7 @@ const handleDelete = async (row: Product) => {
       }
     )
 
-    // 调用store删除商品
-    const success = productStore.deleteProduct(row.id)
+    const success = await productStore.deleteProduct(row.id)
 
     if (success) {
       ElMessage.success('删除成功')
@@ -1534,19 +1528,22 @@ const handleDelete = async (row: Product) => {
       return
     }
 
-    // 发送消息提醒
-    notificationStore.addNotification({
-      type: 'PRODUCT_DELETED',
-      title: '商品删除',
-      content: `商品"${row.name}"已删除`,
-      data: {
-        productId: row.id,
-        productName: row.name,
-        productCode: row.code,
-        timestamp: new Date().toISOString()
-      },
-      link: '/product/list'
-    })
+    try {
+      notificationStore.addNotification({
+        type: 'PRODUCT_DELETED',
+        title: '商品删除',
+        content: `商品"${row.name}"已删除`,
+        data: {
+          productId: row.id,
+          productName: row.name,
+          productCode: row.code,
+          timestamp: new Date().toISOString()
+        },
+        link: '/product/list'
+      })
+    } catch (e) {
+      console.warn('发送删除通知失败:', e)
+    }
 
     loadData()
   } catch (error) {
@@ -1615,8 +1612,7 @@ const handleRestore = async (row: Product) => {
       }
     )
 
-    // 调用store恢复商品
-    const success = productStore.restoreProduct(row.id)
+    const success = await productStore.restoreProduct(row.id)
 
     if (success) {
       ElMessage.success('恢复成功')
@@ -1662,8 +1658,7 @@ const handlePermanentDelete = async (row: Product) => {
       }
     )
 
-    // 调用store彻底删除商品
-    const success = productStore.permanentDeleteProduct(row.id)
+    const success = await productStore.permanentDeleteProduct(row.id)
 
     if (success) {
       ElMessage.success('彻底删除成功')
@@ -1672,19 +1667,22 @@ const handlePermanentDelete = async (row: Product) => {
       return
     }
 
-    // 发送消息提醒
-    notificationStore.addNotification({
-      type: 'PRODUCT_PERMANENT_DELETED',
-      title: '商品彻底删除',
-      content: `商品"${row.name}"已彻底删除`,
-      data: {
-        productId: row.id,
-        productName: row.name,
-        productCode: row.code,
-        timestamp: new Date().toISOString()
-      },
-      link: '/product/list'
-    })
+    try {
+      notificationStore.addNotification({
+        type: 'PRODUCT_PERMANENT_DELETED',
+        title: '商品彻底删除',
+        content: `商品"${row.name}"已彻底删除`,
+        data: {
+          productId: row.id,
+          productName: row.name,
+          productCode: row.code,
+          timestamp: new Date().toISOString()
+        },
+        link: '/product/list'
+      })
+    } catch (e) {
+      console.warn('发送删除通知失败:', e)
+    }
 
     loadData()
   } catch (error) {
@@ -2077,8 +2075,7 @@ const handleQuickFilter = (filter: string) => {
 
   switch (filter) {
     case 'all':
-      // 显示所有商品（包括已删除的）
-      searchForm.showDeleted = true
+      // 显示所有未删除的商品
       break
     case 'active':
       searchForm.status = 'active'

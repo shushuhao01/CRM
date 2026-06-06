@@ -55,6 +55,7 @@ export interface ProductCategory {
 }
 
 export interface ProductSearchForm {
+  keyword?: string
   name: string
   code: string
   categoryId: string
@@ -62,8 +63,8 @@ export interface ProductSearchForm {
   stockStatus: string
   minPrice: number | null
   maxPrice: number | null
-  showDeleted?: boolean // 是否显示已删除的商品
-  onlyDeleted?: boolean // 是否只显示已删除的商品
+  showDeleted?: boolean
+  onlyDeleted?: boolean
 }
 
 export const useProductStore = createPersistentStore('product', () => {
@@ -134,13 +135,19 @@ export const useProductStore = createPersistentStore('product', () => {
     try {
       loading.value = true
       const response = await productApi.getList(params)
-      products.value = response?.list || []
+      const list = response?.list || []
+      // 根据 status 自动设置 deleted 标记
+      list.forEach((p: any) => {
+        if (p.status === 'deleted') {
+          p.deleted = true
+        }
+      })
+      products.value = list
       pagination.value.total = response?.total || 0
       pagination.value.currentPage = response?.page || 1
       pagination.value.pageSize = response?.pageSize || 10
     } catch (error) {
       console.error('加载商品失败:', error)
-      // 如果API调用失败，保持当前数据不变
     } finally {
       loading.value = false
     }
@@ -227,23 +234,19 @@ export const useProductStore = createPersistentStore('product', () => {
     return null
   }
 
-  // 删除商品（软删除）
+  // 删除商品（软删除：只更新状态，不从数据库移除）
   const deleteProduct = async (id: string | number) => {
     const product = (products.value || []).find(p => p.id === id)
     if (product) {
-      // 优先使用服务器API
       try {
-        await productApi.delete(String(id))
-        console.log('[ProductStore] 服务器删除商品成功:', product.name, 'ID:', id)
+        await productApi.update(String(id), { status: 'deleted' } as any)
+        console.log('[ProductStore] 服务器软删除商品成功:', product.name, 'ID:', id)
       } catch (error) {
-        console.error('[ProductStore] 服务器删除商品失败，回退到本地存储:', error)
+        console.error('[ProductStore] 服务器软删除失败:', error)
       }
-
-      // 同时更新本地状态
       product.deleted = true
-      product.status = 'inactive'
+      product.status = 'deleted'
       product.updateTime = new Date().toISOString()
-      console.log('[ProductStore] 商品已删除:', product.name, 'ID:', id)
       return true
     }
     console.warn('[ProductStore] 未找到要删除的商品 ID:', id)
@@ -254,34 +257,33 @@ export const useProductStore = createPersistentStore('product', () => {
   const restoreProduct = async (id: string | number) => {
     const product = products.value.find(p => p.id === id)
     if (product && product.deleted) {
-      // 🔥 修复：调用后端API恢复商品状态
       try {
-        await productApi.update(String(id), { status: 'active' })
+        await productApi.update(String(id), { status: 'active' } as any)
         console.log('[ProductStore] 服务器恢复商品成功, ID:', id)
       } catch (error) {
         console.error('[ProductStore] 服务器恢复商品失败:', error)
       }
-      // 同时更新本地状态
       product.deleted = false
-      product.status = 'active' // 恢复的商品默认设置为上架状态
+      product.status = 'active'
       product.updateTime = new Date().toISOString()
       return true
     }
     return false
   }
 
-  // 彻底删除商品（硬删除）
+  // 彻底删除商品（硬删除：从数据库移除）
   const permanentDeleteProduct = async (id: string | number) => {
     const index = products.value.findIndex(p => p.id === id)
     if (index !== -1) {
-      // 🔥 修复：调用后端API彻底删除商品
       try {
-        await productApi.delete(String(id))
+        await productApi.delete(String(id), { showError: false })
         console.log('[ProductStore] 服务器彻底删除商品成功, ID:', id)
-      } catch (error) {
-        console.error('[ProductStore] 服务器彻底删除商品失败:', error)
+      } catch (error: any) {
+        const status = error?.response?.status || error?.status
+        if (status !== 404) {
+          console.error('[ProductStore] 服务器彻底删除商品失败:', error)
+        }
       }
-      // 同时更新本地状态
       products.value.splice(index, 1)
       return true
     }
@@ -307,14 +309,22 @@ export const useProductStore = createPersistentStore('product', () => {
     }
     // 如果showDeleted为true且onlyDeleted为false，则显示所有商品（包括已删除的）
 
-    // 按名称过滤
+    // 综合搜索（关键词同时匹配名称和编码）
+    if (searchForm.value.keyword) {
+      const kw = searchForm.value.keyword.toLowerCase()
+      filtered = filtered.filter(p =>
+        p.name.toLowerCase().includes(kw) || p.code.toLowerCase().includes(kw)
+      )
+    }
+
+    // 按名称过滤（兼容单独使用）
     if (searchForm.value.name) {
       filtered = filtered.filter(p =>
         p.name.toLowerCase().includes(searchForm.value.name.toLowerCase())
       )
     }
 
-    // 按编码过滤
+    // 按编码过滤（兼容单独使用）
     if (searchForm.value.code) {
       filtered = filtered.filter(p =>
         p.code.toLowerCase().includes(searchForm.value.code.toLowerCase())

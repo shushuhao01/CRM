@@ -278,6 +278,7 @@
         :show-selection="true"
         :show-pagination="true"
         :total="pagination.total"
+        :pagination="{ currentPage: pagination.page, pageSize: pagination.size }"
         @selection-change="handleSelectionChange"
         @sort-change="handleSortChange"
         @size-change="handleSizeChange"
@@ -1392,7 +1393,7 @@ const roleOptions = ref<Role[]>([])
 // 分页
 const pagination = reactive({
   page: 1,
-  size: 20,
+  size: 10,
   total: 0
 })
 
