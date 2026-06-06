@@ -30,6 +30,9 @@ export class Role {
   @Column('varchar', { name: 'data_scope', length: 20, default: 'self' })
   dataScope: 'all' | 'department' | 'self'
 
+  @Column('varchar', { name: 'role_type', length: 20, default: 'custom' })
+  roleType: 'system' | 'business' | 'custom'
+
   @CreateDateColumn()
   createdAt: Date
 

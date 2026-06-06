@@ -127,7 +127,7 @@ export class RoleController {
 
       // 查询角色列表（按 tenant_id 排序，确保租户专属在前）
       const allRoles = await dataSource.query(
-        `SELECT id, name, code, description, status, level, color, permissions, data_scope as dataScope, createdAt, updatedAt, tenant_id
+        `SELECT id, name, code, description, status, level, color, permissions, data_scope as dataScope, role_type as roleType, createdAt, updatedAt, tenant_id
          FROM roles ${whereClause} ORDER BY CASE WHEN tenant_id = ? THEN 0 ELSE 1 END, level ASC, createdAt DESC`,
         [...params, tenantId || '']
       );
