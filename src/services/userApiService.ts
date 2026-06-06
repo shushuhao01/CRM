@@ -87,7 +87,7 @@ export class UserApiService {
    */
   async getUsers(params: UserListParams = {}): Promise<PaginatedResponse<User>> {
     try {
-      const response = await api.get<any>('/users', params)
+      const response = await api.get<any>('/users', { params })
       console.log(`[UserAPI] 获取用户列表成功，共 ${response.data.total} 个用户`)
 
       // 适配Mock API返回的数据结构

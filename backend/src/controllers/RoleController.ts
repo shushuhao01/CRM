@@ -384,7 +384,7 @@ export class RoleController {
     }
   }
 
-  // 删除角色（只删除当前租户的角色副本）
+  // 删除角色
   async deleteRole(req: Request, res: Response): Promise<void> {
     try {
       const { id } = req.params;
@@ -393,9 +393,18 @@ export class RoleController {
         throw new Error('数据库连接未初始化');
       }
 
-      const role = await this.findRoleWithTenantPriority(dataSource, 'id', id, 'id, code, tenant_id');
-      if (!role) {
+      // 直接按 id 查找角色
+      const roles = await dataSource.query('SELECT id, code, tenant_id FROM roles WHERE id = ? LIMIT 1', [id]);
+      if (roles.length === 0) {
         res.status(404).json({ success: false, message: '角色不存在' });
+        return;
+      }
+      const role = roles[0];
+
+      // 系统内置角色不可删除
+      const systemRoleCodes = ['super_admin', 'admin', 'department_manager', 'sales_staff', 'customer_service'];
+      if (systemRoleCodes.includes(role.code)) {
+        res.status(400).json({ success: false, message: '系统内置角色不可删除' });
         return;
       }
 

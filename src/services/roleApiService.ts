@@ -213,28 +213,8 @@ class RoleApiService {
    * 删除角色
    */
   async deleteRole(id: string): Promise<void> {
-    try {
-      await apiService.delete(`/roles/${id}`)
-      console.log(`[RoleAPI] 删除角色成功: ${id}`)
-    } catch (error) {
-      console.warn(`[RoleAPI] API删除失败，使用localStorage删除角色: ${id}`, error)
-
-      // 降级方案:直接操作localStorage
-      try {
-        const roles = JSON.parse(localStorage.getItem('crm_roles') || '[]')
-        const filteredRoles = roles.filter((r: any) => r.id !== id)
-
-        if (filteredRoles.length === roles.length) {
-          throw new Error(`未找到角色 ID: ${id}`)
-        }
-
-        localStorage.setItem('crm_roles', JSON.stringify(filteredRoles))
-        console.log('[RoleAPI] localStorage删除角色成功:', id)
-      } catch (localError) {
-        console.error('[RoleAPI] localStorage删除角色也失败', localError)
-        throw localError
-      }
-    }
+    await apiService.delete(`/roles/${id}`)
+    console.log(`[RoleAPI] 删除角色成功: ${id}`)
   }
 
   /**
