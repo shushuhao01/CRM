@@ -261,14 +261,24 @@ class AutoStatusSyncService {
     return result
   }
 
-  // 根据物流描述判断状态（使用统一的状态检测逻辑）
+  // 根据物流描述判断是否需要同步到订单状态
+  // 只有明确的终态才同步，运输中/派送中等中间状态不影响订单状态
   private determineStatusFromTracking(description: string): string | null {
     if (!description) return null
 
-    const detected = detectLogisticsStatusFromDescription(description)
-    // 如果检测结果是 unknown 或 in_transit（默认值），返回 null 表示状态不确定
-    if (detected === 'unknown') return null
-    return detected
+    const logisticsStatus = detectLogisticsStatusFromDescription(description)
+
+    // 物流状态 → 订单状态映射（仅允许以下终态同步）
+    const syncableMapping: Record<string, string> = {
+      'delivered': 'delivered',              // 已签收
+      'rejected': 'rejected',                // 拒收
+      'rejected_returned': 'rejected_returned', // 拒收已退回
+      'returned': 'rejected_returned',       // 已退回 → 映射为拒收已退回
+      'package_exception': 'package_exception', // 包裹异常
+      'exception': 'package_exception',      // 派送异常 → 映射为包裹异常
+    }
+
+    return syncableMapping[logisticsStatus] || null
   }
 
   // 同步到其他模块

@@ -1,4 +1,4 @@
-﻿﻿<template>
+﻿<template>
   <LogisticsStatusPermission>
     <div class="logistics-status-update">
     <!-- 数据汇总卡片 -->
@@ -1049,7 +1049,6 @@ const fetchLatestLogisticsUpdates = async () => {
           if (!order) return
 
           if (result?.success && result.traces?.length > 0) {
-            // 按时间排序，获取最新动态
             const sortedTraces = [...result.traces].sort((a: any, b: any) => {
               const timeA = new Date(a.time).getTime()
               const timeB = new Date(b.time).getTime()
@@ -1057,11 +1056,10 @@ const fetchLatestLogisticsUpdates = async () => {
             })
             const latestTrace = sortedTraces[0]
             order.latestUpdate = latestTrace.description || latestTrace.status || '暂无描述'
-            // 🔥 根据最新物流动态更新物流状态
+            // 物流状态始终根据最新动态更新（仅展示用途，不影响订单状态）
             order.logisticsStatus = detectLogisticsStatusFromDescription(order.latestUpdate)
           } else if (result?.statusText) {
             order.latestUpdate = result.statusText
-            // 🔥 根据状态文本更新物流状态
             order.logisticsStatus = detectLogisticsStatusFromDescription(order.latestUpdate)
           } else {
             order.latestUpdate = '暂无物流信息'

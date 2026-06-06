@@ -151,7 +151,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, onUnmounted, inject } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { Refresh, View, ArrowDown, ArrowUp, Edit } from '@element-plus/icons-vue'
 import { autoStatusSyncService, type AutoSyncConfig, type SyncResult } from '@/services/autoStatusSync'
 
@@ -246,14 +246,31 @@ const saveSyncLogs = () => {
 }
 
 // 处理启用状态变化
-const handleEnabledChange = (enabled: boolean) => {
-  autoStatusSyncService.updateConfig({ enabled })
-  refreshStatus()
-
+const handleEnabledChange = async (enabled: boolean) => {
   if (enabled) {
-    ElMessage.success('自动同步已启用')
+    try {
+      await ElMessageBox.confirm(
+        '启用自动同步后，系统将根据物流最新动态自动判断并更新订单状态。\n\n' +
+        '请注意：自动判断可能不完全准确（如签收人信息、拒收原因等），建议定期人工核实确认。\n\n' +
+        '如需更准确的状态管理，建议采用手动更新方式。',
+        '自动同步提醒',
+        {
+          confirmButtonText: '了解并启用',
+          cancelButtonText: '取消',
+          type: 'warning',
+          dangerouslyUseHTMLString: false
+        }
+      )
+      autoStatusSyncService.updateConfig({ enabled: true })
+      refreshStatus()
+      ElMessage.success('自动同步已启用，建议定期人工核实订单状态')
+    } catch {
+      config.enabled = false
+    }
   } else {
-    ElMessage.info('自动同步已停用')
+    autoStatusSyncService.updateConfig({ enabled: false })
+    refreshStatus()
+    ElMessage.info('自动同步已停用，订单状态需手动更新')
   }
 }
 

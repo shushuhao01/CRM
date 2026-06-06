@@ -1071,17 +1071,31 @@ export const useOrderStore = createPersistentStore('order', () => {
     console.log('物流事件监听器已设置')
   }
 
-  // 启动物流自动同步
+  // 启动物流自动同步（受自动同步开关控制）
   const startLogisticsAutoSync = () => {
-    // 如果已有定时器，先清除
+    // 检查自动同步是否启用
+    try {
+      const savedConfig = localStorage.getItem('autoStatusSyncConfig')
+      if (savedConfig) {
+        const config = JSON.parse(savedConfig)
+        if (!config.enabled) {
+          console.log('物流自动同步未启用，跳过')
+          return
+        }
+      } else {
+        console.log('物流自动同步配置不存在（默认未启用），跳过')
+        return
+      }
+    } catch {
+      return
+    }
+
     if (logisticsAutoSyncTimer) {
       clearInterval(logisticsAutoSyncTimer)
     }
 
-    // 启动物流状态自动同步
     console.log('物流自动同步已启动')
 
-    // 每30分钟自动更新一次物流状态
     logisticsAutoSyncTimer = setInterval(() => {
       batchUpdateLogisticsStatus()
     }, 30 * 60 * 1000)
