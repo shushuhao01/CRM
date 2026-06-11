@@ -1331,25 +1331,32 @@ const handleSmsSubmit = async (data: SmsSubmitData) => {
     }) as any
 
     if (res?.success || res?.code === 200) {
-      ElMessage.success('短信发送成功')
-      // 发送通知
-      try {
-        const recipientCount = Array.isArray(data.recipients) ? data.recipients.length : 0
-        await notificationStore.sendMessage(
-          MessageType.SMS_SEND_SUCCESS,
-          `短信发送完成`,
-          `使用模板"${templateName || '自定义'}"向${recipientCount}位客户发送短信已完成。`,
-          { templateName, recipientCount }
-        )
-      } catch { /* 通知发送失败不影响主流程 */ }
-      loadSendRecords()
-      loadStats()
+      // 🔥 开启发送审核时，提交后进入待审核状态
+      if (res?.data?.status === 'pending') {
+        ElMessage.info('发送申请已提交，待租户管理员审核通过后发送')
+        loadPendingSms()
+        loadStats()
+      } else {
+        ElMessage.success('短信发送成功')
+        // 发送通知
+        try {
+          const recipientCount = Array.isArray(data.recipients) ? data.recipients.length : 0
+          await notificationStore.sendMessage(
+            MessageType.SMS_SEND_SUCCESS,
+            `短信发送完成`,
+            `使用模板"${templateName || '自定义'}"向${recipientCount}位客户发送短信已完成。`,
+            { templateName, recipientCount }
+          )
+        } catch { /* 通知发送失败不影响主流程 */ }
+        loadSendRecords()
+        loadStats()
+      }
     } else {
       ElMessage.error(res?.message || '短信发送失败')
     }
   } catch (error) {
     console.error('短信发送失败:', error)
-    ElMessage.error('短信发送失败，请稍后重试')
+    ElMessage.error((error as Error)?.message || '短信发送失败，请稍后重试')
   }
   showSendSmsDialog.value = false
 }
@@ -1489,7 +1496,8 @@ const getStatusText = (status: string) => {
     completed: '发送完成',
     failed: '发送失败',
     sending: '发送中',
-    pending: '待发送'
+    pending: '待审核',
+    rejected: '已拒绝'
   }
   return statusMap[status] || status
 }

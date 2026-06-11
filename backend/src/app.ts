@@ -574,6 +574,19 @@ const startServer = async () => {
 
     startMessageCleanupService();
 
+    // 📨 启动短信自动发送定时调度（生日祝福/跟进提醒/付款提醒）
+    const startSmsAutoSendScheduler = async () => {
+      try {
+        const { SmsAutoSendScheduler } = await import('./services/SmsAutoSendScheduler');
+        SmsAutoSendScheduler.start();
+        logger.info('📨 [定时任务] 短信自动发送定时调度已启动（每小时扫描）');
+      } catch (error) {
+        logger.error('[定时任务] 启动短信自动发送定时调度失败:', error);
+      }
+    };
+
+    startSmsAutoSendScheduler();
+
     // 💳 启动增值服务到期检查
     const startVasExpiryCheckService = async () => {
       try {

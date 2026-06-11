@@ -265,21 +265,6 @@ const updateColumns = () => {
   loadColumnSettings()
 }
 
-// 🔥 监听props.columns变化，更新label（但保持用户的visible设置）
-watch(() => props.columns, (newColumns) => {
-  if (newColumns && Array.isArray(newColumns)) {
-    // 只更新label，保持用户的visible设置
-    newColumns.forEach(newCol => {
-      const existingCol = tableColumns.value.find(col => col.prop === newCol.prop)
-      if (existingCol) {
-        existingCol.label = newCol.label // 更新label
-      }
-    })
-    emit('update:columns', [...tableColumns.value])
-    emit('columns-change', [...tableColumns.value])
-  }
-}, { deep: true })
-
 onMounted(() => {
   updateColumns()
 })

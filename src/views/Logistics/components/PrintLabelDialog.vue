@@ -137,47 +137,53 @@
                 <div v-show="!trackingNumber" class="barcode-placeholder">待生成物流单号</div>
                 <div class="sl-tracking-no">{{ trackingNumber || '待生成物流单号' }}</div>
               </div>
-              <!-- 收件人 -->
-              <div class="sl-addr-block sl-recv">
-                <div class="sl-addr-row">
-                  <span class="sl-tag sl-tag-recv">收</span>
-                  <span class="sl-name">{{ maskedReceiverName }}</span>
-                  <span class="sl-phone">{{ maskedReceiverPhone }}</span>
+              <!-- 中部：左侧信息 + 右侧竖向条形码（与真实物流面单一致） -->
+              <div class="sl-mid">
+                <div class="sl-mid-left">
+                  <!-- 收件人 -->
+                  <div class="sl-addr-block sl-recv">
+                    <div class="sl-addr-row">
+                      <span class="sl-tag sl-tag-recv">收</span>
+                      <span class="sl-name">{{ maskedReceiverName }}</span>
+                      <span class="sl-phone">{{ maskedReceiverPhone }}</span>
+                    </div>
+                    <div class="sl-addr-detail">{{ maskedReceiverAddress }}</div>
+                  </div>
+                  <!-- 寄件人 -->
+                  <div v-if="currentTemplate?.showSenderInfo !== false" class="sl-addr-block sl-send">
+                    <div class="sl-addr-row">
+                      <span class="sl-tag sl-tag-send">寄</span>
+                      <span class="sl-name-sm">{{ companyInfo.senderName }}</span>
+                      <span class="sl-phone-sm">{{ maskedSenderPhone }}</span>
+                    </div>
+                    <div class="sl-addr-detail-sm">{{ companyInfo.senderAddress }}</div>
+                  </div>
+                  <!-- 商品信息 -->
+                  <div v-if="showProducts" class="sl-info-row">
+                    <b>商品：</b>{{ productsText }}
+                  </div>
+                  <!-- 代收款 -->
+                  <div v-if="showCodAmount && order.codAmount > 0" class="sl-info-row sl-cod">
+                    <b>代收款：¥{{ formatNumber(order.codAmount) }}</b>
+                  </div>
+                  <!-- 备注 -->
+                  <div v-if="showRemark && order.remark" class="sl-info-row sl-remark">
+                    <b>备注：</b><span>{{ order.remark }}</span>
+                  </div>
                 </div>
-                <div class="sl-addr-detail">{{ maskedReceiverAddress }}</div>
-              </div>
-              <!-- 寄件人 -->
-              <div v-if="currentTemplate?.showSenderInfo !== false" class="sl-addr-block sl-send">
-                <div class="sl-addr-row">
-                  <span class="sl-tag sl-tag-send">寄</span>
-                  <span class="sl-name-sm">{{ companyInfo.senderName }}</span>
-                  <span class="sl-phone-sm">{{ maskedSenderPhone }}</span>
+                <!-- 右侧竖向条形码 -->
+                <div v-if="currentTemplate?.showBarcode !== false" class="sl-mid-right">
+                  <svg v-show="trackingNumber" ref="barcodeBottomRef" class="sl-barcode-side-svg"></svg>
+                  <div v-show="!trackingNumber" class="barcode-placeholder-side">待生成物流单号</div>
                 </div>
-                <div class="sl-addr-detail-sm">{{ companyInfo.senderAddress }}</div>
               </div>
-              <!-- 商品信息 -->
-              <div v-if="showProducts" class="sl-info-row">
-                <b>商品：</b>{{ productsText }}
-              </div>
-              <!-- 代收款 -->
-              <div v-if="showCodAmount && order.codAmount > 0" class="sl-info-row sl-cod">
-                <b>代收款：¥{{ formatNumber(order.codAmount) }}</b>
-              </div>
-              <!-- 备注 -->
-              <div v-if="showRemark && order.remark" class="sl-info-row sl-remark">
-                <b>备注：</b><span>{{ order.remark }}</span>
-              </div>
-              <!-- 底部：二维码 + 底部条形码 + 订单号 -->
+              <!-- 底部：二维码(左) + 订单号信息(右) -->
               <div class="sl-bottom">
                 <canvas v-show="trackingNumber" ref="qrcodeRef" class="sl-qrcode" width="64" height="64"></canvas>
                 <div v-show="!trackingNumber" class="sl-qrcode qrcode-placeholder">待生成</div>
-                <div class="sl-bottom-right">
-                  <svg v-show="trackingNumber" ref="barcodeBottomRef" class="sl-barcode-btm-svg"></svg>
-                  <div v-show="!trackingNumber" class="barcode-placeholder-sm">待生成物流单号</div>
-                  <div class="sl-order-info">
-                    <span>订单号：{{ order.orderNo }}</span>
-                    <span v-if="order.createTime" class="sl-time">{{ order.createTime }}</span>
-                  </div>
+                <div class="sl-order-info">
+                  <span>订单号：{{ order.orderNo }}</span>
+                  <span v-if="order.createTime" class="sl-time">{{ order.createTime }}</span>
                 </div>
               </div>
               <!-- 签收区域 -->
@@ -527,11 +533,11 @@ const generateBarcodes = () => {
       JsBarcode(barcodeTopRef.value, tn, { format: 'CODE128', width: 2, height: 50, displayValue: false, margin: 0 })
     } catch (e) { console.warn('顶部条形码生成失败:', e) }
   }
-  // 底部小条形码（🔥 width: 1.5, height: 40 提升扫码识别率）
+  // 右侧竖向条形码（🔥 旋转90°显示，与真实物流面单一致）
   if (barcodeBottomRef.value) {
     try {
-      JsBarcode(barcodeBottomRef.value, tn, { format: 'CODE128', width: 1.5, height: 40, displayValue: true, fontSize: 10, margin: 2, textMargin: 1 })
-    } catch (e) { console.warn('底部条形码生成失败:', e) }
+      JsBarcode(barcodeBottomRef.value, tn, { format: 'CODE128', width: 1.2, height: 34, displayValue: true, fontSize: 10, margin: 2, textMargin: 1 })
+    } catch (e) { console.warn('侧边条形码生成失败:', e) }
   }
 }
 
@@ -1096,10 +1102,6 @@ const handleClose = () => {
   font-size: 14px; color: #999; border: 1px dashed #ccc; margin: 4px auto;
   max-width: 90%;
 }
-.barcode-placeholder-sm {
-  height: 30px; display: flex; align-items: center; justify-content: center;
-  font-size: 11px; color: #999; border: 1px dashed #ccc;
-}
 .qrcode-placeholder {
   width: 64px; height: 64px; flex-shrink: 0;
   border: 1px dashed #ccc; display: flex; align-items: center; justify-content: center;
@@ -1132,15 +1134,38 @@ const handleClose = () => {
 .sl-cod { font-size: 14px; color: #c00; }
 .sl-remark span { color: #c00; }
 
-/* 底部：二维码 + 底部条形码 + 订单号 */
+/* 中部：左侧信息 + 右侧竖向条形码 */
+.sl-mid { display: flex; gap: 6px; }
+.sl-mid-left { flex: 1; min-width: 0; }
+.sl-mid-right {
+  flex-shrink: 0; width: 52px; min-height: 150px;
+  border-left: 1.5px solid #000;
+  position: relative; overflow: hidden;
+}
+.sl-barcode-side-svg {
+  position: absolute; top: 50%; left: 50%;
+  width: 145px; height: 46px;
+  transform: translate(-50%, -50%) rotate(90deg);
+}
+.barcode-placeholder-side {
+  position: absolute; top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  writing-mode: vertical-rl;
+  font-size: 11px; color: #999;
+  border: 1px dashed #ccc; padding: 10px 4px;
+  white-space: nowrap;
+}
+
+/* 底部：二维码(左) + 订单号信息(右) */
 .sl-bottom {
-  display: flex; align-items: flex-start; gap: 8px;
+  display: flex; align-items: center; gap: 8px;
   padding-top: 6px; margin-top: 4px; border-top: 2px solid #000;
 }
 .sl-qrcode { width: 64px; height: 64px; flex-shrink: 0; }
-.sl-bottom-right { flex: 1; overflow: hidden; }
-.sl-barcode-btm-svg { max-width: 100%; height: auto; max-height: 50px; display: block; }
-.sl-order-info { display: flex; justify-content: space-between; font-size: 10px; color: #666; margin-top: 2px; }
+.sl-order-info {
+  flex: 1; min-width: 0; display: flex; flex-direction: column;
+  gap: 2px; font-size: 10px; color: #666;
+}
 .sl-time { color: #999; }
 
 /* 签收区 */

@@ -7,6 +7,11 @@ import { AppDataSource } from '../config/database';
 import { TenantContextManager } from '../utils/tenantContext';
 import { tenantRawSQLStrict } from '../utils/tenantHelpers';
 import { adminNotificationService } from '../services/AdminNotificationService';
+import { aliyunSmsService } from '../services/AliyunSmsService';
+import { resolveSmsSignName, stripSmsSignPrefix, applySmsSignature } from '../utils/smsSignature';
+import { SmsQuotaNotifyService } from '../services/SmsQuotaNotifyService';
+import { SystemConfig } from '../entities/SystemConfig';
+import { sendBatchSystemMessages } from '../services/messageService';
 
 import { log } from '../config/logger';
 const router = Router();
@@ -295,6 +300,40 @@ router.post('/templates/:id/approve', requireAdmin, async (req: Request, res: Re
 // ==================== 发送记录相关接口 ====================
 
 /**
+ * 从已渲染的短信内容反向提取模板变量值
+ * 将模板内容中的 {var} 转为捕获组，对渲染后内容做正则匹配
+ * 匹配失败时返回空对象（发送时由服务商校验缺失参数并如实报错）
+ */
+function extractTemplateParams(templateContent: string, renderedContent: string): Record<string, string> {
+  const params: Record<string, string> = {};
+  if (!templateContent || !renderedContent) return params;
+
+  try {
+    const varNames: string[] = [];
+    const escaped = templateContent.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const pattern = '^' + escaped.replace(/\\\{(\w+)\\\}/g, (_m, name: string) => {
+      varNames.push(name);
+      return '([\\s\\S]*?)';
+    }) + '$';
+
+    if (varNames.length === 0) return params;
+
+    const match = renderedContent.match(new RegExp(pattern));
+    if (match) {
+      varNames.forEach((name, idx) => {
+        params[name] = match[idx + 1] ?? '';
+      });
+    } else {
+      // 内容与模板结构不匹配时，至少返回变量名占位（值为空）
+      for (const name of varNames) params[name] = '';
+    }
+  } catch (err) {
+    log.warn('[SMS] 提取模板变量参数失败:', err);
+  }
+  return params;
+}
+
+/**
  * 获取短信发送记录
  * 支持 status, keyword, startDate, endDate 筛选
  * 🔥 v1.8.1: 角色数据范围过滤
@@ -366,8 +405,137 @@ router.get('/records', async (req: Request, res: Response) => {
   }
 });
 
+// ==================== 发送辅助函数 ====================
+
+/** 查询当前租户短信额度（totalQuota<=0 表示未开通额度功能，不限制） */
+async function getQuotaInfo(): Promise<{ totalQuota: number; usedQuota: number; remaining: number }> {
+  const t = tenantRawSQLStrict();
+  let totalQuota = 0, usedQuota = 0;
+  try {
+    const quotaRows = await AppDataSource.query(
+      `SELECT config_key, config_value FROM system_config
+       WHERE config_key IN ('sms_quota_total', 'sms_quota_used') ${t.sql}`,
+      [...t.params]
+    );
+    for (const r of quotaRows) {
+      if (r.config_key === 'sms_quota_total') totalQuota = parseInt(r.config_value) || 0;
+      if (r.config_key === 'sms_quota_used') usedQuota = parseInt(r.config_value) || 0;
+    }
+  } catch (quotaErr: any) {
+    log.warn('[SMS] 额度查询跳过:', quotaErr.message);
+  }
+  return { totalQuota, usedQuota, remaining: totalQuota - usedQuota };
+}
+
+/** 扣减额度并触发预警检查 */
+async function deductQuotaAndWarn(count: number): Promise<void> {
+  if (count <= 0) return;
+  const t = tenantRawSQLStrict();
+  try {
+    await AppDataSource.query(
+      `UPDATE system_config SET config_value = CAST(config_value AS SIGNED) + ?
+       WHERE config_key = 'sms_quota_used' ${t.sql}`,
+      [count, ...t.params]
+    );
+  } catch (deductErr: any) {
+    log.warn('[SMS] 额度扣减跳过:', deductErr.message);
+  }
+  // 🔥 扣减后检查额度预警（100/50/10/用完）
+  await SmsQuotaNotifyService.checkQuotaWarning();
+}
+
+/** 读取CRM系统设置：发送是否需要租户管理员审核 */
+async function isApprovalRequired(): Promise<boolean> {
+  try {
+    const repo = getTenantRepo(SystemConfig);
+    const cfg = await repo.findOne({
+      where: { configKey: 'requireApproval', configGroup: 'sms_settings' }
+    });
+    return cfg?.configValue === 'true';
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * 执行真实短信发送（手动发送 / 审核通过后发送共用）
+ * 处理签名、提取模板参数、逐个接收人发送，如实返回结果
+ */
+async function executeSmsSend(
+  template: SmsTemplate | null,
+  content: string,
+  recipients: any[]
+): Promise<{
+  finalContent: string;
+  sendDetails: any[];
+  successCount: number;
+  failCount: number;
+  firstError: string;
+}> {
+  // 🔥 签名处理：开头【...】是服务商签名而非模板变量
+  // SaaS=平台签名（管理后台 sms_config），私有部署=CRM系统设置签名（回退平台签名）
+  const signName = await resolveSmsSignName();
+  const templateBody = signName ? stripSmsSignPrefix(template?.content || '') : (template?.content || '');
+  const contentBody = signName ? stripSmsSignPrefix(content || '') : (content || '');
+  // 记录内容反映真实发送效果：【签名】+ 正文
+  const finalContent = applySmsSignature(contentBody, signName);
+
+  // 从已渲染内容反向提取服务商模板变量参数（基于去签名后的正文）
+  const baseParams = extractTemplateParams(templateBody, contentBody);
+
+  const sendDetails: any[] = [];
+  let successCount = 0;
+  let failCount = 0;
+  let firstError = '';
+
+  for (const r of recipients) {
+    const phone = typeof r === 'string' ? r : (r.phone || r.mobile || '');
+    const name = typeof r === 'string' ? '' : (r.name || r.customerName || '');
+
+    let result: { success: boolean; message?: string };
+    if (!phone) {
+      result = { success: false, message: '接收人手机号为空' };
+    } else {
+      // 接收人级变量覆盖（客户姓名/手机号）
+      const params = { ...baseParams };
+      if ('customerName' in params && name) params.customerName = name;
+      if ('phone' in params) params.phone = phone;
+      result = await aliyunSmsService.sendBusinessSms(phone, template?.vendorTemplateCode || '', params);
+    }
+
+    if (result.success) {
+      successCount++;
+    } else {
+      failCount++;
+      if (!firstError) firstError = result.message || '发送失败';
+    }
+    sendDetails.push({
+      phone,
+      name,
+      status: result.success ? 'success' : 'failed',
+      sentAt: new Date().toISOString(),
+      errorMsg: result.success ? '' : (result.message || '发送失败')
+    });
+  }
+
+  return { finalContent, sendDetails, successCount, failCount, firstError };
+}
+
+/** 根据模板ID查询可用模板（本租户 或 预设） */
+async function findUsableTemplate(templateId?: string | number): Promise<SmsTemplate | null> {
+  if (!templateId) return null;
+  const tenantId = TenantContextManager.getTenantId();
+  return AppDataSource.getRepository(SmsTemplate).findOne({
+    where: [
+      { id: String(templateId), tenantId },
+      { id: String(templateId), isPreset: 1 }
+    ]
+  });
+}
+
 /**
  * 发送短信
+ * 开启"发送需审核"时，非管理员提交后进入待审核状态，由租户管理员审核通过后触发真实发送
  */
 router.post('/send', async (req: Request, res: Response) => {
   try {
@@ -379,52 +547,134 @@ router.post('/send', async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, code: 400, message: '接收人不能为空' });
     }
 
-    // ====== 短信额度校验（兼容私有部署和SaaS） ======
-    const t = tenantRawSQLStrict();
-    try {
-      const quotaRows = await AppDataSource.query(
-        `SELECT config_key, config_value FROM system_config
-         WHERE config_key IN ('sms_quota_total', 'sms_quota_used') ${t.sql}`,
-        [...t.params]
-      );
-      let totalQuota = 0, usedQuota = 0;
-      for (const r of quotaRows) {
-        if (r.config_key === 'sms_quota_total') totalQuota = parseInt(r.config_value) || 0;
-        if (r.config_key === 'sms_quota_used') usedQuota = parseInt(r.config_value) || 0;
-      }
-      const remaining = totalQuota - usedQuota;
-      // 只有当已开通额度功能（totalQuota > 0）时才校验
-      if (totalQuota > 0 && remaining < recipients.length) {
-        return res.status(400).json({
-          success: false, code: 400,
-          message: `短信额度不足，剩余${remaining}条，需要${recipients.length}条。请先购买额度。`
+    const senderName = currentUser?.realName || currentUser?.username || '未知用户';
+    const template = await findUsableTemplate(templateId);
+
+    // 签名处理后的内容（待审核/发送记录统一展示真实签名）
+    const signName = await resolveSmsSignName();
+    const displayContent = applySmsSignature(
+      signName ? stripSmsSignPrefix(content || '') : (content || ''),
+      signName
+    );
+
+    // ====== 短信额度校验：额度用完暂停发送 + 通知管理员谁发给哪个客户失败 ======
+    const { totalQuota, remaining } = await getQuotaInfo();
+    if (totalQuota > 0 && remaining < recipients.length) {
+      // 留痕：创建失败记录
+      try {
+        const failRecord = recordRepository.create({
+          templateId: templateId ? String(templateId) : null,
+          templateName,
+          content: displayContent,
+          recipients,
+          recipientCount: recipients.length,
+          successCount: 0,
+          failCount: recipients.length,
+          status: 'failed',
+          sendDetails: recipients.map((r: any) => ({
+            phone: typeof r === 'string' ? r : (r.phone || r.mobile || ''),
+            name: typeof r === 'string' ? '' : (r.name || r.customerName || ''),
+            status: 'failed',
+            sentAt: new Date().toISOString(),
+            errorMsg: '短信额度不足'
+          })),
+          remark: `发送失败：短信额度不足（剩余${Math.max(0, remaining)}条，需要${recipients.length}条）`,
+          applicant: currentUser?.userId,
+          applicantName: senderName,
+          applicantDept: currentUser?.department || '',
+          senderUserId: currentUser?.userId,
+          senderDepartmentId: currentUser?.department || currentUser?.departmentId || '',
+          triggerSource: 'manual',
+          sentAt: new Date()
         });
+        await recordRepository.save(failRecord);
+      } catch (recErr) {
+        log.warn('[SMS] 额度不足失败记录保存失败:', recErr);
       }
-    } catch (quotaErr: any) {
-      log.warn('[SMS] 额度校验跳过:', quotaErr.message);
+      // 🔥 通知管理员：因额度不足，谁的短信发给哪个客户失败
+      const recipientList = recipients.map((r: any) => ({
+        name: typeof r === 'string' ? '' : (r.name || r.customerName || ''),
+        phone: typeof r === 'string' ? r : (r.phone || r.mobile || '')
+      }));
+      SmsQuotaNotifyService.notifyQuotaSendFailure(senderName, recipientList, displayContent)
+        .catch(err => log.warn('[SMS] 额度不足通知失败:', err));
+
+      return res.status(400).json({
+        success: false, code: 400,
+        message: `短信额度不足，剩余${Math.max(0, remaining)}条，需要${recipients.length}条。已暂停发送，请先购买额度。`
+      });
     }
 
-    // 生成发送详情（从recipients构建每条记录的状态）
-    const sendDetails = recipients.map((r: any) => ({
-      phone: typeof r === 'string' ? r : (r.phone || r.mobile || ''),
-      name: typeof r === 'string' ? '' : (r.name || r.customerName || ''),
-      status: 'success',
-      sentAt: new Date().toISOString(),
-      errorMsg: ''
-    }));
+    // ====== 🔥 发送审核流程：开启审核时，非管理员提交进入待审核 ======
+    const adminRoles = ['super_admin', 'superadmin', 'admin'];
+    const isAdminUser = adminRoles.includes(currentUser?.role || '');
+    if (!isAdminUser && await isApprovalRequired()) {
+      const pendingRecord = recordRepository.create({
+        templateId: templateId ? String(templateId) : null,
+        templateName,
+        content: displayContent,
+        recipients,
+        recipientCount: recipients.length,
+        successCount: 0,
+        failCount: 0,
+        status: 'pending',
+        applicant: currentUser?.userId,
+        applicantName: senderName,
+        applicantDept: currentUser?.department || '',
+        senderUserId: currentUser?.userId,
+        senderDepartmentId: currentUser?.department || currentUser?.departmentId || '',
+        triggerSource: 'manual'
+      });
+      const savedPending = await recordRepository.save(pendingRecord);
 
+      // 通知租户管理员有待审核短信
+      try {
+        const { User } = await import('../entities/User');
+        const userRepo = getTenantRepo(User);
+        const admins = await userRepo.createQueryBuilder('u')
+          .where('u.role IN (:...roles)', { roles: adminRoles })
+          .getMany();
+        if (admins.length > 0) {
+          await sendBatchSystemMessages(admins.map(a => ({
+            type: 'sms_send_pending',
+            title: '新的短信发送审核申请',
+            content: `${senderName} 提交了短信发送申请（${recipients.length}位接收人），请及时审核。`,
+            targetUserId: a.id,
+            category: '短信管理',
+            relatedId: String(savedPending.id),
+            relatedType: 'sms_record',
+            actionUrl: '/service-management/sms'
+          })));
+        }
+      } catch (notifyErr) {
+        log.warn('[SMS] 通知管理员审核失败:', notifyErr);
+      }
+
+      log.info(`[SMS] ${senderName} 提交短信发送审核申请: ${savedPending.id}`);
+      return res.json({
+        success: true, code: 200, data: savedPending,
+        message: '发送申请已提交，待租户管理员审核通过后发送'
+      });
+    }
+
+    // ====== 🔥 真实发送：通过短信通道逐个发送，如实记录成功/失败 ======
+    const { finalContent, sendDetails, successCount, failCount, firstError } =
+      await executeSmsSend(template, content, recipients);
+
+    const allFailed = successCount === 0;
     const record = recordRepository.create({
       templateId: templateId ? String(templateId) : null,
       templateName,
-      content,
+      content: finalContent,
       recipients,
       recipientCount: recipients.length,
-      successCount: recipients.length,
-      failCount: 0,
-      status: 'completed',
+      successCount,
+      failCount,
+      status: allFailed ? 'failed' : 'completed',
       sendDetails,
+      remark: failCount > 0 ? `${failCount}条发送失败：${firstError}` : '',
       applicant: currentUser?.userId,
-      applicantName: currentUser?.realName || currentUser?.username,
+      applicantName: senderName,
       applicantDept: currentUser?.department || '',
       senderUserId: currentUser?.userId,
       senderDepartmentId: currentUser?.department || currentUser?.departmentId || '',
@@ -434,21 +684,132 @@ router.post('/send', async (req: Request, res: Response) => {
 
     const savedRecord = await recordRepository.save(record);
 
-    // ====== 发送成功后扣减额度（兼容私有部署和SaaS） ======
-    try {
-      await AppDataSource.query(
-        `UPDATE system_config SET config_value = CAST(config_value AS SIGNED) + ?
-         WHERE config_key = 'sms_quota_used' ${t.sql}`,
-        [recipients.length, ...t.params]
-      );
-    } catch (deductErr: any) {
-      log.warn('[SMS] 额度扣减跳过:', deductErr.message);
+    // ====== 仅按实际成功条数扣减额度，并触发额度预警检查 ======
+    await deductQuotaAndWarn(successCount);
+
+    if (allFailed) {
+      return res.status(400).json({
+        success: false, code: 400, data: savedRecord,
+        message: `短信发送失败：${firstError}`
+      });
     }
 
-    res.json({ success: true, code: 200, data: savedRecord, message: '发送成功' });
+    res.json({
+      success: true, code: 200, data: savedRecord,
+      message: failCount > 0 ? `发送完成：成功${successCount}条，失败${failCount}条` : '发送成功'
+    });
   } catch (error) {
     log.error('发送失败:', error);
     res.status(500).json({ success: false, code: 500, message: '发送失败' });
+  }
+});
+
+/**
+ * 🔥 审核短信发送申请（租户管理员）
+ * 通过 → 立即触发真实发送；拒绝 → 标记为已拒绝
+ */
+router.post('/records/:id/approve', requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const recordRepository = getTenantRepo(SmsRecord);
+    const { id } = req.params;
+    const { approved, reason } = req.body;
+    const currentUser = (req as any).user;
+
+    const record = await recordRepository.findOne({ where: { id } });
+    if (!record) {
+      return res.status(404).json({ success: false, code: 404, message: '发送申请不存在' });
+    }
+    if (record.status !== 'pending') {
+      return res.status(400).json({ success: false, code: 400, message: '仅待审核的发送申请可以审核' });
+    }
+
+    const approverName = currentUser?.realName || currentUser?.username || 'admin';
+
+    // ====== 拒绝 ======
+    if (!approved) {
+      record.status = 'rejected';
+      record.remark = reason ? `审核拒绝：${reason}` : '审核拒绝';
+      record.approvedBy = approverName;
+      record.approvedAt = new Date();
+      await recordRepository.save(record);
+
+      // 通知申请人
+      if (record.applicant) {
+        sendBatchSystemMessages([{
+          type: 'sms_send_rejected',
+          title: '短信发送申请被拒绝',
+          content: `您提交的短信发送申请（${record.recipientCount}位接收人）已被 ${approverName} 拒绝。${reason ? `原因：${reason}` : ''}`,
+          targetUserId: record.applicant,
+          category: '短信管理',
+          relatedId: String(record.id),
+          relatedType: 'sms_record',
+          actionUrl: '/service-management/sms'
+        }]).catch(err => log.warn('[SMS] 通知申请人失败:', err));
+      }
+
+      return res.json({ success: true, code: 200, data: record, message: '已拒绝该发送申请' });
+    }
+
+    // ====== 通过：先校验额度，再触发真实发送 ======
+    const recipients = record.recipients || [];
+    const { totalQuota, remaining } = await getQuotaInfo();
+    if (totalQuota > 0 && remaining < recipients.length) {
+      const recipientList = recipients.map((r: any) => ({
+        name: typeof r === 'string' ? '' : (r.name || r.customerName || ''),
+        phone: typeof r === 'string' ? r : (r.phone || r.mobile || '')
+      }));
+      SmsQuotaNotifyService.notifyQuotaSendFailure(record.applicantName || record.applicant, recipientList, record.content)
+        .catch(err => log.warn('[SMS] 额度不足通知失败:', err));
+      return res.status(400).json({
+        success: false, code: 400,
+        message: `短信额度不足，剩余${Math.max(0, remaining)}条，需要${recipients.length}条。请先购买额度后再审核通过。`
+      });
+    }
+
+    const template = await findUsableTemplate(record.templateId);
+    const { finalContent, sendDetails, successCount, failCount, firstError } =
+      await executeSmsSend(template, record.content, recipients);
+
+    record.content = finalContent;
+    record.sendDetails = sendDetails;
+    record.successCount = successCount;
+    record.failCount = failCount;
+    record.status = successCount === 0 ? 'failed' : 'completed';
+    record.remark = failCount > 0 ? `${failCount}条发送失败：${firstError}` : '';
+    record.approvedBy = approverName;
+    record.approvedAt = new Date();
+    record.sentAt = new Date();
+    await recordRepository.save(record);
+
+    // 扣减额度 + 预警检查
+    await deductQuotaAndWarn(successCount);
+
+    // 通知申请人审核结果
+    if (record.applicant) {
+      const resultText = successCount === 0
+        ? `审核已通过，但发送失败：${firstError}`
+        : `审核已通过，短信已发送（成功${successCount}条${failCount > 0 ? `，失败${failCount}条` : ''}）`;
+      sendBatchSystemMessages([{
+        type: 'sms_send_approved',
+        title: '短信发送申请审核结果',
+        content: `您提交的短信发送申请（${record.recipientCount}位接收人）${resultText}。`,
+        targetUserId: record.applicant,
+        category: '短信管理',
+        relatedId: String(record.id),
+        relatedType: 'sms_record',
+        actionUrl: '/service-management/sms'
+      }]).catch(err => log.warn('[SMS] 通知申请人失败:', err));
+    }
+
+    log.info(`[SMS] ${approverName} 审核通过发送申请 ${id}: 成功${successCount}/失败${failCount}`);
+
+    res.json({
+      success: true, code: 200, data: record,
+      message: successCount === 0 ? `审核通过，但发送失败：${firstError}` : '审核通过，短信已发送'
+    });
+  } catch (error) {
+    log.error('审核发送申请失败:', error);
+    res.status(500).json({ success: false, code: 500, message: '审核发送申请失败' });
   }
 });
 
@@ -544,6 +905,22 @@ router.get('/statistics', async (req: Request, res: Response) => {
   } catch (error) {
     log.error('获取统计失败:', error);
     res.status(500).json({ success: false, code: 500, message: '获取统计失败' });
+  }
+});
+
+// ==================== 签名接口 ====================
+
+/**
+ * 获取当前生效的短信签名（用于前端预览展示）
+ * SaaS=平台签名（管理后台配置），私有部署=CRM系统设置签名（回退平台签名）
+ */
+router.get('/sign-name', async (_req: Request, res: Response) => {
+  try {
+    const signName = await resolveSmsSignName();
+    res.json({ success: true, code: 200, data: { signName }, message: '获取成功' });
+  } catch (error) {
+    log.error('获取短信签名失败:', error);
+    res.status(500).json({ success: false, code: 500, message: '获取短信签名失败' });
   }
 });
 

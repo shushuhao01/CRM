@@ -220,44 +220,51 @@
                   <div class="sl-route-code">{{ getRouteCode(currentPreviewItem.address) }}</div>
                 </div>
                 <div v-if="currentPreviewTemplate?.showBarcode !== false" class="sl-barcode-top">
-                  <svg v-show="currentPreviewItem.trackingNumber" ref="batchBarcodeTopRef" class="batch-barcode-top-svg"></svg>
+                  <svg v-show="currentPreviewItem.trackingNumber" ref="batchBarcodeTopRef"></svg>
                   <div v-show="!currentPreviewItem.trackingNumber" class="barcode-placeholder">待生成物流单号</div>
                   <div class="sl-tracking-no">{{ currentPreviewItem.trackingNumber || '待生成物流单号' }}</div>
                 </div>
-                <div class="sl-addr-block sl-recv">
-                  <div class="sl-addr-row">
-                    <span class="sl-tag sl-tag-recv">收</span>
-                    <span class="sl-name">{{ maskNameForItem(currentPreviewItem.customerName, currentPreviewItem) }}</span>
-                    <span class="sl-phone">{{ maskPhoneForItem(currentPreviewItem.phone, currentPreviewItem) }}</span>
+                <!-- 中部：左侧信息 + 右侧竖向条形码（与单个打印/模板管理一致） -->
+                <div class="sl-mid">
+                  <div class="sl-mid-left">
+                    <div class="sl-addr-block sl-recv">
+                      <div class="sl-addr-row">
+                        <span class="sl-tag sl-tag-recv">收</span>
+                        <span class="sl-name">{{ maskNameForItem(currentPreviewItem.customerName, currentPreviewItem) }}</span>
+                        <span class="sl-phone">{{ maskPhoneForItem(currentPreviewItem.phone, currentPreviewItem) }}</span>
+                      </div>
+                      <div class="sl-addr-detail">{{ maskAddressForItem(currentPreviewItem.address, currentPreviewItem) }}</div>
+                    </div>
+                    <div v-if="currentPreviewTemplate?.showSenderInfo !== false" class="sl-addr-block sl-send">
+                      <div class="sl-addr-row">
+                        <span class="sl-tag sl-tag-send">寄</span>
+                        <span class="sl-name-sm">{{ companyInfo.senderName }}</span>
+                        <span class="sl-phone-sm">{{ maskPhoneForItem(companyInfo.senderPhone, currentPreviewItem) }}</span>
+                      </div>
+                      <div class="sl-addr-detail-sm">{{ companyInfo.senderAddress }}</div>
+                    </div>
+                    <div v-if="showProducts" class="sl-info-row">
+                      <b>商品：</b>{{ currentPreviewItem.productsText }}
+                    </div>
+                    <div v-if="showCodAmount && currentPreviewItem.codAmount > 0" class="sl-info-row sl-cod">
+                      <b>代收款：¥{{ currentPreviewItem.codAmount }}</b>
+                    </div>
+                    <div v-if="showRemark && currentPreviewItem.remark" class="sl-info-row sl-remark">
+                      <b>备注：</b><span>{{ currentPreviewItem.remark }}</span>
+                    </div>
                   </div>
-                  <div class="sl-addr-detail">{{ maskAddressForItem(currentPreviewItem.address, currentPreviewItem) }}</div>
-                </div>
-                <div v-if="currentPreviewTemplate?.showSenderInfo !== false" class="sl-addr-block sl-send">
-                  <div class="sl-addr-row">
-                    <span class="sl-tag sl-tag-send">寄</span>
-                    <span class="sl-name-sm">{{ companyInfo.senderName }}</span>
-                    <span class="sl-phone-sm">{{ maskPhoneForItem(companyInfo.senderPhone, currentPreviewItem) }}</span>
+                  <!-- 右侧竖向条形码 -->
+                  <div v-if="currentPreviewTemplate?.showBarcode !== false" class="sl-mid-right">
+                    <svg v-show="currentPreviewItem.trackingNumber" ref="batchBarcodeBottomRef" class="sl-barcode-side-svg"></svg>
+                    <div v-show="!currentPreviewItem.trackingNumber" class="barcode-placeholder-side">待生成物流单号</div>
                   </div>
-                  <div class="sl-addr-detail-sm">{{ companyInfo.senderAddress }}</div>
                 </div>
-                <div v-if="showProducts" class="sl-info-row">
-                  <b>商品：</b>{{ currentPreviewItem.productsText }}
-                </div>
-                <div v-if="showCodAmount && currentPreviewItem.codAmount > 0" class="sl-info-row sl-cod">
-                  <b>代收款：¥{{ currentPreviewItem.codAmount }}</b>
-                </div>
-                <div v-if="showRemark && currentPreviewItem.remark" class="sl-info-row sl-remark">
-                  <b>备注：</b><span>{{ currentPreviewItem.remark }}</span>
-                </div>
+                <!-- 底部：二维码(左) + 订单号信息(右) -->
                 <div class="sl-bottom">
                   <canvas v-show="currentPreviewItem.trackingNumber && currentPreviewTemplate?.showQrcode !== false" ref="batchQrcodeRef" class="sl-qrcode" width="64" height="64"></canvas>
                   <div v-show="!currentPreviewItem.trackingNumber" class="sl-qrcode qrcode-placeholder">待生成</div>
-                  <div class="sl-bottom-right">
-                    <svg v-show="currentPreviewItem.trackingNumber" ref="batchBarcodeBottomRef" class="batch-barcode-btm-svg"></svg>
-                    <div v-show="!currentPreviewItem.trackingNumber" class="barcode-placeholder-sm">待生成物流单号</div>
-                    <div class="sl-order-info">
-                      <span>订单号：{{ currentPreviewItem.orderNo }}</span>
-                    </div>
+                  <div class="sl-order-info">
+                    <span>订单号：{{ currentPreviewItem.orderNo }}</span>
                   </div>
                 </div>
                 <div v-if="currentPreviewTemplate?.showSignArea" class="sl-sign">
@@ -705,23 +712,44 @@ const updateBatchPreviewScale = () => {
   batchPreviewScale.value = Math.min(s, 1.2)
 }
 
+/** 清理SVG的旧内容和尺寸属性，避免渲染失败时残留旧条码导致显示异常 */
+const resetBarcodeSvg = (svg: SVGSVGElement | null) => {
+  if (!svg) return
+  while (svg.firstChild) svg.removeChild(svg.firstChild)
+  svg.removeAttribute('width')
+  svg.removeAttribute('height')
+  svg.removeAttribute('viewBox')
+}
+
 const refreshBatchPreview = () => {
   nextTick(() => {
     const item = currentPreviewItem.value
     if (!item) return
-    const tn = item.trackingNumber || ''
+    const tn = (item.trackingNumber || '').trim()
     if (tn) {
       if (batchBarcodeTopRef.value) {
-        try { JsBarcode(batchBarcodeTopRef.value, tn, { format: 'CODE128', width: 2, height: 50, displayValue: false, margin: 0 }) } catch {}
+        resetBarcodeSvg(batchBarcodeTopRef.value)
+        // 🔥 与单个打印预览(PrintLabelDialog)完全相同的参数
+        try {
+          JsBarcode(batchBarcodeTopRef.value, tn, { format: 'CODE128', width: 2, height: 50, displayValue: false, margin: 0 })
+        } catch (e) { console.warn('[批量打印] 顶部条形码生成失败:', e) }
       }
       if (batchBarcodeBottomRef.value) {
-        try { JsBarcode(batchBarcodeBottomRef.value, tn, { format: 'CODE128', width: 1.5, height: 40, displayValue: true, fontSize: 10, margin: 2, textMargin: 1 }) } catch {}
+        resetBarcodeSvg(batchBarcodeBottomRef.value)
+        // 右侧竖向条形码（旋转90°显示，参数与单个打印/模板管理预览一致）
+        try {
+          JsBarcode(batchBarcodeBottomRef.value, tn, { format: 'CODE128', width: 1.2, height: 34, displayValue: true, fontSize: 10, margin: 2, textMargin: 1 })
+        } catch (e) { console.warn('[批量打印] 侧边条形码生成失败:', e) }
       }
       if (batchQrcodeRef.value) {
         try {
           QRCode.toCanvas(batchQrcodeRef.value, tn, { width: 64, margin: 0, color: { dark: '#000000', light: '#ffffff' } })
         } catch {}
       }
+    } else {
+      // 无运单号时清空残留条码，避免切换订单后显示上一单的条码
+      resetBarcodeSvg(batchBarcodeTopRef.value)
+      resetBarcodeSvg(batchBarcodeBottomRef.value)
     }
     updateBatchPreviewScale()
   })
@@ -730,6 +758,8 @@ const refreshBatchPreview = () => {
 // Watch preview index change to refresh barcodes
 watch(previewIndex, () => refreshBatchPreview())
 watch(currentPreviewItem, () => refreshBatchPreview())
+// 🔥 运单号变化（手动输入/获取单号）时必须重新生成条形码，否则会显示残留的旧条码
+watch(() => currentPreviewItem.value?.trackingNumber, () => refreshBatchPreview())
 
 // 表格行选择变化
 const handleSelectionChange = (rows: OrderItem[]) => {
@@ -1421,10 +1451,6 @@ const handleClose = () => {
   font-size: 14px; color: #999; border: 1px dashed #ccc; margin: 4px auto;
   max-width: 90%;
 }
-.sl-batch .barcode-placeholder-sm {
-  height: 30px; display: flex; align-items: center; justify-content: center;
-  font-size: 11px; color: #999; border: 1px dashed #ccc;
-}
 .sl-batch .qrcode-placeholder {
   width: 64px; height: 64px; flex-shrink: 0;
   border: 1px dashed #ccc; display: flex; align-items: center; justify-content: center;
@@ -1464,7 +1490,8 @@ const handleClose = () => {
   text-align: center; border-bottom: 2px solid #000;
   padding: 4px 0 6px 0; margin-bottom: 6px;
 }
-.sl-batch .batch-barcode-top-svg { max-width: 90%; height: 50px; }
+/* 与单个打印预览(PrintLabelDialog)的选择器规则完全一致 */
+.sl-batch .sl-barcode-top svg { max-width: 90%; height: 50px; }
 .sl-batch .sl-tracking-no { font-size: 13px; font-weight: 700; letter-spacing: 2px; margin-top: 2px; }
 .sl-batch .sl-addr-block { border-bottom: 1.5px solid #000; padding: 5px 0; margin-bottom: 4px; }
 .sl-batch .sl-addr-row { display: flex; align-items: baseline; gap: 6px; margin-bottom: 3px; }
@@ -1487,14 +1514,36 @@ const handleClose = () => {
 }
 .sl-batch .sl-cod { font-size: 14px; color: #c00; }
 .sl-batch .sl-remark span { color: #c00; }
+/* 中部：左侧信息 + 右侧竖向条形码 */
+.sl-batch .sl-mid { display: flex; gap: 6px; }
+.sl-batch .sl-mid-left { flex: 1; min-width: 0; }
+.sl-batch .sl-mid-right {
+  flex-shrink: 0; width: 52px; min-height: 150px;
+  border-left: 1.5px solid #000;
+  position: relative; overflow: hidden;
+}
+.sl-batch .sl-barcode-side-svg {
+  position: absolute; top: 50%; left: 50%;
+  width: 145px; height: 46px;
+  transform: translate(-50%, -50%) rotate(90deg);
+}
+.sl-batch .barcode-placeholder-side {
+  position: absolute; top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  writing-mode: vertical-rl;
+  font-size: 11px; color: #999;
+  border: 1px dashed #ccc; padding: 10px 4px;
+  white-space: nowrap;
+}
 .sl-batch .sl-bottom {
-  display: flex; align-items: flex-start; gap: 8px;
+  display: flex; align-items: center; gap: 8px;
   padding-top: 6px; margin-top: 4px; border-top: 2px solid #000;
 }
 .sl-batch .sl-qrcode { width: 64px; height: 64px; flex-shrink: 0; }
-.sl-batch .sl-bottom-right { flex: 1; overflow: hidden; }
-.sl-batch .batch-barcode-btm-svg { max-width: 100%; height: auto; max-height: 50px; display: block; }
-.sl-batch .sl-order-info { display: flex; justify-content: space-between; font-size: 10px; color: #666; margin-top: 2px; }
+.sl-batch .sl-order-info {
+  flex: 1; min-width: 0; display: flex; flex-direction: column;
+  gap: 2px; font-size: 10px; color: #666;
+}
 .sl-batch .sl-time { color: #999; }
 .sl-batch .sl-sign {
   border-top: 1px dashed #999; padding-top: 4px; margin-top: 4px;

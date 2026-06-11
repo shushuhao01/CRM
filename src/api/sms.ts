@@ -308,6 +308,15 @@ export function getStatistics() {
 }
 
 /**
+ * 获取当前生效的短信签名（用于预览展示）
+ * SaaS=平台签名（管理后台配置），私有部署=CRM系统设置签名
+ * GET /api/v1/sms/sign-name
+ */
+export function getSmsSignName(): Promise<{ code: number; success: boolean; data: { signName: string } }> {
+  return request('/sms/sign-name', { method: 'GET' }) as any
+}
+
+/**
  * 获取短信模板变量文档
  * GET /api/v1/sms/variable-docs
  */
@@ -345,11 +354,11 @@ export function createSmsRequest(data: Partial<SmsRequest>) {
 }
 
 /**
- * 审核短信发送请求
- * POST /api/v1/sms/templates/:id/approve
+ * 审核短信发送申请（租户管理员，通过后立即触发真实发送）
+ * POST /api/v1/sms/records/:id/approve
  */
 export function approveSms(id: string | number, data: { approved: boolean; reason?: string }) {
-  return request(`/sms/templates/${id}/approve`, {
+  return request(`/sms/records/${id}/approve`, {
     method: 'POST',
     data
   })

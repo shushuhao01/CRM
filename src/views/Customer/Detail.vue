@@ -1428,14 +1428,19 @@ const handleSmsSendSubmit = async (data: Record<string, unknown>) => {
     }) as any
 
     if (res?.success || res?.code === 200) {
-      ElMessage.success('短信发送成功')
+      // 🔥 开启发送审核时，提交后进入待审核状态
+      if (res?.data?.status === 'pending') {
+        ElMessage.info('发送申请已提交，待租户管理员审核通过后发送')
+      } else {
+        ElMessage.success('短信发送成功')
+      }
       showSMSDialog.value = false
     } else {
       ElMessage.error(res?.message || '短信发送失败')
     }
   } catch (error: any) {
     console.error('短信发送失败:', error)
-    ElMessage.error(error?.response?.data?.message || '短信发送失败')
+    ElMessage.error(error?.message || error?.response?.data?.message || '短信发送失败')
   }
 }
 
@@ -1909,7 +1914,12 @@ const sendSMS = async () => {
     }) as any
 
     if (res?.success || res?.code === 200) {
-      ElMessage.success('短信发送成功')
+      // 🔥 开启发送审核时，提交后进入待审核状态
+      if (res?.data?.status === 'pending') {
+        ElMessage.info('发送申请已提交，待租户管理员审核通过后发送')
+      } else {
+        ElMessage.success('短信发送成功')
+      }
       showSMSDialog.value = false
       // 刷新统计数据
       loadUserSMSStats()

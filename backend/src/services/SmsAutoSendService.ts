@@ -5,6 +5,9 @@ import { getTenantRepo } from '../utils/tenantRepo';
 import { AppDataSource } from '../config/database';
 import { TenantContextManager } from '../utils/tenantContext';
 import { tenantRawSQLStrict } from '../utils/tenantHelpers';
+import { aliyunSmsService } from './AliyunSmsService';
+import { resolveSmsSignName, stripSmsSignPrefix, applySmsSignature } from '../utils/smsSignature';
+import { SmsQuotaNotifyService } from './SmsQuotaNotifyService';
 import { log } from '../config/logger';
 
 /**
@@ -107,11 +110,20 @@ export class SmsAutoSendService {
       return;
     }
 
-    // 自动匹配变量
-    const content = SmsAutoSendService.fillTemplateVariables(template.content, contextData);
+    // 🔥 签名处理：开头【...】是服务商签名而非模板变量
+    // SaaS=平台签名（管理后台 sms_config），私有部署=CRM系统设置签名（回退平台签名）
+    const signName = await resolveSmsSignName();
+    const baseTemplateContent = signName ? stripSmsSignPrefix(template.content) : template.content;
 
-    // 额度校验（兼容私有部署和SaaS）
+    // 自动匹配变量（基于去掉签名段后的模板正文），再前置真实签名
+    const content = applySmsSignature(
+      SmsAutoSendService.fillTemplateVariables(baseTemplateContent, contextData),
+      signName
+    );
+
+    // 额度校验（兼容私有部署和SaaS）：额度用完暂停发送，如实记录失败并通知管理员
     const t = tenantRawSQLStrict();
+    let quotaInsufficient = false;
     try {
       const quotaRows = await AppDataSource.query(
         `SELECT config_key, config_value FROM system_config
@@ -124,14 +136,75 @@ export class SmsAutoSendService {
         if (r.config_key === 'sms_quota_used') usedQuota = parseInt(r.config_value) || 0;
       }
       if (totalQuota > 0 && (totalQuota - usedQuota) < 1) {
-        log.warn(`[SMS-AutoSend] 规则 ${rule.name}: 短信额度不足，跳过`);
-        return;
+        quotaInsufficient = true;
       }
     } catch (quotaErr: any) {
       log.warn('[SMS-AutoSend] 额度校验跳过:', quotaErr.message);
     }
 
-    // 创建发送记录
+    if (quotaInsufficient) {
+      log.warn(`[SMS-AutoSend] 规则 ${rule.name}: 短信额度不足，已暂停发送`);
+      // 如实记录失败
+      const quotaFailRepo = getTenantRepo(SmsRecord);
+      const quotaFailRecord = quotaFailRepo.create({
+        templateId: rule.templateId,
+        templateName: template.name,
+        content,
+        recipients: [{ name: customer.name, phone: customer.phone }],
+        recipientCount: 1,
+        successCount: 0,
+        failCount: 1,
+        status: 'failed',
+        sendDetails: [{
+          phone: customer.phone,
+          name: customer.name || '',
+          status: 'failed',
+          sentAt: new Date().toISOString(),
+          errorMsg: '短信额度不足，已暂停发送'
+        }],
+        remark: '发送失败：短信额度不足，已暂停发送',
+        applicant: contextData.userId || 'system',
+        applicantName: '自动发送',
+        applicantDept: contextData.departmentId || '',
+        senderUserId: contextData.userId || 'system',
+        senderDepartmentId: contextData.departmentId || '',
+        triggerSource: 'auto',
+        autoRuleId: rule.id,
+        sentAt: new Date()
+      });
+      await quotaFailRepo.save(quotaFailRecord);
+
+      // 更新规则失败统计
+      const quotaRuleRepo = getTenantRepo(SmsAutoSendRule);
+      rule.statsFailCount = (rule.statsFailCount || 0) + 1;
+      rule.lastTriggeredAt = new Date();
+      await quotaRuleRepo.save(rule);
+
+      // 🔥 通知管理员：因额度不足，自动发送给该客户的短信失败
+      SmsQuotaNotifyService.notifyQuotaSendFailure(
+        `自动发送（规则：${rule.name}）`,
+        [{ name: customer.name, phone: customer.phone }],
+        content
+      ).catch(err => log.warn('[SMS-AutoSend] 额度不足通知失败:', err));
+      return;
+    }
+
+    // 🔥 真实发送：通过短信通道发送，未配置通道/无服务商CODE时如实记为失败
+    // 模板参数基于去掉签名段后的正文提取（签名由服务商按 signName 自动添加，不是模板参数）
+    const variableMap = SmsAutoSendService.buildVariableMap(contextData);
+    const varNames = [...new Set((baseTemplateContent.match(/\{(\w+)\}/g) || []).map(m => m.slice(1, -1)))];
+    const templateParams: Record<string, string> = {};
+    for (const v of varNames) templateParams[v] = variableMap[v] || '';
+
+    const sendResult = await aliyunSmsService.sendBusinessSms(
+      customer.phone,
+      template.vendorTemplateCode || '',
+      templateParams
+    );
+    const sendOk = sendResult.success === true;
+    const errorMsg = sendOk ? '' : (sendResult.message || '发送失败');
+
+    // 创建发送记录（如实记录成功/失败）
     const recordRepo = getTenantRepo(SmsRecord);
     const record = recordRepo.create({
       templateId: rule.templateId,
@@ -139,9 +212,17 @@ export class SmsAutoSendService {
       content,
       recipients: [{ name: customer.name, phone: customer.phone }],
       recipientCount: 1,
-      successCount: 1,
-      failCount: 0,
-      status: 'completed',
+      successCount: sendOk ? 1 : 0,
+      failCount: sendOk ? 0 : 1,
+      status: sendOk ? 'completed' : 'failed',
+      sendDetails: [{
+        phone: customer.phone,
+        name: customer.name || '',
+        status: sendOk ? 'success' : 'failed',
+        sentAt: new Date().toISOString(),
+        errorMsg
+      }],
+      remark: sendOk ? '' : `发送失败：${errorMsg}`,
       applicant: contextData.userId || 'system',
       applicantName: '自动发送',
       applicantDept: contextData.departmentId || '',
@@ -154,24 +235,36 @@ export class SmsAutoSendService {
 
     await recordRepo.save(record);
 
-    // 扣减额度（兼容私有部署和SaaS）
-    try {
-      await AppDataSource.query(
-        `UPDATE system_config SET config_value = CAST(config_value AS SIGNED) + 1
-         WHERE config_key = 'sms_quota_used' ${t.sql}`,
-        [...t.params]
-      );
-    } catch (deductErr: any) {
-      log.warn('[SMS-AutoSend] 额度扣减跳过:', deductErr.message);
+    // 仅发送成功才扣减额度（兼容私有部署和SaaS），并触发额度预警检查
+    if (sendOk) {
+      try {
+        await AppDataSource.query(
+          `UPDATE system_config SET config_value = CAST(config_value AS SIGNED) + 1
+           WHERE config_key = 'sms_quota_used' ${t.sql}`,
+          [...t.params]
+        );
+      } catch (deductErr: any) {
+        log.warn('[SMS-AutoSend] 额度扣减跳过:', deductErr.message);
+      }
+      // 🔥 扣减后检查额度预警（100/50/10/用完，通知租户管理员）
+      await SmsQuotaNotifyService.checkQuotaWarning().catch(() => { /* 预警失败不影响主流程 */ });
     }
 
-    // 更新规则统计
+    // 更新规则统计（如实区分成功/失败）
     const ruleRepo = getTenantRepo(SmsAutoSendRule);
-    rule.statsSentCount = (rule.statsSentCount || 0) + 1;
+    if (sendOk) {
+      rule.statsSentCount = (rule.statsSentCount || 0) + 1;
+    } else {
+      rule.statsFailCount = (rule.statsFailCount || 0) + 1;
+    }
     rule.lastTriggeredAt = new Date();
     await ruleRepo.save(rule);
 
-    log.info(`[SMS-AutoSend] 规则 ${rule.name}: 成功发送短信给 ${customer.name}(${customer.phone})`);
+    if (sendOk) {
+      log.info(`[SMS-AutoSend] 规则 ${rule.name}: 成功发送短信给 ${customer.name}(${customer.phone})`);
+    } else {
+      log.warn(`[SMS-AutoSend] 规则 ${rule.name}: 发送失败（${customer.name}/${customer.phone}）: ${errorMsg}`);
+    }
   }
 
   /**
@@ -202,14 +295,10 @@ export class SmsAutoSendService {
   }
 
   /**
-   * 填充模板变量
+   * 构建变量映射表（填充内容和构造服务商模板参数共用）
    * 🔥 v1.8.1 增强：覆盖完整变量映射表
    */
-  private static fillTemplateVariables(
-    templateContent: string,
-    contextData: Record<string, any>
-  ): string {
-    let content = templateContent;
+  private static buildVariableMap(contextData: Record<string, any>): Record<string, string> {
     const customer = contextData.customer || {};
     const order = contextData.order || {};
     const company = contextData.company || {};
@@ -240,8 +329,8 @@ export class SmsAutoSendService {
       unpaidAmount: order.unpaidAmount != null ? String(order.unpaidAmount) : '',
       orderStatus: order.status || '',
       orderDate: order.orderDate || order.createdAt || '',
-      productName: order.productName || order.productNames || '',
-      orderItems: order.productNames || order.productName || '',
+      productName: SmsAutoSendService.normalizeProductNames(order.productName || order.productNames),
+      orderItems: SmsAutoSendService.normalizeProductNames(order.productNames || order.productName),
       paymentMethod: order.paymentMethod || '',
       // 物流信息
       trackingNo: order.trackingNo || '',
@@ -253,6 +342,7 @@ export class SmsAutoSendService {
       brandName: company.brandName || contextData.brandName || '',
       shopName: company.shopName || contextData.shopName || '',
       serviceHotline: company.serviceHotline || contextData.serviceHotline || '',
+      servicePhone: company.serviceHotline || contextData.serviceHotline || contextData.servicePhone || '',
       website: company.website || contextData.website || '',
       // 通用时间
       date: now.toISOString().split('T')[0],
@@ -260,6 +350,49 @@ export class SmsAutoSendService {
       year: String(now.getFullYear()),
       month: `${now.getMonth() + 1}月`,
     };
+
+    return variableMap;
+  }
+
+  /**
+   * 规范化商品名称
+   * 订单触发时 productName 可能是商品JSON数组字符串，需提取为可读的商品名（多个用、分隔）
+   */
+  private static normalizeProductNames(value: unknown): string {
+    if (value == null) return '';
+    if (Array.isArray(value)) {
+      return value
+        .map((p: any) => (typeof p === 'string' ? p : (p?.name || p?.productName || p?.title || '')))
+        .filter(Boolean)
+        .join('、');
+    }
+    if (typeof value !== 'string') return String(value);
+
+    const str = value.trim();
+    // 形如 JSON 数组的字符串：解析并提取商品名
+    if (str.startsWith('[') && str.endsWith(']')) {
+      try {
+        const arr = JSON.parse(str);
+        if (Array.isArray(arr)) {
+          return arr
+            .map((p: any) => (typeof p === 'string' ? p : (p?.name || p?.productName || p?.title || '')))
+            .filter(Boolean)
+            .join('、');
+        }
+      } catch { /* 解析失败按原文返回 */ }
+    }
+    return str;
+  }
+
+  /**
+   * 填充模板变量
+   */
+  private static fillTemplateVariables(
+    templateContent: string,
+    contextData: Record<string, any>
+  ): string {
+    let content = templateContent;
+    const variableMap = SmsAutoSendService.buildVariableMap(contextData);
 
     for (const [key, value] of Object.entries(variableMap)) {
       if (value) {

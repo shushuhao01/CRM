@@ -117,8 +117,35 @@ class AliyunSmsService {
       return { success: false, message: `未配置${templateType}模板CODE` }
     }
 
+    return this.doSend(phone, templateCode, params)
+  }
+
+  /**
+   * 发送业务短信（CRM租户手动发送/自动发送规则使用）
+   * 🔥 与 sendSms 的关键区别：未配置短信通道时如实返回失败，不做"模拟发送成功"，
+   *    确保发送记录和统计反映真实结果
+   */
+  async sendBusinessSms(phone: string, vendorTemplateCode: string, params: Record<string, string>): Promise<{ success: boolean; message?: string }> {
+    // 每次发送前尝试刷新数据库配置（管理后台可能刚更新）
+    const loaded = await this.loadFromDatabase()
+    if (!loaded && !this.config?.accessKeyId) {
+      log.warn(`[SMS] 业务短信发送失败: 短信服务未配置（${phone}）`)
+      return { success: false, message: '短信服务未配置，无法发送（请联系管理员在管理后台配置短信通道）' }
+    }
+    if (!this.config?.signName) {
+      return { success: false, message: '短信签名未配置，无法发送' }
+    }
+    if (!vendorTemplateCode) {
+      return { success: false, message: '模板未配置服务商模板CODE，无法发送（请联系管理员在管理后台为该模板填写CODE）' }
+    }
+
+    return this.doSend(phone, vendorTemplateCode, params)
+  }
+
+  // 实际调用阿里云接口发送（sendSms 与 sendBusinessSms 共用）
+  private async doSend(phone: string, templateCode: string, params: Record<string, string>): Promise<{ success: boolean; message?: string }> {
     try {
-      log.info(`[SMS] 使用配置: 签名=${this.config.signName}, 模板=${templateCode}`)
+      log.info(`[SMS] 使用配置: 签名=${this.config!.signName}, 模板=${templateCode}`)
       const smsParams = this.buildParams(phone, templateCode, params)
       const signature = this.sign(smsParams)
       smsParams['Signature'] = signature

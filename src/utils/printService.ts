@@ -119,9 +119,10 @@ export async function prepareLabelCodes(label: LabelData): Promise<LabelData> {
     barcodeTopSvg = generateBarcodeSVGString(tn, {
       format: 'CODE128', width: 2, height: 50, displayValue: false, margin: 0
     }, 'barcode-top-svg')
+    // 右侧竖向条形码（旋转90°显示，参数与各预览对话框一致）
     barcodeBottomSvg = generateBarcodeSVGString(tn, {
-      format: 'CODE128', width: 1.5, height: 40, displayValue: true, fontSize: 10, margin: 2, textMargin: 1
-    }, 'sl-barcode-btm-svg barcode-btm-svg')
+      format: 'CODE128', width: 1.2, height: 34, displayValue: true, fontSize: 10, margin: 2, textMargin: 1
+    }, 'sl-barcode-side-svg')
   }
 
   return { ...label, qrDataUrl, barcodeTopSvg, barcodeBottomSvg }
@@ -399,14 +400,14 @@ export function generateLabelHTML(data: LabelData, _config: PrinterConfig): stri
     barcodeTopHTML = '<div class="barcode-placeholder">\u5f85\u751f\u6210\u7269\u6d41\u5355\u53f7</div>'
   }
 
-  // 底部条形码区域
-  let barcodeBottomHTML: string
+  // 右侧竖向条形码区域
+  let barcodeSideHTML: string
   if (barcodeBottomSvg) {
-    barcodeBottomHTML = barcodeBottomSvg
+    barcodeSideHTML = barcodeBottomSvg
   } else if (tn) {
-    barcodeBottomHTML = '<svg class="sl-barcode-btm-svg barcode-btm-svg"></svg>'
+    barcodeSideHTML = '<svg class="sl-barcode-side-svg"></svg>'
   } else {
-    barcodeBottomHTML = '<div class="barcode-placeholder-sm">\u5f85\u751f\u6210\u7269\u6d41\u5355\u53f7</div>'
+    barcodeSideHTML = '<div class="barcode-placeholder-side">\u5f85\u751f\u6210\u7269\u6d41\u5355\u53f7</div>'
   }
 
   // 二维码区域：优先 dataURL img，其次 CDN canvas，最后占位符
@@ -431,33 +432,37 @@ export function generateLabelHTML(data: LabelData, _config: PrinterConfig): stri
         ${barcodeTopHTML}
         <div class="sl-tracking-no">${trackingDisplay}</div>
       </div>
-      <div class="sl-addr-block sl-recv">
-        <div class="sl-addr-row">
-          <span class="sl-tag sl-tag-recv">\u6536</span>
-          <span class="sl-name">${maskedReceiverName}</span>
-          <span class="sl-phone">${receiverPhone}</span>
+      <div class="sl-mid">
+        <div class="sl-mid-left">
+          <div class="sl-addr-block sl-recv">
+            <div class="sl-addr-row">
+              <span class="sl-tag sl-tag-recv">\u6536</span>
+              <span class="sl-name">${maskedReceiverName}</span>
+              <span class="sl-phone">${receiverPhone}</span>
+            </div>
+            <div class="sl-addr-detail">${maskedReceiverAddress}</div>
+          </div>
+          <div class="sl-addr-block sl-send">
+            <div class="sl-addr-row">
+              <span class="sl-tag sl-tag-send">\u5bc4</span>
+              <span class="sl-name-sm">${data.senderName}</span>
+              <span class="sl-phone-sm">${senderPhone}</span>
+            </div>
+            <div class="sl-addr-detail-sm">${data.senderAddress}</div>
+          </div>
+          ${data.showProducts !== false ? `<div class="sl-info-row"><b>\u5546\u54c1\uff1a</b>${productsText}</div>` : ''}
+          ${data.showCodAmount !== false && data.codAmount > 0 ? `<div class="sl-info-row sl-cod"><b>\u4ee3\u6536\u6b3e\uff1a\u00a5${data.codAmount.toFixed(2)}</b></div>` : ''}
+          ${data.showRemark && data.remark ? `<div class="sl-info-row sl-remark"><b>\u5907\u6ce8\uff1a</b><span>${data.remark}</span></div>` : ''}
         </div>
-        <div class="sl-addr-detail">${maskedReceiverAddress}</div>
-      </div>
-      <div class="sl-addr-block sl-send">
-        <div class="sl-addr-row">
-          <span class="sl-tag sl-tag-send">\u5bc4</span>
-          <span class="sl-name-sm">${data.senderName}</span>
-          <span class="sl-phone-sm">${senderPhone}</span>
+        <div class="sl-mid-right">
+          ${barcodeSideHTML}
         </div>
-        <div class="sl-addr-detail-sm">${data.senderAddress}</div>
       </div>
-      ${data.showProducts !== false ? `<div class="sl-info-row"><b>\u5546\u54c1\uff1a</b>${productsText}</div>` : ''}
-      ${data.showCodAmount !== false && data.codAmount > 0 ? `<div class="sl-info-row sl-cod"><b>\u4ee3\u6536\u6b3e\uff1a\u00a5${data.codAmount.toFixed(2)}</b></div>` : ''}
-      ${data.showRemark && data.remark ? `<div class="sl-info-row sl-remark"><b>\u5907\u6ce8\uff1a</b><span>${data.remark}</span></div>` : ''}
       <div class="sl-bottom">
         ${qrHTML}
-        <div class="sl-bottom-right">
-          ${barcodeBottomHTML}
-          <div class="sl-order-info">
-            <span>\u8ba2\u5355\u53f7\uff1a${data.orderNo}</span>
-            ${data.createTime ? `<span class="sl-time">${data.createTime}</span>` : ''}
-          </div>
+        <div class="sl-order-info">
+          <span>\u8ba2\u5355\u53f7\uff1a${data.orderNo}</span>
+          ${data.createTime ? `<span class="sl-time">${data.createTime}</span>` : ''}
         </div>
       </div>
     </div>
@@ -508,9 +513,13 @@ function getLabelCSS(paperW: number, paperH: number): string {
       font-size: 14px; color: #999; border: 1px dashed #ccc; margin: 4px auto;
       max-width: 90%;
     }
-    .barcode-placeholder-sm {
-      height: 30px; display: flex; align-items: center; justify-content: center;
-      font-size: 11px; color: #999; border: 1px dashed #ccc;
+    .barcode-placeholder-side {
+      position: absolute; top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      writing-mode: vertical-rl;
+      font-size: 11px; color: #999;
+      border: 1px dashed #ccc; padding: 10px 4px;
+      white-space: nowrap;
     }
     .qrcode-placeholder {
       width: 64px; height: 64px; flex-shrink: 0;
@@ -546,15 +555,30 @@ function getLabelCSS(paperW: number, paperH: number): string {
     .sl-cod { font-size: 14px; color: #c00; }
     .sl-remark span { color: #c00; }
 
-    /* 底部：二维码 + 底部条形码 + 订单号 */
+    /* 中部：左侧信息 + 右侧竖向条形码（与对话框预览一致） */
+    .sl-mid { display: flex; gap: 6px; }
+    .sl-mid-left { flex: 1; min-width: 0; }
+    .sl-mid-right {
+      flex-shrink: 0; width: 52px; min-height: 150px;
+      border-left: 1.5px solid #000;
+      position: relative; overflow: hidden;
+    }
+    .sl-barcode-side-svg {
+      position: absolute; top: 50%; left: 50%;
+      width: 145px; height: 46px;
+      transform: translate(-50%, -50%) rotate(90deg);
+    }
+
+    /* 底部：二维码(左) + 订单号信息(右) */
     .sl-bottom {
-      display: flex; align-items: flex-start; gap: 8px;
+      display: flex; align-items: center; gap: 8px;
       padding-top: 6px; margin-top: 4px; border-top: 2px solid #000;
     }
     .sl-qrcode { width: 64px; height: 64px; flex-shrink: 0; }
-    .sl-bottom-right { flex: 1; overflow: hidden; }
-    .sl-barcode-btm-svg { max-width: 100%; height: auto; max-height: 50px; display: block; }
-    .sl-order-info { display: flex; justify-content: space-between; font-size: 10px; color: #666; margin-top: 2px; }
+    .sl-order-info {
+      flex: 1; min-width: 0; display: flex; flex-direction: column;
+      gap: 2px; font-size: 10px; color: #666;
+    }
     .sl-time { color: #999; }
 
     /* 签收区 */

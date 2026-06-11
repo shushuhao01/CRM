@@ -85,8 +85,9 @@ export function matchVariable(
       }
       case 'customerNo':
         return customer.customerNo || ''
+      // companyName 是发送方的公司名称（即短信签名主体），不能用客户的公司填充
       case 'companyName':
-        return customer.company || company?.companyName || ''
+        return company?.companyName || ''
       case 'address':
       case 'receiverAddress':
         return customer.address || ''

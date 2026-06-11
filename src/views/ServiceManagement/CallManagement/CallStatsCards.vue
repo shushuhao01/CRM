@@ -65,7 +65,8 @@ defineProps<{
 .stats-row { margin-bottom: 20px; }
 .stat-card { height: 100px; transition: all 0.3s ease; }
 .stat-card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15); }
-.stat-item { display: flex; align-items: center; height: 100%; padding: 20px; }
+.stat-card :deep(.el-card__body) { height: 100%; padding: 0; }
+.stat-item { display: flex; align-items: center; height: 100%; padding: 0 20px; }
 .stat-icon {
   width: 50px; height: 50px; border-radius: 10px;
   background: linear-gradient(135deg, #409eff 0%, #36cfc9 100%);

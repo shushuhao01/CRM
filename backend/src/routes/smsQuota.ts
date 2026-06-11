@@ -469,6 +469,12 @@ async function addTenantQuota(tenantId: string | null, smsCount: number): Promis
       );
     }
   }
+
+  // 🔥 额度到账后重置预警等级标记，使后续跌破阈值时能重新预警
+  try {
+    const { SmsQuotaNotifyService } = await import('../services/SmsQuotaNotifyService');
+    await SmsQuotaNotifyService.resetWarnLevel(tenantId);
+  } catch { /* 重置失败不影响主流程 */ }
 }
 
 // 导出 addTenantQuota 供支付回调使用

@@ -55,7 +55,7 @@
             <span class="tpl-name">{{ tpl.name }}</span>
             <el-tag size="small" type="info">{{ getCategoryText(tpl.category) }}</el-tag>
           </div>
-          <div class="tpl-card-body">{{ tpl.content }}</div>
+          <div class="tpl-card-body">{{ withSign(tpl.content) }}</div>
           <div class="tpl-card-footer">
             <span class="tpl-usage">已使用 {{ tpl.usage || 0 }} 次</span>
             <el-icon v-if="form.templateId === tpl.id" color="#409eff"><CircleCheck /></el-icon>
@@ -74,7 +74,7 @@
             <span class="stpl-name">{{ selectedTemplate.name }}</span>
             <el-button type="primary" link size="small" @click="currentStep = 0">更换模板</el-button>
           </div>
-          <div class="stpl-content">{{ selectedTemplate.content }}</div>
+          <div class="stpl-content">{{ withSign(selectedTemplate.content) }}</div>
         </div>
 
         <!-- 接收人 -->
@@ -198,7 +198,7 @@
               <el-button :icon="ArrowRight" text size="small" :disabled="previewCustomerIdx >= confirmedCustomerList.length - 1" @click="switchPreviewCustomer(1)">下一位</el-button>
             </div>
           </div>
-          <div class="preview-bubble">{{ currentPreviewContent || selectedTemplate?.content || '-' }}</div>
+          <div class="preview-bubble">{{ currentPreviewContent || withSign(selectedTemplate?.content || '') || '-' }}</div>
           <div class="preview-meta">
             <span>内容长度: {{ (currentPreviewContent || '').length }} 字符</span>
             <span>预计 {{ smsPageCount }} 条短信</span>
@@ -315,7 +315,7 @@ import {
   InfoFilled
 } from '@element-plus/icons-vue'
 import { autoMatchVariables } from '@/utils/smsVariableMatcher'
-import { searchSmsCustomers } from '@/api/sms'
+import { searchSmsCustomers, getSmsSignName } from '@/api/sms'
 
 // ============ 类型 ============
 interface SmsTemplate {
@@ -420,6 +420,30 @@ const rules = {
   ]
 }
 
+// ============ 短信签名 ============
+// 短信开头的【...】是服务商签名（SaaS=平台签名，私有部署=CRM系统设置签名），不是模板变量
+const smsSignName = ref('')
+const SIGN_PREFIX_RE = /^\s*【[^】]*】\s*/
+
+/** 去掉内容开头的【...】签名段 */
+const stripSign = (content: string) => (content || '').replace(SIGN_PREFIX_RE, '')
+
+/** 用真实签名替换开头【...】段；无签名时原样返回 */
+const withSign = (content: string) => {
+  if (!smsSignName.value) return content || ''
+  return `【${smsSignName.value}】${stripSign(content)}`
+}
+
+/** 加载当前生效的短信签名 */
+const loadSignName = async () => {
+  try {
+    const res = await getSmsSignName() as any
+    smsSignName.value = res?.data?.signName || ''
+  } catch {
+    smsSignName.value = ''
+  }
+}
+
 // ============ 计算属性 ============
 const filteredTemplates = computed(() => {
   if (!templateKeyword.value) return props.templates
@@ -434,19 +458,25 @@ const selectedTemplate = computed(() => {
   return props.templates.find(t => t.id === form.value.templateId) || null
 })
 
+/** 选中模板的正文（有真实签名时去掉开头【...】段，签名段内变量不需要填写） */
+const selectedTemplateBody = computed(() => {
+  if (!selectedTemplate.value) return ''
+  return smsSignName.value ? stripSign(selectedTemplate.value.content) : selectedTemplate.value.content
+})
+
 const templateVariables = computed(() => {
-  if (!selectedTemplate.value) return []
-  const matches = selectedTemplate.value.content.match(/\{(\w+)\}/g)
+  if (!selectedTemplateBody.value) return []
+  const matches = selectedTemplateBody.value.match(/\{(\w+)\}/g)
   return matches ? [...new Set(matches.map(m => m.slice(1, -1)))] : []
 })
 
 const previewContent = computed(() => {
   if (!selectedTemplate.value) return ''
-  let content = selectedTemplate.value.content
+  let content = selectedTemplateBody.value
   Object.entries(form.value.variables).forEach(([key, val]) => {
     if (val) content = content.replace(new RegExp(`\\{${key}\\}`, 'g'), val)
   })
-  return content
+  return withSign(content)
 })
 
 /** 步骤3预览：根据当前切换的客户生成预览内容 */
@@ -454,14 +484,14 @@ const currentPreviewContent = computed(() => {
   if (!selectedTemplate.value) return ''
   const customer = confirmedCustomerList.value[previewCustomerIdx.value]
   if (!customer) return previewContent.value
-  const matched = autoMatchVariables(selectedTemplate.value.content, customer as any)
-  let content = selectedTemplate.value.content
+  const matched = autoMatchVariables(selectedTemplateBody.value, customer as any)
+  let content = selectedTemplateBody.value
   // 先用自动匹配的值替换，再用手动填的覆盖
   const merged = { ...matched, ...form.value.variables }
   Object.entries(merged).forEach(([key, val]) => {
     if (val) content = content.replace(new RegExp(`\\{${key}\\}`, 'g'), val)
   })
-  return content
+  return withSign(content)
 })
 
 const recipientCount = computed(() => {
@@ -504,6 +534,8 @@ watch(visible, (val) => {
   emit('update:modelValue', val)
   if (!val) { resetForm() }
   if (val) {
+    // 加载当前生效的短信签名（用于展示和预览）
+    loadSignName()
     // 如果有预设客户（从客户详情页进入），自动填充接收人
     if (props.presetCustomer && props.presetCustomer.phone) {
       const c = props.presetCustomer
@@ -521,7 +553,7 @@ watch(templateVariables, (vars) => {
 watch(varPreviewIdx, (idx) => {
   const customer = confirmedCustomerList.value[idx]
   if (customer && selectedTemplate.value) {
-    const matched = autoMatchVariables(selectedTemplate.value.content, customer as any)
+    const matched = autoMatchVariables(selectedTemplateBody.value, customer as any)
     const newVars: Record<string, string> = {}
     const newAutoFilled = new Set<string>()
     templateVariables.value.forEach(v => {
@@ -571,7 +603,7 @@ const handleAutoMatchAll = () => {
     ElMessage.warning('请先选择客户')
     return
   }
-  const matched = autoMatchVariables(selectedTemplate.value.content, customer as any)
+  const matched = autoMatchVariables(selectedTemplateBody.value, customer as any)
   const newVars: Record<string, string> = { ...form.value.variables }
   const newAutoFilled = new Set(autoFilledVars.value)
   Object.entries(matched).forEach(([k, v]) => {
@@ -618,11 +650,12 @@ const autoFillVariables = (tpl: SmsTemplate) => {
     }
   }
 
-  // 使用自动匹配工具
-  const matched = autoMatchVariables(tpl.content, (customer || undefined) as any)
+  // 使用自动匹配工具（基于去掉签名段后的正文）
+  const tplBody = smsSignName.value ? stripSign(tpl.content) : tpl.content
+  const matched = autoMatchVariables(tplBody, (customer || undefined) as any)
 
   // 合并到表单变量（不覆盖已有的手动输入值）
-  const vars = tpl.content.match(/\{(\w+)\}/g)
+  const vars = tplBody.match(/\{(\w+)\}/g)
   if (vars) {
     const varNames = [...new Set(vars.map(m => m.slice(1, -1)))]
     const newVariables: Record<string, string> = {}
@@ -686,7 +719,7 @@ const handleSend = async () => {
     }
     emit('send', sendData)
     emit('submit', sendData)
-    ElMessage.success(form.value.sendImmediately ? '短信发送成功' : '定时发送任务已创建')
+    // 实际发送结果（成功/待审核/失败）由外部提交处理器提示
     handleClose()
   } catch (e) {
     console.error('发送失败:', e)
@@ -727,7 +760,7 @@ const handleConfirmCustomers = () => {
   // 🔥 自动匹配变量（使用第一个客户的信息）
   if (selectedTemplate.value && confirmedCustomerList.value.length > 0) {
     const customer = confirmedCustomerList.value[0]
-    const matched = autoMatchVariables(selectedTemplate.value.content, customer as any)
+    const matched = autoMatchVariables(selectedTemplateBody.value, customer as any)
     const newVars: Record<string, string> = { ...form.value.variables }
     const newAutoFilled = new Set(autoFilledVars.value)
     Object.entries(matched).forEach(([k, v]) => {
