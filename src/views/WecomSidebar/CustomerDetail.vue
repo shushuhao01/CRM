@@ -123,6 +123,10 @@
 
       <!-- CRM客户详情 Tab -->
       <template v-else-if="currentTab === 'customer'">
+        <!-- 从快捷下单返回时显示返回入口 -->
+        <div v-if="previousTab === 'order'" class="qo-back-bar" style="background:#fff;border-bottom:1px solid #f0f0f0;padding:6px 8px">
+          <button class="qo-back-btn" style="border:none;background:transparent;color:#4c6ef5;font-size:12px;cursor:pointer;padding:4px 8px;border-radius:4px" @click="previousTab = ''; currentTab = 'order'">← 返回快捷下单</button>
+        </div>
         <!-- 加载中 -->
         <div v-if="!customerData" style="text-align:center;padding:60px 20px;color:#909399;font-size:13px">
           加载客户信息...
@@ -157,8 +161,8 @@
               <button v-else class="btn-send-form-card" @click="showLinkDialog = true" style="background:#fff3e0;color:#f57c00;border-color:#ffcc80">🔄 换绑</button>
             </div>
             <div class="info-row"><span class="label">昵称</span><span>{{ customerData.wecomCustomer?.name || '-' }}</span></div>
-            <div class="info-row"><span class="label">性别</span><span>{{ customerData.wecomCustomer?.gender === 1 ? '男' : customerData.wecomCustomer?.gender === 2 ? '女' : '-' }}</span></div>
-            <div class="info-row"><span class="label">添加方式</span><span>{{ customerData.wecomCustomer?.addWay || '-' }}</span></div>
+            <div class="info-row"><span class="label">性别</span><span>{{ customerData.wecomCustomer?.gender === 1 ? '男' : customerData.wecomCustomer?.gender === 2 ? '女' : '未知' }}</span></div>
+            <div class="info-row"><span class="label">添加方式</span><span>{{ customerData.wecomCustomer?.addWayText || customerData.wecomCustomer?.addWay || '-' }}</span></div>
             <div class="info-row"><span class="label">添加时间</span><span>{{ customerData.wecomCustomer?.addTime ? formatOrderTime(customerData.wecomCustomer.addTime) : '-' }}</span></div>
             <div class="info-row"><span class="label">UserID</span><span style="font-size:11px;word-break:break-all">{{ customerData.wecomCustomer?.externalUserId || externalUserId || '-' }}</span></div>
           </div>
@@ -425,6 +429,7 @@ function handleGoOrder() {
     ElMessage.warning(goOrderBtnTitle.value || '无权为该客户下单')
     return
   }
+  previousTab.value = currentTab.value
   currentTab.value = 'order'
 }
 
@@ -454,14 +459,17 @@ function isPlaceholderWecomUserId(uid?: string): boolean {
 
 /** SDK 初始化完成后，若仍未获取真实企微ID则提示（避免登录时误报） */
 function warnIfStillPlaceholderAfterSdk() {
+  // 如果 SDK 已成功获取 externalUserId（说明完全正常），无需警告
+  if (externalUserId.value) return
+  // 如果 wecomUserId 已更新为真实值（非 sidebar_ 前缀），说明 OK
+  if (wecomUserId.value && !wecomUserId.value.startsWith('sidebar_')) return
+  // token 里的也检查一下
   const tokenUid = decodeJwtPayload(sidebarToken.value)?.wecomUserId || ''
-  const uid = wecomUserId.value || tokenUid
-  if (isPlaceholderWecomUserId(uid)) {
-    ElMessage.warning({
-      message: '绑定成功，但未获取到企微真实ID。请联系管理员同步通讯录以完善绑定。',
-      duration: 5000
-    })
-  }
+  if (tokenUid && !tokenUid.startsWith('sidebar_')) return
+  ElMessage.warning({
+    message: '绑定成功，但未获取到企微真实ID。请联系管理员同步通讯录以完善绑定。',
+    duration: 5000
+  })
 }
 
 /** 监听其他 Tab 的 token 变化，实现换绑/登录同步 */
@@ -507,6 +515,7 @@ let linkSearchTimer: any = null
 
 // 当前 Tab（从 URL ?tab= 参数读取）
 const currentTab = ref<'customer' | 'scripts' | 'order' | 'portrait' | 'mp-collect'>('customer')
+const previousTab = ref<string>('')
 const tabTitles: Record<string, string> = {
   customer: 'CRM客户详情',
   scripts: '快捷话术',
@@ -526,6 +535,7 @@ const debugExternalUserId = ref('')
 const handleSidebarSwitchTab = (e: Event) => {
   const detail = (e as CustomEvent).detail
   if (detail?.tab && detail.tab in tabTitles) {
+    previousTab.value = currentTab.value
     currentTab.value = detail.tab as typeof currentTab.value
   }
 }
@@ -1549,7 +1559,13 @@ function formatLastTime(time: string | null | undefined): string {
 
 function formatOrderTime(time: string): string {
   if (!time) return '-'
-  return new Date(time).toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' })
+  const d = new Date(time)
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  const h = String(d.getHours()).padStart(2, '0')
+  const min = String(d.getMinutes()).padStart(2, '0')
+  return `${y}/${m}/${day} ${h}:${min}`
 }
 
 function getOrderStatusText(status: string): string {
@@ -1557,7 +1573,10 @@ function getOrderStatusText(status: string): string {
     pending: '待处理', processing: '处理中', shipped: '已发货',
     delivered: '已送达', completed: '已完成', cancelled: '已取消',
     refunded: '已退款', paid: '已付款', unpaid: '未付款',
-    confirmed: '已确认', draft: '草稿', pending_shipment: '待发货'
+    confirmed: '已确认', draft: '草稿', pending_shipment: '待发货',
+    pending_audit: '待审核', pending_payment: '待付款', pending_delivery: '待发货',
+    partial_shipped: '部分发货', partial_refunded: '部分退款',
+    closed: '已关闭', returning: '退货中', exchanging: '换货中'
   }
   return map[status] || status
 }

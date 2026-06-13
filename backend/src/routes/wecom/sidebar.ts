@@ -779,6 +779,25 @@ router.get('/sidebar/customer-detail', authenticateSidebarToken, async (req: Req
       }
     }
 
+    // 绑定信息兜底：即使无CRM客户或无权限，只要有sidebarUser都应返回绑定信息
+    if (!bindingInfo && sidebarUser) {
+      const { Tenant } = await import('../../entities/Tenant');
+      let tenantCode = tenantId || '';
+      try {
+        const tenantRepo = AppDataSource.getRepository(Tenant);
+        const tenant = await tenantRepo.findOne({ where: { id: tenantId } });
+        tenantCode = tenant?.code || tenant?.id || tenantId || '';
+      } catch (_e) { /* ignore */ }
+      const binding = await AppDataSource.getRepository(WecomUserBinding).findOne({
+        where: { crmUserId: sidebarUser.crmUserId || sidebarUser.userId, isEnabled: true }
+      });
+      bindingInfo = {
+        crmUserName: sidebarUser.crmUserName || sidebarUser.username || '',
+        tenantCode,
+        boundAt: binding?.createdAt ? new Date(binding.createdAt).toISOString() : null
+      };
+    }
+
     // 手机号不在后端掩码，由前端权限系统统一控制脱敏显示
     const rawPhone = crmCustomer?.phone || null;
 

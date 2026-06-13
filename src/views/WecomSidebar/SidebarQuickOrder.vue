@@ -627,6 +627,8 @@ const selectCustomer = (c: any) => {
   form.value.receiverPhone = c.phone || ''
   form.value.receiverAddress = parseAddress(c.address)
   receiverPhoneEditing.value = false
+  custList.value = []
+  custKeyword.value = ''
 }
 
 /** 解析地址：支持JSON数组格式和纯字符串 */
