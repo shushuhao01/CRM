@@ -161,6 +161,9 @@ export class Customer {
   @Column({ name: 'final_score', type: 'int', default: 0, nullable: true, comment: '综合评分(0-100)' })
   finalScore?: number;
 
+  @Column({ name: 'mp_submit_count', type: 'int', default: 0, nullable: true, comment: '小程序资料提交次数' })
+  mpSubmitCount?: number;
+
   @CreateDateColumn({ name: 'created_at', comment: '创建时间' })
   createdAt: Date;
 

@@ -2208,7 +2208,7 @@ onUnmounted(() => {
 .name-link, .phone-link {
   color: #409eff !important;
   text-decoration: none;
-  font-weight: 500;
+  font-weight: normal;
   cursor: pointer;
   user-select: text;
 }
@@ -2216,7 +2216,7 @@ onUnmounted(() => {
 .code-link {
   color: #409eff !important;
   font-family: 'Courier New', monospace;
-  font-weight: 600;
+  font-weight: normal;
   letter-spacing: 0.5px;
   cursor: pointer;
   user-select: text;

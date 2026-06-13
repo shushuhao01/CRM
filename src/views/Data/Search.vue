@@ -92,20 +92,20 @@
 
             <div class="order-info">
               <div class="info-item">
-                <span class="info-label">订单号</span>
-                <span class="info-value">{{ result.orderNo }}</span>
+                <span class="info-label">客户编码</span>
+                <span class="info-value">{{ result.customerCode || '-' }}</span>
               </div>
               <div class="info-item">
-                <span class="info-label">订单金额</span>
-                <span class="info-value amount">¥{{ result.orderAmount.toLocaleString() }}</span>
+                <span class="info-label">匹配类型</span>
+                <span class="info-value">{{ result.matchType }}</span>
               </div>
               <div class="info-item">
-                <span class="info-label">下单时间</span>
-                <span class="info-value">{{ result.orderDate }}</span>
+                <span class="info-label">订单数</span>
+                <span class="info-value">{{ result.orderCount }}</span>
               </div>
-              <div v-if="result.trackingNo" class="info-item">
-                <span class="info-label">物流单号</span>
-                <span class="info-value">{{ result.trackingNo }}</span>
+              <div class="info-item">
+                <span class="info-label">创建时间</span>
+                <span class="info-value">{{ result.createTime }}</span>
               </div>
             </div>
 
@@ -190,9 +190,10 @@ import { useDataStore } from '@/stores/data'
 import type { CustomerSearchParams } from '@/api/data'
 import { displaySensitiveInfoNew, SensitiveInfoType } from '@/utils/sensitiveInfo'
 import { useRoute } from 'vue-router'
-import request from '@/utils/request'
+import { useUserStore } from '@/stores/user'
 
 const route = useRoute()
+const userStore = useUserStore()
 
 // 使用状态管理
 const dataStore = useDataStore()
@@ -222,18 +223,44 @@ const handleSearch = async () => {
 
   try {
     const keyword = searchForm.keyword.trim()
-    const res: any = await request.get('/data/search-customer', { params: { keyword, pageSize: 50 } })
 
-    const list = res?.list || res?.data?.list || []
+    const fetchUrl = `/api/v1/data/search-customer?keyword=${encodeURIComponent(keyword)}&pageSize=50&_t=${Date.now()}`
+    const fetchRes = await fetch(fetchUrl, {
+      headers: {
+        'Authorization': `Bearer ${userStore.token}`,
+        'Content-Type': 'application/json'
+      }
+    })
+
+    if (!fetchRes.ok) {
+      throw new Error(`API请求失败: HTTP ${fetchRes.status}`)
+    }
+
+    const json = await fetchRes.json()
+    console.log('[客户查询] API原始返回:', JSON.stringify(json).substring(0, 500))
+
+    // 从 { success:true, data: { list: [...] } } 中取 list
+    let list: any[] = []
+    if (Array.isArray(json?.data?.list)) {
+      list = json.data.list
+    } else if (Array.isArray(json?.list)) {
+      list = json.list
+    } else if (Array.isArray(json?.data)) {
+      list = json.data
+    } else if (Array.isArray(json)) {
+      list = json
+    }
+
+    console.log('[客户查询] 解析到:', list.length, '条记录')
 
     searchResultsLocal.value = list.map((item: any) => ({
-      customerName: item.customerName || '未知',
+      customerName: item.customerName || item.name || '未知',
       phone: item.phone || '',
-      customerCode: item.customerCode || '',
-      orderNo: '',
-      orderAmount: item.orderCount || 0,
-      orderDate: item.createTime ? new Date(item.createTime).toLocaleDateString('zh-CN') : '',
-      trackingNo: '',
+      customerCode: item.customerCode || item.customerNo || '',
+      orderCount: item.orderCount || 0,
+      createTime: item.createTime
+        ? new Date(item.createTime).toLocaleString('zh-CN', { hour12: false })
+        : (item.createdAt ? new Date(item.createdAt).toLocaleString('zh-CN', { hour12: false }) : '-'),
       ownerName: item.ownerName || '未分配',
       ownerPhone: '',
       ownerDepartment: item.ownerDepartment || '',
@@ -250,9 +277,9 @@ const handleSearch = async () => {
     } else {
       ElMessage.info('未找到匹配的客户信息')
     }
-  } catch (error) {
-    console.error('搜索失败:', error)
-    ElMessage.error('搜索失败，请重试')
+  } catch (error: any) {
+    console.error('[客户查询] 搜索失败:', error)
+    ElMessage.error(error?.message || '搜索失败，请重试')
   } finally {
     searchingLocal.value = false
   }
@@ -273,7 +300,6 @@ onMounted(() => {
 })
 
 const useHistorySearch = (historyItem: { text: string; time: string; params: CustomerSearchParams }) => {
-  // 使用历史搜索关键词
   handleReset()
   searchForm.keyword = historyItem.text
   handleSearch()
@@ -301,9 +327,6 @@ const getOwnerStatusText = (status: string) => {
   }
   return texts[status] || status
 }
-
-
-
 
 </script>
 

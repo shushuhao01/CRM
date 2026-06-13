@@ -60,8 +60,14 @@
             <div class="mpc-record-avatar">{{ (rec.name || '?')[0] }}</div>
             <div class="mpc-record-body">
               <div class="mpc-record-top">
-                <span class="mpc-record-name">{{ rec.name || '-' }}</span>
+                <span class="mpc-record-name">
+                  {{ rec.name || '-' }}
+                  <span v-if="rec.customerNo" class="mpc-record-code">{{ rec.customerNo }}</span>
+                </span>
                 <span class="mpc-record-time">{{ rec.time }}</span>
+              </div>
+              <div class="mpc-record-meta">
+                <span class="mpc-record-tag" :class="rec.action === 'created' ? 'tag-first' : 'tag-update'">{{ rec.submitLabel }}</span>
               </div>
               <div class="mpc-record-phone">{{ rec.maskedPhone || '未填手机号' }}</div>
               <div v-if="rec.address" class="mpc-record-address">{{ rec.address }}</div>
@@ -188,8 +194,10 @@ const loadRecords = async () => {
     const rd = res?.data?.data || res?.data || {}
     records.value = (rd.list || []).map((r: any) => ({
       id: r.id,
+      customerId: r.customerId || r.id,
       name: r.name || '-',
       phone: r.phone || '',
+      customerNo: r.customerNo || '',
       maskedPhone: r.phone ? maskPhone(r.phone) : '',
       address: [r.province, r.city, r.district, r.street, r.detailAddress].filter(Boolean).join('') || '',
       gender: r.gender === 'male' ? '男' : r.gender === 'female' ? '女' : r.gender || '',
@@ -200,6 +208,9 @@ const loadRecords = async () => {
       height: r.height || '',
       weight: r.weight || '',
       remark: r.remark || '',
+      submitCount: r.submitCount || 1,
+      action: r.action || 'created',
+      submitLabel: r.submitLabel || (r.submitCount <= 1 ? '首次提交' : `更新第${(r.submitCount || 1) - 1}次`),
       time: r.createdAt ? new Date(r.createdAt).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : ''
     }))
     recordsTotal.value = rd.total || 0
@@ -458,6 +469,11 @@ onMounted(() => {
 .mpc-record-body { flex: 1; min-width: 0; }
 .mpc-record-top { display: flex; align-items: center; justify-content: space-between; }
 .mpc-record-name { font-size: 12px; font-weight: 600; color: #1f2937; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mpc-record-code { font-size: 9px; font-weight: 400; color: #6b7280; margin-left: 4px; }
+.mpc-record-meta { margin-top: 2px; }
+.mpc-record-tag { display: inline-block; font-size: 9px; padding: 1px 5px; border-radius: 3px; }
+.mpc-record-tag.tag-first { background: #ecfdf5; color: #059669; }
+.mpc-record-tag.tag-update { background: #eff6ff; color: #2563eb; }
 .mpc-record-time { font-size: 9px; color: #b0b8c1; white-space: nowrap; flex-shrink: 0; margin-left: 8px; }
 .mpc-record-phone { font-size: 10px; color: #6b7280; margin-top: 2px; }
 .mpc-record-address { font-size: 10px; color: #9ca3af; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

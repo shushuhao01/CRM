@@ -4,7 +4,7 @@ import { AppDataSource } from '../config/database';
 import { Customer } from '../entities/Customer';
 import { User } from '../entities/User';
 import { CustomerServicePermission } from '../entities/CustomerServicePermission';
-import { Not, IsNull, In } from 'typeorm';
+import { Not, IsNull, In, Brackets } from 'typeorm';
 import { getTenantRepo, tenantSQL } from '../utils/tenantRepo';
 
 import { log } from '../config/logger';
@@ -560,7 +560,6 @@ router.get('/search', async (req: Request, res: Response) => {
 router.get('/search-customer', async (req: Request, res: Response) => {
   try {
     const { keyword, page = 1, pageSize = 20 } = req.query;
-    const customerRepository = getTenantRepo(Customer);
 
     if (!keyword) {
       return res.json({ success: true, data: { list: [], total: 0 } });
@@ -570,49 +569,71 @@ router.get('/search-customer', async (req: Request, res: Response) => {
     const pageNum = Math.max(1, Number(page));
     const pageSizeNum = Math.min(50, Math.max(1, Number(pageSize)));
 
-    // 1. 从客户表模糊搜索（姓名、手机号、编码、其他手机号）
-    const queryBuilder = customerRepository.createQueryBuilder('customer');
-    queryBuilder.where(
-      '(customer.customerNo LIKE :keyword OR customer.name LIKE :keyword OR customer.phone LIKE :keyword OR CAST(customer.other_phones AS CHAR) LIKE :keyword)',
-      { keyword: `%${kw}%` }
-    );
+    const currentUser = (req as any).currentUser || (req as any).user;
+    const tenantId = currentUser?.tenantId || (req as any).tenantId || '';
 
-    // 2. 扩展搜索：订单号、物流单号、售后单号 → 找到关联的客户ID
-    const { Order } = await import('../entities/Order');
-    const orderRepo = getTenantRepo(Order);
-    const orderMatches = await orderRepo.createQueryBuilder('o')
-      .select('DISTINCT o.customerId', 'customerId')
-      .where('o.orderNumber LIKE :kw OR o.trackingNumber LIKE :kw', { kw: `%${kw}%` })
-      .getRawMany();
-    const orderCustomerIds = orderMatches.map((r: any) => r.customerId).filter(Boolean);
+    log.info(`[客户查询] keyword=${kw}, tenantId=${tenantId || '(无)'}, userId=${currentUser?.id || currentUser?.userId}`);
 
+    const customerRepo = AppDataSource.getRepository(Customer);
+
+    // 扩展搜索：订单号、物流单号、售后单号 → 找到关联的客户ID
+    let orderCustomerIds: string[] = [];
     let afterSalesCustomerIds: string[] = [];
     try {
-      const { AfterSalesService } = await import('../entities/AfterSalesService');
-      const asRepo = getTenantRepo(AfterSalesService);
-      const asMatches = await asRepo.createQueryBuilder('a')
-        .select('DISTINCT a.customerId', 'customerId')
-        .where('a.serviceNumber LIKE :kw', { kw: `%${kw}%` })
-        .getRawMany();
-      afterSalesCustomerIds = asMatches.map((r: any) => r.customerId).filter(Boolean);
-    } catch { /* 售后表可能不存在 */ }
+      const { Order } = await import('../entities/Order');
+      const orderRepo = AppDataSource.getRepository(Order);
+      const orderQb = orderRepo.createQueryBuilder('o')
+        .select('DISTINCT o.customerId', 'customerId')
+        .where('o.orderNumber LIKE :kw OR o.trackingNumber LIKE :kw', { kw: `%${kw}%` });
+      if (tenantId) orderQb.andWhere('o.tenant_id = :tid', { tid: tenantId });
+      const orderMatches = await orderQb.getRawMany();
+      orderCustomerIds = orderMatches.map((r: any) => r.customerId).filter(Boolean);
 
-    const extraIds = [...new Set([...orderCustomerIds, ...afterSalesCustomerIds])];
-    if (extraIds.length > 0) {
-      queryBuilder.orWhere('customer.id IN (:...extraIds)', { extraIds });
+      try {
+        const { AfterSalesService } = await import('../entities/AfterSalesService');
+        const asRepo = AppDataSource.getRepository(AfterSalesService);
+        const asQb = asRepo.createQueryBuilder('a')
+          .select('DISTINCT a.customer_id', 'customerId')
+          .where('a.service_number LIKE :kw', { kw: `%${kw}%` });
+        if (tenantId) asQb.andWhere('a.tenant_id = :tid', { tid: tenantId });
+        const asMatches = await asQb.getRawMany();
+        afterSalesCustomerIds = asMatches.map((r: any) => r.customerId).filter(Boolean);
+      } catch { /* 售后表可能不存在 */ }
+    } catch (e: any) {
+      log.warn('[客户查询] 订单/售后扩展搜索失败:', e.message);
     }
 
-    queryBuilder.orderBy('customer.createdAt', 'DESC');
+    const extraIds = [...new Set([...orderCustomerIds, ...afterSalesCustomerIds])];
+
+    const queryBuilder = customerRepo.createQueryBuilder('customer');
+
+    if (tenantId) {
+      queryBuilder.where('customer.tenant_id = :tenantId', { tenantId });
+    }
+
+    queryBuilder.andWhere(new Brackets(qb => {
+      qb.where('customer.customer_code LIKE :keyword', { keyword: `%${kw}%` })
+        .orWhere('customer.name LIKE :keyword', { keyword: `%${kw}%` })
+        .orWhere('customer.phone LIKE :keyword', { keyword: `%${kw}%` })
+        .orWhere('CAST(customer.other_phones AS CHAR) LIKE :keyword', { keyword: `%${kw}%` });
+      if (extraIds.length > 0) {
+        qb.orWhere('customer.id IN (:...extraIds)', { extraIds });
+      }
+    }));
+
+    queryBuilder.orderBy('customer.created_at', 'DESC');
     queryBuilder.skip((pageNum - 1) * pageSizeNum);
     queryBuilder.take(pageSizeNum);
 
     const [customers, total] = await queryBuilder.getManyAndCount();
 
-    // 2. 批量获取销售员信息
+    log.info(`[客户查询] 搜索 "${kw}" 结果: ${total} 条`);
+
+    // 批量获取销售员信息
     const salesIds = [...new Set(customers.map((c: any) => c.salesPersonId).filter(Boolean))];
     const salesMap: Record<string, any> = {};
     if (salesIds.length > 0) {
-      const userRepo = getTenantRepo(User);
+      const userRepo = AppDataSource.getRepository(User);
       const salesPersons = await userRepo.find({
         where: { id: In(salesIds) },
         select: ['id', 'realName', 'name', 'departmentName']

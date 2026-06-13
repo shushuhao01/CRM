@@ -126,9 +126,9 @@
                   <span class="detail-label">等级</span>
                   <el-tag size="small" :type="getLevelType(result.level)">{{ getLevelText(result.level) }}</el-tag>
                 </div>
-                <div class="detail-item full-width" v-if="result.address">
+                <div class="detail-item full-width" v-if="parseAddress(result.address)">
                   <span class="detail-label">地址</span>
-                  <span class="detail-value address">{{ result.address }}</span>
+                  <span class="detail-value address">{{ parseAddress(result.address) }}</span>
                 </div>
                 <div class="detail-item">
                   <span class="detail-label">创建时间</span>
@@ -182,7 +182,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, watch } from 'vue'
+import { ref, reactive, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import {
@@ -215,25 +215,37 @@ const handleSearch = async () => {
   searching.value = true
 
   try {
-    // 🔥 方式1：通过后端模糊搜索（客户姓名、手机号、编码）
+    const kw = searchForm.keyword.trim()
+
+    // 方式1：通过后端模糊搜索（客户姓名、手机号、编码、其他手机号）
     const customerSearchRes = await request.get('/data/search-customer', {
-      params: { keyword: searchForm.keyword.trim(), page: 1, pageSize: 50 }
+      params: { keyword: kw, page: 1, pageSize: 50 }
     }) as any
 
     const results: any[] = []
 
-    if (customerSearchRes?.success && customerSearchRes.data?.list) {
-      results.push(...customerSearchRes.data.list)
+    // 拦截器已解包：res 可能是 {list,total}（拦截器 return data）或 {success,data:{list,total}}（原始）
+    const resList = customerSearchRes?.list
+      || customerSearchRes?.data?.list
+      || (Array.isArray(customerSearchRes) ? customerSearchRes : null)
+    if (Array.isArray(resList) && resList.length > 0) {
+      results.push(...resList.map((item: any) => ({
+        ...item,
+        createTime: item.createTime
+          ? new Date(item.createTime).toLocaleString('zh-CN', { hour12: false, timeZone: 'Asia/Shanghai' })
+          : (item.createdAt ? new Date(item.createdAt).toLocaleString('zh-CN', { hour12: false, timeZone: 'Asia/Shanghai' }) : '')
+      })))
     }
 
-    // 🔥 方式2：通过后端精确搜索（订单号、物流单号），如果模糊搜索无结果
+    // 方式2：通过后端精确搜索（订单号、物流单号），如果模糊搜索无结果
     if (results.length === 0) {
       const exactSearchRes = await request.get('/data/search', {
-        params: { keyword: searchForm.keyword.trim() }
+        params: { keyword: kw }
       }) as any
 
-      if (exactSearchRes?.success && exactSearchRes.data) {
-        const c = exactSearchRes.data
+      // 精确搜索返回单个客户对象：拦截器解包后 res = customer 对象或 null
+      const c = exactSearchRes?.data || exactSearchRes
+      if (c && c.name) {
         results.push({
           customerName: c.name || '未知',
           phone: c.phone || '',
@@ -242,9 +254,9 @@ const handleSearch = async () => {
           age: c.age || 0,
           level: c.level || '',
           address: c.address || '',
-          createTime: c.createdAt || '',
+          createTime: c.createdAt ? new Date(c.createdAt).toLocaleString('zh-CN', { hour12: false }) : '',
           orderCount: c.orderCount || 0,
-          ownerName: c.salesPersonInfo?.name || '未分配',
+          ownerName: c.salesPersonInfo?.name || c.salesPersonName || '未分配',
           ownerDepartment: c.salesPersonInfo?.department || '',
           matchType: '订单号/物流单号'
         })
@@ -274,7 +286,7 @@ const handleReset = () => {
   searchResults.value = []
 }
 
-// 监听路由参数变化，自动执行搜索
+// 监听路由参数变化，自动执行搜索（immediate: true 已包含首次挂载）
 watch(
   () => route.query.keyword,
   (newKeyword) => {
@@ -286,14 +298,32 @@ watch(
   { immediate: true }
 )
 
-// 页面挂载时检查URL参数
-onMounted(() => {
-  const keyword = route.query.keyword
-  if (keyword && typeof keyword === 'string') {
-    searchForm.keyword = keyword
-    handleSearch()
+/** 解析地址字段：可能是 JSON 数组、纯字符串、或已拼接的文本，只返回最新/默认的一条 */
+const parseAddress = (raw: any): string => {
+  if (!raw) return ''
+  if (typeof raw === 'string') {
+    try {
+      const arr = JSON.parse(raw)
+      if (Array.isArray(arr) && arr.length > 0) {
+        const defaultAddr = arr.find((a: any) => a.isDefault)
+        const latest = defaultAddr || arr.sort((a: any, b: any) =>
+          new Date(b.createTime || 0).getTime() - new Date(a.createTime || 0).getTime()
+        )[0]
+        return latest?.content || ''
+      }
+    } catch {
+      return raw
+    }
   }
-})
+  if (Array.isArray(raw) && raw.length > 0) {
+    const defaultAddr = raw.find((a: any) => a.isDefault)
+    const latest = defaultAddr || raw.sort((a: any, b: any) =>
+      new Date(b.createTime || 0).getTime() - new Date(a.createTime || 0).getTime()
+    )[0]
+    return latest?.content || ''
+  }
+  return String(raw)
+}
 
 // 获取客户等级类型
 const getLevelType = (level: string) => {

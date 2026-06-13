@@ -1451,7 +1451,7 @@ router.get('/mp-collect-stats', authenticateSidebarToken, async (req: Request, r
 
 /**
  * GET /h5/app/mp-collect-records
- * 收集记录列表（带脱敏、分页）
+ * 收集记录列表（基于客户日志，每次提交一条记录）
  */
 router.get('/mp-collect-records', authenticateSidebarToken, async (req: Request, res: Response) => {
   try {
@@ -1462,37 +1462,95 @@ router.get('/mp-collect-records', authenticateSidebarToken, async (req: Request,
     const take = Math.min(parseInt(pageSize, 10) || 3, 20);
     const skip = (Math.max(parseInt(page, 10) || 1, 1) - 1) * take;
 
-    const { Customer } = await import('../../entities/Customer');
-    const customerRepo = AppDataSource.getRepository(Customer);
+    // 查询该成员的小程序提交日志，关联客户信息
+    const countRows = await AppDataSource.query(
+      `SELECT COUNT(*) AS cnt
+       FROM customer_logs cl
+       INNER JOIN customers c ON c.id = cl.customer_id
+       WHERE cl.log_type = 'mp_submit'
+         AND cl.tenant_id = ?
+         AND c.sales_person_id = ?`,
+      [tenantId, userId]
+    );
+    const total = Number(countRows?.[0]?.cnt || 0);
 
-    const [list, total] = await customerRepo.findAndCount({
-      where: { tenantId, salesPersonId: userId, source: 'miniprogram' as any },
-      order: { createdAt: 'DESC' },
-      take,
-      skip
+    let rows: any[] = [];
+    if (total > 0) {
+      rows = await AppDataSource.query(
+        `SELECT cl.id AS log_id, cl.content, cl.detail, cl.created_at,
+                c.id, c.name, c.phone, c.customer_code AS customer_no,
+                c.gender, c.province, c.city, c.district, c.street, c.detail_address,
+                c.email, c.wechat, c.age, c.birthday, c.height, c.weight, c.remark,
+                c.mp_submit_count
+         FROM customer_logs cl
+         INNER JOIN customers c ON c.id = cl.customer_id
+         WHERE cl.log_type = 'mp_submit'
+           AND cl.tenant_id = ?
+           AND c.sales_person_id = ?
+         ORDER BY cl.created_at DESC
+         LIMIT ? OFFSET ?`,
+        [tenantId, userId, take, skip]
+      );
+    } else {
+      // 兼容旧数据：无提交日志时回退到客户表
+      rows = await AppDataSource.query(
+        `SELECT c.id AS log_id, c.created_at, c.id, c.name, c.phone, c.customer_code AS customer_no,
+                c.gender, c.province, c.city, c.district, c.street, c.detail_address,
+                c.email, c.wechat, c.age, c.birthday, c.height, c.weight, c.remark,
+                c.mp_submit_count
+         FROM customers c
+         WHERE c.tenant_id = ? AND c.sales_person_id = ? AND c.source = 'miniprogram'
+         ORDER BY c.created_at DESC
+         LIMIT ? OFFSET ?`,
+        [tenantId, userId, take, skip]
+      );
+    }
+
+    const effectiveTotal = total > 0 ? total : Number(
+      (await AppDataSource.query(
+        `SELECT COUNT(*) AS cnt FROM customers c WHERE c.tenant_id = ? AND c.sales_person_id = ? AND c.source = 'miniprogram'`,
+        [tenantId, userId]
+      ))?.[0]?.cnt || 0
+    );
+
+    const rawList = rows.map((r: any) => {
+      let detail: any = {};
+      try {
+        detail = typeof r.detail === 'string' ? JSON.parse(r.detail) : (r.detail || {});
+      } catch { /* ignore */ }
+
+      const submitCount = detail.submitCount || r.mp_submit_count || 1;
+      const action = detail.action || (submitCount <= 1 ? 'created' : 'updated');
+
+      return {
+        id: r.log_id || r.id,
+        customerId: r.id,
+        name: r.name || '',
+        phone: r.phone || '',
+        customerNo: r.customer_no || '',
+        gender: r.gender || '',
+        province: r.province || '',
+        city: r.city || '',
+        district: r.district || '',
+        street: r.street || '',
+        detailAddress: r.detail_address || '',
+        email: r.email || '',
+        wechat: r.wechat || '',
+        age: r.age || '',
+        birthday: r.birthday || '',
+        height: r.height || '',
+        weight: r.weight || '',
+        remark: r.remark || '',
+        createdAt: r.created_at,
+        submitCount,
+        action,
+        submitLabel: action === 'created' || submitCount <= 1
+          ? '首次提交'
+          : `更新第${submitCount - 1}次`
+      };
     });
 
-    const rawList = list.map((c: any) => ({
-      id: c.id,
-      name: c.name || '',
-      phone: c.phone || '',
-      gender: c.gender || '',
-      province: c.province || '',
-      city: c.city || '',
-      district: c.district || '',
-      street: c.street || '',
-      detailAddress: c.detailAddress || '',
-      email: c.email || '',
-      wechat: c.wechat || '',
-      age: c.age || '',
-      birthday: c.birthday || '',
-      height: c.height || '',
-      weight: c.weight || '',
-      remark: c.remark || '',
-      createdAt: c.createdAt
-    }));
-
-    res.json({ success: true, data: { list: rawList, total, page: parseInt(page, 10), pageSize: take } });
+    res.json({ success: true, data: { list: rawList, total: effectiveTotal, page: parseInt(page, 10), pageSize: take } });
   } catch (error: any) {
     log.error('[H5 App] mp-collect-records error:', error.message);
     res.json({ success: true, data: { list: [], total: 0 } });

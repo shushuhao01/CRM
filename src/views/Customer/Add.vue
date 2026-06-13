@@ -100,24 +100,21 @@
                     show-icon
                   >
                     <template v-if="customerVerifyResult.type === 'warning'" #default>
-                      <p>{{ customerVerifyResult.message }}</p>
                       <p v-if="customerVerifyResult.owner"><strong>归属人：</strong>{{ customerVerifyResult.owner }}</p>
                       <p v-if="customerVerifyResult.createTime"><strong>创建时间：</strong>{{ customerVerifyResult.createTime }}</p>
 
-                      <!-- 权限提示 -->
-                      <div v-if="shouldDisableSave" class="permission-warning">
-                        <el-divider />
-                        <p v-if="customerVerifyResult.isOwnCustomer" style="color: #e6a23c; font-weight: 500;">
+                      <div v-if="shouldDisableSave" style="margin-top: 6px;">
+                        <p v-if="customerVerifyResult.isOwnCustomer" style="color: #e6a23c; font-size: 13px;">
                           <el-icon><Warning /></el-icon>
-                          提示：您已经创建过该客户资料，无需重复创建。可以直接前往客户列表查看客户信息。
+                          您已创建过该客户，可直接前往客户列表搜索查看。
                         </p>
-                        <p v-else style="color: #e6a23c; font-weight: 500;">
+                        <p v-else style="color: #e6a23c; font-size: 13px;">
                           <el-icon><Warning /></el-icon>
-                          权限提示：该客户由其他成员创建，您没有权限保存修改。如需操作，请联系管理员或客户创建者。
+                          该客户由其他成员创建，如需操作请联系管理员。
                         </p>
                       </div>
 
-                      <div style="margin-top: 12px;">
+                      <div style="margin-top: 8px;">
                         <el-button size="small" type="text" @click="viewExistingCustomer">查看客户详情</el-button>
                       </div>
                     </template>
@@ -1596,12 +1593,12 @@ const verifyCustomer = async () => {
       const isOwnCustomer = existingCustomer.creatorName === currentUserName
 
       const createTimeFormatted = existingCustomer.createTime
-        ? new Date(existingCustomer.createTime).toLocaleString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })
+        ? new Date(existingCustomer.createTime).toLocaleString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false, timeZone: 'Asia/Shanghai' })
         : ''
 
       const msg = isOwnCustomer
         ? '该手机号已存在您创建的客户记录，无需重复创建'
-        : `该手机号已存在客户记录，归属成员：${existingCustomer.creatorName || '未知'}`
+        : '该手机号已存在客户记录，无需再次创建客户信息'
 
       customerVerifyResult.value = {
         type: 'warning',

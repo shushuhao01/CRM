@@ -245,6 +245,7 @@ CREATE TABLE `customers` (
   `wecom_external_userids` JSON NULL COMMENT '多企微UserID列表',
   `star_rating` INT DEFAULT 0 NULL COMMENT '手动星级评分(1-5)',
   `final_score` INT DEFAULT 0 NULL COMMENT '综合评分(0-100)',
+  `mp_submit_count` INT DEFAULT 0 NULL COMMENT '小程序资料提交次数',
   `created_by` VARCHAR(50) NOT NULL COMMENT '创建人ID',
   `created_by_name` VARCHAR(50) COMMENT '创建人姓名',
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',

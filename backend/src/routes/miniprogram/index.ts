@@ -244,6 +244,10 @@ router.get('/form-config', validateMpSign, async (req: Request, res: Response) =
 
 /**
  * ② POST /submit-customer - 客户提交资料
+ * 逻辑：一个企微客户只绑定一个CRM客户编码
+ * - 已关联企微 → 更新该客户资料，新手机号追加到 other_phones
+ * - 未关联但手机号已存在 → 更新该客户并关联企微
+ * - 均未找到 → 新建客户并关联企微
  */
 router.post('/submit-customer', validateMpSign, async (req: Request, res: Response) => {
   try {
@@ -256,90 +260,230 @@ router.post('/submit-customer', validateMpSign, async (req: Request, res: Respon
     const { AppDataSource } = await import('../../config/database');
     const { Customer } = await import('../../entities/Customer');
     const { TenantContextManager } = await import('../../utils/tenantContext');
+    const { createCustomerLog } = await import('../../utils/customerLog');
 
     if (!AppDataSource?.isInitialized) {
       return res.status(500).json({ success: false, message: '数据库未初始化' });
     }
 
-    // 设置租户上下文
     TenantContextManager.setContext({ tenantId, userId: memberId });
-
     const customerRepo = AppDataSource.getRepository(Customer);
 
-    // 检查手机号是否已存在
-    if (customerData.phone) {
-      const existing = await customerRepo.findOne({
-        where: { phone: customerData.phone, tenantId }
-      });
-      if (existing) {
-        return res.status(409).json({
-          success: false,
-          message: '您的资料已提交过，无需重复提交',
-          code: 'DUPLICATE_PHONE'
+    // 确保 mp_submit_count 列存在（兼容未执行迁移的环境）
+    try {
+      await AppDataSource.query(`
+        ALTER TABLE customers ADD COLUMN IF NOT EXISTS mp_submit_count INT DEFAULT 0 COMMENT '小程序资料提交次数'
+      `);
+    } catch { /* MySQL 5.7 不支持 IF NOT EXISTS，忽略 */ }
+
+    // 解析企微客户ID
+    let externalUserId = req.body.externalUserId || customerData.externalUserId || '';
+    if (!externalUserId && memberId) {
+      try {
+        const recentLog = await AppDataSource.query(
+          `SELECT external_user_id FROM mp_card_send_logs
+           WHERE tenant_id = ? AND member_id = ? AND external_user_id IS NOT NULL AND external_user_id != ''
+           ORDER BY created_at DESC LIMIT 1`,
+          [tenantId, memberId]
+        );
+        externalUserId = recentLog?.[0]?.external_user_id || '';
+      } catch { /* ignore */ }
+    }
+
+    const genderMap: Record<string, string> = { '男': 'male', '女': 'female' };
+    const mappedGender = genderMap[customerData.gender] || customerData.gender || 'unknown';
+    const fullAddress = [customerData.province, customerData.city, customerData.district, customerData.street, customerData.detailAddress].filter(Boolean).join('');
+    const submitPhone = (customerData.phone || '').trim();
+
+    // ---- 查找目标 CRM 客户 ----
+    let targetCustomer: any = null;
+    let action: 'created' | 'updated' = 'created';
+
+    // 1) 企微客户已关联的 CRM 客户（优先级最高）
+    if (externalUserId) {
+      try {
+        const { WecomCustomer } = await import('../../entities/WecomCustomer');
+        const wecomCustomerRepo = AppDataSource.getRepository(WecomCustomer);
+        const wecomCust = await wecomCustomerRepo.findOne({
+          where: { externalUserId, ...(tenantId ? { tenantId } : {}) }
         });
+        if (wecomCust?.crmCustomerId) {
+          const where: any = { id: wecomCust.crmCustomerId };
+          if (tenantId) where.tenantId = tenantId;
+          targetCustomer = await customerRepo.findOne({ where });
+        }
+        if (!targetCustomer) {
+          const where: any = { wecomExternalUserid: externalUserId };
+          if (tenantId) where.tenantId = tenantId;
+          targetCustomer = await customerRepo.findOne({ where });
+        }
+      } catch { /* ignore */ }
+    }
+
+    // 2) 按手机号查找（主号或其他号码）
+    if (!targetCustomer && submitPhone) {
+      const phoneWhere: any = { phone: submitPhone };
+      if (tenantId) phoneWhere.tenantId = tenantId;
+      targetCustomer = await customerRepo.findOne({ where: phoneWhere });
+
+      if (!targetCustomer) {
+        const qb = customerRepo.createQueryBuilder('c')
+          .where('c.phone = :phone OR CAST(c.other_phones AS CHAR) LIKE :phonePattern', {
+            phone: submitPhone,
+            phonePattern: `%"${submitPhone}"%`
+          });
+        if (tenantId) qb.andWhere('c.tenant_id = :tenantId', { tenantId });
+        targetCustomer = await qb.getOne();
       }
     }
 
-    // 性别映射：小程序传"男"/"女" → CRM用 male/female/unknown
-    const genderMap: Record<string, string> = { '男': 'male', '女': 'female' };
-    const mappedGender = genderMap[customerData.gender] || customerData.gender || 'unknown';
+    // ---- 构建更新字段（有值才覆盖）----
+    const buildUpdateFields = () => {
+      const fields: Record<string, any> = {};
+      const setIf = (key: string, val: any) => {
+        if (val !== undefined && val !== null && val !== '') fields[key] = val;
+      };
+      setIf('name', customerData.name);
+      setIf('gender', mappedGender);
+      if (customerData.age) fields.age = parseInt(customerData.age, 10);
+      setIf('email', customerData.email);
+      setIf('wechat', customerData.wechat);
+      setIf('birthday', customerData.birthday || null);
+      setIf('height', customerData.height || null);
+      setIf('weight', customerData.weight || null);
+      setIf('remark', customerData.remark);
+      setIf('medicalHistory', customerData.medicalHistory);
+      if (customerData.improvementGoals) fields.improvementGoals = customerData.improvementGoals;
+      setIf('province', customerData.province);
+      setIf('city', customerData.city);
+      setIf('district', customerData.district);
+      setIf('street', customerData.street);
+      setIf('detailAddress', customerData.detailAddress);
+      if (fullAddress) fields.address = fullAddress;
+      if (customerData.customFields) fields.customFields = customerData.customFields;
+      return fields;
+    };
 
-    // 拼接完整地址
-    const fullAddress = [customerData.province, customerData.city, customerData.district, customerData.street, customerData.detailAddress].filter(Boolean).join('');
+    const appendPhoneToCustomer = (customer: any, phone: string) => {
+      if (!phone) return;
+      if (customer.phone === phone) return;
+      const others: string[] = Array.isArray(customer.otherPhones) ? [...customer.otherPhones] : [];
+      if (!others.includes(phone) && customer.phone !== phone) {
+        others.push(phone);
+        customer.otherPhones = others;
+      }
+    };
 
-    // 创建客户记录
-    const customer = customerRepo.create({
-      tenantId,
-      name: customerData.name,
-      phone: customerData.phone || '',
-      gender: mappedGender,
-      age: customerData.age ? parseInt(customerData.age, 10) : null,
-      email: customerData.email || '',
-      wechat: customerData.wechat || '',
-      birthday: customerData.birthday || null,
-      height: customerData.height || null,
-      weight: customerData.weight || null,
-      remark: customerData.remark || '',
-      medicalHistory: customerData.medicalHistory || '',
-      improvementGoals: customerData.improvementGoals || [],
-      province: customerData.province || '',
-      city: customerData.city || '',
-      district: customerData.district || '',
-      street: customerData.street || '',
-      detailAddress: customerData.detailAddress || '',
-      address: fullAddress || null,
-      source: 'miniprogram',
-      salesPersonId: memberId,
-      createdBy: memberId,
-      createdByName: '小程序提交',
-      customFields: customerData.customFields || null,
-    } as any);
-
-    const saved: any = await customerRepo.save(customer);
-
-    // 生成客户编码（和系统新增客户逻辑一致）
-    try {
-      const customerNo = `C${saved.id.substring(0, 8).toUpperCase()}`;
-      saved.customerNo = customerNo;
-      await customerRepo.save(saved);
-    } catch (codeErr: any) {
+    const linkWecomToCustomer = async (customer: any) => {
+      if (!externalUserId || !customer?.id) return;
       try {
-        const fallbackNo = `C${saved.id.replace(/-/g, '').substring(0, 12).toUpperCase()}`;
-        saved.customerNo = fallbackNo;
-        await customerRepo.save(saved);
-      } catch { /* 编号生成失败不影响核心流程 */ }
+        const { WecomCustomer } = await import('../../entities/WecomCustomer');
+        const wecomCustomerRepo = AppDataSource.getRepository(WecomCustomer);
+        const wecomCust = await wecomCustomerRepo.findOne({
+          where: { externalUserId, ...(tenantId ? { tenantId } : {}) }
+        });
+        if (wecomCust) {
+          wecomCust.crmCustomerId = customer.id;
+          await wecomCustomerRepo.save(wecomCust);
+        }
+        if (!customer.wecomExternalUserid) {
+          customer.wecomExternalUserid = externalUserId;
+        }
+      } catch (linkErr: any) {
+        log.warn('[小程序] 关联企微客户失败(非致命):', linkErr?.message);
+      }
+    };
+
+    let saved: any;
+
+    if (targetCustomer) {
+      // ---- 更新已有客户 ----
+      action = 'updated';
+      const updateFields = buildUpdateFields();
+      Object.assign(targetCustomer, updateFields);
+      appendPhoneToCustomer(targetCustomer, submitPhone);
+      targetCustomer.mpSubmitCount = (targetCustomer.mpSubmitCount || 0) + 1;
+      targetCustomer.source = targetCustomer.source || 'miniprogram';
+      await linkWecomToCustomer(targetCustomer);
+      saved = await customerRepo.save(targetCustomer);
+    } else {
+      // ---- 新建客户 ----
+      const customer = customerRepo.create({
+        tenantId,
+        name: customerData.name,
+        phone: submitPhone,
+        gender: mappedGender,
+        age: customerData.age ? parseInt(customerData.age, 10) : null,
+        email: customerData.email || '',
+        wechat: customerData.wechat || '',
+        birthday: customerData.birthday || null,
+        height: customerData.height || null,
+        weight: customerData.weight || null,
+        remark: customerData.remark || '',
+        medicalHistory: customerData.medicalHistory || '',
+        improvementGoals: customerData.improvementGoals || [],
+        province: customerData.province || '',
+        city: customerData.city || '',
+        district: customerData.district || '',
+        street: customerData.street || '',
+        detailAddress: customerData.detailAddress || '',
+        address: fullAddress || null,
+        source: 'miniprogram',
+        salesPersonId: memberId,
+        createdBy: memberId,
+        createdByName: '小程序提交',
+        customFields: customerData.customFields || null,
+        mpSubmitCount: 1,
+        wecomExternalUserid: externalUserId || undefined,
+      } as any);
+
+      saved = await customerRepo.save(customer);
+
+      // 生成客户编码
+      if (!saved.customerNo) {
+        try {
+          saved.customerNo = `C${saved.id.substring(0, 8).toUpperCase()}`;
+          await customerRepo.save(saved);
+        } catch {
+          try {
+            saved.customerNo = `C${saved.id.replace(/-/g, '').substring(0, 12).toUpperCase()}`;
+            await customerRepo.save(saved);
+          } catch { /* ignore */ }
+        }
+      }
+
+      await linkWecomToCustomer(saved);
     }
+
+    const submitCount = saved.mpSubmitCount || 1;
+    const logContent = action === 'created'
+      ? `客户通过小程序首次提交资料（手机号：${submitPhone || '未填'}）`
+      : `客户通过小程序更新资料（第${submitCount}次提交，手机号：${submitPhone || '未填'}）`;
+
+    await createCustomerLog({
+      customerId: saved.id,
+      logType: 'mp_submit',
+      content: logContent,
+      detail: { action, submitCount, phone: submitPhone, externalUserId: externalUserId || null },
+      operatorId: memberId || 'system',
+      operatorName: '小程序提交',
+      tenantId,
+    });
 
     // 发送系统消息通知
     try {
       const { messageService } = await import('../../services/messageService');
-      const maskedPhone = customerData.phone
-        ? customerData.phone.replace(/(\d{3})\d{4}(\d{4})/, '$1****$2')
+      const maskedPhone = submitPhone
+        ? submitPhone.replace(/(\d{3})\d{4}(\d{4})/, '$1****$2')
         : '未填写';
+      const msgTitle = action === 'created' ? '客户自助提交资料' : '客户更新提交资料';
+      const msgContent = action === 'created'
+        ? `客户「${customerData.name}」通过小程序首次提交了个人资料，手机号：${maskedPhone}`
+        : `客户「${customerData.name}」通过小程序更新了资料（第${submitCount}次），手机号：${maskedPhone}`;
       await messageService.sendMessage({
         type: 'customer_mp_submit',
-        title: '客户自助提交资料',
-        content: `客户「${customerData.name}」通过小程序提交了个人资料，手机号：${maskedPhone}`,
+        title: msgTitle,
+        content: msgContent,
         targetUserId: memberId,
         tenantId,
         priority: 'high',
@@ -352,78 +496,31 @@ router.post('/submit-customer', validateMpSign, async (req: Request, res: Respon
       log.warn('[小程序] 发送系统消息失败:', e);
     }
 
-    // ★ 自动关联企微客户：如果请求中携带了externalUserId，将新建的CRM客户与企微客户关联
-    const externalUserId = req.body.externalUserId || customerData.externalUserId || '';
-    if (externalUserId && saved.id) {
-      try {
-        const { WecomCustomer } = await import('../../entities/WecomCustomer');
-        const wecomCustomerRepo = AppDataSource.getRepository(WecomCustomer);
-        const wecomCust = await wecomCustomerRepo.findOne({
-          where: { externalUserId, ...(tenantId ? { tenantId } : {}) }
-        });
-        if (wecomCust && !wecomCust.crmCustomerId) {
-          wecomCust.crmCustomerId = saved.id;
-          await wecomCustomerRepo.save(wecomCust);
-          log.info(`[小程序] 自动关联企微客户: externalUserId=${externalUserId} → CRM customerId=${saved.id}`);
-        }
-        // 同时在CRM客户上记录wecomExternalUserid
-        if (!saved.wecomExternalUserid) {
-          saved.wecomExternalUserid = externalUserId;
-          await customerRepo.save(saved);
-        }
-      } catch (linkErr: any) {
-        log.warn('[小程序] 自动关联企微客户失败(非致命):', linkErr?.message);
-      }
-    }
-
-    // ★ 方案B: 无externalUserId时，从发送日志中推断（兼容小程序未更新的情况）
-    if (!externalUserId && memberId && saved.id) {
-      try {
-        const recentLog = await AppDataSource.query(
-          `SELECT external_user_id FROM mp_card_send_logs
-           WHERE tenant_id = ? AND member_id = ? AND external_user_id IS NOT NULL AND external_user_id != ''
-           ORDER BY created_at DESC LIMIT 1`,
-          [tenantId, memberId]
-        );
-        const inferredExtId = recentLog?.[0]?.external_user_id;
-        if (inferredExtId) {
-          const { WecomCustomer } = await import('../../entities/WecomCustomer');
-          const wecomCustomerRepo = AppDataSource.getRepository(WecomCustomer);
-          const wecomCust = await wecomCustomerRepo.findOne({
-            where: { externalUserId: inferredExtId, ...(tenantId ? { tenantId } : {}) }
-          });
-          if (wecomCust && !wecomCust.crmCustomerId) {
-            wecomCust.crmCustomerId = saved.id;
-            await wecomCustomerRepo.save(wecomCust);
-            if (!saved.wecomExternalUserid) {
-              saved.wecomExternalUserid = inferredExtId;
-              await customerRepo.save(saved);
-            }
-            log.info(`[小程序] 方案B推断关联: memberId=${memberId}, 推断externalUserId=${inferredExtId} → customerId=${saved.id}`);
-          }
-        }
-      } catch (inferErr: any) {
-        log.warn('[小程序] 方案B推断关联失败(非致命):', inferErr?.message);
-      }
-    }
-
     // WebSocket推送
     try {
       if ((global as any).webSocketService) {
         (global as any).webSocketService.sendToUser(memberId, 'customer_mp_submit', {
           customerId: saved.id,
           customerName: customerData.name,
-          message: `客户「${customerData.name}」通过小程序提交了资料`
+          action,
+          submitCount,
+          message: logContent
         });
       }
     } catch { /* ignore */ }
 
-    log.info(`[小程序] 客户资料提交成功: tenant=${tenantId}, member=${memberId}, customer=${saved.id}, externalUserId=${externalUserId || '(无)'}`);
+    log.info(`[小程序] 客户资料${action === 'created' ? '新建' : '更新'}成功: tenant=${tenantId}, member=${memberId}, customer=${saved.id}, submitCount=${submitCount}, externalUserId=${externalUserId || '(无)'}`);
 
     res.json({
       success: true,
-      message: '资料提交成功',
-      data: { customerId: saved.id }
+      message: action === 'created' ? '资料提交成功' : '资料更新成功',
+      data: {
+        customerId: saved.id,
+        customerNo: saved.customerNo || null,
+        action,
+        submitCount,
+        updateCount: action === 'updated' ? submitCount - 1 : 0
+      }
     });
   } catch (error: any) {
     log.error('[小程序] 客户资料提交失败:', error);
