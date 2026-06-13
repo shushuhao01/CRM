@@ -855,10 +855,14 @@ router.get('/callback/auth-callback', async (req: Request, res: Response) => {
         );
 
         if (recentConfigs.length > 0) {
-          // 优先匹配：1) 无tenantId的 2) tenantId已匹配的
-          const target = recentConfigs.find((r: any) => !r.tenant_id)
-            || recentConfigs.find((r: any) => r.tenant_id === stateTenantId)
-            || recentConfigs[0]; // 最后回退：使用最近更新的
+          // ★ 修复跨租户错绑：优先匹配 tenantId 已是当前租户的（handleCreateAuth已正确绑定），
+          // 其次才是未绑定租户的；绝不返回/绑定已属于其他租户的配置
+          const target = recentConfigs.find((r: any) => stateTenantId && r.tenant_id === stateTenantId)
+            || recentConfigs.find((r: any) => !r.tenant_id);
+          if (!target) {
+            log.warn('[Wecom Auth] Fallback: 最近授权的配置均已绑定到其他租户，不做绑定，跳过');
+            return redirectToWecomConfig('auth=pending&message=auth_code_consumed');
+          }
 
           // 绑定 tenantId（如果还没绑定）
           if (stateTenantId && (!target.tenant_id || target.tenant_id !== stateTenantId)) {

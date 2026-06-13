@@ -159,6 +159,9 @@ router.put('/configs/:id', authenticateToken, requireAdmin, async (req: Request,
 
 /**
  * 删除企微配置
+ * ★ 第三方授权配置：软解绑（保留 permanent_code），因为企微的永久授权码只在企业授权时发放一次，
+ *   物理删除后若企业端应用还在，重新扫码会提示"已添加该应用"且不会触发新的授权回调，
+ *   导致除了让企业管理员卸载重装应用外无法恢复绑定。软解绑后可一键"恢复绑定"。
  */
 router.delete('/configs/:id', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
   try {
@@ -169,11 +172,71 @@ router.delete('/configs/:id', authenticateToken, requireAdmin, async (req: Reque
       return res.status(404).json({ success: false, message: '配置不存在' });
     }
 
+    if (config.authType === 'third_party' && config.permanentCode) {
+      // 第三方授权：软解绑，保留授权凭证以便恢复
+      config.isEnabled = false;
+      config.connectionStatus = 'unbound';
+      config.lastError = `已解除绑定 (${new Date().toLocaleString('zh-CN')})，授权凭证已保留，可点击"恢复绑定"恢复`;
+      await configRepo.save(config);
+
+      // 清除该企业的token缓存
+      try {
+        const { WecomTokenService } = await import('../../services/wecom/WecomTokenService');
+        WecomTokenService.clearCache(config.corpId);
+      } catch { /* ignore */ }
+
+      return res.json({ success: true, message: '已解除绑定。授权凭证已保留，如需恢复可点击"恢复绑定"，无需重新扫码授权' });
+    }
+
+    // 自建应用配置：物理删除（secret可重新填写，无不可恢复的凭证）
     await configRepo.remove(config);
     res.json({ success: true, message: '删除成功' });
   } catch (error: any) {
     log.error('[Wecom] Delete config error:', error);
     res.status(500).json({ success: false, message: '删除配置失败' });
+  }
+});
+
+/**
+ * 恢复已解绑的第三方授权配置
+ * 验证 permanent_code 仍然有效（企业端应用未卸载）后重新启用
+ */
+router.post('/configs/:id/restore', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const configRepo = getTenantRepo(WecomConfig);
+    const config = await configRepo.findOne({ where: { id: parseInt(req.params.id) } });
+
+    if (!config) {
+      return res.status(404).json({ success: false, message: '配置不存在' });
+    }
+    if (config.authType !== 'third_party' || !config.permanentCode) {
+      return res.status(400).json({ success: false, message: '该配置不是第三方授权或授权凭证已丢失，无法恢复。请让企业管理员卸载应用后重新扫码授权' });
+    }
+
+    // 验证授权是否仍然有效（企业端是否还安装着应用）
+    try {
+      const { WecomTokenService } = await import('../../services/wecom/WecomTokenService');
+      WecomTokenService.clearCache(config.corpId);
+      const token = await WecomTokenService.getAccessToken(config, 'corp');
+      if (!token) throw new Error('获取企业Token失败');
+    } catch (verifyErr: any) {
+      log.warn(`[Wecom] Restore config ${config.id} 验证失败:`, verifyErr.message);
+      return res.status(400).json({
+        success: false,
+        message: `恢复失败：授权已失效（${verifyErr.message?.substring(0, 80)}）。可能企业已卸载应用或取消授权，请重新扫码授权`
+      });
+    }
+
+    config.isEnabled = true;
+    config.connectionStatus = 'connected';
+    config.lastError = null as any;
+    await configRepo.save(config);
+
+    log.info(`[Wecom] ✅ 配置已恢复绑定: id=${config.id}, corp=${config.name} (${config.corpId})`);
+    res.json({ success: true, message: '恢复绑定成功，授权仍然有效' });
+  } catch (error: any) {
+    log.error('[Wecom] Restore config error:', error);
+    res.status(500).json({ success: false, message: '恢复绑定失败' });
   }
 });
 

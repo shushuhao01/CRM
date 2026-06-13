@@ -1162,7 +1162,7 @@ router.post('/tenant-auth/:configId/refresh-auth', async (req: Request, res: Res
 });
 
 /**
- * 关联租户
+ * 关联/换绑租户
  * POST /api/v1/admin/wecom-management/tenant-auth/:configId/bind-tenant
  */
 router.post('/tenant-auth/:configId/bind-tenant', async (req: Request, res: Response) => {
@@ -1173,20 +1173,16 @@ router.post('/tenant-auth/:configId/bind-tenant', async (req: Request, res: Resp
     if (!tenantId) return res.status(400).json({ success: false, message: '请选择要关联的租户' });
 
     // 检查配置是否存在
-    const config = await AppDataSource.query('SELECT id, corp_id FROM wecom_configs WHERE id = ? LIMIT 1', [configId]);
+    const config = await AppDataSource.query('SELECT id, corp_id, tenant_id FROM wecom_configs WHERE id = ? LIMIT 1', [configId]);
     if (!config.length) return res.status(404).json({ success: false, message: '配置不存在' });
 
-    // 检查是否已被其他配置关联
-    const existing = await AppDataSource.query(
-      'SELECT id FROM wecom_configs WHERE tenant_id = ? AND id != ? LIMIT 1', [tenantId, configId]
-    );
-    if (existing.length) return res.status(400).json({ success: false, message: '该租户已被其他企业关联' });
+    const oldTenantId = config[0].tenant_id;
 
     await AppDataSource.query(
       'UPDATE wecom_configs SET tenant_id = ?, updated_at = NOW() WHERE id = ?', [tenantId, configId]
     );
-    log.info(`[Admin Wecom] Config ${configId} bound to tenant ${tenantId}`);
-    res.json({ success: true, message: '已关联租户' });
+    log.info(`[Admin Wecom] Config ${configId} bound to tenant ${tenantId}${oldTenantId ? ` (换绑, 原租户: ${oldTenantId})` : ''}`);
+    res.json({ success: true, message: oldTenantId ? '已换绑租户' : '已关联租户' });
   } catch (error: any) {
     log.error('[Admin Wecom] Bind tenant error:', error.message);
     res.status(500).json({ success: false, message: '关联失败' });

@@ -585,27 +585,48 @@ async function handleSuiteTicket(config: WecomSuiteConfig, xml: string) {
 /**
  * 从最近的待处理授权链接中提取 tenantId
  * 支持 CRM 发起的授权（state='crm_auth_<tenantId>'）和 Admin 发起的授权（state='tenant_<tenantId>'）
+ *
+ * ★ 安全约束（修复跨租户错绑bug）：
+ * 1. 只匹配最近15分钟内创建的 pending 链接——企业从应用市场自行安装应用时（与任何租户的
+ *    扫码授权无关），不能因为存在历史遗留的 pending 链接就把企业错绑到别的租户上
+ * 2. 匹配成功后立即把该链接标记为已消费，防止同一条链接被后续无关企业的授权事件复用
  */
 async function resolveTenantIdFromAuthLinks(suiteId: string): Promise<string | null> {
   try {
     const pendingLinks = await AppDataSource.query(
-      `SELECT tenant_id, state FROM wecom_suite_auth_links
+      `SELECT id, tenant_id, state FROM wecom_suite_auth_links
        WHERE suite_id = ? AND status = 'pending'
+         AND created_at >= DATE_SUB(NOW(), INTERVAL 15 MINUTE)
        ORDER BY created_at DESC LIMIT 5`,
       [suiteId]
     );
     for (const link of (pendingLinks || [])) {
+      let tenantId: string | null = null;
       // 优先使用直接存储的 tenant_id
-      if (link.tenant_id) return link.tenant_id;
-      // 从 state 参数中解析（CRM: crm_auth_<tenantId>, Admin: tenant_<tenantId>）
-      const st = link.state || '';
-      if (st.startsWith('crm_auth_') && st.length > 'crm_auth_'.length) {
-        return st.substring('crm_auth_'.length);
+      if (link.tenant_id) {
+        tenantId = link.tenant_id;
+      } else {
+        // 从 state 参数中解析（CRM: crm_auth_<tenantId>, Admin: tenant_<tenantId>）
+        const st = link.state || '';
+        if (st.startsWith('crm_auth_') && st.length > 'crm_auth_'.length) {
+          tenantId = st.substring('crm_auth_'.length);
+        } else if (st.startsWith('tenant_') && st.length > 'tenant_'.length) {
+          tenantId = st.substring('tenant_'.length);
+        }
       }
-      if (st.startsWith('tenant_') && st.length > 'tenant_'.length) {
-        return st.substring('tenant_'.length);
+      if (tenantId) {
+        // 标记该链接已消费，避免被后续无关的 create_auth 事件复用
+        try {
+          await AppDataSource.query(
+            `UPDATE wecom_suite_auth_links SET status = 'authorized', auth_time = NOW() WHERE id = ?`,
+            [link.id]
+          );
+        } catch { /* 标记失败不影响绑定 */ }
+        log.info(`[SuiteCallback] resolveTenantIdFromAuthLinks: 匹配到15分钟内的授权链接 id=${link.id}, tenantId=${tenantId}`);
+        return tenantId;
       }
     }
+    log.info('[SuiteCallback] resolveTenantIdFromAuthLinks: 最近15分钟内无待处理授权链接（可能是企业从应用市场自行安装），不绑定租户');
   } catch (e: any) {
     log.warn('[SuiteCallback] resolveTenantIdFromAuthLinks error:', e.message);
   }
@@ -629,7 +650,38 @@ async function handleCreateAuth(suiteConfig: WecomSuiteConfig, authCode: string,
   log.info(`[SuiteCallback] create_auth: corpId=${corpId}, corpName=${corpName}, agentId=${agentId || '(未返回)'}`);
 
   // 尝试从待处理的授权链接中获取 tenantId（解决 CRM 端看不到配置的根本问题）
-  const resolvedTenantId = await resolveTenantIdFromAuthLinks(suiteConfig.suiteId);
+  let resolvedTenantId = await resolveTenantIdFromAuthLinks(suiteConfig.suiteId);
+
+  // ★ 企业从应用市场自行安装（没有 pending 授权链接）时，尝试自动匹配租户：
+  // 场景：企业在 H5 工作台注册了免费试用（创建了租户），之后从应用市场添加了应用
+  // 此时该企业的 CorpID 可能已存在于 wecom_user_bindings（H5登录绑定）或已有被标记为unbound的旧配置
+  if (!resolvedTenantId && corpId) {
+    try {
+      // 方法1：从 wecom_user_bindings 查找该 CorpID 关联的租户
+      const bindingRows = await AppDataSource.query(
+        'SELECT tenant_id FROM wecom_user_bindings WHERE corp_id = ? AND tenant_id IS NOT NULL AND tenant_id != ? LIMIT 1',
+        [corpId, '']
+      );
+      if (bindingRows?.[0]?.tenant_id) {
+        resolvedTenantId = bindingRows[0].tenant_id;
+        log.info(`[SuiteCallback] create_auth: 通过 wecom_user_bindings 自动匹配到租户 ${resolvedTenantId} (corpId=${corpId})`);
+      }
+    } catch { /* 表可能不存在 */ }
+
+    // 方法2：从已有但被禁用/解绑的旧 WecomConfig 中继承租户
+    if (!resolvedTenantId) {
+      try {
+        const oldConfigRows = await AppDataSource.query(
+          "SELECT tenant_id FROM wecom_configs WHERE corp_id = ? AND tenant_id IS NOT NULL AND tenant_id != '' AND is_enabled = 0 LIMIT 1",
+          [corpId]
+        );
+        if (oldConfigRows?.[0]?.tenant_id) {
+          resolvedTenantId = oldConfigRows[0].tenant_id;
+          log.info(`[SuiteCallback] create_auth: 从旧配置继承租户 ${resolvedTenantId} (corpId=${corpId})`);
+        }
+      } catch { /* ignore */ }
+    }
+  }
 
   // 查找是否已存在该企业的配置
   const configRepo = AppDataSource.getRepository(WecomConfig);
@@ -791,18 +843,22 @@ router.get('/auth-callback', async (req: Request, res: Response) => {
               await linkRepo.save(pendingLink);
               log.info(`[SuiteCallback] Auth link ${pendingLink.id} updated to authorized, corp: ${authCorpName}`);
             } else {
-              // 如果没有精确匹配state的，更新最近一条pending的
-              const anyPending = await linkRepo.findOne({
-                where: { suiteId: config.suiteId, status: 'pending' },
-                order: { createdAt: 'DESC' }
-              });
+              // ★ 修复：没有精确匹配state时，只更新最近15分钟内创建的pending链接，
+              // 避免把历史遗留的其他租户的pending链接错误标记
+              const anyPending = await linkRepo
+                .createQueryBuilder('link')
+                .where('link.suiteId = :suiteId', { suiteId: config.suiteId })
+                .andWhere("link.status = 'pending'")
+                .andWhere('link.createdAt >= DATE_SUB(NOW(), INTERVAL 15 MINUTE)')
+                .orderBy('link.createdAt', 'DESC')
+                .getOne();
               if (anyPending) {
                 anyPending.status = 'authorized';
                 anyPending.authCorpId = authCorpId;
                 anyPending.authCorpName = authCorpName;
                 anyPending.authTime = new Date();
                 await linkRepo.save(anyPending);
-                log.info(`[SuiteCallback] Auth link ${anyPending.id} updated to authorized (fallback), corp: ${authCorpName}`);
+                log.info(`[SuiteCallback] Auth link ${anyPending.id} updated to authorized (fallback, 15min window), corp: ${authCorpName}`);
               }
             }
           } catch (linkErr: any) {

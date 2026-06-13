@@ -84,23 +84,25 @@
         <el-table-column label="更新时间" width="150">
           <template #default="{ row }">{{ formatDate(row.updatedAt) }}</template>
         </el-table-column>
-        <el-table-column label="操作" width="200" fixed="right">
+        <el-table-column label="操作" width="220" fixed="right">
           <template #default="{ row }">
             <el-button link type="primary" size="small" @click="viewDetail(row)">详情</el-button>
             <el-button v-if="!row.tenantId" v-permission="'wecom-management:tenant-auth:edit'" link type="warning" size="small" @click="openBindDialog(row)">关联租户</el-button>
+            <el-button v-else v-permission="'wecom-management:tenant-auth:edit'" link type="warning" size="small" @click="openBindDialog(row)">换绑租户</el-button>
             <el-button v-if="row.isEnabled" v-permission="'wecom-management:tenant-auth:edit'" link type="danger" size="small" @click="handleRevoke(row)">停用</el-button>
             <el-button v-else v-permission="'wecom-management:tenant-auth:edit'" link type="success" size="small" @click="handleRestore(row)">恢复</el-button>
           </template>
         </el-table-column>
       </el-table>
 
-      <div style="margin-top: 16px; display: flex; justify-content: flex-end">
+      <div style="margin-top: 16px; display: flex; justify-content: space-between; align-items: center">
+        <span style="font-size: 13px; color: #909399">共 {{ total }} 条记录</span>
         <el-pagination
           v-model:current-page="page"
           v-model:page-size="pageSize"
           :total="total"
-          :page-sizes="[10, 20, 50]"
-          layout="total, sizes, prev, pager, next"
+          :page-sizes="[10, 20, 50, 100]"
+          layout="sizes, prev, pager, next, jumper"
           @size-change="fetchList"
           @current-change="fetchList"
         />
@@ -397,6 +399,7 @@
       <template #footer>
         <el-button @click="detailVisible = false">关闭</el-button>
         <el-button v-if="detailData && !detailData.tenantId" v-permission="'wecom-management:tenant-auth:edit'" type="warning" @click="detailVisible = false; openBindDialog(detailData)">关联租户</el-button>
+        <el-button v-else-if="detailData && detailData.tenantId" v-permission="'wecom-management:tenant-auth:edit'" type="warning" @click="detailVisible = false; openBindDialog(detailData)">换绑租户</el-button>
       </template>
     </el-dialog>
 
@@ -445,10 +448,14 @@
     </el-dialog>
 
     <!-- 关联租户弹窗 -->
-    <el-dialog v-model="showBindDialog" title="关联租户" width="480px" destroy-on-close>
+    <el-dialog v-model="showBindDialog" :title="bindTarget?.tenantId ? '换绑租户' : '关联租户'" width="480px" destroy-on-close>
       <el-form label-width="80px">
         <el-form-item label="企业">{{ bindTarget?.authCorpName || bindTarget?.configName }}</el-form-item>
-        <el-form-item label="关联对象">
+        <el-form-item v-if="bindTarget?.tenantId" label="当前关联">
+          <el-tag type="info" size="default">{{ bindTarget?.tenantName || bindTarget?.tenantCode || bindTarget?.tenantId }}</el-tag>
+          <span style="margin-left: 8px; font-size: 12px; color: #909399">将被替换为下方选择的新租户</span>
+        </el-form-item>
+        <el-form-item :label="bindTarget?.tenantId ? '新租户' : '关联对象'">
           <el-select
             v-model="bindTenantId"
             filterable

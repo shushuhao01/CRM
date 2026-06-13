@@ -455,30 +455,49 @@ router.post('/register', h5RegisterLimiter, async (req: Request, res: Response) 
       return res.status(400).json({ success: false, message: '该手机号已注册，请直接登录' });
     }
 
-    // 获取免费试用套餐
+    // 获取免费试用套餐（与官网注册逻辑一致：默认使用管理后台的 FREE_TRIAL 试用套餐）
     let packageId = null;
     let maxUsers = 3;
-    let expireDays = 7;
-    const freePackages = await AppDataSource.query(
-      "SELECT id, max_users, duration_days FROM tenant_packages WHERE price = 0 AND status = 1 AND type != 'community' ORDER BY duration_days DESC LIMIT 1"
+    let expireDays = 14;
+    let pkgUserLimitMode = 'total';
+    let pkgMaxOnlineSeats = 5;
+
+    // 优先精确匹配 FREE_TRIAL 套餐编码（与官网注册默认套餐一致）
+    let trialPackages = await AppDataSource.query(
+      "SELECT id, max_users, max_online_seats, user_limit_mode, duration_days FROM tenant_packages WHERE code = 'FREE_TRIAL' AND status = 1 LIMIT 1"
     );
-    if (freePackages && freePackages.length > 0) {
-      packageId = freePackages[0].id;
-      maxUsers = freePackages[0].max_users || 3;
-      expireDays = freePackages[0].duration_days || 7;
+    // 兜底：取管理后台标记为试用的免费套餐
+    if (!trialPackages || trialPackages.length === 0) {
+      trialPackages = await AppDataSource.query(
+        "SELECT id, max_users, max_online_seats, user_limit_mode, duration_days FROM tenant_packages WHERE is_trial = 1 AND price = 0 AND status = 1 AND type != 'community' ORDER BY duration_days DESC LIMIT 1"
+      );
+    }
+    if (trialPackages && trialPackages.length > 0) {
+      packageId = trialPackages[0].id;
+      maxUsers = trialPackages[0].max_users || 3;
+      pkgMaxOnlineSeats = trialPackages[0].max_online_seats || 5;
+      pkgUserLimitMode = trialPackages[0].user_limit_mode || 'total';
+      expireDays = trialPackages[0].duration_days || 14;
     }
 
-    // 创建租户
+    // 创建租户（编码生成带查重，与官网注册一致）
     const tenantId = uuidv4();
-    const tenantCode = Tenant.generateShortCode();
+    let tenantCode = Tenant.generateShortCode();
+    for (let i = 0; i < 10; i++) {
+      const existingCode = await AppDataSource.query('SELECT id FROM tenants WHERE code = ?', [tenantCode]);
+      if (existingCode.length === 0) break;
+      tenantCode = Tenant.generateShortCode();
+    }
     const licenseKey = Tenant.generateLicenseKey();
     const expireDate = new Date(Date.now() + expireDays * 24 * 60 * 60 * 1000);
+    // 用户限制模式：双模式套餐默认在线席位制（与官网注册一致）
+    const finalLimitMode = pkgUserLimitMode === 'both' ? 'online' : pkgUserLimitMode;
 
     await AppDataSource.query(
       `INSERT INTO tenants
-       (id, name, code, license_key, license_status, package_id, contact, phone, max_users, expire_date, status, created_at)
-       VALUES (?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, 'active', NOW())`,
-      [tenantId, companyName, tenantCode, licenseKey, packageId, contactName, phone, maxUsers, expireDate]
+       (id, name, code, license_key, license_status, package_id, contact, phone, max_users, max_online_seats, user_limit_mode, expire_date, status, created_at)
+       VALUES (?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, 'active', NOW())`,
+      [tenantId, companyName, tenantCode, licenseKey, packageId, contactName, phone, maxUsers, pkgMaxOnlineSeats, finalLimitMode, expireDate]
     );
 
     // 存储会员中心密码
@@ -551,6 +570,9 @@ router.post('/register', h5RegisterLimiter, async (req: Request, res: Response) 
         } : null,
         adminUsername: adminAccount?.username || null,
         adminPassword: adminAccount?.password || null,
+        userLimitMode: finalLimitMode,
+        maxOnlineSeats: pkgMaxOnlineSeats,
+        maxUsers,
         crmUrl: SITE_CONFIG.CRM_URL,
         memberUrl: `${SITE_CONFIG.WEBSITE_URL}/member`
       },
@@ -565,6 +587,39 @@ router.post('/register', h5RegisterLimiter, async (req: Request, res: Response) 
       relatedType: 'tenant',
       extraData: { companyName, contactName, phone, tenantCode, source: 'wecom_h5' }
     }).catch(err => log.error('[H5 Register] 发送管理员通知失败:', err.message));
+
+    // 异步发送账号开通短信给用户（与官网注册逻辑一致，包含租户编码/授权码/管理员密码/到期时间）
+    ;(async () => {
+      try {
+        const dbLoaded = await aliyunSmsService.loadFromDatabase();
+        if (!dbLoaded) {
+          aliyunSmsService.loadFromEnv();
+        }
+        const smsParams = {
+          tenantName: companyName,
+          orderNo: '免费试用',
+          amount: '0',
+          tenantCode: tenantCode,
+          licenseKey: licenseKey,
+          adminPassword: adminAccount?.password || 'Aa123456',
+          packageName: `${expireDays}天免费试用`,
+          expireDate: expireDate.toISOString().split('T')[0]
+        };
+        // 依次尝试: ACCOUNT_ACTIVATION → PAYMENT_ACTIVATION（与官网注册一致）
+        const templateTypes = ['ACCOUNT_ACTIVATION', 'PAYMENT_ACTIVATION'];
+        for (const templateType of templateTypes) {
+          const smsResult = await aliyunSmsService.sendSms(phone, templateType, smsParams);
+          if (smsResult.success) {
+            log.info(`[H5 Register] ✅ 注册短信已通过 ${templateType} 模板发送至: ${phone}`);
+            break;
+          }
+          log.warn(`[H5 Register] ${templateType} 发送失败: ${smsResult.message}`);
+          if (!smsResult.message?.includes('未配置')) break;
+        }
+      } catch (smsErr: any) {
+        log.error('[H5 Register] 发送注册短信异常:', smsErr.message);
+      }
+    })();
   } catch (error: any) {
     log.error('[H5 Register] 注册失败:', error.message);
     res.status(500).json({ success: false, message: '注册失败，请稍后重试' });

@@ -99,6 +99,12 @@
                   </div>
                 </div>
                 <div class="config-card__footer">
+                  <el-button
+                    v-if="row.connectionStatus === 'unbound'"
+                    type="warning" link size="small" @click="handleRestore(row)"
+                  >
+                    恢复绑定
+                  </el-button>
                   <el-button type="success" link size="small" @click="handleTest(row)">
                     <el-icon><Connection /></el-icon>测试
                   </el-button>
@@ -159,8 +165,14 @@
               <el-table-column label="API调用" width="80" align="center">
                 <template #default="{ row }">{{ row.apiCallCount || 0 }}</template>
               </el-table-column>
-              <el-table-column label="操作" width="220" fixed="right">
+              <el-table-column label="操作" width="260" fixed="right">
                 <template #default="{ row }">
+                  <el-button
+                    v-if="row.connectionStatus === 'unbound'"
+                    type="warning" link size="small" @click="handleRestore(row)"
+                  >
+                    恢复绑定
+                  </el-button>
                   <el-button type="success" link size="small" @click="handleTest(row)">
                     <el-icon><Connection /></el-icon>测试
                   </el-button>
@@ -497,8 +509,8 @@ const rules = {
 }
 
 const formatDate = (date: string) => date ? formatDateTime(date) : '-'
-const getStatusType = (s: string) => ({ connected: 'success', failed: 'danger', pending: 'info' }[s] || 'info') as string
-const getStatusText = (s: string) => ({ connected: '已连接', failed: '连接失败', pending: '待测试' }[s] || '未知')
+const getStatusType = (s: string) => ({ connected: 'success', failed: 'danger', pending: 'info', unbound: 'warning', disconnected: 'danger' }[s] || 'info') as string
+const getStatusText = (s: string) => ({ connected: '已连接', failed: '连接失败', pending: '待测试', unbound: '已解绑(可恢复)', disconnected: '已取消授权' }[s] || '未知')
 
 const fetchList = async () => {
   loading.value = true
@@ -578,9 +590,27 @@ const handleTest = async (row: any) => {
 }
 
 const handleDelete = async (row: any) => {
-  await ElMessageBox.confirm(`确定要删除企业「${row.name}」的配置吗？此操作不可恢复。`, '删除确认', { type: 'warning' })
-  try { await deleteWecomConfig(row.id); ElMessage.success('删除成功'); fetchList() }
-  catch { ElMessage.error('删除失败') }
+  const isThirdParty = row.authType === 'third_party'
+  const tip = isThirdParty
+    ? `确定要解除企业「${row.name}」的绑定吗？\n授权凭证将被保留，之后可点击"恢复绑定"一键恢复，无需让企业卸载重装应用。`
+    : `确定要删除企业「${row.name}」的配置吗？此操作不可恢复。`
+  await ElMessageBox.confirm(tip, isThirdParty ? '解除绑定确认' : '删除确认', { type: 'warning' })
+  try {
+    const res: any = await deleteWecomConfig(row.id)
+    ElMessage.success(res?.message || (isThirdParty ? '已解除绑定' : '删除成功'))
+    fetchList()
+  } catch { ElMessage.error('操作失败') }
+}
+
+const handleRestore = async (row: any) => {
+  try {
+    const { default: request } = await import('@/utils/request')
+    await request.post(`/wecom/configs/${row.id}/restore`)
+    ElMessage.success('恢复绑定成功')
+    fetchList()
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.message || e?.message || '恢复失败，授权可能已失效，请重新扫码授权')
+  }
 }
 
 const handleQuotaUpgrade = () => {

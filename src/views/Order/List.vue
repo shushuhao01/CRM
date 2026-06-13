@@ -537,6 +537,7 @@
       title="取消订单审核"
       width="1200px"
       :close-on-click-modal="false"
+      @close="handleCloseCancelAudit"
     >
       <el-tabs v-model="auditActiveTab" @tab-change="handleAuditTabChange">
         <!-- 待审核标签页 -->
@@ -1215,23 +1216,13 @@ const canViewCancelAudit = computed(() => {
   return userStore.isDepartmentHead || userStore.isManager || userStore.isSuperAdmin
 })
 
-// 待审核的取消订单列表（应用数据范围控制）
-const pendingCancelOrders = computed(() => {
-  return orderList.value.filter(order => order.status === 'pending_cancel')
-})
+// 🔥 修复：弹窗数据使用独立的 ref，不再与主列表共用 orderStore.orders，
+// 避免关闭弹窗后取消订单残留在主订单列表中显示
+// 待审核的取消订单列表
+const pendingCancelOrders = ref<OrderItem[]>([])
 
 // 已审核的取消订单列表（包括已取消和取消失败）
-const auditedCancelOrders = computed(() => {
-  const filtered = orderList.value.filter(order =>
-    order.status === 'cancelled' || order.status === 'cancel_failed'
-  )
-  console.log('[取消审核] 📊 auditedCancelOrders 计算:', {
-    orderList总数: orderList.value.length,
-    已审核数量: filtered.length,
-    订单ID列表: filtered.map(o => o.id)
-  })
-  return filtered
-})
+const auditedCancelOrders = ref<OrderItem[]>([])
 
 // 取消原因转换方法
 const getCancelReasonText = (reason: string) => {
@@ -2092,16 +2083,7 @@ const handleOpenCancelAudit = async () => {
   auditActiveTab.value = 'pending'
   selectedAuditOrders.value = []
 
-  // 🔥 修复：打开弹窗前，先清空 orderStore 中的取消审核相关订单
-  console.log('[取消审核] 🧹 清空前 orderStore.orders 数量:', orderStore.orders.length)
-  orderStore.orders = orderStore.orders.filter(order =>
-    order.status !== 'pending_cancel' &&
-    order.status !== 'cancelled' &&
-    order.status !== 'cancel_failed'
-  )
-  console.log('[取消审核] 🧹 清空后 orderStore.orders 数量:', orderStore.orders.length)
-
-  // 🔥 修复：打开弹窗时，单独加载 pending_cancel 和已审核的订单
+  // 🔥 修复：弹窗数据使用独立的 ref 存储，不再操作 orderStore.orders
   await loadCancelAuditOrders()
 }
 
@@ -2160,10 +2142,9 @@ const loadCancelAuditOrders = async () => {
       }
     }
 
-    // 🔥 修复：直接添加新加载的订单到 orderStore（因为打开弹窗时已经清空了）
-    orderStore.orders.push(...pendingOrders, ...auditedOrders)
-
-    console.log('[取消审核] ✅ 添加后 orderStore.orders 数量:', orderStore.orders.length)
+    // 🔥 修复：弹窗数据存入独立的 ref，不污染主列表的 orderStore.orders
+    pendingCancelOrders.value = pendingOrders
+    auditedCancelOrders.value = auditedOrders
 
     console.log('[取消审核] 加载完成:', {
       待审核: pendingOrders.length,
@@ -2204,6 +2185,9 @@ const loadPendingCancelCount = async () => {
 const handleCloseCancelAudit = () => {
   showCancelAuditDialog.value = false
   selectedAuditOrders.value = []
+  // 清空弹窗数据
+  pendingCancelOrders.value = []
+  auditedCancelOrders.value = []
   // 重置分页
   pendingPagination.page = 1
   pendingPagination.pageSize = 10
@@ -2237,11 +2221,6 @@ const loadPendingCancelOrders = async () => {
 
     const { orderApi } = await import('@/api/order')
 
-    // 先清空待审核订单
-    orderStore.orders = orderStore.orders.filter(order =>
-      order.status !== 'pending_cancel'
-    )
-
     // 加载新的待审核订单
     const pendingResponse = await orderApi.getPendingCancelOrders({
       page: pendingPagination.page,
@@ -2261,8 +2240,8 @@ const loadPendingCancelOrders = async () => {
       }
     }
 
-    // 添加到 orderStore
-    orderStore.orders.push(...pendingOrders)
+    // 🔥 修复：存入弹窗独立的 ref，不污染主列表
+    pendingCancelOrders.value = pendingOrders
 
   } catch (error) {
     console.error('[取消审核] 加载待审核订单失败:', error)
@@ -2291,11 +2270,6 @@ const loadAuditedCancelOrders = async () => {
 
     const { orderApi } = await import('@/api/order')
 
-    // 先清空已审核订单
-    orderStore.orders = orderStore.orders.filter(order =>
-      order.status !== 'cancelled' && order.status !== 'cancel_failed'
-    )
-
     // 加载新的已审核订单
     const auditedResponse = await orderApi.getAuditedCancelOrders({
       page: auditedPagination.page,
@@ -2315,8 +2289,8 @@ const loadAuditedCancelOrders = async () => {
       }
     }
 
-    // 添加到 orderStore
-    orderStore.orders.push(...auditedOrders)
+    // 🔥 修复：存入弹窗独立的 ref，不污染主列表
+    auditedCancelOrders.value = auditedOrders
 
   } catch (error) {
     console.error('[取消审核] 加载已审核订单失败:', error)

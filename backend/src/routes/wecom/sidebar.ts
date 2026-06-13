@@ -882,27 +882,36 @@ router.post('/sidebar/js-sdk-config', jsSdkConfigLimiter, validateJsSdkReferer, 
     const configRepo = AppDataSource.getRepository(WecomConfig);
     let config: any = null;
 
-    // ★ 兼容处理：当 corpId 是 $CORPID$ 占位符（企微未替换）时，尝试查找第一个可用的第三方应用配置
+    // ★ 兼容处理：当 corpId 是 $CORPID$ 占位符（企微未替换）时，仅当系统中只有唯一一家
+    // 授权企业时才降级使用，多企业时直接报错（避免取错企业导致92002跨企业错误）
     if (corpId === '$CORPID$' || corpId.includes('$')) {
-      log.warn(`[Wecom Sidebar] corpId是占位符(${corpId})，企微客户端未替换。尝试查找第一个可用的第三方应用配置...`);
-      addDiag('corpId占位符', `原始值=${corpId}，尝试降级查找`);
-      config = await configRepo.findOne({
+      log.warn(`[Wecom Sidebar] corpId是占位符(${corpId})，企微客户端未替换。检查是否可安全降级...`);
+      addDiag('corpId占位符', `原始值=${corpId}，检查降级条件`);
+      let candidates = await configRepo.find({
         where: { isEnabled: true, authType: 'third_party' },
         order: { id: 'ASC' }
       });
-      if (!config) {
+      if (!candidates.length) {
         // 回退：查找任意可用配置
-        config = await configRepo.findOne({ where: { isEnabled: true }, order: { id: 'ASC' } });
+        candidates = await configRepo.find({ where: { isEnabled: true }, order: { id: 'ASC' } });
       }
-      if (!config) {
+      if (!candidates.length) {
         addDiag('配置查找失败', '无任何可用企微配置');
         return res.status(400).json({
           success: false,
           message: '未找到匹配的企微配置。corpId占位符($CORPID$)未被企微客户端替换，可能原因：1.侧边栏URL未在企微服务商后台正确配置 2.企业未授权安装该第三方应用'
         });
       }
-      log.info(`[Wecom Sidebar] 占位符降级：使用配置 id=${config.id} corpId=${config.corpId} name=${config.name}`);
-      addDiag('占位符降级', `使用配置 id=${config.id} corpId=${config.corpId}`);
+      if (candidates.length > 1) {
+        addDiag('配置查找失败', `占位符未替换且存在${candidates.length}家授权企业，拒绝降级（防92002）`);
+        return res.status(400).json({
+          success: false,
+          message: `系统中有${candidates.length}家已授权企业且corpId占位符未被替换，无法判断当前企业（盲取会导致92002跨企业错误）。请在企微服务商后台确认侧边栏URL配置正确，确保corpId参数被正确传递`
+        });
+      }
+      config = candidates[0];
+      log.info(`[Wecom Sidebar] 占位符降级（唯一企业）：使用配置 id=${config.id} corpId=${config.corpId} name=${config.name}`);
+      addDiag('占位符降级', `唯一企业，使用配置 id=${config.id} corpId=${config.corpId}`);
     } else {
       config = await configRepo.findOne({ where: { corpId, isEnabled: true } });
       if (!config) {
@@ -1558,10 +1567,18 @@ router.post('/sidebar/sign', jsSdkConfigLimiter, validateJsSdkReferer, async (re
     const configRepo = AppDataSource.getRepository(WecomConfig);
     let config: any = null;
 
-    // 兼容 $CORPID$ 占位符
+    // 兼容 $CORPID$ 占位符（★ 仅在系统中只有唯一一家授权企业时才允许降级，防止92002跨企业错误）
     if (corpId === '$CORPID$' || corpId.includes('$')) {
-      config = await configRepo.findOne({ where: { isEnabled: true, authType: 'third_party' }, order: { id: 'ASC' } });
-      if (!config) config = await configRepo.findOne({ where: { isEnabled: true }, order: { id: 'ASC' } });
+      let candidates = await configRepo.find({ where: { isEnabled: true, authType: 'third_party' }, order: { id: 'ASC' } });
+      if (!candidates.length) candidates = await configRepo.find({ where: { isEnabled: true }, order: { id: 'ASC' } });
+      if (candidates.length === 1) {
+        config = candidates[0];
+      } else if (candidates.length > 1) {
+        return res.status(400).json({
+          success: false,
+          message: `系统中有${candidates.length}家已授权企业且corpId占位符未被替换，无法判断当前企业（盲取会导致92002跨企业错误）`
+        });
+      }
     } else {
       config = await configRepo.findOne({ where: { corpId, isEnabled: true } });
     }
@@ -2226,15 +2243,25 @@ router.get('/sidebar-config', async (req: Request, res: Response) => {
       }
     }
 
-    // 否则查找最优的配置：优先有agentId的、最新创建的
     const configs = await configRepo.find({ where: { isEnabled: true, authType: 'third_party' }, order: { id: 'DESC' } });
     if (!configs.length) return res.json({ success: false, message: '无可用的第三方企微配置' });
 
-    // 优先返回有agentId的配置（最新的排在前面）
-    const best = configs.find(c => !!c.agentId) || configs[0];
+    // ★ 修复92002跨企业错误：只有当系统中只剩唯一一家授权企业时才允许降级返回，
+    // 多企业授权时绝不能"猜"一家返回——返回错误的corpId会导致在别的企业客户端里
+    // 调用agentConfig报92002 (not allow to cross corp)
+    if (configs.length === 1) {
+      const only = configs[0];
+      return res.json({
+        success: true,
+        data: { corpId: only.corpId, agentId: only.agentId, name: only.name },
+        allConfigs: [{ id: only.id, corpId: only.corpId, agentId: only.agentId, name: only.name }]
+      });
+    }
+
+    log.warn(`[Wecom Sidebar] sidebar-config: 多企业授权(${configs.length}家)且corpId无效(${requestCorpId || '空'})，拒绝降级返回，避免92002跨企业错误`);
     res.json({
-      success: true,
-      data: { corpId: best.corpId, agentId: best.agentId, name: best.name },
+      success: false,
+      message: `系统中有${configs.length}家已授权企业，无法自动判断当前企业。请确保侧边栏URL中携带正确的corpId参数（当前传入: ${requestCorpId || '空'}），或检查该企业的corpId是否与数据库中存储的一致`,
       allConfigs: configs.map(c => ({ id: c.id, corpId: c.corpId, agentId: c.agentId, name: c.name }))
     });
   } catch (e: any) {
