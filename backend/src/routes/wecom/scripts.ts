@@ -16,6 +16,12 @@ import fs from 'fs';
 
 const router = Router();
 
+/** 判断侧边栏用户是否为管理员 */
+function isSidebarAdmin(role?: string): boolean {
+  const userRole = (role || '').toLowerCase();
+  return ['super_admin', 'superadmin', 'admin'].includes(userRole);
+}
+
 // Auto-create/migrate table columns on first load
 let tableMigrated = false;
 const ensureScriptTables = async () => {
@@ -386,16 +392,18 @@ router.post('/sidebar/scripts', authenticateSidebarToken, async (req: Request, r
     const sidebarUser = (req as any).sidebarUser;
     const tenantId = sidebarUser?.tenantId;
     const userId = sidebarUser?.userId;
-    const userName = sidebarUser?.userName;
+    const userName = sidebarUser?.crmUserName || sidebarUser?.username || '';
     const { title, content, categoryId, tags, scope, color } = req.body;
+    const isAdmin = isSidebarAdmin(sidebarUser?.role);
+    const finalScope = isAdmin ? (scope || 'personal') : 'personal';
 
     const scriptRepo = AppDataSource.getRepository(WecomScript);
     const script = scriptRepo.create({
       tenantId, title: title || '', content: content || '',
       categoryId: categoryId || null,
       tags: typeof tags === 'string' ? tags : JSON.stringify(tags || []),
-      scope: scope || 'personal', createdBy: userId,
-      createdByName: userName || '', color: color || null
+      scope: finalScope, createdBy: userId,
+      createdByName: userName, color: color || null
     });
     await scriptRepo.save(script);
     res.json({ success: true, data: script });
@@ -411,11 +419,13 @@ router.post('/sidebar/script-categories', authenticateSidebarToken, async (req: 
     const tenantId = sidebarUser?.tenantId;
     const userId = sidebarUser?.userId;
     const { name, color, scope } = req.body;
+    const isAdmin = isSidebarAdmin(sidebarUser?.role);
+    const finalScope = isAdmin ? (scope || 'personal') : 'personal';
 
     const catRepo = AppDataSource.getRepository(WecomScriptCategory);
     const cat = catRepo.create({
       tenantId, name, color: color || null,
-      scope: scope || 'personal', createdBy: userId
+      scope: finalScope, createdBy: userId
     });
     await catRepo.save(cat);
     res.json({ success: true, data: cat });
@@ -535,15 +545,22 @@ router.put('/sidebar/scripts/:id', authenticateSidebarToken, async (req: Request
   try {
     const sidebarUser = (req as any).sidebarUser;
     const tenantId = sidebarUser?.tenantId;
+    const userId = sidebarUser?.userId;
+    const isAdmin = isSidebarAdmin(sidebarUser?.role);
     const scriptRepo = AppDataSource.getRepository(WecomScript);
     const script = await scriptRepo.findOne({ where: { id: Number(req.params.id), tenantId } });
     if (!script) return res.status(404).json({ success: false, message: '话术不存在' });
+
+    if (!isAdmin && (script.scope === 'public' || script.createdBy !== userId)) {
+      return res.status(403).json({ success: false, message: '无权编辑此话术' });
+    }
+
     const { title, content, categoryId, tags, scope, color, attachments } = req.body;
     const updateData: Record<string, any> = {};
     if (title !== undefined) updateData.title = title;
     if (content !== undefined) updateData.content = content;
     if (categoryId !== undefined) updateData.categoryId = categoryId;
-    if (scope !== undefined) updateData.scope = scope;
+    if (scope !== undefined) updateData.scope = isAdmin ? scope : 'personal';
     if (color !== undefined) updateData.color = color || null;
     if (tags !== undefined) updateData.tags = typeof tags === 'string' ? tags : JSON.stringify(tags);
     if (attachments !== undefined) updateData.attachments = typeof attachments === 'string' ? attachments : JSON.stringify(attachments);
@@ -562,8 +579,17 @@ router.delete('/sidebar/scripts/:id', authenticateSidebarToken, async (req: Requ
   try {
     const sidebarUser = (req as any).sidebarUser;
     const tenantId = sidebarUser?.tenantId;
+    const userId = sidebarUser?.userId;
+    const isAdmin = isSidebarAdmin(sidebarUser?.role);
     const scriptRepo = AppDataSource.getRepository(WecomScript);
-    await scriptRepo.delete({ id: Number(req.params.id), tenantId });
+    const script = await scriptRepo.findOne({ where: { id: Number(req.params.id), tenantId } });
+    if (!script) return res.status(404).json({ success: false, message: '话术不存在' });
+
+    if (!isAdmin && (script.scope === 'public' || script.createdBy !== userId)) {
+      return res.status(403).json({ success: false, message: '无权删除此话术' });
+    }
+
+    await scriptRepo.delete({ id: script.id, tenantId });
     res.json({ success: true });
   } catch (e: any) {
     res.status(500).json({ success: false, message: e.message });
@@ -575,10 +601,20 @@ router.put('/sidebar/script-categories/:id', authenticateSidebarToken, async (re
   try {
     const sidebarUser = (req as any).sidebarUser;
     const tenantId = sidebarUser?.tenantId;
+    const userId = sidebarUser?.userId;
+    const isAdmin = isSidebarAdmin(sidebarUser?.role);
     const catRepo = AppDataSource.getRepository(WecomScriptCategory);
     const cat = await catRepo.findOne({ where: { id: Number(req.params.id), tenantId } });
     if (!cat) return res.status(404).json({ success: false, message: '分组不存在' });
-    Object.assign(cat, req.body);
+
+    if (!isAdmin && (cat.scope === 'public' || cat.createdBy !== userId)) {
+      return res.status(403).json({ success: false, message: '无权编辑此分组' });
+    }
+
+    const { name, color, scope } = req.body;
+    if (name !== undefined) cat.name = name;
+    if (color !== undefined) cat.color = color || null;
+    if (scope !== undefined) cat.scope = isAdmin ? scope : 'personal';
     await catRepo.save(cat);
     res.json({ success: true, data: cat });
   } catch (e: any) {

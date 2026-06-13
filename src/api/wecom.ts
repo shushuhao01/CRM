@@ -784,6 +784,14 @@ export const refreshSidebarToken = (token: string) => {
   } as any)
 }
 
+/** 侧边栏 - 自助解绑（换绑/退出） */
+export const sidebarUnbindSelf = (token: string) => {
+  return request.post('/wecom/sidebar/unbind-self', {}, {
+    headers: { Authorization: `Bearer ${token}` },
+    showError: false
+  } as any)
+}
+
 // ==================== Phase 5: 获客管理增强 ====================
 
 /** 获取获客链接权重配置 */

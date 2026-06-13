@@ -113,7 +113,7 @@
       <SidebarScripts v-if="currentTab === 'scripts'" :sidebar-token="sidebarToken" />
 
       <!-- 快捷下单 Tab -->
-      <SidebarQuickOrder v-else-if="currentTab === 'order'" :sidebar-token="sidebarToken" :customer-data="customerData" />
+      <SidebarQuickOrder v-else-if="currentTab === 'order'" :sidebar-token="sidebarToken" :customer-data="customerData" :read-only="!canOperateCustomer" />
 
       <!-- 客户画像 Tab -->
       <SidebarPortrait v-else-if="currentTab === 'portrait'" :sidebar-token="sidebarToken" :customer-data="customerData" />
@@ -274,10 +274,10 @@
 
 <script setup lang="ts">
 defineOptions({ name: 'WecomSidebarDetail' })
-import { ref, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Loading } from '@element-plus/icons-vue'
-import { getSidebarJsSdkConfig, getSidebarSign, clearSidebarCache, sidebarBindAccount, sidebarVerifyBinding, getSidebarCustomerDetail, refreshSidebarToken, getSuiteTicketDiagnostic } from '@/api/wecom'
+import { getSidebarJsSdkConfig, getSidebarSign, clearSidebarCache, sidebarBindAccount, sidebarVerifyBinding, getSidebarCustomerDetail, refreshSidebarToken, getSuiteTicketDiagnostic, sidebarUnbindSelf } from '@/api/wecom'
 import { displaySensitiveInfo as displaySensitiveInfoNew } from '@/utils/sensitiveInfo'
 import { SensitiveInfoType } from '@/services/permission'
 import { useUserStore } from '@/stores/user'
@@ -362,6 +362,84 @@ function initUserStoreFromToken(token: string) {
   }
 }
 
+/** 当前侧边栏登录用户ID */
+const currentSidebarUserId = computed(() => {
+  const payload = decodeJwtPayload(sidebarToken.value)
+  return payload?.crmUserId || payload?.userId || ''
+})
+
+/** 是否可对当前客户下单（归属本人或未分配） */
+const canOperateCustomer = computed(() => {
+  const salesPersonId = customerData.value?.crmCustomer?.salesPersonId
+  if (!salesPersonId) return true
+  return salesPersonId === currentSidebarUserId.value
+})
+
+/** 清除侧边栏登录状态（localStorage 变更会通知其他 Tab） */
+function clearSidebarAuthState() {
+  localStorage.removeItem('wecom_sidebar_token')
+  localStorage.removeItem('wecom_sidebar_binding_id')
+  sidebarToken.value = ''
+  boundUser.value = null
+  customerData.value = null
+  pageState.value = 'login'
+}
+
+/** 保存侧边栏 token 并同步到其他 Tab */
+function saveSidebarToken(token: string, bindingId?: number) {
+  sidebarToken.value = token
+  localStorage.setItem('wecom_sidebar_token', token)
+  if (bindingId) {
+    localStorage.setItem('wecom_sidebar_binding_id', String(bindingId))
+  }
+}
+
+/** 判断企微成员ID是否为占位符（sidebar_ 前缀表示未获取真实ID） */
+function isPlaceholderWecomUserId(uid?: string): boolean {
+  return !uid || uid.startsWith('sidebar_')
+}
+
+/** SDK 初始化完成后，若仍未获取真实企微ID则提示（避免登录时误报） */
+function warnIfStillPlaceholderAfterSdk() {
+  const tokenUid = decodeJwtPayload(sidebarToken.value)?.wecomUserId || ''
+  const uid = wecomUserId.value || tokenUid
+  if (isPlaceholderWecomUserId(uid)) {
+    ElMessage.warning({
+      message: '绑定成功，但未获取到企微真实ID。请联系管理员同步通讯录以完善绑定。',
+      duration: 5000
+    })
+  }
+}
+
+/** 监听其他 Tab 的 token 变化，实现换绑/登录同步 */
+function handleStorageSync(e: StorageEvent) {
+  if (e.key !== 'wecom_sidebar_token') return
+  if (!e.newValue) {
+    // 换绑/退出：其他 Tab 同步回到登录页
+    sidebarToken.value = ''
+    boundUser.value = null
+    customerData.value = null
+    pageState.value = 'login'
+    return
+  }
+  if (e.newValue !== sidebarToken.value) {
+    // 其他 Tab 登录成功：免登同步，无需各自重新登录
+    sidebarToken.value = e.newValue
+    initUserStoreFromToken(e.newValue)
+    const payload = decodeJwtPayload(e.newValue)
+    if (payload) {
+      boundUser.value = { name: payload.crmUserName || payload.username || '用户' }
+      if (payload.wecomUserId && !payload.wecomUserId.startsWith('sidebar_')) {
+        wecomUserId.value = payload.wecomUserId
+      }
+    }
+    pageState.value = 'detail'
+    initSdkForExternalUserId()
+    loadCustomerDetail()
+    loadCollectStatus()
+  }
+}
+
 // 客户数据
 const customerData = ref<any>(null)
 const refreshingData = ref(false)
@@ -401,6 +479,7 @@ const handleSidebarSwitchTab = (e: Event) => {
 
 onMounted(async () => {
   window.addEventListener('sidebar-switch-tab', handleSidebarSwitchTab)
+  window.addEventListener('storage', handleStorageSync)
 
   // 读取 URL 中的 tab 参数
   const urlParams = new URLSearchParams(window.location.search)
@@ -425,8 +504,7 @@ onMounted(async () => {
     if (isTokenExpiringSoon(cachedToken)) {
       refreshSidebarToken(cachedToken).then((res: any) => {
         if (res?.token) {
-          localStorage.setItem('wecom_sidebar_token', res.token)
-          sidebarToken.value = res.token
+          saveSidebarToken(res.token)
         }
       }).catch(() => { /* ignore */ })
     }
@@ -1212,8 +1290,7 @@ async function checkBindingAndLoad() {
         try {
           const refreshRes: any = await refreshSidebarToken(cachedToken)
           if (refreshRes?.token) {
-            localStorage.setItem('wecom_sidebar_token', refreshRes.token)
-            sidebarToken.value = refreshRes.token
+            saveSidebarToken(refreshRes.token)
           } else {
             sidebarToken.value = cachedToken
           }
@@ -1242,10 +1319,9 @@ async function checkBindingAndLoad() {
     if (wecomUserId.value && corpId.value) {
       const res: any = await sidebarVerifyBinding(wecomUserId.value, corpId.value)
       if (res?.bound) {
-        sidebarToken.value = res.token
+        saveSidebarToken(res.token, res?.binding?.id)
         initUserStoreFromToken(res.token)
         boundUser.value = res.user
-        localStorage.setItem('wecom_sidebar_token', res.token)
         pageState.value = 'detail'
         await loadCustomerDetail()
         loadCollectStatus()
@@ -1289,27 +1365,16 @@ async function handleLogin() {
       authCode: authCode || undefined
     })
     if (res?.token) {
-      sidebarToken.value = res.token
+      saveSidebarToken(res.token, res?.binding?.id)
       initUserStoreFromToken(res.token)
       boundUser.value = res.user
-      localStorage.setItem('wecom_sidebar_token', res.token)
       localStorage.setItem('wecom_sidebar_tenant_code', loginForm.value.tenantCode)
       // 更新wecomUserId（后端可能通过OAuth2/姓名匹配解析出了真实ID）
       if (res?.binding?.wecomUserId && !res.binding.wecomUserId.startsWith('sidebar_')) {
         wecomUserId.value = res.binding.wecomUserId
         console.log('[Sidebar] 绑定后更新wecomUserId:', res.binding.wecomUserId)
       }
-      if (res?.isPlaceholder) {
-        // 仅在 corpId 已确定（SDK已初始化）但仍无法获取真实ID时才提示
-        // 首次登录时 corpId 还未确定是正常的，SDK会在后续自动获取并完善绑定
-        if (corpId.value && !corpId.value.includes('$')) {
-          ElMessage.warning({ message: '绑定成功，但未获取到企微真实ID。请联系管理员同步通讯录以完善绑定。', duration: 5000 })
-        } else {
-          ElMessage.success('登录成功')
-        }
-      } else {
-        ElMessage.success('登录成功')
-      }
+      ElMessage.success('登录成功')
       pageState.value = 'detail'
 
       // ★ 登录成功后，如果 corpId 还未确定（首次使用时跳过了SDK初始化），
@@ -1328,8 +1393,11 @@ async function handleLogin() {
         } catch { /* ignore */ }
       }
 
-      // 异步初始化SDK获取externalUserId（不阻塞已登录页面）
-      initSdkForExternalUserId()
+      // 等待 SDK 加载完成后再判断是否缺少真实企微ID，避免加载过程中误报
+      await initSdkForExternalUserId()
+      if (res?.isPlaceholder) {
+        warnIfStillPlaceholderAfterSdk()
+      }
 
       await loadCustomerDetail()
       loadCollectStatus()
@@ -1344,11 +1412,10 @@ async function handleLogin() {
 }
 
 function handleUnbind() {
-  localStorage.removeItem('wecom_sidebar_token')
-  sidebarToken.value = ''
-  boundUser.value = null
-  customerData.value = null
-  pageState.value = 'login'
+  if (sidebarToken.value) {
+    sidebarUnbindSelf(sidebarToken.value).catch(() => {})
+  }
+  clearSidebarAuthState()
 }
 
 // ==================== 加载客户详情 ====================
@@ -1369,10 +1436,7 @@ async function loadCustomerDetail() {
   } catch (e: any) {
     console.error('[Sidebar] Load customer error:', e)
     if (e?.response?.status === 401) {
-      // Token真正过期：清理并跳转登录（但保留租户编码）
-      localStorage.removeItem('wecom_sidebar_token')
-      sidebarToken.value = ''
-      pageState.value = 'login'
+      clearSidebarAuthState()
       return
     }
     customerData.value = { found: false }
@@ -1773,12 +1837,14 @@ async function handleRebind() {
       '换绑确认',
       { confirmButtonText: '确定换绑', cancelButtonText: '取消', type: 'warning' }
     )
-    // 清除绑定
-    localStorage.removeItem('wecom_sidebar_token')
-    sidebarToken.value = ''
-    boundUser.value = null
-    customerData.value = null
-    pageState.value = 'login'
+    if (sidebarToken.value) {
+      try {
+        await sidebarUnbindSelf(sidebarToken.value)
+      } catch (e: any) {
+        console.warn('[Sidebar] 解绑API失败，继续清除本地状态:', e?.message)
+      }
+    }
+    clearSidebarAuthState()
     ElMessage.success('已解除绑定，请重新登录绑定')
   } catch {
     // 用户取消
@@ -1787,6 +1853,7 @@ async function handleRebind() {
 
 onBeforeUnmount(() => {
   window.removeEventListener('sidebar-switch-tab', handleSidebarSwitchTab)
+  window.removeEventListener('storage', handleStorageSync)
 })
 
 </script>

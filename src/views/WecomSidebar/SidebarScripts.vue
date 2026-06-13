@@ -76,7 +76,7 @@
             <div style="display:flex;gap:4px;margin-bottom:6px;align-items:center">
               <input v-model="newCatName" placeholder="分组名称" class="preview-input" style="flex:1;font-size:11px" @keyup.enter="saveCat" />
               <select v-model="newCatScope" class="preview-input" style="width:65px;font-size:10px;padding:3px 4px">
-                <option value="public">🌐 公共</option>
+                <option v-if="isAdmin" value="public">🌐 公共</option>
                 <option value="personal">👤 个人</option>
               </select>
               <button class="s-btn" @click="saveCat">{{ editingCatId ? '保存' : '添加' }}</button>
@@ -112,7 +112,7 @@
           </select>
           <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">
             <span style="font-size:10px;color:#909399">类型：</span>
-            <span class="s-scope-radio" :class="{ active: scriptForm.scope === 'public' }" @click="scriptForm.scope = 'public'">🌐 公共</span>
+            <span v-if="isAdmin" class="s-scope-radio" :class="{ active: scriptForm.scope === 'public' }" @click="scriptForm.scope = 'public'">🌐 公共</span>
             <span class="s-scope-radio" :class="{ active: scriptForm.scope === 'personal' }" @click="scriptForm.scope = 'personal'">👤 个人</span>
           </div>
           <div style="display:flex;gap:4px;align-items:center;margin-bottom:6px">
@@ -145,9 +145,9 @@ const catPanelWidth = ref(90)
 const showCatDialog = ref(false)
 const showAddScriptDialog = ref(false)
 const editScript = ref<any>(null)
-const scriptForm = ref({ title: '', content: '', categoryId: null as number | null, scope: 'public', color: '' })
+const scriptForm = ref({ title: '', content: '', categoryId: null as number | null, scope: 'personal', color: '' })
 const newCatName = ref('')
-const newCatScope = ref('public')
+const newCatScope = ref('personal')
 const newCatColor = ref('')
 const editingCatId = ref<number | null>(null)
 const sColors = ['#303133', '#07c160', '#409eff', '#e6a23c', '#f56c6c', '#9b59b6', '#1abc9c']
@@ -156,6 +156,19 @@ const ctxMenu = ref({ visible: false, x: 0, y: 0, script: null as any })
 const catCtxMenu = ref({ visible: false, x: 0, y: 0, cat: null as any })
 
 const authHeaders = computed(() => ({ headers: { Authorization: `Bearer ${props.sidebarToken}` } }))
+
+function decodeJwtPayload(token: string): any {
+  try {
+    const base64 = token.split('.')[1]
+    if (!base64) return null
+    return JSON.parse(decodeURIComponent(escape(atob(base64.replace(/-/g, '+').replace(/_/g, '/')))))
+  } catch { return null }
+}
+
+const isAdmin = computed(() => {
+  const role = (decodeJwtPayload(props.sidebarToken)?.role || '').toLowerCase()
+  return ['super_admin', 'superadmin', 'admin'].includes(role)
+})
 
 const catScriptCount = computed(() => {
   const map: Record<number, number> = {}
@@ -192,12 +205,13 @@ async function loadScripts() {
 
 async function saveScript() {
   if (!scriptForm.value.title && !scriptForm.value.content) { ElMessage.warning('标题或内容至少填一项'); return }
+  const payload = { ...scriptForm.value, scope: isAdmin.value ? scriptForm.value.scope : 'personal' }
   try {
     if (editScript.value) {
-      await request.put(`/wecom/sidebar/scripts/${editScript.value.id}`, scriptForm.value, authHeaders.value as any)
+      await request.put(`/wecom/sidebar/scripts/${editScript.value.id}`, payload, authHeaders.value as any)
       ElMessage.success('已更新')
     } else {
-      await request.post('/wecom/sidebar/scripts', scriptForm.value, authHeaders.value as any)
+      await request.post('/wecom/sidebar/scripts', payload, authHeaders.value as any)
       ElMessage.success('已创建')
     }
     showAddScriptDialog.value = false
@@ -208,7 +222,7 @@ async function saveScript() {
 async function saveCat() {
   if (!newCatName.value.trim()) { ElMessage.warning('请输入分组名称'); return }
   try {
-    const payload: any = { name: newCatName.value.trim(), scope: newCatScope.value }
+    const payload: any = { name: newCatName.value.trim(), scope: isAdmin.value ? newCatScope.value : 'personal' }
     if (newCatColor.value) payload.color = newCatColor.value
     if (editingCatId.value) {
       await request.put(`/wecom/sidebar/script-categories/${editingCatId.value}`, payload, authHeaders.value as any)
@@ -247,10 +261,10 @@ async function delCat(cat: any) {
 function openAddScript(s: any) {
   if (s) {
     editScript.value = s
-    scriptForm.value = { title: s.title || '', content: s.content || '', categoryId: s.categoryId || null, scope: s.scope || 'public', color: s.color || '' }
+    scriptForm.value = { title: s.title || '', content: s.content || '', categoryId: s.categoryId || null, scope: s.scope || 'personal', color: s.color || '' }
   } else {
     editScript.value = null
-    scriptForm.value = { title: '', content: '', categoryId: selectedCatId.value === 0 ? null : selectedCatId.value, scope: 'public', color: '' }
+    scriptForm.value = { title: '', content: '', categoryId: selectedCatId.value === 0 ? null : selectedCatId.value, scope: 'personal', color: '' }
   }
   showAddScriptDialog.value = true
 }
@@ -258,7 +272,7 @@ function openAddScript(s: any) {
 function startEditCat(cat: any) {
   editingCatId.value = cat.id
   newCatName.value = cat.name
-  newCatScope.value = cat.scope || 'public'
+  newCatScope.value = cat.scope || 'personal'
   newCatColor.value = cat.color || ''
   showCatDialog.value = true
 }

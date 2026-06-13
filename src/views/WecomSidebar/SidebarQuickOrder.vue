@@ -1,5 +1,10 @@
 <template>
   <div class="sidebar-quick-order">
+    <!-- 无权下单提示 -->
+    <div v-if="props.readOnly" class="qo-readonly-banner">
+      ⚠️ 该客户归属其他成员，无权下单
+    </div>
+
     <!-- 步骤指示器（顶部固定） -->
     <div class="qo-steps">
       <div class="qo-step" :class="{ active: step === 1, done: step > 1 }" @click="step > 1 && goStep(1)">
@@ -21,7 +26,7 @@
     </div>
 
     <!-- ==================== 步骤1: 选择客户 ==================== -->
-    <div v-if="step === 1" class="qo-step-content">
+    <div v-if="step === 1 && !props.readOnly" class="qo-step-content">
       <div class="qo-mode-tabs">
         <span class="qo-mode-tab" :class="{ active: custMode === 'search' }" @click="custMode = 'search'">🔍 搜索客户</span>
         <span class="qo-mode-tab" :class="{ active: custMode === 'new' }" @click="switchToNewCust">➕ 新建客户</span>
@@ -132,7 +137,27 @@
         </div>
         <div class="card-title" style="margin-top:8px">📋 收货信息</div>
         <div class="form-group"><label>收货人 <span class="qo-req">*</span></label><input v-model="form.receiverName" placeholder="收货人姓名" class="preview-input" /></div>
-        <div class="form-group"><label>收货电话 <span class="qo-req">*</span></label><input v-model="form.receiverPhone" placeholder="收货电话" class="preview-input" /></div>
+        <div class="form-group"><label>收货电话 <span class="qo-req">*</span></label>
+          <div style="display:flex;gap:6px;align-items:center">
+            <input
+              v-if="receiverPhoneEditing"
+              v-model="form.receiverPhone"
+              placeholder="收货电话"
+              class="preview-input"
+              style="flex:1"
+              @blur="receiverPhoneEditing = false"
+            />
+            <input
+              v-else
+              :value="receiverPhoneMasked"
+              placeholder="收货电话"
+              class="preview-input"
+              style="flex:1"
+              readonly
+            />
+            <span class="action-link" style="flex-shrink:0;font-size:11px" @click="receiverPhoneEditing = true">编辑</span>
+          </div>
+        </div>
         <div class="form-group"><label>收货地址 <span class="qo-req">*</span></label><input v-model="form.receiverAddress" placeholder="省市区+详细地址（如：广东广州天河区XX路XX号）" class="preview-input" />
           <div v-if="addressError" style="color:#f56c6c;font-size:10px;margin-top:2px">{{ addressError }}</div>
         </div>
@@ -141,7 +166,7 @@
     </div>
 
     <!-- ==================== 步骤2: 选择产品 + 订单信息 ==================== -->
-    <div v-if="step === 2" class="qo-step-content">
+    <div v-if="step === 2 && !props.readOnly" class="qo-step-content">
       <!-- 选择产品卡片 -->
       <div class="preview-card">
         <div class="card-title">🛒 选择产品</div>
@@ -289,7 +314,7 @@
     </div>
 
     <!-- ==================== 步骤3: 确认下单 ==================== -->
-    <div v-if="step === 3" class="qo-step-content">
+    <div v-if="step === 3 && !props.readOnly" class="qo-step-content">
       <div class="preview-card">
         <div class="card-title">📝 订单确认</div>
         <div class="qo-confirm-section">
@@ -372,7 +397,7 @@ import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import request from '@/utils/request'
 
-const props = defineProps<{ sidebarToken: string; customerData?: any }>()
+const props = defineProps<{ sidebarToken: string; customerData?: any; readOnly?: boolean }>()
 
 const authHeaders = computed(() => ({
   headers: { Authorization: `Bearer ${props.sidebarToken}` }
@@ -386,6 +411,7 @@ const custList = ref<any[]>([])
 const custLoading = ref(false)
 const autoMatchedCustomer = ref<any>(null)
 const addressError = ref('')
+const receiverPhoneEditing = ref(false)
 
 function switchToNewCust() {
   custMode.value = 'new'
@@ -558,6 +584,8 @@ const maskPhone = (p: string) => {
   return p.replace(/(\d{3})\d{4}(\d{4})/, '$1****$2')
 }
 
+const receiverPhoneMasked = computed(() => maskPhone(form.value.receiverPhone))
+
 const goStep = (s: number) => { step.value = s }
 
 /** 返回侧边栏的CRM客户详情页 */
@@ -603,6 +631,7 @@ const selectCustomer = (c: any) => {
   form.value.receiverName = c.name || ''
   form.value.receiverPhone = c.phone || ''
   form.value.receiverAddress = parseAddress(c.address)
+  receiverPhoneEditing.value = false
 }
 
 /** 解析地址：支持JSON数组格式和纯字符串 */
@@ -639,6 +668,7 @@ const clearCustomer = () => {
   form.value.receiverName = ''
   form.value.receiverPhone = ''
   form.value.receiverAddress = ''
+  receiverPhoneEditing.value = false
 }
 
 // ========== 新建客户 ==========
@@ -922,6 +952,7 @@ watch(() => props.customerData, () => {
 
 <style scoped>
 .sidebar-quick-order { padding: 0 0 12px; background: #f5f6f7; min-height: 100%; color: #303133; }
+.qo-readonly-banner { margin: 8px; padding: 10px 12px; background: #fef0f0; color: #f56c6c; border-radius: 8px; font-size: 12px; text-align: center; border: 1px solid #fde2e2; }
 .qo-back-bar { padding: 6px 8px; background: #fff; border-bottom: 1px solid #f0f0f0; }
 .qo-back-btn { border: none; background: transparent; color: #4c6ef5; font-size: 12px; cursor: pointer; padding: 4px 8px; border-radius: 4px; }
 .qo-back-btn:hover { background: #f0f4ff; }

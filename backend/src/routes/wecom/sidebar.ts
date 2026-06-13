@@ -37,6 +37,95 @@ interface SidebarApp {
 const router = Router();
 const SIDEBAR_APPS_KEY = 'wecom_sidebar_apps';
 
+/** 侧边栏用户是否为管理员角色 */
+function isSidebarAdminRole(role?: string): boolean {
+  const r = (role || '').toLowerCase();
+  return ['super_admin', 'superadmin', 'admin'].includes(r);
+}
+
+/** 侧边栏用户是否为部门经理角色 */
+function isSidebarManagerRole(role?: string): boolean {
+  const r = (role || '').toLowerCase();
+  return ['department_manager', 'manager', '部门经理'].includes(r);
+}
+
+/**
+ * 按角色过滤侧边栏可访问的 CRM 客户（与主端客户列表权限一致）
+ * - 管理员：全部客户
+ * - 部门经理：本部门成员创建/负责的客户
+ * - 销售员：自己创建/负责的客户 + 分享给自己的客户
+ */
+async function applySidebarCustomerScope(qb: any, sidebarUser: any, alias = 'c') {
+  const userId = sidebarUser?.crmUserId || sidebarUser?.userId;
+  const role = sidebarUser?.role || '';
+  const tenantId = sidebarUser?.tenantId;
+  if (!userId) {
+    qb.andWhere('1 = 0');
+    return;
+  }
+  if (isSidebarAdminRole(role)) return;
+
+  const { CustomerShare } = await import('../../entities/CustomerShare');
+  const { User } = await import('../../entities/User');
+  const shareRepo = AppDataSource.getRepository(CustomerShare);
+  const userRepo = AppDataSource.getRepository(User);
+
+  const sharedCustomers = await shareRepo.find({
+    where: { sharedTo: userId, status: 'active' },
+    select: ['customerId']
+  });
+  const sharedIds = sharedCustomers.map((s: any) => s.customerId);
+
+  if (isSidebarManagerRole(role)) {
+    const user = await userRepo.findOne({
+      where: { id: userId, ...(tenantId ? { tenantId } : {}) }
+    });
+    const deptId = user?.departmentId;
+    if (deptId) {
+      const members = await userRepo.find({
+        where: { departmentId: deptId, ...(tenantId ? { tenantId } : {}) },
+        select: ['id']
+      });
+      const memberIds = members.map((m: any) => m.id);
+      if (memberIds.length > 0) {
+        if (sharedIds.length > 0) {
+          qb.andWhere(
+            `(${alias}.createdBy IN (:...memberIds) OR ${alias}.salesPersonId IN (:...memberIds) OR ${alias}.id IN (:...sharedIds))`,
+            { memberIds, sharedIds }
+          );
+        } else {
+          qb.andWhere(
+            `(${alias}.createdBy IN (:...memberIds) OR ${alias}.salesPersonId IN (:...memberIds))`,
+            { memberIds }
+          );
+        }
+        return;
+      }
+    }
+  }
+
+  if (sharedIds.length > 0) {
+    qb.andWhere(
+      `(${alias}.createdBy = :userId OR ${alias}.salesPersonId = :userId OR ${alias}.id IN (:...sharedIds))`,
+      { userId, sharedIds }
+    );
+  } else {
+    qb.andWhere(`(${alias}.createdBy = :userId OR ${alias}.salesPersonId = :userId)`, { userId });
+  }
+}
+
+/** 校验侧边栏用户是否有权操作指定 CRM 客户 */
+async function canSidebarAccessCustomer(sidebarUser: any, customerId: string | number): Promise<boolean> {
+  const tenantId = sidebarUser?.tenantId;
+  const { Customer } = await import('../../entities/Customer');
+  const customerRepo = AppDataSource.getRepository(Customer);
+  const qb = customerRepo.createQueryBuilder('c').where('c.id = :id', { id: customerId });
+  if (tenantId) qb.andWhere('c.tenantId = :tenantId', { tenantId });
+  await applySidebarCustomerScope(qb, sidebarUser);
+  const found = await qb.getOne();
+  return !!found;
+}
+
 // ==================== P1安全加固: 速率限制 ====================
 
 /** 侧边栏认证接口限流: 每IP每5分钟最多200次（多个sidebar tab + 切换客户 + token刷新都会触发） */
@@ -700,6 +789,7 @@ router.get('/sidebar/customer-detail', authenticateSidebarToken, async (req: Req
         crmCustomer: crmCustomer ? {
           id: crmCustomer.id, name: crmCustomer.name,
           phone: rawPhone,
+          salesPersonId: crmCustomer.salesPersonId || null,
           gender: crmCustomer.gender,
           age: crmCustomer.age,
           height: crmCustomer.height ? Number(crmCustomer.height) : null,
@@ -803,6 +893,40 @@ router.post('/sidebar/sync-single-customer', authenticateSidebarToken, async (re
 });
 
 // ==================== Phase 7: 侧边栏绑定管理 ====================
+
+/**
+ * 侧边栏自助解绑（换绑/退出登录时调用，使用侧边栏 token）
+ */
+router.post('/sidebar/unbind-self', authenticateSidebarToken, async (req: Request, res: Response) => {
+  try {
+    const sidebarUser = (req as any).sidebarUser;
+    const crmUserId = sidebarUser?.crmUserId || sidebarUser?.userId;
+    const corpId = sidebarUser?.corpId || '';
+    if (!crmUserId) {
+      return res.status(400).json({ success: false, message: '无法识别当前用户' });
+    }
+
+    const bindingRepo = AppDataSource.getRepository(WecomUserBinding);
+    const where: any = { crmUserId, isEnabled: true };
+    if (corpId) where.corpId = corpId;
+
+    const binding = await bindingRepo.findOne({ where });
+    if (binding) {
+      binding.isEnabled = false;
+      await bindingRepo.save(binding);
+      log.info(`[Sidebar] 自助解绑: binding=${binding.id}, crmUserId=${crmUserId}`);
+    }
+
+    res.json({
+      success: true,
+      message: '已解除当前绑定',
+      data: binding ? { bindingId: binding.id } : null
+    });
+  } catch (error: any) {
+    log.error('[Wecom Sidebar] Unbind-self error:', error.message);
+    res.status(500).json({ success: false, message: '解绑失败' });
+  }
+});
 
 /**
  * 侧边栏换绑
@@ -1315,7 +1439,9 @@ router.get('/sidebar/search-customers', authenticateSidebarToken, async (req: Re
 
     const qb = customerRepo.createQueryBuilder('c')
       .where('c.tenantId = :tenantId', { tenantId })
-      .select(['c.id', 'c.name', 'c.phone', 'c.gender', 'c.salesPersonName']);
+      .select(['c.id', 'c.name', 'c.phone', 'c.address', 'c.gender', 'c.salesPersonName']);
+
+    await applySidebarCustomerScope(qb, sidebarUser);
 
     if (keyword && String(keyword).trim()) {
       const kw = `%${String(keyword).trim()}%`;
@@ -1324,13 +1450,12 @@ router.get('/sidebar/search-customers', authenticateSidebarToken, async (req: Re
 
     const customers = await qb.orderBy('c.createdAt', 'DESC').take(20).getMany();
 
-    // 脱敏手机号
+    // 返回完整手机号供下单提交，前端列表展示时自行脱敏
     const result = customers.map(c => ({
       id: c.id,
       name: c.name,
-      phone: c.phone && c.phone.length >= 7
-        ? c.phone.replace(/(\d{3})\d{4}(\d{4})/, '$1****$2')
-        : (c.phone ? '****' : null),
+      phone: c.phone || null,
+      address: c.address || null,
       gender: c.gender,
       salesPersonName: c.salesPersonName
     }));
@@ -1400,6 +1525,11 @@ router.post('/sidebar/link-crm-customer', authenticateSidebarToken, async (req: 
     const customerRepo = AppDataSource.getRepository(Customer);
     const crmCustomer = await customerRepo.findOne({ where: { id: crmCustomerId, tenantId } });
     if (!crmCustomer) return res.status(404).json({ success: false, message: '未找到CRM客户' });
+
+    const hasAccess = await canSidebarAccessCustomer(sidebarUser, crmCustomerId);
+    if (!hasAccess) {
+      return res.status(403).json({ success: false, message: '无权关联该CRM客户，只能关联您有权限的客户' });
+    }
 
     // 关联唯一性检查：
     // 检查CRM客户是否配置了多UserID
@@ -2883,7 +3013,11 @@ router.get('/sidebar/check-phone', authenticateSidebarToken, async (req: Request
 
     const { Customer } = await import('../../entities/Customer');
     const customerRepo = AppDataSource.getRepository(Customer);
-    const customer = await customerRepo.findOne({ where: { phone, tenantId } });
+    const qb = customerRepo.createQueryBuilder('c')
+      .where('c.phone = :phone', { phone })
+      .andWhere('c.tenantId = :tenantId', { tenantId });
+    await applySidebarCustomerScope(qb, sidebarUser);
+    const customer = await qb.getOne();
     res.json({ success: true, data: customer ? { id: customer.id, name: customer.name, phone: customer.phone } : null });
   } catch (_error: any) {
     res.json({ success: true, data: null });
