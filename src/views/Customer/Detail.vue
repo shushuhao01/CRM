@@ -1123,7 +1123,7 @@
                     <div class="log-header">
                       <el-tag :type="getLogTagType(item.logType)" size="small">{{ getLogTypeText(item.logType) }}</el-tag>
                     </div>
-                    <div class="log-content">{{ item.content }}</div>
+                    <div class="log-content">{{ maskLogPhone(item.content) }}</div>
                     <!-- 详细字段变更 -->
                     <div class="log-changes" v-if="item.detail && item.detail.changes && item.detail.changes.length > 0">
                       <div class="change-item" v-for="(change, ci) in item.detail.changes" :key="ci">
@@ -2145,6 +2145,11 @@ const getSourceText = (source: string) => {
     'social': '社交媒体',
     'search': '搜索引擎',
     'advertisement': '广告投放',
+    'miniprogram': '小程序提交',
+    'wecom': '企业微信',
+    'manual': '手动录入',
+    'import': '批量导入',
+    'batch_import': '批量导入',
     'other': '其他渠道'
   }
   return sourceMap[source] || source
@@ -3048,6 +3053,11 @@ const cancelFollowUp = () => {
 }
 
 // 客户日志辅助方法
+const maskLogPhone = (text: string) => {
+  if (!text) return ''
+  return text.replace(/(\d{3})\d{4}(\d{4})/g, '$1****$2')
+}
+
 const getLogTypeText = (logType: string) => {
   const map: Record<string, string> = {
     'create': '创建客户',

@@ -115,6 +115,7 @@ const mpStats = ref({ filled: 0 })
 const records = ref<any[]>([])
 const recordsTotal = ref(0)
 const recordsLoading = ref(false)
+const customFieldLabels = ref<Record<string, string>>({})
 const page = ref(1)
 const pageSize = 5
 const expandedId = ref<string | null>(null)
@@ -196,6 +197,7 @@ const loadRecords = async () => {
       headers: getHeaders()
     })
     const rd = res?.data?.data || res?.data || {}
+    if (rd.customFieldLabels) customFieldLabels.value = rd.customFieldLabels
     records.value = (rd.list || []).map((r: any) => ({
       id: r.id,
       customerId: r.customerId || r.id,
@@ -268,11 +270,12 @@ const getFilledFields = (rec: any) => {
       return { key: f.key, label: f.label, value }
     })
 
-  // 自定义字段
+  // 自定义字段（使用后端返回的中文名映射）
   if (rec.customFields && typeof rec.customFields === 'object') {
     for (const [key, val] of Object.entries(rec.customFields)) {
       if (val !== null && val !== undefined && val !== '') {
-        results.push({ key: `custom_${key}`, label: key, value: String(val) })
+        const label = customFieldLabels.value[key] || key.replace(/^customer_custom_/, '自定义')
+        results.push({ key: `custom_${key}`, label, value: String(val) })
       }
     }
   }

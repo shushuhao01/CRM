@@ -1569,7 +1569,23 @@ router.get('/mp-collect-records', authenticateSidebarToken, async (req: Request,
       };
     });
 
-    res.json({ success: true, data: { list: rawList, total: effectiveTotal, page: parseInt(page, 10), pageSize: take } });
+    // 获取自定义字段的 key→中文名 映射
+    let customFieldLabels: Record<string, string> = {};
+    try {
+      const { TenantSettings } = await import('../../entities/TenantSettings');
+      const settingsRepo = AppDataSource.getRepository(TenantSettings);
+      const fieldConfig = await settingsRepo.findOne({ where: { tenantId, settingKey: 'mp_form_config' } });
+      if (fieldConfig?.settingValue) {
+        const config = typeof fieldConfig.settingValue === 'string' ? JSON.parse(fieldConfig.settingValue) : fieldConfig.settingValue;
+        if (Array.isArray(config.customFields)) {
+          config.customFields.forEach((f: any) => {
+            if (f.fieldKey && f.fieldName) customFieldLabels[f.fieldKey] = f.fieldName;
+          });
+        }
+      }
+    } catch { /* ignore */ }
+
+    res.json({ success: true, data: { list: rawList, total: effectiveTotal, page: parseInt(page, 10), pageSize: take, customFieldLabels } });
   } catch (error: any) {
     log.error('[H5 App] mp-collect-records error:', error.message);
     res.json({ success: true, data: { list: [], total: 0 } });
