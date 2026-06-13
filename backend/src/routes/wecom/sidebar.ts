@@ -668,6 +668,7 @@ router.get('/sidebar/customer-detail', authenticateSidebarToken, async (req: Req
 
     let crmCustomer: any = null;
     let canAccess = false;
+    let resolvedSalesPersonName = '';
     let orders: any[] = [];
     let orderTotal = 0;
     let stats = { orderCount: 0, totalAmount: 0, lastOrderTime: null as string | null };
@@ -686,10 +687,8 @@ router.get('/sidebar/customer-detail', authenticateSidebarToken, async (req: Req
       crmCustomer = await customerRepo.findOne({ where: custWhere });
       if (crmCustomer) {
         canAccess = await canSidebarAccessCustomer(sidebarUser, crmCustomer.id);
+        resolvedSalesPersonName = await resolveCrmSalesPersonName(crmCustomer.salesPersonId, crmCustomer.salesPersonName, tenantId);
       }
-      const resolvedSalesPersonName = crmCustomer
-        ? await resolveCrmSalesPersonName(crmCustomer.salesPersonId, crmCustomer.salesPersonName, tenantId)
-        : '';
       if (crmCustomer && canAccess) {
         // 分页查询订单
         const orderWhere: any = { customerId: crmCustomer.id };
