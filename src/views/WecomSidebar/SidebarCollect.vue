@@ -192,7 +192,7 @@ const loadRecords = async () => {
       phone: r.phone || '',
       maskedPhone: r.phone ? maskPhone(r.phone) : '',
       address: [r.province, r.city, r.district, r.street, r.detailAddress].filter(Boolean).join('') || '',
-      gender: r.gender || '',
+      gender: r.gender === 'male' ? '男' : r.gender === 'female' ? '女' : r.gender || '',
       email: r.email || '',
       wechat: r.wechat || '',
       age: r.age || '',
