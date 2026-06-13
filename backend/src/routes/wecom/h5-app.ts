@@ -1481,6 +1481,7 @@ router.get('/mp-collect-records', authenticateSidebarToken, async (req: Request,
                 c.id, c.name, c.phone, c.customer_code AS customer_no,
                 c.gender, c.province, c.city, c.district, c.street, c.detail_address,
                 c.email, c.wechat, c.age, c.birthday, c.height, c.weight, c.remark,
+                c.medical_history, c.improvement_goals, c.other_goals, c.custom_fields,
                 c.mp_submit_count
          FROM customer_logs cl
          INNER JOIN customers c ON c.id = cl.customer_id
@@ -1497,6 +1498,7 @@ router.get('/mp-collect-records', authenticateSidebarToken, async (req: Request,
         `SELECT c.id AS log_id, c.created_at, c.id, c.name, c.phone, c.customer_code AS customer_no,
                 c.gender, c.province, c.city, c.district, c.street, c.detail_address,
                 c.email, c.wechat, c.age, c.birthday, c.height, c.weight, c.remark,
+                c.medical_history, c.improvement_goals, c.other_goals, c.custom_fields,
                 c.mp_submit_count
          FROM customers c
          WHERE c.tenant_id = ? AND c.sales_person_id = ? AND c.source = 'miniprogram'
@@ -1541,6 +1543,23 @@ router.get('/mp-collect-records', authenticateSidebarToken, async (req: Request,
         height: r.height || '',
         weight: r.weight || '',
         remark: r.remark || '',
+        medicalHistory: r.medical_history || '',
+        improvementGoals: (() => {
+          try {
+            const v = r.improvement_goals;
+            if (!v) return '';
+            const arr = typeof v === 'string' ? JSON.parse(v) : v;
+            return Array.isArray(arr) ? arr.join('、') : String(v);
+          } catch { return String(r.improvement_goals || ''); }
+        })(),
+        otherGoals: r.other_goals || '',
+        customFields: (() => {
+          try {
+            const v = r.custom_fields;
+            if (!v) return null;
+            return typeof v === 'string' ? JSON.parse(v) : v;
+          } catch { return null; }
+        })(),
         createdAt: r.created_at,
         submitCount,
         action,

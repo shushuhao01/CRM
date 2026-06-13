@@ -49,7 +49,7 @@
     <div class="mpc-records">
       <div class="mpc-records-title" style="display:flex;justify-content:space-between;align-items:center">
         <span>收集记录 <span v-if="recordsTotal > 0" style="font-size:10px;color:#909399">({{ recordsTotal }})</span></span>
-        <span class="mpc-refresh-btn" @click="refreshRecords" :style="{ opacity: recordsLoading ? 0.5 : 1 }" title="刷新">
+        <span class="mpc-refresh-btn" :class="{ 'refreshing': refreshing }" @click="handleRefresh" title="刷新">
           <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="#909399" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg>
         </span>
       </div>
@@ -66,10 +66,10 @@
                 </span>
                 <span class="mpc-record-time">{{ rec.time }}</span>
               </div>
-              <div class="mpc-record-meta">
-                <span class="mpc-record-tag" :class="rec.action === 'created' ? 'tag-first' : 'tag-update'">{{ rec.submitLabel }}</span>
+              <div class="mpc-record-phone">
+                {{ rec.maskedPhone || '未填手机号' }}
+                <span class="mpc-submit-tag" :class="rec.action === 'created' ? 'submit-first' : 'submit-update'">{{ rec.submitLabel }}</span>
               </div>
-              <div class="mpc-record-phone">{{ rec.maskedPhone || '未填手机号' }}</div>
               <div v-if="rec.address" class="mpc-record-address">{{ rec.address }}</div>
             </div>
           </div>
@@ -98,12 +98,16 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { ElMessage } from 'element-plus'
 import { maskPhone } from '@/utils/sensitiveInfo'
 
 const props = defineProps<{
   sidebarToken: string
+}>()
+
+const emit = defineEmits<{
+  (e: 'records-updated'): void
 }>()
 
 const sending = ref(false)
@@ -208,19 +212,42 @@ const loadRecords = async () => {
       height: r.height || '',
       weight: r.weight || '',
       remark: r.remark || '',
+      medicalHistory: r.medicalHistory || '',
+      improvementGoals: r.improvementGoals || '',
+      otherGoals: r.otherGoals || '',
+      customFields: r.customFields || null,
       submitCount: r.submitCount || 1,
       action: r.action || 'created',
       submitLabel: r.submitLabel || (r.submitCount <= 1 ? '首次提交' : `更新第${(r.submitCount || 1) - 1}次`),
-      time: r.createdAt ? new Date(r.createdAt).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : ''
+      time: r.createdAt ? new Date(r.createdAt).toLocaleString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Shanghai' }) : ''
     }))
     recordsTotal.value = rd.total || 0
   } catch { records.value = []; recordsTotal.value = 0 }
   recordsLoading.value = false
 }
 
+const formatDateField = (val: any): string => {
+  if (!val) return ''
+  const s = String(val)
+  if (s.includes('T') || s.includes('Z') || s.match(/^\d{4}-\d{2}-\d{2}/)) {
+    try {
+      const d = new Date(s)
+      if (!isNaN(d.getTime())) {
+        if (s.length <= 10 || s.endsWith('T00:00:00.000Z') || s.endsWith('T16:00:00.000Z')) {
+          return d.toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', timeZone: 'Asia/Shanghai' })
+        }
+        return d.toLocaleString('zh-CN', { hour12: false, timeZone: 'Asia/Shanghai' })
+      }
+    } catch { /* fallback */ }
+  }
+  return s
+}
+
 /** 获取记录中已填写的字段（排除默认已显示的姓名/手机/地址） */
 const getFilledFields = (rec: any) => {
-  const fieldDefs: { key: string; label: string; mask?: (v: string) => string }[] = [
+  const dateKeys = new Set(['birthday'])
+  const unitMap: Record<string, string> = { age: '岁', height: 'cm', weight: 'kg' }
+  const fieldDefs: { key: string; label: string }[] = [
     { key: 'gender', label: '性别' },
     { key: 'age', label: '年龄' },
     { key: 'birthday', label: '生日' },
@@ -228,15 +255,47 @@ const getFilledFields = (rec: any) => {
     { key: 'weight', label: '体重' },
     { key: 'email', label: '邮箱' },
     { key: 'wechat', label: '微信号' },
+    { key: 'medicalHistory', label: '疾病史' },
+    { key: 'improvementGoals', label: '改善目标' },
+    { key: 'otherGoals', label: '其他目标' },
     { key: 'remark', label: '备注' },
   ]
-  return fieldDefs
+  const results = fieldDefs
     .filter(f => rec[f.key])
-    .map(f => ({
-      key: f.key,
-      label: f.label,
-      value: f.mask ? f.mask(rec[f.key]) : String(rec[f.key])
-    }))
+    .map(f => {
+      let value = dateKeys.has(f.key) ? formatDateField(rec[f.key]) : String(rec[f.key])
+      if (unitMap[f.key]) value += unitMap[f.key]
+      return { key: f.key, label: f.label, value }
+    })
+
+  // 自定义字段
+  if (rec.customFields && typeof rec.customFields === 'object') {
+    for (const [key, val] of Object.entries(rec.customFields)) {
+      if (val !== null && val !== undefined && val !== '') {
+        results.push({ key: `custom_${key}`, label: key, value: String(val) })
+      }
+    }
+  }
+
+  return results
+}
+
+const refreshing = ref(false)
+
+const handleRefresh = async () => {
+  if (refreshing.value) return
+  refreshing.value = true
+  try {
+    page.value = 1
+    await loadStats()
+    await loadRecords()
+    ElMessage.success('已刷新最新记录')
+    emit('records-updated')
+  } catch {
+    ElMessage.error('刷新失败')
+  } finally {
+    refreshing.value = false
+  }
 }
 
 const refreshRecords = async () => {
@@ -428,11 +487,34 @@ const handleSend = async () => {
 }
 
 
+let pollTimer: ReturnType<typeof setInterval> | null = null
+const lastTotal = ref(0)
+
+const pollForNewRecords = async () => {
+  try {
+    const { default: axios } = await import('axios')
+    const res: any = await axios.get(`${getBaseUrl()}/mp-collect-stats`, { headers: getHeaders() })
+    const filled = res?.data?.data?.filled || res?.data?.filled || 0
+    if (filled > lastTotal.value && lastTotal.value > 0) {
+      page.value = 1
+      await loadRecords()
+      await loadStats()
+      emit('records-updated')
+    }
+    lastTotal.value = filled
+  } catch { /* ignore */ }
+}
+
 onMounted(() => {
   loadSendModeFromBackend()
-  loadStats()
+  loadStats().then(() => { lastTotal.value = mpStats.value.filled })
   loadRecords()
   generateCard(false)
+  pollTimer = setInterval(pollForNewRecords, 15000)
+})
+
+onBeforeUnmount(() => {
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null }
 })
 </script>
 
@@ -461,7 +543,9 @@ onMounted(() => {
 .mpc-send-tip { text-align: center; font-size: 10px; color: #9ca3af; margin-top: 6px; }
 .mpc-records { margin: 0 10px 8px; background: #fff; border-radius: 10px; padding: 10px 12px; box-shadow: 0 1px 4px rgba(0,0,0,0.04); }
 .mpc-records-title { font-size: 11px; font-weight: 600; color: #6b7280; margin-bottom: 8px; }
-.mpc-refresh-btn { cursor: pointer; display: inline-flex; align-items: center; }
+.mpc-refresh-btn { cursor: pointer; display: inline-flex; align-items: center; transition: transform 0.3s; }
+.mpc-refresh-btn.refreshing svg { animation: spin-refresh 0.8s linear infinite; }
+@keyframes spin-refresh { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 .mpc-record-item { border-bottom: 1px solid #f5f5f5; }
 .mpc-record-item:last-child { border-bottom: none; }
 .mpc-record-row { display: flex; align-items: flex-start; gap: 8px; padding: 8px 0; cursor: pointer; }
@@ -470,10 +554,9 @@ onMounted(() => {
 .mpc-record-top { display: flex; align-items: center; justify-content: space-between; }
 .mpc-record-name { font-size: 12px; font-weight: 600; color: #1f2937; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mpc-record-code { font-size: 9px; font-weight: 400; color: #6b7280; margin-left: 4px; }
-.mpc-record-meta { margin-top: 2px; }
-.mpc-record-tag { display: inline-block; font-size: 9px; padding: 1px 5px; border-radius: 3px; }
-.mpc-record-tag.tag-first { background: #ecfdf5; color: #059669; }
-.mpc-record-tag.tag-update { background: #eff6ff; color: #2563eb; }
+.mpc-submit-tag { font-size: 9px; margin-left: 6px; font-weight: 500; }
+.mpc-submit-tag.submit-first { color: #059669; }
+.mpc-submit-tag.submit-update { color: #e67e22; }
 .mpc-record-time { font-size: 9px; color: #b0b8c1; white-space: nowrap; flex-shrink: 0; margin-left: 8px; }
 .mpc-record-phone { font-size: 10px; color: #6b7280; margin-top: 2px; }
 .mpc-record-address { font-size: 10px; color: #9ca3af; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

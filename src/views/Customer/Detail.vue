@@ -3086,6 +3086,7 @@ const getLogTypeText = (logType: string) => {
     'edit_address': '编辑地址',
     'delete_address': '删除地址',
     'star_rating': '星级评分',
+    'mp_submit': '小程序提交资料',
     'other': '其他操作'
   }
   return map[logType] || logType.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()).replace(/^/, '操作: ')
@@ -3123,6 +3124,7 @@ const getLogTagType = (logType: string) => {
     'recover': 'success',
     'merge': 'warning',
     'star_rating': 'warning',
+    'mp_submit': 'success',
     'add_address': 'info',
     'edit_address': 'warning',
     'delete_address': 'danger'
@@ -3138,7 +3140,8 @@ const getLogTimelineType = (logType: string) => {
     'delete': 'danger',
     'share': 'primary',
     'add_order': 'success',
-    'add_followup': 'primary'
+    'add_followup': 'primary',
+    'mp_submit': 'success'
   }
   return map[logType] || 'info'
 }
@@ -3616,10 +3619,25 @@ const loadFollowUpRecords = async () => {
   }
 }
 
-// 监听路由参数变化
-watch(() => route.params.id, (newId) => {
-  if (newId) {
+// 监听路由参数变化 - 切换客户时清空并重载所有子数据
+watch(() => route.params.id, (newId, oldId) => {
+  if (newId && newId !== oldId) {
+    orderHistory.value = []
+    serviceRecords.value = []
+    callRecords.value = []
+    followUpRecords.value = []
+    customerLogs.value = []
+    customerStats.value = { totalConsumption: 0, orderCount: 0, returnCount: 0, lastOrderDate: '' }
+
     loadCustomerDetail()
+    loadCustomerStats()
+    loadOrderHistory()
+
+    const tab = activeTab.value
+    if (tab === 'service') loadServiceRecords()
+    else if (tab === 'calls') loadCallRecords()
+    else if (tab === 'followup') loadFollowUpRecords()
+    else if (tab === 'logs') loadCustomerLogs()
   }
 })
 

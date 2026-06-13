@@ -119,7 +119,7 @@
       <SidebarPortrait v-else-if="currentTab === 'portrait'" :sidebar-token="sidebarToken" :customer-data="customerData" />
 
       <!-- 资料收集 Tab -->
-      <SidebarCollect v-else-if="currentTab === 'mp-collect'" :sidebar-token="sidebarToken" />
+      <SidebarCollect v-else-if="currentTab === 'mp-collect'" :sidebar-token="sidebarToken" @records-updated="onCollectRecordsUpdated" />
 
       <!-- CRM客户详情 Tab -->
       <template v-else-if="currentTab === 'customer'">
@@ -171,7 +171,7 @@
           <div class="preview-card">
             <div class="card-title" style="display:flex;justify-content:space-between;align-items:center">
               <span style="display:flex;align-items:center;gap:4px">👤 CRM客户信息
-                <span class="btn-refresh-inline" @click="refreshCustomerData" title="刷新客户信息">🔄</span>
+                <svg class="btn-refresh-svg" @click="refreshCustomerData" title="刷新客户信息" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#909399" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="cursor:pointer;flex-shrink:0"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg>
               </span>
               <button class="btn-send-form-card" @click="handleSendFormCard" :disabled="sendingFormCard">{{ sendingFormCard ? '发送中...' : '📋 转发填写资料' }}</button>
             </div>
@@ -281,7 +281,7 @@
                 <div style="max-height:200px;overflow-y:auto">
                   <div v-for="c in linkCustomerList" :key="c.id" class="link-cust-item" @click="doLinkCustomer(c)">
                     <span style="font-weight:500">{{ c.name }}</span>
-                    <span style="color:#909399;font-size:11px;margin-left:8px">{{ c.phone }}</span>
+                    <span style="color:#909399;font-size:11px;margin-left:8px">{{ maskPhone(c.phone) }}</span>
                   </div>
                   <div v-if="!linkCustomerList.length && linkKeyword" style="text-align:center;padding:12px;color:#909399;font-size:11px">未找到客户</div>
                 </div>
@@ -316,6 +316,11 @@ import SidebarScripts from './SidebarScripts.vue'
 import SidebarQuickOrder from './SidebarQuickOrder.vue'
 import SidebarPortrait from './SidebarPortrait.vue'
 import SidebarCollect from './SidebarCollect.vue'
+
+const maskPhone = (p: string) => {
+  if (!p || p.length < 7) return p || ''
+  return p.slice(0, 3) + '****' + p.slice(-4)
+}
 
 const isDev = import.meta.env.DEV
 const pageState = ref<'loading' | 'no-sdk' | 'login' | 'detail' | 'error'>('loading')
@@ -1665,6 +1670,11 @@ async function refreshCustomerData() {
   }
 }
 
+function onCollectRecordsUpdated() {
+  loadCustomerDetail()
+  loadCollectStatus()
+}
+
 /** 订单分页加载 */
 async function loadOrderPage(page: number) {
   const maxPage = Math.ceil((customerData.value?.orderTotal || 0) / 3) || 1
@@ -2009,8 +2019,8 @@ onBeforeUnmount(() => {
 .order-amount { color: #f56c6c; font-weight: 500; }
 .order-products { margin-top: 4px; padding-top: 4px; border-top: 1px dashed #e4e7ed; }
 /* 刷新按钮 */
-.btn-refresh-inline { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 50%; cursor: pointer; color: #909399; transition: all 0.2s; font-size: 12px; }
-.btn-refresh-inline:hover { color: #409eff; background: #ecf5ff; }
+.btn-refresh-svg { transition: all 0.2s; border-radius: 50%; padding: 1px; }
+.btn-refresh-svg:hover { stroke: #409eff; background: #ecf5ff; }
 /* 转发填写资料按钮 */
 .btn-send-form-card { font-size: 10px; padding: 2px 8px; border: 1px solid #93c5fd; border-radius: 4px; background: #fff; color: #3b82f6; cursor: pointer; white-space: nowrap; transition: all 0.2s; }
 .btn-send-form-card:hover { background: #eff6ff; border-color: #60a5fa; }
