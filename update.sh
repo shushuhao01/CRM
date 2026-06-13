@@ -31,14 +31,14 @@ cd "$PROJECT_DIR"
 echo -e "${YELLOW}[i] 当前目录: $(pwd)${NC}"
 echo ""
 
-# 设置 Node.js 内存限制
+# 设置 Node.js 内存限制（使用总内存的60%，确保系统和其他服务有足够空间）
 TOTAL_MEM=$(free -m 2>/dev/null | awk '/^Mem:/{print $2}' || echo 4096)
-if [ "$TOTAL_MEM" -lt 3000 ]; then
-    NODE_MEM=1536
-else
-    NODE_MEM=4096
-fi
+NODE_MEM=$((TOTAL_MEM * 60 / 100))
+# 最低1536MB，最高6144MB
+if [ "$NODE_MEM" -lt 1536 ]; then NODE_MEM=1536; fi
+if [ "$NODE_MEM" -gt 6144 ]; then NODE_MEM=6144; fi
 export NODE_OPTIONS="--max-old-space-size=$NODE_MEM"
+echo -e "${YELLOW}[i] 内存: ${TOTAL_MEM}MB，Node构建限制: ${NODE_MEM}MB${NC}"
 
 # ==================== Step 1: 备份配置文件 ====================
 echo -e "${YELLOW}[1] 备份配置文件...${NC}"
@@ -119,6 +119,12 @@ echo ""
 
 # ==================== Step 5: 构建所有端 ====================
 echo -e "${YELLOW}[5] 构建项目...${NC}"
+
+# ★ 构建前先停掉后端进程释放内存（后端 Node 进程占 200-500MB，构建时不需要）
+if command -v pm2 &> /dev/null && pm2 describe crm-backend &> /dev/null 2>&1; then
+    echo -e "${YELLOW}    [i] 暂停后端服务以释放构建内存...${NC}"
+    pm2 stop crm-backend 2>/dev/null || true
+fi
 
 # 5.1 CRM 主应用
 echo -e "${YELLOW}    [5.1] 构建 CRM 主应用...${NC}"
