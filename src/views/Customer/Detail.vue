@@ -3055,7 +3055,7 @@ const cancelFollowUp = () => {
 // 客户日志辅助方法
 const maskLogPhone = (text: string) => {
   if (!text) return ''
-  return text.replace(/(\d{3})\d{4}(\d{4})/g, '$1****$2')
+  return text.replace(/1[3-9]\d{9}/g, (phone) => displaySensitiveInfoNew(phone, SensitiveInfoType.PHONE))
 }
 
 const getLogTypeText = (logType: string) => {

@@ -1569,19 +1569,30 @@ router.get('/mp-collect-records', authenticateSidebarToken, async (req: Request,
       };
     });
 
-    // 获取自定义字段的 key→中文名 映射
+    // 获取自定义字段的 key→中文名 映射（与小程序 form-config 读取逻辑一致）
     let customFieldLabels: Record<string, string> = {};
     try {
-      const { TenantSettings } = await import('../../entities/TenantSettings');
-      const settingsRepo = AppDataSource.getRepository(TenantSettings);
-      const fieldConfig = await settingsRepo.findOne({ where: { tenantId, settingKey: 'mp_form_config' } });
-      if (fieldConfig?.settingValue) {
-        const config = typeof fieldConfig.settingValue === 'string' ? JSON.parse(fieldConfig.settingValue) : fieldConfig.settingValue;
-        if (Array.isArray(config.customFields)) {
-          config.customFields.forEach((f: any) => {
-            if (f.fieldKey && f.fieldName) customFieldLabels[f.fieldKey] = f.fieldName;
-          });
+      const { SystemConfig } = await import('../../entities/SystemConfig');
+      const sysConfigRepo = AppDataSource.getRepository(SystemConfig);
+      const sysConfigRow = await sysConfigRepo.findOne({
+        where: { tenantId, configKey: 'customerFieldConfig', configGroup: 'customer_settings' }
+      });
+      let fieldConfig: any = null;
+      if (sysConfigRow) {
+        fieldConfig = typeof sysConfigRow.configValue === 'string' ? JSON.parse(sysConfigRow.configValue) : sysConfigRow.configValue;
+      }
+      if (!fieldConfig) {
+        const { TenantSettings } = await import('../../entities/TenantSettings');
+        const settingsRepo = AppDataSource.getRepository(TenantSettings);
+        const fallback = await settingsRepo.findOne({ where: { tenantId, settingKey: 'customer_field_config' } });
+        if (fallback?.settingValue) {
+          fieldConfig = typeof fallback.settingValue === 'string' ? JSON.parse(fallback.settingValue) : fallback.settingValue;
         }
+      }
+      if (fieldConfig?.customFields && Array.isArray(fieldConfig.customFields)) {
+        fieldConfig.customFields.forEach((f: any) => {
+          if (f.fieldKey && f.fieldName) customFieldLabels[f.fieldKey] = f.fieldName;
+        });
       }
     } catch { /* ignore */ }
 
