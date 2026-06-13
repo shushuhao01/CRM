@@ -34,12 +34,17 @@
           <div class="qo-search-box">
             <input v-model="custKeyword" placeholder="搜索姓名/手机号..." class="preview-input" @input="searchCustomers" @focus="!custList.length && searchCustomers()" />
           </div>
+          <!-- 已选客户（搜索框下方显示） -->
+          <div v-if="form.customerId && !custList.length" class="qo-selected-inline">
+            <span class="qo-selected-name">{{ form.customerName }}</span>
+            <span class="qo-selected-phone">{{ maskPhone(form.customerPhone) }}</span>
+            <span class="action-link" style="margin-left:auto;font-size:11px" @click="clearCustomer">更换</span>
+          </div>
           <!-- 自动匹配提示（仅在未手动选择其他客户、未搜索时显示） -->
-          <div v-if="autoMatchedCustomer && !form.customerId && !custKeyword && !custList.length" class="qo-auto-match">
-            <div style="font-size:11px;color:#52c41a;margin-bottom:4px">已匹配CRM客户</div>
-            <div class="qo-customer-item selected" @click="selectCustomer(autoMatchedCustomer)">
-              <div class="qo-cust-name">{{ autoMatchedCustomer.name }} <span class="qo-cust-phone">{{ maskPhone(autoMatchedCustomer.phone) }}</span></div>
-            </div>
+          <div v-else-if="autoMatchedCustomer && !form.customerId && !custKeyword && !custList.length" class="qo-selected-inline" style="border-color:#b7eb8f;background:#f6ffed" @click="selectCustomer(autoMatchedCustomer)">
+            <span style="font-size:11px;color:#52c41a;margin-right:4px">已匹配</span>
+            <span class="qo-selected-name">{{ autoMatchedCustomer.name }}</span>
+            <span class="qo-selected-phone">{{ maskPhone(autoMatchedCustomer.phone) }}</span>
           </div>
           <!-- 搜索结果列表 -->
           <div class="qo-customer-list" v-if="custList.length">
@@ -48,10 +53,9 @@
             </div>
             <div v-if="custLoading" style="text-align:center;padding:4px;font-size:10px;color:#c0c4cc">加载中...</div>
           </div>
-          <div v-else-if="custKeyword && !custLoading" class="qo-empty-hint">
+          <div v-else-if="custKeyword && !custLoading && !form.customerId" class="qo-empty-hint">
             未找到客户 · <span class="action-link" @click="custMode = 'new'; newCust.phone = custKeyword">新建客户</span>
           </div>
-          <div v-else class="qo-empty-hint">输入关键词搜索客户</div>
         </div>
       </div>
 
@@ -124,13 +128,9 @@
         </div>
       </div>
 
-      <!-- 已选客户 + 收货信息 -->
+      <!-- 收货信息（选中客户后显示） -->
       <div class="preview-card" v-if="form.customerId">
-        <div class="qo-selected-cust-bar">
-          <span>✅ {{ form.customerName }}</span>
-          <span class="action-link" @click="clearCustomer">更换</span>
-        </div>
-        <div class="card-title" style="margin-top:8px">📋 收货信息</div>
+        <div class="card-title">📋 收货信息</div>
         <div class="form-group"><label>收货人 <span class="qo-req">*</span></label><input v-model="form.receiverName" placeholder="收货人姓名" class="preview-input" /></div>
         <div class="form-group"><label>收货电话 <span class="qo-req">*</span></label>
           <div style="display:flex;gap:6px;align-items:center">
@@ -1037,6 +1037,9 @@ select.preview-input { appearance: auto; }
 .qo-cust-phone { font-size: 11px; color: #909399; margin-left: 6px; }
 .qo-empty-hint { text-align: center; font-size: 11px; color: #c0c4cc; padding: 16px 0; }
 .qo-auto-match { margin-bottom: 8px; }
+.qo-selected-inline { display: flex; align-items: center; gap: 6px; padding: 8px 10px; margin-top: 8px; border: 1px solid #d9d9d9; border-radius: 6px; background: #fafafa; cursor: pointer; }
+.qo-selected-inline .qo-selected-name { font-size: 13px; font-weight: 600; color: #303133; }
+.qo-selected-inline .qo-selected-phone { font-size: 11px; color: #909399; }
 .qo-match-badge { font-size: 11px; color: #67c23a; font-weight: 600; margin-bottom: 4px; }
 
 /* 新建客户 */

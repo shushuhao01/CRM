@@ -223,8 +223,8 @@ const handleSearch = async () => {
   try {
     const keyword = searchForm.keyword.trim()
     const res: any = await request.get('/data/search-customer', { params: { keyword, pageSize: 50 } })
-    const data = res?.data || res
-    const list = data?.list || []
+
+    const list = res?.list || res?.data?.list || []
 
     searchResultsLocal.value = list.map((item: any) => ({
       customerName: item.customerName || '未知',

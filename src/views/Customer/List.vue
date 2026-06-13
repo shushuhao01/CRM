@@ -219,35 +219,17 @@
 
       <!-- 客户编码列 -->
       <template #column-code="{ row }">
-        <el-button
-          type="text"
-          @click="handleView(row)"
-          class="code-link"
-        >
-          {{ row.code || 'N/A' }}
-        </el-button>
+        <span class="code-link clickable-text" @click="handleTextClick($event, row)">{{ row.code || 'N/A' }}</span>
       </template>
 
       <!-- 客户姓名列 -->
       <template #column-name="{ row }">
-        <el-button
-          type="text"
-          @click="handleView(row)"
-          class="name-link"
-        >
-          {{ row.name }}
-        </el-button>
+        <span class="name-link clickable-text" @click="handleTextClick($event, row)">{{ row.name }}</span>
       </template>
 
       <!-- 手机号列 -->
       <template #column-phone="{ row }">
-        <el-button
-          type="text"
-          @click="handleView(row)"
-          class="phone-link"
-        >
-          {{ displaySensitiveInfoNew(row.phone, SensitiveInfoType.PHONE, userStore.currentUser?.id || '') }}
-        </el-button>
+        <span class="phone-link clickable-text" @click="handleTextClick($event, row)">{{ displaySensitiveInfoNew(row.phone, SensitiveInfoType.PHONE, userStore.currentUser?.id || '') }}</span>
       </template>
 
       <!-- 地址列 -->
@@ -1030,6 +1012,13 @@ const handleAdd = () => {
 
 const handleView = (row: Customer) => {
   safeNavigator.push(`/customer/detail/${row.id}`)
+}
+
+/** 点击客户编码/姓名/手机号：选中文本时不跳转，仅点击时跳转 */
+const handleTextClick = (e: MouseEvent, row: Customer) => {
+  const sel = window.getSelection()
+  if (sel && sel.toString().length > 0) return
+  handleView(row)
 }
 
 
@@ -2220,23 +2209,22 @@ onUnmounted(() => {
   color: #409eff !important;
   text-decoration: none;
   font-weight: 500;
-  padding: 0 !important;
-  border: none !important;
-  background: none !important;
-  height: auto !important;
-  line-height: normal !important;
+  cursor: pointer;
+  user-select: text;
 }
 
 .code-link {
   color: #409eff !important;
-  padding: 0 !important;
-  border: none !important;
-  background: none !important;
-  height: auto !important;
-  line-height: normal !important;
   font-family: 'Courier New', monospace;
   font-weight: 600;
   letter-spacing: 0.5px;
+  cursor: pointer;
+  user-select: text;
+}
+
+.clickable-text {
+  user-select: text;
+  -webkit-user-select: text;
 }
 
 .code-link:hover {

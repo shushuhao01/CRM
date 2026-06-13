@@ -64,9 +64,9 @@
               <span class="field-label">联系电话</span>
               <div class="phone-container-horizontal">
                 <template v-if="customerInfo.phone || (customerInfo.otherPhones && customerInfo.otherPhones.length > 0)">
-                  <span v-if="customerInfo.phone" class="phone-display" @click="makePhoneCall(customerInfo.phone)">
-                    {{ displaySensitiveInfoNew(customerInfo.phone, SensitiveInfoType.PHONE) }}
-                    <el-icon class="call-icon">
+                  <span v-if="customerInfo.phone" class="phone-display">
+                    <span class="phone-text-selectable">{{ displaySensitiveInfoNew(customerInfo.phone, SensitiveInfoType.PHONE) }}</span>
+                    <el-icon class="call-icon" @click="makePhoneCall(customerInfo.phone)" title="拨打电话">
                       <Phone />
                     </el-icon>
                   </span>
@@ -74,10 +74,9 @@
                     v-for="phone in customerInfo.otherPhones"
                     :key="phone"
                     class="phone-display"
-                    @click="makePhoneCall(phone)"
                   >
-                    {{ displaySensitiveInfoNew(phone, SensitiveInfoType.PHONE) }}
-                    <el-icon class="call-icon">
+                    <span class="phone-text-selectable">{{ displaySensitiveInfoNew(phone, SensitiveInfoType.PHONE) }}</span>
+                    <el-icon class="call-icon" @click="makePhoneCall(phone)" title="拨打电话">
                       <Phone />
                     </el-icon>
                   </span>
@@ -4459,15 +4458,19 @@ onMounted(async () => {
   border-radius: 8px;
   border: 1px solid #e2e8f0;
   transition: all 0.2s ease;
-  cursor: pointer;
   height: 32px;
   box-sizing: border-box;
+}
+
+.phone-text-selectable {
+  user-select: text;
+  -webkit-user-select: text;
+  cursor: text;
 }
 
 .phone-display:hover {
   background: #f1f5f9;
   border-color: #cbd5e1;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 .phone-container {
@@ -4502,10 +4505,13 @@ onMounted(async () => {
   color: #10b981;
   cursor: pointer;
   transition: color 0.2s ease;
+  padding: 2px;
+  border-radius: 4px;
 }
 
 .call-icon:hover {
   color: #059669;
+  background: #d1fae5;
 }
 
 /* 标签行布局样式 - 使用flex均匀分布 */
