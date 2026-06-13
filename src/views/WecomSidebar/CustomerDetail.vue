@@ -490,19 +490,27 @@ async function initWecomSdk() {
     if (!corpId.value || corpId.value.includes('$') || corpId.value.includes('CORPID')) {
       console.warn('[Sidebar] corpId无效:', corpId.value || '(空)', '，从后端自动获取...')
       try {
-        const { getSidebarConfig } = await import('@/api/wecom')
-        const configRes: any = await getSidebarConfig()
-        // request拦截器已解包，configRes 就是 { corpId, agentId, name }
+        // 尝试带上 sidebar token 让后端识别租户
+        const cachedToken = localStorage.getItem('wecom_sidebar_token') || ''
+        const { default: axios } = await import('axios')
+        const headers: any = {}
+        if (cachedToken) headers.Authorization = `Bearer ${cachedToken}`
+        const rawRes: any = await axios.get(`${window.location.origin}/api/v1/wecom/sidebar-config`, {
+          params: { corpId: corpId.value || undefined },
+          headers
+        })
+        const configRes = rawRes?.data?.data || rawRes?.data
         if (configRes?.corpId) {
           console.log('[Sidebar] 后端返回企业配置:', configRes.name, configRes.corpId, 'agentId=', configRes.agentId)
           corpId.value = configRes.corpId
         } else {
-          setSdkError('no-corpid', '无法获取企业配置', '后端未返回有效的企微配置，请联系管理员检查企微授权状态')
+          const errMsg = rawRes?.data?.message || '后端未返回有效的企微配置'
+          setSdkError('no-corpid', '获取企业配置失败', errMsg)
           return
         }
       } catch (e: any) {
         console.error('[Sidebar] 获取企业配置失败:', e)
-        setSdkError('no-corpid', '获取企业配置失败', e?.message || '请检查网络连接')
+        setSdkError('no-corpid', '获取企业配置失败', e?.response?.data?.message || e?.message || '请检查网络连接')
         return
       }
     }
