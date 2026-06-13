@@ -113,7 +113,7 @@
       <SidebarScripts v-if="currentTab === 'scripts'" :sidebar-token="sidebarToken" />
 
       <!-- 快捷下单 Tab -->
-      <SidebarQuickOrder v-else-if="currentTab === 'order'" :sidebar-token="sidebarToken" :customer-data="customerData" :read-only="!canOperateCustomer" />
+      <SidebarQuickOrder v-else-if="currentTab === 'order'" :sidebar-token="sidebarToken" :customer-data="customerData" />
 
       <!-- 客户画像 Tab -->
       <SidebarPortrait v-else-if="currentTab === 'portrait'" :sidebar-token="sidebarToken" :customer-data="customerData" />
@@ -171,7 +171,8 @@
               </span>
               <button class="btn-send-form-card" @click="handleSendFormCard" :disabled="sendingFormCard">{{ sendingFormCard ? '发送中...' : '📋 转发填写资料' }}</button>
             </div>
-            <template v-if="customerData.crmCustomer">
+            <template v-if="customerData.crmCustomer && canAccessCustomer">
+              <div class="info-row"><span class="label">客户编码</span><span>{{ customerData.crmCustomer.customerNo || '-' }}</span></div>
               <div class="info-row"><span class="label">姓名</span><span>{{ customerData.crmCustomer.name || '-' }}</span></div>
               <div class="info-row"><span class="label">手机</span><span>{{ customerData.crmCustomer.phone ? displaySensitiveInfoNew(customerData.crmCustomer.phone, SensitiveInfoType.PHONE) : '-' }}</span></div>
               <div class="info-row"><span class="label" style="white-space:nowrap">身高/年龄/体重</span><span style="white-space:nowrap">{{ customerData.crmCustomer.height || '-' }}cm / {{ customerData.crmCustomer.age || '-' }}岁 / {{ customerData.crmCustomer.weight || '-' }}kg</span></div>
@@ -182,6 +183,18 @@
                 <span class="mini-tag" v-for="tag in customerData.crmCustomer.tags" :key="tag">{{ tag }}</span>
               </div>
             </template>
+            <div v-else-if="customerData.crmCustomer && !canAccessCustomer" class="crm-no-access-block">
+              <div class="crm-no-access-tip">
+                该客户已关联CRM（归属CRM成员：{{ customerData.crmCustomer.salesPersonName || '未分配' }}），您无权查看详情
+              </div>
+              <div class="info-row" v-if="customerData.crmCustomer.customerNo">
+                <span class="label">客户编码</span>
+                <span class="crm-id-val" @click="copyText(customerData.crmCustomer.customerNo, '客户编码')">{{ customerData.crmCustomer.customerNo }} <span class="copy-hint">复制</span></span>
+              </div>
+              <div v-else style="font-size:11px;color:#909399;text-align:center;padding:4px 0">
+                暂无客户编码，请联系管理员处理
+              </div>
+            </div>
             <div v-else style="text-align:center;padding:8px;color:#909399;font-size:12px">
               尚未关联CRM客户，客户填写资料后将自动关联
             </div>
@@ -237,8 +250,22 @@
 
           <!-- 底部按钮（始终显示） -->
           <div style="padding:8px 12px">
-            <button class="preview-btn full" :disabled="!customerData.crmCustomer" :title="!customerData.crmCustomer ? '需先关联CRM客户' : ''" @click="customerData.crmCustomer && openCrmDetail()">查看完整客户详情</button>
-            <button class="preview-btn" style="margin-top:6px" @click="currentTab = 'order'">🛒 去下单</button>
+            <button
+              class="preview-btn full"
+              :disabled="!canViewCrmDetail"
+              :title="viewDetailBtnTitle"
+              @click="handleOpenCrmDetail"
+            >查看完整客户详情</button>
+            <button
+              class="preview-btn"
+              style="margin-top:6px"
+              :disabled="!canGoOrder"
+              :title="goOrderBtnTitle"
+              @click="handleGoOrder"
+            >🛒 去下单</button>
+            <div v-if="customerData.crmCustomer && !canAccessCustomer" style="text-align:center;margin-top:6px;font-size:11px;color:#e6a23c">
+              该客户归属其他成员，无权查看详情和下单
+            </div>
           </div>
 
           <!-- 关联CRM弹窗 -->
@@ -362,18 +389,44 @@ function initUserStoreFromToken(token: string) {
   }
 }
 
-/** 当前侧边栏登录用户ID */
-const currentSidebarUserId = computed(() => {
-  const payload = decodeJwtPayload(sidebarToken.value)
-  return payload?.crmUserId || payload?.userId || ''
+/** 当前用户是否有权查看/操作已关联的 CRM 客户 */
+const canAccessCustomer = computed(() => customerData.value?.canAccess === true)
+
+/** 是否可查看完整 CRM 详情 */
+const canViewCrmDetail = computed(() => !!(customerData.value?.crmCustomer && canAccessCustomer.value))
+
+const viewDetailBtnTitle = computed(() => {
+  if (!customerData.value?.crmCustomer) return '需先关联CRM客户'
+  if (!canAccessCustomer.value) return '该客户归属其他成员，无权查看'
+  return ''
 })
 
-/** 是否可对当前客户下单（归属本人或未分配） */
-const canOperateCustomer = computed(() => {
-  const salesPersonId = customerData.value?.crmCustomer?.salesPersonId
-  if (!salesPersonId) return true
-  return salesPersonId === currentSidebarUserId.value
+/** 是否可从详情页跳转下单：无关联时可去搜索/新建；有关联时需有权限 */
+const canGoOrder = computed(() => {
+  if (!customerData.value?.crmCustomer) return true
+  return canAccessCustomer.value
 })
+
+const goOrderBtnTitle = computed(() => {
+  if (customerData.value?.crmCustomer && !canAccessCustomer.value) return '该客户归属其他成员，无权下单'
+  return ''
+})
+
+function handleOpenCrmDetail() {
+  if (!canViewCrmDetail.value) {
+    ElMessage.warning(viewDetailBtnTitle.value || '无权查看该客户详情')
+    return
+  }
+  openCrmDetail()
+}
+
+function handleGoOrder() {
+  if (!canGoOrder.value) {
+    ElMessage.warning(goOrderBtnTitle.value || '无权为该客户下单')
+    return
+  }
+  currentTab.value = 'order'
+}
 
 /** 清除侧边栏登录状态（localStorage 变更会通知其他 Tab） */
 function clearSidebarAuthState() {
@@ -1554,6 +1607,29 @@ function reloadPage() {
   window.location.reload()
 }
 
+/** 复制文本到剪贴板（便于无权限时把编码/UserID发给管理员） */
+async function copyText(text: string, label = '内容') {
+  if (!text) return
+  try {
+    await navigator.clipboard.writeText(text)
+    ElMessage.success(`${label}已复制`)
+  } catch {
+    const ta = document.createElement('textarea')
+    ta.value = text
+    ta.style.position = 'fixed'
+    ta.style.left = '-9999px'
+    document.body.appendChild(ta)
+    ta.select()
+    try {
+      document.execCommand('copy')
+      ElMessage.success(`${label}已复制`)
+    } catch {
+      ElMessage.warning('复制失败，请手动长按复制')
+    }
+    document.body.removeChild(ta)
+  }
+}
+
 // ==================== Phase 8: 新增功能 ====================
 
 /** 刷新客户数据 */
@@ -1893,6 +1969,10 @@ onBeforeUnmount(() => {
 .card-title { font-size: 13px; font-weight: 600; color: #303133; margin-bottom: 8px; }
 .info-row { display: flex; justify-content: space-between; padding: 4px 0; font-size: 12px; color: #303133; border-bottom: 1px solid #f5f5f5; }
 .info-row .label { color: #909399; flex-shrink: 0; width: 60px; }
+.crm-no-access-block { padding: 4px 0; }
+.crm-no-access-tip { text-align: center; padding: 8px 4px 10px; color: #e6a23c; font-size: 12px; line-height: 1.5; }
+.crm-id-val { flex: 1; text-align: right; font-size: 11px; word-break: break-all; color: #606266; cursor: pointer; }
+.crm-id-val .copy-hint { color: #4c6ef5; font-size: 10px; margin-left: 4px; }
 .info-row .tag { background: #ecf5ff; color: #409eff; padding: 0 6px; border-radius: 3px; font-size: 11px; }
 .customer-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
 .mini-tag { background: #f4f4f5; color: #909399; padding: 1px 6px; border-radius: 3px; font-size: 10px; }

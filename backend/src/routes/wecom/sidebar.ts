@@ -126,6 +126,20 @@ async function canSidebarAccessCustomer(sidebarUser: any, customerId: string | n
   return !!found;
 }
 
+/** 解析客户归属的 CRM 成员姓名（优先查 users 表，避免 customer 表冗余字段过期） */
+async function resolveCrmSalesPersonName(salesPersonId?: string, fallback?: string, tenantId?: string): Promise<string> {
+  if (!salesPersonId) return fallback || '';
+  try {
+    const { User } = await import('../../entities/User');
+    const userRepo = AppDataSource.getRepository(User);
+    const where: any = { id: salesPersonId };
+    if (tenantId) where.tenantId = tenantId;
+    const user = await userRepo.findOne({ where, select: ['id', 'name', 'realName', 'username'] });
+    if (user) return user.realName || user.name || user.username || fallback || '';
+  } catch { /* ignore */ }
+  return fallback || '';
+}
+
 // ==================== P1安全加固: 速率限制 ====================
 
 /** 侧边栏认证接口限流: 每IP每5分钟最多200次（多个sidebar tab + 切换客户 + token刷新都会触发） */
@@ -649,10 +663,11 @@ router.get('/sidebar/customer-detail', authenticateSidebarToken, async (req: Req
     const wecomCustomer = await wecomCustomerRepo.findOne({ where: { externalUserId: String(externalUserId), ...(tenantId ? { tenantId } : {}) } });
 
     if (!wecomCustomer) {
-      return res.json({ success: true, data: { found: false, wecomCustomer: null, crmCustomer: null, orders: [], orderTotal: 0, orderPage: 1, orderPageSize, stats: { orderCount: 0, totalAmount: 0, lastOrderTime: null }, shippingAddress: null, afterSales: [], bindingInfo: null } });
+      return res.json({ success: true, data: { found: false, wecomCustomer: null, crmCustomer: null, canAccess: false, orders: [], orderTotal: 0, orderPage: 1, orderPageSize, stats: { orderCount: 0, totalAmount: 0, lastOrderTime: null }, shippingAddress: null, afterSales: [], bindingInfo: null } });
     }
 
     let crmCustomer: any = null;
+    let canAccess = false;
     let orders: any[] = [];
     let orderTotal = 0;
     let stats = { orderCount: 0, totalAmount: 0, lastOrderTime: null as string | null };
@@ -670,6 +685,12 @@ router.get('/sidebar/customer-detail', authenticateSidebarToken, async (req: Req
       if (tenantId) custWhere.tenantId = tenantId;
       crmCustomer = await customerRepo.findOne({ where: custWhere });
       if (crmCustomer) {
+        canAccess = await canSidebarAccessCustomer(sidebarUser, crmCustomer.id);
+      }
+      const resolvedSalesPersonName = crmCustomer
+        ? await resolveCrmSalesPersonName(crmCustomer.salesPersonId, crmCustomer.salesPersonName, tenantId)
+        : '';
+      if (crmCustomer && canAccess) {
         // 分页查询订单
         const orderWhere: any = { customerId: crmCustomer.id };
         if (tenantId) orderWhere.tenantId = tenantId;
@@ -786,8 +807,10 @@ router.get('/sidebar/customer-detail', authenticateSidebarToken, async (req: Req
           status: wecomCustomer.status, crmCustomerId: wecomCustomer.crmCustomerId,
           externalUserId: wecomCustomer.externalUserId
         },
-        crmCustomer: crmCustomer ? {
-          id: crmCustomer.id, name: crmCustomer.name,
+        crmCustomer: crmCustomer ? (canAccess ? {
+          id: crmCustomer.id,
+          customerNo: crmCustomer.customerNo || null,
+          name: crmCustomer.name,
           phone: rawPhone,
           salesPersonId: crmCustomer.salesPersonId || null,
           gender: crmCustomer.gender,
@@ -797,7 +820,7 @@ router.get('/sidebar/customer-detail', authenticateSidebarToken, async (req: Req
           address: crmCustomer.address || [crmCustomer.province, crmCustomer.city, crmCustomer.district, crmCustomer.detailAddress].filter(Boolean).join('') || null,
           medicalHistory: crmCustomer.medicalHistory || null,
           tags: crmCustomer.tags || [],
-          salesPersonName: crmCustomer.salesPersonName,
+          salesPersonName: resolvedSalesPersonName || crmCustomer.salesPersonName,
           wecomExternalUserid: crmCustomer.wecomExternalUserid || wecomCustomer.externalUserId,
           starRating: crmCustomer.starRating || 0,
           finalScore: crmCustomer.finalScore || 0,
@@ -808,20 +831,26 @@ router.get('/sidebar/customer-detail', authenticateSidebarToken, async (req: Req
           totalAmount: Number(crmCustomer.totalAmount) || 0,
           lastOrderTime: crmCustomer.lastOrderTime || null,
           createdAt: crmCustomer.createdAt || null
-        } : null,
-        orders: orders.map(o => ({
+        } : {
+          id: crmCustomer.id,
+          salesPersonId: crmCustomer.salesPersonId || null,
+          salesPersonName: resolvedSalesPersonName || crmCustomer.salesPersonName || null,
+          customerNo: crmCustomer.customerNo || null
+        }) : null,
+        canAccess,
+        orders: canAccess ? orders.map(o => ({
           id: o.id, orderNumber: o.orderNumber,
           totalAmount: Number(o.totalAmount), finalAmount: Number(o.finalAmount),
           status: o.status, paymentStatus: o.paymentStatus,
           products: safeJsonParse(typeof o.products === 'string' ? o.products : null, o.products || []),
           createdAt: o.createdAt
-        })),
-        orderTotal,
+        })) : [],
+        orderTotal: canAccess ? orderTotal : 0,
         orderPage: currentOrderPage,
         orderPageSize,
-        shippingAddress,
-        afterSales,
-        stats,
+        shippingAddress: canAccess ? shippingAddress : null,
+        afterSales: canAccess ? afterSales : [],
+        stats: canAccess ? stats : { orderCount: 0, totalAmount: 0, lastOrderTime: null },
         bindingInfo
       }
     });

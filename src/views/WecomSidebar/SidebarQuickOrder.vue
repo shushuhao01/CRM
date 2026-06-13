@@ -1,10 +1,5 @@
 <template>
   <div class="sidebar-quick-order">
-    <!-- 无权下单提示 -->
-    <div v-if="props.readOnly" class="qo-readonly-banner">
-      ⚠️ 该客户归属其他成员，无权下单
-    </div>
-
     <!-- 步骤指示器（顶部固定） -->
     <div class="qo-steps">
       <div class="qo-step" :class="{ active: step === 1, done: step > 1 }" @click="step > 1 && goStep(1)">
@@ -26,7 +21,7 @@
     </div>
 
     <!-- ==================== 步骤1: 选择客户 ==================== -->
-    <div v-if="step === 1 && !props.readOnly" class="qo-step-content">
+    <div v-if="step === 1" class="qo-step-content">
       <div class="qo-mode-tabs">
         <span class="qo-mode-tab" :class="{ active: custMode === 'search' }" @click="custMode = 'search'">🔍 搜索客户</span>
         <span class="qo-mode-tab" :class="{ active: custMode === 'new' }" @click="switchToNewCust">➕ 新建客户</span>
@@ -166,7 +161,7 @@
     </div>
 
     <!-- ==================== 步骤2: 选择产品 + 订单信息 ==================== -->
-    <div v-if="step === 2 && !props.readOnly" class="qo-step-content">
+    <div v-if="step === 2" class="qo-step-content">
       <!-- 选择产品卡片 -->
       <div class="preview-card">
         <div class="card-title">🛒 选择产品</div>
@@ -314,7 +309,7 @@
     </div>
 
     <!-- ==================== 步骤3: 确认下单 ==================== -->
-    <div v-if="step === 3 && !props.readOnly" class="qo-step-content">
+    <div v-if="step === 3" class="qo-step-content">
       <div class="preview-card">
         <div class="card-title">📝 订单确认</div>
         <div class="qo-confirm-section">
@@ -397,7 +392,7 @@ import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import request from '@/utils/request'
 
-const props = defineProps<{ sidebarToken: string; customerData?: any; readOnly?: boolean }>()
+const props = defineProps<{ sidebarToken: string; customerData?: any }>()
 
 const authHeaders = computed(() => ({
   headers: { Authorization: `Bearer ${props.sidebarToken}` }
@@ -912,13 +907,20 @@ const resetOrder = () => {
   phoneExists.value = false
 }
 
-// ========== 自动填充客户 ==========
+// ========== 自动填充客户（仅当前对话框客户已关联CRM且有权限时） ==========
+function shouldAutoFillCustomer(): boolean {
+  return !!(props.customerData?.crmCustomer && props.customerData?.canAccess === true)
+}
+
 function autoFillCustomer() {
-  if (props.customerData?.crmCustomer) {
-    const crm = props.customerData.crmCustomer
-    autoMatchedCustomer.value = crm
-    selectCustomer({ id: crm.id, name: crm.name, phone: crm.phone, address: crm.address })
+  if (!shouldAutoFillCustomer()) {
+    autoMatchedCustomer.value = null
+    if (form.value.customerId) clearCustomer()
+    return
   }
+  const crm = props.customerData!.crmCustomer
+  autoMatchedCustomer.value = crm
+  selectCustomer({ id: crm.id, name: crm.name, phone: crm.phone, address: crm.address })
 }
 
 // ========== 初始化产品列表 ==========
@@ -946,13 +948,12 @@ onBeforeUnmount(() => {
 })
 
 watch(() => props.customerData, () => {
-  if (!form.value.customerId) autoFillCustomer()
+  autoFillCustomer()
 })
 </script>
 
 <style scoped>
 .sidebar-quick-order { padding: 0 0 12px; background: #f5f6f7; min-height: 100%; color: #303133; }
-.qo-readonly-banner { margin: 8px; padding: 10px 12px; background: #fef0f0; color: #f56c6c; border-radius: 8px; font-size: 12px; text-align: center; border: 1px solid #fde2e2; }
 .qo-back-bar { padding: 6px 8px; background: #fff; border-bottom: 1px solid #f0f0f0; }
 .qo-back-btn { border: none; background: transparent; color: #4c6ef5; font-size: 12px; cursor: pointer; padding: 4px 8px; border-radius: 4px; }
 .qo-back-btn:hover { background: #f0f4ff; }
