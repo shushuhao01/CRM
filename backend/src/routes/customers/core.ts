@@ -347,7 +347,7 @@ router.get('/', async (req: Request, res: Response) => {
             return customer.medicalHistory;
           }
         })(),
-        improvementGoals: customer.improvementGoals || [],
+        improvementGoals: Array.isArray(customer.improvementGoals) ? customer.improvementGoals : [],
         otherGoals: customer.otherGoals || '',
         fanAcquisitionTime: formatDate(customer.fanAcquisitionTime),
         customFields: customer.customFields || null,
@@ -812,17 +812,17 @@ router.get('/:id', async (req: Request, res: Response) => {
       email: customer.email || '',
       company: customer.company || '',
       source: customer.source || '',
-      tags: customer.tags || [],
+      tags: Array.isArray(customer.tags) ? customer.tags : [],
       remarks: customer.remark || '',
       remark: customer.remark || '',
       medicalHistory: customer.medicalHistory || '',
-      improvementGoals: customer.improvementGoals || [],
+      improvementGoals: Array.isArray(customer.improvementGoals) ? customer.improvementGoals : [],
       otherGoals: customer.otherGoals || '',
       fanAcquisitionTime: formatDate(customer.fanAcquisitionTime),
       customFields: customer.customFields || null,
       wecomExternalUserid: customer.wecomExternalUserid || '',
       idCard: customer.idCard || '',
-      bankCards: customer.bankCards || [],
+      bankCards: Array.isArray(customer.bankCards) ? customer.bankCards : [],
       starRating: (customer as any).starRating || 0,
       finalScore: (customer as any).finalScore || 0
     };

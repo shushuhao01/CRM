@@ -570,12 +570,37 @@ router.get('/search-customer', async (req: Request, res: Response) => {
     const pageNum = Math.max(1, Number(page));
     const pageSizeNum = Math.min(50, Math.max(1, Number(pageSize)));
 
-    // 1. 从客户表模糊搜索（姓名、手机号、编码）
+    // 1. 从客户表模糊搜索（姓名、手机号、编码、其他手机号）
     const queryBuilder = customerRepository.createQueryBuilder('customer');
     queryBuilder.where(
-      '(customer.customerNo LIKE :keyword OR customer.name LIKE :keyword OR customer.phone LIKE :keyword)',
+      '(customer.customerNo LIKE :keyword OR customer.name LIKE :keyword OR customer.phone LIKE :keyword OR CAST(customer.other_phones AS CHAR) LIKE :keyword)',
       { keyword: `%${kw}%` }
     );
+
+    // 2. 扩展搜索：订单号、物流单号、售后单号 → 找到关联的客户ID
+    const { Order } = await import('../entities/Order');
+    const orderRepo = getTenantRepo(Order);
+    const orderMatches = await orderRepo.createQueryBuilder('o')
+      .select('DISTINCT o.customerId', 'customerId')
+      .where('o.orderNumber LIKE :kw OR o.trackingNumber LIKE :kw', { kw: `%${kw}%` })
+      .getRawMany();
+    const orderCustomerIds = orderMatches.map((r: any) => r.customerId).filter(Boolean);
+
+    let afterSalesCustomerIds: string[] = [];
+    try {
+      const { AfterSalesService } = await import('../entities/AfterSalesService');
+      const asRepo = getTenantRepo(AfterSalesService);
+      const asMatches = await asRepo.createQueryBuilder('a')
+        .select('DISTINCT a.customerId', 'customerId')
+        .where('a.serviceNumber LIKE :kw', { kw: `%${kw}%` })
+        .getRawMany();
+      afterSalesCustomerIds = asMatches.map((r: any) => r.customerId).filter(Boolean);
+    } catch { /* 售后表可能不存在 */ }
+
+    const extraIds = [...new Set([...orderCustomerIds, ...afterSalesCustomerIds])];
+    if (extraIds.length > 0) {
+      queryBuilder.orWhere('customer.id IN (:...extraIds)', { extraIds });
+    }
 
     queryBuilder.orderBy('customer.createdAt', 'DESC');
     queryBuilder.skip((pageNum - 1) * pageSizeNum);
@@ -600,13 +625,18 @@ router.get('/search-customer', async (req: Request, res: Response) => {
     // 3. 构建结果（带匹配类型和归属信息）
     const list = customers.map((c: any) => {
       let matchType = '客户姓名';
+      const otherPhonesStr = c.otherPhones ? (typeof c.otherPhones === 'string' ? c.otherPhones : JSON.stringify(c.otherPhones)) : '';
       if (c.phone?.includes(kw)) matchType = '手机号';
+      else if (otherPhonesStr.includes(kw)) matchType = '其他手机号';
       else if (c.customerNo?.toLowerCase().includes(kw.toLowerCase())) matchType = '客户编码';
+      else if (orderCustomerIds.includes(c.id)) matchType = '订单号/物流单号';
+      else if (afterSalesCustomerIds.includes(c.id)) matchType = '售后单号';
 
       const owner = c.salesPersonId ? salesMap[c.salesPersonId] : null;
       return {
         customerName: c.name || '未知',
         phone: c.phone || '',
+        otherPhones: Array.isArray(c.otherPhones) ? c.otherPhones : [],
         customerCode: c.customerNo || '',
         gender: c.gender || '',
         age: c.age || 0,

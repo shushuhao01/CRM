@@ -15,8 +15,8 @@
       </div>
     </div>
 
-    <!-- 返回按钮 -->
-    <div v-if="props.customerData?.crmCustomer" class="qo-back-bar">
+    <!-- 返回按钮（从客户详情跳来时显示） -->
+    <div v-if="showBackToDetail" class="qo-back-bar">
       <button class="qo-back-btn" @click="goBackToDetail">← 返回客户详情</button>
     </div>
 
@@ -34,9 +34,9 @@
           <div class="qo-search-box">
             <input v-model="custKeyword" placeholder="搜索姓名/手机号..." class="preview-input" @input="searchCustomers" @focus="!custList.length && searchCustomers()" />
           </div>
-          <!-- 自动匹配提示（仅在未搜索时显示） -->
-          <div v-if="autoMatchedCustomer && !custKeyword && !custList.length" class="qo-auto-match">
-            <div class="qo-match-badge">✅ 已匹配CRM客户</div>
+          <!-- 自动匹配提示（仅在未手动选择其他客户、未搜索时显示） -->
+          <div v-if="autoMatchedCustomer && !form.customerId && !custKeyword && !custList.length" class="qo-auto-match">
+            <div style="font-size:11px;color:#52c41a;margin-bottom:4px">已匹配CRM客户</div>
             <div class="qo-customer-item selected" @click="selectCustomer(autoMatchedCustomer)">
               <div class="qo-cust-name">{{ autoMatchedCustomer.name }} <span class="qo-cust-phone">{{ maskPhone(autoMatchedCustomer.phone) }}</span></div>
             </div>
@@ -137,10 +137,10 @@
             <input
               v-if="receiverPhoneEditing"
               v-model="form.receiverPhone"
-              placeholder="收货电话"
+              placeholder="请输入新的收货电话"
               class="preview-input"
               style="flex:1"
-              @blur="receiverPhoneEditing = false"
+              ref="phoneEditInput"
             />
             <input
               v-else
@@ -150,7 +150,8 @@
               style="flex:1"
               readonly
             />
-            <span class="action-link" style="flex-shrink:0;font-size:11px" @click="receiverPhoneEditing = true">编辑</span>
+            <span v-if="receiverPhoneEditing" class="action-link" style="flex-shrink:0;font-size:11px;color:#67c23a" @click="confirmPhoneEdit">确定</span>
+            <span v-else class="action-link" style="flex-shrink:0;font-size:11px" @click="startPhoneEdit">编辑</span>
           </div>
         </div>
         <div class="form-group"><label>收货地址 <span class="qo-req">*</span></label><input v-model="form.receiverAddress" placeholder="省市区+详细地址（如：广东广州天河区XX路XX号）" class="preview-input" />
@@ -388,7 +389,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
 import request from '@/utils/request'
 
@@ -407,6 +408,32 @@ const custLoading = ref(false)
 const autoMatchedCustomer = ref<any>(null)
 const addressError = ref('')
 const receiverPhoneEditing = ref(false)
+const phoneEditInput = ref<HTMLInputElement | null>(null)
+
+function startPhoneEdit() {
+  form.value.receiverPhone = ''
+  receiverPhoneEditing.value = true
+  nextTick(() => phoneEditInput.value?.focus())
+}
+
+async function confirmPhoneEdit() {
+  const phone = form.value.receiverPhone.trim()
+  if (!phone || !/^1[3-9]\d{9}$/.test(phone)) {
+    ElMessage.warning('请输入正确的11位手机号')
+    return
+  }
+  try {
+    const res: any = await request.get('/wecom/sidebar/check-phone', {
+      params: { phone },
+      ...authHeaders.value
+    } as any)
+    if (res?.data) {
+      ElMessage.warning(`该手机号已被客户「${res.data.name || ''}」使用，请更换`)
+      return
+    }
+  } catch { /* 校验失败不阻塞 */ }
+  receiverPhoneEditing.value = false
+}
 
 function switchToNewCust() {
   custMode.value = 'new'
@@ -580,6 +607,9 @@ const maskPhone = (p: string) => {
 }
 
 const receiverPhoneMasked = computed(() => maskPhone(form.value.receiverPhone))
+
+/** 是否显示返回客户详情按钮（从客户详情跳过来时显示） */
+const showBackToDetail = computed(() => !!props.customerData)
 
 const goStep = (s: number) => { step.value = s }
 

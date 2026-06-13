@@ -1592,15 +1592,24 @@ const verifyCustomer = async () => {
     if (response.data) {
       // 客户已存在
       const existingCustomer = response.data
-      const isOwnCustomer = existingCustomer.creatorName === userStore.currentUser?.name
+      const currentUserName = userStore.currentUser?.name || userStore.currentUser?.realName || ''
+      const isOwnCustomer = existingCustomer.creatorName === currentUserName
+
+      const createTimeFormatted = existingCustomer.createTime
+        ? new Date(existingCustomer.createTime).toLocaleString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })
+        : ''
+
+      const msg = isOwnCustomer
+        ? '该手机号已存在您创建的客户记录，无需重复创建'
+        : `该手机号已存在客户记录，归属成员：${existingCustomer.creatorName || '未知'}`
 
       customerVerifyResult.value = {
         type: 'warning',
-        message: isOwnCustomer ? '该手机号已存在客户记录' : '该手机号已存在客户记录',
+        message: msg,
         owner: existingCustomer.creatorName || existingCustomer.name,
-        createTime: existingCustomer.createTime,
+        createTime: createTimeFormatted,
         customerId: existingCustomer.id,
-        isOwnCustomer // 标记是否是自己创建的
+        isOwnCustomer
       }
       console.log('客户已存在:', existingCustomer)
     } else {

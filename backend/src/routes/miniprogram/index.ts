@@ -301,7 +301,7 @@ router.post('/submit-customer', validateMpSign, async (req: Request, res: Respon
       weight: customerData.weight || null,
       remark: customerData.remark || '',
       medicalHistory: customerData.medicalHistory || '',
-      improvementGoals: customerData.improvementGoals || '',
+      improvementGoals: customerData.improvementGoals || [],
       province: customerData.province || '',
       city: customerData.city || '',
       district: customerData.district || '',
