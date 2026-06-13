@@ -1300,9 +1300,15 @@ async function handleLogin() {
         console.log('[Sidebar] 绑定后更新wecomUserId:', res.binding.wecomUserId)
       }
       if (res?.isPlaceholder) {
-        ElMessage.warning({ message: '绑定成功，但未获取到企微真实ID。请联系管理员同步通讯录以完善绑定。', duration: 5000 })
+        // 仅在 corpId 已确定（SDK已初始化）但仍无法获取真实ID时才提示
+        // 首次登录时 corpId 还未确定是正常的，SDK会在后续自动获取并完善绑定
+        if (corpId.value && !corpId.value.includes('$')) {
+          ElMessage.warning({ message: '绑定成功，但未获取到企微真实ID。请联系管理员同步通讯录以完善绑定。', duration: 5000 })
+        } else {
+          ElMessage.success('登录成功')
+        }
       } else {
-        ElMessage.success('绑定成功')
+        ElMessage.success('登录成功')
       }
       pageState.value = 'detail'
 
