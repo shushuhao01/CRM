@@ -901,10 +901,11 @@ router.post('/sidebar/js-sdk-config', jsSdkConfigLimiter, validateJsSdkReferer, 
           message: '未找到匹配的企微配置。corpId占位符($CORPID$)未被企微客户端替换，可能原因：1.侧边栏URL未在企微服务商后台正确配置 2.企业未授权安装该第三方应用'
         });
       }
-      // 优先选有 agentId 的（这个在 ww.register 阶段由企微客户端验证归属）
-      config = candidates.find(c => !!c.agentId) || candidates[0];
-      log.info(`[Wecom Sidebar] 占位符降级：使用配置 id=${config.id} corpId=${config.corpId} name=${config.name} (共${candidates.length}家可用)`);
-      addDiag('占位符降级', `使用配置 id=${config.id} corpId=${config.corpId} (共${candidates.length}家)`);
+      // 优先选 API 调用次数最多的配置（最活跃的企业 = 实际主用企业）
+      candidates.sort((a, b) => (b.apiCallCount || 0) - (a.apiCallCount || 0));
+      config = candidates[0];
+      log.info(`[Wecom Sidebar] 占位符降级：使用最活跃配置 id=${config.id} corpId=${config.corpId} name=${config.name} apiCalls=${config.apiCallCount} (共${candidates.length}家可用)`);
+      addDiag('占位符降级', `使用配置 id=${config.id} corpId=${config.corpId} apiCalls=${config.apiCallCount}`);
     } else {
       config = await configRepo.findOne({ where: { corpId, isEnabled: true } });
       if (!config) {
@@ -1565,7 +1566,9 @@ router.post('/sidebar/sign', jsSdkConfigLimiter, validateJsSdkReferer, async (re
       let candidates = await configRepo.find({ where: { isEnabled: true, authType: 'third_party' }, order: { id: 'ASC' } });
       if (!candidates.length) candidates = await configRepo.find({ where: { isEnabled: true }, order: { id: 'ASC' } });
       if (candidates.length >= 1) {
-        config = candidates.find(c => !!c.agentId) || candidates[0];
+        // 按 API 调用次数排序，取最活跃的配置
+        candidates.sort((a, b) => (b.apiCallCount || 0) - (a.apiCallCount || 0));
+        config = candidates[0];
       }
     } else {
       config = await configRepo.findOne({ where: { corpId, isEnabled: true } });
@@ -2261,7 +2264,7 @@ router.get('/sidebar-config', async (req: Request, res: Response) => {
     const configs = await configRepo.find({ where: { isEnabled: true, authType: 'third_party' }, order: { id: 'DESC' } });
     if (!configs.length) return res.json({ success: false, message: '无可用的第三方企微配置' });
 
-    // 只有唯一一家授权企业时允许降级返回
+    // 只有唯一一家授权企业时允许降级返回（不需要识别租户）
     if (configs.length === 1) {
       const only = configs[0];
       return res.json({
@@ -2271,15 +2274,13 @@ router.get('/sidebar-config', async (req: Request, res: Response) => {
       });
     }
 
-    // 多企业时：优先选有 agentId 的配置（最新的在前面），并返回全部列表
-    // 注意：这里不再阻断返回，因为 $CORPID$ 在第三方应用的侧边栏中不被替换是已知的企微行为。
-    // JS-SDK 初始化阶段（ww.register / agentConfig）会由企微客户端验证身份，
-    // 如果 corpId 不匹配当前客户端的企业会报 92002，前端有自动恢复重试机制。
-    const best = configs.find(c => !!c.agentId) || configs[0];
-    log.info(`[Wecom Sidebar] sidebar-config: 多企业(${configs.length}家)无法精确匹配，降级返回最优配置 corpId=${best.corpId} (tenantId=${tenantId || '空'})`);
+    // 多企业且无法通过 token 识别租户：不猜测，返回失败
+    // 前端收到失败后会显示登录页，用户登录后通过 tenantCode → tenantId → corpId 精确匹配
+    log.info(`[Wecom Sidebar] sidebar-config: 多企业(${configs.length}家)且无法通过token识别租户(tenantId=${tenantId || '空'})，等待用户登录`);
     res.json({
-      success: true,
-      data: { corpId: best.corpId, agentId: best.agentId, name: best.name },
+      success: false,
+      message: '请先登录以确定企业身份',
+      needLogin: true,
       allConfigs: configs.map(c => ({ id: c.id, corpId: c.corpId, agentId: c.agentId, name: c.name, tenantId: c.tenantId }))
     });
   } catch (e: any) {

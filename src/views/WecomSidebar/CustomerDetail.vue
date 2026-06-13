@@ -450,6 +450,12 @@ onMounted(async () => {
   console.log('[Sidebar] 环境检测结果:', envResult)
   if (envResult.isWecom) {
     await initWecomSdk()
+    // ★ 如果 initWecomSdk 因为 corpId 无法确定而提前 return（首次使用无token），
+    // 此时需要显示登录页让用户通过 tenantCode 确定租户身份
+    if (!corpId.value || corpId.value.includes('$')) {
+      console.log('[Sidebar] SDK初始化后corpId仍未确定，进入登录页')
+      pageState.value = 'login'
+    }
   } else {
     setSdkError('env', '非企微环境', '请在企业微信聊天侧边栏中打开此页面', `UA: ${envResult.ua.substring(0, 120)}... | 检测方式: ${envResult.method}`)
   }
@@ -486,31 +492,35 @@ async function initWecomSdk() {
     corpId.value = urlParams.get('corpId') || ''
     console.log('[Sidebar] corpId:', corpId.value, ', sdkMode:', sdkMode, ', URL:', window.location.href)
 
-    // ★ $CORPID$ 未替换或为空时，从后端获取当前租户绑定的企业配置
+    // ★ $CORPID$ 未替换或为空时，通过租户关系精确匹配企业配置
     if (!corpId.value || corpId.value.includes('$') || corpId.value.includes('CORPID')) {
-      console.warn('[Sidebar] corpId无效:', corpId.value || '(空)', '，从后端自动获取...')
-      try {
-        // 尝试带上 sidebar token 让后端识别租户
-        const cachedToken = localStorage.getItem('wecom_sidebar_token') || ''
-        const { default: axios } = await import('axios')
-        const headers: any = {}
-        if (cachedToken) headers.Authorization = `Bearer ${cachedToken}`
-        const rawRes: any = await axios.get(`${window.location.origin}/api/v1/wecom/sidebar-config`, {
-          params: { corpId: corpId.value || undefined },
-          headers
-        })
-        const configRes = rawRes?.data?.data || rawRes?.data
-        if (configRes?.corpId) {
-          console.log('[Sidebar] 后端返回企业配置:', configRes.name, configRes.corpId, 'agentId=', configRes.agentId)
-          corpId.value = configRes.corpId
-        } else {
-          const errMsg = rawRes?.data?.message || '后端未返回有效的企微配置'
-          setSdkError('no-corpid', '获取企业配置失败', errMsg)
-          return
+      console.warn('[Sidebar] corpId无效:', corpId.value || '(空)', '，尝试通过租户关系匹配...')
+
+      // 方法1：从缓存的 sidebar token 中获取 tenantId，通过后端精确匹配
+      const cachedToken = localStorage.getItem('wecom_sidebar_token') || ''
+      if (cachedToken) {
+        try {
+          const { default: axios } = await import('axios')
+          const rawRes: any = await axios.get(`${window.location.origin}/api/v1/wecom/sidebar-config`, {
+            params: { corpId: undefined },
+            headers: { Authorization: `Bearer ${cachedToken}` }
+          })
+          const configRes = rawRes?.data?.data || rawRes?.data
+          if (configRes?.corpId) {
+            console.log('[Sidebar] 通过token租户关系匹配到企业:', configRes.name, configRes.corpId)
+            corpId.value = configRes.corpId
+          }
+        } catch (e: any) {
+          console.warn('[Sidebar] token匹配企业失败:', e?.message)
         }
-      } catch (e: any) {
-        console.error('[Sidebar] 获取企业配置失败:', e)
-        setSdkError('no-corpid', '获取企业配置失败', e?.response?.data?.message || e?.message || '请检查网络连接')
+      }
+
+      // 方法2：如果 token 匹配失败（首次使用/token无效），跳过SDK初始化，直接进入登录页
+      // 用户登录后通过 tenantCode 确定租户 → 再从后端获取对应的 corpId → 重新初始化SDK
+      if (!corpId.value || corpId.value.includes('$')) {
+        console.log('[Sidebar] 无法确定corpId，跳过SDK初始化，等待用户登录后通过租户关系匹配')
+        // 不报错，直接让流程继续到 checkBindingAndLoad → 显示登录页
+        // 登录成功后会重新触发 SDK 初始化
         return
       }
     }
@@ -1295,6 +1305,26 @@ async function handleLogin() {
         ElMessage.success('绑定成功')
       }
       pageState.value = 'detail'
+
+      // ★ 登录成功后，如果 corpId 还未确定（首次使用时跳过了SDK初始化），
+      // 通过 token 中的 tenantId 获取对应的 corpId，再异步初始化 SDK 获取 externalUserId
+      if (!corpId.value || corpId.value.includes('$')) {
+        try {
+          const { default: axios } = await import('axios')
+          const rawRes: any = await axios.get(`${window.location.origin}/api/v1/wecom/sidebar-config`, {
+            headers: { Authorization: `Bearer ${res.token}` }
+          })
+          const configRes = rawRes?.data?.data || rawRes?.data
+          if (configRes?.corpId) {
+            corpId.value = configRes.corpId
+            console.log('[Sidebar] 登录后通过租户关系匹配到 corpId:', configRes.corpId)
+          }
+        } catch { /* ignore */ }
+      }
+
+      // 异步初始化SDK获取externalUserId（不阻塞已登录页面）
+      initSdkForExternalUserId()
+
       await loadCustomerDetail()
       loadCollectStatus()
     } else {
