@@ -229,8 +229,13 @@ class WebSocketService {
       case 'INCOMING_CALL_CONFIRMED':
         // 后端确认来电，回传 callId 和客户信息
         console.log('[WebSocket] 收到来电确认:', message.data)
-        if (message.data) {
-          incomingCallService.handleIncomingCallConfirmed(message.data)
+        if (message.data?.callId) {
+          incomingCallService.handleIncomingCallConfirmed({
+            callId: message.data.callId,
+            callerNumber: message.data.callerNumber,
+            customerId: message.data.customerId,
+            customerName: message.data.customerName,
+          })
         }
         break
 

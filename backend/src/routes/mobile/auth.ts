@@ -133,6 +133,52 @@ router.post('/login', async (req: Request, res: Response) => {
       departmentName = depts[0]?.name || ''
     }
 
+    // 获取角色中文名
+    let roleName = ''
+    if (user.role) {
+      try {
+        const tenantFilter = user.tenant_id
+          ? { sql: ' AND tenant_id = ?', params: [user.tenant_id] }
+          : { sql: ' AND tenant_id IS NULL', params: [] }
+        const roles = await AppDataSource.query(
+          `SELECT name FROM roles WHERE code = ?${tenantFilter.sql} LIMIT 1`,
+          [user.role, ...tenantFilter.params]
+        )
+        roleName = roles[0]?.name || ''
+        if (!roleName) {
+          // 兜底：无租户过滤再查一次
+          const fallbackRoles = await AppDataSource.query(
+            `SELECT name FROM roles WHERE code = ? LIMIT 1`, [user.role]
+          )
+          roleName = fallbackRoles[0]?.name || ''
+        }
+      } catch (_e) {
+        // 忽略
+      }
+    }
+
+    // 获取租户信息
+    let tenantName = ''
+    let resolvedTenantCode = ''
+    if (user.tenant_id) {
+      const tenants = await AppDataSource.query(
+        `SELECT name, code FROM tenants WHERE id = ?`,
+        [user.tenant_id]
+      )
+      tenantName = tenants[0]?.name || ''
+      resolvedTenantCode = tenants[0]?.code || ''
+    } else {
+      // 私有部署模式：读取系统配置中的公司名称作为租户名称
+      try {
+        const configs = await AppDataSource.query(
+          `SELECT config_value FROM system_configs WHERE config_key = 'companyName' LIMIT 1`
+        )
+        tenantName = configs[0]?.config_value || ''
+      } catch (_e) {
+        // 忽略
+      }
+    }
+
     await logApiCall({
       interfaceCode: 'mobile_login',
       method: 'POST',
@@ -155,8 +201,10 @@ router.post('/login', async (req: Request, res: Response) => {
           username: user.username,
           realName: user.real_name,
           department: departmentName,
-          role: user.role,
-          tenantId: user.tenant_id || null
+          role: roleName || user.role,
+          tenantId: user.tenant_id || null,
+          tenantName: tenantName || null,
+          tenantCode: resolvedTenantCode || null
         }
       }
     })

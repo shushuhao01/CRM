@@ -365,6 +365,19 @@ class RecordingService {
   }
 
   /**
+   * 列出目录中的音频文件（按修改时间降序）
+   */
+  private async listAudioFiles(dirPath: string): Promise<RecordingFile[]> {
+    const allFiles = await this.listFiles(dirPath)
+    const audioFiles = allFiles.filter((f: RecordingFile) => {
+      const ext = f.name.substring(f.name.lastIndexOf('.')).toLowerCase()
+      return AUDIO_EXTENSIONS.includes(ext)
+    })
+    audioFiles.sort((a: RecordingFile, b: RecordingFile) => b.lastModified - a.lastModified)
+    return audioFiles
+  }
+
+  /**
    * 查找匹配通话的录音文件
    */
   async findMatchingRecording(callInfo: CallInfo): Promise<RecordingFile | null> {

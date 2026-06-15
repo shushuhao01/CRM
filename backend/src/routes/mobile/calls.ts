@@ -5,6 +5,7 @@ import { authenticateToken } from '../../middleware/auth';
 import { checkStorageLimit } from '../../middleware/checkTenantLimits';
 import { tenantRawSQL, getCurrentTenantIdSafe } from '../../utils/tenantHelpers';
 import { logApiCall, uploadRecording, getUploadUrl } from './helpers';
+import { messageService } from '../../services/messageService';
 
 export function registerCallsRoutes(router: Router) {
 router.post('/call/status', authenticateToken, async (req: Request, res: Response) => {
@@ -165,6 +166,35 @@ router.post('/call/end', authenticateToken, async (req: Request, res: Response) 
       global.webSocketService.sendToUser(currentUser?.userId || currentUser?.id, 'CALL_ENDED', {
         callId, status, duration, hasRecording
       })
+    }
+
+    // 发送系统消息通知成员
+    try {
+      const tenantId = getCurrentTenantIdSafe() || ''
+      const callRecords = await AppDataSource.query(
+        `SELECT customer_name, customer_phone, call_type FROM call_records WHERE id = ?${t.sql}`,
+        [callId, ...t.params]
+      )
+      const record = callRecords[0] || {}
+      const callType = record.call_type || req.body.callType || 'outbound'
+      const customerName = record.customer_name || ''
+      const callerNumber = phoneNumber || record.customer_phone || ''
+      const displayName =
+        customerName && customerName !== '未知来电' ? customerName : callerNumber
+
+      await messageService.sendMessage({
+        type: 'call_completed',
+        title: callType === 'inbound' ? '呼入通话已结束' : '外呼通话已结束',
+        content: `${displayName} 通话${callDuration}秒${hasRecording ? '（有录音）' : ''}`,
+        targetUserId: String(userId),
+        priority: 'normal',
+        category: '通话通知',
+        relatedType: 'call',
+        relatedId: callId,
+        ...(tenantId ? { tenantId } : {}),
+      } as any)
+    } catch (msgErr) {
+      log.warn('[通话结束] 发送系统消息失败:', msgErr)
     }
 
     res.json({

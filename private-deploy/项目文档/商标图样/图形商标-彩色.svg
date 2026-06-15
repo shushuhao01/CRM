@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="1000" viewBox="0 0 1000 1000">
+  <!-- ?????????????? -->
+  <!-- ??CRM ???? - ???????? -->
+  <!-- ??????????????????????????? -->
+
+  <rect width="1000" height="1000" fill="white"/>
+
+  <g transform="translate(100, 100)">
+    <defs>
+      <linearGradient id="brand-bg" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#6EE7B7"/>
+        <stop offset="100%" stop-color="#34D399"/>
+      </linearGradient>
+    </defs>
+
+    <!-- ?????????? -->
+    <rect width="800" height="800" rx="80" fill="url(#brand-bg)"/>
+
+    <!-- ??????? -->
+    <rect x="182" y="182" width="182" height="182" rx="37" fill="white"/>
+    <!-- ????? -->
+    <circle cx="527" cy="273" r="91" fill="white" opacity="0.85"/>
+    <!-- ???????????? -->
+    <circle cx="273" cy="527" r="91" fill="white" opacity="0.7"/>
+    <!-- ??????? -->
+    <rect x="437" y="437" width="182" height="182" rx="37" fill="white"/>
+  </g>
+</svg>

@@ -307,6 +307,24 @@
 
     <!-- 🔥 联系客服续费弹窗（由授权过期弹窗"联系客服续费"按钮触发） -->
     <ContactServiceDialog v-model="contactServiceDialogVisible" />
+
+    <!-- 全局来电弹窗（任何页面都可接收来电通知） -->
+    <GlobalIncomingCall
+      v-if="userStore.isLoggedIn && !isLoginPage && !isWecomSidebarPage"
+      :incoming-call-visible="globalIncoming.incomingCallVisible.value"
+      :incoming-call-data="globalIncoming.incomingCallData.value"
+      :call-in-progress-visible="globalIncoming.callInProgressVisible.value"
+      :current-call-data="globalIncoming.currentCallData.value"
+      :is-minimized="globalIncoming.isMinimized.value"
+      @answer="globalIncoming.answerCall()"
+      @reject="globalIncoming.rejectCall()"
+      @dismiss="globalIncoming.dismissCall()"
+      @view-customer="globalIncoming.viewCustomerDetail()"
+      @add-new-customer="globalIncoming.addNewCustomer()"
+      @go-call-management="globalIncoming.goToCallManagement()"
+      @end-call="globalIncoming.endCall()"
+      @toggle-minimize="globalIncoming.isMinimized.value = !globalIncoming.isMinimized.value"
+    />
   </div>
 </template>
 
@@ -333,6 +351,7 @@ import VersionUpdatePanel from '@/components/VersionUpdatePanel.vue'
 import AnnouncementCarousel from '@/components/AnnouncementCarousel.vue'
 import AnnouncementPopup from '@/components/AnnouncementPopup.vue'
 import ContactServiceDialog from '@/components/ContactServiceDialog.vue'
+import GlobalIncomingCall from '@/components/GlobalIncomingCall.vue'
 import { useResponsive, debounce } from '@/utils/responsive'
 import IconHeadset from '@/components/icons/IconHeadset.vue'
 import IconCustomerService from '@/components/icons/IconCustomerService.vue'
@@ -348,6 +367,7 @@ import { usePasswordManagement } from '@/composables/usePasswordManagement'
 import { useQuotaWarning } from '@/composables/useQuotaWarning'
 import { useMenuScroll } from '@/composables/useMenuScroll'
 import { useMessagePolling } from '@/composables/useMessagePolling'
+import { useIncomingCall } from '@/composables/useIncomingCall'
 
 
 const route = useRoute()
@@ -410,6 +430,9 @@ const {
   startMessagePollingTimer,
   cleanupMessagePolling,
 } = useMessagePolling()
+
+// 全局来电监听
+const globalIncoming = useIncomingCall()
 
 // 个人设置相关状态
 const showPersonalSettingsModal = ref(false)
@@ -645,6 +668,9 @@ onMounted(async () => {
   initWebSocketConnection()
   startMessagePollingTimer()
 
+  // 🔥 启动全局来电监听（任何页面都可弹窗）
+  globalIncoming.startListening()
+
   // 🔥 启动授权心跳检测服务（SaaS模式）
   licenseHeartbeatService.start()
 
@@ -706,6 +732,9 @@ onUnmounted(() => {
 
   // 🔥 清理消息轮询和WebSocket（composable）
   cleanupMessagePolling()
+
+  // 清理全局来电监听
+  globalIncoming.stopListening()
 
   if (orderTransferTimer) {
     clearInterval(orderTransferTimer)

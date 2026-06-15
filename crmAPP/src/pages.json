@@ -59,6 +59,14 @@
       }
     },
     {
+      "path": "pages/incoming-call/index",
+      "style": {
+        "navigationStyle": "custom",
+        "navigationBarTitleText": "",
+        "disableScroll": true
+      }
+    },
+    {
       "path": "pages/call-ended/index",
       "style": {
         "navigationBarTitleText": "通话记录"

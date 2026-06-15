@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="1000" viewBox="0 0 1000 1000">
+  <!-- ?????????????? -->
+  <!-- ??????????????????????????? -->
+
+  <rect width="1000" height="1000" fill="white"/>
+
+  <g transform="translate(100, 100)">
+    <rect width="800" height="800" rx="80" fill="#1a1a1a"/>
+
+    <!-- ??????? -->
+    <rect x="182" y="182" width="182" height="182" rx="37" fill="white"/>
+    <!-- ????? -->
+    <circle cx="527" cy="273" r="91" fill="white" opacity="0.85"/>
+    <!-- ????? -->
+    <circle cx="273" cy="527" r="91" fill="white" opacity="0.7"/>
+    <!-- ??????? -->
+    <rect x="437" y="437" width="182" height="182" rx="37" fill="white"/>
+  </g>
+</svg>

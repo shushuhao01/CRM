@@ -271,17 +271,7 @@ class WebSocketService {
       // 播放来电铃声
       this.playIncomingRingtone()
 
-      // 桌面通知
-      if ('Notification' in window && Notification.permission === 'granted') {
-        const customerName = data.customerInfo?.customerName || data.customerName || '未知来电'
-        const callerNumber = data.callerNumber || ''
-        new Notification('来电提醒', {
-          body: `${customerName} (${callerNumber}) 正在呼入`,
-          icon: '/logo.svg',
-          tag: `incoming_${data.callId}`,
-          requireInteraction: true
-        })
-      }
+      // 浏览器通知由全局 useIncomingCall composable 统一管理
     })
 
     // APP端通话状态变化

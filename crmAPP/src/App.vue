@@ -3,6 +3,7 @@ import { onLaunch, onShow, onHide, onError } from '@dcloudio/uni-app'
 import { useServerStore } from '@/stores/server'
 import { useUserStore } from '@/stores/user'
 import { incomingCallService } from '@/services/incomingCallService'
+import { callStateService } from '@/services/callStateService'
 
 onLaunch(() => {
   console.log('App Launch')
@@ -39,6 +40,16 @@ onError((err) => {
 
 // 检查是否有未完成的通话
 const checkPendingCall = () => {
+  // 如果当前有活跃通话（外呼或呼入），不要中断
+  if (callStateService.isInCall()) {
+    console.log('[App] 当前有活跃的外呼通话，跳过 pendingCall 检查')
+    return
+  }
+  if (incomingCallService.getCurrentIncoming()) {
+    console.log('[App] 当前有活跃的呼入通话，跳过 pendingCall 检查')
+    return
+  }
+
   const currentCall = uni.getStorageSync('currentCall')
   if (currentCall && currentCall.callId) {
     console.log('[App] 发现未完成的通话:', currentCall.callId)
@@ -46,11 +57,11 @@ const checkPendingCall = () => {
     // 检查当前页面，避免重复跳转
     const pages = getCurrentPages()
     const currentPage = pages[pages.length - 1]
-    const currentRoute = currentPage?.route || ''
+    const currentRoute = (currentPage as any)?.route || ''
 
-    // 如果已经在通话结束页面，不重复跳转
-    if (currentRoute.includes('call-ended')) {
-      console.log('[App] 已在通话结束页面，跳过')
+    // 如果已经在通话相关页面，不重复跳转
+    if (currentRoute.includes('call-ended') || currentRoute.includes('calling') || currentRoute.includes('incoming-call')) {
+      console.log('[App] 已在通话相关页面，跳过')
       return
     }
 
@@ -67,7 +78,6 @@ const checkPendingCall = () => {
         url: `/pages/call-ended/index?callId=${currentCall.callId}&name=${encodeURIComponent(currentCall.customerName || '')}&customerId=${currentCall.customerId || ''}&duration=${duration}&hasRecording=false`,
         fail: (err) => {
           console.error('[App] 跳转失败:', err)
-          // 如果跳转失败，恢复通话记录
           uni.setStorageSync('currentCall', currentCall)
         }
       })
@@ -76,9 +86,33 @@ const checkPendingCall = () => {
 }
 
 // #ifdef APP-PLUS
+// 读取通话设置
+const getCallSettings = () => {
+  try {
+    const raw = uni.getStorageSync('callSettings')
+    if (raw) {
+      const parsed = JSON.parse(raw)
+      return {
+        callNotify: parsed.callNotify !== false,
+        vibrate: !!parsed.vibrate,
+      }
+    }
+  } catch (_e) {
+    // 忽略
+  }
+  return { callNotify: true, vibrate: false }
+}
+
 // 启动来电检测监听服务
 const setupIncomingCallListener = () => {
-  // 延迟启动，等WebSocket连接就绪
+  const userStore = useUserStore()
+
+  // 已登录则立即启动（HTTP 备份通道不依赖 WS）
+  if (userStore.isLoggedIn) {
+    incomingCallService.startListening()
+  }
+
+  // WebSocket 连接后确保监听已启动
   uni.$on('ws:connected', () => {
     console.log('[App] WebSocket已连接，启动来电监听')
     incomingCallService.startListening()
@@ -89,19 +123,41 @@ const setupIncomingCallListener = () => {
     console.log('[App] WebSocket断开，来电监听继续（HTTP备份）')
   })
 
+  // 客户匹配确认后更新提示
+  uni.$on('incoming:call_confirmed', (info: any) => {
+    const settings = getCallSettings()
+    if (!settings.callNotify) return
+
+    const name = info.customerName && info.customerName !== '未知来电'
+      ? info.customerName
+      : info.callerNumber
+    uni.showToast({
+      title: `来电: ${name}`,
+      icon: 'none',
+      duration: 3000,
+    })
+  })
+
   // 来电检测回调
   incomingCallService.onIncoming((info) => {
     console.log('[App] 检测到来电:', info.callerNumber)
-    uni.showToast({
-      title: `来电: ${info.callerNumber}`,
-      icon: 'none',
-      duration: 3000
-    })
+    const settings = getCallSettings()
+
+    if (settings.callNotify) {
+      const display = info.customerName && info.customerName !== '未知来电'
+        ? `${info.customerName} (${info.callerNumber})`
+        : info.callerNumber
+      uni.showToast({
+        title: `来电: ${display}`,
+        icon: 'none',
+        duration: 3000,
+      })
+    }
   })
 
   incomingCallService.onIncomingEnd((info, duration) => {
     console.log('[App] 来电结束:', info.callerNumber, '时长:', duration)
-    // 触发全局事件，刷新首页统计
+    // 跳转登记页由 incomingCallService 处理，此处刷新首页统计
     uni.$emit('call:completed')
   })
 }

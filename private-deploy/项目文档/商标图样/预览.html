@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>云客CRM - 商标申请图样预览</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Microsoft YaHei', 'Segoe UI', sans-serif;
+      background: #f5f5f5; color: #1f2937; padding: 30px; line-height: 1.6;
+    }
+    h1 { text-align: center; font-size: 28px; margin-bottom: 6px; }
+    .subtitle { text-align: center; color: #6b7280; margin-bottom: 36px; font-size: 14px; }
+
+    .section { margin-bottom: 40px; }
+    .section-title {
+      font-size: 20px; font-weight: 700; margin-bottom: 16px;
+      padding-bottom: 8px; border-bottom: 2px solid #34D399;
+      display: flex; align-items: center; gap: 10px;
+    }
+    .section-title .badge {
+      font-size: 12px; font-weight: 500; padding: 2px 12px;
+      border-radius: 12px; color: white;
+    }
+    .badge-required { background: #EF4444; }
+    .badge-recommend { background: #F59E0B; }
+    .badge-optional { background: #6B7280; }
+
+    .card-row { display: flex; gap: 24px; flex-wrap: wrap; margin-bottom: 20px; }
+    .card {
+      background: white; border-radius: 14px; padding: 24px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.06); flex: 1; min-width: 320px;
+    }
+    .card h3 { font-size: 16px; margin-bottom: 12px; color: #374151; }
+    .card .desc { font-size: 13px; color: #6b7280; margin-bottom: 16px; }
+    .card .preview {
+      background: #fafafa; border: 1px solid #e5e7eb; border-radius: 10px;
+      padding: 20px; text-align: center; margin-bottom: 12px;
+    }
+    .card .preview img { max-width: 100%; height: auto; }
+    .card .preview object { max-width: 100%; height: auto; }
+    .card .file-info {
+      font-size: 12px; color: #9ca3af; background: #f9fafb;
+      padding: 8px 12px; border-radius: 6px;
+    }
+    .card .file-info code {
+      background: rgba(0,0,0,0.05); padding: 1px 6px; border-radius: 3px;
+      font-size: 12px;
+    }
+
+    .spec-table { width: 100%; border-collapse: collapse; margin-top: 16px; }
+    .spec-table th, .spec-table td {
+      padding: 10px 14px; text-align: left; border-bottom: 1px solid #e5e7eb;
+      font-size: 14px;
+    }
+    .spec-table th { background: #f9fafb; font-weight: 600; color: #374151; }
+    .spec-table td { color: #4b5563; }
+
+    .tip-box {
+      background: #FFFBEB; border: 1px solid #FDE68A; border-radius: 10px;
+      padding: 16px 20px; margin-top: 20px; font-size: 14px; color: #92400E;
+    }
+    .tip-box strong { color: #78350F; }
+
+    .success-box {
+      background: #F0FDF4; border: 1px solid #BBF7D0; border-radius: 10px;
+      padding: 16px 20px; margin-top: 20px; font-size: 14px; color: #166534;
+    }
+
+    .ref-section { margin-top: 40px; }
+    .ref-row { display: flex; gap: 20px; flex-wrap: wrap; }
+    .ref-card {
+      background: white; border-radius: 14px; padding: 20px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.06); flex: 1; min-width: 280px;
+      text-align: center;
+    }
+    .ref-card h4 { font-size: 14px; margin-bottom: 10px; color: #374151; }
+    .ref-card img {
+      max-width: 100%; height: auto; border-radius: 8px;
+      border: 1px solid #e5e7eb;
+    }
+  </style>
+</head>
+<body>
+
+<h1>云客CRM — 商标申请图样预览</h1>
+<p class="subtitle">
+  广州仙狐网络科技有限公司 · 商标注册申请材料 · 2026年6月
+</p>
+
+<!-- ===== 一、图形商标 ===== -->
+<div class="section">
+  <div class="section-title">
+    一、图形商标（Logo图标）
+    <span class="badge badge-recommend">第二优先级</span>
+  </div>
+
+  <div class="card-row">
+    <div class="card">
+      <h3>彩色版（指定颜色）</h3>
+      <div class="desc">绿色渐变背景 + 白色四宫格图形，与现有CRM系统图标完全一致</div>
+      <div class="preview">
+        <object data="图形商标-彩色.svg" type="image/svg+xml" width="300" height="300">
+          <img src="图形商标-彩色-参考图.png" width="300"/>
+        </object>
+      </div>
+      <div class="file-info">
+        矢量文件：<code>图形商标-彩色.svg</code><br>
+        参考图：<code>图形商标-彩色-参考图.png</code>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>黑白版（不指定颜色）★推荐</h3>
+      <div class="desc">黑色背景 + 白色图形，不限定颜色使用更灵活</div>
+      <div class="preview">
+        <object data="图形商标-黑白.svg" type="image/svg+xml" width="300" height="300">
+          <img src="图形商标-黑白.svg" width="300"/>
+        </object>
+      </div>
+      <div class="file-info">
+        矢量文件：<code>图形商标-黑白.svg</code>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>纯图形版（无背景框）</h3>
+      <div class="desc">仅四宫格图形元素，无背景色块，保护图形本身</div>
+      <div class="preview">
+        <object data="图形商标-纯图形-黑白.svg" type="image/svg+xml" width="300" height="300">
+          <img src="图形商标-纯图形-黑白.svg" width="300"/>
+        </object>
+      </div>
+      <div class="file-info">
+        矢量文件：<code>图形商标-纯图形-黑白.svg</code>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 二、图文组合商标 ===== -->
+<div class="section">
+  <div class="section-title">
+    二、图文组合商标（Logo + "云客CRM" 文字）
+    <span class="badge badge-recommend">第二优先级</span>
+  </div>
+
+  <div class="card-row">
+    <div class="card">
+      <h3>横版 · 彩色</h3>
+      <div class="desc">图标在左 + 文字在右，适合网页Header等横向展示场景</div>
+      <div class="preview">
+        <object data="图文组合商标-横版-彩色.svg" type="image/svg+xml" width="420" height="210">
+          <img src="图文组合商标-横版-参考图.png" width="420"/>
+        </object>
+      </div>
+      <div class="file-info">
+        矢量文件：<code>图文组合商标-横版-彩色.svg</code><br>
+        参考图：<code>图文组合商标-横版-参考图.png</code>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>横版 · 黑白 ★推荐申请</h3>
+      <div class="desc">不指定颜色的横版组合，商标保护范围最广</div>
+      <div class="preview">
+        <object data="图文组合商标-横版-黑白.svg" type="image/svg+xml" width="420" height="210">
+          <img src="图文组合商标-横版-黑白.svg" width="420"/>
+        </object>
+      </div>
+      <div class="file-info">
+        矢量文件：<code>图文组合商标-横版-黑白.svg</code>
+      </div>
+    </div>
+  </div>
+
+  <div class="card-row">
+    <div class="card">
+      <h3>竖版 · 彩色</h3>
+      <div class="desc">图标在上 + 文字在下，适合APP启动页、名片等场景</div>
+      <div class="preview">
+        <object data="图文组合商标-竖版-彩色.svg" type="image/svg+xml" width="280" height="350">
+          <img src="图文组合商标-竖版-参考图.png" width="280"/>
+        </object>
+      </div>
+      <div class="file-info">
+        矢量文件：<code>图文组合商标-竖版-彩色.svg</code><br>
+        参考图：<code>图文组合商标-竖版-参考图.png</code>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>竖版 · 黑白</h3>
+      <div class="desc">不指定颜色的竖版组合</div>
+      <div class="preview">
+        <object data="图文组合商标-竖版-黑白.svg" type="image/svg+xml" width="280" height="350">
+          <img src="图文组合商标-竖版-黑白-参考图.png" width="280"/>
+        </object>
+      </div>
+      <div class="file-info">
+        矢量文件：<code>图文组合商标-竖版-黑白.svg</code><br>
+        参考图：<code>图文组合商标-竖版-黑白-参考图.png</code>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 三、文字商标 ===== -->
+<div class="section">
+  <div class="section-title">
+    三、文字商标
+    <span class="badge badge-required">第一优先级 · 必须申请</span>
+  </div>
+
+  <div class="card-row">
+    <div class="card">
+      <h3>"云客" ★核心商标</h3>
+      <div class="desc">母品牌文字商标，覆盖所有产品线，保护范围最广</div>
+      <div class="preview">
+        <object data="文字商标-云客.svg" type="image/svg+xml" width="400" height="200">
+          <img src="文字商标-云客.svg" width="400"/>
+        </object>
+      </div>
+      <div class="file-info">
+        矢量文件：<code>文字商标-云客.svg</code><br>
+        申请类别：第9类 + 第42类 + 第35类
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>"云客CRM" ★产品商标</h3>
+      <div class="desc">产品品牌文字商标，直接关联核心CRM产品</div>
+      <div class="preview">
+        <object data="文字商标-云客CRM.svg" type="image/svg+xml" width="400" height="200">
+          <img src="文字商标-云客CRM.svg" width="400"/>
+        </object>
+      </div>
+      <div class="file-info">
+        矢量文件：<code>文字商标-云客CRM.svg</code><br>
+        申请类别：第9类 + 第42类
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>"YUNKE" 英文商标</h3>
+      <div class="desc">英文品牌保护，防止英文抢注</div>
+      <div class="preview">
+        <object data="文字商标-YUNKE.svg" type="image/svg+xml" width="400" height="200">
+          <img src="文字商标-YUNKE.svg" width="400"/>
+        </object>
+      </div>
+      <div class="file-info">
+        矢量文件：<code>文字商标-YUNKE.svg</code><br>
+        申请类别：第9类
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 四、AI参考图 ===== -->
+<div class="section ref-section">
+  <div class="section-title">
+    四、AI生成参考图（高分辨率位图）
+  </div>
+  <p style="font-size: 14px; color: #6b7280; margin-bottom: 16px;">
+    以下是AI根据品牌设计生成的高分辨率参考图，可用于申请前的效果预览和内部讨论。
+    正式申请时建议使用上方的SVG矢量文件导出JPG。
+  </p>
+
+  <div class="ref-row">
+    <div class="ref-card">
+      <h4>图形商标 · 彩色参考</h4>
+      <img src="图形商标-彩色-参考图.png" alt="图形商标彩色"/>
+    </div>
+    <div class="ref-card">
+      <h4>图文组合 · 横版彩色参考</h4>
+      <img src="图文组合商标-横版-参考图.png" alt="横版彩色"/>
+    </div>
+  </div>
+  <div class="ref-row" style="margin-top: 20px;">
+    <div class="ref-card">
+      <h4>图文组合 · 竖版彩色参考</h4>
+      <img src="图文组合商标-竖版-参考图.png" alt="竖版彩色"/>
+    </div>
+    <div class="ref-card">
+      <h4>图文组合 · 竖版黑白参考</h4>
+      <img src="图文组合商标-竖版-黑白-参考图.png" alt="竖版黑白"/>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 五、规格说明 ===== -->
+<div class="section">
+  <div class="section-title">
+    五、商标图样规格说明
+  </div>
+
+  <table class="spec-table">
+    <thead>
+      <tr>
+        <th>规格项</th>
+        <th>要求</th>
+        <th>本套图样状态</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>尺寸</td>
+        <td>不小于5cm×5cm，不大于10cm×10cm</td>
+        <td>✅ SVG矢量可导出任意尺寸，建议导出8cm×8cm（约945px @300dpi）</td>
+      </tr>
+      <tr>
+        <td>分辨率</td>
+        <td>不低于300dpi</td>
+        <td>✅ SVG无损矢量，导出时设置300dpi即可</td>
+      </tr>
+      <tr>
+        <td>格式</td>
+        <td>JPG（网上申请）</td>
+        <td>⚠️ 需从SVG导出为JPG（见下方操作指南）</td>
+      </tr>
+      <tr>
+        <td>文件大小</td>
+        <td>不超过2MB</td>
+        <td>✅ 导出JPG通常在100-500KB</td>
+      </tr>
+      <tr>
+        <td>背景</td>
+        <td>白色背景</td>
+        <td>✅ 所有图样均为白色背景</td>
+      </tr>
+      <tr>
+        <td>清晰度</td>
+        <td>图案清晰完整，文字可辨认</td>
+        <td>✅ 矢量图形，无损放大</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ===== 操作指南 ===== -->
+<div class="tip-box">
+  <strong>📋 SVG → JPG 导出操作指南：</strong><br><br>
+  <strong>方法一：浏览器截图（最简单）</strong><br>
+  1. 在浏览器中打开SVG文件<br>
+  2. 按 Ctrl+P 打开打印，选择"另存为PDF"<br>
+  3. 或直接使用截图工具截取，确保分辨率足够<br><br>
+
+  <strong>方法二：在线转换工具（推荐）</strong><br>
+  1. 访问 <a href="https://cloudconvert.com/svg-to-jpg">cloudconvert.com/svg-to-jpg</a><br>
+  2. 上传SVG文件<br>
+  3. 设置输出尺寸 1000×1000px，质量100%<br>
+  4. 下载JPG文件<br><br>
+
+  <strong>方法三：Inkscape（专业）</strong><br>
+  1. 安装免费矢量编辑器 <a href="https://inkscape.org">Inkscape</a><br>
+  2. 打开SVG → 文件 → 导出PNG/JPG<br>
+  3. 设置DPI为300，导出<br><br>
+
+  <strong>方法四：Adobe Illustrator</strong><br>
+  1. 打开SVG → 文件 → 导出 → 导出为<br>
+  2. 选择JPG格式，分辨率300ppi，品质最大值
+</div>
+
+<div class="success-box">
+  <strong>✅ 文件清单一览：</strong><br><br>
+  <strong>图形商标（3个SVG）：</strong><br>
+  · 图形商标-彩色.svg — 彩色版（指定颜色申请）<br>
+  · 图形商标-黑白.svg — 黑白版（不指定颜色申请，推荐）<br>
+  · 图形商标-纯图形-黑白.svg — 纯图形元素版<br><br>
+
+  <strong>图文组合商标（4个SVG）：</strong><br>
+  · 图文组合商标-横版-彩色.svg — 横版彩色<br>
+  · 图文组合商标-横版-黑白.svg — 横版黑白（推荐申请）<br>
+  · 图文组合商标-竖版-彩色.svg — 竖版彩色<br>
+  · 图文组合商标-竖版-黑白.svg — 竖版黑白<br><br>
+
+  <strong>文字商标（3个SVG）：</strong><br>
+  · 文字商标-云客.svg — 核心品牌（必须申请）<br>
+  · 文字商标-云客CRM.svg — 产品品牌（必须申请）<br>
+  · 文字商标-YUNKE.svg — 英文品牌（建议申请）<br><br>
+
+  <strong>AI参考图（4个PNG）：</strong><br>
+  · 图形商标-彩色-参考图.png<br>
+  · 图文组合商标-横版-参考图.png<br>
+  · 图文组合商标-竖版-参考图.png<br>
+  · 图文组合商标-竖版-黑白-参考图.png
+</div>
+
+</body>
+</html>

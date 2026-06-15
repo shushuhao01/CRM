@@ -20,6 +20,8 @@ export const reportCallStatus = (data: {
 // 上报通话结束
 export const reportCallEnd = (data: {
   callId: string
+  phoneNumber?: string
+  callType?: 'inbound' | 'outbound'
   status: 'connected' | 'missed' | 'rejected' | 'busy' | 'failed'
   startTime?: string
   endTime: string

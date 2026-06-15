@@ -7,6 +7,9 @@ export interface UserInfo {
   realName: string
   department: string
   role: string
+  tenantId?: string
+  tenantName?: string
+  tenantCode?: string
 }
 
 export interface DeviceInfo {
@@ -41,15 +44,14 @@ export const useUserStore = defineStore('user', {
   }),
 
   actions: {
-    // 设置登录信息
     setLoginInfo(data: { token: string; expiresIn: number; user: UserInfo }) {
       this.token = data.token
       this.userInfo = data.user
       this.isLoggedIn = true
 
-      // 🔒 加密持久化存储（替代明文存储）
       setEncryptedStorage('token', data.token)
       setEncryptedStorage('userInfo', JSON.stringify(data.user))
+      uni.setStorageSync('loginTimestamp', String(Date.now()))
     },
 
     // 设置WebSocket信息
@@ -99,15 +101,25 @@ export const useUserStore = defineStore('user', {
       uni.removeStorageSync('savedPassword')
     },
 
-    // 从本地存储恢复（兼容旧版明文数据 + 新版加密数据）
     restore() {
       try {
-        // 🔒 使用加密读取（自动兼容旧版明文数据）
         const token = getEncryptedStorage('token')
         const userInfo = getEncryptedStorage('userInfo')
         const wsToken = getEncryptedStorage('wsToken')
         const wsUrl = uni.getStorageSync('wsUrl')
         const deviceInfo = uni.getStorageSync('deviceInfo')
+
+        // 检查本地登录是否超过7天
+        const loginTs = uni.getStorageSync('loginTimestamp')
+        if (loginTs && token) {
+          const elapsed = Date.now() - parseInt(loginTs)
+          const sevenDays = 7 * 24 * 60 * 60 * 1000
+          if (elapsed > sevenDays) {
+            console.log('[User] 登录已过期（超过7天），需要重新登录')
+            this.logout()
+            return
+          }
+        }
 
         if (token) {
           this.token = token

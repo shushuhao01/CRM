@@ -1240,6 +1240,12 @@ const initForm = () => {
   // 设置默认负责销售为当前用户姓名
   if (!isEdit.value) {
     customerForm.salesPerson = userStore.currentUser?.name || '当前用户'
+
+    // 来电新增客户：预填手机号（query 传真实号码，表单存真实值）
+    const queryPhone = route.query.phone as string
+    if (queryPhone) {
+      customerForm.phone = queryPhone
+    }
   }
 }
 

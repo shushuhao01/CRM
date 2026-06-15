@@ -8,6 +8,9 @@
       <view class="info">
         <text class="name">{{ userStore.userInfo?.realName || '未登录' }}</text>
         <text class="dept">{{ userStore.userInfo?.department || '' }} · {{ userStore.userInfo?.role || '' }}</text>
+        <text class="tenant" v-if="tenantDisplay">
+          {{ tenantDisplay }}
+        </text>
       </view>
     </view>
 
@@ -277,6 +280,18 @@ import { setEncryptedStorage, getEncryptedStorage } from '@/utils/crypto'
 const userStore = useUserStore()
 const serverStore = useServerStore()
 const appVersion = APP_VERSION
+
+// 租户/公司显示
+const tenantDisplay = computed(() => {
+  const info = userStore.userInfo
+  if (!info) return ''
+  const name = info.tenantName || ''
+  const code = info.tenantCode || ''
+  if (name && code) return `${name}（${code}）`
+  if (name) return name
+  if (code) return `编码：${code}`
+  return ''
+})
 
 // 录音状态
 const recordingEnabled = ref(false)
@@ -887,6 +902,19 @@ const handleLogout = () => {
         color: #6B7280;
         margin-top: 8rpx;
         display: block;
+      }
+
+      .tenant {
+        font-size: 24rpx;
+        color: #9CA3AF;
+        margin-top: 6rpx;
+        display: block;
+
+        .tenant-code {
+          color: #D1D5DB;
+          margin-left: 8rpx;
+          font-size: 22rpx;
+        }
       }
     }
   }
