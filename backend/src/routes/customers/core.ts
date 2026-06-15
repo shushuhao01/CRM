@@ -401,16 +401,24 @@ router.get('/check-exists', async (req: Request, res: Response) => {
       });
     }
 
-    log.info('[检查客户存在] 查询手机号:', phone);
+    // 获取当前租户ID，确保只在本租户范围内查重
+    const currentTenantId = (req as any).tenantId || (req as any).user?.tenantId;
+    log.info('[检查客户存在] 查询手机号:', phone, '租户ID:', currentTenantId || '无');
 
-    // 🔥 修复：同时搜索主手机号和其他手机号（JSON数组），使用精确匹配
-    const existingCustomer = await customerRepository
+    // 构建查询，显式添加租户过滤作为安全保障
+    const qb = customerRepository
       .createQueryBuilder('customer')
-      .where('customer.phone = :phone OR JSON_CONTAINS(customer.other_phones, JSON_QUOTE(:phone))', { phone: phone as string })
-      .getOne();
+      .where('customer.phone = :phone OR JSON_CONTAINS(customer.other_phones, JSON_QUOTE(:phone))', { phone: phone as string });
+
+    // 显式租户隔离：即使 getTenantRepo 已注入，再加一层保障
+    if (currentTenantId) {
+      qb.andWhere('customer.tenant_id = :tenantId', { tenantId: currentTenantId });
+    }
+
+    const existingCustomer = await qb.getOne();
 
     if (existingCustomer) {
-      log.info('[检查客户存在] 找到客户:', existingCustomer.name);
+      log.info('[检查客户存在] 找到客户:', existingCustomer.name, '(租户:', currentTenantId, ')');
 
       // 查找归属人的真实姓名
       let ownerName = '';
@@ -443,7 +451,7 @@ router.get('/check-exists', async (req: Request, res: Response) => {
       });
     }
 
-    log.info('[检查客户存在] 客户不存在，可以创建');
+    log.info('[检查客户存在] 客户不存在，可以创建 (租户:', currentTenantId, ')');
     return res.json({
       success: true,
       code: 200,
@@ -470,18 +478,23 @@ router.post('/check-batch-phones', async (req: Request, res: Response) => {
   try {
     const customerRepository = getTenantRepo(Customer);
     const { phones } = req.body;
+    const currentTenantId = (req as any).tenantId || (req as any).user?.tenantId;
 
     if (!phones || !Array.isArray(phones) || phones.length === 0) {
       return res.json({ success: true, code: 200, data: { duplicates: [] } });
     }
 
-    // 批量查询已存在的手机号
-    const existingCustomers = await customerRepository
+    // 批量查询已存在的手机号（严格限定当前租户）
+    const qb = customerRepository
       .createQueryBuilder('customer')
       .where('customer.phone IN (:...phones)', { phones })
-      .select(['customer.phone'])
-      .getMany();
+      .select(['customer.phone']);
 
+    if (currentTenantId) {
+      qb.andWhere('customer.tenant_id = :tenantId', { tenantId: currentTenantId });
+    }
+
+    const existingCustomers = await qb.getMany();
     const duplicates = existingCustomers.map(c => c.phone);
 
     res.json({ success: true, code: 200, data: { duplicates } });
@@ -516,6 +529,7 @@ router.post('/batch-import', async (req: Request, res: Response) => {
     }
 
     const customerRepository = getTenantRepo(Customer);
+    const batchTenantId = (req as any).tenantId || (req as any).user?.tenantId;
     let successCount = 0;
     let duplicateCount = 0;
     let errorCount = 0;
@@ -529,9 +543,15 @@ router.post('/batch-import', async (req: Request, res: Response) => {
           continue;
         }
 
-        // 检查手机号重复
+        // 检查手机号重复（严格限定当前租户）
         if (item.phone) {
-          const existing = await customerRepository.findOne({ where: { phone: item.phone } });
+          const checkQb = customerRepository
+            .createQueryBuilder('customer')
+            .where('customer.phone = :phone', { phone: item.phone });
+          if (batchTenantId) {
+            checkQb.andWhere('customer.tenant_id = :tenantId', { tenantId: batchTenantId });
+          }
+          const existing = await checkQb.getOne();
           if (existing) {
             duplicateCount++;
             continue;
@@ -880,12 +900,19 @@ router.post('/', async (req: Request, res: Response) => {
       departmentId: currentUser?.departmentId
     });
 
-    // 🔥 检查手机号是否已存在（在当前租户范围内）
+    // 🔥 检查手机号是否已存在（严格限定在当前租户范围内）
     if (phone) {
       try {
-        const existingCustomer = await customerRepository.findOne({ where: { phone } });
+        // 使用 QueryBuilder 并显式添加租户过滤，双重保障租户隔离
+        const checkQb = customerRepository
+          .createQueryBuilder('customer')
+          .where('customer.phone = :phone', { phone });
+        if (currentTenantId) {
+          checkQb.andWhere('customer.tenant_id = :tenantId', { tenantId: currentTenantId });
+        }
+        const existingCustomer = await checkQb.getOne();
         if (existingCustomer) {
-          log.info('[创建客户] 手机号已存在:', phone, '客户:', existingCustomer.name, 'ID:', existingCustomer.id);
+          log.info('[创建客户] 手机号已存在:', phone, '客户:', existingCustomer.name, 'ID:', existingCustomer.id, '租户:', currentTenantId);
           return res.status(400).json({
             success: false,
             code: 400,
@@ -894,7 +921,6 @@ router.post('/', async (req: Request, res: Response) => {
         }
       } catch (checkErr: any) {
         log.error('[创建客户] 检查手机号存在性失败:', checkErr.message);
-        // 检查失败不阻止创建，继续流程（容错）
       }
     }
 

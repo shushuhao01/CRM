@@ -253,9 +253,10 @@ router.post('/sip/incoming', verifySipWebhookSecret, async (req: Request, res: R
     let company = null;
     let lastCallTime = null;
     try {
+      const crSubTenant = tenantId ? ' AND cr.tenant_id = c.tenant_id' : '';
       const customers = await AppDataSource.query(
         `SELECT c.id, c.name, c.level, c.company,
-                (SELECT MAX(start_time) FROM call_records WHERE customer_id = c.id) as last_call
+                (SELECT MAX(cr.start_time) FROM call_records cr WHERE cr.customer_id = c.id${crSubTenant}) as last_call
          FROM customers c
          WHERE (c.phone = ? OR c.mobile = ?)${tenantFilter}
          LIMIT 1`,
@@ -287,16 +288,16 @@ router.post('/sip/incoming', verifySipWebhookSecret, async (req: Request, res: R
         assignedUserId = routes[0].target_user_id;
       }
 
-      // 回退：通过线路分配找
+      // 回退：通过线路分配找（添加租户过滤）
       if (!assignedUserId) {
         const assignments = await AppDataSource.query(
           `SELECT ula.user_id, u.name, u.real_name
            FROM user_line_assignments ula
            JOIN call_lines cl ON ula.line_id = cl.id
            LEFT JOIN users u ON ula.user_id = u.id
-           WHERE (cl.caller_number = ? OR cl.line_number = ?) AND ula.is_active = 1
+           WHERE (cl.caller_number = ? OR cl.line_number = ?) AND ula.is_active = 1${tenantFilter ? ' AND ula.tenant_id = ?' : ''}
            ORDER BY ula.is_default DESC LIMIT 1`,
-          [calledNumber, calledNumber]
+          [calledNumber, calledNumber, ...tenantParams]
         );
         if (assignments.length > 0) {
           assignedUserId = assignments[0].user_id;
@@ -304,21 +305,21 @@ router.post('/sip/incoming', verifySipWebhookSecret, async (req: Request, res: R
         }
       }
 
-      // 如果客户有专属销售，优先分配
+      // 如果客户有专属销售，优先分配（添加租户过滤）
       if (customerId) {
         const customerOwner = await AppDataSource.query(
-          `SELECT sales_rep_id FROM customers WHERE id = ? LIMIT 1`,
-          [customerId]
+          `SELECT sales_rep_id FROM customers WHERE id = ?${tenantFilter} LIMIT 1`,
+          [customerId, ...tenantParams]
         );
         if (customerOwner.length > 0 && customerOwner[0].sales_rep_id) {
           assignedUserId = customerOwner[0].sales_rep_id;
         }
       }
 
-      // 获取被分配用户的姓名
+      // 获取被分配用户的姓名（添加租户过滤）
       if (assignedUserId && !assignedUserName) {
         const userInfo = await AppDataSource.query(
-          `SELECT name, real_name FROM users WHERE id = ? LIMIT 1`, [assignedUserId]
+          `SELECT name, real_name FROM users WHERE id = ?${tenantFilter} LIMIT 1`, [assignedUserId, ...tenantParams]
         );
         if (userInfo.length > 0) {
           assignedUserName = userInfo[0].real_name || userInfo[0].name || '';
@@ -337,7 +338,7 @@ router.post('/sip/incoming', verifySipWebhookSecret, async (req: Request, res: R
     try {
       if (assignedUserId) {
         const agentRows = await AppDataSource.query(
-          `SELECT agent_status FROM users WHERE id = ? LIMIT 1`, [assignedUserId]
+          `SELECT agent_status FROM users WHERE id = ?${tenantFilter} LIMIT 1`, [assignedUserId, ...tenantParams]
         );
         agentBusy = agentRows.length > 0 && agentRows[0].agent_status === 'busy';
       }
@@ -474,25 +475,36 @@ router.post('/sip/status', verifySipWebhookSecret, async (req: Request, res: Res
       params.push(ringDuration);
     }
 
-    params.push(callId);
+    // 先查出该通话记录所属的租户和用户，确保后续操作在正确租户范围内
+    let recordTenantId: string | null = null;
+    let recordUserId: string | null = null;
+    try {
+      const existingRecords = await AppDataSource.query(
+        `SELECT user_id, tenant_id FROM call_records WHERE id = ? LIMIT 1`, [callId]
+      );
+      if (existingRecords.length > 0) {
+        recordTenantId = existingRecords[0].tenant_id;
+        recordUserId = existingRecords[0].user_id;
+      }
+    } catch (_e) { /* ignore */ }
+
+    // 🔒 租户隔离：更新时同时匹配 tenant_id
+    const tenantUpdateCond = recordTenantId ? ' AND tenant_id = ?' : ' AND tenant_id IS NULL';
+    const tenantUpdateParams = recordTenantId ? [recordTenantId] : [];
+    params.push(callId, ...tenantUpdateParams);
     await AppDataSource.query(
-      `UPDATE call_records SET ${updates.join(', ')} WHERE id = ?`,
+      `UPDATE call_records SET ${updates.join(', ')} WHERE id = ?${tenantUpdateCond}`,
       params
     );
 
     // 推送状态更新到PC端
-    if ((global as any).webSocketService) {
+    if ((global as any).webSocketService && recordUserId) {
       try {
-        const records = await AppDataSource.query(
-          `SELECT user_id FROM call_records WHERE id = ? LIMIT 1`, [callId]
+        (global as any).webSocketService.sendToUser(
+          recordUserId,
+          `CALL_${event.toUpperCase()}`,
+          { callId, event, duration, hangupCause }
         );
-        if (records.length > 0 && records[0].user_id) {
-          (global as any).webSocketService.sendToUser(
-            records[0].user_id,
-            `CALL_${event.toUpperCase()}`,
-            { callId, event, duration, hangupCause }
-          );
-        }
       } catch (err) {
         log.warn('[Webhook] 推送状态更新失败:', err);
       }

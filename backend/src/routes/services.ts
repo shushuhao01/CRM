@@ -125,8 +125,8 @@ router.get('/', authenticateToken, async (req: Request, res: Response) => {
     if (search) {
       queryBuilder.andWhere(
         '(service.serviceNumber LIKE :search OR service.customerName LIKE :search OR service.orderNumber LIKE :search OR service.customerPhone LIKE :search' +
-        ' OR EXISTS (SELECT 1 FROM customers c WHERE c.id = service.customer_id AND (c.customer_code LIKE :search OR CAST(c.other_phones AS CHAR) LIKE :search))' +
-        ' OR EXISTS (SELECT 1 FROM orders o WHERE o.id = service.order_id AND o.tracking_number LIKE :search))',
+        ' OR EXISTS (SELECT 1 FROM customers c WHERE c.id = service.customer_id AND c.tenant_id = service.tenant_id AND (c.customer_code LIKE :search OR CAST(c.other_phones AS CHAR) LIKE :search))' +
+        ' OR EXISTS (SELECT 1 FROM orders o WHERE o.id = service.order_id AND o.tenant_id = service.tenant_id AND o.tracking_number LIKE :search))',
         { search: `%${search}%` }
       );
     }

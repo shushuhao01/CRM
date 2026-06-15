@@ -150,11 +150,15 @@ router.get('/prospects', async (req: Request, res: Response) => {
         if (customerAsProspects.length > 0) {
           try {
             const custIds = customerAsProspects.map((c: any) => c.id);
+            const tenantId = TenantContextManager.getTenantId();
+            const tCond = tenantId ? ' AND f.tenant_id = ?' : '';
+            const tCond2 = tenantId ? ' AND f2.tenant_id = ?' : '';
+            const tParams = tenantId ? [tenantId] : [];
             const custFollowUps = await AppDataSource.query(
               `SELECT f.customer_id, f.content, f.remark, f.created_at FROM follow_up_records f
-               WHERE f.customer_id IN (${custIds.map(() => '?').join(',')})
-               AND f.created_at = (SELECT MAX(f2.created_at) FROM follow_up_records f2 WHERE f2.customer_id = f.customer_id)`,
-              custIds
+               WHERE f.customer_id IN (${custIds.map(() => '?').join(',')})${tCond}
+               AND f.created_at = (SELECT MAX(f2.created_at) FROM follow_up_records f2 WHERE f2.customer_id = f.customer_id${tCond2})`,
+              [...custIds, ...tParams, ...tParams]
             );
             const custFollowMap = new Map(custFollowUps.map((f: any) => [f.customer_id, f]));
             customerAsProspects.forEach((p: any) => {
@@ -502,8 +506,10 @@ router.get('/prospects/:id/logs', async (req: Request, res: Response) => {
     const { id } = req.params;
     const tenantId = (req as any).tenantId || (req as any).user?.tenantId;
     const logs = await AppDataSource.query(
-      `SELECT * FROM prospect_logs WHERE prospect_id = ? AND (tenant_id = ? OR tenant_id IS NULL) ORDER BY created_at DESC LIMIT 50`,
-      [id, tenantId]
+      tenantId
+        ? `SELECT * FROM prospect_logs WHERE prospect_id = ? AND tenant_id = ? ORDER BY created_at DESC LIMIT 50`
+        : `SELECT * FROM prospect_logs WHERE prospect_id = ? AND tenant_id IS NULL ORDER BY created_at DESC LIMIT 50`,
+      tenantId ? [id, tenantId] : [id]
     );
     res.json({ success: true, data: logs });
   } catch (e: any) {

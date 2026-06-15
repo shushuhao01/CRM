@@ -55,9 +55,9 @@ export class RoleController {
       return { id: role[0].id, name: role[0].name, cloned: false };
     }
 
-    // 检查当前租户是否已有此角色的专属副本（按code匹配）
+    // 🔒 租户隔离：只允许读取本租户角色或系统预设角色（tenant_id IS NULL）
     const sourceRole = await dataSource.query(
-      'SELECT id, name, code, description, level, color, data_scope, permissions, status FROM roles WHERE id = ?', [roleId]
+      'SELECT id, name, code, description, level, color, data_scope, permissions, status FROM roles WHERE id = ? AND (tenant_id = ? OR tenant_id IS NULL)', [roleId, tenantId]
     );
     if (sourceRole.length === 0) throw new Error('角色不存在');
 
@@ -367,8 +367,9 @@ export class RoleController {
 
       if (updates.length > 0) {
         updates.push('updatedAt = NOW()');
-        params.push(tenantRole.id);
-        await dataSource.query(`UPDATE roles SET ${updates.join(', ')} WHERE id = ?`, params);
+        const tUpdate = tenantRawSQL();
+        params.push(tenantRole.id, ...tUpdate.params);
+        await dataSource.query(`UPDATE roles SET ${updates.join(', ')} WHERE id = ?${tUpdate.sql}`, params);
       }
 
       res.json({
@@ -393,8 +394,9 @@ export class RoleController {
         throw new Error('数据库连接未初始化');
       }
 
-      // 直接按 id 查找角色
-      const roles = await dataSource.query('SELECT id, code, tenant_id FROM roles WHERE id = ? LIMIT 1', [id]);
+      // 🔒 租户隔离：按 id + tenant_id 查找角色，防止跨租户删除
+      const tRole = tenantRawSQL();
+      const roles = await dataSource.query('SELECT id, code, tenant_id FROM roles WHERE id = ?' + tRole.sql + ' LIMIT 1', [id, ...tRole.params]);
       if (roles.length === 0) {
         res.status(404).json({ success: false, message: '角色不存在' });
         return;
@@ -405,6 +407,12 @@ export class RoleController {
       const systemRoleCodes = ['super_admin', 'admin', 'department_manager', 'sales_staff', 'customer_service'];
       if (systemRoleCodes.includes(role.code)) {
         res.status(400).json({ success: false, message: '系统内置角色不可删除' });
+        return;
+      }
+
+      // 全局共享角色（tenant_id IS NULL）不允许租户侧删除
+      if (role.tenant_id === null) {
+        res.status(400).json({ success: false, message: '系统预设角色不可删除' });
         return;
       }
 
@@ -424,7 +432,7 @@ export class RoleController {
         return;
       }
 
-      await dataSource.query('DELETE FROM roles WHERE id = ?', [role.id]);
+      await dataSource.query('DELETE FROM roles WHERE id = ?' + tRole.sql, [role.id, ...tRole.params]);
 
       res.json({
         success: true,

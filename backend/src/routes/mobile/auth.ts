@@ -134,26 +134,43 @@ router.post('/login', async (req: Request, res: Response) => {
     }
 
     // 获取角色中文名
+    const ROLE_NAME_FALLBACK: Record<string, string> = {
+      'super_admin': '超级管理员',
+      'admin': '管理员',
+      'department_manager': '部门经理',
+      'sales_staff': '销售员',
+      'sales': '销售员',
+      'finance': '财务',
+      'customer_service': '客服',
+      'warehouse': '仓库管理员',
+      'logistics': '物流专员',
+      'hr': '人事专员',
+      'viewer': '只读用户',
+    }
     let roleName = ''
     if (user.role) {
       try {
-        const tenantFilter = user.tenant_id
-          ? { sql: ' AND tenant_id = ?', params: [user.tenant_id] }
-          : { sql: ' AND tenant_id IS NULL', params: [] }
-        const roles = await AppDataSource.query(
-          `SELECT name FROM roles WHERE code = ?${tenantFilter.sql} LIMIT 1`,
-          [user.role, ...tenantFilter.params]
-        )
-        roleName = roles[0]?.name || ''
+        // 1. 优先查当前租户的角色
+        if (user.tenant_id) {
+          const tenantRoles = await AppDataSource.query(
+            `SELECT name FROM roles WHERE code = ? AND tenant_id = ? LIMIT 1`,
+            [user.role, user.tenant_id]
+          )
+          roleName = tenantRoles[0]?.name || ''
+        }
+        // 2. 兜底：查全局角色（无租户限制）
         if (!roleName) {
-          // 兜底：无租户过滤再查一次
-          const fallbackRoles = await AppDataSource.query(
+          const globalRoles = await AppDataSource.query(
             `SELECT name FROM roles WHERE code = ? LIMIT 1`, [user.role]
           )
-          roleName = fallbackRoles[0]?.name || ''
+          roleName = globalRoles[0]?.name || ''
         }
-      } catch (_e) {
-        // 忽略
+      } catch (e) {
+        log.warn('[APP登录] 查询角色中文名失败:', e instanceof Error ? e.message : e)
+      }
+      // 3. 最终兜底：硬编码映射
+      if (!roleName) {
+        roleName = ROLE_NAME_FALLBACK[user.role] || ''
       }
     }
 
@@ -161,12 +178,21 @@ router.post('/login', async (req: Request, res: Response) => {
     let tenantName = ''
     let resolvedTenantCode = ''
     if (user.tenant_id) {
-      const tenants = await AppDataSource.query(
-        `SELECT name, code FROM tenants WHERE id = ?`,
-        [user.tenant_id]
-      )
-      tenantName = tenants[0]?.name || ''
-      resolvedTenantCode = tenants[0]?.code || ''
+      try {
+        const tenants = await AppDataSource.query(
+          `SELECT name, code FROM tenants WHERE id = ?`,
+          [user.tenant_id]
+        )
+        tenantName = tenants[0]?.name || ''
+        resolvedTenantCode = tenants[0]?.code || ''
+        log.info(`[APP登录] 租户信息: id=${user.tenant_id}, name=${tenantName}, code=${resolvedTenantCode}`)
+      } catch (e) {
+        log.error('[APP登录] 查询租户信息失败:', e instanceof Error ? e.message : e)
+      }
+      // 兜底：如果通过tenantCode登录，直接使用请求中的tenantCode
+      if (!resolvedTenantCode && tenantCode) {
+        resolvedTenantCode = tenantCode
+      }
     } else {
       // 私有部署模式：读取系统配置中的公司名称作为租户名称
       try {

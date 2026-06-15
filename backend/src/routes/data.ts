@@ -574,28 +574,26 @@ router.get('/search-customer', async (req: Request, res: Response) => {
 
     log.info(`[客户查询] keyword=${kw}, tenantId=${tenantId || '(无)'}, userId=${currentUser?.id || currentUser?.userId}`);
 
-    const customerRepo = AppDataSource.getRepository(Customer);
+    const customerRepo = getTenantRepo(Customer);
 
     // 扩展搜索：订单号、物流单号、售后单号 → 找到关联的客户ID
     let orderCustomerIds: string[] = [];
     let afterSalesCustomerIds: string[] = [];
     try {
       const { Order } = await import('../entities/Order');
-      const orderRepo = AppDataSource.getRepository(Order);
+      const orderRepo = getTenantRepo(Order);
       const orderQb = orderRepo.createQueryBuilder('o')
         .select('DISTINCT o.customerId', 'customerId')
         .where('o.orderNumber LIKE :kw OR o.trackingNumber LIKE :kw', { kw: `%${kw}%` });
-      if (tenantId) orderQb.andWhere('o.tenant_id = :tid', { tid: tenantId });
       const orderMatches = await orderQb.getRawMany();
       orderCustomerIds = orderMatches.map((r: any) => r.customerId).filter(Boolean);
 
       try {
         const { AfterSalesService } = await import('../entities/AfterSalesService');
-        const asRepo = AppDataSource.getRepository(AfterSalesService);
+        const asRepo = getTenantRepo(AfterSalesService);
         const asQb = asRepo.createQueryBuilder('a')
           .select('DISTINCT a.customer_id', 'customerId')
           .where('a.service_number LIKE :kw', { kw: `%${kw}%` });
-        if (tenantId) asQb.andWhere('a.tenant_id = :tid', { tid: tenantId });
         const asMatches = await asQb.getRawMany();
         afterSalesCustomerIds = asMatches.map((r: any) => r.customerId).filter(Boolean);
       } catch { /* 售后表可能不存在 */ }
@@ -606,10 +604,6 @@ router.get('/search-customer', async (req: Request, res: Response) => {
     const extraIds = [...new Set([...orderCustomerIds, ...afterSalesCustomerIds])];
 
     const queryBuilder = customerRepo.createQueryBuilder('customer');
-
-    if (tenantId) {
-      queryBuilder.where('customer.tenant_id = :tenantId', { tenantId });
-    }
 
     queryBuilder.andWhere(new Brackets(qb => {
       qb.where('customer.customer_code LIKE :keyword', { keyword: `%${kw}%` })
@@ -633,7 +627,7 @@ router.get('/search-customer', async (req: Request, res: Response) => {
     const salesIds = [...new Set(customers.map((c: any) => c.salesPersonId).filter(Boolean))];
     const salesMap: Record<string, any> = {};
     if (salesIds.length > 0) {
-      const userRepo = AppDataSource.getRepository(User);
+      const userRepo = getTenantRepo(User);
       const salesPersons = await userRepo.find({
         where: { id: In(salesIds) },
         select: ['id', 'realName', 'name', 'departmentName']

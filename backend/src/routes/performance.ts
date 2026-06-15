@@ -32,7 +32,7 @@ router.get('/shares', async (req: Request, res: Response) => {
                  'shareAmount', psm.share_amount, 'status', psm.status
                )) FROM performance_share_members psm WHERE psm.share_id = ps.id${tSub.sql}) as shareMembers
                FROM performance_shares ps
-               LEFT JOIN orders o ON o.id = ps.order_id
+               LEFT JOIN orders o ON o.id = ps.order_id AND o.tenant_id = ps.tenant_id
                WHERE 1=1${t.sql}`;
     const params: any[] = [...tSub.params, ...t.params];
 
@@ -58,11 +58,16 @@ router.get('/shares', async (req: Request, res: Response) => {
 
     const shares = await AppDataSource.query(sql, params);
 
-    // 获取总数
+    // 获取总数（与主查询条件保持一致）
     let countSql = `SELECT COUNT(*) as total FROM performance_shares ps WHERE 1=1${t.sql}`;
     const countParams: any[] = [...t.params];
     if (status) { countSql += ` AND ps.status = ?`; countParams.push(status); }
     if (orderId) { countSql += ` AND ps.order_id = ?`; countParams.push(orderId); }
+    if (userId) {
+      const tExistsCount = tenantSQL('psm2.');
+      countSql += ` AND (ps.created_by = ? OR EXISTS (SELECT 1 FROM performance_share_members psm2 WHERE psm2.share_id = ps.id AND psm2.user_id = ?${tExistsCount.sql}))`;
+      countParams.push(userId, userId, ...tExistsCount.params);
+    }
 
     const [countResult] = await AppDataSource.query(countSql, countParams);
 

@@ -115,7 +115,7 @@ export function registerCrudRoutes(router: Router): void {router.get('/', authen
     // 🔥 综合关键词搜索（商品名称模糊搜索，其他字段精准搜索，客户编码和其他手机号通过子查询关联customers表）
     if (keyword) {
       queryBuilder.andWhere(
-        '(order.orderNumber = :exactKeyword OR order.customerName = :exactKeyword OR order.customerPhone = :exactKeyword OR order.customerId = :exactKeyword OR order.trackingNumber = :exactKeyword OR order.products LIKE :fuzzyKeyword OR EXISTS (SELECT 1 FROM customers c WHERE c.id = order.customer_id AND (c.customer_code LIKE :fuzzyKeyword OR c.phone = :exactKeyword OR JSON_CONTAINS(c.other_phones, JSON_QUOTE(:exactKeyword)))))',
+        '(order.orderNumber = :exactKeyword OR order.customerName = :exactKeyword OR order.customerPhone = :exactKeyword OR order.customerId = :exactKeyword OR order.trackingNumber = :exactKeyword OR order.products LIKE :fuzzyKeyword OR EXISTS (SELECT 1 FROM customers c WHERE c.id = order.customer_id AND c.tenant_id = order.tenant_id AND (c.customer_code LIKE :fuzzyKeyword OR c.phone = :exactKeyword OR JSON_CONTAINS(c.other_phones, JSON_QUOTE(:exactKeyword)))))',
         { exactKeyword: keyword, fuzzyKeyword: `%${keyword}%` }
       );
       log.info(`📋 [订单列表] 综合关键词搜索: "${keyword}" (商品模糊，其他精准，支持客户编码和其他手机号)`);
@@ -186,7 +186,7 @@ export function registerCrudRoutes(router: Router): void {router.get('/', authen
 
     // 🔥 高级筛选：客户电话（同时搜索客户其他手机号）
     if (customerPhone) {
-      queryBuilder.andWhere('(order.customerPhone LIKE :customerPhone OR EXISTS (SELECT 1 FROM customers c WHERE c.id = order.customer_id AND CAST(c.other_phones AS CHAR) LIKE :customerPhone))', { customerPhone: `%${customerPhone}%` });
+      queryBuilder.andWhere('(order.customerPhone LIKE :customerPhone OR EXISTS (SELECT 1 FROM customers c WHERE c.id = order.customer_id AND c.tenant_id = order.tenant_id AND CAST(c.other_phones AS CHAR) LIKE :customerPhone))', { customerPhone: `%${customerPhone}%` });
     }
 
     // 🔥 高级筛选：支付方式
@@ -700,6 +700,23 @@ router.post('/', authenticateToken, async (req: Request, res: Response) => {
       });
     }
 
+    // 🔒 租户隔离：验证客户归属当前租户，防止跨租户创建订单
+    try {
+      const { Customer } = await import('../../entities/Customer');
+      const customerRepo = getTenantRepo(Customer);
+      const verifiedCustomer = await customerRepo.findOne({ where: { id: String(customerId) } });
+      if (!verifiedCustomer) {
+        log.warn(`[订单创建] 客户不存在或不属于当前租户: ${customerId}`);
+        return res.status(400).json({
+          success: false,
+          code: 400,
+          message: '客户不存在或无权访问该客户'
+        });
+      }
+    } catch (e: any) {
+      log.warn('[订单创建] 客户归属验证失败:', e.message);
+    }
+
     if (!products || !Array.isArray(products) || products.length === 0) {
       log.error('❌ [订单创建] 缺少商品信息信息');
       return res.status(400).json({
@@ -775,9 +792,12 @@ router.post('/', authenticateToken, async (req: Request, res: Response) => {
         for (const item of products) {
           const pid = item.id || item.productId;
           if (item.productType === 'virtual' && !item.virtualDeliveryType && pid) {
+            const currentTid = (req as any).tenantId || (req as any).user?.tenantId;
+            const tidSql = currentTid ? ' AND tenant_id = ?' : '';
+            const tidParams = currentTid ? [pid, currentTid] : [pid];
             const [prod] = await ds.query(
-              `SELECT virtual_delivery_type FROM products WHERE id = ? LIMIT 1`,
-              [pid]
+              `SELECT virtual_delivery_type FROM products WHERE id = ?${tidSql} LIMIT 1`,
+              tidParams
             );
             if (prod?.virtual_delivery_type) {
               item.virtualDeliveryType = prod.virtual_delivery_type;
@@ -872,9 +892,11 @@ router.post('/', authenticateToken, async (req: Request, res: Response) => {
         let deliveryType = item.virtualDeliveryType;
         if (!deliveryType) {
           try {
+            const tidSql2 = tenantId ? ' AND tenant_id = ?' : '';
+            const tidParams2 = tenantId ? [productId, tenantId] : [productId];
             const [prod] = await ds.query(
-              `SELECT virtual_delivery_type FROM products WHERE id = ? LIMIT 1`,
-              [productId]
+              `SELECT virtual_delivery_type FROM products WHERE id = ?${tidSql2} LIMIT 1`,
+              tidParams2
             );
             deliveryType = prod?.virtual_delivery_type || 'none';
           } catch (_e) { deliveryType = 'none'; }
@@ -889,8 +911,8 @@ router.post('/', authenticateToken, async (req: Request, res: Response) => {
           );
           for (const available of availableList) {
             await ds.query(
-              `UPDATE card_key_inventory SET status = 'reserved', reserved_order_id = ?, updated_at = NOW() WHERE id = ?`,
-              [savedOrder.id, available.id]
+              `UPDATE card_key_inventory SET status = 'reserved', reserved_order_id = ?, updated_at = NOW() WHERE id = ? AND tenant_id = ?`,
+              [savedOrder.id, available.id, tenantId]
             );
             log.info(`🔑 [虚拟库存] 卡密 ${available.id} 已预占给订单 ${savedOrder.id}`);
           }
@@ -904,8 +926,8 @@ router.post('/', authenticateToken, async (req: Request, res: Response) => {
           );
           for (const available of availableList) {
             await ds.query(
-              `UPDATE resource_inventory SET status = 'reserved', reserved_order_id = ?, updated_at = NOW() WHERE id = ?`,
-              [savedOrder.id, available.id]
+              `UPDATE resource_inventory SET status = 'reserved', reserved_order_id = ?, updated_at = NOW() WHERE id = ? AND tenant_id = ?`,
+              [savedOrder.id, available.id, tenantId]
             );
             log.info(`☁️ [虚拟库存] 资源 ${available.id} 已预占给订单 ${savedOrder.id}`);
           }
