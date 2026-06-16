@@ -139,7 +139,7 @@ router.post('/call/end', authenticateToken, async (req: Request, res: Response) 
         finalStartTime = callEndTime
       }
 
-      const tenantId = getCurrentTenantIdSafe() || null
+      const tenantId = getCurrentTenantIdSafe() || currentUser?.tenantId || (req as any).tenantId || null
       const callType = req.body.callType || 'outbound'
       await AppDataSource.query(
         `INSERT INTO call_records (id, user_id, customer_phone, call_type, call_status, duration, has_recording, start_time, end_time, created_at, updated_at, tenant_id)

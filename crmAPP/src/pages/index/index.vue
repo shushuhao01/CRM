@@ -212,9 +212,13 @@ const saveManualOverrides = () => {
 }
 loadManualOverrides()
 
-const allPermissionsOk = computed(() =>
-  permPhoneState.value && permCallLog.value && permOverlay.value
-)
+const allPermissionsOk = computed(() => {
+  const phoneOk = isGranted('phone', permPhoneState.value)
+  const calllogOk = isGranted('calllog', permCallLog.value)
+  const overlayOk = isGranted('overlay', permOverlay.value)
+  const micOk = isGranted('mic', permMicrophone.value)
+  return phoneOk && calllogOk && overlayOk && micOk
+})
 
 // 综合判断：系统检测 或 手动确认
 const isGranted = (key: string, detected: boolean) => detected || !!manualOverrides.value[key]
@@ -348,75 +352,94 @@ const refreshPermissionStatus = () => {
 }
 
 // #ifdef APP-PLUS
-/** 实测电话权限：尝试读取通话状态 */
+/** 检测权限：用多种方式获取 int 结果并转字符串比较 */
+const checkPermByStr = (main: any, perm: string): boolean | null => {
+  // 方式1: PackageManager.checkPermission
+  try {
+    const pkgName = (main as any).getPackageName()
+    const pm = (main as any).getPackageManager()
+    const raw = pm.checkPermission(perm, pkgName)
+    // 尝试多种方式转为可比较的值
+    const str = '' + raw
+    console.log('[Perm]', perm, 'PM.checkPermission: raw=' + raw, 'str="' + str + '"', 'typeof=' + typeof raw)
+    if (str === '0' || str.includes('GRANTED')) return true
+    if (str === '-1' || str.includes('DENIED')) return false
+    // 尝试 Number 转换
+    const num = Number(raw)
+    if (!isNaN(num)) {
+      if (num === 0) return true
+      if (num === -1) return false
+    }
+  } catch (e) {
+    console.log('[Perm]', perm, 'PM.checkPermission error:', e)
+  }
+
+  // 方式2: checkCallingOrSelfPermission
+  try {
+    const raw = (main as any).checkCallingOrSelfPermission(perm)
+    const str = '' + raw
+    console.log('[Perm]', perm, 'checkCallingOrSelf: str="' + str + '"')
+    if (str === '0') return true
+    if (str === '-1') return false
+    const num = Number(raw)
+    if (!isNaN(num)) return num === 0
+  } catch (_e) { /* skip */ }
+
+  return null
+}
+
+/** 实测电话权限 */
 const testPhoneStatePerm = (main: any): boolean => {
+  // 先用字符串比较
+  const r = checkPermByStr(main, 'android.permission.READ_PHONE_STATE')
+  if (r !== null) return r
+  // 兜底实测
   try {
     const Context = plus.android.importClass('android.content.Context') as any
-    const TelephonyManager = plus.android.importClass('android.telephony.TelephonyManager') as any
     const tm = (main as any).getSystemService(Context.TELEPHONY_SERVICE)
-    tm.getCallState() // 如果没权限会抛 SecurityException
+    tm.getCallState()
     return true
   } catch (e) {
     return false
   }
 }
 
-/** 实测通话记录权限：尝试查询通话记录 */
+/** 实测通话记录权限 */
 const testCallLogPerm = (main: any): boolean => {
+  // 先用字符串比较（和电话、麦克风统一方式）
+  const r = checkPermByStr(main, 'android.permission.READ_CALL_LOG')
+  if (r !== null) return r
+  // 兜底：实际查询
   try {
     const CallLog = plus.android.importClass('android.provider.CallLog') as any
     const cr = (main as any).getContentResolver()
-    const cursor = cr.query(
-      CallLog.Calls.CONTENT_URI,
-      ['_id'],
-      null, null,
-      'date DESC LIMIT 1'
-    )
-    if (cursor) {
-      cursor.close()
-    }
-    // 没有抛异常说明有权限（即使结果为空）
+    const cursor = cr.query(CallLog.Calls.CONTENT_URI, ['_id'], '1=0', null, null)
+    if (cursor === null || cursor === undefined) return false
+    cursor.close()
     return true
   } catch (e) {
-    const errMsg = String(e)
-    if (errMsg.includes('SecurityException') || errMsg.includes('Permission') || errMsg.includes('permission')) {
-      return false
-    }
-    // 其他异常（如 ContentResolver 调用问题）不代表没权限
-    return true
+    return false
   }
 }
 
-/** 实测麦克风权限：尝试创建录音器 */
+/** 实测麦克风权限 */
 const testMicrophonePerm = (main: any): boolean => {
+  // 先用字符串比较
+  const r = checkPermByStr(main, 'android.permission.RECORD_AUDIO')
+  if (r !== null) return r
+  // 兜底实测
   try {
     const AudioRecord = plus.android.importClass('android.media.AudioRecord') as any
     const AudioFormat = plus.android.importClass('android.media.AudioFormat') as any
     const MediaRecorder = plus.android.importClass('android.media.MediaRecorder') as any
-    const sampleRate = 8000
-    const bufSize = AudioRecord.getMinBufferSize(
-      sampleRate,
-      AudioFormat.CHANNEL_IN_MONO,
-      AudioFormat.ENCODING_PCM_16BIT
-    )
-    if (Number(bufSize) <= 0) return true // 无法确定，假设有
-
-    const recorder = new AudioRecord(
-      MediaRecorder.AudioSource.MIC,
-      sampleRate,
-      AudioFormat.CHANNEL_IN_MONO,
-      AudioFormat.ENCODING_PCM_16BIT,
-      Number(bufSize)
-    )
+    const bufSize = AudioRecord.getMinBufferSize(8000, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
+    if (Number(bufSize) <= 0) return true
+    const recorder = new AudioRecord(MediaRecorder.AudioSource.MIC, 8000, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, Number(bufSize))
     const state = Number(recorder.getState())
     recorder.release()
-    return state === 1 // AudioRecord.STATE_INITIALIZED
+    return state === 1
   } catch (e) {
-    const errMsg = String(e)
-    if (errMsg.includes('SecurityException') || errMsg.includes('Permission') || errMsg.includes('permission')) {
-      return false
-    }
-    return true
+    return false
   }
 }
 // #endif
@@ -554,15 +577,23 @@ const handleManualConfirm = (p: any) => {
 }
 
 /**
- * 手动刷新按钮（带旋转动画）——同时清除手动覆盖，重新实测
+ * 手动刷新按钮（带旋转动画）——重新实测，只覆盖自动检测成功的项
  */
 const handleRefreshPermissions = () => {
   if (permScanning.value) return
   permScanning.value = true
-  // 清除手动覆盖，重新从系统实测
-  manualOverrides.value = {}
-  saveManualOverrides()
+  // 先记录刷新前的自动检测结果
+  const beforePhone = permPhoneState.value
+  const beforeCalllog = permCallLog.value
+  const beforeMic = permMicrophone.value
+  // 重新从系统实测
   refreshPermissionStatus()
+  // 自动检测成功的项，清除其手动覆盖（说明系统已正确识别）
+  // 自动检测仍失败的项，保留手动覆盖
+  if (permPhoneState.value && !beforePhone) delete manualOverrides.value['phone']
+  if (permCallLog.value && !beforeCalllog) delete manualOverrides.value['calllog']
+  if (permMicrophone.value && !beforeMic) delete manualOverrides.value['mic']
+  saveManualOverrides()
   setTimeout(() => {
     permScanning.value = false
     uni.showToast({ title: '权限状态已刷新', icon: 'none', duration: 1500 })

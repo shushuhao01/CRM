@@ -58,17 +58,25 @@ class IncomingCallService {
     console.log('[IncomingCallService] 来电监听已启动')
 
     // #ifdef APP-PLUS
-    // 先检查权限是否已授予，已有直接初始化，没有才请求（只弹系统对话框，不弹自定义弹窗）
-    if (this.checkPhonePermissionGranted()) {
+    // 无论权限检查结果如何，都尝试初始化 PhoneStateListener
+    // 权限检测在某些 ROM 上不准确，但 initAndroidListener 内部有 try-catch
+    const permOk = this.checkPhonePermissionGranted()
+    if (permOk) {
       this.initAndroidListener()
     } else {
       this.requestPhonePermissions().then((granted) => {
         if (granted) {
           this.initAndroidListener()
         } else {
-          console.warn('[IncomingCallService] 电话权限未授予，启用轮询兜底')
-          this.usePolling = true
-          this.startPolling()
+          // 即使权限请求被拒绝，也尝试初始化（部分 ROM 检测不准但实际已授权）
+          console.warn('[IncomingCallService] 权限请求被拒绝，仍尝试初始化监听器')
+          try {
+            this.initAndroidListener()
+          } catch (e) {
+            console.warn('[IncomingCallService] 初始化监听器失败，启用轮询兜底:', e)
+            this.usePolling = true
+            this.startPolling()
+          }
         }
       })
     }
@@ -154,17 +162,16 @@ class IncomingCallService {
       const main = plus.android.runtimeMainActivity()
       const pkgName = (main as any).getPackageName()
       const pm = (main as any).getPackageManager()
-      // Java int 通过桥接可能是 Integer 对象，必须 Number() 转换
-      return Number(pm.checkPermission('android.permission.READ_PHONE_STATE', pkgName)) === 0
+      const raw = pm.checkPermission('android.permission.READ_PHONE_STATE', pkgName)
+      const str = '' + raw
+      console.log('[IncomingCallService] READ_PHONE_STATE checkPermission:', str)
+      if (str === '0') return true
+      if (str === '-1') return false
     } catch (e) {
-      try {
-        const main = plus.android.runtimeMainActivity()
-        return Number((main as any).checkCallingOrSelfPermission('android.permission.READ_PHONE_STATE')) === 0
-      } catch (_e2) {
-        console.warn('[IncomingCallService] 权限检查失败')
-        return false
-      }
+      console.warn('[IncomingCallService] 权限检查异常:', e)
     }
+    // 不确定时返回 true，让 initAndroidListener 自行尝试（失败会降级到轮询）
+    return true
     // #endif
     // eslint-disable-next-line no-unreachable
     return true

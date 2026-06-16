@@ -111,7 +111,7 @@ if (process.env.HELMET_ENABLED !== 'false') {
         styleSrc: ["'self'", "'unsafe-inline'"],
         scriptSrc: ["'self'", "'unsafe-eval'", "https://wwcdn.weixin.qq.com", "https://res.wx.qq.com", "https://open.work.weixin.qq.com"],
         imgSrc: ["'self'", "data:", "https:"],
-        // 允许前端与后端建立连接（XHR/Fetch/WebSocket），避免 CSP 导致 net::ERR_FAILED
+        mediaSrc: ["'self'", "blob:", "data:"],
         connectSrc: ["'self'", apiOrigin, ...allowedOrigins, "ws:", "wss:"],
       },
     },

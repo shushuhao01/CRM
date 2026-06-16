@@ -1429,28 +1429,35 @@ const playRecording = (record: any) => {
 
   let recordingUrl = record.recordingUrl
 
-  if (recordingUrl.startsWith('http')) {
-    // 已是完整 URL（如第三方录音或带域名的 stream URL），直接追加 token
-    const authToken = localStorage.getItem('auth_token')
+  // 如果是完整URL，先提取路径部分（避免 localhost 或域名不匹配导致跨域失败）
+  if (recordingUrl.startsWith('http://') || recordingUrl.startsWith('https://')) {
+    try {
+      const u = new URL(recordingUrl)
+      recordingUrl = u.pathname + u.search
+    } catch (_e) {
+      // URL 解析失败，保持原值
+    }
+  }
+
+  const authToken = localStorage.getItem('auth_token')
+
+  if (recordingUrl.startsWith('/uploads/')) {
+    // APP 上传的录音：express.static 直接提供，无需 token
+  } else if (recordingUrl.startsWith('/api/v1/calls/recordings/stream/')) {
+    // 已含完整 stream 路径（RecordingStorageService 生成），追加 token
     if (authToken) {
       const sep = recordingUrl.includes('?') ? '&' : '?'
       recordingUrl = `${recordingUrl}${sep}token=${encodeURIComponent(authToken)}`
     }
-  } else if (recordingUrl.startsWith('/uploads/')) {
-    // APP 上传的录音：存储在 express.static('/uploads') 下，同域直接访问，无需 token
-    // 保持原始路径不变，浏览器会自动对当前域发起请求
   } else if (recordingUrl.startsWith('/recordings/')) {
-    // RecordingStorageService 存储的录音：走 stream 端点，需要 token
+    // 本地 recordings 目录：走 stream 端点
     recordingUrl = `/api/v1/calls/recordings/stream${recordingUrl}`
-    const authToken = localStorage.getItem('auth_token')
     if (authToken) {
-      const sep = recordingUrl.includes('?') ? '&' : '?'
-      recordingUrl = `${recordingUrl}${sep}token=${encodeURIComponent(authToken)}`
+      recordingUrl = `${recordingUrl}?token=${encodeURIComponent(authToken)}`
     }
   } else {
-    // 其他相对路径：尝试作为 stream 路径访问
-    recordingUrl = `/api/v1/calls/recordings/stream/${recordingUrl}`
-    const authToken = localStorage.getItem('auth_token')
+    // 其他相对路径
+    recordingUrl = `/api/v1/calls/recordings/stream/${recordingUrl.replace(/^\/+/, '')}`
     if (authToken) {
       recordingUrl = `${recordingUrl}?token=${encodeURIComponent(authToken)}`
     }
@@ -3155,37 +3162,33 @@ const handleCallEndedFromWebSocket = (data: any) => {
 
   console.log('[CallManagement] 处理通话结束:', { callId, currentCallId: currentCallId.value })
 
-  // 检查是否是当前通话
+  // 如果是当前通话，关闭弹窗
   if (currentCallId.value && currentCallId.value === callId) {
     console.log('[CallManagement] 当前通话已结束，自动关闭窗口')
 
-    // 更新通话时长（如果APP传来了时长）
     if (data.duration !== undefined) {
       callDuration.value = data.duration
     }
 
-    // 自动保存备注
     if (callNotes.value.trim()) {
-      saveCallNotes(true) // 静默保存
+      saveCallNotes(true)
     }
 
-    // 停止计时器
     if (callTimer.value) {
       clearInterval(callTimer.value)
       callTimer.value = null
     }
 
-    // 关闭通话窗口
     closeCallWindow()
-
-    // 显示通话结束提示
     ElMessage.info(`通话已结束，通话时长：${formatCallDuration(callDuration.value)}`)
+  }
 
-    // 刷新通话记录和统计
+  // 无论是否当前通话，都刷新数据
+  setTimeout(() => {
     loadCallRecords()
     loadOutboundList()
     loadStatistics()
-  }
+  }, 500)
 }
 
 // 处理通话状态变化
@@ -3219,17 +3222,19 @@ const handleCallEnded = (message: any) => {
   const data = message.data || message
   const callId = data.callId
 
-  // 检查是否是当前通话
   if (currentCallData.value && currentCallData.value.id === callId) {
     console.log('[CallManagement] 通话已结束:', data)
-
-    // 更新通话时长（如果APP传来了时长）
     if (data.duration !== undefined) {
       callDuration.value = data.duration
     }
-
-    // 自动关闭通话窗口
     endCall()
+  } else {
+    // 非当前通话结束也要刷新数据
+    setTimeout(() => {
+      loadCallRecords()
+      loadOutboundList()
+      loadStatistics()
+    }, 500)
   }
 }
 

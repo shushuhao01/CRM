@@ -97,8 +97,7 @@ export const useUserStore = defineStore('user', {
       uni.removeStorageSync('wsToken')
       uni.removeStorageSync('wsUrl')
       uni.removeStorageSync('deviceInfo')
-      uni.removeStorageSync('savedUsername')
-      uni.removeStorageSync('savedPassword')
+      // 保留 savedUsername / savedPassword 以支持 silentReLogin 和记住密码功能
     },
 
     restore() {

@@ -292,18 +292,25 @@ class WebSocketService {
       })
     })
 
-    // APP端通话状态变化
-    this.socket.on('mobile:call:status', (data: any) => {
-      console.log('[WebSocket] 📱 APP端通话状态:', data)
-      this.emitEvent('mobile:call:status', data)
-      // 同时触发通用的call:status事件
+    // 后端推送的通话状态变化（CALL_STATUS_CHANGED 是后端 sendToUser 使用的事件名）
+    this.socket.on('CALL_STATUS_CHANGED', (data: any) => {
+      console.log('[WebSocket] 📱 通话状态变化:', data)
       this.emitEvent('call:status', data)
     })
 
-    // APP端通话结束
+    // 后端推送的通话结束（CALL_ENDED 是后端 sendToUser 使用的事件名）
+    this.socket.on('CALL_ENDED', (data: any) => {
+      console.log('[WebSocket] 📱 通话结束:', data)
+      this.emitEvent('call:ended', data)
+    })
+
+    // 兼容旧事件名
+    this.socket.on('mobile:call:status', (data: any) => {
+      console.log('[WebSocket] 📱 APP端通话状态(旧):', data)
+      this.emitEvent('call:status', data)
+    })
     this.socket.on('mobile:call:ended', (data: any) => {
-      console.log('[WebSocket] 📱 APP端通话结束:', data)
-      this.emitEvent('mobile:call:ended', data)
+      console.log('[WebSocket] 📱 APP端通话结束(旧):', data)
       this.emitEvent('call:ended', data)
     })
 
