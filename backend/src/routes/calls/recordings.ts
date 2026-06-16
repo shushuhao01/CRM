@@ -201,6 +201,7 @@ router.get('/recordings', async (req: Request, res: Response) => {
       duration: record.duration,
       fileSize: record.duration ? record.duration * 8000 : 0,
       fileUrl: record.recordingUrl,
+      recordingUrl: record.recordingUrl,
       format: 'mp3',
       storageType: 'local',
       createdAt: record.createdAt

@@ -63,9 +63,22 @@
 
       <view class="info-row" v-if="callDetail?.hasRecording">
         <text class="info-label">录音</text>
-        <view class="recording-btn" @tap="playRecording">
-          <text class="recording-icon">▶</text>
-          <text class="recording-text">播放录音</text>
+        <view
+          class="recording-btn"
+          :class="{ playing: isPlayingRecording, ended: recordingPlaybackEnded }"
+          @tap="playRecording"
+        >
+          <view class="recording-visual">
+            <view v-if="isPlayingRecording" class="wave-bars">
+              <view class="wave-bar" />
+              <view class="wave-bar" />
+              <view class="wave-bar" />
+            </view>
+            <text v-else class="recording-icon">{{ recordingPlaybackEnded ? '✓' : '▶' }}</text>
+          </view>
+          <text class="recording-text">
+            {{ isPlayingRecording ? '播放中...' : (recordingPlaybackEnded ? '播放完成' : '播放录音') }}
+          </text>
         </view>
       </view>
     </view>
@@ -124,15 +137,19 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onUnmounted } from 'vue'
 import { onLoad, onShow } from '@dcloudio/uni-app'
 import { getCallDetail, type CallDetail } from '@/api/call'
 import { makePhoneCall } from '@/utils/device'
+import { buildPlayableRecordingUrl } from '@/utils/recordingUrl'
 
 const callId = ref('')
 const callDetail = ref<CallDetail | null>(null)
 const isLoading = ref(false)
-const needRefresh = ref(false) // 标记是否需要刷新
+const needRefresh = ref(false)
+const isPlayingRecording = ref(false)
+const recordingPlaybackEnded = ref(false)
+const recordingAudio = ref<UniApp.InnerAudioContext | null>(null)
 
 // 计算属性
 const customerInitial = computed(() => {
@@ -301,13 +318,71 @@ const playRecording = () => {
     return
   }
 
-  // 播放录音
-  const innerAudioContext = uni.createInnerAudioContext()
-  innerAudioContext.src = callDetail.value.recordingUrl
-  innerAudioContext.play()
+  if (isPlayingRecording.value && recordingAudio.value) {
+    recordingAudio.value.stop()
+    isPlayingRecording.value = false
+    return
+  }
 
-  uni.showToast({ title: '正在播放录音', icon: 'none' })
+  const url = buildPlayableRecordingUrl(callDetail.value.recordingUrl)
+  if (!url) {
+    uni.showToast({ title: '录音地址无效', icon: 'none' })
+    return
+  }
+
+  console.log('[CallDetail] 播放录音 URL:', url)
+
+  if (recordingAudio.value) {
+    try {
+      recordingAudio.value.destroy()
+    } catch (_e) {
+      // ignore
+    }
+    recordingAudio.value = null
+  }
+
+  const audio = uni.createInnerAudioContext()
+  recordingAudio.value = audio
+  recordingPlaybackEnded.value = false
+  isPlayingRecording.value = true
+
+  audio.src = url
+
+  audio.onPlay(() => {
+    isPlayingRecording.value = true
+    recordingPlaybackEnded.value = false
+  })
+
+  audio.onEnded(() => {
+    isPlayingRecording.value = false
+    recordingPlaybackEnded.value = true
+  })
+
+  audio.onStop(() => {
+    isPlayingRecording.value = false
+  })
+
+  audio.onError((err) => {
+    console.error('[CallDetail] 录音播放失败:', err, 'url:', url)
+    isPlayingRecording.value = false
+    recordingPlaybackEnded.value = false
+    uni.showToast({ title: '播放失败，请重试', icon: 'none' })
+  })
+
+  audio.play()
 }
+
+onUnmounted(() => {
+  if (recordingAudio.value) {
+    try {
+      recordingAudio.value.stop()
+      recordingAudio.value.destroy()
+    } catch (_e) {
+      // ignore
+    }
+    recordingAudio.value = null
+  }
+})
 
 const handleAddFollowup = () => {
   console.log('[CallDetail] handleAddFollowup clicked')
@@ -545,20 +620,78 @@ const handleAddFollowup = () => {
   padding: 8rpx 20rpx;
   background: rgba(52, 211, 153, 0.1);
   border-radius: 20rpx;
+  transition: all 0.2s ease;
 
   &:active {
     background: rgba(52, 211, 153, 0.2);
   }
 
+  &.playing {
+    background: rgba(52, 211, 153, 0.18);
+    box-shadow: 0 0 0 2rpx rgba(52, 211, 153, 0.25);
+  }
+
+  &.ended {
+    background: rgba(107, 114, 128, 0.1);
+  }
+
+  .recording-visual {
+    width: 36rpx;
+    height: 36rpx;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-right: 8rpx;
+  }
+
   .recording-icon {
     font-size: 20rpx;
     color: #34D399;
-    margin-right: 8rpx;
+  }
+
+  .wave-bars {
+    display: flex;
+    align-items: flex-end;
+    gap: 4rpx;
+    height: 28rpx;
+  }
+
+  .wave-bar {
+    width: 6rpx;
+    height: 12rpx;
+    background: #34D399;
+    border-radius: 3rpx;
+    animation: wave-bounce 0.8s ease-in-out infinite;
+
+    &:nth-child(2) {
+      animation-delay: 0.15s;
+    }
+
+    &:nth-child(3) {
+      animation-delay: 0.3s;
+    }
   }
 
   .recording-text {
     font-size: 24rpx;
     color: #34D399;
+  }
+
+  &.ended .recording-text {
+    color: #6B7280;
+  }
+
+  &.ended .recording-icon {
+    color: #6B7280;
+  }
+}
+
+@keyframes wave-bounce {
+  0%, 100% {
+    height: 12rpx;
+  }
+  50% {
+    height: 28rpx;
   }
 }
 

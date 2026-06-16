@@ -157,6 +157,7 @@
             ref="audioPlayer"
             :src="currentRecording?.recordingUrl"
             controls
+            @error="handleAudioError"
           >
             您的浏览器不支持音频播放
           </audio>
@@ -179,6 +180,7 @@ import { ref } from 'vue'
 import { Search, RefreshRight, User, Phone, Timer, Clock, CircleCheck, Headset, Document } from '@element-plus/icons-vue'
 import { displaySensitiveInfoNew, SensitiveInfoType } from '@/utils/sensitiveInfo'
 import { getStatusType, getStatusText } from './helpers'
+import { ElMessage } from 'element-plus'
 
 const props = defineProps<{
   visible: boolean
@@ -205,6 +207,11 @@ const emit = defineEmits<{
 }>()
 
 const audioPlayer = ref<HTMLAudioElement | null>(null)
+
+const handleAudioError = (e: Event) => {
+  console.error('[CallRecordsDialog] 音频播放错误:', e)
+  ElMessage.error('录音播放失败，请检查录音文件是否存在')
+}
 
 const updateFilter = (key: string, value: any) => {
   emit('update:callRecordsFilter', { ...props.callRecordsFilter, [key]: value })

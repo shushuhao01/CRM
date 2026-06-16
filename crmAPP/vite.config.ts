@@ -9,6 +9,13 @@ export default defineConfig({
       '@': resolve(__dirname, 'src')
     }
   },
+  css: {
+    preprocessorOptions: {
+      scss: {
+        silenceDeprecations: ['legacy-js-api']
+      }
+    }
+  },
   // 生产环境移除 console.log 和 debugger（应用商店要求）
   esbuild: {
     drop: process.env.NODE_ENV === 'production' ? ['console', 'debugger'] : []

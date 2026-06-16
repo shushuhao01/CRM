@@ -184,3 +184,20 @@ export const reportIncomingCall = (data: {
     showLoading: false
   })
 }
+
+// 批量上报离线期间未接/来电（从 CallLog 补录）
+export const reportMissedCalls = (data: {
+  calls: Array<{
+    callerNumber: string
+    callTime: string
+    duration?: number
+    callStatus?: 'missed' | 'rejected' | 'connected' | 'busy'
+  }>
+}): Promise<{ created: number; skipped: number }> => {
+  return request({
+    url: '/mobile/call/missed-calls',
+    method: 'POST',
+    data,
+    showLoading: false
+  })
+}

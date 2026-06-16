@@ -2238,11 +2238,7 @@ const openFollowupDialog = () => {
 
 // 开始外呼
 const startOutboundCall = async () => {
-  if (!outboundFormRef.value) return
-
   try {
-    await outboundFormRef.value.validate()
-
     // 确定要拨打的号码：优先使用手动输入的号码
     const phoneToCall = outboundForm.value.manualPhone || outboundForm.value.customerPhone
 
@@ -2372,10 +2368,7 @@ const startOutboundCall = async () => {
 }
 
 const handleOutboundCall = async () => {
-  if (!outboundFormRef.value) return
-
   try {
-    await outboundFormRef.value.validate()
     outboundLoading.value = true
 
     await callStore.makeOutboundCall({

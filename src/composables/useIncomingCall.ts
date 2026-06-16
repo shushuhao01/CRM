@@ -208,14 +208,20 @@ export function useIncomingCall() {
   const startListening = () => {
     webSocketService.requestNotificationPermission()
 
-    unsubIncoming = webSocketService.on('call:incoming', handleIncomingCall)
+    unsubIncoming = webSocketService.on('call:incoming', (data: any) => {
+      console.log('[GlobalIncoming] 收到 call:incoming 事件:', data)
+      handleIncomingCall(data)
+    })
     unsubEnded = webSocketService.on('call:ended', handleCallEnded)
 
     unsubMessage = webSocketService.onMessage((message) => {
       if (message.type === 'CALL_INCOMING') {
+        console.log('[GlobalIncoming] 收到 CALL_INCOMING 消息:', message)
         handleIncomingCall(message.data || message)
       }
     })
+
+    console.log('[GlobalIncoming] 来电监听已启动')
   }
 
   const stopListening = () => {

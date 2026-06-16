@@ -6,6 +6,7 @@ import { checkStorageLimit } from '../../middleware/checkTenantLimits';
 import { tenantRawSQL, getCurrentTenantIdSafe } from '../../utils/tenantHelpers';
 import { logApiCall, uploadRecording, getUploadUrl } from './helpers';
 import { messageService } from '../../services/messageService';
+import { resolvePublicRecordingUrl } from '../../utils/recordingUrlHelper';
 
 export function registerCallsRoutes(router: Router) {
 router.post('/call/status', authenticateToken, async (req: Request, res: Response) => {
@@ -332,6 +333,155 @@ router.post('/call/incoming', authenticateToken, async (req: Request, res: Respo
   }
 })
 
+/**
+ * 批量上报离线期间的未接/来电（APP 启动时从 CallLog 补录）
+ * POST /api/v1/mobile/call/missed-calls
+ */
+router.post('/call/missed-calls', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const currentUser = (req as any).user
+    const userId = currentUser?.userId || currentUser?.id
+    const { calls } = req.body as {
+      calls?: Array<{
+        callerNumber: string
+        callTime: string
+        duration?: number
+        callStatus?: 'missed' | 'rejected' | 'connected' | 'busy'
+      }>
+    }
+
+    if (!Array.isArray(calls) || calls.length === 0) {
+      return res.json({ success: true, data: { created: 0, skipped: 0 } })
+    }
+
+    const t = tenantRawSQL()
+    const tenantId = getCurrentTenantIdSafe() || null
+    let created = 0
+    let skipped = 0
+    const newMissedNumbers: string[] = []
+
+    let userName = ''
+    try {
+      const userInfo = await AppDataSource.query(
+        `SELECT name, real_name FROM users WHERE id = ? LIMIT 1`,
+        [userId]
+      )
+      userName = userInfo[0]?.real_name || userInfo[0]?.name || ''
+    } catch (_e) {
+      // ignore
+    }
+
+    for (const item of calls) {
+      const callerNumber = String(item.callerNumber || '').trim()
+      const callTime = item.callTime
+      if (!callerNumber || !callTime) {
+        skipped++
+        continue
+      }
+
+      const callDate = new Date(callTime)
+      if (isNaN(callDate.getTime())) {
+        skipped++
+        continue
+      }
+
+      const existing = await AppDataSource.query(
+        `SELECT id FROM call_records
+         WHERE user_id = ? AND customer_phone = ?
+         AND ABS(TIMESTAMPDIFF(SECOND, start_time, ?)) < 120${t.sql}
+         LIMIT 1`,
+        [String(userId), callerNumber, callDate, ...t.params]
+      )
+
+      if (existing.length > 0) {
+        skipped++
+        continue
+      }
+
+      let customerId = null
+      let customerName = '未知来电'
+      try {
+        const customers = await AppDataSource.query(
+          `SELECT id, name FROM customers c
+           WHERE (c.phone = ? OR c.mobile = ?)${t.sql}
+           LIMIT 1`,
+          [callerNumber, callerNumber, ...t.params]
+        )
+        if (customers.length > 0) {
+          customerId = customers[0].id
+          customerName = customers[0].name
+        }
+      } catch (_e) {
+        // ignore
+      }
+
+      const status = item.callStatus || 'missed'
+      const callId = `IN-MISSED-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
+      const duration = Number(item.duration) || 0
+
+      await AppDataSource.query(
+        `INSERT INTO call_records
+         (id, customer_id, customer_name, customer_phone, call_type, call_status,
+          call_method, user_id, user_name, start_time, end_time, duration, created_at, tenant_id)
+         VALUES (?, ?, ?, ?, 'inbound', ?, 'mobile', ?, ?, ?, ?, ?, NOW(), ?)`,
+        [
+          callId,
+          customerId,
+          customerName,
+          callerNumber,
+          status,
+          String(userId),
+          userName,
+          callDate,
+          callDate,
+          duration,
+          tenantId
+        ]
+      )
+
+      created++
+      if (status === 'missed' || status === 'rejected') {
+        newMissedNumbers.push(callerNumber)
+      }
+    }
+
+    if (created > 0 && newMissedNumbers.length > 0 && global.webSocketService) {
+      global.webSocketService.sendToUser(userId, 'CALL_MISSED', {
+        count: newMissedNumbers.length,
+        numbers: newMissedNumbers.slice(0, 5),
+        message: `您有 ${newMissedNumbers.length} 个未接来电已补录`,
+        timestamp: new Date().toISOString()
+      })
+    }
+
+    if (created > 0) {
+      try {
+        await messageService.sendMessage({
+          type: 'call_missed',
+          title: '未接来电补录',
+          content: `已补录 ${created} 条离线期间的通话记录${newMissedNumbers.length > 0 ? `，其中 ${newMissedNumbers.length} 个未接` : ''}`,
+          targetUserId: String(userId),
+          tenantId: tenantId || undefined
+        })
+      } catch (_e) {
+        // ignore message failure
+      }
+    }
+
+    res.json({
+      success: true,
+      data: { created, skipped }
+    })
+  } catch (error: any) {
+    log.error('补录未接来电失败:', error.message)
+    res.status(500).json({
+      success: false,
+      message: '补录失败',
+      code: 'SERVER_ERROR'
+    })
+  }
+})
+
 router.post('/call/followup', authenticateToken, async (req: Request, res: Response) => {
   const startTime = Date.now()
   try {
@@ -587,7 +737,7 @@ router.get('/call/:callId', authenticateToken, async (req: Request, res: Respons
         endTime: record.end_time,
         duration: record.duration || 0,
         hasRecording: record.has_recording === 1,
-        recordingUrl: record.recording_url,
+        recordingUrl: resolvePublicRecordingUrl(req, record.recording_url),
         notes: record.notes,
         callTags: callTags,
         followUpRequired: record.follow_up_required === 1,

@@ -232,12 +232,13 @@ const handleSearch = async () => {
       }
     })
 
-    if (!fetchRes.ok) {
-      throw new Error(`API请求失败: HTTP ${fetchRes.status}`)
-    }
-
     const json = await fetchRes.json()
     console.log('[客户查询] API原始返回:', JSON.stringify(json).substring(0, 500))
+
+    if (!fetchRes.ok) {
+      ElMessage.error(json?.message || '查询出错，请稍后重试')
+      return
+    }
 
     // 从 { success:true, data: { list: [...] } } 中取 list
     let list: any[] = []
@@ -275,11 +276,11 @@ const handleSearch = async () => {
     if (list.length > 0) {
       ElMessage.success(`找到 ${list.length} 条匹配记录`)
     } else {
-      ElMessage.info('未找到匹配的客户信息')
+      ElMessage.info('未找到匹配的客户信息，请确认关键词是否正确')
     }
   } catch (error: any) {
-    console.error('[客户查询] 搜索失败:', error)
-    ElMessage.error(error?.message || '搜索失败，请重试')
+    console.error('[客户查询] 搜索异常:', error)
+    ElMessage.error('查询出错，请稍后重试')
   } finally {
     searchingLocal.value = false
   }

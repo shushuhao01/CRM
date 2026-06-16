@@ -9,7 +9,7 @@
 
 import { wsService } from './websocket'
 import { callStateService } from './callStateService'
-import { reportIncomingCall, reportCallEnd } from '@/api/call'
+import { reportIncomingCall, reportCallEnd, reportMissedCalls } from '@/api/call'
 import { recordingService } from './recordingService'
 import { useUserStore } from '@/stores/user'
 
@@ -43,6 +43,9 @@ class IncomingCallService {
   private telephonyManager: any = null
   private pollTimer: ReturnType<typeof setInterval> | null = null
   private usePolling = false
+  private wakeLock: any = null
+  private foregroundActive = false
+  private missedSyncRunning = false
 
   startListening() {
     if (this.listening) return
@@ -51,7 +54,11 @@ class IncomingCallService {
 
     // #ifdef APP-PLUS
     this.initAndroidListener()
+    this.startForegroundKeepAlive()
     // #endif
+
+    // 补录离线期间的未接来电
+    this.syncMissedCallsFromCallLog()
 
     // 兼容 WebSocket 服务端推送的来电事件
     uni.$on('ws:incoming_call', (data: any) => {
@@ -65,6 +72,9 @@ class IncomingCallService {
     this.listening = false
     this.clearConfirmTimeout()
     this.stopAndroidListener()
+    // #ifdef APP-PLUS
+    this.stopForegroundKeepAlive()
+    // #endif
     uni.$off('ws:incoming_call')
     console.log('[IncomingCallService] 来电监听已停止')
   }
@@ -483,6 +493,177 @@ class IncomingCallService {
       this.confirmTimeout = null
     }
   }
+
+  /**
+   * Android 前台保活：WakeLock + 常驻通知，确保后台仍能检测来电
+   */
+  // #ifdef APP-PLUS
+  private startForegroundKeepAlive() {
+    if (this.foregroundActive) return
+
+    try {
+      const main = plus.android.runtimeMainActivity()
+      const Context = plus.android.importClass('android.content.Context') as any
+      const PowerManager = plus.android.importClass('android.os.PowerManager') as any
+
+      const pm = (main as any).getSystemService(Context.POWER_SERVICE)
+      if (pm && !this.wakeLock) {
+        this.wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, 'CRM:IncomingCallListener')
+        this.wakeLock.setReferenceCounted(false)
+        this.wakeLock.acquire(10 * 60 * 1000)
+        console.log('[IncomingCallService] WakeLock 已获取')
+      }
+
+      plus.push.createMessage(
+        '来电监听运行中，可正常接收客户来电',
+        JSON.stringify({ type: 'foreground_service' }),
+        { title: 'CRM工作手机', cover: false }
+      )
+
+      this.foregroundActive = true
+    } catch (e) {
+      console.warn('[IncomingCallService] 前台保活启动失败:', e)
+    }
+  }
+
+  private stopForegroundKeepAlive() {
+    try {
+      if (this.wakeLock) {
+        if (this.wakeLock.isHeld && this.wakeLock.isHeld()) {
+          this.wakeLock.release()
+        }
+        this.wakeLock = null
+      }
+    } catch (e) {
+      console.warn('[IncomingCallService] 释放 WakeLock 失败:', e)
+    }
+    this.foregroundActive = false
+  }
+
+  /**
+   * 从系统通话记录补报离线期间的未接来电
+   */
+  async syncMissedCallsFromCallLog() {
+    if (this.missedSyncRunning) return
+
+    const userStore = useUserStore()
+    if (!userStore.isLoggedIn) return
+
+    this.missedSyncRunning = true
+
+    try {
+      const calls = await this.readRecentCallLogEntries()
+      if (calls.length === 0) return
+
+      const lastSync = Number(uni.getStorageSync('lastMissedCallSyncAt') || 0)
+      const since = lastSync > 0 ? lastSync : Date.now() - 24 * 60 * 60 * 1000
+      const pending = calls.filter((c) => c.timestamp > since)
+
+      if (pending.length === 0) return
+
+      console.log('[IncomingCallService] 补报离线来电:', pending.length, '条')
+
+      const res = await reportMissedCalls({
+        calls: pending.map((c) => ({
+          callerNumber: c.callerNumber,
+          callTime: new Date(c.timestamp).toISOString(),
+          duration: c.duration,
+          callStatus: c.callStatus,
+        })),
+      })
+
+      const data = (res as any)?.data || res
+      if ((data?.created || 0) > 0) {
+        uni.showToast({
+          title: `已补录 ${data.created} 条离线来电`,
+          icon: 'none',
+          duration: 2500,
+        })
+      }
+
+      uni.setStorageSync('lastMissedCallSyncAt', String(Date.now()))
+    } catch (e) {
+      console.warn('[IncomingCallService] 补报离线来电失败:', e)
+    } finally {
+      this.missedSyncRunning = false
+    }
+  }
+
+  private readRecentCallLogEntries(): Promise<
+    Array<{
+      callerNumber: string
+      timestamp: number
+      duration: number
+      callStatus: 'missed' | 'rejected' | 'connected' | 'busy'
+    }>
+  > {
+    return new Promise((resolve) => {
+      try {
+        const main = plus.android.runtimeMainActivity()
+        const CallLog = plus.android.importClass('android.provider.CallLog') as any
+        const ContentResolver = (main as any).getContentResolver()
+
+        const cursor = ContentResolver.query(
+          CallLog.Calls.CONTENT_URI,
+          ['number', 'type', 'date', 'duration'],
+          null,
+          null,
+          'date DESC'
+        )
+
+        const results: Array<{
+          callerNumber: string
+          timestamp: number
+          duration: number
+          callStatus: 'missed' | 'rejected' | 'connected' | 'busy'
+        }> = []
+
+        if (!cursor) {
+          resolve([])
+          return
+        }
+
+        const maxRows = 30
+        let count = 0
+
+        while (cursor.moveToNext() && count < maxRows) {
+          const number = String(cursor.getString(0) || '').trim()
+          const type = Number(cursor.getInt(1))
+          const date = Number(cursor.getLong(2))
+          const duration = Number(cursor.getLong(3)) || 0
+
+          if (!number || !date) continue
+
+          let callStatus: 'missed' | 'rejected' | 'connected' | 'busy' = 'missed'
+          if (type === CallLog.Calls.INCOMING_TYPE) {
+            callStatus = duration > 0 ? 'connected' : 'missed'
+          } else if (type === CallLog.Calls.MISSED_TYPE) {
+            callStatus = 'missed'
+          } else if (type === 5) {
+            // REJECTED_TYPE (API 29+)
+            callStatus = 'rejected'
+          } else {
+            continue
+          }
+
+          results.push({
+            callerNumber: number,
+            timestamp: date,
+            duration,
+            callStatus,
+          })
+          count++
+        }
+
+        cursor.close()
+        resolve(results)
+      } catch (e) {
+        console.warn('[IncomingCallService] 读取通话记录失败:', e)
+        resolve([])
+      }
+    })
+  }
+  // #endif
 
   // #ifdef APP-PLUS
   private async tryResolveCallerFromCallLog(): Promise<string> {

@@ -178,32 +178,35 @@ const periodLabel = computed(() => {
 })
 
 const outboundRatio = computed(() => {
-  if (stats.value.totalCalls === 0) return 0
-  return Math.round((stats.value.outboundCalls / stats.value.totalCalls) * 100)
+  const total = Number(stats.value.totalCalls) || 0
+  const outbound = Number(stats.value.outboundCalls) || 0
+  if (total === 0) return 0
+  return Math.round((outbound / total) * 100)
 })
 
 const inboundRatio = computed(() => {
-  if (stats.value.totalCalls === 0) return 0
-  return Math.round((stats.value.inboundCalls / stats.value.totalCalls) * 100)
+  const total = Number(stats.value.totalCalls) || 0
+  const inbound = Number(stats.value.inboundCalls) || 0
+  if (total === 0) return 0
+  return Math.round((inbound / total) * 100)
 })
 
 const rateRingStyle = computed(() => {
-  const deg = (stats.value.connectRate / 100) * 360
-  if (deg <= 180) {
-    return { background: `conic-gradient(rgba(255,255,255,0.9) ${deg}deg, transparent ${deg}deg)` }
-  }
+  const rate = Number(stats.value.connectRate) || 0
+  const deg = (rate / 100) * 360
   return { background: `conic-gradient(rgba(255,255,255,0.9) ${deg}deg, transparent ${deg}deg)` }
 })
 
 const avgCallsPerHour = computed(() => {
   const hours = currentPeriod.value === 'today' ? 8 : currentPeriod.value === 'week' ? 40 : 176
-  if (stats.value.totalCalls === 0) return '0'
-  return (stats.value.totalCalls / hours).toFixed(1)
+  const total = Number(stats.value.totalCalls) || 0
+  if (total === 0) return '0'
+  return (total / hours).toFixed(1)
 })
 
-const connectBarWidth = computed(() => Math.min(100, stats.value.connectRate || 0) + '%')
+const connectBarWidth = computed(() => Math.min(100, Number(stats.value.connectRate) || 0) + '%')
 const callsPerHourWidth = computed(() => Math.min(100, parseFloat(avgCallsPerHour.value) * 10) + '%')
-const avgDurationWidth = computed(() => Math.min(100, (stats.value.avgDuration / 300) * 100) + '%')
+const avgDurationWidth = computed(() => Math.min(100, ((Number(stats.value.avgDuration) || 0) / 300) * 100) + '%')
 
 const formatDuration = (seconds: number) => {
   if (seconds < 60) return `${seconds}秒`

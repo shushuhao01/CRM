@@ -42,7 +42,7 @@ type GenericCallback = (data: any) => void
 class WebSocketService {
   private socket: any = null
   private reconnectAttempts = 0
-  private maxReconnectAttempts = 5
+  private maxReconnectAttempts = 30
   private reconnectDelay = 2000
   private isConnecting = false
   private token: string | null = null
@@ -112,6 +112,11 @@ class WebSocketService {
       }
 
       console.log('[WebSocket] 连接服务器:', serverUrl)
+
+      if (this.socket) {
+        try { this.socket.removeAllListeners(); this.socket.disconnect(); } catch (_e) { /* ignore */ }
+        this.socket = null
+      }
 
       this.socket = this.ioModule.io(serverUrl, {
         auth: { token },
@@ -274,6 +279,19 @@ class WebSocketService {
       // 浏览器通知由全局 useIncomingCall composable 统一管理
     })
 
+    // 离线未接来电补录通知
+    this.socket.on('CALL_MISSED', (data: any) => {
+      console.log('[WebSocket] 📞 未接来电补录:', data)
+      this.emitEvent('call:missed', data)
+      ElNotification({
+        title: '未接来电提醒',
+        message: data?.message || `您有 ${data?.count || 1} 个未接来电已补录`,
+        type: 'warning',
+        duration: 8000,
+        position: 'top-right'
+      })
+    })
+
     // APP端通话状态变化
     this.socket.on('mobile:call:status', (data: any) => {
       console.log('[WebSocket] 📱 APP端通话状态:', data)
@@ -318,7 +336,7 @@ class WebSocketService {
       console.log('[WebSocket] 断开连接:', reason)
       this.updateStatus('disconnected')
 
-      if (reason === 'io server disconnect' || reason === 'transport close' || reason === 'ping timeout') {
+      if (reason !== 'io client disconnect') {
         this.scheduleReconnect()
       }
     })

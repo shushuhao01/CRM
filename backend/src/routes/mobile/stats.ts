@@ -51,19 +51,27 @@ router.get('/stats/today', authenticateToken, async (req: Request, res: Response
 
     const stat = stats[0] || {}
 
+    const totalCalls = Number(stat.totalCalls) || 0
+    const connectedCalls = Number(stat.connectedCalls) || 0
+    const missedCalls = Number(stat.missedCalls) || 0
+    const inboundCalls = Number(stat.inboundCalls) || 0
+    const outboundCalls = Number(stat.outboundCalls) || 0
+    const totalDuration = Number(stat.totalDuration) || 0
+    const avgDuration = Math.round(Number(stat.avgDuration) || 0)
+
     res.json({
       code: 200,
       success: true,
       data: {
-        totalCalls: stat.totalCalls || 0,
-        connectedCalls: stat.connectedCalls || 0,
-        missedCalls: stat.missedCalls || 0,
-        inboundCalls: stat.inboundCalls || 0,
-        outboundCalls: stat.outboundCalls || 0,
-        totalDuration: stat.totalDuration || 0,
-        avgDuration: Math.round(stat.avgDuration || 0),
-        connectRate: stat.totalCalls > 0
-          ? Math.round((stat.connectedCalls / stat.totalCalls) * 100)
+        totalCalls,
+        connectedCalls,
+        missedCalls,
+        inboundCalls,
+        outboundCalls,
+        totalDuration,
+        avgDuration,
+        connectRate: totalCalls > 0
+          ? Math.round((connectedCalls / totalCalls) * 100)
           : 0
       }
     })
@@ -133,20 +141,28 @@ router.get('/stats', authenticateToken, async (req: Request, res: Response) => {
 
     const stat = stats[0] || {}
 
+    const totalCalls = Number(stat.totalCalls) || 0
+    const connectedCalls = Number(stat.connectedCalls) || 0
+    const missedCalls = Number(stat.missedCalls) || 0
+    const inboundCalls = Number(stat.inboundCalls) || 0
+    const outboundCalls = Number(stat.outboundCalls) || 0
+    const totalDuration = Number(stat.totalDuration) || 0
+    const avgDuration = Math.round(Number(stat.avgDuration) || 0)
+
     res.json({
       code: 200,
       success: true,
       data: {
         period,
-        totalCalls: stat.totalCalls || 0,
-        connectedCalls: stat.connectedCalls || 0,
-        missedCalls: stat.missedCalls || 0,
-        inboundCalls: stat.inboundCalls || 0,
-        outboundCalls: stat.outboundCalls || 0,
-        totalDuration: stat.totalDuration || 0,
-        avgDuration: Math.round(stat.avgDuration || 0),
-        connectRate: stat.totalCalls > 0
-          ? Math.round((stat.connectedCalls / stat.totalCalls) * 100)
+        totalCalls,
+        connectedCalls,
+        missedCalls,
+        inboundCalls,
+        outboundCalls,
+        totalDuration,
+        avgDuration,
+        connectRate: totalCalls > 0
+          ? Math.round((connectedCalls / totalCalls) * 100)
           : 0
       }
     })

@@ -273,8 +273,8 @@ const handleSearch = async () => {
     }
 
   } catch (error) {
-    console.error('[客户查询] 搜索失败:', error)
-    ElMessage.error('搜索失败，请重试')
+    console.error('[客户查询] 搜索异常:', error)
+    ElMessage.error('查询出错，请稍后重试')
   } finally {
     searching.value = false
   }

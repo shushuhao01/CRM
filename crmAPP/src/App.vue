@@ -27,6 +27,13 @@ onShow(() => {
   console.log('App Show')
   // 检查是否有未完成的通话需要登记
   checkPendingCall()
+
+  // #ifdef APP-PLUS
+  const userStore = useUserStore()
+  if (userStore.isLoggedIn) {
+    incomingCallService.syncMissedCallsFromCallLog()
+  }
+  // #endif
 })
 
 onHide(() => {
@@ -168,6 +175,11 @@ const setupCallStateListener = () => {
   // @ts-expect-error - plus.globalEvent 在运行时存在
   plus.globalEvent.addEventListener('resume', () => {
     console.log('[App] 应用从后台返回')
+    const userStore = useUserStore()
+    if (userStore.isLoggedIn) {
+      incomingCallService.startListening()
+      incomingCallService.syncMissedCallsFromCallLog()
+    }
     // 延迟检查，等待系统通话界面完全关闭
     setTimeout(() => {
       checkPendingCall()

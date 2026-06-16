@@ -161,6 +161,43 @@ router.post('/aliyun/recording', async (req: Request, res: Response) => {
   }
 });
 
+/**
+ * 阿里云 DID 呼入回调
+ * POST /api/v1/calls/webhook/aliyun/incoming
+ *
+ * 支持常见字段：caller/callerNumber, callee/calledNumber, callId, tenantCode
+ */
+router.post('/aliyun/incoming', async (req: Request, res: Response) => {
+  try {
+    const body = req.body || {};
+    const callerNumber = body.caller || body.callerNumber || body.from;
+    const calledNumber = body.callee || body.calledNumber || body.to || body.didNumber;
+    const callId = body.callId || body.jobId || body.sessionId;
+    const tenantCode = body.tenantCode;
+
+    log.info('[Webhook] 阿里云DID呼入:', { callerNumber, calledNumber, callId });
+
+    if (!callerNumber || !calledNumber) {
+      return res.status(400).json({ success: false, message: '缺少主叫或被叫号码' });
+    }
+
+    const result = await processCloudInboundNotification({
+      callerNumber: String(callerNumber),
+      calledNumber: String(calledNumber),
+      callId: callId ? String(callId) : undefined,
+      callSource: 'aliyun',
+      tenantCode,
+      providerCallId: callId ? String(callId) : undefined,
+      trunkName: '阿里云DID'
+    });
+
+    res.json({ success: true, data: result });
+  } catch (error) {
+    log.error('处理阿里云DID呼入失败:', error);
+    res.status(500).json({ success: false, message: '处理呼入失败' });
+  }
+});
+
 // ==================== 腾讯云回调 ====================
 
 /**
@@ -173,13 +210,66 @@ router.post('/tencent', async (req: Request, res: Response) => {
 
     log.info('[Webhook] 腾讯云回调:', { EventType });
 
-    // TODO: 实现腾讯云回调处理
-    // 根据EventType处理不同事件
+    // DID 呼入事件（腾讯云呼叫中心常见事件名）
+    if (EventType === 'InboundCall' || EventType === 'inbound' || Data?.Direction === 'inbound') {
+      const callerNumber = Data?.Caller || Data?.callerNumber || Data?.From;
+      const calledNumber = Data?.Callee || Data?.calledNumber || Data?.To;
+      const callId = Data?.CallId || Data?.SessionId;
+
+      if (callerNumber && calledNumber) {
+        const result = await processCloudInboundNotification({
+          callerNumber: String(callerNumber),
+          calledNumber: String(calledNumber),
+          callId: callId ? String(callId) : undefined,
+          callSource: 'tencent',
+          tenantCode: Data?.tenantCode,
+          providerCallId: callId ? String(callId) : undefined,
+          trunkName: '腾讯云DID'
+        });
+        return res.json({ success: true, data: result });
+      }
+    }
 
     res.json({ success: true });
   } catch (error) {
     log.error('处理腾讯云回调失败:', error);
     res.status(500).json({ success: false, message: '处理回调失败' });
+  }
+});
+
+/**
+ * 腾讯云 DID 呼入专用回调
+ * POST /api/v1/calls/webhook/tencent/incoming
+ */
+router.post('/tencent/incoming', async (req: Request, res: Response) => {
+  try {
+    const body = req.body || {};
+    const data = body.Data || body;
+    const callerNumber = data.Caller || data.callerNumber || data.from || body.callerNumber;
+    const calledNumber = data.Callee || data.calledNumber || data.to || body.calledNumber;
+    const callId = data.CallId || data.callId || body.callId;
+    const tenantCode = data.tenantCode || body.tenantCode;
+
+    log.info('[Webhook] 腾讯云DID呼入:', { callerNumber, calledNumber, callId });
+
+    if (!callerNumber || !calledNumber) {
+      return res.status(400).json({ success: false, message: '缺少主叫或被叫号码' });
+    }
+
+    const result = await processCloudInboundNotification({
+      callerNumber: String(callerNumber),
+      calledNumber: String(calledNumber),
+      callId: callId ? String(callId) : undefined,
+      callSource: 'tencent',
+      tenantCode,
+      providerCallId: callId ? String(callId) : undefined,
+      trunkName: '腾讯云DID'
+    });
+
+    res.json({ success: true, data: result });
+  } catch (error) {
+    log.error('处理腾讯云DID呼入失败:', error);
+    res.status(500).json({ success: false, message: '处理呼入失败' });
   }
 });
 
@@ -532,5 +622,204 @@ router.post('/test', async (req: Request, res: Response) => {
     data: req.body
   });
 });
+
+/**
+ * 云通信 DID 呼入统一处理（阿里云/腾讯云）
+ */
+async function processCloudInboundNotification(options: {
+  callerNumber: string;
+  calledNumber: string;
+  callId?: string;
+  callSource: 'aliyun' | 'tencent' | 'sip';
+  tenantCode?: string;
+  providerCallId?: string;
+  trunkId?: string;
+  trunkName?: string;
+}) {
+  const { callerNumber, calledNumber, callSource, tenantCode, providerCallId, trunkId, trunkName } = options;
+  const { AppDataSource } = await import('../config/database');
+
+  let tenantId: string | null = null;
+  if (tenantCode) {
+    try {
+      const tenants = await AppDataSource.query(
+        `SELECT id FROM tenants WHERE code = ? AND status = 'active' LIMIT 1`,
+        [tenantCode]
+      );
+      if (tenants.length > 0) tenantId = tenants[0].id;
+    } catch (_e) {
+      // 私有部署无 tenants 表
+    }
+  }
+
+  const tenantFilter = tenantId ? ' AND tenant_id = ?' : '';
+  const tenantParams = tenantId ? [tenantId] : [];
+
+  let customerId: string | null = null;
+  let customerName = '未知来电';
+  let customerLevel: string | null = null;
+  let company: string | null = null;
+  let lastCallTime: string | null = null;
+
+  try {
+    const crSubTenant = tenantId ? ' AND cr.tenant_id = c.tenant_id' : '';
+    const customers = await AppDataSource.query(
+      `SELECT c.id, c.name, c.level, c.company,
+              (SELECT MAX(cr.start_time) FROM call_records cr WHERE cr.customer_id = c.id${crSubTenant}) as last_call
+       FROM customers c
+       WHERE (c.phone = ? OR c.mobile = ?)${tenantFilter}
+       LIMIT 1`,
+      [callerNumber, callerNumber, ...tenantParams]
+    );
+    if (customers.length > 0) {
+      customerId = customers[0].id;
+      customerName = customers[0].name;
+      customerLevel = customers[0].level;
+      company = customers[0].company;
+      lastCallTime = customers[0].last_call;
+    }
+  } catch (err) {
+    log.warn('[Webhook] 查询客户信息失败:', err);
+  }
+
+  let assignedUserId: string | null = null;
+  let assignedUserName = '';
+
+  try {
+    const routes = await AppDataSource.query(
+      `SELECT target_user_id FROM inbound_routes
+       WHERE did_number = ? AND is_enabled = 1${tenantFilter}
+       ORDER BY priority DESC LIMIT 1`,
+      [calledNumber, ...tenantParams]
+    );
+    if (routes.length > 0 && routes[0].target_user_id) {
+      assignedUserId = routes[0].target_user_id;
+    }
+
+    if (!assignedUserId) {
+      const assignments = await AppDataSource.query(
+        `SELECT ula.user_id, u.name, u.real_name
+         FROM user_line_assignments ula
+         JOIN call_lines cl ON ula.line_id = cl.id
+         LEFT JOIN users u ON ula.user_id = u.id
+         WHERE (cl.caller_number = ? OR cl.line_number = ?) AND ula.is_active = 1${tenantFilter ? ' AND ula.tenant_id = ?' : ''}
+         ORDER BY ula.is_default DESC LIMIT 1`,
+        [calledNumber, calledNumber, ...tenantParams]
+      );
+      if (assignments.length > 0) {
+        assignedUserId = assignments[0].user_id;
+        assignedUserName = assignments[0].real_name || assignments[0].name || '';
+      }
+    }
+
+    if (!assignedUserId) {
+      const phones = await AppDataSource.query(
+        `SELECT user_id, phone_number, name FROM work_phones
+         WHERE phone_number = ? AND status = 'active'${tenantFilter}
+         LIMIT 1`,
+        [calledNumber, ...tenantParams]
+      );
+      if (phones.length > 0) {
+        assignedUserId = phones[0].user_id;
+        assignedUserName = phones[0].name || '';
+      }
+    }
+
+    if (customerId) {
+      const customerOwner = await AppDataSource.query(
+        `SELECT sales_rep_id FROM customers WHERE id = ?${tenantFilter} LIMIT 1`,
+        [customerId, ...tenantParams]
+      );
+      if (customerOwner.length > 0 && customerOwner[0].sales_rep_id) {
+        assignedUserId = customerOwner[0].sales_rep_id;
+      }
+    }
+
+    if (assignedUserId && !assignedUserName) {
+      const userInfo = await AppDataSource.query(
+        `SELECT name, real_name FROM users WHERE id = ?${tenantFilter} LIMIT 1`,
+        [assignedUserId, ...tenantParams]
+      );
+      if (userInfo.length > 0) {
+        assignedUserName = userInfo[0].real_name || userInfo[0].name || '';
+      }
+    }
+  } catch (err) {
+    log.warn('[Webhook] 查询负责人失败:', err);
+  }
+
+  const prefix = callSource === 'aliyun' ? 'ALI-IN' : callSource === 'tencent' ? 'TX-IN' : 'SIP-IN';
+  const internalCallId = options.callId || `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+
+  let agentBusy = false;
+  try {
+    if (assignedUserId) {
+      const agentRows = await AppDataSource.query(
+        `SELECT agent_status FROM users WHERE id = ?${tenantFilter} LIMIT 1`,
+        [assignedUserId, ...tenantParams]
+      );
+      agentBusy = agentRows.length > 0 && agentRows[0].agent_status === 'busy';
+    }
+  } catch (_e) {
+    // ignore
+  }
+
+  try {
+    await AppDataSource.query(
+      `INSERT INTO call_records
+       (id, customer_id, customer_name, customer_phone, call_type, call_status,
+        call_method, call_direction, inbound_source, caller_number, user_id, user_name,
+        provider_call_id, start_time, created_at, tenant_id)
+       VALUES (?, ?, ?, ?, 'inbound', 'ringing', ?, 'in', ?, ?, ?, ?, ?, NOW(), NOW(), ?)`,
+      [
+        internalCallId,
+        customerId,
+        customerName,
+        callerNumber,
+        callSource,
+        callSource,
+        calledNumber,
+        assignedUserId || '',
+        assignedUserName,
+        providerCallId || null,
+        tenantId
+      ]
+    );
+  } catch (err) {
+    log.error('[Webhook] 创建云通信呼入记录失败:', err);
+  }
+
+  if (assignedUserId && !agentBusy && (global as any).webSocketService) {
+    (global as any).webSocketService.sendToUser(assignedUserId, 'CALL_INCOMING', {
+      callId: internalCallId,
+      callerNumber,
+      calledNumber,
+      callSource,
+      customerInfo: {
+        customerId,
+        customerName,
+        customerLevel,
+        company,
+        lastCallTime,
+        tags: []
+      },
+      deviceInfo: {
+        trunkId,
+        trunkName
+      },
+      timestamp: new Date().toISOString()
+    });
+    log.info(`[Webhook] 已推送云通信呼入通知给用户 ${assignedUserId}`);
+  }
+
+  return {
+    callId: internalCallId,
+    customerName,
+    customerId,
+    assignedUserId,
+    assignedUserName,
+    agentBusy
+  };
+}
 
 export default router;

@@ -6,6 +6,8 @@ import { CustomerShare } from '../../entities/CustomerShare';
 import { In } from 'typeorm';
 import { formatDateTime, formatDate } from '../../utils/dateFormat';
 import { getTenantRepo } from '../../utils/tenantRepo';
+import { AppDataSource } from '../../config/database';
+import { TenantContextManager } from '../../utils/tenantContext';
 import { createCustomerLog } from '../../utils/customerLog';
 import { log } from '../../config/logger';
 
@@ -389,7 +391,6 @@ router.get('/', async (req: Request, res: Response) => {
 
 router.get('/check-exists', async (req: Request, res: Response) => {
   try {
-    const customerRepository = getTenantRepo(Customer);
     const { phone } = req.query;
 
     if (!phone) {
@@ -401,36 +402,57 @@ router.get('/check-exists', async (req: Request, res: Response) => {
       });
     }
 
-    // 获取当前租户ID，确保只在本租户范围内查重
-    const currentTenantId = (req as any).tenantId || (req as any).user?.tenantId;
-    log.info('[检查客户存在] 查询手机号:', phone, '租户ID:', currentTenantId || '无');
+    // 🔒 租户隔离：多源获取 tenantId，确保万无一失
+    const currentUser = (req as any).currentUser;
+    const jwtUser = (req as any).user;
+    const tenantId = currentUser?.tenantId      // 1. DB 中的用户 tenantId（最可靠）
+      || currentUser?.tenant_id                  // 2. 可能的下划线字段名
+      || (req as any).tenantId                   // 3. authenticateToken 从 JWT 注入到 req
+      || jwtUser?.tenantId                       // 4. JWT payload 中的 tenantId
+      || TenantContextManager.getTenantId()      // 5. AsyncLocalStorage 中的 tenantId
+      || null;
 
-    // 构建查询，显式添加租户过滤作为安全保障
-    const qb = customerRepository
-      .createQueryBuilder('customer')
-      .where('customer.phone = :phone OR JSON_CONTAINS(customer.other_phones, JSON_QUOTE(:phone))', { phone: phone as string });
+    log.info(`[检查客户存在] 手机号=${phone}, tenantId=${tenantId || '(无)'}`,
+      `[来源: currentUser.tenantId=${currentUser?.tenantId}, req.tenantId=${(req as any).tenantId}, jwt.tenantId=${jwtUser?.tenantId}, context=${TenantContextManager.getTenantId()}]`);
 
-    // 显式租户隔离：即使 getTenantRepo 已注入，再加一层保障
-    if (currentTenantId) {
-      qb.andWhere('customer.tenant_id = :tenantId', { tenantId: currentTenantId });
+    // 🔒 直接使用原始SQL查询，彻底绕过 getTenantRepo Proxy，确保租户隔离可靠
+    let sql: string;
+    let params: any[];
+
+    if (tenantId) {
+      sql = `SELECT id, name, phone, sales_person_id, created_by, created_at
+             FROM customers
+             WHERE tenant_id = ? AND (phone = ? OR JSON_CONTAINS(other_phones, JSON_QUOTE(?)))
+             LIMIT 1`;
+      params = [tenantId, phone as string, phone as string];
+    } else {
+      // 无租户上下文 → 私有部署模式，查 tenant_id IS NULL 的数据
+      sql = `SELECT id, name, phone, sales_person_id, created_by, created_at
+             FROM customers
+             WHERE tenant_id IS NULL AND (phone = ? OR JSON_CONTAINS(other_phones, JSON_QUOTE(?)))
+             LIMIT 1`;
+      params = [phone as string, phone as string];
+      log.warn('[检查客户存在] ⚠️ 无租户ID，使用 tenant_id IS NULL 过滤（私有部署模式）');
     }
 
-    const existingCustomer = await qb.getOne();
+    const results = await AppDataSource.query(sql, params);
+    const existingCustomer = results.length > 0 ? results[0] : null;
 
     if (existingCustomer) {
-      log.info('[检查客户存在] 找到客户:', existingCustomer.name, '(租户:', currentTenantId, ')');
+      log.info(`[检查客户存在] 在租户 ${tenantId} 内找到客户: ${existingCustomer.name} (ID: ${existingCustomer.id})`);
 
-      // 查找归属人的真实姓名
+      // 查找归属人的真实姓名（也使用原始SQL + 租户过滤）
       let ownerName = '';
-      const ownerId = existingCustomer.salesPersonId || existingCustomer.createdBy;
+      const ownerId = existingCustomer.sales_person_id || existingCustomer.created_by;
 
       if (ownerId) {
         try {
-          const userRepository = getTenantRepo(User);
-          const owner = await userRepository.findOne({
-            where: { id: ownerId }
-          });
-          ownerName = owner?.name || ownerId;
+          const ownerSql = tenantId
+            ? `SELECT real_name, name FROM users WHERE id = ? AND tenant_id = ? LIMIT 1`
+            : `SELECT real_name, name FROM users WHERE id = ? AND tenant_id IS NULL LIMIT 1`;
+          const ownerParams = tenantId ? [ownerId, tenantId] : [ownerId];
+          const owners = await AppDataSource.query(ownerSql, ownerParams);
+          ownerName = owners[0]?.real_name || owners[0]?.name || ownerId;
         } catch (e) {
           log.info('[检查客户存在] 查找归属人失败:', e);
           ownerName = ownerId;
@@ -446,12 +468,12 @@ router.get('/check-exists', async (req: Request, res: Response) => {
           name: existingCustomer.name,
           phone: existingCustomer.phone,
           creatorName: ownerName,
-          createTime: existingCustomer.createdAt?.toISOString() || ''
+          createTime: existingCustomer.created_at || ''
         }
       });
     }
 
-    log.info('[检查客户存在] 客户不存在，可以创建 (租户:', currentTenantId, ')');
+    log.info(`[检查客户存在] 在租户 ${tenantId} 内不存在该手机号，可以创建`);
     return res.json({
       success: true,
       code: 200,
@@ -476,26 +498,23 @@ router.get('/check-exists', async (req: Request, res: Response) => {
  */
 router.post('/check-batch-phones', async (req: Request, res: Response) => {
   try {
-    const customerRepository = getTenantRepo(Customer);
     const { phones } = req.body;
-    const currentTenantId = (req as any).tenantId || (req as any).user?.tenantId;
+    const batchUser = (req as any).currentUser;
+    const batchTid = batchUser?.tenantId || (req as any).tenantId || (req as any).user?.tenantId || TenantContextManager.getTenantId() || null;
 
     if (!phones || !Array.isArray(phones) || phones.length === 0) {
       return res.json({ success: true, code: 200, data: { duplicates: [] } });
     }
 
-    // 批量查询已存在的手机号（严格限定当前租户）
-    const qb = customerRepository
-      .createQueryBuilder('customer')
-      .where('customer.phone IN (:...phones)', { phones })
-      .select(['customer.phone']);
+    // 🔒 原始SQL + 显式 tenant_id，确保仅在本租户内批量查重
+    const placeholders = phones.map(() => '?').join(',');
+    const batchSql = batchTid
+      ? `SELECT phone FROM customers WHERE phone IN (${placeholders}) AND tenant_id = ?`
+      : `SELECT phone FROM customers WHERE phone IN (${placeholders}) AND tenant_id IS NULL`;
+    const batchParams = batchTid ? [...phones, batchTid] : phones;
 
-    if (currentTenantId) {
-      qb.andWhere('customer.tenant_id = :tenantId', { tenantId: currentTenantId });
-    }
-
-    const existingCustomers = await qb.getMany();
-    const duplicates = existingCustomers.map(c => c.phone);
+    const existingResults = await AppDataSource.query(batchSql, batchParams);
+    const duplicates = existingResults.map((r: any) => r.phone);
 
     res.json({ success: true, code: 200, data: { duplicates } });
   } catch (error) {
@@ -529,7 +548,8 @@ router.post('/batch-import', async (req: Request, res: Response) => {
     }
 
     const customerRepository = getTenantRepo(Customer);
-    const batchTenantId = (req as any).tenantId || (req as any).user?.tenantId;
+    const batchCurrentUser = (req as any).currentUser;
+    const batchTenantId = batchCurrentUser?.tenantId || (req as any).tenantId || (req as any).user?.tenantId || TenantContextManager.getTenantId() || null;
     let successCount = 0;
     let duplicateCount = 0;
     let errorCount = 0;
@@ -543,16 +563,14 @@ router.post('/batch-import', async (req: Request, res: Response) => {
           continue;
         }
 
-        // 检查手机号重复（严格限定当前租户）
+        // 🔒 检查手机号重复（原始SQL + 显式租户过滤，确保仅在本租户内查重）
         if (item.phone) {
-          const checkQb = customerRepository
-            .createQueryBuilder('customer')
-            .where('customer.phone = :phone', { phone: item.phone });
-          if (batchTenantId) {
-            checkQb.andWhere('customer.tenant_id = :tenantId', { tenantId: batchTenantId });
-          }
-          const existing = await checkQb.getOne();
-          if (existing) {
+          const dupSql = batchTenantId
+            ? `SELECT id FROM customers WHERE phone = ? AND tenant_id = ? LIMIT 1`
+            : `SELECT id FROM customers WHERE phone = ? AND tenant_id IS NULL LIMIT 1`;
+          const dupParams = batchTenantId ? [item.phone, batchTenantId] : [item.phone];
+          const dupResults = await AppDataSource.query(dupSql, dupParams);
+          if (dupResults.length > 0) {
             duplicateCount++;
             continue;
           }
@@ -890,7 +908,7 @@ router.post('/', async (req: Request, res: Response) => {
     // 🔥 获取当前用户信息（在所有操作之前，用于日志和权限）
     const currentUser = (req as any).currentUser || (req as any).user;
     const currentUserId = currentUser?.id || (req as any).user?.userId;
-    const currentTenantId = (req as any).tenantId || currentUser?.tenantId || (req as any).user?.tenantId;
+    const currentTenantId = currentUser?.tenantId || (req as any).tenantId || (req as any).user?.tenantId || TenantContextManager.getTenantId() || null;
 
     log.info('[创建客户] 当前用户信息:', {
       id: currentUserId,
@@ -900,23 +918,21 @@ router.post('/', async (req: Request, res: Response) => {
       departmentId: currentUser?.departmentId
     });
 
-    // 🔥 检查手机号是否已存在（严格限定在当前租户范围内）
+    // 🔒 检查手机号是否已存在 — 使用原始SQL + 显式 tenant_id，彻底确保仅在本租户内查重
     if (phone) {
       try {
-        // 使用 QueryBuilder 并显式添加租户过滤，双重保障租户隔离
-        const checkQb = customerRepository
-          .createQueryBuilder('customer')
-          .where('customer.phone = :phone', { phone });
-        if (currentTenantId) {
-          checkQb.andWhere('customer.tenant_id = :tenantId', { tenantId: currentTenantId });
-        }
-        const existingCustomer = await checkQb.getOne();
-        if (existingCustomer) {
-          log.info('[创建客户] 手机号已存在:', phone, '客户:', existingCustomer.name, 'ID:', existingCustomer.id, '租户:', currentTenantId);
+        const createCheckSql = currentTenantId
+          ? `SELECT id, name FROM customers WHERE phone = ? AND tenant_id = ? LIMIT 1`
+          : `SELECT id, name FROM customers WHERE phone = ? AND tenant_id IS NULL LIMIT 1`;
+        const createCheckParams = currentTenantId ? [phone, currentTenantId] : [phone];
+        const createCheckResults = await AppDataSource.query(createCheckSql, createCheckParams);
+        if (createCheckResults.length > 0) {
+          const existing = createCheckResults[0];
+          log.info('[创建客户] 手机号已存在:', phone, '客户:', existing.name, 'ID:', existing.id, '租户:', currentTenantId);
           return res.status(400).json({
             success: false,
             code: 400,
-            message: `该手机号已存在客户记录（客户：${existingCustomer.name}）`
+            message: `该手机号已存在客户记录（客户：${existing.name}）`
           });
         }
       } catch (checkErr: any) {

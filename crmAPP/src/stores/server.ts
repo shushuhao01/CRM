@@ -24,12 +24,18 @@ export const useServerStore = defineStore('server', {
   }),
 
   getters: {
-    // 获取API基础地址
-    apiBaseUrl(): string {
+    // 服务器根地址（不含 /api/v1，用于静态资源、录音播放等）
+    serverOrigin(): string {
       if (!this.currentServer) return ''
       const { protocol, host, port } = this.currentServer
       const portStr = port ? `:${port}` : ''
-      return `${protocol}://${host}${portStr}/api/v1`
+      return `${protocol}://${host}${portStr}`
+    },
+
+    // 获取API基础地址
+    apiBaseUrl(): string {
+      if (!this.currentServer) return ''
+      return `${this.serverOrigin}/api/v1`
     },
 
     // 获取WebSocket地址
