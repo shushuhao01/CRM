@@ -104,6 +104,7 @@ import { useUserStore } from '@/stores/user'
 import { login } from '@/api/auth'
 import { APP_VERSION } from '@/config/app'
 import { setEncryptedStorage, getEncryptedStorage } from '@/utils/crypto'
+import { incomingCallService } from '@/services/incomingCallService'
 
 const serverStore = useServerStore()
 const userStore = useUserStore()
@@ -221,11 +222,16 @@ const handleLogin = async () => {
 
     uni.showToast({ title: '登录成功', icon: 'success' })
 
+    // 登录成功后启动来电监听（不依赖 WebSocket 连接）
+    // #ifdef APP-PLUS
+    incomingCallService.startListening()
+    // #endif
+
     // 跳转到首页（延迟确保状态同步）
     setTimeout(() => {
       uni.switchTab({ url: '/pages/index/index' })
 
-      // 🔥 登录成功后延迟检测录音状态，如果未开启则提醒
+      // 登录成功后延迟检测录音状态，如果未开启则提醒
       setTimeout(() => {
         checkRecordingOnLogin()
       }, 2000)

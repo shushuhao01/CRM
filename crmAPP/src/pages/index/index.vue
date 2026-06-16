@@ -32,6 +32,48 @@
       </view>
     </view>
 
+    <!-- 权限状态卡片 -->
+    <!-- #ifdef APP-PLUS -->
+    <view class="perm-card" v-if="userStore.isLoggedIn">
+      <view class="perm-header" @tap="permExpanded = !permExpanded">
+        <view class="perm-header-left">
+          <view class="perm-status-badge" :class="allPermissionsOk ? 'ok' : 'warn'">
+            <text class="perm-badge-symbol">{{ allPermissionsOk ? '✓' : '!' }}</text>
+          </view>
+          <text class="perm-header-title">{{ allPermissionsOk ? '权限就绪，来电检测正常' : '部分权限未授权，来电检测受限' }}</text>
+        </view>
+        <view class="perm-header-right">
+          <view class="perm-refresh-btn" :class="{ spinning: permScanning }" @tap.stop="handleRefreshPermissions">
+            <text class="perm-refresh-icon">↻</text>
+          </view>
+          <text class="perm-expand-arrow">{{ permExpanded ? '▲' : '▼' }}</text>
+        </view>
+      </view>
+      <view class="perm-list" v-if="permExpanded">
+        <view
+          class="perm-item"
+          :class="{ clickable: !p.granted || p.special }"
+          v-for="p in permissionList"
+          :key="p.key"
+          @tap="handlePermItemTap(p)"
+          @longpress="!p.special && !p.granted ? handleManualConfirm(p) : null"
+        >
+          <text class="perm-status-dot" :class="p.granted ? 'granted' : 'denied'">●</text>
+          <view class="perm-info">
+            <text class="perm-name">{{ p.name }}</text>
+            <text class="perm-purpose">{{ p.purpose }}</text>
+          </view>
+          <text v-if="p.special" class="perm-special-text" :class="{ 'special-ok': p.granted }">{{ p.statusText }}</text>
+          <text v-else-if="p.granted" class="perm-granted-text">已授权</text>
+          <text v-else class="perm-action-text">{{ p.actionText }}</text>
+        </view>
+        <view class="perm-tip" v-if="!allPermissionsOk">
+          <text class="perm-tip-text">点击授权 · 如已授权但检测不到，长按可手动确认</text>
+        </view>
+      </view>
+    </view>
+    <!-- #endif -->
+
     <!-- 今日概览 -->
     <view class="section">
       <text class="section-title">今日概览</text>
@@ -69,7 +111,13 @@
         <view class="action-item" @tap="handleScanBind" v-if="!userStore.isBound">
           <view class="action-icon scan">
             <view class="icon-inner">
-              <text class="icon-svg">⎔</text>
+              <view class="qi-scan">
+                <view class="qi-scan-corner tl"></view>
+                <view class="qi-scan-corner tr"></view>
+                <view class="qi-scan-corner bl"></view>
+                <view class="qi-scan-corner br"></view>
+                <view class="qi-scan-line"></view>
+              </view>
             </view>
           </view>
           <text class="action-text">扫码绑定</text>
@@ -77,7 +125,9 @@
         <view class="action-item" @tap="handleDial">
           <view class="action-icon dial">
             <view class="icon-inner">
-              <text class="icon-svg">✆</text>
+              <view class="qi-dial">
+                <view class="qi-dial-dot" v-for="i in 9" :key="i"></view>
+              </view>
             </view>
           </view>
           <text class="action-text">手动拨号</text>
@@ -85,7 +135,7 @@
         <view class="action-item" @tap="handleRefresh">
           <view class="action-icon refresh">
             <view class="icon-inner">
-              <text class="icon-svg">⟲</text>
+              <text class="qi-refresh">↻</text>
             </view>
           </view>
           <text class="action-text">刷新数据</text>
@@ -133,10 +183,413 @@ import { useServerStore } from '@/stores/server'
 import { getTodayStats, type TodayStats } from '@/api/call'
 import { wsService } from '@/services/websocket'
 import { callStateService } from '@/services/callStateService'
+import { incomingCallService } from '@/services/incomingCallService'
 
 const userStore = useUserStore()
 const serverStore = useServerStore()
 const wsConnected = ref(false)
+const permExpanded = ref(false)
+const permScanning = ref(false)
+
+// 各权限的真实系统状态
+const permPhoneState = ref(false)
+const permCallLog = ref(false)
+const permOverlay = ref(false)
+const permMicrophone = ref(false)
+const permNotification = ref(false)
+const permAutoRecording = ref<boolean | null>(null) // null=检测中
+
+// 手动确认覆盖（兜底方案）
+const manualOverrides = ref<Record<string, boolean>>({})
+const loadManualOverrides = () => {
+  try {
+    const raw = uni.getStorageSync('permManualOverrides')
+    if (raw) manualOverrides.value = JSON.parse(raw)
+  } catch (_e) { /* ignore */ }
+}
+const saveManualOverrides = () => {
+  uni.setStorageSync('permManualOverrides', JSON.stringify(manualOverrides.value))
+}
+loadManualOverrides()
+
+const allPermissionsOk = computed(() =>
+  permPhoneState.value && permCallLog.value && permOverlay.value
+)
+
+// 综合判断：系统检测 或 手动确认
+const isGranted = (key: string, detected: boolean) => detected || !!manualOverrides.value[key]
+
+const permissionList = computed(() => [
+  {
+    key: 'phone',
+    name: '电话',
+    purpose: '检测来电状态',
+    granted: isGranted('phone', permPhoneState.value),
+    special: false,
+    actionText: '授权',
+    statusText: '',
+    action: () => requestSinglePermission('android.permission.READ_PHONE_STATE')
+  },
+  {
+    key: 'calllog',
+    name: '通话记录',
+    purpose: '获取来电号码、补录未接来电',
+    granted: isGranted('calllog', permCallLog.value),
+    special: false,
+    actionText: '授权',
+    statusText: '',
+    action: () => requestSinglePermission('android.permission.READ_CALL_LOG')
+  },
+  {
+    key: 'mic',
+    name: '麦克风',
+    purpose: '录音文件检测与上传',
+    granted: isGranted('mic', permMicrophone.value),
+    special: false,
+    actionText: '授权',
+    statusText: '',
+    action: () => requestSinglePermission('android.permission.RECORD_AUDIO')
+  },
+  {
+    key: 'overlay',
+    name: '悬浮窗',
+    purpose: '在其他应用上方弹出来电提醒',
+    granted: isGranted('overlay', permOverlay.value),
+    special: false,
+    actionText: '去开启',
+    statusText: '',
+    action: handleGrantOverlay
+  },
+  {
+    key: 'notification',
+    name: '通知',
+    purpose: '来电通知栏提醒',
+    granted: isGranted('notification', permNotification.value),
+    special: false,
+    actionText: '去开启',
+    statusText: '',
+    action: () => incomingCallService.openAppPermissionSettings()
+  },
+  {
+    key: 'autorecording',
+    name: '通话自动录音',
+    purpose: '系统级通话录音（非APP权限）',
+    granted: permAutoRecording.value === true,
+    special: true,
+    actionText: '',
+    statusText: permAutoRecording.value === null ? '检测中...' : (permAutoRecording.value ? '已开启' : '未开启'),
+    action: handleOpenRecordingSetting
+  }
+])
+
+/**
+ * 从系统真实读取每个权限的授权状态
+ */
+const refreshPermissionStatus = () => {
+  // #ifdef APP-PLUS
+  if (!userStore.isLoggedIn) return
+  try {
+    const main = plus.android.runtimeMainActivity()
+
+    // 实测方式：不靠 API 查询，直接尝试使用权限对应的功能
+    // 能用 = 已授权，报 SecurityException = 未授权
+
+    // 电话权限：尝试获取通话状态
+    permPhoneState.value = testPhoneStatePerm(main)
+
+    // 通话记录权限：尝试查询通话记录
+    permCallLog.value = testCallLogPerm(main)
+
+    // 麦克风权限：通过 requestPermissions 结果缓存 或 实际尝试
+    permMicrophone.value = testMicrophonePerm(main)
+
+    // 悬浮窗：特殊权限，Settings.canDrawOverlays 返回 boolean 没问题
+    try {
+      const Settings = plus.android.importClass('android.provider.Settings') as any
+      permOverlay.value = !!Settings.canDrawOverlays(main)
+    } catch (_e) {
+      permOverlay.value = false
+    }
+
+    // 通知权限
+    try {
+      const Build = plus.android.importClass('android.os.Build') as any
+      if (Build.VERSION.SDK_INT >= 33) {
+        // Android 13+ 通知也通过实测
+        const NotificationManager = plus.android.importClass('android.app.NotificationManager') as any
+        const Context = plus.android.importClass('android.content.Context') as any
+        const nm = (main as any).getSystemService(Context.NOTIFICATION_SERVICE)
+        permNotification.value = !!nm.areNotificationsEnabled()
+      } else {
+        permNotification.value = true
+      }
+    } catch (_e) {
+      permNotification.value = true
+    }
+
+    // 通话自动录音状态检测
+    detectAutoRecording()
+
+    // 有未授权的关键权限时自动展开
+    if (!allPermissionsOk.value) {
+      permExpanded.value = true
+    }
+
+    console.log('[Index] 权限实测结果:',
+      'phone=' + permPhoneState.value,
+      'calllog=' + permCallLog.value,
+      'mic=' + permMicrophone.value,
+      'overlay=' + permOverlay.value,
+      'notification=' + permNotification.value)
+  } catch (e) {
+    console.warn('[Index] 权限状态检查失败:', e)
+  }
+  // #endif
+}
+
+// #ifdef APP-PLUS
+/** 实测电话权限：尝试读取通话状态 */
+const testPhoneStatePerm = (main: any): boolean => {
+  try {
+    const Context = plus.android.importClass('android.content.Context') as any
+    const TelephonyManager = plus.android.importClass('android.telephony.TelephonyManager') as any
+    const tm = (main as any).getSystemService(Context.TELEPHONY_SERVICE)
+    tm.getCallState() // 如果没权限会抛 SecurityException
+    return true
+  } catch (e) {
+    return false
+  }
+}
+
+/** 实测通话记录权限：尝试查询通话记录 */
+const testCallLogPerm = (main: any): boolean => {
+  try {
+    const CallLog = plus.android.importClass('android.provider.CallLog') as any
+    const cr = (main as any).getContentResolver()
+    const cursor = cr.query(
+      CallLog.Calls.CONTENT_URI,
+      ['_id'],
+      null, null,
+      'date DESC LIMIT 1'
+    )
+    if (cursor) {
+      cursor.close()
+    }
+    // 没有抛异常说明有权限（即使结果为空）
+    return true
+  } catch (e) {
+    const errMsg = String(e)
+    if (errMsg.includes('SecurityException') || errMsg.includes('Permission') || errMsg.includes('permission')) {
+      return false
+    }
+    // 其他异常（如 ContentResolver 调用问题）不代表没权限
+    return true
+  }
+}
+
+/** 实测麦克风权限：尝试创建录音器 */
+const testMicrophonePerm = (main: any): boolean => {
+  try {
+    const AudioRecord = plus.android.importClass('android.media.AudioRecord') as any
+    const AudioFormat = plus.android.importClass('android.media.AudioFormat') as any
+    const MediaRecorder = plus.android.importClass('android.media.MediaRecorder') as any
+    const sampleRate = 8000
+    const bufSize = AudioRecord.getMinBufferSize(
+      sampleRate,
+      AudioFormat.CHANNEL_IN_MONO,
+      AudioFormat.ENCODING_PCM_16BIT
+    )
+    if (Number(bufSize) <= 0) return true // 无法确定，假设有
+
+    const recorder = new AudioRecord(
+      MediaRecorder.AudioSource.MIC,
+      sampleRate,
+      AudioFormat.CHANNEL_IN_MONO,
+      AudioFormat.ENCODING_PCM_16BIT,
+      Number(bufSize)
+    )
+    const state = Number(recorder.getState())
+    recorder.release()
+    return state === 1 // AudioRecord.STATE_INITIALIZED
+  } catch (e) {
+    const errMsg = String(e)
+    if (errMsg.includes('SecurityException') || errMsg.includes('Permission') || errMsg.includes('permission')) {
+      return false
+    }
+    return true
+  }
+}
+// #endif
+
+/**
+ * 检测系统通话自动录音是否开启
+ */
+const detectAutoRecording = () => {
+  // #ifdef APP-PLUS
+  permAutoRecording.value = null
+  setTimeout(() => {
+    try {
+      const main = plus.android.runtimeMainActivity()
+      const AudioManager = plus.android.importClass('android.media.AudioManager') as any
+      const Context = plus.android.importClass('android.content.Context') as any
+      const am = (main as any).getSystemService(Context.AUDIO_SERVICE)
+      // 尝试多种方式检测
+      let detected = false
+
+      // 方式1: 检查系统属性 (部分厂商)
+      try {
+        const SystemProperties = plus.android.importClass('android.os.SystemProperties') as any
+        if (SystemProperties) {
+          const val = SystemProperties.get('persist.sys.call_recording', '')
+          if (val === '1' || val === 'true') {
+            detected = true
+          }
+        }
+      } catch (_e) { /* 部分系统没有此属性 */ }
+
+      // 方式2: 检查最近是否有通话录音文件生成
+      if (!detected) {
+        try {
+          const Environment = plus.android.importClass('android.os.Environment') as any
+          const File = plus.android.importClass('java.io.File') as any
+          const extDir = Environment.getExternalStorageDirectory().getAbsolutePath()
+          const recordPaths = [
+            extDir + '/Recordings/Call',
+            extDir + '/MIUI/sound_recorder/call_rec',
+            extDir + '/Record/Call',
+            extDir + '/Sounds/CallRecord',
+            extDir + '/Music/Recordings/Call Recordings',
+            extDir + '/PhoneRecord',
+            extDir + '/call_rec',
+          ]
+          for (const p of recordPaths) {
+            const dir = new File(p)
+            if (dir.exists() && dir.isDirectory()) {
+              const files = dir.listFiles()
+              if (files && files.length > 0) {
+                detected = true
+                break
+              }
+            }
+          }
+        } catch (_e) { /* 存储访问可能失败 */ }
+      }
+
+      permAutoRecording.value = detected
+    } catch (e) {
+      console.warn('[Index] 录音状态检测失败:', e)
+      permAutoRecording.value = false
+    }
+  }, 100)
+  // #endif
+}
+
+/**
+ * 权限项点击处理
+ */
+const handlePermItemTap = (p: any) => {
+  if (p.special) {
+    // 特殊项（通话自动录音），不管状态都可以点击
+    p.action()
+    return
+  }
+  if (p.granted) return // 已授权的不处理
+  p.action()
+}
+
+/**
+ * 单独申请某个权限（直接弹系统对话框，如果系统不弹则引导去设置）
+ */
+const requestSinglePermission = (permission: string) => {
+  // #ifdef APP-PLUS
+  plus.android.requestPermissions(
+    [permission],
+    (e: any) => {
+      const granted = e.granted || []
+      const deniedAlways = e.deniedAlways || []
+
+      if (granted.length > 0) {
+        uni.showToast({ title: '授权成功', icon: 'success' })
+      } else if (deniedAlways.length > 0) {
+        // 被永久拒绝，系统不会弹对话框，引导去设置
+        uni.showModal({
+          title: '需要手动开启',
+          content: '该权限已被禁止，请在系统设置中手动开启',
+          confirmText: '去设置',
+          cancelText: '取消',
+          success: (res) => {
+            if (res.confirm) {
+              incomingCallService.openAppPermissionSettings()
+            }
+          }
+        })
+      }
+      // 重新从系统读取真实状态
+      setTimeout(() => refreshPermissionStatus(), 500)
+    },
+    (_e: any) => {
+      setTimeout(() => refreshPermissionStatus(), 500)
+    }
+  )
+  // #endif
+}
+
+/**
+ * 长按手动确认已授权（兜底方案）
+ */
+const handleManualConfirm = (p: any) => {
+  uni.showModal({
+    title: '手动确认授权',
+    content: `你确定已在系统设置中授予了「${p.name}」权限吗？\n\n确认后将标记为已授权。如果实际未授权，相关功能可能无法正常工作。`,
+    confirmText: '确认已授权',
+    cancelText: '取消',
+    success: (res) => {
+      if (res.confirm) {
+        manualOverrides.value[p.key] = true
+        saveManualOverrides()
+        uni.showToast({ title: '已手动确认', icon: 'success' })
+      }
+    }
+  })
+}
+
+/**
+ * 手动刷新按钮（带旋转动画）——同时清除手动覆盖，重新实测
+ */
+const handleRefreshPermissions = () => {
+  if (permScanning.value) return
+  permScanning.value = true
+  // 清除手动覆盖，重新从系统实测
+  manualOverrides.value = {}
+  saveManualOverrides()
+  refreshPermissionStatus()
+  setTimeout(() => {
+    permScanning.value = false
+    uni.showToast({ title: '权限状态已刷新', icon: 'none', duration: 1500 })
+  }, 800)
+}
+
+const handleGrantOverlay = () => {
+  // #ifdef APP-PLUS
+  try {
+    const Intent = plus.android.importClass('android.content.Intent') as any
+    const Settings = plus.android.importClass('android.provider.Settings') as any
+    const Uri = plus.android.importClass('android.net.Uri') as any
+    const main = plus.android.runtimeMainActivity()
+    const intent = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION)
+    intent.setData(Uri.parse('package:' + (main as any).getPackageName()))
+    ;(main as any).startActivity(intent)
+  } catch (_e) {
+    incomingCallService.openAppPermissionSettings()
+  }
+  // #endif
+}
+
+const handleOpenRecordingSetting = () => {
+  // #ifdef APP-PLUS
+  uni.navigateTo({ url: '/pages/settings/index' })
+  // #endif
+}
 
 const todayStats = ref<TodayStats>({
   totalCalls: 0,
@@ -253,6 +706,9 @@ onShow(() => {
     return
   }
 
+  // 刷新权限状态（每次页面显示时检查，用户可能从设置页返回）
+  refreshPermissionStatus()
+
   // 检查是否有未完成的通话需要填写跟进
   checkPendingCall()
 
@@ -334,6 +790,189 @@ const checkPendingCall = () => {
   width: 100%;
   overflow-x: hidden;
   box-sizing: border-box;
+}
+
+.perm-card {
+  background: #fff;
+  border-radius: 20rpx;
+  margin-bottom: 24rpx;
+  overflow: hidden;
+  box-shadow: 0 2rpx 12rpx rgba(0, 0, 0, 0.06);
+}
+
+.perm-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 24rpx 28rpx;
+}
+
+.perm-header-left {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+}
+
+.perm-status-badge {
+  width: 36rpx;
+  height: 36rpx;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 14rpx;
+  flex-shrink: 0;
+
+  &.ok {
+    background: #D1FAE5;
+  }
+  &.warn {
+    background: #FEF3C7;
+  }
+}
+
+.perm-badge-symbol {
+  font-size: 22rpx;
+  font-weight: 700;
+  line-height: 1;
+
+  .ok & {
+    color: #059669;
+  }
+  .warn & {
+    color: #D97706;
+  }
+}
+
+.perm-header-title {
+  font-size: 26rpx;
+  font-weight: 600;
+  color: #333;
+}
+
+.perm-header-right {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.perm-refresh-btn {
+  width: 52rpx;
+  height: 52rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: #F3F4F6;
+  margin-right: 24rpx;
+  transition: background 0.2s;
+
+  &:active {
+    background: #E5E7EB;
+  }
+
+  &.spinning .perm-refresh-icon {
+    animation: perm-spin 0.8s linear infinite;
+  }
+}
+
+@keyframes perm-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.perm-refresh-icon {
+  font-size: 30rpx;
+  color: #6B7280;
+}
+
+.perm-expand-arrow {
+  font-size: 22rpx;
+  color: #999;
+}
+
+.perm-list {
+  border-top: 1rpx solid #f0f0f0;
+  padding: 8rpx 0;
+}
+
+.perm-item {
+  display: flex;
+  align-items: center;
+  padding: 18rpx 28rpx;
+
+  &.clickable:active {
+    background: #F9FAFB;
+  }
+}
+
+.perm-status-dot {
+  font-size: 20rpx;
+  margin-right: 16rpx;
+  flex-shrink: 0;
+
+  &.granted {
+    color: #10B981;
+  }
+  &.denied {
+    color: #EF4444;
+  }
+}
+
+.perm-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.perm-name {
+  display: block;
+  font-size: 26rpx;
+  color: #333;
+  font-weight: 500;
+}
+
+.perm-purpose {
+  display: block;
+  font-size: 22rpx;
+  color: #999;
+  margin-top: 2rpx;
+}
+
+.perm-action-text {
+  font-size: 24rpx;
+  color: #3B82F6;
+  font-weight: 600;
+  flex-shrink: 0;
+  padding: 8rpx 20rpx;
+  background: #EFF6FF;
+  border-radius: 20rpx;
+}
+
+.perm-granted-text {
+  font-size: 24rpx;
+  color: #10B981;
+  flex-shrink: 0;
+}
+
+.perm-special-text {
+  font-size: 24rpx;
+  color: #F59E0B;
+  flex-shrink: 0;
+
+  &.special-ok {
+    color: #10B981;
+  }
+}
+
+.perm-tip {
+  padding: 12rpx 28rpx 16rpx;
+  border-top: 1rpx solid #f5f5f5;
+}
+
+.perm-tip-text {
+  font-size: 20rpx;
+  color: #C0C0C0;
 }
 
 .user-card {
@@ -538,13 +1177,13 @@ const checkPendingCall = () => {
 }
 
 .action-icon {
-  width: 80rpx;
-  height: 80rpx;
-  border-radius: 20rpx;
+  width: 88rpx;
+  height: 88rpx;
+  border-radius: 24rpx;
   display: flex;
   align-items: center;
   justify-content: center;
-  margin: 0 auto 16rpx;
+  margin: 0 auto 14rpx;
 
   .icon-inner {
     width: 100%;
@@ -554,22 +1193,75 @@ const checkPendingCall = () => {
     justify-content: center;
   }
 
-  .icon-svg {
-    font-size: 40rpx;
-    color: #fff;
-  }
-
   &.scan {
-    background: linear-gradient(135deg, #a78bfa 0%, #8b5cf6 100%);
+    background: linear-gradient(135deg, #EDE9FE 0%, #DDD6FE 100%);
   }
 
   &.dial {
-    background: linear-gradient(135deg, #6EE7B7 0%, #34D399 100%);
+    background: linear-gradient(135deg, #D1FAE5 0%, #A7F3D0 100%);
   }
 
   &.refresh {
-    background: linear-gradient(135deg, #60a5fa 0%, #3b82f6 100%);
+    background: linear-gradient(135deg, #DBEAFE 0%, #BFDBFE 100%);
   }
+}
+
+// 扫码图标
+.qi-scan {
+  width: 40rpx;
+  height: 40rpx;
+  position: relative;
+}
+
+.qi-scan-corner {
+  position: absolute;
+  width: 12rpx;
+  height: 12rpx;
+  border-color: #7C3AED;
+  border-style: solid;
+  border-width: 0;
+
+  &.tl { top: 0; left: 0; border-top-width: 4rpx; border-left-width: 4rpx; border-radius: 4rpx 0 0 0; }
+  &.tr { top: 0; right: 0; border-top-width: 4rpx; border-right-width: 4rpx; border-radius: 0 4rpx 0 0; }
+  &.bl { bottom: 0; left: 0; border-bottom-width: 4rpx; border-left-width: 4rpx; border-radius: 0 0 0 4rpx; }
+  &.br { bottom: 0; right: 0; border-bottom-width: 4rpx; border-right-width: 4rpx; border-radius: 0 0 4rpx 0; }
+}
+
+.qi-scan-line {
+  position: absolute;
+  top: 50%;
+  left: 4rpx;
+  right: 4rpx;
+  height: 4rpx;
+  background: #7C3AED;
+  border-radius: 2rpx;
+  transform: translateY(-50%);
+}
+
+// 拨号键盘图标
+.qi-dial {
+  width: 36rpx;
+  height: 36rpx;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4rpx;
+  align-items: center;
+  justify-content: center;
+}
+
+.qi-dial-dot {
+  width: 8rpx;
+  height: 8rpx;
+  border-radius: 50%;
+  background: #059669;
+}
+
+// 刷新图标
+.qi-refresh {
+  font-size: 40rpx;
+  font-weight: 300;
+  color: #2563EB;
+  line-height: 1;
 }
 
 .action-text {

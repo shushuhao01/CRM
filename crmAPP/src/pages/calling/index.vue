@@ -351,6 +351,12 @@ onUnmounted(() => {
   // 移除监听
   uni.$off('call:end', handleCallEndFromServer)
   uni.$off('ws:call_ended', handleCallEndFromServer)
+
+  // 确保外呼监控状态被清理，避免阻塞来电检测
+  if (callStateService.getCurrentCall()) {
+    console.log('[Calling] 页面卸载时清理外呼监控状态')
+    callStateService.stopMonitoring()
+  }
 })
 </script>
 

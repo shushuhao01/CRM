@@ -1427,29 +1427,33 @@ const playRecording = (record: any) => {
     return
   }
 
-  // 🔥 修复：确保录音URL是完整的URL
-  // 如果已经是完整URL则直接使用，否则拼接API基础地址
   let recordingUrl = record.recordingUrl
-  if (!recordingUrl.startsWith('http')) {
-    // 优先使用环境变量，否则使用当前域名
-    const baseUrl = import.meta.env.VITE_API_BASE_URL || ''
-    if (baseUrl) {
-      recordingUrl = `${baseUrl}${recordingUrl.startsWith('/') ? '' : '/'}${recordingUrl}`
-    } else {
-      // 没有配置API基础地址时，使用相对路径（假设前后端同域）
-      // 确保路径以 /api 开头
-      if (!recordingUrl.startsWith('/api')) {
-        recordingUrl = `/api/v1/calls${recordingUrl.startsWith('/') ? '' : '/'}${recordingUrl}`
-      }
-    }
-  }
 
-  // 🔥 修复：audio 标签无法在请求头中携带 JWT token，
-  // 通过 URL 查询参数传递 token 以通过后端认证
-  const authToken = localStorage.getItem('auth_token')
-  if (authToken) {
-    const separator = recordingUrl.includes('?') ? '&' : '?'
-    recordingUrl = `${recordingUrl}${separator}token=${encodeURIComponent(authToken)}`
+  if (recordingUrl.startsWith('http')) {
+    // 已是完整 URL（如第三方录音或带域名的 stream URL），直接追加 token
+    const authToken = localStorage.getItem('auth_token')
+    if (authToken) {
+      const sep = recordingUrl.includes('?') ? '&' : '?'
+      recordingUrl = `${recordingUrl}${sep}token=${encodeURIComponent(authToken)}`
+    }
+  } else if (recordingUrl.startsWith('/uploads/')) {
+    // APP 上传的录音：存储在 express.static('/uploads') 下，同域直接访问，无需 token
+    // 保持原始路径不变，浏览器会自动对当前域发起请求
+  } else if (recordingUrl.startsWith('/recordings/')) {
+    // RecordingStorageService 存储的录音：走 stream 端点，需要 token
+    recordingUrl = `/api/v1/calls/recordings/stream${recordingUrl}`
+    const authToken = localStorage.getItem('auth_token')
+    if (authToken) {
+      const sep = recordingUrl.includes('?') ? '&' : '?'
+      recordingUrl = `${recordingUrl}${sep}token=${encodeURIComponent(authToken)}`
+    }
+  } else {
+    // 其他相对路径：尝试作为 stream 路径访问
+    recordingUrl = `/api/v1/calls/recordings/stream/${recordingUrl}`
+    const authToken = localStorage.getItem('auth_token')
+    if (authToken) {
+      recordingUrl = `${recordingUrl}?token=${encodeURIComponent(authToken)}`
+    }
   }
 
   console.log('[录音播放] 原始URL:', record.recordingUrl, '处理后URL:', recordingUrl)
@@ -2357,8 +2361,9 @@ const startOutboundCall = async () => {
       }
     }
 
-    // 刷新通话记录
+    // 刷新通话记录和统计
     await callStore.fetchCallRecords()
+    await loadStatistics()
   } catch (error) {
     console.error('外呼失败:', error)
     ElMessage.error('外呼失败，请重试')
@@ -2507,8 +2512,9 @@ const endCall = async () => {
   // 关闭通话中弹窗并重置状态
   closeCallWindow()
 
-  // 刷新通话记录
+  // 刷新通话记录和统计
   await callStore.fetchCallRecords()
+  await loadStatistics()
 }
 
 // 关闭通话窗口并重置状态
@@ -2883,8 +2889,9 @@ const loadStatistics = async () => {
 
     // 尝试从API获取统计数据
     try {
-      const startDate = todayStart.toISOString()
-      const endDate = todayEnd.toISOString()
+      const pad = (n: number) => String(n).padStart(2, '0')
+      const startDate = `${todayStart.getFullYear()}-${pad(todayStart.getMonth()+1)}-${pad(todayStart.getDate())} 00:00:00`
+      const endDate = `${todayStart.getFullYear()}-${pad(todayStart.getMonth()+1)}-${pad(todayStart.getDate())} 23:59:59`
 
       const data = await callApi.getCallStatistics({
         startDate,
@@ -2990,12 +2997,12 @@ onMounted(async () => {
     initAgentStatus()
     // 加载用户列表（用于负责人筛选）
     await userStore.loadUsers()
-    // 加载统计数据
-    await loadStatistics()
     // 加载呼出列表
     await loadOutboundList()
-    // 获取最近的通话记录
+    // 获取最近的通话记录（先于统计加载，兜底计算需要）
     await callStore.fetchCallRecords({ pageSize: 10 })
+    // 加载统计数据
+    await loadStatistics()
     // 获取跟进记录
     await callStore.fetchFollowUpRecords({ pageSize: 20 })
     // 加载SDK详细信息
@@ -3174,9 +3181,10 @@ const handleCallEndedFromWebSocket = (data: any) => {
     // 显示通话结束提示
     ElMessage.info(`通话已结束，通话时长：${formatCallDuration(callDuration.value)}`)
 
-    // 刷新通话记录
+    // 刷新通话记录和统计
     loadCallRecords()
     loadOutboundList()
+    loadStatistics()
   }
 }
 

@@ -46,14 +46,32 @@ class IncomingCallService {
   private wakeLock: any = null
   private foregroundActive = false
   private missedSyncRunning = false
+  private vibrateTimer: ReturnType<typeof setInterval> | null = null
+  private ringtonePlayer: any = null
 
   startListening() {
-    if (this.listening) return
+    if (this.listening) {
+      console.log('[IncomingCallService] 来电监听已在运行中')
+      return
+    }
     this.listening = true
     console.log('[IncomingCallService] 来电监听已启动')
 
     // #ifdef APP-PLUS
-    this.initAndroidListener()
+    // 先检查权限是否已授予，已有直接初始化，没有才请求（只弹系统对话框，不弹自定义弹窗）
+    if (this.checkPhonePermissionGranted()) {
+      this.initAndroidListener()
+    } else {
+      this.requestPhonePermissions().then((granted) => {
+        if (granted) {
+          this.initAndroidListener()
+        } else {
+          console.warn('[IncomingCallService] 电话权限未授予，启用轮询兜底')
+          this.usePolling = true
+          this.startPolling()
+        }
+      })
+    }
     this.startForegroundKeepAlive()
     // #endif
 
@@ -71,8 +89,10 @@ class IncomingCallService {
   stopListening() {
     this.listening = false
     this.clearConfirmTimeout()
+    this.stopVibrateLoop()
     this.stopAndroidListener()
     // #ifdef APP-PLUS
+    this.stopRingtone()
     this.stopForegroundKeepAlive()
     // #endif
     uni.$off('ws:incoming_call')
@@ -125,7 +145,158 @@ class IncomingCallService {
     return this.currentIncoming ? { ...this.currentIncoming } : null
   }
 
+  /**
+   * 检查电话权限是否已授予（不弹窗）
+   */
+  checkPhonePermissionGranted(): boolean {
+    // #ifdef APP-PLUS
+    try {
+      const main = plus.android.runtimeMainActivity()
+      const pkgName = (main as any).getPackageName()
+      const pm = (main as any).getPackageManager()
+      // Java int 通过桥接可能是 Integer 对象，必须 Number() 转换
+      return Number(pm.checkPermission('android.permission.READ_PHONE_STATE', pkgName)) === 0
+    } catch (e) {
+      try {
+        const main = plus.android.runtimeMainActivity()
+        return Number((main as any).checkCallingOrSelfPermission('android.permission.READ_PHONE_STATE')) === 0
+      } catch (_e2) {
+        console.warn('[IncomingCallService] 权限检查失败')
+        return false
+      }
+    }
+    // #endif
+    // eslint-disable-next-line no-unreachable
+    return true
+  }
+
+  /**
+   * 公开的权限请求方法，供外部调用（如首页权限引导按钮）
+   * @returns true=权限已授予, false=用户拒绝
+   */
+  async requestPermissions(): Promise<boolean> {
+    // #ifdef APP-PLUS
+    const granted = await this.requestPhonePermissions()
+    if (granted && !this.listening) {
+      this.startListening()
+    } else if (granted && this.usePolling) {
+      this.usePolling = false
+      if (this.pollTimer) {
+        clearInterval(this.pollTimer)
+        this.pollTimer = null
+      }
+      this.initAndroidListener()
+    }
+    return granted
+    // #endif
+    // eslint-disable-next-line no-unreachable
+    return true
+  }
+
+  /**
+   * 检查悬浮窗权限是否已授予
+   */
+  checkOverlayPermissionGranted(): boolean {
+    // #ifdef APP-PLUS
+    try {
+      const Settings = plus.android.importClass('android.provider.Settings') as any
+      const main = plus.android.runtimeMainActivity()
+      return !!Settings.canDrawOverlays(main)
+    } catch (e) {
+      return false
+    }
+    // #endif
+    // eslint-disable-next-line no-unreachable
+    return true
+  }
+
   // #ifdef APP-PLUS
+  private openOverlayPermissionSettings() {
+    try {
+      const Intent = plus.android.importClass('android.content.Intent') as any
+      const Settings = plus.android.importClass('android.provider.Settings') as any
+      const Uri = plus.android.importClass('android.net.Uri') as any
+      const main = plus.android.runtimeMainActivity()
+      const intent = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION)
+      intent.setData(Uri.parse('package:' + (main as any).getPackageName()))
+      ;(main as any).startActivity(intent)
+    } catch (e) {
+      console.warn('[IncomingCallService] 跳转悬浮窗设置失败:', e)
+      // 兜底：跳转到应用详情页
+      this.openAppPermissionSettings()
+    }
+  }
+  // #endif
+
+  /**
+   * 跳转到系统应用权限设置页
+   */
+  openAppPermissionSettings() {
+    // #ifdef APP-PLUS
+    try {
+      const Intent = plus.android.importClass('android.content.Intent') as any
+      const Settings = plus.android.importClass('android.provider.Settings') as any
+      const Uri = plus.android.importClass('android.net.Uri') as any
+      const main = plus.android.runtimeMainActivity()
+      const intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+      intent.setData(Uri.parse('package:' + (main as any).getPackageName()))
+      ;(main as any).startActivity(intent)
+    } catch (err) {
+      console.warn('[IncomingCallService] 跳转设置失败:', err)
+      uni.showToast({ title: '请手动进入系统设置 > 应用管理 > 云客CRM > 权限', icon: 'none', duration: 3000 })
+    }
+    // #endif
+  }
+
+  // #ifdef APP-PLUS
+  private requestPhonePermissions(): Promise<boolean> {
+    return new Promise((resolve) => {
+      try {
+        const permissions = [
+          'android.permission.READ_PHONE_STATE',
+          'android.permission.READ_CALL_LOG',
+        ]
+        // Android 12+ (API 31) 需要 READ_PHONE_NUMBERS 才能在 onCallStateChanged 中获取号码
+        const Build = plus.android.importClass('android.os.Build') as any
+        if (Build && Build.VERSION && Build.VERSION.SDK_INT >= 31) {
+          permissions.push('android.permission.READ_PHONE_NUMBERS')
+        }
+
+        plus.android.requestPermissions(
+          permissions,
+          (e: any) => {
+            const deniedAlways = e.deniedAlways || []
+            const deniedPresent = e.deniedPresent || []
+            const granted = e.granted || []
+
+            console.log('[IncomingCallService] 权限申请结果:',
+              'granted=', granted.length,
+              'deniedPresent=', deniedPresent.length,
+              'deniedAlways=', deniedAlways.length)
+
+            if (deniedAlways.length > 0) {
+              console.warn('[IncomingCallService] 以下权限被永久拒绝:', deniedAlways)
+              // 不弹窗打扰用户，由首页权限横幅静默引导
+            }
+
+            // 至少 READ_PHONE_STATE 被授予才算成功
+            const hasPhoneState = granted.some((p: string) =>
+              p.includes('READ_PHONE_STATE')
+            )
+            resolve(hasPhoneState)
+          },
+          (e: any) => {
+            console.error('[IncomingCallService] 权限申请异常:', e)
+            resolve(false)
+          }
+        )
+      } catch (e) {
+        console.warn('[IncomingCallService] 权限申请调用失败:', e)
+        resolve(false)
+      }
+    })
+  }
+
   private initAndroidListener() {
     try {
       const main = plus.android.runtimeMainActivity()
@@ -190,10 +361,17 @@ class IncomingCallService {
   // #endif
 
   private handleCallStateChange(state: number, phoneNumber: string) {
-    // 外呼由 callStateService 处理，避免重复
-    if (callStateService.getCurrentCall()) {
+    // 仅在外呼正在通话中（offhook/ringing/dialing 且未 ended）时让 callStateService 处理
+    // 避免外呼结束后状态残留导致来电永远被忽略
+    const outboundCall = callStateService.getCurrentCall()
+    if (outboundCall && callStateService.isInCall()) {
       this.lastPhoneState = state
       return
+    }
+    // 如果外呼已结束但 getCurrentCall 非空（残留），主动清理
+    if (outboundCall && !callStateService.isInCall()) {
+      console.log('[IncomingCallService] 检测到外呼状态残留，强制清理')
+      callStateService.stopMonitoring()
     }
 
     const prevState = this.lastPhoneState
@@ -206,14 +384,27 @@ class IncomingCallService {
         if (phoneNumber) {
           this.onRingingDetected(phoneNumber)
         } else if (!this.currentIncoming) {
-          // Android 10+ 可能不返回号码，尝试从通话记录获取
-          this.tryResolveCallerFromCallLog().then((num) => {
-            if (num) this.onRingingDetected(num)
-          })
+          // Android 10+ 可能不返回号码：先用"未知"触发来电流程，再异步尝试解析号码
+          console.log('[IncomingCallService] RINGING 但无号码，先触发未知来电')
+          this.onRingingDetected('未知来电')
+          // 延迟 1 秒后尝试从通话记录补充号码
+          setTimeout(() => {
+            this.tryResolveCallerFromCallLog().then((num) => {
+              if (num && this.currentIncoming && this.currentIncoming.callerNumber === '未知来电') {
+                console.log('[IncomingCallService] 从通话记录补充来电号码:', num)
+                this.currentIncoming.callerNumber = num
+              }
+            })
+          }, 1000)
         }
         break
 
       case 2: // OFFHOOK
+        // 接听后立即停止铃声和振动
+        this.stopVibrateLoop()
+        // #ifdef APP-PLUS
+        this.stopRingtone()
+        // #endif
         if (this.currentIncoming && !this.currentIncoming.connectTime) {
           this.currentIncoming.connectTime = Date.now()
           console.log('[IncomingCallService] 来电已接听')
@@ -221,6 +412,11 @@ class IncomingCallService {
         break
 
       case 0: // IDLE
+        // 挂断/结束后停止铃声和振动
+        this.stopVibrateLoop()
+        // #ifdef APP-PLUS
+        this.stopRingtone()
+        // #endif
         if (this.currentIncoming) {
           this.onIncomingCallEnded()
         }
@@ -399,25 +595,78 @@ class IncomingCallService {
   private triggerIncomingNotify(callerNumber: string) {
     const settings = this.getCallSettings()
 
+    // 持续振动：每隔 1.5 秒振动一次，模拟真实来电振动节奏
     if (settings.vibrate) {
       uni.vibrateLong({})
+      this.stopVibrateLoop()
+      this.vibrateTimer = setInterval(() => {
+        if (!this.currentIncoming) {
+          this.stopVibrateLoop()
+          return
+        }
+        uni.vibrateLong({})
+      }, 1500)
     }
 
     if (settings.callNotify) {
       // #ifdef APP-PLUS
       try {
         const displayName = this.currentIncoming?.customerName || callerNumber
+        // 系统通知栏常驻通知
         plus.push.createMessage(
           `来电: ${displayName}`,
           JSON.stringify({ type: 'incoming_call', callerNumber }),
           { title: '客户来电', cover: false }
         )
+
+        // 播放来电提示音
+        this.playRingtone()
       } catch (e) {
         console.warn('[IncomingCallService] 本地通知失败:', e)
       }
       // #endif
     }
   }
+
+  private stopVibrateLoop() {
+    if (this.vibrateTimer) {
+      clearInterval(this.vibrateTimer)
+      this.vibrateTimer = null
+    }
+  }
+
+  // #ifdef APP-PLUS
+  private playRingtone() {
+    this.stopRingtone()
+    try {
+      // 使用系统默认铃声
+      const RingtoneManager = plus.android.importClass('android.media.RingtoneManager') as any
+      const ringtoneUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
+      const main = plus.android.runtimeMainActivity()
+      const ringtone = RingtoneManager.getRingtone(main, ringtoneUri)
+      if (ringtone) {
+        ringtone.play()
+        this.ringtonePlayer = ringtone
+        console.log('[IncomingCallService] 来电铃声播放中')
+      }
+    } catch (e) {
+      console.warn('[IncomingCallService] 播放铃声失败:', e)
+    }
+  }
+
+  private stopRingtone() {
+    try {
+      if (this.ringtonePlayer) {
+        if (this.ringtonePlayer.isPlaying && this.ringtonePlayer.isPlaying()) {
+          this.ringtonePlayer.stop()
+        }
+        this.ringtonePlayer = null
+      }
+    } catch (e) {
+      console.warn('[IncomingCallService] 停止铃声失败:', e)
+    }
+  }
+  // #endif
 
   private notifyIncomingCallbacks(info: IncomingCallInfo) {
     this.incomingCallbacks.forEach((cb) => {

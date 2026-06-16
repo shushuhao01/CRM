@@ -145,21 +145,9 @@ const setupIncomingCallListener = () => {
     })
   })
 
-  // 来电检测回调
+  // 来电检测回调（铃声和振动由 incomingCallService.triggerIncomingNotify 处理）
   incomingCallService.onIncoming((info) => {
     console.log('[App] 检测到来电:', info.callerNumber)
-    const settings = getCallSettings()
-
-    if (settings.callNotify) {
-      const display = info.customerName && info.customerName !== '未知来电'
-        ? `${info.customerName} (${info.callerNumber})`
-        : info.callerNumber
-      uni.showToast({
-        title: `来电: ${display}`,
-        icon: 'none',
-        duration: 3000,
-      })
-    }
   })
 
   incomingCallService.onIncomingEnd((info, duration) => {

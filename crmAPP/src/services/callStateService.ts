@@ -30,11 +30,15 @@ class CallStateService {
   private currentCall: CurrentCallInfo | null = null
   private stateCheckTimer: number | null = null
   private lastPhoneState: number = 0 // 0=IDLE, 1=RINGING, 2=OFFHOOK
-  private isMonitoring = false
+  private _isMonitoring = false
+  private dialingTimeout: ReturnType<typeof setTimeout> | null = null
 
   // 回调函数
   private onStateChangeCallback: ((state: CallState, callInfo: CurrentCallInfo | null) => void) | null = null
   private onCallEndCallback: ((callInfo: CurrentCallInfo, duration: number) => void) | null = null
+
+  get isMonitoring() { return this._isMonitoring }
+  set isMonitoring(v: boolean) { this._isMonitoring = v }
 
   /**
    * 开始监听通话状态
@@ -58,6 +62,15 @@ class CallStateService {
 
     // 启动状态检测
     this.startStateCheck()
+
+    // 外呼超时保护：如果 2 分钟内没有任何状态变化（一直是 dialing），自动清理
+    this.clearDialingTimeout()
+    this.dialingTimeout = setTimeout(() => {
+      if (this.currentCall && this.currentCall.state === 'dialing') {
+        console.warn('[CallStateService] 外呼超时(2分钟无状态变化)，自动清理')
+        this.stopMonitoring()
+      }
+    }, 120000)
   }
 
   /**
@@ -67,7 +80,15 @@ class CallStateService {
     console.log('[CallStateService] 停止监听')
     this.isMonitoring = false
     this.stopStateCheck()
+    this.clearDialingTimeout()
     this.currentCall = null
+  }
+
+  private clearDialingTimeout() {
+    if (this.dialingTimeout) {
+      clearTimeout(this.dialingTimeout)
+      this.dialingTimeout = null
+    }
   }
 
   /**
@@ -127,6 +148,8 @@ class CallStateService {
     if (!this.currentCall) return
 
     const oldState = this.currentCall.state
+    // 有状态变化说明通话流程在进行，取消拨号超时
+    this.clearDialingTimeout()
 
     switch (newState) {
       case 0: // IDLE - 通话结束
@@ -138,8 +161,6 @@ class CallStateService {
 
       case 1: // RINGING - 响铃中
         if (oldState === 'dialing' || oldState === 'idle') {
-          // dialing -> ringing: 外呼对方响铃
-          // idle -> ringing: 呼入来电（由 incomingCallService 处理，这里不重复）
           this.currentCall.state = 'ringing'
           this.notifyStateChange('ringing')
         }
@@ -151,7 +172,6 @@ class CallStateService {
           this.currentCall.connectTime = Date.now()
           this.notifyStateChange('offhook')
 
-          // 通知WebSocket通话已接通
           wsService.reportCallStatus(this.currentCall.callId, 'connected')
         }
         break
