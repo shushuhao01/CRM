@@ -70,15 +70,27 @@ echo ""
 # ==================== Step 4: 安装/更新依赖 ====================
 echo -e "${YELLOW}[4] 更新依赖...${NC}"
 
+# 国内 npm 镜像源（加速下载，避免卡死）
+NPM_REGISTRY="https://registry.npmmirror.com"
+# npm install 超时时间（秒）
+NPM_TIMEOUT=600
+
 echo -e "${YELLOW}    [4.1] 前端 (CRM主应用) 依赖...${NC}"
 cd "$PROJECT_DIR"
-npm install --legacy-peer-deps 2>&1
-echo -e "${GREEN}    [OK] 前端依赖已更新（postinstall自动修复权限）${NC}"
+# 临时移除 NODE_OPTIONS 避免干扰 npm 自身运行
+env -u NODE_OPTIONS timeout $NPM_TIMEOUT npm install --legacy-peer-deps --registry=$NPM_REGISTRY 2>&1 || {
+    echo -e "${RED}    [X] 前端依赖安装失败或超时！${NC}"
+    exit 1
+}
+echo -e "${GREEN}    [OK] 前端依赖已更新${NC}"
 
 echo -e "${YELLOW}    [4.2] 后端依赖...${NC}"
 cd "$PROJECT_DIR/backend"
-npm install 2>&1
-echo -e "${GREEN}    [OK] 后端依赖已更新（postinstall自动修复权限）${NC}"
+env -u NODE_OPTIONS timeout $NPM_TIMEOUT npm install --registry=$NPM_REGISTRY 2>&1 || {
+    echo -e "${RED}    [X] 后端依赖安装失败或超时！${NC}"
+    exit 1
+}
+echo -e "${GREEN}    [OK] 后端依赖已更新${NC}"
 
 # 子项目通用权限修复函数
 fix_subproject_permissions() {
@@ -92,7 +104,10 @@ fix_subproject_permissions() {
 if [ -f "$PROJECT_DIR/website/package.json" ]; then
     echo -e "${YELLOW}    [4.3] 官网依赖...${NC}"
     cd "$PROJECT_DIR/website"
-    npm install 2>&1
+    env -u NODE_OPTIONS timeout $NPM_TIMEOUT npm install --registry=$NPM_REGISTRY 2>&1 || {
+        echo -e "${RED}    [X] 官网依赖安装失败或超时！${NC}"
+        exit 1
+    }
     fix_subproject_permissions "$PROJECT_DIR/website"
     echo -e "${GREEN}    [OK] 官网依赖已更新${NC}"
 fi
@@ -101,7 +116,10 @@ fi
 if [ -f "$PROJECT_DIR/admin/package.json" ]; then
     echo -e "${YELLOW}    [4.4] 管理后台依赖...${NC}"
     cd "$PROJECT_DIR/admin"
-    npm install 2>&1
+    env -u NODE_OPTIONS timeout $NPM_TIMEOUT npm install --registry=$NPM_REGISTRY 2>&1 || {
+        echo -e "${RED}    [X] 管理后台依赖安装失败或超时！${NC}"
+        exit 1
+    }
     fix_subproject_permissions "$PROJECT_DIR/admin"
     echo -e "${GREEN}    [OK] 管理后台依赖已更新${NC}"
 fi
@@ -110,7 +128,10 @@ fi
 if [ -f "$PROJECT_DIR/h5/package.json" ]; then
     echo -e "${YELLOW}    [4.5] H5企微依赖...${NC}"
     cd "$PROJECT_DIR/h5"
-    npm install 2>&1
+    env -u NODE_OPTIONS timeout $NPM_TIMEOUT npm install --registry=$NPM_REGISTRY 2>&1 || {
+        echo -e "${RED}    [X] H5依赖安装失败或超时！${NC}"
+        exit 1
+    }
     fix_subproject_permissions "$PROJECT_DIR/h5"
     echo -e "${GREEN}    [OK] H5依赖已更新${NC}"
 fi
