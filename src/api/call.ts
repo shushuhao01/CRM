@@ -185,7 +185,7 @@ export const getCallRecordDetail = async (id: string) => {
       // 尝试获取关联的跟进记录
       let followUpRecords: any[] = []
       try {
-        const followUpRes = await api.get<any>('/calls/followups', { callId: id })
+        const followUpRes = await api.get<any>('/calls/followups', { params: { callId: id } })
         if (followUpRes.success && followUpRes.data?.records) {
           followUpRecords = followUpRes.data.records
         }
@@ -290,7 +290,7 @@ export const getCallStatistics = (params: {
   department?: string
   groupBy?: 'day' | 'week' | 'month'
 }) => {
-  return api.get<CallStatistics>('/calls/statistics', params)
+  return api.get<CallStatistics>('/calls/statistics', { params })
 }
 
 // 获取录音列表
@@ -324,7 +324,7 @@ export const getRecordings = (params: {
     total: number
     page: number
     pageSize: number
-  }>('/calls/recordings', params)
+  }>('/calls/recordings', { params })
 }
 
 // 上传录音文件
@@ -389,7 +389,7 @@ export const getRecordingStats = () => {
 
 // 获取电话配置
 export const getPhoneConfig = (userId?: string) => {
-  return api.get<PhoneConfig>('/calls/config', userId ? { userId } : undefined)
+  return api.get<PhoneConfig>('/calls/config', userId ? { params: { userId } } : undefined)
 }
 
 // 保存电话配置
@@ -432,7 +432,7 @@ export const getCustomerCallHistory = (customerId: string, params?: {
     total: number
     page: number
     pageSize: number
-  }>(`/customers/${customerId}/calls`, params)
+  }>(`/customers/${customerId}/calls`, { params })
 }
 
 // 导出通话记录
@@ -485,7 +485,7 @@ export const getOutboundTasks = (params: {
     total: number
     page: number
     pageSize: number
-  }>('/calls/outbound-tasks', params)
+  }>('/calls/outbound-tasks', { params })
 }
 
 // 创建外呼任务
@@ -597,7 +597,7 @@ export const getPhoneBlacklist = (params: {
     total: number
     page: number
     pageSize: number
-  }>('/calls/blacklist', params)
+  }>('/calls/blacklist', { params })
 }
 
 // 添加号码到黑名单

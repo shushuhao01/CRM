@@ -8,6 +8,12 @@ import { recordingStorageService } from '../../services/RecordingStorageService'
 import multer from 'multer';
 import * as path from 'path';
 import * as fs from 'fs';
+import ffmpeg from 'fluent-ffmpeg';
+import ffmpegPath from 'ffmpeg-static';
+
+if (ffmpegPath) {
+  ffmpeg.setFfmpegPath(ffmpegPath);
+}
 
 // 配置multer用于录音文件上传
 const recordingUpload = multer({
@@ -57,36 +63,57 @@ router.get('/recordings/stream/*', async (req: Request, res: Response) => {
       return res.status(404).json({ success: false, message: '录音文件不存在' });
     }
 
-    // 设置响应头
-    res.setHeader('Content-Type', result.contentType);
-    res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(result.fileName)}"`);
-    res.setHeader('Accept-Ranges', 'bytes');
+    const needsTranscode = ['audio/amr', 'audio/3gpp'].includes(result.contentType);
 
-    // 支持范围请求（用于音频seek）
-    const range = req.headers.range;
-    if (range && result.stream instanceof fs.ReadStream) {
-      const filePath = (result.stream as any).path;
-      const stat = fs.statSync(filePath as string);
-      const fileSize = stat.size;
-
-      const parts = range.replace(/bytes=/, '').split('-');
-      const start = parseInt(parts[0], 10);
-      const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
-      const chunkSize = end - start + 1;
-
-      // 关闭原来的流，用新的范围流替代
+    if (needsTranscode && ffmpegPath && result.stream instanceof fs.ReadStream) {
+      const filePath = (result.stream as any).path as string;
       result.stream.destroy();
 
-      res.status(206);
-      res.setHeader('Content-Range', `bytes ${start}-${end}/${fileSize}`);
-      res.setHeader('Content-Length', chunkSize);
+      const mp3Name = result.fileName.replace(/\.[^.]+$/, '.mp3');
+      res.setHeader('Content-Type', 'audio/mpeg');
+      res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(mp3Name)}"`);
 
-      const stream = fs.createReadStream(filePath as string, { start, end });
-      stream.pipe(res);
-    } else if (result.stream instanceof fs.ReadStream) {
-      result.stream.pipe(res);
+      ffmpeg(filePath)
+        .audioCodec('libmp3lame')
+        .audioBitrate(64)
+        .audioChannels(1)
+        .format('mp3')
+        .on('error', (err: Error) => {
+          log.error('[录音转码] ffmpeg 转码失败:', err.message);
+          if (!res.headersSent) {
+            res.status(500).json({ success: false, message: '录音转码失败' });
+          }
+        })
+        .pipe(res, { end: true });
     } else {
-      res.send(result.stream);
+      res.setHeader('Content-Type', result.contentType);
+      res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(result.fileName)}"`);
+      res.setHeader('Accept-Ranges', 'bytes');
+
+      const range = req.headers.range;
+      if (range && result.stream instanceof fs.ReadStream) {
+        const filePath = (result.stream as any).path;
+        const stat = fs.statSync(filePath as string);
+        const fileSize = stat.size;
+
+        const parts = range.replace(/bytes=/, '').split('-');
+        const start = parseInt(parts[0], 10);
+        const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+        const chunkSize = end - start + 1;
+
+        result.stream.destroy();
+
+        res.status(206);
+        res.setHeader('Content-Range', `bytes ${start}-${end}/${fileSize}`);
+        res.setHeader('Content-Length', chunkSize);
+
+        const stream = fs.createReadStream(filePath as string, { start, end });
+        stream.pipe(res);
+      } else if (result.stream instanceof fs.ReadStream) {
+        result.stream.pipe(res);
+      } else {
+        res.send(result.stream);
+      }
     }
   } catch (error) {
     log.error('播放录音失败:', error);

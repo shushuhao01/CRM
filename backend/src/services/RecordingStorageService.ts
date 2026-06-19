@@ -438,28 +438,37 @@ class RecordingStorageService {
       // 解码路径
       const decodedPath = decodeURIComponent(recordingPath);
 
-      // 检查是否是本地文件
-      if (decodedPath.startsWith('recordings/')) {
-        const fullPath = path.join(this.localBasePath, decodedPath.replace('recordings/', ''));
-
-        if (!fs.existsSync(fullPath)) {
-          log.error('[RecordingStorageService] 录音文件不存在:', fullPath);
-          return null;
-        }
-
+      const resolveLocalFile = (fullPath: string) => {
+        if (!fs.existsSync(fullPath)) return null;
         const fileName = path.basename(fullPath);
         const ext = path.extname(fileName).toLowerCase();
         let contentType = 'audio/mpeg';
-
         if (ext === '.wav') contentType = 'audio/wav';
         else if (ext === '.ogg') contentType = 'audio/ogg';
         else if (ext === '.m4a') contentType = 'audio/mp4';
+        else if (ext === '.amr') contentType = 'audio/amr';
+        else if (ext === '.3gp' || ext === '.3gpp') contentType = 'audio/3gpp';
+        return { stream: fs.createReadStream(fullPath), contentType, fileName };
+      };
 
-        return {
-          stream: fs.createReadStream(fullPath),
-          contentType,
-          fileName
-        };
+      if (decodedPath.startsWith('recordings/')) {
+        const fullPath = path.join(this.localBasePath, decodedPath.replace('recordings/', ''));
+        const result = resolveLocalFile(fullPath);
+        if (!result) {
+          log.error('[RecordingStorageService] 录音文件不存在:', fullPath);
+          return null;
+        }
+        return result;
+      }
+
+      if (decodedPath.startsWith('uploads/')) {
+        const fullPath = path.join(process.cwd(), decodedPath);
+        const result = resolveLocalFile(fullPath);
+        if (!result) {
+          log.error('[RecordingStorageService] uploads录音文件不存在:', fullPath);
+          return null;
+        }
+        return result;
       }
 
       // 云存储文件需要从数据库获取信息

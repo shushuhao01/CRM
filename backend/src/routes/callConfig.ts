@@ -704,12 +704,7 @@ router.get('/my-lines', async (req: Request, res: Response) => {
       `SELECT * FROM work_phones WHERE user_id = ? AND status IN ('active', 'online')${t2.sql}`,
       [userIdStr, ...t2.params]
     );
-    logger.info('[my-lines] workPhones:', workPhones.length, workPhones.map((p: any) => ({ id: p.id, status: p.status, device_id: p.device_id })));
-
-    // 🔥 调试：打印完整的工作手机数据
-    workPhones.forEach((p: any, index: number) => {
-      logger.info(`[my-lines] workPhone ${index} 完整数据:`, JSON.stringify(p));
-    });
+    logger.info('[my-lines] workPhones:', workPhones.length);
 
     res.json(successResponse({
       assignedLines: assignments.map((a: any) => ({
@@ -722,18 +717,19 @@ router.get('/my-lines', async (req: Request, res: Response) => {
         dailyLimit: a.daily_limit
       })),
       workPhones: workPhones.map((p: any) => {
-        // 🔥 调试：打印映射前后的数据
-        const mapped = {
+        // 用 WebSocket 实时连接状态覆盖数据库 online_status
+        const realOnline = p.device_id
+          ? mobileWebSocketService.isDeviceOnline(p.device_id)
+          : false;
+        return {
           id: p.id,
           phoneNumber: p.phone_number,
           deviceName: p.device_name,
           deviceModel: p.device_model,
-          onlineStatus: p.online_status,
+          onlineStatus: realOnline ? 'online' : 'offline',
           isPrimary: p.is_primary === 1,
           lastActiveAt: p.last_active_at
         };
-        logger.info('[my-lines] 映射后的 workPhone:', JSON.stringify(mapped));
-        return mapped;
       }),
       hasAvailableMethod: assignments.length > 0 || workPhones.length > 0
     }));
@@ -808,42 +804,28 @@ router.get('/work-phones', async (req: Request, res: Response) => {
     const userId = currentUser?.userId || currentUser?.id;
     const userIdStr = String(userId);
 
-    logger.info('[work-phones] 获取工作手机列表, userId:', userIdStr);
-
     const t = tenantRawSQL();
-    // 先查询所有记录（不带 status 条件）看看数据库里有什么
-    const allPhones = await AppDataSource.query(
-      `SELECT id, user_id, phone_number, device_id, status, online_status FROM work_phones WHERE user_id = ?${t.sql}`,
-      [userIdStr, ...t.params]
-    );
-    logger.info('[work-phones] 所有记录(不带status条件):', JSON.stringify(allPhones));
-
-    // 查询 active 或 online 状态的记录
     const phones = await AppDataSource.query(
       `SELECT * FROM work_phones WHERE user_id = ? AND status IN ('active', 'online')${t.sql} ORDER BY is_primary DESC, created_at DESC`,
       [userIdStr, ...t.params]
     );
 
-    logger.info('[work-phones] 查询结果(status in active/online):', phones.length, '条记录');
-    logger.info('[work-phones] 详细数据:', JSON.stringify(phones));
-
     const result = phones.map((p: any) => {
-      logger.info('[work-phones] 原始记录 p.id:', p.id, 'typeof:', typeof p.id);
-      const item = {
-        id: p.id,  // 确保返回数据库的自增 ID
+      // 用 WebSocket 实时连接状态覆盖数据库 online_status
+      const realOnline = p.device_id
+        ? mobileWebSocketService.isDeviceOnline(p.device_id)
+        : false;
+      return {
+        id: p.id,
         phoneNumber: p.phone_number,
         deviceName: p.device_name,
         deviceModel: p.device_model,
-        onlineStatus: p.online_status || 'offline',
+        onlineStatus: realOnline ? 'online' : 'offline',
         isPrimary: p.is_primary === 1,
         lastActiveAt: p.last_active_at,
         createdAt: p.created_at
       };
-      logger.info('[work-phones] 映射后的数据项:', JSON.stringify(item));
-      return item;
     });
-
-    logger.info('[work-phones] 最终返回数据:', JSON.stringify(result));
 
     res.json(successResponse(result));
   } catch (error) {
@@ -950,65 +932,43 @@ router.delete('/work-phones/:id', async (req: Request, res: Response) => {
     const userIdStr = String(userId);
     const { id } = req.params;
 
-    logger.info('[解绑工作手机] ========== 开始解绑 ==========');
-    logger.info('[解绑工作手机] 请求参数 id:', id, '类型:', typeof id);
-    logger.info('[解绑工作手机] 当前用户 userId:', userIdStr);
-
-    // 先查询所有该用户的手机记录
     const t = tenantRawSQL();
-    const allUserPhones = await AppDataSource.query(
-      `SELECT id, user_id, device_id, phone_number, status FROM work_phones WHERE user_id = ?${t.sql}`,
-      [userIdStr, ...t.params]
-    );
-    logger.info('[解绑工作手机] 该用户所有手机记录:', JSON.stringify(allUserPhones));
-
-    // 查询指定 ID 的记录（不带 user_id 条件）
-    const phoneById = await AppDataSource.query(`SELECT id, user_id, device_id, phone_number, status FROM work_phones WHERE id = ?${t.sql}`, [id, ...t.params]);
-    logger.info('[解绑工作手机] 按 ID 查询结果(不带user_id):', JSON.stringify(phoneById));
-
-    // 🔥 修复：先只按 ID 查询，不限制 user_id（因为管理员可能需要解绑任何手机）
-    // 同时支持 active 和 online 状态
     const phones = await AppDataSource.query(
       `SELECT * FROM work_phones WHERE id = ? AND status IN ('active', 'online')${t.sql}`,
       [id, ...t.params]
     );
-    logger.info('[解绑工作手机] 按 ID+status 查询结果:', JSON.stringify(phones));
 
     if (phones.length === 0) {
-      logger.info('[解绑工作手机] 未找到匹配记录，返回 404');
-      return res.status(404).json(errorResponse('手机不存在', 404));
+      return res.status(404).json(errorResponse('手机不存在或已解绑', 404));
     }
 
-    // 检查权限：只有管理员或手机所有者可以解绑
     const phone = phones[0];
     const isOwner = String(phone.user_id) === userIdStr;
     const isAdminUser = ['super_admin', 'admin'].includes(currentUser?.role);
 
     if (!isOwner && !isAdminUser) {
-      logger.info('[解绑工作手机] 无权操作，user_id不匹配且非管理员');
       return res.status(403).json(errorResponse('无权操作此手机', 403));
     }
 
-    // 🔥 修复：使用 UPDATE 而不是 DELETE，与 APP 端保持一致
-    logger.info('[解绑工作手机] 找到记录，更新状态为 inactive...');
     await AppDataSource.query(
       `UPDATE work_phones SET status = 'inactive', online_status = 'offline', updated_at = NOW() WHERE id = ?${t.sql}`,
       [id, ...t.params]
     );
-    logger.info('[解绑工作手机] 状态更新成功');
 
-    // 记录解绑日志
-    const tenantId = getCurrentTenantIdSafe() || null;
-    await AppDataSource.query(
-      `INSERT INTO device_bind_logs (user_id, device_id, action, ip_address, remark, tenant_id)
-       VALUES (?, ?, 'unbind', ?, 'CRM端主动解绑', ?)`,
-      [userIdStr, phone.device_id, req.ip || '', tenantId]
-    );
+    // 记录解绑日志（非关键操作，失败不影响解绑结果）
+    try {
+      const tenantId = getCurrentTenantIdSafe() || null;
+      await AppDataSource.query(
+        `INSERT INTO device_bind_logs (user_id, device_id, action, ip_address, remark, tenant_id)
+         VALUES (?, ?, 'unbind', ?, 'CRM端主动解绑', ?)`,
+        [userIdStr, phone.device_id, req.ip || '', tenantId]
+      );
+    } catch (logErr: any) {
+      logger.warn('[解绑工作手机] 记录日志失败(不影响解绑):', logErr.message);
+    }
 
-    // 🔥 通知 APP 设备已解绑 - 使用 mobileWebSocketService
     if (phone.device_id) {
       mobileWebSocketService.sendDeviceUnbind(phone.device_id);
-      logger.info('[解绑工作手机] 已通知APP设备解绑');
     }
 
     res.json(successResponse(null, '解绑成功'));

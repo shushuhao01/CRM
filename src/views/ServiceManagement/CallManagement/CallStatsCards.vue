@@ -6,7 +6,7 @@
           <div class="stat-icon"><el-icon><Phone /></el-icon></div>
           <div class="stat-content">
             <div class="stat-value">{{ statistics.todayCalls }}</div>
-            <div class="stat-label">今日通话</div>
+            <div class="stat-label">{{ callsLabel }}</div>
           </div>
         </div>
       </el-card>
@@ -48,17 +48,27 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
 import { Phone, Timer, SuccessFilled, User } from '@element-plus/icons-vue'
 import { formatDuration } from './helpers'
 
-defineProps<{
+const props = defineProps<{
   statistics: {
     todayCalls: number
     totalDuration: number
     connectionRate: number
     activeUsers: number
   }
+  dateRange?: string[]
 }>()
+
+const callsLabel = computed(() => {
+  if (props.dateRange && props.dateRange.length === 2 && props.dateRange[0]) {
+    if (props.dateRange[0] === props.dateRange[1]) return `${props.dateRange[0]} 通话`
+    return `${props.dateRange[0]}~${props.dateRange[1]} 通话`
+  }
+  return '今日通话'
+})
 </script>
 
 <style scoped>

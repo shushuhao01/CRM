@@ -151,6 +151,7 @@
         <div class="audio-player-header">
           <el-icon><Headset /></el-icon>
           <span>录音文件</span>
+          <span class="audio-hint">（录音时长可能与通话时长略有差异）</span>
         </div>
         <div class="audio-player-wrapper">
           <audio
@@ -249,6 +250,7 @@ const updateFilter = (key: string, value: any) => {
 .audio-player-section { padding: 20px; background: #f8f9fa; border-radius: 12px; border: 2px dashed #d0d3d9; }
 .audio-player-header { display: flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 500; color: #606266; margin-bottom: 16px; }
 .audio-player-header .el-icon { font-size: 18px; color: #409eff; }
+.audio-hint { font-size: 12px; color: #909399; font-weight: 400; }
 .audio-player-wrapper audio { width: 100%; height: 48px; border-radius: 8px; }
 
 .recording-remark { padding: 16px; background: #fff9e6; border-radius: 8px; border-left: 4px solid #e6a23c; }

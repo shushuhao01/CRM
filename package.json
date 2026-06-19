@@ -33,6 +33,7 @@
     "@wecom/jssdk": "^2.4.0",
     "ali-oss": "^6.23.0",
     "axios": "^1.12.2",
+    "benz-amr-recorder": "^1.1.5",
     "echarts": "^5.6.0",
     "element-plus": "^2.3.14",
     "html2canvas": "^1.4.1",

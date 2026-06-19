@@ -33,7 +33,7 @@
     </div>
 
     <!-- 数据统计卡片 -->
-    <CallStatsCards :statistics="statistics" />
+    <CallStatsCards :statistics="statistics" :dateRange="filterForm.dateRange" />
 
     <!-- 筛选器和搜索栏 -->
     <CallFilterBar
@@ -1061,7 +1061,10 @@ const stopAutoRefresh = () => {
   }
 }
 
+let _outboundListLoading = false
 const loadOutboundList = async () => {
+  if (_outboundListLoading) return
+  _outboundListLoading = true
   try {
     loading.value = true
 
@@ -1101,6 +1104,7 @@ const loadOutboundList = async () => {
       assignedName: p.assignedName || '',
       createdByName: getCreatorName(p.createdBy || p.created_by) || p.createdByName || p.created_by_name || '',
       remark: p.remark || '',
+      _createdAt: p.createdAt || p.created_at || '',
     }))
 
     // 前端筛选
@@ -1108,7 +1112,6 @@ const loadOutboundList = async () => {
       mappedList = mappedList.filter((item: any) => item._source === filterForm.dataSource)
     }
 
-    // 外呼状态前端筛选（通过callCount判断是否真的打过电话）
     if (filterForm.status === 'pending') {
       mappedList = mappedList.filter((item: any) => !item.callCount || item.callCount === 0)
     } else if (filterForm.status === 'called') {
@@ -1120,22 +1123,26 @@ const loadOutboundList = async () => {
 
   } catch (error: any) {
     console.error('加载呼出列表失败:', error)
-    // 如果是401未授权（退出登录）或页面已离开，不显示错误提示
-    if (error?.response?.status !== 401 && router.currentRoute.value.path.includes('call')) {
-      ElMessage.error('加载呼出列表失败')
+    // 失败时保留现有数据，不清空列表
+    if (error?.response?.status === 401) return
+    if (router.currentRoute.value.path.includes('call') && outboundList.value.length === 0) {
+      ElMessage.warning('加载呼出列表失败，请刷新重试')
     }
-    outboundList.value = []
-    pagination.total = 0
   } finally {
     loading.value = false
+    _outboundListLoading = false
   }
 }
 
 // 筛选表单更新
 const handleFilterFormUpdate = (newForm: any) => {
+  const dateChanged = JSON.stringify(newForm.dateRange) !== JSON.stringify(filterForm.dateRange)
   Object.assign(filterForm, newForm)
   pagination.currentPage = 1
   loadOutboundList()
+  if (dateChanged) {
+    loadStatistics(filterForm.dateRange?.length === 2 ? filterForm.dateRange : undefined)
+  }
 }
 
 const handleSearch = async () => {
@@ -1153,6 +1160,7 @@ const resetFilter = () => {
     dataSource: ''
   })
   loadOutboundList()
+  loadStatistics()
 }
 
 const handleSelectionChange = (selection: any[]) => {
@@ -1442,7 +1450,11 @@ const playRecording = (record: any) => {
   const authToken = localStorage.getItem('auth_token')
 
   if (recordingUrl.startsWith('/uploads/')) {
-    // APP 上传的录音：express.static 直接提供，无需 token
+    // APP 上传的录音：走 stream 端点统一处理（支持 AMR 等格式）
+    recordingUrl = `/api/v1/calls/recordings/stream${recordingUrl}`
+    if (authToken) {
+      recordingUrl = `${recordingUrl}?token=${encodeURIComponent(authToken)}`
+    }
   } else if (recordingUrl.startsWith('/api/v1/calls/recordings/stream/')) {
     // 已含完整 stream 路径（RecordingStorageService 生成），追加 token
     if (authToken) {
@@ -2886,78 +2898,69 @@ const viewFollowup = (row: any) => {
 }
 
 
-// 加载统计数据
-const loadStatistics = async () => {
+// 加载统计数据（支持日期范围参数，不传则默认当天）
+const loadStatistics = async (dateRange?: string[]) => {
   try {
-    // 🔥 修复:根据通话记录列表计算统计数据
-    const today = new Date()
-    const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate())
-    const todayEnd = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1)
+    const pad = (n: number) => String(n).padStart(2, '0')
+    let startDate: string
+    let endDate: string
 
-    // 尝试从API获取统计数据
+    if (dateRange && dateRange.length === 2 && dateRange[0] && dateRange[1]) {
+      startDate = dateRange[0] + ' 00:00:00'
+      endDate = dateRange[1] + ' 23:59:59'
+    } else {
+      const today = new Date()
+      const y = today.getFullYear()
+      const m = pad(today.getMonth() + 1)
+      const d = pad(today.getDate())
+      startDate = `${y}-${m}-${d} 00:00:00`
+      endDate = `${y}-${m}-${d} 23:59:59`
+    }
+
     try {
-      const pad = (n: number) => String(n).padStart(2, '0')
-      const startDate = `${todayStart.getFullYear()}-${pad(todayStart.getMonth()+1)}-${pad(todayStart.getDate())} 00:00:00`
-      const endDate = `${todayStart.getFullYear()}-${pad(todayStart.getMonth()+1)}-${pad(todayStart.getDate())} 23:59:59`
-
-      const data = await callApi.getCallStatistics({
+      const response = await callApi.getCallStatistics({
         startDate,
         endDate,
         groupBy: 'day'
       }) as any
 
-      // 响应拦截器已经解包，data 就是统计数据对象
-      statistics.todayCalls = data?.totalCalls || 0
-      statistics.totalDuration = data?.totalDuration || 0
-      statistics.connectionRate = Math.round(data?.connectionRate || 0)
-      statistics.activeUsers = data?.userStats?.length || 0
-
-      console.log('[通话管理] 从API加载统计数据成功')
+      const stats = response?.data ?? response
+      statistics.todayCalls = Number(stats?.totalCalls) || 0
+      statistics.totalDuration = Number(stats?.totalDuration) || 0
+      statistics.connectionRate = Math.round(Number(stats?.connectionRate) || 0)
+      statistics.activeUsers = stats?.userStats?.length || 0
       return
-    } catch (apiError) {
-      console.log('[通话管理] API统计数据加载失败,使用本地计算')
+    } catch (_apiError) {
+      console.warn('[通话管理] API统计加载失败,使用本地计算')
     }
 
-    // 🔥 如果API失败,从callStore的通话记录中计算统计数据
-    const allRecords = callStore.callRecords || []
+    const todayStart = new Date(startDate.replace(' ', 'T'))
+    const todayEnd = new Date(endDate.replace(' ', 'T'))
 
-    // 筛选今日通话记录
-    const todayRecords = allRecords.filter((record: any) => {
+    const allRecords = callStore.callRecords || []
+    const filteredRecords = allRecords.filter((record: any) => {
       const recordDate = new Date(record.startTime || record.createdAt)
-      return recordDate >= todayStart && recordDate < todayEnd
+      return recordDate >= todayStart && recordDate <= todayEnd
     })
 
-    // 计算今日通话数
-    statistics.todayCalls = todayRecords.length
-
-    // 计算总通话时长(秒)
-    statistics.totalDuration = todayRecords.reduce((total: number, record: any) => {
+    statistics.todayCalls = filteredRecords.length
+    statistics.totalDuration = filteredRecords.reduce((total: number, record: any) => {
       return total + (record.duration || 0)
     }, 0)
 
-    // 计算接通率
-    const connectedCalls = todayRecords.filter((record: any) =>
+    const connectedCalls = filteredRecords.filter((record: any) =>
       record.callStatus === 'connected' || record.status === 'connected'
     ).length
-    statistics.connectionRate = todayRecords.length > 0
-      ? Math.round((connectedCalls / todayRecords.length) * 100)
+    statistics.connectionRate = filteredRecords.length > 0
+      ? Math.round((connectedCalls / filteredRecords.length) * 100)
       : 0
 
-    // 计算活跃用户数(今日有通话记录的不同用户数)
     const activeUserIds = new Set(
-      todayRecords.map((record: any) => record.userId || record.operatorId).filter(Boolean)
+      filteredRecords.map((record: any) => record.userId || record.operatorId).filter(Boolean)
     )
     statistics.activeUsers = activeUserIds.size
-
-    console.log('[通话管理] 本地计算统计数据:', {
-      todayCalls: statistics.todayCalls,
-      totalDuration: statistics.totalDuration,
-      connectionRate: statistics.connectionRate,
-      activeUsers: statistics.activeUsers
-    })
   } catch (error) {
     console.error('加载统计数据失败:', error)
-    // 如果所有方法都失败，使用默认值
     statistics.todayCalls = 0
     statistics.totalDuration = 0
     statistics.connectionRate = 0
@@ -3266,37 +3269,23 @@ const loadAvailableCallMethods = async () => {
       callerNumber: line.callerNumber
     }))
 
-    // 🔥 修复：正确映射工作手机数据，确保 id 和 status 字段正确
     workPhones.value = workPhonesData.map((phone: any, index: number) => {
-      // 🔥 调试：打印原始数据
-      console.log(`[CallManagement] 原始工作手机数据 ${index}:`, JSON.stringify(phone))
-
-      // 🔥 关键修复：确保 id 有效
-      // id 可能是数字或字符串，都需要正确处理
       let phoneId: number | string = phone.id
       if (phoneId === undefined || phoneId === null || phoneId === '') {
-        console.warn(`[CallManagement] 工作手机 ${index} 的 id 无效，使用 index+1 作为临时 ID`)
         phoneId = index + 1
       }
-      // 如果是字符串类型的数字，转换为数字
       if (typeof phoneId === 'string' && /^\d+$/.test(phoneId)) {
         phoneId = parseInt(phoneId)
       }
 
-      const mappedPhone = {
+      return {
         id: phoneId,
         number: phone.phoneNumber || phone.phone_number || phone.deviceName || phone.device_name || '未知号码',
         name: phone.deviceName || phone.device_name || '工作手机',
-        // 🔥 修复：正确处理状态字段
         status: (phone.onlineStatus === 'online' || phone.online_status === 'online') ? '在线' : '离线',
         brand: phone.deviceModel || phone.device_model || ''
       }
-      console.log(`[CallManagement] 映射工作手机 ${index}:`, mappedPhone)
-      return mappedPhone
     })
-
-    console.log('[CallManagement] availableLines:', availableLines.value.length, 'workPhones:', workPhones.value.length)
-    console.log('[CallManagement] workPhones 详细:', workPhones.value)
   } catch (e) {
     console.error('加载可用外呼方式失败:', e)
   }

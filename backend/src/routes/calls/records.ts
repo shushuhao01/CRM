@@ -13,15 +13,14 @@ router.get('/statistics', async (req: Request, res: Response) => {
     const queryBuilder = callRepository.createQueryBuilder('call');
 
     if (startDate && endDate) {
-      const parsedStart = new Date(startDate as string);
-      const parsedEnd = new Date(endDate as string);
-      // 如果 endDate 没有时分秒（如 00:00:00），自动延展到当天结束
-      if (parsedEnd.getHours() === 0 && parsedEnd.getMinutes() === 0 && parsedEnd.getSeconds() === 0) {
-        parsedEnd.setHours(23, 59, 59, 999);
-      }
+      let sDate = (startDate as string).trim();
+      let eDate = (endDate as string).trim();
+      // 纯日期格式补全时分秒
+      if (/^\d{4}-\d{2}-\d{2}$/.test(sDate)) sDate += ' 00:00:00';
+      if (/^\d{4}-\d{2}-\d{2}$/.test(eDate)) eDate += ' 23:59:59';
       queryBuilder.where('call.startTime BETWEEN :startDate AND :endDate', {
-        startDate: parsedStart,
-        endDate: parsedEnd
+        startDate: sDate,
+        endDate: eDate
       });
     }
 

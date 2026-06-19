@@ -171,10 +171,43 @@ router.get('/prospects', async (req: Request, res: Response) => {
           } catch {}
         }
 
+        const combined = [...list, ...customerAsProspects]
+          .sort((a: any, b: any) => {
+            const ta = new Date(a.createdAt || 0).getTime()
+            const tb = new Date(b.createdAt || 0).getTime()
+            return tb - ta
+          })
+
+        // 从 call_records 聚合每个号码的通话次数和最后通话时间
+        try {
+          const phones = combined.map((p: any) => p.phone).filter(Boolean);
+          if (phones.length > 0) {
+            const tCond = tenantId ? ' AND tenant_id = ?' : '';
+            const tP = tenantId ? [tenantId] : [];
+            const callStats = await AppDataSource.query(
+              `SELECT customer_phone, COUNT(*) AS cnt, MAX(start_time) AS last_time
+               FROM call_records
+               WHERE customer_phone IN (${phones.map(() => '?').join(',')})${tCond}
+               GROUP BY customer_phone`,
+              [...phones, ...tP]
+            );
+            const statsMap = new Map(callStats.map((s: any) => [s.customer_phone, s]));
+            combined.forEach((p: any) => {
+              const s: any = statsMap.get(p.phone);
+              if (s) {
+                p.callCount = Number(s.cnt) || 0;
+                p.lastCallTime = s.last_time || null;
+              }
+            });
+          }
+        } catch (statsErr: any) {
+          log.warn('[Prospects] call stats query error:', statsErr.message);
+        }
+
         res.json({
           success: true,
           data: {
-            list: [...list, ...customerAsProspects],
+            list: combined,
             total: total + customerTotal,
             page: Number(page),
             pageSize: Number(pageSize),
@@ -186,6 +219,32 @@ router.get('/prospects', async (req: Request, res: Response) => {
       } catch (customerErr: any) {
         log.warn('[Prospects] include customers error:', customerErr.message);
       }
+    }
+
+    // 聚合通话统计
+    try {
+      const phones = list.map((p: any) => p.phone).filter(Boolean);
+      if (phones.length > 0) {
+        const tCond = tenantId ? ' AND tenant_id = ?' : '';
+        const tP = tenantId ? [tenantId] : [];
+        const callStats = await AppDataSource.query(
+          `SELECT customer_phone, COUNT(*) AS cnt, MAX(start_time) AS last_time
+           FROM call_records
+           WHERE customer_phone IN (${phones.map(() => '?').join(',')})${tCond}
+           GROUP BY customer_phone`,
+          [...phones, ...tP]
+        );
+        const statsMap = new Map(callStats.map((s: any) => [s.customer_phone, s]));
+        list.forEach((p: any) => {
+          const s: any = statsMap.get(p.phone);
+          if (s) {
+            p.callCount = Number(s.cnt) || 0;
+            p.lastCallTime = s.last_time || null;
+          }
+        });
+      }
+    } catch (statsErr: any) {
+      log.warn('[Prospects] call stats query error:', statsErr.message);
     }
 
     res.json({ success: true, data: { list, total, page: Number(page), pageSize: Number(pageSize) } });
