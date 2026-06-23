@@ -844,7 +844,7 @@ const getDefaultUserAgreement = () => `<div style="padding:28px 32px;line-height
 <h3 style="color:#6366f1;margin:28px 0 14px;font-size:16px;font-weight:600;padding-left:12px;border-left:4px solid #6366f1;">九、争议解决</h3>
 <p style="margin:10px 0;padding-left:12px;"><strong>9.1</strong> 本协议适用<strong style="color:#6366f1;">中华人民共和国法律</strong>。若发生争议，双方应友好协商解决。</p>
 <div style="margin-top:32px;padding-top:16px;border-top:2px dashed #e5e7eb;text-align:center;">
-  <p style="color:#9ca3af;font-size:12px;margin:0;">最后更新日期：${new Date().toLocaleDateString('zh-CN')}</p>
+  <p style="color:#9ca3af;font-size:12px;margin:0;">最后更新日期：2026年5月1日</p>
 </div>
 </div>`
 
@@ -887,7 +887,7 @@ const getDefaultPrivacyPolicy = () => `<div style="padding:28px 32px;line-height
 <h3 style="color:#10b981;margin:28px 0 14px;font-size:16px;font-weight:600;padding-left:12px;border-left:4px solid #10b981;">八、联系我们</h3>
 <p style="margin:10px 0;padding-left:12px;">如对本隐私协议有任何疑问，请通过系统内的联系方式与我们取得联系，我们将在15个工作日内予以回复。</p>
 <div style="margin-top:32px;padding-top:16px;border-top:2px dashed #e5e7eb;text-align:center;">
-  <p style="color:#9ca3af;font-size:12px;margin:0;">最后更新日期：${new Date().toLocaleDateString('zh-CN')}</p>
+  <p style="color:#9ca3af;font-size:12px;margin:0;">最后更新日期：2026年5月1日</p>
 </div>
 </div>`
 

@@ -259,9 +259,14 @@ export const initializeDatabase = async (): Promise<void> => {
       log.warn('⚠️ 敏感信息权限自动修复跳过:', (err as Error).message);
     }
 
-    // 提示：数据库结构变更需要手动执行迁移脚本
-    if (process.env.NODE_ENV === 'development') {
-      log.info('ℹ️  开发环境：数据库结构变更请执行 database-migrations 目录下的迁移脚本');
+    // 自动迁移：基于实体元数据自动创建缺失表/字段/索引 + 执行SQL迁移文件
+    // 原则：只增不删、只建不改、幂等执行、完整记录、可关闭
+    // 通过环境变量 AUTO_MIGRATION=false 可关闭
+    try {
+      const { autoMigrationService } = await import('../services/AutoMigrationService');
+      await autoMigrationService.run();
+    } catch (err) {
+      log.warn('⚠️ 自动迁移跳过:', (err as Error).message);
     }
 
     // 角色权限初始化已禁用 - 数据库中已有预设数据，无需自动初始化

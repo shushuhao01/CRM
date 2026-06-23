@@ -461,15 +461,16 @@ router.post('/register', h5RegisterLimiter, async (req: Request, res: Response) 
     let expireDays = 14;
     let pkgUserLimitMode = 'total';
     let pkgMaxOnlineSeats = 5;
+    let pkgModules: string[] = [];
 
     // 优先精确匹配 FREE_TRIAL 套餐编码（与官网注册默认套餐一致）
     let trialPackages = await AppDataSource.query(
-      "SELECT id, max_users, max_online_seats, user_limit_mode, duration_days FROM tenant_packages WHERE code = 'FREE_TRIAL' AND status = 1 LIMIT 1"
+      "SELECT id, max_users, max_online_seats, user_limit_mode, duration_days, modules FROM tenant_packages WHERE code = 'FREE_TRIAL' AND status = 1 LIMIT 1"
     );
     // 兜底：取管理后台标记为试用的免费套餐
     if (!trialPackages || trialPackages.length === 0) {
       trialPackages = await AppDataSource.query(
-        "SELECT id, max_users, max_online_seats, user_limit_mode, duration_days FROM tenant_packages WHERE is_trial = 1 AND price = 0 AND status = 1 AND type != 'community' ORDER BY duration_days DESC LIMIT 1"
+        "SELECT id, max_users, max_online_seats, user_limit_mode, duration_days, modules FROM tenant_packages WHERE is_trial = 1 AND price = 0 AND status = 1 AND type != 'community' ORDER BY duration_days DESC LIMIT 1"
       );
     }
     if (trialPackages && trialPackages.length > 0) {
@@ -478,6 +479,14 @@ router.post('/register', h5RegisterLimiter, async (req: Request, res: Response) 
       pkgMaxOnlineSeats = trialPackages[0].max_online_seats || 5;
       pkgUserLimitMode = trialPackages[0].user_limit_mode || 'total';
       expireDays = trialPackages[0].duration_days || 14;
+      // 🔥 从套餐获取功能模块列表，确保租户模块授权与套餐配置一致
+      try {
+        const rawModules = trialPackages[0].modules;
+        if (rawModules) {
+          pkgModules = typeof rawModules === 'string' ? JSON.parse(rawModules) : rawModules;
+          if (!Array.isArray(pkgModules)) pkgModules = [];
+        }
+      } catch { pkgModules = [] }
     }
 
     // 创建租户（编码生成带查重，与官网注册一致）
@@ -495,9 +504,9 @@ router.post('/register', h5RegisterLimiter, async (req: Request, res: Response) 
 
     await AppDataSource.query(
       `INSERT INTO tenants
-       (id, name, code, license_key, license_status, package_id, contact, phone, max_users, max_online_seats, user_limit_mode, expire_date, status, created_at)
-       VALUES (?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, 'active', NOW())`,
-      [tenantId, companyName, tenantCode, licenseKey, packageId, contactName, phone, maxUsers, pkgMaxOnlineSeats, finalLimitMode, expireDate]
+       (id, name, code, license_key, license_status, package_id, contact, phone, max_users, max_online_seats, user_limit_mode, expire_date, features, status, created_at)
+       VALUES (?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?, 'active', NOW())`,
+      [tenantId, companyName, tenantCode, licenseKey, packageId, contactName, phone, maxUsers, pkgMaxOnlineSeats, finalLimitMode, expireDate, JSON.stringify(pkgModules)]
     );
 
     // 存储会员中心密码

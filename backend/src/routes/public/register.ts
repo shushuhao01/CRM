@@ -110,10 +110,11 @@ router.post('/', async (req: Request, res: Response) => {
 
     let pkgUserLimitMode = 'total'
     let pkgMaxOnlineSeats = 5
+    let pkgModules: string[] = []
 
     if (packageCode) {
       const packages = await AppDataSource.query(
-        'SELECT id, max_users, max_online_seats, user_limit_mode, duration_days, price, type FROM tenant_packages WHERE code = ? AND status = 1',
+        'SELECT id, max_users, max_online_seats, user_limit_mode, duration_days, price, type, modules FROM tenant_packages WHERE code = ? AND status = 1',
         [packageCode]
       )
       if (packages && packages.length > 0) {
@@ -125,6 +126,14 @@ router.post('/', async (req: Request, res: Response) => {
         packagePrice = Number(packages[0].price) || 0
         isFree = packagePrice === 0
         isCommunity = packages[0].type === 'community'
+        // 🔥 从套餐获取功能模块列表，确保租户模块授权与套餐配置一致
+        try {
+          const rawModules = packages[0].modules
+          if (rawModules) {
+            pkgModules = typeof rawModules === 'string' ? JSON.parse(rawModules) : rawModules
+            if (!Array.isArray(pkgModules)) pkgModules = []
+          }
+        } catch { pkgModules = [] }
       }
     }
 
@@ -145,9 +154,9 @@ router.post('/', async (req: Request, res: Response) => {
 
     await AppDataSource.query(
       `INSERT INTO tenants
-       (id, name, code, license_key, license_status, package_id, contact, phone, email, max_users, max_online_seats, user_limit_mode, expire_date, status, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', NOW())`,
-      [tenantId, companyName, tenantCode, licenseKey, licenseStatus, packageId, contactName, phone, email || null, maxUsers, pkgMaxOnlineSeats, finalLimitMode, expireDate]
+       (id, name, code, license_key, license_status, package_id, contact, phone, email, max_users, max_online_seats, user_limit_mode, expire_date, features, status, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', NOW())`,
+      [tenantId, companyName, tenantCode, licenseKey, licenseStatus, packageId, contactName, phone, email || null, maxUsers, pkgMaxOnlineSeats, finalLimitMode, expireDate, JSON.stringify(pkgModules)]
     )
 
     // 会员中心密码：用户填了用用户的，没填则默认 Aa123456
