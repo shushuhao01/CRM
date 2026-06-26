@@ -349,6 +349,19 @@ router.post('/', authenticateToken, async (req: Request, res: Response) => {
 
     logger.info('[Services] 创建售后服务成功:', savedService.serviceNumber);
 
+    // 记录创建操作日志
+    await logOperation(
+      savedService.id,
+      savedService.serviceNumber,
+      'create',
+      `创建售后服务单（${savedService.serviceType}），客户：${savedService.customerName || '未知'}`,
+      currentUser?.userId || '',
+      currentUser?.name || currentUser?.username || '系统',
+      undefined,
+      'pending',
+      undefined
+    );
+
     // 🔥 发送售后创建通知给创建者和管理员
     orderNotificationService.notifyAfterSalesCreated({
       id: savedService.id,
@@ -367,8 +380,33 @@ router.post('/', authenticateToken, async (req: Request, res: Response) => {
       data: {
         id: savedService.id,
         serviceNumber: savedService.serviceNumber,
+        orderId: savedService.orderId,
+        orderNumber: savedService.orderNumber,
+        customerId: savedService.customerId,
+        customerName: savedService.customerName,
+        customerPhone: savedService.customerPhone,
+        serviceType: savedService.serviceType,
         status: savedService.status,
-        createTime: formatDateTime(savedService.createdAt)
+        priority: savedService.priority,
+        reason: savedService.reason,
+        description: savedService.description,
+        productName: savedService.productName,
+        productSpec: savedService.productSpec,
+        quantity: savedService.quantity,
+        price: savedService.price,
+        contactName: savedService.contactName,
+        contactPhone: savedService.contactPhone,
+        contactAddress: savedService.contactAddress,
+        assignedTo: savedService.assignedTo,
+        assignedToId: savedService.assignedToId,
+        remark: savedService.remark,
+        attachments: savedService.attachments || [],
+        createdBy: savedService.createdBy,
+        createdById: savedService.createdById,
+        departmentId: savedService.departmentId,
+        createTime: formatDateTime(savedService.createdAt),
+        updateTime: formatDateTime(savedService.updatedAt),
+        expectedTime: formatDateTime(savedService.expectedTime)
       }
     });
   } catch (error) {
@@ -464,8 +502,34 @@ router.put('/:id', authenticateToken, async (req: Request, res: Response) => {
       data: {
         id: updatedService.id,
         serviceNumber: updatedService.serviceNumber,
+        orderId: updatedService.orderId,
+        orderNumber: updatedService.orderNumber,
+        customerId: updatedService.customerId,
+        customerName: updatedService.customerName,
+        customerPhone: updatedService.customerPhone,
+        serviceType: updatedService.serviceType,
         status: updatedService.status,
-        updateTime: formatDateTime(updatedService.updatedAt)
+        priority: updatedService.priority,
+        reason: updatedService.reason,
+        description: updatedService.description,
+        productName: updatedService.productName,
+        productSpec: updatedService.productSpec,
+        quantity: updatedService.quantity,
+        price: updatedService.price,
+        contactName: updatedService.contactName,
+        contactPhone: updatedService.contactPhone,
+        contactAddress: updatedService.contactAddress,
+        assignedTo: updatedService.assignedTo,
+        assignedToId: updatedService.assignedToId,
+        remark: updatedService.remark,
+        attachments: updatedService.attachments || [],
+        createdBy: updatedService.createdBy,
+        createdById: updatedService.createdById,
+        departmentId: updatedService.departmentId,
+        createTime: formatDateTime(updatedService.createdAt),
+        updateTime: formatDateTime(updatedService.updatedAt),
+        expectedTime: formatDateTime(updatedService.expectedTime),
+        resolvedTime: formatDateTime(updatedService.resolvedTime)
       }
     });
   } catch (error) {
@@ -516,6 +580,23 @@ router.patch('/:id/status', authenticateToken, async (req: Request, res: Respons
     }
 
     const updatedService = await serviceRepository.save(service);
+
+    // 记录操作日志
+    const statusTextMap: Record<string, string> = {
+      pending: '待处理', processing: '处理中', resolved: '已解决',
+      closed: '已关闭', rejected: '已拒绝', cancelled: '已取消'
+    };
+    await logOperation(
+      service.id,
+      service.serviceNumber,
+      'status_change',
+      `状态从 ${statusTextMap[previousStatus] || previousStatus} 变更为 ${statusTextMap[status] || status}`,
+      currentUser?.userId || '',
+      operatorName,
+      previousStatus,
+      status,
+      remark
+    );
 
     // 🔥 根据状态变更发送通知
     if (status !== previousStatus) {
@@ -600,6 +681,19 @@ router.patch('/:id/assign', authenticateToken, async (req: Request, res: Respons
 
     const updatedService = await serviceRepository.save(service);
 
+    // 记录操作日志
+    await logOperation(
+      service.id,
+      service.serviceNumber,
+      'assign',
+      `分配处理人为 ${assignedTo}`,
+      currentUser?.userId || '',
+      currentUser?.name || currentUser?.username || '系统',
+      undefined,
+      assignedTo,
+      remark
+    );
+
     // 发送消息提醒给处理人和创建者
     try {
       await orderNotificationService.notifyAfterSalesAssigned(
@@ -667,10 +761,28 @@ router.patch('/:id/priority', authenticateToken, async (req: Request, res: Respo
       });
     }
 
+    const previousPriority = service.priority;
     service.priority = priority;
     if (remark) service.remark = remark;
 
     const updatedService = await serviceRepository.save(service);
+
+    // 记录操作日志
+    const priorityTextMap: Record<string, string> = {
+      low: '低', normal: '普通', high: '高', urgent: '紧急'
+    };
+    const jwtUser = (req as any).user;
+    await logOperation(
+      id,
+      service.serviceNumber,
+      'priority_change',
+      `优先级从 ${priorityTextMap[previousPriority] || previousPriority} 变更为 ${priorityTextMap[priority] || priority}`,
+      jwtUser?.userId || '',
+      jwtUser?.name || jwtUser?.username || '系统',
+      previousPriority,
+      priority,
+      remark
+    );
 
     res.json({
       success: true,
@@ -712,6 +824,20 @@ router.delete('/:id', authenticateToken, async (req: Request, res: Response) => 
     await serviceRepository.delete(id);
 
     logger.info('[Services] 删除售后服务成功:', service.serviceNumber);
+
+    // 记录删除操作日志
+    const jwtUser = (req as any).user;
+    await logOperation(
+      id,
+      service.serviceNumber,
+      'delete',
+      `删除售后服务单，状态：${service.status}`,
+      jwtUser?.userId || '',
+      jwtUser?.name || jwtUser?.username || '系统',
+      service.status,
+      undefined,
+      undefined
+    );
 
     res.json({
       success: true,
@@ -985,18 +1111,19 @@ router.get('/stats', authenticateToken, async (req: Request, res: Response) => {
 
     // 5. 按处理人统计
     const handlerStats = await serviceRepo.createQueryBuilder('s')
-      .select('s.handlerName', 'handlerName')
+      .select('s.assignedTo', 'handlerName')
       .addSelect('COUNT(*)', 'count')
       .where('s.createdAt BETWEEN :start AND :end', { start, end })
-      .andWhere('s.handlerName IS NOT NULL')
-      .groupBy('s.handlerName')
+      .andWhere('s.assignedTo IS NOT NULL')
+      .andWhere("s.assignedTo != ''")
+      .groupBy('s.assignedTo')
       .orderBy('count', 'DESC')
       .limit(10)
       .getRawMany();
 
-    // 6. 已完成/已关闭的工单数
+    // 6. 已解决/已关闭的工单数
     const completedCount = statusStats
-      .filter((s: any) => ['completed', 'closed', 'resolved'].includes(s.status))
+      .filter((s: any) => ['closed', 'resolved'].includes(s.status))
       .reduce((sum: number, s: any) => sum + parseInt(s.count), 0);
 
     // 7. 按天统计趋势数据
@@ -1012,7 +1139,7 @@ router.get('/stats', authenticateToken, async (req: Request, res: Response) => {
     const completedServices = await serviceRepo.createQueryBuilder('s')
       .select(['s.createdAt', 's.resolvedTime', 's.updatedAt'])
       .where('s.createdAt BETWEEN :start AND :end', { start, end })
-      .andWhere('s.status IN (:...statuses)', { statuses: ['resolved', 'closed', 'completed'] })
+      .andWhere('s.status IN (:...statuses)', { statuses: ['resolved', 'closed'] })
       .getRawMany();
 
     // 按时长区间统计：<1h, 1-4h, 4-12h, 12-24h, 1-3d, >3d
@@ -1036,7 +1163,7 @@ router.get('/stats', authenticateToken, async (req: Request, res: Response) => {
 
     const prevCompletedCount = await serviceRepo.createQueryBuilder('s')
       .where('s.createdAt BETWEEN :start AND :end', { start: prevStart, end: prevEnd })
-      .andWhere('s.status IN (:...statuses)', { statuses: ['resolved', 'closed', 'completed'] })
+      .andWhere('s.status IN (:...statuses)', { statuses: ['resolved', 'closed'] })
       .getCount();
 
     // 计算环比增长率

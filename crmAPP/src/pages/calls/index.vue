@@ -322,10 +322,15 @@ const getStatusText = (status: string) => {
     'rejected': '已拒绝',
     'busy': '忙线',
     'failed': '失败',
+    'ringing': '响铃中',
+    'dialing': '拨号中',
+    'completed': '已完成',
     'no_answer': '无人接听',
-    'unreachable': '无法接通'
+    'unreachable': '无法接通',
+    'invalid': '无效号码',
+    'pending': '待处理'
   }
-  return statusMap[status] || status || '未知'
+  return statusMap[status] || '未知'
 }
 
 // 获取通话状态样式类

@@ -95,6 +95,24 @@ export class JwtConfig {
   }
 
   /**
+   * 生成移动端（APP）访问令牌
+   * 固定7天过期，不受全局 JWT_EXPIRES_IN 配置影响
+   */
+  static generateMobileAccessToken(payload: JwtPayload): string {
+    const expiresIn: string = process.env.NODE_ENV === 'development' ? '365d' : '7d';
+
+    if (process.env.NODE_ENV === 'development') {
+      log.info('[JWT] 生成移动端访问令牌，有效期:', expiresIn);
+    }
+
+    return jwt.sign(payload, this.ACCESS_TOKEN_SECRET, {
+      expiresIn,
+      issuer: 'crm-system',
+      audience: 'crm-users'
+    } as SignOptions);
+  }
+
+  /**
    * 生成刷新令牌
    */
   static generateRefreshToken(payload: JwtPayload): string {

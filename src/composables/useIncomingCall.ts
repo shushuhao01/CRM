@@ -36,8 +36,11 @@ export function useIncomingCall() {
 
   let unsubIncoming: (() => void) | null = null
   let unsubEnded: (() => void) | null = null
+  let unsubConnected: (() => void) | null = null
+  let unsubStatus: (() => void) | null = null
   let unsubMessage: (() => void) | null = null
   let activeNotification: Notification | null = null
+  let autoCloseTimer: ReturnType<typeof setTimeout> | null = null
 
   const isOnCallManagementPage = () => {
     return router.currentRoute.value.path === '/service-management/call'
@@ -45,6 +48,30 @@ export function useIncomingCall() {
 
   const handleIncomingCall = (data: any) => {
     if (isOnCallManagementPage()) return
+
+    // 如果来电弹窗已经显示，说明是号码更新（APP先报未知来电再报真实号码）
+    if (incomingCallVisible.value && incomingCallData.value) {
+      console.log('[GlobalIncoming] 收到来电更新（号码补全）:', data)
+      const customerId = data.customerInfo?.customerId || data.customerId
+      const customerName = data.customerInfo?.customerName || data.customerName || ''
+      const isNewCustomer = !customerId || customerName === '未知来电' || customerName === ''
+
+      const updPhone = data.callerNumber || data.phone || ''
+      const validUpdPhone = (updPhone && updPhone !== '未知来电') ? updPhone : incomingCallData.value.phone
+      incomingCallData.value = {
+        ...incomingCallData.value,
+        id: data.callId || incomingCallData.value.id,
+        customerName: isNewCustomer ? '新客户来电' : customerName,
+        phone: validUpdPhone,
+        customerId: customerId || incomingCallData.value.customerId,
+        customerLevel: data.customerInfo?.customerLevel || incomingCallData.value.customerLevel,
+        company: data.customerInfo?.company || incomingCallData.value.company,
+        tags: data.customerInfo?.tags || incomingCallData.value.tags,
+        isNewCustomer: validUpdPhone ? !customerId : true,
+      }
+      console.log('[GlobalIncoming] 弹窗客户信息已更新:', incomingCallData.value.customerName, incomingCallData.value.phone)
+      return
+    }
 
     const agentStatus = localStorage.getItem('call_agent_status') || 'ready'
     if (agentStatus === 'busy') {
@@ -66,10 +93,12 @@ export function useIncomingCall() {
     const customerName = data.customerInfo?.customerName || data.customerName || ''
     const isNewCustomer = !customerId || customerName === '未知来电' || customerName === ''
 
+    const rawPhone = data.callerNumber || data.phone || ''
+    const validPhone = (rawPhone && rawPhone !== '未知来电') ? rawPhone : ''
     const incoming: IncomingCallData = {
       id: data.callId,
-      customerName: isNewCustomer ? '新客户来电' : customerName,
-      phone: data.callerNumber || data.phone || '',
+      customerName: isNewCustomer ? (validPhone ? '新客户来电' : '未知来电') : customerName,
+      phone: validPhone,
       customerId: customerId || undefined,
       customerLevel: data.customerInfo?.customerLevel || data.customerLevel,
       company: data.customerInfo?.company || data.company,
@@ -82,6 +111,18 @@ export function useIncomingCall() {
 
     incomingCallData.value = incoming
     incomingCallVisible.value = true
+
+    // 超时安全网：90秒后自动关闭弹窗（防止APP状态未上报导致弹窗卡死）
+    if (autoCloseTimer) clearTimeout(autoCloseTimer)
+    autoCloseTimer = setTimeout(() => {
+      if (incomingCallVisible.value) {
+        console.warn('[GlobalIncoming] 弹窗超时90秒未关闭，自动关闭')
+        incomingCallVisible.value = false
+        incomingCallData.value = null
+        closeActiveNotification()
+        ElMessage.warning('来电弹窗已超时自动关闭')
+      }
+    }, 90000)
 
     // 浏览器级别通知（标签页不是当前窗口时特别有用）
     showBrowserNotification(incoming)
@@ -117,19 +158,28 @@ export function useIncomingCall() {
     }
   }
 
+  const clearAutoCloseTimer = () => {
+    if (autoCloseTimer) {
+      clearTimeout(autoCloseTimer)
+      autoCloseTimer = null
+    }
+  }
+
   const handleCallEnded = (data: any) => {
     if (isOnCallManagementPage()) return
 
+    console.log('[GlobalIncoming] 收到 call:ended 事件:', data)
+    clearAutoCloseTimer()
     closeActiveNotification()
 
-    // 如果来电弹窗还开着（未接听），也关掉
-    if (incomingCallVisible.value && incomingCallData.value?.id === data?.callId) {
+    // 如果来电弹窗还开着，关闭它
+    if (incomingCallVisible.value) {
       incomingCallVisible.value = false
       incomingCallData.value = null
     }
 
     const callId = data?.callId
-    if (callInProgressVisible.value && currentCallData.value?.id === callId) {
+    if (callInProgressVisible.value && (!callId || currentCallData.value?.id === callId)) {
       callInProgressVisible.value = false
       currentCallData.value = null
       ElMessage.info('通话已结束')
@@ -173,6 +223,7 @@ export function useIncomingCall() {
   }
 
   const dismissCall = () => {
+    clearAutoCloseTimer()
     incomingCallVisible.value = false
     incomingCallData.value = null
     closeActiveNotification()
@@ -205,6 +256,44 @@ export function useIncomingCall() {
     router.push('/service-management/call')
   }
 
+  const handleCallConnected = (data: any) => {
+    if (isOnCallManagementPage()) return
+
+    console.log('[GlobalIncoming] 收到 call:connected 事件:', data)
+    clearAutoCloseTimer()
+
+    // 来电已在手机端接听，关闭来电弹窗
+    if (incomingCallVisible.value) {
+      incomingCallVisible.value = false
+      closeActiveNotification()
+      ElMessage.info('来电已在手机上接听')
+    }
+  }
+
+  const handleCallStatus = (data: any) => {
+    if (isOnCallManagementPage()) return
+
+    console.log('[GlobalIncoming] 收到 call:status 事件:', data)
+
+    if (!incomingCallVisible.value) return
+
+    // 通话状态为 connected 时，说明已在手机端接听，关闭来电弹窗
+    if (data?.status === 'connected') {
+      clearAutoCloseTimer()
+      incomingCallVisible.value = false
+      closeActiveNotification()
+      ElMessage.info('来电已在手机上接听')
+    }
+
+    // 通话状态为 ended/missed/rejected 时，说明已挂断/拒绝，关闭来电弹窗
+    if (data?.status === 'ended' || data?.status === 'missed' || data?.status === 'rejected' || data?.status === 'failed') {
+      clearAutoCloseTimer()
+      incomingCallVisible.value = false
+      incomingCallData.value = null
+      closeActiveNotification()
+    }
+  }
+
   const startListening = () => {
     webSocketService.requestNotificationPermission()
 
@@ -213,6 +302,8 @@ export function useIncomingCall() {
       handleIncomingCall(data)
     })
     unsubEnded = webSocketService.on('call:ended', handleCallEnded)
+    unsubConnected = webSocketService.on('call:connected', handleCallConnected)
+    unsubStatus = webSocketService.on('call:status', handleCallStatus)
 
     unsubMessage = webSocketService.onMessage((message) => {
       if (message.type === 'CALL_INCOMING') {
@@ -225,11 +316,16 @@ export function useIncomingCall() {
   }
 
   const stopListening = () => {
+    clearAutoCloseTimer()
     unsubIncoming?.()
     unsubEnded?.()
+    unsubConnected?.()
+    unsubStatus?.()
     unsubMessage?.()
     unsubIncoming = null
     unsubEnded = null
+    unsubConnected = null
+    unsubStatus = null
     unsubMessage = null
     closeActiveNotification()
   }

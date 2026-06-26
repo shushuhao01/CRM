@@ -842,6 +842,169 @@
       </template>
     </el-dialog>
 
+    <!-- 批量上下架对话框 -->
+    <el-dialog
+      v-model="batchStatusDialogVisible"
+      :title="batchTargetStatus === 'active' ? '批量上架' : '批量下架'"
+      width="420px"
+      :close-on-click-modal="false"
+      destroy-on-close
+    >
+      <div class="batch-status-content">
+        <div class="batch-status-icon" :class="batchTargetStatus === 'active' ? 'status-up' : 'status-down'">
+          <el-icon :size="32">
+            <Top v-if="batchTargetStatus === 'active'" />
+            <Bottom v-else />
+          </el-icon>
+        </div>
+        <div class="batch-status-info">
+          <p class="batch-status-desc">
+            确定要将选中的 <strong>{{ selectedRows?.length || 0 }}</strong> 个商品
+            <el-tag :type="batchTargetStatus === 'active' ? 'success' : 'info'" size="small" effect="dark" style="margin: 0 4px;">
+              {{ batchTargetStatus === 'active' ? '上架' : '下架' }}
+            </el-tag>
+            吗？
+          </p>
+        </div>
+        <div class="batch-status-select">
+          <span class="select-label">目标状态</span>
+          <el-button-group>
+            <el-button
+              :type="batchTargetStatus === 'active' ? 'success' : 'default'"
+              @click="batchTargetStatus = 'active'"
+            >
+              <el-icon style="margin-right: 4px;"><Top /></el-icon>上架
+            </el-button>
+            <el-button
+              :type="batchTargetStatus === 'inactive' ? 'info' : 'default'"
+              @click="batchTargetStatus = 'inactive'"
+            >
+              <el-icon style="margin-right: 4px;"><Bottom /></el-icon>下架
+            </el-button>
+          </el-button-group>
+        </div>
+      </div>
+      <template #footer>
+        <div class="dialog-footer">
+          <el-button @click="batchStatusDialogVisible = false">取消</el-button>
+          <el-button
+            :type="batchTargetStatus === 'active' ? 'success' : 'warning'"
+            @click="confirmBatchUpdateStatus"
+            :loading="batchStatusLoading"
+          >
+            确定{{ batchTargetStatus === 'active' ? '上架' : '下架' }}
+          </el-button>
+        </div>
+      </template>
+    </el-dialog>
+
+    <!-- 批量调库存对话框 -->
+    <el-dialog
+      v-model="batchStockDialogVisible"
+      title="批量调整库存"
+      width="480px"
+      :close-on-click-modal="false"
+      destroy-on-close
+    >
+      <div class="batch-stock-content">
+        <div class="batch-stock-summary">
+          <el-icon :size="20" color="#e6a23c"><Warning /></el-icon>
+          <span>已选中 <strong>{{ batchStockProducts.length }}</strong> 个实物商品</span>
+          <span v-if="batchStockSkipCount > 0" class="skip-hint">
+            （已跳过 {{ batchStockSkipCount }} 个虚拟商品）
+          </span>
+        </div>
+        <el-form label-width="90px" style="margin-top: 16px;">
+          <el-form-item label="调整类型">
+            <el-button-group>
+              <el-button
+                :type="batchStockForm.type === 'increase' ? 'success' : 'default'"
+                @click="batchStockForm.type = 'increase'"
+              >
+                增加
+              </el-button>
+              <el-button
+                :type="batchStockForm.type === 'decrease' ? 'warning' : 'default'"
+                @click="batchStockForm.type = 'decrease'"
+              >
+                减少
+              </el-button>
+              <el-button
+                :type="batchStockForm.type === 'set' ? 'primary' : 'default'"
+                @click="batchStockForm.type = 'set'"
+              >
+                设置为
+              </el-button>
+            </el-button-group>
+          </el-form-item>
+          <el-form-item :label="batchStockForm.type === 'set' ? '目标库存' : '调整数量'">
+            <el-input-number
+              v-model="batchStockForm.quantity"
+              :min="0"
+              :max="99999"
+              style="width: 100%"
+            />
+          </el-form-item>
+          <el-form-item label="调整原因">
+            <el-select v-model="batchStockForm.reason" placeholder="请选择原因" style="width: 100%">
+              <el-option label="采购入库" value="purchase" />
+              <el-option label="盘点调整" value="inventory" />
+              <el-option label="销售出库" value="sale" />
+              <el-option label="损耗报废" value="loss" />
+              <el-option label="其他" value="other" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="备注">
+            <el-input
+              v-model="batchStockForm.remark"
+              type="textarea"
+              :rows="2"
+              placeholder="选填"
+            />
+          </el-form-item>
+        </el-form>
+        <div class="batch-stock-preview">
+          <div class="preview-header">
+            <span class="preview-title">调整预览</span>
+            <span class="preview-count">共 {{ batchStockPreview.length }} 个商品</span>
+          </div>
+          <el-table :data="batchStockPreviewPage" border size="small">
+            <el-table-column prop="name" label="商品名称" show-overflow-tooltip min-width="120" />
+            <el-table-column prop="stock" label="当前库存" width="85" align="center" />
+            <el-table-column label="调整后" width="85" align="center">
+              <template #default="{ row }">
+                <span :class="row.newStock !== row.stock ? 'stock-changed' : ''">{{ row.newStock }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="变化" width="80" align="center">
+              <template #default="{ row }">
+                <span v-if="row.diff > 0" style="color: #67c23a;">+{{ row.diff }}</span>
+                <span v-else-if="row.diff < 0" style="color: #f56c6c;">{{ row.diff }}</span>
+                <span v-else style="color: #909399;">0</span>
+              </template>
+            </el-table-column>
+          </el-table>
+          <div v-if="batchStockPreview.length > 5" class="preview-pagination">
+            <el-pagination
+              v-model:current-page="batchStockPreviewPage_num"
+              :page-size="5"
+              :total="batchStockPreview.length"
+              layout="prev, pager, next"
+              small
+            />
+          </div>
+        </div>
+      </div>
+      <template #footer>
+        <div class="dialog-footer">
+          <el-button @click="batchStockDialogVisible = false">取消</el-button>
+          <el-button type="primary" @click="confirmBatchStockAdjust" :loading="batchStockLoading">
+            确定调整
+          </el-button>
+        </div>
+      </template>
+    </el-dialog>
+
     <!-- 可下单部门选择弹窗 -->
     <el-dialog
       v-model="deptDialogVisible"
@@ -885,7 +1048,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, watch, h } from 'vue'
+import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
@@ -898,7 +1061,9 @@ import {
   ArrowDown,
   Box,
   Warning,
-  CircleClose
+  CircleClose,
+  Top,
+  Bottom
 } from '@element-plus/icons-vue'
 import { useConfigStore } from '@/stores/config'
 import { useNotificationStore } from '@/stores/notification'
@@ -978,6 +1143,24 @@ const categoryDialogVisible = ref(false)
 const priceDialogVisible = ref(false)
 const categoryFormDialogVisible = ref(false)
 const categoryFormMode = ref('add')
+
+// 批量上下架弹窗相关
+const batchStatusDialogVisible = ref(false)
+const batchTargetStatus = ref<'active' | 'inactive'>('inactive')
+const batchStatusLoading = ref(false)
+
+// 批量调库存弹窗相关
+const batchStockDialogVisible = ref(false)
+const batchStockLoading = ref(false)
+const batchStockProducts = ref<any[]>([])
+const batchStockSkipCount = ref(0)
+const batchStockForm = reactive({
+  type: 'increase' as 'increase' | 'decrease' | 'set',
+  quantity: 0,
+  reason: '',
+  remark: ''
+})
+const batchStockPreviewPage_num = ref(1)
 
 // 可下单部门弹窗相关
 const deptDialogVisible = ref(false)
@@ -1691,83 +1874,166 @@ const handlePermanentDelete = async (row: Product) => {
 }
 
 /**
- * 批量更新状态
+ * 批量更新状态 - 打开弹窗，根据选中商品的当前状态智能推荐反向操作
  */
-const handleBatchUpdateStatus = async () => {
+const handleBatchUpdateStatus = () => {
   if (!selectedRows.value || selectedRows.value.length === 0) {
     ElMessage.warning('请先选择要更新状态的商品')
     return
   }
 
-  try {
-    const { value: status } = await ElMessageBox({
-      title: '批量状态更新',
-      message: h('div', [
-        h('p', { style: 'margin-bottom: 10px;' }, `确定要批量更新选中的 ${selectedRows.value.length} 个商品的状态吗？`),
-        h('div', { style: 'margin-bottom: 10px;' }, [
-          h('label', { style: 'display: block; margin-bottom: 5px;' }, '请选择状态：'),
-          h('select', {
-            id: 'status-select',
-            style: 'width: 100%; padding: 8px; border: 1px solid #dcdfe6; border-radius: 4px;',
-            onChange: (e: Event) => {
-              const target = e.target as HTMLSelectElement
-              ;(ElMessageBox as unknown).inputValue = target.value
-            }
-          }, [
-            h('option', { value: 'active' }, '上架'),
-            h('option', { value: 'inactive' }, '下架')
-          ])
-        ])
-      ]),
-      showInput: true,
-      inputValue: 'active',
-      confirmButtonText: '确定',
-      cancelButtonText: '取消',
-      beforeClose: (action: string, instance: unknown, done: Function) => {
-        if (action === 'confirm') {
-          const selectElement = document.getElementById('status-select') as HTMLSelectElement
-          if (selectElement) {
-            instance.inputValue = selectElement.value
-          }
-        }
-        done()
-      }
-    })
-
-    // 🔥 修复：批量更新商品状态（调用真实API）
-    for (const product of selectedRows.value) {
-      await productStore.updateProduct(product.id, { status: status as 'active' | 'inactive' })
-    }
-
-    ElMessage.success('批量状态更新成功')
-
-    // 发送消息提醒
-    const statusText = status === 'active' ? '上架' : '下架'
-    notificationStore.addNotification({
-      type: 'PRODUCT_BATCH_STATUS_CHANGED',
-      title: '批量状态更新',
-      content: `已批量${statusText} ${selectedRows.value.length} 个商品`,
-      data: {
-        count: selectedRows.value.length,
-        status: status,
-        statusText: statusText,
-        productNames: selectedRows.value.map(item => item.name),
-        timestamp: new Date().toISOString()
-      },
-      link: '/product/list'
-    })
-
-    loadData()
-  } catch (error) {
-    // 用户取消操作
-  }
+  const activeCount = selectedRows.value.filter(r => r.status === 'active').length
+  const inactiveCount = selectedRows.value.length - activeCount
+  batchTargetStatus.value = activeCount >= inactiveCount ? 'inactive' : 'active'
+  batchStatusDialogVisible.value = true
 }
 
 /**
- * 批量调库存
+ * 确认批量上下架
+ */
+const confirmBatchUpdateStatus = async () => {
+  batchStatusLoading.value = true
+  const targetStatus = batchTargetStatus.value
+  const statusText = targetStatus === 'active' ? '上架' : '下架'
+  const products = [...selectedRows.value]
+  let successCount = 0
+
+  for (const product of products) {
+    try {
+      await productApi.update(String(product.id), { status: targetStatus })
+      successCount++
+    } catch (e) {
+      console.warn(`商品 ${product.name} ${statusText}失败:`, e)
+    }
+  }
+
+  batchStatusLoading.value = false
+  batchStatusDialogVisible.value = false
+
+  if (successCount > 0) {
+    ElMessage.success(`已批量${statusText} ${successCount} 个商品`)
+  } else {
+    ElMessage.error(`批量${statusText}失败，请重试`)
+  }
+
+  try {
+    notificationStore.addNotification({
+      type: 'PRODUCT_BATCH_STATUS_CHANGED',
+      title: `批量${statusText}`,
+      content: `已批量${statusText} ${successCount} 个商品`,
+      data: { count: successCount, status: targetStatus, statusText, timestamp: new Date().toISOString() },
+      link: '/product/list'
+    })
+  } catch (e) { /* ignore */ }
+
+  await productStore.loadProducts({ pageSize: 9999 }).catch(() => {})
+  loadData()
+}
+
+/**
+ * 批量调库存预览计算
+ */
+const batchStockPreview = computed(() => {
+  return batchStockProducts.value.map(p => {
+    let newStock = p.stock ?? 0
+    const qty = batchStockForm.quantity || 0
+    if (batchStockForm.type === 'increase') {
+      newStock = p.stock + qty
+    } else if (batchStockForm.type === 'decrease') {
+      newStock = Math.max(0, p.stock - qty)
+    } else if (batchStockForm.type === 'set') {
+      newStock = qty
+    }
+    return { name: p.name, stock: p.stock ?? 0, newStock, diff: newStock - (p.stock ?? 0) }
+  })
+})
+
+const batchStockPreviewPage = computed(() => {
+  const start = (batchStockPreviewPage_num.value - 1) * 5
+  return batchStockPreview.value.slice(start, start + 5)
+})
+
+/**
+ * 批量调库存 - 打开弹窗
  */
 const handleBatchUpdateStock = () => {
-  ElMessage.info('批量库存调整功能开发中...')
+  if (!selectedRows.value || selectedRows.value.length === 0) {
+    ElMessage.warning('请先选择要调整库存的商品')
+    return
+  }
+
+  const physical = selectedRows.value.filter(r => r.productType !== 'virtual')
+  const skipped = selectedRows.value.length - physical.length
+
+  if (physical.length === 0) {
+    ElMessage.warning('选中的商品均为虚拟商品，无法批量调整库存')
+    return
+  }
+
+  batchStockProducts.value = physical.map(p => ({ id: p.id, name: p.name, stock: p.stock ?? 0 }))
+  batchStockSkipCount.value = skipped
+  Object.assign(batchStockForm, { type: 'increase', quantity: 0, reason: '', remark: '' })
+  batchStockPreviewPage_num.value = 1
+  batchStockDialogVisible.value = true
+}
+
+/**
+ * 确认批量调库存
+ */
+const confirmBatchStockAdjust = async () => {
+  if (batchStockForm.quantity <= 0 && batchStockForm.type !== 'set') {
+    ElMessage.warning('请输入调整数量')
+    return
+  }
+  if (!batchStockForm.reason) {
+    ElMessage.warning('请选择调整原因')
+    return
+  }
+
+  batchStockLoading.value = true
+  let successCount = 0
+
+  for (const product of batchStockProducts.value) {
+    let newStock = product.stock
+    const qty = batchStockForm.quantity
+    if (batchStockForm.type === 'increase') {
+      newStock = product.stock + qty
+    } else if (batchStockForm.type === 'decrease') {
+      newStock = Math.max(0, product.stock - qty)
+    } else if (batchStockForm.type === 'set') {
+      newStock = qty
+    }
+
+    try {
+      await productApi.update(String(product.id), { stock: newStock })
+      successCount++
+    } catch (e) {
+      console.warn(`商品 ${product.name} 库存调整失败:`, e)
+    }
+  }
+
+  batchStockLoading.value = false
+  batchStockDialogVisible.value = false
+
+  if (successCount > 0) {
+    const typeText = batchStockForm.type === 'increase' ? '增加' : batchStockForm.type === 'decrease' ? '减少' : '设置'
+    ElMessage.success(`已批量${typeText}库存，成功 ${successCount} 个商品`)
+  } else {
+    ElMessage.error('批量库存调整失败，请重试')
+  }
+
+  try {
+    notificationStore.addNotification({
+      type: 'PRODUCT_BATCH_STOCK_ADJUSTED',
+      title: '批量库存调整',
+      content: `已批量调整 ${successCount} 个商品的库存`,
+      data: { count: successCount, type: batchStockForm.type, quantity: batchStockForm.quantity, timestamp: new Date().toISOString() },
+      link: '/product/list'
+    })
+  } catch (e) { /* ignore */ }
+
+  await productStore.loadProducts({ pageSize: 9999 }).catch(() => {})
+  loadData()
 }
 
 /**
@@ -3221,6 +3487,128 @@ onMounted(async () => {
 .preview-section h4 {
   margin-bottom: 12px;
   color: #303133;
+}
+
+/* 批量上下架弹窗样式 */
+.batch-status-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  padding: 12px 0;
+}
+
+.batch-status-icon {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+}
+
+.batch-status-icon.status-up {
+  background: linear-gradient(135deg, #67c23a, #85ce61);
+}
+
+.batch-status-icon.status-down {
+  background: linear-gradient(135deg, #909399, #b1b3b8);
+}
+
+.batch-status-info {
+  text-align: center;
+}
+
+.batch-status-desc {
+  font-size: 15px;
+  color: #303133;
+  line-height: 1.8;
+  margin: 0;
+}
+
+.batch-status-desc strong {
+  color: #409eff;
+  font-size: 18px;
+  margin: 0 2px;
+}
+
+.batch-status-select {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 20px;
+  background: #f5f7fa;
+  border-radius: 8px;
+  width: 100%;
+  box-sizing: border-box;
+  justify-content: center;
+}
+
+.batch-status-select .select-label {
+  font-size: 14px;
+  color: #606266;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+/* 批量调库存弹窗样式 */
+.batch-stock-content {
+  padding: 4px 0;
+}
+
+.batch-stock-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: #fdf6ec;
+  border-radius: 6px;
+  font-size: 14px;
+  color: #606266;
+}
+
+.batch-stock-summary strong {
+  color: #e6a23c;
+  font-size: 16px;
+}
+
+.batch-stock-summary .skip-hint {
+  color: #909399;
+  font-size: 12px;
+}
+
+.batch-stock-preview {
+  margin-top: 12px;
+}
+
+.batch-stock-preview .preview-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.batch-stock-preview .preview-title {
+  font-size: 13px;
+  color: #606266;
+  font-weight: 500;
+}
+
+.batch-stock-preview .preview-count {
+  font-size: 12px;
+  color: #909399;
+}
+
+.batch-stock-preview .preview-pagination {
+  display: flex;
+  justify-content: center;
+  margin-top: 8px;
+}
+
+.stock-changed {
+  color: #409eff;
+  font-weight: 600;
 }
 
 .dept-link {

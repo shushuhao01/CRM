@@ -33,7 +33,7 @@
         </div>
         <div class="caller-details">
           <h3>{{ incomingCallData.customerName || '未知客户' }}</h3>
-          <p class="phone-number">{{ displayPhone }}</p>
+          <p class="phone-number">{{ displayPhone || '未知号码' }}</p>
           <p class="company-info" v-if="incomingCallData.company">
             <span>{{ incomingCallData.company }}</span>
           </p>
@@ -52,9 +52,13 @@
       </div>
 
       <!-- 接听/挂断 -->
-      <div class="call-actions">
+      <!-- 接听/挂断：仅系统路线（sip等）支持在CRM端接听，工作手机需在手机原生接听 -->
+      <div class="call-actions" v-if="incomingCallData.callSource && incomingCallData.callSource !== 'mobile'">
         <el-button type="success" size="large" @click="$emit('answer')">接听</el-button>
         <el-button type="danger" size="large" @click="$emit('reject')">挂断</el-button>
+      </div>
+      <div class="call-actions-hint" v-else>
+        <el-text type="info" size="default">请在手机上接听或挂断</el-text>
       </div>
 
       <!-- 快捷操作 -->
@@ -169,7 +173,17 @@ const displayCurrentPhone = computed(() => {
 <style scoped>
 .incoming-call {
   text-align: center;
-  padding: 16px 16px 8px;
+  padding: 0 16px 8px;
+}
+.dialog-top-bar {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0 0 8px 0;
+}
+.close-btn {
+  color: #909399;
+  font-size: 18px;
+  padding: 4px;
 }
 .call-type-bar {
   margin-bottom: 20px;
@@ -231,6 +245,11 @@ const displayCurrentPhone = computed(() => {
   justify-content: center;
   gap: 20px;
   margin-bottom: 16px;
+}
+.call-actions-hint {
+  text-align: center;
+  margin-bottom: 16px;
+  padding: 12px 0;
 }
 .call-actions .el-button {
   width: 110px;

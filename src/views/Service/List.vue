@@ -45,7 +45,7 @@
           >
             <el-option label="待处理" value="pending" />
             <el-option label="处理中" value="processing" />
-            <el-option label="已完成" value="completed" />
+            <el-option label="已解决" value="resolved" />
             <el-option label="已关闭" value="closed" />
           </el-select>
         </el-form-item>
@@ -776,11 +776,12 @@ const handleAssignConfirm = async () => {
     // 随机选择一个用户
     const randomUser = deptUsers[Math.floor(Math.random() * deptUsers.length)]
     assignedToName = randomUser.name
+    assignForm.userId = randomUser.id
   }
 
   assignLoading.value = true
   try {
-    // 调用API分配处理人
+    // 调用API分配处理人（始终传递userId以确保通知生效）
     await serviceStore.assignService(
       currentRow.value.id,
       assignedToName,
@@ -956,6 +957,9 @@ const getReasonText = (reason: string) => {
     'damage': '商品损坏',
     'wrong': '发错商品',
     'size': '尺寸不符',
+    'color': '颜色不符',
+    'malfunction': '功能故障',
+    'unsatisfied': '不满意',
     'description': '描述不符',
     'logistics': '物流问题',
     'complaint': '投诉',
@@ -963,9 +967,7 @@ const getReasonText = (reason: string) => {
     'exchange': '换货',
     'refund': '退款',
     'repair': '维修',
-    'inquiry': '咨询',
-    // 其他可能的值
-    'osmogd': '其他原因'
+    'inquiry': '咨询'
   }
 
   return map[reason] || reason

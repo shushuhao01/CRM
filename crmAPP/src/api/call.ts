@@ -5,6 +5,7 @@ export const reportCallStatus = (data: {
   callId: string
   status: 'dialing' | 'ringing' | 'connected' | 'ended' | 'missed' | 'rejected'
   timestamp?: string
+  phoneNumber?: string
 }): Promise<void> => {
   return request({
     url: '/mobile/call/status',

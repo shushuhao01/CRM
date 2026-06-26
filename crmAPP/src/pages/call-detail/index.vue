@@ -175,9 +175,15 @@ const statusText = computed(() => {
     failed: '呼叫失败',
     rejected: '已拒接',
     pending: '待处理',
-    calling: '拨号中'
+    calling: '拨号中',
+    ringing: '响铃中',
+    dialing: '拨号中',
+    completed: '已完成',
+    no_answer: '无人接听',
+    unreachable: '无法接通',
+    invalid: '无效号码'
   }
-  return map[callDetail.value?.callStatus || ''] || callDetail.value?.callStatus || '未知'
+  return map[callDetail.value?.callStatus || ''] || '未知'
 })
 
 // 页面加载

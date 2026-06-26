@@ -237,10 +237,10 @@ const permissionList = computed(() => [
   {
     key: 'calllog',
     name: '通话记录',
-    purpose: '获取来电号码、补录未接来电',
+    purpose: '识别来电号码（必需）',
     granted: isGranted('calllog', permCallLog.value),
     special: false,
-    actionText: '授权',
+    actionText: isGranted('calllog', permCallLog.value) ? '已授权' : '去开启',
     statusText: '',
     action: () => requestSinglePermission('android.permission.READ_CALL_LOG')
   },
@@ -354,35 +354,37 @@ const refreshPermissionStatus = () => {
 // #ifdef APP-PLUS
 /** 检测权限：用多种方式获取 int 结果并转字符串比较 */
 const checkPermByStr = (main: any, perm: string): boolean | null => {
-  // 方式1: PackageManager.checkPermission
+  // 方式1: ContextCompat.checkSelfPermission（最可靠）
   try {
+    const ContextCompat = plus.android.importClass('androidx.core.content.ContextCompat') as any
+    const raw = ContextCompat.checkSelfPermission(main, perm)
+    const str = '' + raw
+    console.log('[Perm]', perm, 'ContextCompat.checkSelfPermission: str="' + str + '"')
+    if (str === '0') return true
+    if (str === '-1') return false
+  } catch (e) {
+    console.log('[Perm]', perm, 'ContextCompat error, fallback to Activity:', e)
+  }
+
+  // 方式2: Activity.checkSelfPermission（API 23+）
+  try {
+    const raw = (main as any).checkSelfPermission(perm)
+    const str = '' + raw
+    console.log('[Perm]', perm, 'Activity.checkSelfPermission: str="' + str + '"')
+    if (str === '0') return true
+    if (str === '-1') return false
+  } catch (_e) { /* skip */ }
+
+  // 方式3: PackageManager.checkPermission
+  try {
+    plus.android.importClass('android.content.pm.PackageManager')
     const pkgName = (main as any).getPackageName()
     const pm = (main as any).getPackageManager()
     const raw = pm.checkPermission(perm, pkgName)
-    // 尝试多种方式转为可比较的值
     const str = '' + raw
-    console.log('[Perm]', perm, 'PM.checkPermission: raw=' + raw, 'str="' + str + '"', 'typeof=' + typeof raw)
-    if (str === '0' || str.includes('GRANTED')) return true
-    if (str === '-1' || str.includes('DENIED')) return false
-    // 尝试 Number 转换
-    const num = Number(raw)
-    if (!isNaN(num)) {
-      if (num === 0) return true
-      if (num === -1) return false
-    }
-  } catch (e) {
-    console.log('[Perm]', perm, 'PM.checkPermission error:', e)
-  }
-
-  // 方式2: checkCallingOrSelfPermission
-  try {
-    const raw = (main as any).checkCallingOrSelfPermission(perm)
-    const str = '' + raw
-    console.log('[Perm]', perm, 'checkCallingOrSelf: str="' + str + '"')
+    console.log('[Perm]', perm, 'PM.checkPermission: str="' + str + '"')
     if (str === '0') return true
     if (str === '-1') return false
-    const num = Number(raw)
-    if (!isNaN(num)) return num === 0
   } catch (_e) { /* skip */ }
 
   return null
@@ -404,22 +406,83 @@ const testPhoneStatePerm = (main: any): boolean => {
   }
 }
 
-/** 实测通话记录权限 */
+/** 实测通话记录权限：使用多种方式尝试查询 CallLog */
 const testCallLogPerm = (main: any): boolean => {
-  // 先用字符串比较（和电话、麦克风统一方式）
-  const r = checkPermByStr(main, 'android.permission.READ_CALL_LOG')
-  if (r !== null) return r
-  // 兜底：实际查询
+  plus.android.importClass('android.content.ContentResolver')
+  plus.android.importClass('android.database.Cursor')
+  const cr = (main as any).getContentResolver()
+
+  // 收集所有可能的 URI
+  const uris: Array<{ uri: any; label: string }> = []
   try {
-    const CallLog = plus.android.importClass('android.provider.CallLog') as any
-    const cr = (main as any).getContentResolver()
-    const cursor = cr.query(CallLog.Calls.CONTENT_URI, ['_id'], '1=0', null, null)
-    if (cursor === null || cursor === undefined) return false
-    cursor.close()
-    return true
-  } catch (e) {
-    return false
+    const CallLogCalls = plus.android.importClass('android.provider.CallLog$Calls') as any
+    if (CallLogCalls?.CONTENT_URI) {
+      uris.push({ uri: CallLogCalls.CONTENT_URI, label: 'CallLog$Calls' })
+    }
+  } catch (_e) { /* skip */ }
+  const Uri = plus.android.importClass('android.net.Uri') as any
+  uris.push({ uri: Uri.parse('content://call_log/calls'), label: 'call_log/calls' })
+  uris.push({ uri: Uri.parse('content://calls'), label: 'calls' })
+
+  // 方法1: cr.query
+  for (const { uri, label } of uris) {
+    try {
+      const cursor = cr.query(uri, null, null, null, null)
+      if (cursor !== null && cursor !== undefined) {
+        cursor.close()
+        console.log('[Perm] READ_CALL_LOG cr.query成功(' + label + ')')
+        return true
+      }
+    } catch (_e) { /* skip */ }
   }
+
+  // 方法2: plus.android.invoke（绕过桥接方法代理）
+  for (const { uri, label } of uris) {
+    try {
+      const cursor = plus.android.invoke(cr, 'query', uri, null, null, null, null)
+      if (cursor !== null && cursor !== undefined) {
+        try { (cursor as any).close() } catch (_e) { /* skip */ }
+        console.log('[Perm] READ_CALL_LOG invoke成功(' + label + ')')
+        return true
+      }
+    } catch (_e) { /* skip */ }
+  }
+
+  // 方法3: Activity.managedQuery
+  for (const { uri, label } of uris) {
+    try {
+      const cursor = (main as any).managedQuery(uri, null, null, null, null)
+      if (cursor !== null && cursor !== undefined) {
+        console.log('[Perm] READ_CALL_LOG managedQuery成功(' + label + ')')
+        return true
+      }
+    } catch (_e) { /* skip */ }
+  }
+
+  // 方法4: ApplicationContext.getContentResolver
+  try {
+    const appCtx = (main as any).getApplicationContext()
+    const appCr = appCtx.getContentResolver()
+    for (const { uri, label } of uris) {
+      try {
+        const cursor = appCr.query(uri, null, null, null, null)
+        if (cursor !== null && cursor !== undefined) {
+          cursor.close()
+          console.log('[Perm] READ_CALL_LOG appCtx成功(' + label + ')')
+          return true
+        }
+      } catch (_e) { /* skip */ }
+    }
+  } catch (_e) { /* skip */ }
+
+  console.log('[Perm] READ_CALL_LOG 所有查询方式均失败')
+  // API 检查作为兜底
+  const r = checkPermByStr(main, 'android.permission.READ_CALL_LOG')
+  if (r === true) {
+    console.log('[Perm] READ_CALL_LOG API显示已授权但实际查询失败（可能是设备限制）')
+    return true
+  }
+  return false
 }
 
 /** 实测麦克风权限 */
@@ -533,13 +596,14 @@ const requestSinglePermission = (permission: string) => {
 
       if (granted.length > 0) {
         uni.showToast({ title: '授权成功', icon: 'success' })
-      } else if (deniedAlways.length > 0) {
-        // 被永久拒绝，系统不会弹对话框，引导去设置
+      } else {
+        // 未授权（无论是被拒绝还是永久拒绝），引导去设置
+        // 华为等国产ROM上，部分权限需要在系统设置中手动开启
         uni.showModal({
-          title: '需要手动开启',
-          content: '该权限已被禁止，请在系统设置中手动开启',
+          title: '请在系统设置中开启',
+          content: '请前往 设置 > 应用 > 云客CRM > 权限，找到"通话记录"/"电话"权限并开启',
           confirmText: '去设置',
-          cancelText: '取消',
+          cancelText: '稍后',
           success: (res) => {
             if (res.confirm) {
               incomingCallService.openAppPermissionSettings()

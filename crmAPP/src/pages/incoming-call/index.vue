@@ -137,6 +137,10 @@ const stopDurationTimer = () => {
 const updateFromService = () => {
   const current = incomingCallService.getCurrentIncoming()
   if (current) {
+    // 号码更新（从 CallLog 轮询获取到真实号码时）
+    if (current.callerNumber && current.callerNumber !== '未知来电' && current.callerNumber !== callerNumber.value) {
+      callerNumber.value = current.callerNumber
+    }
     if (current.customerName && current.customerName !== '未知来电') {
       customerName.value = current.customerName
     }
@@ -173,6 +177,7 @@ const goBack = () => {
 
 let confirmListener: any = null
 let endListener: any = null
+let numberUpdateListener: any = null
 let pollTimer: ReturnType<typeof setInterval> | null = null
 
 onMounted(() => {
@@ -184,7 +189,13 @@ onMounted(() => {
   endListener = () => handleEnd()
   uni.$on('call:completed', endListener)
 
-  // 轮询同步来电状态
+  numberUpdateListener = (info: any) => {
+    if (info?.callerNumber && info.callerNumber !== '未知来电') {
+      callerNumber.value = info.callerNumber
+    }
+  }
+  uni.$on('incoming:number_updated', numberUpdateListener)
+
   pollTimer = setInterval(updateFromService, 1000)
 })
 
@@ -194,6 +205,7 @@ onUnmounted(() => {
 
   if (confirmListener) uni.$off('incoming:call_confirmed', confirmListener)
   if (endListener) uni.$off('call:completed', endListener)
+  if (numberUpdateListener) uni.$off('incoming:number_updated', numberUpdateListener)
   if (pollTimer) {
     clearInterval(pollTimer)
     pollTimer = null

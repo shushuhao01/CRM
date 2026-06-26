@@ -94,6 +94,30 @@
               <label>处理人员：</label>
               <span class="value">{{ serviceInfo.assignedTo || '未分配' }}</span>
             </div>
+            <div class="info-item">
+              <label>创建售后者：</label>
+              <span class="value">{{ getCreatorName(serviceInfo.createdBy) }}</span>
+            </div>
+            <div class="info-item">
+              <label>销售人员：</label>
+              <span class="value">{{ orderDetail?.createdByName || orderDetail?.salesPerson || getCreatorName(orderDetail?.createdBy) || '未知' }}</span>
+            </div>
+            <div class="info-item">
+              <label>订单状态：</label>
+              <el-tag v-if="orderDetail" :type="getOrderStatusType(orderDetail.status)" size="small">
+                {{ getOrderStatusText(orderDetail.status) }}
+              </el-tag>
+              <span v-else class="value">未关联</span>
+            </div>
+            <div class="info-item">
+              <label>签收状态：</label>
+              <span class="value">
+                <el-tag v-if="orderDetail?.status === 'delivered' || orderDetail?.status === 'completed'" type="success" size="small">已签收</el-tag>
+                <el-tag v-else-if="orderDetail?.status === 'rejected'" type="danger" size="small">已拒收</el-tag>
+                <el-tag v-else-if="orderDetail?.status === 'shipped'" type="warning" size="small">运输中</el-tag>
+                <el-tag v-else type="info" size="small">{{ orderDetail ? '未签收' : '未知' }}</el-tag>
+              </span>
+            </div>
           </div>
         </el-card>
 
@@ -128,10 +152,10 @@
                 </el-link>
               </span>
             </div>
-            <div class="info-item">
+            <div class="info-item" style="grid-column: 1 / -1;">
               <label>联系地址：</label>
               <span class="value">
-                <span v-if="canViewDetails">{{ serviceInfo.contactAddress }}</span>
+                <span v-if="canViewDetails">{{ serviceInfo.contactAddress || orderDetail?.shippingAddress || orderDetail?.receiverAddress || customerLatestAddress || '暂无' }}</span>
                 <span v-else class="restricted-info">地址信息受限</span>
               </span>
             </div>
@@ -152,12 +176,36 @@
 
           <div class="product-info">
             <div class="product-item">
+              <div v-if="orderProductImage" class="product-image">
+                <el-image
+                  :src="orderProductImage"
+                  fit="cover"
+                  style="width: 80px; height: 80px; border-radius: 8px;"
+                  :preview-src-list="[orderProductImage]"
+                  :preview-teleported="true"
+                >
+                  <template #error>
+                    <div class="image-placeholder">
+                      <el-icon :size="24"><Picture /></el-icon>
+                    </div>
+                  </template>
+                </el-image>
+              </div>
               <div class="product-details">
                 <h4>{{ serviceInfo.productName }}</h4>
-                <p class="product-spec">规格：{{ serviceInfo.productSpec }}</p>
+                <p class="product-spec">规格：{{ serviceInfo.productSpec || '无' }}</p>
                 <div class="product-meta">
                   <span>数量：{{ serviceInfo.quantity }}</span>
-                  <span>单价：¥{{ serviceInfo.price }}</span>
+                  <span>单价：¥{{ Number(serviceInfo.price || 0).toFixed(2) }}</span>
+                </div>
+                <div class="product-financial">
+                  <span v-if="orderDetail?.deposit != null">定金：<strong style="color: #e6a23c">¥{{ Number(orderDetail.deposit || 0).toFixed(2) }}</strong></span>
+                  <span v-if="orderDetail?.codAmount != null || orderDetail?.collectAmount != null">
+                    代收：<strong style="color: #f56c6c">¥{{ Number(orderDetail.codAmount || orderDetail.collectAmount || 0).toFixed(2) }}</strong>
+                  </span>
+                  <span>
+                    总价：<strong style="color: #409eff">¥{{ Number(orderDetail?.totalAmount || (serviceInfo.price * serviceInfo.quantity) || 0).toFixed(2) }}</strong>
+                  </span>
                 </div>
               </div>
             </div>
@@ -174,16 +222,31 @@
 
           <div class="description-content">
             <div class="reason-section">
-              <h4>问题原因</h4>
-              <p>{{ serviceInfo.reason }}</p>
+              <div class="section-label">
+                <el-icon class="label-icon"><Warning /></el-icon>
+                <span class="label-text">问题原因</span>
+              </div>
+              <div class="section-body reason-body">
+                <el-tag type="warning" size="small" effect="light">{{ getReasonText(serviceInfo.reason) }}</el-tag>
+              </div>
             </div>
             <div class="description-section">
-              <h4>详细描述</h4>
-              <p>{{ serviceInfo.description }}</p>
+              <div class="section-label">
+                <el-icon class="label-icon"><Document /></el-icon>
+                <span class="label-text">详细描述</span>
+              </div>
+              <div class="section-body description-body">
+                {{ serviceInfo.description }}
+              </div>
             </div>
             <div v-if="serviceInfo.remark" class="remark-section">
-              <h4>备注信息</h4>
-              <p>{{ serviceInfo.remark }}</p>
+              <div class="section-label">
+                <el-icon class="label-icon"><ChatLineSquare /></el-icon>
+                <span class="label-text">备注信息</span>
+              </div>
+              <div class="section-body remark-body">
+                {{ serviceInfo.remark }}
+              </div>
             </div>
           </div>
         </el-card>
@@ -328,7 +391,7 @@
 
           <el-timeline>
             <el-timeline-item
-              v-for="(step, index) in processSteps"
+              v-for="(step, index) in displayedSteps"
               :key="index"
               :timestamp="step?.time || ''"
               :type="step?.type || 'info'"
@@ -341,6 +404,19 @@
               </div>
             </el-timeline-item>
           </el-timeline>
+          <div v-if="processSteps.length > 2" class="progress-toggle">
+            <el-button
+              text
+              type="primary"
+              size="small"
+              @click="progressExpanded = !progressExpanded"
+            >
+              {{ progressExpanded ? '收起进度' : `展开全部 (${processSteps.length}条)` }}
+              <el-icon class="toggle-icon" :class="{ expanded: progressExpanded }">
+                <ArrowDown />
+              </el-icon>
+            </el-button>
+          </div>
         </el-card>
 
         <!-- 快速操作 -->
@@ -546,7 +622,7 @@
     <el-dialog v-model="callDialogVisible" title="发起外呼" width="500px">
       <el-form :model="callForm" label-width="80px">
         <el-form-item label="电话号码">
-          <el-input v-model="callForm.phone" disabled />
+          <el-input :model-value="displaySensitiveInfoNew(callForm.phone, SensitiveInfoType.PHONE)" disabled />
         </el-form-item>
         <el-form-item label="通话目的">
           <el-select v-model="callForm.purpose" placeholder="请选择" style="width: 100%">
@@ -616,7 +692,10 @@ import {
   Check,
   Close,
   Plus,
-  Phone
+  Phone,
+  Warning,
+  ChatLineSquare,
+  ArrowDown
 } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
 import { useServiceStore } from '@/stores/service'
@@ -626,6 +705,9 @@ import { useDepartmentStore } from '@/stores/department'
 import { displaySensitiveInfoNew, SensitiveInfoType } from '@/utils/sensitiveInfo'
 import { createSafeNavigator } from '@/utils/navigation'
 import { serviceApi } from '@/api/service'
+import { orderApi } from '@/api/order'
+import { customerApi } from '@/api/customer'
+import { getOrderStatusText as getUnifiedOrderStatusText, getOrderStatusTagType as getUnifiedOrderStatusType } from '@/utils/orderStatusConfig'
 
 // 路由相关
 const router = useRouter()
@@ -643,6 +725,7 @@ const departmentStore = useDepartmentStore()
 const loading = ref(false)
 const assignDialogVisible = ref(false)
 const statusDialogVisible = ref(false)
+const progressExpanded = ref(false)
 
 // 售后信息(初始化为空,从store或API加载)
 const serviceInfo = reactive({
@@ -665,16 +748,22 @@ const serviceInfo = reactive({
   reason: '',
   description: '',
   remark: '',
-  handleResult: '',  // 处理结果
+  handleResult: '',
   assignedTo: '',
-  assignedToId: '',  // 处理人ID
+  assignedToId: '',
   createdBy: '',
-  createdById: '',   // 创建者ID
+  createdById: '',
   createTime: '',
   updateTime: '',
   expectedTime: '',
+  resolvedTime: '',
   attachments: [] as Array<{ name: string; size: number; url: string } | string>
 })
+
+// 关联订单信息（从订单数据加载）
+const orderDetail = ref<any>(null)
+// 客户最新收货地址（从客户API获取）
+const customerLatestAddress = ref('')
 
 // 处理步骤(从售后记录动态生成)
 const processSteps = ref<Array<{
@@ -685,6 +774,14 @@ const processSteps = ref<Array<{
   icon: unknown
   operator?: string
 }>>([])
+
+// 默认显示最新2条进度，展开后显示全部
+const displayedSteps = computed(() => {
+  if (progressExpanded.value || processSteps.value.length <= 2) {
+    return processSteps.value
+  }
+  return processSteps.value.slice(-2)
+})
 
 // 分配表单
 const assignForm = reactive({
@@ -1023,8 +1120,10 @@ const confirmAssign = async () => {
 
   assignLoading.value = true
   try {
-    // 调用API分配处理人
-    const assignedToId = assignForm.assignType === 'user' ? assignForm.userId : undefined
+    // 调用API分配处理人（无论指定用户还是部门随机，都传递userId）
+    const assignedToId = assignForm.assignType === 'user'
+      ? assignForm.userId
+      : userOptions.value.find((u: any) => u.name === assignedToName)?.id
     await serviceApi.assign(serviceInfo.id, assignedToName, assignedToId, assignForm.remark)
 
     serviceInfo.assignedTo = assignedToName
@@ -1260,6 +1359,42 @@ const getServiceTypeText = (type: string) => {
 }
 
 /**
+ * 获取订单状态文本（使用系统订单管理生命周期的统一状态配置）
+ */
+const getOrderStatusText = (status: string) => {
+  return getUnifiedOrderStatusText(status)
+}
+
+/**
+ * 获取订单状态标签类型
+ */
+const getOrderStatusType = (status: string) => {
+  return getUnifiedOrderStatusType(status)
+}
+
+/**
+ * 获取申请原因中文文本
+ */
+const getReasonText = (reason: string) => {
+  if (!reason) return '未知原因'
+  const map: Record<string, string> = {
+    quality: '商品质量问题', quality_issue: '商品质量问题',
+    damaged: '商品损坏',
+    size: '尺寸不合适', size_issue: '尺寸问题',
+    color: '颜色不符', color_issue: '颜色不符',
+    malfunction: '功能故障',
+    wrong_item: '发错商品',
+    unsatisfied: '不满意', not_satisfied: '不满意',
+    not_as_described: '描述不符',
+    logistics_damage: '物流损坏',
+    defective: '商品缺陷',
+    expired: '商品过期',
+    other: '其他'
+  }
+  return map[reason] || reason
+}
+
+/**
  * 获取优先级类型
  */
 const getPriorityType = (priority: string) => {
@@ -1362,6 +1497,12 @@ const loadServiceDetail = async () => {
       Object.assign(serviceInfo, service)
     }
 
+    // 加载关联订单信息
+    await loadOrderDetail()
+
+    // 加载客户最新收货地址
+    await loadCustomerAddress()
+
     // 生成处理步骤
     generateProcessSteps()
   } catch (error) {
@@ -1374,9 +1515,90 @@ const loadServiceDetail = async () => {
 }
 
 /**
- * 生成处理步骤
+ * 加载关联订单详情
  */
-const generateProcessSteps = () => {
+const loadOrderDetail = async () => {
+  try {
+    if (!serviceInfo.orderId && !serviceInfo.orderNumber) return
+
+    const orderId = serviceInfo.orderId || serviceInfo.orderNumber
+
+    // 优先调用API获取实时订单数据（确保订单状态为系统生命周期状态）
+    try {
+      const response = await orderApi.getDetail(orderId)
+      if (response.success && response.data) {
+        orderDetail.value = response.data
+        console.log('[售后详情] API加载关联订单成功:', response.data.orderNumber)
+        return
+      }
+    } catch (apiError) {
+      console.warn('[售后详情] API加载订单失败，尝试从本地获取:', apiError)
+    }
+
+    // API失败时从 orderStore 查找
+    let order = orderStore.orders?.find((o: any) =>
+      o.id === orderId || o.orderNumber === serviceInfo.orderNumber
+    )
+
+    if (!order) {
+      // 尝试从 localStorage 获取
+      try {
+        const raw = localStorage.getItem('crm_store_order')
+        if (raw) {
+          const parsed = JSON.parse(raw)
+          const orders = parsed?.data?.orders || parsed?.orders || (Array.isArray(parsed) ? parsed : [])
+          order = orders.find((o: any) =>
+            o.id === orderId || o.orderNumber === serviceInfo.orderNumber
+          )
+        }
+      } catch (e) {
+        console.warn('[售后详情] 解析订单缓存失败:', e)
+      }
+    }
+
+    if (order) {
+      orderDetail.value = order
+      console.log('[售后详情] 本地关联订单加载成功:', order.orderNumber)
+    }
+  } catch (error) {
+    console.warn('[售后详情] 加载订单详情失败:', error)
+  }
+}
+
+/**
+ * 加载客户最新收货地址
+ */
+const loadCustomerAddress = async () => {
+  customerLatestAddress.value = ''
+  if (!serviceInfo.customerId) return
+  try {
+    const res = await customerApi.getDetail(serviceInfo.customerId)
+    const customer = (res as any)?.data || res
+    if (customer?.address) {
+      customerLatestAddress.value = customer.address
+    }
+  } catch (e) {
+    console.warn('[售后详情] 获取客户最新地址失败:', e)
+  }
+}
+
+/**
+ * 获取订单商品图片
+ */
+const orderProductImage = computed(() => {
+  if (!orderDetail.value) return ''
+  const products = orderDetail.value.products || orderDetail.value.items || []
+  if (products.length > 0) {
+    return products[0].image || products[0].imageUrl || products[0].img || ''
+  }
+  return ''
+})
+
+/**
+ * 生成处理步骤 - 完整的四阶段时间轴
+ * 创建 → 分配 → 处理中 → 已完成（处理结果）
+ */
+const generateProcessSteps = async () => {
   const steps: Array<{
     title: string
     description: string
@@ -1386,73 +1608,104 @@ const generateProcessSteps = () => {
     operator?: string
   }> = []
 
-  // 创建步骤
+  // 尝试从API获取操作记录，以获得准确的时间点
+  let operationLogs: any[] = []
+  try {
+    const serviceId = route.params.id as string
+    if (serviceId) {
+      operationLogs = await serviceApi.getOperationLogs(serviceId)
+    }
+  } catch (e) {
+    console.warn('[售后详情] 获取操作日志失败:', e)
+  }
+
+  // 查找特定操作类型的日志
+  const findLog = (type: string) => operationLogs.find(
+    (l: any) => l.operationType === type || l.operationContent?.includes(type)
+  )
+
+  // 1. 创建阶段 - 始终显示
   steps.push({
     title: '售后申请提交',
-    description: '客户提交售后申请',
+    description: `客户提交${getServiceTypeText(serviceInfo.serviceType)}申请`,
     time: serviceInfo.createTime,
     type: 'success',
-    icon: User,
+    icon: Check,
     operator: serviceInfo.createdBy
   })
 
-  // 根据状态添加步骤
-  if (serviceInfo.status !== 'pending') {
-    steps.push({
-      title: '申请已受理',
-      description: '售后申请已受理,等待处理',
-      time: serviceInfo.createTime,
-      type: 'success',
-      icon: Check,
-      operator: '系统'
-    })
-  }
-
+  // 2. 分配阶段
+  const assignLog = findLog('assign') || findLog('分配')
   if (serviceInfo.assignedTo) {
     steps.push({
-      title: '分配处理人员',
-      description: `已分配给${serviceInfo.assignedTo}处理`,
-      time: serviceInfo.updateTime || serviceInfo.createTime,
+      title: '分配处理人',
+      description: `已分配给 ${serviceInfo.assignedTo} 处理`,
+      time: assignLog?.createTime || serviceInfo.updateTime || serviceInfo.createTime,
       type: 'success',
       icon: User,
-      operator: '系统'
+      operator: assignLog?.operatorName || '系统'
+    })
+  } else if (serviceInfo.status === 'pending') {
+    steps.push({
+      title: '等待分配',
+      description: '等待分配处理人',
+      time: '',
+      type: 'info',
+      icon: User
     })
   }
 
-  if (serviceInfo.status === 'processing') {
+  // 3. 处理中阶段
+  const processLog = findLog('processing') || findLog('处理')
+  if (['processing', 'resolved', 'closed'].includes(serviceInfo.status)) {
     steps.push({
-      title: '开始处理',
-      description: '处理人员开始处理售后问题',
-      time: serviceInfo.updateTime || serviceInfo.createTime,
-      type: 'primary',
+      title: '处理中',
+      description: `${serviceInfo.assignedTo || '处理人员'}正在处理售后问题`,
+      time: processLog?.createTime || serviceInfo.updateTime || serviceInfo.createTime,
+      type: serviceInfo.status === 'processing' ? 'primary' : 'success',
       icon: Clock,
       operator: serviceInfo.assignedTo || '系统'
     })
-  }
-
-  if (serviceInfo.status === 'resolved') {
+  } else if (serviceInfo.assignedTo && serviceInfo.status !== 'pending') {
     steps.push({
-      title: '问题已解决',
-      description: '售后问题已解决',
-      time: serviceInfo.updateTime || serviceInfo.createTime,
-      type: 'success',
-      icon: Check,
-      operator: serviceInfo.assignedTo || '系统'
+      title: '待处理',
+      description: '等待处理人员处理',
+      time: '',
+      type: 'info',
+      icon: Clock
     })
   }
 
-  if (serviceInfo.status === 'closed') {
+  // 4. 完成阶段
+  const resolveLog = findLog('resolved') || findLog('解决') || findLog('completed') || findLog('完成')
+  if (serviceInfo.status === 'resolved' || serviceInfo.status === 'closed') {
+    const handleResultText = serviceInfo.handleResult ? getHandleResultText(serviceInfo.handleResult) : ''
     steps.push({
-      title: '售后已关闭',
-      description: '售后申请已关闭',
-      time: serviceInfo.updateTime || serviceInfo.createTime,
-      type: 'info',
-      icon: Close,
-      operator: '系统'
+      title: serviceInfo.status === 'resolved' ? '已解决' : '已关闭',
+      description: [
+        serviceInfo.status === 'resolved' ? '售后问题已解决' : '售后申请已关闭',
+        handleResultText ? `处理结果：${handleResultText}` : ''
+      ].filter(Boolean).join('，'),
+      time: serviceInfo.resolvedTime || resolveLog?.createTime || serviceInfo.updateTime || '',
+      type: serviceInfo.status === 'resolved' ? 'success' : 'info',
+      icon: serviceInfo.status === 'resolved' ? Check : Close,
+      operator: resolveLog?.operatorName || serviceInfo.assignedTo || '系统'
     })
   }
 
   processSteps.value = steps
+}
+
+/**
+ * 获取处理结果文本
+ */
+const getHandleResultText = (result: string) => {
+  if (!result) return ''
+  const map: Record<string, string> = {
+    refunded: '已退款', replaced: '已换货', repaired: '已维修',
+    rejected: '已拒绝', compensated: '已赔偿', other: '其他'
+  }
+  return map[result] || result
 }
 
 /**
@@ -1639,6 +1892,22 @@ onMounted(async () => {
   color: #606266;
 }
 
+.product-image {
+  flex-shrink: 0;
+  margin-right: 16px;
+}
+
+.image-placeholder {
+  width: 80px;
+  height: 80px;
+  background: #f5f7fa;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #c0c4cc;
+}
+
 .product-meta {
   display: flex;
   gap: 16px;
@@ -1646,8 +1915,18 @@ onMounted(async () => {
   color: #909399;
 }
 
+.product-financial {
+  display: flex;
+  gap: 20px;
+  font-size: 14px;
+  color: #606266;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed #e4e7ed;
+}
+
 .description-content {
-  padding: 16px 0;
+  padding: 4px 0;
 }
 
 .reason-section,
@@ -1656,21 +1935,53 @@ onMounted(async () => {
   margin-bottom: 20px;
 }
 
-.reason-section h4,
-.description-section h4,
-.remark-section h4 {
-  margin: 0 0 8px 0;
-  font-size: 14px;
-  font-weight: 600;
-  color: #606266;
+.reason-section:last-child,
+.description-section:last-child,
+.remark-section:last-child {
+  margin-bottom: 0;
 }
 
-.reason-section p,
-.description-section p,
-.remark-section p {
-  margin: 0;
+.section-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.section-label .label-icon {
+  font-size: 16px;
+  color: #409eff;
+}
+
+.section-label .label-text {
+  font-size: 13px;
+  font-weight: 600;
   color: #303133;
-  line-height: 1.6;
+  letter-spacing: 0.5px;
+}
+
+.section-body {
+  padding: 12px 16px;
+  border-radius: 8px;
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.reason-body {
+  background: #fdf6ec;
+  border-left: 3px solid #e6a23c;
+}
+
+.description-body {
+  background: #f4f4f5;
+  border-left: 3px solid #909399;
+  color: #303133;
+}
+
+.remark-body {
+  background: #ecf5ff;
+  border-left: 3px solid #409eff;
+  color: #303133;
 }
 
 .attachments-grid {
@@ -1775,14 +2086,32 @@ onMounted(async () => {
   color: #909399;
 }
 
+.progress-toggle {
+  text-align: center;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed #e4e7ed;
+}
+
+.toggle-icon {
+  margin-left: 4px;
+  transition: transform 0.3s;
+}
+
+.toggle-icon.expanded {
+  transform: rotate(180deg);
+}
+
 .quick-actions {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
+  align-items: flex-start;
 }
 
 .quick-actions .el-button {
-  width: 100%;
+  width: auto;
+  min-width: 140px;
 }
 
 .related-info {
@@ -1957,16 +2286,18 @@ onMounted(async () => {
 .quick-actions {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
+  align-items: flex-start;
 }
 
 .action-btn {
-  width: 100%;
+  width: auto;
+  min-width: 140px;
   display: flex;
   align-items: center;
   justify-content: flex-start;
   font-size: 14px;
-  height: 40px;
+  height: 38px;
   border-radius: 8px;
   transition: all 0.3s;
   padding: 0 16px;

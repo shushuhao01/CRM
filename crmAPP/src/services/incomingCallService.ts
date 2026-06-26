@@ -9,7 +9,7 @@
 
 import { wsService } from './websocket'
 import { callStateService } from './callStateService'
-import { reportIncomingCall, reportCallEnd, reportMissedCalls } from '@/api/call'
+import { reportIncomingCall, reportCallEnd, reportMissedCalls, reportCallStatus } from '@/api/call'
 import { recordingService } from './recordingService'
 import { useUserStore } from '@/stores/user'
 
@@ -48,38 +48,35 @@ class IncomingCallService {
   private missedSyncRunning = false
   private vibrateTimer: ReturnType<typeof setInterval> | null = null
   private ringtonePlayer: any = null
+  // #ifdef APP-PLUS
+  private callLogObserver: any = null
+  private phoneStateReceiver: any = null
+  private phoneStateReceiverAlt: any = null
+  private callLogPollTimer: ReturnType<typeof setInterval> | null = null
+  // #endif
 
   startListening() {
     if (this.listening) {
       console.log('[IncomingCallService] 来电监听已在运行中')
+      // #ifdef APP-PLUS
+      // 即使已在运行，也重新验证 CallLog 权限（用户可能刚从设置页面返回授权了）
+      this.verifyCallLogAccess()
+      // #endif
       return
     }
     this.listening = true
     console.log('[IncomingCallService] 来电监听已启动')
 
     // #ifdef APP-PLUS
-    // 无论权限检查结果如何，都尝试初始化 PhoneStateListener
-    // 权限检测在某些 ROM 上不准确，但 initAndroidListener 内部有 try-catch
-    const permOk = this.checkPhonePermissionGranted()
-    if (permOk) {
-      this.initAndroidListener()
-    } else {
-      this.requestPhonePermissions().then((granted) => {
-        if (granted) {
-          this.initAndroidListener()
-        } else {
-          // 即使权限请求被拒绝，也尝试初始化（部分 ROM 检测不准但实际已授权）
-          console.warn('[IncomingCallService] 权限请求被拒绝，仍尝试初始化监听器')
-          try {
-            this.initAndroidListener()
-          } catch (e) {
-            console.warn('[IncomingCallService] 初始化监听器失败，启用轮询兜底:', e)
-            this.usePolling = true
-            this.startPolling()
-          }
-        }
-      })
-    }
+    this.requestPhonePermissions().then(() => {
+      try {
+        this.initAndroidListener()
+      } catch (e) {
+        console.warn('[IncomingCallService] 初始化监听器失败，启用轮询兜底:', e)
+        this.usePolling = true
+        this.startPolling()
+      }
+    })
     this.startForegroundKeepAlive()
     // #endif
 
@@ -242,11 +239,34 @@ class IncomingCallService {
     // #ifdef APP-PLUS
     try {
       const Intent = plus.android.importClass('android.content.Intent') as any
-      const Settings = plus.android.importClass('android.provider.Settings') as any
       const Uri = plus.android.importClass('android.net.Uri') as any
+      const ComponentName = plus.android.importClass('android.content.ComponentName') as any
       const main = plus.android.runtimeMainActivity()
+      const pkgName = (main as any).getPackageName()
+
+      // 华为设备：尝试直接打开华为权限管理页面
+      const brand = ('' + ((plus.android.importClass('android.os.Build') as any).MANUFACTURER || '')).toLowerCase()
+      if (brand.includes('huawei') || brand.includes('honor')) {
+        try {
+          const huaweiIntent = new Intent()
+          huaweiIntent.setComponent(new ComponentName(
+            'com.huawei.systemmanager',
+            'com.huawei.permissionmanager.ui.SingleAppActivity'
+          ))
+          huaweiIntent.putExtra('packageName', pkgName)
+          huaweiIntent.addFlags(0x10000000) // FLAG_ACTIVITY_NEW_TASK
+          ;(main as any).startActivity(huaweiIntent)
+          console.log('[IncomingCallService] 已跳转到华为权限管理页面')
+          return
+        } catch (_e) {
+          console.log('[IncomingCallService] 华为权限管理页面跳转失败，尝试通用设置')
+        }
+      }
+
+      // 通用方式：打开应用详情设置页
+      const Settings = plus.android.importClass('android.provider.Settings') as any
       const intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
-      intent.setData(Uri.parse('package:' + (main as any).getPackageName()))
+      intent.setData(Uri.parse('package:' + pkgName))
       ;(main as any).startActivity(intent)
     } catch (err) {
       console.warn('[IncomingCallService] 跳转设置失败:', err)
@@ -256,49 +276,53 @@ class IncomingCallService {
   }
 
   // #ifdef APP-PLUS
-  private requestPhonePermissions(): Promise<boolean> {
+  private async requestPhonePermissions(): Promise<boolean> {
+    // 第一步：请求 READ_PHONE_STATE（来电状态检测）
+    const hasPhoneState = await this.requestOnePermission('android.permission.READ_PHONE_STATE')
+    console.log('[IncomingCallService] READ_PHONE_STATE:', hasPhoneState ? '✅' : '❌')
+
+    // 第二步：单独请求 READ_CALL_LOG（来电号码获取，Android 10+ 必需）
+    // 分开请求确保系统弹出独立的授权对话框
+    const hasCallLog = await this.requestOnePermission('android.permission.READ_CALL_LOG')
+    console.log('[IncomingCallService] READ_CALL_LOG:', hasCallLog ? '✅' : '❌')
+
+    if (!hasCallLog) {
+      console.warn('[IncomingCallService] ⚠️ READ_CALL_LOG 未授予，来电号码将无法显示')
+      console.warn('[IncomingCallService] 请在系统设置中手动开启：设置 > 应用 > 云客CRM > 权限 > 通话记录')
+    }
+
+    // 第三步：Android 12+ 额外请求 READ_PHONE_NUMBERS
+    try {
+      const Build = plus.android.importClass('android.os.Build') as any
+      if (Build && Build.VERSION && Build.VERSION.SDK_INT >= 31) {
+        await this.requestOnePermission('android.permission.READ_PHONE_NUMBERS')
+      }
+    } catch (_e) { /* ignore */ }
+
+    return hasPhoneState
+  }
+
+  /**
+   * 请求单个权限，返回是否授予
+   */
+  private requestOnePermission(permission: string): Promise<boolean> {
     return new Promise((resolve) => {
       try {
-        const permissions = [
-          'android.permission.READ_PHONE_STATE',
-          'android.permission.READ_CALL_LOG',
-        ]
-        // Android 12+ (API 31) 需要 READ_PHONE_NUMBERS 才能在 onCallStateChanged 中获取号码
-        const Build = plus.android.importClass('android.os.Build') as any
-        if (Build && Build.VERSION && Build.VERSION.SDK_INT >= 31) {
-          permissions.push('android.permission.READ_PHONE_NUMBERS')
-        }
-
         plus.android.requestPermissions(
-          permissions,
+          [permission],
           (e: any) => {
+            const granted = e.granted || []
             const deniedAlways = e.deniedAlways || []
             const deniedPresent = e.deniedPresent || []
-            const granted = e.granted || []
-
-            console.log('[IncomingCallService] 权限申请结果:',
-              'granted=', granted.length,
-              'deniedPresent=', deniedPresent.length,
-              'deniedAlways=', deniedAlways.length)
-
-            if (deniedAlways.length > 0) {
-              console.warn('[IncomingCallService] 以下权限被永久拒绝:', deniedAlways)
-              // 不弹窗打扰用户，由首页权限横幅静默引导
-            }
-
-            // 至少 READ_PHONE_STATE 被授予才算成功
-            const hasPhoneState = granted.some((p: string) =>
-              p.includes('READ_PHONE_STATE')
-            )
-            resolve(hasPhoneState)
+            console.log('[IncomingCallService] 权限 ' + permission.split('.').pop() + ':',
+              'granted=' + granted.length,
+              'deniedPresent=' + deniedPresent.length,
+              'deniedAlways=' + deniedAlways.length)
+            resolve(granted.length > 0)
           },
-          (e: any) => {
-            console.error('[IncomingCallService] 权限申请异常:', e)
-            resolve(false)
-          }
+          (_e: any) => resolve(false)
         )
-      } catch (e) {
-        console.warn('[IncomingCallService] 权限申请调用失败:', e)
+      } catch (_e) {
         resolve(false)
       }
     })
@@ -309,23 +333,145 @@ class IncomingCallService {
       const main = plus.android.runtimeMainActivity()
       const Context = plus.android.importClass('android.content.Context') as any
       const TelephonyManager = plus.android.importClass('android.telephony.TelephonyManager') as any
-      const PhoneStateListener = plus.android.importClass('android.telephony.PhoneStateListener') as any
 
       this.telephonyManager = (main as any).getSystemService(Context.TELEPHONY_SERVICE)
       const self = this
 
+      // 诊断设备信息
+      let sdkInt = 0
+      try {
+        const Build = plus.android.importClass('android.os.Build') as any
+        sdkInt = Build.VERSION.SDK_INT
+        const brand = '' + Build.BRAND
+        const model = '' + Build.MODEL
+        console.log('[IncomingCallService] 设备: ' + brand + ' ' + model + ', SDK=' + sdkInt)
+      } catch (_e) { /* ignore */ }
+
+      const PhoneStateListener = plus.android.importClass('android.telephony.PhoneStateListener') as any
+
       this.phoneStateListener = plus.android.implements('android.telephony.PhoneStateListener', {
-        onCallStateChanged(state: number, phoneNumber: string) {
-          self.handleCallStateChange(state, phoneNumber || '')
+        onCallStateChanged: function() {
+          // 使用 arguments 获取原始参数，避免桥接命名参数映射问题
+          const args = Array.prototype.slice.call(arguments)
+          const state = Number(args[0]) || 0
+          const rawNumber = args[1]
+          const pn = rawNumber ? ('' + rawNumber).trim() : ''
+          console.log('[IncomingCallService] Listener回调: argsCount=' + args.length + ', state=' + state + ', raw=[' + rawNumber + '], type=' + typeof rawNumber + ', number=[' + pn + ']')
+          self.handleCallStateChange(state, pn)
         },
       })
 
-      this.telephonyManager.listen(this.phoneStateListener, PhoneStateListener.LISTEN_CALL_STATE)
-      console.log('[IncomingCallService] PhoneStateListener 已注册')
+      // LISTEN_CALL_STATE=32, 在 Android 10+ 即使有 READ_CALL_LOG，
+      // PhoneStateListener.onCallStateChanged 的 phoneNumber 也可能为空
+      let listenFlags = 32
+      if (sdkInt >= 31) {
+        listenFlags = 544 // 32 | 512 (LISTEN_PHONE_NUMBERS)
+        console.log('[IncomingCallService] Android 12+, flags=544')
+      }
+      this.telephonyManager.listen(this.phoneStateListener, listenFlags)
+      console.log('[IncomingCallService] PhoneStateListener 已注册, flags=' + listenFlags)
+
+      this.verifyCallLogAccess()
+      this.startPolling()
+      this.registerCallLogObserver()
     } catch (e) {
       console.warn('[IncomingCallService] PhoneStateListener 注册失败，启用轮询:', e)
       this.usePolling = true
       this.startPolling()
+      this.registerCallLogObserver()
+    }
+  }
+
+  /**
+   * 验证 CallLog 实际可读——如果查询返回 null/异常说明权限未真正生效
+   */
+  private verifyCallLogAccess() {
+    try {
+      const main = plus.android.runtimeMainActivity()
+      plus.android.importClass('android.content.ContentResolver')
+      plus.android.importClass('android.database.Cursor')
+      const cr = (main as any).getContentResolver()
+
+      // 尝试多种 URI
+      const uris = ['content://call_log/calls', 'content://calls']
+      let success = false
+
+      // 先尝试 CallLog$Calls.CONTENT_URI
+      try {
+        const CallLogCalls = plus.android.importClass('android.provider.CallLog$Calls') as any
+        const classUri = CallLogCalls.CONTENT_URI
+        if (classUri) {
+          const cursor = cr.query(classUri, null, null, null, 'date DESC')
+          if (cursor) {
+            const count = cursor.getCount()
+            cursor.close()
+            console.log('[IncomingCallService] ✅ CallLog 验证成功(CallLog$Calls)，共 ' + count + ' 条')
+            success = true
+          } else {
+            console.log('[IncomingCallService] CallLog$Calls.CONTENT_URI 查询返回 null')
+          }
+        }
+      } catch (e: any) {
+        console.log('[IncomingCallService] CallLog$Calls 不可用:', e?.message || e)
+      }
+
+      if (!success) {
+        const Uri = plus.android.importClass('android.net.Uri') as any
+        for (const uriStr of uris) {
+          try {
+            const uri = Uri.parse(uriStr)
+            // 尝试 cr.query
+            let cursor = cr.query(uri, null, null, null, null)
+            if (cursor) {
+              const count = cursor.getCount()
+              cursor.close()
+              console.log('[IncomingCallService] ✅ CallLog 验证成功(' + uriStr + ')，共 ' + count + ' 条')
+              success = true
+              break
+            }
+            // 尝试 plus.android.invoke
+            cursor = plus.android.invoke(cr, 'query', uri, null, null, null, null)
+            if (cursor) {
+              console.log('[IncomingCallService] ✅ CallLog invoke验证成功(' + uriStr + ')')
+              try { (cursor as any).close() } catch (_) { /* skip */ }
+              success = true
+              break
+            }
+            // 尝试 managedQuery
+            cursor = (main as any).managedQuery(uri, null, null, null, null)
+            if (cursor) {
+              console.log('[IncomingCallService] ✅ CallLog managedQuery验证成功(' + uriStr + ')')
+              success = true
+              break
+            }
+            console.log('[IncomingCallService] ' + uriStr + ' 所有方式返回 null')
+          } catch (e: any) {
+            console.log('[IncomingCallService] ' + uriStr + ' 查询失败:', e?.message || e)
+          }
+        }
+      }
+
+      if (!success) {
+        // 尝试 ApplicationContext
+        try {
+          const appCtx = (main as any).getApplicationContext()
+          const appCr = appCtx.getContentResolver()
+          const Uri2 = plus.android.importClass('android.net.Uri') as any
+          const uri = Uri2.parse('content://call_log/calls')
+          const cursor = appCr.query(uri, null, null, null, null)
+          if (cursor) {
+            console.log('[IncomingCallService] ✅ AppContext CallLog 验证成功')
+            try { cursor.close() } catch (_) { /* skip */ }
+            success = true
+          }
+        } catch (_e) { /* skip */ }
+      }
+
+      if (!success) {
+        console.warn('[IncomingCallService] ❌ 所有 CallLog URI 和方式均不可用（设备限制）')
+      }
+    } catch (e: any) {
+      console.warn('[IncomingCallService] ❌ CallLog 验证异常:', e?.message || e)
     }
   }
 
@@ -335,10 +481,15 @@ class IncomingCallService {
       this.pollTimer = null
     }
 
+    // 注销 CallLog ContentObserver
+    this.unregisterCallLogObserver()
+    // 停止 CallLog 轮询
+    this.stopCallLogPolling()
+
     if (this.telephonyManager && this.phoneStateListener) {
       try {
-        const PhoneStateListener = plus.android.importClass('android.telephony.PhoneStateListener') as any
-        this.telephonyManager.listen(this.phoneStateListener, PhoneStateListener.LISTEN_NONE)
+        // LISTEN_NONE = 0，使用数字常量避免 plus.android.importClass 访问静态常量问题
+        this.telephonyManager.listen(this.phoneStateListener, 0)
       } catch (e) {
         console.warn('[IncomingCallService] 注销监听器失败:', e)
       }
@@ -346,6 +497,325 @@ class IncomingCallService {
     this.phoneStateListener = null
     this.telephonyManager = null
   }
+
+  // #ifdef APP-PLUS
+  /**
+   * 注册 CallLog ContentObserver，监听通话记录变化
+   * 当 PhoneStateListener RINGING 不返回号码时，通过 ContentObserver 从 CallLog 获取号码
+   */
+  private registerCallLogObserver() {
+    try {
+      if (this.callLogObserver) return
+
+      const main = plus.android.runtimeMainActivity()
+      plus.android.importClass('android.content.ContentResolver')
+      const cr = (main as any).getContentResolver()
+      const Handler = plus.android.importClass('android.os.Handler') as any
+
+      // 获取 CallLog URI（优先 CallLog$Calls）
+      let callLogUri: any = null
+      try {
+        const CallLogCalls = plus.android.importClass('android.provider.CallLog$Calls') as any
+        callLogUri = CallLogCalls.CONTENT_URI
+      } catch (_e) { /* skip */ }
+      if (!callLogUri) {
+        const Uri = plus.android.importClass('android.net.Uri') as any
+        callLogUri = Uri.parse('content://call_log/calls')
+      }
+
+      const self = this
+
+      this.callLogObserver = plus.android.implements('android.database.ContentObserver', {
+        onChange: function(selfChange: boolean) {
+          console.log('[IncomingCallService] CallLog 内容变化检测到')
+          self.handleCallLogChange()
+        }
+      })
+
+      const Looper = plus.android.importClass('android.os.Looper') as any
+      const handler = new Handler(Looper.getMainLooper())
+
+      cr.registerContentObserver(callLogUri, true, this.callLogObserver)
+      console.log('[IncomingCallService] CallLog ContentObserver 已注册')
+
+      // 同时注册 PHONE_STATE 广播接收器（Android 10+ 需 READ_CALL_LOG 权限才能获取号码）
+      this.registerPhoneStateReceiver()
+    } catch (e) {
+      console.warn('[IncomingCallService] 注册 CallLog ContentObserver 失败:', e)
+    }
+  }
+
+  private unregisterCallLogObserver() {
+    try {
+      if (!this.callLogObserver) return
+      const main = plus.android.runtimeMainActivity()
+      plus.android.importClass('android.content.ContentResolver')
+      const cr = (main as any).getContentResolver()
+      cr.unregisterContentObserver(this.callLogObserver)
+      this.callLogObserver = null
+      console.log('[IncomingCallService] CallLog ContentObserver 已注销')
+    } catch (e) {
+      console.warn('[IncomingCallService] 注销 CallLog ContentObserver 失败:', e)
+    }
+    // 同时注销 PHONE_STATE 广播接收器
+    this.unregisterPhoneStateReceiver()
+  }
+
+  /**
+   * 注册 PHONE_STATE 广播接收器
+   * 使用多种方式注册以确保在不同 Android 版本上都能接收
+   */
+  private registerPhoneStateReceiver() {
+    try {
+      if (this.phoneStateReceiver) return
+
+      const main = plus.android.runtimeMainActivity()
+      const IntentFilter = plus.android.importClass('android.content.IntentFilter') as any
+      const self = this
+
+      const filter = new IntentFilter('android.intent.action.PHONE_STATE')
+      // 设置最高优先级
+      filter.setPriority(2147483647)
+
+      this.phoneStateReceiver = plus.android.implements('android.content.BroadcastReceiver', {
+        onReceive: function(context: any, intent: any) {
+          console.log('[IncomingCallService] ✅ PHONE_STATE 广播已触发')
+          try {
+            // 列出 intent 中所有 extras，帮助诊断
+            const extras = intent.getExtras()
+            if (extras) {
+              const keys = extras.keySet()
+              const iter = keys.iterator()
+              const allExtras: string[] = []
+              while (iter.hasNext()) {
+                const key = '' + iter.next()
+                const val = '' + extras.get(key)
+                allExtras.push(key + '=' + val)
+              }
+              console.log('[IncomingCallService] 广播 extras:', allExtras.join(', '))
+            } else {
+              console.log('[IncomingCallService] 广播无 extras')
+            }
+
+            const state = intent.getStringExtra('state')
+            const incomingNumber = intent.getStringExtra('incoming_number')
+            console.log('[IncomingCallService] 广播: state=' + state + ', number=' + incomingNumber)
+
+            if ((state === 'RINGING') && incomingNumber && ('' + incomingNumber).length >= 3) {
+              const numStr = '' + incomingNumber
+              if (self.currentIncoming && (!self.currentIncoming.callerNumber || self.currentIncoming.callerNumber === '未知来电')) {
+                console.log('[IncomingCallService] ✅ 广播获取到来电号码:', numStr)
+                self.currentIncoming.callerNumber = numStr
+                self.hasReportedIncoming = false
+                self.currentIncoming.callId = undefined
+                self.reportIncomingToServer(numStr)
+                uni.$emit('incoming:number_updated', { callerNumber: numStr })
+              }
+            }
+          } catch (e) {
+            console.warn('[IncomingCallService] 处理广播失败:', e)
+          }
+        }
+      })
+
+      // 尝试多种方式注册广播接收器
+      let registered = false
+      let sdkInt = 0
+      try {
+        const Build = plus.android.importClass('android.os.Build') as any
+        sdkInt = Build.VERSION.SDK_INT
+      } catch (_e) { /* ignore */ }
+      console.log('[IncomingCallService] 注册广播接收器, SDK=' + sdkInt)
+
+      // Android 13+ (API 33) 需要 RECEIVER_EXPORTED 标志
+      if (sdkInt >= 33) {
+        // 方式1: 3参数 registerReceiver(receiver, filter, flags) — API 33 新增
+        try {
+          ;(main as any).registerReceiver(this.phoneStateReceiver, filter, 2)
+          registered = true
+          console.log('[IncomingCallService] ✅ 广播注册成功(3参数,flags=EXPORTED)')
+        } catch (e1: any) {
+          console.log('[IncomingCallService] 3参数方式失败:', e1?.message || e1)
+        }
+
+        // 方式2: ContextCompat.registerReceiver
+        if (!registered) {
+          try {
+            const ContextCompat = plus.android.importClass('androidx.core.content.ContextCompat') as any
+            ContextCompat.registerReceiver(main, this.phoneStateReceiver, filter, 2)
+            registered = true
+            console.log('[IncomingCallService] ✅ 广播注册成功(ContextCompat)')
+          } catch (e2: any) {
+            console.log('[IncomingCallService] ContextCompat方式失败:', e2?.message || e2)
+          }
+        }
+
+        // 方式3: 5参数 registerReceiver(receiver, filter, permission, handler, flags)
+        if (!registered) {
+          try {
+            ;(main as any).registerReceiver(this.phoneStateReceiver, filter, null, null, 2)
+            registered = true
+            console.log('[IncomingCallService] ✅ 广播注册成功(5参数)')
+          } catch (e3: any) {
+            console.log('[IncomingCallService] 5参数方式失败:', e3?.message || e3)
+          }
+        }
+
+        // 方式4: 通过 plus.android.invoke 注册
+        if (!registered) {
+          try {
+            plus.android.invoke(main, 'registerReceiver', this.phoneStateReceiver, filter, 2)
+            registered = true
+            console.log('[IncomingCallService] ✅ 广播注册成功(invoke)')
+          } catch (e4: any) {
+            console.log('[IncomingCallService] invoke方式失败:', e4?.message || e4)
+          }
+        }
+      }
+
+      // 兜底: 标准 2 参数注册（Android 12 及以下，或上面全部失败）
+      if (!registered) {
+        try {
+          ;(main as any).registerReceiver(this.phoneStateReceiver, filter)
+          registered = true
+          console.log('[IncomingCallService] ✅ 广播注册成功(标准2参数)')
+        } catch (e5: any) {
+          console.log('[IncomingCallService] 标准注册也失败:', e5?.message || e5)
+        }
+      }
+
+      console.log('[IncomingCallService] 广播注册完成, registered=' + registered)
+    } catch (e) {
+      console.warn('[IncomingCallService] 注册 PHONE_STATE 广播接收器失败:', e)
+    }
+  }
+
+  private unregisterPhoneStateReceiver() {
+    const main = plus.android.runtimeMainActivity()
+    if (this.phoneStateReceiver) {
+      try {
+        ;(main as any).unregisterReceiver(this.phoneStateReceiver)
+      } catch (_e) { /* ignore */ }
+      this.phoneStateReceiver = null
+    }
+    if (this.phoneStateReceiverAlt) {
+      try {
+        ;(main as any).unregisterReceiver(this.phoneStateReceiverAlt)
+      } catch (_e) { /* ignore */ }
+      this.phoneStateReceiverAlt = null
+    }
+    console.log('[IncomingCallService] 广播接收器已注销')
+  }
+
+  /**
+   * CallLog 内容变化时的处理
+   * 从 CallLog 读取最新的呼入记录号码，如果当前来电号码是"未知来电"则更新并重新上报
+   */
+  private handleCallLogChange() {
+    if (!this.currentIncoming) return
+
+    const currentNumber = this.currentIncoming.callerNumber
+    if (currentNumber && currentNumber !== '未知来电') return
+
+    // 先试 CallLog，再试录音文件名
+    this.tryResolveCallerFromCallLog().then(async (number) => {
+      let resolved = number
+      if (!resolved) {
+        resolved = await this.tryResolveCallerFromRecordingFile()
+      }
+      if (resolved && this.currentIncoming && (!this.currentIncoming.callerNumber || this.currentIncoming.callerNumber === '未知来电')) {
+        console.log('[IncomingCallService] 获取到来电号码:', resolved)
+        this.currentIncoming.callerNumber = resolved
+        this.hasReportedIncoming = false
+        this.currentIncoming.callId = undefined
+        this.reportIncomingToServer(resolved)
+        uni.$emit('incoming:number_updated', { callerNumber: resolved })
+      }
+    })
+  }
+
+  /**
+   * RINGING 无号码时的快速解析：
+   * 1. 先用"未知来电"立即启动来电流程（不耽误弹窗显示）
+   * 2. 同时启动 CallLog 持续轮询，获取到号码后更新弹窗和上报
+   */
+  private async quickResolveAndReport() {
+    // 立即用"未知来电"启动流程，确保弹窗不延迟
+    this.onRingingDetected('未知来电')
+    // 启动 CallLog 轮询持续尝试获取真实号码
+    this.startCallLogPolling()
+  }
+
+  /**
+   * 启动 CallLog 轮询：每 300ms 查询一次通话记录，直到获取到号码或超时
+   * Android 大部分设备在通话结束后才写入 CallLog，所以需要持续轮询
+   */
+  private startCallLogPolling() {
+    if (this.callLogPollTimer) return
+    let attempts = 0
+    const maxAttempts = 120 // 120 次 × 300ms = 36 秒
+    let idleCount = 0 // IDLE 后继续轮询的次数
+    console.log('[IncomingCallService] 开始 CallLog 轮询（每300ms一次）')
+    this.callLogPollTimer = setInterval(() => {
+      attempts++
+      // 已拿到号码，停止
+      if (!this.currentIncoming || (this.currentIncoming.callerNumber && this.currentIncoming.callerNumber !== '未知来电')) {
+        console.log('[IncomingCallService] CallLog 轮询停止：已获取号码')
+        this.stopCallLogPolling()
+        return
+      }
+      // 通话结束(IDLE)后再多查 20 次（6秒），因为大部分设备在 IDLE 后才写入 CallLog
+      if (this.lastPhoneState === 0) {
+        idleCount++
+        if (idleCount > 20) {
+          console.log('[IncomingCallService] CallLog 轮询停止：IDLE后6秒仍无号码')
+          this.stopCallLogPolling()
+          return
+        }
+      }
+      if (attempts > maxAttempts) {
+        console.log('[IncomingCallService] CallLog 轮询停止：超时36秒')
+        this.stopCallLogPolling()
+        return
+      }
+      this.tryResolveNumber(attempts).then((num) => {
+        if (num && this.currentIncoming && this.currentIncoming.callerNumber === '未知来电') {
+          console.log('[IncomingCallService] 轮询第' + attempts + '次获取到号码:', num)
+          this.currentIncoming.callerNumber = num
+          this.hasReportedIncoming = false
+          this.currentIncoming.callId = undefined
+          this.reportIncomingToServer(num)
+          uni.$emit('incoming:number_updated', { callerNumber: num })
+          this.stopCallLogPolling()
+        }
+      })
+    }, 300)
+  }
+
+  /**
+   * 综合尝试获取来电号码：先 CallLog，再录音文件名
+   */
+  private async tryResolveNumber(attempt: number): Promise<string> {
+    // 1. 先试 CallLog
+    const fromCallLog = await this.tryResolveCallerFromCallLog()
+    if (fromCallLog) return fromCallLog
+
+    // 2. 每 3 次尝试一次录音文件名
+    if (attempt % 3 === 0) {
+      const fromRecording = await this.tryResolveCallerFromRecordingFile()
+      if (fromRecording) return fromRecording
+    }
+
+    return ''
+  }
+
+  private stopCallLogPolling() {
+    if (this.callLogPollTimer) {
+      clearInterval(this.callLogPollTimer)
+      this.callLogPollTimer = null
+    }
+  }
+  // #endif
 
   private startPolling() {
     if (this.pollTimer) return
@@ -358,7 +828,10 @@ class IncomingCallService {
         const tm = (main as any).getSystemService((Context as any).TELEPHONY_SERVICE)
         const state = tm.getCallState()
         if (state !== this.lastPhoneState) {
-          this.handleCallStateChange(state, this.currentIncoming?.callerNumber || '')
+          // 轮询只能获取状态变化，无法获取号码（getCallState 不返回号码）
+          // 对 RINGING 传空字符串以触发 CallLog 兜底解析
+          const num = (state === 1) ? '' : (this.currentIncoming?.callerNumber || '')
+          this.handleCallStateChange(state, num)
         }
       } catch (e) {
         console.error('[IncomingCallService] 轮询通话状态失败:', e)
@@ -372,8 +845,15 @@ class IncomingCallService {
     // 避免外呼结束后状态残留导致来电永远被忽略
     const outboundCall = callStateService.getCurrentCall()
     if (outboundCall && callStateService.isInCall()) {
-      this.lastPhoneState = state
-      return
+      // 超时保护：外呼通话超过5分钟未结束，可能是状态残留，强制清理以恢复来电检测
+      const outboundElapsed = Date.now() - outboundCall.startTime
+      if (outboundElapsed > 5 * 60 * 1000) {
+        console.warn('[IncomingCallService] 外呼状态超过5分钟未清理，强制清理以恢复来电检测')
+        callStateService.stopMonitoring()
+      } else {
+        this.lastPhoneState = state
+        return
+      }
     }
     // 如果外呼已结束但 getCurrentCall 非空（残留），主动清理
     if (outboundCall && !callStateService.isInCall()) {
@@ -384,25 +864,18 @@ class IncomingCallService {
     const prevState = this.lastPhoneState
     this.lastPhoneState = state
 
-    console.log('[IncomingCallService] 通话状态:', prevState, '->', state, phoneNumber)
+    console.log('[IncomingCallService] 通话状态:', prevState, '->', state, ', phoneNumber=[' + phoneNumber + '], type=' + typeof phoneNumber + ', len=' + (phoneNumber ? phoneNumber.length : 0))
 
     switch (state) {
       case 1: // RINGING
-        if (phoneNumber) {
+        if (phoneNumber && phoneNumber.length >= 3 && phoneNumber !== '未知来电') {
+          console.log('[IncomingCallService] ✅ RINGING 获取到来电号码:', phoneNumber)
           this.onRingingDetected(phoneNumber)
         } else if (!this.currentIncoming) {
-          // Android 10+ 可能不返回号码：先用"未知"触发来电流程，再异步尝试解析号码
-          console.log('[IncomingCallService] RINGING 但无号码，先触发未知来电')
-          this.onRingingDetected('未知来电')
-          // 延迟 1 秒后尝试从通话记录补充号码
-          setTimeout(() => {
-            this.tryResolveCallerFromCallLog().then((num) => {
-              if (num && this.currentIncoming && this.currentIncoming.callerNumber === '未知来电') {
-                console.log('[IncomingCallService] 从通话记录补充来电号码:', num)
-                this.currentIncoming.callerNumber = num
-              }
-            })
-          }, 1000)
+          console.log('[IncomingCallService] ⚠️ RINGING 但无有效号码，启动 CallLog 轮询')
+          // #ifdef APP-PLUS
+          this.quickResolveAndReport()
+          // #endif
         }
         break
 
@@ -412,9 +885,42 @@ class IncomingCallService {
         // #ifdef APP-PLUS
         this.stopRingtone()
         // #endif
+        // 如果 currentIncoming 为空但 prevState 是 RINGING，说明 RINGING 被跳过了，补建
+        if (!this.currentIncoming && prevState === 1) {
+          console.log('[IncomingCallService] OFFHOOK 但 currentIncoming 为空（RINGING 被跳过），补建')
+          this.currentIncoming = {
+            callerNumber: phoneNumber || '未知来电',
+            startTime: Date.now(),
+          }
+          this.hasReportedIncoming = false
+        }
         if (this.currentIncoming && !this.currentIncoming.connectTime) {
           this.currentIncoming.connectTime = Date.now()
           console.log('[IncomingCallService] 来电已接听')
+
+          // 上报接听状态给后端，后端会转发 CALL_STATUS 给CRM端关闭来电弹窗
+          const answeredCallId = this.currentIncoming.callId || ''
+          const answeredNumber = this.currentIncoming.callerNumber || ''
+
+          // WebSocket 上报（不管 callId 是否有值都发，后端可按号码匹配）
+          if (wsService.isConnected) {
+            wsService.reportCallStatus(answeredCallId, 'connected', {
+              callType: 'inbound',
+              phoneNumber: answeredNumber,
+            })
+            console.log('[IncomingCallService] WS上报接听状态, callId:', answeredCallId, 'number:', answeredNumber)
+          } else {
+            console.warn('[IncomingCallService] WebSocket 未连接，无法上报接听状态，使用HTTP备份')
+          }
+
+          // HTTP 备份上报（WS 断开时兜底）
+          reportCallStatus({
+            callId: answeredCallId,
+            status: 'connected',
+            phoneNumber: answeredNumber,
+          }).catch((e: any) => {
+            console.warn('[IncomingCallService] HTTP上报接听状态失败:', e)
+          })
         }
         break
 
@@ -425,7 +931,18 @@ class IncomingCallService {
         this.stopRingtone()
         // #endif
         if (this.currentIncoming) {
-          this.onIncomingCallEnded()
+          // 大部分 Android 设备在通话结束后才写入 CallLog
+          // 延迟 1 秒再处理结束流程，给系统时间写入 CallLog
+          if (!this.currentIncoming.callerNumber || this.currentIncoming.callerNumber === '未知来电') {
+            console.log('[IncomingCallService] IDLE 号码仍未知，延迟 1 秒等待 CallLog 写入后再处理')
+            setTimeout(() => {
+              if (this.currentIncoming) {
+                this.onIncomingCallEnded()
+              }
+            }, 1000)
+          } else {
+            this.onIncomingCallEnded()
+          }
         }
         break
     }
@@ -475,6 +992,36 @@ class IncomingCallService {
     const info = { ...this.currentIncoming }
     const endTime = Date.now()
 
+    // 如果号码是"未知来电"，在通话结束后从通话记录/录音文件补获真实号码
+    let finalNumber = info.callerNumber
+    if (!finalNumber || finalNumber === '未知来电') {
+      // #ifdef APP-PLUS
+      // 延迟递增，录音文件可能需要数秒才会写入磁盘
+      const delays = [500, 1000, 1500, 2000, 2000, 3000, 3000, 4000, 5000, 5000]
+      for (let attempt = 0; attempt < delays.length; attempt++) {
+        try {
+          await new Promise(resolve => setTimeout(resolve, delays[attempt]))
+          // 先试 CallLog（可能在某些设备上终于可用）
+          let resolvedNum = await this.tryResolveCallerFromCallLog()
+          // CallLog 失败，试录音文件名（传入来电开始时间避免匹配旧文件）
+          if (!resolvedNum) {
+            resolvedNum = await this.tryResolveCallerFromRecordingFile(info.startTime)
+          }
+          if (resolvedNum && resolvedNum !== '未知来电') {
+            console.log('[IncomingCallService] ✅ 通话结束后补获号码(第' + (attempt + 1) + '次):', resolvedNum)
+            finalNumber = resolvedNum
+            info.callerNumber = resolvedNum
+            // 通知前端页面更新号码
+            uni.$emit('incoming:number_updated', { callerNumber: resolvedNum })
+            break
+          }
+        } catch (e) {
+          console.warn('[IncomingCallService] 通话结束后补获号码失败(第' + (attempt + 1) + '次):', e)
+        }
+      }
+      // #endif
+    }
+
     let duration = 0
     if (info.connectTime) {
       duration = Math.floor((endTime - info.connectTime) / 1000)
@@ -483,32 +1030,28 @@ class IncomingCallService {
     const callId = info.callId || `IN-local-${info.startTime}`
     const status = duration > 0 ? 'connected' : 'missed'
 
-    console.log('[IncomingCallService] 来电结束:', info.callerNumber, '时长:', duration)
+    console.log('[IncomingCallService] 来电结束:', finalNumber, '时长:', duration)
 
-    // WebSocket 通知
-    wsService.reportCallEnd(callId, {
+    const reportData = {
+      callId,
+      phoneNumber: finalNumber,
+      callType: 'inbound' as const,
       status,
-      phoneNumber: info.callerNumber,
-      callType: 'inbound',
       startTime: new Date(info.startTime).toISOString(),
       endTime: new Date(endTime).toISOString(),
       duration,
       hasRecording: false,
+    }
+
+    // WebSocket 通知
+    wsService.reportCallEnd(callId, {
+      ...reportData,
       endReason: 'system_hangup',
     })
 
     // HTTP 上报
     try {
-      await reportCallEnd({
-        callId,
-        phoneNumber: info.callerNumber,
-        callType: 'inbound',
-        status,
-        startTime: new Date(info.startTime).toISOString(),
-        endTime: new Date(endTime).toISOString(),
-        duration,
-        hasRecording: false,
-      })
+      await reportCallEnd(reportData)
     } catch (e) {
       console.error('[IncomingCallService] 上报通话结束失败:', e)
     }
@@ -518,7 +1061,7 @@ class IncomingCallService {
       callId,
       customerName: info.customerName,
       customerId: info.customerId,
-      phoneNumber: info.callerNumber,
+      phoneNumber: finalNumber,
       duration,
       endTime: new Date(endTime).toISOString(),
       wasConnected: duration > 0,
@@ -541,6 +1084,13 @@ class IncomingCallService {
 
     // 重置状态
     this.currentIncoming = null
+
+    // 如果号码仍为"未知来电"，在后台继续尝试补获（录音文件写入可能延迟较大）
+    // #ifdef APP-PLUS
+    if (!finalNumber || finalNumber === '未知来电') {
+      this.backgroundResolveNumber(callId, info, duration, endTime)
+    }
+    // #endif
     this.hasReportedIncoming = false
     this.lastPhoneState = 0
 
@@ -626,6 +1176,10 @@ class IncomingCallService {
           { title: '客户来电', cover: false }
         )
 
+        // 额外使用 Android NotificationManager 创建高优先级通知
+        // 确保 APP 在前台/后台/锁屏时都能看到来电通知
+        this.showAndroidNotification(displayName, callerNumber)
+
         // 播放来电提示音
         this.playRingtone()
       } catch (e) {
@@ -673,6 +1227,81 @@ class IncomingCallService {
       console.warn('[IncomingCallService] 停止铃声失败:', e)
     }
   }
+
+  /**
+   * 使用 Android NotificationManager 创建高优先级来电通知
+   * 确保 APP 在前台、后台、锁屏状态下都能看到通知
+   */
+  private showAndroidNotification(displayName: string, callerNumber: string) {
+    try {
+      const main = plus.android.runtimeMainActivity()
+      const Context = plus.android.importClass('android.content.Context') as any
+      const Build = plus.android.importClass('android.os.Build') as any
+      const sdkInt = Build.VERSION.SDK_INT
+
+      // Android 13+ 需要运行时请求 POST_NOTIFICATIONS 权限
+      if (sdkInt >= 33) {
+        try {
+          const permission = 'android.permission.POST_NOTIFICATIONS'
+          const granted = (main as any).checkSelfPermission(permission)
+          if (granted !== 0) {
+            // 0 = PERMISSION_GRANTED
+            const permissions = plus.android.importClass('java.lang.reflect.Array') as any
+            const permArray = permissions.newInstance(plus.android.importClass('java.lang.String'), 1)
+            permissions.set(permArray, 0, permission)
+            ;(main as any).requestPermissions(permArray, 1)
+          }
+        } catch (_e) {
+          // 权限请求失败不影响后续通知尝试
+        }
+      }
+
+      const notificationManager = (main as any).getSystemService(Context.NOTIFICATION_SERVICE)
+      const channelId = 'crm_incoming_call'
+
+      // 创建通知渠道（Android 8+ 必需）
+      if (sdkInt >= 26) {
+        const NotificationChannel = plus.android.importClass('android.app.NotificationChannel') as any
+        const channel = new NotificationChannel(channelId, '客户来电通知', 4)
+        channel.enableLights(true)
+        channel.enableVibration(true)
+        channel.setShowBadge(true)
+        notificationManager.createNotificationChannel(channel)
+      }
+
+      // 使用原生 Notification.Builder（不依赖 AndroidX）
+      const Notification = plus.android.importClass('android.app.Notification') as any
+      const Intent = plus.android.importClass('android.content.Intent') as any
+      const PendingIntent = plus.android.importClass('android.app.PendingIntent') as any
+
+      const intent = new Intent(main, (main as any).getClass())
+      intent.addFlags(0x10000000) // FLAG_ACTIVITY_NEW_TASK
+      intent.addFlags(0x04000000) // FLAG_ACTIVITY_CLEAR_TOP
+      const pendingIntent = PendingIntent.getActivity(main, 0, intent, 0x08000000)
+
+      const contentText = callerNumber && callerNumber !== '未知来电'
+        ? `${displayName} ${callerNumber}`
+        : displayName
+
+      // 使用 Notification.Builder（Android 8+ 支持 channelId 参数）
+      const builder = new Notification.Builder(main, channelId)
+      builder.setSmallIcon(0x01080079) // android.R.drawable.stat_sys_phone_call
+      builder.setContentTitle('客户来电')
+      builder.setContentText(contentText)
+      builder.setContentIntent(pendingIntent)
+      builder.setAutoCancel(true)
+
+      // Android 7- 设置优先级
+      if (sdkInt < 26) {
+        builder.setPriority(2) // PRIORITY_HIGH
+      }
+
+      notificationManager.notify(1001, builder.build())
+      console.log('[IncomingCallService] Android 通知已发送')
+    } catch (e) {
+      console.warn('[IncomingCallService] Android 通知创建失败:', e)
+    }
+  }
   // #endif
 
   private notifyIncomingCallbacks(info: IncomingCallInfo) {
@@ -684,6 +1313,74 @@ class IncomingCallService {
       }
     })
   }
+
+  // #ifdef APP-PLUS
+  /**
+   * 后台持续尝试从录音文件提取来电号码，成功后更新后端记录
+   */
+  private async backgroundResolveNumber(
+    callId: string,
+    info: IncomingCallInfo,
+    duration: number,
+    endTime: number
+  ) {
+    // 更长的延迟，等录音文件写入
+    const delays = [3000, 5000, 5000, 8000, 10000, 15000]
+    for (let attempt = 0; attempt < delays.length; attempt++) {
+      try {
+        await new Promise(resolve => setTimeout(resolve, delays[attempt]))
+        // 传入来电开始时间，避免匹配到旧录音文件
+        let resolved = await this.tryResolveCallerFromRecordingFile(info.startTime)
+        if (!resolved) {
+          resolved = await this.tryResolveCallerFromCallLog()
+        }
+        if (resolved && resolved !== '未知来电') {
+          console.log('[IncomingCallService] ✅ 后台补获号码成功(第' + (attempt + 1) + '次):', resolved)
+
+          // 通知前端更新
+          uni.$emit('incoming:number_updated', { callerNumber: resolved })
+
+          // 重新上报后端（更新通话记录中的号码）
+          try {
+            wsService.reportCallEnd(callId, {
+              status: duration > 0 ? 'connected' : 'missed',
+              phoneNumber: resolved,
+              callType: 'inbound',
+              startTime: new Date(info.startTime).toISOString(),
+              endTime: new Date(endTime).toISOString(),
+              duration,
+              hasRecording: false,
+              endReason: 'number_updated',
+            })
+            await reportCallEnd({
+              callId,
+              phoneNumber: resolved,
+              callType: 'inbound',
+              status: duration > 0 ? 'connected' : 'missed',
+              startTime: new Date(info.startTime).toISOString(),
+              endTime: new Date(endTime).toISOString(),
+              duration,
+              hasRecording: false,
+            })
+          } catch (e) {
+            console.warn('[IncomingCallService] 后台补获号码上报失败:', e)
+          }
+
+          // 更新本地存储
+          const saved = uni.getStorageSync('lastEndedCall')
+          if (saved && saved.callId === callId) {
+            saved.phoneNumber = resolved
+            uni.setStorageSync('lastEndedCall', saved)
+          }
+          return
+        }
+      } catch (e) {
+        console.warn('[IncomingCallService] 后台补获第' + (attempt + 1) + '次失败:', e)
+      }
+    }
+    console.log('[IncomingCallService] 后台补获号码全部失败')
+  }
+  // #endif
 
   private async processRecordingAsync(
     info: IncomingCallInfo,
@@ -856,16 +1553,21 @@ class IncomingCallService {
     return new Promise((resolve) => {
       try {
         const main = plus.android.runtimeMainActivity()
-        const CallLog = plus.android.importClass('android.provider.CallLog') as any
-        const ContentResolver = (main as any).getContentResolver()
+        plus.android.importClass('android.content.ContentResolver')
+        plus.android.importClass('android.database.Cursor')
+        const cr = (main as any).getContentResolver()
 
-        const cursor = ContentResolver.query(
-          CallLog.Calls.CONTENT_URI,
-          ['number', 'type', 'date', 'duration'],
-          null,
-          null,
-          'date DESC'
-        )
+        // 获取 CallLog URI
+        let contentUri: any = null
+        try {
+          const CallLogCalls = plus.android.importClass('android.provider.CallLog$Calls') as any
+          contentUri = CallLogCalls.CONTENT_URI
+        } catch (_e) {
+          const Uri = plus.android.importClass('android.net.Uri') as any
+          contentUri = Uri.parse('content://call_log/calls')
+        }
+
+        const cursor = cr.query(contentUri, null, null, null, 'date DESC')
 
         const results: Array<{
           callerNumber: string
@@ -879,24 +1581,27 @@ class IncomingCallService {
           return
         }
 
+        const numIdx = cursor.getColumnIndex('number')
+        const typeIdx = cursor.getColumnIndex('type')
+        const dateIdx = cursor.getColumnIndex('date')
+        const durIdx = cursor.getColumnIndex('duration')
         const maxRows = 30
         let count = 0
 
         while (cursor.moveToNext() && count < maxRows) {
-          const number = String(cursor.getString(0) || '').trim()
-          const type = Number(cursor.getInt(1))
-          const date = Number(cursor.getLong(2))
-          const duration = Number(cursor.getLong(3)) || 0
+          const number = numIdx >= 0 ? String(cursor.getString(numIdx) || '').trim() : ''
+          const type = typeIdx >= 0 ? Number(cursor.getInt(typeIdx)) : 0
+          const date = dateIdx >= 0 ? Number(cursor.getLong(dateIdx)) : 0
+          const duration = durIdx >= 0 ? (Number(cursor.getLong(durIdx)) || 0) : 0
 
           if (!number || !date) continue
 
           let callStatus: 'missed' | 'rejected' | 'connected' | 'busy' = 'missed'
-          if (type === CallLog.Calls.INCOMING_TYPE) {
+          if (type === 1) {
             callStatus = duration > 0 ? 'connected' : 'missed'
-          } else if (type === CallLog.Calls.MISSED_TYPE) {
+          } else if (type === 3) {
             callStatus = 'missed'
           } else if (type === 5) {
-            // REJECTED_TYPE (API 29+)
             callStatus = 'rejected'
           } else {
             continue
@@ -922,33 +1627,312 @@ class IncomingCallService {
   // #endif
 
   // #ifdef APP-PLUS
+  /**
+   * 从系统 CallLog 读取最近的来电号码
+   * 尝试多种方式：CallLog$Calls / Uri.parse / managedQuery / plus.android.invoke
+   */
   private async tryResolveCallerFromCallLog(): Promise<string> {
     return new Promise((resolve) => {
       try {
         const main = plus.android.runtimeMainActivity()
-        const CallLog = plus.android.importClass('android.provider.CallLog') as any
-        const ContentResolver = (main as any).getContentResolver()
+        plus.android.importClass('android.content.ContentResolver')
+        plus.android.importClass('android.database.Cursor')
 
-        const cursor = ContentResolver.query(
-          CallLog.Calls.CONTENT_URI,
-          ['number', 'type', 'date'],
-          `${CallLog.Calls.TYPE} = ?`,
-          [String(CallLog.Calls.INCOMING_TYPE)],
-          'date DESC'
-        )
+        // 收集所有可能的 URI
+        const urisToTry: Array<{ uri: any; label: string }> = []
 
-        if (cursor && cursor.moveToFirst()) {
-          const number = cursor.getString(0)
-          cursor.close()
-          resolve(number || '')
-        } else {
-          resolve('')
+        try {
+          const CallLogCalls = plus.android.importClass('android.provider.CallLog$Calls') as any
+          if (CallLogCalls && CallLogCalls.CONTENT_URI) {
+            urisToTry.push({ uri: CallLogCalls.CONTENT_URI, label: 'CallLog$Calls.CONTENT_URI' })
+          }
+        } catch (_e) { /* skip */ }
+
+        const Uri = plus.android.importClass('android.net.Uri') as any
+        urisToTry.push({ uri: Uri.parse('content://call_log/calls'), label: 'content://call_log/calls' })
+        urisToTry.push({ uri: Uri.parse('content://calls'), label: 'content://calls' })
+
+        // 方法1: ContentResolver.query (通过桥接)
+        const cr = (main as any).getContentResolver()
+        for (const { uri, label } of urisToTry) {
+          try {
+            const cursor = cr.query(uri, null, null, null, 'date DESC')
+            if (cursor) {
+              const result = this.extractNumberFromCursor(cursor)
+              if (result) {
+                console.log('[IncomingCallService] ✅ CallLog查询成功(' + label + '): ' + result)
+                resolve(result)
+                return
+              }
+            } else {
+              console.log('[IncomingCallService] ' + label + ' cr.query 返回 null')
+            }
+          } catch (e: any) {
+            console.log('[IncomingCallService] ' + label + ' cr.query 异常:', e?.message || e)
+          }
         }
-      } catch (e) {
-        console.warn('[IncomingCallService] 读取通话记录失败:', e)
+
+        // 方法2: plus.android.invoke 底层调用（绕过桥接方法代理）
+        for (const { uri, label } of urisToTry) {
+          try {
+            const cursor = plus.android.invoke(cr, 'query', uri, null, null, null, 'date DESC')
+            if (cursor) {
+              plus.android.importClass('android.database.Cursor')
+              const result = this.extractNumberFromCursor(cursor)
+              if (result) {
+                console.log('[IncomingCallService] ✅ invoke查询成功(' + label + '): ' + result)
+                resolve(result)
+                return
+              }
+            } else {
+              console.log('[IncomingCallService] ' + label + ' invoke 返回 null')
+            }
+          } catch (e: any) {
+            console.log('[IncomingCallService] ' + label + ' invoke 异常:', e?.message || e)
+          }
+        }
+
+        // 方法3: Activity.managedQuery（已弃用但某些设备仍有效）
+        for (const { uri, label } of urisToTry) {
+          try {
+            const cursor = (main as any).managedQuery(uri, null, null, null, 'date DESC')
+            if (cursor) {
+              plus.android.importClass('android.database.Cursor')
+              const result = this.extractNumberFromCursor(cursor)
+              if (result) {
+                console.log('[IncomingCallService] ✅ managedQuery成功(' + label + '): ' + result)
+                resolve(result)
+                return
+              }
+            } else {
+              console.log('[IncomingCallService] ' + label + ' managedQuery 返回 null')
+            }
+          } catch (e: any) {
+            console.log('[IncomingCallService] ' + label + ' managedQuery 异常:', e?.message || e)
+          }
+        }
+
+        // 方法4: 使用 ApplicationContext 的 ContentResolver
+        try {
+          const appCtx = (main as any).getApplicationContext()
+          plus.android.importClass('android.content.ContentResolver')
+          const appCr = appCtx.getContentResolver()
+          for (const { uri, label } of urisToTry) {
+            try {
+              const cursor = appCr.query(uri, null, null, null, 'date DESC')
+              if (cursor) {
+                const result = this.extractNumberFromCursor(cursor)
+                if (result) {
+                  console.log('[IncomingCallService] ✅ AppContext查询成功(' + label + '): ' + result)
+                  resolve(result)
+                  return
+                }
+              } else {
+                console.log('[IncomingCallService] ' + label + ' appCtx 返回 null')
+              }
+            } catch (e: any) {
+              console.log('[IncomingCallService] ' + label + ' appCtx 异常:', e?.message || e)
+            }
+          }
+        } catch (e: any) {
+          console.log('[IncomingCallService] AppContext查询失败:', e?.message || e)
+        }
+
+        // 方法5: ContentProviderClient（直连 content provider，绕过中间件）
+        for (const { uri, label } of urisToTry) {
+          try {
+            const client = cr.acquireUnstableContentProviderClient(uri)
+            if (client) {
+              plus.android.importClass('android.content.ContentProviderClient')
+              try {
+                const cursor = client.query(uri, null, null, null, 'date DESC')
+                if (cursor) {
+                  const result = this.extractNumberFromCursor(cursor)
+                  if (result) {
+                    console.log('[IncomingCallService] ✅ ContentProviderClient成功(' + label + '): ' + result)
+                    try { client.release() } catch (_) { /* skip */ }
+                    resolve(result)
+                    return
+                  }
+                } else {
+                  console.log('[IncomingCallService] ' + label + ' ProviderClient 返回 null')
+                }
+              } finally {
+                try { client.release() } catch (_) { /* skip */ }
+              }
+            } else {
+              console.log('[IncomingCallService] ' + label + ' acquireClient 返回 null')
+            }
+          } catch (e: any) {
+            console.log('[IncomingCallService] ' + label + ' ProviderClient 异常:', e?.message || e)
+          }
+        }
+
+        // 方法6: CursorLoader（异步加载器同步执行）
+        for (const { uri, label } of urisToTry) {
+          try {
+            const CursorLoader = plus.android.importClass('android.content.CursorLoader') as any
+            const loader = new CursorLoader(main, uri, null, null, null, 'date DESC')
+            const cursor = loader.loadInBackground()
+            if (cursor) {
+              const result = this.extractNumberFromCursor(cursor)
+              if (result) {
+                console.log('[IncomingCallService] ✅ CursorLoader成功(' + label + '): ' + result)
+                resolve(result)
+                return
+              }
+            } else {
+              console.log('[IncomingCallService] ' + label + ' CursorLoader 返回 null')
+            }
+          } catch (e: any) {
+            console.log('[IncomingCallService] ' + label + ' CursorLoader 异常:', e?.message || e)
+          }
+        }
+
+        // 方法7: 带 CancellationSignal 的查询（使用不同的方法重载）
+        try {
+          const CancellationSignal = plus.android.importClass('android.os.CancellationSignal') as any
+          const signal = new CancellationSignal()
+          for (const { uri, label } of urisToTry) {
+            try {
+              const cursor = cr.query(uri, null, null, null, 'date DESC', signal)
+              if (cursor) {
+                const result = this.extractNumberFromCursor(cursor)
+                if (result) {
+                  console.log('[IncomingCallService] ✅ CancellationSignal查询成功(' + label + '): ' + result)
+                  resolve(result)
+                  return
+                }
+              } else {
+                console.log('[IncomingCallService] ' + label + ' CancelSignal 返回 null')
+              }
+            } catch (e: any) {
+              console.log('[IncomingCallService] ' + label + ' CancelSignal 异常:', e?.message || e)
+            }
+          }
+        } catch (e: any) {
+          console.log('[IncomingCallService] CancellationSignal 创建失败:', e?.message || e)
+        }
+
+        console.log('[IncomingCallService] 所有CallLog查询方式均未成功')
+        resolve('')
+      } catch (e: any) {
+        console.warn('[IncomingCallService] 读取通话记录失败:', e?.message || e)
         resolve('')
       }
     })
+  }
+
+  /**
+   * 从 Cursor 中提取最近 120 秒内的来电号码
+   */
+  private extractNumberFromCursor(cursor: any): string {
+    try {
+      if (!cursor) return ''
+
+      if (cursor.moveToFirst()) {
+        const numIdx = cursor.getColumnIndex('number')
+        const typeIdx = cursor.getColumnIndex('type')
+        const dateIdx = cursor.getColumnIndex('date')
+
+        if (numIdx < 0) {
+          const colCount = cursor.getColumnCount()
+          const cols: string[] = []
+          for (let i = 0; i < colCount && i < 20; i++) {
+            cols.push(cursor.getColumnName(i))
+          }
+          cursor.close()
+          console.log('[IncomingCallService] CallLog列名:', cols.join(', '))
+          return ''
+        }
+
+        const number = '' + (cursor.getString(numIdx) || '')
+        const type = typeIdx >= 0 ? cursor.getInt(typeIdx) : -1
+        const date = dateIdx >= 0 ? Number('' + cursor.getLong(dateIdx)) : 0
+
+        const isRecent = date > 0 ? (Date.now() - date) < 120000 : true
+        cursor.close()
+
+        console.log('[IncomingCallService] CallLog记录: number=' + number + ', type=' + type + ', date=' + date + ', recent=' + isRecent)
+
+        if (isRecent && number && number.length >= 3 && number !== '-1' && number !== '-2' && number !== 'unknown') {
+          return number
+        }
+      } else {
+        cursor.close()
+        console.log('[IncomingCallService] CallLog查询: 无记录')
+      }
+      return ''
+    } catch (e: any) {
+      try { cursor?.close?.() } catch (_) { /* ignore */ }
+      console.log('[IncomingCallService] extractNumberFromCursor 异常:', e?.message || e)
+      return ''
+    }
+  }
+  // #endif
+
+  // #ifdef APP-PLUS
+  /**
+   * 备选方案：从录音文件名中提取来电号码
+   * 华为等设备的录音文件名格式：134 2882 7364_20260625142304.amr
+   * 即使没有 READ_CALL_LOG 权限，录音文件名也包含号码
+   */
+  private async tryResolveCallerFromRecordingFile(callStartTime?: number): Promise<string> {
+    try {
+      const recordings = await recordingService.scanRecordingFolders()
+      if (recordings.length === 0) return ''
+
+      // 关键：只使用在当前来电开始之后创建/修改的录音文件
+      // 避免用上一通电话的录音文件错误匹配当前来电
+      const startTime = callStartTime || this.currentIncoming?.startTime
+      if (!startTime) {
+        console.log('[IncomingCallService] 无法确定来电开始时间，跳过录音文件匹配')
+        return ''
+      }
+
+      const recentFiles = recordings
+        .filter(f => f.lastModified >= (startTime - 5000))
+        .sort((a, b) => b.lastModified - a.lastModified)
+
+      if (recentFiles.length === 0) {
+        console.log('[IncomingCallService] 无当前通话时段的录音文件(callStart=' + new Date(startTime).toLocaleTimeString() + ')')
+        return ''
+      }
+
+      const fileName = recentFiles[0].name
+      console.log('[IncomingCallService] 尝试从录音文件名提取号码:', fileName, '修改时间:', new Date(recentFiles[0].lastModified).toLocaleTimeString())
+
+      // 去掉扩展名
+      const nameWithoutExt = fileName.replace(/\.\w+$/, '')
+      // 提取号码部分（下划线前面的部分），华为格式：134 2882 7364_20260625142304
+      const parts = nameWithoutExt.split('_')
+      if (parts.length >= 2) {
+        // 去掉空格得到纯数字号码
+        const numberPart = parts[0].replace(/[\s\-()]/g, '')
+        // 验证是否是有效的手机号（11位数字，1开头）
+        if (/^1\d{10}$/.test(numberPart)) {
+          console.log('[IncomingCallService] ✅ 从录音文件名提取到号码:', numberPart)
+          return numberPart
+        }
+        // 可能是固话号码（7-12位数字）
+        if (/^\d{7,12}$/.test(numberPart)) {
+          console.log('[IncomingCallService] ✅ 从录音文件名提取到号码(固话):', numberPart)
+          return numberPart
+        }
+      }
+
+      // 备选：直接从文件名中提取手机号模式
+      const phoneMatch = nameWithoutExt.replace(/[\s\-()]/g, '').match(/1\d{10}/)
+      if (phoneMatch) {
+        console.log('[IncomingCallService] ✅ 从录音文件名正则提取到号码:', phoneMatch[0])
+        return phoneMatch[0]
+      }
+
+      return ''
+    } catch (e: any) {
+      console.warn('[IncomingCallService] 从录音文件提取号码失败:', e?.message || e)
+      return ''
+    }
   }
   // #endif
 }

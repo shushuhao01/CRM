@@ -17,7 +17,8 @@
         },
         "modules" : {
             "Camera" : {},
-            "Barcode" : {}
+            "Barcode" : {},
+            "Push" : {}
         },
         "privacy" : {
             "prompt" : "template",

@@ -331,10 +331,13 @@ class MobileWebSocketService {
   private async handleCallStatus(deviceId: string, userId: number, data: any): Promise<void> {
     try {
       const dataSource = getDataSource();
-      if (!dataSource || !data.callId) return;
+      if (!dataSource || !data.status) return;
 
       const status = data.status;
-      logger.info(`[MobileWS] 通话状态更新: ${data.callId} -> ${status}`);
+      const phoneNumber = data.phoneNumber || '';
+      let callId = data.callId;
+
+      logger.info(`[MobileWS] 通话状态更新: callId=${callId}, status=${status}, phoneNumber=${phoneNumber}`);
 
       // 映射状态到数据库状态
       let dbStatus = status;
@@ -346,17 +349,33 @@ class MobileWebSocketService {
         dbStatus = 'dialing';
       }
 
-      // 更新通话记录状态
-      await dataSource.query(
-        `UPDATE call_records SET call_status = ?, updated_at = NOW() WHERE id = ?`,
-        [dbStatus, data.callId]
-      );
+      // 无 callId 时按号码查找最近的 ringing 呼入记录
+      if (!callId && phoneNumber && phoneNumber !== '未知来电') {
+        const records = await dataSource.query(
+          `SELECT id FROM call_records
+           WHERE user_id = ? AND call_type = 'inbound' AND call_status = 'ringing'
+           ORDER BY created_at DESC LIMIT 1`,
+          [String(userId)]
+        );
+        if (records.length > 0) {
+          callId = records[0].id;
+        }
+      }
 
-      // 转发通话状态给CRM端
+      // 更新通话记录状态（有 callId 时才更新）
+      if (callId) {
+        await dataSource.query(
+          `UPDATE call_records SET call_status = ?, updated_at = NOW() WHERE id = ?`,
+          [dbStatus, callId]
+        );
+      }
+
+      // 无论 callId 是否匹配到记录，都转发通话状态给CRM端（让弹窗关闭）
       if (global.webSocketService) {
         global.webSocketService.sendToUser(userId, 'CALL_STATUS', {
-          callId: data.callId,
+          callId: callId || '',
           status: dbStatus,
+          phoneNumber,
           deviceId,
           timestamp: new Date().toISOString()
         });
@@ -373,7 +392,43 @@ class MobileWebSocketService {
   private async handleCallEnded(deviceId: string, userId: number, data: any): Promise<void> {
     try {
       const dataSource = getDataSource();
-      if (!dataSource || !data.callId) return;
+      if (!dataSource) return;
+
+      let callId = data.callId;
+      const phoneNumber = data.phoneNumber || '';
+
+      // 无 callId 或 callId 在数据库中不存在时，按号码查找最近的呼入记录
+      if (callId) {
+        const existing = await dataSource.query(
+          `SELECT id FROM call_records WHERE id = ? LIMIT 1`, [callId]
+        );
+        if (existing.length === 0) {
+          callId = null; // 数据库中不存在，置空后按号码查找
+        }
+      }
+      if (!callId && phoneNumber && phoneNumber !== '未知来电') {
+        const records = await dataSource.query(
+          `SELECT id FROM call_records
+           WHERE user_id = ? AND call_type = 'inbound'
+           ORDER BY created_at DESC LIMIT 1`,
+          [String(userId)]
+        );
+        if (records.length > 0) {
+          callId = records[0].id;
+        }
+      }
+      // 如果还是没有 callId，但有"未知来电"号码，查找该用户最近的呼入记录
+      if (!callId) {
+        const records = await dataSource.query(
+          `SELECT id FROM call_records
+           WHERE user_id = ? AND call_type = 'inbound'
+           ORDER BY created_at DESC LIMIT 1`,
+          [String(userId)]
+        );
+        if (records.length > 0) {
+          callId = records[0].id;
+        }
+      }
 
       // 映射状态
       let finalStatus = 'completed';
@@ -387,34 +442,102 @@ class MobileWebSocketService {
         finalStatus = 'failed';
       }
 
-      // 更新 call_records 通话记录
-      await dataSource.query(
-        `UPDATE call_records SET
-          call_status = ?,
-          duration = ?,
-          end_time = NOW(),
-          has_recording = ?,
-          recording_url = COALESCE(?, recording_url),
-          updated_at = NOW()
-         WHERE id = ?`,
-        [finalStatus, data.duration || 0, data.hasRecording ? 1 : 0, data.recordingUrl || null, data.callId]
-      );
+      // 有 callId 时更新通话记录
+      if (callId) {
+        await dataSource.query(
+          `UPDATE call_records SET
+            call_status = ?,
+            duration = ?,
+            end_time = NOW(),
+            has_recording = ?,
+            recording_url = COALESCE(?, recording_url),
+            updated_at = NOW()
+           WHERE id = ?`,
+          [finalStatus, data.duration || 0, data.hasRecording ? 1 : 0, data.recordingUrl || null, callId]
+        );
 
-      logger.info(`[MobileWS] 通话结束: ${data.callId}, 状态: ${finalStatus}, 时长: ${data.duration}秒, 有录音: ${data.hasRecording}`);
+        // 如果号码有效，重新匹配客户信息
+        const phoneNum = data.phoneNumber || '';
+        if (phoneNum && phoneNum !== '未知来电' && phoneNum !== '') {
+          try {
+            const normalizedNum = phoneNum.replace(/[\s\-()]/g, '').replace(/^(\+?86)?0?/, '');
+            const possibleNums = [phoneNum, normalizedNum, `+86${normalizedNum}`, `86${normalizedNum}`, `0${normalizedNum}`];
+            const placeholders = possibleNums.map(() => '?').join(',');
+            const customers = await dataSource.query(
+              `SELECT id, name FROM customers c
+               WHERE (REPLACE(REPLACE(REPLACE(REPLACE(c.phone, ' ', ''), '-', ''), '(', ''), ')', '') IN (${placeholders})
+                      OR REPLACE(REPLACE(REPLACE(REPLACE(c.mobile, ' ', ''), '-', ''), '(', ''), ')', '') IN (${placeholders})
+                     )
+               LIMIT 1`,
+              [...possibleNums, ...possibleNums]
+            );
+            if (customers.length > 0) {
+              await dataSource.query(
+                `UPDATE call_records SET customer_id = ?, customer_name = ?, customer_phone = ?, updated_at = NOW() WHERE id = ?`,
+                [customers[0].id, customers[0].name, phoneNum, callId]
+              );
+              logger.info(`[MobileWS] 通话结束重新匹配客户成功: ${customers[0].name}`);
+            }
+          } catch (matchErr: any) {
+            logger.warn(`[MobileWS] 通话结束重新匹配客户失败: ${matchErr.message}`);
+          }
+        }
+      }
 
-      // 转发通话结束给CRM端
+      logger.info(`[MobileWS] 通话结束: callId=${callId}, 状态: ${finalStatus}, 时长: ${data.duration}秒`);
+
+      // 无论 callId 是否匹配到记录，都转发通话结束给CRM端（让弹窗关闭/更新号码）
       if (global.webSocketService) {
         global.webSocketService.sendToUser(userId, 'CALL_ENDED', {
-          callId: data.callId,
+          callId: callId || '',
           duration: data.duration || 0,
           status: finalStatus,
+          phoneNumber: phoneNumber || '',
           hasRecording: data.hasRecording || false,
           recordingUrl: data.recordingUrl || null,
           endReason: data.endReason || 'normal',
           deviceId,
           timestamp: new Date().toISOString()
         });
-        logger.info(`[MobileWS] 已转发通话结束给CRM端: userId=${userId}, duration=${data.duration}, status=${finalStatus}`);
+        logger.info(`[MobileWS] 已转发通话结束给CRM端: userId=${userId}, duration=${data.duration}, status=${finalStatus}, phone=${phoneNumber}`);
+      }
+
+      // 如果是 number_updated 类型（后台补获号码），额外发送号码更新通知（含客户匹配结果）
+      if (data.endReason === 'number_updated' && phoneNumber && phoneNumber !== '未知来电') {
+        let customerName = '来电客户';
+        let customerId = null;
+        let customerLevel = '';
+        // 查询客户信息
+        try {
+          const normalizedNum = phoneNumber.replace(/[\s\-()]/g, '').replace(/^(\+?86)?0?/, '');
+          const possibleNums = [phoneNumber, normalizedNum, `+86${normalizedNum}`, `86${normalizedNum}`, `0${normalizedNum}`];
+          const placeholders = possibleNums.map(() => '?').join(',');
+          const customers = await dataSource.query(
+            `SELECT id, name, level FROM customers
+             WHERE (REPLACE(REPLACE(REPLACE(REPLACE(phone, ' ', ''), '-', ''), '(', ''), ')', '') IN (${placeholders})
+                    OR REPLACE(REPLACE(REPLACE(REPLACE(mobile, ' ', ''), '-', ''), '(', ''), ')', '') IN (${placeholders})
+                   )
+             LIMIT 1`,
+            [...possibleNums, ...possibleNums]
+          );
+          if (customers.length > 0) {
+            customerName = customers[0].name;
+            customerId = customers[0].id;
+            customerLevel = customers[0].level || '';
+          }
+        } catch (e: any) {
+          logger.warn(`[MobileWS] 号码更新客户匹配失败: ${e.message}`);
+        }
+
+        global.webSocketService.sendToUser(userId, 'CALL_NUMBER_UPDATED', {
+          callId: callId || '',
+          phoneNumber,
+          customerName,
+          customerId,
+          customerLevel,
+          timestamp: new Date().toISOString()
+        });
+        logger.info(`[MobileWS] 号码更新通知已发送: callId=${callId}, phone=${phoneNumber}, customer=${customerName}`);
       }
     } catch (error: any) {
       logger.error('[MobileWS] 更新通话结束状态失败:', error.message);
@@ -434,7 +557,21 @@ class MobileWebSocketService {
       const callerNumber = data.callerNumber;
       logger.info(`[MobileWS] APP检测到来电: ${callerNumber}, deviceId: ${deviceId}`);
 
-      // 1. 查找客户信息
+      // 1. 先获取租户ID（用于客户查询的租户隔离）
+      let tenantId = null;
+      let phoneName = '';
+      try {
+        const phoneInfo = await dataSource.query(
+          `SELECT tenant_id, phone_number, device_name FROM work_phones
+           WHERE device_id = ? LIMIT 1`, [deviceId]
+        );
+        tenantId = phoneInfo[0]?.tenant_id || null;
+        phoneName = phoneInfo[0]?.device_name || phoneInfo[0]?.phone_number || '';
+      } catch (_e) {
+        // 忽略
+      }
+
+      // 2. 查找客户信息（带租户隔离）
       let customerId = null;
       let customerName = '未知来电';
       let customerLevel = null;
@@ -443,14 +580,31 @@ class MobileWebSocketService {
       let tags: string[] = [];
 
       try {
+        // 规范化来电号码：去除 +86、86 前缀、空格、横线、开头的0
+        const normalizedNumber = callerNumber.replace(/[\s\-()]/g, '').replace(/^(\+?86)?0?/, '');
+        // 生成多种可能的号码格式进行匹配
+        const possibleNumbers = [
+          callerNumber,
+          normalizedNumber,
+          `+86${normalizedNumber}`,
+          `86${normalizedNumber}`,
+          `0${normalizedNumber}`,
+        ];
+        const placeholders = possibleNumbers.map(() => '?').join(',');
+        const tenantFilter = tenantId ? ' AND c.tenant_id = ?' : '';
+        const queryParams: any[] = [...possibleNumbers, ...possibleNumbers];
+        if (tenantId) queryParams.push(tenantId);
+
         const customers = await dataSource.query(
           `SELECT c.id, c.name, c.level, c.company, c.tags,
                   (SELECT MAX(start_time) FROM call_records
                    WHERE customer_id = c.id) as last_call
            FROM customers c
-           WHERE c.phone = ? OR c.mobile = ?
+           WHERE (REPLACE(REPLACE(REPLACE(REPLACE(c.phone, ' ', ''), '-', ''), '(', ''), ')', '') IN (${placeholders})
+                  OR REPLACE(REPLACE(REPLACE(REPLACE(c.mobile, ' ', ''), '-', ''), '(', ''), ')', '') IN (${placeholders})
+                 )${tenantFilter}
            LIMIT 1`,
-          [callerNumber, callerNumber]
+          queryParams
         );
 
         if (customers.length > 0) {
@@ -470,20 +624,25 @@ class MobileWebSocketService {
         logger.warn('[MobileWS] 查询客户信息失败:', err.message);
       }
 
-      // 2. 获取工作手机信息
-      let phoneName = '';
+      // 3. 创建或更新呼入通话记录
+      // 检查30秒内是否已有该用户的呼入记录（APP可能先报"未知来电"再报真实号码）
+      let callId = `IN-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+      let isUpdate = false;
       try {
-        const phones = await dataSource.query(
-          `SELECT id, phone_number, device_name FROM work_phones
-           WHERE device_id = ? LIMIT 1`, [deviceId]
+        const existing = await dataSource.query(
+          `SELECT id FROM call_records
+           WHERE user_id = ? AND call_type = 'inbound'
+             AND created_at > DATE_SUB(NOW(), INTERVAL 30 SECOND)
+           ORDER BY created_at DESC LIMIT 1`,
+          [String(userId)]
         );
-        phoneName = phones[0]?.device_name || phones[0]?.phone_number || '';
-      } catch (_e) {
-        // 忽略
-      }
+        if (existing.length > 0) {
+          callId = existing[0].id;
+          isUpdate = true;
+          logger.info(`[MobileWS] 检测到30秒内已有呼入记录，更新记录: ${callId}`);
+        }
+      } catch (_e) { /* 忽略 */ }
 
-      // 3. 创建呼入通话记录
-      const callId = `IN-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
       let userName = '';
       try {
         const userInfo = await dataSource.query(
@@ -494,28 +653,27 @@ class MobileWebSocketService {
         // 忽略
       }
 
-      // 获取租户ID
-      let tenantId = null;
       try {
-        const phoneInfo = await dataSource.query(
-          `SELECT tenant_id FROM work_phones WHERE device_id = ? LIMIT 1`, [deviceId]
-        );
-        tenantId = phoneInfo[0]?.tenant_id || null;
-      } catch (_e) {
-        // 忽略
-      }
-
-      try {
-        await dataSource.query(
-          `INSERT INTO call_records
-           (id, customer_id, customer_name, customer_phone, call_type, call_status,
-            call_method, user_id, user_name, start_time, created_at, tenant_id)
-           VALUES (?, ?, ?, ?, 'inbound', 'ringing', 'mobile', ?, ?, NOW(), NOW(), ?)`,
-          [callId, customerId, customerName, callerNumber,
-           String(userId), userName, tenantId]
-        );
+        if (isUpdate) {
+          // 更新现有记录的号码和客户信息
+          await dataSource.query(
+            `UPDATE call_records SET
+             customer_id = ?, customer_name = ?, customer_phone = ?
+             WHERE id = ?`,
+            [customerId, customerName, callerNumber, callId]
+          );
+        } else {
+          await dataSource.query(
+            `INSERT INTO call_records
+             (id, customer_id, customer_name, customer_phone, call_type, call_status,
+              call_method, user_id, user_name, start_time, created_at, tenant_id)
+             VALUES (?, ?, ?, ?, 'inbound', 'ringing', 'mobile', ?, ?, NOW(), NOW(), ?)`,
+            [callId, customerId, customerName, callerNumber,
+             String(userId), userName, tenantId]
+          );
+        }
       } catch (err: any) {
-        logger.error('[MobileWS] 创建呼入通话记录失败:', err.message);
+        logger.error('[MobileWS] 创建/更新呼入通话记录失败:', err.message);
       }
 
       // 4. 推送来电通知给CRM端

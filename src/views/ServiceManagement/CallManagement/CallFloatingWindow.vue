@@ -48,13 +48,13 @@
 
   <!-- 呼入弹窗 -->
   <el-dialog :model-value="incomingCallVisible" @update:model-value="$emit('update:incomingCallVisible', $event)"
-    title="来电提醒" width="500px" :close-on-click-modal="false" :close-on-press-escape="false" :show-close="false" center>
+    title="来电提醒" width="500px" :close-on-click-modal="false" :close-on-press-escape="false" :show-close="true" center>
     <div class="incoming-call" v-if="incomingCallData">
       <div class="caller-info">
         <div class="caller-avatar"><el-icon size="60"><User /></el-icon></div>
         <div class="caller-details">
           <h3>{{ incomingCallData.customerName || '未知客户' }}</h3>
-          <p class="phone-number">{{ displaySensitiveInfoNew(incomingCallData.phone, SensitiveInfoType.PHONE) }}</p>
+          <p class="phone-number">{{ incomingCallData.phone ? displaySensitiveInfoNew(incomingCallData.phone, SensitiveInfoType.PHONE) : '未知号码' }}</p>
           <p class="company-info" v-if="incomingCallData.company">
             <span style="color: #909399; font-size: 13px;">{{ incomingCallData.company }}</span>
           </p>
@@ -69,9 +69,12 @@
           <p class="last-call" v-if="incomingCallData.lastCallTime">上次通话：{{ incomingCallData.lastCallTime }}</p>
         </div>
       </div>
-      <div class="call-actions">
+      <div class="call-actions" v-if="incomingCallData.callSource && incomingCallData.callSource !== 'mobile'">
         <el-button type="success" size="large" :icon="Phone" @click="$emit('answer-call')" class="answer-btn">接听</el-button>
         <el-button type="danger" size="large" :icon="TurnOff" @click="$emit('reject-call')" class="reject-btn">挂断</el-button>
+      </div>
+      <div class="call-actions-hint" v-else>
+        <el-text type="info" size="default">请在手机上接听或挂断</el-text>
       </div>
       <div class="quick-actions">
         <el-button size="small" @click="$emit('view-customer-detail')">查看详情</el-button>
@@ -149,7 +152,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, onUnmounted } from 'vue'
-import { Phone, User, TurnOff, Loading, Cellphone, EditPen } from '@element-plus/icons-vue'
+import { Phone, User, TurnOff, Loading, Cellphone, EditPen, Close } from '@element-plus/icons-vue'
 import { displaySensitiveInfoNew, SensitiveInfoType } from '@/utils/sensitiveInfo'
 import { getLevelType, getLevelText, getPhoneCarrier } from './helpers'
 
@@ -268,6 +271,8 @@ onUnmounted(() => {
 .quick-followup .customer-info strong { color: #303133; font-weight: 600; }
 .dialog-footer { display: flex; justify-content: flex-end; gap: 12px; }
 .incoming-call { text-align: center; padding: 20px; }
+.dialog-top-bar { display: flex; justify-content: flex-end; padding: 0 0 8px 0; }
+.close-btn { color: #909399; font-size: 18px; padding: 4px; }
 .caller-info { display: flex; align-items: center; justify-content: center; margin-bottom: 30px; gap: 20px; }
 .caller-avatar { color: #409eff; }
 .caller-details { text-align: left; }
@@ -276,6 +281,7 @@ onUnmounted(() => {
 .customer-level { margin: 8px 0; }
 .last-call { font-size: 14px; color: #909399; margin: 4px 0; }
 .call-actions { display: flex; justify-content: center; gap: 20px; margin-bottom: 20px; }
+.call-actions-hint { text-align: center; margin-bottom: 20px; padding: 12px; color: #909399; }
 .answer-btn, .reject-btn { width: 120px; height: 50px; font-size: 16px; border-radius: 25px; }
 .quick-actions { display: flex; justify-content: center; gap: 12px; }
 

@@ -13,27 +13,53 @@ router.post('/call/status', authenticateToken, async (req: Request, res: Respons
   const startTime = Date.now()
   try {
     const currentUser = (req as any).user
-    const { callId, status, timestamp } = req.body
+    const userId = currentUser?.userId || currentUser?.id
+    const { callId, status, timestamp, phoneNumber } = req.body
     const deviceId = req.headers['x-device-id'] as string
 
-    if (!callId || !status) {
+    if (!status) {
       return res.status(400).json({
         success: false,
-        message: '参数不完整',
+        message: '状态不能为空',
         code: 'INVALID_PARAMS'
       })
     }
 
     // 更新通话记录状态
     const t = tenantRawSQL()
-    await AppDataSource.query(
-      `UPDATE call_records SET
-       call_status = ?,
-       start_time = CASE WHEN ? = 'connected' AND start_time IS NULL THEN NOW() ELSE start_time END,
-       updated_at = NOW()
-       WHERE id = ?${t.sql}`,
-      [status, status, callId, ...t.params]
-    )
+    let resolvedCallId = callId
+
+    if (callId) {
+      // 有 callId 直接更新
+      await AppDataSource.query(
+        `UPDATE call_records SET
+         call_status = ?,
+         start_time = CASE WHEN ? = 'connected' AND start_time IS NULL THEN NOW() ELSE start_time END,
+         updated_at = NOW()
+         WHERE id = ?${t.sql}`,
+        [status, status, callId, ...t.params]
+      )
+    } else if (phoneNumber && phoneNumber !== '未知来电') {
+      // 无 callId 但有号码：查找该用户最近的 ringing 状态呼入记录
+      const recentRecords = await AppDataSource.query(
+        `SELECT id FROM call_records
+         WHERE user_id = ? AND call_type = 'inbound' AND call_status = 'ringing'
+         ${t.sql}
+         ORDER BY created_at DESC LIMIT 1`,
+        [String(userId), ...t.params]
+      )
+      if (recentRecords.length > 0) {
+        resolvedCallId = recentRecords[0].id
+        await AppDataSource.query(
+          `UPDATE call_records SET
+           call_status = ?,
+           start_time = CASE WHEN ? = 'connected' AND start_time IS NULL THEN NOW() ELSE start_time END,
+           updated_at = NOW()
+           WHERE id = ?`,
+          [status, status, resolvedCallId]
+        )
+      }
+    }
 
     await logApiCall({
       interfaceCode: 'mobile_call_status',
@@ -44,14 +70,17 @@ router.post('/call/status', authenticateToken, async (req: Request, res: Respons
       success: true,
       clientIp: req.ip,
       userAgent: req.headers['user-agent'],
-      userId: currentUser?.userId || currentUser?.id,
+      userId,
       deviceId
     })
 
-    // 推送PC端
+    // 无论 callId 是否匹配到记录，都转发状态给CRM端（让弹窗关闭）
     if (global.webSocketService) {
-      global.webSocketService.sendToUser(currentUser?.userId || currentUser?.id, 'CALL_STATUS_CHANGED', {
-        callId, status, timestamp
+      global.webSocketService.sendToUser(userId, 'CALL_STATUS_CHANGED', {
+        callId: resolvedCallId || '',
+        status,
+        phoneNumber: phoneNumber || '',
+        timestamp: timestamp || new Date().toISOString()
       })
     }
 
@@ -149,6 +178,33 @@ router.post('/call/end', authenticateToken, async (req: Request, res: Response) 
       log.info('[通话结束] 创建新通话记录:', callId)
     }
 
+    // 通话结束后，如果号码有效，重新匹配客户信息并更新通话记录
+    if (phoneNumber && phoneNumber !== '未知来电' && phoneNumber !== '') {
+      try {
+        const normalizedNum = phoneNumber.replace(/[\s\-()]/g, '').replace(/^(\+?86)?0?/, '')
+        const possibleNums = [phoneNumber, normalizedNum, `+86${normalizedNum}`, `86${normalizedNum}`, `0${normalizedNum}`]
+        const placeholders = possibleNums.map(() => '?').join(',')
+        const t2 = tenantRawSQL()
+        const customers = await AppDataSource.query(
+          `SELECT id, name FROM customers c
+           WHERE (REPLACE(REPLACE(REPLACE(REPLACE(c.phone, ' ', ''), '-', ''), '(', ''), ')', '') IN (${placeholders})
+                  OR REPLACE(REPLACE(REPLACE(REPLACE(c.mobile, ' ', ''), '-', ''), '(', ''), ')', '') IN (${placeholders})
+                 )${t2.sql}
+           LIMIT 1`,
+          [...possibleNums, ...possibleNums, ...t2.params]
+        )
+        if (customers.length > 0) {
+          await AppDataSource.query(
+            `UPDATE call_records SET customer_id = ?, customer_name = ?, customer_phone = ?, updated_at = NOW() WHERE id = ?${t2.sql}`,
+            [customers[0].id, customers[0].name, phoneNumber, callId, ...t2.params]
+          )
+          log.info('[通话结束] 重新匹配客户信息成功:', customers[0].name)
+        }
+      } catch (matchErr) {
+        log.warn('[通话结束] 重新匹配客户信息失败:', matchErr)
+      }
+    }
+
     await logApiCall({
       interfaceCode: 'mobile_call_end',
       method: 'POST',
@@ -240,13 +296,19 @@ router.post('/call/incoming', authenticateToken, async (req: Request, res: Respo
 
     try {
       const t = tenantRawSQL()
+      // 规范化号码并生成多种可能的格式进行匹配
+      const normalizedNumber = callerNumber.replace(/[\s\-()]/g, '').replace(/^(\+?86)?0?/, '')
+      const possibleNumbers = [callerNumber, normalizedNumber, `+86${normalizedNumber}`, `86${normalizedNumber}`, `0${normalizedNumber}`]
+      const placeholders = possibleNumbers.map(() => '?').join(',')
       const customers = await AppDataSource.query(
         `SELECT c.id, c.name, c.level, c.company,
                 (SELECT MAX(start_time) FROM call_records WHERE customer_id = c.id) as last_call
          FROM customers c
-         WHERE (c.phone = ? OR c.mobile = ?)${t.sql}
+         WHERE (REPLACE(REPLACE(REPLACE(REPLACE(c.phone, ' ', ''), '-', ''), '(', ''), ')', '') IN (${placeholders})
+                OR REPLACE(REPLACE(REPLACE(REPLACE(c.mobile, ' ', ''), '-', ''), '(', ''), ')', '') IN (${placeholders})
+               )${t.sql}
          LIMIT 1`,
-        [callerNumber, callerNumber, ...t.params]
+        [...possibleNumbers, ...possibleNumbers, ...t.params]
       )
       if (customers.length > 0) {
         customerId = customers[0].id

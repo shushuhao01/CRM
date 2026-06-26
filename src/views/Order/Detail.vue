@@ -1700,6 +1700,11 @@ const loadOrderDetail = async () => {
       order = orderStore.getOrderById(orderId)
     }
 
+    // 如果按 id 未找到，尝试按 orderNumber 查找
+    if (!order) {
+      order = orderStore.getOrderByNumber(orderId)
+    }
+
     if (!order) {
       ElMessage.error('订单不存在')
       safeNavigator.push('/order/list')

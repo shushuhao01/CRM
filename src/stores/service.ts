@@ -147,7 +147,28 @@ export const useServiceStore = defineStore('service', () => {
       // 优先尝试调用API
       try {
         const response = await serviceApi.create(serviceData)
-        const newService = mapApiToLocal(response)
+        const mapped = mapApiToLocal(response)
+        // 合并提交的数据和响应数据，确保字段不丢失
+        const newService: AfterSalesService = {
+          ...mapped,
+          orderId: mapped.orderId || serviceData.orderId || '',
+          orderNumber: mapped.orderNumber || serviceData.orderNumber || '',
+          customerId: mapped.customerId || serviceData.customerId || '',
+          customerName: mapped.customerName || serviceData.customerName || '',
+          customerPhone: mapped.customerPhone || serviceData.customerPhone || '',
+          serviceType: mapped.serviceType || serviceData.serviceType || 'return',
+          priority: mapped.priority || serviceData.priority || 'normal',
+          reason: mapped.reason || serviceData.reason || '',
+          description: mapped.description || serviceData.description || '',
+          productName: mapped.productName || serviceData.productName || '',
+          productSpec: mapped.productSpec || serviceData.productSpec || '',
+          quantity: mapped.quantity || serviceData.quantity || 1,
+          price: mapped.price || serviceData.price || 0,
+          contactName: mapped.contactName || serviceData.contactName || '',
+          contactPhone: mapped.contactPhone || serviceData.contactPhone || '',
+          contactAddress: mapped.contactAddress || serviceData.contactAddress || '',
+          createdBy: mapped.createdBy || serviceData.createdBy || ''
+        }
         services.value.unshift(newService)
         console.log('[ServiceStore] API创建成功:', newService.serviceNumber)
         return newService

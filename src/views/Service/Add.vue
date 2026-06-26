@@ -488,6 +488,7 @@ import { displaySensitiveInfo as displaySensitiveInfoNew } from '@/utils/sensiti
 import { SensitiveInfoType } from '@/services/permission'
 import { PhoneSyncService } from '@/services/phoneSync'
 import { createSafeNavigator } from '@/utils/navigation'
+import { customerApi } from '@/api/customer'
 import ServiceTypeConfigDialog from '@/components/Service/ServiceTypeConfigDialog.vue'
 
 // 路由
@@ -632,7 +633,7 @@ const rules: FormRules = {
   ],
   description: [
     { required: true, message: '请输入详细描述', trigger: 'blur' },
-    { min: 10, message: '详细描述至少10个字符', trigger: 'blur' }
+    { min: 5, message: '详细描述至少5个字符', trigger: 'blur' }
   ],
   contactName: [
     { required: true, message: '请输入联系人姓名', trigger: 'blur' }
@@ -670,19 +671,42 @@ const getStatusText = (status: string) => {
 }
 
 // 复用客户信息
-const copyCustomerInfo = () => {
+const copyCustomerInfo = async () => {
   if (!form.customerName) {
     ElMessage.warning('请先选择订单或填写客户信息')
     return
   }
 
-  // 复用客户基本信息到联系信息
   form.contactName = form.customerName
   form.contactPhone = form.customerPhone
 
-  // 如果有订单信息,也复用地址
-  if (orderInfo.value?.shippingAddress || orderInfo.value?.address) {
-    form.contactAddress = orderInfo.value.shippingAddress || orderInfo.value.address
+  // 复用收货地址：优先从订单信息获取
+  let address = orderInfo.value?.shippingAddress
+    || orderInfo.value?.address
+    || orderInfo.value?.receiverAddress
+    || ''
+
+  // 如果订单没有地址，尝试从客户API获取最新地址
+  if (!address && form.customerId) {
+    try {
+      const res = await customerApi.getDetail(form.customerId)
+      const customer = (res as any)?.data || res
+      if (customer?.address) {
+        address = customer.address
+      }
+    } catch (e) {
+      console.warn('[售后表单] 获取客户最新地址失败:', e)
+    }
+  }
+
+  if (address) {
+    // 拼接省市区 + 详细地址
+    const province = orderInfo.value?.province || orderInfo.value?.receiverProvince || ''
+    const city = orderInfo.value?.city || orderInfo.value?.receiverCity || ''
+    const district = orderInfo.value?.district || orderInfo.value?.receiverDistrict || ''
+    const fullAddress = [province, city, district, address].filter(Boolean).join('')
+    // 去重：如果 address 已包含省市区则直接用
+    form.contactAddress = fullAddress.length > address.length ? fullAddress : address
   }
 
   ElMessage.success('已复用客户信息到联系信息')
@@ -806,7 +830,7 @@ const handleOrderSelect = (orderNumber: string) => {
   }
 }
 
-const handleUseOrderInfo = () => {
+const handleUseOrderInfo = async () => {
   if (!orderInfo.value) return
 
   // 填充基本信息
@@ -834,7 +858,21 @@ const handleUseOrderInfo = () => {
   // 填充联系信息
   form.contactName = orderInfo.value.customerName
   form.contactPhone = orderInfo.value.customerPhone
-  form.contactAddress = orderInfo.value.shippingAddress || orderInfo.value.address || ''
+  let contactAddr = orderInfo.value.shippingAddress || orderInfo.value.address || ''
+
+  // 订单无地址时，从客户API获取最新收货地址
+  if (!contactAddr && form.customerId) {
+    try {
+      const res = await customerApi.getDetail(form.customerId)
+      const customer = (res as any)?.data || res
+      if (customer?.address) {
+        contactAddr = customer.address
+      }
+    } catch (e) {
+      console.warn('[售后表单] 获取客户最新地址失败:', e)
+    }
+  }
+  form.contactAddress = contactAddr
 
   orderLoaded.value = true
   orderDialogVisible.value = false
@@ -1143,16 +1181,7 @@ const handleSubmit = async () => {
 
     console.log('售后申请创建成功:', newService)
 
-    // 发送售后申请提交成功的消息提醒
-    notificationStore.sendMessage(
-      notificationStore.MessageType.AFTER_SALES_CREATED,
-      `售后申请 ${newService.serviceNumber} 已提交，客户：${form.customerName}，服务类型：${getServiceTypeText(form.serviceType)}`,
-      {
-        relatedId: newService.id,
-        relatedType: 'service',
-        actionUrl: `/service/detail/${newService.id}`
-      } as unknown
-    )
+    // 通知已由后端API自动发送，无需前端重复发送
 
     ElMessage.success('售后申请提交成功')
 

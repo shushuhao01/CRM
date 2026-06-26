@@ -2415,6 +2415,25 @@ const handleOutboundCall = async () => {
 
 // 呼入通话相关方法
 const handleIncomingCall = (data: any) => {
+  // 来电弹窗已经显示，说明是号码更新（APP先报未知来电再报真实号码）
+  if (incomingCallVisible.value && incomingCallData.value) {
+    console.log('[CallManagement] 收到来电更新（号码补全）:', data)
+    const updatedPhone = data.callerNumber || data.phone || ''
+    const validUpdatedPhone = (updatedPhone && updatedPhone !== '未知来电') ? updatedPhone : incomingCallData.value.phone
+    incomingCallData.value = {
+      ...incomingCallData.value,
+      id: data.callId || incomingCallData.value.id,
+      customerName: data.customerInfo?.customerName || data.customerName || incomingCallData.value.customerName,
+      phone: validUpdatedPhone,
+      customerId: data.customerInfo?.customerId || data.customerId || incomingCallData.value.customerId,
+      customerLevel: data.customerInfo?.customerLevel || incomingCallData.value.customerLevel,
+      company: data.customerInfo?.company || incomingCallData.value.company,
+      tags: data.customerInfo?.tags || incomingCallData.value.tags,
+    }
+    console.log('[CallManagement] 弹窗客户信息已更新:', incomingCallData.value.customerName, incomingCallData.value.phone)
+    return
+  }
+
   // 检查忙碌状态
   if (callStatus.value === 'busy') {
     console.log('[CallManagement] 忙碌状态，忽略来电')
@@ -2432,11 +2451,13 @@ const handleIncomingCall = (data: any) => {
     return
   }
 
-  // 构建来电数据
+  // 构建来电数据（"未知来电"不算有效号码，保持为空让弹窗显示"未知号码"）
+  const rawPhone = data.callerNumber || data.phone || ''
+  const validPhone = (rawPhone && rawPhone !== '未知来电') ? rawPhone : ''
   const incomingData = {
     id: data.callId,
-    customerName: data.customerInfo?.customerName || data.customerName || '未知来电',
-    phone: data.callerNumber || data.phone,
+    customerName: data.customerInfo?.customerName || data.customerName || (validPhone ? '来电客户' : '未知来电'),
+    phone: validPhone,
     customerId: data.customerInfo?.customerId || data.customerId,
     customerLevel: data.customerInfo?.customerLevel || data.customerLevel,
     company: data.customerInfo?.company || data.company,
@@ -3129,6 +3150,25 @@ const setupCallStatusListener = () => {
     if (message.type === 'CALL_INCOMING') {
       handleIncomingCall(message.data || message)
     }
+
+    // 处理号码补获更新（APP后台补获到真实号码后推送，含客户匹配结果）
+    if (message.type === 'CALL_NUMBER_UPDATED') {
+      const updateData = message.data || message
+      console.log('[CallManagement] 收到号码更新:', updateData)
+      if (updateData.phoneNumber && updateData.phoneNumber !== '未知来电') {
+        handleIncomingCall({
+          callerNumber: updateData.phoneNumber,
+          callId: updateData.callId,
+          customerName: updateData.customerName,
+          customerId: updateData.customerId,
+          customerInfo: {
+            customerName: updateData.customerName,
+            customerId: updateData.customerId,
+            customerLevel: updateData.customerLevel,
+          },
+        })
+      }
+    }
   })
 }
 
@@ -3137,10 +3177,39 @@ const handleCallStatusFromWebSocket = (data: any) => {
   const callId = data.callId
   const status = data.status
 
-  console.log('[CallManagement] 处理通话状态:', { callId, status, currentCallId: currentCallId.value })
+  console.log('[CallManagement] 处理通话状态:', { callId, status, currentCallId: currentCallId.value, incomingCallVisible: incomingCallVisible.value })
 
-  // 检查是否是当前通话
-  if (currentCallId.value && currentCallId.value === callId) {
+  // 来电弹窗显示中，收到 connected/ended 状态时关闭弹窗（APP端接听/挂断）
+  if (incomingCallVisible.value) {
+    if (status === 'connected' || status === 'answered') {
+      console.log('[CallManagement] APP端已接听，关闭来电弹窗')
+      incomingCallVisible.value = false
+      // 转入通话中状态
+      if (incomingCallData.value) {
+        currentCallData.value = { ...incomingCallData.value, callMethod: incomingCallData.value.callSource || 'mobile' }
+        currentCallId.value = incomingCallData.value.id
+        callConnected.value = true
+        callDuration.value = 0
+        startCallTimer()
+        callInProgressVisible.value = true
+        isCallWindowMinimized.value = false
+        incomingCallData.value = null
+      }
+      ElMessage.success('来电已在手机上接听')
+      return
+    }
+    if (status === 'ended' || status === 'missed' || status === 'rejected' || status === 'failed') {
+      console.log('[CallManagement] APP端已挂断/拒绝，关闭来电弹窗')
+      incomingCallVisible.value = false
+      incomingCallData.value = null
+      ElMessage.info('来电已结束')
+      setTimeout(() => { loadCallRecords(); loadStatistics() }, 500)
+      return
+    }
+  }
+
+  // 检查是否是当前通话（通话中状态同步）
+  if (currentCallId.value && (!callId || currentCallId.value === callId)) {
     if (status === 'connected' || status === 'answered') {
       // 通话已接通，开始计时
       if (!callConnected.value) {
@@ -3163,10 +3232,17 @@ const handleCallStatusFromWebSocket = (data: any) => {
 const handleCallEndedFromWebSocket = (data: any) => {
   const callId = data.callId
 
-  console.log('[CallManagement] 处理通话结束:', { callId, currentCallId: currentCallId.value })
+  console.log('[CallManagement] 处理通话结束:', { callId, currentCallId: currentCallId.value, incomingCallVisible: incomingCallVisible.value })
 
-  // 如果是当前通话，关闭弹窗
-  if (currentCallId.value && currentCallId.value === callId) {
+  // 来电弹窗还开着，直接关闭
+  if (incomingCallVisible.value) {
+    incomingCallVisible.value = false
+    incomingCallData.value = null
+    ElMessage.info('来电已结束')
+  }
+
+  // 如果是当前通话（宽松匹配：callId为空也关闭），关闭通话窗口
+  if (callInProgressVisible.value && (!callId || !currentCallId.value || currentCallId.value === callId)) {
     console.log('[CallManagement] 当前通话已结束，自动关闭窗口')
 
     if (data.duration !== undefined) {

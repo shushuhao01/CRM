@@ -508,9 +508,16 @@ router.put('/:id/mark-type', async (req: Request, res: Response) => {
 router.get('/:id', async (req: Request, res: Response) => {
   try {
     const orderRepository = getTenantRepo(Order);
-    const order = await orderRepository.findOne({
+    let order = await orderRepository.findOne({
       where: { id: req.params.id }
     });
+
+    // 如果按 id 未找到，尝试按 orderNumber 查找（支持售后页面用订单号跳转）
+    if (!order) {
+      order = await orderRepository.findOne({
+        where: { orderNumber: req.params.id }
+      });
+    }
 
     if (!order) {
       return res.status(404).json({

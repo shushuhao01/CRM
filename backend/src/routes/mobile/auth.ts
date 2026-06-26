@@ -112,9 +112,9 @@ router.post('/login', async (req: Request, res: Response) => {
       })
     }
 
-    // 生成Token - 使用 JwtConfig 确保与认证中间件兼容
+    // 生成Token - 使用移动端专用方法，固定7天过期
     // 🔥 修复：JWT中包含tenantId，确保后续API请求有租户隔离
-    const token = JwtConfig.generateAccessToken({
+    const token = JwtConfig.generateMobileAccessToken({
       userId: user.id,
       username: user.username,
       role: user.role,
