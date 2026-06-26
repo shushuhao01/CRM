@@ -275,13 +275,17 @@
                   filterable
                   allow-create
                 >
-                  <el-option label="商品质量问题" value="商品质量问题" />
-                  <el-option label="商品损坏" value="商品损坏" />
-                  <el-option label="商品不符合描述" value="商品不符合描述" />
-                  <el-option label="发错商品" value="发错商品" />
-                  <el-option label="物流损坏" value="物流损坏" />
-                  <el-option label="不喜欢/不合适" value="不喜欢/不合适" />
-                  <el-option label="其他原因" value="其他原因" />
+                  <el-option label="商品质量问题" value="quality" />
+                  <el-option label="商品损坏" value="damaged" />
+                  <el-option label="尺寸不合适" value="size" />
+                  <el-option label="颜色不符" value="color" />
+                  <el-option label="功能故障" value="malfunction" />
+                  <el-option label="发错商品" value="wrong_item" />
+                  <el-option label="不满意" value="unsatisfied" />
+                  <el-option label="描述不符" value="not_as_described" />
+                  <el-option label="物流损坏" value="logistics_damage" />
+                  <el-option label="商品过期" value="expired" />
+                  <el-option label="其他原因" value="other" />
                 </el-select>
               </el-form-item>
             </el-col>
@@ -396,6 +400,78 @@
                   :rows="3"
                   placeholder="请输入备注信息"
                   maxlength="200"
+                  show-word-limit
+                />
+              </el-form-item>
+            </el-col>
+          </el-row>
+        </div>
+
+        <!-- 处理结果（已解决/已关闭时显示） -->
+        <div class="form-section" v-if="form.status === 'resolved' || form.status === 'closed'">
+          <h3 class="section-title">处理结果</h3>
+          <el-row :gutter="20">
+            <el-col :span="isMobile ? 24 : 12">
+              <el-form-item label="解决方案" prop="resolutionType">
+                <el-select
+                  v-model="form.resolutionType"
+                  placeholder="请选择解决方案"
+                  style="width: 100%"
+                  clearable
+                >
+                  <el-option label="退货退款" value="return_refund" />
+                  <el-option label="退货补货" value="return_replenish" />
+                  <el-option label="更换产品" value="exchange" />
+                  <el-option label="维修" value="repair" />
+                  <el-option label="其他" value="other" />
+                </el-select>
+              </el-form-item>
+            </el-col>
+            <el-col :span="isMobile ? 24 : 12" v-if="form.resolutionType === 'return_refund'">
+              <el-form-item label="退款类型" prop="refundType">
+                <el-radio-group v-model="form.refundType">
+                  <el-radio :label="'full'">全额退款</el-radio>
+                  <el-radio :label="'partial'">部分退款</el-radio>
+                </el-radio-group>
+              </el-form-item>
+            </el-col>
+          </el-row>
+          <el-row :gutter="20" v-if="form.resolutionType === 'return_refund' && form.refundType === 'partial'">
+            <el-col :span="isMobile ? 24 : 12">
+              <el-form-item label="退款金额" prop="refundAmount">
+                <el-input
+                  v-model="form.refundAmount"
+                  type="text"
+                  placeholder="请输入退款金额"
+                  style="width: 200px;"
+                  @input="handleRefundAmountInput"
+                >
+                  <template #append>元</template>
+                </el-input>
+                <div style="color: #909399; font-size: 12px; margin-top: 4px;">订单金额：¥{{ Number(form.price * form.quantity || 0).toFixed(2) }}</div>
+              </el-form-item>
+            </el-col>
+          </el-row>
+          <el-row :gutter="20" v-if="form.resolutionType === 'return_replenish' || form.resolutionType === 'exchange'">
+            <el-col :span="isMobile ? 24 : 12">
+              <el-form-item label="处理商品" prop="resolutionProduct">
+                <el-input
+                  v-model="form.resolutionProduct"
+                  placeholder="请输入处理商品名称"
+                  style="width: 100%"
+                />
+              </el-form-item>
+            </el-col>
+          </el-row>
+          <el-row :gutter="20">
+            <el-col :span="24">
+              <el-form-item label="处理备注" prop="resolutionRemark">
+                <el-input
+                  v-model="form.resolutionRemark"
+                  type="textarea"
+                  :rows="3"
+                  placeholder="请输入处理结果备注"
+                  maxlength="500"
                   show-word-limit
                 />
               </el-form-item>
@@ -541,6 +617,7 @@ import { SensitiveInfoType } from '@/services/permission'
 import { PhoneSyncService } from '@/services/phoneSync'
 import { createSafeNavigator } from '@/utils/navigation'
 import { useServiceStore, type AfterSalesService } from '@/stores/service'
+import { serviceApi } from '@/api/service'
 import { useUserStore } from '@/stores/user'
 import { useOrderStore } from '@/stores/order'
 import { isProduction } from '@/utils/env'
@@ -627,7 +704,12 @@ const form = reactive({
   contactId: '',
   createdBy: '',
   createTime: '',
-  updateTime: ''
+  updateTime: '',
+  resolutionType: '',
+  refundAmount: 0 as any,
+  refundType: '',
+  resolutionProduct: '',
+  resolutionRemark: ''
 })
 
 // 文件列表
@@ -702,17 +784,7 @@ const handleSave = async () => {
 
     if (isProduction()) {
       // 生产环境:调用API
-      const response = await fetch(`/api/service/${form.id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(form)
-      })
-
-      if (!response.ok) {
-        throw new Error('保存失败')
-      }
+      await serviceApi.update(form.id, form)
 
       ElMessage.success('保存成功')
     } else {
@@ -735,8 +807,13 @@ const handleSave = async () => {
         contactName: form.contactName,
         contactAddress: form.contactAddress,
         remark: form.remark,
+        resolutionType: form.resolutionType,
+        refundAmount: Number(form.refundAmount) || 0,
+        refundType: form.refundType,
+        resolutionProduct: form.resolutionProduct,
+        resolutionRemark: form.resolutionRemark,
         updateTime: new Date().toISOString().replace('T', ' ').substring(0, 19)
-      }
+      } as any
 
       serviceStore.updateService(form.id, updateData)
       ElMessage.success('保存成功')
@@ -749,6 +826,23 @@ const handleSave = async () => {
   } finally {
     saveLoading.value = false
   }
+}
+
+// 退款金额输入处理：仅允许数字和两位小数，超过订单金额自动截断
+const handleRefundAmountInput = (val: string) => {
+  let cleaned = val.replace(/[^\d.]/g, '').replace(/^(\d*\.\d{0,2}).*$/, '$1')
+  const parts = cleaned.split('.')
+  if (parts.length > 2) {
+    cleaned = parts[0] + '.' + parts.slice(1).join('')
+  }
+  const maxAmount = Number(form.price * form.quantity || 0)
+  if (maxAmount > 0) {
+    const numVal = Number(cleaned)
+    if (!isNaN(numVal) && numVal > maxAmount) {
+      cleaned = maxAmount.toFixed(2)
+    }
+  }
+  form.refundAmount = cleaned as any
 }
 
 /**
@@ -1053,12 +1147,16 @@ const loadServiceDetail = async () => {
 
     if (isProduction()) {
       // 生产环境:调用API
-      const response = await fetch(`/api/service/${serviceId}`)
-      if (!response.ok) {
-        throw new Error('加载失败')
+      try {
+        const data = await serviceApi.getDetail(serviceId)
+        const serviceData = (data as any)?.data || data
+        Object.assign(form, serviceData)
+      } catch (apiErr) {
+        console.error('API加载失败:', apiErr)
+        ElMessage.error('加载售后信息失败')
+        safeNavigator.push('/service/list')
+        return
       }
-      const data = await response.json()
-      Object.assign(form, data)
     } else {
       // 开发环境:从store获取
       const service = serviceStore.getServiceById(serviceId)
@@ -1094,7 +1192,12 @@ const loadServiceDetail = async () => {
         contactId: service.contactId || '',
         createdBy: service.createdBy,
         createTime: service.createTime,
-        updateTime: service.updateTime
+        updateTime: service.updateTime,
+        resolutionType: (service as any).resolutionType || '',
+        refundAmount: (service as any).refundAmount || 0,
+        refundType: (service as any).refundType || '',
+        resolutionProduct: (service as any).resolutionProduct || '',
+        resolutionRemark: (service as any).resolutionRemark || ''
       })
 
       // 如果有附件,加载附件列表

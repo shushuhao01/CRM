@@ -35,6 +35,13 @@ export interface AfterSalesServiceData {
   updateTime?: string
   expectedTime?: string
   resolvedTime?: string
+  orderAmount?: number
+  orderCreator?: string
+  resolutionType?: string
+  refundAmount?: number
+  refundType?: string
+  resolutionProduct?: string
+  resolutionRemark?: string
 }
 
 export interface ServiceListParams {
@@ -125,8 +132,14 @@ export const serviceApi = {
   /**
    * 更新售后服务状态
    */
-  async updateStatus(id: string, status: string, remark?: string): Promise<void> {
-    await api.patch(`/services/${id}/status`, { status, remark })
+  async updateStatus(id: string, status: string, remark?: string, resolutionData?: {
+    resolutionType?: string
+    refundAmount?: number
+    refundType?: string
+    resolutionProduct?: string
+    resolutionRemark?: string
+  }): Promise<void> {
+    await api.patch(`/services/${id}/status`, { status, remark, ...resolutionData })
   },
 
   /**

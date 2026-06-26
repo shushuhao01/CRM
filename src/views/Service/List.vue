@@ -166,6 +166,18 @@
         </el-tag>
       </template>
 
+      <!-- 订单金额列 -->
+      <template #column-orderAmount="{ row }">
+        <span v-if="row.orderAmount > 0" style="color: #e6a23c; font-weight: 600;">¥{{ Number(row.orderAmount).toFixed(2) }}</span>
+        <span v-else style="color: #c0c4cc;">-</span>
+      </template>
+
+      <!-- 退款金额列 -->
+      <template #column-refundAmount="{ row }">
+        <span v-if="row.refundAmount > 0" style="color: #f56c6c; font-weight: 600;">¥{{ Number(row.refundAmount).toFixed(2) }}</span>
+        <span v-else style="color: #c0c4cc;">-</span>
+      </template>
+
       <!-- 申请原因列 -->
       <template #column-reason="{ row }">
         {{ getReasonText(row.reason) }}
@@ -547,11 +559,32 @@ const tableColumns = computed(() => [
     slot: 'serviceType'
   },
   {
+    prop: 'orderAmount',
+    label: '订单金额',
+    width: 120,
+    visible: true,
+    slot: 'orderAmount'
+  },
+  {
+    prop: 'refundAmount',
+    label: '退款金额',
+    width: 120,
+    visible: true,
+    slot: 'refundAmount'
+  },
+  {
     prop: 'productName',
     label: '商品名称',
     minWidth: 150,
     visible: true,
     showOverflowTooltip: true
+  },
+  {
+    prop: 'status',
+    label: '处理状态',
+    width: 100,
+    visible: true,
+    slot: 'status'
   },
   {
     prop: 'reason',
@@ -562,11 +595,10 @@ const tableColumns = computed(() => [
     slot: 'reason'
   },
   {
-    prop: 'status',
-    label: '处理状态',
+    prop: 'orderCreator',
+    label: '下单人员',
     width: 100,
-    visible: true,
-    slot: 'status'
+    visible: true
   },
   {
     prop: 'priority',

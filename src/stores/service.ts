@@ -35,6 +35,13 @@ export interface AfterSalesService {
   contactId?: string
   createdById?: string
   departmentId?: string
+  orderAmount?: number
+  orderCreator?: string
+  resolutionType?: string
+  refundAmount?: number
+  refundType?: string
+  resolutionProduct?: string
+  resolutionRemark?: string
 }
 
 export const useServiceStore = defineStore('service', () => {
@@ -448,7 +455,14 @@ export const useServiceStore = defineStore('service', () => {
       contactName: data.contactName,
       contactPhone: data.contactPhone,
       createdById: data.createdById,
-      departmentId: data.departmentId
+      departmentId: data.departmentId,
+      orderAmount: data.orderAmount,
+      orderCreator: data.orderCreator,
+      resolutionType: data.resolutionType,
+      refundAmount: data.refundAmount,
+      refundType: data.refundType,
+      resolutionProduct: data.resolutionProduct,
+      resolutionRemark: data.resolutionRemark
     }
   }
 

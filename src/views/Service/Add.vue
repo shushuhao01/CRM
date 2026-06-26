@@ -724,78 +724,32 @@ const handleOrderSearch = async (query: string) => {
     const keyword = query.trim()
     console.log('[售后订单搜索] 搜索关键词:', keyword)
 
-    // 从localStorage获取真实订单数据
-    const orderStoreRaw = localStorage.getItem('crm_store_order')
+    // 🔥 使用API搜索订单（支持订单号搜索）
+    const { orderApi } = await import('@/api/order')
+    const response = await orderApi.getList({
+      keyword: keyword,
+      page: 1,
+      pageSize: 50
+    } as any)
 
-    if (!orderStoreRaw) {
-      console.error('[售后订单搜索] 订单数据不存在')
-      ElMessage.warning('订单数据未加载，请刷新页面重试')
-      orderOptions.value = []
-      return
-    }
+    const allOrders = response?.data?.list || response?.list || []
+    console.log('[售后订单搜索] API返回订单数:', allOrders.length)
 
-    // 解析订单数据（支持新旧格式）
-    let orders: any[] = []
-    try {
-      const parsed = JSON.parse(orderStoreRaw)
-
-      // 新格式：{ data: { orders: [...] } }
-      if (parsed.data && parsed.data.orders) {
-        orders = parsed.data.orders
-      }
-      // 旧格式：{ orders: [...] }
-      else if (parsed.orders) {
-        orders = parsed.orders
-      }
-      // 直接是数组
-      else if (Array.isArray(parsed)) {
-        orders = parsed
-      }
-
-      console.log('[售后订单搜索] 订单总数:', orders.length)
-    } catch (e) {
-      console.error('[售后订单搜索] 解析订单数据失败:', e)
-      ElMessage.error('订单数据解析失败')
-      orderOptions.value = []
-      return
-    }
-
-    // 搜索订单 - 支持多字段匹配
-    const matchedOrders = orders.filter((order: any) => {
+    // 🔥 仅支持订单号搜索和匹配，且只显示已发货及之后状态的订单
+    const afterSalesStatuses = ['shipped', 'delivered', 'completed', 'abnormal', 'rejected', 'rejected_returned']
+    const matchedOrders = allOrders.filter((order: any) => {
+      // 状态过滤：仅已发货及之后
+      if (!afterSalesStatuses.includes(order.status)) return false
       // 订单号匹配
-      const orderNumberMatch = order.orderNumber?.toLowerCase().includes(keyword.toLowerCase())
-
-      // 客户手机号匹配
-      const phoneMatch = order.customerPhone?.includes(keyword)
-
-      // 物流单号匹配
-      const trackingMatch = order.trackingNumber?.toLowerCase().includes(keyword.toLowerCase())
-
-      // 客户编码匹配
-      const customerCodeMatch = order.customerCode?.toLowerCase().includes(keyword.toLowerCase())
-
-      // 客户姓名匹配
-      const customerNameMatch = order.customerName?.toLowerCase().includes(keyword.toLowerCase())
-
-      // 商品名称匹配 (从products数组中查找)
-      const productNameMatch = order.products?.some((p: any) =>
-        p.name?.toLowerCase().includes(keyword.toLowerCase())
-      )
-
-      return orderNumberMatch || phoneMatch || trackingMatch ||
-             customerCodeMatch || customerNameMatch || productNameMatch
+      return order.orderNumber?.toLowerCase().includes(keyword.toLowerCase())
     })
 
-    console.log('[售后订单搜索] 匹配到的订单数:', matchedOrders.length)
+    console.log('[售后订单搜索] 符合售后条件的订单数:', matchedOrders.length)
 
-    // 显示所有匹配的订单(不限制状态,让用户可以为任何订单申请售后)
-    const availableOrders = matchedOrders.slice(0, 10) // 限制显示10个结果
+    const availableOrders = matchedOrders.slice(0, 10)
 
-    console.log('[售后订单搜索] 可申请售后的订单数:', availableOrders.length)
-
-    // 格式化订单选项,添加商品名称
+    // 格式化订单选项
     orderOptions.value = availableOrders.map((order: any) => {
-      // 获取第一个商品名称
       const productName = order.products && order.products.length > 0
         ? order.products[0].name
         : '无商品信息'
@@ -808,7 +762,6 @@ const handleOrderSearch = async (query: string) => {
 
   } catch (_error) {
     console.error('[售后订单搜索] 搜索失败:', _error)
-    ElMessage.error('搜索订单失败')
     orderOptions.value = []
   } finally {
     orderSearchLoading.value = false
@@ -823,10 +776,18 @@ const handleOrderSelect = (orderNumber: string) => {
     return
   }
 
-  const selectedOrder = orderStore.orders.find(order => order.orderNumber === orderNumber)
+  // 🔥 优先从搜索结果中查找选中订单
+  const selectedOrder = orderOptions.value.find(order => order.orderNumber === orderNumber)
   if (selectedOrder) {
     orderInfo.value = selectedOrder
     orderDialogVisible.value = true
+  } else {
+    // 兜底：从store中查找
+    const storeOrder = orderStore.orders.find(order => order.orderNumber === orderNumber)
+    if (storeOrder) {
+      orderInfo.value = storeOrder
+      orderDialogVisible.value = true
+    }
   }
 }
 

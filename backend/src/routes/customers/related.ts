@@ -70,7 +70,10 @@ router.get('/:id/services', async (req: Request, res: Response) => {
       reason: service.reason || service.description || '',
       description: service.description,
       price: Number(service.price) || 0,
-      amount: Number(service.price) || 0,
+      amount: Number(service.refundAmount) || 0,
+      refundAmount: Number(service.refundAmount) || 0,
+      refundType: service.refundType || '',
+      resolutionType: service.resolutionType || '',
       createTime: service.createdAt?.toISOString() || '',
       resolvedTime: service.resolvedTime?.toISOString() || ''
     }));
@@ -918,9 +921,15 @@ router.get('/:id/stats', async (req: Request, res: Response) => {
     // 订单数量
     const orderCount = orders.length;
 
-    // 退货次数（统计退款/取消的订单）
-    const returnStatuses = ['refunded', 'cancelled'];
-    const returnCount = orders.filter(o => returnStatuses.includes(o.status)).length;
+    // 退货次数（统计售后记录中退货、退款类型的记录数）
+    const { AfterSalesService } = await import('../../entities/AfterSalesService');
+    const serviceRepository = getTenantRepo(AfterSalesService);
+    const afterSalesServices = await serviceRepository.find({
+      where: { customerId }
+    });
+    const returnCount = afterSalesServices.filter(
+      s => s.serviceType === 'return' || s.serviceType === 'refund'
+    ).length;
 
     // 最后下单时间
     const lastOrder = orders[0];

@@ -915,8 +915,17 @@
               <el-button @click="createAfterSales" icon="Plus" type="primary" size="small">新建售后</el-button>
             </div>
             <el-table :data="serviceRecords" style="width: 100%" v-loading="loadingService">
-              <el-table-column prop="serviceNo" label="售后单号" width="200" show-overflow-tooltip />
-              <el-table-column prop="orderNo" label="关联订单" width="200" show-overflow-tooltip />
+              <el-table-column prop="serviceNo" label="售后单号" width="200" show-overflow-tooltip>
+                <template #default="{ row }">
+                  <el-link type="primary" :underline="false" @click="viewService(row.id)">{{ row.serviceNo }}</el-link>
+                </template>
+              </el-table-column>
+              <el-table-column prop="orderNo" label="关联订单" width="200" show-overflow-tooltip>
+                <template #default="{ row }">
+                  <el-link v-if="row.orderNo" type="primary" :underline="false" @click="viewServiceOrder(row.orderId, row.orderNo)">{{ row.orderNo }}</el-link>
+                  <span v-else>-</span>
+                </template>
+              </el-table-column>
               <el-table-column prop="type" label="售后类型" width="120">
                 <template #default="{ row }">
                   <el-tag :type="getServiceType(row.type)" size="small">{{ row.type }}</el-tag>
@@ -2098,6 +2107,8 @@ const getServiceType = (type: string) => {
 const getServiceStatusType = (status: string) => {
   const statusMap: Record<string, string> = {
     '已完成': 'success',
+    '已解决': 'success',
+    '已关闭': 'info',
     '处理中': 'warning',
     '待处理': 'info',
     '已拒绝': 'danger'
@@ -2865,6 +2876,14 @@ const viewService = (serviceId: string) => {
   safeNavigator.push(`/service/detail/${serviceId}`)
 }
 
+// 售后记录跳转关联订单（优先 orderId，其次 orderNo）
+const viewServiceOrder = (orderId: string, orderNo: string) => {
+  const target = orderId || orderNo
+  if (target) {
+    safeNavigator.push(`/order/detail/${target}`)
+  }
+}
+
 const handleService = (serviceId: string) => {
   safeNavigator.push(`/service/edit/${serviceId}`)
 }
@@ -3497,9 +3516,31 @@ const getServiceTypeText = (type: string) => {
     'return': '退货',
     'exchange': '换货',
     'repair': '维修',
-    'refund': '退款'
+    'refund': '退款',
+    'complaint': '投诉',
+    'consultation': '咨询'
   }
   return typeMap[type] || type
+}
+
+// 售后原因转换函数
+const getReasonText = (reason: string) => {
+  if (!reason) return '暂无描述'
+  const map: Record<string, string> = {
+    quality: '商品质量问题', quality_issue: '商品质量问题',
+    damaged: '商品损坏',
+    size: '尺寸不合适', size_issue: '尺寸问题',
+    color: '颜色不符', color_issue: '颜色不符',
+    malfunction: '功能故障',
+    wrong_item: '发错商品',
+    unsatisfied: '不满意', not_satisfied: '不满意',
+    not_as_described: '描述不符',
+    logistics_damage: '物流损坏',
+    defective: '商品缺陷',
+    expired: '商品过期',
+    other: '其他'
+  }
+  return map[reason] || reason
 }
 
 // 售后服务状态转换函数
@@ -3528,11 +3569,14 @@ const loadServiceRecords = async () => {
     serviceRecords.value = (Array.isArray(customerServices) ? customerServices : []).map((service: any) => ({
       id: service.id,
       serviceNo: service.serviceNumber || service.serviceNo,
+      orderId: service.orderId,
       orderNo: service.orderNumber || service.orderNo,
       type: getServiceTypeText(service.serviceType || service.type),
-      reason: service.reason || service.description || '暂无描述',
-      amount: service.price || service.amount || 0,
+      typeCode: service.serviceType || service.type || '',
+      reason: getReasonText(service.reason),
+      amount: service.refundAmount || service.refund_amount || 0,
       status: getServiceStatusText(service.status),
+      statusCode: service.status || '',
       createTime: service.createTime || service.createdAt
     }))
     console.log('[客户详情] 加载售后记录成功:', serviceRecords.value.length, '条')
@@ -3694,9 +3738,9 @@ const calculateCustomerStats = () => {
   // 计算订单数量
   const orderCount = customerOrders.length
 
-  // 计算退货数量
+  // 计算退货数量（退货 + 退款类型的售后记录）
   const returnCount = customerServices
-    .filter(service => service.serviceType === 'return')
+    .filter(service => service.serviceType === 'return' || service.serviceType === 'refund')
     .length
 
   // 获取最后一次下单时间

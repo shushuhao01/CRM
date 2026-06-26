@@ -121,6 +121,43 @@
           </div>
         </el-card>
 
+        <!-- 处理结果（已解决/已关闭时显示） -->
+        <el-card v-if="serviceInfo.status === 'resolved' || serviceInfo.status === 'closed'" class="info-card resolution-card" shadow="never">
+          <template #header>
+            <div class="card-header">
+              <h3>处理结果</h3>
+              <el-tag v-if="serviceInfo.resolvedTime" type="success" size="small" effect="dark">
+                {{ serviceInfo.resolvedTime }}
+              </el-tag>
+            </div>
+          </template>
+          <div class="info-grid">
+            <div class="info-item" v-if="serviceInfo.resolutionType">
+              <label>解决方案：</label>
+              <el-tag type="success" effect="dark" size="small">{{ getResolutionTypeText(serviceInfo.resolutionType) }}</el-tag>
+            </div>
+            <div class="info-item" v-if="serviceInfo.refundAmount > 0">
+              <label>退款金额：</label>
+              <span class="value resolution-refund">¥{{ Number(serviceInfo.refundAmount).toFixed(2) }}</span>
+              <el-tag v-if="serviceInfo.refundType" size="small" style="margin-left: 8px;">
+                {{ serviceInfo.refundType === 'full' ? '全额退款' : '部分退款' }}
+              </el-tag>
+            </div>
+            <div class="info-item" v-if="serviceInfo.resolutionProduct">
+              <label>处理商品：</label>
+              <span class="value">{{ serviceInfo.resolutionProduct }}</span>
+            </div>
+            <div class="info-item" v-if="serviceInfo.resolutionRemark">
+              <label>处理备注：</label>
+              <span class="value">{{ serviceInfo.resolutionRemark }}</span>
+            </div>
+            <div class="info-item" v-if="serviceInfo.assignedTo">
+              <label>处理人员：</label>
+              <span class="value">{{ serviceInfo.assignedTo }}</span>
+            </div>
+          </div>
+        </el-card>
+
         <!-- 客户信息 -->
         <el-card class="info-card" shadow="never">
           <template #header>
@@ -227,7 +264,7 @@
                 <span class="label-text">问题原因</span>
               </div>
               <div class="section-body reason-body">
-                <el-tag type="warning" size="small" effect="light">{{ getReasonText(serviceInfo.reason) }}</el-tag>
+                <el-tag type="warning" size="default" effect="dark">{{ getReasonText(serviceInfo.reason) }}</el-tag>
               </div>
             </div>
             <div class="description-section">
@@ -579,7 +616,7 @@
     <el-dialog
       v-model="statusDialogVisible"
       title="更新状态"
-      width="500px"
+      width="560px"
     >
       <el-form :model="statusForm" label-width="100px">
         <el-form-item label="新状态">
@@ -591,17 +628,100 @@
           </el-select>
         </el-form-item>
 
-        <!-- 处理结果字段 -->
-        <el-form-item label="处理结果" v-if="currentHandleResults.length > 0">
-          <el-select v-model="statusForm.handleResult" placeholder="请选择处理结果" style="width: 100%">
-            <el-option
-              v-for="result in currentHandleResults"
-              :key="result?.value || ''"
-              :label="result?.title || result?.label || '未知'"
-              :value="result?.value || ''"
+        <!-- 已解决时显示解决方案选项 -->
+        <template v-if="statusForm.status === 'resolved'">
+          <el-divider content-position="left">处理结果</el-divider>
+
+          <el-form-item label="解决方案" required>
+            <el-select v-model="statusForm.resolutionType" placeholder="请选择解决方案" style="width: 100%">
+              <el-option label="退货退款" value="return_refund" />
+              <el-option label="退货补货" value="return_replenish" />
+              <el-option label="更换产品" value="exchange" />
+              <el-option label="维修" value="repair" />
+              <el-option label="其他" value="other" />
+            </el-select>
+          </el-form-item>
+
+          <!-- 退货退款：显示退款金额和退款类型 -->
+          <template v-if="statusForm.resolutionType === 'return_refund'">
+            <el-form-item label="退款类型" required>
+              <el-radio-group v-model="statusForm.refundType">
+                <el-radio :label="'full'">全额退款</el-radio>
+                <el-radio :label="'partial'">部分退款</el-radio>
+              </el-radio-group>
+            </el-form-item>
+            <el-form-item v-if="statusForm.refundType === 'partial'" label="退款金额" required>
+              <el-input
+                v-model="statusForm.refundAmount"
+                type="text"
+                placeholder="请输入退款金额"
+                style="width: 200px;"
+                @input="handleRefundAmountInput"
+              >
+                <template #append>元</template>
+              </el-input>
+              <div style="color: #909399; font-size: 12px; margin-top: 4px;">订单金额：¥{{ Number(serviceInfo.price || 0).toFixed(2) }}</div>
+            </el-form-item>
+            <el-form-item v-if="statusForm.refundType === 'full'" label="退款金额">
+              <span style="color: #f56c6c; font-weight: 600;">¥{{ Number(serviceInfo.price || 0).toFixed(2) }}（全额）</span>
+            </el-form-item>
+          </template>
+
+          <!-- 退货补货/更换产品：显示商品选择 -->
+          <template v-if="statusForm.resolutionType === 'return_replenish' || statusForm.resolutionType === 'exchange'">
+            <el-form-item label="处理商品" required>
+              <el-select
+                v-model="statusForm.resolutionProduct"
+                filterable
+                allow-create
+                default-first-option
+                placeholder="选择在售商品或输入自定义商品名称"
+                style="width: 100%"
+              >
+                <el-option
+                  v-for="item in productOptions"
+                  :key="item.id"
+                  :label="item.name + (item.spec ? ` (${item.spec})` : '')"
+                  :value="item.name"
+                />
+              </el-select>
+            </el-form-item>
+          </template>
+
+          <!-- 维修：显示维修说明 -->
+          <template v-if="statusForm.resolutionType === 'repair'">
+            <el-form-item label="维修说明">
+              <el-input
+                v-model="statusForm.resolutionRemark"
+                type="textarea"
+                :rows="2"
+                placeholder="请输入维修情况说明"
+              />
+            </el-form-item>
+          </template>
+
+          <!-- 其他：显示自定义说明 -->
+          <template v-if="statusForm.resolutionType === 'other'">
+            <el-form-item label="处理说明">
+              <el-input
+                v-model="statusForm.resolutionRemark"
+                type="textarea"
+                :rows="2"
+                placeholder="请输入处理结果说明"
+              />
+            </el-form-item>
+          </template>
+
+          <!-- 退货退款和退货补货也显示备注 -->
+          <el-form-item v-if="statusForm.resolutionType === 'return_refund' || statusForm.resolutionType === 'return_replenish'" label="处理备注">
+            <el-input
+              v-model="statusForm.resolutionRemark"
+              type="textarea"
+              :rows="2"
+              placeholder="可选，输入处理备注"
             />
-          </el-select>
-        </el-form-item>
+          </el-form-item>
+        </template>
 
         <el-form-item label="处理说明">
           <el-input
@@ -707,6 +827,7 @@ import { createSafeNavigator } from '@/utils/navigation'
 import { serviceApi } from '@/api/service'
 import { orderApi } from '@/api/order'
 import { customerApi } from '@/api/customer'
+import { productApi } from '@/api/product'
 import { getOrderStatusText as getUnifiedOrderStatusText, getOrderStatusTagType as getUnifiedOrderStatusType } from '@/utils/orderStatusConfig'
 
 // 路由相关
@@ -777,10 +898,12 @@ const processSteps = ref<Array<{
 
 // 默认显示最新2条进度，展开后显示全部
 const displayedSteps = computed(() => {
-  if (progressExpanded.value || processSteps.value.length <= 2) {
-    return processSteps.value
+  // 倒序显示：最新记录在上方
+  const reversed = [...processSteps.value].reverse()
+  if (progressExpanded.value || reversed.length <= 2) {
+    return reversed
   }
-  return processSteps.value.slice(-2)
+  return reversed.slice(0, 2)
 })
 
 // 分配表单
@@ -800,8 +923,51 @@ const assignLoading = ref(false)
 const statusForm = reactive({
   status: '',
   handleResult: '',  // 处理结果
-  remark: ''
+  remark: '',
+  // 处理结果相关字段
+  resolutionType: '',     // 解决方案类型
+  refundAmount: 0,        // 退款金额
+  refundType: '',         // 退款类型 full/partial
+  resolutionProduct: '',  // 处理商品
+  resolutionRemark: ''    // 处理备注
 })
+
+// 退款金额输入处理：仅允许数字和两位小数，超过订单金额自动截断为订单金额
+const handleRefundAmountInput = (val: string) => {
+  // 只保留数字和小数点，小数最多两位
+  let cleaned = val.replace(/[^\d.]/g, '').replace(/^(\d*\.\d{0,2}).*$/, '$1')
+  // 多个小数点只保留第一个
+  const parts = cleaned.split('.')
+  if (parts.length > 2) {
+    cleaned = parts[0] + '.' + parts.slice(1).join('')
+  }
+  // 超过订单金额自动更正
+  const maxAmount = Number(serviceInfo.price || 0)
+  if (maxAmount > 0) {
+    const numVal = Number(cleaned)
+    if (!isNaN(numVal) && numVal > maxAmount) {
+      cleaned = maxAmount.toFixed(2)
+    }
+  }
+  statusForm.refundAmount = cleaned as any
+}
+
+// 在售商品列表（用于更换产品/退货补货选择）
+const productOptions = ref<Array<{ id: string; name: string; spec?: string; price?: number }>>([])
+const loadProductOptions = async () => {
+  try {
+    const res = await productApi.getActiveList({ pageSize: 200 })
+    productOptions.value = (res.list || []).map((p: any) => ({
+      id: p.id,
+      name: p.name || p.productName || '',
+      spec: p.spec || p.productSpec || '',
+      price: p.price || 0
+    }))
+  } catch (e) {
+    console.error('加载商品列表失败:', e)
+    productOptions.value = []
+  }
+}
 
 // 跟进记录相关
 const followUpRecords = ref<Array<{
@@ -959,6 +1125,15 @@ const handleEdit = () => {
 const handleProcess = () => {
   statusDialogVisible.value = true
   statusForm.status = serviceInfo.status
+  // 重置处理结果字段
+  statusForm.resolutionType = ''
+  statusForm.refundAmount = 0
+  statusForm.refundType = ''
+  statusForm.resolutionProduct = ''
+  statusForm.resolutionRemark = ''
+  statusForm.remark = ''
+  // 加载在售商品列表
+  loadProductOptions()
 }
 
 /**
@@ -1166,28 +1341,87 @@ const confirmStatusUpdate = async () => {
     return
   }
 
+  // 已解决时验证解决方案
+  if (statusForm.status === 'resolved') {
+    if (!statusForm.resolutionType) {
+      ElMessage.warning('请选择解决方案')
+      return
+    }
+    if (statusForm.resolutionType === 'return_refund') {
+      if (!statusForm.refundType) {
+        ElMessage.warning('请选择退款类型')
+        return
+      }
+      if (statusForm.refundType === 'partial') {
+        const amt = Number(statusForm.refundAmount)
+        if (!amt || isNaN(amt) || amt <= 0) {
+          ElMessage.warning('请输入有效的退款金额')
+          return
+        }
+        // 校验最多两位小数
+        const strAmt = String(statusForm.refundAmount)
+        if (strAmt.includes('.') && strAmt.split('.')[1].length > 2) {
+          ElMessage.warning('退款金额最多保留两位小数')
+          return
+        }
+        if (amt > Number(serviceInfo.price || 0)) {
+          ElMessage.warning('退款金额不能超过订单金额')
+          return
+        }
+      }
+    }
+    if ((statusForm.resolutionType === 'return_replenish' || statusForm.resolutionType === 'exchange') && !statusForm.resolutionProduct) {
+      ElMessage.warning('请输入处理商品')
+      return
+    }
+  }
+
   try {
-    // 调用API更新状态（后端会自动发送通知）
-    await serviceApi.updateStatus(serviceInfo.id, statusForm.status, statusForm.remark)
+    // 构造处理结果数据
+    const resolutionData: any = {}
+    if (statusForm.status === 'resolved' && statusForm.resolutionType) {
+      resolutionData.resolutionType = statusForm.resolutionType
+      if (statusForm.resolutionType === 'return_refund') {
+        resolutionData.refundType = statusForm.refundType
+        if (statusForm.refundType === 'full') {
+          resolutionData.refundAmount = Number(serviceInfo.price) || 0
+        } else {
+          resolutionData.refundAmount = statusForm.refundAmount
+        }
+      }
+      if (statusForm.resolutionProduct) resolutionData.resolutionProduct = statusForm.resolutionProduct
+      if (statusForm.resolutionRemark) resolutionData.resolutionRemark = statusForm.resolutionRemark
+    }
+
+    // 调用API更新状态
+    await serviceApi.updateStatus(serviceInfo.id, statusForm.status, statusForm.remark, resolutionData)
 
     serviceInfo.status = statusForm.status
-    if (statusForm.handleResult) {
-      serviceInfo.handleResult = statusForm.handleResult
+    // 更新本地处理结果数据
+    if (statusForm.status === 'resolved') {
+      if (resolutionData.resolutionType) serviceInfo.resolutionType = resolutionData.resolutionType
+      if (resolutionData.refundAmount !== undefined) serviceInfo.refundAmount = resolutionData.refundAmount
+      if (resolutionData.refundType) serviceInfo.refundType = resolutionData.refundType
+      if (resolutionData.resolutionProduct) serviceInfo.resolutionProduct = resolutionData.resolutionProduct
+      if (resolutionData.resolutionRemark) serviceInfo.resolutionRemark = resolutionData.resolutionRemark
     }
     statusDialogVisible.value = false
 
-    // 🔥 注意：通知已由后端API自动发送，无需前端重复发送
-
     ElMessage.success('状态更新成功')
 
-    // 获取处理结果文本
+    // 添加处理步骤
+    const resolutionTypeMap: Record<string, string> = {
+      return_refund: '退货退款', return_replenish: '退货补货',
+      exchange: '更换产品', repair: '维修', other: '其他'
+    }
     let resultText = ''
-    if (statusForm.handleResult && currentHandleResults.value.length > 0) {
-      const result = currentHandleResults.value.find((r: unknown) => r.value === statusForm.handleResult)
-      resultText = result?.title || result?.label || ''
+    if (statusForm.resolutionType) {
+      resultText = resolutionTypeMap[statusForm.resolutionType] || statusForm.resolutionType
+      if (statusForm.resolutionType === 'return_refund' && resolutionData.refundAmount > 0) {
+        resultText += ` ¥${Number(resolutionData.refundAmount).toFixed(2)}${statusForm.refundType === 'full' ? '(全额)' : '(部分)'}`
+      }
     }
 
-    // 添加处理步骤
     const description = [
       statusForm.remark,
       resultText ? `处理结果: ${resultText}` : '',
@@ -1342,6 +1576,18 @@ const getStatusText = (status: string) => {
     closed: '已关闭'
   }
   return statusMap[status] || '未知'
+}
+
+// 处理结果类型中文映射
+const getResolutionTypeText = (type: string) => {
+  const map: Record<string, string> = {
+    'return_refund': '退货退款',
+    'return_replenish': '退货补货',
+    'exchange': '更换产品',
+    'repair': '维修',
+    'other': '其他'
+  }
+  return map[type] || type
 }
 
 /**
@@ -1834,6 +2080,19 @@ onMounted(async () => {
   margin-bottom: 20px;
 }
 
+/* 处理结果卡片 */
+.resolution-card {
+  border: 1px solid #b3e19d;
+}
+.resolution-card :deep(.el-card__header) {
+  background: linear-gradient(135deg, #f0f9eb 0%, #e1f3d8 100%);
+}
+.resolution-refund {
+  color: #f56c6c;
+  font-weight: 700;
+  font-size: 16px;
+}
+
 .card-header {
   display: flex;
   justify-content: space-between;
@@ -1950,6 +2209,17 @@ onMounted(async () => {
 
 .section-label .label-icon {
   font-size: 16px;
+}
+
+.reason-section .label-icon {
+  color: #e6a23c;
+}
+
+.description-section .label-icon {
+  color: #909399;
+}
+
+.remark-section .label-icon {
   color: #409eff;
 }
 
@@ -1968,8 +2238,10 @@ onMounted(async () => {
 }
 
 .reason-body {
-  background: #fdf6ec;
-  border-left: 3px solid #e6a23c;
+  background: #fef0e6;
+  border-left: 4px solid #e6a23c;
+  color: #b88230;
+  font-weight: 500;
 }
 
 .description-body {
@@ -2104,14 +2376,15 @@ onMounted(async () => {
 
 .quick-actions {
   display: flex;
-  flex-direction: column;
-  gap: 10px;
-  align-items: flex-start;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
 }
 
 .quick-actions .el-button {
   width: auto;
-  min-width: 140px;
+  min-width: auto;
 }
 
 .related-info {
@@ -2285,14 +2558,15 @@ onMounted(async () => {
 /* 快捷操作按钮样式 */
 .quick-actions {
   display: flex;
-  flex-direction: column;
-  gap: 10px;
-  align-items: flex-start;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
 }
 
 .action-btn {
   width: auto;
-  min-width: 140px;
+  min-width: auto;
   display: flex;
   align-items: center;
   justify-content: flex-start;

@@ -474,6 +474,8 @@
               size="small"
               @click="handleAfterSales(row)"
               v-if="canCreateAfterSales(row.status)"
+              :disabled="ordersWithAfterSales.has(row.orderNumber)"
+              :title="ordersWithAfterSales.has(row.orderNumber) ? '该订单已有关联售后记录' : ''"
             >
               售后
             </el-button>
@@ -2063,7 +2065,38 @@ const submitCancelRequest = async () => {
 
 
 
+// 已有关联售后记录的订单号集合
+const ordersWithAfterSales = ref<Set<string>>(new Set())
+
+// 批量检查订单是否已有关联售后记录
+const checkAfterSalesForOrders = async (orders: OrderItem[]) => {
+  try {
+    const { serviceApi } = await import('@/api/service')
+    const orderNumbers = orders.map(o => o.orderNumber).filter(Boolean)
+    if (orderNumbers.length === 0) return
+
+    // 查询所有售后记录（不分页，取足够多）
+    const res = await serviceApi.getList({ page: 1, limit: 500 })
+    const items = (res as any)?.items || (res as any)?.data?.items || []
+    const afterSalesOrderNumbers = new Set<string>()
+    for (const item of items) {
+      if (item.orderNumber) {
+        afterSalesOrderNumbers.add(item.orderNumber)
+      }
+    }
+    ordersWithAfterSales.value = afterSalesOrderNumbers
+    console.log(`[订单列表] 售后关联检查完成: ${afterSalesOrderNumbers.size} 个订单有售后记录`)
+  } catch (e) {
+    console.warn('[订单列表] 检查售后关联失败:', e)
+  }
+}
+
 const handleAfterSales = (row: OrderItem) => {
+  // 检查是否已有关联售后记录
+  if (ordersWithAfterSales.value.has(row.orderNumber)) {
+    ElMessage.warning(`订单 ${row.orderNumber} 已有关联售后记录，无法重复创建`)
+    return
+  }
   // 跳转到新建售后页面，并通过路由参数传递订单信息
   safeNavigator.push({
     path: '/service/add',
@@ -2567,6 +2600,9 @@ const loadOrderList = async (force = false) => {
       // 🔥 更新分页总数
       pagination.total = total || 0
       console.log(`[订单列表] ✅ 加载完成: ${list?.length || 0} 条, 总数: ${total}`)
+
+      // 🔥 批量检查哪些订单已有关联售后记录
+      await checkAfterSalesForOrders(list || [])
     } else {
       console.log('[订单列表] API无数据，订单列表为空')
       orderStore.orders = []

@@ -133,14 +133,64 @@
             <el-timeline-item
               v-for="(item, index) in afterSalesHistory"
               :key="index"
-              :timestamp="item.timestamp"
+              :timestamp="item.timestamp ? '创建时间：' + formatDateTime(item.timestamp, true) : ''"
               :type="getAfterSalesType(item.type)"
             >
               <div class="after-sales-content">
-                <div class="after-sales-title">{{ item.title }}</div>
-                <div class="after-sales-description">{{ item.description }}</div>
+                <div class="after-sales-title">
+                  {{ item.title }}
+                  <el-tag
+                    v-if="item.type"
+                    size="small"
+                    effect="plain"
+                    style="margin-left: 8px;"
+                  >{{ getServiceTypeText(item.type) }}</el-tag>
+                  <el-tag
+                    v-if="item.status"
+                    :type="getAfterSalesStatusType(item.status)"
+                    size="small"
+                    effect="light"
+                    style="margin-left: 4px;"
+                  >{{ getAfterSalesStatusText(item.status) }}</el-tag>
+                </div>
+                <div v-if="item.serviceNumber" class="after-sales-number">售后单号：{{ item.serviceNumber }}</div>
+                <div v-if="item.reason || item.description" class="after-sales-desc-block">
+                  <div v-if="item.reason" class="after-sales-desc-item">
+                    <span class="after-sales-desc-label">问题原因：</span>
+                    <span class="after-sales-desc-text">{{ getReasonText(item.reason) }}</span>
+                  </div>
+                  <div v-if="item.description" class="after-sales-desc-item">
+                    <span class="after-sales-desc-label">详细描述：</span>
+                    <span class="after-sales-desc-text">{{ item.description }}</span>
+                  </div>
+                </div>
+                <!-- 处理结果区域 -->
+                <div v-if="item.resolutionType || item.refundAmount || item.resolutionProduct || item.resolutionRemark || item.remark" class="after-sales-result-block">
+                  <div v-if="item.resolutionType" class="after-sales-desc-item">
+                    <span class="after-sales-desc-label">处理结果：</span>
+                    <el-tag size="small" type="success" effect="dark">{{ getResolutionTypeText(item.resolutionType) }}</el-tag>
+                  </div>
+                  <div v-if="item.refundAmount > 0" class="after-sales-desc-item">
+                    <span class="after-sales-desc-label">退款金额：</span>
+                    <span class="after-sales-refund-amount">¥{{ Number(item.refundAmount).toFixed(2) }}</span>
+                    <el-tag v-if="item.refundType" size="small" style="margin-left: 4px;">{{ item.refundType === 'full' ? '全额退款' : '部分退款' }}</el-tag>
+                  </div>
+                  <div v-if="item.resolutionProduct" class="after-sales-desc-item">
+                    <span class="after-sales-desc-label">处理商品：</span>
+                    <span class="after-sales-desc-text">{{ item.resolutionProduct }}</span>
+                  </div>
+                  <div v-if="item.resolutionRemark" class="after-sales-desc-item">
+                    <span class="after-sales-desc-label">处理备注：</span>
+                    <span class="after-sales-desc-text">{{ item.resolutionRemark }}</span>
+                  </div>
+                  <div v-if="item.remark" class="after-sales-desc-item">
+                    <span class="after-sales-desc-label">备注：</span>
+                    <span class="after-sales-desc-text">{{ item.remark }}</span>
+                  </div>
+                </div>
                 <div v-if="item.operator" class="after-sales-operator">处理人：{{ item.operator }}</div>
-                <div v-if="item.amount" class="after-sales-amount">金额：¥{{ (item.amount || 0).toFixed(2) }}</div>
+                <div v-if="item.amount" class="after-sales-amount">订单金额：¥{{ (item.amount || 0).toFixed(2) }}</div>
+                <div v-if="item.resolvedTime" class="after-sales-operator">解决时间：{{ formatDateTime(item.resolvedTime, true) }}</div>
               </div>
             </el-timeline-item>
           </el-timeline>
@@ -152,7 +202,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 import { Van, Location, Clock, Service, ArrowDown, ArrowUp, User } from '@element-plus/icons-vue'
 import { formatDateTime } from '@/utils/dateFormat'
 import { getAfterSalesType } from './helpers'
@@ -199,7 +249,82 @@ const getActionTagLabel = (actionType: string) => {
   }
   return map[actionType] || actionType
 }
+// 有售后记录时默认展开（监听数据变化，异步加载后自动展开）
 const afterSalesCollapsedLocal = ref(true)
+watch(() => props.afterSalesHistory.length, (len) => {
+  // 有数据时自动展开，无数据时折叠
+  afterSalesCollapsedLocal.value = len === 0
+}, { immediate: true })
+
+// 售后状态标签类型
+const getAfterSalesStatusType = (status: string) => {
+  const map: Record<string, string> = {
+    'pending': 'warning',
+    'processing': 'primary',
+    'resolved': 'success',
+    'closed': 'info'
+  }
+  return map[status] || 'info'
+}
+
+// 售后状态文本
+const getAfterSalesStatusText = (status: string) => {
+  const map: Record<string, string> = {
+    'pending': '待处理',
+    'processing': '处理中',
+    'resolved': '已解决',
+    'closed': '已关闭'
+  }
+  return map[status] || status
+}
+
+// 售后类型文本
+const getServiceTypeText = (type: string) => {
+  const map: Record<string, string> = {
+    'return': '退货',
+    'exchange': '换货',
+    'repair': '维修',
+    'refund': '退款',
+    'complaint': '投诉',
+    'consultation': '咨询'
+  }
+  return map[type] || type
+}
+
+// 问题原因中文映射
+const getReasonText = (reason: string) => {
+  const map: Record<string, string> = {
+    'quality': '商品质量问题',
+    'damaged': '商品损坏',
+    'size': '尺寸不合适',
+    'color': '颜色不符',
+    'malfunction': '功能故障',
+    'wrong_item': '发错商品',
+    'wrong': '发错商品',
+    'missing': '商品缺失',
+    'unsatisfied': '不满意',
+    'not_as_described': '与描述不符',
+    'no_longer_needed': '不需要了',
+    'price_issue': '价格问题',
+    'shipping_issue': '物流问题',
+    'logistics_damage': '物流损坏',
+    'expired': '商品过期',
+    'other': '其他原因'
+  }
+  return map[reason] || reason
+}
+
+// 处理结果类型中文映射
+const getResolutionTypeText = (type: string) => {
+  const map: Record<string, string> = {
+    'return_refund': '退货退款',
+    'return_replenish': '退货补货',
+    'exchange': '更换产品',
+    'repair': '维修',
+    'other': '其他'
+  }
+  return map[type] || type
+}
 </script>
 
 <style scoped>
@@ -230,8 +355,15 @@ const afterSalesCollapsedLocal = ref(true)
 
 /* 售后历史 */
 .after-sales-content { padding: 8px 0; }
-.after-sales-title { font-weight: 600; color: #303133; margin-bottom: 4px; }
-.after-sales-description { color: #606266; margin-bottom: 4px; }
+.after-sales-title { font-weight: 600; color: #303133; margin-bottom: 4px; display: flex; align-items: center; }
+.after-sales-number { color: #909399; font-size: 12px; margin-bottom: 6px; }
+.after-sales-desc-block { background: #f5f7fa; border-radius: 4px; padding: 8px 12px; margin-bottom: 6px; }
+.after-sales-result-block { background: #f0f9eb; border-radius: 4px; padding: 8px 12px; margin-bottom: 6px; border-left: 3px solid #67c23a; }
+.after-sales-desc-item { margin-bottom: 4px; display: flex; align-items: center; flex-wrap: wrap; gap: 4px; }
+.after-sales-desc-item:last-child { margin-bottom: 0; }
+.after-sales-desc-label { color: #909399; font-size: 12px; font-weight: 500; flex-shrink: 0; }
+.after-sales-desc-text { color: #303133; font-size: 13px; }
+.after-sales-refund-amount { color: #f56c6c; font-weight: 700; font-size: 14px; }
 .after-sales-operator { color: #909399; font-size: 12px; margin-bottom: 4px; }
-.after-sales-amount { color: #f56c6c; font-weight: 600; font-size: 14px; }
+.after-sales-amount { color: #e6a23c; font-weight: 600; font-size: 13px; }
 </style>

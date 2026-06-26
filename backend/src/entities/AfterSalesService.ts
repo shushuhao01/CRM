@@ -94,4 +94,20 @@ export class AfterSalesService {
 
   @Column({ name: 'resolved_time', type: 'datetime', nullable: true })
   resolvedTime: Date;
+
+  // 处理结果相关字段
+  @Column({ name: 'resolution_type', length: 50, nullable: true })
+  resolutionType: string; // return_refund(退货退款), return_replenish(退货补货), exchange(更换产品), repair(维修), other(其他)
+
+  @Column({ name: 'refund_amount', type: 'decimal', precision: 10, scale: 2, nullable: true, default: 0 })
+  refundAmount: number;
+
+  @Column({ name: 'refund_type', length: 20, nullable: true })
+  refundType: string; // full(全额退款), partial(部分退款)
+
+  @Column({ name: 'resolution_product', length: 200, nullable: true })
+  resolutionProduct: string;
+
+  @Column({ name: 'resolution_remark', type: 'text', nullable: true })
+  resolutionRemark: string;
 }

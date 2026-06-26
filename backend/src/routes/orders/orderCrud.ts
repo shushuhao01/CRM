@@ -422,28 +422,68 @@ router.get('/:id/operation-logs', async (req: Request, res: Response) => {
  */
 router.get('/:id/after-sales', async (req: Request, res: Response) => {
   try {
-    const orderId = req.params.id;
+    const paramId = req.params.id;
     const { AfterSalesService } = await import('../../entities/AfterSalesService');
     const serviceRepository = getTenantRepo(AfterSalesService);
 
+    // 先通过 paramId 查找订单（可能是 UUID 或 orderNumber），获取真正的 orderId 和 orderNumber
+    const orderRepo = getTenantRepo(Order);
+    const order = await orderRepo.findOne({
+      where: [
+        { id: paramId },
+        { orderNumber: paramId }
+      ]
+    });
+
+    const realOrderId = order?.id || paramId;
+    const realOrderNumber = order?.orderNumber || '';
+
+    log.info(`[订单售后历史] paramId=${paramId}, 解析为 orderId=${realOrderId}, orderNumber=${realOrderNumber}`);
+
+    // 用 orderId 和 orderNumber 双查售后记录（兼容 order_id 为 null 但 order_number 有值的情况）
+    const whereConditions: any[] = [{ orderId: realOrderId }];
+    if (realOrderNumber) {
+      whereConditions.push({ orderNumber: realOrderNumber });
+    }
+
     const services = await serviceRepository.find({
-      where: { orderId },
+      where: whereConditions,
       order: { createdAt: 'DESC' }
     });
+
+    // 查询创建者真实姓名
+    const { User } = await import('../../entities/User');
+    const userRepo = getTenantRepo(User);
+    const creatorIds = [...new Set(services.map(s => s.createdById).filter(Boolean))] as string[];
+    const userMap = new Map<string, string>();
+    if (creatorIds.length > 0) {
+      const users = await userRepo.findByIds(creatorIds);
+      for (const u of users) {
+        if (u.name) userMap.set(u.id, u.name);
+      }
+    }
 
     const list = services.map(service => ({
       id: service.id,
       serviceNumber: service.serviceNumber,
       type: service.serviceType,
       title: getAfterSalesTitle(service.serviceType, service.status),
-      description: service.description || service.reason || '',
+      reason: service.reason || '',
+      description: service.description || '',
       status: service.status,
-      operator: service.createdBy || '系统',
+      operator: userMap.get(service.createdById || '') || service.assignedTo || service.createdBy || '系统',
       amount: Number(service.price) || 0,
+      remark: service.remark || '',
+      resolutionType: service.resolutionType || '',
+      refundAmount: Number(service.refundAmount) || 0,
+      refundType: service.refundType || '',
+      resolutionProduct: service.resolutionProduct || '',
+      resolutionRemark: service.resolutionRemark || '',
+      resolvedTime: service.resolvedTime?.toISOString() || '',
       timestamp: service.createdAt?.toISOString() || ''
     }));
 
-    log.info(`[订单售后历史] 订单 ${orderId} 有 ${list.length} 条售后记录`);
+    log.info(`[订单售后历史] 订单 ${paramId} 有 ${list.length} 条售后记录`);
     res.json({ success: true, code: 200, data: list });
   } catch (error) {
     log.error('获取订单售后历史失败:', error);

@@ -33,7 +33,7 @@
       </div>
       <div class="header-actions">
         <el-tooltip
-          :content="canCreateAfterSales ? '点击创建售后服务' : '订单需要发货后才能建立售后'"
+          :content="afterSalesTooltip"
           placement="bottom"
         >
           <el-button
@@ -449,37 +449,69 @@ const setupEventListeners = () => {
 // 加载售后历史数据 - 从后端API获取
 const loadAfterSalesHistory = async () => {
   try {
-    const services = await orderDetailApi.getAfterSalesHistory(orderId)
+    // 优先使用 orderDetail.id（数据库UUID），其次用 URL 参数（可能是orderNumber）
+    const queryId = orderDetail.id || orderId
+    if (!queryId) {
+      console.warn('[订单详情] 无法加载售后历史：缺少订单ID')
+      afterSalesHistory.value = []
+      return
+    }
+    console.log(`[订单详情] 加载售后历史，查询ID: ${queryId}`)
+    const services = await orderDetailApi.getAfterSalesHistory(queryId)
+    console.log(`[订单详情] 售后历史API返回:`, services)
+
+    // 确保 services 是数组
+    const serviceList = Array.isArray(services) ? services : (services?.data || [])
 
     // 将售后服务数据转换为历史轨迹格式
-    afterSalesHistory.value = services.map((service: any) => ({
-      timestamp: service.timestamp,
-      type: service.type,
-      title: service.title || getAfterSalesTitle(service.type, service.status),
-      description: service.description,
-      operator: service.operator,
+    afterSalesHistory.value = serviceList.map((service: any) => ({
+      timestamp: service.timestamp || service.createdAt || '',
+      type: service.type || service.serviceType || '',
+      title: service.title || getAfterSalesTitle(service.type || service.serviceType, service.status),
+      reason: service.reason || '',
+      description: service.description || '',
+      operator: service.operator || service.createdBy || '',
       amount: service.amount || 0,
-      status: service.status,
-      serviceNumber: service.serviceNumber
+      status: service.status || '',
+      serviceNumber: service.serviceNumber || '',
+      remark: service.remark || '',
+      resolutionType: service.resolutionType || '',
+      refundAmount: service.refundAmount || 0,
+      refundType: service.refundType || '',
+      resolutionProduct: service.resolutionProduct || '',
+      resolutionRemark: service.resolutionRemark || '',
+      resolvedTime: service.resolvedTime || ''
     }))
 
     // 按时间倒序排列
-    afterSalesHistory.value.sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+    afterSalesHistory.value.sort((a: any, b: any) => {
+      const ta = new Date(a.timestamp).getTime()
+      const tb = new Date(b.timestamp).getTime()
+      return tb - ta
+    })
     console.log(`[订单详情] 加载到 ${afterSalesHistory.value.length} 条售后记录`)
   } catch (error) {
     console.error('加载售后历史失败，尝试从本地store获取:', error)
     // 如果API失败，尝试从本地store获取
     try {
-      const afterSalesServices = serviceStore.getServicesByOrderId(orderDetail.id)
-      afterSalesHistory.value = afterSalesServices.map((service: any) => ({
-        timestamp: service.createTime,
-        type: service.serviceType,
+      const afterSalesServices = serviceStore.getServicesByOrderId(orderDetail.id || orderId)
+      afterSalesHistory.value = (afterSalesServices || []).map((service: any) => ({
+        timestamp: service.createTime || service.createdAt || '',
+        type: service.serviceType || '',
         title: getAfterSalesTitle(service.serviceType, service.status),
-        description: service.description || service.reason,
-        operator: service.createdBy,
+        reason: service.reason || '',
+        description: service.description || '',
+        operator: service.createdBy || '',
         amount: service.price || 0,
-        status: service.status,
-        serviceNumber: service.serviceNumber
+        status: service.status || '',
+        serviceNumber: service.serviceNumber || '',
+        remark: service.remark || '',
+        resolutionType: service.resolutionType || '',
+        refundAmount: service.refundAmount || 0,
+        refundType: service.refundType || '',
+        resolutionProduct: service.resolutionProduct || '',
+        resolutionRemark: service.resolutionRemark || '',
+        resolvedTime: service.resolvedTime || ''
       }))
     } catch (e) {
       afterSalesHistory.value = []
@@ -773,7 +805,20 @@ const canCreateAfterSales = computed(() => {
   // 建立售后按钮只有在已发货及之后的状态才可点击
   // 可点击状态：已发货、已送达、已完成、异常、拒收、拒收已退回等
   const allowedStatuses = ['shipped', 'delivered', 'completed', 'abnormal', 'rejected', 'rejected_returned']
-  return allowedStatuses.includes(orderDetail.status)
+  if (!allowedStatuses.includes(orderDetail.status)) return false
+  // 已有关联售后记录则禁用
+  if (afterSalesHistory.value.length > 0) return false
+  return true
+})
+
+const afterSalesTooltip = computed(() => {
+  if (!['shipped', 'delivered', 'completed', 'abnormal', 'rejected', 'rejected_returned'].includes(orderDetail.status)) {
+    return '订单需要发货后才能建立售后'
+  }
+  if (afterSalesHistory.value.length > 0) {
+    return '该订单已有关联售后记录，无法重复创建'
+  }
+  return '点击创建售后服务'
 })
 
 const canApprove = computed(() => {
@@ -1787,7 +1832,7 @@ const loadOrderDetail = async () => {
     })
 
     loadOrderTimeline()
-    loadAfterSalesHistory()
+    await loadAfterSalesHistory()
 
     if (orderDetail.trackingNumber && orderDetail.expressCompany) {
       refreshLogistics()

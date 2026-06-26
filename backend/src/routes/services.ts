@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { AfterSalesService } from '../entities/AfterSalesService';
 import { Order } from '../entities/Order';
 import { Customer } from '../entities/Customer';
+import { User } from '../entities/User';
 import { ServiceFollowUp } from '../entities/ServiceFollowUp';
 import { ServiceOperationLog } from '../entities/ServiceOperationLog';
 import { authenticateToken } from '../middleware/auth';
@@ -153,39 +154,60 @@ router.get('/', authenticateToken, async (req: Request, res: Response) => {
       return [];
     };
 
+    // 批量查询关联订单信息（订单金额、下单人员）
+    const orderIds = [...new Set(services.map(s => s.orderId).filter(Boolean))] as string[];
+    const orderMap = new Map<string, any>();
+    if (orderIds.length > 0) {
+      const orderRepo = getTenantRepo(Order);
+      const orders = await orderRepo.findByIds(orderIds);
+      for (const o of orders) {
+        orderMap.set(o.id, o);
+      }
+    }
+
     // 格式化返回数据
-    const formattedServices = services.map(service => ({
-      id: service.id,
-      serviceNumber: service.serviceNumber,
-      orderId: service.orderId,
-      orderNumber: service.orderNumber,
-      customerId: service.customerId,
-      customerName: service.customerName,
-      customerPhone: service.customerPhone,
-      serviceType: service.serviceType,
-      status: service.status,
-      priority: service.priority,
-      reason: service.reason,
-      description: service.description,
-      productName: service.productName,
-      productSpec: service.productSpec,
-      quantity: service.quantity,
-      price: service.price,
-      contactName: service.contactName,
-      contactPhone: service.contactPhone,
-      contactAddress: service.contactAddress,
-      assignedTo: service.assignedTo,
-      assignedToId: service.assignedToId,
-      remark: service.remark,
-      attachments: parseAttachments(service.attachments),
-      createdBy: service.createdBy,
-      createdById: service.createdById,
-      departmentId: service.departmentId,
-      createTime: formatDateTime(service.createdAt),
-      updateTime: formatDateTime(service.updatedAt),
-      expectedTime: formatDateTime(service.expectedTime),
-      resolvedTime: formatDateTime(service.resolvedTime)
-    }));
+    const formattedServices = services.map(service => {
+      const order = service.orderId ? orderMap.get(service.orderId) : null;
+      return {
+        id: service.id,
+        serviceNumber: service.serviceNumber,
+        orderId: service.orderId,
+        orderNumber: service.orderNumber,
+        customerId: service.customerId,
+        customerName: service.customerName,
+        customerPhone: service.customerPhone,
+        serviceType: service.serviceType,
+        status: service.status,
+        priority: service.priority,
+        reason: service.reason,
+        description: service.description,
+        productName: service.productName,
+        productSpec: service.productSpec,
+        quantity: service.quantity,
+        price: service.price,
+        orderAmount: order ? Number(order.totalAmount) || 0 : 0,
+        orderCreator: order?.createdByName || order?.createdBy || '',
+        contactName: service.contactName,
+        contactPhone: service.contactPhone,
+        contactAddress: service.contactAddress,
+        assignedTo: service.assignedTo,
+        assignedToId: service.assignedToId,
+        remark: service.remark,
+        resolutionType: service.resolutionType || '',
+        refundAmount: Number(service.refundAmount) || 0,
+        refundType: service.refundType || '',
+        resolutionProduct: service.resolutionProduct || '',
+        resolutionRemark: service.resolutionRemark || '',
+        attachments: parseAttachments(service.attachments),
+        createdBy: service.createdBy,
+        createdById: service.createdById,
+        departmentId: service.departmentId,
+        createTime: formatDateTime(service.createdAt),
+        updateTime: formatDateTime(service.updatedAt),
+        expectedTime: formatDateTime(service.expectedTime),
+        resolvedTime: formatDateTime(service.resolvedTime)
+      };
+    });
 
     res.json({
       success: true,
@@ -231,6 +253,20 @@ router.get('/:id', authenticateToken, async (req: Request, res: Response) => {
       });
     }
 
+    // 查询创建者真实姓名
+    let createdByName = service.createdBy || '';
+    if (service.createdById) {
+      try {
+        const userRepo = getTenantRepo(User);
+        const creator = await userRepo.findOne({ where: { id: service.createdById } });
+        if (creator?.name) {
+          createdByName = creator.name;
+        }
+      } catch (e) {
+        // 查询失败时保持原值
+      }
+    }
+
     res.json({
       success: true,
       data: {
@@ -256,8 +292,13 @@ router.get('/:id', authenticateToken, async (req: Request, res: Response) => {
         assignedTo: service.assignedTo,
         assignedToId: service.assignedToId,
         remark: service.remark,
+        resolutionType: service.resolutionType || '',
+        refundAmount: Number(service.refundAmount) || 0,
+        refundType: service.refundType || '',
+        resolutionProduct: service.resolutionProduct || '',
+        resolutionRemark: service.resolutionRemark || '',
         attachments: service.attachments || [],
-        createdBy: service.createdBy,
+        createdBy: createdByName,
         createdById: service.createdById,
         departmentId: service.departmentId,
         createTime: formatDateTime(service.createdAt),
@@ -285,6 +326,25 @@ router.post('/', authenticateToken, async (req: Request, res: Response) => {
     const serviceRepository = getServiceRepository();
     const currentUser = (req as any).user;
     const data = req.body;
+
+    // 🔥 补全关联订单信息：如果只传了 orderNumber 没传 orderId，自动查找 orderId
+    if (!data.orderId && data.orderNumber) {
+      const orderRepo = getTenantRepo(Order);
+      const order = await orderRepo.findOne({ where: { orderNumber: data.orderNumber } });
+      if (order) {
+        data.orderId = order.id;
+        // 同时补全 customerId（如果没传）
+        if (!data.customerId && order.customerId) {
+          data.customerId = order.customerId;
+        }
+        if (!data.customerName && order.customerName) {
+          data.customerName = order.customerName;
+        }
+        if (!data.customerPhone && order.customerPhone) {
+          data.customerPhone = order.customerPhone;
+        }
+      }
+    }
 
     // 🔥 租户数据隔离：验证关联订单归属当前租户
     if (data.orderId) {
@@ -400,6 +460,11 @@ router.post('/', authenticateToken, async (req: Request, res: Response) => {
         assignedTo: savedService.assignedTo,
         assignedToId: savedService.assignedToId,
         remark: savedService.remark,
+        resolutionType: savedService.resolutionType || '',
+        refundAmount: Number(savedService.refundAmount) || 0,
+        refundType: savedService.refundType || '',
+        resolutionProduct: savedService.resolutionProduct || '',
+        resolutionRemark: savedService.resolutionRemark || '',
         attachments: savedService.attachments || [],
         createdBy: savedService.createdBy,
         createdById: savedService.createdById,
@@ -452,6 +517,12 @@ router.put('/:id', authenticateToken, async (req: Request, res: Response) => {
     if (data.assignedToId !== undefined) service.assignedToId = data.assignedToId;
     if (data.remark !== undefined) service.remark = data.remark;
     if (data.expectedTime !== undefined) service.expectedTime = data.expectedTime ? new Date(data.expectedTime) : null;
+    // 处理结果相关字段
+    if (data.resolutionType !== undefined) service.resolutionType = data.resolutionType;
+    if (data.refundAmount !== undefined) service.refundAmount = Number(data.refundAmount) || 0;
+    if (data.refundType !== undefined) service.refundType = data.refundType;
+    if (data.resolutionProduct !== undefined) service.resolutionProduct = data.resolutionProduct;
+    if (data.resolutionRemark !== undefined) service.resolutionRemark = data.resolutionRemark;
 
     // 如果状态变为已解决，记录解决时间
     if (data.status === 'resolved' && !service.resolvedTime) {
@@ -522,6 +593,11 @@ router.put('/:id', authenticateToken, async (req: Request, res: Response) => {
         assignedTo: updatedService.assignedTo,
         assignedToId: updatedService.assignedToId,
         remark: updatedService.remark,
+        resolutionType: updatedService.resolutionType || '',
+        refundAmount: Number(updatedService.refundAmount) || 0,
+        refundType: updatedService.refundType || '',
+        resolutionProduct: updatedService.resolutionProduct || '',
+        resolutionRemark: updatedService.resolutionRemark || '',
         attachments: updatedService.attachments || [],
         createdBy: updatedService.createdBy,
         createdById: updatedService.createdById,
@@ -550,7 +626,7 @@ router.patch('/:id/status', authenticateToken, async (req: Request, res: Respons
   try {
     const serviceRepository = getServiceRepository();
     const { id } = req.params;
-    const { status, remark } = req.body;
+    const { status, remark, resolutionType, refundAmount, refundType, resolutionProduct, resolutionRemark } = req.body;
     const currentUser = (req as any).user;
     const operatorName = currentUser?.realName || currentUser?.name || currentUser?.username || '系统';
 
@@ -574,23 +650,44 @@ router.patch('/:id/status', authenticateToken, async (req: Request, res: Respons
     service.status = status;
     if (remark) service.remark = remark;
 
-    // 如果状态变为已解决，记录解决时间
-    if (status === 'resolved' && !service.resolvedTime) {
-      service.resolvedTime = new Date();
+    // 如果状态变为已解决，保存处理结果信息
+    if (status === 'resolved') {
+      if (resolutionType) service.resolutionType = resolutionType;
+      if (refundAmount !== undefined) service.refundAmount = Number(refundAmount) || 0;
+      if (refundType) service.refundType = refundType;
+      if (resolutionProduct) service.resolutionProduct = resolutionProduct;
+      if (resolutionRemark) service.resolutionRemark = resolutionRemark;
+      if (!service.resolvedTime) {
+        service.resolvedTime = new Date();
+      }
     }
 
     const updatedService = await serviceRepository.save(service);
 
-    // 记录操作日志
+    // 记录操作日志（包含处理结果详情，方便审计）
     const statusTextMap: Record<string, string> = {
       pending: '待处理', processing: '处理中', resolved: '已解决',
       closed: '已关闭', rejected: '已拒绝', cancelled: '已取消'
     };
+    const resolutionTypeMap: Record<string, string> = {
+      return_refund: '退货退款', return_replenish: '退货补货',
+      exchange: '更换产品', repair: '维修', other: '其他'
+    };
+    let logDescription = `状态从 ${statusTextMap[previousStatus] || previousStatus} 变更为 ${statusTextMap[status] || status}`;
+    if (status === 'resolved' && resolutionType) {
+      const parts = [`处理结果: ${resolutionTypeMap[resolutionType] || resolutionType}`];
+      if (refundAmount > 0) {
+        parts.push(`退款金额: ¥${Number(refundAmount).toFixed(2)}${refundType === 'full' ? '(全额)' : '(部分)'}`);
+      }
+      if (resolutionProduct) parts.push(`处理商品: ${resolutionProduct}`);
+      if (resolutionRemark) parts.push(`备注: ${resolutionRemark}`);
+      logDescription += ' - ' + parts.join(', ');
+    }
     await logOperation(
       service.id,
       service.serviceNumber,
       'status_change',
-      `状态从 ${statusTextMap[previousStatus] || previousStatus} 变更为 ${statusTextMap[status] || status}`,
+      logDescription,
       currentUser?.userId || '',
       operatorName,
       previousStatus,
