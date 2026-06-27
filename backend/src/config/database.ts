@@ -72,6 +72,9 @@ import { ValueAddedOrder } from '../entities/ValueAddedOrder';
 import { ValueAddedPriceConfig } from '../entities/ValueAddedPriceConfig';
 import { OutsourceCompany } from '../entities/OutsourceCompany';
 import { ValueAddedStatusConfig } from '../entities/ValueAddedStatusConfig';
+import { ValueAddedOperationLog } from '../entities/ValueAddedOperationLog';
+import { CodOperationLog } from '../entities/CodOperationLog';
+import { PerformanceOperationLog } from '../entities/PerformanceOperationLog';
 import { Module } from '../entities/Module';
 import { ModuleConfig } from '../entities/ModuleConfig';
 import { NotificationTemplate } from '../entities/NotificationTemplate';
@@ -164,7 +167,9 @@ const entities = [
   WecomConfig, WecomUserBinding, WecomCustomer, WecomAcquisitionLink,
   WecomServiceAccount, WecomChatRecord, WecomPaymentRecord, WecomPaymentQrcode, WecomPaymentRefund,
   CodCancelApplication, ValueAddedOrder, ValueAddedPriceConfig,
-  OutsourceCompany, ValueAddedStatusConfig, Module, ModuleConfig, NotificationTemplate,
+  OutsourceCompany, ValueAddedStatusConfig, ValueAddedOperationLog,
+  CodOperationLog, PerformanceOperationLog,
+  Module, ModuleConfig, NotificationTemplate,
   UpdateTask, MigrationHistory, ApiConfig, ApiCallLog, Tenant,
   Package, PrivateCustomer, TenantLog, TenantSettings, AdminOperationLog, Changelog,
   SenderAddress, SmsQuotaPackage, SmsQuotaOrder, SmsAutoSendRule,

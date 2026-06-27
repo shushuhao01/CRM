@@ -8,15 +8,59 @@ import { CommissionLadder } from '../entities/CommissionLadder';
 import { CommissionSetting } from '../entities/CommissionSetting';
 import { Department } from '../entities/Department';
 import { User } from '../entities/User';
+import { PerformanceOperationLog } from '../entities/PerformanceOperationLog';
 import { authenticateToken } from '../middleware/auth';
 import { getTenantRepo } from '../utils/tenantRepo';
 import { TenantContextManager } from '../utils/tenantContext';
 import { deployConfig } from '../config/deploy';
+import { v4 as uuidv4 } from 'uuid';
 
 import { log } from '../config/logger';
 const router = Router();
 
 router.use(authenticateToken);
+
+/**
+ * 绩效状态中文标签映射
+ */
+const PERF_STATUS_LABELS: Record<string, string> = {
+  pending: '待处理',
+  valid: '有效',
+  invalid: '无效'
+};
+
+/**
+ * 记录绩效管理操作日志（审计用）
+ */
+async function logPerformanceOperation(params: {
+  orderId: string;
+  orderNumber: string | null;
+  operationType: string;
+  operationContent: string;
+  oldValue?: string | null;
+  newValue?: string | null;
+  operatorId?: string | null;
+  operatorName?: string | null;
+  remark?: string | null;
+}): Promise<void> {
+  try {
+    const logRepo = getTenantRepo(PerformanceOperationLog);
+    const entry = new PerformanceOperationLog();
+    entry.id = uuidv4();
+    entry.orderId = params.orderId;
+    entry.orderNumber = params.orderNumber || null;
+    entry.operationType = params.operationType;
+    entry.operationContent = params.operationContent;
+    entry.oldValue = params.oldValue ?? null;
+    entry.newValue = params.newValue ?? null;
+    entry.operatorId = params.operatorId ?? null;
+    entry.operatorName = params.operatorName ?? null;
+    entry.remark = params.remark ?? null;
+    await logRepo.save(entry);
+  } catch (e) {
+    log.error('[Finance] 写入绩效操作日志失败:', e);
+  }
+}
 
 // Get performance data statistics
 router.get('/performance-data/statistics', async (req: Request, res: Response) => {
@@ -83,11 +127,11 @@ router.get('/performance-data/statistics', async (req: Request, res: Response) =
       queryBuilder.clone().getCount(),
       // 🔥 签收单数：只统计已签收状态的订单
       queryBuilder.clone().andWhere('order.status IN (:...s)', { s: deliveredStatuses }).getCount(),
-      // 有效单数
-      queryBuilder.clone().andWhere('order.performanceStatus = :ps', { ps: 'valid' }).getCount(),
+      // 有效单数（兼容中文值）
+      queryBuilder.clone().andWhere('order.performanceStatus IN (:...ps)', { ps: ['valid', '有效'] }).getCount(),
       // 系数合计：只计算有效订单且系数>0的
       queryBuilder.clone()
-        .andWhere('order.performanceStatus = :ps', { ps: 'valid' })
+        .andWhere('order.performanceStatus IN (:...ps)', { ps: ['valid', '有效'] })
         .andWhere('order.performanceCoefficient > 0')
         .select('SUM(order.performanceCoefficient)', 'total')
         .getRawOne()
@@ -95,7 +139,7 @@ router.get('/performance-data/statistics', async (req: Request, res: Response) =
 
     // 预估佣金：只计算有效订单且系数>0的
     const commissionSum = await queryBuilder.clone()
-      .andWhere('order.performanceStatus = :ps', { ps: 'valid' })
+      .andWhere('order.performanceStatus IN (:...ps)', { ps: ['valid', '有效'] })
       .andWhere('order.performanceCoefficient > 0')
       .select('SUM(order.estimatedCommission)', 'total')
       .getRawOne();
@@ -201,7 +245,16 @@ router.get('/performance-data', async (req: Request, res: Response) => {
 
     if (departmentId) queryBuilder.andWhere('order.createdByDepartmentId = :departmentId', { departmentId });
     if (salesPersonId) queryBuilder.andWhere('order.createdBy = :salesPersonId', { salesPersonId });
-    if (performanceStatus) queryBuilder.andWhere('order.performanceStatus = :performanceStatus', { performanceStatus });
+    if (performanceStatus) {
+      // 兼容数据库中可能存在的中文值，同时匹配英文键名和中文值
+      const statusMap: Record<string, string[]> = {
+        pending: ['pending', '待处理'],
+        valid: ['valid', '有效'],
+        invalid: ['invalid', '无效']
+      };
+      const matchValues = statusMap[performanceStatus as string] || [performanceStatus as string];
+      queryBuilder.andWhere('order.performanceStatus IN (:...perfStatuses)', { perfStatuses: matchValues });
+    }
     if (performanceCoefficient) queryBuilder.andWhere('order.performanceCoefficient = :performanceCoefficient', { performanceCoefficient });
 
     const allowAllRoles = ['super_admin', 'admin', 'customer_service'];
@@ -250,7 +303,16 @@ router.get('/performance-data', async (req: Request, res: Response) => {
 
     if (departmentId) countBuilder.andWhere('order.createdByDepartmentId = :departmentId', { departmentId });
     if (salesPersonId) countBuilder.andWhere('order.createdBy = :salesPersonId', { salesPersonId });
-    if (performanceStatus) countBuilder.andWhere('order.performanceStatus = :performanceStatus', { performanceStatus });
+    if (performanceStatus) {
+      // 兼容数据库中可能存在的中文值，同时匹配英文键名和中文值
+      const statusMap: Record<string, string[]> = {
+        pending: ['pending', '待处理'],
+        valid: ['valid', '有效'],
+        invalid: ['invalid', '无效']
+      };
+      const matchValues = statusMap[performanceStatus as string] || [performanceStatus as string];
+      countBuilder.andWhere('order.performanceStatus IN (:...perfStatuses)', { perfStatuses: matchValues });
+    }
     if (performanceCoefficient) countBuilder.andWhere('order.performanceCoefficient = :performanceCoefficient', { performanceCoefficient });
 
     // 🔥 数据权限控制：与list查询相同的逻辑
@@ -307,21 +369,21 @@ router.get('/performance-manage/statistics', async (req: Request, res: Response)
     if (salesPersonId) queryBuilder.andWhere('order.createdBy = :salesPersonId', { salesPersonId });
     if (performanceCoefficient) queryBuilder.andWhere('order.performanceCoefficient = :performanceCoefficient', { performanceCoefficient });
 
-    // 🔥 修复：处理 NULL 值，将 NULL 视为 pending
+    // 🔥 修复：处理 NULL 值，将 NULL 视为 pending；兼容数据库中可能存在的中文值
     const [pendingCount, processedCount, validCount, invalidCount, totalCount, coefficientSum] = await Promise.all([
-      // 待处理：performanceStatus = 'pending' 或 NULL
-      queryBuilder.clone().andWhere('(order.performanceStatus = :ps OR order.performanceStatus IS NULL)', { ps: 'pending' }).getCount(),
-      // 已处理：performanceStatus != 'pending' 且不为 NULL
-      queryBuilder.clone().andWhere('order.performanceStatus IS NOT NULL AND order.performanceStatus != :ps', { ps: 'pending' }).getCount(),
-      // 有效：performanceStatus = 'valid'
-      queryBuilder.clone().andWhere('order.performanceStatus = :ps', { ps: 'valid' }).getCount(),
-      // 无效：performanceStatus = 'invalid'
-      queryBuilder.clone().andWhere('order.performanceStatus = :ps', { ps: 'invalid' }).getCount(),
+      // 待处理：performanceStatus = 'pending' 或 '待处理' 或 NULL
+      queryBuilder.clone().andWhere("(order.performanceStatus IN (:...psValues) OR order.performanceStatus IS NULL)", { psValues: ['pending', '待处理'] }).getCount(),
+      // 已处理：performanceStatus 不为 pending/待处理 且不为 NULL
+      queryBuilder.clone().andWhere("order.performanceStatus IS NOT NULL AND order.performanceStatus NOT IN (:...psValues)", { psValues: ['pending', '待处理'] }).getCount(),
+      // 有效：performanceStatus = 'valid' 或 '有效'
+      queryBuilder.clone().andWhere('order.performanceStatus IN (:...psValues)', { psValues: ['valid', '有效'] }).getCount(),
+      // 无效：performanceStatus = 'invalid' 或 '无效'
+      queryBuilder.clone().andWhere('order.performanceStatus IN (:...psValues)', { psValues: ['invalid', '无效'] }).getCount(),
       // 🔥 全部：所有已发货订单
       queryBuilder.clone().getCount(),
       // 系数合计：只计算有效订单且系数>0的
       queryBuilder.clone()
-        .andWhere('order.performanceStatus = :ps', { ps: 'valid' })
+        .andWhere('order.performanceStatus IN (:...psValues)', { psValues: ['valid', '有效'] })
         .andWhere('order.performanceCoefficient > 0')
         .select('SUM(order.performanceCoefficient)', 'total')
         .getRawOne()
@@ -418,7 +480,16 @@ router.get('/performance-manage', async (req: Request, res: Response) => {
 
     if (departmentId) queryBuilder.andWhere('order.createdByDepartmentId = :departmentId', { departmentId });
     if (salesPersonId) queryBuilder.andWhere('order.createdBy = :salesPersonId', { salesPersonId });
-    if (performanceStatus) queryBuilder.andWhere('order.performanceStatus = :performanceStatus', { performanceStatus });
+    if (performanceStatus) {
+      // 兼容数据库中可能存在的中文值，同时匹配英文键名和中文值
+      const statusMap: Record<string, string[]> = {
+        pending: ['pending', '待处理'],
+        valid: ['valid', '有效'],
+        invalid: ['invalid', '无效']
+      };
+      const matchValues = statusMap[performanceStatus as string] || [performanceStatus as string];
+      queryBuilder.andWhere('order.performanceStatus IN (:...perfStatuses)', { perfStatuses: matchValues });
+    }
     if (performanceCoefficient) queryBuilder.andWhere('order.performanceCoefficient = :performanceCoefficient', { performanceCoefficient });
 
     queryBuilder.orderBy('order.createdAt', 'DESC').offset(skip).limit(pageSizeNum);
@@ -456,7 +527,16 @@ router.get('/performance-manage', async (req: Request, res: Response) => {
 
     if (departmentId) countBuilder.andWhere('order.createdByDepartmentId = :departmentId', { departmentId });
     if (salesPersonId) countBuilder.andWhere('order.createdBy = :salesPersonId', { salesPersonId });
-    if (performanceStatus) countBuilder.andWhere('order.performanceStatus = :performanceStatus', { performanceStatus });
+    if (performanceStatus) {
+      // 兼容数据库中可能存在的中文值，同时匹配英文键名和中文值
+      const statusMap: Record<string, string[]> = {
+        pending: ['pending', '待处理'],
+        valid: ['valid', '有效'],
+        invalid: ['invalid', '无效']
+      };
+      const matchValues = statusMap[performanceStatus as string] || [performanceStatus as string];
+      countBuilder.andWhere('order.performanceStatus IN (:...perfStatuses)', { perfStatuses: matchValues });
+    }
     if (performanceCoefficient) countBuilder.andWhere('order.performanceCoefficient = :performanceCoefficient', { performanceCoefficient });
     const total = await countBuilder.getCount();
 
@@ -480,10 +560,16 @@ router.put('/performance/batch', async (req: Request, res: Response) => {
 
     const orderRepo = getTenantRepo(Order);
     let updateCount = 0;
+    const operatorName = (req as any).currentUser?.name || (req as any).user?.name || '';
 
     for (const orderId of orderIds) {
       const order = await orderRepo.findOne({ where: { id: orderId } });
       if (order) {
+        // 保存旧值用于日志
+        const oldStatus = order.performanceStatus;
+        const oldCoefficient = order.performanceCoefficient;
+        const oldRemark = order.performanceRemark;
+
         if (performanceStatus !== undefined) order.performanceStatus = performanceStatus;
         if (performanceCoefficient !== undefined) order.performanceCoefficient = performanceCoefficient;
         if (performanceRemark !== undefined) order.performanceRemark = performanceRemark;
@@ -507,6 +593,45 @@ router.put('/performance/batch', async (req: Request, res: Response) => {
         }
 
         await orderRepo.save(order);
+
+        // 记录操作日志
+        if (performanceStatus !== undefined && oldStatus !== performanceStatus) {
+          await logPerformanceOperation({
+            orderId: order.id,
+            orderNumber: order.orderNumber,
+            operationType: 'status_change',
+            operationContent: `批量更新：将有效状态从【${PERF_STATUS_LABELS[oldStatus] || oldStatus || '空'}】修改为【${PERF_STATUS_LABELS[performanceStatus] || performanceStatus}】`,
+            oldValue: PERF_STATUS_LABELS[oldStatus] || oldStatus || '空',
+            newValue: PERF_STATUS_LABELS[performanceStatus] || performanceStatus,
+            operatorId: userId,
+            operatorName
+          });
+        }
+        if (performanceCoefficient !== undefined && Number(oldCoefficient) !== Number(performanceCoefficient)) {
+          await logPerformanceOperation({
+            orderId: order.id,
+            orderNumber: order.orderNumber,
+            operationType: 'coefficient_change',
+            operationContent: `批量更新：将绩效系数从【${oldCoefficient ?? '空'}】修改为【${performanceCoefficient}】`,
+            oldValue: String(oldCoefficient ?? ''),
+            newValue: String(performanceCoefficient),
+            operatorId: userId,
+            operatorName
+          });
+        }
+        if (performanceRemark !== undefined && oldRemark !== performanceRemark) {
+          await logPerformanceOperation({
+            orderId: order.id,
+            orderNumber: order.orderNumber,
+            operationType: 'remark_change',
+            operationContent: `批量更新：将备注从【${oldRemark || '空'}】修改为【${performanceRemark || '空'}】`,
+            oldValue: oldRemark || '',
+            newValue: performanceRemark || '',
+            operatorId: userId,
+            operatorName
+          });
+        }
+
         updateCount++;
       }
     }
@@ -548,6 +673,12 @@ router.put('/performance/:orderId', async (req: Request, res: Response) => {
       currentPerformanceCoefficient: order.performanceCoefficient
     });
 
+    // 保存旧值用于日志
+    const oldStatus = order.performanceStatus;
+    const oldCoefficient = order.performanceCoefficient;
+    const oldRemark = order.performanceRemark;
+    const operatorName = (req as any).currentUser?.name || (req as any).user?.name || '';
+
     if (performanceStatus !== undefined) order.performanceStatus = performanceStatus;
     if (performanceCoefficient !== undefined) order.performanceCoefficient = performanceCoefficient;
     if (performanceRemark !== undefined) order.performanceRemark = performanceRemark;
@@ -579,6 +710,44 @@ router.put('/performance/:orderId', async (req: Request, res: Response) => {
     await orderRepo.save(order);
     log.info('[绩效更新] 保存成功，最终佣金:', order.estimatedCommission);
     log.info('[绩效更新] ========== 更新完成 ==========');
+
+    // 记录操作日志
+    if (performanceStatus !== undefined && oldStatus !== performanceStatus) {
+      await logPerformanceOperation({
+        orderId: order.id,
+        orderNumber: order.orderNumber,
+        operationType: 'status_change',
+        operationContent: `将有效状态从【${PERF_STATUS_LABELS[oldStatus] || oldStatus || '空'}】修改为【${PERF_STATUS_LABELS[performanceStatus] || performanceStatus}】`,
+        oldValue: PERF_STATUS_LABELS[oldStatus] || oldStatus || '空',
+        newValue: PERF_STATUS_LABELS[performanceStatus] || performanceStatus,
+        operatorId: userId,
+        operatorName
+      });
+    }
+    if (performanceCoefficient !== undefined && Number(oldCoefficient) !== Number(performanceCoefficient)) {
+      await logPerformanceOperation({
+        orderId: order.id,
+        orderNumber: order.orderNumber,
+        operationType: 'coefficient_change',
+        operationContent: `将绩效系数从【${oldCoefficient ?? '空'}】修改为【${performanceCoefficient}】`,
+        oldValue: String(oldCoefficient ?? ''),
+        newValue: String(performanceCoefficient),
+        operatorId: userId,
+        operatorName
+      });
+    }
+    if (performanceRemark !== undefined && oldRemark !== performanceRemark) {
+      await logPerformanceOperation({
+        orderId: order.id,
+        orderNumber: order.orderNumber,
+        operationType: 'remark_change',
+        operationContent: `将备注从【${oldRemark || '空'}】修改为【${performanceRemark || '空'}】`,
+        oldValue: oldRemark || '',
+        newValue: performanceRemark || '',
+        operatorId: userId,
+        operatorName
+      });
+    }
 
     res.json({
       success: true,
@@ -674,7 +843,7 @@ async function calculateCommission(
           .select('SUM(o.totalAmount * o.performanceCoefficient)', 'total')
           .where('o.createdBy = :userId', { userId })
           .andWhere('o.status IN (:...statuses)', { statuses: signedStatuses })
-          .andWhere('o.performanceStatus = :ps', { ps: 'valid' })
+          .andWhere('o.performanceStatus IN (:...ps)', { ps: ['valid', '有效'] })
           .andWhere('o.performanceCoefficient > 0');
 
         if (startDate) query.andWhere('o.createdAt >= :startDate', { startDate });
@@ -717,7 +886,7 @@ async function calculateCommission(
           .select('SUM(o.performanceCoefficient)', 'total')
           .where('o.createdBy = :userId', { userId })
           .andWhere('o.status IN (:...statuses)', { statuses: signedStatuses })
-          .andWhere('o.performanceStatus = :ps', { ps: 'valid' })
+          .andWhere('o.performanceStatus IN (:...ps)', { ps: ['valid', '有效'] })
           .andWhere('o.performanceCoefficient > 0');
 
         if (startDate) query.andWhere('o.createdAt >= :startDate', { startDate });
@@ -994,6 +1163,69 @@ router.put('/setting', async (req: Request, res: Response) => {
   } catch (error: any) {
     log.error('[Finance] Update setting failed:', error);
     res.status(500).json({ success: false, message: 'Update failed' });
+  }
+});
+
+/**
+ * 批量获取多个订单的最新绩效操作日志（列表展示用）
+ */
+router.get('/performance/operation-logs/latest', async (req: Request, res: Response) => {
+  try {
+    const { orderIds } = req.query;
+    if (!orderIds) {
+      return res.json({ success: true, data: {} });
+    }
+
+    const idList = String(orderIds).split(',').map((s: string) => s.trim()).filter(Boolean);
+    if (idList.length === 0) {
+      return res.json({ success: true, data: {} });
+    }
+
+    const logRepo = getTenantRepo(PerformanceOperationLog);
+    const result: Record<string, any> = {};
+    for (const orderId of idList) {
+      const latest = await logRepo.findOne({
+        where: { orderId },
+        order: { createdAt: 'DESC' }
+      });
+      if (latest) {
+        result[orderId] = latest;
+      }
+    }
+
+    res.json({ success: true, data: result });
+  } catch (error: any) {
+    log.error('[Finance] Get latest performance logs error:', error);
+    res.status(500).json({ success: false, message: '获取操作日志失败' });
+  }
+});
+
+/**
+ * 分页获取某个订单的历史绩效操作日志（弹窗展示用）
+ */
+router.get('/performance/operation-logs/:orderId', async (req: Request, res: Response) => {
+  try {
+    const { orderId } = req.params;
+    const { page = 1, pageSize = 10 } = req.query;
+
+    const pageNum = parseInt(page as string) || 1;
+    const pageSizeNum = Math.min(parseInt(pageSize as string) || 10, 100);
+
+    const logRepo = getTenantRepo(PerformanceOperationLog);
+    const [list, total] = await logRepo.findAndCount({
+      where: { orderId },
+      order: { createdAt: 'DESC' },
+      skip: (pageNum - 1) * pageSizeNum,
+      take: pageSizeNum
+    });
+
+    res.json({
+      success: true,
+      data: { list, total, page: pageNum, pageSize: pageSizeNum }
+    });
+  } catch (error: any) {
+    log.error('[Finance] Get performance operation logs error:', error);
+    res.status(500).json({ success: false, message: '获取操作日志失败' });
   }
 });
 

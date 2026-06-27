@@ -16,7 +16,8 @@ import {
   findPriceByOrderDate,
   updateCompanyStats,
   syncOrdersToValueAdded,
-  syncOrdersToValueAddedOptimized
+  syncOrdersToValueAddedOptimized,
+  logValueAddedOperation
 } from './valueAddedHelpers';
 
 import { log } from '../../config/logger';
@@ -788,6 +789,10 @@ router.put('/orders/batch-update-company', authenticateToken, async (req: Reques
     // 批量更新订单，🔥 每个订单根据下单日期动态匹配价格
     const orders = await orderRepo.findBy({ id: In(ids) });
     for (const order of orders) {
+      // 保存旧值用于操作日志记录
+      const oldCompanyName = order.companyName;
+      const oldUnitPrice = order.unitPrice;
+
       order.companyId = companyId;
       order.companyName = companyName;
       // 🔥 如果前端提供了单价，优先使用；否则根据订单下单日期匹配价格档位
@@ -804,6 +809,33 @@ router.put('/orders/batch-update-company', authenticateToken, async (req: Reques
       }
       order.operatorId = user.id;
       order.operatorName = user.name || user.username;
+
+      // 记录操作日志（外包公司变更）
+      if (oldCompanyName !== order.companyName) {
+        await logValueAddedOperation({
+          orderId: order.id,
+          orderNumber: order.orderNumber,
+          operationType: 'company_change',
+          operationContent: `将外包公司从【${oldCompanyName}】修改为【${order.companyName}】`,
+          oldValue: oldCompanyName,
+          newValue: order.companyName,
+          operatorId: user.id,
+          operatorName: user.name || user.username
+        });
+      }
+      // 记录操作日志（单价变更）
+      if (Number(oldUnitPrice) !== Number(order.unitPrice)) {
+        await logValueAddedOperation({
+          orderId: order.id,
+          orderNumber: order.orderNumber,
+          operationType: 'unit_price_change',
+          operationContent: `将单价从¥${Number(oldUnitPrice)}修改为¥${Number(order.unitPrice)}（公司：${order.companyName}）`,
+          oldValue: String(oldUnitPrice),
+          newValue: String(order.unitPrice),
+          operatorId: user.id,
+          operatorName: user.name || user.username
+        });
+      }
     }
 
     await orderRepo.save(orders);
@@ -838,6 +870,10 @@ router.put('/orders/:id/company', authenticateToken, async (req: Request, res: R
       return res.status(404).json({ success: false, message: '订单不存在' });
     }
 
+    // 保存旧值用于操作日志记录
+    const oldCompanyName = order.companyName;
+    const oldUnitPrice = order.unitPrice;
+
     let unitPrice = 0; // 默认单价为0（待分配）
 
     // 🔥 如果前端提供了单价，优先使用前端的值
@@ -861,6 +897,33 @@ router.put('/orders/:id/company', authenticateToken, async (req: Request, res: R
     }
 
     await orderRepo.save(order);
+
+    // 记录操作日志（外包公司变更）
+    if (oldCompanyName !== order.companyName) {
+      await logValueAddedOperation({
+        orderId: order.id,
+        orderNumber: order.orderNumber,
+        operationType: 'company_change',
+        operationContent: `将外包公司从【${oldCompanyName}】修改为【${order.companyName}】`,
+        oldValue: oldCompanyName,
+        newValue: order.companyName,
+        operatorId: user.id,
+        operatorName: user.name || user.username
+      });
+    }
+    // 记录操作日志（单价变更）
+    if (Number(oldUnitPrice) !== Number(order.unitPrice)) {
+      await logValueAddedOperation({
+        orderId: order.id,
+        orderNumber: order.orderNumber,
+        operationType: 'unit_price_change',
+        operationContent: `将单价从¥${Number(oldUnitPrice)}修改为¥${Number(order.unitPrice)}（公司：${order.companyName}）`,
+        oldValue: String(oldUnitPrice),
+        newValue: String(order.unitPrice),
+        operatorId: user.id,
+        operatorName: user.name || user.username
+      });
+    }
 
     // 更新公司统计
     await updateCompanyStats(companyId);
@@ -891,6 +954,9 @@ router.put('/orders/:id/unit-price', authenticateToken, async (req: Request, res
       return res.status(404).json({ success: false, message: '订单不存在' });
     }
 
+    // 保存旧值用于操作日志记录
+    const oldUnitPrice = order.unitPrice;
+
     order.unitPrice = Number(unitPrice);
     order.operatorId = user.id;
     order.operatorName = user.name || user.username;
@@ -901,6 +967,20 @@ router.put('/orders/:id/unit-price', authenticateToken, async (req: Request, res
     }
 
     await orderRepo.save(order);
+
+    // 记录操作日志（单价变更）
+    if (Number(oldUnitPrice) !== Number(order.unitPrice)) {
+      await logValueAddedOperation({
+        orderId: order.id,
+        orderNumber: order.orderNumber,
+        operationType: 'unit_price_change',
+        operationContent: `将单价从¥${Number(oldUnitPrice)}修改为¥${Number(order.unitPrice)}（公司：${order.companyName}）`,
+        oldValue: String(oldUnitPrice),
+        newValue: String(order.unitPrice),
+        operatorId: user.id,
+        operatorName: user.name || user.username
+      });
+    }
 
     // 更新公司统计
     if (order.companyId && order.companyId !== 'default-company') {

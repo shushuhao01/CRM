@@ -145,6 +145,43 @@ export const financeApi = {
     endDate?: string
   }) => api.put<{ success: boolean; message: string; data: { updateCount: number } }>('/finance/performance/batch', data),
 
+  // ==================== 绩效操作日志 ====================
+
+  // 绩效操作日志接口
+  // export interface PerformanceOperationLog {
+  //   id: string
+  //   orderId: string
+  //   orderNumber?: string
+  //   operationType: string
+  //   operationContent: string
+  //   oldValue?: string
+  //   newValue?: string
+  //   operatorId?: string
+  //   operatorName?: string
+  //   remark?: string
+  //   createdAt: string
+  // }
+
+  // 操作类型标签映射
+  performanceOperationTypeLabels: {
+    status_change: '有效状态变更',
+    coefficient_change: '系数变更',
+    remark_change: '备注变更'
+  } as Record<string, string>,
+
+  // 批量获取多个订单的最新绩效操作日志
+  getLatestPerformanceOperationLogs: (orderIds: string[]) =>
+    api.get<{ success: boolean; data: Record<string, any> }>('/finance/performance/operation-logs/latest', {
+      params: { orderIds: orderIds.join(',') }
+    }),
+
+  // 分页获取某个订单的历史绩效操作日志
+  getPerformanceOperationLogs: (orderId: string, params: { page: number; pageSize: number }) =>
+    api.get<{ success: boolean; data: { list: any[]; total: number; page: number; pageSize: number } }>(
+      `/finance/performance/operation-logs/${orderId}`,
+      { params }
+    ),
+
   // ==================== 配置管理 ====================
 
   /** 获取所有配置 */

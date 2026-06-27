@@ -7,11 +7,46 @@ import { authenticateToken } from '../middleware/auth';
 import { Order } from '../entities/Order';
 import { User } from '../entities/User';
 import { Department } from '../entities/Department';
+import { CodOperationLog } from '../entities/CodOperationLog';
 import { Between, In, Not } from 'typeorm';
 import { getTenantRepo } from '../utils/tenantRepo';
+import { v4 as uuidv4 } from 'uuid';
 
 import { log } from '../config/logger';
 const router = Router();
+
+/**
+ * 记录代收管理操作日志（审计用）
+ */
+async function logCodOperation(params: {
+  orderId: string;
+  orderNumber: string | null;
+  operationType: string;
+  operationContent: string;
+  oldValue?: string | null;
+  newValue?: string | null;
+  operatorId?: string | null;
+  operatorName?: string | null;
+  remark?: string | null;
+}): Promise<void> {
+  try {
+    const logRepo = getTenantRepo(CodOperationLog);
+    const entry = new CodOperationLog();
+    entry.id = uuidv4();
+    entry.orderId = params.orderId;
+    entry.orderNumber = params.orderNumber || null;
+    entry.operationType = params.operationType;
+    entry.operationContent = params.operationContent;
+    entry.oldValue = params.oldValue ?? null;
+    entry.newValue = params.newValue ?? null;
+    entry.operatorId = params.operatorId ?? null;
+    entry.operatorName = params.operatorName ?? null;
+    entry.remark = params.remark ?? null;
+    await logRepo.save(entry);
+  } catch (e) {
+    log.error('[CodCollection] 写入操作日志失败:', e);
+  }
+}
 
 // 有效订单状态（计入代收统计的订单）- 只统计已发货且有效的订单
 const VALID_STATUSES = ['shipped', 'delivered', 'completed'];
@@ -478,8 +513,8 @@ router.put('/update-cod/:id', authenticateToken, async (req: Request, res: Respo
   try {
     const { id } = req.params;
     const { codAmount, codRemark } = req.body;
-    const userId = (req as any).user?.id;
-    const userName = (req as any).user?.name;
+    const userId = (req as any).user?.userId || (req as any).user?.id || '';
+    const userName = (req as any).currentUser?.name || (req as any).user?.name || '';
 
     const orderRepo = getTenantRepo(Order);
     const order = await orderRepo.findOne({ where: { id } });
@@ -500,6 +535,10 @@ router.put('/update-cod/:id', authenticateToken, async (req: Request, res: Respo
 
     // 计算原代收金额 = 订单总额 - 定金
     const originalCodAmount = (Number(order.totalAmount) || 0) - (Number(order.depositAmount) || 0);
+
+    // 保存旧值用于日志
+    const oldCodAmount = (order.codAmount !== null && order.codAmount !== undefined) ? Number(order.codAmount) : originalCodAmount;
+    const oldCodStatus = order.codStatus || 'pending';
 
     // 🔥 业务规则2：修改的金额不能大于原代收金额
     const newCodAmount = Number(codAmount) || 0;
@@ -531,6 +570,19 @@ router.put('/update-cod/:id', authenticateToken, async (req: Request, res: Respo
 
     await orderRepo.save(order);
 
+    // 记录操作日志
+    await logCodOperation({
+      orderId: order.id,
+      orderNumber: order.orderNumber,
+      operationType: 'cod_amount_change',
+      operationContent: `将代收金额从¥${oldCodAmount}修改为¥${newCodAmount}（状态：${oldCodStatus} → ${order.codStatus}）`,
+      oldValue: `¥${oldCodAmount}（${oldCodStatus}）`,
+      newValue: `¥${newCodAmount}（${order.codStatus}）`,
+      operatorId: userId,
+      operatorName: userName,
+      remark: codRemark || null
+    });
+
     res.json({ success: true, message: '代收金额更新成功' });
   } catch (error: any) {
     log.error('[CodCollection] Update cod error:', error);
@@ -550,8 +602,8 @@ router.put('/mark-returned/:id', authenticateToken, async (req: Request, res: Re
   try {
     const { id } = req.params;
     const { returnedAmount, codRemark } = req.body;
-    const userId = (req as any).user?.id;
-    const userName = (req as any).user?.name;
+    const userId = (req as any).user?.userId || (req as any).user?.id || '';
+    const userName = (req as any).currentUser?.name || (req as any).user?.name || '';
 
     const orderRepo = getTenantRepo(Order);
     const order = await orderRepo.findOne({ where: { id } });
@@ -588,6 +640,19 @@ router.put('/mark-returned/:id', authenticateToken, async (req: Request, res: Re
     }
 
     await orderRepo.save(order);
+
+    // 记录操作日志
+    await logCodOperation({
+      orderId: order.id,
+      orderNumber: order.orderNumber,
+      operationType: 'cod_returned',
+      operationContent: `标记返款，返款金额：¥${order.codReturnedAmount}`,
+      oldValue: defaultCodAmount > 0 ? `¥${defaultCodAmount}（待返款）` : null,
+      newValue: `¥${order.codReturnedAmount}（已返款）`,
+      operatorId: userId,
+      operatorName: userName,
+      remark: codRemark || null
+    });
 
     res.json({ success: true, message: '返款标记成功' });
   } catch (error: any) {
@@ -627,6 +692,19 @@ router.put('/cancel-cod/:id', authenticateToken, async (req: Request, res: Respo
 
     await orderRepo.save(order);
 
+    // 记录操作日志
+    await logCodOperation({
+      orderId: order.id,
+      orderNumber: order.orderNumber,
+      operationType: 'cod_cancelled',
+      operationContent: `取消代收${codAmount !== undefined ? `，代收金额改为¥${Number(codAmount) || 0}` : ''}`,
+      oldValue: order.codStatus,
+      newValue: 'cancelled',
+      operatorId: (req as any).user?.userId || (req as any).user?.id || '',
+      operatorName: (req as any).currentUser?.name || (req as any).user?.name || '',
+      remark: codRemark || null
+    });
+
     res.json({ success: true, message: '取消代收成功' });
   } catch (error: any) {
     log.error('[CodCollection] Cancel cod error:', error);
@@ -648,6 +726,11 @@ router.put('/batch-update-cod', authenticateToken, async (req: Request, res: Res
 
     const orderRepo = getTenantRepo(Order);
     const newCodAmount = Number(codAmount) || 0;
+    const userId = (req as any).user?.userId || (req as any).user?.id || '';
+    const userName = (req as any).currentUser?.name || (req as any).user?.name || '';
+
+    // 获取订单用于日志记录
+    const orders = await orderRepo.find({ where: { id: In(orderIds) } });
 
     // 批量更新：修改代收金额并标记为已改代收
     await orderRepo.update(
@@ -659,6 +742,22 @@ router.put('/batch-update-cod', authenticateToken, async (req: Request, res: Res
         codRemark: codRemark || undefined
       }
     );
+
+    // 记录操作日志
+    for (const order of orders) {
+      const oldCodAmount = (order.codAmount !== null && order.codAmount !== undefined) ? Number(order.codAmount) : ((Number(order.totalAmount) || 0) - (Number(order.depositAmount) || 0));
+      await logCodOperation({
+        orderId: order.id,
+        orderNumber: order.orderNumber,
+        operationType: 'cod_amount_change',
+        operationContent: `批量修改代收金额从¥${oldCodAmount}为¥${newCodAmount}（状态：${order.codStatus || 'pending'} → cancelled）`,
+        oldValue: `¥${oldCodAmount}`,
+        newValue: `¥${newCodAmount}`,
+        operatorId: userId,
+        operatorName: userName,
+        remark: codRemark || null
+      });
+    }
 
     res.json({ success: true, message: `批量更新 ${orderIds.length} 个订单的代收金额成功` });
   } catch (error: any) {
@@ -683,6 +782,8 @@ router.put('/batch-mark-returned', authenticateToken, async (req: Request, res: 
 
     // 获取订单并更新
     const orders = await orderRepo.find({ where: { id: In(orderIds) } });
+    const userId = (req as any).user?.userId || (req as any).user?.id || '';
+    const userName = (req as any).currentUser?.name || (req as any).user?.name || '';
 
     for (const order of orders) {
       // 计算代收金额（用于返款金额）
@@ -701,6 +802,21 @@ router.put('/batch-mark-returned', authenticateToken, async (req: Request, res: 
     }
 
     await orderRepo.save(orders);
+
+    // 记录操作日志
+    for (const order of orders) {
+      await logCodOperation({
+        orderId: order.id,
+        orderNumber: order.orderNumber,
+        operationType: 'cod_returned',
+        operationContent: `批量标记返款，返款金额：¥${order.codReturnedAmount}`,
+        oldValue: `¥${order.codReturnedAmount}（待返款）`,
+        newValue: `¥${order.codReturnedAmount}（已返款）`,
+        operatorId: userId,
+        operatorName: userName,
+        remark: codRemark || null
+      });
+    }
 
     res.json({ success: true, message: `批量标记 ${orderIds.length} 个订单返款成功` });
   } catch (error: any) {
@@ -746,6 +862,69 @@ router.get('/sales-users', authenticateToken, async (req: Request, res: Response
   } catch (error: any) {
     log.error('[CodCollection] Get sales users error:', error);
     res.status(500).json({ success: false, message: '获取销售人员列表失败' });
+  }
+});
+
+/**
+ * 批量获取多个订单的最新操作日志（列表展示用）
+ */
+router.get('/operation-logs/latest', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const { orderIds } = req.query;
+    if (!orderIds) {
+      return res.json({ success: true, data: {} });
+    }
+
+    const idList = String(orderIds).split(',').map((s: string) => s.trim()).filter(Boolean);
+    if (idList.length === 0) {
+      return res.json({ success: true, data: {} });
+    }
+
+    const logRepo = getTenantRepo(CodOperationLog);
+    const result: Record<string, any> = {};
+    for (const orderId of idList) {
+      const latest = await logRepo.findOne({
+        where: { orderId },
+        order: { createdAt: 'DESC' }
+      });
+      if (latest) {
+        result[orderId] = latest;
+      }
+    }
+
+    res.json({ success: true, data: result });
+  } catch (error: any) {
+    log.error('[CodCollection] Get latest logs error:', error);
+    res.status(500).json({ success: false, message: '获取操作日志失败' });
+  }
+});
+
+/**
+ * 分页获取某个订单的历史操作日志（弹窗展示用）
+ */
+router.get('/operation-logs/:orderId', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const { orderId } = req.params;
+    const { page = 1, pageSize = 10 } = req.query;
+
+    const pageNum = parseInt(page as string) || 1;
+    const pageSizeNum = Math.min(parseInt(pageSize as string) || 10, 100);
+
+    const logRepo = getTenantRepo(CodOperationLog);
+    const [list, total] = await logRepo.findAndCount({
+      where: { orderId },
+      order: { createdAt: 'DESC' },
+      skip: (pageNum - 1) * pageSizeNum,
+      take: pageSizeNum
+    });
+
+    res.json({
+      success: true,
+      data: { list, total, page: pageNum, pageSize: pageSizeNum }
+    });
+  } catch (error: any) {
+    log.error('[CodCollection] Get operation logs error:', error);
+    res.status(500).json({ success: false, message: '获取操作日志失败' });
   }
 });
 

@@ -232,6 +232,40 @@
           </template>
         </template>
       </el-table-column>
+      <!-- 操作日志列：默认显示最新一条，点击可查看历史 -->
+      <el-table-column label="操作日志" min-width="280">
+        <template #default="{ row }">
+          <div v-if="latestLogs[row.id]" class="op-log-cell">
+            <div class="op-log-line1">
+              <el-tag
+                :type="getOpTagType(latestLogs[row.id].operationType)"
+                size="small"
+                effect="light"
+              >
+                {{ COD_OPERATION_TYPE_LABELS[latestLogs[row.id].operationType] || latestLogs[row.id].operationType }}
+              </el-tag>
+              <span class="op-log-text" :title="latestLogs[row.id].operationContent">
+                {{ latestLogs[row.id].operationContent }}
+              </span>
+            </div>
+            <div class="op-log-line2">
+              <span class="op-log-operator">
+                <el-icon><User /></el-icon>{{ latestLogs[row.id].operatorName || '系统' }}
+              </span>
+              <span class="op-log-time">{{ formatLogTime(latestLogs[row.id].createdAt) }}</span>
+              <el-button type="primary" link size="small" @click="showOperationLogDialog(row)">查看历史</el-button>
+            </div>
+          </div>
+          <div v-else class="op-log-cell">
+            <div class="op-log-line1">
+              <span class="text-muted">暂无记录</span>
+            </div>
+            <div class="op-log-line2">
+              <el-button type="primary" link size="small" @click="showOperationLogDialog(row)">查看历史</el-button>
+            </div>
+          </div>
+        </template>
+      </el-table-column>
     </el-table>
 
     <!-- 分页 -->
@@ -313,17 +347,85 @@
 
     <!-- 物流查询弹窗 -->
     <TrackingDialog v-model="trackingDialogVisible" :tracking-no="currentTrackingNo" :company="currentCompany" :phone="currentPhone" />
+
+    <!-- 操作日志弹窗（分页查看历史记录） -->
+    <el-dialog
+      v-model="opLogDialog.visible"
+      title="操作日志"
+      width="960px"
+      class="op-log-dialog"
+      destroy-on-close
+    >
+      <template #header>
+        <div class="op-log-dialog-header">
+          <el-icon class="op-log-dialog-icon"><DocumentCopy /></el-icon>
+          <span class="op-log-dialog-title">操作日志</span>
+          <el-tag v-if="opLogDialog.orderNumber" size="default" type="info" effect="plain" class="op-log-dialog-tag">
+            订单：{{ opLogDialog.orderNumber }}
+          </el-tag>
+        </div>
+      </template>
+
+      <el-table
+        :data="opLogDialog.list"
+        v-loading="opLogDialog.loading"
+        stripe
+        border
+        class="op-log-table"
+      >
+        <el-table-column type="index" label="#" width="50" align="center" />
+        <el-table-column label="操作类型" width="120" align="center">
+          <template #default="{ row }">
+            <el-tag :type="getOpTagType(row.operationType)" size="small" effect="light">
+              {{ COD_OPERATION_TYPE_LABELS[row.operationType] || row.operationType }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作内容" min-width="260">
+          <template #default="{ row }">
+            <span class="op-log-detail-content">{{ row.operationContent }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作人" width="110" align="center">
+          <template #default="{ row }">
+            <span class="op-log-detail-operator">{{ row.operatorName || '系统' }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作时间" width="180" align="center">
+          <template #default="{ row }">
+            <span class="op-log-detail-time">{{ formatLogTime(row.createdAt) }}</span>
+          </template>
+        </el-table-column>
+      </el-table>
+
+      <div class="op-log-dialog-footer">
+        <el-pagination
+          v-model:current-page="opLogDialog.page"
+          v-model:page-size="opLogDialog.pageSize"
+          :total="opLogDialog.total"
+          :page-sizes="[10, 20, 50]"
+          layout="total, sizes, prev, pager, next"
+          @size-change="loadOperationLogs"
+          @current-change="loadOperationLogs"
+          background
+        />
+      </div>
+
+      <template #footer>
+        <el-button @click="opLogDialog.visible = false">关闭</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Search, Refresh, Edit, Check, Coin, Calendar, CircleClose, CircleCheck, Clock, Download, DocumentCopy } from '@element-plus/icons-vue'
+import { Search, Refresh, Edit, Check, Coin, Calendar, CircleClose, CircleCheck, Clock, Download, DocumentCopy, User } from '@element-plus/icons-vue'
 import { formatDateTime } from '@/utils/date'
 import TrackingDialog from '@/components/Logistics/TrackingDialog.vue'
-import { getCodStats, getCodList, updateCodAmount, markCodReturned, batchUpdateCodAmount, batchMarkCodReturned, getCodDepartments, getCodSalesUsers, type CodOrder, type CodStats } from '@/api/codCollection'
+import { getCodStats, getCodList, updateCodAmount, markCodReturned, batchUpdateCodAmount, batchMarkCodReturned, getCodDepartments, getCodSalesUsers, getLatestCodOperationLogs, getCodOperationLogs, COD_OPERATION_TYPE_LABELS, type CodOrder, type CodStats, type CodOperationLog } from '@/api/codCollection'
 import { getLogisticsInfoStyle } from '@/utils/logisticsStatusConfig'
 
 defineOptions({ name: 'CodCollection' })
@@ -347,6 +449,21 @@ const batchSearchCount = computed(() => batchSearchKeywords.value ? batchSearchK
 const missingKeywords = ref<string[]>([])
 const loading = ref(false)
 const tableData = ref<CodOrder[]>([])
+
+// 操作日志：列表中每个订单的最新一条记录
+const latestLogs = ref<Record<string, CodOperationLog>>({})
+
+// 操作日志弹窗状态
+const opLogDialog = reactive({
+  visible: false,
+  loading: false,
+  orderId: '' as string,
+  orderNumber: '' as string,
+  list: [] as CodOperationLog[],
+  total: 0,
+  page: 1,
+  pageSize: 10
+})
 const selectedRows = ref<CodOrder[]>([])
 const departments = ref<any[]>([])
 const salesUsers = ref<any[]>([])
@@ -472,11 +589,91 @@ const loadData = async () => {
 
       // 🔥 计算缺失的搜索关键词
       computeMissingKeywords()
+
+      // 加载列表中订单的最新操作日志
+      await loadLatestLogs()
     }
   } catch (e) {
     console.error(e)
   } finally {
     loading.value = false
+  }
+}
+
+// 批量加载列表中订单的最新操作日志
+const loadLatestLogs = async () => {
+  if (tableData.value.length === 0) {
+    latestLogs.value = {}
+    return
+  }
+  try {
+    const orderIds = tableData.value.map(o => o.id)
+    const res = await getLatestCodOperationLogs(orderIds) as any
+    // 响应拦截器已提取内层 data，res 即为 { orderId: log, ... }
+    latestLogs.value = res || {}
+  } catch (e) {
+    console.error('加载操作日志失败:', e)
+  }
+}
+
+// 打开操作日志弹窗
+const showOperationLogDialog = (row: CodOrder) => {
+  opLogDialog.orderId = row.id
+  opLogDialog.orderNumber = row.orderNumber || ''
+  opLogDialog.page = 1
+  opLogDialog.pageSize = 10
+  opLogDialog.list = []
+  opLogDialog.total = 0
+  opLogDialog.visible = true
+  loadOperationLogs()
+}
+
+// 分页加载历史操作日志
+const loadOperationLogs = async () => {
+  if (!opLogDialog.orderId) return
+  opLogDialog.loading = true
+  try {
+    const res = await getCodOperationLogs(opLogDialog.orderId, {
+      page: opLogDialog.page,
+      pageSize: opLogDialog.pageSize
+    }) as any
+    // 响应拦截器已提取内层 data，res 即为 { list, total, page, pageSize }
+    const data = res || {}
+    opLogDialog.list = data.list || []
+    opLogDialog.total = data.total || 0
+  } catch (e) {
+    console.error('加载历史操作日志失败:', e)
+    ElMessage.error('加载操作日志失败')
+  } finally {
+    opLogDialog.loading = false
+  }
+}
+
+// 获取操作类型的标签颜色
+const getOpTagType = (type: string): string => {
+  switch (type) {
+    case 'cod_amount_change': return 'warning'
+    case 'cod_returned': return 'success'
+    case 'cod_cancelled': return 'info'
+    default: return 'info'
+  }
+}
+
+// 格式化操作时间（北京时间格式）
+const formatLogTime = (time: string): string => {
+  if (!time) return '-'
+  try {
+    const d = new Date(time)
+    const beijing = new Date(d.getTime() + (d.getTimezoneOffset() + 8 * 60) * 60000)
+    const y = beijing.getFullYear()
+    const m = String(beijing.getMonth() + 1).padStart(2, '0')
+    const day = String(beijing.getDate()).padStart(2, '0')
+    const h = String(beijing.getHours()).padStart(2, '0')
+    const min = String(beijing.getMinutes()).padStart(2, '0')
+    const s = String(beijing.getSeconds()).padStart(2, '0')
+    return `${y}-${m}-${day} ${h}:${min}:${s}`
+  } catch {
+    return time
   }
 }
 const loadDepartments = async () => { try { const r = await getCodDepartments() as any; departments.value = r || [] } catch (e) { console.error(e) } }
@@ -533,7 +730,31 @@ const copyMissingKeywords = async () => {
 }
 
 const getOrderStatusType = (s: string) => ({ shipped: 'primary', delivered: 'success', completed: 'success', rejected: 'danger', logistics_returned: 'warning', exception: 'danger' }[s] || 'info')
-const getOrderStatusText = (s: string) => ({ shipped: '已发货', delivered: '已签收', completed: '已完成', rejected: '拒收', logistics_returned: '已退回', exception: '异常' }[s] || s)
+const getOrderStatusText = (s: string) => ({
+  pending: '待发货',
+  pending_transfer: '待转单',
+  pending_audit: '待审核',
+  confirmed: '已确认',
+  paid: '已支付',
+  shipped: '已发货',
+  delivered: '已签收',
+  completed: '已完成',
+  cancelled: '已取消',
+  refunded: '已退款',
+  audit_rejected: '审核驳回',
+  pending_shipment: '待发货',
+  logistics_returned: '物流退回',
+  logistics_cancelled: '物流取消',
+  pending_cancel: '待取消',
+  cancel_failed: '取消失败',
+  after_sales_created: '已建售后',
+  package_exception: '包裹异常',
+  rejected: '拒收',
+  rejected_returned: '拒收已退回',
+  signed: '已签收',
+  abnormal: '异常',
+  exception: '异常'
+}[s] || s)
 const getCodStatusType = (r: CodOrder) => {
   const originalCodAmount = (r.totalAmount || 0) - (r.depositAmount || 0)
   // 原始代收金额为0：灰色（info）
@@ -760,7 +981,8 @@ const handleExport = async () => {
       销售人员: row.salesPersonName || '',
       物流单号: row.trackingNumber || '',
       最新物流动态: row.latestLogisticsInfo || '',
-      下单时间: formatDateTime(row.createdAt)
+      下单时间: formatDateTime(row.createdAt),
+      操作日志: latestLogs.value[row.id] ? `${COD_OPERATION_TYPE_LABELS[latestLogs.value[row.id].operationType] || latestLogs.value[row.id].operationType}：${latestLogs.value[row.id].operationContent}（${latestLogs.value[row.id].operatorName || '系统'} ${formatLogTime(latestLogs.value[row.id].createdAt)}）` : ''
     }))
 
     // 准备统计汇总数据
@@ -788,7 +1010,8 @@ const handleExport = async () => {
       { wch: 10 }, // 销售人员
       { wch: 20 }, // 物流单号
       { wch: 40 }, // 最新物流动态
-      { wch: 20 }  // 下单时间
+      { wch: 20 }, // 下单时间
+      { wch: 40 }  // 操作日志
     ]
     XLSX.utils.book_append_sheet(wb, ws1, '订单数据')
 
@@ -960,5 +1183,115 @@ const handleOrderUpdate = () => {
   font-size: 13px;
   color: #606266;
   word-break: break-all;
+}
+
+/* ========== 操作日志列样式 ========== */
+.op-log-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 2px 0;
+  line-height: 1.5;
+}
+
+.op-log-line1 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.op-log-line1 .el-tag {
+  flex-shrink: 0;
+}
+
+.op-log-text {
+  font-size: 13px;
+  color: #606266;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+  min-width: 0;
+}
+
+.op-log-line2 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  color: #909399;
+}
+
+.op-log-operator {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.op-log-time {
+  color: #b1b3b8;
+  flex-shrink: 0;
+}
+
+.op-log-line2 .el-button {
+  margin-left: auto;
+  padding: 0;
+}
+
+.text-muted {
+  color: #c0c4cc;
+  font-size: 13px;
+}
+
+/* ========== 操作日志弹窗样式 ========== */
+.op-log-dialog .op-log-dialog-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.op-log-dialog-icon {
+  font-size: 20px;
+  color: #409eff;
+}
+
+.op-log-dialog-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #303133;
+}
+
+.op-log-dialog-tag {
+  margin-left: 4px;
+}
+
+.op-log-table {
+  margin-bottom: 16px;
+}
+
+.op-log-detail-content {
+  font-size: 14px;
+  color: #303133;
+  line-height: 1.6;
+}
+
+.op-log-detail-operator {
+  font-size: 14px;
+  color: #606266;
+  font-weight: 500;
+}
+
+.op-log-detail-time {
+  font-size: 13px;
+  color: #909399;
+  font-family: 'Courier New', monospace;
+}
+
+.op-log-dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 4px;
 }
 </style>

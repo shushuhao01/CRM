@@ -8,9 +8,15 @@ import { AppDataSource } from '../../config/database';
 import { ValueAddedOrder } from '../../entities/ValueAddedOrder';
 import { ValueAddedPriceConfig } from '../../entities/ValueAddedPriceConfig';
 import { OutsourceCompany } from '../../entities/OutsourceCompany';
+import { ValueAddedOperationLog } from '../../entities/ValueAddedOperationLog';
 import { v4 as uuidv4 } from 'uuid';
 import { In, Not } from 'typeorm';
 import { getTenantRepo, tenantSQL } from '../../utils/tenantRepo';
+import {
+  logValueAddedOperation,
+  getValidStatusLabel,
+  getSettlementStatusLabel
+} from './valueAddedHelpers';
 
 import { log } from '../../config/logger';
 
@@ -667,6 +673,10 @@ router.put('/orders/batch-process', authenticateToken, async (req: Request, res:
 
     // 根据操作类型更新订单
     for (const order of orders) {
+      // 保存旧值用于操作日志记录
+      const oldStatus = order.status;
+      const oldSettlementStatus = order.settlementStatus;
+
       order.operatorId = user.id;
       order.operatorName = user.name || user.username;
 
@@ -754,6 +764,38 @@ router.put('/orders/batch-process', authenticateToken, async (req: Request, res:
           break;
         default:
           return res.status(400).json({ success: false, message: '不支持的操作类型' });
+      }
+
+      // 记录操作日志（有效状态变更）
+      const statusActions = ['updateStatus', 'mark_valid', 'mark_invalid', 'mark_pending', 'mark_supplemented', 'supplement'];
+      if (statusActions.includes(action) && oldStatus !== order.status) {
+        await logValueAddedOperation({
+          orderId: order.id,
+          orderNumber: order.orderNumber,
+          operationType: 'status_change',
+          operationContent: `将有效状态从【${getValidStatusLabel(oldStatus)}】修改为【${getValidStatusLabel(order.status)}】`,
+          oldValue: getValidStatusLabel(oldStatus),
+          newValue: getValidStatusLabel(order.status),
+          operatorId: user.id,
+          operatorName: user.name || user.username,
+          remark: order.remark || null
+        });
+      }
+
+      // 记录操作日志（结算状态变更）
+      const settlementActions = ['updateSettlementStatus', 'settle', 'unsettle'];
+      if (settlementActions.includes(action) && oldSettlementStatus !== order.settlementStatus) {
+        await logValueAddedOperation({
+          orderId: order.id,
+          orderNumber: order.orderNumber,
+          operationType: 'settlement_change',
+          operationContent: `将结算状态从【${getSettlementStatusLabel(oldSettlementStatus)}】修改为【${getSettlementStatusLabel(order.settlementStatus)}】`,
+          oldValue: getSettlementStatusLabel(oldSettlementStatus),
+          newValue: getSettlementStatusLabel(order.settlementStatus),
+          operatorId: user.id,
+          operatorName: user.name || user.username,
+          remark: order.settlementBatch || null
+        });
       }
     }
 
@@ -863,5 +905,73 @@ async function updateCompanyStats(companyId: string) {
 /**
  * 获取外包公司列表
  */
+
+/**
+ * 批量获取多个订单的最新操作日志（用于列表展示）
+ * GET /value-added/operation-logs/latest?orderIds=id1,id2,id3
+ */
+router.get('/operation-logs/latest', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const { orderIds } = req.query;
+    if (!orderIds) {
+      return res.json({ success: true, data: {} });
+    }
+
+    const idList = String(orderIds).split(',').map((s: string) => s.trim()).filter(Boolean);
+    if (idList.length === 0) {
+      return res.json({ success: true, data: {} });
+    }
+
+    const logRepo = getTenantRepo(ValueAddedOperationLog);
+
+    // 为每个订单获取最新一条日志
+    const result: Record<string, any> = {};
+    for (const orderId of idList) {
+      const latest = await logRepo.findOne({
+        where: { orderId },
+        order: { createdAt: 'DESC' }
+      });
+      if (latest) {
+        result[orderId] = latest;
+      }
+    }
+
+    res.json({ success: true, data: result });
+  } catch (error: any) {
+    log.error('[ValueAdded] Get latest logs error:', error);
+    res.status(500).json({ success: false, message: '获取操作日志失败' });
+  }
+});
+
+/**
+ * 分页获取某个订单的历史操作日志（用于弹窗展示）
+ * GET /value-added/operation-logs/:orderId?page=1&pageSize=10
+ */
+router.get('/operation-logs/:orderId', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const { orderId } = req.params;
+    const { page = 1, pageSize = 10 } = req.query;
+
+    const pageNum = parseInt(page as string) || 1;
+    const pageSizeNum = Math.min(parseInt(pageSize as string) || 10, 100);
+
+    const logRepo = getTenantRepo(ValueAddedOperationLog);
+
+    const [list, total] = await logRepo.findAndCount({
+      where: { orderId },
+      order: { createdAt: 'DESC' },
+      skip: (pageNum - 1) * pageSizeNum,
+      take: pageSizeNum
+    });
+
+    res.json({
+      success: true,
+      data: { list, total, page: pageNum, pageSize: pageSizeNum }
+    });
+  } catch (error: any) {
+    log.error('[ValueAdded] Get operation logs error:', error);
+    res.status(500).json({ success: false, message: '获取操作日志失败' });
+  }
+});
 
 } // end registerOrderRoutes

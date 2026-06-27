@@ -441,3 +441,50 @@ export const deleteRemarkPreset = (id: string) => {
 export const incrementRemarkPresetUsage = (id: string) => {
   return request.post(`/value-added/remark-presets/${id}/increment-usage`)
 }
+
+// ==================== 操作日志相关 ====================
+
+// 操作日志接口
+export interface OperationLog {
+  id: string
+  orderId: string
+  orderNumber?: string
+  operationType: string // status_change | settlement_change | company_change | unit_price_change
+  operationContent: string
+  oldValue?: string
+  newValue?: string
+  operatorId?: string
+  operatorName?: string
+  remark?: string
+  createdAt: string
+}
+
+// 操作类型标签映射
+export const OPERATION_TYPE_LABELS: Record<string, string> = {
+  status_change: '有效状态变更',
+  settlement_change: '结算状态变更',
+  company_change: '外包公司变更',
+  unit_price_change: '单价变更'
+}
+
+/**
+ * 批量获取多个订单的最新操作日志（列表展示用）
+ */
+export function getLatestOperationLogs(orderIds: string[]) {
+  return request({
+    url: '/value-added/operation-logs/latest',
+    method: 'get',
+    params: { orderIds: orderIds.join(',') }
+  })
+}
+
+/**
+ * 分页获取某个订单的历史操作日志（弹窗展示用）
+ */
+export function getOrderOperationLogs(orderId: string, params: { page: number; pageSize: number }) {
+  return request({
+    url: `/value-added/operation-logs/${orderId}`,
+    method: 'get',
+    params
+  })
+}

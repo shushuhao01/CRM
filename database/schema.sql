@@ -56,6 +56,9 @@
 -- 49. [v4.2.1] 开源社区版：tenant_packages.type新增community枚举值+社区版默认套餐数据
 -- 50. [v4.2.1] 开源社区版：system_license.license_type注释补充community社区版
 -- 51. [v4.3.0] wecom_suite_configs表新增chat_archive_rsa_public_key(会话存档RSA公钥，SaaS模式租户复制到企微后台)字段
+-- 52. [v1.8.0] 新增value_added_operation_logs(增值管理操作日志表)，记录有效状态/结算/公司/单价的变更操作人与时间，用于审计
+-- 53. [v1.8.0] 新增cod_operation_logs(代收管理操作日志表)，记录代收金额修改/返款/取消等操作人与时间，用于审计
+-- 54. [v1.8.0] 新增performance_operation_logs(绩效管理操作日志表)，记录有效状态/系数/备注等变更操作人与时间，用于审计
 -- =============================================
 
 -- 设置字符集和时区
@@ -4834,6 +4837,69 @@ CREATE TABLE IF NOT EXISTS `value_added_remark_presets` (
 -- (REPLACE(UUID(), '-', ''), 'invalid', 6, 1, '以后再用'),
 -- (REPLACE(UUID(), '-', ''), 'invalid', 7, 1, '空号'),
 -- (REPLACE(UUID(), '-', ''), 'invalid', 8, 1, '其他原因');
+
+-- 增值管理操作日志表（审计用，记录每次有效状态/结算/公司/单价等变更）
+CREATE TABLE IF NOT EXISTS `value_added_operation_logs` (
+  `id` VARCHAR(50) NOT NULL COMMENT '日志ID',
+  `tenant_id` VARCHAR(36) DEFAULT NULL COMMENT '租户ID',
+  `order_id` VARCHAR(50) NOT NULL COMMENT '增值订单ID（关联value_added_orders.id）',
+  `order_number` VARCHAR(50) DEFAULT NULL COMMENT '订单号（冗余便于展示）',
+  `operation_type` VARCHAR(50) NOT NULL COMMENT '操作类型：status_change-有效状态变更, settlement_change-结算状态变更, company_change-外包公司变更, unit_price_change-单价变更',
+  `operation_content` VARCHAR(500) NOT NULL COMMENT '操作内容描述，如：将有效状态从【待处理】修改为【有效】',
+  `old_value` VARCHAR(255) DEFAULT NULL COMMENT '变更前的值',
+  `new_value` VARCHAR(255) DEFAULT NULL COMMENT '变更后的值',
+  `operator_id` VARCHAR(50) DEFAULT NULL COMMENT '操作人ID',
+  `operator_name` VARCHAR(100) DEFAULT NULL COMMENT '操作人姓名',
+  `remark` TEXT DEFAULT NULL COMMENT '附加备注',
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '操作时间（北京时间）',
+  PRIMARY KEY (`id`),
+  KEY `idx_tenant_id` (`tenant_id`),
+  KEY `idx_order_id` (`order_id`),
+  KEY `idx_operation_type` (`operation_type`),
+  KEY `idx_created_at` (`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='增值管理操作日志表';
+
+-- 53. [v1.8.0] 新增cod_operation_logs(代收管理操作日志表)，记录代收金额修改/返款/取消等操作人与时间，用于审计
+CREATE TABLE IF NOT EXISTS `cod_operation_logs` (
+  `id` VARCHAR(50) NOT NULL COMMENT '日志ID',
+  `tenant_id` VARCHAR(36) DEFAULT NULL COMMENT '租户ID',
+  `order_id` VARCHAR(50) NOT NULL COMMENT '订单ID（关联orders.id）',
+  `order_number` VARCHAR(50) DEFAULT NULL COMMENT '订单号（冗余便于展示）',
+  `operation_type` VARCHAR(50) NOT NULL COMMENT '操作类型：cod_amount_change-代收金额变更, cod_returned-标记返款, cod_cancelled-取消代收',
+  `operation_content` VARCHAR(500) NOT NULL COMMENT '操作内容描述',
+  `old_value` VARCHAR(255) DEFAULT NULL COMMENT '变更前的值',
+  `new_value` VARCHAR(255) DEFAULT NULL COMMENT '变更后的值',
+  `operator_id` VARCHAR(50) DEFAULT NULL COMMENT '操作人ID',
+  `operator_name` VARCHAR(100) DEFAULT NULL COMMENT '操作人姓名',
+  `remark` TEXT DEFAULT NULL COMMENT '附加备注',
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '操作时间（北京时间）',
+  PRIMARY KEY (`id`),
+  KEY `idx_tenant_id` (`tenant_id`),
+  KEY `idx_order_id` (`order_id`),
+  KEY `idx_operation_type` (`operation_type`),
+  KEY `idx_created_at` (`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='代收管理操作日志表';
+
+-- 54. [v1.8.0] 新增performance_operation_logs(绩效管理操作日志表)，记录有效状态/系数/备注等变更操作人与时间，用于审计
+CREATE TABLE IF NOT EXISTS `performance_operation_logs` (
+  `id` VARCHAR(50) NOT NULL COMMENT '日志ID',
+  `tenant_id` VARCHAR(36) DEFAULT NULL COMMENT '租户ID',
+  `order_id` VARCHAR(50) NOT NULL COMMENT '订单ID（关联orders.id）',
+  `order_number` VARCHAR(50) DEFAULT NULL COMMENT '订单号（冗余便于展示）',
+  `operation_type` VARCHAR(50) NOT NULL COMMENT '操作类型：status_change-有效状态变更, coefficient_change-系数变更, remark_change-备注变更',
+  `operation_content` VARCHAR(500) NOT NULL COMMENT '操作内容描述',
+  `old_value` VARCHAR(255) DEFAULT NULL COMMENT '变更前的值',
+  `new_value` VARCHAR(255) DEFAULT NULL COMMENT '变更后的值',
+  `operator_id` VARCHAR(50) DEFAULT NULL COMMENT '操作人ID',
+  `operator_name` VARCHAR(100) DEFAULT NULL COMMENT '操作人姓名',
+  `remark` TEXT DEFAULT NULL COMMENT '附加备注',
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '操作时间（北京时间）',
+  PRIMARY KEY (`id`),
+  KEY `idx_tenant_id` (`tenant_id`),
+  KEY `idx_order_id` (`order_id`),
+  KEY `idx_operation_type` (`operation_type`),
+  KEY `idx_created_at` (`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='绩效管理操作日志表';
 
 -- =============================================
 -- 模块管理系统表

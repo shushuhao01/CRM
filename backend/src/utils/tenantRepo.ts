@@ -31,7 +31,8 @@ const TENANT_ENTITIES = new Set([
   'system_configs', 'department_order_limits', 'sms_records',
   'notifications', 'operation_logs', 'system_messages',
   'outsource_companies', 'cod_cancel_applications', 'customer_assignments',
-  'value_added_orders', 'value_added_price_config', 'value_added_status_configs',
+  'value_added_orders', 'value_added_price_config', 'value_added_status_configs', 'value_added_operation_logs',
+  'cod_operation_logs', 'performance_operation_logs',
   'role_permissions', 'payment_orders', 'payment_records',
   'data_records', 'customer_service_permissions', 'sensitive_info_permissions',
   // 新增：物流相关

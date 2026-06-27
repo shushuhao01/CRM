@@ -247,6 +247,7 @@ import { useDepartmentStore } from '@/stores/department'
 import { eventBus, EventNames } from '@/utils/eventBus'
 import { useUserStore } from '@/stores/user'
 import { getLogisticsInfoStyle } from '@/utils/logisticsStatusConfig'
+import { getOrderStatusText as getUnifiedOrderStatusText, getOrderStatusTagType as getUnifiedOrderStatusTagType } from '@/utils/orderStatusConfig'
 // getDepartmentMembers 需要 admin 权限，经理改用 /users/department-members
 import api from '@/utils/request'
 
@@ -678,29 +679,11 @@ const formatMoney = (val: number | string) => {
 
 // 状态映射
 const getStatusType = (status: string) => {
-  const map: Record<string, string> = {
-    shipped: 'warning',
-    delivered: 'success',
-    completed: 'success',
-    rejected: 'danger',
-    rejected_returned: 'warning',
-    refunded: 'warning',
-    after_sales_created: 'info'
-  }
-  return map[status] || 'info'
+  return getUnifiedOrderStatusTagType(status)
 }
 
 const getStatusText = (status: string) => {
-  const map: Record<string, string> = {
-    shipped: '已发货',
-    delivered: '已签收',
-    completed: '已完成',
-    rejected: '拒收',
-    rejected_returned: '拒收退回',
-    refunded: '已退款',
-    after_sales_created: '售后中'
-  }
-  return map[status] || status
+  return getUnifiedOrderStatusText(status)
 }
 
 const getPerformanceStatusType = (status: string) => {

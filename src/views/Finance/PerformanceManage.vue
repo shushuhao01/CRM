@@ -250,11 +250,11 @@
       <el-table-column prop="performanceStatus" label="有效状态" width="120">
         <template #default="{ row }">
           <el-select
-            v-model="row.performanceStatus"
+            :model-value="normalizeStatus(row.performanceStatus)"
             size="small"
             @change="(val: string) => updatePerformance(row, 'performanceStatus', val)"
           >
-            <el-option v-for="s in configData.statusConfigs" :key="s.id" :label="getStatusLabel(s.configValue)" :value="s.configValue" />
+            <el-option v-for="s in standardStatusOptions" :key="s.value" :label="s.label" :value="s.value" />
           </el-select>
         </template>
       </el-table-column>
@@ -313,6 +313,40 @@
           <span class="commission-value">¥{{ formatMoney(row.estimatedCommission || 0) }}</span>
         </template>
       </el-table-column>
+      <!-- 操作日志列：默认显示最新一条，点击可查看历史 -->
+      <el-table-column label="操作日志" min-width="280">
+        <template #default="{ row }">
+          <div v-if="latestLogs[row.id]" class="op-log-cell">
+            <div class="op-log-line1">
+              <el-tag
+                :type="getOpTagType(latestLogs[row.id].operationType)"
+                size="small"
+                effect="light"
+              >
+                {{ perfOpLabels[latestLogs[row.id].operationType] || latestLogs[row.id].operationType }}
+              </el-tag>
+              <span class="op-log-text" :title="latestLogs[row.id].operationContent">
+                {{ latestLogs[row.id].operationContent }}
+              </span>
+            </div>
+            <div class="op-log-line2">
+              <span class="op-log-operator">
+                <el-icon><User /></el-icon>{{ latestLogs[row.id].operatorName || '系统' }}
+              </span>
+              <span class="op-log-time">{{ formatLogTime(latestLogs[row.id].createdAt) }}</span>
+              <el-button type="primary" link size="small" @click="showOperationLogDialog(row)">查看历史</el-button>
+            </div>
+          </div>
+          <div v-else class="op-log-cell">
+            <div class="op-log-line1">
+              <span class="text-muted">暂无记录</span>
+            </div>
+            <div class="op-log-line2">
+              <el-button type="primary" link size="small" @click="showOperationLogDialog(row)">查看历史</el-button>
+            </div>
+          </div>
+        </template>
+      </el-table-column>
     </el-table>
 
     <!-- 分页 -->
@@ -337,6 +371,74 @@
       :tracking-no="currentTrackingNumber"
       :company-code="currentExpressCompany"
     />
+
+    <!-- 操作日志弹窗（分页查看历史记录） -->
+    <el-dialog
+      v-model="opLogDialog.visible"
+      title="操作日志"
+      width="960px"
+      class="op-log-dialog"
+      destroy-on-close
+    >
+      <template #header>
+        <div class="op-log-dialog-header">
+          <el-icon class="op-log-dialog-icon"><DocumentCopy /></el-icon>
+          <span class="op-log-dialog-title">操作日志</span>
+          <el-tag v-if="opLogDialog.orderNumber" size="default" type="info" effect="plain" class="op-log-dialog-tag">
+            订单：{{ opLogDialog.orderNumber }}
+          </el-tag>
+        </div>
+      </template>
+
+      <el-table
+        :data="opLogDialog.list"
+        v-loading="opLogDialog.loading"
+        stripe
+        border
+        class="op-log-table"
+      >
+        <el-table-column type="index" label="#" width="50" align="center" />
+        <el-table-column label="操作类型" width="120" align="center">
+          <template #default="{ row }">
+            <el-tag :type="getOpTagType(row.operationType)" size="small" effect="light">
+              {{ perfOpLabels[row.operationType] || row.operationType }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作内容" min-width="260">
+          <template #default="{ row }">
+            <span class="op-log-detail-content">{{ row.operationContent }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作人" width="110" align="center">
+          <template #default="{ row }">
+            <span class="op-log-detail-operator">{{ row.operatorName || '系统' }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作时间" width="180" align="center">
+          <template #default="{ row }">
+            <span class="op-log-detail-time">{{ formatLogTime(row.createdAt) }}</span>
+          </template>
+        </el-table-column>
+      </el-table>
+
+      <div class="op-log-dialog-footer">
+        <el-pagination
+          v-model:current-page="opLogDialog.page"
+          v-model:page-size="opLogDialog.pageSize"
+          :total="opLogDialog.total"
+          :page-sizes="[10, 20, 50]"
+          layout="total, sizes, prev, pager, next"
+          @size-change="loadOperationLogs"
+          @current-change="loadOperationLogs"
+          background
+        />
+      </div>
+
+      <template #footer>
+        <el-button @click="opLogDialog.visible = false">关闭</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -344,7 +446,7 @@
 import { ref, reactive, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Clock, CircleCheck, Select, TrendCharts, Search, Refresh, Setting, ArrowDown, Download, CircleClose, DocumentCopy } from '@element-plus/icons-vue'
+import { Clock, CircleCheck, Select, TrendCharts, Search, Refresh, Setting, ArrowDown, Download, CircleClose, DocumentCopy, User } from '@element-plus/icons-vue'
 import { financeApi, type PerformanceOrder, type PerformanceManageStatistics, type FinanceConfigData } from '@/api/finance'
 import PerformanceConfigDialog from './components/PerformanceConfigDialog.vue'
 import LogisticsTraceDialog from '@/components/Logistics/LogisticsTraceDialog.vue'
@@ -352,6 +454,7 @@ import { eventBus, EventNames } from '@/utils/eventBus'
 import { useDepartmentStore } from '@/stores/department'
 import { useUserStore } from '@/stores/user'
 import { getLogisticsInfoStyle } from '@/utils/logisticsStatusConfig'
+import { getOrderStatusText as getUnifiedOrderStatusText, getOrderStatusTagType as getUnifiedOrderStatusTagType } from '@/utils/orderStatusConfig'
 // getDepartmentMembers 需要 admin 权限，经理改用 /users/department-members
 import api from '@/utils/request'
 
@@ -374,6 +477,24 @@ const isSales = computed(() => !isAdmin.value && !isManager.value)
 // 状态
 const loading = ref(false)
 const tableData = ref<PerformanceOrder[]>([])
+
+// 操作日志：列表中每个订单的最新一条记录
+const latestLogs = ref<Record<string, any>>({})
+
+// 操作类型标签映射
+const perfOpLabels = financeApi.performanceOperationTypeLabels
+
+// 操作日志弹窗状态
+const opLogDialog = reactive({
+  visible: false,
+  loading: false,
+  orderId: '' as string,
+  orderNumber: '' as string,
+  list: [] as any[],
+  total: 0,
+  page: 1,
+  pageSize: 10
+})
 const selectedRows = ref<PerformanceOrder[]>([])
 const statistics = reactive<PerformanceManageStatistics>({
   pendingCount: 0,
@@ -843,6 +964,9 @@ const loadData = async () => {
 
     // 🔥 计算缺失的搜索关键词
     computeMissingKeywords()
+
+    // 加载列表中订单的最新操作日志
+    await loadLatestLogs()
   } catch (e) {
     console.error('[PerformanceManage] loadData error:', e)
     ElMessage.error('加载数据失败')
@@ -850,6 +974,83 @@ const loadData = async () => {
     pagination.total = 0
   } finally {
     loading.value = false
+  }
+}
+
+// 批量加载列表中订单的最新操作日志
+const loadLatestLogs = async () => {
+  if (tableData.value.length === 0) {
+    latestLogs.value = {}
+    return
+  }
+  try {
+    const orderIds = tableData.value.map(o => o.id)
+    const res = await financeApi.getLatestPerformanceOperationLogs(orderIds) as any
+    // 响应拦截器已提取内层 data，res 即为 { orderId: log, ... }
+    latestLogs.value = res || {}
+  } catch (e) {
+    console.error('加载操作日志失败:', e)
+  }
+}
+
+// 打开操作日志弹窗
+const showOperationLogDialog = (row: PerformanceOrder) => {
+  opLogDialog.orderId = row.id
+  opLogDialog.orderNumber = row.orderNumber || ''
+  opLogDialog.page = 1
+  opLogDialog.pageSize = 10
+  opLogDialog.list = []
+  opLogDialog.total = 0
+  opLogDialog.visible = true
+  loadOperationLogs()
+}
+
+// 分页加载历史操作日志
+const loadOperationLogs = async () => {
+  if (!opLogDialog.orderId) return
+  opLogDialog.loading = true
+  try {
+    const res = await financeApi.getPerformanceOperationLogs(opLogDialog.orderId, {
+      page: opLogDialog.page,
+      pageSize: opLogDialog.pageSize
+    }) as any
+    // 响应拦截器已提取内层 data，res 即为 { list, total, page, pageSize }
+    const data = res || {}
+    opLogDialog.list = data.list || []
+    opLogDialog.total = data.total || 0
+  } catch (e) {
+    console.error('加载历史操作日志失败:', e)
+    ElMessage.error('加载操作日志失败')
+  } finally {
+    opLogDialog.loading = false
+  }
+}
+
+// 获取操作类型的标签颜色
+const getOpTagType = (type: string): string => {
+  switch (type) {
+    case 'status_change': return 'warning'
+    case 'coefficient_change': return 'danger'
+    case 'remark_change': return 'info'
+    default: return 'info'
+  }
+}
+
+// 格式化操作时间（北京时间格式）
+const formatLogTime = (time: string): string => {
+  if (!time) return '-'
+  try {
+    const d = new Date(time)
+    const beijing = new Date(d.getTime() + (d.getTimezoneOffset() + 8 * 60) * 60000)
+    const y = beijing.getFullYear()
+    const m = String(beijing.getMonth() + 1).padStart(2, '0')
+    const day = String(beijing.getDate()).padStart(2, '0')
+    const h = String(beijing.getHours()).padStart(2, '0')
+    const min = String(beijing.getMinutes()).padStart(2, '0')
+    const s = String(beijing.getSeconds()).padStart(2, '0')
+    return `${y}-${m}-${day} ${h}:${min}:${s}`
+  } catch {
+    return time
   }
 }
 
@@ -1165,10 +1366,11 @@ const handleExport = async () => {
       订单金额: Number(row.totalAmount || 0),
       部门: row.createdByDepartmentName || '',
       销售人员: row.createdByName || '',
-      有效状态: getStatusLabel(row.performanceStatus || ''),
+      有效状态: getStatusLabel(normalizeStatus(row.performanceStatus || '')),
       系数: Number(row.performanceCoefficient || 0),
       备注: getRemarkLabel(row.performanceRemark || ''),
-      预估佣金: Number(row.estimatedCommission || 0)
+      预估佣金: Number(row.estimatedCommission || 0),
+      操作日志: latestLogs.value[row.id] ? `${perfOpLabels[latestLogs.value[row.id].operationType] || latestLogs.value[row.id].operationType}：${latestLogs.value[row.id].operationContent}（${latestLogs.value[row.id].operatorName || '系统'} ${formatLogTime(latestLogs.value[row.id].createdAt)}）` : ''
     }))
 
     // 创建工作簿
@@ -1188,7 +1390,8 @@ const handleExport = async () => {
       { wch: 10 }, // 有效状态
       { wch: 8 },  // 系数
       { wch: 10 }, // 备注
-      { wch: 12 }  // 预估佣金
+      { wch: 12 }, // 预估佣金
+      { wch: 40 }  // 操作日志
     ]
 
     XLSX.utils.book_append_sheet(wb, ws, '绩效管理')
@@ -1246,36 +1449,39 @@ const formatMoney = (val: number | string) => {
 
 // 状态映射
 const getStatusType = (status: string) => {
-  const map: Record<string, string> = {
-    shipped: 'warning',
-    delivered: 'success',
-    completed: 'success',
-    rejected: 'danger',
-    rejected_returned: 'warning',
-    refunded: 'warning',
-    after_sales_created: 'info'
-  }
-  return map[status] || 'info'
+  return getUnifiedOrderStatusTagType(status)
 }
 
 const getStatusText = (status: string) => {
-  const map: Record<string, string> = {
-    shipped: '已发货',
-    delivered: '已签收',
-    completed: '已完成',
-    rejected: '拒收',
-    rejected_returned: '拒收退回',
-    refunded: '已退款',
-    after_sales_created: '售后中'
-  }
-  return map[status] || status
+  return getUnifiedOrderStatusText(status)
 }
 
 // 绩效状态中文映射
 const statusLabelMap: Record<string, string> = {
   pending: '待处理',
   valid: '有效',
-  invalid: '无效'
+  invalid: '无效',
+  // 兼容数据库中可能存在的中文值
+  '待处理': '待处理',
+  '有效': '有效',
+  '无效': '无效'
+}
+
+// 标准有效状态选项（统一使用英文键名作为value，显示中文label）
+const standardStatusOptions = [
+  { value: 'pending', label: '待处理' },
+  { value: 'valid', label: '有效' },
+  { value: 'invalid', label: '无效' }
+]
+
+// 将数据库中可能存在的中文状态值标准化为英文键名
+const normalizeStatus = (value: string): string => {
+  const reverseMap: Record<string, string> = {
+    '待处理': 'pending',
+    '有效': 'valid',
+    '无效': 'invalid'
+  }
+  return reverseMap[value] || value || 'pending'
 }
 
 // 备注中文映射
@@ -1605,5 +1811,115 @@ const getRemarkLabel = (value: string) => {
   font-size: 13px;
   color: #606266;
   word-break: break-all;
+}
+
+/* ========== 操作日志列样式 ========== */
+.op-log-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 2px 0;
+  line-height: 1.5;
+}
+
+.op-log-line1 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.op-log-line1 .el-tag {
+  flex-shrink: 0;
+}
+
+.op-log-text {
+  font-size: 13px;
+  color: #606266;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+  min-width: 0;
+}
+
+.op-log-line2 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  color: #909399;
+}
+
+.op-log-operator {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.op-log-time {
+  color: #b1b3b8;
+  flex-shrink: 0;
+}
+
+.op-log-line2 .el-button {
+  margin-left: auto;
+  padding: 0;
+}
+
+.text-muted {
+  color: #c0c4cc;
+  font-size: 13px;
+}
+
+/* ========== 操作日志弹窗样式 ========== */
+.op-log-dialog .op-log-dialog-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.op-log-dialog-icon {
+  font-size: 20px;
+  color: #409eff;
+}
+
+.op-log-dialog-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #303133;
+}
+
+.op-log-dialog-tag {
+  margin-left: 4px;
+}
+
+.op-log-table {
+  margin-bottom: 16px;
+}
+
+.op-log-detail-content {
+  font-size: 14px;
+  color: #303133;
+  line-height: 1.6;
+}
+
+.op-log-detail-operator {
+  font-size: 14px;
+  color: #606266;
+  font-weight: 500;
+}
+
+.op-log-detail-time {
+  font-size: 13px;
+  color: #909399;
+  font-family: 'Courier New', monospace;
+}
+
+.op-log-dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 4px;
 }
 </style>

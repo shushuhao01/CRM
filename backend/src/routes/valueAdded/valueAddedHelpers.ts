@@ -5,10 +5,77 @@
 import { ValueAddedOrder } from '../../entities/ValueAddedOrder';
 import { ValueAddedPriceConfig } from '../../entities/ValueAddedPriceConfig';
 import { OutsourceCompany } from '../../entities/OutsourceCompany';
+import { ValueAddedOperationLog } from '../../entities/ValueAddedOperationLog';
 import { v4 as uuidv4 } from 'uuid';
 import { getTenantRepo } from '../../utils/tenantRepo';
 
 import { log } from '../../config/logger';
+
+/**
+ * 有效状态中文标签映射（内置兜底，与前端 getValidStatusLabel 保持一致）
+ */
+export const VALID_STATUS_LABELS: Record<string, string> = {
+  pending: '待处理',
+  valid: '有效',
+  invalid: '无效',
+  supplemented: '已补单'
+};
+
+/**
+ * 结算状态中文标签映射（内置兜底，与前端 getSettlementStatusLabel 保持一致）
+ */
+export const SETTLEMENT_STATUS_LABELS: Record<string, string> = {
+  unsettled: '未结算',
+  settled: '已结算'
+};
+
+/**
+ * 获取有效状态中文标签
+ */
+export function getValidStatusLabel(value: string): string {
+  return VALID_STATUS_LABELS[value] || value;
+}
+
+/**
+ * 获取结算状态中文标签
+ */
+export function getSettlementStatusLabel(value: string): string {
+  return SETTLEMENT_STATUS_LABELS[value] || value;
+}
+
+/**
+ * 记录增值管理操作日志（审计用）
+ * 记录失败不影响主业务流程
+ */
+export async function logValueAddedOperation(params: {
+  orderId: string;
+  orderNumber: string | null;
+  operationType: string; // status_change | settlement_change | company_change | unit_price_change
+  operationContent: string;
+  oldValue?: string | null;
+  newValue?: string | null;
+  operatorId?: string | null;
+  operatorName?: string | null;
+  remark?: string | null;
+}): Promise<void> {
+  try {
+    const logRepo = getTenantRepo(ValueAddedOperationLog);
+    const entry = new ValueAddedOperationLog();
+    entry.id = uuidv4();
+    entry.orderId = params.orderId;
+    entry.orderNumber = params.orderNumber || null;
+    entry.operationType = params.operationType;
+    entry.operationContent = params.operationContent;
+    entry.oldValue = params.oldValue ?? null;
+    entry.newValue = params.newValue ?? null;
+    entry.operatorId = params.operatorId ?? null;
+    entry.operatorName = params.operatorName ?? null;
+    entry.remark = params.remark ?? null;
+    await logRepo.save(entry);
+  } catch (e) {
+    log.error('[ValueAdded] 写入操作日志失败:', e);
+  }
+}
 /**
  * 根据订单下单日期查找匹配的价格档位
  */

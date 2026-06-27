@@ -101,3 +101,49 @@ export function getCodDepartments() {
 export function getCodSalesUsers(departmentId?: string) {
   return request.get('/cod-collection/sales-users', { params: { departmentId } })
 }
+
+// ==================== 操作日志相关 ====================
+
+// 操作日志接口
+export interface CodOperationLog {
+  id: string
+  orderId: string
+  orderNumber?: string
+  operationType: string // cod_amount_change | cod_returned | cod_cancelled
+  operationContent: string
+  oldValue?: string
+  newValue?: string
+  operatorId?: string
+  operatorName?: string
+  remark?: string
+  createdAt: string
+}
+
+// 操作类型标签映射
+export const COD_OPERATION_TYPE_LABELS: Record<string, string> = {
+  cod_amount_change: '代收金额变更',
+  cod_returned: '标记返款',
+  cod_cancelled: '取消代收'
+}
+
+/**
+ * 批量获取多个订单的最新操作日志（列表展示用）
+ */
+export function getLatestCodOperationLogs(orderIds: string[]) {
+  return request({
+    url: '/cod-collection/operation-logs/latest',
+    method: 'get',
+    params: { orderIds: orderIds.join(',') }
+  })
+}
+
+/**
+ * 分页获取某个订单的历史操作日志（弹窗展示用）
+ */
+export function getCodOperationLogs(orderId: string, params: { page: number; pageSize: number }) {
+  return request({
+    url: `/cod-collection/operation-logs/${orderId}`,
+    method: 'get',
+    params
+  })
+}
