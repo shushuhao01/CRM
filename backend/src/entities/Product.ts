@@ -1,5 +1,7 @@
-import { Entity, PrimaryColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, JoinColumn, Index } from 'typeorm'
+import { Entity, PrimaryColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, OneToMany, JoinColumn, Index } from 'typeorm'
 import { ProductCategory } from './ProductCategory'
+import { ProductSku } from './ProductSku'
+import { ProductSpecGroup } from './ProductSpecGroup'
 
 @Entity('products')
 @Index('IDX_products_tenant_code', ['tenantId', 'code'], { unique: true })
@@ -58,6 +60,18 @@ export class Product {
   @Column({ type: 'json', nullable: true, comment: '规格参数' })
   specifications?: Record<string, any>
 
+  @Column({ name: 'sku_type', type: 'varchar', length: 10, default: 'none', comment: 'SKU类型: none-无SKU, single-单SKU, multi-多SKU' })
+  skuType: string
+
+  @Column({ name: 'min_price', type: 'decimal', precision: 10, scale: 2, nullable: true, comment: 'SKU最低价' })
+  minPrice: number | null
+
+  @Column({ name: 'max_price', type: 'decimal', precision: 10, scale: 2, nullable: true, comment: 'SKU最高价' })
+  maxPrice: number | null
+
+  @Column({ name: 'total_stock', type: 'int', nullable: true, comment: 'SKU总库存' })
+  totalStock: number | null
+
   @Column({ type: 'json', nullable: true, comment: '产品图片' })
   images?: string[]
 
@@ -109,4 +123,10 @@ export class Product {
   @ManyToOne(() => ProductCategory, category => category.products)
   @JoinColumn({ name: 'category_id' })
   category?: ProductCategory
+
+  @OneToMany(() => ProductSku, sku => sku.product)
+  skus?: ProductSku[]
+
+  @OneToMany(() => ProductSpecGroup, specGroup => specGroup.product)
+  specGroups?: ProductSpecGroup[]
 }

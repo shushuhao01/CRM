@@ -221,7 +221,7 @@
               v-for="product in filteredProducts"
               :key="product.id"
               class="product-item"
-              @click="addProduct(product)"
+              @click="(product.skuType && product.skuType !== 'none') ? openSkuSelectDialog(product) : addProduct(product)"
             >
               <div class="product-image">
                 <img :src="product.image || '/default-product.png'" :alt="product.name" />
@@ -233,8 +233,9 @@
                   {{ product.name }}
                 </div>
                 <div class="product-price-stock">
-                  <span class="product-price">¥{{ product.price }}</span>
-                  <span class="product-stock">库存: {{ product.stock }}</span>
+                  <span class="product-price" v-if="product.skuType && product.skuType !== 'none' && product.minPrice">¥{{ product.minPrice }}<template v-if="product.minPrice !== product.maxPrice"> - ¥{{ product.maxPrice }}</template></span>
+                  <span class="product-price" v-else>¥{{ product.price }}</span>
+                  <span class="product-stock">库存: {{ (product.skuType && product.skuType !== 'none') ? (product.totalStock ?? product.stock) : product.stock }}</span>
                 </div>
                 <div class="product-badges" v-if="product.isRecommended || product.isNew || product.isHot">
                   <el-tag v-if="product.isRecommended" type="warning" size="small" effect="light">
@@ -265,6 +266,46 @@
         </div>
       </div>
 
+      <!-- SKU选择对话框 -->
+      <el-dialog v-model="skuSelectDialogVisible" :title="'选择SKU - ' + (skuSelectProduct?.name || '')" width="900px" destroy-on-close top="6vh">
+        <div v-if="skuSelectProduct" style="margin-bottom: 16px; display: flex; align-items: center; gap: 14px;">
+          <img :src="skuSelectProduct.image || '/default-product.png'" style="width: 64px; height: 64px; border-radius: 6px; object-fit: cover; border: 1px solid #ebeef5;" />
+          <div>
+            <div style="font-weight: 600; font-size: 16px;">{{ skuSelectProduct.name }}</div>
+            <div style="color: #909399; font-size: 13px;">编码：{{ skuSelectProduct.code }}</div>
+          </div>
+        </div>
+        <el-table :data="skuSelectList" border size="default" v-loading="skuSelectLoading" max-height="480" style="font-size: 14px;">
+          <el-table-column label="图片" width="80" align="center">
+            <template #default="{ row }">
+              <el-image v-if="row.skuImage" :src="row.skuImage" style="width: 50px; height: 50px; border-radius: 4px;" fit="cover" />
+              <span v-else style="color: #c0c4cc; font-size: 12px;">无图</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="规格" prop="skuName" min-width="160" show-overflow-tooltip>
+            <template #default="{ row }"><span style="font-weight: 500;">{{ row.skuName }}</span></template>
+          </el-table-column>
+          <el-table-column label="价格" width="110" align="right">
+            <template #default="{ row }"><span style="color: #f56c6c; font-weight: 600;">¥{{ Number(row.price).toFixed(2) }}</span></template>
+          </el-table-column>
+          <el-table-column label="库存" width="90" align="center">
+            <template #default="{ row }"><span style="font-weight: 600;" :style="{ color: row.stock <= 0 ? '#f56c6c' : '#67c23a' }">{{ row.stock }}</span></template>
+          </el-table-column>
+          <el-table-column label="数量" width="140" align="center">
+            <template #default="{ row }">
+              <el-input-number v-model="row._selectQty" :min="0" :max="row.stock" size="small" :disabled="row.stock <= 0" style="width: 120px;" />
+            </template>
+          </el-table-column>
+        </el-table>
+        <div v-if="skuSelectSubtotal > 0" style="text-align: right; margin-top: 14px; font-size: 15px;">
+          小计：<span style="color: #f56c6c; font-weight: 600; font-size: 18px;">¥{{ skuSelectSubtotal.toFixed(2) }}</span>
+        </div>
+        <template #footer>
+          <el-button @click="skuSelectDialogVisible = false">取消</el-button>
+          <el-button type="primary" @click="confirmSkuSelect">确定</el-button>
+        </template>
+      </el-dialog>
+
       <!-- 订单汇总区域 -->
       <div class="form-section">
         <div class="section-header">
@@ -276,6 +317,17 @@
         <div class="selected-products" v-if="orderForm.products.length > 0">
           <h4>已选商品</h4>
           <el-table :data="orderForm.products" style="width: 100%">
+            <el-table-column label="图片" width="65" align="center" :show-overflow-tooltip="false">
+              <template #default="{ row }">
+                <el-image
+                  :src="row.skuImage || row.image || row.mainImage || '/default-product.png'"
+                  style="width: 44px; height: 44px; border-radius: 4px; display: block; margin: 0 auto;"
+                  fit="cover"
+                  :preview-src-list="[row.skuImage || row.image || row.mainImage || '/default-product.png']"
+                  preview-teleported
+                />
+              </template>
+            </el-table-column>
             <el-table-column prop="productName" label="商品名称" min-width="200">
               <template #default="{ row }">
                 <div class="selected-product-name">
@@ -284,16 +336,8 @@
                     <el-tag v-else size="small" effect="light" style="margin-right: 4px;">实物</el-tag>
                     <span style="font-weight: 600;">{{ row.productName }}</span>
                   </div>
-                  <div class="selected-product-tags">
-                    <el-tag v-if="row.isRecommended" type="warning" size="small" effect="light">
-                      ⭐ 推荐
-                    </el-tag>
-                    <el-tag v-if="row.isNew" type="success" size="small" effect="light">
-                      🆕 新品
-                    </el-tag>
-                    <el-tag v-if="row.isHot" type="danger" size="small" effect="light">
-                      🔥 热销
-                    </el-tag>
+                  <div v-if="row.skuName" style="color: #909399; font-size: 12px; margin-top: 2px;">
+                    规格：{{ row.skuName }}
                   </div>
                 </div>
               </template>
@@ -319,8 +363,16 @@
                 <span style="color: #f56c6c; font-weight: 600;">¥{{ ((row.price || 0) * (row.quantity || 0)).toFixed(2) }}</span>
               </template>
             </el-table-column>
-            <el-table-column label="操作" width="80">
-              <template #default="{ $index }">
+            <el-table-column label="操作" width="120">
+              <template #default="{ row, $index }">
+                <el-button
+                  v-if="row.skuId"
+                  type="primary"
+                  size="small"
+                  :icon="EditPen"
+                  @click="editSkuProduct(row)"
+                  title="编辑SKU"
+                />
                 <el-button
                   type="danger"
                   size="small"
@@ -747,7 +799,7 @@ defineOptions({
 import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Search, ZoomIn, Delete, ArrowDown, User, Message, Location, Plus, ShoppingBag, Refresh, View, Upload, DocumentCopy, Money } from '@element-plus/icons-vue'
+import { Search, ZoomIn, Delete, ArrowDown, User, Message, Location, Plus, ShoppingBag, Refresh, View, Upload, DocumentCopy, Money, EditPen } from '@element-plus/icons-vue'
 import { displaySensitiveInfoNew } from '@/utils/sensitiveInfo'
 import { SensitiveInfoType } from '@/services/permission'
 import { useOrderStore } from '@/stores/order'
@@ -761,6 +813,7 @@ import { customerDetailApi } from '@/api/customerDetail'
 import { getAddressLabel } from '@/utils/addressData'
 import { orderApi } from '@/api/order'
 import type { DepartmentLimitCheckResult } from '@/api/order'
+import { productApi } from '@/api/product'
 
 const route = useRoute()
 const router = useRouter()
@@ -999,15 +1052,23 @@ const filteredProducts = computed(() => {
   const deptFilter = (product: any) =>
     !product.allowedDepartments || product.allowedDepartments.length === 0 || (currentDeptId && product.allowedDepartments.includes(currentDeptId))
 
+  const mapProduct = (product: any) => ({
+    ...product,
+    skuType: product.skuType || 'none',
+    minPrice: product.minPrice,
+    maxPrice: product.maxPrice,
+    totalStock: product.totalStock
+  })
+
   if (!productSearchKeyword.value) {
-    return productStore.products.filter(product => product.status === 'active' && deptFilter(product))
+    return productStore.products.filter(product => product.status === 'active' && deptFilter(product)).map(mapProduct)
   }
   return productStore.products.filter(product =>
     product.status === 'active' &&
     deptFilter(product) &&
     (product.name.toLowerCase().includes(productSearchKeyword.value.toLowerCase()) ||
      product.code?.toLowerCase().includes(productSearchKeyword.value.toLowerCase()))
-  )
+  ).map(mapProduct)
 })
 
 // 客户选项
@@ -1213,6 +1274,72 @@ const searchProducts = async () => {
 }
 
 // 添加产品
+// ===== SKU选择对话框 =====
+const skuSelectDialogVisible = ref(false)
+const skuSelectProduct = ref<any>(null)
+const skuSelectList = ref<any[]>([])
+const skuSelectLoading = ref(false)
+
+const skuSelectSubtotal = computed(() => {
+  return skuSelectList.value.reduce((sum, sku) => sum + (sku._selectQty || 0) * (sku.price || 0), 0)
+})
+
+const openSkuSelectDialog = async (product: any) => {
+  skuSelectProduct.value = product
+  skuSelectLoading.value = true
+  skuSelectDialogVisible.value = true
+  try {
+    const res = await productApi.getSkuList(String(product.id), { pageSize: 100, status: 'active' })
+    skuSelectList.value = (res.list || []).filter((s: any) => s.stock > 0).map((s: any) => {
+      const existing = orderForm.products.find(p => p.skuId === s.id)
+      return { ...s, _selectQty: existing ? existing.quantity : 0 }
+    })
+  } catch (e) {
+    ElMessage.error('获取SKU列表失败')
+    skuSelectList.value = []
+  } finally {
+    skuSelectLoading.value = false
+  }
+}
+
+const confirmSkuSelect = () => {
+  if (!skuSelectProduct.value) return
+  const product = skuSelectProduct.value
+  const selectedSkus = skuSelectList.value.filter(s => s._selectQty > 0)
+  if (selectedSkus.length === 0) {
+    ElMessage.warning('请至少选择一个SKU的数量')
+    return
+  }
+
+  orderForm.products = orderForm.products.filter(p => !(p.productId === product.id && p.skuId))
+
+  selectedSkus.forEach(sku => {
+    orderForm.products.push({
+      productId: product.id,
+      productName: product.name,
+      productCode: product.code,
+      specification: sku.skuName,
+      price: sku.price,
+      quantity: sku._selectQty,
+      subtotal: sku.price * sku._selectQty,
+      stock: sku.stock,
+      productType: product.productType || 'physical',
+      skuId: sku.id,
+      skuName: sku.skuName,
+      skuImage: sku.skuImage,
+      specValues: sku.specValues
+    })
+  })
+  calculateSubtotal()
+  skuSelectDialogVisible.value = false
+  ElMessage.success(`已添加 ${selectedSkus.length} 个SKU到订单`)
+}
+
+const editSkuProduct = (row: any) => {
+  const product = filteredProducts.value.find(p => p.id === row.productId) || { id: row.productId, name: row.productName, code: row.productCode, image: '', productType: row.productType }
+  openSkuSelectDialog(product)
+}
+
 const addProduct = (product) => {
   const existingItem = orderForm.products.find(item => item.productId === product.id)
   if (existingItem) {

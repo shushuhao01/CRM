@@ -255,8 +255,23 @@
             </div>
           </div>
         </el-form-item>
+
+        <!-- SKU选择（有SKU的商品） -->
+        <el-form-item v-if="adjustForm.skuType && adjustForm.skuType !== 'none'" label="选择SKU">
+          <el-select v-model="adjustForm.selectedSkuId" placeholder="选择要调整的SKU（不选则调整总库存）" clearable style="width: 100%;" @change="handleSkuSelectChange">
+            <el-option v-for="sku in adjustForm.skuOptions" :key="sku.id" :label="`${sku.skuName} (库存: ${sku.stock})`" :value="sku.id">
+              <div style="display: flex; align-items: center; gap: 8px; padding: 2px 0;">
+                <img v-if="sku.skuImage" :src="sku.skuImage" style="width: 28px; height: 28px; border-radius: 3px; object-fit: cover;" />
+                <span v-else style="width: 28px; height: 28px; border-radius: 3px; background: #f5f7fa; display: inline-flex; align-items: center; justify-content: center; color: #c0c4cc; font-size: 11px;">无图</span>
+                <span style="flex: 1;">{{ sku.skuName }}</span>
+                <span style="color: #909399; font-size: 12px;">库存: {{ sku.stock }}</span>
+              </div>
+            </el-option>
+          </el-select>
+        </el-form-item>
+
         <el-form-item label="当前库存">
-          <span class="current-stock">{{ adjustForm.currentStock }} {{ adjustForm.unit }}</span>
+          <span class="current-stock">{{ adjustForm.selectedSkuId ? (adjustForm.skuOptions.find((s: any) => s.id === adjustForm.selectedSkuId)?.stock ?? adjustForm.currentStock) : adjustForm.currentStock }} {{ adjustForm.unit }}</span>
         </el-form-item>
         <el-form-item label="调整类型" prop="adjustType">
           <el-radio-group v-model="adjustForm.adjustType">
@@ -269,7 +284,7 @@
           <el-input-number
             v-model="adjustForm.adjustQuantity"
             :min="adjustForm.adjustType === 'decrease' ? 1 : 0"
-            :max="adjustForm.adjustType === 'decrease' ? adjustForm.currentStock : 99999"
+            :max="adjustForm.adjustType === 'decrease' ? (adjustForm.selectedSkuId ? (adjustForm.skuOptions.find((s: any) => s.id === adjustForm.selectedSkuId)?.stock ?? adjustForm.currentStock) : adjustForm.currentStock) : 99999"
             controls-position="right"
             style="width: 200px"
           />
@@ -421,6 +436,17 @@
         <el-table-column prop="operator" label="操作人" width="80" />
         <el-table-column prop="remark" label="备注" min-width="120" show-overflow-tooltip />
       </el-table>
+
+      <div v-if="historyPagination.total > historyPagination.pageSize" style="margin-top: 12px; display: flex; justify-content: flex-end;">
+        <el-pagination
+          v-model:current-page="historyPagination.page"
+          :page-size="historyPagination.pageSize"
+          :total="historyPagination.total"
+          layout="total, prev, pager, next"
+          small
+          @current-change="handleHistoryPageChange"
+        />
+      </div>
 
       <template #footer>
         <div class="dialog-footer">
@@ -702,8 +728,20 @@ const adjustForm = reactive({
   adjustQuantity: 0,
   reason: '',
   remark: '',
-  productId: ''
+  productId: '',
+  skuType: '' as string,
+  skuOptions: [] as any[],
+  selectedSkuId: '' as string
 })
+
+function handleSkuSelectChange(skuId: string) {
+  if (skuId) {
+    const sku = adjustForm.skuOptions.find((s: any) => s.id === skuId)
+    if (sku) {
+      adjustForm.currentStock = sku.stock
+    }
+  }
+}
 
 // 预警设置表单
 const warningForm = reactive({
@@ -838,13 +876,17 @@ const loadData = async () => {
       virtualDeliveryType: item.virtualDeliveryType || null,
       category: item.categoryName || item.category,
       image: item.image,
-      currentStock: item.stock,
+      currentStock: (item.skuType && item.skuType !== 'none') ? (item.totalStock ?? item.stock) : item.stock,
       minStock: item.minStock || 10,
       maxStock: item.maxStock || 9999,
       unit: item.unit || '件',
       costPrice: item.costPrice || item.price * 0.7,
       salePrice: item.price,
-      lastUpdateTime: item.updateTime || item.createTime
+      lastUpdateTime: item.updateTime || item.createTime,
+      skuType: item.skuType || 'none',
+      minPrice: item.minPrice,
+      maxPrice: item.maxPrice,
+      totalStock: item.totalStock
     }))
 
     // 分页处理
@@ -898,7 +940,7 @@ const handleReset = () => {
   loadData()
 }
 
-const handleAdjustStock = (row: any) => {
+const handleAdjustStock = async (row: any) => {
   Object.assign(adjustForm, {
     id: row.id,
     productId: row.id,
@@ -910,8 +952,21 @@ const handleAdjustStock = (row: any) => {
     adjustType: 'increase',
     adjustQuantity: 0,
     reason: '',
-    remark: ''
+    remark: '',
+    skuType: row.skuType || '',
+    skuOptions: [],
+    selectedSkuId: ''
   })
+
+  if (row.skuType && row.skuType !== 'none') {
+    try {
+      const res = await productApi.getSkuList(String(row.id), { pageSize: 100, status: 'active' })
+      adjustForm.skuOptions = res.list || []
+    } catch (e) {
+      console.error('加载SKU列表失败:', e)
+    }
+  }
+
   adjustDialogVisible.value = true
 }
 
@@ -929,30 +984,48 @@ const handleSetWarning = (row: any) => {
 }
 
 const handleViewHistory = async (row: any) => {
+  currentProductHistory.value = row
+  historyPagination.page = 1
+  historyDialogVisible.value = true
+  await loadHistoryPage(row.id || row.productId)
+}
+
+const loadHistoryPage = async (productId?: string) => {
+  const pid = productId || currentProductHistory.value?.id || currentProductHistory.value?.productId
+  if (!pid) return
+  historyLoading.value = true
   try {
-    currentProductHistory.value = row
-    historyDialogVisible.value = true
-    historyLoading.value = true
-
-    // 从localStorage读取真实的库存变动记录
-    const historyKey = `stock_history_${row.id}`
-    const storedHistory = JSON.parse(localStorage.getItem(historyKey) || '[]')
-
-    if (storedHistory.length > 0) {
-      historyList.value = storedHistory
-      historyPagination.total = storedHistory.length
-    } else {
-      // 如果没有记录，显示空状态
-      historyList.value = []
-      historyPagination.total = 0
-    }
+    const res = await productApi.getStockAdjustments({
+      productId: String(pid),
+      page: historyPagination.page,
+      pageSize: historyPagination.pageSize
+    })
+    const list = res.list || []
+    historyList.value = list.map((a: any) => ({
+      id: a.id,
+      date: a.createdAt ? new Date(a.createdAt).toLocaleString('zh-CN') : '-',
+      type: a.adjustType || 'set',
+      typeName: a.adjustType === 'increase' ? '增加' : a.adjustType === 'decrease' ? '减少' : '设置',
+      quantity: a.quantity,
+      beforeStock: a.beforeStock ?? '-',
+      afterStock: a.afterStock ?? '-',
+      reason: a.reason || '',
+      operator: a.operatorName || '-',
+      remark: a.remark || (a.skuName ? `SKU: ${a.skuName}` : '')
+    }))
+    historyPagination.total = res.total || 0
   } catch (error) {
     console.error('获取库存历史失败:', error)
-    ElMessage.error('获取库存历史失败')
     historyList.value = []
+    historyPagination.total = 0
   } finally {
     historyLoading.value = false
   }
+}
+
+const handleHistoryPageChange = (page: number) => {
+  historyPagination.page = page
+  loadHistoryPage()
 }
 
 // 虚拟商品库存管理跳转
@@ -1319,40 +1392,24 @@ const handleSubmitAdjust = async () => {
       newStock = adjustForm.adjustQuantity
     }
 
-    // 更新商品库存
-    await productStore.updateProduct(adjustForm.productId, { stock: newStock })
-
-    // 记录库存变动历史
-    const historyRecord = {
-      id: Date.now().toString(),
-      productId: adjustForm.productId,
-      productCode: adjustForm.productCode,
-      productName: adjustForm.productName,
-      type: adjustForm.adjustType,
-      typeName: adjustForm.adjustType === 'increase' ? '增加' : adjustForm.adjustType === 'decrease' ? '减少' : '设置',
-      quantity: adjustForm.adjustQuantity,
-      beforeStock: adjustForm.currentStock,
-      afterStock: newStock,
-      reason: adjustForm.reason,
-      remark: adjustForm.remark,
-      operator: '当前用户',
-      date: new Date().toLocaleString(),
-      createTime: new Date().toISOString()
+    // 调用后端正式API进行库存调整
+    try {
+      await productApi.adjustStock({
+        productId: adjustForm.productId,
+        type: adjustForm.adjustType as 'increase' | 'decrease' | 'set',
+        quantity: adjustForm.adjustQuantity,
+        reason: adjustForm.reason,
+        remark: adjustForm.remark,
+        ...(adjustForm.selectedSkuId ? { skuId: adjustForm.selectedSkuId } : {})
+      })
+    } catch (apiErr) {
+      console.error('后端库存调整失败，回退本地更新:', apiErr)
+      await productStore.updateProduct(adjustForm.productId, { stock: newStock })
     }
 
-    // 保存到localStorage
-    const historyKey = `stock_history_${adjustForm.productId}`
-    const existingHistory = JSON.parse(localStorage.getItem(historyKey) || '[]')
-    existingHistory.unshift(historyRecord)
-    localStorage.setItem(historyKey, JSON.stringify(existingHistory.slice(0, 100))) // 只保留最近100条
-
     ElMessage.success('库存调整成功')
-
-    // 1秒后自动关闭对话框并刷新数据
-    setTimeout(() => {
-      adjustDialogVisible.value = false
-      loadData()
-    }, 1000)
+    adjustDialogVisible.value = false
+    loadData()
   } catch (error) {
     console.error('库存调整失败:', error)
     ElMessage.error('库存调整失败')

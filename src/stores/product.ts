@@ -3,6 +3,29 @@ import { ref, computed } from 'vue'
 import { createPersistentStore } from '@/utils/storage'
 import { productApi, type ProductListParams } from '@/api/product'
 
+export interface ProductSkuItem {
+  id: string
+  skuCode: string
+  skuName: string
+  skuImage: string
+  price: number
+  costPrice: number
+  stock: number
+  salesCount: number
+  weight: number
+  barcode: string
+  specValues: Record<string, string>
+  sortOrder: number
+  status: string
+}
+
+export interface ProductSpecGroupItem {
+  id: string
+  specName: string
+  specValues: string[]
+  sortOrder: number
+}
+
 export interface Product {
   id: string | number
   code: string
@@ -23,19 +46,25 @@ export interface Product {
   maxStock: number
   salesCount: number
   status: 'active' | 'inactive' | 'out_of_stock'
-  isRecommended?: boolean  // 是否推荐
-  isNew?: boolean          // 是否新品
-  isHot?: boolean          // 是否热销
-  productType?: string     // 商品类型: physical/virtual
-  virtualDeliveryType?: string | null  // 虚拟发货方式
+  isRecommended?: boolean
+  isNew?: boolean
+  isHot?: boolean
+  productType?: string
+  virtualDeliveryType?: string | null
   cardKeyTemplate?: string | null
   resourceLinkTemplate?: string | null
   virtualContentEncrypt?: boolean
   image: string
   images?: string[]
-  specifications?: Record<string, any> // 规格参数
+  specifications?: Record<string, any>
   allowedDepartments?: string[] | null
-  createdBy?: string // 创建人
+  skuType?: string
+  minPrice?: number | null
+  maxPrice?: number | null
+  totalStock?: number | null
+  skus?: ProductSkuItem[]
+  specGroups?: ProductSpecGroupItem[]
+  createdBy?: string
   createTime: string
   updateTime?: string
   deleted?: boolean

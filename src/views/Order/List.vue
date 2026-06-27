@@ -1828,9 +1828,12 @@ const handleBatchExport = async () => {
       receiverPhone: order.receiverPhone || '',
       receiverAddress: order.receiverAddress || '',
       products: Array.isArray(order.products)
-        ? order.products.map((p: any) => `${p.name} x${p.quantity}`).join(', ')
+        ? order.products.map((p: any) => {
+            let text = `${p.name} x${p.quantity}`
+            if (p.skuName) text += ` [${p.skuName}]`
+            return text
+          }).join(', ')
         : order.products || '',
-      // 🔥 修复：totalQuantity 从 products 数组计算
       totalQuantity: order.totalQuantity || (Array.isArray(order.products) ? order.products.reduce((sum: number, p: any) => sum + (p.quantity || 0), 0) : 0),
       totalAmount: order.totalAmount || 0,
       depositAmount: order.depositAmount || 0,
@@ -1841,7 +1844,6 @@ const handleBatchExport = async () => {
       customerWeight: order.customerWeight || '',
       medicalHistory: order.medicalHistory || '',
       serviceWechat: order.serviceWechat || '',
-      // 🔥 新增字段
       markType: order.markType || '',
       salesPersonName: order.salesPersonName || order.createdByName || order.createdBy || '',
       paymentMethod: order.paymentMethod || '',
@@ -1851,7 +1853,6 @@ const handleBatchExport = async () => {
       createTime: order.createTime || '',
       status: order.status || '',
       shippingStatus: order.shippingStatus || '',
-      // 🔥 物流相关字段（修复缺失）
       specifiedExpress: order.specifiedExpress || '',
       expressCompany: order.expressCompany || '',
       expressNo: order.expressNo || '',
@@ -1896,9 +1897,12 @@ const handleExport = async () => {
       receiverPhone: order.receiverPhone || '',
       receiverAddress: order.receiverAddress || '',
       products: Array.isArray(order.products)
-        ? order.products.map((p: any) => `${p.name} x${p.quantity}`).join(', ')
+        ? order.products.map((p: any) => {
+            let text = `${p.name} x${p.quantity}`
+            if (p.skuName) text += ` [${p.skuName}]`
+            return text
+          }).join(', ')
         : order.products || '',
-      // 🔥 修复：totalQuantity 从 products 数组计算
       totalQuantity: order.totalQuantity || (Array.isArray(order.products) ? order.products.reduce((sum: number, p: any) => sum + (p.quantity || 0), 0) : 0),
       totalAmount: order.totalAmount || 0,
       depositAmount: order.depositAmount || 0,

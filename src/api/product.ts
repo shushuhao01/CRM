@@ -1,6 +1,6 @@
 import { api } from './request'
 import { mockApi, shouldUseMockApi } from './mock'
-import type { Product, ProductCategory } from '@/stores/product'
+import type { Product, ProductCategory, ProductSkuItem, ProductSpecGroupItem } from '@/stores/product'
 import { isProduction } from '@/utils/env'
 
 export interface ProductListParams {
@@ -60,7 +60,10 @@ export const productApi = {
   async getDetail(id: string): Promise<Product> {
     try {
       const response = await api.get<{ data: Product }>(`/products/${id}`)
-      return (response as any).data?.data || (response as any).data as Product
+      const d = (response as any).data
+      if (d && d.id) return d as Product
+      if (d && d.data && d.data.id) return d.data as Product
+      return d as Product
     } catch (error) {
       console.error('获取产品详情失败:', error)
       throw error
@@ -160,6 +163,7 @@ export const productApi = {
     quantity: number
     reason: string
     remark?: string
+    skuId?: string
   }): Promise<any> {
     try {
       const response = await api.post('/products/stock/adjust', data as any)
@@ -551,10 +555,60 @@ export const productApi = {
     }
   },
 
-  /**
-   * 模拟数据方法（当API调用失败时使用）
-   * 从localStorage获取真实的商品数据
-   */
+  async getSkuList(productId: string, params: { page?: number; pageSize?: number; status?: string } = {}): Promise<{ list: ProductSkuItem[]; total: number; page: number; pageSize: number }> {
+    try {
+      const response = await api.get(`/products/${productId}/skus`, { params: params as any })
+      const d = (response as any).data
+      if (d && d.list) return d
+      if (d && d.data && d.data.list) return d.data
+      return { list: [], total: 0, page: 1, pageSize: 10 }
+    } catch (error) {
+      console.error('获取SKU列表失败:', error)
+      return { list: [], total: 0, page: 1, pageSize: 10 }
+    }
+  },
+
+  async getSpecGroups(productId: string): Promise<ProductSpecGroupItem[]> {
+    try {
+      const response = await api.get(`/products/${productId}/spec-groups`)
+      const d = (response as any).data
+      if (Array.isArray(d)) return d
+      if (d && Array.isArray(d.data)) return d.data
+      return []
+    } catch (error) {
+      console.error('获取规格组失败:', error)
+      return []
+    }
+  },
+
+  async updateSkuStatus(productId: string, skuId: string, status: string): Promise<void> {
+    await api.put(`/products/${productId}/skus/${skuId}/status`, { status } as any)
+  },
+
+  async batchUpdateSkuStatus(productId: string, skuIds: string[], status: string): Promise<void> {
+    await api.put(`/products/${productId}/skus/batch-status`, { skuIds, status } as any)
+  },
+
+  async patchSku(productId: string, skuId: string, data: { price?: number; costPrice?: number; weight?: number }): Promise<void> {
+    await api.patch(`/products/${productId}/skus/${skuId}`, data as any)
+  },
+
+  async deleteSku(productId: string, skuId: string): Promise<void> {
+    await api.delete(`/products/${productId}/skus/${skuId}`)
+  },
+
+  async batchAdjustStock(adjustments: Array<{
+    productId: string; skuId?: string; type: string; quantity: number; reason: string; remark?: string
+  }>): Promise<any> {
+    try {
+      const response = await api.post('/products/stock/batch-adjust', { adjustments } as any)
+      return (response as any).data?.data || (response as any).data
+    } catch (error) {
+      console.error('批量库存调整失败:', error)
+      throw error
+    }
+  },
+
   getMockProductList(params: ProductListParams = {}): ProductListResponse {
     // 从localStorage获取商品数据
     const productsStr = localStorage.getItem('products')

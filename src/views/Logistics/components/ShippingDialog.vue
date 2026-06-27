@@ -223,7 +223,11 @@ const formatNumber = (num: number | null | undefined) => {
 // 获取商品文本
 const getProductsText = () => {
   if (!props.order?.products || !Array.isArray(props.order.products)) return ''
-  return props.order.products.map(p => `${p.name} × ${p.quantity}`).join('，')
+  return props.order.products.map(p => {
+    let text = `${p.name} × ${p.quantity}`
+    if (p.skuName) text += ` (${p.skuName})`
+    return text
+  }).join('，')
 }
 
 // 🔥 根据运单号自动识别物流公司

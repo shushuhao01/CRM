@@ -299,7 +299,30 @@
             <el-tag v-else size="small" effect="light" style="margin-right: 6px; flex-shrink: 0;">
               实物
             </el-tag>
-            <el-tooltip :content="row.name" placement="top" :show-after="300">
+            <el-popover v-if="row.skuType && row.skuType !== 'none'" placement="right" :width="320" trigger="hover">
+              <template #reference>
+                <span class="product-name-text" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; color: #409EFF;">
+                  {{ row.name }}
+                </span>
+              </template>
+              <div style="font-size: 13px;">
+                <div style="font-weight: 600; margin-bottom: 8px;">{{ row.name }} - SKU明细</div>
+                <div v-if="!row._skuLoaded" style="color: #909399; text-align: center; padding: 10px;">
+                  <span @click.stop="loadRowSkus(row)" style="cursor: pointer; color: #409EFF;">点击加载SKU</span>
+                </div>
+                <template v-else>
+                  <div v-for="sku in (row._skuList || []).slice(0, 5)" :key="sku.id" style="display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid #f0f0f0;">
+                    <span style="flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ sku.skuName }}</span>
+                    <span style="margin-left: 8px; color: #e6a23c; white-space: nowrap;">¥{{ sku.price }}</span>
+                    <span style="margin-left: 8px; color: #909399; white-space: nowrap;">库存:{{ sku.stock }}</span>
+                  </div>
+                  <div v-if="(row._skuList || []).length > 5" style="text-align: center; color: #909399; padding: 4px 0; font-size: 12px;">
+                    还有 {{ (row._skuList || []).length - 5 }} 个SKU...
+                  </div>
+                </template>
+              </div>
+            </el-popover>
+            <el-tooltip v-else :content="row.name" placement="top" :show-after="300">
               <span class="product-name-text" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
                 {{ row.name }}
               </span>
@@ -325,7 +348,10 @@
 
         <!-- 价格列 -->
         <template #column-price="{ row }">
-          <span class="price">¥{{ row.price }}</span>
+          <template v-if="row.skuType && row.skuType !== 'none' && row.minPrice != null && row.maxPrice != null">
+            <span class="price" style="color: #e6a23c;">¥{{ row.minPrice }}<template v-if="row.minPrice !== row.maxPrice"> - ¥{{ row.maxPrice }}</template></span>
+          </template>
+          <span v-else class="price">¥{{ row.price }}</span>
         </template>
 
         <!-- 库存列 -->
@@ -338,6 +364,11 @@
               {{ row.virtualDeliveryType === 'card_key' ? '卡密' : '资源' }}: {{ row.virtualStockCount ?? 0 }}
             </span>
           </template>
+          <template v-else-if="row.skuType && row.skuType !== 'none'">
+            <span style="color: #409EFF; cursor: pointer; text-decoration: underline;" @click.stop="showSkuDetailDialog(row)">
+              {{ row.totalStock ?? row.stock ?? 0 }}
+            </span>
+          </template>
           <span v-else :class="getStockClass(row.stock, row.minStock)">
             {{ row.stock }}
           </span>
@@ -345,9 +376,18 @@
 
         <!-- 状态列 -->
         <template #column-status="{ row }">
-          <el-tag :type="getStatusColor(row.status)" size="small">
-            {{ getStatusText(row.status) }}
-          </el-tag>
+          <div style="display: flex; align-items: center; gap: 4px;">
+            <el-tag :type="getStatusColor(row.status)" size="small">
+              {{ getStatusText(row.status) }}
+            </el-tag>
+            <el-tooltip v-if="row.skuType === 'multi' && (row.inactiveSkuCount > 0 || (row.status !== 'active' && row.activeSkuCount > 0))" placement="top">
+              <template #content>
+                <div v-if="row.status === 'active'">上架SKU {{ row.activeSkuCount }} 个，下架SKU {{ row.inactiveSkuCount }} 个</div>
+                <div v-else>商品已下架，但有 {{ row.activeSkuCount }} 个SKU仍为上架状态</div>
+              </template>
+              <el-icon style="color: #e6a23c; font-size: 16px; cursor: pointer;"><Warning /></el-icon>
+            </el-tooltip>
+          </div>
         </template>
 
         <template #column-allowedDepartments="{ row }">
@@ -468,10 +508,27 @@
         label-width="100px"
       >
         <el-form-item label="商品名称">
-          <span>{{ currentProduct?.name }}</span>
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <img :src="currentProduct?.image || '/default-product.png'" style="width: 40px; height: 40px; border-radius: 4px; object-fit: cover; border: 1px solid #ebeef5;" />
+            <span style="font-weight: 600;">{{ currentProduct?.name }}</span>
+          </div>
+        </el-form-item>
+        <!-- SKU选择（有SKU时） -->
+        <el-form-item v-if="currentProduct?.skuType === 'multi'" label="调整范围">
+          <el-select v-model="stockForm.skuTarget" placeholder="选择调整范围" style="width: 100%;" @change="handleStockSkuTargetChange">
+            <el-option label="统一调整总库存" value="all" />
+            <el-option v-for="sku in stockSkuOptions" :key="sku.id" :label="`${sku.skuName} (库存: ${sku.stock})`" :value="sku.id">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <img v-if="sku.skuImage" :src="sku.skuImage" style="width: 24px; height: 24px; border-radius: 3px; object-fit: cover;" />
+                <span v-else style="width: 24px; height: 24px; border-radius: 3px; background: #f5f7fa; display: inline-flex; align-items: center; justify-content: center; color: #c0c4cc; font-size: 10px;">无</span>
+                <span>{{ sku.skuName }}</span>
+                <span style="color: #67c23a; font-size: 12px;">库存: {{ sku.stock }}</span>
+              </div>
+            </el-option>
+          </el-select>
         </el-form-item>
         <el-form-item label="当前库存">
-          <span>{{ currentProduct?.stock }}</span>
+          <span style="font-weight: 600; color: #409eff;">{{ stockCurrentDisplay }} 件</span>
         </el-form-item>
         <el-form-item label="调整类型" prop="type">
           <el-radio-group v-model="stockForm.type">
@@ -484,7 +541,7 @@
           <el-input-number
             v-model="stockForm.quantity"
             :min="stockForm.type === 'decrease' ? 1 : 0"
-            :max="stockForm.type === 'decrease' ? currentProduct?.stock : 99999"
+            :max="stockForm.type === 'decrease' ? stockCurrentDisplay : 99999"
             style="width: 100%"
           />
         </el-form-item>
@@ -535,34 +592,52 @@
         label-width="100px"
       >
         <el-form-item label="商品名称">
-          <span>{{ currentProduct?.name }}</span>
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <img :src="currentProduct?.image || '/default-product.png'" style="width: 40px; height: 40px; border-radius: 4px; object-fit: cover; border: 1px solid #ebeef5;" />
+            <div>
+              <div style="font-weight: 600;">{{ currentProduct?.name }}</div>
+              <div style="color: #909399; font-size: 12px;">{{ currentProduct?.code }}</div>
+            </div>
+          </div>
         </el-form-item>
-        <el-form-item label="商品编码">
-          <span>{{ currentProduct?.code }}</span>
+        <!-- SKU选择（有SKU时） -->
+        <el-form-item v-if="currentProduct?.skuType === 'multi'" label="调价范围">
+          <el-select v-model="priceForm.skuTarget" placeholder="选择调价范围" style="width: 100%;" @change="handlePriceSkuTargetChange">
+            <el-option label="统一调整所有SKU" value="all" />
+            <el-option v-for="sku in priceSkuOptions" :key="sku.id" :label="`${sku.skuName} (¥${Number(sku.price).toFixed(2)})`" :value="sku.id">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <img v-if="sku.skuImage" :src="sku.skuImage" style="width: 24px; height: 24px; border-radius: 3px; object-fit: cover;" />
+                <span v-else style="width: 24px; height: 24px; border-radius: 3px; background: #f5f7fa; display: inline-flex; align-items: center; justify-content: center; color: #c0c4cc; font-size: 10px;">无</span>
+                <span>{{ sku.skuName }}</span>
+                <span style="color: #e6a23c; font-size: 12px;">¥{{ Number(sku.price).toFixed(2) }}</span>
+              </div>
+            </el-option>
+          </el-select>
         </el-form-item>
-        <el-form-item label="当前价格">
-          <span>¥{{ currentProduct?.price?.toFixed(2) }}</span>
+        <el-form-item v-if="currentProduct?.skuType === 'multi' && priceForm.skuTarget === 'all'" label="调价方式">
+          <el-radio-group v-model="priceForm.priceMode">
+            <el-radio label="set">设置统一价</el-radio>
+            <el-radio label="increase">涨价</el-radio>
+            <el-radio label="decrease">降价</el-radio>
+          </el-radio-group>
         </el-form-item>
-        <el-form-item label="新价格" prop="newPrice">
+        <el-form-item v-if="!(currentProduct?.skuType === 'multi' && priceForm.skuTarget === 'all')" label="当前价格">
+          <span>¥{{ priceForm.originalPrice?.toFixed(2) }}</span>
+        </el-form-item>
+        <el-form-item :label="priceForm.priceMode === 'increase' ? '涨价金额' : priceForm.priceMode === 'decrease' ? '降价金额' : '新价格'" prop="newPrice">
           <el-input-number
             v-model="priceForm.newPrice"
             :min="0.01"
             :precision="2"
             style="width: 100%"
-            placeholder="请输入新价格"
+            :placeholder="priceForm.priceMode === 'increase' ? '每个SKU涨价金额' : priceForm.priceMode === 'decrease' ? '每个SKU降价金额' : '请输入新价格'"
           />
         </el-form-item>
-        <el-form-item label="价格变化">
-          <span v-if="priceForm.newPrice && priceForm.originalPrice">
-            <el-tag
-              :type="priceForm.newPrice > priceForm.originalPrice ? 'success' : 'danger'"
-              size="small"
-            >
-              {{ priceForm.newPrice > priceForm.originalPrice ? '+' : '' }}
-              ¥{{ (priceForm.newPrice - priceForm.originalPrice).toFixed(2) }}
-              ({{ ((priceForm.newPrice - priceForm.originalPrice) / priceForm.originalPrice * 100).toFixed(1) }}%)
-            </el-tag>
-          </span>
+        <el-form-item v-if="!(currentProduct?.skuType === 'multi' && priceForm.skuTarget === 'all') && priceForm.newPrice && priceForm.originalPrice" label="价格变化">
+          <el-tag :type="priceForm.newPrice > priceForm.originalPrice ? 'success' : 'danger'" size="small">
+            {{ priceForm.newPrice > priceForm.originalPrice ? '+' : '' }}¥{{ (priceForm.newPrice - priceForm.originalPrice).toFixed(2) }}
+            ({{ ((priceForm.newPrice - priceForm.originalPrice) / priceForm.originalPrice * 100).toFixed(1) }}%)
+          </el-tag>
         </el-form-item>
         <el-form-item label="改价原因" prop="reason">
           <el-select
@@ -1044,6 +1119,57 @@
         </div>
       </template>
     </el-dialog>
+
+    <!-- SKU明细对话框 -->
+    <el-dialog v-model="skuDetailDialogVisible" :title="skuDetailProduct ? `${skuDetailProduct.name} - SKU明细` : 'SKU明细'" width="1100px" destroy-on-close align-center @close="handleSkuDetailDialogClose">
+      <el-table :data="skuDetailList" v-loading="skuDetailLoading" border size="default" max-height="480" style="font-size: 14px;">
+        <el-table-column label="图片" width="70" align="center">
+          <template #default="{ row }">
+            <el-image v-if="row.skuImage" :src="row.skuImage" style="width: 44px; height: 44px; border-radius: 4px;" fit="cover" :preview-src-list="[row.skuImage]" />
+            <span v-else style="color: #c0c4cc; font-size: 12px;">无图</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="SKU规格" prop="skuName" min-width="140" show-overflow-tooltip>
+          <template #default="{ row }"><span style="font-weight: 500;">{{ row.skuName }}</span></template>
+        </el-table-column>
+        <el-table-column label="售价" width="100" align="right">
+          <template #default="{ row }"><span style="color: #e6a23c; font-weight: 600;">¥{{ Number(row.price).toFixed(2) }}</span></template>
+        </el-table-column>
+        <el-table-column label="成本" width="95" align="right">
+          <template #default="{ row }">¥{{ Number(row.costPrice || 0).toFixed(2) }}</template>
+        </el-table-column>
+        <el-table-column label="库存" width="70" align="center">
+          <template #default="{ row }"><span style="font-weight: 600;" :style="{ color: row.stock === 0 ? '#f56c6c' : row.stock <= 10 ? '#e6a23c' : '#67c23a' }">{{ row.stock }}</span></template>
+        </el-table-column>
+        <el-table-column label="销量" width="60" align="center">
+          <template #default="{ row }">{{ row.salesCount || 0 }}</template>
+        </el-table-column>
+        <el-table-column label="状态" width="70" align="center">
+          <template #default="{ row }">
+            <el-tag :type="row.status === 'active' ? 'success' : 'info'" size="small">{{ row.status === 'active' ? '上架' : '下架' }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="240" align="center" fixed="right">
+          <template #default="{ row }">
+            <div style="display: flex; gap: 4px; justify-content: center; white-space: nowrap;">
+              <el-button size="small" :type="row.status === 'active' ? 'warning' : 'success'" plain @click="handleSkuToggleStatus(row)">{{ row.status === 'active' ? '下架' : '上架' }}</el-button>
+              <el-button size="small" type="primary" plain @click="handleSkuAdjustStock(row)">调库存</el-button>
+              <el-button size="small" type="info" plain @click="handleSkuAdjustPrice(row)">调价格</el-button>
+            </div>
+          </template>
+        </el-table-column>
+      </el-table>
+      <div v-if="skuDetailTotal > skuDetailPageSize" style="margin-top: 12px; display: flex; justify-content: flex-end;">
+        <el-pagination
+          v-model:current-page="skuDetailPage"
+          :page-size="skuDetailPageSize"
+          :total="skuDetailTotal"
+          layout="total, prev, pager, next"
+          small
+          @current-change="handleSkuDetailPageChange"
+        />
+      </div>
+    </el-dialog>
   </div>
 </template>
 
@@ -1212,19 +1338,38 @@ const currentImageList = ref([])
 const currentImageIndex = ref(0)
 
 // 库存调整表单
+const stockSkuOptions = ref<any[]>([])
 const stockForm = reactive({
   type: 'increase',
   quantity: 0,
   reason: '',
-  remark: ''
+  remark: '',
+  skuTarget: 'all' as string
 })
 
+const stockCurrentDisplay = computed(() => {
+  if (stockForm.skuTarget !== 'all') {
+    const sku = stockSkuOptions.value.find(s => s.id === stockForm.skuTarget)
+    return sku ? sku.stock : (currentProduct.value?.stock || 0)
+  }
+  return (currentProduct.value as any)?.skuType === 'multi'
+    ? ((currentProduct.value as any)?.totalStock ?? currentProduct.value?.stock ?? 0)
+    : (currentProduct.value?.stock ?? 0)
+})
+
+function handleStockSkuTargetChange(_val: string) {
+  stockForm.quantity = 0
+}
+
 // 改价表单
+const priceSkuOptions = ref<any[]>([])
 const priceForm = reactive({
   originalPrice: 0,
   newPrice: 0,
   reason: '',
-  remark: ''
+  remark: '',
+  skuTarget: 'all' as string,
+  priceMode: 'set' as 'set' | 'increase' | 'decrease'
 })
 
 // 分类数据 - 从 productStore 获取统一数据
@@ -1433,6 +1578,123 @@ const getStockClass = (stock: number, minStock: number) => {
   return 'stock-normal'
 }
 
+// SKU明细对话框
+const skuDetailDialogVisible = ref(false)
+const skuDetailProduct = ref<any>(null)
+const skuDetailList = ref<any[]>([])
+const skuDetailLoading = ref(false)
+const skuDetailPage = ref(1)
+const skuDetailPageSize = 10
+const skuDetailTotal = ref(0)
+const skuDetailChanged = ref(false)
+
+async function handleSkuDetailDialogClose() {
+  if (skuDetailChanged.value) {
+    await productStore.loadProducts()
+    loadData()
+    skuDetailChanged.value = false
+  }
+}
+
+async function showSkuDetailDialog(row: any) {
+  skuDetailProduct.value = row
+  skuDetailPage.value = 1
+  skuDetailDialogVisible.value = true
+  await loadSkuDetailPage()
+}
+
+async function loadSkuDetailPage() {
+  if (!skuDetailProduct.value) return
+  skuDetailLoading.value = true
+  try {
+    const res = await productApi.getSkuList(String(skuDetailProduct.value.id), { page: skuDetailPage.value, pageSize: skuDetailPageSize })
+    skuDetailList.value = res.list || []
+    skuDetailTotal.value = res.total || 0
+  } catch (e) {
+    console.error('加载SKU列表失败:', e)
+    skuDetailList.value = []
+  } finally {
+    skuDetailLoading.value = false
+  }
+}
+
+function handleSkuDetailPageChange(page: number) {
+  skuDetailPage.value = page
+  loadSkuDetailPage()
+}
+
+async function loadRowSkus(row: any) {
+  try {
+    const res = await productApi.getSkuList(String(row.id), { pageSize: 100 })
+    row._skuList = res.list || []
+    row._skuLoaded = true
+  } catch (e) {
+    console.error('加载行SKU失败:', e)
+  }
+}
+
+async function handleSkuToggleStatus(skuRow: any) {
+  if (!skuDetailProduct.value) return
+  const productId = String(skuDetailProduct.value.id)
+  const newStatus = skuRow.status === 'active' ? 'inactive' : 'active'
+  const label = newStatus === 'active' ? '上架' : '下架'
+  try {
+    await ElMessageBox.confirm(`确定要${label}SKU「${skuRow.skuName}」吗？`, `${label}确认`, { type: 'warning' })
+    await productApi.updateSkuStatus(productId, skuRow.id, newStatus)
+    skuRow.status = newStatus
+    ElMessage.success(`SKU「${skuRow.skuName}」已${label}`)
+    skuDetailChanged.value = true
+  } catch (e: any) {
+    if (e !== 'cancel') ElMessage.error(`${label}失败`)
+  }
+}
+
+async function handleSkuAdjustStock(skuRow: any) {
+  if (!skuDetailProduct.value) return
+  const productId = String(skuDetailProduct.value.id)
+  try {
+    const { value } = await ElMessageBox.prompt(
+      `当前库存：${skuRow.stock}，输入正数增加，负数减少`,
+      `调整库存 - ${skuRow.skuName}`,
+      { inputPattern: /^-?\d+$/, inputErrorMessage: '请输入整数', inputPlaceholder: '如：50 或 -10' }
+    )
+    const qty = Number(value)
+    if (qty === 0) return
+    await productApi.adjustStock({
+      productId,
+      skuId: skuRow.id,
+      type: qty > 0 ? 'increase' : 'decrease',
+      quantity: Math.abs(qty),
+      reason: '商品列表SKU明细调整'
+    })
+    skuRow.stock = skuRow.stock + qty
+    ElMessage.success(`库存已${qty > 0 ? '增加' : '减少'} ${Math.abs(qty)}，当前：${skuRow.stock}`)
+    skuDetailChanged.value = true
+  } catch (e: any) {
+    if (e !== 'cancel') ElMessage.error('库存调整失败')
+  }
+}
+
+async function handleSkuAdjustPrice(skuRow: any) {
+  if (!skuDetailProduct.value) return
+  const productId = String(skuDetailProduct.value.id)
+  try {
+    const { value } = await ElMessageBox.prompt(
+      `当前售价：¥${Number(skuRow.price).toFixed(2)}`,
+      `调整价格 - ${skuRow.skuName}`,
+      { inputPattern: /^\d+(\.\d{1,2})?$/, inputErrorMessage: '请输入正确的价格', inputValue: String(skuRow.price), inputPlaceholder: '请输入新售价' }
+    )
+    const newPrice = Number(value)
+    if (newPrice <= 0) { ElMessage.warning('售价不能为0'); return }
+    await productApi.patchSku(productId, skuRow.id, { price: newPrice })
+    skuRow.price = newPrice
+    ElMessage.success(`售价已调整为 ¥${newPrice.toFixed(2)}`)
+    skuDetailChanged.value = true
+  } catch (e: any) {
+    if (e !== 'cancel') ElMessage.error('价格调整失败')
+  }
+}
+
 /**
  * 获取状态颜色
  */
@@ -1570,16 +1832,24 @@ const handleEdit = (row: Product) => {
 /**
  * 库存调整
  */
-const handleStockAdjust = (row: Product) => {
+const handleStockAdjust = async (row: Product) => {
   currentProduct.value = row
+  stockSkuOptions.value = []
 
-  // 重置表单
   Object.assign(stockForm, {
     type: 'increase',
     quantity: 0,
     reason: '',
-    remark: ''
+    remark: '',
+    skuTarget: 'all'
   })
+
+  if ((row as any).skuType === 'multi') {
+    try {
+      const res = await productApi.getSkuList(String(row.id), { pageSize: 100 })
+      stockSkuOptions.value = res.list || []
+    } catch (e) { console.error('加载SKU列表失败:', e) }
+  }
 
   stockDialogVisible.value = true
 }
@@ -1596,18 +1866,40 @@ const goToResourceManage = (row: Product) => {
 /**
  * 改价
  */
-const handlePriceAdjust = (row: Product) => {
+const handlePriceAdjust = async (row: Product) => {
   currentProduct.value = row
+  priceSkuOptions.value = []
 
-  // 重置表单
   Object.assign(priceForm, {
     originalPrice: row.price,
     newPrice: row.price,
     reason: '',
-    remark: ''
+    remark: '',
+    skuTarget: 'all',
+    priceMode: 'set'
   })
 
+  if ((row as any).skuType === 'multi') {
+    try {
+      const res = await productApi.getSkuList(String(row.id), { pageSize: 100 })
+      priceSkuOptions.value = res.list || []
+    } catch (e) { console.error('加载SKU列表失败:', e) }
+  }
+
   priceDialogVisible.value = true
+}
+
+function handlePriceSkuTargetChange(val: string) {
+  if (val === 'all') {
+    priceForm.originalPrice = currentProduct.value?.price || 0
+    priceForm.newPrice = priceForm.originalPrice
+  } else {
+    const sku = priceSkuOptions.value.find(s => s.id === val)
+    if (sku) {
+      priceForm.originalPrice = Number(sku.price)
+      priceForm.newPrice = priceForm.originalPrice
+    }
+  }
 }
 
 /**
@@ -2429,35 +2721,39 @@ const confirmStockAdjust = async () => {
     stockLoading.value = true
 
     const product = currentProduct.value
-    const currentStock = product.stock
     const adjustQuantity = stockForm.quantity
-    let newStock = currentStock
+    const isSkuTarget = stockForm.skuTarget !== 'all' && (product as any)?.skuType === 'multi'
+    const baseStock = stockCurrentDisplay.value
+    let newStock = baseStock
 
     if (stockForm.type === 'increase') {
-      newStock = currentStock + adjustQuantity
+      newStock = baseStock + adjustQuantity
     } else if (stockForm.type === 'decrease') {
-      newStock = currentStock - adjustQuantity
+      newStock = baseStock - adjustQuantity
     } else if (stockForm.type === 'set') {
       newStock = adjustQuantity
     }
 
     const finalStock = Math.max(0, newStock)
 
-    const result = await productStore.updateProduct(product.id, { stock: finalStock })
-    if (!result) {
-      ElMessage.error('库存调整失败，请重试')
-      stockLoading.value = false
-      return
-    }
+    await productApi.adjustStock({
+      productId: String(product.id),
+      type: stockForm.type as any,
+      quantity: adjustQuantity,
+      reason: stockForm.reason,
+      remark: stockForm.remark,
+      skuId: isSkuTarget ? stockForm.skuTarget : undefined
+    })
 
-    ElMessage.success('库存调整成功')
+    const skuLabel = isSkuTarget ? `[${stockSkuOptions.value.find(s => s.id === stockForm.skuTarget)?.skuName || 'SKU'}]` : ''
+    ElMessage.success(`库存调整成功${skuLabel}`)
 
     try {
       const adjustType = stockForm.type === 'increase' ? '增加' : stockForm.type === 'decrease' ? '减少' : '设置'
       notificationStore.addNotification({
         type: 'PRODUCT_STOCK_ADJUSTED',
         title: '库存调整',
-        content: `商品"${product.name}"库存已${adjustType} ${stockForm.quantity} 件`,
+        content: `商品"${product.name}"${skuLabel}库存已${adjustType} ${stockForm.quantity} 件`,
         data: {
           productId: product.id,
           productName: product.name,
@@ -2476,6 +2772,7 @@ const confirmStockAdjust = async () => {
 
     stockLoading.value = false
     handleStockDialogClose()
+    await productStore.loadProducts()
     loadData()
   } catch (error) {
     console.error('库存调整失败:', error)
@@ -2507,26 +2804,44 @@ const confirmPriceAdjust = async () => {
     stockLoading.value = true
 
     const product = currentProduct.value
-    const oldPrice = product.price
-    const newPrice = priceForm.newPrice
+    const oldPrice = priceForm.originalPrice
+    const inputVal = priceForm.newPrice
+    const isSkuTarget = priceForm.skuTarget !== 'all' && (product as any)?.skuType === 'multi'
+    const isMultiAll = (product as any)?.skuType === 'multi' && priceForm.skuTarget === 'all'
 
-    const result = await productStore.updateProduct(product.id, { price: newPrice })
-    if (!result) {
-      ElMessage.error('改价失败，请重试')
-      stockLoading.value = false
-      return
+    if (isSkuTarget) {
+      await productApi.patchSku(String(product.id), priceForm.skuTarget, { price: inputVal })
+    } else if (isMultiAll) {
+      const skus = priceSkuOptions.value
+      for (const sku of skus) {
+        let finalPrice = inputVal
+        if (priceForm.priceMode === 'increase') {
+          finalPrice = Math.max(0.01, Number(sku.price) + inputVal)
+        } else if (priceForm.priceMode === 'decrease') {
+          finalPrice = Math.max(0.01, Number(sku.price) - inputVal)
+        }
+        await productApi.patchSku(String(product.id), sku.id, { price: Number(finalPrice.toFixed(2)) })
+      }
+    } else {
+      const result = await productStore.updateProduct(product.id, { price: inputVal })
+      if (!result) {
+        ElMessage.error('改价失败，请重试')
+        stockLoading.value = false
+        return
+      }
     }
 
-    ElMessage.success('改价成功')
+    const modeLabel = isMultiAll ? (priceForm.priceMode === 'increase' ? '（涨价）' : priceForm.priceMode === 'decrease' ? '（降价）' : '') : ''
+    const skuLabel = isSkuTarget ? `[${priceSkuOptions.value.find(s => s.id === priceForm.skuTarget)?.skuName || 'SKU'}]` : ''
+    ElMessage.success(`改价成功${skuLabel}${modeLabel}`)
 
-    // 发送消息提醒
     try {
       const priceChange = newPrice - oldPrice
       const changeType = priceChange > 0 ? '上调' : '下调'
       notificationStore.addNotification({
         type: 'PRODUCT_PRICE_CHANGED',
         title: '商品改价',
-        content: `商品"${product.name}"价格已${changeType}，从¥${oldPrice.toFixed(2)}调整为¥${newPrice.toFixed(2)}`,
+        content: `商品"${product.name}"${skuLabel}价格已${changeType}，从¥${oldPrice.toFixed(2)}调整为¥${newPrice.toFixed(2)}`,
         data: {
           productId: product.id,
           productName: product.name,
@@ -2547,6 +2862,7 @@ const confirmPriceAdjust = async () => {
 
     stockLoading.value = false
     handlePriceDialogClose()
+    await productStore.loadProducts()
     loadData()
   } catch (error) {
     console.error('改价失败:', error)

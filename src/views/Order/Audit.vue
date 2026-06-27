@@ -349,7 +349,8 @@
               >
                 <div class="product-name-tooltip">{{ index + 1 }}. {{ product.name }}</div>
                 <div class="product-detail-tooltip">
-                  <span v-if="product.sku">SKU: {{ product.sku }}</span>
+                  <span v-if="product.skuName">规格: {{ product.skuName }}</span>
+                  <span v-else-if="product.sku">SKU: {{ product.sku }}</span>
                   <span>数量: {{ product.quantity }}</span>
                   <span>单价: ¥{{ (product.price || 0).toFixed(2) }}</span>
                 </div>
@@ -539,6 +540,18 @@
               <div class="info-item">
                 <span class="label">产品数量：</span>
                 <span class="value">{{ currentOrder.productCount }} 件</span>
+              </div>
+            </el-col>
+            <el-col :span="24" v-if="currentOrder.products && currentOrder.products.length > 0">
+              <div class="info-item">
+                <span class="label">商品明细：</span>
+                <div class="value" style="display: inline-block;">
+                  <div v-for="(p, idx) in currentOrder.products" :key="idx" style="margin-bottom: 4px;">
+                    <span>{{ p.name }} ×{{ p.quantity }}</span>
+                    <span style="color: #f56c6c; margin-left: 6px;">¥{{ (p.price || 0).toFixed(2) }}</span>
+                    <el-tag v-if="p.skuName" size="small" effect="plain" style="margin-left: 6px;">{{ p.skuName }}</el-tag>
+                  </div>
+                </div>
               </div>
             </el-col>
             <el-col :span="12">
@@ -1275,7 +1288,7 @@ const tableColumns = computed(() => [
     prop: 'products',
     label: '产品',
     minWidth: 180,
-    showOverflowTooltip: true,
+    showOverflowTooltip: false,
     visible: true
   }
 ])

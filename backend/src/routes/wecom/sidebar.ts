@@ -2702,10 +2702,14 @@ router.get('/sidebar/products', authenticateSidebarToken, async (req: Request, r
       data: {
         list: products.map((p: any) => ({
           id: p.id, name: p.name, price: Number(p.price || 0),
-          stock: p.stock ?? 999,
+          stock: (p.skuType && p.skuType !== 'none') ? (p.totalStock ?? p.stock ?? 999) : (p.stock ?? 999),
           image: Array.isArray(p.images) && p.images.length > 0 ? p.images[0] : (p.image || p.imageUrl || ''),
           sku: p.code || p.sku || '', unit: p.unit || '',
-          productType: p.productType || 'physical'
+          productType: p.productType || 'physical',
+          skuType: p.skuType || 'none',
+          minPrice: p.minPrice ? Number(p.minPrice) : undefined,
+          maxPrice: p.maxPrice ? Number(p.maxPrice) : undefined,
+          totalStock: p.totalStock ?? undefined
         })),
         total
       }
@@ -2765,7 +2769,8 @@ router.post('/sidebar/orders', authenticateSidebarToken, async (req: Request, re
     const productsSnapshot = products.map((p: any) => ({
       id: p.id, name: p.name, price: Number(p.price) || 0,
       quantity: Number(p.quantity) || 1, image: p.image || '',
-      productType: p.productType || 'physical', sku: p.sku || ''
+      productType: p.productType || 'physical', sku: p.sku || '',
+      skuId: p.skuId || null, skuName: p.skuName || null
     }));
 
     const screenshots = req.body.depositScreenshots;
@@ -2812,7 +2817,11 @@ router.post('/sidebar/orders', authenticateSidebarToken, async (req: Request, re
           unitPrice: Number(p.price) || 0,
           quantity: Number(p.quantity) || 1,
           subtotal: (Number(p.price) || 0) * (Number(p.quantity) || 1),
-          tenantId
+          tenantId,
+          skuId: p.skuId ? String(p.skuId).substring(0, 50) : null,
+          skuName: p.skuName ? String(p.skuName).substring(0, 200) : null,
+          skuImage: p.skuImage ? String(p.skuImage).substring(0, 500) : null,
+          specValues: p.specValues || null
         };
         const item = orderItemRepo.create(itemData);
         await orderItemRepo.save(item);

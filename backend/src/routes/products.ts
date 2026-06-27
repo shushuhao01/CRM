@@ -2,8 +2,15 @@ import { Router } from 'express';
 import { authenticateToken } from '../middleware/auth';
 import { ProductController } from '../controllers/ProductController';
 import { getTenantRepo } from '../utils/tenantRepo';
+import { ProductSku } from '../entities/ProductSku';
+import { ProductSpecGroup } from '../entities/ProductSpecGroup';
+import { Product } from '../entities/Product';
 
 import { log } from '../config/logger';
+
+function generateRouteId(prefix: string = ''): string {
+  return `${prefix}${Date.now().toString()}_${Math.random().toString(36).slice(2, 8)}`
+}
 const router = Router();
 
 /**
@@ -95,84 +102,314 @@ router.use(async (_req, _res, next) => {
 
 // ==================== 产品相关路由 ====================
 
-/**
- * @route GET /api/v1/products
- * @desc 获取产品列表
- * @access Private
- */
 router.get('/', ProductController.getProducts);
-
-/**
- * @route POST /api/v1/products
- * @desc 创建产品
- * @access Private
- */
 router.post('/', ProductController.createProduct);
 
-/**
- * @route PUT /api/v1/products/:id
- * @desc 更新产品
- * @access Private
- */
-router.put('/:id', ProductController.updateProduct);
-
-/**
- * @route DELETE /api/v1/products/:id
- * @desc 删除产品
- * @access Private
- */
-router.delete('/:id', ProductController.deleteProduct);
-
-/**
- * @route GET /api/v1/products/:id
- * @desc 获取产品详情
- * @access Private
- */
-router.get('/:id', ProductController.getProductDetail);
-
-/**
- * @route GET /api/v1/products/:id/stats
- * @desc 获取商品相关统计数据（根据用户角色权限过滤）
- * @access Private
- */
-router.get('/:id/stats', ProductController.getProductStats);
-
-/**
- * @route POST /api/v1/products/batch-import
- * @desc 批量导入产品
- * @access Private
- */
 router.post('/batch-import', ProductController.batchImportProducts);
-
-/**
- * @route GET /api/v1/products/export
- * @desc 导出产品数据
- * @access Private
- */
 router.get('/export', ProductController.exportProducts);
 
-// ==================== 库存管理相关路由 ====================
+// ==================== 库存管理相关路由（须在 /:id 之前注册） ====================
 
-/**
- * @route GET /api/v1/products/stock/statistics
- * @desc 获取库存统计信息
- * @access Private
- */
 router.get('/stock/statistics', ProductController.getStockStatistics);
-
-/**
- * @route POST /api/v1/products/stock/adjust
- * @desc 库存调整
- * @access Private
- */
 router.post('/stock/adjust', ProductController.adjustStock);
-
-/**
- * @route GET /api/v1/products/stock/adjustments
- * @desc 获取库存调整记录
- * @access Private
- */
 router.get('/stock/adjustments', ProductController.getStockAdjustments);
+
+// ==================== SKU 管理路由 ====================
+
+router.get('/:productId/skus', async (req, res) => {
+  try {
+    const { productId } = req.params
+    const { page = 1, pageSize = 10, status } = req.query
+    const skuRepo = getTenantRepo(ProductSku)
+    const qb = skuRepo.createQueryBuilder('sku')
+      .where('sku.productId = :productId', { productId })
+
+    if (status) qb.andWhere('sku.status = :status', { status })
+
+    const total = await qb.getCount()
+    qb.orderBy('sku.sortOrder', 'ASC').addOrderBy('sku.createdAt', 'ASC')
+    qb.skip((Number(page) - 1) * Number(pageSize)).take(Number(pageSize))
+
+    const skus = await qb.getMany()
+    res.json({
+      success: true,
+      data: {
+        list: skus.map(s => ({
+          id: s.id, skuCode: s.skuCode, skuName: s.skuName, skuImage: s.skuImage || '',
+          price: Number(s.price), costPrice: Number(s.costPrice) || 0,
+          stock: s.stock, salesCount: s.salesCount || 0,
+          weight: Number(s.weight) || 0, barcode: s.barcode || '',
+          specValues: s.specValues || {}, sortOrder: s.sortOrder || 0, status: s.status || 'active'
+        })),
+        total, page: Number(page), pageSize: Number(pageSize)
+      }
+    })
+  } catch (error) {
+    log.error('获取SKU列表失败:', error)
+    res.status(500).json({ success: false, message: '获取SKU列表失败' })
+  }
+})
+
+router.get('/:productId/spec-groups', async (req, res) => {
+  try {
+    const { productId } = req.params
+    const specGroupRepo = getTenantRepo(ProductSpecGroup)
+    const groups = await specGroupRepo.find({
+      where: { productId },
+      order: { sortOrder: 'ASC' }
+    })
+    res.json({
+      success: true,
+      data: groups.map(g => ({
+        id: g.id, specName: g.specName, specValues: g.specValues || [], sortOrder: g.sortOrder || 0
+      }))
+    })
+  } catch (error) {
+    log.error('获取规格组失败:', error)
+    res.status(500).json({ success: false, message: '获取规格组失败' })
+  }
+})
+
+router.put('/:productId/skus/:skuId/status', async (req, res) => {
+  try {
+    const { productId, skuId } = req.params
+    const { status } = req.body
+    if (!['active', 'inactive'].includes(status)) {
+      res.status(400).json({ success: false, message: '无效的状态值' })
+      return
+    }
+    const skuRepo = getTenantRepo(ProductSku)
+    const sku = await skuRepo.findOne({ where: { id: skuId, productId } })
+    if (!sku) {
+      res.status(404).json({ success: false, message: 'SKU不存在' })
+      return
+    }
+    sku.status = status
+    await skuRepo.save(sku)
+
+    const productRepo = getTenantRepo(Product)
+    const product = await productRepo.findOne({ where: { id: productId } })
+    if (product) {
+      const allSkus = await skuRepo.find({ where: { productId } })
+      const activeSkus = allSkus.filter(s => s.status === 'active')
+      if (activeSkus.length > 0) {
+        const prices = activeSkus.map(s => Number(s.price))
+        product.minPrice = Math.min(...prices)
+        product.maxPrice = Math.max(...prices)
+        product.totalStock = activeSkus.reduce((sum, s) => sum + s.stock, 0)
+      } else {
+        product.minPrice = null
+        product.maxPrice = null
+        product.totalStock = 0
+      }
+      await productRepo.save(product)
+    }
+
+    res.json({ success: true, message: `SKU已${status === 'active' ? '上架' : '下架'}` })
+  } catch (error) {
+    log.error('更新SKU状态失败:', error)
+    res.status(500).json({ success: false, message: '更新SKU状态失败' })
+  }
+})
+
+router.put('/:productId/skus/batch-status', async (req, res) => {
+  try {
+    const { productId } = req.params
+    const { skuIds, status } = req.body
+    if (!['active', 'inactive'].includes(status) || !Array.isArray(skuIds)) {
+      res.status(400).json({ success: false, message: '参数错误' })
+      return
+    }
+    const skuRepo = getTenantRepo(ProductSku)
+    for (const sid of skuIds) {
+      await skuRepo.update({ id: sid, productId }, { status })
+    }
+
+    const productRepo = getTenantRepo(Product)
+    const product = await productRepo.findOne({ where: { id: productId } })
+    if (product) {
+      const allSkus = await skuRepo.find({ where: { productId } })
+      const activeSkus = allSkus.filter(s => s.status === 'active')
+      if (activeSkus.length > 0) {
+        const prices = activeSkus.map(s => Number(s.price))
+        product.minPrice = Math.min(...prices)
+        product.maxPrice = Math.max(...prices)
+        product.totalStock = activeSkus.reduce((sum, s) => sum + s.stock, 0)
+      } else {
+        product.minPrice = null
+        product.maxPrice = null
+        product.totalStock = 0
+      }
+      await productRepo.save(product)
+    }
+
+    res.json({ success: true, message: `已批量${status === 'active' ? '上架' : '下架'} ${skuIds.length} 个SKU` })
+  } catch (error) {
+    log.error('批量更新SKU状态失败:', error)
+    res.status(500).json({ success: false, message: '批量更新SKU状态失败' })
+  }
+})
+
+router.patch('/:productId/skus/:skuId', async (req, res) => {
+  try {
+    const { productId, skuId } = req.params
+    const updates = req.body || {}
+    const skuRepo = getTenantRepo(ProductSku)
+    const sku = await skuRepo.findOne({ where: { id: skuId, productId } })
+    if (!sku) {
+      res.status(404).json({ success: false, message: 'SKU不存在' })
+      return
+    }
+    if (updates.price !== undefined) sku.price = updates.price
+    if (updates.costPrice !== undefined) sku.costPrice = updates.costPrice
+    if (updates.weight !== undefined) sku.weight = updates.weight
+    await skuRepo.save(sku)
+
+    const productRepo = getTenantRepo(Product)
+    const product = await productRepo.findOne({ where: { id: productId } })
+    if (product) {
+      const allSkus = await skuRepo.find({ where: { productId } })
+      const activeSkus = allSkus.filter(s => s.status === 'active')
+      if (activeSkus.length > 0) {
+        const prices = activeSkus.map(s => Number(s.price))
+        product.minPrice = Math.min(...prices)
+        product.maxPrice = Math.max(...prices)
+        product.totalStock = activeSkus.reduce((sum, s) => sum + s.stock, 0)
+      }
+      await productRepo.save(product)
+    }
+    res.json({ success: true, message: 'SKU更新成功' })
+  } catch (error) {
+    log.error('更新SKU失败:', error)
+    res.status(500).json({ success: false, message: '更新SKU失败' })
+  }
+})
+
+router.delete('/:productId/skus/:skuId', async (req, res) => {
+  try {
+    const { productId, skuId } = req.params
+    const skuRepo = getTenantRepo(ProductSku)
+    const sku = await skuRepo.findOne({ where: { id: skuId, productId } })
+    if (!sku) {
+      res.status(404).json({ success: false, message: 'SKU不存在' })
+      return
+    }
+    await skuRepo.remove(sku)
+
+    const productRepo = getTenantRepo(Product)
+    const product = await productRepo.findOne({ where: { id: productId } })
+    if (product) {
+      const remainingSkus = await skuRepo.find({ where: { productId } })
+      const activeSkus = remainingSkus.filter(s => s.status === 'active')
+      if (activeSkus.length > 0) {
+        const prices = activeSkus.map(s => Number(s.price))
+        product.minPrice = Math.min(...prices)
+        product.maxPrice = Math.max(...prices)
+        product.totalStock = activeSkus.reduce((sum, s) => sum + s.stock, 0)
+      } else if (remainingSkus.length === 0) {
+        product.skuType = 'none'
+        product.minPrice = null
+        product.maxPrice = null
+        product.totalStock = null
+      } else {
+        product.minPrice = null
+        product.maxPrice = null
+        product.totalStock = 0
+      }
+      await productRepo.save(product)
+    }
+
+    res.json({ success: true, message: 'SKU删除成功' })
+  } catch (error) {
+    log.error('删除SKU失败:', error)
+    res.status(500).json({ success: false, message: '删除SKU失败' })
+  }
+})
+
+router.post('/stock/batch-adjust', async (req, res) => {
+  try {
+    const { adjustments } = req.body
+    if (!Array.isArray(adjustments) || adjustments.length === 0) {
+      res.status(400).json({ success: false, message: '调整数据不能为空' })
+      return
+    }
+    const results: any[] = []
+    const productRepo = getTenantRepo(Product)
+    const skuRepo = getTenantRepo(ProductSku)
+    const adjRepo = getTenantRepo((await import('../entities/StockAdjustment')).StockAdjustment)
+    const currentUser = (req as any).user
+
+    for (const item of adjustments) {
+      try {
+        const { productId, skuId, type, quantity, reason, remark } = item
+        let beforeStock: number, afterStock: number
+        let skuName: string | null = null
+
+        if (skuId) {
+          const sku = await skuRepo.findOne({ where: { id: skuId, productId } })
+          if (!sku) { results.push({ skuId, success: false, message: 'SKU不存在' }); continue }
+          beforeStock = sku.stock
+          skuName = sku.skuName
+          switch (type) {
+            case 'increase': afterStock = beforeStock + Number(quantity); break
+            case 'decrease': afterStock = Math.max(0, beforeStock - Number(quantity)); break
+            case 'set': afterStock = Number(quantity); break
+            default: results.push({ skuId, success: false, message: '无效类型' }); continue
+          }
+          sku.stock = afterStock
+          await skuRepo.save(sku)
+        } else {
+          const product = await productRepo.findOne({ where: { id: productId } })
+          if (!product) { results.push({ productId, success: false, message: '商品不存在' }); continue }
+          beforeStock = product.stock
+          switch (type) {
+            case 'increase': afterStock = beforeStock + Number(quantity); break
+            case 'decrease': afterStock = Math.max(0, beforeStock - Number(quantity)); break
+            case 'set': afterStock = Number(quantity); break
+            default: results.push({ productId, success: false, message: '无效类型' }); continue
+          }
+          product.stock = afterStock
+          await productRepo.save(product)
+        }
+
+        const adj = adjRepo.create({
+          id: generateRouteId('adj_'),
+          productId, skuId: skuId || null, skuName,
+          adjustType: type, quantity: Number(quantity), beforeStock, afterStock,
+          reason, remark: remark || null,
+          operatorId: currentUser?.id || null,
+          operatorName: currentUser?.name || currentUser?.username || null
+        })
+        await adjRepo.save(adj)
+        results.push({ productId, skuId, success: true, beforeStock, afterStock })
+      } catch (err: any) {
+        results.push({ productId: item.productId, skuId: item.skuId, success: false, message: err.message })
+      }
+    }
+
+    const affectedProductIds = [...new Set(adjustments.map((a: any) => a.productId).filter(Boolean))]
+    for (const pid of affectedProductIds) {
+      const product = await productRepo.findOne({ where: { id: pid } })
+      if (product && product.skuType !== 'none') {
+        const allSkus = await skuRepo.find({ where: { productId: pid } })
+        const activeSkus = allSkus.filter(s => s.status === 'active')
+        product.totalStock = activeSkus.reduce((sum, s) => sum + s.stock, 0)
+        product.stock = product.totalStock
+        if (activeSkus.length > 0) {
+          const prices = activeSkus.map(s => Number(s.price))
+          product.minPrice = Math.min(...prices)
+          product.maxPrice = Math.max(...prices)
+        }
+        await productRepo.save(product)
+      }
+    }
+
+    res.json({ success: true, data: results, message: `批量调整完成，共 ${results.length} 条` })
+  } catch (error) {
+    log.error('批量库存调整失败:', error)
+    res.status(500).json({ success: false, message: '批量库存调整失败' })
+  }
+})
 
 // ==================== 产品分类相关路由 ====================
 
@@ -217,6 +454,13 @@ router.put('/categories/:id', ProductController.updateCategory);
  * @access Private
  */
 router.delete('/categories/:id', ProductController.deleteCategory);
+
+// ==================== 动态路由（须在所有静态路由之后） ====================
+
+router.put('/:id', ProductController.updateProduct);
+router.delete('/:id', ProductController.deleteProduct);
+router.get('/:id', ProductController.getProductDetail);
+router.get('/:id/stats', ProductController.getProductStats);
 
 // ==================== 销售统计相关路由 ====================
 

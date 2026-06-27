@@ -80,6 +80,8 @@ const TENANT_ENTITIES = new Set([
   'improvement_goals',
   // 新增：业绩分享相关
   'performance_shares', 'performance_share_members',
+  // 新增：商品SKU多规格相关
+  'product_skus', 'product_spec_groups', 'stock_adjustments',
 ]);
 
 /**

@@ -310,6 +310,7 @@
             <el-tag v-if="product.productType === 'virtual'" type="warning" size="small" effect="light" style="margin-right: 4px;">虚拟</el-tag>
             <el-tag v-else size="small" effect="light" style="margin-right: 4px;">实物</el-tag>
             {{ product.name }} × {{ product.quantity }}
+            <span v-if="product.skuName" style="color: #909399; font-size: 12px; margin-left: 4px;">({{ product.skuName }})</span>
           </div>
         </div>
       </template>
@@ -357,16 +358,26 @@
         <span v-else class="no-remark">无备注</span>
       </template>
 
-      <!-- 商品列 - 显示实物/虚拟标签 -->
+      <!-- 商品列 - 显示实物/虚拟标签 + SKU悬浮提示 -->
       <template #column-productsText="{ row }">
-        <div v-if="Array.isArray(row.products) && row.products.length > 0">
-          <div v-for="(p, i) in row.products" :key="i" style="display:flex;align-items:center;gap:4px;margin-bottom:2px;">
-            <el-tag v-if="p.productType === 'virtual'" type="warning" size="small" effect="light" style="flex-shrink:0;">虚拟</el-tag>
-            <el-tag v-else size="small" effect="light" style="flex-shrink:0;">实物</el-tag>
-            <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ p.name }} x{{ p.quantity }}</span>
+        <el-tooltip placement="top" :disabled="!row.products || row.products.length === 0">
+          <template #content>
+            <div style="max-width: 380px;">
+              <div v-for="(p, i) in row.products" :key="i" style="margin-bottom: 6px; padding-bottom: 4px; border-bottom: 1px solid rgba(255,255,255,0.15);">
+                <div style="font-weight: 600;">{{ p.name }} ×{{ p.quantity }}</div>
+                <div v-if="p.skuName" style="color: #e6db74; font-size: 12px;">规格: {{ p.skuName }} | 单价: ¥{{ (p.price || 0).toFixed(2) }}</div>
+                <div v-else style="color: #aaa; font-size: 12px;">单价: ¥{{ (p.price || 0).toFixed(2) }}</div>
+              </div>
+            </div>
+          </template>
+          <div v-if="Array.isArray(row.products) && row.products.length > 0">
+            <div v-for="(p, i) in row.products.slice(0, 2)" :key="i" style="display:flex;align-items:center;gap:4px;margin-bottom:2px;">
+              <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ p.name }}<span v-if="p.skuName" style="color:#909399;font-size:11px;"> ({{ p.skuName }})</span> x{{ p.quantity }}</span>
+            </div>
+            <span v-if="row.products.length > 2" style="color: #409eff; font-size: 12px;">等{{ row.products.length }}件商品...</span>
           </div>
-        </div>
-        <span v-else>{{ row.productsText || '-' }}</span>
+          <span v-else>{{ row.productsText || '-' }}</span>
+        </el-tooltip>
       </template>
 
       <!-- 物流公司列 - 使用和指定快递一样的彩色样式 -->
@@ -719,6 +730,7 @@
                     <el-tag v-if="p.productType === 'virtual'" type="warning" size="small" effect="light" style="flex-shrink:0;">虚拟</el-tag>
                     <el-tag v-else size="small" effect="light" style="flex-shrink:0;">实物</el-tag>
                     <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ p.name }} × {{ p.quantity }}</span>
+                    <span v-if="p.skuName" style="color:#909399;font-size:11px;flex-shrink:0;">({{ p.skuName }})</span>
                   </div>
                 </div>
                 <span v-else>{{ row.productsText || '-' }}</span>
@@ -1126,7 +1138,7 @@ const baseTableColumns = [
     prop: 'productsText',
     label: '商品',
     width: 150,
-    showOverflowTooltip: true,
+    showOverflowTooltip: false,
     visible: true
   },
   {
@@ -1648,7 +1660,12 @@ const loadOrderList = async () => {
 
       // 计算订单相关字段
       const products = Array.isArray(order.products) ? order.products : []
-      const productsText = products.map((p: any) => `${p.name} × ${p.quantity}`).join('，') || '-'
+      const productsText = products.map((p: any) => {
+        let text = `${p.name}`
+        if (p.skuName) text += `[${p.skuName}]`
+        text += ` × ${p.quantity}`
+        return text
+      }).join('，') || '-'
       const totalQuantity = products.reduce((sum: number, p: any) => sum + (p.quantity || 0), 0) || 0
       const deposit = order.depositAmount || 0
       const codAmount = order.collectAmount || (order.totalAmount || 0) - (order.depositAmount || 0)
@@ -2087,9 +2104,14 @@ const exportSelected = async () => {
       receiverName: order.receiverName || order.customerName || '',
       receiverPhone: order.receiverPhone || order.phone || '',
       receiverAddress: order.receiverAddress || order.address || '',
-      products: order.productsText || (Array.isArray(order.products)
-        ? order.products.map(p => `${p.name} x${p.quantity}`).join(', ')
-        : order.products || ''),
+      products: Array.isArray(order.products) && order.products.length > 0
+        ? order.products.map((p: any) => {
+            let text = `${p.name}`
+            if (p.skuName) text += `[${p.skuName}]`
+            text += ` x${p.quantity}`
+            return text
+          }).join(', ')
+        : (order.productsText || order.products || ''),
       totalQuantity: order.totalQuantity || (Array.isArray(order.products)
         ? order.products.reduce((sum, p) => sum + (p.quantity || 0), 0)
         : 0),
@@ -2151,7 +2173,11 @@ const handleCommand = async ({ action, row }: { action: string, row: any }) => {
           receiverPhone: row.receiverPhone || row.phone || '',
           receiverAddress: row.receiverAddress || row.address || '',
           products: row.productsText || (Array.isArray(row.products)
-            ? row.products.map(p => `${p.name} x${p.quantity}`).join(', ')
+            ? row.products.map((p: any) => {
+                let text = `${p.name} x${p.quantity}`
+                if (p.skuName) text += ` [${p.skuName}]`
+                return text
+              }).join(', ')
             : row.products || ''),
           totalQuantity: row.totalQuantity || (Array.isArray(row.products)
             ? row.products.reduce((sum, p) => sum + (p.quantity || 0), 0)

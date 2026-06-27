@@ -903,21 +903,91 @@ router.post('/', authenticateToken, async (req: Request, res: Response) => {
     const savedOrder = await orderRepository.save(order);
     log.info('✅ [订单创建] 订单保存成功:', savedOrder.id);
 
-    // 更新产品库存
+    // 更新产品库存（支持SKU级别扣减 + 双写order_items）
     try {
       const productRepository = getTenantRepo(Product);
+      const { OrderItem } = await import('../../entities/OrderItem');
+      const orderItemRepo = getTenantRepo(OrderItem);
+
       for (const item of products) {
         const productId = item.id || item.productId;
         const quantity = Number(item.quantity) || 1;
 
-        if (productId) {
-          const product = await productRepository.findOne({ where: { id: productId } });
-          if (product && product.stock >= quantity) {
+        if (!productId) continue;
+
+        const product = await productRepository.findOne({ where: { id: productId } });
+        if (!product) continue;
+
+        if (item.skuId && product.productType === 'physical') {
+          try {
+            const { ProductSku } = await import('../../entities/ProductSku');
+            const skuRepo = getTenantRepo(ProductSku);
+            const sku = await skuRepo.findOne({ where: { id: item.skuId, productId } });
+            if (sku && sku.stock >= quantity) {
+              sku.stock = sku.stock - quantity;
+              sku.salesCount = (sku.salesCount || 0) + quantity;
+              await skuRepo.save(sku);
+
+              const allSkus = await skuRepo.find({ where: { productId } });
+              const activeSkus = allSkus.filter(s => s.status === 'active');
+              product.totalStock = activeSkus.reduce((sum, s) => sum + s.stock, 0);
+              product.stock = product.totalStock;
+              await productRepository.save(product);
+
+              log.info(`📦 [库存更新] SKU ${sku.skuName} 库存减少 ${quantity}，剩余 ${sku.stock}`);
+            } else if (sku) {
+              log.warn(`⚠️ [库存更新] SKU ${sku.skuName} 库存不足，当前 ${sku.stock}，需要 ${quantity}`);
+            }
+
+            try {
+              const orderItem = orderItemRepo.create({
+                orderId: savedOrder.id,
+                productId: productId,
+                productName: item.name || product.name,
+                productSku: item.sku || product.code || '',
+                skuId: item.skuId || null,
+                skuName: item.skuName || (sku ? sku.skuName : null),
+                skuImage: item.skuImage || (sku ? sku.skuImage : null),
+                specValues: item.specValues || (sku ? sku.specValues : null),
+                unitPrice: Number(item.price) || (sku ? Number(sku.price) : Number(product.price)),
+                quantity,
+                subtotal: (Number(item.price) || (sku ? Number(sku.price) : Number(product.price))) * quantity,
+                productImage: item.image || product.images?.[0] || ''
+              });
+              await orderItemRepo.save(orderItem);
+            } catch (oiErr) {
+              log.error('[订单创建] 写入order_items失败:', oiErr);
+            }
+          } catch (skuErr) {
+            log.error('[库存更新] SKU扣减失败:', skuErr);
+          }
+        } else {
+          if (product.stock >= quantity) {
             product.stock = product.stock - quantity;
             await productRepository.save(product);
             log.info(`📦 [库存更新] 产品 ${product.name} 库存减少 ${quantity}，剩余 ${product.stock}`);
-          } else if (product) {
+          } else {
             log.warn(`⚠️ [库存更新] 产品 ${product.name} 库存不足，当前 ${product.stock}，需要 ${quantity}`);
+          }
+
+          try {
+            const orderItem = orderItemRepo.create({
+              orderId: savedOrder.id,
+              productId: productId,
+              productName: item.name || product.name,
+              productSku: item.sku || product.code || '',
+              skuId: item.skuId || null,
+              skuName: item.skuName || null,
+              skuImage: item.skuImage || null,
+              specValues: item.specValues || null,
+              unitPrice: Number(item.price) || Number(product.price),
+              quantity,
+              subtotal: (Number(item.price) || Number(product.price)) * quantity,
+              productImage: item.image || product.images?.[0] || ''
+            });
+            await orderItemRepo.save(orderItem);
+          } catch (oiErr) {
+            log.error('[订单创建] 写入order_items失败:', oiErr);
           }
         }
       }

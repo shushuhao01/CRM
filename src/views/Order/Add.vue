@@ -247,7 +247,7 @@
             v-for="product in filteredProducts"
             :key="product.id"
             class="product-item"
-            @click="addProduct(product)"
+            @click="(product.skuType && product.skuType !== 'none') ? openSkuSelectDialog(product) : addProduct(product)"
           >
             <div class="product-image">
               <img :src="product.image || '/default-product.png'" :alt="product.name" />
@@ -259,8 +259,9 @@
                 {{ product.name }}
               </div>
               <div class="product-price-stock">
-                <span class="product-price">¥{{ product.price }}</span>
-                <span class="product-stock">库存: {{ product.stock }}</span>
+                <span class="product-price" v-if="product.skuType && product.skuType !== 'none' && product.minPrice">¥{{ product.minPrice }}<template v-if="product.minPrice !== product.maxPrice"> - ¥{{ product.maxPrice }}</template></span>
+                <span class="product-price" v-else>¥{{ product.price }}</span>
+                <span class="product-stock">库存: {{ (product.skuType && product.skuType !== 'none') ? (product.totalStock ?? product.stock) : product.stock }}</span>
               </div>
               <div class="product-badges" v-if="product.isRecommended || product.isNew || product.isHot">
                 <el-tag v-if="product.isRecommended" type="warning" size="small" effect="light">
@@ -290,6 +291,46 @@
         </div>
       </el-card>
 
+      <!-- SKU选择对话框 -->
+      <el-dialog v-model="skuSelectDialogVisible" :title="'选择SKU - ' + (skuSelectProduct?.name || '')" width="900px" destroy-on-close top="6vh">
+        <div v-if="skuSelectProduct" style="margin-bottom: 16px; display: flex; align-items: center; gap: 14px;">
+          <img :src="skuSelectProduct.image || '/default-product.png'" style="width: 64px; height: 64px; border-radius: 6px; object-fit: cover; border: 1px solid #ebeef5;" />
+          <div>
+            <div style="font-weight: 600; font-size: 16px;">{{ skuSelectProduct.name }}</div>
+            <div style="color: #909399; font-size: 13px;">编码：{{ skuSelectProduct.code }}</div>
+          </div>
+        </div>
+        <el-table :data="skuSelectList" border size="default" v-loading="skuSelectLoading" max-height="480" style="font-size: 14px;">
+          <el-table-column label="图片" width="80" align="center">
+            <template #default="{ row }">
+              <el-image v-if="row.skuImage" :src="row.skuImage" style="width: 50px; height: 50px; border-radius: 4px;" fit="cover" />
+              <span v-else style="color: #c0c4cc; font-size: 12px;">无图</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="规格" prop="skuName" min-width="160" show-overflow-tooltip>
+            <template #default="{ row }"><span style="font-weight: 500;">{{ row.skuName }}</span></template>
+          </el-table-column>
+          <el-table-column label="价格" width="110" align="right">
+            <template #default="{ row }"><span style="color: #f56c6c; font-weight: 600;">¥{{ Number(row.price).toFixed(2) }}</span></template>
+          </el-table-column>
+          <el-table-column label="库存" width="90" align="center">
+            <template #default="{ row }"><span style="font-weight: 600;" :style="{ color: row.stock <= 0 ? '#f56c6c' : '#67c23a' }">{{ row.stock }}</span></template>
+          </el-table-column>
+          <el-table-column label="数量" width="150" align="center">
+            <template #default="{ row }">
+              <el-input-number v-model="row._selectQty" :min="0" :max="row.stock" size="small" :disabled="row.stock <= 0" style="width: 120px;" />
+            </template>
+          </el-table-column>
+        </el-table>
+        <div v-if="skuSelectSubtotal > 0" style="text-align: right; margin-top: 14px; font-size: 15px;">
+          小计：<span style="color: #f56c6c; font-weight: 600; font-size: 18px;">¥{{ skuSelectSubtotal.toFixed(2) }}</span>
+        </div>
+        <template #footer>
+          <el-button @click="skuSelectDialogVisible = false">取消</el-button>
+          <el-button type="primary" @click="confirmSkuSelect">确定</el-button>
+        </template>
+      </el-dialog>
+
       <!-- 订单汇总区域 -->
       <el-card class="summary-card">
         <template #header>
@@ -305,6 +346,17 @@
         <div class="selected-products" v-if="orderForm.products.length > 0">
           <h4>已选商品</h4>
           <el-table :data="orderForm.products" style="width: 100%">
+            <el-table-column label="图片" width="65" align="center" :show-overflow-tooltip="false">
+              <template #default="{ row }">
+                <el-image
+                  :src="row.skuImage || row.image || row.mainImage || '/default-product.png'"
+                  style="width: 44px; height: 44px; border-radius: 4px; display: block; margin: 0 auto;"
+                  fit="cover"
+                  :preview-src-list="[row.skuImage || row.image || row.mainImage || '/default-product.png']"
+                  preview-teleported
+                />
+              </template>
+            </el-table-column>
             <el-table-column prop="name" label="商品名称" min-width="200">
               <template #default="{ row }">
                 <div class="selected-product-name">
@@ -313,16 +365,8 @@
                     <el-tag v-else size="small" effect="light" style="margin-right: 4px;">实物</el-tag>
                     <span style="font-weight: 600;">{{ row.name }}</span>
                   </div>
-                  <div class="selected-product-tags">
-                    <el-tag v-if="row.isRecommended" type="warning" size="small" effect="light">
-                      ⭐ 推荐
-                    </el-tag>
-                    <el-tag v-if="row.isNew" type="success" size="small" effect="light">
-                      🆕 新品
-                    </el-tag>
-                    <el-tag v-if="row.isHot" type="danger" size="small" effect="light">
-                      🔥 热销
-                    </el-tag>
+                  <div v-if="row.skuName" style="color: #909399; font-size: 12px; margin-top: 2px;">
+                    规格：{{ row.skuName }}
                   </div>
                 </div>
               </template>
@@ -348,8 +392,16 @@
                 <span style="color: #f56c6c; font-weight: 600;">¥{{ ((row.price || 0) * (row.quantity || 0)).toFixed(2) }}</span>
               </template>
             </el-table-column>
-            <el-table-column label="操作" width="80">
-              <template #default="{ $index }">
+            <el-table-column label="操作" width="120">
+              <template #default="{ row, $index }">
+                <el-button
+                  v-if="row.skuId"
+                  type="primary"
+                  size="small"
+                  :icon="EditPen"
+                  @click="editSkuProduct(row)"
+                  title="编辑SKU"
+                />
                 <el-button
                   type="danger"
                   size="small"
@@ -870,8 +922,10 @@ import { useOrderFieldConfigStore } from '@/stores/orderFieldConfig'
 import { displaySensitiveInfo as displaySensitiveInfoNew } from '@/utils/sensitiveInfo'
 import { SensitiveInfoType } from '@/services/permission'
 import { createSafeNavigator } from '@/utils/navigation'
+import { EditPen } from '@element-plus/icons-vue'
 import CustomFieldsCard from '@/components/Order/CustomFieldsCard.vue'
 import { orderApi } from '@/api/order'
+import { productApi } from '@/api/product'
 import type { DepartmentLimitCheckResult } from '@/api/order'
 import { customerDetailApi } from '@/api/customerDetail'
 import { getAddressLabel } from '@/utils/addressData'
@@ -890,11 +944,19 @@ interface Product {
   productType?: string
   isRecommended?: boolean
   isNew?: boolean
+  skuType?: string
+  minPrice?: number
+  maxPrice?: number
+  totalStock?: number
 }
 
 interface OrderProduct extends Product {
   quantity: number
   total: number
+  skuId?: string
+  skuName?: string
+  skuImage?: string
+  specValues?: Record<string, string>
 }
 
 interface Customer {
@@ -1065,12 +1127,13 @@ const productList = computed(() => {
   const priceConfig = JSON.parse(localStorage.getItem('crm_product_price_config') || '{}')
   const currentDeptId = userStore.currentUser?.departmentId
 
-  return productStore.products.filter(product =>
-    product.status === 'active' &&
-    !product.isDeleted &&
-    product.stock > 0 &&
-    (!product.allowedDepartments || product.allowedDepartments.length === 0 || (currentDeptId && product.allowedDepartments.includes(currentDeptId)))
-  ).map(product => {
+  return productStore.products.filter(product => {
+    const effectiveStock = ((product as any).skuType && (product as any).skuType !== 'none') ? ((product as any).totalStock ?? product.stock) : product.stock
+    return product.status === 'active' &&
+      !product.isDeleted &&
+      effectiveStock > 0 &&
+      (!product.allowedDepartments || product.allowedDepartments.length === 0 || (currentDeptId && product.allowedDepartments.includes(currentDeptId)))
+  }).map(product => {
     // 【批次204新增】检查是否有优惠价格
     let finalPrice = product.price
     if (priceConfig.enabled && priceConfig.products && priceConfig.products[product.id]) {
@@ -1092,7 +1155,11 @@ const productList = computed(() => {
       isRecommended: product.isRecommended,
       isNew: product.isNew,
       isHot: product.isHot,
-      productType: product.productType || 'physical'
+      productType: product.productType || 'physical',
+      skuType: (product as any).skuType || 'none',
+      minPrice: (product as any).minPrice,
+      maxPrice: (product as any).maxPrice,
+      totalStock: (product as any).totalStock
     }
   })
 })
@@ -1532,6 +1599,69 @@ const handleRefreshProducts = async () => {
   }
 }
 
+// ===== SKU选择对话框 =====
+const skuSelectDialogVisible = ref(false)
+const skuSelectProduct = ref<Product | null>(null)
+const skuSelectList = ref<any[]>([])
+const skuSelectLoading = ref(false)
+
+const skuSelectSubtotal = computed(() => {
+  return skuSelectList.value.reduce((sum, sku) => sum + (sku._selectQty || 0) * (sku.price || 0), 0)
+})
+
+const openSkuSelectDialog = async (product: Product) => {
+  skuSelectProduct.value = product
+  skuSelectLoading.value = true
+  skuSelectDialogVisible.value = true
+  try {
+    const res = await productApi.getSkuList(String(product.id), { pageSize: 100, status: 'active' })
+    skuSelectList.value = (res.list || []).filter((s: any) => s.stock > 0).map((s: any) => {
+      const existing = orderForm.products.find(p => p.skuId === s.id)
+      return { ...s, _selectQty: existing ? existing.quantity : 0 }
+    })
+  } catch (e) {
+    ElMessage.error('获取SKU列表失败')
+    skuSelectList.value = []
+  } finally {
+    skuSelectLoading.value = false
+  }
+}
+
+const confirmSkuSelect = () => {
+  if (!skuSelectProduct.value) return
+  const product = skuSelectProduct.value
+  const selectedSkus = skuSelectList.value.filter(s => s._selectQty > 0)
+  if (selectedSkus.length === 0) {
+    ElMessage.warning('请至少选择一个SKU的数量')
+    return
+  }
+
+  // 先移除该商品的所有已选SKU
+  orderForm.products = orderForm.products.filter(p => !(p.id === product.id && p.skuId))
+
+  selectedSkus.forEach(sku => {
+    orderForm.products.push({
+      ...product,
+      price: sku.price,
+      stock: sku.stock,
+      quantity: sku._selectQty,
+      total: sku.price * sku._selectQty,
+      skuId: sku.id,
+      skuName: sku.skuName,
+      skuImage: sku.skuImage,
+      specValues: sku.specValues
+    })
+  })
+  calculateTotal()
+  skuSelectDialogVisible.value = false
+  ElMessage.success(`已添加 ${selectedSkus.length} 个SKU到订单`)
+}
+
+const editSkuProduct = (row: OrderProduct) => {
+  const product = productList.value.find(p => p.id === row.id) || row
+  openSkuSelectDialog(product)
+}
+
 const addProduct = (product: Product) => {
   // 【批次204新增】检查价格优惠配置
   let finalPrice = product.price
@@ -1934,7 +2064,21 @@ const handleSubmitOrder = async () => {
       customerId: orderForm.customerId,
       customerName: selectedCustomer.value?.name || '',
       customerPhone: selectedCustomer.value?.phone || '',
-      products: orderForm.products,
+      products: orderForm.products.map(p => ({
+        id: p.id,
+        name: p.name,
+        code: p.code,
+        price: p.price,
+        quantity: p.quantity,
+        total: p.total,
+        stock: p.stock,
+        productType: p.productType,
+        image: p.image,
+        skuId: p.skuId || null,
+        skuName: p.skuName || null,
+        skuImage: p.skuImage || null,
+        specValues: p.specValues || null
+      })),
       subtotal: subtotal,
       discount: orderForm.discount,
       totalAmount: totalAmount, // 【批次204修复】使用用户修改后的金额

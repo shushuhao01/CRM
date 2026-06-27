@@ -180,11 +180,12 @@
                 {{ p.name }}
               </div>
               <div class="qo-prod-meta">
-                <span class="qo-prod-price">¥{{ Number(p.price).toFixed(2) }}</span>
-                <span class="qo-prod-stock" :class="{ 'no-stock': p.stock <= 0 }">{{ p.stock > 0 ? '库存 ' + p.stock : '缺货' }}</span>
+                <span class="qo-prod-price" v-if="p.skuType && p.skuType !== 'none' && p.minPrice">¥{{ p.minPrice }}<template v-if="p.minPrice !== p.maxPrice">-{{ p.maxPrice }}</template></span>
+                <span class="qo-prod-price" v-else>¥{{ Number(p.price).toFixed(2) }}</span>
+                <span class="qo-prod-stock" :class="{ 'no-stock': ((p.skuType && p.skuType !== 'none') ? (p.totalStock ?? p.stock) : p.stock) <= 0 }">{{ ((p.skuType && p.skuType !== 'none') ? (p.totalStock ?? p.stock) : p.stock) > 0 ? '库存 ' + ((p.skuType && p.skuType !== 'none') ? (p.totalStock ?? p.stock) : p.stock) : '缺货' }}</span>
               </div>
             </div>
-            <button class="qo-add-btn" @click="addProduct(p)" :disabled="p.stock <= 0" :title="p.stock <= 0 ? '商品缺货' : '添加到订单'">+</button>
+            <button class="qo-add-btn" @click="(p.skuType && p.skuType !== 'none') ? openSidebarSkuDialog(p) : addProduct(p)" :disabled="((p.skuType && p.skuType !== 'none') ? (p.totalStock ?? p.stock) : p.stock) <= 0" :title="p.stock <= 0 ? '商品缺货' : '添加到订单'">+</button>
           </div>
         </div>
         <div v-else class="qo-empty-hint">{{ productKeyword ? '未找到产品' : '加载产品中...' }}</div>
@@ -195,7 +196,11 @@
         <div class="card-title">📦 已选产品 ({{ form.products.length }})</div>
         <div class="qo-selected-product" v-for="(sp, idx) in form.products" :key="sp.id">
           <div class="qo-sp-top">
-            <span class="qo-sp-name"><span class="prod-type-tag" :class="sp.productType === 'virtual' ? 'virtual' : 'physical'">{{ sp.productType === 'virtual' ? '虚拟' : '实物' }}</span> {{ sp.name }}</span>
+            <span class="qo-sp-name">
+              <span class="prod-type-tag" :class="sp.productType === 'virtual' ? 'virtual' : 'physical'">{{ sp.productType === 'virtual' ? '虚拟' : '实物' }}</span>
+              {{ sp.name }}
+              <span v-if="(sp as any).skuName" style="color:#909399;font-size:11px;display:block;margin-top:2px;">规格: {{ (sp as any).skuName }}</span>
+            </span>
             <span class="qo-sp-remove" @click="removeProduct(idx)">✕</span>
           </div>
           <div class="qo-sp-bottom">
@@ -210,6 +215,30 @@
             </div>
             <span class="qo-sp-total">¥{{ (sp.price * sp.quantity).toFixed(2) }}</span>
           </div>
+        </div>
+      </div>
+
+      <!-- SKU选择弹窗 -->
+      <div v-if="sidebarSkuVisible" class="preview-card" style="border: 2px solid #409eff; position: relative;">
+        <div class="card-title">🏷️ 选择规格 - {{ sidebarSkuProduct?.name }}</div>
+        <div v-if="sidebarSkuLoading" style="text-align: center; padding: 20px; color: #909399;">加载SKU中...</div>
+        <div v-else-if="sidebarSkuList.length === 0" style="text-align: center; padding: 20px; color: #909399;">暂无可选规格</div>
+        <div v-else>
+          <div v-for="sku in sidebarSkuList" :key="sku.id" style="display: flex; align-items: center; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #f0f0f0;">
+            <div style="flex: 1;">
+              <div style="font-size: 13px; font-weight: 500;">{{ sku.skuName }}</div>
+              <div style="font-size: 12px; color: #909399;">¥{{ Number(sku.price).toFixed(2) }} | 库存: {{ sku.stock }}</div>
+            </div>
+            <div class="qo-sp-qty" style="display: flex; align-items: center; gap: 4px;">
+              <span class="qo-qty-btn" @click="sku._qty = Math.max(0, sku._qty - 1)">－</span>
+              <span class="qo-qty-val" style="min-width: 24px; text-align: center;">{{ sku._qty }}</span>
+              <span class="qo-qty-btn" @click="sku._qty = Math.min(sku.stock, sku._qty + 1)">＋</span>
+            </div>
+          </div>
+        </div>
+        <div style="display: flex; gap: 8px; margin-top: 12px;">
+          <button class="btn-secondary" style="flex: 1; padding: 8px; border: 1px solid #dcdfe6; border-radius: 6px; background: #fff; cursor: pointer;" @click="sidebarSkuVisible = false">取消</button>
+          <button class="btn-primary" style="flex: 1; padding: 8px; border: none; border-radius: 6px; background: #409eff; color: #fff; cursor: pointer;" @click="confirmSidebarSku()">确定</button>
         </div>
       </div>
 
@@ -774,6 +803,64 @@ const searchProducts = () => {
   }, 300)
 }
 
+// ===== SKU选择（侧边栏） =====
+const sidebarSkuVisible = ref(false)
+const sidebarSkuProduct = ref<any>(null)
+const sidebarSkuList = ref<any[]>([])
+const sidebarSkuLoading = ref(false)
+
+const openSidebarSkuDialog = async (p: any) => {
+  sidebarSkuProduct.value = p
+  sidebarSkuLoading.value = true
+  sidebarSkuVisible.value = true
+  try {
+    const res: any = await request.get(`/products/${p.id}/skus`, {
+      params: { pageSize: 100, status: 'active' },
+      ...authHeaders.value
+    } as any)
+    const data = res?.data || res
+    const list = data?.list || data || []
+    sidebarSkuList.value = list.filter((s: any) => s.stock > 0).map((s: any) => {
+      const existing = form.value.products.find(x => (x as any).skuId === s.id)
+      return { ...s, _qty: existing ? existing.quantity : 0 }
+    })
+  } catch {
+    sidebarSkuList.value = []
+  } finally {
+    sidebarSkuLoading.value = false
+  }
+}
+
+const confirmSidebarSku = () => {
+  if (!sidebarSkuProduct.value) return
+  const p = sidebarSkuProduct.value
+  const selected = sidebarSkuList.value.filter(s => s._qty > 0)
+  if (selected.length === 0) {
+    ElMessage.warning('请选择数量')
+    return
+  }
+
+  form.value.products = form.value.products.filter(x => !((x as any).skuId && x.id === p.id))
+
+  selected.forEach(sku => {
+    form.value.products.push({
+      id: p.id,
+      name: p.name,
+      price: Number(sku.price) || 0,
+      quantity: sku._qty,
+      stock: sku.stock,
+      image: sku.skuImage || p.image || '',
+      productType: p.productType || 'physical',
+      skuId: sku.id,
+      skuName: sku.skuName,
+      sku: sku.skuName
+    } as any)
+  })
+  syncTotal()
+  sidebarSkuVisible.value = false
+  ElMessage.success(`已添加 ${selected.length} 个SKU`)
+}
+
 const addProduct = (p: any) => {
   const existing = form.value.products.find(x => x.id === p.id)
   if (existing) {
@@ -893,7 +980,8 @@ const submitOrder = async () => {
       customerPhone: form.value.customerPhone,
       products: form.value.products.map(p => ({
         id: p.id, name: p.name, price: p.price, quantity: p.quantity,
-        image: (p as any).image || '', productType: (p as any).productType || 'physical', sku: (p as any).sku || ''
+        image: (p as any).image || '', productType: (p as any).productType || 'physical', sku: (p as any).sku || '',
+        skuId: (p as any).skuId || null, skuName: (p as any).skuName || null
       })),
       totalAmount: Number(form.value.totalAmount) || subtotal.value,
       depositAmount: Number(form.value.depositAmount) || 0,

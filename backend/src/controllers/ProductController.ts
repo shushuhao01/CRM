@@ -1,12 +1,17 @@
 import { Request, Response } from 'express'
 import { Product } from '../entities/Product'
 import { ProductCategory } from '../entities/ProductCategory'
+import { ProductSku } from '../entities/ProductSku'
+import { ProductSpecGroup } from '../entities/ProductSpecGroup'
+import { StockAdjustment } from '../entities/StockAdjustment'
 import { getTenantRepo } from '../utils/tenantRepo'
 
 import { log } from '../config/logger';
-// 获取Repository（🔥 使用租户感知仓储，自动添加tenant_id过滤）
 const getProductRepository = () => getTenantRepo(Product)
 const getCategoryRepository = () => getTenantRepo(ProductCategory)
+const getSkuRepository = () => getTenantRepo(ProductSku)
+const getSpecGroupRepository = () => getTenantRepo(ProductSpecGroup)
+const getStockAdjustmentRepository = () => getTenantRepo(StockAdjustment)
 
 // 生成唯一ID
 function generateId(prefix: string = ''): string {
@@ -496,13 +501,31 @@ export class ProductController {
         }
       }
 
-      // 转换数据格式以匹配前端期望
+      // 统计有SKU商品的上下架SKU数量
+      const skuStatusMap: Record<string, { active: number; inactive: number }> = {}
+      const skuProducts = products.filter(p => (p as any).skuType === 'multi')
+      if (skuProducts.length > 0) {
+        try {
+          const skuRepo = getSkuRepository()
+          for (const sp of skuProducts) {
+            const allSkus = await skuRepo.find({ where: { productId: sp.id } })
+            skuStatusMap[sp.id] = {
+              active: allSkus.filter(s => s.status === 'active').length,
+              inactive: allSkus.filter(s => s.status !== 'active').length
+            }
+          }
+        } catch (e) { log.error('统计SKU状态失败:', e) }
+      }
+
       const list = products.map(p => {
-        // 虚拟商品（卡密/资源类型）使用虚拟库存数量
         let stock = p.stock
         if (p.productType === 'virtual' && p.virtualDeliveryType && p.virtualDeliveryType !== 'none') {
           stock = virtualStockMap[p.id] || 0
         }
+
+        const skuType = (p as any).skuType || 'none'
+        const displayStock = (skuType !== 'none' && p.totalStock !== null && p.totalStock !== undefined)
+          ? p.totalStock : stock
 
         return {
           id: p.id,
@@ -519,10 +542,10 @@ export class ProductController {
           price: Number(p.price),
           costPrice: Number(p.costPrice) || 0,
           marketPrice: Number(p.price),
-          stock: stock,
+          stock: displayStock,
           minStock: p.minStock || 0,
           maxStock: p.maxStock || 0,
-          salesCount: salesCountMap[p.id] || 0, // 🔥 使用统计的销量
+          salesCount: salesCountMap[p.id] || 0,
           status: p.status,
           isRecommended: !!p.isRecommended,
           isNew: !!p.isNew,
@@ -537,6 +560,12 @@ export class ProductController {
           resourceLinkTemplate: p.resourceLinkTemplate || null,
           virtualContentEncrypt: !!p.virtualContentEncrypt,
           allowedDepartments: p.allowedDepartments || null,
+          skuType,
+          minPrice: skuType !== 'none' ? Number(p.minPrice) || null : null,
+          maxPrice: skuType !== 'none' ? Number(p.maxPrice) || null : null,
+          totalStock: skuType !== 'none' ? (p.totalStock ?? 0) : null,
+          activeSkuCount: skuStatusMap[p.id]?.active ?? null,
+          inactiveSkuCount: skuStatusMap[p.id]?.inactive ?? null,
           createdBy: p.createdBy || '',
           createTime: p.createdAt?.toISOString() || '',
           updateTime: p.updatedAt?.toISOString() || ''
@@ -607,6 +636,62 @@ export class ProductController {
         }
       }
 
+      const skuType = (product as any).skuType || 'none'
+      let skus: any[] = []
+      let specGroups: any[] = []
+      if (skuType !== 'none' && product.productType === 'physical') {
+        try {
+          const skuRepo = getSkuRepository()
+          const specGroupRepo = getSpecGroupRepository()
+          skus = await skuRepo.find({
+            where: { productId: product.id },
+            order: { sortOrder: 'ASC', createdAt: 'ASC' }
+          })
+          specGroups = await specGroupRepo.find({
+            where: { productId: product.id },
+            order: { sortOrder: 'ASC' }
+          })
+        } catch (e) {
+          log.error('[商品详情] 加载SKU数据失败:', e)
+        }
+      }
+
+      const displayStock = (skuType !== 'none' && product.totalStock !== null && product.totalStock !== undefined)
+        ? product.totalStock : stock
+
+      // 统计销量
+      let salesCount = 0
+      let salesAmount = 0
+      try {
+        const { Order } = await import('../entities/Order')
+        const orderRepo = getTenantRepo(Order)
+        const validOrders = await orderRepo
+          .createQueryBuilder('order')
+          .select(['order.id', 'order.products'])
+          .where('order.status NOT IN (:...excludeStatuses)', {
+            excludeStatuses: ['cancelled', 'pending_transfer', 'pending_audit', 'audit_rejected']
+          })
+          .getMany()
+        validOrders.forEach((order: any) => {
+          try {
+            const prods = typeof order.products === 'string' ? JSON.parse(order.products) : order.products
+            if (Array.isArray(prods)) {
+              prods.forEach((p: any) => {
+                const pid = String(p.productId || p.id || '')
+                const qty = Number(p.quantity || 0)
+                const price = Number(p.price || 0)
+                if (pid === product.id || pid === String(product.id)) {
+                  salesCount += qty
+                  salesAmount += qty * price
+                }
+              })
+            }
+          } catch (_) { /* ignore */ }
+        })
+      } catch (e) {
+        log.error('[商品详情] 统计销量失败:', e)
+      }
+
       res.json({
         success: true,
         data: {
@@ -618,7 +703,7 @@ export class ProductController {
           description: product.description || '',
           price: Number(product.price),
           costPrice: Number(product.costPrice) || 0,
-          stock: stock,
+          stock: displayStock,
           minStock: product.minStock || 0,
           maxStock: product.maxStock || 0,
           unit: product.unit || '件',
@@ -640,6 +725,33 @@ export class ProductController {
           resourceLinkTemplate: product.resourceLinkTemplate || null,
           virtualContentEncrypt: !!product.virtualContentEncrypt,
           allowedDepartments: product.allowedDepartments || null,
+          skuType,
+          minPrice: skuType !== 'none' ? Number(product.minPrice) || null : null,
+          maxPrice: skuType !== 'none' ? Number(product.maxPrice) || null : null,
+          totalStock: skuType !== 'none' ? (product.totalStock ?? 0) : null,
+          skus: skus.map(s => ({
+            id: s.id,
+            skuCode: s.skuCode,
+            skuName: s.skuName,
+            skuImage: s.skuImage || '',
+            price: Number(s.price),
+            costPrice: Number(s.costPrice) || 0,
+            stock: s.stock,
+            salesCount: s.salesCount || 0,
+            weight: Number(s.weight) || 0,
+            barcode: s.barcode || '',
+            specValues: s.specValues || {},
+            sortOrder: s.sortOrder || 0,
+            status: s.status || 'active'
+          })),
+          specGroups: specGroups.map(g => ({
+            id: g.id,
+            specName: g.specName,
+            specValues: g.specValues || [],
+            sortOrder: g.sortOrder || 0
+          })),
+          salesCount,
+          salesAmount,
           createdBy: product.createdBy || '',
           createTime: product.createdAt?.toISOString() || '',
           updateTime: product.updatedAt?.toISOString() || ''
@@ -699,7 +811,21 @@ export class ProductController {
       // 获取当前用户ID（从请求中获取）
       const createdBy = (req as any).user?.id || 'system'
 
-      // 创建新产品
+      const skuType = (productData.productType === 'physical' && productData.skuType && productData.skuType !== 'none')
+        ? productData.skuType : 'none'
+      const skuList: any[] = productData.skus || []
+      const specGroupList: any[] = productData.specGroups || []
+
+      let minPrice: number | null = null
+      let maxPrice: number | null = null
+      let totalStock: number | null = null
+      if (skuType !== 'none' && skuList.length > 0) {
+        const prices = skuList.map((s: any) => Number(s.price) || 0)
+        minPrice = Math.min(...prices)
+        maxPrice = Math.max(...prices)
+        totalStock = skuList.reduce((sum: number, s: any) => sum + (Number(s.stock) || 0), 0)
+      }
+
       const newProduct = productRepo.create({
         id: productId,
         code: productCode,
@@ -709,7 +835,7 @@ export class ProductController {
         description: productData.description || '',
         price: Number(productData.price) || 0,
         costPrice: Number(productData.costPrice) || 0,
-        stock: Number(productData.stock) || 0,
+        stock: skuType !== 'none' ? (totalStock || 0) : (Number(productData.stock) || 0),
         minStock: Number(productData.minStock) || 0,
         maxStock: Number(productData.maxStock) || 0,
         unit: productData.unit || '件',
@@ -728,11 +854,58 @@ export class ProductController {
         resourceLinkTemplate: productData.resourceLinkTemplate || null,
         virtualContentEncrypt: !!productData.virtualContentEncrypt,
         allowedDepartments: productData.allowedDepartments || null,
+        skuType,
+        minPrice,
+        maxPrice,
+        totalStock,
         createdBy
       })
 
       await productRepo.save(newProduct)
-      log.info('[ProductController] 创建产品成功:', newProduct.name, 'ID:', newProduct.id)
+
+      if (skuType !== 'none') {
+        try {
+          const skuRepo = getSkuRepository()
+          const specGroupRepo = getSpecGroupRepository()
+
+          for (let i = 0; i < specGroupList.length; i++) {
+            const g = specGroupList[i]
+            const specGroup = specGroupRepo.create({
+              id: g.id || generateId('sg_'),
+              productId: productId,
+              specName: g.specName,
+              specValues: g.specValues || [],
+              sortOrder: i
+            })
+            await specGroupRepo.save(specGroup)
+          }
+
+          for (let i = 0; i < skuList.length; i++) {
+            const s = skuList[i]
+            const sku = skuRepo.create({
+              id: s.id || generateId('sku_'),
+              productId: productId,
+              skuCode: s.skuCode || `${productCode}-${i + 1}`,
+              skuName: s.skuName || '',
+              skuImage: s.skuImage || null,
+              price: Number(s.price) || 0,
+              costPrice: Number(s.costPrice) || 0,
+              stock: Number(s.stock) || 0,
+              salesCount: 0,
+              weight: Number(s.weight) || 0,
+              barcode: s.barcode || null,
+              specValues: s.specValues || {},
+              sortOrder: i,
+              status: s.status || 'active'
+            })
+            await skuRepo.save(sku)
+          }
+        } catch (skuError) {
+          log.error('[ProductController] 保存SKU数据失败:', skuError)
+        }
+      }
+
+      log.info('[ProductController] 创建产品成功:', newProduct.name, 'ID:', newProduct.id, 'SKU:', skuType)
 
       res.status(201).json({
         success: true,
@@ -760,6 +933,10 @@ export class ProductController {
           cardKeyTemplate: newProduct.cardKeyTemplate || null,
           resourceLinkTemplate: newProduct.resourceLinkTemplate || null,
           virtualContentEncrypt: !!newProduct.virtualContentEncrypt,
+          skuType: newProduct.skuType || 'none',
+          minPrice: newProduct.minPrice,
+          maxPrice: newProduct.maxPrice,
+          totalStock: newProduct.totalStock,
           createdBy: newProduct.createdBy || '',
           createTime: newProduct.createdAt?.toISOString() || '',
           updateTime: newProduct.updatedAt?.toISOString() || ''
@@ -818,12 +995,114 @@ export class ProductController {
       if (updates.image !== undefined && !updates.images) {
         product.images = [updates.image]
       }
-      // 虚拟商品字段（仅创建时设置productType，编辑时不可改类型）
       if (updates.virtualDeliveryType !== undefined) product.virtualDeliveryType = updates.virtualDeliveryType
       if (updates.cardKeyTemplate !== undefined) product.cardKeyTemplate = updates.cardKeyTemplate
       if (updates.resourceLinkTemplate !== undefined) product.resourceLinkTemplate = updates.resourceLinkTemplate
       if (updates.virtualContentEncrypt !== undefined) product.virtualContentEncrypt = !!updates.virtualContentEncrypt
       if (updates.allowedDepartments !== undefined) product.allowedDepartments = updates.allowedDepartments
+
+      if (product.productType === 'physical' && updates.skuType !== undefined) {
+        product.skuType = updates.skuType
+
+        if (updates.skuType !== 'none') {
+          const skuList: any[] = updates.skus || []
+          const specGroupList: any[] = updates.specGroups || []
+
+          if (skuList.length > 0 || specGroupList.length > 0) {
+            try {
+              const skuRepo = getSkuRepository()
+              const specGroupRepo = getSpecGroupRepository()
+
+              if (specGroupList.length > 0) {
+                await specGroupRepo.delete({ productId: id })
+                for (let i = 0; i < specGroupList.length; i++) {
+                  const g = specGroupList[i]
+                  const specGroup = specGroupRepo.create({
+                    id: g.id || generateId('sg_'),
+                    productId: id,
+                    specName: g.specName,
+                    specValues: g.specValues || [],
+                    sortOrder: i
+                  })
+                  await specGroupRepo.save(specGroup)
+                }
+              }
+
+              const existingSkuIds = (await skuRepo.find({ where: { productId: id }, select: ['id'] })).map(s => s.id)
+              const newSkuIds = skuList.filter((s: any) => s.id).map((s: any) => s.id)
+              const toDelete = existingSkuIds.filter(sid => !newSkuIds.includes(sid))
+              for (const delId of toDelete) {
+                await skuRepo.delete(delId)
+              }
+
+              for (let i = 0; i < skuList.length; i++) {
+                const s = skuList[i]
+                const skuId = s.id || generateId('sku_')
+                const existing = s.id ? await skuRepo.findOne({ where: { id: s.id } }) : null
+                if (existing) {
+                  existing.skuCode = s.skuCode || existing.skuCode
+                  existing.skuName = s.skuName || existing.skuName
+                  existing.skuImage = s.skuImage !== undefined ? s.skuImage : existing.skuImage
+                  existing.price = Number(s.price) ?? existing.price
+                  existing.costPrice = Number(s.costPrice) ?? existing.costPrice
+                  existing.stock = s.stock !== undefined ? Number(s.stock) : existing.stock
+                  existing.weight = s.weight !== undefined ? Number(s.weight) : existing.weight
+                  existing.barcode = s.barcode !== undefined ? s.barcode : existing.barcode
+                  existing.specValues = s.specValues || existing.specValues
+                  existing.sortOrder = i
+                  existing.status = s.status || existing.status
+                  await skuRepo.save(existing)
+                } else {
+                  const newSku = skuRepo.create({
+                    id: skuId,
+                    productId: id,
+                    skuCode: s.skuCode || `${product.code}-${i + 1}`,
+                    skuName: s.skuName || '',
+                    skuImage: s.skuImage || null,
+                    price: Number(s.price) || 0,
+                    costPrice: Number(s.costPrice) || 0,
+                    stock: Number(s.stock) || 0,
+                    salesCount: 0,
+                    weight: Number(s.weight) || 0,
+                    barcode: s.barcode || null,
+                    specValues: s.specValues || {},
+                    sortOrder: i,
+                    status: s.status || 'active'
+                  })
+                  await skuRepo.save(newSku)
+                }
+              }
+
+              const allSkus = await skuRepo.find({ where: { productId: id } })
+              const activeSkus = allSkus.filter(s => s.status === 'active')
+              if (activeSkus.length > 0) {
+                const prices = activeSkus.map(s => Number(s.price))
+                product.minPrice = Math.min(...prices)
+                product.maxPrice = Math.max(...prices)
+                product.totalStock = activeSkus.reduce((sum, s) => sum + s.stock, 0)
+              } else {
+                product.minPrice = null
+                product.maxPrice = null
+                product.totalStock = 0
+              }
+            } catch (skuError) {
+              log.error('[ProductController] 更新SKU数据失败:', skuError)
+            }
+          }
+        } else {
+          try {
+            const skuRepo = getSkuRepository()
+            const specGroupRepo = getSpecGroupRepository()
+            await skuRepo.delete({ productId: id })
+            await specGroupRepo.delete({ productId: id })
+            product.minPrice = null
+            product.maxPrice = null
+            product.totalStock = null
+          } catch (cleanError) {
+            log.error('[ProductController] 清理SKU数据失败:', cleanError)
+          }
+        }
+      }
 
       await productRepo.save(product)
       log.info('[ProductController] 更新产品成功:', product.name, 'ID:', id)
@@ -861,6 +1140,10 @@ export class ProductController {
           resourceLinkTemplate: product.resourceLinkTemplate || null,
           virtualContentEncrypt: !!product.virtualContentEncrypt,
           allowedDepartments: product.allowedDepartments || null,
+          skuType: product.skuType || 'none',
+          minPrice: product.minPrice,
+          maxPrice: product.maxPrice,
+          totalStock: product.totalStock,
           createdBy: product.createdBy || '',
           createTime: product.createdAt?.toISOString() || '',
           updateTime: product.updatedAt?.toISOString() || ''
@@ -911,84 +1194,201 @@ export class ProductController {
     }
   }
 
-  /**
-   * 库存调整
-   */
   static async adjustStock(req: Request, res: Response): Promise<void> {
     try {
-      const { productId, type, quantity, reason } = req.body
+      const { productId, skuId, type, quantity, reason, remark } = req.body
       const productRepo = getProductRepository()
+      const currentUser = (req as any).currentUser || (req as any).user
 
       if (!productId || !type || quantity === undefined || !reason) {
-        res.status(400).json({
-          success: false,
-          message: '产品ID、调整类型、数量和原因不能为空'
-        })
+        res.status(400).json({ success: false, message: '产品ID、调整类型、数量和原因不能为空' })
         return
       }
 
       const product = await productRepo.findOne({ where: { id: productId } })
       if (!product) {
-        res.status(404).json({
-          success: false,
-          message: '产品不存在'
-        })
+        res.status(404).json({ success: false, message: '产品不存在' })
         return
       }
 
-      const beforeStock = product.stock
-      let afterStock = beforeStock
+      let beforeStock: number
+      let afterStock: number
+      let targetName = product.name
+      let skuName: string | null = null
 
-      switch (type) {
-        case 'increase':
-          afterStock = beforeStock + Number(quantity)
-          break
-        case 'decrease':
-          afterStock = beforeStock - Number(quantity)
-          if (afterStock < 0) {
-            res.status(400).json({
-              success: false,
-              message: '库存不足'
-            })
-            return
-          }
-          break
-        case 'set':
-          afterStock = Number(quantity)
-          break
-        default:
-          res.status(400).json({
-            success: false,
-            message: '无效的调整类型'
-          })
+      if (skuId) {
+        const skuRepo = getSkuRepository()
+        const sku = await skuRepo.findOne({ where: { id: skuId, productId } })
+        if (!sku) {
+          res.status(404).json({ success: false, message: 'SKU不存在' })
           return
+        }
+        beforeStock = sku.stock
+        skuName = sku.skuName
+
+        switch (type) {
+          case 'increase': afterStock = beforeStock + Number(quantity); break
+          case 'decrease':
+            afterStock = beforeStock - Number(quantity)
+            if (afterStock < 0) { res.status(400).json({ success: false, message: 'SKU库存不足' }); return }
+            break
+          case 'set': afterStock = Number(quantity); break
+          default: res.status(400).json({ success: false, message: '无效的调整类型' }); return
+        }
+        sku.stock = afterStock
+        await skuRepo.save(sku)
+
+        const allSkus = await skuRepo.find({ where: { productId } })
+        const activeSkus = allSkus.filter(s => s.status === 'active')
+        product.totalStock = activeSkus.reduce((sum, s) => sum + s.stock, 0)
+        product.stock = product.totalStock
+        await productRepo.save(product)
+
+        targetName = `${product.name} - ${sku.skuName}`
+      } else {
+        beforeStock = product.stock
+        const skuType = (product as any).skuType || 'none'
+
+        switch (type) {
+          case 'increase': afterStock = beforeStock + Number(quantity); break
+          case 'decrease':
+            afterStock = beforeStock - Number(quantity)
+            if (afterStock < 0) { res.status(400).json({ success: false, message: '库存不足' }); return }
+            break
+          case 'set': afterStock = Number(quantity); break
+          default: res.status(400).json({ success: false, message: '无效的调整类型' }); return
+        }
+        product.stock = afterStock
+
+        if (skuType === 'multi') {
+          const skuRepo = getSkuRepository()
+          const allSkus = await skuRepo.find({ where: { productId } })
+          for (const s of allSkus) {
+            const skuBefore = s.stock
+            let skuAfter = skuBefore
+            switch (type) {
+              case 'increase': skuAfter = skuBefore + Number(quantity); break
+              case 'decrease': skuAfter = Math.max(0, skuBefore - Number(quantity)); break
+              case 'set': skuAfter = Number(quantity); break
+            }
+            s.stock = skuAfter
+            await skuRepo.save(s)
+
+            try {
+              const adjRepo2 = getStockAdjustmentRepository()
+              const skuAdj = adjRepo2.create({
+                id: generateId('adj_'),
+                productId,
+                skuId: s.id,
+                skuName: s.skuName,
+                adjustType: type,
+                quantity: Number(quantity),
+                beforeStock: skuBefore,
+                afterStock: skuAfter,
+                reason: reason + '（统一调整）',
+                remark: remark || null,
+                operatorId: currentUser?.id || null,
+                operatorName: currentUser?.realName || currentUser?.name || currentUser?.username || null
+              })
+              await adjRepo2.save(skuAdj)
+            } catch (_e) { /* ignore */ }
+          }
+          const activeSkus = allSkus.filter(s2 => s2.status === 'active')
+          product.totalStock = activeSkus.reduce((sum, s2) => sum + s2.stock, 0)
+          product.stock = product.totalStock
+        }
+
+        await productRepo.save(product)
       }
 
-      product.stock = afterStock
-      await productRepo.save(product)
+      try {
+        const adjRepo = getStockAdjustmentRepository()
+        const adj = adjRepo.create({
+          id: generateId('adj_'),
+          productId,
+          skuId: skuId || null,
+          skuName,
+          adjustType: type,
+          quantity: Number(quantity),
+          beforeStock,
+          afterStock,
+          reason,
+          remark: remark || null,
+          operatorId: currentUser?.id || null,
+          operatorName: currentUser?.realName || currentUser?.name || currentUser?.username || null
+        })
+        await adjRepo.save(adj)
+      } catch (adjErr) {
+        log.error('[库存调整] 保存调整记录失败:', adjErr)
+      }
 
       res.json({
         success: true,
         data: {
-          product: { id: product.id, name: product.name, stock: product.stock },
-          adjustment: { type, quantity: Number(quantity), beforeStock, afterStock, reason }
+          product: { id: product.id, name: targetName, stock: skuId ? afterStock : product.stock, totalStock: product.totalStock },
+          adjustment: { type, quantity: Number(quantity), beforeStock, afterStock, reason, skuId, skuName }
         },
         message: '库存调整成功'
       })
     } catch (error) {
       log.error('库存调整失败:', error)
-      res.status(500).json({
-        success: false,
-        message: '库存调整失败'
-      })
+      res.status(500).json({ success: false, message: '库存调整失败' })
     }
   }
 
-  /**
-   * 获取库存调整记录
-   */
   static async getStockAdjustments(req: Request, res: Response): Promise<void> {
-    res.json({ success: true, data: { list: [], total: 0, page: 1, pageSize: 10 } })
+    try {
+      const { productId, skuId, page = 1, pageSize = 20 } = req.query
+      const adjRepo = getStockAdjustmentRepository()
+      const qb = adjRepo.createQueryBuilder('adj')
+
+      if (productId) qb.andWhere('adj.productId = :productId', { productId })
+      if (skuId) qb.andWhere('adj.skuId = :skuId', { skuId })
+
+      const total = await qb.getCount()
+      const skip = (Number(page) - 1) * Number(pageSize)
+      qb.orderBy('adj.createdAt', 'DESC').skip(skip).take(Number(pageSize))
+
+      const list = await qb.getMany()
+
+      // 补全操作人真实姓名（兼容旧数据）
+      let userMap: Record<string, string> = {}
+      const operatorIds = [...new Set(list.filter(a => a.operatorId).map(a => a.operatorId!))]
+      if (operatorIds.length > 0) {
+        try {
+          const { User } = await import('../entities/User')
+          const userRepo = getTenantRepo(User)
+          const users = await userRepo.findByIds(operatorIds)
+          users.forEach((u: any) => { userMap[u.id] = u.realName || u.name || u.username })
+        } catch (_) { /* ignore */ }
+      }
+
+      res.json({
+        success: true,
+        data: {
+          list: list.map(a => ({
+            id: a.id,
+            productId: a.productId,
+            skuId: a.skuId,
+            skuName: a.skuName,
+            adjustType: a.adjustType,
+            quantity: a.quantity,
+            beforeStock: a.beforeStock,
+            afterStock: a.afterStock,
+            reason: a.reason,
+            remark: a.remark,
+            operatorName: (a.operatorId && userMap[a.operatorId]) ? userMap[a.operatorId] : a.operatorName,
+            createdAt: a.createdAt?.toISOString()
+          })),
+          total,
+          page: Number(page),
+          pageSize: Number(pageSize)
+        }
+      })
+    } catch (error) {
+      log.error('获取库存调整记录失败:', error)
+      res.status(500).json({ success: false, message: '获取库存调整记录失败' })
+    }
   }
 
   /**

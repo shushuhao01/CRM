@@ -14,6 +14,14 @@ export interface OrderProduct {
   price: number
   quantity: number
   total: number
+  productId?: string
+  image?: string
+  skuId?: string
+  skuName?: string
+  skuImage?: string
+  specValues?: Record<string, string>
+  sku?: string
+  productType?: string
 }
 
 // 订单状态枚举

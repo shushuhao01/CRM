@@ -228,6 +228,26 @@
                 <!-- 实物商品库存信息 -->
                 <template v-else>
                   <div class="stock-info">
+                    <template v-if="productInfo.skuType && productInfo.skuType !== 'none'">
+                      <div class="info-item">
+                        <label>SKU类型：</label>
+                        <el-tag type="primary" size="small" effect="light">多规格</el-tag>
+                      </div>
+                      <div class="info-item">
+                        <label>价格范围：</label>
+                        <span class="price" style="color: #e6a23c;">
+                          ¥{{ productInfo.minPrice }}<template v-if="productInfo.minPrice !== productInfo.maxPrice"> - ¥{{ productInfo.maxPrice }}</template>
+                        </span>
+                      </div>
+                      <div class="info-item">
+                        <label>总库存：</label>
+                        <span v-if="canViewStockInfo" :class="getStockClass(productInfo.totalStock || productInfo.stock, productInfo.minStock)">
+                          {{ productInfo.totalStock ?? productInfo.stock }}
+                        </span>
+                        <span v-else class="sensitive-info">****</span>
+                      </div>
+                    </template>
+                    <template v-else>
                     <div class="info-item">
                       <label>当前库存：</label>
                       <span v-if="canViewStockInfo" :class="getStockClass(productInfo.stock, productInfo.minStock)">
@@ -254,10 +274,58 @@
                         ****
                       </span>
                     </div>
+                    </template>
                   </div>
                 </template>
               </el-col>
             </el-row>
+          </el-card>
+
+          <!-- SKU明细（仅有SKU的实物商品显示） -->
+          <el-card v-if="productInfo.skuType && productInfo.skuType !== 'none' && productInfo.skus && productInfo.skus.length > 0" class="info-card" title="SKU明细">
+            <template #header>
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <span style="font-size: 15px; font-weight: 600;">SKU明细（共{{ productInfo.skus.length }}个）</span>
+                <span style="font-size: 13px; color: #909399;">
+                  总库存：<b style="color: #67c23a;">{{ productInfo.totalStock ?? 0 }}</b>
+                  &nbsp;|&nbsp;
+                  价格范围：<b style="color: #e6a23c;">¥{{ productInfo.minPrice }} - ¥{{ productInfo.maxPrice }}</b>
+                </span>
+              </div>
+            </template>
+            <el-table :data="productInfo.skus" border size="default" max-height="500" style="font-size: 14px;">
+              <el-table-column label="图片" width="80" align="center">
+                <template #default="{ row }">
+                  <el-image v-if="row.skuImage" :src="row.skuImage" style="width: 50px; height: 50px; border-radius: 4px;" fit="cover" :preview-src-list="[row.skuImage]" />
+                  <span v-else style="color: #c0c4cc; font-size: 12px;">无图</span>
+                </template>
+              </el-table-column>
+              <el-table-column label="规格名称" prop="skuName" min-width="180" show-overflow-tooltip>
+                <template #default="{ row }"><span style="font-weight: 500;">{{ row.skuName }}</span></template>
+              </el-table-column>
+              <el-table-column label="售价" width="110" align="right">
+                <template #default="{ row }"><span style="color: #e6a23c; font-weight: 600;">¥{{ Number(row.price).toFixed(2) }}</span></template>
+              </el-table-column>
+              <el-table-column label="成本" width="110" align="right">
+                <template #default="{ row }">
+                  <span v-if="canViewStockInfo">¥{{ Number(row.costPrice || 0).toFixed(2) }}</span>
+                  <span v-else style="color: #c0c4cc;">****</span>
+                </template>
+              </el-table-column>
+              <el-table-column label="库存" width="90" align="center">
+                <template #default="{ row }">
+                  <span style="font-weight: 600;" :style="{ color: row.stock === 0 ? '#f56c6c' : row.stock <= 10 ? '#e6a23c' : '#67c23a' }">{{ row.stock }}</span>
+                </template>
+              </el-table-column>
+              <el-table-column label="销量" width="80" align="center">
+                <template #default="{ row }"><span>{{ row.salesCount || 0 }}</span></template>
+              </el-table-column>
+              <el-table-column label="状态" width="90" align="center">
+                <template #default="{ row }">
+                  <el-tag :type="row.status === 'active' ? 'success' : 'info'" size="default">{{ row.status === 'active' ? '上架' : '下架' }}</el-tag>
+                </template>
+              </el-table-column>
+            </el-table>
           </el-card>
 
           <!-- 销售数据 -->
@@ -546,10 +614,25 @@
         label-width="100px"
       >
         <el-form-item label="商品名称">
-          <span>{{ productInfo.name }}</span>
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <img :src="productInfo.mainImage || '/default-product.png'" style="width: 40px; height: 40px; border-radius: 4px; object-fit: cover; border: 1px solid #ebeef5;" />
+            <span style="font-weight: 600;">{{ productInfo.name }}</span>
+          </div>
+        </el-form-item>
+        <el-form-item v-if="productInfo.skuType === 'multi'" label="调整范围">
+          <el-select v-model="stockForm.skuTarget" placeholder="选择调整范围" style="width: 100%;" @change="handleDetailStockSkuChange">
+            <el-option label="统一调整总库存" value="all" />
+            <el-option v-for="sku in detailSkuOptions" :key="sku.id" :label="`${sku.skuName} (库存: ${sku.stock})`" :value="sku.id">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <img v-if="sku.skuImage" :src="sku.skuImage" style="width: 24px; height: 24px; border-radius: 3px; object-fit: cover;" />
+                <span>{{ sku.skuName }}</span>
+                <span style="color: #67c23a; font-size: 12px;">库存: {{ sku.stock }}</span>
+              </div>
+            </el-option>
+          </el-select>
         </el-form-item>
         <el-form-item label="当前库存">
-          <span>{{ productInfo.stock }}</span>
+          <span style="font-weight: 600; color: #409eff;">{{ detailStockCurrent }} 件</span>
         </el-form-item>
         <el-form-item label="调整类型" prop="type">
           <el-radio-group v-model="stockForm.type">
@@ -562,7 +645,7 @@
           <el-input-number
             v-model="stockForm.quantity"
             :min="stockForm.type === 'decrease' ? 1 : 0"
-            :max="stockForm.type === 'decrease' ? productInfo.stock : 99999"
+            :max="stockForm.type === 'decrease' ? detailStockCurrent : 99999"
             style="width: 100%"
           />
         </el-form-item>
@@ -613,34 +696,50 @@
         label-width="100px"
       >
         <el-form-item label="商品名称">
-          <span>{{ productInfo.name }}</span>
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <img :src="productInfo.mainImage || '/default-product.png'" style="width: 40px; height: 40px; border-radius: 4px; object-fit: cover; border: 1px solid #ebeef5;" />
+            <div>
+              <div style="font-weight: 600;">{{ productInfo.name }}</div>
+              <div style="color: #909399; font-size: 12px;">{{ productInfo.code }}</div>
+            </div>
+          </div>
         </el-form-item>
-        <el-form-item label="商品编码">
-          <span>{{ productInfo.code }}</span>
+        <el-form-item v-if="productInfo.skuType === 'multi'" label="调价范围">
+          <el-select v-model="priceForm.skuTarget" placeholder="选择调价范围" style="width: 100%;" @change="handleDetailPriceSkuChange">
+            <el-option label="统一调整所有SKU" value="all" />
+            <el-option v-for="sku in detailSkuOptions" :key="sku.id" :label="`${sku.skuName} (¥${Number(sku.price).toFixed(2)})`" :value="sku.id">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <img v-if="sku.skuImage" :src="sku.skuImage" style="width: 24px; height: 24px; border-radius: 3px; object-fit: cover;" />
+                <span>{{ sku.skuName }}</span>
+                <span style="color: #e6a23c; font-size: 12px;">¥{{ Number(sku.price).toFixed(2) }}</span>
+              </div>
+            </el-option>
+          </el-select>
         </el-form-item>
-        <el-form-item label="当前价格">
-          <span>¥{{ productInfo.price?.toFixed(2) }}</span>
+        <el-form-item v-if="productInfo.skuType === 'multi' && priceForm.skuTarget === 'all'" label="调价方式">
+          <el-radio-group v-model="priceForm.priceMode">
+            <el-radio label="set">设置统一价</el-radio>
+            <el-radio label="increase">涨价</el-radio>
+            <el-radio label="decrease">降价</el-radio>
+          </el-radio-group>
         </el-form-item>
-        <el-form-item label="新价格" prop="newPrice">
+        <el-form-item v-if="!(productInfo.skuType === 'multi' && priceForm.skuTarget === 'all')" label="当前价格">
+          <span>¥{{ priceForm.originalPrice?.toFixed(2) }}</span>
+        </el-form-item>
+        <el-form-item :label="priceForm.priceMode === 'increase' ? '涨价金额' : priceForm.priceMode === 'decrease' ? '降价金额' : '新价格'" prop="newPrice">
           <el-input-number
             v-model="priceForm.newPrice"
             :min="0.01"
             :precision="2"
             style="width: 100%"
-            placeholder="请输入新价格"
+            :placeholder="priceForm.priceMode === 'increase' ? '每个SKU涨价金额' : priceForm.priceMode === 'decrease' ? '每个SKU降价金额' : '请输入新价格'"
           />
         </el-form-item>
-        <el-form-item label="价格变化">
-          <span v-if="priceForm.newPrice && priceForm.originalPrice">
-            <el-tag
-              :type="priceForm.newPrice > priceForm.originalPrice ? 'success' : 'danger'"
-              size="small"
-            >
-              {{ priceForm.newPrice > priceForm.originalPrice ? '+' : '' }}
-              ¥{{ (priceForm.newPrice - priceForm.originalPrice).toFixed(2) }}
-              ({{ ((priceForm.newPrice - priceForm.originalPrice) / priceForm.originalPrice * 100).toFixed(1) }}%)
-            </el-tag>
-          </span>
+        <el-form-item v-if="!(productInfo.skuType === 'multi' && priceForm.skuTarget === 'all') && priceForm.newPrice && priceForm.originalPrice" label="价格变化">
+          <el-tag :type="priceForm.newPrice > priceForm.originalPrice ? 'success' : 'danger'" size="small">
+            {{ priceForm.newPrice > priceForm.originalPrice ? '+' : '' }}¥{{ (priceForm.newPrice - priceForm.originalPrice).toFixed(2) }}
+            ({{ ((priceForm.newPrice - priceForm.originalPrice) / priceForm.originalPrice * 100).toFixed(1) }}%)
+          </el-tag>
         </el-form-item>
         <el-form-item label="调价原因" prop="reason">
           <el-select
@@ -764,24 +863,59 @@ const productInfo = ref({
   virtualDeliveryType: null as string | null,
   cardKeyTemplate: null as string | null,
   resourceLinkTemplate: null as string | null,
-  virtualContentEncrypt: false
+  virtualContentEncrypt: false,
+  skuType: 'none' as string,
+  minPrice: null as number | null,
+  maxPrice: null as number | null,
+  totalStock: null as number | null,
+  skus: [] as any[],
+  specGroups: [] as any[]
 })
 
 // 库存调整表单
+const detailSkuOptions = ref<any[]>([])
+
 const stockForm = reactive({
   type: 'increase',
   quantity: 0,
   reason: '',
-  remark: ''
+  remark: '',
+  skuTarget: 'all' as string
 })
 
-// 价格调整表单
+const detailStockCurrent = computed(() => {
+  if (stockForm.skuTarget !== 'all') {
+    const sku = detailSkuOptions.value.find(s => s.id === stockForm.skuTarget)
+    return sku ? sku.stock : (productInfo.value.stock || 0)
+  }
+  return productInfo.value.skuType === 'multi'
+    ? (productInfo.value.totalStock ?? productInfo.value.stock ?? 0)
+    : (productInfo.value.stock ?? 0)
+})
+
+function handleDetailStockSkuChange() { stockForm.quantity = 0 }
+
 const priceForm = reactive({
   originalPrice: 0,
   newPrice: 0,
   reason: '',
-  remark: ''
+  remark: '',
+  skuTarget: 'all' as string,
+  priceMode: 'set' as 'set' | 'increase' | 'decrease'
 })
+
+function handleDetailPriceSkuChange(val: string) {
+  if (val === 'all') {
+    priceForm.originalPrice = productInfo.value.price || 0
+    priceForm.newPrice = priceForm.originalPrice
+  } else {
+    const sku = detailSkuOptions.value.find(s => s.id === val)
+    if (sku) {
+      priceForm.originalPrice = Number(sku.price)
+      priceForm.newPrice = priceForm.originalPrice
+    }
+  }
+}
 
 // 库存记录
 const stockRecords = ref([])
@@ -793,12 +927,7 @@ const stockPagination = reactive({
   total: 0
 })
 
-// 库存记录显示数据(分页后)
-const paginatedStockRecords = computed(() => {
-  const start = (stockPagination.currentPage - 1) * stockPagination.pageSize
-  const end = start + stockPagination.pageSize
-  return stockRecords.value.slice(start, end)
-})
+const paginatedStockRecords = computed(() => stockRecords.value)
 
 // 虚拟商品库存预览
 const virtualInventoryList = ref<any[]>([])
@@ -1011,14 +1140,22 @@ const handleEdit = () => {
 /**
  * 库存调整
  */
-const handleStockAdjust = () => {
-  // 重置表单
+const handleStockAdjust = async () => {
+  detailSkuOptions.value = []
   Object.assign(stockForm, {
     type: 'increase',
     quantity: 0,
     reason: '',
-    remark: ''
+    remark: '',
+    skuTarget: 'all'
   })
+
+  if (productInfo.value.skuType === 'multi') {
+    try {
+      const res = await productApi.getSkuList(String(productInfo.value.id), { pageSize: 100 })
+      detailSkuOptions.value = res.list || []
+    } catch (e) { console.error('加载SKU失败:', e) }
+  }
 
   stockDialogVisible.value = true
 }
@@ -1035,14 +1172,23 @@ const goToResourceManage = () => {
 /**
  * 价格调整
  */
-const handlePriceAdjust = () => {
-  // 重置表单并设置原价
+const handlePriceAdjust = async () => {
+  detailSkuOptions.value = []
   Object.assign(priceForm, {
     originalPrice: productInfo.value.price,
-    newPrice: 0,
+    newPrice: productInfo.value.price,
     reason: '',
-    remark: ''
+    remark: '',
+    skuTarget: 'all',
+    priceMode: 'set'
   })
+
+  if (productInfo.value.skuType === 'multi') {
+    try {
+      const res = await productApi.getSkuList(String(productInfo.value.id), { pageSize: 100 })
+      detailSkuOptions.value = res.list || []
+    } catch (e) { console.error('加载SKU失败:', e) }
+  }
 
   priceDialogVisible.value = true
 }
@@ -1172,38 +1318,27 @@ const handleDelete = async () => {
 const confirmStockAdjust = async () => {
   try {
     await stockFormRef.value?.validate()
-
     stockLoading.value = true
 
-    // 模拟API调用
-    await new Promise(resolve => setTimeout(resolve, 1000))
+    const isSkuTarget = stockForm.skuTarget !== 'all' && productInfo.value.skuType === 'multi'
 
-    ElMessage.success('库存调整成功')
-
-    // 发送消息提醒
-    notificationStore.addNotification({
-      type: 'PRODUCT_STOCK_ADJUSTED',
-      title: '库存调整',
-      content: `商品"${productInfo.value.name}"库存已调整`,
-      data: {
-        productId: productInfo.value.id,
-        productName: productInfo.value.name,
-        adjustmentType: stockForm.value.type,
-        quantity: stockForm.value.quantity,
-        reason: stockForm.value.reason,
-        remark: stockForm.value.remark,
-        timestamp: new Date().toISOString()
-      },
-      link: `/product/detail/${productInfo.value.id}`
+    await productApi.adjustStock({
+      productId: String(productInfo.value.id),
+      type: stockForm.type as any,
+      quantity: stockForm.quantity,
+      reason: stockForm.reason,
+      remark: stockForm.remark,
+      skuId: isSkuTarget ? stockForm.skuTarget : undefined
     })
 
-    handleStockDialogClose()
+    const skuLabel = isSkuTarget ? `[${detailSkuOptions.value.find(s => s.id === stockForm.skuTarget)?.skuName || 'SKU'}]` : ''
+    ElMessage.success(`库存调整成功${skuLabel}`)
 
-    // 重新加载数据
+    handleStockDialogClose()
     loadProductInfo()
     loadStockRecords()
-  } catch (error) {
-    console.error('表单验证失败:', error)
+  } catch (error: any) {
+    ElMessage.error(error?.response?.data?.message || '库存调整失败')
   } finally {
     stockLoading.value = false
   }
@@ -1223,52 +1358,37 @@ const handleStockDialogClose = () => {
 const confirmPriceAdjust = async () => {
   try {
     await priceFormRef.value?.validate()
-
     priceLoading.value = true
 
-    // 模拟API调用
-    await new Promise(resolve => setTimeout(resolve, 1000))
+    const isSkuTarget = priceForm.skuTarget !== 'all' && productInfo.value.skuType === 'multi'
 
-    // 更新商品价格
-    const oldPrice = productInfo.value.price
-    productInfo.value.price = priceForm.newPrice
+    const isMultiAll = productInfo.value.skuType === 'multi' && priceForm.skuTarget === 'all'
+    const inputVal = priceForm.newPrice
 
-    // 更新store中的商品价格
-    productStore.updateProduct(productInfo.value.id, {
-      price: priceForm.newPrice
-    })
+    if (isSkuTarget) {
+      await productApi.patchSku(String(productInfo.value.id), priceForm.skuTarget, { price: inputVal })
+    } else if (isMultiAll) {
+      for (const sku of detailSkuOptions.value) {
+        let finalPrice = inputVal
+        if (priceForm.priceMode === 'increase') {
+          finalPrice = Math.max(0.01, Number(sku.price) + inputVal)
+        } else if (priceForm.priceMode === 'decrease') {
+          finalPrice = Math.max(0.01, Number(sku.price) - inputVal)
+        }
+        await productApi.patchSku(String(productInfo.value.id), sku.id, { price: Number(finalPrice.toFixed(2)) })
+      }
+    } else {
+      await productStore.updateProduct(productInfo.value.id, { price: inputVal })
+    }
 
-    ElMessage.success('价格调整成功')
-
-    // 发送消息提醒
-    const priceChange = priceForm.newPrice - oldPrice
-    const changePercent = ((priceChange / oldPrice) * 100).toFixed(1)
-
-    notificationStore.addNotification({
-      type: 'PRODUCT_PRICE_CHANGED',
-      title: '价格调整',
-      content: `商品"${productInfo.value.name}"价格已调整`,
-      data: {
-        productId: productInfo.value.id,
-        productName: productInfo.value.name,
-        productCode: productInfo.value.code,
-        oldPrice: oldPrice,
-        newPrice: priceForm.newPrice,
-        priceChange: priceChange,
-        changePercent: changePercent,
-        reason: priceForm.reason,
-        remark: priceForm.remark,
-        timestamp: new Date().toISOString()
-      },
-      link: `/product/detail/${productInfo.value.id}`
-    })
+    const modeLabel = isMultiAll ? (priceForm.priceMode === 'increase' ? '（涨价）' : priceForm.priceMode === 'decrease' ? '（降价）' : '') : ''
+    const skuLabel = isSkuTarget ? `[${detailSkuOptions.value.find(s => s.id === priceForm.skuTarget)?.skuName || 'SKU'}]` : ''
+    ElMessage.success(`价格调整成功${skuLabel}${modeLabel}`)
 
     handlePriceDialogClose()
-
-    // 重新加载数据
     loadProductInfo()
-  } catch (error) {
-    console.error('表单验证失败:', error)
+  } catch (error: any) {
+    ElMessage.error(error?.response?.data?.message || '价格调整失败')
   } finally {
     priceLoading.value = false
   }
@@ -1295,31 +1415,56 @@ const loadProductInfo = async () => {
       return
     }
 
-    // 模拟API调用
-    await new Promise(resolve => setTimeout(resolve, 800))
-
-    // 从store中获取真实的商品数据，尝试字符串和数字两种类型
-    let product = productStore.getProductById(productId)
-    if (!product && !isNaN(Number(productId))) {
-      product = productStore.getProductById(Number(productId))
+    // 优先使用API获取详情（包含完整SKU数据）
+    let apiProduct: any = null
+    try {
+      apiProduct = await productApi.getDetail(productId)
+    } catch (e) {
+      console.warn('API获取详情失败, 回退到store:', e)
     }
 
-    if (product) {
-      // 使用真实的商品数据，并补充详情页需要的额外字段
+    if (apiProduct && apiProduct.id) {
       productInfo.value = {
-        ...product,
-        salesCount: product.salesCount || 0,
-        salesAmount: (product.salesCount || 0) * product.price,
-        mainImage: product.image,
-        images: product.images || [product.image],
-        createTime: product.createTime,
-        updateTime: product.updateTime || product.createTime,
+        ...apiProduct,
+        salesCount: apiProduct.salesCount || 0,
+        salesAmount: apiProduct.salesAmount || (apiProduct.salesCount || 0) * (apiProduct.price || 0),
+        mainImage: apiProduct.image || (apiProduct.images?.[0] || ''),
+        images: apiProduct.images || [apiProduct.image],
+        createTime: apiProduct.createTime,
+        updateTime: apiProduct.updateTime || apiProduct.createTime,
         creator: '系统',
-        updater: '系统'
+        updater: '系统',
+        skuType: apiProduct.skuType || 'none',
+        minPrice: apiProduct.minPrice,
+        maxPrice: apiProduct.maxPrice,
+        totalStock: apiProduct.totalStock,
+        skus: apiProduct.skus || [],
+        specGroups: apiProduct.specGroups || []
       }
     } else {
-      ElMessage.error('商品不存在')
-      safeNavigator.push('/product/list')
+      let product = productStore.getProductById(productId)
+      if (!product && !isNaN(Number(productId))) {
+        product = productStore.getProductById(Number(productId))
+      }
+      if (product) {
+        productInfo.value = {
+          ...product,
+          salesCount: product.salesCount || 0,
+          salesAmount: (product.salesCount || 0) * product.price,
+          mainImage: product.image,
+          images: product.images || [product.image],
+          createTime: product.createTime,
+          updateTime: product.updateTime || product.createTime,
+          creator: '系统',
+          updater: '系统',
+          skuType: (product as any).skuType || 'none',
+          skus: [],
+          specGroups: []
+        }
+      } else {
+        ElMessage.error('商品不存在')
+        safeNavigator.push('/product/list')
+      }
     }
   } catch (error) {
     ElMessage.error('加载商品信息失败')
@@ -1335,114 +1480,43 @@ const loadProductInfo = async () => {
 const loadStockRecords = async () => {
   try {
     const productId = route.params.id as string
+    if (!productId) { stockRecords.value = []; return }
 
-    // 获取当前商品信息
-    const currentProduct = productStore.products.find(p => p.id === productId || p.id === Number(productId))
-    if (!currentProduct) {
-      stockRecords.value = []
-      return
-    }
-
-    // 从订单数据中获取真实的库存变动记录
-    const productOrders = orderStore.orders.filter(order =>
-      order.products.some(p => p.id === productId || p.id === Number(productId)) &&
-      ['shipped', 'delivered'].includes(order.status)
-    )
-
-    const records = []
-
-    // 🔥 修复：正确计算库存变化
-    // 初始库存（假设商品创建时的库存）
-    let runningStock = currentProduct.stock
-
-    // 计算所有销售出库的总数量
-    let totalSold = 0
-    productOrders.forEach(order => {
-      const product = order.products.find(p => p.id === productId || p.id === Number(productId))
-      if (product) {
-        totalSold += product.quantity
-      }
+    const res = await productApi.getStockAdjustments({
+      productId: String(productId),
+      page: stockPagination.currentPage,
+      pageSize: stockPagination.pageSize
     })
-
-    // 初始库存 = 当前库存 + 已售出数量
-    const initialStock = currentProduct.stock + totalSold
-    runningStock = initialStock
-
-    // 添加商品创建时的初始库存记录
-    records.push({
-      id: `initial_${productId}`,
-      type: 'increase',
-      quantity: initialStock,
-      stockAfter: initialStock,
-      reason: '商品创建',
-      operator: '系统管理员',
-      remark: '商品创建时的初始库存',
-      createTime: currentProduct.createTime,
+    const list = res.list || []
+    stockRecords.value = list.map((a: any) => ({
+      id: a.id,
+      type: a.adjustType || 'set',
+      quantity: a.quantity,
+      stockAfter: a.afterStock ?? '-',
+      reason: a.reason || '',
+      operator: a.operatorName || '系统',
+      remark: a.remark || (a.skuName ? `SKU: ${a.skuName}` : ''),
+      createTime: a.createdAt ? new Date(a.createdAt).toLocaleString('zh-CN') : '-',
       orderId: null,
       orderNumber: null
-    })
-
-    // 添加销售出库记录（按时间正序处理）
-    const sortedOrders = [...productOrders].sort((a, b) =>
-      new Date(a.shippingTime || a.createTime).getTime() - new Date(b.shippingTime || b.createTime).getTime()
-    )
-
-    sortedOrders.forEach(order => {
-      const product = order.products.find(p => p.id === productId || p.id === Number(productId))
-      if (product) {
-        // 🔥 修复：正确计算变化后库存
-        runningStock -= product.quantity
-
-        // 获取操作人姓名
-        const operatorName = userStore.getUserById(order.createdBy)?.realName ||
-                            userStore.getUserById(order.createdBy)?.name ||
-                            '系统'
-
-        records.push({
-          id: `sale_${order.id}`,
-          type: 'decrease',
-          quantity: product.quantity,
-          stockAfter: Math.max(0, runningStock), // 确保不为负数
-          reason: '销售出库',
-          operator: operatorName,
-          remark: `订单号：${order.orderNumber}`,
-          createTime: order.shippingTime || order.createTime,
-          orderId: order.id,
-          orderNumber: order.orderNumber
-        })
-      }
-    })
-
-    // 按时间倒序排列
-    stockRecords.value = records.sort((a, b) =>
-      new Date(b.createTime).getTime() - new Date(a.createTime).getTime()
-    )
-
-    // 🔥 设置分页总数
-    stockPagination.total = stockRecords.value.length
-    stockPagination.currentPage = 1 // 重置到第一页
-
+    }))
+    stockPagination.total = res.total || 0
   } catch (error) {
     console.error('加载库存记录失败:', error)
-    // 不显示错误消息，而是显示空数据
     stockRecords.value = []
     stockPagination.total = 0
   }
 }
 
-/**
- * 库存记录翻页处理
- */
 const handleStockPageChange = (page: number) => {
   stockPagination.currentPage = page
+  loadStockRecords()
 }
 
-/**
- * 库存记录每页数量变化处理
- */
 const handleStockSizeChange = (size: number) => {
   stockPagination.pageSize = size
-  stockPagination.currentPage = 1 // 重置到第一页
+  stockPagination.currentPage = 1
+  loadStockRecords()
 }
 
 /**

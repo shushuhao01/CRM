@@ -183,111 +183,182 @@
             <!-- 价格库存 -->
             <el-card class="form-card" title="价格库存">
               <template #header>
-                <span>价格库存</span>
+                <div style="display: flex; align-items: center; justify-content: space-between;">
+                  <span>价格库存</span>
+                  <div v-if="productForm.productType === 'physical'" style="display: flex; gap: 0;">
+                    <button
+                      type="button"
+                      :style="{
+                        padding: '6px 18px', fontSize: '13px', fontWeight: 500, cursor: 'pointer', border: '1px solid #dcdfe6',
+                        borderRadius: '6px 0 0 6px', transition: 'all .2s',
+                        background: productForm.skuType !== 'multi' ? '#409eff' : '#fff',
+                        color: productForm.skuType !== 'multi' ? '#fff' : '#606266',
+                        borderColor: productForm.skuType !== 'multi' ? '#409eff' : '#dcdfe6'
+                      }"
+                      @click="productForm.skuType = 'none'; handleSkuTypeChange('none')"
+                    >无SKU</button>
+                    <button
+                      type="button"
+                      :style="{
+                        padding: '6px 18px', fontSize: '13px', fontWeight: 500, cursor: 'pointer', border: '1px solid #dcdfe6',
+                        borderRadius: '0 6px 6px 0', marginLeft: '-1px', transition: 'all .2s',
+                        background: productForm.skuType === 'multi' ? '#409eff' : '#fff',
+                        color: productForm.skuType === 'multi' ? '#fff' : '#606266',
+                        borderColor: productForm.skuType === 'multi' ? '#409eff' : '#dcdfe6'
+                      }"
+                      @click="productForm.skuType = 'multi'; handleSkuTypeChange('multi')"
+                    >设SKU（多规格）</button>
+                  </div>
+                </div>
               </template>
 
-              <el-row :gutter="20">
-                <el-col :span="12">
-                  <el-form-item label="销售价格" prop="price">
-                    <el-input-number
-                      v-model="productForm.price"
-                      :precision="2"
-                      :step="0.01"
-                      :min="0"
-                      style="width: 100%"
-                    />
-                    <span class="unit-text">元</span>
-                  </el-form-item>
-                </el-col>
-                <el-col :span="12">
-                  <el-form-item label="成本价格" prop="costPrice">
-                    <el-input-number
-                      v-model="productForm.costPrice"
-                      :precision="2"
-                      :step="0.01"
-                      :min="0"
-                      style="width: 100%"
-                    />
-                    <span class="unit-text">元</span>
-                  </el-form-item>
-                </el-col>
-              </el-row>
+              <!-- 无SKU模式 -->
+              <template v-if="productForm.skuType !== 'multi' || productForm.productType !== 'physical'">
+                <el-row :gutter="20">
+                  <el-col :span="12">
+                    <el-form-item label="销售价格" prop="price">
+                      <el-input-number v-model="productForm.price" :precision="2" :step="0.01" :min="0" style="width: 100%" />
+                      <span class="unit-text">元</span>
+                    </el-form-item>
+                  </el-col>
+                  <el-col :span="12">
+                    <el-form-item label="成本价格" prop="costPrice">
+                      <el-input-number v-model="productForm.costPrice" :precision="2" :step="0.01" :min="0" style="width: 100%" />
+                      <span class="unit-text">元</span>
+                    </el-form-item>
+                  </el-col>
+                </el-row>
+                <el-row :gutter="20">
+                  <el-col :span="12">
+                    <el-form-item label="市场价格" prop="marketPrice">
+                      <el-input-number v-model="productForm.marketPrice" :precision="2" :step="0.01" :min="0" style="width: 100%" />
+                      <span class="unit-text">元</span>
+                    </el-form-item>
+                  </el-col>
+                  <el-col :span="12" v-if="productForm.productType === 'physical'">
+                    <el-form-item label="当前库存" prop="stock">
+                      <el-input-number v-model="productForm.stock" :min="0" style="width: 100%" />
+                    </el-form-item>
+                  </el-col>
+                </el-row>
+                <el-row :gutter="20" v-if="productForm.productType === 'physical'">
+                  <el-col :span="12">
+                    <el-form-item label="最低库存" prop="minStock">
+                      <el-input-number v-model="productForm.minStock" :min="0" style="width: 100%" />
+                    </el-form-item>
+                  </el-col>
+                  <el-col :span="12">
+                    <el-form-item label="最高库存" prop="maxStock">
+                      <el-input-number v-model="productForm.maxStock" :min="0" style="width: 100%" />
+                    </el-form-item>
+                  </el-col>
+                </el-row>
+              </template>
 
-              <el-row :gutter="20">
-                <el-col :span="12">
-                  <el-form-item label="市场价格" prop="marketPrice">
-                    <el-input-number
-                      v-model="productForm.marketPrice"
-                      :precision="2"
-                      :step="0.01"
-                      :min="0"
-                      style="width: 100%"
-                    />
-                    <span class="unit-text">元</span>
-                  </el-form-item>
-                </el-col>
-                <el-col :span="12" v-if="productForm.productType === 'physical'">
-                  <el-form-item label="当前库存" prop="stock">
-                    <el-input-number
-                      v-model="productForm.stock"
-                      :min="0"
-                      style="width: 100%"
-                    />
-                  </el-form-item>
-                </el-col>
-              </el-row>
+              <!-- SKU模式 -->
+              <template v-if="productForm.skuType === 'multi' && productForm.productType === 'physical'">
+                <!-- 规格组管理 -->
+                <div class="sku-spec-section" style="margin-bottom: 20px;">
+                  <div v-for="(group, gIdx) in skuSpecGroups" :key="gIdx" style="margin-bottom: 16px; padding: 14px 16px; background: #f5f7fa; border-radius: 8px;">
+                    <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
+                      <el-input v-model="group.specName" :placeholder="['规格名称（如：颜色）','规格名称（如：尺寸）','规格名称（如：款式）'][gIdx] || '规格名称'" style="width: 220px;" />
+                      <el-button type="danger" :icon="Delete" circle size="small" @click="removeSpecGroup(gIdx)" />
+                    </div>
+                    <div style="display: flex; flex-wrap: wrap; gap: 6px; align-items: center;">
+                      <el-tag v-for="(val, vIdx) in group.specValues" :key="vIdx" closable @close="removeSpecValue(gIdx, vIdx)" type="primary" effect="light">
+                        {{ val }}
+                      </el-tag>
+                      <el-input v-model="group._inputVal" placeholder="输入规格值后按回车" style="width: 220px;" size="small" @keyup.enter="addSpecValue(gIdx)" />
+                    </div>
+                  </div>
+                  <el-button type="primary" plain size="small" @click="addSpecGroup" :disabled="skuSpecGroups.length >= 3">
+                    + 添加规格组{{ skuSpecGroups.length >= 3 ? '（最多3组）' : '' }}
+                  </el-button>
+                </div>
 
-              <el-row :gutter="20" v-if="productForm.productType === 'physical'">
-                <el-col :span="12">
-                  <el-form-item label="最低库存" prop="minStock">
-                    <el-input-number
-                      v-model="productForm.minStock"
-                      :min="0"
-                      style="width: 100%"
-                    />
-                  </el-form-item>
-                </el-col>
-                <el-col :span="12">
-                  <el-form-item label="最高库存" prop="maxStock">
-                    <el-input-number
-                      v-model="productForm.maxStock"
-                      :min="0"
-                      style="width: 100%"
-                    />
-                  </el-form-item>
-                </el-col>
-              </el-row>
+                <!-- SKU矩阵表格 -->
+                <div v-if="skuList.length > 0" class="sku-table-section">
+                  <div style="margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;">
+                    <span style="font-weight: 600; font-size: 14px;">SKU列表（共{{ skuList.length }}个）
+                      <span v-if="skuSelectedRows.length > 0" style="font-weight: 400; font-size: 12px; color: #909399; margin-left: 6px;">已选 {{ skuSelectedRows.length }} 项</span>
+                    </span>
+                    <div style="display: flex; gap: 6px;">
+                      <el-button size="small" :disabled="skuSelectedRows.length === 0" style="background: #ecf5ff; color: #409eff; border-color: #d9ecff;" @click="batchSetSkuField('price', '售价')">批量设售价</el-button>
+                      <el-button size="small" :disabled="skuSelectedRows.length === 0" style="background: #f0f9eb; color: #67c23a; border-color: #e1f3d8;" @click="batchSetSkuField('costPrice', '成本')">批量设成本</el-button>
+                      <el-button size="small" :disabled="skuSelectedRows.length === 0" style="background: #fdf6ec; color: #e6a23c; border-color: #faecd8;" @click="batchSetSkuField('stock', '库存')">批量设库存</el-button>
+                      <el-button size="small" :disabled="skuSelectedRows.length === 0" style="background: #f4f4f5; color: #909399; border-color: #e9e9eb;" @click="batchSetSkuField('weight', '重量')">批量设重量</el-button>
+                    </div>
+                  </div>
+                  <el-table :data="skuList" border size="small" max-height="450" @selection-change="handleSkuSelectionChange" ref="skuTableRef">
+                    <el-table-column type="selection" width="45" align="center" />
+                    <el-table-column label="SKU图片" width="80" align="center">
+                      <template #default="{ row }">
+                        <div style="display: flex; justify-content: center;">
+                          <input type="file" accept="image/jpeg,image/png,image/gif,image/webp,image/bmp" style="display: none;" :ref="(el: any) => { if (el) skuImageInputRefs[row.skuName] = el }" @change="(e: Event) => handleSkuFileChange(e, row)" />
+                          <el-image v-if="row.skuImage" :src="row.skuImage" style="width: 50px; height: 50px; cursor: pointer; border-radius: 4px; border: 1px solid #ebeef5;" fit="cover" @click="triggerSkuImageUpload(row)" />
+                          <div v-else style="width: 50px; height: 50px; border: 1px dashed #dcdfe6; border-radius: 4px; display: flex; align-items: center; justify-content: center; cursor: pointer; background: #fafafa; color: #c0c4cc; font-size: 20px;" @click="triggerSkuImageUpload(row)">+</div>
+                        </div>
+                      </template>
+                    </el-table-column>
+                    <el-table-column label="SKU规格" min-width="160">
+                      <template #default="{ row }">
+                        <span style="font-weight: 500;">{{ row.skuName }}</span>
+                      </template>
+                    </el-table-column>
+                    <el-table-column width="120">
+                      <template #header><span style="color: #f56c6c;">*</span> 售价(元)</template>
+                      <template #default="{ row }">
+                        <el-input-number v-model="row.price" :min="0" :precision="2" :step="0.01" size="small" style="width: 100%;" controls-position="right" :class="{ 'sku-field-error': !row.price || row.price <= 0 }" />
+                      </template>
+                    </el-table-column>
+                    <el-table-column label="成本(元)" width="120">
+                      <template #default="{ row }">
+                        <el-input-number v-model="row.costPrice" :min="0" :precision="2" :step="0.01" size="small" style="width: 100%;" controls-position="right" />
+                      </template>
+                    </el-table-column>
+                    <el-table-column width="100">
+                      <template #header><span style="color: #f56c6c;">*</span> 库存</template>
+                      <template #default="{ row }">
+                        <el-input-number v-model="row.stock" :min="0" size="small" style="width: 100%;" controls-position="right" />
+                      </template>
+                    </el-table-column>
+                    <el-table-column label="重量(kg)" width="100">
+                      <template #default="{ row }">
+                        <el-input-number v-model="row.weight" :min="0" :precision="2" size="small" style="width: 100%;" controls-position="right" />
+                      </template>
+                    </el-table-column>
+                    <el-table-column label="操作" width="60" align="center">
+                      <template #default="{ $index }">
+                        <el-button type="danger" :icon="Delete" circle size="small" @click="removeSkuItem($index)" />
+                      </template>
+                    </el-table-column>
+                  </el-table>
+                  <div style="margin-top: 10px; font-size: 14px; display: flex; gap: 20px;">
+                    <span>总库存：<b style="color: #67c23a; font-size: 16px;">{{ skuList.reduce((s: number, k: any) => s + (k.stock || 0), 0) }}</b></span>
+                    <span>价格范围：<b style="color: #e6a23c; font-size: 16px;">¥{{ Math.min(...skuList.map((k: any) => k.price || 0)) }} - ¥{{ Math.max(...skuList.map((k: any) => k.price || 0)) }}</b></span>
+                  </div>
+                </div>
+              </template>
 
-              <!-- 虚拟商品：无需发货时必填库存 -->
+              <!-- 虚拟商品库存 -->
               <el-row :gutter="20" v-if="productForm.productType === 'virtual' && productForm.virtualDeliveryType === 'none'">
                 <el-col :span="12">
                   <el-form-item label="库存数量" prop="stock" :rules="[{ required: true, message: '无需发货类型必须填写库存', trigger: 'blur' }, { type: 'number', min: 0, message: '库存不能小于0', trigger: 'blur' }]">
-                    <el-input-number
-                      v-model="productForm.stock"
-                      :min="0"
-                      style="width: 100%"
-                      placeholder="售完即止的数量限制"
-                    />
+                    <el-input-number v-model="productForm.stock" :min="0" style="width: 100%" placeholder="售完即止的数量限制" />
                   </el-form-item>
                 </el-col>
               </el-row>
-              <!-- 虚拟商品：卡密/资源类型库存自动计算提示 -->
               <el-alert
                 v-if="productForm.productType === 'virtual' && productForm.virtualDeliveryType && productForm.virtualDeliveryType !== 'none'"
                 title="库存由关联的卡密/资源数量自动计算：作废-1，恢复+1"
-                type="info"
-                :closable="false"
-                show-icon
-                style="margin-bottom: 16px"
+                type="info" :closable="false" show-icon style="margin-bottom: 16px"
               />
 
               <!-- 利润计算 -->
-              <div class="profit-info">
+              <div class="profit-info" v-if="productForm.skuType !== 'multi'">
                 <el-alert
                   :title="`预计利润：¥${calculateProfit()} (${calculateProfitRate()}%)`"
-                  type="info"
-                  :closable="false"
-                  show-icon
+                  type="info" :closable="false" show-icon
                 />
               </div>
             </el-card>
@@ -536,14 +607,15 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { ArrowLeft, Plus, Box, MagicStick } from '@element-plus/icons-vue'
+import { ArrowLeft, Plus, Box, MagicStick, Delete } from '@element-plus/icons-vue'
 import { useProductStore } from '@/stores/product'
 import { useTabsStore } from '@/stores/tabs'
 import { createSafeNavigator } from '@/utils/navigation'
 import { apiService } from '@/services/apiService'
+import { productApi } from '@/api/product'
 
 // 接口定义
 interface UploadFile {
@@ -604,8 +676,217 @@ const productForm = reactive({
   virtualDeliveryType: '',
   cardKeyTemplate: '',
   resourceLinkTemplate: '',
-  virtualContentEncrypt: false
+  virtualContentEncrypt: false,
+  // SKU字段
+  skuType: 'none' as string
 })
+
+// SKU规格组
+const skuSpecGroups = ref<Array<{ specName: string; specValues: string[]; _inputVal: string }>>([])
+// SKU列表
+const skuList = ref<Array<{
+  id?: string; skuCode: string; skuName: string; skuImage: string
+  price: number; costPrice: number; stock: number; weight: number
+  specValues: Record<string, string>; status: string
+}>>([])
+const skuSelectedRows = ref<any[]>([])
+const skuTableRef = ref<any>(null)
+
+function handleSkuSelectionChange(rows: any[]) {
+  skuSelectedRows.value = rows
+}
+
+function handleSkuTypeChange(val: string) {
+  if (val === 'multi' && skuSpecGroups.value.length === 0) {
+    skuSpecGroups.value.push({ specName: '', specValues: [], _inputVal: '' })
+  }
+}
+
+function hasSkuDataFilled() {
+  return skuList.value.some(s => s.price > 0 || s.costPrice > 0 || s.stock > 0 || s.weight > 0 || s.skuImage)
+}
+
+function addSpecGroup() {
+  if (skuSpecGroups.value.length >= 3) return
+  if (hasSkuDataFilled()) {
+    ElMessageBox.confirm(
+      '新增规格组将重新生成SKU组合，现有SKU中已填写的价格、库存、成本、重量等数据可能会丢失，请谨慎操作！',
+      '确认新增规格',
+      { type: 'warning', confirmButtonText: '确认新增', cancelButtonText: '取消' }
+    ).then(() => {
+      skuSpecGroups.value.push({ specName: '', specValues: [], _inputVal: '' })
+    }).catch(() => {})
+  } else {
+    skuSpecGroups.value.push({ specName: '', specValues: [], _inputVal: '' })
+  }
+}
+
+function removeSpecGroup(idx: number) {
+  skuSpecGroups.value.splice(idx, 1)
+  generateSkuList()
+}
+
+function doAddSpecValue(gIdx: number) {
+  const group = skuSpecGroups.value[gIdx]
+  const val = (group._inputVal || '').trim()
+  if (!val) return
+  if (group.specValues.includes(val)) {
+    ElMessage.warning('规格值已存在')
+    return
+  }
+  group.specValues.push(val)
+  group._inputVal = ''
+  generateSkuList()
+}
+
+function addSpecValue(gIdx: number) {
+  const val = (skuSpecGroups.value[gIdx]?._inputVal || '').trim()
+  if (!val) return
+  if (hasSkuDataFilled()) {
+    ElMessageBox.confirm(
+      '新增规格值将重新生成SKU组合，现有SKU中已填写的价格、库存、成本等数据可能会丢失，请谨慎操作！',
+      '确认新增规格值',
+      { type: 'warning', confirmButtonText: '确认新增', cancelButtonText: '取消' }
+    ).then(() => { doAddSpecValue(gIdx) }).catch(() => {})
+  } else {
+    doAddSpecValue(gIdx)
+  }
+}
+
+function removeSpecValue(gIdx: number, vIdx: number) {
+  skuSpecGroups.value[gIdx].specValues.splice(vIdx, 1)
+  generateSkuList()
+}
+
+function generateSkuList() {
+  const groups = skuSpecGroups.value.filter(g => g.specValues.length > 0)
+  if (groups.length === 0) { skuList.value = []; return }
+  
+  const cartesian = (arrays: string[][]): string[][] => {
+    return arrays.reduce<string[][]>((acc, cur) => {
+      if (acc.length === 0) return cur.map(v => [v])
+      const result: string[][] = []
+      acc.forEach(a => cur.forEach(v => result.push([...a, v])))
+      return result
+    }, [])
+  }
+
+  const combos = cartesian(groups.map(g => g.specValues))
+  const existingMap = new Map(skuList.value.map(s => [s.skuName, s]))
+  
+  skuList.value = combos.map(combo => {
+    const skuName = combo.join(' / ')
+    const existing = existingMap.get(skuName)
+    const specValues: Record<string, string> = {}
+    groups.forEach((g, i) => { specValues[g.specName] = combo[i] })
+    return {
+      id: existing?.id,
+      skuCode: existing?.skuCode || '',
+      skuName,
+      skuImage: existing?.skuImage || '',
+      price: existing?.price ?? productForm.price ?? 0,
+      costPrice: existing?.costPrice ?? productForm.costPrice ?? 0,
+      stock: existing?.stock ?? 0,
+      weight: existing?.weight ?? 0,
+      specValues,
+      status: existing?.status || 'active'
+    }
+  })
+}
+
+const skuImageInputRefs: Record<string, HTMLInputElement> = {}
+
+function triggerSkuImageUpload(row: any) {
+  const input = skuImageInputRefs[row.skuName]
+  if (input) {
+    input.value = ''
+    input.click()
+  }
+}
+
+function cropToSquare(file: File): Promise<File> {
+  return new Promise((resolve) => {
+    if (file.type === 'image/gif') { resolve(file); return }
+    const img = new Image()
+    img.onload = () => {
+      const size = Math.min(img.width, img.height)
+      const canvas = document.createElement('canvas')
+      canvas.width = size
+      canvas.height = size
+      const ctx = canvas.getContext('2d')!
+      const sx = (img.width - size) / 2
+      const sy = (img.height - size) / 2
+      ctx.drawImage(img, sx, sy, size, size, 0, 0, size, size)
+      canvas.toBlob((blob) => {
+        if (blob) {
+          resolve(new File([blob], file.name, { type: file.type || 'image/jpeg', lastModified: Date.now() }))
+        } else {
+          resolve(file)
+        }
+      }, file.type || 'image/jpeg', 0.92)
+    }
+    img.onerror = () => resolve(file)
+    const reader = new FileReader()
+    reader.onload = (e) => { img.src = e.target?.result as string }
+    reader.readAsDataURL(file)
+  })
+}
+
+async function handleSkuFileChange(e: Event, row: any) {
+  const input = e.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+  if (!file.type.startsWith('image/')) {
+    ElMessage.error('请选择图片文件（JPG/PNG/GIF/WebP/BMP）')
+    return
+  }
+  try {
+    const croppedFile = await cropToSquare(file)
+    const { uploadImage } = await import('@/services/uploadService')
+    const result = await uploadImage(croppedFile, 'product')
+    if (result.success && result.url) {
+      row.skuImage = result.url
+      ElMessage.success('SKU图片上传成功')
+    } else {
+      ElMessage.error(result.message || 'SKU图片上传失败')
+    }
+  } catch (err) {
+    console.error('SKU图片上传失败:', err)
+    ElMessage.error('SKU图片上传失败，请重试')
+  }
+}
+
+function batchSetSkuField(field: 'price' | 'costPrice' | 'stock' | 'weight', label: string) {
+  if (skuSelectedRows.value.length === 0) {
+    ElMessage.warning('请先勾选需要批量设置的SKU')
+    return
+  }
+  const isInt = field === 'stock'
+  const pattern = isInt ? /^\d+$/ : /^\d+(\.\d{1,2})?$/
+  const count = skuSelectedRows.value.length
+  const total = skuList.value.length
+  ElMessageBox.prompt(`请输入统一${label}（仅限数字）`, `批量设置${label}`, {
+    inputPattern: pattern,
+    inputErrorMessage: `请输入正确的${label}（仅限数字）`,
+    inputValue: '',
+    inputPlaceholder: isInt ? `请输入${label}数量` : `请输入${label}金额`,
+    confirmButtonText: '确定应用',
+    cancelButtonText: '取消',
+    dangerouslyUseHTMLString: true,
+    message: `<p style="color:#606266;font-size:13px;">将对已勾选的 <b style="color:#409eff;">${count}</b> / ${total} 个SKU设置${label}</p>`
+  }).then(({ value }) => {
+    const num = Number(value)
+    const selectedNames = new Set(skuSelectedRows.value.map((s: any) => s.skuName))
+    skuList.value.forEach(s => {
+      if (selectedNames.has(s.skuName)) { (s as any)[field] = num }
+    })
+    ElMessage.success(`已将 ${count} 个SKU的${label}设置为 ${value}`)
+  }).catch(() => {})
+}
+
+function removeSkuItem(idx: number) {
+  skuList.value.splice(idx, 1)
+}
 
 // 原始虚拟发货方式（编辑模式用于检测变更）
 const originalVirtualDeliveryType = ref('')
@@ -858,12 +1139,32 @@ const handleSave = async () => {
     }
 
     // 验证库存设置
-    if (productForm.productType === 'physical' && productForm.minStock > productForm.maxStock) {
+    if (productForm.productType === 'physical' && productForm.skuType !== 'multi' && productForm.minStock > productForm.maxStock) {
       ElMessage.error('最低库存不能大于最高库存')
       return
     }
 
-    if (productForm.costPrice > productForm.price) {
+    // SKU模式验证：售价必填且不能为0，库存必填（允许0）
+    if (productForm.productType === 'physical' && productForm.skuType === 'multi') {
+      if (skuList.value.length === 0) {
+        ElMessage.error('请至少添加一个SKU规格')
+        return
+      }
+      const invalidSkus = skuList.value.filter(s => !s.price || s.price <= 0)
+      if (invalidSkus.length > 0) {
+        const names = invalidSkus.map(s => s.skuName).join('、')
+        ElMessage.error(`以下SKU的售价未填写或为0，请完善：${names}`)
+        return
+      }
+      const noStockSkus = skuList.value.filter(s => s.stock === undefined || s.stock === null || s.stock < 0)
+      if (noStockSkus.length > 0) {
+        const names = noStockSkus.map(s => s.skuName).join('、')
+        ElMessage.error(`以下SKU的库存未填写，请完善：${names}`)
+        return
+      }
+    }
+
+    if (productForm.costPrice > productForm.price && productForm.skuType !== 'multi') {
       try {
         await ElMessageBox.confirm(
           '成本价格高于销售价格，确定要保存吗？',
@@ -887,6 +1188,19 @@ const handleSave = async () => {
     // 更新store中的商品数据
     if (isAddMode) {
       // 新增商品
+      const skuPayload: any = {}
+      if (productForm.productType === 'physical' && productForm.skuType === 'multi' && skuList.value.length > 0) {
+        skuPayload.skuType = 'multi'
+        skuPayload.specGroups = skuSpecGroups.value.map((g, i) => ({
+          specName: g.specName, specValues: g.specValues, sortOrder: i
+        }))
+        skuPayload.skus = skuList.value.map((s, i) => ({
+          id: s.id, skuCode: s.skuCode, skuName: s.skuName, skuImage: s.skuImage,
+          price: s.price, costPrice: s.costPrice, stock: s.stock, weight: s.weight,
+          specValues: s.specValues, sortOrder: i, status: s.status
+        }))
+      }
+
       const newProduct = productStore.addProduct({
         code: productForm.code,
         name: productForm.name,
@@ -915,13 +1229,29 @@ const handleSave = async () => {
         virtualDeliveryType: productForm.productType === 'virtual' ? productForm.virtualDeliveryType : null,
         cardKeyTemplate: productForm.cardKeyTemplate || null,
         resourceLinkTemplate: productForm.resourceLinkTemplate || null,
-        virtualContentEncrypt: productForm.virtualContentEncrypt
-      })
+        virtualContentEncrypt: productForm.virtualContentEncrypt,
+        ...skuPayload
+      } as any)
       if (newProduct && newProduct.id) {
         productForm.id = newProduct.id.toString()
       }
     } else {
       // 更新商品
+      const updateSkuPayload: any = {}
+      if (productForm.productType === 'physical') {
+        updateSkuPayload.skuType = productForm.skuType
+        if (productForm.skuType === 'multi' && skuList.value.length > 0) {
+          updateSkuPayload.specGroups = skuSpecGroups.value.map((g, i) => ({
+            specName: g.specName, specValues: g.specValues, sortOrder: i
+          }))
+          updateSkuPayload.skus = skuList.value.map((s, i) => ({
+            id: s.id, skuCode: s.skuCode, skuName: s.skuName, skuImage: s.skuImage,
+            price: s.price, costPrice: s.costPrice, stock: s.stock, weight: s.weight,
+            specValues: s.specValues, sortOrder: i, status: s.status
+          }))
+        }
+      }
+
       productStore.updateProduct(productForm.id, {
         code: productForm.code,
         name: productForm.name,
@@ -948,8 +1278,9 @@ const handleSave = async () => {
         virtualDeliveryType: productForm.virtualDeliveryType || null,
         cardKeyTemplate: productForm.cardKeyTemplate || null,
         resourceLinkTemplate: productForm.resourceLinkTemplate || null,
-        virtualContentEncrypt: productForm.virtualContentEncrypt
-      })
+        virtualContentEncrypt: productForm.virtualContentEncrypt,
+        ...updateSkuPayload
+      } as any)
     }
 
     ElMessage.success(isEdit.value ? '商品更新成功' : '商品创建成功')
@@ -1025,14 +1356,21 @@ const loadProductInfo = async () => {
       return
     }
 
-    // 从store中获取真实的商品数据，尝试字符串和数字两种类型
-    let product = productStore.getProductById(productId)
-    if (!product && !isNaN(Number(productId))) {
-      product = productStore.getProductById(Number(productId))
+    // 优先通过API获取完整商品详情（含SKU数据）
+    let product: any = null
+    try {
+      product = await productApi.getDetail(String(productId))
+    } catch (e) {
+      console.warn('API获取详情失败，回退到store:', e)
+    }
+    if (!product || !product.id) {
+      product = productStore.getProductById(productId)
+      if (!product && !isNaN(Number(productId))) {
+        product = productStore.getProductById(Number(productId))
+      }
     }
 
     if (product) {
-      // 使用真实的商品数据填充表单
       Object.assign(productForm, {
         id: product.id,
         code: product.code,
@@ -1067,6 +1405,30 @@ const loadProductInfo = async () => {
         virtualContentEncrypt: !!product.virtualContentEncrypt
       })
       originalVirtualDeliveryType.value = product.virtualDeliveryType || ''
+
+      // 恢复SKU数据
+      productForm.skuType = product.skuType || 'none'
+      if (product.skuType === 'multi' && product.specGroups && product.specGroups.length > 0) {
+        skuSpecGroups.value = product.specGroups.map((g: any) => ({
+          specName: g.specName,
+          specValues: g.specValues || [],
+          _inputVal: ''
+        }))
+      }
+      if (product.skuType === 'multi' && product.skus && product.skus.length > 0) {
+        skuList.value = product.skus.map((s: any) => ({
+          id: s.id,
+          skuCode: s.skuCode,
+          skuName: s.skuName,
+          skuImage: s.skuImage || '',
+          price: Number(s.price) || 0,
+          costPrice: Number(s.costPrice) || 0,
+          stock: s.stock || 0,
+          weight: Number(s.weight) || 0,
+          specValues: s.specValues || {},
+          status: s.status || 'active'
+        }))
+      }
 
       // 初始化文件列表
       fileList.value = (product.images || []).map((url: string, index: number) => ({
@@ -1449,5 +1811,9 @@ onMounted(() => {
   .form-content .el-row .el-col {
     margin-bottom: 20px;
   }
+}
+
+.sku-field-error :deep(.el-input__wrapper) {
+  box-shadow: 0 0 0 1px #f56c6c inset !important;
 }
 </style>

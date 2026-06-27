@@ -115,6 +115,14 @@
               <span class="info-value">{{ getProductQuantity() }}</span>
             </div>
           </div>
+          <div v-if="getProductSkuDetails().length > 0" style="margin-top: 8px; border-top: 1px solid #ebeef5; padding-top: 8px;">
+            <div v-for="(item, idx) in getProductSkuDetails()" :key="idx" style="margin-bottom: 6px; font-size: 13px; display: flex; align-items: center; gap: 8px;">
+              <span style="font-weight: 600;">{{ item.name }}</span>
+              <span v-if="item.skuName" style="background: #ecf5ff; color: #409eff; padding: 1px 8px; border-radius: 3px; font-size: 12px; font-weight: 500;">规格: {{ item.skuName }}</span>
+              <span>×{{ item.quantity }}</span>
+              <span style="color: #f56c6c; font-weight: 600;">¥{{ (item.price || 0).toFixed(2) }}</span>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -312,6 +320,16 @@ const getProductName = () => {
     return fullOrder.products.map((p: any) => `${p.name} × ${p.quantity}`).join('，')
   }
   return '-'
+}
+
+// 获取商品SKU详情
+const getProductSkuDetails = () => {
+  const products = props.order?.products || []
+  if (!Array.isArray(products) || products.length === 0) {
+    const fullOrder = getFullOrderInfo()
+    return fullOrder?.products || []
+  }
+  return products.filter((p: any) => p.skuName)
 }
 
 // 获取商品数量

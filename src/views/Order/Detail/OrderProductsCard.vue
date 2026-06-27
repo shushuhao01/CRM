@@ -44,7 +44,15 @@
                       🔥 热销
                     </el-tag>
                   </div>
-                  <div class="product-sku">SKU: {{ row.sku || row.id }}</div>
+                  <div class="product-sku" v-if="row.skuName">
+                    规格：{{ row.skuName }}
+                    <template v-if="row.specValues && typeof row.specValues === 'object'">
+                      <span v-for="(val, key) in row.specValues" :key="key" style="margin-left: 6px;">
+                        <el-tag size="small" effect="plain" style="margin: 1px;">{{ key }}: {{ val }}</el-tag>
+                      </span>
+                    </template>
+                  </div>
+                  <div class="product-sku" v-else-if="row.sku">SKU: {{ row.sku }}</div>
                 </div>
               </div>
             </template>

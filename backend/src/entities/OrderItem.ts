@@ -22,6 +22,18 @@ export class OrderItem {
   @Column({ length: 50, nullable: true, comment: '产品SKU（快照）' })
   productSku: string;
 
+  @Column({ name: 'sku_id', type: 'varchar', length: 50, nullable: true, comment: 'SKU ID' })
+  skuId: string | null;
+
+  @Column({ name: 'sku_name', type: 'varchar', length: 200, nullable: true, comment: 'SKU规格名称快照' })
+  skuName: string | null;
+
+  @Column({ name: 'sku_image', type: 'varchar', length: 500, nullable: true, comment: 'SKU图片快照' })
+  skuImage: string | null;
+
+  @Column({ name: 'spec_values', type: 'json', nullable: true, comment: 'SKU规格值快照' })
+  specValues: Record<string, string> | null;
+
   @Column({ type: 'varchar', length: 500, nullable: true, comment: '产品图片URL（快照）' })
   productImage: string;
 
