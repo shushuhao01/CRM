@@ -528,39 +528,6 @@
               </el-form-item>
             </el-card>
 
-            <!-- SEO设置 -->
-            <el-card class="form-card" title="SEO设置">
-              <template #header>
-                <span>SEO设置</span>
-              </template>
-
-              <el-form-item label="SEO标题" prop="seoTitle">
-                <el-input
-                  v-model="productForm.seoTitle"
-                  placeholder="请输入SEO标题"
-                  maxlength="60"
-                  show-word-limit
-                />
-              </el-form-item>
-
-              <el-form-item label="SEO关键词" prop="seoKeywords">
-                <el-input
-                  v-model="productForm.seoKeywords"
-                  placeholder="请输入SEO关键词，用逗号分隔"
-                />
-              </el-form-item>
-
-              <el-form-item label="SEO描述" prop="seoDescription">
-                <el-input
-                  v-model="productForm.seoDescription"
-                  type="textarea"
-                  :rows="3"
-                  placeholder="请输入SEO描述"
-                  maxlength="160"
-                  show-word-limit
-                />
-              </el-form-item>
-            </el-card>
 
             <!-- 操作提示 -->
             <el-card class="form-card" title="操作提示">
@@ -570,16 +537,19 @@
 
               <div class="tips-content">
                 <el-alert
-                  title="保存提示"
-                  type="warning"
+                  title="商品操作须知"
+                  type="info"
                   :closable="false"
                   show-icon
                 >
-                  <ul>
-                    <li>商品编码一旦保存不可修改</li>
-                    <li>价格变动会影响现有订单</li>
-                    <li>库存调整请谨慎操作</li>
-                    <li>图片建议使用高清图片</li>
+                  <ul style="margin: 4px 0 0; padding-left: 16px; line-height: 2;">
+                    <li>商品编码保存后不可修改，请仔细确认</li>
+                    <li>修改价格不会影响已下单的订单，仅对新订单生效</li>
+                    <li v-if="productForm.productType === 'virtual'">虚拟商品请在保存后前往对应库存管理页添加卡密或资源</li>
+                    <li v-if="productForm.skuType === 'multi'">设置多规格SKU后，价格和库存以各SKU为准</li>
+                    <li v-if="productForm.skuType === 'multi'">新增或删除规格会重新生成SKU组合，已有数据将被清除</li>
+                    <li v-if="!isEdit">新建商品默认为上架状态，保存后即可在订单中选择</li>
+                    <li>商品图片建议使用 800×800px 高清图，第一张为主图</li>
                   </ul>
                 </el-alert>
               </div>

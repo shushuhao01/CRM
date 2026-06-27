@@ -1741,49 +1741,20 @@ const loadOperationLogs = async () => {
 
     // 🔥 确保用户数据已加载
     if (userStore.users.length === 0) {
-      console.log('[操作日志] 用户数据未加载，开始加载...')
       await userStore.loadUsers()
-      console.log('[操作日志] 用户数据加载完成，共', userStore.users.length, '个用户')
     }
 
     // 🔥 辅助函数：将用户ID转换为姓名
     const getUserName = (userId: string | undefined) => {
-      if (!userId) {
-        console.log('[操作日志] userId为空，返回"系统"')
-        return '系统'
-      }
-
-      console.log('[操作日志] 查找用户ID:', userId)
-
-      // 尝试通过ID查找用户
+      if (!userId) return '系统'
       const user = userStore.getUserById(userId)
-      if (user) {
-        const userName = user.realName || user.name || user.username || userId
-        console.log('[操作日志] 找到用户:', userName)
-        return userName
-      }
-
-      // 🔥 如果ID是特殊格式(如 user_xxx),尝试提取真实ID或匹配username
+      if (user) return user.realName || user.name || user.username || userId
       if (typeof userId === 'string' && userId.includes('_')) {
-        console.log('[操作日志] 检测到特殊格式ID，尝试匹配...')
-        // 尝试从users列表中通过username匹配
         const matchedUser = userStore.users.find(u =>
-          u.username === userId ||
-          u.id === userId ||
-          String(u.id) === userId ||
-          userId.includes(String(u.id)) ||
-          userId.includes(u.username)
+          u.username === userId || u.id === userId || String(u.id) === userId
         )
-        if (matchedUser) {
-          const userName = matchedUser.realName || matchedUser.name || matchedUser.username || userId
-          console.log('[操作日志] 通过特殊格式匹配到用户:', userName)
-          return userName
-        }
+        if (matchedUser) return matchedUser.realName || matchedUser.name || matchedUser.username || userId
       }
-
-      // 如果都找不到,返回原ID
-      console.log('[操作日志] 未找到用户，返回原ID:', userId)
-      console.log('[操作日志] 当前用户列表:', userStore.users.map(u => ({ id: u.id, name: u.name, username: u.username })))
       return userId
     }
 
@@ -1850,27 +1821,21 @@ const loadOperationLogs = async () => {
       })
     }
 
-    // 库存调整记录
-    if (currentProduct.stock !== currentProduct.minStock) {
-      logs.push({
-        id: `stock_adjust_${productId}`,
-        operator: '库存管理员',
-        action: '调整库存',
-        detail: `当前库存：${currentProduct.stock}件`,
-        createTime: new Date(Date.now() - Math.random() * 7 * 24 * 60 * 60 * 1000).toLocaleString('zh-CN')
+    // 从后端获取库存变动记录作为操作日志补充
+    try {
+      const adjRes = await productApi.getStockAdjustments({ productId: String(productId), pageSize: 20 })
+      const adjList = adjRes.list || []
+      adjList.forEach((a: any) => {
+        const typeMap: Record<string, string> = { increase: '增加库存', decrease: '减少库存', set: '设置库存' }
+        logs.push({
+          id: `adj_${a.id}`,
+          operator: a.operatorName || '系统',
+          action: typeMap[a.adjustType] || '库存变动',
+          detail: `${a.skuName ? `[${a.skuName}] ` : ''}数量: ${a.quantity}，${a.beforeStock} → ${a.afterStock}${a.reason ? `，原因: ${a.reason}` : ''}`,
+          createTime: a.createdAt || ''
+        })
       })
-    }
-
-    // 价格调整记录
-    if (currentProduct.price !== currentProduct.marketPrice) {
-      logs.push({
-        id: `price_adjust_${productId}`,
-        operator: '价格管理员',
-        action: '调整价格',
-        detail: `销售价格调整为：¥${currentProduct.price}`,
-        createTime: new Date(Date.now() - Math.random() * 14 * 24 * 60 * 60 * 1000).toLocaleString('zh-CN')
-      })
-    }
+    } catch (_) { /* ignore */ }
 
     // 按时间倒序排列，只保留最近的20条记录
     operationLogs.value = logs
