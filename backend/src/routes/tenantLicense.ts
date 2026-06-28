@@ -10,8 +10,62 @@ import { adminNotificationService } from '../services/AdminNotificationService';
 import { getTenantResourceUsage } from '../middleware/checkTenantLimits';
 import { formatDateTime } from '../utils/dateFormat';
 import { createDefaultAdmin } from '../utils/adminAccountHelper';
+import { getCentralAdminApiUrl } from '../config/centralServer';
+import os from 'os';
+import https from 'https';
+import http from 'http';
 
 import { log } from '../config/logger';
+
+/**
+ * 兼容所有 Node.js 版本的 HTTPS POST 请求（不依赖全局 fetch）
+ */
+function httpsPost(url: string, data: any, timeoutMs = 10000): Promise<any> {
+  return new Promise((resolve, reject) => {
+    try {
+      const urlObj = new URL(url);
+      const postData = JSON.stringify(data);
+      const isHttps = urlObj.protocol === 'https:';
+      const transport = isHttps ? https : http;
+      console.log(`[httpsPost] 发起请求: ${urlObj.hostname}:${urlObj.port || (isHttps ? 443 : 80)}${urlObj.pathname}, 协议: ${urlObj.protocol}, 数据长度: ${postData.length}`);
+      const req = transport.request({
+        hostname: urlObj.hostname,
+        port: urlObj.port || (isHttps ? 443 : 80),
+        path: urlObj.pathname + urlObj.search,
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(postData),
+        },
+        timeout: timeoutMs,
+      }, (res) => {
+        console.log(`[httpsPost] 收到响应: statusCode=${res.statusCode}`);
+        let body = '';
+        res.on('data', (chunk: any) => body += chunk);
+        res.on('end', () => {
+          console.log(`[httpsPost] 响应完成: 长度=${body.length}, 内容=${body.substring(0, 200)}`);
+          try { resolve(JSON.parse(body)); }
+          catch { reject(new Error(`Invalid JSON from central server (status ${res.statusCode}): ${body.substring(0, 200)}`)); }
+        });
+      });
+      req.on('error', (e: Error) => {
+        console.error(`[httpsPost] 请求error事件: ${e.message}, code=${(e as any).code}`);
+        reject(new Error(`HTTPS request error: ${e.message}`));
+      });
+      req.on('timeout', () => {
+        console.error(`[httpsPost] 请求超时 (${timeoutMs}ms)`);
+        req.destroy();
+        reject(new Error('Central server request timeout'));
+      });
+      req.write(postData);
+      req.end();
+    } catch (setupErr: any) {
+      console.error(`[httpsPost] 请求初始化异常: ${setupErr.message}`);
+      reject(setupErr);
+    }
+  });
+}
+
 const router = Router();
 
 // 🔥 正确获取客户端IP（支持代理/反向代理）
@@ -49,7 +103,7 @@ function safeJsonParse(val: any): any {
 router.get('/check-private', async (_req: Request, res: Response) => {
   try {
     const rows = await AppDataSource.query(
-      `SELECT t.id, t.name, t.code, t.license_status, t.status, t.expire_date,
+      `SELECT t.id, t.name, t.code, t.license_key, t.license_status, t.status, t.expire_date,
               t.max_users, t.features,
               p.name as package_name, p.features as package_features
        FROM tenants t
@@ -65,6 +119,7 @@ router.get('/check-private', async (_req: Request, res: Response) => {
     }
 
     const isExpired = tenant.expire_date && new Date(tenant.expire_date) < new Date();
+    const isPrivate = !!(tenant.license_key && tenant.license_key.toUpperCase().startsWith('PRIVATE-'));
 
     res.json({
       success: true,
@@ -73,12 +128,12 @@ router.get('/check-private', async (_req: Request, res: Response) => {
         tenantId: tenant.id,
         tenantCode: tenant.code,
         tenantName: tenant.name,
-        packageName: tenant.package_name,
+        packageName: isPrivate ? '私有部署版' : (tenant.package_name || '标准版'),
         maxUsers: tenant.max_users,
         expireDate: tenant.expire_date,
         features: safeJsonParse(tenant.features),
         packageFeatures: safeJsonParse(tenant.package_features),
-        deployType: 'private',
+        deployType: isPrivate ? 'private' : 'saas',
         expired: !!isExpired
       }
     });
@@ -106,6 +161,8 @@ router.post('/verify', async (req: Request, res: Response) => {
 
     // ============ 私有部署授权码（PRIVATE- 前缀）============
     if (licenseKey.toUpperCase().startsWith('PRIVATE-')) {
+      console.log(`[TenantLicense][STEP-1] 收到PRIVATE授权码验证请求: ${licenseKey.substring(0, 16)}..., NODE版本: ${process.version}, DEPLOY_MODE: ${process.env.DEPLOY_MODE || '(未设置,默认private)'}`);
+
       let lic: any = null;
       try {
         const rows = await AppDataSource.query(
@@ -116,20 +173,30 @@ router.post('/verify', async (req: Request, res: Response) => {
           [licenseKey]
         );
         lic = rows[0] || null;
+        console.log(`[TenantLicense][STEP-2] licenses表查询结果: ${lic ? '找到记录' : '无记录'}`);
       } catch (licQueryErr: any) {
+        console.log(`[TenantLicense][STEP-2] licenses表查询失败(正常): ${(licQueryErr as any).message?.substring(0, 120)}`);
         log.warn('[TenantLicense] 本地licenses表查询失败，将尝试其他验证方式:', (licQueryErr as any).message?.substring(0, 100));
       }
 
       if (!lic) {
         // 本地 licenses 表无记录（私有部署A站点正常情况），先检查 tenants 表是否已激活
-        const existTenantRows = await AppDataSource.query(
-          `SELECT id, name, code, license_key, license_status, expire_date, max_users, features
-           FROM tenants WHERE license_key = ? LIMIT 1`,
-          [licenseKey]
-        ).catch(() => []);
+        let existTenantRows: any[] = [];
+        try {
+          existTenantRows = await AppDataSource.query(
+            `SELECT id, name, code, license_key, license_status, expire_date, max_users, features
+             FROM tenants WHERE license_key = ? LIMIT 1`,
+            [licenseKey]
+          );
+          console.log(`[TenantLicense][STEP-3] tenants表查询结果: ${existTenantRows.length}条, ${existTenantRows[0] ? '租户=' + existTenantRows[0].name : '无记录'}`);
+        } catch (tenantQueryErr: any) {
+          console.log(`[TenantLicense][STEP-3] tenants表查询失败: ${tenantQueryErr.message?.substring(0, 120)}`);
+          existTenantRows = [];
+        }
         const existTenant = existTenantRows[0];
 
         if (existTenant) {
+          console.log(`[TenantLicense][STEP-3b] 找到已有租户,直接返回: id=${existTenant.id}, code=${existTenant.code}`);
           await AppDataSource.query(`UPDATE tenants SET last_verify_at = NOW() WHERE id = ?`, [existTenant.id]).catch(() => {});
           const isExpired = existTenant.expire_date && new Date(existTenant.expire_date) < new Date();
           return res.json({
@@ -151,20 +218,18 @@ router.post('/verify', async (req: Request, res: Response) => {
         }
 
         // 本地完全无记录，尝试中央服务器在线验证（私有部署首次激活）
+        console.log(`[TenantLicense][STEP-4] 本地无任何记录,准备中央服务器验证...`);
         try {
-          const { getCentralAdminApiUrl } = await import('../config/centralServer');
           const adminApiUrl = getCentralAdminApiUrl();
-          const os = await import('os');
           const machineId = `${os.hostname()}-${os.platform()}-${os.arch()}`;
+          const verifyUrl = `${adminApiUrl}/verify/license`;
 
+          console.log(`[TenantLicense][STEP-5] 中央服务器URL: ${verifyUrl}`);
+          console.log(`[TenantLicense][STEP-5] machineId: ${machineId}`);
           log.info(`[TenantLicense] 本地无授权记录，尝试中央服务器验证: ${licenseKey.substring(0, 16)}...`);
-          const fetchResponse = await fetch(`${adminApiUrl}/verify/license`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ licenseKey, machineId }),
-            signal: AbortSignal.timeout(10000)
-          });
-          const verifyResult = await fetchResponse.json() as any;
+
+          const verifyResult = await httpsPost(verifyUrl, { licenseKey, machineId }) as any;
+          console.log(`[TenantLicense][STEP-6] 中央服务器响应: success=${verifyResult.success}`);
 
           if (!verifyResult.success) {
             return res.status(400).json({
@@ -179,6 +244,24 @@ router.post('/verify', async (req: Request, res: Response) => {
           const d = new Date();
           const tenantCode = `P${d.getFullYear().toString().slice(2)}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}${Math.random().toString(36).substring(2,6).toUpperCase()}`;
 
+          // 兼容旧版数据库：自动补全 tenants 表可能缺失的列
+          const missingColumns = [
+            { name: 'code', def: 'VARCHAR(50) DEFAULT NULL' },
+            { name: 'license_key', def: 'VARCHAR(255) DEFAULT NULL' },
+            { name: 'license_status', def: "VARCHAR(20) DEFAULT 'pending'" },
+            { name: 'max_users', def: 'INT DEFAULT 50' },
+            { name: 'max_storage_gb', def: 'INT DEFAULT 50' },
+            { name: 'features', def: 'TEXT' },
+            { name: 'activated_at', def: 'DATETIME DEFAULT NULL' },
+            { name: 'expire_date', def: 'DATETIME DEFAULT NULL' },
+            { name: 'last_verify_at', def: 'DATETIME DEFAULT NULL' },
+            { name: 'password_hash', def: 'VARCHAR(255) DEFAULT NULL' },
+          ];
+          for (const col of missingColumns) {
+            await AppDataSource.query(`ALTER TABLE tenants ADD COLUMN \`${col.name}\` ${col.def}`).catch(() => {});
+          }
+          console.log(`[TenantLicense][STEP-6b] tenants表列补全完成`);
+
           await AppDataSource.query(
             `INSERT INTO tenants (id, name, code, license_key, license_status, max_users, max_storage_gb, features, status, activated_at, expire_date, last_verify_at, created_at, updated_at)
              VALUES (?, ?, ?, ?, 'active', ?, ?, ?, 'active', ?, ?, ?, ?, ?)`,
@@ -186,6 +269,7 @@ router.post('/verify', async (req: Request, res: Response) => {
              licenseData.maxUsers || 50, 50, JSON.stringify(licenseData.features || []),
              now, licenseData.expiresAt || null, now, now, now]
           );
+          console.log(`[TenantLicense][STEP-7] tenants记录插入成功: ${tenantId}`);
 
           // 保存 system_license 记录（兼容旧版逻辑）
           await AppDataSource.query(`CREATE TABLE IF NOT EXISTS system_license (
@@ -252,6 +336,12 @@ router.post('/verify', async (req: Request, res: Response) => {
             message: '私有授权码首次激活成功'
           });
         } catch (centralErr: any) {
+          console.error(`[TenantLicense][STEP-ERR] ❌ 中央服务器验证捕获异常!`);
+          console.error(`[TenantLicense][STEP-ERR] 错误类型: ${centralErr?.constructor?.name || typeof centralErr}`);
+          console.error(`[TenantLicense][STEP-ERR] 错误消息: ${centralErr.message}`);
+          console.error(`[TenantLicense][STEP-ERR] 错误cause: ${centralErr.cause ? JSON.stringify(centralErr.cause) : '无'}`);
+          console.error(`[TenantLicense][STEP-ERR] 错误code: ${(centralErr as any).code || '无'}`);
+          console.error(`[TenantLicense][STEP-ERR] 完整堆栈: ${centralErr.stack}`);
           log.warn('[TenantLicense] 中央服务器验证失败:', centralErr.message?.substring(0, 200));
 
           let isInSaasMode = false;
@@ -262,14 +352,23 @@ router.post('/verify', async (req: Request, res: Response) => {
             isInSaasMode = saasCheck && saasCheck.length > 0;
           } catch { /* ignore */ }
 
-          const errorMessage = isInSaasMode
-            ? '该授权码为私有部署专用，不能在SaaS租户系统中使用。请使用租户授权码（TENANT-前缀）或联系管理员'
-            : '授权码验证失败，无法连接中央服务器。请检查网络连接后重试';
+          let errorMessage: string;
+          let errorType: string;
+          if (isInSaasMode) {
+            errorMessage = '该授权码为私有部署专用，不能在SaaS租户系统中使用。请使用租户授权码（TENANT-前缀）或联系管理员';
+            errorType = 'WRONG_LICENSE_TYPE';
+          } else if ((centralErr as any).code === 'ER_BAD_FIELD_ERROR' || (centralErr as any).code === 'ER_NO_SUCH_TABLE' || centralErr.message?.includes('Unknown column')) {
+            errorMessage = `数据库表结构不兼容: ${centralErr.message?.substring(0, 80)}，请联系管理员升级`;
+            errorType = 'DB_SCHEMA_ERROR';
+          } else {
+            errorMessage = '授权码验证失败，无法连接中央服务器。请检查网络连接后重试';
+            errorType = 'CENTRAL_SERVER_UNREACHABLE';
+          }
 
           return res.status(404).json({
             success: false,
             message: errorMessage,
-            errorType: isInSaasMode ? 'WRONG_LICENSE_TYPE' : 'CENTRAL_SERVER_UNREACHABLE'
+            errorType
           });
         }
       }
@@ -292,9 +391,20 @@ router.post('/verify', async (req: Request, res: Response) => {
         // 首次激活：在本地 tenants 表创建私有租户记录
         const now = formatDateTime(new Date());
         const tenantId = uuidv4();
-        // 生成私有编码（P前缀区分私有）
         const d = new Date();
         const tenantCode = `P${d.getFullYear().toString().slice(2)}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}${Math.random().toString(36).substring(2,6).toUpperCase()}`;
+        // 兼容旧版数据库：自动补全 tenants 表可能缺失的列
+        for (const col of [
+          { name: 'code', def: 'VARCHAR(50) DEFAULT NULL' },
+          { name: 'license_key', def: 'VARCHAR(255) DEFAULT NULL' },
+          { name: 'license_status', def: "VARCHAR(20) DEFAULT 'pending'" },
+          { name: 'max_storage_gb', def: 'INT DEFAULT 50' },
+          { name: 'activated_at', def: 'DATETIME DEFAULT NULL' },
+          { name: 'last_verify_at', def: 'DATETIME DEFAULT NULL' },
+          { name: 'password_hash', def: 'VARCHAR(255) DEFAULT NULL' },
+        ]) {
+          await AppDataSource.query(`ALTER TABLE tenants ADD COLUMN \`${col.name}\` ${col.def}`).catch(() => {});
+        }
         await AppDataSource.query(
           `INSERT INTO tenants (id, name, code, license_key, license_status, max_users, max_storage_gb, features, status, activated_at, expire_date, last_verify_at, created_at, updated_at)
            VALUES (?, ?, ?, ?, 'active', ?, ?, ?, 'active', ?, ?, ?, ?, ?)`,
@@ -481,7 +591,7 @@ router.post('/verify', async (req: Request, res: Response) => {
         tenantId: tenant.id,
         tenantCode: tenant.code,
         tenantName: tenant.name,
-        packageName: tenant.package_name,
+        packageName: tenant.package_name || '标准版',
         maxUsers: tenant.max_users,
         expireDate: tenant.expire_date,
         features: safeJsonParse(tenant.features),
@@ -514,7 +624,7 @@ router.post('/verify-code', async (req: Request, res: Response) => {
     }
 
     const rows = await AppDataSource.query(
-      `SELECT t.id, t.name, t.code, t.license_status, t.status, t.expire_date,
+      `SELECT t.id, t.name, t.code, t.license_key, t.license_status, t.status, t.expire_date,
               t.max_users, t.features,
               p.name as package_name, p.features as package_features
        FROM tenants t
@@ -527,6 +637,8 @@ router.post('/verify-code', async (req: Request, res: Response) => {
     if (!tenant) {
       return res.status(404).json({ success: false, message: '租户编码不存在，请确认后重试' });
     }
+
+    const isPrivateDeploy = !!(tenant.license_key && tenant.license_key.toUpperCase().startsWith('PRIVATE-'));
 
     if (tenant.license_status === 'pending') {
       return res.status(400).json({
@@ -557,11 +669,12 @@ router.post('/verify-code', async (req: Request, res: Response) => {
         tenantId: tenant.id,
         tenantCode: tenant.code,
         tenantName: tenant.name,
-        packageName: tenant.package_name,
+        packageName: isPrivateDeploy ? '私有部署版' : (tenant.package_name || '标准版'),
         maxUsers: tenant.max_users,
         expireDate: tenant.expire_date,
         features: safeJsonParse(tenant.features),
         packageFeatures: safeJsonParse(tenant.package_features),
+        deployType: isPrivateDeploy ? 'private' : 'saas',
         expired: !!isExpired
       },
       message: isExpired ? '授权已过期，可登录但不能写入数据，请联系管理员续费恢复' : '租户识别成功'
