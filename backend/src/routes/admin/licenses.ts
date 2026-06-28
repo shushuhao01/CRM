@@ -97,8 +97,8 @@ router.get('/', async (req: Request, res: Response) => {
 
     const [list, total] = await queryBuilder.getManyAndCount();
 
-    // 批量查询每个 license 的实际已创建用户数
-    const listWithUserCount = await Promise.all(
+    // 批量查询每个 license 的实际已创建用户数 + 租户编码
+    const listWithExtra = await Promise.all(
       list.map(async (license) => {
         let userCount = 0;
         if (license.customerPhone) {
@@ -110,13 +110,24 @@ router.get('/', async (req: Request, res: Response) => {
             userCount = Number(countResult[0]?.cnt) || 0;
           } catch { /* ignore */ }
         }
-        return { ...license, userCount };
+        // 通过 license_key 精确查询租户编码
+        let tenantCode: string | null = null;
+        try {
+          const tRows = await AppDataSource.query(
+            'SELECT code FROM tenants WHERE license_key = ? LIMIT 1',
+            [license.licenseKey]
+          );
+          if (tRows.length > 0 && tRows[0].code) {
+            tenantCode = tRows[0].code;
+          }
+        } catch { /* ignore */ }
+        return { ...license, userCount, tenantCode };
       })
     );
 
     res.json({
       success: true,
-      data: { list: listWithUserCount, total, page: pageNum, pageSize: pageSizeNum }
+      data: { list: listWithExtra, total, page: pageNum, pageSize: pageSizeNum }
     });
   } catch (error: any) {
     logger.error('[Admin Licenses] Get list failed:', error);
