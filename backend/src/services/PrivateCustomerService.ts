@@ -206,31 +206,43 @@ export class PrivateCustomerService {
       expiresAtFormatted = formatDateTime(date);
     }
 
-    // 创建授权记录
-    await AppDataSource.query(
-      `INSERT INTO licenses (
-        id, license_key, customer_name, customer_contact, customer_phone, customer_email,
-        customer_type, private_customer_id, license_type, max_users, max_storage_gb,
-        features, expires_at, status, notes, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
-      [
-        licenseId,
-        licenseKey,
-        data.customerName,
-        data.contactPerson,
-        data.contactPhone,
-        data.contactEmail,
-        'private',
-        customerId,
-        data.licenseType,
-        data.maxUsers,
-        data.maxStorageGb,
-        JSON.stringify(data.features),
-        expiresAtFormatted,
-        'pending',
-        data.notes,
-      ]
-    );
+    // 检测 licenses 表是否有 private_customer_id 列
+    let hasPrivateCustomerIdCol = false;
+    try {
+      const colCheck = await AppDataSource.query(
+        "SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'licenses' AND COLUMN_NAME = 'private_customer_id' LIMIT 1"
+      );
+      hasPrivateCustomerIdCol = colCheck.length > 0;
+    } catch { /* ignore */ }
+
+    // 创建授权记录（兼容 private_customer_id 列不存在的情况）
+    if (hasPrivateCustomerIdCol) {
+      await AppDataSource.query(
+        `INSERT INTO licenses (
+          id, license_key, customer_name, customer_contact, customer_phone, customer_email,
+          customer_type, private_customer_id, license_type, max_users, max_storage_gb,
+          features, expires_at, status, notes, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+        [
+          licenseId, licenseKey, data.customerName, data.contactPerson, data.contactPhone,
+          data.contactEmail, 'private', customerId, data.licenseType, data.maxUsers,
+          data.maxStorageGb, JSON.stringify(data.features), expiresAtFormatted, 'pending', data.notes,
+        ]
+      );
+    } else {
+      await AppDataSource.query(
+        `INSERT INTO licenses (
+          id, license_key, customer_name, customer_contact, customer_phone, customer_email,
+          customer_type, license_type, max_users, max_storage_gb,
+          features, expires_at, status, notes, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+        [
+          licenseId, licenseKey, data.customerName, data.contactPerson, data.contactPhone,
+          data.contactEmail, 'private', data.licenseType, data.maxUsers,
+          data.maxStorageGb, JSON.stringify(data.features), expiresAtFormatted, 'pending', data.notes,
+        ]
+      );
+    }
 
     // 记录日志
     await AppDataSource.query(
@@ -250,58 +262,61 @@ export class PrivateCustomerService {
 
     const license = await AppDataSource.query('SELECT * FROM licenses WHERE id = ?', [licenseId]);
 
-    // 🔥 同步在 tenants 表创建记录，确保私有客户也能登录会员中心
+    // 🔥 为每个私有客户创建独立的 tenants 记录（通过 license_key 唯一关联）
     let tenantId: string | null = null;
     let tenantCode: string | null = null;
-    if (data.contactPhone) {
-      try {
-        const existingTenants = await AppDataSource.query(
-          'SELECT id, code FROM tenants WHERE phone = ?', [data.contactPhone]
-        );
-        if (existingTenants.length > 0) {
-          tenantId = existingTenants[0].id;
-          tenantCode = existingTenants[0].code;
-          // 确保 password_hash 已设置
-          const pwdCheck = await AppDataSource.query('SELECT password_hash FROM tenants WHERE id = ?', [tenantId]);
-          if (!pwdCheck[0]?.password_hash) {
-            const memberPwdHash = await bcrypt.hash('Aa123456', 10);
-            await AppDataSource.query('UPDATE tenants SET password_hash = ? WHERE id = ?', [memberPwdHash, tenantId]);
-          }
-        } else {
-          tenantId = uuidv4();
-          const d = new Date();
+    try {
+      // 先通过 license_key 查找是否已有对应的 tenants 记录（防止重复创建）
+      const existingByLicense = await AppDataSource.query(
+        'SELECT id, code FROM tenants WHERE license_key = ? LIMIT 1', [licenseKey]
+      );
+      if (existingByLicense.length > 0) {
+        tenantId = existingByLicense[0].id;
+        tenantCode = existingByLicense[0].code;
+      } else {
+        // 每个私有客户创建独立的 tenants 记录（不按手机号复用，避免编码串记）
+        tenantId = uuidv4();
+        const d = new Date();
+        tenantCode = `P${d.getFullYear().toString().slice(2)}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}${crypto.randomBytes(2).toString('hex').toUpperCase()}`;
+        // 确保编码不重复
+        for (let i = 0; i < 5; i++) {
+          const dup = await AppDataSource.query('SELECT id FROM tenants WHERE code = ?', [tenantCode]);
+          if (dup.length === 0) break;
           tenantCode = `P${d.getFullYear().toString().slice(2)}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}${crypto.randomBytes(2).toString('hex').toUpperCase()}`;
-          const memberPwdHash = await bcrypt.hash('Aa123456', 10);
-          await AppDataSource.query(
-            `INSERT INTO tenants (id, name, code, license_key, license_status, contact, phone, email,
-             max_users, max_storage_gb, expire_date, features, status, password_hash, remark, created_at, updated_at)
-             VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, NOW(), NOW())`,
-            [
-              tenantId, data.customerName, tenantCode, licenseKey,
-              data.contactPerson || null, data.contactPhone, data.contactEmail || null,
-              data.maxUsers || 10, data.maxStorageGb || 5,
-              data.expiresAt ? new Date(data.expiresAt).toISOString().split('T')[0] : null,
-              JSON.stringify(data.features || []),
-              memberPwdHash,
-              '私有部署客户（管理后台创建）'
-            ]
-          );
-          // 关联 license 的 tenant_id
-          try {
-            await AppDataSource.query('UPDATE licenses SET tenant_id = ? WHERE id = ?', [tenantId, licenseId]);
-          } catch { /* tenant_id 列可能不存在 */ }
-          log.info(`[PrivateCustomerService] ✅ 已在 tenants 表创建私有客户记录: ${data.customerName} (${tenantCode}), 会员中心密码 Aa123456`);
         }
+        const memberPwdHash = await bcrypt.hash('Aa123456', 10);
+        await AppDataSource.query(
+          `INSERT INTO tenants (id, name, code, license_key, license_status, contact, phone, email,
+           max_users, max_storage_gb, expire_date, features, status, password_hash, remark, created_at, updated_at)
+           VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, NOW(), NOW())`,
+          [
+            tenantId, data.customerName, tenantCode, licenseKey,
+            data.contactPerson || null, data.contactPhone || null, data.contactEmail || null,
+            data.maxUsers || 10, data.maxStorageGb || 5,
+            data.expiresAt ? new Date(data.expiresAt).toISOString().split('T')[0] : null,
+            JSON.stringify(data.features || []),
+            memberPwdHash,
+            '私有部署客户（管理后台创建）'
+          ]
+        );
+        // 关联 license 的 tenant_id
+        try {
+          await AppDataSource.query('UPDATE licenses SET tenant_id = ? WHERE id = ?', [tenantId, licenseId]);
+        } catch { /* tenant_id 列可能不存在 */ }
+        log.info(`[PrivateCustomerService] ✅ 已在 tenants 表创建私有客户记录: ${data.customerName} (${tenantCode}), 会员中心密码 Aa123456`);
+      }
 
-        if (tenantCode) {
+      // 保存 tenant_code 到 private_customers 表
+      if (tenantCode) {
+        try {
           await AppDataSource.query(
             'UPDATE private_customers SET tenant_code = ? WHERE id = ?',
             [tenantCode, customer.id]
           );
-        }
-      } catch (tenantErr: any) {
-        log.warn('[PrivateCustomerService] 创建 tenants 记录失败（不影响授权创建）:', tenantErr.message?.substring(0, 100));
+        } catch { /* tenant_code 列可能不存在 */ }
       }
+    } catch (tenantErr: any) {
+      log.warn('[PrivateCustomerService] 创建 tenants 记录失败（不影响授权创建）:', tenantErr.message?.substring(0, 200));
     }
 
     return {
