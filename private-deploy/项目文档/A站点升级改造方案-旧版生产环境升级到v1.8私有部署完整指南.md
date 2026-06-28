@@ -332,3 +332,709 @@ PORT=<后端端口>
 - 既有部署文档（可配合使用）：`private-deploy/核心文档/multi-site-deploy-guide.md`、`install.sh`、`nginx.conf.template`、`delivery-guide.md`
 
 > 下一步行动建议：先做第四节的结构差异导出与对比（只读操作，零风险），把差异DDL整理出来后，再按阶段0开始演练。需要我协助生成差异DDL审查清单或演练环境搭建脚本时再继续。
+
+---
+
+## 十三、自动化数据库自检补全机制（已实现）
+
+> 更新日期：2026-06-28
+> 结论：**不需要手动编写差异DDL**，后端启动时已自带完善的自动迁移服务
+
+### 13.1 已有机制分析
+
+代码中已存在 `AutoMigrationService`（`backend/src/services/AutoMigrationService.ts`），在后端启动时通过 `initializeDatabase()` 自动执行，核心原则：
+
+| 原则 | 说明 |
+|------|------|
+| 只增不删 | 永远不删除表、列、索引 |
+| 只建不改 | 永远不修改已有列的类型、约束 |
+| 幂等执行 | 多次执行结果一致，已有就跳过 |
+| 完整记录 | 所有变更记录到 `migration_history` 表 |
+| 可关闭 | 通过 `AUTO_MIGRATION=false` 关闭（默认开启） |
+
+### 13.2 启动时自动执行流程
+
+后端 `initializeDatabase()` 依次执行三层防护：
+
+```
+启动
+ ├── 第1层：initOrderSettingsSchema()
+ │     └── 确保 department_order_limits / payment_method_options / system_configs 表结构
+ ├── 第2层：initSensitiveInfoPermissionsSchema()
+ │     └── 确保 sensitive_info_permissions 表有 tenant_id 列和正确索引
+ └── 第3层：autoMigrationService.run()
+       ├── 3.1 确保 migration_history 表存在
+       ├── 3.2 生产环境首次执行前自动备份当前表结构（存到 backups/schema-backups/）
+       ├── 3.3 基于192个实体元数据自动创建缺失表（先建表，确保SQL迁移依赖的表存在）
+       ├── 3.4 基于实体元数据自动补全缺失字段（含所有表的 tenant_id）
+       ├── 3.5 执行 database-migrations/*.sql（11个迁移文件，表已就位不会报错）
+       └── 3.6 基于实体元数据自动创建缺失索引
+```
+
+### 13.3 A 站点启动时预期行为
+
+旧数据库缺少的所有新表和新字段都会被自动创建/补全：
+
+| 类别 | 预计自动创建内容 | 数据影响 |
+|------|-----------------|---------|
+| 新表 (~50+张) | tenants、licenses、product_skus、product_spec_groups、stock_adjustments、wecom_*、sms_*、在线席位、额度套餐等 | 新建空表，不影响旧数据 |
+| 旧表新字段 | 所有表的 `tenant_id`、products 的 `sku_type/min_price/max_price/total_stock`、order_items 的 `sku_id/sku_name/sku_image/spec_values` 等 | 新字段默认 NULL，旧行不受影响 |
+| 索引 | 各表的 tenant_id 索引、SKU 关联索引等 | 建索引不影响数据 |
+
+**旧数据的 `tenant_id` 全部为 NULL → 私有模式下查询 `tenant_id IS NULL` → 旧数据天然可见，无需任何数据迁移。**
+
+---
+
+## 十四、关于授权问题的明确回答
+
+### 14.1 是否需要在 B 站点生成私有部署授权码？
+
+**需要。** 流程如下：
+
+1. 在 B 站点管理后台（`admin.yunkes.com`）→ 私有客户管理 → 新增私有客户（填写 A 站点企业信息）
+2. 为该客户生成授权码（`PRIVATE-XXXX-XXXX-XXXX-XXXX` 格式）
+3. A 站点部署新代码后，首次打开登录页会显示授权码输入框
+4. 输入授权码 → 系统激活 → 自动创建私有租户记录 + 新管理员账号
+5. **激活一次后永久生效**，后续登录不再需要输入授权码
+
+### 14.2 激活后的关键账号处理
+
+| 账号 | tenant_id | 能看到什么 |
+|------|-----------|-----------|
+| **A站点原有的所有老账号** | NULL | **全部旧生产数据** ✅ |
+| 激活时自动创建的新管理员 | 新租户ID | 空数据系统 ❌ |
+
+**操作建议**：
+- 日常一律用**原有老账号**登录，旧数据全部可见
+- 激活产生的新管理员直接停用或删除
+- 如需统一，可执行：`UPDATE users SET tenant_id = NULL WHERE id = '<新管理员ID>';`
+
+### 14.3 可否不配置授权（离线使用）？
+
+可以。如果 A 站点完全内网、不连 B 站点：
+- `.env` 中 `LICENSE_SERVER` 和 `CENTRAL_ADMIN_URL` 留空或删除
+- 使用仓库内 `backend/scripts/generate-saas-license.js` 离线生成授权记录直接插入本地 `licenses` 表
+- 授权同步调度器（每30分钟）检测不到中央服务器时会静默跳过，不影响使用
+
+---
+
+## 十五、关于删除官网/管理后台项目目录的回答
+
+### 15.1 服务器上可以删除哪些目录？
+
+**A 站点是私有部署自用的 CRM，只需要 CRM 前端 + 后端。** 以下目录可以安全删除或不部署：
+
+| 目录 | 作用 | 是否需要部署到 A 站点 | 删除影响 |
+|------|------|---------------------|---------|
+| `dist/` (CRM前端) | CRM 主应用 | ✅ **必须** | 不能删 |
+| `backend/` | 后端服务 | ✅ **必须** | 不能删 |
+| `website/` | 官方网站 | ❌ **不需要** | 无影响 |
+| `admin/` | 管理后台 | ❌ **不需要** | 无影响 |
+| `h5/` | 企微H5移动端 | ❌ **不需要**（除非用企微） | 无影响 |
+| `src/` | 前端源码 | ❌ **不需要** | 无影响 |
+| `node_modules/` (根目录) | 前端依赖 | ❌ **不需要** | 无影响 |
+| `.git/` | Git仓库 | ❌ **建议删除**（节省空间+安全） | 无影响 |
+
+### 15.2 推荐的 A 站点目录结构
+
+```
+/www/wwwroot/CRM-A/
+├── dist/                   # CRM前端构建产物（本地构建后上传）
+│   ├── index.html
+│   └── assets/
+├── backend/
+│   ├── dist/               # 后端编译产物（本地构建后上传）
+│   ├── database-migrations/ # SQL迁移文件（必须上传！）
+│   ├── node_modules/       # 服务器上 npm ci 安装
+│   ├── package.json
+│   ├── package-lock.json
+│   ├── .env                # 生产环境配置
+│   ├── uploads/            # 上传文件目录（保留原有）
+│   ├── recordings/         # 录音文件目录（保留原有）
+│   └── logs/               # 日志目录
+└── (其他文件不需要)
+```
+
+### 15.3 删除多余目录不会影响后端运行吗？
+
+**不会。** 后端代码中不依赖 `website/`、`admin/` 等目录。后端只需要：
+- 自身的 `dist/`（编译后的 JS）
+- `node_modules/`（运行时依赖）
+- `database-migrations/`（SQL迁移文件）
+- `uploads/` 和 `recordings/`（用户数据）
+- `.env`（配置文件）
+
+---
+
+## 十六、完整的每一步操作指南
+
+> 以下假设 A 站点域名为 `a-crm.example.com`，项目路径为 `/www/wwwroot/CRM-A`，后端端口 `3000`
+> 请根据实际情况替换
+
+### 第1步：本地构建（在 Windows 开发机上操作）
+
+#### 1.1 构建 CRM 前端
+
+```bash
+# 进入项目根目录
+cd "D:\kaifa\CRM - 1.8.0"
+
+# 修改前端生产环境配置（重要！）
+# 编辑 .env.production，确保以下内容：
+```
+
+`.env.production` 文件内容（A 站点专用）：
+```ini
+# 生产环境配置
+VITE_API_BASE_URL=/api/v1
+NODE_ENV=production
+
+# ⚠️ A站点是私有部署，必须改为 private！
+VITE_DEPLOY_MODE=private
+```
+
+```bash
+# 安装依赖（如果没安装过）
+npm install
+
+# 构建前端
+npm run build
+
+# 构建完成后 dist/ 目录就是要上传的前端产物
+```
+
+#### 1.2 构建后端
+
+```bash
+cd backend
+
+# 安装依赖（如果没安装过）
+npm install
+
+# 构建后端（TypeScript 编译为 JavaScript）
+npm run build
+
+# 构建完成后 backend/dist/ 就是编译产物
+```
+
+#### 1.3 打包待上传文件
+
+需要上传到 A 站点的文件清单：
+
+| 本地路径 | 上传到服务器路径 | 说明 |
+|---------|----------------|------|
+| `dist/` 整个目录 | `/www/wwwroot/CRM-A/dist/` | CRM 前端 |
+| `backend/dist/` 整个目录 | `/www/wwwroot/CRM-A/backend/dist/` | 后端编译产物 |
+| `backend/package.json` | `/www/wwwroot/CRM-A/backend/package.json` | 依赖清单 |
+| `backend/package-lock.json` | `/www/wwwroot/CRM-A/backend/package-lock.json` | 锁定版本 |
+| `backend/database-migrations/` 整个目录 | `/www/wwwroot/CRM-A/backend/database-migrations/` | SQL迁移文件 |
+
+**不要上传**：`node_modules/`、`src/`、`.git/`、`website/`、`admin/`
+
+---
+
+### 第2步：备份 A 站点（在服务器上操作）
+
+```bash
+# SSH 登录 A 站点服务器
+
+# 1. 备份数据库（最重要！）
+mysqldump -u<用户名> -p --single-transaction --routines --triggers <A站点数据库名> | gzip > /root/backup_a_$(date +%F).sql.gz
+
+# 2. 备份上传文件
+tar czf /root/backup_uploads_$(date +%F).tar.gz /www/wwwroot/CRM-A/backend/uploads/
+
+# 3. 备份旧前端（秒级回滚用）
+mv /www/wwwroot/CRM-A/dist /www/wwwroot/CRM-A/dist_old_backup
+
+# 4. 备份旧后端
+cp -r /www/wwwroot/CRM-A/backend/dist /www/wwwroot/CRM-A/backend/dist_old_backup
+
+# 5. 备份旧 .env
+cp /www/wwwroot/CRM-A/backend/.env /www/wwwroot/CRM-A/backend/.env.backup
+
+# 6. 将数据库备份下载到本地（防服务器故障）
+# 在本地执行: scp root@A站点IP:/root/backup_a_*.sql.gz ./
+```
+
+---
+
+### 第3步：停止旧服务
+
+```bash
+# 停止后端进程
+pm2 stop crm-backend 2>/dev/null || true
+
+# 确认已停
+pm2 status
+```
+
+---
+
+### 第4步：上传新代码
+
+通过宝塔面板文件管理器、SFTP、或 scp 上传：
+
+```bash
+# 本地执行（或用宝塔面板上传）
+
+# 上传前端产物
+scp -r dist/* root@A站点IP:/www/wwwroot/CRM-A/dist/
+
+# 上传后端编译产物
+scp -r backend/dist/* root@A站点IP:/www/wwwroot/CRM-A/backend/dist/
+
+# 上传 package.json 和 lock 文件
+scp backend/package.json backend/package-lock.json root@A站点IP:/www/wwwroot/CRM-A/backend/
+
+# 上传迁移文件（关键！自动建表依赖这些文件）
+scp -r backend/database-migrations root@A站点IP:/www/wwwroot/CRM-A/backend/
+```
+
+---
+
+### 第5步：服务器上安装后端依赖
+
+```bash
+# SSH 到 A 站点服务器
+cd /www/wwwroot/CRM-A/backend
+
+# 确认 Node 版本 >= 22
+node --version
+# 如果版本不够，在宝塔 → 软件商店 → Node.js版本管理器 → 安装 Node 22.x
+
+# 安装生产依赖（不要从 Windows 上传 node_modules！）
+npm ci --omit=dev
+
+# 如果网速慢，使用国内镜像
+npm ci --omit=dev --registry https://registry.npmmirror.com
+```
+
+---
+
+### 第6步：配置后端 .env
+
+编辑 `/www/wwwroot/CRM-A/backend/.env`：
+
+```ini
+# ==================== 核心配置 ====================
+NODE_ENV=production
+PORT=3000
+API_PREFIX=/api/v1
+
+# ⚠️ 部署模式：A站点私有部署，必须是 private
+DEPLOY_MODE=private
+
+# ==================== 数据库配置 ====================
+# 沿用 A 站点原有的数据库连接（不要改！）
+DB_HOST=localhost
+DB_PORT=3306
+DB_DATABASE=<A站点原数据库名>
+DB_USERNAME=<A站点原数据库用户>
+DB_PASSWORD=<A站点原数据库密码>
+DB_CHARSET=utf8mb4
+DB_TIMEZONE=+08:00
+
+# ==================== JWT 配置 ====================
+# ⚠️ 沿用 A 站点旧的 JWT_SECRET（避免全员掉线）
+JWT_SECRET=<沿用A站点旧值>
+JWT_REFRESH_SECRET=<沿用A站点旧值>
+JWT_EXPIRES_IN=7d
+JWT_REFRESH_EXPIRES_IN=30d
+BCRYPT_ROUNDS=12
+
+# ==================== CORS 配置 ====================
+# 只需要 A 站点自己的域名
+CORS_ORIGIN=https://a-crm.example.com
+CORS_CREDENTIALS=true
+
+# ==================== 授权配置（二选一）====================
+# 方案A：连接 B 站点在线授权（推荐）
+LICENSE_KEY=PRIVATE-XXXX-XXXX-XXXX-XXXX
+LICENSE_SERVER=https://api.yunkes.com
+CENTRAL_ADMIN_URL=https://admin.yunkes.com
+
+# 方案B：离线使用（不连 B 站点）
+# LICENSE_KEY=（留空或删除）
+# LICENSE_SERVER=（留空或删除）
+# CENTRAL_ADMIN_URL=（留空或删除）
+
+# ==================== 文件与日志 ====================
+UPLOAD_MAX_SIZE=10485760
+UPLOAD_ALLOWED_TYPES=image/jpeg,image/png,image/gif,application/pdf
+LOG_LEVEL=info
+LOG_FILE_PATH=./logs
+LOG_MAX_SIZE=20m
+LOG_MAX_FILES=14d
+
+# ==================== 资源优化（2核2G必配）====================
+# 数据库连接池（小服务器调小）
+DB_CONNECTION_LIMIT=20
+
+# ==================== 安全配置 ====================
+RATE_LIMIT_WINDOW_MS=900000
+RATE_LIMIT_MAX_REQUESTS=3000
+
+# ==================== 自动迁移（默认开启，不要关！）====================
+# AUTO_MIGRATION=true  # 默认开启，无需显式设置
+# 设为 false 可关闭：AUTO_MIGRATION=false
+
+# ==================== 以下按需配置（不用的留空）====================
+SMTP_HOST=
+SMTP_PORT=
+SMTP_USER=
+SMTP_PASS=
+
+EXPRESS_API_CUSTOMER=
+EXPRESS_API_KEY=
+```
+
+**重要区别对比：**
+
+| 配置项 | A 站点（私有部署） | B 站点（SaaS） |
+|--------|-------------------|---------------|
+| `DEPLOY_MODE` | `private` | `saas` |
+| `CORS_ORIGIN` | 只有 A 站点域名 | 多个域名 |
+| `LICENSE_KEY` | B站点生成的授权码 | 不需要 |
+| `LICENSE_SERVER` | 指向 B 站点 API | 不需要 |
+| `DB_DATABASE` | A 站点自己的库 | B 站点自己的库 |
+
+---
+
+### 第7步：资源优化（2核2G 必做）
+
+```bash
+# 1. 添加 swap（2G内存必须加）
+fallocate -l 4G /swapfile
+chmod 600 /swapfile
+mkswap /swapfile
+swapon /swapfile
+
+# 写入 fstab 使重启后生效
+echo '/swapfile swap swap defaults 0 0' >> /etc/fstab
+
+# 验证
+free -h
+
+# 2. MySQL 调参（宝塔 → MySQL → 配置修改 → my.cnf）
+# 找到 [mysqld] 段，添加/修改：
+# innodb_buffer_pool_size=256M
+# max_connections=100
+# performance_schema=OFF
+```
+
+---
+
+### 第8步：启动后端
+
+```bash
+cd /www/wwwroot/CRM-A/backend
+
+# 启动后端（PM2 管理，限制内存防 OOM）
+pm2 start dist/app.js --name crm-backend --max-memory-restart 700M
+
+# 查看启动日志（重点关注自动迁移输出）
+pm2 logs crm-backend --lines 100
+```
+
+**启动日志中应该看到类似输出（自动迁移正在工作）：**
+
+```
+╔══════════════════════════════════════════════════╗
+║       数据库自动迁移服务启动                      ║
+╚══════════════════════════════════════════════════╝
+📦 [自动迁移] 首次执行，开始备份当前数据库结构...
+✅ [自动迁移] 结构备份完成: backups/schema-backups/schema-2026-06-28T... (35 张表)
+🔍 [自动迁移] 扫描 192 个实体，检查缺失表...
+  📦 新建表: tenants
+  📦 新建表: licenses
+  📦 新建表: private_customers
+  📦 新建表: wecom_configs
+  📦 新建表: product_skus
+  📦 新建表: product_spec_groups
+  📦 新建表: stock_adjustments
+  ...（自动创建所有缺失表）
+✅ [自动迁移] 新建了 XX 张表
+  ➕ 补字段: customers.tenant_id
+  ➕ 补字段: orders.tenant_id
+  ➕ 补字段: users.tenant_id
+  ➕ 补字段: products.sku_type
+  ➕ 补字段: products.min_price
+  ...（自动补全所有缺失字段）
+✅ [自动迁移] 补全了 XX 个字段
+📋 [自动迁移] 发现 11 个待执行的SQL迁移文件
+  📄 执行SQL迁移: 20260505-add-mp-callback-fields.sql
+  ✅ 迁移完成: 20260505-add-mp-callback-fields.sql
+  ...
+  📄 执行SQL迁移: 20260627-add-product-sku-tables.sql
+  ✅ 迁移完成: 20260627-add-product-sku-tables.sql
+  🔑 建索引: ...
+╔══════════════════════════════════════════════════╗
+║  自动迁移完成 (XXXXms)                           ║
+╚══════════════════════════════════════════════════╝
+```
+
+```bash
+# 确认后端运行正常
+pm2 status
+
+# 设置开机自启
+pm2 save
+pm2 startup
+```
+
+---
+
+### 第9步：配置 Nginx
+
+A 站点只需要**一个站点配置**（CRM 主应用），不需要官网、管理后台、API 独立域名。
+
+在宝塔面板 → 网站 → A 站点 → 配置文件，修改为：
+
+```nginx
+server {
+    listen 80;
+    # ⬇️ 替换为 A 站点实际域名
+    server_name a-crm.example.com;
+
+    # ⬇️ 替换为 A 站点实际前端目录
+    root /www/wwwroot/CRM-A/dist;
+    index index.html;
+
+    # 文件上传大小限制
+    client_max_body_size 50m;
+
+    # Gzip 压缩
+    gzip on;
+    gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript;
+    gzip_min_length 1000;
+    gzip_comp_level 6;
+
+    # ==================== API 反向代理 ====================
+    location /api/ {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 120s;
+        proxy_read_timeout 120s;
+        proxy_buffering off;
+    }
+
+    # ==================== WebSocket 代理 ====================
+    location /socket.io/ {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_read_timeout 86400s;
+    }
+
+    location /ws/ {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_read_timeout 86400s;
+    }
+
+    # ==================== 上传文件访问 ====================
+    # ^~ 确保优先于任何正则匹配
+    location ^~ /uploads/ {
+        # ⬇️ 替换为实际路径
+        alias /www/wwwroot/CRM-A/backend/uploads/;
+        expires 7d;
+        add_header Cache-Control "public";
+        add_header Access-Control-Allow-Origin *;
+    }
+
+    # 录音文件
+    location ^~ /recordings/ {
+        # ⬇️ 替换为实际路径
+        alias /www/wwwroot/CRM-A/backend/recordings/;
+        expires 7d;
+        add_header Cache-Control "public";
+    }
+
+    # 前端构建产物缓存（带 hash 的 assets 文件长缓存）
+    location ^~ /assets/ {
+        expires 30d;
+        add_header Cache-Control "public, immutable";
+    }
+
+    # 健康检查
+    location /health {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_set_header Host $host;
+    }
+
+    # ==================== 前端路由 ====================
+    # Vue Router history 模式支持（必须放在最后）
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    # ==================== 安全配置 ====================
+    location ~ /\. {
+        deny all;
+        access_log off;
+        log_not_found off;
+    }
+
+    location ~* \.(env|env\..*|sql|md|sh|bat|ps1|conf)$ {
+        deny all;
+    }
+
+    location ~ /node_modules/ {
+        deny all;
+    }
+}
+```
+
+**宝塔面板特别注意事项（必做）：**
+
+1. **修改 `root`** 为 `/www/wwwroot/CRM-A/dist`（宝塔默认是 `public`，必须改！）
+2. **修改 `index`** 行，只保留 `index.html index.htm`，删掉 `index.php`、`default.php`
+3. **删除** `#PHP-INFO-START` 到 `#PHP-INFO-END` 之间的全部内容（含 `include enable-php-XX.conf`）
+4. **删除** `#ERROR-PAGE-START` 到 `#ERROR-PAGE-END` 之间的全部内容
+5. **删除** 宝塔自动生成的静态资源缓存规则：
+   ```nginx
+   # 删除这两段！否则图片加载失败
+   location ~ .*\.(gif|jpg|jpeg|png|bmp|swf)$ { ... }
+   location ~ .*\.(js|css)?$ { ... }
+   ```
+6. **保留** 宝塔的 SSL 配置（`#SSL-START` 到 `#SSL-END`）
+
+```bash
+# 验证并重载配置
+nginx -t && nginx -s reload
+```
+
+如果有 SSL 证书，宝塔面板 → 站点设置 → SSL → 申请 Let's Encrypt 免费证书后，80 端口会自动跳转 443。
+
+---
+
+### 第10步：首次激活与登录
+
+1. 浏览器访问 `https://a-crm.example.com`（或你的 A 站点域名）
+2. 看到登录页 → 显示**授权码输入框**（因为是首次激活）
+3. 输入 B 站点管理后台生成的授权码 `PRIVATE-XXXX-XXXX-XXXX-XXXX`
+4. 激活成功 → 页面显示企业信息
+5. **用 A 站点原有的老账号登录**（不要用激活生成的新管理员！）
+6. 登录后验证旧数据是否全部可见
+
+### 第11步：升级后验证清单
+
+- [ ] 登录页显示"已激活"，授权码只输入过一次
+- [ ] **旧管理员账号**登录成功
+- [ ] 客户列表数量与升级前一致
+- [ ] 订单列表、订单详情正常
+- [ ] 业绩统计数字正常
+- [ ] 上传的文件/图片历史正常显示（uploads 目录路径没变）
+- [ ] SKU 商品功能正常（新功能）
+- [ ] WebSocket 正常（右上角消息铃铛）
+- [ ] PM2 内存稳定（观察 30 分钟无重启）：`pm2 monit`
+- [ ] 无错误日志：`tail -50 /www/wwwroot/CRM-A/backend/logs/error.log`
+
+---
+
+### 第12步：清理与收尾
+
+```bash
+# 1. 处理激活产生的新管理员（推荐停用）
+# 在 MySQL 中查看：
+# SELECT id, username, tenant_id FROM users WHERE tenant_id IS NOT NULL;
+# 选择删除或归入 NULL 域：
+# UPDATE users SET tenant_id = NULL WHERE id = '<新管理员ID>';
+
+# 2. 删除服务器上不需要的目录（如果有的话）
+rm -rf /www/wwwroot/CRM-A/website
+rm -rf /www/wwwroot/CRM-A/admin
+rm -rf /www/wwwroot/CRM-A/h5
+rm -rf /www/wwwroot/CRM-A/src
+rm -rf /www/wwwroot/CRM-A/.git
+rm -rf /www/wwwroot/CRM-A/node_modules  # 根目录的前端依赖
+
+# 3. 设置日志轮转（40G磁盘防爆）
+pm2 install pm2-logrotate
+pm2 set pm2-logrotate:max_size 50M
+pm2 set pm2-logrotate:retain 7
+pm2 set pm2-logrotate:compress true
+
+# 4. 删除旧备份（确认新版稳定运行48小时后）
+# rm -rf /www/wwwroot/CRM-A/dist_old_backup
+# rm -rf /www/wwwroot/CRM-A/backend/dist_old_backup
+```
+
+---
+
+## 十七、回滚方案（出问题时用）
+
+### 情况1：新代码启动后发现问题
+
+```bash
+# 停新服务
+pm2 stop crm-backend
+
+# 恢复旧后端
+rm -rf /www/wwwroot/CRM-A/backend/dist
+mv /www/wwwroot/CRM-A/backend/dist_old_backup /www/wwwroot/CRM-A/backend/dist
+
+# 恢复旧前端
+rm -rf /www/wwwroot/CRM-A/dist
+mv /www/wwwroot/CRM-A/dist_old_backup /www/wwwroot/CRM-A/dist
+
+# 恢复旧 .env
+cp /www/wwwroot/CRM-A/backend/.env.backup /www/wwwroot/CRM-A/backend/.env
+
+# 启动旧服务
+pm2 start dist/app.js --name crm-backend
+```
+
+注意：自动迁移添加的新表和新字段不会影响旧代码运行（旧代码不识别新列/新表，但也不会报错）。
+
+### 情况2：数据库异常需要完全恢复
+
+```bash
+# 停服务
+pm2 stop crm-backend
+
+# 恢复数据库
+gunzip < /root/backup_a_YYYY-MM-DD.sql.gz | mysql -u<用户名> -p <A站点数据库名>
+
+# 恢复旧代码+旧配置（同情况1）
+# 启动旧服务
+```
+
+---
+
+## 十八、常见问题 FAQ
+
+### Q1：升级后原来的数据会丢失吗？
+**不会。** 自动迁移只增不减，不删除任何表、列或数据。旧数据 `tenant_id` 为 NULL，私有模式下天然可见。
+
+### Q2：升级后原来的账号还能登录吗？
+**可以。** 旧账号的 `tenant_id` 为 NULL，私有模式下正常匹配。JWT_SECRET 沿用旧值则不会强制重新登录。
+
+### Q3：授权码过期或 B 站点不可达会怎样？
+首次激活成功后，系统会在本地 `licenses` 表记录激活状态。即使 B 站点不可达，A 站点也能正常使用。授权同步调度器（每30分钟）检测失败时只是日志报 warn，不影响业务。
+
+### Q4：新版本比旧版本多很多功能模块（短信、企微等），不用的模块会有影响吗？
+**不会影响。** 不使用的模块只是菜单存在但功能空置。后端对应的定时任务检测到无配置时会自动跳过。如果不想看到多余菜单，可在系统设置 → 权限管理中隐藏。
+
+### Q5：2核2G 服务器真的能跑新版吗？
+**偏紧但可用。** 必须做第7步的资源优化（加 swap、调 MySQL、PM2 限制内存）。建议后续升配到 2核4G。
+
+### Q6：`index.html` 用户浏览器有缓存怎么办？
+Nginx 配置中 `location /` 的 `try_files` 不带缓存头，`index.html` 默认不缓存。但带 hash 的 `assets/` 文件有长缓存。升级后通知用户 **Ctrl+F5 强刷** 一次即可。如仍异常，清浏览器 localStorage。
+
+### Q7：要不要把旧数据的 tenant_id 都改成新租户 ID？
+**绝对不要！** 这是红线。一百多张表逐一更新极易遗漏，出错就是"数据消失"。保持 NULL 是最安全的方案，私有部署模式下完美工作。

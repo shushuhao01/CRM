@@ -12,9 +12,9 @@
  * 执行流程：
  *   1. 检查 AUTO_MIGRATION 环境变量
  *   2. 生产环境首次执行前自动备份结构
- *   3. 执行 database-migrations/*.sql 迁移文件
- *   4. 基于实体元数据自动创建缺失表
- *   5. 基于实体元数据自动补全缺失字段
+ *   3. 基于实体元数据自动创建缺失表（先建表保证SQL迁移文件的依赖表存在）
+ *   4. 基于实体元数据自动补全缺失字段
+ *   5. 执行 database-migrations/*.sql 迁移文件
  *   6. 基于实体元数据自动创建缺失索引
  *   7. 所有变更记录到 migration_history
  */
@@ -74,16 +74,16 @@ export class AutoMigrationService {
       // 2. 生产环境首次执行前备份结构
       await this.backupSchemaIfNeeded();
 
-      // 3. 执行 database-migrations/*.sql
-      stats.sqlFiles = await this.runSqlMigrations();
-
-      // 4. 基于实体自动创建缺失表
+      // 3. 基于实体自动创建缺失表（先建表，确保后续SQL迁移文件引用的表已存在）
       const tableResult = await this.autoCreateMissingTables();
       stats.tables = tableResult.created;
 
-      // 5. 基于实体自动补全缺失字段
+      // 4. 基于实体自动补全缺失字段
       const columnResult = await this.autoAddMissingColumns();
       stats.columns = columnResult.added;
+
+      // 5. 执行 database-migrations/*.sql（表和字段已就位，SQL文件中的ALTER/UPDATE可正常执行）
+      stats.sqlFiles = await this.runSqlMigrations();
 
       // 6. 基于实体自动创建缺失索引
       const indexResult = await this.autoCreateMissingIndexes();
@@ -180,7 +180,7 @@ export class AutoMigrationService {
   }
 
   // ============================================================
-  // 3. 执行 database-migrations/*.sql 迁移文件
+  // 5. 执行 database-migrations/*.sql 迁移文件（在建表补字段之后执行）
   // ============================================================
   private async runSqlMigrations(): Promise<number> {
     if (!fs.existsSync(this.migrationDir)) {
@@ -281,7 +281,7 @@ export class AutoMigrationService {
   }
 
   // ============================================================
-  // 4. 基于实体元数据自动创建缺失表
+  // 3. 基于实体元数据自动创建缺失表
   // ============================================================
   private async autoCreateMissingTables(): Promise<{ created: number }> {
     const entities = AppDataSource.entityMetadatas;
@@ -317,7 +317,7 @@ export class AutoMigrationService {
   }
 
   // ============================================================
-  // 5. 基于实体元数据自动补全缺失字段
+  // 4. 基于实体元数据自动补全缺失字段
   // ============================================================
   private async autoAddMissingColumns(): Promise<{ added: number }> {
     const entities = AppDataSource.entityMetadatas;

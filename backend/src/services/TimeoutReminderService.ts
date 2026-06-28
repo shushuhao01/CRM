@@ -560,7 +560,7 @@ class TimeoutReminderService {
   private async sendOrderFollowupReminder(order: any, days: number): Promise<void> {
     if (!order.createdBy) return;
 
-    const content = `📞 订单 #${order.orderNumber}（客户：${order.customerName || '未知'}）已签收 ${days} 天，请及时跟进客户满意度`;
+    const content = `订单 #${order.orderNumber}（客户：${order.customerName || '未知'}）已签收 ${days} 天，请及时跟进客户满意度`;
 
     await this.sendMessage(
       TimeoutMessageTypes.ORDER_FOLLOWUP_REMINDER,
