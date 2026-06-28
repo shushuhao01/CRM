@@ -277,7 +277,7 @@
 
           <div class="operation-log">
             <div
-              v-for="(log, index) in operationLogs"
+              v-for="(log, index) in combinedOperationLogs"
               :key="index"
               class="log-item"
             >
@@ -383,6 +383,7 @@ import { displaySensitiveInfoNew } from '@/utils/sensitiveInfo'
 import { useOrderStore } from '@/stores/order'
 import { useNotificationStore } from '@/stores/notification'
 import { createSafeNavigator } from '@/utils/navigation'
+import { operationLogApi } from '@/api/operationLog'
 import {
   getLogisticsStatusText as getLogisticsStatusTextFromConfig,
   getLogisticsStatusStyle,
@@ -452,6 +453,43 @@ interface OperationLogItem {
   action: string
 }
 const operationLogs = ref<OperationLogItem[]>([])
+const apiOperationLogs = ref<any[]>([])
+
+const combinedOperationLogs = computed(() => {
+  const existing = operationLogs.value || []
+  const api = apiOperationLogs.value || []
+  const all = [...existing, ...api]
+  const seen = new Set<string>()
+  return all.filter(log => {
+    const key = `${log.time}-${log.action}`
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  }).sort((a, b) => (b.time || '').localeCompare(a.time || ''))
+})
+
+const formatApiLogTime = (time: string): string => {
+  if (!time) return '-'
+  try {
+    const d = new Date(time)
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`
+  } catch { return time }
+}
+
+const loadOperationLogsFromAPI = async (orderId: string) => {
+  try {
+    const res = await operationLogApi.getOperationLogs('logistics', orderId, 1, 50)
+    const data = res?.data?.data || res?.data || {}
+    const list = data.list || []
+    apiOperationLogs.value = list.map((item: any) => ({
+      time: formatApiLogTime(item.createdAt),
+      operator: item.operatorName || '系统',
+      action: item.operationContent || item.operationType || ''
+    }))
+  } catch {
+    apiOperationLogs.value = []
+  }
+}
 
 // 物流公司列表 - 从API动态获取
 const logisticsCompanies = ref([
@@ -1032,6 +1070,9 @@ const loadData = async () => {
       }
       operationLogs.value = logs
     }
+
+    // 从API加载操作日志
+    loadOperationLogsFromAPI(String(order.id))
 
     // 加载物流轨迹
     await loadTrackingHistory(order)

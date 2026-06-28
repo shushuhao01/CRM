@@ -1,10 +1,62 @@
 <template>
   <div>
-    <!-- 日志清理配置 -->
+    <!-- 业务操作日志清理配置 -->
     <el-card class="setting-card" style="margin-bottom: 16px;">
       <template #header>
         <div class="card-header">
-          <span>日志清理配置</span>
+          <span>业务日志清理配置</span>
+          <el-button @click="handleSaveOpLogConfig" type="primary" :loading="opLogConfigLoading">
+            保存配置
+          </el-button>
+        </div>
+      </template>
+
+      <el-alert type="info" :closable="false" style="margin-bottom: 16px">
+        <template #title>业务日志包含订单审核、发货、物流状态更新、部门/用户/角色管理等操作记录，用于审计追溯。</template>
+      </el-alert>
+
+      <el-form :model="opLogConfig" label-width="140px" class="setting-form">
+        <el-row :gutter="20">
+          <el-col :span="12">
+            <el-form-item label="自动清理">
+              <el-switch v-model="opLogConfig.autoCleanup" active-text="启用" inactive-text="禁用" />
+              <span class="form-tip">启用后将定期自动清理过期的业务操作日志</span>
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="保留天数">
+              <el-input-number v-model="opLogConfig.retentionDays" :min="7" :max="730" :step="30" :disabled="!opLogConfig.autoCleanup" />
+              <span class="form-tip">天（超过此天数的操作日志将被清理，建议 90-365 天）</span>
+            </el-form-item>
+          </el-col>
+        </el-row>
+        <el-row :gutter="20">
+          <el-col :span="24">
+            <el-form-item label="操作日志统计">
+              <div class="log-stats">
+                <el-tag type="info" size="large">记录总数: {{ opLogStats.totalCount }} 条</el-tag>
+                <el-tag type="success" size="large">最早记录: {{ opLogStats.oldestLog || '无' }}</el-tag>
+                <el-button type="info" size="small" @click="refreshOpLogStats" :loading="opLogStatsLoading">刷新统计</el-button>
+              </div>
+            </el-form-item>
+          </el-col>
+        </el-row>
+        <el-row :gutter="20">
+          <el-col :span="24">
+            <el-form-item label="手动清理">
+              <el-button type="warning" @click="cleanupOldOpLogs" :loading="opLogCleanupLoading">清理过期操作日志</el-button>
+              <span class="form-tip">清理超过保留天数的业务操作日志记录</span>
+            </el-form-item>
+          </el-col>
+        </el-row>
+      </el-form>
+    </el-card>
+
+    <!-- 系统日志清理配置 -->
+    <el-card class="setting-card" style="margin-bottom: 16px;">
+      <template #header>
+        <div class="card-header">
+          <span>系统日志清理配置</span>
           <el-button @click="handleSaveLogConfig" type="primary" :loading="logConfigLoading">
             保存配置
           </el-button>
@@ -128,7 +180,66 @@ import { Search } from '@element-plus/icons-vue'
 import * as logsApi from '@/api/logs'
 import type { SystemLog } from '@/api/logs'
 
-// ── 状态 ──
+// ── 业务操作日志状态 ──
+const opLogConfigLoading = ref(false)
+const opLogStatsLoading = ref(false)
+const opLogCleanupLoading = ref(false)
+const opLogConfig = ref({ autoCleanup: false, retentionDays: 90 })
+const opLogStats = ref({ totalCount: 0, oldestLog: '' as string | null })
+
+const loadOpLogConfig = async () => {
+  try {
+    const res = await logsApi.getOpLogConfig()
+    if (res.success && res.data) {
+      opLogConfig.value = { ...opLogConfig.value, ...res.data }
+    }
+  } catch { /* ignore */ }
+}
+
+const refreshOpLogStats = async () => {
+  try {
+    opLogStatsLoading.value = true
+    const res = await logsApi.getOpLogStats()
+    if (res.success && res.data) {
+      opLogStats.value = {
+        totalCount: res.data.totalCount || 0,
+        oldestLog: res.data.oldestLog ? new Date(res.data.oldestLog).toLocaleString('zh-CN') : null,
+      }
+    }
+  } catch { /* ignore */ }
+  finally { opLogStatsLoading.value = false }
+}
+
+const handleSaveOpLogConfig = async () => {
+  try {
+    opLogConfigLoading.value = true
+    const res = await logsApi.saveOpLogConfig(opLogConfig.value)
+    if (res.success) ElMessage.success('业务日志清理配置保存成功')
+    else ElMessage.error(res.message || '保存失败')
+  } catch { ElMessage.error('保存失败') }
+  finally { opLogConfigLoading.value = false }
+}
+
+const cleanupOldOpLogs = async () => {
+  try {
+    await ElMessageBox.confirm(
+      `确定要清理超过 ${opLogConfig.value.retentionDays} 天的业务操作日志吗？此操作不可恢复。`,
+      '确认清理', { confirmButtonText: '确定', cancelButtonText: '取消', type: 'warning' }
+    )
+    opLogCleanupLoading.value = true
+    const res = await logsApi.cleanupOldOpLogs(opLogConfig.value.retentionDays)
+    if (res.success) {
+      ElMessage.success(res.message || '清理完成')
+      refreshOpLogStats()
+    } else {
+      ElMessage.error(res.message || '清理失败')
+    }
+  } catch (e) {
+    if (e !== 'cancel') ElMessage.error('清理失败')
+  } finally { opLogCleanupLoading.value = false }
+}
+
+// ── 系统日志状态 ──
 const logsLoading = ref(false)
 const logPagination = ref({ currentPage: 1, pageSize: 20 })
 const logDateRange = ref<string[]>([])
@@ -314,6 +425,8 @@ const handleLogFilterChange = () => { logPagination.value.currentPage = 1 }
 
 // ── 初始化 ──
 onMounted(() => {
+  loadOpLogConfig()
+  refreshOpLogStats()
   loadLogConfig()
   refreshLogs()
   refreshLogStats()
@@ -321,6 +434,12 @@ onMounted(() => {
 </script>
 
 <style scoped>
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
 .log-stats {
   display: flex;
   gap: 12px;

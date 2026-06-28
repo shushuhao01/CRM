@@ -71,6 +71,7 @@ import virtualSettingsRoutes from './routes/virtualSettings';
 import onlineSeatRoutes from './routes/onlineSeat';
 import mobileAppRoutes from './routes/mobileApp';
 import miniprogramRoutes from './routes/miniprogram';
+import operationLogRoutes from './routes/operationLogs';
 import * as fs from 'fs';
 
 // ==================== 环境配置智能加载 ====================
@@ -285,6 +286,7 @@ app.use(`${API_PREFIX}/dashboard`, dashboardRoutes);
 app.use(`${API_PREFIX}/calls/webhook`, callWebhookRoutes);
 app.use(`${API_PREFIX}/calls`, callRoutes);
 app.use(`${API_PREFIX}/logs`, logsRoutes);
+app.use(`${API_PREFIX}/operation-logs`, operationLogRoutes);
 app.use(`${API_PREFIX}/message`, messageRoutes);
 app.use(`${API_PREFIX}/performance-report`, performanceReportRoutes);
 app.use(`${API_PREFIX}/performance`, performanceRoutes);

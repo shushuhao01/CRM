@@ -103,14 +103,18 @@
       <!-- 顶部概览卡片 -->
       <div class="license-status-row">
         <div class="status-card" :class="statusClass">
-          <div class="status-icon">{{ statusIcon }}</div>
+          <div class="status-icon-el">
+            <el-icon v-if="!licenseData?.expired && !licenseData?.nearExpiry" :size="28" color="#67c23a"><CircleCheckFilled /></el-icon>
+            <el-icon v-else-if="licenseData?.nearExpiry" :size="28" color="#e6a23c"><WarningFilled /></el-icon>
+            <el-icon v-else :size="28" color="#f56c6c"><CircleCloseFilled /></el-icon>
+          </div>
           <div class="status-info">
             <div class="status-label">授权状态</div>
             <div class="status-value">{{ statusText }}</div>
           </div>
         </div>
         <div class="status-card" :class="deployTypeClass">
-          <div class="status-icon">{{ detailData?.deployType === 'saas' ? '☁️' : '�️' }}</div>
+          <div class="status-icon">{{ detailData?.deployType === 'saas' ? '☁️' : '🖥️' }}</div>
           <div class="status-info">
             <div class="status-label">部署类型</div>
             <div class="status-value">{{ deployTypeText }}</div>
@@ -292,7 +296,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Refresh, Loading, InfoFilled, Key, View, Hide, CopyDocument } from '@element-plus/icons-vue'
+import { Refresh, Loading, InfoFilled, Key, View, Hide, CopyDocument, CircleCheckFilled, WarningFilled, CircleCloseFilled } from '@element-plus/icons-vue'
 import request from '@/utils/request'
 import { useConfigStore } from '@/stores/config'
 import { getMemberCenterRenewUrl, getMemberCenterLoginUrl } from '@/utils/memberCenterUrl'
@@ -687,6 +691,13 @@ onMounted(() => {
 .status-icon {
   font-size: 28px;
   line-height: 1;
+}
+.status-icon-el {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
 }
 
 .status-info {

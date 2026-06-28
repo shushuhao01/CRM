@@ -432,6 +432,29 @@
         </template>
 
         <!-- 操作插槽 -->
+        <!-- 操作日志插槽 -->
+        <template #column-operationLog="{ row }">
+          <div v-if="userLatestLogs[row.id]" class="op-log-cell">
+            <div class="op-log-line1">
+              <el-tag :type="getUserOpTagType(userLatestLogs[row.id].operationType)" size="small" effect="light">
+                {{ opLogLabels[userLatestLogs[row.id].operationType] || userLatestLogs[row.id].operationType }}
+              </el-tag>
+              <span class="op-log-text" :title="userLatestLogs[row.id].operationContent">
+                {{ userLatestLogs[row.id].operationContent }}
+              </span>
+            </div>
+            <div class="op-log-line2">
+              <span class="op-log-operator">{{ userLatestLogs[row.id].operatorName || '系统' }}</span>
+              <span class="op-log-time">{{ formatUserOpLogTime(userLatestLogs[row.id].createdAt) }}</span>
+              <el-button type="primary" link size="small" @click="showUserOpLogDialog(row.id, row.realName || row.username)">查看历史</el-button>
+            </div>
+          </div>
+          <div v-else class="op-log-cell op-log-empty">
+            <span class="text-muted">暂无记录</span>
+            <el-button type="primary" link size="small" @click="showUserOpLogDialog(row.id, row.realName || row.username)">查看历史</el-button>
+          </div>
+        </template>
+
         <template #table-actions="{ row }">
           <el-button @click="handleView(row)" type="primary" size="small" link>
             查看
@@ -1154,6 +1177,16 @@
       </template>
     </el-dialog>
 
+    <!-- 操作日志弹窗 -->
+    <OperationLogDialog
+      :visible="userOpLogDialog.visible"
+      @update:visible="userOpLogDialog.visible = $event"
+      :resource-id="userOpLogDialog.resourceId"
+      :resource-name="userOpLogDialog.resourceName"
+      module="user"
+      :op-labels="opLogLabels"
+    />
+
     <!-- 🔥 新建用户成功后 - 登录指引弹窗 -->
     <el-dialog
       v-model="loginGuideVisible"
@@ -1202,6 +1235,8 @@ import permissionService from '@/services/permissionService'
 import { UserDataSyncService } from '@/services/userDataSync'
 import * as XLSX from 'xlsx'
 import DynamicTable from '@/components/DynamicTable.vue'
+import { useOperationLog } from '@/components/OperationLog/useOperationLog'
+import OperationLogDialog from '@/components/OperationLog/OperationLogDialog.vue'
 import { formatDateTime } from '@/utils/dateFormat'
 import { getRoleTagType, getRoleDisplayName } from '@/utils/roleUtils'
 import { getDeployMode, getLocalTenantInfo } from '@/api/tenantLicense'
@@ -1232,6 +1267,29 @@ import {
   Lock,
   Unlock
 } from '@element-plus/icons-vue'
+
+const opLogLabels: Record<string, string> = {
+  create: '创建用户', edit: '编辑用户', delete: '删除用户',
+  status_change: '状态变更', password_reset: '重置密码',
+  role_change: '角色变更', lock: '封禁账户', unlock: '解禁账户',
+}
+const { latestLogs: userLatestLogs, dialog: userOpLogDialog, loadLatestLogs: loadUserLatestLogs, showDialog: showUserOpLogDialog } = useOperationLog('user')
+
+const getUserOpTagType = (type: string): string => {
+  const map: Record<string, string> = {
+    create: 'success', edit: 'warning', delete: 'danger', status_change: 'warning',
+    password_reset: 'danger', role_change: 'warning', lock: 'danger', unlock: 'success',
+  }
+  return map[type] || 'info'
+}
+
+const formatUserOpLogTime = (time: string): string => {
+  if (!time) return '-'
+  try {
+    const d = new Date(time)
+    return d.toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })
+  } catch { return time }
+}
 
 // 接口定义
 interface UserData {
@@ -1695,6 +1753,13 @@ const tableColumns = computed(() => [
     visible: true,
     sortable: true,
     formatter: (value: unknown) => formatDateTime(value as string)
+  },
+  {
+    prop: 'operationLog',
+    label: '操作日志',
+    minWidth: 280,
+    visible: true,
+    slot: true
   }
 ])
 
@@ -3313,6 +3378,9 @@ const loadUserList = async () => {
     userList.value = mappedUsers
     pagination.total = response.total
 
+    const ids = mappedUsers.map((r: any) => r.id).filter(Boolean)
+    if (ids.length) loadUserLatestLogs(ids)
+
     // 加载用户统计数据
     await loadUserStats()
   } catch (error) {
@@ -4398,4 +4466,15 @@ onMounted(async () => {
   justify-content: flex-end;
   gap: 12px;
 }
+
+.op-log-cell { display: flex; flex-direction: column; gap: 2px; line-height: 1.5; }
+.op-log-line1 { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.op-log-line1 .el-tag { flex-shrink: 0; }
+.op-log-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; font-size: 13px; color: #606266; }
+.op-log-line2 { display: flex; align-items: center; gap: 10px; font-size: 12px; color: #909399; }
+.op-log-operator { flex-shrink: 0; }
+.op-log-time { flex-shrink: 0; }
+.op-log-line2 .el-button { margin-left: auto; padding: 0; }
+.op-log-empty { flex-direction: row; align-items: center; gap: 10px; }
+.text-muted { color: #c0c4cc; font-size: 13px; }
 </style>

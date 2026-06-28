@@ -1,9 +1,9 @@
 # CRM 系统 API 接口文档
 
-> 版本：1.8.0 | 更新日期：2026-05-30 | 接口总数：约 1,507+  
+> 版本：1.8.0 | 更新日期：2026-06-29 | 接口总数：约 1,560+  
 > API 前缀：`/api/v1`（可通过环境变量 `API_PREFIX` 自定义）  
 > 认证方式：Bearer Token（JWT）| 部分公开接口无需认证  
-> 路由文件总数：164 | 实体文件：123 | 数据库表：190
+> 路由文件总数：165 | 实体文件：123 | 数据库表：194
 
 ---
 
@@ -48,6 +48,9 @@
 37. [会员短信额度 /public/member/sms-quota](#37-会员短信额度-publicmembersms-quota)
 38. [容量扩容 /public/capacity](#38-容量扩容-publiccapacity)
 39. [管理后台扩展模块](#39-管理后台扩展模块)
+40. [操作日志 /operation-logs](#40-操作日志-operation-logs)
+41. [移动应用下载 /mobile-app](#41-移动应用下载-mobile-app)
+42. [消息清理 /message-cleanup](#42-消息清理-message-cleanup)
 
 ---
 
@@ -533,13 +536,50 @@ POST /api/v1/auth/login
 
 | 方法 | 路径 | 认证 | 说明 |
 |------|------|------|------|
-| GET | `/status-update/orders` | ✅ | 物流状态更新订单 |
-| GET | `/status-update/summary` | ✅ | 物流更新汇总 |
-| POST | `/order/status` | ✅ | 更新订单物流状态 |
-| POST | `/order/batch-status` | ✅ | 批量更新状态 |
+| GET | `/permission` | ✅ | 检查当前用户物流权限 |
+| GET | `/status-update/orders` | ✅ | 物流状态更新订单列表 |
+| GET | `/status-update/summary` | ✅ | 物流更新汇总统计 |
+| GET | `/summary` | ✅ | 物流总览数据 |
+| POST | `/order/status` | ✅ | 更新单个订单物流状态 |
+| POST | `/order/batch-status` | ✅ | 批量更新订单物流状态 |
+| POST | `/order/todo` | ✅ | 设置订单待办标记 |
+| GET | `/log` | ✅ | 物流状态变更日志 |
+| GET | `/export` | ✅ | 导出物流状态数据 |
 | POST | `/create-order` | ✅ | 创建物流订单（电子面单） |
-| POST | `/auto-sync/trigger` | ✅ | 触发自动同步 |
-| GET | `/auto-sync/status` | ✅ | 自动同步状态 |
+
+### 13.3.1 物流自动同步
+
+| 方法 | 路径 | 认证 | 说明 |
+|------|------|------|------|
+| POST | `/auto-sync/trigger` | ✅ | 手动触发物流自动同步 |
+| GET | `/auto-sync/status` | ✅ | 自动同步运行状态 |
+| POST | `/auto-sync/preview` | ✅ | 预览物流文本→订单状态映射 |
+| GET | `/auto-sync/config` | ✅ | 获取自动同步配置 |
+| POST | `/auto-sync/config` | ✅ | 保存自动同步配置 |
+
+### 13.3.2 快递100对接
+
+| 方法 | 路径 | 认证 | 说明 |
+|------|------|------|------|
+| GET | `/kuaidi100/config` | ✅ | 获取快递100配置 |
+| POST | `/kuaidi100/config` | ✅ | 保存快递100配置 |
+| POST | `/kuaidi100/test` | ✅ | 测试快递100连接 |
+
+### 13.3.3 物流API配置
+
+| 方法 | 路径 | 认证 | 说明 |
+|------|------|------|------|
+| GET | `/api-configs` | ✅ | 物流API配置列表 |
+| GET | `/api-configs/:companyCode` | ✅ | 指定公司API配置 |
+| POST | `/api-configs/:companyCode` | ✅ | 保存/更新API配置 |
+| POST | `/api-configs/:companyCode/test` | ✅ | 测试API连接 |
+
+### 13.3.4 圆通回调
+
+| 方法 | 路径 | 认证 | 说明 |
+|------|------|------|------|
+| POST | `/yto-callback` | 无 | 圆通快递推送回调（XML） |
+| GET | `/yto-callback` | 无 | 圆通回调URL验证 |
 
 ### 13.4 寄件人地址
 
@@ -1103,13 +1143,28 @@ POST /api/v1/auth/login
 > 路由前缀：`/api/v1/logs`  
 > 源文件：`routes/logs.ts`
 
+### 26.1 系统日志文件管理
+
 | 方法 | 路径 | 认证 | 说明 |
 |------|------|------|------|
-| GET | `/` | ✅ | 操作日志列表 |
-| GET | `/statistics` | ✅ | 日志统计 |
-| GET | `/export` | ✅ | 导出日志 |
-| GET | `/types` | ✅ | 日志类型列表 |
-| DELETE | `/cleanup` | ✅ | 清理过期日志（共7个接口） |
+| GET | `/system` | ✅ | 读取系统日志文件（combined/error/operations等） |
+| DELETE | `/clear` | ✅ | 清空/截断系统日志文件 |
+| GET | `/operation-logs` | ✅ | 读取 operations.log 操作记录 |
+| GET | `/config` | ✅ | 获取系统日志文件清理配置 |
+| POST | `/config` | ✅ | 保存系统日志文件清理配置 |
+| GET | `/stats` | ✅ | 系统日志文件统计（数量、大小、最早日期） |
+| DELETE | `/cleanup/:days` | ✅ | 删除N天前的系统日志文件 |
+
+### 26.2 业务操作日志清理
+
+> 管理 `operation_logs` 等业务表中的日志记录
+
+| 方法 | 路径 | 认证 | 说明 |
+|------|------|------|------|
+| GET | `/operation-log/config` | ✅ | 获取业务日志清理配置（自动清理开关、保留天数） |
+| POST | `/operation-log/config` | ✅ | 保存业务日志清理配置 |
+| GET | `/operation-log/stats` | ✅ | 业务日志统计（各表记录数、最早记录时间） |
+| DELETE | `/operation-log/cleanup/:days` | ✅ | 清理N天前的业务日志（operation_logs、performance_operation_logs、cod_operation_logs、value_added_operation_logs） |
 
 ---
 
@@ -1716,11 +1771,11 @@ POST /api/v1/auth/login
 | 方法 | 路径 | 认证 | 说明 |
 |------|------|------|------|
 | GET | `/mobile-app-config` | ✅ | APP配置列表 |
-| POST | `/mobile-app-config` | ✅ | 创建APP配置 |
+| GET | `/mobile-app-config/stats` | ✅ | 各平台下载统计 |
+| POST | `/mobile-app-config` | ✅ | 创建APP配置（外部URL） |
+| POST | `/mobile-app-config/upload` | ✅ | 上传APK/IPA安装包 |
 | PUT | `/mobile-app-config/:id` | ✅ | 更新APP配置 |
-| DELETE | `/mobile-app-config/:id` | ✅ | 删除APP配置 |
-| POST | `/mobile-app-config/:id/publish` | ✅ | 发布APP版本 |
-| GET | `/mobile-app-config/latest` | ✅ | 最新版本信息 |
+| DELETE | `/mobile-app-config/:id` | ✅ | 删除APP配置（含物理文件） |
 
 ### 39.4 租户数据导出 /admin/tenants/:id/export
 
@@ -1794,7 +1849,9 @@ POST /api/v1/auth/login
 
 | 方法 | 路径 | 认证 | 说明 |
 |------|------|------|------|
-| GET | `/operation-logs` | ✅ | 操作日志列表 |
+| GET | `/operation-logs` | ✅ | 操作日志列表（分页、按模块/操作/管理员筛选） |
+| GET | `/operation-logs/statistics` | ✅ | 日志统计（按模块/操作类型/管理员分组） |
+| POST | `/operation-logs/fix-history` | ✅ | 修复历史分类错误的日志记录 |
 | GET | `/operation-logs/export` | ✅ | 导出日志 |
 | DELETE | `/operation-logs/cleanup` | ✅ | 清理过期日志 |
 
@@ -1977,6 +2034,107 @@ POST /api/v1/auth/login
 | POST | `/verify/license` | ✅ | 验证License |
 | POST | `/verify/heartbeat` | ✅ | License心跳 |
 
+### 39.14 管理后台公开接口 /admin/public
+
+> 无需管理员认证，供CRM前端或私有部署节点调用
+
+| 方法 | 路径 | 认证 | 说明 |
+|------|------|------|------|
+| GET | `/public/system-config` | 无 | 公开系统配置（CRM前端启动时读取，私有部署代理中央服务器） |
+| GET | `/public/mobile-app-list` | 无 | 已启用的移动APP安装包列表（私有部署从中央服务器获取下载链接） |
+
+---
+
+## 40. 操作日志 /operation-logs
+
+> 路由前缀：`/api/v1/operation-logs`  
+> 源文件：`routes/operationLogs.ts`  
+> 说明：CRM业务操作日志，记录在 `operation_logs` 数据库表中，支持列表页最新日志展示、历史查看、订单时间线
+
+### 40.1 列表页最新日志
+
+| 方法 | 路径 | 认证 | 说明 |
+|------|------|------|------|
+| GET | `/latest` | ✅ | 批量获取资源最新操作日志 |
+
+**请求参数（Query）：**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `module` | string | 是 | 模块名：`order_audit`、`shipping`、`status_update`、`logistics`、`user`、`department`、`role`、`cod_review` 等 |
+| `resourceIds` | string | 是 | 逗号分隔的资源ID列表 |
+
+**响应示例：**
+```json
+{
+  "success": true,
+  "data": {
+    "resource_id_1": {
+      "operationType": "审核通过",
+      "content": "订单 ORD001 审核通过",
+      "operator": "张三",
+      "createdAt": "2026-06-28T10:30:00Z"
+    }
+  }
+}
+```
+
+### 40.2 历史日志（分页）
+
+| 方法 | 路径 | 认证 | 说明 |
+|------|------|------|------|
+| GET | `/:resourceId` | ✅ | 获取指定资源的操作日志历史（分页） |
+
+**请求参数（Query）：**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `module` | string | 是 | 模块名 |
+| `page` | number | 否 | 页码，默认 1 |
+| `pageSize` | number | 否 | 每页条数，默认 10 |
+
+### 40.3 订单时间线
+
+| 方法 | 路径 | 认证 | 说明 |
+|------|------|------|------|
+| GET | `/order-timeline/:orderId` | ✅ | 订单完整审计时间线（合并 operation_logs + order_status_history） |
+
+**请求参数（Query）：**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `page` | number | 否 | 页码，默认 1 |
+| `pageSize` | number | 否 | 每页条数，默认 20 |
+
+---
+
+## 41. 移动应用下载 /mobile-app
+
+> 路由前缀：`/api/v1/mobile-app`  
+> 源文件：`routes/mobileApp.ts`  
+> 说明：CRM 端移动应用下载接口，私有部署时自动从中央服务器获取APP包信息
+
+| 方法 | 路径 | 认证 | 说明 |
+|------|------|------|------|
+| GET | `/list` | ✅ | 已启用的移动APP下载列表（私有部署自动回退到中央服务器） |
+| GET | `/download/:id` | 无 | 下载APP安装包（自增下载计数，或302重定向到外部URL） |
+
+---
+
+## 42. 消息清理 /message-cleanup
+
+> 路由前缀：`/api/v1/message-cleanup`  
+> 源文件：`routes/messageCleanup.ts`  
+> 说明：系统消息/通知的自动清理管理
+
+| 方法 | 路径 | 认证 | 说明 |
+|------|------|------|------|
+| GET | `/stats` | ✅ | 消息统计（总数、已读/未读、最早消息时间） |
+| GET | `/config` | ✅ | 获取消息清理配置 |
+| POST | `/config` | ✅ | 保存消息清理配置（自动清理开关、保留天数） |
+| POST | `/execute` | ✅ | 手动执行消息清理 |
+| GET | `/history` | ✅ | 清理执行历史记录 |
+
 ---
 
 ## 附录
@@ -2029,11 +2187,12 @@ POST /api/v1/auth/login
 ---
 
 > **文档说明**  
-> 本文档基于源码自动提取生成，覆盖后端全部 **164 个路由文件、约 1,507+ 个 API 接口**。  
+> 本文档基于源码自动提取生成，覆盖后端全部 **165 个路由文件、约 1,560+ 个 API 接口**。  
 > 各接口的详细请求/响应参数请参考对应源文件中的 Joi 验证规则和响应构造。  
 > 如需 Swagger/OpenAPI 格式文档，可基于本文档进一步集成 `swagger-jsdoc` 自动生成。
 >
 > **更新记录**  
 > - 2026-05-05：初版，约1400+接口  
 > - 2026-05-30：补全新增模块（通话线索、外呼配置、绩效报表、权限扩展、企微H5应用、企微扩展模块、会员企微/短信/容量、管理后台扩展等），接口数更新至1507+  
+> - 2026-06-29：补全操作日志模块（/operation-logs 3个端点）、日志清理扩展（/logs/operation-log/* 4个端点）、移动应用下载（/mobile-app 2个端点）、消息清理（/message-cleanup 5个端点）、管理后台公开接口（/admin/public/* 2个端点）、物流管理扩展（auto-sync配置3个、快递100配置3个、API配置4个、圆通回调2个、权限/汇总/待办/日志/导出5个端点）、管理后台操作日志扩展（statistics/fix-history）、移动应用管理扩展（upload/stats），接口数更新至1560+  
 > - 分析模型：Claude Opus 4.6 (Anthropic)

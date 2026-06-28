@@ -1,4 +1,4 @@
-﻿import { defineStore } from 'pinia'
+import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 
 // 系统配置接口
@@ -718,7 +718,9 @@ export const useConfigStore = defineStore('config', () => {
           // 设置功能开关
           if (apiFeatureFlags && typeof apiFeatureFlags === 'object') {
             // Support nested {saas:{...}, private:{...}} structure
-            const deployMode = (import.meta.env.VITE_DEPLOY_MODE || 'saas') as string
+            // 使用运行时部署模式检测（localStorage优先），而非构建时环境变量
+            const { getDeployMode } = await import('@/api/tenantLicense')
+            const deployMode = getDeployMode()
             const modeKey = deployMode === 'private' ? 'private' : 'saas'
             if (apiFeatureFlags[modeKey] && typeof apiFeatureFlags[modeKey] === 'object') {
               featureFlags.value = apiFeatureFlags[modeKey] as Record<string, boolean>

@@ -16,6 +16,7 @@ import { formatDate } from '../../utils/dateFormat';
 import { ensureStatusHistoryTable } from '../orders/orderHelpers';
 
 import { log } from '../../config/logger';
+import { writeOperationLog, extractUserInfo, translateStatus } from '../../utils/operationLogWriter';
 import { AppDataSource } from '../../config/database';
 export function registerStatusAndConfigRoutes(router: Router): void {
 router.get('/permission', (req: Request, res: Response) => {
@@ -326,6 +327,17 @@ router.post('/order/status', async (req, res) => {
 
     log.info('✅ 订单物流状态已持久化到数据库:', { orderNo, newStatus, remark });
 
+    // 写入操作日志
+    const userInfo = extractUserInfo(req);
+    writeOperationLog({
+      module: 'logistics_status',
+      resourceType: 'order',
+      resourceId: order.id,
+      action: 'status_change',
+      description: `手动更新订单状态: ${translateStatus(oldStatus)} → ${translateStatus(newStatus)}`,
+      ...userInfo,
+    });
+
     // 🔥 根据物流状态发送通知
     const orderInfo = {
       id: order.id,
@@ -449,6 +461,17 @@ router.post('/order/batch-status', async (req, res) => {
         } catch (historyError) {
           log.warn(`⚠️ 订单 ${orderNo} 状态历史记录保存失败（不影响主流程）:`, historyError);
         }
+
+        // 写入操作日志
+        const batchUserInfo = extractUserInfo(req);
+        writeOperationLog({
+          module: 'logistics_status',
+          resourceType: 'order',
+          resourceId: order.id,
+          action: 'status_change',
+          description: `批量更新订单状态: → ${translateStatus(newStatus)}`,
+          ...batchUserInfo,
+        });
 
         // 🔥 根据物流状态发送通知
         const orderInfo = {

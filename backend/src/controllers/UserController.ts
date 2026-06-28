@@ -12,6 +12,7 @@ import { getTenantRepo } from '../utils/tenantRepo';
 import { deployConfig } from '../config/deploy';
 import { onlineSeatService } from '../services/OnlineSeatService';
 import { getClientIp } from '../utils/getClientIp';
+import { writeOperationLog, extractUserInfo } from '../utils/operationLogWriter';
 
 export class UserController {
   private get userRepository() {
@@ -709,6 +710,16 @@ export class UserController {
       userAgent: req.get('User-Agent')
     });
 
+    const userInfo = extractUserInfo(req);
+    writeOperationLog({
+      module: 'user',
+      resourceType: 'user',
+      resourceId: savedUser.id,
+      action: 'create',
+      description: `创建用户: ${username}`,
+      ...userInfo,
+    });
+
     // 返回用户信息（不包含密码）
     const { password: _, ...userWithoutPassword } = savedUser;
 
@@ -1047,6 +1058,16 @@ export class UserController {
       userAgent: req.get('User-Agent')
     });
 
+    const opUserInfo = extractUserInfo(req);
+    writeOperationLog({
+      module: 'user',
+      resourceType: 'user',
+      resourceId: userId,
+      action: 'edit',
+      description: `编辑用户: ${user.username}`,
+      ...opUserInfo,
+    });
+
     const { password: _, ...userInfo } = updatedUser;
 
     res.json({ success: true, message: '用户更新成功', data: userInfo });
@@ -1086,6 +1107,16 @@ export class UserController {
       result: 'success',
       ipAddress: getClientIp(req),
       userAgent: req.get('User-Agent')
+    });
+
+    const opUserInfo = extractUserInfo(req);
+    writeOperationLog({
+      module: 'user',
+      resourceType: 'user',
+      resourceId: userId,
+      action: 'delete',
+      description: `删除用户: ${user.username}`,
+      ...opUserInfo,
     });
 
     res.json({ success: true, message: '用户删除成功' });
@@ -1138,6 +1169,20 @@ export class UserController {
       result: 'success',
       ipAddress: getClientIp(req),
       userAgent: req.get('User-Agent')
+    });
+
+    const opUserInfo = extractUserInfo(req);
+    const statusAction = status === 'locked' ? 'lock' : 'status_change';
+    const statusDesc = status === 'locked'
+      ? `封禁账户: ${user.username}`
+      : `用户状态变更: ${user.username} → ${status}`;
+    writeOperationLog({
+      module: 'user',
+      resourceType: 'user',
+      resourceId: userId,
+      action: statusAction,
+      description: statusDesc,
+      ...opUserInfo,
     });
 
     const { password: _, ...userInfo } = updatedUser;
@@ -1257,6 +1302,16 @@ export class UserController {
       result: 'success',
       ipAddress: getClientIp(req),
       userAgent: req.get('User-Agent')
+    });
+
+    const opUserInfo = extractUserInfo(req);
+    writeOperationLog({
+      module: 'user',
+      resourceType: 'user',
+      resourceId: userId,
+      action: 'password_reset',
+      description: `重置密码: ${user.username}`,
+      ...opUserInfo,
     });
 
     res.json({
@@ -1415,6 +1470,16 @@ export class UserController {
       result: 'success',
       ipAddress: getClientIp(req),
       userAgent: req.get('User-Agent')
+    });
+
+    const opUserInfo = extractUserInfo(req);
+    writeOperationLog({
+      module: 'user',
+      resourceType: 'user',
+      resourceId: userId,
+      action: 'unlock',
+      description: `解禁账户: ${user.username}`,
+      ...opUserInfo,
     });
 
     res.json({

@@ -1,6 +1,7 @@
 /**
  * Mobile App Routes - CRM端移动应用下载接口
  * 提供移动应用下载列表（需登录）和下载文件（公开访问）
+ * 私有部署模式下，若本地无数据则从中央服务器获取
  */
 import { Router, Request, Response } from 'express';
 import path from 'path';
@@ -8,8 +9,44 @@ import fs from 'fs';
 import { AppDataSource } from '../config/database';
 import { authenticateToken } from '../middleware/auth';
 import { log } from '../config/logger';
+import { getCentralAdminApiUrl } from '../config/centralServer';
 
 const router = Router();
+
+const isPrivateDeploy = () => (process.env.DEPLOY_MODE || 'private') !== 'saas';
+
+async function fetchFromCentralServer(): Promise<any[]> {
+  try {
+    const adminApiUrl = getCentralAdminApiUrl();
+    const url = `${adminApiUrl}/public/mobile-app-list`;
+    log.info(`[MobileApp] 私有部署 - 从中央服务器获取应用列表: ${url}`);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
+    const resp = await fetch(url, { signal: controller.signal, headers: { 'Accept': 'application/json' } });
+    clearTimeout(timeout);
+    if (!resp.ok) return [];
+    const json = await resp.json() as any;
+    const list = json?.data || json || [];
+    if (!Array.isArray(list)) return [];
+    return list.filter((pkg: any) => pkg.is_enabled !== 0 && pkg.is_enabled !== false).map((pkg: any) => ({
+      id: pkg.id,
+      platform: pkg.platform,
+      appName: pkg.app_name || pkg.appName || 'CRM移动端',
+      version: pkg.version || '-',
+      fileSize: pkg.file_size || pkg.fileSize || 0,
+      downloadCount: pkg.download_count || pkg.downloadCount || 0,
+      description: pkg.description || '',
+      hasPackage: !!(pkg.package_url || pkg.packageUrl),
+      hasExternalUrl: !!(pkg.external_url || pkg.externalUrl),
+      externalUrl: pkg.external_url || pkg.externalUrl || '',
+      downloadUrl: pkg.external_url || pkg.externalUrl || pkg.package_url || pkg.packageUrl || '',
+      updatedAt: pkg.updated_at || pkg.updatedAt,
+    }));
+  } catch (e: any) {
+    log.warn('[MobileApp] 从中央服务器获取应用列表失败:', e.message);
+    return [];
+  }
+}
 
 /**
  * GET /mobile-app/list - 获取已启用的移动应用下载列表
@@ -17,46 +54,53 @@ const router = Router();
  */
 router.get('/list', authenticateToken, async (_req: Request, res: Response) => {
   try {
-    // 检查表是否存在
     const tableExists = await AppDataSource.query(
       `SELECT COUNT(*) as cnt FROM information_schema.tables
        WHERE table_schema = DATABASE() AND table_name = 'mobile_app_packages'`
     ).catch(() => [{ cnt: 0 }]);
 
-    if (!tableExists[0]?.cnt) {
-      return res.json({ success: true, data: [] });
+    let packages: any[] = [];
+    if (tableExists[0]?.cnt) {
+      packages = await AppDataSource.query(`
+        SELECT p.* FROM mobile_app_packages p
+        INNER JOIN (
+          SELECT platform, MAX(id) as max_id
+          FROM mobile_app_packages
+          WHERE is_enabled = 1
+          GROUP BY platform
+        ) latest ON p.id = latest.max_id
+        ORDER BY p.platform ASC
+      `);
     }
 
-    // 每个平台只返回最新的已启用版本
-    const packages = await AppDataSource.query(`
-      SELECT p.* FROM mobile_app_packages p
-      INNER JOIN (
-        SELECT platform, MAX(id) as max_id
-        FROM mobile_app_packages
-        WHERE is_enabled = 1
-        GROUP BY platform
-      ) latest ON p.id = latest.max_id
-      ORDER BY p.platform ASC
-    `);
+    if (packages.length > 0) {
+      const result = packages.map((pkg: any) => ({
+        id: pkg.id,
+        platform: pkg.platform,
+        appName: pkg.app_name,
+        version: pkg.version,
+        fileSize: pkg.file_size,
+        downloadCount: pkg.download_count,
+        description: pkg.description,
+        hasPackage: !!(pkg.package_url),
+        hasExternalUrl: !!(pkg.external_url),
+        externalUrl: pkg.external_url || '',
+        downloadUrl: pkg.package_url
+          ? `/api/v1/mobile-app/download/${pkg.id}`
+          : (pkg.external_url || ''),
+        updatedAt: pkg.updated_at
+      }));
+      return res.json({ success: true, data: result });
+    }
 
-    const result = packages.map((pkg: any) => ({
-      id: pkg.id,
-      platform: pkg.platform,
-      appName: pkg.app_name,
-      version: pkg.version,
-      fileSize: pkg.file_size,
-      downloadCount: pkg.download_count,
-      description: pkg.description,
-      hasPackage: !!(pkg.package_url),
-      hasExternalUrl: !!(pkg.external_url),
-      externalUrl: pkg.external_url || '',
-      downloadUrl: pkg.package_url
-        ? `/api/v1/mobile-app/download/${pkg.id}`
-        : (pkg.external_url || ''),
-      updatedAt: pkg.updated_at
-    }));
+    if (isPrivateDeploy()) {
+      const centralApps = await fetchFromCentralServer();
+      if (centralApps.length > 0) {
+        return res.json({ success: true, data: centralApps });
+      }
+    }
 
-    res.json({ success: true, data: result });
+    res.json({ success: true, data: [] });
   } catch (error: any) {
     log.error('[MobileApp] 获取下载列表失败:', error);
     res.status(500).json({ success: false, message: error.message || '获取失败' });

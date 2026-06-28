@@ -456,6 +456,29 @@
         <span v-else class="no-data">暂无记录</span>
       </template>
 
+      <!-- 操作日志列 -->
+      <template #column-operationLog="{ row }">
+        <div v-if="shippingLatestLogs[row.id || row.orderId]" class="op-log-cell">
+          <div class="op-log-line1">
+            <el-tag :type="getShippingOpTagType(shippingLatestLogs[row.id || row.orderId].operationType)" size="small" effect="light">
+              {{ shippingOpLogLabels[shippingLatestLogs[row.id || row.orderId].operationType] || shippingLatestLogs[row.id || row.orderId].operationType }}
+            </el-tag>
+            <span class="op-log-text" :title="shippingLatestLogs[row.id || row.orderId].operationContent">
+              {{ shippingLatestLogs[row.id || row.orderId].operationContent }}
+            </span>
+          </div>
+          <div class="op-log-line2">
+            <span class="op-log-operator">{{ shippingLatestLogs[row.id || row.orderId].operatorName || '系统' }}</span>
+            <span class="op-log-time">{{ formatShippingOpLogTime(shippingLatestLogs[row.id || row.orderId].createdAt) }}</span>
+            <el-button type="primary" link size="small" @click="showShippingOpLogDialog(row.id || row.orderId, row.orderNo)">查看历史</el-button>
+          </div>
+        </div>
+        <div v-else class="op-log-cell op-log-empty">
+          <span class="text-muted">暂无记录</span>
+          <el-button type="primary" link size="small" @click="showShippingOpLogDialog(row.id || row.orderId, row.orderNo)">查看历史</el-button>
+        </div>
+      </template>
+
       <!-- 操作列 -->
       <template #table-actions="{ row }">
         <div class="action-buttons">
@@ -915,6 +938,15 @@
         <el-button type="primary" :loading="virtualDeliveryLoading" @click="confirmVirtualDelivery">确认发货</el-button>
       </template>
     </el-dialog>
+
+    <OperationLogDialog
+      :visible="shippingOpLogDialog.visible"
+      @update:visible="shippingOpLogDialog.visible = $event"
+      :resource-id="shippingOpLogDialog.resourceId"
+      :resource-name="shippingOpLogDialog.resourceName ? '订单：' + shippingOpLogDialog.resourceName : ''"
+      module="shipping"
+      :op-labels="shippingOpLogLabels"
+    />
   </div>
 </template>
 
@@ -956,6 +988,8 @@ import CancelOrderDialog from './components/CancelOrderDialog.vue'
 import SenderInfoDialog from './components/SenderInfoDialog.vue'
 import DynamicTable from '@/components/DynamicTable.vue'
 import { formatDateTime } from '@/utils/dateFormat'
+import { useOperationLog } from '@/components/OperationLog/useOperationLog'
+import OperationLogDialog from '@/components/OperationLog/OperationLogDialog.vue'
 
 // 初始化
 const router = useRouter()
@@ -1051,6 +1085,29 @@ const userStore = useUserStore()
 const departmentStore = useDepartmentStore()
 const customerStore = useCustomerStore()
 const fieldConfigStore = useOrderFieldConfigStore()
+
+// 操作日志
+const shippingOpLogLabels: Record<string, string> = {
+  ship: '发货', edit: '编辑', cancel: '取消', status_change: '状态变更',
+  create: '创建', batch_ship: '批量发货', assign: '分配',
+}
+const { latestLogs: shippingLatestLogs, dialog: shippingOpLogDialog, loadLatestLogs: loadShippingLatestLogs, showDialog: showShippingOpLogDialog } = useOperationLog('shipping')
+
+const getShippingOpTagType = (type: string): string => {
+  const map: Record<string, string> = {
+    create: 'success', edit: 'warning', delete: 'danger', ship: 'success',
+    cancel: 'danger', status_change: 'warning', batch_ship: 'success', assign: 'warning',
+  }
+  return map[type] || 'info'
+}
+
+const formatShippingOpLogTime = (time: string): string => {
+  if (!time) return '-'
+  try {
+    const d = new Date(time)
+    return d.toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })
+  } catch { return time }
+}
 
 // 表格标题
 const tableTitle = computed(() => {
@@ -1279,6 +1336,13 @@ const baseTableColumns = [
     width: 160,
     showOverflowTooltip: true,
     visible: false
+  },
+  {
+    prop: 'operationLog',
+    label: '操作日志',
+    minWidth: 280,
+    visible: true,
+    slot: 'operationLog'
   }
 ]
 
@@ -1714,6 +1778,10 @@ const loadOrderList = async () => {
       }
     })
 
+    // 加载操作日志
+    const opLogIds = orderList.value.map((r: any) => r.id || r.orderId).filter(Boolean)
+    if (opLogIds.length) loadShippingLatestLogs(opLogIds)
+
     // 同步物流状态（异步执行，不阻塞页面加载）
     syncLogisticsData()
 
@@ -2138,7 +2206,13 @@ const exportSelected = async () => {
       specifiedExpress: order.specifiedExpress || '',
       expressCompany: order.expressCompany || '',
       expressNo: order.expressNo || '',
-      logisticsStatus: order.logisticsStatus || ''
+      logisticsStatus: order.logisticsStatus || '',
+      operationLog: (() => {
+        const log = shippingLatestLogs.value?.[order.id || order.orderId]
+        if (!log) return ''
+        const typeLabel = shippingOpLogLabels[log.operationType] || log.operationType
+        return `[${typeLabel}] ${log.operationContent || ''} (${log.operatorName || '系统'} ${formatShippingOpLogTime(log.createdAt)})`
+      })()
     }))
 
     const filename = exportBatchOrders(exportData, userStore.isAdmin)
@@ -2205,7 +2279,13 @@ const handleCommand = async ({ action, row }: { action: string, row: any }) => {
           specifiedExpress: row.specifiedExpress || '',
           expressCompany: row.expressCompany || '',
           expressNo: row.expressNo || '',
-          logisticsStatus: row.logisticsStatus || ''
+          logisticsStatus: row.logisticsStatus || '',
+          operationLog: (() => {
+            const log = shippingLatestLogs.value?.[row.id || row.orderId]
+            if (!log) return ''
+            const typeLabel = shippingOpLogLabels[log.operationType] || log.operationType
+            return `[${typeLabel}] ${log.operationContent || ''} (${log.operatorName || '系统'} ${formatShippingOpLogTime(log.createdAt)})`
+          })()
         }
 
         const filename = exportSingleOrder(exportData, userStore.isAdmin)
@@ -3686,4 +3766,15 @@ const confirmVirtualDelivery = async () => {
   color: #c0c4cc;
   font-style: italic;
 }
+
+.op-log-cell { display: flex; flex-direction: column; gap: 2px; line-height: 1.5; }
+.op-log-line1 { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.op-log-line1 .el-tag { flex-shrink: 0; }
+.op-log-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; font-size: 13px; color: #606266; }
+.op-log-line2 { display: flex; align-items: center; gap: 10px; font-size: 12px; color: #909399; }
+.op-log-operator { flex-shrink: 0; }
+.op-log-time { flex-shrink: 0; }
+.op-log-line2 .el-button { margin-left: auto; padding: 0; }
+.op-log-empty { flex-direction: row; align-items: center; gap: 10px; }
+.text-muted { color: #c0c4cc; font-size: 13px; }
 </style>

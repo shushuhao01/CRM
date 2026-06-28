@@ -247,6 +247,46 @@
       @refresh-logistics="refreshLogistics"
     />
 
+    <!-- 订单操作日志 -->
+    <el-card class="order-logs-card" shadow="never">
+      <template #header>
+        <div class="order-logs-header" @click="orderLogsExpanded = !orderLogsExpanded">
+          <span class="order-logs-title">订单日志</span>
+          <el-icon class="order-logs-arrow" :class="{ expanded: orderLogsExpanded }">
+            <ArrowDown />
+          </el-icon>
+        </div>
+      </template>
+      <div v-show="orderLogsExpanded" v-loading="orderLogsLoading" class="order-logs-container">
+        <el-timeline v-if="orderLogs.length > 0">
+          <el-timeline-item
+            v-for="item in orderLogs"
+            :key="item.id"
+            :type="getOrderLogTimelineType(item.logType)"
+            placement="top"
+          >
+            <div class="order-log-meta">
+              <span class="order-log-operator">{{ item.operatorName || '系统' }}</span>
+              <span class="order-log-separator">·</span>
+              <span class="order-log-time">{{ formatOrderLogTime(item.createdAt) }}</span>
+            </div>
+            <div class="order-log-item">
+              <div class="order-log-header">
+                <el-tag :type="getOrderLogTimelineType(item.logType)" size="small">
+                  {{ getOrderLogTypeText(item.logType) }}
+                </el-tag>
+              </div>
+              <div class="order-log-content">{{ item.content }}</div>
+            </div>
+          </el-timeline-item>
+        </el-timeline>
+        <el-empty v-else-if="!orderLogsLoading" description="暂无操作日志" :image-size="60" />
+        <div v-if="orderLogsHasMore" class="order-logs-load-more">
+          <el-button type="primary" link :loading="orderLogsLoading" @click="loadMoreOrderLogs">加载更多</el-button>
+        </div>
+      </div>
+    </el-card>
+
     <!-- 手机号验证对话框（统一组件） -->
     <PhoneVerifyDialog
       v-model:visible="phoneVerifyDialogVisible"
@@ -283,6 +323,7 @@ import { SensitiveInfoType } from '@/services/permission'
 import { useUserStore } from '@/stores/user'
 import { createSafeNavigator } from '@/utils/navigation'
 import { useOrderFieldConfigStore } from '@/stores/orderFieldConfig'
+import { operationLogApi, type OrderTimelineItem } from '@/api/operationLog'
 import { getOrderStatusStyle, getOrderStatusText as getUnifiedStatusText } from '@/utils/orderStatusConfig'
 import { formatDateTime } from '@/utils/dateFormat'
 import { getCompanyShortName, getTrackingUrl, KUAIDI100_URL } from '@/utils/logisticsCompanyConfig'
@@ -301,6 +342,15 @@ const orderFieldConfigStore = useOrderFieldConfigStore()
 // 响应式数据
 const loading = ref(false)
 const orderId = route.params.id as string
+
+// 订单操作日志
+const orderLogs = ref<OrderTimelineItem[]>([])
+const orderLogsLoading = ref(false)
+const orderLogsExpanded = ref(true)
+const orderLogsHasMore = ref(false)
+const orderLogsOffset = ref(0)
+const ORDER_LOGS_INITIAL = 3
+const ORDER_LOGS_MORE = 10
 
 // 倒计时相关
 const countdownSeconds = ref(180) // 3分钟 = 180秒
@@ -1855,6 +1905,66 @@ const loadOrderDetail = async () => {
   }
 }
 
+const loadOrderLogs = async () => {
+  if (!orderId) return
+  orderLogsLoading.value = true
+  try {
+    const res = await operationLogApi.getOrderTimeline(orderId, ORDER_LOGS_INITIAL, 0)
+    const data = res?.data?.data || res?.data || res || {}
+    orderLogs.value = data.list || []
+    orderLogsHasMore.value = data.hasMore || false
+    orderLogsOffset.value = orderLogs.value.length
+  } catch (e) {
+    console.error('加载订单日志失败:', e)
+  } finally {
+    orderLogsLoading.value = false
+  }
+}
+
+const loadMoreOrderLogs = async () => {
+  if (!orderId) return
+  orderLogsLoading.value = true
+  try {
+    const res = await operationLogApi.getOrderTimeline(orderId, ORDER_LOGS_MORE, orderLogsOffset.value)
+    const data = res?.data?.data || res?.data || res || {}
+    const newLogs = data.list || []
+    orderLogs.value = [...orderLogs.value, ...newLogs]
+    orderLogsHasMore.value = data.hasMore || false
+    orderLogsOffset.value = orderLogs.value.length
+  } catch (e) {
+    console.error('加载更多订单日志失败:', e)
+  } finally {
+    orderLogsLoading.value = false
+  }
+}
+
+const getOrderLogTimelineType = (logType: string): string => {
+  const map: Record<string, string> = {
+    create: 'success', edit: 'warning', approve: 'success', reject: 'danger',
+    status_change: 'primary', ship: 'success', cancel: 'danger', assign: 'warning',
+    auto_sync: 'info', manual_sync: 'info', submit_audit: 'info',
+  }
+  return map[logType] || 'info'
+}
+
+const getOrderLogTypeText = (logType: string): string => {
+  const map: Record<string, string> = {
+    create: '创建', edit: '编辑', approve: '审核通过', reject: '审核拒绝',
+    status_change: '状态变更', ship: '发货', cancel: '取消', assign: '分配',
+    auto_sync: '自动同步', manual_sync: '手动同步', submit_audit: '提交审核',
+    batch_update: '批量更新', delete: '删除',
+  }
+  return map[logType] || logType
+}
+
+const formatOrderLogTime = (time: string): string => {
+  if (!time) return '-'
+  try {
+    const d = new Date(time)
+    return d.toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })
+  } catch { return time }
+}
+
 onMounted(async () => {
   // 🔥 加载自定义字段配置（从数据库）
   await orderFieldConfigStore.loadConfig()
@@ -1864,6 +1974,7 @@ onMounted(async () => {
   // 如果数据为空，说明确实没有数据，不应该强制初始化
 
   loadOrderDetail()
+  loadOrderLogs()
 })
 
 onUnmounted(() => {
@@ -3801,6 +3912,23 @@ onUnmounted(() => {
     transform: scale(1.1);
   }
 }
+
+/* 订单操作日志 */
+.order-logs-card { margin-top: 16px; }
+.order-logs-header { display: flex; align-items: center; cursor: pointer; user-select: none; }
+.order-logs-title { font-size: 16px; font-weight: 600; color: #303133; }
+.order-logs-arrow { margin-left: auto; transition: transform 0.3s; color: #909399; }
+.order-logs-arrow.expanded { transform: rotate(180deg); }
+.order-logs-container { padding: 8px 0; }
+.order-log-meta { display: flex; gap: 8px; font-size: 13px; margin-bottom: 4px; }
+.order-log-operator { color: #606266; font-weight: 500; }
+.order-log-separator { color: #c0c4cc; }
+.order-log-time { color: #909399; }
+.order-log-item { padding: 10px 14px; background: #f8f9fa; border-radius: 8px; border-left: 3px solid #dcdfe6; transition: all 0.3s ease; }
+.order-log-item:hover { background: #f0f2f5; }
+.order-log-header { margin-bottom: 6px; }
+.order-log-content { color: #303133; font-size: 14px; line-height: 1.6; }
+.order-logs-load-more { text-align: center; padding: 8px 0; }
 
 /* 打印样式 */
 @media print {

@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Admin Routes - 平台管理后台路由
  * 只在 ENABLE_ADMIN=true 时启用
  */
@@ -183,6 +183,22 @@ router.get('/public/system-config', async (_req: Request, res: Response) => {
           enableConsoleEncryption: false
       }
     })
+  }
+});
+
+// 公开的移动应用列表（供私有部署CRM端获取下载链接）
+router.get('/public/mobile-app-list', async (_req: Request, res: Response) => {
+  try {
+    const tableCheck = await AppDataSource.query(
+      `SELECT COUNT(*) as cnt FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'mobile_app_packages'`
+    ).catch(() => [{ cnt: 0 }]);
+    if (!tableCheck[0]?.cnt) return res.json({ success: true, data: [] });
+    const packages = await AppDataSource.query(
+      `SELECT * FROM mobile_app_packages WHERE is_enabled = 1 ORDER BY platform ASC, created_at DESC`
+    );
+    res.json({ success: true, data: packages });
+  } catch (error: any) {
+    res.json({ success: true, data: [] });
   }
 });
 

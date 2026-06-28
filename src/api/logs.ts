@@ -114,3 +114,35 @@ export const cleanupOldLogs = async (retentionDays: number): Promise<{
   })
   return response as unknown as { success: boolean; message: string }
 }
+
+// ═══════════════ 业务操作日志管理 ═══════════════
+
+export interface OpLogCleanupConfig {
+  autoCleanup: boolean
+  retentionDays: number
+}
+
+export interface OpLogStats {
+  totalCount: number
+  oldestLog: string | null
+}
+
+export const getOpLogConfig = async (): Promise<{ success: boolean; data: OpLogCleanupConfig }> => {
+  const response = await request('/logs/operation-log/config', { method: 'GET' })
+  return response as unknown as { success: boolean; data: OpLogCleanupConfig }
+}
+
+export const saveOpLogConfig = async (config: OpLogCleanupConfig): Promise<{ success: boolean; message: string }> => {
+  const response = await request('/logs/operation-log/config', { method: 'POST', data: config as unknown as Record<string, unknown> })
+  return response as unknown as { success: boolean; message: string }
+}
+
+export const getOpLogStats = async (): Promise<{ success: boolean; data: OpLogStats }> => {
+  const response = await request('/logs/operation-log/stats', { method: 'GET' })
+  return response as unknown as { success: boolean; data: OpLogStats }
+}
+
+export const cleanupOldOpLogs = async (retentionDays: number): Promise<{ success: boolean; message: string }> => {
+  const response = await request(`/logs/operation-log/cleanup/${retentionDays}`, { method: 'DELETE' })
+  return response as unknown as { success: boolean; message: string }
+}

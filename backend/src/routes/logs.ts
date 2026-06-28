@@ -548,4 +548,123 @@ router.delete('/cleanup/:days', async (req, res) => {
   }
 });
 
+// ═══════════════ 业务操作日志管理 ═══════════════
+
+/**
+ * GET /api/v1/logs/operation-log/config
+ * 获取业务操作日志清理配置
+ */
+router.get('/operation-log/config', async (req, res) => {
+  try {
+    const dataSource = getDataSource();
+    if (!dataSource) return res.json({ success: true, data: { autoCleanup: false, retentionDays: 90 } });
+    const tenantId = (req as any).user?.tenantId;
+    const configRepo = dataSource.getRepository(SystemConfig);
+    const keys = ['oplog_auto_cleanup', 'oplog_retention_days'];
+    const configs = await configRepo.find({ where: keys.map(k => ({ configKey: k, configGroup: 'oplog', ...(tenantId ? { tenantId } : {}) })) as any });
+    const configMap: Record<string, string> = {};
+    configs.forEach(c => { configMap[c.configKey] = c.configValue; });
+    res.json({
+      success: true,
+      data: {
+        autoCleanup: configMap['oplog_auto_cleanup'] === 'true',
+        retentionDays: parseInt(configMap['oplog_retention_days'] || '90') || 90,
+      }
+    });
+  } catch (error) {
+    logger.error('获取操作日志配置失败:', error);
+    res.json({ success: true, data: { autoCleanup: false, retentionDays: 90 } });
+  }
+});
+
+/**
+ * POST /api/v1/logs/operation-log/config
+ * 保存业务操作日志清理配置
+ */
+router.post('/operation-log/config', async (req, res) => {
+  try {
+    const { autoCleanup, retentionDays } = req.body;
+    const dataSource = getDataSource();
+    if (!dataSource) return res.status(500).json({ success: false, message: '数据库未连接' });
+    const tenantId = (req as any).user?.tenantId || null;
+    const items = [
+      { key: 'oplog_auto_cleanup', value: String(!!autoCleanup) },
+      { key: 'oplog_retention_days', value: String(Math.max(1, parseInt(retentionDays) || 90)) },
+    ];
+    for (const item of items) {
+      await dataSource.query(
+        `INSERT INTO system_configs (configKey, configValue, configGroup, tenant_id) VALUES (?, ?, 'oplog', ?)
+         ON DUPLICATE KEY UPDATE configValue = VALUES(configValue)`,
+        [item.key, item.value, tenantId]
+      );
+    }
+    res.json({ success: true, message: '操作日志清理配置保存成功' });
+  } catch (error) {
+    logger.error('保存操作日志配置失败:', error);
+    res.status(500).json({ success: false, message: '保存失败' });
+  }
+});
+
+/**
+ * GET /api/v1/logs/operation-log/stats
+ * 获取业务操作日志统计
+ */
+router.get('/operation-log/stats', async (req, res) => {
+  try {
+    const dataSource = getDataSource();
+    if (!dataSource) return res.json({ success: true, data: { totalCount: 0, oldestLog: null } });
+    const tenantId = (req as any).user?.tenantId;
+    const tenantWhere = tenantId ? 'WHERE tenant_id = ?' : '';
+    const params = tenantId ? [tenantId] : [];
+    const [countResult] = await dataSource.query(`SELECT COUNT(*) as cnt FROM operation_logs ${tenantWhere}`, params);
+    const [oldestResult] = await dataSource.query(`SELECT MIN(created_at) as oldest FROM operation_logs ${tenantWhere}`, params);
+    res.json({
+      success: true,
+      data: {
+        totalCount: countResult?.cnt || 0,
+        oldestLog: oldestResult?.oldest || null,
+      }
+    });
+  } catch (error) {
+    logger.error('获取操作日志统计失败:', error);
+    res.json({ success: true, data: { totalCount: 0, oldestLog: null } });
+  }
+});
+
+/**
+ * DELETE /api/v1/logs/operation-log/cleanup/:days
+ * 清理过期的业务操作日志
+ */
+router.delete('/operation-log/cleanup/:days', async (req, res) => {
+  try {
+    const retentionDays = parseInt(req.params.days);
+    if (isNaN(retentionDays) || retentionDays < 1) {
+      return res.status(400).json({ success: false, message: '保留天数无效' });
+    }
+    const dataSource = getDataSource();
+    if (!dataSource) return res.status(500).json({ success: false, message: '数据库未连接' });
+    const tenantId = (req as any).user?.tenantId;
+    const tenantWhere = tenantId ? 'AND tenant_id = ?' : '';
+    const params: any[] = [retentionDays];
+    if (tenantId) params.push(tenantId);
+
+    const tables = ['operation_logs', 'performance_operation_logs', 'cod_operation_logs', 'value_added_operation_logs'];
+    let totalDeleted = 0;
+    for (const table of tables) {
+      try {
+        const result = await dataSource.query(
+          `DELETE FROM \`${table}\` WHERE created_at < DATE_SUB(NOW(), INTERVAL ? DAY) ${tenantWhere}`, params
+        );
+        totalDeleted += result?.affectedRows || 0;
+      } catch { /* table may not exist */ }
+    }
+
+    logger.info('清理过期操作日志', { retentionDays, totalDeleted, tenantId });
+    res.json({ success: true, message: `已清理 ${totalDeleted} 条过期操作日志记录` });
+  } catch (error) {
+    logger.error('清理过期操作日志失败:', error);
+    res.status(500).json({ success: false, message: '清理失败' });
+  }
+});
+
 export default router;

@@ -28,6 +28,40 @@
         <strong>关闭</strong>：CRM端仍默认启用加密，但租户可在超管面板中自行选择关闭。
       </span>
     </el-form-item>
+
+    <el-divider content-position="left">日志管理</el-divider>
+
+    <el-alert type="warning" :closable="false" style="margin-bottom: 16px">
+      <template #title>
+        统一控制所有 SaaS 租户的日志清理策略。私有部署客户可在各自的系统设置中自行管理。
+      </template>
+    </el-alert>
+
+    <el-form-item label="业务操作日志">
+      <el-switch v-model="form.enableOpLog" active-text="启用" inactive-text="禁用" />
+      <span class="form-tip">启用后，租户的订单审核、发货、状态更新等操作将记录审计日志</span>
+    </el-form-item>
+    <el-form-item label="操作日志自动清理">
+      <el-switch v-model="form.opLogAutoCleanup" :disabled="!form.enableOpLog" />
+      <span class="form-tip">启用后将自动清理过期的业务操作日志</span>
+    </el-form-item>
+    <el-form-item label="操作日志保留天数">
+      <el-input-number v-model="form.opLogRetentionDays" :min="7" :max="730" :step="30" :disabled="!form.opLogAutoCleanup" />
+      <span class="form-tip">天（超过此天数的操作日志将被清理，建议 90-365 天）</span>
+    </el-form-item>
+
+    <el-form-item label="系统日志">
+      <el-switch v-model="form.enableSysLog" active-text="启用" inactive-text="禁用" />
+      <span class="form-tip">启用后，租户可在系统设置中查看和管理系统运行日志</span>
+    </el-form-item>
+    <el-form-item label="系统日志自动清理">
+      <el-switch v-model="form.sysLogAutoCleanup" :disabled="!form.enableSysLog" />
+      <span class="form-tip">启用后将自动清理过期的系统运行日志文件</span>
+    </el-form-item>
+    <el-form-item label="系统日志保留天数">
+      <el-input-number v-model="form.sysLogRetentionDays" :min="1" :max="365" :step="7" :disabled="!form.sysLogAutoCleanup" />
+      <span class="form-tip">天（超过此天数的日志文件将被清理）</span>
+    </el-form-item>
   </el-form>
 </template>
 

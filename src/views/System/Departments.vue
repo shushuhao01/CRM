@@ -347,6 +347,29 @@
             {{ formatDate(row.updatedAt) }}
           </template>
 
+          <!-- 操作日志插槽 -->
+          <template #column-operationLog="{ row }">
+            <div v-if="deptLatestLogs[row.id]" class="op-log-cell">
+              <div class="op-log-line1">
+                <el-tag :type="getDeptOpTagType(deptLatestLogs[row.id].operationType)" size="small" effect="light">
+                  {{ opLogLabels[deptLatestLogs[row.id].operationType] || deptLatestLogs[row.id].operationType }}
+                </el-tag>
+                <span class="op-log-text" :title="deptLatestLogs[row.id].operationContent">
+                  {{ deptLatestLogs[row.id].operationContent }}
+                </span>
+              </div>
+              <div class="op-log-line2">
+                <span class="op-log-operator">{{ deptLatestLogs[row.id].operatorName || '系统' }}</span>
+                <span class="op-log-time">{{ formatDeptOpLogTime(deptLatestLogs[row.id].createdAt) }}</span>
+                <el-button type="primary" link size="small" @click="showDeptOpLogDialog(row.id, row.name)">查看历史</el-button>
+              </div>
+            </div>
+            <div v-else class="op-log-cell op-log-empty">
+              <span class="text-muted">暂无记录</span>
+              <el-button type="primary" link size="small" @click="showDeptOpLogDialog(row.id, row.name)">查看历史</el-button>
+            </div>
+          </template>
+
           <!-- 操作插槽 -->
           <template #table-actions="{ row }">
             <el-button type="primary" link size="small" @click="handleViewDepartment(row)">
@@ -417,6 +440,16 @@
       v-model="permissionDialogVisible"
       :department="currentDepartment"
       @success="handlePermissionSuccess"
+    />
+
+    <!-- 操作日志弹窗 -->
+    <OperationLogDialog
+      :visible="deptOpLogDialog.visible"
+      @update:visible="deptOpLogDialog.visible = $event"
+      :resource-id="deptOpLogDialog.resourceId"
+      :resource-name="deptOpLogDialog.resourceName"
+      module="department"
+      :op-labels="opLogLabels"
     />
 
     <!-- 操作指南弹窗 -->
@@ -604,11 +637,35 @@ import MoveDepartmentDialog from '@/components/Department/MoveDepartmentDialog.v
 import { formatDateTime } from '@/utils/dateFormat'
 import PermissionDialog from '@/components/Department/PermissionDialog.vue'
 import DynamicTable from '@/components/DynamicTable.vue'
+import { useOperationLog } from '@/components/OperationLog/useOperationLog'
+import OperationLogDialog from '@/components/OperationLog/OperationLogDialog.vue'
 
 const router = useRouter()
 const route = useRoute()
 const safeNavigator = createSafeNavigator(router)
 const departmentStore = useDepartmentStore()
+
+const opLogLabels: Record<string, string> = {
+  create: '创建部门', edit: '编辑部门', delete: '删除部门',
+  status_change: '状态变更', assign_manager: '指派负责人',
+}
+const { latestLogs: deptLatestLogs, dialog: deptOpLogDialog, loadLatestLogs: loadDeptLatestLogs, showDialog: showDeptOpLogDialog } = useOperationLog('department')
+
+const getDeptOpTagType = (type: string): string => {
+  const map: Record<string, string> = {
+    create: 'success', edit: 'warning', delete: 'danger', status_change: 'warning',
+    assign_manager: 'info',
+  }
+  return map[type] || 'info'
+}
+
+const formatDeptOpLogTime = (time: string): string => {
+  if (!time) return '-'
+  try {
+    const d = new Date(time)
+    return d.toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })
+  } catch { return time }
+}
 
 // 响应式数据
 const searchKeyword = ref('')
@@ -715,6 +772,8 @@ const handleRefresh = async () => {
   levelFilter.value = ''
   try {
     await departmentStore.fetchDepartments()
+    const ids = departmentStore.departments.map((r: any) => r.id).filter(Boolean)
+    if (ids.length) loadDeptLatestLogs(ids)
     ElMessage.success('数据已刷新')
   } catch (error) {
     ElMessage.error('刷新失败')
@@ -853,12 +912,12 @@ const handleDialogSuccess = async () => {
     // 设置更新标志，防止状态切换事件被意外触发
     isUpdatingData.value = true
 
-    // 重新加载部门数据
     console.log('[Departments] 部门操作成功，重新加载数据')
     await departmentStore.fetchDepartments()
     await departmentStore.fetchDepartmentStats()
+    const deptIds = departmentStore.departments.map((r: any) => r.id).filter(Boolean)
+    if (deptIds.length) loadDeptLatestLogs(deptIds)
 
-    // 等待数据更新完成
     await nextTick()
 
     console.log('[Departments] 数据重新加载完成，当前部门数量:', departmentStore.departments.length)
@@ -998,7 +1057,15 @@ const tableColumns = computed(() => [
     showOverflowTooltip: false,
     slot: 'updatedAt'
   },
-
+  {
+    prop: 'operationLog',
+    label: '操作日志',
+    minWidth: 280,
+    visible: true,
+    sortable: false,
+    showOverflowTooltip: false,
+    slot: 'operationLog'
+  }
 ])
 
 const handleColumnSettingsChange = (columns: unknown) => {
@@ -1008,9 +1075,11 @@ const handleColumnSettingsChange = (columns: unknown) => {
 
 
 // 监听路由变化，从子页面返回时自动刷新部门数据
-watch(() => route.path, (newPath) => {
+watch(() => route.path, async (newPath) => {
   if (newPath === '/system/departments') {
-    departmentStore.fetchDepartments()
+    await departmentStore.fetchDepartments()
+    const ids = departmentStore.departments.map((r: any) => r.id).filter(Boolean)
+    if (ids.length) loadDeptLatestLogs(ids)
   }
 })
 
@@ -1020,6 +1089,9 @@ onMounted(async () => {
     console.log('[Departments] 开始初始化部门数据')
     await departmentStore.initData()
     console.log('[Departments] 页面初始化完成，部门数量:', departmentStore.departments.length)
+
+    const ids = departmentStore.departments.map((r: any) => r.id).filter(Boolean)
+    if (ids.length) loadDeptLatestLogs(ids)
   } catch (error) {
     console.error('[Departments] 初始化部门数据失败:', error)
     ElMessage.error('加载部门数据失败，请稍后重试')
@@ -1605,4 +1677,15 @@ onMounted(async () => {
   justify-content: flex-end;
   gap: 12px;
 }
+
+.op-log-cell { display: flex; flex-direction: column; gap: 2px; line-height: 1.5; }
+.op-log-line1 { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.op-log-line1 .el-tag { flex-shrink: 0; }
+.op-log-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; font-size: 13px; color: #606266; }
+.op-log-line2 { display: flex; align-items: center; gap: 10px; font-size: 12px; color: #909399; }
+.op-log-operator { flex-shrink: 0; }
+.op-log-time { flex-shrink: 0; }
+.op-log-line2 .el-button { margin-left: auto; padding: 0; }
+.op-log-empty { flex-direction: row; align-items: center; gap: 10px; }
+.text-muted { color: #c0c4cc; font-size: 13px; }
 </style>

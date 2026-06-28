@@ -205,55 +205,48 @@ const fetchTrackingInfo = async (phone?: string) => {
 
     console.log('[物流轨迹弹窗] API响应:', response)
 
-    if (response && response.success && response.data) {
-      const data = response.data
+    // axios拦截器已解包外层 { success, data, message }，response 即为内层 data（LogisticsTrackResult）
+    const data = response?.data?.data || response?.data || response || {}
 
-      // 🔥 检查是否需要手机号验证（即使带了手机号也可能验证失败）
-      if (data.status === 'need_phone_verify' ||
-          (!data.success && (data.statusText === '需要手机号验证' || data.statusText?.includes('routes为空')))) {
-        needPhoneVerify.value = true
-        trackingList.value = []
-        return
-      }
+    if (data.status === 'need_phone_verify' ||
+        (!data.success && (data.statusText === '需要手机号验证' || data.statusText?.includes('routes为空')))) {
+      needPhoneVerify.value = true
+      trackingList.value = []
+      return
+    }
 
-      if (data.success && data.traces && data.traces.length > 0) {
-        // 🔥 去重并按时间倒序排列（最新的在最上面）
-        const seen = new Set<string>()
-        const uniqueTraces = data.traces.filter((item: any) => {
-          const key = `${item.time}-${item.description}`
-          if (seen.has(key)) return false
-          seen.add(key)
-          return true
-        })
+    if (data.traces && data.traces.length > 0) {
+      const seen = new Set<string>()
+      const uniqueTraces = data.traces.filter((item: any) => {
+        const key = `${item.time}-${item.description}`
+        if (seen.has(key)) return false
+        seen.add(key)
+        return true
+      })
 
-        // 按时间排序（倒序）
-        const sortedTraces = uniqueTraces.sort((a: any, b: any) => {
-          const parseTime = (timeStr: string): number => {
-            if (!timeStr) return 0
-            let time = new Date(timeStr).getTime()
-            if (!isNaN(time)) return time
-            const normalized = timeStr.replace(/年|月/g, '-').replace(/日/g, ' ')
-            time = new Date(normalized).getTime()
-            return isNaN(time) ? 0 : time
-          }
-          return parseTime(b.time) - parseTime(a.time)
-        })
-
-        trackingList.value = sortedTraces.map((item: any) => ({
-          time: item.time,
-          description: item.description || item.status,
-          location: item.location,
-          operator: item.operator
-        }))
-      } else {
-        trackingList.value = []
-        if (data.statusText && !data.success) {
-          ElMessage.warning(data.statusText)
+      const sortedTraces = uniqueTraces.sort((a: any, b: any) => {
+        const parseTime = (timeStr: string): number => {
+          if (!timeStr) return 0
+          let time = new Date(timeStr).getTime()
+          if (!isNaN(time)) return time
+          const normalized = timeStr.replace(/年|月/g, '-').replace(/日/g, ' ')
+          time = new Date(normalized).getTime()
+          return isNaN(time) ? 0 : time
         }
-      }
+        return parseTime(b.time) - parseTime(a.time)
+      })
+
+      trackingList.value = sortedTraces.map((item: any) => ({
+        time: item.time,
+        description: item.description || item.status,
+        location: item.location,
+        operator: item.operator
+      }))
     } else {
       trackingList.value = []
-      ElMessage.warning(response?.message || '获取物流轨迹失败')
+      if (data.statusText && !data.success) {
+        ElMessage.warning(data.statusText)
+      }
     }
   } catch (error) {
     console.error('获取物流轨迹失败:', error)

@@ -106,6 +106,29 @@
       <el-table-column prop="createdAt" label="申请时间" width="160">
         <template #default="{ row }">{{ formatDateTime(row.createdAt) }}</template>
       </el-table-column>
+      <el-table-column label="操作日志" min-width="280">
+        <template #default="{ row }">
+          <div v-if="latestLogs[row.id]" class="op-log-cell">
+            <div class="op-log-line1">
+              <el-tag :type="getOpTagType(latestLogs[row.id].operationType)" size="small" effect="light">
+                {{ opLogLabels[latestLogs[row.id].operationType] || latestLogs[row.id].operationType }}
+              </el-tag>
+              <span class="op-log-text" :title="latestLogs[row.id].operationContent">
+                {{ latestLogs[row.id].operationContent }}
+              </span>
+            </div>
+            <div class="op-log-line2">
+              <span class="op-log-operator">{{ latestLogs[row.id].operatorName || '系统' }}</span>
+              <span class="op-log-time">{{ formatOpLogTime(latestLogs[row.id].createdAt) }}</span>
+              <el-button type="primary" link size="small" @click="showOpLogDialog(row.id, row.orderNumber)">查看历史</el-button>
+            </div>
+          </div>
+          <div v-else class="op-log-cell op-log-empty">
+            <span class="text-muted">暂无记录</span>
+            <el-button type="primary" link size="small" @click="showOpLogDialog(row.id, row.orderNumber)">查看历史</el-button>
+          </div>
+        </template>
+      </el-table-column>
       <el-table-column label="操作" width="200" fixed="right">
         <template #default="{ row }">
           <el-button type="primary" link size="small" @click="showReviewDialog(row)">详情</el-button>
@@ -265,6 +288,15 @@
 
     <!-- 物流查询弹窗 -->
     <TrackingDialog v-model="trackingDialogVisible" :tracking-no="currentTrackingNo" :company="currentCompany" :phone="currentPhone" />
+
+    <OperationLogDialog
+      :visible="opLogDialog.visible"
+      @update:visible="opLogDialog.visible = $event"
+      :resource-id="opLogDialog.resourceId"
+      :resource-name="opLogDialog.resourceName ? '订单：' + opLogDialog.resourceName : ''"
+      module="cod_cancel_audit"
+      :op-labels="opLogLabels"
+    />
   </div>
 </template>
 
@@ -276,6 +308,8 @@ import { Search, Refresh, Clock, CircleCheck, CircleClose, Document, CopyDocumen
 import { formatDateTime } from '@/utils/date'
 import { getReviewList, reviewApplication, getApplicationStats, type CodApplication, type CodApplicationStats } from '@/api/codApplication'
 import TrackingDialog from '@/components/Logistics/TrackingDialog.vue'
+import { useOperationLog } from '@/components/OperationLog/useOperationLog'
+import OperationLogDialog from '@/components/OperationLog/OperationLogDialog.vue'
 
 defineOptions({ name: 'CodApplicationReview' })
 
@@ -302,6 +336,11 @@ const quickReviewVisible = ref(false)
 const quickReviewRow = ref<CodApplication | null>(null)
 const quickReviewApproved = ref(true)
 const quickReviewRemark = ref('')
+
+const opLogLabels: Record<string, string> = {
+  approve: '审核通过', reject: '审核驳回', create: '创建申请', cancel: '撤销申请',
+}
+const { latestLogs, dialog: opLogDialog, loadLatestLogs, showDialog: showOpLogDialog } = useOperationLog('cod_cancel_audit')
 
 const formatMoney = (val: number | string | undefined) => (Number(val) || 0).toFixed(2)
 
@@ -356,6 +395,8 @@ const loadData = async () => {
     if (res) {
       tableData.value = res.list || []
       pagination.value.total = res.total || 0
+      const ids = (res.list || []).map((r: any) => r.id).filter(Boolean)
+      if (ids.length) loadLatestLogs(ids)
     }
   } catch (_e) {
     console.error(_e)
@@ -371,6 +412,21 @@ const handleSizeChange = (size: number) => { pagination.value.pageSize = size; p
 const handlePageChange = (page: number) => { pagination.value.page = page; loadData() }
 const goToOrderDetail = (id: string) => router.push(`/order/detail/${id}`)
 const goToCustomerDetail = (id: string) => router.push(`/customer/detail/${id}`)
+
+const getOpTagType = (type: string): string => {
+  const map: Record<string, string> = {
+    create: 'success', approve: 'success', reject: 'danger', cancel: 'danger', status_change: 'warning',
+  }
+  return map[type] || 'info'
+}
+
+const formatOpLogTime = (time: string): string => {
+  if (!time) return '-'
+  try {
+    const d = new Date(time)
+    return d.toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })
+  } catch { return time }
+}
 
 const showReviewDialog = (row: CodApplication) => {
   currentApplication.value = row
@@ -636,6 +692,16 @@ onMounted(() => {
   &:hover { color: #409eff; }
 }
 .no-data { color: #c0c4cc; }
+.op-log-cell { display: flex; flex-direction: column; gap: 2px; line-height: 1.5; }
+.op-log-line1 { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.op-log-line1 .el-tag { flex-shrink: 0; }
+.op-log-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; font-size: 13px; color: #606266; }
+.op-log-line2 { display: flex; align-items: center; gap: 10px; font-size: 12px; color: #909399; }
+.op-log-operator { flex-shrink: 0; }
+.op-log-time { flex-shrink: 0; }
+.op-log-line2 .el-button { margin-left: auto; padding: 0; }
+.op-log-empty { flex-direction: row; align-items: center; gap: 10px; }
+.text-muted { color: #c0c4cc; font-size: 13px; }
 .detail-descriptions {
   :deep(.el-descriptions__label) {
     width: 120px;

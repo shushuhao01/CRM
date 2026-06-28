@@ -15,6 +15,7 @@ import { getTenantRepo } from '../utils/tenantRepo';
 import { createTenantDestination, getUploadUrl } from '../utils/tenantUploadHelper';
 
 import { log } from '../config/logger';
+import { writeOperationLog, extractUserInfo } from '../utils/operationLogWriter';
 const router = Router();
 
 // 配置文件上传（🔥 已改造：SaaS模式按租户目录隔离）
@@ -618,6 +619,13 @@ router.put('/review/:id', authenticateToken, async (req: Request, res: Response)
           codCancelledAt: verifyOrder?.codCancelledAt
         });
       }
+    }
+
+    // 写入操作日志
+    if (approved) {
+      writeOperationLog({ module: 'cod_cancel_audit', resourceType: 'cod_application', resourceId: id, action: 'approve', description: `审核通过取消代收申请`, ...extractUserInfo(req) });
+    } else {
+      writeOperationLog({ module: 'cod_cancel_audit', resourceType: 'cod_application', resourceId: id, action: 'reject', description: `驳回取消代收申请: ${reviewRemark || ''}`, ...extractUserInfo(req) });
     }
 
     // 🔥 发送消息通知给申请人

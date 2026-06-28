@@ -111,6 +111,29 @@
         </el-table-column>
         <el-table-column prop="description" label="描述" show-overflow-tooltip />
         <el-table-column prop="createTime" label="创建时间" width="160" />
+        <el-table-column label="操作日志" min-width="280">
+          <template #default="{ row }">
+            <div v-if="latestLogs[row.id]" class="op-log-cell">
+              <div class="op-log-line1">
+                <el-tag :type="getOpTagType(latestLogs[row.id].operationType)" size="small" effect="light">
+                  {{ opLogLabels[latestLogs[row.id].operationType] || latestLogs[row.id].operationType }}
+                </el-tag>
+                <span class="op-log-text" :title="latestLogs[row.id].operationContent">
+                  {{ latestLogs[row.id].operationContent }}
+                </span>
+              </div>
+              <div class="op-log-line2">
+                <span class="op-log-operator">{{ latestLogs[row.id].operatorName || '系统' }}</span>
+                <span class="op-log-time">{{ formatOpLogTime(latestLogs[row.id].createdAt) }}</span>
+                <el-button type="primary" link size="small" @click="showOpLogDialog(row.id, row.name)">查看历史</el-button>
+              </div>
+            </div>
+            <div v-else class="op-log-cell op-log-empty">
+              <span class="text-muted">暂无记录</span>
+              <el-button type="primary" link size="small" @click="showOpLogDialog(row.id, row.name)">查看历史</el-button>
+            </div>
+          </template>
+        </el-table-column>
         <el-table-column label="操作" width="200" fixed="right">
           <template #default="{ row }">
             <el-button v-if="canEditRole" @click="handleEdit(row)" type="primary" size="small" link>编辑</el-button>
@@ -163,6 +186,16 @@
       v-model="permissionListVisible"
       :role="currentViewRole"
     />
+
+    <!-- 操作日志弹窗 -->
+    <OperationLogDialog
+      :visible="opLogDialog.visible"
+      @update:visible="opLogDialog.visible = $event"
+      :resource-id="opLogDialog.resourceId"
+      :resource-name="opLogDialog.resourceName"
+      module="role"
+      :op-labels="opLogLabels"
+    />
   </div>
 </template>
 
@@ -179,6 +212,9 @@ import {
   Plus, Setting, Search, Refresh, Delete, Check, Close, ArrowDown,
   UserFilled, User, Lock
 } from '@element-plus/icons-vue'
+
+import { useOperationLog } from '@/components/OperationLog/useOperationLog'
+import OperationLogDialog from '@/components/OperationLog/OperationLogDialog.vue'
 
 // 子组件
 import RoleFormDialog from './RoleFormDialog.vue'
@@ -203,6 +239,31 @@ interface RoleData {
 }
 
 const userStore = useUserStore()
+
+// 操作日志
+const opLogLabels: Record<string, string> = {
+  create: '创建角色', edit: '编辑角色', delete: '删除角色',
+  status_change: '状态变更', permission_change: '权限变更',
+}
+const { latestLogs, dialog: opLogDialog, loadLatestLogs, showDialog: showOpLogDialog } = useOperationLog('role')
+
+const getOpTagType = (type: string): string => {
+  const map: Record<string, string> = {
+    create: 'success', edit: 'warning', delete: 'danger', approve: 'success',
+    reject: 'danger', status_change: 'warning', permission_change: 'warning',
+    batch_update: 'warning', manual_sync: 'info', auto_sync: 'info',
+    todo_mark: 'info', todo_cancel: 'info',
+  }
+  return map[type] || 'info'
+}
+
+const formatOpLogTime = (time: string): string => {
+  if (!time) return '-'
+  try {
+    const d = new Date(time)
+    return d.toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })
+  } catch { return time }
+}
 
 // 响应式数据
 const tableLoading = ref(false)
@@ -479,6 +540,10 @@ const loadRoleList = async () => {
 
     pagination.total = roles.length
     localStorage.setItem('crm_roles', JSON.stringify(roleList.value))
+
+    // 加载操作日志
+    const ids = roleList.value.map((r: any) => r.id).filter(Boolean)
+    if (ids.length) loadLatestLogs(ids)
   } catch (error) {
     console.error('加载角色列表失败:', error)
     ElMessage.error('加载角色列表失败')
@@ -549,6 +614,17 @@ onMounted(() => {
   .table-header { flex-direction: column; gap: 12px; align-items: stretch; }
   .table-actions { justify-content: center; flex-wrap: wrap; }
 }
+
+.op-log-cell { display: flex; flex-direction: column; gap: 2px; line-height: 1.5; }
+.op-log-line1 { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.op-log-line1 .el-tag { flex-shrink: 0; }
+.op-log-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; font-size: 13px; color: #606266; }
+.op-log-line2 { display: flex; align-items: center; gap: 10px; font-size: 12px; color: #909399; }
+.op-log-operator { flex-shrink: 0; }
+.op-log-time { flex-shrink: 0; }
+.op-log-line2 .el-button { margin-left: auto; padding: 0; }
+.op-log-empty { flex-direction: row; align-items: center; gap: 10px; }
+.text-muted { color: #c0c4cc; font-size: 13px; }
 </style>
 
 

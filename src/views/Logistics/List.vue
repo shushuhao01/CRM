@@ -227,6 +227,29 @@
         <span v-else class="no-data">-</span>
       </template>
 
+      <!-- 操作日志列 -->
+      <template #column-operationLog="{ row }">
+        <div v-if="logisticsLatestLogs[row.id || row.orderId]" class="op-log-cell">
+          <div class="op-log-line1">
+            <el-tag :type="getLogisticsOpTagType(logisticsLatestLogs[row.id || row.orderId].operationType)" size="small" effect="light">
+              {{ opLogLabels[logisticsLatestLogs[row.id || row.orderId].operationType] || logisticsLatestLogs[row.id || row.orderId].operationType }}
+            </el-tag>
+            <span class="op-log-text" :title="logisticsLatestLogs[row.id || row.orderId].operationContent">
+              {{ logisticsLatestLogs[row.id || row.orderId].operationContent }}
+            </span>
+          </div>
+          <div class="op-log-line2">
+            <span class="op-log-operator">{{ logisticsLatestLogs[row.id || row.orderId].operatorName || '系统' }}</span>
+            <span class="op-log-time">{{ formatLogisticsOpLogTime(logisticsLatestLogs[row.id || row.orderId].createdAt) }}</span>
+            <el-button type="primary" link size="small" @click="showLogisticsOpLogDialog(row.id || row.orderId, row.orderNo)">查看历史</el-button>
+          </div>
+        </div>
+        <div v-else class="op-log-cell op-log-empty">
+          <span class="text-muted">暂无记录</span>
+          <el-button type="primary" link size="small" @click="showLogisticsOpLogDialog(row.id || row.orderId, row.orderNo)">查看历史</el-button>
+        </div>
+      </template>
+
       <!-- 操作列 -->
       <template #table-actions="{ row }">
         <el-button
@@ -254,6 +277,15 @@
         </el-button>
       </template>
     </DynamicTable>
+
+    <OperationLogDialog
+      :visible="logisticsOpLogDialog.visible"
+      @update:visible="logisticsOpLogDialog.visible = $event"
+      :resource-id="logisticsOpLogDialog.resourceId"
+      :resource-name="logisticsOpLogDialog.resourceName ? '订单：' + logisticsOpLogDialog.resourceName : ''"
+      module="shipping"
+      :op-labels="opLogLabels"
+    />
   </div>
 </template>
 
@@ -264,6 +296,8 @@ import axios from 'axios'
 import { ElMessage } from 'element-plus'
 import { Search, Refresh, RefreshLeft, CopyDocument } from '@element-plus/icons-vue'
 import DynamicTable from '@/components/DynamicTable.vue'
+import { useOperationLog } from '@/components/OperationLog/useOperationLog'
+import OperationLogDialog from '@/components/OperationLog/OperationLogDialog.vue'
 import { useOrderStore } from '@/stores/order'
 import { useUserStore } from '@/stores/user'
 import { useDepartmentStore } from '@/stores/department'
@@ -310,6 +344,28 @@ const safeNavigator = createSafeNavigator(router)
 const orderStore = useOrderStore()
 const userStore = useUserStore()
 const departmentStore = useDepartmentStore()
+
+// 操作日志
+const opLogLabels: Record<string, string> = {
+  edit: '编辑物流', ship: '发货', status_change: '状态变更', create: '创建',
+}
+const { latestLogs: logisticsLatestLogs, dialog: logisticsOpLogDialog, loadLatestLogs: loadLogisticsLatestLogs, showDialog: showLogisticsOpLogDialog } = useOperationLog('shipping')
+
+const getLogisticsOpTagType = (type: string): string => {
+  const map: Record<string, string> = {
+    create: 'success', edit: 'warning', delete: 'danger', ship: 'success',
+    cancel: 'danger', status_change: 'warning', batch_ship: 'success', assign: 'warning',
+  }
+  return map[type] || 'info'
+}
+
+const formatLogisticsOpLogTime = (time: string): string => {
+  if (!time) return '-'
+  try {
+    const d = new Date(time)
+    return d.toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })
+  } catch { return time }
+}
 
 // 🔥 销售人员列表 - 用于筛选
 const salesUserList = computed(() => {
@@ -492,6 +548,13 @@ const tableColumns = computed(() => [
     minWidth: 150,
     visible: true,
     showOverflowTooltip: true
+  },
+  {
+    prop: 'operationLog',
+    label: '操作日志',
+    minWidth: 280,
+    visible: true,
+    slot: 'operationLog'
   }
 ])
 
@@ -774,6 +837,10 @@ const loadData = async () => {
     // 🔥 修复：直接使用API返回的数据，不再前端分页
     tableData.value = logisticsData
     total.value = apiTotal
+
+    // 加载操作日志
+    const opLogIds = logisticsData.map((r: any) => r.id || r.orderId).filter(Boolean)
+    if (opLogIds.length) loadLogisticsLatestLogs(opLogIds)
 
     // 🔥 异步从官方API获取物流最新动态（不阻塞页面加载）
     fetchLatestLogisticsUpdates()
@@ -1283,4 +1350,15 @@ onUnmounted(() => {
   color: #fa8c16;
   font-size: 13px;
 }
+
+.op-log-cell { display: flex; flex-direction: column; gap: 2px; line-height: 1.5; }
+.op-log-line1 { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.op-log-line1 .el-tag { flex-shrink: 0; }
+.op-log-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; font-size: 13px; color: #606266; }
+.op-log-line2 { display: flex; align-items: center; gap: 10px; font-size: 12px; color: #909399; }
+.op-log-operator { flex-shrink: 0; }
+.op-log-time { flex-shrink: 0; }
+.op-log-line2 .el-button { margin-left: auto; padding: 0; }
+.op-log-empty { flex-direction: row; align-items: center; gap: 10px; }
+.text-muted { color: #c0c4cc; font-size: 13px; }
 </style>

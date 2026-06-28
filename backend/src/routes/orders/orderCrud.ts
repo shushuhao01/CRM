@@ -21,6 +21,7 @@ import {
   getAfterSalesTitle
 } from './orderHelpers';
 import { log } from '../../config/logger';
+import { writeOperationLog, extractUserInfo } from '../../utils/operationLogWriter';
 
 /** 从请求中提取操作人完整信息（姓名+部门）*/
 function getOperatorInfo(req: Request) {
@@ -920,6 +921,17 @@ router.post('/', authenticateToken, async (req: Request, res: Response) => {
     const savedOrder = await orderRepository.save(order);
     log.info('✅ [订单创建] 订单保存成功:', savedOrder.id);
 
+    // 写入操作日志
+    const createUserInfo = extractUserInfo(req);
+    writeOperationLog({
+      module: 'order',
+      resourceType: 'order',
+      resourceId: savedOrder.id,
+      action: 'create',
+      description: `创建订单 ${savedOrder.orderNumber}`,
+      ...createUserInfo,
+    });
+
     // 更新产品库存（支持SKU级别扣减 + 双写order_items）
     try {
       const productRepository = getTenantRepo(Product);
@@ -1329,6 +1341,17 @@ router.put('/:id', authenticateToken, async (req: Request, res: Response) => {
 
     const updatedOrder = await orderRepository.save(order);
 
+    // 写入操作日志
+    const editUserInfo = extractUserInfo(req);
+    writeOperationLog({
+      module: 'order',
+      resourceType: 'order',
+      resourceId: order.id,
+      action: 'edit',
+      description: `编辑订单 ${order.orderNumber}`,
+      ...editUserInfo,
+    });
+
     // 🔥 根据状态变更发送相应通知和保存状态历史
     if (updateData.status !== undefined && updateData.status !== previousStatus) {
       // 获取当前操作人信息
@@ -1361,6 +1384,15 @@ router.put('/:id', authenticateToken, async (req: Request, res: Response) => {
         case 'shipped':
           orderNotificationService.notifyOrderShipped(orderInfo, order.trackingNumber, order.expressCompany)
             .catch(err => log.error('[订单更新] 发送发货通知失败:', err));
+          // 写入发货操作日志
+          writeOperationLog({
+            module: 'shipping',
+            resourceType: 'order',
+            resourceId: order.id,
+            action: 'ship',
+            description: `发货: ${order.expressCompany || ''} ${order.trackingNumber || ''}`,
+            ...editUserInfo,
+          });
           // 🔥 触发自动发送短信
           try {
             const { SmsAutoSendService } = await import('../../services/SmsAutoSendService');
@@ -1489,6 +1521,18 @@ router.put('/:id', authenticateToken, async (req: Request, res: Response) => {
             changeDetail: JSON.stringify({ editFields })
           }
         );
+
+        // 编辑物流信息时写入专用操作日志
+        if (updateData.expressCompany !== undefined || updateData.trackingNumber !== undefined) {
+          writeOperationLog({
+            module: 'shipping',
+            resourceType: 'order',
+            resourceId: order.id,
+            action: 'edit',
+            description: `编辑物流信息: ${order.expressCompany || ''} ${order.trackingNumber || ''}`,
+            ...editUserInfo,
+          });
+        }
       }
     }
 
@@ -1751,6 +1795,30 @@ router.post('/:id/audit', authenticateToken, async (req: Request, res: Response)
     order.operatorName = auditOpInfo.operatorName || order.operatorName;
 
     await orderRepository.save(order);
+
+    // 写入操作日志（order_audit 模块，用于审核管理页面）
+    const auditUserInfo = extractUserInfo(req);
+    const auditAction = isApproved ? 'approve' : 'reject';
+    const auditDescription = isApproved
+      ? `审核通过订单 ${order.orderNumber}`
+      : `审核拒绝订单 ${order.orderNumber}${finalRemark ? `: ${finalRemark}` : ''}`;
+    writeOperationLog({
+      module: 'order_audit',
+      resourceType: 'order',
+      resourceId: order.id,
+      action: auditAction,
+      description: auditDescription,
+      ...auditUserInfo,
+    });
+    // 写入操作日志（order 模块，用于订单详情时间线）
+    writeOperationLog({
+      module: 'order',
+      resourceType: 'order',
+      resourceId: order.id,
+      action: auditAction,
+      description: auditDescription,
+      ...auditUserInfo,
+    });
 
     // 🔥 保存状态历史记录
     await saveStatusHistory(

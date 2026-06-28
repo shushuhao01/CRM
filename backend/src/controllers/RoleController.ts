@@ -5,6 +5,7 @@ import { Permission } from '../entities/Permission';
 import { Repository, TreeRepository } from 'typeorm';
 import { getTenantRepo } from '../utils/tenantRepo';
 import { tenantRawSQL, getCurrentTenantIdSafe } from '../utils/tenantHelpers';
+import { writeOperationLog, extractUserInfo } from '../utils/operationLogWriter';
 
 import { log } from '../config/logger';
 export class RoleController {
@@ -303,6 +304,16 @@ export class RoleController {
         [roleId, tenantId, name, code, description || '', status, level, color || '', JSON.stringify(permissions), dataScope]
       );
 
+      const userInfo = extractUserInfo(req);
+      writeOperationLog({
+        module: 'role',
+        resourceType: 'role',
+        resourceId: roleId,
+        action: 'create',
+        description: `创建角色: ${name}`,
+        ...userInfo,
+      });
+
       res.status(201).json({
         success: true,
         data: { id: roleId, name, code, description, status, level, color, permissions, dataScope },
@@ -372,6 +383,16 @@ export class RoleController {
         await dataSource.query(`UPDATE roles SET ${updates.join(', ')} WHERE id = ?${tUpdate.sql}`, params);
       }
 
+      const userInfo = extractUserInfo(req);
+      writeOperationLog({
+        module: 'role',
+        resourceType: 'role',
+        resourceId: tenantRole.id,
+        action: 'edit',
+        description: `编辑角色: ${name ?? tenantRole.name}`,
+        ...userInfo,
+      });
+
       res.json({
         success: true,
         message: '角色更新成功'
@@ -433,6 +454,16 @@ export class RoleController {
       }
 
       await dataSource.query('DELETE FROM roles WHERE id = ?' + tRole.sql, [role.id, ...tRole.params]);
+
+      const userInfo = extractUserInfo(req);
+      writeOperationLog({
+        module: 'role',
+        resourceType: 'role',
+        resourceId: role.id,
+        action: 'delete',
+        description: `删除角色: ${role.code}`,
+        ...userInfo,
+      });
 
       res.json({
         success: true,
@@ -519,6 +550,16 @@ export class RoleController {
       }
 
       await dataSource.query('UPDATE roles SET status = ?, updatedAt = NOW() WHERE id = ?', [status, tenantRole.id]);
+
+      const userInfo = extractUserInfo(req);
+      writeOperationLog({
+        module: 'role',
+        resourceType: 'role',
+        resourceId: tenantRole.id,
+        action: 'status_change',
+        description: `角色状态变更: ${tenantRole.name} → ${status === 'active' ? '启用' : '停用'}`,
+        ...userInfo,
+      });
 
       res.json({
         success: true,
@@ -619,6 +660,16 @@ export class RoleController {
       if (tenantRole.cloned) {
         log.info(`[updateRolePermissions] ✅ 已为租户克隆角色 ${id} -> ${tenantRole.id}，并更新权限(${newPermissions.length}个)`);
       }
+
+      const userInfo = extractUserInfo(req);
+      writeOperationLog({
+        module: 'role',
+        resourceType: 'role',
+        resourceId: tenantRole.id,
+        action: 'permission_change',
+        description: `角色权限变更: ${tenantRole.name}`,
+        ...userInfo,
+      });
 
       res.json({
         success: true,

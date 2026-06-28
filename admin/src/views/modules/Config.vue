@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="page-container">
     <el-card shadow="never" class="config-card">
       <template #header>
@@ -102,6 +102,8 @@ const form = reactive({
   // 启用状态
   enableBasicOverride: false, enableCopyrightOverride: false,
   enableAgreementOverride: false, enableConsoleEncryption: false,
+  enableOpLog: true, opLogAutoCleanup: false, opLogRetentionDays: 90,
+  enableSysLog: true, sysLogAutoCleanup: false, sysLogRetentionDays: 30,
   featureFlags: {
     saas: { security: true, call: true, email: true, sms: true, storage: true, product: true, monitor: true, backup: true, order: true, notification: true, agreement: true, mobile: true, logs: true, apiManagement: true, superAdminPanel: true },
     private: { security: true, call: true, email: true, sms: true, storage: true, product: true, monitor: true, backup: true, order: true, notification: true, agreement: true, mobile: true, logs: true, apiManagement: true, superAdminPanel: true }

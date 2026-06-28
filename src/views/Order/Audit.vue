@@ -371,6 +371,28 @@
         </el-tooltip>
       </template>
 
+      <template #column-operationLog="{ row }">
+        <div v-if="latestLogs[row.id || row.orderId]" class="op-log-cell">
+          <div class="op-log-line1">
+            <el-tag :type="getOpTagType(latestLogs[row.id || row.orderId].operationType)" size="small" effect="light">
+              {{ opLogLabels[latestLogs[row.id || row.orderId].operationType] || latestLogs[row.id || row.orderId].operationType }}
+            </el-tag>
+            <span class="op-log-text" :title="latestLogs[row.id || row.orderId].operationContent">
+              {{ latestLogs[row.id || row.orderId].operationContent }}
+            </span>
+          </div>
+          <div class="op-log-line2">
+            <span class="op-log-operator">{{ latestLogs[row.id || row.orderId].operatorName || '系统' }}</span>
+            <span class="op-log-time">{{ formatOpLogTime(latestLogs[row.id || row.orderId].createdAt) }}</span>
+            <el-button type="primary" link size="small" @click="showOpLogDialog(row.id || row.orderId, row.orderNo || row.orderNumber)">查看历史</el-button>
+          </div>
+        </div>
+        <div v-else class="op-log-cell op-log-empty">
+          <span class="text-muted">暂无记录</span>
+          <el-button type="primary" link size="small" @click="showOpLogDialog(row.id || row.orderId, row.orderNo || row.orderNumber)">查看历史</el-button>
+        </div>
+      </template>
+
       <template #table-actions="{ row }">
         <el-button
           @click="handleView(row)"
@@ -942,6 +964,15 @@
     >
       <RejectionReasonManagement @close="handleCloseRejectionReasonManagement" />
     </el-dialog>
+
+    <OperationLogDialog
+      :visible="opLogDialog.visible"
+      @update:visible="opLogDialog.visible = $event"
+      :resource-id="opLogDialog.resourceId"
+      :resource-name="opLogDialog.resourceName ? '订单：' + opLogDialog.resourceName : ''"
+      module="order_audit"
+      :op-labels="opLogLabels"
+    />
   </div>
 </template>
 
@@ -975,6 +1006,8 @@ import { displaySensitiveInfoNew } from '@/utils/sensitiveInfo'
 import { SensitiveInfoType } from '@/services/permission'
 import DynamicTable from '@/components/DynamicTable.vue'
 import RejectionReasonManagement from '@/components/RejectionReasonManagement.vue'
+import { useOperationLog } from '@/components/OperationLog/useOperationLog'
+import OperationLogDialog from '@/components/OperationLog/OperationLogDialog.vue'
 import { eventBus, EventNames } from '@/utils/eventBus'
 import { formatDateTime } from '@/utils/dateFormat'
 import { getOrderStatusStyle, getOrderStatusText as getUnifiedStatusText } from '@/utils/orderStatusConfig'
@@ -1054,6 +1087,12 @@ const safeNavigator = createSafeNavigator(router)
 const userStore = useUserStore()
 const orderStore = useOrderStore()
 const rejectionReasonStore = useRejectionReasonStore()
+
+const opLogLabels: Record<string, string> = {
+  approve: '审核通过', reject: '审核拒绝', create: '创建订单', edit: '编辑订单',
+  submit_audit: '提交审核', status_change: '状态变更',
+}
+const { latestLogs, dialog: opLogDialog, loadLatestLogs, showDialog: showOpLogDialog } = useOperationLog('order_audit')
 
 // 响应式数据
 const loading = ref(false)
@@ -1264,19 +1303,20 @@ const tableColumns = computed(() => [
     align: 'center',
     visible: activeTab.value === 'pending'
   },
-  {
-    prop: 'auditTime',
-    label: '审核时间',
-    width: 150,
-    visible: activeTab.value !== 'pending',
-    formatter: (value: unknown) => formatDateTime(value as string)
-  },
-  {
-    prop: 'auditor',
-    label: '审核人',
-    width: 90,
-    visible: activeTab.value !== 'pending'
-  },
+  // 审核时间/审核人列已由操作日志列替代，保留数据字段
+  // {
+  //   prop: 'auditTime',
+  //   label: '审核时间',
+  //   width: 150,
+  //   visible: activeTab.value !== 'pending',
+  //   formatter: (value: unknown) => formatDateTime(value as string)
+  // },
+  // {
+  //   prop: 'auditor',
+  //   label: '审核人',
+  //   width: 90,
+  //   visible: activeTab.value !== 'pending'
+  // },
   {
     prop: 'remark',
     label: '订单备注',
@@ -1290,6 +1330,13 @@ const tableColumns = computed(() => [
     minWidth: 180,
     showOverflowTooltip: false,
     visible: true
+  },
+  {
+    prop: 'operationLog',
+    label: '操作日志',
+    minWidth: 280,
+    visible: true,
+    slot: 'operationLog'
   }
 ])
 
@@ -1344,6 +1391,22 @@ const quickAuditRules = computed<FormRules>(() => ({
   ] : [],
   remark: [] // 审核备注改为非必填
 }))
+
+const getOpTagType = (type: string): string => {
+  const map: Record<string, string> = {
+    create: 'success', edit: 'warning', delete: 'danger', approve: 'success',
+    reject: 'danger', status_change: 'warning', submit_audit: 'info',
+  }
+  return map[type] || 'info'
+}
+
+const formatOpLogTime = (time: string): string => {
+  if (!time) return '-'
+  try {
+    const d = new Date(time)
+    return d.toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })
+  } catch { return time }
+}
 
 // 方法定义
 /**
@@ -2256,6 +2319,9 @@ const loadOrderList = async () => {
 
       // 更新分页总数
       pagination.total = total
+
+      const ids = convertedOrders.map((r: any) => r.id || r.orderId).filter(Boolean)
+      if (ids.length) loadLatestLogs(ids)
 
       console.log(`[订单审核] 📊 数据加载完成: ${activeTab.value}=${convertedOrders.length}, 总数=${total}`)
     }
@@ -3309,4 +3375,15 @@ onUnmounted(() => {
 .product-detail-tooltip span {
   white-space: nowrap;
 }
+
+.op-log-cell { display: flex; flex-direction: column; gap: 2px; line-height: 1.5; }
+.op-log-line1 { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.op-log-line1 .el-tag { flex-shrink: 0; }
+.op-log-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; font-size: 13px; color: #606266; }
+.op-log-line2 { display: flex; align-items: center; gap: 10px; font-size: 12px; color: #909399; }
+.op-log-operator { flex-shrink: 0; }
+.op-log-time { flex-shrink: 0; }
+.op-log-line2 .el-button { margin-left: auto; padding: 0; }
+.op-log-empty { flex-direction: row; align-items: center; gap: 10px; }
+.text-muted { color: #c0c4cc; font-size: 13px; }
 </style>

@@ -12,6 +12,7 @@ import { getTenantRepo } from '../../utils/tenantRepo';
 import { logisticsTraceService } from '../../services/LogisticsTraceService';
 
 import { log } from '../../config/logger';
+import { writeOperationLog, extractUserInfo } from '../../utils/operationLogWriter';
 export function registerCompanyAndTraceRoutes(router: Router, logisticsController: LogisticsController): void {
 // ========== 默认物流公司预设数据 ==========
 
@@ -265,6 +266,16 @@ router.post('/companies', async (req: Request, res: Response) => {
 
     await repository.save(company);
 
+    const userInfo = extractUserInfo(req);
+    writeOperationLog({
+      module: 'logistics',
+      resourceType: 'logistics_company',
+      resourceId: company.id,
+      action: 'create',
+      description: `新增物流公司: ${name} (${code})`,
+      ...userInfo,
+    });
+
     return res.json({
       success: true,
       message: '新增成功',
@@ -323,6 +334,16 @@ router.put('/companies/:id', async (req: Request, res: Response) => {
     if (sortOrder !== undefined) company.sortOrder = sortOrder;
 
     await repository.save(company);
+
+    const userInfo = extractUserInfo(req);
+    writeOperationLog({
+      module: 'logistics',
+      resourceType: 'logistics_company',
+      resourceId: id,
+      action: 'edit',
+      description: `编辑物流公司: ${company.name} (${company.code})`,
+      ...userInfo,
+    });
 
     return res.json({
       success: true,
@@ -397,7 +418,19 @@ router.delete('/companies/:id', async (req: Request, res: Response) => {
       });
     }
 
+    const deletedName = company.name;
+    const deletedCode = company.code;
     await repository.remove(company);
+
+    const userInfo = extractUserInfo(req);
+    writeOperationLog({
+      module: 'logistics',
+      resourceType: 'logistics_company',
+      resourceId: id,
+      action: 'delete',
+      description: `删除物流公司: ${deletedName} (${deletedCode})`,
+      ...userInfo,
+    });
 
     return res.json({
       success: true,

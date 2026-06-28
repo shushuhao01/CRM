@@ -4,6 +4,7 @@ import { Department } from '../entities/Department';
 import { User } from '../entities/User';
 import { IsNull, Not } from 'typeorm';
 import { getTenantRepo } from '../utils/tenantRepo';
+import { writeOperationLog, extractUserInfo } from '../utils/operationLogWriter';
 
 import { log } from '../config/logger';
 export class DepartmentController {
@@ -261,6 +262,16 @@ export class DepartmentController {
 
       log.info('[创建部门] 保存成功:', savedDepartment);
 
+      const userInfo = extractUserInfo(req);
+      writeOperationLog({
+        module: 'department',
+        resourceType: 'department',
+        resourceId: savedDepartment.id,
+        action: 'create',
+        description: `创建部门: ${name}`,
+        ...userInfo,
+      });
+
       // 获取负责人姓名
       let managerName = null;
       if (savedDepartment.managerId) {
@@ -407,6 +418,16 @@ export class DepartmentController {
 
       log.info('[更新部门] 保存成功:', savedDepartment);
 
+      const userInfo = extractUserInfo(req);
+      writeOperationLog({
+        module: 'department',
+        resourceType: 'department',
+        resourceId: savedDepartment.id.toString(),
+        action: 'edit',
+        description: `编辑部门: ${savedDepartment.name}`,
+        ...userInfo,
+      });
+
       // 单独查询成员数量
       const memberCount = await this.userRepository.count({
         where: { departmentId: id }
@@ -507,6 +528,16 @@ export class DepartmentController {
 
       await this.departmentRepository.remove(department);
 
+      const userInfo = extractUserInfo(req);
+      writeOperationLog({
+        module: 'department',
+        resourceType: 'department',
+        resourceId: id,
+        action: 'delete',
+        description: `删除部门: ${department.name}`,
+        ...userInfo,
+      });
+
       res.json({
         success: true,
         message: '部门删除成功'
@@ -560,6 +591,16 @@ export class DepartmentController {
 
       department.status = status;
       const savedDepartment = await this.departmentRepository.save(department);
+
+      const userInfo = extractUserInfo(req);
+      writeOperationLog({
+        module: 'department',
+        resourceType: 'department',
+        resourceId: savedDepartment.id.toString(),
+        action: 'status_change',
+        description: `部门状态变更: ${savedDepartment.name} → ${status === 'active' ? '启用' : '停用'}`,
+        ...userInfo,
+      });
 
       // 单独查询成员数量
       const memberCount = await this.userRepository.count({
