@@ -504,6 +504,13 @@ server {
 # 占位符:
 #   - YOUR_API_DOMAIN     → API域名（如 api.yunkes.com）
 #   - YOUR_BACKEND_PORT   → 后端端口（默认 3000）
+#
+# ❗ 重要：必须使用 location ^~ / （带 ^~ 修饰符）
+#   宝塔面板默认生成的敏感文件拦截规则包含：
+#     location ~* (\.user.ini|...|LICENSE|...)$ { return 404; }
+#   这条大小写不敏感的正则会匹配 API 路径中的 "license"（如 /api/v1/admin/verify/license），
+#   导致 Nginx 直接返回 404，请求到不了后端。
+#   使用 ^~ 修饰符让前缀匹配优先于正则，彻底避免此问题。
 
 server {
     listen 80;
@@ -511,8 +518,8 @@ server {
 
     client_max_body_size 50m;
 
-    # 所有请求直接代理到后端
-    location / {
+    # ❗ 必须用 ^~ 修饰符，防止宝塔敏感文件正则拦截含 license 的 API 路径
+    location ^~ / {
         proxy_pass http://127.0.0.1:YOUR_BACKEND_PORT;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
@@ -524,5 +531,8 @@ server {
         proxy_connect_timeout 60s;
         proxy_send_timeout 60s;
         proxy_read_timeout 86400s;
+
+        # 防止 Nginx 拦截后端的错误响应（如 4xx/5xx），确保原始响应透传给客户端
+        proxy_intercept_errors off;
     }
 }

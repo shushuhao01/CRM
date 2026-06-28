@@ -106,40 +106,172 @@ router.post('/verify', async (req: Request, res: Response) => {
 
     // ============ 私有部署授权码（PRIVATE- 前缀）============
     if (licenseKey.toUpperCase().startsWith('PRIVATE-')) {
-      const rows = await AppDataSource.query(
-        `SELECT l.*, pc.customer_name as company_name
-         FROM licenses l
-         LEFT JOIN private_customers pc ON l.private_customer_id = pc.id
-         WHERE l.license_key = ? AND l.customer_type = 'private'`,
-        [licenseKey]
-      );
-      const lic = rows[0];
+      let lic: any = null;
+      try {
+        const rows = await AppDataSource.query(
+          `SELECT l.*, pc.customer_name as company_name
+           FROM licenses l
+           LEFT JOIN private_customers pc ON l.private_customer_id = pc.id
+           WHERE l.license_key = ? AND l.customer_type = 'private'`,
+          [licenseKey]
+        );
+        lic = rows[0] || null;
+      } catch (licQueryErr: any) {
+        log.warn('[TenantLicense] 本地licenses表查询失败，将尝试其他验证方式:', (licQueryErr as any).message?.substring(0, 100));
+      }
 
       if (!lic) {
-        await AppDataSource.query(
-          `INSERT INTO license_logs (id, license_id, license_key, action, result, message, ip_address, user_agent)
-           VALUES (?, NULL, ?, 'verify', 'failed', '私有授权码不存在', ?, ?)`,
-          [uuidv4(), licenseKey, ip, userAgent]
-        ).catch(() => {});
+        // 本地 licenses 表无记录（私有部署A站点正常情况），先检查 tenants 表是否已激活
+        const existTenantRows = await AppDataSource.query(
+          `SELECT id, name, code, license_key, license_status, expire_date, max_users, features
+           FROM tenants WHERE license_key = ? LIMIT 1`,
+          [licenseKey]
+        ).catch(() => []);
+        const existTenant = existTenantRows[0];
 
-        // 🔥 检测部署模式，返回适当的错误信息
-        let isInSaasMode = false;
+        if (existTenant) {
+          await AppDataSource.query(`UPDATE tenants SET last_verify_at = NOW() WHERE id = ?`, [existTenant.id]).catch(() => {});
+          const isExpired = existTenant.expire_date && new Date(existTenant.expire_date) < new Date();
+          return res.json({
+            success: true,
+            data: {
+              tenantId: existTenant.id,
+              tenantCode: existTenant.code,
+              tenantName: existTenant.name,
+              packageName: '私有部署版',
+              maxUsers: existTenant.max_users || 50,
+              expireDate: existTenant.expire_date,
+              features: safeJsonParse(existTenant.features),
+              packageFeatures: null,
+              deployType: 'private',
+              expired: !!isExpired
+            },
+            message: '私有授权码验证成功'
+          });
+        }
+
+        // 本地完全无记录，尝试中央服务器在线验证（私有部署首次激活）
         try {
-          const saasCheck = await AppDataSource.query(
-            `SELECT id FROM tenants WHERE license_key LIKE 'TENANT-%' OR license_key LIKE 'LIC-%' LIMIT 1`
+          const { getCentralAdminApiUrl } = await import('../config/centralServer');
+          const adminApiUrl = getCentralAdminApiUrl();
+          const os = await import('os');
+          const machineId = `${os.hostname()}-${os.platform()}-${os.arch()}`;
+
+          log.info(`[TenantLicense] 本地无授权记录，尝试中央服务器验证: ${licenseKey.substring(0, 16)}...`);
+          const fetchResponse = await fetch(`${adminApiUrl}/verify/license`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ licenseKey, machineId }),
+            signal: AbortSignal.timeout(10000)
+          });
+          const verifyResult = await fetchResponse.json() as any;
+
+          if (!verifyResult.success) {
+            return res.status(400).json({
+              success: false,
+              message: verifyResult.message || '授权码验证失败，请检查后重试'
+            });
+          }
+
+          const licenseData = verifyResult.data;
+          const now = formatDateTime(new Date());
+          const tenantId = uuidv4();
+          const d = new Date();
+          const tenantCode = `P${d.getFullYear().toString().slice(2)}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}${Math.random().toString(36).substring(2,6).toUpperCase()}`;
+
+          await AppDataSource.query(
+            `INSERT INTO tenants (id, name, code, license_key, license_status, max_users, max_storage_gb, features, status, activated_at, expire_date, last_verify_at, created_at, updated_at)
+             VALUES (?, ?, ?, ?, 'active', ?, ?, ?, 'active', ?, ?, ?, ?, ?)`,
+            [tenantId, licenseData.customerName || '私有部署企业', tenantCode, licenseKey,
+             licenseData.maxUsers || 50, 50, JSON.stringify(licenseData.features || []),
+             now, licenseData.expiresAt || null, now, now, now]
           );
-          isInSaasMode = saasCheck && saasCheck.length > 0;
-        } catch { /* ignore */ }
 
-        const errorMessage = isInSaasMode
-          ? '该授权码为私有部署专用，不能在SaaS租户系统中使用。请使用租户授权码（TENANT-前缀）或联系管理员'
-          : '私有授权码不存在或无效，请检查后重试。如有疑问请联系管理员';
+          // 保存 system_license 记录（兼容旧版逻辑）
+          await AppDataSource.query(`CREATE TABLE IF NOT EXISTS system_license (
+            id VARCHAR(36) PRIMARY KEY, license_key VARCHAR(255), customer_name VARCHAR(200),
+            license_type VARCHAR(50) DEFAULT 'perpetual', max_users INT DEFAULT 50,
+            user_limit_mode VARCHAR(20) DEFAULT 'total', max_online_seats INT DEFAULT 0,
+            features TEXT, expires_at DATETIME, status VARCHAR(20) DEFAULT 'active',
+            activated_at DATETIME, machine_id VARCHAR(255), admin_credentials_shown TINYINT DEFAULT 0,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`).catch(() => {});
+          await AppDataSource.query(`DELETE FROM system_license`).catch(() => {});
+          await AppDataSource.query(
+            `INSERT INTO system_license (id, license_key, customer_name, license_type, max_users, features, expires_at, status, activated_at, machine_id, created_at, updated_at)
+             VALUES (?, ?, ?, 'perpetual', ?, ?, ?, 'active', ?, ?, ?, ?)`,
+            [uuidv4(), licenseKey, licenseData.customerName || '', licenseData.maxUsers || 50,
+             JSON.stringify(licenseData.features || []), licenseData.expiresAt || null,
+             now, machineId, now, now]
+          ).catch(() => {});
 
-        return res.status(404).json({
-          success: false,
-          message: errorMessage,
-          errorType: isInSaasMode ? 'WRONG_LICENSE_TYPE' : 'LICENSE_NOT_FOUND'
-        });
+          try {
+            const memberPwdHash = await bcrypt.hash('Aa123456', 10);
+            await AppDataSource.query('UPDATE tenants SET password_hash = ? WHERE id = ?', [memberPwdHash, tenantId]);
+          } catch { /* ignore */ }
+
+          let adminAccount: { username: string; password: string } | null = null;
+          const adminPhone = licenseData.customerPhone;
+          if (adminPhone) {
+            try {
+              const result = await createDefaultAdmin({
+                tenantId, phone: adminPhone,
+                realName: licenseData.customerName || '管理员',
+              });
+              adminAccount = { username: result.username, password: result.password };
+              log.info(`[TenantLicense] ✅ 中央服务器激活，已创建管理员: ${result.username}`);
+            } catch (adminErr: any) {
+              log.warn('[TenantLicense] 创建管理员失败（可能已存在）:', adminErr.message?.substring(0, 80));
+            }
+          }
+
+          log.info(`[TenantLicense] ✅ 中央服务器验证成功，创建本地租户: ${licenseData.customerName || ''} (${tenantCode})`);
+
+          adminNotificationService.notify('tenant_login', {
+            title: `私有客户首次激活：${licenseData.customerName || ''}`,
+            content: `私有部署客户通过中央服务器激活，编码：${tenantCode}，IP：${ip || '未知'}`,
+            relatedId: tenantId, relatedType: 'tenant',
+            extraData: { tenantName: licenseData.customerName, tenantCode, ip, deployType: 'private' }
+          }).catch(() => {});
+
+          return res.json({
+            success: true,
+            data: {
+              tenantId, tenantCode,
+              tenantName: licenseData.customerName || '私有部署企业',
+              packageName: '私有部署版',
+              maxUsers: licenseData.maxUsers || 50,
+              expireDate: licenseData.expiresAt || null,
+              features: licenseData.features || null,
+              packageFeatures: null,
+              deployType: 'private',
+              isFirstActivation: true,
+              adminAccount
+            },
+            message: '私有授权码首次激活成功'
+          });
+        } catch (centralErr: any) {
+          log.warn('[TenantLicense] 中央服务器验证失败:', centralErr.message?.substring(0, 200));
+
+          let isInSaasMode = false;
+          try {
+            const saasCheck = await AppDataSource.query(
+              `SELECT id FROM tenants WHERE license_key LIKE 'TENANT-%' OR license_key LIKE 'LIC-%' LIMIT 1`
+            );
+            isInSaasMode = saasCheck && saasCheck.length > 0;
+          } catch { /* ignore */ }
+
+          const errorMessage = isInSaasMode
+            ? '该授权码为私有部署专用，不能在SaaS租户系统中使用。请使用租户授权码（TENANT-前缀）或联系管理员'
+            : '授权码验证失败，无法连接中央服务器。请检查网络连接后重试';
+
+          return res.status(404).json({
+            success: false,
+            message: errorMessage,
+            errorType: isInSaasMode ? 'WRONG_LICENSE_TYPE' : 'CENTRAL_SERVER_UNREACHABLE'
+          });
+        }
       }
 
       if (lic.status === 'revoked') {

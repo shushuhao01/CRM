@@ -1,6 +1,6 @@
 # CRM 多站点部署指南（宝塔面板）
 
-> 版本: v1.2 | 更新日期: 2026-04-27
+> 版本: v1.3 | 更新日期: 2026-06-28
 > 适用: 宝塔面板 + Nginx + Node.js + PM2
 
 ---
@@ -460,11 +460,23 @@ cd ..
 
 ### 5.4 api.yunkes.com（API 接口）
 
+> **⚠️ 关键：必须使用 `^~` 修饰符！**
+>
+> 宝塔面板默认会生成敏感文件拦截规则：
+> ```nginx
+> location ~* (\.user.ini|\.htaccess|\.git|\.svn|\.project|LICENSE|README|...)$
+> ```
+> 这条**大小写不敏感的正则**会匹配到包含 `license` 的 API 路径（如 `/api/v1/admin/verify/license`），
+> 导致 Nginx 直接返回 404，请求根本到不了后端！
+>
+> **解决方案**：将 `location /` 改为 `location ^~ /`，让前缀匹配优先于正则匹配，
+> 同时添加 `proxy_intercept_errors off;` 防止 Nginx 拦截后端错误响应。
+
 ```nginx
     client_max_body_size 50m;
 
-    # 所有请求直接代理到后端
-    location / {
+    # ❗ 必须用 ^~ 修饰符，否则宝塔的敏感文件正则会拦截含 license 的 API 路径
+    location ^~ / {
         proxy_pass http://127.0.0.1:3000;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
@@ -476,6 +488,9 @@ cd ..
         proxy_connect_timeout 60s;
         proxy_send_timeout 60s;
         proxy_read_timeout 86400;
+
+        # 防止 Nginx 拦截后端的错误响应（如 4xx/5xx）
+        proxy_intercept_errors off;
     }
 ```
 
@@ -607,6 +622,38 @@ location ~ .*\.(gif|jpg|jpeg|png|bmp|swf)$
 2. 检查是否删除了 `#PHP-INFO-START` 到 `#PHP-INFO-END` 之间的内容（特别是 `include enable-php-XX.conf;`）
 3. 检查 `index` 行是否还包含 `index.php`、`default.php` 等 PHP 文件名
 4. 查看错误日志：`tail -20 /www/wwwlogs/对应域名.error.log`
+
+### Q: 私有部署授权码激活失败（404 / 授权码验证失败）？
+这是宝塔面板默认生成的**敏感文件拦截规则**导致的。宝塔会自动添加：
+```nginx
+location ~* (\.user.ini|\.htaccess|\.git|\.svn|\.project|LICENSE|README|...)$
+{
+    return 404;
+}
+```
+其中 `LICENSE` 是**大小写不敏感**的正则匹配（`~*`），会匹配到 API 路径中的 `license`：
+- `/api/v1/admin/verify/license` → 匹配 `LICENSE$` → Nginx 直接返回 404
+- `/api/v1/license/activate` → URL 末尾是 `activate`，不匹配 → 正常
+
+**修复方法**（API 站点 `api.yunkes.com`）：
+
+将 `location / {` 改为 `location ^~ / {`，`^~` 让前缀匹配优先于所有正则匹配：
+```nginx
+location ^~ / {
+    proxy_pass http://127.0.0.1:3000;
+    # ... 其他 proxy 配置 ...
+    proxy_intercept_errors off;
+}
+```
+保存后重载：`nginx -t && nginx -s reload`
+
+**验证**：
+```bash
+curl -X POST https://api.yunkes.com/api/v1/admin/verify/license \
+  -H "Content-Type: application/json" \
+  -d '{"licenseKey":"TEST","machineId":"test"}'
+# 应返回 JSON（而非 404 HTML 页面）
+```
 
 ### Q: 官网/管理后台上传的图片（二维码等）显示不出来？
 除了上面提到的静态资源缓存规则外，还要确保**每个需要显示上传图片的站点**都配置了 `/uploads/` 映射：
