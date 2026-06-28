@@ -27,6 +27,9 @@ export class PrivateCustomer {
   @Column({ name: 'company_size', type: 'varchar', length: 50, nullable: true })
   companySize: string;
 
+  @Column({ name: 'tenant_code', type: 'varchar', length: 50, nullable: true, comment: '租户编码（私有部署登录时使用）' })
+  tenantCode: string;
+
   @Column({ name: 'deployment_type', type: 'varchar', length: 50, default: 'on-premise' })
   deploymentType: string;
 

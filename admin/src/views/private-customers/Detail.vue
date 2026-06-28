@@ -73,6 +73,11 @@
         <el-descriptions-item label="创建时间">{{ formatDateTime(detail.createdAt) }}</el-descriptions-item>
         <el-descriptions-item label="更新时间">{{ formatDateTime(detail.updatedAt) }}</el-descriptions-item>
         <el-descriptions-item label="创建人">{{ detail.createdByName || detail.createdBy || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="租户编码">
+          <code v-if="detail.tenantCode" class="id-code">{{ detail.tenantCode }}</code>
+          <el-button v-if="detail.tenantCode" link size="small" @click="copyText(detail.tenantCode)"><el-icon><CopyDocument /></el-icon></el-button>
+          <span v-else style="color: #c0c4cc;">未生成</span>
+        </el-descriptions-item>
         <el-descriptions-item label="客户ID">
           <code class="id-code">{{ detail.id || '-' }}</code>
           <el-button v-if="detail.id" link size="small" @click="copyText(detail.id)"><el-icon><CopyDocument /></el-icon></el-button>

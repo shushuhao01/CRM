@@ -259,7 +259,30 @@ router.get('/:id', async (req: Request, res: Response) => {
       } catch { /* ignore */ }
     }
 
-    res.json({ success: true, data: { ...license, features: resolvedFeatures, packageInfo, userCount, createdByName, crmPasswordStatus, crmPasswordDisplay, memberPasswordStatus, memberPasswordDisplay } });
+    // 查询 tenant_code（从 private_customers 表或 tenants 表）
+    let tenantCode: string | null = null;
+    try {
+      const pcRows = await AppDataSource.query(
+        'SELECT pc.tenant_code FROM private_customers pc INNER JOIN licenses l ON l.private_customer_id = pc.id WHERE l.id = ? LIMIT 1',
+        [id]
+      );
+      if (pcRows.length > 0 && pcRows[0].tenant_code) {
+        tenantCode = pcRows[0].tenant_code;
+      }
+    } catch { /* column or join might not exist yet */ }
+    if (!tenantCode && license.customerPhone) {
+      try {
+        const tRows = await AppDataSource.query(
+          'SELECT code FROM tenants WHERE phone = ? LIMIT 1',
+          [license.customerPhone]
+        );
+        if (tRows.length > 0 && tRows[0].code) {
+          tenantCode = tRows[0].code;
+        }
+      } catch { /* ignore */ }
+    }
+
+    res.json({ success: true, data: { ...license, features: resolvedFeatures, packageInfo, userCount, createdByName, crmPasswordStatus, crmPasswordDisplay, memberPasswordStatus, memberPasswordDisplay, tenantCode } });
   } catch (error: any) {
     logger.error('[Admin Licenses] Get detail failed:', error);
     res.status(500).json({ success: false, message: '获取授权详情失败' });
@@ -362,6 +385,15 @@ router.post('/', async (req: Request, res: Response) => {
             await AppDataSource.query('UPDATE licenses SET tenant_id = ? WHERE id = ?', [tenantId, license.id]);
           } catch { /* tenant_id 列可能不存在 */ }
           logger.info(`[Admin Licenses] ✅ 已在 tenants 表创建私有客户记录: ${customerName} (${tenantCode}), 会员中心默认密码 Aa123456`);
+        }
+
+        if (tenantCode) {
+          try {
+            await AppDataSource.query(
+              'UPDATE private_customers SET tenant_code = ? WHERE id = (SELECT private_customer_id FROM licenses WHERE id = ? LIMIT 1)',
+              [tenantCode, license.id]
+            );
+          } catch { /* private_customer_id or tenant_code column might not exist */ }
         }
       } catch (tenantErr: any) {
         logger.warn('[Admin Licenses] 创建 tenants 记录失败（不影响授权创建）:', tenantErr.message?.substring(0, 100));

@@ -59,6 +59,7 @@
 -- 52. [v1.8.0] 新增value_added_operation_logs(增值管理操作日志表)，记录有效状态/结算/公司/单价的变更操作人与时间，用于审计
 -- 53. [v1.8.0] 新增cod_operation_logs(代收管理操作日志表)，记录代收金额修改/返款/取消等操作人与时间，用于审计
 -- 54. [v1.8.0] 新增performance_operation_logs(绩效管理操作日志表)，记录有效状态/系数/备注等变更操作人与时间，用于审计
+-- 55. [v1.8.0] private_customers表新增tenant_code字段，存储租户编码（同步自tenants.code）
 -- =============================================
 
 -- 设置字符集和时区
@@ -5423,6 +5424,7 @@ CREATE TABLE IF NOT EXISTS `private_customers` (
   `company_address` VARCHAR(500) NULL COMMENT '公司地址',
   `industry` VARCHAR(100) NULL COMMENT '所属行业',
   `company_size` VARCHAR(50) NULL COMMENT '公司规模: 10人以下, 10-50人, 50-200人, 200人以上',
+  `tenant_code` VARCHAR(50) NULL COMMENT '租户编码（私有部署登录时使用，同步自tenants.code）',
   `deployment_type` VARCHAR(50) DEFAULT 'on-premise' COMMENT '部署类型: on-premise-本地部署, cloud-云部署',
   `status` VARCHAR(20) DEFAULT 'active' COMMENT '状态: active-正常, inactive-停用',
   `notes` TEXT NULL COMMENT '备注',

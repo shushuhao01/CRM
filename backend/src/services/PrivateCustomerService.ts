@@ -292,6 +292,13 @@ export class PrivateCustomerService {
           } catch { /* tenant_id 列可能不存在 */ }
           log.info(`[PrivateCustomerService] ✅ 已在 tenants 表创建私有客户记录: ${data.customerName} (${tenantCode}), 会员中心密码 Aa123456`);
         }
+
+        if (tenantCode) {
+          await AppDataSource.query(
+            'UPDATE private_customers SET tenant_code = ? WHERE id = ?',
+            [tenantCode, customer.id]
+          );
+        }
       } catch (tenantErr: any) {
         log.warn('[PrivateCustomerService] 创建 tenants 记录失败（不影响授权创建）:', tenantErr.message?.substring(0, 100));
       }

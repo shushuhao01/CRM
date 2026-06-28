@@ -75,6 +75,12 @@
         <el-table-column prop="customerPhone" label="联系电话" width="130" show-overflow-tooltip>
           <template #default="{ row }">{{ row.customerPhone || '-' }}</template>
         </el-table-column>
+        <el-table-column prop="tenantCode" label="租户编码" width="140" show-overflow-tooltip>
+          <template #default="{ row }">
+            <code v-if="row.tenantCode" class="tenant-code">{{ row.tenantCode }}</code>
+            <span v-else style="color: #c0c4cc;">-</span>
+          </template>
+        </el-table-column>
         <el-table-column label="授权码" min-width="200" show-overflow-tooltip>
           <template #default="{ row }">
             <div class="license-key-cell">
@@ -977,6 +983,16 @@ const handleExport = () => {
       transform: scale(1.1);
     }
   }
+}
+
+.tenant-code {
+  font-family: 'Courier New', monospace;
+  font-size: 12px;
+  padding: 2px 6px;
+  background: #f0f9eb;
+  color: #67c23a;
+  border-radius: 3px;
+  border: 1px solid #e1f3d8;
 }
 
 .action-buttons {
