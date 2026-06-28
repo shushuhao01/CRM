@@ -249,14 +249,13 @@ router.get('/all-customers', async (req: Request, res: Response) => {
         l.activated_at as activatedAt,
         'private' as customerType,
         NULL as packageName,
-        pc.tenant_code as tenantCode,
+        (SELECT t.code FROM tenants t WHERE t.license_key = l.license_key LIMIT 1) as tenantCode,
         ${licenseHasSeatCols ? "COALESCE(l.user_limit_mode, 'total')" : "'total'"} as user_limit_mode,
         ${licenseHasSeatCols ? 'COALESCE(l.max_online_seats, 0)' : '0'} as max_online_seats,
         0 as current_online_seats,
         0 as user_count,
         ${privateFollowUp}
       FROM licenses l
-      LEFT JOIN private_customers pc ON l.private_customer_id = pc.id
       WHERE l.deleted_at IS NULL
     `;
     const privateParams: any[] = [];

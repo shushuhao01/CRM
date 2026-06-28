@@ -183,12 +183,14 @@ router.post('/verify', async (req: Request, res: Response) => {
         );
         // 更新 licenses 表状态
         await AppDataSource.query(`UPDATE licenses SET status = 'active', activated_at = ? WHERE id = ?`, [now, lic.id]);
-        // 回写 tenant_code 到 private_customers 表
+        // 回写 tenant_code 到 private_customers 表（通过 license_key 和手机号关联）
         try {
-          await AppDataSource.query(
-            'UPDATE private_customers SET tenant_code = ? WHERE id = (SELECT private_customer_id FROM licenses WHERE id = ? LIMIT 1)',
-            [tenantCode, lic.id]
-          );
+          if (lic.customer_phone) {
+            await AppDataSource.query(
+              'UPDATE private_customers SET tenant_code = ? WHERE contact_phone = ? AND tenant_code IS NULL',
+              [tenantCode, lic.customer_phone]
+            );
+          }
         } catch { /* column might not exist */ }
         tenant = { id: tenantId, name: lic.customer_name || '私有部署企业', code: tenantCode, license_status: 'active', expire_date: lic.expires_at };
         log.info(`[TenantLicense] 私有授权码首次激活，创建本地租户: ${tenant.name} (${tenantCode})`);

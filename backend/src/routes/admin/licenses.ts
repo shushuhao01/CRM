@@ -259,17 +259,17 @@ router.get('/:id', async (req: Request, res: Response) => {
       } catch { /* ignore */ }
     }
 
-    // 查询 tenant_code（从 private_customers 表或 tenants 表）
+    // 查询 tenant_code（从 tenants 表通过 license_key 关联）
     let tenantCode: string | null = null;
     try {
-      const pcRows = await AppDataSource.query(
-        'SELECT pc.tenant_code FROM private_customers pc INNER JOIN licenses l ON l.private_customer_id = pc.id WHERE l.id = ? LIMIT 1',
-        [id]
+      const tRows = await AppDataSource.query(
+        'SELECT code FROM tenants WHERE license_key = ? LIMIT 1',
+        [license.licenseKey]
       );
-      if (pcRows.length > 0 && pcRows[0].tenant_code) {
-        tenantCode = pcRows[0].tenant_code;
+      if (tRows.length > 0 && tRows[0].code) {
+        tenantCode = tRows[0].code;
       }
-    } catch { /* column or join might not exist yet */ }
+    } catch { /* ignore */ }
     if (!tenantCode && license.customerPhone) {
       try {
         const tRows = await AppDataSource.query(
@@ -387,13 +387,13 @@ router.post('/', async (req: Request, res: Response) => {
           logger.info(`[Admin Licenses] ✅ 已在 tenants 表创建私有客户记录: ${customerName} (${tenantCode}), 会员中心默认密码 Aa123456`);
         }
 
-        if (tenantCode) {
+        if (tenantCode && phone) {
           try {
             await AppDataSource.query(
-              'UPDATE private_customers SET tenant_code = ? WHERE id = (SELECT private_customer_id FROM licenses WHERE id = ? LIMIT 1)',
-              [tenantCode, license.id]
+              'UPDATE private_customers SET tenant_code = ? WHERE contact_phone = ? AND tenant_code IS NULL',
+              [tenantCode, phone]
             );
-          } catch { /* private_customer_id or tenant_code column might not exist */ }
+          } catch { /* tenant_code column might not exist */ }
         }
       } catch (tenantErr: any) {
         logger.warn('[Admin Licenses] 创建 tenants 记录失败（不影响授权创建）:', tenantErr.message?.substring(0, 100));
