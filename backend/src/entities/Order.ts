@@ -146,6 +146,9 @@ export class Order {
   @Column({ name: 'latest_logistics_info', type: 'varchar', length: 500, nullable: true, comment: '最新物流动态' })
   latestLogisticsInfo?: string;
 
+  @Column({ name: 'manual_status_override', type: 'boolean', default: false, comment: '手动覆盖标记：为true时自动同步跳过此订单' })
+  manualStatusOverride?: boolean;
+
   @Column({ name: 'is_todo', type: 'boolean', default: false, comment: '是否待办' })
   isTodo?: boolean;
 

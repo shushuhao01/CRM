@@ -815,7 +815,9 @@ router.get('/trace/query', async (req: Request, res: Response) => {
             order.expectedDeliveryDate = result.estimatedDeliveryTime;
           }
 
-          // 🔥 实时自动同步：根据最新物流动态安全更新订单状态
+          // 🔥 实时自动同步：检查DB开关 + 跳过手动覆盖的订单
+          const { isAutoSyncEnabled: checkEnabled } = await import('../../services/LogisticsAutoSyncService');
+          if (!(order as any).manualStatusOverride && await checkEnabled()) {
           const { detectLogisticsStatus, mapLogisticsToOrderStatus } = await import('../../services/LogisticsAutoSyncService');
           const detectedStatus = detectLogisticsStatus(latestDescription);
           const targetOrderStatus = mapLogisticsToOrderStatus(detectedStatus, order.status);
@@ -843,6 +845,7 @@ router.get('/trace/query', async (req: Request, res: Response) => {
               // 历史记录失败不影响主流程
             }
           }
+          } // end manualStatusOverride check
 
           order.updatedAt = new Date();
           await orderRepository.save(order);
@@ -958,15 +961,18 @@ router.post('/trace/batch-query', async (req: Request, res: Response) => {
                   order.expectedDeliveryDate = result.estimatedDeliveryTime;
                 }
 
-                // 🔥 实时自动同步：根据最新物流动态安全更新订单状态
-                const { detectLogisticsStatus, mapLogisticsToOrderStatus } = await import('../../services/LogisticsAutoSyncService');
-                const detectedStatus = detectLogisticsStatus(latestDescription);
-                const targetOrderStatus = mapLogisticsToOrderStatus(detectedStatus, order.status);
+                // 🔥 实时自动同步：检查DB开关 + 跳过手动覆盖的订单
+                const { isAutoSyncEnabled: checkBatchEnabled } = await import('../../services/LogisticsAutoSyncService');
+                if (!(order as any).manualStatusOverride && await checkBatchEnabled()) {
+                  const { detectLogisticsStatus, mapLogisticsToOrderStatus } = await import('../../services/LogisticsAutoSyncService');
+                  const detectedStatus = detectLogisticsStatus(latestDescription);
+                  const targetOrderStatus = mapLogisticsToOrderStatus(detectedStatus, order.status);
 
-                if (targetOrderStatus && targetOrderStatus !== order.status) {
-                  order.status = targetOrderStatus as any;
-                  if (targetOrderStatus === 'delivered') {
-                    order.deliveredAt = new Date();
+                  if (targetOrderStatus && targetOrderStatus !== order.status) {
+                    order.status = targetOrderStatus as any;
+                    if (targetOrderStatus === 'delivered') {
+                      order.deliveredAt = new Date();
+                    }
                   }
                 }
 

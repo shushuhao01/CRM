@@ -312,6 +312,14 @@ router.post('/verify', async (req: Request, res: Response) => {
 
           log.info(`[TenantLicense] ✅ 中央服务器验证成功，创建本地租户: ${licenseData.customerName || ''} (${tenantCode})`);
 
+          // 首次激活：自动关联所有 tenant_id = NULL 的旧数据
+          try {
+            const { privateTenantAssociationService } = await import('../services/PrivateTenantAssociationService');
+            await privateTenantAssociationService.runForTenant(tenantId);
+          } catch (assocErr: any) {
+            log.warn('[TenantLicense] 数据关联跳过:', assocErr.message?.substring(0, 100));
+          }
+
           adminNotificationService.notify('tenant_login', {
             title: `私有客户首次激活：${licenseData.customerName || ''}`,
             content: `私有部署客户通过中央服务器激活，编码：${tenantCode}，IP：${ip || '未知'}`,
@@ -462,6 +470,14 @@ router.post('/verify', async (req: Request, res: Response) => {
             log.error('[TenantLicense] 创建管理员失败:', adminErr.message);
             adminAccount = { username: adminPhone, password: 'Aa123456' };
           }
+        }
+
+        // 首次激活：自动关联所有 tenant_id = NULL 的旧数据
+        try {
+          const { privateTenantAssociationService } = await import('../services/PrivateTenantAssociationService');
+          await privateTenantAssociationService.runForTenant(tenant.id);
+        } catch (assocErr: any) {
+          log.warn('[TenantLicense] 数据关联跳过:', assocErr.message?.substring(0, 100));
         }
 
         // 通知管理员

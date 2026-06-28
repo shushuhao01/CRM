@@ -333,7 +333,7 @@
           <el-button @click="handleSaveDraft" :loading="draftLoading">
             保存草稿
           </el-button>
-          <el-button type="primary" @click="handleSubmit" :loading="submitLoading">
+          <el-button type="primary" @click="handleSubmit" :loading="submitLoading" :disabled="submitLoading">
             提交申请
           </el-button>
         </div>
@@ -1082,12 +1082,11 @@ const handleSaveDraft = async () => {
 
 const handleSubmit = async () => {
   if (!formRef.value) return
+  if (submitLoading.value) return
 
   try {
-    // 表单验证
     await formRef.value.validate()
 
-    // 额外验证关键字段
     if (!form.orderNumber) {
       ElMessage.warning('请选择订单')
       return

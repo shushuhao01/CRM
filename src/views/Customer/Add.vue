@@ -1692,20 +1692,12 @@ const handlePhoneBlur = async () => {
  */
 const handleSubmit = async () => {
   if (!customerFormRef.value) return
-
-  console.log('🔥 handleSubmit 被调用')
+  if (loading.value) return
 
   try {
-    // 表单验证
-    console.log('开始表单验证...')
     const valid = await customerFormRef.value.validate()
-    if (!valid) {
-      console.log('表单验证失败')
-      return
-    }
-    console.log('表单验证通过')
+    if (!valid) return
 
-    // 设置loading状态
     loading.value = true
 
     if (isEdit.value) {
@@ -1879,12 +1871,9 @@ const handleCancel = async () => {
  * 处理保存并下单操作
  */
 const handleSaveAndOrder = async () => {
-  console.log('=== handleSaveAndOrder 开始 ===')
-  console.log('shouldDisableSave:', shouldDisableSave.value)
-  console.log('customerVerifyResult:', customerVerifyResult.value)
+  if (loading.value) return
 
   if (!customerFormRef.value) {
-    console.error('customerFormRef 不存在')
     ElMessage.error('表单引用不存在，请刷新页面重试')
     return
   }

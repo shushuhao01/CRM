@@ -13,6 +13,7 @@ import { AppDataSource } from '../../config/database';
 import { getTenantRepo } from '../../utils/tenantRepo';
 import { updateTenantStorage, checkStorageLimit } from '../../middleware/checkTenantLimits';
 import { getUploadUrl } from '../../utils/tenantUploadHelper';
+import { CENTRAL_SERVER } from '../../config/centralServer';
 import {
   getUploadConfig,
   systemImageUpload,
@@ -472,9 +473,22 @@ router.get('/basic-settings', authenticateToken, async (req: Request, res: Respo
       techSupport: settings.techSupport || ''
     };
 
+    const responseData = { ...defaultSettings, ...settings };
+
+    // 私有部署模式：将相对路径的图片URL转为中央服务器的绝对URL
+    if ((process.env.DEPLOY_MODE || 'private') === 'private') {
+      const crmBaseUrl = CENTRAL_SERVER.CRM_URL.replace(/\/$/, '');
+      for (const field of ['contactQRCode', 'systemLogo']) {
+        const val = responseData[field];
+        if (typeof val === 'string' && val.startsWith('/uploads/')) {
+          (responseData as any)[field] = `${crmBaseUrl}${val}`;
+        }
+      }
+    }
+
     res.json({
       success: true,
-      data: { ...defaultSettings, ...settings }
+      data: responseData
     });
   } catch (error) {
     log.error('获取基本设置失败:', error);

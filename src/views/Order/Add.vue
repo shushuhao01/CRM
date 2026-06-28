@@ -1942,7 +1942,9 @@ const handleMarkTypeChange = (value: string) => {
 }
 
 const handleSaveOrder = async () => {
+  if (saving.value || submitting.value) return
   try {
+    saving.value = true
     await orderFormRef.value.validate()
 
     if (orderForm.products.length === 0) {
@@ -2009,10 +2011,13 @@ const handleSaveOrder = async () => {
     confirmDialogVisible.value = true
   } catch (error) {
     ElMessage.error('请完善订单信息')
+  } finally {
+    saving.value = false
   }
 }
 
 const handleSubmitOrder = async () => {
+  if (submitting.value) return
   try {
     submitting.value = true
 

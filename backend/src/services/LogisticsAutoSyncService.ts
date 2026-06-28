@@ -19,6 +19,21 @@ import { AppDataSource } from '../config/database';
 import { Order } from '../entities/Order';
 import { OrderStatusHistory } from '../entities/OrderStatusHistory';
 
+/**
+ * 检查物流自动同步开关是否启用（从数据库读取）
+ * 默认为 false（停用）
+ */
+export async function isAutoSyncEnabled(): Promise<boolean> {
+  try {
+    const rows = await AppDataSource.query(
+      `SELECT config_value FROM system_configs WHERE config_key = 'logistics_auto_sync_enabled' LIMIT 1`
+    );
+    return rows.length > 0 && rows[0].config_value === 'true';
+  } catch {
+    return false;
+  }
+}
+
 // ==================== 物流状态检测（核心逻辑）====================
 
 /**
@@ -307,12 +322,12 @@ export function mapLogisticsToOrderStatus(
 
   switch (logisticsStatus) {
     case 'delivered':
-      // 只有 shipped 才能变 delivered
-      return currentOrderStatus === 'shipped' ? 'delivered' : null;
+      // shipped 或 package_exception 都可以变 delivered（异常后重新派送签收）
+      return (currentOrderStatus === 'shipped' || currentOrderStatus === 'package_exception') ? 'delivered' : null;
 
     case 'rejected':
-      // 只有 shipped 才能变 rejected
-      return currentOrderStatus === 'shipped' ? 'rejected' : null;
+      // shipped 或 package_exception 都可以变 rejected
+      return (currentOrderStatus === 'shipped' || currentOrderStatus === 'package_exception') ? 'rejected' : null;
 
     case 'exception':
       // 只有 shipped 才能变 package_exception
@@ -381,7 +396,7 @@ class LogisticsAutoSyncService {
 
       const orderRepository = AppDataSource!.getRepository(Order);
 
-      // 1️⃣ 查询需要同步的订单
+      // 1️⃣ 查询需要同步的订单（跳过手动覆盖的）
       const queryBuilder = orderRepository.createQueryBuilder('order')
         .where('order.status IN (:...statuses)', {
           statuses: ['shipped', 'rejected', 'package_exception']
@@ -389,7 +404,8 @@ class LogisticsAutoSyncService {
         .andWhere('order.trackingNumber IS NOT NULL')
         .andWhere("order.trackingNumber != ''")
         .andWhere('order.latestLogisticsInfo IS NOT NULL')
-        .andWhere("order.latestLogisticsInfo != ''");
+        .andWhere("order.latestLogisticsInfo != ''")
+        .andWhere('(order.manualStatusOverride = false OR order.manualStatusOverride IS NULL)');
 
       // 租户隔离
       if (tenantId) {
@@ -470,17 +486,21 @@ class LogisticsAutoSyncService {
       result.logisticsUpdated++;
     }
 
-    // 🔥 安全映射：物流状态 → 订单状态
-    const targetOrderStatus = mapLogisticsToOrderStatus(newLogisticsStatus, oldOrderStatus);
+    // 🔥 订单状态同步：仅在自动同步开关启用时才更新订单状态
+    // 物流状态（logisticsStatus）始终更新，订单状态（status）受开关控制
+    let targetOrderStatus: string | null = null;
+    const autoSyncEnabled = await isAutoSyncEnabled();
+    if (autoSyncEnabled) {
+      targetOrderStatus = mapLogisticsToOrderStatus(newLogisticsStatus, oldOrderStatus);
 
-    if (targetOrderStatus && targetOrderStatus !== oldOrderStatus) {
-      updateData.status = targetOrderStatus;
-      orderStatusChanged = true;
-      result.statusUpdated++;
+      if (targetOrderStatus && targetOrderStatus !== oldOrderStatus) {
+        updateData.status = targetOrderStatus;
+        orderStatusChanged = true;
+        result.statusUpdated++;
 
-      // 签收时记录签收时间
-      if (targetOrderStatus === 'delivered') {
-        updateData.deliveredAt = new Date();
+        if (targetOrderStatus === 'delivered') {
+          updateData.deliveredAt = new Date();
+        }
       }
     }
 
@@ -504,7 +524,6 @@ class LogisticsAutoSyncService {
           });
           await historyRepo.save(historyRecord);
         } catch (historyErr: any) {
-          // 历史记录失败不影响主流程
           log.warn(`[物流自动同步] 保存状态历史失败(不影响主流程): ${historyErr.message}`);
         }
       }

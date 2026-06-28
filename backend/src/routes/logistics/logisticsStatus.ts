@@ -16,6 +16,7 @@ import { formatDate } from '../../utils/dateFormat';
 import { ensureStatusHistoryTable } from '../orders/orderHelpers';
 
 import { log } from '../../config/logger';
+import { AppDataSource } from '../../config/database';
 export function registerStatusAndConfigRoutes(router: Router): void {
 router.get('/permission', (req: Request, res: Response) => {
   try {
@@ -280,23 +281,23 @@ router.post('/order/status', async (req, res) => {
     }
 
     // 更新物流状态字段
+    const oldStatus = order.status;
     order.logisticsStatus = newStatus;
 
-    // 🔥 使用安全映射函数：物流状态 → 订单状态
-    const { mapLogisticsToOrderStatus } = await import('../../services/LogisticsAutoSyncService');
-    const targetOrderStatus = mapLogisticsToOrderStatus(newStatus, order.status);
+    // 手动更新：直接设置订单状态，不受自动映射限制
+    const validOrderStatuses = ['delivered', 'rejected', 'rejected_returned', 'refunded', 'after_sales_created', 'abnormal', 'package_exception', 'shipped'];
+    if (validOrderStatuses.includes(newStatus)) {
+      order.status = newStatus as any;
+      log.info(`[物流状态] 手动更新订单状态: ${oldStatus} → ${newStatus}`);
 
-    if (targetOrderStatus) {
-      order.status = targetOrderStatus as any;
-      log.info(`[物流状态] 订单状态安全映射: ${order.status} → ${targetOrderStatus} (物流状态: ${newStatus})`);
-
-      // 签收时记录签收时间
-      if (targetOrderStatus === 'delivered') {
+      if (newStatus === 'delivered') {
         order.deliveredAt = new Date();
       }
     }
 
-    // 更新订单的更新时间
+    // 标记为手动覆盖：后续自动同步将跳过此订单
+    (order as any).manualStatusOverride = true;
+
     order.updatedAt = new Date();
 
     await orderRepository.save(order);
@@ -2149,6 +2150,68 @@ router.post('/auto-sync/preview', async (req, res) => {
     });
   } catch (_error: any) {
     return res.status(500).json({ success: false, message: '预览失败' });
+  }
+});
+
+/**
+ * 获取物流自动同步配置（从数据库读取）
+ * GET /api/v1/logistics/status/auto-sync/config
+ */
+router.get('/auto-sync/config', async (req, res) => {
+  try {
+    const user = (req as any).user;
+    const tenantId = user?.tenantId;
+    const whereClause = tenantId
+      ? `WHERE config_key = 'logistics_auto_sync_enabled' AND tenant_id = ?`
+      : `WHERE config_key = 'logistics_auto_sync_enabled' AND tenant_id IS NULL`;
+    const params = tenantId ? [tenantId] : [];
+
+    const rows = await AppDataSource.query(
+      `SELECT config_value FROM system_configs ${whereClause} LIMIT 1`, params
+    ).catch(() => []);
+
+    const enabled = rows.length > 0 ? rows[0].config_value === 'true' : false;
+
+    return res.json({ success: true, data: { enabled } });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, message: '获取配置失败' });
+  }
+});
+
+/**
+ * 保存物流自动同步配置（持久化到数据库）
+ * POST /api/v1/logistics/status/auto-sync/config
+ */
+router.post('/auto-sync/config', async (req, res) => {
+  try {
+    const { enabled } = req.body;
+    const user = (req as any).user;
+    const tenantId = user?.tenantId;
+
+    const checkSql = tenantId
+      ? `SELECT id FROM system_configs WHERE config_key = 'logistics_auto_sync_enabled' AND tenant_id = ? LIMIT 1`
+      : `SELECT id FROM system_configs WHERE config_key = 'logistics_auto_sync_enabled' AND tenant_id IS NULL LIMIT 1`;
+    const checkParams = tenantId ? [tenantId] : [];
+    const existing = await AppDataSource.query(checkSql, checkParams).catch(() => []);
+
+    if (existing.length > 0) {
+      const updateSql = tenantId
+        ? `UPDATE system_configs SET config_value = ? WHERE config_key = 'logistics_auto_sync_enabled' AND tenant_id = ?`
+        : `UPDATE system_configs SET config_value = ? WHERE config_key = 'logistics_auto_sync_enabled' AND tenant_id IS NULL`;
+      await AppDataSource.query(updateSql, tenantId ? [String(enabled), tenantId] : [String(enabled)]);
+    } else {
+      await AppDataSource.query(
+        `INSERT INTO system_configs (id, config_key, config_value, config_group, description, tenant_id, is_enabled, sort_order)
+         VALUES (UUID(), 'logistics_auto_sync_enabled', ?, 'logistics', '物流状态自动同步到订单状态开关', ?, 1, 0)`,
+        [String(enabled), tenantId || null]
+      );
+    }
+
+    log.info(`[物流自动同步] 配置已${enabled ? '启用' : '停用'}${tenantId ? ` (租户: ${tenantId})` : ''}`);
+    return res.json({ success: true, message: `自动同步已${enabled ? '启用' : '停用'}` });
+  } catch (error: any) {
+    log.error('[物流自动同步] 保存配置失败:', error.message);
+    return res.status(500).json({ success: false, message: '保存配置失败' });
   }
 });
 

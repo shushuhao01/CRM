@@ -370,6 +370,25 @@ router.post('/', authenticateToken, async (req: Request, res: Response) => {
       }
     }
 
+    // 防重复提交：10秒内同一订单号+同一服务类型视为重复
+    if (data.orderNumber) {
+      try {
+        const recentDup = await serviceRepository.createQueryBuilder('s')
+          .where('s.orderNumber = :on', { on: data.orderNumber })
+          .andWhere('s.serviceType = :st', { st: data.serviceType || 'return' })
+          .andWhere('s.createdAt > DATE_SUB(NOW(), INTERVAL 10 SECOND)')
+          .getOne();
+        if (recentDup) {
+          logger.warn(`[Services] 检测到重复售后提交: 订单=${data.orderNumber}, 已有售后=${recentDup.serviceNumber}`);
+          return res.status(409).json({
+            success: true,
+            data: recentDup,
+            message: '售后单已创建成功，请勿重复提交'
+          });
+        }
+      } catch (_e) { /* 检查失败不阻塞创建 */ }
+    }
+
     // 生成ID和服务单号
     const timestamp = Date.now();
     const serviceId = `SH${timestamp}${Math.random().toString(36).substr(2, 4).toUpperCase()}`;

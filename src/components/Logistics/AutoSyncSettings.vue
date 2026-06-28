@@ -154,6 +154,7 @@ import { ref, reactive, computed, onMounted, onUnmounted, inject } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Refresh, View, ArrowDown, ArrowUp, Edit } from '@element-plus/icons-vue'
 import { autoStatusSyncService, type AutoSyncConfig, type SyncResult } from '@/services/autoStatusSync'
+import request from '@/utils/request'
 
 // 注入父组件提供的数据和方法
 const selectedCount = inject<any>('selectedCount', ref(0))
@@ -212,10 +213,19 @@ onUnmounted(() => {
   }
 })
 
-// 加载配置
-const loadConfig = () => {
+// 加载配置（enabled 从数据库读取）
+const loadConfig = async () => {
   const serviceConfig = autoStatusSyncService.getConfig()
   Object.assign(config, serviceConfig)
+  try {
+    const res = await request.get('/logistics/auto-sync/config')
+    if (res.data?.success && res.data?.data) {
+      config.enabled = res.data.data.enabled
+      autoStatusSyncService.updateConfig({ enabled: config.enabled })
+    }
+  } catch {
+    // DB 读取失败，使用本地默认值（false）
+  }
 }
 
 // 刷新状态
@@ -245,7 +255,7 @@ const saveSyncLogs = () => {
   }
 }
 
-// 处理启用状态变化
+// 处理启用状态变化（持久化到数据库）
 const handleEnabledChange = async (enabled: boolean) => {
   if (enabled) {
     try {
@@ -261,6 +271,7 @@ const handleEnabledChange = async (enabled: boolean) => {
           dangerouslyUseHTMLString: false
         }
       )
+      await request.post('/logistics/auto-sync/config', { enabled: true })
       autoStatusSyncService.updateConfig({ enabled: true })
       refreshStatus()
       ElMessage.success('自动同步已启用，建议定期人工核实订单状态')
@@ -268,6 +279,9 @@ const handleEnabledChange = async (enabled: boolean) => {
       config.enabled = false
     }
   } else {
+    try {
+      await request.post('/logistics/auto-sync/config', { enabled: false })
+    } catch { /* ignore */ }
     autoStatusSyncService.updateConfig({ enabled: false })
     refreshStatus()
     ElMessage.info('自动同步已停用，订单状态需手动更新')

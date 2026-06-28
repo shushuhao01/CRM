@@ -447,7 +447,7 @@
         </div>
 
         <!-- 订单列表 -->
-        <el-table :data="orderTypeOrders" stripe border class="order-table" v-loading="orderTypeLoading">
+        <el-table :data="paginatedOrderTypeList" stripe border class="order-table" v-loading="orderTypeLoading">
           <el-table-column type="index" label="序号" width="60" align="center" />
           <el-table-column prop="orderNo" label="订单号" width="170" show-overflow-tooltip>
             <template #default="{ row }">
@@ -2748,13 +2748,13 @@ const viewOrdersByType = async (member: TeamMember, columnProp: string) => {
   orderTypeCurrentPage.value = 1
   orderTypePageSize.value = 10
 
-  // 根据列类型确定订单状态筛选
-  const typeMap: Record<string, { label: string; status?: string }> = {
+  // 根据列类型确定订单状态筛选（与合计行逻辑一致）
+  const typeMap: Record<string, { label: string; status?: string; statusList?: string }> = {
     orderCount: { label: '下单订单' },
-    shipCount: { label: '已发货订单', status: 'shipped' },
-    signCount: { label: '已签收订单', status: 'delivered' },
+    shipCount: { label: '已发货订单', statusList: 'shipped,delivered,signed,completed,rejected,rejected_returned,package_exception' },
+    signCount: { label: '已签收订单', statusList: 'delivered,signed,completed' },
     transitCount: { label: '在途订单', status: 'shipped' },
-    rejectCount: { label: '拒收订单', status: 'rejected' },
+    rejectCount: { label: '拒收订单', statusList: 'rejected,rejected_returned' },
     returnCount: { label: '退货订单', status: 'refunded' }
   }
 
@@ -2763,8 +2763,7 @@ const viewOrdersByType = async (member: TeamMember, columnProp: string) => {
     orderTypeLabel.value = typeConfig.label
     orderTypeDetailTitle.value = `${member.name} - ${typeConfig.label}详情`
 
-    // 🔥 调用后端API获取订单数据
-    await loadOrderTypeData(member, typeConfig.status)
+    await loadOrderTypeData(member, typeConfig.status, typeConfig.statusList)
 
     orderTypeDetailVisible.value = true
   }
@@ -2893,69 +2892,39 @@ const getReceivedSharedOrders = (memberId: string, existingOrderNos: Set<string>
   return receivedOrders
 }
 
-const loadOrderTypeData = async (member: TeamMember, status?: string) => {
+const loadOrderTypeData = async (member: TeamMember, status?: string, statusList?: string) => {
   try {
     orderTypeLoading.value = true
     currentOrderTypeStatus.value = status
 
-    // 🔥 关键修复：确保orderStore有数据（后端API模式下本地可能没加载）
-    if (!orderStore.orders || orderStore.orders.length === 0) {
-      console.log('[团队业绩] orderStore为空，先从API加载订单数据...')
-      await orderStore.loadOrdersFromAPI(true)
+    const { orderApi } = await import('@/api/order')
+
+    const params: any = {
+      memberId: member.id,
+      page: 1,
+      pageSize: 500
     }
 
-    // 🔥 直接从本地 orderStore 获取数据（与主表使用相同的匹配逻辑，保证数据一致性）
-    let memberOrders = orderStore.orders.filter((order: any) => {
-      // 排除不计入业绩的订单
-      const excludedStatuses = ['pending_cancel', 'cancelled', 'audit_rejected', 'logistics_returned', 'logistics_cancelled', 'refunded']
-      if (order.status === 'pending_transfer' && order.markType !== 'normal') return false
-      if (excludedStatuses.includes(order.status)) return false
-
-      // 与主表相同的匹配逻辑：优先 salesPersonId，其次 createdBy / username
-      if (order.salesPersonId && member.id) {
-        if (String(order.salesPersonId) === String(member.id)) return true
-      }
-      if (order.createdBy && member.name) {
-        if (order.createdBy === member.name) return true
-      }
-      // 🔥 增加username匹配（后端created_by可能存的是username）
-      if (order.createdBy && member.username) {
-        if (order.createdBy === member.username) return true
-      }
-      return false
-    })
-
-    // 日期筛选
     if (dateRange.value && dateRange.value.length === 2 && dateRange.value[0] && dateRange.value[1]) {
-      memberOrders = memberOrders.filter((order: any) => {
-        let orderDateStr = (order.orderDate || order.createTime || '')?.split(' ')[0] || ''
-        orderDateStr = orderDateStr.replace(/\//g, '-')
-        const start = dateRange.value[0].replace(/\//g, '-')
-        const end = dateRange.value[1].replace(/\//g, '-')
-        return orderDateStr >= start && orderDateStr <= end
-      })
+      params.startDate = dateRange.value[0]
+      params.endDate = dateRange.value[1]
     }
 
-    // 状态筛选
-    if (status) {
-      memberOrders = memberOrders.filter((order: any) => {
-        if (status === 'shipped') return ['shipped', 'delivered', 'signed', 'completed', 'rejected', 'rejected_returned', 'package_exception'].includes(order.status)
-        if (status === 'delivered') return ['delivered', 'signed', 'completed'].includes(order.status)
-        if (status === 'rejected') return order.status === 'rejected' || order.status === 'rejected_returned'
-        if (status === 'logistics_returned') return order.status === 'logistics_returned'
-        if (status === 'transit') return order.status === 'shipped' && order.logisticsStatus !== 'delivered'
-        return order.status === status
-      })
+    if (statusList) {
+      params.statusList = statusList
+    } else if (status) {
+      params.status = status
     }
 
-    // 转换为弹窗显示格式，并附加分享信息和金额调整
-    const ownOrders = memberOrders.map((order: any) => {
+    const response = await orderApi.getMemberOrders(params)
+    const apiOrders = (response && response.data && response.data.list) ? response.data.list : []
+
+    const ownOrders = apiOrders.map((order: any) => {
       const shareInfo = buildOrderShareInfo(order.orderNumber, String(member.id))
       let displayAmount = order.totalAmount || 0
       let displayDeposit = order.depositAmount || 0
       let displayCollection = (order.totalAmount || 0) - (order.depositAmount || 0)
 
-      // 🔥 如果这个订单被分享出去了，显示保留的业绩部分
       if (shareInfo && shareInfo.isShared) {
         const retainRatio = shareInfo.ownerRetainedPercentage / 100
         displayAmount = Math.round((order.totalAmount || 0) * retainRatio)
@@ -2976,24 +2945,20 @@ const loadOrderTypeData = async (member: TeamMember, status?: string) => {
         collectionAmount: displayCollection,
         status: order.status,
         trackingNumber: order.trackingNumber || order.expressNo || '',
-        productDetails: order.products?.map((item: any) => `${item.name} x${item.quantity}`).join(', ') || '暂无详情',
+        productDetails: order.products?.map((item: any) => `${item.name || item.productName} x${item.quantity}`).join(', ') || '暂无详情',
         products: order.products || [],
         shareInfo
       }
     })
 
-    // 🔥 注入分享接收的订单
     const existingOrderNos = new Set(ownOrders.map((o: any) => o.orderNo))
     const receivedOrders = getReceivedSharedOrders(String(member.id), existingOrderNos, status)
 
-    // 合并并排序
     const allOrders = [...ownOrders, ...receivedOrders]
     allOrders.sort((a: any, b: any) => (b.orderDate || '').localeCompare(a.orderDate || ''))
 
     orderTypeOrders.value = allOrders
     orderTypeTotal.value = allOrders.length
-
-    console.log('[团队业绩] ✅ 成员订单加载成功:', ownOrders.length, '条自有 +', receivedOrders.length, '条接收分享, 总数:', orderTypeTotal.value)
   } catch (error) {
     console.error('[团队业绩] ❌ 加载成员订单失败:', error)
     orderTypeOrders.value = []
@@ -3003,19 +2968,13 @@ const loadOrderTypeData = async (member: TeamMember, status?: string) => {
   }
 }
 
-// 🔥 订单类型弹窗分页变化处理
-const handleOrderTypePageChange = async () => {
-  if (orderTypeMember.value) {
-    await loadOrderTypeData(orderTypeMember.value, currentOrderTypeStatus.value)
-  }
+const handleOrderTypePageChange = () => {
+  // pagination is client-side via paginatedOrderTypeList computed
 }
 
-const handleOrderTypeSizeChange = async (size: number) => {
+const handleOrderTypeSizeChange = (size: number) => {
   orderTypePageSize.value = size
   orderTypeCurrentPage.value = 1
-  if (orderTypeMember.value) {
-    await loadOrderTypeData(orderTypeMember.value, currentOrderTypeStatus.value)
-  }
 }
 
 const loadMemberOrders = async (memberId: string) => {
@@ -3024,56 +2983,29 @@ const loadMemberOrders = async (memberId: string) => {
   memberOrderLoading.value = true
 
   try {
-    // 🔥 关键修复：确保orderStore有数据（后端API模式下本地可能没加载）
-    if (!orderStore.orders || orderStore.orders.length === 0) {
-      console.log('[团队业绩] orderStore为空，先从API加载订单数据...')
-      await orderStore.loadOrdersFromAPI(true)
-    }
-
-    // 🔥 从本地 orderStore 获取成员数据（与主表使用相同的匹配逻辑）
+    const { orderApi } = await import('@/api/order')
     const member = memberList.value.find((m: any) => String(m.id) === String(memberId))
-    const memberName = member?.name || ''
-    const memberUsername = member?.username || ''
 
-    let memberOrders = orderStore.orders.filter((order: any) => {
-      // 排除不计入业绩的订单
-      const excludedStatuses = ['pending_cancel', 'cancelled', 'audit_rejected', 'logistics_returned', 'logistics_cancelled', 'refunded']
-      if (order.status === 'pending_transfer' && order.markType !== 'normal') return false
-      if (excludedStatuses.includes(order.status)) return false
-
-      // 与主表相同的匹配逻辑
-      if (order.salesPersonId && memberId) {
-        if (String(order.salesPersonId) === String(memberId)) return true
-      }
-      if (order.createdBy && memberName) {
-        if (order.createdBy === memberName) return true
-      }
-      // 🔥 增加username匹配（后端created_by可能存的是username）
-      if (order.createdBy && memberUsername) {
-        if (order.createdBy === memberUsername) return true
-      }
-      return false
-    })
-
-    // 日期筛选
-    if (dateRange.value && dateRange.value.length === 2 && dateRange.value[0] && dateRange.value[1]) {
-      memberOrders = memberOrders.filter((order: any) => {
-        let orderDateStr = (order.orderDate || order.createTime || '')?.split(' ')[0] || ''
-        orderDateStr = orderDateStr.replace(/\//g, '-')
-        const start = dateRange.value[0].replace(/\//g, '-')
-        const end = dateRange.value[1].replace(/\//g, '-')
-        return orderDateStr >= start && orderDateStr <= end
-      })
+    const params: any = {
+      memberId: memberId,
+      page: 1,
+      pageSize: 500
     }
 
-    // 转换为弹窗显示格式，并附加分享信息和金额调整
-    const ownOrders = memberOrders.map((order: any) => {
+    if (dateRange.value && dateRange.value.length === 2 && dateRange.value[0] && dateRange.value[1]) {
+      params.startDate = dateRange.value[0]
+      params.endDate = dateRange.value[1]
+    }
+
+    const response = await orderApi.getMemberOrders(params)
+    const apiOrders = (response && response.data && response.data.list) ? response.data.list : []
+
+    const ownOrders = apiOrders.map((order: any) => {
       const shareInfo = buildOrderShareInfo(order.orderNumber, String(memberId))
       let displayAmount = order.totalAmount || 0
       let displayDeposit = order.depositAmount || 0
       let displayCollection = (order.totalAmount || 0) - (order.depositAmount || 0)
 
-      // 🔥 如果这个订单被分享出去了，显示保留的业绩部分
       if (shareInfo && shareInfo.isShared) {
         const retainRatio = shareInfo.ownerRetainedPercentage / 100
         displayAmount = Math.round((order.totalAmount || 0) * retainRatio)
@@ -3086,31 +3018,29 @@ const loadMemberOrders = async (memberId: string) => {
         orderNo: order.orderNumber,
         orderDate: order.orderDate || order.createTime || '',
         customerName: order.customerName || '未知客户',
-        amount: displayAmount, // 🔥 分享后的实际业绩
-        originalAmount: order.totalAmount || 0, // 原始金额
+        amount: displayAmount,
+        originalAmount: order.totalAmount || 0,
         depositAmount: displayDeposit,
         collectionAmount: displayCollection,
         status: order.status || 'pending',
         logisticsCompany: order.expressCompany || '待发货',
-        trackingNumber: order.trackingNumber || '暂无',
-        productDetails: order.products?.map((item: any) => `${item.name} x${item.quantity}`).join(', ') || '暂无详情',
+        trackingNumber: order.trackingNumber || order.expressNo || '暂无',
+        productDetails: order.products?.map((item: any) => `${item.name || item.productName} x${item.quantity}`).join(', ') || '暂无详情',
         products: order.products || [],
         shareInfo
       }
     })
 
-    // 🔥 注入分享接收的订单（当前成员作为分享接收人的订单）
     const existingOrderNos = new Set(ownOrders.map((o: any) => o.orderNo))
     const receivedOrders = getReceivedSharedOrders(String(memberId), existingOrderNos)
 
-    // 合并并按日期排序
     const allOrders = [...ownOrders, ...receivedOrders]
     allOrders.sort((a: any, b: any) => (b.orderDate || '').localeCompare(a.orderDate || ''))
 
     memberOrderListData.value = allOrders
     orderTotal.value = allOrders.length
 
-    console.log('[团队业绩] 成员订单加载成功:', ownOrders.length, '条自有 +', receivedOrders.length, '条接收分享')
+    console.log('[团队业绩] 成员订单加载成功:', ownOrders.length, '条自有 +', receivedOrders.length, '条接收分享, 成员:', member?.name)
   } catch (error) {
     console.error('[团队业绩] 加载成员订单失败:', error)
     memberOrderListData.value = []

@@ -39,7 +39,7 @@ import smsQuotaRouter from './sms-quota';
 import wecomManagementRouter from './wecom-management';
 import mobileAppConfigRouter from './mobile-app-config';
 import { log } from '../../config/logger';
-import { getCentralAdminApiUrl } from '../../config/centralServer';
+import { getCentralAdminApiUrl, CENTRAL_SERVER } from '../../config/centralServer';
 // import schedulerRouter from './scheduler'; // 暂时禁用
 
 const router = Router();
@@ -63,6 +63,17 @@ router.get('/public/system-config', async (_req: Request, res: Response) => {
         });
         const centralData = await centralRes.json() as any;
         if (centralData && centralData.success) {
+          // 私有部署：将相对路径的图片URL转为中央服务器的绝对URL
+          if (centralData.data && typeof centralData.data === 'object') {
+            const crmBaseUrl = CENTRAL_SERVER.CRM_URL.replace(/\/$/, '');
+            const imageFields = ['contactQRCode', 'systemLogo', 'serviceQRCode'];
+            for (const field of imageFields) {
+              const val = centralData.data[field];
+              if (typeof val === 'string' && val.startsWith('/uploads/')) {
+                centralData.data[field] = `${crmBaseUrl}${val}`;
+              }
+            }
+          }
           return res.json(centralData);
         }
       } catch (proxyErr: any) {

@@ -773,6 +773,23 @@ router.post('/', authenticateToken, async (req: Request, res: Response) => {
       });
     }
 
+    // 防重复提交：10秒内同一客户+同一金额视为重复
+    try {
+      const recentDup = await orderRepository.createQueryBuilder('o')
+        .where('o.customerId = :cid', { cid: customerId })
+        .andWhere('o.totalAmount = :amt', { amt: Number(totalAmount) || 0 })
+        .andWhere('o.createdAt > DATE_SUB(NOW(), INTERVAL 10 SECOND)')
+        .getOne();
+      if (recentDup) {
+        log.warn(`[订单创建] 检测到重复提交: 客户=${customerId}, 金额=${totalAmount}, 已有订单=${recentDup.orderNumber}`);
+        return res.status(409).json({
+          success: true,
+          data: recentDup,
+          message: '订单已创建成功，请勿重复提交'
+        });
+      }
+    } catch (_e) { /* 检查失败不阻塞创建 */ }
+
     // 生成订单号
     const generatedOrderNumber = orderNumber || `ORD${Date.now()}`;
 

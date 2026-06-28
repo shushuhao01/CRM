@@ -278,6 +278,14 @@ export const initializeDatabase = async (): Promise<void> => {
       log.warn('⚠️ 自动迁移跳过:', (err as Error).message);
     }
 
+    // 私有部署：自动关联 tenant_id = NULL 的旧数据到当前租户
+    try {
+      const { privateTenantAssociationService } = await import('../services/PrivateTenantAssociationService');
+      await privateTenantAssociationService.run();
+    } catch (err) {
+      log.warn('⚠️ 租户数据关联跳过:', (err as Error).message);
+    }
+
     // 角色权限初始化已禁用 - 数据库中已有预设数据，无需自动初始化
     log.info('ℹ️  角色权限使用数据库预设数据（不自动初始化）');
   } catch (error) {
