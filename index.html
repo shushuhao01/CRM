@@ -7,6 +7,33 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="referrer" content="no-referrer">
     <title>云客CRM - 智能销售管理系统</title>
+    <script>
+      ;(function(){
+        var t=localStorage.getItem('crm-theme-mode')||'light';
+        var d=t==='dark'||(t==='auto'&&window.matchMedia('(prefers-color-scheme: dark)').matches);
+        if(d){
+          document.documentElement.classList.add('dark');
+          var si=localStorage.getItem('crm-dark-intensity');
+          var i=si!==null?Number(si):0;
+          var r=document.documentElement.style;
+          var h=function(n){return('0'+Math.round(n).toString(16)).slice(-2)};
+          var c=function(n){var s=h(n);return'#'+s+s+s};
+          var v=i/100;
+          r.setProperty('--crm-dark-base',c(10+v*60));
+          r.setProperty('--crm-dark-card',c(20+v*60));
+          r.setProperty('--crm-dark-raised',c(28+v*55));
+          r.setProperty('--crm-dark-input',c(34+v*50));
+          r.setProperty('--crm-dark-border',c(50+v*45));
+          r.setProperty('--crm-dark-border-light',c(42+v*45));
+          r.setProperty('--crm-dark-hover',c(38+v*50));
+          r.setProperty('--crm-dark-text-primary',c(240-v*50));
+          r.setProperty('--crm-dark-text-regular',c(215-v*45));
+          r.setProperty('--crm-dark-text-secondary',c(180-v*35));
+          r.setProperty('--crm-dark-text-muted',c(150-v*25));
+          r.setProperty('--crm-dark-text-placeholder',c(130-v*20));
+        }
+      })()
+    </script>
     <!-- 企微JS-SDK（会话展示 + 通讯录展示组件需要） -->
     <script src="https://res.wx.qq.com/open/js/jweixin-1.2.0.js" referrerpolicy="origin"></script>
     <script src="https://open.work.weixin.qq.com/wwopen/js/jwxwork-1.0.0.js" referrerpolicy="origin"></script>

@@ -363,6 +363,18 @@ export class RoleController {
         return;
       }
 
+      // 系统内置角色不可禁用
+      if (status === 'inactive') {
+        const nonDisableableRoles = ['super_admin', 'admin'];
+        const [roleRow] = await dataSource.query(
+          `SELECT code FROM roles WHERE id = ?`, [tenantRole.id]
+        );
+        if (roleRow && nonDisableableRoles.includes(roleRow.code)) {
+          res.status(400).json({ success: false, message: '系统内置角色不可禁用' });
+          return;
+        }
+      }
+
       // 构建更新语句
       const updates: string[] = [];
       const params: any[] = [];

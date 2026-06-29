@@ -220,7 +220,7 @@
           <div class="customer-logs-timeline">
             <el-timeline v-if="customerLogs.length > 0">
               <el-timeline-item
-                v-for="log in customerLogs"
+                v-for="log in pagedCustomerLogs"
                 :key="log.id"
                 :timestamp="log.time"
                 :type="getLogType(log.action)"
@@ -233,7 +233,17 @@
                 </div>
               </el-timeline-item>
             </el-timeline>
-            <el-empty v-else description="暂无客户日志" :image-size="80" />
+            <el-pagination
+              v-if="customerLogs.length > logPageSize"
+              :current-page="logCurrentPage"
+              :page-size="logPageSize"
+              :total="customerLogs.length"
+              layout="total, prev, pager, next"
+              small
+              style="margin-top: 12px; justify-content: center;"
+              @current-change="(p: number) => logCurrentPage = p"
+            />
+            <el-empty v-if="customerLogs.length === 0" description="暂无客户日志" :image-size="80" />
           </div>
         </div>
       </div>
@@ -397,6 +407,17 @@ const customerLogs = computed(() => {
     if (!b.time) return -1
     return new Date(b.time).getTime() - new Date(a.time).getTime()
   })
+})
+
+const logPageSize = 5
+const logCurrentPage = ref(1)
+const pagedCustomerLogs = computed(() => {
+  const start = (logCurrentPage.value - 1) * logPageSize
+  return customerLogs.value.slice(start, start + logPageSize)
+})
+
+watch(() => props.visible, (v) => {
+  if (v) logCurrentPage.value = 1
 })
 
 const getLogType = (action: string) => {

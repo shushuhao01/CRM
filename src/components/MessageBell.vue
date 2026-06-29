@@ -3,7 +3,7 @@
     <!-- 消息铃铛 -->
     <div class="message-bell" @click="showDialog = true">
       <el-badge :value="totalUnreadCount > 99 ? '99+' : totalUnreadCount" :hidden="totalUnreadCount === 0">
-        <el-icon :size="20" class="bell-icon">
+        <el-icon :size="18" class="bell-icon">
           <Bell />
         </el-icon>
       </el-badge>
@@ -531,24 +531,29 @@ onMounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 8px;
+  width: 30px;
+  height: 30px;
   border-radius: 50%;
   cursor: pointer;
-  transition: all 0.3s ease;
+  transition: all 0.25s;
   position: relative;
+  color: #b0b3b8;
+  opacity: 0.7;
 }
 
 .message-bell:hover {
-  background-color: #f0f2f5;
-  transform: scale(1.1);
+  background-color: rgba(0,0,0,0.04);
+  opacity: 1;
 }
 
-.message-bell:active {
-  transform: scale(0.95);
+.message-bell :deep(.el-badge) {
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .bell-icon {
-  transition: all 0.3s ease;
+  transition: all 0.25s;
 }
 
 .message-bell:hover .bell-icon {

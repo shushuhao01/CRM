@@ -218,6 +218,9 @@ import {
 import * as echarts from 'echarts'
 import { useProductStore, type Product, type ProductCategory } from '@/stores/product'
 import { productApi } from '@/api/product'
+import { useTheme } from '@/composables/useTheme'
+
+const { isDark, chartColors } = useTheme()
 
 // 商品store
 const productStore = useProductStore()
@@ -678,14 +681,18 @@ const initSalesTrendChart = () => {
     }
   }
 
+  const cc = chartColors.value
   const option = {
     title: {
       text: `销售趋势 (${salesTrendPeriod.value === '7days' ? '近7天' : salesTrendPeriod.value === '30days' ? '近30天' : '近90天'})`,
       left: 'center',
-      textStyle: { fontSize: 14 }
+      textStyle: { fontSize: 14, color: cc.textColor }
     },
     tooltip: {
       trigger: 'axis',
+      backgroundColor: cc.tooltipBg,
+      borderColor: cc.tooltipBorder,
+      textStyle: { color: cc.textColor },
       formatter: '{a} <br/>{b}: ¥{c}'
     },
     grid: {
@@ -697,19 +704,24 @@ const initSalesTrendChart = () => {
     xAxis: {
       type: 'category',
       data: timeLabels,
-      boundaryGap: false
+      boundaryGap: false,
+      axisLabel: { color: cc.textColor },
+      axisLine: { lineStyle: { color: cc.axisColor } }
     },
     yAxis: {
       type: 'value',
       name: '销售额',
+      nameTextStyle: { color: cc.textColor },
       axisLabel: {
+        color: cc.textColor,
         formatter: function(value: number) {
           if (value >= 10000) {
             return (value / 10000).toFixed(1) + '万'
           }
           return value
         }
-      }
+      },
+      splitLine: { lineStyle: { color: cc.splitColor } }
     },
     series: [{
       name: '销售额',
@@ -764,21 +776,27 @@ const initCategoryPieChart = () => {
       .sort((a, b) => b.value - a.value)
   }
 
+  const cc2 = chartColors.value
   const option = {
     title: {
       text: '分类销售占比',
       left: 'center',
-      textStyle: { fontSize: 14 }
+      textStyle: { fontSize: 14, color: cc2.textColor }
     },
     tooltip: {
       trigger: 'item',
+      backgroundColor: cc2.tooltipBg,
+      borderColor: cc2.tooltipBorder,
+      textStyle: { color: cc2.textColor },
       formatter: '{a} <br/>{b}: ¥{c} ({d}%)'
     },
+    legend: { textStyle: { color: cc2.textColor } },
     series: [{
       name: '销售额',
       type: 'pie',
       radius: '60%',
       data: chartData,
+      label: { color: cc2.textColor },
       emphasis: {
         itemStyle: {
           shadowBlur: 10,
@@ -819,14 +837,18 @@ const initInventoryChart = () => {
     inventoryData = sortedCategories.map(([, stock]) => stock)
   }
 
+  const cc3 = chartColors.value
   const option = {
     title: {
       text: '库存状况',
       left: 'center',
-      textStyle: { fontSize: 14 }
+      textStyle: { fontSize: 14, color: cc3.textColor }
     },
     tooltip: {
       trigger: 'axis',
+      backgroundColor: cc3.tooltipBg,
+      borderColor: cc3.tooltipBorder,
+      textStyle: { color: cc3.textColor },
       formatter: '{a} <br/>{b}: {c} 件'
     },
     xAxis: {
@@ -834,12 +856,17 @@ const initInventoryChart = () => {
       data: categories,
       axisLabel: {
         rotate: 45,
-        interval: 0
-      }
+        interval: 0,
+        color: cc3.textColor
+      },
+      axisLine: { lineStyle: { color: cc3.axisColor } }
     },
     yAxis: {
       type: 'value',
-      name: '库存数量'
+      name: '库存数量',
+      nameTextStyle: { color: cc3.textColor },
+      axisLabel: { color: cc3.textColor },
+      splitLine: { lineStyle: { color: cc3.splitColor } }
     },
     series: [{
       name: '库存',
@@ -881,14 +908,18 @@ const initTopProductsChart = () => {
   }
   const displayNames = productNames.map(name => truncateName(name))
 
+  const cc4 = chartColors.value
   const option = {
     title: {
       text: '热销商品TOP5',
       left: 'center',
-      textStyle: { fontSize: 14 }
+      textStyle: { fontSize: 14, color: cc4.textColor }
     },
     tooltip: {
       trigger: 'axis',
+      backgroundColor: cc4.tooltipBg,
+      borderColor: cc4.tooltipBorder,
+      textStyle: { color: cc4.textColor },
       axisPointer: {
         type: 'shadow'
       },
@@ -910,9 +941,9 @@ const initTopProductsChart = () => {
     xAxis: {
       type: 'value',
       name: '销量',
-      nameTextStyle: {
-        fontSize: 12
-      }
+      nameTextStyle: { fontSize: 12, color: cc4.textColor },
+      axisLabel: { color: cc4.textColor },
+      splitLine: { lineStyle: { color: cc4.splitColor } }
     },
     yAxis: {
       type: 'category',
@@ -921,7 +952,8 @@ const initTopProductsChart = () => {
         width: 80,
         overflow: 'truncate',
         ellipsis: '...',
-        fontSize: 11
+        fontSize: 11,
+        color: cc4.textColor
       }
     },
     series: [{
@@ -941,14 +973,18 @@ const initTopProductsChart = () => {
         show: true,
         position: 'right',
         formatter: '{c}',
-        fontSize: 11
+        fontSize: 11,
+        color: cc4.textColor
       }
     }]
   }
   chart.setOption(option)
 }
 
-// 监听器
+watch(isDark, () => {
+  nextTick(() => initCharts())
+})
+
 watch(salesTrendPeriod, () => {
   // 当销售趋势周期改变时，重新加载销售趋势数据
   loadAnalyticsData().then(() => {

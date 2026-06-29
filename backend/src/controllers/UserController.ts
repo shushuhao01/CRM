@@ -1091,8 +1091,10 @@ export class UserController {
       throw new NotFoundError('用户不存在');
     }
 
-    if (user.role === 'super_admin' || user.username === 'superadmin') {
-      throw new BusinessError('不能删除超级管理员账户');
+    const protectedRoles = ['super_admin', 'admin', 'superadmin'];
+    const protectedUsernames = ['superadmin', 'admin'];
+    if (protectedRoles.includes(user.role?.toLowerCase()) || protectedUsernames.includes(user.username?.toLowerCase())) {
+      throw new BusinessError('该用户拥有管理员角色，需先移除管理员角色后才能删除');
     }
 
     await this.userRepository.remove(user);
@@ -1145,9 +1147,10 @@ export class UserController {
       throw new NotFoundError('用户不存在');
     }
 
-    const nonDisableableUsers = ['superadmin', 'admin'];
-    if (status !== 'active' && nonDisableableUsers.includes(user.username?.toLowerCase())) {
-      throw new ValidationError('系统预设用户不可禁用');
+    const protectedRoles = ['super_admin', 'admin', 'superadmin'];
+    const protectedUsernames = ['superadmin', 'admin'];
+    if (status !== 'active' && (protectedRoles.includes(user.role?.toLowerCase()) || protectedUsernames.includes(user.username?.toLowerCase()))) {
+      throw new ValidationError('该用户拥有管理员角色，需先移除管理员角色后才能操作');
     }
 
     user.status = status;
@@ -1215,12 +1218,15 @@ export class UserController {
       throw new NotFoundError('用户不存在');
     }
 
+    const protectedRoles = ['super_admin', 'admin', 'superadmin'];
+    const protectedUsernames = ['superadmin', 'admin'];
+    if (employmentStatus === 'resigned' && (protectedRoles.includes(user.role?.toLowerCase()) || protectedUsernames.includes(user.username?.toLowerCase()))) {
+      throw new BusinessError('该用户拥有管理员角色，需先移除管理员角色后才能设为离职');
+    }
+
     user.employmentStatus = employmentStatus;
     if (employmentStatus === 'resigned') {
       user.resignedAt = new Date();
-      // 启用状态(status)和离职状态(employmentStatus)完全独立
-      // 离职通过 employmentStatus 控制，登录时单独检查，不修改 status
-      // 如果当前 status 是之前被错误设为 'resigned' 的，恢复为 'active'
       if (user.status === 'resigned') {
         user.status = 'active';
       }

@@ -61,7 +61,7 @@
           :type="quickFilter === filter.value ? 'primary' : ''"
           :plain="quickFilter !== filter.value"
           round
-          size="small"
+          size="default"
           @click="handleQuickFilterChange(filter.value)"
         >
           {{ filter.label }}

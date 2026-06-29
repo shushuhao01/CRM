@@ -87,20 +87,13 @@
     <!-- 搜索筛选 -->
     <el-card class="search-card">
       <el-form :model="searchForm" inline>
-        <el-form-item label="订单号">
+        <el-form-item label="综合搜索">
           <el-input
-            v-model="searchForm.orderNo"
-            placeholder="请输入订单号"
+            v-model="searchForm.keyword"
+            placeholder="订单号/手机号/客户姓名/客户编码"
             clearable
-            style="width: 200px;"
-          />
-        </el-form-item>
-        <el-form-item label="客户姓名">
-          <el-input
-            v-model="searchForm.customerName"
-            placeholder="请输入客户姓名"
-            clearable
-            style="width: 200px;"
+            style="width: 280px;"
+            @keyup.enter="handleSearch"
           />
         </el-form-item>
         <el-form-item label="销售人员">
@@ -1181,8 +1174,7 @@ const summaryData = reactive({
 
 // 搜索表单
 const searchForm = reactive({
-  orderNo: '',
-  customerName: '',
+  keyword: '',
   salesPerson: '',
   minAmount: '',
   maxAmount: '',
@@ -2001,8 +1993,7 @@ const handleSearch = () => {
  */
 const handleReset = () => {
   Object.assign(searchForm, {
-    orderNo: '',
-    customerName: '',
+    keyword: '',
     salesPerson: '',
     minAmount: '',
     maxAmount: '',
@@ -2237,8 +2228,7 @@ const loadOrderList = async () => {
       status: currentStatus,
       page: pagination.page,
       pageSize: pagination.size,
-      orderNumber: searchForm.orderNo || undefined,
-      customerName: searchForm.customerName || undefined,
+      keyword: searchForm.keyword || undefined,
       startDate: startDateStr,
       endDate: endDateStr
     })

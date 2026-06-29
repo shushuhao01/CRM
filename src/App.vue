@@ -63,6 +63,51 @@
           <StorageModeSwitch />
           -->
 
+          <!-- 深色模式切换 -->
+          <el-popover placement="bottom" :width="220" trigger="click" popper-class="theme-popover">
+            <template #reference>
+              <div class="header-icon-btn" :title="'外观：' + themeLabel">
+                <el-icon :size="18">
+                  <Moon v-if="isDark" />
+                  <Sunny v-else />
+                </el-icon>
+              </div>
+            </template>
+            <div class="theme-panel">
+              <div class="theme-panel-title">外观设置</div>
+              <div class="theme-mode-btns">
+                <button
+                  v-for="m in ([{id:'light',icon:'☀️',label:'浅色'},{id:'dark',icon:'🌙',label:'深色'},{id:'auto',icon:'💻',label:'自动'}] as const)"
+                  :key="m.id"
+                  class="theme-mode-btn"
+                  :class="{ active: currentTheme === m.id }"
+                  @click="setTheme(m.id as any)"
+                >
+                  <span class="theme-mode-icon">{{ m.icon }}</span>
+                  <span>{{ m.label }}</span>
+                </button>
+              </div>
+              <div v-if="isDark" class="theme-intensity">
+                <div class="theme-intensity-label">
+                  <span>深色程度</span>
+                  <span class="theme-intensity-value">{{ darkIntensity }}%</span>
+                </div>
+                <el-slider
+                  :model-value="darkIntensity"
+                  :min="0"
+                  :max="100"
+                  :step="5"
+                  :show-tooltip="false"
+                  @input="setDarkIntensity"
+                />
+                <div class="theme-intensity-hint">
+                  <span>深</span>
+                  <span>浅</span>
+                </div>
+              </div>
+            </div>
+          </el-popover>
+
           <!-- 版本更新提醒 -->
           <VersionUpdatePanel />
 
@@ -360,7 +405,8 @@ import WecomStandaloneLayout from '@/layouts/WecomStandaloneLayout.vue'
 import { createSafeNavigator } from '@/utils/navigation'
 import {
   Menu, TrendCharts, User, ArrowDown, Odometer, ShoppingCart,
-  Box, Setting, Headset, Service, WarningFilled, More
+  Box, Setting, Headset, Service, WarningFilled, More,
+  Sunny, Moon
 } from '@element-plus/icons-vue'
 import { licenseHeartbeatService } from '@/services/licenseHeartbeatService'
 import { usePasswordManagement } from '@/composables/usePasswordManagement'
@@ -368,6 +414,7 @@ import { useQuotaWarning } from '@/composables/useQuotaWarning'
 import { useMenuScroll } from '@/composables/useMenuScroll'
 import { useMessagePolling } from '@/composables/useMessagePolling'
 import { useIncomingCall } from '@/composables/useIncomingCall'
+import { useTheme } from '@/composables/useTheme'
 
 
 const route = useRoute()
@@ -415,6 +462,15 @@ const {
   stopQuotaCheckTimer,
   handleQuotaUpgrade,
 } = useQuotaWarning()
+
+// 🔥 Composable 解构：深色模式
+const { currentTheme, isDark, darkIntensity, setTheme, setDarkIntensity } = useTheme()
+
+const themeLabel = computed(() => {
+  if (currentTheme.value === 'light') return '浅色'
+  if (currentTheme.value === 'dark') return '深色'
+  return '自动'
+})
 
 // 🔥 Composable 解构：菜单滚动
 const {
@@ -859,10 +915,93 @@ watch(isMobile, (newValue) => {
 .header-right {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 10px;
 }
 
+.header-icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  cursor: pointer;
+  color: #b0b3b8;
+  opacity: 0.7;
+  transition: all 0.25s;
+  flex-shrink: 0;
+}
+.header-icon-btn:hover {
+  background-color: rgba(0,0,0,0.04);
+  color: #409eff;
+  opacity: 1;
+}
 
+.theme-panel {
+  padding: 4px 0;
+}
+.theme-panel-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #303133;
+  margin-bottom: 12px;
+}
+.theme-mode-btns {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.theme-mode-btn {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 4px;
+  border: 1px solid #dcdfe6;
+  border-radius: 8px;
+  background: transparent;
+  cursor: pointer;
+  font-size: 12px;
+  color: #606266;
+  transition: all 0.2s;
+}
+.theme-mode-btn:hover {
+  border-color: #409eff;
+  color: #409eff;
+}
+.theme-mode-btn.active {
+  border-color: #409eff;
+  background: #ecf5ff;
+  color: #409eff;
+  font-weight: 600;
+}
+.theme-mode-icon {
+  font-size: 18px;
+}
+.theme-intensity {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #ebeef5;
+}
+.theme-intensity-label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: #606266;
+  margin-bottom: 4px;
+}
+.theme-intensity-value {
+  color: #409eff;
+  font-weight: 600;
+}
+.theme-intensity-hint {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: #909399;
+  margin-top: -2px;
+}
 
 .user-info {
   display: flex;

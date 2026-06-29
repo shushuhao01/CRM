@@ -20,15 +20,19 @@ import { Order } from '../entities/Order';
 import { OrderStatusHistory } from '../entities/OrderStatusHistory';
 
 /**
- * 检查物流自动同步开关是否启用（从数据库读取）
+ * 检查物流自动同步开关是否启用（从 logistics_auto_sync_settings 表读取）
  * 默认为 false（停用）
+ * @param tenantId 可选租户ID，用于多租户隔离
  */
-export async function isAutoSyncEnabled(): Promise<boolean> {
+export async function isAutoSyncEnabled(tenantId?: string): Promise<boolean> {
   try {
+    const tenantWhere = tenantId ? 'tenant_id = ?' : 'tenant_id IS NULL';
+    const tenantParams = tenantId ? [tenantId] : [];
     const rows = await AppDataSource.query(
-      `SELECT config_value FROM system_configs WHERE config_key = 'logistics_auto_sync_enabled' LIMIT 1`
+      `SELECT enabled FROM logistics_auto_sync_settings WHERE ${tenantWhere} LIMIT 1`,
+      tenantParams
     );
-    return rows.length > 0 && rows[0].config_value === 'true';
+    return rows.length > 0 && !!rows[0].enabled;
   } catch {
     return false;
   }
@@ -365,6 +369,9 @@ export interface AutoSyncResult {
 
 class LogisticsAutoSyncService {
   private isRunning = false;
+  private lastSyncTime: string | null = null;
+  private lastStartTime: string | null = null;
+  private lastStopTime: string | null = null;
 
   /**
    * 🔥 执行一次完整的物流状态自动同步
@@ -383,6 +390,7 @@ class LogisticsAutoSyncService {
     }
 
     this.isRunning = true;
+    this.lastStartTime = new Date().toISOString();
     const result: AutoSyncResult = {
       totalProcessed: 0,
       statusUpdated: 0,
@@ -455,6 +463,8 @@ class LogisticsAutoSyncService {
       result.errors++;
     } finally {
       this.isRunning = false;
+      this.lastSyncTime = new Date().toISOString();
+      this.lastStopTime = new Date().toISOString();
     }
 
     return result;
@@ -489,7 +499,7 @@ class LogisticsAutoSyncService {
     // 🔥 订单状态同步：仅在自动同步开关启用时才更新订单状态
     // 物流状态（logisticsStatus）始终更新，订单状态（status）受开关控制
     let targetOrderStatus: string | null = null;
-    const autoSyncEnabled = await isAutoSyncEnabled();
+    const autoSyncEnabled = await isAutoSyncEnabled(order.tenantId || undefined);
     if (autoSyncEnabled) {
       targetOrderStatus = mapLogisticsToOrderStatus(newLogisticsStatus, oldOrderStatus);
 
@@ -546,6 +556,9 @@ class LogisticsAutoSyncService {
   getStatus() {
     return {
       isRunning: this.isRunning,
+      lastSyncTime: this.lastSyncTime,
+      lastStartTime: this.lastStartTime,
+      lastStopTime: this.lastStopTime,
     };
   }
 }

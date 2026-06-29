@@ -2088,19 +2088,31 @@ router.post('/auto-sync/trigger', async (req, res) => {
   try {
     const { logisticsAutoSyncService } = await import('../../services/LogisticsAutoSyncService');
 
-    const status = logisticsAutoSyncService.getStatus();
-    if (status.isRunning) {
-      return res.json({
-        success: false,
-        message: '自动同步正在执行中，请稍后再试'
-      });
+    const svcStatus = logisticsAutoSyncService.getStatus();
+    if (svcStatus.isRunning) {
+      return res.json({ success: false, message: '自动同步正在执行中，请稍后再试' });
     }
 
-    // 获取租户ID
     const user = (req as any).user;
     const tenantId = user?.tenantId;
+    const tenantWhere = tenantId ? 'tenant_id = ?' : 'tenant_id IS NULL';
+    const tenantParams = tenantId ? [tenantId] : [];
+
+    // 标记运行中
+    await AppDataSource.query(
+      `UPDATE logistics_auto_sync_settings SET is_running = 1, last_start_time = NOW(), updated_at = NOW() WHERE ${tenantWhere}`,
+      tenantParams
+    ).catch(() => {});
 
     const result = await logisticsAutoSyncService.runAutoSync(tenantId);
+
+    // 写回同步结果
+    await AppDataSource.query(
+      `UPDATE logistics_auto_sync_settings SET is_running = 0, last_sync_time = NOW(), last_stop_time = NOW(),
+       total_synced = total_synced + ?, last_synced_count = ?, last_updated_count = ?, last_error_count = ?, updated_at = NOW()
+       WHERE ${tenantWhere}`,
+      [result.totalProcessed, result.totalProcessed, result.statusUpdated, result.errors, ...tenantParams]
+    ).catch(() => {});
 
     return res.json({
       success: true,
@@ -2109,10 +2121,7 @@ router.post('/auto-sync/trigger', async (req, res) => {
     });
   } catch (error: any) {
     log.error('[物流自动同步] 手动触发失败:', error);
-    return res.status(500).json({
-      success: false,
-      message: '自动同步执行失败: ' + (error?.message || '未知错误')
-    });
+    return res.status(500).json({ success: false, message: '自动同步执行失败: ' + (error?.message || '未知错误') });
   }
 });
 
@@ -2120,24 +2129,42 @@ router.post('/auto-sync/trigger', async (req, res) => {
  * 获取自动同步状态
  * GET /api/v1/logistics/status/auto-sync/status
  */
-router.get('/auto-sync/status', async (_req, res) => {
+router.get('/auto-sync/status', async (req, res) => {
   try {
     const { logisticsAutoSyncService } = await import('../../services/LogisticsAutoSyncService');
-    const status = logisticsAutoSyncService.getStatus();
+    const svcStatus = logisticsAutoSyncService.getStatus();
+
+    const user = (req as any).user;
+    const tenantId = user?.tenantId;
+    const tenantWhere = tenantId ? 'tenant_id = ?' : 'tenant_id IS NULL';
+    const tenantParams = tenantId ? [tenantId] : [];
+
+    const rows = await AppDataSource.query(
+      `SELECT enabled, is_running, last_sync_time, last_start_time, last_stop_time,
+              total_synced, last_synced_count, last_updated_count, last_error_count
+       FROM logistics_auto_sync_settings WHERE ${tenantWhere} LIMIT 1`,
+      tenantParams
+    ).catch(() => []);
+
+    const row = rows[0] || {};
 
     return res.json({
       success: true,
       data: {
-        ...status,
-        cronSchedule: '*/15 * * * *',
-        description: '每15分钟自动检查并同步物流状态到订单状态'
+        isRunning: svcStatus.isRunning || !!row.is_running,
+        enabled: !!row.enabled,
+        lastSyncTime: svcStatus.lastSyncTime || row.last_sync_time || null,
+        lastStartTime: svcStatus.lastStartTime || row.last_start_time || null,
+        lastStopTime: svcStatus.lastStopTime || row.last_stop_time || null,
+        totalSynced: row.total_synced || 0,
+        lastSyncedCount: row.last_synced_count || 0,
+        lastUpdatedCount: row.last_updated_count || 0,
+        lastErrorCount: row.last_error_count || 0,
+        description: '物流状态自动同步服务：根据物流最新动态自动判断并更新订单状态（已发货→已签收/已拒收等）。启用后系统定时检测待同步订单，无需人工逐一操作。'
       }
     });
   } catch (_error: any) {
-    return res.status(500).json({
-      success: false,
-      message: '获取状态失败'
-    });
+    return res.status(500).json({ success: false, message: '获取状态失败' });
   }
 });
 
@@ -2184,17 +2211,15 @@ router.get('/auto-sync/config', async (req, res) => {
   try {
     const user = (req as any).user;
     const tenantId = user?.tenantId;
-    const whereClause = tenantId
-      ? `WHERE config_key = 'logistics_auto_sync_enabled' AND tenant_id = ?`
-      : `WHERE config_key = 'logistics_auto_sync_enabled' AND tenant_id IS NULL`;
-    const params = tenantId ? [tenantId] : [];
+    const tenantWhere = tenantId ? 'tenant_id = ?' : 'tenant_id IS NULL';
+    const tenantParams = tenantId ? [tenantId] : [];
 
     const rows = await AppDataSource.query(
-      `SELECT config_value FROM system_configs ${whereClause} LIMIT 1`, params
+      `SELECT enabled FROM logistics_auto_sync_settings WHERE ${tenantWhere} LIMIT 1`,
+      tenantParams
     ).catch(() => []);
 
-    const enabled = rows.length > 0 ? rows[0].config_value === 'true' : false;
-
+    const enabled = rows.length > 0 ? !!rows[0].enabled : false;
     return res.json({ success: true, data: { enabled } });
   } catch (error: any) {
     return res.status(500).json({ success: false, message: '获取配置失败' });
@@ -2210,23 +2235,22 @@ router.post('/auto-sync/config', async (req, res) => {
     const { enabled } = req.body;
     const user = (req as any).user;
     const tenantId = user?.tenantId;
+    const tenantWhere = tenantId ? 'tenant_id = ?' : 'tenant_id IS NULL';
+    const tenantParams = tenantId ? [tenantId] : [];
 
-    const checkSql = tenantId
-      ? `SELECT id FROM system_configs WHERE config_key = 'logistics_auto_sync_enabled' AND tenant_id = ? LIMIT 1`
-      : `SELECT id FROM system_configs WHERE config_key = 'logistics_auto_sync_enabled' AND tenant_id IS NULL LIMIT 1`;
-    const checkParams = tenantId ? [tenantId] : [];
-    const existing = await AppDataSource.query(checkSql, checkParams).catch(() => []);
+    const existing = await AppDataSource.query(
+      `SELECT id FROM logistics_auto_sync_settings WHERE ${tenantWhere} LIMIT 1`, tenantParams
+    ).catch(() => []);
 
     if (existing.length > 0) {
-      const updateSql = tenantId
-        ? `UPDATE system_configs SET config_value = ? WHERE config_key = 'logistics_auto_sync_enabled' AND tenant_id = ?`
-        : `UPDATE system_configs SET config_value = ? WHERE config_key = 'logistics_auto_sync_enabled' AND tenant_id IS NULL`;
-      await AppDataSource.query(updateSql, tenantId ? [String(enabled), tenantId] : [String(enabled)]);
+      await AppDataSource.query(
+        `UPDATE logistics_auto_sync_settings SET enabled = ?, updated_at = NOW() WHERE ${tenantWhere}`,
+        [enabled ? 1 : 0, ...tenantParams]
+      );
     } else {
       await AppDataSource.query(
-        `INSERT INTO system_configs (id, config_key, config_value, config_group, description, tenant_id, is_enabled, sort_order)
-         VALUES (UUID(), 'logistics_auto_sync_enabled', ?, 'logistics', '物流状态自动同步到订单状态开关', ?, 1, 0)`,
-        [String(enabled), tenantId || null]
+        `INSERT INTO logistics_auto_sync_settings (tenant_id, enabled) VALUES (?, ?)`,
+        [tenantId || null, enabled ? 1 : 0]
       );
     }
 

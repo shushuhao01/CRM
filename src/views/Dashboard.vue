@@ -412,6 +412,7 @@ import { usePerformanceStore } from '@/stores/performance'
 import { useDepartmentStore } from '@/stores/department'
 import { useCustomerStore } from '@/stores/customer'
 import { dashboardApi, type DashboardTodo, type DashboardQuickAction } from '@/api/dashboard'
+import { useTheme } from '@/composables/useTheme'
 import { messageApi } from '@/api/message'
 import { sanitizeHtml } from '@/utils/sanitize'
 import { menuConfig } from '@/config/menu'
@@ -459,6 +460,7 @@ const messageStore = useMessageStore()
 const orderStore = useOrderStore()
 const departmentStore = useDepartmentStore()
 const performanceStore = usePerformanceStore()
+const { isDark } = useTheme()
 
 // 响应式数据
 const performancePeriod = ref('day')
@@ -1042,6 +1044,8 @@ const performanceChartData = ref({
 
 // 业绩趋势图配置
 const performanceChartOption = computed(() => {
+  const textColor = isDark.value ? '#D0D0D0' : '#303133'
+  const axisLineColor = isDark.value ? '#424242' : '#ccc'
 
   return {
     tooltip: {
@@ -1049,12 +1053,13 @@ const performanceChartOption = computed(() => {
       axisPointer: {
         type: 'cross'
       },
+      backgroundColor: isDark.value ? '#303030' : undefined,
+      borderColor: isDark.value ? '#424242' : undefined,
+      textStyle: { color: isDark.value ? '#D0D0D0' : undefined },
       formatter: function(params: Array<{axisValue: string, value: number, marker: string, seriesName: string, dataIndex: number}>) {
         let result = `${params[0].axisValue}<br/>`
         params.forEach((param) => {
-          // 🔥 修复：业绩趋势图显示金额和单数
           const value = `¥${param.value.toLocaleString()}`
-          // 根据系列名称获取对应的单数
           let count = 0
           if (param.seriesName === '下单业绩') {
             count = performanceChartData.value.orderCountData[param.dataIndex] || 0
@@ -1067,7 +1072,8 @@ const performanceChartOption = computed(() => {
       }
     },
     legend: {
-      data: ['下单业绩', '签收业绩']
+      data: ['下单业绩', '签收业绩'],
+      textStyle: { color: textColor }
     },
     grid: {
       left: '3%',
@@ -1079,15 +1085,19 @@ const performanceChartOption = computed(() => {
       type: 'category',
       data: performanceChartData.value.xAxisData,
       axisLabel: {
-        rotate: performancePeriod.value === 'day' ? 45 : 0
-      }
+        rotate: performancePeriod.value === 'day' ? 45 : 0,
+        color: textColor
+      },
+      axisLine: { lineStyle: { color: axisLineColor } }
     },
     yAxis: {
       type: 'value',
       axisLabel: {
-        // 🔥 修复：Y轴始终显示金额单位¥
-        formatter: '¥{value}'
-      }
+        formatter: '¥{value}',
+        color: textColor
+      },
+      axisLine: { lineStyle: { color: axisLineColor } },
+      splitLine: { lineStyle: { color: isDark.value ? '#333' : '#e0e0e0' } }
     },
     series: [
       {
@@ -1147,6 +1157,9 @@ const orderStatusChartData = ref([] as Array<{ value: number; name: string; amou
 const orderStatusChartOption = computed(() => ({
   tooltip: {
     trigger: 'item',
+    backgroundColor: isDark.value ? '#303030' : undefined,
+    borderColor: isDark.value ? '#424242' : undefined,
+    textStyle: { color: isDark.value ? '#D0D0D0' : undefined },
     formatter: (params: unknown) => {
       const data = params.data
       return `${params.name}: ${data.value}单<br/>金额: ¥${(data.amount || 0).toLocaleString()}`
@@ -1155,9 +1168,9 @@ const orderStatusChartOption = computed(() => ({
   legend: {
     orient: 'vertical',
     left: 'left',
+    textStyle: { color: isDark.value ? '#D0D0D0' : '#303133' },
     formatter: (name: string) => {
       const item = orderStatusChartData.value.find(d => d.name === name)
-      // 🔥 修复：图例显示订单数和金额
       return item ? `${name}: ${item.value}单 ¥${(item.amount || 0).toLocaleString()}` : name
     }
   },
@@ -1169,13 +1182,15 @@ const orderStatusChartOption = computed(() => ({
       avoidLabelOverlap: false,
       label: {
         show: false,
-        position: 'center'
+        position: 'center',
+        color: isDark.value ? '#D0D0D0' : undefined
       },
       emphasis: {
         label: {
           show: true,
           fontSize: '18',
-          fontWeight: 'normal'
+          fontWeight: 'normal',
+          color: isDark.value ? '#ECECEC' : undefined
         }
       },
       labelLine: {

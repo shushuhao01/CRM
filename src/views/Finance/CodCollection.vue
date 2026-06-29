@@ -276,8 +276,8 @@
     </div>
 
     <!-- 详情弹窗 -->
-    <el-dialog v-model="detailDialogVisible" title="代收订单详情" width="750px">
-      <el-descriptions :column="2" border v-if="currentOrder">
+    <el-dialog v-model="detailDialogVisible" title="代收订单详情" width="750px" class="cod-detail-dialog" destroy-on-close>
+      <el-descriptions :column="2" border v-if="currentOrder" label-class-name="cod-desc-label">
         <el-descriptions-item label="订单号">{{ currentOrder.orderNumber }}</el-descriptions-item>
         <el-descriptions-item label="客户姓名">{{ currentOrder.customerName }}</el-descriptions-item>
         <el-descriptions-item label="订单金额">¥{{ formatMoney(currentOrder.finalAmount) }}</el-descriptions-item>
@@ -1293,5 +1293,12 @@ const handleOrderUpdate = () => {
   display: flex;
   justify-content: flex-end;
   padding-top: 4px;
+}
+
+:deep(.cod-desc-label) {
+  min-width: 90px !important;
+  max-width: 110px !important;
+  width: 90px !important;
+  white-space: nowrap !important;
 }
 </style>

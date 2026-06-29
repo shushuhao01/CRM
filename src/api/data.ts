@@ -142,14 +142,15 @@ export const getDataList = async (params: DataListParams): Promise<DataListRespo
   // 🔥 始终尝试从后端API获取数据
   try {
     console.log('[Data API] 从后端API获取资料列表...', params)
-    // 🔥 拦截器 return data 已解包，response 即 { list, total, page, pageSize, summary }
+    // api.get 返回 { code, success, data: { list, total, summary } }
     const response = await api.get('/data/list', { params: params as any }) as any
+    const result = response?.data || response
 
     return {
-      list: response?.list || [],
-      total: response?.total || 0,
-      summary: response?.summary || {
-        totalCount: response?.total || 0,
+      list: result?.list || [],
+      total: result?.total || 0,
+      summary: result?.summary || {
+        totalCount: result?.total || 0,
         pendingCount: 0,
         assignedCount: 0,
         archivedCount: 0,

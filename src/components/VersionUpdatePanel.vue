@@ -4,11 +4,9 @@
     <el-tooltip :content="hasUpdate ? '有新版本可用' : '系统版本'" placement="bottom" :disabled="dialogVisible">
       <div class="update-btn" :class="{ 'has-update': hasUpdate && !ignored }" @click="handleClick">
         <el-badge is-dot :hidden="!showDot" type="danger">
-          <svg class="update-icon" :class="{ active: hasUpdate && !ignored }" viewBox="0 0 1024 1024" width="20" height="20">
-            <path d="M512 64C264.6 64 64 264.6 64 512s200.6 448 448 448 448-200.6 448-448S759.4 64 512 64zm0 820c-205.4 0-372-166.6-372-372s166.6-372 372-372 372 166.6 372 372-166.6 372-372 372z" fill="currentColor"/>
-            <path d="M512 288c-17.7 0-32 14.3-32 32v224c0 8.5 3.4 16.6 9.4 22.6l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L544 530.7V320c0-17.7-14.3-32-32-32z" fill="currentColor"/>
-            <path d="M512 192l-96 96h64v160h64V288h64z" fill="currentColor" transform="rotate(180, 512, 340)"/>
-          </svg>
+          <el-icon :size="18" class="update-icon" :class="{ active: hasUpdate && !ignored }">
+            <Promotion />
+          </el-icon>
         </el-badge>
       </div>
     </el-tooltip>
@@ -115,7 +113,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { WarningFilled, InfoFilled } from '@element-plus/icons-vue'
+import { WarningFilled, InfoFilled, Promotion } from '@element-plus/icons-vue'
 import { api } from '@/api/request'
 
 // 状态
@@ -365,28 +363,36 @@ onUnmounted(() => {
 .version-update-container {
   display: flex;
   align-items: center;
-  margin-right: 16px;
 }
 
 .update-btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: 30px;
+  height: 30px;
   border-radius: 50%;
   cursor: pointer;
-  transition: all 0.3s ease;
-  opacity: 0.35;
+  color: #b0b3b8;
+  opacity: 0.7;
+  transition: all 0.25s;
 }
 .update-btn:hover {
-  background-color: #f5f7fa;
+  background-color: rgba(0,0,0,0.04);
   opacity: 1;
+}
+.update-btn:hover .update-icon {
+  color: #409eff;
 }
 .update-btn.has-update {
   opacity: 1;
 }
-.update-icon { color: #909399; transition: color 0.3s; }
+.update-btn :deep(.el-badge) {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.update-icon { color: inherit; transition: color 0.25s; }
 .update-icon.active { color: #409eff; }
 
 /* 当前版本卡片 */

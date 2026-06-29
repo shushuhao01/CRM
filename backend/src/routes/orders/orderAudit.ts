@@ -18,9 +18,8 @@ export function registerAuditRoutes(router: Router): void {router.get('/audit-li
     const {
       page = 1,
       pageSize = 20,
-      status = 'pending_audit', // 默认只查待审核
-      orderNumber,
-      customerName,
+      status = 'pending_audit',
+      keyword,
       startDate,
       endDate
     } = req.query;
@@ -85,14 +84,14 @@ export function registerAuditRoutes(router: Router): void {router.get('/audit-li
       log.info(`📋 [审核列表] 筛选其他状态订单: status=${status}`);
     }
 
-    // 订单号筛选
-    if (orderNumber) {
-      queryBuilder.andWhere('order.orderNumber LIKE :orderNumber', { orderNumber: `%${orderNumber}%` });
-    }
-
-    // 客户名称筛选
-    if (customerName) {
-      queryBuilder.andWhere('order.customerName LIKE :customerName', { customerName: `%${customerName}%` });
+    // 综合搜索：支持订单号、手机号、客户姓名、客户编码
+    if (keyword) {
+      const kw = `%${keyword}%`;
+      queryBuilder.leftJoin('order.customer', 'customer');
+      queryBuilder.andWhere(
+        '(order.orderNumber LIKE :kw OR order.customerPhone LIKE :kw OR order.customerName LIKE :kw OR customer.customerNo LIKE :kw)',
+        { kw }
+      );
     }
 
     // 日期范围筛选 - 🔥 修复：数据库已配置为北京时区，直接使用北京时间查询

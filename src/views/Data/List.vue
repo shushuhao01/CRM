@@ -89,8 +89,10 @@
           <el-button
             v-for="filter in dateFilters"
             :key="filter.value"
-            :type="currentDateFilter === filter.value ? 'primary' : 'default'"
-            size="small"
+            :type="currentDateFilter === filter.value ? 'primary' : ''"
+            :plain="currentDateFilter !== filter.value"
+            round
+            size="default"
             @click="handleQuickFilter(filter.value)"
           >
             {{ filter.label }}

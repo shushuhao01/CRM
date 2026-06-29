@@ -1,5 +1,7 @@
 import './assets/main.css'
 import './styles/v4-design-system.css'
+import 'element-plus/theme-chalk/dark/css-vars.css'
+import './styles/dark-mode.scss'
 
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
@@ -14,7 +16,6 @@ import router from './router'
 import { useUserStore } from './stores/user'
 import { useConfigStore } from './stores/config'
 import { autoCheck } from './utils/deploymentCheck'
-import { autoStatusSyncService } from './services/autoStatusSync'
 import { setupDirectives } from './directives'
 import { initSecureConsoleConfig } from './utils/secureLogger'
 

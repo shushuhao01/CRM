@@ -306,6 +306,7 @@ import { eventBus, EventNames } from '@/utils/eventBus'
 import { getOrderStatusStyle, getOrderStatusText } from '@/utils/orderStatusConfig'
 import {
   getLogisticsInfoStyle as getLogisticsInfoStyleFromConfig,
+  getLogisticsStatusStyle as getLogisticsStatusStyleFromConfig,
   detectLogisticsStatusFromDescription as _detectLogisticsStatusFromDescription,
   calculateEstimatedDelivery,
   formatEstimatedDeliveryText
@@ -623,21 +624,9 @@ const getFinishedStatusText = (status: string) => {
   return textMap[status] || '物流已完结'
 }
 
-// 🔥 获取物流状态样式
+// 🔥 获取物流状态样式（使用共享配置，rgba 透明背景可自动适配深色模式）
 const getLogisticsStatusStyle = (status: string) => {
-  const styleMap: Record<string, { backgroundColor: string; color: string; borderColor: string }> = {
-    pending: { backgroundColor: '#f0f0f0', color: '#909399', borderColor: '#d9d9d9' },
-    shipped: { backgroundColor: '#e6f7ff', color: '#1890ff', borderColor: '#91d5ff' },
-    picked_up: { backgroundColor: '#e6fffb', color: '#13c2c2', borderColor: '#87e8de' },
-    in_transit: { backgroundColor: '#fff7e6', color: '#fa8c16', borderColor: '#ffd591' },
-    out_for_delivery: { backgroundColor: '#fffbe6', color: '#faad14', borderColor: '#ffe58f' },
-    delivering: { backgroundColor: '#fffbe6', color: '#faad14', borderColor: '#ffe58f' },
-    delivered: { backgroundColor: '#f6ffed', color: '#52c41a', borderColor: '#b7eb8f' },
-    exception: { backgroundColor: '#fff1f0', color: '#f5222d', borderColor: '#ffa39e' },
-    rejected: { backgroundColor: '#fff1f0', color: '#f5222d', borderColor: '#ffa39e' },
-    returned: { backgroundColor: '#fff2e8', color: '#fa541c', borderColor: '#ffbb96' }
-  }
-  return styleMap[status] || { backgroundColor: '#f0f0f0', color: '#909399', borderColor: '#d9d9d9' }
+  return getLogisticsStatusStyleFromConfig(status)
 }
 
 // 搜索

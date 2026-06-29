@@ -245,6 +245,7 @@ CREATE TABLE `customers` (
   `next_follow_time` TIMESTAMP NULL COMMENT '下次跟进时间',
   `sales_person_id` VARCHAR(50) COMMENT '销售员ID',
   `sales_person_name` VARCHAR(50) COMMENT '销售员姓名',
+  `is_data_assigned` TINYINT(1) NOT NULL DEFAULT 0 COMMENT '资料管理分配状态: 0=待分配 1=已分配',
   `wecom_external_userid` VARCHAR(100) NULL COMMENT '客户唯一企微编码(USID)',
   `wecom_external_userids` JSON NULL COMMENT '多企微UserID列表',
   `star_rating` INT DEFAULT 0 NULL COMMENT '手动星级评分(1-5)',
@@ -2069,6 +2070,28 @@ CREATE TABLE `logistics_status` (
   INDEX `idx_is_active` (`isActive`),
   INDEX `idx_logistics_status_tenant_id` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='物流状态配置表';
+
+-- 35.5 物流自动同步设置与运行状态表
+DROP TABLE IF EXISTS `logistics_auto_sync_settings`;
+CREATE TABLE `logistics_auto_sync_settings` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY COMMENT '主键ID',
+  `tenant_id` VARCHAR(36) NULL COMMENT '租户ID（多租户隔离）',
+  `enabled` TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否启用自动同步（0停用 1启用）',
+  `is_running` TINYINT(1) NOT NULL DEFAULT 0 COMMENT '当前是否正在运行',
+  `last_sync_time` DATETIME NULL COMMENT '最近一次同步完成时间',
+  `last_start_time` DATETIME NULL COMMENT '上次启动时间',
+  `last_stop_time` DATETIME NULL COMMENT '上次结束时间',
+  `total_synced` INT NOT NULL DEFAULT 0 COMMENT '累计同步订单数',
+  `last_synced_count` INT NOT NULL DEFAULT 0 COMMENT '最近一次同步处理数',
+  `last_updated_count` INT NOT NULL DEFAULT 0 COMMENT '最近一次更新数',
+  `last_error_count` INT NOT NULL DEFAULT 0 COMMENT '最近一次错误数',
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  UNIQUE KEY `uk_tenant` (`tenant_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='物流自动同步设置与运行状态';
+
+-- 初始化默认记录（无租户/单租户模式）
+INSERT INTO `logistics_auto_sync_settings` (`tenant_id`, `enabled`) VALUES (NULL, 0);
 
 -- 36. 物流跟踪表
 DROP TABLE IF EXISTS `logistics_tracking`;

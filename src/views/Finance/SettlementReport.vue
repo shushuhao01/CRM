@@ -250,14 +250,17 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed, nextTick } from 'vue'
+import { ref, onMounted, computed, nextTick, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Search, Refresh, Document, TrendCharts, Select, Clock, CircleCheck, CircleClose, Warning, Download, QuestionFilled } from '@element-plus/icons-vue'
 import * as echarts from 'echarts'
 import * as XLSX from 'xlsx'
 import { getSettlementReport, getOutsourceCompanies, type OutsourceCompany } from '@/api/valueAdded'
+import { useTheme } from '@/composables/useTheme'
 
 defineOptions({ name: 'SettlementReport' })
+
+const { isDark, chartColors } = useTheme()
 
 // 快捷日期筛选选项
 const quickDateFilters = [
@@ -481,10 +484,14 @@ const renderTrendChart = () => {
     return `${parts[1]}-${parts[2]}` // 返回 MM-DD
   }
 
+  const cc = chartColors.value
   const option = {
     tooltip: {
       trigger: 'axis',
       axisPointer: { type: 'cross' },
+      backgroundColor: cc.tooltipBg,
+      borderColor: cc.tooltipBorder,
+      textStyle: { color: cc.textColor },
       formatter: (params: any) => {
         let result = params[0].axisValue + '<br/>'
         params.forEach((item: any) => {
@@ -495,7 +502,8 @@ const renderTrendChart = () => {
     },
     legend: {
       data: ['结算订单数', '结算金额'],
-      top: 10
+      top: 10,
+      textStyle: { color: cc.textColor }
     },
     grid: {
       left: '3%',
@@ -510,25 +518,33 @@ const renderTrendChart = () => {
       data: dailyData.value.map(item => formatAxisDate(item.date)),
       axisLabel: {
         rotate: 45,
-        fontSize: 11
-      }
+        fontSize: 11,
+        color: cc.textColor
+      },
+      axisLine: { lineStyle: { color: cc.axisColor } }
     },
     yAxis: [
       {
         type: 'value',
         name: '订单数',
         position: 'left',
+        nameTextStyle: { color: cc.textColor },
         axisLabel: {
-          formatter: '{value}'
-        }
+          formatter: '{value}',
+          color: cc.textColor
+        },
+        splitLine: { lineStyle: { color: cc.splitColor } }
       },
       {
         type: 'value',
         name: '金额（元）',
         position: 'right',
+        nameTextStyle: { color: cc.textColor },
         axisLabel: {
-          formatter: '{value}'
-        }
+          formatter: '{value}',
+          color: cc.textColor
+        },
+        splitLine: { show: false }
       }
     ],
     series: [
@@ -600,10 +616,14 @@ const renderValidRateChart = () => {
     return `${parts[1]}-${parts[2]}`
   }
 
+  const cc2 = chartColors.value
   const option = {
     tooltip: {
       trigger: 'axis',
       axisPointer: { type: 'line' },
+      backgroundColor: cc2.tooltipBg,
+      borderColor: cc2.tooltipBorder,
+      textStyle: { color: cc2.textColor },
       formatter: (params: any) => {
         let result = params[0].axisValue + '<br/>'
         params.forEach((item: any) => {
@@ -614,7 +634,8 @@ const renderValidRateChart = () => {
     },
     legend: {
       data: ['有效率', '结算率'],
-      top: 10
+      top: 10,
+      textStyle: { color: cc2.textColor }
     },
     grid: {
       left: '3%',
@@ -629,18 +650,23 @@ const renderValidRateChart = () => {
       data: trendData.value.map(item => formatAxisDate(item.date)),
       axisLabel: {
         rotate: 45,
-        fontSize: 11
-      }
+        fontSize: 11,
+        color: cc2.textColor
+      },
+      axisLine: { lineStyle: { color: cc2.axisColor } }
     },
     yAxis: {
       type: 'value',
       name: '百分比（%）',
+      nameTextStyle: { color: cc2.textColor },
       min: 0,
       max: 100,
       interval: 20,
       axisLabel: {
-        formatter: '{value}%'
-      }
+        formatter: '{value}%',
+        color: cc2.textColor
+      },
+      splitLine: { lineStyle: { color: cc2.splitColor } }
     },
     series: [
       {
@@ -714,9 +740,13 @@ const renderStatusPieChart = () => {
     pending: '#e6a23c'
   }
 
+  const cc3 = chartColors.value
   const option = {
     tooltip: {
       trigger: 'item',
+      backgroundColor: cc3.tooltipBg,
+      borderColor: cc3.tooltipBorder,
+      textStyle: { color: cc3.textColor },
       formatter: '{b}<br/>{c}单 ({d}%)'
     },
     legend: {
@@ -725,7 +755,8 @@ const renderStatusPieChart = () => {
       top: 10,
       itemGap: 20,
       textStyle: {
-        fontSize: 13
+        fontSize: 13,
+        color: cc3.textColor
       }
     },
     series: [
@@ -750,6 +781,7 @@ const renderStatusPieChart = () => {
           show: true,
           fontSize: 13,
           fontWeight: 'normal',
+          color: cc3.textColor,
           formatter: '{b}\n{c}单 ({d}%)',
           lineHeight: 16
         },
@@ -772,9 +804,13 @@ const renderSettlementPieChart = () => {
     settlementPieChart = echarts.init(settlementPieChartRef.value)
   }
 
+  const cc4 = chartColors.value
   const option = {
     tooltip: {
       trigger: 'item',
+      backgroundColor: cc4.tooltipBg,
+      borderColor: cc4.tooltipBorder,
+      textStyle: { color: cc4.textColor },
       formatter: '{b}<br/>{c}单 ({d}%)'
     },
     legend: {
@@ -783,7 +819,8 @@ const renderSettlementPieChart = () => {
       top: 10,
       itemGap: 20,
       textStyle: {
-        fontSize: 13
+        fontSize: 13,
+        color: cc4.textColor
       }
     },
     series: [
@@ -795,13 +832,14 @@ const renderSettlementPieChart = () => {
         avoidLabelOverlap: false,
         itemStyle: {
           borderRadius: 10,
-          borderColor: '#fff',
+          borderColor: isDark.value ? cc4.tooltipBg : '#fff',
           borderWidth: 2
         },
         label: {
           show: true,
           fontSize: 13,
           fontWeight: 'normal',
+          color: cc4.textColor,
           formatter: '{b}\n{c}单 ({d}%)',
           lineHeight: 16
         },
@@ -928,12 +966,14 @@ const handleRefresh = () => {
   handleQuickDateFilter('thisMonth')
 }
 
+watch(isDark, () => {
+  nextTick(() => renderCharts())
+})
+
 onMounted(() => {
-  // 默认显示本月数据
   handleQuickDateFilter('thisMonth')
   loadCompanies()
 
-  // 监听窗口大小变化
   window.addEventListener('resize', () => {
     trendChart?.resize()
     validRateChart?.resize()

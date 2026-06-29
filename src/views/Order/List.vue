@@ -8,29 +8,31 @@
     <div class="quick-filters-row">
       <!-- 状态筛选组 -->
       <div class="quick-filters status-filters">
-        <el-tag
+        <el-button
           v-for="filter in quickFilters"
           :key="filter.key"
           :type="activeQuickFilter === filter.key ? 'primary' : ''"
-          :effect="activeQuickFilter === filter.key ? 'dark' : 'plain'"
           @click="handleQuickFilter(filter.key)"
-          class="filter-tag"
+          class="filter-btn"
+          round
+          size="default"
         >
           {{ filter.label }}
-        </el-tag>
+        </el-button>
       </div>
       <!-- 日期筛选组 -->
       <div class="quick-filters date-filters">
-        <el-tag
+        <el-button
           v-for="filter in dateQuickFilters"
           :key="filter.key"
           :type="dateQuickFilter === filter.key ? 'success' : ''"
-          :effect="dateQuickFilter === filter.key ? 'dark' : 'plain'"
           @click="handleDateQuickFilter(filter.key)"
-          class="filter-tag date-tag"
+          class="filter-btn"
+          round
+          size="default"
         >
           {{ filter.label }}
-        </el-tag>
+        </el-button>
       </div>
     </div>
 
@@ -343,19 +345,24 @@
       <!-- 商品列 -->
       <template #column-products="{ row }">
         <div class="product-list-inline">
-          <el-tooltip
-            :content="Array.isArray(row.products) ? row.products.map((p: ProductItem) => `${p.name} × ${p.quantity}`).join('，') : (row.products || '暂无商品')"
-            placement="top"
-            :show-after="300"
-          >
+          <el-tooltip placement="top" :disabled="!Array.isArray(row.products) || row.products.length === 0">
+            <template #content>
+              <div style="max-width: 380px;">
+                <div v-for="(p, i) in row.products" :key="i" style="margin-bottom: 6px; padding-bottom: 4px; border-bottom: 1px solid rgba(255,255,255,0.15);">
+                  <div style="font-weight: 600;">{{ p.name }} ×{{ p.quantity }}</div>
+                  <div v-if="p.skuName" style="color: #e6db74; font-size: 12px;">规格: {{ p.skuName }} | 单价: ¥{{ (p.price || 0).toFixed(2) }}</div>
+                  <div v-else style="color: #aaa; font-size: 12px;">单价: ¥{{ (p.price || 0).toFixed(2) }}</div>
+                </div>
+              </div>
+            </template>
             <span class="product-text">
               <template v-if="Array.isArray(row.products)">
-                <template v-for="(p, idx) in row.products" :key="idx">
-                  <span v-if="idx > 0">，</span>
+                <div v-for="(p, idx) in row.products.slice(0, 2)" :key="idx" style="display:flex;align-items:center;gap:4px;margin-bottom:2px;">
                   <el-tag v-if="p.productType === 'virtual'" type="warning" size="small" effect="light" style="margin-right: 2px;">虚拟</el-tag>
                   <el-tag v-else size="small" effect="light" style="margin-right: 2px;">实物</el-tag>
-                  {{ p.name }} × {{ p.quantity }}
-                </template>
+                  <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ p.name }}<span v-if="p.skuName" style="color:#909399;font-size:11px;"> ({{ p.skuName }})</span> ×{{ p.quantity }}</span>
+                </div>
+                <span v-if="row.products.length > 2" style="color: #409eff; font-size: 12px;">等{{ row.products.length }}件商品...</span>
               </template>
               <template v-else>{{ row.products || '-' }}</template>
             </span>
@@ -2820,30 +2827,14 @@ onUnmounted(() => {
   flex-shrink: 0;
 }
 
-.filter-tag {
-  margin-right: 12px;
-  margin-bottom: 8px;
-  padding: 8px 16px;
+.filter-btn {
   border-radius: 20px;
-  cursor: pointer;
-  transition: all 0.3s;
+  padding: 8px 16px;
   font-size: 14px;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
 }
 
-.filter-tag.date-tag {
-  margin-right: 8px;
-}
-
-.filter-tag:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 2px 8px rgba(64, 158, 255, 0.3);
-}
-
-.date-filters .filter-tag:hover {
-  box-shadow: 0 2px 8px rgba(103, 194, 58, 0.3);
+.quick-filters {
+  gap: 12px;
 }
 
 

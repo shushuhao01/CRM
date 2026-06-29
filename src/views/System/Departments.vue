@@ -166,13 +166,20 @@
                 </div>
               </div>
               <div class="department-status">
-                <el-switch
-                  v-model="department.status"
-                  active-value="active"
-                  inactive-value="inactive"
-                  :loading="department.statusLoading"
-                  @change="handleStatusToggle(department)"
-                />
+                <el-tooltip
+                  :content="isNonDisableableDepartment(department) ? '系统预设部门不可禁用' : ''"
+                  :disabled="!isNonDisableableDepartment(department)"
+                  placement="top"
+                >
+                  <el-switch
+                    v-model="department.status"
+                    active-value="active"
+                    inactive-value="inactive"
+                    :loading="department.statusLoading"
+                    :disabled="isNonDisableableDepartment(department)"
+                    @change="handleStatusToggle(department)"
+                  />
+                </el-tooltip>
               </div>
             </div>
 
@@ -872,6 +879,12 @@ const isUpdatingData = ref(false)
 
 // 处理部门状态切换
 const handleStatusToggle = async (department: Department) => {
+  if (isNonDisableableDepartment(department)) {
+    department.status = 'active'
+    ElMessage.warning('系统预设部门不可禁用')
+    return
+  }
+
   // 如果正在更新数据，忽略状态切换事件
   if (isUpdatingData.value) {
     console.log('[Departments] 正在更新数据，忽略状态切换事件')

@@ -29,8 +29,8 @@ router.get('/list', async (req: Request, res: Response) => {
     const queryBuilder = orderRepository.createQueryBuilder('order')
       .leftJoinAndSelect('order.customer', 'customer');
 
-    // 只获取已签收的订单（delivered状态）
-    queryBuilder.andWhere('order.status = :deliveredStatus', { deliveredStatus: 'delivered' });
+    // 获取已签收的订单（delivered 和 signed 状态均为已签收）
+    queryBuilder.andWhere('order.status IN (:...deliveredStatuses)', { deliveredStatuses: ['delivered', 'signed'] });
 
     // 数据权限过滤
     const role = currentUser?.role || '';
@@ -106,54 +106,55 @@ router.get('/list', async (req: Request, res: Response) => {
       queryBuilder.andWhere('order.createdByDepartmentId = :filterDeptId', { filterDeptId: departmentId });
     }
 
-    // 日期筛选
+    // 日期筛选（使用 COALESCE 兼容 signed 状态订单的 delivered_at 为空情况）
     if (dateFilter && dateFilter !== 'all') {
       const now = new Date();
       let startDate: Date;
+      const dateExpr = 'COALESCE(order.delivered_at, order.updated_at)';
 
       switch (dateFilter) {
         case 'today':
           startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-          queryBuilder.andWhere('order.deliveredAt >= :startDate', { startDate });
+          queryBuilder.andWhere(`${dateExpr} >= :startDate`, { startDate });
           break;
         case 'yesterday':
           startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
           const endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-          queryBuilder.andWhere('order.deliveredAt >= :startDate AND order.deliveredAt < :endDate', { startDate, endDate });
+          queryBuilder.andWhere(`${dateExpr} >= :startDate AND ${dateExpr} < :endDate`, { startDate, endDate });
           break;
         case 'thisWeek':
           const weekStart = new Date(now);
           weekStart.setDate(now.getDate() - now.getDay());
           weekStart.setHours(0, 0, 0, 0);
-          queryBuilder.andWhere('order.deliveredAt >= :weekStart', { weekStart });
+          queryBuilder.andWhere(`${dateExpr} >= :weekStart`, { weekStart });
           break;
         case 'last30Days':
           startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-          queryBuilder.andWhere('order.deliveredAt >= :startDate', { startDate });
+          queryBuilder.andWhere(`${dateExpr} >= :startDate`, { startDate });
           break;
         case 'thisMonth':
           startDate = new Date(now.getFullYear(), now.getMonth(), 1);
-          queryBuilder.andWhere('order.deliveredAt >= :startDate', { startDate });
+          queryBuilder.andWhere(`${dateExpr} >= :startDate`, { startDate });
           break;
         case 'thisYear':
           startDate = new Date(now.getFullYear(), 0, 1);
-          queryBuilder.andWhere('order.deliveredAt >= :startDate', { startDate });
+          queryBuilder.andWhere(`${dateExpr} >= :startDate`, { startDate });
           break;
       }
     }
 
-    // 🔥 资料分配状态筛选（基于客户记录派生）
+    // 资料分配状态筛选（基于 customers.is_data_assigned 独立字段）
     if (status && status !== 'all') {
       switch (status) {
         case 'pending':
           queryBuilder.andWhere(
-            '(customer.sales_person_id IS NULL AND (customer.status IS NULL OR customer.status NOT IN (:...excludePending)))',
+            '(customer.is_data_assigned = 0 OR customer.is_data_assigned IS NULL) AND (customer.status IS NULL OR customer.status NOT IN (:...excludePending))',
             { excludePending: ['archived', 'deleted'] }
           );
           break;
         case 'assigned':
           queryBuilder.andWhere(
-            'customer.sales_person_id IS NOT NULL AND (customer.status IS NULL OR customer.status NOT IN (:...excludeAssigned))',
+            'customer.is_data_assigned = 1 AND (customer.status IS NULL OR customer.status NOT IN (:...excludeAssigned))',
             { excludeAssigned: ['archived', 'deleted'] }
           );
           break;
@@ -161,25 +162,24 @@ router.get('/list', async (req: Request, res: Response) => {
           queryBuilder.andWhere('customer.status = :archivedStatus', { archivedStatus: 'archived' });
           break;
         case 'recovered':
-          // recovered 客户状态会被重置为 active，暂不区分
           break;
       }
     }
 
-    queryBuilder.orderBy('order.deliveredAt', 'DESC');
+    queryBuilder.orderBy('order.updatedAt', 'DESC');
     queryBuilder.skip((Number(page) - 1) * Number(pageSize));
     queryBuilder.take(Number(pageSize));
 
     const [orders, total] = await queryBuilder.getManyAndCount();
 
-    // 🔥 转换为资料列表格式 —— 从客户记录派生分配状态
+    // 转换为资料列表格式 —— 基于 is_data_assigned 独立字段判断分配状态
     const list = orders.map(order => {
       let allocationStatus: 'pending' | 'assigned' | 'archived' | 'recovered' = 'pending';
       const cust = order.customer;
       if (cust) {
         if (cust.status === 'archived') {
           allocationStatus = 'archived';
-        } else if ((cust as any).salesPersonId) {
+        } else if ((cust as any).isDataAssigned === 1 || (cust as any).isDataAssigned === true || (cust as any).is_data_assigned === 1) {
           allocationStatus = 'assigned';
         }
       }
@@ -192,7 +192,7 @@ router.get('/list', async (req: Request, res: Response) => {
         orderNo: order.orderNumber,
         orderAmount: Number(order.totalAmount) || 0,
         orderDate: order.createdAt ? new Date(order.createdAt).toISOString().split('T')[0] : '',
-        signDate: order.deliveredAt ? new Date(order.deliveredAt).toISOString().split('T')[0] : '',
+        signDate: order.deliveredAt ? new Date(order.deliveredAt).toISOString().split('T')[0] : (order.updatedAt ? new Date(order.updatedAt).toISOString().split('T')[0] : ''),
         orderStatus: order.status,
         status: allocationStatus,
         assigneeId: (cust as any)?.salesPersonId || order.createdBy,
@@ -212,14 +212,14 @@ router.get('/list', async (req: Request, res: Response) => {
       .leftJoin('o.customer', 'sc')
       .select('COUNT(*)', 'totalCount')
       .addSelect('COALESCE(SUM(o.total_amount), 0)', 'totalAmount')
-      .addSelect(`SUM(CASE WHEN sc.sales_person_id IS NULL AND (sc.status IS NULL OR sc.status NOT IN ('archived','deleted')) THEN 1 WHEN sc.id IS NULL THEN 1 ELSE 0 END)`, 'pendingCount')
-      .addSelect(`SUM(CASE WHEN sc.sales_person_id IS NOT NULL AND (sc.status IS NULL OR sc.status NOT IN ('archived','deleted')) THEN 1 ELSE 0 END)`, 'assignedCount')
+      .addSelect(`SUM(CASE WHEN (sc.is_data_assigned = 0 OR sc.is_data_assigned IS NULL) AND (sc.status IS NULL OR sc.status NOT IN ('archived','deleted')) THEN 1 WHEN sc.id IS NULL THEN 1 ELSE 0 END)`, 'pendingCount')
+      .addSelect(`SUM(CASE WHEN sc.is_data_assigned = 1 AND (sc.status IS NULL OR sc.status NOT IN ('archived','deleted')) THEN 1 ELSE 0 END)`, 'assignedCount')
       .addSelect(`SUM(CASE WHEN sc.status = 'archived' THEN 1 ELSE 0 END)`, 'archivedCount')
-      .addSelect(`SUM(CASE WHEN DATE(o.delivered_at) = CURDATE() THEN 1 ELSE 0 END)`, 'todayCount')
-      .addSelect(`SUM(CASE WHEN o.delivered_at >= DATE_SUB(NOW(), INTERVAL 7 DAY) THEN 1 ELSE 0 END)`, 'weekCount')
-      .addSelect(`SUM(CASE WHEN o.delivered_at >= DATE_SUB(NOW(), INTERVAL 1 MONTH) THEN 1 ELSE 0 END)`, 'monthCount');
+      .addSelect(`SUM(CASE WHEN DATE(COALESCE(o.delivered_at, o.updated_at)) = CURDATE() THEN 1 ELSE 0 END)`, 'todayCount')
+      .addSelect(`SUM(CASE WHEN COALESCE(o.delivered_at, o.updated_at) >= DATE_SUB(NOW(), INTERVAL 7 DAY) THEN 1 ELSE 0 END)`, 'weekCount')
+      .addSelect(`SUM(CASE WHEN COALESCE(o.delivered_at, o.updated_at) >= DATE_SUB(NOW(), INTERVAL 1 MONTH) THEN 1 ELSE 0 END)`, 'monthCount');
     // 租户隔离已由 getTenantRepo 自动添加
-    summaryBuilder.andWhere('o.status = :sDeliveredStatus', { sDeliveredStatus: 'delivered' });
+    summaryBuilder.andWhere('o.status IN (:...sDeliveredStatuses)', { sDeliveredStatuses: ['delivered', 'signed'] });
 
     // 🔥 汇总也需要权限过滤（与列表查询保持一致）
     if (adminRoles.includes(role)) {
@@ -302,11 +302,11 @@ router.post('/batch-assign', async (req: Request, res: Response) => {
     let successCount = 0;
     for (const customerId of dataIds) {
       try {
-        // 🔥 修复：只更新客户的归属人，不影响订单
         const customer = await customerRepository.findOne({ where: { id: customerId } });
         if (customer) {
           customer.salesPersonId = assigneeId;
           customer.salesPersonName = finalAssigneeName;
+          (customer as any).isDataAssigned = 1;
           await customerRepository.save(customer);
           successCount++;
         }
@@ -385,7 +385,7 @@ router.post('/batch-archive', async (req: Request, res: Response) => {
 
 /**
  * @route POST /api/v1/data/recover
- * @desc 恢复数据
+ * @desc 恢复数据（回到待分配状态）
  */
 router.post('/recover', async (req: Request, res: Response) => {
   try {
@@ -403,6 +403,7 @@ router.post('/recover', async (req: Request, res: Response) => {
         const customer = await customerRepository.findOne({ where: { id } });
         if (customer) {
           customer.status = 'active';
+          (customer as any).isDataAssigned = 0;
           await customerRepository.save(customer);
           successCount++;
         }

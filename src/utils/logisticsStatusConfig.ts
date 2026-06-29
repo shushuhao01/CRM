@@ -339,8 +339,11 @@ export const detectLogisticsStatusFromTraces = (traces: Array<{ description?: st
  */
 export const getLogisticsStatusStyle = (status: string): Record<string, string> => {
   const color = getLogisticsStatusColor(status)
+  const r = parseInt(color.slice(1, 3), 16)
+  const g = parseInt(color.slice(3, 5), 16)
+  const b = parseInt(color.slice(5, 7), 16)
   return {
-    backgroundColor: `${color}20`,
+    backgroundColor: `rgba(${r}, ${g}, ${b}, 0.15)`,
     borderColor: color,
     color: color
   }

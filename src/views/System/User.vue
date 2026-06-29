@@ -322,7 +322,7 @@
         <!-- 启用状态开关插槽 -->
         <template #column-enableStatus="{ row }">
           <el-tooltip
-            :content="isNonDisableableUser(row) ? '系统预设用户不可禁用' : (row.status === 'active' ? '点击禁用' : '点击启用')"
+            :content="isNonDisableableUser(row) ? getAdminProtectionTip(row) : (row.status === 'active' ? '点击禁用' : '点击启用')"
             placement="top"
           >
             <el-switch
@@ -339,7 +339,7 @@
         <!-- 在职状态开关插槽 -->
         <template #column-employmentStatus="{ row }">
           <el-tooltip
-            :content="row.employmentStatus === 'active' ? '当前：在职，点击设为离职' : '当前：离职，点击设为在职'"
+            :content="isNonDisableableUser(row) ? getAdminProtectionTip(row) : (row.employmentStatus === 'active' ? '当前：在职，点击设为离职' : '当前：离职，点击设为在职')"
             placement="top"
           >
             <el-switch
@@ -347,6 +347,7 @@
               active-value="active"
               inactive-value="resigned"
               :loading="row.employmentStatusLoading"
+              :disabled="isNonDisableableUser(row)"
               :before-change="() => beforeEmploymentStatusChange(row)"
               class="employment-status-switch"
             />
@@ -498,14 +499,16 @@
                 >
                   操作日志
                 </el-dropdown-item>
-                <el-dropdown-item
-                  v-if="canEditUser && row.status !== 'locked'"
-                  command="lock"
-                  divided
-                  :disabled="isNonDisableableUser(row)"
-                >
-                  <el-icon style="color: #E6A23C;"><Lock /></el-icon> 封禁账户
-                </el-dropdown-item>
+                <el-tooltip :content="getAdminProtectionTip(row)" :disabled="!isNonDisableableUser(row)" placement="left">
+                  <el-dropdown-item
+                    v-if="canEditUser && row.status !== 'locked'"
+                    command="lock"
+                    divided
+                    :disabled="isNonDisableableUser(row)"
+                  >
+                    <el-icon style="color: #E6A23C;"><Lock /></el-icon> 封禁账户
+                  </el-dropdown-item>
+                </el-tooltip>
                 <el-dropdown-item
                   v-if="canEditUser && row.status === 'locked'"
                   command="unlock"
@@ -514,7 +517,7 @@
                   <el-icon style="color: #67C23A;"><Unlock /></el-icon> 解除封禁
                 </el-dropdown-item>
                 <el-tooltip
-                  :content="isSystemPresetUser(row) ? '系统预设用户不可删除' : ''"
+                  :content="isAdminRoleUser(row) ? getAdminProtectionTip(row) : (isSystemPresetUser(row) ? '系统预设用户不可删除' : '')"
                   :disabled="!isSystemPresetUser(row)"
                   placement="left"
                 >
@@ -2310,80 +2313,41 @@ const markRolePermissionsDisabled = (permissions, roleDefaultPermissions) => {
 }
 
 /**
- * 加载用户操作日志
+ * 加载用户操作日志（从 operation_logs 表读取真实数据）
  */
 const loadUserLogs = async (userId: string) => {
   logsLoading.value = true
   try {
-    // 使用真实API调用
-    const response = await rolePermissionService.getUserOperationLogs(
-      parseInt(userId),
-      {
-        page: logsPagination.page,
-        pageSize: logsPagination.size,
-        startDate: logDateRange.value?.[0],
-        endDate: logDateRange.value?.[1]
-      }
-    )
+    const params: Record<string, any> = {
+      module: 'user',
+      page: logsPagination.page,
+      pageSize: logsPagination.size,
+    }
+    if (logDateRange.value?.[0]) params.startDate = logDateRange.value[0]
+    if (logDateRange.value?.[1]) params.endDate = logDateRange.value[1]
 
-    // 转换日志数据格式
-    userLogs.value = response.data.map(log => ({
-      time: log.createdAt,
-      action: log.action,
-      module: log.module,
-      description: log.description,
-      ip: log.ip,
-      userAgent: log.userAgent,
-      result: 'success' // API返回的日志默认为成功
+    const res = await requestApi.get(`/operation-logs/${userId}`, { params })
+    const payload = (res as any)?.data ?? res
+
+    const list: any[] = payload?.list ?? payload?.data ?? []
+    const total: number = payload?.total ?? list.length
+
+    userLogs.value = list.map((log: any) => ({
+      time: log.createdAt ? formatDateTime(log.createdAt) : '',
+      action: log.operationType || log.action || '',
+      module: log.module || 'user',
+      description: log.operationContent || log.description || '',
+      ip: log.ip || '-',
+      userAgent: log.userAgent || '-',
+      result: 'success'
     }))
 
-    logsPagination.total = response.total
-    console.log('用户操作日志加载成功:', userId)
+    logsPagination.total = total
+    console.log('用户操作日志加载成功:', userId, '共', total, '条')
   } catch (error) {
     console.error('加载操作日志失败:', error)
-
-    // 降级到本地模拟数据
-    const mockLogs = [
-      {
-        time: '2024-01-15 14:30:25',
-        action: 'login',
-        module: '系统登录',
-        description: '用户登录系统',
-        ip: '192.168.1.100',
-        userAgent: 'Chrome 120.0.0.0',
-        result: 'success'
-      },
-      {
-        time: '2024-01-15 14:25:10',
-        action: 'create',
-        module: '客户管理',
-        description: '新增客户：张三',
-        ip: '192.168.1.100',
-        userAgent: 'Chrome 120.0.0.0',
-        result: 'success'
-      },
-      {
-        time: '2024-01-15 14:20:05',
-        action: 'update',
-        module: '订单管理',
-        description: '修改订单：ORD20240115001',
-        ip: '192.168.1.100',
-        userAgent: 'Chrome 120.0.0.0',
-        result: 'success'
-      },
-      {
-        time: '2024-01-15 14:15:30',
-        action: 'delete',
-        module: '产品管理',
-        description: '删除产品：PRD001',
-        ip: '192.168.1.100',
-        userAgent: 'Chrome 120.0.0.0',
-        result: 'failed'
-      }
-    ]
-
-    userLogs.value = mockLogs
-    logsPagination.total = mockLogs.length
+    userLogs.value = []
+    logsPagination.total = 0
   } finally {
     logsLoading.value = false
   }
@@ -2596,24 +2560,42 @@ const handleLogsPageChange = (page: number) => {
   }
 }
 
-// 🔥 系统预设用户列表（不可删除）
+// 🔥 系统预设用户列表（不可删除 - 按用户名）
 const SYSTEM_PRESET_USERS = ['superadmin', 'admin', 'manager', 'sales', 'service']
 
-// 🔥 不可禁用的用户（超级管理员和管理员）
-const NON_DISABLEABLE_USERS = ['superadmin', 'admin']
+// 🔥 受保护的管理角色（管理员和超级管理员角色的用户不可删除、禁用、离职、封禁）
+const PROTECTED_ADMIN_ROLES = ['admin', 'super_admin', 'superadmin']
+
+/**
+ * 判断用户是否拥有管理员/超管角色（不可删除、禁用、离职、封禁，需先移除角色）
+ */
+const isAdminRoleUser = (user: UserData) => {
+  const role = (user.role || user.roleId || '').toLowerCase()
+  return PROTECTED_ADMIN_ROLES.includes(role)
+}
 
 /**
  * 判断用户是否为系统预设用户（不可删除）
  */
 const isSystemPresetUser = (user: UserData) => {
-  return SYSTEM_PRESET_USERS.includes(user.username?.toLowerCase() || '')
+  return SYSTEM_PRESET_USERS.includes(user.username?.toLowerCase() || '') || isAdminRoleUser(user)
 }
 
 /**
- * 判断用户是否不可禁用（超级管理员和管理员）
+ * 判断用户是否不可禁用（拥有管理员/超管角色）
  */
 const isNonDisableableUser = (user: UserData) => {
-  return NON_DISABLEABLE_USERS.includes(user.username?.toLowerCase() || '')
+  return isAdminRoleUser(user)
+}
+
+/**
+ * 获取管理员角色用户的保护提示
+ */
+const getAdminProtectionTip = (user: UserData) => {
+  if (isAdminRoleUser(user)) {
+    return '该用户拥有管理员角色，需先移除管理员角色后才能操作'
+  }
+  return ''
 }
 
 /**

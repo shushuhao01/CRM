@@ -141,6 +141,9 @@ export class Customer {
   @Column({ name: 'sales_person_name', length: 50, nullable: true, comment: '销售员姓名' })
   salesPersonName?: string;
 
+  @Column({ name: 'is_data_assigned', type: 'tinyint', default: 0, comment: '资料管理分配状态: 0=待分配 1=已分配' })
+  isDataAssigned: number;
+
   @Column({ name: 'created_by', length: 50, comment: '创建人ID' })
   createdBy: string;
 

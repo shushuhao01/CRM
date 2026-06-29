@@ -528,6 +528,7 @@ import {
   CopyDocument
 } from '@element-plus/icons-vue'
 import * as echarts from 'echarts'
+import { useTheme } from '@/composables/useTheme'
 import { usePerformanceStore } from '@/stores/performance'
 import { useUserStore } from '@/stores/user'
 import { useOrderStore } from '@/stores/order'
@@ -595,6 +596,7 @@ const userStore = useUserStore()
 const orderStore = useOrderStore()
 const customerStore = useCustomerStore()
 const configStore = useConfigStore()
+const { isDark, chartColors } = useTheme()
 
 // 🔥 日期比较工具函数 - 使用北京时间字符串比较，避免时区问题
 const isOrderInDateRange = (orderCreateTime: string, startDateStr: string, endDateStr: string): boolean => {
@@ -2035,36 +2037,46 @@ const initSalesChart = () => {
 
   salesChart = echarts.init(salesChartRef.value)
 
-  // 获取真实的销售趋势数据
+  const cc = chartColors.value
   const salesTrendData = getSalesTrendData()
 
   const option = {
+    textStyle: { color: cc.textColor },
     tooltip: {
       trigger: 'axis',
-      axisPointer: {
-        type: 'cross'
-      }
+      axisPointer: { type: 'cross' },
+      backgroundColor: cc.tooltipBg,
+      borderColor: cc.tooltipBorder,
+      textStyle: { color: cc.textColor }
     },
     legend: {
-      data: ['销售额', '订单数']
+      data: ['销售额', '订单数'],
+      textStyle: { color: cc.textColor }
     },
     xAxis: {
       type: 'category',
-      data: salesTrendData.months
+      data: salesTrendData.months,
+      axisLabel: { color: cc.textColor }
     },
     yAxis: [
       {
         type: 'value',
         name: '销售额(元)',
+        nameTextStyle: { color: cc.textColor },
         position: 'left',
         axisLabel: {
-          formatter: '¥{value}'
-        }
+          formatter: '¥{value}',
+          color: cc.textColor
+        },
+        splitLine: { lineStyle: { color: cc.splitColor } }
       },
       {
         type: 'value',
         name: '订单数',
-        position: 'right'
+        nameTextStyle: { color: cc.textColor },
+        position: 'right',
+        axisLabel: { color: cc.textColor },
+        splitLine: { show: false }
       }
     ],
     series: [
@@ -2247,12 +2259,16 @@ const initOrderStatusChart = () => {
 
   orderStatusChart = echarts.init(orderStatusChartRef.value)
 
-  // 获取真实的订单状态分布数据
+  const cc2 = chartColors.value
   const { chartData, totalCount, totalAmount } = getOrderStatusData()
 
   const option = {
+    textStyle: { color: cc2.textColor },
     tooltip: {
       trigger: 'item',
+      backgroundColor: cc2.tooltipBg,
+      borderColor: cc2.tooltipBorder,
+      textStyle: { color: cc2.textColor },
       formatter: (params: any) => {
         const data = params.data
         const countPercent = totalCount > 0 ? ((data.count / totalCount) * 100).toFixed(1) : '0'
@@ -2262,7 +2278,8 @@ const initOrderStatusChart = () => {
     },
     legend: {
       orient: 'vertical',
-      left: 'left'
+      left: 'left',
+      textStyle: { color: cc2.textColor }
     },
     series: [
       {
@@ -2313,8 +2330,10 @@ const getCustomerLevelData = () => {
   const levelMap = new Map<string, number>()
   const levelNames: Record<string, string> = {
     'normal': '普通客户',
+    'bronze': '青铜客户',
     'silver': '白银客户',
     'gold': '黄金客户',
+    'platinum': '铂金客户',
     'diamond': '钻石客户'
   }
 
@@ -2346,16 +2365,18 @@ const initCustomerLevelChart = () => {
 
   customerLevelChart = echarts.init(customerLevelChartRef.value)
 
-  // 获取真实的客户等级分布数据
+  const cc3 = chartColors.value
   const levelData = getCustomerLevelData()
-
-  // 计算总客户数
   const totalCustomers = levelData.reduce((sum, item) => sum + item.value, 0)
 
   const option = {
+    textStyle: { color: cc3.textColor },
     tooltip: {
       trigger: 'item',
-      formatter: '{b}: {c}人 ({d}%)'
+      formatter: '{b}: {c}人 ({d}%)',
+      backgroundColor: cc3.tooltipBg,
+      borderColor: cc3.tooltipBorder,
+      textStyle: { color: cc3.textColor }
     },
     graphic: {
       type: 'text',
@@ -2364,7 +2385,7 @@ const initCustomerLevelChart = () => {
       style: {
         text: `${totalCustomers}`,
         textAlign: 'center',
-        fill: '#333',
+        fill: cc3.textColor,
         fontSize: 24,
         fontWeight: 'normal'
       }
@@ -2480,7 +2501,7 @@ const initProductRankingChart = () => {
 
   productRankingChart = echarts.init(productRankingChartRef.value)
 
-  // 获取真实的商品销售排行数据
+  const cc4 = chartColors.value
   const salesData = getProductSalesData()
 
   // 截断产品名称的函数 - 限制为8个字符
@@ -2494,12 +2515,13 @@ const initProductRankingChart = () => {
   const barGap = itemCount <= 3 ? '80%' : itemCount <= 5 ? '50%' : '30%'
 
   const option = {
+    textStyle: { color: cc4.textColor },
     tooltip: {
       trigger: 'axis',
-      axisPointer: {
-        type: 'shadow'
-      },
-      // 🔥 自定义tooltip显示完整产品名称
+      axisPointer: { type: 'shadow' },
+      backgroundColor: cc4.tooltipBg,
+      borderColor: cc4.tooltipBorder,
+      textStyle: { color: cc4.textColor },
       formatter: (params: any) => {
         const dataIndex = params[0]?.dataIndex
         const fullName = salesData.names[dataIndex] || ''
@@ -2527,11 +2549,11 @@ const initProductRankingChart = () => {
           return value.toString()
         },
         fontSize: 11,
-        color: '#909399'
+        color: cc4.subTextColor
       },
       splitLine: {
         lineStyle: {
-          color: '#EBEEF5',
+          color: cc4.splitColor,
           type: 'dashed'
         }
       },
@@ -2547,7 +2569,7 @@ const initProductRankingChart = () => {
       data: salesData.names.map(name => truncateName(name, 8)),
       axisLabel: {
         fontSize: 12,
-        color: '#303133',
+        color: cc4.textColor,
         align: 'right',
         margin: 12,
         formatter: (value: string) => value
@@ -2581,7 +2603,7 @@ const initProductRankingChart = () => {
             return '¥' + val.toLocaleString()
           },
           fontSize: 11,
-          color: '#606266',
+          color: cc4.subTextColor,
           distance: 8
         },
         barWidth: 20,
@@ -2991,7 +3013,10 @@ const handleResize = () => {
   productRankingChart?.resize()
 }
 
-// 监听销售图表类型变化
+watch(isDark, () => {
+  nextTick(() => initAllCharts())
+})
+
 watch(salesChartType, (newValue) => {
   console.log('[个人业绩] 销售图表类型变化:', newValue)
   // 重新加载销售图表数据

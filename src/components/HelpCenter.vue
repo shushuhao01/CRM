@@ -2,7 +2,7 @@
   <div v-if="canAccessHelpCenter" class="help-center-container">
     <el-tooltip content="帮助中心" placement="bottom">
       <div class="help-center-button" @click="goToHelpCenter">
-        <IconHelpCenter />
+        <el-icon :size="18"><QuestionFilled /></el-icon>
       </div>
     </el-tooltip>
   </div>
@@ -12,7 +12,7 @@
 import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
-import IconHelpCenter from '@/components/icons/IconHelpCenter.vue'
+import { QuestionFilled } from '@element-plus/icons-vue'
 
 const router = useRouter()
 const userStore = useUserStore()
@@ -31,31 +31,25 @@ const goToHelpCenter = () => {
 .help-center-container {
   display: flex;
   align-items: center;
-  margin-right: 16px;
 }
 
 .help-center-button {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: 30px;
+  height: 30px;
   border-radius: 50%;
   background-color: transparent;
-  color: #d3d4d6;
+  color: #b0b3b8;
+  opacity: 0.7;
   cursor: pointer;
-  transition: all 0.3s ease;
-  font-size: 20px;
-  position: relative;
-  top: -1px;
+  transition: all 0.25s;
 }
 
 .help-center-button:hover {
-  background-color: #f5f7fa;
+  background-color: rgba(0,0,0,0.04);
+  color: #409eff;
   opacity: 1;
-}
-
-.help-center-button:active {
-  transform: scale(0.95);
 }
 </style>

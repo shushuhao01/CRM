@@ -143,7 +143,9 @@
               <template #dropdown>
                 <el-dropdown-menu>
                   <el-dropdown-item v-if="canEditRole" command="copy">复制角色</el-dropdown-item>
-                  <el-dropdown-item v-if="canEditRole" command="toggle">{{ row.status === 'active' ? '禁用' : '启用' }}</el-dropdown-item>
+                  <el-tooltip :content="isNonDisableableRole(row) ? '系统内置角色不可禁用' : ''" :disabled="!isNonDisableableRole(row)" placement="left">
+                    <el-dropdown-item v-if="canEditRole" command="toggle" :disabled="isNonDisableableRole(row)">{{ row.status === 'active' ? '禁用' : '启用' }}</el-dropdown-item>
+                  </el-tooltip>
                   <el-tooltip :content="isSystemPresetRole(row) ? '系统预设角色不可删除' : ''" :disabled="!isSystemPresetRole(row)" placement="left">
                     <el-dropdown-item v-if="canDeleteRole" command="delete" divided class="danger-item" :disabled="isSystemPresetRole(row)">删除</el-dropdown-item>
                   </el-tooltip>
@@ -374,6 +376,10 @@ const handleBatchStatus = async (status: 'active' | 'inactive') => {
 }
 
 const handleToggleStatus = async (row: RoleData) => {
+  if (isNonDisableableRole(row) && row.status === 'active') {
+    ElMessage.warning('系统内置角色不可禁用')
+    return
+  }
   const newStatus = row.status === 'active' ? 'inactive' : 'active'
   const action = newStatus === 'active' ? '启用' : '禁用'
   try {

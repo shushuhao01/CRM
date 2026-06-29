@@ -216,8 +216,7 @@ export const orderApi = {
     page?: number;
     pageSize?: number;
     status?: string;
-    orderNumber?: string;
-    customerName?: string;
+    keyword?: string;
     startDate?: string;
     endDate?: string;
   }) =>

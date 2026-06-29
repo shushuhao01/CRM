@@ -273,6 +273,7 @@ import { createSafeNavigator } from '@/utils/navigation'
 import { useUserStore } from '@/stores/user'
 import { useServiceStore } from '@/stores/service'
 import * as echarts from 'echarts'
+import { useTheme } from '@/composables/useTheme'
 
 // 后端统计报表类型（本地定义）
 interface ServiceStatsReport {
@@ -317,12 +318,12 @@ const router = useRouter()
 const userStore = useUserStore()
 const serviceStore = useServiceStore()
 const safeNavigator = createSafeNavigator(router)
+const { chartColors, isDark } = useTheme()
 
 // 响应式数据
-// 默认显示今日数据
 const today = new Date()
 const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
-const dateRange = ref<[string, string]>([todayStr, todayStr])
+const dateRange = ref<[string, string]>(['2020-01-01', '2099-12-31'])
 const loading = ref(false)
 const searchKeyword = ref('')
 const statusFilter = ref('')
@@ -330,7 +331,7 @@ const trendPeriod = ref('30days')
 const currentPage = ref(1)
 const pageSize = ref(20)
 const totalOrders = ref(0)
-const selectedQuickFilter = ref('today')
+const selectedQuickFilter = ref('all')
 
 // 快捷筛选选项
 const quickFilters = [
@@ -430,7 +431,8 @@ const getFilteredServicesByPermission = () => {
   }
 
   // 超级管理员看全部
-  if (currentUser.role === 'admin') {
+  const adminRoles = ['admin', 'super_admin', 'superadmin']
+  if (adminRoles.includes(currentUser.role)) {
     return allServices
   }
 
@@ -602,7 +604,7 @@ const refreshData = async () => {
 
 const loadData = async () => {
   try {
-    await serviceStore.loadAfterSalesServices()
+    await serviceStore.loadAfterSalesServices({ limit: 9999 })
   } catch (error) {
     console.error('加载售后数据失败:', error)
   }
@@ -775,14 +777,19 @@ const initTrendChart = () => {
     })
   }
 
+  const cc = chartColors.value
   const option = {
+    textStyle: { color: cc.textColor },
     title: {
       text: '售后订单趋势',
       left: 'center',
-      textStyle: { fontSize: 14 }
+      textStyle: { fontSize: 14, color: cc.textColor }
     },
     tooltip: {
       trigger: 'axis',
+      backgroundColor: cc.tooltipBg,
+      borderColor: cc.tooltipBorder,
+      textStyle: { color: cc.textColor },
       formatter: (params: any) => {
         const dataIndex = params[0]?.dataIndex ?? 0
         return `${days[dataIndex]}: ${params[0].value}个订单`
@@ -790,10 +797,13 @@ const initTrendChart = () => {
     },
     xAxis: {
       type: 'category',
-      data: xAxisData
+      data: xAxisData,
+      axisLabel: { color: cc.subTextColor }
     },
     yAxis: {
-      type: 'value'
+      type: 'value',
+      axisLabel: { color: cc.subTextColor },
+      splitLine: { lineStyle: { color: cc.splitColor } }
     },
     series: [{
       data: chartData,
@@ -817,26 +827,42 @@ const initTypeChart = () => {
   typeChartInstance = echarts.init(typeChart.value)
 
   const services = getFilteredServicesByPermission()
-  const typeData = [
-    { name: '退货', value: services.filter(s => s.serviceType === 'return').length },
-    { name: '换货', value: services.filter(s => s.serviceType === 'exchange').length },
-    { name: '维修', value: services.filter(s => s.serviceType === 'repair').length },
-    { name: '退款', value: services.filter(s => s.serviceType === 'refund').length }
-  ]
+  const typeNameMap: Record<string, string> = {
+    'return': '退货', 'exchange': '换货', 'repair': '维修',
+    'refund': '退款', 'complaint': '投诉', '退款': '退款(中文)'
+  }
+  const typeCount = new Map<string, number>()
+  services.forEach(s => {
+    const label = typeNameMap[s.serviceType] || s.serviceType || '其他'
+    typeCount.set(label, (typeCount.get(label) || 0) + 1)
+  })
+  const typeData = Array.from(typeCount.entries()).map(([name, value]) => ({ name, value }))
 
+  const cc2 = chartColors.value
   const option = {
+    textStyle: { color: cc2.textColor },
     title: {
       text: '售后类型分布',
       left: 'center',
-      textStyle: { fontSize: 14 }
+      textStyle: { fontSize: 14, color: cc2.textColor }
     },
     tooltip: {
-      trigger: 'item'
+      trigger: 'item',
+      backgroundColor: cc2.tooltipBg,
+      borderColor: cc2.tooltipBorder,
+      textStyle: { color: cc2.textColor }
+    },
+    legend: {
+      orient: 'vertical',
+      left: 'right',
+      top: 'middle',
+      textStyle: { color: cc2.textColor }
     },
     series: [{
       type: 'pie',
       radius: '60%',
       data: typeData,
+      label: { color: cc2.textColor },
       emphasis: {
         itemStyle: {
           shadowBlur: 10,
@@ -884,22 +910,30 @@ const initDurationChart = () => {
     }
   })
 
+  const cc3 = chartColors.value
   const option = {
+    textStyle: { color: cc3.textColor },
     title: {
       text: '处理时长分析',
       left: 'center',
-      textStyle: { fontSize: 14 }
+      textStyle: { fontSize: 14, color: cc3.textColor }
     },
     tooltip: {
       trigger: 'axis',
-      formatter: '{b}: {c}个订单'
+      formatter: '{b}: {c}个订单',
+      backgroundColor: cc3.tooltipBg,
+      borderColor: cc3.tooltipBorder,
+      textStyle: { color: cc3.textColor }
     },
     xAxis: {
       type: 'category',
-      data: ['0-1天', '1-3天', '3-7天', '7-15天', '15天以上']
+      data: ['0-1天', '1-3天', '3-7天', '7-15天', '15天以上'],
+      axisLabel: { color: cc3.subTextColor }
     },
     yAxis: {
-      type: 'value'
+      type: 'value',
+      axisLabel: { color: cc3.subTextColor },
+      splitLine: { lineStyle: { color: cc3.splitColor } }
     },
     series: [{
       data: durationData,
@@ -936,22 +970,30 @@ const initRefundChart = () => {
       .reduce((sum, service) => sum + (service.price || 0), 0)
   })
 
+  const cc4 = chartColors.value
   const option = {
+    textStyle: { color: cc4.textColor },
     title: {
       text: '退款金额趋势',
       left: 'center',
-      textStyle: { fontSize: 14 }
+      textStyle: { fontSize: 14, color: cc4.textColor }
     },
     tooltip: {
       trigger: 'axis',
-      formatter: '{b}: ¥{c}'
+      formatter: '{b}: ¥{c}',
+      backgroundColor: cc4.tooltipBg,
+      borderColor: cc4.tooltipBorder,
+      textStyle: { color: cc4.textColor }
     },
     xAxis: {
       type: 'category',
-      data: days
+      data: days,
+      axisLabel: { color: cc4.subTextColor }
     },
     yAxis: {
-      type: 'value'
+      type: 'value',
+      axisLabel: { color: cc4.subTextColor },
+      splitLine: { lineStyle: { color: cc4.splitColor } }
     },
     series: [{
       data: data,
@@ -983,6 +1025,10 @@ const initCharts = () => {
 watch(() => serviceStore.services, () => {
   updateAllCharts()
 }, { deep: true })
+
+watch(isDark, () => {
+  nextTick(() => updateAllCharts())
+})
 
 // 窗口大小变化时重新调整图表
 const handleResize = () => {

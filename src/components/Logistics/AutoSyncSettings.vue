@@ -16,7 +16,6 @@
           </el-button>
         </div>
         <div class="header-right">
-          <!-- 🔥 新增：刷新按钮插槽（在批量更新按钮前面） -->
           <slot name="before-batch-update"></slot>
           <el-button
             type="primary"
@@ -28,7 +27,7 @@
             批量更新状态 ({{ selectedCount }})
           </el-button>
           <el-switch
-            v-model="config.enabled"
+            v-model="enabled"
             @change="handleEnabledChange"
             active-text="启用"
             inactive-text="停用"
@@ -39,321 +38,169 @@
 
     <el-collapse-transition>
       <div v-show="!collapsed" class="settings-content">
-      <el-form :model="config" label-width="120px" :disabled="!config.enabled">
-        <el-form-item label="检测间隔">
-          <el-input-number
-            v-model="config.interval"
-            :min="5"
-            :max="1440"
-            :step="5"
-            @change="handleConfigChange"
-          />
-          <span class="form-text">分钟（建议30-60分钟）</span>
-        </el-form-item>
+        <div class="sync-description">
+          <el-icon class="desc-icon"><InfoFilled /></el-icon>
+          <p>{{ syncStatus.description || '物流状态自动同步服务：根据物流最新动态自动判断并更新订单状态（已发货→已签收/已拒收等）。启用后系统定时检测待同步订单，无需人工逐一操作。' }}</p>
+        </div>
 
-        <el-form-item label="批处理大小">
-          <el-input-number
-            v-model="config.batchSize"
-            :min="10"
-            :max="200"
-            :step="10"
-            @change="handleConfigChange"
-          />
-          <span class="form-text">每次处理的订单数量</span>
-        </el-form-item>
+        <div class="sync-info-grid">
+          <div class="sync-info-item">
+            <span class="info-label">运行状态</span>
+            <span class="info-value">
+              <el-tag :type="syncStatus.isRunning ? 'success' : (enabled ? 'success' : 'info')" size="small" effect="dark">
+                <el-icon v-if="syncStatus.isRunning" class="rotating"><Loading /></el-icon>
+                {{ syncStatus.isRunning ? '同步执行中...' : (enabled ? '已启用' : '未启用') }}
+              </el-tag>
+            </span>
+          </div>
+          <div class="sync-info-item">
+            <span class="info-label">最近一次同步</span>
+            <span class="info-value">{{ syncStatus.lastSyncTime ? formatTime(syncStatus.lastSyncTime) : '从未执行' }}</span>
+          </div>
+          <div class="sync-info-item">
+            <span class="info-label">上次启动时间</span>
+            <span class="info-value">{{ syncStatus.lastStartTime ? formatTime(syncStatus.lastStartTime) : '-' }}</span>
+          </div>
+          <div class="sync-info-item">
+            <span class="info-label">上次结束时间</span>
+            <span class="info-value">{{ syncStatus.lastStopTime ? formatTime(syncStatus.lastStopTime) : '-' }}</span>
+          </div>
+          <div class="sync-info-item">
+            <span class="info-label">累计同步数</span>
+            <span class="info-value">{{ syncStatus.totalSynced || 0 }} 单</span>
+          </div>
+          <div class="sync-info-item">
+            <span class="info-label">最近一次结果</span>
+            <span class="info-value" v-if="syncStatus.lastSyncedCount > 0">
+              处理 {{ syncStatus.lastSyncedCount }} 单，更新 {{ syncStatus.lastUpdatedCount }} 单
+              <span v-if="syncStatus.lastErrorCount > 0" style="color: #f56c6c">，{{ syncStatus.lastErrorCount }} 个错误</span>
+            </span>
+            <span class="info-value" v-else>-</span>
+          </div>
+        </div>
 
-        <el-form-item label="重试次数">
-          <el-input-number
-            v-model="config.retryCount"
-            :min="1"
-            :max="10"
-            @change="handleConfigChange"
-          />
-          <span class="form-text">失败时的重试次数</span>
-        </el-form-item>
-
-        <el-form-item label="同步范围">
-          <el-checkbox-group v-model="syncOptions" @change="handleSyncOptionsChange">
-            <el-checkbox label="performance">同步到业绩统计</el-checkbox>
-            <el-checkbox label="orderList">同步到订单列表</el-checkbox>
-          </el-checkbox-group>
-        </el-form-item>
-      </el-form>
-
-      <div class="sync-status">
-        <el-descriptions title="同步状态" :column="2" border>
-          <el-descriptions-item label="服务状态">
-            <el-tag :type="status.isRunning ? 'success' : 'info'">
-              {{ status.isRunning ? '运行中' : '已停止' }}
-            </el-tag>
-          </el-descriptions-item>
-          <el-descriptions-item label="最后同步">
-            {{ status.lastSyncTime ? formatTime(status.lastSyncTime) : '从未同步' }}
-          </el-descriptions-item>
-        </el-descriptions>
-      </div>
-
-      <div class="action-buttons">
-        <el-button
-          type="primary"
-          @click="handleManualSync"
-          :loading="manualSyncLoading"
-          :disabled="!config.enabled"
-        >
-          <el-icon><Refresh /></el-icon>
-          手动同步
-        </el-button>
-        <el-button @click="handleRefreshStatus">
-          <el-icon><View /></el-icon>
-          刷新状态
-        </el-button>
-      </div>
-
-      <!-- 同步日志 -->
-      <div v-if="syncLogs.length > 0" class="sync-logs">
-        <el-divider content-position="left">同步日志</el-divider>
-        <el-timeline>
-          <el-timeline-item
-            v-for="(log, index) in syncLogs"
-            :key="index"
-            :timestamp="formatTime(log.lastSyncTime)"
-            :type="log.success ? 'success' : 'danger'"
+        <div class="action-buttons">
+          <el-button
+            type="primary"
+            @click="handleManualSync"
+            :loading="manualSyncLoading"
           >
-            <div class="log-content">
-              <div class="log-summary">
-                {{ log.success ? '同步成功' : '同步失败' }}
-                <span v-if="log.updatedCount > 0">
-                  - 更新了 {{ log.updatedCount }} 个订单
-                </span>
-                <span v-if="log.errorCount > 0">
-                  - {{ log.errorCount }} 个错误
-                </span>
-              </div>
-              <div v-if="log.errors.length > 0" class="log-errors">
-                <el-collapse>
-                  <el-collapse-item title="查看错误详情">
-                    <ul>
-                      <li v-for="(error, idx) in log.errors" :key="idx">
-                        {{ error }}
-                      </li>
-                    </ul>
-                  </el-collapse-item>
-                </el-collapse>
-              </div>
-            </div>
-          </el-timeline-item>
-        </el-timeline>
-      </div>
+            <el-icon><Refresh /></el-icon>
+            手动同步
+          </el-button>
+          <el-button @click="handleRefreshStatus">
+            <el-icon><View /></el-icon>
+            刷新状态
+          </el-button>
+        </div>
       </div>
     </el-collapse-transition>
   </el-card>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, onUnmounted, inject } from 'vue'
+import { ref, reactive, onMounted, onUnmounted, inject } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Refresh, View, ArrowDown, ArrowUp, Edit } from '@element-plus/icons-vue'
-import { autoStatusSyncService, type AutoSyncConfig, type SyncResult } from '@/services/autoStatusSync'
+import { Refresh, View, ArrowDown, ArrowUp, Edit, InfoFilled, Loading } from '@element-plus/icons-vue'
 import request from '@/utils/request'
 
-// 注入父组件提供的数据和方法
 const selectedCount = inject<any>('selectedCount', ref(0))
 const handleBatchUpdate = inject<any>('handleBatchUpdate', () => {
   ElMessage.warning('批量更新功能未初始化')
 })
 
-// 响应式数据
-const collapsed = ref(true) // 默认折叠状态
-const config = reactive<AutoSyncConfig>({
-  enabled: false,
-  interval: 30,
-  batchSize: 50,
-  retryCount: 3,
-  syncToPerformance: true,
-  syncToOrderList: true
-})
-
-const status = reactive({
-  isRunning: false,
-  lastSyncTime: '',
-  config: {} as AutoSyncConfig
-})
-
+const collapsed = ref(true)
+const enabled = ref(false)
 const manualSyncLoading = ref(false)
-const syncLogs = ref<SyncResult[]>([])
-const statusTimer = ref<NodeJS.Timeout | null>(null)
+const statusTimer = ref<ReturnType<typeof setInterval> | null>(null)
 
-// 计算属性
-const syncOptions = computed({
-  get: () => {
-    const options = []
-    if (config.syncToPerformance) options.push('performance')
-    if (config.syncToOrderList) options.push('orderList')
-    return options
-  },
-  set: (value: string[]) => {
-    config.syncToPerformance = value.includes('performance')
-    config.syncToOrderList = value.includes('orderList')
-  }
+const syncStatus = reactive({
+  isRunning: false,
+  enabled: false,
+  lastSyncTime: '' as string | null,
+  lastStartTime: '' as string | null,
+  lastStopTime: '' as string | null,
+  totalSynced: 0,
+  lastSyncedCount: 0,
+  lastUpdatedCount: 0,
+  lastErrorCount: 0,
+  description: '',
 })
 
-// 初始化
 onMounted(() => {
-  loadConfig()
   refreshStatus()
-  loadSyncLogs()
-
-  // 定时刷新状态
-  statusTimer.value = setInterval(refreshStatus, 30000) // 每30秒刷新一次
+  statusTimer.value = setInterval(refreshStatus, 30000)
 })
 
 onUnmounted(() => {
-  if (statusTimer.value) {
-    clearInterval(statusTimer.value)
-  }
+  if (statusTimer.value) clearInterval(statusTimer.value)
 })
 
-// 加载配置（enabled 从数据库读取）
-const loadConfig = async () => {
-  const serviceConfig = autoStatusSyncService.getConfig()
-  Object.assign(config, serviceConfig)
+const refreshStatus = async () => {
   try {
-    const res = await request.get('/logistics/auto-sync/config')
-    if (res.data?.success && res.data?.data) {
-      config.enabled = res.data.data.enabled
-      autoStatusSyncService.updateConfig({ enabled: config.enabled })
+    const res = await request.get('/logistics/auto-sync/status') as any
+    if (res) {
+      Object.assign(syncStatus, res)
+      enabled.value = !!res.enabled
     }
-  } catch {
-    // DB 读取失败，使用本地默认值（false）
-  }
+  } catch { /* ignore */ }
 }
 
-// 刷新状态
-const refreshStatus = () => {
-  const serviceStatus = autoStatusSyncService.getStatus()
-  Object.assign(status, serviceStatus)
-}
-
-// 加载同步日志
-const loadSyncLogs = () => {
-  const logs = localStorage.getItem('autoSyncLogs')
-  if (logs) {
-    try {
-      syncLogs.value = JSON.parse(logs).slice(-10) // 只保留最近10条
-    } catch (error) {
-      console.error('加载同步日志失败:', error)
-    }
-  }
-}
-
-// 保存同步日志
-const saveSyncLogs = () => {
-  try {
-    localStorage.setItem('autoSyncLogs', JSON.stringify(syncLogs.value))
-  } catch (error) {
-    console.error('保存同步日志失败:', error)
-  }
-}
-
-// 处理启用状态变化（持久化到数据库）
-const handleEnabledChange = async (enabled: boolean) => {
-  if (enabled) {
+const handleEnabledChange = async (val: boolean) => {
+  if (val) {
     try {
       await ElMessageBox.confirm(
         '启用自动同步后，系统将根据物流最新动态自动判断并更新订单状态。\n\n' +
-        '请注意：自动判断可能不完全准确（如签收人信息、拒收原因等），建议定期人工核实确认。\n\n' +
-        '如需更准确的状态管理，建议采用手动更新方式。',
+        '请注意：自动判断可能不完全准确（如签收人信息、拒收原因等），建议定期人工核实确认。',
         '自动同步提醒',
-        {
-          confirmButtonText: '了解并启用',
-          cancelButtonText: '取消',
-          type: 'warning',
-          dangerouslyUseHTMLString: false
-        }
+        { confirmButtonText: '了解并启用', cancelButtonText: '取消', type: 'warning' }
       )
       await request.post('/logistics/auto-sync/config', { enabled: true })
-      autoStatusSyncService.updateConfig({ enabled: true })
+      ElMessage.success('自动同步已启用')
       refreshStatus()
-      ElMessage.success('自动同步已启用，建议定期人工核实订单状态')
     } catch {
-      config.enabled = false
+      enabled.value = false
     }
   } else {
     try {
       await request.post('/logistics/auto-sync/config', { enabled: false })
     } catch { /* ignore */ }
-    autoStatusSyncService.updateConfig({ enabled: false })
+    ElMessage.info('自动同步已停用')
     refreshStatus()
-    ElMessage.info('自动同步已停用，订单状态需手动更新')
   }
 }
 
-// 处理配置变化
-const handleConfigChange = () => {
-  autoStatusSyncService.updateConfig(config)
-  ElMessage.success('配置已保存')
-}
-
-// 处理同步选项变化
-const handleSyncOptionsChange = () => {
-  autoStatusSyncService.updateConfig({
-    syncToPerformance: config.syncToPerformance,
-    syncToOrderList: config.syncToOrderList
-  })
-  ElMessage.success('同步范围已更新')
-}
-
-// 手动同步
 const handleManualSync = async () => {
   manualSyncLoading.value = true
-
   try {
-    const result = await autoStatusSyncService.manualSync()
-
-    // 添加到日志
-    syncLogs.value.unshift(result)
-    if (syncLogs.value.length > 10) {
-      syncLogs.value = syncLogs.value.slice(0, 10)
-    }
-    saveSyncLogs()
-
-    // 刷新状态
-    refreshStatus()
-
-    if (result.success) {
-      ElMessage.success(`手动同步完成，更新了 ${result.updatedCount} 个订单`)
+    const res = await request.post('/logistics/auto-sync/trigger') as any
+    if (res) {
+      ElMessage.success(`同步完成：处理 ${res?.totalProcessed || 0} 个订单，更新 ${res?.statusUpdated || 0} 个状态`)
     } else {
-      ElMessage.warning(`同步完成但有错误，更新了 ${result.updatedCount} 个订单，${result.errorCount} 个错误`)
+      ElMessage.warning('同步完成')
     }
-  } catch (error) {
-    console.error('手动同步失败:', error)
-    ElMessage.error(`手动同步失败: ${error}`)
+    refreshStatus()
+  } catch (error: any) {
+    ElMessage.error('同步失败：' + (error?.message || '未知错误'))
   } finally {
     manualSyncLoading.value = false
   }
 }
 
-// 刷新状态
 const handleRefreshStatus = () => {
   refreshStatus()
   ElMessage.success('状态已刷新')
 }
 
-// 格式化时间
 const formatTime = (timeStr: string) => {
   if (!timeStr) return ''
-
   try {
     const date = new Date(timeStr)
     return date.toLocaleString('zh-CN', {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit'
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', second: '2-digit'
     })
-  } catch (_error) {
+  } catch {
     return timeStr
   }
 }
@@ -404,18 +251,61 @@ const formatTime = (timeStr: string) => {
   padding: 10px 0;
 }
 
-.form-text {
-  margin-left: 10px;
-  font-size: 12px;
-  color: var(--el-text-color-secondary);
+.sync-description {
+  display: flex;
+  gap: 10px;
+  padding: 14px 16px;
+  background: #f5f7fa;
+  border-radius: 8px;
+  margin-bottom: 20px;
+  align-items: flex-start;
 }
 
-.sync-status {
-  margin: 20px 0;
+.desc-icon {
+  color: #409eff;
+  font-size: 18px;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.sync-description p {
+  margin: 0;
+  font-size: 13px;
+  color: #606266;
+  line-height: 1.6;
+}
+
+.sync-info-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.sync-info-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: #fafafa;
+  border-radius: 6px;
+  border: 1px solid #f0f0f0;
+}
+
+.info-label {
+  font-size: 13px;
+  color: #909399;
+  white-space: nowrap;
+  min-width: 90px;
+}
+
+.info-value {
+  font-size: 13px;
+  color: #303133;
+  font-weight: 500;
 }
 
 .action-buttons {
-  margin: 20px 0;
   text-align: center;
 }
 
@@ -423,39 +313,13 @@ const formatTime = (timeStr: string) => {
   margin: 0 10px;
 }
 
-.sync-logs {
-  margin-top: 20px;
+.rotating {
+  animation: spin 1.5s linear infinite;
+  margin-right: 4px;
 }
 
-.log-content {
-  padding: 5px 0;
-}
-
-.log-summary {
-  font-weight: 500;
-  margin-bottom: 5px;
-}
-
-.log-errors {
-  margin-top: 10px;
-}
-
-.log-errors ul {
-  margin: 0;
-  padding-left: 20px;
-}
-
-.log-errors li {
-  margin: 5px 0;
-  font-size: 12px;
-  color: var(--el-color-danger);
-}
-
-:deep(.el-descriptions__label) {
-  font-weight: 500;
-}
-
-:deep(.el-timeline-item__timestamp) {
-  font-size: 12px;
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 </style>

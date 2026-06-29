@@ -6,7 +6,7 @@
  */
 import { permissionService, UserRole, PermissionLevel, SensitiveInfoType, DataScope, CustomerServiceType } from '@/services/permission'
 import { authApiService } from '@/services/authApiService'
-import { autoStatusSyncService } from '@/services/autoStatusSync'
+
 import { setUserPermissions } from '@/utils/permission'
 import { rolePermissionService } from '@/services/rolePermissionService'
 import { getDefaultRolePermissions } from '@/config/defaultRolePermissions'
@@ -197,12 +197,6 @@ export function createAuthActions(deps: UserStoreDeps) {
 
         localStorage.setItem('auth_token', token.value)
         localStorage.setItem('user', JSON.stringify(currentUser.value))
-
-        // 启动自动同步服务
-        const config = autoStatusSyncService.getConfig()
-        if (config.enabled) {
-          autoStatusSyncService.start()
-        }
 
         resolve(true)
       }, 1000)
@@ -814,12 +808,6 @@ export function createAuthActions(deps: UserStoreDeps) {
         console.log('[Auth] 🔐 会话恢复：敏感信息权限配置已加载')
       } catch (e) {
         console.warn('[Auth] ⚠️ 会话恢复：加载敏感信息权限配置失败:', e)
-      }
-
-      // 启动自动同步服务
-      const config = autoStatusSyncService.getConfig()
-      if (config.enabled) {
-        autoStatusSyncService.start()
       }
 
       return
