@@ -13,19 +13,24 @@ const userController = new UserController();
 // SaaS 模式下的强制校验在 UserController.login 中处理
 const loginSchema = {
   body: Joi.object({
-    username: commonValidations.username,
+    username: Joi.string().min(1).max(50).required().messages({
+      'string.base': '用户名必须是字符串',
+      'string.min': '用户名不能为空',
+      'string.max': '用户名最多50个字符',
+      'any.required': '用户名是必需的'
+    }),
     password: Joi.string().min(1).max(128).required().messages({
       'string.base': '密码必须是字符串',
       'string.min': '密码不能为空',
       'string.max': '密码最多128个字符',
       'any.required': '密码是必需的'
     }),
-    tenantId: Joi.string().max(36).optional().allow('', null).messages({
+    tenantId: Joi.string().max(100).optional().allow('', null).messages({
       'string.base': '租户ID必须是字符串',
-      'string.max': '租户ID最多36个字符'
+      'string.max': '租户ID最多100个字符'
     }),
     rememberMe: Joi.boolean().optional()
-  })
+  }).options({ allowUnknown: true, stripUnknown: true })
 };
 
 // 刷新令牌验证规则
