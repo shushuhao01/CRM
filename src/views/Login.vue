@@ -429,7 +429,7 @@
           <el-form-item prop="username">
             <div class="input-wrapper">
               <label>用户名</label>
-              <el-input v-model="loginForm.username" placeholder="请输入用户名" size="large" clearable @keyup.enter="handleLogin">
+              <el-input v-model="loginForm.username" placeholder="请输入用户名" size="large" clearable @keyup.enter="handleLogin" @input="sanitizeUsername">
                 <template #prefix>
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2">
                     <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
@@ -550,6 +550,10 @@ const configStore = useConfigStore()
 const loading = ref(false)
 const loginFormRef = ref<FormInstance>()
 const loginForm = reactive({ username: '', password: '' })
+
+const sanitizeUsername = (val: string) => {
+  loginForm.username = val.replace(/[^a-zA-Z0-9_\-]/g, '')
+}
 const agreeToTerms = ref(false)
 const agreementDialogVisible = ref(false)
 const agreementDialogTitle = ref('')
@@ -920,7 +924,8 @@ const handleLogin = async () => {
     if (valid) {
       loading.value = true
       try {
-        const result = await userStore.loginWithRetry(loginForm.username, loginForm.password, false, 3, tenantInfo.value?.tenantId)
+        const username = loginForm.username.replace(/[^a-zA-Z0-9_\-]/g, '').trim()
+        const result = await userStore.loginWithRetry(username, loginForm.password, false, 3, tenantInfo.value?.tenantId)
         if (result) {
           localStorage.setItem('user_agreed_terms', 'true')
           ElMessage.success('登录成功')

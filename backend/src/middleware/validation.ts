@@ -111,11 +111,11 @@ export const commonValidations = {
     })
   },
 
-  // 用户名验证（允许字母、数字、下划线、连字符）
-  username: Joi.string().pattern(/^[a-zA-Z0-9_\-]+$/).min(2).max(30).required().messages({
+  // 用户名验证
+  username: Joi.string().alphanum().min(3).max(30).required().messages({
     'string.base': '用户名必须是字符串',
-    'string.pattern.base': '用户名只能包含字母、数字、下划线和连字符',
-    'string.min': '用户名至少2个字符',
+    'string.alphanum': '用户名只能包含字母和数字',
+    'string.min': '用户名至少3个字符',
     'string.max': '用户名最多30个字符',
     'any.required': '用户名是必需的'
   }),
