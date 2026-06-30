@@ -469,12 +469,13 @@
       </div>
     </el-card>
 
-    <!-- 业绩分享对话框 -->
+    <!-- 业绩分享对话框（始终浅色显示） -->
     <el-dialog
       v-model="shareDialogVisible"
       title="业绩分享"
       width="900px"
       :close-on-click-modal="false"
+      class="share-dialog-light"
     >
       <div v-loading="shareImageLoading" class="share-dialog-content">
         <div v-if="shareImageUrl" class="share-image-container">
@@ -1496,7 +1497,10 @@ const generatePerformanceImage = async () => {
       backgroundColor: '#f8fafc',
       scale: 2,
       logging: false,
-      useCORS: true
+      useCORS: true,
+      onclone: (clonedDoc: Document) => {
+        clonedDoc.documentElement.classList.remove('dark')
+      }
     })
 
     shareImageUrl.value = canvas.toDataURL('image/png')
@@ -3499,5 +3503,40 @@ onUnmounted(() => {
 /* 订单明细表格优化 */
 .order-detail-table {
   font-size: 13px;
+}
+</style>
+
+<style>
+/* 业绩分享对话框 - 始终浅色模式，不适配深色 */
+.share-dialog-light.el-dialog,
+html.dark .share-dialog-light.el-dialog {
+  background-color: #ffffff !important;
+  color: #303133 !important;
+}
+.share-dialog-light .el-dialog__header,
+html.dark .share-dialog-light .el-dialog__header {
+  background-color: #ffffff !important;
+  color: #303133 !important;
+}
+.share-dialog-light .el-dialog__title,
+html.dark .share-dialog-light .el-dialog__title {
+  color: #303133 !important;
+}
+.share-dialog-light .el-dialog__body,
+html.dark .share-dialog-light .el-dialog__body {
+  background-color: #ffffff !important;
+  color: #303133 !important;
+}
+.share-dialog-light .el-dialog__footer,
+html.dark .share-dialog-light .el-dialog__footer {
+  background-color: #ffffff !important;
+}
+.share-dialog-light .el-dialog__headerbtn .el-dialog__close,
+html.dark .share-dialog-light .el-dialog__headerbtn .el-dialog__close {
+  color: #909399 !important;
+}
+.share-dialog-light .share-loading-text,
+html.dark .share-dialog-light .share-loading-text {
+  color: #909399 !important;
 }
 </style>
