@@ -912,15 +912,26 @@ export class UserController {
     const inactive = await this.userRepository.count({ where: { ...tenantWhere, status: 'inactive' } });
     const locked = await this.userRepository.count({ where: { ...tenantWhere, status: 'locked' } });
 
-    // 在职/离职（基于 employment_status 字段）
-    const employedActive = await this.userRepository.count({ where: { ...tenantWhere, employmentStatus: 'active' } });
-    const resigned = await this.userRepository.count({ where: { ...tenantWhere, employmentStatus: 'resigned' } });
+    // 在职/离职（基于 employment_status 字段，若字段不存在则降级处理）
+    let employedActive = 0;
+    let resigned = 0;
+    try {
+      employedActive = await this.userRepository.count({ where: { ...tenantWhere, employmentStatus: 'active' } });
+      resigned = await this.userRepository.count({ where: { ...tenantWhere, employmentStatus: 'resigned' } });
+    } catch (e: any) {
+      if (e?.driverError?.code === 'ER_BAD_FIELD_ERROR') {
+        employedActive = active;
+        resigned = inactive;
+      } else {
+        throw e;
+      }
+    }
 
     // 本月新增用户数
     const now = new Date();
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
     const monthNewQuery = this.userRepository.createQueryBuilder('user')
-      .where('user.createTime >= :monthStart', { monthStart });
+      .where('user.createdAt >= :monthStart', { monthStart });
     if (tenantId) {
       monthNewQuery.andWhere('user.tenantId = :tenantId', { tenantId });
     }
