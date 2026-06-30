@@ -1053,9 +1053,9 @@ const performanceChartOption = computed(() => {
       axisPointer: {
         type: 'cross'
       },
-      backgroundColor: isDark.value ? '#303030' : undefined,
-      borderColor: isDark.value ? '#424242' : undefined,
-      textStyle: { color: isDark.value ? '#D0D0D0' : undefined },
+      backgroundColor: isDark.value ? '#303030' : '#ffffff',
+      borderColor: isDark.value ? '#424242' : '#dcdfe6',
+      textStyle: { color: isDark.value ? '#D0D0D0' : '#303133' },
       formatter: function(params: Array<{axisValue: string, value: number, marker: string, seriesName: string, dataIndex: number}>) {
         let result = `${params[0].axisValue}<br/>`
         params.forEach((param) => {
@@ -1157,9 +1157,9 @@ const orderStatusChartData = ref([] as Array<{ value: number; name: string; amou
 const orderStatusChartOption = computed(() => ({
   tooltip: {
     trigger: 'item',
-    backgroundColor: isDark.value ? '#303030' : undefined,
-    borderColor: isDark.value ? '#424242' : undefined,
-    textStyle: { color: isDark.value ? '#D0D0D0' : undefined },
+    backgroundColor: isDark.value ? '#303030' : '#ffffff',
+    borderColor: isDark.value ? '#424242' : '#dcdfe6',
+    textStyle: { color: isDark.value ? '#D0D0D0' : '#303133' },
     formatter: (params: unknown) => {
       const data = params.data
       return `${params.name}: ${data.value}单<br/>金额: ¥${(data.amount || 0).toLocaleString()}`
