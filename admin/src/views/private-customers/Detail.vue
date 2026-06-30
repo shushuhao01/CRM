@@ -239,7 +239,7 @@
         <el-descriptions-item label="在线/席位/用户">
           <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
             <span :class="{ 'text-bold text-primary': detail.user_limit_mode === 'online' }" style="white-space:nowrap;">
-              在线 <strong>{{ detail.current_online_seats || detail.online_count || 0 }}</strong>
+              在线 <strong>{{ detail.reportedOnlineCount || detail.current_online_seats || 0 }}</strong>
             </span>
             <span style="color:#c0c4cc;">/</span>
             <span style="white-space:nowrap;">
@@ -248,14 +248,19 @@
             <el-tag v-if="detail.user_limit_mode === 'online'" size="small" type="success" effect="dark" style="font-size:10px;padding:0 4px;height:18px;line-height:18px;">限在</el-tag>
             <span style="color:#c0c4cc;">|</span>
             <span v-if="detail.user_limit_mode === 'online'" style="white-space:nowrap;color:#909399;">
-              注册 <strong>{{ detail.userCount || detail.user_count || 0 }}</strong> 人（不限）
+              注册 <strong>{{ detail.reportedUserCount || detail.userCount || 0 }}</strong> 人（不限）
             </span>
             <template v-else>
               <span class="text-bold text-primary" style="white-space:nowrap;">
-                注册 <strong>{{ detail.userCount || detail.user_count || 0 }}</strong>/{{ detail.maxUsers || detail.max_users || 0 }}
+                注册 <strong>{{ detail.reportedUserCount || detail.userCount || 0 }}</strong>/{{ detail.maxUsers || detail.max_users || 0 }}
               </span>
               <el-tag size="small" type="info" effect="dark" style="font-size:10px;padding:0 4px;height:18px;line-height:18px;">限注</el-tag>
             </template>
+          </div>
+          <div v-if="detail.lastHeartbeatAt" style="font-size: 11px; color: #909399; margin-top: 4px;">
+            <el-icon style="vertical-align: middle;"><Timer /></el-icon>
+            最后上报: {{ formatDateTime(detail.lastHeartbeatAt) }}
+            <span v-if="detail.lastHeartbeatIp" style="margin-left: 6px;">IP: {{ detail.lastHeartbeatIp }}</span>
           </div>
         </el-descriptions-item>
         <el-descriptions-item label="到期时间">
@@ -278,7 +283,7 @@
             <code class="machine-id">{{ detail.machineId }}</code>
             <el-button link size="small" @click="copyText(detail.machineId)"><el-icon><CopyDocument /></el-icon></el-button>
           </template>
-          <span v-else class="text-muted">未绑定</span>
+          <span v-else class="text-muted">未激活（激活后自动绑定设备）</span>
         </el-descriptions-item>
         <el-descriptions-item label="创建人">{{ detail.createdByName || detail.createdBy || '-' }}</el-descriptions-item>
       </el-descriptions>
@@ -666,7 +671,7 @@ import type { FormInstance, FormRules } from 'element-plus'
 import {
   Edit, ArrowLeft, Clock, VideoPause, VideoPlay, MoreFilled, RefreshRight,
   Download, Delete, CopyDocument, View, Hide, Refresh, User, Key, Grid,
-  Document, Wallet, CircleCheck, CircleClose, Coin,
+  Document, Wallet, CircleCheck, CircleClose, Coin, Timer,
   Odometer, ShoppingCart, Phone, TrendCharts, Van, Headset, Files, Money, Box, Setting, ChatLineSquare
 } from '@element-plus/icons-vue'
 import { adminApi } from '@/api/admin'

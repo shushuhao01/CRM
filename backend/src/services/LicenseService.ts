@@ -99,11 +99,27 @@ class LicenseService {
       const { license_key, machine_id } = localLicense[0];
       const adminApiUrl = getCentralAdminApiUrl();
 
-      // 请求管理后台验证
+      // 收集本地统计信息用于心跳上报
+      let stats: { onlineCount?: number; userCount?: number; storageUsedMb?: number } = {};
+      try {
+        const thirtyMinAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString().slice(0, 19).replace('T', ' ');
+        const onlineResult = await AppDataSource.query(
+          `SELECT COUNT(*) as cnt FROM users WHERE status = 'active' AND last_active_at >= ?`,
+          [thirtyMinAgo]
+        ).catch(() => [{ cnt: 0 }]);
+        stats.onlineCount = Number(onlineResult[0]?.cnt) || 0;
+
+        const userResult = await AppDataSource.query(
+          `SELECT COUNT(*) as cnt FROM users WHERE status = 'active'`
+        ).catch(() => [{ cnt: 0 }]);
+        stats.userCount = Number(userResult[0]?.cnt) || 0;
+      } catch {}
+
+      // 请求管理后台验证（附带统计信息）
       const response = await fetch(`${adminApiUrl}/verify/license`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ licenseKey: license_key, machineId: machine_id })
+        body: JSON.stringify({ licenseKey: license_key, machineId: machine_id, stats })
       });
 
       const result = await response.json() as { success?: boolean; data?: { valid?: boolean; maxUsers?: number; expiresAt?: string; features?: any; licenseType?: string; userLimitMode?: string; maxOnlineSeats?: number }; message?: string };

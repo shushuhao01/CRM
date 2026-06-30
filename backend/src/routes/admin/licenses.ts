@@ -282,7 +282,7 @@ router.get('/:id', async (req: Request, res: Response) => {
       }
     } catch { /* ignore */ }
 
-    res.json({ success: true, data: { ...license, features: resolvedFeatures, packageInfo, userCount, createdByName, crmPasswordStatus, crmPasswordDisplay, memberPasswordStatus, memberPasswordDisplay, tenantCode } });
+    res.json({ success: true, data: { ...license, features: resolvedFeatures, packageInfo, userCount, createdByName, crmPasswordStatus, crmPasswordDisplay, memberPasswordStatus, memberPasswordDisplay, tenantCode, reportedOnlineCount: license.reportedOnlineCount || 0, reportedUserCount: license.reportedUserCount || 0, reportedStorageUsedMb: license.reportedStorageUsedMb || 0, lastHeartbeatAt: license.lastHeartbeatAt, lastHeartbeatIp: license.lastHeartbeatIp } });
   } catch (error: any) {
     logger.error('[Admin Licenses] Get detail failed:', error);
     res.status(500).json({ success: false, message: '获取授权详情失败' });

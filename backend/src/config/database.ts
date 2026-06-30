@@ -208,13 +208,13 @@ const AppDataSource = new DataSource({
   timezone: '+08:00',
   // 字符集配置
   charset: process.env.DB_CHARSET || 'utf8mb4',
-  // 连接池配置（多租户场景需要更大的连接池）
+  // 连接池配置（根据服务器内存调整，2G服务器建议10-15）
   extra: {
-    connectionLimit: parseInt(process.env.DB_CONNECTION_LIMIT || '50'),
+    connectionLimit: parseInt(process.env.DB_CONNECTION_LIMIT || '10'),
     connectTimeout: 10000,
     acquireTimeout: 10000,
     waitForConnections: true,
-    queueLimit: 0,
+    queueLimit: 50,
     enableKeepAlive: true,
     keepAliveInitialDelay: 10000,
   },

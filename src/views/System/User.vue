@@ -3238,39 +3238,38 @@ const loadRoles = async () => {
 }
 
 /**
- * 加载用户统计
+ * 加载用户统计（从后端API获取全局统计，不依赖当前页数据）
  */
 const loadUserStats = async () => {
   try {
-    // 【批次192修复】直接使用本地计算，避免不必要的API请求
-    // 在Mock模式下，API请求会失败并显示错误提示
-    throw new Error('使用本地计算')
-  } catch (error) {
-    // 【批次192修复】静默处理，不显示错误提示
-    // 降级方案：基于当前用户列表数据进行实时计算
-    const now = new Date()
-    const currentMonth = now.getMonth()
-    const currentYear = now.getFullYear()
-
-    const totalUsers = userList.value.length
-    const activeUsers = userList.value.filter(user =>
-      (user.employmentStatus || 'active') === 'active'
-    ).length
-    const resignedUsers = userList.value.filter(user =>
-      user.employmentStatus === 'resigned'
-    ).length
-    const monthNewUsers = userList.value.filter(user => {
-      if (!user.createTime) return false
-      const createDate = new Date(user.createTime)
-      return createDate.getMonth() === currentMonth && createDate.getFullYear() === currentYear
-    }).length
-
-    userStats.value = {
-      total: totalUsers,
-      active: activeUsers,
-      resigned: resignedUsers,
-      monthNew: monthNewUsers
+    const res = await requestApi.get('/users/statistics') as any
+    if (res?.success && res.data) {
+      userStats.value = {
+        total: res.data.total || 0,
+        active: res.data.employedActive ?? res.data.active ?? 0,
+        resigned: res.data.resigned || 0,
+        monthNew: res.data.monthNew || 0
+      }
+      return
     }
+  } catch (error) {
+    console.warn('[User] 获取用户统计失败，使用本地计算')
+  }
+
+  // 降级：若API失败则从当前列表计算（不完全准确但不报错）
+  const now = new Date()
+  const currentMonth = now.getMonth()
+  const currentYear = now.getFullYear()
+
+  userStats.value = {
+    total: userList.value.length,
+    active: userList.value.filter(u => (u.employmentStatus || 'active') === 'active').length,
+    resigned: userList.value.filter(u => u.employmentStatus === 'resigned').length,
+    monthNew: userList.value.filter(u => {
+      if (!u.createTime) return false
+      const d = new Date(u.createTime)
+      return d.getMonth() === currentMonth && d.getFullYear() === currentYear
+    }).length
   }
 }
 

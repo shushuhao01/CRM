@@ -288,8 +288,8 @@ class PerformanceReportScheduler {
       .where('DATE(CONVERT_TZ(o.created_at, "+00:00", "+08:00")) >= :start', { start: monthStartStr });
 
     if (viewScope === 'department' && targetDepartments.length > 0) {
-      dailyQuery.andWhere('o.department_id IN (:...depts)', { depts: targetDepartments });
-      monthlyQuery.andWhere('o.department_id IN (:...depts)', { depts: targetDepartments });
+      dailyQuery.andWhere('o.created_by_department_id IN (:...depts)', { depts: targetDepartments });
+      monthlyQuery.andWhere('o.created_by_department_id IN (:...depts)', { depts: targetDepartments });
     }
 
     const dailyStats = await dailyQuery
@@ -348,7 +348,7 @@ class PerformanceReportScheduler {
       .orderBy('totalAmount', 'DESC');
 
     if (viewScope === 'department' && targetDepartments.length > 0) {
-      rankingQuery = rankingQuery.andWhere('o.department_id IN (:...depts)', { depts: targetDepartments });
+      rankingQuery = rankingQuery.andWhere('o.created_by_department_id IN (:...depts)', { depts: targetDepartments });
     }
 
     // 🔥 使用配置的排行数量限制

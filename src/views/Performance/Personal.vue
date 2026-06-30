@@ -1423,18 +1423,15 @@ const sharePerformance = async () => {
  * 生成业绩报告图片
  */
 const generatePerformanceImage = async () => {
-  // 创建一个临时容器
   const container = document.createElement('div')
   container.style.cssText = `
     position: fixed;
     left: -9999px;
     top: 0;
-    width: 800px;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    padding: 40px;
-    border-radius: 16px;
-    box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    width: 680px;
+    padding: 0;
+    color-scheme: light;
+    font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif;
   `
 
   const currentUser = userStore.currentUser
@@ -1442,63 +1439,50 @@ const generatePerformanceImage = async () => {
     ? `${dateRange.value[0]} 至 ${dateRange.value[1]}`
     : '全部时间'
 
+  const trendColor = (val: number) => val >= 0 ? '#10b981' : '#ef4444'
+  const trendIcon = (val: number) => val >= 0 ? '↑' : '↓'
+
   container.innerHTML = `
-    <div style="background: white; border-radius: 12px; padding: 32px; position: relative;">
-      <!-- 标题 -->
-      <div style="text-align: center; margin-bottom: 32px;">
-        <h1 style="margin: 0 0 8px 0; font-size: 32px; color: #303133; font-weight: 700;">
-          📊 业绩报告
-        </h1>
-        <p style="margin: 0; color: #909399; font-size: 16px;">
-          ${currentUser?.name || '销售人员'} · ${dateRangeText}
-        </p>
+    <div style="background: #f8fafc; border-radius: 20px; padding: 36px 32px 28px; position: relative;">
+      <!-- 标题区 -->
+      <div style="text-align: center; margin-bottom: 28px;">
+        <div style="font-size: 24px; font-weight: 700; color: #1e293b; margin-bottom: 6px;">业绩报告</div>
+        <div style="font-size: 13px; color: #94a3b8;">${currentUser?.name || '销售人员'} · ${dateRangeText}</div>
       </div>
 
-      <!-- 业绩卡片 -->
-      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 32px;">
-        <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 24px; border-radius: 12px; color: white;">
-          <div style="font-size: 14px; opacity: 0.9; margin-bottom: 8px;">总销售额</div>
-          <div style="font-size: 32px; font-weight: 700;">${performanceData.value.totalSales}</div>
-          <div style="font-size: 12px; opacity: 0.8; margin-top: 8px;">
-            ${performanceData.value.salesTrend > 0 ? '↑' : '↓'} ${Math.abs(performanceData.value.salesTrend)}% 较上期
-          </div>
+      <!-- 数据卡片 -->
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 24px;">
+        <div style="background: #ffffff; border: 1px solid #e8edf3; border-radius: 12px; padding: 20px;">
+          <div style="font-size: 12px; color: #64748b; margin-bottom: 8px; font-weight: 500;">总销售额</div>
+          <div style="font-size: 24px; font-weight: 700; color: #1e293b; letter-spacing: -0.5px;">¥${formatNumber(performanceData.value.totalSales)}</div>
+          <div style="font-size: 11px; color: ${trendColor(performanceData.value.salesTrend)}; margin-top: 8px; font-weight: 500;">${trendIcon(performanceData.value.salesTrend)} ${Math.abs(performanceData.value.salesTrend)}% 较上期</div>
         </div>
-        <div style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); padding: 24px; border-radius: 12px; color: white;">
-          <div style="font-size: 14px; opacity: 0.9; margin-bottom: 8px;">订单数量</div>
-          <div style="font-size: 32px; font-weight: 700;">${performanceData.value.totalOrders}</div>
-          <div style="font-size: 12px; opacity: 0.8; margin-top: 8px;">
-            ${performanceData.value.ordersTrend > 0 ? '↑' : '↓'} ${Math.abs(performanceData.value.ordersTrend)}% 较上期
-          </div>
+        <div style="background: #ffffff; border: 1px solid #e8edf3; border-radius: 12px; padding: 20px;">
+          <div style="font-size: 12px; color: #64748b; margin-bottom: 8px; font-weight: 500;">订单数量</div>
+          <div style="font-size: 24px; font-weight: 700; color: #1e293b;">${performanceData.value.totalOrders}</div>
+          <div style="font-size: 11px; color: ${trendColor(performanceData.value.ordersTrend)}; margin-top: 8px; font-weight: 500;">${trendIcon(performanceData.value.ordersTrend)} ${Math.abs(performanceData.value.ordersTrend)}% 较上期</div>
         </div>
-        <div style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); padding: 24px; border-radius: 12px; color: white;">
-          <div style="font-size: 14px; opacity: 0.9; margin-bottom: 8px;">签收业绩</div>
-          <div style="font-size: 32px; font-weight: 700;">¥${formatNumber(performanceData.value.signedAmount)}</div>
-          <div style="font-size: 12px; opacity: 0.8; margin-top: 8px;">
-            ${performanceData.value.signedTrend > 0 ? '↑' : '↓'} ${Math.abs(performanceData.value.signedTrend)}% 较上期
-          </div>
+        <div style="background: #ffffff; border: 1px solid #e8edf3; border-radius: 12px; padding: 20px;">
+          <div style="font-size: 12px; color: #64748b; margin-bottom: 8px; font-weight: 500;">签收金额</div>
+          <div style="font-size: 24px; font-weight: 700; color: #1e293b; letter-spacing: -0.5px;">¥${formatNumber(performanceData.value.signedAmount)}</div>
+          <div style="font-size: 11px; color: ${trendColor(performanceData.value.signedTrend)}; margin-top: 8px; font-weight: 500;">${trendIcon(performanceData.value.signedTrend)} ${Math.abs(performanceData.value.signedTrend)}% 较上期</div>
         </div>
-        <div style="background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%); padding: 24px; border-radius: 12px; color: white;">
-          <div style="font-size: 14px; opacity: 0.9; margin-bottom: 8px;">签收订单数量</div>
-          <div style="font-size: 32px; font-weight: 700;">${performanceData.value.signedOrders}</div>
-          <div style="font-size: 12px; opacity: 0.8; margin-top: 8px;">
-            ${performanceData.value.signedOrdersTrend > 0 ? '↑' : '↓'} ${Math.abs(performanceData.value.signedOrdersTrend)}% 较上期
-          </div>
+        <div style="background: #ffffff; border: 1px solid #e8edf3; border-radius: 12px; padding: 20px;">
+          <div style="font-size: 12px; color: #64748b; margin-bottom: 8px; font-weight: 500;">签收订单数</div>
+          <div style="font-size: 24px; font-weight: 700; color: #1e293b;">${performanceData.value.signedOrders}</div>
+          <div style="font-size: 11px; color: ${trendColor(performanceData.value.signedOrdersTrend)}; margin-top: 8px; font-weight: 500;">${trendIcon(performanceData.value.signedOrdersTrend)} ${Math.abs(performanceData.value.signedOrdersTrend)}% 较上期</div>
         </div>
       </div>
 
-      <!-- 底部信息 -->
-      <div style="text-align: center; padding-top: 24px; border-top: 2px solid #f0f0f0;">
-        <p style="margin: 0 0 8px 0; color: #909399; font-size: 14px;">
-          ${configStore.systemConfig.systemName}
-        </p>
-        <p style="margin: 0; color: #c0c4cc; font-size: 12px;">
-          生成时间：${new Date().toLocaleString('zh-CN')}
-        </p>
+      <!-- 底部品牌 -->
+      <div style="text-align: center; padding-top: 16px; border-top: 1px solid #e8edf3;">
+        <div style="font-size: 12px; color: #64748b; font-weight: 500;">${configStore.systemConfig.systemName || '云客CRM'}</div>
+        <div style="font-size: 11px; color: #94a3b8; margin-top: 3px;">${new Date().toLocaleString('zh-CN')}</div>
       </div>
 
       ${configStore.performanceShareConfig.watermarkEnabled ? `
-        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%) rotate(-45deg);
-                    font-size: 48px; color: rgba(0,0,0,0.03); font-weight: 700; white-space: nowrap; pointer-events: none;">
+        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%) rotate(-30deg);
+                    font-size: 40px; color: rgba(0,0,0,0.015); font-weight: 700; white-space: nowrap; pointer-events: none;">
           ${getWatermarkText()}
         </div>
       ` : ''}
@@ -1508,9 +1492,8 @@ const generatePerformanceImage = async () => {
   document.body.appendChild(container)
 
   try {
-    // 使用html2canvas生成图片
     const canvas = await html2canvas(container, {
-      backgroundColor: null,
+      backgroundColor: '#f8fafc',
       scale: 2,
       logging: false,
       useCORS: true

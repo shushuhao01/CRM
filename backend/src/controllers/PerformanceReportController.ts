@@ -373,8 +373,8 @@ export class PerformanceReportController {
 
     // 如果是部门视角，添加部门过滤
     if (viewScope === 'department' && targetDepartments.length > 0) {
-      dailyQuery.andWhere('o.department_id IN (:...depts)', { depts: targetDepartments });
-      monthlyQuery.andWhere('o.department_id IN (:...depts)', { depts: targetDepartments });
+      dailyQuery.andWhere('o.created_by_department_id IN (:...depts)', { depts: targetDepartments });
+      monthlyQuery.andWhere('o.created_by_department_id IN (:...depts)', { depts: targetDepartments });
     }
 
     // 获取统计数据
@@ -471,7 +471,7 @@ export class PerformanceReportController {
 
     // 如果是部门视角，添加部门过滤
     if (viewScope === 'department' && targetDepartments.length > 0) {
-      rankingQuery = rankingQuery.andWhere('o.department_id IN (:...depts)', { depts: targetDepartments });
+      rankingQuery = rankingQuery.andWhere('o.created_by_department_id IN (:...depts)', { depts: targetDepartments });
     }
 
     // 🔥 使用配置的排行数量限制

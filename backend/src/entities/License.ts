@@ -72,6 +72,21 @@ export class License {
   @UpdateDateColumn({ name: 'updated_at' })
   updatedAt!: Date;
 
+  @Column({ name: 'reported_online_count', type: 'int', default: 0, comment: '私有CRM上报的在线人数' })
+  reportedOnlineCount?: number;
+
+  @Column({ name: 'reported_user_count', type: 'int', default: 0, comment: '私有CRM上报的注册用户数' })
+  reportedUserCount?: number;
+
+  @Column({ name: 'reported_storage_used_mb', type: 'decimal', precision: 10, scale: 2, default: 0, comment: '私有CRM上报的存储用量(MB)' })
+  reportedStorageUsedMb?: number;
+
+  @Column({ name: 'last_heartbeat_at', type: 'datetime', nullable: true, comment: '最后一次心跳上报时间' })
+  lastHeartbeatAt?: Date;
+
+  @Column({ name: 'last_heartbeat_ip', type: 'varchar', length: 45, nullable: true, comment: '最后心跳来源IP' })
+  lastHeartbeatIp?: string;
+
   @Column({ name: 'deleted_at', type: 'datetime', nullable: true })
   deletedAt?: Date | null;
 

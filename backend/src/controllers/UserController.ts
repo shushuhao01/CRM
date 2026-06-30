@@ -912,6 +912,20 @@ export class UserController {
     const inactive = await this.userRepository.count({ where: { ...tenantWhere, status: 'inactive' } });
     const locked = await this.userRepository.count({ where: { ...tenantWhere, status: 'locked' } });
 
+    // 在职/离职（基于 employment_status 字段）
+    const employedActive = await this.userRepository.count({ where: { ...tenantWhere, employmentStatus: 'active' } });
+    const resigned = await this.userRepository.count({ where: { ...tenantWhere, employmentStatus: 'resigned' } });
+
+    // 本月新增用户数
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const monthNewQuery = this.userRepository.createQueryBuilder('user')
+      .where('user.createTime >= :monthStart', { monthStart });
+    if (tenantId) {
+      monthNewQuery.andWhere('user.tenantId = :tenantId', { tenantId });
+    }
+    const monthNew = await monthNewQuery.getCount();
+
     const adminCount = await this.userRepository.count({ where: { ...tenantWhere, role: 'admin' } });
     const superAdminCount = await this.userRepository.count({ where: { ...tenantWhere, role: 'super_admin' } });
     const managerCount = await this.userRepository.count({ where: { ...tenantWhere, role: 'manager' } });
@@ -941,6 +955,7 @@ export class UserController {
 
     const statistics = {
       total, active, inactive, locked,
+      employedActive, resigned, monthNew,
       byRole: {
         admin: adminCount, super_admin: superAdminCount,
         manager: managerCount, department_manager: departmentManagerCount,

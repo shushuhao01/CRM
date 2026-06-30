@@ -537,13 +537,19 @@ onMounted(() => {
   cursor: pointer;
   transition: all 0.25s;
   position: relative;
+}
+
+.message-bell .bell-icon {
   color: #b0b3b8;
-  opacity: 0.7;
+  transition: color 0.25s;
 }
 
 .message-bell:hover {
   background-color: rgba(0,0,0,0.04);
-  opacity: 1;
+}
+
+.message-bell:hover .bell-icon {
+  color: #606266;
 }
 
 .message-bell :deep(.el-badge) {

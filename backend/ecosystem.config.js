@@ -4,6 +4,7 @@ module.exports = {
     script: './dist/app.js',
     instances: 1,
     exec_mode: 'fork',
+    node_args: '--max-old-space-size=512',
     env: {
       NODE_ENV: 'production',
       PORT: 3000
@@ -15,12 +16,14 @@ module.exports = {
     merge_logs: true,
     autorestart: true,
     watch: false,
-    max_memory_restart: '1G',
-    // 日志大小限制：超过 50MB 自动轮转
-    max_size: '50M',
-    // 最多保留 3 个旧日志文件
+    max_memory_restart: '512M',
+    restart_delay: 3000,
+    max_restarts: 10,
+    min_uptime: '10s',
+    kill_timeout: 5000,
+    listen_timeout: 8000,
+    max_size: '20M',
     retain: 3,
-    // 旧日志压缩
     compress: true
   }]
 };

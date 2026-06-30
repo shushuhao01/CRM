@@ -171,6 +171,34 @@ CREATE TABLE IF NOT EXISTS `migration_history` (
 ALTER TABLE `users` MODIFY COLUMN `status` ENUM('active', 'inactive', 'resigned', 'locked') NOT NULL DEFAULT 'active';
 
 -- =============================================
+-- 9. licenses表新增心跳上报字段（私有客户统计）
+-- MySQL不支持 ADD COLUMN IF NOT EXISTS，使用存储过程安全添加
+-- =============================================
+DROP PROCEDURE IF EXISTS _add_license_heartbeat_cols;
+DELIMITER $$
+CREATE PROCEDURE _add_license_heartbeat_cols()
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='licenses' AND column_name='reported_online_count') THEN
+    ALTER TABLE `licenses` ADD COLUMN `reported_online_count` INT DEFAULT 0 COMMENT '私有CRM上报的在线人数';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='licenses' AND column_name='reported_user_count') THEN
+    ALTER TABLE `licenses` ADD COLUMN `reported_user_count` INT DEFAULT 0 COMMENT '私有CRM上报的注册用户数';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='licenses' AND column_name='reported_storage_used_mb') THEN
+    ALTER TABLE `licenses` ADD COLUMN `reported_storage_used_mb` DECIMAL(10,2) DEFAULT 0 COMMENT '私有CRM上报的存储用量(MB)';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='licenses' AND column_name='last_heartbeat_at') THEN
+    ALTER TABLE `licenses` ADD COLUMN `last_heartbeat_at` DATETIME NULL COMMENT '最后一次心跳上报时间';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='licenses' AND column_name='last_heartbeat_ip') THEN
+    ALTER TABLE `licenses` ADD COLUMN `last_heartbeat_ip` VARCHAR(45) NULL COMMENT '最后心跳来源IP';
+  END IF;
+END$$
+DELIMITER ;
+CALL _add_license_heartbeat_cols();
+DROP PROCEDURE IF EXISTS _add_license_heartbeat_cols;
+
+-- =============================================
 -- 完成：记录本次迁移到 migration_history
 -- =============================================
 INSERT INTO `migration_history` (`filename`, `checksum`, `execution_time`, `success`)

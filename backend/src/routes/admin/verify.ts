@@ -26,7 +26,7 @@ const getClientIp = (req: Request): string => {
 // 验证授权码
 router.post('/license', async (req: Request, res: Response) => {
   try {
-    const { licenseKey, machineId } = req.body;
+    const { licenseKey, machineId, stats } = req.body;
     const clientIp = getClientIp(req);
     const userAgent = req.headers['user-agent'] || '';
 
@@ -123,6 +123,42 @@ router.post('/license', async (req: Request, res: Response) => {
     log.message = '验证成功';
     await logRepo.save(log);
 
+    // 存储私有CRM上报的统计信息（心跳数据）
+    if (stats && typeof stats === 'object') {
+      try {
+        const updateFields: string[] = [
+          'last_heartbeat_at = NOW()',
+          'last_heartbeat_ip = ?'
+        ];
+        const updateValues: any[] = [clientIp];
+
+        if (typeof stats.onlineCount === 'number') {
+          updateFields.push('reported_online_count = ?');
+          updateValues.push(stats.onlineCount);
+        }
+        if (typeof stats.userCount === 'number') {
+          updateFields.push('reported_user_count = ?');
+          updateValues.push(stats.userCount);
+        }
+        if (typeof stats.storageUsedMb === 'number') {
+          updateFields.push('reported_storage_used_mb = ?');
+          updateValues.push(stats.storageUsedMb);
+        }
+        if (machineId && !license.machineId) {
+          updateFields.push('machine_id = ?');
+          updateValues.push(machineId);
+        }
+
+        updateValues.push(license.id);
+        await AppDataSource.query(
+          `UPDATE licenses SET ${updateFields.join(', ')} WHERE id = ?`,
+          updateValues
+        );
+      } catch (e: any) {
+        logger.warn('[License Verify] 保存心跳统计失败:', e.message);
+      }
+    }
+
     res.json({
       success: true,
       data: {
@@ -132,7 +168,9 @@ router.post('/license', async (req: Request, res: Response) => {
         features: license.features,
         expiresAt: license.expiresAt,
         customerName: license.customerName,
-        customerPhone: license.customerPhone || null
+        customerPhone: license.customerPhone || null,
+        userLimitMode: license.userLimitMode || 'total',
+        maxOnlineSeats: license.maxOnlineSeats || 0
       }
     });
   } catch (error: any) {
