@@ -7029,7 +7029,84 @@ html.dark {
     color: var(--crm-dark-text-primary) !important;
   }
 
-} /* end html.dark — sections 54–72 */
+/* ============================================================
+   73. 移动应用下载页 — MobileSettings / MobileAppDownload
+   ============================================================ */
+
+  /* 独立下载页面背景 */
+  .mobile-app-download-page {
+    background: var(--crm-dark-base) !important;
+  }
+  .mobile-app-download-page .page-header h2 {
+    color: var(--crm-dark-text-primary) !important;
+  }
+  .mobile-app-download-page .page-header p {
+    color: var(--crm-dark-text-secondary) !important;
+  }
+
+  /* 应用卡片 */
+  .mobile-app-content .app-card,
+  .setting-card .app-card {
+    background: var(--crm-dark-card) !important;
+    border-color: var(--crm-dark-border) !important;
+  }
+  .mobile-app-content .app-card:hover,
+  .setting-card .app-card:hover {
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4) !important;
+  }
+  .mobile-app-content .app-card.android {
+    border-top-color: #3ddc84 !important;
+  }
+  .mobile-app-content .app-card.ios {
+    border-top-color: #007aff !important;
+  }
+
+  /* 卡片内文字 */
+  .mobile-app-content .app-name,
+  .setting-card .app-name {
+    color: var(--crm-dark-text-primary) !important;
+  }
+  .mobile-app-content .info-label,
+  .setting-card .info-label {
+    color: var(--crm-dark-text-secondary) !important;
+  }
+  .mobile-app-content .info-value,
+  .setting-card .info-value {
+    color: var(--crm-dark-text-primary) !important;
+  }
+  .mobile-app-content .app-info-row,
+  .setting-card .app-info-row {
+    border-bottom-color: var(--crm-dark-border-light) !important;
+  }
+
+  /* 应用描述区域 */
+  .mobile-app-content .app-description,
+  .setting-card .app-description {
+    background: var(--crm-dark-raised) !important;
+    color: var(--crm-dark-text-regular) !important;
+  }
+
+  /* 空状态提示 */
+  .mobile-app-content .empty-tip,
+  .setting-card .empty-tip {
+    color: var(--crm-dark-text-secondary) !important;
+  }
+
+  /* 安装说明 */
+  .mobile-app-content .section-title,
+  .setting-card .section-title {
+    color: var(--crm-dark-text-primary) !important;
+  }
+  .mobile-app-content .guide-content,
+  .setting-card .guide-content {
+    color: var(--crm-dark-text-regular) !important;
+  }
+  .mobile-app-content .guide-content ol li,
+  .setting-card .guide-content ol li {
+    color: var(--crm-dark-text-regular) !important;
+  }
+
+} /* end html.dark — sections 54–73 */
 
 /* ============================================================
    53. 打印强制亮色

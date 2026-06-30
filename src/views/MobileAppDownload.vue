@@ -18,7 +18,7 @@ import MobileSettings from '@/views/System/Settings/MobileSettings.vue'
 .mobile-app-download-page {
   padding: 20px;
   min-height: calc(100vh - 120px);
-  background: #f5f7fa;
+  background: var(--crm-dark-base, #f5f7fa);
 }
 .page-container {
   max-width: 900px;
@@ -30,11 +30,11 @@ import MobileSettings from '@/views/System/Settings/MobileSettings.vue'
 .page-header h2 {
   margin: 0 0 6px;
   font-size: 22px;
-  color: #303133;
+  color: var(--crm-dark-text-primary, #303133);
 }
 .page-header p {
   margin: 0;
   font-size: 14px;
-  color: #909399;
+  color: var(--crm-dark-text-secondary, #909399);
 }
 </style>

@@ -203,12 +203,12 @@ onMounted(() => { loadAppList() })
 .mobile-app-content { padding: 10px 0; }
 .loading-state { padding: 20px; }
 .empty-state { padding: 40px 0; text-align: center; }
-.empty-tip { color: #909399; font-size: 13px; margin-top: 8px; }
-.section-title { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; font-size: 15px; color: #303133; }
+.empty-tip { color: var(--crm-dark-text-secondary, #909399); font-size: 13px; margin-top: 8px; }
+.section-title { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; font-size: 15px; color: var(--crm-dark-text-primary, #303133); }
 
 .app-download-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 24px; margin-bottom: 30px; }
-.app-card { border: 1px solid #e4e7ed; border-radius: 12px; padding: 24px; transition: all 0.3s; background: #fff; }
-.app-card:hover { box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08); transform: translateY(-2px); }
+.app-card { border: 1px solid var(--crm-dark-border, #e4e7ed); border-radius: 12px; padding: 24px; transition: all 0.3s; background: var(--crm-dark-card, #fff); }
+.app-card:hover { box-shadow: var(--crm-dark-shadow, 0 4px 16px rgba(0, 0, 0, 0.08)); transform: translateY(-2px); }
 .app-card.android { border-top: 3px solid #3ddc84; }
 .app-card.ios { border-top: 3px solid #007aff; }
 
@@ -217,15 +217,15 @@ onMounted(() => { loadAppList() })
 .app-icon.android { background: linear-gradient(135deg, #3ddc84, #00c853); }
 .app-icon.ios { background: linear-gradient(135deg, #007aff, #5856d6); }
 .app-meta { flex: 1; }
-.app-name { margin: 0 0 8px; font-size: 18px; font-weight: 600; color: #303133; }
+.app-name { margin: 0 0 8px; font-size: 18px; font-weight: 600; color: var(--crm-dark-text-primary, #303133); }
 .app-tags { display: flex; gap: 6px; }
 
 .app-card-body { margin-bottom: 20px; }
-.app-info-row { display: flex; justify-content: space-between; padding: 6px 0; font-size: 13px; border-bottom: 1px dashed #f0f0f0; }
+.app-info-row { display: flex; justify-content: space-between; padding: 6px 0; font-size: 13px; border-bottom: 1px dashed var(--crm-dark-border-light, #f0f0f0); }
 .app-info-row:last-child { border-bottom: none; }
-.info-label { color: #909399; }
-.info-value { color: #303133; font-weight: 500; }
-.app-description { margin-top: 12px; padding: 10px 12px; background: #f5f7fa; border-radius: 6px; font-size: 13px; color: #606266; line-height: 1.6; }
+.info-label { color: var(--crm-dark-text-secondary, #909399); }
+.info-value { color: var(--crm-dark-text-primary, #303133); font-weight: 500; }
+.app-description { margin-top: 12px; padding: 10px 12px; background: var(--crm-dark-raised, #f5f7fa); border-radius: 6px; font-size: 13px; color: var(--crm-dark-text-regular, #606266); line-height: 1.6; }
 
 .app-card-footer { display: flex; align-items: center; gap: 10px; }
 .download-btn { flex: 1; font-size: 15px; height: 42px; border-radius: 8px; }
@@ -233,6 +233,6 @@ onMounted(() => { loadAppList() })
 .usage-guide { margin-top: 20px; }
 .guide-content { padding: 16px; }
 .guide-content ol { padding-left: 20px; }
-.guide-content ol li { margin-bottom: 8px; line-height: 1.8; color: #606266; }
+.guide-content ol li { margin-bottom: 8px; line-height: 1.8; color: var(--crm-dark-text-regular, #606266); }
 </style>
 

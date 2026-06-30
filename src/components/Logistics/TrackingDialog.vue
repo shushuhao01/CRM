@@ -184,9 +184,19 @@ const getTimelineType = (item: TrackingInfo, index: number): string => {
   return 'info'
 }
 
+// 防止并发重复请求
+let fetchAbortController: AbortController | null = null
+
 // 获取物流轨迹
 const fetchTrackingInfo = async (phone?: string) => {
   if (!props.trackingNo) return
+
+  // 取消上一次未完成的请求
+  if (fetchAbortController) {
+    fetchAbortController.abort()
+  }
+  fetchAbortController = new AbortController()
+  const currentController = fetchAbortController
 
   loading.value = true
   needPhoneVerify.value = false
@@ -202,6 +212,9 @@ const fetchTrackingInfo = async (phone?: string) => {
       props.logisticsCompany,
       phoneToUse
     )
+
+    // 如果请求已被取消（新请求已发出），直接返回
+    if (currentController.signal.aborted) return
 
     console.log('[物流轨迹弹窗] API响应:', response)
 
@@ -248,12 +261,18 @@ const fetchTrackingInfo = async (phone?: string) => {
         ElMessage.warning(data.statusText)
       }
     }
-  } catch (error) {
+  } catch (error: any) {
+    // 如果是被取消的请求，静默忽略
+    if (currentController.signal.aborted || error?.name === 'AbortError' || error?.name === 'CanceledError') {
+      return
+    }
     console.error('获取物流轨迹失败:', error)
     ElMessage.error('获取物流轨迹失败，请重试')
     trackingList.value = []
   } finally {
-    loading.value = false
+    if (!currentController.signal.aborted) {
+      loading.value = false
+    }
   }
 }
 
@@ -288,9 +307,9 @@ watch(visible, (newVal) => {
   }
 })
 
-// 监听快递单号变化
-watch(() => props.trackingNo, (newVal) => {
-  if (newVal && visible.value) {
+// 监听快递单号变化（仅在弹窗已经打开的状态下，切换不同订单时触发）
+watch(() => props.trackingNo, (newVal, oldVal) => {
+  if (newVal && newVal !== oldVal && visible.value && !loading.value) {
     needPhoneVerify.value = false
     phoneInput.value = ''
     fetchTrackingInfo()

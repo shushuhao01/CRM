@@ -54,23 +54,50 @@ async function fetchFromCentralServer(): Promise<any[]> {
  */
 router.get('/list', authenticateToken, async (_req: Request, res: Response) => {
   try {
-    const tableExists = await AppDataSource.query(
-      `SELECT COUNT(*) as cnt FROM information_schema.tables
-       WHERE table_schema = DATABASE() AND table_name = 'mobile_app_packages'`
-    ).catch(() => [{ cnt: 0 }]);
-
     let packages: any[] = [];
-    if (tableExists[0]?.cnt) {
-      packages = await AppDataSource.query(`
-        SELECT p.* FROM mobile_app_packages p
-        INNER JOIN (
-          SELECT platform, MAX(id) as max_id
-          FROM mobile_app_packages
-          WHERE is_enabled = 1
-          GROUP BY platform
-        ) latest ON p.id = latest.max_id
-        ORDER BY p.platform ASC
-      `);
+
+    try {
+      const tableExists = await AppDataSource.query(
+        `SELECT COUNT(*) as cnt FROM information_schema.tables
+         WHERE table_schema = DATABASE() AND table_name = 'mobile_app_packages'`
+      );
+
+      if (tableExists[0]?.cnt > 0) {
+        packages = await AppDataSource.query(`
+          SELECT p.* FROM mobile_app_packages p
+          INNER JOIN (
+            SELECT platform, MAX(id) as max_id
+            FROM mobile_app_packages
+            WHERE is_enabled = 1
+            GROUP BY platform
+          ) latest ON p.id = latest.max_id
+          ORDER BY p.platform ASC
+        `);
+      } else {
+        await AppDataSource.query(`
+          CREATE TABLE IF NOT EXISTS mobile_app_packages (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            platform VARCHAR(20) NOT NULL COMMENT '平台: android/ios',
+            app_name VARCHAR(100) DEFAULT '' COMMENT '应用名称',
+            version VARCHAR(50) DEFAULT '' COMMENT '版本号',
+            package_url VARCHAR(500) DEFAULT '' COMMENT '上传的安装包路径',
+            external_url VARCHAR(500) DEFAULT '' COMMENT '外部下载地址',
+            file_size BIGINT DEFAULT 0 COMMENT '文件大小(字节)',
+            file_hash VARCHAR(64) DEFAULT '' COMMENT '文件SHA256哈希',
+            download_count INT DEFAULT 0 COMMENT '下载次数',
+            is_enabled TINYINT DEFAULT 1 COMMENT '是否启用: 1启用 0禁用',
+            description TEXT COMMENT '版本说明',
+            uploaded_by VARCHAR(100) DEFAULT '' COMMENT '上传者',
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            KEY idx_platform (platform),
+            KEY idx_enabled (is_enabled)
+          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='移动应用安装包管理'
+        `).catch(() => {});
+        log.info('[MobileApp] mobile_app_packages 表不存在，已自动创建');
+      }
+    } catch (dbErr: any) {
+      log.warn('[MobileApp] 查询本地应用包失败，尝试中央服务器:', dbErr.message);
     }
 
     if (packages.length > 0) {
@@ -103,6 +130,16 @@ router.get('/list', authenticateToken, async (_req: Request, res: Response) => {
     res.json({ success: true, data: [] });
   } catch (error: any) {
     log.error('[MobileApp] 获取下载列表失败:', error);
+
+    if (isPrivateDeploy()) {
+      try {
+        const centralApps = await fetchFromCentralServer();
+        if (centralApps.length > 0) {
+          return res.json({ success: true, data: centralApps });
+        }
+      } catch {}
+    }
+
     res.status(500).json({ success: false, message: error.message || '获取失败' });
   }
 });
