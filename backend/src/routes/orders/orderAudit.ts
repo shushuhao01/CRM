@@ -10,6 +10,7 @@ import { orderNotificationService } from '../../services/OrderNotificationServic
 import { formatDateTime } from '../../utils/dateFormat';
 import { formatToBeijingTime, saveStatusHistory } from './orderHelpers';
 import { log } from '../../config/logger';
+import { writeOperationLog, extractUserInfo } from '../../utils/operationLogWriter';
 export function registerAuditRoutes(router: Router): void {router.get('/audit-list', authenticateToken, async (req: Request, res: Response) => {
   try {
     const orderRepository = getTenantRepo(Order);
@@ -282,6 +283,17 @@ router.post('/cancel-request', authenticateToken, async (req: Request, res: Resp
       `申请取消订单，原因：${cancelReason}`,
       { operatorDepartment: deptName, actionType: 'cancel_request' }
     );
+
+    // 🔥 写入订单时间线日志
+    const cancelAuditUserInfo = extractUserInfo(req);
+    writeOperationLog({
+      module: 'order',
+      resourceType: 'order',
+      resourceId: order.id,
+      action: 'cancel_request',
+      description: `申请取消订单，原因：${cancelReason}`,
+      ...cancelAuditUserInfo,
+    });
 
     // 🔥 发送取消申请通知给管理员
     orderNotificationService.notifyOrderCancelRequest({

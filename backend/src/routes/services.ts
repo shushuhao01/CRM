@@ -11,6 +11,7 @@ import { getTenantRepo } from '../utils/tenantRepo';
 import { TenantContextManager } from '../utils/tenantContext';
 import { formatDateTime } from '../utils/dateFormat';
 import { log as logger } from '../config/logger';
+import { writeOperationLog, extractUserInfo } from '../utils/operationLogWriter';
 // import { Like, In } from 'typeorm'; // 暂时未使用
 
 const router = Router();
@@ -442,6 +443,19 @@ router.post('/', authenticateToken, async (req: Request, res: Response) => {
       'pending',
       undefined
     );
+
+    // 🔥 同步写入订单时间线日志（如果有关联订单）
+    if (savedService.orderId) {
+      const serviceUserInfo = extractUserInfo(req);
+      writeOperationLog({
+        module: 'order',
+        resourceType: 'order',
+        resourceId: savedService.orderId,
+        action: 'after_sales_created',
+        description: `创建售后单 ${savedService.serviceNumber}（${savedService.serviceType}），客户：${savedService.customerName || '未知'}`,
+        ...serviceUserInfo,
+      });
+    }
 
     // 🔥 发送售后创建通知给创建者和管理员
     orderNotificationService.notifyAfterSalesCreated({

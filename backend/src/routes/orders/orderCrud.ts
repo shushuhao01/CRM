@@ -1396,6 +1396,15 @@ router.put('/:id', authenticateToken, async (req: Request, res: Response) => {
             description: `发货: ${order.expressCompany || ''} ${order.trackingNumber || ''}`,
             ...editUserInfo,
           });
+          // 🔥 写入订单时间线日志
+          writeOperationLog({
+            module: 'order',
+            resourceType: 'order',
+            resourceId: order.id,
+            action: 'ship',
+            description: `发货: 快递公司=${order.expressCompany || ''}，快递单号=${order.trackingNumber || ''}`,
+            ...editUserInfo,
+          });
           // 🔥 触发自动发送短信
           try {
             const { SmsAutoSendService } = await import('../../services/SmsAutoSendService');
@@ -1413,6 +1422,15 @@ router.put('/:id', authenticateToken, async (req: Request, res: Response) => {
         case 'delivered':
           orderNotificationService.notifyOrderDelivered(orderInfo)
             .catch(err => log.error('[订单更新] 发送签收通知失败:', err));
+          // 🔥 写入订单时间线日志
+          writeOperationLog({
+            module: 'order',
+            resourceType: 'order',
+            resourceId: order.id,
+            action: 'delivered',
+            description: '订单已签收',
+            ...editUserInfo,
+          });
           // 🔥 触发自动发送短信（签收）
           try {
             const { SmsAutoSendService } = await import('../../services/SmsAutoSendService');
@@ -1460,10 +1478,28 @@ router.put('/:id', authenticateToken, async (req: Request, res: Response) => {
         case 'rejected':
           orderNotificationService.notifyOrderRejected(orderInfo, updateData.remark)
             .catch(err => log.error('[订单更新] 发送拒收通知失败:', err));
+          // 🔥 写入订单时间线日志
+          writeOperationLog({
+            module: 'order',
+            resourceType: 'order',
+            resourceId: order.id,
+            action: 'rejected',
+            description: `订单已拒收${updateData.remark ? `，原因：${updateData.remark}` : ''}`,
+            ...editUserInfo,
+          });
           break;
         case 'cancelled':
           orderNotificationService.notifyOrderCancelled(orderInfo, updateData.remark)
             .catch(err => log.error('[订单更新] 发送取消通知失败:', err));
+          // 🔥 写入订单时间线日志
+          writeOperationLog({
+            module: 'order',
+            resourceType: 'order',
+            resourceId: order.id,
+            action: 'cancelled',
+            description: `订单已取消${updateData.remark ? `，原因：${updateData.remark}` : ''}`,
+            ...editUserInfo,
+          });
           // 🔥 释放虚拟库存预占
           try {
             const { getDataSource } = await import('../../config/database');
@@ -1485,14 +1521,41 @@ router.put('/:id', authenticateToken, async (req: Request, res: Response) => {
         case 'logistics_returned':
           orderNotificationService.notifyLogisticsReturned(orderInfo, updateData.remark)
             .catch(err => log.error('[订单更新] 发送物流退回通知失败:', err));
+          // 🔥 写入订单时间线日志
+          writeOperationLog({
+            module: 'order',
+            resourceType: 'order',
+            resourceId: order.id,
+            action: 'logistics_returned',
+            description: `物流退回${updateData.remark ? `，原因：${updateData.remark}` : ''}`,
+            ...editUserInfo,
+          });
           break;
         case 'logistics_cancelled':
           orderNotificationService.notifyLogisticsCancelled(orderInfo, updateData.remark)
             .catch(err => log.error('[订单更新] 发送物流取消通知失败:', err));
+          // 🔥 写入订单时间线日志
+          writeOperationLog({
+            module: 'order',
+            resourceType: 'order',
+            resourceId: order.id,
+            action: 'logistics_cancelled',
+            description: `物流取消${updateData.remark ? `，原因：${updateData.remark}` : ''}`,
+            ...editUserInfo,
+          });
           break;
         case 'package_exception':
           orderNotificationService.notifyPackageException(orderInfo, updateData.remark)
             .catch(err => log.error('[订单更新] 发送包裹异常通知失败:', err));
+          // 🔥 写入订单时间线日志
+          writeOperationLog({
+            module: 'order',
+            resourceType: 'order',
+            resourceId: order.id,
+            action: 'package_exception',
+            description: `包裹异常${updateData.remark ? `，原因：${updateData.remark}` : ''}`,
+            ...editUserInfo,
+          });
           break;
       }
     } else if (updateData.status === undefined || updateData.status === previousStatus) {
@@ -1646,6 +1709,17 @@ router.post('/:id/submit-audit', authenticateToken, async (req: Request, res: Re
       `订单已提交审核，${remark ? `，备注：${remark}` : ''}`,
       { operatorDepartment: opInfoSubmit.departmentName, actionType: 'submit_audit' }
     );
+
+    // 🔥 写入订单时间线日志
+    const submitUserInfo = extractUserInfo(req);
+    writeOperationLog({
+      module: 'order',
+      resourceType: 'order',
+      resourceId: order.id,
+      action: 'submit_audit',
+      description: `提交订单审核${remark ? `，备注：${remark}` : ''}`,
+      ...submitUserInfo,
+    });
 
     log.info(`✅ [订单提审] 订单 ${order.orderNumber} 已提交审核，状态变更为 pending_audit`);
 
@@ -1926,6 +2000,17 @@ router.post('/:id/cancel-audit', authenticateToken, async (req: Request, res: Re
       action === 'approve' ? `取消申请已通过${remark ? `，原因：${remark}` : ''}` : `取消申请已拒绝，${remark ? `，原因：${remark}` : ''}`,
       { operatorDepartment: cancelOpInfo.departmentName, actionType: action === 'approve' ? 'cancel_approve' : 'cancel_reject' }
     );
+
+    // 🔥 写入订单时间线日志
+    const cancelAuditUserInfo = extractUserInfo(req);
+    writeOperationLog({
+      module: 'order',
+      resourceType: 'order',
+      resourceId: order.id,
+      action: action === 'approve' ? 'cancel_approved' : 'cancel_rejected',
+      description: action === 'approve' ? `取消申请已通过${remark ? `，原因：${remark}` : ''}` : `取消申请已拒绝${remark ? `，原因：${remark}` : ''}`,
+      ...cancelAuditUserInfo,
+    });
 
     res.json({
       success: true,

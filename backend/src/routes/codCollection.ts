@@ -11,6 +11,7 @@ import { CodOperationLog } from '../entities/CodOperationLog';
 import { Between, In, Not } from 'typeorm';
 import { getTenantRepo } from '../utils/tenantRepo';
 import { v4 as uuidv4 } from 'uuid';
+import { AppDataSource } from '../config/database';
 
 import { log } from '../config/logger';
 const router = Router();
@@ -43,6 +44,25 @@ async function logCodOperation(params: {
     entry.operatorName = params.operatorName ?? null;
     entry.remark = params.remark ?? null;
     await logRepo.save(entry);
+
+    // 🔥 同步写入订单时间线日志（operation_logs，供订单详情页展示）
+    try {
+      await AppDataSource.query(
+        `INSERT INTO operation_logs (id, module, resource_type, resource_id, action, description, user_id, user_name, tenant_id, created_at)
+         VALUES (?, 'order', 'order', ?, ?, ?, ?, ?, (SELECT tenant_id FROM orders WHERE id = ? LIMIT 1), NOW())`,
+        [
+          uuidv4(),
+          params.orderId,
+          params.operationType,
+          params.operationContent,
+          params.operatorId || null,
+          params.operatorName || null,
+          params.orderId
+        ]
+      );
+    } catch (opLogErr) {
+      log.error('[CodCollection] 写入订单时间线日志失败:', opLogErr);
+    }
   } catch (e) {
     log.error('[CodCollection] 写入操作日志失败:', e);
   }
