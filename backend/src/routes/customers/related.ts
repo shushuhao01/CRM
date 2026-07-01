@@ -454,14 +454,20 @@ router.get('/:id/medical-history', async (req: Request, res: Response) => {
       try {
         const parsed = JSON.parse(customer.medicalHistory);
         if (Array.isArray(parsed)) {
-          medicalRecords = parsed;
+          // 回填旧数据缺少的 operator 字段
+          medicalRecords = parsed.map((entry: any, index: number) => ({
+            ...entry,
+            operator: entry.operator || customer.createdByName || customer.createdBy || '系统',
+            id: entry.id || (Date.now() + index),
+            createTime: entry.createTime || customer.createdAt?.toISOString() || ''
+          }));
         } else {
           // 如果是字符串，转换为单条记录
           medicalRecords = [{
             id: 1,
             content: customer.medicalHistory,
             createTime: customer.createdAt?.toISOString() || '',
-            operator: '系统'
+            operator: customer.createdByName || customer.createdBy || '系统'
           }];
         }
       } catch {
@@ -470,7 +476,7 @@ router.get('/:id/medical-history', async (req: Request, res: Response) => {
           id: 1,
           content: customer.medicalHistory,
           createTime: customer.createdAt?.toISOString() || '',
-          operator: '系统'
+          operator: customer.createdByName || customer.createdBy || '系统'
         }];
       }
     }
@@ -508,7 +514,7 @@ router.post('/:id/medical-history', async (req: Request, res: Response) => {
             id: 1,
             content: customer.medicalHistory,
             createTime: customer.createdAt?.toISOString() || '',
-            operator: '系统'
+            operator: customer.createdByName || customer.createdBy || '系统'
           }];
         }
       } catch {
@@ -516,7 +522,7 @@ router.post('/:id/medical-history', async (req: Request, res: Response) => {
           id: 1,
           content: customer.medicalHistory,
           createTime: customer.createdAt?.toISOString() || '',
-          operator: '系统'
+          operator: customer.createdByName || customer.createdBy || '系统'
         }];
       }
     }
@@ -573,15 +579,21 @@ router.get('/:id/addresses', async (req: Request, res: Response) => {
       try {
         const parsed = JSON.parse(customer.address);
         if (Array.isArray(parsed)) {
-          addresses = parsed;
+          // 回填旧数据缺少的 operator 字段
+          addresses = parsed.map((entry: any, index: number) => ({
+            ...entry,
+            operator: entry.operator || customer.createdByName || customer.createdBy || '系统',
+            id: entry.id || (Date.now() + index),
+            createTime: entry.createTime || customer.createdAt?.toISOString() || ''
+          }));
         } else {
           // 旧格式：纯文本地址，转换为数组
-          addresses = [{ id: 1, content: customer.address, createTime: customer.createdAt?.toISOString() || '', isDefault: true }];
+          addresses = [{ id: 1, content: customer.address, createTime: customer.createdAt?.toISOString() || '', operator: customer.createdByName || '系统', isDefault: true }];
         }
       } catch {
         // 纯文本地址
         if (customer.address.trim()) {
-          addresses = [{ id: 1, content: customer.address, createTime: customer.createdAt?.toISOString() || '', isDefault: true }];
+          addresses = [{ id: 1, content: customer.address, createTime: customer.createdAt?.toISOString() || '', operator: customer.createdByName || '系统', isDefault: true }];
         }
       }
     }
@@ -755,13 +767,19 @@ router.get('/:id/notes', async (req: Request, res: Response) => {
       try {
         const parsed = JSON.parse(customer.remark);
         if (Array.isArray(parsed)) {
-          notes = parsed;
+          // 回填旧数据缺少的 operator 字段
+          notes = parsed.map((entry: any, index: number) => ({
+            ...entry,
+            operator: entry.operator || customer.createdByName || customer.createdBy || '系统',
+            id: entry.id || (Date.now() + index),
+            createTime: entry.createTime || customer.createdAt?.toISOString() || ''
+          }));
         } else {
-          notes = [{ id: 1, content: customer.remark, createTime: customer.createdAt?.toISOString() || '', operator: '系统' }];
+          notes = [{ id: 1, content: customer.remark, createTime: customer.createdAt?.toISOString() || '', operator: customer.createdByName || customer.createdBy || '系统' }];
         }
       } catch {
         if (customer.remark.trim()) {
-          notes = [{ id: 1, content: customer.remark, createTime: customer.createdAt?.toISOString() || '', operator: '系统' }];
+          notes = [{ id: 1, content: customer.remark, createTime: customer.createdAt?.toISOString() || '', operator: customer.createdByName || customer.createdBy || '系统' }];
         }
       }
     }
@@ -793,10 +811,15 @@ router.post('/:id/notes', async (req: Request, res: Response) => {
     if (customer.remark) {
       try {
         const parsed = JSON.parse(customer.remark);
-        notes = Array.isArray(parsed) ? parsed : [{ id: 1, content: customer.remark, createTime: customer.createdAt?.toISOString() || '', operator: '系统' }];
+        notes = Array.isArray(parsed) ? parsed.map((entry: any, index: number) => ({
+          ...entry,
+          operator: entry.operator || customer.createdByName || customer.createdBy || '系统',
+          id: entry.id || (Date.now() + index),
+          createTime: entry.createTime || customer.createdAt?.toISOString() || ''
+        })) : [{ id: 1, content: customer.remark, createTime: customer.createdAt?.toISOString() || '', operator: customer.createdByName || customer.createdBy || '系统' }];
       } catch {
         if (customer.remark.trim()) {
-          notes = [{ id: 1, content: customer.remark, createTime: customer.createdAt?.toISOString() || '', operator: '系统' }];
+          notes = [{ id: 1, content: customer.remark, createTime: customer.createdAt?.toISOString() || '', operator: customer.createdByName || customer.createdBy || '系统' }];
         }
       }
     }

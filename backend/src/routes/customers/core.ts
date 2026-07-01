@@ -944,6 +944,7 @@ router.post('/', async (req: Request, res: Response) => {
     // 🔥 修复：优先使用当前登录用户的ID作为创建人和销售人员
     const finalCreatedBy = currentUserId || createdBy || salesPersonId || 'admin';
     const finalSalesPersonId = salesPersonId || currentUserId || null;
+    const finalCreatedByName = currentUser?.realName || currentUser?.name || '系统';
 
     log.info('[创建客户] 最终创建人ID:', finalCreatedBy, '销售人员ID:', finalSalesPersonId);
 
@@ -972,6 +973,7 @@ router.post('/', async (req: Request, res: Response) => {
       status: status || 'active',
       salesPersonId: finalSalesPersonId,
       createdBy: finalCreatedBy,
+      createdByName: finalCreatedByName,
       // 新增字段
       age: age || null,
       gender: gender || 'unknown',
