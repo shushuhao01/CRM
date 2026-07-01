@@ -1765,8 +1765,8 @@ const getCustomFieldValue = (fieldKey: string) => {
   return orderDetail.customFields?.[fieldKey] ?? ''
 }
 
-// 格式化自定义字段值
-const formatCustomFieldValue = (value: any, fieldConfig?: any) => {
+// 格式化自定义字段值（field 在前，value 在后，与 OrderInfoCards 调用一致）
+const formatCustomFieldValue = (fieldConfig: any, value: any) => {
   if (value === null || value === undefined || value === '') return '-'
   if (fieldConfig?.type === 'date' && value) {
     return formatDateTime(value)

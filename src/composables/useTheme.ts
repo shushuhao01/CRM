@@ -64,6 +64,17 @@ function hex(n: number): string {
   return n.toString(16).padStart(2, '0')
 }
 
+function clearDarkVariables() {
+  const root = document.documentElement
+  const vars = [
+    '--crm-dark-base', '--crm-dark-card', '--crm-dark-raised', '--crm-dark-input',
+    '--crm-dark-border', '--crm-dark-border-light', '--crm-dark-hover',
+    '--crm-dark-text-primary', '--crm-dark-text-regular', '--crm-dark-text-secondary',
+    '--crm-dark-text-muted', '--crm-dark-text-placeholder'
+  ]
+  vars.forEach(v => root.style.removeProperty(v))
+}
+
 function applyTheme(mode: ThemeMode) {
   let shouldBeDark = false
   if (mode === 'dark') {
@@ -75,6 +86,8 @@ function applyTheme(mode: ThemeMode) {
   document.documentElement.classList.toggle('dark', shouldBeDark)
   if (shouldBeDark) {
     applyDarkIntensity(darkIntensity.value)
+  } else {
+    clearDarkVariables()
   }
 }
 
