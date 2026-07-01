@@ -553,9 +553,28 @@ router.delete('/cleanup/:days', async (req, res) => {
 /**
  * GET /api/v1/logs/operation-log/config
  * 获取业务操作日志清理配置
+ * 优先级：admin_system_config (SAAS统一管控) > system_configs/oplog (私有部署) > 默认值
  */
 router.get('/operation-log/config', async (req, res) => {
   try {
+    // 1. 优先读取管理后台的 centralized 配置（SAAS 模式）
+    try {
+      const adminResult = await getDataSource()?.query(
+        `SELECT config_value FROM system_config WHERE config_key = 'admin_system_config' LIMIT 1`
+      ) || [];
+      if (adminResult && adminResult.length > 0) {
+        const data = JSON.parse(adminResult[0].config_value || '{}');
+        return res.json({
+          success: true,
+          data: {
+            autoCleanup: data.opLogAutoCleanup === true,
+            retentionDays: parseInt(data.opLogRetentionDays) || 90,
+          }
+        });
+      }
+    } catch { /* admin config not available */ }
+
+    // 2. 私有部署：从 system_configs 读取租户本地配置
     const dataSource = getDataSource();
     if (!dataSource) return res.json({ success: true, data: { autoCleanup: false, retentionDays: 90 } });
     const tenantId = (req as any).user?.tenantId;
@@ -648,7 +667,7 @@ router.delete('/operation-log/cleanup/:days', async (req, res) => {
     const params: any[] = [retentionDays];
     if (tenantId) params.push(tenantId);
 
-    const tables = ['operation_logs', 'performance_operation_logs', 'cod_operation_logs', 'value_added_operation_logs'];
+    const tables = ['operation_logs', 'performance_operation_logs', 'cod_operation_logs', 'service_operation_logs', 'value_added_operation_logs'];
     let totalDeleted = 0;
     for (const table of tables) {
       try {

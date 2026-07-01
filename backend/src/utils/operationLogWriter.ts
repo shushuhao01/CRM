@@ -3,6 +3,38 @@ import { OperationLog } from '../entities/OperationLog';
 import { v4 as uuidv4 } from 'uuid';
 import { log } from '../config/logger';
 
+// 缓存 enableOpLog 检查结果，避免每次都查 DB
+let opLogEnabledCache: boolean = true;
+let opLogCacheTime: number = 0;
+const CACHE_TTL = 60_000; // 60秒缓存
+
+/**
+ * 检查业务操作日志是否被管理后台（SAAS）禁用
+ * 从 admin_system_config JSON 中读取 enableOpLog
+ * 如果找不到该配置，默认启用（私有部署不受此管控）
+ */
+async function isOpLogEnabled(): Promise<boolean> {
+  const now = Date.now();
+  if (now - opLogCacheTime < CACHE_TTL) {
+    return opLogEnabledCache;
+  }
+  try {
+    const result = await AppDataSource.query(
+      `SELECT config_value FROM system_config WHERE config_key = 'admin_system_config' LIMIT 1`
+    ).catch(() => []);
+    if (result && result.length > 0) {
+      const data = JSON.parse(result[0].config_value || '{}');
+      opLogEnabledCache = data.enableOpLog !== false; // 默认启用
+    } else {
+      opLogEnabledCache = true; // 无配置时默认启用
+    }
+    opLogCacheTime = now;
+  } catch {
+    opLogEnabledCache = true; // 出错时默认启用
+  }
+  return opLogEnabledCache;
+}
+
 export interface WriteOperationLogParams {
   module: string;
   resourceType: string;
@@ -18,6 +50,10 @@ export interface WriteOperationLogParams {
 
 export async function writeOperationLog(params: WriteOperationLogParams): Promise<void> {
   try {
+    // 检查管理后台是否禁用了业务操作日志（SAAS租户场景）
+    if (!(await isOpLogEnabled())) {
+      return;
+    }
     const repo = AppDataSource.getRepository(OperationLog);
     const entry = repo.create({
       id: uuidv4(),
