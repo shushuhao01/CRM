@@ -29,8 +29,8 @@ function getOperatorInfo(req: Request) {
   const curUser = (req as any).currentUser || {};
   const jwtUser = (req as any).user || {};
   const operatorId = curUser.id || jwtUser.id || jwtUser.userId || null;
-  // 优先用 realName（成员姓名），其次是 name，最后才是 username（登录账号）
-  const realName = curUser.realName || curUser.name || jwtUser.realName || jwtUser.name || jwtUser.username || '系统';
+  // 优先用 realName（成员姓名），其次是 name、username（登录账号）、JWT 兜底
+  const realName = curUser.realName || curUser.name || curUser.username || jwtUser.realName || jwtUser.name || jwtUser.username || '系统';
   const departmentName = curUser.departmentName || curUser.department || jwtUser.departmentName || jwtUser.department || '';
   // 格式化为"某部门-某人"
   const operatorName = departmentName ? `${departmentName}-${realName}` : realName;

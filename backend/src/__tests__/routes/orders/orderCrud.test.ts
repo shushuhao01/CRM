@@ -46,12 +46,13 @@ jest.mock('../../../services/OrderNotificationService', () => ({
  * 这里从源码中提取逻辑进行独立测试
  */
 function getOperatorInfo(req: any) {
-  const currentUser = (req as any).currentUser || (req as any).user
-  const operatorId = currentUser?.id || null
-  const realName = currentUser?.realName || currentUser?.name || currentUser?.username || '系统'
-  const departmentName = currentUser?.departmentName || currentUser?.department || ''
-  const operatorName = departmentName ? `${departmentName}-${realName}` : realName
-  return { operatorId, operatorName, departmentName, realName, currentUser }
+  const curUser = (req as any).currentUser || {};
+  const jwtUser = (req as any).user || {};
+  const operatorId = curUser.id || jwtUser.id || jwtUser.userId || null;
+  const realName = curUser.realName || curUser.name || curUser.username || jwtUser.realName || jwtUser.name || jwtUser.username || '系统';
+  const departmentName = curUser.departmentName || curUser.department || jwtUser.departmentName || jwtUser.department || '';
+  const operatorName = departmentName ? `${departmentName}-${realName}` : realName;
+  return { operatorId, operatorName, departmentName, realName, currentUser: curUser.id ? curUser : jwtUser };
 }
 
 describe('orderCrud', () => {

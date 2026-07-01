@@ -20,25 +20,38 @@ describe('DataCleanupService', () => {
   // ==================== cleanupOperationLogs ====================
 
   describe('cleanupOperationLogs', () => {
-    it('成功删除 → 返回删除行数', async () => {
-      mockQuery.mockResolvedValue({ affectedRows: 50 })
+    it('成功删除 → 返回各表删除行数之和', async () => {
+      // 3 张表各自返回不同行数
+      mockQuery.mockResolvedValueOnce({ affectedRows: 50 })
+        .mockResolvedValueOnce({ affectedRows: 10 })
+        .mockResolvedValueOnce({ affectedRows: 5 })
       const result = await dataCleanupService.cleanupOperationLogs(90)
-      expect(result).toBe(50)
+      expect(result).toBe(65)
+      expect(mockQuery).toHaveBeenCalledTimes(3)
       expect(mockQuery).toHaveBeenCalledWith(
         expect.stringContaining('operation_logs'),
         [90]
       )
     })
 
-    it('无数据可删 → 返回 0', async () => {
-      mockQuery.mockResolvedValue({ affectedRows: 0 })
-      const result = await dataCleanupService.cleanupOperationLogs()
+    it('部分表不存在 → 跳过继续删除其他表', async () => {
+      mockQuery.mockRejectedValueOnce(new Error("Table doesn't exist"))
+        .mockResolvedValueOnce({ affectedRows: 20 })
+        .mockResolvedValueOnce({ affectedRows: 3 })
+      const result = await dataCleanupService.cleanupOperationLogs(90)
+      expect(result).toBe(23)
+      expect(mockQuery).toHaveBeenCalledTimes(3)
+    })
+
+    it('全部表异常 → 返回 0', async () => {
+      mockQuery.mockRejectedValue(new Error('db error'))
+      const result = await dataCleanupService.cleanupOperationLogs(90)
       expect(result).toBe(0)
     })
 
-    it('数据库异常 → 返回 0', async () => {
-      mockQuery.mockRejectedValue(new Error('db error'))
-      const result = await dataCleanupService.cleanupOperationLogs()
+    it('无数据可删 → 返回 0', async () => {
+      mockQuery.mockResolvedValue({ affectedRows: 0 })
+      const result = await dataCleanupService.cleanupOperationLogs(90)
       expect(result).toBe(0)
     })
   })
@@ -89,26 +102,96 @@ describe('DataCleanupService', () => {
     })
   })
 
+  // ==================== getOperationLogCleanupConfig ====================
+
+  describe('getOperationLogCleanupConfig', () => {
+    it('admin_system_config 存在 → 使用 SAAS 统一配置', async () => {
+      mockQuery.mockResolvedValueOnce([{
+        config_value: JSON.stringify({
+          opLogAutoCleanup: true,
+          opLogRetentionDays: '180'
+        })
+      }])
+      const config = await dataCleanupService.getOperationLogCleanupConfig()
+      expect(config.autoCleanup).toBe(true)
+      expect(config.retentionDays).toBe(180)
+    })
+
+    it('admin_system_config 中清理关闭 → autoCleanup=false', async () => {
+      mockQuery.mockResolvedValueOnce([{
+        config_value: JSON.stringify({
+          opLogAutoCleanup: false,
+          opLogRetentionDays: '90'
+        })
+      }])
+      const config = await dataCleanupService.getOperationLogCleanupConfig()
+      expect(config.autoCleanup).toBe(false)
+    })
+
+    it('无 admin_system_config → 回退到 system_configs/oplog', async () => {
+      // admin_system_config 查询返回空
+      mockQuery.mockResolvedValueOnce([])
+      // system_configs 查询
+      mockQuery.mockResolvedValueOnce([
+        { configKey: 'oplog_auto_cleanup', configValue: 'true' },
+        { configKey: 'oplog_retention_days', configValue: '60' },
+      ])
+      const config = await dataCleanupService.getOperationLogCleanupConfig()
+      expect(config.autoCleanup).toBe(true)
+      expect(config.retentionDays).toBe(60)
+    })
+
+    it('两种配置都不存在 → 兜底环境变量', async () => {
+      mockQuery.mockResolvedValueOnce([])  // admin
+      mockQuery.mockResolvedValueOnce([])  // system_configs
+      const OLD = process.env.LOG_RETENTION_DAYS
+      process.env.LOG_RETENTION_DAYS = '30'
+      const config = await dataCleanupService.getOperationLogCleanupConfig()
+      expect(config.autoCleanup).toBe(true)
+      expect(config.retentionDays).toBe(30)
+      process.env.LOG_RETENTION_DAYS = OLD
+    })
+
+    it('admin_system_config 异常 → 继续回退', async () => {
+      mockQuery.mockRejectedValueOnce(new Error('parse error'))
+      mockQuery.mockResolvedValueOnce([])
+      const OLD = process.env.LOG_RETENTION_DAYS
+      process.env.LOG_RETENTION_DAYS = '7'
+      const config = await dataCleanupService.getOperationLogCleanupConfig()
+      expect(config.retentionDays).toBe(7)
+      process.env.LOG_RETENTION_DAYS = OLD
+    })
+  })
+
   // ==================== runFullCleanup ====================
 
   describe('runFullCleanup', () => {
-    it('执行三个清理任务', async () => {
+    it('autoCleanup 启用 → 执行全部清理', async () => {
+      // getOperationLogCleanupConfig 查询
+      mockQuery.mockResolvedValueOnce([{
+        config_value: JSON.stringify({
+          opLogAutoCleanup: true,
+          opLogRetentionDays: '90'
+        })
+      }])
+      // 子任务使用同一个 mockQuery
       mockQuery.mockResolvedValue({ affectedRows: 5 })
       await dataCleanupService.runFullCleanup()
-      // 至少调用了3次 query（每个子任务一次）
-      expect(mockQuery.mock.calls.length).toBeGreaterThanOrEqual(3)
+      // 至少调用了配置查询 + 子任务查询
+      expect(mockQuery.mock.calls.length).toBeGreaterThanOrEqual(4)
     })
 
-    it('使用 LOG_RETENTION_DAYS 环境变量', async () => {
-      const OLD_ENV = process.env.LOG_RETENTION_DAYS
-      process.env.LOG_RETENTION_DAYS = '30'
-      mockQuery.mockResolvedValue({ affectedRows: 0 })
-
+    it('autoCleanup 禁用 → 跳过全部清理', async () => {
+      mockQuery.mockResolvedValueOnce([{
+        config_value: JSON.stringify({
+          opLogAutoCleanup: false,
+          opLogRetentionDays: '90'
+        })
+      }])
+      const callsBefore = mockQuery.mock.calls.length
       await dataCleanupService.runFullCleanup()
-      // 每个子任务应使用 30 天
-      expect(mockQuery).toHaveBeenCalledWith(expect.any(String), [30])
-
-      process.env.LOG_RETENTION_DAYS = OLD_ENV
+      // 只查询了配置，没有执行清理
+      expect(mockQuery.mock.calls.length).toBe(callsBefore + 1)
     })
   })
 })
