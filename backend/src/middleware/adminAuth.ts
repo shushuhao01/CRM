@@ -6,6 +6,7 @@ import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { JwtConfig } from '../config/jwt';
 import { AppDataSource } from '../config/database';
+import { TenantContextManager } from '../utils/tenantContext';
 
 export const adminAuthMiddleware = async (req: Request, res: Response, next: NextFunction) => {
   // 登录接口不需要认证
@@ -65,6 +66,14 @@ export const adminAuthMiddleware = async (req: Request, res: Response, next: Nex
     decoded.permissions = permissions;
 
     (req as any).adminUser = decoded;
+
+    // 🔥 注入租户上下文：管理员 token 中包含 tenantId 时同步设置
+    // 确保 getTenantRepo() 等工具能正确进行租户隔离
+    if (decoded.tenantId) {
+      (req as any).tenantId = decoded.tenantId;
+      TenantContextManager.setContext({ tenantId: decoded.tenantId });
+    }
+
     next();
   } catch (error: any) {
     if (error.name === 'TokenExpiredError') {

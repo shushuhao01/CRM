@@ -271,8 +271,8 @@ class PerformanceReportScheduler {
     const yesterdayBeijing = new Date(beijingYear, beijingMonth, beijingDate - 1);
     const yesterdayStr = `${yesterdayBeijing.getFullYear()}-${String(yesterdayBeijing.getMonth() + 1).padStart(2, '0')}-${String(yesterdayBeijing.getDate()).padStart(2, '0')}`;
 
-    // 本月第一天（北京时间）
-    const monthStartStr = `${beijingYear}-${String(beijingMonth + 1).padStart(2, '0')}-01`;
+    // 本月第一天（基于报表日期/昨天所在月份，确保跨月时当月数据正确）
+    const monthStartStr = `${yesterdayBeijing.getFullYear()}-${String(yesterdayBeijing.getMonth() + 1).padStart(2, '0')}-01`;
 
     logger.info(`[业绩报表] 📅 统计日期: 昨日=${yesterdayStr}, 本月开始=${monthStartStr}, 当前北京时间=${beijingTime.toISOString()}`);
 

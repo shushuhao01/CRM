@@ -3,6 +3,7 @@ import { AppDataSource } from '../../config/database';
 import { Customer } from '../../entities/Customer';
 import { Order } from '../../entities/Order';
 import { getTenantRepo, tenantSQL } from '../../utils/tenantRepo';
+import { TenantContextManager } from '../../utils/tenantContext';
 import { createCustomerLog } from '../../utils/customerLog';
 import { log } from '../../config/logger';
 
@@ -247,6 +248,7 @@ router.post('/:id/followups', async (req: Request, res: Response) => {
     const { v4: uuidv4 } = await import('uuid');
 
     const followUp = followUpRepository.create({
+      tenantId: (req as any).tenantId || TenantContextManager.getTenantId() || undefined,
       id: uuidv4(),
       customerId,
       customerName: customer?.name || '',

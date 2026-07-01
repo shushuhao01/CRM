@@ -9,6 +9,7 @@ import { Product } from '../../entities/Product';
 import { Customer } from '../../entities/Customer';
 import { CodCancelApplication } from '../../entities/CodCancelApplication';
 import { getTenantRepo } from '../../utils/tenantRepo';
+import { TenantContextManager } from '../../utils/tenantContext';
 import { orderNotificationService } from '../../services/OrderNotificationService';
 import {
   saveStatusHistory,
@@ -874,8 +875,10 @@ router.post('/', authenticateToken, async (req: Request, res: Response) => {
       }
     }
 
-    // 创建订单
+    // 创建订单（🔥 显式传入 tenantId，防止无租户上下文时缺失）
+    const currentTenantId = (req as any).tenantId || TenantContextManager.getTenantId();
     const order = orderRepository.create({
+      tenantId: currentTenantId || undefined,
       orderNumber: generatedOrderNumber,
       customerId: String(customerId),
       customerName: customerName || '',

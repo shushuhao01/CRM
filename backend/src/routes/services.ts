@@ -8,6 +8,7 @@ import { ServiceOperationLog } from '../entities/ServiceOperationLog';
 import { authenticateToken } from '../middleware/auth';
 import { orderNotificationService } from '../services/OrderNotificationService';
 import { getTenantRepo } from '../utils/tenantRepo';
+import { TenantContextManager } from '../utils/tenantContext';
 import { formatDateTime } from '../utils/dateFormat';
 import { log as logger } from '../config/logger';
 // import { Like, In } from 'typeorm'; // 暂时未使用
@@ -395,6 +396,7 @@ router.post('/', authenticateToken, async (req: Request, res: Response) => {
     const serviceNumber = `SH${timestamp}`;
 
     const service = serviceRepository.create({
+      tenantId: (req as any).tenantId || TenantContextManager.getTenantId() || undefined,
       id: serviceId,
       serviceNumber,
       orderId: data.orderId || null,

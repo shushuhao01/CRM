@@ -577,6 +577,7 @@ router.post('/batch-import', async (req: Request, res: Response) => {
         }
 
         const customer = customerRepository.create({
+          tenantId: batchTenantId || undefined,
           name: item.name,
           phone: item.phone || null,
           email: item.email || null,
@@ -952,6 +953,7 @@ router.post('/', async (req: Request, res: Response) => {
 
     // 创建客户（一步保存，包含预生成的客户编码占位符）
     const customer = customerRepository.create({
+      tenantId: currentTenantId || undefined,
       name,
       phone,
       email,

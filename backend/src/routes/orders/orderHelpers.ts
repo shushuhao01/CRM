@@ -7,6 +7,7 @@ import { SystemConfig } from '../../entities/SystemConfig';
 import { DepartmentOrderLimit } from '../../entities/DepartmentOrderLimit';
 import { Order } from '../../entities/Order';
 import { getTenantRepo } from '../../utils/tenantRepo';
+import { TenantContextManager } from '../../utils/tenantContext';
 import { AppDataSource } from '../../config/database';
 
 import { log } from '../../config/logger';
@@ -72,7 +73,9 @@ export const saveStatusHistory = async (
     await ensureStatusHistoryTable();
 
     const statusHistoryRepository = getTenantRepo(OrderStatusHistory);
+    const currentTenantId = TenantContextManager.getTenantId();
     const history = statusHistoryRepository.create({
+      tenantId: currentTenantId || undefined,
       orderId,
       status: status as any,
       operatorId: operatorId ? Number(operatorId) : undefined,
