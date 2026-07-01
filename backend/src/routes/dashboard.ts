@@ -1,4 +1,4 @@
-﻿import { Router, Request, Response } from 'express';
+import { Router, Request, Response } from 'express';
 import { authenticateToken } from '../middleware/auth';
 import { AppDataSource } from '../config/database';
 import { Order } from '../entities/Order';
@@ -175,26 +175,22 @@ router.get('/metrics', async (req: Request, res: Response) => {
       const tShareDashMem = tenantSQL('psm.');
 
       // 辅助函数：计算指定时间段内的分享调整
+      // 🔥 修复：分享按订单创建时间过滤（ps.order_id JOIN orders o WHERE o.created_at），
+      // 分享业绩仅限对应订单创建时间所在月，不会跨月影响
       const calcShareAdjustment = async (periodStart: Date, periodEnd: Date) => {
         let sharedCount = 0, sharedAmount = 0, receivedCount = 0, receivedAmount = 0;
 
         if (userRole === 'department_manager' || userRole === 'manager') {
-          // 部门经理：查询本部门用户相关的分享
-          // 本部门用户创建的分享（扣除分给部门外的）
-          // 部门外用户分享给本部门成员的（增加）
-          // 但由于部门内互相分享是零和，最终只需考虑跨部门的情况
-          // 简化方案：部门经理看到的本部门总业绩，跨部门分享会影响
-          // 暂时保持原始数据不调整（部门汇总层面分享几乎零和）
           return { sharedCount: 0, sharedAmount: 0, receivedCount: 0, receivedAmount: 0 };
         }
 
-        // 普通员工：查询自己作为创建者和接收者的分享
-        // 作为创建者的分享（扣除）
+        // 作为创建者的分享（扣除）— 按订单创建时间过滤
         const creatorShares = await AppDataSource.query(
           `SELECT ps.id, ps.order_amount
            FROM performance_shares ps
+           JOIN orders o ON o.order_number = ps.order_number
            WHERE ps.created_by = ? AND ps.status IN ('active', 'completed')
-             AND ps.created_at >= ? AND ps.created_at <= ?${tShareDash.sql}`,
+             AND o.created_at >= ? AND o.created_at <= ?${tShareDash.sql}`,
           [userId, periodStart, periodEnd, ...tShareDash.params]
         );
 
@@ -219,13 +215,14 @@ router.get('/metrics', async (req: Request, res: Response) => {
           });
         }
 
-        // 作为接收者的分享（增加）
+        // 作为接收者的分享（增加）— 按订单创建时间过滤
         const receiverShares = await AppDataSource.query(
           `SELECT psm.share_percentage, ps.order_amount
            FROM performance_share_members psm
            JOIN performance_shares ps ON ps.id = psm.share_id
+           JOIN orders o ON o.order_number = ps.order_number
            WHERE psm.user_id = ? AND ps.status IN ('active', 'completed')
-             AND ps.created_at >= ? AND ps.created_at <= ?${tShareDashMem.sql}${tShareDash.sql}`,
+             AND o.created_at >= ? AND o.created_at <= ?${tShareDashMem.sql}${tShareDash.sql}`,
           [userId, periodStart, periodEnd, ...tShareDashMem.params, ...tShareDash.params]
         );
         receiverShares.forEach((r: any) => {
@@ -802,6 +799,154 @@ router.get('/charts', async (req: Request, res: Response) => {
         amount: data.amount,
         color: data.color
       }));
+
+    // 🔥 业绩分享调整 - 非管理员用户的图表数据需要按订单创建时间扣除/加上分享业绩
+    if (userRole !== 'super_admin' && userRole !== 'admin') {
+      // 确定图表覆盖的时间范围
+      let chartStart: Date, chartEnd: Date;
+      if (period === 'month') {
+        const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+        chartStart = new Date(now.getFullYear(), now.getMonth(), 1);
+        chartEnd = new Date(now.getFullYear(), now.getMonth(), daysInMonth, 23, 59, 59);
+      } else if (period === 'week') {
+        chartStart = new Date(now.getTime() - 6 * 24 * 60 * 60 * 1000);
+        chartStart.setHours(0, 0, 0, 0);
+        chartEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+      } else {
+        chartStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        chartEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+      }
+
+      // 辅助：根据订单日期找到图表数组中的桶索引
+      const getBucketIndex = (orderDate: Date): number => {
+        if (period === 'month') return orderDate.getDate() - 1;
+        if (period === 'week') {
+          const diffMs = chartEnd.getTime() - orderDate.getTime();
+          return Math.floor(diffMs / (1000 * 60 * 60 * 24));
+        }
+        return orderDate.getHours();
+      };
+
+      // 作为创建者的分享（扣除）— JOIN orders 按订单创建时间过滤
+      const tChShare = tenantSQL('ps.');
+      const creatorShares = await AppDataSource.query(
+        `SELECT ps.id, ps.order_number, ps.order_amount, o.created_at as orderCreatedAt, o.status as orderStatus
+         FROM performance_shares ps
+         JOIN orders o ON o.order_number = ps.order_number
+         WHERE ps.created_by = ? AND ps.status IN ('active', 'completed')
+           AND o.created_at >= ? AND o.created_at <= ?${tChShare.sql}`,
+        [userId, chartStart, chartEnd, ...tChShare.params]
+      );
+
+      // 用于累计分享调整的成员分组（供后续状态分布调整使用）
+      let shareMemByShare: Record<string, any[]> = {};
+
+      if (creatorShares.length > 0) {
+        const shareIds = creatorShares.map((s: any) => s.id);
+        const tChShareMem = tenantSQL('psm.');
+        const allMembers = await AppDataSource.query(
+          `SELECT psm.share_id, psm.share_percentage FROM performance_share_members psm
+           WHERE psm.share_id IN (${shareIds.map(() => '?').join(',')})${tChShareMem.sql}`,
+          [...shareIds, ...tChShareMem.params]
+        );
+        const memByShare: Record<string, any[]> = {};
+        allMembers.forEach((m: any) => {
+          (memByShare[m.share_id] = memByShare[m.share_id] || []).push(m);
+        });
+        shareMemByShare = memByShare;
+
+        creatorShares.forEach((s: any) => {
+          const mems = memByShare[s.id] || [];
+          const totalPct = mems.reduce((sum: number, m: any) => sum + (Number(m.share_percentage) || 0), 0);
+          const ratio = totalPct / 100;
+          const amt = (Number(s.order_amount) || 0) * ratio;
+          const bucket = getBucketIndex(new Date(s.orderCreatedAt));
+
+          if (bucket >= 0 && bucket < orderRevenueData.length) {
+            orderRevenueData[bucket] = Math.max(0, Math.round((orderRevenueData[bucket] - amt) * 100) / 100);
+            orderCountData[bucket] = Math.max(0, Math.round((orderCountData[bucket] - ratio) * 100) / 100);
+            if (s.orderStatus === 'delivered') {
+              deliveredRevenueData[bucket] = Math.max(0, Math.round((deliveredRevenueData[bucket] - amt) * 100) / 100);
+              deliveredCountData[bucket] = Math.max(0, Math.round((deliveredCountData[bucket] - ratio) * 100) / 100);
+            }
+          }
+        });
+      }
+
+      // 作为接收者的分享（增加）— JOIN orders 按订单创建时间过滤
+      const tChRecv = tenantSQL('psm.');
+      const tChRecvPs = tenantSQL('ps.');
+      const receivedShares = await AppDataSource.query(
+        `SELECT psm.share_percentage, ps.order_amount, ps.order_number,
+                o.created_at as orderCreatedAt, o.status as orderStatus
+         FROM performance_share_members psm
+         JOIN performance_shares ps ON ps.id = psm.share_id
+         JOIN orders o ON o.order_number = ps.order_number
+         WHERE psm.user_id = ? AND ps.status IN ('active', 'completed')
+           AND o.created_at >= ? AND o.created_at <= ?${tChRecv.sql}${tChRecvPs.sql}`,
+        [userId, chartStart, chartEnd, ...tChRecv.params, ...tChRecvPs.params]
+      );
+
+      receivedShares.forEach((r: any) => {
+        const ratio = (Number(r.share_percentage) || 0) / 100;
+        const amt = (Number(r.order_amount) || 0) * ratio;
+        const bucket = getBucketIndex(new Date(r.orderCreatedAt));
+
+        if (bucket >= 0 && bucket < orderRevenueData.length) {
+          orderRevenueData[bucket] = Math.round((orderRevenueData[bucket] + amt) * 100) / 100;
+          orderCountData[bucket] = Math.round((orderCountData[bucket] + ratio) * 100) / 100;
+          if (r.orderStatus === 'delivered') {
+            deliveredRevenueData[bucket] = Math.round((deliveredRevenueData[bucket] + amt) * 100) / 100;
+            deliveredCountData[bucket] = Math.round((deliveredCountData[bucket] + ratio) * 100) / 100;
+          }
+        }
+      });
+
+      // 🔥 调整订单状态分布：按订单创建时间，只调整图表时间范围内的订单
+      const statusAdjustMap = new Map<string, { count: number; amount: number }>();
+
+      creatorShares.forEach((s: any) => {
+        const mems = shareMemByShare[s.id] || [];
+        const totalPct = mems.reduce((sum: number, m: any) => sum + (Number(m.share_percentage) || 0), 0);
+        const ratio = totalPct / 100;
+        const amt = (Number(s.order_amount) || 0) * ratio;
+        const statusName = statusMap[s.orderStatus]?.name || s.orderStatus;
+        const entry = statusAdjustMap.get(statusName) || { count: 0, amount: 0 };
+        entry.count -= ratio;
+        entry.amount -= amt;
+        statusAdjustMap.set(statusName, entry);
+      });
+
+      receivedShares.forEach((r: any) => {
+        const ratio = (Number(r.share_percentage) || 0) / 100;
+        const amt = (Number(r.order_amount) || 0) * ratio;
+        const statusName = statusMap[r.orderStatus]?.name || r.orderStatus;
+        const entry = statusAdjustMap.get(statusName) || { count: 0, amount: 0 };
+        entry.count += ratio;
+        entry.amount += amt;
+        statusAdjustMap.set(statusName, entry);
+      });
+
+      statusAdjustMap.forEach((adjust, statusName) => {
+        const existing = orderStatus.find((s: any) => s.name === statusName);
+        if (existing) {
+          existing.value = Math.max(0, Math.round((existing.value + adjust.count) * 10) / 10);
+          existing.amount = Math.max(0, Math.round((existing.amount + adjust.amount) * 100) / 100);
+        } else if (adjust.count > 0) {
+          orderStatus.push({
+            name: statusName,
+            value: Math.round(adjust.count * 10) / 10,
+            amount: Math.round(adjust.amount * 100) / 100,
+            color: '#67C23A'
+          });
+        }
+      });
+
+      // 过滤掉 value 为 0 的状态
+      const filteredStatus = orderStatus.filter((s: any) => s.value > 0);
+      orderStatus.length = 0;
+      orderStatus.push(...filteredStatus);
+    }
 
     res.json({
       success: true,

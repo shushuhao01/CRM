@@ -13,6 +13,8 @@ export interface CustomerSearchParams {
   page?: number
   pageSize?: number
   onlyMine?: boolean  // 🔥 强制只查询当前用户的客户（不管角色）
+  departmentId?: string  // 🔥 新增：按部门筛选客户
+  createdBy?: string  // 🔥 新增：按创建人筛选客户
 }
 
 // 转换搜索参数为请求参数

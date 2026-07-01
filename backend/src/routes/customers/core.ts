@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { Customer } from '../../entities/Customer';
 import { User } from '../../entities/User';
+import { Department } from '../../entities/Department';
 import { Order } from '../../entities/Order';
 import { CustomerShare } from '../../entities/CustomerShare';
 import { In } from 'typeorm';
@@ -41,7 +42,9 @@ router.get('/', async (req: Request, res: Response) => {
       status,
       startDate,
       endDate,
-      onlyMine  // 🔥 新增：强制只查询当前用户的客户（不管角色）
+      onlyMine,  // 🔥 新增：强制只查询当前用户的客户（不管角色）
+      departmentId,  // 🔥 新增：按部门筛选客户
+      createdBy  // 🔥 新增：按创建人筛选客户
     } = req.query;
 
     const pageNum = parseInt(page as string) || 1;
@@ -171,6 +174,27 @@ router.get('/', async (req: Request, res: Response) => {
     if (startDate && endDate) {
       queryBuilder.andWhere('customer.createdAt >= :startDate', { startDate: `${startDate} 00:00:00` });
       queryBuilder.andWhere('customer.createdAt <= :endDate', { endDate: `${endDate} 23:59:59` });
+    }
+
+    // 🔥 新增：按部门筛选客户（通过查找该部门下的成员，匹配createdBy）
+    if (departmentId) {
+      const userRepository = getTenantRepo(User);
+      const departmentMembers = await userRepository.find({
+        where: { departmentId: departmentId as string },
+        select: ['id']
+      });
+      const memberIds = departmentMembers.map(m => m.id);
+      if (memberIds.length > 0) {
+        queryBuilder.andWhere('customer.createdBy IN (:...deptMemberIds)', { deptMemberIds: memberIds });
+      } else {
+        // 该部门没有成员，直接返回空结果
+        queryBuilder.andWhere('1 = 0');
+      }
+    }
+
+    // 🔥 新增：按创建人筛选客户
+    if (createdBy) {
+      queryBuilder.andWhere('customer.createdBy = :createdBy', { createdBy: createdBy as string });
     }
 
     // 🔥 统计数据查询（在应用分页之前，基于相同的筛选条件）

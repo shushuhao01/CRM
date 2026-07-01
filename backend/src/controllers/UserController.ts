@@ -737,13 +737,19 @@ export class UserController {
    * 🔥 租户隔离：只返回当前租户的用户
    */
   getDepartmentMembers = catchAsync(async (req: Request, res: Response) => {
-    const currentUser = (req as any).user;
+    // 🔥 使用 req.currentUser（数据库完整对象，含 departmentId），而非 req.user（JWT payload）
+    const dbUser = (req as any).currentUser || (req as any).user;
 
-    if (!currentUser) {
+    if (!dbUser) {
       throw new BusinessError('用户未登录', 'UNAUTHORIZED');
     }
 
     const tenantId = this.getTenantIdFromRequest(req);
+    const userRole = dbUser.role;
+    const userDepartmentId = dbUser.departmentId;
+    const userId = dbUser.id;
+
+    console.log('[getDepartmentMembers] 用户信息:', { userId, userRole, userDepartmentId });
 
     const queryBuilder = this.userRepository.createQueryBuilder('user')
       .select([
@@ -769,26 +775,34 @@ export class UserController {
       queryBuilder.andWhere('user.tenantId = :tenantId', { tenantId });
     }
 
-    // 根据角色过滤数据
-    const isAdmin = currentUser.role === 'super_admin' || currentUser.role === 'admin';
-    const isManager = currentUser.role === 'department_manager';
+    // 🔥 角色权限过滤：
+    // - 超管/管理员：全部用户
+    // - 部门经理/销售员：本部门成员
+    // - 客服等：仅自己
+    const isAdmin = userRole === 'super_admin' || userRole === 'admin';
 
     if (isAdmin) {
       // 管理员可以看到当前租户所有用户
-    } else if (isManager || currentUser.role === 'sales_staff') {
-      if (currentUser.departmentId) {
-        queryBuilder.andWhere('user.departmentId = :departmentId', { departmentId: currentUser.departmentId });
+    } else if (userRole === 'department_manager' || userRole === 'sales_staff') {
+      if (userDepartmentId) {
+        // 部门经理/销售员：看本部门所有成员
+        queryBuilder.andWhere('user.departmentId = :departmentId', { departmentId: userDepartmentId });
       } else {
+        // 没有部门信息时，返回空（避免误暴露数据）
         return res.json({
           success: true,
           data: { items: [], users: [], total: 0 }
         });
       }
+    } else {
+      // 客服等其他角色：只能看到自己
+      queryBuilder.andWhere('user.id = :userId', { userId });
     }
 
     queryBuilder.andWhere('user.status = :status', { status: 'active' });
 
     const users = await queryBuilder.getMany();
+    console.log('[getDepartmentMembers] 查询结果:', users.length, '个用户');
 
     res.json({
       success: true,

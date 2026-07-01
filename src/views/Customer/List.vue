@@ -80,6 +80,7 @@
                 placeholder="客户姓名、电话或编码"
                 clearable
                 @keyup.enter="handleSearch"
+                @change="handleSearch"
               />
             </el-form-item>
           </el-col>
@@ -94,12 +95,13 @@
                 format="YYYY-MM-DD"
                 value-format="YYYY-MM-DD"
                 style="width: 100%"
+                @change="handleSearch"
               />
             </el-form-item>
           </el-col>
           <el-col :span="4">
             <el-form-item label="客户等级">
-              <el-select v-model="searchForm.level" placeholder="请选择" clearable style="width: 100%">
+              <el-select v-model="searchForm.level" placeholder="请选择" clearable style="width: 100%" @change="handleSearch">
                 <el-option label="普通" value="normal" />
                 <el-option label="白银" value="silver" />
                 <el-option label="黄金" value="gold" />
@@ -113,12 +115,13 @@
                 placeholder="请输入疾病史关键词"
                 clearable
                 style="width: 100%"
+                @change="handleSearch"
               />
             </el-form-item>
           </el-col>
           <el-col :span="4">
             <el-form-item label="客户来源">
-              <el-select v-model="searchForm.source" placeholder="请选择" clearable style="width: 100%">
+              <el-select v-model="searchForm.source" placeholder="请选择" clearable style="width: 100%" @change="handleSearch">
                 <el-option label="线上推广" value="online" />
                 <el-option label="线下活动" value="offline" />
                 <el-option label="客户推荐" value="referral" />
@@ -129,11 +132,33 @@
           </el-col>
         </el-row>
         <el-row :gutter="20">
-          <el-col :span="24">
-            <el-form-item>
-              <el-button type="primary" @click="handleSearch" :icon="Search">搜索</el-button>
-              <el-button @click="handleReset" :icon="Refresh">重置</el-button>
+          <el-col :span="6">
+            <el-form-item label="部门筛选">
+              <el-select v-model="searchForm.departmentId" placeholder="请选择部门" clearable style="width: 100%" @change="handleSearch">
+                <el-option
+                  v-for="dept in filterDepartments"
+                  :key="dept.id"
+                  :label="dept.name"
+                  :value="dept.id"
+                />
+              </el-select>
             </el-form-item>
+          </el-col>
+          <el-col :span="6">
+            <el-form-item label="创建人">
+              <el-select v-model="searchForm.createdBy" placeholder="请选择创建人" clearable filterable style="width: 100%" @change="handleSearch">
+                <el-option
+                  v-for="creator in filterCreators"
+                  :key="creator.id"
+                  :label="creator.name + (creator.department ? ' - ' + creator.department : '')"
+                  :value="creator.id"
+                />
+              </el-select>
+            </el-form-item>
+          </el-col>
+          <el-col :span="6" style="display: flex; align-items: flex-end; gap: 12px; padding-bottom: 18px;">
+            <el-button type="primary" @click="handleSearch" :icon="Search">搜索</el-button>
+            <el-button @click="handleReset" :icon="Refresh">重置</el-button>
           </el-col>
         </el-row>
       </el-form>
@@ -527,6 +552,7 @@ import CustomerBatchImport from '@/components/CustomerBatchImport.vue'
 import CustomerBatchShare from '@/components/CustomerBatchShare.vue'
 import { createSafeNavigator } from '@/utils/navigation'
 import customerShareApi, { type ShareRequest } from '@/api/customerShare'
+import { api } from '@/api/request'
 import { formatDateTime } from '@/utils/dateFormat'
 
 // 接口定义
@@ -587,7 +613,9 @@ const searchForm = reactive({
   level: '',
   medicalHistory: '',  // 疾病史搜索
   source: '',
-  dateRange: [] as string[]  // 明确指定类型，确保初始化为空数组
+  dateRange: [] as string[],  // 明确指定类型，确保初始化为空数组
+  departmentId: '',  // 🔥 新增：部门筛选
+  createdBy: ''  // 🔥 新增：创建人筛选
 })
 
 // 统计数据
@@ -618,6 +646,100 @@ const pagination = reactive({
   size: 10,  // 默认显示10条记录，支持扩展和翻页
   total: 0
 })
+
+// 🔥 新增：部门筛选选项（根据用户角色加载）
+const filterDepartments = ref<{ id: string; name: string }[]>([])
+
+// 🔥 新增：创建人筛选选项（根据用户角色加载）
+const filterCreators = ref<{ id: string; name: string; department: string }[]>([])
+
+// 🔥 新增：加载筛选用的部门列表（角色权限已在后端处理）
+const loadFilterDepartments = async () => {
+  try {
+    const { getMyDepartments } = await import('@/api/department')
+    const response = await getMyDepartments()
+    if (response?.data) {
+      filterDepartments.value = (response.data as any[]).map((d: any) => ({
+        id: d.id,
+        name: d.name
+      }))
+    }
+  } catch (error) {
+    console.error('[CustomerList] 加载部门筛选列表失败:', error)
+    filterDepartments.value = []
+  }
+}
+
+// 🔥 新增：加载筛选用的创建人列表（根据角色调对应接口）
+const loadFilterCreators = async () => {
+  try {
+    const role = userStore.currentUser?.role
+    const isAdmin = role === 'super_admin' || role === 'admin'
+
+    // 超管/管理员调 /users 看全部，其他角色调 /users/department-members
+    const endpoint = isAdmin ? '/users?limit=500' : '/users/department-members'
+    let response: any = null
+    try {
+      response = await api.get<{ items?: any[]; users?: any[]; total?: number }>(endpoint)
+      console.log('[CustomerList] 创建人接口原始响应:', JSON.stringify(response).substring(0, 500))
+    } catch (err: any) {
+      console.warn('[CustomerList] 创建人接口失败:', endpoint, err?.status || err?.message)
+      // 管理员接口不可用时降级到部门成员接口
+      if (isAdmin && err?.response?.status === 403) {
+        response = await api.get('/users/department-members')
+        console.log('[CustomerList] 降级到部门成员接口')
+      }
+    }
+
+    if (response) {
+      // response: { code, message, data, success }，data 是后端返回的 { items, users, total }
+      const innerData: any = response?.data || response
+      let items: any[] = []
+
+      if (innerData?.items && Array.isArray(innerData.items) && innerData.items.length > 0) {
+        items = innerData.items
+      } else if (innerData?.users && Array.isArray(innerData.users) && innerData.users.length > 0) {
+        items = innerData.users
+      } else if (Array.isArray(innerData) && innerData.length > 0) {
+        items = innerData
+      }
+
+      if (items.length > 0) {
+        filterCreators.value = items.map((u: any) => ({
+          id: u.id,
+          name: u.realName || u.name || u.username || '',
+          department: u.departmentName || u.department || ''
+        }))
+        console.log('[CustomerList] 创建人筛选列表已加载:', filterCreators.value.length, '个，接口:', endpoint)
+        return
+      }
+    }
+
+    // 🔥 API 失败或无数据时，兜底使用 userStore.users（已在 onMounted 中加载）
+    console.warn('[CustomerList] API 创建人数据为空，使用 userStore.users 兜底，共', userStore.users.length, '个')
+    if (userStore.users.length > 0) {
+      filterCreators.value = userStore.users
+        .filter(u => u.status === 'active' || !u.status)
+        .map(u => ({
+          id: u.id,
+          name: u.name || u.realName || u.username || '',
+          department: u.departmentName || u.department || ''
+        }))
+      console.log('[CustomerList] 创建人筛选列表（userStore兜底）:', filterCreators.value.length, '个')
+    }
+  } catch (error) {
+    console.error('[CustomerList] 加载创建人筛选列表失败:', error)
+    // 🔥 最终兜底
+    if (userStore.users.length > 0) {
+      filterCreators.value = userStore.users.map(u => ({
+        id: u.id,
+        name: u.name || u.realName || u.username || '',
+        department: u.departmentName || u.department || ''
+      }))
+      console.log('[CustomerList] 创建人筛选列表（异常兜底）:', filterCreators.value.length, '个')
+    }
+  }
+}
 
 // 导出权限设置相关数据
 const exportSettingsVisible = ref(false)
@@ -1643,7 +1765,9 @@ const handleReset = () => {
     level: '',
     status: '',
     source: '',
-    dateRange: []
+    dateRange: [],
+    departmentId: '',
+    createdBy: ''
   })
   handleSearch()
 }
@@ -1734,7 +1858,9 @@ const loadCustomerList = async (forceReload = false) => {
       level: searchForm.level || undefined,
       dateRange: searchForm.dateRange && searchForm.dateRange.length === 2
         ? [searchForm.dateRange[0], searchForm.dateRange[1]]
-        : undefined
+        : undefined,
+      departmentId: searchForm.departmentId || undefined,
+      createdBy: searchForm.createdBy || undefined
     }
     console.log('[CustomerList] 请求参数:', JSON.stringify(requestParams))
 
@@ -1945,7 +2071,9 @@ onMounted(async () => {
   await Promise.all([
     loadCustomerList(needsForceRefresh),
     loadSharedToMeCustomers(),
-    loadCustomerStats()
+    loadCustomerStats(),
+    loadFilterDepartments(),
+    loadFilterCreators()
   ])
 
   console.log('[客户列表] onMounted - 初始化完成，当前显示客户数量:', customerList.value.length)

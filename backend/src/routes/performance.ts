@@ -544,20 +544,24 @@ router.get('/personal', async (req: Request, res: Response) => {
       }
     });
 
-    // 🔥 业绩分享调整
-    let shareDateCond = '';
-    if (startDate && endDate) {
-      shareDateCond = ` AND ps.created_at >= '${startDate} 00:00:00' AND ps.created_at <= '${endDate} 23:59:59'`;
-    }
+    // 🔥 业绩分享调整 - 分享仅影响对应订单所在月份，按订单创建时间过滤
+    // 只处理当前用户创建的订单中有分享的，避免跨月影响
+    const sharedOrderNumbers = orders
+      .filter((o: any) => isValidForOrderPerformance(o.status, o.markType))
+      .map((o: any) => o.orderNumber)
+      .filter(Boolean) as string[];
 
-    // 查询当前用户作为创建者的分享记录（需要扣除）
-    const tShareCreator = tenantSQL('ps.');
-    const creatorShares = await AppDataSource.query(
-      `SELECT ps.id, ps.order_number, ps.order_amount
-       FROM performance_shares ps
-       WHERE ps.created_by = ? AND ps.status IN ('active', 'completed')${shareDateCond}${tShareCreator.sql}`,
-      [userId, ...tShareCreator.params]
-    );
+    let creatorShares: any[] = [];
+    if (sharedOrderNumbers.length > 0) {
+      const tShareCreator = tenantSQL('ps.');
+      creatorShares = await AppDataSource.query(
+        `SELECT ps.id, ps.order_number, ps.order_amount
+         FROM performance_shares ps
+         WHERE ps.created_by = ? AND ps.status IN ('active', 'completed')
+           AND ps.order_number IN (${sharedOrderNumbers.map(() => '?').join(',')})${tShareCreator.sql}`,
+        [userId, ...sharedOrderNumbers, ...tShareCreator.params]
+      );
+    }
 
     if (creatorShares.length > 0) {
       const tShareMem = tenantSQL('psm.');
@@ -596,15 +600,22 @@ router.get('/personal', async (req: Request, res: Response) => {
     }
 
     // 查询当前用户作为接收者的分享记录（需要加上）
+    // 🔥 修复：按订单创建时间过滤，JOIN orders 确保只加当月订单的分享业绩
     const tShareReceiver = tenantSQL('psm.');
     const tShareReceiverPs = tenantSQL('ps.');
-    const receivedShares = await AppDataSource.query(
+    let shareDateCondRecv = '';
+    if (startDate && endDate) {
+      shareDateCondRecv = ` AND o.created_at >= '${startDate} 00:00:00' AND o.created_at <= '${endDate} 23:59:59'`;
+    }
+    const receivedSharesQuery = await AppDataSource.query(
       `SELECT psm.share_id, psm.share_percentage, ps.order_id, ps.order_number, ps.order_amount
        FROM performance_share_members psm
        JOIN performance_shares ps ON ps.id = psm.share_id
-       WHERE psm.user_id = ? AND ps.status IN ('active', 'completed')${shareDateCond}${tShareReceiver.sql}${tShareReceiverPs.sql}`,
+       JOIN orders o ON o.order_number = ps.order_number
+       WHERE psm.user_id = ? AND ps.status IN ('active', 'completed')${shareDateCondRecv}${tShareReceiver.sql}${tShareReceiverPs.sql}`,
       [userId, ...tShareReceiver.params, ...tShareReceiverPs.params]
     );
+    const receivedShares = receivedSharesQuery;
 
     if (receivedShares.length > 0) {
       // 获取原始订单状态
@@ -755,17 +766,15 @@ router.get('/team', async (req: Request, res: Response) => {
     const memberStats: any[] = [];
 
     // 🔥 预加载所有生效中的业绩分享数据（避免在循环中重复查询）
+    // 🔥 修复：移除 ps.created_at 日期过滤，改为通过订单映射（userOrderMap）在循环中按日期匹配
+    // 分享业绩仅限对应订单的创建时间所在月，不会跨月影响
     const tSharePre = tenantSQL('ps.');
     const tShareMemberPre = tenantSQL('psm.');
-    let shareDateCondition = '';
-    if (startDate && endDate) {
-      shareDateCondition = ` AND ps.created_at >= '${startDate} 00:00:00' AND ps.created_at <= '${endDate} 23:59:59'`;
-    }
     const allShares = await AppDataSource.query(
       `SELECT ps.id, ps.order_id, ps.order_number, ps.order_amount, ps.created_by,
               ps.status as share_status
        FROM performance_shares ps
-       WHERE ps.status IN ('active', 'completed')${shareDateCondition}${tSharePre.sql}`,
+       WHERE ps.status IN ('active', 'completed')${tSharePre.sql}`,
       [...tSharePre.params]
     );
     // 获取所有分享成员
@@ -803,7 +812,7 @@ router.get('/team', async (req: Request, res: Response) => {
     if (sharedOrderIds.length > 0) {
       const tOrdStatus = tenantSQL('');
       const sharedOrders = await AppDataSource.query(
-        `SELECT id, order_number, status, mark_type as markType, total_amount as totalAmount
+        `SELECT id, order_number, status, mark_type as markType, total_amount as totalAmount, created_at as createdAt
          FROM orders WHERE id IN (${sharedOrderIds.map(() => '?').join(',')})${tOrdStatus.sql}`,
         [...sharedOrderIds, ...tOrdStatus.params]
       );
@@ -910,6 +919,11 @@ router.get('/team', async (req: Request, res: Response) => {
       });
 
       // 🔥 业绩分享调整 - 加上接收到的部分
+      // 🔥 额外校验：只加当月订单的分享（按原始订单created_at），避免跨月数据污染
+      const hasDateFilter = !!startDate && !!endDate;
+      const recvRangeStart = hasDateFilter ? new Date(startDate + ' 00:00:00') : null;
+      const recvRangeEnd = hasDateFilter ? new Date(endDate + ' 23:59:59') : null;
+
       const receivedShares = shareMemsByUser[user.id] || [];
       receivedShares.forEach((mem: any) => {
         const myRatio = (Number(mem.share_percentage) || 0) / 100;
@@ -920,6 +934,12 @@ router.get('/team', async (req: Request, res: Response) => {
         // 找到原始订单的状态
         const originalOrder = sharedOrderStatusMap[parentShare.order_id] || sharedOrderStatusMap[parentShare.order_number];
         if (!originalOrder) return;
+
+        // 🔥 如果有日期范围限制，检查原始订单是否在范围内
+        if (recvRangeStart && recvRangeEnd && originalOrder.createdAt) {
+          const orderDate = new Date(originalOrder.createdAt);
+          if (orderDate < recvRangeStart || orderDate > recvRangeEnd) return;
+        }
 
         if (isValidForOrderPerformance(originalOrder.status, originalOrder.markType)) {
           // 🔥 订单数守恒：只调整金额，不调整订单数量
