@@ -97,12 +97,12 @@ router.get('/order-timeline/:orderId', async (req: Request, res: Response) => {
       )
       UNION ALL
       (
-        SELECT id, COALESCE(action_type, 'status_change') AS log_type,
+        SELECT id, COALESCE(actionType, 'status_change') AS log_type,
                CONCAT(COALESCE(notes, ''), CASE WHEN status IS NOT NULL THEN CONCAT(' [状态: ', status, ']') ELSE '' END) AS content,
-               COALESCE(operator_name, '系统') AS operator_name,
-               created_at, 'status_history' AS source
+               COALESCE(operatorName, '系统') AS operator_name,
+               createdAt AS created_at, 'status_history' AS source
         FROM order_status_history
-        WHERE order_id = ? ${tenantWhere}
+        WHERE orderId = ? ${tenantWhere}
       )
       ORDER BY created_at DESC
       LIMIT ? OFFSET ?
