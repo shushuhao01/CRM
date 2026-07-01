@@ -26,13 +26,15 @@ import { writeOperationLog, extractUserInfo } from '../../utils/operationLogWrit
 
 /** 从请求中提取操作人完整信息（姓名+部门）*/
 function getOperatorInfo(req: Request) {
-  const currentUser = (req as any).currentUser || (req as any).user;
-  const operatorId = currentUser?.id || null;
-  const realName = currentUser?.realName || currentUser?.name || currentUser?.username || '系统';
-  const departmentName = currentUser?.departmentName || currentUser?.department || '';
+  const curUser = (req as any).currentUser || {};
+  const jwtUser = (req as any).user || {};
+  const operatorId = curUser.id || jwtUser.id || jwtUser.userId || null;
+  // 优先用 realName（成员姓名），其次是 name，最后才是 username（登录账号）
+  const realName = curUser.realName || curUser.name || jwtUser.realName || jwtUser.name || jwtUser.username || '系统';
+  const departmentName = curUser.departmentName || curUser.department || jwtUser.departmentName || jwtUser.department || '';
   // 格式化为"某部门-某人"
   const operatorName = departmentName ? `${departmentName}-${realName}` : realName;
-  return { operatorId, operatorName, departmentName, realName, currentUser };
+  return { operatorId, operatorName, departmentName, realName, currentUser: curUser.id ? curUser : jwtUser };
 }
 
 export function registerCrudRoutes(router: Router): void {router.get('/', authenticateToken, async (req: Request, res: Response) => {
@@ -1344,16 +1346,7 @@ router.put('/:id', authenticateToken, async (req: Request, res: Response) => {
 
     const updatedOrder = await orderRepository.save(order);
 
-    // 写入操作日志
     const editUserInfo = extractUserInfo(req);
-    writeOperationLog({
-      module: 'order',
-      resourceType: 'order',
-      resourceId: order.id,
-      action: 'edit',
-      description: `编辑订单 ${order.orderNumber}`,
-      ...editUserInfo,
-    });
 
     // 🔥 根据状态变更发送相应通知和保存状态历史
     if (updateData.status !== undefined && updateData.status !== previousStatus) {
@@ -1361,13 +1354,14 @@ router.put('/:id', authenticateToken, async (req: Request, res: Response) => {
       const opInfo = getOperatorInfo(req);
       const currentUser = opInfo.currentUser;
 
-      // 🔥 保存状态历史记录
+      // 🔥 保存状态历史记录（始终包含中文状态变更信息）
+      const statusChangeNote = `状态从"${getStatusName(previousStatus)}"变更为"${getStatusName(updateData.status)}"`;
       await saveStatusHistory(
         order.id,
         updateData.status,
         opInfo.operatorId,
         opInfo.operatorName,
-        updateData.remark || `状态从"${getStatusName(previousStatus)}"变更为"${getStatusName(updateData.status)}"`,
+        updateData.remark ? `${updateData.remark}（${statusChangeNote}）` : statusChangeNote,
         { operatorDepartment: opInfo.departmentName, actionType: 'status_change' }
       );
 
@@ -1559,22 +1553,79 @@ router.put('/:id', authenticateToken, async (req: Request, res: Response) => {
           break;
       }
     } else if (updateData.status === undefined || updateData.status === previousStatus) {
-      // 🔥 非状态变更的编辑操作也记录历史
+      // 🔥 非状态变更的编辑操作，记录编辑详情（含新旧值）
       const editFields: string[] = [];
-      if (updateData.receiverName || updateData.shippingName) editFields.push('收件人');
-      if (updateData.receiverPhone || updateData.shippingPhone) editFields.push('联系电话');
-      if (updateData.receiverAddress || updateData.shippingAddress) editFields.push('收货地址');
-      if (updateData.totalAmount !== undefined) editFields.push('订单金额');
-      if (updateData.depositAmount !== undefined) editFields.push('定金金额');
-      if (updateData.expressCompany !== undefined) editFields.push('快递公司');
-      if (updateData.trackingNumber !== undefined) editFields.push('快递单号');
-      if (updateData.remark !== undefined) editFields.push('备注');
-      if (updateData.paymentMethod !== undefined) editFields.push('支付方式');
-      if (updateData.markType !== undefined) editFields.push('订单标记');
-      if (updateData.products !== undefined) editFields.push('商品信息');
+      const changeDetails: string[] = [];
+
+      // 收件人
+      if (updateData.receiverName || updateData.shippingName) {
+        editFields.push('收件人');
+        changeDetails.push(`收件人: "${order.shippingName || '-'}" → "${updateData.receiverName || updateData.shippingName}"`);
+      }
+      // 联系电话
+      if (updateData.receiverPhone || updateData.shippingPhone) {
+        editFields.push('联系电话');
+        changeDetails.push(`联系电话: "${order.shippingPhone || '-'}" → "${updateData.receiverPhone || updateData.shippingPhone}"`);
+      }
+      // 收货地址
+      if (updateData.receiverAddress || updateData.shippingAddress) {
+        editFields.push('收货地址');
+        changeDetails.push(`收货地址: 已更新`);
+      }
+      // 订单金额
+      if (updateData.totalAmount !== undefined) {
+        editFields.push('订单金额');
+        changeDetails.push(`订单金额: ¥${oldTotalAmount} → ¥${Number(updateData.totalAmount)}`);
+      }
+      // 定金金额
+      if (updateData.depositAmount !== undefined) {
+        editFields.push('定金金额');
+        changeDetails.push(`定金金额: ¥${oldDepositAmount} → ¥${Number(updateData.depositAmount)}`);
+      }
+      // 快递公司
+      if (updateData.expressCompany !== undefined) {
+        editFields.push('快递公司');
+        changeDetails.push(`快递公司: "${order.expressCompany || '-'}" → "${updateData.expressCompany}"`);
+      }
+      // 快递单号
+      if (updateData.trackingNumber !== undefined) {
+        editFields.push('快递单号');
+        changeDetails.push(`快递单号: "${order.trackingNumber || '-'}" → "${updateData.trackingNumber}"`);
+      }
+      // 备注
+      if (updateData.remark !== undefined) {
+        editFields.push('备注');
+        changeDetails.push(`备注已更新`);
+      }
+      // 支付方式
+      if (updateData.paymentMethod !== undefined) {
+        editFields.push('支付方式');
+        changeDetails.push(`支付方式: "${order.paymentMethod || '-'}" → "${updateData.paymentMethod}"`);
+      }
+      // 订单标记
+      if (updateData.markType !== undefined) {
+        editFields.push('订单标记');
+        changeDetails.push(`订单标记: "${order.markType || '-'}" → "${updateData.markType}"`);
+      }
+      // 商品信息
+      if (updateData.products !== undefined) {
+        editFields.push('商品信息');
+        changeDetails.push(`商品信息已更新`);
+      }
 
       if (editFields.length > 0) {
         const opInfo = getOperatorInfo(req);
+
+        // 写入订单时间线日志（编辑详情）
+        writeOperationLog({
+          module: 'order',
+          resourceType: 'order',
+          resourceId: order.id,
+          action: 'edit',
+          description: `编辑订单 ${order.orderNumber}：${changeDetails.join('；')}`,
+          ...editUserInfo,
+        });
+
         await saveStatusHistory(
           order.id,
           order.status,
@@ -1584,7 +1635,7 @@ router.put('/:id', authenticateToken, async (req: Request, res: Response) => {
           {
             operatorDepartment: opInfo.departmentName,
             actionType: 'edit',
-            changeDetail: JSON.stringify({ editFields })
+            changeDetail: JSON.stringify({ editFields, changeDetails })
           }
         );
 

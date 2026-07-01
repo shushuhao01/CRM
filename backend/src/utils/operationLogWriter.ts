@@ -87,11 +87,16 @@ export function extractUserInfo(req: any): { userId: string; username: string; t
 
 const ORDER_STATUS_CN: Record<string, string> = {
   pending_review: '待审核', approved: '已审核', rejected: '已驳回',
+  pending_transfer: '待流转', pending_audit: '待审核', audit_rejected: '审核拒绝',
   pending_shipment: '待发货', shipped: '已发货', in_transit: '运输中',
   delivered: '已签收', signed: '已签收', cancelled: '已取消',
-  returned: '已退回', abnormal: '包裹异常', package_abnormal: '包裹异常',
+  returned: '已退回', logistics_returned: '物流退回', logistics_cancelled: '物流取消',
+  package_exception: '包裹异常', abnormal: '包裹异常',
+  rejected_returned: '拒收已退回', after_sales_created: '已建售后',
   lost: '丢件', refunded: '已退款', completed: '已完成',
   partial_shipped: '部分发货', received: '已签收',
+  pending_cancel: '待取消审核', cancel_failed: '取消失败', confirmed: '已确认',
+  paid: '已付款',
 };
 
 export function translateStatus(status: string): string {
