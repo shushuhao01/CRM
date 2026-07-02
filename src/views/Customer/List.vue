@@ -677,7 +677,7 @@ const loadFilterCreators = async () => {
     const isAdmin = role === 'super_admin' || role === 'admin'
 
     // 超管/管理员调 /users 看全部，其他角色调 /users/department-members
-    const endpoint = isAdmin ? '/users?limit=500' : '/users/department-members'
+    const endpoint = isAdmin ? '/users?limit=100' : '/users/department-members'
     let response: any = null
     try {
       response = await api.get<{ items?: any[]; users?: any[]; total?: number }>(endpoint)
