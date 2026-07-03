@@ -131,38 +131,45 @@ class PerformanceReportScheduler {
         } else if (config.repeatType === 'everyday') {
           // 每天
           return true;
-        } else if (config.repeatType === 'custom' && config.sendDays) {
-          // 自定义：检查是否在指定的星期几
-          const dayMap: Record<string, number> = {
-            'mon': 1, 'tue': 2, 'wed': 3, 'thu': 4, 'fri': 5, 'sat': 6, 'sun': 0
-          };
-          return config.sendDays.some(day => dayMap[day] === currentDay);
         }
+        // 其他情况默认每天
         return true;
 
       case 'weekly':
-        // 每周发送，检查是否是指定的星期几
+        // 每周发送，sendDays 存储数字: 1=周一, 2=周二, ..., 7=周日
+        // currentDay: 0=周日, 1=周一, ..., 6=周六
         if (config.sendDays && config.sendDays.length > 0) {
-          const dayMap: Record<string, number> = {
-            'mon': 1, 'tue': 2, 'wed': 3, 'thu': 4, 'fri': 5, 'sat': 6, 'sun': 0
-          };
-          return config.sendDays.some(day => dayMap[day] === currentDay);
+          return config.sendDays.some((d: number) => {
+            const normalized = d === 7 ? 0 : d; // 7(周日)映射到JS的0
+            return normalized === currentDay;
+          });
         }
         // 默认周一
         return currentDay === 1;
 
       case 'monthly':
-        // 每月发送，检查是否是月初第一个工作日或指定日期
-        if (currentDate === 1) {
-          return true;
+        // 每月发送，sendDays 存储日期数字: [1, 15, 30] 表示每月1号、15号、30号
+        if (config.sendDays && config.sendDays.length > 0) {
+          return config.sendDays.some((d: number) => d === currentDate);
         }
+        // 默认每月1号
+        if (currentDate === 1) return true;
         // 如果1号是周末，则在第一个工作日发送
         if (currentDate <= 3 && currentDay >= 1 && currentDay <= 5) {
           const firstDay = new Date(now.getFullYear(), now.getMonth(), 1).getDay();
           if (firstDay === 0 || firstDay === 6) {
-            // 1号是周末，检查今天是否是第一个工作日
             return currentDate === (firstDay === 0 ? 2 : (firstDay === 6 ? 3 : 1));
           }
+        }
+        return false;
+
+      case 'custom':
+        // 自定义频率：按 sendDays 中的星期几数字判断（同 weekly）
+        if (config.sendDays && config.sendDays.length > 0) {
+          return config.sendDays.some((d: number) => {
+            const normalized = d === 7 ? 0 : d;
+            return normalized === currentDay;
+          });
         }
         return false;
 
@@ -278,14 +285,17 @@ class PerformanceReportScheduler {
 
     const orderRepo = getTenantRepo(Order);
 
-    // 🔥 修复：使用 CONVERT_TZ 确保 DATE() 提取的是北京时间日期，避免 MySQL 服务器时区不一致问题
-    // 查询昨日数据 - 使用字符串日期比较
+    // 🔥 修复：created_at 已是北京时间，直接用 DATE() 比较，与 /performance/team 保持一致
+    // 不使用 CONVERT_TZ，避免把北京时间再+8小时导致日期偏移
+    // 查询昨日数据 — 使用日期字符串范围比较
     const dailyQuery = orderRepo.createQueryBuilder('o')
-      .where('DATE(CONVERT_TZ(o.created_at, "+00:00", "+08:00")) = :date', { date: yesterdayStr });
+      .where('o.created_at >= :start', { start: `${yesterdayStr} 00:00:00` })
+      .andWhere('o.created_at <= :end', { end: `${yesterdayStr} 23:59:59` });
 
-    // 查询本月数据
+    // 查询本月数据 — 从本月1日 00:00:00 到昨天 23:59:59
     const monthlyQuery = orderRepo.createQueryBuilder('o')
-      .where('DATE(CONVERT_TZ(o.created_at, "+00:00", "+08:00")) >= :start', { start: monthStartStr });
+      .where('o.created_at >= :start', { start: `${monthStartStr} 00:00:00` })
+      .andWhere('o.created_at <= :end', { end: `${yesterdayStr} 23:59:59` });
 
     if (viewScope === 'department' && targetDepartments.length > 0) {
       dailyQuery.andWhere('o.created_by_department_id IN (:...depts)', { depts: targetDepartments });
@@ -343,7 +353,7 @@ class PerformanceReportScheduler {
         `COALESCE(SUM(CASE WHEN o.status NOT IN ('pending_cancel', 'cancelled', 'audit_rejected', 'logistics_returned', 'logistics_cancelled', 'refunded') AND (o.status != 'pending_transfer' OR o.mark_type = 'normal') THEN o.total_amount ELSE 0 END), 0) as totalAmount`,
         `SUM(CASE WHEN o.status NOT IN ('pending_cancel', 'cancelled', 'audit_rejected', 'logistics_returned', 'logistics_cancelled', 'refunded') AND (o.status != 'pending_transfer' OR o.mark_type = 'normal') THEN 1 ELSE 0 END) as orderCount`
       ])
-      .where('DATE(CONVERT_TZ(o.created_at, "+00:00", "+08:00")) >= :start', { start: monthStartStr })
+      .where('o.created_at >= :start', { start: `${monthStartStr} 00:00:00` })
       .groupBy('o.created_by')
       .orderBy('totalAmount', 'DESC');
 
