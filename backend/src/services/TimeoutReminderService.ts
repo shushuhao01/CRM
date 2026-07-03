@@ -295,7 +295,7 @@ class TimeoutReminderService {
       // 查找超时的待审核订单
       const timeoutOrders = await orderRepo.find({
         where: {
-          status: In(['pending_audit', 'pending_transfer']),
+          status: In(['pending_audit']),
           createdAt: LessThan(timeoutDate)
         },
         select: ['id', 'orderNumber', 'customerName', 'totalAmount', 'createdBy', 'createdByName', 'createdAt']
