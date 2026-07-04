@@ -156,6 +156,20 @@
               </el-select>
             </el-form-item>
           </el-col>
+          <el-col :span="4">
+            <el-form-item label="订单数≥">
+              <el-input-number
+                v-model="searchForm.orderCountMin"
+                :min="0"
+                :step="1"
+                step-strictly
+                placeholder="输入数字"
+                controls-position="right"
+                style="width: 140px"
+                @change="handleSearch"
+              />
+            </el-form-item>
+          </el-col>
           <el-col :span="6" style="display: flex; align-items: flex-end; gap: 12px; padding-bottom: 18px;">
             <el-button type="primary" @click="handleSearch" :icon="Search">搜索</el-button>
             <el-button @click="handleReset" :icon="Refresh">重置</el-button>
@@ -615,7 +629,8 @@ const searchForm = reactive({
   source: '',
   dateRange: [] as string[],  // 明确指定类型，确保初始化为空数组
   departmentId: '',  // 🔥 新增：部门筛选
-  createdBy: ''  // 🔥 新增：创建人筛选
+  createdBy: '',  // 🔥 新增：创建人筛选
+  orderCountMin: undefined as number | undefined  // 🔥 新增：订单数筛选（undefined=全部，0=筛选0单，N=筛选≥N单）
 })
 
 // 统计数据
@@ -1767,7 +1782,8 @@ const handleReset = () => {
     source: '',
     dateRange: [],
     departmentId: '',
-    createdBy: ''
+    createdBy: '',
+    orderCountMin: undefined
   })
   handleSearch()
 }
@@ -1860,7 +1876,8 @@ const loadCustomerList = async (forceReload = false) => {
         ? [searchForm.dateRange[0], searchForm.dateRange[1]]
         : undefined,
       departmentId: searchForm.departmentId || undefined,
-      createdBy: searchForm.createdBy || undefined
+      createdBy: searchForm.createdBy || undefined,
+      orderCountMin: typeof searchForm.orderCountMin === 'number' && !isNaN(searchForm.orderCountMin) ? searchForm.orderCountMin : undefined
     }
     console.log('[CustomerList] 请求参数:', JSON.stringify(requestParams))
 

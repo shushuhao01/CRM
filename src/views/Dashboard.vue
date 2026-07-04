@@ -490,8 +490,8 @@ const messages = computed(() => {
 
 // 计算属性 - 使用新的消息服务（去重：排除与公告重复的系统消息）
 const unreadCount = computed(() => {
-  // 🔥 系统消息未读数（messages已排除announcement类型）
-  const msgUnread = messages.value.filter(msg => !msg.read).length
+  // 🔥 使用store的服务端真实未读数（不受本地limit=50限制）
+  const msgUnread = notificationStore.unreadCount
   // 🔥 公告未读数（排除静默公告，即用户注册前发布的历史公告）
   const annUnread = (messageStore.announcements || []).filter((a: any) => a.status === 'published' && !a.read && !a.silent).length
   return msgUnread + annUnread

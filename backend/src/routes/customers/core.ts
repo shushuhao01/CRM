@@ -44,7 +44,8 @@ router.get('/', async (req: Request, res: Response) => {
       endDate,
       onlyMine,  // 🔥 新增：强制只查询当前用户的客户（不管角色）
       departmentId,  // 🔥 新增：按部门筛选客户
-      createdBy  // 🔥 新增：按创建人筛选客户
+      createdBy,  // 🔥 新增：按创建人筛选客户
+      orderCountMin  // 🔥 新增：按订单数筛选客户
     } = req.query;
 
     const pageNum = parseInt(page as string) || 1;
@@ -197,7 +198,7 @@ router.get('/', async (req: Request, res: Response) => {
       queryBuilder.andWhere('customer.createdBy = :createdBy', { createdBy: createdBy as string });
     }
 
-    // 🔥 统计数据查询（在应用分页之前，基于相同的筛选条件）
+    // 🔥 统计数据查询（在应用分页和订单数筛选之前，基于基础筛选条件）
     const statsQueryBuilder = queryBuilder.clone();
 
     // 获取今日日期和本月日期范围
@@ -229,6 +230,35 @@ router.get('/', async (req: Request, res: Response) => {
       .leftJoin('orders', 'o_stat', 'o_stat.customer_id = customer.id AND o_stat.tenant_id = customer.tenant_id')
       .andWhere('o_stat.id IS NULL')
       .getCount();
+
+    // 🔥 新增：按订单数筛选客户（统计之后再应用，避免groupBy污染统计数据）
+    const orderCountMinValue = orderCountMin !== undefined ? parseInt(orderCountMin as string) : undefined;
+    if (orderCountMinValue !== undefined && !isNaN(orderCountMinValue)) {
+      // 排除无效状态订单（已取消、审核拒绝、物流退回、物流取消、退款等）
+      const excludedStatuses = ['pending_cancel', 'cancelled', 'audit_rejected', 'logistics_returned', 'logistics_cancelled', 'refunded'];
+
+      if (orderCountMinValue === 0) {
+        // 筛选0单客户: 先查出所有有有效订单的客户ID，再用NOT IN排除
+        const customersWithOrders = await orderRepository
+          .createQueryBuilder('o')
+          .select('DISTINCT o.customerId', 'customerId')
+          .where('o.status NOT IN (:...excludedStatuses)', { excludedStatuses })
+          .getRawMany();
+        const idsWithOrders = customersWithOrders.map((r: any) => r.customerId).filter(Boolean);
+
+        if (idsWithOrders.length > 0) {
+          queryBuilder.andWhere('customer.id NOT IN (:...idsWithOrders)', { idsWithOrders });
+        }
+        // 如果没有任何有效订单则不过滤（所有客户都是0单客户）
+      } else {
+        // 筛选≥N单客户
+        queryBuilder
+          .leftJoin('orders', 'o_min', 'o_min.customer_id = customer.id AND o_min.tenant_id = customer.tenant_id')
+          .andWhere('o_min.status NOT IN (:...excludedStatuses)', { excludedStatuses })
+          .addGroupBy('customer.id')
+          .having('COUNT(o_min.id) >= :orderCountMin', { orderCountMin: orderCountMinValue });
+      }
+    }
 
     // 排序和分页
     queryBuilder.orderBy('customer.createdAt', 'DESC')

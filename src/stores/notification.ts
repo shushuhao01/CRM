@@ -787,9 +787,14 @@ export const useNotificationStore = defineStore('notification', () => {
   // 状态
   const messages = ref<NotificationMessage[]>(loadMessagesFromStorage())
   const wsStatus = ref<'connected' | 'connecting' | 'disconnected' | 'error'>('disconnected')
+  // 🔥 服务端真实未读数量（不限于本地加载的消息数，后端无limit限制）
+  const serverUnreadCount = ref<number | null>(null)
 
   // 计算属性
   const unreadCount = computed(() => {
+    // 优先使用服务端返回的真实未读数
+    if (serverUnreadCount.value !== null) return serverUnreadCount.value
+    // 未加载API时fallback到本地计算
     return messages.value.filter(msg => !msg.read).length
   })
 
@@ -902,6 +907,7 @@ export const useNotificationStore = defineStore('notification', () => {
 
       // 更新本地状态
       messages.value = []
+      serverUnreadCount.value = 0
       saveMessagesToStorage(messages.value)
       console.log('[Notification] ✅ 所有消息已清空')
     } catch (error) {
@@ -947,6 +953,7 @@ export const useNotificationStore = defineStore('notification', () => {
         if (apiMessages.length === 0) {
           console.log('[Notification] API返回空消息，清空本地缓存')
           messages.value = []
+          serverUnreadCount.value = 0
           saveMessagesToStorage(messages.value)
           return []
         }
@@ -981,11 +988,16 @@ export const useNotificationStore = defineStore('notification', () => {
           newMessages.push(notificationMessage)
         })
 
-        // 🔥 修复：完全以服务端数据为准，不再合并本地旧数据（防止跨用户数据泄露）
-        messages.value = newMessages
+        // 🔥 合并API消息与本地消息（保留WebSocket实时推送的消息不被API加载覆盖）
+        const apiIdSet = new Set(newMessages.map(m => m.id))
+        const localOnlyMessages = messages.value.filter(m => !apiIdSet.has(m.id))
+        const localUnreadCount = localOnlyMessages.filter(m => !m.read).length
+        messages.value = [...newMessages, ...localOnlyMessages]
+        // 🔥 serverUnreadCount = API的真实未读数 + 本地独有的未读数（WebSocket推送的）
+        serverUnreadCount.value = (typeof responseData.unreadCount === 'number' ? responseData.unreadCount : 0) + localUnreadCount
         saveMessagesToStorage(messages.value)
 
-        console.log(`[Notification] ✅ 从数据库加载了 ${newMessages.length} 条消息，未读 ${responseData.unreadCount || 0} 条`)
+        console.log(`[Notification] ✅ 从数据库加载了 ${newMessages.length} 条消息，未读 ${serverUnreadCount.value} 条（API: ${responseData.unreadCount || 0} + 本地: ${localUnreadCount}）`)
 
         return apiMessages
       }
@@ -1010,6 +1022,10 @@ export const useNotificationStore = defineStore('notification', () => {
         message.read = true
         saveMessagesToStorage(messages.value)
       }
+      // 🔥 未读数同步减1（不低于0）
+      if (serverUnreadCount.value !== null && serverUnreadCount.value > 0) {
+        serverUnreadCount.value--
+      }
     } catch (error) {
       console.error('[Notification] 标记已读失败:', error)
       // 降级：只更新本地
@@ -1027,6 +1043,8 @@ export const useNotificationStore = defineStore('notification', () => {
       messages.value.forEach(msg => {
         msg.read = true
       })
+      // 🔥 清空服务端未读数
+      serverUnreadCount.value = 0
       saveMessagesToStorage(messages.value)
     } catch (error) {
       console.error('[Notification] 标记全部已读失败:', error)
@@ -1078,6 +1096,10 @@ export const useNotificationStore = defineStore('notification', () => {
           const exists = messages.value.some(m => m.id === message.id)
           if (!exists) {
             messages.value.unshift(message)
+            // 🔥 同步更新服务端未读数
+            if (serverUnreadCount.value !== null) {
+              serverUnreadCount.value++
+            }
             // 限制本地消息数量
             if (messages.value.length > 100) {
               messages.value = messages.value.slice(0, 100)
@@ -1197,6 +1219,7 @@ export const useNotificationStore = defineStore('notification', () => {
 
     // 清空内存中的消息
     messages.value = []
+    serverUnreadCount.value = null
 
     // 清空当前用户的localStorage缓存
     try {
