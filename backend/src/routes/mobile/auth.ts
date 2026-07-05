@@ -473,10 +473,10 @@ router.post('/bind', async (req: Request, res: Response) => {
       log.warn('记录绑定日志失败:', logError)
     }
 
-    // 生成WebSocket Token
+    // 生成WebSocket Token — 使用统一的 JwtConfig 密钥，确保与 MobileWebSocketService 验证一致
     const wsToken = jwt.sign(
       { userId, deviceId, source: 'mobile_ws' },
-      process.env.JWT_SECRET || 'crm-secret-key',
+      JwtConfig.getAccessTokenSecret(),
       { expiresIn: '30d' }
     )
 
