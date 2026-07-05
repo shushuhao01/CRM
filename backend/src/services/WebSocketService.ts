@@ -17,6 +17,7 @@ import jwt from 'jsonwebtoken';
 import { getDataSource } from '../config/database';
 import { User } from '../entities/User';
 import { SystemMessage } from '../entities/SystemMessage';
+import { JwtConfig } from '../config/jwt';
 import { logger } from '../config/logger';
 import { getTenantRepo } from '../utils/tenantRepo';
 import { TenantContextManager } from '../utils/tenantContext';
@@ -91,7 +92,7 @@ class WebSocketService {
           return next(new Error('认证失败：未提供Token'));
         }
 
-        const jwtSecret = process.env.JWT_SECRET || 'crm-secret-key';
+        const jwtSecret = JwtConfig.getAccessTokenSecret();
         const decoded = jwt.verify(token, jwtSecret) as any;
 
         const dataSource = getDataSource();

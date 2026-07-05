@@ -12,19 +12,35 @@ import { createTenantDestination, getUploadUrl } from '../../utils/tenantUploadH
 // Re-export for convenience
 export { getUploadUrl };
 
-// 辅助函数：生成正确的WebSocket URL
+// 辅助函数：生成正确的 WebSocket URL
+// 🔥 优先使用真实可用的 URL：环境变量 → 请求头 → localhost 兜底
 export function generateWsUrl(req: Request): string {
-  // 优先使用环境变量配置的服务器URL
-  let serverUrl = process.env.API_BASE_URL || process.env.SERVER_URL || ''
+  // 先尝试使用环境变量配置的服务器URL
+  const envUrl = process.env.API_BASE_URL || process.env.SERVER_URL || ''
 
-  if (!serverUrl) {
-    // 从请求头推断
+  // 🔥 关键修复：检测占位域名（模板中的示例域名），忽略不用，回退到请求头
+  const placeholderDomains = [
+    'your_api_domain.com',
+    'yourdomain.com',
+    'your_ip_or_domain',
+    'localhost:3000'
+  ]
+  const isPlaceholder = placeholderDomains.some(d => envUrl.includes(d))
+
+  // 使用有效的环境变量URL，否则从请求头推断
+  let serverUrl = ''
+  if (envUrl && !isPlaceholder) {
+    serverUrl = envUrl
+  } else {
+    // 从请求头推断实际的服务器地址
     const protocol = req.headers['x-forwarded-proto'] || req.protocol || 'http'
-    const host = req.headers['x-forwarded-host'] || req.headers.host || 'localhost:3000'
+    let host = (req.headers['x-forwarded-host'] || req.headers.host || 'localhost:3000') as string
+    // 去除可能的多值（x-forwarded-host 可能返回 "host1, host2"）
+    host = host.split(',')[0].trim()
     serverUrl = `${protocol}://${host}`
   }
 
-  // 转换为WebSocket协议
+  // 转换为 WebSocket 协议
   let wsUrl = serverUrl
   if (wsUrl.startsWith('https://')) {
     wsUrl = wsUrl.replace('https://', 'wss://')
