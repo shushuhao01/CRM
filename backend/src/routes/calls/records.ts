@@ -215,7 +215,7 @@ router.get('/records', async (req: Request, res: Response) => {
 
     if (keyword) {
       queryBuilder.andWhere(
-        '(call.customerName LIKE :keyword OR call.customerPhone LIKE :keyword OR call.notes LIKE :keyword)',
+        '(call.customerName LIKE :keyword OR call.customerPhone LIKE :keyword OR call.notes LIKE :keyword OR EXISTS (SELECT 1 FROM customers c WHERE c.id = call.customer_id AND CAST(c.other_phones AS CHAR) LIKE :keyword))',
         { keyword: `%${keyword}%` }
       );
     }
@@ -610,7 +610,7 @@ router.get('/', async (req: Request, res: Response) => {
 
     if (keyword) {
       queryBuilder.andWhere(
-        '(call.customerName LIKE :keyword OR call.customerPhone LIKE :keyword OR call.notes LIKE :keyword)',
+        '(call.customerName LIKE :keyword OR call.customerPhone LIKE :keyword OR call.notes LIKE :keyword OR EXISTS (SELECT 1 FROM customers c WHERE c.id = call.customer_id AND CAST(c.other_phones AS CHAR) LIKE :keyword))',
         { keyword: `%${keyword}%` }
       );
     }

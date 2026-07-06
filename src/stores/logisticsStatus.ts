@@ -116,7 +116,17 @@ export const useLogisticsStatusStore = defineStore('logisticsStatus', () => {
       Object.assign(summary, response.data)
 
       return response
-    } catch (error) {
+    } catch (error: any) {
+      // 忽略请求被取消的错误（如批量更新时多个fetchSummary并行导致前序请求被abort）
+      if (
+        error?.message === 'canceled' ||
+        error?.code === 'ERR_CANCELED' ||
+        error?.name === 'CanceledError' ||
+        error?.name === 'AbortError'
+      ) {
+        console.log('[物流状态Store] 汇总数据请求被取消（已有新请求替代），忽略')
+        return
+      }
       console.error('获取汇总数据失败:', error)
       throw error
     }

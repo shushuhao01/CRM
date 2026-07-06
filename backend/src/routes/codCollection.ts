@@ -331,12 +331,12 @@ router.get('/list', authenticateToken, async (req: Request, res: Response) => {
       queryBuilder.andWhere('o.cod_status = :codStatus', { codStatus });
     }
 
-    // 批量关键词搜索
+    // 批量关键词搜索（支持订单号、手机号、客户名称、物流单号、备用手机号）
     if (keywords) {
       const keywordList = (keywords as string).split('\n').map(k => k.trim()).filter(k => k);
       if (keywordList.length > 0) {
         const conditions = keywordList.map((_, i) =>
-          `(o.order_number LIKE :kw${i} OR o.customer_phone LIKE :kw${i} OR o.customer_name LIKE :kw${i} OR o.tracking_number LIKE :kw${i})`
+          `(o.order_number LIKE :kw${i} OR o.customer_phone LIKE :kw${i} OR o.customer_name LIKE :kw${i} OR o.tracking_number LIKE :kw${i} OR EXISTS (SELECT 1 FROM customers c WHERE c.id = o.customer_id AND c.tenant_id = o.tenant_id AND CAST(c.other_phones AS CHAR) LIKE :kw${i}))`
         ).join(' OR ');
 
         const params: any = {};

@@ -312,13 +312,13 @@ router.get('/my-list', authenticateToken, async (req: Request, res: Response) =>
     const appRepo = getTenantRepo(CodCancelApplication);
     const orderRepo = getTenantRepo(Order);
 
-    // 如果有关键词搜索，需要先从订单表查询
+    // 如果有关键词搜索，需要先从订单表查询（支持订单号、手机号、客户名称、客户编码、备用手机号、物流单号）
     let orderIds: string[] = [];
     if (keywords) {
       const orders = await orderRepo
         .createQueryBuilder('order')
         .select('order.id')
-        .andWhere('order.order_number LIKE :kw OR order.customer_name LIKE :kw OR order.customer_phone LIKE :kw OR order.customer_id LIKE :kw', {
+        .andWhere('order.order_number LIKE :kw OR order.customer_name LIKE :kw OR order.customer_phone LIKE :kw OR order.customer_id LIKE :kw OR order.tracking_number LIKE :kw OR EXISTS (SELECT 1 FROM customers c WHERE c.id = order.customer_id AND c.tenant_id = order.tenant_id AND CAST(c.other_phones AS CHAR) LIKE :kw)', {
           kw: `%${keywords}%`
         })
         .getMany();
@@ -405,13 +405,13 @@ router.get('/review-list', authenticateToken, async (req: Request, res: Response
     const appRepo = getTenantRepo(CodCancelApplication);
     const orderRepo = getTenantRepo(Order);
 
-    // 如果有关键词搜索，需要先从订单表查询
+    // 如果有关键词搜索，需要先从订单表查询（支持订单号、手机号、客户名称、客户编码、备用手机号、物流单号）
     let orderIds: string[] = [];
     if (keywords) {
       const orders = await orderRepo
         .createQueryBuilder('order')
         .select('order.id')
-        .andWhere('order.order_number LIKE :kw OR order.customer_name LIKE :kw OR order.customer_phone LIKE :kw OR order.customer_id LIKE :kw OR order.tracking_number LIKE :kw', {
+        .andWhere('order.order_number LIKE :kw OR order.customer_name LIKE :kw OR order.customer_phone LIKE :kw OR order.customer_id LIKE :kw OR order.tracking_number LIKE :kw OR EXISTS (SELECT 1 FROM customers c WHERE c.id = order.customer_id AND c.tenant_id = order.tenant_id AND CAST(c.other_phones AS CHAR) LIKE :kw)', {
           kw: `%${keywords}%`
         })
         .getMany();

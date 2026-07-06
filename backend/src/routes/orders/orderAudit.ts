@@ -85,12 +85,12 @@ export function registerAuditRoutes(router: Router): void {router.get('/audit-li
       log.info(`📋 [审核列表] 筛选其他状态订单: status=${status}`);
     }
 
-    // 综合搜索：支持订单号、手机号、客户姓名、客户编码
+    // 综合搜索：支持订单号、手机号、客户姓名、客户编码、备用手机号
     if (keyword) {
       const kw = `%${keyword}%`;
       queryBuilder.leftJoin('order.customer', 'customer');
       queryBuilder.andWhere(
-        '(order.orderNumber LIKE :kw OR order.customerPhone LIKE :kw OR order.customerName LIKE :kw OR customer.customerNo LIKE :kw)',
+        '(order.orderNumber LIKE :kw OR order.customerPhone LIKE :kw OR order.customerName LIKE :kw OR customer.customerNo LIKE :kw OR CAST(customer.other_phones AS CHAR) LIKE :kw)',
         { kw }
       );
     }

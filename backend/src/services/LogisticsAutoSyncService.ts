@@ -295,13 +295,16 @@ export function mapKuaidi100State(state: string | number): string {
  *
  * 规则：
  * - 在途状态（pending/picked_up/in_transit/out_for_delivery）→ 不更新订单状态
- * - delivered → 仅当订单当前是 shipped 时，更新为 delivered
- * - rejected → 仅当订单当前是 shipped 时，更新为 rejected
- * - exception → 仅当订单当前是 shipped 时，更新为 package_exception
+ * - delivered → shipped/rejected/package_exception 都可变 delivered（重新派送签收）
+ * - rejected → shipped/package_exception 可变 rejected（首次拒收或异常后拒收）
+ * - exception → 只有 shipped 可变 package_exception
  * - returned → 根据当前状态判断：
  *   - rejected → rejected_returned（拒收后退回）
  *   - shipped → logistics_returned（物流原因退回）
  *   - package_exception → logistics_returned（异常后退回）
+ *
+ * ⚠️ 注意：rejected 和 package_exception 不是终态！客户可能联系后重新派送签收。
+ * 终态只有：delivered、rejected_returned、cancelled 等。
  *
  * @returns 目标订单状态，null 表示不更新
  */
@@ -310,6 +313,7 @@ export function mapLogisticsToOrderStatus(
   currentOrderStatus: string
 ): string | null {
   // 🔒 终态订单不参与同步
+  // ⚠️ rejected 和 package_exception 不是终态！客户可能重新联系后重新派送签收
   const terminalStatuses = [
     'delivered', 'rejected_returned', 'cancelled', 'after_sales_created',
     'logistics_cancelled', 'pending_transfer', 'pending_audit', 'audit_rejected'
@@ -318,7 +322,7 @@ export function mapLogisticsToOrderStatus(
     return null;
   }
 
-  // 🔒 只处理这些订单状态
+  // 🔒 只处理这些订单状态（rejected 和 package_exception 需继续同步）
   const processableStatuses = ['shipped', 'rejected', 'package_exception'];
   if (!processableStatuses.includes(currentOrderStatus)) {
     return null;
@@ -326,8 +330,8 @@ export function mapLogisticsToOrderStatus(
 
   switch (logisticsStatus) {
     case 'delivered':
-      // shipped 或 package_exception 都可以变 delivered（异常后重新派送签收）
-      return (currentOrderStatus === 'shipped' || currentOrderStatus === 'package_exception') ? 'delivered' : null;
+      // shipped/rejected/package_exception 都可以变 delivered（异常/拒收后重新派送签收）
+      return (currentOrderStatus === 'shipped' || currentOrderStatus === 'package_exception' || currentOrderStatus === 'rejected') ? 'delivered' : null;
 
     case 'rejected':
       // shipped 或 package_exception 都可以变 rejected

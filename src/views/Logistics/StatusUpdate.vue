@@ -142,6 +142,25 @@
           <el-option label="已退回" value="returned" />
         </el-select>
         <el-select
+          v-model="orderStatusFilter"
+          placeholder="订单状态"
+          clearable
+          class="filter-select"
+          @change="handleOrderStatusFilter"
+        >
+          <el-option label="已发货" value="shipped" />
+          <el-option label="已签收" value="delivered" />
+          <el-option label="拒收" value="rejected" />
+          <el-option label="拒收已退回" value="rejected_returned" />
+          <el-option label="包裹异常" value="package_exception" />
+          <el-option label="状态异常" value="abnormal" />
+          <el-option label="退货退款" value="refunded" />
+          <el-option label="已建售后" value="after_sales_created" />
+          <el-option label="物流部退回" value="logistics_returned" />
+          <el-option label="物流部取消" value="logistics_cancelled" />
+          <el-option label="已取消" value="cancelled" />
+        </el-select>
+        <el-select
           v-model="departmentFilter"
           placeholder="选择部门"
           clearable
@@ -505,6 +524,7 @@ const activeQuickFilter = ref('all')
 const dateRange = ref<[string, string]>(['', ''])
 const searchKeyword = ref('')
 const statusFilter = ref('')
+const orderStatusFilter = ref('')
 const departmentFilter = ref('')
 const salesPersonFilter = ref('')
 const orderList = ref<any[]>([])
@@ -651,6 +671,12 @@ const handleSearch = () => {
 }
 
 const handleStatusFilter = () => {
+  pagination.currentPage = 1
+  loadData()
+}
+
+// 订单状态筛选变更时自动加载数据
+const handleOrderStatusFilter = () => {
   pagination.currentPage = 1
   loadData()
 }
@@ -890,9 +916,12 @@ const loadData = async (showMessage = false) => {
     // 🔥 修复：直接调用API，传递分页参数，实现后端分页
     const { orderApi } = await import('@/api/order')
 
-    // 🔥 根据当前标签页确定要查询的状态
+    // 🔥 根据当前标签页确定要查询的状态，订单状态筛选可覆盖
     let statusParam: string | undefined = undefined
-    if (activeTab.value === 'pending') {
+    if (orderStatusFilter.value) {
+      // 用户手动选择了订单状态筛选，使用选中的值
+      statusParam = orderStatusFilter.value
+    } else if (activeTab.value === 'pending') {
       statusParam = 'shipped'  // 待更新 = 已发货状态
     } else if (activeTab.value === 'updated') {
       statusParam = 'updated'  // 🔥 已更新 = 所有非shipped状态（delivered, rejected, returned, abnormal等）
@@ -1040,8 +1069,9 @@ const fetchLatestLogisticsUpdates = async () => {
   const { logisticsApi } = await import('@/api/logistics')
 
   // 🔥 已完结的物流状态列表（不需要再请求API）
-  // 注意：package_exception和exception状态仍需继续请求API跟踪后续变化
-  const finishedStatuses = ['delivered', 'rejected', 'rejected_returned', 'returned', 'cancelled']
+  // ⚠️ 注意：rejected（拒收）和 package_exception（包裹异常）不是终态！
+  // 客户可能后续联系重新派送签收，物流信息会继续变化，必须继续请求API跟踪
+  const finishedStatuses = ['delivered', 'rejected_returned', 'returned', 'cancelled']
 
   // 🔥 优化：只处理有物流单号且物流未完结的订单
   const ordersWithTracking = orderList.value.filter(order => {
@@ -1363,7 +1393,7 @@ onUnmounted(() => {
 })
 
 // 监听筛选条件变化，重新加载汇总数据
-watch([dateRange, statusFilter, searchKeyword], () => {
+watch([dateRange, statusFilter, orderStatusFilter, searchKeyword], () => {
   loadSummaryData(true)
 }, { deep: true })
 </script>
@@ -1526,17 +1556,17 @@ watch([dateRange, statusFilter, searchKeyword], () => {
 
 .search-filters .search-input {
   flex: 1;
-  min-width: 150px;
+  min-width: 120px;
 }
 
 .search-filters .filter-select {
   flex: 1;
-  min-width: 100px;
+  min-width: 85px;
 }
 
 .search-filters .filter-select-wide {
   flex: 1;
-  min-width: 120px;
+  min-width: 110px;
 }
 
 .search-filters :deep(.el-date-editor) {
