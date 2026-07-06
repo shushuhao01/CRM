@@ -158,7 +158,7 @@ router.get('/orders', authenticateToken, async (req: Request, res: Response) => 
       });
     }
 
-    // 关键词搜索（订单号、客户电话、物流单号）- 支持批量搜索
+    // 关键词搜索（订单号、客户电话、物流单号、客户名称）- 支持批量搜索和备用手机号
     if (keywords) {
       // 处理批量关键词：支持换行符和逗号分隔
       const keywordStr = String(keywords).trim();
@@ -168,20 +168,50 @@ router.get('/orders', authenticateToken, async (req: Request, res: Response) => 
         .filter(k => k.length > 0);
 
       if (keywordList.length > 0) {
-        // 🔥 使用 OR 条件组合多个关键词
+        // 🔥 第一步：在 customers 表中查找匹配备用手机号的客户ID
+        // 避免 EXISTS 子查询与 'order' 别名冲突导致的 SQL 错误
+        const customerIdsFromOtherPhones: string[] = [];
+        try {
+          const { Customer } = await import('../../entities/Customer');
+          const customerRepo = getTenantRepo(Customer);
+          const customerConditions = keywordList.map((_kw, i) =>
+            `(CAST(customer.other_phones AS CHAR) LIKE :cpkw${i})`
+          ).join(' OR ');
+          const customerParams: any = {};
+          keywordList.forEach((kw, i) => {
+            customerParams[`cpkw${i}`] = `%${kw}%`;
+          });
+          const matchingCustomers = await customerRepo
+            .createQueryBuilder('customer')
+            .select('customer.id')
+            .where(`(${customerConditions})`, customerParams)
+            .getMany();
+          matchingCustomers.forEach(c => customerIdsFromOtherPhones.push(c.id));
+        } catch (e) {
+          log.warn('[ValueAdded] 备用手机号查询失败，跳过:', e);
+        }
+
+        // 🔥 第二步：构建主查询条件
         const conditions = keywordList.map((_kw, index) =>
-          `(order.order_number = :kw${index}_1 OR order.customer_phone = :kw${index}_2 OR order.tracking_number = :kw${index}_3 OR order.customer_name LIKE :kw${index}_4)`
+          `(order.order_number LIKE :kw${index}_1 OR order.customer_phone LIKE :kw${index}_2 OR order.tracking_number LIKE :kw${index}_3 OR order.customer_name LIKE :kw${index}_4)`
         ).join(' OR ');
 
+        // 附加匹配客户ID的条件
+        let finalCondition = `(${conditions})`;
         const params: any = {};
         keywordList.forEach((kw, index) => {
-          params[`kw${index}_1`] = kw;
-          params[`kw${index}_2`] = kw;
-          params[`kw${index}_3`] = kw;
+          params[`kw${index}_1`] = `%${kw}%`;
+          params[`kw${index}_2`] = `%${kw}%`;
+          params[`kw${index}_3`] = `%${kw}%`;
           params[`kw${index}_4`] = `%${kw}%`;
         });
 
-        queryBuilder.andWhere(`(${conditions})`, params);
+        if (customerIdsFromOtherPhones.length > 0) {
+          finalCondition += ` OR order.customer_id IN (:...custIds)`;
+          params.custIds = customerIdsFromOtherPhones;
+        }
+
+        queryBuilder.andWhere(finalCondition, params);
       }
     }
 

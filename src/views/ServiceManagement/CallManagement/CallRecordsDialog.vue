@@ -27,7 +27,8 @@
               :model-value="callRecordsFilter.customerKeyword"
               @update:model-value="updateFilter('customerKeyword', $event)"
               placeholder="搜索客户姓名或电话" clearable style="width: 200px;"
-              @input="$emit('load-records')"
+              @clear="$emit('load-records')"
+              @keyup.enter="$emit('load-records')"
             >
               <template #prefix><el-icon><Search /></el-icon></template>
             </el-input>

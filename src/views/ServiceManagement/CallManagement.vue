@@ -273,6 +273,7 @@
       :callRecordsLoading="callRecordsLoading"
       :callRecordsList="callRecordsList"
       :callRecordsFilter="callRecordsFilter"
+      @update:callRecordsFilter="handleCallRecordsFilterUpdate"
       :callRecordsPagination="callRecordsPagination"
       :currentRecording="currentRecording"
       @load-records="loadCallRecords"
@@ -1415,6 +1416,11 @@ const resetCallRecordsFilter = () => {
   callRecordsFilter.dateRange = []
   callRecordsFilter.customerKeyword = ''
   loadCallRecords()
+}
+
+// 处理通话记录筛选更新（双绑回调）
+const handleCallRecordsFilterUpdate = (newFilter: any) => {
+  Object.assign(callRecordsFilter, newFilter)
 }
 
 // 通话记录分页处理

@@ -28,7 +28,7 @@ router.get('/prospects', async (req: Request, res: Response) => {
     }
 
     if (keyword) {
-      qb.andWhere('(p.name LIKE :kw OR p.phone LIKE :kw OR p.company LIKE :kw)', { kw: `%${keyword}%` });
+      qb.andWhere('(p.name LIKE :kw OR p.phone LIKE :kw OR p.company LIKE :kw OR EXISTS (SELECT 1 FROM customers c WHERE c.id = p.convertedCustomerId AND CAST(c.other_phones AS CHAR) LIKE :kw))', { kw: `%${keyword}%` });
     }
     if (status) qb.andWhere('p.status = :status', { status });
     if (assignedTo) qb.andWhere('p.assignedTo = :assignedTo', { assignedTo });
@@ -100,7 +100,7 @@ router.get('/prospects', async (req: Request, res: Response) => {
         const existingCustomerIds = list.filter(p => p.convertedCustomerId).map(p => p.convertedCustomerId);
 
         if (keyword) {
-          cqb.andWhere('(c.name LIKE :kw OR c.phone LIKE :kw OR c.company LIKE :kw)', { kw: `%${keyword}%` });
+          cqb.andWhere('(c.name LIKE :kw OR c.phone LIKE :kw OR c.company LIKE :kw OR CAST(c.other_phones AS CHAR) LIKE :kw)', { kw: `%${keyword}%` });
         }
 
         // 客户列表权限过滤
