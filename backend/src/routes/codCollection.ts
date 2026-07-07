@@ -336,7 +336,7 @@ router.get('/list', authenticateToken, async (req: Request, res: Response) => {
       const keywordList = (keywords as string).split('\n').map(k => k.trim()).filter(k => k);
       if (keywordList.length > 0) {
         const conditions = keywordList.map((_, i) =>
-          `(o.order_number LIKE :kw${i} OR o.customer_phone LIKE :kw${i} OR o.customer_name LIKE :kw${i} OR o.tracking_number LIKE :kw${i} OR EXISTS (SELECT 1 FROM customers c WHERE c.id = o.customer_id AND c.tenant_id = o.tenant_id AND CAST(c.other_phones AS CHAR) LIKE :kw${i}))`
+          `(o.order_number LIKE :kw${i} OR o.customer_phone LIKE :kw${i} OR o.customer_name LIKE :kw${i} OR o.tracking_number LIKE :kw${i} OR EXISTS (SELECT 1 FROM customers c WHERE CONVERT(c.id USING utf8mb4) COLLATE utf8mb4_general_ci = CONVERT(o.customer_id USING utf8mb4) COLLATE utf8mb4_general_ci AND CONVERT(c.tenant_id USING utf8mb4) COLLATE utf8mb4_general_ci = CONVERT(o.tenant_id USING utf8mb4) COLLATE utf8mb4_general_ci AND CAST(c.other_phones AS CHAR) LIKE :kw${i}))`
         ).join(' OR ');
 
         const params: any = {};

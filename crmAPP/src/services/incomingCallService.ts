@@ -1511,6 +1511,12 @@ class IncomingCallService {
     for (let attempt = 0; attempt < delays.length; attempt++) {
       try {
         await new Promise(resolve => setTimeout(resolve, delays[attempt]))
+        // ⚠️ 防串号：如果期间有新来电开始，立即中止本任务，
+        // 避免把上一通补获的号码覆盖到新来电的显示/记录上
+        if (this.currentIncoming) {
+          console.log('[IncomingCallService] 检测到新来电进行中，中止上一通的后台补获任务')
+          return
+        }
         // 传入来电开始时间，避免匹配到旧录音文件
         let resolved = await this.tryResolveCallerFromRecordingFile(info.startTime)
         if (!resolved) {
@@ -1518,6 +1524,12 @@ class IncomingCallService {
         }
         if (resolved && resolved !== '未知来电') {
           console.log('[IncomingCallService] ✅ 后台补获号码成功(第' + (attempt + 1) + '次):', resolved)
+
+          // 再次确认没有新来电开始（异步查询期间也可能来新电话）
+          if (this.currentIncoming) {
+            console.log('[IncomingCallService] 补获完成但已有新来电，放弃更新以防串号')
+            return
+          }
 
           // 通知前端更新
           uni.$emit('incoming:number_updated', { callerNumber: resolved })

@@ -119,7 +119,7 @@ export function registerCrudRoutes(router: Router): void {router.get('/', authen
     // 🔥 综合关键词搜索（商品名称模糊搜索，其他字段精准搜索，客户编码和其他手机号通过子查询关联customers表）
     if (keyword) {
       queryBuilder.andWhere(
-        '(order.orderNumber = :exactKeyword OR order.customerName = :exactKeyword OR order.customerPhone = :exactKeyword OR order.customerId = :exactKeyword OR order.trackingNumber = :exactKeyword OR order.products LIKE :fuzzyKeyword OR EXISTS (SELECT 1 FROM customers c WHERE c.id = order.customer_id AND c.tenant_id = order.tenant_id AND (c.customer_code LIKE :fuzzyKeyword OR c.phone = :exactKeyword OR JSON_CONTAINS(c.other_phones, JSON_QUOTE(:exactKeyword)))))',
+        '(order.orderNumber = :exactKeyword OR order.customerName = :exactKeyword OR order.customerPhone = :exactKeyword OR order.customerId = :exactKeyword OR order.trackingNumber = :exactKeyword OR order.products LIKE :fuzzyKeyword OR EXISTS (SELECT 1 FROM customers c WHERE CONVERT(c.id USING utf8mb4) COLLATE utf8mb4_general_ci = CONVERT(order.customer_id USING utf8mb4) COLLATE utf8mb4_general_ci AND CONVERT(c.tenant_id USING utf8mb4) COLLATE utf8mb4_general_ci = CONVERT(order.tenant_id USING utf8mb4) COLLATE utf8mb4_general_ci AND (c.customer_code LIKE :fuzzyKeyword OR c.phone = :exactKeyword OR JSON_CONTAINS(c.other_phones, JSON_QUOTE(:exactKeyword)))))',
         { exactKeyword: keyword, fuzzyKeyword: `%${keyword}%` }
       );
       log.info(`📋 [订单列表] 综合关键词搜索: "${keyword}" (商品模糊，其他精准，支持客户编码和其他手机号)`);
@@ -190,7 +190,7 @@ export function registerCrudRoutes(router: Router): void {router.get('/', authen
 
     // 🔥 高级筛选：客户电话（同时搜索客户其他手机号）
     if (customerPhone) {
-      queryBuilder.andWhere('(order.customerPhone LIKE :customerPhone OR EXISTS (SELECT 1 FROM customers c WHERE c.id = order.customer_id AND c.tenant_id = order.tenant_id AND CAST(c.other_phones AS CHAR) LIKE :customerPhone))', { customerPhone: `%${customerPhone}%` });
+      queryBuilder.andWhere('(order.customerPhone LIKE :customerPhone OR EXISTS (SELECT 1 FROM customers c WHERE CONVERT(c.id USING utf8mb4) COLLATE utf8mb4_general_ci = CONVERT(order.customer_id USING utf8mb4) COLLATE utf8mb4_general_ci AND CONVERT(c.tenant_id USING utf8mb4) COLLATE utf8mb4_general_ci = CONVERT(order.tenant_id USING utf8mb4) COLLATE utf8mb4_general_ci AND CAST(c.other_phones AS CHAR) LIKE :customerPhone))', { customerPhone: `%${customerPhone}%` });
     }
 
     // 🔥 高级筛选：支付方式

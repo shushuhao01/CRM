@@ -318,7 +318,7 @@ router.get('/my-list', authenticateToken, async (req: Request, res: Response) =>
       const orders = await orderRepo
         .createQueryBuilder('order')
         .select('order.id')
-        .andWhere('order.order_number LIKE :kw OR order.customer_name LIKE :kw OR order.customer_phone LIKE :kw OR order.customer_id LIKE :kw OR order.tracking_number LIKE :kw OR EXISTS (SELECT 1 FROM customers c WHERE c.id = order.customer_id AND c.tenant_id = order.tenant_id AND CAST(c.other_phones AS CHAR) LIKE :kw)', {
+        .andWhere('order.order_number LIKE :kw OR order.customer_name LIKE :kw OR order.customer_phone LIKE :kw OR order.customer_id LIKE :kw OR order.tracking_number LIKE :kw OR EXISTS (SELECT 1 FROM customers c WHERE CONVERT(c.id USING utf8mb4) COLLATE utf8mb4_general_ci = CONVERT(order.customer_id USING utf8mb4) COLLATE utf8mb4_general_ci AND CONVERT(c.tenant_id USING utf8mb4) COLLATE utf8mb4_general_ci = CONVERT(order.tenant_id USING utf8mb4) COLLATE utf8mb4_general_ci AND CAST(c.other_phones AS CHAR) LIKE :kw)', {
           kw: `%${keywords}%`
         })
         .getMany();
@@ -411,7 +411,7 @@ router.get('/review-list', authenticateToken, async (req: Request, res: Response
       const orders = await orderRepo
         .createQueryBuilder('order')
         .select('order.id')
-        .andWhere('order.order_number LIKE :kw OR order.customer_name LIKE :kw OR order.customer_phone LIKE :kw OR order.customer_id LIKE :kw OR order.tracking_number LIKE :kw OR EXISTS (SELECT 1 FROM customers c WHERE c.id = order.customer_id AND c.tenant_id = order.tenant_id AND CAST(c.other_phones AS CHAR) LIKE :kw)', {
+        .andWhere('order.order_number LIKE :kw OR order.customer_name LIKE :kw OR order.customer_phone LIKE :kw OR order.customer_id LIKE :kw OR order.tracking_number LIKE :kw OR EXISTS (SELECT 1 FROM customers c WHERE CONVERT(c.id USING utf8mb4) COLLATE utf8mb4_general_ci = CONVERT(order.customer_id USING utf8mb4) COLLATE utf8mb4_general_ci AND CONVERT(c.tenant_id USING utf8mb4) COLLATE utf8mb4_general_ci = CONVERT(order.tenant_id USING utf8mb4) COLLATE utf8mb4_general_ci AND CAST(c.other_phones AS CHAR) LIKE :kw)', {
           kw: `%${keywords}%`
         })
         .getMany();

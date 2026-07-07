@@ -232,7 +232,7 @@ router.get('/performance-data', async (req: Request, res: Response) => {
 
         limitedKeywords.forEach((keyword, index) => {
           const paramKey = `kw${index}`;
-          orConditions.push(`(order.orderNumber LIKE :${paramKey} OR order.customerName LIKE :${paramKey} OR order.customerPhone LIKE :${paramKey} OR EXISTS (SELECT 1 FROM customers c WHERE c.id = order.customer_id AND CAST(c.other_phones AS CHAR) LIKE :${paramKey}))`);
+          orConditions.push(`(order.orderNumber LIKE :${paramKey} OR order.customerName LIKE :${paramKey} OR order.customerPhone LIKE :${paramKey} OR EXISTS (SELECT 1 FROM customers c WHERE CONVERT(c.id USING utf8mb4) COLLATE utf8mb4_general_ci = CONVERT(order.customer_id USING utf8mb4) COLLATE utf8mb4_general_ci AND CAST(c.other_phones AS CHAR) LIKE :${paramKey}))`);
           orParams[paramKey] = `%${keyword}%`;
         });
 
@@ -291,7 +291,7 @@ router.get('/performance-data', async (req: Request, res: Response) => {
 
         limitedKeywords.forEach((keyword, index) => {
           const paramKey = `kw${index}`;
-          orConditions.push(`(order.orderNumber LIKE :${paramKey} OR order.customerName LIKE :${paramKey} OR order.customerPhone LIKE :${paramKey} OR EXISTS (SELECT 1 FROM customers c WHERE c.id = order.customer_id AND CAST(c.other_phones AS CHAR) LIKE :${paramKey}))`);
+          orConditions.push(`(order.orderNumber LIKE :${paramKey} OR order.customerName LIKE :${paramKey} OR order.customerPhone LIKE :${paramKey} OR EXISTS (SELECT 1 FROM customers c WHERE CONVERT(c.id USING utf8mb4) COLLATE utf8mb4_general_ci = CONVERT(order.customer_id USING utf8mb4) COLLATE utf8mb4_general_ci AND CAST(c.other_phones AS CHAR) LIKE :${paramKey}))`);
           orParams[paramKey] = `%${keyword}%`;
         });
 
@@ -468,7 +468,7 @@ router.get('/performance-manage', async (req: Request, res: Response) => {
 
         limitedKeywords.forEach((keyword, index) => {
           const paramKey = `kw${index}`;
-          orConditions.push(`(order.orderNumber LIKE :${paramKey} OR order.customerName LIKE :${paramKey} OR order.customerPhone LIKE :${paramKey} OR EXISTS (SELECT 1 FROM customers c WHERE c.id = order.customer_id AND CAST(c.other_phones AS CHAR) LIKE :${paramKey}))`);
+          orConditions.push(`(order.orderNumber LIKE :${paramKey} OR order.customerName LIKE :${paramKey} OR order.customerPhone LIKE :${paramKey} OR EXISTS (SELECT 1 FROM customers c WHERE CONVERT(c.id USING utf8mb4) COLLATE utf8mb4_general_ci = CONVERT(order.customer_id USING utf8mb4) COLLATE utf8mb4_general_ci AND CAST(c.other_phones AS CHAR) LIKE :${paramKey}))`);
           orParams[paramKey] = `%${keyword}%`;
         });
 
@@ -515,7 +515,7 @@ router.get('/performance-manage', async (req: Request, res: Response) => {
 
         limitedKeywords.forEach((keyword, index) => {
           const paramKey = `kw${index}`;
-          orConditions.push(`(order.orderNumber LIKE :${paramKey} OR order.customerName LIKE :${paramKey} OR order.customerPhone LIKE :${paramKey} OR EXISTS (SELECT 1 FROM customers c WHERE c.id = order.customer_id AND CAST(c.other_phones AS CHAR) LIKE :${paramKey}))`);
+          orConditions.push(`(order.orderNumber LIKE :${paramKey} OR order.customerName LIKE :${paramKey} OR order.customerPhone LIKE :${paramKey} OR EXISTS (SELECT 1 FROM customers c WHERE CONVERT(c.id USING utf8mb4) COLLATE utf8mb4_general_ci = CONVERT(order.customer_id USING utf8mb4) COLLATE utf8mb4_general_ci AND CAST(c.other_phones AS CHAR) LIKE :${paramKey}))`);
           orParams[paramKey] = `%${keyword}%`;
         });
 

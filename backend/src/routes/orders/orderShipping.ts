@@ -38,7 +38,7 @@ export function registerShippingRoutes(router: Router): void {router.get('/shipp
     // 🔥 支持综合关键词搜索（订单号 OR 客户名称 OR 手机号 OR 客户编码 OR 客户其他手机号）
     if (keyword) {
       queryBuilder.andWhere(
-        '(order.orderNumber LIKE :keyword OR order.customerName LIKE :keyword OR order.customerPhone LIKE :keyword OR order.customerId LIKE :keyword OR EXISTS (SELECT 1 FROM customers c WHERE c.id = order.customer_id AND c.tenant_id = order.tenant_id AND (c.customer_code LIKE :keyword OR CAST(c.other_phones AS CHAR) LIKE :keyword)))',
+        '(order.orderNumber LIKE :keyword OR order.customerName LIKE :keyword OR order.customerPhone LIKE :keyword OR order.customerId LIKE :keyword OR EXISTS (SELECT 1 FROM customers c WHERE CONVERT(c.id USING utf8mb4) COLLATE utf8mb4_general_ci = CONVERT(order.customer_id USING utf8mb4) COLLATE utf8mb4_general_ci AND CONVERT(c.tenant_id USING utf8mb4) COLLATE utf8mb4_general_ci = CONVERT(order.tenant_id USING utf8mb4) COLLATE utf8mb4_general_ci AND (c.customer_code LIKE :keyword OR CAST(c.other_phones AS CHAR) LIKE :keyword)))',
         { keyword: `%${keyword}%` }
       );
       log.info(`📦 [待发货订单] 综合关键词搜索: "${keyword}"`);
@@ -344,13 +344,13 @@ router.get('/shipping/shipped', authenticateToken, async (req: Request, res: Res
     if (keyword) {
       // 统一关键词搜索：支持订单号、客户名称、物流单号、手机号、客户编码、客户其他手机号
       queryBuilder.andWhere(
-        '(order.orderNumber LIKE :keyword OR order.customerName LIKE :keyword OR order.trackingNumber LIKE :keyword OR order.customerPhone LIKE :keyword OR order.customerId LIKE :keyword OR EXISTS (SELECT 1 FROM customers c WHERE c.id = order.customer_id AND c.tenant_id = order.tenant_id AND (c.customer_code LIKE :keyword OR CAST(c.other_phones AS CHAR) LIKE :keyword)))',
+        '(order.orderNumber LIKE :keyword OR order.customerName LIKE :keyword OR order.trackingNumber LIKE :keyword OR order.customerPhone LIKE :keyword OR order.customerId LIKE :keyword OR EXISTS (SELECT 1 FROM customers c WHERE CONVERT(c.id USING utf8mb4) COLLATE utf8mb4_general_ci = CONVERT(order.customer_id USING utf8mb4) COLLATE utf8mb4_general_ci AND CONVERT(c.tenant_id USING utf8mb4) COLLATE utf8mb4_general_ci = CONVERT(order.tenant_id USING utf8mb4) COLLATE utf8mb4_general_ci AND (c.customer_code LIKE :keyword OR CAST(c.other_phones AS CHAR) LIKE :keyword)))',
         { keyword: `%${keyword}%` }
       );
       log.info(`🚚 [已发货订单] 统一关键词搜索: "${keyword}"`);
     } else if (orderNumber && customerName && orderNumber === customerName) {
       // 如果订单号和客户名称相同，说明是同一个搜索关键词，使用 OR 条件
-      queryBuilder.andWhere('(order.orderNumber LIKE :kw OR order.customerName LIKE :kw OR order.trackingNumber LIKE :kw OR order.customerPhone LIKE :kw OR order.customerId LIKE :kw OR EXISTS (SELECT 1 FROM customers c WHERE c.id = order.customer_id AND c.tenant_id = order.tenant_id AND (c.customer_code LIKE :kw OR CAST(c.other_phones AS CHAR) LIKE :kw)))', { kw: `%${orderNumber}%` });
+      queryBuilder.andWhere('(order.orderNumber LIKE :kw OR order.customerName LIKE :kw OR order.trackingNumber LIKE :kw OR order.customerPhone LIKE :kw OR order.customerId LIKE :kw OR EXISTS (SELECT 1 FROM customers c WHERE CONVERT(c.id USING utf8mb4) COLLATE utf8mb4_general_ci = CONVERT(order.customer_id USING utf8mb4) COLLATE utf8mb4_general_ci AND CONVERT(c.tenant_id USING utf8mb4) COLLATE utf8mb4_general_ci = CONVERT(order.tenant_id USING utf8mb4) COLLATE utf8mb4_general_ci AND (c.customer_code LIKE :kw OR CAST(c.other_phones AS CHAR) LIKE :kw)))', { kw: `%${orderNumber}%` });
       log.info(`🚚 [已发货订单] 关键词搜索: "${orderNumber}"`);
     } else {
       // 分别筛选
@@ -361,10 +361,10 @@ router.get('/shipping/shipped', authenticateToken, async (req: Request, res: Res
         queryBuilder.andWhere('order.customerName LIKE :customerName', { customerName: `%${customerName}%` });
       }
       if (customerPhone) {
-        queryBuilder.andWhere('(order.customerPhone LIKE :customerPhone OR EXISTS (SELECT 1 FROM customers c WHERE c.id = order.customer_id AND c.tenant_id = order.tenant_id AND CAST(c.other_phones AS CHAR) LIKE :customerPhone))', { customerPhone: `%${customerPhone}%` });
+        queryBuilder.andWhere('(order.customerPhone LIKE :customerPhone OR EXISTS (SELECT 1 FROM customers c WHERE CONVERT(c.id USING utf8mb4) COLLATE utf8mb4_general_ci = CONVERT(order.customer_id USING utf8mb4) COLLATE utf8mb4_general_ci AND CONVERT(c.tenant_id USING utf8mb4) COLLATE utf8mb4_general_ci = CONVERT(order.tenant_id USING utf8mb4) COLLATE utf8mb4_general_ci AND CAST(c.other_phones AS CHAR) LIKE :customerPhone))', { customerPhone: `%${customerPhone}%` });
       }
       if (customerCode) {
-        queryBuilder.andWhere('EXISTS (SELECT 1 FROM customers c WHERE c.id = order.customer_id AND c.tenant_id = order.tenant_id AND c.customer_code LIKE :customerCode)', { customerCode: `%${customerCode}%` });
+        queryBuilder.andWhere('EXISTS (SELECT 1 FROM customers c WHERE CONVERT(c.id USING utf8mb4) COLLATE utf8mb4_general_ci = CONVERT(order.customer_id USING utf8mb4) COLLATE utf8mb4_general_ci AND CONVERT(c.tenant_id USING utf8mb4) COLLATE utf8mb4_general_ci = CONVERT(order.tenant_id USING utf8mb4) COLLATE utf8mb4_general_ci AND c.customer_code LIKE :customerCode)', { customerCode: `%${customerCode}%` });
       }
     }
     if (trackingNumber) {
@@ -587,7 +587,7 @@ router.get('/shipping/returned', authenticateToken, async (req: Request, res: Re
     // 🔥 支持综合关键词搜索(订单号 OR 客户名称 OR 手机号 OR 客户编码 OR 客户其他手机号)
     if (keyword) {
       queryBuilder.andWhere(
-        '(order.orderNumber LIKE :keyword OR order.customerName LIKE :keyword OR order.customerPhone LIKE :keyword OR order.customerId LIKE :keyword OR EXISTS (SELECT 1 FROM customers c WHERE c.id = order.customer_id AND c.tenant_id = order.tenant_id AND (c.customer_code LIKE :keyword OR CAST(c.other_phones AS CHAR) LIKE :keyword)))',
+        '(order.orderNumber LIKE :keyword OR order.customerName LIKE :keyword OR order.customerPhone LIKE :keyword OR order.customerId LIKE :keyword OR EXISTS (SELECT 1 FROM customers c WHERE CONVERT(c.id USING utf8mb4) COLLATE utf8mb4_general_ci = CONVERT(order.customer_id USING utf8mb4) COLLATE utf8mb4_general_ci AND CONVERT(c.tenant_id USING utf8mb4) COLLATE utf8mb4_general_ci = CONVERT(order.tenant_id USING utf8mb4) COLLATE utf8mb4_general_ci AND (c.customer_code LIKE :keyword OR CAST(c.other_phones AS CHAR) LIKE :keyword)))',
         { keyword: `%${keyword}%` }
       );
       log.info(`📦 [退回订单] 综合关键词搜索: "${keyword}"`);
@@ -778,7 +778,7 @@ router.get('/shipping/cancelled', authenticateToken, async (req: Request, res: R
     // 🔥 支持综合关键词搜索
     if (keyword) {
       queryBuilder.andWhere(
-        '(order.orderNumber LIKE :keyword OR order.customerName LIKE :keyword OR order.customerPhone LIKE :keyword OR order.customerId LIKE :keyword OR EXISTS (SELECT 1 FROM customers c WHERE c.id = order.customer_id AND c.tenant_id = order.tenant_id AND (c.customer_code LIKE :keyword OR CAST(c.other_phones AS CHAR) LIKE :keyword)))',
+        '(order.orderNumber LIKE :keyword OR order.customerName LIKE :keyword OR order.customerPhone LIKE :keyword OR order.customerId LIKE :keyword OR EXISTS (SELECT 1 FROM customers c WHERE CONVERT(c.id USING utf8mb4) COLLATE utf8mb4_general_ci = CONVERT(order.customer_id USING utf8mb4) COLLATE utf8mb4_general_ci AND CONVERT(c.tenant_id USING utf8mb4) COLLATE utf8mb4_general_ci = CONVERT(order.tenant_id USING utf8mb4) COLLATE utf8mb4_general_ci AND (c.customer_code LIKE :keyword OR CAST(c.other_phones AS CHAR) LIKE :keyword)))',
         { keyword: `%${keyword}%` }
       );
     } else {
@@ -954,7 +954,7 @@ router.get('/shipping/draft', authenticateToken, async (req: Request, res: Respo
     // 🔥 支持综合关键词搜索
     if (keyword) {
       queryBuilder.andWhere(
-        '(order.orderNumber LIKE :keyword OR order.customerName LIKE :keyword OR order.customerPhone LIKE :keyword OR EXISTS (SELECT 1 FROM customers c WHERE c.id = order.customer_id AND c.tenant_id = order.tenant_id AND (c.customer_code LIKE :keyword OR CAST(c.other_phones AS CHAR) LIKE :keyword)))',
+        '(order.orderNumber LIKE :keyword OR order.customerName LIKE :keyword OR order.customerPhone LIKE :keyword OR EXISTS (SELECT 1 FROM customers c WHERE CONVERT(c.id USING utf8mb4) COLLATE utf8mb4_general_ci = CONVERT(order.customer_id USING utf8mb4) COLLATE utf8mb4_general_ci AND CONVERT(c.tenant_id USING utf8mb4) COLLATE utf8mb4_general_ci = CONVERT(order.tenant_id USING utf8mb4) COLLATE utf8mb4_general_ci AND (c.customer_code LIKE :keyword OR CAST(c.other_phones AS CHAR) LIKE :keyword)))',
         { keyword: `%${keyword}%` }
       );
     } else {

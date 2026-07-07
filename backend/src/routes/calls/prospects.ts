@@ -28,7 +28,10 @@ router.get('/prospects', async (req: Request, res: Response) => {
     }
 
     if (keyword) {
-      qb.andWhere('(p.name LIKE :kw OR p.phone LIKE :kw OR p.company LIKE :kw OR EXISTS (SELECT 1 FROM customers c WHERE c.id = p.convertedCustomerId AND CAST(c.other_phones AS CHAR) LIKE :kw))', { kw: `%${keyword}%` });
+      // 注意：c.id 与 p.convertedCustomerId 属于不同表，生产库两表排序规则可能不一致
+      // （utf8mb4_unicode_ci vs utf8mb4_general_ci），列对列直接 = 会报 Illegal mix of collations，
+      // 用 CONVERT + 显式 COLLATE 统一后再比较
+      qb.andWhere('(p.name LIKE :kw OR p.phone LIKE :kw OR p.company LIKE :kw OR EXISTS (SELECT 1 FROM customers c WHERE CONVERT(c.id USING utf8mb4) COLLATE utf8mb4_general_ci = CONVERT(p.convertedCustomerId USING utf8mb4) COLLATE utf8mb4_general_ci AND CAST(c.other_phones AS CHAR) LIKE :kw))', { kw: `%${keyword}%` });
     }
     if (status) qb.andWhere('p.status = :status', { status });
     if (assignedTo) qb.andWhere('p.assignedTo = :assignedTo', { assignedTo });

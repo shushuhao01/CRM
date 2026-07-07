@@ -88,7 +88,7 @@ router.get('/status-update/orders', async (req, res) => {
     // 关键词搜索（支持订单号、客户名、手机号、物流单号、客户其他手机号）
     if (keyword) {
       queryBuilder.andWhere(
-        '(order.orderNumber LIKE :kw OR order.customerName LIKE :kw OR order.customerPhone LIKE :kw OR order.trackingNumber LIKE :kw OR order.shippingPhone LIKE :kw OR EXISTS (SELECT 1 FROM customers c WHERE c.id = order.customer_id AND CAST(c.other_phones AS CHAR) LIKE :kw))',
+        '(order.orderNumber LIKE :kw OR order.customerName LIKE :kw OR order.customerPhone LIKE :kw OR order.trackingNumber LIKE :kw OR order.shippingPhone LIKE :kw OR EXISTS (SELECT 1 FROM customers c WHERE CONVERT(c.id USING utf8mb4) COLLATE utf8mb4_general_ci = CONVERT(order.customer_id USING utf8mb4) COLLATE utf8mb4_general_ci AND CAST(c.other_phones AS CHAR) LIKE :kw))',
         { kw: `%${keyword}%` }
       );
     }

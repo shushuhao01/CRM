@@ -214,8 +214,10 @@ router.get('/records', async (req: Request, res: Response) => {
     }
 
     if (keyword) {
+      // CONVERT + 显式 COLLATE：customers 与 call_records 两表排序规则可能不一致（生产库），
+      // 列对列直接 = 会报 Illegal mix of collations
       queryBuilder.andWhere(
-        '(call.customerName LIKE :keyword OR call.customerPhone LIKE :keyword OR call.notes LIKE :keyword OR EXISTS (SELECT 1 FROM customers c WHERE c.id = call.customer_id AND CAST(c.other_phones AS CHAR) LIKE :keyword))',
+        '(call.customerName LIKE :keyword OR call.customerPhone LIKE :keyword OR call.notes LIKE :keyword OR EXISTS (SELECT 1 FROM customers c WHERE CONVERT(c.id USING utf8mb4) COLLATE utf8mb4_general_ci = CONVERT(call.customer_id USING utf8mb4) COLLATE utf8mb4_general_ci AND CAST(c.other_phones AS CHAR) LIKE :keyword))',
         { keyword: `%${keyword}%` }
       );
     }
@@ -609,8 +611,9 @@ router.get('/', async (req: Request, res: Response) => {
     }
 
     if (keyword) {
+      // CONVERT + 显式 COLLATE：避免两表排序规则不一致导致 Illegal mix of collations
       queryBuilder.andWhere(
-        '(call.customerName LIKE :keyword OR call.customerPhone LIKE :keyword OR call.notes LIKE :keyword OR EXISTS (SELECT 1 FROM customers c WHERE c.id = call.customer_id AND CAST(c.other_phones AS CHAR) LIKE :keyword))',
+        '(call.customerName LIKE :keyword OR call.customerPhone LIKE :keyword OR call.notes LIKE :keyword OR EXISTS (SELECT 1 FROM customers c WHERE CONVERT(c.id USING utf8mb4) COLLATE utf8mb4_general_ci = CONVERT(call.customer_id USING utf8mb4) COLLATE utf8mb4_general_ci AND CAST(c.other_phones AS CHAR) LIKE :keyword))',
         { keyword: `%${keyword}%` }
       );
     }

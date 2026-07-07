@@ -407,21 +407,25 @@ class MobileWebSocketService {
         }
       }
       if (!callId && phoneNumber && phoneNumber !== '未知来电') {
+        // ⚠️ 防串号：优先匹配号码相同或号码未知的记录，且限定10分钟内，避免更新到别的通话
         const records = await dataSource.query(
           `SELECT id FROM call_records
            WHERE user_id = ? AND call_type = 'inbound'
+             AND created_at > DATE_SUB(NOW(), INTERVAL 10 MINUTE)
+             AND (customer_phone = ? OR customer_phone IS NULL OR customer_phone = '' OR customer_phone = '未知来电')
            ORDER BY created_at DESC LIMIT 1`,
-          [String(userId)]
+          [String(userId), phoneNumber]
         );
         if (records.length > 0) {
           callId = records[0].id;
         }
       }
-      // 如果还是没有 callId，但有"未知来电"号码，查找该用户最近的呼入记录
+      // 如果还是没有 callId，但有"未知来电"号码，查找该用户最近的呼入记录（限定10分钟内）
       if (!callId) {
         const records = await dataSource.query(
           `SELECT id FROM call_records
            WHERE user_id = ? AND call_type = 'inbound'
+             AND created_at > DATE_SUB(NOW(), INTERVAL 10 MINUTE)
            ORDER BY created_at DESC LIMIT 1`,
           [String(userId)]
         );
@@ -476,13 +480,23 @@ class MobileWebSocketService {
             const placeholders = possibleNums.map(() => '?').join(',');
             // 备用号码存在 other_phones JSON 数组中（customers 表没有 mobile 列）
             const otherPhonesCond = possibleNums.map(() => 'JSON_CONTAINS(c.other_phones, JSON_QUOTE(?))').join(' OR ');
+            // 🔒 租户隔离：只匹配本通话记录所属租户的客户（不同租户可能存在相同号码的客户）
+            let recTenantId: string | null = null;
+            try {
+              const recRows = await dataSource.query(
+                `SELECT tenant_id FROM call_records WHERE id = ? LIMIT 1`, [callId]
+              );
+              recTenantId = recRows[0]?.tenant_id || null;
+            } catch (_e) { /* 忽略 */ }
+            const tenantCond = recTenantId ? ' AND c.tenant_id = ?' : ' AND c.tenant_id IS NULL';
+            const tenantParams = recTenantId ? [recTenantId] : [];
             const customers = await dataSource.query(
               `SELECT id, name FROM customers c
                WHERE (REPLACE(REPLACE(REPLACE(REPLACE(c.phone, ' ', ''), '-', ''), '(', ''), ')', '') IN (${placeholders})
                       OR ${otherPhonesCond}
-                     )
+                     )${tenantCond}
                LIMIT 1`,
-              [...possibleNums, ...possibleNums]
+              [...possibleNums, ...possibleNums, ...tenantParams]
             );
             if (customers.length > 0) {
               await dataSource.query(
@@ -583,6 +597,15 @@ class MobileWebSocketService {
       } catch (_e) {
         // 忽略
       }
+      // 🔒 兜底：work_phones 未记录租户时，从用户表取（避免 SaaS 下跨租户匹配客户）
+      if (!tenantId) {
+        try {
+          const userRows = await dataSource.query(
+            `SELECT tenant_id FROM users WHERE id = ? LIMIT 1`, [String(userId)]
+          );
+          tenantId = userRows[0]?.tenant_id || null;
+        } catch (_e) { /* 忽略 */ }
+      }
 
       // 2. 查找客户信息（带租户隔离）
       let customerId = null;
@@ -604,7 +627,8 @@ class MobileWebSocketService {
           `0${normalizedNumber}`,
         ];
         const placeholders = possibleNumbers.map(() => '?').join(',');
-        const tenantFilter = tenantId ? ' AND c.tenant_id = ?' : '';
+        // 🔒 严格租户隔离：有租户时只匹配本租户客户；无租户（私有部署）只匹配无租户客户
+        const tenantFilter = tenantId ? ' AND c.tenant_id = ?' : ' AND c.tenant_id IS NULL';
         // 备用号码存在 other_phones JSON 数组中（customers 表没有 mobile 列）
         const otherPhonesCond = possibleNumbers.map(() => 'JSON_CONTAINS(c.other_phones, JSON_QUOTE(?))').join(' OR ');
         const queryParams: any[] = [...possibleNumbers, ...possibleNumbers];
@@ -648,20 +672,30 @@ class MobileWebSocketService {
 
       // 3. 创建或更新呼入通话记录
       // 检查30秒内是否已有该用户的呼入记录（APP可能先报"未知来电"再报真实号码）
+      // ⚠️ 防串号：只复用"仍在响铃中"的记录（已结束的上一通不能被下一通复用），
+      //    且若两条记录都有有效号码但不一致，视为新的一通来电，不复用
       let callId = `IN-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
       let isUpdate = false;
       try {
         const existing = await dataSource.query(
-          `SELECT id FROM call_records
+          `SELECT id, customer_phone FROM call_records
            WHERE user_id = ? AND call_type = 'inbound'
+             AND call_status = 'ringing'
              AND created_at > DATE_SUB(NOW(), INTERVAL 30 SECOND)
            ORDER BY created_at DESC LIMIT 1`,
           [String(userId)]
         );
         if (existing.length > 0) {
-          callId = existing[0].id;
-          isUpdate = true;
-          logger.info(`[MobileWS] 检测到30秒内已有呼入记录，更新记录: ${callId}`);
+          const prevPhone = existing[0].customer_phone || '';
+          const prevValid = prevPhone && prevPhone !== '未知来电';
+          const currValid = callerNumber && callerNumber !== '未知来电';
+          if (prevValid && currValid && prevPhone !== callerNumber) {
+            logger.info(`[MobileWS] 30秒内存在响铃记录但号码不同(${prevPhone} vs ${callerNumber})，创建新记录`);
+          } else {
+            callId = existing[0].id;
+            isUpdate = true;
+            logger.info(`[MobileWS] 检测到30秒内响铃中的呼入记录，更新记录: ${callId}`);
+          }
         }
       } catch (_e) { /* 忽略 */ }
 
