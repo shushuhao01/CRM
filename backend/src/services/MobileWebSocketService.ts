@@ -459,14 +459,27 @@ class MobileWebSocketService {
         // 如果号码有效，重新匹配客户信息
         const phoneNum = data.phoneNumber || '';
         if (phoneNum && phoneNum !== '未知来电' && phoneNum !== '') {
+          // 先把记录中的号码更新为真实号码（即使匹配不到客户——新客户场景，
+          // 否则 CRM 通话记录会一直显示"未知来电"）
+          try {
+            await dataSource.query(
+              `UPDATE call_records SET customer_phone = ?, updated_at = NOW()
+               WHERE id = ? AND (customer_phone IS NULL OR customer_phone = '' OR customer_phone = '未知来电')`,
+              [phoneNum, callId]
+            );
+          } catch (phoneErr: any) {
+            logger.warn(`[MobileWS] 更新通话记录号码失败: ${phoneErr.message}`);
+          }
           try {
             const normalizedNum = phoneNum.replace(/[\s\-()]/g, '').replace(/^(\+?86)?0?/, '');
             const possibleNums = [phoneNum, normalizedNum, `+86${normalizedNum}`, `86${normalizedNum}`, `0${normalizedNum}`];
             const placeholders = possibleNums.map(() => '?').join(',');
+            // 备用号码存在 other_phones JSON 数组中（customers 表没有 mobile 列）
+            const otherPhonesCond = possibleNums.map(() => 'JSON_CONTAINS(c.other_phones, JSON_QUOTE(?))').join(' OR ');
             const customers = await dataSource.query(
               `SELECT id, name FROM customers c
                WHERE (REPLACE(REPLACE(REPLACE(REPLACE(c.phone, ' ', ''), '-', ''), '(', ''), ')', '') IN (${placeholders})
-                      OR REPLACE(REPLACE(REPLACE(REPLACE(c.mobile, ' ', ''), '-', ''), '(', ''), ')', '') IN (${placeholders})
+                      OR ${otherPhonesCond}
                      )
                LIMIT 1`,
               [...possibleNums, ...possibleNums]
@@ -592,6 +605,8 @@ class MobileWebSocketService {
         ];
         const placeholders = possibleNumbers.map(() => '?').join(',');
         const tenantFilter = tenantId ? ' AND c.tenant_id = ?' : '';
+        // 备用号码存在 other_phones JSON 数组中（customers 表没有 mobile 列）
+        const otherPhonesCond = possibleNumbers.map(() => 'JSON_CONTAINS(c.other_phones, JSON_QUOTE(?))').join(' OR ');
         const queryParams: any[] = [...possibleNumbers, ...possibleNumbers];
         if (tenantId) queryParams.push(tenantId);
 
@@ -601,7 +616,7 @@ class MobileWebSocketService {
                    WHERE customer_id = c.id) as last_call
            FROM customers c
            WHERE (REPLACE(REPLACE(REPLACE(REPLACE(c.phone, ' ', ''), '-', ''), '(', ''), ')', '') IN (${placeholders})
-                  OR REPLACE(REPLACE(REPLACE(REPLACE(c.mobile, ' ', ''), '-', ''), '(', ''), ')', '') IN (${placeholders})
+                  OR ${otherPhonesCond}
                  )${tenantFilter}
            LIMIT 1`,
           queryParams
@@ -622,6 +637,13 @@ class MobileWebSocketService {
         }
       } catch (err: any) {
         logger.warn('[MobileWS] 查询客户信息失败:', err.message);
+      }
+
+      // 区分三种状态：已有客户（匹配成功）/ 新客户（号码有效但系统中不存在）/ 未知来电（号码未获取到）
+      const hasValidNumber = !!callerNumber && callerNumber !== '未知来电';
+      const isNewCustomer = hasValidNumber && !customerId;
+      if (isNewCustomer) {
+        customerName = '新客户';
       }
 
       // 3. 创建或更新呼入通话记录
@@ -688,7 +710,8 @@ class MobileWebSocketService {
             customerLevel,
             company,
             lastCallTime,
-            tags
+            tags,
+            isNewCustomer
           },
           deviceInfo: {
             deviceId,
@@ -705,7 +728,8 @@ class MobileWebSocketService {
           callId,
           callerNumber,
           customerName,
-          customerId
+          customerId,
+          isNewCustomer
         }
       });
 

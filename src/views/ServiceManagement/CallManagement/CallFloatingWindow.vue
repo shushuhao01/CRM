@@ -53,8 +53,13 @@
       <div class="caller-info">
         <div class="caller-avatar"><el-icon size="60"><User /></el-icon></div>
         <div class="caller-details">
-          <h3>{{ incomingCallData.customerName || '未知客户' }}</h3>
+          <h3>
+            {{ incomingCallData.customerName || '未知客户' }}
+            <el-tag v-if="incomingCallData.isNewCustomer" type="warning" size="small" effect="dark" style="margin-left: 6px; vertical-align: middle;">新客户</el-tag>
+            <el-tag v-else-if="incomingCallData.customerId" type="success" size="small" style="margin-left: 6px; vertical-align: middle;">已有客户</el-tag>
+          </h3>
           <p class="phone-number">{{ incomingCallData.phone ? displaySensitiveInfoNew(incomingCallData.phone, SensitiveInfoType.PHONE) : '未知号码' }}</p>
+          <p v-if="incomingCallData.isNewCustomer" style="color: #e6a23c; font-size: 12px; margin: 4px 0;">该号码尚未创建客户，可接听后快速跟进建档</p>
           <p class="company-info" v-if="incomingCallData.company">
             <span style="color: #909399; font-size: 13px;">{{ incomingCallData.company }}</span>
           </p>

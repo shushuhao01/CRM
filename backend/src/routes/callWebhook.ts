@@ -348,7 +348,7 @@ router.post('/sip/incoming', verifySipWebhookSecret, async (req: Request, res: R
         `SELECT c.id, c.name, c.level, c.company,
                 (SELECT MAX(cr.start_time) FROM call_records cr WHERE cr.customer_id = c.id${crSubTenant}) as last_call
          FROM customers c
-         WHERE (c.phone = ? OR c.mobile = ?)${tenantFilter}
+         WHERE (c.phone = ? OR JSON_CONTAINS(c.other_phones, JSON_QUOTE(?)))${tenantFilter}
          LIMIT 1`,
         [callerNumber, callerNumber, ...tenantParams]
       );
@@ -361,6 +361,12 @@ router.post('/sip/incoming', verifySipWebhookSecret, async (req: Request, res: R
       }
     } catch (err) {
       log.warn('[Webhook] 查询客户信息失败:', err);
+    }
+
+    // 区分：新客户（号码有效但系统中不存在）/ 未知来电
+    const isNewCustomer = !!callerNumber && callerNumber !== '未知来电' && !customerId;
+    if (isNewCustomer) {
+      customerName = '新客户';
     }
 
     // 2. 根据被叫号码(DID)或线路分配找到负责人
@@ -470,7 +476,8 @@ router.post('/sip/incoming', verifySipWebhookSecret, async (req: Request, res: R
           customerLevel,
           company,
           lastCallTime,
-          tags: []
+          tags: [],
+          isNewCustomer
         },
         deviceInfo: {
           trunkId,
@@ -667,7 +674,7 @@ async function processCloudInboundNotification(options: {
       `SELECT c.id, c.name, c.level, c.company,
               (SELECT MAX(cr.start_time) FROM call_records cr WHERE cr.customer_id = c.id${crSubTenant}) as last_call
        FROM customers c
-       WHERE (c.phone = ? OR c.mobile = ?)${tenantFilter}
+       WHERE (c.phone = ? OR JSON_CONTAINS(c.other_phones, JSON_QUOTE(?)))${tenantFilter}
        LIMIT 1`,
       [callerNumber, callerNumber, ...tenantParams]
     );
@@ -680,6 +687,12 @@ async function processCloudInboundNotification(options: {
     }
   } catch (err) {
     log.warn('[Webhook] 查询客户信息失败:', err);
+  }
+
+  // 区分：新客户（号码有效但系统中不存在）/ 未知来电
+  const isNewCustomer = !!callerNumber && callerNumber !== '未知来电' && !customerId;
+  if (isNewCustomer) {
+    customerName = '新客户';
   }
 
   let assignedUserId: string | null = null;
@@ -801,7 +814,8 @@ async function processCloudInboundNotification(options: {
         customerLevel,
         company,
         lastCallTime,
-        tags: []
+        tags: [],
+        isNewCustomer
       },
       deviceInfo: {
         trunkId,

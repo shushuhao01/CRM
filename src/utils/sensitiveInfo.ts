@@ -384,3 +384,40 @@ export const {
 
 // 为了兼容性，提供别名导出
 export const displaySensitiveInfoNew = SensitiveInfoProcessor.displaySensitiveInfo
+
+// ==================== 敏感值本地存储加密（可逆） ====================
+// 用于需要在 localStorage 等本地存储中保存敏感值（如号码偏好）的场景，
+// 避免明文落盘。展示时仍须经 displaySensitiveInfo 按角色脱敏。
+const STORAGE_CIPHER_KEY = 'crm-sensitive-storage-v1'
+
+function xorTransform(input: string): string {
+  let out = ''
+  for (let i = 0; i < input.length; i++) {
+    out += String.fromCharCode(input.charCodeAt(i) ^ STORAGE_CIPHER_KEY.charCodeAt(i % STORAGE_CIPHER_KEY.length))
+  }
+  return out
+}
+
+/**
+ * 加密敏感值用于本地存储（可逆）
+ */
+export function encryptSensitiveForStorage(value: string): string {
+  if (!value) return ''
+  try {
+    return btoa(encodeURIComponent(xorTransform(value)))
+  } catch (_e) {
+    return ''
+  }
+}
+
+/**
+ * 解密本地存储中的敏感值
+ */
+export function decryptSensitiveFromStorage(encoded: string): string {
+  if (!encoded) return ''
+  try {
+    return xorTransform(decodeURIComponent(atob(encoded)))
+  } catch (_e) {
+    return ''
+  }
+}

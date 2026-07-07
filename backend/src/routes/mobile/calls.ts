@@ -184,11 +184,13 @@ router.post('/call/end', authenticateToken, async (req: Request, res: Response) 
         const normalizedNum = phoneNumber.replace(/[\s\-()]/g, '').replace(/^(\+?86)?0?/, '')
         const possibleNums = [phoneNumber, normalizedNum, `+86${normalizedNum}`, `86${normalizedNum}`, `0${normalizedNum}`]
         const placeholders = possibleNums.map(() => '?').join(',')
+        // 备用号码存在 other_phones JSON 数组中（customers 表没有 mobile 列）
+        const otherPhonesCond = possibleNums.map(() => 'JSON_CONTAINS(c.other_phones, JSON_QUOTE(?))').join(' OR ')
         const t2 = tenantRawSQL()
         const customers = await AppDataSource.query(
           `SELECT id, name FROM customers c
            WHERE (REPLACE(REPLACE(REPLACE(REPLACE(c.phone, ' ', ''), '-', ''), '(', ''), ')', '') IN (${placeholders})
-                  OR REPLACE(REPLACE(REPLACE(REPLACE(c.mobile, ' ', ''), '-', ''), '(', ''), ')', '') IN (${placeholders})
+                  OR ${otherPhonesCond}
                  )${t2.sql}
            LIMIT 1`,
           [...possibleNums, ...possibleNums, ...t2.params]
@@ -300,12 +302,14 @@ router.post('/call/incoming', authenticateToken, async (req: Request, res: Respo
       const normalizedNumber = callerNumber.replace(/[\s\-()]/g, '').replace(/^(\+?86)?0?/, '')
       const possibleNumbers = [callerNumber, normalizedNumber, `+86${normalizedNumber}`, `86${normalizedNumber}`, `0${normalizedNumber}`]
       const placeholders = possibleNumbers.map(() => '?').join(',')
+      // 备用号码存在 other_phones JSON 数组中（customers 表没有 mobile 列）
+      const otherPhonesCond = possibleNumbers.map(() => 'JSON_CONTAINS(c.other_phones, JSON_QUOTE(?))').join(' OR ')
       const customers = await AppDataSource.query(
         `SELECT c.id, c.name, c.level, c.company,
                 (SELECT MAX(start_time) FROM call_records WHERE customer_id = c.id) as last_call
          FROM customers c
          WHERE (REPLACE(REPLACE(REPLACE(REPLACE(c.phone, ' ', ''), '-', ''), '(', ''), ')', '') IN (${placeholders})
-                OR REPLACE(REPLACE(REPLACE(REPLACE(c.mobile, ' ', ''), '-', ''), '(', ''), ')', '') IN (${placeholders})
+                OR ${otherPhonesCond}
                )${t.sql}
          LIMIT 1`,
         [...possibleNumbers, ...possibleNumbers, ...t.params]
@@ -319,6 +323,13 @@ router.post('/call/incoming', authenticateToken, async (req: Request, res: Respo
       }
     } catch (err) {
       log.warn('[呼入上报] 查询客户信息失败:', err)
+    }
+
+    // 区分：新客户（号码有效但系统中不存在）/ 未知来电（号码未获取到）
+    const hasValidNumber = !!callerNumber && callerNumber !== '未知来电'
+    const isNewCustomer = hasValidNumber && !customerId
+    if (isNewCustomer) {
+      customerName = '新客户'
     }
 
     // 创建呼入通话记录
@@ -355,7 +366,8 @@ router.post('/call/incoming', authenticateToken, async (req: Request, res: Respo
           customerName,
           customerLevel,
           company,
-          lastCallTime
+          lastCallTime,
+          isNewCustomer
         },
         deviceInfo: { deviceId },
         timestamp: new Date().toISOString()
@@ -465,7 +477,7 @@ router.post('/call/missed-calls', authenticateToken, async (req: Request, res: R
       try {
         const customers = await AppDataSource.query(
           `SELECT id, name FROM customers c
-           WHERE (c.phone = ? OR c.mobile = ?)${t.sql}
+           WHERE (c.phone = ? OR JSON_CONTAINS(c.other_phones, JSON_QUOTE(?)))${t.sql}
            LIMIT 1`,
           [callerNumber, callerNumber, ...t.params]
         )

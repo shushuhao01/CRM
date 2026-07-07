@@ -39,11 +39,20 @@ const silentReLogin = (): Promise<string | null> => {
       }
 
       console.log('[SilentReLogin] 尝试静默重新登录...')
+
+      // 🔥 SaaS 模式必须携带租户编码，否则后端返回 TENANT_REQUIRED 导致静默续期永远失败
+      const loginPayload: any = { username: savedUsername, password: savedPassword }
+      const loginMode = uni.getStorageSync('loginMode')
+      const savedTenantCode = uni.getStorageSync('savedTenantCode')
+      if (loginMode === 'saas' && savedTenantCode) {
+        loginPayload.tenantCode = savedTenantCode
+      }
+
       const res: any = await new Promise((resolve, reject) => {
         uni.request({
           url: serverStore.apiBaseUrl + '/mobile/login',
           method: 'POST',
-          data: { username: savedUsername, password: savedPassword },
+          data: loginPayload,
           header: { 'Content-Type': 'application/json' },
           timeout: 10000,
           success: (r) => resolve(r),

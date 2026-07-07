@@ -419,7 +419,10 @@ server {
 # 说明:
 #   演示站点与 CRM 主站共用同一套前端代码和后端服务，
 #   通过独立的演示租户实现数据隔离（在管理后台创建租户后导入种子数据）。
-#   不需要 H5、录音、企微验证等配置，只需核心功能。
+#   不需要 H5、企微验证等配置，但必须保留:
+#     - /socket.io/  → PC端实时推送
+#     - /ws/         → 工作手机 APP WebSocket（缺失会导致绑定后一直显示"离线"）
+#     - /recordings/ → 通话录音回放
 #
 # ❗ 宝塔面板用户注意:
 #   1. root 必须改为 YOUR_CRM_PATH/dist（与CRM主站相同，不是默认的 public）
@@ -454,7 +457,20 @@ server {
     }
 
     # ==================== WebSocket 代理 ====================
+    # Socket.IO (用于实时消息推送)
     location /socket.io/ {
+        proxy_pass http://127.0.0.1:YOUR_BACKEND_PORT;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_read_timeout 86400s;
+    }
+
+    # ❗ 移动端 WebSocket（工作手机 APP 在线连接，必须保留）
+    # 缺少这段会导致：手机 APP 扫码绑定成功，但工作手机始终显示"离线"
+    location /ws/ {
         proxy_pass http://127.0.0.1:YOUR_BACKEND_PORT;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
@@ -470,6 +486,13 @@ server {
         expires 7d;
         add_header Cache-Control "public";
         add_header Access-Control-Allow-Origin *;
+    }
+
+    # 通话录音文件（演示通话管理模块的录音回放需要）
+    location ^~ /recordings/ {
+        alias YOUR_CRM_PATH/backend/recordings/;
+        expires 7d;
+        add_header Cache-Control "public";
     }
 
     # 前端构建产物缓存

@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  自定义 Android 应用清单（云打包时自动合并）
+  用途：声明软件包可见性（Package Visibility）
+
+  Android 11 (API 30) 及以上 + targetSdkVersion 30+ 时，系统默认对其他软件包做可见性过滤。
+  通话记录 ContentProvider (content://call_log/calls) 若不可见，
+  ContentResolver.query() 会静默返回 null（不抛异常），导致来电号码无法获取、显示"未知来电"。
+  以下 queries 声明使通话记录/联系人提供程序对本应用可见。
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    package="com.xianhu.crm.dialer">
+
+    <queries>
+        <!-- 通话记录提供程序（按 authority 声明） -->
+        <provider android:authorities="call_log" />
+        <!-- 通话记录/联系人提供程序宿主包（AOSP 标准包名） -->
+        <package android:name="com.android.providers.contacts" />
+        <!-- 系统拨号/电话包（部分 ROM 通话记录由电话应用托管） -->
+        <package android:name="com.android.server.telecom" />
+        <package android:name="com.android.contacts" />
+    </queries>
+
+</manifest>

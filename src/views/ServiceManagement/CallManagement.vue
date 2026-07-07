@@ -403,9 +403,10 @@ import {
   ArrowDown
 } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { displaySensitiveInfoNew, SensitiveInfoType } from '@/utils/sensitiveInfo'
+import { displaySensitiveInfoNew, SensitiveInfoType, encryptSensitiveForStorage, decryptSensitiveFromStorage } from '@/utils/sensitiveInfo'
 import { formatDateTime } from '@/utils/dateFormat'
 import { customerDetailApi } from '@/api/customerDetail'
+import { customerApi } from '@/api/customer'
 import CallConfigDialog from '@/components/Call/CallConfigDialog.vue'
 import ProspectImportDialog from './CallManagement/ProspectImportDialog.vue'
 import { prospectApi } from '@/api/callProspect'
@@ -566,6 +567,83 @@ const outboundForm = ref({
 // 客户选择相关
 const customerOptions = ref<any[]>([])
 const phoneOptions = ref<any[]>([])
+
+// ==================== 外呼号码选项与选择记忆 ====================
+// 记忆每个客户上次选择的外呼号码（本地存储值经统一加密工具加密，展示时按角色脱敏）
+const OUTBOUND_PHONE_PREF_KEY = 'outbound_phone_pref'
+
+const getRememberedPhone = (customerId: string): string => {
+  if (!customerId) return ''
+  try {
+    const map = JSON.parse(localStorage.getItem(OUTBOUND_PHONE_PREF_KEY) || '{}')
+    return decryptSensitiveFromStorage(map[customerId] || '')
+  } catch (_e) {
+    return ''
+  }
+}
+
+const rememberPhoneChoice = (customerId: string, phone: string) => {
+  if (!customerId || !phone) return
+  try {
+    const map = JSON.parse(localStorage.getItem(OUTBOUND_PHONE_PREF_KEY) || '{}')
+    map[customerId] = encryptSensitiveForStorage(phone)
+    // 限制记忆条数，避免无限增长
+    const keys = Object.keys(map)
+    if (keys.length > 200) delete map[keys[0]]
+    localStorage.setItem(OUTBOUND_PHONE_PREF_KEY, JSON.stringify(map))
+  } catch (_e) {
+    // 忽略存储异常
+  }
+}
+
+// 构建号码选项（主号码 + 备用号码，自动去重）
+const buildPhoneOptions = (customer: { phone?: string; otherPhones?: string[] }) => {
+  const phones: Array<{ phone: string; type: string }> = []
+  if (customer.phone) {
+    phones.push({ phone: customer.phone, type: '主号码' })
+  }
+  if (Array.isArray(customer.otherPhones)) {
+    customer.otherPhones.forEach((p: string, index: number) => {
+      if (p && !phones.some(x => x.phone === p)) {
+        phones.push({ phone: p, type: `备用号码${index + 1}` })
+      }
+    })
+  }
+  return phones
+}
+
+// 默认选中号码：优先上次记忆的号码（须仍在可选列表中），否则用兜底号码/第一个
+const pickDefaultPhone = (customerId: string, phones: Array<{ phone: string }>, fallback = ''): string => {
+  const remembered = getRememberedPhone(String(customerId || ''))
+  if (remembered && phones.some(p => p.phone === remembered)) {
+    return remembered
+  }
+  return fallback || phones[0]?.phone || ''
+}
+
+// 兜底：行数据未带备用号码时，异步从客户库补全号码选项
+const enrichPhoneOptions = async (customerId: string, mainPhone: string) => {
+  if (!customerId) return
+  try {
+    let full: any = customerStore.customers.find((c: any) => String(c.id) === String(customerId))
+    if (!full || !Array.isArray(full.otherPhones) || full.otherPhones.length === 0) {
+      const resp: any = await customerApi.getDetail(String(customerId))
+      full = resp?.data?.data || resp?.data || resp
+    }
+    const others = full?.otherPhones
+    if (Array.isArray(others) && others.length > 0) {
+      const merged = buildPhoneOptions({ phone: mainPhone || full.phone, otherPhones: others })
+      phoneOptions.value = merged
+      outboundForm.value.customerPhone = pickDefaultPhone(
+        String(outboundForm.value.customerId || customerId),
+        merged,
+        outboundForm.value.customerPhone
+      )
+    }
+  } catch (_e) {
+    // 查询失败不影响主流程（保留已有的主号码选项）
+  }
+}
 
 // 网络电话线路选择数据 - 从呼出配置API获取
 const availableLines = ref<any[]>([])
@@ -1088,6 +1166,7 @@ const loadOutboundList = async () => {
       customerName: p.name,
       phone: p.phone,
       customerPhone: p.phone,
+      otherPhones: Array.isArray(p.otherPhones) ? p.otherPhones : [],
       company: p.company || '',
       customerLevel: 'normal',
       lastCallTime: p.lastCallTime ? formatDateTime(p.lastCallTime) : '暂无记录',
@@ -1705,27 +1784,14 @@ const handleCall = (row: any) => {
   outboundForm.value.selectedCustomer = customer as any
   outboundForm.value.customerId = customer.id
 
-  // 更新号码选项
-  const phones = []
-  if (customer.phone) {
-    phones.push({
-      phone: customer.phone,
-      type: '主号码'
-    })
+  // 更新号码选项（主号码 + 备用号码），默认选中上次记忆的号码
+  phoneOptions.value = buildPhoneOptions(customer)
+  outboundForm.value.customerPhone = pickDefaultPhone(customer.id, phoneOptions.value, row.phone)
+
+  // 行数据没带备用号码时，异步从客户库补全
+  if (!customer.otherPhones || customer.otherPhones.length === 0) {
+    enrichPhoneOptions(customer.id, customer.phone)
   }
-  // 添加其他号码
-  if (customer.otherPhones && Array.isArray(customer.otherPhones)) {
-    customer.otherPhones.forEach((phone: string, index: number) => {
-      if (phone && phone !== customer.phone) {
-        phones.push({
-          phone: phone,
-          type: `备用号码${index + 1}`
-        })
-      }
-    })
-  }
-  phoneOptions.value = phones
-  outboundForm.value.customerPhone = row.phone
 
   showOutboundDialog.value = true
 }
@@ -2029,27 +2095,14 @@ const handleDetailOutboundCall = () => {
   outboundForm.value.selectedCustomer = customer as any
   outboundForm.value.customerId = customer.id
 
-  // 更新号码选项并自动选择
-  const phones = []
-  if (customer.phone) {
-    phones.push({
-      phone: customer.phone,
-      type: '主号码'
-    })
+  // 更新号码选项（主号码 + 备用号码），默认选中上次记忆的号码
+  phoneOptions.value = buildPhoneOptions(customer)
+  outboundForm.value.customerPhone = pickDefaultPhone(customer.id, phoneOptions.value, customer.phone || '')
+
+  // 详情数据没带备用号码时，异步从客户库补全
+  if (!customer.otherPhones || customer.otherPhones.length === 0) {
+    enrichPhoneOptions(customer.id, customer.phone)
   }
-  // 添加其他号码
-  if (customer.otherPhones && Array.isArray(customer.otherPhones)) {
-    customer.otherPhones.forEach((phone: string, index: number) => {
-      if (phone && phone !== customer.phone) {
-        phones.push({
-          phone: phone,
-          type: `备用号码${index + 1}`
-        })
-      }
-    })
-  }
-  phoneOptions.value = phones
-  outboundForm.value.customerPhone = customer.phone || ''
 
   showOutboundDialog.value = true
 }
@@ -2178,34 +2231,18 @@ const onCustomerChange = (customer: any) => {
 
   outboundForm.value.customerId = customer.id
 
-  // 构建号码选项
-  const phones = []
-
-  // 主号码
-  if (customer.phone) {
-    phones.push({
-      phone: customer.phone,
-      type: '主号码'
-    })
-  }
-
-  // 其他号码（使用otherPhones字段）
-  if (customer.otherPhones && Array.isArray(customer.otherPhones)) {
-    customer.otherPhones.forEach((phone: string, index: number) => {
-      if (phone && phone !== customer.phone) {
-        phones.push({
-          phone: phone,
-          type: `备用号码${index + 1}`
-        })
-      }
-    })
-  }
-
+  // 构建号码选项（主号码 + 备用号码）
+  const phones = buildPhoneOptions(customer)
   phoneOptions.value = phones
 
-  // 自动选择第一个号码
+  // 默认选中上次记忆的号码，否则选第一个
   if (phones.length > 0) {
-    outboundForm.value.customerPhone = phones[0].phone
+    outboundForm.value.customerPhone = pickDefaultPhone(customer.id, phones)
+  }
+
+  // 选项数据没带备用号码时，异步从客户库补全
+  if (!customer.otherPhones || customer.otherPhones.length === 0) {
+    enrichPhoneOptions(customer.id, customer.phone)
   }
 }
 
@@ -2283,6 +2320,11 @@ const startOutboundCall = async () => {
     }
 
     outboundLoading.value = true
+
+    // 记忆本次选择的客户号码（非手动输入时），下次默认选中
+    if (!outboundForm.value.manualPhone && outboundForm.value.customerId && outboundForm.value.customerPhone) {
+      rememberPhoneChoice(String(outboundForm.value.customerId), outboundForm.value.customerPhone)
+    }
 
     // 获取客户名称
     const customerName = outboundForm.value.selectedCustomer?.name || '未知客户'
@@ -2426,12 +2468,20 @@ const handleIncomingCall = (data: any) => {
     console.log('[CallManagement] 收到来电更新（号码补全）:', data)
     const updatedPhone = data.callerNumber || data.phone || ''
     const validUpdatedPhone = (updatedPhone && updatedPhone !== '未知来电') ? updatedPhone : incomingCallData.value.phone
+    const updatedCustomerId = data.customerInfo?.customerId || data.customerId || incomingCallData.value.customerId
+    // 重新计算状态：匹配到客户 > 新客户（有号码无匹配） > 未知来电
+    const updIsNew = data.customerInfo?.isNewCustomer === true || (!!validUpdatedPhone && !updatedCustomerId)
+    const updRawName = data.customerInfo?.customerName || data.customerName || ''
+    const updName = (updatedCustomerId && updRawName && updRawName !== '未知来电' && updRawName !== '新客户')
+      ? updRawName
+      : (updIsNew ? '新客户' : (incomingCallData.value.customerName || '未知来电'))
     incomingCallData.value = {
       ...incomingCallData.value,
       id: data.callId || incomingCallData.value.id,
-      customerName: data.customerInfo?.customerName || data.customerName || incomingCallData.value.customerName,
+      customerName: updName,
+      isNewCustomer: updIsNew && !updatedCustomerId,
       phone: validUpdatedPhone,
-      customerId: data.customerInfo?.customerId || data.customerId || incomingCallData.value.customerId,
+      customerId: updatedCustomerId,
       customerLevel: data.customerInfo?.customerLevel || incomingCallData.value.customerLevel,
       company: data.customerInfo?.company || incomingCallData.value.company,
       tags: data.customerInfo?.tags || incomingCallData.value.tags,
@@ -2460,11 +2510,19 @@ const handleIncomingCall = (data: any) => {
   // 构建来电数据（"未知来电"不算有效号码，保持为空让弹窗显示"未知号码"）
   const rawPhone = data.callerNumber || data.phone || ''
   const validPhone = (rawPhone && rawPhone !== '未知来电') ? rawPhone : ''
+  const matchedCustomerId = data.customerInfo?.customerId || data.customerId || null
+  // 三种状态：已有客户（匹配到customerId）/ 新客户（号码有效但未匹配）/ 未知来电（号码未获取到）
+  const isNewCustomer = data.customerInfo?.isNewCustomer === true || (!!validPhone && !matchedCustomerId)
+  const rawName = data.customerInfo?.customerName || data.customerName || ''
+  const displayName = (matchedCustomerId && rawName && rawName !== '未知来电' && rawName !== '新客户')
+    ? rawName
+    : (isNewCustomer ? '新客户' : '未知来电')
   const incomingData = {
     id: data.callId,
-    customerName: data.customerInfo?.customerName || data.customerName || (validPhone ? '来电客户' : '未知来电'),
+    customerName: displayName,
+    isNewCustomer,
     phone: validPhone,
-    customerId: data.customerInfo?.customerId || data.customerId,
+    customerId: matchedCustomerId,
     customerLevel: data.customerInfo?.customerLevel || data.customerLevel,
     company: data.customerInfo?.company || data.company,
     lastCallTime: data.customerInfo?.lastCallTime || data.lastCallTime,
@@ -3081,12 +3139,18 @@ const checkOutboundFromRoute = () => {
     outboundForm.value.selectedCustomer = customer as any
     outboundForm.value.customerId = customer.id
 
-    // 更新号码选项
-    phoneOptions.value = [{
+    // 更新号码选项（尝试从客户库补全备用号码）
+    const fullCustomer = customerStore.customers.find((c: any) => String(c.id) === String(customer.id))
+    phoneOptions.value = buildPhoneOptions({
       phone: customer.phone,
-      type: '主号码'
-    }]
-    outboundForm.value.customerPhone = customer.phone
+      otherPhones: (fullCustomer as any)?.otherPhones || []
+    })
+    outboundForm.value.customerPhone = pickDefaultPhone(customer.id, phoneOptions.value, customer.phone)
+
+    // 本地客户库没有备用号码时，异步从接口补全
+    if (!(fullCustomer as any)?.otherPhones?.length) {
+      enrichPhoneOptions(customer.id, customer.phone)
+    }
 
     // 🔥 设置默认外呼方式（如果有可用的工作手机或线路）
     if (workPhones.value.length > 0) {

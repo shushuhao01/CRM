@@ -431,8 +431,20 @@ cd ..
         proxy_buffering off;
     }
 
-    # WebSocket
+    # WebSocket (Socket.IO 实时推送)
     location /socket.io/ {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_read_timeout 86400;
+    }
+
+    # ❗ 移动端 WebSocket（工作手机 APP 在线连接）
+    # 缺少这段会导致：手机 APP 扫码绑定成功，但工作手机始终显示"离线"，无法外呼
+    location /ws/ {
         proxy_pass http://127.0.0.1:3000;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
@@ -450,13 +462,22 @@ cd ..
         add_header Access-Control-Allow-Origin *;
     }
 
+    # 通话录音文件（演示通话管理模块的录音回放需要）
+    location ^~ /recordings/ {
+        alias /www/wwwroot/CRM/backend/recordings/;
+        expires 7d;
+        add_header Cache-Control "public";
+    }
+
     # 前端路由 (Vue Router history 模式)
     location / {
         try_files $uri $uri/ /index.html;
     }
 ```
 
-> **注意**: 演示站点不需要 H5、录音文件、企微验证文件等配置，只保留核心的 API 代理、WebSocket、uploads 和前端路由即可。
+> **注意**: 演示站点不需要 H5、企微验证文件等配置，但 **`/ws/` 移动端 WebSocket 和 `/recordings/` 录音文件这两段必须保留**——
+> 演示站点如需演示"通话管理/工作手机"功能，手机 APP 的在线状态依赖 `/ws/mobile` WebSocket 连接，录音回放依赖 `/recordings/` 映射。
+> 若缺少 `/ws/` 段，APP 扫码绑定会成功（走 `/api/` 代理），但设备会一直显示"离线"。
 
 ### 5.4 api.yunkes.com（API 接口）
 

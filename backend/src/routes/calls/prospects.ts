@@ -88,6 +88,31 @@ router.get('/prospects', async (req: Request, res: Response) => {
       } catch {}
     }
 
+    // 为已转化客户的名单行附带客户的备用号码（外呼弹窗多号码选择用）
+    if (list.length > 0) {
+      try {
+        const convIds = list.filter(p => p.convertedCustomerId).map(p => p.convertedCustomerId);
+        if (convIds.length > 0) {
+          const phoneRows = await AppDataSource.query(
+            `SELECT id, other_phones FROM customers WHERE id IN (${convIds.map(() => '?').join(',')})`,
+            convIds
+          );
+          const otherPhonesMap = new Map(phoneRows.map((r: any) => [r.id, r.other_phones]));
+          list.forEach((p: any) => {
+            if (p.convertedCustomerId && otherPhonesMap.has(p.convertedCustomerId)) {
+              let ops: any = otherPhonesMap.get(p.convertedCustomerId);
+              if (typeof ops === 'string') {
+                try { ops = JSON.parse(ops); } catch { ops = []; }
+              }
+              p.otherPhones = Array.isArray(ops) ? ops : [];
+            }
+          });
+        }
+      } catch (e) {
+        log.warn('附带客户备用号码失败:', e);
+      }
+    }
+
     // 如果请求包含客户列表数据，将客户列表中未在外呼名单的客户也加入
     if (includeCustomers === 'true' && req.query.recycled !== 'true') {
       try {
@@ -126,6 +151,7 @@ router.get('/prospects', async (req: Request, res: Response) => {
             tenantId: c.tenantId,
             name: c.name,
             phone: c.phone,
+            otherPhones: Array.isArray(c.otherPhones) ? c.otherPhones : [],
             gender: c.gender,
             company: c.company || null,
             remark: c.remark || null,
