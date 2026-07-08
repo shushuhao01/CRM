@@ -48,7 +48,18 @@
 
   <!-- 呼入弹窗 -->
   <el-dialog :model-value="incomingCallVisible" @update:model-value="$emit('update:incomingCallVisible', $event)"
-    title="来电提醒" width="500px" :close-on-click-modal="false" :close-on-press-escape="false" :show-close="true" center>
+    width="500px" :close-on-click-modal="false" :close-on-press-escape="false" :show-close="false" center>
+    <!-- 响铃中：右上角为"缩小为悬浮球"按钮（代替关闭） -->
+    <template #header>
+      <div class="incoming-dialog-header">
+        <span class="incoming-dialog-title">来电提醒</span>
+        <el-tooltip content="缩小为悬浮球（铃声继续）" placement="top">
+          <el-button class="minimize-incoming-btn" size="small" circle @click="$emit('minimize-incoming')">
+            <el-icon><Minus /></el-icon>
+          </el-button>
+        </el-tooltip>
+      </div>
+    </template>
     <div class="incoming-call" v-if="incomingCallData">
       <div class="caller-info">
         <div class="caller-avatar"><el-icon size="60"><User /></el-icon></div>
@@ -87,6 +98,13 @@
       </div>
     </div>
   </el-dialog>
+
+  <!-- 响铃中最小化悬浮球（点击恢复弹窗，接听/结束后自动消失） -->
+  <IncomingCallFloatingBall
+    :visible="incomingCallMinimized && !!incomingCallData"
+    :caller-name="incomingCallData?.customerName"
+    @restore="$emit('restore-incoming')"
+  />
 
   <!-- 通话中浮动窗口 -->
   <Teleport to="body">
@@ -157,8 +175,9 @@
 
 <script setup lang="ts">
 import { ref, reactive, onUnmounted } from 'vue'
-import { Phone, User, TurnOff, Loading, Cellphone, EditPen, Close } from '@element-plus/icons-vue'
+import { Phone, User, TurnOff, Loading, Cellphone, EditPen, Close, Minus } from '@element-plus/icons-vue'
 import { displaySensitiveInfoNew, SensitiveInfoType } from '@/utils/sensitiveInfo'
+import IncomingCallFloatingBall from '@/components/IncomingCallFloatingBall.vue'
 import { getLevelType, getLevelText, getPhoneCarrier } from './helpers'
 
 const props = defineProps<{
@@ -173,6 +192,7 @@ const props = defineProps<{
   // 呼入
   incomingCallVisible: boolean
   incomingCallData: any
+  incomingCallMinimized: boolean
   // 通话中浮动窗口
   callInProgressVisible: boolean
   currentCallData: any
@@ -190,6 +210,8 @@ const emit = defineEmits<{
   'submit-follow-up': []
   'answer-call': []
   'reject-call': []
+  'minimize-incoming': []
+  'restore-incoming': []
   'view-customer-detail': []
   'quick-follow-up': []
   'toggle-minimize': []
@@ -276,6 +298,9 @@ onUnmounted(() => {
 .quick-followup .customer-info strong { color: #303133; font-weight: 600; }
 .dialog-footer { display: flex; justify-content: flex-end; gap: 12px; }
 .incoming-call { text-align: center; padding: 20px; }
+.incoming-dialog-header { display: flex; align-items: center; justify-content: space-between; width: 100%; }
+.incoming-dialog-title { font-size: 16px; font-weight: 600; color: #303133; flex: 1; text-align: center; padding-left: 32px; }
+.minimize-incoming-btn { flex-shrink: 0; }
 .dialog-top-bar { display: flex; justify-content: flex-end; padding: 0 0 8px 0; }
 .close-btn { color: #909399; font-size: 18px; padding: 4px; }
 .caller-info { display: flex; align-items: center; justify-content: center; margin-bottom: 30px; gap: 20px; }

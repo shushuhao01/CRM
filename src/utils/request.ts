@@ -437,11 +437,12 @@ const handleUnauthorized = async (customMessage?: string) => {
     sessionStorage.removeItem('auth_token')
     sessionStorage.removeItem('user')
 
-    // 显示友好提示
+    // 显示友好提示（🔥 按下线原因区分标题：会话超时/被管理员下线/登录过期）
     const isKicked = !!customMessage
+    const isTimeout = !!customMessage && (customMessage.includes('超时') || customMessage.includes('过期'))
     await ElMessageBox.alert(
       customMessage || '您的登录已过期，请重新登录以继续使用系统。',
-      isKicked ? '已被下线' : '登录已过期',
+      isTimeout ? '会话已过期' : (isKicked ? '已被下线' : '登录已过期'),
       {
         confirmButtonText: '重新登录',
         type: 'warning',

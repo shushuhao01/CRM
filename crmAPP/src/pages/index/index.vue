@@ -184,6 +184,7 @@ import { getTodayStats, type TodayStats } from '@/api/call'
 import { wsService } from '@/services/websocket'
 import { callStateService } from '@/services/callStateService'
 import { incomingCallService } from '@/services/incomingCallService'
+import { trySilentReLogin } from '@/utils/request'
 
 const userStore = useUserStore()
 const serverStore = useServerStore()
@@ -799,6 +800,17 @@ onShow(() => {
   if (!userStore.token && !userStore.isLoggedIn) {
     uni.reLaunch({ url: '/pages/login/index' })
     return
+  }
+
+  // 🔥 自愈：token有效但用户信息缺失/损坏（会显示"未登录"）时，
+  // 用保存的凭据静默重登补全，不打断用户，不要求重新扫码
+  if (userStore.token && !userStore.userInfo?.realName) {
+    console.log('[Index] 用户信息缺失，尝试静默重登自愈')
+    trySilentReLogin().then((newToken) => {
+      if (newToken) {
+        console.log('[Index] 静默重登成功，用户信息已恢复')
+      }
+    })
   }
 
   // 刷新权限状态（每次页面显示时检查，用户可能从设置页返回）

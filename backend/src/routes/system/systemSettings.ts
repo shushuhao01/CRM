@@ -27,6 +27,7 @@ import {
 import path from 'path';
 import fs from 'fs';
 import { isOSSMode, uploadToOSS } from '../../services/OSSUploadService';
+import { securityPolicyService } from '../../services/SecurityPolicyService';
 
 import { log } from '../../config/logger';
 const departmentController = new DepartmentController();
@@ -620,6 +621,8 @@ router.put('/security-settings', authenticateToken, requireAdmin, async (req: Re
       { key: 'secureConsoleEnabled', type: 'boolean' as const, desc: '控制台日志加密' }
     ];
     await saveConfigsByGroup('security_settings', settings, configItems);
+    // 🔥 清除安全策略缓存，使会话超时/密码策略/登录锁定等立即生效
+    securityPolicyService.clearCache((req as any).tenantId || req.user?.tenantId || null);
     res.json({ success: true, message: '安全设置保存成功', data: settings });
   } catch (error) {
     log.error('保存安全设置失败:', error);

@@ -5,6 +5,7 @@
 import { Router, Request, Response } from 'express'
 import { AppDataSource } from '../../config/database'
 import { formatDateTime } from '../../utils/dateFormat'
+import { securityPolicyService } from '../../services/SecurityPolicyService'
 
 import { log } from '../../config/logger';
 const router = Router()
@@ -174,6 +175,9 @@ router.post('/system-config', async (req: Request, res: Response) => {
         ['admin_system_config', configValue, 'system', '管理后台系统配置', now, now]
       )
     }
+
+    // 🔥 清除所有租户的安全策略缓存（下发的安全策略变更立即生效）
+    securityPolicyService.clearCache()
 
     res.json({ success: true, message: '配置保存成功' })
   } catch (error) {

@@ -26,14 +26,14 @@
             </el-button>
           </div>
 
-          <el-table :data="callLines" v-loading="linesLoading" style="width: 100%">
-            <el-table-column prop="name" label="线路名称" width="150" />
+          <el-table :data="pagedCallLines" v-loading="linesLoading" style="width: 100%">
+            <el-table-column prop="name" label="线路名称" min-width="130" show-overflow-tooltip />
             <el-table-column prop="provider" label="服务商" width="100">
               <template #default="{ row }">
                 <el-tag size="small">{{ getProviderText(row.provider) }}</el-tag>
               </template>
             </el-table-column>
-            <el-table-column prop="callerNumber" label="主叫号码" width="130" />
+            <el-table-column prop="callerNumber" label="主叫号码" min-width="120" show-overflow-tooltip />
             <el-table-column prop="status" label="状态" width="80">
               <template #default="{ row }">
                 <el-tag :type="row.status === 'active' ? 'success' : 'danger'" size="small">
@@ -51,7 +51,7 @@
                 {{ row.dailyUsed || 0 }} / {{ row.dailyLimit || 1000 }}
               </template>
             </el-table-column>
-            <el-table-column label="操作" width="180">
+            <el-table-column label="操作" width="160" fixed="right">
               <template #default="{ row }">
                 <el-button type="success" link size="small" @click="testLineConnection(row)" :loading="row._testing">测试</el-button>
                 <el-button type="primary" link size="small" @click="openLineDialog(row)">编辑</el-button>
@@ -59,6 +59,15 @@
               </template>
             </el-table-column>
           </el-table>
+          <div style="display: flex; justify-content: flex-end; margin-top: 12px;">
+            <el-pagination
+              layout="total, prev, pager, next"
+              :total="callLines.length"
+              :page-size="linePageSize"
+              v-model:current-page="linePage"
+              small
+            />
+          </div>
         </div>
       </el-tab-pane>
 
@@ -66,61 +75,110 @@
       <el-tab-pane v-if="isAdmin" label="网络电话配置" name="voip">
         <div class="config-section">
           <el-form :model="globalConfig" label-width="140px">
-            <el-form-item label="默认服务商">
+            <el-form-item label="服务商">
               <el-select v-model="globalConfig.voipProvider" style="width: 200px">
-                <el-option label="阿里云通信" value="aliyun" />
-                <el-option label="腾讯云通信" value="tencent" />
-                <el-option label="华为云通信" value="huawei" />
+                <el-option label="阿里云云联络中心" value="aliyun" />
               </el-select>
             </el-form-item>
 
             <template v-if="globalConfig.voipProvider === 'aliyun'">
-              <el-divider content-position="left">阿里云通信配置</el-divider>
+              <el-divider content-position="left">阿里云云联络中心（CCC）配置</el-divider>
+              <el-alert type="info" :closable="false" style="margin-bottom: 16px;">
+                <template #title>
+                  <div style="line-height: 1.8;">
+                    每个租户使用自己在阿里云申请的云联络中心实例和号码，配置互相独立。<br />
+                    配置步骤：1. 在阿里云开通云联络中心并创建实例、购买固话号码；2. 在下方填写RAM用户的AccessKey（需授权 AliyunCCCFullAccess）、实例ID和号码；3. 保存后系统会自动创建阿里云线路，在「号码分配」把号码分给员工即可外呼。
+                  </div>
+                </template>
+              </el-alert>
+              <el-form-item label="外呼方式">
+                <!-- Element Plus 2.3.x 的 radio-button 用 label 传值（value 属性 2.6+ 才支持） -->
+                <el-radio-group v-model="globalConfig.aliyunConfig.callMode">
+                  <el-radio-button label="double_call">双呼（免设备）</el-radio-button>
+                  <el-radio-button label="softphone">软电话（网页）</el-radio-button>
+                  <el-radio-button label="hardphone">硬话机（SIP）</el-radio-button>
+                </el-radio-group>
+                <div class="form-tip" v-if="globalConfig.aliyunConfig.callMode === 'double_call' || !globalConfig.aliyunConfig.callMode">
+                  双呼：员工点外呼后，系统先呼叫员工的工作号码（号码分配中填写），接听后自动呼叫客户。无需任何设备，适合大多数场景
+                </div>
+                <div class="form-tip" v-else-if="globalConfig.aliyunConfig.callMode === 'softphone'">
+                  软电话：员工需登录阿里云坐席工作台（网页），用电脑的耳麦或USB话务盒通话。点外呼后工作台先振铃，接听后呼叫客户。需在「号码分配」中为员工绑定坐席账号
+                </div>
+                <div class="form-tip" v-else>
+                  硬话机：SIP话机通过网线/WiFi注册到云联络中心（在坐席工作台绑定话机），点外呼后话机先振铃，接听后呼叫客户。需在「号码分配」中为员工绑定坐席账号
+                </div>
+                <div v-if="globalConfig.aliyunConfig.callMode === 'softphone' || globalConfig.aliyunConfig.callMode === 'hardphone'" style="margin-top: 8px;">
+                  <el-button size="small" type="primary" plain @click="openWorkbench" :loading="loadingWorkbench">打开坐席工作台</el-button>
+                  <span class="form-tip" style="display: inline; margin-left: 8px;">员工用阿里云坐席账号登录工作台后才能接听</span>
+                </div>
+              </el-form-item>
               <el-form-item label="AccessKey ID" required>
                 <el-input v-model="globalConfig.aliyunConfig.accessKeyId" placeholder="请输入" show-password style="width: 100%" />
               </el-form-item>
               <el-form-item label="AccessKey Secret" required>
                 <el-input v-model="globalConfig.aliyunConfig.accessKeySecret" placeholder="请输入" type="password" show-password style="width: 100%" />
               </el-form-item>
-              <el-form-item label="应用ID" required>
-                <el-input v-model="globalConfig.aliyunConfig.appId" placeholder="请输入语音通话应用ID" style="width: 100%" />
+              <el-form-item label="实例ID" required>
+                <div style="display: flex; gap: 8px; width: 100%;">
+                  <el-select
+                    v-model="globalConfig.aliyunConfig.appId"
+                    filterable
+                    allow-create
+                    default-first-option
+                    clearable
+                    placeholder="点击「获取实例」拉取列表，或手动输入实例ID"
+                    style="flex: 1"
+                  >
+                    <el-option v-for="inst in aliyunInstances" :key="inst.id" :label="`${inst.id}（${inst.name}）`" :value="inst.id" />
+                  </el-select>
+                  <el-button @click="fetchAliyunInstances" :loading="loadingInstances">获取实例</el-button>
+                </div>
+                <div class="form-tip">填写 AccessKey 后点「获取实例」自动拉取账号下的实例；无实例时请先在阿里云云联络中心控制台创建</div>
               </el-form-item>
-              <el-form-item label="主叫号码">
-                <el-input v-model="globalConfig.aliyunConfig.callerNumber" placeholder="客户接听时显示的号码" style="width: 100%" />
+              <el-form-item label="号码池">
+                <div style="display: flex; gap: 8px; width: 100%;">
+                  <el-select
+                    v-model="globalConfig.aliyunConfig.numberList"
+                    multiple
+                    filterable
+                    allow-create
+                    default-first-option
+                    clearable
+                    placeholder="点击「获取号码」拉取实例下已购号码，或手动输入"
+                    style="flex: 1"
+                  >
+                    <el-option v-for="num in aliyunNumbers" :key="num.number" :label="num.city ? `${num.number}（${num.city}）` : num.number" :value="num.number" />
+                  </el-select>
+                  <el-button @click="fetchAliyunNumbers" :loading="loadingNumbers">获取号码</el-button>
+                </div>
+                <div class="form-tip">绑定到系统的外呼号码池，保存后可在「号码分配」中把号码分给指定成员；无号码时请在阿里云控制台「号码管理」中购买并绑定到实例</div>
+              </el-form-item>
+              <el-form-item label="默认主叫号码">
+                <el-select
+                  v-model="globalConfig.aliyunConfig.callerNumber"
+                  filterable
+                  allow-create
+                  default-first-option
+                  clearable
+                  placeholder="从号码池选择或手动输入"
+                  style="width: 100%"
+                >
+                  <el-option v-for="num in (globalConfig.aliyunConfig.numberList || [])" :key="num" :label="num" :value="num" />
+                </el-select>
+                <div class="form-tip">兜底号码：当成员在「号码分配」中没有被分配专属号码时，外呼显示此号码</div>
               </el-form-item>
               <el-form-item label="服务区域">
                 <el-select v-model="globalConfig.aliyunConfig.region" style="width: 200px">
-                  <el-option label="华东1（杭州）" value="cn-hangzhou" />
                   <el-option label="华东2（上海）" value="cn-shanghai" />
+                  <el-option label="华东1（杭州）" value="cn-hangzhou" />
                   <el-option label="华北2（北京）" value="cn-beijing" />
                   <el-option label="华南1（深圳）" value="cn-shenzhen" />
                 </el-select>
+                <div class="form-tip">云联络中心API统一接入华东2（上海），建议保持默认</div>
               </el-form-item>
               <el-form-item label="启用录音">
                 <el-switch v-model="globalConfig.aliyunConfig.enableRecording" />
-              </el-form-item>
-            </template>
-
-            <template v-if="globalConfig.voipProvider === 'tencent'">
-              <el-divider content-position="left">腾讯云通信配置</el-divider>
-              <el-form-item label="SecretId" required>
-                <el-input v-model="globalConfig.tencentConfig.secretId" placeholder="请输入" show-password style="width: 100%" />
-              </el-form-item>
-              <el-form-item label="SecretKey" required>
-                <el-input v-model="globalConfig.tencentConfig.secretKey" placeholder="请输入" type="password" show-password style="width: 100%" />
-              </el-form-item>
-              <el-form-item label="应用ID" required>
-                <el-input v-model="globalConfig.tencentConfig.appId" placeholder="请输入" style="width: 100%" />
-              </el-form-item>
-            </template>
-
-            <template v-if="globalConfig.voipProvider === 'huawei'">
-              <el-divider content-position="left">华为云通信配置</el-divider>
-              <el-form-item label="Access Key" required>
-                <el-input v-model="globalConfig.huaweiConfig.accessKey" placeholder="请输入" show-password style="width: 100%" />
-              </el-form-item>
-              <el-form-item label="Secret Key" required>
-                <el-input v-model="globalConfig.huaweiConfig.secretKey" placeholder="请输入" type="password" show-password style="width: 100%" />
+                <div class="form-tip">开启后通话结束自动拉取云联络中心录音（需在阿里云实例中开启录音）</div>
               </el-form-item>
             </template>
 
@@ -142,23 +200,63 @@
             </el-button>
           </div>
 
-          <el-table :data="assignments" v-loading="assignmentsLoading" style="width: 100%">
-            <el-table-column prop="userName" label="用户" width="120" />
-            <el-table-column prop="lineName" label="线路" width="150" />
-            <el-table-column prop="callerNumber" label="主叫号码" width="130" />
-            <el-table-column prop="isDefault" label="默认" width="70">
+          <el-alert type="info" :closable="false" style="margin-bottom: 12px;">
+            <template #title>号码独占：一个主叫号码只能分配给一个成员，取消或禁用分配后释放。禁用后员工看不到该线路和号码，启用后恢复。双呼外呼时系统先呼叫"员工号码"，接通后再呼客户，客户看到的来电显示为"主叫号码"。</template>
+          </el-alert>
+          <div style="margin-bottom: 12px;">
+            <el-input
+              v-model="assignmentSearch"
+              placeholder="搜索员工姓名 / 主叫号码 / 员工号码 / 线路"
+              clearable
+              style="width: 320px;"
+              @input="assignmentPage = 1"
+            />
+          </div>
+          <el-table :data="pagedAssignments" v-loading="assignmentsLoading" style="width: 100%">
+            <el-table-column prop="userName" label="用户" min-width="90" />
+            <el-table-column prop="lineName" label="线路" min-width="120" show-overflow-tooltip />
+            <el-table-column prop="callerNumber" label="主叫号码" min-width="120" show-overflow-tooltip />
+            <el-table-column prop="agentPhone" label="员工号码" min-width="110">
+              <template #default="{ row }">
+                <span v-if="row.agentPhone">{{ row.agentPhone }}</span>
+                <el-tooltip v-else content="未填写时使用该员工个人资料中的手机号" placement="top">
+                  <span style="color: #909399;">资料手机号</span>
+                </el-tooltip>
+              </template>
+            </el-table-column>
+            <el-table-column prop="isDefault" label="默认" width="60">
               <template #default="{ row }">
                 <el-tag v-if="row.isDefault" type="success" size="small">是</el-tag>
                 <span v-else>-</span>
               </template>
             </el-table-column>
-            <el-table-column prop="dailyLimit" label="日限额" width="80" />
-            <el-table-column label="操作" width="80">
+            <el-table-column prop="dailyLimit" label="日限额" width="75" />
+            <el-table-column prop="isActive" label="状态" width="70">
               <template #default="{ row }">
+                <el-tag :type="row.isActive ? 'success' : 'info'" size="small">
+                  {{ row.isActive ? '启用' : '禁用' }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="操作" width="160" fixed="right">
+              <template #default="{ row }">
+                <el-button type="primary" link size="small" @click="openEditAssignDialog(row)">编辑</el-button>
+                <el-button :type="row.isActive ? 'warning' : 'success'" link size="small" @click="toggleAssignmentActive(row)">
+                  {{ row.isActive ? '禁用' : '启用' }}
+                </el-button>
                 <el-button type="danger" link size="small" @click="removeAssignment(row)">取消</el-button>
               </template>
             </el-table-column>
           </el-table>
+          <div style="display: flex; justify-content: flex-end; margin-top: 12px;">
+            <el-pagination
+              layout="total, prev, pager, next"
+              :total="filteredAssignments.length"
+              :page-size="assignmentPageSize"
+              v-model:current-page="assignmentPage"
+              small
+            />
+          </div>
         </div>
       </el-tab-pane>
 
@@ -270,10 +368,8 @@
         </el-form-item>
         <el-form-item label="服务商" prop="provider">
           <el-select v-model="lineForm.provider" style="width: 100%" @change="onProviderChange">
-            <el-option label="阿里云通信" value="aliyun" />
-            <el-option label="腾讯云通信" value="tencent" />
-            <el-option label="华为云通信" value="huawei" />
-            <el-option label="自定义" value="custom" />
+            <el-option label="阿里云云联络中心" value="aliyun" />
+            <el-option label="自定义（SIP/PSTN网关）" value="custom" />
           </el-select>
         </el-form-item>
         <el-form-item label="线路类型" prop="type">
@@ -286,40 +382,18 @@
 
         <!-- 阿里云配置 -->
         <template v-if="lineForm.provider === 'aliyun'">
-          <el-divider content-position="left">阿里云配置</el-divider>
+          <el-divider content-position="left">阿里云云联络中心配置</el-divider>
+          <el-alert type="info" :closable="false" style="margin-bottom: 12px;">
+            <template #title>以下留空时自动使用「网络电话配置」中保存的全局阿里云配置，只需填写主叫号码即可</template>
+          </el-alert>
           <el-form-item label="AccessKey ID">
-            <el-input v-model="lineForm.config.accessKeyId" placeholder="请输入阿里云AccessKey ID" />
+            <el-input v-model="lineForm.config.accessKeyId" placeholder="留空使用全局配置" />
           </el-form-item>
           <el-form-item label="AccessKey Secret">
-            <el-input v-model="lineForm.config.accessKeySecret" placeholder="请输入" type="password" show-password />
+            <el-input v-model="lineForm.config.accessKeySecret" placeholder="留空使用全局配置" type="password" show-password />
           </el-form-item>
-          <el-form-item label="应用ID">
-            <el-input v-model="lineForm.config.appId" placeholder="请输入语音通话应用ID" />
-          </el-form-item>
-        </template>
-
-        <!-- 腾讯云配置 -->
-        <template v-if="lineForm.provider === 'tencent'">
-          <el-divider content-position="left">腾讯云配置</el-divider>
-          <el-form-item label="SecretId">
-            <el-input v-model="lineForm.config.secretId" placeholder="请输入腾讯云SecretId" />
-          </el-form-item>
-          <el-form-item label="SecretKey">
-            <el-input v-model="lineForm.config.secretKey" placeholder="请输入" type="password" show-password />
-          </el-form-item>
-          <el-form-item label="应用ID">
-            <el-input v-model="lineForm.config.appId" placeholder="请输入应用ID" />
-          </el-form-item>
-        </template>
-
-        <!-- 华为云配置 -->
-        <template v-if="lineForm.provider === 'huawei'">
-          <el-divider content-position="left">华为云配置</el-divider>
-          <el-form-item label="Access Key">
-            <el-input v-model="lineForm.config.accessKey" placeholder="请输入华为云Access Key" />
-          </el-form-item>
-          <el-form-item label="Secret Key">
-            <el-input v-model="lineForm.config.secretKey" placeholder="请输入" type="password" show-password />
+          <el-form-item label="实例ID">
+            <el-input v-model="lineForm.config.appId" placeholder="云联络中心实例ID（如 ccc-xxxx），留空使用全局配置" />
           </el-form-item>
         </template>
 
@@ -414,11 +488,11 @@
       </template>
     </el-dialog>
 
-    <!-- 分配线路弹窗 -->
-    <el-dialog v-model="assignDialogVisible" title="分配线路给用户" width="500px" append-to-body>
+    <!-- 分配线路弹窗（新建/编辑共用） -->
+    <el-dialog v-model="assignDialogVisible" :title="editingAssignment ? '编辑分配' : '分配线路给用户'" width="500px" append-to-body>
       <el-form :model="assignForm" :rules="assignRules" ref="assignFormRef" label-width="100px">
         <el-form-item label="选择用户" prop="userId">
-          <el-select v-model="assignForm.userId" filterable placeholder="请选择用户" style="width: 100%" :loading="usersLoading">
+          <el-select v-model="assignForm.userId" filterable placeholder="请选择用户" style="width: 100%" :loading="usersLoading" :disabled="!!editingAssignment">
             <el-option v-for="user in userList" :key="user.id" :label="user.realName || user.name" :value="user.id">
               <div style="display: flex; justify-content: space-between;">
                 <span>{{ user.realName || user.name }}</span>
@@ -436,9 +510,55 @@
               </div>
             </el-option>
           </el-select>
+          <div v-if="enabledLines.length === 0" class="form-tip" style="color: #e6a23c;">
+            暂无可用线路：请先在「网络电话配置」中保存阿里云配置（会自动创建线路），或到「线路管理」手动新建线路
+          </div>
         </el-form-item>
         <el-form-item label="主叫号码">
-          <el-input v-model="assignForm.callerNumber" placeholder="可覆盖线路默认号码" />
+          <el-select
+            v-model="assignForm.callerNumber"
+            filterable
+            allow-create
+            default-first-option
+            clearable
+            placeholder="从号码池选择或手动输入，留空使用线路默认号码"
+            style="width: 100%"
+          >
+            <el-option
+              v-for="num in assignableNumbers"
+              :key="num.number"
+              :label="num.occupied ? `${num.number}（已分配给 ${num.occupiedBy}）` : num.number"
+              :value="num.number"
+              :disabled="num.occupied"
+            />
+          </el-select>
+          <div class="form-tip">客户接听时显示的号码；号码独占，已分配给其他成员的号码不可选</div>
+        </el-form-item>
+        <el-form-item label="员工号码">
+          <el-input v-model="assignForm.agentPhone" placeholder="双呼时先呼叫此号码（员工的工作手机/座机）" />
+          <div class="form-tip">双呼模式使用：留空则使用该员工个人资料中的手机号；个人手机号是私人号码时请在此填写工作号码</div>
+        </el-form-item>
+        <el-form-item label="坐席账号">
+          <div style="display: flex; gap: 8px; width: 100%;">
+            <el-select
+              v-model="assignForm.cccUserId"
+              filterable
+              allow-create
+              default-first-option
+              clearable
+              placeholder="软电话/硬话机模式使用，点「获取坐席」拉取"
+              style="flex: 1"
+            >
+              <el-option
+                v-for="agent in cccUsers"
+                :key="agent.userId"
+                :label="`${agent.displayName}（${agent.loginName}）${agent.extension ? ' 软电话分机:' + agent.extension : ''}${agent.sipExtension ? ' SIP分机:' + agent.sipExtension : ''}`"
+                :value="agent.userId"
+              />
+            </el-select>
+            <el-button @click="fetchCccUsers" :loading="loadingCccUsers">获取坐席</el-button>
+          </div>
+          <div class="form-tip">仅软电话/硬话机模式需要：绑定该员工在阿里云云联络中心的坐席账号，员工登录坐席工作台后即可外呼</div>
         </el-form-item>
         <el-form-item label="日呼叫限额">
           <el-input-number v-model="assignForm.dailyLimit" :min="0" :max="1000" style="width: 100%" />
@@ -449,7 +569,7 @@
       </el-form>
       <template #footer>
         <el-button @click="assignDialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="saveAssignment" :loading="savingAssignment">确定分配</el-button>
+        <el-button type="primary" @click="saveAssignment" :loading="savingAssignment">{{ editingAssignment ? '保存修改' : '确定分配' }}</el-button>
       </template>
     </el-dialog>
 
@@ -550,6 +670,31 @@ const enabledLines = computed(() => {
   return filtered
 })
 
+// 线路列表分页（5条/页）
+const linePage = ref(1)
+const linePageSize = 5
+const pagedCallLines = computed(() =>
+  callLines.value.slice((linePage.value - 1) * linePageSize, linePage.value * linePageSize)
+)
+
+// 号码分配搜索 + 分页（6条/页）
+const assignmentSearch = ref('')
+const assignmentPage = ref(1)
+const assignmentPageSize = 6
+const filteredAssignments = computed(() => {
+  const kw = assignmentSearch.value.trim().toLowerCase()
+  if (!kw) return assignments.value
+  return assignments.value.filter(a =>
+    (a.userName || '').toLowerCase().includes(kw) ||
+    (a.callerNumber || '').toLowerCase().includes(kw) ||
+    (a.agentPhone || '').toLowerCase().includes(kw) ||
+    (a.lineName || '').toLowerCase().includes(kw)
+  )
+})
+const pagedAssignments = computed(() =>
+  filteredAssignments.value.slice((assignmentPage.value - 1) * assignmentPageSize, assignmentPage.value * assignmentPageSize)
+)
+
 // 全局配置
 const globalConfig = reactive({
   voipProvider: 'aliyun',
@@ -558,7 +703,9 @@ const globalConfig = reactive({
     accessKeySecret: '',
     appId: '',
     callerNumber: '',
-    region: 'cn-hangzhou',
+    numberList: [] as string[],
+    callMode: 'double_call' as 'double_call' | 'softphone' | 'hardphone',
+    region: 'cn-shanghai',
     enableRecording: false
   },
   tencentConfig: {
@@ -622,15 +769,46 @@ const lineRules = {
   type: [{ required: true, message: '请选择线路类型', trigger: 'change' }]
 }
 
-// 分配线路
+// 分配线路（editingAssignment 非空时为编辑模式）
 const assignDialogVisible = ref(false)
 const assignFormRef = ref()
+const editingAssignment = ref<UserLineAssignment | null>(null)
 const assignForm = reactive({
   userId: undefined as number | undefined,
   lineId: undefined as number | undefined,
   callerNumber: '',
+  agentPhone: '',
+  cccUserId: '',
   dailyLimit: 100,
   isDefault: false
+})
+
+// 阿里云实例/号码/坐席拉取
+const aliyunInstances = ref<Array<{ id: string; name: string; status?: string }>>([])
+const aliyunNumbers = ref<Array<{ number: string; city?: string; usage?: string }>>([])
+const cccUsers = ref<Array<{ userId: string; loginName: string; displayName: string; extension?: string; sipExtension?: string }>>([])
+const loadingInstances = ref(false)
+const loadingNumbers = ref(false)
+const loadingCccUsers = ref(false)
+const loadingWorkbench = ref(false)
+
+// 分配弹窗可选号码：全局号码池 + 所选线路默认号码，标记已被其他成员占用的号码（独占）
+const assignableNumbers = computed(() => {
+  const pool = new Set<string>(globalConfig.aliyunConfig.numberList || [])
+  const selectedLine = callLines.value.find(l => l.id === assignForm.lineId)
+  if (selectedLine?.callerNumber) {
+    pool.add(selectedLine.callerNumber)
+  }
+  return Array.from(pool).map(number => {
+    const occupiedBy = assignments.value.find(
+      a => a.isActive && a.callerNumber === number && String(a.userId) !== String(assignForm.userId || '')
+    )
+    return {
+      number,
+      occupied: !!occupiedBy,
+      occupiedBy: occupiedBy?.userName || ''
+    }
+  })
 })
 const assignRules = {
   userId: [{ required: true, message: '请选择用户', trigger: 'change' }],
@@ -748,16 +926,29 @@ const loadAssignments = async () => {
 
 const loadGlobalConfig = async () => {
   try {
-    const res = await callConfigApi.getGlobalConfig()
-    if (res.success && res.data) {
-      const data = res.data as any
-      if (data.voip_provider) globalConfig.voipProvider = data.voip_provider
-      if (data.aliyun_config) Object.assign(globalConfig.aliyunConfig, data.aliyun_config)
+    const res: any = await callConfigApi.getGlobalConfig()
+    // axios 拦截器已解包内层 data：res 本身就是配置对象；兼容 {success, data} 包装格式
+    const data = (res && res.success !== undefined && res.data !== undefined) ? res.data : res
+    if (data && typeof data === 'object') {
+      // 仅支持阿里云；历史配置为其他服务商时也归一到阿里云
+      globalConfig.voipProvider = 'aliyun'
+      if (data.aliyun_config) {
+        Object.assign(globalConfig.aliyunConfig, data.aliyun_config)
+        // 号码池必须是数组，避免旧配置为 null 时多选框报错
+        if (!Array.isArray(globalConfig.aliyunConfig.numberList)) {
+          globalConfig.aliyunConfig.numberList = []
+        }
+        if (!globalConfig.aliyunConfig.callMode) {
+          globalConfig.aliyunConfig.callMode = 'double_call'
+        }
+      }
       if (data.tencent_config) Object.assign(globalConfig.tencentConfig, data.tencent_config)
       if (data.huawei_config) Object.assign(globalConfig.huaweiConfig, data.huawei_config)
     }
-  } catch (e) {
+  } catch (e: any) {
     console.error('加载全局配置失败:', e)
+    // 明确提示加载失败，避免表单静默显示为空让用户误以为配置丢失
+    ElMessage.warning(`已保存的网络电话配置加载失败：${e?.message || '网络异常'}，请刷新重试`)
   }
 }
 
@@ -1064,13 +1255,158 @@ const deleteLine = async (line: CallLine) => {
   }
 }
 
+// 获取阿里云实例列表
+const fetchAliyunInstances = async () => {
+  if (!globalConfig.aliyunConfig.accessKeyId || !globalConfig.aliyunConfig.accessKeySecret) {
+    ElMessage.warning('请先填写 AccessKey ID 和 AccessKey Secret')
+    return
+  }
+  loadingInstances.value = true
+  try {
+    const res = await callConfigApi.getAliyunInstances({
+      accessKeyId: globalConfig.aliyunConfig.accessKeyId,
+      accessKeySecret: globalConfig.aliyunConfig.accessKeySecret
+    })
+    const data = (res as any)?.instances !== undefined ? res : ((res as any)?.data || res)
+    if (data?.success) {
+      aliyunInstances.value = data.instances || []
+      if (aliyunInstances.value.length === 0) {
+        ElMessage.warning('该账号下暂无云联络中心实例，请先在阿里云控制台创建实例')
+      } else {
+        // 只有一个实例时自动选中
+        if (aliyunInstances.value.length === 1) {
+          globalConfig.aliyunConfig.appId = aliyunInstances.value[0].id
+        }
+        ElMessage.success(`获取到 ${aliyunInstances.value.length} 个实例，请在下拉框中选择`)
+      }
+    } else {
+      ElMessage.error(data?.message || '获取实例列表失败')
+    }
+  } catch (e: any) {
+    ElMessage.error(e.message || '获取实例列表失败')
+  } finally {
+    loadingInstances.value = false
+  }
+}
+
+// 获取阿里云实例下的号码列表
+const fetchAliyunNumbers = async () => {
+  if (!globalConfig.aliyunConfig.accessKeyId || !globalConfig.aliyunConfig.accessKeySecret) {
+    ElMessage.warning('请先填写 AccessKey ID 和 AccessKey Secret')
+    return
+  }
+  if (!globalConfig.aliyunConfig.appId) {
+    ElMessage.warning('请先填写或获取实例ID')
+    return
+  }
+  loadingNumbers.value = true
+  try {
+    const res = await callConfigApi.getAliyunNumbers({
+      config: {
+        accessKeyId: globalConfig.aliyunConfig.accessKeyId,
+        accessKeySecret: globalConfig.aliyunConfig.accessKeySecret
+      },
+      instanceId: globalConfig.aliyunConfig.appId
+    })
+    const data = (res as any)?.numbers !== undefined ? res : ((res as any)?.data || res)
+    if (data?.success) {
+      aliyunNumbers.value = data.numbers || []
+      if (aliyunNumbers.value.length === 0) {
+        ElMessage.warning('该实例下暂无号码。请在阿里云云联络中心控制台「号码管理」中购买号码并绑定到实例，或手动输入号码')
+      } else {
+        // 自动把获取到的号码并入号码池
+        const existing = new Set(globalConfig.aliyunConfig.numberList || [])
+        aliyunNumbers.value.forEach(n => existing.add(n.number))
+        globalConfig.aliyunConfig.numberList = Array.from(existing)
+        ElMessage.success(`获取到 ${aliyunNumbers.value.length} 个号码，已加入号码池，保存配置后生效`)
+      }
+    } else {
+      ElMessage.error(data?.message || '获取号码列表失败')
+    }
+  } catch (e: any) {
+    ElMessage.error(e.message || '获取号码列表失败')
+  } finally {
+    loadingNumbers.value = false
+  }
+}
+
+// 获取云联络中心坐席列表（软电话/硬话机模式绑定坐席）
+const fetchCccUsers = async () => {
+  loadingCccUsers.value = true
+  try {
+    const res = await callConfigApi.getAliyunCccUsers({
+      instanceId: globalConfig.aliyunConfig.appId || undefined
+    })
+    const data = (res as any)?.users !== undefined ? res : ((res as any)?.data || res)
+    if (data?.success) {
+      cccUsers.value = data.users || []
+      if (cccUsers.value.length === 0) {
+        ElMessage.warning('该实例下暂无坐席，请先在阿里云云联络中心控制台的「坐席管理」中添加坐席')
+      } else {
+        ElMessage.success(`获取到 ${cccUsers.value.length} 个坐席账号`)
+      }
+    } else {
+      ElMessage.error(data?.message || '获取坐席列表失败')
+    }
+  } catch (e: any) {
+    ElMessage.error(e.message || '获取坐席列表失败')
+  } finally {
+    loadingCccUsers.value = false
+  }
+}
+
+// 打开阿里云坐席工作台
+const openWorkbench = async () => {
+  loadingWorkbench.value = true
+  try {
+    const res = await callConfigApi.getWorkbenchUrl()
+    const data = (res as any)?.url !== undefined ? res : ((res as any)?.data || res)
+    if (data?.success && data.url) {
+      window.open(data.url, '_blank')
+    } else {
+      ElMessage.error(data?.message || '获取坐席工作台地址失败，请先保存配置')
+    }
+  } catch (e: any) {
+    ElMessage.error(e.message || '获取坐席工作台地址失败')
+  } finally {
+    loadingWorkbench.value = false
+  }
+}
+
 // 分配管理
 const openAssignDialog = () => {
+  editingAssignment.value = null
   assignForm.userId = undefined
   assignForm.lineId = undefined
   assignForm.callerNumber = ''
+  assignForm.agentPhone = ''
+  assignForm.cccUserId = ''
   assignForm.dailyLimit = 100
   assignForm.isDefault = false
+  // 强制刷新线路与号码池，避免刚保存的配置/自动创建的线路未同步
+  loadCallLines()
+  loadGlobalConfig()
+  if (userList.value.length === 0) {
+    loadUserList()
+  }
+  assignDialogVisible.value = true
+}
+
+// 编辑已有分配：预填表单，保存时走更新接口
+const openEditAssignDialog = (assignment: UserLineAssignment) => {
+  editingAssignment.value = assignment
+  assignForm.userId = assignment.userId as any
+  assignForm.lineId = assignment.lineId
+  assignForm.callerNumber = assignment.callerNumber || ''
+  assignForm.agentPhone = assignment.agentPhone || ''
+  assignForm.cccUserId = assignment.cccUserId || ''
+  assignForm.dailyLimit = assignment.dailyLimit || 100
+  assignForm.isDefault = assignment.isDefault
+  loadCallLines()
+  loadGlobalConfig()
+  if (userList.value.length === 0) {
+    loadUserList()
+  }
   assignDialogVisible.value = true
 }
 
@@ -1078,22 +1414,65 @@ const saveAssignment = async () => {
   try {
     await assignFormRef.value?.validate()
     savingAssignment.value = true
-    await callConfigApi.assignLineToUser({
-      userId: assignForm.userId!,
-      lineId: assignForm.lineId!,
-      callerNumber: assignForm.callerNumber || undefined,
-      dailyLimit: assignForm.dailyLimit,
-      isDefault: assignForm.isDefault
-    })
-    ElMessage.success('分配成功')
+    // 选中的坐席带分机号则一并保存（否则后端会自动向阿里云查询）
+    const selectedAgent = cccUsers.value.find(u => u.userId === assignForm.cccUserId)
+
+    if (editingAssignment.value) {
+      await callConfigApi.updateAssignment(editingAssignment.value.id, {
+        lineId: assignForm.lineId!,
+        callerNumber: assignForm.callerNumber || '',
+        agentPhone: assignForm.agentPhone || '',
+        cccUserId: assignForm.cccUserId || '',
+        agentExtension: selectedAgent?.extension,
+        sipExtension: selectedAgent?.sipExtension,
+        dailyLimit: assignForm.dailyLimit,
+        isDefault: assignForm.isDefault
+      })
+      ElMessage.success('分配已更新')
+    } else {
+      await callConfigApi.assignLineToUser({
+        userId: assignForm.userId!,
+        lineId: assignForm.lineId!,
+        callerNumber: assignForm.callerNumber || undefined,
+        agentPhone: assignForm.agentPhone || undefined,
+        cccUserId: assignForm.cccUserId || undefined,
+        agentExtension: selectedAgent?.extension || undefined,
+        sipExtension: selectedAgent?.sipExtension || undefined,
+        dailyLimit: assignForm.dailyLimit,
+        isDefault: assignForm.isDefault
+      })
+      ElMessage.success('分配成功')
+    }
     assignDialogVisible.value = false
+    editingAssignment.value = null
     loadAssignments()
   } catch (e: any) {
     if (e !== 'cancel' && e?.message) {
-      ElMessage.error(e.message || '分配失败')
+      ElMessage.error(e.message || '保存失败')
     }
   } finally {
     savingAssignment.value = false
+  }
+}
+
+// 启用/禁用分配：禁用后员工看不到该线路，号码释放；启用前校验号码未被他人占用（后端也会校验）
+const toggleAssignmentActive = async (assignment: UserLineAssignment) => {
+  const action = assignment.isActive ? '禁用' : '启用'
+  try {
+    await ElMessageBox.confirm(
+      assignment.isActive
+        ? `禁用后 ${assignment.userName} 将看不到该线路和号码，号码 ${assignment.callerNumber || ''} 释放为可分配。确定禁用？`
+        : `启用后 ${assignment.userName} 恢复使用该线路外呼。确定启用？`,
+      `确认${action}`,
+      { type: 'warning' }
+    )
+    const res: any = await callConfigApi.updateAssignment(assignment.id, { isActive: !assignment.isActive })
+    ElMessage.success(res?.message || `已${action}`)
+    loadAssignments()
+  } catch (e: any) {
+    if (e !== 'cancel' && e?.message) {
+      ElMessage.error(e.message || `${action}失败`)
+    }
   }
 }
 
@@ -1115,17 +1494,14 @@ const saveGlobalConfig = async () => {
   savingGlobal.value = true
   try {
     const config: Record<string, any> = {
-      voip_provider: globalConfig.voipProvider
+      voip_provider: 'aliyun',
+      aliyun_config: globalConfig.aliyunConfig
     }
-    if (globalConfig.voipProvider === 'aliyun') {
-      config.aliyun_config = globalConfig.aliyunConfig
-    } else if (globalConfig.voipProvider === 'tencent') {
-      config.tencent_config = globalConfig.tencentConfig
-    } else if (globalConfig.voipProvider === 'huawei') {
-      config.huawei_config = globalConfig.huaweiConfig
-    }
-    await callConfigApi.updateGlobalConfig(config)
-    ElMessage.success('配置已保存')
+    const res: any = await callConfigApi.updateGlobalConfig(config)
+    ElMessage.success(res?.message || '配置已保存')
+    // 保存后可能自动创建了阿里云线路，刷新线路与配置（密钥变为掩码显示）
+    loadCallLines()
+    loadGlobalConfig()
   } catch (e: any) {
     ElMessage.error(e.message || '保存失败')
   } finally {
@@ -1134,44 +1510,25 @@ const saveGlobalConfig = async () => {
 }
 
 const testVoipConnection = async () => {
-  if (globalConfig.voipProvider === 'aliyun') {
-    if (!globalConfig.aliyunConfig.accessKeyId || !globalConfig.aliyunConfig.accessKeySecret || !globalConfig.aliyunConfig.appId) {
-      ElMessage.warning('请先填写阿里云 AccessKey ID、AccessKey Secret 和应用ID')
-      return
-    }
-  } else if (globalConfig.voipProvider === 'tencent') {
-    if (!globalConfig.tencentConfig.secretId || !globalConfig.tencentConfig.secretKey || !globalConfig.tencentConfig.appId) {
-      ElMessage.warning('请先填写腾讯云 SecretId、SecretKey 和应用ID')
-      return
-    }
-  } else if (globalConfig.voipProvider === 'huawei') {
-    if (!globalConfig.huaweiConfig.accessKey || !globalConfig.huaweiConfig.secretKey) {
-      ElMessage.warning('请先填写华为云 Access Key 和 Secret Key')
-      return
-    }
+  if (!globalConfig.aliyunConfig.accessKeyId || !globalConfig.aliyunConfig.accessKeySecret || !globalConfig.aliyunConfig.appId) {
+    ElMessage.warning('请先填写阿里云 AccessKey ID、AccessKey Secret 和实例ID')
+    return
   }
 
   testingVoip.value = true
   try {
-    // 找到对应服务商的第一条可用线路进行测试
-    const providerLine = callLines.value.find(
-      l => l.provider === globalConfig.voipProvider && l.isEnabled
-    )
+    // 使用当前表单中的配置直接测试（真实调用 GetInstance 验证）
+    const res = await callConfigApi.testVoipConfig({
+      provider: 'aliyun',
+      config: globalConfig.aliyunConfig
+    })
+    const result = (res as any)?.success !== undefined && (res as any)?.data ? (res as any).data : res
+    const testData = (result as any)?.latency !== undefined ? result : ((result as any)?.data || result)
 
-    if (providerLine) {
-      // 调用后端API测试真实线路
-      const res = await callConfigApi.testLineConnection(providerLine.id)
-      const result = (res as any)?.success !== undefined ? res : (res as any)?.data || res
-      const testData = (result as any)?.data || result
-
-      if (testData?.success) {
-        ElMessage.success(`连接测试成功 (延迟: ${testData.latency || 0}ms) - ${testData.message || ''}`)
-      } else {
-        ElMessage.warning(testData?.message || '连接测试失败，请检查配置')
-      }
+    if (testData?.success) {
+      ElMessage.success(`连接测试成功 (延迟: ${testData.latency || 0}ms) - ${testData.message || ''}`)
     } else {
-      // 没有可测试的线路，仅验证配置格式
-      ElMessage.info('配置格式验证通过。请先创建并启用一条线路后再进行连接测试。')
+      ElMessage.warning(testData?.message || '连接测试失败，请检查配置')
     }
   } catch (e: any) {
     ElMessage.error(e.message || '连接测试失败')

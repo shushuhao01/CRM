@@ -332,9 +332,36 @@ router.post('/call/incoming', authenticateToken, async (req: Request, res: Respo
       customerName = '新客户'
     }
 
-    // 创建呼入通话记录
-    const callId = `IN-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
+    // 创建或复用呼入通话记录
+    // 🔥 与WS通道保持一致：120秒内已有"响铃中"的记录（APP可能先经WS报"未知来电"，
+    // 3秒未确认后走HTTP备份报真实号码），复用并更新号码，避免产生重复记录、
+    // 旧记录停留在"未知来电"
+    let callId = `IN-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
+    let isUpdate = false
     const tenantId = getCurrentTenantIdSafe() || null
+    try {
+      const existing = await AppDataSource.query(
+        `SELECT id, customer_phone FROM call_records
+         WHERE user_id = ? AND call_type = 'inbound'
+           AND call_status = 'ringing'
+           AND created_at > DATE_SUB(NOW(), INTERVAL 120 SECOND)
+         ORDER BY created_at DESC LIMIT 1`,
+        [String(userId)]
+      )
+      if (existing.length > 0) {
+        const prevPhone = existing[0].customer_phone || ''
+        const prevValid = prevPhone && prevPhone !== '未知来电'
+        const currValid = callerNumber && callerNumber !== '未知来电'
+        // 🔒 防串号：仅允许 a)旧记录号码未知+本次有效号码（补号场景）
+        //   或 b)号码相同的重复上报（WS+HTTP双通道）时复用；
+        // 旧记录已有有效号码而本次未知/不同 → 新的一通来电，不复用
+        const canReuse = (!prevValid) || (currValid && prevPhone === callerNumber)
+        if (canReuse) {
+          callId = existing[0].id
+          isUpdate = true
+        }
+      }
+    } catch (_e) { /* 忽略 */ }
 
     // 获取用户姓名
     let userName = ''
@@ -347,13 +374,22 @@ router.post('/call/incoming', authenticateToken, async (req: Request, res: Respo
       // 忽略
     }
 
-    await AppDataSource.query(
-      `INSERT INTO call_records
-       (id, customer_id, customer_name, customer_phone, call_type, call_status,
-        call_method, user_id, user_name, start_time, created_at, tenant_id)
-       VALUES (?, ?, ?, ?, 'inbound', 'ringing', 'mobile', ?, ?, NOW(), NOW(), ?)`,
-      [callId, customerId, customerName, callerNumber, String(userId), userName, tenantId]
-    )
+    if (isUpdate) {
+      await AppDataSource.query(
+        `UPDATE call_records SET
+         customer_id = ?, customer_name = ?, customer_phone = ?, updated_at = NOW()
+         WHERE id = ?`,
+        [customerId, customerName, callerNumber, callId]
+      )
+    } else {
+      await AppDataSource.query(
+        `INSERT INTO call_records
+         (id, customer_id, customer_name, customer_phone, call_type, call_status,
+          call_method, user_id, user_name, start_time, created_at, tenant_id)
+         VALUES (?, ?, ?, ?, 'inbound', 'ringing', 'mobile', ?, ?, NOW(), NOW(), ?)`,
+        [callId, customerId, customerName, callerNumber, String(userId), userName, tenantId]
+      )
+    }
 
     // 推送CRM端来电通知
     if (global.webSocketService) {

@@ -101,6 +101,29 @@ const API_PREFIX = process.env.API_PREFIX || '/api/v1';
 app.set('trust proxy', 1);
 
 // ==================== 安全中间件 ====================
+// 🔥 强制HTTPS（安全策略配置项 forceHttps 启用时生效；本机回环地址豁免，避免开发/健康检查被拦截）
+app.use(async (req, res, next) => {
+  try {
+    const isSecure = req.secure || req.get('x-forwarded-proto') === 'https';
+    if (isSecure) return next();
+    const hostname = (req.hostname || '').toLowerCase();
+    if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1') return next();
+
+    const { securityPolicyService } = await import('./services/SecurityPolicyService');
+    const { deployConfig } = await import('./config/deploy');
+    const policy = await securityPolicyService.getPolicy(null);
+    // 强制HTTPS是全局开关：SaaS 模式只认管理后台下发的策略，私有部署认本地系统设置
+    const applicable = policy.source === 'admin' || deployConfig.isPrivate();
+    if (!applicable || !policy.forceHttps) return next();
+
+    if (req.method === 'GET' || req.method === 'HEAD') {
+      return res.redirect(301, `https://${req.get('host')}${req.originalUrl}`);
+    }
+    return res.status(403).json({ success: false, message: '系统已启用强制HTTPS，请通过 https 访问', code: 'HTTPS_REQUIRED' });
+  } catch (_e) {
+    return next(); // 策略读取失败时放行（容错，不阻断业务）
+  }
+});
 if (process.env.HELMET_ENABLED !== 'false') {
   const allowedOrigins = (process.env.CORS_ORIGIN?.split(',') || ['http://localhost:5173']).map(o => o.trim())
   const apiOrigin = `http://localhost:${process.env.PORT || 3000}`

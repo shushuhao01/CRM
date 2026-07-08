@@ -4,6 +4,7 @@ import { useServerStore } from '@/stores/server'
 import { useUserStore } from '@/stores/user'
 import { incomingCallService } from '@/services/incomingCallService'
 import { callStateService } from '@/services/callStateService'
+import { wsService } from '@/services/websocket'
 
 onLaunch(() => {
   console.log('App Launch')
@@ -28,6 +29,9 @@ onShow(() => {
   // 检查是否有未完成的通话需要登记
   checkPendingCall()
 
+  // 🔥 回到前台：检查WebSocket连接健康度，后台被挂起产生的"假连接"会在这里被强制重连
+  wsService.ensureAlive()
+
   // #ifdef APP-PLUS
   const userStore = useUserStore()
   if (userStore.isLoggedIn) {
@@ -38,6 +42,10 @@ onShow(() => {
 
 onHide(() => {
   console.log('App Hide')
+  // #ifdef APP-PLUS
+  // 退到后台：申请保活（WakeLock续期+常驻通知），尽量维持来电监听与WS连接
+  incomingCallService.requestBackgroundKeepAlive()
+  // #endif
 })
 
 // 全局错误处理
@@ -168,6 +176,8 @@ const setupCallStateListener = () => {
       incomingCallService.startListening()
       incomingCallService.syncMissedCallsFromCallLog()
     }
+    // 后台恢复后连接可能已死（Android挂起JS/断网），强制健康检查
+    wsService.ensureAlive()
     // 延迟检查，等待系统通话界面完全关闭
     setTimeout(() => {
       checkPendingCall()

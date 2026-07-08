@@ -30,11 +30,15 @@ export interface DialRequest {
 class WebSocketService {
   private socket: UniApp.SocketTask | null = null
   private reconnectAttempts = 0
-  private maxReconnectAttempts = 10
+  private maxReconnectAttempts = 10 // 超过后进入慢速重连（不放弃）
   private reconnectDelay = 3000
+  private slowReconnectDelay = 60000 // 慢速重连间隔：60秒
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null
   private heartbeatTimer: number | null = null
   private heartbeatInterval = 30000 // 30秒心跳
   private intentionalClose = false // 🔥 标记是否是主动断开
+  private lastPongAt = 0 // 最近一次收到服务端心跳应答的时间（检测"假连接"）
+  private maxReconnectNotified = false
 
   // 连接状态
   public isConnected = false
@@ -97,6 +101,9 @@ class WebSocketService {
     console.log('[WebSocket] 正在连接...')
     console.log('[WebSocket] wsToken:', userStore.wsToken ? '有' : '无')
 
+    // 新连接建立：清除主动断开标记（避免残留导致后续断线不重连）
+    this.intentionalClose = false
+
     try {
       this.socket = uni.connectSocket({
         url: wsUrl,
@@ -120,12 +127,16 @@ class WebSocketService {
   // 设置监听器
   private setupListeners() {
     if (!this.socket) return
+    // 记录本次监听绑定的socket实例：旧连接的关闭/错误事件不应影响新连接状态
+    const sock = this.socket
 
     // 连接成功
     this.socket.onOpen(() => {
       console.log('[WebSocket] 连接成功')
       this.isConnected = true
       this.reconnectAttempts = 0
+      this.maxReconnectNotified = false
+      this.lastPongAt = Date.now()
 
       // 发送设备上线消息
       this.sendDeviceOnline()
@@ -149,6 +160,11 @@ class WebSocketService {
 
     // 连接关闭
     this.socket.onClose((res) => {
+      // 旧连接的关闭事件（已被forceReconnect替换）不处理，避免干扰新连接
+      if (this.socket !== sock) {
+        console.log('[WebSocket] 旧连接关闭事件，忽略')
+        return
+      }
       console.log('[WebSocket] 连接关闭:', res)
       this.isConnected = false
       this.stopHeartbeat()
@@ -164,6 +180,7 @@ class WebSocketService {
 
     // 连接错误
     this.socket.onError((err) => {
+      if (this.socket !== sock) return
       // 打印更详细的错误信息
       console.error('[WebSocket] 连接错误:', JSON.stringify(err))
       console.error('[WebSocket] 当前连接URL:', this.getCurrentWsUrl())
@@ -249,7 +266,8 @@ class WebSocketService {
 
       case 'HEARTBEAT_ACK':
       case 'pong':
-        // 心跳响应，不需要处理
+        // 心跳响应：记录时间，用于检测"假连接"（后台被挂起后socket看似在线实则已断）
+        this.lastPongAt = Date.now()
         break
 
       default:
@@ -409,12 +427,75 @@ class WebSocketService {
   // 启动心跳
   private startHeartbeat() {
     this.stopHeartbeat()
+    this.lastPongAt = Date.now()
 
     this.heartbeatTimer = setInterval(() => {
-      if (this.isConnected) {
-        this.send('HEARTBEAT')
+      if (!this.isConnected) return
+
+      // 🔥 假连接检测：连续2个心跳周期+10秒未收到服务端应答，判定连接已死，强制重连
+      // （Android 后台挂起恢复后，socket 对象可能看似正常但底层连接早已断开）
+      const silentMs = Date.now() - this.lastPongAt
+      if (this.lastPongAt > 0 && silentMs > this.heartbeatInterval * 2 + 10000) {
+        console.warn(`[WebSocket] ${Math.round(silentMs / 1000)}秒未收到心跳应答，判定连接已死，强制重连`)
+        this.forceReconnect()
+        return
       }
+
+      this.send('HEARTBEAT')
     }, this.heartbeatInterval) as unknown as number
+  }
+
+  /**
+   * 强制重连：不管当前状态如何，关闭旧连接立即重建
+   * 用于：心跳应答超时、APP从后台恢复（onShow/resume）
+   */
+  forceReconnect() {
+    console.log('[WebSocket] 强制重连')
+    this.stopHeartbeat()
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer)
+      this.reconnectTimer = null
+    }
+
+    if (this.socket) {
+      // 先置空再关闭：旧连接的 onClose 会因实例不匹配被忽略，不会干扰新连接
+      const oldSocket = this.socket
+      this.socket = null
+      try {
+        oldSocket.close({})
+      } catch (_e) { /* 忽略关闭异常 */ }
+    }
+    this.isConnected = false
+    this.reconnectAttempts = 0
+    this.connect()
+  }
+
+  /**
+   * 检查连接健康状态，不健康则重连（幂等，可在 onShow/resume 高频调用）
+   * 返回 true 表示连接健康
+   */
+  ensureAlive(): boolean {
+    const userStore = useUserStore()
+    // 未绑定设备时无需连接
+    if (!userStore.wsToken) return false
+
+    if (!this.isConnected || !this.socket) {
+      console.log('[WebSocket] ensureAlive: 未连接，发起重连')
+      this.forceReconnect()
+      return false
+    }
+
+    // 连接"在线"但心跳应答超时：假连接，强制重连
+    const silentMs = Date.now() - this.lastPongAt
+    if (this.lastPongAt > 0 && silentMs > this.heartbeatInterval * 2 + 10000) {
+      console.log('[WebSocket] ensureAlive: 心跳应答超时，强制重连')
+      this.forceReconnect()
+      return false
+    }
+
+    // 主动发一个心跳，尽快探测连接状态
+    this.send('HEARTBEAT')
+    return true
   }
 
   // 停止心跳
@@ -425,27 +506,42 @@ class WebSocketService {
     }
   }
 
-  // 重连调度
+  // 重连调度（永不放弃：超过最大次数后转为每60秒慢速重连，保证后台恢复后能自动连回）
   private scheduleReconnect() {
-    if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-      console.error('[WebSocket] 达到最大重连次数')
-      uni.$emit('ws:max_reconnect')
-      return
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer)
+      this.reconnectTimer = null
     }
 
-    this.reconnectAttempts++
-    const delay = this.reconnectDelay * Math.pow(1.5, this.reconnectAttempts - 1)
+    let delay: number
+    if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+      // 通知UI一次（可提示用户检查网络），但继续慢速重连而不是彻底放弃
+      if (!this.maxReconnectNotified) {
+        console.error('[WebSocket] 达到最大快速重连次数，转为每60秒慢速重连')
+        this.maxReconnectNotified = true
+        uni.$emit('ws:max_reconnect')
+      }
+      delay = this.slowReconnectDelay
+    } else {
+      this.reconnectAttempts++
+      delay = Math.min(this.reconnectDelay * Math.pow(1.5, this.reconnectAttempts - 1), 30000)
+    }
 
     console.log(`[WebSocket] ${delay}ms后重连，第${this.reconnectAttempts}次`)
 
-    setTimeout(() => {
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null
       this.connect()
-    }, Math.min(delay, 30000)) // 最大30秒
+    }, delay)
   }
 
   // 断开连接
   disconnect() {
     this.stopHeartbeat()
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer)
+      this.reconnectTimer = null
+    }
     this.intentionalClose = true // 🔥 标记为主动断开，不触发自动重连
 
     if (this.socket) {

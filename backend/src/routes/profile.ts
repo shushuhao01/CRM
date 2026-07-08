@@ -10,6 +10,7 @@ import { getTenantRepo } from '../utils/tenantRepo';
 import { TenantContextManager } from '../utils/tenantContext';
 import { checkStorageLimit } from '../middleware/checkTenantLimits';
 import { createTenantDestination, getUploadUrl } from '../utils/tenantUploadHelper';
+import { securityPolicyService } from '../services/SecurityPolicyService';
 
 import { log } from '../config/logger';
 const router = Router();
@@ -409,12 +410,15 @@ router.put('/password', simpleAuth, async (req, res) => {
       });
     }
 
-    // 验证密码强度
-    if (newPassword.length < 6) {
+    // 🔥 按安全策略校验新密码强度（SaaS=管理后台下发，私有=系统设置安全配置）
+    const tokenTenantId = (req as any).user?.tenantId || (req as any).tenantId || null;
+    const pwdPolicy = await securityPolicyService.getPolicy(tokenTenantId);
+    const pwdCheck = securityPolicyService.validatePassword(newPassword, pwdPolicy);
+    if (!pwdCheck.valid) {
       return res.status(400).json({
         success: false,
-        message: '新密码长度至少为6位',
-        code: 'PASSWORD_TOO_SHORT'
+        message: `新密码不符合安全策略：${pwdCheck.message}`,
+        code: 'PASSWORD_POLICY_VIOLATION'
       });
     }
 

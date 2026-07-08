@@ -11,6 +11,7 @@ import bcrypt from 'bcryptjs';
 import { getTenantRepo } from '../utils/tenantRepo';
 import { deployConfig } from '../config/deploy';
 import { onlineSeatService } from '../services/OnlineSeatService';
+import { securityPolicyService } from '../services/SecurityPolicyService';
 import { getClientIp } from '../utils/getClientIp';
 import { writeOperationLog, extractUserInfo } from '../utils/operationLogWriter';
 
@@ -119,9 +120,32 @@ export class UserController {
       throw new BusinessError('用户名或密码错误', 'INVALID_CREDENTIALS');
     }
 
+    // 🔥 读取安全策略（SaaS=管理后台下发优先，私有=系统设置安全配置，均有默认值兜底）
+    const securityPolicy = await securityPolicyService.getPolicy(user.tenantId);
+
     // 检查账户状态
     if (user.status === 'locked') {
-      throw new BusinessError('账户已被锁定，请联系管理员', 'ACCOUNT_LOCKED');
+      // 🔥 按策略"锁定时间"自动解锁：锁定时长已过则恢复账户继续登录流程
+      const lockMs = securityPolicy.lockDuration * 60 * 1000;
+      if (securityPolicy.lockDuration > 0 && user.lockedAt && (Date.now() - new Date(user.lockedAt).getTime()) >= lockMs) {
+        user.status = 'active';
+        user.lockedAt = null;
+        user.loginFailCount = 0;
+        try {
+          await this.userRepository.save(user);
+        } catch (_e) { /* 解锁保存失败不阻塞，下方按未锁定继续 */ }
+        log.info(`[Login] 账户锁定时间已过，自动解锁: ${user.username}`);
+      } else {
+        const remainMinutes = securityPolicy.lockDuration > 0 && user.lockedAt
+          ? Math.max(1, Math.ceil((lockMs - (Date.now() - new Date(user.lockedAt).getTime())) / 60000))
+          : 0;
+        throw new BusinessError(
+          remainMinutes > 0
+            ? `账户已被锁定，请${remainMinutes}分钟后重试或联系管理员解锁`
+            : '账户已被锁定，请联系管理员',
+          'ACCOUNT_LOCKED'
+        );
+      }
     }
 
     if (user.status === 'inactive') {
@@ -136,6 +160,21 @@ export class UserController {
     const clientIp = req.ip || req.socket?.remoteAddress || 'unknown';
     // 处理IPv6格式的本地地址
     const normalizedIp = clientIp.replace(/^::ffff:/, '');
+
+    // 🔥 系统级IP白名单（安全策略）：白名单非空时校验登录IP（回环地址始终放行）
+    if (securityPolicy.ipWhitelist && !securityPolicyService.isIpAllowed(clientIp, securityPolicy.ipWhitelist)) {
+      try {
+        await this.logOperation({
+          action: 'login',
+          module: 'auth',
+          description: `用户登录失败: IP不在系统白名单 - ${username} (IP: ${normalizedIp})`,
+          result: 'failed',
+          ipAddress: normalizedIp,
+          userAgent: req.get('User-Agent')
+        });
+      } catch (_logError) { /* 日志失败不影响主流程 */ }
+      throw new BusinessError('当前IP地址不在系统白名单内，禁止登录', 'IP_NOT_IN_WHITELIST');
+    }
 
     if (user.authorizedIps && Array.isArray(user.authorizedIps) && user.authorizedIps.length > 0) {
       const isIpAuthorized = user.authorizedIps.some(ip =>
@@ -163,21 +202,24 @@ export class UserController {
     const isPasswordValid = await bcrypt.compare(password, user.password);
 
     if (!isPasswordValid) {
-      // 增加登录失败次数
-      user.loginFailCount = (user.loginFailCount || 0) + 1;
-      const maxFails = 5;
-      const remaining = maxFails - user.loginFailCount;
+      // 🔥 按安全策略执行登录失败锁定（开关/最大次数/锁定时长均读取配置）
+      let remaining = -1;
+      if (securityPolicy.loginFailLock) {
+        user.loginFailCount = (user.loginFailCount || 0) + 1;
+        const maxFails = securityPolicy.maxLoginFails;
+        remaining = maxFails - user.loginFailCount;
 
-      // 如果失败次数超过5次，锁定账户
-      if (user.loginFailCount >= maxFails) {
-        user.status = 'locked';
-        user.lockedAt = new Date();
-      }
+        // 失败次数达到上限，锁定账户
+        if (user.loginFailCount >= maxFails) {
+          user.status = 'locked';
+          user.lockedAt = new Date();
+        }
 
-      try {
-        await this.userRepository.save(user);
-      } catch (_saveError) {
-        logger.warn('保存登录失败次数异常:', _saveError);
+        try {
+          await this.userRepository.save(user);
+        } catch (_saveError) {
+          logger.warn('保存登录失败次数异常:', _saveError);
+        }
       }
 
       // 记录登录失败日志（失败不影响错误返回）
@@ -187,7 +229,7 @@ export class UserController {
           username: user.username,
           action: 'login',
           module: 'auth',
-          description: `用户登录失败: 密码错误 - ${username} (第${user.loginFailCount}次)`,
+          description: `用户登录失败: 密码错误 - ${username}${securityPolicy.loginFailLock ? ` (第${user.loginFailCount}次)` : ''}`,
           result: 'failed',
           ipAddress: getClientIp(req),
           userAgent: req.get('User-Agent')
@@ -197,7 +239,12 @@ export class UserController {
       }
 
       if (user.status === 'locked') {
-        throw new BusinessError('密码错误次数过多，账户已被锁定，请联系管理员解锁', 'ACCOUNT_LOCKED');
+        throw new BusinessError(
+          securityPolicy.lockDuration > 0
+            ? `密码错误次数过多，账户已被锁定，请${securityPolicy.lockDuration}分钟后重试或联系管理员解锁`
+            : '密码错误次数过多，账户已被锁定，请联系管理员解锁',
+          'ACCOUNT_LOCKED'
+        );
       }
 
       throw new BusinessError(
@@ -380,6 +427,9 @@ export class UserController {
       }
     }
 
+    // 🔥 按安全策略检查密码是否过期（passwordExpireDays > 0 时生效），前端据此弹出强制改密
+    const passwordExpired = securityPolicyService.isPasswordExpired(user.passwordLastChanged, securityPolicy);
+
     // 返回用户信息和令牌
     const { password: _, ...userInfo } = user;
 
@@ -393,7 +443,13 @@ export class UserController {
           rolePermissions,  // 🔥 返回角色权限列表
           tenantModules     // 🔥 返回租户授权模块列表（SaaS模式）
         },
-        tokens
+        tokens,
+        securityPolicy: {
+          // 🔥 下发给前端的安全策略摘要（会话超时提示 / 密码有效期计算用）
+          sessionTimeout: securityPolicy.sessionTimeout,
+          passwordExpireDays: securityPolicy.passwordExpireDays,
+          passwordExpired
+        }
       }
     });
   });
@@ -545,12 +601,21 @@ export class UserController {
       throw new BusinessError('新密码不能与当前密码相同', 'SAME_PASSWORD');
     }
 
+    // 🔥 按安全策略校验新密码强度（长度 + 复杂度）
+    const pwdPolicy = await securityPolicyService.getPolicy(user.tenantId);
+    const pwdCheck = securityPolicyService.validatePassword(newPassword, pwdPolicy);
+    if (!pwdCheck.valid) {
+      throw new BusinessError(`新密码不符合安全策略：${pwdCheck.message}`, 'PASSWORD_POLICY_VIOLATION');
+    }
+
     // 加密新密码
     const saltRounds = parseInt(process.env.BCRYPT_ROUNDS || '12');
     const hashedPassword = await bcrypt.hash(newPassword, saltRounds);
 
     // 更新密码
     user.password = hashedPassword;
+    user.passwordLastChanged = new Date();
+    user.needChangePassword = 0;
     await this.userRepository.save(user);
 
     // 记录操作日志
@@ -639,6 +704,13 @@ export class UserController {
 
     if (existingUser) {
       throw new BusinessError('用户名已存在', 'USERNAME_EXISTS');
+    }
+
+    // 🔥 按安全策略校验初始密码强度（长度 + 复杂度）
+    const createPwdPolicy = await securityPolicyService.getPolicy(tenantId);
+    const createPwdCheck = securityPolicyService.validatePassword(password, createPwdPolicy);
+    if (!createPwdCheck.valid) {
+      throw new BusinessError(`密码不符合安全策略：${createPwdCheck.message}`, 'PASSWORD_POLICY_VIOLATION');
     }
 
     // 检查邮箱是否已存在（同租户下）
@@ -1320,6 +1392,15 @@ export class UserController {
 
     if (!user) {
       throw new NotFoundError('用户不存在');
+    }
+
+    // 🔥 管理员指定新密码时按安全策略校验（自动生成的临时密码默认满足常见复杂度）
+    if (newPassword) {
+      const resetPwdPolicy = await securityPolicyService.getPolicy(tenantId);
+      const resetPwdCheck = securityPolicyService.validatePassword(newPassword, resetPwdPolicy);
+      if (!resetPwdCheck.valid) {
+        throw new BusinessError(`密码不符合安全策略：${resetPwdCheck.message}`, 'PASSWORD_POLICY_VIOLATION');
+      }
     }
 
     // 生成临时密码或使用提供的密码

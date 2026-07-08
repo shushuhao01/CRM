@@ -2,16 +2,25 @@
   <!-- 全局来电弹窗 -->
   <el-dialog
     :model-value="incomingCallVisible"
-    title="来电提醒"
     width="500px"
     :close-on-click-modal="false"
     :close-on-press-escape="false"
-    :show-close="true"
-    @close="$emit('dismiss')"
+    :show-close="false"
     center
     append-to-body
     class="global-incoming-call-dialog"
   >
+    <!-- 响铃中：右上角为"缩小为悬浮球"按钮（代替关闭） -->
+    <template #header>
+      <div class="incoming-dialog-header">
+        <span class="incoming-dialog-title">来电提醒</span>
+        <el-tooltip content="缩小为悬浮球（铃声继续）" placement="top">
+          <el-button class="minimize-btn" size="small" circle @click="$emit('minimize')">
+            <el-icon><Minus /></el-icon>
+          </el-button>
+        </el-tooltip>
+      </div>
+    </template>
     <div class="incoming-call" v-if="incomingCallData">
       <!-- 来电类型标签 -->
       <div class="call-type-bar">
@@ -74,6 +83,13 @@
     </div>
   </el-dialog>
 
+  <!-- 响铃中最小化悬浮球（点击恢复弹窗，接听/结束后自动消失） -->
+  <IncomingCallFloatingBall
+    :visible="incomingMinimized && !!incomingCallData"
+    :caller-name="incomingCallData?.customerName"
+    @restore="$emit('restore-incoming')"
+  />
+
   <!-- 全局通话中悬浮窗 -->
   <Teleport to="body">
     <div
@@ -126,6 +142,7 @@
 import { computed } from 'vue'
 import { User, FullScreen, Minus, Close } from '@element-plus/icons-vue'
 import { displaySensitiveInfoNew, SensitiveInfoType } from '@/utils/sensitiveInfo'
+import IncomingCallFloatingBall from '@/components/IncomingCallFloatingBall.vue'
 import type { IncomingCallData } from '@/composables/useIncomingCall'
 
 const props = defineProps<{
@@ -134,12 +151,15 @@ const props = defineProps<{
   callInProgressVisible: boolean
   currentCallData: IncomingCallData | null
   isMinimized: boolean
+  incomingMinimized: boolean
 }>()
 
 defineEmits<{
   answer: []
   reject: []
   dismiss: []
+  minimize: []
+  'restore-incoming': []
   'view-customer': []
   'add-new-customer': []
   'go-call-management': []
@@ -171,6 +191,24 @@ const displayCurrentPhone = computed(() => {
 </script>
 
 <style scoped>
+.incoming-dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+}
+.incoming-dialog-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #303133;
+  flex: 1;
+  text-align: center;
+  /* 补偿右侧按钮宽度，让标题视觉居中 */
+  padding-left: 32px;
+}
+.minimize-btn {
+  flex-shrink: 0;
+}
 .incoming-call {
   text-align: center;
   padding: 0 16px 8px;

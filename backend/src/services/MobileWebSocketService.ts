@@ -350,24 +350,35 @@ class MobileWebSocketService {
       }
 
       // 无 callId 时按号码查找最近的 ringing 呼入记录
+      // 🔒 防串号：限定10分钟内，且号码必须相同或记录号码未知，避免更新到别的通话
       if (!callId && phoneNumber && phoneNumber !== '未知来电') {
         const records = await dataSource.query(
           `SELECT id FROM call_records
            WHERE user_id = ? AND call_type = 'inbound' AND call_status = 'ringing'
+             AND created_at > DATE_SUB(NOW(), INTERVAL 10 MINUTE)
+             AND (customer_phone = ? OR customer_phone IS NULL OR customer_phone = '' OR customer_phone = '未知来电')
            ORDER BY created_at DESC LIMIT 1`,
-          [String(userId)]
+          [String(userId), phoneNumber]
         );
         if (records.length > 0) {
           callId = records[0].id;
         }
       }
 
-      // 更新通话记录状态（有 callId 时才更新）
+      // 更新通话记录状态（有 callId 时才更新）；
+      // 附带的有效号码同时补进记录（仅当记录号码未知，如接听后才解析到号码的场景）
       if (callId) {
         await dataSource.query(
           `UPDATE call_records SET call_status = ?, updated_at = NOW() WHERE id = ?`,
           [dbStatus, callId]
         );
+        if (phoneNumber && phoneNumber !== '未知来电') {
+          await dataSource.query(
+            `UPDATE call_records SET customer_phone = ?, updated_at = NOW()
+             WHERE id = ? AND (customer_phone IS NULL OR customer_phone = '' OR customer_phone = '未知来电')`,
+            [phoneNumber, callId]
+          );
+        }
       }
 
       // 无论 callId 是否匹配到记录，都转发通话状态给CRM端（让弹窗关闭）
@@ -420,12 +431,16 @@ class MobileWebSocketService {
           callId = records[0].id;
         }
       }
-      // 如果还是没有 callId，但有"未知来电"号码，查找该用户最近的呼入记录（限定10分钟内）
+      // 如果还是没有 callId（本次结束事件的号码是"未知来电"），只匹配该用户最近的
+      // "号码同样未知"的呼入记录（限定10分钟内）。
+      // 🔒 防串号：不能匹配到任意最近记录——快速连续来电时可能把下一通（已有真实号码、
+      // 正在响铃）的记录错误标记为已结束，导致新来电弹窗被上一通的结束事件关闭/覆盖
       if (!callId) {
         const records = await dataSource.query(
           `SELECT id FROM call_records
            WHERE user_id = ? AND call_type = 'inbound'
              AND created_at > DATE_SUB(NOW(), INTERVAL 10 MINUTE)
+             AND (customer_phone IS NULL OR customer_phone = '' OR customer_phone = '未知来电')
            ORDER BY created_at DESC LIMIT 1`,
           [String(userId)]
         );
@@ -671,7 +686,8 @@ class MobileWebSocketService {
       }
 
       // 3. 创建或更新呼入通话记录
-      // 检查30秒内是否已有该用户的呼入记录（APP可能先报"未知来电"再报真实号码）
+      // 检查120秒内是否已有该用户的呼入记录（APP可能先报"未知来电"再报真实号码；
+      // 响铃可能超过30秒，窗口太短会导致补号上报生成重复记录、旧记录停留"未知来电"）
       // ⚠️ 防串号：只复用"仍在响铃中"的记录（已结束的上一通不能被下一通复用），
       //    且若两条记录都有有效号码但不一致，视为新的一通来电，不复用
       let callId = `IN-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
@@ -681,7 +697,7 @@ class MobileWebSocketService {
           `SELECT id, customer_phone FROM call_records
            WHERE user_id = ? AND call_type = 'inbound'
              AND call_status = 'ringing'
-             AND created_at > DATE_SUB(NOW(), INTERVAL 30 SECOND)
+             AND created_at > DATE_SUB(NOW(), INTERVAL 120 SECOND)
            ORDER BY created_at DESC LIMIT 1`,
           [String(userId)]
         );
@@ -689,12 +705,18 @@ class MobileWebSocketService {
           const prevPhone = existing[0].customer_phone || '';
           const prevValid = prevPhone && prevPhone !== '未知来电';
           const currValid = callerNumber && callerNumber !== '未知来电';
-          if (prevValid && currValid && prevPhone !== callerNumber) {
-            logger.info(`[MobileWS] 30秒内存在响铃记录但号码不同(${prevPhone} vs ${callerNumber})，创建新记录`);
-          } else {
+          // 🔒 防串号：仅两种情况允许复用旧响铃记录：
+          //   a) 旧记录号码未知、本次报了有效号码（典型的"先报未知再补真实号码"）
+          //   b) 号码相同的重复上报（WS+HTTP双通道）
+          // 旧记录已有有效号码而本次是未知/不同号码 → 视为新的一通来电，绝不复用，
+          // 否则会把上一通的号码覆盖掉或让弹窗显示上一通的号码
+          const canReuse = (!prevValid) || (currValid && prevPhone === callerNumber);
+          if (canReuse) {
             callId = existing[0].id;
             isUpdate = true;
-            logger.info(`[MobileWS] 检测到30秒内响铃中的呼入记录，更新记录: ${callId}`);
+            logger.info(`[MobileWS] 检测到响铃中的呼入记录，更新记录: ${callId}`);
+          } else {
+            logger.info(`[MobileWS] 响铃窗口内存在记录但号码不匹配(${prevPhone} vs ${callerNumber})，创建新记录`);
           }
         }
       } catch (_e) { /* 忽略 */ }

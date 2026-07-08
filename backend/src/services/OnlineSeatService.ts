@@ -12,10 +12,14 @@ import { v4 as uuidv4 } from 'uuid';
 import crypto from 'crypto';
 import { log } from '../config/logger';
 import { sendSystemMessage } from './messageService';
+import { securityPolicyService } from './SecurityPolicyService';
 
 /** 会话过期阈值：超过此时长无心跳则标记为 expired（仅用于清理关闭浏览器的僵尸会话）
  *  席位计数不使用此阈值，登录即占席位，退出/踢出/浏览器关闭才释放 */
 const SESSION_EXPIRE_MINUTES = 15;
+
+/** 会话下线原因类型 */
+export type SessionInactiveStatus = 'kicked' | 'expired' | 'logged_out';
 
 /** 内存缓存：批量更新活跃时间，减少DB写入 */
 const activityCache: Map<string, { lastActiveAt: Date; dirty: boolean }> = new Map();
@@ -25,8 +29,8 @@ const BATCH_FLUSH_INTERVAL = 15 * 1000; // 15秒，配合2分钟阈值
 /** 内存缓存：已确认存在会话的token集合，避免每次请求都查DB */
 const sessionExistsCache: Set<string> = new Set();
 
-/** 🔥 内存缓存：已被踢出/过期的token集合，防止auth中间件自动重建被踢会话 */
-const kickedTokensCache: Set<string> = new Set();
+/** 🔥 内存缓存：已被踢出/过期的token及其下线原因，防止auth中间件自动重建被踢会话 */
+const kickedTokensCache: Map<string, SessionInactiveStatus> = new Map();
 
 class OnlineSeatService {
   private flushTimer: NodeJS.Timeout | null = null;
@@ -227,21 +231,31 @@ class OnlineSeatService {
    * 优先查内存缓存，缓存未命中时查DB
    */
   async isSessionKicked(sessionToken: string): Promise<boolean> {
+    return (await this.getSessionInactiveStatus(sessionToken)) !== null;
+  }
+
+  /**
+   * 🔥 获取会话的下线原因（kicked=被踢出 / expired=会话超时或过期 / logged_out=已登出）
+   * 返回 null 表示会话正常
+   */
+  async getSessionInactiveStatus(sessionToken: string): Promise<SessionInactiveStatus | null> {
     // 内存缓存快速判断
-    if (kickedTokensCache.has(sessionToken)) return true;
+    const cachedStatus = kickedTokensCache.get(sessionToken);
+    if (cachedStatus) return cachedStatus;
     try {
       const result = await AppDataSource.query(
         `SELECT status FROM user_sessions WHERE session_token = ? ORDER BY created_at DESC LIMIT 1`,
         [sessionToken]
       );
       if (result.length > 0 && (result[0].status === 'kicked' || result[0].status === 'expired' || result[0].status === 'logged_out')) {
-        kickedTokensCache.add(sessionToken);
-        return true;
+        const status = result[0].status as SessionInactiveStatus;
+        kickedTokensCache.set(sessionToken, status);
+        return status;
       }
     } catch (_e) {
       // 查询失败时不阻塞（容错）
     }
-    return false;
+    return null;
   }
 
   /**
@@ -279,7 +293,7 @@ class OnlineSeatService {
           return;
         }
         // 🔥 会话已被踢出/过期/登出 → 不重建，加入已踢缓存
-        kickedTokensCache.add(params.sessionToken);
+        kickedTokensCache.set(params.sessionToken, anyRecord[0].status as SessionInactiveStatus);
         log.info(`[OnlineSeat] 会话已${anyRecord[0].status}，拒绝重建: token=${params.sessionToken.substring(0, 8)}...`);
         return;
       }
@@ -288,7 +302,7 @@ class OnlineSeatService {
       const seatCheck = await this.checkLoginAllowed(params.tenantId, params.userId);
       if (!seatCheck.allowed) {
         // 席位已满，不创建新会话
-        kickedTokensCache.add(params.sessionToken);
+        kickedTokensCache.set(params.sessionToken, 'expired');
         log.info(`[OnlineSeat] 席位已满，拒绝补建会话: userId=${params.userId}`);
         return;
       }
@@ -509,7 +523,7 @@ class OnlineSeatService {
       );
       activityCache.delete(sessionToken);
       sessionExistsCache.delete(sessionToken);
-      kickedTokensCache.add(sessionToken);
+      kickedTokensCache.set(sessionToken, 'logged_out');
       log.info(`[OnlineSeat] 会话已注销: ${sessionToken.substring(0, 8)}...`);
       // 🔥 同步租户在线数
       if (sessionInfo.length > 0 && sessionInfo[0].tenant_id) {
@@ -540,7 +554,7 @@ class OnlineSeatService {
       for (const s of sessions) {
         sessionExistsCache.delete(s.session_token);
         activityCache.delete(s.session_token);
-        kickedTokensCache.add(s.session_token);
+        kickedTokensCache.set(s.session_token, 'kicked');
       }
       // 🔥 踢出该用户的所有其他活跃会话（确保彻底释放席位）
       if (sessions.length > 0) {
@@ -558,7 +572,7 @@ class OnlineSeatService {
           for (const os of otherSessions) {
             sessionExistsCache.delete(os.session_token);
             activityCache.delete(os.session_token);
-            kickedTokensCache.add(os.session_token);
+            kickedTokensCache.set(os.session_token, 'kicked');
           }
         }
       }
@@ -591,7 +605,7 @@ class OnlineSeatService {
       for (const s of activeSessions) {
         sessionExistsCache.delete(s.session_token);
         activityCache.delete(s.session_token);
-        kickedTokensCache.add(s.session_token);
+        kickedTokensCache.set(s.session_token, 'kicked');
       }
       // 🔥 立即同步租户在线数
       await this.syncTenantOnlineCount(tenantId);
@@ -604,12 +618,14 @@ class OnlineSeatService {
 
   /**
    * 清理过期会话（定时任务调用）
-   * 将超过活跃阈值的会话标记为 expired
+   * 1. 僵尸会话清理：浏览器关闭后心跳停止超过 SESSION_EXPIRE_MINUTES
+   * 2. 🔥 会话超时强制下线：登录时长超过安全策略"会话超时时间"（sessionTimeout 分钟）
+   *    的会话标记为 expired，强制用户重新登录（释放在线席位给需要的成员）
    */
   async cleanupExpiredSessions(): Promise<number> {
     try {
       await this.ensureTable();
-      // 🔥 仅清理真正的僵尸会话（浏览器关闭后心跳停止超过 SESSION_EXPIRE_MINUTES）
+      // 🔥 清理真正的僵尸会话（浏览器关闭后心跳停止超过 SESSION_EXPIRE_MINUTES）
       const result = await AppDataSource.query(
         `UPDATE user_sessions SET status = 'expired', updated_at = NOW()
          WHERE status = 'active'
@@ -621,15 +637,75 @@ class OnlineSeatService {
         log.info(`[OnlineSeat] 已清理 ${affected} 个过期会话`);
       }
 
+      // 🔥 会话超时强制下线（读取安全策略：SaaS=管理后台下发，私有=系统设置安全配置）
+      const timeoutExpired = await this.enforceSessionTimeout();
+
       // 同步更新各租户的 current_online_seats
       await this.syncAllTenantOnlineCount();
 
       // 🔥 清理完过期会话后，检查并踢出超席位的用户
       await this.enforceExcessKick();
 
-      return affected;
+      return affected + timeoutExpired;
     } catch (error) {
       log.error('[OnlineSeat] 清理过期会话失败:', error);
+      return 0;
+    }
+  }
+
+  /**
+   * 🔥 按安全策略的"会话超时时间"强制过期会话（定时任务调用，每分钟）
+   * 会话从登录（created_at）起超过 sessionTimeout 分钟即标记 expired，
+   * 用户端通过心跳/请求收到会话超时提示后需重新登录。
+   * sessionTimeout = 0 表示不限制。
+   */
+  async enforceSessionTimeout(): Promise<number> {
+    try {
+      // 找出所有有活跃会话的租户
+      const tenantRows: Array<{ tenant_id: string }> = await AppDataSource.query(
+        `SELECT DISTINCT tenant_id FROM user_sessions WHERE status = 'active'`
+      );
+      if (tenantRows.length === 0) return 0;
+
+      let totalExpired = 0;
+      for (const row of tenantRows) {
+        const tenantId = row.tenant_id;
+        let timeoutMinutes = 0;
+        try {
+          const policy = await securityPolicyService.getPolicy(tenantId);
+          timeoutMinutes = policy.sessionTimeout;
+        } catch (_e) {
+          continue; // 策略读取失败时跳过该租户（容错，不误踢）
+        }
+        if (!timeoutMinutes || timeoutMinutes <= 0) continue;
+
+        // 先取出将要过期的 token，写入已踢缓存（原因=expired）
+        const expiring: Array<{ session_token: string }> = await AppDataSource.query(
+          `SELECT session_token FROM user_sessions
+           WHERE tenant_id = ? AND status = 'active'
+           AND created_at < DATE_SUB(NOW(), INTERVAL ? MINUTE)`,
+          [tenantId, timeoutMinutes]
+        );
+        if (expiring.length === 0) continue;
+
+        await AppDataSource.query(
+          `UPDATE user_sessions SET status = 'expired', updated_at = NOW()
+           WHERE tenant_id = ? AND status = 'active'
+           AND created_at < DATE_SUB(NOW(), INTERVAL ? MINUTE)`,
+          [tenantId, timeoutMinutes]
+        );
+
+        for (const s of expiring) {
+          sessionExistsCache.delete(s.session_token);
+          activityCache.delete(s.session_token);
+          kickedTokensCache.set(s.session_token, 'expired');
+        }
+        totalExpired += expiring.length;
+        log.info(`[OnlineSeat] 租户 ${tenantId} 有 ${expiring.length} 个会话超过 ${timeoutMinutes} 分钟已强制过期下线`);
+      }
+      return totalExpired;
+    } catch (error) {
+      log.error('[OnlineSeat] 会话超时强制下线失败:', error);
       return 0;
     }
   }

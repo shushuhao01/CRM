@@ -368,6 +368,13 @@ const router = createRouter({
       component: () => import('../views/ServiceManagement/CallManagement.vue'),
       meta: { title: '通话管理', requiresAuth: true }
     },
+    // 来电弹屏（供阿里云云联络中心坐席工作台 iframe 嵌入，参数由工作台自动拼接）
+    {
+      path: '/call-popup',
+      name: 'CallPopup',
+      component: () => import('../views/ServiceManagement/CallPopup.vue'),
+      meta: { title: '来电弹屏', requiresAuth: true, hideLayout: true }
+    },
     {
       path: '/service-management/call/dashboard',
       name: 'CallDashboard',

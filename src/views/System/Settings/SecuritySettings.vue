@@ -88,11 +88,11 @@
       <el-form-item label="会话超时时间" prop="sessionTimeout">
         <el-input-number
           v-model="securityForm.sessionTimeout"
-          :min="30"
+          :min="0"
           :max="1440"
           placeholder="会话超时时间"
         />
-        <span class="form-tip">分钟</span>
+        <span class="form-tip">分钟。登录满该时长后会话过期，需重新登录（用于在线席位模式下释放席位）；0表示不限制</span>
       </el-form-item>
 
       <el-form-item label="强制HTTPS" prop="forceHttps">
@@ -101,6 +101,7 @@
           active-text="启用"
           inactive-text="禁用"
         />
+        <span class="form-tip">启用后 HTTP 请求将被重定向到 HTTPS，请确认已配置 SSL 证书后再开启</span>
       </el-form-item>
 
       <el-form-item label="IP白名单" prop="ipWhitelist">
@@ -110,7 +111,7 @@
           :rows="3"
           placeholder="请输入IP地址，多个IP用换行分隔"
         />
-        <div class="form-tip">留空表示不限制IP访问</div>
+        <div class="form-tip">仅白名单内的IP允许登录系统，支持精确IP和网段通配（如 192.168.1.*）；留空表示不限制</div>
       </el-form-item>
     </el-form>
   </el-card>

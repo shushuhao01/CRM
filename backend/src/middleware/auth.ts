@@ -133,11 +133,17 @@ export const authenticateToken = async (req: Request, res: Response, next: NextF
         (req as any).sessionToken = sessionToken;
 
         // 🔥 同步检查：被踢出/过期/登出的会话直接拒绝，强制用户重新登录
-        const isKicked = await onlineSeatService.isSessionKicked(sessionToken);
-        if (isKicked) {
+        const inactiveStatus = await onlineSeatService.getSessionInactiveStatus(sessionToken);
+        if (inactiveStatus) {
+          // 按下线原因返回不同提示（expired=会话超时策略/僵尸清理，kicked=管理员踢出，logged_out=已登出）
+          const messages: Record<string, string> = {
+            kicked: '您的会话已被管理员下线，请重新登录',
+            expired: '登录会话已超时，请重新登录',
+            logged_out: '您已退出登录，请重新登录'
+          };
           return res.status(401).json({
             success: false,
-            message: '您的会话已被下线，请重新登录',
+            message: messages[inactiveStatus] || '您的会话已被下线，请重新登录',
             code: 'SESSION_KICKED'
           });
         }

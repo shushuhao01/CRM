@@ -73,7 +73,7 @@ export class Call {
   @Column({ name: 'provider_call_id', length: 100, nullable: true })
   providerCallId: string;
 
-  @Column({ name: 'hangup_cause', length: 100, nullable: true })
+  @Column({ name: 'hangup_cause', length: 255, nullable: true })
   hangupCause: string;
 
   @Column({ name: 'user_id', length: 100 })

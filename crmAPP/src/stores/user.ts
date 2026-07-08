@@ -101,14 +101,17 @@ export const useUserStore = defineStore('user', {
     },
 
     restore() {
+      // 🔥 逐项独立恢复：任何一项损坏（如旧版加密的中文数据解密失败）
+      // 都不能影响其他项，否则会连带丢失 wsToken/deviceInfo 导致要求重新扫码绑定
+      let token = ''
       try {
-        const token = getEncryptedStorage('token')
-        const userInfo = getEncryptedStorage('userInfo')
-        const wsToken = getEncryptedStorage('wsToken')
-        const wsUrl = uni.getStorageSync('wsUrl')
-        const deviceInfo = uni.getStorageSync('deviceInfo')
+        token = getEncryptedStorage('token')
+      } catch (e) {
+        console.error('[User] 恢复token失败:', e)
+      }
 
-        // 检查本地登录是否超过7天
+      // 检查本地登录是否超过7天
+      try {
         const loginTs = uni.getStorageSync('loginTimestamp')
         if (loginTs && token) {
           const elapsed = Date.now() - parseInt(loginTs)
@@ -119,26 +122,52 @@ export const useUserStore = defineStore('user', {
             return
           }
         }
+      } catch (e) {
+        console.error('[User] 检查登录时效失败:', e)
+      }
 
-        if (token) {
-          this.token = token
-          this.isLoggedIn = true
-        }
+      if (token) {
+        this.token = token
+        this.isLoggedIn = true
+      }
+
+      try {
+        const userInfo = getEncryptedStorage('userInfo')
         if (userInfo) {
           this.userInfo = JSON.parse(userInfo)
         }
+      } catch (e) {
+        // 旧版加密对中文数据有损，解密后JSON损坏会走到这里；
+        // 不中断恢复流程，由页面侧检测到 userInfo 缺失后静默重新登录补全
+        console.error('[User] 恢复用户信息失败（可能是旧版加密数据损坏）:', e)
+      }
+
+      try {
+        const wsToken = getEncryptedStorage('wsToken')
         if (wsToken) {
           this.wsToken = wsToken
         }
+      } catch (e) {
+        console.error('[User] 恢复wsToken失败:', e)
+      }
+
+      try {
+        const wsUrl = uni.getStorageSync('wsUrl')
         if (wsUrl) {
           this.wsUrl = wsUrl
         }
+      } catch (e) {
+        console.error('[User] 恢复wsUrl失败:', e)
+      }
+
+      try {
+        const deviceInfo = uni.getStorageSync('deviceInfo')
         if (deviceInfo) {
           this.deviceInfo = JSON.parse(deviceInfo)
           this.isBound = true
         }
       } catch (e) {
-        console.error('恢复用户信息失败:', e)
+        console.error('[User] 恢复设备信息失败:', e)
       }
     }
   }

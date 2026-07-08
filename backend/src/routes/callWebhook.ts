@@ -487,7 +487,8 @@ router.post('/sip/incoming', verifySipWebhookSecret, async (req: Request, res: R
       });
       log.info(`[Webhook] 已推送呼入通知给用户 ${assignedUserId}`);
     } else if (agentBusy) {
-      log.info(`[Webhook] 坐席忙碌，已创建记录 ${internalCallId} 但未推送弹窗`);
+      // 坐席忙碌：标记为未接并推送未接来电提醒（不弹接听窗）
+      await markMissedAndNotify(internalCallId, assignedUserId!, callerNumber, customerName, customerId, tenantFilter, tenantParams);
     }
 
     res.json({
@@ -558,7 +559,7 @@ router.post('/sip/status', verifySipWebhookSecret, async (req: Request, res: Res
       }
       if (hangupCause) {
         updates.push('hangup_cause = ?');
-        params.push(hangupCause);
+        params.push(String(hangupCause).substring(0, 250));
       }
     }
 
@@ -824,6 +825,9 @@ async function processCloudInboundNotification(options: {
       timestamp: new Date().toISOString()
     });
     log.info(`[Webhook] 已推送云通信呼入通知给用户 ${assignedUserId}`);
+  } else if (assignedUserId && agentBusy) {
+    // 坐席忙碌：标记为未接并推送未接来电提醒（不弹接听窗）
+    await markMissedAndNotify(internalCallId, assignedUserId, callerNumber, customerName, customerId, tenantFilter, tenantParams);
   }
 
   return {
@@ -834,6 +838,42 @@ async function processCloudInboundNotification(options: {
     assignedUserName,
     agentBusy
   };
+}
+
+/**
+ * 坐席忙碌时的处理：将呼入记录标记为未接，并推送未接来电提醒
+ */
+async function markMissedAndNotify(
+  callId: string,
+  userId: string,
+  callerNumber: string,
+  customerName: string,
+  customerId: string | null,
+  tenantFilter: string,
+  tenantParams: any[]
+): Promise<void> {
+  try {
+    const { AppDataSource } = await import('../config/database');
+    await AppDataSource.query(
+      `UPDATE call_records SET call_status = 'missed', end_time = NOW(), hangup_cause = '坐席忙碌未接' WHERE id = ?${tenantFilter}`,
+      [callId, ...tenantParams]
+    );
+  } catch (err) {
+    log.warn('[Webhook] 标记未接来电失败:', err);
+  }
+
+  if ((global as any).webSocketService) {
+    (global as any).webSocketService.sendToUser(userId, 'CALL_MISSED', {
+      callId,
+      callerNumber,
+      customerName: customerName || '未知客户',
+      customerId,
+      reason: 'busy',
+      message: `忙碌期间有未接来电：${customerName || callerNumber}`,
+      timestamp: new Date().toISOString()
+    });
+  }
+  log.info(`[Webhook] 坐席忙碌，来电 ${callId} 已记为未接并推送提醒给用户 ${userId}`);
 }
 
 export default router;

@@ -30,6 +30,9 @@
   "author": "CRM Team",
   "license": "MIT",
   "dependencies": {
+    "@alicloud/ccc20200701": "^2.38.2",
+    "@alicloud/openapi-client": "^0.4.15",
+    "@alicloud/tea-util": "^1.4.11",
     "@types/node-cron": "^3.0.11",
     "ali-oss": "^6.23.0",
     "axios": "^1.14.0",

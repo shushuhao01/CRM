@@ -36,6 +36,10 @@ export interface AliyunConfig {
   accessKeySecret?: string
   appId?: string
   callerNumber?: string
+  /** 从云联络中心获取并绑定的号码池，供号码分配使用 */
+  numberList?: string[]
+  /** 外呼方式: double_call-双呼(默认) / softphone-软电话 / hardphone-硬话机 */
+  callMode?: 'double_call' | 'softphone' | 'hardphone'
   region?: string
   enableRecording?: boolean
   recordingBucket?: string
@@ -93,6 +97,14 @@ export interface UserLineAssignment {
   lineName: string
   provider: string
   callerNumber?: string
+  /** 员工工作号码（双呼先呼叫此号码） */
+  agentPhone?: string
+  /** 云联络中心坐席账号（软电话/硬话机模式） */
+  cccUserId?: string
+  /** 云联络中心软电话分机号（绑定坐席后自动获取） */
+  agentExtension?: string
+  /** 云联络中心SIP话机分机号（绑定坐席后自动获取） */
+  sipExtension?: string
   isDefault: boolean
   dailyLimit: number
   isActive: boolean
@@ -220,6 +232,110 @@ export function testLineConnection(id: number): Promise<ApiResponse<{
   })
 }
 
+/**
+ * 测试网络电话全局配置 (仅管理员，不依赖已创建的线路)
+ */
+export function testVoipConfig(data: {
+  provider: string
+  config: Record<string, any>
+}): Promise<ApiResponse<{ success: boolean; latency: number; message: string }>> {
+  return request({
+    url: '/call-config/voip/test',
+    method: 'post',
+    data
+  })
+}
+
+/**
+ * 获取阿里云云联络中心实例列表 (仅管理员)
+ * config 未提供时后端使用已保存的全局配置
+ */
+export function getAliyunInstances(config?: Record<string, any>): Promise<ApiResponse<{
+  success: boolean
+  instances: Array<{ id: string; name: string; status?: string }>
+  message: string
+}>> {
+  return request({
+    url: '/call-config/aliyun/instances',
+    method: 'post',
+    data: { config }
+  })
+}
+
+/**
+ * 获取阿里云云联络中心实例下的号码列表 (仅管理员)
+ */
+export function getAliyunNumbers(data: {
+  config?: Record<string, any>
+  instanceId?: string
+}): Promise<ApiResponse<{
+  success: boolean
+  numbers: Array<{ number: string; city?: string; usage?: string; active?: boolean }>
+  message: string
+}>> {
+  return request({
+    url: '/call-config/aliyun/numbers',
+    method: 'post',
+    data
+  })
+}
+
+/**
+ * 获取阿里云云联络中心坐席列表 (仅管理员，软电话/硬话机模式绑定坐席)
+ */
+export function getAliyunCccUsers(data: {
+  config?: Record<string, any>
+  instanceId?: string
+}): Promise<ApiResponse<{
+  success: boolean
+  users: Array<{ userId: string; loginName: string; displayName: string; roleName?: string; workMode?: string; extension?: string; sipExtension?: string }>
+  message: string
+}>> {
+  return request({
+    url: '/call-config/aliyun/ccc-users',
+    method: 'post',
+    data
+  })
+}
+
+/**
+ * 获取坐席工作台地址（软电话/硬话机模式下员工登录接听的入口）
+ */
+export function getWorkbenchUrl(): Promise<ApiResponse<{
+  success: boolean
+  url: string
+  message: string
+}>> {
+  return request({
+    url: '/call-config/aliyun/workbench-url',
+    method: 'get'
+  })
+}
+
+/**
+ * 测试呼入：后端模拟一通来电走真实链路（通话记录 + WebSocket推送 + 弹窗）
+ */
+export function testIncoming(): Promise<ApiResponse<{ callId: string; agentBusy: boolean }>> {
+  return request({
+    url: '/call-config/test-incoming',
+    method: 'post'
+  })
+}
+
+/**
+ * CRM 内接听/拒接云联络中心来电（软电话模式，需坐席已登录工作台）
+ */
+export function controlAliyunInbound(data: {
+  callId: string
+  action: 'answer' | 'reject'
+}): Promise<ApiResponse> {
+  return request({
+    url: '/call-config/aliyun/inbound-control',
+    method: 'post',
+    data
+  })
+}
+
 // ==================== 用户线路分配 (仅管理员) ====================
 
 /**
@@ -240,6 +356,10 @@ export function assignLineToUser(data: {
   userId: number
   lineId: number
   callerNumber?: string
+  agentPhone?: string
+  cccUserId?: string
+  agentExtension?: string
+  sipExtension?: string
   isDefault?: boolean
   dailyLimit?: number
 }): Promise<ApiResponse> {
@@ -257,6 +377,27 @@ export function removeLineAssignment(id: number): Promise<ApiResponse> {
   return request({
     url: `/call-config/assignments/${id}`,
     method: 'delete'
+  })
+}
+
+/**
+ * 编辑用户线路分配 / 启用禁用 (仅管理员，部分更新)
+ */
+export function updateAssignment(id: number, data: {
+  lineId?: number
+  callerNumber?: string
+  agentPhone?: string
+  cccUserId?: string
+  agentExtension?: string
+  sipExtension?: string
+  dailyLimit?: number
+  isDefault?: boolean
+  isActive?: boolean
+}): Promise<ApiResponse> {
+  return request({
+    url: `/call-config/assignments/${id}`,
+    method: 'put',
+    data
   })
 }
 

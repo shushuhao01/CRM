@@ -4,6 +4,21 @@
     <div class="page-header">
       <h2>通话管理</h2>
       <div class="header-actions">
+        <el-tooltip v-if="myCallerNumber" content="外显号码：您外呼时客户看到的来电号码（号码分配中分配给您的号码）">
+          <el-tag type="success" size="large" style="height: 32px; line-height: 30px;">
+            外显 {{ myCallerNumber }}
+          </el-tag>
+        </el-tooltip>
+        <el-tooltip v-if="myExtension" content="软电话分机号：您在云联络中心内部的分机，客户呼入后IVR/技能组转接到此分机，登录坐席工作台（网页）后振铃">
+          <el-tag type="info" size="large" style="height: 32px; line-height: 30px;">
+            软电话分机 {{ myExtension }}
+          </el-tag>
+        </el-tooltip>
+        <el-tooltip v-if="mySipExtension" content="SIP话机分机号：您的硬话机分机，话机注册到云联络中心后来电振铃">
+          <el-tag type="warning" size="large" style="height: 32px; line-height: 30px;">
+            SIP分机 {{ mySipExtension }}
+          </el-tag>
+        </el-tooltip>
         <el-tooltip :content="callStatus === 'ready' ? '点击切换为忙碌状态，将不接收来电分配' : '点击切换为就绪状态，可以接收来电分配'">
           <el-button
             :type="callStatus === 'ready' ? 'success' : 'warning'"
@@ -65,7 +80,7 @@
               批量删除 ({{ selectedRows.length }})
             </el-button>
             <el-button type="primary" :icon="Phone" @click="openOutboundDialog">发起外呼</el-button>
-            <el-button :icon="Refresh" @click="refreshData" :loading="refreshLoading">刷新数据</el-button>
+            <el-button :icon="Refresh" @click="refreshData(false)" :loading="refreshLoading">刷新数据</el-button>
             <el-button type="primary" :icon="Phone" @click="showCallRecordsDialog">通话记录</el-button>
             <el-button :icon="Download" @click="handleExport">导出数据</el-button>
           </div>
@@ -298,6 +313,7 @@
       :callTagOptions="callTagOptions"
       :customerShippingAddress="getCustomerShippingAddress(currentCustomer)"
       :incomingCallData="incomingCallData"
+      :incomingCallMinimized="incomingCallMinimized"
       :callInProgressVisible="callInProgressVisible"
       :currentCallData="currentCallData"
       :isCallWindowMinimized="isCallWindowMinimized"
@@ -307,6 +323,8 @@
       @submit-follow-up="submitQuickFollowUp"
       @answer-call="answerCall"
       @reject-call="rejectCall"
+      @minimize-incoming="minimizeIncomingCall"
+      @restore-incoming="restoreIncomingCall"
       @view-customer-detail="viewCustomerDetail"
       @quick-follow-up="quickFollowUp"
       @toggle-minimize="toggleMinimize"
@@ -402,7 +420,7 @@ import {
   Upload,
   ArrowDown
 } from '@element-plus/icons-vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage, ElMessageBox, ElNotification } from 'element-plus'
 import { displaySensitiveInfoNew, SensitiveInfoType, encryptSensitiveForStorage, decryptSensitiveFromStorage } from '@/utils/sensitiveInfo'
 import { formatDateTime } from '@/utils/dateFormat'
 import { customerDetailApi } from '@/api/customerDetail'
@@ -421,6 +439,7 @@ import * as callConfigApi from '@/api/callConfig'
 import { getAddressLabel } from '@/utils/addressData'
 import { getOrderStatusText as getOrderStatusTextFromConfig, getOrderStatusTagType } from '@/utils/orderStatusConfig'
 import { webSocketService } from '@/services/webSocketService'
+import { startRingtone, stopRingtone } from '@/utils/ringtone'
 
 const router = useRouter()
 const route = useRoute()
@@ -443,11 +462,18 @@ const outboundFormRef = ref()
 // 通话状态管理
 const callStatus = ref('ready') // 'ready' | 'busy'
 
+// 我的坐席分机号/外显号码（号码分配中绑定云联络中心坐席后自动获取）
+const myExtension = ref('')
+const mySipExtension = ref('')
+const myCallerNumber = ref('')
+
 // 呼入通话相关
 const incomingCallVisible = ref(false)
+// 响铃中弹窗最小化为悬浮球（点查看详情/快速跟进/小窗按钮触发，接听或结束后消失）
+const incomingCallMinimized = ref(false)
 const callInProgressVisible = ref(false)
-const incomingCallData = ref(null)
-const currentCallData = ref(null)
+const incomingCallData = ref<any>(null)
+const currentCallData = ref<any>(null)
 const currentCallId = ref<string | null>(null) // 当前通话ID
 const callDuration = ref(0)
 const callNotes = ref('')
@@ -765,7 +791,7 @@ const outboundRules = {
 
 // 详情弹窗
 const showDetailDialog = ref(false)
-const currentCustomer = ref(null)
+const currentCustomer = ref<any>(null)
 const activeTab = ref('orders')
 
 // 通话记录弹窗
@@ -1070,7 +1096,7 @@ const initAgentStatus = async () => {
     callStatus.value = savedStatus
   }
 }
-const refreshData = async () => {
+const refreshData = async (silent = false) => {
   try {
     refreshLoading.value = true
 
@@ -1082,10 +1108,14 @@ const refreshData = async () => {
       refreshCallRecords()
     ])
 
-    ElMessage.success('数据已刷新')
+    if (!silent) {
+      ElMessage.success('数据已刷新')
+    }
   } catch (error) {
     console.error('刷新数据失败:', error)
-    ElMessage.error('刷新数据失败，请稍后重试')
+    if (!silent) {
+      ElMessage.error('刷新数据失败，请稍后重试')
+    }
   } finally {
     refreshLoading.value = false
   }
@@ -1106,9 +1136,11 @@ const openCallConfigDialog = () => {
   showNewCallConfigDialog.value = true
 }
 
-// 切换自动刷新
+// 切换自动刷新（状态持久化到 localStorage，刷新页面后保持）
+const AUTO_REFRESH_STORAGE_KEY = 'call_management_auto_refresh'
 const toggleAutoRefresh = () => {
   autoRefresh.value = !autoRefresh.value
+  try { localStorage.setItem(AUTO_REFRESH_STORAGE_KEY, autoRefresh.value ? '1' : '0') } catch (_e) { /* ignore */ }
 
   if (autoRefresh.value) {
     startAutoRefresh()
@@ -1119,6 +1151,16 @@ const toggleAutoRefresh = () => {
   }
 }
 
+// 恢复上次的自动刷新设置
+const restoreAutoRefresh = () => {
+  try {
+    if (localStorage.getItem(AUTO_REFRESH_STORAGE_KEY) === '1') {
+      autoRefresh.value = true
+      startAutoRefresh()
+    }
+  } catch (_e) { /* ignore */ }
+}
+
 // 开始自动刷新
 const startAutoRefresh = () => {
   if (autoRefreshTimer.value) {
@@ -1127,7 +1169,8 @@ const startAutoRefresh = () => {
 
   autoRefreshTimer.value = setInterval(async () => {
     if (!refreshLoading.value) {
-      await refreshData()
+      // 静默刷新：不弹"数据已刷新"提示，避免每30秒打扰
+      await refreshData(true)
     }
   }, 30000) // 30秒刷新一次
 }
@@ -2289,6 +2332,8 @@ const resetOutboundForm = () => {
 const openOutboundDialog = async () => {
   resetOutboundForm()
   showOutboundDialog.value = true
+  // 加载可用外呼方式并沿用上次记忆的选择
+  initOutboundDialog()
   // 自动加载客户列表
   await searchCustomers()
 }
@@ -2325,6 +2370,9 @@ const startOutboundCall = async () => {
     if (!outboundForm.value.manualPhone && outboundForm.value.customerId && outboundForm.value.customerPhone) {
       rememberPhoneChoice(String(outboundForm.value.customerId), outboundForm.value.customerPhone)
     }
+
+    // 记忆本次外呼方式与线路选择，下次打开弹窗默认沿用
+    rememberOutboundMethod()
 
     // 获取客户名称
     const customerName = outboundForm.value.selectedCustomer?.name || '未知客户'
@@ -2388,22 +2436,25 @@ const startOutboundCall = async () => {
         return
       }
 
-      // 调用后端API发起网络电话呼叫
+      // 调用后端API发起网络电话呼叫（真实走云端线路，阿里云为双呼模式）
       try {
-        const callParams = {
-          customerId: outboundForm.value.customerId || '',
-          customerPhone: phoneToCall,
+        const response = await callConfigApi.initiateNetworkCall({
+          lineId: outboundForm.value.selectedLine,
+          targetPhone: phoneToCall,
+          customerId: outboundForm.value.customerId || undefined,
           customerName: customerName,
-          notes: outboundForm.value.notes,
-          lineId: outboundForm.value.selectedLine
-        }
+          notes: outboundForm.value.notes
+        })
 
-        await callStore.makeOutboundCall(callParams)
+        if (response && (response as any).success === false) {
+          ElMessage.error((response as any)?.message || '发起呼叫失败')
+          return
+        }
 
         // 关闭外呼弹窗
         closeOutboundDialog()
 
-        const callId = `call_${Date.now()}`
+        const callId = (response as any)?.callId || (response as any)?.data?.callId || `call_${Date.now()}`
 
         // 设置当前通话数据并显示通话中弹窗
         currentCallData.value = {
@@ -2421,7 +2472,13 @@ const startOutboundCall = async () => {
         // 开始计时
         startCallTimer()
 
-        ElMessage.success(`正在通过线路 ${selectedLine.name} 呼叫...`)
+        if (selectedLine.provider === 'aliyun') {
+          // 后端按外呼方式（双呼/软电话/硬话机）返回对应的提示语
+          const backendMsg = (response as any)?.message || (response as any)?.data?.message
+          ElMessage.success(backendMsg && backendMsg !== 'success' ? backendMsg : '双呼已发起，请先接听您的手机，接听后系统将自动呼叫客户')
+        } else {
+          ElMessage.success(`正在通过线路 ${selectedLine.name} 呼叫...`)
+        }
       } catch (error: any) {
         console.error('网络电话外呼失败:', error)
         ElMessage.error(error.message || '网络电话外呼失败')
@@ -2463,31 +2520,43 @@ const handleOutboundCall = async () => {
 
 // 呼入通话相关方法
 const handleIncomingCall = (data: any) => {
-  // 来电弹窗已经显示，说明是号码更新（APP先报未知来电再报真实号码）
-  if (incomingCallVisible.value && incomingCallData.value) {
-    console.log('[CallManagement] 收到来电更新（号码补全）:', data)
-    const updatedPhone = data.callerNumber || data.phone || ''
-    const validUpdatedPhone = (updatedPhone && updatedPhone !== '未知来电') ? updatedPhone : incomingCallData.value.phone
-    const updatedCustomerId = data.customerInfo?.customerId || data.customerId || incomingCallData.value.customerId
-    // 重新计算状态：匹配到客户 > 新客户（有号码无匹配） > 未知来电
-    const updIsNew = data.customerInfo?.isNewCustomer === true || (!!validUpdatedPhone && !updatedCustomerId)
-    const updRawName = data.customerInfo?.customerName || data.customerName || ''
-    const updName = (updatedCustomerId && updRawName && updRawName !== '未知来电' && updRawName !== '新客户')
-      ? updRawName
-      : (updIsNew ? '新客户' : (incomingCallData.value.customerName || '未知来电'))
-    incomingCallData.value = {
-      ...incomingCallData.value,
-      id: data.callId || incomingCallData.value.id,
-      customerName: updName,
-      isNewCustomer: updIsNew && !updatedCustomerId,
-      phone: validUpdatedPhone,
-      customerId: updatedCustomerId,
-      customerLevel: data.customerInfo?.customerLevel || incomingCallData.value.customerLevel,
-      company: data.customerInfo?.company || incomingCallData.value.company,
-      tags: data.customerInfo?.tags || incomingCallData.value.tags,
+  // 来电弹窗已经显示（含最小化悬浮球状态），说明是号码更新（APP先报未知来电再报真实号码）
+  if ((incomingCallVisible.value || incomingCallMinimized.value) && incomingCallData.value) {
+    // 🔒 防串号：callId 不同说明是新的一通来电（上一通的结束事件可能丢失），
+    // 不能与旧弹窗数据合并——否则新来电会显示上一通的号码。整体替换为新来电数据
+    const isDifferentCall = data.callId && incomingCallData.value.id
+      && String(data.callId) !== String(incomingCallData.value.id)
+    if (isDifferentCall) {
+      console.log('[CallManagement] 弹窗期间收到新来电(callId不同)，替换弹窗数据:', data.callId, '<-', incomingCallData.value.id)
+      incomingCallData.value = null
+      incomingCallVisible.value = false
+      incomingCallMinimized.value = false
+      // 不 return，走下方"新来电"流程重建弹窗
+    } else {
+      console.log('[CallManagement] 收到来电更新（号码补全）:', data)
+      const updatedPhone = data.callerNumber || data.phone || ''
+      const validUpdatedPhone = (updatedPhone && updatedPhone !== '未知来电') ? updatedPhone : incomingCallData.value.phone
+      const updatedCustomerId = data.customerInfo?.customerId || data.customerId || incomingCallData.value.customerId
+      // 重新计算状态：匹配到客户 > 新客户（有号码无匹配） > 未知来电
+      const updIsNew = data.customerInfo?.isNewCustomer === true || (!!validUpdatedPhone && !updatedCustomerId)
+      const updRawName = data.customerInfo?.customerName || data.customerName || ''
+      const updName = (updatedCustomerId && updRawName && updRawName !== '未知来电' && updRawName !== '新客户')
+        ? updRawName
+        : (updIsNew ? '新客户' : (incomingCallData.value.customerName || '未知来电'))
+      incomingCallData.value = {
+        ...incomingCallData.value,
+        id: data.callId || incomingCallData.value.id,
+        customerName: updName,
+        isNewCustomer: updIsNew && !updatedCustomerId,
+        phone: validUpdatedPhone,
+        customerId: updatedCustomerId,
+        customerLevel: data.customerInfo?.customerLevel || incomingCallData.value.customerLevel,
+        company: data.customerInfo?.company || incomingCallData.value.company,
+        tags: data.customerInfo?.tags || incomingCallData.value.tags,
+      }
+      console.log('[CallManagement] 弹窗客户信息已更新:', incomingCallData.value.customerName, incomingCallData.value.phone)
+      return
     }
-    console.log('[CallManagement] 弹窗客户信息已更新:', incomingCallData.value.customerName, incomingCallData.value.phone)
-    return
   }
 
   // 检查忙碌状态
@@ -2543,13 +2612,54 @@ const simulateIncomingCall = (customerData: any) => {
 
   incomingCallData.value = customerData
   incomingCallVisible.value = true
+  incomingCallMinimized.value = false
+  // 浏览器播放来电铃声（响铃期间循环，接听/挂断/结束时停止）
+  startRingtone()
 }
+
+/** 响铃中缩小为悬浮球（铃声继续，点击悬浮球恢复弹窗） */
+const minimizeIncomingCall = () => {
+  if (!incomingCallData.value) return
+  incomingCallVisible.value = false
+  incomingCallMinimized.value = true
+}
+
+/** 从悬浮球恢复来电弹窗 */
+const restoreIncomingCall = () => {
+  if (!incomingCallData.value) return
+  incomingCallMinimized.value = false
+  incomingCallVisible.value = true
+}
+
+/** 彻底关闭来电响铃状态（弹窗+悬浮球+铃声） */
+const clearIncomingRinging = () => {
+  incomingCallVisible.value = false
+  incomingCallMinimized.value = false
+  stopRingtone()
+}
+
+// 纯前端模拟的来电（id 以 test_ 开头）在数据库中没有通话记录，
+// 接听/拒接/结束时跳过后端状态更新，避免弹出"通话记录不存在"错误
+const isLocalSimulatedCall = (callId: any): boolean =>
+  typeof callId === 'string' && callId.startsWith('test_')
 
 const answerCall = async () => {
   if (!incomingCallData.value) return
 
-  // 关闭呼入弹窗
-  incomingCallVisible.value = false
+  // 云联络中心来电：先调阿里云接听（在坐席工作台注册的软电话设备上接通）
+  if (incomingCallData.value.callSource === 'aliyun' && incomingCallData.value.id) {
+    try {
+      await callConfigApi.controlAliyunInbound({ callId: incomingCallData.value.id, action: 'answer' })
+    } catch (e: any) {
+      // 接听失败（如未登录坐席工作台）：保留弹窗，提示用户
+      const msg = e?.response?.data?.message || e?.message || '接听失败'
+      ElMessage.error(`${msg}`)
+      return
+    }
+  }
+
+  // 关闭呼入弹窗（含悬浮球）并停止铃声
+  clearIncomingRinging()
 
   // 设置当前通话数据
   currentCallData.value = {
@@ -2565,9 +2675,9 @@ const answerCall = async () => {
   callInProgressVisible.value = true
   startCallTimer()
 
-  // 通知后端已接听（更新call_records状态）
+  // 通知后端已接听（更新call_records状态）；本地模拟来电无数据库记录，跳过
   try {
-    if (incomingCallData.value.id) {
+    if (incomingCallData.value.id && !isLocalSimulatedCall(incomingCallData.value.id)) {
       await callConfigApi.updateCallStatus(incomingCallData.value.id, 'connected')
     }
   } catch (e) {
@@ -2579,12 +2689,22 @@ const answerCall = async () => {
 
 const rejectCall = async () => {
   const callId = incomingCallData.value?.id
-  incomingCallVisible.value = false
+  const callSource = incomingCallData.value?.callSource
+  clearIncomingRinging()
   incomingCallData.value = null
 
-  // 通知后端已拒绝来电
+  // 云联络中心来电：调阿里云挂断，让客户侧真正结束振铃（失败也继续本地处理）
+  if (callSource === 'aliyun' && callId) {
+    try {
+      await callConfigApi.controlAliyunInbound({ callId, action: 'reject' })
+    } catch (e: any) {
+      console.warn('[CallManagement] 云联络中心挂断失败（已在本地记为拒接）:', e?.response?.data?.message || e?.message)
+    }
+  }
+
+  // 通知后端已拒绝来电；本地模拟来电无数据库记录，跳过
   try {
-    if (callId) {
+    if (callId && !isLocalSimulatedCall(callId)) {
       await callConfigApi.updateCallStatus(callId, 'rejected')
     }
   } catch (e) {
@@ -2598,16 +2718,17 @@ const endCall = async () => {
   // 停止计时
   stopCallTimer()
 
-  // 保存通话记录
+  // 保存通话记录；本地模拟来电无数据库记录，跳过后端保存
   try {
-    // 如果有callId，调用后端API结束通话
-    if (currentCallData.value?.id) {
+    if (currentCallData.value?.id && !isLocalSimulatedCall(currentCallData.value.id)) {
       await callConfigApi.endCall(currentCallData.value.id, {
         notes: callNotes.value,
         duration: callDuration.value
       })
+      ElMessage.success('通话已结束，记录已保存')
+    } else {
+      ElMessage.success('通话已结束（模拟来电不保存记录）')
     }
-    ElMessage.success('通话已结束，记录已保存')
   } catch (error) {
     console.error('保存通话记录失败:', error)
     ElMessage.error('保存通话记录失败')
@@ -2728,34 +2849,121 @@ const saveCallRecord = async () => {
   await refreshData()
 }
 
-const viewCustomerDetail = () => {
-  if (!incomingCallData.value) return
+/**
+ * 来电数据 -> 真实客户的映射：
+ * incomingCallData.id 是通话ID而不是客户ID，直接用它查详情会查不到任何数据。
+ * 优先用推送里的 customerId；没有则按来电号码反查客户列表。
+ */
+const resolveIncomingCustomer = async (source: any): Promise<any | null> => {
+  if (!source) return null
 
-  currentCustomer.value = incomingCallData.value
-  showDetailDialog.value = true
-  incomingCallVisible.value = false
+  // 1) 推送里带了客户ID：直接取客户详情
+  // 注：能通过客户接口匹配到的都是"客户列表"里的正式客户，标记 _source='customer'，
+  // 详情弹窗据此显示"自建客户"而不是误显示"未转入客户列表"（未转入仅针对导入资料）
+  if (source.customerId) {
+    try {
+      const res: any = await customerApi.getDetail(String(source.customerId))
+      const detail = res?.data || res
+      if (detail && detail.id) return { ...detail, _source: 'customer' }
+    } catch (e) {
+      console.warn('[CallManagement] 按customerId获取客户详情失败，降级用来电信息:', e)
+    }
+    return {
+      id: source.customerId,
+      customerId: source.customerId,
+      name: source.customerName,
+      customerName: source.customerName,
+      phone: source.phone,
+      _source: 'customer'
+    }
+  }
+
+  // 2) 没有客户ID但有号码：按号码反查
+  if (source.phone) {
+    try {
+      const res: any = await customerApi.getList({ phone: source.phone, page: 1, pageSize: 1 })
+      const list = res?.list || res?.data?.list || []
+      if (list.length > 0) return { ...list[0], _source: 'customer' }
+    } catch (e) {
+      console.warn('[CallManagement] 按号码反查客户失败:', e)
+    }
+  }
+  return null
 }
 
-const quickFollowUp = () => {
+const viewCustomerDetail = async () => {
   if (!incomingCallData.value) return
+  minimizeIncomingCall()
 
-  currentCustomer.value = incomingCallData.value
+  const matched = await resolveIncomingCustomer(incomingCallData.value)
+  if (matched) {
+    const customerId = matched.id || matched.customerId
+    currentCustomer.value = {
+      ...matched,
+      id: customerId,
+      customerId,
+      name: matched.name || matched.customerName || incomingCallData.value?.customerName,
+      customerName: matched.customerName || matched.name || incomingCallData.value?.customerName,
+      phone: matched.phone || incomingCallData.value?.phone
+    }
+    activeTab.value = 'orders'
+    showDetailDialog.value = true
+    if (customerId) {
+      await loadCustomerDetailData(customerId)
+    }
+  } else {
+    // 未匹配到客户：仍展示弹窗（仅基础信息），提示建档
+    currentCustomer.value = {
+      id: '',
+      name: incomingCallData.value?.customerName || '未知客户',
+      customerName: incomingCallData.value?.customerName || '未知客户',
+      phone: incomingCallData.value?.phone || ''
+    }
+    customerOrders.value = []
+    customerCalls.value = []
+    customerFollowups.value = []
+    customerAftersales.value = []
+    showDetailDialog.value = true
+    ElMessage.warning('该号码未匹配到客户档案，可通过快速跟进建档')
+  }
+}
+
+const quickFollowUp = async () => {
+  if (!incomingCallData.value) return
+  minimizeIncomingCall()
+
+  const matched = await resolveIncomingCustomer(incomingCallData.value)
+  if (matched) {
+    const customerId = matched.id || matched.customerId
+    currentCustomer.value = {
+      ...matched,
+      id: customerId,
+      name: matched.name || matched.customerName || incomingCallData.value?.customerName,
+      phone: matched.phone || incomingCallData.value?.phone
+    }
+  } else {
+    currentCustomer.value = {
+      id: incomingCallData.value?.customerId || '',
+      name: incomingCallData.value?.customerName || '未知客户',
+      phone: incomingCallData.value?.phone || ''
+    }
+  }
   quickFollowUpVisible.value = true
-  incomingCallVisible.value = false
 }
 
 // 通话中弹窗的快捷操作
-const openQuickFollowUpFromCall = () => {
+const openQuickFollowUpFromCall = async () => {
   if (!currentCallData.value) return
 
   // 最小化通话窗口
   isCallWindowMinimized.value = true
 
-  // 设置当前客户信息用于跟进
+  // 通话ID不能当客户ID用，反查真实客户
+  const matched = await resolveIncomingCustomer(currentCallData.value)
   currentCustomer.value = {
-    id: currentCallData.value.customerId || currentCallData.value.id,
-    name: currentCallData.value.customerName,
-    phone: currentCallData.value.phone
+    id: matched?.id || matched?.customerId || currentCallData.value.customerId || '',
+    name: matched?.name || matched?.customerName || currentCallData.value.customerName,
+    phone: matched?.phone || currentCallData.value.phone
   }
   quickFollowUpVisible.value = true
 }
@@ -2766,35 +2974,51 @@ const viewCustomerDetailFromCall = async () => {
   // 最小化通话窗口
   isCallWindowMinimized.value = true
 
-  const customerId = currentCallData.value.customerId || currentCallData.value.id
+  // currentCallData.id 是通话ID，不能当客户ID用；按customerId/号码反查真实客户
+  const matched = await resolveIncomingCustomer(currentCallData.value)
+  const customerId = matched?.id || matched?.customerId || currentCallData.value.customerId || ''
 
-  // 设置当前客户信息用于查看详情
   currentCustomer.value = {
+    ...(matched || {}),
     id: customerId,
-    customerName: currentCallData.value.customerName,
-    name: currentCallData.value.customerName,
-    phone: currentCallData.value.phone
+    customerId,
+    customerName: matched?.customerName || matched?.name || currentCallData.value.customerName,
+    name: matched?.name || matched?.customerName || currentCallData.value.customerName,
+    phone: matched?.phone || currentCallData.value.phone
   }
 
-  // 加载客户详情数据
   if (customerId) {
     await loadCustomerDetailData(customerId)
+  } else {
+    customerOrders.value = []
+    customerCalls.value = []
+    customerFollowups.value = []
+    customerAftersales.value = []
   }
 
   showDetailDialog.value = true
 }
 
-// 模拟呼入测试方法（开发测试用）
-const testIncomingCall = () => {
-  const testCustomer = {
-    id: 'test_001',
-    customerName: '测试客户',
-    phone: '13800138888',
-    customerLevel: 'gold',
-    lastCallTime: '2024-01-10 15:30:00',
-    company: '测试公司'
+// 测试呼入：调后端模拟一通真实来电（创建通话记录 -> WebSocket推送 -> 弹窗）
+// 验证呼入链路、忙碌拦截、未接提醒是否正常；后端不可用时回退为纯前端弹窗模拟
+const testIncomingCall = async () => {
+  try {
+    const res: any = await callConfigApi.testIncoming()
+    const msg = res?.message || res?.data?.message
+    ElMessage.success(msg || '测试来电已推送，请留意来电弹窗')
+  } catch (e: any) {
+    console.warn('[CallManagement] 后端测试呼入失败，回退本地模拟:', e?.message)
+    simulateIncomingCall({
+      id: `test_${Date.now()}`,
+      customerName: '测试客户',
+      phone: '13800138888',
+      customerLevel: 'gold',
+      lastCallTime: '2024-01-10 15:30:00',
+      company: '测试公司',
+      callSource: 'sip'
+    })
+    ElMessage.info('（本地模拟）测试来电弹窗已触发')
   }
-  simulateIncomingCall(testCustomer)
 }
 
 const viewCallDetail = (record: any) => {
@@ -3107,6 +3331,9 @@ onMounted(async () => {
     // 监听WebSocket通话状态变化
     setupCallStatusListener()
 
+    // 恢复上次的自动刷新开关状态
+    restoreAutoRefresh()
+
     // 🔥 检查路由参数，如果是从客户列表跳转过来的外呼请求
     checkOutboundFromRoute()
   } catch (error) {
@@ -3152,13 +3379,15 @@ const checkOutboundFromRoute = () => {
       enrichPhoneOptions(customer.id, customer.phone)
     }
 
-    // 🔥 设置默认外呼方式（如果有可用的工作手机或线路）
-    if (workPhones.value.length > 0) {
-      outboundForm.value.callMethod = 'work_phone'
-      outboundForm.value.selectedWorkPhone = workPhones.value[0].id
-    } else if (availableLines.value.length > 0) {
-      outboundForm.value.callMethod = 'network_phone'
-      outboundForm.value.selectedLine = availableLines.value[0].id
+    // 🔥 设置默认外呼方式：优先沿用上次记忆的选择，其次按可用性兜底
+    if (!applyRememberedOutboundMethod()) {
+      if (workPhones.value.length > 0) {
+        outboundForm.value.callMethod = 'work_phone'
+        outboundForm.value.selectedWorkPhone = workPhones.value[0].id
+      } else if (availableLines.value.length > 0) {
+        outboundForm.value.callMethod = 'network_phone'
+        outboundForm.value.selectedLine = availableLines.value[0].id
+      }
     }
 
     // 打开外呼对话框
@@ -3169,41 +3398,58 @@ const checkOutboundFromRoute = () => {
   }
 }
 
+// WebSocket监听的取消函数集合：组件卸载时必须清理，
+// 否则每次进入通话管理页都会叠加一份监听，导致"通话已结束"等提示重复弹出N条
+const wsUnsubscribers: Array<() => void> = []
+
 // 设置通话状态监听
 const setupCallStatusListener = () => {
   // 监听设备状态变化（包括通话状态）
-  webSocketService.onDeviceStatusChange((data) => {
+  wsUnsubscribers.push(webSocketService.onDeviceStatusChange((data) => {
     console.log('[CallManagement] 设备状态变化:', data)
     // 刷新工作手机状态
     loadAvailableCallMethods()
-  })
+  }))
 
   // 监听通话状态变化（APP端同步）
-  webSocketService.on('call:status', (data: any) => {
+  wsUnsubscribers.push(webSocketService.on('call:status', (data: any) => {
     console.log('[CallManagement] 收到通话状态变化:', data)
     handleCallStatusFromWebSocket(data)
-  })
+  }))
 
   // 监听通话接通
-  webSocketService.on('call:connected', (data: any) => {
+  wsUnsubscribers.push(webSocketService.on('call:connected', (data: any) => {
     console.log('[CallManagement] 收到通话接通:', data)
     handleCallStatusFromWebSocket({ ...data, status: 'connected' })
-  })
+  }))
 
   // 监听通话结束
-  webSocketService.on('call:ended', (data: any) => {
+  wsUnsubscribers.push(webSocketService.on('call:ended', (data: any) => {
     console.log('[CallManagement] 收到通话结束:', data)
     handleCallEndedFromWebSocket(data)
-  })
+  }))
 
   // 监听来电通知（呼入）
-  webSocketService.on('call:incoming', (data: any) => {
+  wsUnsubscribers.push(webSocketService.on('call:incoming', (data: any) => {
     console.log('[CallManagement] 收到来电通知:', data)
     handleIncomingCall(data)
-  })
+  }))
+
+  // 监听未接来电提醒（忙碌状态期间的来电会记为未接并推送此事件）
+  wsUnsubscribers.push(webSocketService.on('call:missed', (data: any) => {
+    console.log('[CallManagement] 收到未接来电提醒:', data)
+    ElNotification({
+      title: '未接来电',
+      message: data?.message || `未接来电：${data?.customerName || data?.callerNumber || '未知号码'}`,
+      type: 'warning',
+      duration: 10000
+    })
+    // 刷新通话记录列表，让未接记录立即可见
+    loadCallRecords()
+  }))
 
   // 监听WebSocket消息，处理通话状态变化（兼容旧格式）
-  webSocketService.onMessage((message) => {
+  wsUnsubscribers.push(webSocketService.onMessage((message) => {
     console.log('[CallManagement] 收到WebSocket消息:', message)
 
     // 处理通话状态变化消息
@@ -3218,28 +3464,55 @@ const setupCallStatusListener = () => {
 
     // 处理来电通知（兼容旧格式）
     if (message.type === 'CALL_INCOMING') {
-      handleIncomingCall(message.data || message)
+      handleIncomingCall((message as any).data || message)
     }
 
     // 处理号码补获更新（APP后台补获到真实号码后推送，含客户匹配结果）
     if (message.type === 'CALL_NUMBER_UPDATED') {
-      const updateData = message.data || message
+      const updateData = (message as any).data || message
       console.log('[CallManagement] 收到号码更新:', updateData)
+      // 🔒 防串号：号码补获属于"某一通"通话，只有 callId 与当前弹窗一致、
+      // 或当前弹窗号码未知时才允许更新；上一通迟到的补号不能覆盖新来电的号码
+      const popupOpen = (incomingCallVisible.value || incomingCallMinimized.value) && incomingCallData.value
+      if (popupOpen) {
+        const popupCallId = incomingCallData.value.id
+        const popupPhoneKnown = !!incomingCallData.value.phone && incomingCallData.value.phone !== '未知来电'
+        const bothIds = updateData.callId && popupCallId
+        const sameCall = bothIds && String(updateData.callId) === String(popupCallId)
+        // 两边都有callId但不同 → 一定是别的通话；缺callId时退回"当前号码已知则不覆盖"
+        if ((bothIds && !sameCall) || (!bothIds && popupPhoneKnown)) {
+          console.log('[CallManagement] 忽略与当前来电无关的迟到号码更新:', updateData.callId, 'vs', popupCallId)
+          return
+        }
+      }
       if (updateData.phoneNumber && updateData.phoneNumber !== '未知来电') {
-        handleIncomingCall({
-          callerNumber: updateData.phoneNumber,
-          callId: updateData.callId,
-          customerName: updateData.customerName,
-          customerId: updateData.customerId,
-          customerInfo: {
+        if (popupOpen) {
+          // 弹窗还开着（本通仍在响铃）：原地补全号码和客户信息
+          handleIncomingCall({
+            callerNumber: updateData.phoneNumber,
+            callId: updateData.callId,
             customerName: updateData.customerName,
             customerId: updateData.customerId,
-            customerLevel: updateData.customerLevel,
-          },
-        })
+            customerInfo: {
+              customerName: updateData.customerName,
+              customerId: updateData.customerId,
+              customerLevel: updateData.customerLevel,
+            },
+          })
+        } else {
+          // 🔒 弹窗已关闭（通话已结束后才补获到号码）：只弹通知+刷新记录，
+          // 绝不重新拉起响铃弹窗——否则下一通来电时会看到"上一通号码"的幽灵弹窗
+          ElNotification({
+            title: '来电号码已补获',
+            message: `${updateData.customerName && updateData.customerName !== '来电客户' ? updateData.customerName + ' ' : ''}${updateData.phoneNumber}（通话已结束，记录已更新）`,
+            type: 'info',
+            duration: 8000,
+          })
+          setTimeout(() => { loadCallRecords(); loadStatistics() }, 500)
+        }
       }
     }
-  })
+  }))
 }
 
 // 处理WebSocket推送的通话状态变化
@@ -3249,11 +3522,11 @@ const handleCallStatusFromWebSocket = (data: any) => {
 
   console.log('[CallManagement] 处理通话状态:', { callId, status, currentCallId: currentCallId.value, incomingCallVisible: incomingCallVisible.value })
 
-  // 来电弹窗显示中，收到 connected/ended 状态时关闭弹窗（APP端接听/挂断）
-  if (incomingCallVisible.value) {
+  // 来电弹窗显示中（含最小化悬浮球），收到 connected/ended 状态时关闭弹窗（APP端接听/挂断）
+  if (incomingCallVisible.value || incomingCallMinimized.value) {
     if (status === 'connected' || status === 'answered') {
       console.log('[CallManagement] APP端已接听，关闭来电弹窗')
-      incomingCallVisible.value = false
+      clearIncomingRinging()
       // 转入通话中状态
       if (incomingCallData.value) {
         currentCallData.value = { ...incomingCallData.value, callMethod: incomingCallData.value.callSource || 'mobile' }
@@ -3270,9 +3543,12 @@ const handleCallStatusFromWebSocket = (data: any) => {
     }
     if (status === 'ended' || status === 'missed' || status === 'rejected' || status === 'failed') {
       console.log('[CallManagement] APP端已挂断/拒绝，关闭来电弹窗')
-      incomingCallVisible.value = false
+      clearIncomingRinging()
       incomingCallData.value = null
-      ElMessage.info('来电已结束')
+      // 同一通话可能同时推送 status=ended 和 CALL_ENDED 两条事件，提示只弹一次
+      if (!isDuplicateEndedEvent(callId)) {
+        ElMessage.info('来电已结束')
+      }
       setTimeout(() => { loadCallRecords(); loadStatistics() }, 500)
       return
     }
@@ -3298,15 +3574,31 @@ const handleCallStatusFromWebSocket = (data: any) => {
   }
 }
 
+// 同一通话的结束事件去重（后端可能同时推 CALL_ENDED / CALL_RELEASED / status=ended 多条）
+let lastEndedCallKey = ''
+let lastEndedCallAt = 0
+const isDuplicateEndedEvent = (callId: any): boolean => {
+  const key = String(callId || 'unknown')
+  const now = Date.now()
+  if (key === lastEndedCallKey && now - lastEndedCallAt < 5000) return true
+  lastEndedCallKey = key
+  lastEndedCallAt = now
+  return false
+}
+
 // 处理WebSocket推送的通话结束
 const handleCallEndedFromWebSocket = (data: any) => {
   const callId = data.callId
+  if (isDuplicateEndedEvent(callId)) {
+    console.log('[CallManagement] 重复的通话结束事件，忽略:', callId)
+    return
+  }
 
   console.log('[CallManagement] 处理通话结束:', { callId, currentCallId: currentCallId.value, incomingCallVisible: incomingCallVisible.value })
 
-  // 来电弹窗还开着，直接关闭
-  if (incomingCallVisible.value) {
-    incomingCallVisible.value = false
+  // 来电弹窗还开着（或已最小化为悬浮球），直接关闭
+  if (incomingCallVisible.value || incomingCallMinimized.value) {
+    clearIncomingRinging()
     incomingCallData.value = null
     ElMessage.info('来电已结束')
   }
@@ -3412,8 +3704,15 @@ const loadAvailableCallMethods = async () => {
       name: line.name,
       provider: line.provider,
       status: '正常',
-      callerNumber: line.callerNumber
+      callerNumber: line.callerNumber,
+      agentExtension: line.agentExtension || null,
+      cccUserId: line.cccUserId || null
     }))
+
+    // 我的坐席分机号（绑定云联络中心坐席后显示，员工据此知道自己的分机）
+    myExtension.value = assignedLines.find((l: any) => l.agentExtension)?.agentExtension || ''
+    mySipExtension.value = assignedLines.find((l: any) => l.sipExtension)?.sipExtension || ''
+    myCallerNumber.value = assignedLines.find((l: any) => l.callerNumber)?.callerNumber || ''
 
     workPhones.value = workPhonesData.map((phone: any, index: number) => {
       let phoneId: number | string = phone.id
@@ -3437,6 +3736,44 @@ const loadAvailableCallMethods = async () => {
   }
 }
 
+// 外呼方式记忆（localStorage，按用户维度无需区分，本机记忆即可）
+const OUTBOUND_PREF_KEY = 'crm_outbound_method_pref'
+
+const rememberOutboundMethod = () => {
+  try {
+    localStorage.setItem(OUTBOUND_PREF_KEY, JSON.stringify({
+      callMethod: outboundForm.value.callMethod,
+      selectedLine: outboundForm.value.selectedLine,
+      selectedWorkPhone: outboundForm.value.selectedWorkPhone
+    }))
+  } catch (_e) { /* localStorage 不可用时忽略 */ }
+}
+
+// 应用上次记忆的外呼方式（仅当上次的选项当前仍可用时生效）
+const applyRememberedOutboundMethod = (): boolean => {
+  try {
+    const raw = localStorage.getItem(OUTBOUND_PREF_KEY)
+    if (!raw) return false
+    const pref = JSON.parse(raw)
+    if (pref.callMethod === 'network_phone') {
+      const line = availableLines.value.find(l => String(l.id) === String(pref.selectedLine)) || availableLines.value[0]
+      if (line) {
+        outboundForm.value.callMethod = 'network_phone'
+        outboundForm.value.selectedLine = line.id
+        return true
+      }
+    } else if (pref.callMethod === 'work_phone') {
+      const phone = workPhones.value.find(p => String(p.id) === String(pref.selectedWorkPhone)) || workPhones.value[0]
+      if (phone) {
+        outboundForm.value.callMethod = 'work_phone'
+        outboundForm.value.selectedWorkPhone = phone.id
+        return true
+      }
+    }
+  } catch (_e) { /* 解析失败忽略 */ }
+  return false
+}
+
 // 初始化外呼弹窗
 const initOutboundDialog = async () => {
   // 加载可用的外呼方式
@@ -3446,7 +3783,8 @@ const initOutboundDialog = async () => {
   console.log('[initOutboundDialog] availableLines:', availableLines.value.length)
 
   // 🔥 只有在没有设置外呼方式时才设置默认值（避免覆盖从路由传递的设置）
-  if (!outboundForm.value.callMethod) {
+  // 优先沿用上次记忆的外呼方式，其次按可用性兜底
+  if (!outboundForm.value.callMethod && !applyRememberedOutboundMethod()) {
     if (workPhones.value.length > 0) {
       outboundForm.value.callMethod = 'work_phone'
       outboundForm.value.selectedWorkPhone = workPhones.value[0].id
@@ -3619,6 +3957,15 @@ onUnmounted(() => {
   // 清理拖动事件监听器
   document.removeEventListener('mousemove', onDrag)
   document.removeEventListener('mouseup', stopDrag)
+
+  // 停止来电铃声
+  stopRingtone()
+
+  // 🔥 取消所有WebSocket监听：防止重复注册导致提示弹出多条
+  wsUnsubscribers.forEach(unsub => {
+    try { unsub() } catch (_e) { /* ignore */ }
+  })
+  wsUnsubscribers.length = 0
 })
 
 // 监听平台变化，重新加载SDK信息

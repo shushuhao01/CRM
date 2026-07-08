@@ -823,8 +823,11 @@ export const useConfigStore = defineStore('config', () => {
    */
   const loadSecurityConfigFromAPI = async () => {
     try {
-      // ✅ Admin下发配置优先: 如果Admin配置了该项，直接使用，锁定本地编辑
-      if (adminDistributedConfig.value && adminDistributedConfig.value.security) {
+      // ✅ Admin下发配置优先（仅SaaS模式）: 如果Admin配置了该项，直接使用，锁定本地编辑
+      // 🔥 私有部署模式：安全配置由租户管理员在"系统设置-安全配置"自行管理，不受管理后台下发管控
+      const { getDeployMode } = await import('@/api/tenantLicense')
+      const isSaaSMode = getDeployMode() !== 'private'
+      if (isSaaSMode && adminDistributedConfig.value && adminDistributedConfig.value.security) {
         Object.assign(securityConfig.value, adminDistributedConfig.value.security)
         configLocked.value.security = true
         saveConfigToStorage('security', securityConfig.value)

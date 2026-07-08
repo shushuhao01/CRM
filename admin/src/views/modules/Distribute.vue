@@ -164,14 +164,16 @@
           <span class="form-tip">分钟</span>
         </el-form-item>
         <el-form-item label="会话超时">
-          <el-input-number v-model="securityForm.sessionTimeout" :min="30" :max="1440" />
-          <span class="form-tip">分钟</span>
+          <el-input-number v-model="securityForm.sessionTimeout" :min="0" :max="1440" />
+          <span class="form-tip">分钟。登录满该时长后会话过期需重新登录（释放在线席位）；0=不限制</span>
         </el-form-item>
         <el-form-item label="强制HTTPS">
           <el-switch v-model="securityForm.forceHttps" />
+          <span class="form-tip">启用前请确认所有客户端已配置 SSL 证书</span>
         </el-form-item>
         <el-form-item label="IP白名单">
           <el-input v-model="securityForm.ipWhitelist" type="textarea" :rows="2" placeholder="多个IP用换行分隔，留空不限制" />
+          <span class="form-tip">仅白名单内IP允许登录，支持通配（如 192.168.1.*）。SaaS模式下发后对所有租户生效</span>
         </el-form-item>
       </el-form>
 

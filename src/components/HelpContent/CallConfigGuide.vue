@@ -42,17 +42,17 @@
         <div class="feature-card">
           <div class="feature-icon">🌐</div>
           <h4>网络电话(VoIP)</h4>
-          <p>通过阿里云、腾讯云等服务商的VoIP线路拨号，成本低、可扩展</p>
+          <p>对接阿里云云联络中心（CCC），支持双呼、软电话、硬话机三种外呼方式</p>
         </div>
         <div class="feature-card">
           <div class="feature-icon">📡</div>
-          <h4>SIP线路</h4>
-          <p>对接企业SIP中继线路，适合已有电话系统的企业</p>
+          <h4>SIP线路（预留）</h4>
+          <p>预留对接企业SIP中继的配置能力，需自建软交换后二次开发打通</p>
         </div>
         <div class="feature-card">
           <div class="feature-icon">☎️</div>
-          <h4>PSTN网关</h4>
-          <p>通过PSTN语音网关拨号，支持模拟/数字中继</p>
+          <h4>PSTN网关（预留）</h4>
+          <p>预留传统语音网关的配置能力，支持模拟/数字中继参数录入</p>
         </div>
       </div>
 
@@ -85,16 +85,34 @@
         </ul>
       </div>
 
-      <h3>2.2 网络电话(VoIP)外呼</h3>
-      <p>通过云通信服务商（阿里云、腾讯云、华为云）的语音通话API发起呼叫。</p>
-      <el-table :data="voipProviders" stripe style="width: 100%; margin: 10px 0">
-        <el-table-column prop="provider" label="服务商" width="120" />
-        <el-table-column prop="feature" label="特点" />
-        <el-table-column prop="price" label="参考价格" width="150" />
-        <el-table-column prop="apply" label="申请方式" width="200" />
+      <h3>2.2 网络电话(VoIP)外呼 —— 阿里云云联络中心</h3>
+      <p>系统对接<strong>阿里云云联络中心（CCC，Cloud Call Center）</strong>发起真实外呼。每个租户使用自己申请的实例和号码，配置互相独立、数据严格隔离。支持三种外呼方式，在「网络电话配置」中三选一，选了哪种就按哪种生效：</p>
+      <el-table :data="cccCallModes" stripe style="width: 100%; margin: 10px 0" border>
+        <el-table-column prop="mode" label="外呼方式" width="140" />
+        <el-table-column prop="device" label="所需设备" width="180" />
+        <el-table-column prop="flow" label="呼叫流程" />
+        <el-table-column prop="scene" label="适用场景" width="180" />
       </el-table>
+      <div class="info-box">
+        <h4>📞 三种方式说明</h4>
+        <ul>
+          <li><strong>双呼（免设备）</strong>：员工点外呼后，系统先呼叫员工的"员工号码"（在号码分配中填写的工作手机/座机），员工接听后系统自动呼叫客户。客户看到的来电显示是分配的"主叫号码"（企业固话）。无需任何额外设备，<strong>推荐大多数场景使用</strong>。</li>
+          <li><strong>软电话（网页）</strong>：员工登录阿里云坐席工作台（网页），用电脑耳麦或USB话务盒通话。点外呼后工作台先振铃，接听后呼叫客户。需在「号码分配」中为员工绑定云联络中心的坐席账号。</li>
+          <li><strong>硬话机（SIP）</strong>：SIP话机通过网线/WiFi注册到云联络中心（在坐席工作台绑定话机），点外呼后话机先振铃，接听后呼叫客户。同样需绑定坐席账号。</li>
+        </ul>
+        <h4>✅ 功能支持</h4>
+        <ul>
+          <li>外呼、呼入来电弹窗、CRM内接听/拒接（软电话模式）</li>
+          <li>坐席就绪/忙碌状态与云联络中心在线状态同步</li>
+          <li>通话结束自动拉取云端录音并永久存储到CRM，通话记录内直接播放</li>
+          <li>从实例动态拉取号码池、坐席列表和分机号</li>
+        </ul>
+      </div>
 
-      <h3>2.3 SIP线路外呼</h3>
+      <h3>2.3 SIP线路外呼（预留能力）</h3>
+      <el-alert type="warning" :closable="false" style="margin-bottom: 10px">
+        <template #title>SIP/PSTN 自定义线路目前仅支持配置保存与连通性测试，不能直接发起真实呼叫，需自建软交换（如 FreeSWITCH）并二次开发对接。真实外呼请使用阿里云云联络中心。</template>
+      </el-alert>
       <p>SIP（Session Initiation Protocol）线路适合已有IP电话系统的企业，可直接对接现有的SIP中继。</p>
       <div class="info-box">
         <h4>配置参数说明</h4>
@@ -108,8 +126,8 @@
         </el-descriptions>
       </div>
 
-      <h3>2.4 PSTN网关外呼</h3>
-      <p>通过传统电话网关（如语音网关、IP-PBX）发起呼叫，适合使用传统固话线路的企业。</p>
+      <h3>2.4 PSTN网关外呼（预留能力）</h3>
+      <p>通过传统电话网关（如语音网关、IP-PBX）发起呼叫，适合使用传统固话线路的企业。同SIP线路，此能力为配置预留，真实拨打需二次开发对接。</p>
       <div class="info-box">
         <h4>支持的中继类型</h4>
         <el-descriptions :column="1" border>
@@ -161,7 +179,7 @@
             <strong>填写线路基本信息</strong>
             <ul>
               <li><strong>线路名称</strong>：给线路起一个易识别的名称，如"阿里云主线路"</li>
-              <li><strong>服务商</strong>：选择阿里云通信 / 腾讯云通信 / 华为云通信 / 自定义</li>
+              <li><strong>服务商</strong>：阿里云云联络中心 / 自定义（SIP/PSTN网关）</li>
               <li><strong>线路类型</strong>：网络电话(VoIP) / 传统电话(PSTN) / SIP线路</li>
             </ul>
           </div>
@@ -172,9 +190,7 @@
             <strong>填写服务商配置</strong>
             <p>根据所选服务商填写对应的认证信息：</p>
             <ul>
-              <li><strong>阿里云</strong>：AccessKey ID、AccessKey Secret、应用ID</li>
-              <li><strong>腾讯云</strong>：SecretId、SecretKey、应用ID</li>
-              <li><strong>华为云</strong>：Access Key、Secret Key</li>
+              <li><strong>阿里云云联络中心</strong>：AccessKey ID、AccessKey Secret、实例ID。<strong>留空时自动使用「网络电话配置」中保存的全局配置</strong>，通常只需填主叫号码即可</li>
               <li><strong>自定义SIP</strong>：SIP服务器地址、端口、用户名、密码</li>
               <li><strong>自定义PSTN</strong>：网关地址、端口、中继类型、通道数</li>
               <li><strong>自定义VoIP</strong>：API地址、API密钥</li>
@@ -215,117 +231,122 @@
     <!-- 四、网络电话配置 -->
     <section id="voip-config">
       <h2>四、网络电话配置（管理员）</h2>
-      <p>网络电话配置用于设置全局默认的VoIP服务商及其认证信息。</p>
+      <p>网络电话配置用于对接<strong>阿里云云联络中心（CCC）</strong>。每个租户（企业）使用自己申请的实例、AccessKey 和号码，配置互相独立，密钥加密存储。</p>
 
-      <h3>4.1 阿里云通信配置步骤</h3>
+      <h3>4.1 阿里云侧准备工作</h3>
       <div class="step-list">
         <div class="step-item">
           <div class="step-num">1</div>
           <div class="step-desc">
-            <strong>开通阿里云语音通话服务</strong>
-            <p>访问 <strong>阿里云控制台 → 语音服务</strong>，开通语音通话功能</p>
+            <strong>开通云联络中心并创建实例</strong>
+            <p>访问 <strong>阿里云控制台 → 云联络中心（CCC）</strong>，开通服务并创建实例。记下实例ID（如 <code>ccc-xxxx</code> 或 <code>demo-xxxxxxxx</code>，注意是实例ID不是实例名称）</p>
           </div>
         </div>
         <div class="step-item">
           <div class="step-num">2</div>
           <div class="step-desc">
-            <strong>创建AccessKey</strong>
-            <p>在阿里云 → 访问控制 → AccessKey管理 中创建子用户并获取AccessKey ID和Secret</p>
+            <strong>购买固话号码并绑定到实例</strong>
+            <p>在云联络中心控制台的「号码管理」中购买号码（需企业资质审核），并绑定到实例。此号码就是客户看到的来电显示</p>
           </div>
         </div>
         <div class="step-item">
           <div class="step-num">3</div>
           <div class="step-desc">
-            <strong>创建语音通话应用</strong>
-            <p>在语音服务控制台创建应用，获取应用ID</p>
+            <strong>创建RAM用户并授权</strong>
+            <p>在 <strong>阿里云 → 访问控制（RAM）</strong> 中创建RAM用户，勾选"OpenAPI调用访问"，创建后保存 AccessKey ID 和 AccessKey Secret，并为该用户授权 <code>AliyunCCCFullAccess</code> 权限策略</p>
           </div>
         </div>
         <div class="step-item">
           <div class="step-num">4</div>
           <div class="step-desc">
-            <strong>申请主叫号码</strong>
-            <p>在号码管理中申请外呼号码（需提交企业资质审核）</p>
+            <strong>将RAM用户添加为实例成员（重要）</strong>
+            <p>回到云联络中心控制台，进入实例的「坐席管理」，把上一步的RAM账号添加为<strong>管理员</strong>角色。不加入实例会导致获取号码/坐席时报 <code>NotExists.UserId</code> 错误</p>
+          </div>
+        </div>
+      </div>
+
+      <h3>4.2 CRM侧配置步骤</h3>
+      <div class="step-list">
+        <div class="step-item">
+          <div class="step-num">1</div>
+          <div class="step-desc">
+            <strong>打开配置页</strong>
+            <p>呼出配置 → 网络电话配置 标签页，服务商为"阿里云云联络中心"</p>
+          </div>
+        </div>
+        <div class="step-item">
+          <div class="step-num">2</div>
+          <div class="step-desc">
+            <strong>选择外呼方式（三选一）</strong>
+            <p><strong>双呼（免设备）</strong> / <strong>软电话（网页）</strong> / <strong>硬话机（SIP）</strong>。选了哪种，员工外呼时就按哪种方式生效。软电话/硬话机模式下可点击"打开坐席工作台"让员工登录接听</p>
+          </div>
+        </div>
+        <div class="step-item">
+          <div class="step-num">3</div>
+          <div class="step-desc">
+            <strong>填写 AccessKey ID 和 AccessKey Secret</strong>
+            <p>填入RAM用户的密钥。保存后 Secret 以掩码（********）显示，不修改时无需重填，直接保存会保留原密钥</p>
+          </div>
+        </div>
+        <div class="step-item">
+          <div class="step-num">4</div>
+          <div class="step-desc">
+            <strong>获取实例ID</strong>
+            <p>填好密钥后点击 <el-tag size="small">获取实例</el-tag> 按钮，自动拉取账号下的实例列表下拉选择；也支持手动输入。没有实例时请先到阿里云控制台创建</p>
           </div>
         </div>
         <div class="step-item">
           <div class="step-num">5</div>
           <div class="step-desc">
-            <strong>填写配置信息</strong>
-            <p>在呼出配置 → 网络电话配置标签页中，选择"阿里云通信"，依次填入：</p>
-            <ul>
-              <li>AccessKey ID</li>
-              <li>AccessKey Secret</li>
-              <li>应用ID</li>
-              <li>主叫号码</li>
-              <li>服务区域（选择就近的区域，如华东1杭州）</li>
-              <li>是否启用录音</li>
-            </ul>
+            <strong>获取号码池</strong>
+            <p>点击 <el-tag size="small">获取号码</el-tag> 自动拉取实例下已购买的号码，支持多选绑定为系统号码池；保存后可在「号码分配」中把号码分给指定成员，实现一人一号独占外显</p>
           </div>
         </div>
         <div class="step-item">
           <div class="step-num">6</div>
           <div class="step-desc">
-            <strong>测试连接</strong>
-            <p>点击"测试连接"按钮验证配置是否正确</p>
+            <strong>设置默认主叫号码、服务区域、录音</strong>
+            <ul>
+              <li><strong>默认主叫号码</strong>：兜底号码，成员没有被分配专属号码时外呼显示此号码</li>
+              <li><strong>服务区域</strong>：建议保持默认"华东2（上海）"，云联络中心API统一接入该区域</li>
+              <li><strong>启用录音</strong>：开启后通话结束自动拉取云端录音并永久保存到CRM（需实例侧也开启录音）</li>
+            </ul>
+          </div>
+        </div>
+        <div class="step-item">
+          <div class="step-num">7</div>
+          <div class="step-desc">
+            <strong>测试连接并保存</strong>
+            <p>点击"测试连接"验证密钥和实例（真实调用阿里云接口）；点击"保存配置"后系统会<strong>自动创建一条"阿里云云联络中心"线路</strong>，无需手动建线路，直接去「号码分配」分配即可</p>
           </div>
         </div>
       </div>
 
-      <h3>4.2 腾讯云通信配置步骤</h3>
-      <div class="step-list">
-        <div class="step-item">
-          <div class="step-num">1</div>
-          <div class="step-desc">
-            <strong>开通腾讯云语音消息服务</strong>
-            <p>访问腾讯云控制台，搜索"语音消息"并开通</p>
-          </div>
-        </div>
-        <div class="step-item">
-          <div class="step-num">2</div>
-          <div class="step-desc">
-            <strong>获取API密钥</strong>
-            <p>在 腾讯云 → 访问管理 → API密钥管理 中获取 SecretId 和 SecretKey</p>
-          </div>
-        </div>
-        <div class="step-item">
-          <div class="step-num">3</div>
-          <div class="step-desc">
-            <strong>创建应用</strong>
-            <p>在语音消息控制台创建应用，获取应用ID（SDKAppID）</p>
-          </div>
-        </div>
-        <div class="step-item">
-          <div class="step-num">4</div>
-          <div class="step-desc">
-            <strong>填写配置</strong>
-            <p>在呼出配置 → 网络电话配置中选择"腾讯云通信"，填入SecretId、SecretKey和应用ID</p>
-          </div>
-        </div>
-      </div>
+      <h3>4.3 配置安全与保存机制</h3>
+      <el-descriptions :column="1" border>
+        <el-descriptions-item label="租户隔离">SaaS部署下每个租户的配置、线路、号码、通话记录完全隔离，呼入呼出不会串到其他租户</el-descriptions-item>
+        <el-descriptions-item label="密钥加密">AccessKey Secret 使用 AES-256 加密存储，前端仅显示掩码，任何接口不回传明文</el-descriptions-item>
+        <el-descriptions-item label="防误清空">保存时空字段不会覆盖已保存的值。例如只切换"外呼方式"直接保存，已填的密钥、实例、号码池都会原样保留</el-descriptions-item>
+        <el-descriptions-item label="配置回显">重新打开配置页会自动加载已保存的配置；加载失败时会弹出提示，而不是静默显示空表单</el-descriptions-item>
+      </el-descriptions>
 
-      <h3>4.3 华为云通信配置步骤</h3>
-      <div class="step-list">
-        <div class="step-item">
-          <div class="step-num">1</div>
-          <div class="step-desc">
-            <strong>开通华为云通信服务</strong>
-            <p>访问华为云控制台，开通语音通话服务</p>
-          </div>
-        </div>
-        <div class="step-item">
-          <div class="step-num">2</div>
-          <div class="step-desc">
-            <strong>获取密钥</strong>
-            <p>在华为云 → 我的凭证 中获取 Access Key 和 Secret Key</p>
-          </div>
-        </div>
-        <div class="step-item">
-          <div class="step-num">3</div>
-          <div class="step-desc">
-            <strong>填写配置</strong>
-            <p>在呼出配置 → 网络电话配置中选择"华为云通信"，填入对应密钥</p>
-          </div>
-        </div>
+      <h3>4.4 常见报错与处理</h3>
+      <el-table :data="aliyunErrorList" stripe style="width: 100%; margin: 10px 0" border>
+        <el-table-column prop="error" label="报错" width="260" />
+        <el-table-column prop="reason" label="原因" />
+        <el-table-column prop="solution" label="处理方法" />
+      </el-table>
+
+      <h3>4.5 呼入与IVR注意事项</h3>
+      <div class="info-box">
+        <h4>📥 客户回拨固话号码时</h4>
+        <p>来电先进入阿里云侧绑定的 <strong>IVR联系流程</strong>（语音导航），再转到坐席。如果IVR配置了"输入分机号"：</p>
+        <ul>
+          <li>员工的分机号显示在CRM通话管理页头部（软电话分机 / SIP分机）</li>
+          <li>IVR收号组件的<strong>最大收号位数</strong>要和分机号实际位数一致，否则会输不完就被挂断</li>
+          <li>建议把<strong>结束符</strong>设为 <code>#</code>、收号超时加长到10秒</li>
+          <li>不需要分机转接时，可把号码直接绑定到<strong>技能组</strong>流程，来电直接振铃到就绪的坐席</li>
+        </ul>
       </div>
     </section>
 
@@ -353,11 +374,13 @@
         <div class="step-item">
           <div class="step-num">3</div>
           <div class="step-desc">
-            <strong>选择用户和线路</strong>
+            <strong>填写分配信息</strong>
             <ul>
               <li><strong>选择用户</strong>：从下拉列表中选择目标销售人员</li>
               <li><strong>选择线路</strong>：选择要分配的外呼线路（仅显示已启用的线路）</li>
-              <li><strong>主叫号码</strong>：可为该用户设置专属的主叫号码（可选，覆盖线路默认号码）</li>
+              <li><strong>主叫号码</strong>：从号码池选择该员工的专属外显号码，也可手动输入。<strong>号码独占</strong>：一个号码只能分配给一个成员，已被占用的号码在下拉中置灰不可选</li>
+              <li><strong>员工号码</strong>：双呼模式下系统先呼叫此号码（员工的工作手机/座机）。留空则使用员工个人资料中的手机号；个人手机是私人号码时请在此填写工作号码</li>
+              <li><strong>坐席账号</strong>：软电话/硬话机模式使用。点「获取坐席」拉取云联络中心的坐席列表并绑定，绑定后自动获取该坐席的软电话分机号和SIP分机号，显示在员工的通话管理页头部</li>
               <li><strong>日呼叫限额</strong>：设置该用户每日最大呼叫次数（默认100次）</li>
               <li><strong>设为默认</strong>：是否设为该用户的默认外呼线路</li>
             </ul>
@@ -367,16 +390,26 @@
           <div class="step-num">4</div>
           <div class="step-desc">
             <strong>确定分配</strong>
-            <p>点击"确定分配"完成操作，用户即可在外呼时使用该线路</p>
+            <p>点击"确定分配"完成操作，用户即可在外呼时使用该线路和专属号码</p>
           </div>
         </div>
       </div>
 
       <h3>5.2 管理分配</h3>
-      <ul>
-        <li><strong>查看分配列表</strong>：在号码分配标签页可查看所有已分配的用户-线路关系</li>
-        <li><strong>取消分配</strong>：点击"取消"按钮可移除用户的线路分配</li>
-      </ul>
+      <el-descriptions :column="1" border>
+        <el-descriptions-item label="搜索">支持按员工姓名、主叫号码、员工号码、线路名称模糊搜索</el-descriptions-item>
+        <el-descriptions-item label="分页">列表默认每页6条，底部分页器显示总数并支持翻页</el-descriptions-item>
+        <el-descriptions-item label="编辑">点击"编辑"可修改该分配的线路、主叫号码、员工号码、坐席账号、日限额、默认标记（用户不可改，如需换人请取消后重新分配）；换号码时同样做独占校验</el-descriptions-item>
+        <el-descriptions-item label="禁用">点击"禁用"后该员工立即看不到此线路和号码，号码释放为可分配状态，其他成员可以使用</el-descriptions-item>
+        <el-descriptions-item label="启用">点击"启用"恢复该分配；启用时会校验号码是否已被其他成员占用，被占用则无法启用</el-descriptions-item>
+        <el-descriptions-item label="取消">点击"取消"彻底删除该分配记录，号码释放</el-descriptions-item>
+      </el-descriptions>
+
+      <el-alert type="info" :closable="false" style="margin-top: 12px">
+        <template #title>
+          <strong>号码独占规则</strong>：一个主叫号码同一时间只能被一个成员的"启用中"分配占用。取消分配或禁用分配后号码自动释放，可再分配给其他成员。
+        </template>
+      </el-alert>
     </section>
 
     <!-- 六、工作手机绑定 -->
@@ -610,37 +643,24 @@
         </ul>
       </div>
 
-      <h3>10.3 VoIP网络电话录音</h3>
+      <h3>10.3 VoIP网络电话录音（阿里云云联络中心）</h3>
       <div class="info-box">
         <h4>🎙️ 录音原理</h4>
-        <p>VoIP通话录音由云通信服务商在服务端自动完成，录音文件存储在服务商的云存储中，系统通过回调自动获取录音文件并关联到通话记录。</p>
-        <h4>✅ 各服务商录音支持</h4>
-        <ul>
-          <li><strong>阿里云通信</strong>：支持服务端自动录音，录音存储于OSS，通话结束后自动回调通知CRM获取录音</li>
-          <li><strong>腾讯云通信</strong>：支持服务端录音，录音存储于COS，通过事件回调自动同步</li>
-          <li><strong>华为云通信</strong>：支持录音，录音存储于OBS，支持回调获取</li>
-        </ul>
+        <p>录音由阿里云云联络中心在服务端自动完成。通话结束后，CRM轮询通话详情获取录音地址，<strong>自动把录音文件下载到CRM服务器永久存储</strong>（阿里云的临时录音链接仅1天有效，下载后不受影响），并关联到通话记录，可直接在线播放。</p>
         <h4>🔧 开启方法</h4>
         <div class="step-list">
           <div class="step-item">
             <div class="step-num">1</div>
             <div class="step-desc">
-              <strong>服务商控制台开启录音</strong>
-              <p>在云通信服务商的控制台中，开启语音通话录音功能（部分需签约或额外付费）</p>
+              <strong>实例侧开启录音</strong>
+              <p>在阿里云云联络中心控制台的实例设置中开启通话录音</p>
             </div>
           </div>
           <div class="step-item">
             <div class="step-num">2</div>
             <div class="step-desc">
-              <strong>配置录音回调地址</strong>
-              <p>在服务商控制台配置通话状态回调URL，指向CRM系统的回调接口</p>
-            </div>
-          </div>
-          <div class="step-item">
-            <div class="step-num">3</div>
-            <div class="step-desc">
-              <strong>CRM系统启用录音</strong>
-              <p>在呼出配置 → 网络电话配置中，勾选"启用录音"选项</p>
+              <strong>CRM侧启用录音</strong>
+              <p>在呼出配置 → 网络电话配置中，打开"启用录音"开关并保存</p>
             </div>
           </div>
         </div>
@@ -1021,9 +1041,9 @@
         <el-collapse-item title="Q4: 通话没有录音怎么办" name="4">
           <p><strong>A：</strong></p>
           <ul>
-            <li>VoIP线路：检查是否在网络电话配置中开启了「启用录音」</li>
+            <li>网络电话：检查CRM「网络电话配置」中是否开启了「启用录音」，以及阿里云实例侧是否开启了通话录音</li>
             <li>工作手机：确认APP已授予录音权限</li>
-            <li>部分服务商需要单独开通录音功能并配置录音存储桶</li>
+            <li>录音在通话结束后由系统自动拉取，可能有1-2分钟延迟，稍后刷新通话记录</li>
           </ul>
         </el-collapse-item>
 
@@ -1033,7 +1053,46 @@
             <li>VoIP线路通常比传统电话线路费用更低</li>
             <li>合理设置日呼叫限额，避免无效呼叫</li>
             <li>使用工作手机绑定不限时套餐的SIM卡</li>
-            <li>多比较各服务商(阿里云/腾讯云/华为云)的报价</li>
+            <li>关注阿里云云联络中心的套餐与通信费报价，按团队呼叫量选择</li>
+          </ul>
+        </el-collapse-item>
+
+        <el-collapse-item title="Q10: 外呼报错 OutboundCallRestricted（号码被限制）" name="10">
+          <p><strong>A：</strong>被叫号码被阿里云外呼策略拦截，不是CRM的问题：</p>
+          <ul>
+            <li>新开通/资质未报备完成的实例默认开启「外呼白名单」模式，只能呼叫白名单内号码</li>
+            <li>临时测试：到云联络中心控制台 → 实例设置 → 外呼白名单，把要测试的号码加进去</li>
+            <li>长期方案：完成号码资质审核/实名报备后，申请解除白名单限制</li>
+            <li>另外检查该号码是否在阿里云 DoNotCall 禁呼名单中</li>
+          </ul>
+        </el-collapse-item>
+
+        <el-collapse-item title="Q11: 只想改外呼方式，会不会把已填的配置清掉" name="11">
+          <p><strong>A：</strong>不会。保存时空字段不会覆盖已保存的非空值：</p>
+          <ul>
+            <li>只切换"外呼方式"直接保存，密钥、实例ID、号码池全部保留</li>
+            <li>AccessKey Secret 保存后显示为掩码（********），不修改时无需重填</li>
+            <li>需要更换密钥时，直接在密钥输入框填入新值再保存即可</li>
+          </ul>
+        </el-collapse-item>
+
+        <el-collapse-item title="Q12: 客户回拨固话，输分机号没输完就被挂断" name="12">
+          <p><strong>A：</strong>这是阿里云侧IVR联系流程的收号配置问题：</p>
+          <ul>
+            <li>到云联络中心控制台编辑该号码绑定的IVR流程，找到收号组件</li>
+            <li>把「最大收号位数」改成分机号的实际位数（CRM通话管理页头部显示的"软电话分机"就是要输的号码）</li>
+            <li>「结束符」设为 #，收号超时适当加长（如10秒）</li>
+            <li>不需要分机转接时，可把号码直接绑定到技能组流程，来电直接振铃到就绪坐席</li>
+          </ul>
+        </el-collapse-item>
+
+        <el-collapse-item title="Q13: 禁用了某个成员的号码分配，会发生什么" name="13">
+          <p><strong>A：</strong></p>
+          <ul>
+            <li>该成员的外呼弹窗中立即看不到这条线路和号码，无法再用它外呼</li>
+            <li>号码释放为可分配状态，可以分配给其他成员</li>
+            <li>重新启用时系统会校验号码是否已被别人占用，被占用则无法启用</li>
+            <li>与"取消"的区别：禁用保留分配记录可随时恢复，取消则彻底删除</li>
           </ul>
         </el-collapse-item>
 
@@ -1080,11 +1139,40 @@
 </template>
 
 <script setup lang="ts">
-// VoIP服务商对比数据
-const voipProviders = [
-  { provider: '阿里云通信', feature: '国内领先，稳定性高，支持录音存储', price: '约0.1元/分钟', apply: '阿里云控制台 → 语音服务' },
-  { provider: '腾讯云通信', feature: '集成腾讯生态，支持多种通话模式', price: '约0.1元/分钟', apply: '腾讯云控制台 → 语音消息' },
-  { provider: '华为云通信', feature: '政企客户首选，安全合规性高', price: '约0.08元/分钟', apply: '华为云控制台 → 语音通话' },
+// 阿里云云联络中心三种外呼方式对比
+const cccCallModes = [
+  { mode: '双呼（免设备）', device: '员工的手机/座机即可', flow: '系统先呼员工号码 → 员工接听 → 自动呼叫客户，客户看到企业固话外显', scene: '大多数场景，推荐' },
+  { mode: '软电话（网页）', device: '电脑 + 耳麦/USB话务盒', flow: '员工登录阿里云坐席工作台 → 点外呼工作台振铃 → 接听后呼叫客户', scene: '固定工位呼叫中心' },
+  { mode: '硬话机（SIP）', device: 'SIP话机（网线/WiFi）', flow: '话机注册到云联络中心 → 点外呼话机振铃 → 接听后呼叫客户', scene: '习惯实体话机的团队' },
+]
+
+// 阿里云常见报错与处理
+const aliyunErrorList = [
+  {
+    error: 'NotExists.InstanceId',
+    reason: '实例ID填错，常见于填了实例"名称"而不是实例ID',
+    solution: '点击「获取实例」从下拉列表选择正确的实例ID（如 ccc-xxxx）'
+  },
+  {
+    error: 'NotExists.UserId',
+    reason: 'AccessKey对应的RAM账号不是该实例的成员',
+    solution: '到云联络中心控制台 → 实例 → 坐席管理，把该RAM账号添加为管理员'
+  },
+  {
+    error: 'InvalidAccessKeyId / SignatureDoesNotMatch',
+    reason: 'AccessKey ID 或 Secret 填写错误',
+    solution: '检查密钥是否复制完整；重新生成密钥后需同步更新CRM配置'
+  },
+  {
+    error: 'InvalidOperation.OutboundCallRestricted',
+    reason: '被叫号码被外呼白名单或DoNotCall禁呼名单拦截。新实例/资质未报备完成时默认只能呼叫白名单内号码',
+    solution: '到云联络中心控制台 → 实例设置 → 外呼白名单，添加要呼叫的号码测试；长期方案是完成号码资质报备后申请解除白名单限制'
+  },
+  {
+    error: '连接阿里云服务失败（网络波动）',
+    reason: '本机/服务器到 aliyuncs.com 的网络不稳定',
+    solution: '系统已自动重试，仍失败时检查网络、防火墙或代理设置后重试'
+  },
 ]
 
 // 各外呼方式录音支持情况
@@ -1100,8 +1188,8 @@ const recordingSupport = [
     method: '🌐 VoIP网络电话',
     autoRecordText: '✅ 支持',
     autoUploadText: '✅ 支持',
-    recordingSource: '云服务商服务端录音',
-    description: '由阿里云/腾讯云/华为云在服务端自动录音，通话结束后通过回调自动同步录音文件到CRM。需在服务商控制台和CRM中同时启用录音。'
+    recordingSource: '阿里云云联络中心服务端录音',
+    description: '由阿里云云联络中心在服务端自动录音，通话结束后CRM自动下载录音并永久存储（阿里云临时链接仅1天有效），通话记录内直接播放。需在实例侧和CRM「启用录音」同时开启。'
   },
   {
     method: '📡 SIP线路',

@@ -45,6 +45,7 @@ class IncomingCallService {
   private usePolling = false
   private wakeLock: any = null
   private foregroundActive = false
+  private wakeLockRenewTimer: ReturnType<typeof setInterval> | null = null
   private missedSyncRunning = false
   private vibrateTimer: ReturnType<typeof setInterval> | null = null
   private ringtonePlayer: any = null
@@ -78,6 +79,8 @@ class IncomingCallService {
       }
     })
     this.startForegroundKeepAlive()
+    // 引导用户把APP加入电池优化白名单（仅提示一次），防止后台被系统冻结
+    this.requestIgnoreBatteryOptimizations()
     // #endif
 
     // 补录离线期间的未接来电
@@ -892,6 +895,11 @@ class IncomingCallService {
   /**
    * CallLog 内容变化时的处理
    * 从 CallLog 读取最新的呼入记录号码，如果当前来电号码是"未知来电"则更新并重新上报
+   *
+   * 🔒 防串号：多数 ROM 在通话结束时才写入 CallLog，此回调经常在 IDLE 后触发。
+   * 此时解析到的号码属于"刚结束的那通"，绝不能再以"来电响铃"身份上报后端——
+   * 否则若下一通电话已开始响铃，后端会把上一通的号码写进新来电的记录和弹窗（串号）。
+   * 结束后的补号统一走 onIncomingCallEnded / backgroundResolveNumber 的 CALL_ENDED 通道。
    */
   private handleCallLogChange() {
     if (!this.currentIncoming) return
@@ -899,20 +907,37 @@ class IncomingCallService {
     const currentNumber = this.currentIncoming.callerNumber
     if (currentNumber && currentNumber !== '未知来电') return
 
+    const session = this.currentIncoming
     // 先试 CallLog，再试录音文件名
     this.tryResolveCallerFromCallLog().then(async (number) => {
       let resolved = number
-      if (!resolved) {
+      // 🔒 响铃期间禁用录音文件解析（本通尚无录音，匹配到的必是上一通的文件）
+      if (!resolved && this.lastPhoneState !== 1) {
         resolved = await this.tryResolveCallerFromRecordingFile()
       }
-      if (resolved && this.currentIncoming && (!this.currentIncoming.callerNumber || this.currentIncoming.callerNumber === '未知来电')) {
-        console.log('[IncomingCallService] 获取到来电号码:', resolved)
-        this.currentIncoming.callerNumber = resolved
+      // 会话必须未被新来电顶替，且号码仍未知
+      if (!resolved || this.currentIncoming !== session) return
+      if (session.callerNumber && session.callerNumber !== '未知来电') return
+
+      console.log('[IncomingCallService] 获取到来电号码:', resolved, ', state=' + this.lastPhoneState)
+      session.callerNumber = resolved
+      uni.$emit('incoming:number_updated', { callerNumber: resolved })
+
+      if (this.lastPhoneState === 1) {
+        // 仍在响铃：以来电身份重新上报，更新CRM弹窗号码
         this.hasReportedIncoming = false
-        this.currentIncoming.callId = undefined
+        session.callId = undefined
         this.reportIncomingToServer(resolved)
-        uni.$emit('incoming:number_updated', { callerNumber: resolved })
+      } else if (this.lastPhoneState === 2) {
+        // 已接听：仅同步号码到通话状态，不再推"响铃"事件
+        try {
+          wsService.reportCallStatus(session.callId || '', 'connected', {
+            callType: 'inbound',
+            phoneNumber: resolved,
+          })
+        } catch (_e) { /* ignore */ }
       }
+      // IDLE(0)：通话已结束，号码交由结束流程上报（CALL_ENDED / number_updated），此处不动
     })
   }
 
@@ -960,16 +985,25 @@ class IncomingCallService {
         this.stopCallLogPolling()
         return
       }
+      const session = this.currentIncoming
       this.tryResolveNumber(attempts).then((num) => {
-        if (num && this.currentIncoming && this.currentIncoming.callerNumber === '未知来电') {
-          console.log('[IncomingCallService] 轮询第' + attempts + '次获取到号码:', num)
-          this.currentIncoming.callerNumber = num
+        // 🔒 防串号：异步解析期间可能已换成新来电会话，必须校验是同一通
+        if (!num || !this.currentIncoming || this.currentIncoming !== session) return
+        if (this.currentIncoming.callerNumber !== '未知来电') return
+
+        console.log('[IncomingCallService] 轮询第' + attempts + '次获取到号码:', num, ', state=' + this.lastPhoneState)
+        this.currentIncoming.callerNumber = num
+        uni.$emit('incoming:number_updated', { callerNumber: num })
+
+        if (this.lastPhoneState === 1) {
+          // 仍在响铃：以来电身份上报，实时更新CRM弹窗
           this.hasReportedIncoming = false
           this.currentIncoming.callId = undefined
           this.reportIncomingToServer(num)
-          uni.$emit('incoming:number_updated', { callerNumber: num })
-          this.stopCallLogPolling()
         }
+        // 已接听/已结束：号码由接听状态上报或结束流程带出，不再推"响铃"事件，
+        // 避免通话结束后才解析到号码时向CRM拉起一个幽灵来电弹窗（下一通会看到上一通号码）
+        this.stopCallLogPolling()
       })
     }, 300)
   }
@@ -983,7 +1017,9 @@ class IncomingCallService {
     if (fromCallLog) return fromCallLog
 
     // 2. 每 3 次尝试一次录音文件名
-    if (attempt % 3 === 0) {
+    // 🔒 防串号：录音只在接听后才产生，响铃期间能匹配到的文件必然是上一通的
+    // （ROM延迟落盘会把旧文件顶进时间窗口），所以响铃(RINGING=1)期间禁用录音文件解析
+    if (this.lastPhoneState !== 1 && attempt % 3 === 0) {
       const fromRecording = await this.tryResolveCallerFromRecordingFile()
       if (fromRecording) return fromRecording
     }
@@ -1171,6 +1207,9 @@ class IncomingCallService {
   private async onIncomingCallEnded() {
     if (!this.currentIncoming) return
 
+    // 会话句柄：补号循环耗时较长（最长约27秒），期间可能有新来电顶替
+    // currentIncoming。所有界面更新/状态重置都必须确认还是本通会话，防止串号
+    const session = this.currentIncoming
     const info = { ...this.currentIncoming }
     const endTime = Date.now()
 
@@ -1183,11 +1222,23 @@ class IncomingCallService {
       for (let attempt = 0; attempt < delays.length; attempt++) {
         try {
           await new Promise(resolve => setTimeout(resolve, delays[attempt]))
-          // 先试 CallLog（可能在某些设备上终于可用），传入开始时间避免取到旧记录
-          let resolvedNum = await this.tryResolveCallerFromCallLog(info.startTime)
-          // CallLog 失败，试录音文件名（传入来电开始时间避免匹配旧文件）
+          // 🔒 防串号：期间有新来电开始则立即停止补号（新来电的号码解析由它自己负责）
+          if (this.currentIncoming !== session) {
+            console.log('[IncomingCallService] 补号期间检测到新来电，停止上一通的补号')
+            break
+          }
+          // 先试 CallLog（可能在某些设备上终于可用），限定本通时间窗口[start, end]避免取到其他通话
+          let resolvedNum = await this.tryResolveCallerFromCallLog(info.startTime, endTime)
+          // CallLog 失败，试录音文件名（同样限定本通时间窗口）
           if (!resolvedNum) {
-            resolvedNum = await this.tryResolveCallerFromRecordingFile(info.startTime)
+            resolvedNum = await this.tryResolveCallerFromRecordingFile(info.startTime, endTime)
+          }
+          // 异步查询期间也可能来了新电话，再次确认
+          if (resolvedNum && this.currentIncoming !== session) {
+            console.log('[IncomingCallService] 补号完成但已有新来电，结果仅用于本通记录，不更新界面')
+            finalNumber = resolvedNum
+            info.callerNumber = resolvedNum
+            break
           }
           if (resolvedNum && resolvedNum !== '未知来电') {
             console.log('[IncomingCallService] ✅ 通话结束后补获号码(第' + (attempt + 1) + '次):', resolvedNum)
@@ -1195,6 +1246,9 @@ class IncomingCallService {
             info.callerNumber = resolvedNum
             // 通知前端页面更新号码
             uni.$emit('incoming:number_updated', { callerNumber: resolvedNum })
+            // 响铃期间没拿到号码、结束后CallLog才拿到 → 典型的ROM实时号码拦截场景，
+            // 引导用户把通话记录权限设为"始终允许"以实现响铃时实时显示号码（24小时内最多提示一次）
+            this.maybeShowCallLogBlockedGuide()
             break
           }
         } catch (e) {
@@ -1264,8 +1318,13 @@ class IncomingCallService {
 
     uni.$emit('call:completed')
 
-    // 重置状态
-    this.currentIncoming = null
+    // 重置状态（🔒 补号循环期间若已有新来电顶替 currentIncoming，绝不能清掉新来电的状态）
+    const replacedByNewCall = this.currentIncoming !== session
+    if (!replacedByNewCall) {
+      this.currentIncoming = null
+      this.hasReportedIncoming = false
+      this.lastPhoneState = 0
+    }
 
     // 如果号码仍为"未知来电"，在后台继续尝试补获（录音文件写入可能延迟较大）
     // #ifdef APP-PLUS
@@ -1273,8 +1332,6 @@ class IncomingCallService {
       this.backgroundResolveNumber(callId, info, duration, endTime)
     }
     // #endif
-    this.hasReportedIncoming = false
-    this.lastPhoneState = 0
 
     // 跳转登记页
     setTimeout(() => {
@@ -1517,10 +1574,10 @@ class IncomingCallService {
           console.log('[IncomingCallService] 检测到新来电进行中，中止上一通的后台补获任务')
           return
         }
-        // 传入来电开始时间，避免匹配到旧录音文件
-        let resolved = await this.tryResolveCallerFromRecordingFile(info.startTime)
+        // 传入本通的[开始,结束]时间窗口，避免匹配到旧录音/之后新来电的记录
+        let resolved = await this.tryResolveCallerFromRecordingFile(info.startTime, endTime)
         if (!resolved) {
-          resolved = await this.tryResolveCallerFromCallLog(info.startTime)
+          resolved = await this.tryResolveCallerFromCallLog(info.startTime, endTime)
         }
         if (resolved && resolved !== '未知来电') {
           console.log('[IncomingCallService] ✅ 后台补获号码成功(第' + (attempt + 1) + '次):', resolved)
@@ -1642,23 +1699,24 @@ class IncomingCallService {
   }
 
   /**
-   * Android 前台保活：WakeLock + 常驻通知，确保后台仍能检测来电
+   * Android 前台保活：WakeLock（周期续期）+ 常驻通知，确保后台仍能检测来电
    */
   // #ifdef APP-PLUS
   private startForegroundKeepAlive() {
-    if (this.foregroundActive) return
+    if (this.foregroundActive) {
+      // 已激活时仅续期 WakeLock（onHide 等场景会重复调用）
+      this.renewWakeLock()
+      return
+    }
 
     try {
-      const main = plus.android.runtimeMainActivity()
-      const Context = plus.android.importClass('android.content.Context') as any
-      const PowerManager = plus.android.importClass('android.os.PowerManager') as any
+      this.renewWakeLock()
 
-      const pm = (main as any).getSystemService(Context.POWER_SERVICE)
-      if (pm && !this.wakeLock) {
-        this.wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, 'CRM:IncomingCallListener')
-        this.wakeLock.setReferenceCounted(false)
-        this.wakeLock.acquire(10 * 60 * 1000)
-        console.log('[IncomingCallService] WakeLock 已获取')
+      // 每8分钟续期一次（每次申请10分钟租约），避免10分钟后WakeLock过期导致后台被挂起
+      if (!this.wakeLockRenewTimer) {
+        this.wakeLockRenewTimer = setInterval(() => {
+          this.renewWakeLock()
+        }, 8 * 60 * 1000)
       }
 
       plus.push.createMessage(
@@ -1673,8 +1731,96 @@ class IncomingCallService {
     }
   }
 
+  /** 获取/续期 PARTIAL_WAKE_LOCK（10分钟租约） */
+  private renewWakeLock() {
+    try {
+      const main = plus.android.runtimeMainActivity()
+      const Context = plus.android.importClass('android.content.Context') as any
+      const PowerManager = plus.android.importClass('android.os.PowerManager') as any
+
+      const pm = (main as any).getSystemService(Context.POWER_SERVICE)
+      if (!pm) return
+
+      if (!this.wakeLock) {
+        this.wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, 'CRM:IncomingCallListener')
+        this.wakeLock.setReferenceCounted(false)
+      }
+      // acquire(timeout) 对已持有的锁会重置租约时间
+      this.wakeLock.acquire(10 * 60 * 1000)
+      console.log('[IncomingCallService] WakeLock 已获取/续期')
+    } catch (e) {
+      console.warn('[IncomingCallService] WakeLock 续期失败:', e)
+    }
+  }
+
+  /**
+   * 供外部调用的后台保活入口（App onHide 时触发）：
+   * 续期 WakeLock、保持常驻通知，尽量让来电监听和 WebSocket 在后台存活
+   */
+  requestBackgroundKeepAlive() {
+    const userStore = useUserStore()
+    if (!userStore.isLoggedIn) return
+    this.startForegroundKeepAlive()
+  }
+
+  /**
+   * 引导用户将APP加入电池优化白名单（Android 6+）。
+   * 不加白名单时，系统 Doze 模式会冻结网络与JS定时器，导致后台来电无法上报。
+   * 仅在未加入白名单且未提示过时弹出系统授权框。
+   */
+  private requestIgnoreBatteryOptimizations() {
+    try {
+      const alreadyAsked = uni.getStorageSync('batteryOptimizationAsked')
+      const main = plus.android.runtimeMainActivity()
+      const Context = plus.android.importClass('android.content.Context') as any
+      const PowerManager = plus.android.importClass('android.os.PowerManager') as any
+
+      const pm = (main as any).getSystemService(Context.POWER_SERVICE)
+      const pkgName = (main as any).getPackageName()
+
+      if (pm && pm.isIgnoringBatteryOptimizations && pm.isIgnoringBatteryOptimizations(pkgName)) {
+        console.log('[IncomingCallService] 已在电池优化白名单中')
+        return
+      }
+      if (alreadyAsked) {
+        console.log('[IncomingCallService] 未加入电池白名单（用户已被提示过，不再打扰）')
+        return
+      }
+
+      uni.setStorageSync('batteryOptimizationAsked', '1')
+      uni.showModal({
+        title: '后台运行授权',
+        content: '为保证锁屏/后台时仍能检测来电并同步到CRM，请允许本应用忽略电池优化（不受省电限制）',
+        confirmText: '去开启',
+        cancelText: '暂不',
+        success: (res) => {
+          if (!res.confirm) return
+          try {
+            const Intent = plus.android.importClass('android.content.Intent') as any
+            const Settings = plus.android.importClass('android.provider.Settings') as any
+            const Uri = plus.android.importClass('android.net.Uri') as any
+            const intent = new Intent(
+              Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+              Uri.parse(`package:${pkgName}`)
+            )
+            ;(main as any).startActivity(intent)
+          } catch (e) {
+            console.warn('[IncomingCallService] 打开电池优化设置失败:', e)
+            uni.showToast({ title: '请到系统设置-电池中手动允许后台运行', icon: 'none', duration: 3000 })
+          }
+        },
+      })
+    } catch (e) {
+      console.warn('[IncomingCallService] 电池优化白名单检查失败:', e)
+    }
+  }
+
   private stopForegroundKeepAlive() {
     try {
+      if (this.wakeLockRenewTimer) {
+        clearInterval(this.wakeLockRenewTimer)
+        this.wakeLockRenewTimer = null
+      }
       if (this.wakeLock) {
         if (this.wakeLock.isHeld && this.wakeLock.isHeld()) {
           this.wakeLock.release()
@@ -1827,9 +1973,11 @@ class IncomingCallService {
    * @param sinceTime 本次来电开始时间戳——只接受该时间之后写入的记录，
    *                  避免把上一通电话的号码错误当成本次来电（串号）
    */
-  private async tryResolveCallerFromCallLog(sinceTime?: number): Promise<string> {
-    // 默认用当前来电的开始时间做时间窗口，防止取到上一通电话的号码
+  private async tryResolveCallerFromCallLog(sinceTime?: number, untilTime?: number): Promise<string> {
+    // 默认用当前来电的开始时间做时间窗口，防止取到上一通电话的号码；
+    // untilTime（通话结束时间）用于事后补号，防止取到之后新来电的号码
     const since = sinceTime || this.currentIncoming?.startTime
+    const until = untilTime
     return new Promise((resolve) => {
       try {
         const main = plus.android.runtimeMainActivity()
@@ -1856,7 +2004,7 @@ class IncomingCallService {
           try {
             const cursor = cr.query(uri, null, null, null, 'date DESC')
             if (cursor) {
-              const result = this.extractNumberFromCursor(cursor, since)
+              const result = this.extractNumberFromCursor(cursor, since, until)
               if (result) {
                 console.log('[IncomingCallService] ✅ CallLog查询成功(' + label + '): ' + result)
                 resolve(result)
@@ -1876,7 +2024,7 @@ class IncomingCallService {
             const cursor = plus.android.invoke(cr, 'query', uri, null, null, null, 'date DESC')
             if (cursor) {
               plus.android.importClass('android.database.Cursor')
-              const result = this.extractNumberFromCursor(cursor, since)
+              const result = this.extractNumberFromCursor(cursor, since, until)
               if (result) {
                 console.log('[IncomingCallService] ✅ invoke查询成功(' + label + '): ' + result)
                 resolve(result)
@@ -1896,7 +2044,7 @@ class IncomingCallService {
             const cursor = (main as any).managedQuery(uri, null, null, null, 'date DESC')
             if (cursor) {
               plus.android.importClass('android.database.Cursor')
-              const result = this.extractNumberFromCursor(cursor, since)
+              const result = this.extractNumberFromCursor(cursor, since, until)
               if (result) {
                 console.log('[IncomingCallService] ✅ managedQuery成功(' + label + '): ' + result)
                 resolve(result)
@@ -1919,7 +2067,7 @@ class IncomingCallService {
             try {
               const cursor = appCr.query(uri, null, null, null, 'date DESC')
               if (cursor) {
-                const result = this.extractNumberFromCursor(cursor, since)
+                const result = this.extractNumberFromCursor(cursor, since, until)
                 if (result) {
                   console.log('[IncomingCallService] ✅ AppContext查询成功(' + label + '): ' + result)
                   resolve(result)
@@ -1945,7 +2093,7 @@ class IncomingCallService {
               try {
                 const cursor = client.query(uri, null, null, null, 'date DESC')
                 if (cursor) {
-                  const result = this.extractNumberFromCursor(cursor, since)
+                  const result = this.extractNumberFromCursor(cursor, since, until)
                   if (result) {
                     console.log('[IncomingCallService] ✅ ContentProviderClient成功(' + label + '): ' + result)
                     try { client.release() } catch (_) { /* skip */ }
@@ -1973,7 +2121,7 @@ class IncomingCallService {
             const loader = new CursorLoader(main, uri, null, null, null, 'date DESC')
             const cursor = loader.loadInBackground()
             if (cursor) {
-              const result = this.extractNumberFromCursor(cursor, since)
+              const result = this.extractNumberFromCursor(cursor, since, until)
               if (result) {
                 console.log('[IncomingCallService] ✅ CursorLoader成功(' + label + '): ' + result)
                 resolve(result)
@@ -1995,7 +2143,7 @@ class IncomingCallService {
             try {
               const cursor = cr.query(uri, null, null, null, 'date DESC', signal)
               if (cursor) {
-                const result = this.extractNumberFromCursor(cursor, since)
+                const result = this.extractNumberFromCursor(cursor, since, until)
                 if (result) {
                   console.log('[IncomingCallService] ✅ CancellationSignal查询成功(' + label + '): ' + result)
                   resolve(result)
@@ -2025,8 +2173,10 @@ class IncomingCallService {
    * 从 Cursor 中提取本次来电的号码
    * @param sinceTime 本次来电开始时间戳。提供时只接受该时间之后（含5秒缓冲）写入的
    *                  呼入类记录，严禁把上一通电话的号码当成本次来电（串号）
+   * @param untilTime 本次来电结束时间戳。事后补号时提供，只接受该时间之前（含10秒缓冲）
+   *                  的记录，严禁把之后新来电的号码当成本次来电（反向串号）
    */
-  private extractNumberFromCursor(cursor: any, sinceTime?: number): string {
+  private extractNumberFromCursor(cursor: any, sinceTime?: number, untilTime?: number): string {
     try {
       if (!cursor) return ''
 
@@ -2061,10 +2211,14 @@ class IncomingCallService {
 
         // 时间窗口校验：
         // - 有本次来电开始时间：记录必须晚于 (开始时间 - 5秒)，且记录无时间戳时直接拒绝
+        // - 有本次来电结束时间：记录还必须早于 (结束时间 + 10秒)，防止取到之后新来电的号码
         // - 无开始时间（兼容旧调用）：退回"最近120秒"宽松判断
         let timeOk: boolean
         if (sinceTime) {
           timeOk = date > 0 && date >= (sinceTime - 5000)
+          if (timeOk && untilTime) {
+            timeOk = date <= (untilTime + 10000)
+          }
         } else {
           timeOk = date > 0 ? (Date.now() - date) < 120000 : true
         }
@@ -2093,58 +2247,81 @@ class IncomingCallService {
   // #ifdef APP-PLUS
   /**
    * 备选方案：从录音文件名中提取来电号码
-   * 华为等设备的录音文件名格式：134 2882 7364_20260625142304.amr
+   * 华为/荣耀等设备的录音文件名格式：134 2882 7364_20260625142304.amr
    * 即使没有 READ_CALL_LOG 权限，录音文件名也包含号码
+   *
+   * 🔒 防串号（重要）：
+   * 1. 录音只在"接听后"才会产生，响铃期间绝无本通录音——响铃态禁止调用本方法
+   *    （调用方负责，见 tryResolveNumber / handleCallLogChange）
+   * 2. 文件 lastModified 不可靠（ROM 可能延迟落盘/媒体扫描触发更新，把上一通的文件
+   *    "顶"进本通时间窗口），因此优先校验文件名里的 14 位时间戳（录音开始时间），
+   *    时间戳不在本通 [开始, 结束] 窗口内的文件一律跳过
    */
-  private async tryResolveCallerFromRecordingFile(callStartTime?: number): Promise<string> {
+  private async tryResolveCallerFromRecordingFile(callStartTime?: number, callEndTime?: number): Promise<string> {
     try {
       const recordings = await recordingService.scanRecordingFolders()
       if (recordings.length === 0) return ''
 
-      // 关键：只使用在当前来电开始之后创建/修改的录音文件
-      // 避免用上一通电话的录音文件错误匹配当前来电
       const startTime = callStartTime || this.currentIncoming?.startTime
       if (!startTime) {
         console.log('[IncomingCallService] 无法确定来电开始时间，跳过录音文件匹配')
         return ''
       }
+      const windowStart = startTime - 5000
+      const windowEnd = (callEndTime || Date.now()) + 30000
 
       const recentFiles = recordings
-        .filter(f => f.lastModified >= (startTime - 5000))
+        .filter(f => f.lastModified >= windowStart && f.lastModified <= windowEnd)
         .sort((a, b) => b.lastModified - a.lastModified)
+        .slice(0, 5)
 
       if (recentFiles.length === 0) {
         console.log('[IncomingCallService] 无当前通话时段的录音文件(callStart=' + new Date(startTime).toLocaleTimeString() + ')')
         return ''
       }
 
-      const fileName = recentFiles[0].name
-      console.log('[IncomingCallService] 尝试从录音文件名提取号码:', fileName, '修改时间:', new Date(recentFiles[0].lastModified).toLocaleTimeString())
+      for (const file of recentFiles) {
+        const nameWithoutExt = file.name.replace(/\.\w+$/, '')
 
-      // 去掉扩展名
-      const nameWithoutExt = fileName.replace(/\.\w+$/, '')
-      // 提取号码部分（下划线前面的部分），华为格式：134 2882 7364_20260625142304
-      const parts = nameWithoutExt.split('_')
-      if (parts.length >= 2) {
-        // 去掉空格得到纯数字号码
-        const numberPart = parts[0].replace(/[\s\-()]/g, '')
-        // 验证是否是有效的手机号（11位数字，1开头）
-        if (/^1\d{10}$/.test(numberPart)) {
-          console.log('[IncomingCallService] ✅ 从录音文件名提取到号码:', numberPart)
-          return numberPart
+        // 文件名时间戳校验（华为/荣耀格式：号码_yyyyMMddHHmmss）
+        // 有时间戳且不在本通窗口内 → 一定是别的通话的录音，跳过
+        const tsMatch = nameWithoutExt.match(/(\d{14})/)
+        if (tsMatch) {
+          const ts = tsMatch[1]
+          const fileTime = new Date(
+            Number(ts.slice(0, 4)), Number(ts.slice(4, 6)) - 1, Number(ts.slice(6, 8)),
+            Number(ts.slice(8, 10)), Number(ts.slice(10, 12)), Number(ts.slice(12, 14))
+          ).getTime()
+          if (!isNaN(fileTime) && (fileTime < windowStart || fileTime > windowEnd)) {
+            console.log('[IncomingCallService] 录音文件时间戳不在本通窗口内，跳过:', file.name)
+            continue
+          }
         }
-        // 可能是固话号码（7-12位数字）
-        if (/^\d{7,12}$/.test(numberPart)) {
-          console.log('[IncomingCallService] ✅ 从录音文件名提取到号码(固话):', numberPart)
-          return numberPart
-        }
-      }
 
-      // 备选：直接从文件名中提取手机号模式
-      const phoneMatch = nameWithoutExt.replace(/[\s\-()]/g, '').match(/1\d{10}/)
-      if (phoneMatch) {
-        console.log('[IncomingCallService] ✅ 从录音文件名正则提取到号码:', phoneMatch[0])
-        return phoneMatch[0]
+        console.log('[IncomingCallService] 尝试从录音文件名提取号码:', file.name, '修改时间:', new Date(file.lastModified).toLocaleTimeString())
+
+        // 提取号码部分（下划线前面的部分）
+        const parts = nameWithoutExt.split('_')
+        if (parts.length >= 2) {
+          const numberPart = parts[0].replace(/[\s\-()]/g, '')
+          // 手机号（11位数字，1开头）
+          if (/^1\d{10}$/.test(numberPart)) {
+            console.log('[IncomingCallService] ✅ 从录音文件名提取到号码:', numberPart)
+            return numberPart
+          }
+          // 固话号码（7-12位数字）
+          if (/^\d{7,12}$/.test(numberPart)) {
+            console.log('[IncomingCallService] ✅ 从录音文件名提取到号码(固话):', numberPart)
+            return numberPart
+          }
+        }
+
+        // 备选：直接从文件名中提取手机号模式
+        const phoneMatch = nameWithoutExt.replace(/[\s\-()]/g, '').match(/1\d{10}/)
+        if (phoneMatch) {
+          console.log('[IncomingCallService] ✅ 从录音文件名正则提取到号码:', phoneMatch[0])
+          return phoneMatch[0]
+        }
       }
 
       return ''

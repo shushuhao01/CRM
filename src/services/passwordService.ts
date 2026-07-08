@@ -101,45 +101,55 @@ class PasswordService {
     return Math.floor(diffTime / (1000 * 60 * 60 * 24))
   }
 
-  // 🔥 密码安全策略：检查是否需要强制修改密码（90天未修改）
+  // 🔥 密码安全策略：检查是否需要强制修改密码（按安全配置"密码有效期"，0=永不过期）
   isPasswordExpired(user: User): boolean {
-    if (!user.passwordLastChanged) {
-      return true // 如果没有修改记录，认为已过期
+    const expirationDays = this.getPasswordPolicy().expirationDays
+    if (!expirationDays || expirationDays <= 0) {
+      return false // 密码有效期为0（未启用），永不过期
     }
-    return this.getPasswordAgeDays(user) >= 90
+    if (!user.passwordLastChanged) {
+      return true // 启用有效期但没有修改记录，认为已过期
+    }
+    return this.getPasswordAgeDays(user) >= expirationDays
   }
 
-  // 🔥 密码安全策略：检查是否需要密码提醒（30天或60天）
+  // 🔥 密码安全策略：检查是否需要密码提醒（有效期的1/3、2/3时提醒）
   needsPasswordReminder(user: User): boolean {
-    if (!user.passwordLastChanged) {
-      return true
-    }
-    const ageDays = this.getPasswordAgeDays(user)
-    // 30天和60天时提醒（但未到90天强制修改）
-    return (ageDays >= 30 && ageDays < 90)
+    const level = this.getPasswordReminderLevel(user)
+    return level === 'first' || level === 'second'
   }
 
-  // 🔥 密码安全策略：获取提醒级别 'first'=30天 | 'second'=60天 | 'force'=90天 | null=不需要
+  // 🔥 密码安全策略：获取提醒级别（按配置的密码有效期分级：1/3='first' | 2/3='second' | 到期='force' | null=不需要）
   getPasswordReminderLevel(user: User): 'first' | 'second' | 'force' | null {
+    const expirationDays = this.getPasswordPolicy().expirationDays
+    if (!expirationDays || expirationDays <= 0) {
+      return null // 未启用密码有效期，不提醒不强制
+    }
     if (!user.passwordLastChanged) {
       return 'force'
     }
     const ageDays = this.getPasswordAgeDays(user)
-    if (ageDays >= 90) return 'force'
-    if (ageDays >= 60) return 'second'
-    if (ageDays >= 30) return 'first'
+    const firstThreshold = Math.ceil(expirationDays / 3)      // 例：90天 → 30天
+    const secondThreshold = Math.ceil(expirationDays * 2 / 3) // 例：90天 → 60天
+    if (ageDays >= expirationDays) return 'force'
+    if (ageDays >= secondThreshold) return 'second'
+    if (ageDays >= firstThreshold) return 'first'
     return null
   }
 
-  // 计算密码距离强制修改（90天）的剩余天数
+  // 计算密码距离强制修改的剩余天数（按配置的密码有效期）
   getPasswordRemainingDays(user: User): number {
+    const expirationDays = this.getPasswordPolicy().expirationDays
+    if (!expirationDays || expirationDays <= 0) {
+      return Infinity // 未启用密码有效期
+    }
     if (!user.passwordLastChanged) {
       return 0
     }
 
     const lastChanged = new Date(user.passwordLastChanged)
     const expirationDate = new Date(lastChanged)
-    expirationDate.setDate(expirationDate.getDate() + 90) // 90天强制修改
+    expirationDate.setDate(expirationDate.getDate() + expirationDays)
 
     const today = new Date()
     const diffTime = expirationDate.getTime() - today.getTime()

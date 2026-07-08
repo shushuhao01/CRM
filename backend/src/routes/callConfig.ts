@@ -13,9 +13,56 @@ import { AppDataSource } from '../config/database';
 import { mobileWebSocketService } from '../services/MobileWebSocketService';
 import QRCode from 'qrcode';
 import { tenantRawSQL, getCurrentTenantIdSafe } from '../utils/tenantHelpers';
+import { SECRET_MASK, isMaskedSecret, encryptSecret, decryptSecret } from '../utils/secretCipher';
 
 import { log as logger } from '../config/logger';
 const router = Router();
+
+// 各服务商配置中的敏感字段（存库加密、返回前端掩码）
+const PROVIDER_CONFIG_KEYS = ['aliyun_config', 'tencent_config', 'huawei_config'];
+const SENSITIVE_FIELDS = ['accessKeySecret', 'secretKey', 'appSecret'];
+
+/** 对配置对象中的敏感字段加密（用于入库） */
+function encryptSensitiveFields(config: Record<string, any>): Record<string, any> {
+  const result = { ...config };
+  for (const field of SENSITIVE_FIELDS) {
+    if (result[field] && typeof result[field] === 'string' && !isMaskedSecret(result[field])) {
+      result[field] = encryptSecret(result[field]);
+    }
+  }
+  return result;
+}
+
+/** 对配置对象中的敏感字段打掩码（用于返回前端） */
+function maskSensitiveFields(config: Record<string, any>): Record<string, any> {
+  const result = { ...config };
+  for (const field of SENSITIVE_FIELDS) {
+    if (result[field]) {
+      result[field] = SECRET_MASK;
+    }
+  }
+  return result;
+}
+
+/**
+ * 解析前端传来的阿里云配置：
+ * 密钥为掩码或缺失时，回退使用已保存的全局配置（解密后）
+ */
+async function resolveAliyunConfig(input: Record<string, any> | undefined): Promise<Record<string, any>> {
+  const cfg = { ...(input || {}) };
+  const needFallback = !cfg.accessKeyId || !cfg.accessKeySecret || isMaskedSecret(cfg.accessKeySecret);
+  if (needFallback) {
+    const { aliyunCallService } = await import('../services/AliyunCallService');
+    const saved = await aliyunCallService.getGlobalAliyunConfig();
+    if (saved) {
+      if (!cfg.accessKeyId) cfg.accessKeyId = saved.accessKeyId;
+      if (!cfg.accessKeySecret || isMaskedSecret(cfg.accessKeySecret)) cfg.accessKeySecret = saved.accessKeySecret;
+      if (!cfg.appId) cfg.appId = saved.appId;
+      if (!cfg.region) cfg.region = saved.region;
+    }
+  }
+  return cfg;
+}
 
 // 统一成功响应格式
 const successResponse = (data: any, message?: string) => ({
@@ -147,8 +194,13 @@ router.get('/global', async (req: Request, res: Response) => {
         value = value === 'true';
       }
 
-      if (!isAdmin && ['aliyun_config', 'tencent_config', 'huawei_config'].includes(c.config_key)) {
-        configObj[c.config_key] = { configured: Object.keys(value).length > 0 };
+      if (PROVIDER_CONFIG_KEYS.includes(c.config_key)) {
+        if (!isAdmin) {
+          configObj[c.config_key] = { configured: Object.keys(value).length > 0 };
+        } else {
+          // 管理员也不下发明文密钥，统一掩码；保存时收到掩码则保留原值
+          configObj[c.config_key] = maskSensitiveFields(value);
+        }
       } else {
         configObj[c.config_key] = value;
       }
@@ -178,32 +230,103 @@ router.put('/global', async (req: Request, res: Response) => {
     const tenantId = getCurrentTenantIdSafe() || null;
 
     for (const [key, value] of Object.entries(configs)) {
-      let configValue = value;
+      let finalValue: any = value;
+
+      // 服务商配置：密钥加密入库；前端回传掩码时保留库中原密文；
+      // 🛡️ 防误清空：空字段（空串/null/空数组）不覆盖已保存的非空值，
+      // 因此仅修改「外呼方式」等单项后保存，不会把凭证/号码池清掉
+      if (PROVIDER_CONFIG_KEYS.includes(key) && finalValue && typeof finalValue === 'object') {
+        const incoming = { ...(finalValue as Record<string, any>) };
+        const existing = await AppDataSource.query(
+          `SELECT config_value FROM global_call_config WHERE config_key = ? AND tenant_id <=> ? LIMIT 1`,
+          [key, tenantId]
+        );
+        let stored: Record<string, any> = {};
+        if (existing[0]?.config_value) {
+          try {
+            stored = typeof existing[0].config_value === 'string'
+              ? JSON.parse(existing[0].config_value) : existing[0].config_value;
+          } catch (_e) { stored = {}; }
+        }
+        for (const field of SENSITIVE_FIELDS) {
+          if (isMaskedSecret(incoming[field])) {
+            incoming[field] = stored[field] || '';
+          }
+        }
+        const merged: Record<string, any> = { ...stored };
+        for (const [field, val] of Object.entries(incoming)) {
+          const incomingEmpty = val === '' || val === null || val === undefined
+            || (Array.isArray(val) && val.length === 0);
+          const storedHasValue = stored[field] !== undefined && stored[field] !== ''
+            && stored[field] !== null
+            && !(Array.isArray(stored[field]) && stored[field].length === 0);
+          if (incomingEmpty && storedHasValue) continue; // 保留已存值
+          merged[field] = val;
+        }
+        finalValue = encryptSensitiveFields(merged);
+      }
+
+      let configValue = finalValue;
       let configType = 'string';
 
-      if (typeof value === 'object') {
-        configValue = JSON.stringify(value);
+      if (typeof finalValue === 'object') {
+        configValue = JSON.stringify(finalValue);
         configType = 'json';
-      } else if (typeof value === 'number') {
-        configValue = String(value);
+      } else if (typeof finalValue === 'number') {
+        configValue = String(finalValue);
         configType = 'number';
-      } else if (typeof value === 'boolean') {
-        configValue = value ? 'true' : 'false';
+      } else if (typeof finalValue === 'boolean') {
+        configValue = finalValue ? 'true' : 'false';
         configType = 'boolean';
       }
 
-      await AppDataSource.query(
-        `INSERT INTO global_call_config (config_key, config_value, config_type, updated_by, tenant_id)
-         VALUES (?, ?, ?, ?, ?)
-         ON DUPLICATE KEY UPDATE config_value = ?, config_type = ?, updated_by = ?, updated_at = NOW()`,
-        [key, configValue, configType, currentUser?.userId, tenantId, configValue, configType, currentUser?.userId]
+      // 🔒 NULL 安全的 upsert：tenant_id 为 NULL 时唯一索引不生效，
+      // 直接 INSERT..ON DUPLICATE 会产生重复行导致读到旧配置
+      const existRows = await AppDataSource.query(
+        `SELECT id FROM global_call_config WHERE config_key = ? AND tenant_id <=> ? LIMIT 1`,
+        [key, tenantId]
       );
+      if (existRows.length > 0) {
+        await AppDataSource.query(
+          `UPDATE global_call_config SET config_value = ?, config_type = ?, updated_by = ?, updated_at = NOW() WHERE id = ?`,
+          [configValue, configType, currentUser?.userId, existRows[0].id]
+        );
+      } else {
+        await AppDataSource.query(
+          `INSERT INTO global_call_config (config_key, config_value, config_type, updated_by, tenant_id)
+           VALUES (?, ?, ?, ?, ?)`,
+          [key, configValue, configType, currentUser?.userId, tenantId]
+        );
+      }
     }
 
-    res.json(successResponse(null, '配置已保存'));
-  } catch (error) {
+    // 保存了阿里云配置且实例ID有效时，自动确保存在一条阿里云线路（否则号码分配时无线路可选）
+    let autoCreatedLine = false;
+    const aliyunCfg = configs.aliyun_config;
+    if (aliyunCfg && typeof aliyunCfg === 'object' && aliyunCfg.appId) {
+      const existingLines = await AppDataSource.query(
+        `SELECT id, caller_number FROM call_lines WHERE provider = 'aliyun' AND tenant_id <=> ? LIMIT 1`,
+        [tenantId]
+      );
+      if (existingLines.length === 0) {
+        await AppDataSource.query(
+          `INSERT INTO call_lines (name, provider, type, caller_number, config, max_concurrent, daily_limit, description, is_enabled, status, created_by, tenant_id)
+           VALUES (?, 'aliyun', 'voip', ?, NULL, 10, 1000, ?, 1, 'active', ?, ?)`,
+          ['阿里云云联络中心', aliyunCfg.callerNumber || '', '保存网络电话配置时自动创建（凭证使用全局配置）', currentUser?.userId, tenantId]
+        );
+        autoCreatedLine = true;
+      } else if (!existingLines[0].caller_number && aliyunCfg.callerNumber) {
+        await AppDataSource.query(
+          `UPDATE call_lines SET caller_number = ?, updated_at = NOW() WHERE id = ?`,
+          [aliyunCfg.callerNumber, existingLines[0].id]
+        );
+      }
+    }
+
+    res.json(successResponse({ autoCreatedLine }, autoCreatedLine ? '配置已保存，已自动创建「阿里云云联络中心」线路' : '配置已保存'));
+  } catch (error: any) {
     logger.error('更新全局配置失败:', error);
-    res.status(500).json(errorResponse('保存配置失败'));
+    res.status(500).json(errorResponse(`保存配置失败: ${error?.message || '未知错误'}`));
   }
 });
 
@@ -259,7 +382,7 @@ router.get('/lines', async (req: Request, res: Response) => {
         successRate: line.success_rate,
         sortOrder: line.sort_order,
         description: line.description,
-        config: isAdmin ? configData : undefined,
+        config: isAdmin ? (configData ? maskSensitiveFields(configData) : configData) : undefined,
         createdAt: line.created_at,
         updatedAt: line.updated_at
       };
@@ -287,10 +410,20 @@ router.post('/lines', async (req: Request, res: Response) => {
       return res.status(400).json(errorResponse('线路名称和服务商不能为空', 400));
     }
 
+    // 密钥加密入库；新建线路时掩码值无意义，直接清空
+    let finalConfig = config;
+    if (finalConfig && typeof finalConfig === 'object') {
+      finalConfig = { ...finalConfig };
+      for (const field of SENSITIVE_FIELDS) {
+        if (isMaskedSecret(finalConfig[field])) finalConfig[field] = '';
+      }
+      finalConfig = encryptSensitiveFields(finalConfig);
+    }
+
     const result = await AppDataSource.query(
       `INSERT INTO call_lines (name, provider, type, caller_number, config, max_concurrent, daily_limit, description, is_enabled, status, created_by, tenant_id)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)`,
-      [name, provider, type || 'voip', callerNumber || '', config ? JSON.stringify(config) : null,
+      [name, provider, type || 'voip', callerNumber || '', finalConfig ? JSON.stringify(finalConfig) : null,
        maxConcurrent || 10, dailyLimit || 1000, description || '', isEnabled !== false ? 1 : 0, currentUser?.userId, getCurrentTenantIdSafe() || null]
     );
 
@@ -322,7 +455,33 @@ router.put('/lines/:id', async (req: Request, res: Response) => {
     if (provider !== undefined) { updates.push('provider = ?'); params.push(provider); }
     if (type !== undefined) { updates.push('type = ?'); params.push(type); }
     if (callerNumber !== undefined) { updates.push('caller_number = ?'); params.push(callerNumber); }
-    if (config !== undefined) { updates.push('config = ?'); params.push(JSON.stringify(config)); }
+    if (config !== undefined) {
+      // 密钥为掩码时保留库中原密文，否则加密后入库
+      let finalConfig = config;
+      if (finalConfig && typeof finalConfig === 'object') {
+        finalConfig = { ...finalConfig };
+        const hasMasked = SENSITIVE_FIELDS.some(f => isMaskedSecret(finalConfig[f]));
+        if (hasMasked) {
+          const tOld = tenantRawSQL();
+          const oldRows = await AppDataSource.query(
+            `SELECT config FROM call_lines WHERE id = ?${tOld.sql} LIMIT 1`,
+            [id, ...tOld.params]
+          );
+          let stored: Record<string, any> = {};
+          if (oldRows[0]?.config) {
+            try {
+              stored = typeof oldRows[0].config === 'string' ? JSON.parse(oldRows[0].config) : oldRows[0].config;
+            } catch (_e) { stored = {}; }
+          }
+          for (const field of SENSITIVE_FIELDS) {
+            if (isMaskedSecret(finalConfig[field])) finalConfig[field] = stored[field] || '';
+          }
+        }
+        finalConfig = encryptSensitiveFields(finalConfig);
+      }
+      updates.push('config = ?');
+      params.push(finalConfig ? JSON.stringify(finalConfig) : null);
+    }
     if (maxConcurrent !== undefined) { updates.push('max_concurrent = ?'); params.push(maxConcurrent); }
     if (dailyLimit !== undefined) { updates.push('daily_limit = ?'); params.push(dailyLimit); }
     if (description !== undefined) { updates.push('description = ?'); params.push(description); }
@@ -556,6 +715,238 @@ router.post('/lines/:id/test', async (req: Request, res: Response) => {
   }
 });
 
+/**
+ * 测试网络电话全局配置（不依赖已创建的线路）
+ * POST /call-config/voip/test
+ * Body: { provider: 'aliyun', config: { accessKeyId, accessKeySecret, appId, ... } }
+ */
+router.post('/voip/test', async (req: Request, res: Response) => {
+  try {
+    const currentUser = (req as any).user;
+
+    if (!['super_admin', 'admin'].includes(currentUser?.role)) {
+      return res.status(403).json(errorResponse('无权限测试配置', 403));
+    }
+
+    const { provider, config } = req.body;
+
+    if (provider === 'aliyun') {
+      const { aliyunCallService } = await import('../services/AliyunCallService');
+      const resolved = await resolveAliyunConfig(config);
+      const result = await aliyunCallService.testConfig(resolved);
+      return res.json(successResponse(result, result.success ? '连接测试成功' : '连接测试失败'));
+    }
+
+    // 其他服务商暂只做配置完整性校验
+    if (provider === 'tencent') {
+      const ok = config?.secretId && config?.secretKey && config?.appId;
+      return res.json(successResponse({
+        success: !!ok,
+        latency: 0,
+        message: ok ? '腾讯云配置格式验证通过（暂不支持真实连接测试）' : '腾讯云配置不完整'
+      }));
+    }
+    if (provider === 'huawei') {
+      const ok = config?.accessKey && config?.secretKey;
+      return res.json(successResponse({
+        success: !!ok,
+        latency: 0,
+        message: ok ? '华为云配置格式验证通过（暂不支持真实连接测试）' : '华为云配置不完整'
+      }));
+    }
+
+    res.status(400).json(errorResponse('不支持的服务商', 400));
+  } catch (error) {
+    logger.error('测试网络电话配置失败:', error);
+    res.status(500).json(errorResponse('测试配置失败'));
+  }
+});
+
+/**
+ * 获取阿里云云联络中心实例列表 (仅管理员)
+ * POST /call-config/aliyun/instances
+ * Body: { config?: { accessKeyId, accessKeySecret } }  未提供时使用已保存的全局配置
+ */
+router.post('/aliyun/instances', async (req: Request, res: Response) => {
+  try {
+    const currentUser = (req as any).user;
+    if (!['super_admin', 'admin'].includes(currentUser?.role)) {
+      return res.status(403).json(errorResponse('无权限', 403));
+    }
+
+    const { aliyunCallService } = await import('../services/AliyunCallService');
+    const config = await resolveAliyunConfig(req.body?.config);
+
+    const result = await aliyunCallService.listInstances(config);
+    res.json(successResponse(result, result.message));
+  } catch (error) {
+    logger.error('获取阿里云实例列表失败:', error);
+    res.status(500).json(errorResponse('获取实例列表失败'));
+  }
+});
+
+/**
+ * 获取阿里云云联络中心实例下的号码列表 (仅管理员)
+ * POST /call-config/aliyun/numbers
+ * Body: { config?: {...}, instanceId?: string }
+ */
+router.post('/aliyun/numbers', async (req: Request, res: Response) => {
+  try {
+    const currentUser = (req as any).user;
+    if (!['super_admin', 'admin'].includes(currentUser?.role)) {
+      return res.status(403).json(errorResponse('无权限', 403));
+    }
+
+    const { aliyunCallService } = await import('../services/AliyunCallService');
+    const config = await resolveAliyunConfig(req.body?.config);
+
+    const result = await aliyunCallService.listPhoneNumbers(config, req.body?.instanceId);
+    res.json(successResponse(result, result.message));
+  } catch (error) {
+    logger.error('获取阿里云号码列表失败:', error);
+    res.status(500).json(errorResponse('获取号码列表失败'));
+  }
+});
+
+/**
+ * 获取阿里云云联络中心坐席列表 (仅管理员，软电话/硬话机模式绑定坐席用)
+ * POST /call-config/aliyun/ccc-users
+ */
+router.post('/aliyun/ccc-users', async (req: Request, res: Response) => {
+  try {
+    const currentUser = (req as any).user;
+    if (!['super_admin', 'admin'].includes(currentUser?.role)) {
+      return res.status(403).json(errorResponse('无权限', 403));
+    }
+
+    const { aliyunCallService } = await import('../services/AliyunCallService');
+    const config = await resolveAliyunConfig(req.body?.config);
+    const result = await aliyunCallService.listCccUsers(config, req.body?.instanceId);
+    res.json(successResponse(result, result.message));
+  } catch (error) {
+    logger.error('获取阿里云坐席列表失败:', error);
+    res.status(500).json(errorResponse('获取坐席列表失败'));
+  }
+});
+
+/**
+ * 获取坐席工作台地址 (登录后员工在工作台接听软电话/硬话机)
+ * GET /call-config/aliyun/workbench-url
+ */
+router.get('/aliyun/workbench-url', async (req: Request, res: Response) => {
+  try {
+    const { aliyunCallService } = await import('../services/AliyunCallService');
+    const config = await resolveAliyunConfig(undefined);
+    const result = await aliyunCallService.getWorkbenchUrl(config);
+    res.json(successResponse(result, result.message));
+  } catch (error) {
+    logger.error('获取坐席工作台地址失败:', error);
+    res.status(500).json(errorResponse('获取坐席工作台地址失败'));
+  }
+});
+
+/**
+ * CRM 内接听/拒接云联络中心来电（软电话模式，需坐席已登录工作台）
+ * POST /call-config/aliyun/inbound-control
+ * Body: { callId: string, action: 'answer' | 'reject' }
+ */
+router.post('/aliyun/inbound-control', async (req: Request, res: Response) => {
+  try {
+    const currentUser = (req as any).user;
+    const userId = String(currentUser?.userId || currentUser?.id);
+    const { callId, action } = req.body;
+
+    if (!callId || !['answer', 'reject'].includes(action)) {
+      return res.status(400).json(errorResponse('参数无效：需要 callId 和 action(answer/reject)', 400));
+    }
+
+    const { aliyunCallService } = await import('../services/AliyunCallService');
+    const result = await aliyunCallService.controlInboundCall(String(callId), action, userId);
+
+    if (result.success) {
+      res.json(successResponse(null, result.message));
+    } else {
+      res.status(400).json(errorResponse(result.message, 400));
+    }
+  } catch (error) {
+    logger.error('控制云联络中心来电失败:', error);
+    res.status(500).json(errorResponse('控制来电失败'));
+  }
+});
+
+/**
+ * 测试呼入：模拟一通来电，走真实链路（创建通话记录 -> WebSocket推送 -> 前端弹窗）
+ * POST /call-config/test-incoming
+ * 用于验证呼入弹窗/接听/拒接/忙碌拦截是否正常，无需真实打电话
+ */
+router.post('/test-incoming', async (req: Request, res: Response) => {
+  try {
+    const currentUser = (req as any).user;
+    const userId = String(currentUser?.userId || currentUser?.id);
+    const tenantId = getCurrentTenantIdSafe() || null;
+    const t = tenantRawSQL();
+
+    // 与真实呼入一致：检查坐席状态，忙碌时记为未接不弹窗
+    let agentBusy = false;
+    try {
+      const rows = await AppDataSource.query(
+        `SELECT agent_status FROM users WHERE id = ?${t.sql} LIMIT 1`,
+        [userId, ...t.params]
+      );
+      agentBusy = rows[0]?.agent_status === 'busy';
+    } catch (_e) { /* 列不存在时忽略 */ }
+
+    const callId = `TEST-IN-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const testPhone = '13800138000';
+    await AppDataSource.query(
+      `INSERT INTO call_records
+       (id, customer_name, customer_phone, call_type, call_status, call_method, call_direction,
+        inbound_source, user_id, user_name, notes, start_time, created_at, tenant_id)
+       VALUES (?, '测试来电客户', ?, 'inbound', ?, 'sip', 'in', 'sip', ?, ?, '测试呼入（系统模拟）', NOW(), NOW(), ?)`,
+      [callId, testPhone, agentBusy ? 'missed' : 'ringing', userId, currentUser?.name || '', tenantId]
+    );
+
+    if (agentBusy) {
+      if ((global as any).webSocketService) {
+        (global as any).webSocketService.sendToUser(userId, 'CALL_MISSED', {
+          callId,
+          callerNumber: testPhone,
+          customerName: '测试来电客户',
+          reason: 'busy',
+          message: '忙碌期间有未接来电：测试来电客户（模拟）',
+          timestamp: new Date().toISOString()
+        });
+      }
+      return res.json(successResponse({ callId, agentBusy: true }, '当前为忙碌状态：测试来电已记为未接并推送提醒（与真实来电行为一致）'));
+    }
+
+    if (!(global as any).webSocketService) {
+      return res.status(500).json(errorResponse('WebSocket服务未启动，无法推送测试来电'));
+    }
+    (global as any).webSocketService.sendToUser(userId, 'CALL_INCOMING', {
+      callId,
+      callerNumber: testPhone,
+      calledNumber: '',
+      callSource: 'sip',
+      customerInfo: {
+        customerId: null,
+        customerName: '测试来电客户',
+        customerLevel: 'normal',
+        company: '系统测试',
+        isNewCustomer: false,
+        tags: []
+      },
+      deviceInfo: { trunkName: '测试线路' },
+      timestamp: new Date().toISOString()
+    });
+
+    res.json(successResponse({ callId, agentBusy: false }, '测试来电已推送，请留意来电弹窗'));
+  } catch (error) {
+    logger.error('测试呼入失败:', error);
+    res.status(500).json(errorResponse('测试呼入失败'));
+  }
+});
+
 // ==================== 用户线路分配 (仅管理员) ====================
 
 /**
@@ -597,6 +988,10 @@ router.get('/assignments', async (req: Request, res: Response) => {
       lineName: a.line_name,
       provider: a.provider,
       callerNumber: a.caller_number || a.line_caller_number,
+      agentPhone: a.agent_phone || null,
+      cccUserId: a.ccc_user_id || null,
+      agentExtension: a.agent_extension || null,
+      sipExtension: a.sip_extension || null,
       isDefault: a.is_default === 1,
       dailyLimit: a.daily_limit,
       isActive: a.is_active === 1,
@@ -621,32 +1016,166 @@ router.post('/assignments', async (req: Request, res: Response) => {
       return res.status(403).json(errorResponse('无权限分配线路', 403));
     }
 
-    const { userId, lineId, callerNumber, isDefault, dailyLimit } = req.body;
+    const { userId, lineId, callerNumber, agentPhone, cccUserId, isDefault, dailyLimit } = req.body;
+    let agentExtension = req.body?.agentExtension || null;
+    let sipExtension = req.body?.sipExtension || null;
 
     if (!userId || !lineId) {
       return res.status(400).json(errorResponse('用户ID和线路ID不能为空', 400));
+    }
+
+    // 绑定了坐席账号但没传分机号时，自动从阿里云查询坐席的软电话/SIP话机分机号
+    if (cccUserId && (!agentExtension || !sipExtension)) {
+      try {
+        const { aliyunCallService } = await import('../services/AliyunCallService');
+        const config = await resolveAliyunConfig(undefined);
+        const exts = await aliyunCallService.getCccUserExtensions(config, cccUserId);
+        agentExtension = agentExtension || exts.extension;
+        sipExtension = sipExtension || exts.sipExtension;
+      } catch (e: any) {
+        logger.warn('[assignments] 自动获取坐席分机号失败（不影响分配）:', e.message);
+      }
     }
 
     // 🔥 租户隔离
     const t = tenantRawSQL();
     const tenantId = getCurrentTenantIdSafe() || null;
 
+    // 号码独占校验：同一主叫号码只能分配给一个成员（取消/停用分配后释放）
+    if (callerNumber) {
+      const tOcc = tenantRawSQL('a.');
+      const occupied = await AppDataSource.query(
+        `SELECT a.id, a.user_id, u.name, u.real_name
+         FROM user_line_assignments a
+         LEFT JOIN users u ON a.user_id = u.id
+         WHERE a.caller_number = ? AND a.is_active = 1 AND a.user_id != ?${tOcc.sql}
+         LIMIT 1`,
+        [callerNumber, String(userId), ...tOcc.params]
+      );
+      if (occupied.length > 0) {
+        const ownerName = occupied[0].real_name || occupied[0].name || occupied[0].user_id;
+        return res.status(400).json(errorResponse(`号码 ${callerNumber} 已分配给 ${ownerName}，请先取消其分配后再操作`, 400));
+      }
+    }
+
     if (isDefault) {
       await AppDataSource.query(`UPDATE user_line_assignments SET is_default = 0 WHERE user_id = ?${t.sql}`, [userId, ...t.params]);
     }
 
     await AppDataSource.query(
-      `INSERT INTO user_line_assignments (user_id, line_id, caller_number, is_default, daily_limit, assigned_by, assigned_at, tenant_id)
-       VALUES (?, ?, ?, ?, ?, ?, NOW(), ?)
-       ON DUPLICATE KEY UPDATE caller_number = ?, is_default = ?, daily_limit = ?, is_active = 1, assigned_by = ?, assigned_at = NOW()`,
-      [userId, lineId, callerNumber || null, isDefault ? 1 : 0, dailyLimit || 0, currentUser?.userId, tenantId,
-       callerNumber || null, isDefault ? 1 : 0, dailyLimit || 0, currentUser?.userId]
+      `INSERT INTO user_line_assignments (user_id, line_id, caller_number, agent_phone, ccc_user_id, agent_extension, sip_extension, is_default, daily_limit, assigned_by, assigned_at, tenant_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?)
+       ON DUPLICATE KEY UPDATE caller_number = ?, agent_phone = ?, ccc_user_id = ?, agent_extension = ?, sip_extension = ?, is_default = ?, daily_limit = ?, is_active = 1, assigned_by = ?, assigned_at = NOW()`,
+      [userId, lineId, callerNumber || null, agentPhone || null, cccUserId || null, agentExtension, sipExtension, isDefault ? 1 : 0, dailyLimit || 0, currentUser?.userId, tenantId,
+       callerNumber || null, agentPhone || null, cccUserId || null, agentExtension, sipExtension, isDefault ? 1 : 0, dailyLimit || 0, currentUser?.userId]
     );
 
-    res.json(successResponse(null, '线路分配成功'));
+    res.json(successResponse({ agentExtension, sipExtension }, agentExtension ? `线路分配成功，坐席分机号 ${agentExtension}` : '线路分配成功'));
   } catch (error) {
     logger.error('分配线路失败:', error);
     res.status(500).json(errorResponse('分配线路失败'));
+  }
+});
+
+/**
+ * 编辑用户线路分配 / 启用禁用 (仅管理员)
+ * 支持部分更新：只传需要修改的字段
+ */
+router.put('/assignments/:id', async (req: Request, res: Response) => {
+  try {
+    const currentUser = (req as any).user;
+
+    if (!['super_admin', 'admin'].includes(currentUser?.role)) {
+      return res.status(403).json(errorResponse('无权限修改分配', 403));
+    }
+
+    const { id } = req.params;
+    const t = tenantRawSQL();
+    const rows = await AppDataSource.query(
+      `SELECT * FROM user_line_assignments WHERE id = ?${t.sql} LIMIT 1`,
+      [id, ...t.params]
+    );
+    if (rows.length === 0) {
+      return res.status(404).json(errorResponse('分配记录不存在', 404));
+    }
+    const existing = rows[0];
+
+    const { lineId, callerNumber, agentPhone, cccUserId, dailyLimit, isDefault, isActive } = req.body;
+    let agentExtension = req.body?.agentExtension;
+    let sipExtension = req.body?.sipExtension;
+
+    // 换绑了坐席账号但没传分机号时，自动从阿里云查询
+    const newCccUserId = cccUserId !== undefined ? (cccUserId || null) : existing.ccc_user_id;
+    if (newCccUserId && newCccUserId !== existing.ccc_user_id && !agentExtension && !sipExtension) {
+      try {
+        const { aliyunCallService } = await import('../services/AliyunCallService');
+        const config = await resolveAliyunConfig(undefined);
+        const exts = await aliyunCallService.getCccUserExtensions(config, newCccUserId);
+        agentExtension = exts.extension;
+        sipExtension = exts.sipExtension;
+      } catch (e: any) {
+        logger.warn('[assignments] 自动获取坐席分机号失败（不影响保存）:', e.message);
+      }
+    }
+
+    // 号码独占校验：换号码、或重新启用时，号码不能被其他成员的启用分配占用
+    const newCallerNumber = callerNumber !== undefined ? (callerNumber || null) : existing.caller_number;
+    if (newCallerNumber && (newCallerNumber !== existing.caller_number || isActive === true)) {
+      const tOcc = tenantRawSQL('a.');
+      const occupied = await AppDataSource.query(
+        `SELECT a.id, u.name, u.real_name
+         FROM user_line_assignments a
+         LEFT JOIN users u ON a.user_id = u.id
+         WHERE a.caller_number = ? AND a.is_active = 1 AND a.id != ?${tOcc.sql}
+         LIMIT 1`,
+        [newCallerNumber, id, ...tOcc.params]
+      );
+      if (occupied.length > 0) {
+        const ownerName = occupied[0].real_name || occupied[0].name || '其他成员';
+        return res.status(400).json(errorResponse(`号码 ${newCallerNumber} 已分配给 ${ownerName}，请先取消或禁用其分配`, 400));
+      }
+    }
+
+    if (isDefault === true) {
+      await AppDataSource.query(
+        `UPDATE user_line_assignments SET is_default = 0 WHERE user_id = ?${t.sql}`,
+        [existing.user_id, ...t.params]
+      );
+    }
+
+    const sets: string[] = [];
+    const params: any[] = [];
+    const applyField = (column: string, value: any) => {
+      if (value === undefined) return;
+      sets.push(`${column} = ?`);
+      params.push(value);
+    };
+    applyField('line_id', lineId);
+    applyField('caller_number', callerNumber !== undefined ? (callerNumber || null) : undefined);
+    applyField('agent_phone', agentPhone !== undefined ? (agentPhone || null) : undefined);
+    applyField('ccc_user_id', cccUserId !== undefined ? (cccUserId || null) : undefined);
+    applyField('agent_extension', agentExtension !== undefined ? (agentExtension || null) : undefined);
+    applyField('sip_extension', sipExtension !== undefined ? (sipExtension || null) : undefined);
+    applyField('daily_limit', dailyLimit);
+    if (isDefault !== undefined) applyField('is_default', isDefault ? 1 : 0);
+    if (isActive !== undefined) applyField('is_active', isActive ? 1 : 0);
+
+    if (sets.length === 0) {
+      return res.status(400).json(errorResponse('没有需要更新的字段', 400));
+    }
+
+    await AppDataSource.query(
+      `UPDATE user_line_assignments SET ${sets.join(', ')}, updated_at = NOW() WHERE id = ?`,
+      [...params, id]
+    );
+
+    const message = isActive === false ? '分配已禁用，号码已释放，员工不再看到该线路'
+      : isActive === true ? '分配已启用'
+      : '分配已更新';
+    res.json(successResponse(null, message));
+  } catch (error) {
+    logger.error('更新线路分配失败:', error);
+    res.status(500).json(errorResponse('更新线路分配失败'));
   }
 });
 
@@ -713,6 +1242,10 @@ router.get('/my-lines', async (req: Request, res: Response) => {
         provider: a.provider,
         type: a.type,
         callerNumber: a.caller_number || a.line_caller_number,
+        agentPhone: a.agent_phone || null,
+        cccUserId: a.ccc_user_id || null,
+        agentExtension: a.agent_extension || null,
+        sipExtension: a.sip_extension || null,
         isDefault: a.is_default === 1,
         dailyLimit: a.daily_limit
       })),
@@ -1168,8 +1701,8 @@ router.post('/lines/call', async (req: Request, res: Response) => {
             callId: callResult.callId,
             providerCallId,
             status: 'calling',
-            message: `正在通过阿里云线路 ${assignment.line_name} 发起呼叫`
-          }));
+            message: callResult.message || `正在通过阿里云线路 ${assignment.line_name} 发起呼叫`
+          }, callResult.message));
         }
       } catch (err: any) {
         logger.error('阿里云外呼异常:', err);
@@ -1334,6 +1867,18 @@ router.put('/agent-status', async (req: Request, res: Response) => {
         changedAt: new Date().toISOString()
       });
     }
+
+    // 同步到阿里云云联络中心（就绪->在线可呼入，忙碌->小休不接来电）
+    // 异步执行不阻塞响应；坐席未登录工作台时同步会失败，只记日志，CRM侧拦截依然生效
+    (async () => {
+      try {
+        const { aliyunCallService } = await import('../services/AliyunCallService');
+        const syncResult = await aliyunCallService.syncAgentServiceStatus(userId, status);
+        logger.info(`[CallConfig] 云联络中心状态同步(${userId} -> ${status}): ${syncResult.message}`);
+      } catch (e: any) {
+        logger.warn('[CallConfig] 云联络中心状态同步异常:', e.message);
+      }
+    })();
 
     logger.info(`[CallConfig] 坐席状态变更: userId=${userId}, status=${status}, reason=${reason || '无'}`);
     res.json(successResponse({ status, changedAt: new Date().toISOString() }, `状态已切换为 ${status}`));

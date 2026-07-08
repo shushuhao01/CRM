@@ -103,8 +103,21 @@ function fromBase64(base64: string): string {
   }
 }
 
+/** 字符串 -> UTF-8 字节串（每个字符码 ≤ 255，保证 Base64 无损） */
+function toUtf8Bytes(str: string): string {
+  return unescape(encodeURIComponent(str))
+}
+
+/** UTF-8 字节串 -> 字符串 */
+function fromUtf8Bytes(bytes: string): string {
+  return decodeURIComponent(escape(bytes))
+}
+
 /**
- * 加密数据
+ * 加密数据（ENC2 版本：先转UTF-8字节再异或，支持中文等多字节字符）
+ *
+ * 历史BUG说明：旧版 ENC: 直接对原字符串异或后转Base64，中文字符码 > 255
+ * 会在 Base64 转换时被截断，导致解密后 JSON.parse 失败（用户信息丢失、显示"未登录"）。
  * @param plainText 明文数据
  * @returns 加密后的字符串（Base64编码）
  */
@@ -112,9 +125,8 @@ export function encrypt(plainText: string): string {
   if (!plainText) return ''
   try {
     const key = getDeviceKey()
-    const encrypted = xorCipher(plainText, key)
-    // 添加校验前缀，用于解密时验证
-    return 'ENC:' + toBase64(encrypted)
+    const encrypted = xorCipher(toUtf8Bytes(plainText), key)
+    return 'ENC2:' + toBase64(encrypted)
   } catch (_e) {
     console.warn('[Crypto] 加密失败，降级为明文存储')
     return plainText
@@ -122,26 +134,31 @@ export function encrypt(plainText: string): string {
 }
 
 /**
- * 解密数据
+ * 解密数据（兼容 ENC2 新格式 / ENC 旧格式 / 明文）
  * @param encryptedText 加密后的数据
  * @returns 解密后的明文
  */
 export function decrypt(encryptedText: string): string {
   if (!encryptedText) return ''
   try {
-    // 检查是否为加密数据（带 ENC: 前缀）
-    if (!encryptedText.startsWith('ENC:')) {
-      // 兼容旧版明文数据，直接返回
-      return encryptedText
+    // 新格式：UTF-8安全
+    if (encryptedText.startsWith('ENC2:')) {
+      const key = getDeviceKey()
+      const decoded = fromBase64(encryptedText.substring(5))
+      return fromUtf8Bytes(xorCipher(decoded, key))
     }
-    const base64Data = encryptedText.substring(4)
-    const key = getDeviceKey()
-    const decoded = fromBase64(base64Data)
-    return xorCipher(decoded, key)
+    // 旧格式：仅ASCII数据可正确还原（token等）；含中文的数据已不可恢复，返回后由调用方容错
+    if (encryptedText.startsWith('ENC:')) {
+      const base64Data = encryptedText.substring(4)
+      const key = getDeviceKey()
+      const decoded = fromBase64(base64Data)
+      return xorCipher(decoded, key)
+    }
+    // 明文数据，直接返回
+    return encryptedText
   } catch (_e) {
     console.warn('[Crypto] 解密失败，返回原始数据')
-    // 解密失败时返回原始数据（可能是旧版明文）
-    return encryptedText.startsWith('ENC:') ? '' : encryptedText
+    return (encryptedText.startsWith('ENC:') || encryptedText.startsWith('ENC2:')) ? '' : encryptedText
   }
 }
 

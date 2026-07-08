@@ -80,6 +80,12 @@ const silentReLogin = (): Promise<string | null> => {
   return refreshPromise
 }
 
+/**
+ * 对外暴露的静默重登：用于本地用户信息损坏/缺失时自愈
+ * （成功后 setLoginInfo 会用新格式重新加密保存，修复损坏的存储）
+ */
+export const trySilentReLogin = silentReLogin
+
 // 请求封装
 export const request = <T = any>(options: RequestOptions): Promise<T> => {
   const serverStore = useServerStore()

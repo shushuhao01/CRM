@@ -23,6 +23,13 @@
     <!-- Phase 8: 企微独立窗口布局 -->
     <WecomStandaloneLayout v-else-if="isStandaloneLayout" />
 
+    <!-- 来电弹屏极简布局（嵌入阿里云坐席工作台 iframe，无CRM导航） -->
+    <div v-else-if="isCallPopupPage" class="wecom-sidebar-standalone">
+      <ErrorBoundary>
+        <router-view />
+      </ErrorBoundary>
+    </div>
+
     <!-- 主应用布局 -->
     <el-container v-else class="layout-container">
       <!-- 顶部导航栏 -->
@@ -361,9 +368,12 @@
       :call-in-progress-visible="globalIncoming.callInProgressVisible.value"
       :current-call-data="globalIncoming.currentCallData.value"
       :is-minimized="globalIncoming.isMinimized.value"
+      :incoming-minimized="globalIncoming.incomingMinimized.value"
       @answer="globalIncoming.answerCall()"
       @reject="globalIncoming.rejectCall()"
       @dismiss="globalIncoming.dismissCall()"
+      @minimize="globalIncoming.minimizeIncoming()"
+      @restore-incoming="globalIncoming.restoreIncoming()"
       @view-customer="globalIncoming.viewCustomerDetail()"
       @add-new-customer="globalIncoming.addNewCustomer()"
       @go-call-management="globalIncoming.goToCallManagement()"
@@ -524,6 +534,11 @@ const handleOpenContactServiceDialog = () => {
   // 🔥 企微侧边栏路由（极简布局，完全独立于CRM主布局，不依赖CRM登录态）
   const isWecomSidebarPage = computed(() => {
     return route.path.startsWith('/wecom-sidebar')
+  })
+
+  // 来电弹屏路由（极简布局，嵌入阿里云坐席工作台iframe，复用CRM登录态）
+  const isCallPopupPage = computed(() => {
+    return route.path.startsWith('/call-popup')
   })
 
   const isLoginPage = computed(() => {
