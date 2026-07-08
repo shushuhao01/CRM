@@ -237,11 +237,10 @@ class WebSocketService {
       this.emitEvent('call:status', data)
     })
 
-    // 通话已接通
+    // 通话已接通（只发 call:connected，消费方均已监听该事件；重复再发 call:status 会导致提示弹两次）
     this.socket.on('CALL_CONNECTED', (data: any) => {
       console.log('[WebSocket] 📞 通话已接通:', data)
       this.emitEvent('call:connected', data)
-      this.emitEvent('call:status', { ...data, status: 'connected' })
     })
 
     // 通话结束
@@ -274,9 +273,7 @@ class WebSocketService {
       this.emitEvent('call:incoming', data)
 
       // 播放来电铃声
-      this.playIncomingRingtone()
-
-      // 浏览器通知由全局 useIncomingCall composable 统一管理
+      // 铃声与浏览器通知由 useIncomingCall / CallManagement 统一管理（WebAudio合成铃声，循环播放直到接听/挂断）
     })
 
     // 离线未接来电补录通知
@@ -298,11 +295,7 @@ class WebSocketService {
       this.emitEvent('call:status', data)
     })
 
-    // 后端推送的通话结束（CALL_ENDED 是后端 sendToUser 使用的事件名）
-    this.socket.on('CALL_ENDED', (data: any) => {
-      console.log('[WebSocket] 📱 通话结束:', data)
-      this.emitEvent('call:ended', data)
-    })
+    // 注意：CALL_ENDED 已在上方注册，此处不可重复注册（否则一次挂断触发两次 call:ended，提示弹两条）
 
     // 兼容旧事件名
     this.socket.on('mobile:call:status', (data: any) => {

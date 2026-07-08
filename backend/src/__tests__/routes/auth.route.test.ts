@@ -74,6 +74,32 @@ jest.mock('../../utils/getClientIp', () => ({
   getClientIp: jest.fn().mockReturnValue('127.0.0.1')
 }))
 
+// 🔥 安全策略服务 mock（登录锁定/IP白名单/密码有效期均由策略控制）
+const mockGetPolicy = jest.fn()
+jest.mock('../../services/SecurityPolicyService', () => ({
+  securityPolicyService: {
+    getPolicy: mockGetPolicy,
+    validatePassword: jest.fn().mockReturnValue({ valid: true, message: '' }),
+    isIpAllowed: jest.fn().mockReturnValue(true),
+    isPasswordExpired: jest.fn().mockReturnValue(false),
+    clearCache: jest.fn(),
+  }
+}))
+
+/** 默认安全策略：启用登录失败锁定（5次/30分钟），与生产常用配置一致 */
+const defaultPolicy = {
+  passwordMinLength: 6,
+  passwordComplexity: [],
+  passwordExpireDays: 0,
+  loginFailLock: true,
+  maxLoginFails: 5,
+  lockDuration: 30,
+  sessionTimeout: 120,
+  forceHttps: false,
+  ipWhitelist: '',
+  source: 'default',
+}
+
 jest.mock('../../middleware/errorHandler', () => {
   class BusinessError extends Error {
     code: string
@@ -157,6 +183,7 @@ describe('UserController', () => {
 
   beforeEach(() => {
     jest.clearAllMocks()
+    mockGetPolicy.mockResolvedValue(defaultPolicy)
     controller = new UserController()
   })
 
