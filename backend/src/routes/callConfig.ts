@@ -79,6 +79,24 @@ const errorResponse = (message: string, code = 500) => ({
   message
 });
 
+/**
+ * 把数据库错误翻译成可定位的提示（生产环境升级后常见：缺表/缺列）
+ * 返回 null 表示不是已知的结构性错误
+ */
+const dbErrorHint = (error: any): string | null => {
+  const msg = String(error?.message || '');
+  if (/doesn't exist|ER_NO_SUCH_TABLE/i.test(msg)) {
+    return `数据表缺失(${msg.match(/Table '([^']+)'/)?.[1] || '未知表'})，请重启后端服务触发自动迁移，或执行 database-migrations 目录下的SQL`;
+  }
+  if (/Unknown column/i.test(msg)) {
+    return `数据表缺少字段(${msg.match(/Unknown column '([^']+)'/)?.[1] || '未知字段'})，请重启后端服务触发自动迁移，或执行 database-migrations 目录下的SQL`;
+  }
+  if (/Data too long/i.test(msg)) {
+    return `字段长度不足: ${msg}`;
+  }
+  return null;
+};
+
 // ==================== 无需认证的接口 ====================
 
 /**
@@ -389,7 +407,8 @@ router.get('/lines', async (req: Request, res: Response) => {
     })));
   } catch (error) {
     logger.error('获取线路列表失败:', error);
-    res.status(500).json(errorResponse('获取线路列表失败'));
+    const hint = dbErrorHint(error);
+    res.status(500).json(errorResponse(hint ? `获取线路列表失败：${hint}` : '获取线路列表失败'));
   }
 });
 
@@ -1001,7 +1020,8 @@ router.get('/assignments', async (req: Request, res: Response) => {
     }))));
   } catch (error) {
     logger.error('获取线路分配失败:', error);
-    res.status(500).json(errorResponse('获取线路分配失败'));
+    const hint = dbErrorHint(error);
+    res.status(500).json(errorResponse(hint ? `获取线路分配失败：${hint}` : '获取线路分配失败'));
   }
 });
 
@@ -1073,7 +1093,8 @@ router.post('/assignments', async (req: Request, res: Response) => {
     res.json(successResponse({ agentExtension, sipExtension }, agentExtension ? `线路分配成功，坐席分机号 ${agentExtension}` : '线路分配成功'));
   } catch (error) {
     logger.error('分配线路失败:', error);
-    res.status(500).json(errorResponse('分配线路失败'));
+    const hint = dbErrorHint(error);
+    res.status(500).json(errorResponse(hint ? `分配线路失败：${hint}` : '分配线路失败'));
   }
 });
 
@@ -1175,7 +1196,8 @@ router.put('/assignments/:id', async (req: Request, res: Response) => {
     res.json(successResponse(null, message));
   } catch (error) {
     logger.error('更新线路分配失败:', error);
-    res.status(500).json(errorResponse('更新线路分配失败'));
+    const hint = dbErrorHint(error);
+    res.status(500).json(errorResponse(hint ? `更新线路分配失败：${hint}` : '更新线路分配失败'));
   }
 });
 

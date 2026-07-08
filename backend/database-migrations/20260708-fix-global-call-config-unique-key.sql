@@ -1,5 +1,6 @@
 -- 修复 global_call_config 唯一键：旧库为 config_key 单列唯一，
 -- SaaS多租户下每个租户需要各自一份配置，必须改为 (config_key, tenant_id) 联合唯一
+DROP PROCEDURE IF EXISTS _fix_gcc_unique_key;
 DELIMITER $$
 CREATE PROCEDURE _fix_gcc_unique_key()
 BEGIN
