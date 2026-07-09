@@ -497,7 +497,7 @@ export function setPrimaryWorkPhone(phoneId: number): Promise<ApiResponse> {
  * 后端会通过WebSocket通知APP发起呼叫
  */
 export function initiateWorkPhoneCall(data: {
-  workPhoneId: number | null
+  workPhoneId: number | string | null
   targetPhone: string
   customerId?: string
   customerName?: string

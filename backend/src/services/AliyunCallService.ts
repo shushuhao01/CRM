@@ -1280,6 +1280,92 @@ class AliyunCallService {
   }
 
   /**
+   * CRM 点"结束通话"时尝试远程挂断云联络中心通话（尽力而为，失败不影响本地结束）
+   *
+   * 适用：软电话/SIP话机外呼、CRM内已接听的呼入（这些通话有 JobId 且坐席在线可控）
+   * 不适用：双呼（back2back）模式——两条腿都是普通电话，阿里云不支持远程强挂，
+   *         ReleaseCall 会返回非 OK，调用方据此提示"请任一方挂机"
+   */
+  async tryReleaseCall(callId: string, userId: string): Promise<{ attempted: boolean; success: boolean; message: string }> {
+    try {
+      // 1. 取记录：JobId + 归属判定字段
+      const t = tenantRawSQL();
+      const records = await AppDataSource.query(
+        `SELECT provider_call_id, line_id, inbound_source FROM call_records WHERE id = ?${t.sql} LIMIT 1`,
+        [callId, ...t.params]
+      );
+      if (records.length === 0) {
+        return { attempted: false, success: false, message: '通话记录不存在' };
+      }
+      const record = records[0];
+      const jobId = record.provider_call_id;
+      if (!jobId) {
+        return { attempted: false, success: false, message: '无云端通话ID，无法远程挂断（请任一方挂机结束）' };
+      }
+
+      // 2. 判定是否云联络中心通话：呼入来源 aliyun，或外呼线路 provider=aliyun
+      let isAliyun = record.inbound_source === 'aliyun';
+      const lineId = record.line_id ? String(record.line_id) : '';
+      if (!isAliyun && lineId) {
+        const tl = tenantRawSQL();
+        const lines = await AppDataSource.query(
+          `SELECT provider FROM call_lines WHERE id = ?${tl.sql} LIMIT 1`,
+          [lineId, ...tl.params]
+        );
+        isAliyun = lines.length > 0 && lines[0].provider === 'aliyun';
+      }
+      if (!isAliyun) {
+        return { attempted: false, success: false, message: '非云联络中心通话' };
+      }
+
+      // 3. 坐席绑定 + 线路配置（与呼入拒接一致）
+      const tA = tenantRawSQL('ula.');
+      const assignments = await AppDataSource.query(
+        `SELECT ula.ccc_user_id, ula.line_id
+         FROM user_line_assignments ula
+         JOIN call_lines cl ON ula.line_id = cl.id
+         WHERE ula.user_id = ? AND ula.is_active = 1 AND ula.ccc_user_id IS NOT NULL AND ula.ccc_user_id != ''
+           AND cl.provider = 'aliyun' AND cl.is_enabled = 1${tA.sql}
+         LIMIT 1`,
+        [String(userId), ...tA.params]
+      );
+      if (assignments.length === 0) {
+        return { attempted: false, success: false, message: '未绑定云联络中心坐席账号，无法远程挂断' };
+      }
+      const cccUserId = assignments[0].ccc_user_id;
+      const config = await this.getLineConfig(lineId || String(assignments[0].line_id));
+      if (!config || !config.accessKeyId || !config.appId) {
+        return { attempted: false, success: false, message: '线路配置不完整，无法远程挂断' };
+      }
+
+      // 4. ReleaseCall（不重试、短超时——结束通话的UI不宜久等）
+      const { CCC, TeaUtil } = this.loadSdk();
+      const client = this.createClient(config);
+      const runtime = new TeaUtil.RuntimeOptions({ readTimeout: 8000, connectTimeout: 5000, autoretry: false, maxAttempts: 1 });
+      const request = new CCC.ReleaseCallRequest({ instanceId: config.appId, userId: cccUserId, jobId });
+      const response = await client.releaseCallWithOptions(request, runtime);
+      const body = response?.body;
+
+      if (body?.code === 'OK') {
+        log.info(`[AliyunCallService] 已远程挂断云联络中心通话 ${callId} (jobId=${jobId})`);
+        return { attempted: true, success: true, message: '云联络中心已挂断' };
+      }
+      log.warn(`[AliyunCallService] 远程挂断未成功(${callId}): ${body?.code} ${body?.message || ''}`);
+      const isDoubleCallHint = /NotSignedIn|NoDevice|InvalidState|NotExist/i.test(String(body?.code || ''));
+      return {
+        attempted: true,
+        success: false,
+        message: isDoubleCallHint
+          ? '双呼/坐席离线场景不支持远程挂断，请任一方挂机结束'
+          : `云联络中心返回: ${body?.code || '未知'} ${body?.message || ''}`,
+      };
+    } catch (error: any) {
+      log.warn(`[AliyunCallService] 远程挂断异常(${callId}):`, error.message);
+      return { attempted: true, success: false, message: this.friendlyApiError(error) };
+    }
+  }
+
+  /**
    * 回退方案：通过 GetInstance 的 numberList 获取实例号码
    * （GetInstance 不要求调用者是实例成员）
    */

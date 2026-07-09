@@ -150,6 +150,9 @@
               <el-icon><Phone /></el-icon> 网络电话: {{ currentCallData.lineName || '未知线路' }}
             </el-tag>
           </div>
+          <p v-if="currentCallData.callMethod === 'network_phone'" class="hangup-hint">
+            点击"结束通话"将尝试云端挂断；双呼模式下请任一方挂机结束
+          </p>
         </div>
         <div class="call-controls">
           <el-button type="danger" size="large" :icon="TurnOff" @click="$emit('end-call-click')" class="end-call-btn">
@@ -342,6 +345,7 @@ onUnmounted(() => {
 .call-window-content .caller-phone { font-size: 14px; color: #606266; margin: 0 0 8px 0; }
 .call-window-content .call-method-info { margin-top: 6px; }
 .call-window-content .call-method-info .el-tag { display: inline-flex; align-items: center; gap: 4px; }
+.call-window-content .hangup-hint { font-size: 12px; color: #909399; margin: 6px 0 0 0; line-height: 1.5; }
 .call-window-content .call-controls { margin-bottom: 16px; }
 .call-window-content .end-call-btn { width: 140px; height: 44px; font-size: 15px; border-radius: 22px; font-weight: 500; }
 .call-window-content .call-notes { margin-top: 12px; text-align: left; }

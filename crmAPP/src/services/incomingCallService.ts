@@ -1660,8 +1660,9 @@ class IncomingCallService {
       })
     }, 300)
 
-    // 异步处理录音
-    this.processRecordingAsync(info, duration, endTime)
+    // 异步处理录音（传入统一的 callId：info.callId 缺失时用本地兜底ID，
+    // 与上面 reportCallEnd 上报的记录一致，录音仍可关联）
+    this.processRecordingAsync(info, duration, endTime, callId)
   }
 
   private async reportIncomingToServer(callerNumber: string) {
@@ -1956,10 +1957,12 @@ class IncomingCallService {
   private async processRecordingAsync(
     info: IncomingCallInfo,
     duration: number,
-    endTime: number
+    endTime: number,
+    fallbackCallId?: string
   ) {
-    if (duration <= 0 || !info.callId) {
-      console.log('[IncomingCallService] 未接通或无 callId，跳过录音')
+    const callId = info.callId || fallbackCallId
+    if (!callId) {
+      console.log('[IncomingCallService] 无可用 callId，跳过录音')
       return
     }
 
@@ -1969,23 +1972,33 @@ class IncomingCallService {
       return
     }
 
-    console.log('[IncomingCallService] 开始异步处理录音...')
+    // duration=0 不再直接跳过：部分ROM（荣耀等）拦截 OFFHOOK 状态导致测不到接通，
+    // 实际已通话并产生了录音。此时按"响铃开始→结束"整个窗口去找录音文件，
+    // 找到了就说明确实接通过，照常上传并把记录纠正为已接通
+    const effectiveDuration = duration > 0
+      ? duration
+      : Math.max(0, Math.floor((endTime - info.startTime) / 1000))
+    if (duration <= 0) {
+      console.log('[IncomingCallService] 未检测到接通(duration=0)，仍尝试按时间窗口查找录音，窗口时长:', effectiveDuration, '秒')
+    }
+
+    console.log('[IncomingCallService] 开始异步处理录音... callId=' + callId)
 
     try {
       const result = await recordingService.processCallRecording({
-        callId: info.callId,
+        callId,
         phoneNumber: info.callerNumber,
         startTime: info.startTime,
         endTime,
-        duration,
+        duration: effectiveDuration,
       })
 
       if (result.found && result.uploaded) {
         console.log('[IncomingCallService] 录音上传成功:', result.recordingPath)
-        wsService.reportCallEnd(info.callId, {
+        wsService.reportCallEnd(callId, {
           status: 'connected',
           callType: 'inbound',
-          duration,
+          duration: effectiveDuration,
           hasRecording: true,
         })
       }
@@ -2132,6 +2145,54 @@ class IncomingCallService {
       })
     } catch (e) {
       console.warn('[IncomingCallService] 电池优化白名单检查失败:', e)
+    }
+  }
+
+  /**
+   * 查询是否已加入电池优化白名单（后台保活），供首页权限卡显示
+   * （本方法在外层 APP-PLUS 条件块内，仅 APP 端存在）
+   */
+  isBatteryOptimizationIgnored(): boolean {
+    try {
+      const main = plus.android.runtimeMainActivity()
+      const Context = plus.android.importClass('android.content.Context') as any
+      const pm = (main as any).getSystemService(Context.POWER_SERVICE)
+      const pkgName = (main as any).getPackageName()
+      if (pm && pm.isIgnoringBatteryOptimizations) {
+        return !!pm.isIgnoringBatteryOptimizations(pkgName)
+      }
+    } catch (e) {
+      console.warn('[IncomingCallService] 电池白名单状态查询失败:', e)
+    }
+    return false
+  }
+
+  /**
+   * 直接拉起"忽略电池优化"系统授权弹窗（供首页权限卡点击授权）
+   */
+  requestBatteryOptimizationExemption() {
+    try {
+      const main = plus.android.runtimeMainActivity()
+      const pkgName = (main as any).getPackageName()
+      const Intent = plus.android.importClass('android.content.Intent') as any
+      const Settings = plus.android.importClass('android.provider.Settings') as any
+      const Uri = plus.android.importClass('android.net.Uri') as any
+      const intent = new Intent(
+        Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+        Uri.parse(`package:${pkgName}`)
+      )
+      ;(main as any).startActivity(intent)
+    } catch (e) {
+      console.warn('[IncomingCallService] 打开电池优化授权失败:', e)
+      try {
+        // 兜底：跳系统电池优化列表页
+        const main = plus.android.runtimeMainActivity()
+        const Intent = plus.android.importClass('android.content.Intent') as any
+        const intent = new Intent('android.settings.IGNORE_BATTERY_OPTIMIZATION_SETTINGS')
+        ;(main as any).startActivity(intent)
+      } catch (_e) {
+        uni.showToast({ title: '请到系统设置-电池中允许本应用后台运行', icon: 'none', duration: 3000 })
+      }
     }
   }
 

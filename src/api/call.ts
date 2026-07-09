@@ -161,6 +161,7 @@ export const getCallRecords = (params: {
   startDate?: string
   endDate?: string
   userId?: string
+  keyword?: string
 }) => {
   return api.get<{
     records: CallRecord[]

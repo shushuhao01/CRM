@@ -1786,6 +1786,19 @@ router.post('/calls/:callId/end', async (req: Request, res: Response) => {
       return res.status(404).json(errorResponse('通话记录不存在', 404));
     }
 
+    // 云联络中心通话：先尽力远程挂断（软电话/已接听呼入可真挂断；
+    // 双呼模式阿里云不支持强挂，失败不阻塞本地结束，把提示带回给前端）
+    let remoteHangup: { attempted: boolean; success: boolean; message: string } | null = null;
+    try {
+      if (calls[0].provider_call_id) {
+        const { aliyunCallService } = await import('../services/AliyunCallService');
+        remoteHangup = await aliyunCallService.tryReleaseCall(callId, userIdStr);
+        logger.info(`[CallConfig] 远程挂断结果: attempted=${remoteHangup.attempted}, success=${remoteHangup.success}, ${remoteHangup.message}`);
+      }
+    } catch (releaseError) {
+      logger.warn('[CallConfig] 远程挂断调用异常（继续本地结束）:', releaseError);
+    }
+
     // 更新通话记录 - 使用 id 字段
     await AppDataSource.query(
       `UPDATE call_records SET
@@ -1809,7 +1822,13 @@ router.post('/calls/:callId/end', async (req: Request, res: Response) => {
       logger.error('[CallConfig] 通知APP结束通话失败:', wsError);
     }
 
-    res.json(successResponse(null, '通话已结束'));
+    res.json(successResponse({
+      remoteHangup: remoteHangup ? {
+        attempted: remoteHangup.attempted,
+        success: remoteHangup.success,
+        message: remoteHangup.message,
+      } : null,
+    }, remoteHangup?.success ? '通话已结束（云端已挂断）' : '通话已结束'));
   } catch (error) {
     logger.error('结束通话失败:', error);
     res.status(500).json(errorResponse('结束通话失败'));

@@ -2,8 +2,8 @@
     "name" : "云客CRM",
     "appid" : "__UNI__40B02A3",
     "description" : "云客CRM外呼助手 - 电销工作手机APP",
-    "versionName" : "2.1.0",
-    "versionCode" : "210",
+    "versionName" : "2.2.0",
+    "versionCode" : "220",
     "transformPx" : false,
     "app-plus" : {
         "usingComponents" : true,

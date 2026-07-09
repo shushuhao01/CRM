@@ -4,10 +4,10 @@
  */
 
 /** 应用版本号 - 修改版本时只需改这一处 */
-export const APP_VERSION = '1.0.0'
+export const APP_VERSION = '2.2.0'
 
 /** 应用版本码（用于安卓 versionCode，每次发版递增） */
-export const APP_VERSION_CODE = 100
+export const APP_VERSION_CODE = 220
 
 /** 应用名称 */
 export const APP_NAME = 'CRM外呼助手'

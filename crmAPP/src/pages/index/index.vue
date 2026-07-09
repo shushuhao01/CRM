@@ -184,6 +184,7 @@ import { getTodayStats, type TodayStats } from '@/api/call'
 import { wsService } from '@/services/websocket'
 import { callStateService } from '@/services/callStateService'
 import { incomingCallService } from '@/services/incomingCallService'
+import { recordingService } from '@/services/recordingService'
 import { trySilentReLogin } from '@/utils/request'
 
 const userStore = useUserStore()
@@ -199,6 +200,12 @@ const permOverlay = ref(false)
 const permMicrophone = ref(false)
 const permNotification = ref(false)
 const permAutoRecording = ref<boolean | null>(null) // null=检测中
+const permBattery = ref(false) // 电池优化白名单（后台保活）
+const permCallScreening = ref(false) // 来电识别角色（响铃取号）
+const callScreeningUsable = ref(false) // 服务已打进APK且系统≥Android 10 才显示该项
+const permCallPhone = ref(false) // 拨打电话（外呼调起系统拨号）
+const permCamera = ref(false) // 摄像头（扫码绑定CRM）
+const permStorage = ref(false) // 媒体文件/存储（录音文件检测与上传）
 
 // 手动确认覆盖（兜底方案）
 const manualOverrides = ref<Record<string, boolean>>({})
@@ -215,10 +222,18 @@ loadManualOverrides()
 
 const allPermissionsOk = computed(() => {
   const phoneOk = isGranted('phone', permPhoneState.value)
+  const callphoneOk = isGranted('callphone', permCallPhone.value)
   const calllogOk = isGranted('calllog', permCallLog.value)
   const overlayOk = isGranted('overlay', permOverlay.value)
   const micOk = isGranted('mic', permMicrophone.value)
-  return phoneOk && calllogOk && overlayOk && micOk
+  const cameraOk = isGranted('camera', permCamera.value)
+  const storageOk = isGranted('storage', permStorage.value)
+  const notificationOk = isGranted('notification', permNotification.value)
+  const batteryOk = isGranted('battery', permBattery.value)
+  // 来电识别：仅在可用（已集成且Android 10+）时计入
+  const screeningOk = !callScreeningUsable.value || isGranted('callscreening', permCallScreening.value)
+  return phoneOk && callphoneOk && calllogOk && overlayOk && micOk &&
+    cameraOk && storageOk && notificationOk && batteryOk && screeningOk
 })
 
 // 综合判断：系统检测 或 手动确认
@@ -236,6 +251,16 @@ const permissionList = computed(() => [
     action: () => requestSinglePermission('android.permission.READ_PHONE_STATE')
   },
   {
+    key: 'callphone',
+    name: '拨打电话',
+    purpose: '发起外呼时调起系统拨号',
+    granted: isGranted('callphone', permCallPhone.value),
+    special: false,
+    actionText: '授权',
+    statusText: '',
+    action: () => requestSinglePermission('android.permission.CALL_PHONE')
+  },
+  {
     key: 'calllog',
     name: '通话记录',
     purpose: '识别来电号码（必需）',
@@ -248,12 +273,32 @@ const permissionList = computed(() => [
   {
     key: 'mic',
     name: '麦克风',
-    purpose: '录音文件检测与上传',
+    purpose: '通话录音相关功能',
     granted: isGranted('mic', permMicrophone.value),
     special: false,
     actionText: '授权',
     statusText: '',
     action: () => requestSinglePermission('android.permission.RECORD_AUDIO')
+  },
+  {
+    key: 'camera',
+    name: '摄像头',
+    purpose: '扫码绑定CRM系统',
+    granted: isGranted('camera', permCamera.value),
+    special: false,
+    actionText: '授权',
+    statusText: '',
+    action: () => requestSinglePermission('android.permission.CAMERA')
+  },
+  {
+    key: 'storage',
+    name: '媒体文件',
+    purpose: '读取系统录音文件并上传',
+    granted: isGranted('storage', permStorage.value),
+    special: false,
+    actionText: '去开启',
+    statusText: '',
+    action: handleGrantStorage
   },
   {
     key: 'overlay',
@@ -275,6 +320,26 @@ const permissionList = computed(() => [
     statusText: '',
     action: () => incomingCallService.openAppPermissionSettings()
   },
+  {
+    key: 'battery',
+    name: '后台保活',
+    purpose: '不受省电限制，锁屏/后台仍可检测来电',
+    granted: isGranted('battery', permBattery.value),
+    special: false,
+    actionText: '去开启',
+    statusText: '',
+    action: handleGrantBattery
+  },
+  ...(callScreeningUsable.value ? [{
+    key: 'callscreening',
+    name: '来电识别',
+    purpose: '响铃前实时识别来电号码',
+    granted: isGranted('callscreening', permCallScreening.value),
+    special: false,
+    actionText: '去开启',
+    statusText: '',
+    action: handleGrantCallScreening
+  }] : []),
   {
     key: 'autorecording',
     name: '通话自动录音',
@@ -308,6 +373,15 @@ const refreshPermissionStatus = () => {
     // 麦克风权限：通过 requestPermissions 结果缓存 或 实际尝试
     permMicrophone.value = testMicrophonePerm(main)
 
+    // 拨打电话权限
+    permCallPhone.value = checkPermByStr(main, 'android.permission.CALL_PHONE') === true
+
+    // 摄像头权限（扫码）
+    permCamera.value = checkPermByStr(main, 'android.permission.CAMERA') === true
+
+    // 媒体文件/存储权限（录音检测与上传）
+    permStorage.value = testStoragePerm(main)
+
     // 悬浮窗：特殊权限，Settings.canDrawOverlays 返回 boolean 没问题
     try {
       const Settings = plus.android.importClass('android.provider.Settings') as any
@@ -332,6 +406,21 @@ const refreshPermissionStatus = () => {
       permNotification.value = true
     }
 
+    // 电池优化白名单（后台保活）
+    try {
+      permBattery.value = incomingCallService.isBatteryOptimizationIgnored()
+    } catch (_e) {
+      permBattery.value = false
+    }
+
+    // 来电识别角色（响铃取号，CallScreeningService）
+    incomingCallService.getCallScreeningStatus().then((s) => {
+      callScreeningUsable.value = !!(s.available && s.supported)
+      permCallScreening.value = !!s.roleHeld
+    }).catch(() => {
+      callScreeningUsable.value = false
+    })
+
     // 通话自动录音状态检测
     detectAutoRecording()
 
@@ -342,10 +431,14 @@ const refreshPermissionStatus = () => {
 
     console.log('[Index] 权限实测结果:',
       'phone=' + permPhoneState.value,
+      'callphone=' + permCallPhone.value,
       'calllog=' + permCallLog.value,
       'mic=' + permMicrophone.value,
+      'camera=' + permCamera.value,
+      'storage=' + permStorage.value,
       'overlay=' + permOverlay.value,
-      'notification=' + permNotification.value)
+      'notification=' + permNotification.value,
+      'battery=' + permBattery.value)
   } catch (e) {
     console.warn('[Index] 权限状态检查失败:', e)
   }
@@ -506,6 +599,30 @@ const testMicrophonePerm = (main: any): boolean => {
     return false
   }
 }
+
+/** 实测媒体文件/存储权限（录音检测与上传所需）
+ *  满足任一即视为可用：
+ *  - "所有文件访问"(Android 11+，File API 直接扫录音目录，最优)
+ *  - READ_MEDIA_AUDIO(Android 13+) 或 READ_EXTERNAL_STORAGE(旧版)，MediaStore 兜底扫描可用
+ */
+const testStoragePerm = (main: any): boolean => {
+  try {
+    const Build = plus.android.importClass('android.os.Build') as any
+    const sdkInt = Number(Build.VERSION.SDK_INT || 0)
+    if (sdkInt >= 30) {
+      try {
+        const Environment = plus.android.importClass('android.os.Environment') as any
+        if (Environment.isExternalStorageManager()) return true
+      } catch (_e) { /* 继续检查媒体权限 */ }
+    }
+    if (sdkInt >= 33) {
+      return checkPermByStr(main, 'android.permission.READ_MEDIA_AUDIO') === true
+    }
+    return checkPermByStr(main, 'android.permission.READ_EXTERNAL_STORAGE') === true
+  } catch (_e) {
+    return false
+  }
+}
 // #endif
 
 /**
@@ -587,6 +704,16 @@ const handlePermItemTap = (p: any) => {
 /**
  * 单独申请某个权限（直接弹系统对话框，如果系统不弹则引导去设置）
  */
+const PERM_DISPLAY_NAMES: Record<string, string> = {
+  'android.permission.READ_PHONE_STATE': '电话',
+  'android.permission.CALL_PHONE': '拨打电话',
+  'android.permission.READ_CALL_LOG': '通话记录',
+  'android.permission.RECORD_AUDIO': '麦克风',
+  'android.permission.CAMERA': '相机/摄像头',
+  'android.permission.READ_MEDIA_AUDIO': '音频/媒体文件',
+  'android.permission.READ_EXTERNAL_STORAGE': '存储空间',
+}
+
 const requestSinglePermission = (permission: string) => {
   // #ifdef APP-PLUS
   plus.android.requestPermissions(
@@ -600,9 +727,10 @@ const requestSinglePermission = (permission: string) => {
       } else {
         // 未授权（无论是被拒绝还是永久拒绝），引导去设置
         // 华为等国产ROM上，部分权限需要在系统设置中手动开启
+        const permName = PERM_DISPLAY_NAMES[permission] || '对应'
         uni.showModal({
           title: '请在系统设置中开启',
-          content: '请前往 设置 > 应用 > 云客CRM > 权限，找到"通话记录"/"电话"权限并开启',
+          content: `请前往 设置 > 应用 > 云客CRM > 权限，找到「${permName}」权限并开启`,
           confirmText: '去设置',
           cancelText: '稍后',
           success: (res) => {
@@ -651,6 +779,9 @@ const handleRefreshPermissions = () => {
   const beforePhone = permPhoneState.value
   const beforeCalllog = permCallLog.value
   const beforeMic = permMicrophone.value
+  const beforeCallPhone = permCallPhone.value
+  const beforeCamera = permCamera.value
+  const beforeStorage = permStorage.value
   // 重新从系统实测
   refreshPermissionStatus()
   // 自动检测成功的项，清除其手动覆盖（说明系统已正确识别）
@@ -658,6 +789,9 @@ const handleRefreshPermissions = () => {
   if (permPhoneState.value && !beforePhone) delete manualOverrides.value['phone']
   if (permCallLog.value && !beforeCalllog) delete manualOverrides.value['calllog']
   if (permMicrophone.value && !beforeMic) delete manualOverrides.value['mic']
+  if (permCallPhone.value && !beforeCallPhone) delete manualOverrides.value['callphone']
+  if (permCamera.value && !beforeCamera) delete manualOverrides.value['camera']
+  if (permStorage.value && !beforeStorage) delete manualOverrides.value['storage']
   saveManualOverrides()
   setTimeout(() => {
     permScanning.value = false
@@ -684,6 +818,78 @@ const handleGrantOverlay = () => {
 const handleOpenRecordingSetting = () => {
   // #ifdef APP-PLUS
   uni.navigateTo({ url: '/pages/settings/index' })
+  // #endif
+}
+
+/** 媒体文件/存储：先申请运行时媒体读取权限（APP内弹窗），仍不满足再引导"所有文件访问"页 */
+const handleGrantStorage = () => {
+  // #ifdef APP-PLUS
+  try {
+    const Build = plus.android.importClass('android.os.Build') as any
+    const sdkInt = Number(Build.VERSION.SDK_INT || 0)
+    const runtimePerm = sdkInt >= 33
+      ? 'android.permission.READ_MEDIA_AUDIO'
+      : 'android.permission.READ_EXTERNAL_STORAGE'
+    plus.android.requestPermissions(
+      [runtimePerm],
+      (e: any) => {
+        const granted = (e.granted || []).length > 0
+        if (granted) {
+          uni.showToast({ title: '授权成功', icon: 'success' })
+          // Android 11+ 建议再开"所有文件访问"（File 直扫录音目录最可靠），引导前往
+          if (sdkInt >= 30) {
+            const main = plus.android.runtimeMainActivity()
+            let hasAllFiles = false
+            try {
+              const Environment = plus.android.importClass('android.os.Environment') as any
+              hasAllFiles = !!Environment.isExternalStorageManager()
+            } catch (_e2) { /* ignore */ }
+            if (!hasAllFiles) {
+              uni.showModal({
+                title: '建议开启"所有文件访问"',
+                content: '系统通话录音保存在受保护目录，开启后可直接扫描录音文件，检测更可靠。',
+                confirmText: '去开启',
+                cancelText: '暂不',
+                success: (res) => {
+                  if (res.confirm) recordingService.openStoragePermissionSettings()
+                }
+              })
+            }
+          }
+        } else {
+          // 运行时权限被拒：跳存储授权链（所有文件访问页→品牌权限页→详情页）
+          recordingService.openStoragePermissionSettings()
+        }
+        setTimeout(() => refreshPermissionStatus(), 800)
+      },
+      (_err: any) => {
+        recordingService.openStoragePermissionSettings()
+        setTimeout(() => refreshPermissionStatus(), 800)
+      }
+    )
+  } catch (_e) {
+    recordingService.openStoragePermissionSettings()
+  }
+  // #endif
+}
+
+/** 后台保活：拉起"忽略电池优化"系统授权弹窗，返回后自动刷新状态 */
+const handleGrantBattery = () => {
+  // #ifdef APP-PLUS
+  incomingCallService.requestBatteryOptimizationExemption()
+  // 用户从系统弹窗返回后 onShow 会刷新；这里再加一次延迟刷新兜底
+  setTimeout(() => refreshPermissionStatus(), 2000)
+  // #endif
+}
+
+/** 来电识别：拉起"来电显示与骚扰拦截"角色授权（响铃取号） */
+const handleGrantCallScreening = async () => {
+  // #ifdef APP-PLUS
+  const granted = await incomingCallService.requestCallScreeningRole()
+  if (granted) {
+    permCallScreening.value = true
+  }
+  setTimeout(() => refreshPermissionStatus(), 1000)
   // #endif
 }
 

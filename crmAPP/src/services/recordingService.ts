@@ -181,20 +181,20 @@ class RecordingService {
             resolve(true)
             return
           }
-          uni.showModal({
-            title: '需要存储权限',
-            content: '为了自动扫描和上传通话录音，需要授予"所有文件访问"权限。',
-            confirmText: '去授权',
-            success: (res) => {
-              if (res.confirm) {
-                this.openAllFilesAccessSettings()
-              }
-              // 延迟检查权限结果
-              setTimeout(() => {
-                resolve((Environment as any).isExternalStorageManager())
-              }, 1000)
-            }
-          })
+          // 没有"所有文件访问"：不阻塞流程（旧实现依赖弹窗回调，在通话结束的
+          // 后台场景下弹窗可能不显示导致 Promise 永久挂起、录音永不处理）。
+          // 引导走24小时节流的统一弹窗；同时申请传统读权限，保证 MediaStore 兜底可用
+          this.maybeGuideAllFilesAccess()
+          plus.android.requestPermissions(
+            ['android.permission.READ_EXTERNAL_STORAGE'],
+            (result: any) => {
+              const readGranted = !!(result.granted && result.granted.length >= 1)
+              console.log('[RecordingService] Android11~12 无所有文件访问, READ_EXTERNAL_STORAGE=' + readGranted)
+              // 有读权限时 MediaStore 兜底扫描可用，继续处理
+              resolve(readGranted)
+            },
+            (_error: any) => resolve(false)
+          )
         } else {
           // Android 10 及以下: 传统存储权限
           plus.android.requestPermissions(
@@ -429,14 +429,13 @@ class RecordingService {
       }
     }
 
-    // File API 一个文件都没扫到（典型场景：Android 13+ 没有"所有文件访问"权限，
-    // listFiles 静默返回空）→ 用 MediaStore 索引兜底
-    if (recordings.length === 0) {
-      const fromMediaStore = this.scanRecordingsViaMediaStore()
-      for (const file of fromMediaStore) {
-        if (!recordings.some(r => r.path === file.path)) {
-          recordings.push(file)
-        }
+    // MediaStore 索引始终合并（不只在 File 扫描为空时）：
+    // File API 可能因缺"所有文件访问"权限只扫到部分目录（荣耀/华为的 Sounds/CallRecord、
+    // OPPO 的"通话录音"中文目录等受保护目录会静默漏掉），媒体库索引可补齐
+    const fromMediaStore = this.scanRecordingsViaMediaStore()
+    for (const file of fromMediaStore) {
+      if (!recordings.some(r => r.path === file.path)) {
+        recordings.push(file)
       }
     }
 
@@ -467,16 +466,16 @@ class RecordingService {
       const sinceSec = Math.floor((sinceTime || (Date.now() - 7 * 24 * 60 * 60 * 1000)) / 1000)
 
       // 路径含录音相关关键词（record/call/sounds/通话录音），覆盖各品牌录音目录
-      const selection = `(${(MediaStore as any).Audio.Media.DATE_MODIFIED} > ?) AND (` +
+      // 注：时间戳为纯数字，直接内联进 selection（plus.android 无法可靠构造 String[] 参数数组）
+      const selection = `(${(MediaStore as any).Audio.Media.DATE_MODIFIED} > ${sinceSec}) AND (` +
         `LOWER(${DATA}) LIKE '%record%' OR ` +
         `LOWER(${DATA}) LIKE '%/call%' OR ` +
         `LOWER(${DATA}) LIKE '%sounds%' OR ` +
         `${DATA} LIKE '%通话录音%' OR ` +
         `${DATA} LIKE '%录音%')`
-      const selectionArgs = plus.android.newObject('java.lang.String[]', [String(sinceSec)])
 
       const cursor = contentResolver.query(
-        uri, null, selection, selectionArgs,
+        uri, null, selection, null,
         (MediaStore as any).Audio.Media.DATE_MODIFIED + ' DESC'
       )
 
@@ -594,9 +593,10 @@ class RecordingService {
       return null
     }
 
-    // 通话时间范围（前后各扩展30秒的容差）
+    // 通话时间范围容差：前30秒；后90秒（录音文件落盘/媒体库收录都可能滞后，
+    // 且部分ROM的 lastModified 取的是媒体扫描时间而非写入时间）
     const startRange = callInfo.startTime - 30000
-    const endRange = callInfo.endTime + 30000
+    const endRange = callInfo.endTime + 90000
 
     // 电话号码的各种格式
     const phoneVariants = this.getPhoneVariants(callInfo.phoneNumber)
@@ -611,15 +611,16 @@ class RecordingService {
         continue
       }
 
-      let score = 0
-
-      // 1. 时间匹配（录音文件的修改时间应该在通话结束时间附近）
-      if (recording.lastModified >= startRange && recording.lastModified <= endRange) {
-        score += 50
-        // 越接近通话结束时间，分数越高
-        const timeDiff = Math.abs(recording.lastModified - callInfo.endTime)
-        score += Math.max(0, 30 - timeDiff / 1000)
+      // 时间窗口是硬性条件：窗口外的一律不考虑。
+      // 否则同一客户上次通话的旧录音（文件名含相同号码）会被误认成本通录音
+      if (recording.lastModified < startRange || recording.lastModified > endRange) {
+        continue
       }
+
+      let score = 50
+      // 越接近通话结束时间，分数越高
+      const timeDiff = Math.abs(recording.lastModified - callInfo.endTime)
+      score += Math.max(0, 30 - timeDiff / 1000)
 
       // 2. 文件名包含电话号码
       for (const phone of phoneVariants) {
@@ -655,9 +656,11 @@ class RecordingService {
    * 获取电话号码的各种格式变体
    */
   private getPhoneVariants(phone: string): string[] {
-    // 先保留原始号码（可能包含+86等）
-    const raw = phone.trim()
+    // 先保留原始号码（可能包含+86等）；号码未知（"未知来电"/空）时不产生变体，
+    // 避免空字符串 includes 恒真导致所有文件都加分
+    const raw = (phone || '').trim()
     const cleaned = raw.replace(/\D/g, '')
+    if (!cleaned || cleaned.length < 3) return []
     const variants = [cleaned]
 
     // 去掉国家代码 86
@@ -1534,7 +1537,8 @@ class RecordingService {
       const ninetyDaysAgo = Math.floor((Date.now() - 90 * 24 * 60 * 60 * 1000) / 1000)
 
       // 严格条件：路径必须在通话录音专属目录下
-      const selection = `(${(MediaStore as any).Audio.Media.DATE_ADDED} > ?) AND (` +
+      // 注：时间戳为纯数字，直接内联（plus.android 无法可靠构造 String[] 参数数组）
+      const selection = `(${(MediaStore as any).Audio.Media.DATE_ADDED} > ${ninetyDaysAgo}) AND (` +
         // 小米通话录音专属路径
         `LOWER(${(MediaStore as any).Audio.Media.DATA}) LIKE '%miui/sound_recorder/call_rec%' OR ` +
         // 华为通话录音专属路径
@@ -1554,13 +1558,11 @@ class RecordingService {
         // 文件名包含"通话录音"（中文命名）
         `${(MediaStore as any).Audio.Media.DISPLAY_NAME} LIKE '%通话录音%')`
 
-      const selectionArgs = plus.android.newObject('java.lang.String[]', [String(ninetyDaysAgo)])
-
       const cursor = contentResolver.query(
         uri,
         null,
         selection,
-        selectionArgs,
+        null,
         (MediaStore as any).Audio.Media.DATE_ADDED + ' DESC'
       )
 

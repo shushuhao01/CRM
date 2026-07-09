@@ -452,9 +452,9 @@ const customerStore = useCustomerStore()
 const loading = ref(false)
 const refreshLoading = ref(false)
 const autoRefresh = ref(false)
-const autoRefreshTimer = ref(null)
+const autoRefreshTimer = ref<ReturnType<typeof setInterval> | null>(null)
 const searchKeyword = ref('')
-const selectedRows = ref([])
+const selectedRows = ref<any[]>([])
 const showOutboundDialog = ref(false)
 const outboundLoading = ref(false)
 const outboundFormRef = ref()
@@ -477,7 +477,7 @@ const currentCallData = ref<any>(null)
 const currentCallId = ref<string | null>(null) // 当前通话ID
 const callDuration = ref(0)
 const callNotes = ref('')
-const callTimer = ref(null)
+const callTimer = ref<ReturnType<typeof setInterval> | null>(null)
 const callConnected = ref(false) // 通话是否已接通
 const savingNotes = ref(false) // 保存备注状态
 
@@ -797,7 +797,7 @@ const activeTab = ref('orders')
 // 通话记录弹窗
 const callRecordsDialogVisible = ref(false)
 const callRecordsLoading = ref(false)
-const callRecordsList = ref([])
+const callRecordsList = ref<any[]>([])
 const callRecordsFilter = reactive({
   dateRange: [],
   customerKeyword: ''
@@ -811,7 +811,7 @@ const callRecordsPagination = reactive({
 // 录音播放器
 const recordingPlayerVisible = ref(false)
 const currentRecording = ref(null)
-const audioPlayer = ref(null)
+const audioPlayer = ref<HTMLAudioElement | null>(null)
 
 // 快捷跟进
 const quickFollowUpVisible = ref(false)
@@ -2195,7 +2195,7 @@ const searchCustomers = async (query: string = '') => {
     let filteredCustomers = allCustomers
     if (!isAdminOrSuperAdmin) {
       // 非管理员只能看到归属于自己的客户
-      filteredCustomers = allCustomers.filter(customer => {
+      filteredCustomers = allCustomers.filter((customer: any) => {
         return customer.salesPersonId === currentUserId || customer.createdBy === currentUserId
       })
     }
@@ -2205,7 +2205,7 @@ const searchCustomers = async (query: string = '') => {
       const queryLower = query.toLowerCase().trim()
       const queryOriginal = query.trim()
 
-      filteredCustomers = filteredCustomers.filter(customer => {
+      filteredCustomers = filteredCustomers.filter((customer: any) => {
         // 支持按客户姓名、编号或电话号码搜索
         const matchesName = customer.name && customer.name.toLowerCase().includes(queryLower)
         const matchesCode = customer.code && customer.code.toLowerCase().includes(queryLower)
@@ -2225,7 +2225,7 @@ const searchCustomers = async (query: string = '') => {
       })
 
       // 按匹配度排序：完全匹配 > 开头匹配 > 包含匹配
-      filteredCustomers.sort((a, b) => {
+      filteredCustomers.sort((a: any, b: any) => {
         const getMatchScore = (customer: any) => {
           let score = 0
           const name = customer.name?.toLowerCase() || ''
@@ -2247,7 +2247,7 @@ const searchCustomers = async (query: string = '') => {
     }
 
     // 按客户名称排序，限制显示数量
-    filteredCustomers.sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+    filteredCustomers.sort((a: any, b: any) => (a.name || '').localeCompare(b.name || ''))
     customerOptions.value = filteredCustomers.slice(0, 50) // 增加显示数量到50
 
     // 如果没有找到匹配的客户且有查询条件，显示提示
@@ -2721,11 +2721,20 @@ const endCall = async () => {
   // 保存通话记录；本地模拟来电无数据库记录，跳过后端保存
   try {
     if (currentCallData.value?.id && !isLocalSimulatedCall(currentCallData.value.id)) {
-      await callConfigApi.endCall(currentCallData.value.id, {
+      const res: any = await callConfigApi.endCall(currentCallData.value.id, {
         notes: callNotes.value,
         duration: callDuration.value
       })
-      ElMessage.success('通话已结束，记录已保存')
+      // 云联络中心远程挂断结果：成功→云端已真挂断；尝试了但失败（双呼等）→提示任一方挂机
+      const remote = res?.data?.remoteHangup || res?.remoteHangup
+      if (remote?.success) {
+        ElMessage.success('通话已结束，云端已挂断')
+      } else if (remote?.attempted && !remote.success) {
+        ElMessage.success('通话记录已保存')
+        ElMessage.warning(remote.message || '双呼模式不支持远程挂断，请任一方挂机结束通话')
+      } else {
+        ElMessage.success('通话已结束，记录已保存')
+      }
     } else {
       ElMessage.success('通话已结束（模拟来电不保存记录）')
     }
@@ -3299,6 +3308,7 @@ const salesPersonList = computed(() => {
     .map((u: any) => ({
       id: u.id,
       name: u.realName || u.name || u.username,
+      username: u.username || '',
       department: u.departmentName || u.department || ''
     }))
 })
