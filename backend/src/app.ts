@@ -412,6 +412,14 @@ const startServer = async () => {
     await recordingStorageService.initialize();
     logger.info('✅ 录音存储服务初始化完成');
 
+    // 🔥 恢复快递100配置到环境变量（之前保存的配置在重启后会丢失，导致物流降级查询失效）
+    try {
+      const { ExpressAPIService } = await import('./services/ExpressAPIService');
+      await ExpressAPIService.restoreKuaidi100ConfigFromDb();
+    } catch (err: any) {
+      logger.warn('快递100配置恢复失败（不影响启动）:', err.message);
+    }
+
     // 启动定时任务调度器
     const { schedulerService } = await import('./services/SchedulerService');
     schedulerService.start();

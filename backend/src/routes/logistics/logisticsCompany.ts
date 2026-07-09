@@ -472,7 +472,7 @@ router.get('/companies/export', async (_req: Request, res: Response) => {
     try {
       const { SystemConfig } = await import('../../entities/SystemConfig');
       const configRepo = getTenantRepo(SystemConfig);
-      const config = await configRepo.findOne({ where: { configKey: 'kuaidi100' } });
+      const config = await configRepo.findOne({ where: { configKey: 'kuaidi100_config' } });
       if (config && config.configValue) {
         kuaidi100Config = typeof config.configValue === 'string'
           ? JSON.parse(config.configValue)
@@ -672,18 +672,24 @@ router.post('/companies/import', async (req: Request, res: Response) => {
       try {
         const { SystemConfig } = await import('../../entities/SystemConfig');
         const configRepo = getTenantRepo(SystemConfig);
-        let config = await configRepo.findOne({ where: { configKey: 'kuaidi100' } });
+        let config = await configRepo.findOne({ where: { configKey: 'kuaidi100_config' } });
         if (config) {
           config.configValue = JSON.stringify(kuaidi100Config);
           await configRepo.save(config);
         } else {
           const newConfig = configRepo.create({
             id: uuidv4(),
-            configKey: 'kuaidi100',
+            configKey: 'kuaidi100_config',
             configValue: JSON.stringify(kuaidi100Config),
             description: '快递100 API配置'
           } as any);
           await configRepo.save(newConfig);
+        }
+        // 同步到环境变量，导入后立即生效
+        if (kuaidi100Config.customer && kuaidi100Config.key) {
+          process.env.EXPRESS_API_CUSTOMER = kuaidi100Config.customer;
+          process.env.EXPRESS_API_KEY = kuaidi100Config.key;
+          process.env.EXPRESS_API_URL = kuaidi100Config.url || 'https://poll.kuaidi100.com/poll/query.do';
         }
       } catch (e) {
         log.warn('[物流公司导入] 快递100配置导入失败:', e);

@@ -6,8 +6,9 @@
   "scripts": {
     "dev:app": "uni -p app",
     "dev:h5": "uni",
-    "build:app": "uni build -p app",
-    "build:h5": "uni build"
+    "build:app": "uni build -p app && node scripts/copy-nativeplugins.js",
+    "build:h5": "uni build",
+    "copy:nativeplugins": "node scripts/copy-nativeplugins.js"
   },
   "dependencies": {
     "pinia": "^2.1.7",

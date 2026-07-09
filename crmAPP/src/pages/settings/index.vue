@@ -61,6 +61,19 @@
           <text class="label">📳 振动提醒</text>
           <switch :checked="callSettings.vibrate" @change="updateSetting('vibrate', $event)" color="#34D399" />
         </view>
+        <view class="setting-item clickable" v-if="callScreening.available" @tap="handleEnableCallScreening">
+          <text class="label">🛡️ 来电识别（响铃实时取号）</text>
+          <view class="connection-status">
+            <view class="status-dot" :class="callScreening.roleHeld ? 'connected' : 'disconnected'"></view>
+            <text class="value" :class="callScreening.roleHeld ? 'connected' : 'disconnected'">
+              {{ callScreening.roleHeld ? '已开启' : (callScreening.supported ? '未开启' : '系统不支持') }}
+            </text>
+            <text class="arrow" v-if="!callScreening.roleHeld && callScreening.supported">›</text>
+          </view>
+        </view>
+      </view>
+      <view class="setting-tip" v-if="callScreening.available && !callScreening.roleHeld && callScreening.supported">
+        <text>💡 开启后，客户来电响铃时即可实时识别号码并弹出客户信息（需将本APP设为系统"来电显示与骚扰拦截"应用，不会拦截或影响正常接听）。</text>
       </view>
     </view>
 
@@ -274,6 +287,7 @@ import { useServerStore } from '@/stores/server'
 import { unbindDevice } from '@/api/auth'
 import { wsService } from '@/services/websocket'
 import { recordingService } from '@/services/recordingService'
+import { incomingCallService } from '@/services/incomingCallService'
 import { APP_VERSION } from '@/config/app'
 import { setEncryptedStorage, getEncryptedStorage } from '@/utils/crypto'
 
@@ -297,6 +311,31 @@ const tenantDisplay = computed(() => {
 const recordingEnabled = ref(false)
 const checkingRecording = ref(false)
 let autoCheckTimer: number | null = null
+
+// 来电识别（CallScreeningService）状态
+const callScreening = ref({ available: false, supported: false, roleHeld: false })
+
+const refreshCallScreeningStatus = async () => {
+  try {
+    callScreening.value = await incomingCallService.getCallScreeningStatus()
+  } catch (e) {
+    console.warn('获取来电识别状态失败:', e)
+  }
+}
+
+// 开启来电识别（拉起系统"来电显示与骚扰拦截"授权弹窗）
+const handleEnableCallScreening = async () => {
+  if (callScreening.value.roleHeld) {
+    uni.showToast({ title: '来电识别已开启', icon: 'success' })
+    return
+  }
+  if (!callScreening.value.supported) {
+    uni.showToast({ title: '当前系统版本不支持（需Android 10+）', icon: 'none' })
+    return
+  }
+  await incomingCallService.requestCallScreeningRole()
+  await refreshCallScreeningStatus()
+}
 
 // 通话设置 - 从本地存储恢复（默认开启自动上传和自动清理）
 const callSettings = ref({
@@ -608,12 +647,12 @@ const handleRefreshRecordingStatus = async () => {
       uni.hideLoading()
       uni.showModal({
         title: '权限不足',
-        content: '请先授予APP存储权限，才能检测录音文件',
+        content: '请先授予APP存储权限（Android 11+需"所有文件访问"），才能检测录音文件',
         confirmText: '去授权',
         success: (res) => {
           if (res.confirm) {
             // #ifdef APP-PLUS
-            plus.runtime.openURL('app-settings:')
+            recordingService.openStoragePermissionSettings()
             // #endif
           }
         }
@@ -672,6 +711,8 @@ onShow(() => {
   wsConnected.value = wsService.isConnected
   // 自动检测录音状态
   autoCheckRecordingStatus()
+  // 刷新来电识别状态（用户可能刚从系统授权弹窗返回）
+  refreshCallScreeningStatus()
 })
 
 onMounted(() => {

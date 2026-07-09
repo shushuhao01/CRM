@@ -1,0 +1,25 @@
+// CRM-CallScreening 原生插件（Android Library）
+// 编译产物：crm-callscreening-release.aar
+//
+// 本模块只包含一个纯安卓标准API的 Service（CRMCallScreeningService），
+// 不依赖 uni-app 离线SDK。与 JS 层通过 SharedPreferences + 应用内广播通讯。
+// 因此既可用 Android Studio 编译，也可直接用 javac + android.jar 手工打包（见 README.md）。
+plugins {
+    id 'com.android.library'
+}
+
+android {
+    namespace 'com.xianhu.crm.callscreen'
+    compileSdkVersion 33
+
+    defaultConfig {
+        minSdkVersion 24
+        targetSdkVersion 33
+        consumerProguardFiles 'consumer-rules.pro'
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+}

@@ -9,6 +9,7 @@ import { LogisticsApiConfig } from '../entities/LogisticsApiConfig';
 import { ExpressAPIService } from './ExpressAPIService';
 import { getTenantRepo } from '../utils/tenantRepo';
 import { formatDateTime } from '../utils/dateFormat';
+import { parseSm4Key, sm4EncryptEcbBase64 } from '../utils/sm4';
 
 import { log } from '../config/logger';
 // 快递100公司代码映射（我们的代码 -> 快递100代码）
@@ -206,7 +207,7 @@ class LogisticsTraceService {
             result = await this.queryEMSTrace(trackingNo, config!);
             break;
           case 'JD':
-            result = await this.queryJDTrace(trackingNo, config!);
+            result = await this.queryJDTrace(trackingNo, config!, phone);
             break;
           case 'DBL':
             result = await this.queryDBLTrace(trackingNo, config!);
@@ -841,28 +842,38 @@ class LogisticsTraceService {
 
 
   // ========== 中通快递 ==========
+  // 中通开放平台 https://open.zto.com/ 商家轨迹查询接口 zto.merchant.waybill.track.query
+  // 官方标准签名: x-datadigest = Base64(MD5(请求body + AppSecret))，请求头携带 x-appkey/x-companyid
   private async queryZTOTrace(trackingNo: string, config: LogisticsApiConfig): Promise<LogisticsTrackResult> {
-    const timestamp = Date.now().toString();
     const data = JSON.stringify({ billCode: trackingNo });
 
-    // 中通使用 HMAC-SHA256 + Base64 签名
-    const sign = crypto.createHmac('sha256', config.appSecret || '').update(data).digest('base64');
+    // 🔥 官方标准签名: Base64(MD5(body + appSecret))
+    const sign = crypto.createHash('md5').update(data + (config.appSecret || ''), 'utf8').digest('base64');
 
-    const apiUrl = config.apiEnvironment === 'production'
-      ? 'https://japi.zto.com/traceInterfaceNewTraces'
-      : 'https://japi-test.zto.com/traceInterfaceNewTraces';
+    // 优先使用配置的接口地址（需为商家轨迹查询网关），否则使用默认网关
+    let apiUrl = (config.apiUrl || '').trim();
+    if (!apiUrl || !apiUrl.includes('zto.merchant.waybill.track.query')) {
+      apiUrl = config.apiEnvironment === 'production'
+        ? 'https://japi.zto.com/zto.merchant.waybill.track.query'
+        : 'https://japi-test.zto.com/zto.merchant.waybill.track.query';
+    }
+
+    // x-appkey / x-companyid：兼容开放平台新旧两种头部命名，值均为 AppKey
+    const zopKey = config.appId || config.appKey || '';
+
+    log.info('[中通API] 请求URL:', apiUrl);
 
     const response = await axios.post(apiUrl, data, {
       headers: {
         'Content-Type': 'application/json',
-        'x-companyid': config.appId || '',
-        'x-appkey': config.appKey || '',
-        'x-datadigest': sign,
-        'x-timestamp': timestamp
+        'x-companyid': zopKey,
+        'x-appkey': zopKey,
+        'x-datadigest': sign
       },
       timeout: 10000
     });
 
+    log.info('[中通API] 响应:', JSON.stringify(response.data));
     return this.parseZTOResponse(trackingNo, response.data);
   }
 
@@ -878,14 +889,17 @@ class LogisticsTraceService {
       rawData: data
     };
 
-    if (data.status === true && data.result) {
+    if (data.status === true) {
       result.success = true;
-      const traces = data.result.traces || [];
+      // 兼容两种返回结构: result为轨迹数组(商家网关) 或 result.traces(旧网关)
+      const traces = Array.isArray(data.result)
+        ? data.result
+        : (data.result?.traces || []);
       result.traces = traces.map((t: any) => ({
-        time: t.scanDate,
+        time: t.scanDate || t.scanTime,
         status: t.scanType,
         description: t.desc,
-        location: t.scanSite
+        location: t.scanSite || t.scanCity
       }));
 
       if (traces.length > 0) {
@@ -896,6 +910,8 @@ class LogisticsTraceService {
         // 🔥 计算预计送达时间（中通）
         result.estimatedDeliveryTime = this.calculateEstimatedDeliveryTime(result.status, result.traces, 'ZTO');
       }
+    } else if (data.message) {
+      result.statusText = String(data.message);
     }
 
     return result;
@@ -916,39 +932,56 @@ class LogisticsTraceService {
 
   // ========== 圆通速递 ==========
   // 圆通开放平台API文档: https://open.yto.net.cn/
-  // 新字段映射: appId=AppKey, appSecret=SecretKey, customerId=客户编码(user_id)
+  // 字段映射: appId=客户编码(app_key), appSecret=客户密钥(secret), customerId=用户ID(user_id)
+  // 🔥 重要: 圆通接口地址为客户专属，形如 https://openapi.yto.net.cn/service/waybill_query/v1/{专属编码}
+  //          需在"控制台-接口管理"添加"物流轨迹查询"接口后获取，并填入API配置的接口地址中
+  // 官方签名: sign = Base64(MD5(param + method + v + secret))
   private async queryYTOTrace(trackingNo: string, config: LogisticsApiConfig): Promise<LogisticsTrackResult> {
-    const timestamp = new Date().toISOString().replace('T', ' ').substring(0, 19);
+    const method = 'yto.Marketing.WaybillTrace';
+    const v = '1.01';
+    // 官方示例时间戳为毫秒
+    const timestamp = Date.now().toString();
 
-    // 请求参数
-    const param = JSON.stringify({
-      Number: trackingNo,
-      OrderType: ''
-    });
+    // 请求参数（官方文档示例: {"NUMBER":"YTxxxx"}）
+    const param = JSON.stringify({ NUMBER: trackingNo });
 
-    // 签名: MD5(param + SecretKey).toUpperCase()
-    const signStr = param + config.appSecret;
-    const sign = crypto.createHash('md5').update(signStr).digest('hex').toUpperCase();
+    // 🔥 官方签名: data = param + method + v, sign = Base64(MD5(data + secret))
+    const signStr = param + method + v + (config.appSecret || '');
+    const sign = crypto.createHash('md5').update(signStr, 'utf8').digest('base64');
 
-    // API地址
-    const apiUrl = config.apiEnvironment === 'production'
-      ? 'https://openapi.yto.net.cn/open/track_query/v1/query'
-      : 'https://openapi-test.yto.net.cn/open/track_query/v1/query';
+    // 🔥 圆通接口地址为客户专属，必须使用配置中的地址
+    let apiUrl = (config.apiUrl || '').trim();
+    if (!apiUrl || !apiUrl.includes('waybill_query')) {
+      // 未配置专属地址时无法调用，返回明确提示（不发起无效请求）
+      return {
+        success: false,
+        trackingNo,
+        companyCode: 'YTO',
+        companyName: '圆通速递',
+        status: 'error',
+        statusText: '圆通API未配置专属接口地址：请登录圆通开放平台(open.yto.net.cn)，在"控制台-接口管理"添加"物流轨迹查询"接口，将平台分配的专属地址(含waybill_query路径)填入API配置的接口地址',
+        traces: []
+      };
+    }
 
     log.info('[圆通API] 请求URL:', apiUrl);
     log.info('[圆通API] 请求参数:', param);
 
-    const response = await axios.post(apiUrl, {
-      param: param,
+    // 官方要求表单方式提交（application/x-www-form-urlencoded）
+    const formBody = new URLSearchParams({
       sign: sign,
-      timestamp: timestamp,
+      app_key: config.appId || '',
       format: 'JSON',
-      appkey: config.appId,
+      method: method,
+      timestamp: timestamp,
       user_id: config.customerId || '',
-      method: 'yto.Marketing.WaybillTrace'
-    }, {
+      v: v,
+      param: param
+    });
+
+    const response = await axios.post(apiUrl, formBody.toString(), {
       headers: {
-        'Content-Type': 'application/json',
+        'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
         'Accept': 'application/json'
       },
       timeout: 10000
@@ -956,6 +989,24 @@ class LogisticsTraceService {
 
     log.info('[圆通API] 响应:', JSON.stringify(response.data));
     return this.parseYTOResponse(trackingNo, response.data);
+  }
+
+  // 圆通 infoContent 状态码映射
+  private mapYTOStatus(infoContent: string): string {
+    const map: Record<string, string> = {
+      'GOT': 'picked_up',        // 已揽收
+      'ARRIVAL': 'in_transit',   // 已收入
+      'DEPARTURE': 'in_transit', // 已发出
+      'SENT_SCAN': 'out_for_delivery', // 派件
+      'INBOUND': 'out_for_delivery',   // 自提柜入柜
+      'SIGNED': 'delivered',     // 签收成功
+      'FAILED': 'exception',     // 签收失败
+      'FORWARDING': 'in_transit', // 转寄
+      'TMS_RETURN': 'returned',  // 退回
+      'AIRSEND': 'in_transit',   // 航空发货
+      'AIRPICK': 'in_transit'    // 航空提货
+    };
+    return map[infoContent] || '';
   }
 
   private parseYTOResponse(trackingNo: string, data: any): LogisticsTrackResult {
@@ -970,20 +1021,39 @@ class LogisticsTraceService {
       rawData: data
     };
 
-    if (data.success === true || data.code === '0') {
+    // 🔥 官方成功响应为轨迹数组: [{waybill_No, upload_Time, infoContent, processInfo, city, district}]
+    // 查询为空响应: {"map":{...},"code":"1001","success":"true","message":"查询结果为空。"}
+    let traces: any[] = [];
+    if (Array.isArray(data)) {
+      traces = data;
+    } else if (Array.isArray(data?.data)) {
+      traces = data.data;
+    } else if (data && (data.success === 'true' || data.success === true)) {
+      // 请求成功但无轨迹数据（如code=1001查询结果为空）
+      result.statusText = data.message || '暂无轨迹信息';
+      return result;
+    } else if (data && (data.message || data.reason)) {
+      result.statusText = String(data.message || data.reason);
+      return result;
+    }
+
+    if (traces.length > 0) {
       result.success = true;
-      const traces = data.data?.traces || data.traces || [];
-      result.traces = traces.map((t: any) => ({
-        time: t.time || t.uploadTime,
-        status: t.processInfo,
+      // 圆通按时间正序返回，统一为倒序（最新在前），与其他快递保持一致
+      const sorted = [...traces].sort((a, b) =>
+        String(b.upload_Time || b.uploadTime || '').localeCompare(String(a.upload_Time || a.uploadTime || ''))
+      );
+      result.traces = sorted.map((t: any) => ({
+        time: t.upload_Time || t.uploadTime || t.time,
+        status: t.infoContent || '',
         description: t.processInfo,
-        location: t.city
+        location: [t.city, t.district].filter(Boolean).join(' ')
       }));
 
-      if (traces.length > 0) {
-        result.status = this.detectStatusFromDescription(traces[0].processInfo);
-        result.statusText = this.getStatusText(result.status);
-      }
+      const latest = sorted[0];
+      result.status = this.mapYTOStatus(latest.infoContent)
+        || this.detectStatusFromDescription(latest.processInfo);
+      result.statusText = this.getStatusText(result.status);
     }
 
     return result;
@@ -1048,29 +1118,52 @@ class LogisticsTraceService {
   }
 
   // ========== 韵达速递 ==========
+  // 韵达开放平台 http://open.yundaex.com/ 轨迹查询接口 /openapi/outer/logictis/query
+  // 鉴权放请求头: app-key / req-time / sign，sign = MD5(请求报文 + "_" + AppSecret) 十六进制小写
+  // 注意: 韵达轨迹查询通常要求运单先完成轨迹订阅，未订阅的单号可能查询不到
   private async queryYDTrace(trackingNo: string, config: LogisticsApiConfig): Promise<LogisticsTrackResult> {
-    const timestamp = formatDateTime(new Date());
-    const data = JSON.stringify({ mailno: trackingNo });
+    const reqTime = Date.now().toString();
+    const body = JSON.stringify({ mailno: trackingNo });
 
-    const signStr = data + config.appSecret + timestamp;
-    const sign = crypto.createHash('md5').update(signStr).digest('hex');
+    // 🔥 韵达签名: MD5(报文 + "_" + AppSecret) 十六进制小写
+    const sign = crypto.createHash('md5').update(body + '_' + (config.appSecret || ''), 'utf8').digest('hex').toLowerCase();
 
-    const apiUrl = config.apiEnvironment === 'production'
-      ? 'https://openapi.yundaex.com/api/queryTraceInfo'
-      : 'https://u-openapi.yundasys.com/api/queryTraceInfo';
+    let apiUrl = (config.apiUrl || '').trim();
+    if (!apiUrl || !apiUrl.includes('logictis/query')) {
+      apiUrl = config.apiEnvironment === 'production'
+        ? 'https://openapi.yundaex.com/openapi/outer/logictis/query'
+        : 'https://u-openapi.yundasys.com/openapi/outer/logictis/query';
+    }
 
-    const response = await axios.post(apiUrl, {
-      appkey: config.appId,
-      partner_id: config.customerId || '',
-      timestamp: timestamp,
-      sign: sign,
-      request: data
-    }, {
-      headers: { 'Content-Type': 'application/json' },
+    log.info('[韵达API] 请求URL:', apiUrl);
+
+    const response = await axios.post(apiUrl, body, {
+      headers: {
+        'Content-Type': 'application/json',
+        'app-key': config.appId || '',
+        'req-time': reqTime,
+        'sign': sign
+      },
       timeout: 10000
     });
 
+    log.info('[韵达API] 响应:', JSON.stringify(response.data));
     return this.parseYDResponse(trackingNo, response.data);
+  }
+
+  // 韵达节点状态映射（status: GOT/TRANSIT/SIGNED/RETURN/SIGNFAIL）
+  private mapYDStatus(status: string): string {
+    const map: Record<string, string> = {
+      'GOT': 'picked_up',
+      'TRANSIT': 'in_transit',
+      'SENT': 'out_for_delivery',
+      'SIGNED': 'delivered',
+      'RETURN': 'returned',
+      'SIGNFAIL': 'exception',
+      'ISSUE': 'exception',
+      'REJECTION': 'rejected'
+    };
+    return map[status] || '';
   }
 
   private parseYDResponse(trackingNo: string, data: any): LogisticsTrackResult {
@@ -1085,48 +1178,67 @@ class LogisticsTraceService {
       rawData: data
     };
 
-    if (data.code === '0' || data.code === 0 || data.success === true) {
+    // 韵达响应: {result: true, code: "0", data: {mailno, steps: [{time, status, action, description...}]}}
+    if (data.result === true || data.code === '0' || data.code === 0 || data.success === true) {
       result.success = true;
-      const traces = data.data?.steps || [];
+      const traces = data.data?.steps || data.steps || [];
       result.traces = traces.map((t: any) => ({
         time: t.time,
-        status: t.status,
-        description: t.context,
-        location: t.location
+        status: t.status || t.action || '',
+        description: t.description || t.context || t.remark || '',
+        location: t.city || t.station || t.location || ''
       }));
 
       if (traces.length > 0) {
-        result.status = this.detectStatusFromDescription(traces[0].context);
+        const latest = traces[0];
+        result.status = this.mapYDStatus(latest.status)
+          || this.detectStatusFromDescription(latest.description || latest.context || '');
         result.statusText = this.getStatusText(result.status);
+      } else {
+        result.statusText = '暂无轨迹信息（韵达需先订阅轨迹后才可查询）';
       }
+    } else if (data.message || data.remark) {
+      result.statusText = String(data.message || data.remark);
     }
 
     return result;
   }
 
   // ========== 极兔速递 ==========
+  // 极兔开放平台 https://open.jtexpress.com.cn/ 轨迹查询接口 /api/logistics/trace
+  // 鉴权放请求头: apiAccount / digest / timestamp，digest = Base64(MD5(bizContent + privateKey))
+  // 请求体为表单: bizContent={"billCodes":"运单号"}
   private async queryJTTrace(trackingNo: string, config: LogisticsApiConfig): Promise<LogisticsTrackResult> {
     const timestamp = Date.now().toString();
-    const data = JSON.stringify({ billCodes: trackingNo });
+    const bizContent = JSON.stringify({ billCodes: trackingNo });
 
-    // 极兔使用 Base64(MD5(data + privateKey)) 签名
-    const sign = crypto.createHash('md5').update(data + config.appSecret).digest('base64');
+    // 🔥 极兔签名: Base64(MD5(bizContent + privateKey))
+    const digest = crypto.createHash('md5').update(bizContent + (config.appSecret || ''), 'utf8').digest('base64');
 
-    const apiUrl = config.apiEnvironment === 'production'
-      ? 'https://openapi.jtexpress.com.cn/webopenplatformapi/api/logistics/trace/queryTracesByBillCodes'
-      : 'https://uat-openapi.jtexpress.com.cn/webopenplatformapi/api/logistics/trace/queryTracesByBillCodes';
+    let apiUrl = (config.apiUrl || '').trim();
+    if (!apiUrl || !apiUrl.includes('/logistics/trace')) {
+      const base = config.apiEnvironment === 'production'
+        ? 'https://openapi.jtexpress.com.cn/webopenplatformapi/api'
+        : 'https://uat-openapi.jtexpress.com.cn/webopenplatformapi/api';
+      apiUrl = (apiUrl || base).replace(/\/+$/, '') + '/logistics/trace';
+    }
 
-    const response = await axios.post(apiUrl, {
-      logistics_interface: data,
-      data_digest: sign,
-      msg_type: 'TRACEQUERY',
-      eccompanyid: config.customerId || config.appId,
-      timestamp: timestamp
-    }, {
-      headers: { 'Content-Type': 'application/json' },
+    log.info('[极兔API] 请求URL:', apiUrl);
+
+    // 🔥 官方要求表单方式提交，业务参数为 bizContent
+    const formBody = 'bizContent=' + encodeURIComponent(bizContent);
+
+    const response = await axios.post(apiUrl, formBody, {
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded;charset=utf-8',
+        'apiAccount': config.appId || '',
+        'digest': digest,
+        'timestamp': timestamp
+      },
       timeout: 10000
     });
 
+    log.info('[极兔API] 响应:', JSON.stringify(response.data));
     return this.parseJTResponse(trackingNo, response.data);
   }
 
@@ -1142,47 +1254,88 @@ class LogisticsTraceService {
       rawData: data
     };
 
-    if (data.code === '1' || data.success === true) {
+    if (data.code === '1' || data.code === 1 || data.success === true) {
       result.success = true;
-      const traces = data.data?.details || [];
+      // 响应结构: {code:"1", data:[{billCode, details:[{scanTime, desc, scanType, scanNetworkName...}]}]}
+      const bill = Array.isArray(data.data) ? data.data[0] : data.data;
+      const traces = bill?.details || [];
       result.traces = traces.map((t: any) => ({
         time: t.scanTime,
         status: t.scanType,
-        description: t.desc,
-        location: t.scanNetworkName
+        description: t.desc || t.description,
+        location: t.scanNetworkName || t.scanNetworkCity || ''
       }));
 
       if (traces.length > 0) {
-        result.status = this.detectStatusFromDescription(traces[0].desc);
+        result.status = this.detectStatusFromDescription(traces[0].desc || traces[0].description || '');
         result.statusText = this.getStatusText(result.status);
       }
+    } else if (data.msg || data.message) {
+      result.statusText = String(data.msg || data.message);
     }
 
     return result;
   }
 
   // ========== 邮政EMS ==========
+  // 中国邮政国内协议客户API开放平台 https://api.ems.com.cn/
+  // 字段映射: appId=协议客户号(senderNo), appSecret=授权码(authorization), appKey=SM4密钥(Base64)
+  // 报文加密: logitcsInterface = Base64(SM4-ECB(业务JSON + SM4密钥字符串))，apiCode=040001为运单轨迹查询
   private async queryEMSTrace(trackingNo: string, config: LogisticsApiConfig): Promise<LogisticsTrackResult> {
+    const sm4KeyStr = (config.appKey || '').trim();
+    if (!sm4KeyStr) {
+      return {
+        success: false,
+        trackingNo,
+        companyCode: 'EMS',
+        companyName: '邮政EMS',
+        status: 'error',
+        statusText: 'EMS API配置不完整：缺少SM4密钥（在邮政开放平台api.ems.com.cn获取，填入AppKey/SM4密钥字段）',
+        traces: []
+      };
+    }
+
+    let sm4Key: Buffer;
+    try {
+      sm4Key = parseSm4Key(sm4KeyStr);
+    } catch (e: any) {
+      return {
+        success: false,
+        trackingNo,
+        companyCode: 'EMS',
+        companyName: '邮政EMS',
+        status: 'error',
+        statusText: 'EMS SM4密钥格式错误: ' + (e?.message || '密钥必须为16字节'),
+        traces: []
+      };
+    }
+
     const timestamp = formatDateTime(new Date());
-    const data = JSON.stringify({ mailNo: trackingNo });
+    // 业务报文 + SM4密钥字符串拼接后加密（邮政平台要求）
+    const bizJson = JSON.stringify({ waybillNo: trackingNo });
+    const cipherText = sm4EncryptEcbBase64(bizJson + sm4KeyStr, sm4Key);
 
-    const signStr = data + config.appSecret + timestamp;
-    const sign = crypto.createHash('md5').update(signStr).digest('hex').toUpperCase();
+    let apiUrl = (config.apiUrl || '').trim();
+    if (!apiUrl || !apiUrl.includes('/amp')) {
+      apiUrl = 'https://api.ems.com.cn/amp-prod-api/f/amp/api/open';
+    }
 
-    const apiUrl = config.apiEnvironment === 'production'
-      ? 'https://eis.11183.com.cn/openapi/mailTrack/query'
-      : 'https://eis.11183.com.cn/openapi/test/mailTrack/query';
+    log.info('[EMS API] 请求URL:', apiUrl);
 
-    const response = await axios.post(apiUrl, {
-      appKey: config.appId,
-      timestamp: timestamp,
-      sign: sign,
-      data: data
-    }, {
-      headers: { 'Content-Type': 'application/json' },
+    const formBody = new URLSearchParams({
+      apiCode: '040001',
+      senderNo: config.appId || '',
+      authorization: config.appSecret || '',
+      timeStamp: timestamp,
+      logitcsInterface: cipherText
+    });
+
+    const response = await axios.post(apiUrl, formBody.toString(), {
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       timeout: 10000
     });
 
+    log.info('[EMS API] 响应:', JSON.stringify(response.data));
     return this.parseEMSResponse(trackingNo, response.data);
   }
 
@@ -1198,50 +1351,112 @@ class LogisticsTraceService {
       rawData: data
     };
 
-    if (data.code === '0' || data.success === true) {
+    // 邮政平台成功响应: retCode='00000'，retBody为轨迹数据
+    if (data.retCode === '00000' || data.code === '0' || data.success === true) {
       result.success = true;
-      const traces = data.data?.traces || [];
+      const body = data.retBody ?? data.data ?? {};
+      let traces: any[] = [];
+      if (Array.isArray(body)) {
+        traces = body;
+      } else if (Array.isArray(body.traces)) {
+        traces = body.traces;
+      } else if (Array.isArray(body.tracks)) {
+        traces = body.tracks;
+      } else if (Array.isArray(body.traceList)) {
+        traces = body.traceList;
+      }
       result.traces = traces.map((t: any) => ({
-        time: t.acceptTime,
-        status: t.opCode,
-        description: t.opName,
-        location: t.opOrgCity
+        time: t.opTime || t.acceptTime || t.time,
+        status: t.opCode || t.status || '',
+        description: t.opDesc || t.opName || t.desc || t.description || '',
+        location: t.opOrgCity || t.opOrgProvName || t.city || ''
       }));
 
-      if (traces.length > 0) {
-        result.status = this.detectStatusFromDescription(traces[0].opName);
+      if (result.traces.length > 0) {
+        result.status = this.detectStatusFromDescription(result.traces[0].description);
         result.statusText = this.getStatusText(result.status);
+      } else {
+        result.statusText = '暂无轨迹信息';
       }
+    } else if (data.retMsg || data.message || data.msg) {
+      result.statusText = String(data.retMsg || data.message || data.msg);
     }
 
     return result;
   }
 
   // ========== 京东物流 ==========
-  private async queryJDTrace(trackingNo: string, config: LogisticsApiConfig): Promise<LogisticsTrackResult> {
+  // 京东物流开放平台 https://open.jdl.com/ 轨迹查询接口 /jd/tracking/query (对接方案编码 Tracking_JD)
+  // 字段映射: appId=AppKey, appSecret=AppSecret, appKey=AccessToken(OAuth授权令牌), customerId=商家编码
+  // 签名: MD5(secret + "access_token"+token + "app_key"+key + "method"+method + "param_json"+body + "timestamp"+ts + "v"+"2.0" + secret) 大写
+  private async queryJDTrace(trackingNo: string, config: LogisticsApiConfig, phone?: string): Promise<LogisticsTrackResult> {
+    const accessToken = (config.appKey || '').trim();
+    if (!accessToken) {
+      return {
+        success: false,
+        trackingNo,
+        companyCode: 'JD',
+        companyName: '京东物流',
+        status: 'error',
+        statusText: '京东物流API配置不完整：缺少AccessToken（需在京东物流开放平台用签约商家账号OAuth授权获取，填入AccessToken字段）',
+        traces: []
+      };
+    }
+
+    const method = '/jd/tracking/query';
     const timestamp = formatDateTime(new Date());
-    const data = JSON.stringify({
-      waybillCode: trackingNo,
-      customerCode: config.customerId || ''
-    });
 
-    const signStr = config.appSecret + timestamp + data + config.appSecret;
-    const sign = crypto.createHash('md5').update(signStr).digest('hex').toUpperCase();
+    // 业务参数: referenceType=20000表示运单号查询；非商家本人查询需提供手机号后四位
+    const paramObj: Record<string, string> = {
+      referenceNumber: trackingNo,
+      referenceType: '20000'
+    };
+    if (phone && phone.trim()) {
+      const digits = phone.replace(/\D/g, '');
+      if (digits.length >= 4) {
+        paramObj.phone = digits.slice(-4);
+      }
+    }
+    const paramJson = JSON.stringify([paramObj]);
 
-    const apiUrl = config.apiEnvironment === 'production'
-      ? 'https://api.jdl.com/ecap/v1/orders/trace/query'
-      : 'https://uat-api.jdl.com/ecap/v1/orders/trace/query';
+    // 🔥 京东物流网关签名（md5-salt）
+    const secret = config.appSecret || '';
+    const signStr = secret
+      + 'access_token' + accessToken
+      + 'app_key' + (config.appId || '')
+      + 'method' + method
+      + 'param_json' + paramJson
+      + 'timestamp' + timestamp
+      + 'v' + '2.0'
+      + secret;
+    const sign = crypto.createHash('md5').update(signStr, 'utf8').digest('hex').toUpperCase();
 
-    const response = await axios.post(apiUrl, {
-      app_key: config.appId,
-      timestamp: timestamp,
-      sign: sign,
-      param_json: data
-    }, {
+    let base = (config.apiUrl || '').trim();
+    if (base.includes('/jd/tracking/query')) {
+      base = base.substring(0, base.indexOf('/jd/tracking/query'));
+    }
+    if (!base) {
+      base = config.apiEnvironment === 'production'
+        ? 'https://api.jdl.com'
+        : 'https://uat-api.jdl.com';
+    }
+    const apiUrl = `${base.replace(/\/+$/, '')}${method}`
+      + `?LOP-DN=Tracking_JD`
+      + `&app_key=${encodeURIComponent(config.appId || '')}`
+      + `&access_token=${encodeURIComponent(accessToken)}`
+      + `&timestamp=${encodeURIComponent(timestamp)}`
+      + `&v=2.0`
+      + `&algorithm=md5-salt`
+      + `&sign=${encodeURIComponent(sign)}`;
+
+    log.info('[京东物流API] 请求URL:', apiUrl.replace(accessToken, '***'));
+
+    const response = await axios.post(apiUrl, paramJson, {
       headers: { 'Content-Type': 'application/json' },
       timeout: 10000
     });
 
+    log.info('[京东物流API] 响应:', JSON.stringify(response.data));
     return this.parseJDResponse(trackingNo, response.data);
   }
 
@@ -1257,21 +1472,42 @@ class LogisticsTraceService {
       rawData: data
     };
 
-    if (data.code === '0' || data.code === 0 || data.success === true) {
-      result.success = true;
-      const traces = data.data?.traceList || [];
+    // 网关错误响应: {error_response: {code, zh_desc/en_desc}}
+    if (data?.error_response) {
+      result.statusText = String(data.error_response.zh_desc || data.error_response.en_desc || data.error_response.code || '京东网关错误');
+      return result;
+    }
+
+    if (data.code === '0' || data.code === 0 || data.success === true || data.data) {
+      // 兼容多种返回结构: data为数组(Tracking_JD) 或 data.traceList(旧ECAP)
+      let traces: any[] = [];
+      const content = data.data ?? data.result ?? {};
+      if (Array.isArray(content)) {
+        const first = content[0] || {};
+        traces = first.trackDetails || first.traceDetailList || first.traces || first.traceList || [];
+      } else {
+        traces = content.traceList || content.trackDetails || content.traceDetailList || [];
+      }
+
       result.traces = traces.map((t: any) => ({
-        time: t.msgTime,
-        status: t.waybillStatus,
-        description: t.content,
-        location: t.operatorSite,
+        time: t.msgTime || t.operateTime || t.trackTime || t.time,
+        status: t.waybillStatus || t.trackType || '',
+        description: t.content || t.trackContent || t.description || '',
+        location: t.operatorSite || t.trackLocation || '',
         operator: t.operator
       }));
 
-      if (traces.length > 0) {
-        result.status = this.mapJDStatus(traces[0].waybillStatus);
+      if (result.traces.length > 0) {
+        result.success = true;
+        result.status = this.mapJDStatus(String(result.traces[0].status))
+          || this.detectStatusFromDescription(result.traces[0].description);
         result.statusText = this.getStatusText(result.status);
+      } else if (data.code === '0' || data.code === 0 || data.success === true) {
+        result.success = true;
+        result.statusText = '暂无轨迹信息';
       }
+    } else if (data.msg || data.message) {
+      result.statusText = String(data.msg || data.message);
     }
 
     return result;
@@ -1286,36 +1522,45 @@ class LogisticsTraceService {
       '5': 'rejected',
       '6': 'exception'
     };
-    return map[status] || 'in_transit';
+    return map[status] || '';
   }
 
   // ========== 德邦快递 ==========
+  // 德邦开放平台 https://open.deppon.com/ 新轨迹查询接口 newTraceQuery.action
+  // 字段映射: appId=公司编码(companyCode), appSecret=密钥(appkey)
+  // 签名: digest = Base64( MD5十六进制字符串(params + appkey + timestamp) 的字节 )，表单方式提交
   private async queryDBLTrace(trackingNo: string, config: LogisticsApiConfig): Promise<LogisticsTrackResult> {
     const timestamp = Date.now().toString();
-    const data = JSON.stringify({
-      logisticCompanyID: 'DEPPON',
-      logisticID: trackingNo,
-      companyCode: config.customerId || ''
+    // 官方轨迹查询参数: {"mailno":"运单号"}
+    const params = JSON.stringify({ mailno: trackingNo });
+
+    // 🔥 德邦官方签名: 先MD5十六进制，再对十六进制字符串做Base64
+    const md5Hex = crypto.createHash('md5').update(params + (config.appSecret || '') + timestamp, 'utf8').digest('hex');
+    const digest = Buffer.from(md5Hex, 'utf8').toString('base64');
+
+    let apiUrl = (config.apiUrl || '').trim();
+    if (!apiUrl || !apiUrl.includes('TraceQuery')) {
+      apiUrl = config.apiEnvironment === 'production'
+        ? 'https://dpapi.deppon.com/dop-interface-sync/standard-order/newTraceQuery.action'
+        : 'http://dpsanbox.deppon.com/sandbox-web/standard-order/newTraceQuery.action';
+    }
+
+    log.info('[德邦API] 请求URL:', apiUrl);
+
+    // 🔥 官方要求表单方式提交
+    const formBody = new URLSearchParams({
+      companyCode: config.appId || '',
+      params: params,
+      timestamp: timestamp,
+      digest: digest
     });
 
-    const signStr = config.appId + data + timestamp + config.appSecret;
-    // 德邦使用 Base64(MD5(appKey + data + timestamp + appSecret)) 签名
-    const sign = crypto.createHash('md5').update(signStr).digest('base64');
-
-    const apiUrl = config.apiEnvironment === 'production'
-      ? 'https://dpapi.deppon.com/dop-interface-sync/standard-order/newTraceQuery.action'
-      : 'http://dpapi-test.deppon.com/dop-interface-sync/standard-order/newTraceQuery.action';
-
-    const response = await axios.post(apiUrl, {
-      companyCode: config.appId,
-      timestamp: timestamp,
-      digest: sign,
-      params: data
-    }, {
-      headers: { 'Content-Type': 'application/json' },
+    const response = await axios.post(apiUrl, formBody.toString(), {
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       timeout: 10000
     });
 
+    log.info('[德邦API] 响应:', JSON.stringify(response.data));
     return this.parseDBLResponse(trackingNo, response.data);
   }
 
@@ -1331,20 +1576,32 @@ class LogisticsTraceService {
       rawData: data
     };
 
-    if (data.result === 'true' || data.success === true) {
+    if (data.result === 'true' || data.result === true || data.success === true) {
       result.success = true;
-      const traces = data.responseParam?.traceList || [];
+      // 兼容 responseParam 为JSON字符串或对象
+      let respParam: any = data.responseParam;
+      if (typeof respParam === 'string') {
+        try { respParam = JSON.parse(respParam); } catch { respParam = null; }
+      }
+      const traces = respParam?.traceList
+        || respParam?.responseParam?.traceList
+        || data.traceList
+        || [];
       result.traces = traces.map((t: any) => ({
-        time: t.operateTime,
-        status: t.operateType,
-        description: t.description,
-        location: t.operateDept
+        time: t.operateTime || t.time,
+        status: t.operateType || '',
+        description: t.description || t.remark || '',
+        location: t.operateDept || t.site || ''
       }));
 
-      if (traces.length > 0) {
-        result.status = this.detectStatusFromDescription(traces[0].description);
+      if (result.traces.length > 0) {
+        result.status = this.detectStatusFromDescription(result.traces[0].description);
         result.statusText = this.getStatusText(result.status);
+      } else {
+        result.statusText = '暂无轨迹信息';
       }
+    } else if (data.reason || data.message) {
+      result.statusText = String(data.reason || data.message);
     }
 
     return result;

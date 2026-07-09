@@ -138,6 +138,14 @@ export const request = <T = any>(options: RequestOptions): Promise<T> => {
 
         // Token过期 - 尝试静默重新登录并重试
         if (res.statusCode === 401) {
+          // 🔥 登录/绑定接口的401是"凭证错误"（密码错误、账号不存在等），
+          // 不是"登录已过期"，必须原样透传后端的具体错误信息，且不触发静默重登
+          const isAuthApi = /\/mobile\/(login|bind)\b/.test(options.url || '')
+          if (isAuthApi) {
+            reject(new Error(data?.message || '用户名或密码错误'))
+            return
+          }
+
           const pages = getCurrentPages()
           const currentPage = pages[pages.length - 1]
           const currentPath = currentPage?.route || ''
@@ -145,7 +153,8 @@ export const request = <T = any>(options: RequestOptions): Promise<T> => {
           console.log('401错误，当前页面:', currentPath)
 
           if (currentPath.includes('login')) {
-            reject(new Error('登录已过期'))
+            // 登录页上的其他接口401：透传后端信息，兜底才提示过期
+            reject(new Error(data?.message || '登录已过期'))
             return
           }
 
@@ -203,13 +212,14 @@ export const request = <T = any>(options: RequestOptions): Promise<T> => {
       },
       fail: (err) => {
         uni.hideLoading()
-        const errorMsg = err.errMsg || '网络错误'
+        console.warn('[request] 网络请求失败:', options.url, err.errMsg)
         uni.showToast({
           title: '网络连接失败',
           icon: 'none',
           duration: 2000
         })
-        reject(new Error(errorMsg))
+        // 用友好文案reject（原始errMsg是"request:fail ..."，直接展示会让用户困惑）
+        reject(new Error('网络连接失败，请检查网络或服务器地址'))
       }
     })
   })

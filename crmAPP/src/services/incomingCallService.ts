@@ -12,6 +12,7 @@ import { callStateService } from './callStateService'
 import { reportIncomingCall, reportCallEnd, reportMissedCalls, reportCallStatus } from '@/api/call'
 import { recordingService } from './recordingService'
 import { useUserStore } from '@/stores/user'
+import { openBrandPermissionManager, getManualPermissionGuide } from '@/utils/permissionGuide'
 
 export interface IncomingCallInfo {
   callerNumber: string
@@ -54,6 +55,12 @@ class IncomingCallService {
   private phoneStateReceiver: any = null
   private phoneStateReceiverAlt: any = null
   private callLogPollTimer: ReturnType<typeof setInterval> | null = null
+  // CallScreeningService（Android 10+ 响铃前取号，绕过ROM对CallLog的拦截）
+  // 与原生服务通过 SharedPreferences + 应用内广播通讯，不依赖UniModule插件模块
+  private callScreeningAvailable = false // 服务类是否已打进APK
+  private callScreeningSupported = false // 系统是否支持（Android 10+）
+  private callScreeningRoleHeld = false // 是否已持有"来电显示与骚扰拦截"角色
+  private callScreenedReceiver: any = null // 来电筛选广播接收器
   // #endif
 
   startListening() {
@@ -69,6 +76,8 @@ class IncomingCallService {
     console.log('[IncomingCallService] 来电监听已启动')
 
     // #ifdef APP-PLUS
+    // 优先初始化来电筛选插件（Android 10+ 响铃前直接获取号码，最可靠）
+    this.initCallScreening()
     this.requestPhonePermissions().then(() => {
       try {
         this.initAndroidListener()
@@ -102,6 +111,8 @@ class IncomingCallService {
     // #ifdef APP-PLUS
     this.stopRingtone()
     this.stopForegroundKeepAlive()
+    // 注销来电筛选广播接收器（原生Service仍会缓存号码到SharedPreferences，下次启动可补读）
+    this.unregisterCallScreenedReceiver()
     // #endif
     uni.$off('ws:incoming_call')
     console.log('[IncomingCallService] 来电监听已停止')
@@ -217,6 +228,323 @@ class IncomingCallService {
     return true
   }
 
+  // ============================================================
+  // 来电筛选（CallScreeningService，Android 10+）
+  // 系统在响铃前回调号码，绕过荣耀/OPPO等ROM对CallLog的拦截，
+  // 100%是当前通来电，从根上解决"响铃显示未知客户"和串号问题。
+  // 原生侧只有一个 Service（打进APK的AAR），与 JS 通过
+  // SharedPreferences("crm_callscreen") + 应用内广播(.CALL_SCREENED)通讯，
+  // 全部用 plus.android 标准API访问，无需 UniModule 插件模块。
+  // ============================================================
+
+  // #ifdef APP-PLUS
+  private static readonly ROLE_CALL_SCREENING = 'android.app.role.CALL_SCREENING'
+  private static readonly SCREEN_SP_NAME = 'crm_callscreen'
+
+  /**
+   * 初始化来电筛选：
+   * - APK 中无服务类（标准基座/未勾选插件打包）→ 自动回退旧方案（CallLog轮询）
+   * - 已持有"来电显示与骚扰拦截"角色 → 注册广播接收器 + 补读进程被杀期间的最近来电
+   * - 未持有角色 → 引导开启（每24小时最多提示一次，设置页可随时手动开启）
+   */
+  private initCallScreening() {
+    this.callScreeningAvailable = this.isCallScreeningServiceInApk()
+    if (!this.callScreeningAvailable) {
+      console.log('[IncomingCallService] 来电筛选服务未打进APK（标准基座或未集成插件），使用CallLog旧方案')
+      return
+    }
+    this.callScreeningSupported = this.getSdkInt() >= 29
+    if (!this.callScreeningSupported) {
+      console.log('[IncomingCallService] 系统版本低于Android 10，来电筛选不可用')
+      return
+    }
+    this.callScreeningRoleHeld = this.isCallScreeningRoleHeld()
+    console.log('[IncomingCallService] 来电筛选状态: available=true, roleHeld=' + this.callScreeningRoleHeld + ', sdk=' + this.getSdkInt())
+    if (this.callScreeningRoleHeld) {
+      this.registerCallScreenedReceiver()
+      this.recoverScreenedNumberFromCache()
+    } else {
+      this.maybeGuideCallScreeningRole()
+    }
+  }
+
+  /** 检查来电筛选服务类是否已编译进APK */
+  private isCallScreeningServiceInApk(): boolean {
+    try {
+      const cls = plus.android.importClass('com.xianhu.crm.callscreen.CRMCallScreeningService')
+      return !!cls
+    } catch (_e) {
+      return false
+    }
+  }
+
+  private getSdkInt(): number {
+    try {
+      const Build = plus.android.importClass('android.os.Build') as any
+      return Number(Build.VERSION.SDK_INT || 0)
+    } catch (_e) {
+      return 0
+    }
+  }
+
+  /** 是否已持有"来电显示与骚扰拦截"角色 */
+  private isCallScreeningRoleHeld(): boolean {
+    try {
+      if (this.getSdkInt() < 29) return false
+      const main = plus.android.runtimeMainActivity()
+      const roleManager = plus.android.invoke(main, 'getSystemService', 'role')
+      if (!roleManager) return false
+      const available = plus.android.invoke(roleManager, 'isRoleAvailable', IncomingCallService.ROLE_CALL_SCREENING)
+      if (!available) return false
+      return !!plus.android.invoke(roleManager, 'isRoleHeld', IncomingCallService.ROLE_CALL_SCREENING)
+    } catch (e) {
+      console.warn('[IncomingCallService] 角色状态检查失败:', e)
+      return false
+    }
+  }
+
+  /**
+   * 注册来电筛选广播接收器（原生Service在响铃前 sendBroadcast 推送号码）
+   */
+  private registerCallScreenedReceiver() {
+    try {
+      if (this.callScreenedReceiver) return
+      const main = plus.android.runtimeMainActivity()
+      const pkgName = '' + plus.android.invoke(main, 'getPackageName')
+      const IntentFilter = plus.android.importClass('android.content.IntentFilter') as any
+      const filter = new IntentFilter(pkgName + '.CALL_SCREENED')
+      const self = this
+
+      this.callScreenedReceiver = plus.android.implements('android.content.BroadcastReceiver', {
+        onReceive: function(_context: any, intent: any) {
+          try {
+            const num = String(plus.android.invoke(intent, 'getStringExtra', 'phoneNumber') || '').trim()
+            const tsStr = String(plus.android.invoke(intent, 'getStringExtra', 'timestamp') || '0')
+            const ts = Number(tsStr) || Date.now()
+            console.log('[IncomingCallService] ✅ 收到来电筛选广播')
+            if (num && num.length >= 3) {
+              self.handleScreenedNumber(num, ts)
+            }
+          } catch (e) {
+            console.warn('[IncomingCallService] 来电筛选广播处理异常:', e)
+          }
+        }
+      })
+
+      // 应用内广播：API 33+ 用 RECEIVER_NOT_EXPORTED(4)，低版本用2参数注册
+      let registered = false
+      if (this.getSdkInt() >= 33) {
+        try {
+          ;(main as any).registerReceiver(this.callScreenedReceiver, filter, 4)
+          registered = true
+        } catch (_e) { /* 降级 */ }
+      }
+      if (!registered) {
+        ;(main as any).registerReceiver(this.callScreenedReceiver, filter)
+      }
+      console.log('[IncomingCallService] ✅ 来电筛选广播接收器已注册（响铃前实时取号已启用）')
+    } catch (e) {
+      console.warn('[IncomingCallService] 来电筛选广播注册失败（仍可通过缓存轮询取号）:', e)
+      this.callScreenedReceiver = null
+    }
+  }
+
+  /** 注销来电筛选广播接收器 */
+  private unregisterCallScreenedReceiver() {
+    try {
+      if (!this.callScreenedReceiver) return
+      const main = plus.android.runtimeMainActivity()
+      ;(main as any).unregisterReceiver(this.callScreenedReceiver)
+    } catch (_e) { /* ignore */ }
+    this.callScreenedReceiver = null
+  }
+
+  /**
+   * 同步读取原生Service写入的最近来电缓存（SharedPreferences）
+   * @returns { num, ts } 无数据时 num 为空串
+   */
+  private readScreenedPrefs(): { num: string; ts: number } {
+    try {
+      const invoke = plus.android.invoke as any
+      const main = plus.android.runtimeMainActivity()
+      const sp = invoke(main, 'getSharedPreferences', IncomingCallService.SCREEN_SP_NAME, 0)
+      if (!sp) return { num: '', ts: 0 }
+      const num = String(invoke(sp, 'getString', 'last_incoming_number', '') || '').trim()
+      // 时间戳以字符串读取，避免 JS 桥接 long 的精度问题
+      const tsStr = String(invoke(sp, 'getString', 'last_incoming_time_str', '0') || '0')
+      return { num, ts: Number(tsStr) || 0 }
+    } catch (e) {
+      return { num: '', ts: 0 }
+    }
+  }
+
+  /**
+   * 处理来电筛选服务推送的号码（系统响铃前回调，必然是当前通，无串号风险）
+   */
+  private handleScreenedNumber(phoneNumber: string, timestamp: number) {
+    // 过期保护：超过90秒的值不用于触发新来电流程
+    if (timestamp > 0 && Date.now() - timestamp > 90 * 1000) {
+      console.log('[IncomingCallService] 来电筛选号码已过期，忽略:', phoneNumber)
+      return
+    }
+    console.log('[IncomingCallService] ✅ 来电筛选获取到号码（响铃前）:', phoneNumber)
+
+    if (!this.currentIncoming) {
+      // 还没有来电会话（筛选服务先于 PhoneStateListener 到达）：直接启动来电流程
+      this.onRingingDetected(phoneNumber)
+      return
+    }
+    // 已有会话但号码未知（PhoneStateListener 先到但没带号码）：补号码并重新上报
+    if (!this.currentIncoming.callerNumber || this.currentIncoming.callerNumber === '未知来电') {
+      this.currentIncoming.callerNumber = phoneNumber
+      uni.$emit('incoming:number_updated', { callerNumber: phoneNumber })
+      this.hasReportedIncoming = false
+      this.currentIncoming.callId = undefined
+      this.reportIncomingToServer(phoneNumber)
+    }
+  }
+
+  /**
+   * 进程被杀期间来了电话：JS重启后从原生 SharedPreferences 补读最近来电，
+   * 若在60秒内且尚无会话，则拉起来电流程
+   */
+  private recoverScreenedNumberFromCache() {
+    const { num, ts } = this.readScreenedPrefs()
+    if (!num || !ts) return
+    const ageMs = Date.now() - ts
+    if (ageMs < 0 || ageMs > 60 * 1000) return
+    if (this.currentIncoming) return
+    console.log('[IncomingCallService] 从来电筛选缓存恢复最近来电:', num, '(', Math.round(ageMs / 1000), '秒前)')
+    this.handleScreenedNumber(num, ts)
+  }
+
+  /**
+   * 从来电筛选缓存读取当前通的号码（轮询/事后补号兜底用）
+   * @param sessionStart 本通开始时间，只接受该时间之后写入的缓存（允许5秒时钟误差）
+   * @param untilTime 可选的结束时间上限（事后补号场景，避免取到之后新来电的号码）
+   */
+  private getScreenedNumberForSession(sessionStart: number, untilTime?: number): Promise<string> {
+    return new Promise((resolve) => {
+      if (!this.callScreeningAvailable || !this.callScreeningRoleHeld) {
+        resolve('')
+        return
+      }
+      const { num, ts } = this.readScreenedPrefs()
+      const inWindow = num && ts >= sessionStart - 5000 && (!untilTime || ts <= untilTime + 5000)
+      resolve(inWindow ? num : '')
+    })
+  }
+
+  /**
+   * 引导用户开启"来电显示与骚扰拦截"角色（每24小时最多一次）
+   */
+  private maybeGuideCallScreeningRole() {
+    try {
+      const lastShown = Number(uni.getStorageSync('callScreeningGuideShownAt') || 0)
+      if (Date.now() - lastShown < 24 * 60 * 60 * 1000) return
+      uni.setStorageSync('callScreeningGuideShownAt', Date.now())
+      uni.showModal({
+        title: '开启来电识别',
+        content: '开启后，客户来电响铃时即可实时识别号码并弹出客户信息（无需读取通话记录）。是否立即开启？',
+        confirmText: '立即开启',
+        cancelText: '暂不',
+        success: (res) => {
+          if (res.confirm) {
+            this.requestCallScreeningRole()
+          }
+        },
+      })
+    } catch (e) {
+      console.warn('[IncomingCallService] 来电识别引导弹窗失败:', e)
+    }
+  }
+  // #endif
+
+  /**
+   * 获取来电筛选（来电识别）状态，供设置页显示
+   */
+  getCallScreeningStatus(): Promise<{ available: boolean; supported: boolean; roleHeld: boolean }> {
+    return new Promise((resolve) => {
+      // #ifdef APP-PLUS
+      this.callScreeningAvailable = this.isCallScreeningServiceInApk()
+      this.callScreeningSupported = this.getSdkInt() >= 29
+      this.callScreeningRoleHeld = this.callScreeningAvailable && this.callScreeningSupported && this.isCallScreeningRoleHeld()
+      resolve({
+        available: this.callScreeningAvailable,
+        supported: this.callScreeningSupported,
+        roleHeld: this.callScreeningRoleHeld,
+      })
+      // #endif
+      // #ifndef APP-PLUS
+      resolve({ available: false, supported: false, roleHeld: false })
+      // #endif
+    })
+  }
+
+  /**
+   * 请求"来电显示与骚扰拦截"角色（拉起系统授权弹窗），供设置页调用。
+   * 系统弹窗结果无法直接回调，通过轮询角色状态判定（用户操作完回到APP即生效）。
+   */
+  requestCallScreeningRole(): Promise<boolean> {
+    return new Promise((resolve) => {
+      // #ifdef APP-PLUS
+      if (!this.isCallScreeningServiceInApk()) {
+        uni.showToast({ title: '当前版本未集成来电识别功能', icon: 'none' })
+        resolve(false)
+        return
+      }
+      if (this.getSdkInt() < 29) {
+        uni.showToast({ title: '当前系统版本不支持（需Android 10+）', icon: 'none' })
+        resolve(false)
+        return
+      }
+      if (this.isCallScreeningRoleHeld()) {
+        this.callScreeningRoleHeld = true
+        this.registerCallScreenedReceiver()
+        uni.showToast({ title: '来电识别已开启', icon: 'success' })
+        resolve(true)
+        return
+      }
+      try {
+        const main = plus.android.runtimeMainActivity()
+        const roleManager = plus.android.invoke(main, 'getSystemService', 'role')
+        if (!roleManager || !plus.android.invoke(roleManager, 'isRoleAvailable', IncomingCallService.ROLE_CALL_SCREENING)) {
+          uni.showToast({ title: '当前系统不支持来电识别角色', icon: 'none' })
+          resolve(false)
+          return
+        }
+        const intent = plus.android.invoke(roleManager, 'createRequestRoleIntent', IncomingCallService.ROLE_CALL_SCREENING)
+        ;(plus.android.invoke as any)(main, 'startActivityForResult', intent, 0xC511)
+      } catch (e) {
+        console.warn('[IncomingCallService] 拉起来电识别授权弹窗失败:', e)
+        uni.showToast({ title: '打开授权弹窗失败', icon: 'none' })
+        resolve(false)
+        return
+      }
+
+      // 轮询角色状态（系统弹窗关闭后生效），最多等30秒
+      let checks = 0
+      const timer = setInterval(() => {
+        checks++
+        const held = this.isCallScreeningRoleHeld()
+        if (held) {
+          clearInterval(timer)
+          this.callScreeningRoleHeld = true
+          this.registerCallScreenedReceiver()
+          uni.showToast({ title: '来电识别已开启', icon: 'success' })
+          resolve(true)
+        } else if (checks >= 20) {
+          clearInterval(timer)
+          resolve(false)
+        }
+      }, 1500)
+      // #endif
+      // #ifndef APP-PLUS
+      resolve(false)
+      // #endif
+    })
+  }
+
   // #ifdef APP-PLUS
   private openOverlayPermissionSettings() {
     try {
@@ -237,40 +565,20 @@ class IncomingCallService {
 
   /**
    * 跳转到系统应用权限设置页
+   * 引导链：品牌权限管理页（小米/华为/荣耀/OPPO/vivo/魅族等直达本APP权限列表）
+   *        → 应用详情页 → 按机型给出手动路径文案
    */
   openAppPermissionSettings() {
     // #ifdef APP-PLUS
     try {
-      const Intent = plus.android.importClass('android.content.Intent') as any
-      const Uri = plus.android.importClass('android.net.Uri') as any
-      const ComponentName = plus.android.importClass('android.content.ComponentName') as any
-      const main = plus.android.runtimeMainActivity()
-      const pkgName = (main as any).getPackageName()
-
-      // 华为设备：尝试直接打开华为权限管理页面
-      const brand = ('' + ((plus.android.importClass('android.os.Build') as any).MANUFACTURER || '')).toLowerCase()
-      if (brand.includes('huawei') || brand.includes('honor')) {
-        try {
-          const huaweiIntent = new Intent()
-          huaweiIntent.setComponent(new ComponentName(
-            'com.huawei.systemmanager',
-            'com.huawei.permissionmanager.ui.SingleAppActivity'
-          ))
-          huaweiIntent.putExtra('packageName', pkgName)
-          huaweiIntent.addFlags(0x10000000) // FLAG_ACTIVITY_NEW_TASK
-          ;(main as any).startActivity(huaweiIntent)
-          console.log('[IncomingCallService] 已跳转到华为权限管理页面')
-          return
-        } catch (_e) {
-          console.log('[IncomingCallService] 华为权限管理页面跳转失败，尝试通用设置')
-        }
-      }
-
-      // 通用方式：打开应用详情设置页
-      const Settings = plus.android.importClass('android.provider.Settings') as any
-      const intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
-      intent.setData(Uri.parse('package:' + pkgName))
-      ;(main as any).startActivity(intent)
+      if (openBrandPermissionManager()) return
+      // 全部跳转失败：按品牌+机型给出通话记录权限的手动开启路径
+      uni.showModal({
+        title: '手动开启权限',
+        content: getManualPermissionGuide('calllog'),
+        showCancel: false,
+        confirmText: '我知道了'
+      })
     } catch (err) {
       console.warn('[IncomingCallService] 跳转设置失败:', err)
       uni.showToast({ title: '请手动进入系统设置 > 应用管理 > 云客CRM > 权限', icon: 'none', duration: 3000 })
@@ -908,9 +1216,12 @@ class IncomingCallService {
     if (currentNumber && currentNumber !== '未知来电') return
 
     const session = this.currentIncoming
-    // 先试 CallLog，再试录音文件名
-    this.tryResolveCallerFromCallLog().then(async (number) => {
-      let resolved = number
+    // 先试来电筛选缓存，再试 CallLog，最后录音文件名
+    this.getScreenedNumberForSession(session.startTime).then(async (fromScreening) => {
+      let resolved = fromScreening
+      if (!resolved) {
+        resolved = await this.tryResolveCallerFromCallLog()
+      }
       // 🔒 响铃期间禁用录音文件解析（本通尚无录音，匹配到的必是上一通的文件）
       if (!resolved && this.lastPhoneState !== 1) {
         resolved = await this.tryResolveCallerFromRecordingFile()
@@ -1009,10 +1320,15 @@ class IncomingCallService {
   }
 
   /**
-   * 综合尝试获取来电号码：先 CallLog，再录音文件名
+   * 综合尝试获取来电号码：先来电筛选缓存，再 CallLog，最后录音文件名
    */
   private async tryResolveNumber(attempt: number): Promise<string> {
-    // 1. 先试 CallLog
+    // 0. 来电筛选服务缓存（响铃前系统回调写入，最可靠且必然是当前通）
+    const sessionStart = this.currentIncoming?.startTime || Date.now()
+    const fromScreening = await this.getScreenedNumberForSession(sessionStart)
+    if (fromScreening) return fromScreening
+
+    // 1. 再试 CallLog
     const fromCallLog = await this.tryResolveCallerFromCallLog()
     if (fromCallLog) return fromCallLog
 
@@ -1227,9 +1543,13 @@ class IncomingCallService {
             console.log('[IncomingCallService] 补号期间检测到新来电，停止上一通的补号')
             break
           }
-          // 先试 CallLog（可能在某些设备上终于可用），限定本通时间窗口[start, end]避免取到其他通话
-          let resolvedNum = await this.tryResolveCallerFromCallLog(info.startTime, endTime)
-          // CallLog 失败，试录音文件名（同样限定本通时间窗口）
+          // 0. 先试来电筛选缓存（限定本通时间窗口，必然可靠）
+          let resolvedNum = await this.getScreenedNumberForSession(info.startTime, endTime)
+          // 1. 再试 CallLog（可能在某些设备上终于可用），限定本通时间窗口[start, end]避免取到其他通话
+          if (!resolvedNum) {
+            resolvedNum = await this.tryResolveCallerFromCallLog(info.startTime, endTime)
+          }
+          // 2. CallLog 失败，试录音文件名（同样限定本通时间窗口）
           if (!resolvedNum) {
             resolvedNum = await this.tryResolveCallerFromRecordingFile(info.startTime, endTime)
           }

@@ -35,16 +35,24 @@ export interface ExpressCompany {
 export class ExpressAPIService {
   private static instance: ExpressAPIService;
   private readonly timeout: number;
-  private readonly kuaidi100Config: {
-    customer: string;
-    key: string;
-    url: string;
-  };
-  private readonly kdniaoConfig: {
-    customerId: string;
-    apiKey: string;
-    url: string;
-  };
+
+  // 🔥 修复：改为动态读取环境变量（保存快递100配置后无需重启即可生效）
+  // 之前是构造时快照，导致管理界面保存新密钥后单例仍使用旧值
+  private get kuaidi100Config(): { customer: string; key: string; url: string } {
+    return {
+      customer: process.env.EXPRESS_API_CUSTOMER || '',
+      key: process.env.EXPRESS_API_KEY || '',
+      url: process.env.EXPRESS_API_URL || 'https://poll.kuaidi100.com/poll/query.do'
+    };
+  }
+
+  private get kdniaoConfig(): { customerId: string; apiKey: string; url: string } {
+    return {
+      customerId: process.env.KDNIAO_CUSTOMER_ID || '',
+      apiKey: process.env.KDNIAO_API_KEY || '',
+      url: process.env.KDNIAO_API_URL || 'https://api.kdniao.com/Ebusiness/EbusinessOrderHandle.aspx'
+    };
+  }
 
   // 支持的快递公司列表
   private readonly supportedCompanies: ExpressCompany[] = [
@@ -65,18 +73,6 @@ export class ExpressAPIService {
 
   private constructor() {
     this.timeout = parseInt(process.env.EXPRESS_API_TIMEOUT || '10000');
-
-    this.kuaidi100Config = {
-      customer: process.env.EXPRESS_API_CUSTOMER || '',
-      key: process.env.EXPRESS_API_KEY || '',
-      url: process.env.EXPRESS_API_URL || 'https://poll.kuaidi100.com/poll/query.do'
-    };
-
-    this.kdniaoConfig = {
-      customerId: process.env.KDNIAO_CUSTOMER_ID || '',
-      apiKey: process.env.KDNIAO_API_KEY || '',
-      url: process.env.KDNIAO_API_URL || 'https://api.kdniao.com/Ebusiness/EbusinessOrderHandle.aspx'
-    };
   }
 
   public static getInstance(): ExpressAPIService {
@@ -84,6 +80,35 @@ export class ExpressAPIService {
       ExpressAPIService.instance = new ExpressAPIService();
     }
     return ExpressAPIService.instance;
+  }
+
+  /**
+   * 🔥 启动时从系统配置表恢复快递100配置到环境变量
+   * 管理界面保存的配置存于 system_configs(configKey=kuaidi100_config)，
+   * 之前仅写入 process.env，服务重启后即丢失，导致快递100降级查询失效
+   */
+  public static async restoreKuaidi100ConfigFromDb(): Promise<void> {
+    // 环境变量已配置（.env 文件），不覆盖
+    if (process.env.EXPRESS_API_CUSTOMER && process.env.EXPRESS_API_KEY) {
+      return;
+    }
+    try {
+      const { AppDataSource } = await import('../config/database');
+      const { SystemConfig } = await import('../entities/SystemConfig');
+      const repo = AppDataSource.getRepository(SystemConfig);
+      const config = await repo.findOne({ where: { configKey: 'kuaidi100_config' } as any });
+      if (config && (config as any).configValue) {
+        const data = JSON.parse((config as any).configValue);
+        if (data.customer && data.key && data.enabled !== false) {
+          process.env.EXPRESS_API_CUSTOMER = data.customer;
+          process.env.EXPRESS_API_KEY = data.key;
+          process.env.EXPRESS_API_URL = data.url || 'https://poll.kuaidi100.com/poll/query.do';
+          logger.info('✅ 已从数据库恢复快递100配置');
+        }
+      }
+    } catch (error) {
+      logger.warn('从数据库恢复快递100配置失败:', error);
+    }
   }
 
   /**

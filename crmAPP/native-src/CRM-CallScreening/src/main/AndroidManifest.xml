@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.xianhu.crm.callscreen">
+
+    <application>
+        <!--
+            来电筛选服务：Android 10+ 上，用户将本APP设为"来电显示与骚扰拦截"应用后，
+            系统在响铃前回调 onScreenCall 并携带来电号码。
+            android:permission 必须为 BIND_SCREENING_SERVICE，否则系统拒绝绑定。
+        -->
+        <service
+            android:name="com.xianhu.crm.callscreen.CRMCallScreeningService"
+            android:permission="android.permission.BIND_SCREENING_SERVICE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.telecom.CallScreeningService" />
+            </intent-filter>
+        </service>
+    </application>
+</manifest>

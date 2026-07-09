@@ -765,10 +765,63 @@ router.get('/export', async (req, res) => {
 // ========== 物流API配置管理 ==========
 
 /**
- * 🔥 自动修复：检查并添加 logistics_api_configs 表缺失的字段
- * 解决 "Unknown column 'support_create_order'" 等报错
+ * 🔥 自动修复：logistics_api_configs 表缺失时自动建表，字段缺失时自动补齐
+ * 各物流公司的配置表单字段不同（appId/appKey/appSecret/customerId/apiUrl等），
+ * 老版本数据库可能缺表或缺列，这里在使用前自动检测并修复，
+ * 解决 "Table doesn't exist" / "Unknown column 'xxx'" 等报错
  */
 let _columnMigrationDone = false;
+
+// 表的完整建表语句（与 LogisticsApiConfig 实体保持一致）
+const LOGISTICS_API_CONFIGS_CREATE_SQL = `
+CREATE TABLE IF NOT EXISTS \`logistics_api_configs\` (
+  \`id\` VARCHAR(50) NOT NULL COMMENT '主键',
+  \`tenant_id\` VARCHAR(36) NULL COMMENT '租户ID',
+  \`company_code\` VARCHAR(50) NOT NULL COMMENT '快递公司代码(SF/ZTO/YTO等)',
+  \`company_name\` VARCHAR(100) NOT NULL DEFAULT '' COMMENT '快递公司名称',
+  \`app_id\` VARCHAR(200) NULL COMMENT '应用ID(各公司含义不同:顺丰=顾客编码,圆通=客户编码,EMS=协议客户号,德邦=公司编码等)',
+  \`app_key\` VARCHAR(200) NULL COMMENT '附加密钥(EMS=SM4密钥,京东=AccessToken)',
+  \`app_secret\` VARCHAR(500) NULL COMMENT '应用密钥/校验码/授权码',
+  \`customer_id\` VARCHAR(200) NULL COMMENT '客户标识(顺丰=月结卡号,圆通=user_id,京东=商家编码)',
+  \`api_url\` VARCHAR(500) NULL COMMENT '接口地址(圆通为客户专属地址)',
+  \`api_environment\` ENUM('sandbox','production') NOT NULL DEFAULT 'sandbox' COMMENT 'API环境',
+  \`extra_config\` JSON NULL COMMENT '扩展配置',
+  \`support_create_order\` TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否支持下单生成运单号: 0=仅查询, 1=支持下单',
+  \`enabled\` TINYINT(1) NOT NULL DEFAULT 1 COMMENT '是否启用',
+  \`last_test_time\` DATETIME NULL COMMENT '最后测试时间',
+  \`last_test_result\` TINYINT(1) NULL COMMENT '最后测试结果: 1=成功, 0=失败',
+  \`last_test_message\` VARCHAR(500) NULL COMMENT '最后测试消息',
+  \`created_at\` DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) COMMENT '创建时间',
+  \`updated_at\` DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6) COMMENT '更新时间',
+  \`created_by\` VARCHAR(50) NULL COMMENT '创建人',
+  \`updated_by\` VARCHAR(50) NULL COMMENT '更新人',
+  PRIMARY KEY (\`id\`),
+  UNIQUE KEY \`idx_logistics_api_configs_tenant_code\` (\`tenant_id\`, \`company_code\`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='物流公司API配置'
+`;
+
+// 补列用的 DDL 清单（列名 -> ADD COLUMN 语句），老表缺哪个补哪个
+const LOGISTICS_API_CONFIGS_REQUIRED_COLUMNS: Record<string, string> = {
+  'tenant_id': "ADD COLUMN `tenant_id` VARCHAR(36) NULL COMMENT '租户ID'",
+  'company_name': "ADD COLUMN `company_name` VARCHAR(100) NOT NULL DEFAULT '' COMMENT '快递公司名称'",
+  'app_id': "ADD COLUMN `app_id` VARCHAR(200) NULL COMMENT '应用ID'",
+  'app_key': "ADD COLUMN `app_key` VARCHAR(200) NULL COMMENT '附加密钥(EMS=SM4密钥,京东=AccessToken)'",
+  'app_secret': "ADD COLUMN `app_secret` VARCHAR(500) NULL COMMENT '应用密钥/校验码/授权码'",
+  'customer_id': "ADD COLUMN `customer_id` VARCHAR(200) NULL COMMENT '客户标识'",
+  'api_url': "ADD COLUMN `api_url` VARCHAR(500) NULL COMMENT '接口地址(圆通为客户专属地址)'",
+  'api_environment': "ADD COLUMN `api_environment` ENUM('sandbox','production') NOT NULL DEFAULT 'sandbox' COMMENT 'API环境'",
+  'extra_config': "ADD COLUMN `extra_config` JSON NULL COMMENT '扩展配置'",
+  'support_create_order': "ADD COLUMN `support_create_order` TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否支持下单生成运单号: 0=仅查询, 1=支持下单'",
+  'enabled': "ADD COLUMN `enabled` TINYINT(1) NOT NULL DEFAULT 1 COMMENT '是否启用'",
+  'last_test_time': "ADD COLUMN `last_test_time` DATETIME NULL COMMENT '最后测试时间'",
+  'last_test_result': "ADD COLUMN `last_test_result` TINYINT(1) NULL COMMENT '最后测试结果'",
+  'last_test_message': "ADD COLUMN `last_test_message` VARCHAR(500) NULL COMMENT '最后测试消息'",
+  'created_at': "ADD COLUMN `created_at` DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) COMMENT '创建时间'",
+  'updated_at': "ADD COLUMN `updated_at` DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6) COMMENT '更新时间'",
+  'created_by': "ADD COLUMN `created_by` VARCHAR(50) NULL COMMENT '创建人'",
+  'updated_by': "ADD COLUMN `updated_by` VARCHAR(50) NULL COMMENT '更新人'"
+};
+
 async function ensureLogisticsApiConfigColumns(): Promise<void> {
   if (_columnMigrationDone) return;
   try {
@@ -776,31 +829,74 @@ async function ensureLogisticsApiConfigColumns(): Promise<void> {
     const ds = AppDataSource;
     if (!ds || !ds.isInitialized) return;
 
-    // 检查 support_create_order 字段是否存在
-    const [rows]: any = await ds.query(
-      `SELECT COUNT(*) AS cnt FROM INFORMATION_SCHEMA.COLUMNS
+    // 1) 表不存在时自动建表（完整结构）
+    const [tblRow]: any = await ds.query(
+      `SELECT COUNT(*) AS cnt FROM INFORMATION_SCHEMA.TABLES
        WHERE TABLE_SCHEMA = DATABASE()
-       AND TABLE_NAME = 'logistics_api_configs'
-       AND COLUMN_NAME = 'support_create_order'`
+       AND TABLE_NAME = 'logistics_api_configs'`
     );
-    const cnt = rows?.cnt ?? rows?.['COUNT(*)'] ?? 0;
-    if (Number(cnt) === 0) {
-      log.info('[物流API配置] ⚡ 检测到 support_create_order 字段缺失，正在自动添加...');
-      await ds.query(
-        `ALTER TABLE \`logistics_api_configs\`
-         ADD COLUMN \`support_create_order\` TINYINT(1) NOT NULL DEFAULT 0
-         COMMENT '是否支持下单生成运单号: 0=仅查询, 1=支持下单'`
-      );
-      log.info('[物流API配置] ✅ support_create_order 字段已自动添加');
-    }
-    _columnMigrationDone = true;
-  } catch (migErr: any) {
-    // 如果是"列已存在"的错误，标记为已完成
-    if (migErr?.message?.includes('Duplicate column')) {
+    const tblCnt = Number(tblRow?.cnt ?? tblRow?.['COUNT(*)'] ?? 0);
+    if (tblCnt === 0) {
+      log.info('[物流API配置] ⚡ 检测到 logistics_api_configs 表不存在，正在自动创建...');
+      await ds.query(LOGISTICS_API_CONFIGS_CREATE_SQL);
+      log.info('[物流API配置] ✅ logistics_api_configs 表已自动创建');
       _columnMigrationDone = true;
       return;
     }
-    log.warn('[物流API配置] 自动添加字段失败（不影响运行）:', migErr?.message || migErr);
+
+    // 2) 表已存在，检测并补齐缺失字段
+    const colRows: any[] = await ds.query(
+      `SELECT COLUMN_NAME AS name FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE()
+       AND TABLE_NAME = 'logistics_api_configs'`
+    );
+    const existingCols = new Set(
+      (colRows || []).map((r: any) => String(r.name ?? r.COLUMN_NAME ?? '').toLowerCase())
+    );
+
+    for (const [col, ddl] of Object.entries(LOGISTICS_API_CONFIGS_REQUIRED_COLUMNS)) {
+      if (existingCols.has(col)) continue;
+      log.info(`[物流API配置] ⚡ 检测到 ${col} 字段缺失，正在自动添加...`);
+      try {
+        await ds.query(`ALTER TABLE \`logistics_api_configs\` ${ddl}`);
+        log.info(`[物流API配置] ✅ ${col} 字段已自动添加`);
+      } catch (colErr: any) {
+        // "列已存在"视为成功（并发场景），其他错误记录但不中断后续字段
+        if (!colErr?.message?.includes('Duplicate column')) {
+          log.warn(`[物流API配置] 自动添加 ${col} 字段失败:`, colErr?.message || colErr);
+        }
+      }
+    }
+
+    // 3) 确保租户+公司代码的唯一索引存在（旧表补了tenant_id后可能缺索引）
+    try {
+      const [idxRow]: any = await ds.query(
+        `SELECT COUNT(*) AS cnt FROM INFORMATION_SCHEMA.STATISTICS
+         WHERE TABLE_SCHEMA = DATABASE()
+         AND TABLE_NAME = 'logistics_api_configs'
+         AND INDEX_NAME = 'idx_logistics_api_configs_tenant_code'`
+      );
+      const idxCnt = Number(idxRow?.cnt ?? idxRow?.['COUNT(*)'] ?? 0);
+      if (idxCnt === 0) {
+        await ds.query(
+          `ALTER TABLE \`logistics_api_configs\`
+           ADD UNIQUE INDEX \`idx_logistics_api_configs_tenant_code\` (\`tenant_id\`, \`company_code\`)`
+        );
+        log.info('[物流API配置] ✅ 唯一索引 idx_logistics_api_configs_tenant_code 已自动添加');
+      }
+    } catch (idxErr: any) {
+      // 存量数据有重复时无法建唯一索引，记录警告但不影响功能
+      log.warn('[物流API配置] 自动添加唯一索引失败（不影响运行）:', idxErr?.message || idxErr);
+    }
+
+    _columnMigrationDone = true;
+  } catch (migErr: any) {
+    // 如果是"列已存在"的错误，标记为已完成
+    if (migErr?.message?.includes('Duplicate column') || migErr?.message?.includes('already exists')) {
+      _columnMigrationDone = true;
+      return;
+    }
+    log.warn('[物流API配置] 自动建表/补字段失败（不影响运行）:', migErr?.message || migErr);
   }
 }
 
@@ -1000,10 +1096,64 @@ router.get('/yto-callback', async (_req: Request, res: Response) => {
 // ========== 快递100配置API ==========
 
 /**
+ * 🔥 自动修复：system_configs 表缺失时自动创建（快递100配置存储于此表）
+ * 表结构与 database/schema.sql 及 SystemConfig 实体保持一致
+ */
+let _systemConfigTableEnsured = false;
+async function ensureSystemConfigsTable(): Promise<void> {
+  if (_systemConfigTableEnsured) return;
+  try {
+    const ds = AppDataSource;
+    if (!ds || !ds.isInitialized) return;
+
+    const [tblRow]: any = await ds.query(
+      `SELECT COUNT(*) AS cnt FROM INFORMATION_SCHEMA.TABLES
+       WHERE TABLE_SCHEMA = DATABASE()
+       AND TABLE_NAME = 'system_configs'`
+    );
+    const tblCnt = Number(tblRow?.cnt ?? tblRow?.['COUNT(*)'] ?? 0);
+    if (tblCnt === 0) {
+      log.info('[快递100配置] ⚡ 检测到 system_configs 表不存在，正在自动创建...');
+      await ds.query(`
+        CREATE TABLE IF NOT EXISTS \`system_configs\` (
+          \`id\` INT AUTO_INCREMENT PRIMARY KEY COMMENT '配置ID',
+          \`tenant_id\` VARCHAR(36) NULL COMMENT '租户ID',
+          \`configKey\` VARCHAR(100) NOT NULL COMMENT '配置键名',
+          \`configValue\` MEDIUMTEXT COMMENT '配置值',
+          \`valueType\` VARCHAR(50) DEFAULT 'string' COMMENT '值类型: string, number, boolean, json, text',
+          \`configGroup\` VARCHAR(100) NOT NULL DEFAULT 'general' COMMENT '配置分组',
+          \`description\` VARCHAR(200) COMMENT '配置描述',
+          \`isEnabled\` BOOLEAN DEFAULT TRUE COMMENT '是否启用',
+          \`isSystem\` BOOLEAN DEFAULT FALSE COMMENT '是否为系统配置（不可删除）',
+          \`sortOrder\` INT DEFAULT 0 COMMENT '排序权重',
+          \`createdAt\` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+          \`updatedAt\` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+          UNIQUE INDEX \`idx_tenant_config_key_group\` (\`tenant_id\`, \`configKey\`, \`configGroup\`),
+          INDEX \`idx_config_group\` (\`configGroup\`),
+          INDEX \`idx_enabled\` (\`isEnabled\`),
+          INDEX \`idx_tenant_id\` (\`tenant_id\`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='系统配置表'
+      `);
+      log.info('[快递100配置] ✅ system_configs 表已自动创建');
+    }
+    _systemConfigTableEnsured = true;
+  } catch (e: any) {
+    if (e?.message?.includes('already exists')) {
+      _systemConfigTableEnsured = true;
+      return;
+    }
+    log.warn('[快递100配置] 自动创建 system_configs 表失败（不影响运行）:', e?.message || e);
+  }
+}
+
+/**
  * 获取快递100配置
  */
 router.get('/kuaidi100/config', async (_req: Request, res: Response) => {
   try {
+    // 🔥 确保配置表存在
+    await ensureSystemConfigsTable();
+
     // 从系统配置表获取快递100配置
     const repository = getTenantRepo(SystemConfig);
     const config = await repository.findOne({
@@ -1060,6 +1210,9 @@ router.post('/kuaidi100/config', async (req: Request, res: Response) => {
         message: 'Customer和Key不能为空'
       });
     }
+
+    // 🔥 确保配置表存在
+    await ensureSystemConfigsTable();
 
     // 保存到系统配置表
     const repository = getTenantRepo(SystemConfig);
@@ -1187,12 +1340,17 @@ router.get('/api-configs', async (_req: Request, res: Response) => {
   } catch (error: any) {
     log.error('获取物流API配置列表失败:', error);
 
-    // 🔥 如果是"Unknown column"错误，尝试自动修复后重试
-    if (error?.message?.includes('Unknown column')) {
-      log.info('[物流API配置] 检测到字段缺失，尝试自动修复...');
+    const isTableError = error?.message?.includes('no such table') ||
+      error?.message?.includes('doesn\'t exist') ||
+      error?.code === 'ER_NO_SUCH_TABLE' ||
+      error?.code === 'SQLITE_ERROR';
+
+    // 🔥 如果是"Unknown column"或表缺失错误，自动建表/补字段后重试
+    if (error?.message?.includes('Unknown column') || isTableError) {
+      log.info('[物流API配置] 检测到表/字段缺失，尝试自动修复...');
       _columnMigrationDone = false; // 重置标志以便重新执行
       try {
-        await ensureLogisticsApiConfigColumns();
+        await ensureDefaultApiConfigs(); // 内部会先建表/补字段，再补默认配置数据
         const repository = getTenantRepo(LogisticsApiConfig);
         const configs = await repository.find({ order: { companyCode: 'ASC' } });
         return res.json({ success: true, data: configs });
@@ -1201,22 +1359,11 @@ router.get('/api-configs', async (_req: Request, res: Response) => {
         return res.json({
           success: false,
           data: [],
-          message: '数据库字段需要更新，请联系管理员执行数据库迁移脚本'
+          message: '物流API配置表自动初始化失败，请联系管理员检查数据库权限'
         });
       }
     }
 
-    const isTableError = error?.message?.includes('no such table') ||
-      error?.message?.includes('doesn\'t exist') ||
-      error?.code === 'ER_NO_SUCH_TABLE' ||
-      error?.code === 'SQLITE_ERROR';
-    if (isTableError) {
-      return res.json({
-        success: true,
-        data: [],
-        message: '物流API配置表尚未初始化'
-      });
-    }
     res.json({
       success: false,
       data: [],
@@ -1270,12 +1417,17 @@ router.get('/api-configs/:companyCode', async (req: Request, res: Response) => {
   } catch (error: any) {
     log.error('获取物流API配置失败:', error);
 
-    // 🔥 如果是"Unknown column"错误（数据库字段缺失），尝试自动修复后重试
-    if (error?.message?.includes('Unknown column')) {
-      log.info(`[物流API配置] 检测到字段缺失(${req.params.companyCode})，尝试自动修复...`);
+    const isTableError = error?.message?.includes('no such table') ||
+      error?.message?.includes('doesn\'t exist') ||
+      error?.code === 'ER_NO_SUCH_TABLE' ||
+      error?.code === 'SQLITE_ERROR';
+
+    // 🔥 如果是"Unknown column"或表缺失错误，自动建表/补字段后重试
+    if (error?.message?.includes('Unknown column') || isTableError) {
+      log.info(`[物流API配置] 检测到表/字段缺失(${req.params.companyCode})，尝试自动修复...`);
       _columnMigrationDone = false;
       try {
-        await ensureLogisticsApiConfigColumns();
+        await ensureDefaultApiConfigs(); // 内部会先建表/补字段，再补默认配置数据
         const repository = getTenantRepo(LogisticsApiConfig);
         const config = await repository.findOne({
           where: { companyCode: req.params.companyCode.toUpperCase() }
@@ -1289,23 +1441,11 @@ router.get('/api-configs/:companyCode', async (req: Request, res: Response) => {
         return res.json({
           success: false,
           data: null,
-          message: '数据库字段需要更新，请联系管理员执行数据库迁移脚本'
+          message: '物流API配置表自动初始化失败，请联系管理员检查数据库权限'
         });
       }
     }
 
-    // 🔥 所有错误都返回200+JSON（表不存在、数据库连接、或其他异常），避免前端收到500
-    const isTableError = error?.message?.includes('no such table') ||
-      error?.message?.includes('doesn\'t exist') ||
-      error?.code === 'ER_NO_SUCH_TABLE' ||
-      error?.code === 'SQLITE_ERROR';
-    if (isTableError) {
-      return res.json({
-        success: false,
-        data: null,
-        message: '物流API配置表尚未初始化，请先在系统设置中配置物流API'
-      });
-    }
     // 🔥 其他错误也返回200+friendly JSON，不再返回500
     return res.json({
       success: false,
@@ -1404,14 +1544,18 @@ router.post('/api-configs/:companyCode', async (req: Request, res: Response) => 
   } catch (error: any) {
     log.error('[物流API配置] ❌ 保存失败:', error);
 
-    // 🔥 如果是"Unknown column"错误，尝试自动修复
-    if (error?.message?.includes('Unknown column')) {
+    const isTableError = error?.message?.includes('no such table') ||
+      error?.message?.includes('doesn\'t exist') ||
+      error?.code === 'ER_NO_SUCH_TABLE';
+
+    // 🔥 如果是"Unknown column"或表缺失错误，自动建表/补字段
+    if (error?.message?.includes('Unknown column') || isTableError) {
       _columnMigrationDone = false;
       try {
         await ensureLogisticsApiConfigColumns();
         return res.json({
           success: false,
-          message: '数据库字段已自动更新，请重新保存配置'
+          message: '数据库表结构已自动修复，请重新保存配置'
         });
       } catch { /* ignore */ }
     }
@@ -1447,7 +1591,7 @@ router.post('/api-configs/:companyCode/test', async (req: Request, res: Response
         testResult = await testZTOExpressApi(appId, appKey, appSecret, apiUrl, testTrackingNo);
         break;
       case 'YTO':
-        // 圆通: appId=AppKey, appSecret=SecretKey, customerId=客户编码(user_id)
+        // 圆通: appId=客户编码(app_key), appSecret=客户密钥, customerId=用户ID(user_id), apiUrl=专属接口地址
         testResult = await testYTOExpressApi(appId, appSecret, customerId, apiUrl, testTrackingNo);
         break;
       case 'STO':
@@ -1455,23 +1599,23 @@ router.post('/api-configs/:companyCode/test', async (req: Request, res: Response
         testResult = await testSTOExpressApi(appId, appSecret, apiUrl, testTrackingNo);
         break;
       case 'YD':
-        // 韵达: appId=AppKey, appSecret=AppSecret, customerId=PartnerId
+        // 韵达: appId=AppKey(app-key), appSecret=AppSecret
         testResult = await testYDExpressApi(appId, appSecret, customerId, apiUrl, testTrackingNo);
         break;
       case 'JTSD':
-        // 极兔: appId=API账号, appSecret=私钥, customerId=客户编码
+        // 极兔: appId=API账号(apiAccount), appSecret=私钥(privateKey)
         testResult = await testJTExpressApi(appId, appSecret, customerId, apiUrl, testTrackingNo);
         break;
       case 'EMS':
-        // 邮政EMS: appId=AppKey, appSecret=AppSecret
-        testResult = await testEMSApi(appId, appSecret, apiUrl, testTrackingNo);
+        // 邮政EMS: appId=协议客户号(senderNo), appSecret=授权码(authorization), appKey=SM4密钥
+        testResult = await testEMSApi(appId, appSecret, appKey, apiUrl, testTrackingNo);
         break;
       case 'JD':
-        // 京东物流: appId=AppKey, appSecret=AppSecret, customerId=商家编码
-        testResult = await testJDExpressApi(appId, appSecret, customerId, apiUrl, testTrackingNo);
+        // 京东物流: appId=AppKey, appSecret=AppSecret, appKey=AccessToken, customerId=商家编码
+        testResult = await testJDExpressApi(appId, appSecret, appKey, apiUrl, testTrackingNo);
         break;
       case 'DBL':
-        // 德邦快递: appId=AppKey, appSecret=AppSecret, customerId=公司编码
+        // 德邦快递: appId=公司编码(companyCode), appSecret=密钥(appkey)
         testResult = await testDBLExpressApi(appId, appSecret, customerId, apiUrl, testTrackingNo);
         break;
       default:
@@ -1620,26 +1764,30 @@ async function testSFExpressApi(partnerId: string, checkWord: string, apiUrl: st
  */
 async function testZTOExpressApi(companyId: string, appKey: string, appSecret: string, apiUrl: string, trackingNo?: string): Promise<{ success: boolean; message: string }> {
   try {
-    if (!companyId || !appKey || !appSecret) {
-      return { success: false, message: '请填写公司ID、AppKey和AppSecret' };
+    if ((!companyId && !appKey) || !appSecret) {
+      return { success: false, message: '请填写AppKey和AppSecret' };
     }
 
-    const timestamp = Date.now().toString();
     const data = JSON.stringify({
       billCode: trackingNo || '75331234567890'
     });
 
-    // 生成签名: Base64(HMAC-SHA256(requestBody, app_secret))
-    // 中通开放平台要求使用HMAC-SHA256签名，放在x-datadigest请求头
-    const sign = crypto.createHmac('sha256', appSecret).update(data).digest('base64');
+    // 🔥 中通官方标准签名: x-datadigest = Base64(MD5(body + appSecret))
+    const sign = crypto.createHash('md5').update(data + appSecret, 'utf8').digest('base64');
+    const zopKey = companyId || appKey;
 
-    const response = await axios.post(apiUrl || 'https://japi.zto.com/traceInterfaceNewTraces', data, {
+    // 商家轨迹查询网关
+    let url = (apiUrl || '').trim();
+    if (!url || !url.includes('zto.merchant.waybill.track.query')) {
+      url = 'https://japi.zto.com/zto.merchant.waybill.track.query';
+    }
+
+    const response = await axios.post(url, data, {
       headers: {
         'Content-Type': 'application/json',
-        'x-companyid': companyId,
-        'x-appkey': appKey,
-        'x-datadigest': sign,
-        'x-timestamp': timestamp
+        'x-companyid': zopKey,
+        'x-appkey': zopKey,
+        'x-datadigest': sign
       },
       timeout: 10000
     });
@@ -1662,43 +1810,54 @@ async function testZTOExpressApi(companyId: string, appKey: string, appSecret: s
 /**
  * 圆通速递API测试 - 圆通开放平台
  * 文档: https://open.yto.net.cn/
- * 签名方式: MD5(param值 + SecretKey).toUpperCase()
+ * 签名方式: sign = Base64(MD5(param + method + v + secret))，表单方式提交
  * 接口方法: yto.Marketing.WaybillTrace
+ * 注意: 接口地址为客户专属（含waybill_query路径），需在开放平台控制台获取后填入
  */
 async function testYTOExpressApi(appKey: string, secretKey: string, userId: string, apiUrl: string, trackingNo?: string): Promise<{ success: boolean; message: string }> {
   try {
     if (!appKey || !secretKey) {
-      return { success: false, message: '请填写AppKey和SecretKey' };
+      return { success: false, message: '请填写客户编码(app_key)和客户密钥' };
     }
 
-    const timestamp = new Date().toISOString().replace('T', ' ').substring(0, 19);
-    const param = JSON.stringify({
-      Number: trackingNo || 'YT1234567890123',
-      OrderType: ''
+    const url = (apiUrl || '').trim();
+    if (!url || !url.includes('waybill_query')) {
+      return { success: false, message: '请填写圆通专属接口地址（在开放平台控制台-接口管理中获取，形如 https://openapi.yto.net.cn/service/waybill_query/v1/xxxxxx）' };
+    }
+
+    const method = 'yto.Marketing.WaybillTrace';
+    const v = '1.01';
+    const timestamp = Date.now().toString();
+    const param = JSON.stringify({ NUMBER: trackingNo || 'YT1234567890123' });
+
+    // 🔥 官方签名: Base64(MD5(param + method + v + secret))
+    const sign = crypto.createHash('md5').update(param + method + v + secretKey, 'utf8').digest('base64');
+
+    const formBody = new URLSearchParams({
+      sign: sign,
+      app_key: appKey,
+      format: 'JSON',
+      method: method,
+      timestamp: timestamp,
+      user_id: userId || '',
+      v: v,
+      param: param
     });
 
-    // 生成签名: MD5(param + SecretKey).toUpperCase()
-    const signStr = param + secretKey;
-    const sign = crypto.createHash('md5').update(signStr).digest('hex').toUpperCase();
-
-    const response = await axios.post(apiUrl || 'https://openapi.yto.net.cn/open/track_query/v1/query', {
-      param: param,
-      sign: sign,
-      timestamp: timestamp,
-      format: 'JSON',
-      appkey: appKey,
-      user_id: userId || '',
-      method: 'yto.Marketing.WaybillTrace'
-    }, {
-      headers: { 'Content-Type': 'application/json' },
+    const response = await axios.post(url, formBody.toString(), {
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
       timeout: 10000
     });
 
     const result = response.data;
-    if (result && (result.success === true || result.code === '0' || result.code === 0)) {
-      return { success: true, message: 'API连接成功' };
-    } else if (result && (result.message || result.msg)) {
-      return { success: false, message: result.message || result.msg };
+    if (Array.isArray(result)) {
+      return { success: true, message: 'API连接成功，轨迹查询正常' };
+    }
+    if (result && (result.success === 'true' || result.success === true)) {
+      return { success: true, message: 'API连接成功' + (result.message ? `（${result.message}）` : '') };
+    }
+    if (result && (result.message || result.msg || result.reason)) {
+      return { success: false, message: result.message || result.msg || result.reason };
     }
     return { success: true, message: 'API连接成功（请使用真实单号验证）' };
   } catch (error: any) {
@@ -1754,39 +1913,42 @@ async function testSTOExpressApi(appKey: string, secretKey: string, apiUrl: stri
  * 韵达速递API测试 - 韵达开放平台
  * 文档: https://open.yundaex.com/
  */
-async function testYDExpressApi(appKey: string, appSecret: string, partnerId: string, apiUrl: string, trackingNo?: string): Promise<{ success: boolean; message: string }> {
+async function testYDExpressApi(appKey: string, appSecret: string, _partnerId: string, apiUrl: string, trackingNo?: string): Promise<{ success: boolean; message: string }> {
   try {
     if (!appKey || !appSecret) {
       return { success: false, message: '请填写AppKey和AppSecret' };
     }
 
-    const timestamp = new Date().toISOString().replace('T', ' ').substring(0, 19);
-    const data = JSON.stringify({
+    const reqTime = Date.now().toString();
+    const body = JSON.stringify({
       mailno: trackingNo || '4312345678901'
     });
 
-    // 生成签名
-    const signStr = data + appSecret + timestamp;
-    const sign = crypto.createHash('md5').update(signStr).digest('hex');
+    // 🔥 韵达官方签名: MD5(报文 + "_" + AppSecret) 十六进制小写，放请求头
+    const sign = crypto.createHash('md5').update(body + '_' + appSecret, 'utf8').digest('hex').toLowerCase();
 
-    const response = await axios.post(apiUrl || 'https://openapi.yundaex.com/api/queryTraceInfo', {
-      appkey: appKey,
-      partner_id: partnerId || '',
-      timestamp: timestamp,
-      sign: sign,
-      request: data
-    }, {
-      headers: { 'Content-Type': 'application/json' },
+    let url = (apiUrl || '').trim();
+    if (!url || !url.includes('logictis/query')) {
+      url = 'https://openapi.yundaex.com/openapi/outer/logictis/query';
+    }
+
+    const response = await axios.post(url, body, {
+      headers: {
+        'Content-Type': 'application/json',
+        'app-key': appKey,
+        'req-time': reqTime,
+        'sign': sign
+      },
       timeout: 10000
     });
 
     const result = response.data;
-    if (result && (result.code === '0' || result.code === 0 || result.success === true)) {
+    if (result && (result.result === true || result.code === '0' || result.code === 0 || result.success === true)) {
       return { success: true, message: 'API连接成功' };
-    } else if (result && (result.message || result.msg)) {
-      return { success: false, message: result.message || result.msg };
+    } else if (result && (result.message || result.msg || result.remark)) {
+      return { success: false, message: result.message || result.msg || result.remark };
     }
-    return { success: true, message: 'API连接成功（请使用真实单号验证）' };
+    return { success: true, message: 'API连接成功（请使用真实单号验证，韵达需先订阅轨迹）' };
   } catch (error: any) {
     return { success: false, message: '测试失败: ' + (error.message || '未知错误') };
   }
@@ -1796,33 +1958,37 @@ async function testYDExpressApi(appKey: string, appSecret: string, partnerId: st
  * 极兔速递API测试 - 极兔开放平台
  * 文档: https://open.jtexpress.com.cn/
  */
-async function testJTExpressApi(apiAccount: string, privateKey: string, customerCode: string, apiUrl: string, trackingNo?: string): Promise<{ success: boolean; message: string }> {
+async function testJTExpressApi(apiAccount: string, privateKey: string, _customerCode: string, apiUrl: string, trackingNo?: string): Promise<{ success: boolean; message: string }> {
   try {
     if (!apiAccount || !privateKey) {
       return { success: false, message: '请填写API账号和私钥' };
     }
 
     const timestamp = Date.now().toString();
-    const data = JSON.stringify({
+    const bizContent = JSON.stringify({
       billCodes: trackingNo || 'JT1234567890123'
     });
 
-    // 生成签名: Base64(MD5(data + privateKey))
-    const sign = crypto.createHash('md5').update(data + privateKey).digest('base64');
+    // 🔥 极兔官方签名: digest = Base64(MD5(bizContent + privateKey))，放请求头
+    const digest = crypto.createHash('md5').update(bizContent + privateKey, 'utf8').digest('base64');
 
-    const response = await axios.post((apiUrl || 'https://openapi.jtexpress.com.cn/webopenplatformapi/api') + '/logistics/trace/queryTracesByBillCodes', {
-      logistics_interface: data,
-      data_digest: sign,
-      msg_type: 'TRACEQUERY',
-      eccompanyid: customerCode || apiAccount,
-      timestamp: timestamp
-    }, {
-      headers: { 'Content-Type': 'application/json' },
+    let url = (apiUrl || '').trim();
+    if (!url || !url.includes('/logistics/trace')) {
+      url = (url || 'https://openapi.jtexpress.com.cn/webopenplatformapi/api').replace(/\/+$/, '') + '/logistics/trace';
+    }
+
+    const response = await axios.post(url, 'bizContent=' + encodeURIComponent(bizContent), {
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded;charset=utf-8',
+        'apiAccount': apiAccount,
+        'digest': digest,
+        'timestamp': timestamp
+      },
       timeout: 10000
     });
 
     const result = response.data;
-    if (result && (result.code === '1' || result.success === true)) {
+    if (result && (result.code === '1' || result.code === 1 || result.success === true)) {
       return { success: true, message: 'API连接成功' };
     } else if (result && (result.msg || result.message)) {
       return { success: false, message: result.msg || result.message };
@@ -1834,39 +2000,54 @@ async function testJTExpressApi(apiAccount: string, privateKey: string, customer
 }
 
 /**
- * 邮政EMS API测试
- * 文档: https://eis.11183.com.cn/
+ * 邮政EMS API测试 - 中国邮政国内协议客户API开放平台
+ * 文档: https://api.ems.com.cn/
+ * senderNo=协议客户号, authorization=授权码, sm4Key=SM4密钥（报文加密）
  */
-async function testEMSApi(appKey: string, appSecret: string, apiUrl: string, trackingNo?: string): Promise<{ success: boolean; message: string }> {
+async function testEMSApi(senderNo: string, authorization: string, sm4KeyStr: string, apiUrl: string, trackingNo?: string): Promise<{ success: boolean; message: string }> {
   try {
-    if (!appKey || !appSecret) {
-      return { success: false, message: '请填写AppKey和AppSecret' };
+    if (!senderNo || !authorization) {
+      return { success: false, message: '请填写协议客户号(senderNo)和授权码(authorization)' };
+    }
+    if (!sm4KeyStr) {
+      return { success: false, message: '请填写SM4密钥（在邮政开放平台获取，Base64格式）' };
+    }
+
+    const { parseSm4Key, sm4EncryptEcbBase64 } = await import('../../utils/sm4');
+    let sm4Key: Buffer;
+    try {
+      sm4Key = parseSm4Key(sm4KeyStr);
+    } catch (e: any) {
+      return { success: false, message: 'SM4密钥格式错误: ' + (e?.message || '密钥必须为16字节') };
     }
 
     const timestamp = new Date().toISOString().replace('T', ' ').substring(0, 19);
-    const data = JSON.stringify({
-      mailNo: trackingNo || 'EMS1234567890CN'
+    const bizJson = JSON.stringify({ waybillNo: trackingNo || 'EMS1234567890CN' });
+    const cipherText = sm4EncryptEcbBase64(bizJson + sm4KeyStr.trim(), sm4Key);
+
+    let url = (apiUrl || '').trim();
+    if (!url || !url.includes('/amp')) {
+      url = 'https://api.ems.com.cn/amp-prod-api/f/amp/api/open';
+    }
+
+    const formBody = new URLSearchParams({
+      apiCode: '040001',
+      senderNo: senderNo,
+      authorization: authorization,
+      timeStamp: timestamp,
+      logitcsInterface: cipherText
     });
 
-    // 生成签名
-    const signStr = data + appSecret + timestamp;
-    const sign = crypto.createHash('md5').update(signStr).digest('hex').toUpperCase();
-
-    const response = await axios.post(apiUrl || 'https://eis.11183.com.cn/openapi/mailTrack/query', {
-      appKey: appKey,
-      timestamp: timestamp,
-      sign: sign,
-      data: data
-    }, {
-      headers: { 'Content-Type': 'application/json' },
+    const response = await axios.post(url, formBody.toString(), {
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       timeout: 10000
     });
 
     const result = response.data;
-    if (result && (result.code === '0' || result.success === true)) {
+    if (result && (result.retCode === '00000' || result.code === '0' || result.success === true)) {
       return { success: true, message: 'API连接成功' };
-    } else if (result && (result.message || result.msg)) {
-      return { success: false, message: result.message || result.msg };
+    } else if (result && (result.retMsg || result.message || result.msg)) {
+      return { success: false, message: result.retMsg || result.message || result.msg };
     }
     return { success: true, message: 'API连接成功（请使用真实单号验证）' };
   } catch (error: any) {
@@ -1877,35 +2058,61 @@ async function testEMSApi(appKey: string, appSecret: string, apiUrl: string, tra
 /**
  * 京东物流API测试 - 京东物流开放平台
  * 文档: https://open.jdl.com/
+ * 轨迹查询接口 /jd/tracking/query (对接方案编码 Tracking_JD)，需OAuth授权的AccessToken
  */
-async function testJDExpressApi(appKey: string, appSecret: string, customerCode: string, apiUrl: string, trackingNo?: string): Promise<{ success: boolean; message: string }> {
+async function testJDExpressApi(appKey: string, appSecret: string, accessToken: string, apiUrl: string, trackingNo?: string): Promise<{ success: boolean; message: string }> {
   try {
     if (!appKey || !appSecret) {
       return { success: false, message: '请填写AppKey和AppSecret' };
     }
+    if (!accessToken) {
+      return { success: false, message: '请填写AccessToken（在京东物流开放平台用签约商家账号OAuth授权获取）' };
+    }
 
+    const method = '/jd/tracking/query';
     const timestamp = new Date().toISOString().replace('T', ' ').substring(0, 19);
-    const data = JSON.stringify({
-      waybillCode: trackingNo || 'JD1234567890',
-      customerCode: customerCode || ''
-    });
+    const paramJson = JSON.stringify([{
+      referenceNumber: trackingNo || 'JD1234567890',
+      referenceType: '20000'
+    }]);
 
-    // 生成签名
-    const signStr = appSecret + timestamp + data + appSecret;
-    const sign = crypto.createHash('md5').update(signStr).digest('hex').toUpperCase();
+    // 🔥 京东物流网关签名（md5-salt）
+    const signStr = appSecret
+      + 'access_token' + accessToken
+      + 'app_key' + appKey
+      + 'method' + method
+      + 'param_json' + paramJson
+      + 'timestamp' + timestamp
+      + 'v' + '2.0'
+      + appSecret;
+    const sign = crypto.createHash('md5').update(signStr, 'utf8').digest('hex').toUpperCase();
 
-    const response = await axios.post((apiUrl || 'https://api.jdl.com') + '/ecap/v1/orders/trace/query', {
-      app_key: appKey,
-      timestamp: timestamp,
-      sign: sign,
-      param_json: data
-    }, {
+    let base = (apiUrl || '').trim();
+    if (base.includes('/jd/tracking/query')) {
+      base = base.substring(0, base.indexOf('/jd/tracking/query'));
+    }
+    if (!base) {
+      base = 'https://api.jdl.com';
+    }
+    const url = `${base.replace(/\/+$/, '')}${method}`
+      + `?LOP-DN=Tracking_JD`
+      + `&app_key=${encodeURIComponent(appKey)}`
+      + `&access_token=${encodeURIComponent(accessToken)}`
+      + `&timestamp=${encodeURIComponent(timestamp)}`
+      + `&v=2.0`
+      + `&algorithm=md5-salt`
+      + `&sign=${encodeURIComponent(sign)}`;
+
+    const response = await axios.post(url, paramJson, {
       headers: { 'Content-Type': 'application/json' },
       timeout: 10000
     });
 
     const result = response.data;
-    if (result && (result.code === '0' || result.code === 0 || result.success === true)) {
+    if (result?.error_response) {
+      return { success: false, message: String(result.error_response.zh_desc || result.error_response.en_desc || result.error_response.code || '京东网关错误') };
+    }
+    if (result && (result.code === '0' || result.code === 0 || result.success === true || result.data)) {
       return { success: true, message: 'API连接成功' };
     } else if (result && (result.message || result.msg)) {
       return { success: false, message: result.message || result.msg };
@@ -1920,35 +2127,40 @@ async function testJDExpressApi(appKey: string, appSecret: string, customerCode:
  * 德邦快递API测试 - 德邦开放平台
  * 文档: https://open.deppon.com/
  */
-async function testDBLExpressApi(appKey: string, appSecret: string, companyCode: string, apiUrl: string, trackingNo?: string): Promise<{ success: boolean; message: string }> {
+async function testDBLExpressApi(companyCode: string, appkey: string, _customerId: string, apiUrl: string, trackingNo?: string): Promise<{ success: boolean; message: string }> {
   try {
-    if (!appKey || !appSecret) {
-      return { success: false, message: '请填写AppKey和AppSecret' };
+    if (!companyCode || !appkey) {
+      return { success: false, message: '请填写公司编码(companyCode)和密钥(appkey)' };
     }
 
     const timestamp = Date.now().toString();
-    const data = JSON.stringify({
-      logisticCompanyID: 'DEPPON',
-      logisticID: trackingNo || 'DPK1234567890',
-      companyCode: companyCode || ''
+    const params = JSON.stringify({
+      mailno: trackingNo || 'DPK1234567890'
     });
 
-    // 生成签名: Base64(MD5(appKey + data + timestamp + appSecret))
-    const signStr = appKey + data + timestamp + appSecret;
-    const sign = crypto.createHash('md5').update(signStr).digest('base64');
+    // 🔥 德邦官方签名: digest = Base64( MD5十六进制字符串(params + appkey + timestamp) 的字节 )
+    const md5Hex = crypto.createHash('md5').update(params + appkey + timestamp, 'utf8').digest('hex');
+    const digest = Buffer.from(md5Hex, 'utf8').toString('base64');
 
-    const response = await axios.post((apiUrl || 'https://dpapi.deppon.com/dop-interface-sync/standard-order') + '/newTraceQuery.action', {
-      companyCode: appKey,
+    let url = (apiUrl || '').trim();
+    if (!url || !url.includes('TraceQuery')) {
+      url = 'https://dpapi.deppon.com/dop-interface-sync/standard-order/newTraceQuery.action';
+    }
+
+    const formBody = new URLSearchParams({
+      companyCode: companyCode,
+      params: params,
       timestamp: timestamp,
-      digest: sign,
-      params: data
-    }, {
-      headers: { 'Content-Type': 'application/json' },
+      digest: digest
+    });
+
+    const response = await axios.post(url, formBody.toString(), {
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       timeout: 10000
     });
 
     const result = response.data;
-    if (result && (result.result === 'true' || result.success === true)) {
+    if (result && (result.result === 'true' || result.result === true || result.success === true)) {
       return { success: true, message: 'API连接成功' };
     } else if (result && (result.reason || result.message)) {
       return { success: false, message: result.reason || result.message };

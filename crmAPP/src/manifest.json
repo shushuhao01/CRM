@@ -2,8 +2,8 @@
     "name" : "云客CRM",
     "appid" : "__UNI__40B02A3",
     "description" : "云客CRM外呼助手 - 电销工作手机APP",
-    "versionName" : "1.0.0",
-    "versionCode" : "100",
+    "versionName" : "2.1.0",
+    "versionCode" : "210",
     "transformPx" : false,
     "app-plus" : {
         "usingComponents" : true,
@@ -23,6 +23,21 @@
         "privacy" : {
             "prompt" : "template",
             "secondConfirm" : "true"
+        },
+        "nativePlugins" : {
+            "CRM-CallScreening" : {
+                "__plugin_info__" : {
+                    "name" : "CRM来电筛选服务",
+                    "description" : "Android 10+ 响铃前获取来电号码（CallScreeningService）",
+                    "platforms" : "Android",
+                    "url" : "",
+                    "android_package_name" : "com.xianhu.crm.dialer",
+                    "isCloud" : false,
+                    "bought" : -1,
+                    "pid" : "",
+                    "parameters" : {}
+                }
+            }
         },
         "distribute" : {
             "android" : {

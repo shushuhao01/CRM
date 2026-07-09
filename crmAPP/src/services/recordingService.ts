@@ -16,6 +16,7 @@
  */
 
 import { uploadRecording } from '@/api/call'
+import { openBrandPermissionManager, openAppDetailsSettings, getManualPermissionGuide } from '@/utils/permissionGuide'
 
 /**
  * 通话录音路径分为两级：
@@ -40,9 +41,16 @@ const CALL_SPECIFIC_PATHS = [
   // OPPO / Realme / ColorOS — Call 子目录是通话录音专属
   '/storage/emulated/0/Recordings/Call Recordings/',
   '/storage/emulated/0/Music/Recordings/Call Recordings/',
+  // OPPO ColorOS 13/14 中文目录（在拨号应用中开启自动录音后创建）
+  '/storage/emulated/0/Recordings/通话录音/',
+  '/storage/emulated/0/Music/Recordings/通话录音/',
+  '/storage/emulated/0/录音/通话录音/',
+  '/storage/emulated/0/Recordings/Call/',
   // VIVO / iQOO — Record/Call 是通话录音专属
   '/storage/emulated/0/Record/Call/',
   '/sdcard/Record/Call/',
+  // vivo OriginOS 部分版本
+  '/storage/emulated/0/vivo/CallRecord/',
   // 三星 — Call 目录或 Call recordings 子目录
   '/storage/emulated/0/Call/',
   '/storage/emulated/0/Recordings/Call recordings/',
@@ -51,6 +59,14 @@ const CALL_SPECIFIC_PATHS = [
   '/storage/emulated/0/Record/PhoneRecord/',
   // 华为 PhoneRecord
   '/storage/emulated/0/PhoneRecord/',
+  // 荣耀 MagicOS 部分机型
+  '/storage/emulated/0/Record/CallRecord/',
+  '/storage/emulated/0/Recorder/CallRecord/',
+  // 魅族 Flyme 中文目录
+  '/storage/emulated/0/Recorder/通话录音/',
+  // 中兴 / 努比亚
+  '/storage/emulated/0/录音机/通话录音/',
+  '/storage/emulated/0/ZTE/CallRecord/',
   // 通话录音专用
   '/storage/emulated/0/CallRecordings/',
   '/sdcard/CallRecordings/',
@@ -127,14 +143,35 @@ class RecordingService {
         const sdkVersion = (Build as any).VERSION.SDK_INT
 
         if (sdkVersion >= 33) {
-          // Android 13+: 使用 READ_MEDIA_AUDIO
+          // Android 13+:
+          // 1) READ_MEDIA_AUDIO 保证 MediaStore 查询可用（兜底扫描）
+          // 2) 直接用 File API 扫描拨号应用的录音目录（如OPPO /Recordings/通话录音/）
+          //    仍需要"所有文件访问"(MANAGE_EXTERNAL_STORAGE)，缺失时必须引导授予，
+          //    否则 listFiles 静默返回空 → 表现为"开了自动录音但APP检测不到"
+          const Environment = plus.android.importClass('android.os.Environment')
+          const hasAllFiles = !!(Environment as any).isExternalStorageManager()
+
           plus.android.requestPermissions(
             ['android.permission.READ_MEDIA_AUDIO'],
             (result: any) => {
-              resolve(result.granted && result.granted.length >= 1)
+              const mediaGranted = !!(result.granted && result.granted.length >= 1)
+              console.log('[RecordingService] Android13+ 权限: READ_MEDIA_AUDIO=' + mediaGranted + ', 所有文件访问=' + hasAllFiles)
+              if (hasAllFiles) {
+                resolve(true)
+                return
+              }
+              // 没有"所有文件访问"：引导授予（每24小时最多提示一次，避免打扰）
+              this.maybeGuideAllFilesAccess()
+              // READ_MEDIA_AUDIO 已授予时仍返回 true，MediaStore 兜底扫描可以工作
+              resolve(mediaGranted)
             },
             (_error: any) => {
-              resolve(false)
+              if (hasAllFiles) {
+                resolve(true)
+              } else {
+                this.maybeGuideAllFilesAccess()
+                resolve(false)
+              }
             }
           )
         } else if (sdkVersion >= 30) {
@@ -144,32 +181,13 @@ class RecordingService {
             resolve(true)
             return
           }
-          // 请求所有文件访问权限
-          const Settings = plus.android.importClass('android.provider.Settings')
-          const Intent = plus.android.importClass('android.content.Intent')
-          const Uri = plus.android.importClass('android.net.Uri')
-          const main = plus.android.runtimeMainActivity()
-          const packageName = (main as any).getPackageName()
-
           uni.showModal({
             title: '需要存储权限',
             content: '为了自动扫描和上传通话录音，需要授予"所有文件访问"权限。',
             confirmText: '去授权',
             success: (res) => {
               if (res.confirm) {
-                try {
-                  const intent = new (Intent as any)((Settings as any).ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION)
-                  intent.setData((Uri as any).parse('package:' + packageName))
-                  ;(main as any).startActivity(intent)
-                } catch (_e) {
-                  // 降级方案
-                  try {
-                    const intent2 = new (Intent as any)((Settings as any).ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)
-                    ;(main as any).startActivity(intent2)
-                  } catch (_e2) {
-                    console.error('[RecordingService] 无法打开文件访问权限设置')
-                  }
-                }
+                this.openAllFilesAccessSettings()
               }
               // 延迟检查权限结果
               setTimeout(() => {
@@ -216,6 +234,109 @@ class RecordingService {
 
     // #ifndef APP-PLUS
     return false
+    // #endif
+  }
+
+  /**
+   * 引导授予"所有文件访问"权限（Android 11+），每24小时最多提示一次
+   * OPPO ColorOS 等系统的通话录音目录必须有此权限才能用 File API 扫描
+   */
+  private maybeGuideAllFilesAccess() {
+    // #ifdef APP-PLUS
+    try {
+      const lastShown = Number(uni.getStorageSync('allFilesAccessGuideShownAt') || 0)
+      if (Date.now() - lastShown < 24 * 60 * 60 * 1000) return
+      uni.setStorageSync('allFilesAccessGuideShownAt', Date.now())
+      uni.showModal({
+        title: '开启录音自动上传',
+        content: '检测通话录音需要"所有文件访问"权限（系统录音保存在受保护目录中）。请在接下来的页面中开启本APP的「允许管理所有文件」开关。',
+        confirmText: '去开启',
+        cancelText: '暂不',
+        success: (res) => {
+          if (res.confirm) {
+            this.openAllFilesAccessSettings()
+          }
+        }
+      })
+    } catch (e) {
+      console.warn('[RecordingService] 所有文件访问引导失败:', e)
+    }
+    // #endif
+  }
+
+  /**
+   * 跳转"所有文件访问"授权页（Android 11+）
+   * 引导链：本APP的所有文件访问授权页 → 系统所有文件访问列表页 →
+   *        品牌权限管理页 → 应用详情页 → 按机型给出手动路径文案
+   */
+  private openAllFilesAccessSettings() {
+    // #ifdef APP-PLUS
+    try {
+      const Settings = plus.android.importClass('android.provider.Settings')
+      const Intent = plus.android.importClass('android.content.Intent')
+      const Uri = plus.android.importClass('android.net.Uri')
+      const main = plus.android.runtimeMainActivity()
+      const packageName = (main as any).getPackageName()
+      try {
+        // 1. 直达本APP的"所有文件访问"授权页
+        const intent = new (Intent as any)((Settings as any).ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION)
+        intent.setData((Uri as any).parse('package:' + packageName))
+        ;(main as any).startActivity(intent)
+        return
+      } catch (_e) {
+        try {
+          // 2. 系统级"所有文件访问"应用列表页
+          const intent2 = new (Intent as any)((Settings as any).ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)
+          ;(main as any).startActivity(intent2)
+          return
+        } catch (_e2) { /* 继续降级 */ }
+      }
+      // 3/4. 品牌权限管理页（内部失败自动降级到应用详情页）
+      if (openBrandPermissionManager()) return
+      // 5. 全部跳转失败：按机型给出手动路径
+      this.showManualStorageGuide()
+    } catch (e) {
+      console.error('[RecordingService] 无法打开文件访问权限设置:', e)
+      this.showManualStorageGuide()
+    }
+    // #endif
+  }
+
+  /**
+   * 按品牌+机型显示存储权限的手动开启路径（跳转全部失败时的最终兜底）
+   */
+  private showManualStorageGuide() {
+    // #ifdef APP-PLUS
+    try {
+      uni.showModal({
+        title: '手动开启存储权限',
+        content: getManualPermissionGuide('storage'),
+        showCancel: false,
+        confirmText: '我知道了'
+      })
+    } catch (_e) {
+      uni.showToast({ title: '请在系统设置中授予"所有文件访问"权限', icon: 'none', duration: 3000 })
+    }
+    // #endif
+  }
+
+  /**
+   * 公开的存储权限设置跳转（供设置页"去授权"按钮调用）
+   * Android 11+ 跳"所有文件访问"授权链；Android 10- 跳品牌权限管理页
+   */
+  openStoragePermissionSettings() {
+    // #ifdef APP-PLUS
+    try {
+      const Build = plus.android.importClass('android.os.Build')
+      const sdkVersion = (Build as any).VERSION.SDK_INT
+      if (sdkVersion >= 30) {
+        this.openAllFilesAccessSettings()
+      } else if (!openBrandPermissionManager()) {
+        openAppDetailsSettings()
+      }
+    } catch (_e) {
+      openAppDetailsSettings()
+    }
     // #endif
   }
 
@@ -308,6 +429,17 @@ class RecordingService {
       }
     }
 
+    // File API 一个文件都没扫到（典型场景：Android 13+ 没有"所有文件访问"权限，
+    // listFiles 静默返回空）→ 用 MediaStore 索引兜底
+    if (recordings.length === 0) {
+      const fromMediaStore = this.scanRecordingsViaMediaStore()
+      for (const file of fromMediaStore) {
+        if (!recordings.some(r => r.path === file.path)) {
+          recordings.push(file)
+        }
+      }
+    }
+
     console.log('[RecordingService] 扫描到录音文件:', recordings.length, '(扫描了', scannedPaths.size, '个目录)')
     return recordings
     // #endif
@@ -315,6 +447,71 @@ class RecordingService {
     // #ifndef APP-PLUS
     return []
     // #endif
+  }
+
+  /**
+   * MediaStore 兜底扫描：没有"所有文件访问"权限时（Android 13+ 仅有 READ_MEDIA_AUDIO），
+   * File API 读不到受保护目录，改从系统媒体库索引中查询录音类音频文件。
+   * 系统的通话录音（含OPPO拨号应用自动录音）会被媒体扫描器收录进 MediaStore。
+   * @param sinceTime 只返回该时间之后修改的文件（毫秒），默认最近7天
+   */
+  private scanRecordingsViaMediaStore(sinceTime?: number): RecordingFile[] {
+    // #ifdef APP-PLUS
+    try {
+      const main = plus.android.runtimeMainActivity()
+      const MediaStore = plus.android.importClass('android.provider.MediaStore')
+      const contentResolver = (main as any).getContentResolver()
+      const uri = (MediaStore as any).Audio.Media.EXTERNAL_CONTENT_URI
+
+      const DATA = (MediaStore as any).Audio.Media.DATA
+      const sinceSec = Math.floor((sinceTime || (Date.now() - 7 * 24 * 60 * 60 * 1000)) / 1000)
+
+      // 路径含录音相关关键词（record/call/sounds/通话录音），覆盖各品牌录音目录
+      const selection = `(${(MediaStore as any).Audio.Media.DATE_MODIFIED} > ?) AND (` +
+        `LOWER(${DATA}) LIKE '%record%' OR ` +
+        `LOWER(${DATA}) LIKE '%/call%' OR ` +
+        `LOWER(${DATA}) LIKE '%sounds%' OR ` +
+        `${DATA} LIKE '%通话录音%' OR ` +
+        `${DATA} LIKE '%录音%')`
+      const selectionArgs = plus.android.newObject('java.lang.String[]', [String(sinceSec)])
+
+      const cursor = contentResolver.query(
+        uri, null, selection, selectionArgs,
+        (MediaStore as any).Audio.Media.DATE_MODIFIED + ' DESC'
+      )
+
+      const result: RecordingFile[] = []
+      if (cursor) {
+        const dataIdx = cursor.getColumnIndex(DATA)
+        const nameIdx = cursor.getColumnIndex((MediaStore as any).Audio.Media.DISPLAY_NAME)
+        const sizeIdx = cursor.getColumnIndex((MediaStore as any).Audio.Media.SIZE)
+        const modIdx = cursor.getColumnIndex((MediaStore as any).Audio.Media.DATE_MODIFIED)
+        let guard = 0
+        while (cursor.moveToNext() && guard < 300) {
+          guard++
+          const path = dataIdx >= 0 ? cursor.getString(dataIdx) : ''
+          if (!path) continue
+          const name = (nameIdx >= 0 ? cursor.getString(nameIdx) : '') || path.split('/').pop() || ''
+          const dotIdx = name.lastIndexOf('.')
+          if (dotIdx < 0) continue
+          const ext = name.substring(dotIdx).toLowerCase()
+          if (!AUDIO_EXTENSIONS.includes(ext)) continue
+          result.push({
+            path,
+            name,
+            size: sizeIdx >= 0 ? Number(cursor.getLong(sizeIdx) || 0) : 0,
+            lastModified: modIdx >= 0 ? Number(cursor.getLong(modIdx) || 0) * 1000 : 0,
+          })
+        }
+        cursor.close()
+      }
+      console.log('[RecordingService] MediaStore兜底扫描到音频文件:', result.length)
+      return result
+    } catch (e) {
+      console.warn('[RecordingService] MediaStore兜底扫描失败:', e)
+    }
+    // #endif
+    return []
   }
 
   /**
@@ -384,6 +581,14 @@ class RecordingService {
     console.log('[RecordingService] 查找匹配录音:', callInfo)
 
     const recordings = await this.scanRecordingFolders()
+    // 额外合并 MediaStore 中本通时间窗口附近的音频
+    // （File扫描可能因权限/目录未覆盖而漏掉，比如OPPO的"通话录音"中文目录）
+    const fromMediaStore = this.scanRecordingsViaMediaStore(callInfo.startTime - 60 * 1000)
+    for (const file of fromMediaStore) {
+      if (!recordings.some(r => r.path === file.path)) {
+        recordings.push(file)
+      }
+    }
     if (recordings.length === 0) {
       console.log('[RecordingService] 未找到任何录音文件')
       return null
@@ -516,17 +721,34 @@ class RecordingService {
       return { found: false, uploaded: false }
     }
 
-    // 等待一小段时间，确保录音文件已写入
-    await new Promise((resolve) => setTimeout(resolve, 2000))
-
-    // 查找匹配的录音
-    const recording = await this.findMatchingRecording(callInfo)
+    // 🔥 重试查找：录音文件落盘时机因ROM而异——OPPO等设备可能在通话结束后
+    // 数秒到数十秒才写入文件/被媒体扫描器收录，一次扫描找不到不代表没有
+    const findDelays = [2000, 5000, 10000, 20000, 30000]
+    let recording: RecordingFile | null = null
+    for (let attempt = 0; attempt < findDelays.length; attempt++) {
+      await new Promise((resolve) => setTimeout(resolve, findDelays[attempt]))
+      recording = await this.findMatchingRecording(callInfo)
+      if (recording) {
+        console.log(`[RecordingService] 第${attempt + 1}次扫描找到匹配录音:`, recording.name)
+        break
+      }
+      console.log(`[RecordingService] 第${attempt + 1}次扫描未找到匹配录音，${attempt < findDelays.length - 1 ? '稍后重试' : '放弃'}`)
+    }
     if (!recording) {
       return { found: false, uploaded: false }
     }
 
-    // 上传录音
-    const uploaded = await this.uploadRecordingFile(callInfo.callId, recording)
+    // 🔥 重试上传：网络抖动/服务器瞬时不可用时自动重试
+    const uploadDelays = [0, 3000, 10000]
+    let uploaded = false
+    for (let attempt = 0; attempt < uploadDelays.length; attempt++) {
+      if (uploadDelays[attempt] > 0) {
+        await new Promise((resolve) => setTimeout(resolve, uploadDelays[attempt]))
+      }
+      uploaded = await this.uploadRecordingFile(callInfo.callId, recording)
+      if (uploaded) break
+      console.warn(`[RecordingService] 第${attempt + 1}次上传失败${attempt < uploadDelays.length - 1 ? '，稍后重试' : '，已放弃'}`)
+    }
 
     return {
       found: true,
@@ -1327,7 +1549,8 @@ class RecordingService {
         `LOWER(${(MediaStore as any).Audio.Media.DATA}) LIKE '%/talkback/%' OR ` +
         // OPPO/三星 通话录音子目录
         `LOWER(${(MediaStore as any).Audio.Media.DATA}) LIKE '%/call recordings/%' OR ` +
-        `LOWER(${(MediaStore as any).Audio.Media.DATA}) LIKE '%/call recordings/%' OR ` +
+        // OPPO ColorOS 中文目录
+        `${(MediaStore as any).Audio.Media.DATA} LIKE '%/通话录音/%' OR ` +
         // 文件名包含"通话录音"（中文命名）
         `${(MediaStore as any).Audio.Media.DISPLAY_NAME} LIKE '%通话录音%')`
 
@@ -1371,6 +1594,9 @@ class RecordingService {
         '/storage/emulated/0/Documents',
         '/storage/emulated/0/Download',
         '/storage/emulated/0/Sounds',
+        '/storage/emulated/0/Recordings',
+        '/storage/emulated/0/Record',
+        '/storage/emulated/0/录音',
       ]
 
       // 录音文件夹名称关键词（不区分大小写匹配）
@@ -1379,6 +1605,7 @@ class RecordingService {
         'callrecordings', 'phonerecord', 'phone_record',
         'call_rec', 'callrec', 'talkback',
         'sound_recorder', 'voicerecorder',
+        '通话录音', '通话', '电话录音',
       ]
 
       for (const parentPath of parentDirs) {
@@ -1452,20 +1679,35 @@ class RecordingService {
         'auto_call_record',
         'hw_call_recording',
         'hw_callrecord_auto',
+        'hw_record_incall',
+        // 荣耀 MagicOS
+        'hn_call_record_auto',
+        'magic_call_recording',
         // 小米 / 红米
         'button_auto_record_call',
         'call_recording_enabled',
         'miui_call_recording',
-        // OPPO / Realme / 一加
+        // OPPO / Realme / 一加（ColorOS 12+ 使用 oplus_customize_ 前缀）
         'oppo_call_record',
         'oppo_auto_call_recording',
         'oplus_call_recording',
+        'oplus_customize_call_record',
+        'oplus_customize_all_call_record',
+        'oplus_customize_call_record_auto',
+        'oppo_all_call_audio_record',
+        'auto_record',
+        'all_auto_record',
         // VIVO / iQOO
         'vivo_call_recording',
         'vivo_auto_record',
+        'call_record_state',
+        'vivo_all_call_record',
         // 三星
         'samsung_call_recording',
         'call_recording_mode',
+        'enable_all_call_recording',
+        // 魅族 Flyme
+        'mz_call_record_auto',
         // Google Pixel
         'google_call_recording',
         'dialer_call_recording_enabled',
