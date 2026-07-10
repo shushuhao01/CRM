@@ -7,9 +7,14 @@ import { authenticateToken } from '../../middleware/auth';
 import { registerCompanyAndTraceRoutes } from './logisticsCompany';
 import { registerStatusAndConfigRoutes } from './logisticsStatus';
 import { registerSenderAddressRoutes } from './senderAddress';
+import publicCallbacksRouter from './publicCallbacks';
 
 const router = Router();
 const logisticsController = new LogisticsController();
+
+// 🔥 轨迹推送回调路由（必须在认证中间件之前注册）
+// 快递开放平台从外部推送数据，无法携带JWT令牌
+router.use(publicCallbacksRouter);
 
 // 应用认证中间件
 router.use(authenticateToken);

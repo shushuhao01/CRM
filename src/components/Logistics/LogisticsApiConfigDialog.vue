@@ -107,6 +107,19 @@
         <div class="form-tip">{{ apiUrlTip }}</div>
       </el-form-item>
 
+      <!-- 轨迹推送回调地址（开放平台"物流轨迹推送服务"在线调试时填写，指向本系统） -->
+      <el-form-item v-if="pushCallbackUrl" label="推送回调地址">
+        <el-input :model-value="pushCallbackUrl" readonly>
+          <template #prepend>
+            <el-icon><Link /></el-icon>
+          </template>
+          <template #append>
+            <el-button @click="copyPushCallbackUrl">复制</el-button>
+          </template>
+        </el-input>
+        <div class="form-tip">在开放平台调试"物流轨迹推送服务"时，URL地址填此地址（需服务器公网可访问）；仅推送服务需要，普通轨迹查询无需配置</div>
+      </el-form-item>
+
       <!-- API环境 -->
       <el-form-item v-if="showEnvironment" label="API环境" prop="apiEnvironment">
         <el-select v-model="formData.apiEnvironment" style="width: 100%">
@@ -244,6 +257,7 @@ const companyConfigs: Record<string, {
       sandbox: 'https://sfapi-sbox.sf-express.com/std/service',
       production: 'https://sfapi.sf-express.com/std/service'
     },
+    callbackUrl: '/api/v1/logistics/sf-callback',
     setupSteps: [
       '1. 登录顺丰开放平台 (open.sf-express.com)',
       '2. 进入"业务对接" -> "开发者对接"，创建应用',
@@ -275,6 +289,7 @@ const companyConfigs: Record<string, {
       sandbox: 'https://japi-test.zto.com/zto.merchant.waybill.track.query',
       production: 'https://japi.zto.com/zto.merchant.waybill.track.query'
     },
+    callbackUrl: '/api/v1/logistics/zto-callback',
     setupSteps: [
       '1. 登录中通开放平台 (open.zto.com)，注册并完成企业实名认证',
       '2. 在"个人中心"获取 appKey 和 密钥(appSecret)',
@@ -341,13 +356,15 @@ const companyConfigs: Record<string, {
       sandbox: 'http://cloudinter-linkgatewaytest.sto.cn/gateway/link.do',
       production: 'https://cloudinter-linkgateway.sto.cn/gateway/link.do'
     },
+    callbackUrl: '/api/v1/logistics/sto-callback',
     setupSteps: [
       '1. 登录申通开放平台 (open.sto.cn)，注册开发者账号',
       '2. 进入"应用管理"，创建应用获取AppKey和SecretKey',
       '3. 在"LinkGateway接口"中申请"STO_TRACE_QUERY_COMMON"轨迹查询接口',
       '4. 签名方式: Base64(MD5(content + SecretKey))',
       '5. 在测试环境完成接口调试（注意测试环境为HTTP协议）',
-      '6. 将AppKey和SecretKey填入下方配置'
+      '6. 将AppKey和SecretKey填入下方配置',
+      '注：如平台调试"轨迹推送"类接口要求填URL，使用下方"推送回调地址"（轨迹查询不需要）'
     ]
   },
   // 韵达速递 - 韵达开放平台 http://open.yundaex.com/
@@ -372,6 +389,7 @@ const companyConfigs: Record<string, {
       sandbox: 'https://u-openapi.yundasys.com/openapi/outer/logictis/query',
       production: 'https://openapi.yundaex.com/openapi/outer/logictis/query'
     },
+    callbackUrl: '/api/v1/logistics/yd-callback',
     setupSteps: [
       '1. 登录韵达开放平台 (open.yundaex.com)，注册企业账号并完成认证',
       '2. 创建应用，获取AppKey和AppSecret（轨迹查询接口免费，需为韵达合作客户）',
@@ -403,6 +421,7 @@ const companyConfigs: Record<string, {
       sandbox: 'https://uat-openapi.jtexpress.com.cn/webopenplatformapi/api/logistics/trace',
       production: 'https://openapi.jtexpress.com.cn/webopenplatformapi/api/logistics/trace'
     },
+    callbackUrl: '/api/v1/logistics/jt-callback',
     setupSteps: [
       '1. 登录极兔开放平台 (open.jtexpress.com.cn)，注册企业账号',
       '2. 进入"应用管理"，创建应用获取API账号(apiAccount)和私钥(privateKey)',
@@ -434,6 +453,7 @@ const companyConfigs: Record<string, {
       sandbox: 'https://api.ems.com.cn/amp-prod-api/f/amp/api/open',
       production: 'https://api.ems.com.cn/amp-prod-api/f/amp/api/open'
     },
+    callbackUrl: '/api/v1/logistics/ems-callback',
     setupSteps: [
       '1. 与当地邮政/EMS签订协议成为协议客户（需有月结账户）',
       '2. 登录中国邮政国内协议客户API开放平台 (api.ems.com.cn)，注册并绑定协议客户号',
@@ -465,6 +485,7 @@ const companyConfigs: Record<string, {
       sandbox: 'https://uat-api.jdl.com/jd/tracking/query',
       production: 'https://api.jdl.com/jd/tracking/query'
     },
+    callbackUrl: '/api/v1/logistics/jd-callback',
     setupSteps: [
       '1. 登录京东物流开放平台 (open.jdl.com)，注册企业账号并创建应用（获取AppKey/AppSecret）',
       '2. 申请"快递轨迹查询"API权限（对接方案编码Tracking_JD，接口/jd/tracking/query，免费）',
@@ -496,6 +517,7 @@ const companyConfigs: Record<string, {
       sandbox: 'http://dpsanbox.deppon.com/sandbox-web/standard-order/newTraceQuery.action',
       production: 'https://dpapi.deppon.com/dop-interface-sync/standard-order/newTraceQuery.action'
     },
+    callbackUrl: '/api/v1/logistics/dbl-callback',
     setupSteps: [
       '1. 登录德邦开放平台 (open.deppon.com)，注册企业账号（需与德邦有业务合作）',
       '2. 申请API接入，获取公司编码(companyCode)和密钥(appkey)',
@@ -518,6 +540,19 @@ const showApiUrl = computed(() => currentConfig.value.showApiUrl === true)
 const showEnvironment = computed(() => currentConfig.value.showEnvironment !== false)
 const apiUrlTip = computed(() => currentConfig.value.apiUrlTip || '')
 const apiUrlPlaceholder = computed(() => currentConfig.value.apiUrlPlaceholder || '请输入接口地址')
+// 轨迹推送回调地址（开放平台"物流轨迹推送服务"调试时填写的URL，指向本系统）
+const pushCallbackUrl = computed(() => {
+  const path = currentConfig.value.callbackUrl
+  return path ? `${window.location.origin}${path}` : ''
+})
+const copyPushCallbackUrl = async () => {
+  try {
+    await navigator.clipboard.writeText(pushCallbackUrl.value)
+    ElMessage.success('回调地址已复制')
+  } catch {
+    ElMessage.info(pushCallbackUrl.value)
+  }
+}
 const fieldLabels = computed(() => currentConfig.value.fieldLabels)
 const fieldTips = computed(() => currentConfig.value.fieldTips)
 const apiUrls = computed(() => currentConfig.value.apiUrls)

@@ -205,6 +205,15 @@
           <div class="form-tip">一般不需要修改</div>
         </el-form-item>
 
+        <el-form-item label="推送回调地址">
+          <el-input :model-value="kuaidi100CallbackUrl" readonly>
+            <template #append>
+              <el-button @click="copyKuaidi100CallbackUrl">复制</el-button>
+            </template>
+          </el-input>
+          <div class="form-tip">仅"订阅推送"模式需要：在快递100订阅接口的callbackurl参数中填此地址（需公网可访问）；实时查询模式无需配置</div>
+        </el-form-item>
+
         <el-form-item label="启用状态">
           <el-switch
             v-model="kuaidi100Form.enabled"
@@ -381,6 +390,16 @@ const kuaidi100Form = reactive({
 const kuaidi100FormRules = {
   customer: [{ required: true, message: '请输入Customer', trigger: 'blur' }],
   key: [{ required: true, message: '请输入Key', trigger: 'blur' }]
+}
+// 快递100订阅推送回调地址（指向本系统）
+const kuaidi100CallbackUrl = computed(() => `${window.location.origin}/api/v1/logistics/kuaidi100-callback`)
+const copyKuaidi100CallbackUrl = async () => {
+  try {
+    await navigator.clipboard.writeText(kuaidi100CallbackUrl.value)
+    ElMessage.success('回调地址已复制')
+  } catch {
+    ElMessage.info(kuaidi100CallbackUrl.value)
+  }
 }
 
 // 支持API配置的快递公司代码（所有主流快递公司）
