@@ -45,6 +45,9 @@ export function useIncomingCall() {
   let unsubMessage: (() => void) | null = null
   let activeNotification: Notification | null = null
   let autoCloseTimer: ReturnType<typeof setTimeout> | null = null
+  // 响铃期间轮询通话记录状态：APP结束事件丢失（如APP被杀、WS断开）时，
+  // 依然能发现手机侧已挂断并同步关闭悬浮窗和铃声
+  let statusPollTimer: ReturnType<typeof setInterval> | null = null
 
   const isOnCallManagementPage = () => {
     return router.currentRoute.value.path === '/service-management/call'
@@ -132,16 +135,15 @@ export function useIncomingCall() {
     // 浏览器播放来电铃声（响铃期间循环，接听/挂断/结束时停止）
     startRingtone()
 
+    // 响铃期间轮询通话状态：手机侧已挂断/接听但事件丢失时，主动同步关闭
+    startStatusPoll()
+
     // 超时安全网：90秒后自动关闭弹窗（防止APP状态未上报导致弹窗卡死）
     if (autoCloseTimer) clearTimeout(autoCloseTimer)
     autoCloseTimer = setTimeout(() => {
       if (incomingCallVisible.value || incomingMinimized.value) {
         console.warn('[GlobalIncoming] 弹窗超时90秒未关闭，自动关闭')
-        incomingCallVisible.value = false
-        incomingMinimized.value = false
-        incomingCallData.value = null
-        stopRingtone()
-        closeActiveNotification()
+        closeRingingUI()
         ElMessage.warning('来电弹窗已超时自动关闭')
       }
     }, 90000)
@@ -187,10 +189,59 @@ export function useIncomingCall() {
     }
   }
 
+  const stopStatusPoll = () => {
+    if (statusPollTimer) {
+      clearInterval(statusPollTimer)
+      statusPollTimer = null
+    }
+  }
+
+  /** 彻底关闭响铃相关UI（弹窗/悬浮球/铃声/浏览器通知/各计时器） */
+  const closeRingingUI = () => {
+    stopStatusPoll()
+    clearAutoCloseTimer()
+    incomingCallVisible.value = false
+    incomingMinimized.value = false
+    incomingCallData.value = null
+    stopRingtone()
+    closeActiveNotification()
+  }
+
+  /**
+   * 响铃期间每5秒查询一次通话记录状态：手机侧已接听/挂断/拒接（记录不再是ringing）
+   * 但结束事件没有推到CRM时，主动发现并同步关闭悬浮窗和铃声
+   */
+  const startStatusPoll = () => {
+    stopStatusPoll()
+    statusPollTimer = setInterval(async () => {
+      // 弹窗和悬浮球都已关闭 → 轮询使命结束
+      if (!incomingCallVisible.value && !incomingMinimized.value) {
+        stopStatusPoll()
+        return
+      }
+      const id = incomingCallData.value?.id
+      // 本地模拟来电（test_开头）无数据库记录，不轮询
+      if (!id || String(id).startsWith('test_')) return
+      try {
+        const res: any = await callConfigApi.getCallStatus(String(id))
+        const status = res?.data?.status || res?.status
+        if (status && status !== 'ringing') {
+          console.log('[GlobalIncoming] 轮询发现通话已不在响铃状态:', status, '→ 同步关闭响铃悬浮窗')
+          closeRingingUI()
+          ElMessage.info(status === 'connected' ? '来电已在手机上接听' : '来电已结束')
+        }
+      } catch (_e) {
+        // 网络错误/记录不存在：忽略，等下一轮或90秒超时兜底
+      }
+    }, 5000)
+  }
+
   const handleCallEnded = (data: any) => {
-    if (isOnCallManagementPage()) return
+    // 在通话管理页时由页面自己处理；但若全局悬浮球处于激活状态（handoff移交），仍需清理
+    if (isOnCallManagementPage() && !incomingMinimized.value && !incomingCallVisible.value) return
 
     console.log('[GlobalIncoming] 收到 call:ended 事件:', data)
+    stopStatusPoll()
     clearAutoCloseTimer()
     closeActiveNotification()
     stopRingtone()
@@ -251,12 +302,7 @@ export function useIncomingCall() {
   }
 
   const dismissCall = () => {
-    clearAutoCloseTimer()
-    incomingCallVisible.value = false
-    incomingMinimized.value = false
-    incomingCallData.value = null
-    stopRingtone()
-    closeActiveNotification()
+    closeRingingUI()
   }
 
   const endCall = () => {
@@ -306,9 +352,10 @@ export function useIncomingCall() {
   }
 
   const handleCallConnected = (data: any) => {
-    if (isOnCallManagementPage()) return
+    if (isOnCallManagementPage() && !incomingMinimized.value && !incomingCallVisible.value) return
 
     console.log('[GlobalIncoming] 收到 call:connected 事件:', data)
+    stopStatusPoll()
     clearAutoCloseTimer()
 
     // 来电已在手机端接听，关闭来电弹窗/悬浮球
@@ -322,7 +369,7 @@ export function useIncomingCall() {
   }
 
   const handleCallStatus = (data: any) => {
-    if (isOnCallManagementPage()) return
+    if (isOnCallManagementPage() && !incomingMinimized.value && !incomingCallVisible.value) return
 
     console.log('[GlobalIncoming] 收到 call:status 事件:', data)
 
@@ -330,6 +377,7 @@ export function useIncomingCall() {
 
     // 通话状态为 connected 时，说明已在手机端接听，关闭来电弹窗/悬浮球
     if (data?.status === 'connected') {
+      stopStatusPoll()
       clearAutoCloseTimer()
       incomingCallVisible.value = false
       incomingMinimized.value = false
@@ -340,13 +388,43 @@ export function useIncomingCall() {
 
     // 通话状态为 ended/missed/rejected 时，说明已挂断/拒绝，关闭来电弹窗/悬浮球
     if (data?.status === 'ended' || data?.status === 'missed' || data?.status === 'rejected' || data?.status === 'failed') {
-      clearAutoCloseTimer()
-      incomingCallVisible.value = false
-      incomingMinimized.value = false
-      incomingCallData.value = null
-      stopRingtone()
-      closeActiveNotification()
+      closeRingingUI()
     }
+  }
+
+  /**
+   * 响铃状态移交：通话管理页内的响铃弹窗是页面级组件，跳转到其他页面
+   * （如"新增客户"）后页面被 keep-alive 停用、页内悬浮球随之不可见。
+   * 页面在跳转前派发 crm:incoming-handoff 事件，把响铃状态交给全局悬浮球接管。
+   */
+  const handleIncomingHandoff = (e: Event) => {
+    const detail = (e as CustomEvent).detail
+    if (!detail || !detail.id) return
+    console.log('[GlobalIncoming] 接管通话管理页移交的响铃状态:', detail.id)
+    incomingCallData.value = {
+      id: detail.id,
+      customerName: detail.customerName || detail.name || '未知来电',
+      phone: detail.phone || '',
+      customerId: detail.customerId || undefined,
+      customerLevel: detail.customerLevel,
+      company: detail.company,
+      lastCallTime: detail.lastCallTime,
+      callSource: detail.callSource,
+      deviceInfo: detail.deviceInfo,
+      tags: detail.tags || [],
+      isNewCustomer: !!detail.isNewCustomer || !detail.customerId,
+    }
+    incomingCallVisible.value = false
+    incomingMinimized.value = true
+    // 响铃期间轮询通话状态：手机侧已挂断但事件丢失时，主动同步关闭悬浮球
+    startStatusPoll()
+    // 安全网：90秒后自动清理（防止结束事件丢失导致悬浮球卡死）
+    if (autoCloseTimer) clearTimeout(autoCloseTimer)
+    autoCloseTimer = setTimeout(() => {
+      if (incomingCallVisible.value || incomingMinimized.value) {
+        closeRingingUI()
+      }
+    }, 90000)
   }
 
   const startListening = () => {
@@ -367,10 +445,13 @@ export function useIncomingCall() {
       }
     })
 
+    window.addEventListener('crm:incoming-handoff', handleIncomingHandoff as EventListener)
+
     console.log('[GlobalIncoming] 来电监听已启动')
   }
 
   const stopListening = () => {
+    stopStatusPoll()
     clearAutoCloseTimer()
     unsubIncoming?.()
     unsubEnded?.()
@@ -382,6 +463,7 @@ export function useIncomingCall() {
     unsubConnected = null
     unsubStatus = null
     unsubMessage = null
+    window.removeEventListener('crm:incoming-handoff', handleIncomingHandoff as EventListener)
     stopRingtone()
     closeActiveNotification()
   }

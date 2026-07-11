@@ -377,8 +377,21 @@ const showRecordingDiag = () => {
     title: '录音上传诊断',
     content,
     confirmText: pending > 0 ? '立即补传' : '重新扫描',
-    cancelText: '关闭',
+    cancelText: '清空诊断',
     success: async (res) => {
+      if (res.cancel) {
+        // 清空诊断日志（不影响待补传队列，队列由上传成功/无录音出队自动维护）
+        uni.showModal({
+          title: '清空诊断日志',
+          content: '确定清空全部诊断日志吗？（不影响待补传任务）',
+          success: (c) => {
+            if (!c.confirm) return
+            recordingService.clearDiagLogs()
+            uni.showToast({ title: '诊断日志已清空', icon: 'success' })
+          }
+        })
+        return
+      }
       if (!res.confirm) return
       uni.showLoading({ title: '扫描补传中...' })
       try {
@@ -387,6 +400,8 @@ const showRecordingDiag = () => {
         pendingRecordingCount.value = recordingService.getPendingTaskCount()
         if (result.uploaded > 0) {
           uni.showToast({ title: `已补传 ${result.uploaded} 个录音`, icon: 'success' })
+        } else if (result.matchedButFailed > 0) {
+          uni.showToast({ title: '已匹配到录音但上传失败，请查看诊断日志', icon: 'none', duration: 3000 })
         } else if (result.retried > 0) {
           uni.showToast({ title: '暂未匹配到可补传的录音', icon: 'none' })
         } else {
@@ -613,11 +628,11 @@ const autoCheckRecordingStatus = async () => {
     if (hasPermission) {
       const enabled = await recordingService.checkRecordingEnabled()
       recordingEnabled.value = enabled
-
-      // 🔥 同时更新录音统计
-      const stats = await recordingService.getRecordingStats()
-      recordingStats.value = stats
     }
+    // 🔥 录音统计不受权限检查结果限制：部分ROM权限回调与实际可读性不一致，
+    // 扫描本身对无权限目录安全降级（MediaStore兜底），始终刷新统计
+    const stats = await recordingService.getRecordingStats()
+    recordingStats.value = stats
   } catch (e) {
     console.error('自动检测录音状态失败:', e)
   } finally {
@@ -773,27 +788,10 @@ onMounted(() => {
   checkAndAutoCleanRecordings()
 })
 
-// 🔥 检查并自动清理录音
+// 🔥 检查并自动清理录音（逻辑统一在 recordingService.autoCleanIfDue，App回前台也会触发）
 const checkAndAutoCleanRecordings = async () => {
-  if (!callSettings.value.autoCleanRecording) return
-
   try {
-    // 检查上次清理时间
-    const lastCleanup = uni.getStorageSync('lastRecordingCleanup')
-    const now = Date.now()
-    const oneDayMs = 24 * 60 * 60 * 1000
-
-    if (!lastCleanup || (now - parseInt(lastCleanup)) > oneDayMs) {
-      console.log('[Settings] 执行自动录音清理')
-      const result = await recordingService.cleanupExpiredRecordings(callSettings.value.recordingRetentionDays || 3)
-
-      if (result.deletedCount > 0) {
-        console.log(`[Settings] 自动清理完成: 删除 ${result.deletedCount} 个文件`)
-      }
-
-      // 记录清理时间
-      uni.setStorageSync('lastRecordingCleanup', String(now))
-    }
+    await recordingService.autoCleanIfDue()
   } catch (e) {
     console.error('[Settings] 自动清理录音失败:', e)
   }

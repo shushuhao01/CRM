@@ -329,14 +329,14 @@ const initializeApp = async () => {
     // 🔥 公开页面检查
     const isPublicPage = window.location.pathname.startsWith('/public-help') || window.location.pathname.startsWith('/wecom-sidebar')
 
-    // 初始化安全控制台配置（从服务器获取）- 公开页面跳过
+    // 初始化安全控制台配置 - 公开页面跳过
+    // 同步部分（控制台加密替换）在函数入口立即生效；从服务器刷新配置的部分
+    // 不能 await——后端挂起时 fetch 无默认超时会一直 pending，曾导致应用
+    // 挂载被阻塞、整页白屏且刷新无效（只能重启后端）
     if (!isPublicPage) {
-      try {
-        await initSecureConsoleConfig()
-        console.log('[App] 安全控制台配置初始化完成')
-      } catch (error) {
-        console.error('[App] 安全控制台初始化失败:', error)
-      }
+      initSecureConsoleConfig()
+        .then(() => console.log('[App] 安全控制台配置初始化完成'))
+        .catch((error) => console.error('[App] 安全控制台初始化失败:', error))
     }
 
     // 安全地初始化主题配置

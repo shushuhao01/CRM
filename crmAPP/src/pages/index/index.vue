@@ -874,12 +874,38 @@ const handleGrantStorage = () => {
 }
 
 /** 后台保活：拉起"忽略电池优化"系统授权弹窗，返回后自动刷新状态 */
+let batteryGrantAttemptAt = 0
 const handleGrantBattery = () => {
   // #ifdef APP-PLUS
+  batteryGrantAttemptAt = Date.now()
   incomingCallService.requestBatteryOptimizationExemption()
-  // 用户从系统弹窗返回后 onShow 会刷新；这里再加一次延迟刷新兜底
+  // 用户从系统弹窗返回后 onShow 会刷新并检查结果；这里再加一次延迟刷新兜底
   setTimeout(() => refreshPermissionStatus(), 2000)
   // #endif
+}
+
+/** 从"忽略电池优化"系统弹窗返回后检查结果，未开启时给出手动指引（onShow中调用） */
+const checkBatteryGrantResult = () => {
+  if (!batteryGrantAttemptAt || Date.now() - batteryGrantAttemptAt > 5 * 60 * 1000) return
+  batteryGrantAttemptAt = 0
+  if (isGranted('battery', permBattery.value)) {
+    uni.showToast({ title: '后台保活已开启', icon: 'success' })
+    return
+  }
+  // 系统弹窗没弹出/被拒绝/ROM拦截时给出兜底指引
+  uni.showModal({
+    title: '后台保活未开启',
+    content: '如果刚才没有弹出系统授权窗口，可能被系统拦截或已允许但检测不到。\n\n手动路径：设置 → 电池（省电管理）→ 应用耗电管理/更多电池设置 → 找到本应用 → 允许后台运行/不限制',
+    confirmText: '已开启，手动确认',
+    cancelText: '知道了',
+    success: (res) => {
+      if (res.confirm) {
+        manualOverrides.value['battery'] = true
+        saveManualOverrides()
+        uni.showToast({ title: '已手动确认', icon: 'success' })
+      }
+    }
+  })
 }
 
 /** 来电识别：拉起"来电显示与骚扰拦截"角色授权（响铃取号） */
@@ -1021,6 +1047,11 @@ onShow(() => {
 
   // 刷新权限状态（每次页面显示时检查，用户可能从设置页返回）
   refreshPermissionStatus()
+
+  // 刚点过"后台保活-去开启"：检查授权结果，未开启给手动指引
+  // #ifdef APP-PLUS
+  checkBatteryGrantResult()
+  // #endif
 
   // 检查是否有未完成的通话需要填写跟进
   checkPendingCall()

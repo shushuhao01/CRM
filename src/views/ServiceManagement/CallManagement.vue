@@ -2630,6 +2630,8 @@ const simulateIncomingCall = (customerData: any) => {
   incomingCallMinimized.value = false
   // 浏览器播放来电铃声（响铃期间循环，接听/挂断/结束时停止）
   startRingtone()
+  // 响铃期间轮询通话状态：手机侧已挂断但结束事件丢失时，主动同步关闭
+  startIncomingStatusPoll()
 }
 
 /** 响铃中缩小为悬浮球（铃声继续，点击悬浮球恢复弹窗） */
@@ -2646,11 +2648,60 @@ const restoreIncomingCall = () => {
   incomingCallVisible.value = true
 }
 
-/** 彻底关闭来电响铃状态（弹窗+悬浮球+铃声） */
+/** 彻底关闭来电响铃状态（弹窗+悬浮球+铃声+状态轮询） */
 const clearIncomingRinging = () => {
   incomingCallVisible.value = false
   incomingCallMinimized.value = false
   stopRingtone()
+  stopIncomingStatusPoll()
+}
+
+// 响铃期间轮询通话记录状态：APP结束事件丢失（APP被杀/WS断开/上报延迟）时，
+// 依然能发现手机侧已挂断/接听，同步关闭弹窗和铃声，避免"手机已挂断CRM还在响铃"
+let incomingStatusPollTimer: ReturnType<typeof setInterval> | null = null
+let incomingStatusPollStartedAt = 0
+
+const stopIncomingStatusPoll = () => {
+  if (incomingStatusPollTimer) {
+    clearInterval(incomingStatusPollTimer)
+    incomingStatusPollTimer = null
+  }
+}
+
+const startIncomingStatusPoll = () => {
+  stopIncomingStatusPoll()
+  incomingStatusPollStartedAt = Date.now()
+  incomingStatusPollTimer = setInterval(async () => {
+    // 弹窗和悬浮球都已关闭 → 轮询使命结束
+    if (!incomingCallVisible.value && !incomingCallMinimized.value) {
+      stopIncomingStatusPoll()
+      return
+    }
+    // 兜底超时：超过90秒仍在响铃，自动关闭（防止APP完全失联导致响铃卡死）
+    if (Date.now() - incomingStatusPollStartedAt > 90000) {
+      console.warn('[CallManagement] 来电响铃超过90秒未收到任何状态更新，自动关闭')
+      clearIncomingRinging()
+      incomingCallData.value = null
+      ElMessage.warning('来电响铃已超时自动关闭')
+      return
+    }
+    const id = incomingCallData.value?.id
+    // 本地模拟来电（test_开头）无数据库记录，不查询
+    if (!id || isLocalSimulatedCall(id)) return
+    try {
+      const res: any = await callConfigApi.getCallStatus(String(id))
+      const status = res?.data?.status || res?.status
+      if (status && status !== 'ringing') {
+        console.log('[CallManagement] 轮询发现通话已不在响铃状态:', status, '→ 同步关闭响铃弹窗')
+        clearIncomingRinging()
+        incomingCallData.value = null
+        ElMessage.info(status === 'connected' ? '来电已在手机上接听' : '来电已结束')
+        setTimeout(() => { loadCallRecords(); loadStatistics() }, 500)
+      }
+    } catch (_e) {
+      // 网络错误/记录不存在：忽略，等下一轮或90秒超时兜底
+    }
+  }, 5000)
 }
 
 // 纯前端模拟的来电（id 以 test_ 开头）在数据库中没有通话记录，
@@ -2970,11 +3021,18 @@ const viewCustomerDetail = async () => {
   }
 }
 
-/** 来电弹窗-新增客户：弹窗缩小为悬浮球，跳转新增客户页并带上来电号码（页面内脱敏显示、保存真实值） */
+/** 来电弹窗-新增客户：跳转新增客户页并带上来电号码（页面内脱敏显示、保存真实值）。
+ * 页内悬浮球在离开本页后不可见（keep-alive停用+Teleport隐藏），
+ * 跳转前把响铃状态移交给全局悬浮球（App.vue 的 GlobalIncomingCall）接管 */
 const addNewCustomerFromIncoming = () => {
   if (!incomingCallData.value) return
   const phone = incomingCallData.value.phone || ''
-  minimizeIncomingCall()
+  // 移交响铃状态给全局悬浮球（铃声是全局单例，无需转移）
+  window.dispatchEvent(new CustomEvent('crm:incoming-handoff', { detail: { ...incomingCallData.value } }))
+  // 清掉页面级弹窗/悬浮球，避免回到本页后与全局悬浮球重复
+  incomingCallVisible.value = false
+  incomingCallMinimized.value = false
+  incomingCallData.value = null
   router.push({
     path: '/customer/add',
     query: phone ? { phone, from: 'incoming_call' } : { from: 'incoming_call' }
@@ -4012,8 +4070,9 @@ onUnmounted(() => {
   document.removeEventListener('mousemove', onDrag)
   document.removeEventListener('mouseup', stopDrag)
 
-  // 停止来电铃声
+  // 停止来电铃声和响铃状态轮询
   stopRingtone()
+  stopIncomingStatusPoll()
 
   // 🔥 取消所有WebSocket监听：防止重复注册导致提示弹出多条
   wsUnsubscribers.forEach(unsub => {

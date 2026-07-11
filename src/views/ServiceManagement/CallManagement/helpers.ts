@@ -20,7 +20,10 @@ export const getLevelText = (level: string) => {
 export const getStatusType = (status: string) => {
   const statusMap: Record<string, string> = {
     'pending': 'warning', 'connected': 'success', 'no_answer': 'info',
-    'busy': 'warning', 'failed': 'danger'
+    'busy': 'warning', 'failed': 'danger',
+    'missed': 'danger', 'rejected': 'danger', 'ringing': 'warning',
+    'completed': 'success', 'cancelled': 'info', 'unreachable': 'danger',
+    'timeout': 'info', 'ended': 'info', 'hangup': 'info', 'calling': 'warning'
   }
   return statusMap[status] || 'info'
 }
@@ -28,7 +31,10 @@ export const getStatusType = (status: string) => {
 export const getStatusText = (status: string) => {
   const statusMap: Record<string, string> = {
     'pending': '待外呼', 'connected': '已接通', 'no_answer': '未接听',
-    'busy': '忙线', 'failed': '失败'
+    'busy': '忙线', 'failed': '失败',
+    'missed': '未接听', 'rejected': '已拒接', 'ringing': '响铃中',
+    'completed': '已结束', 'cancelled': '已取消', 'unreachable': '无法接通',
+    'timeout': '超时未接', 'ended': '已结束', 'hangup': '已挂断', 'calling': '呼叫中'
   }
   return statusMap[status] || '未知'
 }

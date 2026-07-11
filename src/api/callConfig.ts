@@ -542,6 +542,17 @@ export function endCall(callId: string, data?: {
 }
 
 /**
+ * 查询通话记录当前状态（来电响铃弹窗轮询用：手机侧已挂断则同步关闭弹窗，静默失败）
+ */
+export function getCallStatus(callId: string): Promise<ApiResponse> {
+  return request({
+    url: `/calls/${callId}/status`,
+    method: 'get',
+    showError: false
+  } as any)
+}
+
+/**
  * 更新通话状态（呼入接听/拒绝等）
  */
 export function updateCallStatus(callId: string, status: string): Promise<ApiResponse> {

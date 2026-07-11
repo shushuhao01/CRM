@@ -290,6 +290,7 @@ class CallStateService {
         startTime: callInfo.startTime,
         endTime: endTime,
         duration: duration,
+        answered: true, // 此处 duration>0 已在上方确认（未接通已提前return）
       })
 
       if (result.found && result.uploaded) {

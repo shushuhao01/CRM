@@ -47,12 +47,22 @@ async function fetchAdminEncryptionStatus(): Promise<void> {
     const token = localStorage.getItem('auth_token')
     if (!token) return
 
-    const response = await fetch('/api/v1/system/admin-encryption-status', {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json'
-      }
-    })
+    // 带超时：后端挂起时 fetch 会一直 pending（无默认超时），
+    // 该请求曾阻塞应用挂载导致整页白屏，必须限时放弃
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), 8000)
+    let response: Response
+    try {
+      response = await fetch('/api/v1/system/admin-encryption-status', {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        signal: controller.signal
+      })
+    } finally {
+      clearTimeout(timer)
+    }
 
     if (response.ok) {
       const data = await response.json()
@@ -93,13 +103,21 @@ async function fetchSecureConsoleConfig(): Promise<boolean> {
       return true // 未登录时默认启用加密
     }
 
-    // 获取租户级配置
-    const response = await fetch('/api/v1/system/console-security-config', {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json'
-      }
-    })
+    // 获取租户级配置（带超时：后端挂起时该请求会阻塞应用挂载导致白屏）
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), 8000)
+    let response: Response
+    try {
+      response = await fetch('/api/v1/system/console-security-config', {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        signal: controller.signal
+      })
+    } finally {
+      clearTimeout(timer)
+    }
 
     if (response.ok) {
       const data = await response.json()

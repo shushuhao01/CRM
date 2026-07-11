@@ -40,6 +40,8 @@ onShow(() => {
     // 🔥 录音补传兜底：回前台时重试未上传的录音（部分ROM录音落盘延迟/后台上传被系统中断）
     recordingService.retryPendingTasks().catch(() => { /* ignore */ })
     recordingService.startPendingRetryLoop()
+    // 🔥 到期自动清理本机过期录音（每天最多一次，无需进设置页）
+    recordingService.autoCleanIfDue().catch(() => { /* ignore */ })
   }
   // #endif
 })

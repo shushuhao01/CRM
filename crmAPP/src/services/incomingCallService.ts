@@ -1520,6 +1520,32 @@ class IncomingCallService {
     })
   }
 
+  /**
+   * 手机侧挂断/拒接/未接后，第一时间把"响铃已结束"同步给服务器（WS+HTTP双通道），
+   * 服务器转发给CRM端关闭来电弹窗/悬浮球并停止铃声。
+   * 通话记录的最终状态（connected/missed、时长等）由后续的正式结束上报负责。
+   */
+  private notifyRingingEndedImmediately(callId: string, phoneNumber: string) {
+    try {
+      if (wsService.isConnected) {
+        wsService.reportCallStatus(callId, 'ended', {
+          callType: 'inbound',
+          phoneNumber,
+        })
+        console.log('[IncomingCallService] 已通过WS即时上报响铃结束, callId:', callId || '(空)')
+      }
+    } catch (_e) { /* ignore */ }
+
+    // HTTP 兜底（WS断开时仍能送达）；失败静默，后续正式结束上报还会同步一次
+    reportCallStatus({
+      callId,
+      status: 'ended',
+      phoneNumber,
+    }).catch((e: any) => {
+      console.warn('[IncomingCallService] HTTP即时上报响铃结束失败:', e?.message || e)
+    })
+  }
+
   private async onIncomingCallEnded() {
     if (!this.currentIncoming) return
 
@@ -1528,6 +1554,11 @@ class IncomingCallService {
     const session = this.currentIncoming
     const info = { ...this.currentIncoming }
     const endTime = Date.now()
+
+    // 🔔 手机一挂断立即通知服务器"本通来电已结束"，让CRM端的响铃弹窗/悬浮球和铃声同步关闭。
+    // 不能等下方补号循环（最长约27秒）之后的正式结束上报——之前就是被补号阻塞，
+    // 导致手机已挂断/拒接而CRM仍持续显示"响铃中"并播放铃声
+    this.notifyRingingEndedImmediately(info.callId || '', info.callerNumber || '')
 
     // 如果号码是"未知来电"，在通话结束后从通话记录/录音文件补获真实号码
     let finalNumber = info.callerNumber
@@ -1584,7 +1615,7 @@ class IncomingCallService {
     }
 
     const callId = info.callId || `IN-local-${info.startTime}`
-    const status = duration > 0 ? 'connected' : 'missed'
+    const status: 'connected' | 'missed' = duration > 0 ? 'connected' : 'missed'
 
     console.log('[IncomingCallService] 来电结束:', finalNumber, '时长:', duration)
 
@@ -1605,16 +1636,22 @@ class IncomingCallService {
       endReason: 'system_hangup',
     })
 
-    // HTTP 上报
+    // HTTP 上报（服务器可能把本次结束合并到已有记录，返回最终生效的记录ID——
+    // 录音上传必须用这个ID关联，否则会关联到不存在/重复的记录）
+    let effectiveCallId = callId
     try {
-      await reportCallEnd(reportData)
+      const endRes: any = await reportCallEnd(reportData)
+      if (endRes?.callId && String(endRes.callId) !== String(callId)) {
+        console.log('[IncomingCallService] 服务器返回合并后的通话记录ID:', endRes.callId, '(原:', callId + ')')
+        effectiveCallId = String(endRes.callId)
+      }
     } catch (e) {
       console.error('[IncomingCallService] 上报通话结束失败:', e)
     }
 
     // 保存供登记页使用
     uni.setStorageSync('lastEndedCall', {
-      callId,
+      callId: effectiveCallId,
       customerName: info.customerName,
       customerId: info.customerId,
       phoneNumber: finalNumber,
@@ -1649,20 +1686,19 @@ class IncomingCallService {
     // 如果号码仍为"未知来电"，在后台继续尝试补获（录音文件写入可能延迟较大）
     // #ifdef APP-PLUS
     if (!finalNumber || finalNumber === '未知来电') {
-      this.backgroundResolveNumber(callId, info, duration, endTime)
+      this.backgroundResolveNumber(effectiveCallId, info, duration, endTime)
     }
     // #endif
 
     // 跳转登记页
     setTimeout(() => {
       uni.navigateTo({
-        url: `/pages/call-ended/index?callId=${callId}&name=${encodeURIComponent(info.customerName || info.callerNumber)}&customerId=${info.customerId || ''}&duration=${duration}&hasRecording=false&callType=inbound`,
+        url: `/pages/call-ended/index?callId=${effectiveCallId}&name=${encodeURIComponent(info.customerName || info.callerNumber)}&customerId=${info.customerId || ''}&duration=${duration}&hasRecording=false&callType=inbound`,
       })
     }, 300)
 
-    // 异步处理录音（传入统一的 callId：info.callId 缺失时用本地兜底ID，
-    // 与上面 reportCallEnd 上报的记录一致，录音仍可关联）
-    this.processRecordingAsync(info, duration, endTime, callId)
+    // 异步处理录音（用服务器返回的最终记录ID关联，确保录音挂到正确的记录上）
+    this.processRecordingAsync(info, duration, endTime, effectiveCallId)
   }
 
   private async reportIncomingToServer(callerNumber: string) {
@@ -1958,9 +1994,10 @@ class IncomingCallService {
     info: IncomingCallInfo,
     duration: number,
     endTime: number,
-    fallbackCallId?: string
+    effectiveCallId?: string
   ) {
-    const callId = info.callId || fallbackCallId
+    // 优先使用调用方传入的"服务器最终记录ID"（/call/end 可能把结束合并到已有记录）
+    const callId = effectiveCallId || info.callId
     if (!callId) {
       console.log('[IncomingCallService] 无可用 callId，跳过录音')
       return
@@ -1991,6 +2028,9 @@ class IncomingCallService {
         startTime: info.startTime,
         endTime,
         duration: effectiveDuration,
+        // duration>0 才算确认接通。未接/拒接时仍会扫描一遍（兼容部分ROM拦截
+        // OFFHOOK导致实际接通但测不到），但扫不到录音就直接结束、不挂"待补传"
+        answered: duration > 0,
       })
 
       if (result.found && result.uploaded) {
@@ -2169,31 +2209,53 @@ class IncomingCallService {
 
   /**
    * 直接拉起"忽略电池优化"系统授权弹窗（供首页权限卡点击授权）
+   * @returns 是否成功拉起某个系统页面
    */
-  requestBatteryOptimizationExemption() {
+  requestBatteryOptimizationExemption(): boolean {
+    // 尝试1：标准"忽略电池优化"授权弹窗（用无参构造+setAction/setData，
+    // 避免 plus.android 双参构造函数重载解析失败导致静默无反应）
     try {
       const main = plus.android.runtimeMainActivity()
       const pkgName = (main as any).getPackageName()
       const Intent = plus.android.importClass('android.content.Intent') as any
-      const Settings = plus.android.importClass('android.provider.Settings') as any
       const Uri = plus.android.importClass('android.net.Uri') as any
-      const intent = new Intent(
-        Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
-        Uri.parse(`package:${pkgName}`)
-      )
+      const intent = new Intent()
+      intent.setAction('android.settings.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS')
+      intent.setData(Uri.parse(`package:${pkgName}`))
       ;(main as any).startActivity(intent)
+      return true
     } catch (e) {
-      console.warn('[IncomingCallService] 打开电池优化授权失败:', e)
-      try {
-        // 兜底：跳系统电池优化列表页
-        const main = plus.android.runtimeMainActivity()
-        const Intent = plus.android.importClass('android.content.Intent') as any
-        const intent = new Intent('android.settings.IGNORE_BATTERY_OPTIMIZATION_SETTINGS')
-        ;(main as any).startActivity(intent)
-      } catch (_e) {
-        uni.showToast({ title: '请到系统设置-电池中允许本应用后台运行', icon: 'none', duration: 3000 })
-      }
+      console.warn('[IncomingCallService] 打开电池优化授权弹窗失败:', e)
     }
+    // 尝试2：系统电池优化列表页（用户需手动找到本应用并选择"不优化"）
+    try {
+      const main = plus.android.runtimeMainActivity()
+      const Intent = plus.android.importClass('android.content.Intent') as any
+      const intent = new Intent()
+      intent.setAction('android.settings.IGNORE_BATTERY_OPTIMIZATION_SETTINGS')
+      ;(main as any).startActivity(intent)
+      uni.showToast({ title: '请在列表中找到本应用，选择"不优化/允许"', icon: 'none', duration: 4000 })
+      return true
+    } catch (e) {
+      console.warn('[IncomingCallService] 打开电池优化列表页失败:', e)
+    }
+    // 尝试3：应用详情页（各品牌都支持，从中进入"电池"相关设置）
+    try {
+      const main = plus.android.runtimeMainActivity()
+      const pkgName = (main as any).getPackageName()
+      const Intent = plus.android.importClass('android.content.Intent') as any
+      const Uri = plus.android.importClass('android.net.Uri') as any
+      const intent = new Intent()
+      intent.setAction('android.settings.APPLICATION_DETAILS_SETTINGS')
+      intent.setData(Uri.parse(`package:${pkgName}`))
+      ;(main as any).startActivity(intent)
+      uni.showToast({ title: '请进入「电池」设置，允许后台运行/不限制', icon: 'none', duration: 4000 })
+      return true
+    } catch (e) {
+      console.warn('[IncomingCallService] 打开应用详情页失败:', e)
+    }
+    uni.showToast({ title: '请到系统设置-电池中允许本应用后台运行', icon: 'none', duration: 3000 })
+    return false
   }
 
   private stopForegroundKeepAlive() {

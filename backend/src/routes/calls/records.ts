@@ -403,6 +403,37 @@ router.put('/records/:id/end', async (req: Request, res: Response) => {
   }
 });
 
+// 查询单条通话记录的当前状态（供CRM来电响铃弹窗轮询：手机侧已挂断则同步关闭弹窗和铃声）
+router.get('/:id/status', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const callRepository = getTenantRepo(Call);
+    const record = await callRepository.findOne({ where: { id } });
+
+    if (!record) {
+      return res.status(404).json({
+        success: false,
+        message: '通话记录不存在'
+      });
+    }
+
+    res.json({
+      success: true,
+      data: {
+        id: record.id,
+        status: record.callStatus,
+        updatedAt: record.updatedAt
+      }
+    });
+  } catch (error) {
+    log.error('查询通话状态失败:', error);
+    res.status(500).json({
+      success: false,
+      message: '查询通话状态失败'
+    });
+  }
+});
+
 router.put('/:id/status', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;

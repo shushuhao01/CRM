@@ -272,7 +272,7 @@ export const uploadFile = (options: {
                       reject(new Error(retryData.message || '上传失败'))
                     }
                   } catch (_e) {
-                    reject(new Error('上传响应解析失败'))
+                    reject(new Error(`上传响应异常(HTTP ${retryRes.statusCode}): ${String(retryRes.data || '').slice(0, 120)}`))
                   }
                 },
                 fail: (err) => {
@@ -294,7 +294,9 @@ export const uploadFile = (options: {
             reject(new Error(data.message || '上传失败'))
           }
         } catch (_e) {
-          reject(new Error('上传响应解析失败'))
+          // 响应不是JSON：多半是反向代理/网关返回的错误页（413/502等）或重定向页
+          // 把状态码和响应体片段带出去，便于诊断日志精确定位
+          reject(new Error(`上传响应异常(HTTP ${res.statusCode}): ${String(res.data || '').slice(0, 120)}`))
         }
       },
       fail: (err) => {

@@ -37,8 +37,10 @@ export const reportCallEnd = (data: {
   })
 }
 
-// 上传录音文件
-export const uploadRecording = (callId: string, filePath: string): Promise<{
+// 上传录音文件（multipart 主通道）
+// phoneNumber 用于服务端兜底关联：callId 匹配不到记录时按"同用户+同号码+2小时内"关联
+export const uploadRecording = (callId: string, filePath: string, phoneNumber?: string): Promise<{
+  callId?: string
   recordingUrl: string
   fileSize: number
 }> => {
@@ -46,7 +48,23 @@ export const uploadRecording = (callId: string, filePath: string): Promise<{
     url: '/mobile/recording/upload',
     filePath,
     name: 'file',
-    formData: { callId }
+    formData: phoneNumber ? { callId, phoneNumber } : { callId }
+  })
+}
+
+// 上传录音文件（base64 JSON 兜底通道）
+// multipart 可能被反向代理拦截/改写导致失败，此通道与其他业务API完全一致，保证可达
+export const uploadRecordingBase64 = (data: {
+  callId: string
+  fileName: string
+  base64: string
+  phoneNumber?: string
+}): Promise<{ callId?: string; recordingUrl: string; fileSize: number }> => {
+  return request({
+    url: '/mobile/recording/upload-base64',
+    method: 'POST',
+    data,
+    showLoading: false
   })
 }
 
