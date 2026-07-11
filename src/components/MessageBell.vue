@@ -214,6 +214,7 @@ import { useNotificationStore } from '@/stores/notification'
 import { useMessageStore } from '@/stores/message'
 import { useUserStore } from '@/stores/user'
 import { sanitizeHtml } from '@/utils/sanitize'
+import { maskPhonesInText } from '@/utils/sensitiveInfo'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   Bell,
@@ -491,10 +492,10 @@ const handleAnnouncementClick = (announcement: any) => {
   showAnnouncementDetail.value = true
 }
 
-// 去除HTML标签
+// 去除HTML标签 + 电话号码权限脱敏（消息内容可能嵌了来电号码原文）
 const stripHtml = (html: string) => {
   if (!html) return ''
-  return html.replace(/<[^>]+>/g, '').substring(0, 100)
+  return maskPhonesInText(html.replace(/<[^>]+>/g, '').substring(0, 100))
 }
 
 // 时间格式化（北京时间）

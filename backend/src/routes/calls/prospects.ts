@@ -131,15 +131,32 @@ router.get('/prospects', async (req: Request, res: Response) => {
           cqb.andWhere('(c.name LIKE :kw OR c.phone LIKE :kw OR c.company LIKE :kw OR CAST(c.other_phones AS CHAR) LIKE :kw)', { kw: `%${keyword}%` });
         }
 
-        // 客户列表权限过滤
+        // 分享给自己的客户也应出现在呼出列表（与客户列表的可见性保持一致）
+        let sharedCustomerIds: string[] = [];
+        if (role !== 'super_admin' && role !== 'admin') {
+          try {
+            const { CustomerShare } = await import('../../entities/CustomerShare');
+            const shareRepo = getTenantRepo(CustomerShare);
+            const shares = await shareRepo.find({
+              where: { sharedTo: String(userId), status: 'active' },
+              select: ['customerId']
+            });
+            sharedCustomerIds = shares.map((s: any) => s.customerId);
+          } catch (e) {
+            log.warn('[呼出列表] 查询分享客户失败（忽略）:', e);
+          }
+        }
+
+        // 客户列表权限过滤（与 GET /customers 一致：自建 + 分配给自己 + 分享给自己）
         if (role === 'super_admin' || role === 'admin') {
           // 管理员看所有
-        } else if (role === 'department_manager') {
-          // 经理看自己负责的客户
-          cqb.andWhere('(c.salesPersonId = :uid OR c.createdBy = :uid)', { uid: userId });
+        } else if (sharedCustomerIds.length > 0) {
+          cqb.andWhere('(c.salesPersonId = :uid OR c.createdBy = :uid OR c.id IN (:...sharedIds))', {
+            uid: userId,
+            sharedIds: sharedCustomerIds
+          });
         } else {
-          // 销售员只看自己负责的客户
-          cqb.andWhere('c.salesPersonId = :uid', { uid: userId });
+          cqb.andWhere('(c.salesPersonId = :uid OR c.createdBy = :uid)', { uid: userId });
         }
 
         cqb.orderBy('c.createdAt', 'DESC');
@@ -166,6 +183,7 @@ router.get('/prospects', async (req: Request, res: Response) => {
             lastCallStatus: null,
             assignedTo: c.salesPersonId || null,
             assignedName: c.salesPersonName || null,
+            isShared: sharedCustomerIds.includes(c.id),
             convertedCustomerId: c.id,
             convertedAt: c.createdAt,
             importBatchId: null,

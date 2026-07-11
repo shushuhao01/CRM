@@ -67,6 +67,17 @@
             <span v-else style="color: #c0c4cc;">无录音</span>
           </template>
         </el-table-column>
+        <el-table-column label="操作" width="110" align="center" fixed="right">
+          <template #default="{ row }">
+            <!-- 新客户（未建档且有有效号码）才显示创建客户；老客户不显示 -->
+            <el-button
+              v-if="canCreateCustomer(row)"
+              link type="warning" size="small"
+              @click="$emit('create-customer', row)"
+            >创建客户</el-button>
+            <span v-else style="color: #c0c4cc;">-</span>
+          </template>
+        </el-table-column>
       </el-table>
 
       <!-- 分页 -->
@@ -204,9 +215,17 @@ const emit = defineEmits<{
   'page-change': [page: number]
   'play-recording': [row: any]
   'download-recording': [row: any]
+  'create-customer': [row: any]
   'close-records': []
   'stop-recording': []
 }>()
+
+/** 未建档（无customerId）且号码有效的记录才允许创建客户 */
+const canCreateCustomer = (row: any): boolean => {
+  if (row.customerId) return false
+  const phone = String(row.customerPhone || '').trim()
+  return !!phone && phone !== '-' && phone !== '未知来电'
+}
 
 const audioPlayer = ref<HTMLAudioElement | null>(null)
 

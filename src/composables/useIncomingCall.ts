@@ -10,6 +10,7 @@ import { webSocketService } from '@/services/webSocketService'
 import * as callConfigApi from '@/api/callConfig'
 import { ElMessage, ElNotification } from 'element-plus'
 import { startRingtone, stopRingtone } from '@/utils/ringtone'
+import { displaySensitiveInfoNew, SensitiveInfoType } from '@/utils/sensitiveInfo'
 
 export interface IncomingCallData {
   id: string
@@ -97,7 +98,7 @@ export function useIncomingCall() {
     if (callInProgressVisible.value) {
       ElNotification({
         title: '来电提醒',
-        message: `${data.customerInfo?.customerName || data.customerName || '未知'} (${data.callerNumber || data.phone || ''}) 来电，但您正在通话中`,
+        message: `${data.customerInfo?.customerName || data.customerName || '未知'} (${displaySensitiveInfoNew(data.callerNumber || data.phone || '', SensitiveInfoType.PHONE)}) 来电，但您正在通话中`,
         type: 'warning',
         duration: 10000,
       })
@@ -296,8 +297,11 @@ export function useIncomingCall() {
   }
 
   const goToCallManagement = () => {
-    // 跳转到通话管理页：全局弹窗关闭（该页面有自己的来电处理），铃声停止
-    dismissCall()
+    // 跳转到通话管理页：响铃中的弹窗缩小为悬浮球（铃声继续，点悬浮球可恢复），
+    // 而不是直接关闭——否则用户会丢失这通还在响铃的来电入口
+    if (incomingCallVisible.value && incomingCallData.value) {
+      minimizeIncoming()
+    }
     router.push('/service-management/call')
   }
 

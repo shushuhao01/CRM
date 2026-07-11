@@ -297,6 +297,7 @@
       @page-change="handleCallRecordsPageChange"
       @play-recording="playRecording"
       @download-recording="downloadRecording"
+      @create-customer="createCustomerFromCallRecord"
       @close-records="handleCloseCallRecordsDialog"
       @stop-recording="stopRecording"
     />
@@ -327,6 +328,7 @@
       @restore-incoming="restoreIncomingCall"
       @view-customer-detail="viewCustomerDetail"
       @quick-follow-up="quickFollowUp"
+      @add-new-customer="addNewCustomerFromIncoming"
       @toggle-minimize="toggleMinimize"
       @end-call-click="handleEndCallClick"
       @save-call-notes="saveCallNotes(false)"
@@ -421,7 +423,7 @@ import {
   ArrowDown
 } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox, ElNotification } from 'element-plus'
-import { displaySensitiveInfoNew, SensitiveInfoType, encryptSensitiveForStorage, decryptSensitiveFromStorage } from '@/utils/sensitiveInfo'
+import { displaySensitiveInfoNew, SensitiveInfoType, encryptSensitiveForStorage, decryptSensitiveFromStorage, maskPhonesInText } from '@/utils/sensitiveInfo'
 import { formatDateTime } from '@/utils/dateFormat'
 import { customerDetailApi } from '@/api/customerDetail'
 import { customerApi } from '@/api/customer'
@@ -1221,7 +1223,7 @@ const loadOutboundList = async () => {
       _prospectId: p.id,
       _convertedCustomerId: p.convertedCustomerId,
       _source: p.source === 'customer' ? 'customer' : ((p.source === 'manual' || p.source === 'excel') ? 'import' : (p.convertedCustomerId ? 'customer' : 'import')),
-      _isShared: false,
+      _isShared: !!p.isShared,
       _sharedToName: '',
       assignedTo: p.assignedTo || '',
       assignedName: p.assignedName || '',
@@ -1475,6 +1477,17 @@ const handleBatchAssignConfirm = async () => {
   }
 }
 
+/** 通话记录弹窗-创建客户：跳转新增客户页并带上来电号码（页面内脱敏显示、保存真实值） */
+const createCustomerFromCallRecord = (row: any) => {
+  const phone = String(row?.customerPhone || '').trim()
+  if (!phone || phone === '-' || phone === '未知来电') {
+    ElMessage.warning('该记录没有有效号码，无法创建客户')
+    return
+  }
+  callRecordsDialogVisible.value = false
+  router.push({ path: '/customer/add', query: { phone, from: 'incoming_call' } })
+}
+
 // 显示通话记录弹窗
 const showCallRecordsDialog = () => {
   callRecordsDialogVisible.value = true
@@ -1511,6 +1524,8 @@ const loadCallRecords = async () => {
     // 从store获取数据并转换格式
     callRecordsList.value = callStore.callRecords.map((record: any) => ({
       id: record.id,
+      // 客户ID：有则为已建档客户，无则是新客户（操作列显示"创建客户"）
+      customerId: record.customerId || record.customer_id || '',
       // 尝试从多个字段获取客户姓名
       customerName: record.customerName || record.customer_name || '未知客户',
       customerPhone: record.customerPhone || record.customer_phone || '-',
@@ -2569,7 +2584,7 @@ const handleIncomingCall = (data: any) => {
   if (callInProgressVisible.value) {
     ElNotification({
       title: '来电提醒',
-      message: `${data.customerInfo?.customerName || data.customerName || '未知'} (${data.callerNumber || data.phone || ''}) 来电，但您正在通话中`,
+      message: `${data.customerInfo?.customerName || data.customerName || '未知'} (${displaySensitiveInfoNew(data.callerNumber || data.phone || '', SensitiveInfoType.PHONE)}) 来电，但您正在通话中`,
       type: 'warning',
       duration: 10000
     })
@@ -2869,14 +2884,43 @@ const resolveIncomingCustomer = async (source: any): Promise<any | null> => {
   // 1) 推送里带了客户ID：直接取客户详情
   // 注：能通过客户接口匹配到的都是"客户列表"里的正式客户，标记 _source='customer'，
   // 详情弹窗据此显示"自建客户"而不是误显示"未转入客户列表"（未转入仅针对导入资料）
+  let idLookupFailed = false
   if (source.customerId) {
     try {
       const res: any = await customerApi.getDetail(String(source.customerId))
       const detail = res?.data || res
       if (detail && detail.id) return { ...detail, _source: 'customer' }
+      idLookupFailed = true
     } catch (e) {
-      console.warn('[CallManagement] 按customerId获取客户详情失败，降级用来电信息:', e)
+      // ID 查详情失败（如推送里的ID已过期/记录变动）：继续走号码反查，
+      // 号码反查走客户列表接口，分享/分配给自己的客户也能命中
+      idLookupFailed = true
+      console.warn('[CallManagement] 按customerId获取客户详情失败，改用号码反查:', e)
     }
+  }
+
+  // 2) 没有客户ID（或ID查询失败）但有号码：按号码反查（列表接口包含自建/分配/分享的客户）
+  if (source.phone) {
+    try {
+      const res: any = await customerApi.getList({ phone: source.phone, page: 1, pageSize: 1 })
+      const list = res?.list || res?.data?.list || []
+      if (list.length > 0) {
+        const found = list[0]
+        // 号码反查只有列表摘要，补一次详情（此时ID来自列表，一定有效）
+        try {
+          const detailRes: any = await customerApi.getDetail(String(found.id))
+          const detail = detailRes?.data || detailRes
+          if (detail && detail.id) return { ...detail, _source: 'customer' }
+        } catch (_e) { /* 详情失败就用列表数据 */ }
+        return { ...found, _source: 'customer' }
+      }
+    } catch (e) {
+      console.warn('[CallManagement] 按号码反查客户失败:', e)
+    }
+  }
+
+  // 3) ID查询失败且号码也没匹配到：退回来电推送里的基础信息（至少能显示姓名/号码）
+  if (idLookupFailed && source.customerId) {
     return {
       id: source.customerId,
       customerId: source.customerId,
@@ -2884,17 +2928,6 @@ const resolveIncomingCustomer = async (source: any): Promise<any | null> => {
       customerName: source.customerName,
       phone: source.phone,
       _source: 'customer'
-    }
-  }
-
-  // 2) 没有客户ID但有号码：按号码反查
-  if (source.phone) {
-    try {
-      const res: any = await customerApi.getList({ phone: source.phone, page: 1, pageSize: 1 })
-      const list = res?.list || res?.data?.list || []
-      if (list.length > 0) return { ...list[0], _source: 'customer' }
-    } catch (e) {
-      console.warn('[CallManagement] 按号码反查客户失败:', e)
     }
   }
   return null
@@ -2935,6 +2968,17 @@ const viewCustomerDetail = async () => {
     showDetailDialog.value = true
     ElMessage.warning('该号码未匹配到客户档案，可通过快速跟进建档')
   }
+}
+
+/** 来电弹窗-新增客户：弹窗缩小为悬浮球，跳转新增客户页并带上来电号码（页面内脱敏显示、保存真实值） */
+const addNewCustomerFromIncoming = () => {
+  if (!incomingCallData.value) return
+  const phone = incomingCallData.value.phone || ''
+  minimizeIncomingCall()
+  router.push({
+    path: '/customer/add',
+    query: phone ? { phone, from: 'incoming_call' } : { from: 'incoming_call' }
+  })
 }
 
 const quickFollowUp = async () => {
@@ -3450,7 +3494,7 @@ const setupCallStatusListener = () => {
     console.log('[CallManagement] 收到未接来电提醒:', data)
     ElNotification({
       title: '未接来电',
-      message: data?.message || `未接来电：${data?.customerName || data?.callerNumber || '未知号码'}`,
+      message: maskPhonesInText(data?.message || `未接来电：${data?.customerName || data?.callerNumber || '未知号码'}`),
       type: 'warning',
       duration: 10000
     })
@@ -3514,7 +3558,7 @@ const setupCallStatusListener = () => {
           // 绝不重新拉起响铃弹窗——否则下一通来电时会看到"上一通号码"的幽灵弹窗
           ElNotification({
             title: '来电号码已补获',
-            message: `${updateData.customerName && updateData.customerName !== '来电客户' ? updateData.customerName + ' ' : ''}${updateData.phoneNumber}（通话已结束，记录已更新）`,
+            message: `${updateData.customerName && updateData.customerName !== '来电客户' ? updateData.customerName + ' ' : ''}${displaySensitiveInfoNew(updateData.phoneNumber, SensitiveInfoType.PHONE)}（通话已结束，记录已更新）`,
             type: 'info',
             duration: 8000,
           })

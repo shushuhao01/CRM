@@ -95,6 +95,7 @@
       <div class="quick-actions">
         <el-button size="small" @click="$emit('view-customer-detail')">查看详情</el-button>
         <el-button size="small" @click="$emit('quick-follow-up')">快速跟进</el-button>
+        <el-button v-if="incomingCallData.isNewCustomer || !incomingCallData.customerId" size="small" type="warning" @click="$emit('add-new-customer')">新增客户</el-button>
       </div>
     </div>
   </el-dialog>
@@ -217,6 +218,7 @@ const emit = defineEmits<{
   'restore-incoming': []
   'view-customer-detail': []
   'quick-follow-up': []
+  'add-new-customer': []
   'toggle-minimize': []
   'end-call-click': []
   'save-call-notes': []

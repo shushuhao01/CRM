@@ -554,13 +554,25 @@ class MobileWebSocketService {
           const normalizedNum = phoneNumber.replace(/[\s\-()]/g, '').replace(/^(\+?86)?0?/, '');
           const possibleNums = [phoneNumber, normalizedNum, `+86${normalizedNum}`, `86${normalizedNum}`, `0${normalizedNum}`];
           const placeholders = possibleNums.map(() => '?').join(',');
+          // 备用号码存在 other_phones JSON 数组中（customers 表没有 mobile 列）
+          const otherPhonesCond = possibleNums.map(() => 'JSON_CONTAINS(c.other_phones, JSON_QUOTE(?))').join(' OR ');
+          // 🔒 租户隔离：只匹配本通话记录所属租户的客户
+          let updTenantId: string | null = null;
+          try {
+            const recRows = await dataSource.query(
+              `SELECT tenant_id FROM call_records WHERE id = ? LIMIT 1`, [callId]
+            );
+            updTenantId = recRows[0]?.tenant_id || null;
+          } catch (_e) { /* 忽略 */ }
+          const updTenantCond = updTenantId ? ' AND c.tenant_id = ?' : ' AND c.tenant_id IS NULL';
+          const updTenantParams = updTenantId ? [updTenantId] : [];
           const customers = await dataSource.query(
-            `SELECT id, name, level FROM customers
-             WHERE (REPLACE(REPLACE(REPLACE(REPLACE(phone, ' ', ''), '-', ''), '(', ''), ')', '') IN (${placeholders})
-                    OR REPLACE(REPLACE(REPLACE(REPLACE(mobile, ' ', ''), '-', ''), '(', ''), ')', '') IN (${placeholders})
-                   )
+            `SELECT c.id, c.name, c.level FROM customers c
+             WHERE (REPLACE(REPLACE(REPLACE(REPLACE(c.phone, ' ', ''), '-', ''), '(', ''), ')', '') IN (${placeholders})
+                    OR ${otherPhonesCond}
+                   )${updTenantCond}
              LIMIT 1`,
-            [...possibleNums, ...possibleNums]
+            [...possibleNums, ...possibleNums, ...updTenantParams]
           );
           if (customers.length > 0) {
             customerName = customers[0].name;

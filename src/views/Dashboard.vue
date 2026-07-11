@@ -197,10 +197,10 @@
               </div>
               <div class="message-content">
                 <div class="message-header">
-                  <div class="message-title">{{ message.title }}</div>
+                  <div class="message-title">{{ maskPhonesInText(message.title) }}</div>
                   <div class="message-time">{{ formatMessageTime(message.time) }}</div>
                 </div>
-                <div class="message-desc">{{ message.content }}</div>
+                <div class="message-desc">{{ maskPhonesInText(message.content) }}</div>
               </div>
               <el-badge :is-dot="!message.read" class="message-badge" />
             </div>
@@ -240,8 +240,8 @@
               </el-icon>
             </div>
             <div class="message-dialog-content">
-              <div class="message-dialog-title">{{ message.title }}</div>
-              <div class="message-dialog-desc">{{ message.content }}</div>
+              <div class="message-dialog-title">{{ maskPhonesInText(message.title) }}</div>
+              <div class="message-dialog-desc">{{ maskPhonesInText(message.content) }}</div>
               <div class="message-dialog-time">{{ message.time }}</div>
             </div>
             <div class="message-dialog-actions">
@@ -270,7 +270,7 @@
         <div class="message-detail-content">
           <!-- 🔥 公告类型使用v-html渲染富文本内容 -->
           <div v-if="(selectedMessage as any).isAnnouncement" class="announcement-html-content" v-html="sanitizeHtml(selectedMessage.content)"></div>
-          <p v-else>{{ selectedMessage.content }}</p>
+          <p v-else>{{ maskPhonesInText(selectedMessage.content) }}</p>
           <div class="message-detail-info">
             <span>时间：{{ selectedMessage.time }}</span>
             <span>类型：{{ getMessageTypeName(selectedMessage.type) }}</span>
@@ -415,6 +415,7 @@ import { dashboardApi, type DashboardTodo, type DashboardQuickAction } from '@/a
 import { useTheme } from '@/composables/useTheme'
 import { messageApi } from '@/api/message'
 import { sanitizeHtml } from '@/utils/sanitize'
+import { maskPhonesInText } from '@/utils/sensitiveInfo'
 import { menuConfig } from '@/config/menu'
 import { hasMenuPermission } from '@/utils/menu'
 

@@ -13,6 +13,7 @@
  */
 
 import { ElNotification } from 'element-plus'
+import { maskPhonesInText } from '@/utils/sensitiveInfo'
 
 // 消息数据接口
 export interface WebSocketMessage {
@@ -282,7 +283,7 @@ class WebSocketService {
       this.emitEvent('call:missed', data)
       ElNotification({
         title: '未接来电提醒',
-        message: data?.message || `您有 ${data?.count || 1} 个未接来电已补录`,
+        message: maskPhonesInText(data?.message || `您有 ${data?.count || 1} 个未接来电已补录`),
         type: 'warning',
         duration: 8000,
         position: 'top-right'
@@ -372,9 +373,11 @@ class WebSocketService {
       low: 'info'
     }
 
+    // 号码权限脱敏：系统消息内容（如"呼入通话已结束"）可能嵌了来电号码原文
+    const maskedContent = maskPhonesInText(message.content || '')
     ElNotification({
-      title: message.title,
-      message: message.content.length > 50 ? message.content.substring(0, 50) + '...' : message.content,
+      title: maskPhonesInText(message.title || ''),
+      message: maskedContent.length > 50 ? maskedContent.substring(0, 50) + '...' : maskedContent,
       type: typeMap[message.priority] || 'info',
       duration: message.priority === 'urgent' ? 0 : 5000,
       position: 'top-right'
@@ -403,8 +406,8 @@ class WebSocketService {
     if (!('Notification' in window)) return
 
     if (Notification.permission === 'granted') {
-      const notification = new Notification(message.title, {
-        body: message.content,
+      const notification = new Notification(maskPhonesInText(message.title), {
+        body: maskPhonesInText(message.content),
         icon: '/logo.svg',
         tag: `message_${message.id}`,
         requireInteraction: message.priority === 'urgent'

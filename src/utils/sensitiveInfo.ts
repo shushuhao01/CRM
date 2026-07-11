@@ -385,6 +385,20 @@ export const {
 // 为了兼容性，提供别名导出
 export const displaySensitiveInfoNew = SensitiveInfoProcessor.displaySensitiveInfo
 
+/**
+ * 对一段文本中出现的电话号码做权限脱敏（受系统设置-客户敏感信息权限控制）。
+ * 用于消息通知等后端已拼接好的文案（content 里直接嵌了号码原文）：
+ * 有权限的角色看到原文，无权限的角色看到掩码。
+ */
+export const maskPhonesInText = (text: string): string => {
+  if (!text) return text
+  // 手机号（可带 +86/86 前缀）与常见固话（区号-号码）
+  return String(text).replace(
+    /(?:\+?86[-\s]?)?1[3-9]\d{9}|0\d{2,3}-?\d{7,8}/g,
+    (match) => SensitiveInfoProcessor.displaySensitiveInfo(match, SensitiveInfoType.PHONE)
+  )
+}
+
 // ==================== 敏感值本地存储加密（可逆） ====================
 // 用于需要在 localStorage 等本地存储中保存敏感值（如号码偏好）的场景，
 // 避免明文落盘。展示时仍须经 displaySensitiveInfo 按角色脱敏。

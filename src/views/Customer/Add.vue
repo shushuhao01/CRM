@@ -26,7 +26,23 @@
             <el-col :span="8">
               <el-form-item label="手机号" prop="phone">
                 <div class="phone-input-group">
+                  <!-- 来电建档：号码按敏感信息权限脱敏显示（保存/验证使用真实号码），点清除可改为手动输入 -->
                   <el-input
+                    v-if="phoneFromIncoming"
+                    :model-value="maskedIncomingPhone"
+                    readonly
+                    style="width: 200px;"
+                  >
+                    <template #suffix>
+                      <el-tooltip content="来电号码已按权限脱敏显示，保存时使用真实号码；点击清除后可手动输入" placement="top">
+                        <el-icon class="clear-icon" @click="handleClearIncomingPhone">
+                          <CircleClose />
+                        </el-icon>
+                      </el-tooltip>
+                    </template>
+                  </el-input>
+                  <el-input
+                    v-else
                     v-model="customerForm.phone"
                     :placeholder="getPhonePlaceholder"
                     @blur="handlePhoneBlur"
@@ -741,6 +757,7 @@ import { useResponsive } from '@/utils/responsive'
 import { getProvinces, getCitiesByProvince, getDistrictsByCity, getStreetsByDistrict, loadAddressData } from '@/utils/addressData'
 import ImprovementGoalsManager from '@/components/ImprovementGoalsManager.vue'
 import { createSafeNavigator } from '@/utils/navigation'
+import { displaySensitiveInfoNew, SensitiveInfoType } from '@/utils/sensitiveInfo'
 
 // 路由相关
 const route = useRoute()
@@ -1235,16 +1252,39 @@ const salesUsers = ref([
 const availableTags = ref<CustomerTag[]>([])
 const loadingTags = ref(false)
 
+// 来电建档：号码脱敏展示状态（表单内保存的仍是真实号码，仅输入框展示按权限脱敏）
+const phoneFromIncoming = ref(false)
+const maskedIncomingPhone = computed(() =>
+  customerForm.phone ? displaySensitiveInfoNew(customerForm.phone, SensitiveInfoType.PHONE) : ''
+)
+
+/** 清除来电预填号码，切回普通手动输入模式 */
+const handleClearIncomingPhone = () => {
+  phoneFromIncoming.value = false
+  customerForm.phone = ''
+  customerVerifyResult.value = null
+}
+
 // 初始化表单数据
 const initForm = () => {
   // 设置默认负责销售为当前用户姓名
   if (!isEdit.value) {
     customerForm.salesPerson = userStore.currentUser?.name || '当前用户'
 
-    // 来电新增客户：预填手机号（query 传真实号码，表单存真实值）
-    const queryPhone = route.query.phone as string
+    // 来电新增客户：预填手机号（query 传真实号码，表单存真实值；输入框按权限脱敏展示）
+    const queryPhone = (route.query.phone as string || '').replace(/\s/g, '')
     if (queryPhone) {
       customerForm.phone = queryPhone
+      phoneFromIncoming.value = true
+      // 自动识别号码类型（固话来电常见于回拨场景）
+      if (/^0\d{2,3}-?\d{7,8}$/.test(queryPhone)) {
+        customerForm.phoneType = 'landline'
+        phoneType.value = 'landline'
+      } else if (!/^1[3-9]\d{9}$/.test(queryPhone)) {
+        // 非大陆手机号也非固话格式：按境外号码处理，避免校验卡住
+        customerForm.phoneType = 'overseas'
+        phoneType.value = 'overseas'
+      }
     }
   }
 }
@@ -2171,6 +2211,11 @@ onMounted(async () => {
   await initAddressData()
   loadTags()
   loadCustomerDetail()
+
+  // 来电建档：预填号码后自动验证客户是否已存在
+  if (phoneFromIncoming.value && isPhoneValid.value) {
+    verifyCustomer()
+  }
 })
 </script>
 

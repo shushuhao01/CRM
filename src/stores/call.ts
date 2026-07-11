@@ -4,6 +4,7 @@ import type { CallRecord, FollowUpRecord, CallStatistics, PhoneConfig } from '@/
 import * as callApi from '@/api/call'
 import { ElMessage, ElNotification } from 'element-plus'
 import { shouldUseMockApi } from '@/api/mock'
+import { displaySensitiveInfoNew, SensitiveInfoType } from '@/utils/sensitiveInfo'
 
 export const useCallStore = defineStore('call', () => {
   // 状态
@@ -665,7 +666,7 @@ export const useCallStore = defineStore('call', () => {
 
     ElNotification({
       title: '来电提醒',
-      message: `${data.customerName} (${data.customerPhone})`,
+      message: `${data.customerName} (${displaySensitiveInfoNew(data.customerPhone, SensitiveInfoType.PHONE)})`,
       type: 'info',
       duration: 0
     })

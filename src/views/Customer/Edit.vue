@@ -371,6 +371,9 @@ const loading = ref(false)
 const currentCustomer = ref(null)
 
 // 权限检查
+// 分享给当前用户的客户ID集合（分享期内视同自己的客户，拥有查看/编辑权限）
+const sharedToMeCustomerIds = ref<Set<string>>(new Set())
+
 const canEditCustomer = computed(() => {
   if (!currentCustomer.value || !userStore.currentUser) {
     return false
@@ -381,6 +384,11 @@ const canEditCustomer = computed(() => {
 
   // 超级管理员可以编辑所有客户
   if (userStore.isSuperAdmin) {
+    return true
+  }
+
+  // 分享给自己的客户：分享有效期内可查看/编辑
+  if (customer.id && sharedToMeCustomerIds.value.has(String(customer.id))) {
     return true
   }
 
@@ -603,6 +611,19 @@ const loadCustomerDetail = async () => {
 
     // 设置当前客户数据
     currentCustomer.value = customer
+
+    // 加载分享给我的客户列表（分享客户视同自己的客户，可编辑）——权限检查前必须完成
+    try {
+      const { customerShareApi } = await import('@/api/customerShare')
+      const sharedList: any[] = await customerShareApi.getSharedToMeCustomers() || []
+      sharedToMeCustomerIds.value = new Set(
+        sharedList
+          .filter((s: any) => s.status === 'active')
+          .map((s: any) => String(s.customerId || s.customer_id))
+      )
+    } catch (shareErr) {
+      console.warn('[Edit.vue] 查询分享客户失败（忽略）:', shareErr)
+    }
 
     // 检查编辑权限
     if (!canEditCustomer.value) {
