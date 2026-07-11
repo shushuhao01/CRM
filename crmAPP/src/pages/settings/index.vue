@@ -135,6 +135,11 @@
           <text class="value">{{ recordingStats.totalCount }} 个文件，{{ formatFileSize(recordingStats.totalSize) }}</text>
           <text class="arrow">›</text>
         </view>
+        <view class="setting-item clickable" @tap="showRecordingDiag">
+          <text class="label">🩺 录音上传诊断</text>
+          <text class="value">{{ pendingRecordingCount > 0 ? pendingRecordingCount + ' 个待补传' : '查看日志' }}</text>
+          <text class="arrow">›</text>
+        </view>
       </view>
       <view class="setting-tip">
         <text>💡 提示：开启手机系统的通话录音功能后，APP会自动扫描并上传录音文件。自动上传功能受密码保护，关闭需要输入密码或回答安全问题。开启自动清理后，超过保留天数的本地录音文件将被自动删除以节省存储空间。</text>
@@ -359,6 +364,42 @@ const recordingStats = ref({
   oldestDate: null as number | null,
   newestDate: null as number | null
 })
+
+// 🩺 录音上传诊断
+const pendingRecordingCount = ref(0)
+
+const showRecordingDiag = () => {
+  const logs = recordingService.getDiagLogs(15)
+  const pending = recordingService.getPendingTaskCount()
+  const content = (pending > 0 ? `待补传录音: ${pending} 个\n\n` : '') +
+    (logs.length > 0 ? logs.join('\n') : '暂无录音处理记录。\n通话结束后APP会自动扫描并上传录音，处理过程会记录在这里。')
+  uni.showModal({
+    title: '录音上传诊断',
+    content,
+    confirmText: pending > 0 ? '立即补传' : '重新扫描',
+    cancelText: '关闭',
+    success: async (res) => {
+      if (!res.confirm) return
+      uni.showLoading({ title: '扫描补传中...' })
+      try {
+        const result = await recordingService.retryPendingTasks(true)
+        uni.hideLoading()
+        pendingRecordingCount.value = recordingService.getPendingTaskCount()
+        if (result.uploaded > 0) {
+          uni.showToast({ title: `已补传 ${result.uploaded} 个录音`, icon: 'success' })
+        } else if (result.retried > 0) {
+          uni.showToast({ title: '暂未匹配到可补传的录音', icon: 'none' })
+        } else {
+          uni.showToast({ title: '没有待补传的录音', icon: 'none' })
+        }
+      } catch (e) {
+        uni.hideLoading()
+        console.error('录音补传失败:', e)
+        uni.showToast({ title: '补传失败', icon: 'none' })
+      }
+    }
+  })
+}
 
 // 密码相关
 const showPasswordModal = ref(false)
@@ -713,6 +754,8 @@ onShow(() => {
   autoCheckRecordingStatus()
   // 刷新来电识别状态（用户可能刚从系统授权弹窗返回）
   refreshCallScreeningStatus()
+  // 刷新待补传录音数量
+  pendingRecordingCount.value = recordingService.getPendingTaskCount()
 })
 
 onMounted(() => {

@@ -126,10 +126,79 @@ interface CallInfo {
   duration: number // 通话时长（秒）
 }
 
+// 待补传任务：找不到录音/上传失败时持久化，APP 回前台或定时器触发重试
+interface PendingRecordingTask {
+  callId: string
+  phoneNumber: string
+  startTime: number
+  endTime: number
+  duration: number
+  attempts: number
+  nextRetryAt: number
+  createdAt: number
+}
+
+const PENDING_TASKS_KEY = 'pendingRecordingTasks'
+const UPLOADED_PATHS_KEY = 'uploadedRecordingPaths'
+const DIAG_LOG_KEY = 'recordingDiagLog'
+// 补传任务最长保留24小时；重试退避间隔（分钟）
+const PENDING_TASK_TTL = 24 * 60 * 60 * 1000
+const PENDING_RETRY_BACKOFF_MIN = [1, 2, 5, 10, 20, 30, 60, 60, 120, 120, 240, 240]
+
 class RecordingService {
   private isScanning = false
   private lastScanTime = 0
   private knownRecordings: Set<string> = new Set()
+  private isRetryingPending = false
+  private pendingRetryTimer: ReturnType<typeof setInterval> | null = null
+
+  constructor() {
+    // 恢复"已上传文件"集合（防止APP重启后同一文件重复上传/串到别的通话）
+    try {
+      const saved = uni.getStorageSync(UPLOADED_PATHS_KEY)
+      if (saved) {
+        const arr: string[] = JSON.parse(saved)
+        arr.forEach(p => this.knownRecordings.add(p))
+      }
+    } catch (_e) { /* ignore */ }
+  }
+
+  /**
+   * 录音诊断日志：持久化记录每一步（权限/扫描/匹配/上传），
+   * 供设置页"录音诊断"查看，快速定位真机上哪一环失败
+   */
+  private diag(step: string, detail?: string) {
+    const line = `${new Date().toLocaleTimeString()} ${step}${detail ? ': ' + detail : ''}`
+    console.log('[RecordingService][诊断] ' + line)
+    try {
+      const raw = uni.getStorageSync(DIAG_LOG_KEY)
+      const logs: string[] = raw ? JSON.parse(raw) : []
+      logs.push(line)
+      // 只保留最近120条
+      while (logs.length > 120) logs.shift()
+      uni.setStorageSync(DIAG_LOG_KEY, JSON.stringify(logs))
+    } catch (_e) { /* ignore */ }
+  }
+
+  /** 获取诊断日志（最近 count 条，最新在后） */
+  getDiagLogs(count: number = 30): string[] {
+    try {
+      const raw = uni.getStorageSync(DIAG_LOG_KEY)
+      const logs: string[] = raw ? JSON.parse(raw) : []
+      return logs.slice(-count)
+    } catch (_e) {
+      return []
+    }
+  }
+
+  /** 持久化已上传文件集合 */
+  private persistKnownRecordings() {
+    try {
+      // 只保留最近200条，避免无限增长
+      const arr = Array.from(this.knownRecordings)
+      uni.setStorageSync(UPLOADED_PATHS_KEY, JSON.stringify(arr.slice(-200)))
+    } catch (_e) { /* ignore */ }
+  }
 
   /**
    * 检查存储权限（适配 Android 11+ Scoped Storage）
@@ -197,6 +266,8 @@ class RecordingService {
           )
         } else {
           // Android 10 及以下: 传统存储权限
+          // 注意：扫描/上传只需要 READ；部分ROM（尤其 targetSdk>=30 时）会拒绝 WRITE，
+          // 不能因 WRITE 未授予而判定无权限（否则扫描被跳过，表现为"有录音但从不上传"）
           plus.android.requestPermissions(
             [
               'android.permission.READ_EXTERNAL_STORAGE',
@@ -204,8 +275,9 @@ class RecordingService {
             ],
             (result: any) => {
               console.log('[RecordingService] 权限请求结果:', result)
-              const granted = result.granted && result.granted.length >= 2
-              resolve(granted)
+              const grantedList: string[] = result.granted || []
+              const readGranted = grantedList.some(p => String(p).includes('READ_EXTERNAL_STORAGE'))
+              resolve(readGranted || grantedList.length >= 2)
             },
             (error: any) => {
               console.error('[RecordingService] 权限请求失败:', error)
@@ -222,7 +294,8 @@ class RecordingService {
             'android.permission.WRITE_EXTERNAL_STORAGE',
           ],
           (result: any) => {
-            resolve(result.granted && result.granted.length >= 2)
+            const grantedList: string[] = result.granted || []
+            resolve(grantedList.some(p => String(p).includes('READ_EXTERNAL_STORAGE')) || grantedList.length >= 2)
           },
           (_error: any) => {
             resolve(false)
@@ -574,7 +647,36 @@ class RecordingService {
   }
 
   /**
+   * 从文件名解析录音开始时间（华为/荣耀/小米等格式：..._yyyyMMddHHmmss.xxx）
+   * 返回毫秒时间戳，解析失败返回 0
+   */
+  private parseFileNameTimestamp(fileName: string): number {
+    const m = fileName.match(/(20\d{12})/)
+    if (!m) return 0
+    const ts = m[1]
+    const time = new Date(
+      Number(ts.slice(0, 4)), Number(ts.slice(4, 6)) - 1, Number(ts.slice(6, 8)),
+      Number(ts.slice(8, 10)), Number(ts.slice(10, 12)), Number(ts.slice(12, 14))
+    ).getTime()
+    return isNaN(time) ? 0 : time
+  }
+
+  /** 提取文件名中的手机号（用于防串人：文件名带了别人的号码则一定不是本通录音） */
+  private extractMobilesFromFileName(fileName: string): string[] {
+    // 去掉空格/横线后再匹配，兼容 "134 2882 7364" / "134-2882-7364" 命名
+    const compact = fileName.replace(/[\s\-()]/g, '')
+    const matches = compact.match(/1[3-9]\d{9}/g)
+    return matches || []
+  }
+
+  /**
    * 查找匹配通话的录音文件
+   *
+   * 匹配规则（防串人是第一优先级）：
+   * 1. 文件名中带 14 位时间戳的（华为/荣耀/小米等），时间戳不在本通窗口内 → 一票否决
+   * 2. 文件名中带手机号、且与本通号码不一致 → 一票否决（这是别人的通话录音）
+   * 3. 文件名号码与本通一致 → 允许更宽的落盘延迟窗口（结束后10分钟内）
+   * 4. 文件名无号码信息 → 仅接受修改时间在 [开始-30s, 结束+90s] 的严格窗口
    */
   async findMatchingRecording(callInfo: CallInfo): Promise<RecordingFile | null> {
     console.log('[RecordingService] 查找匹配录音:', callInfo)
@@ -589,51 +691,79 @@ class RecordingService {
       }
     }
     if (recordings.length === 0) {
-      console.log('[RecordingService] 未找到任何录音文件')
+      this.diag('匹配', '扫描不到任何录音文件（File+MediaStore均为空）')
       return null
     }
 
-    // 通话时间范围容差：前30秒；后90秒（录音文件落盘/媒体库收录都可能滞后，
-    // 且部分ROM的 lastModified 取的是媒体扫描时间而非写入时间）
-    const startRange = callInfo.startTime - 30000
-    const endRange = callInfo.endTime + 90000
+    // 时间窗口：
+    // - 严格窗口（无号码佐证时）：[开始-30s, 结束+90s]
+    // - 宽松窗口（文件名号码与本通一致时）：[开始-60s, 结束+10min]，兼容部分ROM延迟落盘
+    const strictStart = callInfo.startTime - 30000
+    const strictEnd = callInfo.endTime + 90000
+    const looseStart = callInfo.startTime - 60000
+    const looseEnd = callInfo.endTime + 10 * 60 * 1000
 
-    // 电话号码的各种格式
     const phoneVariants = this.getPhoneVariants(callInfo.phoneNumber)
+    const callMobile = (callInfo.phoneNumber || '').replace(/\D/g, '').replace(/^86(?=1[3-9]\d{9}$)/, '')
 
-    // 查找匹配的录音
     let bestMatch: RecordingFile | null = null
     let bestScore = 0
+    let inWindowCount = 0
 
     for (const recording of recordings) {
-      // 跳过已知的录音
+      // 跳过已上传过的录音（持久化集合，重启不丢）
       if (this.knownRecordings.has(recording.path)) {
         continue
       }
 
-      // 时间窗口是硬性条件：窗口外的一律不考虑。
-      // 否则同一客户上次通话的旧录音（文件名含相同号码）会被误认成本通录音
-      if (recording.lastModified < startRange || recording.lastModified > endRange) {
+      // 🔒 规则1：文件名带14位时间戳（录音开始时间）且不在本通窗口内 → 一定是别的通话
+      const fileTs = this.parseFileNameTimestamp(recording.name)
+      if (fileTs > 0 && (fileTs < looseStart || fileTs > callInfo.endTime + 30000)) {
         continue
       }
 
+      // 🔒 规则2：文件名带手机号但与本通号码不一致 → 别人的录音，绝不能串
+      const namedMobiles = this.extractMobilesFromFileName(recording.name)
+      const nameMatchesPhone = namedMobiles.length > 0 && !!callMobile && namedMobiles.includes(callMobile)
+      if (namedMobiles.length > 0 && callMobile && !nameMatchesPhone) {
+        continue
+      }
+
+      // 时间窗口过滤：号码吻合（或文件名时间戳落在本通窗口）用宽松窗口，其余用严格窗口
+      const hasStrongEvidence = nameMatchesPhone || (fileTs > 0 && fileTs >= looseStart && fileTs <= callInfo.endTime + 30000)
+      const winStart = hasStrongEvidence ? looseStart : strictStart
+      const winEnd = hasStrongEvidence ? looseEnd : strictEnd
+      // lastModified 与文件名时间戳任一落在窗口内即可（部分ROM lastModified 是媒体扫描时间）
+      const timeOk =
+        (recording.lastModified >= winStart && recording.lastModified <= winEnd) ||
+        (fileTs > 0 && fileTs >= winStart && fileTs <= winEnd)
+      if (!timeOk) {
+        continue
+      }
+      inWindowCount++
+
       let score = 50
       // 越接近通话结束时间，分数越高
-      const timeDiff = Math.abs(recording.lastModified - callInfo.endTime)
+      const refTime = fileTs > 0 ? fileTs : recording.lastModified
+      const timeDiff = Math.abs(refTime - callInfo.endTime)
       score += Math.max(0, 30 - timeDiff / 1000)
 
-      // 2. 文件名包含电话号码
-      for (const phone of phoneVariants) {
-        if (recording.name.includes(phone)) {
-          score += 40
-          break
+      // 文件名包含电话号码（最强佐证）
+      if (nameMatchesPhone) {
+        score += 60
+      } else {
+        for (const phone of phoneVariants) {
+          if (recording.name.includes(phone)) {
+            score += 40
+            break
+          }
         }
       }
 
-      // 3. 文件大小合理（根据通话时长估算，约10KB/秒）
+      // 文件大小合理（根据通话时长估算，约10KB/秒）
       const expectedSize = callInfo.duration * 10 * 1024
       const sizeDiff = Math.abs(recording.size - expectedSize)
-      if (sizeDiff < expectedSize * 0.5) {
+      if (expectedSize > 0 && sizeDiff < expectedSize * 0.5) {
         score += 20
       }
 
@@ -645,10 +775,11 @@ class RecordingService {
 
     if (bestMatch && bestScore >= 50) {
       console.log('[RecordingService] 找到匹配录音:', bestMatch.name, '分数:', bestScore)
+      this.diag('匹配成功', `${bestMatch.name} (分数${Math.round(bestScore)})`)
       return bestMatch
     }
 
-    console.log('[RecordingService] 未找到匹配的录音文件')
+    this.diag('匹配失败', `共${recordings.length}个录音文件，窗口内候选${inWindowCount}个`)
     return null
   }
 
@@ -694,15 +825,18 @@ class RecordingService {
       const result = await uploadRecording(callId, recording.path)
       console.log('[RecordingService] 录音上传成功:', result)
 
-      // 标记为已上传
+      // 标记为已上传（持久化，防止重启后重复上传/串到其他通话）
       this.knownRecordings.add(recording.path)
+      this.persistKnownRecordings()
+      this.diag('上传成功', recording.name)
 
       // 🔥 触发录音上传成功事件，通知通话记录列表刷新
       uni.$emit('recording:uploaded', callId)
 
       return true
-    } catch (e) {
+    } catch (e: any) {
       console.error('[RecordingService] 录音上传失败:', e)
+      this.diag('上传失败', `${recording.name} - ${e?.message || e}`)
       return false
     }
   }
@@ -716,17 +850,22 @@ class RecordingService {
     recordingPath?: string
   }> {
     console.log('[RecordingService] 处理通话录音:', callInfo.callId)
+    this.diag('开始处理', `号码${callInfo.phoneNumber || '未知'} 时长${callInfo.duration}s callId=${String(callInfo.callId).slice(0, 12)}`)
 
-    // 检查权限
+    // 检查权限（仅作提示，不再作为拦截门槛）：
+    // 实测部分ROM权限回调结果与File API实际可读性不一致——设置页的
+    // "立即清理录音"能扫到文件但这里因权限判定为false被拦，导致永不上传。
+    // 扫描本身对无权限目录是安全降级的（listFiles返回空、MediaStore兜底），直接扫。
     const hasPermission = await this.checkPermissions()
-    if (!hasPermission) {
-      console.warn('[RecordingService] 没有存储权限')
-      return { found: false, uploaded: false }
-    }
+    this.diag('权限检查', hasPermission ? '通过' : '未通过（继续尝试扫描，MediaStore可兜底）')
 
-    // 🔥 重试查找：录音文件落盘时机因ROM而异——OPPO等设备可能在通话结束后
-    // 数秒到数十秒才写入文件/被媒体扫描器收录，一次扫描找不到不代表没有
-    const findDelays = [2000, 5000, 10000, 20000, 30000]
+    // 先记入补传队列（日志式兜底）：即使APP在处理中途被系统杀掉，
+    // 下次启动/回前台仍会按队列补扫补传；处理成功后再移除
+    this.enqueuePendingTask(callInfo, 3 * 60 * 1000)
+
+    // 🔥 重试查找：录音文件落盘时机因ROM而异——华为/荣耀官方说明录音文件生成
+    // 可能需要最长1分钟；OPPO等设备也可能在通话结束后数十秒才被媒体库收录
+    const findDelays = [2000, 5000, 10000, 20000, 30000, 45000]
     let recording: RecordingFile | null = null
     for (let attempt = 0; attempt < findDelays.length; attempt++) {
       await new Promise((resolve) => setTimeout(resolve, findDelays[attempt]))
@@ -735,9 +874,11 @@ class RecordingService {
         console.log(`[RecordingService] 第${attempt + 1}次扫描找到匹配录音:`, recording.name)
         break
       }
-      console.log(`[RecordingService] 第${attempt + 1}次扫描未找到匹配录音，${attempt < findDelays.length - 1 ? '稍后重试' : '放弃'}`)
+      console.log(`[RecordingService] 第${attempt + 1}次扫描未找到匹配录音，${attempt < findDelays.length - 1 ? '稍后重试' : '转入后台补传队列'}`)
     }
     if (!recording) {
+      // 保留在补传队列：APP回前台/下次启动/定时器都会再试（24小时内）
+      this.diag('转入补传队列', `callId=${String(callInfo.callId).slice(0, 12)}`)
       return { found: false, uploaded: false }
     }
 
@@ -750,7 +891,10 @@ class RecordingService {
       }
       uploaded = await this.uploadRecordingFile(callInfo.callId, recording)
       if (uploaded) break
-      console.warn(`[RecordingService] 第${attempt + 1}次上传失败${attempt < uploadDelays.length - 1 ? '，稍后重试' : '，已放弃'}`)
+      console.warn(`[RecordingService] 第${attempt + 1}次上传失败${attempt < uploadDelays.length - 1 ? '，稍后重试' : '，转入后台补传队列'}`)
+    }
+    if (uploaded) {
+      this.removePendingTask(callInfo.callId)
     }
 
     return {
@@ -758,6 +902,129 @@ class RecordingService {
       uploaded,
       recordingPath: recording.path,
     }
+  }
+
+  // ==================== 补传队列（持久化，多方案兜底） ====================
+
+  /** 读取补传队列 */
+  private loadPendingTasks(): PendingRecordingTask[] {
+    try {
+      const raw = uni.getStorageSync(PENDING_TASKS_KEY)
+      if (!raw) return []
+      const tasks: PendingRecordingTask[] = JSON.parse(raw)
+      // 丢弃超过24小时的任务
+      return tasks.filter(t => Date.now() - t.createdAt < PENDING_TASK_TTL)
+    } catch (_e) {
+      return []
+    }
+  }
+
+  private savePendingTasks(tasks: PendingRecordingTask[]) {
+    try {
+      uni.setStorageSync(PENDING_TASKS_KEY, JSON.stringify(tasks.slice(-30)))
+    } catch (_e) { /* ignore */ }
+  }
+
+  /** 录音处理开始即入队（日志式兜底），成功后移除；重复入队自动去重 */
+  private enqueuePendingTask(callInfo: CallInfo, firstRetryDelayMs?: number) {
+    const tasks = this.loadPendingTasks()
+    if (tasks.some(t => t.callId === callInfo.callId)) return
+    tasks.push({
+      callId: callInfo.callId,
+      phoneNumber: callInfo.phoneNumber,
+      startTime: callInfo.startTime,
+      endTime: callInfo.endTime,
+      duration: callInfo.duration,
+      attempts: 0,
+      nextRetryAt: Date.now() + (firstRetryDelayMs ?? PENDING_RETRY_BACKOFF_MIN[0] * 60 * 1000),
+      createdAt: Date.now(),
+    })
+    this.savePendingTasks(tasks)
+    this.startPendingRetryLoop()
+  }
+
+  /** 上传成功后从补传队列移除 */
+  private removePendingTask(callId: string) {
+    const tasks = this.loadPendingTasks()
+    const remaining = tasks.filter(t => t.callId !== callId)
+    if (remaining.length !== tasks.length) {
+      this.savePendingTasks(remaining)
+    }
+  }
+
+  /** 获取补传队列长度（供设置页诊断显示） */
+  getPendingTaskCount(): number {
+    return this.loadPendingTasks().length
+  }
+
+  /**
+   * 重试补传队列（APP启动/回前台/定时器触发）
+   * @param force 忽略退避时间立即重试（设置页手动触发）
+   */
+  async retryPendingTasks(force: boolean = false): Promise<{ retried: number; uploaded: number }> {
+    if (this.isRetryingPending) return { retried: 0, uploaded: 0 }
+    this.isRetryingPending = true
+    let retried = 0
+    let uploadedCount = 0
+    try {
+      const tasks = this.loadPendingTasks()
+      if (tasks.length === 0) return { retried: 0, uploaded: 0 }
+
+      const remaining: PendingRecordingTask[] = []
+      for (const task of tasks) {
+        if (!force && Date.now() < task.nextRetryAt) {
+          remaining.push(task)
+          continue
+        }
+        retried++
+        this.diag('补传重试', `第${task.attempts + 1}次 callId=${String(task.callId).slice(0, 12)}`)
+        const recording = await this.findMatchingRecording({
+          callId: task.callId,
+          phoneNumber: task.phoneNumber,
+          startTime: task.startTime,
+          endTime: task.endTime,
+          duration: task.duration,
+        })
+        if (recording) {
+          const ok = await this.uploadRecordingFile(task.callId, recording)
+          if (ok) {
+            uploadedCount++
+            continue // 成功，出队
+          }
+        }
+        // 失败：按退避表安排下次重试
+        task.attempts++
+        const backoffIdx = Math.min(task.attempts, PENDING_RETRY_BACKOFF_MIN.length - 1)
+        task.nextRetryAt = Date.now() + PENDING_RETRY_BACKOFF_MIN[backoffIdx] * 60 * 1000
+        remaining.push(task)
+      }
+      this.savePendingTasks(remaining)
+      if (retried > 0) {
+        this.diag('补传结果', `重试${retried}个，成功${uploadedCount}个，剩余${remaining.length}个`)
+      }
+      return { retried, uploaded: uploadedCount }
+    } finally {
+      this.isRetryingPending = false
+    }
+  }
+
+  /** 启动后台补传定时器（每5分钟检查一次队列，队列为空自动停止） */
+  startPendingRetryLoop() {
+    // #ifdef APP-PLUS
+    if (this.pendingRetryTimer) return
+    if (this.loadPendingTasks().length === 0) return
+    this.pendingRetryTimer = setInterval(async () => {
+      const tasks = this.loadPendingTasks()
+      if (tasks.length === 0) {
+        if (this.pendingRetryTimer) {
+          clearInterval(this.pendingRetryTimer)
+          this.pendingRetryTimer = null
+        }
+        return
+      }
+      await this.retryPendingTasks()
+    }, 5 * 60 * 1000)
+    // #endif
   }
 
   /**
