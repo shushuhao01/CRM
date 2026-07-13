@@ -134,11 +134,12 @@
       <!-- 展开状态 -->
       <div v-else class="call-window-content">
         <div class="call-timer">
-          <div class="timer-display">{{ callEnded ? '✅' : '📞' }}</div>
+          <div class="timer-display">{{ callEnded ? (callFailReason ? '❌' : '✅') : '📞' }}</div>
           <div v-if="callEnded" class="call-status is-ended">
-            通话已结束{{ (callDuration || 0) > 0 ? `，时长 ${formatDurationText(callDuration || 0)}` : '' }}
+            {{ callFailReason ? '外呼未接通' : `通话已结束${(callDuration || 0) > 0 ? `，时长 ${formatDurationText(callDuration || 0)}` : ''}` }}
           </div>
           <div v-else class="call-status"><el-icon class="is-loading"><Loading /></el-icon> 正在通话中...</div>
+          <div v-if="callEnded && callFailReason" class="call-fail-reason">{{ callFailReason }}</div>
         </div>
         <div class="caller-info-mini">
           <p class="caller-name">{{ currentCallData.customerName || '未知客户' }}</p>
@@ -216,6 +217,8 @@ const props = defineProps<{
   // 通话已结束但窗口保留（备注可能没写完），显示"已结束"状态
   callEnded?: boolean
   callDuration?: number
+  // 外呼未接通的失败原因（如 404 用户不存在→线路侧风控拦截）
+  callFailReason?: string | null
 }>()
 
 const emit = defineEmits<{
@@ -362,6 +365,7 @@ onUnmounted(() => {
 .call-window-content .timer-display { font-size: 36px; font-weight: bold; color: #409eff; margin-bottom: 6px; font-family: 'Courier New', monospace; }
 .call-window-content .call-status { font-size: 13px; color: #67c23a; display: flex; align-items: center; justify-content: center; gap: 6px; }
 .call-window-content .call-status.is-ended { color: #909399; font-weight: 500; }
+.call-window-content .call-fail-reason { margin-top: 8px; padding: 8px 10px; background: #fdf6ec; border: 1px solid #faecd8; border-radius: 6px; font-size: 12px; color: #e6a23c; line-height: 1.6; text-align: left; }
 .call-window-content .call-status .is-loading { animation: rotating 2s linear infinite; }
 @keyframes rotating { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 .call-window-content .caller-info-mini { margin-bottom: 16px; padding: 14px; background: linear-gradient(135deg, #f5f7fa 0%, #e8f4ff 100%); border-radius: 10px; border: 1px solid #e4e7ed; }

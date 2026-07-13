@@ -614,8 +614,18 @@ class AliyunCallService {
     try {
       const established = cdr.establishedTime && Number(cdr.establishedTime) > 0;
       const duration = Number(cdr.callDuration) || 0;
-      const finalStatus = established && duration > 0 ? 'connected' : 'missed';
       const releaseDate = new Date(Number(cdr.releaseTime));
+
+      // 未接通时解析失败原因（SIP错误码等），得到更精确的状态和用户可读的原因
+      let finalStatus = established && duration > 0 ? 'connected' : 'missed';
+      let failReason: string | null = null;
+      let rawReason: string | null = null;
+      if (finalStatus !== 'connected') {
+        const analyzed = this.analyzeCallFailure(cdr);
+        finalStatus = analyzed.status;
+        failReason = analyzed.reason;
+        rawReason = analyzed.raw;
+      }
 
       const t = tenantRawSQL();
       await AppDataSource.query(
@@ -625,7 +635,14 @@ class AliyunCallService {
          duration = ?,
          hangup_cause = ?
          WHERE id = ?${t.sql}`,
-        [finalStatus, releaseDate, duration, this.truncateCause(cdr.contactDisposition || cdr.releaseReason), callId, ...t.params]
+        [
+          finalStatus,
+          releaseDate,
+          duration,
+          this.truncateCause(failReason ? `${rawReason || ''} ${failReason}`.trim() : (cdr.contactDisposition || cdr.releaseReason)),
+          callId,
+          ...t.params
+        ]
       );
 
       // 更新线路并发数和统计
@@ -665,7 +682,10 @@ class AliyunCallService {
               duration,
               hasRecording: !!callRecords[0].recording_url,
               recordingUrl: callRecords[0].recording_url || null,
-              endReason: 'normal'
+              endReason: 'normal',
+              // 未接通的失败原因（SIP错误码翻译），前端弹提示并显示在通话窗口
+              failReason: failReason || null,
+              failRaw: rawReason || null
             }
           );
         }
@@ -805,6 +825,57 @@ class AliyunCallService {
         recordingSize: 0
       });
     }
+  }
+
+  /**
+   * 解析未接通话单的失败原因：从话单的 releaseReason/contactDisposition 等字段中
+   * 提取 SIP 错误码，翻译成用户可读的中文原因和更精确的通话状态。
+   * 参考阿里云官方文档《SIP线路常见错误码排查与解决方法》：
+   * https://help.aliyun.com/zh/ccs/support/common-sip-error-codes
+   */
+  private analyzeCallFailure(cdr: any): { status: string; reason: string | null; raw: string | null } {
+    const parts = [cdr.releaseReason, cdr.outsideNumberReleaseReason, cdr.contactDisposition, cdr.earlyMediaState]
+      .filter((v: any) => v !== undefined && v !== null && v !== '')
+      .map((v: any) => String(v));
+    const rawText = parts.length > 0 ? parts.join(' | ') : null;
+    const joined = parts.join(' ');
+
+    // SIP 错误码映射（4xx/5xx/6xx）
+    const sipMap: Record<string, { text: string; status: string }> = {
+      '400': { text: '信令请求错误', status: 'failed' },
+      '402': { text: '线路欠费或需要付费，请检查线路账户余额', status: 'failed' },
+      '403': { text: '呼叫被线路拒绝（常见为号码资质未报备、外呼频次超限或风控拦截）', status: 'failed' },
+      '404': { text: '用户不存在：被叫号码无法在线路侧接续。常见原因是线路合作伙伴风控拦截（短时间内重复呼叫同一号码易触发）或号码有误', status: 'failed' },
+      '408': { text: '线路响应超时', status: 'failed' },
+      '480': { text: '被叫暂时不可用（可能关机、无信号或不在服务区）', status: 'missed' },
+      '484': { text: '被叫号码不完整或格式错误', status: 'failed' },
+      '486': { text: '被叫忙线中', status: 'busy' },
+      '487': { text: '呼叫已取消（超时未接听）', status: 'missed' },
+      '488': { text: '媒体协商失败', status: 'failed' },
+      '500': { text: '线路服务器内部错误', status: 'failed' },
+      '502': { text: '线路网关错误', status: 'failed' },
+      '503': { text: '线路服务暂不可用（可能过载），请稍后重试', status: 'failed' },
+      '600': { text: '被叫全局拒绝', status: 'rejected' },
+      '603': { text: '被叫拒绝接听', status: 'rejected' }
+    };
+
+    const codeMatch = joined.match(/\b([456]\d{2})\b/);
+    const sipCode = codeMatch ? codeMatch[1] : null;
+    if (sipCode && sipMap[sipCode]) {
+      const item = sipMap[sipCode];
+      // 官方文档：拨打即挂断/SIP错误属线路合作伙伴问题，优先联系合作伙伴或阿里云技术支持
+      const carrierHint = ['402', '403', '404', '408', '500', '502', '503'].includes(sipCode)
+        ? '。此类错误发生在阿里云线路合作伙伴（运营商）侧，非CRM系统问题；若频繁出现请联系阿里云技术支持（钉钉 cccsupport2）或线路合作伙伴排查'
+        : '';
+      return { status: item.status, reason: `${sipCode} ${item.text}${carrierHint}`, raw: rawText };
+    }
+
+    // 无SIP码时按关键字归类
+    if (/NoAnswer|NO_ANSWER|NotAnswer/i.test(joined)) return { status: 'missed', reason: '无人接听', raw: rawText };
+    if (/Reject/i.test(joined)) return { status: 'rejected', reason: '被叫拒绝接听', raw: rawText };
+    if (/Busy/i.test(joined)) return { status: 'busy', reason: '被叫忙线中', raw: rawText };
+    if (/Abandon/i.test(joined)) return { status: 'missed', reason: '呼叫被放弃（接通前挂断）', raw: rawText };
+    return { status: 'missed', reason: null, raw: rawText };
   }
 
   /**

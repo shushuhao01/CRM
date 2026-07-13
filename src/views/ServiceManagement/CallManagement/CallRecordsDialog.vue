@@ -52,7 +52,11 @@
         <el-table-column prop="duration" label="通话时长" width="100" align="center" />
         <el-table-column prop="status" label="通话状态" width="110" align="center">
           <template #default="{ row }">
-            <el-tag :type="getStatusType(row.status)" size="small">{{ getStatusText(row.status) }}</el-tag>
+            <!-- 未接通的记录悬浮显示具体失败原因（如 404 用户不存在→线路侧拦截） -->
+            <el-tooltip v-if="row.status !== 'connected' && row.hangupCause" :content="row.hangupCause" placement="top" :show-after="200">
+              <el-tag :type="getStatusType(row.status)" size="small" style="cursor: help;">{{ getStatusText(row.status) }}</el-tag>
+            </el-tooltip>
+            <el-tag v-else :type="getStatusType(row.status)" size="small">{{ getStatusText(row.status) }}</el-tag>
           </template>
         </el-table-column>
         <el-table-column prop="startTime" label="开始时间" width="170" />

@@ -321,6 +321,7 @@
       :callWindowStyle="callWindowStyle"
       :savingNotes="savingNotes"
       :callEnded="callEnded"
+      :callFailReason="callFailReason"
       :callDuration="callDuration"
       @reset-follow-up-form="resetQuickFollowUpForm"
       @submit-follow-up="submitQuickFollowUp"
@@ -485,6 +486,8 @@ const callTimer = ref<ReturnType<typeof setInterval> | null>(null)
 const callConnected = ref(false) // 通话是否已接通
 // 通话已结束但窗口保留（跟进备注可能没写完，显示"已结束"状态，用户手动关闭）
 const callEnded = ref(false)
+// 外呼未接通的失败原因（后端从阿里云话单解析的SIP错误码翻译，如 404 用户不存在）
+const callFailReason = ref<string | null>(null)
 const savingNotes = ref(false) // 保存备注状态
 
 // 通话浮动窗口相关
@@ -1539,7 +1542,9 @@ const loadCallRecords = async () => {
       startTime: formatDateTime(record.startTime || record.start_time || record.createdAt || record.created_at),
       operator: record.userName || record.user_name || record.operatorName || '系统',
       remark: record.notes || record.remark || '',
-      recordingUrl: record.recordingUrl || record.recording_url || null
+      recordingUrl: record.recordingUrl || record.recording_url || null,
+      // 挂断/失败原因（如SIP 404），状态标签上悬浮显示
+      hangupCause: record.hangupCause || record.hangup_cause || ''
     }))
     callRecordsPagination.total = callStore.pagination.total
 
@@ -2436,6 +2441,7 @@ const startOutboundCall = async () => {
           callNotes.value = outboundForm.value.notes || ''
           callConnected.value = false // 初始状态为未接通
           callEnded.value = false
+          callFailReason.value = null
           callInProgressVisible.value = true
 
           // 不立即开始计时，等待接通后再计时
@@ -2488,6 +2494,7 @@ const startOutboundCall = async () => {
         callDuration.value = 0
         callNotes.value = outboundForm.value.notes || ''
         callEnded.value = false
+        callFailReason.value = null
         callInProgressVisible.value = true
 
         // 开始计时
@@ -2745,6 +2752,7 @@ const answerCall = async () => {
 
   // 显示通话中弹窗
   callEnded.value = false
+  callFailReason.value = null
   callInProgressVisible.value = true
   startCallTimer()
 
@@ -2834,6 +2842,7 @@ const closeCallWindow = () => {
   isCallWindowMinimized.value = false
   callConnected.value = false
   callEnded.value = false
+  callFailReason.value = null
 
   // 停止计时器
   if (callTimer.value) {
@@ -3671,6 +3680,7 @@ const handleCallStatusFromWebSocket = (data: any) => {
         currentCallId.value = incomingCallData.value.id
         callConnected.value = true
         callEnded.value = false
+        callFailReason.value = null
         callDuration.value = 0
         startCallTimer()
         callInProgressVisible.value = true
@@ -3762,8 +3772,28 @@ const handleCallEndedFromWebSocket = (data: any) => {
 
     callConnected.value = false
     callEnded.value = true
-    const durationText = callDuration.value > 0 ? `，通话时长 ${formatCallDuration(callDuration.value)}` : ''
-    ElMessage.info(`通话已结束${durationText}，可继续填写备注后关闭窗口`)
+    callFailReason.value = data.failReason || null
+
+    if (data.status && data.status !== 'connected' && data.failReason) {
+      // 外呼未接通：弹出具体失败原因（如 404 用户不存在→线路侧风控拦截）
+      ElNotification({
+        title: '外呼未接通',
+        message: String(data.failReason),
+        type: 'warning',
+        duration: 15000
+      })
+    } else {
+      const durationText = callDuration.value > 0 ? `，通话时长 ${formatCallDuration(callDuration.value)}` : ''
+      ElMessage.info(`通话已结束${durationText}，可继续填写备注后关闭窗口`)
+    }
+  } else if (data?.failReason) {
+    // 通话窗口已被用户提前关闭：失败原因仍需通知到人
+    ElNotification({
+      title: '外呼未接通',
+      message: String(data.failReason),
+      type: 'warning',
+      duration: 15000
+    })
   }
 
   // 无论是否当前通话，都刷新数据
