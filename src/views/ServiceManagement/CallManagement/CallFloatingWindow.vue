@@ -112,10 +112,10 @@
     <div v-if="callInProgressVisible && currentCallData"
       class="call-floating-window" :class="{ 'is-minimized': isCallWindowMinimized }"
       :style="callWindowStyle" ref="callWindowRef">
-      <div class="call-window-header" @mousedown="startDrag">
+      <div class="call-window-header" :class="{ 'is-ended': callEnded }" @mousedown="startDrag">
         <div class="header-left">
-          <span class="status-dot" :class="{ 'is-connected': true }"></span>
-          <span class="header-title">{{ isCallWindowMinimized ? '通话中' : '正在通话' }}</span>
+          <span class="status-dot" :class="{ 'is-connected': !callEnded, 'is-ended': callEnded }"></span>
+          <span class="header-title">{{ callEnded ? '通话已结束' : (isCallWindowMinimized ? '通话中' : '正在通话') }}</span>
         </div>
         <div class="header-actions">
           <el-tooltip :content="isCallWindowMinimized ? '展开' : '最小化'" placement="top">
@@ -129,13 +129,16 @@
           <span class="mini-name">{{ currentCallData.customerName || '未知客户' }}</span>
           <span class="mini-phone">{{ displaySensitiveInfoNew(currentCallData.phone, SensitiveInfoType.PHONE) }}</span>
         </div>
-        <el-button type="danger" size="small" :icon="TurnOff" @click="$emit('end-call-click')" circle />
+        <el-button :type="callEnded ? 'info' : 'danger'" size="small" :icon="callEnded ? Close : TurnOff" @click="$emit('end-call-click')" circle />
       </div>
       <!-- 展开状态 -->
       <div v-else class="call-window-content">
         <div class="call-timer">
-          <div class="timer-display">📞</div>
-          <div class="call-status"><el-icon class="is-loading"><Loading /></el-icon> 正在通话中...</div>
+          <div class="timer-display">{{ callEnded ? '✅' : '📞' }}</div>
+          <div v-if="callEnded" class="call-status is-ended">
+            通话已结束{{ (callDuration || 0) > 0 ? `，时长 ${formatDurationText(callDuration || 0)}` : '' }}
+          </div>
+          <div v-else class="call-status"><el-icon class="is-loading"><Loading /></el-icon> 正在通话中...</div>
         </div>
         <div class="caller-info-mini">
           <p class="caller-name">{{ currentCallData.customerName || '未知客户' }}</p>
@@ -151,12 +154,18 @@
               <el-icon><Phone /></el-icon> 网络电话: {{ currentCallData.lineName || '未知线路' }}
             </el-tag>
           </div>
-          <p v-if="currentCallData.callMethod === 'network_phone'" class="hangup-hint">
+          <p v-if="!callEnded && currentCallData.callMethod === 'network_phone'" class="hangup-hint">
             点击"结束通话"将尝试云端挂断；双呼模式下请任一方挂机结束
+          </p>
+          <p v-if="callEnded" class="hangup-hint">
+            通话已结束，备注写完后点击"关闭窗口"（备注会自动保存）
           </p>
         </div>
         <div class="call-controls">
-          <el-button type="danger" size="large" :icon="TurnOff" @click="$emit('end-call-click')" class="end-call-btn">
+          <el-button v-if="callEnded" type="primary" size="large" :icon="Close" @click="$emit('end-call-click')" class="end-call-btn">
+            关闭窗口
+          </el-button>
+          <el-button v-else type="danger" size="large" :icon="TurnOff" @click="$emit('end-call-click')" class="end-call-btn">
             {{ currentCallData.callMethod === 'work_phone' ? '挂断提示' : '结束通话' }}
           </el-button>
         </div>
@@ -204,6 +213,9 @@ const props = defineProps<{
   callWindowStyle: any
   callNotes: string
   savingNotes: boolean
+  // 通话已结束但窗口保留（备注可能没写完），显示"已结束"状态
+  callEnded?: boolean
+  callDuration?: number
 }>()
 
 const emit = defineEmits<{
@@ -283,6 +295,13 @@ const stopDrag = () => {
   document.removeEventListener('mouseup', stopDrag)
 }
 
+// 通话时长格式化（已结束状态显示）
+const formatDurationText = (seconds: number): string => {
+  const m = Math.floor(seconds / 60)
+  const s = seconds % 60
+  return m > 0 ? `${m}分${s}秒` : `${s}秒`
+}
+
 // 禁止选择过去的日期
 const disablePastDate = (time: Date) => {
   const today = new Date()
@@ -324,9 +343,11 @@ onUnmounted(() => {
 .call-floating-window { position: fixed; z-index: 9999; width: 420px; background: white; border-radius: 12px; box-shadow: 0 8px 32px rgba(0,0,0,0.15), 0 2px 8px rgba(0,0,0,0.1); overflow: hidden; transition: width 0.3s ease, height 0.3s ease; }
 .call-floating-window.is-minimized { width: 280px; }
 .call-window-header { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; background: linear-gradient(135deg, #409eff 0%, #36cfc9 100%); color: white; cursor: move; user-select: none; }
+.call-window-header.is-ended { background: linear-gradient(135deg, #909399 0%, #a6a9ad 100%); }
 .header-left { display: flex; align-items: center; gap: 8px; }
 .status-dot { width: 10px; height: 10px; background: #e6a23c; border-radius: 50%; animation: pulse 1.5s ease-in-out infinite; }
 .status-dot.is-connected { background: #67c23a; }
+.status-dot.is-ended { background: #c0c4cc; animation: none; }
 @keyframes pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.6; transform: scale(1.2); } }
 .header-title { font-weight: 600; font-size: 14px; }
 .call-floating-window .header-actions { display: flex; gap: 4px; }
@@ -340,6 +361,7 @@ onUnmounted(() => {
 .call-window-content .call-timer { margin-bottom: 16px; }
 .call-window-content .timer-display { font-size: 36px; font-weight: bold; color: #409eff; margin-bottom: 6px; font-family: 'Courier New', monospace; }
 .call-window-content .call-status { font-size: 13px; color: #67c23a; display: flex; align-items: center; justify-content: center; gap: 6px; }
+.call-window-content .call-status.is-ended { color: #909399; font-weight: 500; }
 .call-window-content .call-status .is-loading { animation: rotating 2s linear infinite; }
 @keyframes rotating { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 .call-window-content .caller-info-mini { margin-bottom: 16px; padding: 14px; background: linear-gradient(135deg, #f5f7fa 0%, #e8f4ff 100%); border-radius: 10px; border: 1px solid #e4e7ed; }

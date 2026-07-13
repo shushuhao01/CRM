@@ -256,6 +256,12 @@ class WebSocketService {
       this.emitEvent('call:ended', data)
     })
 
+    // 录音就绪（云通话录音下载完成，通知刷新通话记录即可播放）
+    this.socket.on('CALL_RECORDING_READY', (data: any) => {
+      console.log('[WebSocket] 🎙 通话录音就绪:', data)
+      this.emitEvent('call:recording_ready', data)
+    })
+
     // P0: 企微客服会话实时更新
     this.socket.on('wecom:kf_session_update', (data: any) => {
       console.log('[WebSocket] 💬 企微客服会话更新:', data)

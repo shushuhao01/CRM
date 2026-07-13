@@ -68,21 +68,111 @@ interface CallStatusCallback {
 // CCC OpenAPI 公网接入点（云联络中心统一在华东2上海）
 const CCC_ENDPOINT = process.env.ALIYUN_CCC_ENDPOINT || 'ccc.cn-shanghai.aliyuncs.com';
 
-// 话单轮询参数：首次延迟20秒，之后每15秒一次，最长轮询2小时
-const POLL_FIRST_DELAY_MS = 20 * 1000;
-const POLL_INTERVAL_MS = 15 * 1000;
-const POLL_MAX_ATTEMPTS = 480;
+// 话单轮询参数：首次延迟10秒，之后每10秒一次，最长轮询2小时
+// （挂断后CRM端"通话中"窗口依赖此轮询感知结束，间隔越短状态同步越及时）
+const POLL_FIRST_DELAY_MS = 10 * 1000;
+const POLL_INTERVAL_MS = 10 * 1000;
+const POLL_MAX_ATTEMPTS = 720;
+
+// 录音获取重试延迟：话单先生成、录音文件后上传（recordingReady 有延迟），
+// 结束时拿不到就按此间隔重试，避免错过录音
+const RECORDING_RETRY_DELAYS_MS = [15000, 30000, 60000, 120000, 300000];
 
 class AliyunCallService {
   private static instance: AliyunCallService;
+  private sweepTimer: NodeJS.Timeout | null = null;
+  private isSweeping = false;
 
-  private constructor() {}
+  private constructor() {
+    // 补救扫描：进程内轮询定时器会因服务重启而丢失，导致云通话卡在"通话中"、
+    // 录音漏获取。启动后60秒首扫，之后每10分钟扫一次近24小时的云通话记录兜底
+    setTimeout(() => this.sweepCloudCallRecords().catch(() => { /* ignore */ }), 60 * 1000);
+    this.sweepTimer = setInterval(
+      () => this.sweepCloudCallRecords().catch(() => { /* ignore */ }),
+      10 * 60 * 1000
+    );
+    // 定时器不阻止进程退出
+    if (this.sweepTimer.unref) this.sweepTimer.unref();
+  }
 
   static getInstance(): AliyunCallService {
     if (!AliyunCallService.instance) {
       AliyunCallService.instance = new AliyunCallService();
     }
     return AliyunCallService.instance;
+  }
+
+  /**
+   * 补救扫描近24小时的云通话记录：
+   * 1. 卡在 calling/dialing 状态超过2分钟的 → 查话单，已结束则补更新状态并推送CALL_ENDED
+   * 2. 已接通但没有录音的 → 重新尝试获取录音
+   * 覆盖场景：后端重启丢失轮询定时器、录音上传延迟超过重试窗口等
+   */
+  private async sweepCloudCallRecords(): Promise<void> {
+    if (this.isSweeping) return;
+    this.isSweeping = true;
+    try {
+      if (!AppDataSource?.isInitialized) return;
+
+      const rows = await AppDataSource.query(
+        `SELECT id, line_id, provider_call_id, call_status, duration
+         FROM call_records
+         WHERE call_method = 'cloud'
+           AND provider_call_id IS NOT NULL AND provider_call_id != ''
+           AND created_at > DATE_SUB(NOW(), INTERVAL 24 HOUR)
+           AND created_at < DATE_SUB(NOW(), INTERVAL 2 MINUTE)
+           AND (
+             call_status IN ('calling', 'dialing', 'ringing')
+             OR (call_status = 'connected' AND (recording_url IS NULL OR recording_url = ''))
+           )
+         ORDER BY created_at DESC LIMIT 50`
+      );
+      if (rows.length === 0) return;
+
+      log.info(`[AliyunCallService] 补救扫描：发现 ${rows.length} 条待处理云通话记录`);
+      const configCache = new Map<string, AliyunConfig | null>();
+
+      for (const row of rows) {
+        try {
+          let config = configCache.get(row.line_id);
+          if (config === undefined) {
+            config = await this.getLineConfig(row.line_id);
+            configCache.set(row.line_id, config);
+          }
+          if (!config || !config.accessKeyId) continue;
+
+          if (['calling', 'dialing', 'ringing'].includes(row.call_status)) {
+            // 状态卡住：查话单，已结束则补更新（finalizeCall内会推CALL_ENDED并取录音）
+            const { CCC, TeaUtil } = this.loadSdk();
+            const client = this.createClient(config);
+            const request = new CCC.GetCallDetailRecordRequest({
+              instanceId: config.appId,
+              contactId: row.provider_call_id
+            });
+            const runtime = new TeaUtil.RuntimeOptions({ readTimeout: 15000, connectTimeout: 10000 });
+            const response = await client.getCallDetailRecordWithOptions(request, runtime);
+            const data = response?.body?.data;
+            if (data && data.releaseTime && Number(data.releaseTime) > 0) {
+              log.info(`[AliyunCallService] 补救扫描：补更新卡住的通话 ${row.id}`);
+              await this.finalizeCall(row.id, row.provider_call_id, row.line_id, config, data);
+            }
+          } else if (config.enableRecording) {
+            // 已接通但缺录音：直接重试获取录音
+            log.info(`[AliyunCallService] 补救扫描：补取录音 ${row.id}`);
+            this.fetchRecordingWithRetry(row.id, row.provider_call_id, config, Number(row.duration) || 0, true);
+          }
+        } catch (itemError: any) {
+          const msg = String(itemError?.message || '');
+          if (!/NotExist|NotFound/i.test(msg)) {
+            log.warn(`[AliyunCallService] 补救扫描处理记录 ${row.id} 失败:`, msg);
+          }
+        }
+      }
+    } catch (error: any) {
+      log.warn('[AliyunCallService] 补救扫描失败:', error?.message || error);
+    } finally {
+      this.isSweeping = false;
+    }
   }
 
   /**
@@ -551,25 +641,11 @@ class AliyunCallService {
       log.info(`[AliyunCallService] 通话结束(${callId}): 状态=${finalStatus}, 时长=${duration}s`);
 
       // 获取录音（阿里云地址有效期1天，下载到CRM本地/云存储持久保存）
-      if (config.enableRecording && cdr.recordingReady) {
-        try {
-          const { CCC, TeaUtil } = this.loadSdk();
-          const client = this.createClient(config);
-          const request = new CCC.GetMonoRecordingRequest({
-            instanceId: config.appId,
-            contactId,
-            expireSeconds: 86400
-          });
-          const runtime = new TeaUtil.RuntimeOptions({ readTimeout: 15000, connectTimeout: 10000 });
-          const response = await client.getMonoRecordingWithOptions(request, runtime);
-          const fileUrl = response?.body?.data?.fileUrl;
-          if (fileUrl) {
-            const recDuration = Math.round((Number(response.body.data.duration) || 0) / 1000) || duration;
-            await this.persistRecording(callId, fileUrl, recDuration);
-          }
-        } catch (recError: any) {
-          log.warn(`[AliyunCallService] 获取录音失败(${callId}):`, recError.message);
-        }
+      // 🔥 注意竞态：话单（releaseTime）先生成，录音文件上传到阿里云有延迟，
+      // 此时 recordingReady 可能还是 false——不能只看一次就放弃，已接通的通话
+      // 都进入带重试的录音获取流程（后台异步，不阻塞结束处理）
+      if (config.enableRecording && established && duration > 0) {
+        this.fetchRecordingWithRetry(callId, contactId, config, duration, !!cdr.recordingReady);
       }
 
       // 推送通话结束到PC端（与工作手机流程使用相同的 CALL_ENDED 事件，前端会自动关闭通话窗口）
@@ -596,6 +672,91 @@ class AliyunCallService {
       }
     } catch (error) {
       log.error(`[AliyunCallService] 处理通话结束失败(${callId}):`, error);
+    }
+  }
+
+  /**
+   * 带重试获取录音：立即尝试一次，失败/未就绪则按 RECORDING_RETRY_DELAYS_MS
+   * 重试（共约8分钟窗口），成功后下载持久化并推送录音就绪事件给CRM端
+   */
+  private fetchRecordingWithRetry(
+    callId: string,
+    contactId: string,
+    config: AliyunConfig,
+    duration: number,
+    readyHint: boolean
+  ): void {
+    let attempt = 0;
+
+    const tryFetch = async (): Promise<boolean> => {
+      try {
+        // 已有录音则不再重复获取（可能被上一次重试或补救扫描处理过）
+        const rows = await AppDataSource.query(
+          `SELECT recording_url FROM call_records WHERE id = ? LIMIT 1`,
+          [callId]
+        );
+        if (rows.length === 0) return true; // 记录不存在，停止
+        if (rows[0].recording_url) return true;
+
+        const { CCC, TeaUtil } = this.loadSdk();
+        const client = this.createClient(config);
+        const request = new CCC.GetMonoRecordingRequest({
+          instanceId: config.appId,
+          contactId,
+          expireSeconds: 86400
+        });
+        const runtime = new TeaUtil.RuntimeOptions({ readTimeout: 15000, connectTimeout: 10000 });
+        const response = await client.getMonoRecordingWithOptions(request, runtime);
+        const fileUrl = response?.body?.data?.fileUrl;
+        if (!fileUrl) return false; // 录音尚未就绪，继续重试
+
+        const recDuration = Math.round((Number(response.body.data.duration) || 0) / 1000) || duration;
+        await this.persistRecording(callId, fileUrl, recDuration);
+
+        // 推送录音就绪事件，CRM端刷新通话记录后即可播放
+        try {
+          const recRows = await AppDataSource.query(
+            `SELECT user_id, recording_url FROM call_records WHERE id = ? LIMIT 1`,
+            [callId]
+          );
+          if (recRows.length > 0 && recRows[0].recording_url && (global as any).webSocketService) {
+            (global as any).webSocketService.sendToUser(recRows[0].user_id, 'CALL_RECORDING_READY', {
+              callId,
+              recordingUrl: recRows[0].recording_url
+            });
+          }
+        } catch (_pushErr) { /* 推送失败不影响录音已保存 */ }
+
+        log.info(`[AliyunCallService] 录音获取成功(${callId})，第${attempt + 1}次尝试`);
+        return true;
+      } catch (error: any) {
+        // 录音未就绪时阿里云可能返回 NotFound 类错误，属正常，继续重试
+        const msg = String(error?.message || '');
+        if (!/NotExist|NotFound|NotReady/i.test(msg)) {
+          log.warn(`[AliyunCallService] 获取录音失败(${callId}, 第${attempt + 1}次):`, msg);
+        }
+        return false;
+      }
+    };
+
+    const run = async () => {
+      const done = await tryFetch();
+      if (done) return;
+      if (attempt >= RECORDING_RETRY_DELAYS_MS.length) {
+        log.warn(`[AliyunCallService] 录音获取重试耗尽(${callId})，等待补救扫描兜底`);
+        return;
+      }
+      const delay = RECORDING_RETRY_DELAYS_MS[attempt];
+      attempt++;
+      setTimeout(run, delay);
+    };
+
+    // 话单显示录音已就绪则立即取；否则先等第一个重试间隔（给录音上传留时间）
+    if (readyHint) {
+      run();
+    } else {
+      attempt = 1;
+      setTimeout(run, RECORDING_RETRY_DELAYS_MS[0]);
     }
   }
 

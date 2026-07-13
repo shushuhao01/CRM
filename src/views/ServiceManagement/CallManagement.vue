@@ -320,6 +320,8 @@
       :isCallWindowMinimized="isCallWindowMinimized"
       :callWindowStyle="callWindowStyle"
       :savingNotes="savingNotes"
+      :callEnded="callEnded"
+      :callDuration="callDuration"
       @reset-follow-up-form="resetQuickFollowUpForm"
       @submit-follow-up="submitQuickFollowUp"
       @answer-call="answerCall"
@@ -481,6 +483,8 @@ const callDuration = ref(0)
 const callNotes = ref('')
 const callTimer = ref<ReturnType<typeof setInterval> | null>(null)
 const callConnected = ref(false) // 通话是否已接通
+// 通话已结束但窗口保留（跟进备注可能没写完，显示"已结束"状态，用户手动关闭）
+const callEnded = ref(false)
 const savingNotes = ref(false) // 保存备注状态
 
 // 通话浮动窗口相关
@@ -2431,6 +2435,7 @@ const startOutboundCall = async () => {
           callDuration.value = 0
           callNotes.value = outboundForm.value.notes || ''
           callConnected.value = false // 初始状态为未接通
+          callEnded.value = false
           callInProgressVisible.value = true
 
           // 不立即开始计时，等待接通后再计时
@@ -2482,6 +2487,7 @@ const startOutboundCall = async () => {
         currentCallId.value = callId // 设置当前通话ID
         callDuration.value = 0
         callNotes.value = outboundForm.value.notes || ''
+        callEnded.value = false
         callInProgressVisible.value = true
 
         // 开始计时
@@ -2738,6 +2744,7 @@ const answerCall = async () => {
   callConnected.value = true
 
   // 显示通话中弹窗
+  callEnded.value = false
   callInProgressVisible.value = true
   startCallTimer()
 
@@ -2826,6 +2833,7 @@ const closeCallWindow = () => {
   callNotes.value = ''
   isCallWindowMinimized.value = false
   callConnected.value = false
+  callEnded.value = false
 
   // 停止计时器
   if (callTimer.value) {
@@ -2867,11 +2875,22 @@ const saveCallNotes = async (silent = false) => {
 }
 
 // 处理结束通话按钮点击
-const handleEndCallClick = () => {
+const handleEndCallClick = async () => {
+  // 通话已结束状态：按钮是"关闭窗口"，静默保存备注后关闭
+  if (callEnded.value) {
+    if (callNotes.value.trim()) {
+      await saveCallNotes(true)
+    }
+    closeCallWindow()
+    await callStore.fetchCallRecords()
+    await loadStatistics()
+    return
+  }
+
   // 如果是工作手机外呼，提示用户在手机端挂断
   if (currentCallData.value?.callMethod === 'work_phone') {
     ElMessageBox.confirm(
-      '本次通话需要在手机上挂断，挂断后本窗口会自动关闭。',
+      '本次通话需要在手机上挂断，挂断后本窗口会显示"已结束"，备注写完后手动关闭。',
       '提示',
       {
         confirmButtonText: '我知道了',
@@ -3541,6 +3560,13 @@ const setupCallStatusListener = () => {
     handleCallEndedFromWebSocket(data)
   }))
 
+  // 监听录音就绪（云通话录音下载完成后推送，刷新记录后即可播放）
+  wsUnsubscribers.push(webSocketService.on('call:recording_ready', (data: any) => {
+    console.log('[CallManagement] 收到录音就绪:', data)
+    ElMessage.success('通话录音已就绪')
+    setTimeout(() => { loadCallRecords() }, 300)
+  }))
+
   // 监听来电通知（呼入）
   wsUnsubscribers.push(webSocketService.on('call:incoming', (data: any) => {
     console.log('[CallManagement] 收到来电通知:', data)
@@ -3644,6 +3670,7 @@ const handleCallStatusFromWebSocket = (data: any) => {
         currentCallData.value = { ...incomingCallData.value, callMethod: incomingCallData.value.callSource || 'mobile' }
         currentCallId.value = incomingCallData.value.id
         callConnected.value = true
+        callEnded.value = false
         callDuration.value = 0
         startCallTimer()
         callInProgressVisible.value = true
@@ -3715,9 +3742,10 @@ const handleCallEndedFromWebSocket = (data: any) => {
     ElMessage.info('来电已结束')
   }
 
-  // 如果是当前通话（宽松匹配：callId为空也关闭），关闭通话窗口
+  // 如果是当前通话（宽松匹配：callId为空也算），切换为"已结束"状态但不关闭窗口——
+  // 跟进备注可能还没写完，窗口保留给用户继续填写，手动点"关闭窗口"再关
   if (callInProgressVisible.value && (!callId || !currentCallId.value || currentCallId.value === callId)) {
-    console.log('[CallManagement] 当前通话已结束，自动关闭窗口')
+    console.log('[CallManagement] 当前通话已结束，窗口切换为已结束状态（保留备注区）')
 
     if (data.duration !== undefined) {
       callDuration.value = data.duration
@@ -3732,8 +3760,10 @@ const handleCallEndedFromWebSocket = (data: any) => {
       callTimer.value = null
     }
 
-    closeCallWindow()
-    ElMessage.info(`通话已结束，通话时长：${formatCallDuration(callDuration.value)}`)
+    callConnected.value = false
+    callEnded.value = true
+    const durationText = callDuration.value > 0 ? `，通话时长 ${formatCallDuration(callDuration.value)}` : ''
+    ElMessage.info(`通话已结束${durationText}，可继续填写备注后关闭窗口`)
   }
 
   // 无论是否当前通话，都刷新数据
@@ -3777,10 +3807,8 @@ const handleCallEnded = (message: any) => {
 
   if (currentCallData.value && currentCallData.value.id === callId) {
     console.log('[CallManagement] 通话已结束:', data)
-    if (data.duration !== undefined) {
-      callDuration.value = data.duration
-    }
-    endCall()
+    // 统一走"已结束状态"处理：窗口保留（备注可能没写完），不自动关闭
+    handleCallEndedFromWebSocket(data)
   } else {
     // 非当前通话结束也要刷新数据
     setTimeout(() => {
