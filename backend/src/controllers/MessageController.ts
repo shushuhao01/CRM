@@ -2139,10 +2139,34 @@ export class MessageController {
 
       // 只能删除自己的消息
       const result = await messageRepo.delete(deleteCondition);
+      let affected = result.affected || 0;
+
+      // 🔥 多用户消息（target_user_id 逗号分隔）：从目标列表中移除当前用户，而非物理删除
+      if (!affected) {
+        const findBuilder = messageRepo.createQueryBuilder('msg')
+          .where('msg.id = :id', { id })
+          .andWhere('FIND_IN_SET(:userId, msg.target_user_id) > 0', { userId: String(userId) });
+        if (tenantId) {
+          findBuilder.andWhere('(msg.tenant_id = :tenantId OR msg.tenant_id IS NULL)', { tenantId });
+        }
+        const multiUserMessage = await findBuilder.getOne();
+        if (multiUserMessage) {
+          const remaining = String(multiUserMessage.targetUserId || '')
+            .split(',')
+            .map(s => s.trim())
+            .filter(s => s && s !== String(userId));
+          if (remaining.length === 0) {
+            await messageRepo.delete({ id: multiUserMessage.id });
+          } else {
+            await messageRepo.update({ id: multiUserMessage.id }, { targetUserId: remaining.join(',') });
+          }
+          affected = 1;
+        }
+      }
 
       res.json({
         success: true,
-        message: result.affected ? '消息已删除' : '消息不存在'
+        message: affected ? '消息已删除' : '消息不存在'
       });
     } catch (error) {
       log.error('删除消息失败:', error);
@@ -2179,12 +2203,34 @@ export class MessageController {
       }
 
       const result = await messageRepo.delete(deleteCondition);
+      let totalCleared = result.affected || 0;
 
-      log.info(`[系统消息] 用户 ${userId} 清空了 ${result.affected || 0} 条消息`);
+      // 🔥 多用户消息（target_user_id 逗号分隔）：把当前用户从目标列表移除，保证"清空"覆盖全部消息
+      const multiBuilder = messageRepo.createQueryBuilder('msg')
+        .where('FIND_IN_SET(:userId, msg.target_user_id) > 0', { userId: String(userId) })
+        .andWhere('msg.target_user_id != :userIdExact', { userIdExact: String(userId) });
+      if (tenantId) {
+        multiBuilder.andWhere('(msg.tenant_id = :tenantId OR msg.tenant_id IS NULL)', { tenantId });
+      }
+      const multiUserMessages = await multiBuilder.getMany();
+      for (const msg of multiUserMessages) {
+        const remaining = String(msg.targetUserId || '')
+          .split(',')
+          .map(s => s.trim())
+          .filter(s => s && s !== String(userId));
+        if (remaining.length === 0) {
+          await messageRepo.delete({ id: msg.id });
+        } else {
+          await messageRepo.update({ id: msg.id }, { targetUserId: remaining.join(',') });
+        }
+        totalCleared++;
+      }
+
+      log.info(`[系统消息] 用户 ${userId} 清空了 ${totalCleared} 条消息（含 ${multiUserMessages.length} 条多用户消息）`);
 
       res.json({
         success: true,
-        message: `已清空 ${result.affected || 0} 条消息`
+        message: `已清空 ${totalCleared} 条消息`
       });
     } catch (error) {
       log.error('清空消息失败:', error);

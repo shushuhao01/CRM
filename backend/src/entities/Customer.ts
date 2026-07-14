@@ -3,6 +3,8 @@ import { Order } from './Order';
 
 @Entity('customers')
 @Index('IDX_customers_tenant_wecom_userid', ['tenantId', 'wecomExternalUserid'], { unique: true })
+// 🔥 性能索引：手机号搜索客户（订单/客户列表搜索均依赖）
+@Index('idx_customers_tenant_phone', ['tenantId', 'phone'])
 export class Customer {
   @PrimaryGeneratedColumn('uuid')
   id: string;

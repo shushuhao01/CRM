@@ -209,56 +209,8 @@
       </el-card>
     </div>
 
-    <!-- 消息弹窗 -->
-    <el-dialog
-      v-model="showMessageDialog"
-      title="系统消息"
-      width="600px"
-      :before-close="handleCloseMessageDialog"
-    >
-      <div class="message-dialog">
-        <div class="message-dialog-header">
-          <el-button type="primary" size="small" @click="markAllAsRead" :disabled="unreadCount === 0">
-            全部已读
-          </el-button>
-          <el-button type="danger" size="small" @click="clearAllMessages">
-            清空消息
-          </el-button>
-        </div>
-
-        <div class="message-dialog-list">
-          <div
-            class="message-dialog-item"
-            v-for="message in messages"
-            :key="message.id"
-            :class="{ 'unread': !message.read }"
-            @click="handleMessageDetailClick(message)"
-          >
-            <div class="message-dialog-icon" :style="{ backgroundColor: message.color }">
-              <el-icon :size="18">
-                <component :is="message.icon" />
-              </el-icon>
-            </div>
-            <div class="message-dialog-content">
-              <div class="message-dialog-title">{{ maskPhonesInText(message.title) }}</div>
-              <div class="message-dialog-desc">{{ maskPhonesInText(message.content) }}</div>
-              <div class="message-dialog-time">{{ message.time }}</div>
-            </div>
-            <div class="message-dialog-actions">
-              <el-badge :is-dot="!message.read" />
-              <el-button
-                type="text"
-                size="small"
-                @click.stop="markAsRead(message)"
-                v-if="!message.read"
-              >
-                标记已读
-              </el-button>
-            </div>
-          </div>
-        </div>
-      </div>
-    </el-dialog>
+    <!-- 🔥 消息弹窗：复用消息中心对话框（与顶栏消息铃铛一致，含翻页控件） -->
+    <MessageCenterDialog v-model="showMessageDialog" />
 
     <!-- 消息详情弹窗 -->
     <el-dialog
@@ -413,8 +365,8 @@ import { useDepartmentStore } from '@/stores/department'
 import { useCustomerStore } from '@/stores/customer'
 import { dashboardApi, type DashboardTodo, type DashboardQuickAction } from '@/api/dashboard'
 import { useTheme } from '@/composables/useTheme'
-import { messageApi } from '@/api/message'
 import { sanitizeHtml } from '@/utils/sanitize'
+import MessageCenterDialog from '@/components/MessageCenterDialog.vue'
 import { maskPhonesInText } from '@/utils/sensitiveInfo'
 import { menuConfig } from '@/config/menu'
 import { hasMenuPermission } from '@/utils/menu'
@@ -1376,30 +1328,10 @@ const handleMessageClick = (message: Message) => {
   showMessageDetailDialog.value = true
 }
 
-const handleMessageDetailClick = (message: Message) => {
-  selectedMessage.value = message
-  showMessageDetailDialog.value = true
-}
-
-const markAsRead = async (message: Message) => {
-  try {
-    // 调用API标记消息为已读
-    const response = await messageApi.markMessageAsRead(message.id)
-    if (response.success) {
-      // API调用成功后，更新本地store
-      notificationStore.markAsRead(message.id)
-    } else {
-      ElMessage.error('标记消息失败')
-    }
-  } catch (error) {
-    console.error('标记消息为已读失败:', error)
-    ElMessage.error('标记消息失败，请稍后重试')
-  }
-}
-
 const markAsReadAndClose = () => {
   if (selectedMessage.value) {
-    notificationStore.markAsRead(selectedMessage.value.id)
+    // 🔥 调用API同步到数据库（同时更新本地状态与服务端未读数）
+    notificationStore.markAsReadWithAPI(selectedMessage.value.id)
   }
   showMessageDetailDialog.value = false
 }
@@ -1441,10 +1373,6 @@ const clearAllMessages = async () => {
       ElMessage.error('清空消息失败，请稍后重试')
     }
   }
-}
-
-const handleCloseMessageDialog = () => {
-  showMessageDialog.value = false
 }
 
 // 获取用户权限参数

@@ -13,7 +13,7 @@ export const messageApi = {
 
   // 部门级别订阅配置
   getDepartmentSubscriptions: (departmentId?: string) => {
-    return request.get('/message/subscriptions/departments', departmentId ? { departmentId } : undefined)
+    return request.get('/message/subscriptions/departments', departmentId ? { params: { departmentId } } : undefined)
   },
 
   updateDepartmentSubscription: (subscriptionId: string, departmentId: string, config: Partial<DepartmentSubscriptionConfig>) => {
@@ -27,8 +27,8 @@ export const messageApi = {
   // 公告相关
   getAnnouncements: async (params?: any) => {
     try {
-      // 直接传递params，不要嵌套
-      return await request.get('/message/announcements', params)
+      // 🔥 修复：api.get 需要 { params } 结构，否则查询参数不会附加到请求上
+      return await request.get('/message/announcements', params ? { params } : undefined)
     } catch (error: any) {
       // 【修复】如果是404或502错误，返回空数据而不是抛出错误
       if (error?.status === 404 || error?.status === 502 || error?.status === 500) {
@@ -98,7 +98,8 @@ export const messageApi = {
       if (params?.offset) queryParams.offset = params.offset
       if (params?.unreadOnly !== undefined) queryParams.unreadOnly = params.unreadOnly ? 'true' : 'false'
 
-      return await request.get('/message/system-messages', queryParams)
+      // 🔥 修复：api.get 第二个参数必须是 { params } 结构，之前平铺传参导致 limit/offset 从未生效（翻页失效）
+      return await request.get('/message/system-messages', { params: queryParams })
     } catch (error: any) {
       // 🔥 静默处理所有错误，包括401未授权
       if (error?.status === 401 || error?.status === 404 || error?.status === 502 || error?.status === 500) {
@@ -224,7 +225,7 @@ export const messageApi = {
 
   // 获取通知发送记录
   getNotificationLogs: (params?: { channelId?: string; status?: string; page?: number; pageSize?: number }) => {
-    return request.get('/message/notification-logs', params)
+    return request.get('/message/notification-logs', params ? { params: params as Record<string, string | number | undefined> } : undefined)
   },
 
   // 获取通知配置选项

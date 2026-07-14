@@ -238,13 +238,29 @@ class WebSocketService {
       const dataSource = getDataSource();
       if (!dataSource) return;
 
-      const messageRepo = getTenantRepo(SystemMessage);
+      // 🔥 与REST接口(MessageController.getSystemMessages)保持同一套未读统计逻辑：
+      // 基于 message_read_status 表（每用户独立已读状态），并支持 FIND_IN_SET 多用户消息
+      const messageRepo = dataSource.getRepository(SystemMessage);
+      const userId = String(socket.userId);
 
-      const count = await messageRepo
-        .createQueryBuilder('msg')
-        .where('msg.isRead = :isRead', { isRead: false })
-        .andWhere('(msg.targetUserId = :userId OR msg.targetUserId IS NULL)', { userId: socket.userId })
-        .getCount();
+      const queryBuilder = messageRepo.createQueryBuilder('msg')
+        .where('msg.target_user_id IS NOT NULL')
+        .andWhere("msg.target_user_id != ''")
+        .andWhere(
+          '(msg.target_user_id = :userId OR FIND_IN_SET(:userId, msg.target_user_id) > 0)',
+          { userId }
+        )
+        .andWhere(
+          'msg.id NOT IN (SELECT message_id FROM message_read_status WHERE user_id = :userId)',
+          { userId }
+        );
+
+      const tenantId = socket.tenantId;
+      if (tenantId) {
+        queryBuilder.andWhere('(msg.tenant_id = :tenantId OR msg.tenant_id IS NULL)', { tenantId });
+      }
+
+      const count = await queryBuilder.getCount();
 
       socket.emit('unread_count', { count });
     } catch (error) {

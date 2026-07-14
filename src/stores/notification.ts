@@ -789,6 +789,8 @@ export const useNotificationStore = defineStore('notification', () => {
   const wsStatus = ref<'connected' | 'connecting' | 'disconnected' | 'error'>('disconnected')
   // 🔥 服务端真实未读数量（不限于本地加载的消息数，后端无limit限制）
   const serverUnreadCount = ref<number | null>(null)
+  // 🔥 服务端消息总数（用于消息中心分页）
+  const serverTotal = ref<number | null>(null)
 
   // 计算属性
   const unreadCount = computed(() => {
@@ -908,6 +910,7 @@ export const useNotificationStore = defineStore('notification', () => {
       // 更新本地状态
       messages.value = []
       serverUnreadCount.value = 0
+      serverTotal.value = 0
       saveMessagesToStorage(messages.value)
       console.log('[Notification] ✅ 所有消息已清空')
     } catch (error) {
@@ -931,6 +934,31 @@ export const useNotificationStore = defineStore('notification', () => {
     )
   }
 
+  // 🔥 将API消息格式转换为notification store格式
+  const convertApiMessage = (msg: any): NotificationMessage => {
+    const template = MESSAGE_TEMPLATES[msg.type as MessageType] || {
+      icon: 'Bell',
+      color: '#409EFF',
+      category: '系统通知'
+    }
+
+    return {
+      id: msg.id,
+      type: msg.type || MessageType.SYSTEM_UPDATE,
+      title: msg.title || '系统通知',
+      content: msg.content || '',
+      priority: msg.priority || MessagePriority.NORMAL,
+      time: msg.createdAt ? new Date(msg.createdAt).toLocaleString('zh-CN') : new Date().toLocaleString('zh-CN'),
+      read: msg.isRead === true || msg.isRead === 1,
+      icon: template.icon,
+      color: template.color,
+      category: msg.category || template.category,
+      relatedId: msg.relatedId,
+      relatedType: msg.relatedType,
+      actionUrl: msg.actionUrl
+    }
+  }
+
   // 🔥 从API加载消息（跨设备消息通知的核心）
   const loadMessagesFromAPI = async (options?: { limit?: number; unreadOnly?: boolean }) => {
     try {
@@ -948,45 +976,21 @@ export const useNotificationStore = defineStore('notification', () => {
       if (response.success && response.data) {
         const responseData = response.data as { messages?: any[]; total?: number; unreadCount?: number }
         const apiMessages = responseData.messages || []
+        // 🔥 记录服务端总数（供消息中心分页使用）
+        serverTotal.value = typeof responseData.total === 'number' ? responseData.total : apiMessages.length
 
         // 🔥 修复：API返回空消息时，清空本地缓存（不再保留上一个用户的数据）
         if (apiMessages.length === 0) {
           console.log('[Notification] API返回空消息，清空本地缓存')
           messages.value = []
           serverUnreadCount.value = 0
+          serverTotal.value = 0
           saveMessagesToStorage(messages.value)
           return []
         }
 
         // 🔥 将API消息转换为本地格式
-        const newMessages: NotificationMessage[] = []
-
-        apiMessages.forEach((msg: any) => {
-          // 将API消息格式转换为notification store格式
-          const template = MESSAGE_TEMPLATES[msg.type as MessageType] || {
-            icon: 'Bell',
-            color: '#409EFF',
-            category: '系统通知'
-          }
-
-          const notificationMessage: NotificationMessage = {
-            id: msg.id,
-            type: msg.type || MessageType.SYSTEM_UPDATE,
-            title: msg.title || '系统通知',
-            content: msg.content || '',
-            priority: msg.priority || MessagePriority.NORMAL,
-            time: msg.createdAt ? new Date(msg.createdAt).toLocaleString('zh-CN') : new Date().toLocaleString('zh-CN'),
-            read: msg.isRead === true || msg.isRead === 1,
-            icon: template.icon,
-            color: template.color,
-            category: msg.category || template.category,
-            relatedId: msg.relatedId,
-            relatedType: msg.relatedType,
-            actionUrl: msg.actionUrl
-          }
-
-          newMessages.push(notificationMessage)
-        })
+        const newMessages: NotificationMessage[] = apiMessages.map(convertApiMessage)
 
         // 🔥 合并API消息与本地消息（保留WebSocket实时推送的消息不被API加载覆盖）
         const apiIdSet = new Set(newMessages.map(m => m.id))
@@ -1008,6 +1012,28 @@ export const useNotificationStore = defineStore('notification', () => {
       console.log('[Notification] 从API加载消息失败，使用本地缓存:', error)
       return []
     }
+  }
+
+  // 🔥 按页从API获取消息（消息中心分页专用，不覆盖本地消息缓存）
+  const fetchMessagesPage = async (page: number, pageSize = 50): Promise<{ messages: NotificationMessage[]; total: number; unreadCount: number }> => {
+    const { messageApi } = await import('@/api/message')
+    const response = await messageApi.getSystemMessages({
+      limit: pageSize,
+      offset: (page - 1) * pageSize
+    })
+
+    if (response.success && response.data) {
+      const responseData = response.data as { messages?: any[]; total?: number; unreadCount?: number }
+      const pageMessages = (responseData.messages || []).map(convertApiMessage)
+      const total = typeof responseData.total === 'number' ? responseData.total : pageMessages.length
+      const unread = typeof responseData.unreadCount === 'number' ? responseData.unreadCount : 0
+      // 同步服务端总数与未读数（红点计数保持准确）
+      serverTotal.value = total
+      serverUnreadCount.value = unread
+      return { messages: pageMessages, total, unreadCount: unread }
+    }
+
+    return { messages: [], total: 0, unreadCount: 0 }
   }
 
   // 🔥 标记消息已读（同步到数据库）
@@ -1116,11 +1142,13 @@ export const useNotificationStore = defineStore('notification', () => {
         })
       )
 
-      // 订阅未读数量变化
+      // 订阅未读数量变化：以服务端推送为准，同步红点计数
       wsUnsubscribers.push(
         webSocketService.onUnreadCountChange((count) => {
-          // 可以用于同步服务器端的未读数量
           console.log('[Notification] 服务器未读数量:', count)
+          if (typeof count === 'number' && count >= 0) {
+            serverUnreadCount.value = count
+          }
         })
       )
 
@@ -1220,6 +1248,7 @@ export const useNotificationStore = defineStore('notification', () => {
     // 清空内存中的消息
     messages.value = []
     serverUnreadCount.value = null
+    serverTotal.value = null
 
     // 清空当前用户的localStorage缓存
     try {
@@ -1242,6 +1271,7 @@ export const useNotificationStore = defineStore('notification', () => {
     // 状态
     messages,
     wsStatus,
+    serverTotal,
 
     // 计算属性
     unreadCount,
@@ -1256,6 +1286,7 @@ export const useNotificationStore = defineStore('notification', () => {
     clearAllMessages,
     batchSendMessages,
     loadMessagesFromAPI,
+    fetchMessagesPage,
     // 🔥 同步到数据库的方法
     markAsReadWithAPI,
     markAllAsReadWithAPI,

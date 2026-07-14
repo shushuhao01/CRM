@@ -1,10 +1,16 @@
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, OneToMany, JoinColumn, BeforeInsert, BeforeUpdate } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, OneToMany, JoinColumn, BeforeInsert, BeforeUpdate, Index } from 'typeorm';
 import { Customer } from './Customer';
 import { OrderItem } from './OrderItem';
 import { OrderStatusHistory } from './OrderStatusHistory';
 import { LogisticsTracking } from './LogisticsTracking';
 
 @Entity('orders')
+// 🔥 性能索引：订单列表按租户+时间排序分页、手机号搜索、客户关联查询（自动迁移器会补建缺失索引）
+@Index('idx_orders_tenant_created', ['tenantId', 'createdAt'])
+@Index('idx_orders_customer_phone', ['customerPhone'])
+@Index('idx_orders_shipping_phone', ['shippingPhone'])
+@Index('idx_orders_customer_id', ['customerId'])
+@Index('idx_orders_tenant_status', ['tenantId', 'status'])
 export class Order {
   @PrimaryGeneratedColumn('uuid')
   id: string;

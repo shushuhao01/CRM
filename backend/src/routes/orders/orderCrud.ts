@@ -116,13 +116,58 @@ export function registerCrudRoutes(router: Router): void {router.get('/', authen
       log.info(`📋 [订单列表] ${userRole}角色，查看所有订单`);
     }
 
-    // 🔥 综合关键词搜索（商品名称模糊搜索，其他字段精准搜索，客户编码和其他手机号通过子查询关联customers表）
+    // 🔥 综合关键词搜索
+    // 性能优化：不再使用关联子查询（EXISTS + CONVERT/COLLATE 会导致索引失效、全表扫描），
+    // 改为"先查 customers 表命中客户ID → 订单表 IN 匹配"，两步均可走索引
     if (keyword) {
-      queryBuilder.andWhere(
-        '(order.orderNumber = :exactKeyword OR order.customerName = :exactKeyword OR order.customerPhone = :exactKeyword OR order.customerId = :exactKeyword OR order.trackingNumber = :exactKeyword OR order.products LIKE :fuzzyKeyword OR EXISTS (SELECT 1 FROM customers c WHERE CONVERT(c.id USING utf8mb4) COLLATE utf8mb4_general_ci = CONVERT(order.customer_id USING utf8mb4) COLLATE utf8mb4_general_ci AND CONVERT(c.tenant_id USING utf8mb4) COLLATE utf8mb4_general_ci = CONVERT(order.tenant_id USING utf8mb4) COLLATE utf8mb4_general_ci AND (c.customer_code LIKE :fuzzyKeyword OR c.phone = :exactKeyword OR JSON_CONTAINS(c.other_phones, JSON_QUOTE(:exactKeyword)))))',
-        { exactKeyword: keyword, fuzzyKeyword: `%${keyword}%` }
-      );
-      log.info(`📋 [订单列表] 综合关键词搜索: "${keyword}" (商品模糊，其他精准，支持客户编码和其他手机号)`);
+      const keywordStr = String(keyword).trim();
+      // 手机号形态：7~15位纯数字（走专用快速分支，跳过 products JSON 模糊匹配）
+      const isPhoneLike = /^\d{7,15}$/.test(keywordStr);
+
+      // 第一步：在 customers 表中查找命中的客户ID（getTenantRepo 自动附加租户条件）
+      const customerSearchRepo = getTenantRepo(Customer);
+      const customerIdQuery = customerSearchRepo.createQueryBuilder('c')
+        .select('c.id', 'id');
+      if (isPhoneLike) {
+        customerIdQuery.andWhere(
+          '(c.phone = :exactKeyword OR JSON_CONTAINS(c.other_phones, JSON_QUOTE(:exactKeyword)))',
+          { exactKeyword: keywordStr }
+        );
+      } else {
+        customerIdQuery.andWhere(
+          '(c.customer_code LIKE :fuzzyKeyword OR c.phone = :exactKeyword OR JSON_CONTAINS(c.other_phones, JSON_QUOTE(:exactKeyword)))',
+          { exactKeyword: keywordStr, fuzzyKeyword: `%${keywordStr}%` }
+        );
+      }
+      const matchedCustomerRows = await customerIdQuery.limit(1000).getRawMany();
+      const matchedCustomerIds = matchedCustomerRows.map((r: any) => r.id);
+
+      // 第二步：订单表条件（全部为可走索引的精确匹配 + IN）
+      const keywordConditions: string[] = [
+        'order.orderNumber = :exactKeyword',
+        'order.customerName = :exactKeyword',
+        'order.customerPhone = :exactKeyword',
+        'order.customerId = :exactKeyword',
+        'order.trackingNumber = :exactKeyword'
+      ];
+      const keywordParams: Record<string, unknown> = { exactKeyword: keywordStr };
+
+      if (isPhoneLike) {
+        // 手机号额外匹配收货人电话
+        keywordConditions.push('order.shippingPhone = :exactKeyword');
+      } else {
+        // 非手机号才做商品名称模糊搜索（LIKE '%kw%' 无法走索引，手机号搜索时跳过）
+        keywordConditions.push('order.products LIKE :fuzzyKeyword');
+        keywordParams.fuzzyKeyword = `%${keywordStr}%`;
+      }
+
+      if (matchedCustomerIds.length > 0) {
+        keywordConditions.push('order.customerId IN (:...matchedCustomerIds)');
+        keywordParams.matchedCustomerIds = matchedCustomerIds;
+      }
+
+      queryBuilder.andWhere(`(${keywordConditions.join(' OR ')})`, keywordParams);
+      log.info(`📋 [订单列表] 综合关键词搜索: "${keywordStr}" (手机号形态: ${isPhoneLike}, 命中客户: ${matchedCustomerIds.length})`);
     }
 
     // 状态筛选
@@ -189,8 +234,25 @@ export function registerCrudRoutes(router: Router): void {router.get('/', authen
     }
 
     // 🔥 高级筛选：客户电话（同时搜索客户其他手机号）
+    // 性能优化：先在 customers 表命中客户ID，再用 IN 匹配订单，避免关联子查询全表扫描
     if (customerPhone) {
-      queryBuilder.andWhere('(order.customerPhone LIKE :customerPhone OR EXISTS (SELECT 1 FROM customers c WHERE CONVERT(c.id USING utf8mb4) COLLATE utf8mb4_general_ci = CONVERT(order.customer_id USING utf8mb4) COLLATE utf8mb4_general_ci AND CONVERT(c.tenant_id USING utf8mb4) COLLATE utf8mb4_general_ci = CONVERT(order.tenant_id USING utf8mb4) COLLATE utf8mb4_general_ci AND CAST(c.other_phones AS CHAR) LIKE :customerPhone))', { customerPhone: `%${customerPhone}%` });
+      const phoneStr = String(customerPhone).trim();
+      const phoneCustomerRepo = getTenantRepo(Customer);
+      const phoneCustomerRows = await phoneCustomerRepo.createQueryBuilder('c')
+        .select('c.id', 'id')
+        .andWhere('(c.phone LIKE :phoneLike OR CAST(c.other_phones AS CHAR) LIKE :phoneLike)', { phoneLike: `%${phoneStr}%` })
+        .limit(1000)
+        .getRawMany();
+      const phoneCustomerIds = phoneCustomerRows.map((r: any) => r.id);
+
+      if (phoneCustomerIds.length > 0) {
+        queryBuilder.andWhere(
+          '(order.customerPhone LIKE :customerPhone OR order.customerId IN (:...phoneCustomerIds))',
+          { customerPhone: `%${phoneStr}%`, phoneCustomerIds }
+        );
+      } else {
+        queryBuilder.andWhere('order.customerPhone LIKE :customerPhone', { customerPhone: `%${phoneStr}%` });
+      }
     }
 
     // 🔥 高级筛选：支付方式

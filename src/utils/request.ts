@@ -349,8 +349,10 @@ service.interceptors.response.use(
           errorMessage = data?.message || `服务器错误 (${status})`
       }
     } else if (error.request) {
-      // 网络错误
-      if (!navigator.onLine) {
+      // 🔥 区分"请求超时"与"网络断开"：超时多为服务端处理慢，误报网络问题会误导排查
+      if (error.code === 'ECONNABORTED' || /timeout/i.test(error.message || '')) {
+        errorMessage = '请求超时，服务器响应时间过长，请稍后重试'
+      } else if (!navigator.onLine) {
         errorMessage = '网络连接已断开，请检查网络设置'
         appStore.setOnlineStatus(false)
       } else {
