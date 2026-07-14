@@ -219,8 +219,12 @@ router.get('/', async (req: Request, res: Response) => {
       .getCount();
 
     // 统计今日新增客户数
+    // 🔥 性能修复：DATE(createdAt)=? 会让索引失效全表扫描，改用范围条件
     const newCustomers = await statsQueryBuilder.clone()
-      .andWhere('DATE(customer.createdAt) = :today', { today: todayStr })
+      .andWhere('customer.createdAt >= :todayStart AND customer.createdAt < :tomorrowStart', {
+        todayStart: `${todayStr} 00:00:00`,
+        tomorrowStart: new Date(today.getTime() + 24 * 60 * 60 * 1000).toISOString().split('T')[0] + ' 00:00:00'
+      })
       .getCount();
 
     // 🔥 性能优化：统计未下单客户数
@@ -238,18 +242,17 @@ router.get('/', async (req: Request, res: Response) => {
       const excludedStatuses = ['pending_cancel', 'cancelled', 'audit_rejected', 'logistics_returned', 'logistics_cancelled', 'refunded'];
 
       if (orderCountMinValue === 0) {
-        // 筛选0单客户: 先查出所有有有效订单的客户ID，再用NOT IN排除
-        const customersWithOrders = await orderRepository
-          .createQueryBuilder('o')
-          .select('DISTINCT o.customerId', 'customerId')
-          .where('o.status NOT IN (:...excludedStatuses)', { excludedStatuses })
-          .getRawMany();
-        const idsWithOrders = customersWithOrders.map((r: any) => r.customerId).filter(Boolean);
-
-        if (idsWithOrders.length > 0) {
-          queryBuilder.andWhere('customer.id NOT IN (:...idsWithOrders)', { idsWithOrders });
-        }
-        // 如果没有任何有效订单则不过滤（所有客户都是0单客户）
+        // 筛选0单客户
+        // 🔥 性能修复：原来先 DISTINCT 全量拉有单客户ID再 NOT IN（订单量大时ID列表巨大，SQL又长又慢）
+        // 改为 LEFT JOIN + IS NULL 反连接，数据库侧完成，走 customer_id 索引
+        queryBuilder
+          .leftJoin(
+            'orders',
+            'o_zero',
+            'o_zero.customer_id = customer.id AND o_zero.tenant_id = customer.tenant_id AND o_zero.status NOT IN (:...excludedStatuses)',
+            { excludedStatuses }
+          )
+          .andWhere('o_zero.id IS NULL');
       } else {
         // 筛选≥N单客户
         queryBuilder
@@ -792,14 +795,17 @@ router.get('/search', async (req: Request, res: Response) => {
 
     log.info('[客户搜索] 搜索关键词:', keyword);
 
-    // 搜索条件：姓名、手机号、客户编码、其他手机号
+    // 🔥 性能修复：原来无分页 getMany() 全量返回，客户量大或关键词短时会拉出上万条导致超时
+    // 匹配语义不变，加上返回条数上限（200条）防止超大结果集
+    const keywordStr = String(keyword).trim();
     const customers = await customerRepository
       .createQueryBuilder('customer')
       .where(
-        'customer.name LIKE :keyword OR customer.phone LIKE :keyword OR customer.customerNo LIKE :keyword OR CAST(customer.other_phones AS CHAR) LIKE :keyword',
-        { keyword: `%${keyword}%` }
+        '(customer.name LIKE :keyword OR customer.phone LIKE :keyword OR customer.customerNo LIKE :keyword OR CAST(customer.other_phones AS CHAR) LIKE :keyword)',
+        { keyword: `%${keywordStr}%` }
       )
       .orderBy('customer.createdAt', 'DESC')
+      .take(200)
       .getMany();
 
     // 转换数据格式

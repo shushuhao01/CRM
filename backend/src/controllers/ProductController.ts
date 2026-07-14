@@ -416,12 +416,21 @@ export class ProductController {
           const orderRepo = getTenantRepo(Order)
 
           // 🔥 获取有效订单（已审核通过且未取消的订单）
+          // 🔥 性能修复：原来无条件拉取租户内全部订单到内存解析JSON统计（订单量大时每次打开商品列表都30秒+）
+          // 改为只拉取 products JSON 中包含当前页商品ID的订单（每页最多10~20个商品的LIKE过滤，大幅减少返回行数）
+          const productIdConditions = productIds.map((_id, i) => `order.products LIKE :pid${i}`)
+          const productIdParams: Record<string, string> = {}
+          productIds.forEach((id, i) => {
+            productIdParams[`pid${i}`] = `%${id}%`
+          })
+
           const validOrders = await orderRepo
             .createQueryBuilder('order')
             .select(['order.id', 'order.products'])
             .where('order.status NOT IN (:...excludeStatuses)', {
               excludeStatuses: ['cancelled', 'pending_transfer', 'pending_audit', 'audit_rejected']
             })
+            .andWhere(`(${productIdConditions.join(' OR ')})`, productIdParams)
             .getMany()
 
           // 🔥 从每个订单的products JSON字段中统计销量

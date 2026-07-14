@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { Call } from '../../entities/Call';
 import { getTenantRepo } from '../../utils/tenantRepo';
+import { findCustomerIdsByKeywords } from '../../utils/customerSearchHelper';
 import { log } from '../../config/logger';
 
 export function registerRecordsRoutes(router: Router) {
@@ -214,12 +215,19 @@ router.get('/records', async (req: Request, res: Response) => {
     }
 
     if (keyword) {
-      // CONVERT + 显式 COLLATE：customers 与 call_records 两表排序规则可能不一致（生产库），
-      // 列对列直接 = 会报 Illegal mix of collations
-      queryBuilder.andWhere(
-        '(call.customerName LIKE :keyword OR call.customerPhone LIKE :keyword OR call.notes LIKE :keyword OR EXISTS (SELECT 1 FROM customers c WHERE CONVERT(c.id USING utf8mb4) COLLATE utf8mb4_general_ci = CONVERT(call.customer_id USING utf8mb4) COLLATE utf8mb4_general_ci AND CAST(c.other_phones AS CHAR) LIKE :keyword))',
-        { keyword: `%${keyword}%` }
-      );
+      // 🔥 性能优化：先在 customers 表单次索引查询命中客户ID，替代逐行 EXISTS 关联子查询
+      const matchedCustomerIds = await findCustomerIdsByKeywords([keyword as string]);
+      const orConditions = [
+        'call.customerName LIKE :keyword',
+        'call.customerPhone LIKE :keyword',
+        'call.notes LIKE :keyword'
+      ];
+      const keywordParams: any = { keyword: `%${keyword}%` };
+      if (matchedCustomerIds.length > 0) {
+        orConditions.push('call.customerId IN (:...matchedCustomerIds)');
+        keywordParams.matchedCustomerIds = matchedCustomerIds;
+      }
+      queryBuilder.andWhere(`(${orConditions.join(' OR ')})`, keywordParams);
     }
 
     queryBuilder.orderBy('call.startTime', 'DESC');
@@ -642,11 +650,19 @@ router.get('/', async (req: Request, res: Response) => {
     }
 
     if (keyword) {
-      // CONVERT + 显式 COLLATE：避免两表排序规则不一致导致 Illegal mix of collations
-      queryBuilder.andWhere(
-        '(call.customerName LIKE :keyword OR call.customerPhone LIKE :keyword OR call.notes LIKE :keyword OR EXISTS (SELECT 1 FROM customers c WHERE CONVERT(c.id USING utf8mb4) COLLATE utf8mb4_general_ci = CONVERT(call.customer_id USING utf8mb4) COLLATE utf8mb4_general_ci AND CAST(c.other_phones AS CHAR) LIKE :keyword))',
-        { keyword: `%${keyword}%` }
-      );
+      // 🔥 性能优化：先在 customers 表单次索引查询命中客户ID，替代逐行 EXISTS 关联子查询
+      const matchedCustomerIds = await findCustomerIdsByKeywords([keyword as string]);
+      const orConditions = [
+        'call.customerName LIKE :keyword',
+        'call.customerPhone LIKE :keyword',
+        'call.notes LIKE :keyword'
+      ];
+      const keywordParams: any = { keyword: `%${keyword}%` };
+      if (matchedCustomerIds.length > 0) {
+        orConditions.push('call.customerId IN (:...matchedCustomerIds)');
+        keywordParams.matchedCustomerIds = matchedCustomerIds;
+      }
+      queryBuilder.andWhere(`(${orConditions.join(' OR ')})`, keywordParams);
     }
 
     // 🔥 角色权限过滤（与 /statistics 保持一致）

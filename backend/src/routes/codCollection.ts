@@ -10,6 +10,7 @@ import { Department } from '../entities/Department';
 import { CodOperationLog } from '../entities/CodOperationLog';
 import { Between, In, Not } from 'typeorm';
 import { getTenantRepo } from '../utils/tenantRepo';
+import { findCustomerIdsByKeywords } from '../utils/customerSearchHelper';
 import { v4 as uuidv4 } from 'uuid';
 import { AppDataSource } from '../config/database';
 
@@ -335,16 +336,24 @@ router.get('/list', authenticateToken, async (req: Request, res: Response) => {
     if (keywords) {
       const keywordList = (keywords as string).split('\n').map(k => k.trim()).filter(k => k);
       if (keywordList.length > 0) {
-        const conditions = keywordList.map((_, i) =>
-          `(o.order_number LIKE :kw${i} OR o.customer_phone LIKE :kw${i} OR o.customer_name LIKE :kw${i} OR o.tracking_number LIKE :kw${i} OR EXISTS (SELECT 1 FROM customers c WHERE CONVERT(c.id USING utf8mb4) COLLATE utf8mb4_general_ci = CONVERT(o.customer_id USING utf8mb4) COLLATE utf8mb4_general_ci AND CONVERT(c.tenant_id USING utf8mb4) COLLATE utf8mb4_general_ci = CONVERT(o.tenant_id USING utf8mb4) COLLATE utf8mb4_general_ci AND CAST(c.other_phones AS CHAR) LIKE :kw${i}))`
-        ).join(' OR ');
+        // 🔥 性能优化：先在 customers 表单次索引查询命中客户ID，替代逐行 EXISTS 关联子查询
+        const matchedCustomerIds = await findCustomerIdsByKeywords(keywordList);
+
+        const orConditions = keywordList.map((_, i) =>
+          `(o.order_number LIKE :kw${i} OR o.customer_phone LIKE :kw${i} OR o.customer_name LIKE :kw${i} OR o.tracking_number LIKE :kw${i})`
+        );
 
         const params: any = {};
         keywordList.forEach((kw, i) => {
           params[`kw${i}`] = `%${kw}%`;
         });
 
-        queryBuilder.andWhere(`(${conditions})`, params);
+        if (matchedCustomerIds.length > 0) {
+          orConditions.push('o.customer_id IN (:...matchedCustomerIds)');
+          params.matchedCustomerIds = matchedCustomerIds;
+        }
+
+        queryBuilder.andWhere(`(${orConditions.join(' OR ')})`, params);
       }
     }
 

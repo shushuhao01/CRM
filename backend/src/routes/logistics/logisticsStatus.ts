@@ -5,6 +5,7 @@
 import { Router, Request, Response } from 'express';
 import { authenticateToken } from '../../middleware/auth';
 import { getTenantRepo } from '../../utils/tenantRepo';
+import { findCustomerIdsByKeywords } from '../../utils/customerSearchHelper';
 import { orderNotificationService } from '../../services/OrderNotificationService';
 import { LogisticsApiConfig } from '../../entities/LogisticsApiConfig';
 import { ExpressAPIService } from '../../services/ExpressAPIService';
@@ -87,10 +88,21 @@ router.get('/status-update/orders', async (req, res) => {
 
     // 关键词搜索（支持订单号、客户名、手机号、物流单号、客户其他手机号）
     if (keyword) {
-      queryBuilder.andWhere(
-        '(order.orderNumber LIKE :kw OR order.customerName LIKE :kw OR order.customerPhone LIKE :kw OR order.trackingNumber LIKE :kw OR order.shippingPhone LIKE :kw OR EXISTS (SELECT 1 FROM customers c WHERE CONVERT(c.id USING utf8mb4) COLLATE utf8mb4_general_ci = CONVERT(order.customer_id USING utf8mb4) COLLATE utf8mb4_general_ci AND CAST(c.other_phones AS CHAR) LIKE :kw))',
-        { kw: `%${keyword}%` }
-      );
+      // 🔥 性能优化：先在 customers 表单次索引查询命中客户ID，替代逐行 EXISTS 关联子查询
+      const matchedCustomerIds = await findCustomerIdsByKeywords([keyword as string]);
+      const orConditions = [
+        'order.orderNumber LIKE :kw',
+        'order.customerName LIKE :kw',
+        'order.customerPhone LIKE :kw',
+        'order.trackingNumber LIKE :kw',
+        'order.shippingPhone LIKE :kw'
+      ];
+      const keywordParams: any = { kw: `%${keyword}%` };
+      if (matchedCustomerIds.length > 0) {
+        orConditions.push('order.customerId IN (:...matchedCustomerIds)');
+        keywordParams.matchedCustomerIds = matchedCustomerIds;
+      }
+      queryBuilder.andWhere(`(${orConditions.join(' OR ')})`, keywordParams);
     }
 
     // 日期范围筛选
@@ -692,7 +704,9 @@ router.get('/export', async (req, res) => {
 
     queryBuilder.orderBy('order.shippedAt', 'DESC');
 
-    const orders = await queryBuilder.getMany();
+    // 🔥 性能修复：导出无上限的全量 getMany() 在订单量大时会超时/内存溢出，限制单次导出上限
+    const EXPORT_MAX_ROWS = 10000;
+    const orders = await queryBuilder.take(EXPORT_MAX_ROWS).getMany();
 
     // 生成CSV内容
     const logisticsStatusMap: Record<string, string> = {

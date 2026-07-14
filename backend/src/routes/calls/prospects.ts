@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { CallProspect } from '../../entities/CallProspect';
 import { Customer } from '../../entities/Customer';
 import { getTenantRepo } from '../../utils/tenantRepo';
+import { findCustomerIdsByKeywords } from '../../utils/customerSearchHelper';
 import { TenantContextManager } from '../../utils/tenantContext';
 import { log } from '../../config/logger';
 import { v4 as uuidv4 } from 'uuid';
@@ -28,10 +29,19 @@ router.get('/prospects', async (req: Request, res: Response) => {
     }
 
     if (keyword) {
-      // 注意：c.id 与 p.convertedCustomerId 属于不同表，生产库两表排序规则可能不一致
-      // （utf8mb4_unicode_ci vs utf8mb4_general_ci），列对列直接 = 会报 Illegal mix of collations，
-      // 用 CONVERT + 显式 COLLATE 统一后再比较
-      qb.andWhere('(p.name LIKE :kw OR p.phone LIKE :kw OR p.company LIKE :kw OR EXISTS (SELECT 1 FROM customers c WHERE CONVERT(c.id USING utf8mb4) COLLATE utf8mb4_general_ci = CONVERT(p.convertedCustomerId USING utf8mb4) COLLATE utf8mb4_general_ci AND CAST(c.other_phones AS CHAR) LIKE :kw))', { kw: `%${keyword}%` });
+      // 🔥 性能优化：先在 customers 表单次索引查询命中客户ID，替代逐行 EXISTS 关联子查询
+      const matchedCustomerIds = await findCustomerIdsByKeywords([keyword as string]);
+      const orConditions = [
+        'p.name LIKE :kw',
+        'p.phone LIKE :kw',
+        'p.company LIKE :kw'
+      ];
+      const keywordParams: any = { kw: `%${keyword}%` };
+      if (matchedCustomerIds.length > 0) {
+        orConditions.push('p.convertedCustomerId IN (:...matchedCustomerIds)');
+        keywordParams.matchedCustomerIds = matchedCustomerIds;
+      }
+      qb.andWhere(`(${orConditions.join(' OR ')})`, keywordParams);
     }
     if (status) qb.andWhere('p.status = :status', { status });
     if (assignedTo) qb.andWhere('p.assignedTo = :assignedTo', { assignedTo });

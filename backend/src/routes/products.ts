@@ -487,8 +487,12 @@ router.get('/sales/statistics', async (req, res) => {
       });
 
     // 日期范围过滤
+    // 🔥 性能保护：未传日期时默认只统计近90天，避免无界拉取全部订单到内存解析JSON（订单量大时超时）
     if (startDate) {
       queryBuilder = queryBuilder.andWhere('order.createdAt >= :startDate', { startDate });
+    } else {
+      const defaultStart = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+      queryBuilder = queryBuilder.andWhere('order.createdAt >= :startDate', { startDate: defaultStart });
     }
     if (endDate) {
       queryBuilder = queryBuilder.andWhere('order.createdAt <= :endDate', { endDate: endDate + ' 23:59:59' });
@@ -685,8 +689,12 @@ router.get('/sales/category', async (req, res) => {
         excludeStatuses: ['cancelled', 'pending_transfer', 'pending_audit', 'audit_rejected']
       });
 
+    // 🔥 性能保护：未传日期时默认只统计近90天，避免无界拉取全部订单到内存解析JSON
     if (startDate) {
       queryBuilder = queryBuilder.andWhere('order.createdAt >= :startDate', { startDate });
+    } else {
+      const defaultStart = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+      queryBuilder = queryBuilder.andWhere('order.createdAt >= :startDate', { startDate: defaultStart });
     }
     if (endDate) {
       queryBuilder = queryBuilder.andWhere('order.createdAt <= :endDate', { endDate: endDate + ' 23:59:59' });
@@ -773,8 +781,12 @@ router.get('/sales/top', async (req, res) => {
         excludeStatuses: ['cancelled', 'pending_transfer', 'pending_audit', 'audit_rejected']
       });
 
+    // 🔥 性能保护：未传日期时默认只统计近90天，避免无界拉取全部订单到内存解析JSON
     if (startDate) {
       queryBuilder = queryBuilder.andWhere('order.createdAt >= :startDate', { startDate });
+    } else {
+      const defaultStart = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+      queryBuilder = queryBuilder.andWhere('order.createdAt >= :startDate', { startDate: defaultStart });
     }
     if (endDate) {
       queryBuilder = queryBuilder.andWhere('order.createdAt <= :endDate', { endDate: endDate + ' 23:59:59' });

@@ -13,6 +13,7 @@ import { authenticateToken } from '../middleware/auth';
 import { getTenantRepo } from '../utils/tenantRepo';
 import { TenantContextManager } from '../utils/tenantContext';
 import { deployConfig } from '../config/deploy';
+import { findCustomerIdsByKeywords } from '../utils/customerSearchHelper';
 import { v4 as uuidv4 } from 'uuid';
 
 import { log } from '../config/logger';
@@ -219,25 +220,38 @@ router.get('/performance-data', async (req: Request, res: Response) => {
     if (endDate) queryBuilder.andWhere('order.createdAt <= :endDate', { endDate: `${endDate} 23:59:59` });
 
     // 🔥 批量搜索：支持订单号、客户名称、客户电话、客户其他手机号（最多3000条）
+    // 🔥 性能优化：先在 customers 表单独查一次命中的客户ID（索引友好），
+    // 替代原来的 EXISTS 关联子查询（CONVERT/COLLATE 导致索引失效，主表每行跑一次子查询）
+    let limitedKeywords: string[] = [];
+    let matchedCustomerIds: string[] = [];
     if (batchKeywords) {
       const keywordsStr = batchKeywords as string;
       const keywordList = keywordsStr.split(/[\n,;，；\s]+/).map(k => k.trim()).filter(k => k.length > 0);
       // 限制最多3000条
-      const limitedKeywords = keywordList.slice(0, 3000);
-
+      limitedKeywords = keywordList.slice(0, 3000);
       if (limitedKeywords.length > 0) {
-        // 构建多字段OR查询
-        const orConditions: string[] = [];
-        const orParams: Record<string, any> = {};
-
-        limitedKeywords.forEach((keyword, index) => {
-          const paramKey = `kw${index}`;
-          orConditions.push(`(order.orderNumber LIKE :${paramKey} OR order.customerName LIKE :${paramKey} OR order.customerPhone LIKE :${paramKey} OR EXISTS (SELECT 1 FROM customers c WHERE CONVERT(c.id USING utf8mb4) COLLATE utf8mb4_general_ci = CONVERT(order.customer_id USING utf8mb4) COLLATE utf8mb4_general_ci AND CAST(c.other_phones AS CHAR) LIKE :${paramKey}))`);
-          orParams[paramKey] = `%${keyword}%`;
-        });
-
-        queryBuilder.andWhere(`(${orConditions.join(' OR ')})`, orParams);
+        matchedCustomerIds = await findCustomerIdsByKeywords(limitedKeywords);
       }
+    }
+
+    if (limitedKeywords.length > 0) {
+      // 构建多字段OR查询
+      const orConditions: string[] = [];
+      const orParams: Record<string, any> = {};
+
+      limitedKeywords.forEach((keyword, index) => {
+        const paramKey = `kw${index}`;
+        orConditions.push(`(order.orderNumber LIKE :${paramKey} OR order.customerName LIKE :${paramKey} OR order.customerPhone LIKE :${paramKey})`);
+        orParams[paramKey] = `%${keyword}%`;
+      });
+
+      // 备用手机号命中的客户ID：主表 customer_id IN 精确匹配（可走索引）
+      if (matchedCustomerIds.length > 0) {
+        orConditions.push('order.customerId IN (:...matchedCustomerIds)');
+        orParams.matchedCustomerIds = matchedCustomerIds;
+      }
+
+      queryBuilder.andWhere(`(${orConditions.join(' OR ')})`, orParams);
     } else if (orderNumber) {
       // 单个关键词搜索（兼容旧逻辑）
       queryBuilder.andWhere('order.orderNumber LIKE :orderNumber', { orderNumber: `%${orderNumber}%` });
@@ -279,24 +293,23 @@ router.get('/performance-data', async (req: Request, res: Response) => {
     if (startDate) countBuilder.andWhere('order.createdAt >= :startDate', { startDate });
     if (endDate) countBuilder.andWhere('order.createdAt <= :endDate', { endDate: `${endDate} 23:59:59` });
 
-    // 🔥 批量搜索条件也要应用到count查询
-    if (batchKeywords) {
-      const keywordsStr = batchKeywords as string;
-      const keywordList = keywordsStr.split(/[\n,;，；\s]+/).map(k => k.trim()).filter(k => k.length > 0);
-      const limitedKeywords = keywordList.slice(0, 3000);
+    // 🔥 批量搜索条件也要应用到count查询（复用列表查询已计算好的 matchedCustomerIds，避免重复查询 customers 表）
+    if (limitedKeywords.length > 0) {
+      const orConditions: string[] = [];
+      const orParams: Record<string, any> = {};
 
-      if (limitedKeywords.length > 0) {
-        const orConditions: string[] = [];
-        const orParams: Record<string, any> = {};
+      limitedKeywords.forEach((keyword, index) => {
+        const paramKey = `kw${index}`;
+        orConditions.push(`(order.orderNumber LIKE :${paramKey} OR order.customerName LIKE :${paramKey} OR order.customerPhone LIKE :${paramKey})`);
+        orParams[paramKey] = `%${keyword}%`;
+      });
 
-        limitedKeywords.forEach((keyword, index) => {
-          const paramKey = `kw${index}`;
-          orConditions.push(`(order.orderNumber LIKE :${paramKey} OR order.customerName LIKE :${paramKey} OR order.customerPhone LIKE :${paramKey} OR EXISTS (SELECT 1 FROM customers c WHERE CONVERT(c.id USING utf8mb4) COLLATE utf8mb4_general_ci = CONVERT(order.customer_id USING utf8mb4) COLLATE utf8mb4_general_ci AND CAST(c.other_phones AS CHAR) LIKE :${paramKey}))`);
-          orParams[paramKey] = `%${keyword}%`;
-        });
-
-        countBuilder.andWhere(`(${orConditions.join(' OR ')})`, orParams);
+      if (matchedCustomerIds.length > 0) {
+        orConditions.push('order.customerId IN (:...matchedCustomerIds)');
+        orParams.matchedCustomerIds = matchedCustomerIds;
       }
+
+      countBuilder.andWhere(`(${orConditions.join(' OR ')})`, orParams);
     } else if (orderNumber) {
       countBuilder.andWhere('order.orderNumber LIKE :orderNumber', { orderNumber: `%${orderNumber}%` });
     }
@@ -457,23 +470,36 @@ router.get('/performance-manage', async (req: Request, res: Response) => {
     if (endDate) queryBuilder.andWhere('order.createdAt <= :endDate', { endDate: `${endDate} 23:59:59` });
 
     // 🔥 批量搜索：支持订单号、客户名称、客户电话、客户其他手机号（最多3000条）
+    // 🔥 性能优化：先在 customers 表单独查一次命中的客户ID（索引友好），
+    // 替代原来的 EXISTS 关联子查询（CONVERT/COLLATE 导致索引失效，主表每行跑一次子查询）
+    let limitedKeywords: string[] = [];
+    let matchedCustomerIds: string[] = [];
     if (batchKeywords) {
       const keywordsStr = batchKeywords as string;
       const keywordList = keywordsStr.split(/[\n,;，；\s]+/).map(k => k.trim()).filter(k => k.length > 0);
-      const limitedKeywords = keywordList.slice(0, 3000);
-
+      limitedKeywords = keywordList.slice(0, 3000);
       if (limitedKeywords.length > 0) {
-        const orConditions: string[] = [];
-        const orParams: Record<string, any> = {};
-
-        limitedKeywords.forEach((keyword, index) => {
-          const paramKey = `kw${index}`;
-          orConditions.push(`(order.orderNumber LIKE :${paramKey} OR order.customerName LIKE :${paramKey} OR order.customerPhone LIKE :${paramKey} OR EXISTS (SELECT 1 FROM customers c WHERE CONVERT(c.id USING utf8mb4) COLLATE utf8mb4_general_ci = CONVERT(order.customer_id USING utf8mb4) COLLATE utf8mb4_general_ci AND CAST(c.other_phones AS CHAR) LIKE :${paramKey}))`);
-          orParams[paramKey] = `%${keyword}%`;
-        });
-
-        queryBuilder.andWhere(`(${orConditions.join(' OR ')})`, orParams);
+        matchedCustomerIds = await findCustomerIdsByKeywords(limitedKeywords);
       }
+    }
+
+    if (limitedKeywords.length > 0) {
+      const orConditions: string[] = [];
+      const orParams: Record<string, any> = {};
+
+      limitedKeywords.forEach((keyword, index) => {
+        const paramKey = `kw${index}`;
+        orConditions.push(`(order.orderNumber LIKE :${paramKey} OR order.customerName LIKE :${paramKey} OR order.customerPhone LIKE :${paramKey})`);
+        orParams[paramKey] = `%${keyword}%`;
+      });
+
+      // 备用手机号命中的客户ID：主表 customer_id IN 精确匹配（可走索引）
+      if (matchedCustomerIds.length > 0) {
+        orConditions.push('order.customerId IN (:...matchedCustomerIds)');
+        orParams.matchedCustomerIds = matchedCustomerIds;
+      }
+
+      queryBuilder.andWhere(`(${orConditions.join(' OR ')})`, orParams);
     } else if (orderNumber) {
       queryBuilder.andWhere('order.orderNumber LIKE :orderNumber', { orderNumber: `%${orderNumber}%` });
     }
@@ -503,24 +529,23 @@ router.get('/performance-manage', async (req: Request, res: Response) => {
     if (startDate) countBuilder.andWhere('order.createdAt >= :startDate', { startDate });
     if (endDate) countBuilder.andWhere('order.createdAt <= :endDate', { endDate: `${endDate} 23:59:59` });
 
-    // 🔥 批量搜索条件也要应用到count查询
-    if (batchKeywords) {
-      const keywordsStr = batchKeywords as string;
-      const keywordList = keywordsStr.split(/[\n,;，；\s]+/).map(k => k.trim()).filter(k => k.length > 0);
-      const limitedKeywords = keywordList.slice(0, 3000);
+    // 🔥 批量搜索条件也要应用到count查询（复用列表查询已计算好的 matchedCustomerIds，避免重复查询 customers 表）
+    if (limitedKeywords.length > 0) {
+      const orConditions: string[] = [];
+      const orParams: Record<string, any> = {};
 
-      if (limitedKeywords.length > 0) {
-        const orConditions: string[] = [];
-        const orParams: Record<string, any> = {};
+      limitedKeywords.forEach((keyword, index) => {
+        const paramKey = `kw${index}`;
+        orConditions.push(`(order.orderNumber LIKE :${paramKey} OR order.customerName LIKE :${paramKey} OR order.customerPhone LIKE :${paramKey})`);
+        orParams[paramKey] = `%${keyword}%`;
+      });
 
-        limitedKeywords.forEach((keyword, index) => {
-          const paramKey = `kw${index}`;
-          orConditions.push(`(order.orderNumber LIKE :${paramKey} OR order.customerName LIKE :${paramKey} OR order.customerPhone LIKE :${paramKey} OR EXISTS (SELECT 1 FROM customers c WHERE CONVERT(c.id USING utf8mb4) COLLATE utf8mb4_general_ci = CONVERT(order.customer_id USING utf8mb4) COLLATE utf8mb4_general_ci AND CAST(c.other_phones AS CHAR) LIKE :${paramKey}))`);
-          orParams[paramKey] = `%${keyword}%`;
-        });
-
-        countBuilder.andWhere(`(${orConditions.join(' OR ')})`, orParams);
+      if (matchedCustomerIds.length > 0) {
+        orConditions.push('order.customerId IN (:...matchedCustomerIds)');
+        orParams.matchedCustomerIds = matchedCustomerIds;
       }
+
+      countBuilder.andWhere(`(${orConditions.join(' OR ')})`, orParams);
     } else if (orderNumber) {
       countBuilder.andWhere('order.orderNumber LIKE :orderNumber', { orderNumber: `%${orderNumber}%` });
     }

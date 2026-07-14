@@ -8,6 +8,7 @@ import { ServiceOperationLog } from '../entities/ServiceOperationLog';
 import { authenticateToken } from '../middleware/auth';
 import { orderNotificationService } from '../services/OrderNotificationService';
 import { getTenantRepo } from '../utils/tenantRepo';
+import { findCustomerIdsByKeywords } from '../utils/customerSearchHelper';
 import { TenantContextManager } from '../utils/tenantContext';
 import { formatDateTime } from '../utils/dateFormat';
 import { log as logger } from '../config/logger';
@@ -126,12 +127,33 @@ router.get('/', authenticateToken, async (req: Request, res: Response) => {
 
     // 关键词搜索（支持：售后单号、订单号、客户姓名、客户电话、客户编码、物流单号、客户其他手机号）
     if (search) {
-      queryBuilder.andWhere(
-        '(service.serviceNumber LIKE :search OR service.customerName LIKE :search OR service.orderNumber LIKE :search OR service.customerPhone LIKE :search' +
-        ' OR EXISTS (SELECT 1 FROM customers c WHERE CONVERT(c.id USING utf8mb4) COLLATE utf8mb4_general_ci = CONVERT(service.customer_id USING utf8mb4) COLLATE utf8mb4_general_ci AND CONVERT(c.tenant_id USING utf8mb4) COLLATE utf8mb4_general_ci = CONVERT(service.tenant_id USING utf8mb4) COLLATE utf8mb4_general_ci AND (c.customer_code LIKE :search OR CAST(c.other_phones AS CHAR) LIKE :search))' +
-        ' OR EXISTS (SELECT 1 FROM orders o WHERE CONVERT(o.id USING utf8mb4) COLLATE utf8mb4_general_ci = CONVERT(service.order_id USING utf8mb4) COLLATE utf8mb4_general_ci AND CONVERT(o.tenant_id USING utf8mb4) COLLATE utf8mb4_general_ci = CONVERT(service.tenant_id USING utf8mb4) COLLATE utf8mb4_general_ci AND o.tracking_number LIKE :search))',
-        { search: `%${search}%` }
-      );
+      // 🔥 性能优化：先在 customers 表单次索引查询命中客户ID，替代逐行 EXISTS 关联子查询
+      const matchedCustomerIds = await findCustomerIdsByKeywords([search as string], { includeCustomerCode: true });
+      // 🔥 物流单号搜索同样改为两步查询：先在 orders 表查命中的订单ID（租户仓储自动隔离）
+      const matchedOrderRows = await getTenantRepo(Order)
+        .createQueryBuilder('o')
+        .select('o.id', 'id')
+        .andWhere('o.trackingNumber LIKE :search', { search: `%${search}%` })
+        .limit(5000)
+        .getRawMany();
+      const matchedOrderIds = matchedOrderRows.map((r: any) => r.id).filter(Boolean);
+
+      const orConditions = [
+        'service.serviceNumber LIKE :search',
+        'service.customerName LIKE :search',
+        'service.orderNumber LIKE :search',
+        'service.customerPhone LIKE :search'
+      ];
+      const searchParams: any = { search: `%${search}%` };
+      if (matchedCustomerIds.length > 0) {
+        orConditions.push('service.customerId IN (:...matchedCustomerIds)');
+        searchParams.matchedCustomerIds = matchedCustomerIds;
+      }
+      if (matchedOrderIds.length > 0) {
+        orConditions.push('service.orderId IN (:...matchedOrderIds)');
+        searchParams.matchedOrderIds = matchedOrderIds;
+      }
+      queryBuilder.andWhere(`(${orConditions.join(' OR ')})`, searchParams);
     }
 
     // 分页

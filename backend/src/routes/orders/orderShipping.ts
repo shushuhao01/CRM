@@ -8,6 +8,7 @@ import { Order } from '../../entities/Order';
 import { Customer } from '../../entities/Customer';
 import { getTenantRepo } from '../../utils/tenantRepo';
 import { formatToBeijingTime, formatLocalDate } from './orderHelpers';
+import { findCustomerIdsByKeywords } from '../../utils/customerSearchHelper';
 import { log } from '../../config/logger';
 export function registerShippingRoutes(router: Router): void {router.get('/shipping/pending', async (req: Request, res: Response) => {
   try {
@@ -37,10 +38,20 @@ export function registerShippingRoutes(router: Router): void {router.get('/shipp
 
     // 🔥 支持综合关键词搜索（订单号 OR 客户名称 OR 手机号 OR 客户编码 OR 客户其他手机号）
     if (keyword) {
-      queryBuilder.andWhere(
-        '(order.orderNumber LIKE :keyword OR order.customerName LIKE :keyword OR order.customerPhone LIKE :keyword OR order.customerId LIKE :keyword OR EXISTS (SELECT 1 FROM customers c WHERE CONVERT(c.id USING utf8mb4) COLLATE utf8mb4_general_ci = CONVERT(order.customer_id USING utf8mb4) COLLATE utf8mb4_general_ci AND CONVERT(c.tenant_id USING utf8mb4) COLLATE utf8mb4_general_ci = CONVERT(order.tenant_id USING utf8mb4) COLLATE utf8mb4_general_ci AND (c.customer_code LIKE :keyword OR CAST(c.other_phones AS CHAR) LIKE :keyword)))',
-        { keyword: `%${keyword}%` }
-      );
+      // 🔥 性能优化：先在 customers 表单次索引查询命中客户ID，替代逐行 EXISTS 关联子查询（CONVERT/COLLATE 导致索引失效）
+      const matchedCustomerIds = await findCustomerIdsByKeywords([keyword as string], { includeCustomerCode: true });
+      const keywordConditions = [
+        'order.orderNumber LIKE :keyword',
+        'order.customerName LIKE :keyword',
+        'order.customerPhone LIKE :keyword',
+        'order.customerId LIKE :keyword'
+      ];
+      const keywordParams: Record<string, unknown> = { keyword: `%${keyword}%` };
+      if (matchedCustomerIds.length > 0) {
+        keywordConditions.push('order.customerId IN (:...matchedCustomerIds)');
+        keywordParams.matchedCustomerIds = matchedCustomerIds;
+      }
+      queryBuilder.andWhere(`(${keywordConditions.join(' OR ')})`, keywordParams);
       log.info(`📦 [待发货订单] 综合关键词搜索: "${keyword}"`);
     } else {
       // 支持单独筛选
@@ -341,16 +352,41 @@ router.get('/shipping/shipped', authenticateToken, async (req: Request, res: Res
     }
 
     // 🔥 修复：支持关键词搜索（订单号 OR 客户名称 OR 物流单号 OR 手机号 OR 客户编码 OR 客户其他手机号）
+    // 🔥 性能优化：以下各分支互斥，每个请求只会执行一次 findCustomerIdsByKeywords，
+    // 替代逐行 EXISTS 关联子查询（CONVERT/COLLATE 导致索引失效）
     if (keyword) {
       // 统一关键词搜索：支持订单号、客户名称、物流单号、手机号、客户编码、客户其他手机号
-      queryBuilder.andWhere(
-        '(order.orderNumber LIKE :keyword OR order.customerName LIKE :keyword OR order.trackingNumber LIKE :keyword OR order.customerPhone LIKE :keyword OR order.customerId LIKE :keyword OR EXISTS (SELECT 1 FROM customers c WHERE CONVERT(c.id USING utf8mb4) COLLATE utf8mb4_general_ci = CONVERT(order.customer_id USING utf8mb4) COLLATE utf8mb4_general_ci AND CONVERT(c.tenant_id USING utf8mb4) COLLATE utf8mb4_general_ci = CONVERT(order.tenant_id USING utf8mb4) COLLATE utf8mb4_general_ci AND (c.customer_code LIKE :keyword OR CAST(c.other_phones AS CHAR) LIKE :keyword)))',
-        { keyword: `%${keyword}%` }
-      );
+      const matchedCustomerIds = await findCustomerIdsByKeywords([keyword as string], { includeCustomerCode: true });
+      const keywordConditions = [
+        'order.orderNumber LIKE :keyword',
+        'order.customerName LIKE :keyword',
+        'order.trackingNumber LIKE :keyword',
+        'order.customerPhone LIKE :keyword',
+        'order.customerId LIKE :keyword'
+      ];
+      const keywordParams: Record<string, unknown> = { keyword: `%${keyword}%` };
+      if (matchedCustomerIds.length > 0) {
+        keywordConditions.push('order.customerId IN (:...matchedCustomerIds)');
+        keywordParams.matchedCustomerIds = matchedCustomerIds;
+      }
+      queryBuilder.andWhere(`(${keywordConditions.join(' OR ')})`, keywordParams);
       log.info(`🚚 [已发货订单] 统一关键词搜索: "${keyword}"`);
     } else if (orderNumber && customerName && orderNumber === customerName) {
       // 如果订单号和客户名称相同，说明是同一个搜索关键词，使用 OR 条件
-      queryBuilder.andWhere('(order.orderNumber LIKE :kw OR order.customerName LIKE :kw OR order.trackingNumber LIKE :kw OR order.customerPhone LIKE :kw OR order.customerId LIKE :kw OR EXISTS (SELECT 1 FROM customers c WHERE CONVERT(c.id USING utf8mb4) COLLATE utf8mb4_general_ci = CONVERT(order.customer_id USING utf8mb4) COLLATE utf8mb4_general_ci AND CONVERT(c.tenant_id USING utf8mb4) COLLATE utf8mb4_general_ci = CONVERT(order.tenant_id USING utf8mb4) COLLATE utf8mb4_general_ci AND (c.customer_code LIKE :kw OR CAST(c.other_phones AS CHAR) LIKE :kw)))', { kw: `%${orderNumber}%` });
+      const matchedCustomerIds = await findCustomerIdsByKeywords([orderNumber as string], { includeCustomerCode: true });
+      const kwConditions = [
+        'order.orderNumber LIKE :kw',
+        'order.customerName LIKE :kw',
+        'order.trackingNumber LIKE :kw',
+        'order.customerPhone LIKE :kw',
+        'order.customerId LIKE :kw'
+      ];
+      const kwParams: Record<string, unknown> = { kw: `%${orderNumber}%` };
+      if (matchedCustomerIds.length > 0) {
+        kwConditions.push('order.customerId IN (:...matchedCustomerIds)');
+        kwParams.matchedCustomerIds = matchedCustomerIds;
+      }
+      queryBuilder.andWhere(`(${kwConditions.join(' OR ')})`, kwParams);
       log.info(`🚚 [已发货订单] 关键词搜索: "${orderNumber}"`);
     } else {
       // 分别筛选
@@ -361,10 +397,23 @@ router.get('/shipping/shipped', authenticateToken, async (req: Request, res: Res
         queryBuilder.andWhere('order.customerName LIKE :customerName', { customerName: `%${customerName}%` });
       }
       if (customerPhone) {
-        queryBuilder.andWhere('(order.customerPhone LIKE :customerPhone OR EXISTS (SELECT 1 FROM customers c WHERE CONVERT(c.id USING utf8mb4) COLLATE utf8mb4_general_ci = CONVERT(order.customer_id USING utf8mb4) COLLATE utf8mb4_general_ci AND CONVERT(c.tenant_id USING utf8mb4) COLLATE utf8mb4_general_ci = CONVERT(order.tenant_id USING utf8mb4) COLLATE utf8mb4_general_ci AND CAST(c.other_phones AS CHAR) LIKE :customerPhone))', { customerPhone: `%${customerPhone}%` });
+        const matchedCustomerIds = await findCustomerIdsByKeywords([customerPhone as string]);
+        const phoneConditions = ['order.customerPhone LIKE :customerPhone'];
+        const phoneParams: Record<string, unknown> = { customerPhone: `%${customerPhone}%` };
+        if (matchedCustomerIds.length > 0) {
+          phoneConditions.push('order.customerId IN (:...matchedCustomerIds)');
+          phoneParams.matchedCustomerIds = matchedCustomerIds;
+        }
+        queryBuilder.andWhere(`(${phoneConditions.join(' OR ')})`, phoneParams);
       }
       if (customerCode) {
-        queryBuilder.andWhere('EXISTS (SELECT 1 FROM customers c WHERE CONVERT(c.id USING utf8mb4) COLLATE utf8mb4_general_ci = CONVERT(order.customer_id USING utf8mb4) COLLATE utf8mb4_general_ci AND CONVERT(c.tenant_id USING utf8mb4) COLLATE utf8mb4_general_ci = CONVERT(order.tenant_id USING utf8mb4) COLLATE utf8mb4_general_ci AND c.customer_code LIKE :customerCode)', { customerCode: `%${customerCode}%` });
+        const matchedCustomerIds = await findCustomerIdsByKeywords([customerCode as string], { fuzzy: false, includeCustomerCode: true });
+        if (matchedCustomerIds.length > 0) {
+          queryBuilder.andWhere('order.customerId IN (:...matchedCustomerIds)', { matchedCustomerIds });
+        } else {
+          // 客户编码无命中时保持原语义：该条件应过滤掉所有记录
+          queryBuilder.andWhere('1 = 0');
+        }
       }
     }
     if (trackingNumber) {
@@ -586,10 +635,20 @@ router.get('/shipping/returned', authenticateToken, async (req: Request, res: Re
 
     // 🔥 支持综合关键词搜索(订单号 OR 客户名称 OR 手机号 OR 客户编码 OR 客户其他手机号)
     if (keyword) {
-      queryBuilder.andWhere(
-        '(order.orderNumber LIKE :keyword OR order.customerName LIKE :keyword OR order.customerPhone LIKE :keyword OR order.customerId LIKE :keyword OR EXISTS (SELECT 1 FROM customers c WHERE CONVERT(c.id USING utf8mb4) COLLATE utf8mb4_general_ci = CONVERT(order.customer_id USING utf8mb4) COLLATE utf8mb4_general_ci AND CONVERT(c.tenant_id USING utf8mb4) COLLATE utf8mb4_general_ci = CONVERT(order.tenant_id USING utf8mb4) COLLATE utf8mb4_general_ci AND (c.customer_code LIKE :keyword OR CAST(c.other_phones AS CHAR) LIKE :keyword)))',
-        { keyword: `%${keyword}%` }
-      );
+      // 🔥 性能优化：先在 customers 表单次索引查询命中客户ID，替代逐行 EXISTS 关联子查询（CONVERT/COLLATE 导致索引失效）
+      const matchedCustomerIds = await findCustomerIdsByKeywords([keyword as string], { includeCustomerCode: true });
+      const keywordConditions = [
+        'order.orderNumber LIKE :keyword',
+        'order.customerName LIKE :keyword',
+        'order.customerPhone LIKE :keyword',
+        'order.customerId LIKE :keyword'
+      ];
+      const keywordParams: Record<string, unknown> = { keyword: `%${keyword}%` };
+      if (matchedCustomerIds.length > 0) {
+        keywordConditions.push('order.customerId IN (:...matchedCustomerIds)');
+        keywordParams.matchedCustomerIds = matchedCustomerIds;
+      }
+      queryBuilder.andWhere(`(${keywordConditions.join(' OR ')})`, keywordParams);
       log.info(`📦 [退回订单] 综合关键词搜索: "${keyword}"`);
     } else {
       if (orderNumber) {
@@ -777,10 +836,20 @@ router.get('/shipping/cancelled', authenticateToken, async (req: Request, res: R
 
     // 🔥 支持综合关键词搜索
     if (keyword) {
-      queryBuilder.andWhere(
-        '(order.orderNumber LIKE :keyword OR order.customerName LIKE :keyword OR order.customerPhone LIKE :keyword OR order.customerId LIKE :keyword OR EXISTS (SELECT 1 FROM customers c WHERE CONVERT(c.id USING utf8mb4) COLLATE utf8mb4_general_ci = CONVERT(order.customer_id USING utf8mb4) COLLATE utf8mb4_general_ci AND CONVERT(c.tenant_id USING utf8mb4) COLLATE utf8mb4_general_ci = CONVERT(order.tenant_id USING utf8mb4) COLLATE utf8mb4_general_ci AND (c.customer_code LIKE :keyword OR CAST(c.other_phones AS CHAR) LIKE :keyword)))',
-        { keyword: `%${keyword}%` }
-      );
+      // 🔥 性能优化：先在 customers 表单次索引查询命中客户ID，替代逐行 EXISTS 关联子查询（CONVERT/COLLATE 导致索引失效）
+      const matchedCustomerIds = await findCustomerIdsByKeywords([keyword as string], { includeCustomerCode: true });
+      const keywordConditions = [
+        'order.orderNumber LIKE :keyword',
+        'order.customerName LIKE :keyword',
+        'order.customerPhone LIKE :keyword',
+        'order.customerId LIKE :keyword'
+      ];
+      const keywordParams: Record<string, unknown> = { keyword: `%${keyword}%` };
+      if (matchedCustomerIds.length > 0) {
+        keywordConditions.push('order.customerId IN (:...matchedCustomerIds)');
+        keywordParams.matchedCustomerIds = matchedCustomerIds;
+      }
+      queryBuilder.andWhere(`(${keywordConditions.join(' OR ')})`, keywordParams);
     } else {
       if (orderNumber) {
         queryBuilder.andWhere('order.orderNumber LIKE :orderNumber', { orderNumber: `%${orderNumber}%` });
@@ -953,10 +1022,19 @@ router.get('/shipping/draft', authenticateToken, async (req: Request, res: Respo
 
     // 🔥 支持综合关键词搜索
     if (keyword) {
-      queryBuilder.andWhere(
-        '(order.orderNumber LIKE :keyword OR order.customerName LIKE :keyword OR order.customerPhone LIKE :keyword OR EXISTS (SELECT 1 FROM customers c WHERE CONVERT(c.id USING utf8mb4) COLLATE utf8mb4_general_ci = CONVERT(order.customer_id USING utf8mb4) COLLATE utf8mb4_general_ci AND CONVERT(c.tenant_id USING utf8mb4) COLLATE utf8mb4_general_ci = CONVERT(order.tenant_id USING utf8mb4) COLLATE utf8mb4_general_ci AND (c.customer_code LIKE :keyword OR CAST(c.other_phones AS CHAR) LIKE :keyword)))',
-        { keyword: `%${keyword}%` }
-      );
+      // 🔥 性能优化：先在 customers 表单次索引查询命中客户ID，替代逐行 EXISTS 关联子查询（CONVERT/COLLATE 导致索引失效）
+      const matchedCustomerIds = await findCustomerIdsByKeywords([keyword as string], { includeCustomerCode: true });
+      const keywordConditions = [
+        'order.orderNumber LIKE :keyword',
+        'order.customerName LIKE :keyword',
+        'order.customerPhone LIKE :keyword'
+      ];
+      const keywordParams: Record<string, unknown> = { keyword: `%${keyword}%` };
+      if (matchedCustomerIds.length > 0) {
+        keywordConditions.push('order.customerId IN (:...matchedCustomerIds)');
+        keywordParams.matchedCustomerIds = matchedCustomerIds;
+      }
+      queryBuilder.andWhere(`(${keywordConditions.join(' OR ')})`, keywordParams);
     } else {
       if (orderNumber) {
         queryBuilder.andWhere('order.orderNumber LIKE :orderNumber', { orderNumber: `%${orderNumber}%` });

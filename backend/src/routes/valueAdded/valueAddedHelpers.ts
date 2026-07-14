@@ -170,10 +170,15 @@ export async function syncOrdersToValueAddedOptimized() {
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
+    // 🔥 修复：老订单晚签收会永远错过同步窗口（原来只按下单时间created_at过滤30天）
+    // 改为：下单时间/签收时间/状态变更时间 任一在30天内即纳入同步
     const orders = await orderRepo
       .createQueryBuilder('order')
       .where('order.status IN (:...statuses)', { statuses: ['delivered', 'completed'] })
-      .andWhere('order.created_at >= :startDate', { startDate: thirtyDaysAgo })
+      .andWhere(
+        '(order.created_at >= :startDate OR order.delivered_at >= :startDate OR order.status_updated_at >= :startDate)',
+        { startDate: thirtyDaysAgo }
+      )
       .getMany();
 
     if (orders.length === 0) {

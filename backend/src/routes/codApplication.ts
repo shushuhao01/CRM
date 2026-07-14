@@ -12,6 +12,7 @@ import multer from 'multer';
 import path from 'path';
 import { sendSystemMessage, sendBatchSystemMessages } from '../services/messageService';
 import { getTenantRepo } from '../utils/tenantRepo';
+import { findCustomerIdsByKeywords } from '../utils/customerSearchHelper';
 import { createTenantDestination, getUploadUrl } from '../utils/tenantUploadHelper';
 
 import { log } from '../config/logger';
@@ -315,12 +316,24 @@ router.get('/my-list', authenticateToken, async (req: Request, res: Response) =>
     // 如果有关键词搜索，需要先从订单表查询（支持订单号、手机号、客户名称、客户编码、备用手机号、物流单号）
     let orderIds: string[] = [];
     if (keywords) {
+      // 🔥 性能优化：先在 customers 表单次索引查询命中客户ID，替代逐行 EXISTS 关联子查询
+      const matchedCustomerIds = await findCustomerIdsByKeywords([keywords as string]);
+      const orConditions = [
+        'order.order_number LIKE :kw',
+        'order.customer_name LIKE :kw',
+        'order.customer_phone LIKE :kw',
+        'order.customer_id LIKE :kw',
+        'order.tracking_number LIKE :kw'
+      ];
+      const orderSearchParams: any = { kw: `%${keywords}%` };
+      if (matchedCustomerIds.length > 0) {
+        orConditions.push('order.customer_id IN (:...matchedCustomerIds)');
+        orderSearchParams.matchedCustomerIds = matchedCustomerIds;
+      }
       const orders = await orderRepo
         .createQueryBuilder('order')
         .select('order.id')
-        .andWhere('order.order_number LIKE :kw OR order.customer_name LIKE :kw OR order.customer_phone LIKE :kw OR order.customer_id LIKE :kw OR order.tracking_number LIKE :kw OR EXISTS (SELECT 1 FROM customers c WHERE CONVERT(c.id USING utf8mb4) COLLATE utf8mb4_general_ci = CONVERT(order.customer_id USING utf8mb4) COLLATE utf8mb4_general_ci AND CONVERT(c.tenant_id USING utf8mb4) COLLATE utf8mb4_general_ci = CONVERT(order.tenant_id USING utf8mb4) COLLATE utf8mb4_general_ci AND CAST(c.other_phones AS CHAR) LIKE :kw)', {
-          kw: `%${keywords}%`
-        })
+        .andWhere(`(${orConditions.join(' OR ')})`, orderSearchParams)
         .getMany();
       orderIds = orders.map(o => o.id);
     }
@@ -408,12 +421,24 @@ router.get('/review-list', authenticateToken, async (req: Request, res: Response
     // 如果有关键词搜索，需要先从订单表查询（支持订单号、手机号、客户名称、客户编码、备用手机号、物流单号）
     let orderIds: string[] = [];
     if (keywords) {
+      // 🔥 性能优化：先在 customers 表单次索引查询命中客户ID，替代逐行 EXISTS 关联子查询
+      const matchedCustomerIds = await findCustomerIdsByKeywords([keywords as string]);
+      const orConditions = [
+        'order.order_number LIKE :kw',
+        'order.customer_name LIKE :kw',
+        'order.customer_phone LIKE :kw',
+        'order.customer_id LIKE :kw',
+        'order.tracking_number LIKE :kw'
+      ];
+      const orderSearchParams: any = { kw: `%${keywords}%` };
+      if (matchedCustomerIds.length > 0) {
+        orConditions.push('order.customer_id IN (:...matchedCustomerIds)');
+        orderSearchParams.matchedCustomerIds = matchedCustomerIds;
+      }
       const orders = await orderRepo
         .createQueryBuilder('order')
         .select('order.id')
-        .andWhere('order.order_number LIKE :kw OR order.customer_name LIKE :kw OR order.customer_phone LIKE :kw OR order.customer_id LIKE :kw OR order.tracking_number LIKE :kw OR EXISTS (SELECT 1 FROM customers c WHERE CONVERT(c.id USING utf8mb4) COLLATE utf8mb4_general_ci = CONVERT(order.customer_id USING utf8mb4) COLLATE utf8mb4_general_ci AND CONVERT(c.tenant_id USING utf8mb4) COLLATE utf8mb4_general_ci = CONVERT(order.tenant_id USING utf8mb4) COLLATE utf8mb4_general_ci AND CAST(c.other_phones AS CHAR) LIKE :kw)', {
-          kw: `%${keywords}%`
-        })
+        .andWhere(`(${orConditions.join(' OR ')})`, orderSearchParams)
         .getMany();
       orderIds = orders.map(o => o.id);
     }
