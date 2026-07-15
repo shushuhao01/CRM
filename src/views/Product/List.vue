@@ -1198,7 +1198,7 @@ import { useDepartmentStore } from '@/stores/department'
 import { productApi } from '@/api/product'
 import DynamicTable from '@/components/DynamicTable.vue'
 import { createSafeNavigator } from '@/utils/navigation'
-import { formatDateTime } from '@/utils/dateFormat'
+import { formatDateTime } from '@/utils/date'
 
 // 接口定义
 interface Product {
@@ -2575,7 +2575,7 @@ const handleExport = async () => {
       item.stock || 0,
       item.salesCount || 0,
       item.status === 'active' ? '上架' : '下架',
-      item.createTime || ''
+      item.createTime ? formatDateTime(item.createTime) : ''
     ])
 
     // 创建工作表数据（标题行 + 数据行）

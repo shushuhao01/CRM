@@ -660,23 +660,8 @@ const getOpTagType = (type: string): string => {
   }
 }
 
-// 格式化操作时间（北京时间格式）
-const formatLogTime = (time: string): string => {
-  if (!time) return '-'
-  try {
-    const d = new Date(time)
-    const beijing = new Date(d.getTime() + (d.getTimezoneOffset() + 8 * 60) * 60000)
-    const y = beijing.getFullYear()
-    const m = String(beijing.getMonth() + 1).padStart(2, '0')
-    const day = String(beijing.getDate()).padStart(2, '0')
-    const h = String(beijing.getHours()).padStart(2, '0')
-    const min = String(beijing.getMinutes()).padStart(2, '0')
-    const s = String(beijing.getSeconds()).padStart(2, '0')
-    return `${y}-${m}-${day} ${h}:${min}:${s}`
-  } catch {
-    return time
-  }
-}
+// 格式化操作时间（北京时间）
+const formatLogTime = (time: string): string => formatDateTime(time)
 const loadDepartments = async () => { try { const r = await getCodDepartments() as any; departments.value = r || [] } catch (e) { console.error(e) } }
 const loadSalesUsers = async () => { try { const r = await getCodSalesUsers(departmentFilter.value) as any; salesUsers.value = r || [] } catch (e) { console.error(e) } }
 

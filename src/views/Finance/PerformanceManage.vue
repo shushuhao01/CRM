@@ -458,6 +458,7 @@ import { useDepartmentStore } from '@/stores/department'
 import { useUserStore } from '@/stores/user'
 import { getLogisticsInfoStyle } from '@/utils/logisticsStatusConfig'
 import { getOrderStatusText as getUnifiedOrderStatusText, getOrderStatusTagType as getUnifiedOrderStatusTagType } from '@/utils/orderStatusConfig'
+import { formatDate, formatDateTime } from '@/utils/date'
 // getDepartmentMembers 需要 admin 权限，经理改用 /users/department-members
 import api from '@/utils/request'
 
@@ -1039,23 +1040,8 @@ const getOpTagType = (type: string): string => {
   }
 }
 
-// 格式化操作时间（北京时间格式）
-const formatLogTime = (time: string): string => {
-  if (!time) return '-'
-  try {
-    const d = new Date(time)
-    const beijing = new Date(d.getTime() + (d.getTimezoneOffset() + 8 * 60) * 60000)
-    const y = beijing.getFullYear()
-    const m = String(beijing.getMonth() + 1).padStart(2, '0')
-    const day = String(beijing.getDate()).padStart(2, '0')
-    const h = String(beijing.getHours()).padStart(2, '0')
-    const min = String(beijing.getMinutes()).padStart(2, '0')
-    const s = String(beijing.getSeconds()).padStart(2, '0')
-    return `${y}-${m}-${day} ${h}:${min}:${s}`
-  } catch {
-    return time
-  }
-}
+// 格式化操作时间（北京时间）
+const formatLogTime = (time: string): string => formatDateTime(time)
 
 // 加载统计数据
 const loadStatistics = async () => {
@@ -1523,10 +1509,7 @@ const _showLogisticsDialog = (row: PerformanceOrder) => {
 }
 
 // 格式化
-const formatDate = (date: string) => {
-  if (!date) return '-'
-  return date.substring(0, 10)
-}
+// formatDate 由 @/utils/date 提供（北京时间 YYYY-MM-DD）
 
 const formatDateStr = (date: Date) => {
   const y = date.getFullYear()

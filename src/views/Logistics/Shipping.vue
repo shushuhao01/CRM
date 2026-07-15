@@ -991,7 +991,7 @@ import ReturnOrderDialog from './components/ReturnOrderDialog.vue'
 import CancelOrderDialog from './components/CancelOrderDialog.vue'
 import SenderInfoDialog from './components/SenderInfoDialog.vue'
 import DynamicTable from '@/components/DynamicTable.vue'
-import { formatDateTime } from '@/utils/dateFormat'
+import { formatDateTime } from '@/utils/date'
 import { useOperationLog } from '@/components/OperationLog/useOperationLog'
 import OperationLogDialog from '@/components/OperationLog/OperationLogDialog.vue'
 
@@ -1105,13 +1105,7 @@ const getShippingOpTagType = (type: string): string => {
   return map[type] || 'info'
 }
 
-const formatShippingOpLogTime = (time: string): string => {
-  if (!time) return '-'
-  try {
-    const d = new Date(time)
-    return d.toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })
-  } catch { return time }
-}
+const formatShippingOpLogTime = (time: string): string => formatDateTime(time)
 
 // 表格标题
 const tableTitle = computed(() => {

@@ -315,7 +315,7 @@ import {
   calculateEstimatedDelivery,
   formatEstimatedDeliveryText
 } from '@/utils/logisticsStatusConfig'
-import { formatDateTime } from '@/utils/dateFormat'
+import { formatDateTime } from '@/utils/date'
 
 interface LogisticsItem {
   id: string | number // 🔥 修复：支持UUID字符串和数字ID
@@ -364,13 +364,7 @@ const getLogisticsOpTagType = (type: string): string => {
   return map[type] || 'info'
 }
 
-const formatLogisticsOpLogTime = (time: string): string => {
-  if (!time) return '-'
-  try {
-    const d = new Date(time)
-    return d.toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })
-  } catch { return time }
-}
+const formatLogisticsOpLogTime = (time: string): string => formatDateTime(time)
 
 // 🔥 销售人员列表 - 用于筛选
 const salesUserList = computed(() => {

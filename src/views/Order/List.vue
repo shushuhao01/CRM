@@ -243,7 +243,7 @@
         pageSize: pagination.size,
         total: pagination.total
       }"
-      :page-sizes="[10, 20, 50, 100, 200, 300, 500, 1000, 2000, 3000, 5000]"
+      :page-sizes="[10, 20, 50, 100, 200, 300]"
       @selection-change="handleSelectionChange"
       @sort-change="handleSortChange"
       @size-change="handleSizeChange"
@@ -595,7 +595,7 @@
             <el-pagination
               v-model:current-page="pendingPagination.page"
               v-model:page-size="pendingPagination.pageSize"
-              :page-sizes="[10, 20, 50, 100, 200, 500, 1000, 2000, 5000]"
+              :page-sizes="[10, 20, 50, 100, 200, 300]"
               :total="pendingPagination.total"
               layout="sizes, prev, pager, next, jumper"
               @size-change="handlePendingPageSizeChange"
@@ -665,7 +665,7 @@
             <el-pagination
               v-model:current-page="auditedPagination.page"
               v-model:page-size="auditedPagination.pageSize"
-              :page-sizes="[10, 20, 50, 100, 200, 500, 1000, 2000, 5000]"
+              :page-sizes="[10, 20, 50, 100, 200, 300]"
               :total="auditedPagination.total"
               layout="sizes, prev, pager, next, jumper"
               @size-change="handleAuditedPageSizeChange"
@@ -707,7 +707,7 @@ import { createSafeNavigator } from '@/utils/navigation'
 import { displaySensitiveInfo as displaySensitiveInfoNew } from '@/utils/sensitiveInfo'
 import { SensitiveInfoType } from '@/services/permission'
 import { getOrderStatusStyle, getOrderStatusText as getUnifiedStatusText } from '@/utils/orderStatusConfig'
-import { formatDateTime } from '@/utils/dateFormat'
+import { formatDateTime } from '@/utils/date'
 import DynamicTable from '@/components/DynamicTable.vue'
 import { useOrderFieldConfigStore } from '@/stores/orderFieldConfig'
 

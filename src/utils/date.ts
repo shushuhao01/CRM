@@ -1,14 +1,16 @@
 /**
  * 日期时间格式化工具
- * 统一处理各种日期格式，转换为北京时间格式（UTC+8）
- * 所有日期显示统一使用此工具，确保全系统时间一致
+ * 统一处理各种日期格式，转换为北京时间格式（Asia/Shanghai, UTC+8）
+ * 所有日期显示与导出统一使用此工具，确保全系统时间一致
  */
 
+const BEIJING_TZ = 'Asia/Shanghai'
+
 /**
- * 将日期输入转换为北京时间的Date对象
+ * 将日期输入解析为 Date 对象
  * 支持：Date对象、ISO字符串、MySQL datetime、普通日期字符串
  */
-const toBeijingDate = (dateInput: Date | string | null | undefined): Date | null => {
+const parseDate = (dateInput: Date | string | null | undefined): Date | null => {
   if (!dateInput) return null
 
   try {
@@ -17,17 +19,18 @@ const toBeijingDate = (dateInput: Date | string | null | undefined): Date | null
     if (dateInput instanceof Date) {
       date = dateInput
     } else if (typeof dateInput === 'string') {
-      // MySQL datetime格式: "2026-03-27 10:30:00" (已是北京时间，无需转换)
-      // 但 new Date() 会将其当作本地时区解析
-      // ISO格式: "2026-03-27T02:30:00.000Z" (UTC时间)
       const str = dateInput.trim()
+      if (!str) return null
 
-      if (str.includes('T') && (str.endsWith('Z') || str.includes('+'))) {
-        // ISO格式 - new Date 会正确处理
+      if (str.includes('T') && (str.endsWith('Z') || /[+-]\d{2}:?\d{2}$/.test(str))) {
+        // ISO 带时区：按 UTC/偏移正确解析
         date = new Date(str)
       } else if (/^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}/.test(str)) {
-        // MySQL datetime格式 "YYYY-MM-DD HH:mm:ss" - 直接作为本地时间解析
-        date = new Date(str.replace(' ', 'T'))
+        // MySQL datetime "YYYY-MM-DD HH:mm:ss"：按北京时间理解（后端存的是东八区本地时间）
+        date = new Date(str.replace(' ', 'T') + '+08:00')
+      } else if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
+        // 纯日期：按北京时间当天 00:00
+        date = new Date(str + 'T00:00:00+08:00')
       } else {
         date = new Date(str)
       }
@@ -43,25 +46,46 @@ const toBeijingDate = (dateInput: Date | string | null | undefined): Date | null
 }
 
 /**
+ * 用 Intl 按北京时区格式化（不依赖浏览器本地时区）
+ */
+const formatParts = (date: Date, withTime: boolean, withSeconds: boolean): string => {
+  const options: Intl.DateTimeFormatOptions = {
+    timeZone: BEIJING_TZ,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    ...(withTime
+      ? {
+          hour: '2-digit',
+          minute: '2-digit',
+          ...(withSeconds ? { second: '2-digit' } : {}),
+          hour12: false
+        }
+      : {})
+  }
+
+  // 使用 en-CA 得到 YYYY-MM-DD，再拼时间；避免 zh-CN 的斜杠分隔
+  const parts = new Intl.DateTimeFormat('en-CA', options).formatToParts(date)
+  const get = (type: string) => parts.find(p => p.type === type)?.value || ''
+
+  const ymd = `${get('year')}-${get('month')}-${get('day')}`
+  if (!withTime) return ymd
+
+  const h = get('hour')
+  const m = get('minute')
+  const s = get('second')
+  return withSeconds ? `${ymd} ${h}:${m}:${s}` : `${ymd} ${h}:${m}`
+}
+
+/**
  * 格式化时间为北京时间格式 (YYYY-MM-DD HH:mm:ss)
- * @param dateInput 日期输入（Date对象、ISO字符串、普通日期字符串等）
- * @returns 格式化后的日期字符串
  */
 export const formatTime = (dateInput: Date | string | null | undefined): string => {
   if (!dateInput) return '-'
-
-  const date = toBeijingDate(dateInput)
+  const date = parseDate(dateInput)
   if (!date) return dateInput?.toString() || '-'
-
   try {
-    const year = date.getFullYear()
-    const month = String(date.getMonth() + 1).padStart(2, '0')
-    const day = String(date.getDate()).padStart(2, '0')
-    const hours = String(date.getHours()).padStart(2, '0')
-    const minutes = String(date.getMinutes()).padStart(2, '0')
-    const seconds = String(date.getSeconds()).padStart(2, '0')
-
-    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`
+    return formatParts(date, true, true)
   } catch {
     return dateInput?.toString() || '-'
   }
@@ -69,33 +93,29 @@ export const formatTime = (dateInput: Date | string | null | undefined): string 
 
 /**
  * 格式化日期为北京时间格式 (YYYY-MM-DD)
- * @param dateInput 日期输入
- * @returns 格式化后的日期字符串
  */
 export const formatDate = (dateInput: Date | string | null | undefined): string => {
   if (!dateInput) return '-'
-
-  const date = toBeijingDate(dateInput)
+  const date = parseDate(dateInput)
   if (!date) return dateInput?.toString() || '-'
-
   try {
-
-    const year = date.getFullYear()
-    const month = String(date.getMonth() + 1).padStart(2, '0')
-    const day = String(date.getDate()).padStart(2, '0')
-
-    return `${year}-${month}-${day}`
+    return formatParts(date, false, false)
   } catch {
     return dateInput?.toString() || '-'
   }
 }
 
 /**
- * 格式化日期时间为友好格式
- * @param dateInput 日期输入
- * @param showSeconds 是否显示秒数
- * @returns 格式化后的日期字符串
+ * 格式化日期时间为北京时间
+ * @param showSeconds 是否显示秒数，默认 true → YYYY-MM-DD HH:mm:ss；false → YYYY-MM-DD HH:mm
  */
 export const formatDateTime = (dateInput: Date | string | null | undefined, showSeconds: boolean = true): string => {
-  return showSeconds ? formatTime(dateInput) : formatTime(dateInput).slice(0, 16)
+  if (!dateInput) return '-'
+  const date = parseDate(dateInput)
+  if (!date) return dateInput?.toString() || '-'
+  try {
+    return formatParts(date, true, showSeconds)
+  } catch {
+    return dateInput?.toString() || '-'
+  }
 }

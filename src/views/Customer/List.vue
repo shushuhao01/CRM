@@ -577,7 +577,7 @@ import CustomerBatchShare from '@/components/CustomerBatchShare.vue'
 import { createSafeNavigator } from '@/utils/navigation'
 import customerShareApi, { type ShareRequest } from '@/api/customerShare'
 import { api } from '@/api/request'
-import { formatDateTime } from '@/utils/dateFormat'
+import { formatDateTime } from '@/utils/date'
 
 // 接口定义
 interface Customer {
@@ -1890,7 +1890,7 @@ const handleExport = async () => {
           '订单数量': customer.orderCount,
           '负责销售': salesPerson?.name || '未分配',
           '创建人': createdByUser?.name || '未知',
-          '创建时间': customer.createTime
+          '创建时间': customer.createTime ? formatDateTime(customer.createTime) : ''
         }
       })
 

@@ -404,7 +404,7 @@
       <el-pagination
         v-model:current-page="pagination.page"
         v-model:page-size="pagination.pageSize"
-        :page-sizes="[10, 20, 30, 50, 100, 300, 500, 1000, 2000, 3000, 5000]"
+        :page-sizes="[10, 20, 30, 50, 100, 300]"
         :total="pagination.total"
         layout="total, sizes, prev, pager, next, jumper"
         @size-change="handleSizeChange"
@@ -921,6 +921,7 @@ import {
 import ValueAddedConfigDialog from './components/ValueAddedConfigDialog.vue'
 import PriceTierDialog from './components/PriceTierDialog.vue'
 import TrackingDialog from '@/components/Logistics/TrackingDialog.vue'
+import { formatDate, formatDateTime } from '@/utils/date'
 
 const router = useRouter()
 
@@ -1197,11 +1198,7 @@ const getSettlementStatusLabel = (status: string) => {
   return builtinMap[status] || status
 }
 
-// 格式化日期
-const formatDate = (dateStr: string) => {
-  if (!dateStr) return '-'
-  return dateStr.split('T')[0]
-}
+// 格式化日期（北京时间 YYYY-MM-DD）—— 由 @/utils/date 的 formatDate 提供
 
 // 获取订单状态类型
 const getOrderStatusType = (status: string) => {
@@ -1435,24 +1432,8 @@ const getOpTagType = (type: string): string => {
   }
 }
 
-// 格式化操作时间（北京时间格式）
-const formatLogTime = (time: string): string => {
-  if (!time) return '-'
-  try {
-    const d = new Date(time)
-    // 转换为北京时间显示（UTC+8）
-    const beijing = new Date(d.getTime() + (d.getTimezoneOffset() + 8 * 60) * 60000)
-    const y = beijing.getFullYear()
-    const m = String(beijing.getMonth() + 1).padStart(2, '0')
-    const day = String(beijing.getDate()).padStart(2, '0')
-    const h = String(beijing.getHours()).padStart(2, '0')
-    const min = String(beijing.getMinutes()).padStart(2, '0')
-    const s = String(beijing.getSeconds()).padStart(2, '0')
-    return `${y}-${m}-${day} ${h}:${min}:${s}`
-  } catch {
-    return time
-  }
-}
+// 格式化操作时间（北京时间）
+const formatLogTime = (time: string): string => formatDateTime(time)
 
 // 加载统计数据
 const loadStats = async () => {
@@ -2085,7 +2066,7 @@ const buildExportRows = (rows: ValueAddedOrder[], logsMap: Record<string, any>) 
       客户电话: row.customerPhone || '',
       物流单号: row.trackingNumber || '',
       订单状态: getOrderStatusText(row.orderStatus || ''),
-      下单日期: row.orderDate || '',
+      下单日期: row.orderDate ? formatDate(row.orderDate) : '',
       外包公司: row.companyName || '',
       单价: currentUnitPrice,
       有效状态: getValidStatusLabel(row.status),

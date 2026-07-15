@@ -498,7 +498,11 @@ class AliyunCallService {
         }
 
         if (!body || body.code !== 'OK') {
-          throw new Error(`阿里云返回异常: ${body?.code || '未知'} - ${body?.message || ''}`);
+          // 保留阿里云错误码，便于 friendlyApiError 做针对性中文提示
+          const apiErr: any = new Error(`阿里云返回异常: ${body?.code || '未知'} - ${body?.message || ''}`);
+          apiErr.code = body?.code || 'Unknown';
+          apiErr.data = body;
+          throw apiErr;
         }
 
         providerCallId = body.data?.callContext?.jobId
@@ -888,13 +892,21 @@ class AliyunCallService {
   }
 
   private friendlyApiError(error: any): string {
-    const code = error?.code || error?.data?.Code || '';
+    const code = error?.code || error?.data?.Code || error?.data?.code || '';
     const msg = error?.message || '';
-    if (/socket disconnected|ECONNRESET|ETIMEDOUT|ReadTimeout|ConnectTimeout|ENOTFOUND|EAI_AGAIN/i.test(code + ' ' + msg)) {
+    const combined = `${code} ${msg}`;
+    if (/socket disconnected|ECONNRESET|ETIMEDOUT|ReadTimeout|ConnectTimeout|ENOTFOUND|EAI_AGAIN/i.test(combined)) {
       return '连接阿里云服务失败（网络波动），已自动重试仍未成功。请稍后再试；若频繁出现，请检查本机/服务器到 aliyuncs.com 的网络、防火墙或代理设置';
     }
-    if (code === 'NotExists.UserId') {
-      return '当前AccessKey对应的RAM账号不是该云联络中心实例的成员。请在阿里云云联络中心控制台进入该实例，在「坐席管理」中将此RAM账号添加为管理员';
+    // NotExists.UserId：可能是 AccessKey 对应的 RAM 未加入实例，也可能是号码分配里绑定的坐席 ID 不存在
+    if (/NotExists\.UserId/i.test(combined)) {
+      const userMatch = msg.match(/User\s+(\d+)/i);
+      const uid = userMatch ? userMatch[1] : '';
+      return `阿里云坐席/账号不存在（NotExists.UserId${uid ? `：${uid}` : ''}）。` +
+        '请按当前外呼方式排查：' +
+        '① 双呼模式：网络电话配置里的 AccessKey 对应的 RAM 账号必须已加入该云联络中心实例（控制台 → 该实例 → 坐席管理，添加为管理员或坐席）；' +
+        '② 软电话/硬话机模式：号码分配里绑定的「云联络中心坐席」必须是本实例里真实存在的坐席，请到「号码分配」重新选择或清空后重选；' +
+        '③ 确认实例 ID 填的是当前正式实例（截图中为 demo- 开头时多为试用演示实例）。';
     }
     if (/InvalidAccessKeyId/i.test(code) || /InvalidAccessKeyId/i.test(msg)) {
       return 'AccessKey ID 无效，请检查网络电话配置';
