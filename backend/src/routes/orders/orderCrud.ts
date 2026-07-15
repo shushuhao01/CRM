@@ -1234,15 +1234,15 @@ const VALID_STATUS_TRANSITIONS: Record<string, string[]> = {
   'pending_transfer': ['pending_audit'],                                    // 待流转 → 待审核
   'pending_audit': ['pending_shipment', 'audit_rejected', 'completed'], // 待审核 → 待发货/审核拒绝/虚拟待发货/直接完成
   'audit_rejected': ['pending_audit', 'cancelled'],                         // 审核拒绝 → 重新提审/取消
-  'pending_shipment': ['shipped', 'signed', 'logistics_returned', 'logistics_cancelled', 'cancelled'], // 待发货 → 已发货/已签收(虚拟)/退回/取消
-  'shipped': ['delivered', 'rejected', 'package_exception', 'logistics_returned'], // 已发货 → 已签收/拒收/异常/退回
+  'pending_shipment': ['shipped', 'signed', 'logistics_returned', 'logistics_cancelled', 'cancelled'], // 待发货 → 已发货/已签收(虚拟)/退回/取消（🔥 物流部退回仅限待发货订单的人工操作）
+  'shipped': ['delivered', 'rejected', 'package_exception', 'rejected_returned'], // 已发货 → 已签收/拒收/异常/拒收已退回（🔥 到货被拒收退回属拒收已退回，不是物流部退回）
   'delivered': ['after_sales_created'],                                     // 已签收 → 已建售后（终态，一般不变）
   'signed': ['after_sales_created'],                                        // 已签收（虚拟订单专用终态）
-  'rejected': ['rejected_returned'],                                        // 拒收 → 拒收已退回
+  'rejected': ['rejected_returned', 'delivered'],                           // 拒收 → 拒收已退回/重新派送签收（🔥 拒收不是终态）
   'rejected_returned': [],                                                  // 拒收已退回（终态）
   'logistics_returned': ['pending_shipment', 'cancelled'],                  // 物流退回 → 重新发货/取消
   'logistics_cancelled': ['cancelled'],                                     // 物流取消 → 已取消
-  'package_exception': ['shipped', 'rejected', 'cancelled'],                // 包裹异常 → 重新发货/拒收/取消
+  'package_exception': ['shipped', 'rejected', 'delivered', 'rejected_returned', 'cancelled'], // 包裹异常 → 重新发货/拒收/重新派送签收/拒收已退回/取消（🔥 包裹异常不是终态）
   'after_sales_created': [],                                                // 已建售后（终态）
   'completed': [],                                                          // 已完成（终态）
   'cancelled': []                                                           // 已取消（终态）

@@ -130,7 +130,7 @@
       :loading="loading"
       :show-selection="true"
       :show-index="false"
-      :page-sizes="[10, 20, 50, 100, 200, 500, 1000, 2000, 3000]"
+      :page-sizes="[10, 20, 50, 100, 200, 300]"
       :pagination="{
         currentPage: pagination.page,
         pageSize: pagination.size,
@@ -145,6 +145,10 @@
         <el-button type="primary" size="small" @click="handleManualRefresh" :loading="loading">
           <el-icon><Refresh /></el-icon>
           刷新
+        </el-button>
+        <el-button size="small" @click="handleExportByFilter" :loading="exportByFilterLoading">
+          <el-icon><Download /></el-icon>
+          导出筛选结果
         </el-button>
       </template>
       <!-- 物流单号列 -->
@@ -294,7 +298,7 @@ import { ref, reactive, onMounted, onUnmounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import axios from 'axios'
 import { ElMessage } from 'element-plus'
-import { Search, Refresh, RefreshLeft, CopyDocument } from '@element-plus/icons-vue'
+import { Search, Refresh, RefreshLeft, CopyDocument, Download } from '@element-plus/icons-vue'
 import DynamicTable from '@/components/DynamicTable.vue'
 import { useOperationLog } from '@/components/OperationLog/useOperationLog'
 import OperationLogDialog from '@/components/OperationLog/OperationLogDialog.vue'
@@ -698,6 +702,100 @@ const handleManualRefresh = async () => {
   }
 }
 
+// 🔥 订单→物流列表行转换（列表加载与"导出筛选结果"共用，保证展示口径一致）
+const transformOrderToLogisticsItem = (order: any) => {
+  // 🔥 智能映射物流状态：优先根据订单状态判断，确保已签收订单显示正确
+  let logisticsStatus = ''
+
+  // 🔥 修复：如果订单状态是已签收，物流状态也应该是已签收
+  if (order.status === 'delivered') {
+    logisticsStatus = 'delivered'
+  } else if (order.status === 'rejected' || order.status === 'rejected_returned') {
+    logisticsStatus = order.status === 'rejected_returned' ? 'returned' : 'rejected'
+  } else if (order.logisticsStatus) {
+    // 使用订单中已有的物流状态
+    logisticsStatus = order.logisticsStatus
+  } else {
+    // 根据订单状态和物流动态智能映射
+    logisticsStatus = mapOrderStatusToLogisticsStatus(order.status, order.latestLogisticsInfo || '')
+  }
+
+  // 🔥 预计送达时间处理：使用智能计算
+  let estimatedDate = ''
+  if (order.status !== 'delivered' && logisticsStatus !== 'delivered' &&
+      logisticsStatus !== 'rejected' && logisticsStatus !== 'returned') {
+    // 优先使用API返回的预计送达时间
+    const apiEstimated = order.expectedDeliveryDate || order.estimatedDeliveryTime || order.estimatedDelivery || order.estimatedDate || ''
+    // 如果没有API数据，使用智能计算
+    estimatedDate = apiEstimated || calculateEstimatedDelivery({
+      logisticsStatus,
+      companyCode: order.expressCompany || '',
+      shipDate: order.shippedAt || order.shippingTime || order.shipTime || order.createTime || '',
+      latestLogisticsInfo: order.latestLogisticsInfo || '',
+      existingEstimatedDate: apiEstimated
+    })
+  }
+
+  const customerPhone = order.receiverPhone || order.customerPhone || ''
+
+  // 🔥 判断是否是已完结的物流状态（不需要再请求API）
+  const isLogisticsFinished = ['delivered', 'rejected', 'rejected_returned', 'returned', 'cancelled'].includes(logisticsStatus)
+
+  return {
+    id: order.id,
+    orderId: order.id,
+    customerId: order.customerId,
+    trackingNo: order.trackingNumber || order.expressNo || '',
+    orderNo: order.orderNumber,
+    customerName: order.customerName,
+    company: order.expressCompany || '',
+    salesPersonName: (() => {
+      if (order.createdByName) return order.createdByName
+      if (order.salesPersonName) return order.salesPersonName
+      const user = userStore.users.find((u: any) => u.id === order.createdBy || u.username === order.createdBy) as any
+      return user?.realName || user?.name || order.createdBy || '-'
+    })(),
+    status: order.status || 'shipped',
+    destination: order.receiverAddress || order.shippingAddress || '',
+    shipDate: order.shippedAt || order.shippingTime || order.shipTime || order.createTime || '',
+    logisticsStatus,
+    // 🔥 修复：检查数据库中的latestLogisticsInfo是否正确
+    // 如果已完成订单的物流动态看起来像是揽收信息，则标记为需要重新查询
+    latestLogisticsInfo: (() => {
+      if (isLogisticsFinished && order.latestLogisticsInfo) {
+        const info = order.latestLogisticsInfo.toLowerCase()
+        // 如果是揽收信息但订单已签收，说明数据库中的值是错误的
+        const isPickupInfo = info.includes('揽收') || info.includes('收件') || info.includes('已收取') || info.includes('快件已收')
+        const isDeliveredStatus = logisticsStatus === 'delivered'
+        if (isPickupInfo && isDeliveredStatus) {
+          // 数据库中的值是错误的，需要重新查询
+          return '获取中...'
+        }
+        return order.latestLogisticsInfo
+      }
+      if (isLogisticsFinished) {
+        return order.latestLogisticsInfo || getFinishedStatusText(logisticsStatus)
+      }
+      return (order.trackingNumber || order.expressNo) ? '获取中...' : '暂无物流信息'
+    })(),
+    estimatedDate,
+    customerPhone,
+    // 🔥 修复：如果数据库中的latestLogisticsInfo是错误的，也需要重新查询
+    isLogisticsFinished: (() => {
+      if (isLogisticsFinished && order.latestLogisticsInfo) {
+        const info = order.latestLogisticsInfo.toLowerCase()
+        const isPickupInfo = info.includes('揽收') || info.includes('收件') || info.includes('已收取') || info.includes('快件已收')
+        const isDeliveredStatus = logisticsStatus === 'delivered'
+        if (isPickupInfo && isDeliveredStatus) {
+          // 数据库中的值是错误的，需要重新查询
+          return false
+        }
+      }
+      return isLogisticsFinished
+    })()
+  }
+}
+
 // 加载数据
 const loadData = async () => {
   loading.value = true
@@ -729,99 +827,7 @@ const loadData = async () => {
     pagination.total = apiTotal
 
     // 转换为物流列表格式
-    const logisticsData = shippedOrders.map((order: any) => {
-      // 🔥 智能映射物流状态：优先根据订单状态判断，确保已签收订单显示正确
-      let logisticsStatus = ''
-
-      // 🔥 修复：如果订单状态是已签收，物流状态也应该是已签收
-      if (order.status === 'delivered') {
-        logisticsStatus = 'delivered'
-      } else if (order.status === 'rejected' || order.status === 'rejected_returned') {
-        logisticsStatus = order.status === 'rejected_returned' ? 'returned' : 'rejected'
-      } else if (order.logisticsStatus) {
-        // 使用订单中已有的物流状态
-        logisticsStatus = order.logisticsStatus
-      } else {
-        // 根据订单状态和物流动态智能映射
-        logisticsStatus = mapOrderStatusToLogisticsStatus(order.status, order.latestLogisticsInfo || '')
-      }
-
-      // 🔥 预计送达时间处理：使用智能计算
-      let estimatedDate = ''
-      if (order.status !== 'delivered' && logisticsStatus !== 'delivered' &&
-          logisticsStatus !== 'rejected' && logisticsStatus !== 'returned') {
-        // 优先使用API返回的预计送达时间
-        const apiEstimated = order.expectedDeliveryDate || order.estimatedDeliveryTime || order.estimatedDelivery || order.estimatedDate || ''
-        // 如果没有API数据，使用智能计算
-        estimatedDate = apiEstimated || calculateEstimatedDelivery({
-          logisticsStatus,
-          companyCode: order.expressCompany || '',
-          shipDate: order.shippedAt || order.shippingTime || order.shipTime || order.createTime || '',
-          latestLogisticsInfo: order.latestLogisticsInfo || '',
-          existingEstimatedDate: apiEstimated
-        })
-      }
-
-      // 🔥 调试：打印手机号字段
-      const customerPhone = order.receiverPhone || order.customerPhone || ''
-
-      // 🔥 判断是否是已完结的物流状态（不需要再请求API）
-      const isLogisticsFinished = ['delivered', 'rejected', 'rejected_returned', 'returned', 'cancelled'].includes(logisticsStatus)
-
-      return {
-        id: order.id,
-        orderId: order.id,
-        customerId: order.customerId,
-        trackingNo: order.trackingNumber || order.expressNo || '',
-        orderNo: order.orderNumber,
-        customerName: order.customerName,
-        company: order.expressCompany || '',
-        salesPersonName: (() => {
-          if (order.createdByName) return order.createdByName
-          if (order.salesPersonName) return order.salesPersonName
-          const user = userStore.users.find((u: any) => u.id === order.createdBy || u.username === order.createdBy) as any
-          return user?.realName || user?.name || order.createdBy || '-'
-        })(),
-        status: order.status || 'shipped',
-        destination: order.receiverAddress || order.shippingAddress || '',
-        shipDate: order.shippedAt || order.shippingTime || order.shipTime || order.createTime || '',
-        logisticsStatus,
-        // 🔥 修复：检查数据库中的latestLogisticsInfo是否正确
-        // 如果已完成订单的物流动态看起来像是揽收信息，则标记为需要重新查询
-        latestLogisticsInfo: (() => {
-          if (isLogisticsFinished && order.latestLogisticsInfo) {
-            const info = order.latestLogisticsInfo.toLowerCase()
-            // 如果是揽收信息但订单已签收，说明数据库中的值是错误的
-            const isPickupInfo = info.includes('揽收') || info.includes('收件') || info.includes('已收取') || info.includes('快件已收')
-            const isDeliveredStatus = logisticsStatus === 'delivered'
-            if (isPickupInfo && isDeliveredStatus) {
-              // 数据库中的值是错误的，需要重新查询
-              return '获取中...'
-            }
-            return order.latestLogisticsInfo
-          }
-          if (isLogisticsFinished) {
-            return order.latestLogisticsInfo || getFinishedStatusText(logisticsStatus)
-          }
-          return (order.trackingNumber || order.expressNo) ? '获取中...' : '暂无物流信息'
-        })(),
-        estimatedDate,
-        customerPhone,
-        // 🔥 修复：如果数据库中的latestLogisticsInfo是错误的，也需要重新查询
-        isLogisticsFinished: (() => {
-          if (isLogisticsFinished && order.latestLogisticsInfo) {
-            const info = order.latestLogisticsInfo.toLowerCase()
-            const isPickupInfo = info.includes('揽收') || info.includes('收件') || info.includes('已收取') || info.includes('快件已收')
-            const isDeliveredStatus = logisticsStatus === 'delivered'
-            if (isPickupInfo && isDeliveredStatus) {
-              // 数据库中的值是错误的，需要重新查询
-              return false
-            }
-          }
-          return isLogisticsFinished
-        })()
-      }
-    })
+    const logisticsData = shippedOrders.map((order: any) => transformOrderToLogisticsItem(order))
 
     // 🔥 修复：直接使用API返回的数据，不再前端分页
     tableData.value = logisticsData
@@ -846,6 +852,135 @@ const loadData = async () => {
     total.value = 0
   } finally {
     loading.value = false
+  }
+}
+
+// 🔥 按当前筛选条件导出（不受翻页限制，自动分批拉取全部命中数据）
+const exportByFilterLoading = ref(false)
+const handleExportByFilter = async () => {
+  if (exportByFilterLoading.value) return
+  exportByFilterLoading.value = true
+
+  // 🔥 全屏进度提示：分批拉取耗时较长，避免用户以为"没反应"
+  const { ElLoading } = await import('element-plus')
+  const loadingInstance = ElLoading.service({ lock: true, text: '正在按筛选条件拉取数据，请稍候...' })
+  try {
+    const XLSX = await import('xlsx')
+    const { orderApi } = await import('@/api/order')
+
+    // 复用与列表加载完全一致的筛选参数（不含分页）
+    const baseParams: any = {
+      keyword: searchForm.keyword?.trim() || undefined,
+      trackingNumber: searchForm.trackingNo || undefined,
+      logisticsStatus: searchForm.status || undefined,
+      departmentId: searchForm.departmentId || undefined,
+      salesPersonId: searchForm.salesPersonId || undefined,
+      expressCompany: searchForm.company || undefined,
+      startDate: searchForm.dateRange?.[0] || undefined,
+      endDate: searchForm.dateRange?.[1] || undefined,
+      excludeVirtualDelivery: 'true'
+    }
+
+    // 分批拉取全部命中数据（每批300条，上限20000条防止误操作）
+    const EXPORT_BATCH_SIZE = 300
+    const EXPORT_MAX_ROWS = 20000
+    const allOrders: any[] = []
+    let page = 1
+    let total = 0
+    do {
+      const response = await orderApi.getShippingShipped({ ...baseParams, page, pageSize: EXPORT_BATCH_SIZE })
+      const list = response?.data?.list || []
+      total = response?.data?.total || 0
+      if (list.length === 0) break
+      allOrders.push(...list)
+      loadingInstance.setText(`正在拉取数据：${allOrders.length}/${Math.min(total, EXPORT_MAX_ROWS)} 条...`)
+      page++
+    } while (allOrders.length < total && allOrders.length < EXPORT_MAX_ROWS && page <= Math.ceil(EXPORT_MAX_ROWS / EXPORT_BATCH_SIZE))
+
+    if (allOrders.length === 0) {
+      ElMessage.warning('当前筛选条件下没有可导出的数据')
+      return
+    }
+
+    // 与列表展示同一套行转换逻辑，保证口径一致
+    const allRows = allOrders.map(order => transformOrderToLogisticsItem(order))
+
+    // 分批加载操作日志（与列表"操作日志"列保持一致）
+    const logsMap: Record<string, any> = {}
+    try {
+      const { operationLogApi } = await import('@/api/operationLog')
+      const LOG_BATCH_SIZE = 100
+      for (let i = 0; i < allRows.length; i += LOG_BATCH_SIZE) {
+        const batchIds = allRows.slice(i, i + LOG_BATCH_SIZE).map((r: any) => r.id || r.orderId).filter(Boolean)
+        if (batchIds.length === 0) continue
+        const res: any = await operationLogApi.getLatestLogs('shipping', batchIds)
+        const data = res?.data?.data || res?.data || res || {}
+        if (typeof data === 'object' && data !== null && !Array.isArray(data)) {
+          Object.assign(logsMap, data)
+        }
+      }
+    } catch (e) {
+      console.error('加载导出操作日志失败:', e)
+    }
+
+    loadingInstance.setText(`正在生成Excel文件（共 ${allRows.length} 条）...`)
+    // 导出列与页面表格列一一对应
+    const exportData = allRows.map((row: any) => ({
+      物流单号: row.trackingNo || '',
+      订单号: row.orderNo || '',
+      客户姓名: row.customerName || '',
+      物流公司: getCompanyName(row.company),
+      销售人员: row.salesPersonName || '',
+      订单状态: getOrderStatusText(row.status),
+      发货时间: formatDateTime(row.shipDate),
+      物流状态: getLogisticsStatusText(row.logisticsStatus),
+      最新物流动态: row.latestLogisticsInfo === '获取中...' ? '' : (row.latestLogisticsInfo || ''),
+      预计送达: row.logisticsStatus === 'delivered'
+        ? '已签收'
+        : (row.logisticsStatus === 'rejected' || row.logisticsStatus === 'rejected_returned')
+          ? '已拒收'
+          : row.logisticsStatus === 'returned'
+            ? '已退回'
+            : (row.estimatedDate ? formatEstimatedDate(row.estimatedDate, row.logisticsStatus) : '-'),
+      目的地: row.destination || '',
+      操作日志: (() => {
+        const log = logsMap[row.id || row.orderId]
+        if (!log) return ''
+        const typeLabel = opLogLabels[log.operationType] || log.operationType
+        return `${typeLabel}：${log.operationContent || ''}（${log.operatorName || '系统'} ${formatLogisticsOpLogTime(log.createdAt)}）`
+      })()
+    }))
+
+    const ws = XLSX.utils.json_to_sheet(exportData)
+    ws['!cols'] = [
+      { wch: 20 }, // 物流单号
+      { wch: 20 }, // 订单号
+      { wch: 12 }, // 客户姓名
+      { wch: 12 }, // 物流公司
+      { wch: 10 }, // 销售人员
+      { wch: 10 }, // 订单状态
+      { wch: 20 }, // 发货时间
+      { wch: 10 }, // 物流状态
+      { wch: 40 }, // 最新物流动态
+      { wch: 12 }, // 预计送达
+      { wch: 30 }, // 目的地
+      { wch: 40 }  // 操作日志
+    ]
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, '物流列表')
+    XLSX.writeFile(wb, `物流列表_${new Date().getTime()}.xlsx`)
+
+    if (total > allRows.length) {
+      ElMessage.warning(`已导出前 ${allRows.length} 条（共命中 ${total} 条，超出单次导出上限），请缩小筛选范围后分次导出`)
+    } else {
+      ElMessage.success(`导出成功，共 ${allRows.length} 条`)
+    }
+  } catch (e) {
+    console.error('导出筛选结果失败:', e)
+    ElMessage.error('导出筛选结果失败')
+  } finally {
+    loadingInstance.close()
+    exportByFilterLoading.value = false
   }
 }
 

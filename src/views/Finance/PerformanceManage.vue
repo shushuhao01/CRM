@@ -169,6 +169,9 @@
         <el-button :icon="Download" :disabled="selectedRows.length === 0" @click="handleExport">
           批量导出
         </el-button>
+        <el-button :icon="Download" :loading="exportByFilterLoading" @click="handleExportByFilter">
+          导出筛选结果
+        </el-button>
         <el-button type="success" :disabled="selectedRows.length === 0" @click="batchSetValid">
           批量设为有效
         </el-button>
@@ -354,7 +357,7 @@
       <el-pagination
         v-model:current-page="pagination.currentPage"
         v-model:page-size="pagination.pageSize"
-        :page-sizes="[10, 20, 50, 100, 200, 500, 1000, 2000, 5000]"
+        :page-sizes="[10, 20, 50, 100, 200, 300]"
         :total="pagination.total"
         layout="total, sizes, prev, pager, next, jumper"
         @size-change="handleSizeChange"
@@ -1346,6 +1349,58 @@ const handleBatchRemark = async (remark: string) => {
   }
 }
 
+// 🔥 导出行数据映射（批量导出与导出筛选结果共用，保证格式完全一致）
+const buildPerfExportRows = (rows: PerformanceOrder[], logsMap: Record<string, any>) => {
+  return rows.map((row) => ({
+    订单号: row.orderNumber,
+    客户姓名: row.customerName,
+    订单状态: getStatusText(row.status),
+    最新物流动态: row.latestLogisticsInfo || '',
+    下单日期: formatDate(row.createdAt),
+    订单金额: Number(row.totalAmount || 0),
+    部门: row.createdByDepartmentName || '',
+    销售人员: row.createdByName || '',
+    有效状态: getStatusLabel(normalizeStatus(row.performanceStatus || '')),
+    系数: Number(row.performanceCoefficient || 0),
+    备注: getRemarkLabel(row.performanceRemark || ''),
+    预估佣金: Number(row.estimatedCommission || 0),
+    操作日志: logsMap[row.id] ? `${perfOpLabels[logsMap[row.id].operationType] || logsMap[row.id].operationType}：${logsMap[row.id].operationContent}（${logsMap[row.id].operatorName || '系统'} ${formatLogTime(logsMap[row.id].createdAt)}）` : ''
+  }))
+}
+
+// 🔥 写出Excel文件（批量导出与导出筛选结果共用，保证列宽排版一致）
+const writePerfExportFile = (XLSX: any, exportData: Record<string, unknown>[]) => {
+  // 创建工作簿
+  const wb = XLSX.utils.book_new()
+  const ws = XLSX.utils.json_to_sheet(exportData)
+
+  // 设置列宽
+  ws['!cols'] = [
+    { wch: 20 }, // 订单号
+    { wch: 10 }, // 客户姓名
+    { wch: 10 }, // 订单状态
+    { wch: 40 }, // 最新物流动态
+    { wch: 12 }, // 下单日期
+    { wch: 12 }, // 订单金额
+    { wch: 12 }, // 部门
+    { wch: 10 }, // 销售人员
+    { wch: 10 }, // 有效状态
+    { wch: 8 },  // 系数
+    { wch: 10 }, // 备注
+    { wch: 12 }, // 预估佣金
+    { wch: 40 }  // 操作日志
+  ]
+
+  XLSX.utils.book_append_sheet(wb, ws, '绩效管理')
+
+  // 生成文件名
+  const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '')
+  const fileName = `绩效管理_${dateStr}.xlsx`
+
+  // 导出
+  XLSX.writeFile(wb, fileName)
+}
+
 // 批量导出
 const handleExport = async () => {
   if (selectedRows.value.length === 0) {
@@ -1355,57 +1410,94 @@ const handleExport = async () => {
 
   try {
     const XLSX = await import('xlsx')
-
-    // 准备导出数据
-    const exportData = selectedRows.value.map((row) => ({
-      订单号: row.orderNumber,
-      客户姓名: row.customerName,
-      订单状态: getStatusText(row.status),
-      最新物流动态: row.latestLogisticsInfo || '',
-      下单日期: formatDate(row.createdAt),
-      订单金额: Number(row.totalAmount || 0),
-      部门: row.createdByDepartmentName || '',
-      销售人员: row.createdByName || '',
-      有效状态: getStatusLabel(normalizeStatus(row.performanceStatus || '')),
-      系数: Number(row.performanceCoefficient || 0),
-      备注: getRemarkLabel(row.performanceRemark || ''),
-      预估佣金: Number(row.estimatedCommission || 0),
-      操作日志: latestLogs.value[row.id] ? `${perfOpLabels[latestLogs.value[row.id].operationType] || latestLogs.value[row.id].operationType}：${latestLogs.value[row.id].operationContent}（${latestLogs.value[row.id].operatorName || '系统'} ${formatLogTime(latestLogs.value[row.id].createdAt)}）` : ''
-    }))
-
-    // 创建工作簿
-    const wb = XLSX.utils.book_new()
-    const ws = XLSX.utils.json_to_sheet(exportData)
-
-    // 设置列宽
-    ws['!cols'] = [
-      { wch: 20 }, // 订单号
-      { wch: 10 }, // 客户姓名
-      { wch: 10 }, // 订单状态
-      { wch: 40 }, // 最新物流动态
-      { wch: 12 }, // 下单日期
-      { wch: 12 }, // 订单金额
-      { wch: 12 }, // 部门
-      { wch: 10 }, // 销售人员
-      { wch: 10 }, // 有效状态
-      { wch: 8 },  // 系数
-      { wch: 10 }, // 备注
-      { wch: 12 }, // 预估佣金
-      { wch: 40 }  // 操作日志
-    ]
-
-    XLSX.utils.book_append_sheet(wb, ws, '绩效管理')
-
-    // 生成文件名
-    const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '')
-    const fileName = `绩效管理_${dateStr}.xlsx`
-
-    // 导出
-    XLSX.writeFile(wb, fileName)
+    const exportData = buildPerfExportRows(selectedRows.value, latestLogs.value)
+    writePerfExportFile(XLSX, exportData)
     ElMessage.success(`成功导出 ${exportData.length} 条数据`)
   } catch (e) {
     console.error('导出失败:', e)
     ElMessage.error('导出失败')
+  }
+}
+
+// 🔥 按当前筛选条件导出（不受翻页限制，自动分批拉取全部命中数据）
+const exportByFilterLoading = ref(false)
+const handleExportByFilter = async () => {
+  if (exportByFilterLoading.value) return
+  exportByFilterLoading.value = true
+
+  // 🔥 全屏进度提示：分批拉取耗时较长，避免用户以为"没反应"
+  const { ElLoading } = await import('element-plus')
+  const loadingInstance = ElLoading.service({ lock: true, text: '正在按筛选条件拉取数据，请稍候...' })
+  try {
+    const XLSX = await import('xlsx')
+
+    // 构建与 loadData 一致的筛选参数（不含分页）
+    const baseParams: any = {
+      departmentId: departmentFilter.value || undefined,
+      salesPersonId: salesPersonFilter.value || undefined,
+      performanceStatus: statusFilter.value || undefined,
+      performanceCoefficient: coefficientFilter.value || undefined
+    }
+    if (dateRange.value) {
+      baseParams.startDate = dateRange.value[0]
+      baseParams.endDate = dateRange.value[1]
+    }
+    if (batchSearchKeywords.value && batchSearchCount.value > 0) {
+      baseParams.batchKeywords = batchSearchKeywords.value
+    }
+
+    // 分批拉取全部命中数据（每批300条，上限20000条防止误操作）
+    const EXPORT_BATCH_SIZE = 300
+    const EXPORT_MAX_ROWS = 20000
+    const allRows: PerformanceOrder[] = []
+    let page = 1
+    let total = 0
+    do {
+      const res = await financeApi.getPerformanceManageList({ ...baseParams, page, pageSize: EXPORT_BATCH_SIZE }) as any
+      const list = Array.isArray(res?.list) ? res.list : []
+      total = res?.total || 0
+      if (list.length === 0) break
+      // 与列表加载一致：空备注默认为"正常"
+      allRows.push(...list.map((item: PerformanceOrder) => ({
+        ...item,
+        performanceRemark: item.performanceRemark || '正常'
+      })))
+      loadingInstance.setText(`正在拉取数据：${allRows.length}/${Math.min(total, EXPORT_MAX_ROWS)} 条...`)
+      page++
+    } while (allRows.length < total && allRows.length < EXPORT_MAX_ROWS && page <= Math.ceil(EXPORT_MAX_ROWS / EXPORT_BATCH_SIZE))
+
+    if (allRows.length === 0) {
+      ElMessage.warning('当前筛选条件下没有可导出的数据')
+      return
+    }
+
+    // 分批加载操作日志（与批量导出的"操作日志"列保持一致）
+    const logsMap: Record<string, any> = {}
+    const LOG_BATCH_SIZE = 100
+    for (let i = 0; i < allRows.length; i += LOG_BATCH_SIZE) {
+      const batchIds = allRows.slice(i, i + LOG_BATCH_SIZE).map(o => o.id)
+      try {
+        const res = await financeApi.getLatestPerformanceOperationLogs(batchIds) as any
+        Object.assign(logsMap, res || {})
+      } catch (e) {
+        console.error('加载导出操作日志失败:', e)
+      }
+    }
+
+    loadingInstance.setText(`正在生成Excel文件（共 ${allRows.length} 条）...`)
+    const exportData = buildPerfExportRows(allRows, logsMap)
+    writePerfExportFile(XLSX, exportData)
+    if (total > allRows.length) {
+      ElMessage.warning(`已导出前 ${allRows.length} 条（共命中 ${total} 条，超出单次导出上限），请缩小筛选范围后分次导出`)
+    } else {
+      ElMessage.success(`成功导出 ${allRows.length} 条数据`)
+    }
+  } catch (e) {
+    console.error('导出筛选结果失败:', e)
+    ElMessage.error('导出筛选结果失败')
+  } finally {
+    loadingInstance.close()
+    exportByFilterLoading.value = false
   }
 }
 

@@ -242,6 +242,7 @@
           <el-button type="info" :icon="Setting" @click="showStatusConfigDialog">状态配置</el-button>
           <el-button type="success" :icon="Plus" @click="showCompanyDialog">外包公司管理</el-button>
           <el-button type="primary" :icon="Download" :disabled="selectedRows.length === 0" @click="handleExport">批量导出</el-button>
+          <el-button type="primary" plain :icon="Download" :loading="exportByFilterLoading" @click="handleExportByFilter">导出筛选结果</el-button>
         </div>
       </div>
     </div>
@@ -2071,6 +2072,59 @@ const handleBatchSettlementStatus = async (settlementStatus: string) => {
   }
 }
 
+// 🔥 导出行数据映射（批量导出与导出筛选结果共用，保证格式完全一致）
+const buildExportRows = (rows: ValueAddedOrder[], logsMap: Record<string, any>) => {
+  return rows.map((row) => {
+    // 🔥 单价和实际结算的计算逻辑与页面显示完全一致
+    const currentUnitPrice = Number(row.unitPrice) || 0
+    const actualSettlement = (row.settlementStatus === 'settled' && row.status === 'valid') ? currentUnitPrice : 0
+
+    return {
+      订单号: row.orderNumber || '',
+      客户姓名: row.customerName || '',
+      客户电话: row.customerPhone || '',
+      物流单号: row.trackingNumber || '',
+      订单状态: getOrderStatusText(row.orderStatus || ''),
+      下单日期: row.orderDate || '',
+      外包公司: row.companyName || '',
+      单价: currentUnitPrice,
+      有效状态: getValidStatusLabel(row.status),
+      结算状态: getSettlementStatusLabel(row.settlementStatus),
+      实际结算: actualSettlement,
+      结算日期: row.settlementDate ? formatDate(row.settlementDate) : '',
+      备注: row.remark || '',
+      操作日志: logsMap[row.id] ? `${OPERATION_TYPE_LABELS[logsMap[row.id].operationType] || logsMap[row.id].operationType}：${logsMap[row.id].operationContent}（${logsMap[row.id].operatorName || '系统'} ${formatLogTime(logsMap[row.id].createdAt)}）` : ''
+    }
+  })
+}
+
+// 🔥 写出Excel文件（批量导出与导出筛选结果共用，保证列宽排版一致）
+const writeExportFile = (XLSX: any, exportData: Record<string, unknown>[]) => {
+  const ws = XLSX.utils.json_to_sheet(exportData)
+
+  // 设置列宽
+  ws['!cols'] = [
+    { wch: 20 }, // 订单号
+    { wch: 12 }, // 客户姓名
+    { wch: 15 }, // 客户电话
+    { wch: 20 }, // 物流单号
+    { wch: 10 }, // 订单状态
+    { wch: 12 }, // 下单日期
+    { wch: 15 }, // 外包公司
+    { wch: 10 }, // 单价
+    { wch: 12 }, // 有效状态
+    { wch: 12 }, // 结算状态
+    { wch: 12 }, // 实际结算
+    { wch: 12 }, // 结算日期
+    { wch: 30 }, // 备注
+    { wch: 40 }  // 操作日志
+  ]
+
+  const wb = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(wb, ws, '增值管理')
+  XLSX.writeFile(wb, `增值管理_${new Date().getTime()}.xlsx`)
+}
+
 // 批量导出
 const handleExport = async () => {
   if (selectedRows.value.length === 0) {
@@ -2087,56 +2141,89 @@ const handleExport = async () => {
     // 如果tableData中找不到（极端情况），降级使用selectedRows
     const rowsToExport = freshRows.length > 0 ? freshRows : selectedRows.value
 
-    const exportData = rowsToExport.map((row) => {
-      // 🔥 单价和实际结算的计算逻辑与页面显示完全一致
-      const currentUnitPrice = Number(row.unitPrice) || 0
-      const actualSettlement = (row.settlementStatus === 'settled' && row.status === 'valid') ? currentUnitPrice : 0
-
-      return {
-        订单号: row.orderNumber || '',
-        客户姓名: row.customerName || '',
-        客户电话: row.customerPhone || '',
-        物流单号: row.trackingNumber || '',
-        订单状态: getOrderStatusText(row.orderStatus || ''),
-        下单日期: row.orderDate || '',
-        外包公司: row.companyName || '',
-        单价: currentUnitPrice,
-        有效状态: getValidStatusLabel(row.status),
-        结算状态: getSettlementStatusLabel(row.settlementStatus),
-        实际结算: actualSettlement,
-        结算日期: row.settlementDate ? formatDate(row.settlementDate) : '',
-        备注: row.remark || '',
-        操作日志: latestLogs.value[row.id] ? `${OPERATION_TYPE_LABELS[latestLogs.value[row.id].operationType] || latestLogs.value[row.id].operationType}：${latestLogs.value[row.id].operationContent}（${latestLogs.value[row.id].operatorName || '系统'} ${formatLogTime(latestLogs.value[row.id].createdAt)}）` : ''
-      }
-    })
-
-    const ws = XLSX.utils.json_to_sheet(exportData)
-
-    // 设置列宽
-    ws['!cols'] = [
-      { wch: 20 }, // 订单号
-      { wch: 12 }, // 客户姓名
-      { wch: 15 }, // 客户电话
-      { wch: 20 }, // 物流单号
-      { wch: 10 }, // 订单状态
-      { wch: 12 }, // 下单日期
-      { wch: 15 }, // 外包公司
-      { wch: 10 }, // 单价
-      { wch: 12 }, // 有效状态
-      { wch: 12 }, // 结算状态
-      { wch: 12 }, // 实际结算
-      { wch: 12 }, // 结算日期
-      { wch: 30 }, // 备注
-      { wch: 40 }  // 操作日志
-    ]
-
-    const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, '增值管理')
-    XLSX.writeFile(wb, `增值管理_${new Date().getTime()}.xlsx`)
+    const exportData = buildExportRows(rowsToExport, latestLogs.value)
+    writeExportFile(XLSX, exportData)
     ElMessage.success('导出成功')
   } catch (e) {
     console.error('导出失败:', e)
     ElMessage.error('导出失败')
+  }
+}
+
+// 🔥 按当前筛选条件导出（不受翻页限制，自动分批拉取全部命中数据）
+const exportByFilterLoading = ref(false)
+const handleExportByFilter = async () => {
+  if (exportByFilterLoading.value) return
+  exportByFilterLoading.value = true
+
+  // 🔥 全屏进度提示：分批拉取耗时较长，避免用户以为"没反应"
+  const { ElLoading } = await import('element-plus')
+  const loadingInstance = ElLoading.service({ lock: true, text: '正在按筛选条件拉取数据，请稍候...' })
+  try {
+    const XLSX = await import('xlsx')
+
+    // 构建与 loadData 一致的筛选参数（不含分页）
+    const baseParams: any = {}
+    if (customDateRange.value && customDateRange.value.length === 2) {
+      baseParams.startDate = customDateRange.value[0]
+      baseParams.endDate = customDateRange.value[1]
+    } else if (quickDateFilter.value) {
+      baseParams.dateFilter = quickDateFilter.value
+    }
+    if (companyFilter.value) baseParams.companyId = companyFilter.value
+    if (statusFilter.value) baseParams.status = statusFilter.value
+    if (settlementStatusFilter.value) baseParams.settlementStatus = settlementStatusFilter.value
+    if (activeTab.value !== 'all') baseParams.tab = activeTab.value
+    if (batchSearchKeywords.value) baseParams.keywords = batchSearchKeywords.value
+
+    // 分批拉取全部命中数据（每批300条，上限20000条防止误操作）
+    const EXPORT_BATCH_SIZE = 300
+    const EXPORT_MAX_ROWS = 20000
+    const allRows: ValueAddedOrder[] = []
+    let page = 1
+    let total = 0
+    do {
+      const res = await getValueAddedOrders({ ...baseParams, page, pageSize: EXPORT_BATCH_SIZE }) as any
+      const list = res?.data?.list || res?.list || []
+      total = res?.data?.total || res?.total || 0
+      if (list.length === 0) break
+      allRows.push(...list)
+      loadingInstance.setText(`正在拉取数据：${allRows.length}/${Math.min(total, EXPORT_MAX_ROWS)} 条...`)
+      page++
+    } while (allRows.length < total && allRows.length < EXPORT_MAX_ROWS && page <= Math.ceil(EXPORT_MAX_ROWS / EXPORT_BATCH_SIZE))
+
+    if (allRows.length === 0) {
+      ElMessage.warning('当前筛选条件下没有可导出的数据')
+      return
+    }
+
+    // 分批加载操作日志（与批量导出的"操作日志"列保持一致）
+    const logsMap: Record<string, any> = {}
+    const LOG_BATCH_SIZE = 100
+    for (let i = 0; i < allRows.length; i += LOG_BATCH_SIZE) {
+      const batchIds = allRows.slice(i, i + LOG_BATCH_SIZE).map(o => o.id)
+      try {
+        const res = await getLatestOperationLogs(batchIds) as any
+        Object.assign(logsMap, res || {})
+      } catch (e) {
+        console.error('加载导出操作日志失败:', e)
+      }
+    }
+
+    loadingInstance.setText(`正在生成Excel文件（共 ${allRows.length} 条）...`)
+    const exportData = buildExportRows(allRows, logsMap)
+    writeExportFile(XLSX, exportData)
+    if (total > allRows.length) {
+      ElMessage.warning(`已导出前 ${allRows.length} 条（共命中 ${total} 条，超出单次导出上限），请缩小筛选范围后分次导出`)
+    } else {
+      ElMessage.success(`导出成功，共 ${allRows.length} 条`)
+    }
+  } catch (e) {
+    console.error('导出筛选结果失败:', e)
+    ElMessage.error('导出筛选结果失败')
+  } finally {
+    loadingInstance.close()
+    exportByFilterLoading.value = false
   }
 }
 

@@ -324,7 +324,7 @@ router.post('/order/status', async (req, res) => {
       const historyRecord = statusHistoryRepository.create({
         orderId: order.id,
         status: newStatus as any,
-        notes: remark || `物流状态更新为: ${newStatus}`,
+        notes: remark || `物流状态更新为: ${translateStatus(newStatus)}`,
         operatorId: user?.id ? Number(user.id) : undefined,
         operatorName: fullOperatorName,
         operatorDepartment: deptName,
@@ -464,7 +464,7 @@ router.post('/order/batch-status', async (req, res) => {
           const historyRecord = statusHistoryRepository.create({
             orderId: order.id,
             status: newStatus as any,
-            notes: remark || `批量更新物流状态为: ${newStatus}`,
+            notes: remark || `批量更新物流状态为: ${translateStatus(newStatus)}`,
             operatorName: user?.departmentName ? `${user.departmentName}-${user.realName || user.username || '系统'}` : (user?.realName || user?.username || '系统'),
             operatorDepartment: user?.departmentName || '',
             actionType: 'status_change'
@@ -1736,7 +1736,9 @@ async function testYTOExpressApi(appKey: string, secretKey: string, userId: stri
       return { success: true, message: 'API连接成功，轨迹查询正常' };
     }
     if (result && (result.success === 'true' || result.success === true)) {
-      return { success: true, message: 'API连接成功' + (result.message ? `（${result.message}）` : '') };
+      // 上游可能返回英文 "success"，此类无意义英文不拼接到提示中
+      const extra = result.message && !/^\s*(success|ok)\s*!?$/i.test(String(result.message)) ? `（${result.message}）` : '';
+      return { success: true, message: `API连接成功${extra}` };
     }
     if (result && (result.message || result.msg || result.reason)) {
       return { success: false, message: result.message || result.msg || result.reason };

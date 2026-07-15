@@ -248,7 +248,7 @@
       :show-actions="true"
       :actions-width="330"
       :total="total"
-      :page-sizes="[10, 20, 50, 100, 200, 300, 500, 1000, 2000, 3000]"
+      :page-sizes="[10, 20, 50, 100, 200, 300]"
       @selection-change="handleSelectionChange"
       @size-change="handlePageSizeChange"
       @current-change="handleCurrentChange"
@@ -259,6 +259,10 @@
         <el-button @click="exportSelected" class="export-btn" :disabled="selectedOrders.length === 0">
           <el-icon><Download /></el-icon>
           批量导出
+        </el-button>
+        <el-button @click="handleExportByFilter" :loading="exportByFilterLoading">
+          <el-icon><Download /></el-icon>
+          导出筛选结果
         </el-button>
         <el-button type="warning" @click="batchPrintLabel" class="batch-print-btn" :disabled="selectedOrders.length === 0">
           <el-icon><Printer /></el-icon>
@@ -844,7 +848,7 @@
           <el-pagination
             v-model:current-page="currentPage"
             v-model:page-size="pageSize"
-            :page-sizes="[10, 20, 50, 100, 200, 300, 500, 1000, 2000, 3000]"
+            :page-sizes="[10, 20, 50, 100, 200, 300]"
             :total="total"
             layout="total, sizes, prev, pager, next, jumper"
             @size-change="handlePageSizeChange"
@@ -1479,7 +1483,7 @@ const getOrderStatusText = (status: string) => {
     'delivered': '已签收',
     'package_exception': '包裹异常',
     'rejected': '拒收',
-    'rejected_returned': '物流部退回',
+    'rejected_returned': '拒收已退回',
     'logistics_returned': '物流部退回',
     'logistics_cancelled': '物流部取消',
     'after_sales_created': '已建售后',
@@ -2156,6 +2160,55 @@ const shipOrder = (order: any) => {
   shipOrderVisible.value = true
 }
 
+// 🔥 发货订单→导出格式映射（批量导出/导出筛选结果共用，保证格式完全一致）
+const mapShippingOrderToExport = (order: any, logsMap: Record<string, any>): ExportOrder => ({
+  orderNumber: order.orderNumber || order.orderNo || '',
+  customerName: order.customerName || '',
+  customerPhone: order.customerPhone || order.phone || '',
+  receiverName: order.receiverName || order.customerName || '',
+  receiverPhone: order.receiverPhone || order.phone || '',
+  receiverAddress: order.receiverAddress || order.address || '',
+  products: Array.isArray(order.products) && order.products.length > 0
+    ? order.products.map((p: any) => {
+        let text = `${p.name}`
+        if (p.skuName) text += `[${p.skuName}]`
+        text += ` x${p.quantity}`
+        return text
+      }).join(', ')
+    : (order.productsText || order.products || ''),
+  totalQuantity: order.totalQuantity || (Array.isArray(order.products)
+    ? order.products.reduce((sum: number, p: any) => sum + (p.quantity || 0), 0)
+    : 0),
+  totalAmount: order.totalAmount || 0,
+  depositAmount: order.depositAmount || order.deposit || 0,
+  codAmount: order.codAmount || (order.totalAmount || 0) - (order.depositAmount || 0),
+  customerGender: order.customerGender || '',
+  customerAge: order.customerAge || '',
+  customerHeight: order.customerHeight || '',
+  customerWeight: order.customerWeight || '',
+  medicalHistory: order.medicalHistory || '',
+  serviceWechat: order.serviceWechat || '',
+  markType: order.markType || '',
+  salesPersonName: order.salesPersonName || order.createdBy || '',
+  paymentMethod: order.paymentMethod || '',
+  orderSource: order.orderSource || '',
+  customFields: order.customFields || {},
+  remark: order.remark || '',
+  createTime: order.createTime || '',
+  status: order.status || '',
+  shippingStatus: order.shippingStatus || '',
+  specifiedExpress: order.specifiedExpress || '',
+  expressCompany: order.expressCompany || '',
+  expressNo: order.expressNo || '',
+  logisticsStatus: order.logisticsStatus || '',
+  operationLog: (() => {
+    const log = logsMap?.[order.id || order.orderId]
+    if (!log) return ''
+    const typeLabel = shippingOpLogLabels[log.operationType] || log.operationType
+    return `[${typeLabel}] ${log.operationContent || ''} (${log.operatorName || '系统'} ${formatShippingOpLogTime(log.createdAt)})`
+  })()
+})
+
 // 批量导出
 const exportSelected = async () => {
   if (!selectedOrders.value || selectedOrders.value.length === 0) {
@@ -2165,61 +2218,126 @@ const exportSelected = async () => {
 
   try {
     // 转换订单数据格式（包含完整字段）
-    const exportData: ExportOrder[] = selectedOrders.value.map(order => ({
-      orderNumber: order.orderNumber || order.orderNo || '',
-      customerName: order.customerName || '',
-      customerPhone: order.customerPhone || order.phone || '',
-      receiverName: order.receiverName || order.customerName || '',
-      receiverPhone: order.receiverPhone || order.phone || '',
-      receiverAddress: order.receiverAddress || order.address || '',
-      products: Array.isArray(order.products) && order.products.length > 0
-        ? order.products.map((p: any) => {
-            let text = `${p.name}`
-            if (p.skuName) text += `[${p.skuName}]`
-            text += ` x${p.quantity}`
-            return text
-          }).join(', ')
-        : (order.productsText || order.products || ''),
-      totalQuantity: order.totalQuantity || (Array.isArray(order.products)
-        ? order.products.reduce((sum, p) => sum + (p.quantity || 0), 0)
-        : 0),
-      totalAmount: order.totalAmount || 0,
-      depositAmount: order.depositAmount || order.deposit || 0,
-      codAmount: order.codAmount || (order.totalAmount || 0) - (order.depositAmount || 0),
-      customerGender: order.customerGender || '',
-      customerAge: order.customerAge || '',
-      customerHeight: order.customerHeight || '',
-      customerWeight: order.customerWeight || '',
-      medicalHistory: order.medicalHistory || '',
-      serviceWechat: order.serviceWechat || '',
-      // 🔥 新增字段
-      markType: order.markType || '',
-      salesPersonName: order.salesPersonName || order.createdBy || '',
-      paymentMethod: order.paymentMethod || '',
-      orderSource: order.orderSource || '',
-      customFields: order.customFields || {},
-      remark: order.remark || '',
-      createTime: order.createTime || '',
-      status: order.status || '',
-      shippingStatus: order.shippingStatus || '',
-      // 物流相关字段
-      specifiedExpress: order.specifiedExpress || '',
-      expressCompany: order.expressCompany || '',
-      expressNo: order.expressNo || '',
-      logisticsStatus: order.logisticsStatus || '',
-      operationLog: (() => {
-        const log = shippingLatestLogs.value?.[order.id || order.orderId]
-        if (!log) return ''
-        const typeLabel = shippingOpLogLabels[log.operationType] || log.operationType
-        return `[${typeLabel}] ${log.operationContent || ''} (${log.operatorName || '系统'} ${formatShippingOpLogTime(log.createdAt)})`
-      })()
-    }))
+    const exportData: ExportOrder[] = selectedOrders.value.map(order => mapShippingOrderToExport(order, shippingLatestLogs.value || {}))
 
     const filename = exportBatchOrders(exportData, userStore.isAdmin)
     ElMessage.success(`导出成功：${filename}`)
   } catch (error) {
     console.error('导出失败:', error)
     ElMessage.error('导出失败，请重试')
+  }
+}
+
+// 🔥 按当前筛选条件导出（不受翻页限制，自动分批拉取当前标签页全部命中数据）
+const exportByFilterLoading = ref(false)
+const handleExportByFilter = async () => {
+  if (exportByFilterLoading.value) return
+  exportByFilterLoading.value = true
+
+  // 🔥 全屏进度提示：分批拉取耗时较长，避免用户以为"没反应"
+  const { ElLoading } = await import('element-plus')
+  const loadingInstance = ElLoading.service({ lock: true, text: '正在按筛选条件拉取数据，请稍候...' })
+  try {
+    const { orderApi } = await import('@/api/order')
+
+    // 复用与列表加载完全一致的筛选参数（不含分页）
+    const baseParams: any = {
+      keyword: searchKeyword.value?.trim() || undefined,
+      startDate: dateRange.value?.[0] || undefined,
+      endDate: dateRange.value?.[1] || undefined,
+      quickFilter: selectedQuickFilter.value !== 'all' ? selectedQuickFilter.value : undefined,
+      departmentId: selectedDepartment.value || undefined,
+      salesPersonId: selectedSalesPerson.value || undefined
+    }
+
+    // 分批拉取全部命中数据（每批300条，上限20000条防止误操作）
+    const EXPORT_BATCH_SIZE = 300
+    const EXPORT_MAX_ROWS = 20000
+    const allRows: any[] = []
+    let total = 0
+
+    const fetchPage = async (page: number): Promise<{ list: any[]; total: number }> => {
+      const params = { ...baseParams, page, pageSize: EXPORT_BATCH_SIZE, _t: Date.now() }
+      if (activeTab.value === 'pending') {
+        const response = await orderApi.getShippingPending(params)
+        return { list: response?.data?.list || [], total: response?.data?.total || 0 }
+      } else if (activeTab.value === 'virtual_pending') {
+        const token = localStorage.getItem('auth_token')
+        const vpResp = await fetch(`/api/v1/orders?status=pending_shipment&orderProductType=virtual&markType=virtual_delivery&page=${page}&pageSize=${EXPORT_BATCH_SIZE}${baseParams.keyword ? '&keyword=' + encodeURIComponent(baseParams.keyword) : ''}`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        })
+        const vpData = await vpResp.json()
+        const list = vpData?.data?.list || vpData?.data?.orders || []
+        return { list, total: vpData?.data?.total || list.length }
+      } else if (activeTab.value === 'shipped') {
+        const response = await orderApi.getShippingShipped(params)
+        return { list: response?.data?.list || [], total: response?.data?.total || 0 }
+      } else if (activeTab.value === 'returned') {
+        const response = await orderApi.getShippingReturned(params)
+        return { list: response?.data?.list || [], total: response?.data?.total || 0 }
+      } else if (activeTab.value === 'cancelled') {
+        const response = await orderApi.getShippingCancelled(params)
+        return { list: response?.data?.list || [], total: response?.data?.total || 0 }
+      } else if (activeTab.value === 'draft') {
+        const response = await orderApi.getShippingDraft(params)
+        return { list: response?.data?.list || [], total: response?.data?.total || 0 }
+      }
+      // 其他标签页：从store获取全量（与列表加载逻辑一致）
+      const allOrders = await orderStore.getOrdersByShippingStatus(activeTab.value)
+      return { list: allOrders, total: allOrders.length }
+    }
+
+    let page = 1
+    do {
+      const { list, total: pageTotal } = await fetchPage(page)
+      total = pageTotal
+      // 🔥 防死循环：某批返回空列表时立即终止（即使 total > 已拉取数）
+      if (list.length === 0) break
+      allRows.push(...list)
+      loadingInstance.setText(`正在拉取数据：${allRows.length}/${Math.min(total, EXPORT_MAX_ROWS)} 条...`)
+      page++
+      // store全量分支一次即取完
+      if (list.length >= total) break
+    } while (allRows.length < total && allRows.length < EXPORT_MAX_ROWS && page <= Math.ceil(EXPORT_MAX_ROWS / EXPORT_BATCH_SIZE))
+
+    if (allRows.length === 0) {
+      ElMessage.warning('当前筛选条件下没有可导出的数据')
+      return
+    }
+
+    // 分批加载操作日志（与批量导出的"操作日志"列保持一致）
+    const logsMap: Record<string, any> = {}
+    try {
+      const { operationLogApi } = await import('@/api/operationLog')
+      const LOG_BATCH_SIZE = 100
+      for (let i = 0; i < allRows.length; i += LOG_BATCH_SIZE) {
+        const batchIds = allRows.slice(i, i + LOG_BATCH_SIZE).map(o => o.id || o.orderId).filter(Boolean)
+        if (batchIds.length === 0) continue
+        const res: any = await operationLogApi.getLatestLogs('shipping', batchIds)
+        const data = res?.data?.data || res?.data || res || {}
+        if (typeof data === 'object' && data !== null && !Array.isArray(data)) {
+          Object.assign(logsMap, data)
+        }
+      }
+    } catch (e) {
+      console.error('加载导出操作日志失败:', e)
+    }
+
+    loadingInstance.setText(`正在生成Excel文件（共 ${allRows.length} 条）...`)
+    const exportData: ExportOrder[] = allRows.slice(0, EXPORT_MAX_ROWS).map(order => mapShippingOrderToExport(order, logsMap))
+
+    const filename = exportBatchOrders(exportData, userStore.isAdmin)
+    if (total > exportData.length) {
+      ElMessage.warning(`已导出前 ${exportData.length} 条（共命中 ${total} 条，超出单次导出上限），请缩小筛选范围后分次导出`)
+    } else {
+      ElMessage.success(`导出成功：${filename}（共 ${exportData.length} 条）`)
+    }
+  } catch (error) {
+    console.error('导出筛选结果失败:', error)
+    ElMessage.error('导出筛选结果失败，请重试')
+  } finally {
+    loadingInstance.close()
+    exportByFilterLoading.value = false
   }
 }
 

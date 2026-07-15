@@ -648,12 +648,22 @@ const handleTestConnection = async () => {
       testTrackingNo: testTrackingNo.value
     })
 
+    // 🔥 axios拦截器会把外层message固定为英文"success"，真正的中文提示在内层data.message中
+    const innerData = (response as unknown as { data?: { success?: boolean; message?: string } }).data
+    const toChineseMessage = (msg: string | undefined, ok: boolean): string => {
+      if (!msg) return ok ? '测试连接成功' : '测试连接失败'
+      const normalized = msg.trim().toLowerCase()
+      if (normalized === 'success' || normalized === 'ok') return '测试连接成功'
+      if (normalized === 'failed' || normalized === 'fail' || normalized === 'error') return '测试连接失败'
+      return msg
+    }
+
     if (response.success) {
       testResult.status = 'success'
-      testResult.message = response.message || '连接成功'
+      testResult.message = toChineseMessage(innerData?.message || response.message, true)
     } else {
       testResult.status = 'error'
-      testResult.message = response.message || '连接失败'
+      testResult.message = toChineseMessage(innerData?.message || response.message, false)
     }
   } catch (error) {
     testResult.status = 'error'

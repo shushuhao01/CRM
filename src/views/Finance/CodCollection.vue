@@ -145,6 +145,7 @@
       <div class="action-right">
         <el-button type="primary" :icon="Refresh" @click="handleRefresh">刷新</el-button>
         <el-button :icon="Download" :disabled="selectedRows.length === 0" @click="handleExport">批量导出</el-button>
+        <el-button :icon="Download" :loading="exportByFilterLoading" @click="handleExportByFilter">导出筛选结果</el-button>
         <el-button :icon="Edit" :disabled="selectedRows.length === 0" @click="showBatchCodDialog">批量改代收</el-button>
         <el-button type="success" :icon="Check" :disabled="selectedRows.length === 0" @click="handleBatchReturn">批量改返款</el-button>
       </div>
@@ -271,7 +272,7 @@
     <!-- 分页 -->
     <div class="pagination-wrapper">
       <el-pagination v-model:current-page="pagination.page" v-model:page-size="pagination.pageSize"
-        :page-sizes="[10, 20, 30, 50, 100, 300, 500, 1000, 2000, 3000, 5000]" :total="pagination.total"
+        :page-sizes="[10, 20, 30, 50, 100, 300]" :total="pagination.total"
         layout="total, sizes, prev, pager, next, jumper" @size-change="handleSizeChange" @current-change="handlePageChange" />
     </div>
 
@@ -960,6 +961,73 @@ const handleBatchReturn = async () => {
   }
 }
 
+// 🔥 导出行数据映射（批量导出与导出筛选结果共用，保证格式完全一致）
+const buildCodExportRows = (rows: CodOrder[], logsMap: Record<string, any>) => {
+  return rows.map((row) => ({
+    订单号: row.orderNumber,
+    客户姓名: row.customerName,
+    订单状态: getOrderStatusText(row.status),
+    订单金额: Number(row.finalAmount || 0),
+    原始代收金额: Number((row.totalAmount || 0) - (row.depositAmount || 0)),
+    当前代收金额: Number(row.codAmount || 0),
+    代收状态: getCodStatusText(row),
+    销售人员: row.salesPersonName || '',
+    物流单号: row.trackingNumber || '',
+    最新物流动态: row.latestLogisticsInfo || '',
+    下单时间: formatDateTime(row.createdAt),
+    操作日志: logsMap[row.id] ? `${COD_OPERATION_TYPE_LABELS[logsMap[row.id].operationType] || logsMap[row.id].operationType}：${logsMap[row.id].operationContent}（${logsMap[row.id].operatorName || '系统'} ${formatLogTime(logsMap[row.id].createdAt)}）` : ''
+  }))
+}
+
+// 🔥 写出Excel文件（批量导出与导出筛选结果共用，保证列宽排版一致）
+const writeCodExportFile = (XLSX: any, exportData: Record<string, unknown>[]) => {
+  // 准备统计汇总数据
+  const statsData = [
+    { 统计项: '今日订单金额', 金额: Number(stats.value.todayCod || 0) },
+    { 统计项: '本月订单金额', 金额: Number(stats.value.monthCod || 0) },
+    { 统计项: '已改代收', 金额: Number(stats.value.cancelledCod || 0) },
+    { 统计项: '已返款', 金额: Number(stats.value.returnedCod || 0) },
+    { 统计项: '未返款', 金额: Number(stats.value.pendingCod || 0) }
+  ]
+
+  // 创建工作簿
+  const wb = XLSX.utils.book_new()
+
+  // 创建订单数据工作表
+  const ws1 = XLSX.utils.json_to_sheet(exportData)
+  ws1['!cols'] = [
+    { wch: 20 }, // 订单号
+    { wch: 12 }, // 客户姓名
+    { wch: 10 }, // 订单状态
+    { wch: 12 }, // 订单金额
+    { wch: 15 }, // 原始代收金额
+    { wch: 15 }, // 当前代收金额
+    { wch: 10 }, // 代收状态
+    { wch: 10 }, // 销售人员
+    { wch: 20 }, // 物流单号
+    { wch: 40 }, // 最新物流动态
+    { wch: 20 }, // 下单时间
+    { wch: 40 }  // 操作日志
+  ]
+  XLSX.utils.book_append_sheet(wb, ws1, '订单数据')
+
+  // 创建统计汇总工作表
+  const ws2 = XLSX.utils.json_to_sheet(statsData)
+  ws2['!cols'] = [
+    { wch: 20 }, // 统计项
+    { wch: 15 }  // 金额
+  ]
+  XLSX.utils.book_append_sheet(wb, ws2, '统计汇总')
+
+  // 生成文件名
+  const now = new Date()
+  const dateStr = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}`
+  const fileName = `代收管理_${dateStr}.xlsx`
+
+  // 导出
+  XLSX.writeFile(wb, fileName)
+}
+
 const handleExport = async () => {
   if (selectedRows.value.length === 0) {
     ElMessage.warning('请先选择要导出的数据')
@@ -968,72 +1036,84 @@ const handleExport = async () => {
 
   try {
     const XLSX = await import('xlsx')
-
-    // 准备订单数据
-    const exportData = selectedRows.value.map((row) => ({
-      订单号: row.orderNumber,
-      客户姓名: row.customerName,
-      订单状态: getOrderStatusText(row.status),
-      订单金额: Number(row.finalAmount || 0),
-      原始代收金额: Number((row.totalAmount || 0) - (row.depositAmount || 0)),
-      当前代收金额: Number(row.codAmount || 0),
-      代收状态: getCodStatusText(row),
-      销售人员: row.salesPersonName || '',
-      物流单号: row.trackingNumber || '',
-      最新物流动态: row.latestLogisticsInfo || '',
-      下单时间: formatDateTime(row.createdAt),
-      操作日志: latestLogs.value[row.id] ? `${COD_OPERATION_TYPE_LABELS[latestLogs.value[row.id].operationType] || latestLogs.value[row.id].operationType}：${latestLogs.value[row.id].operationContent}（${latestLogs.value[row.id].operatorName || '系统'} ${formatLogTime(latestLogs.value[row.id].createdAt)}）` : ''
-    }))
-
-    // 准备统计汇总数据
-    const statsData = [
-      { 统计项: '今日订单金额', 金额: Number(stats.value.todayCod || 0) },
-      { 统计项: '本月订单金额', 金额: Number(stats.value.monthCod || 0) },
-      { 统计项: '已改代收', 金额: Number(stats.value.cancelledCod || 0) },
-      { 统计项: '已返款', 金额: Number(stats.value.returnedCod || 0) },
-      { 统计项: '未返款', 金额: Number(stats.value.pendingCod || 0) }
-    ]
-
-    // 创建工作簿
-    const wb = XLSX.utils.book_new()
-
-    // 创建订单数据工作表
-    const ws1 = XLSX.utils.json_to_sheet(exportData)
-    ws1['!cols'] = [
-      { wch: 20 }, // 订单号
-      { wch: 12 }, // 客户姓名
-      { wch: 10 }, // 订单状态
-      { wch: 12 }, // 订单金额
-      { wch: 15 }, // 原始代收金额
-      { wch: 15 }, // 当前代收金额
-      { wch: 10 }, // 代收状态
-      { wch: 10 }, // 销售人员
-      { wch: 20 }, // 物流单号
-      { wch: 40 }, // 最新物流动态
-      { wch: 20 }, // 下单时间
-      { wch: 40 }  // 操作日志
-    ]
-    XLSX.utils.book_append_sheet(wb, ws1, '订单数据')
-
-    // 创建统计汇总工作表
-    const ws2 = XLSX.utils.json_to_sheet(statsData)
-    ws2['!cols'] = [
-      { wch: 20 }, // 统计项
-      { wch: 15 }  // 金额
-    ]
-    XLSX.utils.book_append_sheet(wb, ws2, '统计汇总')
-
-    // 生成文件名
-    const now = new Date()
-    const dateStr = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}`
-    const fileName = `代收管理_${dateStr}.xlsx`
-
-    // 导出
-    XLSX.writeFile(wb, fileName)
+    const exportData = buildCodExportRows(selectedRows.value, latestLogs.value)
+    writeCodExportFile(XLSX, exportData)
     ElMessage.success(`成功导出 ${exportData.length} 条订单数据和统计汇总`)
   } catch (e) {
     console.error('导出失败:', e)
     ElMessage.error('导出失败')
+  }
+}
+
+// 🔥 按当前筛选条件导出（不受翻页限制，自动分批拉取全部命中数据）
+const exportByFilterLoading = ref(false)
+const handleExportByFilter = async () => {
+  if (exportByFilterLoading.value) return
+  exportByFilterLoading.value = true
+
+  // 🔥 全屏进度提示：分批拉取耗时较长，避免用户以为"没反应"
+  const { ElLoading } = await import('element-plus')
+  const loadingInstance = ElLoading.service({ lock: true, text: '正在按筛选条件拉取数据，请稍候...' })
+  try {
+    const XLSX = await import('xlsx')
+
+    // 构建与 loadData 一致的筛选参数（不含分页）
+    const baseParams: any = { tab: activeTab.value }
+    if (startDate.value) baseParams.startDate = startDate.value
+    if (endDate.value) baseParams.endDate = endDate.value
+    if (departmentFilter.value) baseParams.departmentId = departmentFilter.value
+    if (salesPersonFilter.value) baseParams.salesPersonId = salesPersonFilter.value
+    if (orderStatusFilter.value) baseParams.status = orderStatusFilter.value
+    if (batchSearchKeywords.value) baseParams.keywords = batchSearchKeywords.value
+
+    // 分批拉取全部命中数据（每批300条，上限20000条防止误操作）
+    const EXPORT_BATCH_SIZE = 300
+    const EXPORT_MAX_ROWS = 20000
+    const allRows: CodOrder[] = []
+    let page = 1
+    let total = 0
+    do {
+      const r = await getCodList({ ...baseParams, page, pageSize: EXPORT_BATCH_SIZE }) as any
+      const list = r?.list || []
+      total = r?.total || 0
+      if (list.length === 0) break
+      allRows.push(...list)
+      loadingInstance.setText(`正在拉取数据：${allRows.length}/${Math.min(total, EXPORT_MAX_ROWS)} 条...`)
+      page++
+    } while (allRows.length < total && allRows.length < EXPORT_MAX_ROWS && page <= Math.ceil(EXPORT_MAX_ROWS / EXPORT_BATCH_SIZE))
+
+    if (allRows.length === 0) {
+      ElMessage.warning('当前筛选条件下没有可导出的数据')
+      return
+    }
+
+    // 分批加载操作日志（与批量导出的"操作日志"列保持一致）
+    const logsMap: Record<string, any> = {}
+    const LOG_BATCH_SIZE = 100
+    for (let i = 0; i < allRows.length; i += LOG_BATCH_SIZE) {
+      const batchIds = allRows.slice(i, i + LOG_BATCH_SIZE).map(o => o.id)
+      try {
+        const res = await getLatestCodOperationLogs(batchIds) as any
+        Object.assign(logsMap, res || {})
+      } catch (e) {
+        console.error('加载导出操作日志失败:', e)
+      }
+    }
+
+    loadingInstance.setText(`正在生成Excel文件（共 ${allRows.length} 条）...`)
+    const exportData = buildCodExportRows(allRows, logsMap)
+    writeCodExportFile(XLSX, exportData)
+    if (total > allRows.length) {
+      ElMessage.warning(`已导出前 ${allRows.length} 条（共命中 ${total} 条，超出单次导出上限），请缩小筛选范围后分次导出`)
+    } else {
+      ElMessage.success(`成功导出 ${allRows.length} 条订单数据和统计汇总`)
+    }
+  } catch (e) {
+    console.error('导出筛选结果失败:', e)
+    ElMessage.error('导出筛选结果失败')
+  } finally {
+    loadingInstance.close()
+    exportByFilterLoading.value = false
   }
 }
 

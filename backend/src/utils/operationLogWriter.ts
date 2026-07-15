@@ -86,11 +86,11 @@ export function extractUserInfo(req: any): { userId: string; username: string; t
 }
 
 const ORDER_STATUS_CN: Record<string, string> = {
-  pending_review: '待审核', approved: '已审核', rejected: '已驳回',
+  pending_review: '待审核', approved: '已审核', rejected: '拒收',
   pending_transfer: '待流转', pending_audit: '待审核', audit_rejected: '审核拒绝',
   pending_shipment: '待发货', shipped: '已发货', in_transit: '运输中',
   delivered: '已签收', signed: '已签收', cancelled: '已取消',
-  returned: '已退回', logistics_returned: '物流退回', logistics_cancelled: '物流取消',
+  returned: '已退回', logistics_returned: '物流部退回', logistics_cancelled: '物流部取消',
   package_exception: '包裹异常', abnormal: '包裹异常',
   rejected_returned: '拒收已退回', after_sales_created: '已建售后',
   lost: '丢件', refunded: '已退款', completed: '已完成',
@@ -101,4 +101,16 @@ const ORDER_STATUS_CN: Record<string, string> = {
 
 export function translateStatus(status: string): string {
   return ORDER_STATUS_CN[status] || status;
+}
+
+// 🔥 物流状态中文映射（用于订单日志/操作日志中把英文状态码翻译为中文显示）
+const LOGISTICS_STATUS_CN: Record<string, string> = {
+  pending: '待揽收', picked_up: '已揽收', in_transit: '运输中', transit: '运输中',
+  out_for_delivery: '派送中', delivered: '已签收', rejected: '拒收',
+  exception: '包裹异常', returned: '已退回', abnormal: '状态异常',
+  rejected_returned: '拒收已退回', todo: '待办', unknown: '未知',
+};
+
+export function translateLogisticsStatus(status: string): string {
+  return LOGISTICS_STATUS_CN[status] || ORDER_STATUS_CN[status] || status;
 }

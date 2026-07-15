@@ -2,10 +2,26 @@ import { Router, Request, Response } from 'express';
 import { AppDataSource } from '../config/database';
 import { authenticateToken } from '../middleware/auth';
 import { log } from '../config/logger';
-import { translateStatus } from '../utils/operationLogWriter';
+import { translateStatus, translateLogisticsStatus } from '../utils/operationLogWriter';
 
 const router = Router();
 router.use(authenticateToken);
+
+// 🔥 兼容历史日志：把日志内容中的英文状态码翻译为中文显示（新日志已直接写入中文）
+function translateLogContent(content: string): string {
+  if (!content) return content;
+  let result = content;
+  result = result.replace(/物流状态: ([a-z_]+)/g, (_: string, s: string) => `物流状态: ${translateLogisticsStatus(s)}`);
+  result = result.replace(/订单状态: ([a-z_]+)/g, (_: string, s: string) => `订单状态: ${translateStatus(s)}`);
+  // 兼容旧版实时同步格式：`"动态描述" → returned → logistics_returned`
+  result = result.replace(/ → ([a-z_]+) → ([a-z_]+)/g, (_: string, s1: string, s2: string) =>
+    ` → 物流状态: ${translateLogisticsStatus(s1)} → 订单状态: ${translateStatus(s2)}`);
+  // 兼容旧版默认备注：`物流状态更新为: delivered` / `批量更新物流状态为: rejected`
+  result = result.replace(/(物流状态更新为|批量更新物流状态为|手动更新订单状态|批量更新订单状态): ([a-z_]+)( → ([a-z_]+))?/g,
+    (_: string, label: string, s1: string, _arrow: string, s2: string) =>
+      s2 ? `${label}: ${translateStatus(s1)} → ${translateStatus(s2)}` : `${label}: ${translateStatus(s1)}`);
+  return result;
+}
 
 /**
  * 批量获取最新操作日志（用于列表列显示）
@@ -52,7 +68,7 @@ router.get('/latest', async (req: Request, res: Response) => {
       result[row.resource_id] = {
         id: row.id,
         operationType: row.action,
-        operationContent: row.description,
+        operationContent: translateLogContent(row.description || ''),
         operatorName: row.user_name || '系统',
         operatorId: row.user_id,
         createdAt: row.created_at,
@@ -117,6 +133,8 @@ router.get('/order-timeline/:orderId', async (req: Request, res: Response) => {
       if (row.source === 'status_history') {
         content = content.replace(/\[状态: (\w+)\]/g, (_: string, s: string) => `[状态: ${translateStatus(s)}]`);
       }
+      // 🔥 兼容历史日志：把内容中的英文状态码翻译为中文（新日志已直接写入中文）
+      content = translateLogContent(content);
       return {
         id: row.id,
         logType: row.log_type,
@@ -189,7 +207,7 @@ router.get('/:resourceId', async (req: Request, res: Response) => {
     const list = rows.map((row: any) => ({
       id: row.id,
       operationType: row.action,
-      operationContent: row.description,
+      operationContent: translateLogContent(row.description || ''),
       operatorName: row.user_name || '系统',
       operatorId: row.user_id,
       oldValue: null,

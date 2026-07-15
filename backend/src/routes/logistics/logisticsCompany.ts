@@ -854,7 +854,7 @@ router.get('/trace/query', async (req: Request, res: Response) => {
             order.expectedDeliveryDate = result.estimatedDeliveryTime;
           }
 
-          // 🔥 实时自动同步：检查DB开关 + 跳过手动覆盖的订单
+          // 🔥 实时自动同步：检查DB开关 + 跳过手动覆盖的订单（手动修改视为最终状态，永久排除同步）
           const { isAutoSyncEnabled: checkEnabled } = await import('../../services/LogisticsAutoSyncService');
           if (!(order as any).manualStatusOverride && await checkEnabled()) {
           const { detectLogisticsStatus, mapLogisticsToOrderStatus } = await import('../../services/LogisticsAutoSyncService');
@@ -873,11 +873,13 @@ router.get('/trace/query', async (req: Request, res: Response) => {
             // 记录状态变更历史
             try {
               const { OrderStatusHistory } = await import('../../entities/OrderStatusHistory');
+              const { translateStatus, translateLogisticsStatus } = await import('../../utils/operationLogWriter');
               const historyRepo = getTenantRepo(OrderStatusHistory);
               await historyRepo.save(historyRepo.create({
                 orderId: order.id,
                 status: targetOrderStatus as any,
-                notes: `[实时同步] 物流动态: "${latestDescription.substring(0, 100)}" → ${detectedStatus} → ${targetOrderStatus}`,
+                // 🔥 日志内容使用中文状态，避免订单日志显示英文代码
+                notes: `[实时同步] 物流动态: "${latestDescription.substring(0, 100)}" → 物流状态: ${translateLogisticsStatus(detectedStatus)} → 订单状态: ${translateStatus(targetOrderStatus)}`,
                 operatorName: '系统实时同步'
               }));
             } catch (_histErr) {
@@ -1000,7 +1002,7 @@ router.post('/trace/batch-query', async (req: Request, res: Response) => {
                   order.expectedDeliveryDate = result.estimatedDeliveryTime;
                 }
 
-                // 🔥 实时自动同步：检查DB开关 + 跳过手动覆盖的订单
+                // 🔥 实时自动同步：检查DB开关 + 跳过手动覆盖的订单（手动修改视为最终状态，永久排除同步）
                 const { isAutoSyncEnabled: checkBatchEnabled } = await import('../../services/LogisticsAutoSyncService');
                 if (!(order as any).manualStatusOverride && await checkBatchEnabled()) {
                   const { detectLogisticsStatus, mapLogisticsToOrderStatus } = await import('../../services/LogisticsAutoSyncService');

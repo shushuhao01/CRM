@@ -57,6 +57,15 @@
           >
             导出
           </el-button>
+          <el-button
+            text
+            type="primary"
+            @click="handleExportByFilter"
+            :loading="exportByFilterLoading"
+            :icon="'Download'"
+          >
+            导出筛选结果
+          </el-button>
         </div>
       </div>
 
@@ -1816,6 +1825,46 @@ const handleBatchCancel = async () => {
   }
 }
 
+// 🔥 订单→导出格式映射（批量导出/导出/导出筛选结果共用，保证格式完全一致）
+const mapOrderToExport = (order: any): ExportOrder => ({
+  orderNumber: order.orderNumber || '',
+  customerName: order.customerName || '',
+  customerPhone: order.customerPhone || '',
+  receiverName: order.receiverName || '',
+  receiverPhone: order.receiverPhone || '',
+  receiverAddress: order.receiverAddress || '',
+  products: Array.isArray(order.products)
+    ? order.products.map((p: any) => {
+        let text = `${p.name} x${p.quantity}`
+        if (p.skuName) text += ` [${p.skuName}]`
+        return text
+      }).join(', ')
+    : order.products || '',
+  totalQuantity: order.totalQuantity || (Array.isArray(order.products) ? order.products.reduce((sum: number, p: any) => sum + (p.quantity || 0), 0) : 0),
+  totalAmount: order.totalAmount || 0,
+  depositAmount: order.depositAmount || 0,
+  codAmount: order.codAmount || (order.totalAmount || 0) - (order.depositAmount || 0),
+  customerGender: order.customerGender || '',
+  customerAge: order.customerAge || '',
+  customerHeight: order.customerHeight || '',
+  customerWeight: order.customerWeight || '',
+  medicalHistory: order.medicalHistory || '',
+  serviceWechat: order.serviceWechat || '',
+  markType: order.markType || '',
+  salesPersonName: order.salesPersonName || order.createdByName || order.createdBy || '',
+  paymentMethod: order.paymentMethod || '',
+  orderSource: order.orderSource || '',
+  customFields: order.customFields || {},
+  remark: order.remark || '',
+  createTime: order.createTime || '',
+  status: order.status || '',
+  shippingStatus: order.shippingStatus || '',
+  specifiedExpress: order.specifiedExpress || '',
+  expressCompany: order.expressCompany || '',
+  expressNo: order.expressNo || '',
+  logisticsStatus: order.logisticsStatus || ''
+})
+
 // 批量导出订单
 const handleBatchExport = async () => {
   if (!selectedOrders.value || selectedOrders.value.length === 0) {
@@ -1827,44 +1876,7 @@ const handleBatchExport = async () => {
     loading.value = true
 
     // 将选中的订单数据转换为导出格式（包含完整字段）
-    const exportData: ExportOrder[] = selectedOrders.value.map(order => ({
-      orderNumber: order.orderNumber || '',
-      customerName: order.customerName || '',
-      customerPhone: order.customerPhone || '',
-      receiverName: order.receiverName || '',
-      receiverPhone: order.receiverPhone || '',
-      receiverAddress: order.receiverAddress || '',
-      products: Array.isArray(order.products)
-        ? order.products.map((p: any) => {
-            let text = `${p.name} x${p.quantity}`
-            if (p.skuName) text += ` [${p.skuName}]`
-            return text
-          }).join(', ')
-        : order.products || '',
-      totalQuantity: order.totalQuantity || (Array.isArray(order.products) ? order.products.reduce((sum: number, p: any) => sum + (p.quantity || 0), 0) : 0),
-      totalAmount: order.totalAmount || 0,
-      depositAmount: order.depositAmount || 0,
-      codAmount: order.codAmount || (order.totalAmount || 0) - (order.depositAmount || 0),
-      customerGender: order.customerGender || '',
-      customerAge: order.customerAge || '',
-      customerHeight: order.customerHeight || '',
-      customerWeight: order.customerWeight || '',
-      medicalHistory: order.medicalHistory || '',
-      serviceWechat: order.serviceWechat || '',
-      markType: order.markType || '',
-      salesPersonName: order.salesPersonName || order.createdByName || order.createdBy || '',
-      paymentMethod: order.paymentMethod || '',
-      orderSource: order.orderSource || '',
-      customFields: order.customFields || {},
-      remark: order.remark || '',
-      createTime: order.createTime || '',
-      status: order.status || '',
-      shippingStatus: order.shippingStatus || '',
-      specifiedExpress: order.specifiedExpress || '',
-      expressCompany: order.expressCompany || '',
-      expressNo: order.expressNo || '',
-      logisticsStatus: order.logisticsStatus || ''
-    }))
+    const exportData: ExportOrder[] = selectedOrders.value.map(order => mapOrderToExport(order))
 
     await exportBatchOrders(exportData, userStore.isAdmin)
 
@@ -1896,46 +1908,7 @@ const handleExport = async () => {
       console.log('[订单导出] 第一条订单完整数据:', JSON.stringify(sampleOrders[0], null, 2))
     }
 
-    const exportData: ExportOrder[] = filteredOrderList.value.map(order => ({
-      orderNumber: order.orderNumber || '',
-      customerName: order.customerName || '',
-      customerPhone: order.customerPhone || '',
-      receiverName: order.receiverName || '',
-      receiverPhone: order.receiverPhone || '',
-      receiverAddress: order.receiverAddress || '',
-      products: Array.isArray(order.products)
-        ? order.products.map((p: any) => {
-            let text = `${p.name} x${p.quantity}`
-            if (p.skuName) text += ` [${p.skuName}]`
-            return text
-          }).join(', ')
-        : order.products || '',
-      totalQuantity: order.totalQuantity || (Array.isArray(order.products) ? order.products.reduce((sum: number, p: any) => sum + (p.quantity || 0), 0) : 0),
-      totalAmount: order.totalAmount || 0,
-      depositAmount: order.depositAmount || 0,
-      codAmount: order.codAmount || (order.totalAmount || 0) - (order.depositAmount || 0),
-      customerGender: order.customerGender || '',
-      customerAge: order.customerAge || '',
-      customerHeight: order.customerHeight || '',
-      customerWeight: order.customerWeight || '',
-      medicalHistory: order.medicalHistory || '',
-      serviceWechat: order.serviceWechat || '',
-      // 🔥 新增字段
-      markType: order.markType || '',
-      salesPersonName: order.salesPersonName || order.createdByName || order.createdBy || '',
-      paymentMethod: order.paymentMethod || '',
-      orderSource: order.orderSource || '',
-      customFields: order.customFields || {},
-      remark: order.remark || '',
-      createTime: order.createTime || '',
-      status: order.status || '',
-      shippingStatus: order.shippingStatus || '',
-      // 物流相关字段
-      specifiedExpress: order.specifiedExpress || '',
-      expressCompany: order.expressCompany || '',
-      expressNo: order.expressNo || '',
-      logisticsStatus: order.logisticsStatus || ''
-    }))
+    const exportData: ExportOrder[] = filteredOrderList.value.map(order => mapOrderToExport(order))
 
     await exportBatchOrders(exportData, userStore.isAdmin)
 
@@ -1945,6 +1918,61 @@ const handleExport = async () => {
     ElMessage.error('导出失败，请重试')
   } finally {
     loading.value = false
+  }
+}
+
+// 🔥 按当前筛选条件导出（不受翻页限制，自动分批拉取全部命中数据）
+const exportByFilterLoading = ref(false)
+const handleExportByFilter = async () => {
+  if (exportByFilterLoading.value) return
+  exportByFilterLoading.value = true
+
+  // 🔥 全屏进度提示：分批拉取耗时较长，避免用户以为"没反应"
+  const { ElLoading } = await import('element-plus')
+  const loadingInstance = ElLoading.service({ lock: true, text: '正在按筛选条件拉取数据，请稍候...' })
+  try {
+    const { request } = await import('@/api/request')
+
+    // 复用与列表加载完全一致的筛选参数（不含分页）
+    const baseParams = buildSearchParams()
+
+    // 分批拉取全部命中数据（每批1000条，不设总量上限，直到拉完全部命中数据）
+    const EXPORT_BATCH_SIZE = 1000
+    const allRows: any[] = []
+    let page = 1
+    let total = 0
+    do {
+      // 🔥 大批量查询耗时较长，单独放宽超时到120秒，避免默认30秒超时导致导出失败
+      const response = await request<{ list: any[]; total: number }>('/orders', {
+        method: 'GET',
+        params: { ...baseParams, page, pageSize: EXPORT_BATCH_SIZE },
+        timeout: 120000
+      })
+      const list = response?.data?.list || []
+      total = response?.data?.total || 0
+      if (list.length === 0) break
+      allRows.push(...list)
+      loadingInstance.setText(`正在拉取数据：${allRows.length}/${total} 条...`)
+      page++
+    } while (allRows.length < total)
+
+    if (allRows.length === 0) {
+      ElMessage.warning('当前筛选条件下没有可导出的数据')
+      return
+    }
+
+    loadingInstance.setText(`正在生成Excel文件（共 ${allRows.length} 条）...`)
+    const exportData: ExportOrder[] = allRows.map(order => mapOrderToExport(order))
+
+    await exportBatchOrders(exportData, userStore.isAdmin)
+
+    ElMessage.success(`成功导出 ${allRows.length} 条订单数据`)
+  } catch (error) {
+    console.error('导出筛选结果失败:', error)
+    ElMessage.error('导出筛选结果失败，请重试')
+  } finally {
+    loadingInstance.close()
+    exportByFilterLoading.value = false
   }
 }
 
@@ -2497,6 +2525,90 @@ const updatePagination = () => {
 }
 
 // 防止重复加载的标志
+// 🔥 构建当前筛选条件参数（列表加载与"导出筛选结果"共用，保证条件一致）
+const buildSearchParams = (): Record<string, any> => {
+  const params: Record<string, any> = {}
+
+  // 🔥 状态筛选
+  if (activeQuickFilter.value && activeQuickFilter.value !== 'all') {
+    params.status = activeQuickFilter.value
+  }
+
+  // 🔥 日期筛选 - 使用本地时间格式，避免时区问题
+  if (searchForm.dateRange && searchForm.dateRange.length === 2) {
+    const startDate = searchForm.dateRange[0]
+    const endDate = searchForm.dateRange[1]
+
+    // 格式化日期为本地时间 YYYY-MM-DD 格式
+    const formatLocalDate = (date: Date | string): string => {
+      if (date instanceof Date) {
+        const year = date.getFullYear()
+        const month = String(date.getMonth() + 1).padStart(2, '0')
+        const day = String(date.getDate()).padStart(2, '0')
+        return `${year}-${month}-${day}`
+      }
+      return String(date)
+    }
+
+    if (startDate) {
+      params.startDate = formatLocalDate(startDate)
+    }
+    if (endDate) {
+      params.endDate = formatLocalDate(endDate)
+    }
+  }
+
+  // 🔥 综合关键词搜索
+  if (searchForm.keyword?.trim()) {
+    params.keyword = searchForm.keyword.trim()
+  }
+
+  // 🔥 标记筛选
+  if (searchForm.markType) {
+    params.markType = searchForm.markType
+  }
+
+  // 🔥 部门筛选
+  if (searchForm.departmentId) {
+    params.departmentId = searchForm.departmentId
+  }
+
+  // 🔥 销售人员筛选
+  if (searchForm.salesPersonId) {
+    params.salesPersonId = searchForm.salesPersonId
+  }
+
+  // 🔥 高级筛选：订单状态（多选）
+  if (searchForm.status && searchForm.status.length > 0) {
+    params.statusList = searchForm.status.join(',')
+  }
+
+  // 🔥 高级筛选：金额范围
+  if (searchForm.minAmount !== undefined && searchForm.minAmount !== null) {
+    params.minAmount = searchForm.minAmount
+  }
+  if (searchForm.maxAmount !== undefined && searchForm.maxAmount !== null) {
+    params.maxAmount = searchForm.maxAmount
+  }
+
+  // 🔥 高级筛选：商品名称（模糊搜索）
+  if (searchForm.productName) {
+    params.productName = searchForm.productName
+  }
+
+  // 🔥 高级筛选：客户电话
+  if (searchForm.customerPhone) {
+    params.customerPhone = searchForm.customerPhone
+  }
+
+  // 🔥 高级筛选：支付方式
+  if (searchForm.paymentMethod) {
+    params.paymentMethod = searchForm.paymentMethod
+  }
+
+  return params
+}
+
 let isLoadingOrders = false
 let lastLoadTime = 0
 const MIN_LOAD_INTERVAL = 500 // 最小加载间隔500ms
@@ -2517,87 +2629,11 @@ const loadOrderList = async (force = false) => {
     // 🔥 修复：直接调用API，传递分页参数和筛选参数，实现后端分页和筛选
     const { orderApi } = await import('@/api/order')
 
-    // 构建筛选参数
+    // 构建筛选参数（分页 + 当前筛选条件）
     const params: Record<string, any> = {
       page: pagination.page,
-      pageSize: pagination.size
-    }
-
-    // 🔥 状态筛选
-    if (activeQuickFilter.value && activeQuickFilter.value !== 'all') {
-      params.status = activeQuickFilter.value
-    }
-
-    // 🔥 日期筛选 - 使用本地时间格式，避免时区问题
-    if (searchForm.dateRange && searchForm.dateRange.length === 2) {
-      const startDate = searchForm.dateRange[0]
-      const endDate = searchForm.dateRange[1]
-
-      // 格式化日期为本地时间 YYYY-MM-DD 格式
-      const formatLocalDate = (date: Date | string): string => {
-        if (date instanceof Date) {
-          const year = date.getFullYear()
-          const month = String(date.getMonth() + 1).padStart(2, '0')
-          const day = String(date.getDate()).padStart(2, '0')
-          return `${year}-${month}-${day}`
-        }
-        return String(date)
-      }
-
-      if (startDate) {
-        params.startDate = formatLocalDate(startDate)
-      }
-      if (endDate) {
-        params.endDate = formatLocalDate(endDate)
-      }
-    }
-
-    // 🔥 综合关键词搜索
-    if (searchForm.keyword?.trim()) {
-      params.keyword = searchForm.keyword.trim()
-    }
-
-    // 🔥 标记筛选
-    if (searchForm.markType) {
-      params.markType = searchForm.markType
-    }
-
-    // 🔥 部门筛选
-    if (searchForm.departmentId) {
-      params.departmentId = searchForm.departmentId
-    }
-
-    // 🔥 销售人员筛选
-    if (searchForm.salesPersonId) {
-      params.salesPersonId = searchForm.salesPersonId
-    }
-
-    // 🔥 高级筛选：订单状态（多选）
-    if (searchForm.status && searchForm.status.length > 0) {
-      params.statusList = searchForm.status.join(',')
-    }
-
-    // 🔥 高级筛选：金额范围
-    if (searchForm.minAmount !== undefined && searchForm.minAmount !== null) {
-      params.minAmount = searchForm.minAmount
-    }
-    if (searchForm.maxAmount !== undefined && searchForm.maxAmount !== null) {
-      params.maxAmount = searchForm.maxAmount
-    }
-
-    // 🔥 高级筛选：商品名称（模糊搜索）
-    if (searchForm.productName) {
-      params.productName = searchForm.productName
-    }
-
-    // 🔥 高级筛选：客户电话
-    if (searchForm.customerPhone) {
-      params.customerPhone = searchForm.customerPhone
-    }
-
-    // 🔥 高级筛选：支付方式
-    if (searchForm.paymentMethod) {
-      params.paymentMethod = searchForm.paymentMethod
+      pageSize: pagination.size,
+      ...buildSearchParams()
     }
 
     console.log(`[订单列表] 🚀 加载订单, 页码: ${pagination.page}, 每页: ${pagination.size}, 筛选:`, params)

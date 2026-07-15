@@ -192,7 +192,7 @@
         pageSize: pagination.size,
         total: pagination.total
       }"
-      :page-sizes="[10, 20, 50, 100, 200, 300, 500, 1000, 2000, 3000]"
+      :page-sizes="[10, 20, 50, 100, 200, 300]"
       @selection-change="handleSelectionChange"
       @size-change="handleSizeChange"
       @current-change="handleCurrentChange"
@@ -215,6 +215,16 @@
         >
           <el-icon><Download /></el-icon>
           批量导出
+        </el-button>
+        <el-button
+          type="success"
+          plain
+          @click="handleExportByFilter"
+          :loading="exportByFilterLoading"
+          v-if="canExport"
+        >
+          <el-icon><Download /></el-icon>
+          导出筛选结果
         </el-button>
         <el-button
           type="warning"
@@ -1328,6 +1338,147 @@ const recordExportStats = () => {
   }
 }
 
+// 🔥 客户→导出格式映射（批量导出/导出选中/导出筛选结果共用，保证格式完全一致）
+const mapCustomerToExport = (customer: any): ExportCustomer => ({
+  code: customer.code || '',
+  name: customer.name,
+  phone: customer.phone,
+  age: customer.age,
+  address: customer.address,
+  level: getLevelText(customer.level),
+  status: getStatusText(customer.status),
+  salesPersonId: customer.salesPersonId,
+  salesPersonName: getSalesPersonName(customer.salesPersonId),
+  orderCount: customer.orderCount,
+  createTime: customer.createTime,
+  createdBy: customer.createdBy || '',
+  wechatId: customer.wechatId,
+  email: customer.email,
+  company: customer.company,
+  position: customer.position,
+  source: customer.allocationSource,
+  tags: customer.tags,
+  remarks: customer.remarks,
+  gender: customer.gender,
+  birthday: customer.birthday,
+  height: customer.height,
+  weight: customer.weight,
+  medicalHistory: customer.medicalHistory || customer.disease,
+  fanAcquisitionTime: customer.fanAcquisitionTime,
+  improvementGoals: customer.improvementGoals,
+  serviceWechat: customer.serviceWechat || customer.wechat,
+  province: customer.province,
+  city: customer.city,
+  district: customer.district,
+  returnCount: customer.returnCount,
+  lastServiceDate: customer.lastServiceDate,
+  otherPhones: customer.otherPhones,
+  street: customer.street,
+  detailAddress: customer.detailAddress,
+  overseasAddress: customer.overseasAddress,
+  otherGoals: customer.otherGoals,
+  customFields: customer.customFields
+})
+
+// 🔥 按当前筛选条件导出（不受翻页限制，自动分批拉取全部命中数据）
+const exportByFilterLoading = ref(false)
+const handleExportByFilter = async () => {
+  if (exportByFilterLoading.value) return
+
+  // 检查导出限制
+  if (!checkExportLimit()) {
+    return
+  }
+
+  if (!canExport.value) {
+    ElMessage.warning('您没有客户导出权限')
+    return
+  }
+
+  try {
+    const confirmMessage = userStore.isSuperAdmin
+      ? '确定要导出当前筛选条件下的全部客户数据吗？导出的数据将包含完整的客户信息。'
+      : '确定要导出当前筛选条件下的全部客户数据吗？敏感信息将进行脱敏处理。'
+
+    await ElMessageBox.confirm(
+      confirmMessage,
+      '导出筛选结果',
+      {
+        confirmButtonText: '确定导出',
+        cancelButtonText: '取消',
+        type: 'warning'
+      }
+    )
+  } catch {
+    return
+  }
+
+  exportByFilterLoading.value = true
+  loading.value = true
+
+  // 🔥 全屏进度提示：分批拉取耗时较长，避免用户以为"没反应"
+  const { ElLoading } = await import('element-plus')
+  const loadingInstance = ElLoading.service({ lock: true, text: '正在按筛选条件拉取数据，请稍候...' })
+  try {
+    const { customerApi } = await import('@/api/customer')
+
+    // 复用与列表加载完全一致的筛选参数（不含分页）
+    const baseParams = {
+      keyword: searchForm.keyword || undefined,
+      level: searchForm.level || undefined,
+      dateRange: searchForm.dateRange && searchForm.dateRange.length === 2
+        ? [searchForm.dateRange[0], searchForm.dateRange[1]]
+        : undefined,
+      departmentId: searchForm.departmentId || undefined,
+      createdBy: searchForm.createdBy || undefined,
+      orderCountMin: typeof searchForm.orderCountMin === 'number' && !isNaN(searchForm.orderCountMin) ? searchForm.orderCountMin : undefined
+    }
+
+    // 分批拉取全部命中数据（每批300条，上限20000条防止误操作）
+    const EXPORT_BATCH_SIZE = 300
+    const EXPORT_MAX_ROWS = 20000
+    const allRows: any[] = []
+    let page = 1
+    let total = 0
+    do {
+      const response = await customerApi.getList({ ...baseParams, page, pageSize: EXPORT_BATCH_SIZE } as any)
+      const list = response?.data?.list || []
+      total = response?.data?.total || 0
+      if (list.length === 0) break
+      allRows.push(...list)
+      loadingInstance.setText(`正在拉取数据：${allRows.length}/${Math.min(total, EXPORT_MAX_ROWS)} 条...`)
+      page++
+    } while (allRows.length < total && allRows.length < EXPORT_MAX_ROWS && page <= Math.ceil(EXPORT_MAX_ROWS / EXPORT_BATCH_SIZE))
+
+    if (allRows.length === 0) {
+      ElMessage.warning('当前筛选条件下没有可导出的数据')
+      return
+    }
+
+    loadingInstance.setText(`正在生成Excel文件（共 ${allRows.length} 条）...`)
+    const exportCustomers: ExportCustomer[] = allRows.map(customer => mapCustomerToExport(customer))
+
+    // 使用与批量导出相同的导出工具函数（脱敏规则、列格式完全一致）
+    const filename = await exportBatchCustomers(exportCustomers, hasExportPermission.value, customerFieldConfigStore.config.customFields)
+
+    // 记录导出统计
+    recordExportStats()
+
+    if (total > allRows.length) {
+      ElMessage.warning(`已导出前 ${allRows.length} 条（共命中 ${total} 条，超出单次导出上限），请缩小筛选范围后分次导出`)
+    } else {
+      ElMessage.success(`客户数据导出成功：${filename}（共 ${allRows.length} 条）`)
+    }
+  } catch (exportError) {
+    console.error('导出筛选结果失败:', exportError)
+    ElMessage.error('导出筛选结果失败，请重试')
+  } finally {
+    loadingInstance.close()
+    exportByFilterLoading.value = false
+    loading.value = false
+  }
+}
+
 // 批量导出所有客户
 const handleBatchExport = async () => {
   // 检查导出限制
@@ -1359,50 +1510,10 @@ const handleBatchExport = async () => {
 
     try {
       // 准备导出数据
-      const exportCustomers: ExportCustomer[] = searchResults.value.map(customer => ({
-        code: customer.code || '',
-        name: customer.name,
-        phone: customer.phone,
-        age: customer.age,
-        address: customer.address,
-        level: getLevelText(customer.level),
-        status: getStatusText(customer.status),
-        salesPersonId: customer.salesPersonId,
-        salesPersonName: getSalesPersonName(customer.salesPersonId),
-        orderCount: customer.orderCount,
-        createTime: customer.createTime,
-        createdBy: customer.createdBy || '',
-        wechatId: customer.wechatId,
-        email: customer.email,
-        company: customer.company,
-        position: customer.position,
-        source: customer.allocationSource,
-        tags: customer.tags,
-        remarks: customer.remarks,
-        // 新增字段
-        gender: customer.gender,
-        birthday: customer.birthday,
-        height: customer.height,
-        weight: customer.weight,
-        medicalHistory: customer.medicalHistory || customer.disease,
-        fanAcquisitionTime: customer.fanAcquisitionTime,
-        improvementGoals: customer.improvementGoals,
-        serviceWechat: customer.serviceWechat || customer.wechat,
-        province: customer.province,
-        city: customer.city,
-        district: customer.district,
-        returnCount: customer.returnCount,
-        lastServiceDate: customer.lastServiceDate,
-        otherPhones: customer.otherPhones,
-        street: customer.street,
-        detailAddress: customer.detailAddress,
-        overseasAddress: customer.overseasAddress,
-        otherGoals: customer.otherGoals,
-        customFields: customer.customFields
-      }))
+      const exportCustomers: ExportCustomer[] = searchResults.value.map(customer => mapCustomerToExport(customer))
 
       // 使用新的导出工具函数
-      const filename = exportBatchCustomers(exportCustomers, hasExportPermission.value, customerFieldConfigStore.config.customFields)
+      const filename = await exportBatchCustomers(exportCustomers, hasExportPermission.value, customerFieldConfigStore.config.customFields)
 
       // 记录导出统计
       recordExportStats()
@@ -1457,50 +1568,10 @@ const handleSelectedExport = async () => {
 
     try {
       // 准备导出数据
-      const exportCustomers: ExportCustomer[] = selectedCustomers.value.map(customer => ({
-        code: customer.code || '',
-        name: customer.name,
-        phone: customer.phone,
-        age: customer.age,
-        address: customer.address,
-        level: getLevelText(customer.level),
-        status: getStatusText(customer.status),
-        salesPersonId: customer.salesPersonId,
-        salesPersonName: getSalesPersonName(customer.salesPersonId),
-        orderCount: customer.orderCount,
-        createTime: customer.createTime,
-        createdBy: customer.createdBy || '',
-        wechatId: customer.wechatId,
-        email: customer.email,
-        company: customer.company,
-        position: customer.position,
-        source: customer.allocationSource,
-        tags: customer.tags,
-        remarks: customer.remarks,
-        // 新增字段
-        gender: customer.gender,
-        birthday: customer.birthday,
-        height: customer.height,
-        weight: customer.weight,
-        medicalHistory: customer.medicalHistory || customer.disease,
-        fanAcquisitionTime: customer.fanAcquisitionTime,
-        improvementGoals: customer.improvementGoals,
-        serviceWechat: customer.serviceWechat || customer.wechat,
-        province: customer.province,
-        city: customer.city,
-        district: customer.district,
-        returnCount: customer.returnCount,
-        lastServiceDate: customer.lastServiceDate,
-        otherPhones: customer.otherPhones,
-        street: customer.street,
-        detailAddress: customer.detailAddress,
-        overseasAddress: customer.overseasAddress,
-        otherGoals: customer.otherGoals,
-        customFields: customer.customFields
-      }))
+      const exportCustomers: ExportCustomer[] = selectedCustomers.value.map(customer => mapCustomerToExport(customer))
 
       // 使用新的导出工具函数
-      const filename = exportBatchCustomers(exportCustomers, hasExportPermission.value, customerFieldConfigStore.config.customFields)
+      const filename = await exportBatchCustomers(exportCustomers, hasExportPermission.value, customerFieldConfigStore.config.customFields)
 
       // 记录导出统计
       recordExportStats()

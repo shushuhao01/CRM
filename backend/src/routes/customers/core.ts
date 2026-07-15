@@ -388,18 +388,17 @@ router.get('/', async (req: Request, res: Response) => {
         remarks: customer.remark || '',
         remark: customer.remark || '',
         medicalHistory: (() => {
-          // 解析疾病史，返回最新的一条记录内容
+          // 解析疾病史，按时间倒序拼接全部记录内容（最新在前）
           if (!customer.medicalHistory) return '';
           try {
             const parsed = JSON.parse(customer.medicalHistory);
             if (Array.isArray(parsed) && parsed.length > 0) {
-              // 按创建时间排序，返回最新的一条
               const sorted = parsed.sort((a: any, b: any) => {
                 const timeA = new Date(a.createTime || 0).getTime();
                 const timeB = new Date(b.createTime || 0).getTime();
                 return timeB - timeA;
               });
-              return sorted[0]?.content || '';
+              return sorted.map((r: any) => r?.content || '').filter(Boolean).join('；');
             }
             return customer.medicalHistory;
           } catch {

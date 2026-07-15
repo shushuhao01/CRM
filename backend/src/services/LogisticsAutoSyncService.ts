@@ -10,11 +10,16 @@
  * - 退回相关关键词永远优先于签收判断（防止"退回签收"被误判为"已签收"）
  * - 只有终态物流状态才同步更新订单状态（签收/拒收/异常/退回）
  * - 在途状态（揽收/运输/派送）只更新物流状态字段，不动订单状态
- * - 已退回的判定取决于当前订单状态（拒收→拒收已退回，其他→物流部退回）
- * - 终态订单不参与同步
+ * - 🔥 自动同步的退回一律判定为"拒收已退回"（rejected_returned）；
+ *   "物流部退回"（logistics_returned）仅用于发货列表中待发货订单的人工退回/取消操作
+ * - 拒收/包裹异常不是终态（客户可能重新派送签收），物流后续变化需继续同步订单状态
+ * - 终态订单（已签收/拒收已退回/已取消等）不参与同步
+ * - 🔒 手动更新过状态的订单（manualStatusOverride）永久排除自动同步：
+ *   手动修改是纠错兜底手段，视为最终状态，之后不再被任何自动同步覆盖
  */
 
 import { log } from '../config/logger';
+import { translateStatus, translateLogisticsStatus } from '../utils/operationLogWriter';
 import { AppDataSource } from '../config/database';
 import { Order } from '../entities/Order';
 import { OrderStatusHistory } from '../entities/OrderStatusHistory';
@@ -298,10 +303,10 @@ export function mapKuaidi100State(state: string | number): string {
  * - delivered → shipped/rejected/package_exception 都可变 delivered（重新派送签收）
  * - rejected → shipped/package_exception 可变 rejected（首次拒收或异常后拒收）
  * - exception → 只有 shipped 可变 package_exception
- * - returned → 根据当前状态判断：
- *   - rejected → rejected_returned（拒收后退回）
- *   - shipped → logistics_returned（物流原因退回）
- *   - package_exception → logistics_returned（异常后退回）
+ * - returned → 一律判定为 rejected_returned（拒收已退回）
+ *   🔥 已发货订单到货后被客户拒收退回，属于"拒收已退回"；
+ *   "物流部退回"（logistics_returned）仅由发货列表中待发货订单的人工退回/取消操作产生，
+ *   自动同步永远不产生 logistics_returned
  *
  * ⚠️ 注意：rejected 和 package_exception 不是终态！客户可能联系后重新派送签收。
  * 终态只有：delivered、rejected_returned、cancelled 等。
@@ -342,11 +347,9 @@ export function mapLogisticsToOrderStatus(
       return currentOrderStatus === 'shipped' ? 'package_exception' : null;
 
     case 'returned':
-      // 🔥 退回的目标取决于当前订单状态
-      if (currentOrderStatus === 'rejected') return 'rejected_returned';
-      if (currentOrderStatus === 'shipped') return 'logistics_returned';
-      if (currentOrderStatus === 'package_exception') return 'logistics_returned';
-      return null;
+      // 🔥 自动同步的退回一律判定为"拒收已退回"
+      // "物流部退回"（logistics_returned）仅限发货列表待发货订单的人工退回/取消操作
+      return 'rejected_returned';
 
     default:
       // pending, picked_up, in_transit, out_for_delivery → 不更新订单状态
@@ -417,6 +420,7 @@ class LogisticsAutoSyncService {
         .andWhere("order.trackingNumber != ''")
         .andWhere('order.latestLogisticsInfo IS NOT NULL')
         .andWhere("order.latestLogisticsInfo != ''")
+        // 🔒 手动更新过的订单永久排除自动同步：手动修改是兜底修正手段，视为最终状态
         .andWhere('(order.manualStatusOverride = false OR order.manualStatusOverride IS NULL)');
 
       // 租户隔离
@@ -503,9 +507,22 @@ class LogisticsAutoSyncService {
     // 🔥 订单状态同步：仅在自动同步开关启用时才更新订单状态
     // 物流状态（logisticsStatus）始终更新，订单状态（status）受开关控制
     let targetOrderStatus: string | null = null;
+    let effectiveLogisticsStatus = newLogisticsStatus;
     const autoSyncEnabled = await isAutoSyncEnabled(order.tenantId || undefined);
     if (autoSyncEnabled) {
       targetOrderStatus = mapLogisticsToOrderStatus(newLogisticsStatus, oldOrderStatus);
+
+      // 🔥 文本检测无结果时，回退参考已存储的物流状态（可能由快递回调推送更新，比文本更新）
+      // 解决"物流状态已是已签收，但订单状态仍停留在包裹异常/拒收"的问题
+      if (!targetOrderStatus && oldLogisticsStatus && oldLogisticsStatus !== newLogisticsStatus) {
+        const fallbackTarget = mapLogisticsToOrderStatus(oldLogisticsStatus, oldOrderStatus);
+        if (fallbackTarget) {
+          targetOrderStatus = fallbackTarget;
+          effectiveLogisticsStatus = oldLogisticsStatus;
+          // 使用存储的物流状态判定时，不要用文本检测结果回写覆盖（避免把推送更新的新状态改回旧值）
+          delete updateData.logisticsStatus;
+        }
+      }
 
       if (targetOrderStatus && targetOrderStatus !== oldOrderStatus) {
         updateData.status = targetOrderStatus;
@@ -532,7 +549,8 @@ class LogisticsAutoSyncService {
           const historyRecord = historyRepo.create({
             orderId: order.id,
             status: targetOrderStatus as any,
-            notes: `[自动同步] 物流动态: "${description.substring(0, 100)}" → 物流状态: ${newLogisticsStatus} → 订单状态: ${targetOrderStatus}`,
+            // 🔥 日志内容使用中文状态，避免订单日志显示英文代码
+            notes: `[自动同步] 物流动态: "${description.substring(0, 100)}" → 物流状态: ${translateLogisticsStatus(effectiveLogisticsStatus)} → 订单状态: ${translateStatus(targetOrderStatus)}`,
             operatorName: '系统自动同步',
             actionType: 'auto_sync'
           });

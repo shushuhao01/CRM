@@ -91,6 +91,40 @@ export function getStreetsByDistrict(provinceValue: string, cityValue: string, d
   return district?.children ?? [];
 }
 
+// 🔥 根据代码分别获取省/市/区/街道的中文名称（用于导出等场景，找不到时回退原始值）
+export function getAddressPartLabels(
+  provinceValue?: string,
+  cityValue?: string,
+  districtValue?: string,
+  streetValue?: string
+): { province: string; city: string; district: string; street: string } {
+  const result = {
+    province: provinceValue || '',
+    city: cityValue || '',
+    district: districtValue || '',
+    street: streetValue || ''
+  };
+
+  const province = provinceValue ? _provinces.find(p => p.value === provinceValue) : undefined;
+  if (province) {
+    result.province = province.label;
+    const city = cityValue ? province.children?.find(c => c.value === cityValue) : undefined;
+    if (city) {
+      result.city = city.label;
+      const district = districtValue ? city.children?.find(d => d.value === districtValue) : undefined;
+      if (district) {
+        result.district = district.label;
+        const street = streetValue ? district.children?.find(s => s.value === streetValue) : undefined;
+        if (street) {
+          result.street = street.label;
+        }
+      }
+    }
+  }
+
+  return result;
+}
+
 // 根据代码获取地址名称
 export function getAddressLabel(provinceValue?: string, cityValue?: string, districtValue?: string, streetValue?: string): string {
   const parts: string[] = [];
