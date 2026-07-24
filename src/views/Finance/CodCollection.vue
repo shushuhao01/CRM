@@ -556,6 +556,8 @@ const loadStats = async () => {
     if (endDate.value) p.endDate = endDate.value
     if (departmentFilter.value) p.departmentId = departmentFilter.value
     if (salesPersonFilter.value) p.salesPersonId = salesPersonFilter.value
+    if (orderStatusFilter.value) p.status = orderStatusFilter.value
+    if (batchSearchKeywords.value) p.keywords = batchSearchKeywords.value
     const r = await getCodStats(p) as any
     if (r) {
       stats.value = r

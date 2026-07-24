@@ -72,8 +72,8 @@ async function logCodOperation(params: {
 // 有效订单状态（计入代收统计的订单）- 只统计已发货且有效的订单
 const VALID_STATUSES = ['shipped', 'delivered', 'completed'];
 
-// 已发货的订单状态（出现在代收列表中）- 包含所有已发货状态，用于列表展示
-const SHIPPED_STATUSES = ['shipped', 'delivered', 'completed', 'rejected', 'logistics_returned', 'exception'];
+// 已发货的订单状态（出现在代收列表中）- 仅包含实际派送的订单，物流退回的不存在代收
+const SHIPPED_STATUSES = ['shipped', 'delivered', 'completed', 'rejected'];
 
 // 🔥 代收管理专用：排除虚拟商品订单（虚拟订单无需代收货款）
 const EXCLUDE_VIRTUAL_CONDITION = `AND (order_product_type IS NULL OR order_product_type != 'virtual')`;
@@ -83,7 +83,7 @@ const EXCLUDE_VIRTUAL_CONDITION = `AND (order_product_type IS NULL OR order_prod
  */
 router.get('/stats', authenticateToken, async (req: Request, res: Response) => {
   try {
-    const { startDate, endDate, departmentId, salesPersonId } = req.query;
+    const { startDate, endDate, departmentId, salesPersonId, status: filterStatus, keywords } = req.query;
     const orderRepo = getTenantRepo(Order);
 
     // 构建基础查询条件（排除虚拟商品订单，虚拟订单无需代收货款）
@@ -199,39 +199,62 @@ router.get('/stats', authenticateToken, async (req: Request, res: Response) => {
       return sum + codAmount;
     }, 0);
 
-    // 🔥 新增：标签统计（订单数量）
-    const tabStatsWhere = { ...baseWhere, status: In(VALID_STATUSES) };
-    if (userStartDate && userEndDate) {
-      tabStatsWhere.createdAt = Between(userStartDate, userEndDate);
-    }
+    // 🔥 新增：标签统计（订单数量）- 使用 queryBuilder 以支持关键词和状态筛选
+    const tabStatusList = filterStatus ? [filterStatus as string] : VALID_STATUSES;
+
+    // 解析关键词列表
+    const keywordList = keywords ? (keywords as string).split('\n').map((k: string) => k.trim()).filter((k: string) => k) : [];
+
+    // 构建通用的计数查询构造器（关键词/状态/日期/部门/销售员均为动态条件）
+    const buildCountQb = () => {
+      let qb = orderRepo.createQueryBuilder('o');
+      qb = qb.where('o.status IN (:...tabStatusList)', { tabStatusList });
+      qb = qb.andWhere('(o.order_product_type IS NULL OR o.order_product_type != :virtualType)', { virtualType: 'virtual' });
+      if (userStartDate && userEndDate) {
+        qb = qb.andWhere('o.createdAt BETWEEN :start AND :end', { start: userStartDate, end: userEndDate });
+      }
+      if (departmentId) {
+        qb = qb.andWhere('o.created_by_department_id = :deptId', { deptId: departmentId as string });
+      }
+      if (salesPersonId) {
+        qb = qb.andWhere('o.created_by = :salesId', { salesId: salesPersonId as string });
+      }
+      // 关键词筛选（逐词 LIKE 匹配，OR 关系）
+      if (keywordList.length > 0) {
+        const kwParams: any = {};
+        const orConditions = keywordList.map((kw: string, i: number) => {
+          kwParams[`kw${i}`] = `%${kw}%`;
+          return `(o.order_number LIKE :kw${i} OR o.customer_phone LIKE :kw${i} OR o.customer_name LIKE :kw${i} OR o.tracking_number LIKE :kw${i})`;
+        });
+        qb = qb.andWhere(`(${orConditions.join(' OR ')})`, kwParams);
+      }
+      return qb;
+    };
 
     // 待处理数量
-    const pendingCount = await orderRepo.count({
-      where: { ...tabStatsWhere, codStatus: 'pending' }
-    });
+    const pendingCount = await buildCountQb()
+      .andWhere('o.cod_status = :codStatus', { codStatus: 'pending' })
+      .getCount();
 
     // 已返款数量
-    const returnedCount = await orderRepo.count({
-      where: { ...tabStatsWhere, codStatus: 'returned' }
-    });
+    const returnedCount = await buildCountQb()
+      .andWhere('o.cod_status = :codStatus', { codStatus: 'returned' })
+      .getCount();
 
     // 已改代收数量
-    const cancelledCount = await orderRepo.count({
-      where: { ...tabStatsWhere, codStatus: 'cancelled' }
-    });
+    const cancelledCount = await buildCountQb()
+      .andWhere('o.cod_status = :codStatus', { codStatus: 'cancelled' })
+      .getCount();
 
-    // 无需代收数量（原始代收金额为0的订单）
-    const allOrders = await orderRepo.find({
-      where: tabStatsWhere,
-      select: ['id', 'totalAmount', 'depositAmount']
-    });
-    const zeroCount = allOrders.filter(o => {
+    // 无需代收数量 + 全部数量（一次查询获取两项，减少数据库查询）
+    const allStatsOrders = await buildCountQb()
+      .select(['o.id', 'o.totalAmount', 'o.depositAmount'])
+      .getMany();
+    const allCount = allStatsOrders.length;
+    const zeroCount = allStatsOrders.filter((o: Order) => {
       const originalCodAmount = (Number(o.totalAmount) || 0) - (Number(o.depositAmount) || 0);
       return originalCodAmount === 0;
     }).length;
-
-    // 全部数量
-    const allCount = await orderRepo.count({ where: tabStatsWhere });
 
     res.json({
       success: true,
