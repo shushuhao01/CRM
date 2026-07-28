@@ -107,6 +107,8 @@ export interface UserLineAssignment {
   sipExtension?: string
   isDefault: boolean
   dailyLimit: number
+  /** 今日已外呼次数（列表展示 已用/限额） */
+  dailyUsed?: number
   isActive: boolean
   assignedBy?: number
   assignedAt?: string

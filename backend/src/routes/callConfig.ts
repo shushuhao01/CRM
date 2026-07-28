@@ -999,6 +999,22 @@ router.get('/assignments', async (req: Request, res: Response) => {
 
     const assignments = await AppDataSource.query(query, params);
 
+    // 批量统计各分配「今日已外呼次数」，供列表展示 已用/限额
+    const usageMap = new Map<string, number>();
+    if (assignments.length > 0) {
+      const tUsage = tenantRawSQL();
+      const usageRows = await AppDataSource.query(
+        `SELECT user_id, line_id, COUNT(*) AS cnt FROM call_records
+         WHERE call_type = 'outbound'
+           AND DATE(COALESCE(start_time, created_at)) = CURDATE()${tUsage.sql}
+         GROUP BY user_id, line_id`,
+        [...tUsage.params]
+      );
+      for (const row of usageRows) {
+        usageMap.set(`${row.user_id}_${row.line_id}`, Number(row.cnt) || 0);
+      }
+    }
+
     res.json(successResponse(assignments.map((a: any) => ({
       id: a.id,
       userId: a.user_id,
@@ -1013,6 +1029,7 @@ router.get('/assignments', async (req: Request, res: Response) => {
       sipExtension: a.sip_extension || null,
       isDefault: a.is_default === 1,
       dailyLimit: a.daily_limit,
+      dailyUsed: usageMap.get(`${a.user_id}_${a.line_id}`) || 0,
       isActive: a.is_active === 1,
       assignedBy: a.assigned_by,
       assignedAt: a.assigned_at,
@@ -1075,6 +1092,23 @@ router.post('/assignments', async (req: Request, res: Response) => {
       if (occupied.length > 0) {
         const ownerName = occupied[0].real_name || occupied[0].name || occupied[0].user_id;
         return res.status(400).json(errorResponse(`号码 ${callerNumber} 已分配给 ${ownerName}，请先取消其分配后再操作`, 400));
+      }
+    }
+
+    // 坐席账号一对一：同一 ccc_user_id 只能分配给一个成员（取消/停用后释放）
+    if (cccUserId) {
+      const tSeat = tenantRawSQL('a.');
+      const seatOccupied = await AppDataSource.query(
+        `SELECT a.id, a.user_id, u.name, u.real_name
+         FROM user_line_assignments a
+         LEFT JOIN users u ON a.user_id = u.id
+         WHERE a.ccc_user_id = ? AND a.is_active = 1 AND a.user_id != ?${tSeat.sql}
+         LIMIT 1`,
+        [String(cccUserId), String(userId), ...tSeat.params]
+      );
+      if (seatOccupied.length > 0) {
+        const ownerName = seatOccupied[0].real_name || seatOccupied[0].name || seatOccupied[0].user_id;
+        return res.status(400).json(errorResponse(`坐席 ${cccUserId} 已分配给 ${ownerName}，请先取消其分配后再操作`, 400));
       }
     }
 
@@ -1154,6 +1188,23 @@ router.put('/assignments/:id', async (req: Request, res: Response) => {
       if (occupied.length > 0) {
         const ownerName = occupied[0].real_name || occupied[0].name || '其他成员';
         return res.status(400).json(errorResponse(`号码 ${newCallerNumber} 已分配给 ${ownerName}，请先取消或禁用其分配`, 400));
+      }
+    }
+
+    // 坐席账号一对一：换绑坐席、或重新启用时，坐席不能被其他启用分配占用
+    if (newCccUserId && (newCccUserId !== existing.ccc_user_id || isActive === true)) {
+      const tSeat = tenantRawSQL('a.');
+      const seatOccupied = await AppDataSource.query(
+        `SELECT a.id, u.name, u.real_name
+         FROM user_line_assignments a
+         LEFT JOIN users u ON a.user_id = u.id
+         WHERE a.ccc_user_id = ? AND a.is_active = 1 AND a.id != ?${tSeat.sql}
+         LIMIT 1`,
+        [String(newCccUserId), id, ...tSeat.params]
+      );
+      if (seatOccupied.length > 0) {
+        const ownerName = seatOccupied[0].real_name || seatOccupied[0].name || '其他成员';
+        return res.status(400).json(errorResponse(`坐席 ${newCccUserId} 已分配给 ${ownerName}，请先取消或禁用其分配`, 400));
       }
     }
 
@@ -1689,6 +1740,25 @@ router.post('/lines/call', async (req: Request, res: Response) => {
     }
 
     const assignment = assignments[0];
+
+    // 员工日呼叫限额：分配里 daily_limit > 0 时，按今日该用户在该线路的外呼次数拦截（0/空=不限制）
+    const assignDailyLimit = Number(assignment.daily_limit) || 0;
+    if (assignDailyLimit > 0) {
+      const tCnt = tenantRawSQL();
+      const usedRows = await AppDataSource.query(
+        `SELECT COUNT(*) AS cnt FROM call_records
+         WHERE user_id = ? AND line_id = ? AND call_type = 'outbound'
+           AND DATE(COALESCE(start_time, created_at)) = CURDATE()${tCnt.sql}`,
+        [userIdStr, String(lineId), ...tCnt.params]
+      );
+      const usedToday = Number(usedRows[0]?.cnt) || 0;
+      if (usedToday >= assignDailyLimit) {
+        return res.status(400).json(errorResponse(
+          `今日外呼已达限额（${usedToday}/${assignDailyLimit}），请明日再试或联系管理员调高「号码分配」中的日呼叫限额`,
+          400
+        ));
+      }
+    }
 
     // 创建通话记录 - 使用 id 字段作为主键，call_status 使用 'calling'（拨号中）
     const callId = `NP-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;

@@ -230,7 +230,14 @@
                 <span v-else>-</span>
               </template>
             </el-table-column>
-            <el-table-column prop="dailyLimit" label="日限额" width="75" />
+            <el-table-column prop="dailyLimit" label="日限额" width="100" align="center">
+              <template #default="{ row }">
+                <span v-if="row.dailyLimit > 0" :style="{ color: (row.dailyUsed || 0) >= row.dailyLimit ? '#f56c6c' : '' }">
+                  {{ row.dailyUsed || 0 }}/{{ row.dailyLimit }}
+                </span>
+                <span v-else style="color: #909399;">{{ row.dailyUsed || 0 }}/不限制</span>
+              </template>
+            </el-table-column>
             <el-table-column prop="isActive" label="状态" width="70">
               <template #default="{ row }">
                 <el-tag :type="row.isActive ? 'success' : 'info'" size="small">
@@ -550,18 +557,22 @@
               style="flex: 1"
             >
               <el-option
-                v-for="agent in cccUsers"
+                v-for="agent in assignableCccUsers"
                 :key="agent.userId"
-                :label="`${agent.displayName}（${agent.loginName}）${agent.extension ? ' 软电话分机:' + agent.extension : ''}${agent.sipExtension ? ' SIP分机:' + agent.sipExtension : ''}`"
+                :label="agent.occupied
+                  ? `${agent.label}（已分配给 ${agent.occupiedBy}）`
+                  : agent.label"
                 :value="agent.userId"
+                :disabled="agent.occupied"
               />
             </el-select>
             <el-button @click="fetchCccUsers" :loading="loadingCccUsers">获取坐席</el-button>
           </div>
-          <div class="form-tip">仅软电话/硬话机模式需要：绑定该员工在阿里云云联络中心的坐席账号，员工登录坐席工作台后即可外呼</div>
+          <div class="form-tip">仅软电话/硬话机模式需要：坐席一对一独占，已分配给其他成员的坐席不可选；取消或禁用分配后释放</div>
         </el-form-item>
         <el-form-item label="日呼叫限额">
           <el-input-number v-model="assignForm.dailyLimit" :min="0" :max="1000" style="width: 100%" />
+          <div class="form-tip">该员工使用本线路的每日外呼上限；0 表示不限制，达到限额后无法再外呼</div>
         </el-form-item>
         <el-form-item label="设为默认">
           <el-switch v-model="assignForm.isDefault" />
@@ -779,7 +790,7 @@ const assignForm = reactive({
   callerNumber: '',
   agentPhone: '',
   cccUserId: '',
-  dailyLimit: 100,
+  dailyLimit: 0,
   isDefault: false
 })
 
@@ -805,6 +816,22 @@ const assignableNumbers = computed(() => {
     )
     return {
       number,
+      occupied: !!occupiedBy,
+      occupiedBy: occupiedBy?.userName || ''
+    }
+  })
+})
+// 坐席账号一对一：已分配给其他成员的坐席标记占用并禁用（对齐主叫号码）
+const assignableCccUsers = computed(() => {
+  return cccUsers.value.map(agent => {
+    const occupiedBy = assignments.value.find(
+      a => a.isActive && a.cccUserId && String(a.cccUserId) === String(agent.userId)
+        && String(a.userId) !== String(assignForm.userId || '')
+    )
+    const label = `${agent.displayName}（${agent.loginName}）${agent.extension ? ' 软电话分机:' + agent.extension : ''}${agent.sipExtension ? ' SIP分机:' + agent.sipExtension : ''}`
+    return {
+      userId: agent.userId,
+      label,
       occupied: !!occupiedBy,
       occupiedBy: occupiedBy?.userName || ''
     }
@@ -1381,7 +1408,7 @@ const openAssignDialog = () => {
   assignForm.callerNumber = ''
   assignForm.agentPhone = ''
   assignForm.cccUserId = ''
-  assignForm.dailyLimit = 100
+  assignForm.dailyLimit = 0
   assignForm.isDefault = false
   // 强制刷新线路与号码池，避免刚保存的配置/自动创建的线路未同步
   loadCallLines()
@@ -1400,7 +1427,7 @@ const openEditAssignDialog = (assignment: UserLineAssignment) => {
   assignForm.callerNumber = assignment.callerNumber || ''
   assignForm.agentPhone = assignment.agentPhone || ''
   assignForm.cccUserId = assignment.cccUserId || ''
-  assignForm.dailyLimit = assignment.dailyLimit || 100
+  assignForm.dailyLimit = assignment.dailyLimit ?? 0
   assignForm.isDefault = assignment.isDefault
   loadCallLines()
   loadGlobalConfig()
