@@ -46,9 +46,12 @@
                 <el-switch v-model="row.isEnabled" size="small" @change="toggleLineStatus(row)" />
               </template>
             </el-table-column>
-            <el-table-column prop="dailyUsed" label="今日使用" width="100">
+            <el-table-column prop="dailyUsed" label="今日使用" width="110">
               <template #default="{ row }">
-                {{ row.dailyUsed || 0 }} / {{ row.dailyLimit || 1000 }}
+                <span v-if="row.dailyLimit > 0" :style="{ color: (row.dailyUsed || 0) >= row.dailyLimit ? '#f56c6c' : '' }">
+                  {{ row.dailyUsed || 0 }}/{{ row.dailyLimit }}
+                </span>
+                <span v-else style="color: #909399;">{{ row.dailyUsed || 0 }}/不限制</span>
               </template>
             </el-table-column>
             <el-table-column label="操作" width="160" fixed="right">
@@ -478,9 +481,11 @@
         </el-form-item>
         <el-form-item label="日呼叫限额">
           <el-input-number v-model="lineForm.dailyLimit" :min="0" :max="10000" style="width: 200px" />
+          <div class="form-tip">该线路每日外呼总上限；0 表示不限制</div>
         </el-form-item>
         <el-form-item label="最大并发">
-          <el-input-number v-model="lineForm.maxConcurrent" :min="1" :max="100" style="width: 200px" />
+          <el-input-number v-model="lineForm.maxConcurrent" :min="0" :max="100" style="width: 200px" />
+          <div class="form-tip">该线路同时进行中的通话上限；0 表示不限制</div>
         </el-form-item>
         <el-form-item label="描述">
           <el-input v-model="lineForm.description" type="textarea" :rows="2" />
@@ -745,8 +750,8 @@ const lineForm = reactive({
   provider: 'aliyun' as 'aliyun' | 'tencent' | 'huawei' | 'custom',
   type: 'voip' as 'voip' | 'pstn' | 'sip',
   callerNumber: '',
-  dailyLimit: 1000,
-  maxConcurrent: 10,
+  dailyLimit: 0,
+  maxConcurrent: 0,
   description: '',
   isEnabled: true,
   config: {
@@ -1116,8 +1121,8 @@ const openLineDialog = (line?: CallLine) => {
     lineForm.provider = line.provider
     lineForm.type = line.type
     lineForm.callerNumber = line.callerNumber || ''
-    lineForm.dailyLimit = line.dailyLimit
-    lineForm.maxConcurrent = line.maxConcurrent
+    lineForm.dailyLimit = line.dailyLimit ?? 0
+    lineForm.maxConcurrent = line.maxConcurrent ?? 0
     lineForm.description = line.description || ''
     lineForm.isEnabled = line.isEnabled
     // 处理配置
@@ -1150,8 +1155,8 @@ const openLineDialog = (line?: CallLine) => {
     lineForm.provider = 'aliyun'
     lineForm.type = 'voip'
     lineForm.callerNumber = ''
-    lineForm.dailyLimit = 1000
-    lineForm.maxConcurrent = 10
+    lineForm.dailyLimit = 0
+    lineForm.maxConcurrent = 0
     lineForm.description = ''
     lineForm.isEnabled = true
     lineForm.config.accessKeyId = ''

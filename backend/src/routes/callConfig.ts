@@ -329,7 +329,7 @@ router.put('/global', async (req: Request, res: Response) => {
       if (existingLines.length === 0) {
         await AppDataSource.query(
           `INSERT INTO call_lines (name, provider, type, caller_number, config, max_concurrent, daily_limit, description, is_enabled, status, created_by, tenant_id)
-           VALUES (?, 'aliyun', 'voip', ?, NULL, 10, 1000, ?, 1, 'active', ?, ?)`,
+           VALUES (?, 'aliyun', 'voip', ?, NULL, 0, 0, ?, 1, 'active', ?, ?)`,
           ['阿里云云联络中心', aliyunCfg.callerNumber || '', '保存网络电话配置时自动创建（凭证使用全局配置）', currentUser?.userId, tenantId]
         );
         autoCreatedLine = true;
@@ -369,6 +369,22 @@ router.get('/lines', async (req: Request, res: Response) => {
 
     const lines = await AppDataSource.query(query, queryParams);
 
+    // 「今日使用」按当天通话记录统计，过 0 点自然归零（不再依赖不会清零的 daily_used 累加字段）
+    const todayUsageMap = new Map<string, number>();
+    if (lines.length > 0) {
+      const tUsage = tenantRawSQL();
+      const usageRows = await AppDataSource.query(
+        `SELECT line_id, COUNT(*) AS cnt FROM call_records
+         WHERE call_type = 'outbound' AND line_id IS NOT NULL
+           AND DATE(COALESCE(start_time, created_at)) = CURDATE()${tUsage.sql}
+         GROUP BY line_id`,
+        [...tUsage.params]
+      );
+      for (const row of usageRows) {
+        todayUsageMap.set(String(row.line_id), Number(row.cnt) || 0);
+      }
+    }
+
     res.json(successResponse(lines.map((line: any) => {
       // config 字段可能已经是对象（MySQL JSON类型），也可能是字符串
       let configData = null;
@@ -395,7 +411,7 @@ router.get('/lines', async (req: Request, res: Response) => {
         maxConcurrent: line.max_concurrent,
         currentConcurrent: line.current_concurrent,
         dailyLimit: line.daily_limit,
-        dailyUsed: line.daily_used,
+        dailyUsed: todayUsageMap.get(String(line.id)) || 0,
         totalCalls: line.total_calls,
         successRate: line.success_rate,
         sortOrder: line.sort_order,
@@ -443,7 +459,7 @@ router.post('/lines', async (req: Request, res: Response) => {
       `INSERT INTO call_lines (name, provider, type, caller_number, config, max_concurrent, daily_limit, description, is_enabled, status, created_by, tenant_id)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)`,
       [name, provider, type || 'voip', callerNumber || '', finalConfig ? JSON.stringify(finalConfig) : null,
-       maxConcurrent || 10, dailyLimit || 1000, description || '', isEnabled !== false ? 1 : 0, currentUser?.userId, getCurrentTenantIdSafe() || null]
+       maxConcurrent ?? 0, dailyLimit ?? 0, description || '', isEnabled !== false ? 1 : 0, currentUser?.userId, getCurrentTenantIdSafe() || null]
     );
 
     res.status(201).json(successResponse({ id: result.insertId }, '线路创建成功'));
@@ -1728,7 +1744,8 @@ router.post('/lines/call', async (req: Request, res: Response) => {
     // 验证用户是否有权使用该线路
     const t = tenantRawSQL('ula.');
     const assignments = await AppDataSource.query(
-      `SELECT ula.*, cl.name as line_name, cl.provider, cl.caller_number
+      `SELECT ula.*, cl.name as line_name, cl.provider, cl.caller_number,
+              cl.daily_limit as line_daily_limit, cl.max_concurrent, cl.current_concurrent
        FROM user_line_assignments ula
        JOIN call_lines cl ON ula.line_id = cl.id
        WHERE ula.user_id = ? AND ula.line_id = ? AND ula.is_active = 1${t.sql}`,
@@ -1758,6 +1775,34 @@ router.post('/lines/call', async (req: Request, res: Response) => {
           400
         ));
       }
+    }
+
+    // 线路级日呼叫限额：call_lines.daily_limit > 0 时，按该线路今日全部外呼次数拦截（0=不限制；过 0 点按日期自然归零）
+    const lineDailyLimit = Number(assignment.line_daily_limit) || 0;
+    if (lineDailyLimit > 0) {
+      const tLineCnt = tenantRawSQL();
+      const lineUsedRows = await AppDataSource.query(
+        `SELECT COUNT(*) AS cnt FROM call_records
+         WHERE line_id = ? AND call_type = 'outbound'
+           AND DATE(COALESCE(start_time, created_at)) = CURDATE()${tLineCnt.sql}`,
+        [String(lineId), ...tLineCnt.params]
+      );
+      const lineUsedToday = Number(lineUsedRows[0]?.cnt) || 0;
+      if (lineUsedToday >= lineDailyLimit) {
+        return res.status(400).json(errorResponse(
+          `该线路今日外呼已达限额（${lineUsedToday}/${lineDailyLimit}），请明日再试或联系管理员调高「系统线路管理」中的日呼叫限额`,
+          400
+        ));
+      }
+    }
+
+    // 线路最大并发：max_concurrent > 0 时拦截（0=不限制）
+    const maxConcurrent = Number(assignment.max_concurrent) || 0;
+    if (maxConcurrent > 0 && Number(assignment.current_concurrent) >= maxConcurrent) {
+      return res.status(400).json(errorResponse(
+        `该线路并发已满（${assignment.current_concurrent}/${maxConcurrent}），请稍后再试或联系管理员调高「系统线路管理」中的最大并发`,
+        400
+      ));
     }
 
     // 创建通话记录 - 使用 id 字段作为主键，call_status 使用 'calling'（拨号中）
