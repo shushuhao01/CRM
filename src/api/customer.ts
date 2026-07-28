@@ -121,9 +121,9 @@ export const customerApi = {
   },
 
   // 获取客户详情 - 直接调用真实API
-  getDetail: async (id: string) => {
+  getDetail: async (id: string, options?: { showError?: boolean }) => {
     console.log('[customerApi.getDetail] 直接调用真实API')
-    return api.get<Customer>(API_ENDPOINTS.CUSTOMERS.DETAIL(id))
+    return api.get<Customer>(API_ENDPOINTS.CUSTOMERS.DETAIL(id), { showError: options?.showError })
   },
 
   // 搜索客户 - 直接调用真实API

@@ -662,7 +662,7 @@ const enrichPhoneOptions = async (customerId: string, mainPhone: string) => {
   try {
     let full: any = customerStore.customers.find((c: any) => String(c.id) === String(customerId))
     if (!full || !Array.isArray(full.otherPhones) || full.otherPhones.length === 0) {
-      const resp: any = await customerApi.getDetail(String(customerId))
+      const resp: any = await customerApi.getDetail(String(customerId), { showError: false })
       full = resp?.data?.data || resp?.data || resp
     }
     const others = full?.otherPhones
@@ -1834,6 +1834,8 @@ const handleExport = async () => {
 
 const handleCall = (row: any) => {
   // 打开外呼对话框并预填客户信息
+  // row.id 是 prospect ID（外呼名单ID），row._convertedCustomerId 才是真实 customer ID
+  const realCustomerId = row._convertedCustomerId || null
   const customer = {
     id: row.id || row.customerId,
     name: row.customerName,
@@ -1849,15 +1851,16 @@ const handleCall = (row: any) => {
   }
 
   outboundForm.value.selectedCustomer = customer as any
-  outboundForm.value.customerId = customer.id
+  outboundForm.value.customerId = realCustomerId || customer.id
 
   // 更新号码选项（主号码 + 备用号码），默认选中上次记忆的号码
   phoneOptions.value = buildPhoneOptions(customer)
   outboundForm.value.customerPhone = pickDefaultPhone(customer.id, phoneOptions.value, row.phone)
 
-  // 行数据没带备用号码时，异步从客户库补全
-  if (!customer.otherPhones || customer.otherPhones.length === 0) {
-    enrichPhoneOptions(customer.id, customer.phone)
+  // 只有已转入客户列表（有真实 customer ID）时，才异步从客户库补全号码
+  // 未转入客户列表的导入资料不查客户详情，避免 404 "客户不存在" 误导
+  if (realCustomerId && (!customer.otherPhones || customer.otherPhones.length === 0)) {
+    enrichPhoneOptions(realCustomerId, customer.phone)
   }
 
   showOutboundDialog.value = true
