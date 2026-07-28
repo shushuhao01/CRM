@@ -3208,11 +3208,6 @@ const viewCallDetail = (record: any) => {
           <span style="color: #909399; font-size: 12px;">备注</span>
           <span style="color: #606266;">${record.remark || '无'}</span>
         </div>
-        ${record.recordingUrl ? `
-        <div style="display: flex; flex-direction: column; gap: 4px; grid-column: span 2;">
-          <span style="color: #909399; font-size: 12px;">录音</span>
-          <a href="${record.recordingUrl}" target="_blank" style="color: #409eff; text-decoration: none;">点击播放录音</a>
-        </div>` : ''}
       </div>
     </div>`,
     '通话详情',

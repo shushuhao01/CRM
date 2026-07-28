@@ -141,15 +141,6 @@
               </template>
             </el-table-column>
             <el-table-column prop="duration" label="时长" width="100" align="center" />
-            <el-table-column label="录音" width="140" align="center">
-              <template #default="{ row }">
-                <template v-if="row.recordingUrl">
-                  <el-button link type="primary" size="small" @click="$emit('play-recording', row)"><el-icon><VideoPlay /></el-icon> 播放</el-button>
-                  <el-button link type="success" size="small" @click="$emit('download-recording', row)"><el-icon><Download /></el-icon></el-button>
-                </template>
-                <span v-else style="color: #c0c4cc;">无录音</span>
-              </template>
-            </el-table-column>
             <el-table-column prop="status" label="状态" width="110" align="center">
               <template #default="{ row }">
                 <el-tag :type="getCallStatusType(row.status)">{{ getCallStatusText(row.status) }}</el-tag>
@@ -459,8 +450,6 @@ const emit = defineEmits<{
   'view-aftersales': [row: any]
   'view-call-detail': [row: any]
   'view-followup': [row: any]
-  'play-recording': [row: any]
-  'download-recording': [row: any]
   'converted': []
 }>()
 
