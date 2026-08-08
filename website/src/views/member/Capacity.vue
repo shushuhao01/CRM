@@ -317,7 +317,9 @@ const generateQrCode = async (orderNo: string) => {
     const data = await res.json()
     if (data.code === 0 && data.data) {
       const qr = data.data.qrCode || data.data.payUrl || ''
-      if (qr.startsWith('data:') || qr.startsWith('http')) {
+      // 仅 data: 是服务端生成的二维码图片，可直接显示；
+      // 其他值（如支付宝 https://qr.alipay.com/... 或微信 weixin://...）是二维码内容串，需本地生成二维码图片
+      if (qr.startsWith('data:')) {
         payQrCode.value = qr
       } else if (qr) {
         payQrCode.value = await generateQRCodeDataUrl(qr)

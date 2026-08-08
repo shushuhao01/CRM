@@ -254,7 +254,9 @@ const handleBuy = async () => {
       payOrderAmount.value = data.data.amount || 0
       payOrderPkgName.value = data.data.packageName || ''
       const qrRaw = data.data.qrCode || data.data.payUrl || ''
-      if (qrRaw.startsWith('data:') || qrRaw.startsWith('http')) {
+      // 仅 data: 是服务端生成的二维码图片，可直接显示；
+      // 其他值（如支付宝 https://qr.alipay.com/... 或微信 weixin://...）是二维码内容串，需本地生成二维码图片
+      if (qrRaw.startsWith('data:')) {
         payQrCode.value = qrRaw
       } else if (qrRaw) {
         payQrCode.value = await generateQRCodeDataUrl(qrRaw)

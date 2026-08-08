@@ -243,11 +243,17 @@ watch(() => [purchaseResult.value.qrCode, purchaseResult.value.payUrl, purchaseR
   const payUrl = purchaseResult.value.payUrl || ''
   const orderNo = purchaseResult.value.orderNo || ''
 
-  if (qr && (qr.startsWith('http') || qr.startsWith('data:'))) {
+  // 仅 data: 是服务端生成的二维码图片，可直接显示；
+  // 其他值（如支付宝 https://qr.alipay.com/... 或微信 weixin://...）是二维码内容串，需本地生成二维码图片
+  if (qr && qr.startsWith('data:')) {
     displayQrCode.value = qr
     return
   }
-  if (payUrl && (payUrl.startsWith('http') || payUrl.startsWith('weixin://'))) {
+  if (qr) {
+    displayQrCode.value = await generateQRCodeDataUrl(qr)
+    return
+  }
+  if (payUrl) {
     displayQrCode.value = await generateQRCodeDataUrl(payUrl)
     return
   }

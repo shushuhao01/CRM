@@ -1734,7 +1734,9 @@ const handleBuyQuota = async () => {
 
     if (res?.success && res.data) {
       const qrRaw = res.data.qrCode || res.data.payUrl || ''
-      if (qrRaw.startsWith('data:') || qrRaw.startsWith('http')) {
+      // 仅 data: 是服务端生成的二维码图片，可直接显示；
+      // 其他值（如支付宝 https://qr.alipay.com/... 或微信 weixin://...）是二维码内容串，需本地生成二维码图片
+      if (qrRaw.startsWith('data:')) {
         quotaQrCode.value = qrRaw
       } else if (qrRaw) {
         quotaQrCode.value = await generateQRCodeDataUrl(qrRaw)
@@ -1826,7 +1828,9 @@ const closeQuotaDialog = () => {
 const handleResumePayOrder = async (order: any) => {
   if (order.qrCode || order.payUrl) {
     const qr = order.qrCode || order.payUrl
-    if (qr.startsWith('data:') || qr.startsWith('http')) {
+    // 仅 data: 是服务端生成的二维码图片，可直接显示；
+    // 其他值（如支付宝 https://qr.alipay.com/... 或微信 weixin://...）是二维码内容串，需本地生成二维码图片
+    if (qr.startsWith('data:')) {
       quotaQrCode.value = qr
     } else {
       quotaQrCode.value = await generateQRCodeDataUrl(qr)
