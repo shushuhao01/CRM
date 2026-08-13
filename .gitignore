@@ -6,6 +6,9 @@ backend/node_modules/
 dist/
 backend/dist/
 
+# Gradle 构建缓存（Android 原生工程 crmAPP 编译产物）
+.gradle/
+
 # 日志文件
 *.log
 npm-debug.log*
