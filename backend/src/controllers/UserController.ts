@@ -707,10 +707,14 @@ export class UserController {
     }
 
     // 🔥 按安全策略校验初始密码强度（长度 + 复杂度）
-    const createPwdPolicy = await securityPolicyService.getPolicy(tenantId);
-    const createPwdCheck = securityPolicyService.validatePassword(password, createPwdPolicy);
-    if (!createPwdCheck.valid) {
-      throw new BusinessError(`密码不符合安全策略：${createPwdCheck.message}`, 'PASSWORD_POLICY_VIOLATION');
+    // 默认密码（123456）不受安全策略限制：新用户首次登录会被强制修改密码，
+    // 若对默认密码也执行强度校验，将导致初始用户无法创建；其余自定义密码仍按策略校验
+    if (password !== '123456') {
+      const createPwdPolicy = await securityPolicyService.getPolicy(tenantId);
+      const createPwdCheck = securityPolicyService.validatePassword(password, createPwdPolicy);
+      if (!createPwdCheck.valid) {
+        throw new BusinessError(`密码不符合安全策略：${createPwdCheck.message}`, 'PASSWORD_POLICY_VIOLATION');
+      }
     }
 
     // 检查邮箱是否已存在（同租户下）
