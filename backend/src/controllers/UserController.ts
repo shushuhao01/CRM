@@ -895,7 +895,7 @@ export class UserController {
    * 🔥 租户隔离：只返回当前租户的用户
    */
   getUsers = catchAsync(async (req: Request, res: Response) => {
-    const { page = 1, limit = 20, search, departmentId, role, status } = req.query as any;
+    const { page = 1, limit = 20, search, departmentId, role, status, createStart, createEnd } = req.query as any;
     const tenantId = this.getTenantIdFromRequest(req);
 
     const queryBuilder = this.userRepository.createQueryBuilder('user')
@@ -930,12 +930,20 @@ export class UserController {
       queryBuilder.andWhere('user.tenantId = :tenantId', { tenantId });
     }
 
-    // 搜索条件
+    // 搜索条件（支持姓名/用户名/手机号/工号/邮箱）
     if (search) {
       queryBuilder.andWhere(
-        '(user.username LIKE :search OR user.realName LIKE :search OR user.email LIKE :search)',
+        '(user.username LIKE :search OR user.realName LIKE :search OR user.phone LIKE :search OR user.employeeNumber LIKE :search OR user.email LIKE :search)',
         { search: `%${search}%` }
       );
+    }
+
+    // 创建时间范围筛选
+    if (createStart) {
+      queryBuilder.andWhere('user.createdAt >= :createStart', { createStart: new Date(createStart) });
+    }
+    if (createEnd) {
+      queryBuilder.andWhere('user.createdAt <= :createEnd', { createEnd: new Date(createEnd) });
     }
 
     if (departmentId) {

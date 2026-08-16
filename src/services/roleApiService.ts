@@ -37,11 +37,19 @@ export interface UpdateRoleData extends Partial<CreateRoleData> {
 class RoleApiService {
   /**
    * 获取角色列表
+   * @param params 可选搜索筛选参数（search: 角色名称/编码关键词, status: 状态, page/limit: 分页）
    */
-  async getRoles(): Promise<Role[]> {
+  async getRoles(params?: { search?: string; status?: string; page?: number; limit?: number }): Promise<Role[]> {
     try {
       console.log('[RoleAPI] 开始获取角色列表...')
-      const response: any = await apiService.get('/roles')
+      // 组装查询参数（忽略空值）
+      const query = new URLSearchParams()
+      if (params?.search) query.set('search', params.search)
+      if (params?.status) query.set('status', params.status)
+      if (params?.page !== undefined) query.set('page', String(params.page))
+      if (params?.limit !== undefined) query.set('limit', String(params.limit))
+      const queryString = query.toString()
+      const response: any = await apiService.get(`/roles${queryString ? `?${queryString}` : ''}`)
       console.log('[RoleAPI] 获取角色列表响应:', response)
 
       // 后端返回的数据结构是 { success: true, data: { roles: [...] } }

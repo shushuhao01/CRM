@@ -8,9 +8,14 @@ import type { PaginationParams, PaginatedResponse } from './apiService'
 import type { User } from './authApiService'
 
 export interface UserListParams extends PaginationParams {
-  departmentId?: number
+  departmentId?: string | number
   role?: string
   status?: string
+  // 综合搜索关键词（姓名/用户名/手机号/工号/邮箱）
+  search?: string
+  // 创建时间范围筛选
+  createStart?: string
+  createEnd?: string
 }
 
 export interface CreateUserRequest {

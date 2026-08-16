@@ -188,20 +188,14 @@
     <!-- 搜索筛选 -->
     <el-card class="search-card">
       <el-form :model="searchForm" inline>
-        <el-form-item label="用户名">
+        <el-form-item label="关键词">
           <el-input
-            v-model="searchForm.username"
-            placeholder="请输入用户名"
+            v-model="searchForm.keyword"
+            placeholder="姓名/用户名/手机号/工号"
             clearable
-            style="width: 200px"
-          />
-        </el-form-item>
-        <el-form-item label="姓名">
-          <el-input
-            v-model="searchForm.realName"
-            placeholder="请输入姓名"
-            clearable
-            style="width: 200px"
+            style="width: 240px"
+            @keyup.enter="handleSearch"
+            @blur="handleSearch"
           />
         </el-form-item>
         <el-form-item label="角色">
@@ -210,6 +204,7 @@
             placeholder="请选择角色"
             clearable
             style="width: 150px"
+            @change="handleSearch"
           >
             <el-option
               v-for="role in roleOptions"
@@ -225,6 +220,7 @@
             placeholder="请选择部门"
             clearable
             style="width: 150px"
+            @change="handleSearch"
           >
             <el-option
               v-for="department in departmentStore.departmentList"
@@ -240,6 +236,7 @@
             placeholder="请选择状态"
             clearable
             style="width: 120px"
+            @change="handleSearch"
           >
             <el-option label="启用" value="active" />
             <el-option label="禁用" value="inactive" />
@@ -254,6 +251,7 @@
             start-placeholder="开始日期"
             end-placeholder="结束日期"
             style="width: 240px"
+            @change="handleSearch"
           />
         </el-form-item>
         <el-form-item>
@@ -1415,12 +1413,11 @@ const memberCenterLoginUrl = computed(() => {
 
 // 搜索表单
 const searchForm = reactive({
-  username: '',
-  realName: '',
+  keyword: '',
   roleId: '',
   departmentId: '',
   status: '',
-  createTimeRange: []
+  createTimeRange: [] as Date[]
 })
 
 // 用户表单
@@ -2913,10 +2910,15 @@ const handleExport = async () => {
 
 /**
  * 搜索
+ * 防抖处理：输入框失焦、下拉/日期筛选、点击搜索按钮都可能触发，合并为一次请求
  */
+let searchTimer: number | undefined
 const handleSearch = () => {
-  pagination.page = 1
-  loadUserList()
+  if (searchTimer) window.clearTimeout(searchTimer)
+  searchTimer = window.setTimeout(() => {
+    pagination.page = 1
+    loadUserList()
+  }, 300)
 }
 
 /**
@@ -2924,8 +2926,7 @@ const handleSearch = () => {
  */
 const handleReset = () => {
   Object.assign(searchForm, {
-    username: '',
-    realName: '',
+    keyword: '',
     roleId: '',
     departmentId: '',
     status: '',
@@ -3287,10 +3288,23 @@ const loadUserList = async () => {
     // 🔥 修复：无论开发还是生产环境，都调用API获取用户数据
     console.log('[User] 调用API获取用户数据')
     try {
-      const apiResponse = await userApiService.getUsers({
+      // 🔥 组装搜索筛选参数：综合关键词（姓名/用户名/手机号/工号）+ 角色/部门/状态 + 创建时间范围
+      const listParams: Record<string, unknown> = {
         page: pagination.page,
         limit: pagination.size
-      })
+      }
+      if (searchForm.keyword.trim()) listParams.search = searchForm.keyword.trim()
+      if (searchForm.roleId) listParams.role = searchForm.roleId
+      if (searchForm.departmentId) listParams.departmentId = searchForm.departmentId
+      if (searchForm.status) listParams.status = searchForm.status
+      if (searchForm.createTimeRange && searchForm.createTimeRange.length === 2) {
+        const [start, end] = searchForm.createTimeRange
+        listParams.createStart = new Date(start).toISOString()
+        // 结束日期取当天 23:59:59.999，包含整天
+        listParams.createEnd = new Date(new Date(end).setHours(23, 59, 59, 999)).toISOString()
+      }
+
+      const apiResponse = await userApiService.getUsers(listParams)
       users = apiResponse.data || []
       pagination.total = apiResponse.total || users.length
       console.log('[User] API返回用户数量:', users.length)

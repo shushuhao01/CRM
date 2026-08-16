@@ -21,9 +21,23 @@ const getUsersSchema = {
       'string.base': '搜索关键词必须是字符串',
       'string.max': '搜索关键词最多100个字符'
     }),
-    departmentId: commonValidations.optionalId,
-    role: commonValidations.status(['admin', 'manager', 'sales', 'service']).optional(),
-    status: commonValidations.status(['active', 'inactive', 'locked']).optional()
+    // 部门ID：兼容数字和字符串格式（前端部门ID为字符串）
+    departmentId: Joi.alternatives().try(
+      Joi.number().integer().positive(),
+      Joi.string().max(100)
+    ).optional(),
+    // 角色：按角色code过滤（super_admin/department_manager/sales_staff等）
+    role: Joi.string().max(50).optional(),
+    status: commonValidations.status(['active', 'inactive', 'locked']).optional(),
+    // 创建时间范围筛选
+    createStart: Joi.date().iso().optional().messages({
+      'string.base': '开始日期必须是字符串',
+      'date.format': '开始日期必须是ISO格式'
+    }),
+    createEnd: Joi.date().iso().optional().messages({
+      'string.base': '结束日期必须是字符串',
+      'date.format': '结束日期必须是ISO格式'
+    })
   })
 };
 

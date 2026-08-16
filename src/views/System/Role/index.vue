@@ -47,16 +47,16 @@
     <el-card class="search-card">
       <el-form :model="searchForm" inline>
         <el-form-item label="角色名称">
-          <el-input v-model="searchForm.name" placeholder="请输入角色名称" clearable style="width: 200px" />
+          <el-input v-model="searchForm.name" placeholder="请输入角色名称" clearable style="width: 200px" @keyup.enter="handleSearch" @blur="handleSearch" />
         </el-form-item>
         <el-form-item label="状态">
-          <el-select v-model="searchForm.status" placeholder="请选择状态" clearable style="width: 120px">
+          <el-select v-model="searchForm.status" placeholder="请选择状态" clearable style="width: 120px" @change="handleSearch">
             <el-option label="启用" value="active" />
             <el-option label="禁用" value="inactive" />
           </el-select>
         </el-form-item>
         <el-form-item label="创建时间">
-          <el-date-picker v-model="searchForm.createTimeRange" type="daterange" range-separator="至" start-placeholder="开始日期" end-placeholder="结束日期" style="width: 240px" />
+          <el-date-picker v-model="searchForm.createTimeRange" type="daterange" range-separator="至" start-placeholder="开始日期" end-placeholder="结束日期" style="width: 240px" @change="handleSearch" />
         </el-form-item>
         <el-form-item>
           <el-button @click="handleSearch" type="primary" :icon="Search">搜索</el-button>
@@ -456,7 +456,18 @@ const handleDropdownCommand = (command: string, row: RoleData) => {
 }
 
 // ========== 搜索和分页 ==========
-const handleSearch = () => { pagination.page = 1; loadRoleList() }
+/**
+ * 搜索
+ * 防抖处理：输入框失焦、下拉/日期筛选、点击搜索按钮都可能触发，合并为一次请求
+ */
+let searchTimer: number | undefined
+const handleSearch = () => {
+  if (searchTimer) window.clearTimeout(searchTimer)
+  searchTimer = window.setTimeout(() => {
+    pagination.page = 1
+    loadRoleList()
+  }, 300)
+}
 const handleReset = () => { Object.assign(searchForm, { name: '', status: '', createTimeRange: [] }); handleSearch() }
 const handleSelectionChange = (selection: RoleData[]) => { selectedRoles.value = selection }
 const handleSizeChange = (size: number) => { pagination.size = size; loadRoleList() }
@@ -498,7 +509,13 @@ const roleNameToCode: Record<string, string> = {
 const loadRoleList = async () => {
   try {
     tableLoading.value = true
-    const roles = await roleApiService.getRoles()
+    // 组装搜索筛选参数：角色名称/编码关键词 + 状态；一次性取全量，前端负责分页与时间过滤
+    const roles = await roleApiService.getRoles({
+      search: searchForm.name || undefined,
+      status: searchForm.status || undefined,
+      page: 1,
+      limit: 9999
+    })
 
     // 获取用户数据统计
     let users: any[] = []
@@ -539,12 +556,21 @@ const loadRoleList = async () => {
         id: role.id, name: role.name, code: role.code, status: role.status,
         roleType: role.roleType || 'custom', userCount, permissionCount,
         description: role.description || '',
+        createdAt: role.createdAt ? new Date(role.createdAt).getTime() : 0,
         createTime: role.createdAt ? new Date(role.createdAt).toLocaleString() : '',
         permissions
       }
     })
 
-    pagination.total = roles.length
+    // 本地按创建时间范围过滤（后端接口暂不支持时间参数）
+    if (searchForm.createTimeRange && searchForm.createTimeRange.length === 2) {
+      const [start, end] = searchForm.createTimeRange
+      const startMs = new Date(start).getTime()
+      const endMs = new Date(new Date(end).setHours(23, 59, 59, 999)).getTime()
+      roleList.value = roleList.value.filter((r: any) => r.createdAt >= startMs && r.createdAt <= endMs)
+    }
+
+    pagination.total = roleList.value.length
     localStorage.setItem('crm_roles', JSON.stringify(roleList.value))
 
     // 加载操作日志
