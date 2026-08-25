@@ -674,12 +674,24 @@ export class ProductController {
       try {
         const { Order } = await import('../entities/Order')
         const orderRepo = getTenantRepo(Order)
+        const idStr = String(product.id)
+        // 🔥 性能优化：在数据库层用 LIKE 粗筛"仅包含该商品的订单"，
+        // 避免加载全部订单到内存 + 逐单 JSON.parse，导致 2核2G 低配环境并发查看详情时内存/CPU 打满崩溃
         const validOrders = await orderRepo
           .createQueryBuilder('order')
           .select(['order.id', 'order.products'])
           .where('order.status NOT IN (:...excludeStatuses)', {
             excludeStatuses: ['cancelled', 'pending_transfer', 'pending_audit', 'audit_rejected']
           })
+          .andWhere(
+            '(order.products LIKE :p1 OR order.products LIKE :p2 OR order.products LIKE :p3 OR order.products LIKE :p4)',
+            {
+              p1: `%"productId":${idStr}%`,
+              p2: `%"productId":"${idStr}"%`,
+              p3: `%"id":${idStr}%`,
+              p4: `%"id":"${idStr}"%`
+            }
+          )
           .getMany()
         validOrders.forEach((order: any) => {
           try {
