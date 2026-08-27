@@ -452,6 +452,29 @@ router.get('/permissions', async (req: Request, res: Response) => {
   }
 });
 
+/**
+ * POST /permissions/grant
+ * 手动开通/赠送自助权益（写台账 + 解锁菜单）
+ * body: { tenantId, planId?, planName?, cycleMonths, remark? }
+ */
+router.post('/permissions/grant', async (req: Request, res: Response) => {
+  if (!checkPermission(req, res, 'wecom-management:convert-fan:execute')) return;
+  try {
+    const { tenantId, planId = 'manual', planName = '手动开通', cycleMonths, remark } = req.body || {};
+    if (!tenantId) return res.status(400).json({ success: false, message: '缺少 tenantId' });
+    const months = parseInt(String(cycleMonths));
+    if (!months || months <= 0 || months > 120) {
+      return res.status(400).json({ success: false, message: '权益时长(月)须为 1-120 的整数' });
+    }
+    await wecomConvertFanService.grantManual(String(tenantId), String(planId), String(planName), months);
+    await writeOpLog(req, 'convert-fan:grant', { tenantId, planId, planName, months, remark });
+    res.json({ success: true, message: `已开通「${planName}」${months} 个月并解锁租户菜单` });
+  } catch (error: any) {
+    log.error('[AdminConvertFan] grant permission error:', error.message);
+    res.status(500).json({ success: false, message: error.message?.substring(0, 120) || '开通失败' });
+  }
+});
+
 function safeParse(str: string | null): any {
   if (!str) return null;
   try { return JSON.parse(str); } catch { return null; }

@@ -214,6 +214,7 @@
                 <el-input v-model="permQuery.keyword" placeholder="租户ID/套餐" clearable style="width: 200px"
                   @keyup.enter="fetchPermissions" @clear="fetchPermissions" />
                 <el-button type="primary" @click="fetchPermissions">搜索</el-button>
+                <el-button type="success" @click="openGrantDialog">手动开通</el-button>
               </div>
             </div>
           </template>
@@ -401,6 +402,39 @@
         <el-button @click="detailVisible = false">关闭</el-button>
       </template>
     </el-dialog>
+
+    <!-- ==================== 手动开通权益弹窗 ==================== -->
+    <el-dialog v-model="grantVisible" title="手动开通自助权益" width="520px" destroy-on-close :close-on-click-modal="false">
+      <el-form :model="grantForm" label-width="90px">
+        <el-form-item label="租户" required>
+          <el-select v-model="grantForm.tenantId" filterable placeholder="选择租户" style="width: 100%">
+            <el-option v-for="t in tenantOptions" :key="t.id" :label="t.name" :value="t.id" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="开通时长" required>
+          <el-radio-group v-model="grantForm.preset">
+            <el-radio-button label="1">月卡</el-radio-button>
+            <el-radio-button label="3">季卡</el-radio-button>
+            <el-radio-button label="12">年卡</el-radio-button>
+            <el-radio-button label="custom">自定义</el-radio-button>
+          </el-radio-group>
+        </el-form-item>
+        <el-form-item v-if="grantForm.preset === 'custom'" label="月数" required>
+          <el-input-number v-model="grantForm.customMonths" :min="1" :max="120" style="width: 160px" />
+          <span style="margin-left: 8px; color: #909399; font-size: 12px">1-120 个月</span>
+        </el-form-item>
+        <el-form-item label="备注">
+          <el-input v-model="grantForm.remark" type="textarea" :rows="2" maxlength="100" show-word-limit
+            placeholder="赠送原因/关联沟通记录（仅记入操作日志）" />
+        </el-form-item>
+        <el-alert type="info" :closable="false" show-icon
+          title="开通后立即生效：写入权益台账并解锁该租户「客户转粉」菜单；租户已有未过期权益时在原到期时间上叠加。" />
+      </el-form>
+      <template #footer>
+        <el-button @click="grantVisible = false">取消</el-button>
+        <el-button type="primary" :loading="grantSubmitting" @click="submitGrant">确认开通</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -412,7 +446,7 @@ import {
   getConvertTenantConfigs, getConvertTenantFollowers, getConvertTenantCustomers,
   convertFanExecute,
   getConvertRecords, getConvertRecordDetail, syncConvertRecord,
-  getConvertPermissions
+  getConvertPermissions, grantConvertPermission
 } from '@/api/wecomManagement'
 import request from '@/api/request'
 
@@ -817,6 +851,43 @@ const fetchPermissions = async () => {
     }
   } finally {
     permsLoading.value = false
+  }
+}
+
+// 手动开通权益
+const grantVisible = ref(false)
+const grantSubmitting = ref(false)
+const grantForm = reactive({ tenantId: '', preset: '1', customMonths: 1, remark: '' })
+
+const openGrantDialog = () => {
+  grantForm.tenantId = ''
+  grantForm.preset = '1'
+  grantForm.customMonths = 1
+  grantForm.remark = ''
+  if (tenantOptions.value.length === 0) searchTenants()
+  grantVisible.value = true
+}
+
+const submitGrant = async () => {
+  if (!grantForm.tenantId) { ElMessage.warning('请选择租户'); return }
+  const months = grantForm.preset === 'custom' ? grantForm.customMonths : parseInt(grantForm.preset)
+  if (!months || months <= 0) { ElMessage.warning('请填写有效月数'); return }
+  grantSubmitting.value = true
+  try {
+    const planNames: Record<string, string> = { '1': '月卡(手动开通)', '3': '季卡(手动开通)', '12': '年卡(手动开通)', custom: '自定义时长(手动开通)' }
+    await grantConvertPermission({
+      tenantId: grantForm.tenantId,
+      planId: grantForm.preset === 'custom' ? 'custom' : `manual_${grantForm.preset}m`,
+      planName: planNames[grantForm.preset] || '手动开通',
+      cycleMonths: months,
+      remark: grantForm.remark || undefined
+    })
+    ElMessage.success('开通成功，租户菜单已解锁')
+    grantVisible.value = false
+    permQuery.page = 1
+    fetchPermissions()
+  } finally {
+    grantSubmitting.value = false
   }
 }
 

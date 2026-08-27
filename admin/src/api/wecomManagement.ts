@@ -109,3 +109,5 @@ export const getConvertRecords = (params?: any) => request.get('/wecom-managemen
 export const getConvertRecordDetail = (orderNo: string) => request.get(`/wecom-management/convert-fan/records/${orderNo}`)
 export const syncConvertRecord = (orderNo: string) => request.post(`/wecom-management/convert-fan/records/${orderNo}/sync`)
 export const getConvertPermissions = (params?: any) => request.get('/wecom-management/convert-fan/permissions', { params })
+export const grantConvertPermission = (data: { tenantId: string; planId?: string; planName?: string; cycleMonths: number; remark?: string }) =>
+  request.post('/wecom-management/convert-fan/permissions/grant', data)

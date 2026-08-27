@@ -493,6 +493,16 @@ class WecomConvertFanService {
   }
 
   /**
+   * Admin 手动开通/赠送自助权益（服务台"手动开通"按钮）
+   * 写台账 + 解锁租户菜单，一次调用完成
+   */
+  async grantManual(tenantId: string, planId: string, planName: string, cycleMonths: number): Promise<void> {
+    await this.ensureTables();
+    await this.grantSelfPlan(tenantId, planId, planName, cycleMonths);
+    await this.unlockTenantMenu(tenantId);
+  }
+
+  /**
    * 支付成功回调入口（PaymentService.updateOrderStatus 按 convert_ 前缀调用）
    *
    * @param packageId convert_self_monthly|quarterly|yearly → 发放自助权益+解锁菜单
