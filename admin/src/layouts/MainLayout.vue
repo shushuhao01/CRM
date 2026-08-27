@@ -115,6 +115,7 @@
             <el-menu-item v-if="hasPerm('wecom-management:purchase-orders:view')" index="/wecom-management/purchase-orders">会话存档代购</el-menu-item>
             <el-menu-item v-if="hasPerm('wecom-management:ai-management:view')" index="/wecom-management/ai-management">AI额度管理</el-menu-item>
             <el-menu-item v-if="hasPerm('wecom-management:vas-orders:view')" index="/wecom-management/vas-orders">订单与财务</el-menu-item>
+            <el-menu-item v-if="hasPerm('wecom-management:convert-fan:view')" index="/wecom-management/transfer-fan">转粉服务台</el-menu-item>
           </el-menu-item-group>
           <!-- 运维监控 -->
           <el-menu-item-group title="运维监控">

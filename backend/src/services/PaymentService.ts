@@ -45,7 +45,7 @@ interface CreateOrderParams {
   contactName: string
   contactPhone: string
   contactEmail?: string
-  billingCycle?: 'monthly' | 'yearly' | 'once'
+  billingCycle?: 'monthly' | 'quarterly' | 'yearly' | 'once'
   bonusMonths?: number
   /** 业务侧订单号（可选）：传入后支付订单直接使用该订单号，保证业务单/支付单/支付渠道三方一致，回调与轮询才能对上 */
   orderNo?: string
@@ -515,6 +515,18 @@ class PaymentService {
         const pkgId = String(orders[0].package_id || '')
         if (this.isCrmVasPackage(pkgId)) {
           await this.syncCrmVasBilling(orders[0].tenant_id, orderNo, pkgId)
+        }
+
+        // 🔑 企微客户转粉增值服务（convert_agent_* 代办工单 / convert_self_* 自助套餐）
+        // self: 发放权益台账 + 解锁 customerConvert 菜单；agent: 工单 pending→paid
+        if (/^convert_/.test(pkgId)) {
+          try {
+            const { wecomConvertFanService } = await import('./WecomConvertFanService')
+            await wecomConvertFanService.onPaid(orderNo, pkgId, orders[0].tenant_id)
+            log.info(`[Payment] 转粉订单支付处理完成: ${orderNo} (${pkgId})`)
+          } catch (cfErr: any) {
+            log.error('[Payment] 转粉权益发放失败:', cfErr.message)
+          }
         }
       }
     } else {

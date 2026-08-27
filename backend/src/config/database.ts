@@ -129,6 +129,8 @@ import { WecomSuiteConfig } from '../entities/WecomSuiteConfig';
 import { WecomSuiteCallbackLog } from '../entities/WecomSuiteCallbackLog';
 import { WecomSuiteAuthLink } from '../entities/WecomSuiteAuthLink';
 import { WecomNotificationTemplate } from '../entities/WecomNotificationTemplate';
+import { WecomConvertFanOrder } from '../entities/WecomConvertFanOrder';
+import { WecomConvertFanPermission } from '../entities/WecomConvertFanPermission';
 import { UserSession } from '../entities/UserSession';
 import { WecomChatAuditMark } from '../entities/WecomChatAuditMark';
 import { ProductSku } from '../entities/ProductSku';
@@ -187,6 +189,7 @@ const entities = [
   WecomAiLog, WecomSidebarAuthCode, WecomDepartmentMapping,
   WecomGroupWelcome, WecomAntiSpamRule, WecomGroupBroadcast,
   WecomSuiteConfig, WecomSuiteCallbackLog, WecomSuiteAuthLink, WecomNotificationTemplate,
+  WecomConvertFanOrder, WecomConvertFanPermission,
   UserSession, CallProspect, WecomChatAuditMark,
   ProductSku, ProductSpecGroup, StockAdjustment
 ];

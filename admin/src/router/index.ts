@@ -256,6 +256,12 @@ const router = createRouter({
               component: () => import('@/views/wecom/VasOrders.vue'),
               meta: { title: '订单与财务', permission: 'wecom-management:vas-orders:view', group: '商业运营' }
             },
+            {
+              path: 'transfer-fan',
+              name: 'WecomTransferFan',
+              component: () => import('@/views/wecom/TransferFan.vue'),
+              meta: { title: '转粉服务台', permission: 'wecom-management:convert-fan:view', group: '商业运营' }
+            },
             // == 运维监控 ==
             {
               path: 'quota-monitor',

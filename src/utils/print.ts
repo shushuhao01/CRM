@@ -280,3 +280,30 @@ export const printShipment = (shipmentData: any) => {
           <tr style="background: #f5f7fa;">
             <th style="padding: 8px; border: 1px solid #ddd; text-align: left;">商品名称</th>
             <th style="padding: 8px; border: 1px solid #ddd; text-align: center;">数量</th>
+            <th style="padding: 8px; border: 1px solid #ddd; text-align: right;">单价</th>
+            <th style="padding: 8px; border: 1px solid #ddd; text-align: right;">小计</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${shipmentData.products.map((p: any) => `
+            <tr>
+              <td style="padding: 8px; border: 1px solid #ddd;">${p.name}</td>
+              <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">${p.quantity}</td>
+              <td style="padding: 8px; border: 1px solid #ddd; text-align: right;">¥${p.price.toFixed(2)}</td>
+              <td style="padding: 8px; border: 1px solid #ddd; text-align: right;">¥${p.total.toFixed(2)}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+
+      ${shipmentData.remark ? `
+        <div style="margin-top: 20px;">
+          <strong>备注：</strong>
+          <p style="margin: 8px 0; padding: 12px; background: #f5f7fa; border-radius: 4px;">${shipmentData.remark}</p>
+        </div>
+      ` : ''}
+    </div>
+  `
+
+  printDocument(content, `发货单_${shipmentData.shipmentNumber}`)
+}

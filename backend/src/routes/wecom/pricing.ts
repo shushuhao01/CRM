@@ -256,7 +256,8 @@ router.post('/claim-package', authenticateToken, async (req: Request, res: Respo
         aiAssistant: pkg.menuAiAssistant || false,
         customerService: pkg.menuCustomerService || false,
         sidebar: pkg.menuSidebar || false,
-        payment: pkg.menuPayment || false
+        payment: pkg.menuPayment || false,
+        customerConvert: (pkg as any).menuCustomerConvert || false
       },
       action,
       claimedAt: new Date().toISOString()

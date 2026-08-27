@@ -1062,6 +1062,75 @@ export const confirmWecomPayment = (data: { type: string; packageName: string; c
 }
 
 
+// ==================== 客户转粉（在职/离职客户继承） ====================
+
+/** 服务状态 + 权益有效期 + 定价（未启用项已过滤） */
+export const getConvertStatus = () => {
+  return request.get('/wecom/convert-fan/status', { showError: false } as any)
+}
+
+/** 离职待分配客户池（按原跟进人分组） */
+export const getConvertUnassignedList = () => {
+  return request.get('/wecom/convert-fan/unassigned-list')
+}
+
+/** 在职成员列表（接替人候选/在职原跟进人） */
+export const getConvertFollowers = (deptId = 0) => {
+  return request.get('/wecom/convert-fan/followers', { params: { deptId } })
+}
+
+/** 指定成员名下客户（离职从待分配池过滤；在职调 externalcontact/list） */
+export const getConvertMemberCustomers = (params: { userid: string; type?: 'active' | 'resigned' }) => {
+  return request.get('/wecom/convert-fan/member-customers', { params })
+}
+
+/** 提交代办工单并创建支付单（返回二维码），金额以后端最新定价为准 */
+export const createConvertAgentOrder = (data: {
+  billingMode: 'per_account' | 'per_tier'
+  accountCount?: number
+  customerCount?: number
+  handoverUserid?: string
+  transferType: 'active' | 'resigned'
+  agentRemark?: string
+  payType: string
+}) => {
+  return request.post('/wecom/convert-fan/agent-orders', data)
+}
+
+/** 购买自助转粉套餐（月/季/年卡） */
+export const purchaseConvertPlan = (data: { planId: string; payType: string }) => {
+  return request.post('/wecom/convert-fan/purchase-plan', data)
+}
+
+/** 自助发起转粉（需有效套餐，后端自动分批 ≤100/批） */
+export const executeConvertFan = (data: {
+  transferType: 'active' | 'resigned'
+  handoverUserid: string
+  handoverName?: string
+  takeoverUserid: string
+  takeoverName?: string
+  externalUserids: string[]
+  transferSuccessMsg?: string
+}) => {
+  return request.post('/wecom/convert-fan/execute', data)
+}
+
+/** 我的转粉记录/工单 */
+export const getConvertOrders = (params?: { status?: string; page?: number; pageSize?: number }) => {
+  return request.get('/wecom/convert-fan/orders', { params })
+}
+
+/** 转粉记录详情（含逐客户状态与支付单状态） */
+export const getConvertOrderDetail = (orderNo: string) => {
+  return request.get(`/wecom/convert-fan/orders/${orderNo}`, { showError: false } as any)
+}
+
+/** 撤销待付款工单 */
+export const cancelConvertOrder = (orderNo: string) => {
+  return request.post(`/wecom/convert-fan/orders/${orderNo}/cancel`)
+}
+
+
 // ==================== Web登录 & 会话展示组件 ====================
 
 /** 获取Web登录配置 */

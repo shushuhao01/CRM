@@ -115,7 +115,11 @@ const PERMISSION_TREE = [
       { code: 'wecom-management:vas-orders:view', name: '查看增值服务订单' },
       { code: 'wecom-management:vas-orders:edit', name: '管理增值服务订单' },
       { code: 'wecom-management:system-config:view', name: '查看企微系统配置' },
-      { code: 'wecom-management:system-config:edit', name: '编辑企微系统配置' }
+      { code: 'wecom-management:system-config:edit', name: '编辑企微系统配置' },
+      { code: 'wecom-management:pricing:view', name: '查看套餐与定价' },
+      { code: 'wecom-management:pricing:edit', name: '编辑套餐与定价' },
+      { code: 'wecom-management:convert-fan:view', name: '查看转粉服务台' },
+      { code: 'wecom-management:convert-fan:execute', name: '执行客户转粉(代执行/拒绝/同步)' }
     ]
   },
   {

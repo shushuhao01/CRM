@@ -548,7 +548,116 @@
         <el-empty v-else description="暂无获客助手定价方案" />
       </el-tab-pane>
 
-      <!-- ========== Tab7: 微信小程序获取手机号套餐 ========== -->
+      <!-- ========== Tab7: 客户转粉定价 ========== -->
+      <el-tab-pane label="客户转粉定价" name="convertFan">
+        <div class="tab-intro">
+          <div class="intro-text">
+            <h3>企微客户转粉增值服务</h3>
+            <p>基于企业微信官方客户继承接口（在职继承 / 离职分配）的付费转粉服务，配置保存后实时下发到CRM租户端</p>
+          </div>
+        </div>
+
+        <div class="settings-card" style="margin-bottom: 16px">
+          <h4 style="display: flex; align-items: center; gap: 12px">
+            功能总开关
+            <el-switch v-model="convertFan.enabled" active-text="开启" inactive-text="关闭" />
+          </h4>
+          <p class="agc-desc" style="margin-bottom: 0">关闭后租户端隐藏「客户转粉」菜单入口；已购自助套餐的租户权益台账不受影响</p>
+        </div>
+
+        <el-alert type="info" :closable="false" style="margin-bottom: 16px" show-icon title="官方规则：API 单次最多转接 100 个客户；在职继承同一客户 90 天内最多发起 2 次；离职分配无次数限制。发起后接替成员在 24 小时内确认并完成接替。">
+        </el-alert>
+
+        <!-- 代办计费 -->
+        <div class="settings-card" style="margin-bottom: 16px">
+          <h4>服务商代办（工单收费）</h4>
+          <p class="agc-desc">两种模式可单开、双开或全关（至少开启一种才能提交代办工单）；租户端仅展示已启用的模式</p>
+          <div class="cf-agent-layout">
+            <!-- 模式A 按号计费 -->
+            <div class="cf-mode-card" :class="{ 'cf-mode-active': convertFan.agent?.perAccount?.enabled }">
+              <div class="cf-mode-header">
+                <div class="dc-badge" style="background: linear-gradient(135deg, #667eea, #764ba2)">按号</div>
+                <div class="dc-text"><strong>模式A · 按离职号计费</strong><span>每个原跟进成员（含名下全部客户）收取固定费用</span></div>
+                <el-switch v-model="convertFan.agent.perAccount.enabled" size="small" />
+              </div>
+              <div v-if="convertFan.agent.perAccount.enabled" class="cf-mode-body">
+                <div class="cf-field-row">
+                  <span class="feature-label">单价</span>
+                  <el-input-number v-model="convertFan.agent.perAccount.unitPrice" :min="0" :precision="0" size="small" style="width: 110px" />
+                  <span class="td-unit">元 / 个号</span>
+                </div>
+                <div class="cf-field-row">
+                  <span class="feature-label">起转号数</span>
+                  <el-input-number v-model="convertFan.agent.perAccount.minAccounts" :min="1" size="small" style="width: 110px" />
+                  <span class="td-unit">个</span>
+                </div>
+                <div class="cf-field-row">
+                  <span class="feature-label">展示备注</span>
+                  <el-input v-model="convertFan.agent.perAccount.note" size="small" placeholder="如：含该号名下全部客户" style="flex: 1; max-width: 260px" />
+                </div>
+                <div class="cf-example">
+                  示例：{{ convertFan.agent.perAccount.minAccounts || 3 }} 个号 × ¥{{ convertFan.agent.perAccount.unitPrice || 0 }} =
+                  <strong>¥{{ (convertFan.agent.perAccount.unitPrice || 0) * Math.max(convertFan.agent.perAccount.minAccounts || 3, 0) }}</strong>
+                </div>
+              </div>
+            </div>
+
+            <!-- 模式B 阶梯计费 -->
+            <div class="cf-mode-card" :class="{ 'cf-mode-active': convertFan.agent?.perTier?.enabled }">
+              <div class="cf-mode-header">
+                <div class="dc-badge" style="background: linear-gradient(135deg, #f093fb, #f5576c)">阶梯</div>
+                <div class="dc-text"><strong>模式B · 按客户数阶梯</strong><span>客户总数落入档位即按该档一口价计费，不累加</span></div>
+                <el-switch v-model="convertFan.agent.perTier.enabled" size="small" />
+              </div>
+              <div v-if="convertFan.agent.perTier.enabled" class="cf-mode-body">
+                <div v-for="(t, ti) in convertFan.agent.perTier.tiers" :key="ti" class="cf-tier-row">
+                  <el-input v-model="t.name" placeholder="档位名称" size="small" style="width: 90px" />
+                  <el-input-number v-model="t.minCount" :min="1" :controls="false" size="small" placeholder="起" style="width: 64px" />
+                  <span class="td-unit">~</span>
+                  <el-input-number v-model="t.maxCount" :min="t.minCount || 1" :controls="false" size="small" placeholder="止" style="width: 76px" />
+                  <span class="price-symbol" style="font-size: 13px">¥</span>
+                  <el-input-number v-model="t.price" :min="0" :precision="0" :controls="false" size="small" style="width: 72px" />
+                  <el-checkbox v-model="t.enabled" size="small" style="margin-left: auto">启用</el-checkbox>
+                  <el-button type="danger" text size="small" @click="convertFan.agent.perTier.tiers.splice(ti, 1)">删除</el-button>
+                </div>
+                <el-button size="small" @click="addConvertTier" style="margin-top: 8px"><el-icon><Plus /></el-icon> 添加档位</el-button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 自助套餐 -->
+        <div class="settings-card">
+          <h4>自助转粉套餐（期内不限次数）</h4>
+          <p class="agc-desc">购买后解锁租户端「客户转粉」操作菜单；续费时长自动叠加到原到期日</p>
+          <div class="package-cards">
+            <div v-for="(plan, pi) in convertFan.selfPlans" :key="plan.id" class="acq-card"
+              :class="{ 'acq-recommended': plan.recommended }" style="border-width: 2px">
+              <div class="acq-badge" v-if="plan.recommended">推荐</div>
+              <div class="acq-header">
+                <el-input v-model="plan.name" placeholder="套餐名称" style="width: 120px; font-weight: 600" />
+                <el-switch v-model="plan.enabled" size="small" active-text="上架" inactive-text="下架" />
+              </div>
+              <div class="acq-price">
+                <span class="price-symbol">¥</span>
+                <el-input-number v-model="plan.price" :min="0" :precision="0" :controls="false" class="price-input-sm" />
+                <span class="price-unit">{{ planCycleUnit(plan.cycle) }}</span>
+              </div>
+              <div class="ai-pkg-fields">
+                <div class="ai-field">
+                  <label>推荐标签</label>
+                  <el-switch v-model="plan.recommended" size="small" />
+                </div>
+              </div>
+              <el-input v-model="plan.description" type="textarea" :rows="2" placeholder="如：30天内不限次数转粉" style="margin-top: 8px" />
+            </div>
+          </div>
+          <el-alert type="warning" :closable="false" show-icon style="margin-top: 16px"
+            title="下单时按最新配置重新计算并生成计费快照，防止改价不一致；修改价格不会影响已生效订单与权益。" />
+        </div>
+      </el-tab-pane>
+
+      <!-- ========== Tab8: 微信小程序获取手机号套餐 ========== -->
       <el-tab-pane label="手机号套餐" name="mpPhone">
         <div class="tab-intro">
           <div class="intro-text">
@@ -653,11 +762,37 @@ const trialConfig = ref<any>({
   enabled: true, trialDays: 7, trialScope: 'basic', trialAiQuota: 100, trialArchiveMembers: 2,
   remindDays: [7, 3, 1], yearlyDiscount: 85, firstPurchaseDiscount: 0, renewalDiscount: 90
 })
+const convertFan = ref<any>({
+  enabled: true,
+  agent: {
+    perAccount: { enabled: true, unitPrice: 200, minAccounts: 1, note: '含该号名下全部客户' },
+    perTier: {
+      enabled: false,
+      tiers: [
+        { id: 't1', name: '体验档', minCount: 1, maxCount: 100, price: 100, enabled: true },
+        { id: 't2', name: '标准档', minCount: 101, maxCount: 500, price: 300, enabled: true },
+        { id: 't3', name: '旗舰档', minCount: 501, maxCount: 999999, price: 500, enabled: true }
+      ]
+    }
+  },
+  selfPlans: [
+    { id: 'monthly', name: '月卡', cycle: 'monthly', price: 299, enabled: true, recommended: false, description: '30天内不限次数转粉' },
+    { id: 'quarterly', name: '季卡', cycle: 'quarterly', price: 799, enabled: true, recommended: true, description: '90天内不限次数转粉' },
+    { id: 'yearly', name: '年卡', cycle: 'yearly', price: 2599, enabled: true, recommended: false, description: '365天内不限次数转粉' }
+  ]
+})
+
+const planCycleUnit = (cycle: string) => ({ monthly: '/月卡', quarterly: '/季卡', yearly: '/年卡' }[cycle] || '')
+const addConvertTier = () => {
+  convertFan.value.agent.perTier.tiers.push({
+    id: 't' + Date.now(), name: '', minCount: 1, maxCount: 100, price: 0, enabled: true
+  })
+}
 
 const menuPermKeys = [
   'menuAddressBook', 'menuCustomer', 'menuCustomerGroup', 'menuAcquisition',
   'menuContactWay', 'menuChatArchive', 'menuAiAssistant', 'menuCustomerService',
-  'menuSidebar', 'menuPayment'
+  'menuSidebar', 'menuPayment', 'menuCustomerConvert'
 ]
 const toggleAllMenuPerms = (pkg: any, val: boolean) => {
   menuPermKeys.forEach(k => { pkg[k] = val })
@@ -670,7 +805,8 @@ const addWecomPackage = () => {
     archiveIncluded: 'none', aiQuotaIncluded: 0,
     menuAddressBook: true, menuCustomer: true, menuCustomerGroup: false,
     menuAcquisition: false, menuContactWay: false, menuChatArchive: false,
-    menuAiAssistant: false, menuCustomerService: false, menuSidebar: false, menuPayment: false
+    menuAiAssistant: false, menuCustomerService: false, menuSidebar: false, menuPayment: false,
+    menuCustomerConvert: false
   })
 }
 
@@ -736,6 +872,23 @@ const loadConfig = async () => {
       if (data.paymentMethods) paymentMethods.value = data.paymentMethods
       if (data.quotaUnit) quotaUnit.value = data.quotaUnit
       if (data.trialConfig) trialConfig.value = { ...trialConfig.value, ...data.trialConfig }
+      if (data.convertFan) {
+        convertFan.value = {
+          ...convertFan.value,
+          ...data.convertFan,
+          agent: {
+            ...convertFan.value.agent,
+            ...(data.convertFan.agent || {}),
+            perAccount: { ...convertFan.value.agent.perAccount, ...(data.convertFan.agent?.perAccount || {}) },
+            perTier: {
+              ...convertFan.value.agent.perTier,
+              ...(data.convertFan.agent?.perTier || {}),
+              tiers: data.convertFan.agent?.perTier?.tiers || convertFan.value.agent.perTier.tiers
+            }
+          },
+          selfPlans: data.convertFan.selfPlans || convertFan.value.selfPlans
+        }
+      }
     }
   } catch (e: any) {
     console.warn('加载定价配置失败:', e)
@@ -757,6 +910,7 @@ const handleSaveAll = async () => {
       paymentMethods: paymentMethods.value,
       quotaUnit: quotaUnit.value,
       trialConfig: trialConfig.value,
+      convertFan: convertFan.value,
     })
     ElMessage.success('定价配置已保存，已同步到CRM会员中心')
   } catch (e: any) { ElMessage.error(e?.message || '保存失败') }
@@ -1390,6 +1544,59 @@ onMounted(loadConfig)
 .td-unit {
   font-size: 13px;
   color: #86909c;
+}
+
+/* ========== 客户转粉定价 ========== */
+.cf-agent-layout {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+@media (max-width: 1200px) {
+  .cf-agent-layout { grid-template-columns: 1fr; }
+}
+.cf-mode-card {
+  border: 2px solid #e5e6eb;
+  border-radius: 10px;
+  padding: 16px;
+  transition: all 0.2s;
+}
+.cf-mode-card.cf-mode-active {
+  border-color: #409eff;
+  background: linear-gradient(180deg, #f0f7ff 0%, #fff 30%);
+}
+.cf-mode-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.cf-mode-body {
+  margin-top: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.cf-field-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.cf-example {
+  background: #fffbe6;
+  border: 1px solid #ffe58f;
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 12px;
+  color: #8c6d1f;
+}
+.cf-tier-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid #f0f0f0;
+  border-radius: 8px;
+  background: #fafbfc;
 }
 
 /* Discount scope tags */

@@ -94,3 +94,18 @@ export const savePricingConfig = (data: any) => request.put('/wecom-management/p
 
 export const getMpConfig = () => request.get('/wecom-management/suite/mp-config')
 export const saveMpConfig = (data: any) => request.put('/wecom-management/suite/mp-config', data)
+
+// ==================== 客户转粉服务台 ====================
+
+export const getConvertAgentOrders = (params?: any) => request.get('/wecom-management/convert-fan/agent-orders', { params })
+export const rejectConvertAgentOrder = (orderNo: string, data?: any) => request.post(`/wecom-management/convert-fan/agent-orders/${orderNo}/reject`, data)
+export const getConvertTenantConfigs = (tenantId: string) => request.get('/wecom-management/convert-fan/tenant-configs', { params: { tenantId } })
+export const getConvertTenantFollowers = (params: { configId: number | string; type?: string }) =>
+  request.get('/wecom-management/convert-fan/tenant-followers', { params })
+export const getConvertTenantCustomers = (params: { configId: number | string; userid: string; type?: string }) =>
+  request.get('/wecom-management/convert-fan/tenant-customers', { params })
+export const convertFanExecute = (data: any) => request.post('/wecom-management/convert-fan/execute', data)
+export const getConvertRecords = (params?: any) => request.get('/wecom-management/convert-fan/records', { params })
+export const getConvertRecordDetail = (orderNo: string) => request.get(`/wecom-management/convert-fan/records/${orderNo}`)
+export const syncConvertRecord = (orderNo: string) => request.post(`/wecom-management/convert-fan/records/${orderNo}/sync`)
+export const getConvertPermissions = (params?: any) => request.get('/wecom-management/convert-fan/permissions', { params })

@@ -1595,6 +1595,158 @@ export class WecomApiService {
     }
     log.info(`[WecomApi] Cache cleared${corpId ? ' for ' + corpId : ' (all)'}, tokenCache=${tokenCache.size}, ticketCache=${ticketCache.size}`);
   }
+
+  // ==================== 客户转粉（在职/离职客户继承）====================
+  // 官方文档：
+  // - 分配在职成员的客户: https://developer.work.weixin.qq.com/document/path/96325
+  // - 查询客户接替状态:   https://developer.work.weixin.qq.com/document/path/94088
+  // - 待分配离职成员列表: https://developer.work.weixin.qq.com/document/path/96330
+  // - 分配离职成员的客户: https://developer.work.weixin.qq.com/document/path/96331
+  // - 查询离职接替状态:   https://developer.work.weixin.qq.com/document/path/96333
+  // 权限要求：第三方应用需拥有「企业客户权限→客户联系→在职继承/分配离职成员的客户」
+  // 限制：单次请求 ≤100 个客户；发起后 24 小时自动接替；在职同一客户 90 天内最多 2 次
+
+  /** 转粉接口逐客户子结果 */
+  static convertFanCustomerItem: { external_userid: string; errcode: number; errmsg?: string };
+
+  /**
+   * 分配在职成员的客户（发起在职转粉）
+   * errcode=0 仅代表成功发起接替，需等待24小时自动接替
+   * @param transferSuccessMsg 转移成功后推送给客户的消息，≤200字符，可空
+   */
+  static async transferActiveCustomer(
+    accessToken: string,
+    handoverUserid: string,
+    takeoverUserid: string,
+    externalUserids: string[],
+    transferSuccessMsg?: string
+  ): Promise<{ errcode: number; errmsg: string; customer: Array<{ external_userid: string; errcode: number; errmsg?: string }> }> {
+    try {
+      const body: any = {
+        handover_userid: handoverUserid,
+        takeover_userid: takeoverUserid,
+        external_userid: externalUserids.slice(0, 100)
+      };
+      if (transferSuccessMsg) {
+        body.transfer_success_msg = transferSuccessMsg.substring(0, 200);
+      }
+      const response = await axios.post(`${WECOM_API_BASE}/externalcontact/transfer_customer?access_token=${accessToken}`, body);
+      if (response.data.errcode !== 0) {
+        throw new Error(`发起在职转接失败: ${response.data.errmsg} (${response.data.errcode})`);
+      }
+      return response.data;
+    } catch (error: any) {
+      log.error('[WecomApi] transferActiveCustomer error:', error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * 查询客户接替状态（在职）
+   * @param cursor 分页游标，首次传空
+   * @returns customer[].status: 1接替完毕 2等待接替 3客户拒绝 4接替方客户达到上限
+   */
+  static async getActiveTransferResult(
+    accessToken: string,
+    handoverUserid: string,
+    takeoverUserid: string,
+    cursor = ''
+  ): Promise<{ customer: Array<{ external_userid: string; status: number; takeover_time: number }>; next_cursor: string }> {
+    try {
+      const response = await axios.post(`${WECOM_API_BASE}/externalcontact/transfer_result?access_token=${accessToken}`, {
+        handover_userid: handoverUserid,
+        takeover_userid: takeoverUserid,
+        cursor: cursor || undefined
+      });
+      if (response.data.errcode !== 0) {
+        throw new Error(`查询在职接替状态失败: ${response.data.errmsg} (${response.data.errcode})`);
+      }
+      return { customer: response.data.customer || [], next_cursor: response.data.next_cursor || '' };
+    } catch (error: any) {
+      log.error('[WecomApi] getActiveTransferResult error:', error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * 获取待分配的离职成员客户列表（分页聚合全部）
+   * 仅返回已离职（从通讯录删除）成员名下的外部联系人
+   */
+  static async getUnassignedList(
+    accessToken: string,
+    cursor = '',
+    pageSize = 1000
+  ): Promise<{ info: Array<{ handover_userid: string; external_userid: string; dimission_time: number }>; is_last: boolean; next_cursor: string }> {
+    try {
+      const response = await axios.post(`${WECOM_API_BASE}/externalcontact/get_unassigned_list?access_token=${accessToken}`, {
+        cursor: cursor || undefined,
+        page_size: Math.min(pageSize, 1000)
+      });
+      if (response.data.errcode !== 0) {
+        throw new Error(`获取待分配离职列表失败: ${response.data.errmsg} (${response.data.errcode})`);
+      }
+      return {
+        info: response.data.info || [],
+        is_last: response.data.is_last !== false,
+        next_cursor: response.data.next_cursor || ''
+      };
+    } catch (error: any) {
+      log.error('[WecomApi] getUnassignedList error:', error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * 分配离职成员的客户（发起离职转粉）
+   * 与在职接口的区别：无 transfer_success_msg 参数；handover 必须是已离职用户
+   */
+  static async transferResignedCustomer(
+    accessToken: string,
+    handoverUserid: string,
+    takeoverUserid: string,
+    externalUserids: string[]
+  ): Promise<{ errcode: number; errmsg: string; customer: Array<{ external_userid: string; errcode: number; errmsg?: string }> }> {
+    try {
+      const response = await axios.post(`${WECOM_API_BASE}/externalcontact/resigned/transfer_customer?access_token=${accessToken}`, {
+        handover_userid: handoverUserid,
+        takeover_userid: takeoverUserid,
+        external_userid: externalUserids.slice(0, 100)
+      });
+      if (response.data.errcode !== 0) {
+        throw new Error(`发起离职转接失败: ${response.data.errmsg} (${response.data.errcode})`);
+      }
+      return response.data;
+    } catch (error: any) {
+      log.error('[WecomApi] transferResignedCustomer error:', error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * 查询客户接替状态（离职）
+   * @returns customer[].status: 1接替完毕 2等待接替 3客户拒绝 4接替方客户达到上限
+   */
+  static async getResignedTransferResult(
+    accessToken: string,
+    handoverUserid: string,
+    takeoverUserid: string,
+    cursor = ''
+  ): Promise<{ customer: Array<{ external_userid: string; status: number; takeover_time: number }>; next_cursor: string }> {
+    try {
+      const response = await axios.post(`${WECOM_API_BASE}/externalcontact/resigned/transfer_result?access_token=${accessToken}`, {
+        handover_userid: handoverUserid,
+        takeover_userid: takeoverUserid,
+        cursor: cursor || undefined
+      });
+      if (response.data.errcode !== 0) {
+        throw new Error(`查询离职接替状态失败: ${response.data.errmsg} (${response.data.errcode})`);
+      }
+      return { customer: response.data.customer || [], next_cursor: response.data.next_cursor || '' };
+    } catch (error: any) {
+      log.error('[WecomApi] getResignedTransferResult error:', error.message);
+      throw error;
+    }
+  }
 }
 
 export default WecomApiService;

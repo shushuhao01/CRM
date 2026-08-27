@@ -37,6 +37,7 @@ import tenantImportRouter from './tenant-import';
 import smsManagementRouter from './sms-management';
 import smsQuotaRouter from './sms-quota';
 import wecomManagementRouter from './wecom-management';
+import convertFanRouter from './convertFan';
 import mobileAppConfigRouter from './mobile-app-config';
 import { log } from '../../config/logger';
 import { getCentralAdminApiUrl, CENTRAL_SERVER } from '../../config/centralServer';
@@ -233,6 +234,7 @@ router.use('/tenants', requireSaaSMode, tenantImportRouter);   // 租户数据�
 router.use('/sms-management', smsManagementRouter); // 短信管理 API
 router.use('/sms-quota', smsQuotaRouter); // 短信额度套餐管理 API
 router.use('/wecom-management', wecomManagementRouter); // 企微管理 API
+router.use('/wecom-management/convert-fan', convertFanRouter); // 客户转粉服务台 API
 router.use('/mobile-app-config', mobileAppConfigRouter); // 移动应用管理 API
 router.use('/system-settings', systemSettingsRouter);
 // router.use('/scheduler', schedulerRouter); // 暂时禁用

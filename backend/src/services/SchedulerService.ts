@@ -13,6 +13,7 @@ import { logisticsAutoSyncService } from './LogisticsAutoSyncService';
 import { wecomSyncScheduler } from './WecomSyncScheduler';
 import { onlineSeatService } from './OnlineSeatService';
 import { capacityService } from './CapacityService';
+import { wecomConvertFanService } from './WecomConvertFanService';
 // import { smartOnlineScheduler } from './SmartOnlineScheduler'; // [暂停开发] 获客助手/活码管理
 
 import { log } from '../config/logger';
@@ -106,6 +107,21 @@ export class SchedulerService {
       },
       '在线席位过期会话清理（每1分钟）'
     );
+
+    // 🔥 企微客户转粉接替结果轮询 - 每30分钟执行一次
+    // 对"已发起"状态订单查询官方 transfer_result，24h窗口结束后回填最终结果
+    this.scheduleTask(
+      'wecom-convert-fan-poll',
+      '*/30 * * * *', // 每30分钟
+      async () => {
+        const result = await wecomConvertFanService.pollPendingResults();
+        if (result.checked > 0) log.info(`[Scheduler] 转粉结果轮询: 检查${result.checked}单，更新${result.updated}单`);
+      },
+      '企微客户转粉接替结果轮询（每30分钟）'
+    );
+
+    // 🔥 启动即自动迁移转粉表结构（建表+补列，无需手动执行SQL）
+    wecomConvertFanService.ensureTables().catch(() => {});
 
     // 🔥 扩容到期回退 - 每小时检查一次
     this.scheduleTask(
@@ -202,6 +218,9 @@ export class SchedulerService {
           return true;
         case 'logistics-auto-sync':
           await logisticsAutoSyncService.runAutoSync();
+          return true;
+        case 'wecom-convert-fan-poll':
+          await wecomConvertFanService.pollPendingResults();
           return true;
         case 'wecom-customer-sync':
           await wecomSyncScheduler.runAutoSync();

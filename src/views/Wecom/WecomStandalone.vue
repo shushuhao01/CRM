@@ -92,6 +92,7 @@ const allMenuItems = [
   { name: 'acquisition', label: '获客助手', icon: '🎯', configId: 'wecom-acquisition' },
   { name: 'contact-way', label: '活码管理', icon: '📎', configId: 'wecom-contact-way' },
   { name: 'chat-archive', label: '会话存档', icon: '💬', configId: 'wecom-chat-archive' },
+  { name: 'customer-convert', label: '客户转粉', icon: '🤝', configId: 'wecom-customer-convert' },
   { name: 'service', label: '微信客服', icon: '🎧', configId: 'wecom-service' },
   // AI助手暂停开发
   // { name: 'ai-assistant', label: 'AI助手', icon: '🤖', configId: 'wecom-ai-assistant' },
