@@ -39,6 +39,12 @@ jest.mock('../../services/OnlineSeatService', () => ({
 jest.mock('../../services/CapacityService', () => ({
   capacityService: { expireCapacityOrders: jest.fn().mockResolvedValue(0) }
 }))
+jest.mock('../../services/WecomConvertFanService', () => ({
+  wecomConvertFanService: {
+    ensureTables: jest.fn().mockResolvedValue(undefined),
+    pollPendingResults: jest.fn().mockResolvedValue({ checked: 0, updated: 0 })
+  }
+}))
 
 import { licenseExpirationReminderService } from '../../services/LicenseExpirationReminderService'
 import { dataCleanupService } from '../../services/DataCleanupService'
@@ -60,10 +66,10 @@ describe('SchedulerService', () => {
   describe('start', () => {
     it('启动后注册多个定时任务', () => {
       schedulerService.start()
-      // 9 个 scheduleTask 调用
-      expect(mockSchedule).toHaveBeenCalledTimes(9)
+      // 10 个 scheduleTask 调用（含企微客户转粉结果轮询）
+      expect(mockSchedule).toHaveBeenCalledTimes(10)
       const status = schedulerService.getTasksStatus()
-      expect(status.length).toBe(9)
+      expect(status.length).toBe(10)
     })
   })
 
@@ -88,6 +94,7 @@ describe('SchedulerService', () => {
       expect(names).toContain('logistics-auto-sync')
       expect(names).toContain('online-seat-cleanup')
       expect(names).toContain('capacity-expire-check')
+      expect(names).toContain('wecom-convert-fan-poll')
       schedulerService.stop()
     })
   })
