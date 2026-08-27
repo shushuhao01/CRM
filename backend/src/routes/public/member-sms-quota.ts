@@ -108,7 +108,10 @@ router.post('/purchase', async (req: Request, res: Response) => {
     let qrCode = '', payUrl = '';
     try {
       const { paymentService } = await import('../../services/PaymentService');
+      // 🔑 传入业务订单号 orderNo：支付单与会员业务单同号，回调/主动查询才能命中本单，
+      // 否则二维码绑定内部 PAY 单，会员侧轮询 MSQ 单永远查不到已支付
       const payResult = await paymentService.createOrder({
+        orderNo,
         packageId: pkg.id,
         packageName: `短信额度-${pkg.name}`,
         amount: Number(pkg.price),

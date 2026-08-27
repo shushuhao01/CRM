@@ -47,6 +47,8 @@ interface CreateOrderParams {
   contactEmail?: string
   billingCycle?: 'monthly' | 'yearly' | 'once'
   bonusMonths?: number
+  /** 业务侧订单号（可选）：传入后支付订单直接使用该订单号，保证业务单/支付单/支付渠道三方一致，回调与轮询才能对上 */
+  orderNo?: string
 }
 
 class PaymentService {
@@ -129,7 +131,16 @@ class PaymentService {
     await this.ensurePaymentOrderColumns()
 
     const orderId = uuidv4()
-    const orderNo = this.generateOrderNo()
+    // 🔑 支持业务侧传入订单号，避免"业务单号与支付单号不一致"导致回调/轮询永远对不上
+    let orderNo = params.orderNo || this.generateOrderNo()
+    if (params.orderNo) {
+      const existed = await AppDataSource.query(
+        'SELECT id FROM payment_orders WHERE order_no = ? LIMIT 1', [orderNo]
+      )
+      if (existed.length > 0) {
+        return { success: false, message: `订单号已存在: ${orderNo}` }
+      }
+    }
     const expireTime = new Date(Date.now() + 30 * 60 * 1000) // 30分钟过期
 
     try {
@@ -242,7 +253,7 @@ class PaymentService {
 
     if (result.return_code === 'SUCCESS' && result.result_code === 'SUCCESS') {
       return {
-        qrCode: this.generateQRCodeDataUrl(result.code_url),
+        qrCode: await this.generateQRCodeDataUrl(result.code_url),
         payUrl: result.code_url
       }
     } else {
@@ -259,7 +270,8 @@ class PaymentService {
       const { AlipayService } = await import('./AlipayService')
       const alipayService = new AlipayService()
       const result = await alipayService.createQRPay({ orderNo, amount, subject })
-      return { qrCode: result.qrCode, payUrl: result.payUrl }
+      // 🔑 归一化：SDK 返回的是原始支付串，转为二维码图片
+      return { qrCode: await this.normalizeQrCode(result.qrCode), payUrl: result.payUrl }
     } catch (err: any) {
       // 如果 AlipayService 失败，尝试使用内部实现
       if (this.config.alipay) {
@@ -309,7 +321,7 @@ class PaymentService {
 
     return {
       payUrl,
-      qrCode: this.generateQRCodeDataUrl(payUrl)
+      qrCode: await this.generateQRCodeDataUrl(payUrl)
     }
   }
 
@@ -1139,10 +1151,30 @@ class PaymentService {
   }
 
   // 生成二维码DataURL (简化版，实际应使用qrcode库)
-  private generateQRCodeDataUrl(content: string): string {
-    // 这里返回一个占位符，实际需要使用qrcode库生成
-    // 前端可以使用 qrcode.vue 或类似库来渲染
-    return `data:text/plain;base64,${Buffer.from(content).toString('base64')}`
+  // 生成支付二维码图片（data:image/png;base64）
+  // 兼容三种输入：原始支付串（weixin://...、https://qr.alipay.com/...）、
+  // 旧版占位 data:text/plain;base64、已是图片的 data:image/*
+  private async generateQRCodeDataUrl(content: string): Promise<string> {
+    if (!content) return ''
+    if (content.startsWith('data:image')) return content
+    if (content.startsWith('data:text/plain;base64,')) {
+      // 兼容旧占位实现：解码出真实支付串再重新生成
+      try { content = Buffer.from(content.replace('data:text/plain;base64,', ''), 'base64').toString('utf8') } catch { /* ignore */ }
+    }
+    try {
+      const QRCode = await import('qrcode')
+      return await QRCode.toDataURL(content, { width: 300, margin: 1 })
+    } catch (e: any) {
+      log.error('[Payment] 生成二维码失败:', e.message)
+      return ''
+    }
+  }
+
+  // 归一化二维码：确保返回可直接展示的 data:image（微信V3/支付宝SDK返回的是原始支付内容串）
+  private async normalizeQrCode(raw: string | undefined): Promise<string> {
+    if (!raw) return ''
+    if (raw.startsWith('data:image')) return raw
+    return this.generateQRCodeDataUrl(raw)
   }
 
 }

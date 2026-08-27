@@ -198,7 +198,8 @@
         </div>
         <div class="pay-qrcode">
           <div v-if="currentPayUrl" class="qr-code-box">
-            <canvas ref="qrCanvasRef" />
+            <img v-if="qrIsImage" :src="currentPayUrl" alt="支付二维码" style="width: 200px; height: 200px; display: block;" />
+            <canvas v-show="!qrIsImage" ref="qrCanvasRef" />
           </div>
           <div v-else-if="qrLoading" class="qr-placeholder">
             <el-icon :size="48" color="#409eff" class="is-loading"><Loading /></el-icon>
@@ -275,6 +276,7 @@ const pendingIdx = ref<number>(0)
 const billingRef = ref<InstanceType<typeof BillingRecordSection> | null>(null)
 const qrCanvasRef = ref<HTMLCanvasElement>()
 const currentPayUrl = ref('')
+const qrIsImage = ref(false)
 const currentOrderNo = ref('')
 const qrLoading = ref(false)
 let payPollTimer: ReturnType<typeof setInterval> | null = null
@@ -420,7 +422,7 @@ const handleArchiveCustomPurchase = async () => {
     emit('packageChanged')
     window.dispatchEvent(new CustomEvent('wecom-package-changed'))
     await nextTick()
-    renderQrCode(data?.payUrl || data?.qrCode || '')
+    renderQrCode(data?.qrCode || data?.payUrl || '')
     if (currentOrderNo.value) startPayPolling(currentOrderNo.value)
   } catch (e: any) {
     ElMessage.error(e?.response?.data?.message || e?.message || '购买失败')
@@ -495,7 +497,7 @@ const handlePurchase = async (pkg: any, idx: number) => {
     showPayDialog.value = true
     billingRef.value?.loadRecords()
     await nextTick()
-    renderQrCode(data?.payUrl || data?.qrCode || '')
+    renderQrCode(data?.qrCode || data?.payUrl || '')
     if (currentOrderNo.value) startPayPolling(currentOrderNo.value)
   } catch (e: any) {
     ElMessage.error(e?.response?.data?.message || e?.message || '创建订单失败')
@@ -543,6 +545,13 @@ const confirmPayment = async () => {
 
 const renderQrCode = async (url: string) => {
   if (!url) return
+  // 后端可能返回三类：data:image（服务端已生成图片）、data:text/plain（旧占位，需解码）、原始支付串（需本地生成）
+  if (url.startsWith('data:image')) {
+    qrIsImage.value = true
+    currentPayUrl.value = url
+    return
+  }
+  qrIsImage.value = false
   // 如果是base64编码的支付URL，解码出真实 URL
   let payUrl = url
   if (url.startsWith('data:text/plain;base64,')) {
@@ -570,7 +579,7 @@ const switchPayMethod = async (method: string) => {
     const data = res?.data || res
     currentPayUrl.value = data?.payUrl || ''
     await nextTick()
-    renderQrCode(data?.payUrl || data?.qrCode || '')
+    renderQrCode(data?.qrCode || data?.payUrl || '')
   } catch (e: any) {
     console.warn('[Pay] repay error:', e)
     const msg = e?.message || '切换支付方式失败'
@@ -638,7 +647,7 @@ const handleRepay = async (row: any) => {
     const data = res?.data || res
     currentPayUrl.value = data?.payUrl || ''
     await nextTick()
-    renderQrCode(data?.payUrl || data?.qrCode || '')
+    renderQrCode(data?.qrCode || data?.payUrl || '')
     startPayPolling(orderNo)
   } catch (e: any) {
     console.warn('[Pay] repay error:', e)

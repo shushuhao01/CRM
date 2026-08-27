@@ -850,20 +850,36 @@ router.post('/chat-archive/purchase', authenticateToken, async (req: Request, re
     const orderId = uuidv4();
     let qrCode = '';
     let payUrl = '';
+    let payOrderId = orderId;
+    let payOrderCreated = false;
     try {
       const { paymentService } = await import('../../services/PaymentService');
-      const payResult = await paymentService.createOrder({ packageId: 'vas_chat_archive', packageName: `会话存档增值服务 ${userCount}人/年`, amount: totalAmount, payType: payType as 'wechat' | 'alipay' | 'bank', tenantId: tenantId || undefined, tenantName, contactName: currentUser?.name || '', contactPhone: '', billingCycle: 'yearly' });
-      if (payResult.success) { qrCode = payResult.qrCode || ''; payUrl = payResult.payUrl || ''; }
+      // 🔑 传入业务订单号 orderNo：支付单与业务单同号，微信/支付宝回调(out_trade_no)才能命中本单，
+      // 否则二维码绑定的是内部 PAY 单，业务侧轮询 VAS 单永远查不到已支付
+      const payResult = await paymentService.createOrder({ orderNo, packageId: 'vas_chat_archive', packageName: `会话存档增值服务 ${userCount}人/年`, amount: totalAmount, payType: payType as 'wechat' | 'alipay' | 'bank', tenantId: tenantId || undefined, tenantName, contactName: currentUser?.name || '', contactPhone: '', billingCycle: 'yearly' });
+      if (payResult.success) {
+        qrCode = payResult.qrCode || ''; payUrl = payResult.payUrl || '';
+        payOrderId = payResult.orderId || orderId;
+        payOrderCreated = true;
+      }
     } catch (payErr: any) {
       log.warn('[Wecom VAS] 支付服务调用失败:', payErr.message);
       qrCode = '';
       payUrl = '';
     }
-    await AppDataSource.query(
-      `INSERT INTO payment_orders (id, order_no, customer_type, tenant_id, tenant_name, package_id, package_name, amount, pay_type, status, qr_code, pay_url, contact_name, expire_time, remark, created_at, updated_at) VALUES (?, ?, 'tenant', ?, ?, 'vas_chat_archive', ?, ?, ?, 'pending', ?, ?, ?, ?, ?, NOW(), NOW())`,
-      [orderId, orderNo, tenantId, tenantName, `会话存档增值服务 ${userCount}人/年`, totalAmount, payType, qrCode, payUrl, currentUser?.name || '', new Date(Date.now() + 30 * 60 * 1000), `企微会话存档VAS - ${userCount}人/年`]
-    );
-    res.json({ success: true, data: { orderId, orderNo, amount: totalAmount, userCount, unitPrice, qrCode, payUrl, payType, packageName: `会话存档增值服务 ${userCount}人/年` } });
+    if (!payOrderCreated) {
+      // 支付服务未成功建单时的兜底（如支付渠道未配置），仍保留待支付订单供管理员确认/对公转账
+      try {
+        await AppDataSource.query(
+          `INSERT INTO payment_orders (id, order_no, customer_type, tenant_id, tenant_name, package_id, package_name, amount, pay_type, status, qr_code, pay_url, contact_name, expire_time, remark, created_at, updated_at) VALUES (?, ?, 'tenant', ?, ?, 'vas_chat_archive', ?, ?, ?, 'pending', ?, ?, ?, ?, ?, NOW(), NOW())`,
+          [orderId, orderNo, tenantId, tenantName, `会话存档增值服务 ${userCount}人/年`, totalAmount, payType, qrCode, payUrl, currentUser?.name || '', new Date(Date.now() + 30 * 60 * 1000), `企微会话存档VAS - ${userCount}人/年`]
+        );
+      } catch (insErr: any) {
+        // 订单可能已由 createOrder 先行创建（如二维码生成失败但建单成功），忽略重复
+        log.warn('[Wecom VAS] 兜底建单跳过（可能已存在）:', insErr.message?.substring(0, 100));
+      }
+    }
+    res.json({ success: true, data: { orderId: payOrderId, orderNo, amount: totalAmount, userCount, unitPrice, qrCode, payUrl, payType, packageName: `会话存档增值服务 ${userCount}人/年` } });
   } catch (error: any) {
     log.error('[Wecom VAS] 创建订单失败:', error.message, error.stack);
     res.status(500).json({ success: false, message: '创建订单失败' });
