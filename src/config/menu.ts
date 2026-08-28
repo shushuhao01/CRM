@@ -443,13 +443,14 @@ export const menuConfig: MenuItem[] = [
         roles: ['super_admin', 'admin', 'department_manager', 'sales_staff'],
         permissions: ['wecom:chat', 'wecom.chat_archive']
       },
-      {
-        id: 'wecom-customer-convert',
-        title: '客户转粉',
-        path: '/wecom/customer-convert',
-        roles: ['super_admin', 'admin'],
-        permissions: ['wecom:customer_convert']
-      },
+      // 客户转粉 - 暂停开发，后续版本恢复
+      // {
+      //   id: 'wecom-customer-convert',
+      //   title: '客户转粉',
+      //   path: '/wecom/customer-convert',
+      //   roles: ['super_admin', 'admin'],
+      //   permissions: ['wecom:customer_convert']
+      // },
       // 微信客服 - 暂停开发，后续版本恢复
       // {
       //   id: 'wecom-service',

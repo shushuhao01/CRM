@@ -612,12 +612,13 @@ const router = createRouter({
       component: () => import('../views/Wecom/ChatArchive.vue'),
       meta: { title: '会话存档', requiresAuth: true }
     },
-    {
-      path: '/wecom/customer-convert',
-      name: 'WecomCustomerConvert',
-      component: () => import('../views/Wecom/CustomerConvert.vue'),
-      meta: { title: '客户转粉', requiresAuth: true }
-    },
+    // 客户转粉 - 暂停开发，后续版本恢复
+    // {
+    //   path: '/wecom/customer-convert',
+    //   name: 'WecomCustomerConvert',
+    //   component: () => import('../views/Wecom/CustomerConvert.vue'),
+    //   meta: { title: '客户转粉', requiresAuth: true }
+    // },
     {
       path: '/wecom/service',
       name: 'WecomService',
@@ -823,8 +824,8 @@ router.beforeEach(async (to, from, next) => {
     '/wecom/customer-group': 'customerGroup',
     '/wecom/contact-way': 'contactWay',
     '/wecom/sidebar': 'sidebar',
-    // 客户转粉：管理员(购买人)跳过套餐校验；低权限角色未购买时引导到企微授权页
-    '/wecom/customer-convert': 'customerConvert',
+    // 客户转粉 - 暂停开发（管理员跳过套餐校验；低权限角色未购买时引导到企微授权页）
+    // '/wecom/customer-convert': 'customerConvert',
     // '/wecom/payment': 'payment', // 暂停开发
   }
   const requiredWecomPerm = wecomMenuPermissionMap[to.path]

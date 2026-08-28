@@ -60,7 +60,8 @@ import timelineRouter from './timeline';
 import scriptsRouter from './scripts';
 import suiteCallbackRouter from './suite-callback';
 import pricingRouter from './pricing';
-import convertFanRouter from './convertFan';
+// 客户转粉 - 暂停开发，后续版本恢复（注释入口即整体下线）
+// import convertFanRouter from './convertFan';
 import groupWelcomeRouter from './groupWelcome';
 import groupBroadcastRouter from './groupBroadcast';
 import antiSpamRuleRouter from './antiSpamRule';
@@ -99,7 +100,8 @@ router.use('/', aiInspectRouter);
 router.use('/', timelineRouter);
 router.use('/', scriptsRouter);
 router.use('/', pricingRouter);
-router.use('/', convertFanRouter);
+// 客户转粉 - 暂停开发，后续版本恢复
+// router.use('/', convertFanRouter);
 router.use('/', groupWelcomeRouter);
 router.use('/', groupBroadcastRouter);
 router.use('/', antiSpamRuleRouter);

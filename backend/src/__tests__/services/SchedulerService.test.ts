@@ -66,10 +66,10 @@ describe('SchedulerService', () => {
   describe('start', () => {
     it('启动后注册多个定时任务', () => {
       schedulerService.start()
-      // 10 个 scheduleTask 调用（含企微客户转粉结果轮询）
-      expect(mockSchedule).toHaveBeenCalledTimes(10)
+      // 9 个 scheduleTask 调用（客户转粉轮询已暂停开发）
+      expect(mockSchedule).toHaveBeenCalledTimes(9)
       const status = schedulerService.getTasksStatus()
-      expect(status.length).toBe(10)
+      expect(status.length).toBe(9)
     })
   })
 
@@ -94,7 +94,7 @@ describe('SchedulerService', () => {
       expect(names).toContain('logistics-auto-sync')
       expect(names).toContain('online-seat-cleanup')
       expect(names).toContain('capacity-expire-check')
-      expect(names).toContain('wecom-convert-fan-poll')
+      // 'wecom-convert-fan-poll' 已随客户转粉功能暂停开发注释
       schedulerService.stop()
     })
   })
