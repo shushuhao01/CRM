@@ -91,7 +91,7 @@ const ORDER_STATUS_CN: Record<string, string> = {
   pending_shipment: '待发货', shipped: '已发货', in_transit: '运输中',
   delivered: '已签收', signed: '已签收', cancelled: '已取消',
   returned: '已退回', logistics_returned: '物流部退回', logistics_cancelled: '物流部取消',
-  package_exception: '包裹异常', abnormal: '包裹异常',
+  package_exception: '包裹异常', abnormal: '状态异常',
   rejected_returned: '拒收已退回', after_sales_created: '已建售后',
   lost: '丢件', refunded: '已退款', completed: '已完成',
   partial_shipped: '部分发货', received: '已签收',

@@ -28,10 +28,16 @@ import { TenantContextManager } from '../utils/tenantContext';
 import { deployConfig } from '../config/deploy';
 
 /**
- * 需要主动拉取物流轨迹的订单状态（均为非终态）
- * 终态（已签收/拒收已退回/已建售后/退货退款/物流部退回/物流部取消/已取消）不发起 API 请求
+ * 非终态订单状态集合（唯一数据源，自动同步 / 主动拉取轨迹 / 状态映射均复用）
+ *
+ * - 已发货 shipped
+ * - 拒收 rejected（客户可能后续重新派送签收 → 需继续同步）
+ * - 包裹异常 package_exception（同上）
+ * - 状态异常 abnormal（同上）
+ *
+ * 终态（已签收/拒收已退回/已建售后/退货退款/物流部退回/物流部取消/已取消）不发起 API 请求、不再同步
  */
-const NON_TERMINAL_ORDER_STATUSES = ['shipped', 'rejected', 'package_exception'];
+const NON_TERMINAL_ORDER_STATUSES = ['shipped', 'rejected', 'package_exception', 'abnormal'];
 
 /**
  * 检查物流自动同步开关是否启用（从 logistics_auto_sync_settings 表读取）
@@ -309,15 +315,15 @@ export function mapKuaidi100State(state: string | number): string {
  *
  * 规则：
  * - 在途状态（pending/picked_up/in_transit/out_for_delivery）→ 不更新订单状态
- * - delivered → shipped/rejected/package_exception 都可变 delivered（重新派送签收）
- * - rejected → shipped/package_exception 可变 rejected（首次拒收或异常后拒收）
- * - exception → 只有 shipped 可变 package_exception
+ * - delivered → shipped/rejected/package_exception/abnormal 都可变 delivered（重新派送签收）
+ * - rejected → shipped/package_exception/abnormal 可变 rejected（首次拒收或异常后拒收）
+ * - exception → 只有 shipped 可变 package_exception（状态异常 abnormal 保持原状态）
  * - returned → 一律判定为 rejected_returned（拒收已退回）
  *   🔥 已发货订单到货后被客户拒收退回，属于"拒收已退回"；
  *   "物流部退回"（logistics_returned）仅由发货列表中待发货订单的人工退回/取消操作产生，
  *   自动同步永远不产生 logistics_returned
  *
- * ⚠️ 注意：rejected 和 package_exception 不是终态！客户可能联系后重新派送签收。
+ * ⚠️ 注意：rejected / package_exception / abnormal 都不是终态！客户可能联系后重新派送签收。
  * 终态只有：delivered、rejected_returned、cancelled 等。
  *
  * @returns 目标订单状态，null 表示不更新
@@ -327,7 +333,7 @@ export function mapLogisticsToOrderStatus(
   currentOrderStatus: string
 ): string | null {
   // 🔒 终态订单不参与同步
-  // ⚠️ rejected 和 package_exception 不是终态！客户可能重新联系后重新派送签收
+  // ⚠️ rejected / package_exception / abnormal 不是终态！客户可能重新联系后重新派送签收
   const terminalStatuses = [
     'delivered', 'rejected_returned', 'cancelled', 'after_sales_created',
     'logistics_cancelled', 'pending_transfer', 'pending_audit', 'audit_rejected'
@@ -336,23 +342,22 @@ export function mapLogisticsToOrderStatus(
     return null;
   }
 
-  // 🔒 只处理这些订单状态（rejected 和 package_exception 需继续同步）
-  const processableStatuses = ['shipped', 'rejected', 'package_exception'];
-  if (!processableStatuses.includes(currentOrderStatus)) {
+  // 🔒 只处理非终态订单状态（与主动拉取轨迹范围保持一致）
+  if (!NON_TERMINAL_ORDER_STATUSES.includes(currentOrderStatus)) {
     return null;
   }
 
   switch (logisticsStatus) {
     case 'delivered':
-      // shipped/rejected/package_exception 都可以变 delivered（异常/拒收后重新派送签收）
-      return (currentOrderStatus === 'shipped' || currentOrderStatus === 'package_exception' || currentOrderStatus === 'rejected') ? 'delivered' : null;
+      // shipped/rejected/package_exception/abnormal 都可以变 delivered（异常/拒收后重新派送签收）
+      return 'delivered';
 
     case 'rejected':
-      // shipped 或 package_exception 都可以变 rejected
-      return (currentOrderStatus === 'shipped' || currentOrderStatus === 'package_exception') ? 'rejected' : null;
+      // shipped/package_exception/abnormal 都可以变 rejected（首次拒收或异常后拒收）
+      return currentOrderStatus === 'rejected' ? null : 'rejected';
 
     case 'exception':
-      // 只有 shipped 才能变 package_exception
+      // 只有 shipped 才能变 package_exception；已是异常态则保持原状态
       return currentOrderStatus === 'shipped' ? 'package_exception' : null;
 
     case 'returned':
@@ -395,7 +400,7 @@ class LogisticsAutoSyncService {
    * 🔥 执行一次完整的物流状态自动同步
    *
    * 流程：
-   * 1. 查询所有需要同步的订单（shipped/rejected/package_exception 且有快递单号）
+   * 1. 查询所有需要同步的订单（shipped/rejected/package_exception/abnormal 且有快递单号）
    * 2. 获取每个订单的最新物流动态（从数据库 latestLogisticsInfo 字段）
    * 3. 检测物流状态
    * 4. 安全映射到订单状态
@@ -425,7 +430,7 @@ class LogisticsAutoSyncService {
       // 1️⃣ 查询需要同步的订单（跳过手动覆盖的）
       const queryBuilder = orderRepository.createQueryBuilder('order')
         .where('order.status IN (:...statuses)', {
-          statuses: ['shipped', 'rejected', 'package_exception']
+          statuses: NON_TERMINAL_ORDER_STATUSES
         })
         .andWhere('order.trackingNumber IS NOT NULL')
         .andWhere("order.trackingNumber != ''")
@@ -596,7 +601,7 @@ class LogisticsAutoSyncService {
    *   再做同样的物流状态检测与订单状态映射，确保"物流状态 + 订单状态"都基于最新数据判断
    *
    * 拉取范围（仅非终态，且排除手动覆盖）：
-   *   已发货 shipped / 拒收 rejected / 状态异常 package_exception
+   *   已发货 shipped / 拒收 rejected / 包裹异常 package_exception / 状态异常 abnormal
    * 不发起请求的终态：
    *   已签收 delivered / 拒收已退回 rejected_returned / 已建售后 after_sales_created /
    *   退货退款 refunded / 物流部退回 logistics_returned / 物流部取消 logistics_cancelled / 已取消 cancelled
