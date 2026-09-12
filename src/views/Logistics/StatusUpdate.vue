@@ -241,7 +241,7 @@
         </template>
         <el-table-column type="selection" width="50" />
         <el-table-column prop="index" label="序号" width="60" />
-        <el-table-column prop="orderNo" label="订单号" min-width="140" show-overflow-tooltip>
+        <el-table-column prop="orderNo" label="订单号" min-width="200" class-name="col-order-no">
           <template #default="{ row }">
             <el-link type="primary" @click="goToOrderDetail(row.id)">
               {{ row.orderNo }}
@@ -1408,6 +1408,11 @@ watch([dateRange, statusFilter, orderStatusFilter, searchKeyword], () => {
   display: flex;
   align-items: center;
   gap: 4px;
+}
+
+/* 订单号单元格：完整显示不换行、不截断 */
+:deep(.col-order-no .cell) {
+  white-space: nowrap;
 }
 
 .search-tracking-btn {
