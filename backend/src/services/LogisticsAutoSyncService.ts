@@ -23,6 +23,15 @@ import { translateStatus, translateLogisticsStatus } from '../utils/operationLog
 import { AppDataSource } from '../config/database';
 import { Order } from '../entities/Order';
 import { OrderStatusHistory } from '../entities/OrderStatusHistory';
+import { logisticsTraceService } from './LogisticsTraceService';
+import { TenantContextManager } from '../utils/tenantContext';
+import { deployConfig } from '../config/deploy';
+
+/**
+ * 需要主动拉取物流轨迹的订单状态（均为非终态）
+ * 终态（已签收/拒收已退回/已建售后/退货退款/物流部退回/物流部取消/已取消）不发起 API 请求
+ */
+const NON_TERMINAL_ORDER_STATUSES = ['shipped', 'rejected', 'package_exception'];
 
 /**
  * 检查物流自动同步开关是否启用（从 logistics_auto_sync_settings 表读取）
@@ -379,6 +388,8 @@ class LogisticsAutoSyncService {
   private lastSyncTime: string | null = null;
   private lastStartTime: string | null = null;
   private lastStopTime: string | null = null;
+  private isFetching = false;
+  private lastFetchTime: string | null = null;
 
   /**
    * 🔥 执行一次完整的物流状态自动同步
@@ -480,11 +491,15 @@ class LogisticsAutoSyncService {
 
   /**
    * 处理单个订单的物流状态同步
+   *
+   * @param refreshedFields 由主动拉取轨迹产生的、需要一并写库的字段
+   *                        （如最新拉取的 latestLogisticsInfo / expectedDeliveryDate）
    */
   private async processOrder(
     order: Order,
     orderRepository: any,
-    result: AutoSyncResult
+    result: AutoSyncResult,
+    refreshedFields?: Record<string, any>
   ): Promise<void> {
     const description = order.latestLogisticsInfo || '';
     if (!description) return;
@@ -498,7 +513,7 @@ class LogisticsAutoSyncService {
     let orderStatusChanged = false;
 
     // 更新物流状态字段（始终更新）
-    const updateData: any = {};
+    const updateData: any = { ...(refreshedFields || {}) };
     if (newLogisticsStatus !== oldLogisticsStatus) {
       updateData.logisticsStatus = newLogisticsStatus;
       result.logisticsUpdated++;
@@ -573,6 +588,176 @@ class LogisticsAutoSyncService {
   }
 
   /**
+   * 🔥 主动拉取最新物流轨迹并同步（每天 12:00 / 18:00 由定时任务触发）
+   *
+   * 与 runAutoSync 的区别：
+   * - runAutoSync 只读取数据库里已存的 latestLogisticsInfo 做关键词检测，不请求快递公司 API
+   * - runFetchLatestTrace 主动调用快递公司 API 拉取最新轨迹，先写回最新物流动态，
+   *   再做同样的物流状态检测与订单状态映射，确保"物流状态 + 订单状态"都基于最新数据判断
+   *
+   * 拉取范围（仅非终态，且排除手动覆盖）：
+   *   已发货 shipped / 拒收 rejected / 状态异常 package_exception
+   * 不发起请求的终态：
+   *   已签收 delivered / 拒收已退回 rejected_returned / 已建售后 after_sales_created /
+   *   退货退款 refunded / 物流部退回 logistics_returned / 物流部取消 logistics_cancelled / 已取消 cancelled
+   *
+   * 达到终态后不再同步（终态订单也不会被再次拉取）。
+   */
+  async runFetchLatestTrace(tenantId?: string): Promise<AutoSyncResult> {
+    if (this.isFetching) {
+      log.warn('[物流轨迹拉取] 上一次拉取尚未完成，跳过本次');
+      return { totalProcessed: 0, statusUpdated: 0, logisticsUpdated: 0, errors: 0, details: [] };
+    }
+
+    this.isFetching = true;
+    const result: AutoSyncResult = {
+      totalProcessed: 0,
+      statusUpdated: 0,
+      logisticsUpdated: 0,
+      errors: 0,
+      details: [],
+    };
+
+    try {
+      log.info('[物流轨迹拉取] ========== 开始执行 ==========');
+
+      const orderRepository = AppDataSource!.getRepository(Order);
+
+      // 1️⃣ 查询需要主动拉取轨迹的订单（仅非终态 + 排除手动覆盖）
+      const queryBuilder = orderRepository.createQueryBuilder('order')
+        .where('order.status IN (:...statuses)', { statuses: NON_TERMINAL_ORDER_STATUSES })
+        .andWhere('order.trackingNumber IS NOT NULL')
+        .andWhere("order.trackingNumber != ''")
+        // 🔒 手动更新过的订单永久排除：手动修改是兜底手段，视为最终状态
+        .andWhere('(order.manualStatusOverride = false OR order.manualStatusOverride IS NULL)');
+
+      if (tenantId) {
+        queryBuilder.andWhere('order.tenantId = :tenantId', { tenantId });
+      }
+
+      const orders = await queryBuilder
+        .select([
+          'order.id',
+          'order.orderNumber',
+          'order.status',
+          'order.logisticsStatus',
+          'order.trackingNumber',
+          'order.expressCompany',
+          'order.shippingPhone',
+          'order.customerPhone',
+          'order.latestLogisticsInfo',
+          'order.tenantId'
+        ])
+        .getMany();
+
+      log.info(`[物流轨迹拉取] 查询到 ${orders.length} 个待拉取订单`);
+      result.totalProcessed = orders.length;
+
+      // 2️⃣ 逐个订单请求快递公司 API 并同步
+      for (const order of orders) {
+        try {
+          const trackingNo = (order.trackingNumber || '').trim();
+          if (!trackingNo) continue;
+
+          const phone = (order.shippingPhone || '').trim() || (order.customerPhone || '').trim() || undefined;
+          const trace = await logisticsTraceService.queryTrace(trackingNo, order.expressCompany || undefined, phone);
+
+          if (!trace.success || !trace.traces || trace.traces.length === 0) continue;
+
+          // 按时间倒序取最新一条动态
+          const sortedTraces = [...trace.traces].sort((a, b) => {
+            return new Date(b.time).getTime() - new Date(a.time).getTime();
+          });
+          const latestDescription = (sortedTraces[0].description || sortedTraces[0].status || '').trim();
+          if (!latestDescription) continue;
+
+          // 写回最新物流动态，再走统一的"检测 → 映射 → 更新"流程
+          order.latestLogisticsInfo = latestDescription;
+          const refreshedFields: Record<string, any> = { latestLogisticsInfo: latestDescription };
+          if (trace.estimatedDeliveryTime) {
+            refreshedFields.expectedDeliveryDate = trace.estimatedDeliveryTime;
+          }
+
+          await this.processOrder(order, orderRepository, result, refreshedFields);
+        } catch (err: any) {
+          result.errors++;
+          log.error(`[物流轨迹拉取] 处理订单 ${order.orderNumber} 失败:`, err.message);
+        }
+      }
+
+      log.info(`[物流轨迹拉取] ========== 完成 ==========`);
+      log.info(`[物流轨迹拉取] 统计: 处理=${result.totalProcessed}, 订单状态更新=${result.statusUpdated}, 物流状态更新=${result.logisticsUpdated}, 错误=${result.errors}`);
+    } catch (error: any) {
+      log.error('[物流轨迹拉取] 执行失败:', error.message);
+      result.errors++;
+    } finally {
+      this.isFetching = false;
+      this.lastFetchTime = new Date().toISOString();
+    }
+
+    return result;
+  }
+
+  /**
+   * 🔥 遍历所有租户主动拉取物流轨迹（供定时任务调用）
+   *
+   * SaaS：遍历所有活跃租户，并进入各自租户上下文执行，保证快递公司 API 配置按租户隔离
+   * 私有部署：直接执行一次
+   */
+  async runFetchLatestTraceForAllTenants(): Promise<AutoSyncResult> {
+    const aggregate: AutoSyncResult = {
+      totalProcessed: 0,
+      statusUpdated: 0,
+      logisticsUpdated: 0,
+      errors: 0,
+      details: [],
+    };
+
+    try {
+      if (!deployConfig.isSaaS()) {
+        return await this.runFetchLatestTrace();
+      }
+
+      const tenants = await AppDataSource.query(
+        `SELECT id FROM tenants WHERE status = 'active'`
+      ).catch(() => []);
+
+      if (tenants.length === 0) {
+        return await this.runFetchLatestTrace();
+      }
+
+      for (const tenant of tenants) {
+        try {
+          const tenantResult = await TenantContextManager.run(
+            { tenantId: tenant.id },
+            () => this.runFetchLatestTrace(tenant.id)
+          );
+          this.mergeResult(aggregate, tenantResult);
+        } catch (e: any) {
+          aggregate.errors++;
+          log.error(`[物流轨迹拉取] 租户 ${tenant.id} 拉取失败:`, e.message);
+        }
+      }
+    } catch (error: any) {
+      log.error('[物流轨迹拉取] 遍历租户执行失败:', error.message);
+      aggregate.errors++;
+    }
+
+    return aggregate;
+  }
+
+  /**
+   * 合并多个租户的拉取结果
+   */
+  private mergeResult(target: AutoSyncResult, source: AutoSyncResult): void {
+    target.totalProcessed += source.totalProcessed;
+    target.statusUpdated += source.statusUpdated;
+    target.logisticsUpdated += source.logisticsUpdated;
+    target.errors += source.errors;
+    target.details.push(...source.details);
+  }
+
+  /**
    * 获取运行状态
    */
   getStatus() {
@@ -581,6 +766,8 @@ class LogisticsAutoSyncService {
       lastSyncTime: this.lastSyncTime,
       lastStartTime: this.lastStartTime,
       lastStopTime: this.lastStopTime,
+      isFetching: this.isFetching,
+      lastFetchTime: this.lastFetchTime,
     };
   }
 }

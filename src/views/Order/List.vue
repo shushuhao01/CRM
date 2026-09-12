@@ -284,7 +284,7 @@
           :value="pendingCancelCount"
           :hidden="pendingCancelCount === 0"
           :max="99"
-          type="danger"
+          :type="pendingCancelNewCount > 0 ? 'danger' : 'info'"
         >
           <el-button
             @click="handleOpenCancelAudit"
@@ -829,7 +829,8 @@ const cancelRules = {
 const showCancelAuditDialog = ref(false)
 const auditActiveTab = ref('pending')
 const selectedAuditOrders = ref<OrderItem[]>([])
-const pendingCancelCount = ref(0) // 🔥 新增：待审核的取消申请数量
+const pendingCancelCount = ref(0) // 🔥 待审核的取消申请总数（徽标数值）
+const pendingCancelNewCount = ref(0) // 🔥 上次查看后新增的数量（>0 显示红点，否则灰点）
 
 // 待审核订单分页数据
 const pendingPagination = reactive({
@@ -2155,6 +2156,10 @@ const handleOpenCancelAudit = async () => {
   auditActiveTab.value = 'pending'
   selectedAuditOrders.value = []
 
+  // 🔥 点击即视为已查看：红点立即转为灰色，之后新增的取消申请会重新亮红点
+  setCancelAuditLastViewed(new Date().toISOString())
+  pendingCancelNewCount.value = 0
+
   // 🔥 修复：弹窗数据使用独立的 ref 存储，不再操作 orderStore.orders
   await loadCancelAuditOrders()
 }
@@ -2235,18 +2240,37 @@ const loadCancelAuditOrders = async () => {
   }
 }
 
-// 🔥 新增：获取待审核取消订单数量
+// 🔥 取消审核红点状态：按用户记录"上次查看时间"，用于区分新增（红点）与已查看待处理（灰点）
+const cancelAuditViewedKey = () => `cancel_audit_last_viewed_${userStore.user?.id || 'default'}`
+
+const getCancelAuditLastViewed = (): string | null => {
+  try {
+    return localStorage.getItem(cancelAuditViewedKey())
+  } catch {
+    return null
+  }
+}
+
+const setCancelAuditLastViewed = (iso: string) => {
+  try {
+    localStorage.setItem(cancelAuditViewedKey(), iso)
+  } catch {
+    // localStorage 不可用时忽略，退化为每次进入页面都显示红点
+  }
+}
+
+// 🔥 新增：获取待审核取消订单数量（区分总数与新增数）
 const loadPendingCancelCount = async () => {
   try {
     const { orderApi } = await import('@/api/order')
-    // 🔥 使用 pending-cancel API 获取总数，只请求第一页1条数据即可
-    const response = await orderApi.getPendingCancelOrders({
-      page: 1,
-      pageSize: 1
-    })
+    // 🔥 since 为上次查看时间，用于统计"新增待审核"数量
+    const response: any = await orderApi.getPendingCancelCount(getCancelAuditLastViewed() || undefined)
+    const data = response?.data ?? response
 
-    if (response && response.pagination) {
-      pendingCancelCount.value = response.pagination.total || 0
+    if (data) {
+      pendingCancelCount.value = data.total || 0
+      // 没有待审核时红点数量归零，避免残留
+      pendingCancelNewCount.value = pendingCancelCount.value === 0 ? 0 : (data.newCount || 0)
     }
   } catch (error) {
     console.error('获取待审核取消订单数量失败:', error)
@@ -2733,6 +2757,13 @@ onMounted(async () => {
   // 等待所有数据加载完成
   await Promise.all(loadPromises)
 
+  // 🔥 定时刷新待审核取消订单数量（60秒），保证新的取消申请能及时亮起红点
+  if (canViewCancelAudit.value) {
+    pendingCancelCountTimer = setInterval(() => {
+      loadPendingCancelCount()
+    }, 60000)
+  }
+
   // 注意：不在页面加载时立即检查流转，由后台定时任务统一处理
   // 避免在创建订单后立即进入列表页时误触发流转
 
@@ -2792,9 +2823,18 @@ watch(() => route.query, async (newQuery, oldQuery) => {
   }
 }, { immediate: false })
 
+// 🔥 定时刷新待审核取消订单数量，保证新的取消申请能及时亮起红点
+let pendingCancelCountTimer: ReturnType<typeof setInterval> | null = null
+
 onUnmounted(() => {
   // 清理窗口大小变化监听器
   window.removeEventListener('resize', handleResize)
+
+  // 🔥 清理待审核取消订单数量定时器
+  if (pendingCancelCountTimer) {
+    clearInterval(pendingCancelCountTimer)
+    pendingCancelCountTimer = null
+  }
 
   // 清理物流状态更新事件监听器
   window.removeEventListener('orderStatusUpdated', handleOrderStatusUpdate)

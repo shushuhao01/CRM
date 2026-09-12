@@ -28,7 +28,7 @@
           <div class="customer-details-modern">
             <div class="customer-name-modern">{{ orderDetail.customer.name }}</div>
             <div class="customer-contact-modern">
-              <div class="contact-item-modern phone-item-modern" @click="$emit('call-customer')">
+              <div class="contact-item-modern phone-item-modern" @click="handlePhoneClick()">
                 <el-icon class="contact-icon"><Phone /></el-icon>
                 <span class="contact-text">{{ displaySensitiveInfoNew(orderDetail.customer.phone, SensitiveInfoType.PHONE, userId) }}</span>
                 <el-icon class="call-icon"><Phone /></el-icon>
@@ -107,7 +107,7 @@
           </div>
           <div class="delivery-field-modern">
             <div class="field-label-modern">联系电话</div>
-            <div class="field-value-modern phone-clickable" @click="$emit('call-customer', orderDetail.receiverPhone)">
+            <div class="field-value-modern phone-clickable" @click="handlePhoneClick(orderDetail.receiverPhone)">
               {{ displaySensitiveInfoNew(orderDetail.receiverPhone, SensitiveInfoType.PHONE) }}
             </div>
           </div>
@@ -258,11 +258,21 @@ const props = defineProps<{
   userId: string
 }>()
 
-defineEmits<{
+const emit = defineEmits<{
   'go-customer-detail': []
   'call-customer': [phone?: string]
   'track-express': []
 }>()
+
+/**
+ * 点击号码发起外呼
+ * 🔥 光标拖选号码文本时不跳转，只有真正的点击才跳转
+ */
+const handlePhoneClick = (phone?: string) => {
+  const selection = window.getSelection()
+  if (selection && selection.toString().trim().length > 0) return
+  emit('call-customer', phone)
+}
 
 // 订单生命周期节点计算
 const lifecycleNodes = computed(() => {
@@ -433,9 +443,11 @@ const lifecycleNodes = computed(() => {
 .delivery-grid-modern { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start; }
 .delivery-field-modern { display: flex; flex-direction: column; gap: 8px; }
 .address-field-modern { grid-column: 1 / -1; }
-.field-label-modern { font-size: 14px; color: #6b7280; font-weight: 500; margin-bottom: 4px; }
+/* user-select: none 避免拖选号码时把"联系电话"等字段标签一起选中 */
+.field-label-modern { font-size: 14px; color: #6b7280; font-weight: 500; margin-bottom: 4px; user-select: none; }
 .field-value-modern { font-size: 16px; color: #111827; font-weight: 600; line-height: 1.5; }
-.phone-clickable { cursor: pointer; color: #3b82f6; transition: all 0.2s ease; padding: 4px 8px; border-radius: 6px; margin: -4px -8px; }
+/* 让点击/选中区域紧贴号码本身，不与"联系电话"标签及整列区域混在一起 */
+.phone-clickable { align-self: flex-start; cursor: pointer; color: #3b82f6; transition: all 0.2s ease; padding: 4px 8px; border-radius: 6px; margin: -4px -8px; user-select: text; }
 .phone-clickable:hover { background: #eff6ff; color: #1d4ed8; transform: scale(1.02); }
 .address-value-modern { word-break: break-word; line-height: 1.6; color: #374151; }
 

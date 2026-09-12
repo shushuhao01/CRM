@@ -402,6 +402,50 @@ router.get('/pending-cancel', async (req: Request, res: Response) => {
 });
 
 /**
+ * @route GET /api/v1/orders/pending-cancel/count
+ * @desc 获取待审核取消订单数量
+ *       total：当前待审核总数（徽标数值，为 0 时前端隐藏徽标）
+ *       newCount：since 之后新增的待审核数量（> 0 时前端显示红点，否则显示灰点）
+ * @access Private
+ */
+router.get('/pending-cancel/count', async (req: Request, res: Response) => {
+  try {
+    const orderRepository = getTenantRepo(Order);
+
+    const total = await orderRepository.count({
+      where: { status: 'pending_cancel' }
+    });
+
+    // 🔥 since：前端记录的上次查看时间（ISO 字符串），为空则视为全部为新
+    let newCount = total;
+    const since = req.query.since as string;
+    if (since) {
+      const sinceDate = new Date(since);
+      if (!isNaN(sinceDate.getTime())) {
+        newCount = await orderRepository.createQueryBuilder('order')
+          .where('order.status = :status', { status: 'pending_cancel' })
+          .andWhere('order.updatedAt > :since', { since: sinceDate })
+          .getCount();
+      }
+    }
+
+    res.json({
+      success: true,
+      code: 200,
+      data: { total, newCount }
+    });
+  } catch (error) {
+    log.error('获取待审核取消订单数量失败:', error);
+    res.status(500).json({
+      success: false,
+      code: 500,
+      message: '获取待审核取消订单数量失败',
+      error: error instanceof Error ? error.message : '未知错误'
+    });
+  }
+});
+
+/**
  * @route GET /api/v1/orders/audited-cancel
  * @desc 获取已审核的取消订单列表（支持分页）
  * @access Private

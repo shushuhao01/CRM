@@ -89,6 +89,17 @@ export class SchedulerService {
       '物流状态自动同步（每15分钟）'
     );
 
+    // 🔥 物流轨迹主动拉取 - 每天12:00、18:00 主动请求快递公司 API 刷新最新物流状态
+    // 仅针对非终态订单（已发货/拒收/状态异常），已签收等终态不发起请求
+    this.scheduleTask(
+      'logistics-trace-fetch',
+      '0 12,18 * * *', // 每天 12:00 与 18:00
+      async () => {
+        await logisticsAutoSyncService.runFetchLatestTraceForAllTenants();
+      },
+      '物流轨迹主动拉取（每天12:00/18:00）'
+    );
+
     // 🔥 企微客户自动同步 - 每2小时执行一次
     this.scheduleTask(
       'wecom-customer-sync',
@@ -220,6 +231,9 @@ export class SchedulerService {
           return true;
         case 'logistics-auto-sync':
           await logisticsAutoSyncService.runAutoSync();
+          return true;
+        case 'logistics-trace-fetch':
+          await logisticsAutoSyncService.runFetchLatestTraceForAllTenants();
           return true;
         // 客户转粉 - 暂停开发，后续版本恢复
         // case 'wecom-convert-fan-poll':

@@ -1611,12 +1611,31 @@ class LogisticsTraceService {
 
   /**
    * 从描述文本中检测物流状态
+   *
+   * ⚠️ 检测优先级（绝不能颠倒！）：
+   * 退回 returned → 拒收 rejected → 签收 delivered → 派送中 → 已揽收 → 异常
+   * 其中"退回签收/仓库签收/发件人已签收"等含"签收"字样的退回场景必须判定为退回，
+   * 否则会把"客户拒收后物流退回仓库、仓库签收"误判为已签收。
    */
   private detectStatusFromDescription(desc: string): string {
     if (!desc) return 'in_transit';
 
     const lowerDesc = desc.toLowerCase();
 
+    // 1️⃣ 退回（最高优先级，必须先于签收判断）
+    if (
+      lowerDesc.includes('退回') || lowerDesc.includes('退件') || lowerDesc.includes('返回') ||
+      lowerDesc.includes('退货') || lowerDesc.includes('寄回') || lowerDesc.includes('返件') ||
+      lowerDesc.includes('仓库签收') || lowerDesc.includes('退回签收') || lowerDesc.includes('退件签收') ||
+      lowerDesc.includes('发件人已签收') || lowerDesc.includes('returned')
+    ) {
+      return 'returned';
+    }
+    // 2️⃣ 拒收
+    if (lowerDesc.includes('拒收') || lowerDesc.includes('拒签') || lowerDesc.includes('rejected')) {
+      return 'rejected';
+    }
+    // 3️⃣ 已签收（排在退回/拒收之后）
     if (lowerDesc.includes('签收') || lowerDesc.includes('已签') || lowerDesc.includes('delivered')) {
       return 'delivered';
     }
@@ -1625,12 +1644,6 @@ class LogisticsTraceService {
     }
     if (lowerDesc.includes('揽收') || lowerDesc.includes('收件') || lowerDesc.includes('已收')) {
       return 'picked_up';
-    }
-    if (lowerDesc.includes('拒收') || lowerDesc.includes('拒签')) {
-      return 'rejected';
-    }
-    if (lowerDesc.includes('退回') || lowerDesc.includes('退件')) {
-      return 'returned';
     }
     if (lowerDesc.includes('异常') || lowerDesc.includes('问题')) {
       return 'exception';
